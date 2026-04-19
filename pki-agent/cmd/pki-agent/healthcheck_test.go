@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"net"
 	"net/http"
@@ -113,3 +114,134 @@ func TestRunHealthcheck_ProxyColonOnly(t *testing.T) {
 // Compile-time sanity: ensure fmt/errors imports used elsewhere do not drift
 // away without us noticing. Safe to remove once the package has more code.
 var _ = fmt.Errorf
+
+// stubInterfaces swaps listInterfaces for the test lifetime.
+func stubInterfaces(t *testing.T, stub func() ([]ifaceInfo, error)) {
+	t.Helper()
+	prev := listInterfaces
+	listInterfaces = stub
+	t.Cleanup(func() { listInterfaces = prev })
+}
+
+// TestProbeNetns_HealthyNamespace: lo + eth0 with non-loopback addr passes.
+func TestProbeNetns_HealthyNamespace(t *testing.T) {
+	stubInterfaces(t, func() ([]ifaceInfo, error) {
+		return []ifaceInfo{
+			{Name: "lo", IsUp: true, Loopback: true, Addrs: []net.IP{net.IPv4(127, 0, 0, 1)}},
+			{Name: "eth0", IsUp: true, Loopback: false, Addrs: []net.IP{net.IPv4(172, 18, 0, 14)}},
+		}, nil
+	})
+	if err := probeNetns(); err != nil {
+		t.Fatalf("want nil for healthy netns, got %v", err)
+	}
+}
+
+// TestProbeNetns_LoopbackOnly: only lo — the netns-orphan signature from
+// ADR-000782. sidecar's parent was force-recreated; eth0 is gone.
+func TestProbeNetns_LoopbackOnly(t *testing.T) {
+	stubInterfaces(t, func() ([]ifaceInfo, error) {
+		return []ifaceInfo{
+			{Name: "lo", IsUp: true, Loopback: true, Addrs: []net.IP{net.IPv4(127, 0, 0, 1)}},
+		}, nil
+	})
+	err := probeNetns()
+	if err == nil {
+		t.Fatal("want error for loopback-only netns, got nil")
+	}
+	if !strings.Contains(err.Error(), "orphan") {
+		t.Fatalf("error should mention orphan, got: %v", err)
+	}
+}
+
+// TestProbeNetns_InterfaceDown: eth0 present but FlagUp=0 → fail. The kernel
+// doesn't tear down the interface struct immediately after netns teardown;
+// the carrier drops first.
+func TestProbeNetns_InterfaceDown(t *testing.T) {
+	stubInterfaces(t, func() ([]ifaceInfo, error) {
+		return []ifaceInfo{
+			{Name: "lo", IsUp: true, Loopback: true, Addrs: []net.IP{net.IPv4(127, 0, 0, 1)}},
+			{Name: "eth0", IsUp: false, Loopback: false, Addrs: []net.IP{net.IPv4(172, 18, 0, 14)}},
+		}, nil
+	})
+	if err := probeNetns(); err == nil {
+		t.Fatal("want error when eth0 down, got nil")
+	}
+}
+
+// TestProbeNetns_NonLoopbackIfaceHasLoopbackAddrOnly: eth0 up but only
+// 127.x addresses — still treated as orphan; real connectivity requires a
+// routable non-loopback IP.
+func TestProbeNetns_NonLoopbackIfaceHasLoopbackAddrOnly(t *testing.T) {
+	stubInterfaces(t, func() ([]ifaceInfo, error) {
+		return []ifaceInfo{
+			{Name: "eth0", IsUp: true, Loopback: false, Addrs: []net.IP{net.IPv4(127, 0, 0, 2)}},
+		}, nil
+	})
+	if err := probeNetns(); err == nil {
+		t.Fatal("want error when non-loopback iface has only loopback addr, got nil")
+	}
+}
+
+// TestProbeNetns_ListError: kernel enumeration failure must propagate.
+func TestProbeNetns_ListError(t *testing.T) {
+	stubInterfaces(t, func() ([]ifaceInfo, error) {
+		return nil, errors.New("kernel failed")
+	})
+	if err := probeNetns(); err == nil {
+		t.Fatal("want error propagation, got nil")
+	}
+}
+
+// TestRunHealthcheck_NetnsOrphanFailsHealthcheck: when PROXY_LISTEN is set and
+// the netns has degraded to loopback-only, runHealthcheck must fail even if
+// probeMetrics and probeProxy would pass (because the local listener still
+// lives in the stale netns alongside the sidecar itself).
+func TestRunHealthcheck_NetnsOrphanFailsHealthcheck(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+	metricsAddr := strings.TrimPrefix(srv.URL, "http://")
+
+	proxyAddr, ln := listen(t)
+	defer ln.Close()
+
+	stubInterfaces(t, func() ([]ifaceInfo, error) {
+		return []ifaceInfo{
+			{Name: "lo", IsUp: true, Loopback: true, Addrs: []net.IP{net.IPv4(127, 0, 0, 1)}},
+		}, nil
+	})
+
+	err := runHealthcheck(metricsAddr, proxyAddr)
+	if err == nil {
+		t.Fatal("want error when netns orphan, got nil")
+	}
+	if !strings.Contains(err.Error(), "netns") && !strings.Contains(err.Error(), "orphan") {
+		t.Fatalf("error should mention netns/orphan, got: %v", err)
+	}
+}
+
+// TestRunHealthcheck_HealthyWithProxy: sanity that a fully-healthy probe
+// (metrics green, proxy listening, netns has eth0) returns nil. Guards against
+// the probeNetns branch accidentally shadowing the happy path.
+func TestRunHealthcheck_HealthyWithProxy(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+	metricsAddr := strings.TrimPrefix(srv.URL, "http://")
+
+	proxyAddr, ln := listen(t)
+	defer ln.Close()
+
+	stubInterfaces(t, func() ([]ifaceInfo, error) {
+		return []ifaceInfo{
+			{Name: "lo", IsUp: true, Loopback: true, Addrs: []net.IP{net.IPv4(127, 0, 0, 1)}},
+			{Name: "eth0", IsUp: true, Loopback: false, Addrs: []net.IP{net.IPv4(172, 18, 0, 14)}},
+		}, nil
+	})
+
+	if err := runHealthcheck(metricsAddr, proxyAddr); err != nil {
+		t.Fatalf("want nil with healthy netns, got %v", err)
+	}
+}

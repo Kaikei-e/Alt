@@ -148,6 +148,7 @@ func main() {
 	ticker := time.NewTicker(cfg.TickInterval)
 	defer ticker.Stop()
 	consecutiveFailures := 0
+	var probeExit probeState
 	for {
 		select {
 		case <-ctx.Done():
@@ -172,6 +173,28 @@ func main() {
 			}
 			consecutiveFailures = 0
 			slog.Info("tick ok", "state", state.String())
+
+			// Self-probe: runHealthcheck combines /healthz, netns interface
+			// check and TCP dial of the reverse-proxy listener. Running it
+			// from the tick loop (not just from Docker HEALTHCHECK) is what
+			// closes the netns-orphan failure mode — Docker does not restart
+			// an unhealthy container, so the sidecar has to exit itself when
+			// the condition is structural. See ADR-000785.
+			if cfg.ProxyListen != "" {
+				perr := runHealthcheck(cfg.MetricsAddr, cfg.ProxyListen)
+				shouldExit := probeExit.evalProbeResult(perr)
+				if perr != nil {
+					slog.Error("self-probe failed",
+						"err", perr,
+						"consecutive", probeExit.consecutive,
+						"threshold", probeFailureThreshold)
+				}
+				if shouldExit {
+					slog.Error("self-probe threshold exceeded — exiting to let compose restart respawn in parent's current netns",
+						"err", perr)
+					shutdown(1)
+				}
+			}
 		}
 	}
 }
