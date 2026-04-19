@@ -276,44 +276,80 @@ if [[ "$MODE" == "broker" && "$DRY_RUN" != "true" ]]; then
   export PACT_PROVIDER_VERSION PACT_PROVIDER_BRANCH
 fi
 
+# ---------- Toolchain detection + step registry ----------
+# Detect each language/runtime once at script start so the per-step loop
+# below can skip cleanly without re-shelling command(1) 18 times.
+# Reference: Wooledge BashFAQ #105 on set-e reliability; Google Shell Style
+# Guide on using arrays over ad-hoc control flow.
+declare -A HAVE=()
+HAVE[go]=0
+HAVE[cargo]=0
+HAVE[uv]=0
+if command -v go &>/dev/null && check_ffi; then HAVE[go]=1; fi
+if command -v cargo &>/dev/null; then HAVE[cargo]=1; fi
+if command -v uv &>/dev/null; then HAVE[uv]=1; fi
+
+# In --dry-run every toolchain is treated as present so the filter/output
+# tests are deterministic regardless of runner host state.
+need_tool() {
+  [[ "$DRY_RUN" == "true" ]] && return 0
+  [[ "${HAVE[$1]:-0}" == "1" ]]
+}
+
+# Step registry. Each entry is `label|tool|workdir|command` split on `|`.
+# - label: exact run_step label; parsed by should_run_service_filter as
+#   "<Lang>: <svc> <role>[ <extras>]".
+# - tool: key in $HAVE (go / cargo / uv). Also the skip_step suffix.
+# - workdir: relative from repo root.
+# - command: shell fragment executed via `bash -c` inside workdir.
+# Mirroring consumer and provider tables keeps the script linear and
+# removes the six language-gate `if/else` blocks the pre-refactor version
+# had (one per lang × role combination).
+STEPS_CONSUMER=(
+  "Go: alt-backend consumer|go|alt-backend/app|CGO_ENABLED=1 go test -tags=contract ./driver/preprocessor_connect/contract/ -v"
+  "Go: pre-processor consumer|go|pre-processor/app|CGO_ENABLED=1 go test -tags=contract ./driver/contract/ -v"
+  "Go: rag-orchestrator consumer|go|rag-orchestrator|CGO_ENABLED=1 go test -tags=contract ./internal/adapter/contract/ -v"
+  "Go: search-indexer consumer|go|search-indexer/app|CGO_ENABLED=1 go test -tags=contract ./driver/contract/ -v"
+  "Go: mq-hub consumer|go|mq-hub/app|CGO_ENABLED=1 go test -tags=contract ./driver/contract/ -v"
+  "Go: alt-butterfly-facade consumer|go|alt-butterfly-facade|CGO_ENABLED=1 go test -tags=contract ./internal/handler/contract/ -v"
+  "Go: auth-hub consumer|go|auth-hub|CGO_ENABLED=1 go test -tags=contract ./internal/adapter/gateway/contract/ -v"
+  "Rust: recap-worker consumer|cargo|recap-worker/recap-worker|cargo test --lib contract -- --ignored"
+  "Python: recap-evaluator consumer|uv|recap-evaluator|uv run pytest tests/contract/ -v --no-cov"
+)
+
+STEPS_PROVIDER=(
+  "Python: news-creator provider|uv|news-creator/app|uv run pytest tests/contract/ -v"
+  "Python: recap-subworker provider|uv|recap-subworker|uv run pytest tests/contract/ -v"
+  "Python: tag-generator provider|uv|tag-generator/app|uv run pytest tests/contract/ -v"
+  "Python: tts-speaker provider|uv|tts-speaker|uv run pytest tests/contract/ -v"
+  "Go: alt-backend provider|go|alt-backend/app|CGO_ENABLED=1 go test -tags=contract ./driver/contract/ -v"
+  "Go: search-indexer provider|go|search-indexer/app|CGO_ENABLED=1 go test -tags=contract -run TestVerifySearchIndexerProviderContracts ./driver/contract/ -v"
+  "Go: pre-processor provider|go|pre-processor/app|CGO_ENABLED=1 go test -tags=contract -run TestVerifyAltBackendContract ./driver/contract/ -v"
+  "Go: mq-hub provider (search-indexer message pact)|go|mq-hub/app|CGO_ENABLED=1 go test -tags=contract -run TestVerifySearchIndexerMqHubMessagePact ./driver/contract/ -v"
+  "Rust: recap-worker provider|cargo|recap-worker/recap-worker|cargo test --test provider_verification -- --ignored"
+)
+
+# Iterate a STEPS_* registry. Uses a nameref so the caller passes a bare
+# identifier (`execute_steps STEPS_CONSUMER`) instead of a resolved array.
+execute_steps() {
+  local -n steps="$1"
+  local spec label tool wd cmd
+  for spec in "${steps[@]}"; do
+    IFS='|' read -r label tool wd cmd <<<"$spec"
+    if ! need_tool "$tool"; then
+      skip_step "$label (missing $tool toolchain)"
+      continue
+    fi
+    run_step "$label" bash -c "cd \"$wd\" && $cmd"
+  done
+}
+
 # ---------- Consumer tests ----------
 echo ""
 echo "============================="
 echo " Consumer Tests (pact generation)"
 echo "============================="
-
-if [[ "$DRY_RUN" == "true" ]] || (command -v go &>/dev/null && check_ffi); then
-  run_step "Go: alt-backend consumer" \
-    bash -c 'cd alt-backend/app && CGO_ENABLED=1 go test -tags=contract ./driver/preprocessor_connect/contract/ -v'
-  run_step "Go: pre-processor consumer" \
-    bash -c 'cd pre-processor/app && CGO_ENABLED=1 go test -tags=contract ./driver/contract/ -v'
-  run_step "Go: rag-orchestrator consumer" \
-    bash -c 'cd rag-orchestrator && CGO_ENABLED=1 go test -tags=contract ./internal/adapter/contract/ -v'
-  run_step "Go: search-indexer consumer" \
-    bash -c 'cd search-indexer/app && CGO_ENABLED=1 go test -tags=contract ./driver/contract/ -v'
-  run_step "Go: mq-hub consumer" \
-    bash -c 'cd mq-hub/app && CGO_ENABLED=1 go test -tags=contract ./driver/contract/ -v'
-  run_step "Go: alt-butterfly-facade consumer" \
-    bash -c 'cd alt-butterfly-facade && CGO_ENABLED=1 go test -tags=contract ./internal/handler/contract/ -v'
-  run_step "Go: auth-hub consumer" \
-    bash -c 'cd auth-hub && CGO_ENABLED=1 go test -tags=contract ./internal/adapter/gateway/contract/ -v'
-else
-  skip_step "Go consumer tests (go or libpact_ffi not found)"
-fi
-
-if [[ "$DRY_RUN" == "true" ]] || command -v cargo &>/dev/null; then
-  run_step "Rust: recap-worker consumer" \
-    bash -c 'cd recap-worker/recap-worker && cargo test --lib contract -- --ignored'
-else
-  skip_step "Rust consumer tests (cargo not found)"
-fi
-
-if [[ "$DRY_RUN" == "true" ]] || command -v uv &>/dev/null; then
-  run_step "Python: recap-evaluator consumer" \
-    bash -c 'cd recap-evaluator && uv run pytest tests/contract/ -v --no-cov'
-else
-  skip_step "Python consumer tests (uv not found)"
-fi
+execute_steps STEPS_CONSUMER
 
 # ---------- Broker publish (broker mode only) ----------
 if [[ "$MODE" == "broker" && "$DRY_RUN" != "true" ]]; then
@@ -377,41 +413,7 @@ echo "============================="
 echo " Provider Verifications"
 echo "============================="
 
-if [[ "$DRY_RUN" == "true" ]] || command -v uv &>/dev/null; then
-  run_step "Python: news-creator provider" \
-    bash -c 'cd news-creator/app && uv run pytest tests/contract/ -v'
-  run_step "Python: recap-subworker provider" \
-    bash -c 'cd recap-subworker && uv run pytest tests/contract/ -v'
-  run_step "Python: tag-generator provider" \
-    bash -c 'cd tag-generator/app && uv run pytest tests/contract/ -v'
-  run_step "Python: tts-speaker provider" \
-    bash -c 'cd tts-speaker && uv run pytest tests/contract/ -v'
-else
-  skip_step "Python provider verifications (uv not found)"
-fi
-
-if [[ "$DRY_RUN" == "true" ]] || (command -v go &>/dev/null && check_ffi); then
-  # alt-backend provider verifies 3 consumer pacts in one pass via the
-  # whole-directory go-test invocation: TestVerifyRecapWorkerContract,
-  # TestVerifySearchIndexerContract, TestVerifyAltButterflyFacadeContract.
-  run_step "Go: alt-backend provider" \
-    bash -c 'cd alt-backend/app && CGO_ENABLED=1 go test -tags=contract ./driver/contract/ -v'
-  run_step "Go: search-indexer provider" \
-    bash -c 'cd search-indexer/app && CGO_ENABLED=1 go test -tags=contract -run TestVerifySearchIndexerProviderContracts ./driver/contract/ -v'
-  run_step "Go: pre-processor provider" \
-    bash -c 'cd pre-processor/app && CGO_ENABLED=1 go test -tags=contract -run TestVerifyAltBackendContract ./driver/contract/ -v'
-  run_step "Go: mq-hub provider (search-indexer message pact)" \
-    bash -c 'cd mq-hub/app && CGO_ENABLED=1 go test -tags=contract -run TestVerifySearchIndexerMqHubMessagePact ./driver/contract/ -v'
-else
-  skip_step "Go provider verification (go or libpact_ffi not found)"
-fi
-
-if [[ "$DRY_RUN" == "true" ]] || command -v cargo &>/dev/null; then
-  run_step "Rust: recap-worker provider" \
-    bash -c 'cd recap-worker/recap-worker && cargo test --test provider_verification -- --ignored'
-else
-  skip_step "Rust provider verification (cargo not found)"
-fi
+execute_steps STEPS_PROVIDER
 
 # ---------- Broker-side verification bridging ----------
 # Three pact families cannot use the stock pact_verifier flow and need manual
