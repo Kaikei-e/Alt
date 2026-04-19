@@ -24,9 +24,30 @@ if TYPE_CHECKING:
     from acolyte.domain.fusion import FusionStrategy
     from acolyte.port.content_store import ContentStorePort
     from acolyte.port.evidence_provider import EvidenceProviderPort
+    from acolyte.port.hyde_generator import HyDEGeneratorPort
     from acolyte.usecase.graph.state import ReportGenerationState
 
 logger = structlog.get_logger(__name__)
+
+
+def _detect_topic_language(topic: str) -> str:
+    """Cheap CJK vs ASCII detector. Mirrors the Go language_detector so the
+    Gatherer can decide whether to request a JP→EN or EN→JA HyDE pass."""
+    if not topic:
+        return "und"
+    cjk = 0
+    latin = 0
+    for ch in topic:
+        code = ord(ch)
+        if 0x3040 <= code <= 0x309F or 0x30A0 <= code <= 0x30FF or 0x4E00 <= code <= 0x9FFF:
+            cjk += 1
+        elif ch.isascii() and ch.isalpha():
+            latin += 1
+    if cjk >= 2 and cjk * 3 >= cjk + latin:
+        return "ja"
+    if latin >= 3 and latin > cjk * 2:
+        return "en"
+    return "und"
 
 
 class GathererNode:
@@ -36,10 +57,12 @@ class GathererNode:
         *,
         content_store: ContentStorePort | None = None,
         fusion: FusionStrategy | None = None,
+        hyde_generator: HyDEGeneratorPort | None = None,
     ) -> None:
         self._evidence = evidence
         self._content_store = content_store
         self._fusion = fusion or RRFFusion()
+        self._hyde = hyde_generator
 
     async def __call__(self, state: ReportGenerationState) -> dict:
         brief = state.get("brief") or state.get("scope") or {}
@@ -91,6 +114,23 @@ class GathererNode:
         evidence_map: dict[str, dict] = {}
         weak_facets: list[dict] = []
 
+        # Resolve a HyDE passage once per topic and reuse it for every facet.
+        # When the topic is Japanese we request an English HyDE (cross-lingual
+        # recall expansion); for English topics we request Japanese. A None
+        # generator or None result disables the extra variant silently.
+        hyde_variant: tuple[str, str] | None = None
+        if self._hyde is not None:
+            topic_lang = _detect_topic_language(topic)
+            target_lang: str | None = None
+            if topic_lang == "ja":
+                target_lang = "en"
+            elif topic_lang == "en":
+                target_lang = "ja"
+            if target_lang is not None:
+                hyde_doc = await self._hyde.generate_hypothetical_doc(topic, target_lang)
+                if hyde_doc:
+                    hyde_variant = (hyde_doc, f"hyde_{target_lang}")
+
         for section in outline:
             section_key = section.get("key", "")
             facets = section.get("query_facets", [])
@@ -101,6 +141,8 @@ class GathererNode:
             for facet_idx, facet in enumerate(facets):
                 # Issue 7: Generate query variants for multi-query retrieval
                 variants = generate_query_variants(facet, topic, brief)
+                if hyde_variant is not None:
+                    variants = list(variants) + [hyde_variant]
 
                 ranked_lists: list[list[ScoredHit]] = []
                 total_hits = 0

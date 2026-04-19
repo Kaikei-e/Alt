@@ -27,7 +27,7 @@ def _score_of(item: dict) -> float:
     raw = item.get("score", 0.0)
     try:
         return float(raw)
-    except (TypeError, ValueError):
+    except TypeError, ValueError:
         return 0.0
 
 

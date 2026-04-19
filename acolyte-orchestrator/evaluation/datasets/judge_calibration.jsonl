@@ -1,0 +1,10 @@
+{"body": "市場は 30% 拡大した [S1]。", "evidence": {"S1": "市場は 30% 拡大した"}, "expected_score": 1.00}
+{"body": "市場は約 3 割ほど拡大した [S1]。", "evidence": {"S1": "市場は 30% 拡大した"}, "expected_score": 0.75}
+{"body": "市場は 30% 拡大し、来年は 40% に達する見通し [S1]。", "evidence": {"S1": "市場は 30% 拡大した"}, "expected_score": 0.50}
+{"body": "市場は停滞しており、巨大企業が新規参入する [S1]。", "evidence": {"S1": "市場は 30% 拡大した"}, "expected_score": 0.25}
+{"body": "市場は縮小傾向にあり、主要企業が撤退している [S1]。", "evidence": {"S1": "市場は 30% 拡大した"}, "expected_score": 0.00}
+{"body": "Reuters によれば、イランの経済制裁は今年初めに強化された [S1]。", "evidence": {"S1": "Reuters reported that Iran sanctions were tightened earlier this year."}, "expected_score": 1.00}
+{"body": "イランの核協議はスイスで進行中だと報じられている [S1]。", "evidence": {"S1": "イラン外相 IAEAトップと会談 査察めぐる協力について議論"}, "expected_score": 0.25}
+{"body": "日銀は 2026 年 Q2 に政策金利を維持する見通し [S1]。", "evidence": {"S1": "日銀は 2026 年 Q2 に政策金利を維持する方針を示した"}, "expected_score": 1.00}
+{"body": "日銀は 2026 年 Q2 に利下げする予定である [S1]。", "evidence": {"S1": "日銀は 2026 年 Q2 に政策金利を維持する方針を示した"}, "expected_score": 0.00}
+{"body": "NVIDIA の Blackwell アーキテクチャは 2026 年前半に量産化された [S1]。Blackwell は主要クラウド事業者へ優先供給されている [S2]。", "evidence": {"S1": "NVIDIA の Blackwell アーキテクチャは 2026 年前半に量産化された", "S2": "Blackwell は主要クラウド事業者へ優先供給されている"}, "expected_score": 1.00}

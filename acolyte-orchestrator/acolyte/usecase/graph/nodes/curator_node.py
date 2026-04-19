@@ -44,18 +44,21 @@ class CuratorNode:
         self._max_evidence = max_evidence
         self._settings = settings
 
-    def _language_quota(self) -> dict[str, float]:
+    def _language_quota(
+        self,
+        section_role: str | None = None,
+        report_type: str | None = None,
+    ) -> dict[str, float]:
         if self._settings is None:
             return {}
-        return self._settings.get_language_quota()
+        return self._settings.get_language_quota(section_role, report_type)
 
     async def __call__(self, state: ReportGenerationState) -> dict:
         evidence = state.get("evidence", [])
         brief = state.get("brief") or state.get("scope") or {}
         outline = state.get("outline", [])
         topic = brief.get("topic", "")
-
-        quota = self._language_quota()
+        report_type = state.get("report_type") or brief.get("report_type")
 
         # Per-section curation
         curated_by_section: dict[str, list[dict]] = {}
@@ -63,6 +66,7 @@ class CuratorNode:
         for section in outline:
             section_key = section.get("key", "")
             section_title = section.get("title", section_key)
+            section_role = section.get("role") or section.get("section_role") or section_key
 
             # Filter evidence tagged for this section
             section_evidence = [e for e in evidence if section_key in e.get("section_keys", [])]
@@ -71,10 +75,9 @@ class CuratorNode:
                 curated = section_evidence
             else:
                 # LLM curation for sections exceeding limit
-                curated = await self._curate_with_llm(
-                    section_evidence, topic, str(section_title or section_key)
-                )
+                curated = await self._curate_with_llm(section_evidence, topic, str(section_title or section_key))
 
+            quota = self._language_quota(section_role, report_type)
             if quota:
                 curated = rebalance_by_language(curated, section_evidence, quota)
             curated_by_section[section_key] = curated

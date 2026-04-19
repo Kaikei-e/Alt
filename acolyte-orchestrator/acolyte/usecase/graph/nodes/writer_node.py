@@ -54,7 +54,7 @@ _CITATION_RULE = (
 # Cross-lingual gloss rule: surface English originals with a Japanese summary.
 _CROSS_LINGUAL_RULE = (
     "- supporting_quotes の行末に [en] タグが付いている原文を使う場合は、"
-    "本文中で「原文の主旨を要約した日本語」を書き、続けて（原文: \"…冒頭40字…\"）[Sn] を付す"
+    '本文中で「原文の主旨を要約した日本語」を書き、続けて（原文: "…冒頭40字…"）[Sn] を付す'
 )
 
 # Paragraph-level prompts (one paragraph per claim).
@@ -520,9 +520,7 @@ class WriterNode:
         # Convert UUIDs to short IDs if SourceMap is available
         if self._source_map:
             eids = [self._source_map.short_id_for(eid) or eid for eid in raw_eids]
-            languages = [
-                (entry.language if (entry := self._source_map.resolve(sn)) else "und") for sn in eids
-            ]
+            languages = [(entry.language if (entry := self._source_map.resolve(sn)) else "und") for sn in eids]
         else:
             eids = list(raw_eids)
             languages = []

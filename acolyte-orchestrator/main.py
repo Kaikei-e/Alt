@@ -21,6 +21,7 @@ from acolyte.domain.fusion import RRFFusion
 from acolyte.gateway.checkpoint_factory import create_checkpointer
 from acolyte.gateway.memory_content_store import MemoryContentStore
 from acolyte.gateway.memory_job_gw import MemoryJobGateway
+from acolyte.gateway.news_creator_hyde_gw import NewsCreatorHyDEGenerator
 from acolyte.gateway.ollama_gw import OllamaGateway
 from acolyte.gateway.postgres_report_gw import PostgresReportGateway
 from acolyte.gateway.search_indexer_gw import SearchIndexerGateway
@@ -90,6 +91,19 @@ _search_gw = SearchIndexerGateway(_http_client, settings, _content_store)
 # Fusion strategy for hybrid retrieval (Issue 7: RRF default, CC future)
 _fusion = RRFFusion(k=60)
 
+# HyDE generator (cross-lingual recall expansion via Gemma4). Disabled when
+# ``hyde_enabled`` is false so the pipeline falls back to BM25+RRF alone.
+_hyde_generator = (
+    NewsCreatorHyDEGenerator(
+        _llm_gw,
+        timeout_s=settings.hyde_timeout_s,
+        max_chars=settings.hyde_max_chars,
+        num_predict=settings.hyde_num_predict,
+    )
+    if settings.hyde_enabled
+    else None
+)
+
 
 def _compile_graph(*, checkpointer: object | None = None):
     """Compile the LangGraph report pipeline with optional checkpointing."""
@@ -101,6 +115,7 @@ def _compile_graph(*, checkpointer: object | None = None):
         fusion=_fusion,
         checkpointer=checkpointer,
         settings=settings,
+        hyde_generator=_hyde_generator,
     )
 
 

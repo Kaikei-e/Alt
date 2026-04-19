@@ -50,6 +50,7 @@ def build_report_graph(
     fusion: FusionStrategy | None = None,
     checkpointer: object | None = None,
     settings: Settings | None = None,
+    hyde_generator: object | None = None,
 ) -> CompiledStateGraph:
     """Build the report generation StateGraph.
 
@@ -63,7 +64,15 @@ def build_report_graph(
     graph = StateGraph(ReportGenerationState)  # type: ignore[bad-specialization]
 
     graph.add_node("planner", PlannerNode(llm))
-    graph.add_node("gatherer", GathererNode(evidence, content_store=content_store, fusion=fusion))
+    graph.add_node(
+        "gatherer",
+        GathererNode(
+            evidence,
+            content_store=content_store,
+            fusion=fusion,
+            hyde_generator=hyde_generator,  # type: ignore[arg-type]
+        ),
+    )
     graph.add_node("curator", CuratorNode(llm))
     if settings is not None:
         writer = WriterNode(llm, settings=settings)

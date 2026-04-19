@@ -2,7 +2,24 @@
 
 from __future__ import annotations
 
+import json
+
 from pydantic_settings import BaseSettings
+
+
+def _safe_load_quota_json(raw: str) -> dict | None:
+    """Parse the section-quota JSON and return None on any structural issue.
+
+    Wrapping the two-type ``except`` avoids ``ruff format`` 0.15.9 removing
+    the parens from ``except (ValueError, TypeError):`` (an upstream bug).
+    """
+    try:
+        parsed = json.loads(raw)
+    except ValueError:
+        return None
+    if not isinstance(parsed, dict):
+        return None
+    return parsed
 
 
 class Settings(BaseSettings):
@@ -63,10 +80,58 @@ class Settings(BaseSettings):
     # Format: {"<bcp47_short>": <min_share_0_to_1>}; 0.0 disables enforcement.
     language_quota_en: float = 0.2
 
+    # Per-section quota overrides: JSON encoding of
+    #   {"{report_type}:{section_role}": {"en": 0.3}, "_default": {"en": 0.2}}
+    # Unknown keys fall through to ``_default``, then to ``language_quota_en``.
+    # An empty string disables per-section routing.
+    section_language_quota_json: str = ""
+
+    # HyDE (Hypothetical Document Embedding) for cross-lingual recall.
+    # When enabled, the Gatherer asks Gemma4 for a short target-language
+    # passage per topic and injects it as an extra multi-query variant.
+    hyde_enabled: bool = True
+    hyde_timeout_s: float = 8.0
+    hyde_max_chars: int = 600
+    hyde_num_predict: int = 400
+
     model_config = {"env_prefix": "", "case_sensitive": False}
 
-    def get_language_quota(self) -> dict[str, float]:
-        """Return a fresh language quota mapping for the curator to apply."""
+    def get_language_quota(
+        self,
+        section_role: str | None = None,
+        report_type: str | None = None,
+    ) -> dict[str, float]:
+        """Return a fresh language quota mapping for the curator to apply.
+
+        Lookup order when ``section_role`` and/or ``report_type`` are
+        provided:
+          1. Exact key ``{report_type}:{section_role}``
+          2. ``_default`` entry in the JSON config
+          3. Global ``language_quota_en`` fallback
+
+        ``section_role`` and ``report_type`` are validated against short
+        allowlists so malformed outlines cannot reach an attacker-controlled
+        lookup.
+        """
+        if not self.section_language_quota_json:
+            return {"en": self.language_quota_en}
+
+        parsed = _safe_load_quota_json(self.section_language_quota_json)
+        if parsed is None:
+            return {"en": self.language_quota_en}
+
+        allowed_sections = {"analysis", "conclusion", "executive_summary"}
+        allowed_report_types = {"weekly_briefing", "market_analysis", "market_analysis_japan", "trend_report"}
+        if section_role in allowed_sections and report_type in allowed_report_types:
+            key = f"{report_type}:{section_role}"
+            entry = parsed.get(key)
+            if isinstance(entry, dict):
+                return {str(k): float(v) for k, v in entry.items()}
+
+        default_entry = parsed.get("_default")
+        if isinstance(default_entry, dict):
+            return {str(k): float(v) for k, v in default_entry.items()}
+
         return {"en": self.language_quota_en}
 
     def resolve_db_dsn(self) -> str:
