@@ -25,6 +25,8 @@
 
 ![Knowledge Home -- Desktop](docs/images/knowledge-home-desktop.webp)
 
+[Code Wiki](https://codewiki.google/github.com/kaikei-e/alt)
+
 ## Why Alt
 
 Most RSS readers stop at listing articles. Alt starts there and keeps going -- it ingests, enriches, summarizes, indexes, recaps, and answers questions about your reading, all running locally on your own machine.
