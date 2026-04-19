@@ -1,0 +1,5 @@
+{"topic": "2026 Q1 AI chip market outlook", "query_lang": "ja", "gold_source_ids": ["gold-aichip-ja-1", "gold-aichip-en-1", "gold-aichip-en-2"], "expected_lang_mix": {"ja": 0.5, "en": 0.5}}
+{"topic": "2026 middle-east tensions brief", "query_lang": "ja", "gold_source_ids": ["gold-me-ja-1", "gold-me-ja-2", "gold-me-en-1"], "expected_lang_mix": {"ja": 0.6, "en": 0.4}}
+{"topic": "LLM safety research 2026", "query_lang": "ja", "gold_source_ids": ["gold-llm-en-1", "gold-llm-en-2", "gold-llm-ja-1"], "expected_lang_mix": {"ja": 0.3, "en": 0.7}}
+{"topic": "電気自動車バッテリー技術", "query_lang": "ja", "gold_source_ids": ["gold-ev-ja-1", "gold-ev-ja-2", "gold-ev-en-1"], "expected_lang_mix": {"ja": 0.7, "en": 0.3}}
+{"topic": "GPU shortage impact on AI training", "query_lang": "en", "gold_source_ids": ["gold-gpu-en-1", "gold-gpu-en-2", "gold-gpu-ja-1"], "expected_lang_mix": {"en": 0.7, "ja": 0.3}}
