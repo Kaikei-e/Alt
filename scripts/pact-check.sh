@@ -30,6 +30,9 @@ export PATH
 MODE="file"
 BROKER_EXTERNAL=false
 SERVICE_FILTER=""
+ROLE_FILTER=""
+DRY_RUN=false
+MANUAL_ONLY=false
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --broker)
@@ -49,16 +52,52 @@ while [[ $# -gt 0 ]]; do
       SERVICE_FILTER="${1#--services=}"
       shift
       ;;
+    --role)
+      ROLE_FILTER="$2"
+      shift 2
+      ;;
+    --role=*)
+      ROLE_FILTER="${1#--role=}"
+      shift
+      ;;
+    --dry-run)
+      DRY_RUN=true
+      shift
+      ;;
+    --publish-manual-verifications)
+      MANUAL_ONLY=true
+      shift
+      ;;
     --help|-h)
-      echo "Usage: $0 [--broker|--publish-only] [--services svc1,svc2]"
-      echo ""
-      echo "  (default)               File-based mode: all consumer + provider tests"
-      echo "  --broker                Broker mode: start local Pact Broker, publish, verify"
-      echo "  --publish-only          CI broker mode: external Broker, no local startup"
-      echo "  --services svc1,svc2    Only run run_step entries whose label contains any"
-      echo "                          of the listed services. Skipped steps still count"
-      echo "                          as skipped (not failed). Use when the release matrix"
-      echo "                          only touches a subset of the monorepo."
+      cat <<'EOF'
+Usage: pact-check.sh [flags]
+
+  (default)                 File-based mode: all consumer + provider tests
+  --broker                  Broker mode: start local Pact Broker, publish, verify
+  --publish-only            CI broker mode: external Broker, no local startup
+  --services svc1,svc2      Limit run_step entries to labels matching these
+                            service names. With --role, matches are strict on
+                            the parsed service token; without --role, falls
+                            back to substring (legacy).
+  --role consumer|provider  Tighten matching so only labels of that role run.
+                            The label is parsed as "<Lang>: <svc> <role>[ ...]"
+                            and compared exactly. Guarantees that, e.g.,
+                            --services search-indexer --role provider does NOT
+                            accidentally drag in
+                            "Go: mq-hub provider (search-indexer message pact)".
+  --publish-manual-verifications
+                            Skip every run_step entry and only execute the
+                            broker-side manual-verification bridging block
+                            (recap-worker, mq-hub message pacts, kratos).
+                            Used by the per-service deploy matrix to post
+                            bridging records from a single dedicated leg.
+  --dry-run                 Print "WOULD RUN: <label>" for each step that
+                            would execute, and "WOULD POST MANUAL
+                            VERIFICATION: <provider>/<consumer>" for each
+                            manual bridging record. Does not touch the
+                            Broker, Go, Rust, or Python toolchains. Intended
+                            for filter-behaviour tests.
+EOF
       exit 0
       ;;
     *)
@@ -68,19 +107,64 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
+# Validate --role after parsing so we can emit a clear error.
+case "$ROLE_FILTER" in
+  ""|consumer|provider) ;;
+  *)
+    echo "invalid --role: $ROLE_FILTER (expected consumer|provider)" >&2
+    exit 2
+    ;;
+esac
+
 PASS=0
 FAIL=0
 SKIP=0
 
-# Return 0 if the step label should execute under the current --services
-# filter. Empty filter = run everything. Non-empty = run only if the label
-# contains one of the filter service names as a substring.
+# Return 0 if the step label should execute under the current --services and
+# --role filters. Label convention (parsed here):
+#
+#   "<Lang>: <service> <role>[ <extras>]"
+#
+# e.g. "Go: alt-backend consumer", "Rust: recap-worker provider",
+# "Go: mq-hub provider (search-indexer message pact)".
+#
+# Semantics:
+#   - Empty --services + empty --role → run everything (legacy default).
+#   - --role set → require the parsed role token to match. Labels that do not
+#     parse (e.g. free-form headers) are rejected in strict role mode.
+#   - --services set + --role set → exact match on parsed service token.
+#   - --services set + no --role → legacy substring match on the full label.
+#   - --publish-manual-verifications → skip everything at this layer; the
+#     manual block at the bottom still runs.
 should_run_service_filter() {
   local label="$1"
+
+  # --publish-manual-verifications short-circuits: treat every run_step as a
+  # skip so only the bridging block at the end emits output.
+  if [[ "$MANUAL_ONLY" == "true" ]]; then
+    return 1
+  fi
+
+  local label_svc="" label_role=""
+  if [[ "$label" =~ ^[A-Za-z]+:\ ([a-z0-9][a-z0-9-]*)\ (consumer|provider)(\ .*)?$ ]]; then
+    label_svc="${BASH_REMATCH[1]}"
+    label_role="${BASH_REMATCH[2]}"
+  fi
+
+  if [[ -n "$ROLE_FILTER" ]]; then
+    [[ -z "$label_role" || "$label_role" != "$ROLE_FILTER" ]] && return 1
+  fi
+
   [[ -z "$SERVICE_FILTER" ]] && return 0
+
   local IFS=','
   for svc in $SERVICE_FILTER; do
-    [[ -n "$svc" && "$label" == *"$svc"* ]] && return 0
+    [[ -z "$svc" ]] && continue
+    if [[ -n "$ROLE_FILTER" && -n "$label_svc" ]]; then
+      [[ "$label_svc" == "$svc" ]] && return 0
+    else
+      [[ "$label" == *"$svc"* ]] && return 0
+    fi
   done
   return 1
 }
@@ -89,9 +173,16 @@ run_step() {
   local label="$1"
   shift
   if ! should_run_service_filter "$label"; then
-    echo ""
-    echo "=== SKIP (filter: --services $SERVICE_FILTER): ${label} ==="
+    if [[ "$DRY_RUN" != "true" ]]; then
+      echo ""
+      echo "=== SKIP (filter: --services ${SERVICE_FILTER} --role ${ROLE_FILTER}): ${label} ==="
+    fi
     SKIP=$((SKIP + 1))
+    return 0
+  fi
+  if [[ "$DRY_RUN" == "true" ]]; then
+    echo "WOULD RUN: ${label}"
+    PASS=$((PASS + 1))
     return 0
   fi
   echo ""
@@ -129,7 +220,16 @@ check_ffi() {
 }
 
 # ---------- Broker mode setup ----------
-if [[ "$MODE" == "broker" ]]; then
+# In --dry-run we skip every network and broker interaction — the dry run
+# exists to exercise filter logic only. PACT_PROVIDER_VERSION is still
+# initialised because the manual-verification bridging block interpolates it.
+if [[ "$DRY_RUN" == "true" ]]; then
+  PACT_PROVIDER_VERSION="${PACT_PROVIDER_VERSION:-dry-run}"
+  PACT_PROVIDER_BRANCH="${PACT_PROVIDER_BRANCH:-main}"
+  export PACT_PROVIDER_VERSION PACT_PROVIDER_BRANCH
+fi
+
+if [[ "$MODE" == "broker" && "$DRY_RUN" != "true" ]]; then
   if [[ "$BROKER_EXTERNAL" == "true" ]]; then
     # CI path: Broker already running elsewhere (reached via env). Require
     # the three env vars; fail fast if any are missing rather than
@@ -182,7 +282,7 @@ echo "============================="
 echo " Consumer Tests (pact generation)"
 echo "============================="
 
-if command -v go &>/dev/null && check_ffi; then
+if [[ "$DRY_RUN" == "true" ]] || (command -v go &>/dev/null && check_ffi); then
   run_step "Go: alt-backend consumer" \
     bash -c 'cd alt-backend/app && CGO_ENABLED=1 go test -tags=contract ./driver/preprocessor_connect/contract/ -v'
   run_step "Go: pre-processor consumer" \
@@ -201,14 +301,14 @@ else
   skip_step "Go consumer tests (go or libpact_ffi not found)"
 fi
 
-if command -v cargo &>/dev/null; then
+if [[ "$DRY_RUN" == "true" ]] || command -v cargo &>/dev/null; then
   run_step "Rust: recap-worker consumer" \
     bash -c 'cd recap-worker/recap-worker && cargo test --lib contract -- --ignored'
 else
   skip_step "Rust consumer tests (cargo not found)"
 fi
 
-if command -v uv &>/dev/null; then
+if [[ "$DRY_RUN" == "true" ]] || command -v uv &>/dev/null; then
   run_step "Python: recap-evaluator consumer" \
     bash -c 'cd recap-evaluator && uv run pytest tests/contract/ -v --no-cov'
 else
@@ -216,7 +316,7 @@ else
 fi
 
 # ---------- Broker publish (broker mode only) ----------
-if [[ "$MODE" == "broker" ]]; then
+if [[ "$MODE" == "broker" && "$DRY_RUN" != "true" ]]; then
   echo ""
   echo "============================="
   echo " Publishing pacts to Broker"
@@ -277,7 +377,7 @@ echo "============================="
 echo " Provider Verifications"
 echo "============================="
 
-if command -v uv &>/dev/null; then
+if [[ "$DRY_RUN" == "true" ]] || command -v uv &>/dev/null; then
   run_step "Python: news-creator provider" \
     bash -c 'cd news-creator/app && uv run pytest tests/contract/ -v'
   run_step "Python: recap-subworker provider" \
@@ -290,7 +390,7 @@ else
   skip_step "Python provider verifications (uv not found)"
 fi
 
-if command -v go &>/dev/null && check_ffi; then
+if [[ "$DRY_RUN" == "true" ]] || (command -v go &>/dev/null && check_ffi); then
   # alt-backend provider verifies 3 consumer pacts in one pass via the
   # whole-directory go-test invocation: TestVerifyRecapWorkerContract,
   # TestVerifySearchIndexerContract, TestVerifyAltButterflyFacadeContract.
@@ -306,7 +406,7 @@ else
   skip_step "Go provider verification (go or libpact_ffi not found)"
 fi
 
-if command -v cargo &>/dev/null; then
+if [[ "$DRY_RUN" == "true" ]] || command -v cargo &>/dev/null; then
   run_step "Rust: recap-worker provider" \
     bash -c 'cd recap-worker/recap-worker && cargo test --test provider_verification -- --ignored'
 else
@@ -329,12 +429,17 @@ fi
 #
 # For each of these we POST a verification result tagged with the stub/source
 # implementation so the audit trail is honest.
-if [[ "$MODE" == "broker" && $FAIL -eq 0 ]]; then
+if [[ ("$MODE" == "broker" && $FAIL -eq 0) || "$MANUAL_ONLY" == "true" ]]; then
   publish_manual_verification() {
     local provider="$1"
     local consumer="$2"
     local implementation="$3"
     local provider_version="$4"
+
+    if [[ "$DRY_RUN" == "true" ]]; then
+      echo "WOULD POST MANUAL VERIFICATION: ${consumer} -> ${provider} (${implementation}@${provider_version})"
+      return 0
+    fi
 
     local publish_url
     publish_url=$(curl -fsS -u "${PACT_BROKER_USERNAME}:${PACT_BROKER_PASSWORD}" \
@@ -362,6 +467,10 @@ if [[ "$MODE" == "broker" && $FAIL -eq 0 ]]; then
     # Register an external stable version for kratos and record it as deployed
     # to production so the matrix query has a version to resolve.
     local kratos_version="ory-kratos-external"
+    if [[ "$DRY_RUN" == "true" ]]; then
+      echo "WOULD ENSURE: kratos@${kratos_version} deployed in production"
+      return 0
+    fi
     curl -fsS -u "${PACT_BROKER_USERNAME}:${PACT_BROKER_PASSWORD}" \
       -X PUT -H 'Content-Type: application/json' \
       "${PACT_BROKER_BASE_URL}/pacticipants/kratos/branches/main/versions/${kratos_version}" \
