@@ -352,19 +352,46 @@ echo "============================="
 execute_steps STEPS_CONSUMER
 
 # ---------- Broker publish (broker mode only) ----------
-if [[ "$MODE" == "broker" && "$DRY_RUN" != "true" ]]; then
-  echo ""
-  echo "============================="
-  echo " Publishing pacts to Broker"
-  echo "============================="
-  VERSION="$PACT_PROVIDER_VERSION"
-  BRANCH="$PACT_PROVIDER_BRANCH"
-  COUNT=0
+#
+# Publish scope is restricted to pact files whose .consumer.name matches the
+# --services CSV filter. Running in dry-run or without a filter, every
+# candidate file is listed (and, in non-dry-run, published).
+#
+# This is intentional partitioning for parallel CI matrix legs: each
+# (service, consumer-role) leg owns exactly the pacts where it IS the
+# consumer, preventing cross-leg republish races that trigger HTTP 409 on
+# the Pact Broker's publish-contracts endpoint. Provider-role legs don't
+# generate pact content, so they skip publish entirely.
+#
+# The publish call itself uses `pact-broker-cli publish --merge`, which
+# handles concurrent publish of identical pacts as a no-op and merges
+# interactions when content differs slightly (documented behaviour for
+# "running Pact tests concurrently on different build nodes" in the
+# pact-broker-cli README).
+should_publish_pact_file() {
+  local consumer_name="$1"
+  [[ -z "$SERVICE_FILTER" ]] && return 0
+  local IFS=','
+  for svc in $SERVICE_FILTER; do
+    [[ -z "$svc" ]] && continue
+    [[ "$consumer_name" == "$svc" ]] && return 0
+  done
+  return 1
+}
 
-  # Validate identifiers read from pact files before interpolating into URLs.
-  # A crafted pact file with name "foo/../../admin" would otherwise produce
-  # a path-traversing URL. Reject anything outside the Pact-accepted
-  # character class.
+if [[ "$MODE" == "broker" && "$ROLE_FILTER" != "provider" ]]; then
+  if [[ "$DRY_RUN" != "true" ]]; then
+    echo ""
+    echo "============================="
+    echo " Publishing pacts to Broker"
+    echo "============================="
+  fi
+  VERSION="${PACT_PROVIDER_VERSION:-}"
+  BRANCH="${PACT_PROVIDER_BRANCH:-}"
+
+  # Validate identifiers read from pact files. A crafted pact file with
+  # name "foo/../../admin" would otherwise flow through to the Broker CLI.
+  # Reject anything outside the Pact-accepted character class.
   validate_pacticipant_name() {
     local name="$1" field="$2" file="$3"
     if [[ ! "$name" =~ ^[A-Za-z0-9._-]+$ ]]; then
@@ -375,36 +402,49 @@ if [[ "$MODE" == "broker" && "$DRY_RUN" != "true" ]]; then
     return 0
   }
 
-  # Put credentials in a netrc file so they don't appear in the curl argv
-  # (which is visible to ps and, if the caller has set -x, the log).
-  netrc=$(mktemp)
-  trap 'rm -f "$netrc"' EXIT
-  chmod 600 "$netrc"
-  broker_host=$(printf '%s' "$PACT_BROKER_BASE_URL" | awk -F/ '{print $3}' | cut -d: -f1)
-  printf 'machine %s\nlogin %s\npassword %s\n' \
-    "$broker_host" "$PACT_BROKER_USERNAME" "$PACT_BROKER_PASSWORD" > "$netrc"
-
+  declare -a FILES_TO_PUBLISH=()
   for pact_file in alt-backend/pacts/*.json pacts/*.json rag-orchestrator/pacts/*.json; do
-    if [ -f "$pact_file" ]; then
-      CONSUMER=$(jq -r '.consumer.name' "$pact_file")
-      PROVIDER=$(jq -r '.provider.name' "$pact_file")
-      validate_pacticipant_name "$CONSUMER" consumer "$pact_file" || continue
-      validate_pacticipant_name "$PROVIDER" provider "$pact_file" || continue
-      echo "Publishing ${CONSUMER} -> ${PROVIDER}"
-      curl -fsS -X PUT \
-        -H "Content-Type: application/json" \
-        --netrc-file "$netrc" \
-        -d @"$pact_file" \
-        "${PACT_BROKER_BASE_URL}/pacts/provider/${PROVIDER}/consumer/${CONSUMER}/version/${VERSION}"
-      # Branch versions API (tags are legacy as of 2021-07; matrix-aware).
-      curl -fsS -X PUT \
-        -H "Content-Type: application/json" \
-        --netrc-file "$netrc" \
-        "${PACT_BROKER_BASE_URL}/pacticipants/${CONSUMER}/branches/${BRANCH}/versions/${VERSION}"
-      COUNT=$((COUNT + 1))
+    [ -f "$pact_file" ] || continue
+    CONSUMER=$(jq -r '.consumer.name' "$pact_file")
+    PROVIDER=$(jq -r '.provider.name' "$pact_file")
+    validate_pacticipant_name "$CONSUMER" consumer "$pact_file" || continue
+    validate_pacticipant_name "$PROVIDER" provider "$pact_file" || continue
+    if ! should_publish_pact_file "$CONSUMER"; then
+      continue
     fi
+    if [[ "$DRY_RUN" == "true" ]]; then
+      echo "WOULD PUBLISH: consumer=${CONSUMER} provider=${PROVIDER} file=${pact_file}"
+    fi
+    FILES_TO_PUBLISH+=("$pact_file")
   done
-  echo "Published ${COUNT} pact files to Broker"
+
+  if [[ "$DRY_RUN" != "true" ]]; then
+    if [[ ${#FILES_TO_PUBLISH[@]} -eq 0 ]]; then
+      echo "No pact files matching --services '${SERVICE_FILTER}' — skipping publish"
+    else
+      PACT_BROKER_BIN="${PACT_BROKER_BIN:-pact-broker-cli}"
+      # --merge covers the concurrent-publish race documented in
+      # pact-broker-cli: "If a pact already exists for this consumer version
+      # and provider, merge the contents. Useful when running Pact tests
+      # concurrently on different build nodes."
+      publish_args=(
+        publish "${FILES_TO_PUBLISH[@]}"
+        --broker-base-url "$PACT_BROKER_BASE_URL"
+        --broker-username "$PACT_BROKER_USERNAME"
+        --broker-password "$PACT_BROKER_PASSWORD"
+        --consumer-app-version "$VERSION"
+        --merge
+      )
+      if [[ -n "$BRANCH" ]]; then
+        publish_args+=(--branch "$BRANCH")
+      fi
+      if [[ -n "${GITHUB_SERVER_URL:-}" && -n "${GITHUB_REPOSITORY:-}" && -n "${GITHUB_RUN_ID:-}" ]]; then
+        publish_args+=(--build-url "${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}")
+      fi
+      "$PACT_BROKER_BIN" "${publish_args[@]}"
+      echo "Published ${#FILES_TO_PUBLISH[@]} pact files to Broker"
+    fi
+  fi
 fi
 
 # ---------- Provider verifications ----------
