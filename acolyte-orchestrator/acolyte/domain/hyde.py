@@ -72,6 +72,11 @@ _MARKDOWN_FENCES = re.compile(r"```[a-zA-Z]*\n?|```")
 _XML_TAG_RE = re.compile(r"<[^>]+>")
 _CJK_RE = re.compile(r"[\u3040-\u309f\u30a0-\u30ff\u4e00-\u9fff]")
 _ASCII_LETTER_RE = re.compile(r"[A-Za-z]")
+# ASCII control characters (C0 range + DEL). search-indexer's query
+# validator rejects any of these, so the HyDE passage must be free of them
+# before it is fed back in as a retrieval query.
+_CONTROL_CHARS_RE = re.compile(r"[\x00-\x1f\x7f]")
+_WHITESPACE_RUN_RE = re.compile(r"\s+")
 
 
 def build_hyde_prompt(topic: str, target_lang: str) -> str:
@@ -119,6 +124,12 @@ def sanitize_hyde_output(raw: str, target_lang: str, *, max_chars: int = 600) ->
     # Strip XML-ish tags the model might echo back from the prompt. This
     # also removes accidental <topic> ... </topic> passthroughs.
     cleaned = _XML_TAG_RE.sub("", cleaned).strip()
+
+    # Drop ASCII control characters (search-indexer rejects them in queries)
+    # and collapse any remaining whitespace run to a single space so the
+    # passage stays below the 600-char cap without eating budget on padding.
+    cleaned = _CONTROL_CHARS_RE.sub(" ", cleaned)
+    cleaned = _WHITESPACE_RUN_RE.sub(" ", cleaned).strip()
 
     if not cleaned:
         return None
