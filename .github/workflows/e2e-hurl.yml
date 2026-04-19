@@ -25,6 +25,9 @@ on:
       - 'auth-hub/**'
       - 'kratos/entrypoint.sh'
       - 'migrations-atlas/**'
+      - 'rag-orchestrator/**'
+      - 'rag-migration-atlas/**'
+      - 'rag-db/**'
       - 'compose/compose.staging.yaml'
       - 'compose/news-creator-ollama-stub/**'
       - 'e2e/hurl/alt-backend/**'
@@ -34,6 +37,7 @@ on:
       - 'e2e/hurl/recap-worker/**'
       - 'e2e/hurl/acolyte-orchestrator/**'
       - 'e2e/hurl/auth-hub/**'
+      - 'e2e/hurl/rag-orchestrator/**'
       - 'e2e/fixtures/alt-backend/**'
       - 'e2e/fixtures/mq-hub/**'
       - 'e2e/fixtures/tag-generator/**'
@@ -41,6 +45,7 @@ on:
       - 'e2e/fixtures/recap-worker/**'
       - 'e2e/fixtures/acolyte-orchestrator/**'
       - 'e2e/fixtures/auth-hub/**'
+      - 'e2e/fixtures/rag-orchestrator/**'
       - 'e2e/fixtures/staging-secrets/**'
       - 'e2e/stubs/alt-backend-deps-stub/**'
       - 'e2e/stubs/recap-pipeline-stub/**'
@@ -59,6 +64,9 @@ on:
       - 'auth-hub/**'
       - 'kratos/entrypoint.sh'
       - 'migrations-atlas/**'
+      - 'rag-orchestrator/**'
+      - 'rag-migration-atlas/**'
+      - 'rag-db/**'
       - 'compose/compose.staging.yaml'
       - 'compose/news-creator-ollama-stub/**'
       - 'e2e/hurl/alt-backend/**'
@@ -68,6 +76,7 @@ on:
       - 'e2e/hurl/recap-worker/**'
       - 'e2e/hurl/acolyte-orchestrator/**'
       - 'e2e/hurl/auth-hub/**'
+      - 'e2e/hurl/rag-orchestrator/**'
       - 'e2e/fixtures/alt-backend/**'
       - 'e2e/fixtures/mq-hub/**'
       - 'e2e/fixtures/tag-generator/**'
@@ -75,6 +84,7 @@ on:
       - 'e2e/fixtures/recap-worker/**'
       - 'e2e/fixtures/acolyte-orchestrator/**'
       - 'e2e/fixtures/auth-hub/**'
+      - 'e2e/fixtures/rag-orchestrator/**'
       - 'e2e/fixtures/staging-secrets/**'
       - 'e2e/stubs/alt-backend-deps-stub/**'
       - 'e2e/stubs/recap-pipeline-stub/**'
@@ -443,6 +453,58 @@ jobs:
         with:
           name: auth-hub-hurl-reports
           path: e2e/reports/auth-hub-*
+          if-no-files-found: ignore
+
+      - name: Tear down alt-staging stack
+        if: always()
+        run: |
+          docker compose -f compose/compose.staging.yaml -p alt-staging \
+            down -v --remove-orphans || true
+
+  rag-orchestrator:
+    name: rag-orchestrator Hurl suite
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build rag-orchestrator image locally (tag `ci`)
+        run: |
+          docker build \
+            -t ghcr.io/kaikei-e/alt-rag-orchestrator:ci \
+            -f rag-orchestrator/Dockerfile \
+            rag-orchestrator
+
+      - name: Pre-pull Hurl image
+        run: docker pull ghcr.io/orange-opensource/hurl:7.1.0
+
+      - name: Run rag-orchestrator Hurl suite
+        env:
+          IMAGE_TAG: ci
+          GHCR_OWNER: kaikei-e
+          HURL_IMAGE: ghcr.io/orange-opensource/hurl:7.1.0
+          KEEP_STACK: 1
+        run: bash e2e/hurl/rag-orchestrator/run.sh
+
+      - name: Dump alt-staging logs on failure
+        if: failure()
+        run: |
+          # rag-orchestrator's profile-gated services aren't surfaced by
+          # `docker compose logs` without the profile flag. Go through
+          # docker logs on the explicit container names instead.
+          echo "===== docker ps -a ====="
+          docker ps -a --filter "name=alt-staging-" || true
+          for svc in rag-orchestrator rag-db rag-db-migrator; do
+            echo "===== alt-staging-$svc logs (tail=500) ====="
+            docker logs --tail=500 "alt-staging-$svc" 2>&1 || true
+          done
+
+      - name: Upload Hurl reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: rag-orchestrator-hurl-reports
+          path: e2e/reports/rag-orchestrator-*
           if-no-files-found: ignore
 
       - name: Tear down alt-staging stack
