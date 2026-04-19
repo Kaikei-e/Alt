@@ -14,6 +14,7 @@ name: E2E Hurl
 on:
   pull_request:
     paths:
+      - 'alt-backend/**'
       - 'mq-hub/**'
       - 'tag-generator/**'
       - 'news-creator/**'
@@ -21,24 +22,29 @@ on:
       - 'recap-migration-atlas/**'
       - 'acolyte-orchestrator/**'
       - 'acolyte-migration-atlas/**'
+      - 'migrations-atlas/**'
       - 'compose/compose.staging.yaml'
       - 'compose/news-creator-ollama-stub/**'
+      - 'e2e/hurl/alt-backend/**'
       - 'e2e/hurl/mq-hub/**'
       - 'e2e/hurl/tag-generator/**'
       - 'e2e/hurl/news-creator/**'
       - 'e2e/hurl/recap-worker/**'
       - 'e2e/hurl/acolyte-orchestrator/**'
+      - 'e2e/fixtures/alt-backend/**'
       - 'e2e/fixtures/mq-hub/**'
       - 'e2e/fixtures/tag-generator/**'
       - 'e2e/fixtures/news-creator/**'
       - 'e2e/fixtures/recap-worker/**'
       - 'e2e/fixtures/acolyte-orchestrator/**'
       - 'e2e/fixtures/staging-secrets/**'
+      - 'e2e/stubs/alt-backend-deps-stub/**'
       - 'e2e/stubs/recap-pipeline-stub/**'
       - '.github/workflows/e2e-hurl.yml'
   push:
     branches: [main]
     paths:
+      - 'alt-backend/**'
       - 'mq-hub/**'
       - 'tag-generator/**'
       - 'news-creator/**'
@@ -46,19 +52,23 @@ on:
       - 'recap-migration-atlas/**'
       - 'acolyte-orchestrator/**'
       - 'acolyte-migration-atlas/**'
+      - 'migrations-atlas/**'
       - 'compose/compose.staging.yaml'
       - 'compose/news-creator-ollama-stub/**'
+      - 'e2e/hurl/alt-backend/**'
       - 'e2e/hurl/mq-hub/**'
       - 'e2e/hurl/tag-generator/**'
       - 'e2e/hurl/news-creator/**'
       - 'e2e/hurl/recap-worker/**'
       - 'e2e/hurl/acolyte-orchestrator/**'
+      - 'e2e/fixtures/alt-backend/**'
       - 'e2e/fixtures/mq-hub/**'
       - 'e2e/fixtures/tag-generator/**'
       - 'e2e/fixtures/news-creator/**'
       - 'e2e/fixtures/recap-worker/**'
       - 'e2e/fixtures/acolyte-orchestrator/**'
       - 'e2e/fixtures/staging-secrets/**'
+      - 'e2e/stubs/alt-backend-deps-stub/**'
       - 'e2e/stubs/recap-pipeline-stub/**'
       - '.github/workflows/e2e-hurl.yml'
 
@@ -70,6 +80,61 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  alt-backend:
+    name: alt-backend Hurl suite
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build alt-backend image locally (tag `ci`)
+        run: |
+          docker build \
+            -t ghcr.io/kaikei-e/alt-alt-backend:ci \
+            -f alt-backend/Dockerfile.backend \
+            alt-backend
+
+      - name: Build alt-backend-deps-stub image locally (tag `ci`)
+        run: |
+          docker build \
+            -t ghcr.io/kaikei-e/alt-alt-backend-deps-stub:ci \
+            e2e/stubs/alt-backend-deps-stub
+
+      - name: Pre-pull Hurl image
+        run: docker pull ghcr.io/orange-opensource/hurl:7.1.0
+
+      - name: Run alt-backend Hurl suite
+        env:
+          IMAGE_TAG: ci
+          GHCR_OWNER: kaikei-e
+          HURL_IMAGE: ghcr.io/orange-opensource/hurl:7.1.0
+          KEEP_STACK: 1
+        run: bash e2e/hurl/alt-backend/run.sh
+
+      - name: Dump alt-staging logs on failure
+        if: failure()
+        run: |
+          echo "===== docker ps -a ====="
+          docker ps -a --filter "name=alt-staging-" || true
+          for svc in alt-backend alt-backend-db alt-backend-db-migrator alt-backend-deps-stub; do
+            echo "===== alt-staging-$svc logs (tail=500) ====="
+            docker logs --tail=500 "alt-staging-$svc" 2>&1 || true
+          done
+
+      - name: Upload Hurl reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: alt-backend-hurl-reports
+          path: e2e/reports/alt-backend-*
+          if-no-files-found: ignore
+
+      - name: Tear down alt-staging stack
+        if: always()
+        run: |
+          docker compose -f compose/compose.staging.yaml -p alt-staging \
+            down -v --remove-orphans || true
+
   mq-hub:
     name: mq-hub Hurl suite
     runs-on: ubuntu-latest
