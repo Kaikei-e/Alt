@@ -106,6 +106,49 @@ assert_contains "$out" "WOULD RUN: Rust: recap-worker consumer" "all-in: recap-w
 assert_contains "$out" "WOULD RUN: Python: recap-evaluator consumer" "all-in: recap-evaluator consumer"
 assert_contains "$out" "WOULD RUN: Python: news-creator provider" "all-in: news-creator provider"
 
+# --- publish filter: consumer leg owns only its own pacts ---
+#
+# The publish loop must be scoped to pact files whose .consumer.name matches
+# the --services filter. Without this, parallel matrix legs all publish the
+# full pact set, causing HTTP 409 Conflict on the Pact Broker when the same
+# consumer_version gets two slightly-different bodies in a race.
+# See docs/adr/.../pact-broker-409-remediation.md for background.
+echo "== publish filter: recap-worker consumer leg (dry-run) =="
+out=$(run_script --dry-run --publish-only --services recap-worker --role consumer)
+assert_contains "$out" "WOULD PUBLISH: consumer=recap-worker" \
+  "recap-worker consumer leg publishes its own pacts"
+assert_not_contains "$out" "WOULD PUBLISH: consumer=recap-evaluator" \
+  "recap-worker consumer leg must NOT publish recap-evaluator pacts (different owner)"
+assert_not_contains "$out" "WOULD PUBLISH: consumer=alt-backend" \
+  "recap-worker consumer leg must NOT publish alt-backend pacts"
+assert_not_contains "$out" "WOULD PUBLISH: consumer=rag-orchestrator" \
+  "recap-worker consumer leg must NOT publish rag-orchestrator pacts"
+
+echo "== publish filter: alt-backend consumer leg (dry-run) =="
+out=$(run_script --dry-run --publish-only --services alt-backend --role consumer)
+assert_contains "$out" "WOULD PUBLISH: consumer=alt-backend" \
+  "alt-backend consumer leg publishes its own pacts"
+assert_not_contains "$out" "WOULD PUBLISH: consumer=rag-orchestrator" \
+  "alt-backend consumer leg must NOT publish rag-orchestrator pacts"
+assert_not_contains "$out" "WOULD PUBLISH: consumer=recap-worker" \
+  "alt-backend consumer leg must NOT publish recap-worker pacts"
+
+echo "== publish filter: provider leg skips publish entirely (dry-run) =="
+out=$(run_script --dry-run --publish-only --services recap-worker --role provider)
+assert_not_contains "$out" "WOULD PUBLISH:" \
+  "provider leg must not publish any pact files (providers don't generate pacts)"
+
+echo "== publish filter: unfiltered publishes every pact (dry-run) =="
+out=$(run_script --dry-run --publish-only)
+assert_contains "$out" "WOULD PUBLISH: consumer=alt-backend" \
+  "unfiltered: alt-backend pacts are published"
+assert_contains "$out" "WOULD PUBLISH: consumer=recap-worker" \
+  "unfiltered: recap-worker pacts are published"
+assert_contains "$out" "WOULD PUBLISH: consumer=recap-evaluator" \
+  "unfiltered: recap-evaluator pacts are published"
+assert_contains "$out" "WOULD PUBLISH: consumer=rag-orchestrator" \
+  "unfiltered: rag-orchestrator pacts are published"
+
 if [[ $FAILS -gt 0 ]]; then
   echo ""
   echo "FAILED: $FAILS of $TESTS assertions failed"
