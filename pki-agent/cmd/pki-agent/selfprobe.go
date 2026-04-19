@@ -1,10 +1,20 @@
 package main
 
-// probeFailureThreshold is the consecutive-failure count at which the tick
-// loop exits, delegating recovery to Docker's `restart: unless-stopped`
-// policy. With the default 5 min tick this gives ~15 min of tolerance for
-// transient errors (step-ca blip, netlink stall, cert rotation overlap)
-// before treating the condition as structural. See ADR-000784.
+import "time"
+
+// selfProbeInterval is the cadence of the netns/listener self-probe. 30s
+// matches Docker's default HEALTHCHECK interval and Kubernetes' typical
+// periodSeconds (10s) on the slower side — frequent enough to close the
+// netns-orphan detection window to ~90s, slow enough that a single netlink
+// blip or cert-rotation restart window does not accumulate restarts.
+const selfProbeInterval = 30 * time.Second
+
+// probeFailureThreshold is the consecutive-failure count at which the
+// self-probe loop triggers fail-fast exit, delegating recovery to Docker's
+// `restart: unless-stopped` policy. Combined with selfProbeInterval this
+// yields ~90s detection — within the industry-standard sidecar probe
+// envelope (k8s default periodSeconds=10 × failureThreshold=3 = 30s; Dapr
+// sidecar same defaults). See ADR-000802.
 const probeFailureThreshold = 3
 
 // probeState tracks consecutive self-probe failures so the tick loop can

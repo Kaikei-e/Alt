@@ -3,6 +3,7 @@ package main
 import (
 	"errors"
 	"testing"
+	"time"
 )
 
 // TestProbeState_SuccessDoesNotExit: a clean probe must never trigger exit,
@@ -77,9 +78,22 @@ func TestProbeState_SuccessResetsCounter(t *testing.T) {
 
 // TestProbeState_Threshold: sanity that the constant is the expected value.
 // Guards against a silent lowering of the threshold that would cause flapping
-// in production on normal cert-rotation retries.
+// in production on transient netlink blips.
 func TestProbeState_Threshold(t *testing.T) {
 	if probeFailureThreshold != 3 {
-		t.Fatalf("want threshold=3 (ADR-000784 N=3, ~15 min at 5 min tick), got %d", probeFailureThreshold)
+		t.Fatalf("want threshold=3 (ADR-000802: 30s interval × 3 = ~90s detection, matching k8s/Dapr sidecar defaults), got %d", probeFailureThreshold)
+	}
+}
+
+// TestSelfProbeInterval_Cadence: the probe interval must stay within the
+// industry-standard sidecar envelope (10s–60s). Locks in the decision
+// recorded in ADR-000802 so a future change can't silently regress to the
+// old 5 min cadence that left netns orphans undetected for ~15 minutes.
+func TestSelfProbeInterval_Cadence(t *testing.T) {
+	if selfProbeInterval < 10*time.Second {
+		t.Fatalf("self-probe interval %s is too aggressive; will cause restart flapping on transient blips", selfProbeInterval)
+	}
+	if selfProbeInterval > 60*time.Second {
+		t.Fatalf("self-probe interval %s leaves netns-orphan detection window > 3 min (ADR-000802)", selfProbeInterval)
 	}
 }

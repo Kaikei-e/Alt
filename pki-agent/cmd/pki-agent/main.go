@@ -143,12 +143,22 @@ func main() {
 		os.Exit(code)
 	}
 
+	// Self-probe goroutine. Runs independently of the cert-rotation tick so
+	// the orphan-detection cadence (30s) is decoupled from cert-renewal
+	// frequency (5 min). Detects netns orphan and silent listener death
+	// locally and exits so Docker's `restart: unless-stopped` respawns the
+	// container in the parent's current netns. Only started when a reverse
+	// proxy is configured — agents that only manage cert files have no
+	// listener to probe. See ADR-000802.
+	if cfg.ProxyListen != "" {
+		go runSelfProbeLoop(ctx, cfg.MetricsAddr, cfg.ProxyListen, shutdown)
+	}
+
 	// Ticker loop with jitter-free fixed interval. Rotation is idempotent
 	// per state, so we don't need to randomize.
 	ticker := time.NewTicker(cfg.TickInterval)
 	defer ticker.Stop()
 	consecutiveFailures := 0
-	var probeExit probeState
 	for {
 		select {
 		case <-ctx.Done():
@@ -173,27 +183,37 @@ func main() {
 			}
 			consecutiveFailures = 0
 			slog.Info("tick ok", "state", state.String())
+		}
+	}
+}
 
-			// Self-probe: runHealthcheck combines /healthz, netns interface
-			// check and TCP dial of the reverse-proxy listener. Running it
-			// from the tick loop (not just from Docker HEALTHCHECK) is what
-			// closes the netns-orphan failure mode — Docker does not restart
-			// an unhealthy container, so the sidecar has to exit itself when
-			// the condition is structural. See ADR-000785.
-			if cfg.ProxyListen != "" {
-				perr := runHealthcheck(cfg.MetricsAddr, cfg.ProxyListen)
-				shouldExit := probeExit.evalProbeResult(perr)
-				if perr != nil {
-					slog.Error("self-probe failed",
-						"err", perr,
-						"consecutive", probeExit.consecutive,
-						"threshold", probeFailureThreshold)
-				}
-				if shouldExit {
-					slog.Error("self-probe threshold exceeded — exiting to let compose restart respawn in parent's current netns",
-						"err", perr)
-					shutdown(1)
-				}
+// runSelfProbeLoop polls runHealthcheck every selfProbeInterval and exits
+// via `shutdown` after probeFailureThreshold consecutive failures. The body
+// is a discrete function so integration tests can drive it with a synthetic
+// context and a fake shutdown.
+func runSelfProbeLoop(ctx context.Context, metricsAddr, proxyListen string, shutdown func(int)) {
+	t := time.NewTicker(selfProbeInterval)
+	defer t.Stop()
+	var state probeState
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-t.C:
+			err := runHealthcheck(metricsAddr, proxyListen)
+			shouldExit := state.evalProbeResult(err)
+			if err != nil {
+				slog.Error("self-probe failed",
+					"err", err,
+					"consecutive", state.consecutive,
+					"threshold", probeFailureThreshold,
+					"interval", selfProbeInterval)
+			}
+			if shouldExit {
+				slog.Error("self-probe threshold exceeded — exiting to let compose respawn in parent's current netns",
+					"err", err)
+				shutdown(1)
+				return
 			}
 		}
 	}
