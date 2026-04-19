@@ -41,7 +41,11 @@ dependencies = [
   "statsmodels>=0.14.2",
   "trafilatura>=1.10.0",
   "imbalanced-learn>=0.12.3",
-  "sudachipy>=0.6.8",
+  # 0.6.11 is the first release with pyo3 0.27 + Python 3.14 wheels.
+  # 0.6.10 caps at cp310 and its source build pulls pyo3 0.23, which
+  # rejects interpreters >= 3.14. Keep the floor here so uv can't
+  # drift back down to 0.6.10 on a lock refresh.
+  "sudachipy>=0.6.11",
   "sudachidict-core>=20240409",
   "transformers>=5.0.0",
   "torch>=2.3.0",
