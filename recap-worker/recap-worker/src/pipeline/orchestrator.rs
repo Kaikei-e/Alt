@@ -216,10 +216,13 @@ impl PipelineOrchestrator {
 
         let config_for_dispatch = Arc::clone(&config);
         let tag_generator_for_persist = tag_generator_client.clone();
+        // Tag fetches moved to alt-backend per ADR-000241 / ADR-000397.
+        // tag_generator_client is retained only for the extract-tags
+        // surface used by the persist stage.
+        let _ = tag_generator_client;
         Ok(PipelineBuilder::new(config)
             .with_fetch_stage(Arc::new(AltBackendFetchStage::new(
                 alt_backend_client,
-                tag_generator_client,
                 Arc::clone(&recap_dao),
                 retry_config,
             )))

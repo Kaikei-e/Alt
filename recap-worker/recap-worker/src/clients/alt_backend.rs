@@ -1,6 +1,7 @@
 /// alt-backend:9000からの記事取得クライアント。
 ///
 /// ページング、タイムアウト、再試行をサポートします。
+use std::collections::HashMap;
 use std::time::Duration;
 
 use anyhow::{Context, Result};
@@ -8,6 +9,8 @@ use chrono::{DateTime, Utc};
 use reqwest::{Client, Url};
 use serde::{Deserialize, Serialize};
 use tracing::debug;
+
+use crate::pipeline::tag_signal::TagSignal;
 
 /// alt-backendから取得した記事の構造。
 ///
@@ -75,7 +78,54 @@ struct ListRecapArticlesRequest {
 
 /// Connect-RPC ListRecapArticles RPC のフルパス
 /// (service-to-service RPC なので BackendInternalService に居る)。
-const LIST_RECAP_ARTICLES_PATH: &str = "services.backend.v1.BackendInternalService/ListRecapArticles";
+const LIST_RECAP_ARTICLES_PATH: &str =
+    "services.backend.v1.BackendInternalService/ListRecapArticles";
+
+/// Connect-RPC BatchGetTagsByArticleIDs RPC path. Replaces the legacy
+/// tag-generator /api/v1/tags/batch surface per ADR-000241 / ADR-000397.
+const BATCH_GET_TAGS_BY_ARTICLE_IDS_PATH: &str =
+    "services.backend.v1.BackendInternalService/BatchGetTagsByArticleIDs";
+
+/// Server-side invariant mirrored here so the chunked loop below never
+/// sends more than what the provider enforces.
+const BATCH_GET_TAGS_MAX_BATCH_SIZE: usize = 1000;
+
+/// Request shape for BatchGetTagsByArticleIDs. protojson uses camelCase.
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct BatchGetTagsByArticleIDsRequest {
+    article_ids: Vec<String>,
+}
+
+/// Response shape for BatchGetTagsByArticleIDs. `items` may be absent
+/// when there are no tagged articles in the batch (protojson omits
+/// zero-valued fields).
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct BatchGetTagsByArticleIDsResponse {
+    #[serde(default)]
+    items: Vec<ArticleTagsEntry>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ArticleTagsEntry {
+    article_id: String,
+    #[serde(default)]
+    tags: Vec<ArticleTagEntry>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ArticleTagEntry {
+    tag_name: String,
+    #[serde(default)]
+    confidence: f32,
+    #[serde(default)]
+    source: String,
+    #[serde(default)]
+    updated_at: Option<DateTime<Utc>>,
+}
 
 /// alt-backendクライアントの設定。
 #[derive(Debug, Clone)]
@@ -113,10 +163,7 @@ impl AltBackendClient {
     /// URL のパースに失敗した場合はエラーを返します。
     pub(crate) fn new_with_client(config: AltBackendConfig, client: Client) -> Result<Self> {
         let base_url = Url::parse(&config.base_url).context("invalid alt-backend base URL")?;
-        Ok(Self {
-            client,
-            base_url,
-        })
+        Ok(Self { client, base_url })
     }
 
     /// 指定された期間の記事を全件取得する。
@@ -161,6 +208,89 @@ impl AltBackendClient {
         }
 
         Ok(all_articles)
+    }
+
+    /// 記事IDの配列に紐づくタグをバッチ取得する (Connect-RPC unary, JSON body)。
+    ///
+    /// 旧 tag-generator `/api/v1/tags/batch` の置き換え (ADR-000241 /
+    /// ADR-000397)。alt-backend を唯一のデータオーナーとして、articles /
+    /// article_tags / feed_tags JOIN を alt-backend 側で実行する。
+    ///
+    /// 空入力では HTTP 呼び出しを行わず空 map を返す。1000件を超える ids
+    /// は `BATCH_GET_TAGS_MAX_BATCH_SIZE` チャンクで分割送信する。
+    ///
+    /// # Errors
+    /// HTTP リクエストまたはレスポンスのデシリアライズに失敗した場合。
+    pub(crate) async fn batch_get_tags_by_article_ids(
+        &self,
+        article_ids: &[String],
+    ) -> Result<HashMap<String, Vec<TagSignal>>> {
+        if article_ids.is_empty() {
+            return Ok(HashMap::new());
+        }
+
+        let url = self
+            .base_url
+            .join(BATCH_GET_TAGS_BY_ARTICLE_IDS_PATH)
+            .context("failed to build batch tags Connect-RPC URL")?;
+
+        let mut result: HashMap<String, Vec<TagSignal>> = HashMap::new();
+
+        for chunk in article_ids.chunks(BATCH_GET_TAGS_MAX_BATCH_SIZE) {
+            debug!(
+                chunk_size = chunk.len(),
+                total = article_ids.len(),
+                "fetching tags in batch chunk via alt-backend"
+            );
+
+            let body = BatchGetTagsByArticleIDsRequest {
+                article_ids: chunk.to_vec(),
+            };
+
+            // Auth is established at the TLS transport layer (mTLS).
+            let response = self
+                .client
+                .post(url.clone())
+                .header("Content-Type", "application/json")
+                .json(&body)
+                .send()
+                .await
+                .context("alt-backend batch tags request failed")?;
+
+            let status = response.status();
+            if !status.is_success() {
+                let error_body = response.text().await.unwrap_or_default();
+                anyhow::bail!("alt-backend returned error status {status}: {error_body}");
+            }
+
+            let batch: BatchGetTagsByArticleIDsResponse = response
+                .json()
+                .await
+                .context("failed to deserialize alt-backend batch tags response")?;
+
+            for entry in batch.items {
+                let signals: Vec<TagSignal> = entry
+                    .tags
+                    .into_iter()
+                    .map(|t| {
+                        let source = if t.source.is_empty() {
+                            None
+                        } else {
+                            Some(t.source)
+                        };
+                        TagSignal::new(t.tag_name, t.confidence, source, t.updated_at)
+                    })
+                    .collect();
+                result.insert(entry.article_id, signals);
+            }
+        }
+
+        debug!(
+            count = result.len(),
+            total_requested = article_ids.len(),
+            "fetched tags for articles via alt-backend",
+        );
+        Ok(result)
     }
 
     /// 単一ページの記事を取得する (Connect-RPC unary, JSON body)。
@@ -221,6 +351,8 @@ mod tests {
     }
 
     const RPC_PATH: &str = "/services.backend.v1.BackendInternalService/ListRecapArticles";
+    const BATCH_TAGS_RPC_PATH: &str =
+        "/services.backend.v1.BackendInternalService/BatchGetTagsByArticleIDs";
 
     #[tokio::test]
     async fn fetch_articles_returns_single_page() {
@@ -328,5 +460,95 @@ mod tests {
         assert_eq!(articles.len(), 2);
         assert_eq!(articles[0].article_id, "art-1");
         assert_eq!(articles[1].article_id, "art-2");
+    }
+
+    #[tokio::test]
+    async fn batch_get_tags_by_article_ids_returns_tags() {
+        let server = MockServer::start().await;
+
+        let expected_req = serde_json::json!({
+            "articleIds": ["a1", "a2"]
+        });
+
+        let body = serde_json::json!({
+            "items": [
+                {
+                    "articleId": "a1",
+                    "tags": [
+                        {
+                            "tagName": "technology",
+                            "confidence": 0.95,
+                            "source": "ml_model",
+                            "updatedAt": "2026-03-26T00:00:00Z"
+                        }
+                    ]
+                },
+                {
+                    "articleId": "a2",
+                    "tags": [
+                        {
+                            "tagName": "ai",
+                            "confidence": 0.9,
+                            "source": "",
+                            "updatedAt": "2026-03-26T00:00:00Z"
+                        }
+                    ]
+                }
+            ]
+        });
+
+        Mock::given(method("POST"))
+            .and(path(BATCH_TAGS_RPC_PATH))
+            .and(body_json(&expected_req))
+            .respond_with(ResponseTemplate::new(200).set_body_json(body))
+            .mount(&server)
+            .await;
+
+        let client = AltBackendClient::new(test_config(server.uri())).expect("client should build");
+        let tags = client
+            .batch_get_tags_by_article_ids(&["a1".to_string(), "a2".to_string()])
+            .await
+            .expect("batch tags should succeed");
+
+        assert_eq!(tags.len(), 2);
+        let a1 = tags.get("a1").expect("a1 present");
+        assert_eq!(a1.len(), 1);
+        assert_eq!(a1[0].label, "technology");
+        assert!((a1[0].confidence - 0.95).abs() < 1e-4);
+        assert_eq!(a1[0].source.as_deref(), Some("ml_model"));
+
+        let a2 = tags.get("a2").expect("a2 present");
+        assert_eq!(a2.len(), 1);
+        // Empty source string collapses to None to match the existing
+        // TagSignal semantics used by alt-backend ListRecapArticles tags.
+        assert_eq!(a2[0].source, None);
+    }
+
+    #[tokio::test]
+    async fn batch_get_tags_by_article_ids_handles_empty_list() {
+        let client = AltBackendClient::new(test_config("http://localhost:0".to_string()))
+            .expect("client should build");
+        let tags = client
+            .batch_get_tags_by_article_ids(&[])
+            .await
+            .expect("empty call short-circuits");
+        assert!(tags.is_empty());
+    }
+
+    #[tokio::test]
+    async fn batch_get_tags_by_article_ids_propagates_server_error() {
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path(BATCH_TAGS_RPC_PATH))
+            .respond_with(ResponseTemplate::new(500).set_body_string("boom"))
+            .mount(&server)
+            .await;
+
+        let client = AltBackendClient::new(test_config(server.uri())).expect("client should build");
+        let err = client
+            .batch_get_tags_by_article_ids(&["a1".to_string()])
+            .await
+            .expect_err("should fail on 500");
+        assert!(err.to_string().contains("error status"));
     }
 }

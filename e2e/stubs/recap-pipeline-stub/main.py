@@ -83,6 +83,33 @@ async def list_recap_articles() -> dict[str, Any]:
     }
 
 
+@app.post("/services.backend.v1.BackendInternalService/BatchGetTagsByArticleIDs")
+async def batch_get_tags_by_article_ids(req: Request) -> dict[str, Any]:
+    """Connect-RPC tag fetch surface replacing tag-generator /api/v1/tags/batch
+    (ADR-000241 / ADR-000397). alt-backend owns articles / article_tags /
+    feed_tags, so the recap-worker contract now lives on BackendInternalService.
+    """
+    payload = await req.json()
+    article_ids = payload.get("articleIds") or payload.get("article_ids") or []
+    now = _now_iso()
+    return {
+        "items": [
+            {
+                "articleId": article_id,
+                "tags": [
+                    {
+                        "tagName": "ai",
+                        "confidence": 0.9,
+                        "source": "stub",
+                        "updatedAt": now,
+                    }
+                ],
+            }
+            for article_id in article_ids
+        ]
+    }
+
+
 # ---------------------------------------------------------------------------
 # recap-subworker
 # ---------------------------------------------------------------------------
@@ -405,28 +432,10 @@ async def morning_letter_generate(req: Request) -> dict[str, Any]:
 
 
 # ---------------------------------------------------------------------------
-# tag-generator (FastAPI REST — recap-worker talks to the *service*'s REST
-# surface at /api/v1/tags/batch and /api/v1/extract-tags, NOT a Connect-RPC
-# method; clients/tag_generator.rs:96-152).
+# tag-generator REST surface. Only `/api/v1/extract-tags` remains — the
+# batch tag fetch moved to alt-backend's BatchGetTagsByArticleIDs RPC
+# (ADR-000241 / ADR-000397).
 # ---------------------------------------------------------------------------
-@app.post("/api/v1/tags/batch")
-async def tags_batch(req: Request) -> dict[str, Any]:
-    payload = await req.json()
-    article_ids = payload.get("article_ids") or []
-    tags_by_article = {
-        article_id: [
-            {
-                "tag": "ai",
-                "confidence": 0.9,
-                "source": "stub",
-                "updated_at": _now_iso(),
-            }
-        ]
-        for article_id in article_ids
-    }
-    return {"success": True, "tags": tags_by_article}
-
-
 @app.post("/api/v1/extract-tags")
 async def api_extract_tags() -> dict[str, Any]:
     return {

@@ -7,10 +7,7 @@ use tracing::{debug, info, warn};
 use uuid::Uuid;
 
 use crate::{
-    clients::{
-        alt_backend::{AltBackendArticle, AltBackendClient},
-        tag_generator::TagGeneratorClient,
-    },
+    clients::alt_backend::{AltBackendArticle, AltBackendClient},
     scheduler::JobContext,
     store::{dao::RecapDao, models::RawArticle},
     util::retry::{RetryConfig, is_retryable_error},
@@ -59,9 +56,13 @@ pub(crate) trait FetchStage: Send + Sync {
 }
 
 /// alt-backendから記事を取得し、Raw記事をDBにバックアップするステージ。
+///
+/// タグ取得も同じ `AltBackendClient` 経由で行う。旧実装では tag-generator
+/// `/api/v1/tags/batch` に向けていたが、[[000241]] / [[000397]] により
+/// Shared DB 経路が廃止されたため、recap-worker は alt-backend を唯一の
+/// データオーナーとして扱う。
 pub(crate) struct AltBackendFetchStage {
     client: Arc<AltBackendClient>,
-    tag_generator_client: Option<Arc<TagGeneratorClient>>,
     dao: Arc<dyn RecapDao>,
     retry_config: RetryConfig,
 }
@@ -69,13 +70,11 @@ pub(crate) struct AltBackendFetchStage {
 impl AltBackendFetchStage {
     pub(crate) fn new(
         client: Arc<AltBackendClient>,
-        tag_generator_client: Option<Arc<TagGeneratorClient>>,
         dao: Arc<dyn RecapDao>,
         retry_config: RetryConfig,
     ) -> Self {
         Self {
             client,
-            tag_generator_client,
             dao,
             retry_config,
         }
@@ -208,26 +207,29 @@ impl FetchStage for AltBackendFetchStage {
             "backed up raw articles to database"
         );
 
-        // tag-generatorからタグを取得（オプショナル）
+        // alt-backend から記事タグをバッチ取得する (ADR-000241/000397:
+        // Shared DB 経路廃止により tag-generator 経由は撤去)。
         let mut tags_by_article = std::collections::HashMap::new();
-        if let Some(ref tag_client) = self.tag_generator_client {
-            let article_ids: Vec<String> = articles.iter().map(|a| a.article_id.clone()).collect();
-            match tag_client.fetch_tags_batch(&article_ids).await {
-                Ok(tags) => {
-                    tags_by_article = tags;
-                    info!(
-                        job_id = %job.job_id,
-                        articles_with_tags = tags_by_article.len(),
-                        "fetched tags from tag-generator"
-                    );
-                }
-                Err(err) => {
-                    warn!(
-                        job_id = %job.job_id,
-                        error = ?err,
-                        "failed to fetch tags from tag-generator, continuing without tags"
-                    );
-                }
+        let article_ids: Vec<String> = articles.iter().map(|a| a.article_id.clone()).collect();
+        match self
+            .client
+            .batch_get_tags_by_article_ids(&article_ids)
+            .await
+        {
+            Ok(tags) => {
+                tags_by_article = tags;
+                info!(
+                    job_id = %job.job_id,
+                    articles_with_tags = tags_by_article.len(),
+                    "fetched tags via alt-backend BatchGetTagsByArticleIDs"
+                );
+            }
+            Err(err) => {
+                warn!(
+                    job_id = %job.job_id,
+                    error = ?err,
+                    "failed to fetch batch tags from alt-backend, continuing without tags"
+                );
             }
         }
 

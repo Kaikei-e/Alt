@@ -27,7 +27,12 @@ struct RecapContext {
 
 impl RecapContext {
     fn degraded() -> Self {
-        Self { summaries: None, source_job_id: None, is_degraded: true, window_days: None }
+        Self {
+            summaries: None,
+            source_job_id: None,
+            is_degraded: true,
+            window_days: None,
+        }
     }
 }
 
@@ -83,10 +88,11 @@ impl MorningPipeline {
         let cpu_count = num_cpus::get();
         let max_concurrent = (cpu_count * 3) / 2;
 
-        // Morning Update uses a 1-day window (window_days is now taken from JobContext)
+        // Morning Update uses a 1-day window (window_days is now taken from JobContext).
+        // Tag fetches are served by alt-backend BatchGetTagsByArticleIDs per
+        // ADR-000241 / ADR-000397.
         let fetch = Arc::new(AltBackendFetchStage::new(
             alt_backend_client,
-            None, // No tag generator needed for just grouping
             Arc::clone(&recap_dao),
             retry_config,
         ));
@@ -172,7 +178,10 @@ impl MorningPipeline {
             overnight_groups,
         };
 
-        let ml_response = self.news_creator_client.generate_morning_letter(&request).await?;
+        let ml_response = self
+            .news_creator_client
+            .generate_morning_letter(&request)
+            .await?;
         let final_is_degraded = recap_ctx.is_degraded || ml_response.metadata.is_degraded;
 
         let letter_id = self
@@ -239,7 +248,11 @@ impl MorningPipeline {
                             genre_count = genres.len(), "loaded recap summaries for morning letter"
                         );
                         RecapContext {
-                            summaries: if inputs.is_empty() { None } else { Some(inputs) },
+                            summaries: if inputs.is_empty() {
+                                None
+                            } else {
+                                Some(inputs)
+                            },
                             source_job_id: Some(recap_job.job_id),
                             is_degraded: false,
                             window_days: Some(window_days),
@@ -247,7 +260,12 @@ impl MorningPipeline {
                     }
                     Err(e) => {
                         tracing::warn!(job_id = %job.job_id, error = %e, "failed to load recap genres, degraded mode");
-                        RecapContext { summaries: None, source_job_id: Some(recap_job.job_id), is_degraded: true, window_days: Some(window_days) }
+                        RecapContext {
+                            summaries: None,
+                            source_job_id: Some(recap_job.job_id),
+                            is_degraded: true,
+                            window_days: Some(window_days),
+                        }
                     }
                 }
             }
@@ -642,32 +660,43 @@ mod tests {
     #[test]
     fn through_line_quiet_day() {
         let line = super::build_through_line(&[], &[], 0);
-        assert!(line.contains("quiet day"), "expected quiet-day phrasing: {line}");
+        assert!(
+            line.contains("quiet day"),
+            "expected quiet-day phrasing: {line}"
+        );
     }
 
     #[test]
     fn through_line_two_labels() {
-        let line = super::build_through_line(
-            &["AI tooling", "data pipelines"],
-            &["AI", "Data"],
-            7,
+        let line = super::build_through_line(&["AI tooling", "data pipelines"], &["AI", "Data"], 7);
+        assert!(
+            line.contains("AI tooling and data pipelines led overnight"),
+            "got: {line}"
         );
-        assert!(line.contains("AI tooling and data pipelines led overnight"), "got: {line}");
         assert!(line.contains("7 new threads surfaced"), "got: {line}");
-        assert!(!line.contains("Partial"), "partial prefix should be gone: {line}");
+        assert!(
+            !line.contains("Partial"),
+            "partial prefix should be gone: {line}"
+        );
     }
 
     #[test]
     fn through_line_one_label() {
         let line = super::build_through_line(&["AI regulation"], &[], 3);
-        assert!(line.contains("AI regulation dominated overnight"), "got: {line}");
+        assert!(
+            line.contains("AI regulation dominated overnight"),
+            "got: {line}"
+        );
         assert!(line.contains("3 new threads surfaced"), "got: {line}");
     }
 
     #[test]
     fn through_line_genres_only() {
         let line = super::build_through_line(&[], &["Tech", "Data"], 5);
-        assert!(line.contains("Tech and Data topics dominated overnight"), "got: {line}");
+        assert!(
+            line.contains("Tech and Data topics dominated overnight"),
+            "got: {line}"
+        );
         assert!(line.contains("5 new threads surfaced"), "got: {line}");
     }
 
@@ -675,8 +704,7 @@ mod tests {
     fn through_line_overnight_count_only() {
         let line = super::build_through_line(&[], &[], 4);
         assert_eq!(
-            line,
-            "Overnight brought 4 new threads across your feeds.",
+            line, "Overnight brought 4 new threads across your feeds.",
             "got: {line}"
         );
     }
@@ -685,7 +713,10 @@ mod tests {
     fn through_line_is_deterministic() {
         let a = super::build_through_line(&["AI", "Data"], &["Tech"], 3);
         let b = super::build_through_line(&["AI", "Data"], &["Tech"], 3);
-        assert_eq!(a, b, "through-line must be deterministic for reproject safety");
+        assert_eq!(
+            a, b,
+            "through-line must be deterministic for reproject safety"
+        );
     }
 
     #[test]

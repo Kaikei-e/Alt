@@ -175,6 +175,130 @@
         },
         "status": 200
       }
+    },
+    {
+      "description": "a batch tags request by article ids",
+      "providerStates": [
+        {
+          "name": "tags exist for the requested articles"
+        }
+      ],
+      "request": {
+        "body": {
+          "articleIds": [
+            "art-001"
+          ]
+        },
+        "headers": {
+          "content-type": "application/json"
+        },
+        "matchingRules": {
+          "body": {
+            "$.articleIds": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type",
+                  "min": 1
+                }
+              ]
+            },
+            "$.articleIds[*].*": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            }
+          }
+        },
+        "method": "POST",
+        "path": "/services.backend.v1.BackendInternalService/BatchGetTagsByArticleIDs"
+      },
+      "response": {
+        "body": {
+          "items": [
+            {
+              "articleId": "art-001",
+              "tags": [
+                {
+                  "tagName": "technology",
+                  "confidence": 0.95,
+                  "source": "ml_model",
+                  "updatedAt": "2026-03-26T00:00:00Z"
+                }
+              ]
+            }
+          ]
+        },
+        "headers": {
+          "content-type": "application/json"
+        },
+        "matchingRules": {
+          "body": {
+            "$.items": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type",
+                  "min": 1
+                }
+              ]
+            },
+            "$.items[*].articleId": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.items[*].tags": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type",
+                  "min": 1
+                }
+              ]
+            },
+            "$.items[*].tags[*].tagName": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.items[*].tags[*].confidence": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.items[*].tags[*].source": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.items[*].tags[*].updatedAt": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            }
+          }
+        },
+        "status": 200
+      }
     }
   ],
   "metadata": {
