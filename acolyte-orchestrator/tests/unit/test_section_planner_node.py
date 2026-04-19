@@ -236,6 +236,46 @@ async def test_planner_fallback_on_parse_failure_uses_facts() -> None:
 
 
 @pytest.mark.asyncio
+async def test_planner_uses_larger_num_predict_so_section_plan_does_not_truncate() -> None:
+    """``num_predict=2048`` was truncating long Japanese ``section_plan``
+    XML (max_claims=7 × supporting_quote runs) right before the closing
+    ``</section_plan>`` tag, producing ``not well-formed`` errors in
+    ``_repair_xml``. Bump the budget so the full block fits.
+    """
+
+    class CaptureLLM:
+        def __init__(self) -> None:
+            self.kwargs_list: list[dict] = []
+
+        async def generate(self, prompt: str, **kwargs: object) -> LLMResponse:
+            self.kwargs_list.append(kwargs)
+            return LLMResponse(text=_make_planner_response([_make_claim()]), model="fake")
+
+    llm = CaptureLLM()
+    node = SectionPlannerNode(llm)
+
+    state = {
+        "outline": [{"key": "analysis", "title": "Analysis", "section_role": "analysis"}],
+        "curated_by_section": {"analysis": [{"id": "art-1", "title": "Test"}]},
+        "extracted_facts": [
+            {
+                "claim": "test",
+                "source_id": "art-1",
+                "source_title": "Test",
+                "verbatim_quote": "q",
+                "confidence": 0.9,
+                "data_type": "quote",
+            },
+        ],
+        "brief": {"topic": "test"},
+    }
+
+    await node(state)
+    assert llm.kwargs_list
+    assert llm.kwargs_list[0].get("num_predict", 0) >= 4096
+
+
+@pytest.mark.asyncio
 async def test_planner_analysis_empty_when_no_facts_at_all() -> None:
     """Fallback only activates when facts exist; no facts = empty plan
     (the Writer will still render a deterministic body for ES/Conclusion).

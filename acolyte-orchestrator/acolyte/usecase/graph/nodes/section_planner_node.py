@@ -441,6 +441,10 @@ class SectionPlannerNode:
                 )
 
             fallback = ClaimPlannerOutput(reasoning="fallback", claims=[])
+            # num_predict must fit max_claims=7 × Japanese supporting_quote
+            # runs; 2048 was truncating Gemma 4's output mid-XML and causing
+            # ``not well-formed`` errors in the repair layer. 4096 gives
+            # headroom without impacting normal completions.
             result = await generate_xml_validated(
                 self._llm,
                 prompt,
@@ -448,7 +452,7 @@ class SectionPlannerNode:
                 root_tag="section_plan",
                 normalizer=normalize_section_plan_output,
                 temperature=0,
-                num_predict=2048,
+                num_predict=4096,
                 fallback=fallback,
                 mode=LLMMode.STRUCTURED,
             )
