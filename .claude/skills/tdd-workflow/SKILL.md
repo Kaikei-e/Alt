@@ -1,6 +1,6 @@
 ---
 name: tdd-workflow
-description: Test-Driven Development workflow for all languages. Use when implementing new features, fixing bugs, or refactoring code, or when the user says "TDDで". Enforces outside-in order E2E (Playwright/Hurl) → CDC (Pact) → Unit (RED-GREEN-REFACTOR) with concrete stubs.
+description: Test-Driven Development workflow for all languages. Use when implementing new features, fixing bugs, or refactoring code, or when the user says "TDDで". Enforces outside-in order E2E (Playwright/Hurl) → CDC (Pact) → Unit (RED-GREEN-REFACTOR) with concrete stubs, and mandates a local CI parity sweep (format/lint/type/security) for every touched microservice before handoff.
 allowed-tools: Bash, Read, Glob, Grep, Edit, Write
 argument-hint: <feature-description> [--service=<dir>]
 ---
@@ -15,6 +15,8 @@ When the work is implementation-oriented, read this skill before setting the tes
 The test pyramid still governs *quantity*: few E2E, more CDC, many unit tests
 ([Fowler — Practical Test Pyramid](https://martinfowler.com/articles/practical-test-pyramid.html)).
 These are two different axes — order vs. quantity — and both apply simultaneously.
+
+**Finish every task with Phase 5 — local CI parity.** After Phases 0–4 are green, run the same formatters / linters / static analyzers / security scanners the touched microservices' CI pipelines run, locally, before declaring the work complete. "Tests pass" ≠ "CI will pass"; Phase 5 closes that gap. See §Phase 5 for per-service commands.
 
 Three layers, with designated tools in this repo:
 
@@ -318,6 +320,120 @@ For feature work, enter this phase only after Phase 0 (E2E) and — if a boundar
    git commit -m "feat(<service>): implement <feature>"
    ```
 
+## Phase 5: LOCAL CI PARITY (MANDATORY before handoff)
+
+**Goal:** Reproduce the same gates each touched microservice's CI would run, locally, as the last step before reporting the work complete. Phases 0-4 guarantee tests pass; Phase 5 guarantees **formatters, linters, static analyzers, and security scanners** also pass — these are what block PRs in GitHub Actions (`reusable-test-*.yaml`, `reusable-go-quality-gates.yaml`, `proto-contract.yaml`).
+
+Skipping this phase is the most common cause of "green locally, red in CI" — typically a stray unused import, format drift, or a golangci-lint rule that only runs in CI.
+
+### Steps
+
+1. **Enumerate every service directory touched** by the change (grep `git status` / `git diff --name-only` against the branch point).
+2. **For each touched service**, run the language-specific gate from the table below. All must pass before handoff.
+3. **If a proto file changed** under `proto/`, also run the proto gate regardless of which services are touched.
+4. **If a pact / contract test or any consumer-provider interaction changed**, run `./scripts/pact-check.sh` so the full contract regression gate is green.
+5. **Never suppress a failing gate to unblock the task** — fix the underlying issue or escalate. Feedback memory `feedback_tdd_strict.md` + `feedback_plan_audit.md` apply.
+
+### Per-service CI parity commands
+
+Match these to what the reusable CI workflows run (`reusable-test-go.yaml`, `reusable-go-quality-gates.yaml`, `reusable-test-python.yaml`, `reusable-test-rust.yaml`, `alt-frontend-sv-unit-test.yaml`, `proto-contract.yaml`). Update this table when CI changes.
+
+**Go service** (alt-backend, search-indexer, pre-processor, mq-hub, auth-hub, rag-orchestrator, alt-butterfly-facade, etc.)
+
+```bash
+cd <service>/app      # or service root for rag-orchestrator / auth-hub
+gofmt -l . | grep -v '^gen/' | grep -v '^$'   # must print nothing
+go vet ./...
+# golangci-lint v2.1 (CI uses golangci-lint-action@v8); install locally via:
+#   go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.1.0
+golangci-lint run ./...
+go test ./... -race                            # CI uses CGO_ENABLED=1, add for race tests
+CGO_ENABLED=1 go test -tags=contract ./driver/contract/ -v    # if any CDC changed
+```
+
+**Python service** (acolyte-orchestrator, news-creator, tag-generator, recap-subworker, metrics, recap-evaluator)
+
+```bash
+cd <service>/app      # or service root
+uv sync --all-extras --dev
+uv run ruff check .
+uv run ruff format --check .
+uv run pyrefly check
+uv run pytest          # CI adds --cov=. --cov-report=xml --junit-xml=tests/results.xml
+uv run pytest tests/contract/ -v --no-cov     # if any CDC changed
+# news-creator / recap-subworker / tag-generator contract tests require:
+#   SERVICE_SECRET=test-secret uv run pytest tests/contract/ -v
+```
+
+**Rust service** (rask-log-aggregator, rask-log-forwarder, recap-worker)
+
+```bash
+cd <service>
+cargo fmt --all -- --check
+cargo clippy --all-targets --all-features -- -D warnings
+cargo build --release
+cargo test --all
+cargo test --lib contract -- --ignored        # if any CDC changed (recap-worker)
+```
+
+**TypeScript / Svelte** (alt-frontend-sv)
+
+```bash
+cd alt-frontend-sv
+bun install --frozen-lockfile
+bun run check                                  # svelte-check + tsc
+bun run lint                                   # eslint / prettier --check
+bun test                                       # vitest unit + contract tests
+bun test src/test/contracts/                   # if any CDC changed
+bun run test:e2e:integration                   # Playwright if UI touched (Phase 0 scope)
+```
+
+**Deno service** (auth-token-manager, alt-perf)
+
+```bash
+cd <service>
+deno fmt --check
+deno lint
+deno check <entrypoint>.ts
+deno test --allow-all
+```
+
+**Proto changes** (always, if `proto/**` was touched)
+
+```bash
+cd proto
+buf lint
+buf breaking --against '.git#branch=main'
+# Regenerate stubs for every consumer of the changed proto file and commit:
+buf generate --template buf.gen.backend-internal.yaml        # alt-backend
+buf generate --template buf.gen.pre-processor-services.yaml  # pre-processor
+buf generate --template buf.gen.search-indexer.yaml          # search-indexer
+# ... and the other buf.gen.<service>.yaml templates as needed
+```
+
+**Database migration** (if `migrations-atlas/migrations/**` was touched)
+
+```bash
+cd migrations-atlas
+atlas migrate hash                # refresh atlas.sum after new .sql files
+atlas migrate validate            # schema is consistent
+atlas migrate lint --latest 1     # CI-equivalent linter check
+```
+
+**Full contract regression** (if any CDC interaction — consumer or provider — was touched)
+
+```bash
+./scripts/pact-check.sh           # file-based mode, fails closed
+```
+
+### Reporting
+
+At handoff, state explicitly which services' CI-parity gates you ran and their exit status. A truthful summary is:
+
+> Ran local CI parity for: acolyte-orchestrator (ruff/pyrefly/pytest all green, 591 tests), alt-backend (gofmt/vet/golangci-lint/go test all green), pre-processor (same), search-indexer (same). Proto gate green. No CDC regression.
+
+If any gate is skipped, say so explicitly (e.g. "skipped golangci-lint locally — not installed, rely on CI"). Do **not** silently skip.
+
 ## Test Commands
 
 ### E2E (Phase 0)
@@ -391,6 +507,8 @@ When modifying service-to-service communication, verify:
 17. **Running DB-backed Hurl scenarios with `--jobs >1`** — FK / sequence ordering breaks under parallelism (precedent: ADR-000765 `knowledge-sovereign`)
 18. **Skipping Phase 0 because "CDC already covers it"** — CDC verifies per-boundary request/response shape; Phase 0 verifies the user journey / cross-service flow. They are not substitutes
 19. **Writing unit tests first and backfilling E2E at the end** — this violates the outside-in order. The outer test is what drives the design of the inner layers
+20. **Declaring work complete without running Phase 5 (local CI parity)** — "tests pass" ≠ "CI will pass". Formatters, linters, static analyzers, and security scanners block PRs in the same commit you thought was done. Every touched microservice gets its CI-equivalent gate run locally before handoff
+21. **Suppressing a Phase 5 failure to finish the task** — disabling a lint rule, adding `// nolint`, loosening ruff config, or skipping a test to green the gate is a red flag. Fix the underlying code or escalate; never silence the gate as a shortcut
 
 ## References
 
