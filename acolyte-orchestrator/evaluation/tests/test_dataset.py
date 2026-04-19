@@ -14,7 +14,9 @@ def test_loads_baseline_dataset() -> None:
     first = cases[0]
     assert isinstance(first, EvalCase)
     assert first.topic
-    assert first.gold_source_ids
+    # gold_source_ids may be empty for cases used only with the db-replay
+    # generator (lang_mix_ratio only) — precision is None in that case.
+    assert isinstance(first.gold_source_ids, frozenset)
 
 
 def test_skips_blank_and_comment_lines(tmp_path: Path) -> None:

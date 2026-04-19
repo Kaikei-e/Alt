@@ -1,5 +1,23 @@
-{"topic": "2026 Q1 AI chip market outlook", "query_lang": "ja", "gold_source_ids": ["gold-aichip-ja-1", "gold-aichip-en-1", "gold-aichip-en-2"], "expected_lang_mix": {"ja": 0.5, "en": 0.5}}
-{"topic": "2026 middle-east tensions brief", "query_lang": "ja", "gold_source_ids": ["gold-me-ja-1", "gold-me-ja-2", "gold-me-en-1"], "expected_lang_mix": {"ja": 0.6, "en": 0.4}}
-{"topic": "LLM safety research 2026", "query_lang": "ja", "gold_source_ids": ["gold-llm-en-1", "gold-llm-en-2", "gold-llm-ja-1"], "expected_lang_mix": {"ja": 0.3, "en": 0.7}}
-{"topic": "電気自動車バッテリー技術", "query_lang": "ja", "gold_source_ids": ["gold-ev-ja-1", "gold-ev-ja-2", "gold-ev-en-1"], "expected_lang_mix": {"ja": 0.7, "en": 0.3}}
-{"topic": "GPU shortage impact on AI training", "query_lang": "en", "gold_source_ids": ["gold-gpu-en-1", "gold-gpu-en-2", "gold-gpu-ja-1"], "expected_lang_mix": {"en": 0.7, "ja": 0.3}}
+# Evaluation baseline dataset.
+# Two track:
+#   - "real" cases: existing report titles replayable via --generator db-replay
+#   - "synthetic" cases: topics planned for Phase 2+ regeneration; gold_source_ids
+#     left empty until a curator provides them post-semantic-hybrid landing.
+{"topic": "イラン情勢　分析レポート　2026年4月19日", "query_lang": "ja", "gold_source_ids": [], "expected_lang_mix": {"ja": 0.6, "en": 0.4}}
+{"topic": "イラン情勢　分析レポート　2026年4月14日", "query_lang": "ja", "gold_source_ids": [], "expected_lang_mix": {"ja": 0.6, "en": 0.4}}
+{"topic": "RAM価格高騰について", "query_lang": "ja", "gold_source_ids": [], "expected_lang_mix": {"ja": 0.4, "en": 0.6}}
+{"topic": "イラン石油危機", "query_lang": "ja", "gold_source_ids": [], "expected_lang_mix": {"ja": 0.5, "en": 0.5}}
+{"topic": "AIチップの2026年動向", "query_lang": "ja", "gold_source_ids": [], "expected_lang_mix": {"ja": 0.3, "en": 0.7}}
+{"topic": "2026年Q2 AI半導体サプライチェーン分析", "query_lang": "ja", "gold_source_ids": [], "expected_lang_mix": {"ja": 0.3, "en": 0.7}}
+{"topic": "2026 Q1 AI chip market outlook", "query_lang": "ja", "gold_source_ids": [], "expected_lang_mix": {"ja": 0.5, "en": 0.5}}
+{"topic": "2026 middle-east tensions brief", "query_lang": "ja", "gold_source_ids": [], "expected_lang_mix": {"ja": 0.6, "en": 0.4}}
+{"topic": "LLM safety research 2026", "query_lang": "ja", "gold_source_ids": [], "expected_lang_mix": {"ja": 0.3, "en": 0.7}}
+{"topic": "電気自動車バッテリー技術", "query_lang": "ja", "gold_source_ids": [], "expected_lang_mix": {"ja": 0.5, "en": 0.5}}
+{"topic": "GPU shortage impact on AI training", "query_lang": "en", "gold_source_ids": [], "expected_lang_mix": {"ja": 0.3, "en": 0.7}}
+{"topic": "EU AI Act enforcement phase 2", "query_lang": "ja", "gold_source_ids": [], "expected_lang_mix": {"ja": 0.2, "en": 0.8}}
+{"topic": "NVIDIA Blackwell roadmap 2026", "query_lang": "ja", "gold_source_ids": [], "expected_lang_mix": {"ja": 0.3, "en": 0.7}}
+{"topic": "FOMC 2026 Q2 政策金利見通し", "query_lang": "ja", "gold_source_ids": [], "expected_lang_mix": {"ja": 0.3, "en": 0.7}}
+{"topic": "量子コンピュータ商用化の進展", "query_lang": "ja", "gold_source_ids": [], "expected_lang_mix": {"ja": 0.5, "en": 0.5}}
+{"topic": "OpenAI enterprise adoption metrics", "query_lang": "ja", "gold_source_ids": [], "expected_lang_mix": {"ja": 0.2, "en": 0.8}}
+{"topic": "北朝鮮 核実験 2026", "query_lang": "ja", "gold_source_ids": [], "expected_lang_mix": {"ja": 0.6, "en": 0.4}}
+{"topic": "climate finance Asia 2026", "query_lang": "en", "gold_source_ids": [], "expected_lang_mix": {"ja": 0.3, "en": 0.7}}
