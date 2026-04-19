@@ -46,7 +46,7 @@ class RubricEvaluator:
         evidence_text = json.dumps([{"id": e.get("id", ""), "title": e.get("title", "")} for e in evidence])
 
         prompt = CLAIM_EXTRACTION_PROMPT.format(text=text[:3000], evidence=evidence_text)
-        response = await self._llm.generate(prompt, temperature=0, num_predict=1024)
+        response = await self._llm.generate(prompt, temperature=0, num_predict=1024, think=False)
 
         try:
             parsed = json.loads(response.text)

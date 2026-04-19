@@ -17,9 +17,11 @@ class FakeLLM:
     def __init__(self, text: str = "Regenerated section content.") -> None:
         self._text = text
         self.call_count = 0
+        self.last_kwargs: dict[str, object] = {}
 
     async def generate(self, prompt: str, **kwargs: object) -> LLMResponse:
         self.call_count += 1
+        self.last_kwargs = dict(kwargs)
         return LLMResponse(text=self._text, model="fake")
 
 
@@ -174,6 +176,22 @@ async def test_rerun_section_bumps_report_version() -> None:
     assert new_v == 2
     assert len(repo.bumped_versions) == 1
     assert "summary" in repo.bumped_versions[0][2]
+
+
+@pytest.mark.asyncio
+async def test_rerun_section_pins_think_false_for_cjk_safety() -> None:
+    """Rerun can be triggered on Japanese sections. Gemma 4 silently enters
+    thinking mode on CJK prompts and returns an empty body, leaving the
+    rerun-bumped version with no content. Pin ``think=False`` to force
+    direct generation and guarantee a non-empty regenerated body.
+    """
+    repo, rid = _make_repo_with_report()
+    llm = FakeLLM()
+    uc = RerunSectionUsecase(repo, llm)
+
+    await uc.execute(rid, "summary")
+
+    assert llm.last_kwargs.get("think") is False
 
 
 @pytest.mark.asyncio

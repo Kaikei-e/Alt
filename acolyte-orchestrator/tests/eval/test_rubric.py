@@ -11,7 +11,11 @@ from acolyte.usecase.eval.rubric_evaluator import RubricEvaluator
 
 
 class FakeLLM:
+    def __init__(self) -> None:
+        self.last_kwargs: dict[str, object] = {}
+
     async def generate(self, prompt: str, **kwargs: object) -> LLMResponse:
+        self.last_kwargs = dict(kwargs)
         # Return structured rubric scores
         return LLMResponse(
             text=json.dumps(
@@ -48,6 +52,23 @@ async def test_citation_association_measures_sourced_claims(evaluator: RubricEva
     result = await evaluator.evaluate_citation_association(sections, evidence)
     # 2/3 claims have source_id → ~0.67
     assert 0.5 < result.score < 0.8
+
+
+@pytest.mark.asyncio
+async def test_claim_extraction_pins_think_false_for_cjk_article_bodies() -> None:
+    """RubricEvaluator calls the LLM over article bodies for claim
+    extraction. Articles may be Japanese, and Gemma 4 silently enters
+    thinking mode on CJK prompts — returning an empty body that collapses
+    the rubric scores. The evaluator must pin ``think=False``.
+    """
+    llm = FakeLLM()
+    evaluator = RubricEvaluator(llm)
+    sections = {"summary": "AI market analysis."}
+    evidence = [{"id": "art-1", "title": "AI Market"}]
+
+    await evaluator.evaluate_factual_consistency(sections, evidence)
+
+    assert llm.last_kwargs.get("think") is False
 
 
 @pytest.mark.asyncio

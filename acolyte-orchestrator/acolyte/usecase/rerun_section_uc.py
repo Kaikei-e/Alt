@@ -54,7 +54,7 @@ class RerunSectionUsecase:
             evidence_block=_format_evidence([]),
             revision_note="",
         )
-        response = await self._llm.generate(prompt, num_predict=2000)
+        response = await self._llm.generate(prompt, num_predict=2000, think=False)
 
         # Bump section version
         await self._repo.bump_section_version(
