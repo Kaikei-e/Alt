@@ -19,6 +19,7 @@ calls never break the suite — drift between a real client and this stub
 shows up either as a Hurl assertion failure on a specific scenario or
 as an alt-backend deserialisation error in the container logs.
 """
+
 from __future__ import annotations
 
 import base64
