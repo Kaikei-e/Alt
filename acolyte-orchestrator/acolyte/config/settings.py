@@ -59,7 +59,15 @@ class Settings(BaseSettings):
     # Checkpointer
     checkpoint_enabled: bool = False
 
+    # Language quota applied by Curator after LLM ranking.
+    # Format: {"<bcp47_short>": <min_share_0_to_1>}; 0.0 disables enforcement.
+    language_quota_en: float = 0.2
+
     model_config = {"env_prefix": "", "case_sensitive": False}
+
+    def get_language_quota(self) -> dict[str, float]:
+        """Return a fresh language quota mapping for the curator to apply."""
+        return {"en": self.language_quota_en}
 
     def resolve_db_dsn(self) -> str:
         """Resolve DB DSN, replacing password from file if configured."""

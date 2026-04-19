@@ -12,10 +12,12 @@ from typing import TYPE_CHECKING
 
 import structlog
 
+from acolyte.domain.language_quota import rebalance_by_language
 from acolyte.domain.source_map import SourceMap
 from acolyte.port.llm_provider import LLMMode
 
 if TYPE_CHECKING:
+    from acolyte.config.settings import Settings
     from acolyte.port.llm_provider import LLMProviderPort
     from acolyte.usecase.graph.state import ReportGenerationState
 
@@ -31,15 +33,29 @@ Return a JSON array of the selected item IDs in order of relevance.
 
 
 class CuratorNode:
-    def __init__(self, llm: LLMProviderPort, *, max_evidence: int = 10) -> None:
+    def __init__(
+        self,
+        llm: LLMProviderPort,
+        *,
+        max_evidence: int = 10,
+        settings: Settings | None = None,
+    ) -> None:
         self._llm = llm
         self._max_evidence = max_evidence
+        self._settings = settings
+
+    def _language_quota(self) -> dict[str, float]:
+        if self._settings is None:
+            return {}
+        return self._settings.get_language_quota()
 
     async def __call__(self, state: ReportGenerationState) -> dict:
         evidence = state.get("evidence", [])
         brief = state.get("brief") or state.get("scope") or {}
         outline = state.get("outline", [])
         topic = brief.get("topic", "")
+
+        quota = self._language_quota()
 
         # Per-section curation
         curated_by_section: dict[str, list[dict]] = {}
@@ -52,12 +68,16 @@ class CuratorNode:
             section_evidence = [e for e in evidence if section_key in e.get("section_keys", [])]
 
             if len(section_evidence) <= self._max_evidence:
-                curated_by_section[section_key] = section_evidence
+                curated = section_evidence
             else:
                 # LLM curation for sections exceeding limit
-                curated_by_section[section_key] = await self._curate_with_llm(
+                curated = await self._curate_with_llm(
                     section_evidence, topic, str(section_title or section_key)
                 )
+
+            if quota:
+                curated = rebalance_by_language(curated, section_evidence, quota)
+            curated_by_section[section_key] = curated
 
         # Backward compat: flatten curated_by_section into a deduplicated curated list
         seen_ids: set[str] = set()
@@ -85,6 +105,7 @@ class CuratorNode:
                 publisher=item.get("publisher", ""),
                 url=item.get("url", ""),
                 source_type=item.get("type", "article"),
+                language=item.get("language") or "und",
             )
 
         logger.info(
