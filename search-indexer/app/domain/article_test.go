@@ -90,6 +90,22 @@ func TestArticle_NewArticle(t *testing.T) {
 	}
 }
 
+func TestArticle_Language(t *testing.T) {
+	a, err := NewArticle("1", "Title", "Content", []string{}, time.Now(), "u")
+	if err != nil {
+		t.Fatalf("NewArticle() error = %v", err)
+	}
+
+	if got := a.Language(); got != "" {
+		t.Errorf("default Language() = %q, want empty string", got)
+	}
+
+	a.SetLanguage("ja")
+	if got := a.Language(); got != "ja" {
+		t.Errorf("Language() = %q, want %q", got, "ja")
+	}
+}
+
 func TestArticle_HasTag(t *testing.T) {
 	article, err := NewArticle("1", "Test", "Content", []string{"tag1", "tag2"}, time.Now(), "user-123")
 	if err != nil {

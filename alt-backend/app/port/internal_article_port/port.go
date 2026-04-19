@@ -14,6 +14,7 @@ type ArticleWithTags struct {
 	Tags      []string
 	CreatedAt time.Time
 	UserID    string
+	Language  string
 }
 
 // DeletedArticle represents a deleted article.
@@ -70,6 +71,7 @@ type CreateArticleParams struct {
 	Content     string
 	FeedID      string
 	UserID      string
+	Language    string
 	PublishedAt time.Time
 }
 

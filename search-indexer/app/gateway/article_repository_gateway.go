@@ -59,7 +59,7 @@ func (g *ArticleRepositoryGateway) convertToDomain(driverArticle *driver.Article
 		tags[i] = tag.TagName
 	}
 
-	return domain.NewArticle(
+	article, err := domain.NewArticle(
 		driverArticle.ID,
 		driverArticle.Title,
 		driverArticle.Content,
@@ -67,6 +67,11 @@ func (g *ArticleRepositoryGateway) convertToDomain(driverArticle *driver.Article
 		driverArticle.CreatedAt,
 		driverArticle.UserID,
 	)
+	if err != nil {
+		return nil, err
+	}
+	article.SetLanguage(driverArticle.Language)
+	return article, nil
 }
 
 func (g *ArticleRepositoryGateway) GetArticlesWithTagsForward(ctx context.Context, incrementalMark *time.Time, lastCreatedAt *time.Time, lastID string, limit int) ([]*domain.Article, *time.Time, string, error) {

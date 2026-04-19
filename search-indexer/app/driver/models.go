@@ -10,6 +10,7 @@ type ArticleWithTags struct {
 	Tags      []TagModel
 	CreatedAt time.Time
 	UserID    string
+	Language  string
 }
 
 // TagModel represents a tag from the database

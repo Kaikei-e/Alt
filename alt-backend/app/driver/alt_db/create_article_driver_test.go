@@ -16,22 +16,30 @@ var (
 		"SELECT COALESCE(OCTET_LENGTH(content), 0) FROM articles WHERE url = $1 AND user_id = $2 AND deleted_at IS NULL",
 	)
 	fullArticleUpsertQuery = regexp.QuoteMeta(`
-		INSERT INTO articles (title, content, url, feed_id, user_id, published_at)
-		VALUES ($1, $2, $3, $4, $5, $6)
+		INSERT INTO articles (title, content, url, feed_id, user_id, published_at, language)
+		VALUES ($1, $2, $3, $4, $5, $6, $7)
 		ON CONFLICT (url, user_id) DO UPDATE SET
 			title = EXCLUDED.title,
 			content = EXCLUDED.content,
 			feed_id = COALESCE(EXCLUDED.feed_id, articles.feed_id),
-			published_at = EXCLUDED.published_at
+			published_at = EXCLUDED.published_at,
+			language = CASE
+				WHEN EXCLUDED.language IS NOT NULL AND EXCLUDED.language <> 'und' THEN EXCLUDED.language
+				ELSE articles.language
+			END
 		RETURNING id, (xmax = 0) AS created
 	`)
 	metadataOnlyArticleUpsertQuery = regexp.QuoteMeta(`
-		INSERT INTO articles (title, content, url, feed_id, user_id, published_at)
-		VALUES ($1, $2, $3, $4, $5, $6)
+		INSERT INTO articles (title, content, url, feed_id, user_id, published_at, language)
+		VALUES ($1, $2, $3, $4, $5, $6, $7)
 		ON CONFLICT (url, user_id) DO UPDATE SET
 			title = EXCLUDED.title,
 			feed_id = COALESCE(EXCLUDED.feed_id, articles.feed_id),
-			published_at = EXCLUDED.published_at
+			published_at = EXCLUDED.published_at,
+			language = CASE
+				WHEN EXCLUDED.language IS NOT NULL AND EXCLUDED.language <> 'und' THEN EXCLUDED.language
+				ELSE articles.language
+			END
 		RETURNING id, (xmax = 0) AS created
 	`)
 )
@@ -51,7 +59,7 @@ func TestAltDBRepository_CreateArticleInternal_Success(t *testing.T) {
 		WillReturnError(sql.ErrNoRows)
 	// Full upsert (new article)
 	mock.ExpectQuery(fullArticleUpsertQuery).
-		WithArgs("Title", "Body", "https://example.com/article", "feed-1", "00000000-0000-4000-a000-000000000001", publishedAt).
+		WithArgs("Title", "Body", "https://example.com/article", "feed-1", "00000000-0000-4000-a000-000000000001", publishedAt, "und").
 		WillReturnRows(pgxmock.NewRows([]string{"id", "created"}).AddRow("11111111-1111-4111-a111-111111111111", true))
 	mock.ExpectCommit()
 
@@ -93,7 +101,7 @@ func TestCreateArticleInternal_JapaneseContent_PreservesLonger(t *testing.T) {
 		WithArgs("https://example.com/ja-article", "00000000-0000-4000-a000-000000000001").
 		WillReturnRows(pgxmock.NewRows([]string{"content_length"}).AddRow(3000))
 	mock.ExpectQuery(metadataOnlyArticleUpsertQuery).
-		WithArgs("日本語タイトル", jaContent, "https://example.com/ja-article", "feed-1", "00000000-0000-4000-a000-000000000001", publishedAt).
+		WithArgs("日本語タイトル", jaContent, "https://example.com/ja-article", "feed-1", "00000000-0000-4000-a000-000000000001", publishedAt, "und").
 		WillReturnRows(pgxmock.NewRows([]string{"id", "created"}).AddRow("22222222-2222-4222-a222-222222222222", false))
 	mock.ExpectCommit()
 
@@ -126,7 +134,7 @@ func TestCreateArticleInternal_ShorterContent_PreservesExisting(t *testing.T) {
 		WillReturnRows(pgxmock.NewRows([]string{"content_length"}).AddRow(500))
 	// Metadata-only upsert (content excluded from DO UPDATE SET)
 	mock.ExpectQuery(metadataOnlyArticleUpsertQuery).
-		WithArgs("Title", "Short", "https://example.com/article", "feed-1", "00000000-0000-4000-a000-000000000001", publishedAt).
+		WithArgs("Title", "Short", "https://example.com/article", "feed-1", "00000000-0000-4000-a000-000000000001", publishedAt, "und").
 		WillReturnRows(pgxmock.NewRows([]string{"id", "created"}).AddRow("11111111-1111-4111-a111-111111111111", false))
 	mock.ExpectCommit()
 

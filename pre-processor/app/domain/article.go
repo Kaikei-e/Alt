@@ -13,6 +13,7 @@ type Article struct {
 	URL         string    `db:"url"`
 	FeedID      string    `db:"feed_id"`
 	UserID      string    `db:"user_id"`
+	Language    string    `db:"language"`
 	PublishedAt time.Time `db:"published_at"`
 	InoreaderID string    `db:"inoreader_id"` // Transient field
 	FeedURL     string    `db:"-"`            // Transient field for sync

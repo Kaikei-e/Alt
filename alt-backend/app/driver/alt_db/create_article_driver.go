@@ -15,6 +15,7 @@ type CreateArticleParams struct {
 	Content     string
 	FeedID      string
 	UserID      string
+	Language    string
 	PublishedAt time.Time
 }
 
@@ -36,27 +37,40 @@ func (r *ArticleRepository) CreateArticleInternal(ctx context.Context, params Cr
 	// 1. Check existing content length
 	existingLen, err := r.getArticleContentLength(ctx, tx, params.URL, params.UserID)
 
+	language := params.Language
+	if language == "" {
+		language = "und"
+	}
+
 	// 2. Choose query: skip content update if existing is longer
 	var query string
 	if err == nil && existingLen > len(params.Content) {
 		query = `
-		INSERT INTO articles (title, content, url, feed_id, user_id, published_at)
-		VALUES ($1, $2, $3, $4, $5, $6)
+		INSERT INTO articles (title, content, url, feed_id, user_id, published_at, language)
+		VALUES ($1, $2, $3, $4, $5, $6, $7)
 		ON CONFLICT (url, user_id) DO UPDATE SET
 			title = EXCLUDED.title,
 			feed_id = COALESCE(EXCLUDED.feed_id, articles.feed_id),
-			published_at = EXCLUDED.published_at
+			published_at = EXCLUDED.published_at,
+			language = CASE
+				WHEN EXCLUDED.language IS NOT NULL AND EXCLUDED.language <> 'und' THEN EXCLUDED.language
+				ELSE articles.language
+			END
 		RETURNING id, (xmax = 0) AS created
 	`
 	} else {
 		query = `
-		INSERT INTO articles (title, content, url, feed_id, user_id, published_at)
-		VALUES ($1, $2, $3, $4, $5, $6)
+		INSERT INTO articles (title, content, url, feed_id, user_id, published_at, language)
+		VALUES ($1, $2, $3, $4, $5, $6, $7)
 		ON CONFLICT (url, user_id) DO UPDATE SET
 			title = EXCLUDED.title,
 			content = EXCLUDED.content,
 			feed_id = COALESCE(EXCLUDED.feed_id, articles.feed_id),
-			published_at = EXCLUDED.published_at
+			published_at = EXCLUDED.published_at,
+			language = CASE
+				WHEN EXCLUDED.language IS NOT NULL AND EXCLUDED.language <> 'und' THEN EXCLUDED.language
+				ELSE articles.language
+			END
 		RETURNING id, (xmax = 0) AS created
 	`
 	}
@@ -71,6 +85,7 @@ func (r *ArticleRepository) CreateArticleInternal(ctx context.Context, params Cr
 		params.FeedID,
 		params.UserID,
 		params.PublishedAt,
+		language,
 	).Scan(&articleID, &created)
 	if err != nil {
 		return "", false, err

@@ -11,14 +11,18 @@ class ArticleHit:
     """Metadata-only search hit. Content is stored in ContentStore separately.
 
     Fields match search-indexer REST GET /v1/search response:
-    id, title, content, tags. Note: url, published_at, _rankingScore
+    id, title, content, tags, language. url, published_at, _rankingScore
     are NOT returned by search-indexer.
+
+    ``language`` is a BCP-47 short code (``ja``, ``en``) or ``und`` when the
+    upstream does not yet populate it.
     """
 
     article_id: str
     title: str
     tags: list[str] | None = None
     score: float = 0.0
+    language: str = "und"
 
 
 @dataclass(frozen=True)
@@ -29,6 +33,7 @@ class ArticleMetadata:
     source_name: str | None = None
     tags: list[str] | None = None
     published_at: str | None = None
+    language: str = "und"
 
 
 @dataclass(frozen=True)

@@ -15,6 +15,7 @@ import (
 	"pre-processor/domain"
 	"pre-processor/driver"
 	backendv1 "pre-processor/gen/proto/services/backend/v1"
+	"pre-processor/service"
 )
 
 // ArticleRepository implements repository.ArticleRepository using the backend API.
@@ -51,12 +52,18 @@ func (r *ArticleRepository) Create(ctx context.Context, article *domain.Article)
 		feedID = id
 	}
 
+	language := article.Language
+	if language == "" {
+		language = service.DetectLanguage(article.Title + "\n" + article.Content)
+	}
+
 	protoReq := &backendv1.CreateArticleRequest{
-		Title:   article.Title,
-		Url:     article.URL,
-		Content: article.Content,
-		FeedId:  feedID,
-		UserId:  article.UserID,
+		Title:    article.Title,
+		Url:      article.URL,
+		Content:  article.Content,
+		FeedId:   feedID,
+		UserId:   article.UserID,
+		Language: language,
 	}
 	if !article.PublishedAt.IsZero() {
 		protoReq.PublishedAt = timestamppb.New(article.PublishedAt)

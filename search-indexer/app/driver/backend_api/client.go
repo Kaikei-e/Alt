@@ -212,6 +212,7 @@ func toDriverArticle(p *backendv1.ArticleWithTags) *driver.ArticleWithTags {
 		Tags:      tags,
 		CreatedAt: p.CreatedAt.AsTime(),
 		UserID:    p.UserId,
+		Language:  p.Language,
 	}
 }
 

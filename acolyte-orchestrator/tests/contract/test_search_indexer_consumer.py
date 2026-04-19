@@ -7,7 +7,10 @@ level auth headers.
 
 search-indexer actual API:
   GET /v1/search?q={query}&limit={limit}
-  Response: {query: str, hits: [{id, title, content, tags, score}]}
+  Response: {query: str, hits: [{id, title, content, tags, score, language}]}
+
+  ``language`` is BCP-47 short ("ja", "en") or "und" when unknown; consumers
+  treat missing values as "und" for language-quota rebalancing.
 
 Run with:
     cd acolyte-orchestrator && uv run pytest tests/contract/ -v --no-cov
@@ -27,7 +30,7 @@ def _new_pact() -> Pact:
 
 
 def test_search_articles():
-    """GET /v1/search returns hits with id/title/content/tags/score."""
+    """GET /v1/search returns hits with id/title/content/tags/score/language."""
     pact = _new_pact()
     (
         pact.upon_receiving("an article search request for evidence gathering")
@@ -46,7 +49,16 @@ def test_search_articles():
                             "content": "The artificial intelligence market continues to expand...",
                             "tags": ["AI", "market", "2026"],
                             "score": 0.85,
-                        }
+                            "language": "en",
+                        },
+                        {
+                            "id": "article-002",
+                            "title": "AI市場 2026年展望",
+                            "content": "人工知能市場は拡大を続けている...",
+                            "tags": ["AI", "市場"],
+                            "score": 0.78,
+                            "language": "ja",
+                        },
                     ],
                 }
             ),
@@ -62,14 +74,17 @@ def test_search_articles():
         assert resp.status_code == 200
         data = resp.json()
         assert "hits" in data
-        assert len(data["hits"]) > 0
-        hit = data["hits"][0]
-        assert "id" in hit
-        assert "title" in hit
-        assert "content" in hit
-        assert "tags" in hit
-        assert "score" in hit
-        assert isinstance(hit["score"], (int, float))
+        assert len(data["hits"]) >= 2
+        languages = {hit["language"] for hit in data["hits"]}
+        assert "en" in languages and "ja" in languages
+        for hit in data["hits"]:
+            assert "id" in hit
+            assert "title" in hit
+            assert "content" in hit
+            assert "tags" in hit
+            assert "score" in hit
+            assert "language" in hit
+            assert isinstance(hit["score"], (int, float))
 
     pact.write_file(str(PACT_DIR), overwrite=True)
 

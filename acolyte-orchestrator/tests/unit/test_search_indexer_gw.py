@@ -148,6 +148,49 @@ async def test_search_articles_score_default_zero(settings: Settings, content_st
 
 
 @pytest.mark.asyncio
+async def test_search_articles_extracts_language(settings: Settings, content_store: MemoryContentStore) -> None:
+    """Language from search-indexer response should be propagated to ArticleHit."""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            json={
+                "query": "AI",
+                "hits": [
+                    {"id": "a1", "title": "T1", "content": "C1", "tags": [], "language": "ja"},
+                    {"id": "a2", "title": "T2", "content": "C2", "tags": [], "language": "en"},
+                ],
+            },
+        )
+
+    transport = httpx.MockTransport(handler)
+    async with httpx.AsyncClient(transport=transport, base_url="http://fake:9300") as client:
+        gw = SearchIndexerGateway(client, settings, content_store)
+        hits = await gw.search_articles("AI", limit=10)
+
+    assert hits[0].language == "ja"
+    assert hits[1].language == "en"
+
+
+@pytest.mark.asyncio
+async def test_search_articles_language_default_und(settings: Settings, content_store: MemoryContentStore) -> None:
+    """When language is missing, default to 'und'."""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            json={"query": "AI", "hits": [{"id": "a1", "title": "T1", "content": "C1", "tags": []}]},
+        )
+
+    transport = httpx.MockTransport(handler)
+    async with httpx.AsyncClient(transport=transport, base_url="http://fake:9300") as client:
+        gw = SearchIndexerGateway(client, settings, content_store)
+        hits = await gw.search_articles("AI", limit=10)
+
+    assert hits[0].language == "und"
+
+
+@pytest.mark.asyncio
 async def test_search_recaps_returns_empty(
     settings: Settings, mock_transport: httpx.MockTransport, content_store: MemoryContentStore
 ) -> None:

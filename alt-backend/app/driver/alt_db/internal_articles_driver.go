@@ -14,6 +14,7 @@ type InternalArticleWithTags struct {
 	Tags      []string
 	CreatedAt time.Time
 	UserID    string
+	Language  string
 }
 
 // InternalDeletedArticle is the driver-level model for deleted articles.
@@ -29,10 +30,10 @@ func (r *InternalRepository) ListArticlesWithTags(ctx context.Context, lastCreat
 
 	if lastCreatedAt == nil || lastCreatedAt.IsZero() {
 		query = `
-			SELECT a.id, a.title, a.content, a.created_at, a.user_id,
+			SELECT a.id, a.title, a.content, a.created_at, a.user_id, a.language,
 				   COALESCE(tags.tag_names, '{}') as tag_names
 			FROM (
-				SELECT id, title, content, created_at, user_id
+				SELECT id, title, content, created_at, user_id, language
 				FROM articles
 				WHERE deleted_at IS NULL
 				ORDER BY created_at DESC, id DESC
@@ -49,10 +50,10 @@ func (r *InternalRepository) ListArticlesWithTags(ctx context.Context, lastCreat
 		args = []interface{}{limit}
 	} else {
 		query = `
-			SELECT a.id, a.title, a.content, a.created_at, a.user_id,
+			SELECT a.id, a.title, a.content, a.created_at, a.user_id, a.language,
 				   COALESCE(tags.tag_names, '{}') as tag_names
 			FROM (
-				SELECT id, title, content, created_at, user_id
+				SELECT id, title, content, created_at, user_id, language
 				FROM articles
 				WHERE deleted_at IS NULL
 				  AND (created_at, id) < ($1, $2)
@@ -84,7 +85,7 @@ func (r *InternalRepository) ListArticlesWithTags(ctx context.Context, lastCreat
 		var article InternalArticleWithTags
 		var tagNames []string
 
-		if err := rows.Scan(&article.ID, &article.Title, &article.Content, &article.CreatedAt, &article.UserID, &tagNames); err != nil {
+		if err := rows.Scan(&article.ID, &article.Title, &article.Content, &article.CreatedAt, &article.UserID, &article.Language, &tagNames); err != nil {
 			return nil, nil, "", err
 		}
 
@@ -108,10 +109,10 @@ func (r *InternalRepository) ListArticlesWithTagsForward(ctx context.Context, in
 
 	if lastCreatedAt == nil || lastCreatedAt.IsZero() {
 		query = `
-			SELECT a.id, a.title, a.content, a.created_at, a.user_id,
+			SELECT a.id, a.title, a.content, a.created_at, a.user_id, a.language,
 				   COALESCE(tags.tag_names, '{}') as tag_names
 			FROM (
-				SELECT id, title, content, created_at, user_id
+				SELECT id, title, content, created_at, user_id, language
 				FROM articles
 				WHERE deleted_at IS NULL
 				  AND created_at > $1
@@ -129,10 +130,10 @@ func (r *InternalRepository) ListArticlesWithTagsForward(ctx context.Context, in
 		args = []interface{}{*incrementalMark, limit}
 	} else {
 		query = `
-			SELECT a.id, a.title, a.content, a.created_at, a.user_id,
+			SELECT a.id, a.title, a.content, a.created_at, a.user_id, a.language,
 				   COALESCE(tags.tag_names, '{}') as tag_names
 			FROM (
-				SELECT id, title, content, created_at, user_id
+				SELECT id, title, content, created_at, user_id, language
 				FROM articles
 				WHERE deleted_at IS NULL
 				  AND created_at > $1
@@ -165,7 +166,7 @@ func (r *InternalRepository) ListArticlesWithTagsForward(ctx context.Context, in
 		var article InternalArticleWithTags
 		var tagNames []string
 
-		if err := rows.Scan(&article.ID, &article.Title, &article.Content, &article.CreatedAt, &article.UserID, &tagNames); err != nil {
+		if err := rows.Scan(&article.ID, &article.Title, &article.Content, &article.CreatedAt, &article.UserID, &article.Language, &tagNames); err != nil {
 			return nil, nil, "", err
 		}
 
@@ -246,7 +247,7 @@ func (r *InternalRepository) GetLatestArticleTimestamp(ctx context.Context) (*ti
 // GetArticleWithTagsByID retrieves a single article with tags by ID.
 func (r *InternalRepository) GetArticleWithTagsByID(ctx context.Context, articleID string) (*InternalArticleWithTags, error) {
 	query := `
-		SELECT a.id, a.title, a.content, a.created_at, a.user_id,
+		SELECT a.id, a.title, a.content, a.created_at, a.user_id, a.language,
 			   COALESCE(
 				   array_agg(t.tag_name ORDER BY t.tag_name) FILTER (WHERE t.tag_name IS NOT NULL),
 				   '{}'
@@ -262,7 +263,7 @@ func (r *InternalRepository) GetArticleWithTagsByID(ctx context.Context, article
 	var tagNames []string
 
 	err := r.pool.QueryRow(ctx, query, articleID).Scan(
-		&article.ID, &article.Title, &article.Content, &article.CreatedAt, &article.UserID, &tagNames,
+		&article.ID, &article.Title, &article.Content, &article.CreatedAt, &article.UserID, &article.Language, &tagNames,
 	)
 	if err != nil {
 		return nil, err

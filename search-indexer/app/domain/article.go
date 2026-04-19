@@ -12,6 +12,7 @@ type Article struct {
 	tags      []string
 	createdAt time.Time
 	userID    string
+	language  string
 }
 
 func NewArticle(id, title, content string, tags []string, createdAt time.Time, userID string) (*Article, error) {
@@ -54,6 +55,14 @@ func (a *Article) CreatedAt() time.Time {
 
 func (a *Article) UserID() string {
 	return a.userID
+}
+
+func (a *Article) Language() string {
+	return a.language
+}
+
+func (a *Article) SetLanguage(lang string) {
+	a.language = lang
 }
 
 func (a *Article) HasTag(tag string) bool {

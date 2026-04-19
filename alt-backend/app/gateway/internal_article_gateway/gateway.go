@@ -107,6 +107,7 @@ func (g *Gateway) CreateArticle(ctx context.Context, params internal_article_por
 		Content:     params.Content,
 		FeedID:      params.FeedID,
 		UserID:      params.UserID,
+		Language:    params.Language,
 		PublishedAt: params.PublishedAt,
 	})
 	if err != nil {
@@ -326,5 +327,6 @@ func toPortArticle(da *alt_db.InternalArticleWithTags) *internal_article_port.Ar
 		Tags:      da.Tags,
 		CreatedAt: da.CreatedAt,
 		UserID:    da.UserID,
+		Language:  da.Language,
 	}
 }

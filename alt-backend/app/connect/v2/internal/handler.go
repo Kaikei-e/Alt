@@ -368,6 +368,7 @@ func (h *Handler) CreateArticle(ctx context.Context, req *connect.Request[backen
 		Content:     req.Msg.Content,
 		FeedID:      req.Msg.FeedId,
 		UserID:      req.Msg.UserId,
+		Language:    req.Msg.Language,
 		PublishedAt: publishedAt,
 	})
 	if err != nil {
@@ -907,6 +908,7 @@ func toProtoArticle(a *internal_article_port.ArticleWithTags) *backendv1.Article
 		Tags:      a.Tags,
 		CreatedAt: timestamppb.New(a.CreatedAt),
 		UserId:    a.UserID,
+		Language:  a.Language,
 	}
 }
 

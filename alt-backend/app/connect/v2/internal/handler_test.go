@@ -82,6 +82,34 @@ func TestListArticlesWithTags_Success(t *testing.T) {
 	}
 }
 
+func TestListArticlesWithTags_PropagatesLanguage(t *testing.T) {
+	h, mockList, _, _, _, _ := setupHandler(t)
+	ctx := context.Background()
+
+	now := time.Now()
+	mockList.EXPECT().
+		ListArticlesWithTags(gomock.Any(), (*time.Time)(nil), "", 100).
+		Return([]*internal_article_port.ArticleWithTags{
+			{ID: "a1", Title: "JP", Content: "c", Tags: []string{}, CreatedAt: now, UserID: "u", Language: "ja"},
+			{ID: "a2", Title: "EN", Content: "c", Tags: []string{}, CreatedAt: now, UserID: "u", Language: "en"},
+			{ID: "a3", Title: "UNK", Content: "c", Tags: []string{}, CreatedAt: now, UserID: "u"},
+		}, &now, "a3", nil)
+
+	resp, err := h.ListArticlesWithTags(ctx, connect.NewRequest(&backendv1.ListArticlesWithTagsRequest{Limit: 100}))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if resp.Msg.Articles[0].Language != "ja" {
+		t.Errorf("expected Language ja, got %q", resp.Msg.Articles[0].Language)
+	}
+	if resp.Msg.Articles[1].Language != "en" {
+		t.Errorf("expected Language en, got %q", resp.Msg.Articles[1].Language)
+	}
+	if resp.Msg.Articles[2].Language != "" {
+		t.Errorf("expected Language empty default, got %q", resp.Msg.Articles[2].Language)
+	}
+}
+
 func TestListArticlesWithTags_WithCursor(t *testing.T) {
 	h, mockList, _, _, _, _ := setupHandler(t)
 	ctx := context.Background()

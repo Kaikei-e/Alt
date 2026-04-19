@@ -19,6 +19,8 @@ message ArticleWithTags {
   google.protobuf.Timestamp created_at = 5;
   string user_id = 6;
   string feed_id = 7;
+  // BCP-47 short code ("ja", "en") or "und" when detection is unavailable.
+  string language = 8;
 }
 
 // DeletedArticle represents a deleted article.
@@ -130,6 +132,8 @@ message CreateArticleRequest {
   string feed_id = 4;
   string user_id = 5;
   google.protobuf.Timestamp published_at = 6;
+  // BCP-47 short code ("ja", "en") or "und" when detection is unavailable.
+  string language = 7;
 }
 
 message CreateArticleResponse {

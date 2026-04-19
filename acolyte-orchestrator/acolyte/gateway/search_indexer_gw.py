@@ -63,6 +63,7 @@ class SearchIndexerGateway:
                     title=hit.get("title", ""),
                     tags=hit.get("tags"),
                     score=float(hit.get("score", 0.0)),
+                    language=str(hit.get("language") or "und"),
                 )
             )
 
