@@ -195,6 +195,9 @@ func LoadClientConfig(certPath, keyPath, caPath string) (*tls.Config, error) {
 // NewMTLSHTTPServer wraps a handler in an http.Server with timeouts tuned for
 // a mTLS rollout. IdleTimeout is bounded to 60s so that HTTP/2 connection
 // reuse cannot outlive a 24h leaf certificate by more than a negligible window.
+// ErrorLog is wired through slog with a filter that drops the expected
+// healthcheck-probe EOFs (see tls_error_log.go) while preserving genuine TLS
+// failures.
 func NewMTLSHTTPServer(addr string, tlsConfig *tls.Config, handler http.Handler) *http.Server {
 	return &http.Server{
 		Addr:              addr,
@@ -202,5 +205,6 @@ func NewMTLSHTTPServer(addr string, tlsConfig *tls.Config, handler http.Handler)
 		TLSConfig:         tlsConfig,
 		ReadHeaderTimeout: 10 * time.Second,
 		IdleTimeout:       60 * time.Second,
+		ErrorLog:          newProxyErrorLog(),
 	}
 }
