@@ -18,19 +18,57 @@ if TYPE_CHECKING:
 logger = structlog.get_logger(__name__)
 
 _SHORT_ID_RE = re.compile(r"\[S(\d+)\]")
+_SOURCES_FOOTER_HEADER = "\n\n---\nSources:\n"
 
 
-def resolve_citations(body: str, source_map: SourceMap) -> str:
-    """Replace [S1], [S2], ... with [title] references."""
-
-    def _replace(match: re.Match) -> str:
+def _extract_referenced_short_ids(body: str) -> list[str]:
+    """Return short IDs ([S1], [S2], ...) in first-occurrence order."""
+    seen: set[str] = set()
+    ordered: list[str] = []
+    for match in _SHORT_ID_RE.finditer(body):
         short_id = f"S{match.group(1)}"
-        entry = source_map.resolve(short_id)
-        if entry:
-            return f"[{entry.title}]"
-        return match.group(0)
+        if short_id not in seen:
+            seen.add(short_id)
+            ordered.append(short_id)
+    return ordered
 
-    return _SHORT_ID_RE.sub(_replace, body)
+
+def _format_source_entry(short_id: str, entry) -> str:
+    """Render one footer line: '- [S1] Title — Publisher (URL)'."""
+    line = f"- [{short_id}] {entry.title}"
+    publisher = (entry.publisher or "").strip()
+    url = (entry.url or "").strip()
+    if publisher and url:
+        line += f" — {publisher} ({url})"
+    elif publisher:
+        line += f" — {publisher}"
+    elif url:
+        line += f" ({url})"
+    return line
+
+
+def render_sources_footer(body: str, source_map: SourceMap) -> str:
+    """Append a Sources footer listing only short IDs referenced in body.
+
+    [Sn] markers in the prose are preserved verbatim. Each referenced source is
+    emitted once, in first-occurrence order. Unknown short IDs are skipped in
+    the footer but kept inline as-is.
+    """
+    referenced = _extract_referenced_short_ids(body)
+    if not referenced:
+        return body
+
+    footer_lines: list[str] = []
+    for short_id in referenced:
+        entry = source_map.resolve(short_id)
+        if entry is None:
+            continue
+        footer_lines.append(_format_source_entry(short_id, entry))
+
+    if not footer_lines:
+        return body
+
+    return body + _SOURCES_FOOTER_HEADER + "\n".join(footer_lines)
 
 
 class FinalizerNode:
@@ -67,12 +105,12 @@ class FinalizerNode:
                     sections[key] = best[key]
                     logger.info("Finalizer using best_sections", section_key=key, body_len=len(best[key]))
 
-        # Resolve [S1] citations to [title] if source_map is present
+        # Append a Sources footer listing referenced [Sn] entries.
         source_map_data = state.get("source_map")
         if source_map_data:
             sm = SourceMap.from_dict(source_map_data)
             for key in list(sections.keys()):
-                sections[key] = resolve_citations(sections[key], sm)
+                sections[key] = render_sources_footer(sections[key], sm)
 
         # Persist sections
         existing_sections = await self._report_repo.get_sections(report_id)
