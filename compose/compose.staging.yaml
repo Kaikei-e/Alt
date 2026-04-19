@@ -35,6 +35,16 @@
 #     CRUD scenarios run against the migrated DB only; the run-
 #     lifecycle scenarios additionally activate the news-creator and
 #     search-indexer profiles to drive the LangGraph pipeline.)
+#   alt-backend suite          → profile `alt-backend`
+#     alt-backend-db, alt-backend-db-migrator, alt-backend-deps-stub,
+#     alt-backend
+#     (Postgres + Atlas migrator + Echo REST / Connect-RPC service.
+#     The deps stub is registered under six network aliases so every
+#     upstream alt-backend talks to (search-indexer, pre-processor,
+#     recap-worker, rag-orchestrator, knowledge-sovereign, mq-hub)
+#     resolves to it without spinning up the real services. A seventh
+#     alias, `stub.invalid`, serves a minimal RSS 2.0 document for the
+#     registration scenarios.)
 # Bring a suite up with:
 #   docker compose -f compose.staging.yaml --profile <suite> -p alt-staging up -d --wait
 # Services with NO profile are never auto-started (Compose default).
@@ -624,6 +634,152 @@ services:
       retries: 30
       start_period: 10s
 
+  # alt-backend suite — Postgres + Atlas migrator + deps stub + alt-backend
+  alt-backend-db:
+    image: postgres:17-alpine
+    container_name: alt-staging-alt-backend-db
+    profiles: [alt-backend]
+    # Plain env — staging password is a committed test fixture with no
+    # meaning outside the ephemeral alt-staging network. Uses the
+    # DB_USER/DB_NAME pair that alt-backend defaults to so the runtime
+    # env block doesn't have to override them.
+    environment:
+      POSTGRES_DB: alt
+      POSTGRES_USER: alt_db_user
+      POSTGRES_PASSWORD: alt-staging-test-postgres-password
+    networks:
+      - alt-staging
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U alt_db_user -d alt"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+      start_period: 3s
+
+  alt-backend-db-migrator:
+    build:
+      context: ../migrations-atlas
+      dockerfile: docker/Dockerfile
+    container_name: alt-staging-alt-backend-db-migrator
+    profiles: [alt-backend]
+    command: ["apply"]
+    environment:
+      DATABASE_URL: postgres://alt_db_user:alt-staging-test-postgres-password@alt-backend-db:5432/alt?sslmode=disable
+      DB_HOST: alt-backend-db
+      DB_PORT: "5432"
+      DB_USER: alt_db_user
+      DB_NAME: alt
+      ATLAS_REVISIONS_SCHEMA: "public"
+      MIGRATE_BASELINE_VERSION: "20240101000001"
+    depends_on:
+      alt-backend-db:
+        condition: service_healthy
+    networks:
+      - alt-staging
+    restart: "no"
+
+  alt-backend-deps-stub:
+    build:
+      context: ../e2e/stubs/alt-backend-deps-stub
+    image: ghcr.io/${GHCR_OWNER:-kaikei-e}/alt-alt-backend-deps-stub:${IMAGE_TAG:-main}
+    container_name: alt-staging-alt-backend-deps-stub
+    profiles: [alt-backend]
+    # Network aliases let one container answer to all six upstream
+    # hostnames + the synthetic `stub.invalid` that RSS registration
+    # scenarios fetch. FastAPI routes by path, not Host header.
+    networks:
+      alt-staging:
+        aliases:
+          - search-indexer
+          - pre-processor
+          - recap-worker
+          - rag-orchestrator
+          - knowledge-sovereign
+          - mq-hub
+          - auth-hub
+          - stub.invalid
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1/health').read()",
+        ]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+      start_period: 3s
+
+  alt-backend:
+    image: ghcr.io/${GHCR_OWNER:-kaikei-e}/alt-alt-backend:${IMAGE_TAG:-main}
+    build:
+      context: ../alt-backend
+      dockerfile: Dockerfile.backend
+    container_name: alt-staging-alt-backend
+    profiles: [alt-backend]
+    depends_on:
+      alt-backend-db:
+        condition: service_healthy
+      alt-backend-db-migrator:
+        condition: service_completed_successfully
+      alt-backend-deps-stub:
+        condition: service_healthy
+    environment:
+      # Point alt-backend directly at the staging Postgres (no pgbouncer
+      # in the staging slice) and at the deps stub for every upstream.
+      - DB_HOST=alt-backend-db
+      - DB_PORT=5432
+      - DB_USER=alt_db_user
+      - DB_PASSWORD=alt-staging-test-postgres-password
+      - DB_NAME=alt
+      - SERVER_PORT=9000
+      # HS256 JWT validation. The secret is read from a file mounted
+      # from e2e/fixtures/staging-secrets/ so the fixture is the single
+      # source of truth for both compose and the pre-minted test JWT
+      # under e2e/fixtures/alt-backend/test-jwt.txt.
+      - BACKEND_TOKEN_SECRET_FILE=/run/secrets/alt_backend_token_secret
+      - BACKEND_TOKEN_ISSUER=alt-staging-auth-hub
+      - BACKEND_TOKEN_AUDIENCE=alt-backend
+      # Upstream targets — every alias resolves to alt-backend-deps-stub.
+      - SEARCH_INDEXER_CONNECT_URL=http://search-indexer/
+      - PRE_PROCESSOR_URL=http://pre-processor/
+      - PRE_PROCESSOR_CONNECT_URL=http://pre-processor/
+      - RECAP_WORKER_URL=http://recap-worker/
+      - RAG_ORCHESTRATOR_URL=http://rag-orchestrator/
+      - RAG_ORCHESTRATOR_CONNECT_URL=http://rag-orchestrator/
+      # auth-hub is only hit by the internal /system-user handler (not
+      # exercised by the Hurl suite), but the alias keeps config parity
+      # with prod and unblocks that handler if ever probed.
+      - AUTH_HUB_URL=http://auth-hub/
+      - MQHUB_CONNECT_URL=http://mq-hub/
+      - MQHUB_ENABLED=false
+      # SSRF allowlist — only stub.invalid is reachable and feed
+      # registration needs to bypass the private-IP guard for it.
+      - FEED_ALLOWED_HOSTS=stub.invalid
+      # mTLS is off in staging; the Connect-RPC listener speaks plain
+      # HTTP/1.1 on :9101.
+      - MTLS_LISTEN=false
+      - MTLS_ENFORCE=false
+      - LOG_LEVEL=info
+      - LOG_FORMAT=json
+      # Cap connection pool so the ephemeral Postgres isn't stressed.
+      - DB_MAX_CONNS=10
+      - DB_MIN_CONNS=2
+    secrets:
+      - alt_backend_token_secret
+    ports:
+      - "19000:9000"
+      - "19101:9101"
+    networks:
+      - alt-staging
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:9000/v1/health"]
+      interval: 3s
+      timeout: 3s
+      retries: 30
+      start_period: 10s
+
 networks:
   alt-staging:
     name: alt-staging
@@ -636,3 +792,5 @@ networks:
 secrets:
   meili_master_key:
     file: ../e2e/fixtures/staging-secrets/meili_master_key.txt
+  alt_backend_token_secret:
+    file: ../e2e/fixtures/staging-secrets/alt_backend_token_secret.txt
