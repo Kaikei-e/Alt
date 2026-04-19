@@ -12,14 +12,17 @@
 # recap-worker pattern.
 #
 # Environment overrides:
-#   BASE_URL        — alt-backend REST URL as seen from the Hurl container
-#                     (default: http://alt-backend:9000)
-#   CONNECT_URL     — alt-backend Connect-RPC URL (default: http://alt-backend:9101)
-#   HURL_IMAGE      — Hurl container image (default: ghcr.io/orange-opensource/hurl:7.1.0)
-#   IMAGE_TAG       — Docker tag for the alt-backend image (default: ci)
-#   GHCR_OWNER      — GHCR namespace (default: kaikei-e)
-#   RUN_ID          — unique run identifier (default: $(date +%s))
-#   KEEP_STACK=1    — do not tear the stack down on exit (for debugging)
+#   BASE_URL               — alt-backend REST URL as seen from the Hurl container
+#                            (default: http://alt-backend:9000)
+#   CONNECT_URL            — alt-backend Connect-RPC URL (default: http://alt-backend:9101)
+#   HURL_IMAGE             — Hurl container image (default: ghcr.io/orange-opensource/hurl:7.1.0)
+#   IMAGE_TAG              — Docker tag for the alt-backend image (default: ci)
+#   GHCR_OWNER             — GHCR namespace (default: kaikei-e)
+#   RUN_ID                 — unique run identifier (default: $(date +%s))
+#   STAGING_PROJECT_NAME   — compose project + network name (default: alt-staging).
+#                            CI sets alt-staging-alt-backend so parallel matrix
+#                            jobs on koko-1 don't collide on the shared daemon.
+#   KEEP_STACK=1           — do not tear the stack down on exit (for debugging)
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/../../.." && pwd)"
@@ -31,20 +34,31 @@ cd "$ROOT"
 : "${IMAGE_TAG:=ci}"
 : "${GHCR_OWNER:=kaikei-e}"
 : "${RUN_ID:=$(date +%s)}"
+: "${STAGING_PROJECT_NAME:=alt-staging}"
 
-export IMAGE_TAG GHCR_OWNER
+export IMAGE_TAG GHCR_OWNER STAGING_PROJECT_NAME
+
+# Render a per-project compose slice (sets $SLICE + $SLICE_DIR). This
+# lets parallel matrix jobs coexist on the same Docker daemon by
+# renaming network + container resources under STAGING_PROJECT_NAME.
+# shellcheck source=../_lib/render-slice.sh
+source "$ROOT/e2e/hurl/_lib/render-slice.sh"
+render_slice alt-backend
 
 REPORT_DIR="$ROOT/e2e/reports/alt-backend-$RUN_ID"
 mkdir -p "$REPORT_DIR"
 
 cleanup() {
   if [[ "${KEEP_STACK:-0}" != "1" ]]; then
-    echo "==> tearing down alt-staging stack" >&2
-    docker compose -f compose/compose.staging.yaml -p alt-staging \
+    echo "==> tearing down $STAGING_PROJECT_NAME stack" >&2
+    docker compose -f "$SLICE" -p "$STAGING_PROJECT_NAME" \
       down -v --remove-orphans >/dev/null 2>&1 || true
   else
-    echo "==> KEEP_STACK=1 — leaving alt-staging stack up" >&2
+    echo "==> KEEP_STACK=1 — leaving $STAGING_PROJECT_NAME stack up" >&2
   fi
+  # $SLICE_DIR is under mktemp -d; always clean up, even when
+  # KEEP_STACK=1, so resolved compose config doesn't linger.
+  rm -rf "$SLICE_DIR"
 }
 trap cleanup EXIT
 
@@ -52,32 +66,33 @@ trap cleanup EXIT
 # newline — HTTP header values must not contain CR/LF.
 JWT="$(tr -d '\n' < e2e/fixtures/alt-backend/test-jwt.txt)"
 
-echo "==> bringing up alt-backend staging slice" >&2
-docker compose -f compose/compose.staging.yaml -p alt-staging \
-  --profile alt-backend \
-  up -d --wait \
+echo "==> bringing up alt-backend slice ($STAGING_PROJECT_NAME)" >&2
+docker compose -f "$SLICE" -p "$STAGING_PROJECT_NAME" up -d --wait \
     alt-backend-db \
     alt-backend-db-migrator \
     alt-backend-deps-stub \
     alt-backend
 
-# Run Hurl inside the alt-staging network so alt-backend's service DNS
+# Run Hurl inside the staging network so alt-backend's service DNS
 # name resolves. Mount the repo at the same absolute path so any
 # `file,e2e/fixtures/...;` body resolves via --file-root "$ROOT".
 hurl_run() {
   docker run --rm \
-    --network alt-staging \
+    --network "$STAGING_PROJECT_NAME" \
     -v "$ROOT:$ROOT" \
     -w "$ROOT" \
     "$HURL_IMAGE" \
     "$@"
 }
 
+# Credentials flow through --secret so Hurl redacts them from
+# --report-html / --report-junit (audit F-002). Non-sensitive values
+# stay on --variable.
 common_vars=(
   --variable "base_url=$BASE_URL"
   --variable "connect_url=$CONNECT_URL"
-  --variable "jwt=$JWT"
   --variable "run_id=$RUN_ID"
+  --secret   "jwt=$JWT"
 )
 
 echo "==> running Hurl setup (serial; readiness probe)" >&2

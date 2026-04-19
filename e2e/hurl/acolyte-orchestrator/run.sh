@@ -18,9 +18,12 @@
 #                     (default: http://acolyte-orchestrator:8090)
 #   HURL_IMAGE      — Hurl container image
 #                     (default: ghcr.io/orange-opensource/hurl:7.1.0)
-#   RUN_ID          — unique run identifier for report directory naming
-#                     (default: $(date +%s))
-#   KEEP_STACK=1    — do not tear the stack down on exit (for debugging)
+#   RUN_ID               — unique run identifier for report directory naming
+#                          (default: $(date +%s))
+#   STAGING_PROJECT_NAME — compose project + network name (default: alt-staging).
+#                          CI sets alt-staging-acolyte-orchestrator so parallel
+#                          matrix jobs on the shared Docker daemon don't collide.
+#   KEEP_STACK=1         — do not tear the stack down on exit (for debugging)
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/../../.." && pwd)"
@@ -31,8 +34,13 @@ cd "$ROOT"
 : "${IMAGE_TAG:=main}"
 : "${GHCR_OWNER:=kaikei-e}"
 : "${RUN_ID:=$(date +%s)}"
+: "${STAGING_PROJECT_NAME:=alt-staging}"
 
-export IMAGE_TAG GHCR_OWNER
+export IMAGE_TAG GHCR_OWNER STAGING_PROJECT_NAME
+
+# shellcheck source=../_lib/render-slice.sh
+source "$ROOT/e2e/hurl/_lib/render-slice.sh"
+render_slice acolyte-orchestrator
 
 # Master key for the Meilisearch seed step in scenario 09 (gatherer
 # needs an indexed corpus to return non-empty hits). Anchored on the
@@ -45,16 +53,17 @@ mkdir -p "$REPORT_DIR"
 
 cleanup() {
   if [[ "${KEEP_STACK:-0}" != "1" ]]; then
-    echo "==> tearing down alt-staging stack" >&2
-    docker compose -f compose/compose.staging.yaml -p alt-staging \
+    echo "==> tearing down $STAGING_PROJECT_NAME stack" >&2
+    docker compose -f "$SLICE" -p "$STAGING_PROJECT_NAME" \
       down -v --remove-orphans >/dev/null 2>&1 || true
   else
-    echo "==> KEEP_STACK=1 — leaving alt-staging stack up" >&2
+    echo "==> KEEP_STACK=1 — leaving $STAGING_PROJECT_NAME stack up" >&2
   fi
+  rm -rf "$SLICE_DIR"
 }
 trap cleanup EXIT
 
-echo "==> bringing up acolyte-orchestrator staging slice" >&2
+echo "==> bringing up acolyte-orchestrator slice ($STAGING_PROJECT_NAME)" >&2
 # --build is required because acolyte-db-migrator, acolyte-orchestrator,
 # and news-creator-ollama-stub are local build contexts (no GHCR image).
 # --wait blocks on healthcheck convergence; the migrator's restart=no +
@@ -64,21 +73,18 @@ echo "==> bringing up acolyte-orchestrator staging slice" >&2
 # news-creator-ollama-stub is the destination of acolyte's
 # OllamaGateway calls (/api/generate, /api/chat). search-indexer +
 # meilisearch + stub-backend back the gatherer node's hybrid search.
-# All four containers are profile-tagged with `acolyte-orchestrator`
-# so a single --profile flag is enough.
-docker compose -f compose/compose.staging.yaml -p alt-staging \
-  --profile acolyte-orchestrator \
+docker compose -f "$SLICE" -p "$STAGING_PROJECT_NAME" \
   up -d --wait --build \
   acolyte-db acolyte-db-migrator acolyte-orchestrator \
   news-creator-ollama-stub \
   meilisearch stub-backend search-indexer
 
-# Run Hurl inside the alt-staging network. Mount the repo at the same
+# Run Hurl inside the staging network. Mount the repo at the same
 # absolute path so any `file,e2e/fixtures/...;` body resolves via
 # --file-root "$ROOT".
 hurl_run() {
   docker run --rm \
-    --network alt-staging \
+    --network "$STAGING_PROJECT_NAME" \
     -v "$ROOT:$ROOT" \
     -w "$ROOT" \
     "$HURL_IMAGE" \
@@ -104,7 +110,7 @@ echo "==> seeding meilisearch articles index for gatherer node" >&2
 # the pipeline still completes but with degraded content shape.
 hurl_run --test \
   --file-root "$ROOT" \
-  --variable "meili_master_key=$MEILI_MASTER_KEY" \
+  --secret "meili_master_key=$MEILI_MASTER_KEY" \
   e2e/hurl/search-indexer/00-seed-meilisearch.hurl
 
 # Collect suite files via nullglob so future increments can land

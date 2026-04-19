@@ -15,10 +15,13 @@
 #                     (default: http://knowledge-sovereign:9500)
 #   METRICS_URL     — sovereign admin+health URL
 #                     (default: http://knowledge-sovereign:9501)
-#   HURL_IMAGE      — Hurl container image (default: ghcr.io/orange-opensource/hurl:7.1.0)
-#   RUN_ID          — unique run identifier for dedupe_key isolation
-#                     (default: $(date +%s))
-#   KEEP_STACK=1    — do not tear the stack down on exit (for debugging)
+#   HURL_IMAGE           — Hurl container image (default: ghcr.io/orange-opensource/hurl:7.1.0)
+#   RUN_ID               — unique run identifier for dedupe_key isolation
+#                          (default: $(date +%s))
+#   STAGING_PROJECT_NAME — compose project + network name (default: alt-staging).
+#                          CI sets alt-staging-knowledge-sovereign so parallel
+#                          matrix jobs on the shared Docker daemon don't collide.
+#   KEEP_STACK=1         — do not tear the stack down on exit (for debugging)
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/../../.." && pwd)"
@@ -28,18 +31,26 @@ cd "$ROOT"
 : "${METRICS_URL:=http://knowledge-sovereign:9501}"
 : "${HURL_IMAGE:=ghcr.io/orange-opensource/hurl:7.1.0}"
 : "${RUN_ID:=$(date +%s)}"
+: "${STAGING_PROJECT_NAME:=alt-staging}"
+
+export STAGING_PROJECT_NAME
+
+# shellcheck source=../_lib/render-slice.sh
+source "$ROOT/e2e/hurl/_lib/render-slice.sh"
+render_slice knowledge-sovereign
 
 REPORT_DIR="$ROOT/e2e/reports/knowledge-sovereign-$RUN_ID"
 mkdir -p "$REPORT_DIR"
 
 cleanup() {
   if [[ "${KEEP_STACK:-0}" != "1" ]]; then
-    echo "==> tearing down alt-staging stack" >&2
-    docker compose -f compose/compose.staging.yaml -p alt-staging \
+    echo "==> tearing down $STAGING_PROJECT_NAME stack" >&2
+    docker compose -f "$SLICE" -p "$STAGING_PROJECT_NAME" \
       down -v --remove-orphans >/dev/null 2>&1 || true
   else
-    echo "==> KEEP_STACK=1 — leaving alt-staging stack up" >&2
+    echo "==> KEEP_STACK=1 — leaving $STAGING_PROJECT_NAME stack up" >&2
   fi
+  rm -rf "$SLICE_DIR"
 }
 trap cleanup EXIT
 
@@ -60,17 +71,16 @@ SIGNAL_ID="$(uuid)"
 TODAY="$(date -u +%Y-%m-%d)"
 OCCURRED_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 
-echo "==> bringing up knowledge-sovereign staging slice" >&2
-docker compose -f compose/compose.staging.yaml -p alt-staging \
-  --profile knowledge-sovereign \
+echo "==> bringing up knowledge-sovereign slice ($STAGING_PROJECT_NAME)" >&2
+docker compose -f "$SLICE" -p "$STAGING_PROJECT_NAME" \
   up -d --wait knowledge-sovereign-db knowledge-sovereign
 
-# Run Hurl inside the alt-staging network. Mount the repo at the same
+# Run Hurl inside the staging network. Mount the repo at the same
 # absolute path so any `file,e2e/fixtures/...;` body resolves via
 # --file-root "$ROOT".
 hurl_run() {
   docker run --rm \
-    --network alt-staging \
+    --network "$STAGING_PROJECT_NAME" \
     -v "$ROOT:$ROOT" \
     -w "$ROOT" \
     "$HURL_IMAGE" \

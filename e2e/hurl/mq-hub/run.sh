@@ -14,12 +14,15 @@
 # Environment overrides:
 #   IMAGE_TAG    — tag of ghcr.io/${GHCR_OWNER}/alt-mq-hub image (default: main)
 #   GHCR_OWNER   — GitHub container registry owner (default: kaikei-e)
-#   BASE_URL     — mq-hub URL as seen from the Hurl container
-#                  (default: http://mq-hub:9500 — service DNS on alt-staging)
-#   HURL_IMAGE   — Hurl container image (default: ghcr.io/orange-opensource/hurl:7.1.0)
-#   RUN_ID       — unique run identifier for consumer-group isolation
-#                  (default: $(date +%s))
-#   KEEP_STACK=1 — do not tear the stack down on exit (for debugging)
+#   BASE_URL             — mq-hub URL as seen from the Hurl container
+#                          (default: http://mq-hub:9500 — service DNS on the staging network)
+#   HURL_IMAGE           — Hurl container image (default: ghcr.io/orange-opensource/hurl:7.1.0)
+#   RUN_ID               — unique run identifier for consumer-group isolation
+#                          (default: $(date +%s))
+#   STAGING_PROJECT_NAME — compose project + network name (default: alt-staging).
+#                          CI sets alt-staging-mq-hub so parallel matrix jobs
+#                          on the shared Docker daemon don't collide.
+#   KEEP_STACK=1         — do not tear the stack down on exit (for debugging)
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/../../.." && pwd)"
@@ -30,18 +33,26 @@ cd "$ROOT"
 : "${BASE_URL:=http://mq-hub:9500}"
 : "${HURL_IMAGE:=ghcr.io/orange-opensource/hurl:7.1.0}"
 : "${RUN_ID:=$(date +%s)}"
+: "${STAGING_PROJECT_NAME:=alt-staging}"
+
+export IMAGE_TAG GHCR_OWNER STAGING_PROJECT_NAME
+
+# shellcheck source=../_lib/render-slice.sh
+source "$ROOT/e2e/hurl/_lib/render-slice.sh"
+render_slice mq-hub
 
 REPORT_DIR="$ROOT/e2e/reports/mq-hub-$RUN_ID"
 mkdir -p "$REPORT_DIR"
 
 cleanup() {
   if [[ "${KEEP_STACK:-0}" != "1" ]]; then
-    echo "==> tearing down alt-staging stack" >&2
-    docker compose -f compose/compose.staging.yaml -p alt-staging \
+    echo "==> tearing down $STAGING_PROJECT_NAME stack" >&2
+    docker compose -f "$SLICE" -p "$STAGING_PROJECT_NAME" \
       down -v --remove-orphans >/dev/null 2>&1 || true
   else
-    echo "==> KEEP_STACK=1 — leaving alt-staging stack up" >&2
+    echo "==> KEEP_STACK=1 — leaving $STAGING_PROJECT_NAME stack up" >&2
   fi
+  rm -rf "$SLICE_DIR"
 }
 trap cleanup EXIT
 
@@ -50,15 +61,14 @@ python3 e2e/fixtures/mq-hub/gen-batch-oversize.py \
   e2e/fixtures/mq-hub/batch-oversize.json
 
 echo "==> bringing up redis-streams + mq-hub (IMAGE_TAG=$IMAGE_TAG, GHCR_OWNER=$GHCR_OWNER)" >&2
-IMAGE_TAG="$IMAGE_TAG" GHCR_OWNER="$GHCR_OWNER" \
-  docker compose -f compose/compose.staging.yaml -p alt-staging \
+docker compose -f "$SLICE" -p "$STAGING_PROJECT_NAME" \
   up -d --wait redis-streams mq-hub
 
-# Run Hurl inside the alt-staging network. Mount repo at the same path so
+# Run Hurl inside the staging network. Mount repo at the same path so
 # `file,e2e/fixtures/...;` in the Hurl files resolves correctly.
 hurl_run() {
   docker run --rm \
-    --network alt-staging \
+    --network "$STAGING_PROJECT_NAME" \
     -v "$ROOT:$ROOT" \
     -w "$ROOT" \
     "$HURL_IMAGE" \
