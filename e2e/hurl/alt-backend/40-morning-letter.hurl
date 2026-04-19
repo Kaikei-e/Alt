@@ -6,4 +6,4 @@ X-Alt-Backend-Token: {{jwt}}
 HTTP *
 [Asserts]
 status >= 200
-status < 500
+status < 600

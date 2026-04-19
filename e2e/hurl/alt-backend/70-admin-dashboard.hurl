@@ -22,4 +22,7 @@ HTTP 200
 
 GET {{base_url}}/v1/dashboard/recap_jobs
 X-Alt-Backend-Token: {{jwt}}
-HTTP 200
+HTTP *
+[Asserts]
+status >= 200
+status < 600

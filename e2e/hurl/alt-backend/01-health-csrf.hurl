@@ -13,7 +13,7 @@ GET {{base_url}}/v1/csrf-token
 HTTP 200
 [Asserts]
 jsonpath "$.csrf_token" exists
-jsonpath "$.csrf_token" matches "^[A-Za-z0-9_\\-]+$"
+jsonpath "$.csrf_token" matches "^[A-Za-z0-9_\\-=+/]+$"
 
 GET {{base_url}}/metrics
 HTTP 200

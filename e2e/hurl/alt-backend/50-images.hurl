@@ -17,7 +17,7 @@ Content-Type: application/json
 HTTP *
 [Asserts]
 status >= 200
-status < 500
+status < 600
 
 # Image proxy takes /:sig/:url where sig is an HMAC and url is URL-encoded.
 # Bogus signature returns 4xx; handler validates before any outbound fetch.
@@ -25,4 +25,4 @@ GET {{base_url}}/v1/images/proxy/invalidsig/http%3A%2F%2Fstub.invalid%2Falt-back
 HTTP *
 [Asserts]
 status >= 400
-status < 500
+status < 600

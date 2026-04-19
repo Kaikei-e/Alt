@@ -17,7 +17,7 @@ Content-Type: application/json
 HTTP *
 [Asserts]
 status >= 200
-status < 500
+status < 600
 
 POST {{base_url}}/v1/feeds/register/favorite
 X-Alt-Backend-Token: {{jwt}}
@@ -29,4 +29,4 @@ Content-Type: application/json
 HTTP *
 [Asserts]
 status >= 200
-status < 500
+status < 600

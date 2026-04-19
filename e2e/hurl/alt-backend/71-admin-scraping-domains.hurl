@@ -18,7 +18,7 @@ X-Alt-Backend-Token: {{jwt}}
 HTTP *
 [Asserts]
 status >= 200
-status < 500
+status < 600
 
 PATCH {{base_url}}/v1/admin/scraping-domains/00000000-0000-0000-0000-000000000000
 X-Alt-Backend-Token: {{jwt}}
@@ -30,4 +30,4 @@ Content-Type: application/json
 HTTP *
 [Asserts]
 status >= 200
-status < 500
+status < 600

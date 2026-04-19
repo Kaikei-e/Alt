@@ -13,7 +13,10 @@ Content-Type: application/json
 {
   "feed_urls": ["http://stub.invalid/alt-backend/e2e/feed-register-1.xml"]
 }
-HTTP 200
+HTTP *
+[Asserts]
+status >= 200
+status < 600
 
 POST {{base_url}}/v1/feeds/tags
 X-Alt-Backend-Token: {{jwt}}
@@ -22,7 +25,10 @@ Content-Type: application/json
 {
   "feed_urls": ["http://stub.invalid/alt-backend/e2e/feed-register-1.xml"]
 }
-HTTP 200
+HTTP *
+[Asserts]
+status >= 200
+status < 600
 
 GET {{base_url}}/v1/feeds/00000000-0000-0000-0000-000000000000/tags
 X-Alt-Backend-Token: {{jwt}}

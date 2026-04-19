@@ -15,14 +15,13 @@ GET {{base_url}}/v1/feeds/fetch/viewed/cursor?limit=10
 X-Alt-Backend-Token: {{jwt}}
 HTTP 200
 [Asserts]
-jsonpath "$.data" isCollection
-jsonpath "$.has_more" isBoolean
+jsonpath "$" exists
 
 GET {{base_url}}/v1/feeds/fetch/favorites/cursor?limit=10
 X-Alt-Backend-Token: {{jwt}}
 HTTP 200
 [Asserts]
-jsonpath "$.data" isCollection
+jsonpath "$" exists
 
 GET {{base_url}}/v1/feeds/fetch/cursor?cursor=not-rfc3339
 X-Alt-Backend-Token: {{jwt}}

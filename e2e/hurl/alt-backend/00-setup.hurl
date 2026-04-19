@@ -16,10 +16,10 @@ jsonpath "$.database" == "connected"
 # would fail retry; a 4xx/404 from the server proves the listener is up.
 POST {{connect_url}}/alt.health.v1.HealthService/Ping
 Content-Type: application/json
-{}
 [Options]
 retry: 30
 retry-interval: 500
+{}
 HTTP *
 [Asserts]
 status >= 400

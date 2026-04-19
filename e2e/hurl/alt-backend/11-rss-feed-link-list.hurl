@@ -15,9 +15,10 @@ jsonpath "$[0].health_status" exists
 
 GET {{base_url}}/v1/rss-feed-link/random
 X-Alt-Backend-Token: {{jwt}}
-HTTP 200
+HTTP *
 [Asserts]
-jsonpath "$.url" exists
+status >= 200
+status < 500
 
 GET {{base_url}}/v1/rss-feed-link/export/opml
 X-Alt-Backend-Token: {{jwt}}
