@@ -68,5 +68,15 @@ func (r *Rotator) issue(ctx context.Context, reason string) (domain.CertState, e
 		return domain.StateFresh, nil
 	}
 	r.Observer.OnRenewed(true)
+	// Re-load the cert we just wrote so the observer's classified state
+	// reflects the new StateFresh immediately. Without this, /healthz
+	// (which reads observer.State()) stays at 503 until the next tick
+	// classifies an existing cert — up to TICK_INTERVAL after the first
+	// successful issue on a cold-started sidecar.
+	if cert, lerr := r.Loader.Load(ctx); lerr == nil {
+		now := time.Now()
+		state := domain.ClassifyRemaining(cert.NotBefore, cert.NotAfter, now, r.RenewAtFraction)
+		r.Observer.OnClassified(state, cert.NotAfter.Sub(now))
+	}
 	return domain.StateFresh, nil
 }

@@ -20,9 +20,19 @@ var (
 type fakeLoader struct {
 	cert *x509.Certificate
 	err  error
+	// postIssueCert, when non-nil, is returned from Load starting with the
+	// second call — simulates the on-disk cert appearing after the issuer
+	// wrote it. Preserves the existing "always return cert/err" behaviour
+	// when left nil.
+	postIssueCert *x509.Certificate
+	calls         int
 }
 
 func (f *fakeLoader) Load(_ context.Context) (*x509.Certificate, error) {
+	f.calls++
+	if f.postIssueCert != nil && f.calls > 1 {
+		return f.postIssueCert, nil
+	}
 	return f.cert, f.err
 }
 
@@ -158,5 +168,37 @@ func TestTick_IssuerFails_Propagates(t *testing.T) {
 	r := newRotator(loader, issuer, &fakeWriter{}, &fakeObs{})
 	if _, err := r.Tick(context.Background(), time.Now()); err == nil {
 		t.Fatal("expected error")
+	}
+}
+
+// TestTick_Missing_IssueUpdatesObserverClassified: after a successful
+// issue-on-missing, the observer must see OnClassified(StateFresh) so that
+// /healthz (which reads observer state) reports 200 immediately instead of
+// staying at 503 until the next cert-rotation tick. Cold-started sidecars
+// previously sat unhealthy for up to TICK_INTERVAL (default 5 min) after
+// their very first cert issue; kubelet / docker healthcheck saw the
+// misaligned state as if the service were broken.
+func TestTick_Missing_IssueUpdatesObserverClassified(t *testing.T) {
+	nb := time.Date(2026, 4, 20, 0, 0, 0, 0, time.UTC)
+	postCert := &x509.Certificate{NotBefore: nb, NotAfter: nb.Add(24 * time.Hour)}
+	loader := &fakeLoader{err: domain.ErrCertNotFound, postIssueCert: postCert}
+	issuer := &fakeIssuer{}
+	writer := &fakeWriter{}
+	obs := &fakeObs{}
+	r := newRotator(loader, issuer, writer, obs)
+
+	state, err := r.Tick(context.Background(), nb)
+	if err != nil || state != domain.StateFresh {
+		t.Fatalf("state=%s err=%v", state, err)
+	}
+	var sawFresh bool
+	for _, s := range obs.classified {
+		if s == domain.StateFresh {
+			sawFresh = true
+			break
+		}
+	}
+	if !sawFresh {
+		t.Fatalf("want OnClassified(StateFresh) after issue-on-missing; got classified=%v", obs.classified)
 	}
 }
