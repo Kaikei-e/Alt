@@ -1083,6 +1083,7 @@ mod tests {
             ("RECAP_3DAYS_WINDOW_DAYS", None),
             ("RECAP_GENRES", None),
             ("LLM_SUMMARY_TIMEOUT_SECS", None),
+            ("MTLS_ENFORCE", None),
         ]
     }
 
@@ -1300,6 +1301,97 @@ mod tests {
                 error,
                 ConfigError::Missing("ALT_BACKEND_BASE_URL")
             ));
+        });
+    }
+
+    #[test]
+    fn from_env_rejects_http_subworker_url_under_mtls_enforce() {
+        let _lock = ENV_MUTEX.lock().expect("env mutex");
+        let mut vars = base_env_vars();
+        vars.extend([
+            (
+                "RECAP_DB_DSN",
+                Some("postgres://recap:recap@localhost:5555/recap_db"),
+            ),
+            ("NEWS_CREATOR_BASE_URL", Some("https://news-creator:9443")),
+            ("SUBWORKER_BASE_URL", Some("http://recap-subworker:8002")),
+            ("ALT_BACKEND_BASE_URL", Some("https://alt-backend:9443")),
+            ("MTLS_ENFORCE", Some("true")),
+        ]);
+        temp_env::with_vars(vars, || {
+            let error = Config::from_env()
+                .expect_err("http subworker url under MTLS_ENFORCE=true should fail-closed");
+            assert!(
+                matches!(&error, ConfigError::Invalid { name, .. } if *name == "SUBWORKER_BASE_URL"),
+                "expected ConfigError::Invalid for SUBWORKER_BASE_URL, got: {error:?}"
+            );
+        });
+    }
+
+    #[test]
+    fn from_env_rejects_http_news_creator_url_under_mtls_enforce() {
+        let _lock = ENV_MUTEX.lock().expect("env mutex");
+        let mut vars = base_env_vars();
+        vars.extend([
+            (
+                "RECAP_DB_DSN",
+                Some("postgres://recap:recap@localhost:5555/recap_db"),
+            ),
+            ("NEWS_CREATOR_BASE_URL", Some("http://news-creator:11434")),
+            ("SUBWORKER_BASE_URL", Some("https://recap-subworker:9443")),
+            ("ALT_BACKEND_BASE_URL", Some("https://alt-backend:9443")),
+            ("MTLS_ENFORCE", Some("true")),
+        ]);
+        temp_env::with_vars(vars, || {
+            let error = Config::from_env()
+                .expect_err("http news-creator url under MTLS_ENFORCE=true should fail-closed");
+            assert!(
+                matches!(&error, ConfigError::Invalid { name, .. } if *name == "NEWS_CREATOR_BASE_URL"),
+                "expected ConfigError::Invalid for NEWS_CREATOR_BASE_URL, got: {error:?}"
+            );
+        });
+    }
+
+    #[test]
+    fn from_env_accepts_http_urls_when_mtls_enforce_disabled() {
+        let _lock = ENV_MUTEX.lock().expect("env mutex");
+        let mut vars = base_env_vars();
+        vars.extend([
+            (
+                "RECAP_DB_DSN",
+                Some("postgres://recap:recap@localhost:5555/recap_db"),
+            ),
+            ("NEWS_CREATOR_BASE_URL", Some("http://news-creator:11434")),
+            ("SUBWORKER_BASE_URL", Some("http://recap-subworker:8002")),
+            ("ALT_BACKEND_BASE_URL", Some("http://alt-backend:9000")),
+        ]);
+        temp_env::with_vars(vars, || {
+            let config = Config::from_env()
+                .expect("http urls should be accepted when MTLS_ENFORCE is unset");
+            assert_eq!(config.subworker_base_url(), "http://recap-subworker:8002");
+            assert_eq!(config.news_creator_base_url(), "http://news-creator:11434");
+        });
+    }
+
+    #[test]
+    fn from_env_accepts_https_urls_under_mtls_enforce() {
+        let _lock = ENV_MUTEX.lock().expect("env mutex");
+        let mut vars = base_env_vars();
+        vars.extend([
+            (
+                "RECAP_DB_DSN",
+                Some("postgres://recap:recap@localhost:5555/recap_db"),
+            ),
+            ("NEWS_CREATOR_BASE_URL", Some("https://news-creator:9443")),
+            ("SUBWORKER_BASE_URL", Some("https://recap-subworker:9443")),
+            ("ALT_BACKEND_BASE_URL", Some("https://alt-backend:9443")),
+            ("MTLS_ENFORCE", Some("true")),
+        ]);
+        temp_env::with_vars(vars, || {
+            let config = Config::from_env()
+                .expect("https urls under MTLS_ENFORCE=true should load successfully");
+            assert_eq!(config.subworker_base_url(), "https://recap-subworker:9443");
+            assert_eq!(config.news_creator_base_url(), "https://news-creator:9443");
         });
     }
 }
