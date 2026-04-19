@@ -11,13 +11,13 @@ class TestBuildHydePrompt:
     def test_en_target_builds_english_instructions(self) -> None:
         prompt = build_hyde_prompt("AI chip market 2026", "en")
         assert "English" in prompt
-        assert "<topic>" in prompt
+        assert "Japanese topic" in prompt
         assert "AI chip market 2026" in prompt
 
     def test_ja_target_builds_japanese_instructions(self) -> None:
         prompt = build_hyde_prompt("AI chip market 2026", "ja")
         assert "日本語" in prompt
-        assert "<topic>" in prompt
+        assert "英語トピック" in prompt
 
     def test_rejects_unknown_target_lang(self) -> None:
         with pytest.raises(ValueError):
@@ -25,7 +25,9 @@ class TestBuildHydePrompt:
 
     def test_topic_is_stripped(self) -> None:
         prompt = build_hyde_prompt("  topic  ", "en")
-        assert "<topic>\ntopic\n</topic>" in prompt
+        # Leading/trailing whitespace is removed before the topic is embedded.
+        assert "\ntopic\n" in prompt
+        assert "\n  topic  \n" not in prompt
 
 
 class TestSanitizeHydeOutput:

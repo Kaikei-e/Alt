@@ -50,6 +50,13 @@ class NewsCreatorHyDEGenerator:
                     prompt,
                     num_predict=self._num_predict,
                     temperature=0.0,
+                    # Gemma 4 variants advertise a `thinking` capability on
+                    # Ollama. When the prompt contains CJK characters the
+                    # model silently enters thinking mode, consumes the
+                    # num_predict budget on internal reasoning, and returns
+                    # an empty ``response`` field. Pinning ``think=False``
+                    # forces direct generation and recovers full output.
+                    think=False,
                 ),
                 timeout=self._timeout_s,
             )

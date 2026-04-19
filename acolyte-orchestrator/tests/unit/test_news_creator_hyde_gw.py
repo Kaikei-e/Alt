@@ -33,10 +33,29 @@ async def test_generator_returns_sanitised_output_for_en():
         "entrants pushing aggressive pricing across GPU and NPU segments. "
         "Analysts observe margin pressure in the consumer tier."
     )
-    gen = NewsCreatorHyDEGenerator(_FakeLLM(text=passage))
+    fake = _FakeLLM(text=passage)
+    gen = NewsCreatorHyDEGenerator(fake)
     out = await gen.generate_hypothetical_doc("AIチップ市場 2026", "en")
     assert out is not None
     assert "2026" in out
+
+
+@pytest.mark.asyncio
+async def test_generator_pins_think_false_to_avoid_cjk_empty_response():
+    """Gemma 4's thinking capability silently consumes num_predict on CJK
+    input and returns an empty ``response`` field. The HyDE gateway must
+    forward ``think=False`` so the model skips reasoning and emits text.
+    """
+    passage = (
+        "The 2026 AI chip market continues to expand with several new "
+        "entrants pushing aggressive pricing across GPU and NPU segments. "
+        "Analysts observe margin pressure in the consumer tier."
+    )
+    fake = _FakeLLM(text=passage)
+    gen = NewsCreatorHyDEGenerator(fake)
+    await gen.generate_hypothetical_doc("AIチップ市場 2026", "en")
+    assert len(fake.calls) == 1
+    assert fake.calls[0].get("think") is False
 
 
 @pytest.mark.asyncio

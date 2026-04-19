@@ -85,6 +85,8 @@ services:
       - MEILISEARCH_API_KEY_FILE=/run/secrets/meili_master_key
       - MEILISEARCH_SEARCH_API_KEY_FILE=/run/secrets/meili_search_key
       - MEILI_MASTER_KEY_FILE=/run/secrets/meili_master_key
+      - MEILI_HYBRID_EMBEDDER=${MEILI_HYBRID_EMBEDDER:-qwen3}
+      - MEILI_HYBRID_SEMANTIC_RATIO=${MEILI_HYBRID_SEMANTIC_RATIO:-0.7}
       - REDIS_STREAMS_URL=redis://redis-streams:6379
       - CONSUMER_ENABLED=true
       - CONSUMER_GROUP=search-indexer-group
