@@ -14,6 +14,7 @@ against it.
 | File | Used by | Role |
 |------|---------|------|
 | `meili_master_key.txt` | `search-indexer` profile | Meilisearch admin key |
+| `alt_backend_token_secret.txt` | `alt-backend` profile | HS256 secret used by alt-backend's JWT middleware to validate the test JWT in `e2e/fixtures/alt-backend/test-jwt.txt` |
 
 Other staging services inline their test passwords as plain env vars
 (e.g. `knowledge-sovereign-db` uses `POSTGRES_PASSWORD`) because the

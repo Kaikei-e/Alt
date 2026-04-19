@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<opml version="2.0">
+  <head>
+    <title>alt-backend E2E OPML import sample</title>
+  </head>
+  <body>
+    <outline text="E2E Stub Feed A" type="rss" xmlUrl="http://stub.invalid/alt-backend/e2e/feed-a.xml" htmlUrl="http://stub.invalid/alt-backend/e2e/a"/>
+    <outline text="E2E Stub Feed B" type="rss" xmlUrl="http://stub.invalid/alt-backend/e2e/feed-b.xml" htmlUrl="http://stub.invalid/alt-backend/e2e/b"/>
+    <outline text="E2E Stub Feed C" type="rss" xmlUrl="http://stub.invalid/alt-backend/e2e/feed-c.xml" htmlUrl="http://stub.invalid/alt-backend/e2e/c"/>
+  </body>
+</opml>
