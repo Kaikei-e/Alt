@@ -1,0 +1,14 @@
+# Pin the Rust toolchain so `cargo` / `rustup` resolve a concrete version
+# without depending on a machine-wide `rustup default`. 1.95.0 matches
+# the channel installed on the self-hosted deploy runner so rustup reuses
+# the on-box toolchain instead of downloading a duplicate. This file
+# unblocks the Pact CDC pipeline (scripts/pact-check.sh → cargo test
+# --lib contract) which failed when the runner had rustup but no default
+# toolchain configured. Dockerfile.recap-worker still pins
+# `rust:1.94-bookworm` for the production image — Rust's backward-compat
+# guarantees keep the two versions compatible; roll them forward in lock
+# step.
+[toolchain]
+channel = "1.95.0"
+components = ["rustfmt", "clippy"]
+profile = "minimal"
