@@ -1,7 +1,7 @@
 #!/bin/bash
 # Verifies F-001 / F-002 remediation:
 #   1. pki-agent JWK provisioner exists in step-ca ca.json (separate from bootstrap)
-#   2. Authority-level X.509 policy allowlists the 8 east-west subjects
+#   2. Authority-level X.509 policy allowlists the 10 east-west subjects
 #   3. CA rejects cert requests for a non-allowlisted CN (attacker.local)
 #   4. CA accepts cert requests for an allowlisted CN (alt-backend)
 #
@@ -22,6 +22,8 @@ EXPECTED_CNS=(
   tag-generator
   recap-worker
   acolyte-orchestrator
+  recap-subworker
+  news-creator
   localhost
 )
 
@@ -44,7 +46,7 @@ echo "=== Assertion 1: pki-agent provisioner exists ==="
 assert "pki-agent provisioner present in ca.json" \
   docker exec "$STEP_CA" sh -c "apk add --no-cache jq >/dev/null 2>&1 || true; jq -e '.authority.provisioners[] | select(.name==\"pki-agent\" and .type==\"JWK\")' $CA_CONFIG"
 
-echo "=== Assertion 2: authority.policy.x509 allowlist contains 9 names ==="
+echo "=== Assertion 2: authority.policy.x509 allowlist contains all expected names ==="
 for cn in "${EXPECTED_CNS[@]}"; do
   assert "allow.dns contains '$cn'" \
     docker exec "$STEP_CA" sh -c "jq -e --arg cn '$cn' '(.authority.policy.x509.allow.dns // []) | index(\$cn)' $CA_CONFIG"

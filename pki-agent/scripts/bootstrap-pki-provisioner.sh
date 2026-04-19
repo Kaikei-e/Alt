@@ -30,6 +30,8 @@ SUBJECTS=(
   tag-generator
   recap-worker
   acolyte-orchestrator
+  recap-subworker
+  news-creator
   localhost
 )
 
