@@ -1,0 +1,49 @@
+{
+  "metadata": {
+    "generator": "db-replay",
+    "section_key": "analysis",
+    "generated_at": "2026-04-19T12:00:00Z",
+    "phase": "Phase 0 complete (articles.language backfilled) / Phase 2 not started",
+    "note": "Computed by joining acolyte-db report_section_versions.citations_jsonb with alt-db articles.language. Measures the pre-semantic-hybrid retrieval baseline. Only reports that existed in acolyte-db at this time are present. Cross-lingual improvement is measured as Δlang_en_share_mean in subsequent phases."
+  },
+  "results": [
+    {
+      "topic": "2026年Q2 AI半導体サプライチェーン分析",
+      "source_count": 4,
+      "lang_mix_ratio": {"en": 1.0}
+    },
+    {
+      "topic": "AIチップの2026年動向",
+      "source_count": 3,
+      "lang_mix_ratio": {"ja": 1.0}
+    },
+    {
+      "topic": "RAM価格高騰について",
+      "source_count": 2,
+      "lang_mix_ratio": {"ja": 1.0}
+    },
+    {
+      "topic": "イラン情勢　分析レポート　2026年4月14日",
+      "source_count": 2,
+      "lang_mix_ratio": {"ja": 1.0}
+    },
+    {
+      "topic": "イラン情勢　分析レポート　2026年4月19日",
+      "source_count": 4,
+      "lang_mix_ratio": {"ja": 1.0}
+    },
+    {
+      "topic": "イラン石油危機",
+      "source_count": 5,
+      "lang_mix_ratio": {"ja": 1.0}
+    }
+  ],
+  "summary": {
+    "cases": 6,
+    "reports_with_en_citation": 1,
+    "reports_with_zero_en": 5,
+    "lang_en_share_mean": 0.16666666666666666,
+    "target_report_id": "eb67863f-f6f0-48a4-bd76-a9f1d9a79054",
+    "target_report_en_ratio": 0.0
+  }
+}

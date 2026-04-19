@@ -42,34 +42,19 @@ func (m *MockRagStreamPort) EXPECT() *MockRagStreamPortMockRecorder {
 	return m.recorder
 }
 
-// StreamChat mocks base method.
-func (m *MockRagStreamPort) StreamChat(ctx context.Context, req *connect.Request[v2.StreamChatRequest]) (*connect.ServerStreamForClient[v2.StreamChatResponse], error) {
+// DeleteConversation mocks base method.
+func (m *MockRagStreamPort) DeleteConversation(ctx context.Context, req *connect.Request[v2.DeleteConversationRequest]) (*connect.Response[v2.DeleteConversationResponse], error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "StreamChat", ctx, req)
-	ret0, _ := ret[0].(*connect.ServerStreamForClient[v2.StreamChatResponse])
+	ret := m.ctrl.Call(m, "DeleteConversation", ctx, req)
+	ret0, _ := ret[0].(*connect.Response[v2.DeleteConversationResponse])
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
-// StreamChat indicates an expected call of StreamChat.
-func (mr *MockRagStreamPortMockRecorder) StreamChat(ctx, req any) *gomock.Call {
+// DeleteConversation indicates an expected call of DeleteConversation.
+func (mr *MockRagStreamPortMockRecorder) DeleteConversation(ctx, req any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "StreamChat", reflect.TypeOf((*MockRagStreamPort)(nil).StreamChat), ctx, req)
-}
-
-// ListConversations mocks base method.
-func (m *MockRagStreamPort) ListConversations(ctx context.Context, req *connect.Request[v2.ListConversationsRequest]) (*connect.Response[v2.ListConversationsResponse], error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "ListConversations", ctx, req)
-	ret0, _ := ret[0].(*connect.Response[v2.ListConversationsResponse])
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
-}
-
-// ListConversations indicates an expected call of ListConversations.
-func (mr *MockRagStreamPortMockRecorder) ListConversations(ctx, req any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListConversations", reflect.TypeOf((*MockRagStreamPort)(nil).ListConversations), ctx, req)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteConversation", reflect.TypeOf((*MockRagStreamPort)(nil).DeleteConversation), ctx, req)
 }
 
 // GetConversation mocks base method.
@@ -87,17 +72,32 @@ func (mr *MockRagStreamPortMockRecorder) GetConversation(ctx, req any) *gomock.C
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetConversation", reflect.TypeOf((*MockRagStreamPort)(nil).GetConversation), ctx, req)
 }
 
-// DeleteConversation mocks base method.
-func (m *MockRagStreamPort) DeleteConversation(ctx context.Context, req *connect.Request[v2.DeleteConversationRequest]) (*connect.Response[v2.DeleteConversationResponse], error) {
+// ListConversations mocks base method.
+func (m *MockRagStreamPort) ListConversations(ctx context.Context, req *connect.Request[v2.ListConversationsRequest]) (*connect.Response[v2.ListConversationsResponse], error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "DeleteConversation", ctx, req)
-	ret0, _ := ret[0].(*connect.Response[v2.DeleteConversationResponse])
+	ret := m.ctrl.Call(m, "ListConversations", ctx, req)
+	ret0, _ := ret[0].(*connect.Response[v2.ListConversationsResponse])
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
-// DeleteConversation indicates an expected call of DeleteConversation.
-func (mr *MockRagStreamPortMockRecorder) DeleteConversation(ctx, req any) *gomock.Call {
+// ListConversations indicates an expected call of ListConversations.
+func (mr *MockRagStreamPortMockRecorder) ListConversations(ctx, req any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteConversation", reflect.TypeOf((*MockRagStreamPort)(nil).DeleteConversation), ctx, req)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListConversations", reflect.TypeOf((*MockRagStreamPort)(nil).ListConversations), ctx, req)
+}
+
+// StreamChat mocks base method.
+func (m *MockRagStreamPort) StreamChat(ctx context.Context, req *connect.Request[v2.StreamChatRequest]) (*connect.ServerStreamForClient[v2.StreamChatResponse], error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "StreamChat", ctx, req)
+	ret0, _ := ret[0].(*connect.ServerStreamForClient[v2.StreamChatResponse])
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// StreamChat indicates an expected call of StreamChat.
+func (mr *MockRagStreamPortMockRecorder) StreamChat(ctx, req any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "StreamChat", reflect.TypeOf((*MockRagStreamPort)(nil).StreamChat), ctx, req)
 }

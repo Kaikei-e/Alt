@@ -86,21 +86,6 @@ func (mr *MockRecapPortMockRecorder) GetThreeDayRecap(ctx any) *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetThreeDayRecap", reflect.TypeOf((*MockRecapPort)(nil).GetThreeDayRecap), ctx)
 }
 
-// SearchRecapsByTag mocks base method.
-func (m *MockRecapPort) SearchRecapsByTag(ctx context.Context, tagName string, limit int) ([]*domain.RecapSearchResult, error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "SearchRecapsByTag", ctx, tagName, limit)
-	ret0, _ := ret[0].([]*domain.RecapSearchResult)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
-}
-
-// SearchRecapsByTag indicates an expected call of SearchRecapsByTag.
-func (mr *MockRecapPortMockRecorder) SearchRecapsByTag(ctx, tagName, limit any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SearchRecapsByTag", reflect.TypeOf((*MockRecapPort)(nil).SearchRecapsByTag), ctx, tagName, limit)
-}
-
 // SearchRecapsByQuery mocks base method.
 func (m *MockRecapPort) SearchRecapsByQuery(ctx context.Context, query string, limit int) ([]*domain.RecapSearchResult, error) {
 	m.ctrl.T.Helper()
@@ -114,4 +99,19 @@ func (m *MockRecapPort) SearchRecapsByQuery(ctx context.Context, query string, l
 func (mr *MockRecapPortMockRecorder) SearchRecapsByQuery(ctx, query, limit any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SearchRecapsByQuery", reflect.TypeOf((*MockRecapPort)(nil).SearchRecapsByQuery), ctx, query, limit)
+}
+
+// SearchRecapsByTag mocks base method.
+func (m *MockRecapPort) SearchRecapsByTag(ctx context.Context, tagName string, limit int) ([]*domain.RecapSearchResult, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "SearchRecapsByTag", ctx, tagName, limit)
+	ret0, _ := ret[0].([]*domain.RecapSearchResult)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// SearchRecapsByTag indicates an expected call of SearchRecapsByTag.
+func (mr *MockRecapPortMockRecorder) SearchRecapsByTag(ctx, tagName, limit any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SearchRecapsByTag", reflect.TypeOf((*MockRecapPort)(nil).SearchRecapsByTag), ctx, tagName, limit)
 }

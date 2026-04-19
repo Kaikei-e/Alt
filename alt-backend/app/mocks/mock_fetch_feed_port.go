@@ -58,6 +58,441 @@ func (mr *MockFetchSingleFeedPortMockRecorder) FetchSingleFeed(ctx any) *gomock.
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "FetchSingleFeed", reflect.TypeOf((*MockFetchSingleFeedPort)(nil).FetchSingleFeed), ctx)
 }
 
+// MockFeedsByLinkPort is a mock of FeedsByLinkPort interface.
+type MockFeedsByLinkPort struct {
+	ctrl     *gomock.Controller
+	recorder *MockFeedsByLinkPortMockRecorder
+	isgomock struct{}
+}
+
+// MockFeedsByLinkPortMockRecorder is the mock recorder for MockFeedsByLinkPort.
+type MockFeedsByLinkPortMockRecorder struct {
+	mock *MockFeedsByLinkPort
+}
+
+// NewMockFeedsByLinkPort creates a new mock instance.
+func NewMockFeedsByLinkPort(ctrl *gomock.Controller) *MockFeedsByLinkPort {
+	mock := &MockFeedsByLinkPort{ctrl: ctrl}
+	mock.recorder = &MockFeedsByLinkPortMockRecorder{mock}
+	return mock
+}
+
+// EXPECT returns an object that allows the caller to indicate expected use.
+func (m *MockFeedsByLinkPort) EXPECT() *MockFeedsByLinkPortMockRecorder {
+	return m.recorder
+}
+
+// FetchFeeds mocks base method.
+func (m *MockFeedsByLinkPort) FetchFeeds(ctx context.Context, link string) ([]*domain.FeedItem, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "FetchFeeds", ctx, link)
+	ret0, _ := ret[0].([]*domain.FeedItem)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// FetchFeeds indicates an expected call of FetchFeeds.
+func (mr *MockFeedsByLinkPortMockRecorder) FetchFeeds(ctx, link any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "FetchFeeds", reflect.TypeOf((*MockFeedsByLinkPort)(nil).FetchFeeds), ctx, link)
+}
+
+// MockFeedListPort is a mock of FeedListPort interface.
+type MockFeedListPort struct {
+	ctrl     *gomock.Controller
+	recorder *MockFeedListPortMockRecorder
+	isgomock struct{}
+}
+
+// MockFeedListPortMockRecorder is the mock recorder for MockFeedListPort.
+type MockFeedListPortMockRecorder struct {
+	mock *MockFeedListPort
+}
+
+// NewMockFeedListPort creates a new mock instance.
+func NewMockFeedListPort(ctrl *gomock.Controller) *MockFeedListPort {
+	mock := &MockFeedListPort{ctrl: ctrl}
+	mock.recorder = &MockFeedListPortMockRecorder{mock}
+	return mock
+}
+
+// EXPECT returns an object that allows the caller to indicate expected use.
+func (m *MockFeedListPort) EXPECT() *MockFeedListPortMockRecorder {
+	return m.recorder
+}
+
+// FetchFeedsList mocks base method.
+func (m *MockFeedListPort) FetchFeedsList(ctx context.Context) ([]*domain.FeedItem, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "FetchFeedsList", ctx)
+	ret0, _ := ret[0].([]*domain.FeedItem)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// FetchFeedsList indicates an expected call of FetchFeedsList.
+func (mr *MockFeedListPortMockRecorder) FetchFeedsList(ctx any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "FetchFeedsList", reflect.TypeOf((*MockFeedListPort)(nil).FetchFeedsList), ctx)
+}
+
+// MockFeedListLimitPort is a mock of FeedListLimitPort interface.
+type MockFeedListLimitPort struct {
+	ctrl     *gomock.Controller
+	recorder *MockFeedListLimitPortMockRecorder
+	isgomock struct{}
+}
+
+// MockFeedListLimitPortMockRecorder is the mock recorder for MockFeedListLimitPort.
+type MockFeedListLimitPortMockRecorder struct {
+	mock *MockFeedListLimitPort
+}
+
+// NewMockFeedListLimitPort creates a new mock instance.
+func NewMockFeedListLimitPort(ctrl *gomock.Controller) *MockFeedListLimitPort {
+	mock := &MockFeedListLimitPort{ctrl: ctrl}
+	mock.recorder = &MockFeedListLimitPortMockRecorder{mock}
+	return mock
+}
+
+// EXPECT returns an object that allows the caller to indicate expected use.
+func (m *MockFeedListLimitPort) EXPECT() *MockFeedListLimitPortMockRecorder {
+	return m.recorder
+}
+
+// FetchFeedsListLimit mocks base method.
+func (m *MockFeedListLimitPort) FetchFeedsListLimit(ctx context.Context, offset int) ([]*domain.FeedItem, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "FetchFeedsListLimit", ctx, offset)
+	ret0, _ := ret[0].([]*domain.FeedItem)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// FetchFeedsListLimit indicates an expected call of FetchFeedsListLimit.
+func (mr *MockFeedListLimitPortMockRecorder) FetchFeedsListLimit(ctx, offset any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "FetchFeedsListLimit", reflect.TypeOf((*MockFeedListLimitPort)(nil).FetchFeedsListLimit), ctx, offset)
+}
+
+// MockFeedListPagePort is a mock of FeedListPagePort interface.
+type MockFeedListPagePort struct {
+	ctrl     *gomock.Controller
+	recorder *MockFeedListPagePortMockRecorder
+	isgomock struct{}
+}
+
+// MockFeedListPagePortMockRecorder is the mock recorder for MockFeedListPagePort.
+type MockFeedListPagePortMockRecorder struct {
+	mock *MockFeedListPagePort
+}
+
+// NewMockFeedListPagePort creates a new mock instance.
+func NewMockFeedListPagePort(ctrl *gomock.Controller) *MockFeedListPagePort {
+	mock := &MockFeedListPagePort{ctrl: ctrl}
+	mock.recorder = &MockFeedListPagePortMockRecorder{mock}
+	return mock
+}
+
+// EXPECT returns an object that allows the caller to indicate expected use.
+func (m *MockFeedListPagePort) EXPECT() *MockFeedListPagePortMockRecorder {
+	return m.recorder
+}
+
+// FetchFeedsListPage mocks base method.
+func (m *MockFeedListPagePort) FetchFeedsListPage(ctx context.Context, page int) ([]*domain.FeedItem, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "FetchFeedsListPage", ctx, page)
+	ret0, _ := ret[0].([]*domain.FeedItem)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// FetchFeedsListPage indicates an expected call of FetchFeedsListPage.
+func (mr *MockFeedListPagePortMockRecorder) FetchFeedsListPage(ctx, page any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "FetchFeedsListPage", reflect.TypeOf((*MockFeedListPagePort)(nil).FetchFeedsListPage), ctx, page)
+}
+
+// MockFeedCursorPort is a mock of FeedCursorPort interface.
+type MockFeedCursorPort struct {
+	ctrl     *gomock.Controller
+	recorder *MockFeedCursorPortMockRecorder
+	isgomock struct{}
+}
+
+// MockFeedCursorPortMockRecorder is the mock recorder for MockFeedCursorPort.
+type MockFeedCursorPortMockRecorder struct {
+	mock *MockFeedCursorPort
+}
+
+// NewMockFeedCursorPort creates a new mock instance.
+func NewMockFeedCursorPort(ctrl *gomock.Controller) *MockFeedCursorPort {
+	mock := &MockFeedCursorPort{ctrl: ctrl}
+	mock.recorder = &MockFeedCursorPortMockRecorder{mock}
+	return mock
+}
+
+// EXPECT returns an object that allows the caller to indicate expected use.
+func (m *MockFeedCursorPort) EXPECT() *MockFeedCursorPortMockRecorder {
+	return m.recorder
+}
+
+// FetchFeedsListCursor mocks base method.
+func (m *MockFeedCursorPort) FetchFeedsListCursor(ctx context.Context, cursor *time.Time, limit int, excludeFeedLinkIDs []uuid.UUID) ([]*domain.FeedItem, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "FetchFeedsListCursor", ctx, cursor, limit, excludeFeedLinkIDs)
+	ret0, _ := ret[0].([]*domain.FeedItem)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// FetchFeedsListCursor indicates an expected call of FetchFeedsListCursor.
+func (mr *MockFeedCursorPortMockRecorder) FetchFeedsListCursor(ctx, cursor, limit, excludeFeedLinkIDs any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "FetchFeedsListCursor", reflect.TypeOf((*MockFeedCursorPort)(nil).FetchFeedsListCursor), ctx, cursor, limit, excludeFeedLinkIDs)
+}
+
+// MockUnreadFeedCursorPort is a mock of UnreadFeedCursorPort interface.
+type MockUnreadFeedCursorPort struct {
+	ctrl     *gomock.Controller
+	recorder *MockUnreadFeedCursorPortMockRecorder
+	isgomock struct{}
+}
+
+// MockUnreadFeedCursorPortMockRecorder is the mock recorder for MockUnreadFeedCursorPort.
+type MockUnreadFeedCursorPortMockRecorder struct {
+	mock *MockUnreadFeedCursorPort
+}
+
+// NewMockUnreadFeedCursorPort creates a new mock instance.
+func NewMockUnreadFeedCursorPort(ctrl *gomock.Controller) *MockUnreadFeedCursorPort {
+	mock := &MockUnreadFeedCursorPort{ctrl: ctrl}
+	mock.recorder = &MockUnreadFeedCursorPortMockRecorder{mock}
+	return mock
+}
+
+// EXPECT returns an object that allows the caller to indicate expected use.
+func (m *MockUnreadFeedCursorPort) EXPECT() *MockUnreadFeedCursorPortMockRecorder {
+	return m.recorder
+}
+
+// FetchUnreadFeedsListCursor mocks base method.
+func (m *MockUnreadFeedCursorPort) FetchUnreadFeedsListCursor(ctx context.Context, cursor *time.Time, limit int, excludeFeedLinkIDs []uuid.UUID) ([]*domain.FeedItem, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "FetchUnreadFeedsListCursor", ctx, cursor, limit, excludeFeedLinkIDs)
+	ret0, _ := ret[0].([]*domain.FeedItem)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// FetchUnreadFeedsListCursor indicates an expected call of FetchUnreadFeedsListCursor.
+func (mr *MockUnreadFeedCursorPortMockRecorder) FetchUnreadFeedsListCursor(ctx, cursor, limit, excludeFeedLinkIDs any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "FetchUnreadFeedsListCursor", reflect.TypeOf((*MockUnreadFeedCursorPort)(nil).FetchUnreadFeedsListCursor), ctx, cursor, limit, excludeFeedLinkIDs)
+}
+
+// MockReadFeedCursorPort is a mock of ReadFeedCursorPort interface.
+type MockReadFeedCursorPort struct {
+	ctrl     *gomock.Controller
+	recorder *MockReadFeedCursorPortMockRecorder
+	isgomock struct{}
+}
+
+// MockReadFeedCursorPortMockRecorder is the mock recorder for MockReadFeedCursorPort.
+type MockReadFeedCursorPortMockRecorder struct {
+	mock *MockReadFeedCursorPort
+}
+
+// NewMockReadFeedCursorPort creates a new mock instance.
+func NewMockReadFeedCursorPort(ctrl *gomock.Controller) *MockReadFeedCursorPort {
+	mock := &MockReadFeedCursorPort{ctrl: ctrl}
+	mock.recorder = &MockReadFeedCursorPortMockRecorder{mock}
+	return mock
+}
+
+// EXPECT returns an object that allows the caller to indicate expected use.
+func (m *MockReadFeedCursorPort) EXPECT() *MockReadFeedCursorPortMockRecorder {
+	return m.recorder
+}
+
+// FetchReadFeedsListCursor mocks base method.
+func (m *MockReadFeedCursorPort) FetchReadFeedsListCursor(ctx context.Context, cursor *time.Time, limit int) ([]*domain.FeedItem, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "FetchReadFeedsListCursor", ctx, cursor, limit)
+	ret0, _ := ret[0].([]*domain.FeedItem)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// FetchReadFeedsListCursor indicates an expected call of FetchReadFeedsListCursor.
+func (mr *MockReadFeedCursorPortMockRecorder) FetchReadFeedsListCursor(ctx, cursor, limit any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "FetchReadFeedsListCursor", reflect.TypeOf((*MockReadFeedCursorPort)(nil).FetchReadFeedsListCursor), ctx, cursor, limit)
+}
+
+// MockFavoriteFeedCursorPort is a mock of FavoriteFeedCursorPort interface.
+type MockFavoriteFeedCursorPort struct {
+	ctrl     *gomock.Controller
+	recorder *MockFavoriteFeedCursorPortMockRecorder
+	isgomock struct{}
+}
+
+// MockFavoriteFeedCursorPortMockRecorder is the mock recorder for MockFavoriteFeedCursorPort.
+type MockFavoriteFeedCursorPortMockRecorder struct {
+	mock *MockFavoriteFeedCursorPort
+}
+
+// NewMockFavoriteFeedCursorPort creates a new mock instance.
+func NewMockFavoriteFeedCursorPort(ctrl *gomock.Controller) *MockFavoriteFeedCursorPort {
+	mock := &MockFavoriteFeedCursorPort{ctrl: ctrl}
+	mock.recorder = &MockFavoriteFeedCursorPortMockRecorder{mock}
+	return mock
+}
+
+// EXPECT returns an object that allows the caller to indicate expected use.
+func (m *MockFavoriteFeedCursorPort) EXPECT() *MockFavoriteFeedCursorPortMockRecorder {
+	return m.recorder
+}
+
+// FetchFavoriteFeedsListCursor mocks base method.
+func (m *MockFavoriteFeedCursorPort) FetchFavoriteFeedsListCursor(ctx context.Context, cursor *time.Time, limit int) ([]*domain.FeedItem, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "FetchFavoriteFeedsListCursor", ctx, cursor, limit)
+	ret0, _ := ret[0].([]*domain.FeedItem)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// FetchFavoriteFeedsListCursor indicates an expected call of FetchFavoriteFeedsListCursor.
+func (mr *MockFavoriteFeedCursorPortMockRecorder) FetchFavoriteFeedsListCursor(ctx, cursor, limit any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "FetchFavoriteFeedsListCursor", reflect.TypeOf((*MockFavoriteFeedCursorPort)(nil).FetchFavoriteFeedsListCursor), ctx, cursor, limit)
+}
+
+// MockFeedListAllPort is a mock of FeedListAllPort interface.
+type MockFeedListAllPort struct {
+	ctrl     *gomock.Controller
+	recorder *MockFeedListAllPortMockRecorder
+	isgomock struct{}
+}
+
+// MockFeedListAllPortMockRecorder is the mock recorder for MockFeedListAllPort.
+type MockFeedListAllPortMockRecorder struct {
+	mock *MockFeedListAllPort
+}
+
+// NewMockFeedListAllPort creates a new mock instance.
+func NewMockFeedListAllPort(ctrl *gomock.Controller) *MockFeedListAllPort {
+	mock := &MockFeedListAllPort{ctrl: ctrl}
+	mock.recorder = &MockFeedListAllPortMockRecorder{mock}
+	return mock
+}
+
+// EXPECT returns an object that allows the caller to indicate expected use.
+func (m *MockFeedListAllPort) EXPECT() *MockFeedListAllPortMockRecorder {
+	return m.recorder
+}
+
+// FetchFeedsList mocks base method.
+func (m *MockFeedListAllPort) FetchFeedsList(ctx context.Context) ([]*domain.FeedItem, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "FetchFeedsList", ctx)
+	ret0, _ := ret[0].([]*domain.FeedItem)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// FetchFeedsList indicates an expected call of FetchFeedsList.
+func (mr *MockFeedListAllPortMockRecorder) FetchFeedsList(ctx any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "FetchFeedsList", reflect.TypeOf((*MockFeedListAllPort)(nil).FetchFeedsList), ctx)
+}
+
+// FetchFeedsListLimit mocks base method.
+func (m *MockFeedListAllPort) FetchFeedsListLimit(ctx context.Context, offset int) ([]*domain.FeedItem, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "FetchFeedsListLimit", ctx, offset)
+	ret0, _ := ret[0].([]*domain.FeedItem)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// FetchFeedsListLimit indicates an expected call of FetchFeedsListLimit.
+func (mr *MockFeedListAllPortMockRecorder) FetchFeedsListLimit(ctx, offset any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "FetchFeedsListLimit", reflect.TypeOf((*MockFeedListAllPort)(nil).FetchFeedsListLimit), ctx, offset)
+}
+
+// FetchFeedsListPage mocks base method.
+func (m *MockFeedListAllPort) FetchFeedsListPage(ctx context.Context, page int) ([]*domain.FeedItem, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "FetchFeedsListPage", ctx, page)
+	ret0, _ := ret[0].([]*domain.FeedItem)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// FetchFeedsListPage indicates an expected call of FetchFeedsListPage.
+func (mr *MockFeedListAllPortMockRecorder) FetchFeedsListPage(ctx, page any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "FetchFeedsListPage", reflect.TypeOf((*MockFeedListAllPort)(nil).FetchFeedsListPage), ctx, page)
+}
+
+// MockReadAndFavoriteFeedCursorPort is a mock of ReadAndFavoriteFeedCursorPort interface.
+type MockReadAndFavoriteFeedCursorPort struct {
+	ctrl     *gomock.Controller
+	recorder *MockReadAndFavoriteFeedCursorPortMockRecorder
+	isgomock struct{}
+}
+
+// MockReadAndFavoriteFeedCursorPortMockRecorder is the mock recorder for MockReadAndFavoriteFeedCursorPort.
+type MockReadAndFavoriteFeedCursorPortMockRecorder struct {
+	mock *MockReadAndFavoriteFeedCursorPort
+}
+
+// NewMockReadAndFavoriteFeedCursorPort creates a new mock instance.
+func NewMockReadAndFavoriteFeedCursorPort(ctrl *gomock.Controller) *MockReadAndFavoriteFeedCursorPort {
+	mock := &MockReadAndFavoriteFeedCursorPort{ctrl: ctrl}
+	mock.recorder = &MockReadAndFavoriteFeedCursorPortMockRecorder{mock}
+	return mock
+}
+
+// EXPECT returns an object that allows the caller to indicate expected use.
+func (m *MockReadAndFavoriteFeedCursorPort) EXPECT() *MockReadAndFavoriteFeedCursorPortMockRecorder {
+	return m.recorder
+}
+
+// FetchFavoriteFeedsListCursor mocks base method.
+func (m *MockReadAndFavoriteFeedCursorPort) FetchFavoriteFeedsListCursor(ctx context.Context, cursor *time.Time, limit int) ([]*domain.FeedItem, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "FetchFavoriteFeedsListCursor", ctx, cursor, limit)
+	ret0, _ := ret[0].([]*domain.FeedItem)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// FetchFavoriteFeedsListCursor indicates an expected call of FetchFavoriteFeedsListCursor.
+func (mr *MockReadAndFavoriteFeedCursorPortMockRecorder) FetchFavoriteFeedsListCursor(ctx, cursor, limit any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "FetchFavoriteFeedsListCursor", reflect.TypeOf((*MockReadAndFavoriteFeedCursorPort)(nil).FetchFavoriteFeedsListCursor), ctx, cursor, limit)
+}
+
+// FetchReadFeedsListCursor mocks base method.
+func (m *MockReadAndFavoriteFeedCursorPort) FetchReadFeedsListCursor(ctx context.Context, cursor *time.Time, limit int) ([]*domain.FeedItem, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "FetchReadFeedsListCursor", ctx, cursor, limit)
+	ret0, _ := ret[0].([]*domain.FeedItem)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// FetchReadFeedsListCursor indicates an expected call of FetchReadFeedsListCursor.
+func (mr *MockReadAndFavoriteFeedCursorPortMockRecorder) FetchReadFeedsListCursor(ctx, cursor, limit any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "FetchReadFeedsListCursor", reflect.TypeOf((*MockReadAndFavoriteFeedCursorPort)(nil).FetchReadFeedsListCursor), ctx, cursor, limit)
+}
+
 // MockFetchFeedsPort is a mock of FetchFeedsPort interface.
 type MockFetchFeedsPort struct {
 	ctrl     *gomock.Controller
