@@ -13,6 +13,7 @@ services:
     env_file:
       - ../.env
     mem_limit: 128m
+    image: ghcr.io/${GHCR_OWNER:-kaikei-e}/alt-pre-processor-sidecar:${IMAGE_TAG:-main}
     build:
       context: ../pre-processor-sidecar
       dockerfile: Dockerfile
@@ -128,6 +129,7 @@ services:
     env_file:
       - ../.env
     mem_limit: 3g
+    image: ghcr.io/${GHCR_OWNER:-kaikei-e}/alt-tag-generator:${IMAGE_TAG:-main}
     build:
       context: ../tag-generator
       dockerfile: Dockerfile.tag-generator
@@ -195,6 +197,7 @@ services:
       - alt-network
 
   auth-token-manager:
+    image: ghcr.io/${GHCR_OWNER:-kaikei-e}/alt-auth-token-manager:${IMAGE_TAG:-main}
     build:
       context: ../auth-token-manager
       dockerfile: Dockerfile

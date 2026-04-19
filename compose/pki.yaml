@@ -11,7 +11,7 @@ include:
 # each owns exactly one cert volume. Runs as root so it can chown the cert
 # files to the consumer's uid (65532 / 999) before atomic rename.
 x-pki-agent: &pki-agent
-  image: alt/pki-agent:latest
+  image: ghcr.io/${GHCR_OWNER:-kaikei-e}/alt-pki-agent:${IMAGE_TAG:-main}
   build:
     context: ../pki-agent
     dockerfile: Dockerfile

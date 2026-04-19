@@ -6,6 +6,7 @@ include:
 
 services:
   rask-log-aggregator:
+    image: ghcr.io/${GHCR_OWNER:-kaikei-e}/alt-rask-log-aggregator:${IMAGE_TAG:-main}
     build:
       context: ../rask-log-aggregator
       dockerfile: Dockerfile.rask-log-aggregator
@@ -46,6 +47,7 @@ services:
       start_period: 10s
 
   nginx-logs:
+    image: ghcr.io/${GHCR_OWNER:-kaikei-e}/alt-rask-log-forwarder:${IMAGE_TAG:-main}
     build:
       context: ../rask-log-forwarder
       dockerfile: Dockerfile.rask-log-forwarder
@@ -73,6 +75,7 @@ services:
     stop_grace_period: 12s
 
   alt-backend-logs:
+    image: ghcr.io/${GHCR_OWNER:-kaikei-e}/alt-rask-log-forwarder:${IMAGE_TAG:-main}
     build:
       context: ../rask-log-forwarder
       dockerfile: Dockerfile.rask-log-forwarder
@@ -100,6 +103,7 @@ services:
     stop_grace_period: 12s
 
   auth-hub-logs:
+    image: ghcr.io/${GHCR_OWNER:-kaikei-e}/alt-rask-log-forwarder:${IMAGE_TAG:-main}
     build:
       context: ../rask-log-forwarder
       dockerfile: Dockerfile.rask-log-forwarder
@@ -127,6 +131,7 @@ services:
     stop_grace_period: 12s
 
   tag-generator-logs:
+    image: ghcr.io/${GHCR_OWNER:-kaikei-e}/alt-rask-log-forwarder:${IMAGE_TAG:-main}
     build:
       context: ../rask-log-forwarder
       dockerfile: Dockerfile.rask-log-forwarder
@@ -154,6 +159,7 @@ services:
     stop_grace_period: 12s
 
   pre-processor-logs:
+    image: ghcr.io/${GHCR_OWNER:-kaikei-e}/alt-rask-log-forwarder:${IMAGE_TAG:-main}
     build:
       context: ../rask-log-forwarder
       dockerfile: Dockerfile.rask-log-forwarder
@@ -181,6 +187,7 @@ services:
     stop_grace_period: 12s
 
   search-indexer-logs:
+    image: ghcr.io/${GHCR_OWNER:-kaikei-e}/alt-rask-log-forwarder:${IMAGE_TAG:-main}
     build:
       context: ../rask-log-forwarder
       dockerfile: Dockerfile.rask-log-forwarder
@@ -208,6 +215,7 @@ services:
     stop_grace_period: 12s
 
   news-creator-logs:
+    image: ghcr.io/${GHCR_OWNER:-kaikei-e}/alt-rask-log-forwarder:${IMAGE_TAG:-main}
     build:
       context: ../rask-log-forwarder
       dockerfile: Dockerfile.rask-log-forwarder
@@ -236,6 +244,7 @@ services:
 
   # ADR-091: news-creator-backend (Ollama) ログ収集
   news-creator-backend-logs:
+    image: ghcr.io/${GHCR_OWNER:-kaikei-e}/alt-rask-log-forwarder:${IMAGE_TAG:-main}
     build:
       context: ../rask-log-forwarder
       dockerfile: Dockerfile.rask-log-forwarder
@@ -267,6 +276,7 @@ services:
   # Recap stack forwarders
   # NOTE: db-logs removed - SQL query fragments provide low observability value (74% of all logs)
   recap-worker-logs:
+    image: ghcr.io/${GHCR_OWNER:-kaikei-e}/alt-rask-log-forwarder:${IMAGE_TAG:-main}
     build:
       context: ../rask-log-forwarder
       dockerfile: Dockerfile.rask-log-forwarder
@@ -294,6 +304,7 @@ services:
     stop_grace_period: 12s
 
   recap-subworker-logs:
+    image: ghcr.io/${GHCR_OWNER:-kaikei-e}/alt-rask-log-forwarder:${IMAGE_TAG:-main}
     build:
       context: ../rask-log-forwarder
       dockerfile: Dockerfile.rask-log-forwarder
@@ -321,6 +332,7 @@ services:
     stop_grace_period: 12s
 
   dashboard-logs:
+    image: ghcr.io/${GHCR_OWNER:-kaikei-e}/alt-rask-log-forwarder:${IMAGE_TAG:-main}
     build:
       context: ../rask-log-forwarder
       dockerfile: Dockerfile.rask-log-forwarder
@@ -348,6 +360,7 @@ services:
     stop_grace_period: 12s
 
   recap-evaluator-logs:
+    image: ghcr.io/${GHCR_OWNER:-kaikei-e}/alt-rask-log-forwarder:${IMAGE_TAG:-main}
     build:
       context: ../rask-log-forwarder
       dockerfile: Dockerfile.rask-log-forwarder
@@ -377,6 +390,7 @@ services:
   # RAG stack forwarders
   # NOTE: recap-db-logs removed - SQL query fragments provide low observability value
   rag-orchestrator-logs:
+    image: ghcr.io/${GHCR_OWNER:-kaikei-e}/alt-rask-log-forwarder:${IMAGE_TAG:-main}
     build:
       context: ../rask-log-forwarder
       dockerfile: Dockerfile.rask-log-forwarder
@@ -404,6 +418,7 @@ services:
     stop_grace_period: 12s
 
   mq-hub-logs:
+    image: ghcr.io/${GHCR_OWNER:-kaikei-e}/alt-rask-log-forwarder:${IMAGE_TAG:-main}
     build:
       context: ../rask-log-forwarder
       dockerfile: Dockerfile.rask-log-forwarder

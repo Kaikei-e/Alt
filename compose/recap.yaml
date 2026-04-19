@@ -81,6 +81,7 @@ services:
     env_file:
       - ../.env
     mem_limit: 2048m
+    image: ghcr.io/${GHCR_OWNER:-kaikei-e}/alt-recap-worker:${IMAGE_TAG:-main}
     build:
       context: ../recap-worker
       dockerfile: Dockerfile.recap-worker
@@ -160,6 +161,7 @@ services:
     env_file:
       - ../.env
     mem_limit: 8192m
+    image: ghcr.io/${GHCR_OWNER:-kaikei-e}/alt-recap-subworker:${IMAGE_TAG:-main}
     build:
       context: ../recap-subworker
       dockerfile: Dockerfile.recap-subworker
@@ -243,6 +245,7 @@ services:
     env_file:
       - ../.env
     mem_limit: 128m
+    image: ghcr.io/${GHCR_OWNER:-kaikei-e}/alt-dashboard:${IMAGE_TAG:-main}
     build:
       context: ../dashboard
       dockerfile: Dockerfile
@@ -281,6 +284,7 @@ services:
         max-file: "3"
 
   recap-evaluator:
+    image: ghcr.io/${GHCR_OWNER:-kaikei-e}/alt-recap-evaluator:${IMAGE_TAG:-main}
     build:
       context: ../recap-evaluator
       dockerfile: Dockerfile

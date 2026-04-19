@@ -55,6 +55,7 @@ services:
     restart: "no"
 
   knowledge-sovereign:
+    image: ghcr.io/${GHCR_OWNER:-kaikei-e}/alt-knowledge-sovereign:${IMAGE_TAG:-main}
     build:
       context: ../knowledge-sovereign
       dockerfile: Dockerfile.sovereign

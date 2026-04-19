@@ -59,6 +59,7 @@ services:
   alt-frontend-sv:
     env_file:
       - ../.env
+    image: ghcr.io/${GHCR_OWNER:-kaikei-e}/alt-alt-frontend-sv:${IMAGE_TAG:-main}
     build:
       context: ../alt-frontend-sv
       dockerfile: Dockerfile
@@ -104,6 +105,7 @@ services:
   alt-backend:
     env_file:
       - ../.env
+    image: ghcr.io/${GHCR_OWNER:-kaikei-e}/alt-alt-backend:${IMAGE_TAG:-main}
     build:
       context: ../alt-backend
       dockerfile: Dockerfile.backend

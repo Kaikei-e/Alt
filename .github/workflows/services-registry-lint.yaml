@@ -15,19 +15,23 @@ on:
     paths:
       - 'services.yaml'
       - 'scripts/regen-service-registry.py'
+      - 'scripts/compose-image-audit.py'
       - '.github/workflows/docker-build.yaml'
       - '.github/workflows/services-registry-lint.yaml'
       - 'c2quay.yml'
       - '.github/generated/alt-deploy-service-paths.js'
+      - 'compose/**'
   push:
     branches: [main]
     paths:
       - 'services.yaml'
       - 'scripts/regen-service-registry.py'
+      - 'scripts/compose-image-audit.py'
       - '.github/workflows/docker-build.yaml'
       - '.github/workflows/services-registry-lint.yaml'
       - 'c2quay.yml'
       - '.github/generated/alt-deploy-service-paths.js'
+      - 'compose/**'
 
 permissions:
   contents: read
@@ -53,3 +57,11 @@ jobs:
 
       - name: Verify registry artifacts are in sync
         run: python3 scripts/regen-service-registry.py --check
+
+      - name: Verify every GHCR-built service declares image: in production compose
+        # Prevents the failure mode where only `build:` is set, making
+        # `docker compose pull` a no-op on pull-deploy hosts and leaving the
+        # running container on a stale local image. Incident: 2026-04-19,
+        # Acolyte citation fix deployed code but container kept the pre-fix
+        # `alt-acolyte-orchestrator:latest` local build.
+        run: python3 scripts/compose-image-audit.py

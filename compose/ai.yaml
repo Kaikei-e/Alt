@@ -102,6 +102,7 @@ services:
     mem_limit: 128m
     env_file:
       - ../.env
+    image: ghcr.io/${GHCR_OWNER:-kaikei-e}/alt-news-creator:${IMAGE_TAG:-main}
     build:
       context: ../news-creator
       dockerfile: Dockerfile.app
@@ -187,6 +188,7 @@ services:
     env_file:
       - ../.env
     mem_limit: 128m
+    image: ghcr.io/${GHCR_OWNER:-kaikei-e}/alt-pre-processor:${IMAGE_TAG:-main}
     build:
       context: ../pre-processor
       dockerfile: Dockerfile
