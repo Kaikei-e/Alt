@@ -787,6 +787,145 @@ services:
       retries: 30
       start_period: 10s
 
+  # auth-hub suite — kratos-db Postgres + Kratos migrator + Kratos + auth-hub.
+  # auth-hub is stateless; the "real DB" kept under test is kratos-db, which
+  # Kratos owns entirely. No PgBouncer in the staging slice (one fewer
+  # cold-start surface without changing what we're testing).
+  auth-hub-db:
+    image: postgres:16-alpine
+    container_name: alt-staging-auth-hub-db
+    profiles: [auth-hub]
+    environment:
+      POSTGRES_DB: kratos
+      POSTGRES_USER: kratos_user
+      POSTGRES_PASSWORD: alt-staging-test-kratos-password
+    volumes:
+      # ADR-000781 parity. Kratos owns its own schema so no extra roles
+      # are required today, but the hook stays mounted so future seed SQL
+      # can land without a compose edit.
+      - ../e2e/fixtures/auth-hub/db-init:/docker-entrypoint-initdb.d:ro
+    networks:
+      - alt-staging
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U kratos_user -d kratos"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+      start_period: 3s
+
+  auth-hub-db-migrator:
+    image: oryd/kratos:v1.3.0
+    container_name: alt-staging-auth-hub-db-migrator
+    profiles: [auth-hub]
+    # Reuse the prod Kratos entrypoint so ${KRATOS_COOKIE_SECRET} and
+    # ${KRATOS_CIPHER_SECRET} in kratos.yml are substituted from the
+    # mounted secret files before `kratos migrate` starts. Kratos
+    # refuses to boot (even for migrate) with empty cookie/cipher
+    # secrets, so the migrator needs them too.
+    entrypoint: ["/entrypoint.sh"]
+    command:
+      ["kratos", "migrate", "sql", "-e", "--yes", "--config", "/etc/config/kratos/kratos.yml"]
+    environment:
+      - KRATOS_DB_USER=kratos_user
+      - KRATOS_DB_PASSWORD=alt-staging-test-kratos-password
+      - KRATOS_DB_HOST=auth-hub-db
+      - KRATOS_DB_PORT=5432
+      - KRATOS_DB_NAME=kratos
+      - KRATOS_DB_SSLMODE=disable
+      # The reused kratos/entrypoint.sh reads /run/secrets/kratos_cookie_secret
+      # and /run/secrets/kratos_cipher_secret (prod names) and sed-substitutes
+      # them into the YAML. The compose `secrets:` keys below preserve those
+      # filenames while still pointing at the auth-hub-scoped fixture files.
+      - KRATOS_COOKIE_SECRET_FILE=/run/secrets/kratos_cookie_secret
+      - KRATOS_CIPHER_SECRET_FILE=/run/secrets/kratos_cipher_secret
+    secrets:
+      - kratos_cookie_secret
+      - kratos_cipher_secret
+    volumes:
+      - ../e2e/fixtures/auth-hub/kratos:/etc/config/kratos:ro
+      - ../kratos/entrypoint.sh:/entrypoint.sh:ro
+    depends_on:
+      auth-hub-db:
+        condition: service_healthy
+    networks:
+      - alt-staging
+    restart: "no"
+
+  kratos:
+    image: oryd/kratos:v1.3.0
+    container_name: alt-staging-kratos
+    profiles: [auth-hub]
+    # `--dev` relaxes the HTTPS requirement on self-service flows so
+    # the api-flow login in 00-setup can run against http://kratos:4433
+    # inside the internal staging network. Prod never runs --dev.
+    entrypoint: ["/entrypoint.sh"]
+    command:
+      ["kratos", "serve", "all", "--dev", "--config", "/etc/config/kratos/kratos.yml"]
+    environment:
+      - KRATOS_DB_USER=kratos_user
+      - KRATOS_DB_PASSWORD=alt-staging-test-kratos-password
+      - KRATOS_DB_HOST=auth-hub-db
+      - KRATOS_DB_PORT=5432
+      - KRATOS_DB_NAME=kratos
+      - KRATOS_DB_SSLMODE=disable
+      - KRATOS_COOKIE_SECRET_FILE=/run/secrets/kratos_cookie_secret
+      - KRATOS_CIPHER_SECRET_FILE=/run/secrets/kratos_cipher_secret
+    secrets:
+      - kratos_cookie_secret
+      - kratos_cipher_secret
+    volumes:
+      - ../e2e/fixtures/auth-hub/kratos:/etc/config/kratos:ro
+      - ../kratos/entrypoint.sh:/entrypoint.sh:ro
+    depends_on:
+      auth-hub-db-migrator:
+        condition: service_completed_successfully
+    networks:
+      - alt-staging
+    healthcheck:
+      test: ["CMD-SHELL", "wget --spider -q http://127.0.0.1:4434/admin/health/ready"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+      start_period: 15s
+
+  auth-hub:
+    image: ghcr.io/${GHCR_OWNER:-kaikei-e}/alt-auth-hub:${IMAGE_TAG:-main}
+    build:
+      context: ../auth-hub
+      dockerfile: Dockerfile
+    container_name: alt-staging-auth-hub
+    profiles: [auth-hub]
+    depends_on:
+      kratos:
+        condition: service_healthy
+    environment:
+      - KRATOS_URL=http://kratos:4433
+      - KRATOS_ADMIN_URL=http://kratos:4434
+      - PORT=8888
+      - CACHE_TTL=5m
+      - BACKEND_TOKEN_ISSUER=auth-hub
+      - BACKEND_TOKEN_AUDIENCE=alt-backend
+      - BACKEND_TOKEN_TTL=5m
+      # config.getEnv() resolves *_FILE -> file content. The HS256 secret
+      # is shared with alt-backend so the JWT auth-hub issues is
+      # verifiable by anyone already trusting alt_backend_token_secret.
+      - BACKEND_TOKEN_SECRET_FILE=/run/secrets/alt_backend_token_secret
+      - CSRF_SECRET_FILE=/run/secrets/auth_hub_csrf_secret
+      - MTLS_LISTEN=false
+      - LOG_LEVEL=info
+      - LOG_FORMAT=json
+    secrets:
+      - alt_backend_token_secret
+      - auth_hub_csrf_secret
+    networks:
+      - alt-staging
+    healthcheck:
+      test: ["CMD", "/auth-hub", "healthcheck"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+      start_period: 5s
+
 networks:
   alt-staging:
     name: alt-staging
@@ -801,3 +940,12 @@ secrets:
     file: ../e2e/fixtures/staging-secrets/meili_master_key.txt
   alt_backend_token_secret:
     file: ../e2e/fixtures/staging-secrets/alt_backend_token_secret.txt
+  auth_hub_csrf_secret:
+    file: ../e2e/fixtures/staging-secrets/auth_hub_csrf_secret.txt
+  # Mounted as /run/secrets/kratos_cookie_secret so the reused
+  # kratos/entrypoint.sh picks them up unmodified. The underlying
+  # fixture files are auth-hub-scoped to keep ownership clear.
+  kratos_cookie_secret:
+    file: ../e2e/fixtures/staging-secrets/auth_hub_kratos_cookie_secret.txt
+  kratos_cipher_secret:
+    file: ../e2e/fixtures/staging-secrets/auth_hub_kratos_cipher_secret.txt
