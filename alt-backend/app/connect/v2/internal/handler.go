@@ -47,9 +47,10 @@ type Handler struct {
 	listFeedURLs       internal_feed_port.ListFeedURLsPort
 
 	// Phase 3 (tag-generator)
-	upsertArticleTags      internal_tag_port.UpsertArticleTagsPort
-	batchUpsertArticleTags internal_tag_port.BatchUpsertArticleTagsPort
-	listUntaggedArticles   internal_tag_port.ListUntaggedArticlesPort
+	upsertArticleTags        internal_tag_port.UpsertArticleTagsPort
+	batchUpsertArticleTags   internal_tag_port.BatchUpsertArticleTagsPort
+	listUntaggedArticles     internal_tag_port.ListUntaggedArticlesPort
+	batchGetTagsByArticleIDs internal_tag_port.BatchGetTagsByArticleIDsPort
 
 	// Phase 4 (quality checker)
 	deleteArticleSummary      internal_article_port.DeleteArticleSummaryPort
@@ -142,6 +143,15 @@ func WithPhase3Ports(
 		h.upsertArticleTags = upsertTags
 		h.batchUpsertArticleTags = batchUpsertTags
 		h.listUntaggedArticles = listUntagged
+	}
+}
+
+// WithBatchGetTagsPort wires the BatchGetTagsByArticleIDs port used by
+// recap-worker for tag fetches. Replaces the legacy tag-generator
+// /api/v1/tags/batch path (ADR-000241 / ADR-000397).
+func WithBatchGetTagsPort(p internal_tag_port.BatchGetTagsByArticleIDsPort) HandlerOption {
+	return func(h *Handler) {
+		h.batchGetTagsByArticleIDs = p
 	}
 }
 
@@ -725,6 +735,53 @@ func (h *Handler) ListUntaggedArticles(ctx context.Context, req *connect.Request
 
 	return connect.NewResponse(resp), nil
 }
+
+// BatchGetTagsByArticleIDs returns tags for a batch of article ids.
+// Replaces tag-generator's /api/v1/tags/batch (ADR-000241 / ADR-000397)
+// so recap-worker reads tags directly from the alt-backend data owner.
+func (h *Handler) BatchGetTagsByArticleIDs(ctx context.Context, req *connect.Request[backendv1.BatchGetTagsByArticleIDsRequest]) (*connect.Response[backendv1.BatchGetTagsByArticleIDsResponse], error) {
+	if h.batchGetTagsByArticleIDs == nil {
+		return nil, connect.NewError(connect.CodeUnimplemented, errors.New("not yet implemented"))
+	}
+
+	ids := req.Msg.GetArticleIds()
+	if len(ids) == 0 {
+		return connect.NewResponse(&backendv1.BatchGetTagsByArticleIDsResponse{}), nil
+	}
+	if len(ids) > maxBatchGetTagsArticleIDs {
+		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("article_ids exceeds max batch size %d", maxBatchGetTagsArticleIDs))
+	}
+
+	grouped, err := h.batchGetTagsByArticleIDs.BatchGetTagsByArticleIDs(ctx, ids)
+	if err != nil {
+		h.logger.Error("BatchGetTagsByArticleIDs failed", "error", err, "article_count", len(ids))
+		return nil, connect.NewError(connect.CodeInternal, errors.New("failed to batch fetch article tags"))
+	}
+
+	items := make([]*backendv1.ArticleTagsEntry, 0, len(grouped))
+	for _, g := range grouped {
+		tags := make([]*backendv1.ArticleTagEntry, len(g.Tags))
+		for i, t := range g.Tags {
+			tags[i] = &backendv1.ArticleTagEntry{
+				TagName:    t.TagName,
+				Confidence: t.Confidence,
+				Source:     t.Source,
+				UpdatedAt:  timestamppb.New(t.UpdatedAt),
+			}
+		}
+		items = append(items, &backendv1.ArticleTagsEntry{
+			ArticleId: g.ArticleID,
+			Tags:      tags,
+		})
+	}
+
+	return connect.NewResponse(&backendv1.BatchGetTagsByArticleIDsResponse{Items: items}), nil
+}
+
+// maxBatchGetTagsArticleIDs mirrors the caller-side guard previously
+// enforced by tag-generator/app/auth_service.py. Kept as a server-side
+// invariant so the driver never issues an unbounded ANY($1::uuid[]).
+const maxBatchGetTagsArticleIDs = 1000
 
 // ── Phase 4: Summary quality operations (quality checker) ──
 

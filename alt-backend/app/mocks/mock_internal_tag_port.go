@@ -137,3 +137,42 @@ func (mr *MockListUntaggedArticlesPortMockRecorder) ListUntaggedArticles(ctx, la
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListUntaggedArticles", reflect.TypeOf((*MockListUntaggedArticlesPort)(nil).ListUntaggedArticles), ctx, lastCreatedAt, lastID, limit)
 }
+
+// MockBatchGetTagsByArticleIDsPort is a mock of BatchGetTagsByArticleIDsPort interface.
+type MockBatchGetTagsByArticleIDsPort struct {
+	ctrl     *gomock.Controller
+	recorder *MockBatchGetTagsByArticleIDsPortMockRecorder
+	isgomock struct{}
+}
+
+// MockBatchGetTagsByArticleIDsPortMockRecorder is the mock recorder for MockBatchGetTagsByArticleIDsPort.
+type MockBatchGetTagsByArticleIDsPortMockRecorder struct {
+	mock *MockBatchGetTagsByArticleIDsPort
+}
+
+// NewMockBatchGetTagsByArticleIDsPort creates a new mock instance.
+func NewMockBatchGetTagsByArticleIDsPort(ctrl *gomock.Controller) *MockBatchGetTagsByArticleIDsPort {
+	mock := &MockBatchGetTagsByArticleIDsPort{ctrl: ctrl}
+	mock.recorder = &MockBatchGetTagsByArticleIDsPortMockRecorder{mock}
+	return mock
+}
+
+// EXPECT returns an object that allows the caller to indicate expected use.
+func (m *MockBatchGetTagsByArticleIDsPort) EXPECT() *MockBatchGetTagsByArticleIDsPortMockRecorder {
+	return m.recorder
+}
+
+// BatchGetTagsByArticleIDs mocks base method.
+func (m *MockBatchGetTagsByArticleIDsPort) BatchGetTagsByArticleIDs(ctx context.Context, articleIDs []string) ([]internal_tag_port.ArticleTagsByID, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "BatchGetTagsByArticleIDs", ctx, articleIDs)
+	ret0, _ := ret[0].([]internal_tag_port.ArticleTagsByID)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// BatchGetTagsByArticleIDs indicates an expected call of BatchGetTagsByArticleIDs.
+func (mr *MockBatchGetTagsByArticleIDsPortMockRecorder) BatchGetTagsByArticleIDs(ctx, articleIDs any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "BatchGetTagsByArticleIDs", reflect.TypeOf((*MockBatchGetTagsByArticleIDsPort)(nil).BatchGetTagsByArticleIDs), ctx, articleIDs)
+}

@@ -1484,3 +1484,125 @@ func TestListRecapArticles_NotConfiguredReturnsUnimplemented(t *testing.T) {
 		t.Errorf("expected Unimplemented, got %v", err)
 	}
 }
+
+// ── BatchGetTagsByArticleIDs ──
+
+func TestBatchGetTagsByArticleIDs_Success(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	mockPort := mocks.NewMockBatchGetTagsByArticleIDsPort(ctrl)
+
+	h := NewHandler(nil, nil, nil, nil, nil, nil,
+		WithBatchGetTagsPort(mockPort))
+
+	updatedAt := time.Date(2026, 3, 26, 0, 0, 0, 0, time.UTC)
+	mockPort.EXPECT().
+		BatchGetTagsByArticleIDs(gomock.Any(), []string{"a1", "a2"}).
+		Return([]internal_tag_port.ArticleTagsByID{
+			{
+				ArticleID: "a1",
+				Tags: []internal_tag_port.ArticleTagEntry{
+					{TagName: "go", Confidence: 0.9, UpdatedAt: updatedAt},
+					{TagName: "rust", Confidence: 0.7, UpdatedAt: updatedAt},
+				},
+			},
+			{
+				ArticleID: "a2",
+				Tags: []internal_tag_port.ArticleTagEntry{
+					{TagName: "python", Confidence: 0.6, UpdatedAt: updatedAt},
+				},
+			},
+		}, nil)
+
+	req := connect.NewRequest(&backendv1.BatchGetTagsByArticleIDsRequest{
+		ArticleIds: []string{"a1", "a2"},
+	})
+	resp, err := h.BatchGetTagsByArticleIDs(context.Background(), req)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got := len(resp.Msg.Items); got != 2 {
+		t.Fatalf("expected 2 items, got %d", got)
+	}
+	if resp.Msg.Items[0].ArticleId != "a1" {
+		t.Errorf("expected first article_id=a1, got %s", resp.Msg.Items[0].ArticleId)
+	}
+	if got := len(resp.Msg.Items[0].Tags); got != 2 {
+		t.Errorf("expected 2 tags on a1, got %d", got)
+	}
+	if resp.Msg.Items[0].Tags[0].TagName != "go" || resp.Msg.Items[0].Tags[0].Confidence < 0.89 {
+		t.Errorf("unexpected first tag on a1: %+v", resp.Msg.Items[0].Tags[0])
+	}
+	if resp.Msg.Items[0].Tags[0].UpdatedAt == nil || !resp.Msg.Items[0].Tags[0].UpdatedAt.AsTime().Equal(updatedAt) {
+		t.Errorf("expected updated_at passthrough, got %+v", resp.Msg.Items[0].Tags[0].UpdatedAt)
+	}
+}
+
+func TestBatchGetTagsByArticleIDs_EmptyRequestReturnsEmpty(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	mockPort := mocks.NewMockBatchGetTagsByArticleIDsPort(ctrl)
+
+	h := NewHandler(nil, nil, nil, nil, nil, nil,
+		WithBatchGetTagsPort(mockPort))
+
+	// Port should not be called for empty input.
+	req := connect.NewRequest(&backendv1.BatchGetTagsByArticleIDsRequest{ArticleIds: nil})
+	resp, err := h.BatchGetTagsByArticleIDs(context.Background(), req)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(resp.Msg.Items) != 0 {
+		t.Errorf("expected empty items, got %d", len(resp.Msg.Items))
+	}
+}
+
+func TestBatchGetTagsByArticleIDs_RejectsOverCap(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	mockPort := mocks.NewMockBatchGetTagsByArticleIDsPort(ctrl)
+	h := NewHandler(nil, nil, nil, nil, nil, nil,
+		WithBatchGetTagsPort(mockPort))
+
+	ids := make([]string, maxBatchGetTagsArticleIDs+1)
+	for i := range ids {
+		ids[i] = "id"
+	}
+	req := connect.NewRequest(&backendv1.BatchGetTagsByArticleIDsRequest{ArticleIds: ids})
+	_, err := h.BatchGetTagsByArticleIDs(context.Background(), req)
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	if code := connect.CodeOf(err); code != connect.CodeInvalidArgument {
+		t.Errorf("expected CodeInvalidArgument, got %v", code)
+	}
+}
+
+func TestBatchGetTagsByArticleIDs_PortErrorMapsToInternal(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	mockPort := mocks.NewMockBatchGetTagsByArticleIDsPort(ctrl)
+	h := NewHandler(nil, nil, nil, nil, nil, nil,
+		WithBatchGetTagsPort(mockPort))
+
+	mockPort.EXPECT().
+		BatchGetTagsByArticleIDs(gomock.Any(), []string{"a1"}).
+		Return(nil, errors.New("boom"))
+
+	req := connect.NewRequest(&backendv1.BatchGetTagsByArticleIDsRequest{ArticleIds: []string{"a1"}})
+	_, err := h.BatchGetTagsByArticleIDs(context.Background(), req)
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	if code := connect.CodeOf(err); code != connect.CodeInternal {
+		t.Errorf("expected CodeInternal, got %v", code)
+	}
+}
+
+func TestBatchGetTagsByArticleIDs_Unimplemented(t *testing.T) {
+	h := NewHandler(nil, nil, nil, nil, nil, nil)
+	req := connect.NewRequest(&backendv1.BatchGetTagsByArticleIDsRequest{ArticleIds: []string{"a1"}})
+	_, err := h.BatchGetTagsByArticleIDs(context.Background(), req)
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	if code := connect.CodeOf(err); code != connect.CodeUnimplemented {
+		t.Errorf("expected CodeUnimplemented, got %v", code)
+	}
+}

@@ -75,6 +75,9 @@ const (
 	// BackendInternalServiceListUntaggedArticlesProcedure is the fully-qualified name of the
 	// BackendInternalService's ListUntaggedArticles RPC.
 	BackendInternalServiceListUntaggedArticlesProcedure = "/services.backend.v1.BackendInternalService/ListUntaggedArticles"
+	// BackendInternalServiceBatchGetTagsByArticleIDsProcedure is the fully-qualified name of the
+	// BackendInternalService's BatchGetTagsByArticleIDs RPC.
+	BackendInternalServiceBatchGetTagsByArticleIDsProcedure = "/services.backend.v1.BackendInternalService/BatchGetTagsByArticleIDs"
 	// BackendInternalServiceDeleteArticleSummaryProcedure is the fully-qualified name of the
 	// BackendInternalService's DeleteArticleSummary RPC.
 	BackendInternalServiceDeleteArticleSummaryProcedure = "/services.backend.v1.BackendInternalService/DeleteArticleSummary"
@@ -137,6 +140,11 @@ type BackendInternalServiceClient interface {
 	BatchUpsertArticleTags(context.Context, *connect.Request[v1.BatchUpsertArticleTagsRequest]) (*connect.Response[v1.BatchUpsertArticleTagsResponse], error)
 	// ListUntaggedArticles returns articles without tags.
 	ListUntaggedArticles(context.Context, *connect.Request[v1.ListUntaggedArticlesRequest]) (*connect.Response[v1.ListUntaggedArticlesResponse], error)
+	// BatchGetTagsByArticleIDs returns tags for a batch of article ids.
+	// Replaces tag-generator /api/v1/tags/batch (ADR-000241 / ADR-000397)
+	// so recap-worker fetches tags directly from the data owner instead
+	// of reading alt-backend tables through tag-generator.
+	BatchGetTagsByArticleIDs(context.Context, *connect.Request[v1.BatchGetTagsByArticleIDsRequest]) (*connect.Response[v1.BatchGetTagsByArticleIDsResponse], error)
 	// DeleteArticleSummary deletes an article summary by article ID.
 	DeleteArticleSummary(context.Context, *connect.Request[v1.DeleteArticleSummaryRequest]) (*connect.Response[v1.DeleteArticleSummaryResponse], error)
 	// CheckArticleSummaryExists checks if an article summary exists.
@@ -254,6 +262,12 @@ func NewBackendInternalServiceClient(httpClient connect.HTTPClient, baseURL stri
 			connect.WithSchema(backendInternalServiceMethods.ByName("ListUntaggedArticles")),
 			connect.WithClientOptions(opts...),
 		),
+		batchGetTagsByArticleIDs: connect.NewClient[v1.BatchGetTagsByArticleIDsRequest, v1.BatchGetTagsByArticleIDsResponse](
+			httpClient,
+			baseURL+BackendInternalServiceBatchGetTagsByArticleIDsProcedure,
+			connect.WithSchema(backendInternalServiceMethods.ByName("BatchGetTagsByArticleIDs")),
+			connect.WithClientOptions(opts...),
+		),
 		deleteArticleSummary: connect.NewClient[v1.DeleteArticleSummaryRequest, v1.DeleteArticleSummaryResponse](
 			httpClient,
 			baseURL+BackendInternalServiceDeleteArticleSummaryProcedure,
@@ -327,6 +341,7 @@ type backendInternalServiceClient struct {
 	upsertArticleTags           *connect.Client[v1.UpsertArticleTagsRequest, v1.UpsertArticleTagsResponse]
 	batchUpsertArticleTags      *connect.Client[v1.BatchUpsertArticleTagsRequest, v1.BatchUpsertArticleTagsResponse]
 	listUntaggedArticles        *connect.Client[v1.ListUntaggedArticlesRequest, v1.ListUntaggedArticlesResponse]
+	batchGetTagsByArticleIDs    *connect.Client[v1.BatchGetTagsByArticleIDsRequest, v1.BatchGetTagsByArticleIDsResponse]
 	deleteArticleSummary        *connect.Client[v1.DeleteArticleSummaryRequest, v1.DeleteArticleSummaryResponse]
 	checkArticleSummaryExists   *connect.Client[v1.CheckArticleSummaryExistsRequest, v1.CheckArticleSummaryExistsResponse]
 	findArticlesWithSummaries   *connect.Client[v1.FindArticlesWithSummariesRequest, v1.FindArticlesWithSummariesResponse]
@@ -410,6 +425,12 @@ func (c *backendInternalServiceClient) ListUntaggedArticles(ctx context.Context,
 	return c.listUntaggedArticles.CallUnary(ctx, req)
 }
 
+// BatchGetTagsByArticleIDs calls
+// services.backend.v1.BackendInternalService.BatchGetTagsByArticleIDs.
+func (c *backendInternalServiceClient) BatchGetTagsByArticleIDs(ctx context.Context, req *connect.Request[v1.BatchGetTagsByArticleIDsRequest]) (*connect.Response[v1.BatchGetTagsByArticleIDsResponse], error) {
+	return c.batchGetTagsByArticleIDs.CallUnary(ctx, req)
+}
+
 // DeleteArticleSummary calls services.backend.v1.BackendInternalService.DeleteArticleSummary.
 func (c *backendInternalServiceClient) DeleteArticleSummary(ctx context.Context, req *connect.Request[v1.DeleteArticleSummaryRequest]) (*connect.Response[v1.DeleteArticleSummaryResponse], error) {
 	return c.deleteArticleSummary.CallUnary(ctx, req)
@@ -491,6 +512,11 @@ type BackendInternalServiceHandler interface {
 	BatchUpsertArticleTags(context.Context, *connect.Request[v1.BatchUpsertArticleTagsRequest]) (*connect.Response[v1.BatchUpsertArticleTagsResponse], error)
 	// ListUntaggedArticles returns articles without tags.
 	ListUntaggedArticles(context.Context, *connect.Request[v1.ListUntaggedArticlesRequest]) (*connect.Response[v1.ListUntaggedArticlesResponse], error)
+	// BatchGetTagsByArticleIDs returns tags for a batch of article ids.
+	// Replaces tag-generator /api/v1/tags/batch (ADR-000241 / ADR-000397)
+	// so recap-worker fetches tags directly from the data owner instead
+	// of reading alt-backend tables through tag-generator.
+	BatchGetTagsByArticleIDs(context.Context, *connect.Request[v1.BatchGetTagsByArticleIDsRequest]) (*connect.Response[v1.BatchGetTagsByArticleIDsResponse], error)
 	// DeleteArticleSummary deletes an article summary by article ID.
 	DeleteArticleSummary(context.Context, *connect.Request[v1.DeleteArticleSummaryRequest]) (*connect.Response[v1.DeleteArticleSummaryResponse], error)
 	// CheckArticleSummaryExists checks if an article summary exists.
@@ -604,6 +630,12 @@ func NewBackendInternalServiceHandler(svc BackendInternalServiceHandler, opts ..
 		connect.WithSchema(backendInternalServiceMethods.ByName("ListUntaggedArticles")),
 		connect.WithHandlerOptions(opts...),
 	)
+	backendInternalServiceBatchGetTagsByArticleIDsHandler := connect.NewUnaryHandler(
+		BackendInternalServiceBatchGetTagsByArticleIDsProcedure,
+		svc.BatchGetTagsByArticleIDs,
+		connect.WithSchema(backendInternalServiceMethods.ByName("BatchGetTagsByArticleIDs")),
+		connect.WithHandlerOptions(opts...),
+	)
 	backendInternalServiceDeleteArticleSummaryHandler := connect.NewUnaryHandler(
 		BackendInternalServiceDeleteArticleSummaryProcedure,
 		svc.DeleteArticleSummary,
@@ -688,6 +720,8 @@ func NewBackendInternalServiceHandler(svc BackendInternalServiceHandler, opts ..
 			backendInternalServiceBatchUpsertArticleTagsHandler.ServeHTTP(w, r)
 		case BackendInternalServiceListUntaggedArticlesProcedure:
 			backendInternalServiceListUntaggedArticlesHandler.ServeHTTP(w, r)
+		case BackendInternalServiceBatchGetTagsByArticleIDsProcedure:
+			backendInternalServiceBatchGetTagsByArticleIDsHandler.ServeHTTP(w, r)
 		case BackendInternalServiceDeleteArticleSummaryProcedure:
 			backendInternalServiceDeleteArticleSummaryHandler.ServeHTTP(w, r)
 		case BackendInternalServiceCheckArticleSummaryExistsProcedure:
@@ -769,6 +803,10 @@ func (UnimplementedBackendInternalServiceHandler) BatchUpsertArticleTags(context
 
 func (UnimplementedBackendInternalServiceHandler) ListUntaggedArticles(context.Context, *connect.Request[v1.ListUntaggedArticlesRequest]) (*connect.Response[v1.ListUntaggedArticlesResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("services.backend.v1.BackendInternalService.ListUntaggedArticles is not implemented"))
+}
+
+func (UnimplementedBackendInternalServiceHandler) BatchGetTagsByArticleIDs(context.Context, *connect.Request[v1.BatchGetTagsByArticleIDsRequest]) (*connect.Response[v1.BatchGetTagsByArticleIDsResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("services.backend.v1.BackendInternalService.BatchGetTagsByArticleIDs is not implemented"))
 }
 
 func (UnimplementedBackendInternalServiceHandler) DeleteArticleSummary(context.Context, *connect.Request[v1.DeleteArticleSummaryRequest]) (*connect.Response[v1.DeleteArticleSummaryResponse], error) {

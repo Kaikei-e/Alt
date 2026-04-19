@@ -213,6 +213,42 @@ func (g *Gateway) BatchUpsertArticleTags(ctx context.Context, items []internal_t
 	return total, nil
 }
 
+// BatchGetTagsByArticleIDs implements BatchGetTagsByArticleIDsPort.
+// It joins the driver rows (one row per (article, tag) pair) into
+// the port-level grouped shape expected by the Connect-RPC handler.
+func (g *Gateway) BatchGetTagsByArticleIDs(ctx context.Context, articleIDs []string) ([]internal_tag_port.ArticleTagsByID, error) {
+	if len(articleIDs) == 0 {
+		return nil, nil
+	}
+
+	rows, err := g.repo.BatchGetTagsByArticleIDs(ctx, articleIDs)
+	if err != nil {
+		return nil, fmt.Errorf("BatchGetTagsByArticleIDs: %w", err)
+	}
+
+	grouped := make(map[string]*internal_tag_port.ArticleTagsByID, len(articleIDs))
+	order := make([]string, 0, len(articleIDs))
+	for _, row := range rows {
+		entry, ok := grouped[row.ArticleID]
+		if !ok {
+			entry = &internal_tag_port.ArticleTagsByID{ArticleID: row.ArticleID}
+			grouped[row.ArticleID] = entry
+			order = append(order, row.ArticleID)
+		}
+		entry.Tags = append(entry.Tags, internal_tag_port.ArticleTagEntry{
+			TagName:    row.TagName,
+			Confidence: row.Confidence,
+			UpdatedAt:  row.UpdatedAt,
+		})
+	}
+
+	out := make([]internal_tag_port.ArticleTagsByID, 0, len(order))
+	for _, id := range order {
+		out = append(out, *grouped[id])
+	}
+	return out, nil
+}
+
 // ListUntaggedArticles implements ListUntaggedArticlesPort.
 func (g *Gateway) ListUntaggedArticles(ctx context.Context, lastCreatedAt *time.Time, lastID string, limit int) ([]internal_tag_port.UntaggedArticle, *time.Time, string, int32, error) {
 	driverArticles, nextCreatedAt, nextID, totalCount, err := g.repo.ListUntaggedArticles(ctx, lastCreatedAt, lastID, limit)

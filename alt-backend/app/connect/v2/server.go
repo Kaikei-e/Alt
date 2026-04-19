@@ -208,6 +208,7 @@ func SetupConnectHandlers(mux *http.ServeMux, container *di.ApplicationComponent
 		logger,
 		internalhandler.WithPhase2Ports(gw, gw, gw, gw, gw, gw),
 		internalhandler.WithPhase3Ports(gw, gw, gw),
+		internalhandler.WithBatchGetTagsPort(gw),
 		internalhandler.WithPhase4Ports(gw, gw, gw),
 		internalhandler.WithSummarizationPorts(gw, gw),
 		internalhandler.WithBackfillPorts(gw),

@@ -241,6 +241,32 @@ message ListUntaggedArticlesResponse {
   string next_id = 4;
 }
 
+// BatchGetTagsByArticleIDs - For recap-worker to fetch tags without
+// reaching directly into alt-backend's article_tags / feed_tags tables.
+// Replaces the legacy psycopg2 path that used to live in
+// tag-generator's /api/v1/tags/batch endpoint (ADR-000241 / ADR-000397).
+
+message BatchGetTagsByArticleIDsRequest {
+  repeated string article_ids = 1;
+}
+
+message ArticleTagEntry {
+  string tag_name = 1;
+  float confidence = 2;
+  // Tag provenance (e.g. "ml_model", "classifier"). Empty when unknown.
+  string source = 3;
+  google.protobuf.Timestamp updated_at = 4;
+}
+
+message ArticleTagsEntry {
+  string article_id = 1;
+  repeated ArticleTagEntry tags = 2;
+}
+
+message BatchGetTagsByArticleIDsResponse {
+  repeated ArticleTagsEntry items = 1;
+}
+
 // =============================================================================
 // Summary Quality Operations (Phase 4: quality checker API migration)
 // =============================================================================
@@ -386,6 +412,12 @@ service BackendInternalService {
 
   // ListUntaggedArticles returns articles without tags.
   rpc ListUntaggedArticles(ListUntaggedArticlesRequest) returns (ListUntaggedArticlesResponse);
+
+  // BatchGetTagsByArticleIDs returns tags for a batch of article ids.
+  // Replaces tag-generator /api/v1/tags/batch (ADR-000241 / ADR-000397)
+  // so recap-worker fetches tags directly from the data owner instead
+  // of reading alt-backend tables through tag-generator.
+  rpc BatchGetTagsByArticleIDs(BatchGetTagsByArticleIDsRequest) returns (BatchGetTagsByArticleIDsResponse);
 
   // ── Summary Quality Operations (Phase 4: quality checker) ──
 
