@@ -1,0 +1,119 @@
+version: v1.3.0
+
+# Staging Kratos config for the auth-hub Hurl E2E slice. Forked from
+# /home/koko/Documents/dev/Alt/kratos/kratos.yml so the prod file can
+# keep hardcoding curionoah.com URLs + .curionoah.com cookie domain
+# without breaking container-local flows in staging.
+#
+# Scope: loaded only under compose profile [auth-hub] on the
+# alt-staging-* network. Never referenced by production deploys.
+
+dsn: ${DSN}
+
+serve:
+  public:
+    base_url: http://kratos:4433/
+    request_log:
+      disable_for_health: true
+    cors:
+      enabled: false
+
+  admin:
+    base_url: http://kratos:4434/
+
+selfservice:
+  default_browser_return_url: http://auth-hub:8888/health
+  allowed_return_urls:
+    - http://auth-hub:8888/
+    - http://kratos:4433/
+
+  methods:
+    password:
+      enabled: true
+      config:
+        haveibeenpwned_enabled: false
+        max_breaches: 0
+        min_password_length: 8
+        identifier_similarity_check_enabled: false
+
+    totp:
+      enabled: false
+
+    lookup_secret:
+      enabled: false
+
+    link:
+      enabled: false
+
+    code:
+      enabled: false
+
+  flows:
+    error:
+      ui_url: http://kratos:4433/ui-stub/error
+
+    settings:
+      ui_url: http://kratos:4433/ui-stub/settings
+      privileged_session_max_age: 10m
+      required_aal: aal1
+
+    recovery:
+      enabled: false
+      ui_url: http://kratos:4433/ui-stub/recovery
+
+    verification:
+      enabled: false
+      ui_url: http://kratos:4433/ui-stub/verification
+
+    logout:
+      after:
+        default_browser_return_url: http://auth-hub:8888/health
+
+    login:
+      ui_url: http://kratos:4433/ui-stub/login
+      lifespan: 30m
+      after:
+        default_browser_return_url: http://auth-hub:8888/health
+
+    registration:
+      enabled: true
+      lifespan: 30m
+      ui_url: http://kratos:4433/ui-stub/register
+      after:
+        default_browser_return_url: http://auth-hub:8888/health
+
+log:
+  level: info
+  format: json
+  leak_sensitive_values: false
+  redaction_text: "***REDACTED***"
+
+secrets:
+  cookie:
+    - ${KRATOS_COOKIE_SECRET}
+  cipher:
+    - ${KRATOS_CIPHER_SECRET}
+
+ciphers:
+  algorithm: xchacha20-poly1305
+
+hashers:
+  algorithm: bcrypt
+  bcrypt:
+    cost: 4
+
+identity:
+  default_schema_id: default
+  schemas:
+    - id: default
+      url: file:///etc/config/kratos/identity.schema.json
+
+session:
+  lifespan: 1h
+  cookie:
+    persistent: true
+    same_site: Lax
+    path: /
+  whoami:
+    required_aal: aal1
+  earliest_possible_extend: 30m
