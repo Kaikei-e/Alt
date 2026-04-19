@@ -59,34 +59,18 @@ def _create_provider_app() -> FastAPI:
     """Create a FastAPI app with mocked dependencies for provider verification.
 
     Registers lightweight stub endpoints matching the contract surface:
-    - POST /api/v1/tags/batch    (batch tags lookup)
     - POST /api/v1/extract-tags  (tag extraction request)
+
+    The former POST /api/v1/tags/batch surface was removed per
+    ADR-000241 / ADR-000397 (Shared Database anti-pattern elimination);
+    the replacement contract lives on alt-backend's
+    BatchGetTagsByArticleIDs RPC, verified in alt-backend's provider
+    suite instead.
     """
     app = FastAPI()
 
     # Track provider state to switch mock behavior
     provider_state: dict[str, Any] = {"current": "default"}
-
-    # ---- POST /api/v1/tags/batch ----
-    class BatchTagsRequest(BaseModel):
-        article_ids: list[str]
-
-    @app.post("/api/v1/tags/batch")
-    async def batch_tags(request: BatchTagsRequest) -> dict:
-        tags: dict[str, list[dict]] = {}
-        for article_id in request.article_ids:
-            tags[article_id] = [
-                {
-                    "tag": "technology",
-                    "confidence": 0.95,
-                    "source": "classifier",
-                    "updated_at": "2026-03-26T00:00:00Z",
-                }
-            ]
-        return {
-            "success": True,
-            "tags": tags,
-        }
 
     # ---- POST /api/v1/extract-tags ----
     class ExtractTagsRequest(BaseModel):
@@ -106,7 +90,6 @@ def _create_provider_app() -> FastAPI:
         provider_state["params"] = params
 
     registry: StateRegistry = {
-        "tags exist for the requested articles": _set_state,
         "the tag extraction model is loaded": _set_state,
     }
 

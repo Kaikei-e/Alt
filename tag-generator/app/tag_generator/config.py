@@ -2,7 +2,6 @@
 
 from tag_generator.infra.config import (
     BatchConfig,
-    DatabaseConfig,
     OTelEnvConfig,
     RedisConfig,
     TagGeneratorConfig,
@@ -10,7 +9,6 @@ from tag_generator.infra.config import (
 
 __all__ = [
     "BatchConfig",
-    "DatabaseConfig",
     "OTelEnvConfig",
     "RedisConfig",
     "TagGeneratorConfig",

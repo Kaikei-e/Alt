@@ -82,8 +82,6 @@ except ModuleNotFoundError:
 from fastapi import FastAPI, HTTPException, Request
 from pydantic import BaseModel
 
-from tag_fetcher import fetch_tags_by_article_ids
-
 logger = structlog.get_logger(__name__)
 
 if not _ALT_AUTH_AVAILABLE:
@@ -455,46 +453,6 @@ def verify_service_token(request: Request) -> None:
     before the request ever reaches this code path.
     """
     _ = request  # silence lint
-
-
-class BatchTagsRequest(BaseModel):
-    """Request model for batch tag fetching."""
-
-    article_ids: list[str]
-
-
-@app.post("/api/v1/tags/batch")
-async def fetch_tags_batch(
-    request: Request,
-    body: BatchTagsRequest,
-) -> dict[str, Any]:
-    """
-    Batch fetch tags for multiple articles by their IDs.
-    Service-to-service endpoint (requires TLS peer identity header).
-    """
-    # Verify service token
-    verify_service_token(request)
-
-    article_ids = body.article_ids
-
-    if not article_ids:
-        raise HTTPException(status_code=400, detail="article_ids must be a non-empty list")
-
-    if len(article_ids) > 1000:
-        raise HTTPException(status_code=400, detail="Too many article_ids (max 1000)")
-
-    try:
-        logger.info("Fetching tags in batch", article_count=len(article_ids))
-        tags_by_article = fetch_tags_by_article_ids(article_ids)
-
-        return {
-            "success": True,
-            "tags": tags_by_article,
-        }
-
-    except Exception as e:
-        logger.error("Batch tag fetch failed", error=str(e), article_count=len(article_ids))
-        raise HTTPException(status_code=500, detail=f"Failed to fetch tags: {str(e)}") from e
 
 
 class ExtractTagsRequest(BaseModel):

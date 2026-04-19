@@ -35,6 +35,13 @@
 #     CRUD scenarios run against the migrated DB only; the run-
 #     lifecycle scenarios additionally activate the news-creator and
 #     search-indexer profiles to drive the LangGraph pipeline.)
+#   rag-orchestrator suite    → profile `rag-orchestrator`
+#     rag-db, rag-db-migrator, rag-orchestrator
+#     (Postgres + pgvector + Atlas migrator + Echo REST /
+#     Connect-RPC service. Phase 1 covers health, /connect/health,
+#     auth enforcement, and Augur read-only RPCs — the retrieve /
+#     answer paths that need news-creator, search-indexer,
+#     rerank-external, and alt-backend are deferred to Phase 2.)
 #   alt-backend suite          → profile `alt-backend`
 #     alt-backend-db, alt-backend-db-migrator, alt-backend-deps-stub,
 #     alt-backend
@@ -269,12 +276,108 @@ services:
       retries: 30
       start_period: 5s
 
+  # rag-orchestrator suite — rag-db Postgres (pgvector) + Atlas migrator
+  # + rag-orchestrator. Phase 1 covers health / auth / Augur read-only
+  # RPCs against the migrated DB; retrieve + answer paths are deferred
+  # behind stubs for news-creator / search-indexer / rerank-external /
+  # alt-backend (out of Phase 1 scope). The rag-db image is the same
+  # build context as prod (`../rag-db`) because it bakes pgvector into
+  # postgres:18; staging skips the prod postgresql-rag.conf override to
+  # keep the slice self-contained.
+  rag-db:
+    build:
+      context: ../rag-db
+      dockerfile: Dockerfile
+    container_name: alt-staging-rag-db
+    profiles: [rag-orchestrator]
+    environment:
+      POSTGRES_DB: rag_db
+      POSTGRES_USER: rag_user
+      POSTGRES_PASSWORD: alt-staging-test-rag-password
+    networks:
+      - alt-staging
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U rag_user -d rag_db"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+      start_period: 5s
+
+  rag-db-migrator:
+    build:
+      context: ../rag-migration-atlas
+      dockerfile: docker/Dockerfile
+    container_name: alt-staging-rag-db-migrator
+    profiles: [rag-orchestrator]
+    command: ["apply"]
+    environment:
+      DB_HOST: rag-db
+      DB_PORT: "5432"
+      DB_USER: rag_user
+      DB_NAME: rag_db
+      DB_PASSWORD: alt-staging-test-rag-password
+      ATLAS_REVISIONS_SCHEMA: "public"
+    depends_on:
+      rag-db:
+        condition: service_healthy
+    networks:
+      - alt-staging
+    restart: "no"
+
+  rag-orchestrator:
+    image: ghcr.io/${GHCR_OWNER:-kaikei-e}/alt-rag-orchestrator:${IMAGE_TAG:-main}
+    build:
+      context: ../rag-orchestrator
+      dockerfile: Dockerfile
+    container_name: alt-staging-rag-orchestrator
+    profiles: [rag-orchestrator]
+    depends_on:
+      rag-db:
+        condition: service_healthy
+      rag-db-migrator:
+        condition: service_completed_successfully
+    environment:
+      - ENV=staging
+      - PORT=9010
+      - CONNECT_PORT=9011
+      - DB_HOST=rag-db
+      - DB_PORT=5432
+      - DB_USER=rag_user
+      - DB_PASSWORD=alt-staging-test-rag-password
+      - DB_NAME=rag_db
+      # External deps that Phase 1 never exercises. They're set to
+      # loopback so config.Load() succeeds; any request path that
+      # actually reaches them is out of scope for this suite.
+      - EMBEDDER_EXTERNAL=http://127.0.0.1:9
+      - EMBEDDER_TIMEOUT=10
+      - AUGUR_EXTERNAL=http://127.0.0.1:9
+      - AUGUR_KNOWLEDGE_MODEL=gemma4-e4b-12k
+      - SEARCH_INDEXER_URL=http://127.0.0.1:9
+      - QUERY_EXPANSION_URL=http://127.0.0.1:9
+      - QUERY_EXPANSION_TIMEOUT=30
+      - RERANK_ENABLED=false
+      - RERANK_URL=http://127.0.0.1:9
+      - RERANK_TIMEOUT=12
+      - RAG_PROMPT_VERSION=alpha-v2
+      - LLM_BACKEND=ollama
+      - LOG_LEVEL=info
+    networks:
+      - alt-staging
+    # rag-orchestrator ships on distroless/static — no wget/curl/shell,
+    # and the binary exposes no `healthcheck` subcommand. `up --wait`
+    # without a container healthcheck still waits until the process is
+    # in `running` state; 00-readiness.hurl's per-request retry block
+    # then polls /readyz until the DB pool is live. That keeps the wait
+    # inside the test runner where a failed readiness is a named test
+    # failure rather than an opaque "unhealthy" state.
+
   # tag-generator suite — FastAPI service that consumes alt:events:tags
   # and replies via Redis Streams. Scenario 04 reaches the consumer
   # through mq-hub's GenerateTagsForArticle RPC. stub-backend satisfies
-  # BACKEND_API_URL reachability; DB_TAG_GENERATOR_* are deliberately
-  # unset so the Postgres-backed /api/v1/tags/batch endpoint stays out
-  # of scope for this slice.
+  # BACKEND_API_URL reachability. The Postgres-backed /api/v1/tags/batch
+  # endpoint has been removed per ADR-000241 / ADR-000397 (Shared
+  # Database anti-pattern elimination); tag lookups now flow through
+  # alt-backend's BatchGetTagsByArticleIDs Connect-RPC.
   tag-generator:
     image: ghcr.io/${GHCR_OWNER:-kaikei-e}/alt-tag-generator:${IMAGE_TAG:-main}
     container_name: alt-staging-tag-generator

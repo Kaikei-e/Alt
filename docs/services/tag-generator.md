@@ -36,7 +36,7 @@ flowchart TD
 
     subgraph APIs
         API["/api/v1/generate-tags"]
-        BatchAPI["/api/v1/tags/batch"]
+        ExtractAPI["/api/v1/extract-tags"]
     end
 
     subgraph Observability
@@ -60,7 +60,7 @@ flowchart TD
     ArticleProc --> Extractor
     ArticleProc --> Inserter
     API --> ArticleProc
-    BatchAPI --> Fetcher
+    ExtractAPI --> Extractor
     OTel --> LogConfig
 ```
 
@@ -71,9 +71,7 @@ tag-generator/app/
 ├── main.py                     # FastAPI エントリポイント
 ├── pyproject.toml              # 依存関係・ツール設定
 ├── conftest.py                 # pytest 共通フィクスチャ
-├── db_pool.py                  # DB 接続プール
-├── auth_service.py             # 認証サービス
-├── tag_fetcher.py              # タグ取得ユーティリティ
+├── auth_service.py             # FastAPI アプリ + 認証ヘルパ
 ├── tag_generator/
 │   ├── __init__.py
 │   ├── config.py               # TagGeneratorConfig
@@ -123,11 +121,13 @@ tag-generator/app/
         └── test_sanitized_tag_extraction.py
 ```
 
-## Data Access Mode (ADR-000241)
+## Data Access Mode (ADR-000241 / ADR-000397)
 
-`service.py` がサービス起動時に `BACKEND_API_URL` 環境変数を検出し、自動的にモードを切り替え:
-- **API モード**: `ConnectArticleFetcher` + `ConnectTagInserter` が Connect protocol (HTTP/1.1 + JSON) で alt-backend Internal API を呼び出し。`_NullDatabaseManager` により DB 接続不要
-- **Legacy DB モード**: 従来の `ArticleFetcher` + `TagInserter` が PostgreSQL 直接アクセス
+tag-generator は alt-backend Connect-RPC (API モード) のみを使う。Legacy の
+PostgreSQL 直接アクセスは [[ADR-000397]] で撤去され、さらに本サービスに
+残っていた `/api/v1/tags/batch` + `tag_fetcher.py` + `db_pool.py` も
+[[ADR-000241]] の北極星（alt-backend を唯一のデータオーナー）に揃える形で
+撤去された。現在タグ参照は alt-backend `BatchGetTagsByArticleIDs` が担う。
 
 API モードでは httpx を使い、Proto コード生成なしで Connect protocol を直接呼び出す。
 
@@ -154,16 +154,20 @@ API モードでは httpx を使い、Proto コード生成なしで Connect pro
 |------|----------|-------------|
 | 9400 | `/health` | ヘルスチェック |
 | 9400 | `/api/v1/generate-tags` | 認証付きタグ生成 (ユーザー向け) |
-| 9400 | `/api/v1/tags/batch` | サービス間バッチタグ取得 |
+| 9400 | `/api/v1/extract-tags` | サービス間テキスト抽出 (mTLS peer identity) |
 
 ### /api/v1/generate-tags
 - 認証: `verify_service_token`
 - ログ: `article_id`, sanitized tags, cascade verdicts
 
-### /api/v1/tags/batch
-- 認証: `SERVICE_SECRET` (X-Service-Token)
-- リクエスト: `{"article_ids":[...]}`
-- レスポンス: タグマップ + `updated_at`
+### /api/v1/extract-tags
+- 認証: TLS peer identity (mTLS)
+- リクエスト: `{"title": str, "content": str}`
+- レスポンス: `{success, tags[], confidence, inference_ms, language}`
+
+タグのバッチ参照 (旧 `/api/v1/tags/batch`) は [[ADR-000241]] / [[ADR-000397]]
+の方針により alt-backend `BatchGetTagsByArticleIDs` に移設された。recap-worker
+など下流サービスはそちらを経由する。
 
 ## Pipeline
 

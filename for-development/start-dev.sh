@@ -59,9 +59,8 @@ fi
 if [ -f "secrets/pre_processor_db_password.txt" ]; then
     export PRE_PROCESSOR_DB_PASSWORD=$(cat secrets/pre_processor_db_password.txt)
 fi
-if [ -f "secrets/tag_generator_db_password.txt" ]; then
-    export DB_TAG_GENERATOR_PASSWORD=$(cat secrets/tag_generator_db_password.txt)
-fi
+# tag_generator_db_password was removed per ADR-000241 / ADR-000397;
+# tag-generator no longer accesses alt-db directly.
 
 echo "Starting development environment..."
 echo "Services: alt-frontend-sv (Dev Mode), alt-backend, alt-db, nginx"

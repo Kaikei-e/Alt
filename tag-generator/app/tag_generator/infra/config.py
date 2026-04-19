@@ -8,20 +8,6 @@ from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
-class DatabaseConfig(BaseSettings):
-    """Database connection settings."""
-
-    model_config = SettingsConfigDict(env_prefix="DB_")
-
-    host: str = "localhost"
-    port: int = 5432
-    name: str = "alt"
-    tag_generator_user: str = Field(default="tag_generator", alias="DB_TAG_GENERATOR_USER")
-    tag_generator_password: str = Field(default="", alias="DB_TAG_GENERATOR_PASSWORD")
-    tag_generator_password_file: str | None = Field(default=None, alias="DB_TAG_GENERATOR_PASSWORD_FILE")
-    sslmode: str = "prefer"
-
-
 class RedisConfig(BaseSettings):
     """Redis connection settings."""
 
