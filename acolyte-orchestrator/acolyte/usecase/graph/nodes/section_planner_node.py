@@ -269,6 +269,35 @@ def _claims_to_synthesis(claims: list[dict], *, max_claims: int = 5, prefix: str
     return result
 
 
+def _deterministic_analysis_claims(
+    extracted_facts: list[dict],
+    *,
+    max_claims: int = 7,
+) -> list[dict]:
+    """Deterministic fallback for the analysis section.
+
+    The analysis section originally had no post-LLM safety net (unlike
+    ``conclusion`` / ``executive_summary``), so a malformed ``section_plan``
+    XML from Gemma 4 silently produced an empty analysis body downstream.
+    When extracted facts exist for the section, rank them (numeric first,
+    then source diversity, then confidence) and convert each into a factual
+    claim. Returns an empty list when there are no facts — invention is
+    not our job.
+    """
+    if not extracted_facts:
+        return []
+
+    ranked = _rank_facts_for_synthesis(extracted_facts)
+    result: list[dict] = []
+    for i, fact in enumerate(ranked[:max_claims], 1):
+        claim = _fact_to_synthesis_claim(fact, claim_id=f"analysis-fallback-{i}")
+        # Analysis claims remain ``factual`` — synthesis is the
+        # conclusion's responsibility, not ours.
+        claim["claim_type"] = "factual"
+        result.append(claim)
+    return result
+
+
 def _deterministic_conclusion_claims(
     analysis_claims: list[dict],
     extracted_facts: list[dict],
@@ -428,13 +457,21 @@ class SectionPlannerNode:
             for i, cd in enumerate(claim_dicts, 1):
                 cd["claim_id"] = f"{key}-{i}"
 
-            # Post-LLM fallback: if LLM returned empty claims for conclusion/ES
-            if not claim_dicts and section_role in ("conclusion", "executive_summary"):
+            # Post-LLM fallback: every role that survived the LLM call with
+            # zero claims goes to its deterministic builder so the Writer
+            # never hits an empty ``claim_plans[key]`` when facts existed.
+            if not claim_dicts:
                 if section_role == "conclusion":
                     analysis_claims = _collect_analysis_claims(claim_plans, outline)
                     claim_dicts = _deterministic_conclusion_claims(analysis_claims, extracted_facts, topic=topic)
-                else:
+                elif section_role == "executive_summary":
                     claim_dicts = _deterministic_es_claims(claim_plans, extracted_facts, topic=topic)
+                else:
+                    section_evidence_for_fallback = curated_by_section.get(key, [])
+                    fallback_evidence_ids = {item.get("id", "") for item in section_evidence_for_fallback}
+                    fallback_facts = _filter_facts_for_section(extracted_facts, fallback_evidence_ids)
+                    max_claims = section.get("max_claims", 7)
+                    claim_dicts = _deterministic_analysis_claims(fallback_facts, max_claims=max_claims)
                 if claim_dicts:
                     logger.info("Post-LLM deterministic fallback", section_key=key, claim_count=len(claim_dicts))
 

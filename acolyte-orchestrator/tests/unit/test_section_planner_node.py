@@ -195,8 +195,14 @@ async def test_planner_no_format_in_llm_kwargs() -> None:
 
 
 @pytest.mark.asyncio
-async def test_planner_fallback_on_parse_failure() -> None:
-    """Malformed LLM output → fallback to empty claims."""
+async def test_planner_fallback_on_parse_failure_uses_facts() -> None:
+    """Malformed LLM output → deterministic fallback from extracted_facts.
+
+    Previously this path returned ``[]`` which silently produced an empty
+    section body downstream. Production bug 2026-04-19: Gemma4's
+    ``section_plan`` XML can be malformed and the analysis section was the
+    only one without a post-LLM safety net.
+    """
 
     class BrokenLLM:
         async def generate(self, prompt: str, **kwargs: object) -> LLMResponse:
@@ -205,8 +211,8 @@ async def test_planner_fallback_on_parse_failure() -> None:
     node = SectionPlannerNode(BrokenLLM())
 
     state = {
-        "outline": [{"key": "summary", "title": "Summary"}],
-        "curated_by_section": {"summary": [{"id": "art-1", "title": "Test"}]},
+        "outline": [{"key": "analysis", "title": "Analysis", "section_role": "analysis"}],
+        "curated_by_section": {"analysis": [{"id": "art-1", "title": "Test"}]},
         "extracted_facts": [
             {
                 "claim": "test",
@@ -221,9 +227,35 @@ async def test_planner_fallback_on_parse_failure() -> None:
     }
 
     result = await node(state)
-    # Should not raise — fallback to empty claims
+    # Writer must never see an empty analysis claim_plan when facts exist.
     assert "claim_plans" in result
-    assert result["claim_plans"]["summary"] == []
+    claims = result["claim_plans"]["analysis"]
+    assert len(claims) >= 1
+    assert claims[0]["claim"]
+    assert claims[0]["evidence_ids"] == ["art-1"]
+
+
+@pytest.mark.asyncio
+async def test_planner_analysis_empty_when_no_facts_at_all() -> None:
+    """Fallback only activates when facts exist; no facts = empty plan
+    (the Writer will still render a deterministic body for ES/Conclusion).
+    """
+
+    class BrokenLLM:
+        async def generate(self, prompt: str, **kwargs: object) -> LLMResponse:
+            return LLMResponse(text="not valid json at all", model="fake")
+
+    node = SectionPlannerNode(BrokenLLM())
+
+    state = {
+        "outline": [{"key": "analysis", "title": "Analysis", "section_role": "analysis"}],
+        "curated_by_section": {"analysis": []},
+        "extracted_facts": [],
+        "brief": {"topic": "test"},
+    }
+
+    result = await node(state)
+    assert result["claim_plans"]["analysis"] == []
 
 
 @pytest.mark.asyncio

@@ -7,6 +7,7 @@ fallback creates synthesis claims from analysis claim_plans or extracted_facts.
 from __future__ import annotations
 
 from acolyte.usecase.graph.nodes.section_planner_node import (
+    _deterministic_analysis_claims,
     _deterministic_conclusion_claims,
     _deterministic_es_claims,
 )
@@ -123,6 +124,57 @@ def test_es_fallback_from_existing_claims() -> None:
     assert len(result) > 0
     for claim in result:
         assert claim["claim_type"] == "synthesis"
+
+
+# --- Analysis fallback (new — mirrors conclusion/ES) ---
+
+
+def test_analysis_fallback_when_llm_returns_empty_claims() -> None:
+    """LLM empty (e.g. section_plan XML parse failure) + extracted_facts
+    exist → deterministic claims generated from the facts so the writer is
+    never handed an empty claim_plans["analysis"].
+    """
+    facts = _make_facts(3)
+    result = _deterministic_analysis_claims(facts)
+    assert len(result) > 0
+    for claim in result:
+        # Analysis claims stay ``factual`` rather than synthesis — the
+        # section's role is to present evidence, not to recombine it.
+        assert claim["claim_type"] == "factual"
+        assert claim["claim"]
+
+
+def test_analysis_fallback_keeps_source_grounding() -> None:
+    """Every fallback claim must retain its source_id in evidence_ids so
+    the Writer's citation validator keeps passing.
+    """
+    facts = _make_facts(3)
+    result = _deterministic_analysis_claims(facts)
+    for claim in result:
+        assert claim["evidence_ids"]
+        assert all(eid.startswith("art-") for eid in claim["evidence_ids"])
+
+
+def test_analysis_fallback_prefers_numeric_facts_first() -> None:
+    """Facts with numeric data surface first in the fallback ranking."""
+    facts = _make_facts(5, with_numeric=True)
+    result = _deterministic_analysis_claims(facts, max_claims=3)
+    assert result[0]["numeric_facts"]
+
+
+def test_analysis_fallback_empty_when_no_facts() -> None:
+    """No extracted_facts for the section → empty list (writer still has
+    a second safety net, but at this layer we do not invent content).
+    """
+    result = _deterministic_analysis_claims([])
+    assert result == []
+
+
+def test_analysis_fallback_respects_max_claims() -> None:
+    """Honour the section's max_claims budget."""
+    facts = _make_facts(10)
+    result = _deterministic_analysis_claims(facts, max_claims=3)
+    assert len(result) == 3
 
 
 def test_deterministic_synthesis_prefers_source_diversity() -> None:
