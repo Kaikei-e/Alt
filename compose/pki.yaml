@@ -249,7 +249,7 @@ services:
       - PROXY_LISTEN=:9443
       - PROXY_UPSTREAM=http://127.0.0.1:9400
       - PROXY_VERIFY_CLIENT=${TAG_GENERATOR_VERIFY_CLIENT:-on}
-      - PROXY_ALLOWED_PEERS=${TAG_GENERATOR_MTLS_ALLOWED_PEERS:-alt-butterfly-facade,alt-backend,search-indexer}
+      - PROXY_ALLOWED_PEERS=${TAG_GENERATOR_MTLS_ALLOWED_PEERS:-alt-butterfly-facade,alt-backend,search-indexer,recap-worker}
       - PROXY_CA_FILE=/trust/ca-bundle.pem
     volumes:
       - tag_generator_certs:/certs
@@ -308,4 +308,72 @@ services:
       - PROXY_CA_FILE=/trust/ca-bundle.pem
     volumes:
       - acolyte_orchestrator_certs:/certs
+      - pki_trust_bundle:/trust:ro
+
+  pki-agent-recap-subworker:
+    <<: *pki-agent
+    network_mode: "service:recap-subworker"
+    networks: !override []
+    depends_on:
+      # See pki-agent-tag-generator for the rationale behind restart: true.
+      recap-subworker:
+        condition: service_healthy
+        restart: true
+      step-ca:
+        condition: service_healthy
+    environment:
+      - STEP_CA_URL=https://step-ca:9000
+      - STEP_CA_ROOT_FILE=/trust/ca-bundle.pem
+      - STEP_CA_PROVISIONER=pki-agent
+      - STEP_CA_PROVISIONER_PASSWORD_FILE=/run/secrets/step_ca_root_password
+      - CERT_SUBJECT=recap-subworker
+      - CERT_SANS=recap-subworker,localhost
+      - CERT_PATH=/certs/svc-cert.pem
+      - KEY_PATH=/certs/svc-key.pem
+      - CERT_OWNER_UID=0
+      - CERT_OWNER_GID=0
+      - RENEW_AT_FRACTION=0.66
+      - TICK_INTERVAL=5m
+      - METRICS_ADDR=:9510
+      - PROXY_LISTEN=:9443
+      - PROXY_UPSTREAM=http://127.0.0.1:8002
+      - PROXY_VERIFY_CLIENT=${RECAP_SUBWORKER_VERIFY_CLIENT:-on}
+      - PROXY_ALLOWED_PEERS=${RECAP_SUBWORKER_MTLS_ALLOWED_PEERS:-recap-worker}
+      - PROXY_CA_FILE=/trust/ca-bundle.pem
+    volumes:
+      - recap_subworker_certs:/certs
+      - pki_trust_bundle:/trust:ro
+
+  pki-agent-news-creator:
+    <<: *pki-agent
+    network_mode: "service:news-creator"
+    networks: !override []
+    depends_on:
+      # See pki-agent-tag-generator for the rationale behind restart: true.
+      news-creator:
+        condition: service_healthy
+        restart: true
+      step-ca:
+        condition: service_healthy
+    environment:
+      - STEP_CA_URL=https://step-ca:9000
+      - STEP_CA_ROOT_FILE=/trust/ca-bundle.pem
+      - STEP_CA_PROVISIONER=pki-agent
+      - STEP_CA_PROVISIONER_PASSWORD_FILE=/run/secrets/step_ca_root_password
+      - CERT_SUBJECT=news-creator
+      - CERT_SANS=news-creator,localhost
+      - CERT_PATH=/certs/svc-cert.pem
+      - KEY_PATH=/certs/svc-key.pem
+      - CERT_OWNER_UID=0
+      - CERT_OWNER_GID=0
+      - RENEW_AT_FRACTION=0.66
+      - TICK_INTERVAL=5m
+      - METRICS_ADDR=:9510
+      - PROXY_LISTEN=:9443
+      - PROXY_UPSTREAM=http://127.0.0.1:11434
+      - PROXY_VERIFY_CLIENT=${NEWS_CREATOR_VERIFY_CLIENT:-on}
+      - PROXY_ALLOWED_PEERS=${NEWS_CREATOR_MTLS_ALLOWED_PEERS:-recap-worker,acolyte-orchestrator,rag-orchestrator,recap-evaluator}
+      - PROXY_CA_FILE=/trust/ca-bundle.pem
+    volumes:
+      - news_creator_certs:/certs
       - pki_trust_bundle:/trust:ro

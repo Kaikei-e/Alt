@@ -93,8 +93,8 @@ services:
       - RECAP_DB_USER=${RECAP_DB_USER}
       - RECAP_DB_PASSWORD_FILE=/run/secrets/recap_db_password
       - RECAP_DB_NAME=${RECAP_DB_NAME}
-      - NEWS_CREATOR_BASE_URL=http://news-creator:11434
-      - SUBWORKER_BASE_URL=http://recap-subworker:8002
+      - NEWS_CREATOR_BASE_URL=https://news-creator:9443
+      - SUBWORKER_BASE_URL=https://recap-subworker:9443
       - ALT_BACKEND_BASE_URL=${ALT_BACKEND_BASE_URL}
       - MTLS_ENFORCE=${RECAP_WORKER_MTLS_ENFORCE:-true}
       - MTLS_CERT_FILE=/certs/svc-cert.pem

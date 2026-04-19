@@ -225,6 +225,7 @@ impl Config {
     pub fn from_env() -> Result<Self, ConfigError> {
         let basic = load_basic_config()?;
         let external_services = load_external_service_config()?;
+        validate_mtls_url_schemes(&external_services)?;
         let batch = load_batch_config()?;
         let graph = load_graph_config()?;
         let tag = load_tag_config()?;
@@ -717,6 +718,27 @@ fn load_basic_config() -> Result<BasicConfig, ConfigError> {
         llm_summary_timeout,
         batch_summary_chunk_size,
     })
+}
+
+fn validate_mtls_url_schemes(external: &ExternalServiceConfig) -> Result<(), ConfigError> {
+    if std::env::var("MTLS_ENFORCE").unwrap_or_default() != "true" {
+        return Ok(());
+    }
+    for (name, url) in [
+        ("SUBWORKER_BASE_URL", external.subworker_base_url.as_str()),
+        (
+            "NEWS_CREATOR_BASE_URL",
+            external.news_creator_base_url.as_str(),
+        ),
+    ] {
+        if !url.starts_with("https://") {
+            return Err(ConfigError::Invalid {
+                name,
+                source: anyhow::anyhow!("MTLS_ENFORCE=true requires https:// scheme, got: {}", url),
+            });
+        }
+    }
+    Ok(())
 }
 
 fn load_external_service_config() -> Result<ExternalServiceConfig, ConfigError> {

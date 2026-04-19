@@ -81,6 +81,8 @@ volumes:
   tts_speaker_certs:
   acolyte_orchestrator_certs:
   recap_worker_certs:
+  recap_subworker_certs:
+  news_creator_certs:
 
 x-rask-env: &rask-env
   environment:
