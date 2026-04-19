@@ -76,7 +76,11 @@ func Run(ctx context.Context) error {
 		logger.Logger.Error("Failed to initialize Meilisearch", "err", err)
 		return err
 	}
-	searchDriver := driver.NewMeilisearchDriverWithClients(msClient, searchOnlyClient, "articles")
+	searchDriver := driver.NewMeilisearchDriverWithClients(msClient, searchOnlyClient, "articles").
+		WithHybrid(&driver.HybridConfig{
+			Embedder:      config.MeiliHybridEmbedder,
+			SemanticRatio: config.MeiliHybridSemanticRatio,
+		})
 
 	// ── Gateways (anti-corruption layer) ──
 	articleRepo := gateway.NewArticleRepositoryGateway(articleDriver)

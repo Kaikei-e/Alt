@@ -17,6 +17,7 @@ type MeilisearchDriver struct {
 	client      meilisearch.ServiceManager
 	index       meilisearch.IndexManager
 	searchIndex meilisearch.IndexManager
+	hybrid      *HybridConfig
 }
 
 // NewMeilisearchDriver constructs a driver where the same client handles both
@@ -42,6 +43,25 @@ func NewMeilisearchDriverWithClients(adminClient meilisearch.ServiceManager, sea
 		d.searchIndex = searchClient.Index(indexName)
 	}
 	return d
+}
+
+// WithHybrid installs a hybrid-search configuration on the driver. Pass nil
+// or a HybridConfig with an empty Embedder to disable hybrid mode.
+func (d *MeilisearchDriver) WithHybrid(cfg *HybridConfig) *MeilisearchDriver {
+	d.hybrid = cfg
+	return d
+}
+
+// newBaseSearchRequest centralises SearchRequest construction so hybrid
+// plumbing stays consistent across Search, SearchWithFilters, and the
+// user-scoped search variants.
+func (d *MeilisearchDriver) newBaseSearchRequest(query string, limit int) *meilisearch.SearchRequest {
+	return &meilisearch.SearchRequest{
+		Query:            query,
+		Limit:            int64(limit),
+		ShowRankingScore: true,
+		Hybrid:           d.hybrid.toSDK(),
+	}
 }
 
 func (d *MeilisearchDriver) IndexDocuments(ctx context.Context, docs []SearchDocumentDriver) error {
@@ -95,11 +115,7 @@ func (d *MeilisearchDriver) DeleteDocuments(ctx context.Context, ids []string) e
 }
 
 func (d *MeilisearchDriver) Search(ctx context.Context, query string, limit int) ([]SearchDocumentDriver, error) {
-	searchRequest := &meilisearch.SearchRequest{
-		Query:            query,
-		Limit:            int64(limit),
-		ShowRankingScore: true,
-	}
+	searchRequest := d.newBaseSearchRequest(query, limit)
 	// Locales intentionally omitted: let Meilisearch match across all configured
 	// locales (jpn + eng). Previously CJK queries were restricted to jpn-only,
 	// which prevented Japanese queries from matching English article content
@@ -131,11 +147,7 @@ func (d *MeilisearchDriver) Search(ctx context.Context, query string, limit int)
 func (d *MeilisearchDriver) SearchWithFilters(ctx context.Context, query string, filters []string, limit int) ([]SearchDocumentDriver, error) {
 	filter := d.buildSecureFilter(filters)
 
-	searchRequest := &meilisearch.SearchRequest{
-		Query:            query,
-		Limit:            int64(limit),
-		ShowRankingScore: true,
-	}
+	searchRequest := d.newBaseSearchRequest(query, limit)
 
 	// Only add filter if it's not empty
 	if filter != "" {
@@ -304,11 +316,8 @@ func (d *MeilisearchDriver) getFloat64(m meilisearch.Hit, key string) float64 {
 func (d *MeilisearchDriver) SearchByUserID(ctx context.Context, query string, userID string, limit int) ([]SearchDocumentDriver, error) {
 	filter := BuildUserFilter(userID)
 
-	req := &meilisearch.SearchRequest{
-		Limit:            int64(limit),
-		Filter:           filter,
-		ShowRankingScore: true,
-	}
+	req := d.newBaseSearchRequest(query, limit)
+	req.Filter = filter
 	if containsCJK(query) {
 		req.Locales = []string{"jpn"}
 	}
@@ -330,12 +339,9 @@ func (d *MeilisearchDriver) SearchByUserIDWithPagination(ctx context.Context, qu
 
 	filter := BuildUserFilter(userID)
 
-	paginReq := &meilisearch.SearchRequest{
-		Offset:           offset,
-		Limit:            limit,
-		Filter:           filter,
-		ShowRankingScore: true,
-	}
+	paginReq := d.newBaseSearchRequest(query, int(limit))
+	paginReq.Offset = offset
+	paginReq.Filter = filter
 	if containsCJK(query) {
 		paginReq.Locales = []string{"jpn"}
 	}
