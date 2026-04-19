@@ -37,7 +37,13 @@ cd "$ROOT"
 : "${RUN_ID:=$(date +%s)}"
 : "${STAGING_PROJECT_NAME:=alt-staging}"
 
-export IMAGE_TAG GHCR_OWNER STAGING_PROJECT_NAME
+# Per-service image tag: compose.staging.yaml keys each GHCR image off
+# its own `<SERVICE>_IMAGE_TAG` env var (default `main`) so unrelated
+# dependency services stay on the last successful main build even when
+# the dispatch SHA has no rebuild for them. A suite's own service
+# forwards IMAGE_TAG into its service-scoped var.
+: "${SEARCH_INDEXER_IMAGE_TAG:=$IMAGE_TAG}"
+export IMAGE_TAG GHCR_OWNER STAGING_PROJECT_NAME SEARCH_INDEXER_IMAGE_TAG
 
 # shellcheck source=../_lib/render-slice.sh
 source "$ROOT/e2e/hurl/_lib/render-slice.sh"

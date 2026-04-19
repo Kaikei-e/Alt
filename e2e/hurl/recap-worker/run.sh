@@ -42,7 +42,12 @@ cd "$ROOT"
 : "${RUN_ID:=$(date +%s)}"
 : "${STAGING_PROJECT_NAME:=alt-staging}"
 
-export IMAGE_TAG GHCR_OWNER STAGING_PROJECT_NAME
+# Per-service image tag: see search-indexer/run.sh for rationale.
+# recap-pipeline-stub is a test fixture built in-tree at the same
+# rhythm as recap-worker, so it piggybacks on the same IMAGE_TAG.
+: "${RECAP_WORKER_IMAGE_TAG:=$IMAGE_TAG}"
+: "${RECAP_PIPELINE_STUB_IMAGE_TAG:=$IMAGE_TAG}"
+export IMAGE_TAG GHCR_OWNER STAGING_PROJECT_NAME RECAP_WORKER_IMAGE_TAG RECAP_PIPELINE_STUB_IMAGE_TAG
 
 # shellcheck source=../_lib/render-slice.sh
 source "$ROOT/e2e/hurl/_lib/render-slice.sh"

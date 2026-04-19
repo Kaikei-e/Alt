@@ -40,7 +40,9 @@ cd "$ROOT"
 : "${RUN_ID:=$(date +%s)}"
 : "${STAGING_PROJECT_NAME:=alt-staging}"
 
-export IMAGE_TAG GHCR_OWNER STAGING_PROJECT_NAME
+# Per-service image tag: see search-indexer/run.sh for rationale.
+: "${RAG_ORCHESTRATOR_IMAGE_TAG:=$IMAGE_TAG}"
+export IMAGE_TAG GHCR_OWNER STAGING_PROJECT_NAME RAG_ORCHESTRATOR_IMAGE_TAG
 
 # Render a per-project compose slice (sets $SLICE + $SLICE_DIR) so
 # parallel matrix jobs can coexist on the same Docker daemon under

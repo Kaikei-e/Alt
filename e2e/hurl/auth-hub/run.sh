@@ -46,7 +46,10 @@ cd "$ROOT"
 : "${RUN_ID:=$(date +%s)}"
 : "${STAGING_PROJECT_NAME:=alt-staging}"
 
-export IMAGE_TAG GHCR_OWNER STAGING_PROJECT_NAME
+# Per-service image tag: see search-indexer/run.sh for rationale. This
+# suite's focal service is auth-hub.
+: "${AUTH_HUB_IMAGE_TAG:=$IMAGE_TAG}"
+export IMAGE_TAG GHCR_OWNER STAGING_PROJECT_NAME AUTH_HUB_IMAGE_TAG
 
 # Render a per-project compose slice (sets $SLICE + $SLICE_DIR). This
 # lets parallel matrix jobs coexist on the same Docker daemon by

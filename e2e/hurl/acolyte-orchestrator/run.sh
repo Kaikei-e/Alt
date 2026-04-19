@@ -36,6 +36,12 @@ cd "$ROOT"
 : "${RUN_ID:=$(date +%s)}"
 : "${STAGING_PROJECT_NAME:=alt-staging}"
 
+# acolyte-orchestrator itself is built locally (alt-staging/
+# acolyte-orchestrator:local) so only the GHCR-pulled dependencies —
+# search-indexer, news-creator, stub-backend — need per-service image
+# tags. They default to `main` in compose.staging.yaml so this suite
+# does not have to override any of them: unrelated dependency builds
+# that did not get rebuilt at the dispatch SHA still resolve.
 export IMAGE_TAG GHCR_OWNER STAGING_PROJECT_NAME
 
 # shellcheck source=../_lib/render-slice.sh

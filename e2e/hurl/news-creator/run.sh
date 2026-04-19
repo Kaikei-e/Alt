@@ -42,7 +42,9 @@ cd "$ROOT"
 : "${RUN_ID:=$(date +%s)}"
 : "${STAGING_PROJECT_NAME:=alt-staging}"
 
-export IMAGE_TAG GHCR_OWNER STAGING_PROJECT_NAME
+# Per-service image tag: see search-indexer/run.sh for rationale.
+: "${NEWS_CREATOR_IMAGE_TAG:=$IMAGE_TAG}"
+export IMAGE_TAG GHCR_OWNER STAGING_PROJECT_NAME NEWS_CREATOR_IMAGE_TAG
 
 # shellcheck source=../_lib/render-slice.sh
 source "$ROOT/e2e/hurl/_lib/render-slice.sh"

@@ -104,7 +104,7 @@ services:
       start_period: 2s
 
   search-indexer:
-    image: ghcr.io/${GHCR_OWNER:-kaikei-e}/alt-search-indexer:${IMAGE_TAG:-main}
+    image: ghcr.io/${GHCR_OWNER:-kaikei-e}/alt-search-indexer:${SEARCH_INDEXER_IMAGE_TAG:-main}
     container_name: alt-staging-search-indexer
     profiles: [search-indexer, acolyte-orchestrator]
     depends_on:
@@ -165,7 +165,7 @@ services:
       start_period: 2s
 
   mq-hub:
-    image: ghcr.io/${GHCR_OWNER:-kaikei-e}/alt-mq-hub:${IMAGE_TAG:-main}
+    image: ghcr.io/${GHCR_OWNER:-kaikei-e}/alt-mq-hub:${MQ_HUB_IMAGE_TAG:-main}
     container_name: alt-staging-mq-hub
     profiles: [mq-hub, tag-generator]
     depends_on:
@@ -325,7 +325,7 @@ services:
     restart: "no"
 
   rag-orchestrator:
-    image: ghcr.io/${GHCR_OWNER:-kaikei-e}/alt-rag-orchestrator:${IMAGE_TAG:-main}
+    image: ghcr.io/${GHCR_OWNER:-kaikei-e}/alt-rag-orchestrator:${RAG_ORCHESTRATOR_IMAGE_TAG:-main}
     build:
       context: ../rag-orchestrator
       dockerfile: Dockerfile
@@ -379,7 +379,7 @@ services:
   # Database anti-pattern elimination); tag lookups now flow through
   # alt-backend's BatchGetTagsByArticleIDs Connect-RPC.
   tag-generator:
-    image: ghcr.io/${GHCR_OWNER:-kaikei-e}/alt-tag-generator:${IMAGE_TAG:-main}
+    image: ghcr.io/${GHCR_OWNER:-kaikei-e}/alt-tag-generator:${TAG_GENERATOR_IMAGE_TAG:-main}
     container_name: alt-staging-tag-generator
     profiles: [tag-generator]
     depends_on:
@@ -461,7 +461,7 @@ services:
       start_period: 2s
 
   news-creator:
-    image: ghcr.io/${GHCR_OWNER:-kaikei-e}/alt-news-creator:${IMAGE_TAG:-main}
+    image: ghcr.io/${GHCR_OWNER:-kaikei-e}/alt-news-creator:${NEWS_CREATOR_IMAGE_TAG:-main}
     container_name: alt-staging-news-creator
     profiles: [news-creator]
     depends_on:
@@ -577,7 +577,7 @@ services:
   recap-pipeline-stub:
     build:
       context: ../e2e/stubs/recap-pipeline-stub
-    image: ghcr.io/${GHCR_OWNER:-kaikei-e}/alt-recap-pipeline-stub:${IMAGE_TAG:-main}
+    image: ghcr.io/${GHCR_OWNER:-kaikei-e}/alt-recap-pipeline-stub:${RECAP_PIPELINE_STUB_IMAGE_TAG:-main}
     container_name: alt-staging-recap-pipeline-stub
     profiles: [recap-worker]
     networks:
@@ -608,7 +608,7 @@ services:
       start_period: 3s
 
   recap-worker:
-    image: ghcr.io/${GHCR_OWNER:-kaikei-e}/alt-recap-worker:${IMAGE_TAG:-main}
+    image: ghcr.io/${GHCR_OWNER:-kaikei-e}/alt-recap-worker:${RECAP_WORKER_IMAGE_TAG:-main}
     container_name: alt-staging-recap-worker
     profiles: [recap-worker]
     depends_on:
@@ -791,7 +791,7 @@ services:
   alt-backend-deps-stub:
     build:
       context: ../e2e/stubs/alt-backend-deps-stub
-    image: ghcr.io/${GHCR_OWNER:-kaikei-e}/alt-alt-backend-deps-stub:${IMAGE_TAG:-main}
+    image: ghcr.io/${GHCR_OWNER:-kaikei-e}/alt-alt-backend-deps-stub:${ALT_BACKEND_DEPS_STUB_IMAGE_TAG:-main}
     container_name: alt-staging-alt-backend-deps-stub
     profiles: [alt-backend]
     # Network aliases let one container answer to all six upstream
@@ -822,7 +822,7 @@ services:
       start_period: 3s
 
   alt-backend:
-    image: ghcr.io/${GHCR_OWNER:-kaikei-e}/alt-alt-backend:${IMAGE_TAG:-main}
+    image: ghcr.io/${GHCR_OWNER:-kaikei-e}/alt-alt-backend:${ALT_BACKEND_IMAGE_TAG:-main}
     build:
       context: ../alt-backend
       dockerfile: Dockerfile.backend
@@ -992,7 +992,7 @@ services:
       start_period: 15s
 
   auth-hub:
-    image: ghcr.io/${GHCR_OWNER:-kaikei-e}/alt-auth-hub:${IMAGE_TAG:-main}
+    image: ghcr.io/${GHCR_OWNER:-kaikei-e}/alt-auth-hub:${AUTH_HUB_IMAGE_TAG:-main}
     build:
       context: ../auth-hub
       dockerfile: Dockerfile

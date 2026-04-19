@@ -36,7 +36,16 @@ cd "$ROOT"
 : "${RUN_ID:=$(date +%s)}"
 : "${STAGING_PROJECT_NAME:=alt-staging}"
 
-export IMAGE_TAG GHCR_OWNER STAGING_PROJECT_NAME
+# Per-service image tag: compose.staging.yaml keys each GHCR image off
+# its own `<SERVICE>_IMAGE_TAG` env var (default `main`) so unrelated
+# dependency services stay on the last successful main build even when
+# the dispatch SHA has no rebuild for them. The alt-backend suite
+# forwards its IMAGE_TAG into its service-scoped var; backend-deps-stub
+# is co-versioned with alt-backend because they share the same build
+# stream.
+: "${ALT_BACKEND_IMAGE_TAG:=$IMAGE_TAG}"
+: "${ALT_BACKEND_DEPS_STUB_IMAGE_TAG:=$IMAGE_TAG}"
+export IMAGE_TAG GHCR_OWNER STAGING_PROJECT_NAME ALT_BACKEND_IMAGE_TAG ALT_BACKEND_DEPS_STUB_IMAGE_TAG
 
 # Render a per-project compose slice (sets $SLICE + $SLICE_DIR). This
 # lets parallel matrix jobs coexist on the same Docker daemon by
