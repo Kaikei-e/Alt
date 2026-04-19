@@ -357,6 +357,92 @@ async def test_structured_mode_num_predict_from_settings():
 
 
 @pytest.mark.asyncio
+async def test_freetext_forwards_top_p_and_top_k_into_options():
+    """top_p / top_k kwargs must reach Ollama options. Gemma 4's official
+    sampler (temperature=1.0, top_p=0.95, top_k=64) prevents CJK-induced
+    empty responses when combined with think=False.
+    """
+    captured_requests: list[httpx.Request] = []
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        captured_requests.append(request)
+        return httpx.Response(
+            200,
+            json={
+                "response": "Generated text.",
+                "model": "gemma4:26b",
+                "eval_count": 100,
+            },
+        )
+
+    client = _mock_transport(handler)
+    gw = OllamaGateway(client, _make_settings())
+
+    await gw.generate("test", temperature=1.0, top_p=0.95, top_k=64)
+
+    body = json.loads(captured_requests[0].content)
+    assert body["options"]["top_p"] == 0.95
+    assert body["options"]["top_k"] == 64
+    assert body["options"]["temperature"] == 1.0
+
+
+@pytest.mark.asyncio
+async def test_chat_freetext_forwards_top_p_and_top_k_into_options():
+    """Same forwarding contract for /api/chat freetext (LONGFORM / STRUCTURED-no-format)."""
+    from acolyte.port.llm_provider import LLMMode
+
+    captured_requests: list[httpx.Request] = []
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        captured_requests.append(request)
+        return httpx.Response(
+            200,
+            json={
+                "message": {"content": "Text."},
+                "model": "gemma4:26b",
+                "eval_count": 100,
+            },
+        )
+
+    client = _mock_transport(handler)
+    gw = OllamaGateway(client, _make_settings())
+
+    await gw.generate("test", mode=LLMMode.LONGFORM, top_p=0.9, top_k=40)
+
+    body = json.loads(captured_requests[0].content)
+    assert body["options"]["top_p"] == 0.9
+    assert body["options"]["top_k"] == 40
+
+
+@pytest.mark.asyncio
+async def test_top_p_and_top_k_omitted_when_not_provided():
+    """Defaults: without caller-supplied top_p/top_k, keys must be absent
+    from options so existing Ollama defaults apply (no silent regression).
+    """
+    captured_requests: list[httpx.Request] = []
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        captured_requests.append(request)
+        return httpx.Response(
+            200,
+            json={
+                "response": "Text.",
+                "model": "gemma4:26b",
+                "eval_count": 10,
+            },
+        )
+
+    client = _mock_transport(handler)
+    gw = OllamaGateway(client, _make_settings())
+
+    await gw.generate("test", temperature=0.0)
+
+    body = json.loads(captured_requests[0].content)
+    assert "top_p" not in body["options"]
+    assert "top_k" not in body["options"]
+
+
+@pytest.mark.asyncio
 async def test_longform_mode_num_predict_from_settings():
     """mode=LONGFORM uses longform_num_predict from settings when not explicit."""
     from acolyte.port.llm_provider import LLMMode

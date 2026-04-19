@@ -50,6 +50,8 @@ class VllmGateway:
         model: str | None = None,
         num_predict: int | None = None,
         temperature: float | None = None,
+        top_p: float | None = None,
+        top_k: int | None = None,
         format: dict | None = None,
         think: bool | None = None,
         mode: LLMMode | None = None,
@@ -73,6 +75,10 @@ class VllmGateway:
             "temperature": resolved_temp,
             "stream": False,
         }
+        if top_p is not None:
+            payload["top_p"] = top_p
+        if top_k is not None:
+            payload["top_k"] = top_k
 
         # Structured output: wrap format into response_format
         if use_structured and format is not None:

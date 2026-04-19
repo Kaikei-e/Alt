@@ -35,6 +35,8 @@ class FakeLLM:
         model: str | None = None,
         num_predict: int | None = None,
         temperature: float | None = None,
+        top_p: float | None = None,
+        top_k: int | None = None,
         format: dict | None = None,
         think: bool | None = None,
         mode: object = None,

@@ -30,11 +30,17 @@ class NewsCreatorHyDEGenerator:
         timeout_s: float = 8.0,
         max_chars: int = 600,
         num_predict: int = 400,
+        temperature: float = 1.0,
+        top_p: float = 0.95,
+        top_k: int = 64,
     ) -> None:
         self._llm = llm
         self._timeout_s = timeout_s
         self._max_chars = max_chars
         self._num_predict = num_predict
+        self._temperature = temperature
+        self._top_p = top_p
+        self._top_k = top_k
 
     async def generate_hypothetical_doc(self, topic: str, target_lang: str) -> str | None:
         if not topic or not topic.strip():
@@ -49,7 +55,9 @@ class NewsCreatorHyDEGenerator:
                 self._llm.generate(
                     prompt,
                     num_predict=self._num_predict,
-                    temperature=0.0,
+                    temperature=self._temperature,
+                    top_p=self._top_p,
+                    top_k=self._top_k,
                     # Gemma 4 variants advertise a `thinking` capability on
                     # Ollama. When the prompt contains CJK characters the
                     # model silently enters thinking mode, consumes the

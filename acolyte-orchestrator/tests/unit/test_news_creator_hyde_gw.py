@@ -59,6 +59,33 @@ async def test_generator_pins_think_false_to_avoid_cjk_empty_response():
 
 
 @pytest.mark.asyncio
+async def test_generator_forwards_gemma4_official_sampler():
+    """Gemma instruct checkpoints ship with an official sampler: T=1.0,
+    top_p=0.95, top_k=64 (Google DeepMind model card). HyDE uses those
+    values to (a) match Google's recommended distribution and (b) keep
+    passage diversity across repeated calls so RRF fusion sees genuinely
+    different ranked lists. think=False stays pinned so CJK prompts never
+    collapse into internal reasoning.
+    """
+    fake = _FakeLLM(
+        text=(
+            "The 2026 AI chip market continues to expand with several new "
+            "entrants pushing aggressive pricing across GPU and NPU segments. "
+            "Analysts observe margin pressure in the consumer tier."
+        )
+    )
+    gen = NewsCreatorHyDEGenerator(fake)
+    await gen.generate_hypothetical_doc("AIチップ市場 2026", "en")
+
+    assert len(fake.calls) == 1
+    call = fake.calls[0]
+    assert call.get("temperature") == 1.0
+    assert call.get("top_p") == 0.95
+    assert call.get("top_k") == 64
+    assert call.get("think") is False
+
+
+@pytest.mark.asyncio
 async def test_empty_topic_returns_none_without_llm_call():
     llm = _FakeLLM(text="ignored")
     gen = NewsCreatorHyDEGenerator(llm)

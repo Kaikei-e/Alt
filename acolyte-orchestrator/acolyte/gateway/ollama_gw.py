@@ -67,6 +67,8 @@ class OllamaGateway:
         model: str | None = None,
         num_predict: int | None = None,
         temperature: float | None = None,
+        top_p: float | None = None,
+        top_k: int | None = None,
         format: dict | None = None,
         think: bool | None = None,
         mode: LLMMode | None = None,
@@ -90,6 +92,10 @@ class OllamaGateway:
             "num_predict": resolved_predict,
             "temperature": resolved_temp,
         }
+        if top_p is not None:
+            options["top_p"] = top_p
+        if top_k is not None:
+            options["top_k"] = top_k
 
         resolved_model = model or self._default_model
 
