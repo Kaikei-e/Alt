@@ -12,9 +12,11 @@ tag-generator exposes:
   snake_case response fields — not proto3-JSON):
   - `GET /health`
   - `POST /api/v1/extract-tags` — stateless text → tags inference
-  - (other endpoints — `/api/v1/tags/batch`, `/api/v1/generate-tags`,
+  - (other endpoints — `/api/v1/generate-tags`,
     `/api/v1/user-preferences` — are out of scope for this slice; see
-    *Out of scope* below)
+    *Out of scope* below. The former `/api/v1/tags/batch` surface was
+    removed per ADR-000241 / ADR-000397, with the replacement contract
+    on alt-backend's `BatchGetTagsByArticleIDs` RPC.)
 - **Redis Streams consumer** on `alt:events:tags` (TagGenerationRequested
   → TagGenerationCompleted reply), driven indirectly via mq-hub's
   `services.mqhub.v1.MQHubService/GenerateTagsForArticle` RPC.
@@ -126,13 +128,36 @@ inference can be several seconds.
   tag-generator replies → mq-hub returns) works end-to-end.
   Response fields are proto3-JSON camelCase (mq-hub is Connect-RPC).
 
+### 05 — POST /api/v1/extract-tags missing title
+- **Given** the server is ready.
+- **When** `POST /api/v1/extract-tags` is called with a body that omits
+  `title`.
+- **Then** FastAPI + Pydantic reject the request at schema validation
+  and respond 422 with a populated `detail` array. The ML pipeline is
+  never reached.
+
+### 06 — POST /api/v1/extract-tags missing content
+- **Given** the server is ready.
+- **When** `POST /api/v1/extract-tags` is called with a body that omits
+  `content`.
+- **Then** the response is 422 with Pydantic's `detail` array.
+
+### 07 — POST /api/v1/extract-tags empty strings
+- **Given** the server is ready.
+- **When** `POST /api/v1/extract-tags` is called with both `title` and
+  `content` as empty strings.
+- **Then** the response is 200 with `success=true`, `tags=[]`,
+  `confidence=0`, and a detected `language`. This pins the graceful
+  no-signal arm of the ML pipeline.
+
 ## Out of scope (deferred)
 
-- **`POST /api/v1/tags/batch`** — uses `psycopg2` directly against a
-  Postgres with `articles + article_tags + feed_tags` schema. Staging
-  profile for the backing DB belongs in its own increment.
-- **`POST /api/v1/extract-tags` negative paths** — missing `title`,
-  oversized `content`, 503 before lifespan ready.
+- **`POST /api/v1/extract-tags` oversized content** — no server-side
+  length constraint today; would need a Pydantic `max_length` change
+  before the scenario is meaningful.
+- **Readiness race (503 before lifespan finished)** — requires a cold
+  start probe inside the compose slice; the existing scenario 02 retry
+  budget covers it implicitly.
 - **`TagGenerationRequested` validation failure** — the reply arm that
   sets `success=false` + `error_message`.
 - **`ArticleCreated` Redis Streams round trip** — needs an observable
