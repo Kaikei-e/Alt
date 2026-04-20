@@ -3,19 +3,23 @@
 # Target: Reduce build context from 6.26GB to ~200MB
 # =============================================================================
 
-# CRITICAL: Virtual Environment (5.8GB) - Massive CUDA packages
-.venv/
-venv/
-env/
-*.venv
+# CRITICAL: Virtual Environment (5.8GB) — match at any depth.
+# Top-level `.venv/` alone does NOT exclude `app/.venv/` (dockerignore is
+# path-specific without the `**/` prefix) — losing this exclusion was the
+# cause of the 4.2 GiB image regression.
+**/.venv/
+**/venv/
+**/env/
+**/.onnx-venv/
+**/*.venv
 
 # Development Caches and Build Artifacts (213MB+)
-.mypy_cache/
-__pycache__/
+**/.mypy_cache/
+**/__pycache__/
 *.pyc
 *.pyo
 *.pyd
-.pytest_cache/
+**/.pytest_cache/
 .coverage
 .coverage.*
 htmlcov/
@@ -24,10 +28,10 @@ htmlcov/
 nosetests.xml
 coverage.xml
 *.cover
-.hypothesis/
+**/.hypothesis/
 
 # Package Build Artifacts
-*.egg-info/
+**/*.egg-info/
 build/
 dist/
 .eggs/
@@ -55,8 +59,8 @@ CONTRIBUTING.md
 docs/
 documentation/
 *.rst
-*.txt
-!requirements*.txt
+# Note: do NOT blanket-exclude *.txt — app/tag_extractor/stopwords_{ja,en}.txt
+# are runtime resources read by the tag extractor.
 
 # Model and Data Directories (Keep external)
 models/
@@ -76,7 +80,7 @@ temp/
 .tmp/
 
 # Testing and CI/CD
-tests/
+**/tests/
 test_*/
 *_test.py
 test_*.py
@@ -124,7 +128,10 @@ yarn-error.log*
 .nfs*
 
 # Docker and Container Files
+# Dockerfile itself is passed via -f flag, not copied into the image, so
+# excluding it is harmless — but keep the exception wildcard consistent.
 Dockerfile.*
+!Dockerfile.tag-generator
 !Dockerfile.tag-generator-*
 docker-compose*.yml
 .dockerignore
@@ -222,10 +229,10 @@ site-packages/
 lib-dynload/
 
 # Additional Development Tools
-.ruff_cache/
-.black_cache/
-.isort_cache/
-.pylint_cache/
+**/.ruff_cache/
+**/.black_cache/
+**/.isort_cache/
+**/.pylint_cache/
 
 # =============================================================================
 # ENHANCED RESULT EXPECTATIONS:
