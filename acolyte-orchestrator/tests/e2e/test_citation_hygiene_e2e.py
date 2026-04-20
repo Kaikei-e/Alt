@@ -10,6 +10,7 @@ Covers the full pipeline slice that produces the rendered report body:
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from typing import cast
 from uuid import uuid4
 
 import pytest
@@ -17,8 +18,10 @@ import pytest
 from acolyte.domain.report import Report, ReportSection
 from acolyte.domain.source_map import SourceMap
 from acolyte.port.llm_provider import LLMResponse
+from acolyte.port.report_repository import ReportRepositoryPort
 from acolyte.usecase.graph.nodes.finalizer_node import FinalizerNode
 from acolyte.usecase.graph.nodes.writer_node import WriterNode
+from acolyte.usecase.graph.state import ReportGenerationState
 
 
 class ScriptedLLM:
@@ -69,6 +72,9 @@ class InMemoryReportRepo:
         self.saved_bodies[section_key] = body
         self.saved_citations[section_key] = citations
         return expected_version + 1
+
+    async def create_report(self, title, report_type):
+        return self.report
 
 
 def _claim() -> dict:
@@ -122,7 +128,7 @@ async def test_writer_rejects_inline_title_output_in_pipeline() -> None:
     writer = WriterNode(llm)
     state, _ = _state_with_source_map()
 
-    result = await writer(state)
+    result = await writer(cast(ReportGenerationState, state))
 
     paras = result["section_paragraphs"]["analysis"]
     assert paras[0]["status"] == "rejected"
@@ -138,14 +144,14 @@ async def test_clean_paragraph_persists_with_Sn_and_sources_footer() -> None:
     writer = WriterNode(llm)
     state, _ = _state_with_source_map()
 
-    writer_result = await writer(state)
+    writer_result = await writer(cast(ReportGenerationState, state))
     paras = writer_result["section_paragraphs"]["analysis"]
     assert paras[0]["status"] == "accepted"
     assert "[S1]" in paras[0]["body"]
     assert "[S2]" in paras[0]["body"]
 
     repo = InMemoryReportRepo()
-    finalizer = FinalizerNode(repo)
+    finalizer = FinalizerNode(cast(ReportRepositoryPort, repo))
     finalizer_state: dict = {
         "report_id": str(repo.report_id),
         "outline": state["outline"],
@@ -156,7 +162,7 @@ async def test_clean_paragraph_persists_with_Sn_and_sources_footer() -> None:
         "source_map": state["source_map"],
     }
 
-    await finalizer(finalizer_state)
+    await finalizer(cast(ReportGenerationState, finalizer_state))
 
     persisted = repo.saved_bodies["analysis"]
     assert "[S1]" in persisted
@@ -172,22 +178,21 @@ async def test_clean_paragraph_persists_with_Sn_and_sources_footer() -> None:
 async def test_finalizer_never_expands_Sn_into_inline_titles() -> None:
     """Regression guard: [S1] markers must never be replaced by [title] inline."""
     repo = InMemoryReportRepo()
-    finalizer = FinalizerNode(repo)
+    finalizer = FinalizerNode(cast(ReportRepositoryPort, repo))
 
     sm = SourceMap()
     sm.register("uuid-alpha", "Article Title X", publisher="Pub", url="https://x.example")
 
-    await finalizer(
-        {
-            "report_id": str(repo.report_id),
-            "outline": [{"key": "analysis"}],
-            "brief": {"topic": "X"},
-            "sections": {"analysis": "Claim [S1] stands."},
-            "best_sections": {},
-            "section_citations": {"analysis": []},
-            "source_map": sm.to_dict(),
-        }
-    )
+    finalizer_state: dict = {
+        "report_id": str(repo.report_id),
+        "outline": [{"key": "analysis"}],
+        "brief": {"topic": "X"},
+        "sections": {"analysis": "Claim [S1] stands."},
+        "best_sections": {},
+        "section_citations": {"analysis": []},
+        "source_map": sm.to_dict(),
+    }
+    await finalizer(cast(ReportGenerationState, finalizer_state))
 
     persisted = repo.saved_bodies["analysis"]
     body_before_footer = persisted.split("\n\n---\nSources:\n", 1)[0]

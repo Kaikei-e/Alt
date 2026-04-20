@@ -8,7 +8,7 @@ the limit. Outputs both curated_by_section and backward-compat curated.
 from __future__ import annotations
 
 import json
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 import structlog
 
@@ -58,7 +58,7 @@ class CuratorNode:
         brief = state.get("brief") or state.get("scope") or {}
         outline = state.get("outline", [])
         topic = brief.get("topic", "")
-        report_type = state.get("report_type") or brief.get("report_type")
+        report_type = cast("str | None", state.get("report_type") or brief.get("report_type"))
 
         # Per-section curation
         curated_by_section: dict[str, list[dict]] = {}
