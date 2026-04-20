@@ -133,8 +133,6 @@ explicit = true
 find = { include = [
     "tag_generator",
     "tag_generator.*",
-    "article_fetcher",
-    "article_fetcher.*",
     "tag_extractor",
     "tag_extractor.*",
     "tag_inserter",

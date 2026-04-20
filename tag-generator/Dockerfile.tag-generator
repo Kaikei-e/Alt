@@ -107,11 +107,12 @@ COPY --from=builder --chown=appuser:appuser /opt/model-cache/nltk /home/appuser/
 
 # Explicit source copies — avoid `COPY app/ ./` which would pull in any local
 # dev artifact (.venv, .mypy_cache, etc.) even when `.dockerignore` drifts.
+# article_fetcher/ was retired in bdae9401b; the live fetcher lives in
+# tag_generator/driver/connect_article_fetcher.py.
 COPY --chown=appuser:appuser app/auth_service.py app/main.py app/conftest.py app/pyproject.toml ./
 COPY --chown=appuser:appuser app/tag_generator ./tag_generator
 COPY --chown=appuser:appuser app/tag_extractor ./tag_extractor
 COPY --chown=appuser:appuser app/tag_inserter ./tag_inserter
-COPY --chown=appuser:appuser app/article_fetcher ./article_fetcher
 
 USER appuser
 
