@@ -124,3 +124,10 @@ harness = false
 [[bin]]
 name = "replay_genre_pipeline"
 path = "../scripts/replay_genre_pipeline.rs"
+
+[profile.release]
+lto = "fat"
+codegen-units = 1
+strip = "symbols"
+panic = "abort"
+overflow-checks = true
