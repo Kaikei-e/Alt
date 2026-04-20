@@ -225,6 +225,73 @@ shell 展開を避ける。
 3. 対応 PR では: consumer / provider のどちらを先に修正するかを決める。原則は "consumer が真実、provider が追従"。例外は auth hardening (PM-2026-025 型)。
 4. 修正 + `./scripts/pact-check.sh` green → broker publish → CI green。
 
+## 9. Stale verification による can-i-deploy 誤 block の解消
+
+### 症状
+
+release-deploy.yaml の `gate (<svc>)` が `can-i-deploy` で以下のように落ちる:
+
+```
+The verification for the pact between the version of <consumer> currently in production (<old-sha>)
+and version <new-sha> of <provider> failed
+❌ Computer says no
+```
+
+ただし:
+
+- 該当 pact file 自体は main で動いている
+- 該当 provider の最新コードでは provider test が pass する
+- 原因は **broker 上の古い verification-results record** のまま（典型: 過去 deploy で provider が一時的に失敗した痕跡）
+
+2026-04-20 の release-deploy run 24643555145 で `alt-backend × recap-worker@prod` が verification-results/1858 failure のまま残って deploy 全体を block した事例あり。
+
+### Primary: 再 verify で matrix を上書き（**原則これだけ**）
+
+Pact Broker matrix は **「同一 provider-version + pact-version」の最新 verification** を使う。provider 側を **実際に再 verify** して success record を POST すれば、古い failure が latest から押し出される。
+
+```bash
+# 1. 対象 pact-version の publish-verification-results URL を取得
+PACT_URL="${PACT_BROKER_BASE_URL}/pacts/provider/<P>/consumer/<C>/pact-version/<PV>"
+PUBLISH_URL=$(curl -fsS -u "pact:${PACT_BROKER_PASSWORD}" "$PACT_URL" \
+  | jq -r '._links."pb:publish-verification-results".href')
+
+# 2. 現行 prod の provider container で実テストを回す
+cd alt-backend/app
+go test ./pact_verifier/... -v
+
+# 3. 結果を success record として POST（provider test が pass した前提）
+curl -fsS -u "pact:${PACT_BROKER_PASSWORD}" \
+  -X POST -H 'Content-Type: application/json' \
+  -d "$(jq -n --arg v "$CURRENT_PROD_SHA" \
+    '{success:true,providerApplicationVersion:$v,verifiedBy:{implementation:"manual-reverify",version:"1.0.0"}}')" \
+  "$PUBLISH_URL"
+
+# 4. can-i-deploy を再実行
+pact-broker-cli can-i-deploy --pacticipant <P> --version <new-sha> --to-environment production
+```
+
+### Secondary（真に force-override 必要な例外経路のみ）
+
+⚠️ **これは production gate を人間の主張で override する A08 Integrity Failure 相当のリスクを持つ**。使用時は次の 3 条件全てを満たすこと:
+
+1. **2 人承認**: Linear issue + 別エンジニアの approve コメント
+2. **`--build-url` に Linear issue URL を固定**（自由文字列禁止）
+3. **監査ログ**: 実行後に slack #prod-audit へ invalidation URL + 理由 + approver 2 名を post
+
+```bash
+# ⚠️ PRIMARY の再 verify が技術的に不可能な場合にのみ
+pact-broker-cli create-or-update-verification \
+  --pact-url "$PACT_URL" \
+  --provider-version "$CURRENT_PROD_SHA" \
+  --success true \
+  --build-url "https://linear.app/<org>/issue/<INC-NNNN>"
+```
+
+将来の予防策（backlog）:
+
+- `scripts/pact-invalidate.sh` wrapper を作り、`PACT_ALLOW_FORCE_SUCCESS=true` + Linear URL 正規表現を CLI 側で強制（default refused）
+- `record-deployment` model に全面移行（[[000740]] の superseding）して tags-based 判定箇所を削除すれば、stale failure が can-i-deploy の判断対象から自然に落ちる
+
 ## 参考
 
 - [[000591]] Pact CDC 全面展開

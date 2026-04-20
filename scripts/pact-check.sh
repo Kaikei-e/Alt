@@ -379,7 +379,16 @@ should_publish_pact_file() {
   return 1
 }
 
-if [[ "$MODE" == "broker" && "$ROLE_FILTER" != "provider" ]]; then
+if [[ "$MODE" == "broker" && "$ROLE_FILTER" != "provider" && "$MANUAL_ONLY" != "true" ]]; then
+  # --publish-manual-verifications runs in broker mode (MODE=broker set by
+  # --publish-only) but must NOT touch consumer pact files. The alt-deploy
+  # pact-manual job 2026-04-20 crashed with "Cannot change the content of
+  # the pact for recap-worker version ... and provider alt-backend" because
+  # this block was re-publishing the consumer pacts at the same SHA as the
+  # upstream pact-publish job, and Pact libraries that use type matchers
+  # without concrete examples generate non-deterministic bodies that the
+  # Broker rejects as content mutation. Manual bridging only POSTs
+  # verification records (block at ~L474), never consumer pacts.
   if [[ "$DRY_RUN" != "true" ]]; then
     echo ""
     echo "============================="
