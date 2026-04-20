@@ -35,7 +35,7 @@ def _get_cross_encoder(model_name: str):
 
         logger.info("Loading cross-encoder model", extra={"model_name": model_name})
         load_start = time.time()
-        _cross_encoder = CrossEncoder(model_name)
+        _cross_encoder = CrossEncoder(model_name, device="cpu")
         _loaded_model_name = model_name
         load_elapsed = time.time() - load_start
         logger.info(
