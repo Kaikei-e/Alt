@@ -14,7 +14,7 @@ name = "tag-generator"
 version = "0.1.0"
 description = "Ultra-minimal tag generator (external models required)"
 readme = "README.md"
-requires-python = ">=3.14"
+requires-python = ">=3.14,<3.15"
 dependencies = [
     # Japanese Text Processing (self-contained)
     "fugashi[unidic-lite]>=1.5.1", # includes unidic-lite, no external MecAB needed
@@ -86,43 +86,48 @@ dev = [
     "pact-python>=3.2.1",
 ]
 
-# ML dependencies for production and testing
-# These are installed separately in Dockerfile to control installation order
+# ML dependencies. Installed via `uv sync --group ml` in Dockerfile.
+# torch is pinned to the CPU-only wheel index via [tool.uv.sources] below
+# so transitive installs stay CPU-only (ADR-000762 / ADR-000812 pattern).
 ml = [
-    "sentence-transformers>=3.3.0",
+    "torch>=2.1.0,<3",
+    "sentence-transformers>=3.3.0,<5",
     "keybert>=0.8.5",
-    "transformers>=4.40.0",
-    "torch>=2.1.0",
+    "transformers>=4.40.0,<5",
     "scikit-learn>=1.5.2",
     "numpy>=1.26.0",
     "onnxruntime>=1.21.0",
+    "unidic",
 ]
 
-# Extended ML dependencies including GiNZA for improved Japanese NLP
+# Extended ML dependencies including GiNZA for improved Japanese NLP.
 # Install with: uv sync --group ml-extended
-# GiNZA provides better noun phrase extraction and named entity recognition
 ml-extended = [
-    # Include all base ML dependencies
-    "sentence-transformers>=3.3.0",
+    "torch>=2.1.0,<3",
+    "sentence-transformers>=3.3.0,<5",
     "keybert>=0.8.5",
-    "transformers>=4.40.0",
-    "torch>=2.1.0",
+    "transformers>=4.40.0,<5",
     "scikit-learn>=1.5.2",
     "numpy>=1.26.0",
     "onnxruntime>=1.21.0",
-    # GiNZA: Japanese NLP library built on spaCy
-    # Provides: noun phrase chunking, dependency parsing, NER
+    "unidic",
     "ginza>=5.2.0",
     "ja-ginza>=5.2.0",
     "spacy>=3.8.0",
 ]
 
-# NOTE: ML dependencies are in a separate group to allow flexible installation
-# In Dockerfile: Install PyTorch from custom index first, then other ML deps
-# For development: uv sync --group ml
-
 [tool.uv]
 constraint-dependencies = ["protobuf>=6.33.5,<7.0", "Pygments>=2.20.0"]
+
+[tool.uv.sources]
+torch = [{ index = "pytorch-cpu" }]
+torchvision = [{ index = "pytorch-cpu" }]
+torchaudio = [{ index = "pytorch-cpu" }]
+
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
 
 [tool.setuptools.packages]
 find = { include = [
