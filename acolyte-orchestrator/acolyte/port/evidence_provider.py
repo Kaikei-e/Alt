@@ -3,7 +3,10 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Protocol
+from typing import TYPE_CHECKING, Protocol
+
+if TYPE_CHECKING:
+    from datetime import datetime
 
 
 @dataclass(frozen=True)
@@ -45,7 +48,14 @@ class RecapHit:
 
 
 class EvidenceProviderPort(Protocol):
-    async def search_articles(self, query: str, *, limit: int = 20) -> list[ArticleHit]: ...
+    async def search_articles(
+        self,
+        query: str,
+        *,
+        limit: int = 20,
+        published_after: datetime | None = None,
+        published_before: datetime | None = None,
+    ) -> list[ArticleHit]: ...
 
     async def fetch_article_metadata(self, article_ids: list[str]) -> list[ArticleMetadata]: ...
 

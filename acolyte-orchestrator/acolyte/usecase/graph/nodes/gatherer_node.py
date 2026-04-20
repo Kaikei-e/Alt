@@ -12,6 +12,8 @@ for future CC (Convex Combination) migration.
 
 from __future__ import annotations
 
+import re
+from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING
 
 import structlog
@@ -28,6 +30,39 @@ if TYPE_CHECKING:
     from acolyte.usecase.graph.state import ReportGenerationState
 
 logger = structlog.get_logger(__name__)
+
+# ISO 8601 duration parser — days, hours, weeks. Minimal coverage because the
+# upstream default for weekly_briefing is ``P7D``; richer forms round-trip to
+# None so the Gatherer stays tolerant of free-text ``time_range`` values.
+_DURATION_RE = re.compile(r"^P(?:(\d+)W)?(?:(\d+)D)?(?:T(?:(\d+)H)?)?$")
+
+
+def _parse_duration_days(value: str | None) -> timedelta | None:
+    if not value:
+        return None
+    match = _DURATION_RE.match(value.strip())
+    if match is None:
+        return None
+    weeks = int(match.group(1) or 0)
+    days = int(match.group(2) or 0)
+    hours = int(match.group(3) or 0)
+    total = timedelta(weeks=weeks, days=days, hours=hours)
+    if total == timedelta(0):
+        return None
+    return total
+
+
+def _published_after_from_brief(brief: dict, *, now: datetime | None = None) -> datetime | None:
+    """Convert ``brief.time_range`` (ISO 8601 duration) into ``now - duration``.
+
+    Returns ``None`` when the brief has no actionable duration, so
+    the gateway call skips the ``published_after`` parameter entirely.
+    """
+    duration = _parse_duration_days(brief.get("time_range"))
+    if duration is None:
+        return None
+    reference = now or datetime.now(UTC)
+    return reference - duration
 
 
 def _detect_topic_language(topic: str) -> str:
@@ -78,13 +113,17 @@ class GathererNode:
         # explicit translated variant is queued alongside the original.
         hyde_variant = await self._resolve_hyde_variant(topic)
 
+        published_after = _published_after_from_brief(brief)
+
         # Detect faceted vs legacy path
         has_facets = any(section.get("query_facets") for section in outline)
 
         if has_facets:
-            evidence_map, weak_facets = await self._search_by_facets(outline, topic, brief, hyde_variant)
+            evidence_map, weak_facets = await self._search_by_facets(
+                outline, topic, brief, hyde_variant, published_after
+            )
         else:
-            evidence_map = await self._search_by_queries(outline, topic, hyde_variant)
+            evidence_map = await self._search_by_queries(outline, topic, hyde_variant, published_after)
             weak_facets = []
 
         # Also search recaps with the main topic
@@ -109,6 +148,20 @@ class GathererNode:
 
         logger.info("Gatherer completed", evidence_count=len(evidence), faceted=has_facets)
         return {"evidence": evidence, "weak_facets": weak_facets}
+
+    async def _search_articles_bounded(
+        self,
+        query: str,
+        *,
+        limit: int,
+        published_after: datetime | None,
+    ) -> list:
+        """Call EvidenceProviderPort.search_articles, forwarding the date
+        bound only when set so older providers without the keyword argument
+        continue to work."""
+        if published_after is not None:
+            return await self._evidence.search_articles(query, limit=limit, published_after=published_after)
+        return await self._evidence.search_articles(query, limit=limit)
 
     async def _resolve_hyde_variant(self, topic: str) -> tuple[str, str] | None:
         """Resolve a cross-lingual HyDE passage once per call.
@@ -149,6 +202,7 @@ class GathererNode:
         topic: str,
         brief: dict,
         hyde_variant: tuple[str, str] | None,
+        published_after: datetime | None,
     ) -> tuple[dict[str, dict], list[dict]]:
         """Search using structured QueryFacet objects from outline with multi-query RRF fusion."""
         evidence_map: dict[str, dict] = {}
@@ -175,7 +229,7 @@ class GathererNode:
                         query = topic
 
                     try:
-                        articles = await self._evidence.search_articles(query, limit=10)
+                        articles = await self._search_articles_bounded(query, limit=10, published_after=published_after)
                         scored = [
                             ScoredHit(
                                 article_id=a.article_id,
@@ -233,6 +287,7 @@ class GathererNode:
         outline: list[dict],
         topic: str,
         hyde_variant: tuple[str, str] | None,
+        published_after: datetime | None,
     ) -> dict[str, dict]:
         """Legacy search using plain search_queries strings."""
         evidence_map: dict[str, dict] = {}
@@ -259,7 +314,7 @@ class GathererNode:
 
         for section_key, query in query_pairs:
             try:
-                articles = await self._evidence.search_articles(query, limit=5)
+                articles = await self._search_articles_bounded(query, limit=5, published_after=published_after)
             except Exception as exc:
                 logger.warning("Gatherer: article search failed", query=query, error=str(exc))
                 articles = []

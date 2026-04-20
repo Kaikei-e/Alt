@@ -19,6 +19,8 @@ import structlog
 from acolyte.port.evidence_provider import ArticleHit, ArticleMetadata, RecapHit
 
 if TYPE_CHECKING:
+    from datetime import datetime
+
     import httpx
 
     from acolyte.config.settings import Settings
@@ -40,15 +42,32 @@ class SearchIndexerGateway:
         self._base_url = settings.search_indexer_url
         self._content_store = content_store
 
-    async def search_articles(self, query: str, *, limit: int = 20) -> list[ArticleHit]:
+    async def search_articles(
+        self,
+        query: str,
+        *,
+        limit: int = 20,
+        published_after: datetime | None = None,
+        published_before: datetime | None = None,
+    ) -> list[ArticleHit]:
         """Search articles via GET /v1/search.
 
         Stores content in ContentStore; returns metadata-only ArticleHit.
         Authentication is established at the TLS transport layer (mTLS).
+
+        When ``published_after`` or ``published_before`` is supplied, the
+        corresponding ISO 8601 timestamp is forwarded so search-indexer can
+        exclude articles outside the window.
         """
+        params: dict[str, str | int] = {"q": query, "limit": limit}
+        if published_after is not None:
+            params["published_after"] = published_after.isoformat()
+        if published_before is not None:
+            params["published_before"] = published_before.isoformat()
+
         resp = await self._client.get(
             f"{self._base_url}/v1/search",
-            params={"q": query, "limit": limit},
+            params=params,
         )
         resp.raise_for_status()
         data = resp.json()
