@@ -56,6 +56,21 @@ REPORT_DIR="$ROOT/e2e/reports/tag-generator-$RUN_ID"
 mkdir -p "$REPORT_DIR"
 
 cleanup() {
+  local rc=$?
+  # On failure: dump container logs before teardown so the Python
+  # traceback (SBERT / MeCab / unidic init path) is visible in CI.
+  # Without this, runtime errors surface as silent 503 retry loops —
+  # /api/v1/extract-tags returns 503 for the whole Hurl budget while
+  # the container's stderr (where the real exception lives) never
+  # reaches the job log. Cheap on success, critical on failure.
+  if [[ "$rc" -ne 0 ]]; then
+    echo "==> Hurl suite failed (rc=$rc). Dumping container logs:" >&2
+    for svc in tag-generator mq-hub stub-backend redis-streams; do
+      echo "---- $svc ----" >&2
+      docker compose -f "$SLICE" -p "$STAGING_PROJECT_NAME" \
+        logs --tail=200 --no-color "$svc" 2>&1 | sed "s/^/[$svc] /" >&2 || true
+    done
+  fi
   if [[ "${KEEP_STACK:-0}" != "1" ]]; then
     echo "==> tearing down $STAGING_PROJECT_NAME stack" >&2
     docker compose -f "$SLICE" -p "$STAGING_PROJECT_NAME" \

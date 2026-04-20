@@ -34,6 +34,17 @@ COPY app/ ./
 RUN --mount=type=cache,id=uv-tag-generator,target=/root/.cache/uv \
     uv sync --frozen --no-dev --no-editable --group ml
 
+# unidic dictionary: the `unidic` pip package (pulled in by [ml]) ships
+# an empty dicdir/. fugashi.Tagger() prefers full `unidic` over the lite
+# variant bundled with `fugashi[unidic-lite]`, so without this download
+# the runtime raises `ModelLoadError: Failed initializing MeCab ... no
+# such file or directory: unidic/dicdir/mecabrc`, TagExtractor.warmup()
+# fails, _background_tag_service stays None, and every
+# /api/v1/extract-tags returns 503. The download populates dicdir/
+# inside /app/.venv, which the runtime stage already COPYs wholesale.
+RUN --mount=type=cache,id=unidic-tag-generator,target=/root/.cache/unidic \
+    /app/.venv/bin/python -m unidic download
+
 # ADR-000767: SBERT + NLTK are baked into the image to keep cold-start under 12s.
 RUN --mount=type=cache,id=hf-tag-generator,target=/root/.cache/huggingface \
     --mount=type=cache,id=nltk-tag-generator,target=/root/.cache/nltk \
