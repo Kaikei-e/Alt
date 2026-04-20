@@ -62,6 +62,30 @@ class Settings(BaseSettings):
 
         return self
 
+    @model_validator(mode="after")
+    def _validate_learning_machine_artifacts(self) -> Settings:
+        if self.classification_backend != "learning_machine":
+            return self
+
+        from pathlib import Path
+
+        ja_ok = (
+            bool(self.learning_machine_student_ja_dir)
+            and Path(self.learning_machine_student_ja_dir).is_dir()
+        )
+        en_ok = (
+            bool(self.learning_machine_student_en_dir)
+            and Path(self.learning_machine_student_en_dir).is_dir()
+        )
+
+        if not (ja_ok or en_ok):
+            raise ValueError(
+                "learning_machine artifacts missing: "
+                f"tried ja={self.learning_machine_student_ja_dir}, "
+                f"en={self.learning_machine_student_en_dir}"
+            )
+        return self
+
     @property
     def db_url_str(self) -> str:
         """Return the DB URL as a plain string for SQLAlchemy."""
@@ -535,7 +559,7 @@ class Settings(BaseSettings):
         validation_alias=AliasChoices("RECAP_GENRE_DEDUP_THRESHOLDS", "RECAP_SUBWORKER_GENRE_DEDUP_THRESHOLDS"),
     )
     classification_backend: Literal["joblib", "learning_machine"] = Field(
-        "learning_machine",
+        "joblib",
         description="Classification backend: 'joblib' for traditional classifier, 'learning_machine' for student models",
         validation_alias=AliasChoices("RECAP_CLASSIFICATION_BACKEND", "RECAP_SUBWORKER_CLASSIFICATION_BACKEND"),
     )
