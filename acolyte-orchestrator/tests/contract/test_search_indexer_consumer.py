@@ -89,6 +89,63 @@ def test_search_articles():
     pact.write_file(str(PACT_DIR), overwrite=True)
 
 
+def test_search_articles_with_date_window():
+    """GET /v1/search honours published_after / published_before so weekly_briefing
+    callers cannot surface stale articles from outside the window."""
+    pact = _new_pact()
+    (
+        pact.upon_receiving("an article search request bounded by a 7-day window")
+        .given("search-indexer has articles with published_at metadata indexed")
+        .with_request("GET", "/v1/search")
+        .with_query_parameters(
+            {
+                "q": "Iran tensions 2026",
+                "limit": "20",
+                "published_after": "2026-04-12T00:00:00Z",
+                "published_before": "2026-04-20T00:00:00Z",
+            }
+        )
+        .will_respond_with(200)
+        .with_body(
+            json.dumps(
+                {
+                    "query": "Iran tensions 2026",
+                    "hits": [
+                        {
+                            "id": "article-010",
+                            "title": "Iran strait tensions escalate",
+                            "content": "Recent events have intensified the standoff...",
+                            "tags": ["iran", "geopolitics"],
+                            "score": 0.91,
+                            "language": "en",
+                            "published_at": "2026-04-18T09:00:00Z",
+                        }
+                    ],
+                }
+            ),
+            "application/json",
+        )
+    )
+
+    with pact.serve() as srv:
+        resp = httpx.get(
+            f"{srv.url}/v1/search",
+            params={
+                "q": "Iran tensions 2026",
+                "limit": "20",
+                "published_after": "2026-04-12T00:00:00Z",
+                "published_before": "2026-04-20T00:00:00Z",
+            },
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["hits"], "date-bounded search must still return matches inside the window"
+        for hit in data["hits"]:
+            assert "published_at" in hit, "hits must expose published_at when date filter is applied"
+
+    pact.write_file(str(PACT_DIR), overwrite=True)
+
+
 def test_search_articles_empty_results():
     """GET /v1/search returns empty hits array when no matches."""
     pact = _new_pact()
