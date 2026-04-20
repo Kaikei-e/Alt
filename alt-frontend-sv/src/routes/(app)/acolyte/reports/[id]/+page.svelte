@@ -419,8 +419,10 @@ onDestroy(stopPolling);
 										<ol class="sources-list">
 											{#each citations as cite}
 												<li class="source-item">
-													<span class="source-id">[{cite.claim_id}]</span>
-													<span class="source-ref">{cite.source_type}:{cite.source_id}</span>
+													<div class="source-ref-row">
+														<span class="source-id">[{cite.claim_id}]</span>
+														<span class="source-ref">{cite.source_type}:{cite.source_id}</span>
+													</div>
 													{#if cite.quote}
 														<span class="source-quote">&ldquo;{cite.quote}&rdquo;</span>
 													{/if}
@@ -732,21 +734,29 @@ onDestroy(stopPolling);
 	.source-item {
 		font-family: var(--font-body, "Source Sans 3", sans-serif);
 		font-size: 0.75rem; line-height: 1.5; color: var(--alt-slate, #666);
-		display: flex; flex-wrap: wrap; gap: 0.3rem; align-items: baseline;
+		min-width: 0; overflow-wrap: anywhere;
+	}
+	.source-ref-row {
+		display: flex; flex-wrap: wrap; column-gap: 0.4rem; row-gap: 0.15rem;
+		align-items: baseline; min-width: 0;
 	}
 	.source-id {
 		font-family: var(--font-mono, "IBM Plex Mono", monospace);
 		font-size: 0.65rem; font-weight: 600; color: var(--alt-charcoal, #1a1a1a);
-		flex-shrink: 0;
+		overflow-wrap: anywhere; word-break: break-word;
 	}
 	.source-ref {
 		font-family: var(--font-mono, "IBM Plex Mono", monospace);
 		font-size: 0.65rem; color: var(--alt-ash, #999);
-		flex-shrink: 0;
+		min-width: 0; overflow-wrap: anywhere; word-break: break-word;
 	}
 	.source-quote {
+		display: -webkit-box; -webkit-line-clamp: 3; line-clamp: 3;
+		-webkit-box-orient: vertical;
+		overflow: hidden; margin-top: 0.2rem;
 		font-style: italic; color: var(--alt-slate, #666);
 		font-size: 0.72rem;
+		overflow-wrap: anywhere; word-break: break-word;
 	}
 
 	/* Side panel (Brief / History) */

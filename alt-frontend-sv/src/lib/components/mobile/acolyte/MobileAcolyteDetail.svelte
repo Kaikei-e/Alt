@@ -358,13 +358,15 @@ const formattedDate = $derived(
 								<h4 class="font-[var(--font-body)] text-[0.6rem] font-bold uppercase tracking-[0.12em] text-[var(--alt-ash,#999)] mb-2">
 									Sources
 								</h4>
-								<ol class="list-none p-0 m-0 flex flex-col gap-1.5">
+								<ol class="list-none p-0 m-0 flex flex-col gap-2 source-list">
 									{#each currentCitations as cite}
-										<li class="font-[var(--font-body)] text-[0.75rem] leading-relaxed text-[var(--alt-slate,#666)] flex flex-wrap gap-1 items-baseline">
-											<span class="font-[var(--font-mono)] text-[0.65rem] font-semibold text-[var(--alt-charcoal,#1a1a1a)] shrink-0">[{cite.claim_id}]</span>
-											<span class="font-[var(--font-mono)] text-[0.65rem] text-[var(--alt-ash,#999)] shrink-0">{cite.source_type}:{cite.source_id}</span>
+										<li class="source-item font-[var(--font-body)] text-[0.75rem] leading-relaxed text-[var(--alt-slate,#666)]">
+											<div class="flex flex-wrap items-baseline gap-x-1.5 gap-y-0.5 source-ref-row">
+												<span class="source-claim-id font-[var(--font-mono)] text-[0.65rem] font-semibold text-[var(--alt-charcoal,#1a1a1a)]">[{cite.claim_id}]</span>
+												<span class="source-ref font-[var(--font-mono)] text-[0.65rem] text-[var(--alt-ash,#999)]">{cite.source_type}:{cite.source_id}</span>
+											</div>
 											{#if cite.quote}
-												<span class="italic text-[var(--alt-slate,#666)] text-[0.72rem]">&ldquo;{cite.quote}&rdquo;</span>
+												<span class="source-quote block italic text-[var(--alt-slate,#666)] text-[0.72rem] mt-1">&ldquo;{cite.quote}&rdquo;</span>
 											{/if}
 										</li>
 									{/each}
@@ -440,4 +442,32 @@ const formattedDate = $derived(
 	}
 	.section-prose :global(code) { font-family: var(--font-mono, "IBM Plex Mono", monospace); font-size: 0.85em; }
 	.section-prose :global(strong) { font-weight: 700; }
+
+	/* Source list (citation footer). Long UUIDs and raw HTML URLs must not
+	   blow out the viewport on narrow screens; anchor min-width: 0 lets
+	   the flex child shrink below its intrinsic width, and overflow-wrap
+	   forces unbreakable tokens to split at any glyph. */
+	.source-item {
+		min-width: 0;
+		overflow-wrap: anywhere;
+	}
+	.source-ref-row {
+		min-width: 0;
+	}
+	.source-claim-id,
+	.source-ref,
+	.source-quote {
+		overflow-wrap: anywhere;
+		word-break: break-word;
+	}
+	.source-ref {
+		min-width: 0;
+	}
+	.source-quote {
+		display: -webkit-box;
+		-webkit-line-clamp: 3;
+		line-clamp: 3;
+		-webkit-box-orient: vertical;
+		overflow: hidden;
+	}
 </style>
