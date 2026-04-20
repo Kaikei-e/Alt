@@ -5,25 +5,21 @@ FROM python:3.14-slim AS builder
 
 WORKDIR /app
 
-# ビルド依存関係
+# ビルド時 apt: hdbscan など一部パッケージが cp314 wheel 未提供のため、
+# 最小限の C toolchain (gcc + python3-dev) を残す。curl / Rust は不要。
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
-    build-essential \
-    gcc \
-    g++ \
-    libpq-dev \
-    curl \
-    && curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable --profile minimal \
+        ca-certificates \
+        build-essential \
+        python3-dev \
     && rm -rf /var/lib/apt/lists/*
-
-ENV PATH="/root/.cargo/bin:$PATH"
 
 # uv を公式イメージからコピー
 COPY --from=ghcr.io/astral-sh/uv:0.11.0 /uv /uvx /bin/
 
-# キャッシュ設定
-# UV_COMPILE_BYTECODE=0: bytecode compilationを無効化してvenvサイズを削減
-ENV UV_COMPILE_BYTECODE=0 UV_LINK_MODE=copy \
+# UV_COMPILE_BYTECODE=1: uv 公式推奨。コールドスタート短縮のため .pyc を生成。
+# UV_LINK_MODE=copy: BuildKit cache mount とシンボリックリンクの相性問題を避ける。
+ENV UV_COMPILE_BYTECODE=1 UV_LINK_MODE=copy \
     PYO3_USE_ABI3_FORWARD_COMPATIBILITY=1
 
 # 【レイヤーキャッシュ最適化】依存関係ファイルのみを先にコピー
@@ -32,22 +28,26 @@ COPY pyproject.toml uv.lock README.md ./
 # 仮想環境を作成
 RUN uv venv
 
-# PyTorch CPU版を先にインストール（CUDAバンドル版の代わりに軽量版を使用）
-# Embedding は ollama-remote で実行するため、GPU PyTorchは不要
-# これにより ~3.5GB のイメージサイズ削減が可能
+# 依存関係をインストール。torch は pyproject.toml の [tool.uv.sources] で
+# PyTorch CPU index にルートされる (uv.lock 側で +cpu variant に固定済)。
 RUN --mount=type=cache,id=uv-recap-subworker,target=/root/.cache/uv \
-    uv pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
-
-# 依存関係をインストール（PyTorchは上でインストール済み、プロジェクト自体は後でインストール）
-RUN --mount=type=cache,id=uv-recap-subworker,target=/root/.cache/uv \
-    uv sync --frozen --no-dev --no-install-project
+    uv sync --frozen --no-dev --no-install-project --no-editable
 
 # アプリケーションコードをコピー
 COPY recap_subworker ./recap_subworker
 
-# プロジェクトをインストール（依存関係はキャッシュ済み）
+# プロジェクトをインストール
 RUN --mount=type=cache,id=uv-recap-subworker,target=/root/.cache/uv \
-    uv sync --frozen --no-dev
+    uv sync --frozen --no-dev --no-editable
+
+# site-packages の tests/ ディレクトリを刈る (runtime で不要)。
+# 許可リスト方式で、dist-info / license ファイルには触らない。
+RUN set -eux; \
+    SITE="/app/.venv/lib/python3.14/site-packages"; \
+    for pkg in numpy pandas scipy sklearn statsmodels spacy faiss nltk; do \
+        find "$SITE/$pkg" -type d -name tests -prune -exec rm -rf {} + 2>/dev/null || true; \
+        find "$SITE/$pkg" -type d -name test  -prune -exec rm -rf {} + 2>/dev/null || true; \
+    done
 
 # ==============================================================================
 # ランタイムステージ
@@ -56,11 +56,8 @@ FROM python:3.14-slim
 
 WORKDIR /app
 
-# ランタイム依存関係のみ
-RUN apt-get update \
-    && apt-get install -y --no-install-recommends \
-    libpq5 \
-    && rm -rf /var/lib/apt/lists/*
+# asyncpg は libpq 非依存 (wire protocol を直接話す)。psycopg2-binary は依存から
+# 除外済みのため、libpq5 の apt パッケージは不要。
 
 # 非rootユーザー作成
 RUN groupadd -r recap && useradd -r -g recap recap

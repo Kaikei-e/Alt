@@ -262,14 +262,51 @@ jobs:
           fi
 
       - name: Build and push
+        id: build
         uses: docker/build-push-action@v6
         with:
           context: ./${{ matrix.service }}
           file: ${{ steps.dockerfile.outputs.path }}
           push: ${{ github.event_name != 'pull_request' }}
+          load: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && matrix.service == 'recap-subworker' }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          # Registry cache: サイズ制限なし、マルチステージビルドの中間レイヤーもキャッシュ
-          cache-from: type=registry,ref=ghcr.io/${{ steps.repo.outputs.owner }}/alt-${{ matrix.service }}:buildcache
-          cache-to: ${{ github.event_name != 'pull_request' && format('type=registry,ref=ghcr.io/{0}/alt-{1}:buildcache,mode=max', steps.repo.outputs.owner, matrix.service) || '' }}
+          # Registry cache: 常時 read/write 可 (GHCR ACL で保護)。
+          # GHA cache: public repo だと fork PR から読める仕様のため、cache-from/to
+          # とも main branch への push イベント限定。PR ビルドは registry のみ参照。
+          # OWASP A08 / CWE-494 (cache poisoning) 対策。
+          cache-from: |
+            type=registry,ref=ghcr.io/${{ steps.repo.outputs.owner }}/alt-${{ matrix.service }}:buildcache
+            ${{ (github.event_name == 'push' && github.ref == 'refs/heads/main') && format('type=gha,scope={0}', matrix.service) || '' }}
+          cache-to: ${{ (github.event_name == 'push' && github.ref == 'refs/heads/main') && format('type=registry,ref=ghcr.io/{0}/alt-{1}:buildcache,mode=max', steps.repo.outputs.owner, matrix.service) || '' }}
+
+      - name: Enforce image-size budget and smoke-check core imports
+        if: matrix.service == 'recap-subworker' && github.event_name == 'push' && github.ref == 'refs/heads/main'
+        env:
+          IMAGE_TAG: ${{ fromJSON(steps.meta.outputs.json).tags[0] }}
+          # Measured baseline 2753 MiB after CUDA removal. Leave 150 MiB headroom.
+          # Tighten to ~2400 once follow-up JP tokenizer dedup lands.
+          MAX_MB: 2900
+        run: |
+          set -euo pipefail
+          SIZE_BYTES=$(docker image inspect "$IMAGE_TAG" --format '{{.Size}}')
+          SIZE_MB=$(( SIZE_BYTES / 1024 / 1024 ))
+          echo "recap-subworker image size: ${SIZE_MB} MiB (budget ${MAX_MB} MiB)"
+          if [ "$SIZE_MB" -gt "$MAX_MB" ]; then
+            echo "::error::recap-subworker image (${SIZE_MB} MiB) exceeds budget (${MAX_MB} MiB)"
+            exit 1
+          fi
+          # libpq / torch CPU 回帰検知: native lib 不足なら起動前にここで失敗する
+          docker run --rm "$IMAGE_TAG" python -c "
+          import asyncpg, torch, sys
+          assert not torch.cuda.is_available(), 'torch CUDA must be disabled'
+          import importlib
+          for m in ('nvidia','triton'):
+              try:
+                  importlib.import_module(m)
+                  sys.exit(f'{m} must not be installed')
+              except ImportError:
+                  pass
+          print('smoke OK', torch.__version__, asyncpg.__version__)
+          "
 
