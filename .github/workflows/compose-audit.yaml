@@ -1,0 +1,111 @@
+# compose-audit — protect production deploys from the failure class that
+# stranded alt-butterfly-facade on 2026-04-20 (release-deploy run 24643555145,
+# deploy job exit 1 with "has no healthcheck configured" from a
+# `depends_on: condition: service_healthy` target).
+#
+# The precise trigger: compose rejects `up -d --wait --no-deps <svc>` when
+# any service in the matrix has a `depends_on.<other>.condition:
+# service_healthy` entry whose target lacks a `healthcheck` block. The
+# already-running dependency cannot be inspected for health, and compose
+# fails loudly. The release-deploy deploy step then aborts before cascade
+# / smoke / record-deployment, leaving containers stranded mid-recreate.
+#
+# This workflow enumerates every `service_healthy` edge across
+# compose/compose.yaml (the full production include chain) and fails if
+# any target is missing `healthcheck`. Running it on every push to main
+# turns the latent regression (caught only at deploy time against prod)
+# into a fast PR / trunk-push gate.
+#
+# Scope note: the audit is intentionally narrow. Long-running services
+# that are NOT the target of a `service_healthy` edge are NOT required
+# to have healthchecks here — some rask-log-forwarder sidecars and
+# prometheus exporters do not participate in the compose-up dependency
+# graph and their absence does not abort `up --wait`. A broader "every
+# long-running service needs a healthcheck" audit is out of scope; this
+# one targets only the abort-triggering subset.
+
+name: compose-audit
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'compose/**.yaml'
+      - 'compose/**.yml'
+      - '.github/workflows/compose-audit.yaml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'compose/**.yaml'
+      - 'compose/**.yml'
+      - '.github/workflows/compose-audit.yaml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: compose-audit-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  healthcheck-invariant:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+
+      - name: Stage a dummy .env so compose config resolves
+        run: |
+          # compose/*.yaml uses ${MEILISEARCH_HOST}, ${GHCR_OWNER}, etc.
+          # A minimal dummy .env satisfies the interpolation without
+          # reading prod secrets (the runner has none anyway).
+          touch .env
+
+      - name: Assert every service_healthy target has a healthcheck
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import subprocess, sys, yaml
+          raw = subprocess.run(
+              ["docker", "compose", "--env-file", ".env", "-f", "compose/compose.yaml", "config"],
+              check=True, capture_output=True, text=True,
+          ).stdout
+          cfg = yaml.safe_load(raw)
+          services = cfg.get("services", {})
+          violations = []
+          for name, svc in services.items():
+              deps = svc.get("depends_on") or {}
+              if not isinstance(deps, dict):
+                  # Short-form `depends_on: [a, b]` does not specify
+                  # `service_healthy`, so no abort risk; skip.
+                  continue
+              for dep_name, dep_cfg in deps.items():
+                  if not isinstance(dep_cfg, dict):
+                      continue
+                  if dep_cfg.get("condition") != "service_healthy":
+                      continue
+                  target = services.get(dep_name)
+                  if target is None:
+                      violations.append(f"{name} -> {dep_name} (target service not defined)")
+                      continue
+                  if target.get("healthcheck") is None:
+                      violations.append(
+                          f"{name} depends_on.{dep_name}.condition=service_healthy "
+                          f"but {dep_name} has no healthcheck"
+                      )
+          if violations:
+              print("::error::service_healthy edges with missing target healthcheck:")
+              for v in violations:
+                  print(f"  - {v}")
+              print(
+                  "::notice::Add a `healthcheck:` block to each target service, "
+                  "or drop the `condition: service_healthy` if the dependency is "
+                  "start-only. See compose/recap.yaml recap-subworker for a "
+                  "Python urllib.request reference pattern."
+              )
+              sys.exit(1)
+          print(f"OK: {len(services)} services checked, 0 violations")
+          PY
