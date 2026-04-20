@@ -268,7 +268,7 @@ jobs:
           context: ./${{ matrix.service }}
           file: ${{ steps.dockerfile.outputs.path }}
           push: ${{ github.event_name != 'pull_request' }}
-          load: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && contains(fromJSON('["recap-subworker","news-creator","recap-evaluator"]'), matrix.service) }}
+          load: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && contains(fromJSON('["recap-subworker","news-creator","recap-evaluator","tag-generator"]'), matrix.service) }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           # Registry cache: 常時 read/write 可 (GHCR ACL で保護)。
@@ -281,7 +281,7 @@ jobs:
           cache-to: ${{ (github.event_name == 'push' && github.ref == 'refs/heads/main') && format('type=registry,ref=ghcr.io/{0}/alt-{1}:buildcache,mode=max', steps.repo.outputs.owner, matrix.service) || '' }}
 
       - name: Enforce image-size budget and smoke-check core imports
-        if: contains(fromJSON('["recap-subworker","news-creator","recap-evaluator"]'), matrix.service) && github.event_name == 'push' && github.ref == 'refs/heads/main'
+        if: contains(fromJSON('["recap-subworker","news-creator","recap-evaluator","tag-generator"]'), matrix.service) && github.event_name == 'push' && github.ref == 'refs/heads/main'
         env:
           IMAGE_TAG: ${{ fromJSON(steps.meta.outputs.json).tags[0] }}
           SERVICE: ${{ matrix.service }}
@@ -291,6 +291,7 @@ jobs:
             recap-subworker)  MAX_MB=2900 ;;
             news-creator)     MAX_MB=1800 ;;
             recap-evaluator)  MAX_MB=2500 ;;
+            tag-generator)    MAX_MB=2200 ;;
           esac
           SIZE_BYTES=$(docker image inspect "$IMAGE_TAG" --format '{{.Size}}')
           SIZE_MB=$(( SIZE_BYTES / 1024 / 1024 ))
@@ -299,8 +300,11 @@ jobs:
             echo "::error::$SERVICE image (${SIZE_MB} MiB) exceeds budget (${MAX_MB} MiB)"
             exit 1
           fi
+          # security-auditor F-004: smoke-check runs unprivileged with no network.
+          # Any imports that need DNS/egress should be caught by this isolation.
+          RUN_OPTS="--rm --network=none --read-only --tmpfs /tmp --cap-drop=ALL"
           if [ "$SERVICE" = "news-creator" ]; then
-            docker run --rm -e SERVICE_SECRET=ci "$IMAGE_TAG" python -c "
+            docker run $RUN_OPTS -e SERVICE_SECRET=ci "$IMAGE_TAG" python -c "
           import sys, importlib
           import torch
           assert not torch.cuda.is_available(), 'torch CUDA must be disabled'
@@ -316,7 +320,7 @@ jobs:
           print('smoke OK', torch.__version__)
           "
           elif [ "$SERVICE" = "recap-evaluator" ]; then
-            docker run --rm "$IMAGE_TAG" python -c "
+            docker run $RUN_OPTS "$IMAGE_TAG" python -c "
           import sys, importlib
           import asyncpg, torch, bert_score, rouge_score, recap_evaluator  # noqa: F401
           assert not torch.cuda.is_available(), 'torch CUDA must be disabled'
@@ -328,8 +332,22 @@ jobs:
                   pass
           print('smoke OK', torch.__version__, asyncpg.__version__)
           "
+          elif [ "$SERVICE" = "tag-generator" ]; then
+            docker run $RUN_OPTS "$IMAGE_TAG" python -c "
+          import sys, importlib
+          import torch, sentence_transformers, keybert, transformers, onnxruntime, fugashi, nltk  # noqa: F401
+          from sentence_transformers import SentenceTransformer  # noqa: F401
+          assert not torch.cuda.is_available(), 'torch CUDA must be disabled'
+          for m in ('nvidia', 'triton'):
+              try:
+                  importlib.import_module(m)
+                  sys.exit(f'{m} must not be installed')
+              except ImportError:
+                  pass
+          print('smoke OK', torch.__version__, sentence_transformers.__version__)
+          "
           else
-            docker run --rm "$IMAGE_TAG" python -c "
+            docker run $RUN_OPTS "$IMAGE_TAG" python -c "
           import sys, importlib
           import asyncpg, torch
           assert not torch.cuda.is_available(), 'torch CUDA must be disabled'
