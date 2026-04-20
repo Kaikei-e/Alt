@@ -13,6 +13,4 @@ app/scripts
 app/__pycache__
 *.md
 !README.md
-Modelfile.*
-entrypoint-backend.sh
 Dockerfile.backend
