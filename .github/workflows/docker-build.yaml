@@ -268,7 +268,7 @@ jobs:
           context: ./${{ matrix.service }}
           file: ${{ steps.dockerfile.outputs.path }}
           push: ${{ github.event_name != 'pull_request' }}
-          load: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && contains(fromJSON('["recap-subworker","news-creator"]'), matrix.service) }}
+          load: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && contains(fromJSON('["recap-subworker","news-creator","recap-evaluator"]'), matrix.service) }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           # Registry cache: 常時 read/write 可 (GHCR ACL で保護)。
@@ -281,15 +281,16 @@ jobs:
           cache-to: ${{ (github.event_name == 'push' && github.ref == 'refs/heads/main') && format('type=registry,ref=ghcr.io/{0}/alt-{1}:buildcache,mode=max', steps.repo.outputs.owner, matrix.service) || '' }}
 
       - name: Enforce image-size budget and smoke-check core imports
-        if: contains(fromJSON('["recap-subworker","news-creator"]'), matrix.service) && github.event_name == 'push' && github.ref == 'refs/heads/main'
+        if: contains(fromJSON('["recap-subworker","news-creator","recap-evaluator"]'), matrix.service) && github.event_name == 'push' && github.ref == 'refs/heads/main'
         env:
           IMAGE_TAG: ${{ fromJSON(steps.meta.outputs.json).tags[0] }}
           SERVICE: ${{ matrix.service }}
         run: |
           set -euo pipefail
           case "$SERVICE" in
-            recap-subworker) MAX_MB=2900 ;;
-            news-creator)    MAX_MB=1800 ;;
+            recap-subworker)  MAX_MB=2900 ;;
+            news-creator)     MAX_MB=1800 ;;
+            recap-evaluator)  MAX_MB=2500 ;;
           esac
           SIZE_BYTES=$(docker image inspect "$IMAGE_TAG" --format '{{.Size}}')
           SIZE_MB=$(( SIZE_BYTES / 1024 / 1024 ))
@@ -313,6 +314,19 @@ jobs:
           from news_creator.usecase import rerank_usecase  # noqa: F401
           import main  # noqa: F401
           print('smoke OK', torch.__version__)
+          "
+          elif [ "$SERVICE" = "recap-evaluator" ]; then
+            docker run --rm "$IMAGE_TAG" python -c "
+          import sys, importlib
+          import asyncpg, torch, bert_score, rouge_score, recap_evaluator  # noqa: F401
+          assert not torch.cuda.is_available(), 'torch CUDA must be disabled'
+          for m in ('nvidia', 'triton'):
+              try:
+                  importlib.import_module(m)
+                  sys.exit(f'{m} must not be installed')
+              except ImportError:
+                  pass
+          print('smoke OK', torch.__version__, asyncpg.__version__)
           "
           else
             docker run --rm "$IMAGE_TAG" python -c "
