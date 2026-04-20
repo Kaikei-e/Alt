@@ -268,7 +268,7 @@ jobs:
           context: ./${{ matrix.service }}
           file: ${{ steps.dockerfile.outputs.path }}
           push: ${{ github.event_name != 'pull_request' }}
-          load: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && contains(fromJSON('["recap-subworker","news-creator","recap-evaluator","tag-generator"]'), matrix.service) }}
+          load: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && contains(fromJSON('["recap-subworker","news-creator","recap-evaluator","tag-generator","recap-worker"]'), matrix.service) }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           # Registry cache: 常時 read/write 可 (GHCR ACL で保護)。
@@ -281,7 +281,7 @@ jobs:
           cache-to: ${{ (github.event_name == 'push' && github.ref == 'refs/heads/main') && format('type=registry,ref=ghcr.io/{0}/alt-{1}:buildcache,mode=max', steps.repo.outputs.owner, matrix.service) || '' }}
 
       - name: Enforce image-size budget and smoke-check core imports
-        if: contains(fromJSON('["recap-subworker","news-creator","recap-evaluator","tag-generator"]'), matrix.service) && github.event_name == 'push' && github.ref == 'refs/heads/main'
+        if: contains(fromJSON('["recap-subworker","news-creator","recap-evaluator","tag-generator","recap-worker"]'), matrix.service) && github.event_name == 'push' && github.ref == 'refs/heads/main'
         env:
           IMAGE_TAG: ${{ fromJSON(steps.meta.outputs.json).tags[0] }}
           SERVICE: ${{ matrix.service }}
@@ -292,6 +292,7 @@ jobs:
             news-creator)     MAX_MB=1800 ;;
             recap-evaluator)  MAX_MB=2500 ;;
             tag-generator)    MAX_MB=2200 ;;
+            recap-worker)     MAX_MB=1800 ;;
           esac
           SIZE_BYTES=$(docker image inspect "$IMAGE_TAG" --format '{{.Size}}')
           SIZE_MB=$(( SIZE_BYTES / 1024 / 1024 ))
@@ -346,6 +347,22 @@ jobs:
                   pass
           print('smoke OK', torch.__version__, sentence_transformers.__version__)
           "
+          elif [ "$SERVICE" = "recap-worker" ]; then
+            # Rust binary: Python インタプリタは同梱しないので ldd で動的リンク解決を確認。
+            # libtorch_cpu / libc10 / libgomp が必須 (libtorch prune で欠落していないこと)。
+            docker run $RUN_OPTS --entrypoint=/bin/sh "$IMAGE_TAG" -c '
+              set -e
+              LDD_OUT=$(ldd /usr/local/bin/recap-worker)
+              echo "$LDD_OUT"
+              if echo "$LDD_OUT" | grep -q "not found"; then
+                echo "::error::recap-worker has unresolved shared libraries"
+                exit 1
+              fi
+              echo "$LDD_OUT" | grep -q libtorch_cpu.so || { echo "::error::libtorch_cpu.so missing"; exit 1; }
+              echo "$LDD_OUT" | grep -q libc10.so       || { echo "::error::libc10.so missing"; exit 1; }
+              echo "$LDD_OUT" | grep -q libgomp         || { echo "::error::libgomp missing"; exit 1; }
+              echo "smoke OK recap-worker"
+            '
           else
             docker run $RUN_OPTS "$IMAGE_TAG" python -c "
           import sys, importlib
