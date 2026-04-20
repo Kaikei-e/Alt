@@ -25,7 +25,6 @@ func captureLogs(t *testing.T, level slog.Level) *bytes.Buffer {
 }
 
 func TestLogPanic_DoesNotLeakPanicValueAtInfoLevel(t *testing.T) {
-	t.Parallel()
 	buf := captureLogs(t, slog.LevelInfo)
 
 	// Panic value contains what looks like a secret to simulate accidental
@@ -45,7 +44,6 @@ func TestLogPanic_DoesNotLeakPanicValueAtInfoLevel(t *testing.T) {
 }
 
 func TestLogPanic_IncludesDetailAtDebugLevel(t *testing.T) {
-	t.Parallel()
 	buf := captureLogs(t, slog.LevelDebug)
 
 	logPanic(context.Background(), "index loop panic", "debug-detail-marker")
