@@ -3,7 +3,7 @@ name = "recap-evaluator"
 version = "0.1.0"
 description = "RecapJob精度評価マイクロサービス - 7日間Recapの品質を多角的に評価"
 readme = "README.md"
-requires-python = ">=3.14"
+requires-python = ">=3.14,<3.15"
 dependencies = [
     # Web Framework
     "fastapi>=0.115.0",
@@ -20,6 +20,11 @@ dependencies = [
     "pydantic-settings>=2.7.0",
 
     # Evaluation Libraries
+    # NOTE: torch is declared directly so [tool.uv.sources] routes it to the
+    # CPU wheel index. Without a direct declaration the pin does not apply to
+    # transitive requests (bert-score -> torch) and uv falls back to PyPI,
+    # pulling the full CUDA stack into the image.
+    "torch>=2.11.0",
     "scikit-learn>=1.6.0",
     "numpy>=2.2.0",
     "rouge-score>=0.1.2",
@@ -28,8 +33,6 @@ dependencies = [
 
     # Report Generation
     "jinja2>=3.1.0",
-    "pandas>=2.2.0",
-    "openpyxl>=3.1.0",
 
     # Logging
     "structlog>=25.1.0",
@@ -64,6 +67,14 @@ dev = [
 
 [tool.uv]
 constraint-dependencies = ["protobuf>=6.33.5", "Pillow>=12.2.0", "Pygments>=2.20.0"]
+
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
+
+[tool.uv.sources]
+torch = [{ index = "pytorch-cpu" }]
 
 [tool.ruff]
 target-version = "py314"
