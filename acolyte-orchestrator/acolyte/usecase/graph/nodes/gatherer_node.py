@@ -72,13 +72,19 @@ class GathererNode:
 
         outline = state.get("outline", [])
 
+        # Resolve the cross-lingual HyDE passage once per call and reuse it on
+        # whichever retrieval path ends up running. ADR-000695 established
+        # that Japanese→English (and vice versa) recall only works when an
+        # explicit translated variant is queued alongside the original.
+        hyde_variant = await self._resolve_hyde_variant(topic)
+
         # Detect faceted vs legacy path
         has_facets = any(section.get("query_facets") for section in outline)
 
         if has_facets:
-            evidence_map, weak_facets = await self._search_by_facets(outline, topic, brief)
+            evidence_map, weak_facets = await self._search_by_facets(outline, topic, brief, hyde_variant)
         else:
-            evidence_map = await self._search_by_queries(outline, topic)
+            evidence_map = await self._search_by_queries(outline, topic, hyde_variant)
             weak_facets = []
 
         # Also search recaps with the main topic
@@ -104,32 +110,49 @@ class GathererNode:
         logger.info("Gatherer completed", evidence_count=len(evidence), faceted=has_facets)
         return {"evidence": evidence, "weak_facets": weak_facets}
 
+    async def _resolve_hyde_variant(self, topic: str) -> tuple[str, str] | None:
+        """Resolve a cross-lingual HyDE passage once per call.
+
+        When the topic is Japanese we request an English HyDE (cross-lingual
+        recall expansion); for English topics we request Japanese. A None
+        generator surfaces as a warning — cross-lingual retrieval is a
+        design-level invariant (see PM-2026-021) so silent omission is
+        the worst failure mode.
+        """
+        topic_lang = _detect_topic_language(topic)
+        target_lang: str | None = None
+        if topic_lang == "ja":
+            target_lang = "en"
+        elif topic_lang == "en":
+            target_lang = "ja"
+
+        if target_lang is None:
+            return None
+
+        if self._hyde is None:
+            logger.warning(
+                "Gatherer: cross-lingual HyDE generator not wired — "
+                "retrieval will not request translated recall variants",
+                topic_lang=topic_lang,
+                target_lang=target_lang,
+            )
+            return None
+
+        hyde_doc = await self._hyde.generate_hypothetical_doc(topic, target_lang)
+        if not hyde_doc:
+            return None
+        return (hyde_doc, f"hyde_{target_lang}")
+
     async def _search_by_facets(
         self,
         outline: list[dict],
         topic: str,
         brief: dict,
+        hyde_variant: tuple[str, str] | None,
     ) -> tuple[dict[str, dict], list[dict]]:
         """Search using structured QueryFacet objects from outline with multi-query RRF fusion."""
         evidence_map: dict[str, dict] = {}
         weak_facets: list[dict] = []
-
-        # Resolve a HyDE passage once per topic and reuse it for every facet.
-        # When the topic is Japanese we request an English HyDE (cross-lingual
-        # recall expansion); for English topics we request Japanese. A None
-        # generator or None result disables the extra variant silently.
-        hyde_variant: tuple[str, str] | None = None
-        if self._hyde is not None:
-            topic_lang = _detect_topic_language(topic)
-            target_lang: str | None = None
-            if topic_lang == "ja":
-                target_lang = "en"
-            elif topic_lang == "en":
-                target_lang = "ja"
-            if target_lang is not None:
-                hyde_doc = await self._hyde.generate_hypothetical_doc(topic, target_lang)
-                if hyde_doc:
-                    hyde_variant = (hyde_doc, f"hyde_{target_lang}")
 
         for section in outline:
             section_key = section.get("key", "")
@@ -205,7 +228,12 @@ class GathererNode:
 
         return evidence_map, weak_facets
 
-    async def _search_by_queries(self, outline: list[dict], topic: str) -> dict[str, dict]:
+    async def _search_by_queries(
+        self,
+        outline: list[dict],
+        topic: str,
+        hyde_variant: tuple[str, str] | None,
+    ) -> dict[str, dict]:
         """Legacy search using plain search_queries strings."""
         evidence_map: dict[str, dict] = {}
 
@@ -222,6 +250,12 @@ class GathererNode:
 
         if not query_pairs:
             query_pairs = [("_global", topic)]
+
+        # Append the cross-lingual HyDE passage once under a synthetic
+        # section key so the legacy path matches _search_by_facets' recall.
+        if hyde_variant is not None:
+            hyde_doc, _ = hyde_variant
+            query_pairs.append(("_hyde", hyde_doc))
 
         for section_key, query in query_pairs:
             try:

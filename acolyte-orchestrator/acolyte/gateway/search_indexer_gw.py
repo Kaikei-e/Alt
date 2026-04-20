@@ -26,6 +26,11 @@ if TYPE_CHECKING:
 
 logger = structlog.get_logger(__name__)
 
+# Cap the query string logged at INFO so HyDE-generated hypothetical passages
+# (hundreds of chars of synthetic topic content) do not flood observability
+# pipelines. Full query is still sent to the search-indexer over mTLS.
+_LOG_QUERY_MAX_CHARS = 120
+
 
 class SearchIndexerGateway:
     """Evidence retrieval via search-indexer REST API."""
@@ -67,7 +72,12 @@ class SearchIndexerGateway:
                 )
             )
 
-        logger.info("search_articles", query=query, hits=len(hits))
+        logger.info(
+            "search_articles",
+            query=query[:_LOG_QUERY_MAX_CHARS],
+            query_full_len=len(query),
+            hits=len(hits),
+        )
         return hits
 
     async def fetch_article_metadata(self, article_ids: list[str]) -> list[ArticleMetadata]:

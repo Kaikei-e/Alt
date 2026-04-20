@@ -10,6 +10,10 @@ from dataclasses import dataclass, field
 
 KNOWN_SCOPE_KEYS = {"topic", "report_type", "time_range", "entities", "exclude"}
 
+# ISO 8601 duration used when ``weekly_briefing`` callers omit ``time_range``.
+# Keeps the Gatherer from mixing months-old articles into a "this week" report.
+_WEEKLY_BRIEFING_DEFAULT_WINDOW = "P7D"
+
 
 @dataclass(frozen=True)
 class ReportBrief:
@@ -40,10 +44,14 @@ class ReportBrief:
 
         constraints = {k: v for k, v in scope.items() if k not in KNOWN_SCOPE_KEYS}
 
+        time_range = scope.get("time_range") or None
+        if time_range is None and report_type == "weekly_briefing":
+            time_range = _WEEKLY_BRIEFING_DEFAULT_WINDOW
+
         return cls(
             topic=topic,
             report_type=report_type,
-            time_range=scope.get("time_range"),
+            time_range=time_range,
             entities=entities,
             exclude_topics=exclude,
             constraints=constraints,

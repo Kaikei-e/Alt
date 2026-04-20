@@ -32,19 +32,25 @@ Topic: {scope}
 Sections (fixed structure):
 {skeleton_block}
 
-For each section, generate 1-3 specific search queries to find relevant articles.
+For each section, generate 2-4 search queries. You MUST include at least one
+Japanese query and at least one English query per section, translating between
+Japanese and English as needed so BM25 and vector retrieval can surface
+cross-lingual evidence. Do not omit either language.
+
 Wrap your response in <plan> tags:
 
 <plan>
   <reasoning>one sentence explaining your query strategy</reasoning>
   <section>
     <key>executive_summary</key>
+    <query>AI半導体市場 2026 概観</query>
     <query>AI chip market overview 2026</query>
   </section>
   <section>
     <key>analysis</key>
-    <query>NVIDIA Blackwell GPU</query>
-    <query>AMD MI400 series</query>
+    <query>NVIDIA Blackwell GPU 動向</query>
+    <query>NVIDIA Blackwell GPU roadmap</query>
+    <query>AMD MI400 シリーズ</query>
   </section>
 </plan>
 
