@@ -66,6 +66,9 @@ func (m *mockSearchEngine) Search(ctx context.Context, query string, limit int) 
 func (m *mockSearchEngine) SearchWithFilters(ctx context.Context, query string, filters []string, limit int) ([]domain.SearchDocument, error) {
 	return nil, m.err
 }
+func (m *mockSearchEngine) SearchWithDateFilter(ctx context.Context, query string, publishedAfter, publishedBefore *time.Time, limit int) ([]domain.SearchDocument, error) {
+	return nil, m.err
+}
 func (m *mockSearchEngine) EnsureIndex(ctx context.Context) error { return m.err }
 func (m *mockSearchEngine) SearchByUserID(ctx context.Context, query string, userID string, limit int) ([]domain.SearchDocument, error) {
 	return nil, m.err

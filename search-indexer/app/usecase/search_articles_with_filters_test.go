@@ -5,6 +5,7 @@ import (
 	"errors"
 	"search-indexer/domain"
 	"testing"
+	"time"
 )
 
 // MockSearchEngine for testing
@@ -28,6 +29,10 @@ func (m *MockSearchEngine) SearchWithFilters(ctx context.Context, query string, 
 	if m.searchWithFiltersFunc != nil {
 		return m.searchWithFiltersFunc(ctx, query, filters, limit)
 	}
+	return nil, nil
+}
+
+func (m *MockSearchEngine) SearchWithDateFilter(ctx context.Context, query string, publishedAfter, publishedBefore *time.Time, limit int) ([]domain.SearchDocument, error) {
 	return nil, nil
 }
 

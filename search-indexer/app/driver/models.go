@@ -4,13 +4,14 @@ import "time"
 
 // ArticleWithTags represents an article with its tags from the database
 type ArticleWithTags struct {
-	ID        string
-	Title     string
-	Content   string
-	Tags      []TagModel
-	CreatedAt time.Time
-	UserID    string
-	Language  string
+	ID          string
+	Title       string
+	Content     string
+	Tags        []TagModel
+	CreatedAt   time.Time
+	UserID      string
+	Language    string
+	PublishedAt time.Time
 }
 
 // TagModel represents a tag from the database
@@ -18,14 +19,18 @@ type TagModel struct {
 	TagName string
 }
 
-// SearchDocumentDriver represents a search document in the search engine
+// SearchDocumentDriver represents a search document in the search engine.
+// PublishedAt is encoded as Unix seconds so Meilisearch can treat it as a
+// numeric filterable attribute (``published_at >= X AND published_at <= Y``).
 type SearchDocumentDriver struct {
-	ID      string   `json:"id"`
-	Title   string   `json:"title"`
-	Content string   `json:"content"`
-	Tags    []string `json:"tags"`
-	UserID  string   `json:"user_id"`
-	Score   float64  `json:"score"`
+	ID          string   `json:"id"`
+	Title       string   `json:"title"`
+	Content     string   `json:"content"`
+	Tags        []string `json:"tags"`
+	UserID      string   `json:"user_id"`
+	Language    string   `json:"language,omitempty"`
+	Score       float64  `json:"score"`
+	PublishedAt int64    `json:"published_at,omitempty"`
 }
 
 // DeletedArticle represents a deleted article from the database

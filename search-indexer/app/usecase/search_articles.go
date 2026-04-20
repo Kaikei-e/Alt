@@ -29,6 +29,13 @@ func NewSearchArticlesUsecase(searchEngine port.SearchEngine) *SearchArticlesUse
 	}
 }
 
+// Engine exposes the underlying search engine so the REST handler can
+// dispatch to extra methods (e.g. SearchWithDateFilter) without having
+// to carry a second usecase.
+func (u *SearchArticlesUsecase) Engine() port.SearchEngine {
+	return u.searchEngine
+}
+
 // Structural validation patterns. Meilisearch does not execute SQL, shell
 // commands, or render HTML, so SQLi/XSS/cmd denylists only generate false
 // positives against legitimate searches. We keep validation limited to

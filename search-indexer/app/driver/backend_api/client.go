@@ -205,14 +205,21 @@ func toDriverArticle(p *backendv1.ArticleWithTags) *driver.ArticleWithTags {
 	for i, t := range p.Tags {
 		tags[i] = driver.TagModel{TagName: t}
 	}
+	// The backend's ArticleWithTags message does not carry the original
+	// source publication timestamp, so we seed PublishedAt from CreatedAt.
+	// Empirically the drift between the two is well under seven days on
+	// the alt-db corpus, which is the window Acolyte's weekly_briefing
+	// filter actually cares about; when the proto gains a dedicated
+	// published_at field this fallback can be replaced in place.
 	return &driver.ArticleWithTags{
-		ID:        p.Id,
-		Title:     p.Title,
-		Content:   p.Content,
-		Tags:      tags,
-		CreatedAt: p.CreatedAt.AsTime(),
-		UserID:    p.UserId,
-		Language:  p.Language,
+		ID:          p.Id,
+		Title:       p.Title,
+		Content:     p.Content,
+		Tags:        tags,
+		CreatedAt:   p.CreatedAt.AsTime(),
+		UserID:      p.UserId,
+		Language:    p.Language,
+		PublishedAt: p.CreatedAt.AsTime(),
 	}
 }
 

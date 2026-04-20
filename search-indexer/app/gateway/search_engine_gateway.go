@@ -4,6 +4,7 @@ import (
 	"context"
 	"search-indexer/domain"
 	"search-indexer/driver"
+	"time"
 )
 
 type SearchDriver interface {
@@ -11,6 +12,7 @@ type SearchDriver interface {
 	DeleteDocuments(ctx context.Context, ids []string) error
 	Search(ctx context.Context, query string, limit int) ([]driver.SearchDocumentDriver, error)
 	SearchWithFilters(ctx context.Context, query string, filters []string, limit int) ([]driver.SearchDocumentDriver, error)
+	SearchWithDateFilter(ctx context.Context, query string, publishedAfter, publishedBefore *time.Time, limit int) ([]driver.SearchDocumentDriver, error)
 	SearchByUserID(ctx context.Context, query string, userID string, limit int) ([]driver.SearchDocumentDriver, error)
 	SearchByUserIDWithPagination(ctx context.Context, query string, userID string, offset, limit int64) ([]driver.SearchDocumentDriver, int64, error)
 	EnsureIndex(ctx context.Context) error
@@ -35,11 +37,13 @@ func (g *SearchEngineGateway) IndexDocuments(ctx context.Context, docs []domain.
 	driverDocs := make([]driver.SearchDocumentDriver, len(docs))
 	for i, domainDoc := range docs {
 		driverDocs[i] = driver.SearchDocumentDriver{
-			ID:      domainDoc.ID,
-			Title:   domainDoc.Title,
-			Content: domainDoc.Content,
-			Tags:    domainDoc.Tags,
-			UserID:  domainDoc.UserID,
+			ID:          domainDoc.ID,
+			Title:       domainDoc.Title,
+			Content:     domainDoc.Content,
+			Tags:        domainDoc.Tags,
+			UserID:      domainDoc.UserID,
+			Language:    domainDoc.Language,
+			PublishedAt: publishedAtUnix(domainDoc.PublishedAt),
 		}
 	}
 
@@ -79,18 +83,18 @@ func (g *SearchEngineGateway) Search(ctx context.Context, query string, limit in
 		}
 	}
 
-	domainResults := make([]domain.SearchDocument, len(driverResults))
-	for i, driverDoc := range driverResults {
-		domainResults[i] = domain.SearchDocument{
-			ID:      driverDoc.ID,
-			Title:   driverDoc.Title,
-			Content: driverDoc.Content,
-			Tags:    driverDoc.Tags,
-			UserID:  driverDoc.UserID,
+	return g.convertDocs(driverResults), nil
+}
+
+func (g *SearchEngineGateway) SearchWithDateFilter(ctx context.Context, query string, publishedAfter, publishedBefore *time.Time, limit int) ([]domain.SearchDocument, error) {
+	driverResults, err := g.driver.SearchWithDateFilter(ctx, query, publishedAfter, publishedBefore, limit)
+	if err != nil {
+		return nil, &domain.SearchEngineError{
+			Op:  "SearchWithDateFilter",
+			Err: err.Error(),
 		}
 	}
-
-	return domainResults, nil
+	return g.convertDocs(driverResults), nil
 }
 
 func (g *SearchEngineGateway) SearchWithFilters(ctx context.Context, query string, filters []string, limit int) ([]domain.SearchDocument, error) {
@@ -102,18 +106,7 @@ func (g *SearchEngineGateway) SearchWithFilters(ctx context.Context, query strin
 		}
 	}
 
-	domainResults := make([]domain.SearchDocument, len(driverResults))
-	for i, driverDoc := range driverResults {
-		domainResults[i] = domain.SearchDocument{
-			ID:      driverDoc.ID,
-			Title:   driverDoc.Title,
-			Content: driverDoc.Content,
-			Tags:    driverDoc.Tags,
-			UserID:  driverDoc.UserID,
-		}
-	}
-
-	return domainResults, nil
+	return g.convertDocs(driverResults), nil
 }
 
 func (g *SearchEngineGateway) SearchByUserID(ctx context.Context, query string, userID string, limit int) ([]domain.SearchDocument, error) {
@@ -136,15 +129,35 @@ func (g *SearchEngineGateway) convertDocs(driverResults []driver.SearchDocumentD
 	domainResults := make([]domain.SearchDocument, len(driverResults))
 	for i, d := range driverResults {
 		domainResults[i] = domain.SearchDocument{
-			ID:      d.ID,
-			Title:   d.Title,
-			Content: d.Content,
-			Tags:    d.Tags,
-			UserID:  d.UserID,
-			Score:   d.Score,
+			ID:          d.ID,
+			Title:       d.Title,
+			Content:     d.Content,
+			Tags:        d.Tags,
+			UserID:      d.UserID,
+			Language:    d.Language,
+			Score:       d.Score,
+			PublishedAt: publishedAtFromUnix(d.PublishedAt),
 		}
 	}
 	return domainResults
+}
+
+// publishedAtUnix collapses a time.Time into seconds-since-epoch, or 0 when
+// the value is zero so Meilisearch does not index bogus documents.
+func publishedAtUnix(t time.Time) int64 {
+	if t.IsZero() {
+		return 0
+	}
+	return t.Unix()
+}
+
+// publishedAtFromUnix reverses publishedAtUnix, preserving zero for unknown
+// values so downstream equality checks stay symmetric.
+func publishedAtFromUnix(seconds int64) time.Time {
+	if seconds == 0 {
+		return time.Time{}
+	}
+	return time.Unix(seconds, 0).UTC()
 }
 
 func (g *SearchEngineGateway) EnsureIndex(ctx context.Context) error {

@@ -59,13 +59,14 @@ func (g *ArticleRepositoryGateway) convertToDomain(driverArticle *driver.Article
 		tags[i] = tag.TagName
 	}
 
-	article, err := domain.NewArticle(
+	article, err := domain.NewArticleWithPublishedAt(
 		driverArticle.ID,
 		driverArticle.Title,
 		driverArticle.Content,
 		tags,
 		driverArticle.CreatedAt,
 		driverArticle.UserID,
+		driverArticle.PublishedAt,
 	)
 	if err != nil {
 		return nil, err

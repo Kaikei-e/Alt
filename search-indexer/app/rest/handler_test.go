@@ -10,6 +10,7 @@ import (
 	"search-indexer/domain"
 	"search-indexer/logger"
 	"search-indexer/usecase"
+	"time"
 	"testing"
 )
 
@@ -34,6 +35,9 @@ func (m *mockSearchEngine) Search(ctx context.Context, query string, limit int) 
 	return m.searchResult, m.searchErr
 }
 func (m *mockSearchEngine) SearchWithFilters(ctx context.Context, query string, filters []string, limit int) ([]domain.SearchDocument, error) {
+	return nil, nil
+}
+func (m *mockSearchEngine) SearchWithDateFilter(ctx context.Context, query string, publishedAfter, publishedBefore *time.Time, limit int) ([]domain.SearchDocument, error) {
 	return nil, nil
 }
 func (m *mockSearchEngine) SearchByUserID(ctx context.Context, query string, userID string, limit int) ([]domain.SearchDocument, error) {

@@ -3,6 +3,8 @@ package driver
 import (
 	"context"
 	"encoding/json"
+	"strconv"
+	"strings"
 	"time"
 	"unicode"
 
@@ -129,19 +131,7 @@ func (d *MeilisearchDriver) Search(ctx context.Context, query string, limit int)
 		}
 	}
 
-	docs := make([]SearchDocumentDriver, 0, len(result.Hits))
-	for _, hit := range result.Hits {
-		doc := SearchDocumentDriver{
-			ID:      d.getString(hit, "id"),
-			Title:   d.getString(hit, "title"),
-			Content: d.getString(hit, "content"),
-			Tags:    d.getStringSlice(hit, "tags"),
-			Score:   d.getFloat64(hit, "_rankingScore"),
-		}
-		docs = append(docs, doc)
-	}
-
-	return docs, nil
+	return d.hitsToDocs(result.Hits), nil
 }
 
 func (d *MeilisearchDriver) SearchWithFilters(ctx context.Context, query string, filters []string, limit int) ([]SearchDocumentDriver, error) {
@@ -162,19 +152,53 @@ func (d *MeilisearchDriver) SearchWithFilters(ctx context.Context, query string,
 		}
 	}
 
-	docs := make([]SearchDocumentDriver, 0, len(result.Hits))
-	for _, hit := range result.Hits {
-		doc := SearchDocumentDriver{
-			ID:      d.getString(hit, "id"),
-			Title:   d.getString(hit, "title"),
-			Content: d.getString(hit, "content"),
-			Tags:    d.getStringSlice(hit, "tags"),
-			Score:   d.getFloat64(hit, "_rankingScore"),
-		}
-		docs = append(docs, doc)
+	return d.hitsToDocs(result.Hits), nil
+}
+
+// SearchWithDateFilter restricts results to documents whose ``published_at``
+// (Unix seconds) is inside the requested window. Either bound may be nil.
+// When both are nil this degrades to a plain Search.
+func (d *MeilisearchDriver) SearchWithDateFilter(ctx context.Context, query string, publishedAfter, publishedBefore *time.Time, limit int) ([]SearchDocumentDriver, error) {
+	_ = ctx
+	if publishedAfter == nil && publishedBefore == nil {
+		return d.Search(ctx, query, limit)
 	}
 
-	return docs, nil
+	searchRequest := d.newBaseSearchRequest(query, limit)
+	filterClauses := make([]string, 0, 2)
+	if publishedAfter != nil {
+		filterClauses = append(filterClauses, "published_at >= "+strconv.FormatInt(publishedAfter.Unix(), 10))
+	}
+	if publishedBefore != nil {
+		filterClauses = append(filterClauses, "published_at <= "+strconv.FormatInt(publishedBefore.Unix(), 10))
+	}
+	searchRequest.Filter = strings.Join(filterClauses, " AND ")
+
+	result, err := d.searchIndex.Search(query, searchRequest)
+	if err != nil {
+		return nil, &DriverError{Op: "SearchWithDateFilter", Err: err.Error()}
+	}
+	return d.hitsToDocs(result.Hits), nil
+}
+
+// hitsToDocs flattens a Meilisearch result slice into SearchDocumentDriver
+// values, preserving the ``language`` and ``published_at`` attributes that
+// used to be dropped silently at this boundary.
+func (d *MeilisearchDriver) hitsToDocs(hits []meilisearch.Hit) []SearchDocumentDriver {
+	docs := make([]SearchDocumentDriver, 0, len(hits))
+	for _, hit := range hits {
+		docs = append(docs, SearchDocumentDriver{
+			ID:          d.getString(hit, "id"),
+			Title:       d.getString(hit, "title"),
+			Content:     d.getString(hit, "content"),
+			Tags:        d.getStringSlice(hit, "tags"),
+			UserID:      d.getString(hit, "user_id"),
+			Language:    d.getString(hit, "language"),
+			Score:       d.getFloat64(hit, "_rankingScore"),
+			PublishedAt: d.getInt64(hit, "published_at"),
+		})
+	}
+	return docs
 }
 
 func (d *MeilisearchDriver) EnsureIndex(ctx context.Context) error {
@@ -226,8 +250,12 @@ func (d *MeilisearchDriver) EnsureIndex(ctx context.Context) error {
 		}
 	}
 
-	// Set filterable attributes for tags and user_id
-	filterableAttrs := []interface{}{"tags", "user_id"}
+	// Set filterable attributes for tags / user_id plus the new date and
+	// language filters. ``published_at`` is stored as Unix seconds so it
+	// supports ``published_at >= X AND published_at <= Y`` windows;
+	// ``language`` pairs with the acolyte language_quota rebalancing so
+	// cross-lingual recall can be scoped when the caller opts in.
+	filterableAttrs := []interface{}{"tags", "user_id", "published_at", "language"}
 	if _, err := d.index.UpdateFilterableAttributes(&filterableAttrs); err != nil {
 		return &DriverError{
 			Op:  "EnsureIndex",
@@ -311,6 +339,16 @@ func (d *MeilisearchDriver) getFloat64(m meilisearch.Hit, key string) float64 {
 		}
 	}
 	return 0.0
+}
+
+func (d *MeilisearchDriver) getInt64(m meilisearch.Hit, key string) int64 {
+	if v, ok := m[key]; ok {
+		var n int64
+		if err := json.Unmarshal(v, &n); err == nil {
+			return n
+		}
+	}
+	return 0
 }
 
 func (d *MeilisearchDriver) SearchByUserID(ctx context.Context, query string, userID string, limit int) ([]SearchDocumentDriver, error) {

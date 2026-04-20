@@ -66,6 +66,13 @@ func (m *mockSearchDriver) SearchWithFilters(ctx context.Context, query string, 
 	return m.searchResults, nil
 }
 
+func (m *mockSearchDriver) SearchWithDateFilter(ctx context.Context, query string, publishedAfter, publishedBefore *time.Time, limit int) ([]driver.SearchDocumentDriver, error) {
+	if m.searchErr != nil {
+		return nil, m.searchErr
+	}
+	return m.searchResults, nil
+}
+
 func (m *mockSearchDriver) SearchByUserID(ctx context.Context, query string, userID string, limit int) ([]driver.SearchDocumentDriver, error) {
 	if m.searchErr != nil {
 		return nil, m.searchErr

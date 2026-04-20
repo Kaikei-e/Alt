@@ -131,6 +131,13 @@ func (m *mockSearchEngineForIndexing) SearchWithFilters(ctx context.Context, que
 	return m.indexedDocs, nil
 }
 
+func (m *mockSearchEngineForIndexing) SearchWithDateFilter(ctx context.Context, query string, publishedAfter, publishedBefore *time.Time, limit int) ([]domain.SearchDocument, error) {
+	if m.err != nil {
+		return nil, m.err
+	}
+	return m.indexedDocs, nil
+}
+
 func (m *mockSearchEngineForIndexing) EnsureIndex(ctx context.Context) error {
 	return nil
 }
