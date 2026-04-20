@@ -53,7 +53,7 @@ When started through Docker Compose, the `news-creator` service is exposed on `h
 
 ```bash
 # Build image
-docker build -f ../Dockerfile.app -t news-creator:latest ..
+docker build -f ../Dockerfile -t news-creator:latest ..
 
 # Run container
 docker run -p 11434:11434 \

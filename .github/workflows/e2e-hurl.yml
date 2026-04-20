@@ -266,7 +266,7 @@ jobs:
         run: |
           docker build \
             -t ghcr.io/kaikei-e/alt-news-creator:ci \
-            -f news-creator/Dockerfile.app \
+            -f news-creator/Dockerfile \
             news-creator
 
       - name: Pre-pull Hurl image
