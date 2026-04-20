@@ -40,14 +40,20 @@ COPY recap_subworker ./recap_subworker
 RUN --mount=type=cache,id=uv-recap-subworker,target=/root/.cache/uv \
     uv sync --frozen --no-dev --no-editable
 
-# site-packages の tests/ ディレクトリを刈る (runtime で不要)。
-# 許可リスト方式で、dist-info / license ファイルには触らない。
+# site-packages の tests/ / torch/include / *.pyi を刈る (runtime で不要)。
+# recap-evaluator / news-creator と同じ slim pattern (ADR-000812 / 000813 系列)。
 RUN set -eux; \
     SITE="/app/.venv/lib/python3.14/site-packages"; \
-    for pkg in numpy pandas scipy sklearn statsmodels spacy faiss nltk; do \
-        find "$SITE/$pkg" -type d -name tests -prune -exec rm -rf {} + 2>/dev/null || true; \
-        find "$SITE/$pkg" -type d -name test  -prune -exec rm -rf {} + 2>/dev/null || true; \
-    done
+    test -d "$SITE"; \
+    for pkg in numpy pandas scipy sklearn statsmodels spacy faiss nltk torch transformers sentence_transformers; do \
+        if [ -d "$SITE/$pkg" ]; then \
+            find "$SITE/$pkg" -type d \( -name tests -o -name test \) -prune -exec rm -rf {} +; \
+        fi; \
+    done; \
+    rm -rf "$SITE/torch/include"; \
+    find "$SITE" -name "*.pyi" -delete; \
+    find "$SITE" -name "__pycache__" -type d -prune -exec rm -rf {} +; \
+    find "$SITE" -name "*.pyc" -delete
 
 # ==============================================================================
 # ランタイムステージ
@@ -89,6 +95,12 @@ COPY --chown=recap:recap recap_subworker/resources/genre_classifier_weights.json
 USER recap
 
 EXPOSE 8002
+
+# Ops-level visibility via `docker ps`. compose/recap.yaml also defines a
+# healthcheck — kept redundant so orchestrators without compose see the status.
+# stdlib probe instead of curl keeps runtime attack surface smaller.
+HEALTHCHECK --interval=30s --timeout=5s --start-period=90s --retries=5 \
+    CMD python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8002/health', timeout=3)" || exit 1
 
 # Use uvicorn directly instead of gunicorn to avoid CUDA fork issues
 # PyTorch CUDA does not support fork() - see https://docs.pytorch.org/docs/stable/notes/multiprocessing.html

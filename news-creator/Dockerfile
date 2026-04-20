@@ -29,10 +29,16 @@ RUN --mount=type=cache,id=uv-news-creator,target=/root/.cache/uv \
 
 RUN set -eux; \
     SITE="/app/.venv/lib/python3.14/site-packages"; \
+    test -d "$SITE"; \
     for pkg in numpy scipy sklearn sentence_transformers transformers torch; do \
-        find "$SITE/$pkg" -type d -name tests -prune -exec rm -rf {} + 2>/dev/null || true; \
-        find "$SITE/$pkg" -type d -name test  -prune -exec rm -rf {} + 2>/dev/null || true; \
-    done
+        if [ -d "$SITE/$pkg" ]; then \
+            find "$SITE/$pkg" -type d \( -name tests -o -name test \) -prune -exec rm -rf {} +; \
+        fi; \
+    done; \
+    rm -rf "$SITE/torch/include"; \
+    find "$SITE" -name "*.pyi" -delete; \
+    find "$SITE" -name "__pycache__" -type d -prune -exec rm -rf {} +; \
+    find "$SITE" -name "*.pyc" -delete
 
 FROM python:3.14-slim AS runtime
 
