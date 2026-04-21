@@ -34,6 +34,68 @@
         "status": 200
       },
       "type": "Synchronous/HTTP"
+    },
+    {
+      "description": "a request for the latest genre evaluation",
+      "pending": false,
+      "providerStates": [
+        {
+          "name": "a completed genre evaluation exists"
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "path": "/v1/evaluation/genres/latest"
+      },
+      "response": {
+        "body": {
+          "content": {
+            "accuracy": 0.85,
+            "macro_f1": 0.82,
+            "run_id": 42,
+            "status": "succeeded"
+          },
+          "contentType": "application/json",
+          "encoded": false
+        },
+        "headers": {
+          "Content-Type": [
+            "application/json"
+          ]
+        },
+        "status": 200
+      },
+      "type": "Synchronous/HTTP"
+    },
+    {
+      "description": "a trigger genre evaluation request",
+      "pending": false,
+      "providerStates": [
+        {
+          "name": "the recap-worker is ready for evaluation"
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "path": "/v1/evaluation/genres"
+      },
+      "response": {
+        "body": {
+          "content": {
+            "run_id": 1,
+            "status": "running"
+          },
+          "contentType": "application/json",
+          "encoded": false
+        },
+        "headers": {
+          "Content-Type": [
+            "application/json"
+          ]
+        },
+        "status": 200
+      },
+      "type": "Synchronous/HTTP"
     }
   ],
   "metadata": {

@@ -38,7 +38,7 @@ def test_trigger_genre_evaluation():
         assert data["status"] == "running"
         assert "run_id" in data
 
-    pact.write_file(str(PACT_DIR), overwrite=True)
+    pact.write_file(str(PACT_DIR))
 
 
 def test_fetch_latest_genre_evaluation():
@@ -64,7 +64,7 @@ def test_fetch_latest_genre_evaluation():
         assert data["status"] == "succeeded"
         assert "accuracy" in data
 
-    pact.write_file(str(PACT_DIR), overwrite=True)
+    pact.write_file(str(PACT_DIR))
 
 
 def test_fetch_genre_evaluation_by_id():
@@ -90,4 +90,4 @@ def test_fetch_genre_evaluation_by_id():
         assert data["run_id"] == 42
         assert data["status"] == "succeeded"
 
-    pact.write_file(str(PACT_DIR), overwrite=True)
+    pact.write_file(str(PACT_DIR))
