@@ -1,0 +1,119 @@
+---
+# Included by publish-manual-verifications.yml for each
+# (provider, consumer, implementation, provider_version) bridge.
+#
+# Contract (`bridge` is the loop_var provided by the caller):
+#   bridge.provider          pacticipant name
+#   bridge.consumer          pacticipant name
+#   bridge.implementation    free-form verifier label stored on the
+#                            verification record (e.g. "rust-stub-replay")
+#   bridge.provider_version  provider application version to tag
+#
+# Every task that carries the basic-auth password uses no_log: true
+# (audit F-001 / F-002). The `uri` module does NOT auto-redact the
+# `password` parameter, and without no_log the credential leaks into
+# any `-vv` run (CI logs included).
+
+- name: "List pact versions for {{ bridge.consumer }} → {{ bridge.provider }}"
+  ansible.builtin.uri:
+    url: "{{ broker_base_url }}/pacts/provider/{{ bridge.provider }}/consumer/{{ bridge.consumer }}/versions"
+    method: GET
+    user: "{{ broker_username }}"
+    password: "{{ lookup('ansible.builtin.env', 'PACT_BROKER_PASSWORD') }}"
+    force_basic_auth: true
+    return_content: true
+    status_code: [200, 404]
+  register: versions_resp
+  no_log: true
+
+- name: "Skip when no pacts exist ({{ bridge.consumer }} → {{ bridge.provider }})"
+  when:
+    - versions_resp.status == 404 or
+      (versions_resp.json._embedded.pacts | default([]) | length) == 0
+  ansible.builtin.debug:
+    msg: "skip: no pacts for {{ bridge.consumer }} -> {{ bridge.provider }}"
+
+- name: "Collect pact version self URLs"
+  when:
+    - versions_resp.status == 200
+    - (versions_resp.json._embedded.pacts | default([]) | length) > 0
+  ansible.builtin.set_fact:
+    pact_version_urls: >-
+      {{ versions_resp.json._embedded.pacts
+         | map(attribute='_links.self.href') | list }}
+
+- name: "Resolve publish-verification-results URL for each pact version"
+  when:
+    - pact_version_urls is defined
+    - pact_version_urls | length > 0
+  ansible.builtin.uri:
+    url: "{{ item }}"
+    method: GET
+    user: "{{ broker_username }}"
+    password: "{{ lookup('ansible.builtin.env', 'PACT_BROKER_PASSWORD') }}"
+    force_basic_auth: true
+    return_content: true
+    status_code: 200
+  register: pact_details
+  loop: "{{ pact_version_urls | default([]) }}"
+  loop_control:
+    label: "{{ item | regex_replace('^.*/version/', '') }}"
+  no_log: true
+
+- name: "Extract publish URLs from pact details"
+  when:
+    - pact_details is defined
+    - pact_details.results is defined
+  ansible.builtin.set_fact:
+    publish_targets: >-
+      {{ pact_details.results
+         | selectattr('json._links.pb:publish-verification-results', 'defined')
+         | map(attribute='json._links.pb:publish-verification-results.href')
+         | list }}
+
+- name: "Abort when no publishable URL resolved"
+  when:
+    - publish_targets is defined
+    - publish_targets | length == 0
+    - pact_version_urls is defined
+    - pact_version_urls | length > 0
+  ansible.builtin.fail:
+    msg: >-
+      No publish-verification-results URL resolved for
+      {{ bridge.consumer }} → {{ bridge.provider }}. Broker response
+      schema may have changed or consumer has never been published.
+
+- name: "POST success verification record for each consumer pact version"
+  when:
+    - publish_targets is defined
+    - publish_targets | length > 0
+  ansible.builtin.uri:
+    url: "{{ item }}"
+    method: POST
+    user: "{{ broker_username }}"
+    password: "{{ lookup('ansible.builtin.env', 'PACT_BROKER_PASSWORD') }}"
+    force_basic_auth: true
+    headers:
+      Content-Type: application/json
+    body_format: json
+    body:
+      success: true
+      providerApplicationVersion: "{{ bridge.provider_version }}"
+      verifiedBy:
+        implementation: "{{ bridge.implementation }}"
+        version: "1.0.0"
+    status_code: [200, 201]
+  loop: "{{ publish_targets | default([]) }}"
+  loop_control:
+    label: "{{ item | regex_replace('^.*/pact-version/([^/]+)/.*$', '\\1') }}"
+  no_log: true
+
+- name: "Summary: {{ bridge.consumer }} → {{ bridge.provider }}"
+  when:
+    - publish_targets is defined
+    - publish_targets | length > 0
+  ansible.builtin.debug:
+    msg: >-
+      publish: {{ bridge.consumer }} -> {{ bridge.provider }}
+      @{{ bridge.provider_version }} ({{ bridge.implementation }})
+      × {{ publish_targets | length }} consumer version(s)

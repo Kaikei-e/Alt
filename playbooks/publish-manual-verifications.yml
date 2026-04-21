@@ -1,0 +1,179 @@
+---
+# Publish manual Pact verification records to the Broker for every
+# (provider, consumer, implementation) bridge where the stock
+# pact_verifier flow cannot emit results.
+#
+# Three families of bridge records:
+#
+#   1. recap-worker provider ← {rag-orchestrator, recap-evaluator,
+#      search-indexer} consumers. The Rust hand-rolled replay in
+#      recap-worker/tests/provider_verification.rs asserts shape but
+#      does not publish. Implementation tag: "rust-stub-replay".
+#
+#   2. mq-hub outbound message pacts: {search-indexer, tag-generator}
+#      providers ← mq-hub consumer. mq-hub emits events; the nominal
+#      providers don't run a pact_verifier. The consumer-side test
+#      self-verifies the shape. Implementation tag:
+#      "mq-hub-self-verify-message-producer".
+#
+#   3. kratos provider ← auth-hub consumer. kratos is an external
+#      SaaS and cannot be brought under Alt's provider verification
+#      harness. Requires a stable external pacticipant version first
+#      (registered + marked deployed). Implementation tag:
+#      "manual-external-assertion".
+#
+# For each bridge, every consumer pact version on the broker gets
+# its own success record. The earlier shell implementation targeted
+# only /latest and left older deployed consumer versions with
+# `unknown` verifications, which blocked provider can-i-deploy when
+# a consumer had advanced but the provider matrix still referenced
+# the older deployed consumer SHA.
+#
+# Required vars (pass via -e or GitHub Actions `env:`):
+#   provider_version   full provider SHA for the recap-worker /
+#                      mq-hub rows (kratos uses its own fixed
+#                      external version independent of this input)
+#   broker_base_url    http(s)://host[:port]  (no trailing slash)
+#   broker_username    basic-auth user
+#
+# Required env:
+#   PACT_BROKER_PASSWORD  never passed via -e so it stays off argv
+#                         and is redacted from ansible logs by no_log
+
+- name: Publish manual Pact verification bridges
+  hosts: localhost
+  gather_facts: false
+
+  vars:
+    # Bridge registry — one row per (provider, consumer) pair where the
+    # standard pact_verifier flow cannot emit a verification result.
+    # Edit here to add / remove bridges; the loop below is pure data.
+    # `provider_version` deliberately re-reads the provider_version -e
+    # var at template time so changes to -e flow through without edits
+    # here.
+    bridge_registry:
+      # recap-worker ← 3 consumers, Rust hand-rolled HTTP replay
+      - provider: recap-worker
+        consumer: rag-orchestrator
+        implementation: rust-stub-replay
+      - provider: recap-worker
+        consumer: recap-evaluator
+        implementation: rust-stub-replay
+      - provider: recap-worker
+        consumer: search-indexer
+        implementation: rust-stub-replay
+      # mq-hub outbound message pacts — producer-side self-verify
+      - provider: search-indexer
+        consumer: mq-hub
+        implementation: mq-hub-self-verify-message-producer
+      - provider: tag-generator
+        consumer: mq-hub
+        implementation: mq-hub-self-verify-message-producer
+
+    kratos_external_version: ory-kratos-external
+
+  tasks:
+    - name: Require provider_version / broker_base_url / broker_username / PACT_BROKER_PASSWORD
+      ansible.builtin.assert:
+        that:
+          - provider_version is defined and provider_version | length > 0
+          - broker_base_url is defined and broker_base_url | length > 0
+          - broker_username is defined and broker_username | length > 0
+          - lookup('ansible.builtin.env', 'PACT_BROKER_PASSWORD') | length > 0
+          # F-004: fail fast if broker_base_url is mistyped. The regex
+          # rejects trailing slashes and paths, so callers can't
+          # accidentally redirect basic-auth credentials to an
+          # unintended endpoint.
+          - broker_base_url is match('^https?://[^/]+(:[0-9]+)?$')
+        fail_msg: >-
+          publish-manual-verifications: missing or malformed required
+          var. Provide provider_version, broker_base_url (scheme +
+          host[:port] only, no trailing slash), broker_username via
+          -e and PACT_BROKER_PASSWORD in env.
+
+    # ------------------------------------------------------------------
+    # recap-worker and mq-hub bridges — publish a verification record
+    # for every consumer pact version on the broker.
+    # ------------------------------------------------------------------
+    - name: "Publish bridge verifications"
+      ansible.builtin.include_tasks: _publish-bridge.yml
+      loop: "{{ bridge_registry }}"
+      loop_control:
+        loop_var: bridge_row
+        label: "{{ bridge_row.consumer }} -> {{ bridge_row.provider }} ({{ bridge_row.implementation }})"
+      vars:
+        # Overlay provider_version onto each bridge row; keeps the
+        # registry itself version-agnostic and re-templates per -e input.
+        bridge:
+          provider: "{{ bridge_row.provider }}"
+          consumer: "{{ bridge_row.consumer }}"
+          implementation: "{{ bridge_row.implementation }}"
+          provider_version: "{{ provider_version }}"
+
+    # ------------------------------------------------------------------
+    # kratos — external SaaS. Register a stable external pacticipant
+    # version and mark it deployed so the matrix query has a target,
+    # then publish the bridge record against auth-hub.
+    # ------------------------------------------------------------------
+    - name: "Ensure kratos external pacticipant version exists"
+      ansible.builtin.uri:
+        url: "{{ broker_base_url }}/pacticipants/kratos/branches/main/versions/{{ kratos_external_version }}"
+        method: PUT
+        user: "{{ broker_username }}"
+        password: "{{ lookup('ansible.builtin.env', 'PACT_BROKER_PASSWORD') }}"
+        force_basic_auth: true
+        headers:
+          Content-Type: application/json
+        status_code: [200, 201, 204]
+      # F-001: uri module does not auto-redact `password`. no_log stops
+      # it from being echoed by ansible-playbook -vv into CI logs.
+      no_log: true
+
+    - name: "Record kratos external version as deployed to production"
+      ansible.builtin.command:
+        argv:
+          - "{{ pact_broker_cli_bin | default('pact-broker-cli') }}"
+          - record-deployment
+          - --pacticipant
+          - kratos
+          - --version
+          - "{{ kratos_external_version }}"
+          - --environment
+          - production
+          - --broker-base-url
+          - "{{ broker_base_url }}"
+          - --broker-username
+          - "{{ broker_username }}"
+      environment:
+        PACT_BROKER_PASSWORD: "{{ lookup('ansible.builtin.env', 'PACT_BROKER_PASSWORD') }}"
+      register: kratos_deploy
+      # F-003: match the exact idempotent-success message pact-broker-cli
+      # emits for a previously recorded deployment so unrelated errors
+      # whose text happens to contain "already" are not swallowed.
+      changed_when: "'Recorded deployment' in (kratos_deploy.stdout | default(''))"
+      failed_when:
+        - kratos_deploy.rc != 0
+        - "'Deployed version already recorded' not in (kratos_deploy.stderr | default(''))"
+        - "'Deployed version already recorded' not in (kratos_deploy.stdout | default(''))"
+      # F-002: environment: dict would print PACT_BROKER_PASSWORD under
+      # -vv. Hide the entire task; re-expose rc/exit via a conditional
+      # debug task below if it actually fails.
+      no_log: true
+
+    - name: "Surface kratos record-deployment failure without leaking env"
+      when: kratos_deploy is defined and kratos_deploy.rc is defined and kratos_deploy.rc != 0
+      ansible.builtin.fail:
+        msg: >-
+          kratos record-deployment exited {{ kratos_deploy.rc }}.
+          See the failed task above (output suppressed by no_log) —
+          re-run with PACT_BROKER_PASSWORD unset and use the
+          pact-broker-cli directly against the broker to triage.
+
+    - name: "Publish bridge verification: auth-hub -> kratos"
+      ansible.builtin.include_tasks: _publish-bridge.yml
+      vars:
+        bridge:
+          provider: kratos
+          consumer: auth-hub
+          implementation: manual-external-assertion
+          provider_version: "{{ kratos_external_version }}"
