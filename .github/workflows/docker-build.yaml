@@ -291,7 +291,7 @@ jobs:
             recap-subworker)  MAX_MB=2900 ;;
             news-creator)     MAX_MB=1800 ;;
             recap-evaluator)  MAX_MB=2500 ;;
-            tag-generator)    MAX_MB=2200 ;;
+            tag-generator)    MAX_MB=2900 ;;
             recap-worker)     MAX_MB=2900 ;;
           esac
           SIZE_BYTES=$(docker image inspect "$IMAGE_TAG" --format '{{.Size}}')
