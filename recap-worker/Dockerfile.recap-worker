@@ -63,12 +63,15 @@ RUN groupadd -r recap && useradd -r -g recap recap
 
 # PyTorch ライブラリをコピー。
 # NOTE: libtorch は runtime に dlopen で ops 登録する副作用があり、ldd に現れない
-# .so (libcaffe2_observers / libbackend_with_compiler 等) への依存が存在するため、
-# 最小セットへの prune は SIGSEGV を誘発する。wildcard で取り込む必要がある。
-COPY --from=builder /usr/local/lib/libtorch* /usr/local/lib/
-COPY --from=builder /usr/local/lib/libc10* /usr/local/lib/
-COPY --from=builder /usr/local/lib/libcaffe2* /usr/local/lib/
-COPY --from=builder /usr/local/lib/libgomp* /usr/local/lib/
+# .so (libbackend_with_compiler / libnnapi_backend / libshm 等) への依存が存在する。
+# 先の "lib<family>*" prefix パターン群では
+# libbackend_with_compiler.so / libnnapi_backend.so / libshm.so が取り込まれず
+# dlopen 失敗 → ops 未登録 → SIGSEGV (exit 139) を招いた。
+# ビルダー段の /usr/local/lib は libtorch 展開物しか存在しないため、
+# ディレクトリ単位で COPY してランタイムも同一レイアウトにする。
+# Python 用 libtorch_python.so (~400MiB) も含まれるが rust-bert は使わない。
+# image-size budget (2900 MiB, ADR-000824) 内に収まる。
+COPY --from=builder /usr/local/lib/ /usr/local/lib/
 RUN ldconfig
 
 COPY --from=builder /app/recap-worker /usr/local/bin/
