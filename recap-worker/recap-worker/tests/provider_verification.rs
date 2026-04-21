@@ -13,7 +13,12 @@
 
 use std::net::SocketAddr;
 
-use axum::{Router, extract::Path, response::Json, routing::get};
+use axum::{
+    Router,
+    extract::Path,
+    response::Json,
+    routing::{get, post},
+};
 use serde_json::{Value, json};
 
 /// Build a stub Router that matches the endpoints asserted by
@@ -32,7 +37,30 @@ fn stub_router() -> Router {
                 }))
             }),
         )
-        // recap-evaluator-recap-worker.json
+        // recap-evaluator-recap-worker.json — literal-segment routes first
+        // so /latest is matched as a static path rather than parsed as the
+        // `{run_id}` integer path parameter (an i64 parse of "latest" returns
+        // 400 and trips the pact assertion).
+        .route(
+            "/v1/evaluation/genres",
+            post(|| async {
+                Json(json!({
+                    "run_id": 1,
+                    "status": "running",
+                }))
+            }),
+        )
+        .route(
+            "/v1/evaluation/genres/latest",
+            get(|| async {
+                Json(json!({
+                    "run_id": 42,
+                    "status": "succeeded",
+                    "accuracy": 0.85,
+                    "macro_f1": 0.82,
+                }))
+            }),
+        )
         .route(
             "/v1/evaluation/genres/{run_id}",
             get(
