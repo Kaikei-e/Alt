@@ -379,7 +379,7 @@ should_publish_pact_file() {
   return 1
 }
 
-if [[ "$MODE" == "broker" && "$ROLE_FILTER" != "provider" && "$MANUAL_ONLY" != "true" ]]; then
+if [[ "$MODE" == "broker" && "$ROLE_FILTER" != "provider" && "$MANUAL_ONLY" != "true" && $FAIL -eq 0 ]]; then
   # --publish-manual-verifications runs in broker mode (MODE=broker set by
   # --publish-only) but must NOT touch consumer pact files. The alt-deploy
   # pact-manual job 2026-04-20 crashed with "Cannot change the content of
@@ -389,6 +389,15 @@ if [[ "$MODE" == "broker" && "$ROLE_FILTER" != "provider" && "$MANUAL_ONLY" != "
   # without concrete examples generate non-deterministic bodies that the
   # Broker rejects as content mutation. Manual bridging only POSTs
   # verification records (block at ~L474), never consumer pacts.
+  #
+  # The $FAIL -eq 0 gate prevents a second failure mode seen on
+  # 2026-04-21: if consumer tests fail (e.g. torch-sys network flake
+  # on a fresh runner), the workspace still carries the last committed
+  # pact file on disk and this block would publish that stale snapshot.
+  # The next green run then tries to publish the freshly generated
+  # pact at the same SHA and the Broker rejects it as content mutation.
+  # Skipping publish on any consumer-test failure keeps the Broker in
+  # sync with what the code at $SHA actually produces.
   if [[ "$DRY_RUN" != "true" ]]; then
     echo ""
     echo "============================="
@@ -454,6 +463,9 @@ if [[ "$MODE" == "broker" && "$ROLE_FILTER" != "provider" && "$MANUAL_ONLY" != "
       echo "Published ${#FILES_TO_PUBLISH[@]} pact files to Broker"
     fi
   fi
+elif [[ "$MODE" == "broker" && "$ROLE_FILTER" != "provider" && "$MANUAL_ONLY" != "true" && $FAIL -gt 0 ]]; then
+  echo ""
+  echo "=== SKIP: broker publish (${FAIL} consumer test(s) failed — refusing to publish potentially stale on-disk pacts) ==="
 fi
 
 # ---------- Provider verifications ----------
