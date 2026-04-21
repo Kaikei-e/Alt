@@ -5,7 +5,14 @@ FROM rust:1.94-bookworm AS chef
 RUN cargo install cargo-chef --locked
 WORKDIR /app
 
-# PyTorch C++ ライブラリをインストール (rust-bert 用)
+# PyTorch C++ ライブラリをインストール (rust-bert 用)。
+# ダウンロードは sha256 で整合性検証する (A08:2025 Software & Data Integrity
+# Failures / CWE-494)。値は 2026-04-22 時点の
+# libtorch-cxx11-abi-shared-with-deps-2.4.0+cpu.zip (size=189478225) の
+# 公式ミラー配信物から計算済み。libtorch バージョンを上げるときは
+# この値と zip ファイル名を同時に更新する。
+ARG LIBTORCH_URL=https://download.pytorch.org/libtorch/cpu/libtorch-cxx11-abi-shared-with-deps-2.4.0%2Bcpu.zip
+ARG LIBTORCH_SHA256=9d16cc0da41e057f20c0be5f26d7418f969e857631cfcb86550ccdecfee8de60
 RUN apt-get update && \
   apt-get install -y --no-install-recommends \
   wget \
@@ -14,13 +21,14 @@ RUN apt-get update && \
   && \
   mkdir -p /usr/local/lib && \
   cd /tmp && \
-  wget -q https://download.pytorch.org/libtorch/cpu/libtorch-cxx11-abi-shared-with-deps-2.4.0%2Bcpu.zip && \
-  unzip -q libtorch-cxx11-abi-shared-with-deps-2.4.0+cpu.zip && \
+  wget -q -O libtorch.zip "$LIBTORCH_URL" && \
+  echo "$LIBTORCH_SHA256  libtorch.zip" | sha256sum -c - && \
+  unzip -q libtorch.zip && \
   cp -r libtorch/lib/* /usr/local/lib/ && \
   if [ -d libtorch/lib ]; then \
   find libtorch/lib -name "libgomp*" -exec cp -a {} /usr/local/lib/ \; || true; \
   fi && \
-  rm -rf libtorch libtorch-*.zip && \
+  rm -rf libtorch libtorch.zip && \
   ldconfig && \
   rm -rf /var/lib/apt/lists/*
 
@@ -73,6 +81,13 @@ RUN groupadd -r recap && useradd -r -g recap recap
 # image-size budget (2900 MiB, ADR-000824) 内に収まる。
 COPY --from=builder /usr/local/lib/ /usr/local/lib/
 RUN ldconfig
+
+# tch-rs README 記載の runtime invariant。libtorch の .so 群は runtime
+# dlopen で ops 登録する際にこの変数を参照する。ldconfig は
+# /etc/ld.so.conf.d/libc.conf が /usr/local/lib を含むこと前提の解決に
+# なり順序依存が残るため、明示的に export して dlopen 解決を安定化させる
+# (直近 release-deploy で container が exit 139 / SIGSEGV していた)。
+ENV LD_LIBRARY_PATH=/usr/local/lib
 
 COPY --from=builder /app/recap-worker /usr/local/bin/
 
