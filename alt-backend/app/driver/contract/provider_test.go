@@ -214,6 +214,34 @@ func startStubServer(t *testing.T) int {
 			})
 		})
 
+	// recap-worker-alt-backend.json: "a batch tags request by article ids"
+	// recap-worker fetches tags for a batch of article ids to enrich the
+	// recap payload. Connect-RPC, JSON wire format, camelCase keys.
+	mux.HandleFunc("/services.backend.v1.BackendInternalService/BatchGetTagsByArticleIDs",
+		func(w http.ResponseWriter, r *http.Request) {
+			if r.Method != http.MethodPost {
+				w.WriteHeader(http.StatusMethodNotAllowed)
+				return
+			}
+			_, _ = io.Copy(io.Discard, r.Body)
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{
+				"items": []map[string]interface{}{
+					{
+						"articleId": "art-001",
+						"tags": []map[string]interface{}{
+							{
+								"tagName":    "technology",
+								"confidence": 0.95,
+								"source":     "ml_model",
+								"updatedAt":  "2026-03-26T00:00:00Z",
+							},
+						},
+					},
+				},
+			})
+		})
+
 	// ---- alt-butterfly-facade proxy targets (Connect-RPC, JSON wire format) ----
 	// BFF unit-tests its proxy by speaking Connect-RPC directly to alt-backend.
 	// Only the 404 path is covered by the consumer pact.
@@ -292,6 +320,10 @@ func TestVerifyRecapWorkerContract(t *testing.T) {
 		StateHandlers: models.StateHandlers{
 			"articles exist in the recap window": func(setup bool, s models.ProviderState) (models.ProviderStateResponse, error) {
 				// No-op: stub server always returns articles
+				return nil, nil
+			},
+			"tags exist for the requested articles": func(setup bool, s models.ProviderState) (models.ProviderStateResponse, error) {
+				// No-op: stub server always returns tags for art-001
 				return nil, nil
 			},
 		},
