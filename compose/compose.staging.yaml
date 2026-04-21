@@ -611,6 +611,27 @@ services:
     image: ghcr.io/${GHCR_OWNER:-kaikei-e}/alt-recap-worker:${RECAP_WORKER_IMAGE_TAG:-main}
     container_name: alt-staging-recap-worker
     profiles: [recap-worker]
+    # Staging-only startup diagnostic. The runtime container has been
+    # SIGSEGV'ing (exit 139) during recap-worker init in e2e; the Dockerfile
+    # already COPYs the full libtorch layout, so the remaining hypotheses are
+    # dlopen resolution order and LD_LIBRARY_PATH. Print ldd, ldconfig, and
+    # env before exec so the next CI run surfaces the real failing site,
+    # then hand control to the normal entrypoint. Revert once the root
+    # cause is fixed.
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        set -x
+        echo "--- ldd /usr/local/bin/recap-worker ---"
+        ldd /usr/local/bin/recap-worker || true
+        echo "--- ldconfig -p | grep -i torch ---"
+        ldconfig -p | grep -i torch || true
+        echo "--- ls /usr/local/lib/libtorch* (first 20) ---"
+        ls /usr/local/lib/ | head -40 || true
+        echo "--- env ---"
+        env | sort
+        echo "--- exec recap-worker ---"
+        exec /usr/local/bin/recap-worker
     depends_on:
       recap-db:
         condition: service_healthy
