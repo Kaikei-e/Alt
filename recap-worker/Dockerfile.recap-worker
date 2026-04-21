@@ -61,17 +61,14 @@ RUN apt-get update && \
 # 非rootユーザー作成
 RUN groupadd -r recap && useradd -r -g recap recap
 
-# PyTorch ライブラリ — rust-bert / tch-rs が dlopen する最小セットだけコピー。
-# 省いたもの: libtorch_python.so (~400 MiB, Python bindings は未使用),
-# libshm.so (PyTorch DataLoader shared-memory, rust-bert 未使用),
-# libcaffe2_detectron_ops.so / libcaffe2_module_test_dynamic.so / libcaffe2_nvrtc.so
-# (Caffe2/CUDA 依存ops、rust-bert は PyTorch Aten 経路のみ使用),
-# *.a 静的アーカイブ一式 (runtime に dlopen されない)
-COPY --from=builder /usr/local/lib/libtorch.so             /usr/local/lib/
-COPY --from=builder /usr/local/lib/libtorch_cpu.so         /usr/local/lib/
-COPY --from=builder /usr/local/lib/libtorch_global_deps.so /usr/local/lib/
-COPY --from=builder /usr/local/lib/libc10.so               /usr/local/lib/
-COPY --from=builder /usr/local/lib/libgomp*.so*            /usr/local/lib/
+# PyTorch ライブラリをコピー。
+# NOTE: libtorch は runtime に dlopen で ops 登録する副作用があり、ldd に現れない
+# .so (libcaffe2_observers / libbackend_with_compiler 等) への依存が存在するため、
+# 最小セットへの prune は SIGSEGV を誘発する。wildcard で取り込む必要がある。
+COPY --from=builder /usr/local/lib/libtorch* /usr/local/lib/
+COPY --from=builder /usr/local/lib/libc10* /usr/local/lib/
+COPY --from=builder /usr/local/lib/libcaffe2* /usr/local/lib/
+COPY --from=builder /usr/local/lib/libgomp* /usr/local/lib/
 RUN ldconfig
 
 COPY --from=builder /app/recap-worker /usr/local/bin/
