@@ -86,6 +86,49 @@ class Settings(BaseSettings):
             )
         return self
 
+    @model_validator(mode="after")
+    def _validate_joblib_artifacts(self) -> Settings:
+        # file-scoped bind mounts in docker-compose create an empty directory
+        # at the target path if the host source file is missing — the
+        # container then starts up "healthy" but joblib.load() raises
+        # IsADirectoryError at first request, cascading into
+        # "classification returned 0 results" with a 300s worker-pool init
+        # timeout. Catch that footgun at Settings() construction so the
+        # container crashes visibly at boot instead.
+        if self.classification_backend != "joblib":
+            return self
+
+        from pathlib import Path
+
+        joblib_paths = (
+            "genre_classifier_model_path",
+            "genre_classifier_model_path_ja",
+            "genre_classifier_model_path_en",
+            "tfidf_vectorizer_path_ja",
+            "tfidf_vectorizer_path_en",
+            "genre_thresholds_path_ja",
+            "genre_thresholds_path_en",
+        )
+
+        misconfigured: list[str] = []
+        for field in joblib_paths:
+            value: str | None = getattr(self, field, None)
+            if not value:
+                continue
+            path = Path(value)
+            if path.is_dir():
+                misconfigured.append(f"{field}={value} is a directory")
+
+        if misconfigured:
+            raise ValueError(
+                "joblib artefact path resolves to a directory instead of a "
+                "file. This is almost always a docker-compose file-scoped "
+                "bind mount whose host source file is missing, which docker "
+                "silently replaces with an empty directory. Offenders: "
+                + "; ".join(misconfigured)
+            )
+        return self
+
     @property
     def db_url_str(self) -> str:
         """Return the DB URL as a plain string for SQLAlchemy."""

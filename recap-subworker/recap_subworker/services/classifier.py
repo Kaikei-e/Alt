@@ -72,7 +72,11 @@ class GenreClassifierService:
             with self._lock:
                 # Check again inside lock to avoid race condition
                 if self.model is None:
-                    if not self.model_path.exists():
+                    # is_file() rejects both the missing-file case and the
+                    # docker file-scoped bind-mount case where the host
+                    # source is missing and the target has been replaced
+                    # with an empty directory.
+                    if not self.model_path.is_file():
                         raise FileNotFoundError(f"Model not found at {self.model_path}")
 
                     logger.info("Loading classification artifacts", model_path=str(self.model_path))

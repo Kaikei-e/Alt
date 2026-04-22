@@ -99,11 +99,13 @@ def test_predict_batch_threshold_overrides_passed_to_ensure(genre_classifier):
 # We should also test that _ensure_model actually updates current_thresholds.
 # We need a fresh service without mocked _ensure_model for that.
 @patch("joblib.load")
+@patch("pathlib.Path.is_file")
 @patch("pathlib.Path.exists")
 @patch("builtins.open", new_callable=MagicMock)
 @patch("json.load")
-def test_ensure_model_updates_thresholds(mock_json_load, mock_open, mock_exists, mock_load, mock_embedder, tmp_path):
-    mock_exists.return_value = True # model and thresholds exist
+def test_ensure_model_updates_thresholds(mock_json_load, mock_open, mock_exists, mock_is_file, mock_load, mock_embedder, tmp_path):
+    mock_is_file.return_value = True  # model path guard uses is_file() (see classifier.py)
+    mock_exists.return_value = True  # tfidf / svd / scaler / thresholds sibling checks still use exists()
     mock_json_load.return_value = {"tech": 0.5} # Base thresholds
 
     service = GenreClassifierService("dummy/path", mock_embedder)
