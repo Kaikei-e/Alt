@@ -82,7 +82,6 @@ volumes:
   acolyte_orchestrator_certs:
   recap_worker_certs:
   recap_subworker_certs:
-  recap_subworker_artifacts:
   news_creator_certs:
 
 x-rask-env: &rask-env

@@ -160,66 +160,6 @@ services:
         max-size: "10m"
         max-file: "3"
 
-  # One-shot populator for recap_subworker_artifacts. Runs before
-  # recap-subworker starts. Fails fast (exit 1) if any required artefact
-  # is missing or empty on the host, which makes a lost alt-deploy sync
-  # visible at boot instead of 300s later as a "classification returned
-  # 0 results" runtime error. Directory-scoped bind mount on /src: if the
-  # host source directory doesn't exist, docker refuses to create the
-  # container, and recap-subworker never starts.
-  recap-subworker-artifacts-init:
-    image: busybox:1.37
-    container_name: recap-subworker-artifacts-init
-    # Defense-in-depth against the small window where this container runs
-    # with default docker capabilities (cp / test / mkdir do not require
-    # any Linux capability, so dropping ALL is safe). no-new-privileges
-    # closes setuid escalation paths. See security audit finding F-001
-    # for the OWASP A02:2025 / CWE-250 context.
-    cap_drop:
-      - ALL
-    security_opt:
-      - no-new-privileges:true
-    volumes:
-      # /src is bound from a host-persistent directory, NOT from the repo
-      # tree. recap-subworker/data/ is .gitignored (large binary model
-      # artefacts, OSS boundary), so any path relative to the compose
-      # file would resolve under the CI runner's ephemeral workspace,
-      # which is empty after every checkout. The artefact set is part
-      # of the single-machine production host state, installed once via
-      # runner bootstrap (see docs/runbooks/runner-setup.md §2.6).
-      # Override RECAP_SUBWORKER_DATA_HOST_PATH in a local .env to point
-      # at a dev copy (e.g. ../recap-subworker/data) when running
-      # compose on a workstation that keeps artefacts in the repo tree.
-      - ${RECAP_SUBWORKER_DATA_HOST_PATH:-/var/lib/alt-recap-subworker-data}:/src:ro
-      - recap_subworker_artifacts:/dst
-    command:
-      - sh
-      - -c
-      - |
-        set -eu
-        test -d /src || { echo "FATAL: /src is not mounted"; exit 1; }
-        if ! (test -s /src/genre_classifier_ja.joblib || test -s /src/genre_classifier_en.joblib); then
-          echo "FATAL: no usable joblib model at the host source path"
-          echo "  checked: /src/genre_classifier_ja.joblib and /src/genre_classifier_en.joblib"
-          echo "  both are missing or zero-sized."
-          echo "  Verify the host path that docker-compose binds to /src"
-          echo "  (default /var/lib/alt-recap-subworker-data, overridable"
-          echo "  via RECAP_SUBWORKER_DATA_HOST_PATH in .env). See"
-          echo "  docs/runbooks/3days-recap-artefact-recovery.md."
-          exit 1
-        fi
-        cp -r /src/. /dst/
-        echo "recap-subworker artefacts populated:"
-        ls -la /dst/
-    networks:
-      - alt-network
-    restart: "no"
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "1m"
-        max-file: "1"
-
   recap-subworker:
     env_file:
       - ../.env
@@ -274,21 +214,32 @@ services:
       - recap_db_password
     volumes:
       # joblib artefacts (genre_classifier*.joblib, tfidf_vectorizer*.joblib,
-      # genre_thresholds*.json, golden_classification.json) are populated
-      # into recap_subworker_artifacts by recap-subworker-artifacts-init
-      # below. Using a named volume instead of 10 file-scoped bind mounts
-      # prevents docker from silently replacing a missing host file with
-      # an empty directory (the 2026-04-14..22 outage mode).
-      - recap_subworker_artifacts:/app/data:ro
-      # Learning Machine model artifacts — directory bind, fails fast if
-      # the source directory is missing (directory-scoped binds do not
-      # auto-create an empty placeholder).
+      # genre_thresholds*.json, golden_classification.json) live on the
+      # single-machine prod host at a path outside the alt-deploy CI
+      # workspace, installed once by runner bootstrap (see
+      # docs/runbooks/runner-setup.md §2.6). The artefacts are gitignored
+      # (large binary ML model files, OSS boundary), so any path relative
+      # to this compose file would resolve into the per-job ephemeral
+      # workspace and be empty on every checkout. Override
+      # RECAP_SUBWORKER_DATA_HOST_PATH in a local .env to point at a dev
+      # copy (e.g. ../recap-subworker/data) when running compose on a
+      # workstation that keeps artefacts in the repo tree.
+      #
+      # Directory-scoped bind mount: from Docker Compose v2.24 onward,
+      # compose refuses to create the container if the host source
+      # directory is missing (no silent empty-directory auto-create).
+      # That is the deploy-time fail-closed contract replacing the
+      # earlier named-volume + init-container pattern, which was
+      # incompatible with per-service `--no-deps` rolling. See
+      # ADR-000825 addendum.
+      - ${RECAP_SUBWORKER_DATA_HOST_PATH:-/var/lib/alt-recap-subworker-data}:/app/data:ro
+      # Learning Machine model artifacts — directory bind, same fail-fast
+      # guarantee as /app/data; source is in-repo so this one works from
+      # the workspace.
       - ../recap-subworker/recap_subworker/learning_machine/artifacts:/app/recap_subworker/learning_machine/artifacts:ro
     depends_on:
       recap-worker:
         condition: service_healthy
-      recap-subworker-artifacts-init:
-        condition: service_completed_successfully
     deploy:
       resources:
         reservations:
