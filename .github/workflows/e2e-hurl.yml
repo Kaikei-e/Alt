@@ -218,6 +218,20 @@ jobs:
             -f recap-worker/Dockerfile.recap-worker \
             recap-worker
 
+      - name: Warmup rust-bert cache (internet-connected, bind mount)
+        # The staging compose brings the stack up on an `internal: true`
+        # network, so rust-bert cannot reach HuggingFace from inside.
+        # Populate /opt/rustbert-cache on the runner host before the
+        # staging stack starts; compose mounts the same path read-only.
+        # recap uid/gid are pinned to 999 in the image, so the host dir
+        # must be chown'd to 999:999 for the warmup container to write.
+        run: |
+          sudo mkdir -p /opt/rustbert-cache
+          sudo chown -R 999:999 /opt/rustbert-cache
+          docker run --rm \
+            -v /opt/rustbert-cache:/opt/rustbert-cache \
+            ghcr.io/kaikei-e/alt-recap-worker:ci warmup
+
       - name: Build recap-pipeline-stub image locally (tag `ci`)
         run: |
           docker build \
