@@ -180,7 +180,17 @@ services:
     security_opt:
       - no-new-privileges:true
     volumes:
-      - ../recap-subworker/data:/src:ro
+      # /src is bound from a host-persistent directory, NOT from the repo
+      # tree. recap-subworker/data/ is .gitignored (large binary model
+      # artefacts, OSS boundary), so any path relative to the compose
+      # file would resolve under the CI runner's ephemeral workspace,
+      # which is empty after every checkout. The artefact set is part
+      # of the single-machine production host state, installed once via
+      # runner bootstrap (see docs/runbooks/runner-setup.md §2.6).
+      # Override RECAP_SUBWORKER_DATA_HOST_PATH in a local .env to point
+      # at a dev copy (e.g. ../recap-subworker/data) when running
+      # compose on a workstation that keeps artefacts in the repo tree.
+      - ${RECAP_SUBWORKER_DATA_HOST_PATH:-/var/lib/alt-recap-subworker-data}:/src:ro
       - recap_subworker_artifacts:/dst
     command:
       - sh
@@ -189,11 +199,13 @@ services:
         set -eu
         test -d /src || { echo "FATAL: /src is not mounted"; exit 1; }
         if ! (test -s /src/genre_classifier_ja.joblib || test -s /src/genre_classifier_en.joblib); then
-          echo "FATAL: no usable joblib model on the host"
+          echo "FATAL: no usable joblib model at the host source path"
           echo "  checked: /src/genre_classifier_ja.joblib and /src/genre_classifier_en.joblib"
-          echo "  both are missing or zero-sized. This is almost always"
-          echo "  a lost alt-deploy artefact sync — verify the host path"
-          echo "  that docker-compose binds to /src."
+          echo "  both are missing or zero-sized."
+          echo "  Verify the host path that docker-compose binds to /src"
+          echo "  (default /var/lib/alt-recap-subworker-data, overridable"
+          echo "  via RECAP_SUBWORKER_DATA_HOST_PATH in .env). See"
+          echo "  docs/runbooks/3days-recap-artefact-recovery.md."
           exit 1
         fi
         cp -r /src/. /dst/
