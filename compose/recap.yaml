@@ -135,10 +135,14 @@ services:
     volumes:
       - recap_worker_certs:/certs:ro
       - pki_trust_bundle:/trust:ro
-      # warmup subcommand でホスト側に populate 済みの rust-bert キャッシュを
-      # read-only で共有。Dockerfile ENV RUSTBERT_CACHE=/opt/rustbert-cache に
-      # 対応。
-      - /opt/rustbert-cache:/opt/rustbert-cache:ro
+      # Host-side populate (altctldeploy recap populate-cache) で焼いた
+      # rust-bert キャッシュを共有。bind を :rw にしているのは rust-bert の
+      # cached-path crate と hf-hub crate が cache hit 時にも lockfile /
+      # meta を更新し token 存在確認で書き込みを試みるため (:ro 下では
+      # "Read-only file system (os error 30)" で Embedding 初期化が失敗)。
+      # populate 済前提の前提崩れに対する防御は ADR-000827 の
+      # RECAP_WORKER_EMBEDDING_REQUIRED=true によるアプリ層 fail-closed に寄せる。
+      - /opt/rustbert-cache:/opt/rustbert-cache:rw
     depends_on:
       recap-db:
         condition: service_healthy
