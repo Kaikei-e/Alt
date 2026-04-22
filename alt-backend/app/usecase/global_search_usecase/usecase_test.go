@@ -184,3 +184,86 @@ func TestGlobalSearchUsecase_NoUserContext(t *testing.T) {
 		t.Fatal("expected error for missing user context, got nil")
 	}
 }
+
+// --- Slow mocks for section timeout tests ---
+
+type slowArticleSearch struct {
+	delay time.Duration
+}
+
+func (m *slowArticleSearch) SearchArticlesForGlobal(ctx context.Context, _ string, _ string, _ int) (*domain.ArticleSearchSection, error) {
+	select {
+	case <-time.After(m.delay):
+		return &domain.ArticleSearchSection{Hits: []domain.GlobalArticleHit{{ID: "a1"}}}, nil
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	}
+}
+
+// TestSectionTimeout_DefaultMatches10Seconds anchors the production value.
+// The previous 3-second ceiling conflicted with the real /indexes/articles/
+// search latency when Meilisearch's synonyms task queue was saturated
+// (idle time up to 5s observed), pushing every /search request into the
+// degraded articles path. The coalescing batcher in search-indexer fixes
+// the underlying pressure, but an 8–10s ceiling provides headroom for any
+// residual Meilisearch task-queue contention.
+func TestSectionTimeout_DefaultMatches10Seconds(t *testing.T) {
+	if sectionTimeout != 10*time.Second {
+		t.Fatalf("sectionTimeout = %v, want 10s", sectionTimeout)
+	}
+}
+
+// TestSectionTimeout_SlowPortWithinWindow_NotDegraded checks that sections
+// returning below the ceiling complete normally. Tests override the package
+// var to keep the sleep short.
+func TestSectionTimeout_SlowPortWithinWindow_NotDegraded(t *testing.T) {
+	logger.InitLogger()
+	orig := sectionTimeout
+	sectionTimeout = 500 * time.Millisecond
+	t.Cleanup(func() { sectionTimeout = orig })
+
+	uc := NewGlobalSearchUsecase(
+		&slowArticleSearch{delay: 100 * time.Millisecond},
+		&mockRecapSearch{result: &domain.RecapSearchSection{Hits: []domain.GlobalRecapHit{{ID: "r1"}}}},
+		&mockTagSearch{result: &domain.TagSearchSection{Hits: []domain.GlobalTagHit{{TagName: "x"}}}},
+	)
+
+	result, err := uc.Execute(userCtx(), "q", 5, 3, 10)
+	if err != nil {
+		t.Fatalf("Execute: %v", err)
+	}
+	for _, d := range result.DegradedSections {
+		if d == "articles" {
+			t.Fatalf("articles must not be degraded when port responds within timeout; got %v", result.DegradedSections)
+		}
+	}
+}
+
+// TestSectionTimeout_SlowPortBeyondWindow_Degrades confirms the timeout
+// still trips when sections genuinely exceed it.
+func TestSectionTimeout_SlowPortBeyondWindow_Degrades(t *testing.T) {
+	logger.InitLogger()
+	orig := sectionTimeout
+	sectionTimeout = 100 * time.Millisecond
+	t.Cleanup(func() { sectionTimeout = orig })
+
+	uc := NewGlobalSearchUsecase(
+		&slowArticleSearch{delay: 300 * time.Millisecond},
+		&mockRecapSearch{result: &domain.RecapSearchSection{Hits: []domain.GlobalRecapHit{{ID: "r1"}}}},
+		&mockTagSearch{result: &domain.TagSearchSection{Hits: []domain.GlobalTagHit{{TagName: "x"}}}},
+	)
+
+	result, err := uc.Execute(userCtx(), "q", 5, 3, 10)
+	if err != nil {
+		t.Fatalf("Execute: %v", err)
+	}
+	found := false
+	for _, d := range result.DegradedSections {
+		if d == "articles" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("articles should be degraded when port exceeds timeout; got %v", result.DegradedSections)
+	}
+}

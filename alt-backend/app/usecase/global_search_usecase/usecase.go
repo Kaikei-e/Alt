@@ -18,8 +18,12 @@ const (
 	maxRecapLimit       = 10
 	maxTagLimit         = 30
 	maxQueryLength      = 1000
-	sectionTimeout      = 3 * time.Second
 )
+
+// sectionTimeout bounds each parallel search section (articles / recaps /
+// tags). It is a var rather than a const so tests can shrink it for fast
+// behavioural assertions.
+var sectionTimeout = 3 * time.Second
 
 // GlobalSearchUsecase aggregates search results from multiple verticals.
 type GlobalSearchUsecase struct {
