@@ -101,6 +101,25 @@ command -v docker >/dev/null && echo OK-docker
 
 playbook が exit 0 + 上記 shell すべて OK で runner 設定完了。
 
+## 2.5 recap-worker 向け host-level state
+
+`release-deploy.yaml` の `e2e (recap-worker)` は、network-isolated な staging stack に rust-bert モデルキャッシュを流し込むため、runner host に `/opt/rustbert-cache` を置いて bind-mount する。このパスは privileged (`/opt` 配下) なので、**CI step から mkdir / chown しない** (deploy-time mutation を作らない方針 §1)。runner bootstrap の一部として事前作成しておく。
+
+uid/gid 999 は `recap-worker` Dockerfile の `recap` user に pin 済み。host 側に既存の uid 999 user (dnsmasq など) がいても、docker bind mount は uid 番号で解決するため問題にはならない。
+
+```bash
+# Phase 1 (per-runner-host、一度きり、privileged)
+sudo sh -c 'mkdir -p /opt/rustbert-cache && \
+            chown 999:999 /opt/rustbert-cache && \
+            chmod 0700 /opt/rustbert-cache'
+
+# 確認
+stat -c '%n uid=%u gid=%g mode=%a' /opt/rustbert-cache
+# 期待値: /opt/rustbert-cache uid=999 gid=999 mode=700
+```
+
+`release-deploy` 側の playbook (`alt-deploy/playbooks/run-e2e-suite.yml`) は **stat + assert** でこの状態を確認するのみで、CI が sudo を叩かない設計。assertion に失敗すれば fail_msg に復旧ワンライナーが埋まっている。
+
 ## 3. alt-builder runner
 
 release-deploy の `build` / `pact-publish` / `gate` / `e2e` jobs が走る。以下が必要:
