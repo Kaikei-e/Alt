@@ -48,29 +48,31 @@ fatal: [localhost]: FAILED!
 
 recap-worker の staging 経路で `/opt/rustbert-cache` を host bind-mount する必要があるが、各 self-hosted runner の actions-runner ユーザは NOPASSWD sudo を持たない方針。CI step から privileged provisioning を試みると sudo プロンプトで停止する。**privileged provisioning は CI ではなく runner bootstrap で事前に完了させる** のが Alt の設計原則 ([[runner-setup]] §2.5 と同方針)。
 
-### 復旧手順 (self-hosted deploy runner ホスト)
+### 復旧手順
 
-`/opt/rustbert-cache` は **host 全体で共有される単一ディレクトリ** (各 actions-runner ユーザ固有のパスではない)。runner host に sudo 可能なアカウントでログインし、以下のワンライナーを一度流すだけで足りる。`feedback_shell_paste_safe` 準拠。
+`/opt/rustbert-cache` は **self-hosted deploy runner host 全体で共有される単一ディレクトリ**で、recap-worker container 内 `recap` user (uid/gid `999:999`, Dockerfile で pin 済) が読み取る。復旧は 2 段階:
 
-**重要**: recap-worker Dockerfile で `recap` user の uid/gid は `999:999` に pin 済み (`d7153ad36`)。ホスト側 `/opt/rustbert-cache` は同 uid:gid で所有させる。
+1. **ディレクトリ provisioning** — mkdir + chown 999:999 + chmod 0755 を sudo で実施。
+2. **rust-bert AllMiniLmL12V2 model cache を populate** — tokenizer + model weights (約 130 MB) を deploy runner 上で一度だけダウンロード。これをスキップすると container 起動後に `Read-only file system (os error 30)` で embedding init が失敗し、subgenre-splitter が keyword-only fallback に落ちて 30 ジャンル taxonomy が 2 バケットに崩壊する ([[PM-2026-038]])。
 
-```bash
-sudo mkdir -p /opt/rustbert-cache && sudo chown 999:999 /opt/rustbert-cache && sudo chmod 0755 /opt/rustbert-cache
-```
+具体的なパス・secrets 取り扱い・ワンライナー・冪等化・自動化は本 public repo ではなく alt-deploy (Private) の運用ドライバで管理する ([[feedback_no_host_names_in_public]] 準拠)。Alt 側から触るべき API は以下 2 点だけ:
 
-冪等なので複数回流しても副作用なし。自動化版ドライバは deploy 側 (Private) の運用スクリプトで別途提供。
+- `alt-deploy/scripts/recover-3days-recap.sh provision-cache --yes` — ステップ 1 を冪等に実施。
+- `alt-deploy/scripts/recover-3days-recap.sh populate-cache --yes` — ステップ 2 で現行 image の `recap-worker warmup` subcommand を `rw` bind で実行し cache を populate。
 
-### 検証
+両者完了後に `verify-cache` sub-command で `uid=999 gid=999 mode=755` かつ `/opt/rustbert-cache` 配下に non-zero な `.ot` / `.json` が populate 済であることを確認する。
 
-```bash
-stat -c '%n uid=%u gid=%g mode=%a' /opt/rustbert-cache
-```
+### 検証 (Alt 側 smoke)
 
-`uid=999 gid=999 mode=755` と出れば OK。
+Alt 側の smoke は compose 起動後に以下で成立する:
 
-### follow-up (Alt 側)
+- `docker logs alt-recap-worker-1 --since 2m | grep 'Embedding service initialized successfully'` が 1 行以上出ること
+- `RECAP_WORKER_EMBEDDING_REQUIRED=true` (compose デフォルト) で container が `healthy` を維持していること。populate 未完了なら `EmbeddingService::new()` が Err を返し `ComponentRegistry::build` が context 付きで bail、container が restart ループに入る (fail-closed / [[000827]])
 
-- [[runner-setup]] §2.5 に「`/opt/rustbert-cache` を 999:999 / mode 0700 で事前作成」を Phase 1 bootstrap の checklist として追加済。
+### follow-up
+
+- [[000827]] で recap-worker に `RECAP_WORKER_EMBEDDING_REQUIRED` フラグを追加し init 失敗時 fail-closed を実装。compose デフォルトは `true`。dev stack で populate を持たない環境は `.env` で `RECAP_WORKER_EMBEDDING_REQUIRED=false` を override すれば従来の degraded mode で起動可能。
+- alt-deploy 側 runbook に `populate-cache` の運用詳細 (image sha の引き方、secrets マウント、ssh 経由の実行) を集約。Alt 側からは参照のみ。
 
 ## ブロッカー 2: recap-subworker host artefact の復旧
 

@@ -152,23 +152,47 @@ impl PipelineOrchestrator {
         let cpu_count = num_cpus::get();
         let max_concurrent = (cpu_count * 3) / 2;
 
-        let embedding_service: Option<Arc<dyn crate::pipeline::embedding::Embedder>> =
-            match crate::pipeline::embedding::EmbeddingService::new() {
-                Ok(s) => {
-                    tracing::info!("Embedding service initialized successfully (AllMiniLmL12V2)");
-                    Some(Arc::new(s) as Arc<dyn crate::pipeline::embedding::Embedder>)
-                }
-                Err(e) => {
-                    tracing::error!(
-                        error = %e,
-                        error_chain = ?e,
-                        "Embedding service failed to initialize. \
-                         Large genres cannot be split into subgenres. \
-                         Falling back to keyword-only filtering."
-                    );
-                    None
-                }
+        let embedding_policy = if config.embedding_required() {
+            crate::pipeline::embedding::EmbeddingAvailability::Required
+        } else {
+            crate::pipeline::embedding::EmbeddingAvailability::Optional
+        };
+        let embedding_init = crate::pipeline::embedding::EmbeddingService::new();
+        if let Err(ref e) = embedding_init {
+            // Log once up-front so operators see the init failure even when the
+            // Optional policy would swallow it into Ok(None). This path was the
+            // silent-failure source documented in PM-2026-038: empty rust-bert
+            // cache → keyword-only fallback → 30-genre taxonomy collapsed to 2
+            // buckets, but the only breadcrumb was a single WARN on startup.
+            let hint = if config.embedding_required() {
+                "RECAP_WORKER_EMBEDDING_REQUIRED=true — refusing to start. \
+                 Populate /opt/rustbert-cache via `recap-worker warmup` per \
+                 docs/runbooks/3days-recap-artefact-recovery.md."
+            } else {
+                "RECAP_WORKER_EMBEDDING_REQUIRED=false — falling back to \
+                 keyword-only filtering. Set to true in production to \
+                 fail-closed; see docs/ADR/000825 for the rationale."
             };
+            tracing::error!(
+                error = %e,
+                error_chain = ?e,
+                hint,
+                "Embedding service failed to initialize. \
+                 Large genres cannot be split into subgenres."
+            );
+        }
+        let embedding_service: Option<Arc<dyn crate::pipeline::embedding::Embedder>> =
+            crate::pipeline::embedding::require_or_degrade(embedding_init, embedding_policy)
+                .context(
+                    "embedding service init failed while \
+                     RECAP_WORKER_EMBEDDING_REQUIRED=true (see \
+                     docs/runbooks/3days-recap-artefact-recovery.md to populate \
+                     /opt/rustbert-cache)",
+                )?
+                .map(|s| {
+                    tracing::info!("Embedding service initialized successfully (AllMiniLmL12V2)");
+                    Arc::new(s) as Arc<dyn crate::pipeline::embedding::Embedder>
+                });
 
         // Initialize Pulse stage and rollout
         let pulse_config = PulseConfig::from_env();

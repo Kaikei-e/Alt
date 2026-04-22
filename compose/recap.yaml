@@ -110,6 +110,11 @@ services:
       # 固定済。ホストの /opt/rustbert-cache を read-only bind-mount することで、
       # 再起動時の HF 再ダウンロード (約 130 MB) を回避し、staging と同じ
       # パス規約を使う。初回 populate は runner 側で warmup subcommand 実行。
+      # Fail-closed: /opt/rustbert-cache が空だと embedding 初期化が失敗する。
+      # true にすると起動時 exit 1 で refuse し subgenre-splitter 欠落による
+      # 2-ジャンル崩壊 (PM-2026-038) を防ぐ。populate 経路が確立しない dev
+      # stack では false に落として keyword-only fallback を許可する。
+      - RECAP_WORKER_EMBEDDING_REQUIRED=${RECAP_WORKER_EMBEDDING_REQUIRED:-true}
       # Clustering timeout: relax stuck detection from 600s to 1200s for large genres
       - RECAP_CLUSTERING_STUCK_THRESHOLD_SECS=${RECAP_CLUSTERING_STUCK_THRESHOLD_SECS:-1200}
       # Batch summary chunk size: reduced to 3 to prevent batch HTTP timeout

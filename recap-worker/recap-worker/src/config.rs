@@ -120,6 +120,7 @@ pub struct Config {
     clustering_min_success_genres: usize,
     clustering_stuck_threshold: Duration,
     batch_summary_chunk_size: usize,
+    embedding_required: FeatureToggle,
 }
 
 #[derive(Debug, Error)]
@@ -272,6 +273,11 @@ impl Config {
         let clustering_min_success_genres = parse_usize("RECAP_CLUSTERING_MIN_SUCCESS_GENRES", 1)?;
         let clustering_stuck_threshold =
             parse_duration_secs("RECAP_CLUSTERING_STUCK_THRESHOLD_SECS", 600)?; // 10分
+        let embedding_required = if parse_bool("RECAP_WORKER_EMBEDDING_REQUIRED", false)? {
+            FeatureToggle::Enabled
+        } else {
+            FeatureToggle::Disabled
+        };
 
         Ok(Self::from_components(
             basic,
@@ -290,6 +296,7 @@ impl Config {
             clustering_job_timeout,
             clustering_min_success_genres,
             clustering_stuck_threshold,
+            embedding_required,
         ))
     }
 
@@ -311,6 +318,7 @@ impl Config {
         clustering_job_timeout: Duration,
         clustering_min_success_genres: usize,
         clustering_stuck_threshold: Duration,
+        embedding_required: FeatureToggle,
     ) -> Self {
         Self {
             http_bind: basic.http_bind,
@@ -371,6 +379,7 @@ impl Config {
             clustering_min_success_genres,
             clustering_stuck_threshold,
             batch_summary_chunk_size: basic.batch_summary_chunk_size,
+            embedding_required,
         }
     }
 
@@ -413,7 +422,6 @@ impl Config {
     pub fn alt_backend_base_url(&self) -> &str {
         &self.alt_backend_base_url
     }
-
 
     #[must_use]
     pub fn alt_backend_connect_timeout(&self) -> Duration {
@@ -696,6 +704,19 @@ impl Config {
     #[must_use]
     pub fn batch_summary_chunk_size(&self) -> usize {
         self.batch_summary_chunk_size
+    }
+
+    /// Whether the rust-bert sentence-embedding service is a hard startup requirement.
+    ///
+    /// Returns `true` when `RECAP_WORKER_EMBEDDING_REQUIRED=true`. Under that
+    /// policy, `EmbeddingService::new()` failing during `ComponentRegistry::build`
+    /// must abort startup (fail-closed, mirrors the joblib validator pattern in
+    /// ADR-000825) rather than silently degrading to keyword-only filtering.
+    /// Default is `false` for dev/test stacks that have not populated the
+    /// `/opt/rustbert-cache` directory.
+    #[must_use]
+    pub fn embedding_required(&self) -> bool {
+        self.embedding_required.is_enabled()
     }
 }
 
@@ -1106,6 +1127,7 @@ mod tests {
             ("RECAP_GENRES", None),
             ("LLM_SUMMARY_TIMEOUT_SECS", None),
             ("MTLS_ENFORCE", None),
+            ("RECAP_WORKER_EMBEDDING_REQUIRED", None),
         ]
     }
 
@@ -1136,18 +1158,9 @@ mod tests {
             assert_eq!(config.news_creator_base_url(), "http://localhost:8001/");
             assert_eq!(config.subworker_base_url(), "http://localhost:8002/");
             assert_eq!(config.alt_backend_base_url(), "http://localhost:9000/");
-            assert_eq!(
-                config.alt_backend_connect_timeout(),
-                Duration::from_secs(3)
-            );
-            assert_eq!(
-                config.alt_backend_read_timeout(),
-                Duration::from_secs(20)
-            );
-            assert_eq!(
-                config.alt_backend_total_timeout(),
-                Duration::from_secs(30)
-            );
+            assert_eq!(config.alt_backend_connect_timeout(), Duration::from_secs(3));
+            assert_eq!(config.alt_backend_read_timeout(), Duration::from_secs(20));
+            assert_eq!(config.alt_backend_total_timeout(), Duration::from_secs(30));
             assert_eq!(config.http_max_retries(), 3);
             assert_eq!(config.http_backoff_base_ms(), 250);
             assert_eq!(config.http_backoff_cap_ms(), 10000);
@@ -1238,10 +1251,7 @@ mod tests {
                 config.alt_backend_base_url(),
                 "https://backend.example.com/"
             );
-            assert_eq!(
-                config.alt_backend_connect_timeout(),
-                Duration::from_secs(5)
-            );
+            assert_eq!(config.alt_backend_connect_timeout(), Duration::from_secs(5));
             assert_eq!(config.http_max_retries(), 5);
             assert_eq!(config.otel_exporter_endpoint(), Some("http://otel:4317"));
             assert_eq!(config.recap_window_days(), 14);
@@ -1414,6 +1424,51 @@ mod tests {
                 .expect("https urls under MTLS_ENFORCE=true should load successfully");
             assert_eq!(config.subworker_base_url(), "https://recap-subworker:9443");
             assert_eq!(config.news_creator_base_url(), "https://news-creator:9443");
+        });
+    }
+
+    #[test]
+    fn from_env_defaults_embedding_required_to_false() {
+        let _lock = ENV_MUTEX.lock().expect("env mutex");
+        let mut vars = base_env_vars();
+        vars.extend([
+            (
+                "RECAP_DB_DSN",
+                Some("postgres://recap:recap@localhost:5555/recap_db"),
+            ),
+            ("NEWS_CREATOR_BASE_URL", Some("http://localhost:8001/")),
+            ("SUBWORKER_BASE_URL", Some("http://localhost:8002/")),
+            ("ALT_BACKEND_BASE_URL", Some("http://localhost:9000/")),
+        ]);
+        temp_env::with_vars(vars, || {
+            let config = Config::from_env().expect("config should load");
+            assert!(
+                !config.embedding_required(),
+                "RECAP_WORKER_EMBEDDING_REQUIRED unset should default to optional (false)"
+            );
+        });
+    }
+
+    #[test]
+    fn from_env_parses_embedding_required_true() {
+        let _lock = ENV_MUTEX.lock().expect("env mutex");
+        let mut vars = base_env_vars();
+        vars.extend([
+            (
+                "RECAP_DB_DSN",
+                Some("postgres://recap:recap@localhost:5555/recap_db"),
+            ),
+            ("NEWS_CREATOR_BASE_URL", Some("http://localhost:8001/")),
+            ("SUBWORKER_BASE_URL", Some("http://localhost:8002/")),
+            ("ALT_BACKEND_BASE_URL", Some("http://localhost:9000/")),
+            ("RECAP_WORKER_EMBEDDING_REQUIRED", Some("true")),
+        ]);
+        temp_env::with_vars(vars, || {
+            let config = Config::from_env().expect("config should load");
+            assert!(
+                config.embedding_required(),
+                "RECAP_WORKER_EMBEDDING_REQUIRED=true should fail-closed on init failure"
+            );
         });
     }
 }

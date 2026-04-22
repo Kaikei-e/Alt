@@ -14,6 +14,39 @@ pub trait Embedder: Send + Sync + std::fmt::Debug {
     async fn encode(&self, texts: &[String]) -> Result<Vec<Vec<f32>>>;
 }
 
+/// Whether the rust-bert embedding service is a hard requirement at startup.
+///
+/// `Required` mirrors the Settings-validator fail-closed pattern established in
+/// ADR-000825 (recap-subworker joblib artefacts): the runtime must refuse to
+/// start when the embedding model cannot initialize. The alternative — `Optional`
+/// — keeps the pre-existing degraded keyword-only behaviour for dev/test stacks
+/// that do not have a rust-bert cache populated.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum EmbeddingAvailability {
+    Required,
+    Optional,
+}
+
+/// Apply the configured availability policy to an embedding-init result.
+///
+/// - `(Required, Err)` → surfaces the error so the caller can fail-closed at
+///   startup, rather than silently degrading the pipeline to keyword-only
+///   filtering (the silent-failure footgun described in PM-2026-038).
+/// - `(Optional, Err)` → returns `Ok(None)`; callers log a warning and continue
+///   with the fallback path that already has unit-test coverage
+///   (`subcluster_large_genres_handles_no_embedding_service`).
+/// - Any `Ok(v)` → `Ok(Some(v))`.
+pub fn require_or_degrade<T, E>(
+    result: std::result::Result<T, E>,
+    policy: EmbeddingAvailability,
+) -> std::result::Result<Option<T>, E> {
+    match (policy, result) {
+        (_, Ok(v)) => Ok(Some(v)),
+        (EmbeddingAvailability::Required, Err(e)) => Err(e),
+        (EmbeddingAvailability::Optional, Err(_)) => Ok(None),
+    }
+}
+
 /// Embedding generation service using rust-bert.
 /// This runs on CPU.
 #[derive(Clone)]
@@ -146,4 +179,37 @@ pub fn cosine_similarity(a: &[f32], b: &[f32]) -> f32 {
     }
 
     dot_product / (norm_a * norm_b)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{EmbeddingAvailability, require_or_degrade};
+
+    #[test]
+    fn required_surfaces_init_error() {
+        let init: std::result::Result<&'static str, &'static str> = Err("cache empty");
+        let out = require_or_degrade(init, EmbeddingAvailability::Required);
+        assert_eq!(out, Err("cache empty"));
+    }
+
+    #[test]
+    fn optional_degrades_init_error_to_none() {
+        let init: std::result::Result<&'static str, &'static str> = Err("cache empty");
+        let out = require_or_degrade(init, EmbeddingAvailability::Optional);
+        assert_eq!(out, Ok(None));
+    }
+
+    #[test]
+    fn required_passes_through_success() {
+        let init: std::result::Result<&'static str, &'static str> = Ok("model");
+        let out = require_or_degrade(init, EmbeddingAvailability::Required);
+        assert_eq!(out, Ok(Some("model")));
+    }
+
+    #[test]
+    fn optional_passes_through_success() {
+        let init: std::result::Result<&'static str, &'static str> = Ok("model");
+        let out = require_or_degrade(init, EmbeddingAvailability::Optional);
+        assert_eq!(out, Ok(Some("model")));
+    }
 }
