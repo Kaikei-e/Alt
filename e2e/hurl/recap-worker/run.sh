@@ -72,8 +72,21 @@ cleanup() {
 trap cleanup EXIT
 
 echo "==> bringing up recap-worker slice ($STAGING_PROJECT_NAME)" >&2
-docker compose -f "$SLICE" -p "$STAGING_PROJECT_NAME" \
-  up -d --wait recap-db recap-pipeline-stub recap-worker
+if ! docker compose -f "$SLICE" -p "$STAGING_PROJECT_NAME" \
+     up -d --wait recap-db recap-pipeline-stub recap-worker; then
+  # Bring-up failures (typically an exit 139 / SIGSEGV in recap-worker
+  # during libtorch init) are otherwise lost: the trap cleanup tears the
+  # slice down before the workflow's `Dump ... on failure` step runs, and
+  # that step re-reads compose.staging.yaml without the recap-worker
+  # profile, so the profile-gated service is silently empty. Capture the
+  # last 300 lines of the three long-running containers here, on stderr,
+  # so both Alt/.github/workflows/e2e-hurl.yml and alt-deploy's Ansible
+  # e2e job surface the real failing site.
+  echo "==> bring-up failed — dumping container logs for triage" >&2
+  docker compose -f "$SLICE" -p "$STAGING_PROJECT_NAME" \
+    logs --no-color --tail=300 recap-worker recap-pipeline-stub recap-db >&2 || true
+  exit 1
+fi
 
 # recap-db-migrator is a one-shot job (restart: "no") that exits when
 # done; --wait would poll forever, so let `depends_on:

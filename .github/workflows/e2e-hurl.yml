@@ -238,7 +238,12 @@ jobs:
       - name: Dump alt-staging logs on failure
         if: failure()
         run: |
-          docker compose -f compose/compose.staging.yaml -p alt-staging \
+          # recap-worker is profile-gated in compose.staging.yaml, so a
+          # bare `docker compose logs` silently returns nothing. Pass
+          # --profile recap-worker so the dump actually matches the
+          # services run.sh brought up (observed on run 24752223343
+          # where the profile omission hid a SIGSEGV diagnostic).
+          docker compose -f compose/compose.staging.yaml --profile recap-worker -p alt-staging \
             logs --no-color --tail=300 || true
 
       - name: Upload Hurl reports
