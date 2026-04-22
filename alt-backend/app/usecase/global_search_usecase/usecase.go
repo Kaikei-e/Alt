@@ -22,8 +22,12 @@ const (
 
 // sectionTimeout bounds each parallel search section (articles / recaps /
 // tags). It is a var rather than a const so tests can shrink it for fast
-// behavioural assertions.
-var sectionTimeout = 3 * time.Second
+// behavioural assertions. The production ceiling was raised from 3s to 10s
+// after observing Meilisearch /indexes/articles/search idle time reach 5s
+// under synonyms-task-queue contention; even with the coalescing batcher
+// in search-indexer closing that gap, the wider ceiling keeps transient
+// Meilisearch batching from flipping articles into the degraded banner.
+var sectionTimeout = 10 * time.Second
 
 // GlobalSearchUsecase aggregates search results from multiple verticals.
 type GlobalSearchUsecase struct {
