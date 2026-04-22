@@ -58,3 +58,21 @@ Proposed
 <!-- 例: - [[000031]] Circuit Breaker適用 -->
 
 - なし
+
+## Deploy-model 整合性セルフチェック
+
+<!--
+本 ADR が採用する compose / CI / deploy パターンが、Alt の per-service
+rolling deploy model と整合するかを確認する。詳細は [[000826]] / [[PM-2026-037]] 参照。
+該当しない (ADR が compose や deploy pattern を触らない) 場合は「N/A」と明記。
+-->
+
+- [ ] 新設 compose service が `depends_on` で他 service を gate するか？
+  - YES かつ condition が `service_completed_successfully`: rolling deploy (サービス単独 `docker compose up <svc>` 相当) で init が **起動されない**。[[PM-2026-037]] 参照。init 相当の責務を compose engine の fail-fast 挙動 (directory-scoped bind の missing-source refuse 等) / image の ENTRYPOINT / deploy tooling 側での明示起動、のいずれかに寄せる
+  - YES かつ condition が `service_started` / `service_healthy`: 依存先が既に running なら rolling 下でも OK。依存先がまだ start していないケースの挙動を確認
+- [ ] 新設 compose service に `restart: "no"` の one-shot init container を含むか？
+  - YES: rolling deploy で一度も起動されない前提で再設計する
+- [ ] 新設名前付き volume を populate する責務はどこにあるか？
+  - init container 由来: 上記 rolling 非互換問題に当たる
+  - 外部 (host bootstrap / baked image / CI artefact fetch): その経路を runbook で明文化し、prod host の pre-condition として確認できるようにする
+- [ ] いずれも該当しない: 「rolling 互換」と明記して pass
