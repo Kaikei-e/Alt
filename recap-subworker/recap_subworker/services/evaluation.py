@@ -32,6 +32,7 @@ from .embedder import Embedder, EmbedderConfig
 try:
     from deepeval.metrics import FaithfulnessMetric
     from deepeval.test_case import LLMTestCase
+
     DEEPEVAL_AVAILABLE = True
 except ImportError:
     FaithfulnessMetric = None
@@ -39,6 +40,7 @@ except ImportError:
     DEEPEVAL_AVAILABLE = False
 
 logger = structlog.get_logger()
+
 
 class ClassificationMetrics(BaseModel):
     accuracy: float
@@ -57,6 +59,7 @@ class SummarizationMetrics(BaseModel):
     brevity: float = 0.0
     consistency: float = 0.0
     faithfulness: float = 0.0
+
 
 class EvaluationService:
     def __init__(
@@ -119,7 +122,7 @@ class EvaluationService:
                 self.weights_ja,
                 self.embedder,
                 vectorizer_path=self.vectorizer_ja,
-                thresholds_path=self.thresholds_ja
+                thresholds_path=self.thresholds_ja,
             )
 
         # Initialize EN Classifier if config provided
@@ -129,22 +132,40 @@ class EvaluationService:
                 self.weights_en,
                 self.embedder,
                 vectorizer_path=self.vectorizer_en,
-                thresholds_path=self.thresholds_en
+                thresholds_path=self.thresholds_en,
             )
 
         # Initialize Default Classifier (fallback)
         if self.weights_path:
-             # Note: Model path might be relative to app root or absolute
-             model_path = Path(self.weights_path)
-             if not model_path.is_absolute():
-                  # Assuming purely relative to CWD if not absolute, or adapt as needed.
-                  # In docker, CWD is /app.
-                  pass
-             self.classifier_default = GenreClassifierService(str(model_path), self.embedder)
-             if not self.classifier_ja:
-                 self.classifier_ja = self.classifier_default
-             if not self.classifier_en:
-                 self.classifier_en = self.classifier_default
+            # Note: Model path might be relative to app root or absolute
+            model_path = Path(self.weights_path)
+            if not model_path.is_absolute():
+                # Assuming purely relative to CWD if not absolute, or adapt as needed.
+                # In docker, CWD is /app.
+                pass
+            self.classifier_default = GenreClassifierService(str(model_path), self.embedder)
+            if not self.classifier_ja:
+                self.classifier_ja = self.classifier_default
+            if not self.classifier_en:
+                self.classifier_en = self.classifier_default
+
+    @staticmethod
+    def _prepare_evaluation_inputs(
+        df: pd.DataFrame,
+    ) -> tuple[list[str], list[list[str]]]:
+        """Filter NaN / None / whitespace-only text rows from the golden frame.
+
+        sklearn's TfidfVectorizer.transform rejects NaN documents with
+        ValueError("np.nan is an invalid document"). Dropping the offending rows
+        here turns a job-level 400 into a row-level silent skip that still
+        produces partial evaluation metrics. Labels are kept aligned with texts.
+        """
+        texts_series = df["text"]
+        labels_series = df["labels"]
+        mask = texts_series.notna() & texts_series.astype(str).str.strip().ne("")
+        kept_texts = [str(t) for t in texts_series[mask].tolist()]
+        kept_labels = [list(lbl) for lbl in labels_series[mask].tolist()]
+        return kept_texts, kept_labels
 
     def evaluate(self, golden_data_path: str | Path, language: str | None = None) -> dict[str, Any]:
         """
@@ -164,7 +185,6 @@ class EvaluationService:
 
         # Load Golden Data
         with golden_path.open() as f:  # codeql[py/path-injection] -- path already validated above
-
             data = json.load(f)
 
         # Handle wrapper structure
@@ -212,11 +232,21 @@ class EvaluationService:
             df.rename(columns={"genres": "labels"}, inplace=True)
 
         if "labels" not in df.columns or "text" not in df.columns:
-             raise ValueError(f"Golden data must contain 'text' and 'labels' fields. Available: {df.columns.tolist()}")
+            raise ValueError(
+                f"Golden data must contain 'text' and 'labels' fields. Available: {df.columns.tolist()}"
+            )
 
-        # Prepare X and y_true
-        X = df["text"].tolist()
-        y_true_labels = df["labels"].tolist()
+        # Prepare X and y_true, dropping rows whose `text` is NaN/None/empty
+        # so sklearn's TfidfVectorizer does not raise on the whole batch.
+        total_rows = len(df)
+        X, y_true_labels = self._prepare_evaluation_inputs(df)
+        dropped_rows = total_rows - len(X)
+        if dropped_rows:
+            logger.warning(
+                "evaluation: dropped rows with empty/NaN text before prediction",
+                dropped_rows=dropped_rows,
+                kept_rows=len(X),
+            )
 
         # MultiLabelBinarizer for metrics
         mlb = MultiLabelBinarizer()
@@ -267,7 +297,7 @@ class EvaluationService:
             "micro_recall": metrics.micro_recall,
             "micro_f1": metrics.micro_f1,
             "per_genre_metrics": {},
-            "confusion_matrix": {}, # TODO if needed
+            "confusion_matrix": {},  # TODO if needed
             "total_samples": len(X),
             "total_tp": 0,
             "total_fp": 0,
@@ -278,45 +308,59 @@ class EvaluationService:
         # metrics.per_genre has structure from classification_report: {genre: {'precision': ..., 'recall': ..., 'f1-score': ..., 'support': ...}}
         for genre in classes:
             if genre in metrics.per_genre:
-                 m = metrics.per_genre[genre]
-                 results["per_genre_metrics"][genre] = {
-                     "precision": m["precision"],
-                     "recall": m["recall"],
-                     "f1": m["f1-score"],
-                     "support": m["support"],
-                     "tp": 0, "fp": 0, "fn": 0, # TODO: calculate these if strictly needed for UI
-                     "threshold": 0.5 # Default
-                 }
+                m = metrics.per_genre[genre]
+                results["per_genre_metrics"][genre] = {
+                    "precision": m["precision"],
+                    "recall": m["recall"],
+                    "f1": m["f1-score"],
+                    "support": m["support"],
+                    "tp": 0,
+                    "fp": 0,
+                    "fn": 0,  # TODO: calculate these if strictly needed for UI
+                    "threshold": 0.5,  # Default
+                }
 
         # Bootstrap for CI (Simplistic version) -> SWITCHING to Wilson Score Interval for Accuracy
         if self.use_bootstrap and proportion_confint:
-             # Calculate CI for accuracy using Wilson score interval
-             count_correct = int(metrics.accuracy * len(X))
-             n_obs = len(X)
-             lower, upper = proportion_confint(count_correct, n_obs, alpha=0.05, method='wilson')
-             width = upper - lower
+            # Calculate CI for accuracy using Wilson score interval
+            count_correct = int(metrics.accuracy * len(X))
+            n_obs = len(X)
+            lower, upper = proportion_confint(count_correct, n_obs, alpha=0.05, method="wilson")
+            width = upper - lower
 
-             results["accuracy_ci"] = {
-                 "point": metrics.accuracy,
-                 "lower": lower,
-                 "upper": upper,
-                 "width": width
-             }
+            results["accuracy_ci"] = {
+                "point": metrics.accuracy,
+                "lower": lower,
+                "upper": upper,
+                "width": width,
+            }
 
-             # For Macro F1, analytic CI is complex. We stick to point estimate or simple bootstrap if really needed.
-             # User specifically asked for Accuracy CI to not be width 0.
-             results["macro_metrics"] = {
-                  "precision": 0.0, "precision_ci": {"point":0,"lower":0,"upper":0},
-                  "recall": 0.0, "recall_ci": {"point":0,"lower":0,"upper":0},
-                  "f1": metrics.macro_f1, "f1_ci": {"point":metrics.macro_f1,"lower":metrics.macro_f1,"upper":metrics.macro_f1}
-             }
+            # For Macro F1, analytic CI is complex. We stick to point estimate or simple bootstrap if really needed.
+            # User specifically asked for Accuracy CI to not be width 0.
+            results["macro_metrics"] = {
+                "precision": 0.0,
+                "precision_ci": {"point": 0, "lower": 0, "upper": 0},
+                "recall": 0.0,
+                "recall_ci": {"point": 0, "lower": 0, "upper": 0},
+                "f1": metrics.macro_f1,
+                "f1_ci": {
+                    "point": metrics.macro_f1,
+                    "lower": metrics.macro_f1,
+                    "upper": metrics.macro_f1,
+                },
+            }
         else:
-             results["accuracy_ci"] = {"point": metrics.accuracy, "lower": metrics.accuracy, "upper": metrics.accuracy, "width": 0.0}
+            results["accuracy_ci"] = {
+                "point": metrics.accuracy,
+                "lower": metrics.accuracy,
+                "upper": metrics.accuracy,
+                "width": 0.0,
+            }
 
         # Confusion Matrix (Top-1 approximation)
         try:
             # Ground Truth: Take first label or 'other'
-            y_true_single = [labels[0] if labels else 'other' for labels in y_true_labels]
+            y_true_single = [labels[0] if labels else "other" for labels in y_true_labels]
 
             # Prediction: Use 'top_genre' from predictions
             y_pred_single = [p.get("top_genre", "other") for p in predictions]
@@ -326,10 +370,7 @@ class EvaluationService:
             unique_labels = sorted(set(y_true_single) | set(y_pred_single))
             cm = confusion_matrix(y_true_single, y_pred_single, labels=unique_labels)
 
-            results["confusion_matrix"] = {
-                "labels": unique_labels,
-                "matrix": cm.tolist()
-            }
+            results["confusion_matrix"] = {"labels": unique_labels, "matrix": cm.tolist()}
         except Exception as e:
             logger.warning("Failed to generate confusion matrix", error=str(e))
             results["confusion_matrix"] = {}
@@ -343,6 +384,7 @@ class EvaluationService:
             except Exception as e:
                 logger.warning("Cross-validation failed", error=str(e))
                 import traceback
+
                 traceback.print_exc()
 
         # Add language metadata if filtered
@@ -373,7 +415,7 @@ class EvaluationService:
         self,
         y_true: list[list[int]],
         y_pred: list[list[int]],
-        target_names: list[str] | None = None
+        target_names: list[str] | None = None,
     ) -> ClassificationMetrics:
         """
         Evaluate multi-label classification performance.
@@ -385,20 +427,24 @@ class EvaluationService:
 
         # Classification report returns a dict with 'macro avg', 'micro avg', 'weighted avg', and per-class label
         report = classification_report(
-            y_true,
-            y_pred,
-            target_names=target_names,
-            output_dict=True,
-            zero_division=0
+            y_true, y_pred, target_names=target_names, output_dict=True, zero_division=0
         )
 
         # Calculate macro/micro using precision_recall_fscore_support for reliability
-        macro_p, macro_r, macro_f, _ = precision_recall_fscore_support(y_true, y_pred, average='macro', zero_division=0)
-        micro_p, micro_r, micro_f, _ = precision_recall_fscore_support(y_true, y_pred, average='micro', zero_division=0)
+        macro_p, macro_r, macro_f, _ = precision_recall_fscore_support(
+            y_true, y_pred, average="macro", zero_division=0
+        )
+        micro_p, micro_r, micro_f, _ = precision_recall_fscore_support(
+            y_true, y_pred, average="micro", zero_division=0
+        )
 
         # Update report structure implicitly or explicit return
         # Per genre metrics
-        per_genre = {k: v for k, v in report.items() if k not in ['macro avg', 'micro avg', 'weighted avg', 'samples']}
+        per_genre = {
+            k: v
+            for k, v in report.items()
+            if k not in ["macro avg", "micro avg", "weighted avg", "samples"]
+        }
 
         return ClassificationMetrics(
             accuracy=acc,
@@ -409,14 +455,11 @@ class EvaluationService:
             micro_precision=micro_p,
             micro_recall=micro_r,
             micro_f1=micro_f,
-            per_genre=per_genre
+            per_genre=per_genre,
         )
 
     async def evaluate_summary(
-        self,
-        source_text: str,
-        generated_summary: str,
-        context: list[str] | None = None
+        self, source_text: str, generated_summary: str, context: list[str] | None = None
     ) -> SummarizationMetrics:
         """
         Evaluate summary quality using DeepEval metrics if available.
@@ -435,7 +478,7 @@ class EvaluationService:
             test_case = LLMTestCase(
                 input=source_text,
                 actual_output=generated_summary,
-                retrieval_context=context if context else [source_text]
+                retrieval_context=context if context else [source_text],
             )
 
             faithfulness = FaithfulnessMetric(threshold=0.5, include_reason=False)
@@ -449,7 +492,9 @@ class EvaluationService:
 
         return metrics
 
-    def _run_cross_validation(self, texts: list[str], y_true_labels: list[list[str]], classifier: GenreClassifierService) -> dict[str, Any]:
+    def _run_cross_validation(
+        self, texts: list[str], y_true_labels: list[list[str]], classifier: GenreClassifierService
+    ) -> dict[str, Any]:
         """
         Run Stratified K-Fold CV by retraining the model on folds.
         Approximates the training pipeline: Embed + TF-IDF -> LogisticRegression.
@@ -466,7 +511,7 @@ class EvaluationService:
 
         # 2. Prepare Labels (Single Label for Stratification/Training)
         # Use first label as primary
-        y_single = [labels[0] if labels else 'other' for labels in y_true_labels]
+        y_single = [labels[0] if labels else "other" for labels in y_true_labels]
         y_single = np.array(y_single)
 
         # 3. Stratified K-Fold
@@ -521,8 +566,12 @@ class EvaluationService:
 
             # Calculate Metrics for this fold
             acc = accuracy_score(y_test_bin, y_pred_bin)
-            _, _, macro_f, _ = precision_recall_fscore_support(y_test_bin, y_pred_bin, average='macro', zero_division=0)
-            _, _, micro_f, _ = precision_recall_fscore_support(y_test_bin, y_pred_bin, average='micro', zero_division=0)
+            _, _, macro_f, _ = precision_recall_fscore_support(
+                y_test_bin, y_pred_bin, average="macro", zero_division=0
+            )
+            _, _, micro_f, _ = precision_recall_fscore_support(
+                y_test_bin, y_pred_bin, average="micro", zero_division=0
+            )
 
             accuracies.append(acc)
             macro_f1s.append(macro_f)
@@ -534,5 +583,5 @@ class EvaluationService:
             "cv_accuracy": {"mean": float(np.mean(accuracies)), "std": float(np.std(accuracies))},
             "cv_macro_f1": {"mean": float(np.mean(macro_f1s)), "std": float(np.std(macro_f1s))},
             "cv_micro_f1": {"mean": float(np.mean(micro_f1s)), "std": float(np.std(micro_f1s))},
-            "n_folds": self.n_folds
+            "n_folds": self.n_folds,
         }
