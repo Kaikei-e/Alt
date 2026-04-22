@@ -66,8 +66,12 @@ services:
       - OLLAMA_KV_CACHE_TYPE=${OLLAMA_KV_CACHE_TYPE:-q8_0}
       # RAG-dedicated mode: favor a single larger context slot over dual-slot concurrency
       - OLLAMA_NUM_PARALLEL=${OLLAMA_NUM_PARALLEL:-1}
-      # Strict limit to 1 model to prevent VRAM fragmentation/swapping
-      - OLLAMA_MAX_LOADED_MODELS=${OLLAMA_MAX_LOADED_MODELS:-1}
+      # Allow the RAG generation model and the Meilisearch hybrid-search embedding
+      # model to stay resident at the same time. The prior limit of 1 forced an
+      # evict-and-reload cycle every time /search embedded the query, adding
+      # several seconds of latency. Operators with tight GPU headroom can override
+      # back to 1 via the .env value if the combined footprint does not fit.
+      - OLLAMA_MAX_LOADED_MODELS=${OLLAMA_MAX_LOADED_MODELS:-2}
       # Flash Attention 2.0: Disabled for stability
       # - OLLAMA_FLASH_ATTENTION=${OLLAMA_FLASH_ATTENTION:-1}
       # KV Cache quantization: Disabled (default f16) for stability
