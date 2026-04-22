@@ -22,6 +22,30 @@ fn sanitize_title(text: &str) -> String {
         .to_string()
 }
 
+/// per-genre の silent failure を `recap_failed_tasks` テーブルへ surface する。
+/// DAO 書き込み自体が失敗しても pipeline は継続させる（二重失敗で全体を止めない）。
+async fn record_failed_genre(
+    dao: &dyn RecapDao,
+    job_id: uuid::Uuid,
+    stage: &str,
+    genre: &str,
+    error: &str,
+) {
+    let payload = json!({ "genre": genre });
+    if let Err(e) = dao
+        .insert_failed_task(job_id, stage, Some(&payload), Some(error))
+        .await
+    {
+        warn!(
+            job_id = %job_id,
+            genre = %genre,
+            stage = %stage,
+            error = ?e,
+            "failed to record per-genre failure to recap_failed_tasks (continuing)"
+        );
+    }
+}
+
 /// 永続化結果。
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub(crate) struct PersistResult {
@@ -93,6 +117,14 @@ impl PersistStage for FinalSectionPersistStage {
                         error = ?genre_result.error,
                         "skipping genre with error"
                     );
+                    record_failed_genre(
+                        self.dao.as_ref(),
+                        job.job_id,
+                        "dispatch_summary",
+                        genre,
+                        error_msg,
+                    )
+                    .await;
                     genres_failed += 1;
                 }
                 continue;
@@ -127,6 +159,14 @@ impl PersistStage for FinalSectionPersistStage {
                                         error = ?e,
                                         "failed to deserialize summary_response from database"
                                     );
+                                    record_failed_genre(
+                                        self.dao.as_ref(),
+                                        job.job_id,
+                                        "persist_lookup",
+                                        genre,
+                                        &format!("deserialize summary_response failed: {e}"),
+                                    )
+                                    .await;
                                     genres_failed += 1;
                                     continue;
                                 }
@@ -139,6 +179,16 @@ impl PersistStage for FinalSectionPersistStage {
                                 summary_id = %summary_id,
                                 "summary_response not found in database"
                             );
+                            record_failed_genre(
+                                self.dao.as_ref(),
+                                job.job_id,
+                                "persist_lookup",
+                                genre,
+                                &format!(
+                                    "summary_response not found in database for id {summary_id}"
+                                ),
+                            )
+                            .await;
                             genres_failed += 1;
                             continue;
                         }
@@ -149,6 +199,14 @@ impl PersistStage for FinalSectionPersistStage {
                                 error = ?e,
                                 "failed to fetch summary_response from database"
                             );
+                            record_failed_genre(
+                                self.dao.as_ref(),
+                                job.job_id,
+                                "persist_lookup",
+                                genre,
+                                &format!("fetch summary_response failed: {e}"),
+                            )
+                            .await;
                             genres_failed += 1;
                             continue;
                         }
@@ -160,6 +218,14 @@ impl PersistStage for FinalSectionPersistStage {
                         genre = %genre,
                         "genre missing summary response id"
                     );
+                    record_failed_genre(
+                        self.dao.as_ref(),
+                        job.job_id,
+                        "persist_lookup",
+                        genre,
+                        "genre missing summary_response_id",
+                    )
+                    .await;
                     genres_failed += 1;
                     continue;
                 }
@@ -351,6 +417,7 @@ impl PersistStage for FinalSectionPersistStage {
             .with_tags(tags);
 
             let mut persisted_successfully = true;
+            let mut write_errors: Vec<String> = Vec::new();
 
             if let Err(err) = self.dao.upsert_recap_output(&output).await {
                 warn!(
@@ -359,6 +426,7 @@ impl PersistStage for FinalSectionPersistStage {
                     error = ?err,
                     "failed to persist recap output"
                 );
+                write_errors.push(format!("upsert_recap_output failed: {err}"));
                 persisted_successfully = false;
             }
 
@@ -371,6 +439,7 @@ impl PersistStage for FinalSectionPersistStage {
                     error = ?err,
                     "failed to persist recap section pointer"
                 );
+                write_errors.push(format!("upsert_genre failed: {err}"));
                 persisted_successfully = false;
             }
 
@@ -382,6 +451,14 @@ impl PersistStage for FinalSectionPersistStage {
                 );
                 genres_stored += 1;
             } else {
+                record_failed_genre(
+                    self.dao.as_ref(),
+                    job.job_id,
+                    "persist_write",
+                    genre,
+                    &write_errors.join("; "),
+                )
+                .await;
                 genres_failed += 1;
             }
         }
@@ -412,6 +489,10 @@ impl PersistStage for FinalSectionPersistStage {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::pipeline::dispatch::GenreResult;
+    use crate::scheduler::JobContext;
+    use crate::store::dao::mock::MockRecapDao;
+    use std::collections::HashMap;
 
     #[test]
     fn persist_result_tracks_success_and_failure() {
@@ -429,5 +510,95 @@ mod tests {
         assert_eq!(result.genres_skipped, 1);
         assert_eq!(result.genres_no_evidence, 1);
         assert_eq!(result.total_genres, 9);
+    }
+
+    fn dispatch_with_error(genre: &str, error: &str) -> DispatchResult {
+        let mut genre_results = HashMap::new();
+        genre_results.insert(
+            genre.to_string(),
+            GenreResult {
+                genre: genre.to_string(),
+                clustering_response: None,
+                summary_response_id: None,
+                summary_response: None,
+                error: Some(error.to_string()),
+            },
+        );
+        DispatchResult {
+            job_id: uuid::Uuid::new_v4(),
+            genre_results,
+            success_count: 0,
+            failure_count: 1,
+            all_genres: vec![genre.to_string()],
+        }
+    }
+
+    #[tokio::test]
+    async fn persist_records_failed_task_on_generic_genre_error() {
+        let dao = Arc::new(MockRecapDao::new());
+        let stage = FinalSectionPersistStage::new(dao.clone(), None);
+        let dispatch = dispatch_with_error("consumer_tech", "LLM batch summary failed");
+        let job = JobContext::new(dispatch.job_id, dispatch.all_genres.clone());
+
+        let result = stage.persist(&job, dispatch).await.expect("persist ok");
+
+        assert_eq!(result.genres_failed, 1);
+
+        let recorded = dao.failed_tasks();
+        assert_eq!(
+            recorded.len(),
+            1,
+            "expected insert_failed_task to be called once"
+        );
+        let call = &recorded[0];
+        assert_eq!(call.stage, "dispatch_summary");
+        assert_eq!(
+            call.error.as_deref(),
+            Some("LLM batch summary failed"),
+            "error text should be preserved for diagnosis"
+        );
+        let payload = call
+            .payload
+            .as_ref()
+            .expect("payload should identify which genre failed");
+        assert_eq!(
+            payload
+                .get("genre")
+                .and_then(|g| g.as_str())
+                .expect("payload.genre"),
+            "consumer_tech"
+        );
+    }
+
+    #[tokio::test]
+    async fn persist_does_not_record_failed_task_for_no_evidence() {
+        let dao = Arc::new(MockRecapDao::new());
+        let stage = FinalSectionPersistStage::new(dao.clone(), None);
+        let dispatch = dispatch_with_error("consumer_tech", "no evidence for genre");
+        let job = JobContext::new(dispatch.job_id, dispatch.all_genres.clone());
+
+        stage.persist(&job, dispatch).await.expect("persist ok");
+
+        let recorded = dao.failed_tasks();
+        assert!(
+            recorded.is_empty(),
+            "no evidence is an expected outcome, must not pollute recap_failed_tasks"
+        );
+    }
+
+    #[tokio::test]
+    async fn persist_does_not_record_failed_task_for_insufficient_documents() {
+        let dao = Arc::new(MockRecapDao::new());
+        let stage = FinalSectionPersistStage::new(dao.clone(), None);
+        let dispatch = dispatch_with_error("consumer_tech", "insufficient documents expected >= 3");
+        let job = JobContext::new(dispatch.job_id, dispatch.all_genres.clone());
+
+        stage.persist(&job, dispatch).await.expect("persist ok");
+
+        let recorded = dao.failed_tasks();
+        assert!(
+            recorded.is_empty(),
+            "insufficient documents is an expected skip, must not pollute recap_failed_tasks"
+        );
     }
 }

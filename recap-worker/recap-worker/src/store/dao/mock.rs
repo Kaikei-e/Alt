@@ -8,6 +8,8 @@ use async_trait::async_trait;
 #[cfg(test)]
 use sqlx::PgPool;
 #[cfg(test)]
+use std::sync::{Arc, Mutex};
+#[cfg(test)]
 use uuid::Uuid;
 
 use super::article;
@@ -22,16 +24,38 @@ use crate::store::models::{
 };
 
 #[cfg(test)]
+/// `insert_failed_task` 呼び出しを記録するためのスナップショット。
+#[allow(dead_code)]
+#[derive(Debug, Clone)]
+pub(crate) struct RecordedFailedTask {
+    pub(crate) job_id: Uuid,
+    pub(crate) stage: String,
+    pub(crate) payload: Option<serde_json::Value>,
+    pub(crate) error: Option<String>,
+}
+
+#[cfg(test)]
 /// テスト用のモックRecapDao（DB接続なしで動作）
 #[allow(dead_code)]
-#[derive(Clone)]
-pub(crate) struct MockRecapDao;
+#[derive(Clone, Default)]
+pub(crate) struct MockRecapDao {
+    failed_tasks: Arc<Mutex<Vec<RecordedFailedTask>>>,
+}
 
 #[cfg(test)]
 impl MockRecapDao {
     #[allow(dead_code)]
     pub(crate) fn new() -> Self {
-        Self
+        Self::default()
+    }
+
+    /// 記録された `insert_failed_task` 呼び出しのスナップショットを取得する。
+    #[allow(dead_code)]
+    pub(crate) fn failed_tasks(&self) -> Vec<RecordedFailedTask> {
+        self.failed_tasks
+            .lock()
+            .expect("failed_tasks mutex poisoned")
+            .clone()
     }
 }
 
@@ -164,11 +188,20 @@ impl RecapDao for MockRecapDao {
 
     async fn insert_failed_task(
         &self,
-        _job_id: Uuid,
-        _stage: &str,
-        _payload: Option<&serde_json::Value>,
-        _error: Option<&str>,
+        job_id: Uuid,
+        stage: &str,
+        payload: Option<&serde_json::Value>,
+        error: Option<&str>,
     ) -> Result<()> {
+        self.failed_tasks
+            .lock()
+            .expect("failed_tasks mutex poisoned")
+            .push(RecordedFailedTask {
+                job_id,
+                stage: stage.to_string(),
+                payload: payload.cloned(),
+                error: error.map(ToString::to_string),
+            });
         Ok(())
     }
 
