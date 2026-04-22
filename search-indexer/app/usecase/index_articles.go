@@ -2,6 +2,7 @@ package usecase
 
 import (
 	"context"
+	"maps"
 	"search-indexer/domain"
 	"search-indexer/port"
 	"search-indexer/tokenize"
@@ -68,12 +69,7 @@ func (u *IndexArticlesUsecase) ExecuteBackfill(ctx context.Context, lastCreatedA
 		return nil, err
 	}
 
-	for _, doc := range docs {
-		synonyms := tokenize.ProcessTagToSynonyms(u.tokenizer, doc.Tags)
-		if len(synonyms) > 0 {
-			_ = u.searchEngine.RegisterSynonyms(ctx, synonyms)
-		}
-	}
+	u.registerBatchSynonyms(ctx, docs)
 
 	return &IndexResult{
 		IndexedCount:  len(docs),
@@ -110,12 +106,7 @@ func (u *IndexArticlesUsecase) ExecuteIncremental(ctx context.Context, increment
 			return nil, err
 		}
 
-		for _, doc := range docs {
-			synonyms := tokenize.ProcessTagToSynonyms(u.tokenizer, doc.Tags)
-			if len(synonyms) > 0 {
-				_ = u.searchEngine.RegisterSynonyms(ctx, synonyms)
-			}
-		}
+		u.registerBatchSynonyms(ctx, docs)
 
 		result.IndexedCount = len(docs)
 		result.LastCreatedAt = newLastCreatedAt
@@ -162,11 +153,7 @@ func (u *IndexArticlesUsecase) ExecuteSingleArticle(ctx context.Context, article
 		return nil, err
 	}
 
-	// Process synonyms for tags
-	synonyms := tokenize.ProcessTagToSynonyms(u.tokenizer, doc.Tags)
-	if len(synonyms) > 0 {
-		_ = u.searchEngine.RegisterSynonyms(ctx, synonyms)
-	}
+	u.registerBatchSynonyms(ctx, []domain.SearchDocument{doc})
 
 	return &IndexResult{
 		IndexedCount: 1,
@@ -184,12 +171,7 @@ func (u *IndexArticlesUsecase) IndexDocumentsDirectly(ctx context.Context, docs 
 		return nil, err
 	}
 
-	for _, doc := range docs {
-		synonyms := tokenize.ProcessTagToSynonyms(u.tokenizer, doc.Tags)
-		if len(synonyms) > 0 {
-			_ = u.searchEngine.RegisterSynonyms(ctx, synonyms)
-		}
-	}
+	u.registerBatchSynonyms(ctx, docs)
 
 	return &IndexResult{IndexedCount: len(docs)}, nil
 }
@@ -219,12 +201,27 @@ func (u *IndexArticlesUsecase) ExecuteBatchArticles(ctx context.Context, article
 		return nil, err
 	}
 
-	for _, doc := range docs {
-		synonyms := tokenize.ProcessTagToSynonyms(u.tokenizer, doc.Tags)
-		if len(synonyms) > 0 {
-			_ = u.searchEngine.RegisterSynonyms(ctx, synonyms)
-		}
-	}
+	u.registerBatchSynonyms(ctx, docs)
 
 	return &IndexResult{IndexedCount: len(docs)}, nil
+}
+
+// registerBatchSynonyms merges synonyms for every doc in the batch into one
+// map and emits at most one RegisterSynonyms call. Meilisearch serialises the
+// synonyms PUT against search reads in the articles index; per-doc PUTs
+// produced the 15-second PUT cadence that starved /indexes/articles/search
+// and forced the global search usecase into the 3s section-timeout degraded
+// path. Emitting a single union PUT collapses the task-queue pressure.
+func (u *IndexArticlesUsecase) registerBatchSynonyms(ctx context.Context, docs []domain.SearchDocument) {
+	if len(docs) == 0 {
+		return
+	}
+	merged := make(map[string][]string)
+	for _, doc := range docs {
+		maps.Copy(merged, tokenize.ProcessTagToSynonyms(u.tokenizer, doc.Tags))
+	}
+	if len(merged) == 0 {
+		return
+	}
+	_ = u.searchEngine.RegisterSynonyms(ctx, merged)
 }
