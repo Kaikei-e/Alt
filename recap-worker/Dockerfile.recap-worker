@@ -66,8 +66,22 @@ RUN apt-get update && \
   && \
   rm -rf /var/lib/apt/lists/*
 
-# 非rootユーザー作成
-RUN groupadd -r recap && useradd -r -g recap recap
+# 非rootユーザー作成。
+# - uid/gid は 999 で明示固定する。host 側で bind-mount する
+#   /opt/rustbert-cache の所有者を合わせる必要があり、暗黙に決まる
+#   システム UID だと CI で chown 対象が読めない。
+# - -m で home directory を実体化しないと、rust-bert が $HOME/.cache/.rustbert
+#   にフォールバックした際に PermissionDenied で panic する。
+RUN groupadd -r -g 999 recap && useradd -r -u 999 -m -d /home/recap -g recap recap
+
+# rust-bert / HuggingFace のキャッシュ配置を /opt/rustbert-cache に寄せる。
+# このパスを compose から bind-mount することで、warmup 済みのモデル資源を
+# 複数コンテナ・複数再起動にまたがって再利用する。Dockerfile 単体ビルド
+# (bind-mount 無し) でも initial download が書けるよう、empty dir を作成して
+# recap ユーザー所有にしておく。bind-mount 時はこの空ディレクトリが上書きされる。
+ENV RUSTBERT_CACHE=/opt/rustbert-cache
+ENV HF_HOME=/opt/rustbert-cache/huggingface
+RUN mkdir -p /opt/rustbert-cache/huggingface && chown -R recap:recap /opt/rustbert-cache
 
 # PyTorch ライブラリをコピー。
 # NOTE: libtorch は runtime に dlopen で ops 登録する副作用があり、ldd に現れない
