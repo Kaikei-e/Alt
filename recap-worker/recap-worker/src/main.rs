@@ -92,6 +92,25 @@ async fn main() -> anyhow::Result<()> {
         }
     }));
 
+    // warmup subcommand: populate the rust-bert AllMiniLmL12V2 model cache
+    // so the runtime container can boot in a network-isolated stack.
+    // Invoked by CI in an internet-connected warmup step; the writable
+    // cache volume is then mounted read-only into the staging/production
+    // recap-worker service.
+    if args.len() > 1 && args[1] == "warmup" {
+        let code = match recap_worker::warmup_embedding_cache().await {
+            Ok(()) => {
+                eprintln!("warmup: rust-bert AllMiniLmL12V2 cache populated");
+                0
+            }
+            Err(e) => {
+                eprintln!("warmup failed: {e:?}");
+                1
+            }
+        };
+        std::process::exit(code);
+    }
+
     // Tracing initialization is handled by Telemetry::new()
     let config = Config::from_env().context("failed to load configuration")?;
     let bind_addr = config.http_bind();

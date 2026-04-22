@@ -67,3 +67,19 @@ pub(crate) mod schema;
 pub(crate) mod store;
 pub mod tls;
 pub mod util;
+
+/// Populate the rust-bert `AllMiniLmL12V2` sentence-embedding model cache.
+///
+/// `SentenceEmbeddingsBuilder::remote(...)` writes downloaded weights and
+/// tokenizer files under `$RUSTBERT_CACHE` (default `$HOME/.cache/.rustbert`).
+/// Once the cache is primed, subsequent calls skip the HTTP fetch, which lets
+/// the service boot in a network-isolated compose stack (staging `internal:
+/// true`). Invoke this from a container running on an internet-connected
+/// network, writing into a host-mounted cache volume that the runtime stack
+/// consumes read-only.
+pub async fn warmup_embedding_cache() -> anyhow::Result<()> {
+    tokio::task::spawn_blocking(pipeline::embedding::EmbeddingService::new)
+        .await
+        .map_err(|e| anyhow::anyhow!("warmup task join failed: {e:?}"))?
+        .map(|_| ())
+}
