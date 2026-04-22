@@ -160,6 +160,54 @@ services:
         max-size: "10m"
         max-file: "3"
 
+  # One-shot populator for recap_subworker_artifacts. Runs before
+  # recap-subworker starts. Fails fast (exit 1) if any required artefact
+  # is missing or empty on the host, which makes a lost alt-deploy sync
+  # visible at boot instead of 300s later as a "classification returned
+  # 0 results" runtime error. Directory-scoped bind mount on /src: if the
+  # host source directory doesn't exist, docker refuses to create the
+  # container, and recap-subworker never starts.
+  recap-subworker-artifacts-init:
+    image: busybox:1.37
+    container_name: recap-subworker-artifacts-init
+    # Defense-in-depth against the small window where this container runs
+    # with default docker capabilities (cp / test / mkdir do not require
+    # any Linux capability, so dropping ALL is safe). no-new-privileges
+    # closes setuid escalation paths. See security audit finding F-001
+    # for the OWASP A02:2025 / CWE-250 context.
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    volumes:
+      - ../recap-subworker/data:/src:ro
+      - recap_subworker_artifacts:/dst
+    command:
+      - sh
+      - -c
+      - |
+        set -eu
+        test -d /src || { echo "FATAL: /src is not mounted"; exit 1; }
+        if ! (test -s /src/genre_classifier_ja.joblib || test -s /src/genre_classifier_en.joblib); then
+          echo "FATAL: no usable joblib model on the host"
+          echo "  checked: /src/genre_classifier_ja.joblib and /src/genre_classifier_en.joblib"
+          echo "  both are missing or zero-sized. This is almost always"
+          echo "  a lost alt-deploy artefact sync — verify the host path"
+          echo "  that docker-compose binds to /src."
+          exit 1
+        fi
+        cp -r /src/. /dst/
+        echo "recap-subworker artefacts populated:"
+        ls -la /dst/
+    networks:
+      - alt-network
+    restart: "no"
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "1m"
+        max-file: "1"
+
   recap-subworker:
     env_file:
       - ../.env
@@ -213,21 +261,22 @@ services:
     secrets:
       - recap_db_password
     volumes:
-      - ../recap-subworker/data/golden_classification.json:/app/data/golden_classification.json:ro
-      - ../recap-subworker/data/genre_classifier.joblib:/app/data/genre_classifier.joblib:ro
-      - ../recap-subworker/data/genre_classifier_ja.joblib:/app/data/genre_classifier_ja.joblib:ro
-      - ../recap-subworker/data/genre_classifier_en.joblib:/app/data/genre_classifier_en.joblib:ro
-      - ../recap-subworker/data/tfidf_vectorizer.joblib:/app/data/tfidf_vectorizer.joblib:ro
-      - ../recap-subworker/data/tfidf_vectorizer_ja.joblib:/app/data/tfidf_vectorizer_ja.joblib:ro
-      - ../recap-subworker/data/tfidf_vectorizer_en.joblib:/app/data/tfidf_vectorizer_en.joblib:ro
-      - ../recap-subworker/data/genre_thresholds.json:/app/data/genre_thresholds.json:ro
-      - ../recap-subworker/data/genre_thresholds_ja.json:/app/data/genre_thresholds_ja.json:ro
-      - ../recap-subworker/data/genre_thresholds_en.json:/app/data/genre_thresholds_en.json:ro
-      # Learning Machine model artifacts
+      # joblib artefacts (genre_classifier*.joblib, tfidf_vectorizer*.joblib,
+      # genre_thresholds*.json, golden_classification.json) are populated
+      # into recap_subworker_artifacts by recap-subworker-artifacts-init
+      # below. Using a named volume instead of 10 file-scoped bind mounts
+      # prevents docker from silently replacing a missing host file with
+      # an empty directory (the 2026-04-14..22 outage mode).
+      - recap_subworker_artifacts:/app/data:ro
+      # Learning Machine model artifacts — directory bind, fails fast if
+      # the source directory is missing (directory-scoped binds do not
+      # auto-create an empty placeholder).
       - ../recap-subworker/recap_subworker/learning_machine/artifacts:/app/recap_subworker/learning_machine/artifacts:ro
     depends_on:
       recap-worker:
         condition: service_healthy
+      recap-subworker-artifacts-init:
+        condition: service_completed_successfully
     deploy:
       resources:
         reservations:
