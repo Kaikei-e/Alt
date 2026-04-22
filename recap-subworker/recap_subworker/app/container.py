@@ -100,7 +100,9 @@ class ServiceContainer:
             max_workers = self.settings.process_pool_size
             mp_context = multiprocessing.get_context("spawn")
             self._process_pool = ProcessPoolExecutor(
-                max_workers=max_workers, mp_context=mp_context, max_tasks_per_child=100,
+                max_workers=max_workers,
+                mp_context=mp_context,
+                max_tasks_per_child=100,
             )
             logger.info(
                 "process pool created",
@@ -149,6 +151,7 @@ class ServiceContainer:
             self._classifier = GenreClassifierService(
                 model_path=self.settings.genre_classifier_model_path,
                 embedder=self.embedder,
+                thresholds_path=self.settings.genre_thresholds_path_ja,
             )
         return self._classifier
 

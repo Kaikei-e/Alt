@@ -91,6 +91,7 @@ def initialize(settings_payload: dict[str, Any]) -> None:
             _CLASSIFIER = GenreClassifierService(
                 model_path=settings.genre_classifier_model_path,
                 embedder=embedder,
+                thresholds_path=settings.genre_thresholds_path_ja,
             )
 
         logger.info("classification worker process initialized successfully")
@@ -117,4 +118,3 @@ def predict_batch(texts: list[str]) -> list[dict[str, Any]]:
     classifier = _require_classifier()
     results = classifier.predict_batch(texts)
     return results
-
