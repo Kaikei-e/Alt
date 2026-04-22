@@ -106,11 +106,10 @@ services:
       - TAG_LABEL_GRAPH_WINDOW=${TAG_LABEL_GRAPH_WINDOW}
       - TAG_LABEL_GRAPH_TTL_SECONDS=${TAG_LABEL_GRAPH_TTL_SECONDS}
       - HUGGING_FACE_TOKEN_PATH=/run/secrets/hugging_face_token
-      # HuggingFace cache directory (writable path for model downloads)
-      - HF_HOME=/tmp/huggingface
-      - TRANSFORMERS_CACHE=/tmp/huggingface/transformers
-      # rust-bert cache directory (for embedding model)
-      - RUSTBERT_CACHE=/tmp/rustbert
+      # RUSTBERT_CACHE / HF_HOME は Dockerfile ENV で /opt/rustbert-cache に
+      # 固定済。ホストの /opt/rustbert-cache を read-only bind-mount することで、
+      # 再起動時の HF 再ダウンロード (約 130 MB) を回避し、staging と同じ
+      # パス規約を使う。初回 populate は runner 側で warmup subcommand 実行。
       # Clustering timeout: relax stuck detection from 600s to 1200s for large genres
       - RECAP_CLUSTERING_STUCK_THRESHOLD_SECS=${RECAP_CLUSTERING_STUCK_THRESHOLD_SECS:-1200}
       # Batch summary chunk size: reduced to 3 to prevent batch HTTP timeout
@@ -131,6 +130,10 @@ services:
     volumes:
       - recap_worker_certs:/certs:ro
       - pki_trust_bundle:/trust:ro
+      # warmup subcommand でホスト側に populate 済みの rust-bert キャッシュを
+      # read-only で共有。Dockerfile ENV RUSTBERT_CACHE=/opt/rustbert-cache に
+      # 対応。
+      - /opt/rustbert-cache:/opt/rustbert-cache:ro
     depends_on:
       recap-db:
         condition: service_healthy

@@ -657,12 +657,19 @@ services:
       - ALT_BACKEND_BASE_URL=http://rw-stub-alt-backend/
       - TAG_GENERATOR_BASE_URL=http://rw-stub-tag-generator/
       - HUGGING_FACE_TOKEN_PATH=/tmp/staging-hf-token-not-used
-      - HF_HOME=/tmp/huggingface
-      - TRANSFORMERS_CACHE=/tmp/huggingface/transformers
+      # RUSTBERT_CACHE / HF_HOME は Dockerfile ENV で /opt/rustbert-cache に
+      # 固定済。ここでは上書きせず、read-only bind mount されたキャッシュを
+      # 参照する。前回の compose 指定 (HF_HOME=/tmp/huggingface) は image 内で
+      # mkdir されず PermissionDenied を招いていたため除去。
       - RECAP_GENRES=ai
       - RECAP_WORKER_HTTP_BIND=0.0.0.0:9005
       - PORT=9005
       - LOG_LEVEL=info
+    volumes:
+      # warmup subcommand で populate 済みのホスト側キャッシュを
+      # read-only で共有する。internal: true ネットワーク下で
+      # rust-bert の model DL 試行を完全にスキップするため必須。
+      - /opt/rustbert-cache:/opt/rustbert-cache:ro
     ports:
       - "19005:9005"
     networks:
