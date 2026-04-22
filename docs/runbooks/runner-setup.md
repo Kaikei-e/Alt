@@ -118,7 +118,36 @@ stat -c '%n uid=%u gid=%g mode=%a' /opt/rustbert-cache
 # 期待値: /opt/rustbert-cache uid=999 gid=999 mode=700
 ```
 
-`release-deploy` 側の playbook (`alt-deploy/playbooks/run-e2e-suite.yml`) は **stat + assert** でこの状態を確認するのみで、CI が sudo を叩かない設計。assertion に失敗すれば fail_msg に復旧ワンライナーが埋まっている。
+deploy 側 CI は **stat + assert** でこの状態を確認するのみで、privileged mutation は行わない設計。assertion 失敗時には復旧ワンライナーが fail message に埋め込まれる。
+
+## 2.6 recap-subworker 向け prod artefact host path
+
+`compose/recap.yaml` の recap-subworker は joblib モデル artefact を **`/var/lib/alt-recap-subworker-data`** から directory-scoped bind で read-only マウントする (`.env` の `RECAP_SUBWORKER_DATA_HOST_PATH` で上書き可)。Docker Compose v2.24+ は bind source が不在の場合 container create を refuse するため、host path の欠落は deploy 時に明示的 fail として表出する ([[000825]] addendum)。
+
+artefact 本体 (`genre_classifier*.joblib`, `tfidf_vectorizer*.joblib`, `genre_thresholds*.json`, `golden_classification.json`) は `.gitignore` で OSS 側から除外されており、git checkout には含まれない。単一マシン prod 構成 (`alt-prod` 役の self-hosted runner と実 prod ホストが同一) のため、**artefact は runner bootstrap の段階で host 上に直接配置する**。
+
+```bash
+# 1. artefact source (現状は local dev snapshot or training pipeline 出力) を tarball 化し、
+#    prod host の /tmp/recap-subworker-data.tar.gz に置く
+
+# 2. 展開 + 所有権 + 最小権限 (prod host 上で一度きり、privileged)
+sudo sh -c 'mkdir -p /var/lib/alt-recap-subworker-data && \
+            tar -xzf /tmp/recap-subworker-data.tar.gz \
+                -C /var/lib/alt-recap-subworker-data --strip-components=1 && \
+            chown -R 999:999 /var/lib/alt-recap-subworker-data && \
+            chmod -R u=rwX,go-rwx /var/lib/alt-recap-subworker-data'
+
+# 3. 確認
+ls -la /var/lib/alt-recap-subworker-data/ \
+  | grep -E 'genre_classifier|tfidf_vectorizer|genre_thresholds|golden_classification'
+# 期待値: 7 本以上が -rw------- で 999 999 所有、非ゼロサイズ
+```
+
+uid/gid 999 は `recap-subworker` Dockerfile で pin された `recap` user と numeric 一致。host 上の 999 が `dnsmasq` 等の別アカウントにマップされていても Docker bind mount は uid 番号で解決するため問題にはならない。
+
+更新 (artefact を入れ替えるとき) は同じ tarball 展開を繰り返す。recap-subworker container は `:ro` でマウントしているので、container 再起動なしで host 側を差し替えても動作中の container には影響しない (次回 roll で新版が読まれる)。
+
+**注意**: このパスを作り忘れて deploy を走らせると、`compose up recap-subworker` が `bind source path does not exist` で即 fail し、deploy job が赤になる。これは ADR-000825 の設計どおりの fail-closed で、silent failure (PM-2026-036 で 8 日ラテントだったもの) には戻らない。
 
 ## 3. alt-builder runner
 

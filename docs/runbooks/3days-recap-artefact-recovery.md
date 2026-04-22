@@ -16,9 +16,9 @@ tags:
 
 ## 前提と現状
 
-- **Alt main**: `192bea225` まで前進済み。recap-subworker に validator + named volume + init container を投入済み。
-- **alt-deploy release-deploy**: 最新 run で `e2e (recap-worker)` が `sudo: a password is required` で fail し deploy 未実行。
-- **recap-subworker 側の host artefact**: `<alt-deploy checkout>/alt/recap-subworker/data/*.joblib` 群が 2026-04-14 頃から欠落中 (本 runbook を書く時点でも未復旧、ただし named volume 化によって recap-subworker 起動は `recap-subworker-artifacts-init` で fail-fast するようになる)。
+- **Alt main**: `473b98251` まで前進済み。recap-subworker に Settings validator + classifier `is_file()` guard を投入、compose は direct bind パターン (`/var/lib/alt-recap-subworker-data:/app/data:ro`) に改修済み。
+- **alt-deploy release-deploy**: stat+assert 化で sudo 障壁は解消済み。
+- **prod host の artefact**: `/var/lib/alt-recap-subworker-data/` 配下に joblib / json が必要。不在なら compose v2.24+ が container create を refuse して deploy job が fail する (これが設計どおりの fail-closed)。
 
 この 2 つを解決して初めて 3-day recap が生きる。
 
@@ -46,7 +46,7 @@ fatal: [localhost]: FAILED!
 
 ### 原因
 
-Alt `329e6dcad ci(e2e-hurl): warmup rust-bert cache on host before staging stack` に対応する alt-deploy 側 playbook が `become: true` で `/opt/rustbert-cache` を mkdir + chown しようとする。各 self-hosted runner の actions-runner ユーザは NOPASSWD sudo を持たない方針なので失敗する。**privileged provisioning は CI step ではなく runner bootstrap で事前に完了させる** のが Alt の設計原則 ([[runner-setup]] と同方針)。
+recap-worker の staging 経路で `/opt/rustbert-cache` を host bind-mount する必要があるが、各 self-hosted runner の actions-runner ユーザは NOPASSWD sudo を持たない方針。CI step から privileged provisioning を試みると sudo プロンプトで停止する。**privileged provisioning は CI ではなく runner bootstrap で事前に完了させる** のが Alt の設計原則 ([[runner-setup]] §2.5 と同方針)。
 
 ### 復旧手順 (self-hosted deploy runner ホスト)
 
@@ -58,7 +58,7 @@ Alt `329e6dcad ci(e2e-hurl): warmup rust-bert cache on host before staging stack
 sudo mkdir -p /opt/rustbert-cache && sudo chown 999:999 /opt/rustbert-cache && sudo chmod 0755 /opt/rustbert-cache
 ```
 
-冪等なので複数回流しても副作用なし。自動化版は alt-deploy (Private) 側の `scripts/recover-3days-recap.sh provision-cache --yes` を使う (ssh 越しの実行なら `RUNNER_HOST=<host> ./scripts/recover-3days-recap.sh provision-cache --yes`)。
+冪等なので複数回流しても副作用なし。自動化版ドライバは deploy 側 (Private) の運用スクリプトで別途提供。
 
 ### 検証
 
@@ -66,34 +66,27 @@ sudo mkdir -p /opt/rustbert-cache && sudo chown 999:999 /opt/rustbert-cache && s
 stat -c '%n uid=%u gid=%g mode=%a' /opt/rustbert-cache
 ```
 
-`uid=999 gid=999 mode=755` と出れば OK。alt-deploy 側の `scripts/recover-3days-recap.sh verify-cache` も同等。
+`uid=999 gid=999 mode=755` と出れば OK。
 
-### follow-up (Alt / alt-deploy 側)
+### follow-up (Alt 側)
 
-- alt-deploy `run-e2e-suite.yml` の該当タスクを `become: true` 依存から「存在確認 (state=directory, creates=skip existing)」のみに緩和し、provisioning 責務を `setup-runner.yml` 側に寄せる。
-- [[runner-setup]] を更新し「`/opt/rustbert-cache` を 999:999 で事前作成」を Phase 1 bootstrap の checklist に追加する。
+- [[runner-setup]] §2.5 に「`/opt/rustbert-cache` を 999:999 / mode 0700 で事前作成」を Phase 1 bootstrap の checklist として追加済。
 
 ## ブロッカー 2: recap-subworker host artefact の復旧
 
 ### 症状
 
-ブロッカー 1 を解消し deploy が通った直後、recap-subworker は新 compose (named volume + init container) で起動を試みるが、init container が以下で exit 1:
+deploy で recap-subworker を bring-up するとき、compose v2.24+ は directory-scoped bind mount の host source が不在だと container create を **refuse** する。つまり host 上の `/var/lib/alt-recap-subworker-data/` が無い状態で deploy が走ると、`docker compose up recap-subworker` が即 fail し、deploy job も赤になる。
 
-```
-FATAL: no usable joblib model on the host
-  checked: /src/genre_classifier_ja.joblib and /src/genre_classifier_en.joblib
-  both are missing or zero-sized.
-```
+もう 1 つの失敗形: host path は存在するが `*.joblib` / `*.json` が無い or 空ディレクトリ。この場合 container は起動するが classifier 初期化で `FileNotFoundError` or `IsADirectoryError` を投げ、recap-worker 側で `classification returned 0 results for N articles` として fail。Settings validator と classifier.py の `is_file()` guard が多層防御。
 
-これは [[000825]] の設計どおり。silent 失敗していた 8 日間の潜伏を起動 1 秒以内の明示的 fail に置き換えた結果。
+### 復旧手順 (prod host 上で直接)
 
-### 復旧手順 (deploy runner ホスト)
-
-`<alt-deploy checkout>/alt/recap-subworker/data/` 配下に必要な artefact を再配置する。選択肢:
+Alt は single-machine 構成なので、`alt-prod` 役の self-hosted runner が走るホスト = 実際の prod ホスト。artefact は **deploy workspace (ephemeral) ではなく、そのホストの `/var/lib/alt-recap-subworker-data/` に直接**配置する。設計の背景と代替案の評価は [[000825]] addendum を参照。選択肢:
 
 #### 選択肢 A: 既知動作状態の snapshot を運用チーム管理ストレージから再配置
 
-内部運用文書に従い、過去の deploy runner snapshot (2026-04-13 時点の recap-subworker/data/ tarball 等) を `<alt-deploy checkout>/alt/recap-subworker/data/` に展開。**本番と同系譜のため推奨**。
+内部運用文書に従い、過去の snapshot (2026-04-13 時点の tarball 等) を `/var/lib/alt-recap-subworker-data/` に展開。**本番と同系譜のため推奨**。
 
 #### 選択肢 B: training pipeline で再生成
 
@@ -103,12 +96,22 @@ FATAL: no usable joblib model on the host
 
 開発端末側には 2026-01-31 時点の `recap-subworker/data/*.joblib` が残っている可能性あり。古いが動作はする、緊急用の応急処置。運用に投入する際はバージョン差分のリスクを把握したうえで。
 
+#### 配置ワンライナー (prod host でログイン済前提)
+
+```bash
+cd <repo root> && tar -czf /tmp/recap-subworker-data.tar.gz -C recap-subworker data
+```
+
+```bash
+sudo sh -c 'mkdir -p /var/lib/alt-recap-subworker-data && tar -xzf /tmp/recap-subworker-data.tar.gz -C /var/lib/alt-recap-subworker-data --strip-components=1 && chown -R 999:999 /var/lib/alt-recap-subworker-data && chmod -R u=rwX,go-rwx /var/lib/alt-recap-subworker-data'
+```
+
 ### 検証
 
 ホスト側:
 
 ```bash
-ls -la <alt-deploy checkout>/alt/recap-subworker/data/ | grep -E 'genre_classifier|tfidf_vectorizer|genre_thresholds|golden_classification'
+ls -la /var/lib/alt-recap-subworker-data/ | grep -E 'genre_classifier|tfidf_vectorizer|genre_thresholds|golden_classification'
 ```
 
 最低限以下が **通常ファイル (非ゼロサイズ)** として並ぶこと:
@@ -120,7 +123,7 @@ ls -la <alt-deploy checkout>/alt/recap-subworker/data/ | grep -E 'genre_classifi
 - `genre_thresholds.json` / `_ja.json` / `_en.json`
 - `golden_classification.json`
 
-init container は `genre_classifier_ja.joblib` か `genre_classifier_en.joblib` のどちらか 1 つでも存在すれば通過するが、classifier 側は `_ja` / `_en` 両方あるのが想定。
+classifier は `_ja` / `_en` 両方あるのが想定。片方だけでも起動はするが classification の片言語が static に空返しになる。
 
 ## デプロイ実行
 
@@ -143,7 +146,7 @@ gh run view <run-id> -R Kaikei-e/alt-deploy
 全 job が ✓ で、最後に `deploy` が成功していること。特に:
 
 - `e2e (recap-worker)` — ブロッカー 1 解消後は `Ensure /opt/rustbert-cache ...` タスクが `changed=false` で通過
-- `e2e (recap-subworker)` — 現状は hurl suite 不在で short-circuit (exercise されていない)。将来 suite 整備後にここで init container が exercise される
+- `e2e (recap-subworker)` — 現状は hurl suite 不在で short-circuit (exercise されていない)。将来 suite 整備後はここで compose が real artefact を要求するため、staging 側は stub (`recap-pipeline-stub`) 経由で回避を続ける
 - `deploy` — 各サービスの ansible docker_compose_v2 roll が per-service で完了
 
 ## デプロイ後の検証 (本番)
@@ -173,11 +176,11 @@ ORDER BY created_at DESC;
 
 ### `classification returned 0 results for N articles` が再発した場合
 
-今回の ADR の validator + init container は「artefact が dir 型 / 欠落」の silent failure を塞ぐためのもの。再発時の可能性は:
+今回の ADR の Settings validator + classifier `is_file()` guard + compose directory-scoped bind (v2.24+ missing-source-refuse) は「artefact が dir 型 / 欠落 / mount が silent に empty 化」の silent failure を塞ぐためのもの。再発時の可能性は:
 
 | 症状 | 可能性の高い原因 | 確認コマンド |
 |---|---|---|
-| recap-subworker コンテナが「Exited (1)」で上がらない | init container が exit 1 (artefact 欠落) | `docker compose logs recap-subworker-artifacts-init` |
+| compose up が "bind source path does not exist" で failed | host `/var/lib/alt-recap-subworker-data/` 不在 | `ls -la /var/lib/alt-recap-subworker-data/` |
 | recap-subworker が起動しない (validator panic) | `RECAP_SUBWORKER_GENRE_CLASSIFIER_MODEL_PATH_*` env が dir を指している | `docker compose logs recap-subworker` の冒頭に ValidationError |
 | recap-subworker 起動するが classify-runs タイムアウト | recap-worker 側 dispatch の real-timeout (LLM 側の issue 等) | recap-worker の `recap_failed_tasks.error` |
 | 上記以外で `classification returned 0 results ...` 復活 | [[PM-2026-033]] 系の mTLS scheme drift 再発の可能性 | recap-worker / pki-agent-recap-subworker のログ照合 |
@@ -188,15 +191,15 @@ ORDER BY created_at DESC;
 
 ### 最小ロールバック (validator だけ戻す)
 
-`192bea225` の commit の中で、`recap-subworker/recap_subworker/infra/config.py` の `_validate_joblib_artifacts` だけを revert すれば起動時 fail-closed が消える。compose 側の名前空間 (named volume + init container) は維持。**非推奨**: silent failure に戻るだけで問題は解消しない。
+`192bea225` の commit の中で、`recap-subworker/recap_subworker/infra/config.py` の `_validate_joblib_artifacts` だけを revert すれば起動時 fail-closed が消える。compose 側の direct bind は維持。**非推奨**: silent failure に戻るだけで問題は解消しない。
 
-### compose だけロールバック (named volume を file-scoped bind に戻す)
+### compose だけロールバック (direct bind を file-scoped bind に戻す)
 
-`96a2edc81` commit 単体を revert すれば、file-scoped bind + classifier.py の `is_file()` guard だけが残る構成に戻る。classifier.py の runtime guard が `FileNotFoundError` を投げるので worst case でも silent failure より早く露呈する。
+`473b98251` (direct bind 移行) → `6931f7c8a` (env-override host path) → `96a2edc81` (init container) のいずれか 1 段階だけを revert することで中間状態に戻れる。いずれの中間形でも `is_file()` guard は残るので worst case でも silent failure より早く露呈する。
 
 ### 全部ロールバック
 
-`192bea225 → 96a2edc81 → 3b791ada2 → 87af119f1` を逆順で revert、またはまとめて `git revert 87af119f1..192bea225` 相当の reset。**非推奨**: [[PM-2026-036]] の silent failure に戻る。
+`87af119f1..473b98251` の一連 (test RED → fix GREEN → compose refactor → docs → env override → direct bind) を逆順で revert するか、まとめて reset。**非推奨**: [[PM-2026-036]] の silent failure に戻る。
 
 ## 再発防止チェックリスト
 

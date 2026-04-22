@@ -259,6 +259,30 @@ self.model = joblib.load(self.model_path)
 - docker-compose bind mount spec: file-scoped bind の missing-source 挙動 (公式 doc)
 - PyTorch `joblib.load()` 実装: `open(path, "rb")` を呼ぶので path が directory だと `IsADirectoryError`
 
+## Addendum: 2026-04-22 evening — 初回 remediation で named volume が populate されない二次障害
+
+初回 remediation (ADR-000825, commits `96a2edc81` + `6931f7c8a`) は named volume + busybox init container で `/app/data` を populate する設計だった。release-deploy 完走後、**init container が一度も起動されていない**状態で recap-subworker が empty volume を掴んで起動していたことが判明。手動キックで再び `classification returned 0 results for 954 articles` (2026-04-22 18:21 JST)、PM の symptom と identical な文言で再発。
+
+### 根本原因 (二次)
+
+Alt の運用は「1 サービスの失敗が全体を止めない」ため、サービス単位で targeted に compose 操作する rolling model を採る。この経路では各サービス単独で `docker compose up <service>` 相当が `--no-deps` 付きで呼ばれ、`depends_on` で参照される init container が起動されない。`service_completed_successfully` で gate する compose パターンが rolling 下で機能しないのは `docker compose up --no-deps` の普遍的な挙動 (`docker/compose#9591` に類例)。
+
+したがって本 PM の初回 remediation 自体が「rolling deploy model との非互換」という設計ミスマッチを含んでいた。compose engine v2.24+ が directory-scoped bind の missing-source で container create を refuse する挙動に設計責務を寄せ、init container を撤去することで resolved (ADR-000825 addendum / commit `473b98251`)。
+
+### 追加学び
+
+- **ADR レビュー時に "deploy model との整合性" を確認項目に加える**。今回 init container パターンは単体では正しかったが、Alt の rolling deploy model との相互作用を ADR 執筆時に verify しなかった。
+- **fail-closed 性は compose engine / アプリ / init container のどの層で実現してもよい**。層を撤去しても他層が covers していれば OK。本 PM 後は (1) compose v2.24+ の bind refuse、(2) Settings validator、(3) classifier is_file guard の 3 層構成。
+- **web 調査の活用**: 二次障害の原因特定に 1 時間以上費やす可能性があったが、web-researcher skill の適用で `--no-deps` の挙動を docker/compose issue tracker + community.docker source から 15 分以内に確定できた。今後 compose / ansible の挙動に不確定要素があるときは 即 web 調査に倒す。
+
+### 追加アクションアイテム
+
+| # | カテゴリ | アクション | 担当 | 期限 | ステータス |
+|---|---|---|---|---|---|
+| 13 | 予防 | ADR テンプレートに「採用する compose パターンが Alt の deploy model (rolling / per-service) と互換か」のセルフチェック項目を追加 | platform | 2026-05-15 | TODO |
+| 14 | プロセス | `.env.example` に `RECAP_SUBWORKER_DATA_HOST_PATH` の説明を追記し、dev workstation で直接 compose up したい場合の相対パス設定例を記載 | recap チーム | 2026-05-01 | TODO |
+| 15 | プロセス | [[runner-setup]] §2.6 (recap-subworker artefact 配置) が追加された ([[000825]] addendum 反映)。配置状況の定期確認 (prod host 上 `ls /var/lib/alt-recap-subworker-data`) を週次点検項目に加える | ops | 2026-05-15 | TODO |
+
 ---
 
 > **Blameless Postmortem の原則:** このドキュメントは個人の過失を追及するためではなく、
