@@ -1,7 +1,6 @@
 package di
 
 import (
-	"alt/driver/alt_db"
 	"alt/driver/health_checker"
 	"alt/driver/sovereign_client"
 	"alt/gateway/feature_flag_gateway"
@@ -63,10 +62,11 @@ type KnowledgeModule struct {
 	SelectLensUsecase    *select_lens_usecase.SelectLensUsecase
 	ArchiveLensUsecase   *archive_lens_usecase.ArchiveLensUsecase
 
-	// Knowledge Loop usecases (new projection; see docs/ADR/000831.md)
+	// Knowledge Loop usecases (new projection; see docs/ADR/000831.md).
+	// Storage is sovereign-owned: the usecase talks to sovereign_client.Client which
+	// implements all Knowledge Loop ports; alt-db has no Knowledge Loop tables.
 	GetKnowledgeLoopUsecase        *knowledge_loop_usecase.GetKnowledgeLoopUsecase
 	TransitionKnowledgeLoopUsecase *knowledge_loop_usecase.TransitionKnowledgeLoopUsecase
-	KnowledgeLoopRepository        *alt_db.KnowledgeLoopRepository
 
 	// Gateways
 	FeatureFlagGateway               *feature_flag_gateway.Gateway
@@ -169,15 +169,15 @@ func newKnowledgeModule(infra *InfraModule, article *ArticleModule) *KnowledgeMo
 	metricsGw := knowledge_metrics_gateway.NewGateway(metricsSnapshot)
 	metricsUC := knowledge_metrics_usecase.NewUsecase(metricsGw, healthChecker)
 
-	// Knowledge Loop wiring (new projection; read/write ports + usecases)
-	knowledgeLoopRepo := alt_db.NewKnowledgeLoopRepository(altDB.GetPool())
+	// Knowledge Loop wiring: storage lives in knowledge-sovereign, not alt-db.
+	// The sovereign_client.Client implements all Knowledge Loop ports (read + write + dedupe).
 	getKnowledgeLoopUC := knowledge_loop_usecase.NewGetKnowledgeLoopUsecase(
-		knowledgeLoopRepo,
-		knowledgeLoopRepo,
-		knowledgeLoopRepo,
+		sovereignCli,
+		sovereignCli,
+		sovereignCli,
 	)
 	transitionKnowledgeLoopUC := knowledge_loop_usecase.NewTransitionKnowledgeLoopUsecase(
-		knowledgeLoopRepo,
+		sovereignCli,
 		nil, // use time.Now by default
 	)
 
@@ -206,7 +206,6 @@ func newKnowledgeModule(infra *InfraModule, article *ArticleModule) *KnowledgeMo
 
 		GetKnowledgeLoopUsecase:        getKnowledgeLoopUC,
 		TransitionKnowledgeLoopUsecase: transitionKnowledgeLoopUC,
-		KnowledgeLoopRepository:        knowledgeLoopRepo,
 
 		FeatureFlagGateway:               featureFlagGw,
 		KnowledgeBackfillArticlesGateway: knowledgeBackfillGw,
