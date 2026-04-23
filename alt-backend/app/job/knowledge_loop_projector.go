@@ -180,7 +180,9 @@ func projectLoopEvent(
 		if err != nil {
 			return nil, err
 		}
+		// Dismissed entries have no actionable CTA remaining.
 		entry.DismissState = domain.DismissDismissed
+		entry.DecisionOptions = nil
 		return upsertEntry.UpsertKnowledgeLoopEntry(ctx, entry)
 
 	case domain.EventHomeItemSuperseded:
@@ -242,10 +244,47 @@ func buildEntryFromEvent(
 		ArtifactVersionRef:   art,
 		WhyKind:              whyKind,
 		WhyText:              shortEventWhy(ev),
+		DecisionOptions:      seedDecisionOptions(whyKind, proposedStage),
 		DismissState:         domain.DismissActive,
 		RenderDepthHint:      pickRenderDepth(surfaceBucket),
 		LoopPriority:         pickLoopPriority(surfaceBucket),
 	}, nil
+}
+
+// seedDecisionOptions materializes the CTA options the UI can offer for a newly
+// projected entry. The mapping is intentionally terse — a source-driven entry
+// (new article, fresh summary) is almost always actionable through the same
+// four paths; other why kinds keep empty options until the projector learns a
+// specific Decide-stage strategy for them (ADR-000831 / plan D1).
+//
+// Reproject-safe: the seed is derived from the (static) why_kind and
+// proposed_stage alone, never from latest projection state or wall-clock.
+func seedDecisionOptions(whyKind domain.WhyKind, stage domain.LoopStage) []byte {
+	if whyKind != domain.WhyKindSource {
+		return nil
+	}
+	// Observe / Orient entries can offer all four; Decide/Act entries are
+	// intentionally left to the handler to narrow (Act has already happened).
+	if stage != domain.LoopStageObserve && stage != domain.LoopStageOrient {
+		return nil
+	}
+	// Ordered so the UI can treat the first as primary CTA.
+	type opt struct {
+		ActionID string `json:"action_id"`
+		Intent   string `json:"intent"`
+		Label    string `json:"label,omitempty"`
+	}
+	seed := []opt{
+		{ActionID: "open", Intent: "open"},
+		{ActionID: "ask", Intent: "ask"},
+		{ActionID: "save", Intent: "save"},
+		{ActionID: "dismiss", Intent: "snooze"},
+	}
+	b, err := json.Marshal(seed)
+	if err != nil {
+		return nil
+	}
+	return b
 }
 
 // deriveEntryKey picks a stable, format-valid entry key from the event.
