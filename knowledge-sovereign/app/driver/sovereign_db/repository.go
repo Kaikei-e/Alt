@@ -37,15 +37,15 @@ var ErrDismissTargetNotFound = fmt.Errorf("dismiss target not found")
 // UpsertKnowledgeHomeItem inserts or updates a knowledge home item.
 func (r *Repository) UpsertKnowledgeHomeItem(ctx context.Context, payload json.RawMessage) error {
 	var item struct {
-		UserID           uuid.UUID  `json:"user_id"`
-		TenantID         uuid.UUID  `json:"tenant_id"`
-		ItemKey          string     `json:"item_key"`
-		ItemType         string     `json:"item_type"`
-		PrimaryRefID     *uuid.UUID `json:"primary_ref_id"`
-		Title            string     `json:"title"`
-		SummaryExcerpt   string     `json:"summary_excerpt"`
-		Tags             []string   `json:"tags"`
-		WhyReasons       []struct {
+		UserID         uuid.UUID  `json:"user_id"`
+		TenantID       uuid.UUID  `json:"tenant_id"`
+		ItemKey        string     `json:"item_key"`
+		ItemType       string     `json:"item_type"`
+		PrimaryRefID   *uuid.UUID `json:"primary_ref_id"`
+		Title          string     `json:"title"`
+		SummaryExcerpt string     `json:"summary_excerpt"`
+		Tags           []string   `json:"tags"`
+		WhyReasons     []struct {
 			Code   string `json:"code"`
 			Reason string `json:"reason"`
 		} `json:"why_reasons"`
@@ -233,15 +233,15 @@ func (r *Repository) ClearSupersedeState(ctx context.Context, payload json.RawMe
 // UpsertTodayDigest inserts or updates a today digest entry.
 func (r *Repository) UpsertTodayDigest(ctx context.Context, payload json.RawMessage) error {
 	var digest struct {
-		UserID                 uuid.UUID `json:"user_id"`
-		DigestDate             string    `json:"digest_date"`
-		NewArticles            int       `json:"new_articles"`
-		SummarizedArticles     int       `json:"summarized_articles"`
-		UnsummarizedArticles   int       `json:"unsummarized_articles"`
-		TopTags                []string  `json:"top_tags"`
-		UpdatedAt              time.Time `json:"updated_at"`
-		WeeklyRecapAvailable   bool      `json:"weekly_recap_available"`
-		EveningPulseAvailable  bool      `json:"evening_pulse_available"`
+		UserID                uuid.UUID `json:"user_id"`
+		DigestDate            string    `json:"digest_date"`
+		NewArticles           int       `json:"new_articles"`
+		SummarizedArticles    int       `json:"summarized_articles"`
+		UnsummarizedArticles  int       `json:"unsummarized_articles"`
+		TopTags               []string  `json:"top_tags"`
+		UpdatedAt             time.Time `json:"updated_at"`
+		WeeklyRecapAvailable  bool      `json:"weekly_recap_available"`
+		EveningPulseAvailable bool      `json:"evening_pulse_available"`
 	}
 	if err := json.Unmarshal(payload, &digest); err != nil {
 		return fmt.Errorf("UpsertTodayDigest: unmarshal: %w", err)
@@ -285,14 +285,14 @@ func (r *Repository) UpsertTodayDigest(ctx context.Context, payload json.RawMess
 // UpsertRecallCandidate inserts or updates a recall candidate.
 func (r *Repository) UpsertRecallCandidate(ctx context.Context, payload json.RawMessage) error {
 	var candidate struct {
-		UserID            uuid.UUID  `json:"user_id"`
-		ItemKey           string     `json:"item_key"`
-		RecallScore       float64    `json:"recall_score"`
-		Reasons []RecallReason `json:"reasons"`
-		NextSuggestAt     *time.Time `json:"next_suggest_at"`
-		FirstEligibleAt   *time.Time `json:"first_eligible_at"`
-		UpdatedAt         time.Time  `json:"updated_at"`
-		ProjectionVersion int        `json:"projection_version"`
+		UserID            uuid.UUID      `json:"user_id"`
+		ItemKey           string         `json:"item_key"`
+		RecallScore       float64        `json:"recall_score"`
+		Reasons           []RecallReason `json:"reasons"`
+		NextSuggestAt     *time.Time     `json:"next_suggest_at"`
+		FirstEligibleAt   *time.Time     `json:"first_eligible_at"`
+		UpdatedAt         time.Time      `json:"updated_at"`
+		ProjectionVersion int            `json:"projection_version"`
 	}
 	if err := json.Unmarshal(payload, &candidate); err != nil {
 		return fmt.Errorf("UpsertRecallCandidate: unmarshal: %w", err)

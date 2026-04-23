@@ -47,13 +47,13 @@ type WhyReason struct {
 
 // LensFilter defines filter criteria for home items.
 type LensFilter struct {
-	QueryText   string
-	TagNames    []string
-	SourceIDs   []string
-	TimeWindow  string
+	QueryText    string
+	TagNames     []string
+	SourceIDs    []string
+	TimeWindow   string
 	IncludeRecap bool
 	IncludePulse bool
-	SortMode    string
+	SortMode     string
 }
 
 // TodayDigest contains daily summary statistics.

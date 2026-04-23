@@ -40,13 +40,13 @@ type ReprojectRun struct {
 
 // ProjectionAudit represents an audit record.
 type ProjectionAudit struct {
-	AuditID            uuid.UUID
-	ProjectionName     string
-	ProjectionVersion  string
-	CheckedAt          time.Time
-	SampleSize         int
-	MismatchCount      int
-	DetailsJSON        json.RawMessage
+	AuditID           uuid.UUID
+	ProjectionName    string
+	ProjectionVersion string
+	CheckedAt         time.Time
+	SampleSize        int
+	MismatchCount     int
+	DetailsJSON       json.RawMessage
 }
 
 // BackfillJob represents a backfill job record.

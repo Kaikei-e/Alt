@@ -10,19 +10,19 @@ import (
 
 // RetentionPolicy defines the hot/warm/cold retention windows per entity type.
 type RetentionPolicy struct {
-	SystemEventsHot        time.Duration // knowledge_events (system): hot window in PG
-	UserEventsHot          time.Duration // knowledge_events (user) + knowledge_user_events
-	SupersededVersionsHot  time.Duration // superseded summary/tag versions
-	WarmWindow             time.Duration // warm = detached partition, still in PG
+	SystemEventsHot       time.Duration // knowledge_events (system): hot window in PG
+	UserEventsHot         time.Duration // knowledge_events (user) + knowledge_user_events
+	SupersededVersionsHot time.Duration // superseded summary/tag versions
+	WarmWindow            time.Duration // warm = detached partition, still in PG
 }
 
 // DefaultRetentionPolicy returns the standard retention policy.
 func DefaultRetentionPolicy() RetentionPolicy {
 	return RetentionPolicy{
-		SystemEventsHot:       30 * 24 * time.Hour,  // 30 days
-		UserEventsHot:         7 * 24 * time.Hour,   // 7 days
-		SupersededVersionsHot: 30 * 24 * time.Hour,  // 30 days
-		WarmWindow:            60 * 24 * time.Hour,   // 60 days (warm after hot)
+		SystemEventsHot:       30 * 24 * time.Hour, // 30 days
+		UserEventsHot:         7 * 24 * time.Hour,  // 7 days
+		SupersededVersionsHot: 30 * 24 * time.Hour, // 30 days
+		WarmWindow:            60 * 24 * time.Hour, // 60 days (warm after hot)
 	}
 }
 

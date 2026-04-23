@@ -8,8 +8,8 @@ import (
 	"connectrpc.com/connect"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
-	sovereignv1 "knowledge-sovereign/gen/proto/services/sovereign/v1"
 	"knowledge-sovereign/driver/sovereign_db"
+	sovereignv1 "knowledge-sovereign/gen/proto/services/sovereign/v1"
 )
 
 func (h *SovereignHandler) ListLenses(

@@ -55,9 +55,9 @@ type retentionRunRequest struct {
 }
 
 type retentionRunResponse struct {
-	DryRun     bool                            `json:"dry_run"`
-	Actions    []retentionAction               `json:"actions"`
-	Error      string                          `json:"error,omitempty"`
+	DryRun  bool              `json:"dry_run"`
+	Actions []retentionAction `json:"actions"`
+	Error   string            `json:"error,omitempty"`
 }
 
 type retentionAction struct {
@@ -108,8 +108,8 @@ func (h *RetentionHandler) handleEligiblePartitions(w http.ResponseWriter, r *ht
 	now := time.Now()
 
 	type eligibleResult struct {
-		Table      string                       `json:"table"`
-		Eligible   []sovereign_db.PartitionInfo  `json:"eligible"`
+		Table    string                       `json:"table"`
+		Eligible []sovereign_db.PartitionInfo `json:"eligible"`
 	}
 
 	var results []eligibleResult

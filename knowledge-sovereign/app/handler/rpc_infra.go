@@ -10,8 +10,8 @@ import (
 	"github.com/google/uuid"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
-	sovereignv1 "knowledge-sovereign/gen/proto/services/sovereign/v1"
 	"knowledge-sovereign/driver/sovereign_db"
+	sovereignv1 "knowledge-sovereign/gen/proto/services/sovereign/v1"
 )
 
 // === Events ===
@@ -630,16 +630,16 @@ func protoToReprojectRun(pb *sovereignv1.ReprojectRun) sovereign_db.ReprojectRun
 		return sovereign_db.ReprojectRun{}
 	}
 	r := sovereign_db.ReprojectRun{
-		ReprojectRunID: parseUUID(pb.ReprojectRunId),
-		ProjectionName: pb.ProjectionName,
-		FromVersion:    pb.FromVersion,
-		ToVersion:      pb.ToVersion,
-		InitiatedBy:    parseUUIDPtr(pb.InitiatedBy),
-		Mode:           pb.Mode,
-		Status:         pb.Status,
+		ReprojectRunID:    parseUUID(pb.ReprojectRunId),
+		ProjectionName:    pb.ProjectionName,
+		FromVersion:       pb.FromVersion,
+		ToVersion:         pb.ToVersion,
+		InitiatedBy:       parseUUIDPtr(pb.InitiatedBy),
+		Mode:              pb.Mode,
+		Status:            pb.Status,
 		CheckpointPayload: pb.CheckpointPayload,
-		StatsJSON:      pb.StatsJson,
-		DiffSummaryJSON: pb.DiffSummaryJson,
+		StatsJSON:         pb.StatsJson,
+		DiffSummaryJSON:   pb.DiffSummaryJson,
 	}
 	if pb.CreatedAt != nil {
 		r.CreatedAt = pb.CreatedAt.AsTime()

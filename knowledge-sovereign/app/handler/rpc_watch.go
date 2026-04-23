@@ -15,7 +15,7 @@ import (
 )
 
 const (
-	watchChannel          = "knowledge_projector"
+	watchChannel           = "knowledge_projector"
 	watchHeartbeatInterval = 3 * time.Second
 )
 

@@ -11,9 +11,9 @@ import (
 
 	"connectrpc.com/connect"
 	"github.com/google/uuid"
+	"knowledge-sovereign/driver/sovereign_db"
 	sovereignv1 "knowledge-sovereign/gen/proto/services/sovereign/v1"
 	"knowledge-sovereign/gen/proto/services/sovereign/v1/sovereignv1connect"
-	"knowledge-sovereign/driver/sovereign_db"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -30,25 +30,39 @@ type mockRepo struct {
 
 // --- MutationRepository ---
 func (m *mockRepo) UpsertKnowledgeHomeItem(_ context.Context, p json.RawMessage) error {
-	m.lastMethod = "UpsertKnowledgeHomeItem"; m.lastPayload = p; return m.returnErr
+	m.lastMethod = "UpsertKnowledgeHomeItem"
+	m.lastPayload = p
+	return m.returnErr
 }
 func (m *mockRepo) DismissKnowledgeHomeItem(_ context.Context, p json.RawMessage) error {
-	m.lastMethod = "DismissKnowledgeHomeItem"; m.lastPayload = p; return m.returnErr
+	m.lastMethod = "DismissKnowledgeHomeItem"
+	m.lastPayload = p
+	return m.returnErr
 }
 func (m *mockRepo) ClearSupersedeState(_ context.Context, p json.RawMessage) error {
-	m.lastMethod = "ClearSupersedeState"; m.lastPayload = p; return m.returnErr
+	m.lastMethod = "ClearSupersedeState"
+	m.lastPayload = p
+	return m.returnErr
 }
 func (m *mockRepo) UpsertTodayDigest(_ context.Context, p json.RawMessage) error {
-	m.lastMethod = "UpsertTodayDigest"; m.lastPayload = p; return m.returnErr
+	m.lastMethod = "UpsertTodayDigest"
+	m.lastPayload = p
+	return m.returnErr
 }
 func (m *mockRepo) UpsertRecallCandidate(_ context.Context, p json.RawMessage) error {
-	m.lastMethod = "UpsertRecallCandidate"; m.lastPayload = p; return m.returnErr
+	m.lastMethod = "UpsertRecallCandidate"
+	m.lastPayload = p
+	return m.returnErr
 }
 func (m *mockRepo) SnoozeRecallCandidate(_ context.Context, p json.RawMessage) error {
-	m.lastMethod = "SnoozeRecallCandidate"; m.lastPayload = p; return m.returnErr
+	m.lastMethod = "SnoozeRecallCandidate"
+	m.lastPayload = p
+	return m.returnErr
 }
 func (m *mockRepo) DismissRecallCandidate(_ context.Context, p json.RawMessage) error {
-	m.lastMethod = "DismissRecallCandidate"; m.lastPayload = p; return m.returnErr
+	m.lastMethod = "DismissRecallCandidate"
+	m.lastPayload = p
+	return m.returnErr
 }
 
 // --- ReadOperations stubs (return empty results) ---
@@ -171,7 +185,8 @@ func (m *mockRepo) AppendRecallSignal(_ context.Context, _ sovereign_db.RecallSi
 	return m.returnErr
 }
 func (m *mockRepo) AppendKnowledgeUserEvent(_ context.Context, _ sovereign_db.KnowledgeUserEvent) error {
-	m.lastMethod = "AppendKnowledgeUserEvent"; return m.returnErr
+	m.lastMethod = "AppendKnowledgeUserEvent"
+	return m.returnErr
 }
 
 func setupTestServer(repo ReadDB) (sovereignv1connect.KnowledgeSovereignServiceClient, func()) {
@@ -356,10 +371,10 @@ func TestGetLens_PopulatesCurrentVersion(t *testing.T) {
 	versionID := uuid.New()
 
 	tests := []struct {
-		name           string
-		repo           *mockRepo
-		wantVersion    bool
-		wantNilLens    bool
+		name        string
+		repo        *mockRepo
+		wantVersion bool
+		wantNilLens bool
 	}{
 		{
 			name: "lens with current version",
