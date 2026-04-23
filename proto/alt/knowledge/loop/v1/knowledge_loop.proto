@@ -1,0 +1,349 @@
+syntax = "proto3";
+
+package alt.knowledge.loop.v1;
+
+option go_package = "alt/gen/proto/alt/knowledge/loop/v1;knowledgeloopv1";
+
+import "google/protobuf/timestamp.proto";
+
+// KnowledgeLoopService is the read and transition API for the Knowledge Loop state-machine UI.
+// The Loop is a new read model layered on top of knowledge_events; it is not a new source of truth.
+// Invariants (see docs/plan/knowledge-loop-canonical-contract.md and ADR-000831):
+//   - Business-fact timestamps derive from event.occurred_at; wall-clock is never exposed.
+//   - Tenant/lens scope comes from verified JWT claims; request body user_id is ignored.
+//   - TransitionKnowledgeLoop requires a UUIDv7 client_transition_id for idempotency.
+service KnowledgeLoopService {
+  // GetKnowledgeLoop returns foreground entries, surface state, and session state for the
+  // authenticated user. Reads go through the knowledge_loop_entries_public view which excludes
+  // projected_at.
+  rpc GetKnowledgeLoop(GetKnowledgeLoopRequest) returns (GetKnowledgeLoopResponse);
+  // TransitionKnowledgeLoop records a session stage transition. Server enforces UUIDv7
+  // format on client_transition_id, dedupes on (user_id, client_transition_id), and rejects
+  // DWELL triggers that do not target OBSERVE.
+  rpc TransitionKnowledgeLoop(TransitionKnowledgeLoopRequest) returns (TransitionKnowledgeLoopResponse);
+  // StreamKnowledgeLoopUpdates subscribes the client to revision updates. The server
+  // terminates with a stream_expired envelope when the JWT exp is reached.
+  rpc StreamKnowledgeLoopUpdates(StreamKnowledgeLoopUpdatesRequest) returns (stream StreamKnowledgeLoopUpdatesResponse);
+}
+
+// ============================================================================
+// Enums — all zero values are UNSPECIFIED per proto3 best practice.
+// ============================================================================
+
+enum LoopStage {
+  LOOP_STAGE_UNSPECIFIED = 0;
+  LOOP_STAGE_OBSERVE = 1;
+  LOOP_STAGE_ORIENT = 2;
+  LOOP_STAGE_DECIDE = 3;
+  LOOP_STAGE_ACT = 4;
+}
+
+enum SurfaceBucket {
+  SURFACE_BUCKET_UNSPECIFIED = 0;
+  SURFACE_BUCKET_NOW = 1;
+  SURFACE_BUCKET_CONTINUE = 2;
+  SURFACE_BUCKET_CHANGED = 3;
+  SURFACE_BUCKET_REVIEW = 4;
+}
+
+enum DismissState {
+  DISMISS_STATE_UNSPECIFIED = 0;
+  DISMISS_STATE_ACTIVE = 1;
+  DISMISS_STATE_DEFERRED = 2;
+  DISMISS_STATE_DISMISSED = 3;
+  DISMISS_STATE_COMPLETED = 4;
+}
+
+enum ServiceQuality {
+  SERVICE_QUALITY_UNSPECIFIED = 0;
+  SERVICE_QUALITY_FULL = 1;
+  SERVICE_QUALITY_DEGRADED = 2;
+  SERVICE_QUALITY_FALLBACK = 3;
+}
+
+enum WhyKind {
+  WHY_KIND_UNSPECIFIED = 0;
+  WHY_KIND_SOURCE = 1;
+  WHY_KIND_PATTERN = 2;
+  WHY_KIND_RECALL = 3;
+  WHY_KIND_CHANGE = 4;
+}
+
+enum RenderDepthHint {
+  RENDER_DEPTH_HINT_UNSPECIFIED = 0;
+  RENDER_DEPTH_HINT_FLAT = 1;
+  RENDER_DEPTH_HINT_LIGHT = 2;
+  RENDER_DEPTH_HINT_STRONG = 3;
+  RENDER_DEPTH_HINT_CRITICAL = 4;
+}
+
+enum LoopPriority {
+  LOOP_PRIORITY_UNSPECIFIED = 0;
+  LOOP_PRIORITY_CRITICAL = 1;
+  LOOP_PRIORITY_CONTINUING = 2;
+  LOOP_PRIORITY_CONFIRM = 3;
+  LOOP_PRIORITY_REFERENCE = 4;
+}
+
+enum ActTargetType {
+  ACT_TARGET_TYPE_UNSPECIFIED = 0;
+  ACT_TARGET_TYPE_ARTICLE = 1;
+  ACT_TARGET_TYPE_ASK = 2;
+  ACT_TARGET_TYPE_RECAP = 3;
+  ACT_TARGET_TYPE_DIFF = 4;
+  ACT_TARGET_TYPE_CLUSTER = 5;
+}
+
+enum DecisionIntent {
+  DECISION_INTENT_UNSPECIFIED = 0;
+  DECISION_INTENT_OPEN = 1;
+  DECISION_INTENT_ASK = 2;
+  DECISION_INTENT_SAVE = 3;
+  DECISION_INTENT_COMPARE = 4;
+  DECISION_INTENT_REVISIT = 5;
+  DECISION_INTENT_SNOOZE = 6;
+}
+
+enum TransitionTrigger {
+  TRANSITION_TRIGGER_UNSPECIFIED = 0;
+  TRANSITION_TRIGGER_USER_TAP = 1;
+  TRANSITION_TRIGGER_DWELL = 2; // valid only when to_stage == OBSERVE
+  TRANSITION_TRIGGER_KEYBOARD = 3;
+  TRANSITION_TRIGGER_PROGRAMMATIC = 4;
+}
+
+// ============================================================================
+// Payloads
+// ============================================================================
+
+message EvidenceRef {
+  string ref_id = 1;
+  string label = 2;
+}
+
+message WhyPayload {
+  WhyKind kind = 1;
+  // Plain text only. 1..512 chars. No Markdown or HTML.
+  string text = 2;
+  optional float confidence = 3;
+  // Length <= 8 (server-validated).
+  repeated EvidenceRef evidence_refs = 4;
+
+  reserved 5 to 10;
+}
+
+message ArtifactVersionRef {
+  optional string summary_version_id = 1;
+  optional string tag_set_version_id = 2;
+  optional string lens_version_id = 3;
+
+  reserved 4 to 10;
+}
+
+message ChangeSummary {
+  string summary = 1;
+  repeated string changed_fields = 2;
+  optional string previous_entry_key = 3;
+}
+
+message ContinueContext {
+  string summary = 1;
+  repeated string recent_action_labels = 2;
+  optional google.protobuf.Timestamp last_interacted_at = 3;
+}
+
+message DecisionOption {
+  string action_id = 1;
+  optional string label = 2; // UI may derive label from intent; override only
+  DecisionIntent intent = 3;
+}
+
+message ActTarget {
+  ActTargetType target_type = 1;
+  string target_ref = 2;
+  optional string route = 3;
+}
+
+// KnowledgeLoopEntry is one Loop proposal unit.
+// projected_at is intentionally absent and reserved against accidental reintroduction.
+message KnowledgeLoopEntry {
+  // hot fields (1-15 use 1-byte tags on the wire)
+  string entry_key = 1;
+  string source_item_key = 2;
+  LoopStage proposed_stage = 3;
+  SurfaceBucket surface_bucket = 4;
+
+  int64 projection_revision = 5;
+  int64 projection_seq_hiwater = 6;
+  int64 source_event_seq = 7;
+  google.protobuf.Timestamp freshness_at = 8;
+
+  DismissState dismiss_state = 9;
+  RenderDepthHint render_depth_hint = 10;
+  LoopPriority loop_priority = 11;
+  WhyPayload why_primary = 12;
+
+  ArtifactVersionRef artifact_version_ref = 13;
+  repeated EvidenceRef why_evidence_refs = 14;
+  optional google.protobuf.Timestamp source_observed_at = 15;
+
+  // colder fields
+  optional ChangeSummary change_summary = 16;
+  optional ContinueContext continue_context = 17;
+  repeated DecisionOption decision_options = 18;
+  repeated ActTarget act_targets = 19;
+  optional string superseded_by_entry_key = 20;
+
+  reserved 21 to 30;
+  reserved "updated_at", "last_modified", "loop_priority_label", "projected_at", "wall_clock", "ingest_time";
+}
+
+message SurfaceState {
+  SurfaceBucket surface_bucket = 1;
+  optional string primary_entry_key = 2;
+  repeated string secondary_entry_keys = 3;
+
+  int64 projection_revision = 4;
+  int64 projection_seq_hiwater = 5;
+  google.protobuf.Timestamp freshness_at = 6;
+  ServiceQuality service_quality = 7;
+
+  reserved "projected_at";
+}
+
+message KnowledgeLoopSessionState {
+  LoopStage current_stage = 1;
+  // current_stage_entered_at derives from the triggering event's occurred_at.
+  google.protobuf.Timestamp current_stage_entered_at = 2;
+
+  optional string focused_entry_key = 3;
+  optional string foreground_entry_key = 4;
+
+  optional string last_observed_entry_key = 5;
+  optional string last_oriented_entry_key = 6;
+  optional string last_decided_entry_key = 7;
+  optional string last_acted_entry_key = 8;
+  optional string last_returned_entry_key = 9;
+  optional string last_deferred_entry_key = 10;
+
+  int64 projection_revision = 11;
+  int64 projection_seq_hiwater = 12;
+
+  reserved 13 to 20;
+  reserved "updated_at", "projected_at";
+}
+
+// ============================================================================
+// GetKnowledgeLoop
+// ============================================================================
+
+message GetKnowledgeLoopRequest {
+  // lens_mode_id is client-specified; server resolves against tenant via JWT claim.
+  string lens_mode_id = 1;
+  optional bool reduced_motion = 2;
+  // Max foreground entries to include (default 3, capped at 5).
+  optional uint32 foreground_limit = 3;
+
+  reserved 4 to 10;
+  reserved "user_id", "tenant_id"; // these come from JWT, never from the body
+}
+
+message GetKnowledgeLoopResponse {
+  repeated KnowledgeLoopEntry foreground_entries = 1;
+  repeated SurfaceState surfaces = 2;
+  KnowledgeLoopSessionState session_state = 3;
+  ServiceQuality overall_service_quality = 4;
+  google.protobuf.Timestamp generated_at = 5;
+  int64 projection_seq_hiwater = 6;
+}
+
+// ============================================================================
+// TransitionKnowledgeLoop
+// ============================================================================
+
+message TransitionKnowledgeLoopRequest {
+  string lens_mode_id = 1;
+  // UUIDv7. Server rejects non-v7 or timestamps outside [-48h, +5min].
+  string client_transition_id = 2;
+  string entry_key = 3;
+  LoopStage from_stage = 4;
+  LoopStage to_stage = 5;
+  TransitionTrigger trigger = 6;
+  int64 observed_projection_revision = 7;
+
+  reserved 8 to 15;
+  reserved "user_id", "tenant_id";
+}
+
+message TransitionKnowledgeLoopResponse {
+  bool accepted = 1;
+  optional string canonical_entry_key = 2;
+  optional string message = 3;
+  int64 projection_seq_hiwater = 4;
+}
+
+// ============================================================================
+// StreamKnowledgeLoopUpdates
+// ============================================================================
+
+message StreamKnowledgeLoopUpdatesRequest {
+  string lens_mode_id = 1;
+  optional string foreground_entry_key = 2;
+  optional int64 foreground_projection_revision = 3;
+  optional bool reduced_motion = 4;
+  // Resume from the given event seq (inclusive). 0 means start fresh.
+  optional int64 resume_from_seq = 5;
+
+  reserved 6 to 15;
+  reserved "user_id", "tenant_id";
+}
+
+message EntryAppended {
+  string entry_key = 1;
+  int64 revision = 2;
+  optional KnowledgeLoopEntry inline_entry = 3;
+}
+
+message EntryRevised {
+  string entry_key = 1;
+  int64 revision = 2;
+  optional KnowledgeLoopEntry inline_entry = 3;
+}
+
+message EntrySuperseded {
+  string entry_key = 1;
+  string new_entry_key = 2;
+  int64 revision = 3;
+}
+
+message EntryWithdrawn {
+  string entry_key = 1;
+  int64 revision = 2;
+}
+
+message SurfaceRebalanced {
+  SurfaceBucket surface_bucket = 1;
+  int64 revision = 2;
+}
+
+// StreamExpired is a terminal envelope. Clients should close the stream and may reconnect
+// after refreshing their JWT.
+message StreamExpired {
+  string reason = 1;
+}
+
+message StreamKnowledgeLoopUpdatesResponse {
+  oneof update {
+    EntryAppended appended = 1;
+    EntryRevised revised = 2;
+    EntrySuperseded superseded = 3;
+    EntryWithdrawn withdrawn = 4;
+    SurfaceRebalanced rebalanced = 5;
+    StreamExpired stream_expired = 6;
+  }
+
+  int64 projection_seq_hiwater = 10;
+
+  reserved 7 to 9;
+  reserved "kind";
+}
