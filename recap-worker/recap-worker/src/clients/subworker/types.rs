@@ -17,7 +17,13 @@ pub(crate) const MAX_POLL_INTERVAL_MS: u64 = 30_000;
 pub(crate) const SUBWORKER_TIMEOUT_SECS: u64 = 3600;
 pub(crate) const MAX_ERROR_MESSAGE_LENGTH: usize = 500;
 pub(crate) const EXTRACTION_TIMEOUT_SECS: u64 = 30;
-pub(crate) const MIN_FALLBACK_DOCUMENTS: usize = 2;
+/// Lower bound on document count below which we refuse to run clustering.
+/// Set to 1 so a single-article genre still produces a summarizable
+/// single-cluster fallback (see `SubworkerClient::create_fallback_response`)
+/// instead of skipping the downstream summary phase. Pair with
+/// `pipeline::select::clustering::MIN_SUB_CLUSTER_SIZE=2` so the sub-splitter
+/// never *creates* 1-article sub-buckets in the first place.
+pub(crate) const MIN_FALLBACK_DOCUMENTS: usize = 1;
 pub(crate) const ADMIN_JOB_INITIAL_BACKOFF_MS: u64 = 5_000;
 pub(crate) const ADMIN_JOB_MAX_BACKOFF_MS: u64 = 20_000;
 pub(crate) const ADMIN_JOB_TIMEOUT_SECS: u64 = 600;

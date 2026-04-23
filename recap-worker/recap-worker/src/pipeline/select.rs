@@ -561,6 +561,95 @@ mod tests {
         }
     }
 
+    /// Regression: MiniBatchKMeans can emit sub-clusters that hold a single
+    /// article. Those articles must retain the parent genre label instead of
+    /// receiving a `{genre}_{id:03}` tag that would later trip the downstream
+    /// `MIN_FALLBACK_DOCUMENTS` guard and skip summary generation.
+    #[tokio::test]
+    async fn subcluster_large_genres_keeps_singleton_clusters_in_parent() {
+        #[derive(Debug, Clone)]
+        struct SkewedEmbedder;
+
+        #[async_trait]
+        impl crate::pipeline::embedding::Embedder for SkewedEmbedder {
+            async fn encode(&self, texts: &[String]) -> anyhow::Result<Vec<Vec<f32>>> {
+                // Collapse the bulk of the corpus into one tight point and
+                // strand a handful of articles at distant unique coordinates
+                // so MiniBatchKMeans is forced to spend clusters on them.
+                let embeddings = texts
+                    .iter()
+                    .enumerate()
+                    .map(|(i, _)| {
+                        const DIM: usize = 384;
+                        let mut v = vec![0.0_f32; DIM];
+                        if i < texts.len().saturating_sub(4) {
+                            v[0] = 0.01;
+                        } else {
+                            v[i % DIM] = 1_000.0;
+                        }
+                        v
+                    })
+                    .collect();
+                Ok(embeddings)
+            }
+        }
+
+        let embedding_service: Option<Arc<dyn crate::pipeline::embedding::Embedder>> =
+            Some(Arc::new(SkewedEmbedder));
+        // max_docs=50 forces split, target=25 + max_k=10 → k=10 with 210 items.
+        let subgenre_config = SubgenreConfig::new(50, 25, 10);
+        let parent_genre = "consumer_tech".to_string();
+
+        let assignments: Vec<super::super::genre::GenreAssignment> = (0..210)
+            .map(|i| super::super::genre::GenreAssignment {
+                genres: vec![parent_genre.clone()],
+                candidates: vec![],
+                genre_scores: std::collections::HashMap::from([(parent_genre.clone(), 10)]),
+                genre_confidence: std::collections::HashMap::from([(parent_genre.clone(), 0.9)]),
+                feature_profile: FeatureProfile::default(),
+                article: DeduplicatedArticle {
+                    id: format!("art-{}", i),
+                    title: Some(format!("Title {}", i)),
+                    sentences: vec![format!("Sentence {}", i)],
+                    ..Default::default()
+                },
+                embedding: None,
+            })
+            .collect();
+
+        let result = clustering::subcluster_large_genres(
+            embedding_service.as_ref(),
+            &subgenre_config,
+            assignments,
+        )
+        .await
+        .expect("subcluster_large_genres failed");
+
+        // Count articles per primary genre.
+        let mut counts: std::collections::HashMap<String, usize> = std::collections::HashMap::new();
+        for a in &result {
+            if let Some(primary) = a.genres.first() {
+                *counts.entry(primary.clone()).or_insert(0) += 1;
+            }
+        }
+
+        // Any subgenre that survived labeling must hold at least 2 articles.
+        for (label, n) in &counts {
+            if label.starts_with("consumer_tech_") {
+                assert!(
+                    *n >= 2,
+                    "subgenre {label} would feed clustering with {n} article(s); \
+                     MiniBatchKMeans singletons must be demoted back to the \
+                     parent genre to avoid MIN_FALLBACK_DOCUMENTS rejection"
+                );
+            }
+        }
+
+        // Sanity: the total article count is preserved.
+        let total: usize = counts.values().sum();
+        assert_eq!(total, 210);
+    }
+
     #[tokio::test]
     async fn subcluster_large_genres_batches_embedding_requests() {
         let stats = Arc::new(Mutex::new(EmbedderBatchStats::default()));

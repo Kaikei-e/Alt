@@ -15,6 +15,14 @@ use super::{
 const MINI_BATCH_KMEANS_BATCH_SIZE: usize = 64;
 const MINI_BATCH_KMEANS_MAX_ITERATIONS: usize = 20;
 
+/// Minimum number of articles a sub-cluster must hold before it earns a
+/// `{genre}_{id:03}` subgenre label. Smaller clusters keep the parent genre
+/// label so the downstream clustering stage is never asked to run HDBSCAN on
+/// a single-document corpus (`MIN_FALLBACK_DOCUMENTS`). Aligns with the
+/// clients-side fallback threshold in
+/// `crate::clients::subworker::types::MIN_FALLBACK_DOCUMENTS`.
+const MIN_SUB_CLUSTER_SIZE: usize = 2;
+
 /// Subcluster "other" genre assignments into groups.
 pub(crate) async fn subcluster_others(
     embedding_service: Option<&Arc<dyn Embedder>>,
@@ -143,21 +151,50 @@ pub(crate) async fn subcluster_large_genres(
                         MINI_BATCH_KMEANS_BATCH_SIZE,
                     );
 
+                    // Count articles per cluster so tiny MiniBatchKMeans
+                    // clusters (e.g. 1 article) do not inherit a subgenre
+                    // label — they would later trip the clustering client's
+                    // `MIN_FALLBACK_DOCUMENTS` guard and skip summary
+                    // generation entirely.
+                    let mut cluster_counts: HashMap<usize, usize> = HashMap::new();
+                    for &cluster_id in &kmeans.assignments {
+                        *cluster_counts.entry(cluster_id).or_insert(0) += 1;
+                    }
+
+                    let mut labeled = 0usize;
+                    let mut kept_parent = 0usize;
                     for (i, &cluster_id) in kmeans.assignments.iter().enumerate() {
-                        if let Some(assignment) = genre_assignments.get_mut(i) {
-                            // Format: base_001, base_002, etc. (1-indexed)
-                            let subgenre = format!("{}_{:03}", genre, cluster_id + 1);
-                            // Insert at index 0 to make it primary
-                            assignment.genres.insert(0, subgenre.clone());
-                            assignment.genre_scores.insert(subgenre.clone(), 100);
-                            assignment.genre_confidence.insert(subgenre, 1.0);
+                        let Some(assignment) = genre_assignments.get_mut(i) else {
+                            continue;
+                        };
+                        let count = cluster_counts.get(&cluster_id).copied().unwrap_or(0);
+                        if count < MIN_SUB_CLUSTER_SIZE {
+                            // Article stays in the parent genre bucket; the
+                            // downstream clustering stage handles it as part
+                            // of the larger parent corpus instead of a
+                            // single-article island.
+                            kept_parent += 1;
+                            continue;
                         }
+                        // Format: base_001, base_002, etc. (1-indexed)
+                        let subgenre = format!("{}_{:03}", genre, cluster_id + 1);
+                        // Insert at index 0 to make it primary
+                        assignment.genres.insert(0, subgenre.clone());
+                        assignment.genre_scores.insert(subgenre.clone(), 100);
+                        assignment.genre_confidence.insert(subgenre, 1.0);
+                        labeled += 1;
                     }
 
                     tracing::info!(
                         genre = %genre,
                         original_count = n,
                         k,
+                        labeled,
+                        kept_parent,
+                        tiny_cluster_count = cluster_counts
+                            .values()
+                            .filter(|&&c| c < MIN_SUB_CLUSTER_SIZE)
+                            .count(),
                         "split large genre into subgenres"
                     );
                 } else {
