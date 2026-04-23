@@ -1,7 +1,10 @@
-import pytest
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
+
 import numpy as np
+import pytest
+
 from recap_subworker.services.classifier import GenreClassifierService
+
 
 @pytest.fixture
 def mock_embedder():
@@ -10,6 +13,7 @@ def mock_embedder():
     embedder.encode.return_value = np.array([[0.1, 0.2]])
     embedder.config.batch_size = 32
     return embedder
+
 
 @pytest.fixture
 def mock_model():
@@ -28,6 +32,7 @@ def mock_model():
     # But we can set low thresholds.
     model.predict_proba.return_value = np.array([[0.45, 0.45, 0.1]])
     return model
+
 
 @pytest.fixture
 def genre_classifier(mock_embedder, mock_model, tmp_path):
@@ -52,6 +57,7 @@ def genre_classifier(mock_embedder, mock_model, tmp_path):
 
     return service
 
+
 def test_predict_batch_single_label(genre_classifier):
     # With thresholds 0.4, both tech(0.45) and politics(0.45) pass.
     # Single label should return the highest score.
@@ -69,6 +75,7 @@ def test_predict_batch_single_label(genre_classifier):
     assert len(res["candidates"]) >= 1
     assert res["candidates"][0]["genre"] == "tech"
 
+
 def test_predict_batch_multi_label(genre_classifier):
     # tech=0.5 (thresh=0.4) -> PASS
     # politics=0.45 (thresh=0.4) -> PASS
@@ -79,7 +86,7 @@ def test_predict_batch_multi_label(genre_classifier):
 
     assert len(results) == 1
     res = results[0]
-    assert res["top_genre"] == "tech" # First sorted
+    assert res["top_genre"] == "tech"  # First sorted
 
     # Check candidates structure for multi-label
     candidates = res["candidates"]
@@ -89,6 +96,7 @@ def test_predict_batch_multi_label(genre_classifier):
     assert "politics" in genres
     assert "other" not in genres
 
+
 def test_predict_batch_threshold_overrides_passed_to_ensure(genre_classifier):
     # This test verifies that we can pass thresholds to predict_batch
     # In our mocked service, we mocked _ensure_model, so we verify it was called with overrides
@@ -96,26 +104,37 @@ def test_predict_batch_threshold_overrides_passed_to_ensure(genre_classifier):
     genre_classifier.predict_batch(["test"], threshold_overrides=overrides)
     genre_classifier._ensure_model.assert_called_with(overrides)
 
+
 # We should also test that _ensure_model actually updates current_thresholds.
-# We need a fresh service without mocked _ensure_model for that.
-@patch("joblib.load")
-@patch("pathlib.Path.is_file")
-@patch("pathlib.Path.exists")
-@patch("builtins.open", new_callable=MagicMock)
-@patch("json.load")
-def test_ensure_model_updates_thresholds(mock_json_load, mock_open, mock_exists, mock_is_file, mock_load, mock_embedder, tmp_path):
-    mock_is_file.return_value = True  # model path guard uses is_file() (see classifier.py)
-    mock_exists.return_value = True  # tfidf / svd / scaler / thresholds sibling checks still use exists()
-    mock_json_load.return_value = {"tech": 0.5} # Base thresholds
+# Uses a real joblib round-trip on tmp_path because mocking Path.open /
+# io.open is fragile across Python versions (see ADR-000835 stage 3 rewrite).
+def test_ensure_model_updates_thresholds(mock_embedder, tmp_path):
+    import json as _json
 
-    service = GenreClassifierService("dummy/path", mock_embedder)
+    import joblib as _joblib
+    import numpy as _np
+    from sklearn.linear_model import LogisticRegression
 
-    # Override
+    rng = _np.random.default_rng(0)
+    x = rng.normal(size=(30, 4))
+    y = _np.array([f"c{i}" for i in range(3) for _ in range(10)])
+    clf = LogisticRegression(max_iter=200).fit(x, y)
+
+    model_path = tmp_path / "genre_classifier_ja.joblib"
+    _joblib.dump(clf, model_path)
+    thresholds_path = tmp_path / "genre_thresholds_ja.json"
+    thresholds_path.write_text(_json.dumps({"tech": 0.5}))
+
+    service = GenreClassifierService(
+        str(model_path),
+        mock_embedder,
+        thresholds_path=str(thresholds_path),
+    )
+
     service._ensure_model(threshold_overrides={"tech": 0.8, "new": 0.3})
 
     assert service.current_thresholds["tech"] == 0.8
     assert service.current_thresholds["new"] == 0.3
-    # Base should remain unchanged in the underlying dict if separate, but here we copied it.
     assert service.thresholds is not None
     assert service.thresholds["tech"] == 0.5
 

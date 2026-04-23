@@ -1,5 +1,9 @@
+from __future__ import annotations
+
+import importlib.metadata
 import json
 import time
+from dataclasses import dataclass, field
 from pathlib import Path
 from threading import Lock
 from typing import Any
@@ -9,9 +13,123 @@ import numpy as np
 import structlog
 from sudachipy import dictionary, tokenizer
 
+from recap_subworker.domain.errors import ConfigValidationError
+
 from .embedder import Embedder
 
 logger = structlog.get_logger(__name__)
+
+
+@dataclass(frozen=True, slots=True)
+class ClassifierMetadata:
+    """Sidecar metadata emitted by ``train.py`` next to the joblib artefact.
+
+    The schema is pinned by ADR-000835 stage 3 so downstream tooling (boot
+    validators, evaluators, future migration scripts) can assert provenance
+    without loading the model itself.
+    """
+
+    sklearn_version: str
+    transformers_version: str
+    sentence_transformers_version: str
+    trained_at: str
+    language: str
+    classes: tuple[str, ...]
+    feature_dim: int
+    source_data_sha256: str
+    embedding_model_id: str = ""
+    device: str = ""
+    extras: dict[str, Any] = field(default_factory=dict)
+
+    @classmethod
+    def from_json(cls, payload: dict[str, Any]) -> ClassifierMetadata:
+        known = {
+            "sklearn_version",
+            "transformers_version",
+            "sentence_transformers_version",
+            "trained_at",
+            "language",
+            "classes",
+            "feature_dim",
+            "source_data_sha256",
+            "embedding_model_id",
+            "device",
+        }
+        extras = {k: v for k, v in payload.items() if k not in known}
+        return cls(
+            sklearn_version=str(payload["sklearn_version"]),
+            transformers_version=str(payload["transformers_version"]),
+            sentence_transformers_version=str(payload.get("sentence_transformers_version", "")),
+            trained_at=str(payload["trained_at"]),
+            language=str(payload["language"]),
+            classes=tuple(str(c) for c in payload["classes"]),
+            feature_dim=int(payload["feature_dim"]),
+            source_data_sha256=str(payload["source_data_sha256"]),
+            embedding_model_id=str(payload.get("embedding_model_id", "")),
+            device=str(payload.get("device", "")),
+            extras=extras,
+        )
+
+
+def _minor(version: str) -> str:
+    parts = version.split(".")
+    if len(parts) < 2:
+        return version
+    return f"{parts[0]}.{parts[1]}"
+
+
+def _load_sidecar_metadata(model_path: Path) -> ClassifierMetadata | None:
+    """Read ``<model>.meta.json`` if present. Returns None when absent.
+
+    Uses ``read_text`` with EAFP rather than ``is_file()`` so mocked file
+    systems in existing tests (which patch ``Path.is_file`` to True for
+    stub model paths) are not forced to also stub the sidecar.
+    """
+    meta_path = model_path.with_suffix(".meta.json")
+    try:
+        payload_text = meta_path.read_text()
+    except (FileNotFoundError, IsADirectoryError, PermissionError):
+        logger.warning(
+            "classifier sidecar metadata missing",
+            model_path=str(model_path),
+            meta_path=str(meta_path),
+        )
+        return None
+    try:
+        payload = json.loads(payload_text)
+        metadata = ClassifierMetadata.from_json(payload)
+    except (json.JSONDecodeError, KeyError, TypeError, ValueError) as err:
+        logger.warning(
+            "classifier sidecar metadata invalid",
+            meta_path=str(meta_path),
+            error=str(err),
+        )
+        return None
+    logger.info(
+        "classifier sidecar metadata loaded",
+        sklearn_version=metadata.sklearn_version,
+        transformers_version=metadata.transformers_version,
+        trained_at=metadata.trained_at,
+        language=metadata.language,
+        classes_count=len(metadata.classes),
+    )
+    return metadata
+
+
+def _guard_metadata_against_runtime(metadata: ClassifierMetadata) -> None:
+    """Raise ConfigValidationError if the sidecar disagrees with the runtime."""
+    try:
+        runtime_sklearn = importlib.metadata.version("scikit-learn")
+    except importlib.metadata.PackageNotFoundError:
+        return
+    if _minor(runtime_sklearn) != _minor(metadata.sklearn_version):
+        raise ConfigValidationError(
+            f"sklearn_version mismatch: sidecar={metadata.sklearn_version} "
+            f"runtime={runtime_sklearn} (minor precision). Retrain the "
+            "classifier on the current runtime — ADR-000835 stage 3 "
+            "requires fail-closed behaviour here."
+        )
+
 
 class SudachiTokenizer:
     def __init__(self, mode="C"):
@@ -40,8 +158,15 @@ class SudachiTokenizer:
         self.mode_str = state["mode_str"]
         self._init_tokenizer()
 
+
 class GenreClassifierService:
-    def __init__(self, model_path: str, embedder: Embedder, vectorizer_path: str | None = None, thresholds_path: str | None = None):
+    def __init__(
+        self,
+        model_path: str,
+        embedder: Embedder,
+        vectorizer_path: str | None = None,
+        thresholds_path: str | None = None,
+    ):
         self.embedder = embedder
         self.model_path = Path(model_path)
 
@@ -64,6 +189,7 @@ class GenreClassifierService:
         self.svd = None
         self.scaler = None
         self.thresholds = None
+        self.model_metadata: ClassifierMetadata | None = None
         self._lock = Lock()
 
     def _ensure_model(self, threshold_overrides: dict[str, float] | None = None):
@@ -82,12 +208,10 @@ class GenreClassifierService:
                     logger.info("Loading classification artifacts", model_path=str(self.model_path))
                     self.model = joblib.load(self.model_path)
 
-                    # Patch for sklearn version incompatibility (1.8.0 vs 1.7.x)
-                    # Patch for sklearn version incompatibility (1.8.0 vs 1.7.x)
-                    # Force patch because hasattr check seemed unreliable in previous run??
-                    print("DEBUG: Force patching multi_class attribute")
-                    self.model.multi_class = 'ovr'
-                    logger.warning("Patched 'multi_class' attribute on LogisticRegression")
+                    metadata = _load_sidecar_metadata(self.model_path)
+                    if metadata is not None:
+                        _guard_metadata_against_runtime(metadata)
+                    self.model_metadata = metadata
 
                     if self.tfidf_path.exists():
                         self.tfidf = joblib.load(self.tfidf_path)
@@ -95,7 +219,9 @@ class GenreClassifierService:
                         self.tfidf.tokenizer = SudachiTokenizer()
                         logger.info("TF-IDF vectorizer loaded with re-attached tokenizer")
                     else:
-                        logger.warning("TF-IDF vectorizer not found, will use embeddings only if model allows")
+                        logger.warning(
+                            "TF-IDF vectorizer not found, will use embeddings only if model allows"
+                        )
 
                     # Load SVD for TF-IDF dimensionality reduction
                     if self.svd_path.exists():
@@ -131,23 +257,28 @@ class GenreClassifierService:
                     self.thresholds = {}
 
         if threshold_overrides:
-             # Make sure we don't mutate the base thresholds permanently if we were to support dynamic updates better
-             # But for now, simple update is fine or just used during lookup.
-             # Actually, better to store overrides separately or merge effectively.
-             # For this scope, let's update simple dict if it's safe.
-             # But _ensure_model is usually called once or lazily.
-             # If overrides change, we might need to refresh.
-             # Let's assume passed overrides are always current.
-             self.current_thresholds = self.thresholds.copy()
-             self.current_thresholds.update(threshold_overrides)
+            # Make sure we don't mutate the base thresholds permanently if we were to support dynamic updates better
+            # But for now, simple update is fine or just used during lookup.
+            # Actually, better to store overrides separately or merge effectively.
+            # For this scope, let's update simple dict if it's safe.
+            # But _ensure_model is usually called once or lazily.
+            # If overrides change, we might need to refresh.
+            # Let's assume passed overrides are always current.
+            self.current_thresholds = self.thresholds.copy()
+            self.current_thresholds.update(threshold_overrides)
         else:
-             self.current_thresholds = self.thresholds.copy()
+            self.current_thresholds = self.thresholds.copy()
 
-        if self.model is None: # Should be loaded by now
-             logger.info("Classification model and artifacts loaded")
+        if self.model is None:  # Should be loaded by now
+            logger.info("Classification model and artifacts loaded")
 
-
-    def predict_batch(self, texts: list[str], multi_label: bool = False, top_k: int = 5, threshold_overrides: dict[str, float] | None = None) -> list[dict[str, Any]]:
+    def predict_batch(
+        self,
+        texts: list[str],
+        multi_label: bool = False,
+        top_k: int = 5,
+        threshold_overrides: dict[str, float] | None = None,
+    ) -> list[dict[str, Any]]:
         """
         Predict genres for a batch of texts using Hybrid Features (Embedding + TF-IDF)
         and Dynamic Thresholding.
@@ -216,7 +347,7 @@ class GenreClassifierService:
                     logger.warning(
                         "Model expects fewer features than generated. Using embeddings only.",
                         expected=expected_features,
-                        got=combined_features.shape[1]
+                        got=combined_features.shape[1],
                     )
                     features = embeddings
                 else:
@@ -224,7 +355,7 @@ class GenreClassifierService:
                         "Feature dimension mismatch",
                         expected=expected_features,
                         got_combined=combined_features.shape[1],
-                        got_embeddings=embeddings.shape[1]
+                        got_embeddings=embeddings.shape[1],
                     )
                     # Fallback to combined and let it crash or raise clear error?
                     # If we are here, probably crash is inevitable or we try combined.
@@ -241,10 +372,12 @@ class GenreClassifierService:
             # Fallback for "X has Y features, but expects Z" if generic check failed
             msg = str(e)
             if "expecting" in msg and str(embeddings.shape[1]) in msg:
-                 logger.warning("ValueError during prediction, retrying with embeddings only", error=msg)
-                 probs_batch = self.model.predict_proba(embeddings)
+                logger.warning(
+                    "ValueError during prediction, retrying with embeddings only", error=msg
+                )
+                probs_batch = self.model.predict_proba(embeddings)
             else:
-                 raise e
+                raise e
         predict_elapsed = time.time() - predict_start
         classes = self.model.classes_
 
@@ -277,11 +410,13 @@ class GenreClassifierService:
                     top_genre = classes[idx]
                     confidence = float(probs[idx])
                     # Include the highest scoring genre as a candidate for transparency
-                    final_candidates = [{
-                        "genre": top_genre,
-                        "score": confidence,
-                        "threshold": self.current_thresholds.get(top_genre, 0.5),
-                    }]
+                    final_candidates = [
+                        {
+                            "genre": top_genre,
+                            "score": confidence,
+                            "threshold": self.current_thresholds.get(top_genre, 0.5),
+                        }
+                    ]
                     below_threshold = True
 
                     logger.debug(
@@ -290,13 +425,15 @@ class GenreClassifierService:
                         confidence=confidence,
                     )
 
-                results.append({
-                    "top_genre": top_genre,
-                    "confidence": confidence,
-                    "scores": scores,
-                    "candidates": final_candidates,
-                    "below_threshold": below_threshold,
-                })
+                results.append(
+                    {
+                        "top_genre": top_genre,
+                        "confidence": confidence,
+                        "scores": scores,
+                        "candidates": final_candidates,
+                        "below_threshold": below_threshold,
+                    }
+                )
 
             else:
                 # Single label mode (backward compatible logic)
@@ -321,13 +458,15 @@ class GenreClassifierService:
                         threshold=self.current_thresholds.get(top_genre, 0.5),
                     )
 
-                results.append({
-                    "top_genre": top_genre,
-                    "confidence": confidence,
-                    "scores": scores,
-                    "candidates": candidates[:top_k],
-                    "below_threshold": below_threshold,  # Flag for downstream handling
-                })
+                results.append(
+                    {
+                        "top_genre": top_genre,
+                        "confidence": confidence,
+                        "scores": scores,
+                        "candidates": candidates[:top_k],
+                        "below_threshold": below_threshold,  # Flag for downstream handling
+                    }
+                )
 
         logger.info(
             "Batch prediction completed",
@@ -346,11 +485,7 @@ class GenreClassifierService:
                     "max": float(np.max(values)),
                     "p90": float(np.quantile(values, 0.9)),
                     "count_above_threshold": int(
-                        sum(
-                            1
-                            for v in values
-                            if v >= self.current_thresholds.get(cls, 0.5)
-                        )
+                        sum(1 for v in values if v >= self.current_thresholds.get(cls, 0.5))
                     ),
                 }
                 for cls, values in per_genre_probs.items()
@@ -364,8 +499,6 @@ class GenreClassifierService:
                 histogram=histogram,
             )
         except Exception as exc:
-            logger.warning(
-                "failed to emit classifier diagnostic histogram", error=str(exc)
-            )
+            logger.warning("failed to emit classifier diagnostic histogram", error=str(exc))
 
         return results

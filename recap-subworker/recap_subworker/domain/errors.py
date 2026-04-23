@@ -9,6 +9,7 @@ class SubworkerError(Exception):
 
 # --- Pipeline errors ---
 
+
 class PipelineError(SubworkerError):
     """Error during evidence pipeline execution."""
 
@@ -27,6 +28,7 @@ class WarmupError(PipelineError):
 
 # --- Clustering errors ---
 
+
 class ClusteringError(SubworkerError):
     """Error during clustering operation."""
 
@@ -44,6 +46,7 @@ class InvalidEmbeddingsError(ClusteringError):
 
 
 # --- Embedding errors ---
+
 
 class EmbeddingError(SubworkerError):
     """Error during embedding generation."""
@@ -77,6 +80,7 @@ class LearningClientTimeoutError(LearningClientError):
 
 # --- Classification errors ---
 
+
 class ClassificationError(SubworkerError):
     """Error during genre classification."""
 
@@ -89,7 +93,19 @@ class ModelArtifactNotFoundError(ClassificationError):
         super().__init__(f"Model artifact not found: {path}")
 
 
+class ConfigValidationError(ClassificationError, ValueError):
+    """Raised when classifier artefact metadata conflicts with runtime state.
+
+    Inherits from ValueError so Pydantic ``@model_validator`` wraps it into
+    a ``ValidationError`` on boot, matching the pattern of the peer
+    ``_validate_joblib_artifacts`` validator. Use for runtime sklearn /
+    transformers version drift between the sidecar metadata and the
+    installed packages.
+    """
+
+
 # --- Run management errors ---
+
 
 class ConcurrentRunError(SubworkerError):
     """Raised when a job+genre pair already has a running run."""
@@ -100,6 +116,7 @@ class IdempotencyMismatchError(SubworkerError):
 
 
 # --- Repository errors ---
+
 
 class RepositoryError(SubworkerError):
     """Error during database operations."""

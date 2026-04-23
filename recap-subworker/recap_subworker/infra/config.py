@@ -1,5 +1,7 @@
 """Configuration loading for recap-subworker."""
 
+from __future__ import annotations
+
 import json
 from functools import lru_cache
 from typing import Literal
@@ -16,12 +18,13 @@ class Settings(BaseSettings):
         env_prefix="RECAP_SUBWORKER_",
         env_file=".env",
         extra="ignore",
-        secrets_dir="/run/secrets"
+        secrets_dir="/run/secrets",
+        populate_by_name=True,
     )
 
     recap_db_password: SecretStr | None = Field(default=None)
 
-    @model_validator(mode='after')
+    @model_validator(mode="after")
     def inject_db_password(self) -> Settings:
         # If RECAP_SUBWORKER_DB_PASSWORD_FILE is set, read password from that file
         import os
@@ -36,19 +39,25 @@ class Settings(BaseSettings):
                 pass  # Fall back to secrets_dir or default
 
         if self.recap_db_password:
-            db_url_str = self.db_url.get_secret_value() if isinstance(self.db_url, SecretStr) else self.db_url
+            db_url_str = (
+                self.db_url.get_secret_value()
+                if isinstance(self.db_url, SecretStr)
+                else self.db_url
+            )
             u = urlparse(db_url_str)
             # u.netloc is "user:pass@host:port"
-            if '@' in u.netloc:
-                user_pass, host_port = u.netloc.rsplit('@', 1)
+            if "@" in u.netloc:
+                user_pass, host_port = u.netloc.rsplit("@", 1)
                 password_val = self.recap_db_password.get_secret_value()
-                if ':' in user_pass:
-                    user, _ = user_pass.split(':', 1)
+                if ":" in user_pass:
+                    user, _ = user_pass.split(":", 1)
                     new_netloc = f"{user}:{password_val}@{host_port}"
                 else:
                     new_netloc = f"{user_pass}:{password_val}@{host_port}"
 
-                self.db_url = SecretStr(urlunparse((u.scheme, new_netloc, u.path, u.params, u.query, u.fragment)))
+                self.db_url = SecretStr(
+                    urlunparse((u.scheme, new_netloc, u.path, u.params, u.query, u.fragment))
+                )
 
         # classification_device defaults to device if not explicitly set
         if self.classification_device is None:
@@ -124,9 +133,75 @@ class Settings(BaseSettings):
                 "joblib artefact path resolves to a directory instead of a "
                 "file. This is almost always a docker-compose file-scoped "
                 "bind mount whose host source file is missing, which docker "
-                "silently replaces with an empty directory. Offenders: "
-                + "; ".join(misconfigured)
+                "silently replaces with an empty directory. Offenders: " + "; ".join(misconfigured)
             )
+        return self
+
+    @model_validator(mode="after")
+    def _validate_classifier_cardinality(self) -> Settings:
+        """ADR-000835 stage 3: fail-closed when the loaded classifier covers
+        fewer canonical genres than the operator's baseline.
+
+        The earlier 2-bucket collapse shipped a 17-class classifier against a
+        30-genre kick; the pipeline passed shape checks and only failed at the
+        downstream clustering step, 15+ minutes into every run. Loading the
+        joblib at boot is cheap (< 1 MiB, < 100 ms) compared to the CrashLoop
+        incident it prevents.
+        """
+        if self.classification_backend != "joblib":
+            return self
+        if self.genre_baseline_cardinality <= 0:
+            return self
+
+        from pathlib import Path
+
+        fields_to_check = (
+            "genre_classifier_model_path_ja",
+            "genre_classifier_model_path_en",
+        )
+        for field_name in fields_to_check:
+            value: str | None = getattr(self, field_name, None)
+            if not value:
+                continue
+            path = Path(value)
+            if not path.is_file():
+                # The file-scoped bind-mount guard above handles directory
+                # cases; missing files are caught at load time by
+                # GenreClassifierService._ensure_model.
+                continue
+            import pickle
+
+            try:
+                import joblib
+
+                model = joblib.load(path)
+            except (
+                OSError,
+                ValueError,
+                EOFError,
+                ImportError,
+                KeyError,
+                TypeError,
+                AttributeError,
+                pickle.UnpicklingError,
+            ):
+                # Corrupt / non-joblib payloads are not this validator's
+                # concern: the peer ``_validate_joblib_artifacts`` catches
+                # directory-shaped bind-mounts, and runtime ``_ensure_model``
+                # surfaces real load errors. Cardinality check only applies
+                # to loadable models — skip otherwise.
+                continue
+            classes = getattr(model, "classes_", None)
+            if classes is None:
+                continue
+            cardinality = len(classes)
+            if cardinality < self.genre_baseline_cardinality:
+                raise ValueError(
+                    f"{field_name}: classifier classes_ cardinality {cardinality} "
+                    f"< baseline {self.genre_baseline_cardinality}. "
+                    "Model is collapsed or not retrained for the canonical "
+                    "30-genre taxonomy. See ADR-000835 stage 3."
+                )
         return self
 
     @property
@@ -146,65 +221,118 @@ class Settings(BaseSettings):
         description="Async SQLAlchemy connection string (SecretStr to prevent log leakage)",
         validation_alias=AliasChoices("RECAP_DB_URL", "RECAP_SUBWORKER_DB_URL"),
     )
-    enable_umap_auto: bool = Field(True, validation_alias=AliasChoices("RECAP_ENABLE_UMAP_AUTO", "RECAP_SUBWORKER_ENABLE_UMAP_AUTO"))
+    enable_umap_auto: bool = Field(
+        True,
+        validation_alias=AliasChoices("RECAP_ENABLE_UMAP_AUTO", "RECAP_SUBWORKER_ENABLE_UMAP_AUTO"),
+    )
     enable_umap_force: bool = Field(
         False,
         description="Force UMAP usage regardless of sentence count threshold",
-        validation_alias=AliasChoices("RECAP_ENABLE_UMAP_FORCE", "RECAP_SUBWORKER_ENABLE_UMAP_FORCE"),
+        validation_alias=AliasChoices(
+            "RECAP_ENABLE_UMAP_FORCE", "RECAP_SUBWORKER_ENABLE_UMAP_FORCE"
+        ),
     )
-    umap_threshold_sentences: int = Field(10, validation_alias=AliasChoices("RECAP_UMAP_THRESHOLD_SENTENCES", "RECAP_SUBWORKER_UMAP_THRESHOLD_SENTENCES"))
+    umap_threshold_sentences: int = Field(
+        10,
+        validation_alias=AliasChoices(
+            "RECAP_UMAP_THRESHOLD_SENTENCES", "RECAP_SUBWORKER_UMAP_THRESHOLD_SENTENCES"
+        ),
+    )
 
     # UMAP Parameters
-    umap_n_components: int = Field(20, validation_alias=AliasChoices("RECAP_UMAP_N_COMPONENTS", "RECAP_SUBWORKER_UMAP_N_COMPONENTS"))
-    umap_n_neighbors: int = Field(30, validation_alias=AliasChoices("RECAP_UMAP_N_NEIGHBORS", "RECAP_SUBWORKER_UMAP_N_NEIGHBORS"))
-    umap_min_dist: float = Field(0.0, validation_alias=AliasChoices("RECAP_UMAP_MIN_DIST", "RECAP_SUBWORKER_UMAP_MIN_DIST"))
+    umap_n_components: int = Field(
+        20,
+        validation_alias=AliasChoices(
+            "RECAP_UMAP_N_COMPONENTS", "RECAP_SUBWORKER_UMAP_N_COMPONENTS"
+        ),
+    )
+    umap_n_neighbors: int = Field(
+        30,
+        validation_alias=AliasChoices("RECAP_UMAP_N_NEIGHBORS", "RECAP_SUBWORKER_UMAP_N_NEIGHBORS"),
+    )
+    umap_min_dist: float = Field(
+        0.0, validation_alias=AliasChoices("RECAP_UMAP_MIN_DIST", "RECAP_SUBWORKER_UMAP_MIN_DIST")
+    )
 
     # HDBSCAN Parameters
-    hdbscan_min_cluster_size: int = Field(5, validation_alias=AliasChoices("RECAP_HDBSCAN_MIN_CLUSTER_SIZE", "RECAP_SUBWORKER_HDBSCAN_MIN_CLUSTER_SIZE"))
-    hdbscan_min_samples: int = Field(5, validation_alias=AliasChoices("RECAP_HDBSCAN_MIN_SAMPLES", "RECAP_SUBWORKER_HDBSCAN_MIN_SAMPLES"))
+    hdbscan_min_cluster_size: int = Field(
+        5,
+        validation_alias=AliasChoices(
+            "RECAP_HDBSCAN_MIN_CLUSTER_SIZE", "RECAP_SUBWORKER_HDBSCAN_MIN_CLUSTER_SIZE"
+        ),
+    )
+    hdbscan_min_samples: int = Field(
+        5,
+        validation_alias=AliasChoices(
+            "RECAP_HDBSCAN_MIN_SAMPLES", "RECAP_SUBWORKER_HDBSCAN_MIN_SAMPLES"
+        ),
+    )
     process_pool_size: int = Field(
         2,  # 2 * 6 workers = 12 total concurrent processes
         ge=1,
         description="Number of worker processes in the process pool",
-        validation_alias=AliasChoices("RECAP_PROCESS_POOL_SIZE", "RECAP_SUBWORKER_PROCESS_POOL_SIZE"),
+        validation_alias=AliasChoices(
+            "RECAP_PROCESS_POOL_SIZE", "RECAP_SUBWORKER_PROCESS_POOL_SIZE"
+        ),
     )
     pipeline_worker_processes: int = Field(
         2,  # 2 * 6 workers = 12 total concurrent pipeline workers
         ge=1,
         description="Number of worker processes to use for pipeline execution",
-        validation_alias=AliasChoices("RECAP_PIPELINE_WORKER_PROCESSES", "RECAP_SUBWORKER_PIPELINE_WORKER_PROCESSES"),
+        validation_alias=AliasChoices(
+            "RECAP_PIPELINE_WORKER_PROCESSES", "RECAP_SUBWORKER_PIPELINE_WORKER_PROCESSES"
+        ),
     )
     classification_worker_processes: int = Field(
         2,
         ge=1,
         description="Number of worker processes to use for classification execution",
-        validation_alias=AliasChoices("RECAP_CLASSIFICATION_WORKER_PROCESSES", "RECAP_SUBWORKER_CLASSIFICATION_WORKER_PROCESSES"),
+        validation_alias=AliasChoices(
+            "RECAP_CLASSIFICATION_WORKER_PROCESSES",
+            "RECAP_SUBWORKER_CLASSIFICATION_WORKER_PROCESSES",
+        ),
     )
     classification_worker_max_tasks_per_child: int = Field(
         50,
         ge=1,
         description="Maximum number of tasks a classification worker process handles before being replaced (prevents memory leaks)",
-        validation_alias=AliasChoices("RECAP_CLASSIFICATION_WORKER_MAX_TASKS_PER_CHILD", "RECAP_SUBWORKER_CLASSIFICATION_WORKER_MAX_TASKS_PER_CHILD"),
+        validation_alias=AliasChoices(
+            "RECAP_CLASSIFICATION_WORKER_MAX_TASKS_PER_CHILD",
+            "RECAP_SUBWORKER_CLASSIFICATION_WORKER_MAX_TASKS_PER_CHILD",
+        ),
     )
     classification_worker_init_timeout_seconds: int = Field(
         300,
         ge=10,
         description="Timeout in seconds for classification worker process initialization",
-        validation_alias=AliasChoices("RECAP_CLASSIFICATION_WORKER_INIT_TIMEOUT_SECONDS", "RECAP_SUBWORKER_CLASSIFICATION_WORKER_INIT_TIMEOUT_SECONDS"),
+        validation_alias=AliasChoices(
+            "RECAP_CLASSIFICATION_WORKER_INIT_TIMEOUT_SECONDS",
+            "RECAP_SUBWORKER_CLASSIFICATION_WORKER_INIT_TIMEOUT_SECONDS",
+        ),
     )
     classification_pool_idle_timeout_seconds: int = Field(
         60,
         ge=10,
         description="Seconds of idle time before shutting down classification worker pool",
-        validation_alias=AliasChoices("RECAP_CLASSIFICATION_POOL_IDLE_TIMEOUT_SECONDS", "RECAP_SUBWORKER_CLASSIFICATION_POOL_IDLE_TIMEOUT_SECONDS"),
+        validation_alias=AliasChoices(
+            "RECAP_CLASSIFICATION_POOL_IDLE_TIMEOUT_SECONDS",
+            "RECAP_SUBWORKER_CLASSIFICATION_POOL_IDLE_TIMEOUT_SECONDS",
+        ),
     )
     max_background_runs: int = Field(
         2,  # Limit concurrent runs per worker to prevent overload
         ge=1,
         description="Maximum number of concurrent classification runs per worker",
-        validation_alias=AliasChoices("RECAP_MAX_BACKGROUND_RUNS", "RECAP_SUBWORKER_MAX_BACKGROUND_RUNS"),
+        validation_alias=AliasChoices(
+            "RECAP_MAX_BACKGROUND_RUNS", "RECAP_SUBWORKER_MAX_BACKGROUND_RUNS"
+        ),
     )
-    hdbscan_cluster_selection_method: Literal["eom", "leaf"] = Field("eom", validation_alias=AliasChoices("RECAP_HDBSCAN_SELECTION_METHOD", "RECAP_SUBWORKER_HDBSCAN_SELECTION_METHOD"))
+    hdbscan_cluster_selection_method: Literal["eom", "leaf"] = Field(
+        "eom",
+        validation_alias=AliasChoices(
+            "RECAP_HDBSCAN_SELECTION_METHOD", "RECAP_SUBWORKER_HDBSCAN_SELECTION_METHOD"
+        ),
+    )
     http_host: str = Field(
         "0.0.0.0",
         description="Bind host for the HTTP server",
@@ -235,7 +363,7 @@ class Settings(BaseSettings):
         validation_alias=AliasChoices(
             "classification_device",
             "RECAP_CLASSIFICATION_DEVICE",
-            "RECAP_SUBWORKER_CLASSIFICATION_DEVICE"
+            "RECAP_SUBWORKER_CLASSIFICATION_DEVICE",
         ),
     )
     onnx_model_path: str | None = Field(
@@ -246,7 +374,9 @@ class Settings(BaseSettings):
     onnx_tokenizer_name: str | None = Field(
         None,
         description="HuggingFace tokenizer name for ONNX model. Defaults to model_id if not set",
-        validation_alias=AliasChoices("RECAP_ONNX_TOKENIZER_NAME", "RECAP_SUBWORKER_ONNX_TOKENIZER_NAME"),
+        validation_alias=AliasChoices(
+            "RECAP_ONNX_TOKENIZER_NAME", "RECAP_SUBWORKER_ONNX_TOKENIZER_NAME"
+        ),
     )
     onnx_pooling: Literal["cls", "mean"] = Field(
         "mean",
@@ -275,7 +405,9 @@ class Settings(BaseSettings):
         30.0,
         ge=1.0,
         description="Timeout in seconds for Ollama embedding API calls",
-        validation_alias=AliasChoices("OLLAMA_EMBED_TIMEOUT", "RECAP_SUBWORKER_OLLAMA_EMBED_TIMEOUT"),
+        validation_alias=AliasChoices(
+            "OLLAMA_EMBED_TIMEOUT", "RECAP_SUBWORKER_OLLAMA_EMBED_TIMEOUT"
+        ),
     )
     batch_size: int = Field(64, ge=1, description="Maximum sentences per embedding batch")
     max_total_sentences: int = Field(
@@ -352,7 +484,9 @@ class Settings(BaseSettings):
         300,
         ge=30,
         description="Timeout in seconds for HDBSCAN clustering before fallback to MiniBatchKMeans",
-        validation_alias=AliasChoices("RECAP_HDBSCAN_TIMEOUT_SECS", "RECAP_SUBWORKER_HDBSCAN_TIMEOUT_SECS"),
+        validation_alias=AliasChoices(
+            "RECAP_HDBSCAN_TIMEOUT_SECS", "RECAP_SUBWORKER_HDBSCAN_TIMEOUT_SECS"
+        ),
     )
     noise_recluster_enabled: bool = Field(
         True,
@@ -559,32 +693,44 @@ class Settings(BaseSettings):
     genre_classifier_model_path_ja: str = Field(
         "data/genre_classifier_ja.joblib",
         description="Path to the trained Japanese genre classifier model",
-        validation_alias=AliasChoices("RECAP_GENRE_CLASSIFIER_MODEL_PATH_JA", "RECAP_SUBWORKER_GENRE_CLASSIFIER_MODEL_PATH_JA"),
+        validation_alias=AliasChoices(
+            "RECAP_GENRE_CLASSIFIER_MODEL_PATH_JA", "RECAP_SUBWORKER_GENRE_CLASSIFIER_MODEL_PATH_JA"
+        ),
     )
     genre_classifier_model_path_en: str = Field(
         "data/genre_classifier_en.joblib",
         description="Path to the trained English genre classifier model",
-        validation_alias=AliasChoices("RECAP_GENRE_CLASSIFIER_MODEL_PATH_EN", "RECAP_SUBWORKER_GENRE_CLASSIFIER_MODEL_PATH_EN"),
+        validation_alias=AliasChoices(
+            "RECAP_GENRE_CLASSIFIER_MODEL_PATH_EN", "RECAP_SUBWORKER_GENRE_CLASSIFIER_MODEL_PATH_EN"
+        ),
     )
     genre_thresholds_path_ja: str = Field(
         "data/genre_thresholds_ja.json",
         description="Path to the Japanese genre thresholds file",
-        validation_alias=AliasChoices("RECAP_GENRE_THRESHOLDS_PATH_JA", "RECAP_SUBWORKER_GENRE_THRESHOLDS_PATH_JA"),
+        validation_alias=AliasChoices(
+            "RECAP_GENRE_THRESHOLDS_PATH_JA", "RECAP_SUBWORKER_GENRE_THRESHOLDS_PATH_JA"
+        ),
     )
     genre_thresholds_path_en: str = Field(
         "data/genre_thresholds_en.json",
         description="Path to the English genre thresholds file",
-        validation_alias=AliasChoices("RECAP_GENRE_THRESHOLDS_PATH_EN", "RECAP_SUBWORKER_GENRE_THRESHOLDS_PATH_EN"),
+        validation_alias=AliasChoices(
+            "RECAP_GENRE_THRESHOLDS_PATH_EN", "RECAP_SUBWORKER_GENRE_THRESHOLDS_PATH_EN"
+        ),
     )
     tfidf_vectorizer_path_ja: str = Field(
         "data/tfidf_vectorizer_ja.joblib",
         description="Path to the Japanese TF-IDF vectorizer",
-        validation_alias=AliasChoices("RECAP_TFIDF_VECTORIZER_PATH_JA", "RECAP_SUBWORKER_TFIDF_VECTORIZER_PATH_JA"),
+        validation_alias=AliasChoices(
+            "RECAP_TFIDF_VECTORIZER_PATH_JA", "RECAP_SUBWORKER_TFIDF_VECTORIZER_PATH_JA"
+        ),
     )
     tfidf_vectorizer_path_en: str = Field(
         "data/tfidf_vectorizer_en.joblib",
         description="Path to the English TF-IDF vectorizer",
-        validation_alias=AliasChoices("RECAP_TFIDF_VECTORIZER_PATH_EN", "RECAP_SUBWORKER_TFIDF_VECTORIZER_PATH_EN"),
+        validation_alias=AliasChoices(
+            "RECAP_TFIDF_VECTORIZER_PATH_EN", "RECAP_SUBWORKER_TFIDF_VECTORIZER_PATH_EN"
+        ),
     )
     genre_subworker_threshold_overrides: str = Field(
         "{}",
@@ -594,32 +740,60 @@ class Settings(BaseSettings):
     enable_sudachi_preprocessing: bool = Field(
         False,
         description="Enable Sudachi morphological normalization for text preprocessing (experimental, may reduce readability)",
-        validation_alias=AliasChoices("RECAP_ENABLE_SUDACHI_PREPROCESSING", "RECAP_SUBWORKER_ENABLE_SUDACHI_PREPROCESSING"),
+        validation_alias=AliasChoices(
+            "RECAP_ENABLE_SUDACHI_PREPROCESSING", "RECAP_SUBWORKER_ENABLE_SUDACHI_PREPROCESSING"
+        ),
     )
     genre_dedup_thresholds: str = Field(
         "{}",
         description="JSON string mapping genres to custom deduplication threshold values (overrides base threshold and classifier-based adjustments)",
-        validation_alias=AliasChoices("RECAP_GENRE_DEDUP_THRESHOLDS", "RECAP_SUBWORKER_GENRE_DEDUP_THRESHOLDS"),
+        validation_alias=AliasChoices(
+            "RECAP_GENRE_DEDUP_THRESHOLDS", "RECAP_SUBWORKER_GENRE_DEDUP_THRESHOLDS"
+        ),
     )
     classification_backend: Literal["joblib", "learning_machine"] = Field(
         "joblib",
         description="Classification backend: 'joblib' for traditional classifier, 'learning_machine' for student models",
-        validation_alias=AliasChoices("RECAP_CLASSIFICATION_BACKEND", "RECAP_SUBWORKER_CLASSIFICATION_BACKEND"),
+        validation_alias=AliasChoices(
+            "RECAP_CLASSIFICATION_BACKEND", "RECAP_SUBWORKER_CLASSIFICATION_BACKEND"
+        ),
+    )
+    genre_baseline_cardinality: int = Field(
+        15,
+        ge=0,
+        description=(
+            "Minimum classifier.classes_ cardinality enforced at boot. "
+            "ADR-000835 stage 3: fail-closed when a retrain regressed below this. "
+            "Set to 30 once the JA model is retrained on the full taxonomy; "
+            "set to 0 to disable the check during recovery."
+        ),
+        validation_alias=AliasChoices(
+            "RECAP_GENRE_BASELINE_CARDINALITY",
+            "RECAP_SUBWORKER_GENRE_BASELINE_CARDINALITY",
+        ),
     )
     learning_machine_student_ja_dir: str | None = Field(
         "recap_subworker/learning_machine/artifacts/student/v0_ja",
         description="Path to Japanese student model directory (required when classification_backend='learning_machine')",
-        validation_alias=AliasChoices("RECAP_LEARNING_MACHINE_STUDENT_JA_DIR", "RECAP_SUBWORKER_LEARNING_MACHINE_STUDENT_JA_DIR"),
+        validation_alias=AliasChoices(
+            "RECAP_LEARNING_MACHINE_STUDENT_JA_DIR",
+            "RECAP_SUBWORKER_LEARNING_MACHINE_STUDENT_JA_DIR",
+        ),
     )
     learning_machine_student_en_dir: str | None = Field(
         "recap_subworker/learning_machine/artifacts/student/v0_en",
         description="Path to English student model directory (optional, fallback to JA if not set)",
-        validation_alias=AliasChoices("RECAP_LEARNING_MACHINE_STUDENT_EN_DIR", "RECAP_SUBWORKER_LEARNING_MACHINE_STUDENT_EN_DIR"),
+        validation_alias=AliasChoices(
+            "RECAP_LEARNING_MACHINE_STUDENT_EN_DIR",
+            "RECAP_SUBWORKER_LEARNING_MACHINE_STUDENT_EN_DIR",
+        ),
     )
     learning_machine_taxonomy_path: str | None = Field(
         "recap_subworker/learning_machine/taxonomy/genres.yaml",
         description="Path to genres.yaml taxonomy file (default: recap_subworker/learning_machine/taxonomy/genres.yaml)",
-        validation_alias=AliasChoices("RECAP_LEARNING_MACHINE_TAXONOMY_PATH", "RECAP_SUBWORKER_LEARNING_MACHINE_TAXONOMY_PATH"),
+        validation_alias=AliasChoices(
+            "RECAP_LEARNING_MACHINE_TAXONOMY_PATH", "RECAP_SUBWORKER_LEARNING_MACHINE_TAXONOMY_PATH"
+        ),
     )
 
     @property
@@ -637,7 +811,7 @@ class Settings(BaseSettings):
                 if isinstance(value, (int, float)) and 0.0 <= float(value) <= 1.0:
                     result[str(genre)] = float(value)
             return result
-        except (json.JSONDecodeError, ValueError, TypeError):
+        except json.JSONDecodeError, ValueError, TypeError:
             return {}
 
 
