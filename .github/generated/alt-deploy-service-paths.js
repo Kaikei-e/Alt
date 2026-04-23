@@ -83,4 +83,10 @@ const SERVICE_PATHS = {
     'e2e/fixtures/acolyte-orchestrator/',
     'compose/acolyte.yaml',
   ],
+  'knowledge-sovereign': [
+    'knowledge-sovereign/',
+    'e2e/hurl/knowledge-sovereign/',
+    'e2e/fixtures/knowledge-sovereign/',
+    'compose/sovereign.yaml',
+  ],
 };

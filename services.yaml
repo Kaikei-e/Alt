@@ -67,6 +67,9 @@ services:
   - name: acolyte-orchestrator
     kind: pacticipant
     compose_files: [acolyte.yaml]
+  - name: knowledge-sovereign
+    kind: pacticipant
+    compose_files: [sovereign.yaml]
 
   # --- Runtime images built via docker-build but not Pact pacticipants ---
   - name: alt-frontend-sv
@@ -80,8 +83,6 @@ services:
   - name: rask-log-forwarder
     kind: runtime
   - name: pki-agent
-    kind: runtime
-  - name: knowledge-sovereign
     kind: runtime
   - name: dashboard
     kind: runtime

@@ -84,6 +84,7 @@ jobs:
             "news-creator"
             "tag-generator"
             "acolyte-orchestrator"
+            "knowledge-sovereign"
             # --- Additional runtime services used by compose ---
             "alt-frontend-sv"
             "pre-processor-sidecar"
@@ -91,7 +92,6 @@ jobs:
             "rask-log-aggregator"
             "rask-log-forwarder"
             "pki-agent"
-            "knowledge-sovereign"
             "dashboard"
           )
           # <<<SERVICES-REGISTRY-END>>>

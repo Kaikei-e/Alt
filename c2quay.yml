@@ -52,5 +52,6 @@ environments:
       news-creator:         { pacticipant: news-creator }
       tag-generator:        { pacticipant: tag-generator }
       acolyte-orchestrator: { pacticipant: acolyte-orchestrator }
+      knowledge-sovereign:  { pacticipant: knowledge-sovereign }
       tts-speaker:          { pacticipant: tts-speaker }
       # <<<SERVICES-REGISTRY-END>>>

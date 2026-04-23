@@ -307,12 +307,14 @@ need_tool() {
 # had (one per lang × role combination).
 STEPS_CONSUMER=(
   "Go: alt-backend consumer|go|alt-backend/app|CGO_ENABLED=1 go test -tags=contract ./driver/preprocessor_connect/contract/ -v"
+  "Go: alt-backend sovereign consumer|go|alt-backend/app|CGO_ENABLED=1 go test -tags=contract ./driver/sovereign_client/contract/ -v"
   "Go: pre-processor consumer|go|pre-processor/app|CGO_ENABLED=1 go test -tags=contract ./driver/contract/ -v"
   "Go: rag-orchestrator consumer|go|rag-orchestrator|CGO_ENABLED=1 go test -tags=contract ./internal/adapter/contract/ -v"
   "Go: search-indexer consumer|go|search-indexer/app|CGO_ENABLED=1 go test -tags=contract ./driver/contract/ -v"
   "Go: mq-hub consumer|go|mq-hub/app|CGO_ENABLED=1 go test -tags=contract ./driver/contract/ -v"
   "Go: alt-butterfly-facade consumer|go|alt-butterfly-facade|CGO_ENABLED=1 go test -tags=contract ./internal/handler/contract/ -v"
   "Go: auth-hub consumer|go|auth-hub|CGO_ENABLED=1 go test -tags=contract ./internal/adapter/gateway/contract/ -v"
+  "Go: altctl sovereign consumer|go|altctl|CGO_ENABLED=1 go test -tags=contract ./internal/sovereignclient/contract/ -v"
   "Rust: recap-worker consumer|cargo|recap-worker/recap-worker|cargo test --lib contract -- --ignored"
   "Python: recap-evaluator consumer|uv|recap-evaluator|uv run pytest tests/contract/ -v --no-cov"
 )
@@ -326,6 +328,7 @@ STEPS_PROVIDER=(
   "Go: search-indexer provider|go|search-indexer/app|CGO_ENABLED=1 go test -tags=contract -run TestVerifySearchIndexerProviderContracts ./driver/contract/ -v"
   "Go: pre-processor provider|go|pre-processor/app|CGO_ENABLED=1 go test -tags=contract -run TestVerifyAltBackendContract ./driver/contract/ -v"
   "Go: mq-hub provider (search-indexer message pact)|go|mq-hub/app|CGO_ENABLED=1 go test -tags=contract -run TestVerifySearchIndexerMqHubMessagePact ./driver/contract/ -v"
+  "Go: knowledge-sovereign provider|go|knowledge-sovereign/app|CGO_ENABLED=1 go test -tags=contract ./driver/contract/ -v"
   "Rust: recap-worker provider|cargo|recap-worker/recap-worker|cargo test --test provider_verification -- --ignored"
 )
 
@@ -421,7 +424,7 @@ if [[ "$MODE" == "broker" && "$ROLE_FILTER" != "provider" && "$MANUAL_ONLY" != "
   }
 
   declare -a FILES_TO_PUBLISH=()
-  for pact_file in alt-backend/pacts/*.json pacts/*.json rag-orchestrator/pacts/*.json; do
+  for pact_file in alt-backend/pacts/*.json pacts/*.json rag-orchestrator/pacts/*.json altctl/pacts/*.json; do
     [ -f "$pact_file" ] || continue
     CONSUMER=$(jq -r '.consumer.name' "$pact_file")
     PROVIDER=$(jq -r '.provider.name' "$pact_file")
