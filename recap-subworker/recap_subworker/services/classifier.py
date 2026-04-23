@@ -335,4 +335,37 @@ class GenreClassifierService:
             total_seconds=round(embed_elapsed + predict_elapsed, 2),
         )
 
+        try:
+            per_genre_probs: dict[str, list[float]] = {}
+            for probs in probs_batch:
+                for cls, prob in zip(classes, probs, strict=False):
+                    per_genre_probs.setdefault(str(cls), []).append(float(prob))
+            histogram = {
+                cls: {
+                    "mean": float(np.mean(values)),
+                    "max": float(np.max(values)),
+                    "p90": float(np.quantile(values, 0.9)),
+                    "count_above_threshold": int(
+                        sum(
+                            1
+                            for v in values
+                            if v >= self.current_thresholds.get(cls, 0.5)
+                        )
+                    ),
+                }
+                for cls, values in per_genre_probs.items()
+            }
+            logger.info(
+                "classifier proba histogram",
+                total_texts=total_texts,
+                thresholds_file=str(self.thresholds_path)
+                if getattr(self, "thresholds_path", None)
+                else None,
+                histogram=histogram,
+            )
+        except Exception as exc:
+            logger.warning(
+                "failed to emit classifier diagnostic histogram", error=str(exc)
+            )
+
         return results
