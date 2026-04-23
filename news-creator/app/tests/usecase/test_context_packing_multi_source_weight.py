@@ -41,7 +41,9 @@ def test_same_source_twice_does_not_boost():
     )
 
     solo = usecase._score_sentence_for_packing(sent_a, [sent_a])
-    same_domain_cluster = usecase._score_sentence_for_packing(sent_a, [sent_a, sent_dup])
+    same_domain_cluster = usecase._score_sentence_for_packing(
+        sent_a, [sent_a, sent_dup]
+    )
 
     assert same_domain_cluster == solo, (
         "same-domain duplicates should not count as multi-source corroboration"
