@@ -179,7 +179,8 @@ type KnowledgeLoopSessionState struct {
 
 	ProjectionRevision   int64 `json:"projection_revision" db:"projection_revision"`
 	ProjectionSeqHiwater int64 `json:"projection_seq_hiwater" db:"projection_seq_hiwater"`
-	projectedAt          time.Time
+	// Note: projected_at is not mirrored into alt-backend domain.
+	// It is owned by knowledge-sovereign (sovereign_db) and never crosses the RPC boundary.
 }
 
 // KnowledgeLoopSurface describes a per-bucket surface summary.
@@ -195,7 +196,8 @@ type KnowledgeLoopSurface struct {
 	ProjectionRevision   int64     `json:"projection_revision" db:"projection_revision"`
 	ProjectionSeqHiwater int64     `json:"projection_seq_hiwater" db:"projection_seq_hiwater"`
 	FreshnessAt          time.Time `json:"freshness_at" db:"freshness_at"`
-	projectedAt          time.Time
+	// Note: projected_at is not mirrored into alt-backend domain.
+	// It is owned by knowledge-sovereign (sovereign_db) and never crosses the RPC boundary.
 
 	ServiceQuality LoopServiceQuality `json:"service_quality" db:"service_quality"`
 	LoopHealth     []byte             `json:"loop_health,omitempty" db:"loop_health"`
