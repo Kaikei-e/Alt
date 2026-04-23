@@ -24,6 +24,7 @@ describe("LoopEntryTile source hygiene", () => {
 	});
 
 	it("emits an aria-label carrying the loop priority so assistive tech can read it", () => {
-		expect(tileSource).toMatch(/aria-label=\{priorityAriaLabel\}/);
+		expect(tileSource).toMatch(/aria-label=\{ariaDescription\}/);
+		expect(tileSource).toMatch(/Priority:\s*\$\{priorityLabel\}/);
 	});
 });

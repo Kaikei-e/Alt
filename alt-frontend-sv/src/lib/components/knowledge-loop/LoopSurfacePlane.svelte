@@ -1,56 +1,90 @@
 <script lang="ts">
 	/**
-	 * Spatial surface plane container.
-	 *
-	 * Per ADR-000831 and docs/plan/knowledge-loop-canonical-contract.md §4.3 and §12:
-	 *   - Depth lives on tiles, not on glyphs. This container provides a Z-layered frame;
-	 *     text inside MUST stay flat.
-	 *   - prefers-reduced-motion: reduce → Z movement / parallax are disabled and the tile
-	 *     stack falls back to opacity / highlight fade. CSS handles this automatically.
+	 * A single "plane" on the Knowledge Loop page. Alt-Paper renders planes
+	 * as section bands — a monospace plane label, a thin rule, then the
+	 * entries. No drop shadows; tonal hierarchy between foreground / mid
+	 * context / deep focus is carried by subtle background + saturation
+	 * shifts (ADR-000831 §12).
 	 */
 
 	type Plane = "foreground" | "mid-context" | "deep-focus";
 
 	let {
 		plane = "foreground" as Plane,
+		label,
+		caption,
 		children,
 	}: {
 		plane?: Plane;
+		label: string;
+		caption?: string;
 		children?: import("svelte").Snippet;
 	} = $props();
 </script>
 
-<section class="surface-plane" data-plane={plane} aria-label={`Knowledge Loop ${plane} plane`}>
-	{#if children}
-		{@render children()}
-	{/if}
+<section
+	class="plane"
+	data-plane={plane}
+	aria-label="Knowledge Loop {plane} plane"
+>
+	<header class="plane-head">
+		<span class="plane-label">{label}</span>
+		{#if caption}
+			<span class="plane-caption">{caption}</span>
+		{/if}
+	</header>
+	<div class="plane-rule" aria-hidden="true"></div>
+	<div class="plane-body">
+		{#if children}
+			{@render children()}
+		{/if}
+	</div>
 </section>
 
 <style>
-	.surface-plane {
+	.plane {
 		display: grid;
-		gap: var(--space-md, 1rem);
-		padding: var(--space-md, 1rem);
-		transform: translateZ(0); /* force compositor layer without parallax */
+		gap: 0.55rem;
+		margin-bottom: 1.8rem;
 	}
-	.surface-plane[data-plane="foreground"] {
-		--plane-brightness: 1;
-		--plane-saturation: 1;
+	.plane-head {
+		display: flex;
+		align-items: baseline;
+		justify-content: space-between;
+		gap: 1rem;
 	}
-	.surface-plane[data-plane="mid-context"] {
-		--plane-brightness: 0.92;
-		--plane-saturation: 0.85;
-		filter: brightness(var(--plane-brightness)) saturate(var(--plane-saturation));
+	.plane-label {
+		font-family: var(--font-body, "Source Sans 3", system-ui, sans-serif);
+		font-size: 0.6rem;
+		font-weight: 700;
+		letter-spacing: 0.16em;
+		text-transform: uppercase;
+		color: var(--alt-charcoal, #1a1a1a);
 	}
-	.surface-plane[data-plane="deep-focus"] {
-		--plane-brightness: 0.98;
-		--plane-saturation: 1.05;
+	.plane-caption {
+		font-family: var(--font-mono, "IBM Plex Mono", ui-monospace, monospace);
+		font-size: 0.65rem;
+		color: var(--alt-ash, #999);
+	}
+	.plane-rule {
+		height: 1px;
+		background: var(--surface-border, #c8c8c8);
+	}
+	.plane-body {
+		display: grid;
+		gap: 0.7rem;
+	}
+
+	.plane[data-plane="mid-context"] {
+		filter: saturate(0.94);
+	}
+	.plane[data-plane="deep-focus"] {
+		filter: saturate(1.02);
 	}
 
 	@media (prefers-reduced-motion: reduce) {
-		.surface-plane {
-			/* Reduced motion: no Z offsets, no parallax. Depth is signalled by subtle
-			   brightness/saturation only. */
+		.plane[data-plane="mid-context"],
+		.plane[data-plane="deep-focus"] {
 			filter: none;
 		}
 	}
