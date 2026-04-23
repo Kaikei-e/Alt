@@ -1,164 +1,166 @@
 ---
 name: immutable-design-guard
 description: |
-  Knowledge Home のイミュータブルデータモデル不変条件をチェックする。
-  knowledge_events, projector, reproject, summary_versions, tag_set_versions,
-  knowledge_home_items, today_digest_view, recall_candidate_view に関わる変更で使う。
-user-invocable: false
+  Audits code, schema, and migrations for violations of immutable data-model invariants:
+  append-first event log, reproject-safe projectors, disposable read models, versioned
+  artifacts, merge-safe upserts, and no business-fact `time.Now()`.
+  Use when changing migrations, projectors, event handlers, append-only stores, or any
+  read model derived from events; or when the user mentions
+  "イミュータブル", "event sourcing", "projector", "reproject", "append-only",
+  "projection", "read model", or kawasima's resource/event modeling.
+user-invocable: true
 allowed-tools: Bash, Read, Glob, Grep, mcp__obsidian__view
+paths:
+  - "migrations-atlas/migrations/**/*.sql"
+  - "**/*projector*.go"
+  - "**/*projector*.rs"
+  - "**/*projector*.py"
+  - "**/*event*store*.go"
+  - "**/*event*store*.rs"
+  - "**/*reproject*.go"
+  - "**/*_repository.go"
 ---
 
 # Immutable Design Guard
 
-Knowledge Home の変更が、[kawasima のイミュータブルデータモデル](https://scrapbox.io/kawasima/%E3%82%A4%E3%83%9F%E3%83%A5%E3%83%BC%E3%82%BF%E3%83%96%E3%83%AB%E3%83%87%E3%83%BC%E3%82%BF%E3%83%A2%E3%83%87%E3%83%AB)の考え方と
-Alt の canonical contract を壊していないか確認するためのガード。
+Append-only event store とそこから派生する projection / read model を持つ任意の
+サブシステムに対して、イミュータブルデータモデル不変条件を監査する。
 
-見るべき中心原則:
+このスキルは特定サービスに縛られない。Knowledge Home / Knowledge Loop /
+Acolyte パイプライン / その他の event-sourced 領域すべてに同じ語彙で適用する。
+固有テーブル名やドメイン語彙はリファレンスにケーススタディとして閉じ込める。
 
-- UPDATE を安易に増やさない
-- 事実は event として残す
-- projector は disposable projection を作るだけに寄せる
-- projection は source of truth に昇格させない
-- 再投影で同じ結果に戻れることを優先する
+## いつ使うか
 
-## 先に読む文書
+- migration / projector / event handler / read model コードを変更したとき
+- レビュー対象が CQRS / event sourcing 風のサブシステムに触れているとき
+- ユーザが「イミュータブル」「reproject」「projection」「event sourcing」
+  「append-only」「read model」と言ったとき
+- 新しい event 種別 / projection table / version 管理を追加するとき
+- 別サービスやサブモジュールに同じ観点を移植したいとき
 
-必要な節だけ読む。
+## いつ使わないか
 
-| 文書 | 目的 |
-|---|---|
-| `docs/plan/IMPL_BASE.md` | append-first / reproject-safe / projection 原則 |
-| `docs/plan/knowledge-home-phase0-canonical-contract.md` | allowed why code と read contract |
-| `docs/review/knowledge-home-phase1-5-remediation-directives-2026-03-18.md` | 既知の未達と是正方針 |
-| 関連 ADR | 例外が ADR 化されているか確認 |
+- ステートレスな pure function / 計算ロジックの review
+- キャッシュ層（TTL ベース）の review（reproject の概念と独立）
+- 単純な CRUD アプリで append-only の前提がない領域
 
-## チェックリスト
+## 監査ワークフロー
 
-### 1. Append-first
+進行中は次のチェックリストを応答にコピーして埋める。
 
-- [ ] `knowledge_events` は INSERT only か
-- [ ] 状態変化を event append で表現しているか
-- [ ] `dedupe_key` などの冪等性が保たれているか
-
-確認例:
-
-```bash
-grep -rn "UPDATE.*knowledge_events\\|DELETE.*knowledge_events" alt-backend/app/
+```
+Audit Progress:
+- [ ] 1. 対象スコープを 1 行ずつ列挙
+- [ ] 2. 適用される不変条件を選ぶ
+- [ ] 3. 違反候補を grep / read で抽出
+- [ ] 4. kawasima 観点と一般理論で裏取り
+- [ ] 5. 違反を分類して報告
+- [ ] 6. escape hatch (ADR / canonical contract) を確認
 ```
 
-### 2. Resource / Event の分離
+### Step 1: 対象スコープを特定
 
-kawasima 理論では、まず resource と event を分ける。  
-日時を持つ業務アクティビティは event として表現する。
+影響する以下を 1 行ずつ書き出す。
 
-- [ ] 「更新日時が欲しい」という要求の背後に、抽出漏れの event がないか
-- [ ] resource の変更を 1 本の mutable row に押し込めていないか
-- [ ] hidden event を read model の `updated_at` でごまかしていないか
+- event store table
+- projection / read model table
+- projector / reproject 実装ファイル
+- event 発行箇所（write path）
+- 影響する migration
 
-危険サイン:
+### Step 2: 不変条件をマッピング
 
-- `status` と `updated_at` だけを追加して業務変化を表現しようとする
-- `XxxUpdated` を generic に増やして意味の違う変更を 1 event に押し込む
+[references/alt-invariants.md](references/alt-invariants.md) の 10 項目から
+今回の変更に該当するものを選ぶ。**全部書かない**。今回効くものだけ。
 
-### 3. Event は 1 つの業務時刻に寄せる
+### Step 3: 違反候補を抽出
 
-kawasima 理論では、event entity は原則として 1 つの日時属性に寄せる。  
-Alt では event source と projection を区別して考える。
+[references/check-recipes.md](references/check-recipes.md) の言語別
+grep / ripgrep レシピを実行。Go / Rust / Python / SQL / proto それぞれにレシピがある。
 
-- [ ] source-of-truth の event payload が単一の業務事実を表しているか
-- [ ] projector が `time.Now()` ではなく `event.OccurredAt` や payload 時刻で再生できるか
-- [ ] 1 event に複数の意味の異なる時刻を持ち込み、更新ルールを増やしていないか
+### Step 4: 理論で裏取り
 
-補足:
+- 自然な resource / event 切り分けが崩れていないか →
+  [references/kawasima-theory.md](references/kawasima-theory.md)
+- event sourcing 一般のアンチパターンを踏んでいないか →
+  [references/event-sourcing-patterns.md](references/event-sourcing-patterns.md)
 
-- projection の `generated_at` / `updated_at` は read model 運用上あってよい
-- ただし business fact の再現にそれらを使ってはいけない
+### Step 5: 違反を分類して報告
 
-確認例:
+下の出力テンプレで報告する。`どの原則を破っているか` は次節の名前で参照する。
 
-```bash
-grep -rn "time.Now()" alt-backend/app/job/knowledge_projector*.go
-```
+### Step 6: escape hatch を確認
 
-### 4. Reproject-safe
+例外が必要であれば、対応する ADR か canonical contract 文書への
+**明示反映**を要求する。skill 単独で例外を許容しない。
 
-- [ ] projector が event payload と安定 resource から read model を再構築できるか
-- [ ] projector 内で latest state や active projection を暗黙に読んでいないか
-- [ ] replay 順序が変わっても最終結果が壊れないか
+## コア原則 (1 行で)
 
-確認例:
+これらは `references/alt-invariants.md` で詳細化される正規定義。
+報告では必ずこの名前で参照する。
 
-```bash
-grep -rn "GetLatest\\|FindCurrent\\|SELECT.*FROM.*knowledge_home_items" \
-  alt-backend/app/job/knowledge_projector*.go \
-  alt-backend/app/usecase/*knowledge*projector*.go
-```
+- **Append-first event log** — state は event の蓄積。`UPDATE` を増やしたく
+  なったら hidden event を疑う。
+- **Resource / Event 分離** — 日時を持つのは event のみ。resource に
+  `updated_at` を生やすのは hidden event のサイン。
+- **Event-time purity** — business-fact 時刻は event の `occurred_at` から
+  派生。`time.Now()` / `NOW()` は debug の `projected_at` のみ、API 非露出。
+- **Reproject-safe projector** — projector は event payload と stable な
+  versioned resource だけから read model を再構築できる。latest state や
+  active projection を読まない。
+- **Disposable projection** — read model は捨てて再生成できる。source of
+  truth に昇格させない。write path から read model を直接 mutate しない。
+- **Versioned artifacts** — summary / tag / lens 等は version append のみ。
+  event は stable な version id を参照し、reproject 時に同じ版を再現できる。
+- **Merge-safe upsert** — projection の更新は monotonic + COALESCE 保持。
+  `GREATEST(0, current + delta)` 等で負数を防ぐ。SQL `CASE` ロジックで
+  business 判定を持ち込まない。
+- **Single emission** — 同一ユーザ意図で複数 event を出さない。重複は
+  `client_transition_id` 等の idempotency key で防ぐ。
+- **Dedupe ≠ projection** — idempotency barrier は ingest 上流。
+  reproject で touch しない。
+- **Why as first-class** — 提案 / 選別 / 抑制の理由を構造化 payload として
+  event / projection に保持する。後付けで再現できないものは event に書く。
 
-### 5. Projection is disposable
+## 出力テンプレート
 
-- [ ] `knowledge_home_items` / `today_digest_view` / `recall_candidate_view` を正本扱いしていないか
-- [ ] write path が read model を直接 mutate していないか
-- [ ] reproject / shadow version 中でも意味が壊れないか
-
-危険サイン:
-
-- tracking usecase から projection table を直接更新する
-- `projection_version` を無視した update を足す
-- projector lag を write path の副作用更新で隠す
-
-### 6. Versioned artifacts / versioned projections
-
-- [ ] summary/tag は version append で表現しているか
-- [ ] projection の更新は `projection_version` を意識しているか
-- [ ] active/shadow 両方を誤って一括更新していないか
-
-確認例:
-
-```bash
-grep -rn "UPDATE.*summary_versions.*SET\\|UPDATE.*tag_set_versions.*SET" alt-backend/app/
-grep -rn "projection_version" alt-backend/app/
-```
-
-### 7. Why as first-class
-
-- [ ] Home item の `why_json` は許可コードだけを使っているか
-- [ ] why の意味が summary/tag/supersede 状態と矛盾していないか
-- [ ] why merge が既存理由を壊していないか
-
-許可コード:
-
-- `new_unread`
-- `in_weekly_recap`
-- `pulse_need_to_know`
-- `tag_hotspot`
-- `recent_interest_match`
-- `related_to_recent_search`
-- `summary_completed`
-
-### 8. Merge-safe upsert
-
-- [ ] `summary_state` は逆行しないか
-- [ ] `dismissed_at` は通常 upsert で解除されないか
-- [ ] `why_json` は code 単位で merge されるか
-- [ ] supersede 情報が後続更新で消えないか
-
-## 違反を見つけたら
-
-次の形式で短く報告する。
+違反は次の形式で報告する。
 
 ```markdown
 ## Immutable Design Findings
 
-1. [重大度] 何が不変条件に反するか
-   - 該当箇所: path:line
-   - 破っている原則: append-first / reproject-safe / versioned projection など
-   - なぜ危険か: 再投影不能、shadow 汚染、意味論崩壊など
-   - 代替案: event append / projector fix / contract update
+### 1. [Severity: high|medium|low] <一行サマリ>
+- 該当箇所: `path/to/file.go:42` (該当する場合は migration / proto / SQL も)
+- 破っている原則: <Append-first | Resource/Event 分離 | Event-time purity | …>
+- なぜ危険か: <reproject 不能 / shadow 汚染 / 意味論崩壊 / 監査不能 など>
+- 代替案: <event append への置換 / projector fix / contract への明示化>
+- 既知の類例: <該当する violation-examples / postmortem があれば>
 ```
 
 ルール:
 
-- まず違反を指摘する
-- 次に、どの原則に反するかを名前で示す
-- 代替案は event-first に寄せる
+- まず違反を指摘する（解説から始めない）
+- どの原則に反するかを上記の名前で示す
+- 代替案は event-first / append-first に寄せる
 - 例外が必要なら ADR か canonical contract への明示反映を求める
+- 重大度は **再投影できなくなるか** を基準にする:
+  - high: replay 順序を変えると結果が変わる / source of truth が壊れる
+  - medium: 1 種類の event を後から復元できない / projection に business
+    判定が入る
+  - low: 命名 / 一貫性 / drift しやすい構造（即破綻はしない）
+
+## 参照
+
+進行中、必要なものだけ読む。**全部読まない**。
+
+- [references/alt-invariants.md](references/alt-invariants.md)
+  — Alt の 10 個の正規 invariant 定義
+- [references/kawasima-theory.md](references/kawasima-theory.md)
+  — Resource/Event 分離と隠れた event の発見
+- [references/event-sourcing-patterns.md](references/event-sourcing-patterns.md)
+  — Pat Helland / Greg Young / Property Sourcing 系アンチパターン
+- [references/check-recipes.md](references/check-recipes.md)
+  — 言語別 grep / ripgrep レシピ
+- [references/violation-examples.md](references/violation-examples.md)
+  — 既知違反パターンと是正例
