@@ -117,6 +117,46 @@ func TestProjectLoopEvent_NoUserIDIsNoOp(t *testing.T) {
 	require.Empty(t, repo.session)
 }
 
+// TestProjectLoopEvent_SummaryVersionCreated_SeedsDecisionOptions verifies the Observe-stage
+// CTA seed introduced in PR-L1 for the OODA UI wiring. A source_why entry (e.g. from
+// SummaryVersionCreated) gets the four default intents (open/ask/save/snooze) so the
+// /loop UI can render Decide-stage CTAs without reading stale projection state.
+func TestProjectLoopEvent_SummaryVersionCreated_SeedsDecisionOptions(t *testing.T) {
+	repo := &fakeLoopRepo{}
+	userID := uuid.New()
+	ev := makeLoopEvent(t, domain.EventSummaryVersionCreated, 400, userID)
+
+	_, err := projectLoopEvent(context.Background(), ev, repo, repo, repo)
+	require.NoError(t, err)
+	require.Len(t, repo.entries, 1)
+
+	entry := repo.entries[0]
+	require.Equal(t, domain.WhyKindSource, entry.WhyKind)
+	require.NotEmpty(t, entry.DecisionOptions, "source_why entry must have CTA seed")
+
+	var seeded []map[string]string
+	require.NoError(t, json.Unmarshal(entry.DecisionOptions, &seeded))
+	intents := make([]string, 0, len(seeded))
+	for _, s := range seeded {
+		intents = append(intents, s["intent"])
+	}
+	require.Equal(t, []string{"open", "ask", "save", "snooze"}, intents)
+}
+
+// TestProjectLoopEvent_HomeItemDismissed_NoDecisionSeed documents the narrowing: entries
+// that have already been dismissed do not get a fresh CTA seed on projection.
+func TestProjectLoopEvent_HomeItemDismissed_NoDecisionSeed(t *testing.T) {
+	repo := &fakeLoopRepo{}
+	userID := uuid.New()
+	ev := makeLoopEvent(t, domain.EventHomeItemDismissed, 410, userID)
+
+	_, err := projectLoopEvent(context.Background(), ev, repo, repo, repo)
+	require.NoError(t, err)
+	require.Len(t, repo.entries, 1)
+	require.Empty(t, repo.entries[0].DecisionOptions,
+		"Dismissed entries should not get a fresh CTA seed")
+}
+
 // TestProjectLoopEvent_HomeItemSupersededSetsPointer checks supersede pointer handling.
 func TestProjectLoopEvent_HomeItemSupersededSetsPointer(t *testing.T) {
 	repo := &fakeLoopRepo{}
