@@ -132,7 +132,7 @@ describe("/loop/transition +server.ts", () => {
 		expect(res.status).toBe(409);
 	});
 
-	it("502 on unknown upstream failure", async () => {
+	it("502 upstream_unreachable on bare Error (fetch TypeError / no ConnectError code)", async () => {
 		vi.mocked(transitionKnowledgeLoopForUser).mockRejectedValue(
 			new Error("network unreachable"),
 		);
@@ -148,5 +148,75 @@ describe("/loop/transition +server.ts", () => {
 			},
 		});
 		expect(res.status).toBe(502);
+		const body = await res.json();
+		expect(body).toEqual({ error: "upstream_unreachable" });
+	});
+
+	it.each([
+		["internal", 500, "upstream_internal"],
+		["unavailable", 502, "upstream_unavailable"],
+		["deadline_exceeded", 504, "timeout"],
+		["resource_exhausted", 429, "rate_limited"],
+		["unknown", 502, "upstream_unreachable"],
+	] as const)("maps Connect-RPC code %s → HTTP %i (%s)", async (code, expectedStatus, expectedError) => {
+		vi.mocked(transitionKnowledgeLoopForUser).mockRejectedValue(
+			Object.assign(new Error(code), { code }),
+		);
+		const res = await invoke({
+			body: {
+				lensModeId: "default",
+				clientTransitionId: "0193c8e5-7d6c-7c4a-b000-000000000010",
+				entryKey: "article:42",
+				fromStage: "observe",
+				toStage: "orient",
+				trigger: "user_tap",
+				observedProjectionRevision: 1,
+			},
+		});
+		expect(res.status).toBe(expectedStatus);
+		const body = await res.json();
+		expect(body).toEqual({ error: expectedError });
+	});
+
+	it("401 unauthorized on ConnectError code=unauthenticated", async () => {
+		vi.mocked(transitionKnowledgeLoopForUser).mockRejectedValue(
+			Object.assign(new Error("unauthenticated"), { code: "unauthenticated" }),
+		);
+		const res = await invoke({
+			body: {
+				lensModeId: "default",
+				clientTransitionId: "0193c8e5-7d6c-7c4a-b000-000000000011",
+				entryKey: "article:42",
+				fromStage: "observe",
+				toStage: "orient",
+				trigger: "user_tap",
+				observedProjectionRevision: 1,
+			},
+		});
+		expect(res.status).toBe(401);
+		const body = await res.json();
+		expect(body).toEqual({ error: "unauthorized" });
+	});
+
+	it("400 invalid_argument on ConnectError code=invalid_argument", async () => {
+		vi.mocked(transitionKnowledgeLoopForUser).mockRejectedValue(
+			Object.assign(new Error("invalid_argument"), {
+				code: "invalid_argument",
+			}),
+		);
+		const res = await invoke({
+			body: {
+				lensModeId: "default",
+				clientTransitionId: "0193c8e5-7d6c-7c4a-b000-000000000012",
+				entryKey: "article:42",
+				fromStage: "observe",
+				toStage: "orient",
+				trigger: "user_tap",
+				observedProjectionRevision: 1,
+			},
+		});
+		expect(res.status).toBe(400);
+		const body = await res.json();
+		expect(body).toEqual({ error: "invalid_argument" });
 	});
 });

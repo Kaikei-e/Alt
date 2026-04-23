@@ -4,17 +4,24 @@
  * The SvelteKit browser side never talks to alt-backend directly; it posts to this
  * route, which attaches locals.backendToken and calls the Connect-RPC client.
  *
- * Error mapping (see Connect-RPC idiom):
- *   - missing token     → 401
- *   - bad body / forbidden transition / non-UUIDv7 → 400
- *   - sovereign replay (AlreadyExists)             → 200 { accepted: true, replay: true }
- *   - stale projection (FailedPrecondition)        → 409
- *   - anything else                                  → 502
+ * Error mapping aligns with the Connect-RPC protocol (connectrpc.com/docs/protocol#error-codes):
+ *   - missing token                                  → 401 unauthenticated
+ *   - bad body / forbidden transition / non-UUIDv7   → 400 invalid_body
+ *   - already_exists (sovereign replay)              → 200 { accepted: true, replay: true }
+ *   - failed_precondition (stale projection)         → 409
+ *   - invalid_argument                               → 400
+ *   - unauthenticated / permission_denied            → 401
+ *   - deadline_exceeded                              → 504
+ *   - resource_exhausted                             → 429
+ *   - unavailable                                    → 502 upstream_unavailable
+ *   - internal                                       → 500 upstream_internal
+ *   - anything else / fetch TypeError                → 502 upstream_unreachable
  */
 
 import { json, type RequestHandler } from "@sveltejs/kit";
 import { transitionKnowledgeLoopForUser } from "$lib/server/knowledge-loop-api";
 import { canTransition } from "$lib/hooks/loop-transitions";
+import { extractConnectCode } from "$lib/connect/error";
 import type { LoopStageName } from "$lib/connect/knowledge_loop";
 
 type Trigger = "user_tap" | "dwell" | "keyboard" | "programmatic";
@@ -74,14 +81,6 @@ function parseBody(raw: unknown): TransitionBody | null {
 	};
 }
 
-function extractCode(err: unknown): string | undefined {
-	if (err && typeof err === "object" && "code" in err) {
-		const c = (err as { code: unknown }).code;
-		return typeof c === "string" ? c.toLowerCase() : undefined;
-	}
-	return undefined;
-}
-
 export const POST: RequestHandler = async ({ request, locals }) => {
 	const backendToken = locals.backendToken;
 	if (!backendToken) {
@@ -108,19 +107,31 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 			message: resp.message,
 		});
 	} catch (err) {
-		const code = extractCode(err);
-		if (code === "already_exists") {
-			return json({ accepted: true, replay: true });
+		const code = extractConnectCode(err);
+		switch (code) {
+			case "already_exists":
+				return json({ accepted: true, replay: true });
+			case "failed_precondition":
+				return json({ error: "projection_stale" }, { status: 409 });
+			case "invalid_argument":
+				return json({ error: "invalid_argument" }, { status: 400 });
+			case "unauthenticated":
+			case "permission_denied":
+				return json({ error: "unauthorized" }, { status: 401 });
+			case "deadline_exceeded":
+				return json({ error: "timeout" }, { status: 504 });
+			case "resource_exhausted":
+				return json({ error: "rate_limited" }, { status: 429 });
+			case "unavailable":
+				return json({ error: "upstream_unavailable" }, { status: 502 });
+			case "internal":
+				return json({ error: "upstream_internal" }, { status: 500 });
+			default:
+				// unknown / canceled / not_found / aborted / out_of_range / data_loss /
+				// unimplemented / bare Error (fetch TypeError, DNS, ECONNREFUSED without
+				// Connect wire-format response): surface as unreachable so the client
+				// can decide between retrying with backoff (2xx-eventually) or failing.
+				return json({ error: "upstream_unreachable" }, { status: 502 });
 		}
-		if (code === "failed_precondition") {
-			return json({ error: "projection_stale" }, { status: 409 });
-		}
-		if (code === "invalid_argument") {
-			return json({ error: "invalid_argument" }, { status: 400 });
-		}
-		if (code === "unauthenticated" || code === "permission_denied") {
-			return json({ error: "unauthorized" }, { status: 401 });
-		}
-		return json({ error: "upstream_failure" }, { status: 502 });
 	}
 };
