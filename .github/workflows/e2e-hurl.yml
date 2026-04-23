@@ -28,6 +28,7 @@ on:
       - 'rag-orchestrator/**'
       - 'rag-migration-atlas/**'
       - 'rag-db/**'
+      - 'knowledge-sovereign/**'
       - 'compose/compose.staging.yaml'
       - 'compose/news-creator-ollama-stub/**'
       - 'e2e/hurl/alt-backend/**'
@@ -38,6 +39,7 @@ on:
       - 'e2e/hurl/acolyte-orchestrator/**'
       - 'e2e/hurl/auth-hub/**'
       - 'e2e/hurl/rag-orchestrator/**'
+      - 'e2e/hurl/knowledge-sovereign/**'
       - 'e2e/fixtures/alt-backend/**'
       - 'e2e/fixtures/mq-hub/**'
       - 'e2e/fixtures/tag-generator/**'
@@ -67,6 +69,7 @@ on:
       - 'rag-orchestrator/**'
       - 'rag-migration-atlas/**'
       - 'rag-db/**'
+      - 'knowledge-sovereign/**'
       - 'compose/compose.staging.yaml'
       - 'compose/news-creator-ollama-stub/**'
       - 'e2e/hurl/alt-backend/**'
@@ -77,6 +80,7 @@ on:
       - 'e2e/hurl/acolyte-orchestrator/**'
       - 'e2e/hurl/auth-hub/**'
       - 'e2e/hurl/rag-orchestrator/**'
+      - 'e2e/hurl/knowledge-sovereign/**'
       - 'e2e/fixtures/alt-backend/**'
       - 'e2e/fixtures/mq-hub/**'
       - 'e2e/fixtures/tag-generator/**'
@@ -524,6 +528,58 @@ jobs:
         with:
           name: rag-orchestrator-hurl-reports
           path: e2e/reports/rag-orchestrator-*
+          if-no-files-found: ignore
+
+      - name: Tear down alt-staging stack
+        if: always()
+        run: |
+          docker compose -f compose/compose.staging.yaml -p alt-staging \
+            down -v --remove-orphans || true
+
+  knowledge-sovereign:
+    name: knowledge-sovereign Hurl suite
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build knowledge-sovereign image locally (tag `ci`)
+        run: |
+          docker build \
+            -t ghcr.io/kaikei-e/alt-knowledge-sovereign:ci \
+            -f knowledge-sovereign/Dockerfile.sovereign \
+            knowledge-sovereign
+
+      - name: Pre-pull Hurl image
+        run: docker pull ghcr.io/orange-opensource/hurl:7.1.0
+
+      - name: Run knowledge-sovereign Hurl suite
+        env:
+          IMAGE_TAG: ci
+          GHCR_OWNER: kaikei-e
+          HURL_IMAGE: ghcr.io/orange-opensource/hurl:7.1.0
+          KEEP_STACK: 1
+        run: bash e2e/hurl/knowledge-sovereign/run.sh
+
+      - name: Dump alt-staging logs on failure
+        if: failure()
+        run: |
+          # knowledge-sovereign's profile-gated services aren't surfaced by
+          # `docker compose logs` without the profile flag. Go through
+          # docker logs on the explicit container names instead.
+          echo "===== docker ps -a ====="
+          docker ps -a --filter "name=alt-staging-" || true
+          for svc in knowledge-sovereign knowledge-sovereign-db knowledge-sovereign-db-migrator; do
+            echo "===== alt-staging-$svc logs (tail=500) ====="
+            docker logs --tail=500 "alt-staging-$svc" 2>&1 || true
+          done
+
+      - name: Upload Hurl reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: knowledge-sovereign-hurl-reports
+          path: e2e/reports/knowledge-sovereign-*
           if-no-files-found: ignore
 
       - name: Tear down alt-staging stack
