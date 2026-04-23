@@ -1,0 +1,416 @@
+{
+  "consumer": {
+    "name": "altctl"
+  },
+  "interactions": [
+    {
+      "description": "a latest snapshot query",
+      "providerStates": [
+        {
+          "name": "at least one snapshot exists"
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "path": "/admin/snapshots/latest"
+      },
+      "response": {
+        "body": {
+          "CreatedAt": "2026-04-23T00:00:00Z",
+          "DedupesChecksum": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+          "EventSeqBoundary": 1,
+          "ItemsChecksum": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "SnapshotID": "11111111-2222-3333-4444-555555555555",
+          "VersionsChecksum": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "matchingRules": {
+          "body": {
+            "$.CreatedAt": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.DedupesChecksum": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "^sha256:[0-9a-f]{64}$"
+                }
+              ]
+            },
+            "$.EventSeqBoundary": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.ItemsChecksum": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "^sha256:[0-9a-f]{64}$"
+                }
+              ]
+            },
+            "$.SnapshotID": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "^[0-9a-f]{8}-([0-9a-f]{4}-){3}[0-9a-f]{12}$"
+                }
+              ]
+            },
+            "$.VersionsChecksum": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "^sha256:[0-9a-f]{64}$"
+                }
+              ]
+            }
+          }
+        },
+        "status": 200
+      }
+    },
+    {
+      "description": "a retention dry-run request",
+      "providerStates": [
+        {
+          "name": "retention policies are configured"
+        }
+      ],
+      "request": {
+        "body": {
+          "dry_run": true
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "matchingRules": {
+          "body": {
+            "$.dry_run": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            }
+          }
+        },
+        "method": "POST",
+        "path": "/admin/retention/run"
+      },
+      "response": {
+        "body": {
+          "actions": [
+            {
+              "action": "would_archive",
+              "partition_name": "knowledge_events_y2025m01",
+              "table": "knowledge_events"
+            }
+          ],
+          "dry_run": true
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "matchingRules": {
+          "body": {
+            "$.actions": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type",
+                  "min": 1
+                }
+              ]
+            },
+            "$.actions[*].action": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.actions[*].partition_name": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.actions[*].table": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.dry_run": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            }
+          }
+        },
+        "status": 200
+      }
+    },
+    {
+      "description": "a retention eligible query",
+      "providerStates": [
+        {
+          "name": "retention policies are configured"
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "path": "/admin/retention/eligible"
+      },
+      "response": {
+        "body": [
+          {
+            "EventSeqMax": 1,
+            "PartitionName": "knowledge_events_y2025m01",
+            "Table": "knowledge_events"
+          }
+        ],
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "matchingRules": {
+          "body": {
+            "$": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type",
+                  "min": 1
+                }
+              ]
+            },
+            "$[*].EventSeqMax": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$[*].PartitionName": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$[*].Table": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            }
+          }
+        },
+        "status": 200
+      }
+    },
+    {
+      "description": "a snapshot create request",
+      "providerStates": [
+        {
+          "name": "an admin operator has snapshot authority"
+        }
+      ],
+      "request": {
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "method": "POST",
+        "path": "/admin/snapshots/create"
+      },
+      "response": {
+        "body": {
+          "CreatedAt": "2026-04-23T00:00:00Z",
+          "DedupesChecksum": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+          "EventSeqBoundary": 1,
+          "ItemsChecksum": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "SnapshotID": "11111111-2222-3333-4444-555555555555",
+          "VersionsChecksum": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "matchingRules": {
+          "body": {
+            "$.CreatedAt": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.DedupesChecksum": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "^sha256:[0-9a-f]{64}$"
+                }
+              ]
+            },
+            "$.EventSeqBoundary": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.ItemsChecksum": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "^sha256:[0-9a-f]{64}$"
+                }
+              ]
+            },
+            "$.SnapshotID": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "^[0-9a-f]{8}-([0-9a-f]{4}-){3}[0-9a-f]{12}$"
+                }
+              ]
+            },
+            "$.VersionsChecksum": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "^sha256:[0-9a-f]{64}$"
+                }
+              ]
+            }
+          }
+        },
+        "status": 200
+      }
+    },
+    {
+      "description": "a snapshot list query",
+      "providerStates": [
+        {
+          "name": "at least one snapshot exists"
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "path": "/admin/snapshots/list"
+      },
+      "response": {
+        "body": [
+          {
+            "CreatedAt": "2026-04-23T00:00:00Z",
+            "EventSeqBoundary": 1,
+            "ItemsChecksum": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "SnapshotID": "11111111-2222-3333-4444-555555555555"
+          }
+        ],
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "matchingRules": {
+          "body": {
+            "$": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type",
+                  "min": 1
+                }
+              ]
+            },
+            "$[*].CreatedAt": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$[*].EventSeqBoundary": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$[*].ItemsChecksum": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "^sha256:[0-9a-f]{64}$"
+                }
+              ]
+            },
+            "$[*].SnapshotID": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "^[0-9a-f]{8}-([0-9a-f]{4}-){3}[0-9a-f]{12}$"
+                }
+              ]
+            }
+          }
+        },
+        "status": 200
+      }
+    }
+  ],
+  "metadata": {
+    "pact-go": {
+      "version": "2.4.3"
+    },
+    "pactRust": {
+      "ffi": "0.4.28",
+      "mockserver": "1.2.16",
+      "models": "1.3.5"
+    },
+    "pactSpecification": {
+      "version": "3.0.0"
+    }
+  },
+  "provider": {
+    "name": "knowledge-sovereign"
+  }
+}
