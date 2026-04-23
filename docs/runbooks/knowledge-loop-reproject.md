@@ -1,7 +1,7 @@
 ---
 title: Knowledge Loop Reproject Runbook
 date: 2026-04-23
-status: proposed
+status: accepted
 tags:
   - runbook
   - knowledge-loop
