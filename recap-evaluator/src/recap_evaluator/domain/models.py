@@ -158,6 +158,13 @@ class SummaryMetrics:
     faithfulness_score: float = 0.0
     hallucination_rate: float = 0.0
 
+    # Morning-letter quality axes (0-1 except readability which is 1-5)
+    fallback_rate: float = 0.0
+    json_repair_rate: float = 0.0
+    redundancy_score: float = 0.0
+    readability_score: float = 0.0
+    source_grounding_score: float = 0.0
+
     # Composite score (0-1 scale)
     overall_quality_score: float = 0.0
 
@@ -181,6 +188,11 @@ class SummaryMetrics:
             "bertscore_f1": self.bertscore_f1,
             "faithfulness_score": self.faithfulness_score,
             "hallucination_rate": self.hallucination_rate,
+            "fallback_rate": self.fallback_rate,
+            "json_repair_rate": self.json_repair_rate,
+            "redundancy_score": self.redundancy_score,
+            "readability_score": self.readability_score,
+            "source_grounding_score": self.source_grounding_score,
             "overall_quality_score": self.overall_quality_score,
             "sample_count": self.sample_count,
             "success_count": self.success_count,

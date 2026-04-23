@@ -13,7 +13,12 @@ from recap_evaluator.config import AlertThresholds, EvaluatorWeights, Settings
 from recap_evaluator.domain.models import AlertLevel, SummaryMetrics
 from recap_evaluator.evaluator.bertscore import BERTScoreEvaluator
 from recap_evaluator.evaluator.faithfulness import FaithfulnessEvaluator
+from recap_evaluator.evaluator.fallback_rate import FallbackRateEvaluator
+from recap_evaluator.evaluator.json_repair_rate import JsonRepairRateEvaluator
+from recap_evaluator.evaluator.readability import ReadabilityEvaluator
+from recap_evaluator.evaluator.redundancy import RedundancyEvaluator
 from recap_evaluator.evaluator.rouge import ROUGEEvaluator
+from recap_evaluator.evaluator.source_grounding import SourceGroundingEvaluator
 from recap_evaluator.gateway.ollama_gateway import OllamaGateway
 from recap_evaluator.port.database_port import DatabasePort
 
@@ -43,6 +48,11 @@ class SummaryEvaluator:
         self._rouge = rouge or ROUGEEvaluator()
         self._bertscore = bertscore or BERTScoreEvaluator()
         self._faithfulness = faithfulness or FaithfulnessEvaluator()
+        self._fallback = FallbackRateEvaluator()
+        self._json_repair = JsonRepairRateEvaluator()
+        self._redundancy = RedundancyEvaluator(rouge=self._rouge)
+        self._readability = ReadabilityEvaluator(ollama)
+        self._source_grounding = SourceGroundingEvaluator()
         self._executor = executor or ThreadPoolExecutor(
             max_workers=settings.evaluation_thread_pool_size
         )
@@ -54,11 +64,13 @@ class SummaryEvaluator:
         sample_per_job: int = 3,
     ) -> SummaryMetrics:
         all_eval_items: list[tuple[str, str]] = []
+        all_outputs_flat: list[dict[str, Any]] = []
 
         for job_id in job_ids:
             outputs = await self._db.fetch_outputs(job_id)
             if not outputs:
                 continue
+            all_outputs_flat.extend(outputs)
 
             articles = await self._db.fetch_job_articles(job_id)
             sampled_outputs = random.sample(outputs, min(sample_per_job, len(outputs)))
@@ -77,7 +89,7 @@ class SummaryEvaluator:
         if len(all_eval_items) > self._sample_size:
             all_eval_items = random.sample(all_eval_items, self._sample_size)
 
-        if not all_eval_items:
+        if not all_eval_items and not all_outputs_flat:
             logger.warning("No summaries found for batch evaluation")
             return SummaryMetrics()
 
@@ -87,7 +99,13 @@ class SummaryEvaluator:
             job_count=len(job_ids),
         )
 
-        metrics = await self._run_multi_evaluation(all_eval_items)
+        if all_eval_items:
+            metrics = await self._run_multi_evaluation(all_eval_items)
+        else:
+            metrics = SummaryMetrics(sample_count=0, success_count=0)
+
+        await self._apply_morning_letter_axes(metrics, all_outputs_flat)
+
         metrics.alert_level = self._determine_alert_level(metrics)
 
         logger.info(
@@ -193,6 +211,55 @@ class SummaryEvaluator:
         except Exception as e:
             logger.error("Faithfulness evaluation failed", error=str(e))
             return {}
+
+    async def _apply_morning_letter_axes(
+        self, metrics: SummaryMetrics, outputs: list[dict[str, Any]]
+    ) -> None:
+        if not outputs:
+            return
+
+        metrics.fallback_rate = self._fallback.compute(outputs)
+        metrics.json_repair_rate = self._json_repair.compute(outputs)
+        metrics.source_grounding_score = self._source_grounding.compute_batch(outputs)
+
+        per_output_redundancy: list[float] = []
+        for output in outputs:
+            bullet_texts = self._extract_bullet_texts(output)
+            if len(bullet_texts) >= 2:
+                per_output_redundancy.append(self._redundancy.compute(bullet_texts))
+        metrics.redundancy_score = (
+            sum(per_output_redundancy) / len(per_output_redundancy)
+            if per_output_redundancy
+            else 0.0
+        )
+
+        summaries = [
+            output.get("summary_ja", "")
+            for output in outputs
+            if output.get("summary_ja")
+        ]
+        if summaries:
+            try:
+                metrics.readability_score = await self._readability.evaluate_batch(
+                    summaries[: self._sample_size]
+                )
+            except Exception as exc:
+                logger.warning("readability batch evaluation failed", error=str(exc))
+                metrics.readability_score = 0.0
+
+    @staticmethod
+    def _extract_bullet_texts(output: dict[str, Any]) -> list[str]:
+        body = output.get("body_json") or {}
+        bullets = body.get("bullets") or []
+        texts: list[str] = []
+        for bullet in bullets:
+            if isinstance(bullet, str):
+                texts.append(bullet)
+            elif isinstance(bullet, dict):
+                text = bullet.get("text")
+                if isinstance(text, str):
+                    texts.append(text)
+        return texts
 
     def _split_to_sentences(self, text: str) -> list[str]:
         pattern = r"(?<=[.!?。！？])\s*"

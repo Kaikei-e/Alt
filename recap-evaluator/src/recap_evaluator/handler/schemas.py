@@ -137,6 +137,11 @@ class SummaryMetricsResponse(BaseModel):
     bertscore_f1: float = 0.0
     faithfulness_score: float = 0.0
     hallucination_rate: float = 0.0
+    fallback_rate: float = 0.0
+    json_repair_rate: float = 0.0
+    redundancy_score: float = 0.0
+    readability_score: float = 0.0
+    source_grounding_score: float = 0.0
     overall_quality_score: float = 0.0
     sample_count: int
     success_count: int
@@ -158,6 +163,11 @@ class SummaryMetricsResponse(BaseModel):
             bertscore_f1=round(m.bertscore_f1, 4),
             faithfulness_score=round(m.faithfulness_score, 4),
             hallucination_rate=round(m.hallucination_rate, 4),
+            fallback_rate=round(m.fallback_rate, 4),
+            json_repair_rate=round(m.json_repair_rate, 4),
+            redundancy_score=round(m.redundancy_score, 4),
+            readability_score=round(m.readability_score, 3),
+            source_grounding_score=round(m.source_grounding_score, 4),
             overall_quality_score=round(m.overall_quality_score, 4),
             sample_count=m.sample_count,
             success_count=m.success_count,
