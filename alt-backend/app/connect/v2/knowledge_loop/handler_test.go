@@ -1,12 +1,20 @@
 package knowledge_loop
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
+	"log/slog"
+	"net"
 	"testing"
 	"time"
 
+	"connectrpc.com/connect"
+
 	"alt/domain"
 	loopv1 "alt/gen/proto/alt/knowledge/loop/v1"
+	"alt/port/knowledge_loop_port"
+	"alt/usecase/knowledge_loop_usecase"
 
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
@@ -133,6 +141,119 @@ func TestToProtoEntry_MalformedBlobIsTolerated(t *testing.T) {
 	pb := toProtoEntry(in)
 	require.Nil(t, pb.ChangeSummary)
 	require.Empty(t, pb.DecisionOptions)
+}
+
+// ---------------------------------------------------------------------------
+// TransitionKnowledgeLoop error-classification tests
+//
+// Ensures the handler maps usecase error sentinels to distinct Connect-RPC codes
+// (per connectrpc.com/docs/protocol#error-codes) so the SvelteKit BFF can map
+// each to a meaningful HTTP status rather than collapsing everything into 502.
+// ---------------------------------------------------------------------------
+
+type fakeDedupePort struct {
+	err error
+}
+
+func (f *fakeDedupePort) ReserveTransitionIdempotency(
+	_ context.Context,
+	_ uuid.UUID,
+	_ string,
+) (bool, *knowledge_loop_port.CachedTransitionResponse, error) {
+	if f.err != nil {
+		return false, nil, f.err
+	}
+	return true, nil, nil
+}
+
+func newTransitionHandlerWithDedupeErr(t *testing.T, dedupeErr error) *Handler {
+	t.Helper()
+	// nowFunc uses real time so UUIDv7 embedded timestamps pass ValidateClientTransitionID.
+	uc := knowledge_loop_usecase.NewTransitionKnowledgeLoopUsecase(&fakeDedupePort{err: dedupeErr}, time.Now)
+	return NewHandler(nil, uc, slog.Default())
+}
+
+func authedContextForHandlerTests(t *testing.T) context.Context {
+	t.Helper()
+	user := &domain.UserContext{
+		UserID:    uuid.New(),
+		TenantID:  uuid.New(),
+		Email:     "test@example.com",
+		Role:      domain.UserRoleUser,
+		SessionID: "sess-test",
+		LoginAt:   time.Now().Add(-time.Minute),
+		ExpiresAt: time.Now().Add(time.Hour),
+	}
+	return domain.SetUserContext(context.Background(), user)
+}
+
+// validTransitionRequest builds a request that passes validators; the dedupe port
+// decides whether Execute succeeds or fails.
+func validTransitionRequest(t *testing.T) *connect.Request[loopv1.TransitionKnowledgeLoopRequest] {
+	t.Helper()
+	id, err := uuid.NewV7()
+	require.NoError(t, err)
+	return connect.NewRequest(&loopv1.TransitionKnowledgeLoopRequest{
+		LensModeId:                 "default",
+		ClientTransitionId:         id.String(),
+		EntryKey:                   "article:42",
+		FromStage:                  loopv1.LoopStage_LOOP_STAGE_OBSERVE,
+		ToStage:                    loopv1.LoopStage_LOOP_STAGE_ORIENT,
+		Trigger:                    loopv1.TransitionTrigger_TRANSITION_TRIGGER_USER_TAP,
+		ObservedProjectionRevision: 1,
+	})
+}
+
+func TestTransitionKnowledgeLoop_ReturnsUnavailable_OnUpstreamUnavailable(t *testing.T) {
+	h := newTransitionHandlerWithDedupeErr(
+		t,
+		// simulated driver failure: sovereign dial fails
+		&net.OpError{Op: "dial", Net: "tcp", Err: errors.New("connection refused")},
+	)
+	_, err := h.TransitionKnowledgeLoop(authedContextForHandlerTests(t), validTransitionRequest(t))
+	require.Error(t, err)
+	var ce *connect.Error
+	require.ErrorAs(t, err, &ce)
+	require.Equal(t, connect.CodeUnavailable, ce.Code(), "net.OpError must map to CodeUnavailable")
+}
+
+func TestTransitionKnowledgeLoop_ReturnsDeadlineExceeded_OnContextDeadline(t *testing.T) {
+	h := newTransitionHandlerWithDedupeErr(t, context.DeadlineExceeded)
+	_, err := h.TransitionKnowledgeLoop(authedContextForHandlerTests(t), validTransitionRequest(t))
+	require.Error(t, err)
+	var ce *connect.Error
+	require.ErrorAs(t, err, &ce)
+	require.Equal(t, connect.CodeDeadlineExceeded, ce.Code())
+}
+
+func TestTransitionKnowledgeLoop_ReturnsInternal_OnOpaqueError(t *testing.T) {
+	h := newTransitionHandlerWithDedupeErr(t, errors.New("opaque boom"))
+	_, err := h.TransitionKnowledgeLoop(authedContextForHandlerTests(t), validTransitionRequest(t))
+	require.Error(t, err)
+	var ce *connect.Error
+	require.ErrorAs(t, err, &ce)
+	require.Equal(t, connect.CodeInternal, ce.Code())
+}
+
+func TestTransitionKnowledgeLoop_ReturnsInvalidArgument_OnValidator(t *testing.T) {
+	// No dedupe error; fail at validation instead.
+	h := newTransitionHandlerWithDedupeErr(t, nil)
+	req := validTransitionRequest(t)
+	req.Msg.EntryKey = "has space" // keyFormat regexp rejects
+	_, err := h.TransitionKnowledgeLoop(authedContextForHandlerTests(t), req)
+	require.Error(t, err)
+	var ce *connect.Error
+	require.ErrorAs(t, err, &ce)
+	require.Equal(t, connect.CodeInvalidArgument, ce.Code())
+}
+
+func TestTransitionKnowledgeLoop_ReturnsUnauthenticated_OnMissingUser(t *testing.T) {
+	h := newTransitionHandlerWithDedupeErr(t, nil)
+	_, err := h.TransitionKnowledgeLoop(context.Background(), validTransitionRequest(t))
+	require.Error(t, err)
+	var ce *connect.Error
+	require.ErrorAs(t, err, &ce)
+	require.Equal(t, connect.CodeUnauthenticated, ce.Code())
 }
 
 // baseEntry returns a minimal valid domain entry used by toProtoEntry tests.

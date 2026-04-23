@@ -105,11 +105,20 @@ func (h *Handler) TransitionKnowledgeLoop(
 
 	result, err := h.transitionUsecase.Execute(ctx, in)
 	if err != nil {
-		if errors.Is(err, knowledge_loop_usecase.ErrInvalidArgument) {
+		switch {
+		case errors.Is(err, knowledge_loop_usecase.ErrInvalidArgument):
 			return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("invalid argument"))
+		case errors.Is(err, context.DeadlineExceeded):
+			return nil, connect.NewError(connect.CodeDeadlineExceeded, errors.New("deadline exceeded"))
+		case errors.Is(err, context.Canceled):
+			return nil, connect.NewError(connect.CodeCanceled, errors.New("canceled"))
+		case errors.Is(err, knowledge_loop_usecase.ErrUpstreamUnavailable):
+			h.logger.WarnContext(ctx, "transition_knowledge_loop upstream unavailable", "err", err)
+			return nil, connect.NewError(connect.CodeUnavailable, errors.New("upstream unavailable"))
+		default:
+			h.logger.ErrorContext(ctx, "transition_knowledge_loop failed", "err", err)
+			return nil, connect.NewError(connect.CodeInternal, errors.New("internal"))
 		}
-		h.logger.ErrorContext(ctx, "transition_knowledge_loop failed", "err", err)
-		return nil, connect.NewError(connect.CodeInternal, errors.New("internal"))
 	}
 
 	resp := &loopv1.TransitionKnowledgeLoopResponse{

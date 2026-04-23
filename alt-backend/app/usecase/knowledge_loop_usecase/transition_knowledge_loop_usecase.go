@@ -72,7 +72,7 @@ func (u *TransitionKnowledgeLoopUsecase) Execute(ctx context.Context, in Transit
 
 	reserved, cached, err := u.dedupePort.ReserveTransitionIdempotency(ctx, in.UserID, in.ClientTransitionID)
 	if err != nil {
-		return nil, fmt.Errorf("transition_knowledge_loop: reserve idempotency: %w", err)
+		return nil, fmt.Errorf("transition_knowledge_loop: reserve idempotency: %w", ClassifyDriverError(err))
 	}
 	if !reserved {
 		msg := "duplicate client_transition_id; returning cached response"
