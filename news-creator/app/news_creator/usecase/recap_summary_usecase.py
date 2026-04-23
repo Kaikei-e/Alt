@@ -114,6 +114,53 @@ class RecapSummaryUsecase:
         window_days = getattr(request, "window_days", None)
         return isinstance(window_days, int) and window_days <= 3
 
+    def _max_cluster_section_length(self, request: RecapSummaryRequest) -> int:
+        return 8_000 if self._is_3days_request(request) else 12_000
+
+    _NUMERIC_PACKING_PATTERN = re.compile(
+        r"(?:\d+(?:[.,]\d+)?\s*(?:%|％|円|ドル|億|千|百|兆|USD|JPY))"
+        r"|(?:\$\s*\d+(?:[.,]\d+)?)"
+        r"|(?:\b\d{4}[-/年]\d{1,2}[-/月]\d{1,2}(?:日)?\b)"
+        r"|(?:\b\d{1,4}年\d{1,2}月\b)"
+        r"|(?:\d+(?:\.\d+)?\s*%)",
+    )
+
+    @staticmethod
+    def _source_domain(url: Optional[str]) -> Optional[str]:
+        if not url:
+            return None
+        try:
+            parsed = urlparse(url if "://" in url else f"https://{url}")
+            return parsed.netloc or None
+        except Exception:
+            return None
+
+    def _score_sentence_for_packing(
+        self,
+        sentence: RepresentativeSentence,
+        cluster_sentences: List[RepresentativeSentence],
+    ) -> float:
+        score = 1.0
+        if getattr(sentence, "is_centroid", False):
+            score += 2.0
+
+        text = getattr(sentence, "text", "") or ""
+        if self._NUMERIC_PACKING_PATTERN.search(text):
+            score += 1.0
+
+        own_domain = self._source_domain(getattr(sentence, "source_url", None))
+        other_domains = {
+            self._source_domain(getattr(s, "source_url", None))
+            for s in cluster_sentences
+            if s is not sentence
+        }
+        other_domains.discard(None)
+        other_domains.discard(own_domain)
+        if own_domain and other_domains:
+            score += 0.5
+
+        return score
+
     def _resolve_generation_temperature(self, request: RecapSummaryRequest) -> float:
         if request.options and request.options.temperature is not None:
             return float(request.options.temperature)
@@ -1324,15 +1371,7 @@ class RecapSummaryUsecase:
         max_bullets: int,
         intermediate: bool = False,
     ) -> Tuple[str, str]:
-        # Truncate cluster section to fit within context window
-        # Context window is 12K (default) or 60K tokens, configured in entrypoint.sh and config.py
-        # Model routing automatically selects 12K or 60K based on input size
-        # Reserve ~1K tokens for prompt template and safety margin
-        # Using conservative 12K chars (~3K tokens) for faster LLM inference
-        # Larger inputs will trigger hierarchical (map-reduce) summarization
-        MAX_CLUSTER_SECTION_LENGTH = (
-            12_000  # characters (~3K tokens, reduced from 50K for faster processing)
-        )
+        MAX_CLUSTER_SECTION_LENGTH = self._max_cluster_section_length(request)
 
         max_clusters = max(3, min(len(request.clusters), max_bullets + 2))
         cluster_lines: List[str] = []
