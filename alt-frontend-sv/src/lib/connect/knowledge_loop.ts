@@ -15,6 +15,8 @@ import {
 	type SurfaceState as ProtoSurfaceState,
 	type StreamKnowledgeLoopUpdatesResponse,
 	type TransitionKnowledgeLoopResponse,
+	ActTargetType,
+	DecisionIntent,
 	DismissState,
 	LoopPriority,
 	LoopStage,
@@ -40,6 +42,47 @@ export interface WhyPayloadData {
 	evidenceRefs: Array<{ refId: string; label: string }>;
 }
 
+export type DecisionIntentName =
+	| "open"
+	| "ask"
+	| "save"
+	| "compare"
+	| "revisit"
+	| "snooze"
+	| "unspecified";
+
+export type ActTargetTypeName =
+	| "article"
+	| "ask"
+	| "recap"
+	| "diff"
+	| "cluster"
+	| "unspecified";
+
+export interface ChangeSummaryData {
+	summary: string;
+	changedFields: string[];
+	previousEntryKey?: string;
+}
+
+export interface ContinueContextData {
+	summary: string;
+	recentActionLabels: string[];
+	lastInteractedAt?: string;
+}
+
+export interface DecisionOptionData {
+	actionId: string;
+	intent: DecisionIntentName;
+	label?: string;
+}
+
+export interface ActTargetData {
+	targetType: ActTargetTypeName;
+	targetRef: string;
+	route?: string;
+}
+
 export interface KnowledgeLoopEntryData {
 	entryKey: string;
 	sourceItemKey: string;
@@ -54,6 +97,10 @@ export interface KnowledgeLoopEntryData {
 	renderDepthHint: 1 | 2 | 3 | 4;
 	loopPriority: LoopPriorityName;
 	supersededByEntryKey?: string;
+	changeSummary?: ChangeSummaryData;
+	continueContext?: ContinueContextData;
+	decisionOptions: DecisionOptionData[];
+	actTargets: ActTargetData[];
 }
 
 export interface KnowledgeLoopSessionStateData {
@@ -161,6 +208,32 @@ function mapProtoEntry(e: ProtoKnowledgeLoopEntry): KnowledgeLoopEntryData {
 		renderDepthHint: mapDepthHintFromProto(e.renderDepthHint),
 		loopPriority: mapPriorityFromProto(e.loopPriority),
 		supersededByEntryKey: e.supersededByEntryKey,
+		changeSummary: e.changeSummary
+			? {
+					summary: e.changeSummary.summary,
+					changedFields: [...e.changeSummary.changedFields],
+					previousEntryKey: e.changeSummary.previousEntryKey,
+				}
+			: undefined,
+		continueContext: e.continueContext
+			? {
+					summary: e.continueContext.summary,
+					recentActionLabels: [...e.continueContext.recentActionLabels],
+					lastInteractedAt: e.continueContext.lastInteractedAt
+						? tsToIso(e.continueContext.lastInteractedAt)
+						: undefined,
+				}
+			: undefined,
+		decisionOptions: (e.decisionOptions ?? []).map((o) => ({
+			actionId: o.actionId,
+			intent: mapDecisionIntentFromProto(o.intent),
+			label: o.label,
+		})),
+		actTargets: (e.actTargets ?? []).map((t) => ({
+			targetType: mapActTargetTypeFromProto(t.targetType),
+			targetRef: t.targetRef,
+			route: t.route,
+		})),
 	};
 }
 
@@ -278,6 +351,42 @@ function mapPriorityFromProto(p: LoopPriority): LoopPriorityName {
 			return "reference";
 		default:
 			return "reference";
+	}
+}
+
+function mapDecisionIntentFromProto(i: DecisionIntent): DecisionIntentName {
+	switch (i) {
+		case DecisionIntent.OPEN:
+			return "open";
+		case DecisionIntent.ASK:
+			return "ask";
+		case DecisionIntent.SAVE:
+			return "save";
+		case DecisionIntent.COMPARE:
+			return "compare";
+		case DecisionIntent.REVISIT:
+			return "revisit";
+		case DecisionIntent.SNOOZE:
+			return "snooze";
+		default:
+			return "unspecified";
+	}
+}
+
+function mapActTargetTypeFromProto(t: ActTargetType): ActTargetTypeName {
+	switch (t) {
+		case ActTargetType.ARTICLE:
+			return "article";
+		case ActTargetType.ASK:
+			return "ask";
+		case ActTargetType.RECAP:
+			return "recap";
+		case ActTargetType.DIFF:
+			return "diff";
+		case ActTargetType.CLUSTER:
+			return "cluster";
+		default:
+			return "unspecified";
 	}
 }
 
