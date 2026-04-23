@@ -22,6 +22,7 @@ import {
 	ShieldCheck,
 	Sparkles,
 	Tag,
+	Workflow,
 } from "@lucide/svelte";
 import type { IconProps } from "@lucide/svelte";
 import type { Component } from "svelte";
@@ -104,6 +105,7 @@ export const MOBILE_MENU_SECTIONS: MobileMenuSection[] = [
 				icon: MessagesSquare,
 			},
 			{ label: "Acolyte Reports", href: "/acolyte", icon: ScrollText },
+			{ label: "Knowledge Loop", href: "/loop", icon: Workflow },
 			{ label: "Statistics", href: "/stats", icon: BarChart3 },
 			{ label: "Daily Pulse", href: "/dashboard", icon: Sparkles },
 		],
