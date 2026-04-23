@@ -42,6 +42,7 @@ impl ClusteringOps<'_> {
 
         let genre_timeout = self.config.clustering_genre_timeout();
         let stuck_threshold = Some(self.config.clustering_stuck_threshold());
+        let article_count = evidence.articles.len();
         let mut clustering_response = timeout(
             genre_timeout,
             self.subworker_client.cluster_corpus_with_timeout(
@@ -52,8 +53,13 @@ impl ClusteringOps<'_> {
             ),
         )
         .await
-        .context("clustering timeout")?
-        .context("clustering failed")?;
+        .with_context(|| {
+            format!(
+                "clustering timeout: genre={genre} articles={article_count} timeout_s={}",
+                genre_timeout.as_secs()
+            )
+        })?
+        .with_context(|| format!("clustering failed: genre={genre} articles={article_count}"))?;
 
         // Fallback: If clustering succeeded but returned NO clusters (e.g. all noise),
         // we force a fallback response using the evidence corpus.

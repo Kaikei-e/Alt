@@ -363,7 +363,13 @@ impl PersistStage for FinalSectionPersistStage {
                 .summary
                 .bullets
                 .iter()
-                .map(|bullet| json!({ "text": bullet, "sources": top_sources }))
+                .map(|bullet| {
+                    json!({
+                        "text": bullet,
+                        "sources": top_sources,
+                        "source_sentence_ids": Vec::<i64>::new(),
+                    })
+                })
                 .collect::<Vec<_>>();
             let bullets_json = serde_json::Value::Array(bullet_values);
 
