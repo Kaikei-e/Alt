@@ -92,10 +92,7 @@ impl ComponentRegistry {
                 client,
             )?
         } else {
-            NewsCreatorClient::new(
-                config.news_creator_base_url(),
-                config.llm_summary_timeout(),
-            )?
+            NewsCreatorClient::new(config.news_creator_base_url(), config.llm_summary_timeout())?
         });
 
         let subworker_client = Arc::new(if let Some(paths) = mtls_paths.as_ref() {

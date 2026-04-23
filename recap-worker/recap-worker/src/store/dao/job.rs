@@ -266,10 +266,7 @@ impl RecapDao {
     /// は死んでいる** ので、in-flight だった Job は定義上全て orphan。
     /// `keep_job_id` を指定するとそのジョブだけは sweep 対象から外す
     /// (resume 候補として残しておくため)。
-    pub async fn mark_abandoned_jobs(
-        pool: &PgPool,
-        keep_job_id: Option<Uuid>,
-    ) -> Result<u64> {
+    pub async fn mark_abandoned_jobs(pool: &PgPool, keep_job_id: Option<Uuid>) -> Result<u64> {
         let result = match keep_job_id {
             Some(keep) => {
                 sqlx::query(

@@ -140,8 +140,7 @@ impl<'a> SummaryRequestBuilder<'a> {
             })
             .collect();
 
-        let genre_highlights =
-            Self::convert_genre_highlights(clustering, article_metadata);
+        let genre_highlights = Self::convert_genre_highlights(clustering, article_metadata);
 
         SummaryRequest {
             job_id,

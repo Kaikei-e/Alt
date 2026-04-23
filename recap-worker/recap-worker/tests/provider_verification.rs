@@ -63,16 +63,14 @@ fn stub_router() -> Router {
         )
         .route(
             "/v1/evaluation/genres/{run_id}",
-            get(
-                |Path(run_id): Path<i64>| async move {
-                    Json(json!({
-                        "run_id": run_id,
-                        "status": "succeeded",
-                        "accuracy": 0.85,
-                        "macro_f1": 0.82,
-                    }))
-                },
-            ),
+            get(|Path(run_id): Path<i64>| async move {
+                Json(json!({
+                    "run_id": run_id,
+                    "status": "succeeded",
+                    "accuracy": 0.85,
+                    "macro_f1": 0.82,
+                }))
+            }),
         )
         // rag-orchestrator-recap-worker.json
         .route(
@@ -96,24 +94,22 @@ fn stub_router() -> Router {
         )
         .route(
             "/v1/morning/letters/{date}",
-            get(
-                |Path(date): Path<String>| async move {
-                    Json(json!({
-                        "id": "letter-001",
-                        "target_date": date,
-                        "body": {
-                            "lead": "Today's key developments...",
-                            "sections": [
-                                {
-                                    "key": "top3",
-                                    "title": "Top Stories",
-                                    "bullets": ["Story A"]
-                                }
-                            ]
-                        }
-                    }))
-                },
-            ),
+            get(|Path(date): Path<String>| async move {
+                Json(json!({
+                    "id": "letter-001",
+                    "target_date": date,
+                    "body": {
+                        "lead": "Today's key developments...",
+                        "sections": [
+                            {
+                                "key": "top3",
+                                "title": "Top Stories",
+                                "bullets": ["Story A"]
+                            }
+                        ]
+                    }
+                }))
+            }),
         )
 }
 
@@ -130,8 +126,8 @@ async fn start_stub_server() -> SocketAddr {
 }
 
 fn load_pact(path: &str) -> Value {
-    let raw = std::fs::read_to_string(path)
-        .unwrap_or_else(|e| panic!("failed to read pact {path}: {e}"));
+    let raw =
+        std::fs::read_to_string(path).unwrap_or_else(|e| panic!("failed to read pact {path}: {e}"));
     serde_json::from_str(&raw).unwrap_or_else(|e| panic!("pact {path} is not JSON: {e}"))
 }
 
@@ -157,7 +153,10 @@ async fn verify_interaction(addr: SocketAddr, method: &str, path: &str, expected
         .json()
         .await
         .unwrap_or_else(|e| panic!("response body for {path} not JSON: {e}"));
-    assert!(body.is_object(), "response for {path} must be a JSON object");
+    assert!(
+        body.is_object(),
+        "response for {path} must be a JSON object"
+    );
 }
 
 #[tokio::test]

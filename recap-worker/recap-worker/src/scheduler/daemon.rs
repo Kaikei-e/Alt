@@ -67,7 +67,11 @@ impl BatchDaemon {
         let keep_job_id = resumable_target.as_ref().map(|(id, _, _, _)| *id);
         match state.scheduler.mark_abandoned_jobs(keep_job_id).await {
             Ok(0) => {}
-            Ok(n) => info!(marked_failed = n, ?keep_job_id, "boot-time hygiene: orphaned jobs sealed"),
+            Ok(n) => info!(
+                marked_failed = n,
+                ?keep_job_id,
+                "boot-time hygiene: orphaned jobs sealed"
+            ),
             Err(err) => error!(error = %err, "boot-time hygiene: mark_abandoned_jobs failed"),
         }
         match state.scheduler.cleanup_old_jobs().await {

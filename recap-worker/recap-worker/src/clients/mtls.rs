@@ -149,10 +149,7 @@ fn load_certified_key(cert: &Path, key: &Path) -> Result<Arc<CertifiedKey>> {
         .collect::<std::result::Result<Vec<_>, _>>()
         .context("parse cert PEM")?;
     if certs.is_empty() {
-        return Err(anyhow!(
-            "no certificates found in {}",
-            cert.display()
-        ));
+        return Err(anyhow!("no certificates found in {}", cert.display()));
     }
 
     let key_der: PrivateKeyDer<'static> = rustls_pemfile::private_key(&mut &key_bytes[..])
@@ -250,9 +247,7 @@ mod tests {
         // can distinguish reloads by the serialized DER of the leaf cert.
         let params = rcgen::CertificateParams::new(vec![cn.to_string()]).expect("rcgen params");
         let key_pair = rcgen::KeyPair::generate().expect("rcgen keypair");
-        let cert = params
-            .self_signed(&key_pair)
-            .expect("rcgen self-sign");
+        let cert = params.self_signed(&key_pair).expect("rcgen self-sign");
 
         let cert_pem = cert.pem();
         let key_pem = key_pair.serialize_pem();

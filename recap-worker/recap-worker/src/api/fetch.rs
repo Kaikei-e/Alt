@@ -805,13 +805,13 @@ fn parse_morning_letter_body(
             generated_at: content.generated_at,
             source_recap_window_days: content.source_recap_window_days,
             through_line: content.through_line.unwrap_or_default(),
-            previous_letter_ref: content.previous_letter_ref.map(|p| {
-                PreviousLetterRefResponse {
+            previous_letter_ref: content
+                .previous_letter_ref
+                .map(|p| PreviousLetterRefResponse {
                     id: p.id,
                     target_date: p.target_date,
                     through_line: p.through_line,
-                }
-            }),
+                }),
         }),
         Err(e) => {
             error!(
@@ -981,11 +981,7 @@ pub(crate) async fn regenerate_morning_letter(
     // this as a full batch Recap pipeline.
     let context = JobContext::new_morning_update(job_id);
 
-    if let Err(e) = state
-        .scheduler()
-        .run_morning_update(context)
-        .await
-    {
+    if let Err(e) = state.scheduler().run_morning_update(context).await {
         error!(job_id = %job_id, "morning regenerate pipeline failed: {}", e);
         return (
             StatusCode::INTERNAL_SERVER_ERROR,
