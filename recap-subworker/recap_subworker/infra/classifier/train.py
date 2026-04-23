@@ -8,12 +8,21 @@ Supports loading augmented training data alongside original data.
 Usage:
     uv run python -m recap_subworker.infra.classifier.train [--params data/optimal_params.json]
     uv run python -m recap_subworker.infra.classifier.train --data data/training_data_augmented.csv
+
+ADR-000835 stage 2/3: writes a sidecar ``genre_classifier_<lang>.meta.json``
+capturing sklearn / transformers / sentence-transformers versions, class set,
+feature dimension, and source data sha256 so the runtime can fail-closed on
+drift.
 """
 
 import argparse
 import asyncio
+import hashlib
+import importlib.metadata
 import json
+from datetime import UTC, datetime
 from pathlib import Path
+from typing import Literal
 
 import joblib
 import numpy as np
@@ -29,6 +38,14 @@ from sklearn.preprocessing import StandardScaler
 
 from recap_subworker.infra.config import get_settings
 from recap_subworker.services.embedder import Embedder
+
+
+def _installed_version(pkg: str) -> str:
+    try:
+        return importlib.metadata.version(pkg)
+    except importlib.metadata.PackageNotFoundError:
+        return "unknown"
+
 
 # Default hyperparameters (can be overridden by --params)
 DEFAULT_HYPERPARAMS = {
@@ -70,6 +87,7 @@ def load_hyperparams(params_path: Path | None) -> dict:
     result.update(params)
     return result
 
+
 # --- Custom Transformer for Embeddings ---
 class EmbeddingTransformer(BaseEstimator, TransformerMixin):
     def __init__(self, embedder: Embedder):
@@ -91,12 +109,16 @@ class EmbeddingTransformer(BaseEstimator, TransformerMixin):
         input_texts = [f"passage: {t}" for t in texts]
         return self.embedder.encode(input_texts)
 
+
 # --- Training Script ---
+
 
 async def main(
     params_path: Path | None = None,
     data_path: Path | None = None,
     augmented_paths: list[Path] | None = None,
+    language: Literal["ja", "en"] = "ja",
+    output_dir: Path | None = None,
 ):
     """Main training function.
 
@@ -104,6 +126,8 @@ async def main(
         params_path: Optional path to hyperparameters JSON file
         data_path: Path to training data CSV (default: data/training_data.csv)
         augmented_paths: Optional list of augmented data CSV files to merge
+        language: Target language; controls output filename suffix (``_ja``/``_en``)
+        output_dir: Directory where artefacts and the sidecar meta are written
     """
     settings = get_settings()
 
@@ -124,7 +148,7 @@ async def main(
 
     print(f"Loading data from {data_path}...")
     df = pd.read_csv(data_path)
-    df = df.dropna(subset=['content', 'genre'])
+    df = df.dropna(subset=["content", "genre"])
     print(f"  Loaded {len(df)} samples")
 
     # Load and merge augmented data if provided
@@ -133,7 +157,7 @@ async def main(
         for aug_path in augmented_paths:
             if aug_path.exists():
                 aug_df = pd.read_csv(aug_path)
-                aug_df = aug_df.dropna(subset=['content', 'genre'])
+                aug_df = aug_df.dropna(subset=["content", "genre"])
                 aug_dfs.append(aug_df)
                 print(f"  Loaded {len(aug_df)} augmented samples from {aug_path}")
             else:
@@ -144,7 +168,7 @@ async def main(
             all_dfs = [df, *aug_dfs]
             df = pd.concat(all_dfs, ignore_index=True)
             # Keep only essential columns
-            df = df[['content', 'genre']]
+            df = df[["content", "genre"]]
             print(f"  Total samples after merge: {len(df)}")
 
     # Filter out rare classes if any (less than 10 samples?)
@@ -152,19 +176,20 @@ async def main(
     # We should probably group them into 'other' or drop them?
     # For now, let's keep them and see (LR might fail with few samples).
     # Or maybe drop classes with < 50 samples?
-    counts = df['genre'].value_counts()
+    counts = df["genre"].value_counts()
     valid_genres = counts[counts >= 20].index
     print(f"Filtering genres with >= 20 samples. Kept: {len(valid_genres)}")
-    df = df[df['genre'].isin(valid_genres)]
+    df = df[df["genre"].isin(valid_genres)]
 
     # Verification limit removed
 
-
-    X = df['content']
-    y = df['genre']
+    X = df["content"]
+    y = df["genre"]
 
     print("Splitting data...")
-    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42, stratify=y)
+    X_train, X_test, y_train, y_test = train_test_split(
+        X, y, test_size=0.2, random_state=42, stratify=y
+    )
 
     print("Initializing Embedder...")
     # Initialize embedder (this might be heavy)
@@ -175,10 +200,10 @@ async def main(
     embedder_config = EmbedderConfig(
         model_id=settings.model_id,
         backend=settings.model_backend,
-        device="cuda", # Force CUDA per user authorization
+        device="cuda",  # Force CUDA per user authorization
         distill_model_id=settings.distill_model_id,
-        batch_size=4, # Reduced to 4 for extreme safety
-        cache_size=1000 # Default cache size
+        batch_size=4,  # Reduced to 4 for extreme safety
+        cache_size=1000,  # Default cache size
     )
     embedder = Embedder(embedder_config)
 
@@ -227,18 +252,18 @@ async def main(
     # We need a temporary classifier for cross-validation
     # Use a simpler/faster one or the same one? LR is fast enough.
     # Note: multi_class parameter was removed in sklearn 1.8
-    clf_cv = LogisticRegression(max_iter=1000, solver='lbfgs', class_weight='balanced')
+    clf_cv = LogisticRegression(max_iter=1000, solver="lbfgs", class_weight="balanced")
 
     try:
         # Get out-of-sample predicted probabilities
         # This might fail if some classes have < 2 samples in a fold, but we filtered min 20.
-        pred_probs = cross_val_predict(clf_cv, X_train_combined, y_train, cv=3, method='predict_proba', n_jobs=-1)
+        pred_probs = cross_val_predict(
+            clf_cv, X_train_combined, y_train, cv=3, method="predict_proba", n_jobs=-1
+        )
 
         # Find label issues
         issue_indices = find_label_issues(
-            labels=y_train,
-            pred_probs=pred_probs,
-            return_indices_ranked_by='self_confidence'
+            labels=y_train, pred_probs=pred_probs, return_indices_ranked_by="self_confidence"
         )
 
         print(f"Cleanlab identified {len(issue_indices)} label issues.")
@@ -256,7 +281,9 @@ async def main(
             X_train_cleaned = X_train_combined[keep_mask]
             y_train_cleaned = y_train.iloc[keep_mask]
 
-            print(f"Removed {len(issue_indices)} samples. Training size: {len(y_train)} -> {len(y_train_cleaned)}")
+            print(
+                f"Removed {len(issue_indices)} samples. Training size: {len(y_train)} -> {len(y_train_cleaned)}"
+            )
 
             # Update for final training
             X_train_final = X_train_cleaned
@@ -276,14 +303,14 @@ async def main(
     # Note: multi_class parameter was removed in sklearn 1.8
     base_clf = LogisticRegression(
         max_iter=1000,
-        solver='lbfgs',
-        class_weight='balanced',
+        solver="lbfgs",
+        class_weight="balanced",
         C=hyperparams["C"],
     )
     # Wrap with CalibratedClassifierCV for better probability estimates
     clf = CalibratedClassifierCV(
         estimator=base_clf,
-        method='sigmoid',  # Platt scaling
+        method="sigmoid",  # Platt scaling
         cv=3,
     )
     clf.fit(X_train_final, y_train_final)
@@ -295,8 +322,8 @@ async def main(
 
     # Calculate Train/Test gap (overfitting indicator)
     y_train_pred = clf.predict(X_train_final)
-    train_f1 = f1_score(y_train_final, y_train_pred, average='macro')
-    test_f1 = f1_score(y_test, y_pred, average='macro')
+    train_f1 = f1_score(y_train_final, y_train_pred, average="macro")
+    test_f1 = f1_score(y_test, y_pred, average="macro")
     train_test_gap = train_f1 - test_f1
 
     print("\n" + "=" * 50)
@@ -343,34 +370,53 @@ async def main(
         best_f1s[cls] = best_f1
         print(f"Class {cls}: Best Threshold={best_t:.2f}, F1={best_f1:.2f}")
 
-    # Save artifacts
+    # Save artifacts with language-specific naming so the runtime picks the
+    # right JA/EN pair (see config.py genre_classifier_model_path_ja/_en).
     print("Saving model and artifacts...")
-    output_dir = Path("data")
+    out_dir = output_dir if output_dir is not None else Path("data")
+    out_dir.mkdir(parents=True, exist_ok=True)
 
-    # We need to save the components to reconstruct the pipeline/predictor
-    # The GenericClassifierService will need:
-    # 1. Embedder (already has)
-    # 2. TfidfVectorizer (fit)
-    # 3. TruncatedSVD (fit) - for dimensionality reduction
-    # 4. StandardScaler (fit) - for feature normalization
-    # 5. CalibratedClassifierCV (fit) - calibrated classifier
-    # 6. Thresholds
+    model_path = out_dir / f"genre_classifier_{language}.joblib"
+    vectorizer_path = out_dir / f"tfidf_vectorizer_{language}.joblib"
+    thresholds_path = out_dir / f"genre_thresholds_{language}.json"
+    svd_path = out_dir / "tfidf_svd.joblib"
+    scaler_path = out_dir / "feature_scaler.joblib"
+    meta_path = out_dir / f"genre_classifier_{language}.meta.json"
 
-    joblib.dump(tfidf, output_dir / "tfidf_vectorizer.joblib")
-    joblib.dump(svd, output_dir / "tfidf_svd.joblib")
-    joblib.dump(scaler, output_dir / "feature_scaler.joblib")
-    joblib.dump(clf, output_dir / "genre_classifier.joblib")
+    joblib.dump(tfidf, vectorizer_path)
+    joblib.dump(svd, svd_path)
+    joblib.dump(scaler, scaler_path)
+    joblib.dump(clf, model_path)
 
-    with open(output_dir / "genre_thresholds.json", "w") as f:
+    with open(thresholds_path, "w") as f:
         json.dump(thresholds, f, indent=2)
 
+    # ADR-000835 stage 3: sidecar metadata so the runtime can fail-closed on
+    # sklearn / transformers drift without re-loading the joblib to inspect.
+    metadata = {
+        "sklearn_version": _installed_version("scikit-learn"),
+        "transformers_version": _installed_version("transformers"),
+        "sentence_transformers_version": _installed_version("sentence-transformers"),
+        "trained_at": datetime.now(UTC).isoformat(),
+        "language": language,
+        "classes": sorted(str(c) for c in clf.classes_.tolist()),
+        "feature_dim": int(X_train_final.shape[1]),
+        "source_data_sha256": hashlib.sha256(data_path.read_bytes()).hexdigest(),
+        "embedding_model_id": settings.model_id,
+        "device": str(embedder_config.device),
+    }
+    with open(meta_path, "w") as f:
+        json.dump(metadata, f, indent=2)
+
     print("Saved artifacts:")
-    print(f"  - {output_dir / 'tfidf_vectorizer.joblib'}")
-    print(f"  - {output_dir / 'tfidf_svd.joblib'}")
-    print(f"  - {output_dir / 'feature_scaler.joblib'}")
-    print(f"  - {output_dir / 'genre_classifier.joblib'}")
-    print(f"  - {output_dir / 'genre_thresholds.json'}")
+    print(f"  - {vectorizer_path}")
+    print(f"  - {svd_path}")
+    print(f"  - {scaler_path}")
+    print(f"  - {model_path}")
+    print(f"  - {thresholds_path}")
+    print(f"  - {meta_path}")
     print("Done!")
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
@@ -395,9 +441,25 @@ if __name__ == "__main__":
         default=None,
         help="Additional augmented data CSV files to merge with training data",
     )
+    parser.add_argument(
+        "--language",
+        choices=("ja", "en"),
+        default="ja",
+        help="Target language — controls output filename suffix (_ja / _en)",
+    )
+    parser.add_argument(
+        "--output-dir",
+        type=Path,
+        default=None,
+        help="Directory to write artefacts (default: data/)",
+    )
     args = parser.parse_args()
-    asyncio.run(main(
-        params_path=args.params,
-        data_path=args.data,
-        augmented_paths=args.augmented,
-    ))
+    asyncio.run(
+        main(
+            params_path=args.params,
+            data_path=args.data,
+            augmented_paths=args.augmented,
+            language=args.language,
+            output_dir=args.output_dir,
+        )
+    )

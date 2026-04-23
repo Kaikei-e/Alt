@@ -34,6 +34,25 @@ COPY recap_subworker ./recap_subworker
 RUN uv sync --no-dev --extra train \
   && uv cache prune || true
 
+# ADR-000835 stage 2: override torch to CUDA wheels and pull the post-fix
+# transformers / sentence-transformers for GPU training. The production image
+# keeps CPU torch (see pyproject.toml `tool.uv.sources.torch = pytorch-cpu`).
+# cu128 nightly is the only index currently shipping cp314 (Python 3.14) wheels.
+# Stable cu124/cu121 only publish up to cp313. Our project requires Python >=3.14
+# so we must use the nightly index for CUDA torch during training builds.
+# The host GPU driver (CUDA 12.9) is backward-compatible with cu128 wheels.
+ARG TORCH_CUDA_INDEX=https://download.pytorch.org/whl/nightly/cu128
+ARG TORCH_SPEC="torch"
+ARG TRANSFORMERS_SPEC="transformers>=5.6.1"
+ARG SENTENCE_TRANSFORMERS_SPEC="sentence-transformers>=5.4.0"
+# nvidia-cusolver-cu12 et al. are large (250+ MB); default 30s timeout is not
+# enough on metered connections. Also keep the builder-stage torch install
+# separate from the transformers upgrade so a transient network failure on
+# one does not force the other to re-download.
+ENV UV_HTTP_TIMEOUT=300
+RUN uv pip install --force-reinstall --pre "${TORCH_SPEC}" --index-url "${TORCH_CUDA_INDEX}"
+RUN uv pip install --upgrade "${TRANSFORMERS_SPEC}" "${SENTENCE_TRANSFORMERS_SPEC}"
+
 # Runtime stage
 FROM nvidia/cuda:12.6.3-base-ubuntu24.04 AS runtime
 
@@ -62,8 +81,13 @@ RUN apt-get update \
 RUN apt-get update && apt-get install -y --no-install-recommends python3-pip && rm -rf /var/lib/apt/lists/*
 RUN pip install --no-cache-dir uv==0.9.7 --break-system-packages
 
-# Copy venv
+# Copy venv AND the uv-managed Python interpreter the venv symlinks target.
+# Without the interpreter copy, /app/.venv/bin/python3 points at
+# /root/.local/share/uv/python/cpython-3.14.0-linux-x86_64-gnu/bin/python3.14
+# which only exists in the builder stage. `uv run` would then rebuild .venv
+# from scratch and wipe the CUDA torch install.
 COPY --from=builder /app/.venv /app/.venv
+COPY --from=builder /root/.local/share/uv /root/.local/share/uv
 
 # Copy project files
 COPY pyproject.toml uv.lock README.md ./
@@ -72,5 +96,6 @@ COPY scripts ./scripts
 # Create data dir
 RUN mkdir -p /app/data
 
-# Default command
-CMD ["uv", "run", "python", "scripts/train_classifier_gpu.py", "--help"]
+# Default command — the sklearn/train.py path is the primary retrain entry
+# point (ADR-000835 stage 2). train_classifier_gpu.py remains available.
+CMD ["uv", "run", "python", "-m", "recap_subworker.infra.classifier.train", "--help"]
