@@ -119,13 +119,21 @@ func (r *KnowledgeProjectorRunner) runOnce(ctx context.Context) error {
 	return r.process(runCtx)
 }
 
-// ProjectorWatchFactory creates a listener factory from a function that
-// connects to sovereign's WatchProjectorEvents streaming RPC.
+// NewSovereignProjectorListenerFactory creates a listener factory from a
+// function that connects to sovereign's WatchProjectorEvents streaming RPC.
+// The projector name is bound at factory-creation time so callers can share a
+// single connect closure across multiple projectors (e.g. the
+// Knowledge Home and Knowledge Loop projectors both call this with their
+// own name constant).
 func NewSovereignProjectorListenerFactory(
 	connect func(ctx context.Context, projectorName string) (KnowledgeProjectorListener, error),
+	name string,
 ) func(ctx context.Context) (KnowledgeProjectorListener, error) {
+	if name == "" {
+		name = projectorName
+	}
 	return func(ctx context.Context) (KnowledgeProjectorListener, error) {
-		return connect(ctx, projectorName)
+		return connect(ctx, name)
 	}
 }
 
