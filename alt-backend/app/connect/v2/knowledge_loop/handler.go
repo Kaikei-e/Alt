@@ -5,6 +5,7 @@ package knowledge_loop
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"log/slog"
 	"time"
@@ -207,7 +208,150 @@ func toProtoEntry(e *domain.KnowledgeLoopEntry) *loopv1.KnowledgeLoopEntry {
 	if e.SupersededByEntryKey != nil {
 		pb.SupersededByEntryKey = e.SupersededByEntryKey
 	}
+	pb.ChangeSummary = decodeChangeSummary(e.ChangeSummary)
+	pb.ContinueContext = decodeContinueContext(e.ContinueContext)
+	pb.DecisionOptions = decodeDecisionOptions(e.DecisionOptions)
+	pb.ActTargets = decodeActTargets(e.ActTargets)
 	return pb
+}
+
+// ============================================================================
+// JSONB → proto decoders
+//
+// These decoders tolerate malformed payloads (swallow json.Unmarshal errors,
+// return nil/empty). The projector and sovereign storage guarantee the shape,
+// but a stale row or a migration-in-flight row should not crash the handler.
+// ============================================================================
+
+func decodeChangeSummary(b []byte) *loopv1.ChangeSummary {
+	if len(b) == 0 {
+		return nil
+	}
+	var raw struct {
+		Summary          string   `json:"summary"`
+		ChangedFields    []string `json:"changed_fields"`
+		PreviousEntryKey *string  `json:"previous_entry_key"`
+	}
+	if err := json.Unmarshal(b, &raw); err != nil {
+		return nil
+	}
+	return &loopv1.ChangeSummary{
+		Summary:          raw.Summary,
+		ChangedFields:    raw.ChangedFields,
+		PreviousEntryKey: raw.PreviousEntryKey,
+	}
+}
+
+func decodeContinueContext(b []byte) *loopv1.ContinueContext {
+	if len(b) == 0 {
+		return nil
+	}
+	var raw struct {
+		Summary            string   `json:"summary"`
+		RecentActionLabels []string `json:"recent_action_labels"`
+		LastInteractedAt   *string  `json:"last_interacted_at"`
+	}
+	if err := json.Unmarshal(b, &raw); err != nil {
+		return nil
+	}
+	pb := &loopv1.ContinueContext{
+		Summary:            raw.Summary,
+		RecentActionLabels: raw.RecentActionLabels,
+	}
+	if raw.LastInteractedAt != nil {
+		if t, err := time.Parse(time.RFC3339, *raw.LastInteractedAt); err == nil {
+			pb.LastInteractedAt = timestamppb.New(t)
+		}
+	}
+	return pb
+}
+
+func decodeDecisionOptions(b []byte) []*loopv1.DecisionOption {
+	if len(b) == 0 {
+		return nil
+	}
+	var raw []struct {
+		ActionID string  `json:"action_id"`
+		Intent   string  `json:"intent"`
+		Label    *string `json:"label"`
+	}
+	if err := json.Unmarshal(b, &raw); err != nil {
+		return nil
+	}
+	if len(raw) == 0 {
+		return nil
+	}
+	out := make([]*loopv1.DecisionOption, 0, len(raw))
+	for _, r := range raw {
+		out = append(out, &loopv1.DecisionOption{
+			ActionId: r.ActionID,
+			Intent:   mapDecisionIntent(r.Intent),
+			Label:    r.Label,
+		})
+	}
+	return out
+}
+
+func decodeActTargets(b []byte) []*loopv1.ActTarget {
+	if len(b) == 0 {
+		return nil
+	}
+	var raw []struct {
+		TargetType string  `json:"target_type"`
+		TargetRef  string  `json:"target_ref"`
+		Route      *string `json:"route"`
+	}
+	if err := json.Unmarshal(b, &raw); err != nil {
+		return nil
+	}
+	if len(raw) == 0 {
+		return nil
+	}
+	out := make([]*loopv1.ActTarget, 0, len(raw))
+	for _, r := range raw {
+		out = append(out, &loopv1.ActTarget{
+			TargetType: mapActTargetType(r.TargetType),
+			TargetRef:  r.TargetRef,
+			Route:      r.Route,
+		})
+	}
+	return out
+}
+
+func mapDecisionIntent(s string) loopv1.DecisionIntent {
+	switch s {
+	case "open":
+		return loopv1.DecisionIntent_DECISION_INTENT_OPEN
+	case "ask":
+		return loopv1.DecisionIntent_DECISION_INTENT_ASK
+	case "save":
+		return loopv1.DecisionIntent_DECISION_INTENT_SAVE
+	case "compare":
+		return loopv1.DecisionIntent_DECISION_INTENT_COMPARE
+	case "revisit":
+		return loopv1.DecisionIntent_DECISION_INTENT_REVISIT
+	case "snooze":
+		return loopv1.DecisionIntent_DECISION_INTENT_SNOOZE
+	default:
+		return loopv1.DecisionIntent_DECISION_INTENT_UNSPECIFIED
+	}
+}
+
+func mapActTargetType(s string) loopv1.ActTargetType {
+	switch s {
+	case "article":
+		return loopv1.ActTargetType_ACT_TARGET_TYPE_ARTICLE
+	case "ask":
+		return loopv1.ActTargetType_ACT_TARGET_TYPE_ASK
+	case "recap":
+		return loopv1.ActTargetType_ACT_TARGET_TYPE_RECAP
+	case "diff":
+		return loopv1.ActTargetType_ACT_TARGET_TYPE_DIFF
+	case "cluster":
+		return loopv1.ActTargetType_ACT_TARGET_TYPE_CLUSTER
+	default:
+		return loopv1.ActTargetType_ACT_TARGET_TYPE_UNSPECIFIED
+	}
 }
 
 func toProtoSurfaces(in []*domain.KnowledgeLoopSurface) []*loopv1.SurfaceState {
