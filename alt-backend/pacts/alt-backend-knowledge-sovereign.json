@@ -1,0 +1,312 @@
+{
+  "consumer": {
+    "name": "alt-backend"
+  },
+  "interactions": [
+    {
+      "description": "an ApplyCurationMutation request of kind create_lens",
+      "providerStates": [
+        {
+          "name": "the curation mutation create_lens is accepted"
+        }
+      ],
+      "request": {
+        "body": {
+          "entityId": "lens-1",
+          "idempotencyKey": "create_lens:lens-1",
+          "mutationType": "create_lens",
+          "payload": "eyJsZW5zX2lkIjoibGVucy0xIn0="
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "matchingRules": {
+          "body": {
+            "$.entityId": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.idempotencyKey": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.payload": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            }
+          }
+        },
+        "method": "POST",
+        "path": "/services.sovereign.v1.KnowledgeSovereignService/ApplyCurationMutation"
+      },
+      "response": {
+        "body": {
+          "success": true
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "matchingRules": {
+          "body": {
+            "$.success": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            }
+          }
+        },
+        "status": 200
+      }
+    },
+    {
+      "description": "an ApplyProjectionMutation request of kind upsert_home_item",
+      "providerStates": [
+        {
+          "name": "the projection mutation upsert_home_item is accepted"
+        }
+      ],
+      "request": {
+        "body": {
+          "entityId": "user-1:article-1",
+          "idempotencyKey": "upsert_home_item:user-1:article-1",
+          "mutationType": "upsert_home_item",
+          "payload": "eyJ1c2VyX2lkIjoidXNlci0xIn0="
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "matchingRules": {
+          "body": {
+            "$.entityId": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.idempotencyKey": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.payload": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            }
+          }
+        },
+        "method": "POST",
+        "path": "/services.sovereign.v1.KnowledgeSovereignService/ApplyProjectionMutation"
+      },
+      "response": {
+        "body": {
+          "success": true
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "matchingRules": {
+          "body": {
+            "$.success": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            }
+          }
+        },
+        "status": 200
+      }
+    },
+    {
+      "description": "an ApplyProjectionMutation request that the provider refuses to apply",
+      "providerStates": [
+        {
+          "name": "the projection mutation is rejected with an error"
+        }
+      ],
+      "request": {
+        "body": {
+          "entityId": "user-1:article-2",
+          "idempotencyKey": "dismiss_home_item:user-1:article-2",
+          "mutationType": "dismiss_home_item",
+          "payload": "eyJ1c2VyX2lkIjoidXNlci0xIn0="
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "matchingRules": {
+          "body": {
+            "$.entityId": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.idempotencyKey": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.payload": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            }
+          }
+        },
+        "method": "POST",
+        "path": "/services.sovereign.v1.KnowledgeSovereignService/ApplyProjectionMutation"
+      },
+      "response": {
+        "body": {
+          "errorMessage": "projection version mismatch",
+          "success": false
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "matchingRules": {
+          "body": {
+            "$.errorMessage": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.success": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            }
+          }
+        },
+        "status": 200
+      }
+    },
+    {
+      "description": "an ApplyRecallMutation request of kind snooze_candidate",
+      "providerStates": [
+        {
+          "name": "the recall mutation snooze_candidate is accepted"
+        }
+      ],
+      "request": {
+        "body": {
+          "entityId": "user-1:article-3",
+          "idempotencyKey": "snooze_candidate:user-1:article-3",
+          "mutationType": "snooze_candidate",
+          "payload": "eyJ1c2VyX2lkIjoidXNlci0xIn0="
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "matchingRules": {
+          "body": {
+            "$.entityId": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.idempotencyKey": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.payload": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            }
+          }
+        },
+        "method": "POST",
+        "path": "/services.sovereign.v1.KnowledgeSovereignService/ApplyRecallMutation"
+      },
+      "response": {
+        "body": {
+          "success": true
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "matchingRules": {
+          "body": {
+            "$.success": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            }
+          }
+        },
+        "status": 200
+      }
+    }
+  ],
+  "metadata": {
+    "pact-go": {
+      "version": "2.4.2"
+    },
+    "pactRust": {
+      "ffi": "0.4.28",
+      "mockserver": "1.2.16",
+      "models": "1.3.5"
+    },
+    "pactSpecification": {
+      "version": "3.0.0"
+    }
+  },
+  "provider": {
+    "name": "knowledge-sovereign"
+  }
+}
