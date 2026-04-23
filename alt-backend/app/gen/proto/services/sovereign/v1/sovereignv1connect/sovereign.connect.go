@@ -166,6 +166,21 @@ const (
 	// KnowledgeSovereignServiceWatchProjectorEventsProcedure is the fully-qualified name of the
 	// KnowledgeSovereignService's WatchProjectorEvents RPC.
 	KnowledgeSovereignServiceWatchProjectorEventsProcedure = "/services.sovereign.v1.KnowledgeSovereignService/WatchProjectorEvents"
+	// KnowledgeSovereignServiceApplyKnowledgeLoopMutationProcedure is the fully-qualified name of the
+	// KnowledgeSovereignService's ApplyKnowledgeLoopMutation RPC.
+	KnowledgeSovereignServiceApplyKnowledgeLoopMutationProcedure = "/services.sovereign.v1.KnowledgeSovereignService/ApplyKnowledgeLoopMutation"
+	// KnowledgeSovereignServiceGetKnowledgeLoopEntriesProcedure is the fully-qualified name of the
+	// KnowledgeSovereignService's GetKnowledgeLoopEntries RPC.
+	KnowledgeSovereignServiceGetKnowledgeLoopEntriesProcedure = "/services.sovereign.v1.KnowledgeSovereignService/GetKnowledgeLoopEntries"
+	// KnowledgeSovereignServiceGetKnowledgeLoopSessionStateProcedure is the fully-qualified name of the
+	// KnowledgeSovereignService's GetKnowledgeLoopSessionState RPC.
+	KnowledgeSovereignServiceGetKnowledgeLoopSessionStateProcedure = "/services.sovereign.v1.KnowledgeSovereignService/GetKnowledgeLoopSessionState"
+	// KnowledgeSovereignServiceGetKnowledgeLoopSurfacesProcedure is the fully-qualified name of the
+	// KnowledgeSovereignService's GetKnowledgeLoopSurfaces RPC.
+	KnowledgeSovereignServiceGetKnowledgeLoopSurfacesProcedure = "/services.sovereign.v1.KnowledgeSovereignService/GetKnowledgeLoopSurfaces"
+	// KnowledgeSovereignServiceReserveKnowledgeLoopTransitionProcedure is the fully-qualified name of
+	// the KnowledgeSovereignService's ReserveKnowledgeLoopTransition RPC.
+	KnowledgeSovereignServiceReserveKnowledgeLoopTransitionProcedure = "/services.sovereign.v1.KnowledgeSovereignService/ReserveKnowledgeLoopTransition"
 )
 
 // KnowledgeSovereignServiceClient is a client for the
@@ -225,6 +240,14 @@ type KnowledgeSovereignServiceClient interface {
 	AppendKnowledgeUserEvent(context.Context, *connect.Request[v1.AppendKnowledgeUserEventRequest]) (*connect.Response[v1.AppendKnowledgeUserEventResponse], error)
 	// === Projector watch (server streaming) ===
 	WatchProjectorEvents(context.Context, *connect.Request[v1.WatchProjectorEventsRequest]) (*connect.ServerStreamForClient[v1.WatchProjectorEventsResponse], error)
+	// === Knowledge Loop (ADR-000831) ===
+	// Storage of the state-machine Loop read model. Called from alt-backend's
+	// KnowledgeLoopProjectorJob (write path) and Connect-RPC handler (read path).
+	ApplyKnowledgeLoopMutation(context.Context, *connect.Request[v1.ApplyKnowledgeLoopMutationRequest]) (*connect.Response[v1.ApplyKnowledgeLoopMutationResponse], error)
+	GetKnowledgeLoopEntries(context.Context, *connect.Request[v1.GetKnowledgeLoopEntriesRequest]) (*connect.Response[v1.GetKnowledgeLoopEntriesResponse], error)
+	GetKnowledgeLoopSessionState(context.Context, *connect.Request[v1.GetKnowledgeLoopSessionStateRequest]) (*connect.Response[v1.GetKnowledgeLoopSessionStateResponse], error)
+	GetKnowledgeLoopSurfaces(context.Context, *connect.Request[v1.GetKnowledgeLoopSurfacesRequest]) (*connect.Response[v1.GetKnowledgeLoopSurfacesResponse], error)
+	ReserveKnowledgeLoopTransition(context.Context, *connect.Request[v1.ReserveKnowledgeLoopTransitionRequest]) (*connect.Response[v1.ReserveKnowledgeLoopTransitionResponse], error)
 }
 
 // NewKnowledgeSovereignServiceClient constructs a client for the
@@ -503,55 +526,90 @@ func NewKnowledgeSovereignServiceClient(httpClient connect.HTTPClient, baseURL s
 			connect.WithSchema(knowledgeSovereignServiceMethods.ByName("WatchProjectorEvents")),
 			connect.WithClientOptions(opts...),
 		),
+		applyKnowledgeLoopMutation: connect.NewClient[v1.ApplyKnowledgeLoopMutationRequest, v1.ApplyKnowledgeLoopMutationResponse](
+			httpClient,
+			baseURL+KnowledgeSovereignServiceApplyKnowledgeLoopMutationProcedure,
+			connect.WithSchema(knowledgeSovereignServiceMethods.ByName("ApplyKnowledgeLoopMutation")),
+			connect.WithClientOptions(opts...),
+		),
+		getKnowledgeLoopEntries: connect.NewClient[v1.GetKnowledgeLoopEntriesRequest, v1.GetKnowledgeLoopEntriesResponse](
+			httpClient,
+			baseURL+KnowledgeSovereignServiceGetKnowledgeLoopEntriesProcedure,
+			connect.WithSchema(knowledgeSovereignServiceMethods.ByName("GetKnowledgeLoopEntries")),
+			connect.WithClientOptions(opts...),
+		),
+		getKnowledgeLoopSessionState: connect.NewClient[v1.GetKnowledgeLoopSessionStateRequest, v1.GetKnowledgeLoopSessionStateResponse](
+			httpClient,
+			baseURL+KnowledgeSovereignServiceGetKnowledgeLoopSessionStateProcedure,
+			connect.WithSchema(knowledgeSovereignServiceMethods.ByName("GetKnowledgeLoopSessionState")),
+			connect.WithClientOptions(opts...),
+		),
+		getKnowledgeLoopSurfaces: connect.NewClient[v1.GetKnowledgeLoopSurfacesRequest, v1.GetKnowledgeLoopSurfacesResponse](
+			httpClient,
+			baseURL+KnowledgeSovereignServiceGetKnowledgeLoopSurfacesProcedure,
+			connect.WithSchema(knowledgeSovereignServiceMethods.ByName("GetKnowledgeLoopSurfaces")),
+			connect.WithClientOptions(opts...),
+		),
+		reserveKnowledgeLoopTransition: connect.NewClient[v1.ReserveKnowledgeLoopTransitionRequest, v1.ReserveKnowledgeLoopTransitionResponse](
+			httpClient,
+			baseURL+KnowledgeSovereignServiceReserveKnowledgeLoopTransitionProcedure,
+			connect.WithSchema(knowledgeSovereignServiceMethods.ByName("ReserveKnowledgeLoopTransition")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
 // knowledgeSovereignServiceClient implements KnowledgeSovereignServiceClient.
 type knowledgeSovereignServiceClient struct {
-	applyProjectionMutation    *connect.Client[v1.ApplyProjectionMutationRequest, v1.ApplyProjectionMutationResponse]
-	applyRecallMutation        *connect.Client[v1.ApplyRecallMutationRequest, v1.ApplyRecallMutationResponse]
-	applyCurationMutation      *connect.Client[v1.ApplyCurationMutationRequest, v1.ApplyCurationMutationResponse]
-	getKnowledgeHomeItems      *connect.Client[v1.GetKnowledgeHomeItemsRequest, v1.GetKnowledgeHomeItemsResponse]
-	getTodayDigest             *connect.Client[v1.GetTodayDigestRequest, v1.GetTodayDigestResponse]
-	getRecallCandidates        *connect.Client[v1.GetRecallCandidatesRequest, v1.GetRecallCandidatesResponse]
-	listDistinctUserIDs        *connect.Client[v1.ListDistinctUserIDsRequest, v1.ListDistinctUserIDsResponse]
-	countNeedToKnowItems       *connect.Client[v1.CountNeedToKnowItemsRequest, v1.CountNeedToKnowItemsResponse]
-	listKnowledgeEvents        *connect.Client[v1.ListKnowledgeEventsRequest, v1.ListKnowledgeEventsResponse]
-	getLatestEventSeq          *connect.Client[v1.GetLatestEventSeqRequest, v1.GetLatestEventSeqResponse]
-	appendKnowledgeEvent       *connect.Client[v1.AppendKnowledgeEventRequest, v1.AppendKnowledgeEventResponse]
-	areArticlesVisibleInLens   *connect.Client[v1.AreArticlesVisibleInLensRequest, v1.AreArticlesVisibleInLensResponse]
-	getActiveProjectionVersion *connect.Client[v1.GetActiveProjectionVersionRequest, v1.GetActiveProjectionVersionResponse]
-	listProjectionVersions     *connect.Client[v1.ListProjectionVersionsRequest, v1.ListProjectionVersionsResponse]
-	createProjectionVersion    *connect.Client[v1.CreateProjectionVersionRequest, v1.CreateProjectionVersionResponse]
-	activateProjectionVersion  *connect.Client[v1.ActivateProjectionVersionRequest, v1.ActivateProjectionVersionResponse]
-	getProjectionCheckpoint    *connect.Client[v1.GetProjectionCheckpointRequest, v1.GetProjectionCheckpointResponse]
-	updateProjectionCheckpoint *connect.Client[v1.UpdateProjectionCheckpointRequest, v1.UpdateProjectionCheckpointResponse]
-	getProjectionFreshness     *connect.Client[v1.GetProjectionFreshnessRequest, v1.GetProjectionFreshnessResponse]
-	getProjectionLag           *connect.Client[v1.GetProjectionLagRequest, v1.GetProjectionLagResponse]
-	getReprojectRun            *connect.Client[v1.GetReprojectRunRequest, v1.GetReprojectRunResponse]
-	listReprojectRuns          *connect.Client[v1.ListReprojectRunsRequest, v1.ListReprojectRunsResponse]
-	createReprojectRun         *connect.Client[v1.CreateReprojectRunRequest, v1.CreateReprojectRunResponse]
-	updateReprojectRun         *connect.Client[v1.UpdateReprojectRunRequest, v1.UpdateReprojectRunResponse]
-	compareProjections         *connect.Client[v1.CompareProjectionsRequest, v1.CompareProjectionsResponse]
-	listProjectionAudits       *connect.Client[v1.ListProjectionAuditsRequest, v1.ListProjectionAuditsResponse]
-	createProjectionAudit      *connect.Client[v1.CreateProjectionAuditRequest, v1.CreateProjectionAuditResponse]
-	getBackfillJob             *connect.Client[v1.GetBackfillJobRequest, v1.GetBackfillJobResponse]
-	listBackfillJobs           *connect.Client[v1.ListBackfillJobsRequest, v1.ListBackfillJobsResponse]
-	createBackfillJob          *connect.Client[v1.CreateBackfillJobRequest, v1.CreateBackfillJobResponse]
-	updateBackfillJob          *connect.Client[v1.UpdateBackfillJobRequest, v1.UpdateBackfillJobResponse]
-	listLenses                 *connect.Client[v1.ListLensesRequest, v1.ListLensesResponse]
-	getLens                    *connect.Client[v1.GetLensRequest, v1.GetLensResponse]
-	getCurrentLensSelection    *connect.Client[v1.GetCurrentLensSelectionRequest, v1.GetCurrentLensSelectionResponse]
-	resolveLensFilter          *connect.Client[v1.ResolveLensFilterRequest, v1.ResolveLensFilterResponse]
-	createLens                 *connect.Client[v1.CreateLensRequest, v1.CreateLensResponse]
-	createLensVersion          *connect.Client[v1.CreateLensVersionRequest, v1.CreateLensVersionResponse]
-	selectCurrentLens          *connect.Client[v1.SelectCurrentLensRequest, v1.SelectCurrentLensResponse]
-	clearCurrentLens           *connect.Client[v1.ClearCurrentLensRequest, v1.ClearCurrentLensResponse]
-	archiveLens                *connect.Client[v1.ArchiveLensRequest, v1.ArchiveLensResponse]
-	listRecallSignals          *connect.Client[v1.ListRecallSignalsRequest, v1.ListRecallSignalsResponse]
-	appendRecallSignal         *connect.Client[v1.AppendRecallSignalRequest, v1.AppendRecallSignalResponse]
-	appendKnowledgeUserEvent   *connect.Client[v1.AppendKnowledgeUserEventRequest, v1.AppendKnowledgeUserEventResponse]
-	watchProjectorEvents       *connect.Client[v1.WatchProjectorEventsRequest, v1.WatchProjectorEventsResponse]
+	applyProjectionMutation        *connect.Client[v1.ApplyProjectionMutationRequest, v1.ApplyProjectionMutationResponse]
+	applyRecallMutation            *connect.Client[v1.ApplyRecallMutationRequest, v1.ApplyRecallMutationResponse]
+	applyCurationMutation          *connect.Client[v1.ApplyCurationMutationRequest, v1.ApplyCurationMutationResponse]
+	getKnowledgeHomeItems          *connect.Client[v1.GetKnowledgeHomeItemsRequest, v1.GetKnowledgeHomeItemsResponse]
+	getTodayDigest                 *connect.Client[v1.GetTodayDigestRequest, v1.GetTodayDigestResponse]
+	getRecallCandidates            *connect.Client[v1.GetRecallCandidatesRequest, v1.GetRecallCandidatesResponse]
+	listDistinctUserIDs            *connect.Client[v1.ListDistinctUserIDsRequest, v1.ListDistinctUserIDsResponse]
+	countNeedToKnowItems           *connect.Client[v1.CountNeedToKnowItemsRequest, v1.CountNeedToKnowItemsResponse]
+	listKnowledgeEvents            *connect.Client[v1.ListKnowledgeEventsRequest, v1.ListKnowledgeEventsResponse]
+	getLatestEventSeq              *connect.Client[v1.GetLatestEventSeqRequest, v1.GetLatestEventSeqResponse]
+	appendKnowledgeEvent           *connect.Client[v1.AppendKnowledgeEventRequest, v1.AppendKnowledgeEventResponse]
+	areArticlesVisibleInLens       *connect.Client[v1.AreArticlesVisibleInLensRequest, v1.AreArticlesVisibleInLensResponse]
+	getActiveProjectionVersion     *connect.Client[v1.GetActiveProjectionVersionRequest, v1.GetActiveProjectionVersionResponse]
+	listProjectionVersions         *connect.Client[v1.ListProjectionVersionsRequest, v1.ListProjectionVersionsResponse]
+	createProjectionVersion        *connect.Client[v1.CreateProjectionVersionRequest, v1.CreateProjectionVersionResponse]
+	activateProjectionVersion      *connect.Client[v1.ActivateProjectionVersionRequest, v1.ActivateProjectionVersionResponse]
+	getProjectionCheckpoint        *connect.Client[v1.GetProjectionCheckpointRequest, v1.GetProjectionCheckpointResponse]
+	updateProjectionCheckpoint     *connect.Client[v1.UpdateProjectionCheckpointRequest, v1.UpdateProjectionCheckpointResponse]
+	getProjectionFreshness         *connect.Client[v1.GetProjectionFreshnessRequest, v1.GetProjectionFreshnessResponse]
+	getProjectionLag               *connect.Client[v1.GetProjectionLagRequest, v1.GetProjectionLagResponse]
+	getReprojectRun                *connect.Client[v1.GetReprojectRunRequest, v1.GetReprojectRunResponse]
+	listReprojectRuns              *connect.Client[v1.ListReprojectRunsRequest, v1.ListReprojectRunsResponse]
+	createReprojectRun             *connect.Client[v1.CreateReprojectRunRequest, v1.CreateReprojectRunResponse]
+	updateReprojectRun             *connect.Client[v1.UpdateReprojectRunRequest, v1.UpdateReprojectRunResponse]
+	compareProjections             *connect.Client[v1.CompareProjectionsRequest, v1.CompareProjectionsResponse]
+	listProjectionAudits           *connect.Client[v1.ListProjectionAuditsRequest, v1.ListProjectionAuditsResponse]
+	createProjectionAudit          *connect.Client[v1.CreateProjectionAuditRequest, v1.CreateProjectionAuditResponse]
+	getBackfillJob                 *connect.Client[v1.GetBackfillJobRequest, v1.GetBackfillJobResponse]
+	listBackfillJobs               *connect.Client[v1.ListBackfillJobsRequest, v1.ListBackfillJobsResponse]
+	createBackfillJob              *connect.Client[v1.CreateBackfillJobRequest, v1.CreateBackfillJobResponse]
+	updateBackfillJob              *connect.Client[v1.UpdateBackfillJobRequest, v1.UpdateBackfillJobResponse]
+	listLenses                     *connect.Client[v1.ListLensesRequest, v1.ListLensesResponse]
+	getLens                        *connect.Client[v1.GetLensRequest, v1.GetLensResponse]
+	getCurrentLensSelection        *connect.Client[v1.GetCurrentLensSelectionRequest, v1.GetCurrentLensSelectionResponse]
+	resolveLensFilter              *connect.Client[v1.ResolveLensFilterRequest, v1.ResolveLensFilterResponse]
+	createLens                     *connect.Client[v1.CreateLensRequest, v1.CreateLensResponse]
+	createLensVersion              *connect.Client[v1.CreateLensVersionRequest, v1.CreateLensVersionResponse]
+	selectCurrentLens              *connect.Client[v1.SelectCurrentLensRequest, v1.SelectCurrentLensResponse]
+	clearCurrentLens               *connect.Client[v1.ClearCurrentLensRequest, v1.ClearCurrentLensResponse]
+	archiveLens                    *connect.Client[v1.ArchiveLensRequest, v1.ArchiveLensResponse]
+	listRecallSignals              *connect.Client[v1.ListRecallSignalsRequest, v1.ListRecallSignalsResponse]
+	appendRecallSignal             *connect.Client[v1.AppendRecallSignalRequest, v1.AppendRecallSignalResponse]
+	appendKnowledgeUserEvent       *connect.Client[v1.AppendKnowledgeUserEventRequest, v1.AppendKnowledgeUserEventResponse]
+	watchProjectorEvents           *connect.Client[v1.WatchProjectorEventsRequest, v1.WatchProjectorEventsResponse]
+	applyKnowledgeLoopMutation     *connect.Client[v1.ApplyKnowledgeLoopMutationRequest, v1.ApplyKnowledgeLoopMutationResponse]
+	getKnowledgeLoopEntries        *connect.Client[v1.GetKnowledgeLoopEntriesRequest, v1.GetKnowledgeLoopEntriesResponse]
+	getKnowledgeLoopSessionState   *connect.Client[v1.GetKnowledgeLoopSessionStateRequest, v1.GetKnowledgeLoopSessionStateResponse]
+	getKnowledgeLoopSurfaces       *connect.Client[v1.GetKnowledgeLoopSurfacesRequest, v1.GetKnowledgeLoopSurfacesResponse]
+	reserveKnowledgeLoopTransition *connect.Client[v1.ReserveKnowledgeLoopTransitionRequest, v1.ReserveKnowledgeLoopTransitionResponse]
 }
 
 // ApplyProjectionMutation calls
@@ -788,6 +846,36 @@ func (c *knowledgeSovereignServiceClient) WatchProjectorEvents(ctx context.Conte
 	return c.watchProjectorEvents.CallServerStream(ctx, req)
 }
 
+// ApplyKnowledgeLoopMutation calls
+// services.sovereign.v1.KnowledgeSovereignService.ApplyKnowledgeLoopMutation.
+func (c *knowledgeSovereignServiceClient) ApplyKnowledgeLoopMutation(ctx context.Context, req *connect.Request[v1.ApplyKnowledgeLoopMutationRequest]) (*connect.Response[v1.ApplyKnowledgeLoopMutationResponse], error) {
+	return c.applyKnowledgeLoopMutation.CallUnary(ctx, req)
+}
+
+// GetKnowledgeLoopEntries calls
+// services.sovereign.v1.KnowledgeSovereignService.GetKnowledgeLoopEntries.
+func (c *knowledgeSovereignServiceClient) GetKnowledgeLoopEntries(ctx context.Context, req *connect.Request[v1.GetKnowledgeLoopEntriesRequest]) (*connect.Response[v1.GetKnowledgeLoopEntriesResponse], error) {
+	return c.getKnowledgeLoopEntries.CallUnary(ctx, req)
+}
+
+// GetKnowledgeLoopSessionState calls
+// services.sovereign.v1.KnowledgeSovereignService.GetKnowledgeLoopSessionState.
+func (c *knowledgeSovereignServiceClient) GetKnowledgeLoopSessionState(ctx context.Context, req *connect.Request[v1.GetKnowledgeLoopSessionStateRequest]) (*connect.Response[v1.GetKnowledgeLoopSessionStateResponse], error) {
+	return c.getKnowledgeLoopSessionState.CallUnary(ctx, req)
+}
+
+// GetKnowledgeLoopSurfaces calls
+// services.sovereign.v1.KnowledgeSovereignService.GetKnowledgeLoopSurfaces.
+func (c *knowledgeSovereignServiceClient) GetKnowledgeLoopSurfaces(ctx context.Context, req *connect.Request[v1.GetKnowledgeLoopSurfacesRequest]) (*connect.Response[v1.GetKnowledgeLoopSurfacesResponse], error) {
+	return c.getKnowledgeLoopSurfaces.CallUnary(ctx, req)
+}
+
+// ReserveKnowledgeLoopTransition calls
+// services.sovereign.v1.KnowledgeSovereignService.ReserveKnowledgeLoopTransition.
+func (c *knowledgeSovereignServiceClient) ReserveKnowledgeLoopTransition(ctx context.Context, req *connect.Request[v1.ReserveKnowledgeLoopTransitionRequest]) (*connect.Response[v1.ReserveKnowledgeLoopTransitionResponse], error) {
+	return c.reserveKnowledgeLoopTransition.CallUnary(ctx, req)
+}
+
 // KnowledgeSovereignServiceHandler is an implementation of the
 // services.sovereign.v1.KnowledgeSovereignService service.
 type KnowledgeSovereignServiceHandler interface {
@@ -845,6 +933,14 @@ type KnowledgeSovereignServiceHandler interface {
 	AppendKnowledgeUserEvent(context.Context, *connect.Request[v1.AppendKnowledgeUserEventRequest]) (*connect.Response[v1.AppendKnowledgeUserEventResponse], error)
 	// === Projector watch (server streaming) ===
 	WatchProjectorEvents(context.Context, *connect.Request[v1.WatchProjectorEventsRequest], *connect.ServerStream[v1.WatchProjectorEventsResponse]) error
+	// === Knowledge Loop (ADR-000831) ===
+	// Storage of the state-machine Loop read model. Called from alt-backend's
+	// KnowledgeLoopProjectorJob (write path) and Connect-RPC handler (read path).
+	ApplyKnowledgeLoopMutation(context.Context, *connect.Request[v1.ApplyKnowledgeLoopMutationRequest]) (*connect.Response[v1.ApplyKnowledgeLoopMutationResponse], error)
+	GetKnowledgeLoopEntries(context.Context, *connect.Request[v1.GetKnowledgeLoopEntriesRequest]) (*connect.Response[v1.GetKnowledgeLoopEntriesResponse], error)
+	GetKnowledgeLoopSessionState(context.Context, *connect.Request[v1.GetKnowledgeLoopSessionStateRequest]) (*connect.Response[v1.GetKnowledgeLoopSessionStateResponse], error)
+	GetKnowledgeLoopSurfaces(context.Context, *connect.Request[v1.GetKnowledgeLoopSurfacesRequest]) (*connect.Response[v1.GetKnowledgeLoopSurfacesResponse], error)
+	ReserveKnowledgeLoopTransition(context.Context, *connect.Request[v1.ReserveKnowledgeLoopTransitionRequest]) (*connect.Response[v1.ReserveKnowledgeLoopTransitionResponse], error)
 }
 
 // NewKnowledgeSovereignServiceHandler builds an HTTP handler from the service implementation. It
@@ -1118,6 +1214,36 @@ func NewKnowledgeSovereignServiceHandler(svc KnowledgeSovereignServiceHandler, o
 		connect.WithSchema(knowledgeSovereignServiceMethods.ByName("WatchProjectorEvents")),
 		connect.WithHandlerOptions(opts...),
 	)
+	knowledgeSovereignServiceApplyKnowledgeLoopMutationHandler := connect.NewUnaryHandler(
+		KnowledgeSovereignServiceApplyKnowledgeLoopMutationProcedure,
+		svc.ApplyKnowledgeLoopMutation,
+		connect.WithSchema(knowledgeSovereignServiceMethods.ByName("ApplyKnowledgeLoopMutation")),
+		connect.WithHandlerOptions(opts...),
+	)
+	knowledgeSovereignServiceGetKnowledgeLoopEntriesHandler := connect.NewUnaryHandler(
+		KnowledgeSovereignServiceGetKnowledgeLoopEntriesProcedure,
+		svc.GetKnowledgeLoopEntries,
+		connect.WithSchema(knowledgeSovereignServiceMethods.ByName("GetKnowledgeLoopEntries")),
+		connect.WithHandlerOptions(opts...),
+	)
+	knowledgeSovereignServiceGetKnowledgeLoopSessionStateHandler := connect.NewUnaryHandler(
+		KnowledgeSovereignServiceGetKnowledgeLoopSessionStateProcedure,
+		svc.GetKnowledgeLoopSessionState,
+		connect.WithSchema(knowledgeSovereignServiceMethods.ByName("GetKnowledgeLoopSessionState")),
+		connect.WithHandlerOptions(opts...),
+	)
+	knowledgeSovereignServiceGetKnowledgeLoopSurfacesHandler := connect.NewUnaryHandler(
+		KnowledgeSovereignServiceGetKnowledgeLoopSurfacesProcedure,
+		svc.GetKnowledgeLoopSurfaces,
+		connect.WithSchema(knowledgeSovereignServiceMethods.ByName("GetKnowledgeLoopSurfaces")),
+		connect.WithHandlerOptions(opts...),
+	)
+	knowledgeSovereignServiceReserveKnowledgeLoopTransitionHandler := connect.NewUnaryHandler(
+		KnowledgeSovereignServiceReserveKnowledgeLoopTransitionProcedure,
+		svc.ReserveKnowledgeLoopTransition,
+		connect.WithSchema(knowledgeSovereignServiceMethods.ByName("ReserveKnowledgeLoopTransition")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/services.sovereign.v1.KnowledgeSovereignService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case KnowledgeSovereignServiceApplyProjectionMutationProcedure:
@@ -1208,6 +1334,16 @@ func NewKnowledgeSovereignServiceHandler(svc KnowledgeSovereignServiceHandler, o
 			knowledgeSovereignServiceAppendKnowledgeUserEventHandler.ServeHTTP(w, r)
 		case KnowledgeSovereignServiceWatchProjectorEventsProcedure:
 			knowledgeSovereignServiceWatchProjectorEventsHandler.ServeHTTP(w, r)
+		case KnowledgeSovereignServiceApplyKnowledgeLoopMutationProcedure:
+			knowledgeSovereignServiceApplyKnowledgeLoopMutationHandler.ServeHTTP(w, r)
+		case KnowledgeSovereignServiceGetKnowledgeLoopEntriesProcedure:
+			knowledgeSovereignServiceGetKnowledgeLoopEntriesHandler.ServeHTTP(w, r)
+		case KnowledgeSovereignServiceGetKnowledgeLoopSessionStateProcedure:
+			knowledgeSovereignServiceGetKnowledgeLoopSessionStateHandler.ServeHTTP(w, r)
+		case KnowledgeSovereignServiceGetKnowledgeLoopSurfacesProcedure:
+			knowledgeSovereignServiceGetKnowledgeLoopSurfacesHandler.ServeHTTP(w, r)
+		case KnowledgeSovereignServiceReserveKnowledgeLoopTransitionProcedure:
+			knowledgeSovereignServiceReserveKnowledgeLoopTransitionHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -1391,4 +1527,24 @@ func (UnimplementedKnowledgeSovereignServiceHandler) AppendKnowledgeUserEvent(co
 
 func (UnimplementedKnowledgeSovereignServiceHandler) WatchProjectorEvents(context.Context, *connect.Request[v1.WatchProjectorEventsRequest], *connect.ServerStream[v1.WatchProjectorEventsResponse]) error {
 	return connect.NewError(connect.CodeUnimplemented, errors.New("services.sovereign.v1.KnowledgeSovereignService.WatchProjectorEvents is not implemented"))
+}
+
+func (UnimplementedKnowledgeSovereignServiceHandler) ApplyKnowledgeLoopMutation(context.Context, *connect.Request[v1.ApplyKnowledgeLoopMutationRequest]) (*connect.Response[v1.ApplyKnowledgeLoopMutationResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("services.sovereign.v1.KnowledgeSovereignService.ApplyKnowledgeLoopMutation is not implemented"))
+}
+
+func (UnimplementedKnowledgeSovereignServiceHandler) GetKnowledgeLoopEntries(context.Context, *connect.Request[v1.GetKnowledgeLoopEntriesRequest]) (*connect.Response[v1.GetKnowledgeLoopEntriesResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("services.sovereign.v1.KnowledgeSovereignService.GetKnowledgeLoopEntries is not implemented"))
+}
+
+func (UnimplementedKnowledgeSovereignServiceHandler) GetKnowledgeLoopSessionState(context.Context, *connect.Request[v1.GetKnowledgeLoopSessionStateRequest]) (*connect.Response[v1.GetKnowledgeLoopSessionStateResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("services.sovereign.v1.KnowledgeSovereignService.GetKnowledgeLoopSessionState is not implemented"))
+}
+
+func (UnimplementedKnowledgeSovereignServiceHandler) GetKnowledgeLoopSurfaces(context.Context, *connect.Request[v1.GetKnowledgeLoopSurfacesRequest]) (*connect.Response[v1.GetKnowledgeLoopSurfacesResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("services.sovereign.v1.KnowledgeSovereignService.GetKnowledgeLoopSurfaces is not implemented"))
+}
+
+func (UnimplementedKnowledgeSovereignServiceHandler) ReserveKnowledgeLoopTransition(context.Context, *connect.Request[v1.ReserveKnowledgeLoopTransitionRequest]) (*connect.Response[v1.ReserveKnowledgeLoopTransitionResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("services.sovereign.v1.KnowledgeSovereignService.ReserveKnowledgeLoopTransition is not implemented"))
 }

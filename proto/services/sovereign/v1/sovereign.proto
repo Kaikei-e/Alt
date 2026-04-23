@@ -72,6 +72,15 @@ service KnowledgeSovereignService {
 
   // === Projector watch (server streaming) ===
   rpc WatchProjectorEvents(WatchProjectorEventsRequest) returns (stream WatchProjectorEventsResponse);
+
+  // === Knowledge Loop (ADR-000831) ===
+  // Storage of the state-machine Loop read model. Called from alt-backend's
+  // KnowledgeLoopProjectorJob (write path) and Connect-RPC handler (read path).
+  rpc ApplyKnowledgeLoopMutation(ApplyKnowledgeLoopMutationRequest) returns (ApplyKnowledgeLoopMutationResponse);
+  rpc GetKnowledgeLoopEntries(GetKnowledgeLoopEntriesRequest) returns (GetKnowledgeLoopEntriesResponse);
+  rpc GetKnowledgeLoopSessionState(GetKnowledgeLoopSessionStateRequest) returns (GetKnowledgeLoopSessionStateResponse);
+  rpc GetKnowledgeLoopSurfaces(GetKnowledgeLoopSurfacesRequest) returns (GetKnowledgeLoopSurfacesResponse);
+  rpc ReserveKnowledgeLoopTransition(ReserveKnowledgeLoopTransitionRequest) returns (ReserveKnowledgeLoopTransitionResponse);
 }
 
 // =============================================================================
@@ -665,4 +674,227 @@ message WatchProjectorEventsRequest {
 message WatchProjectorEventsResponse {
   int64 latest_event_seq = 1;
   google.protobuf.Timestamp occurred_at = 2;
+}
+
+// =============================================================================
+// Knowledge Loop (ADR-000831)
+// =============================================================================
+// These types mirror domain.KnowledgeLoopEntry/SessionState/Surface in alt-backend.
+// They are duplicated from alt.knowledge.loop.v1 on purpose so the sovereign
+// service has no dependency on the UI-facing proto. alt-backend's
+// sovereign_client/knowledge_loop_client.go maps between the two.
+//
+// projected_at (internal debug wall-clock) is NOT carried over the wire. It is
+// intentionally absent and `reserved` on every message to prevent reintroduction.
+
+enum LoopStage {
+  LOOP_STAGE_UNSPECIFIED = 0;
+  LOOP_STAGE_OBSERVE = 1;
+  LOOP_STAGE_ORIENT = 2;
+  LOOP_STAGE_DECIDE = 3;
+  LOOP_STAGE_ACT = 4;
+}
+
+enum SurfaceBucket {
+  SURFACE_BUCKET_UNSPECIFIED = 0;
+  SURFACE_BUCKET_NOW = 1;
+  SURFACE_BUCKET_CONTINUE = 2;
+  SURFACE_BUCKET_CHANGED = 3;
+  SURFACE_BUCKET_REVIEW = 4;
+}
+
+enum DismissState {
+  DISMISS_STATE_UNSPECIFIED = 0;
+  DISMISS_STATE_ACTIVE = 1;
+  DISMISS_STATE_DEFERRED = 2;
+  DISMISS_STATE_DISMISSED = 3;
+  DISMISS_STATE_COMPLETED = 4;
+}
+
+enum WhyKind {
+  WHY_KIND_UNSPECIFIED = 0;
+  WHY_KIND_SOURCE = 1;
+  WHY_KIND_PATTERN = 2;
+  WHY_KIND_RECALL = 3;
+  WHY_KIND_CHANGE = 4;
+}
+
+enum LoopPriority {
+  LOOP_PRIORITY_UNSPECIFIED = 0;
+  LOOP_PRIORITY_CRITICAL = 1;
+  LOOP_PRIORITY_CONTINUING = 2;
+  LOOP_PRIORITY_CONFIRM = 3;
+  LOOP_PRIORITY_REFERENCE = 4;
+}
+
+enum LoopServiceQuality {
+  LOOP_SERVICE_QUALITY_UNSPECIFIED = 0;
+  LOOP_SERVICE_QUALITY_FULL = 1;
+  LOOP_SERVICE_QUALITY_DEGRADED = 2;
+  LOOP_SERVICE_QUALITY_FALLBACK = 3;
+}
+
+message KnowledgeLoopEvidenceRef {
+  string ref_id = 1;
+  string label = 2;
+}
+
+message KnowledgeLoopWhyPayload {
+  WhyKind kind = 1;
+  string text = 2; // 1..512 chars, plain text only
+  optional float confidence = 3;
+  repeated KnowledgeLoopEvidenceRef evidence_refs = 4; // length <= 8
+}
+
+message KnowledgeLoopArtifactVersionRef {
+  optional string summary_version_id = 1;
+  optional string tag_set_version_id = 2;
+  optional string lens_version_id = 3;
+}
+
+message KnowledgeLoopEntry {
+  string user_id = 1;
+  string tenant_id = 2;
+  string lens_mode_id = 3;
+  string entry_key = 4;
+  string source_item_key = 5;
+
+  LoopStage proposed_stage = 6;
+  SurfaceBucket surface_bucket = 7;
+
+  int64 projection_revision = 8;
+  int64 projection_seq_hiwater = 9;
+  int64 source_event_seq = 10;
+  google.protobuf.Timestamp freshness_at = 11;
+  optional google.protobuf.Timestamp source_observed_at = 12;
+
+  KnowledgeLoopArtifactVersionRef artifact_version_ref = 13;
+  KnowledgeLoopWhyPayload why_primary = 14;
+
+  bytes change_summary = 15;    // JSONB opaque
+  bytes continue_context = 16;  // JSONB opaque
+  bytes decision_options = 17;  // JSONB opaque
+  bytes act_targets = 18;       // JSONB opaque
+
+  optional string superseded_by_entry_key = 19;
+  DismissState dismiss_state = 20;
+  int32 render_depth_hint = 21; // 1..4
+  LoopPriority loop_priority = 22;
+
+  reserved "updated_at", "projected_at", "wall_clock", "ingest_time";
+}
+
+message KnowledgeLoopSessionState {
+  string user_id = 1;
+  string tenant_id = 2;
+  string lens_mode_id = 3;
+
+  LoopStage current_stage = 4;
+  google.protobuf.Timestamp current_stage_entered_at = 5;
+
+  optional string focused_entry_key = 6;
+  optional string foreground_entry_key = 7;
+
+  optional string last_observed_entry_key = 8;
+  optional string last_oriented_entry_key = 9;
+  optional string last_decided_entry_key = 10;
+  optional string last_acted_entry_key = 11;
+  optional string last_returned_entry_key = 12;
+  optional string last_deferred_entry_key = 13;
+
+  int64 projection_revision = 14;
+  int64 projection_seq_hiwater = 15;
+
+  reserved "updated_at", "projected_at";
+}
+
+message KnowledgeLoopSurface {
+  string user_id = 1;
+  string tenant_id = 2;
+  string lens_mode_id = 3;
+  SurfaceBucket surface_bucket = 4;
+
+  optional string primary_entry_key = 5;
+  repeated string secondary_entry_keys = 6;
+
+  int64 projection_revision = 7;
+  int64 projection_seq_hiwater = 8;
+  google.protobuf.Timestamp freshness_at = 9;
+  LoopServiceQuality service_quality = 10;
+  bytes loop_health = 11; // JSONB opaque
+
+  reserved "projected_at";
+}
+
+// ApplyKnowledgeLoopMutation is a generic write envelope, following the same
+// shape as ApplyProjectionMutation / ApplyRecallMutation / ApplyCurationMutation.
+// payload carries a proto-marshalled mutation message. Supported mutation_type:
+//   - "entry_upsert"   -> payload is KnowledgeLoopEntry (the full row to upsert)
+//   - "session_upsert" -> payload is KnowledgeLoopSessionState
+//   - "surface_upsert" -> payload is KnowledgeLoopSurface
+message ApplyKnowledgeLoopMutationRequest {
+  string mutation_type = 1;
+  string entity_id = 2;
+  bytes payload = 3;
+  string idempotency_key = 4;
+}
+
+message ApplyKnowledgeLoopMutationResponse {
+  bool applied = 1;
+  bool skipped_by_seq_hiwater = 2;
+  int64 projection_revision = 3;
+  int64 projection_seq_hiwater = 4;
+  string error_message = 5;
+}
+
+// Get RPCs read through knowledge_loop_entries_public / direct tables; they
+// intentionally do not expose projected_at.
+
+message GetKnowledgeLoopEntriesRequest {
+  string tenant_id = 1;
+  string user_id = 2;
+  string lens_mode_id = 3;
+  optional SurfaceBucket surface_bucket = 4;
+  bool include_dismissed = 5;
+  int32 limit = 6;
+}
+
+message GetKnowledgeLoopEntriesResponse {
+  repeated KnowledgeLoopEntry entries = 1;
+}
+
+message GetKnowledgeLoopSessionStateRequest {
+  string tenant_id = 1;
+  string user_id = 2;
+  string lens_mode_id = 3;
+}
+
+message GetKnowledgeLoopSessionStateResponse {
+  optional KnowledgeLoopSessionState state = 1;
+}
+
+message GetKnowledgeLoopSurfacesRequest {
+  string tenant_id = 1;
+  string user_id = 2;
+  string lens_mode_id = 3;
+}
+
+message GetKnowledgeLoopSurfacesResponse {
+  repeated KnowledgeLoopSurface surfaces = 1;
+}
+
+// ReserveKnowledgeLoopTransition is the ingest-side idempotency barrier.
+// reserved=true means a fresh claim; reserved=false means a duplicate, in which
+// case cached_canonical_entry_key and cached_response_payload carry the original
+// accepted response so the caller can replay it.
+message ReserveKnowledgeLoopTransitionRequest {
+  string user_id = 1;
+  string client_transition_id = 2; // UUIDv7
+}
+
+message ReserveKnowledgeLoopTransitionResponse {
+  bool reserved = 1;
+  optional string cached_canonical_entry_key = 2;
+  bytes cached_response_payload = 3;
+  optional google.protobuf.Timestamp cached_created_at = 4;
 }
