@@ -1,0 +1,40 @@
+name: Knowledge Sovereign Go Tests
+
+on:
+  push:
+    branches: [ main, master ]
+    paths:
+      - 'knowledge-sovereign/**'
+      - '.github/workflows/knowledge-sovereign.yaml'
+  pull_request:
+    branches: [ main, master ]
+    paths:
+      - 'knowledge-sovereign/**'
+      - '.github/workflows/knowledge-sovereign.yaml'
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    permissions:
+      contents: read
+      id-token: write
+    uses: ./.github/workflows/reusable-test-go.yaml
+    with:
+      working-directory: 'knowledge-sovereign/app'
+      coverage-flags: 'knowledge-sovereign'
+      sparse-checkout: 'knowledge-sovereign'
+      use-local-persistent-cache: false
+
+  quality:
+    permissions:
+      contents: read
+      security-events: write
+    uses: ./.github/workflows/reusable-go-quality-gates.yaml
+    with:
+      working-directory: 'knowledge-sovereign/app'
+      lint-only-new: true
+      upload-sarif: true
