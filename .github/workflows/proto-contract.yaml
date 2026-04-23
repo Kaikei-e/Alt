@@ -38,10 +38,12 @@ on:
       - 'alt-frontend-sv/src/test/contracts/**'
       - 'alt-backend/app/driver/preprocessor_connect/contract/**'
       - 'alt-backend/app/driver/contract/**'
+      - 'alt-backend/app/driver/sovereign_client/contract/**'
       - 'pre-processor/app/driver/contract/**'
       - 'rag-orchestrator/internal/adapter/contract/**'
       - 'search-indexer/app/driver/contract/**'
       - 'mq-hub/app/driver/contract/**'
+      - 'knowledge-sovereign/app/driver/contract/**'
       - 'news-creator/app/tests/contract/**'
       - 'recap-subworker/tests/contract/**'
       - 'tag-generator/app/tests/contract/**'
@@ -60,10 +62,12 @@ on:
       - 'alt-frontend-sv/src/test/contracts/**'
       - 'alt-backend/app/driver/preprocessor_connect/contract/**'
       - 'alt-backend/app/driver/contract/**'
+      - 'alt-backend/app/driver/sovereign_client/contract/**'
       - 'pre-processor/app/driver/contract/**'
       - 'rag-orchestrator/internal/adapter/contract/**'
       - 'search-indexer/app/driver/contract/**'
       - 'mq-hub/app/driver/contract/**'
+      - 'knowledge-sovereign/app/driver/contract/**'
       - 'news-creator/app/tests/contract/**'
       - 'recap-subworker/tests/contract/**'
       - 'tag-generator/app/tests/contract/**'
@@ -291,6 +295,27 @@ jobs:
 
       - name: Run alt-backend provider verification
         working-directory: alt-backend/app
+        env:
+          CGO_ENABLED: "1"
+          PACT_BROKER_BASE_URL: http://localhost:9292
+          PACT_BROKER_USERNAME: pact
+          PACT_BROKER_PASSWORD: pact
+          PACT_PROVIDER_VERSION: ${{ github.sha }}
+          PACT_PROVIDER_BRANCH: ${{ github.head_ref || github.ref_name }}
+        run: go test -tags=contract ./driver/contract/ -v
+
+      - name: Run knowledge-sovereign provider verification
+        # Added per ADR-000834 (knowledge-sovereign pacticipant promotion)
+        # and confirmed against alt-deploy run 24833114775 where
+        # can-i-deploy reported `alt-backend ↔ knowledge-sovereign:
+        # unknown (verifications=0)` and blocked the roll: the consumer
+        # pact was published but no provider verification result ever
+        # reached the broker. Running the same pattern as alt-backend
+        # above (go test -tags=contract + PACT_PROVIDER_VERSION env)
+        # triggers the publish path inside the provider_test.go file
+        # (see its `verifyRequest.PublishVerificationResults =
+        # os.Getenv("PACT_PROVIDER_VERSION") != ""` branch).
+        working-directory: knowledge-sovereign/app
         env:
           CGO_ENABLED: "1"
           PACT_BROKER_BASE_URL: http://localhost:9292
