@@ -35,4 +35,13 @@ type RagStreamPort interface {
 		ctx context.Context,
 		req *connect.Request[augurv2.DeleteConversationRequest],
 	) (*connect.Response[augurv2.DeleteConversationResponse], error)
+
+	// CreateAugurSessionFromLoopEntry forwards a Knowledge Loop → Augur handshake.
+	// The caller has already resolved the entry via sovereign and enriched the
+	// request with why_text + evidence_refs; the provider just creates the
+	// conversation row. See ADR-000836.
+	CreateAugurSessionFromLoopEntry(
+		ctx context.Context,
+		req *connect.Request[augurv2.CreateAugurSessionFromLoopEntryRequest],
+	) (*connect.Response[augurv2.CreateAugurSessionFromLoopEntryResponse], error)
 }

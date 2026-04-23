@@ -6,9 +6,11 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"regexp"
 	"strings"
 	"time"
 	"unicode"
+	"unicode/utf8"
 
 	augurv2 "alt/gen/proto/alt/augur/v2"
 	"alt/gen/proto/alt/augur/v2/augurv2connect"
@@ -25,6 +27,9 @@ import (
 // alt-backend → rag-orchestrator hop. alt-backend validates the JWT and sets
 // this header; rag-orchestrator never accepts unauthenticated traffic.
 const userIDHeader = "X-Alt-User-Id"
+
+// uuidv7Re matches RFC 9562 UUIDv7: version nibble == 7, variant bits 10.
+var uuidv7Re = regexp.MustCompile(`^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$`)
 
 // sanitizeUTF8 removes invalid UTF-8 sequences from a string.
 // This is necessary because Ollama LLM may return chunks containing
@@ -574,6 +579,63 @@ func (h *Handler) GetConversation(
 		})
 	}
 	return connect.NewResponse(resp), nil
+}
+
+// CreateAugurSessionFromLoopEntry provisions a new conversation seeded with a
+// Knowledge Loop entry's Why + evidence. Caller chain is alt-frontend-sv BFF
+// → alt-backend → rag-orchestrator; the BFF resolves the entry through
+// sovereign and passes the enriched payload through. Server is trusted and
+// does NOT re-verify sovereign. See ADR-000836.
+func (h *Handler) CreateAugurSessionFromLoopEntry(
+	ctx context.Context,
+	req *connect.Request[augurv2.CreateAugurSessionFromLoopEntryRequest],
+) (*connect.Response[augurv2.CreateAugurSessionFromLoopEntryResponse], error) {
+	userID, err := extractUserID(req.Header())
+	if err != nil {
+		return nil, connect.NewError(connect.CodeUnauthenticated, err)
+	}
+
+	m := req.Msg
+	if !uuidv7Re.MatchString(strings.ToLower(strings.TrimSpace(m.ClientHandshakeId))) {
+		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("client_handshake_id must be UUIDv7"))
+	}
+	if strings.TrimSpace(m.EntryKey) == "" {
+		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("entry_key required"))
+	}
+	why := strings.TrimSpace(m.WhyText)
+	if why == "" {
+		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("why_text required"))
+	}
+	if utf8.RuneCountInString(why) > 512 {
+		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("why_text exceeds 512 runes"))
+	}
+	if len(m.EvidenceRefs) > 8 {
+		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("evidence_refs exceeds 8 entries"))
+	}
+
+	refs := make([]domain.AugurCitation, 0, len(m.EvidenceRefs))
+	for _, r := range m.EvidenceRefs {
+		refs = append(refs, domain.AugurCitation{
+			URL:   sanitizeUTF8(r.RefId),
+			Title: sanitizeUTF8(r.Label),
+		})
+	}
+
+	conv, err := h.conversationUsecase.CreateSessionFromLoopEntry(ctx, usecase.CreateSessionFromLoopEntryInput{
+		UserID:       userID,
+		EntryKey:     sanitizeUTF8(m.EntryKey),
+		LensModeID:   sanitizeUTF8(m.LensModeId),
+		WhyText:      sanitizeUTF8(why),
+		EvidenceRefs: refs,
+	})
+	if err != nil {
+		h.logger.Error("create augur loop session failed", slog.String("error", err.Error()))
+		return nil, connect.NewError(connect.CodeInternal, err)
+	}
+
+	return connect.NewResponse(&augurv2.CreateAugurSessionFromLoopEntryResponse{
+		ConversationId: conv.ID.String(),
+	}), nil
 }
 
 // DeleteConversation removes a conversation and its messages.

@@ -13,6 +13,7 @@ import {
 	transitionKnowledgeLoop as transitionKnowledgeLoopClient,
 	type KnowledgeLoopResult,
 } from "$lib/connect/knowledge_loop";
+import { createAugurSessionFromLoopEntry as createAugurSessionFromLoopEntryClient } from "$lib/connect/augur";
 
 export async function getKnowledgeLoopForUser(
 	backendToken: string,
@@ -42,4 +43,40 @@ export async function transitionKnowledgeLoopForUser(
 		canonicalEntryKey: resp.canonicalEntryKey,
 		message: resp.message,
 	};
+}
+
+/**
+ * Loop → Augur handshake. The BFF resolves the entry via sovereign first (so
+ * Augur receives the canonical why_text + evidence_refs), then mints an Augur
+ * conversation. Returns the new conversation id for client-side navigation.
+ * See ADR-000836.
+ */
+export async function createAugurSessionFromLoopEntryForUser(
+	backendToken: string,
+	args: {
+		lensModeId: string;
+		clientHandshakeId: string;
+		entryKey: string;
+	},
+): Promise<{ conversationId: string }> {
+	const loop = await getKnowledgeLoopForUser(backendToken, args.lensModeId, {
+		foregroundLimit: 12,
+	});
+	const entry = loop.foregroundEntries.find((e) => e.entryKey === args.entryKey);
+	if (!entry) {
+		const err = new Error("entry_not_found");
+		(err as Error & { code: string }).code = "not_found";
+		throw err;
+	}
+	const transport = createServerTransportWithToken(backendToken);
+	return createAugurSessionFromLoopEntryClient(transport, {
+		clientHandshakeId: args.clientHandshakeId,
+		entryKey: args.entryKey,
+		lensModeId: args.lensModeId,
+		whyText: entry.whyPrimary.text,
+		evidenceRefs: entry.whyPrimary.evidenceRefs.map((r) => ({
+			refId: r.refId,
+			label: r.label,
+		})),
+	});
 }

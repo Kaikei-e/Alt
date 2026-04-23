@@ -27,6 +27,20 @@ service AugurService {
 
   // DeleteConversation removes a conversation and its messages.
   rpc DeleteConversation(DeleteConversationRequest) returns (DeleteConversationResponse);
+
+  // CreateAugurSessionFromLoopEntry provisions a new conversation seeded with a
+  // Knowledge Loop entry's Why context and evidence references. Callers
+  // (alt-frontend-sv BFF via alt-backend) first resolve the entry through
+  // knowledge-sovereign's GetKnowledgeLoopEntries, then pass the pre-loaded
+  // why_text and evidence_refs to this RPC. The server is trusted to treat
+  // the enriched payload as authoritative and never re-fetches sovereign;
+  // the entry_key and lens_mode_id are recorded for audit only.
+  //
+  // Idempotency: client_handshake_id is a UUIDv7 that lets callers retry
+  // without creating duplicate conversations. Replays return the existing
+  // conversation_id (AlreadyExists → 200 replay upstream).
+  rpc CreateAugurSessionFromLoopEntry(CreateAugurSessionFromLoopEntryRequest)
+      returns (CreateAugurSessionFromLoopEntryResponse);
 }
 
 // =============================================================================
@@ -184,3 +198,41 @@ message DeleteConversationRequest {
 }
 
 message DeleteConversationResponse {}
+
+// =============================================================================
+// Loop Handshake Messages
+// =============================================================================
+
+// LoopEvidenceRef mirrors knowledge-sovereign's KnowledgeLoopEvidenceRef so the
+// Augur service can seed a conversation with the same citations the Loop tile
+// displayed. ref_id is typically a URL or article id, label is the display text.
+message LoopEvidenceRef {
+  string ref_id = 1;
+  string label = 2;
+}
+
+// CreateAugurSessionFromLoopEntryRequest is the handoff payload from the
+// Knowledge Loop UI to Augur. The BFF resolves the entry via sovereign before
+// calling this RPC and passes the resolved why_text + evidence_refs through
+// as-is so Augur never touches sovereign directly.
+message CreateAugurSessionFromLoopEntryRequest {
+  // UUIDv7 generated client-side for idempotent retries.
+  string client_handshake_id = 1;
+  // The Loop entry the user asked about. Recorded as the conversation's audit
+  // breadcrumb but NOT re-verified server-side.
+  string entry_key = 2;
+  // Lens mode under which the entry was observed. Recorded for audit.
+  string lens_mode_id = 3;
+  // The Why statement the user saw on the Loop tile (1..512 chars, plain text).
+  string why_text = 4;
+  // The evidence references the user saw on the Loop tile (length <= 8).
+  repeated LoopEvidenceRef evidence_refs = 5;
+}
+
+// CreateAugurSessionFromLoopEntryResponse is what the UI consumes to navigate
+// the user to their new conversation.
+message CreateAugurSessionFromLoopEntryResponse {
+  // The newly-minted (or replayed) conversation id. The UI navigates to
+  // /augur/<conversation_id>.
+  string conversation_id = 1;
+}

@@ -25,9 +25,28 @@ type AugurConversationUsecase interface {
 	AppendUserTurn(ctx context.Context, conversationID uuid.UUID, content string) error
 	AppendAssistantTurn(ctx context.Context, conversationID uuid.UUID, content string, citations []domain.AugurCitation) error
 
+	// CreateSessionFromLoopEntry provisions a new conversation seeded with a
+	// Knowledge Loop entry's Why context. The caller (alt-frontend-sv BFF via
+	// alt-backend) is trusted to have resolved the entry through sovereign;
+	// this method does NOT re-verify. The seeded turn is recorded as an
+	// assistant message so the user lands on /augur/<id> with context already
+	// in view. See ADR-000836.
+	CreateSessionFromLoopEntry(ctx context.Context, input CreateSessionFromLoopEntryInput) (*domain.AugurConversation, error)
+
 	ListConversations(ctx context.Context, userID uuid.UUID, limit int, afterActivity *time.Time, afterID *uuid.UUID) ([]domain.AugurConversationSummary, error)
 	GetConversation(ctx context.Context, userID uuid.UUID, conversationID uuid.UUID) (*domain.AugurConversation, []domain.AugurMessage, error)
 	DeleteConversation(ctx context.Context, userID uuid.UUID, conversationID uuid.UUID) error
+}
+
+// CreateSessionFromLoopEntryInput carries the BFF-enriched handoff data for a
+// Loop → Augur session. EntryKey and LensModeID are recorded for audit (and
+// for future idempotency) but the usecase does not reject known values.
+type CreateSessionFromLoopEntryInput struct {
+	UserID       uuid.UUID
+	EntryKey     string
+	LensModeID   string
+	WhyText      string
+	EvidenceRefs []domain.AugurCitation
 }
 
 // augurConversationUsecase is the default implementation.
@@ -89,6 +108,56 @@ func (u *augurConversationUsecase) EnsureConversation(
 		return nil, fmt.Errorf("create conversation: %w", err)
 	}
 	return conv, nil
+}
+
+func (u *augurConversationUsecase) CreateSessionFromLoopEntry(
+	ctx context.Context,
+	input CreateSessionFromLoopEntryInput,
+) (*domain.AugurConversation, error) {
+	if input.UserID == uuid.Nil {
+		return nil, errors.New("augur usecase: userID required")
+	}
+	if strings.TrimSpace(input.EntryKey) == "" {
+		return nil, errors.New("augur usecase: entryKey required")
+	}
+	why := strings.TrimSpace(input.WhyText)
+	if why == "" {
+		return nil, errors.New("augur usecase: whyText required")
+	}
+
+	conv := &domain.AugurConversation{
+		ID:        uuid.New(),
+		UserID:    input.UserID,
+		Title:     titleFromFirstMessage(why),
+		CreatedAt: u.clock().UTC(),
+	}
+	if err := u.repo.CreateConversation(ctx, conv); err != nil {
+		return nil, fmt.Errorf("create conversation: %w", err)
+	}
+
+	seed := &domain.AugurMessage{
+		ID:             uuid.New(),
+		ConversationID: conv.ID,
+		Role:           "assistant",
+		Content:        renderLoopSeed(why, input.EvidenceRefs),
+		Citations:      append([]domain.AugurCitation{}, input.EvidenceRefs...),
+		CreatedAt:      u.clock().UTC(),
+	}
+	if err := u.repo.AppendMessage(ctx, seed); err != nil {
+		return nil, fmt.Errorf("seed loop context: %w", err)
+	}
+	return conv, nil
+}
+
+// renderLoopSeed formats the handoff preamble the user sees on arrival. Kept
+// short and editorial — the UI renders evidence as a separate citation block,
+// so we do not list refs inside the message body.
+func renderLoopSeed(whyText string, refs []domain.AugurCitation) string {
+	if len(refs) == 0 {
+		return "From your Knowledge Loop:\n\n" + whyText
+	}
+	return "From your Knowledge Loop:\n\n" + whyText +
+		"\n\nI've loaded the evidence you saw on the tile. Ask anything about it."
 }
 
 func (u *augurConversationUsecase) AppendUserTurn(ctx context.Context, conversationID uuid.UUID, content string) error {

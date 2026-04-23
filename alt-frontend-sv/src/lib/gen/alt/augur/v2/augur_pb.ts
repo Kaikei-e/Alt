@@ -12,7 +12,7 @@ import type { Message } from "@bufbuild/protobuf";
  * Describes the file alt/augur/v2/augur.proto.
  */
 export const file_alt_augur_v2_augur: GenFile = /*@__PURE__*/
-  fileDesc("ChhhbHQvYXVndXIvdjIvYXVndXIucHJvdG8SDGFsdC5hdWd1ci52MiJZChFTdHJlYW1DaGF0UmVxdWVzdBIrCghtZXNzYWdlcxgBIAMoCzIZLmFsdC5hdWd1ci52Mi5DaGF0TWVzc2FnZRIXCg9jb252ZXJzYXRpb25faWQYAiABKAkihwEKC0NoYXRNZXNzYWdlEgwKBHJvbGUYASABKAkSDwoHY29udGVudBgCIAEoCRIuCgpjcmVhdGVkX2F0GAMgASgLMhouZ29vZ2xlLnByb3RvYnVmLlRpbWVzdGFtcBIpCgljaXRhdGlvbnMYBCADKAsyFi5hbHQuYXVndXIudjIuQ2l0YXRpb24i4AEKElN0cmVhbUNoYXRSZXNwb25zZRIMCgRraW5kGAEgASgJEg8KBWRlbHRhGAIgASgJSAASKQoEbWV0YRgDIAEoCzIZLmFsdC5hdWd1ci52Mi5NZXRhUGF5bG9hZEgAEikKBGRvbmUYBCABKAsyGS5hbHQuYXVndXIudjIuRG9uZVBheWxvYWRIABIXCg1mYWxsYmFja19jb2RlGAUgASgJSAASFwoNZXJyb3JfbWVzc2FnZRgGIAEoCUgAEhgKDnRoaW5raW5nX2RlbHRhGAcgASgJSABCCQoHcGF5bG9hZCJRCgtNZXRhUGF5bG9hZBIpCgljaXRhdGlvbnMYASADKAsyFi5hbHQuYXVndXIudjIuQ2l0YXRpb24SFwoPY29udmVyc2F0aW9uX2lkGAIgASgJIjwKCENpdGF0aW9uEgsKA3VybBgBIAEoCRINCgV0aXRsZRgCIAEoCRIUCgxwdWJsaXNoZWRfYXQYAyABKAkiagoLRG9uZVBheWxvYWQSDgoGYW5zd2VyGAEgASgJEikKCWNpdGF0aW9ucxgCIAMoCzIWLmFsdC5hdWd1ci52Mi5DaXRhdGlvbhIOCgZpbnRlbnQYAyABKAkSEAoIc3RyYXRlZ3kYBCABKAkiNgoWUmV0cmlldmVDb250ZXh0UmVxdWVzdBINCgVxdWVyeRgBIAEoCRINCgVsaW1pdBgCIAEoBSJGChdSZXRyaWV2ZUNvbnRleHRSZXNwb25zZRIrCghjb250ZXh0cxgBIAMoCzIZLmFsdC5hdWd1ci52Mi5Db250ZXh0SXRlbSJOCgtDb250ZXh0SXRlbRILCgN1cmwYASABKAkSDQoFdGl0bGUYAiABKAkSFAoMcHVibGlzaGVkX2F0GAMgASgJEg0KBXNjb3JlGAQgASgCIssBChNDb252ZXJzYXRpb25TdW1tYXJ5EgoKAmlkGAEgASgJEg0KBXRpdGxlGAIgASgJEi4KCmNyZWF0ZWRfYXQYAyABKAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1wEjQKEGxhc3RfYWN0aXZpdHlfYXQYBCABKAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1wEhwKFGxhc3RfbWVzc2FnZV9wcmV2aWV3GAUgASgJEhUKDW1lc3NhZ2VfY291bnQYBiABKAUiQQoYTGlzdENvbnZlcnNhdGlvbnNSZXF1ZXN0EhEKCXBhZ2Vfc2l6ZRgBIAEoBRISCgpwYWdlX3Rva2VuGAIgASgJIm4KGUxpc3RDb252ZXJzYXRpb25zUmVzcG9uc2USOAoNY29udmVyc2F0aW9ucxgBIAMoCzIhLmFsdC5hdWd1ci52Mi5Db252ZXJzYXRpb25TdW1tYXJ5EhcKD25leHRfcGFnZV90b2tlbhgCIAEoCSIkChZHZXRDb252ZXJzYXRpb25SZXF1ZXN0EgoKAmlkGAEgASgJIpEBChdHZXRDb252ZXJzYXRpb25SZXNwb25zZRIKCgJpZBgBIAEoCRINCgV0aXRsZRgCIAEoCRIuCgpjcmVhdGVkX2F0GAMgASgLMhouZ29vZ2xlLnByb3RvYnVmLlRpbWVzdGFtcBIrCghtZXNzYWdlcxgEIAMoCzIZLmFsdC5hdWd1ci52Mi5DaGF0TWVzc2FnZSInChlEZWxldGVDb252ZXJzYXRpb25SZXF1ZXN0EgoKAmlkGAEgASgJIhwKGkRlbGV0ZUNvbnZlcnNhdGlvblJlc3BvbnNlMvADCgxBdWd1clNlcnZpY2USUQoKU3RyZWFtQ2hhdBIfLmFsdC5hdWd1ci52Mi5TdHJlYW1DaGF0UmVxdWVzdBogLmFsdC5hdWd1ci52Mi5TdHJlYW1DaGF0UmVzcG9uc2UwARJeCg9SZXRyaWV2ZUNvbnRleHQSJC5hbHQuYXVndXIudjIuUmV0cmlldmVDb250ZXh0UmVxdWVzdBolLmFsdC5hdWd1ci52Mi5SZXRyaWV2ZUNvbnRleHRSZXNwb25zZRJkChFMaXN0Q29udmVyc2F0aW9ucxImLmFsdC5hdWd1ci52Mi5MaXN0Q29udmVyc2F0aW9uc1JlcXVlc3QaJy5hbHQuYXVndXIudjIuTGlzdENvbnZlcnNhdGlvbnNSZXNwb25zZRJeCg9HZXRDb252ZXJzYXRpb24SJC5hbHQuYXVndXIudjIuR2V0Q29udmVyc2F0aW9uUmVxdWVzdBolLmFsdC5hdWd1ci52Mi5HZXRDb252ZXJzYXRpb25SZXNwb25zZRJnChJEZWxldGVDb252ZXJzYXRpb24SJy5hbHQuYXVndXIudjIuRGVsZXRlQ29udmVyc2F0aW9uUmVxdWVzdBooLmFsdC5hdWd1ci52Mi5EZWxldGVDb252ZXJzYXRpb25SZXNwb25zZUIkWiJhbHQvZ2VuL3Byb3RvL2FsdC9hdWd1ci92MjthdWd1cnYyYgZwcm90bzM", [file_google_protobuf_timestamp]);
+  fileDesc("ChhhbHQvYXVndXIvdjIvYXVndXIucHJvdG8SDGFsdC5hdWd1ci52MiJZChFTdHJlYW1DaGF0UmVxdWVzdBIrCghtZXNzYWdlcxgBIAMoCzIZLmFsdC5hdWd1ci52Mi5DaGF0TWVzc2FnZRIXCg9jb252ZXJzYXRpb25faWQYAiABKAkihwEKC0NoYXRNZXNzYWdlEgwKBHJvbGUYASABKAkSDwoHY29udGVudBgCIAEoCRIuCgpjcmVhdGVkX2F0GAMgASgLMhouZ29vZ2xlLnByb3RvYnVmLlRpbWVzdGFtcBIpCgljaXRhdGlvbnMYBCADKAsyFi5hbHQuYXVndXIudjIuQ2l0YXRpb24i4AEKElN0cmVhbUNoYXRSZXNwb25zZRIMCgRraW5kGAEgASgJEg8KBWRlbHRhGAIgASgJSAASKQoEbWV0YRgDIAEoCzIZLmFsdC5hdWd1ci52Mi5NZXRhUGF5bG9hZEgAEikKBGRvbmUYBCABKAsyGS5hbHQuYXVndXIudjIuRG9uZVBheWxvYWRIABIXCg1mYWxsYmFja19jb2RlGAUgASgJSAASFwoNZXJyb3JfbWVzc2FnZRgGIAEoCUgAEhgKDnRoaW5raW5nX2RlbHRhGAcgASgJSABCCQoHcGF5bG9hZCJRCgtNZXRhUGF5bG9hZBIpCgljaXRhdGlvbnMYASADKAsyFi5hbHQuYXVndXIudjIuQ2l0YXRpb24SFwoPY29udmVyc2F0aW9uX2lkGAIgASgJIjwKCENpdGF0aW9uEgsKA3VybBgBIAEoCRINCgV0aXRsZRgCIAEoCRIUCgxwdWJsaXNoZWRfYXQYAyABKAkiagoLRG9uZVBheWxvYWQSDgoGYW5zd2VyGAEgASgJEikKCWNpdGF0aW9ucxgCIAMoCzIWLmFsdC5hdWd1ci52Mi5DaXRhdGlvbhIOCgZpbnRlbnQYAyABKAkSEAoIc3RyYXRlZ3kYBCABKAkiNgoWUmV0cmlldmVDb250ZXh0UmVxdWVzdBINCgVxdWVyeRgBIAEoCRINCgVsaW1pdBgCIAEoBSJGChdSZXRyaWV2ZUNvbnRleHRSZXNwb25zZRIrCghjb250ZXh0cxgBIAMoCzIZLmFsdC5hdWd1ci52Mi5Db250ZXh0SXRlbSJOCgtDb250ZXh0SXRlbRILCgN1cmwYASABKAkSDQoFdGl0bGUYAiABKAkSFAoMcHVibGlzaGVkX2F0GAMgASgJEg0KBXNjb3JlGAQgASgCIssBChNDb252ZXJzYXRpb25TdW1tYXJ5EgoKAmlkGAEgASgJEg0KBXRpdGxlGAIgASgJEi4KCmNyZWF0ZWRfYXQYAyABKAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1wEjQKEGxhc3RfYWN0aXZpdHlfYXQYBCABKAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1wEhwKFGxhc3RfbWVzc2FnZV9wcmV2aWV3GAUgASgJEhUKDW1lc3NhZ2VfY291bnQYBiABKAUiQQoYTGlzdENvbnZlcnNhdGlvbnNSZXF1ZXN0EhEKCXBhZ2Vfc2l6ZRgBIAEoBRISCgpwYWdlX3Rva2VuGAIgASgJIm4KGUxpc3RDb252ZXJzYXRpb25zUmVzcG9uc2USOAoNY29udmVyc2F0aW9ucxgBIAMoCzIhLmFsdC5hdWd1ci52Mi5Db252ZXJzYXRpb25TdW1tYXJ5EhcKD25leHRfcGFnZV90b2tlbhgCIAEoCSIkChZHZXRDb252ZXJzYXRpb25SZXF1ZXN0EgoKAmlkGAEgASgJIpEBChdHZXRDb252ZXJzYXRpb25SZXNwb25zZRIKCgJpZBgBIAEoCRINCgV0aXRsZRgCIAEoCRIuCgpjcmVhdGVkX2F0GAMgASgLMhouZ29vZ2xlLnByb3RvYnVmLlRpbWVzdGFtcBIrCghtZXNzYWdlcxgEIAMoCzIZLmFsdC5hdWd1ci52Mi5DaGF0TWVzc2FnZSInChlEZWxldGVDb252ZXJzYXRpb25SZXF1ZXN0EgoKAmlkGAEgASgJIhwKGkRlbGV0ZUNvbnZlcnNhdGlvblJlc3BvbnNlIjAKD0xvb3BFdmlkZW5jZVJlZhIOCgZyZWZfaWQYASABKAkSDQoFbGFiZWwYAiABKAkitgEKJkNyZWF0ZUF1Z3VyU2Vzc2lvbkZyb21Mb29wRW50cnlSZXF1ZXN0EhsKE2NsaWVudF9oYW5kc2hha2VfaWQYASABKAkSEQoJZW50cnlfa2V5GAIgASgJEhQKDGxlbnNfbW9kZV9pZBgDIAEoCRIQCgh3aHlfdGV4dBgEIAEoCRI0Cg1ldmlkZW5jZV9yZWZzGAUgAygLMh0uYWx0LmF1Z3VyLnYyLkxvb3BFdmlkZW5jZVJlZiJCCidDcmVhdGVBdWd1clNlc3Npb25Gcm9tTG9vcEVudHJ5UmVzcG9uc2USFwoPY29udmVyc2F0aW9uX2lkGAEgASgJMoEFCgxBdWd1clNlcnZpY2USUQoKU3RyZWFtQ2hhdBIfLmFsdC5hdWd1ci52Mi5TdHJlYW1DaGF0UmVxdWVzdBogLmFsdC5hdWd1ci52Mi5TdHJlYW1DaGF0UmVzcG9uc2UwARJeCg9SZXRyaWV2ZUNvbnRleHQSJC5hbHQuYXVndXIudjIuUmV0cmlldmVDb250ZXh0UmVxdWVzdBolLmFsdC5hdWd1ci52Mi5SZXRyaWV2ZUNvbnRleHRSZXNwb25zZRJkChFMaXN0Q29udmVyc2F0aW9ucxImLmFsdC5hdWd1ci52Mi5MaXN0Q29udmVyc2F0aW9uc1JlcXVlc3QaJy5hbHQuYXVndXIudjIuTGlzdENvbnZlcnNhdGlvbnNSZXNwb25zZRJeCg9HZXRDb252ZXJzYXRpb24SJC5hbHQuYXVndXIudjIuR2V0Q29udmVyc2F0aW9uUmVxdWVzdBolLmFsdC5hdWd1ci52Mi5HZXRDb252ZXJzYXRpb25SZXNwb25zZRJnChJEZWxldGVDb252ZXJzYXRpb24SJy5hbHQuYXVndXIudjIuRGVsZXRlQ29udmVyc2F0aW9uUmVxdWVzdBooLmFsdC5hdWd1ci52Mi5EZWxldGVDb252ZXJzYXRpb25SZXNwb25zZRKOAQofQ3JlYXRlQXVndXJTZXNzaW9uRnJvbUxvb3BFbnRyeRI0LmFsdC5hdWd1ci52Mi5DcmVhdGVBdWd1clNlc3Npb25Gcm9tTG9vcEVudHJ5UmVxdWVzdBo1LmFsdC5hdWd1ci52Mi5DcmVhdGVBdWd1clNlc3Npb25Gcm9tTG9vcEVudHJ5UmVzcG9uc2VCJFoiYWx0L2dlbi9wcm90by9hbHQvYXVndXIvdjI7YXVndXJ2MmIGcHJvdG8z", [file_google_protobuf_timestamp]);
 
 /**
  * StreamChatRequest is the request for streaming chat.
@@ -534,6 +534,108 @@ export const DeleteConversationResponseSchema: GenMessage<DeleteConversationResp
   messageDesc(file_alt_augur_v2_augur, 15);
 
 /**
+ * LoopEvidenceRef mirrors knowledge-sovereign's KnowledgeLoopEvidenceRef so the
+ * Augur service can seed a conversation with the same citations the Loop tile
+ * displayed. ref_id is typically a URL or article id, label is the display text.
+ *
+ * @generated from message alt.augur.v2.LoopEvidenceRef
+ */
+export type LoopEvidenceRef = Message<"alt.augur.v2.LoopEvidenceRef"> & {
+  /**
+   * @generated from field: string ref_id = 1;
+   */
+  refId: string;
+
+  /**
+   * @generated from field: string label = 2;
+   */
+  label: string;
+};
+
+/**
+ * Describes the message alt.augur.v2.LoopEvidenceRef.
+ * Use `create(LoopEvidenceRefSchema)` to create a new message.
+ */
+export const LoopEvidenceRefSchema: GenMessage<LoopEvidenceRef> = /*@__PURE__*/
+  messageDesc(file_alt_augur_v2_augur, 16);
+
+/**
+ * CreateAugurSessionFromLoopEntryRequest is the handoff payload from the
+ * Knowledge Loop UI to Augur. The BFF resolves the entry via sovereign before
+ * calling this RPC and passes the resolved why_text + evidence_refs through
+ * as-is so Augur never touches sovereign directly.
+ *
+ * @generated from message alt.augur.v2.CreateAugurSessionFromLoopEntryRequest
+ */
+export type CreateAugurSessionFromLoopEntryRequest = Message<"alt.augur.v2.CreateAugurSessionFromLoopEntryRequest"> & {
+  /**
+   * UUIDv7 generated client-side for idempotent retries.
+   *
+   * @generated from field: string client_handshake_id = 1;
+   */
+  clientHandshakeId: string;
+
+  /**
+   * The Loop entry the user asked about. Recorded as the conversation's audit
+   * breadcrumb but NOT re-verified server-side.
+   *
+   * @generated from field: string entry_key = 2;
+   */
+  entryKey: string;
+
+  /**
+   * Lens mode under which the entry was observed. Recorded for audit.
+   *
+   * @generated from field: string lens_mode_id = 3;
+   */
+  lensModeId: string;
+
+  /**
+   * The Why statement the user saw on the Loop tile (1..512 chars, plain text).
+   *
+   * @generated from field: string why_text = 4;
+   */
+  whyText: string;
+
+  /**
+   * The evidence references the user saw on the Loop tile (length <= 8).
+   *
+   * @generated from field: repeated alt.augur.v2.LoopEvidenceRef evidence_refs = 5;
+   */
+  evidenceRefs: LoopEvidenceRef[];
+};
+
+/**
+ * Describes the message alt.augur.v2.CreateAugurSessionFromLoopEntryRequest.
+ * Use `create(CreateAugurSessionFromLoopEntryRequestSchema)` to create a new message.
+ */
+export const CreateAugurSessionFromLoopEntryRequestSchema: GenMessage<CreateAugurSessionFromLoopEntryRequest> = /*@__PURE__*/
+  messageDesc(file_alt_augur_v2_augur, 17);
+
+/**
+ * CreateAugurSessionFromLoopEntryResponse is what the UI consumes to navigate
+ * the user to their new conversation.
+ *
+ * @generated from message alt.augur.v2.CreateAugurSessionFromLoopEntryResponse
+ */
+export type CreateAugurSessionFromLoopEntryResponse = Message<"alt.augur.v2.CreateAugurSessionFromLoopEntryResponse"> & {
+  /**
+   * The newly-minted (or replayed) conversation id. The UI navigates to
+   * /augur/<conversation_id>.
+   *
+   * @generated from field: string conversation_id = 1;
+   */
+  conversationId: string;
+};
+
+/**
+ * Describes the message alt.augur.v2.CreateAugurSessionFromLoopEntryResponse.
+ * Use `create(CreateAugurSessionFromLoopEntryResponseSchema)` to create a new message.
+ */
+export const CreateAugurSessionFromLoopEntryResponseSchema: GenMessage<CreateAugurSessionFromLoopEntryResponse> = /*@__PURE__*/
+  messageDesc(file_alt_augur_v2_augur, 18);
+
+/**
  * @generated from service alt.augur.v2.AugurService
  */
 export const AugurService: GenService<{
@@ -588,6 +690,26 @@ export const AugurService: GenService<{
     methodKind: "unary";
     input: typeof DeleteConversationRequestSchema;
     output: typeof DeleteConversationResponseSchema;
+  },
+  /**
+   * CreateAugurSessionFromLoopEntry provisions a new conversation seeded with a
+   * Knowledge Loop entry's Why context and evidence references. Callers
+   * (alt-frontend-sv BFF via alt-backend) first resolve the entry through
+   * knowledge-sovereign's GetKnowledgeLoopEntries, then pass the pre-loaded
+   * why_text and evidence_refs to this RPC. The server is trusted to treat
+   * the enriched payload as authoritative and never re-fetches sovereign;
+   * the entry_key and lens_mode_id are recorded for audit only.
+   *
+   * Idempotency: client_handshake_id is a UUIDv7 that lets callers retry
+   * without creating duplicate conversations. Replays return the existing
+   * conversation_id (AlreadyExists → 200 replay upstream).
+   *
+   * @generated from rpc alt.augur.v2.AugurService.CreateAugurSessionFromLoopEntry
+   */
+  createAugurSessionFromLoopEntry: {
+    methodKind: "unary";
+    input: typeof CreateAugurSessionFromLoopEntryRequestSchema;
+    output: typeof CreateAugurSessionFromLoopEntryResponseSchema;
   },
 }> = /*@__PURE__*/
   serviceDesc(file_alt_augur_v2_augur, 0);

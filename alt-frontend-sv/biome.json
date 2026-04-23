@@ -92,6 +92,25 @@
 					}
 				}
 			}
+		},
+		{
+			"includes": ["src/lib/hooks/useKnowledgeLoop.svelte.ts"],
+			"linter": {
+				"rules": {
+					"style": {
+						"noRestrictedImports": {
+							"level": "error",
+							"options": {
+								"patterns": [
+									{
+										"group": ["$lib/connect/knowledge_home*"]
+									}
+								]
+							}
+						}
+					}
+				}
+			}
 		}
 	]
 }

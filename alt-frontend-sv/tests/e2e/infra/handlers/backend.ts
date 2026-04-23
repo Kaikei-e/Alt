@@ -26,6 +26,10 @@ import {
 	AUGUR_CONNECT_MESSAGES,
 	CONNECT_RECAP_RESPONSE,
 } from "../data/recap";
+import {
+	CONNECT_KNOWLEDGE_LOOP_RESPONSE,
+	CONNECT_TRANSITION_LOOP_RESPONSE,
+} from "../data/knowledge-loop";
 import { JOB_PROGRESS_RESPONSE } from "../../fixtures/mockData";
 
 export const BACKEND_PORT = 4003;
@@ -367,6 +371,27 @@ export function createBackendServer(): http.Server {
 			res.setHeader("Content-Type", "application/json");
 			res.writeHead(200);
 			res.end(JSON.stringify(CONNECT_EVENING_PULSE));
+			return;
+		}
+
+		// GetKnowledgeLoop (Connect-RPC)
+		if (
+			path === "/alt.knowledge.loop.v1.KnowledgeLoopService/GetKnowledgeLoop"
+		) {
+			res.setHeader("Content-Type", "application/json");
+			res.writeHead(200);
+			res.end(JSON.stringify(CONNECT_KNOWLEDGE_LOOP_RESPONSE));
+			return;
+		}
+
+		// TransitionKnowledgeLoop (Connect-RPC)
+		if (
+			path ===
+			"/alt.knowledge.loop.v1.KnowledgeLoopService/TransitionKnowledgeLoop"
+		) {
+			res.setHeader("Content-Type", "application/json");
+			res.writeHead(200);
+			res.end(JSON.stringify(CONNECT_TRANSITION_LOOP_RESPONSE));
 			return;
 		}
 

@@ -80,3 +80,14 @@ func (c *Client) DeleteConversation(
 ) (*connect.Response[augurv2.DeleteConversationResponse], error) {
 	return c.augurClient.DeleteConversation(ctx, req)
 }
+
+// CreateAugurSessionFromLoopEntry forwards a Knowledge Loop → Augur handshake
+// to rag-orchestrator. The request carries BFF-resolved why_text + evidence_refs;
+// the provider creates a conversation row seeded with that context. See
+// ADR-000836.
+func (c *Client) CreateAugurSessionFromLoopEntry(
+	ctx context.Context,
+	req *connect.Request[augurv2.CreateAugurSessionFromLoopEntryRequest],
+) (*connect.Response[augurv2.CreateAugurSessionFromLoopEntryResponse], error) {
+	return c.augurClient.CreateAugurSessionFromLoopEntry(ctx, req)
+}

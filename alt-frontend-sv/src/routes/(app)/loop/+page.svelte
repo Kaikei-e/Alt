@@ -1,70 +1,132 @@
 <script lang="ts">
-	import { onMount } from "svelte";
-	import LoopSurfacePlane from "$lib/components/knowledge-loop/LoopSurfacePlane.svelte";
-	import LoopEntryTile from "$lib/components/knowledge-loop/LoopEntryTile.svelte";
-	import EmptyNow from "$lib/components/knowledge-loop/EmptyNow.svelte";
-	import type { PageData } from "./$types";
+import { onMount } from "svelte";
+import { goto } from "$app/navigation";
+import LoopSurfacePlane from "$lib/components/knowledge-loop/LoopSurfacePlane.svelte";
+import LoopEntryTile from "$lib/components/knowledge-loop/LoopEntryTile.svelte";
+import EmptyNow from "$lib/components/knowledge-loop/EmptyNow.svelte";
+import { useKnowledgeLoop } from "$lib/hooks/useKnowledgeLoop.svelte";
+import { observeTiles } from "$lib/actions/observe-tiles";
+import { uuidv7 } from "$lib/utils/uuidv7";
+import type {
+	KnowledgeLoopEntryData,
+	KnowledgeLoopResult,
+} from "$lib/connect/knowledge_loop";
+import type { PageData } from "./$types";
 
-	let { data }: { data: PageData } = $props();
+let { data }: { data: PageData } = $props();
 
-	/**
-	 * Knowledge Loop — the state-machine navigation of knowledge. Shared
-	 * Alt-Paper vocabulary (serif display, monospace metadata, thin rules,
-	 * sharp edges, no shadows) is recomposed around this page's own
-	 * responsibility: tracking a user through Observe → Orient → Decide → Act,
-	 * rather than publishing reports (Acolyte) or consulting (Ask Augur).
-	 * See ADR-000831 for the state-machine contract.
-	 */
+/**
+ * Knowledge Loop — the state-machine navigation of knowledge. Shared
+ * Alt-Paper vocabulary (serif display, monospace metadata, thin rules,
+ * sharp edges, no shadows) is recomposed around this page's own
+ * responsibility: tracking a user through Observe → Orient → Decide → Act,
+ * rather than publishing reports (Acolyte) or consulting (Ask Augur).
+ * See ADR-000831 for the state-machine contract.
+ */
 
-	let revealed = $state(false);
-	onMount(() => {
-		requestAnimationFrame(() => {
-			revealed = true;
-		});
+let revealed = $state(false);
+onMount(() => {
+	requestAnimationFrame(() => {
+		revealed = true;
 	});
+});
 
-	const foreground = $derived(data.loop?.foregroundEntries ?? []);
-	const sessionState = $derived(data.loop?.sessionState);
-	const surfaces = $derived(data.loop?.surfaces ?? []);
-	const quality = $derived(data.loop?.overallServiceQuality ?? "unspecified");
+const EMPTY_LOOP: KnowledgeLoopResult = {
+	foregroundEntries: [],
+	surfaces: [],
+	sessionState: undefined,
+	overallServiceQuality: "unspecified",
+	generatedAt: "",
+	projectionSeqHiwater: 0,
+};
 
-	// Monospace byline parts. Intentionally en-dash separated for editorial
-	// readability; never longer than one visual row on mobile.
-	const stageName = $derived(sessionState?.currentStage ?? "observe");
-	const stageDisplay = $derived(
-		(
-			{
-				observe: "Observe",
-				orient: "Orient",
-				decide: "Decide",
-				act: "Act",
-			} as const
-		)[stageName] ?? "Observe",
-	);
+// The loop hook owns its own reactive state; seeding it once from the
+// SSR-loaded data.loop snapshot is the intended lifecycle here.
+// svelte-ignore state_referenced_locally
+const loop = useKnowledgeLoop({
+	initial: data.loop ?? EMPTY_LOOP,
+	// svelte-ignore state_referenced_locally
+	lensModeId: data.lensModeId ?? "default",
+});
 
-	const seqHi = $derived(data.loop?.projectionSeqHiwater ?? 0);
-	const lensId = $derived(data.lensModeId ?? "default");
+const foreground = $derived(loop.entries);
+const sessionState = $derived(loop.sessionState);
+const surfaces = $derived(data.loop?.surfaces ?? []);
+const quality = $derived(data.loop?.overallServiceQuality ?? "unspecified");
 
-	// Mid-plane bucket summary (Continue / Changed / Review). We do not
-	// render the full entries here — the foreground plane alone carries
-	// the active 1–3 entries per §6.1. Other buckets appear as a
-	// monospace index line for the user to navigate into deliberately.
-	const bucketIndex = $derived(
-		(
-			[
-				{ bucket: "continue" as const, label: "Continue" },
-				{ bucket: "changed" as const, label: "Changed" },
-				{ bucket: "review" as const, label: "Review" },
-			]
-		)
-			.map(({ bucket, label }) => {
-				const s = surfaces.find((s) => s.surfaceBucket === bucket);
-				const count =
-					(s?.primaryEntryKey ? 1 : 0) + (s?.secondaryEntryKeys?.length ?? 0);
-				return { bucket, label, count };
-			})
-			.filter((x) => x.count > 0),
-	);
+function resolveSourceUrl(entry: KnowledgeLoopEntryData): string | null {
+	const article = entry.actTargets.find((t) => t.targetType === "article");
+	if (article?.route) return article.route;
+	const ref = entry.whyPrimary.evidenceRefs[0];
+	if (ref?.refId && /^https?:\/\//i.test(ref.refId)) return ref.refId;
+	return null;
+}
+
+function onObserve(entryKey: string) {
+	void loop.observe(entryKey);
+}
+
+const askInFlight = new Set<string>();
+
+async function onAsk(entry: KnowledgeLoopEntryData): Promise<void> {
+	if (askInFlight.has(entry.entryKey)) return;
+	askInFlight.add(entry.entryKey);
+	try {
+		const res = await fetch("/loop/ask", {
+			method: "POST",
+			headers: { "content-type": "application/json" },
+			body: JSON.stringify({
+				// svelte-ignore state_referenced_locally
+				lensModeId: data.lensModeId ?? "default",
+				clientHandshakeId: uuidv7(),
+				entryKey: entry.entryKey,
+			}),
+		});
+		if (!res.ok) return;
+		const json = (await res.json()) as { conversationId?: string };
+		if (json.conversationId) {
+			await goto(`/augur/${encodeURIComponent(json.conversationId)}`);
+		}
+	} finally {
+		askInFlight.delete(entry.entryKey);
+	}
+}
+
+// Monospace byline parts. Intentionally en-dash separated for editorial
+// readability; never longer than one visual row on mobile.
+const stageName = $derived(sessionState?.currentStage ?? "observe");
+const stageDisplay = $derived(
+	(
+		{
+			observe: "Observe",
+			orient: "Orient",
+			decide: "Decide",
+			act: "Act",
+		} as const
+	)[stageName] ?? "Observe",
+);
+
+const seqHi = $derived(data.loop?.projectionSeqHiwater ?? 0);
+const lensId = $derived(data.lensModeId ?? "default");
+
+// Mid-plane bucket summary (Continue / Changed / Review). We do not
+// render the full entries here — the foreground plane alone carries
+// the active 1–3 entries per §6.1. Other buckets appear as a
+// monospace index line for the user to navigate into deliberately.
+const bucketIndex = $derived(
+	[
+		{ bucket: "continue" as const, label: "Continue" },
+		{ bucket: "changed" as const, label: "Changed" },
+		{ bucket: "review" as const, label: "Review" },
+	]
+		.map(({ bucket, label }) => {
+			const s = surfaces.find((s) => s.surfaceBucket === bucket);
+			const count =
+				(s?.primaryEntryKey ? 1 : 0) + (s?.secondaryEntryKeys?.length ?? 0);
+			return { bucket, label, count };
+		})
+		.filter((x) => x.count > 0),
+);
 </script>
 
 <svelte:head>
@@ -133,9 +195,20 @@
 			label="Foreground"
 			caption="{foreground.length} in focus"
 		>
-			{#each foreground as entry, i (entry.entryKey)}
-				<LoopEntryTile {entry} stagger={i} />
-			{/each}
+			<div class="foreground-tiles" use:observeTiles={{ onObserve }}>
+				{#each foreground as entry, i (entry.entryKey)}
+					<LoopEntryTile
+						{entry}
+						stagger={i}
+						onTransition={loop.transitionTo}
+						onDismiss={loop.dismiss}
+						{onAsk}
+						canTransition={loop.canTransition}
+						isInFlight={loop.isInFlight}
+						{resolveSourceUrl}
+					/>
+				{/each}
+			</div>
 		</LoopSurfacePlane>
 	{/if}
 
@@ -176,6 +249,11 @@
 
 	.loop-masthead {
 		margin-bottom: 1.5rem;
+	}
+
+	.foreground-tiles {
+		display: grid;
+		gap: 0.8rem;
 	}
 
 	.kicker-row {

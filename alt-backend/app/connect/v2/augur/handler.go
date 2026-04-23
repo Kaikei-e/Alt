@@ -238,3 +238,24 @@ func (h *Handler) DeleteConversation(
 	}
 	return resp, nil
 }
+
+// CreateAugurSessionFromLoopEntry proxies the Knowledge Loop → Augur handshake
+// to rag-orchestrator after attaching the authenticated user id. The BFF
+// (alt-frontend-sv /loop/ask/+server.ts) is responsible for enriching the
+// request with why_text + evidence_refs resolved through sovereign; alt-backend
+// does not re-verify those fields. See ADR-000836.
+func (h *Handler) CreateAugurSessionFromLoopEntry(
+	ctx context.Context,
+	req *connect.Request[augurv2.CreateAugurSessionFromLoopEntryRequest],
+) (*connect.Response[augurv2.CreateAugurSessionFromLoopEntryResponse], error) {
+	user, err := domain.GetUserFromContext(ctx)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeUnauthenticated, nil)
+	}
+	req.Header().Set(userIDHeader, user.UserID.String())
+	resp, err := h.ragStreamPort.CreateAugurSessionFromLoopEntry(ctx, req)
+	if err != nil {
+		return nil, errorhandler.HandleInternalError(ctx, h.logger, err, "CreateAugurSessionFromLoopEntry")
+	}
+	return resp, nil
+}

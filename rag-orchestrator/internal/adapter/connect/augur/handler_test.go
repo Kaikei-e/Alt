@@ -211,6 +211,14 @@ func (m *MockAugurConversationUsecase) DeleteConversation(ctx context.Context, u
 	return m.Called(ctx, userID, conversationID).Error(0)
 }
 
+func (m *MockAugurConversationUsecase) CreateSessionFromLoopEntry(ctx context.Context, input usecase.CreateSessionFromLoopEntryInput) (*domain.AugurConversation, error) {
+	args := m.Called(ctx, input)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*domain.AugurConversation), args.Error(1)
+}
+
 // TestStreamChat_ClientAbortAfterDeltas_FlushesPartialAssistantTurn asserts the
 // write-path contract after the Knowledge Home → AskSheet regression: when the
 // client aborts a streaming chat mid-flight after deltas have been emitted, the

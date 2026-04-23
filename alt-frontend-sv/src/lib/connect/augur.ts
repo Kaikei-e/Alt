@@ -440,3 +440,35 @@ export async function deleteAugurConversation(
 	const client = createAugurClient(transport);
 	await client.deleteConversation({ id });
 }
+
+/**
+ * Loop → Augur handshake payload. See ADR-000836.
+ * Callers resolve the entry through sovereign on the BFF side and pass the
+ * enriched why_text + evidence_refs to Augur; the server trusts these fields.
+ */
+export interface CreateAugurSessionFromLoopEntryInput {
+	clientHandshakeId: string;
+	entryKey: string;
+	lensModeId: string;
+	whyText: string;
+	evidenceRefs: Array<{ refId: string; label: string }>;
+}
+
+/** Mints a new Augur conversation seeded with a Knowledge Loop entry's Why. */
+export async function createAugurSessionFromLoopEntry(
+	transport: Transport,
+	input: CreateAugurSessionFromLoopEntryInput,
+): Promise<{ conversationId: string }> {
+	const client = createAugurClient(transport);
+	const response = await client.createAugurSessionFromLoopEntry({
+		clientHandshakeId: input.clientHandshakeId,
+		entryKey: input.entryKey,
+		lensModeId: input.lensModeId,
+		whyText: input.whyText,
+		evidenceRefs: input.evidenceRefs.map((r) => ({
+			refId: r.refId,
+			label: r.label,
+		})),
+	});
+	return { conversationId: response.conversationId };
+}

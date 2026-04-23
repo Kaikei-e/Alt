@@ -47,6 +47,9 @@ const (
 	// AugurServiceDeleteConversationProcedure is the fully-qualified name of the AugurService's
 	// DeleteConversation RPC.
 	AugurServiceDeleteConversationProcedure = "/alt.augur.v2.AugurService/DeleteConversation"
+	// AugurServiceCreateAugurSessionFromLoopEntryProcedure is the fully-qualified name of the
+	// AugurService's CreateAugurSessionFromLoopEntry RPC.
+	AugurServiceCreateAugurSessionFromLoopEntryProcedure = "/alt.augur.v2.AugurService/CreateAugurSessionFromLoopEntry"
 )
 
 // AugurServiceClient is a client for the alt.augur.v2.AugurService service.
@@ -63,6 +66,18 @@ type AugurServiceClient interface {
 	GetConversation(context.Context, *connect.Request[v2.GetConversationRequest]) (*connect.Response[v2.GetConversationResponse], error)
 	// DeleteConversation removes a conversation and its messages.
 	DeleteConversation(context.Context, *connect.Request[v2.DeleteConversationRequest]) (*connect.Response[v2.DeleteConversationResponse], error)
+	// CreateAugurSessionFromLoopEntry provisions a new conversation seeded with a
+	// Knowledge Loop entry's Why context and evidence references. Callers
+	// (alt-frontend-sv BFF via alt-backend) first resolve the entry through
+	// knowledge-sovereign's GetKnowledgeLoopEntries, then pass the pre-loaded
+	// why_text and evidence_refs to this RPC. The server is trusted to treat
+	// the enriched payload as authoritative and never re-fetches sovereign;
+	// the entry_key and lens_mode_id are recorded for audit only.
+	//
+	// Idempotency: client_handshake_id is a UUIDv7 that lets callers retry
+	// without creating duplicate conversations. Replays return the existing
+	// conversation_id (AlreadyExists → 200 replay upstream).
+	CreateAugurSessionFromLoopEntry(context.Context, *connect.Request[v2.CreateAugurSessionFromLoopEntryRequest]) (*connect.Response[v2.CreateAugurSessionFromLoopEntryResponse], error)
 }
 
 // NewAugurServiceClient constructs a client for the alt.augur.v2.AugurService service. By default,
@@ -106,16 +121,23 @@ func NewAugurServiceClient(httpClient connect.HTTPClient, baseURL string, opts .
 			connect.WithSchema(augurServiceMethods.ByName("DeleteConversation")),
 			connect.WithClientOptions(opts...),
 		),
+		createAugurSessionFromLoopEntry: connect.NewClient[v2.CreateAugurSessionFromLoopEntryRequest, v2.CreateAugurSessionFromLoopEntryResponse](
+			httpClient,
+			baseURL+AugurServiceCreateAugurSessionFromLoopEntryProcedure,
+			connect.WithSchema(augurServiceMethods.ByName("CreateAugurSessionFromLoopEntry")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
 // augurServiceClient implements AugurServiceClient.
 type augurServiceClient struct {
-	streamChat         *connect.Client[v2.StreamChatRequest, v2.StreamChatResponse]
-	retrieveContext    *connect.Client[v2.RetrieveContextRequest, v2.RetrieveContextResponse]
-	listConversations  *connect.Client[v2.ListConversationsRequest, v2.ListConversationsResponse]
-	getConversation    *connect.Client[v2.GetConversationRequest, v2.GetConversationResponse]
-	deleteConversation *connect.Client[v2.DeleteConversationRequest, v2.DeleteConversationResponse]
+	streamChat                      *connect.Client[v2.StreamChatRequest, v2.StreamChatResponse]
+	retrieveContext                 *connect.Client[v2.RetrieveContextRequest, v2.RetrieveContextResponse]
+	listConversations               *connect.Client[v2.ListConversationsRequest, v2.ListConversationsResponse]
+	getConversation                 *connect.Client[v2.GetConversationRequest, v2.GetConversationResponse]
+	deleteConversation              *connect.Client[v2.DeleteConversationRequest, v2.DeleteConversationResponse]
+	createAugurSessionFromLoopEntry *connect.Client[v2.CreateAugurSessionFromLoopEntryRequest, v2.CreateAugurSessionFromLoopEntryResponse]
 }
 
 // StreamChat calls alt.augur.v2.AugurService.StreamChat.
@@ -143,6 +165,11 @@ func (c *augurServiceClient) DeleteConversation(ctx context.Context, req *connec
 	return c.deleteConversation.CallUnary(ctx, req)
 }
 
+// CreateAugurSessionFromLoopEntry calls alt.augur.v2.AugurService.CreateAugurSessionFromLoopEntry.
+func (c *augurServiceClient) CreateAugurSessionFromLoopEntry(ctx context.Context, req *connect.Request[v2.CreateAugurSessionFromLoopEntryRequest]) (*connect.Response[v2.CreateAugurSessionFromLoopEntryResponse], error) {
+	return c.createAugurSessionFromLoopEntry.CallUnary(ctx, req)
+}
+
 // AugurServiceHandler is an implementation of the alt.augur.v2.AugurService service.
 type AugurServiceHandler interface {
 	// StreamChat performs a streaming chat with RAG context.
@@ -157,6 +184,18 @@ type AugurServiceHandler interface {
 	GetConversation(context.Context, *connect.Request[v2.GetConversationRequest]) (*connect.Response[v2.GetConversationResponse], error)
 	// DeleteConversation removes a conversation and its messages.
 	DeleteConversation(context.Context, *connect.Request[v2.DeleteConversationRequest]) (*connect.Response[v2.DeleteConversationResponse], error)
+	// CreateAugurSessionFromLoopEntry provisions a new conversation seeded with a
+	// Knowledge Loop entry's Why context and evidence references. Callers
+	// (alt-frontend-sv BFF via alt-backend) first resolve the entry through
+	// knowledge-sovereign's GetKnowledgeLoopEntries, then pass the pre-loaded
+	// why_text and evidence_refs to this RPC. The server is trusted to treat
+	// the enriched payload as authoritative and never re-fetches sovereign;
+	// the entry_key and lens_mode_id are recorded for audit only.
+	//
+	// Idempotency: client_handshake_id is a UUIDv7 that lets callers retry
+	// without creating duplicate conversations. Replays return the existing
+	// conversation_id (AlreadyExists → 200 replay upstream).
+	CreateAugurSessionFromLoopEntry(context.Context, *connect.Request[v2.CreateAugurSessionFromLoopEntryRequest]) (*connect.Response[v2.CreateAugurSessionFromLoopEntryResponse], error)
 }
 
 // NewAugurServiceHandler builds an HTTP handler from the service implementation. It returns the
@@ -196,6 +235,12 @@ func NewAugurServiceHandler(svc AugurServiceHandler, opts ...connect.HandlerOpti
 		connect.WithSchema(augurServiceMethods.ByName("DeleteConversation")),
 		connect.WithHandlerOptions(opts...),
 	)
+	augurServiceCreateAugurSessionFromLoopEntryHandler := connect.NewUnaryHandler(
+		AugurServiceCreateAugurSessionFromLoopEntryProcedure,
+		svc.CreateAugurSessionFromLoopEntry,
+		connect.WithSchema(augurServiceMethods.ByName("CreateAugurSessionFromLoopEntry")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/alt.augur.v2.AugurService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case AugurServiceStreamChatProcedure:
@@ -208,6 +253,8 @@ func NewAugurServiceHandler(svc AugurServiceHandler, opts ...connect.HandlerOpti
 			augurServiceGetConversationHandler.ServeHTTP(w, r)
 		case AugurServiceDeleteConversationProcedure:
 			augurServiceDeleteConversationHandler.ServeHTTP(w, r)
+		case AugurServiceCreateAugurSessionFromLoopEntryProcedure:
+			augurServiceCreateAugurSessionFromLoopEntryHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -235,4 +282,8 @@ func (UnimplementedAugurServiceHandler) GetConversation(context.Context, *connec
 
 func (UnimplementedAugurServiceHandler) DeleteConversation(context.Context, *connect.Request[v2.DeleteConversationRequest]) (*connect.Response[v2.DeleteConversationResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("alt.augur.v2.AugurService.DeleteConversation is not implemented"))
+}
+
+func (UnimplementedAugurServiceHandler) CreateAugurSessionFromLoopEntry(context.Context, *connect.Request[v2.CreateAugurSessionFromLoopEntryRequest]) (*connect.Response[v2.CreateAugurSessionFromLoopEntryResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("alt.augur.v2.AugurService.CreateAugurSessionFromLoopEntry is not implemented"))
 }
