@@ -4,9 +4,7 @@ use tracing_subscriber::{EnvFilter, fmt, prelude::*};
 /// Initialize the tracing subscriber.
 /// Uses JSON format when `RUST_LOG_FORMAT=json` (default for production).
 pub fn init_tracing() {
-    let use_json = std::env::var("RUST_LOG_FORMAT")
-        .map(|v| v == "json")
-        .unwrap_or(true); // Default to JSON for production
+    let use_json = std::env::var("RUST_LOG_FORMAT").map_or(true, |v| v == "json"); // Default to JSON for production
 
     if use_json {
         tracing_subscriber::registry()

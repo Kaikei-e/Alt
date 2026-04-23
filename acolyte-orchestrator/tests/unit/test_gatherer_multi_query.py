@@ -1,6 +1,8 @@
-"""Unit tests for multi-query gatherer with section tagging + dedup (Phase 2)."""
+"""Unit tests for multi-query gatherer with section tagging + dedup."""
 
 from __future__ import annotations
+
+from datetime import datetime
 
 import pytest
 
@@ -16,7 +18,14 @@ class FakeEvidence:
         self._articles_by_query = articles_by_query or {}
         self.search_calls: list[str] = []
 
-    async def search_articles(self, query: str, *, limit: int = 20) -> list[ArticleHit]:
+    async def search_articles(
+        self,
+        query: str,
+        *,
+        limit: int = 20,
+        published_after: datetime | None = None,
+        published_before: datetime | None = None,
+    ) -> list[ArticleHit]:
         self.search_calls.append(query)
         # Match on substring
         for keyword, hits in self._articles_by_query.items():

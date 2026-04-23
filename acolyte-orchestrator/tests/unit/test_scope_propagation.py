@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from datetime import datetime
 from uuid import uuid4
 
 import pytest
@@ -42,7 +43,14 @@ class FakeLLM:
 
 
 class FakeEvidence:
-    async def search_articles(self, query: str, *, limit: int = 20) -> list[ArticleHit]:
+    async def search_articles(
+        self,
+        query: str,
+        *,
+        limit: int = 20,
+        published_after: datetime | None = None,
+        published_before: datetime | None = None,
+    ) -> list[ArticleHit]:
         return [ArticleHit(article_id="art-1", title="Test", tags=["AI"], score=0.9)]
 
     async def fetch_article_metadata(self, article_ids: list[str]) -> list:
