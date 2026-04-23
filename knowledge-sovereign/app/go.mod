@@ -5,7 +5,7 @@ go 1.26.2
 require (
 	connectrpc.com/connect v1.19.1
 	github.com/google/uuid v1.6.0
-	github.com/jackc/pgx/v5 v5.9.1
+	github.com/jackc/pgx/v5 v5.9.2
 	github.com/pact-foundation/pact-go/v2 v2.4.3
 	github.com/pashagolub/pgxmock/v3 v3.4.0
 	github.com/stretchr/testify v1.11.1
