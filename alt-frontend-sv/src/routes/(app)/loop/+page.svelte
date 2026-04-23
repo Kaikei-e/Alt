@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { onMount } from "svelte";
 	import LoopSurfacePlane from "$lib/components/knowledge-loop/LoopSurfacePlane.svelte";
 	import LoopEntryTile from "$lib/components/knowledge-loop/LoopEntryTile.svelte";
 	import EmptyNow from "$lib/components/knowledge-loop/EmptyNow.svelte";
@@ -6,40 +7,151 @@
 
 	let { data }: { data: PageData } = $props();
 
+	/**
+	 * Knowledge Loop — the state-machine navigation of knowledge. Shared
+	 * Alt-Paper vocabulary (serif display, monospace metadata, thin rules,
+	 * sharp edges, no shadows) is recomposed around this page's own
+	 * responsibility: tracking a user through Observe → Orient → Decide → Act,
+	 * rather than publishing reports (Acolyte) or consulting (Ask Augur).
+	 * See ADR-000831 for the state-machine contract.
+	 */
+
+	let revealed = $state(false);
+	onMount(() => {
+		requestAnimationFrame(() => {
+			revealed = true;
+		});
+	});
+
 	const foreground = $derived(data.loop?.foregroundEntries ?? []);
 	const sessionState = $derived(data.loop?.sessionState);
+	const surfaces = $derived(data.loop?.surfaces ?? []);
 	const quality = $derived(data.loop?.overallServiceQuality ?? "unspecified");
+
+	// Monospace byline parts. Intentionally en-dash separated for editorial
+	// readability; never longer than one visual row on mobile.
+	const stageName = $derived(sessionState?.currentStage ?? "observe");
+	const stageDisplay = $derived(
+		(
+			{
+				observe: "Observe",
+				orient: "Orient",
+				decide: "Decide",
+				act: "Act",
+			} as const
+		)[stageName] ?? "Observe",
+	);
+
+	const seqHi = $derived(data.loop?.projectionSeqHiwater ?? 0);
+	const lensId = $derived(data.lensModeId ?? "default");
+
+	// Mid-plane bucket summary (Continue / Changed / Review). We do not
+	// render the full entries here — the foreground plane alone carries
+	// the active 1–3 entries per §6.1. Other buckets appear as a
+	// monospace index line for the user to navigate into deliberately.
+	const bucketIndex = $derived(
+		(
+			[
+				{ bucket: "continue" as const, label: "Continue" },
+				{ bucket: "changed" as const, label: "Changed" },
+				{ bucket: "review" as const, label: "Review" },
+			]
+		)
+			.map(({ bucket, label }) => {
+				const s = surfaces.find((s) => s.surfaceBucket === bucket);
+				const count =
+					(s?.primaryEntryKey ? 1 : 0) + (s?.secondaryEntryKeys?.length ?? 0);
+				return { bucket, label, count };
+			})
+			.filter((x) => x.count > 0),
+	);
 </script>
 
 <svelte:head>
-	<title>Knowledge Loop</title>
+	<title>Knowledge Loop — Alt</title>
 </svelte:head>
 
-<main class="loop-root" data-testid="knowledge-loop-root">
-	<header class="loop-header">
-		<p class="kicker">Knowledge Loop</p>
-		<h1>Observe &middot; Orient &middot; Decide &middot; Act</h1>
-		{#if sessionState}
-			<p class="session-hint" aria-live="polite">
-				Current stage: <strong>{sessionState.currentStage}</strong>
-			</p>
-		{/if}
+<main
+	class="loop-root"
+	class:revealed
+	data-testid="knowledge-loop-root"
+	data-stage={stageName}
+>
+	<header class="loop-masthead">
+		<div class="kicker-row" aria-hidden="true">
+			<span class="kicker" class:kicker--active={stageName === "observe"}
+				>Observe</span
+			>
+			<span class="kicker-sep">·</span>
+			<span class="kicker" class:kicker--active={stageName === "orient"}
+				>Orient</span
+			>
+			<span class="kicker-sep">·</span>
+			<span class="kicker" class:kicker--active={stageName === "decide"}
+				>Decide</span
+			>
+			<span class="kicker-sep">·</span>
+			<span class="kicker" class:kicker--active={stageName === "act"}>Act</span>
+		</div>
+		<h1 class="masthead-title">Knowledge Loop</h1>
+		<p class="byline" aria-live="polite">
+			<span class="byline-cell">
+				<span class="byline-key">Lens</span>
+				<span class="byline-val">{lensId}</span>
+			</span>
+			<span class="byline-sep">—</span>
+			<span class="byline-cell">
+				<span class="byline-key">Stage</span>
+				<span class="byline-val">{stageDisplay}</span>
+			</span>
+			<span class="byline-sep">—</span>
+			<span class="byline-cell">
+				<span class="byline-key">Seq</span>
+				<span class="byline-val">{seqHi}</span>
+			</span>
+		</p>
+		<div class="masthead-rule" aria-hidden="true"></div>
 	</header>
 
 	{#if data.error}
-		<p class="loop-error" role="status">Loop unavailable: {data.error}</p>
-	{:else if foreground.length === 0}
+		<aside class="quality-banner quality-banner--error" role="status">
+			<span class="banner-label">Loop unavailable</span>
+			<span class="banner-msg">{data.error}</span>
+		</aside>
+	{:else if quality !== "full" && quality !== "unspecified"}
+		<aside class="quality-banner" role="status">
+			<span class="banner-label">Service quality</span>
+			<span class="banner-msg">{quality}</span>
+		</aside>
+	{/if}
+
+	{#if !data.error && foreground.length === 0}
 		<EmptyNow />
-	{:else}
-		<LoopSurfacePlane plane="foreground">
-			{#each foreground as entry (entry.entryKey)}
-				<LoopEntryTile {entry} />
+	{:else if !data.error}
+		<LoopSurfacePlane
+			plane="foreground"
+			label="Foreground"
+			caption="{foreground.length} in focus"
+		>
+			{#each foreground as entry, i (entry.entryKey)}
+				<LoopEntryTile {entry} stagger={i} />
 			{/each}
 		</LoopSurfacePlane>
 	{/if}
 
-	{#if quality !== "full" && quality !== "unspecified"}
-		<p class="quality-banner" role="status">Service quality: {quality}</p>
+	{#if bucketIndex.length > 0}
+		<nav class="bucket-index" aria-label="Other surface buckets">
+			<span class="bucket-kicker">Also waiting</span>
+			<ul class="bucket-list">
+				{#each bucketIndex as b (b.bucket)}
+					<li class="bucket-item">
+						<span class="bucket-label">{b.label}</span>
+						<span class="bucket-rule" aria-hidden="true"></span>
+						<span class="bucket-count">{b.count}</span>
+					</li>
+				{/each}
+			</ul>
+		</nav>
 	{/if}
 </main>
 
@@ -47,34 +159,171 @@
 	.loop-root {
 		max-width: 72ch;
 		margin: 0 auto;
-		padding: var(--space-lg, 1.5rem) var(--space-md, 1rem);
+		padding: 1.2rem 1.1rem 3rem;
+		background: var(--surface-bg, #faf9f7);
+		color: var(--alt-charcoal, #1a1a1a);
+		min-height: 100%;
+		opacity: 0;
+		transform: translateY(6px);
+		transition:
+			opacity 0.35s ease,
+			transform 0.35s ease;
 	}
-	.loop-header {
-		margin-bottom: var(--space-lg, 1.5rem);
+	.loop-root.revealed {
+		opacity: 1;
+		transform: translateY(0);
 	}
-	.kicker {
-		font-family: var(--font-meta, "IBM Plex Mono", monospace);
+
+	.loop-masthead {
+		margin-bottom: 1.5rem;
+	}
+
+	.kicker-row {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: baseline;
+		gap: 0.35rem;
+		font-family: var(--font-body, "Source Sans 3", system-ui, sans-serif);
+		font-size: 0.6rem;
+		font-weight: 700;
+		letter-spacing: 0.16em;
 		text-transform: uppercase;
-		letter-spacing: 0.12em;
-		font-size: 0.75rem;
-		margin: 0;
+		color: var(--alt-ash, #999);
 	}
-	h1 {
-		font-family: var(--font-display, "Playfair Display", serif);
-		font-size: clamp(1.75rem, 4vw, 2.5rem);
-		margin: 0.25rem 0 0.5rem;
+	.kicker--active {
+		color: var(--alt-charcoal, #1a1a1a);
 	}
-	.session-hint {
-		font-family: var(--font-meta, "IBM Plex Mono", monospace);
-		font-size: 0.875rem;
-		color: var(--fg-muted, #555);
+	.kicker-sep {
+		color: var(--surface-border, #c8c8c8);
 	}
-	.loop-error,
+
+	.masthead-title {
+		font-family: var(--font-display, "Playfair Display", Georgia, serif);
+		font-size: clamp(2rem, 5.5vw, 3.1rem);
+		font-weight: 800;
+		line-height: 1.05;
+		letter-spacing: -0.01em;
+		color: var(--alt-charcoal, #1a1a1a);
+		margin: 0.35rem 0 0.55rem;
+	}
+
+	.byline {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: baseline;
+		gap: 0.5rem;
+		font-family: var(--font-mono, "IBM Plex Mono", ui-monospace, monospace);
+		font-size: 0.7rem;
+		color: var(--alt-slate, #666);
+		margin: 0 0 0.7rem;
+	}
+	.byline-cell {
+		display: inline-flex;
+		align-items: baseline;
+		gap: 0.35rem;
+	}
+	.byline-key {
+		font-size: 0.6rem;
+		font-weight: 600;
+		letter-spacing: 0.1em;
+		text-transform: uppercase;
+		color: var(--alt-ash, #999);
+	}
+	.byline-val {
+		color: var(--alt-charcoal, #1a1a1a);
+	}
+	.byline-sep {
+		color: var(--surface-border, #c8c8c8);
+	}
+
+	.masthead-rule {
+		height: 1px;
+		background: var(--alt-charcoal, #1a1a1a);
+		margin-top: 0.3rem;
+	}
+
 	.quality-banner {
-		margin-top: var(--space-md, 1rem);
-		padding: 0.75rem 1rem;
-		border: 1px solid var(--border-muted, #ddd);
-		font-family: var(--font-meta, "IBM Plex Mono", monospace);
-		font-size: 0.875rem;
+		display: flex;
+		align-items: baseline;
+		gap: 0.75rem;
+		padding: 0.6rem 0.9rem;
+		margin: 0 0 1.4rem;
+		border-left: 3px solid var(--alt-sand, #d4a574);
+		background: var(--surface-2, #f5f4f1);
+	}
+	.quality-banner--error {
+		border-left-color: var(--alt-terracotta, #b85450);
+	}
+	.banner-label {
+		font-family: var(--font-body, "Source Sans 3", system-ui, sans-serif);
+		font-size: 0.6rem;
+		font-weight: 700;
+		letter-spacing: 0.12em;
+		text-transform: uppercase;
+		color: var(--alt-ash, #999);
+	}
+	.banner-msg {
+		font-family: var(--font-mono, "IBM Plex Mono", ui-monospace, monospace);
+		font-size: 0.75rem;
+		color: var(--alt-charcoal, #1a1a1a);
+	}
+
+	.bucket-index {
+		margin-top: 2rem;
+		padding-top: 0.9rem;
+		border-top: 1px solid var(--surface-border, #c8c8c8);
+	}
+	.bucket-kicker {
+		display: block;
+		font-family: var(--font-body, "Source Sans 3", system-ui, sans-serif);
+		font-size: 0.6rem;
+		font-weight: 700;
+		letter-spacing: 0.16em;
+		text-transform: uppercase;
+		color: var(--alt-ash, #999);
+		margin-bottom: 0.55rem;
+	}
+	.bucket-list {
+		list-style: none;
+		padding: 0;
+		margin: 0;
+		display: grid;
+		gap: 0.35rem;
+	}
+	.bucket-item {
+		display: grid;
+		grid-template-columns: auto 1fr auto;
+		align-items: baseline;
+		gap: 0.6rem;
+	}
+	.bucket-label {
+		font-family: var(--font-display, "Playfair Display", Georgia, serif);
+		font-size: 0.95rem;
+		font-weight: 600;
+		color: var(--alt-charcoal, #1a1a1a);
+	}
+	.bucket-rule {
+		height: 1px;
+		background: var(--surface-border, #c8c8c8);
+		align-self: center;
+		transform: translateY(1px);
+	}
+	.bucket-count {
+		font-family: var(--font-mono, "IBM Plex Mono", ui-monospace, monospace);
+		font-size: 0.72rem;
+		color: var(--alt-slate, #666);
+	}
+
+	@media (prefers-reduced-motion: reduce) {
+		.loop-root {
+			transition: opacity 160ms ease;
+			transform: none;
+		}
+	}
+
+	@media (min-width: 768px) {
+		.loop-root {
+			padding: 2rem 1.5rem 4rem;
+		}
 	}
 </style>
