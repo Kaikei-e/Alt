@@ -166,3 +166,42 @@ class TestFullEvaluationFlow:
         data = resp.json()
         assert data["genre_macro_f1"] is not None
         assert data["pipeline_success_rate"] is not None
+
+    def test_summary_endpoint_returns_5_new_axes(self, integration_client):
+        resp = integration_client.post(
+            "/api/v1/evaluations/summary",
+            json={"window_days": 7, "sample_per_job": 3},
+        )
+
+        assert resp.status_code == 200
+        data = resp.json()
+        expected_axes = (
+            "fallback_rate",
+            "json_repair_rate",
+            "redundancy_score",
+            "readability_score",
+            "source_grounding_score",
+        )
+        missing = [k for k in expected_axes if k not in data]
+        assert not missing, f"summary_metrics missing expected axes: {missing}"
+
+    def test_run_evaluation_includes_5_new_axes_in_summary_metrics(
+        self, integration_client
+    ):
+        resp = integration_client.post(
+            "/api/v1/evaluations/run",
+            json={"window_days": 7},
+        )
+
+        assert resp.status_code == 200
+        summary = resp.json().get("summary_metrics")
+        assert summary is not None, "summary_metrics missing from full evaluation run"
+        expected_axes = (
+            "fallback_rate",
+            "json_repair_rate",
+            "redundancy_score",
+            "readability_score",
+            "source_grounding_score",
+        )
+        missing = [k for k in expected_axes if k not in summary]
+        assert not missing, f"summary_metrics missing expected axes: {missing}"
