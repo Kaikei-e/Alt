@@ -47,6 +47,7 @@ import (
 	"alt/usecase/image_proxy_usecase"
 	"alt/usecase/knowledge_audit_usecase"
 	"alt/usecase/knowledge_backfill_usecase"
+	"alt/usecase/knowledge_loop_usecase"
 	"alt/usecase/knowledge_metrics_usecase"
 	"alt/usecase/knowledge_projection_health_usecase"
 	"alt/usecase/knowledge_reproject_usecase"
@@ -208,6 +209,10 @@ type ApplicationComponents struct {
 	ArchiveLensUsecase    *archive_lens_usecase.ArchiveLensUsecase
 	SummaryVersionGateway *summary_version_gateway.Gateway
 	TagSetVersionGateway  *tag_set_version_gateway.Gateway
+
+	// Knowledge Loop (new projection; see ADR-000831)
+	GetKnowledgeLoopUsecase        *knowledge_loop_usecase.GetKnowledgeLoopUsecase
+	TransitionKnowledgeLoopUsecase *knowledge_loop_usecase.TransitionKnowledgeLoopUsecase
 
 	// Knowledge Sovereign (remote Connect-RPC service — all knowledge data access)
 	SovereignClient *sovereign_client.Client
@@ -384,6 +389,10 @@ func NewApplicationComponents(pool *pgxpool.Pool) *ApplicationComponents {
 		ArchiveLensUsecase:    knowledge.ArchiveLensUsecase,
 		SummaryVersionGateway: knowledge.SummaryVersionGateway,
 		TagSetVersionGateway:  knowledge.TagSetVersionGateway,
+
+		// Knowledge Loop (new projection; see ADR-000831)
+		GetKnowledgeLoopUsecase:        knowledge.GetKnowledgeLoopUsecase,
+		TransitionKnowledgeLoopUsecase: knowledge.TransitionKnowledgeLoopUsecase,
 
 		// Knowledge Sovereign (all knowledge data access)
 		SovereignClient: knowledge.SovereignClient,

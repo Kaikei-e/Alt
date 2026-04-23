@@ -14,6 +14,7 @@ import (
 	"alt/gen/proto/alt/articles/v2/articlesv2connect"
 	"alt/gen/proto/alt/augur/v2/augurv2connect"
 	"alt/gen/proto/alt/feeds/v2/feedsv2connect"
+	"alt/gen/proto/alt/knowledge/loop/v1/knowledgeloopv1connect"
 	"alt/gen/proto/alt/knowledge_home/v1/knowledgehomev1connect"
 	"alt/gen/proto/alt/morning_letter/v2/morningletterv2connect"
 	"alt/gen/proto/alt/recap/v2/recapv2connect"
@@ -30,6 +31,7 @@ import (
 	internalhandler "alt/connect/v2/internal"
 	knowledge_home "alt/connect/v2/knowledge_home"
 	"alt/connect/v2/knowledge_home_admin"
+	knowledge_loop "alt/connect/v2/knowledge_loop"
 	"alt/connect/v2/middleware"
 	"alt/connect/v2/morning_letter"
 	"alt/connect/v2/recap"
@@ -156,6 +158,17 @@ func SetupConnectHandlers(mux *http.ServeMux, container *di.ApplicationComponent
 	khPath, khServiceHandler := knowledgehomev1connect.NewKnowledgeHomeServiceHandler(knowledgeHomeHandler, opts)
 	mux.Handle(khPath, khServiceHandler)
 	logger.Info("Registered Connect-RPC KnowledgeHomeService", "path", khPath)
+
+	// Register KnowledgeLoopService — new read model and state-machine API (ADR-000831).
+	// Tenant/lens scope is derived from the JWT via the same opts/interceptors as KnowledgeHome.
+	knowledgeLoopHandler := knowledge_loop.NewHandler(
+		container.GetKnowledgeLoopUsecase,
+		container.TransitionKnowledgeLoopUsecase,
+		logger,
+	)
+	klPath, klServiceHandler := knowledgeloopv1connect.NewKnowledgeLoopServiceHandler(knowledgeLoopHandler, opts)
+	mux.Handle(klPath, klServiceHandler)
+	logger.Info("Registered Connect-RPC KnowledgeLoopService", "path", klPath)
 
 	// Register KnowledgeHomeAdminService (service-to-service API). Auth is
 	// established at the TLS transport layer (mTLS peer-identity).

@@ -1,6 +1,7 @@
 package di
 
 import (
+	"alt/driver/alt_db"
 	"alt/driver/health_checker"
 	"alt/driver/sovereign_client"
 	"alt/gateway/feature_flag_gateway"
@@ -17,6 +18,7 @@ import (
 	"alt/usecase/get_knowledge_home_usecase"
 	"alt/usecase/knowledge_audit_usecase"
 	"alt/usecase/knowledge_backfill_usecase"
+	"alt/usecase/knowledge_loop_usecase"
 	"alt/usecase/knowledge_metrics_usecase"
 	"alt/usecase/knowledge_projection_health_usecase"
 	"alt/usecase/knowledge_reproject_usecase"
@@ -60,6 +62,11 @@ type KnowledgeModule struct {
 	ListLensesUsecase    *list_lenses_usecase.ListLensesUsecase
 	SelectLensUsecase    *select_lens_usecase.SelectLensUsecase
 	ArchiveLensUsecase   *archive_lens_usecase.ArchiveLensUsecase
+
+	// Knowledge Loop usecases (new projection; see docs/ADR/000831.md)
+	GetKnowledgeLoopUsecase        *knowledge_loop_usecase.GetKnowledgeLoopUsecase
+	TransitionKnowledgeLoopUsecase *knowledge_loop_usecase.TransitionKnowledgeLoopUsecase
+	KnowledgeLoopRepository        *alt_db.KnowledgeLoopRepository
 
 	// Gateways
 	FeatureFlagGateway               *feature_flag_gateway.Gateway
@@ -162,6 +169,18 @@ func newKnowledgeModule(infra *InfraModule, article *ArticleModule) *KnowledgeMo
 	metricsGw := knowledge_metrics_gateway.NewGateway(metricsSnapshot)
 	metricsUC := knowledge_metrics_usecase.NewUsecase(metricsGw, healthChecker)
 
+	// Knowledge Loop wiring (new projection; read/write ports + usecases)
+	knowledgeLoopRepo := alt_db.NewKnowledgeLoopRepository(altDB.GetPool())
+	getKnowledgeLoopUC := knowledge_loop_usecase.NewGetKnowledgeLoopUsecase(
+		knowledgeLoopRepo,
+		knowledgeLoopRepo,
+		knowledgeLoopRepo,
+	)
+	transitionKnowledgeLoopUC := knowledge_loop_usecase.NewTransitionKnowledgeLoopUsecase(
+		knowledgeLoopRepo,
+		nil, // use time.Now by default
+	)
+
 	return &KnowledgeModule{
 		GetKnowledgeHomeUsecase:          getKnowledgeHomeUC,
 		TrackHomeSeenUsecase:             trackHomeSeenUC,
@@ -184,6 +203,10 @@ func newKnowledgeModule(infra *InfraModule, article *ArticleModule) *KnowledgeMo
 		ListLensesUsecase:    listLensesUC,
 		SelectLensUsecase:    selectLensUC,
 		ArchiveLensUsecase:   archiveLensUC,
+
+		GetKnowledgeLoopUsecase:        getKnowledgeLoopUC,
+		TransitionKnowledgeLoopUsecase: transitionKnowledgeLoopUC,
+		KnowledgeLoopRepository:        knowledgeLoopRepo,
 
 		FeatureFlagGateway:               featureFlagGw,
 		KnowledgeBackfillArticlesGateway: knowledgeBackfillGw,
