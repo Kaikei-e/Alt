@@ -49,6 +49,25 @@ func (f *fakeAppendPort) AppendKnowledgeEvent(_ context.Context, ev domain.Knowl
 	return nil
 }
 
+// mustMintUUIDv7 builds a UUIDv7 whose embedded Unix-milli timestamp equals
+// `at`, so validator time-window checks pass under a controlled nowFunc.
+func mustMintUUIDv7(t *testing.T, at time.Time) string {
+	t.Helper()
+	var raw [16]byte
+	ms := at.UnixMilli()
+	raw[0] = byte(ms >> 40)
+	raw[1] = byte(ms >> 32)
+	raw[2] = byte(ms >> 24)
+	raw[3] = byte(ms >> 16)
+	raw[4] = byte(ms >> 8)
+	raw[5] = byte(ms)
+	raw[6] = 0x70 // version 7 in the high nibble of byte 6
+	raw[8] = 0x80 // variant bits
+	id, err := uuid.FromBytes(raw[:])
+	require.NoError(t, err)
+	return id.String()
+}
+
 // --- helpers ---------------------------------------------------------------
 
 func newTransitionInput(t *testing.T, from, to, trigger string) TransitionInput {
@@ -104,6 +123,27 @@ func TestTransition_AppendsEventOnFreshReservation(t *testing.T) {
 	require.Equal(t, "LOOP_STAGE_ORIENT", payload["to_stage"])
 	require.Equal(t, "TRANSITION_TRIGGER_USER_TAP", payload["trigger"])
 	require.Equal(t, float64(in.ObservedProjRevision), payload["observed_projection_revision"])
+}
+
+// Dwell from observe→orient is the canonical KnowledgeLoopObserved event
+// fired by the FE IntersectionObserver. Prior to 2026-04-24, the validator
+// rejected this tuple (dwell → ORIENT) even though ClassifyTransitionEvent
+// explicitly classifies it as EventKnowledgeLoopObserved — producing the
+// production 502 bursts on `/loop/transition`. This test pins the end-to-end
+// Execute path so the regression can't return.
+func TestTransition_DwellObserveToOrient_EmitsObservedEvent(t *testing.T) {
+	dedupe := &fakeDedupePort{reserved: true}
+	appendPort := &fakeAppendPort{}
+	uc := NewTransitionKnowledgeLoopUsecase(dedupe, appendPort, nil, time.Now)
+
+	in := newTransitionInput(t, "LOOP_STAGE_OBSERVE", "LOOP_STAGE_ORIENT", "TRANSITION_TRIGGER_DWELL")
+	res, err := uc.Execute(context.Background(), in)
+
+	require.NoError(t, err)
+	require.True(t, res.Accepted)
+	require.Len(t, appendPort.events, 1)
+	require.Equal(t, domain.EventKnowledgeLoopObserved, appendPort.events[0].EventType,
+		"dwell on observe→orient must classify as KnowledgeLoopObserved (contract §8.2)")
 }
 
 func TestTransition_SkipsAppendOnDuplicateReservation(t *testing.T) {
@@ -168,12 +208,12 @@ func TestTransition_RateLimit_RejectsOverGlobalCeiling(t *testing.T) {
 	uc := NewTransitionKnowledgeLoopUsecase(dedupe, appendPort, limiter, func() time.Time { return fixedNow })
 	in := newTransitionInput(t, "LOOP_STAGE_OBSERVE", "LOOP_STAGE_ORIENT", "TRANSITION_TRIGGER_USER_TAP")
 	in.UserID = userID
-	// Use a UUIDv7 whose embedded timestamp matches fixedNow so the validator passes.
-	id, err := uuid.NewV7()
-	require.NoError(t, err)
-	in.ClientTransitionID = id.String()
+	// Mint a UUIDv7 whose embedded timestamp matches fixedNow so the validator
+	// passes regardless of real wall-clock drift. A plain uuid.NewV7() bakes in
+	// the machine clock which may be far from fixedNow → validator rejects.
+	in.ClientTransitionID = mustMintUUIDv7(t, fixedNow)
 
-	_, err = uc.Execute(context.Background(), in)
+	_, err := uc.Execute(context.Background(), in)
 
 	require.Error(t, err)
 	require.ErrorIs(t, err, ErrRateLimited,

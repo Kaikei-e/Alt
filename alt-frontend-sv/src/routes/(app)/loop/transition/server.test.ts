@@ -1,3 +1,4 @@
+import { Code, ConnectError } from "@connectrpc/connect";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("$env/dynamic/private", () => ({
@@ -222,6 +223,52 @@ describe("/loop/transition +server.ts", () => {
 		expect(res.status).toBe(400);
 		const body = await res.json();
 		expect(body).toEqual({ error: "invalid_argument" });
+	});
+
+	// Regression (2026-04-24): the previous extractConnectCode only accepted
+	// string `code`, but @connectrpc/connect v2 ConnectError.code is numeric.
+	// Before the fix, a real ConnectError(Code.InvalidArgument) thrown from
+	// the RPC client fell through to the default branch and surfaced as
+	// HTTP 502 upstream_unreachable, masking the real 400 response from
+	// alt-backend. This test uses the real ConnectError shape.
+	it("400 invalid_argument on real ConnectError(Code.InvalidArgument)", async () => {
+		vi.mocked(transitionKnowledgeLoopForUser).mockRejectedValue(
+			new ConnectError("invalid argument", Code.InvalidArgument),
+		);
+		const res = await invoke({
+			body: {
+				lensModeId: "default",
+				clientTransitionId: "0193c8e5-7d6c-7c4a-b000-000000000013",
+				entryKey: "article:42",
+				fromStage: "observe",
+				toStage: "orient",
+				trigger: "dwell",
+				observedProjectionRevision: 1,
+			},
+		});
+		expect(res.status).toBe(400);
+		const body = await res.json();
+		expect(body).toEqual({ error: "invalid_argument" });
+	});
+
+	it("502 upstream_unavailable on real ConnectError(Code.Unavailable)", async () => {
+		vi.mocked(transitionKnowledgeLoopForUser).mockRejectedValue(
+			new ConnectError("upstream", Code.Unavailable),
+		);
+		const res = await invoke({
+			body: {
+				lensModeId: "default",
+				clientTransitionId: "0193c8e5-7d6c-7c4a-b000-000000000014",
+				entryKey: "article:42",
+				fromStage: "observe",
+				toStage: "orient",
+				trigger: "user_tap",
+				observedProjectionRevision: 1,
+			},
+		});
+		expect(res.status).toBe(502);
+		const body = await res.json();
+		expect(body).toEqual({ error: "upstream_unavailable" });
 	});
 
 	it("logs loop.transition.unknown_error once for bare TypeError (no Connect code)", async () => {

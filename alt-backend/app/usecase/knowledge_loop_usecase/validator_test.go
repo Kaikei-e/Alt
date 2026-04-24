@@ -90,11 +90,23 @@ func TestValidateClientTransitionID_RejectsStale(t *testing.T) {
 }
 
 func TestValidateDwellTriggerTarget(t *testing.T) {
+	// Dwell permitted for OBSERVE (observation stays put) and ORIENT (dwell
+	// fires KnowledgeLoopObserved on observe->orient per canonical contract
+	// §8.2 and classify_transition_event.go L45-47 — the single source of
+	// truth for valid (from, to, trigger) tuples).
 	require.NoError(t, ValidateDwellTriggerTarget("TRANSITION_TRIGGER_DWELL", "LOOP_STAGE_OBSERVE"))
+	require.NoError(t, ValidateDwellTriggerTarget("TRANSITION_TRIGGER_DWELL", "LOOP_STAGE_ORIENT"))
+
+	// Non-dwell triggers pass through untouched.
 	require.NoError(t, ValidateDwellTriggerTarget("TRANSITION_TRIGGER_USER_TAP", "LOOP_STAGE_ACT"))
-	err := ValidateDwellTriggerTarget("TRANSITION_TRIGGER_DWELL", "LOOP_STAGE_ACT")
-	require.Error(t, err)
-	require.True(t, errors.Is(err, ErrInvalidArgument))
+
+	// Dwell must not target DECIDE / ACT: those are deliberate user actions,
+	// not passive observations.
+	for _, badTo := range []string{"LOOP_STAGE_DECIDE", "LOOP_STAGE_ACT"} {
+		err := ValidateDwellTriggerTarget("TRANSITION_TRIGGER_DWELL", badTo)
+		require.Error(t, err, "dwell→%s must be rejected", badTo)
+		require.True(t, errors.Is(err, ErrInvalidArgument))
+	}
 }
 
 func TestValidateObservedProjectionRevision(t *testing.T) {

@@ -109,11 +109,19 @@ func ValidateObservedProjectionRevision(rev int64) error {
 	return nil
 }
 
-// ValidateDwellTriggerTarget enforces: if trigger==DWELL, to_stage MUST be OBSERVE.
+// ValidateDwellTriggerTarget enforces that a DWELL trigger can only target the
+// passive stages (OBSERVE, ORIENT). Dwell on observe→orient is the canonical
+// path that fires KnowledgeLoopObserved per canonical contract §8.2 and
+// ClassifyTransitionEvent. Dwelling into DECIDE / ACT is not a legitimate
+// passive signal and is rejected as ErrInvalidArgument.
+//
 // toStage and trigger are passed as string to keep this package free of proto imports.
 func ValidateDwellTriggerTarget(trigger, toStage string) error {
-	if trigger == "TRANSITION_TRIGGER_DWELL" && toStage != "LOOP_STAGE_OBSERVE" {
-		return fmt.Errorf("%w: dwell trigger only valid for OBSERVE target", ErrInvalidArgument)
+	if trigger != "TRANSITION_TRIGGER_DWELL" {
+		return nil
 	}
-	return nil
+	if toStage == "LOOP_STAGE_OBSERVE" || toStage == "LOOP_STAGE_ORIENT" {
+		return nil
+	}
+	return fmt.Errorf("%w: dwell trigger only valid for OBSERVE or ORIENT target", ErrInvalidArgument)
 }
