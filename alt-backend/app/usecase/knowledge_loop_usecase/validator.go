@@ -14,7 +14,12 @@ import (
 
 // WhyMappingVersion is the exhaustive-mapping-table version for Phase-0 why codes → WhyKind.
 // Bump this constant when the mapping changes; a bump triggers a full reproject via runbook.
-const WhyMappingVersion = 1
+//
+// v2 (2026-04-24): EnrichWhyFromEvent replaced the fixed `shortEventWhy` strings with
+// structured evidence_refs derived from event payloads (ADR-000840). A full reproject is
+// required after deploying v2 so existing knowledge_loop_entries pick up the new
+// why_text / evidence_refs bindings.
+const WhyMappingVersion = 2
 
 var (
 	// keyFormat pins the canonical identifier format: alphanumeric plus _ : -, up to 128 chars.

@@ -97,4 +97,13 @@ Full-reproject procedure for the Knowledge Loop read model. Use this when:
   ```
   Fix forward by emitting the corrective supersede event; do not backfill directly.
 - **Checkpoint stuck**: inspect the projector log for `knowledge_loop_projector: skip event` lines and decide whether to fix-forward with a new event or pin the bad event (out of scope for Loop; it stays in `knowledge_events`).
+
+## WhyMappingVersion history
+
+Each bump triggers a full reproject per the Pre-flight + Procedure above, so existing `knowledge_loop_entries` rows pick up the new `why_text` / `why_evidence_refs` bindings emitted by the projector.
+
+| version | date       | ADR          | what changed |
+|---------|------------|--------------|--------------|
+| 1       | 2026-04-23 | [[000831]]   | initial mapping table (fixed-string rationales via `shortEventWhy`) |
+| 2       | 2026-04-24 | [[000840]]   | `EnrichWhyFromEvent` replaces fixed strings with structured evidence_refs derived from event payload (summary_version_id / tag_set_version_id / article_id / conversation_id / open event_id) |
 - **`projected_at` in API response**: a serious bug. The canonical contract forbids it. Treat as a security incident; see ADR-000831 §12 and the `TestProjectedAtNotSerialized` test.

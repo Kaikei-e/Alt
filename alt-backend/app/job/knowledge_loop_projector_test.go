@@ -157,6 +157,167 @@ func TestProjectLoopEvent_HomeItemDismissed_NoDecisionSeed(t *testing.T) {
 		"Dismissed entries should not get a fresh CTA seed")
 }
 
+// ---------------------------------------------------------------------------
+// PR-L5: Knowledge Loop transition events project into session_state only.
+//
+// These events are emitted by the /loop UI via TransitionKnowledgeLoopUsecase.
+// The projector must update knowledge_loop_session_state with:
+//   - CurrentStage from the payload's to_stage
+//   - CurrentStageEnteredAt from event.OccurredAt (reproject-safe, never time.Now())
+//   - Last<stage>EntryKey pointing at the payload's entry_key
+//   - ProjectionSeqHiwater for the sovereign's merge-safe guard
+// They must NOT create or mutate knowledge_loop_entries; entry rows flow from
+// article-side events (SummaryVersionCreated / HomeItem* / etc).
+// ---------------------------------------------------------------------------
+
+func makeLoopTransitionEvent(
+	t *testing.T,
+	eventType string,
+	seq int64,
+	userID uuid.UUID,
+	entryKey, fromStage, toStage string,
+) *domain.KnowledgeEvent {
+	t.Helper()
+	payload, err := json.Marshal(map[string]any{
+		"entry_key":                    entryKey,
+		"lens_mode_id":                 "default",
+		"from_stage":                   fromStage,
+		"to_stage":                     toStage,
+		"trigger":                      "TRANSITION_TRIGGER_USER_TAP",
+		"observed_projection_revision": 1,
+	})
+	require.NoError(t, err)
+	return &domain.KnowledgeEvent{
+		EventID:       uuid.New(),
+		EventSeq:      seq,
+		OccurredAt:    time.Date(2026, 4, 24, 9, 30, 0, 0, time.UTC),
+		TenantID:      uuid.New(),
+		UserID:        &userID,
+		EventType:     eventType,
+		AggregateType: domain.AggregateLoopSession,
+		AggregateID:   entryKey,
+		DedupeKey:     uuid.NewString(),
+		Payload:       payload,
+	}
+}
+
+func TestProjectLoopEvent_KnowledgeLoopObservedUpdatesSession(t *testing.T) {
+	repo := &fakeLoopRepo{}
+	userID := uuid.New()
+	ev := makeLoopTransitionEvent(t, domain.EventKnowledgeLoopObserved, 500, userID,
+		"article:42", "LOOP_STAGE_OBSERVE", "LOOP_STAGE_OBSERVE")
+
+	_, err := projectLoopEvent(context.Background(), ev, repo, repo, repo)
+	require.NoError(t, err)
+	require.Empty(t, repo.entries, "Loop transition events must not create entries")
+	require.Len(t, repo.session, 1)
+
+	state := repo.session[0]
+	require.Equal(t, domain.LoopStageObserve, state.CurrentStage)
+	require.Equal(t, ev.OccurredAt, state.CurrentStageEnteredAt)
+	require.NotNil(t, state.LastObservedEntryKey)
+	require.Equal(t, "article:42", *state.LastObservedEntryKey)
+	require.Equal(t, int64(500), state.ProjectionSeqHiwater)
+	require.Equal(t, "default", state.LensModeID)
+	require.Equal(t, *ev.UserID, state.UserID)
+	require.Equal(t, ev.TenantID, state.TenantID)
+}
+
+func TestProjectLoopEvent_KnowledgeLoopOrientedUpdatesSession(t *testing.T) {
+	repo := &fakeLoopRepo{}
+	userID := uuid.New()
+	ev := makeLoopTransitionEvent(t, domain.EventKnowledgeLoopOriented, 501, userID,
+		"article:42", "LOOP_STAGE_OBSERVE", "LOOP_STAGE_ORIENT")
+
+	_, err := projectLoopEvent(context.Background(), ev, repo, repo, repo)
+	require.NoError(t, err)
+	require.Len(t, repo.session, 1)
+
+	state := repo.session[0]
+	require.Equal(t, domain.LoopStageOrient, state.CurrentStage)
+	require.NotNil(t, state.LastOrientedEntryKey)
+	require.Equal(t, "article:42", *state.LastOrientedEntryKey)
+	require.Nil(t, state.LastObservedEntryKey,
+		"Oriented event must not populate last_observed_entry_key; COALESCE on the DB side preserves prior value")
+}
+
+func TestProjectLoopEvent_KnowledgeLoopDecisionPresentedUpdatesSession(t *testing.T) {
+	repo := &fakeLoopRepo{}
+	userID := uuid.New()
+	ev := makeLoopTransitionEvent(t, domain.EventKnowledgeLoopDecisionPresented, 502, userID,
+		"article:42", "LOOP_STAGE_ORIENT", "LOOP_STAGE_DECIDE")
+
+	_, err := projectLoopEvent(context.Background(), ev, repo, repo, repo)
+	require.NoError(t, err)
+	require.Len(t, repo.session, 1)
+
+	state := repo.session[0]
+	require.Equal(t, domain.LoopStageDecide, state.CurrentStage)
+	require.NotNil(t, state.LastDecidedEntryKey)
+	require.Equal(t, "article:42", *state.LastDecidedEntryKey)
+}
+
+func TestProjectLoopEvent_KnowledgeLoopActedUpdatesSession(t *testing.T) {
+	repo := &fakeLoopRepo{}
+	userID := uuid.New()
+	ev := makeLoopTransitionEvent(t, domain.EventKnowledgeLoopActed, 503, userID,
+		"article:42", "LOOP_STAGE_DECIDE", "LOOP_STAGE_ACT")
+
+	_, err := projectLoopEvent(context.Background(), ev, repo, repo, repo)
+	require.NoError(t, err)
+	require.Len(t, repo.session, 1)
+
+	state := repo.session[0]
+	require.Equal(t, domain.LoopStageAct, state.CurrentStage)
+	require.NotNil(t, state.LastActedEntryKey)
+	require.Equal(t, "article:42", *state.LastActedEntryKey)
+}
+
+func TestProjectLoopEvent_KnowledgeLoopReturnedUpdatesSession(t *testing.T) {
+	repo := &fakeLoopRepo{}
+	userID := uuid.New()
+	ev := makeLoopTransitionEvent(t, domain.EventKnowledgeLoopReturned, 504, userID,
+		"article:42", "LOOP_STAGE_ACT", "LOOP_STAGE_OBSERVE")
+
+	_, err := projectLoopEvent(context.Background(), ev, repo, repo, repo)
+	require.NoError(t, err)
+	require.Len(t, repo.session, 1)
+
+	state := repo.session[0]
+	require.Equal(t, domain.LoopStageObserve, state.CurrentStage)
+	require.NotNil(t, state.LastReturnedEntryKey)
+	require.Equal(t, "article:42", *state.LastReturnedEntryKey)
+}
+
+func TestProjectLoopEvent_KnowledgeLoopDeferredUpdatesSession(t *testing.T) {
+	repo := &fakeLoopRepo{}
+	userID := uuid.New()
+	ev := makeLoopTransitionEvent(t, domain.EventKnowledgeLoopDeferred, 505, userID,
+		"article:42", "LOOP_STAGE_ORIENT", "LOOP_STAGE_ORIENT")
+
+	_, err := projectLoopEvent(context.Background(), ev, repo, repo, repo)
+	require.NoError(t, err)
+	require.Len(t, repo.session, 1)
+
+	state := repo.session[0]
+	require.NotNil(t, state.LastDeferredEntryKey)
+	require.Equal(t, "article:42", *state.LastDeferredEntryKey)
+}
+
+// TestProjectLoopEvent_LoopEventDoesNotCreateEntry pins the single-emission rule.
+// Only /feeds HomeItem* events create entry rows; /loop transitions update session state.
+func TestProjectLoopEvent_LoopEventDoesNotCreateEntry(t *testing.T) {
+	repo := &fakeLoopRepo{}
+	userID := uuid.New()
+	ev := makeLoopTransitionEvent(t, domain.EventKnowledgeLoopActed, 600, userID,
+		"article:42", "LOOP_STAGE_DECIDE", "LOOP_STAGE_ACT")
+
+	_, err := projectLoopEvent(context.Background(), ev, repo, repo, repo)
+	require.NoError(t, err)
+	require.Empty(t, repo.entries,
+		"Loop transition events must not upsert entries (ADR-000831 §3.8 single-emission rule)")
+}
+
 // TestProjectLoopEvent_HomeItemSupersededSetsPointer checks supersede pointer handling.
 func TestProjectLoopEvent_HomeItemSupersededSetsPointer(t *testing.T) {
 	repo := &fakeLoopRepo{}

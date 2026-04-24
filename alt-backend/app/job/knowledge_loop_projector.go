@@ -5,6 +5,7 @@ import (
 	"alt/port/knowledge_event_port"
 	"alt/port/knowledge_loop_port"
 	"alt/port/knowledge_projection_port"
+	"alt/usecase/knowledge_loop_usecase"
 	"alt/utils/logger"
 	"context"
 	"encoding/json"
@@ -196,10 +197,141 @@ func projectLoopEvent(
 		}
 		return upsertEntry.UpsertKnowledgeLoopEntry(ctx, entry)
 
+	case domain.EventKnowledgeLoopObserved,
+		domain.EventKnowledgeLoopOriented,
+		domain.EventKnowledgeLoopDecisionPresented,
+		domain.EventKnowledgeLoopActed,
+		domain.EventKnowledgeLoopReturned,
+		domain.EventKnowledgeLoopDeferred,
+		domain.EventKnowledgeLoopSessionReset,
+		domain.EventKnowledgeLoopLensModeSwitched:
+		return projectLoopTransitionEvent(ctx, ev, upsertSession)
+
 	default:
 		// Events we do not yet project (ArticleCreated at system-level, RecallSnoozed, etc.)
 		return nil, nil
 	}
+}
+
+// projectLoopTransitionEvent consumes a /loop-originated transition event and
+// updates knowledge_loop_session_state. It never upserts an entry row —
+// entries come from article-side events (/feeds HomeItem* or SummaryVersionCreated).
+//
+// ADR-000831 §3.8 (single-emission rule) pins this split: /loop transitions write
+// session-state, /feeds actions write entries via HomeItem*.
+//
+// Reproject-safety:
+//   - CurrentStageEnteredAt derives from event.OccurredAt (never wall-clock).
+//   - ProjectionSeqHiwater = event.EventSeq; sovereign-side UPSERT guards with
+//     `WHERE session.projection_seq_hiwater <= EXCLUDED.projection_seq_hiwater`
+//     and COALESCE on last_*_entry_key, so older events cannot overwrite newer
+//     pointers on replay (merge-safe upsert invariant, ADR finding F1).
+func projectLoopTransitionEvent(
+	ctx context.Context,
+	ev *domain.KnowledgeEvent,
+	upsertSession knowledge_loop_port.UpsertKnowledgeLoopSessionStatePort,
+) (*knowledge_loop_port.UpsertResult, error) {
+	payload := parseLoopTransitionPayload(ev.Payload)
+	lensModeID := payload.LensModeID
+	if lensModeID == "" {
+		lensModeID = defaultLoopLensModeID
+	}
+
+	state := &domain.KnowledgeLoopSessionState{
+		UserID:                *ev.UserID,
+		TenantID:              ev.TenantID,
+		LensModeID:            lensModeID,
+		CurrentStage:          mapStageNameOrFallback(payload.ToStage, stageForLoopEvent(ev.EventType)),
+		CurrentStageEnteredAt: ev.OccurredAt,
+		ProjectionSeqHiwater:  ev.EventSeq,
+	}
+
+	// Only the field matching this event's semantic target is populated; the
+	// sovereign UPSERT applies COALESCE to preserve older last_*_entry_key values.
+	entryKey := payload.EntryKey
+	if entryKey != "" {
+		switch ev.EventType {
+		case domain.EventKnowledgeLoopObserved:
+			state.LastObservedEntryKey = &entryKey
+		case domain.EventKnowledgeLoopOriented:
+			state.LastOrientedEntryKey = &entryKey
+		case domain.EventKnowledgeLoopDecisionPresented:
+			state.LastDecidedEntryKey = &entryKey
+		case domain.EventKnowledgeLoopActed:
+			state.LastActedEntryKey = &entryKey
+		case domain.EventKnowledgeLoopReturned:
+			state.LastReturnedEntryKey = &entryKey
+		case domain.EventKnowledgeLoopDeferred:
+			state.LastDeferredEntryKey = &entryKey
+		}
+	}
+
+	return upsertSession.UpsertKnowledgeLoopSessionState(ctx, state)
+}
+
+type loopTransitionPayload struct {
+	EntryKey   string
+	LensModeID string
+	FromStage  string
+	ToStage    string
+	Trigger    string
+}
+
+// parseLoopTransitionPayload decodes the structured payload written by
+// TransitionKnowledgeLoopUsecase.buildTransitionEvent. Missing fields yield zero
+// values; the caller tolerates them so a schema drift between write and read
+// paths does not panic the projector.
+func parseLoopTransitionPayload(raw json.RawMessage) loopTransitionPayload {
+	out := loopTransitionPayload{}
+	if len(raw) == 0 {
+		return out
+	}
+	var m map[string]any
+	if err := json.Unmarshal(raw, &m); err != nil {
+		return out
+	}
+	out.EntryKey = pickString(m, "entry_key")
+	out.LensModeID = pickString(m, "lens_mode_id")
+	out.FromStage = pickString(m, "from_stage")
+	out.ToStage = pickString(m, "to_stage")
+	out.Trigger = pickString(m, "trigger")
+	return out
+}
+
+// mapStageNameOrFallback resolves a proto enum string (e.g. "LOOP_STAGE_ORIENT")
+// to the domain.LoopStage, falling back to the fallback value if the name is
+// missing or unrecognized.
+func mapStageNameOrFallback(name string, fallback domain.LoopStage) domain.LoopStage {
+	switch name {
+	case "LOOP_STAGE_OBSERVE":
+		return domain.LoopStageObserve
+	case "LOOP_STAGE_ORIENT":
+		return domain.LoopStageOrient
+	case "LOOP_STAGE_DECIDE":
+		return domain.LoopStageDecide
+	case "LOOP_STAGE_ACT":
+		return domain.LoopStageAct
+	}
+	return fallback
+}
+
+// stageForLoopEvent returns the canonical stage associated with a Loop
+// transition event type. Used as a fallback when the payload lacks to_stage.
+func stageForLoopEvent(eventType string) domain.LoopStage {
+	switch eventType {
+	case domain.EventKnowledgeLoopObserved,
+		domain.EventKnowledgeLoopReturned,
+		domain.EventKnowledgeLoopSessionReset:
+		return domain.LoopStageObserve
+	case domain.EventKnowledgeLoopOriented,
+		domain.EventKnowledgeLoopDeferred:
+		return domain.LoopStageOrient
+	case domain.EventKnowledgeLoopDecisionPresented:
+		return domain.LoopStageDecide
+	case domain.EventKnowledgeLoopActed:
+		return domain.LoopStageAct
+	}
+	return domain.LoopStageObserve
 }
 
 // buildEntryFromEvent materializes a KnowledgeLoopEntry from an event, filling reproject-safe
@@ -230,6 +362,22 @@ func buildEntryFromEvent(
 		art.LensVersionID = &fallback
 	}
 
+	// Why enrichment (ADR-000840 / WhyMappingVersion=2). The enricher is a pure
+	// function over the event payload, so reproject replays produce identical
+	// why_text and evidence_refs without reading latest projection state.
+	enriched := knowledge_loop_usecase.EnrichWhyFromEvent(ev)
+	// The enricher is the authoritative classifier — it always returns a valid
+	// WhyKind. The caller-supplied whyKind is kept as a default for unknown
+	// events only, since the enricher falls back to Source for those too.
+	finalKind := enriched.Kind
+	if finalKind == "" {
+		finalKind = whyKind
+	}
+	refIDs := make([]string, 0, len(enriched.EvidenceRefs))
+	for _, r := range enriched.EvidenceRefs {
+		refIDs = append(refIDs, r.RefID)
+	}
+
 	return &domain.KnowledgeLoopEntry{
 		UserID:               *ev.UserID,
 		TenantID:             ev.TenantID,
@@ -242,8 +390,10 @@ func buildEntryFromEvent(
 		SourceEventSeq:       ev.EventSeq,
 		FreshnessAt:          ev.OccurredAt, // reproject-safe
 		ArtifactVersionRef:   art,
-		WhyKind:              whyKind,
-		WhyText:              shortEventWhy(ev),
+		WhyKind:              finalKind,
+		WhyText:              enriched.Text,
+		WhyEvidenceRefs:      enriched.EvidenceRefs,
+		WhyEvidenceRefIDs:    refIDs,
 		DecisionOptions:      seedDecisionOptions(whyKind, proposedStage),
 		DismissState:         domain.DismissActive,
 		RenderDepthHint:      pickRenderDepth(surfaceBucket),
@@ -333,27 +483,6 @@ func pickLoopPriority(bucket domain.SurfaceBucket) domain.LoopPriority {
 		return domain.LoopPriorityReference
 	default:
 		return domain.LoopPriorityReference
-	}
-}
-
-// shortEventWhy builds a terse plain-text rationale under 512 chars.
-// It MUST NOT contain markdown or HTML (per canonical contract).
-func shortEventWhy(ev *domain.KnowledgeEvent) string {
-	switch ev.EventType {
-	case domain.EventHomeItemOpened:
-		return "You opened this item."
-	case domain.EventHomeItemDismissed:
-		return "You dismissed this item."
-	case domain.EventHomeItemSuperseded:
-		return "This item was superseded by a newer version."
-	case domain.EventSummaryVersionCreated:
-		return "A new summary version was produced."
-	case domain.EventHomeItemsSeen:
-		return "Surfaced in your home feed."
-	case domain.EventHomeItemAsked:
-		return "You asked about this item."
-	default:
-		return "Surfaced from a recent event."
 	}
 }
 
