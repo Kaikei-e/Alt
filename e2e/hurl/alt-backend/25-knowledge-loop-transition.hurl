@@ -78,7 +78,14 @@ Content-Type: application/json
 }
 HTTP 200
 [Asserts]
-jsonpath "$.accepted" == false
+# Connect-RPC JSON codec (protojson default) omits proto3 bool zero values,
+# so a "replay" response serializes as `{"message":"duplicate ..."}` without
+# an explicit `accepted` field. Asserting `$.accepted == false` would hit
+# `actual: none` every time. Instead, assert on the fields that DO survive
+# the zero-value drop: `message` carries the duplicate-detected text, and
+# `accepted` must either be missing entirely or JSON null — never `true`.
+jsonpath "$.accepted" not exists
+jsonpath "$.message" contains "duplicate"
 
 # --- 4. invalid UUIDv7 (non-v7 rejected as invalid_argument) -----------------
 
