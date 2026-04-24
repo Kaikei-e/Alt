@@ -176,8 +176,21 @@ func newKnowledgeModule(infra *InfraModule, article *ArticleModule) *KnowledgeMo
 		sovereignCli,
 		sovereignCli,
 	)
+	// sovereignCli implements both ReserveTransitionIdempotencyPort and AppendKnowledgeEventPort,
+	// so the transition usecase reserves idempotency and appends the Loop event through the
+	// same sovereign Connect-RPC client (single source of truth for knowledge_events).
+	//
+	// The rate limiter is shared process-wide so the canonical contract §8.4 minute
+	// ceiling (600 Loop events/user/minute + 60s per-entry dwell throttle) holds
+	// across concurrent /loop/transition requests. One process == one bucket set;
+	// a multi-pod deployment drifts by N× pods on the ceiling, which we accept:
+	// idempotency + dedupe guard prevent event store damage, and this limiter is
+	// the defense-in-depth layer on top.
+	knowledgeLoopRateLimiter := knowledge_loop_usecase.NewLoopRateLimiter(nil)
 	transitionKnowledgeLoopUC := knowledge_loop_usecase.NewTransitionKnowledgeLoopUsecase(
 		sovereignCli,
+		sovereignCli,
+		knowledgeLoopRateLimiter,
 		nil, // use time.Now by default
 	)
 

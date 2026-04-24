@@ -12,6 +12,12 @@ import (
 // distinct from CodeInternal which indicates an invariant violation.
 var ErrUpstreamUnavailable = errors.New("upstream unavailable")
 
+// ErrRateLimited signals the server-side rate limit (canonical contract §8.4)
+// has rejected this Knowledge Loop event. Handlers map it to Connect
+// CodeResourceExhausted; the SvelteKit BFF maps that to HTTP 429 so clients
+// can respect `Retry-After` semantics (ADR-000839 classification table).
+var ErrRateLimited = errors.New("rate limited")
+
 // ClassifyDriverError wraps a driver/port-level error with the appropriate
 // usecase sentinel so the handler can route it to the correct Connect-RPC
 // code. It preserves the original chain via %w so errors.Is / errors.As still
