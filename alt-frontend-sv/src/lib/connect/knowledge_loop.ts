@@ -31,9 +31,21 @@ export type KnowledgeLoopClient = Client<typeof KnowledgeLoopService>;
 
 export type LoopStageName = "observe" | "orient" | "decide" | "act";
 export type SurfaceBucketName = "now" | "continue" | "changed" | "review";
-export type LoopPriorityName = "critical" | "continuing" | "confirm" | "reference";
-export type WhyKindName = "source_why" | "pattern_why" | "recall_why" | "change_why";
-export type DismissStateName = "active" | "deferred" | "dismissed" | "completed";
+export type LoopPriorityName =
+	| "critical"
+	| "continuing"
+	| "confirm"
+	| "reference";
+export type WhyKindName =
+	| "source_why"
+	| "pattern_why"
+	| "recall_why"
+	| "change_why";
+export type DismissStateName =
+	| "active"
+	| "deferred"
+	| "dismissed"
+	| "completed";
 
 export interface WhyPayloadData {
 	kind: WhyKindName;
@@ -124,6 +136,13 @@ export interface SurfaceStateData {
 
 export interface KnowledgeLoopResult {
 	foregroundEntries: KnowledgeLoopEntryData[];
+	/**
+	 * Entries for the non-NOW buckets (Continue / Changed / Review). Each entry
+	 * carries its `surfaceBucket` so callers partition into planes.
+	 * Empty when the server is an older build that does not populate bucket_entries
+	 * yet; the `/loop` page falls back to the legacy bucket-index view in that case.
+	 */
+	bucketEntries: KnowledgeLoopEntryData[];
 	surfaces: SurfaceStateData[];
 	sessionState?: KnowledgeLoopSessionStateData;
 	overallServiceQuality: "full" | "degraded" | "fallback" | "unspecified";
@@ -132,7 +151,9 @@ export interface KnowledgeLoopResult {
 }
 
 /** Create a strongly-typed Connect-RPC client for the Knowledge Loop service. */
-export function createKnowledgeLoopClient(transport: Transport): KnowledgeLoopClient {
+export function createKnowledgeLoopClient(
+	transport: Transport,
+): KnowledgeLoopClient {
 	return createClient(KnowledgeLoopService, transport);
 }
 
@@ -176,11 +197,16 @@ export async function transitionKnowledgeLoop(
 	});
 }
 
-function mapGetKnowledgeLoopResponse(resp: GetKnowledgeLoopResponse): KnowledgeLoopResult {
+function mapGetKnowledgeLoopResponse(
+	resp: GetKnowledgeLoopResponse,
+): KnowledgeLoopResult {
 	return {
 		foregroundEntries: resp.foregroundEntries.map(mapProtoEntry),
+		bucketEntries: (resp.bucketEntries ?? []).map(mapProtoEntry),
 		surfaces: resp.surfaces.map(mapProtoSurface),
-		sessionState: resp.sessionState ? mapProtoSession(resp.sessionState) : undefined,
+		sessionState: resp.sessionState
+			? mapProtoSession(resp.sessionState)
+			: undefined,
 		overallServiceQuality: mapServiceQuality(resp.overallServiceQuality),
 		generatedAt: tsToIso(resp.generatedAt),
 		projectionSeqHiwater: Number(resp.projectionSeqHiwater),
@@ -196,13 +222,18 @@ function mapProtoEntry(e: ProtoKnowledgeLoopEntry): KnowledgeLoopEntryData {
 		projectionRevision: Number(e.projectionRevision),
 		projectionSeqHiwater: Number(e.projectionSeqHiwater),
 		freshnessAt: tsToIso(e.freshnessAt),
-		sourceObservedAt: e.sourceObservedAt ? tsToIso(e.sourceObservedAt) : undefined,
+		sourceObservedAt: e.sourceObservedAt
+			? tsToIso(e.sourceObservedAt)
+			: undefined,
 		whyPrimary: {
 			kind: mapWhyKindFromProto(e.whyPrimary?.kind),
 			text: e.whyPrimary?.text ?? "",
 			confidence: e.whyPrimary?.confidence,
 			evidenceRefs:
-				e.whyPrimary?.evidenceRefs.map((r) => ({ refId: r.refId, label: r.label })) ?? [],
+				e.whyPrimary?.evidenceRefs.map((r) => ({
+					refId: r.refId,
+					label: r.label,
+				})) ?? [],
 		},
 		dismissState: mapDismissFromProto(e.dismissState),
 		renderDepthHint: mapDepthHintFromProto(e.renderDepthHint),
@@ -249,7 +280,9 @@ function mapProtoSurface(s: ProtoSurfaceState): SurfaceStateData {
 	};
 }
 
-function mapProtoSession(s: ProtoKnowledgeLoopSessionState): KnowledgeLoopSessionStateData {
+function mapProtoSession(
+	s: ProtoKnowledgeLoopSessionState,
+): KnowledgeLoopSessionStateData {
 	return {
 		currentStage: mapStageFromProto(s.currentStage),
 		currentStageEnteredAt: tsToIso(s.currentStageEnteredAt),
@@ -405,7 +438,9 @@ function mapWhyKindFromProto(k: WhyKind | undefined): WhyKindName {
 	}
 }
 
-function mapServiceQuality(q: ServiceQuality): "full" | "degraded" | "fallback" | "unspecified" {
+function mapServiceQuality(
+	q: ServiceQuality,
+): "full" | "degraded" | "fallback" | "unspecified" {
 	switch (q) {
 		case ServiceQuality.FULL:
 			return "full";
