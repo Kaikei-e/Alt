@@ -57,6 +57,18 @@ render_slice alt-backend
 REPORT_DIR="$ROOT/e2e/reports/alt-backend-$RUN_ID"
 mkdir -p "$REPORT_DIR"
 
+# Redact JWT-like compact-serialization strings from an input stream.
+# Rationale (security audit F-002 on 2026-04-24): `docker compose logs` dumps
+# alt-backend container stdout/stderr verbatim into the CI job output. Any
+# error path that logs a request header can carry the staging test JWT
+# (still mint-able, but also a password in fixture scope). alt-deploy's job
+# logs are private today, but defense-in-depth demands we redact before the
+# bytes hit the job log — not after. Matches the 3-segment JWS compact
+# form with the mandatory `eyJ` header prefix and RFC 7515 base64url charset.
+redact_secrets() {
+  sed -E 's#eyJ[A-Za-z0-9_=-]+\.eyJ[A-Za-z0-9_=-]+\.[A-Za-z0-9_=-]+#[REDACTED_JWT]#g'
+}
+
 cleanup() {
   local exit_code=$?
   # Dump per-container logs to stderr BEFORE teardown when Hurl failed.
@@ -69,7 +81,7 @@ cleanup() {
   if [[ "$exit_code" -ne 0 && "${KEEP_STACK:-0}" != "1" ]]; then
     echo "==> dumping $STAGING_PROJECT_NAME container logs (exit=$exit_code)" >&2
     docker compose -f "$SLICE" -p "$STAGING_PROJECT_NAME" \
-      logs --no-color --tail=500 >&2 2>&1 || true
+      logs --no-color --tail=500 2>&1 | redact_secrets >&2 || true
   fi
   if [[ "${KEEP_STACK:-0}" != "1" ]]; then
     echo "==> tearing down $STAGING_PROJECT_NAME stack" >&2
@@ -89,11 +101,23 @@ trap cleanup EXIT
 JWT="$(tr -d '\n' < e2e/fixtures/alt-backend/test-jwt.txt)"
 
 echo "==> bringing up alt-backend slice ($STAGING_PROJECT_NAME)" >&2
-docker compose -f "$SLICE" -p "$STAGING_PROJECT_NAME" up -d --wait \
+if ! docker compose -f "$SLICE" -p "$STAGING_PROJECT_NAME" up -d --wait \
     alt-backend-db \
     alt-backend-db-migrator \
     alt-backend-deps-stub \
-    alt-backend
+    alt-backend; then
+  # A dependency failure during `up --wait` (e.g. stub exits 1 on import)
+  # makes compose *immediately* tear the failing container down. By the
+  # time the EXIT trap runs `docker compose logs`, the failing container
+  # is already gone and the output is empty. Grab logs right here —
+  # before we let the error propagate — while the containers (or at
+  # least their log streams) are still addressable by the project name.
+  echo "==> compose up failed — dumping logs before trap cleanup" >&2
+  docker compose -f "$SLICE" -p "$STAGING_PROJECT_NAME" ps -a >&2 2>&1 || true
+  docker compose -f "$SLICE" -p "$STAGING_PROJECT_NAME" logs --no-color --tail=500 2>&1 \
+    | redact_secrets >&2 || true
+  exit 1
+fi
 
 # Fresh UUIDv7 values for the Knowledge Loop transition suite.
 # The backend validator (ValidateClientTransitionID) enforces UUIDv7 format

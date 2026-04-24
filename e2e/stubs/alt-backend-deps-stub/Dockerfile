@@ -8,7 +8,12 @@ WORKDIR /app
 RUN pip install --no-cache-dir \
         "fastapi==0.115.6" \
         "uvicorn[standard]==0.32.1" \
-        "protobuf==5.29.1"
+        "protobuf==5.29.6"
+# protobuf runtime MUST be >= the gencode version baked into gen/. The local
+# protoc used by ./regenerate.sh currently emits gencode 5.29.2; pinning the
+# runtime to the latest 5.29.x patch (5.29.6) gives us headroom without
+# crossing a major that protobuf guarantees nothing about. If regenerate.sh
+# starts producing gencode newer than this, bump the pin here in lockstep.
 
 # Pre-generated Python proto bindings for the knowledge-sovereign RPCs the
 # stub answers as proto binary (alt-backend's sovereign_client negotiates
