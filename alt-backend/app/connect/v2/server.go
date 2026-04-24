@@ -161,9 +161,14 @@ func SetupConnectHandlers(mux *http.ServeMux, container *di.ApplicationComponent
 
 	// Register KnowledgeLoopService — new read model and state-machine API (ADR-000831).
 	// Tenant/lens scope is derived from the JWT via the same opts/interceptors as KnowledgeHome.
+	// SovereignClient implements ListKnowledgeEventsForUserPort, which drives the
+	// polling-based StreamKnowledgeLoopUpdates. The stream is read-only: it never
+	// writes to projection, preserving the immutable-data-model invariant that
+	// read paths cannot mutate state (ADR-000831 finding F3).
 	knowledgeLoopHandler := knowledge_loop.NewHandler(
 		container.GetKnowledgeLoopUsecase,
 		container.TransitionKnowledgeLoopUsecase,
+		container.SovereignClient,
 		logger,
 	)
 	klPath, klServiceHandler := knowledgeloopv1connect.NewKnowledgeLoopServiceHandler(knowledgeLoopHandler, opts)

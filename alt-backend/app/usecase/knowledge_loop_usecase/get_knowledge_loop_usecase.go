@@ -33,11 +33,22 @@ func NewGetKnowledgeLoopUsecase(
 
 // GetKnowledgeLoopResult bundles the three projections for a single RPC response.
 type GetKnowledgeLoopResult struct {
-	ForegroundEntries    []*domain.KnowledgeLoopEntry
+	ForegroundEntries []*domain.KnowledgeLoopEntry
+	// BucketEntries carries the Continue / Changed / Review plane entries. Each
+	// entry's SurfaceBucket field tells the client which plane to partition it
+	// into. Capped at otherBucketLimitPerBucket per bucket so the response stays
+	// small; the client can request more via a future paginated RPC.
+	BucketEntries        []*domain.KnowledgeLoopEntry
 	SessionState         *domain.KnowledgeLoopSessionState
 	Surfaces             []*domain.KnowledgeLoopSurface
 	ProjectionSeqHiwater int64
 }
+
+// otherBucketLimitPerBucket caps the Continue / Changed / Review fetch so the
+// combined response remains bounded. Aligns with the canonical contract §6
+// "foreground primary max 1, secondary max 3" guidance extrapolated to mid/deep
+// planes: 5 per bucket × 3 buckets = 15 entries max.
+const otherBucketLimitPerBucket = 5
 
 // Execute reads the three projections. lens_mode_id is validated by the caller.
 func (u *GetKnowledgeLoopUsecase) Execute(
@@ -65,6 +76,26 @@ func (u *GetKnowledgeLoopUsecase) Execute(
 		return nil, fmt.Errorf("get_knowledge_loop: entries: %w", err)
 	}
 
+	var bucketEntries []*domain.KnowledgeLoopEntry
+	for _, bucket := range []domain.SurfaceBucket{
+		domain.SurfaceContinue,
+		domain.SurfaceChanged,
+		domain.SurfaceReview,
+	} {
+		b := bucket
+		batch, berr := u.entriesPort.GetKnowledgeLoopEntries(ctx, knowledge_loop_port.GetEntriesQuery{
+			TenantID:      tenantID,
+			UserID:        userID,
+			LensModeID:    lensModeID,
+			SurfaceBucket: &b,
+			Limit:         otherBucketLimitPerBucket,
+		})
+		if berr != nil {
+			return nil, fmt.Errorf("get_knowledge_loop: entries[%s]: %w", bucket, berr)
+		}
+		bucketEntries = append(bucketEntries, batch...)
+	}
+
 	session, err := u.sessionPort.GetKnowledgeLoopSessionState(ctx, tenantID, userID, lensModeID)
 	if err != nil {
 		return nil, fmt.Errorf("get_knowledge_loop: session: %w", err)
@@ -82,6 +113,11 @@ func (u *GetKnowledgeLoopUsecase) Execute(
 			maxSeq = e.ProjectionSeqHiwater
 		}
 	}
+	for _, e := range bucketEntries {
+		if e.ProjectionSeqHiwater > maxSeq {
+			maxSeq = e.ProjectionSeqHiwater
+		}
+	}
 	if session != nil && session.ProjectionSeqHiwater > maxSeq {
 		maxSeq = session.ProjectionSeqHiwater
 	}
@@ -93,6 +129,7 @@ func (u *GetKnowledgeLoopUsecase) Execute(
 
 	return &GetKnowledgeLoopResult{
 		ForegroundEntries:    entries,
+		BucketEntries:        bucketEntries,
 		SessionState:         session,
 		Surfaces:             surfaces,
 		ProjectionSeqHiwater: maxSeq,

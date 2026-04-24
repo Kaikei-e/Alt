@@ -169,8 +169,11 @@ func (f *fakeDedupePort) ReserveTransitionIdempotency(
 func newTransitionHandlerWithDedupeErr(t *testing.T, dedupeErr error) *Handler {
 	t.Helper()
 	// nowFunc uses real time so UUIDv7 embedded timestamps pass ValidateClientTransitionID.
-	uc := knowledge_loop_usecase.NewTransitionKnowledgeLoopUsecase(&fakeDedupePort{err: dedupeErr}, time.Now)
-	return NewHandler(nil, uc, slog.Default())
+	// appendPort is nil: these tests exercise the reserve-failure path, so event append
+	// never runs. Tests that verify append behavior live in the usecase package.
+	// eventsForUserPort is nil: these tests exercise the transition RPC, not the stream RPC.
+	uc := knowledge_loop_usecase.NewTransitionKnowledgeLoopUsecase(&fakeDedupePort{err: dedupeErr}, nil, nil, time.Now)
+	return NewHandler(nil, uc, nil, slog.Default())
 }
 
 func authedContextForHandlerTests(t *testing.T) context.Context {
