@@ -107,7 +107,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
 
       - name: Build alt-backend image locally (tag `ci`)
         run: |
@@ -134,18 +134,20 @@ jobs:
         run: bash e2e/hurl/alt-backend/run.sh
 
       - name: Dump alt-staging logs on failure
+        # Delegate to `docker compose logs` so container naming drift
+        # (compose suffixes a `-1` index when -p collides with the
+        # `container_name:` directive) cannot hide the backend's error
+        # logs. Matches the dump step used by mq-hub / rag-orchestrator
+        # / auth-hub / knowledge-sovereign jobs below.
         if: failure()
         run: |
-          echo "===== docker ps -a ====="
           docker ps -a --filter "name=alt-staging-" || true
-          for svc in alt-backend alt-backend-db alt-backend-db-migrator alt-backend-deps-stub; do
-            echo "===== alt-staging-$svc logs (tail=500) ====="
-            docker logs --tail=500 "alt-staging-$svc" 2>&1 || true
-          done
+          docker compose -f compose/compose.staging.yaml -p alt-staging \
+            --profile alt-backend logs --no-color --tail=500 || true
 
       - name: Upload Hurl reports
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
         with:
           name: alt-backend-hurl-reports
           path: e2e/reports/alt-backend-*
@@ -162,7 +164,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
 
       - name: Build mq-hub image locally (tag `ci`)
         run: |
@@ -192,7 +194,7 @@ jobs:
 
       - name: Upload Hurl reports
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
         with:
           name: mq-hub-hurl-reports
           path: e2e/reports/mq-hub-*
@@ -209,7 +211,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
 
       # recap-worker's image bundles libtorch (~600MB download) +
       # cargo-chef cooks the workspace, so the cold build is the
@@ -266,7 +268,7 @@ jobs:
 
       - name: Upload Hurl reports
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
         with:
           name: recap-worker-hurl-reports
           path: e2e/reports/recap-worker-*
@@ -283,7 +285,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
 
       - name: Build news-creator image locally (tag `ci`)
         run: |
@@ -311,7 +313,7 @@ jobs:
 
       - name: Upload Hurl reports
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
         with:
           name: news-creator-hurl-reports
           path: e2e/reports/news-creator-*
@@ -328,7 +330,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
 
       - name: Pre-pull Hurl image
         run: docker pull ghcr.io/orange-opensource/hurl:7.1.0
@@ -358,7 +360,7 @@ jobs:
 
       - name: Upload Hurl reports
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
         with:
           name: acolyte-orchestrator-hurl-reports
           path: e2e/reports/acolyte-orchestrator-*
@@ -375,7 +377,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
 
       - name: Build tag-generator image locally (tag `ci`)
         run: |
@@ -420,7 +422,7 @@ jobs:
 
       - name: Upload Hurl reports
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
         with:
           name: tag-generator-hurl-reports
           path: e2e/reports/tag-generator-*
@@ -437,7 +439,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
 
       - name: Build auth-hub image locally (tag `ci`)
         run: |
@@ -472,7 +474,7 @@ jobs:
 
       - name: Upload Hurl reports
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
         with:
           name: auth-hub-hurl-reports
           path: e2e/reports/auth-hub-*
@@ -489,7 +491,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
 
       - name: Build rag-orchestrator image locally (tag `ci`)
         run: |
@@ -524,7 +526,7 @@ jobs:
 
       - name: Upload Hurl reports
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
         with:
           name: rag-orchestrator-hurl-reports
           path: e2e/reports/rag-orchestrator-*
@@ -541,7 +543,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
 
       - name: Build knowledge-sovereign image locally (tag `ci`)
         run: |
@@ -576,7 +578,7 @@ jobs:
 
       - name: Upload Hurl reports
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
         with:
           name: knowledge-sovereign-hurl-reports
           path: e2e/reports/knowledge-sovereign-*
