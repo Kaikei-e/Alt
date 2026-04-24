@@ -12,6 +12,14 @@ export const LOOP_FIXTURE_ENTRY_KEY = "loop-entry-fixture-1";
 export const LOOP_FIXTURE_SOURCE_URL =
 	"https://example.com/loop-source-article";
 
+// Non-NOW bucket fixtures driving the Surface plane tests (PR-L8).
+// Each belongs to exactly one bucket so partitioning in /loop/+page.svelte
+// is unambiguous.
+export const LOOP_FIXTURE_CONTINUE_ENTRY_KEY = "loop-entry-fixture-continue-1";
+export const LOOP_FIXTURE_CHANGED_ENTRY_KEY = "loop-entry-fixture-changed-1";
+export const LOOP_FIXTURE_CHANGED_NEW_ENTRY_KEY = "loop-entry-fixture-changed-2";
+export const LOOP_FIXTURE_REVIEW_ENTRY_KEY = "loop-entry-fixture-review-1";
+
 export const CONNECT_KNOWLEDGE_LOOP_RESPONSE = {
 	foregroundEntries: [
 		{
@@ -43,6 +51,89 @@ export const CONNECT_KNOWLEDGE_LOOP_RESPONSE = {
 					targetType: 1, // ACT_TARGET_TYPE_ARTICLE
 					targetRef: "article-fixture-1",
 					route: LOOP_FIXTURE_SOURCE_URL,
+				},
+			],
+		},
+	],
+	bucketEntries: [
+		// Continue plane — an entry the user was reading but hasn't finished.
+		{
+			entryKey: LOOP_FIXTURE_CONTINUE_ENTRY_KEY,
+			sourceItemKey: "article-fixture-continue",
+			proposedStage: 2, // ORIENT
+			surfaceBucket: 2, // CONTINUE
+			projectionRevision: "2",
+			projectionSeqHiwater: "11",
+			freshnessAt: NOW_ISO,
+			whyPrimary: {
+				kind: 1, // SOURCE
+				text: "Unfinished read on OODA loop theory.",
+				evidenceRefs: [],
+			},
+			dismissState: 1, // ACTIVE
+			renderDepthHint: 2,
+			loopPriority: 2, // CONTINUING
+			decisionOptions: [],
+			actTargets: [
+				{
+					targetType: 1,
+					targetRef: "article-fixture-continue",
+					route: "https://example.com/loop-continue",
+				},
+			],
+		},
+		// Changed plane — a supersede with THEN/NOW content.
+		{
+			entryKey: LOOP_FIXTURE_CHANGED_ENTRY_KEY,
+			sourceItemKey: "article-fixture-changed",
+			proposedStage: 1, // OBSERVE
+			surfaceBucket: 3, // CHANGED
+			projectionRevision: "3",
+			projectionSeqHiwater: "12",
+			freshnessAt: NOW_ISO,
+			whyPrimary: {
+				kind: 4, // CHANGE
+				text: "A newer version is available.",
+				evidenceRefs: [
+					{ refId: "sv-old", label: "previous_summary" },
+					{ refId: "sv-new", label: "new_summary" },
+				],
+			},
+			dismissState: 1,
+			renderDepthHint: 3,
+			loopPriority: 3, // CONFIRM
+			supersededByEntryKey: LOOP_FIXTURE_CHANGED_NEW_ENTRY_KEY,
+			changeSummary: {
+				summary: "Model cardinality bumped from 5 to 7 classes.",
+				changedFields: ["summary_excerpt"],
+				previousEntryKey: "article-fixture-changed-old",
+			},
+			decisionOptions: [],
+			actTargets: [],
+		},
+		// Review plane — peripheral recall candidate.
+		{
+			entryKey: LOOP_FIXTURE_REVIEW_ENTRY_KEY,
+			sourceItemKey: "article-fixture-review",
+			proposedStage: 1, // OBSERVE
+			surfaceBucket: 4, // REVIEW
+			projectionRevision: "1",
+			projectionSeqHiwater: "13",
+			freshnessAt: NOW_ISO,
+			whyPrimary: {
+				kind: 3, // RECALL
+				text: "You opened this before.",
+				evidenceRefs: [],
+			},
+			dismissState: 1,
+			renderDepthHint: 1,
+			loopPriority: 4, // REFERENCE
+			decisionOptions: [],
+			actTargets: [
+				{
+					targetType: 1,
+					targetRef: "article-fixture-review",
+					route: "https://example.com/loop-review",
 				},
 			],
 		},
