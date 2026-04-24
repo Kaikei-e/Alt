@@ -231,6 +231,41 @@ async def rag_answer_rpc() -> dict[str, Any]:
 # endpoints when the Knowledge Home feature flag is enabled; under the
 # default flags those paths are reachable but return empty projections.
 # ---------------------------------------------------------------------------
+
+# Seen client_transition_ids for ReserveKnowledgeLoopTransition so the Hurl
+# suite can verify the replay branch deterministically without a real
+# sovereign. Lives in process memory; the stack is torn down between runs.
+_seen_transitions: set[str] = set()
+
+
+@app.post(
+    "/services.sovereign.v1.KnowledgeSovereignService/ReserveKnowledgeLoopTransition"
+)
+async def sovereign_reserve_knowledge_loop_transition(
+    request: Request,
+) -> dict[str, Any]:
+    # proto-JSON camelCase; Connect-RPC unary body is the raw message JSON.
+    payload: dict[str, Any] = {}
+    try:
+        payload = await request.json()
+    except Exception:
+        pass
+    client_tx_id = str(payload.get("clientTransitionId") or "")
+    if not client_tx_id:
+        # Missing id from the caller: behave as "nothing to reserve" so the
+        # usecase surfaces invalid_argument rather than crashing on nil.
+        return {"reserved": False}
+
+    if client_tx_id in _seen_transitions:
+        return {
+            "reserved": False,
+            "cachedCanonicalEntryKey": "",
+            "cachedResponsePayload": "",
+        }
+    _seen_transitions.add(client_tx_id)
+    return {"reserved": True}
+
+
 @app.post("/services.sovereign.v1.KnowledgeSovereignService/{method}")
 async def sovereign_catchall(method: str) -> dict[str, Any]:
     # Every call answers with an envelope shape that carries neither items

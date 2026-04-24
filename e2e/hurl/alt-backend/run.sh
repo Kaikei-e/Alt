@@ -82,6 +82,29 @@ docker compose -f "$SLICE" -p "$STAGING_PROJECT_NAME" up -d --wait \
     alt-backend-deps-stub \
     alt-backend
 
+# Fresh UUIDv7 values for the Knowledge Loop transition suite.
+# The backend validator (ValidateClientTransitionID) enforces UUIDv7 format
+# *and* a −48h / +5m embedded-timestamp window, so these must be minted at
+# run time rather than pinned as literals. python3 is already required by
+# the ansible runner, so we lean on it instead of adding another dep.
+uuidv7() {
+  python3 - <<'PY'
+import os, time
+ms = int(time.time() * 1000)
+rb = os.urandom(10)
+b = ms.to_bytes(6, 'big')
+vr = 0x7000 | (rb[0] << 4) | (rb[1] >> 4)
+b += vr.to_bytes(2, 'big')
+var = 0x8000000000000000 | (int.from_bytes(rb[2:10], 'big') & 0x3FFFFFFFFFFFFFFF)
+b += var.to_bytes(8, 'big')
+h = b.hex()
+print(f'{h[0:8]}-{h[8:12]}-{h[12:16]}-{h[16:20]}-{h[20:32]}')
+PY
+}
+LOOP_TX_FORBIDDEN="$(uuidv7)"
+LOOP_TX_ACCEPT="$(uuidv7)"
+LOOP_TX_MALFORMED="$(uuidv7)"
+
 # Run Hurl inside the staging network so alt-backend's service DNS
 # name resolves. Mount the repo at the same absolute path so any
 # `file,e2e/fixtures/...;` body resolves via --file-root "$ROOT".
@@ -101,6 +124,9 @@ common_vars=(
   --variable "base_url=$BASE_URL"
   --variable "connect_url=$CONNECT_URL"
   --variable "run_id=$RUN_ID"
+  --variable "loop_tx_forbidden=$LOOP_TX_FORBIDDEN"
+  --variable "loop_tx_accept=$LOOP_TX_ACCEPT"
+  --variable "loop_tx_malformed=$LOOP_TX_MALFORMED"
   --secret   "jwt=$JWT"
 )
 
