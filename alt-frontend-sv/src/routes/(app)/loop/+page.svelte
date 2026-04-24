@@ -1,16 +1,21 @@
 <script lang="ts">
 import { onMount } from "svelte";
-import { goto } from "$app/navigation";
+import { goto, invalidateAll } from "$app/navigation";
 import LoopSurfacePlane from "$lib/components/knowledge-loop/LoopSurfacePlane.svelte";
 import LoopEntryTile from "$lib/components/knowledge-loop/LoopEntryTile.svelte";
 import EmptyNow from "$lib/components/knowledge-loop/EmptyNow.svelte";
+import ContinueStream from "$lib/components/knowledge-loop/ContinueStream.svelte";
+import ChangedDiffCard from "$lib/components/knowledge-loop/ChangedDiffCard.svelte";
+import ReviewDock from "$lib/components/knowledge-loop/ReviewDock.svelte";
 import { useKnowledgeLoop } from "$lib/hooks/useKnowledgeLoop.svelte";
+import { useKnowledgeLoopStream } from "$lib/hooks/useKnowledgeLoopStream.svelte";
 import { observeTiles } from "$lib/actions/observe-tiles";
 import { uuidv7 } from "$lib/utils/uuidv7";
 import type {
 	KnowledgeLoopEntryData,
 	KnowledgeLoopResult,
 } from "$lib/connect/knowledge_loop";
+import "$lib/styles/loop-depth.css";
 import type { PageData } from "./$types";
 
 let { data }: { data: PageData } = $props();
@@ -33,6 +38,7 @@ onMount(() => {
 
 const EMPTY_LOOP: KnowledgeLoopResult = {
 	foregroundEntries: [],
+	bucketEntries: [],
 	surfaces: [],
 	sessionState: undefined,
 	overallServiceQuality: "unspecified",
@@ -53,6 +59,48 @@ const foreground = $derived(loop.entries);
 const sessionState = $derived(loop.sessionState);
 const surfaces = $derived(data.loop?.surfaces ?? []);
 const quality = $derived(data.loop?.overallServiceQuality ?? "unspecified");
+
+// Partition non-NOW entries into Continue / Changed / Review planes. The
+// projector scopes each entry to exactly one bucket, so these three arrays
+// never overlap. Empty arrays collapse their plane — the page stays quiet
+// when the user has nothing queued in that surface (contract §14 empty-state).
+const bucketEntries = $derived(data.loop?.bucketEntries ?? []);
+const continueEntries = $derived(
+	bucketEntries.filter((e) => e.surfaceBucket === "continue"),
+);
+const changedEntries = $derived(
+	bucketEntries.filter((e) => e.surfaceBucket === "changed"),
+);
+const reviewEntries = $derived(
+	bucketEntries.filter((e) => e.surfaceBucket === "review"),
+);
+
+// Server-sent Loop updates (ADR-000831 §9). Stream frames are hints: on every
+// non-silent frame we invalidate the SSR snapshot so the next load() refetches
+// foreground + surfaces from GetKnowledgeLoop. The stream is read-only — it
+// never mutates projection state, matching immutable-design-guard F3.
+let streamEnabled = $state(false);
+onMount(() => {
+	streamEnabled = true;
+});
+
+useKnowledgeLoopStream({
+	get enabled() {
+		return streamEnabled;
+	},
+	get lensModeId() {
+		return data.lensModeId ?? "default";
+	},
+	onFrame(frame) {
+		// Silent updates per contract §9: revised/heartbeat do not disturb
+		// foreground. Appended/superseded/withdrawn/rebalanced warrant a refetch.
+		if (frame.kind === "revised" || frame.kind === "heartbeat") return;
+		void invalidateAll();
+	},
+	onExpired() {
+		void invalidateAll();
+	},
+});
 
 function resolveSourceUrl(entry: KnowledgeLoopEntryData): string | null {
 	const article = entry.actTargets.find((t) => t.targetType === "article");
@@ -109,10 +157,10 @@ const stageDisplay = $derived(
 const seqHi = $derived(data.loop?.projectionSeqHiwater ?? 0);
 const lensId = $derived(data.lensModeId ?? "default");
 
-// Mid-plane bucket summary (Continue / Changed / Review). We do not
-// render the full entries here — the foreground plane alone carries
-// the active 1–3 entries per §6.1. Other buckets appear as a
-// monospace index line for the user to navigate into deliberately.
+// Legacy bucket index — retained as a fallback when the server returns no
+// bucket_entries (older build or degraded fetch path). The dedicated Surface
+// plane components (ContinueStream / ChangedDiffCard / ReviewDock) supersede
+// this view whenever bucket_entries is populated.
 const bucketIndex = $derived(
 	[
 		{ bucket: "continue" as const, label: "Continue" },
@@ -127,6 +175,23 @@ const bucketIndex = $derived(
 		})
 		.filter((x) => x.count > 0),
 );
+const hasBucketPlanes = $derived(bucketEntries.length > 0);
+
+// transitionTo derives `from` from the entry's proposedStage, so callers only
+// supply the target stage + trigger. Each plane maps to the canonical next
+// step per contract §7 allowed transitions.
+function onContinueResume(entry: KnowledgeLoopEntryData) {
+	void loop.transitionTo(entry.entryKey, "decide", "user_tap");
+}
+function onChangedConfirm(entry: KnowledgeLoopEntryData) {
+	void loop.transitionTo(entry.entryKey, "act", "user_tap");
+}
+function onReviewOpen(entry: KnowledgeLoopEntryData) {
+	const href = resolveSourceUrl(entry);
+	if (href) {
+		void goto(href);
+	}
+}
 </script>
 
 <svelte:head>
@@ -134,7 +199,7 @@ const bucketIndex = $derived(
 </svelte:head>
 
 <main
-	class="loop-root"
+	class="loop-root loop-plane-root"
 	class:revealed
 	data-testid="knowledge-loop-root"
 	data-stage={stageName}
@@ -212,7 +277,41 @@ const bucketIndex = $derived(
 		</LoopSurfacePlane>
 	{/if}
 
-	{#if bucketIndex.length > 0}
+	{#if hasBucketPlanes}
+		{#if continueEntries.length > 0}
+			<LoopSurfacePlane
+				plane="mid-context"
+				label="Continue"
+				caption="{continueEntries.length} in motion"
+			>
+				<ContinueStream
+					entries={continueEntries}
+					onResume={onContinueResume}
+				/>
+			</LoopSurfacePlane>
+		{/if}
+		{#if changedEntries.length > 0}
+			<LoopSurfacePlane
+				plane="mid-context"
+				label="Changed"
+				caption="{changedEntries.length} revised"
+			>
+				<ChangedDiffCard
+					entries={changedEntries}
+					onConfirm={onChangedConfirm}
+				/>
+			</LoopSurfacePlane>
+		{/if}
+		{#if reviewEntries.length > 0}
+			<LoopSurfacePlane
+				plane="deep-focus"
+				label="Review"
+				caption="{reviewEntries.length} to revisit"
+			>
+				<ReviewDock entries={reviewEntries} onOpen={onReviewOpen} />
+			</LoopSurfacePlane>
+		{/if}
+	{:else if bucketIndex.length > 0}
 		<nav class="bucket-index" aria-label="Other surface buckets">
 			<span class="bucket-kicker">Also waiting</span>
 			<ul class="bucket-list">

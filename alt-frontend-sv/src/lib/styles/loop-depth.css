@@ -1,0 +1,82 @@
+/*
+ * loop-depth.css — plane-level depth hierarchy for the Knowledge Loop UI.
+ *
+ * ADR-000831 §11-12: depth lives on tiles and planes, not on glyphs. The three
+ * planes (foreground / mid-context / deep-focus) are mapped to CSS transforms
+ * so the user perceives a consistent Z-axis when transitioning Observe →
+ * Orient → Decide → Act, and back.
+ *
+ * Predictability rules (contract §12):
+ *   - deeper-focus transition: enter the next plane (mid or deep)
+ *   - return transition: pop back toward foreground
+ *   - changed diff: layer separation rather than horizontal slide
+ *
+ * Reduced Motion (contract §12.5 / §13):
+ *   - translateZ / perspective / scale are disabled
+ *   - only opacity + saturation + color stay active, realised as
+ *     dissolve + highlight fade + color shift
+ *
+ * The `LoopSurfacePlane.svelte` component applies these classes via its
+ * `data-plane` attribute; page-level routes should prefer composing plane
+ * sections rather than setting these classes directly so the contract stays
+ * centralised here.
+ */
+
+.loop-plane-root {
+	/* Perspective is set on the root so all child planes share the same
+	 * vanishing point — without this, translateZ on each plane would render
+	 * independently and break the "deeper focus" feel. */
+	perspective: 1200px;
+	perspective-origin: 50% 45%;
+	transform-style: preserve-3d;
+}
+
+.loop-plane[data-plane="foreground"] {
+	transform: translateZ(0);
+	filter: saturate(1.04) brightness(1.0);
+	opacity: 1;
+}
+
+.loop-plane[data-plane="mid-context"] {
+	transform: translateZ(-24px) scale(0.985);
+	filter: saturate(0.94) brightness(0.99);
+	opacity: 0.96;
+}
+
+.loop-plane[data-plane="deep-focus"] {
+	transform: translateZ(-48px) scale(0.97);
+	filter: saturate(0.88) brightness(0.98);
+	opacity: 0.9;
+}
+
+/* Transition rules: planes ease in/out when the /loop page state changes
+ * (e.g. a new Change bucket appears after a stream frame). Timing kept short
+ * so layout shift doesn't feel animated — the eye reads the result, not the
+ * motion. */
+.loop-plane {
+	transition:
+		transform 0.35s cubic-bezier(0.2, 0, 0.1, 1),
+		filter 0.25s ease,
+		opacity 0.25s ease;
+	will-change: transform, filter;
+}
+
+/* Reduced Motion: strip Z, perspective, and scale. Keep opacity + saturation
+ * so the plane still reads as layered, and drop transition to zero so the
+ * final state applies instantly.
+ * This realises the contract §12.5 "dissolve + highlight fade + color shift"
+ * replacement for depth simulation. */
+@media (prefers-reduced-motion: reduce) {
+	.loop-plane-root {
+		perspective: none;
+		transform-style: flat;
+	}
+	.loop-plane[data-plane="mid-context"],
+	.loop-plane[data-plane="deep-focus"] {
+		transform: none;
+	}
+	.loop-plane {
+		transition: opacity 0.2s ease;
+		will-change: auto;
+	}
+}

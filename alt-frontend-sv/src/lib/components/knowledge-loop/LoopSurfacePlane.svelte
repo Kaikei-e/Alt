@@ -23,7 +23,7 @@
 </script>
 
 <section
-	class="plane"
+	class="plane loop-plane"
 	data-plane={plane}
 	aria-label="Knowledge Loop {plane} plane"
 >
