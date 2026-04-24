@@ -155,6 +155,13 @@ func (h *Handler) TransitionKnowledgeLoop(
 	if result.Message != nil {
 		resp.Message = result.Message
 	}
+	h.logger.InfoContext(ctx, "alt.knowledge_loop.transition_ok",
+		"user_id", user.UserID,
+		"entry_key", req.Msg.EntryKey,
+		"from", req.Msg.FromStage.String(),
+		"to", req.Msg.ToStage.String(),
+		"accepted", result.Accepted,
+	)
 	return connect.NewResponse(resp), nil
 }
 

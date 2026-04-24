@@ -1,11 +1,13 @@
 package knowledge_loop
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"log/slog"
 	"net"
+	"strings"
 	"testing"
 	"time"
 
@@ -257,6 +259,32 @@ func TestTransitionKnowledgeLoop_ReturnsUnauthenticated_OnMissingUser(t *testing
 	var ce *connect.Error
 	require.ErrorAs(t, err, &ce)
 	require.Equal(t, connect.CodeUnauthenticated, ce.Code())
+}
+
+// TestTransitionKnowledgeLoop_LogsOnSuccess gives ops one definitive log line
+// per successful Transition so the "mtls peer was seen but nothing else"
+// diagnostic gap stops masking silent handler execution.
+func TestTransitionKnowledgeLoop_LogsOnSuccess(t *testing.T) {
+	buf := &bytes.Buffer{}
+	logger := slog.New(slog.NewJSONHandler(buf, &slog.HandlerOptions{Level: slog.LevelInfo}))
+	uc := knowledge_loop_usecase.NewTransitionKnowledgeLoopUsecase(&fakeDedupePort{}, nil, nil, time.Now)
+	h := NewHandler(nil, uc, nil, logger)
+
+	req := validTransitionRequest(t)
+	resp, err := h.TransitionKnowledgeLoop(authedContextForHandlerTests(t), req)
+	require.NoError(t, err)
+	require.True(t, resp.Msg.Accepted)
+
+	out := buf.String()
+	require.True(
+		t,
+		strings.Contains(out, `"msg":"alt.knowledge_loop.transition_ok"`),
+		"expected one INFO line tagged transition_ok, got: %q", out,
+	)
+	require.Contains(t, out, `"entry_key":"article:42"`)
+	require.Contains(t, out, `"from":"LOOP_STAGE_OBSERVE"`)
+	require.Contains(t, out, `"to":"LOOP_STAGE_ORIENT"`)
+	require.Contains(t, out, `"accepted":true`)
 }
 
 // baseEntry returns a minimal valid domain entry used by toProtoEntry tests.

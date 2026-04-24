@@ -31,6 +31,7 @@ var streamingProcedures = map[string]bool{
 	"/alt.tts.v1.TTSService/SynthesizeStream":                                true,
 	"/alt.knowledge_home.v1.KnowledgeHomeService/StreamKnowledgeHomeUpdates": true,
 	"/alt.knowledge_home.v1.KnowledgeHomeService/StreamRecallRailUpdates":    true,
+	"/alt.knowledge.loop.v1.KnowledgeLoopService/StreamKnowledgeLoopUpdates": true,
 }
 
 // ProxyHandler proxies Connect-RPC requests to the backend.
@@ -97,6 +98,18 @@ func (h *ProxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	r, cancel := h.applyConnectTimeout(r)
 	defer cancel()
 
+	// Determine if this is a streaming request
+	isStreaming := isStreamingProcedure(r.URL.Path)
+
+	start := time.Now()
+	if h.logger != nil {
+		h.logger.InfoContext(r.Context(), "bff.proxy_request",
+			"path", r.URL.Path,
+			"method", r.Method,
+			"streaming", isStreaming,
+		)
+	}
+
 	// Extract and validate token
 	token := r.Header.Get(middleware.BackendTokenHeader)
 	_, err := h.authInterceptor.ValidateToken(token)
@@ -105,9 +118,6 @@ func (h *ProxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Unauthorized", http.StatusUnauthorized)
 		return
 	}
-
-	// Determine if this is a streaming request
-	isStreaming := isStreamingProcedure(r.URL.Path)
 
 	var resp *http.Response
 	if isStreaming {
@@ -134,6 +144,15 @@ func (h *ProxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		h.streamResponse(w, resp)
 	} else {
 		io.Copy(w, resp.Body)
+	}
+
+	if h.logger != nil {
+		h.logger.InfoContext(r.Context(), "bff.proxy_response",
+			"path", r.URL.Path,
+			"status", resp.StatusCode,
+			"streaming", isStreaming,
+			"elapsed_ms", time.Since(start).Milliseconds(),
+		)
 	}
 }
 

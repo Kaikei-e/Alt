@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("$env/dynamic/private", () => ({
 	env: { BACKEND_CONNECT_URL: "http://test-backend:9101" },
@@ -32,6 +32,10 @@ async function invoke({
 describe("/loop/transition +server.ts", () => {
 	beforeEach(() => {
 		vi.mocked(transitionKnowledgeLoopForUser).mockReset();
+	});
+
+	afterEach(() => {
+		vi.restoreAllMocks();
 	});
 
 	it("401 when backendToken is missing", async () => {
@@ -133,6 +137,7 @@ describe("/loop/transition +server.ts", () => {
 	});
 
 	it("502 upstream_unreachable on bare Error (fetch TypeError / no ConnectError code)", async () => {
+		vi.spyOn(console, "error").mockImplementation(() => {});
 		vi.mocked(transitionKnowledgeLoopForUser).mockRejectedValue(
 			new Error("network unreachable"),
 		);
@@ -157,7 +162,6 @@ describe("/loop/transition +server.ts", () => {
 		["unavailable", 502, "upstream_unavailable"],
 		["deadline_exceeded", 504, "timeout"],
 		["resource_exhausted", 429, "rate_limited"],
-		["unknown", 502, "upstream_unreachable"],
 	] as const)("maps Connect-RPC code %s → HTTP %i (%s)", async (code, expectedStatus, expectedError) => {
 		vi.mocked(transitionKnowledgeLoopForUser).mockRejectedValue(
 			Object.assign(new Error(code), { code }),
@@ -218,5 +222,106 @@ describe("/loop/transition +server.ts", () => {
 		expect(res.status).toBe(400);
 		const body = await res.json();
 		expect(body).toEqual({ error: "invalid_argument" });
+	});
+
+	it("logs loop.transition.unknown_error once for bare TypeError (no Connect code)", async () => {
+		const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+		const cause = Object.assign(new Error("ECONNREFUSED"), {
+			code: "ECONNREFUSED",
+		});
+		const err = new TypeError("fetch failed");
+		(err as Error & { cause?: unknown }).cause = cause;
+		vi.mocked(transitionKnowledgeLoopForUser).mockRejectedValue(err);
+
+		const res = await invoke({
+			body: {
+				lensModeId: "default",
+				clientTransitionId: "0193c8e5-7d6c-7c4a-b000-000000000020",
+				entryKey: "article:42",
+				fromStage: "observe",
+				toStage: "orient",
+				trigger: "user_tap",
+				observedProjectionRevision: 1,
+			},
+		});
+
+		expect(res.status).toBe(502);
+		expect(errSpy).toHaveBeenCalledTimes(1);
+		const [tag, payload] = errSpy.mock.calls[0] as [
+			string,
+			Record<string, unknown>,
+		];
+		expect(tag).toBe("loop.transition.unknown_error");
+		expect(payload).toMatchObject({
+			name: "TypeError",
+			message: "fetch failed",
+			code: null,
+		});
+		expect(typeof payload.cause).toBe("string");
+		expect(payload.cause).toContain("ECONNREFUSED");
+	});
+
+	it.each([
+		["canceled", 499, "canceled"],
+		["unimplemented", 501, "unimplemented"],
+		["not_found", 404, "not_found"],
+	] as const)("maps specific Connect code %s → HTTP %i (%s) without noisy log", async (code, expectedStatus, expectedError) => {
+		const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+		vi.mocked(transitionKnowledgeLoopForUser).mockRejectedValue(
+			Object.assign(new Error(code), { code }),
+		);
+
+		const res = await invoke({
+			body: {
+				lensModeId: "default",
+				clientTransitionId: "0193c8e5-7d6c-7c4a-b000-000000000021",
+				entryKey: "article:42",
+				fromStage: "observe",
+				toStage: "orient",
+				trigger: "user_tap",
+				observedProjectionRevision: 1,
+			},
+		});
+
+		expect(res.status).toBe(expectedStatus);
+		const body = await res.json();
+		expect(body).toEqual({ error: expectedError });
+		// Known semantic codes: no diagnostic log spam.
+		expect(errSpy).not.toHaveBeenCalled();
+	});
+
+	it.each([
+		["aborted", 500, "upstream_internal"],
+		["out_of_range", 500, "upstream_internal"],
+		["data_loss", 500, "upstream_internal"],
+		["unknown", 500, "upstream_internal"],
+	] as const)("maps catch-all Connect code %s → HTTP %i (%s) and logs once for ops", async (code, expectedStatus, expectedError) => {
+		const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+		vi.mocked(transitionKnowledgeLoopForUser).mockRejectedValue(
+			Object.assign(new Error(code), { code }),
+		);
+
+		const res = await invoke({
+			body: {
+				lensModeId: "default",
+				clientTransitionId: "0193c8e5-7d6c-7c4a-b000-000000000022",
+				entryKey: "article:42",
+				fromStage: "observe",
+				toStage: "orient",
+				trigger: "user_tap",
+				observedProjectionRevision: 1,
+			},
+		});
+
+		expect(res.status).toBe(expectedStatus);
+		const body = await res.json();
+		expect(body).toEqual({ error: expectedError });
+		expect(errSpy).toHaveBeenCalledTimes(1);
+		const [tag, payload] = errSpy.mock.calls[0] as [
+			string,
+			Record<string, unknown>,
+		];
+		expect(tag).toBe("loop.transition.unknown_error");
+		expect(payload).toMatchObject({ name: "Error", message: code, code });
 	});
 });

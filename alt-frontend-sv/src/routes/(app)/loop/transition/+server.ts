@@ -15,7 +15,12 @@
  *   - resource_exhausted                             → 429
  *   - unavailable                                    → 502 upstream_unavailable
  *   - internal                                       → 500 upstream_internal
- *   - anything else / fetch TypeError                → 502 upstream_unreachable
+ *   - canceled                                       → 499 canceled (client closed request)
+ *   - unimplemented                                  → 501 unimplemented
+ *   - not_found                                      → 404 not_found
+ *   - aborted / out_of_range / data_loss / unknown   → 500 upstream_internal
+ *   - bare Error (fetch TypeError, DNS, ECONNREFUSED without a Connect envelope)
+ *                                                    → 502 upstream_unreachable (logged)
  */
 
 import { json, type RequestHandler } from "@sveltejs/kit";
@@ -126,12 +131,35 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 				return json({ error: "upstream_unavailable" }, { status: 502 });
 			case "internal":
 				return json({ error: "upstream_internal" }, { status: 500 });
+			case "canceled":
+				return json({ error: "canceled" }, { status: 499 });
+			case "unimplemented":
+				return json({ error: "unimplemented" }, { status: 501 });
+			case "not_found":
+				return json({ error: "not_found" }, { status: 404 });
+			case "aborted":
+			case "out_of_range":
+			case "data_loss":
+			case "unknown":
+				logUnknownError(err, code);
+				return json({ error: "upstream_internal" }, { status: 500 });
 			default:
-				// unknown / canceled / not_found / aborted / out_of_range / data_loss /
-				// unimplemented / bare Error (fetch TypeError, DNS, ECONNREFUSED without
-				// Connect wire-format response): surface as unreachable so the client
-				// can decide between retrying with backoff (2xx-eventually) or failing.
+				// bare Error (fetch TypeError, DNS, ECONNREFUSED without a Connect
+				// envelope): surface as unreachable so the client can decide between
+				// retrying with backoff (2xx-eventually) or failing. The log line is
+				// the only diagnostic for this class, so emit it before returning.
+				logUnknownError(err, code);
 				return json({ error: "upstream_unreachable" }, { status: 502 });
 		}
 	}
 };
+
+function logUnknownError(err: unknown, code: string | undefined): void {
+	const isError = err instanceof Error;
+	console.error("loop.transition.unknown_error", {
+		name: isError ? err.name : typeof err,
+		message: isError ? err.message : String(err),
+		code: code ?? null,
+		cause: isError && err.cause !== undefined ? String(err.cause) : null,
+	});
+}
