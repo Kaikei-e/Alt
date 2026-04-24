@@ -29,7 +29,28 @@ from typing import Any
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse, Response
 
+# Python bindings pre-generated from /proto/services/sovereign/v1/sovereign.proto
+# (see ./regenerate.sh). Required so the stub can honour alt-backend's default
+# connect-go codec, which is application/proto (binary), not JSON. See the
+# KnowledgeSovereignService handlers further down for how the Content-Type
+# header is inspected to pick between the proto and JSON wire formats.
+from services.sovereign.v1 import sovereign_pb2 as sovpb  # type: ignore[import-not-found]
+
 app = FastAPI(title="alt-backend-deps-stub")
+
+
+def _is_proto_content_type(request: Request) -> bool:
+    # Connect-RPC unary: the client advertises its codec via Content-Type.
+    # The server MUST reply with the same codec (connectrpc.com/docs/protocol).
+    # alt-backend's sovereign_client is the default connect-go client, which
+    # negotiates application/proto; reading this header is the single place
+    # the stub pivots between proto-binary and proto-JSON responses.
+    return (request.headers.get("content-type") or "").split(";")[0].strip() \
+        == "application/proto"
+
+
+def _proto_response(msg) -> Response:
+    return Response(content=msg.SerializeToString(), media_type="application/proto")
 
 
 def _ok() -> dict[str, str]:
@@ -238,32 +259,71 @@ async def rag_answer_rpc() -> dict[str, Any]:
 _seen_transitions: set[str] = set()
 
 
+async def _read_client_transition_id(request: Request) -> str:
+    """Extract clientTransitionId from either application/proto or JSON wire."""
+    if _is_proto_content_type(request):
+        raw = await request.body()
+        req = sovpb.ReserveKnowledgeLoopTransitionRequest()
+        try:
+            req.ParseFromString(raw)
+        except Exception:
+            return ""
+        return req.client_transition_id
+    try:
+        payload = await request.json()
+    except Exception:
+        return ""
+    return str(payload.get("clientTransitionId") or "")
+
+
 @app.post(
     "/services.sovereign.v1.KnowledgeSovereignService/ReserveKnowledgeLoopTransition"
 )
 async def sovereign_reserve_knowledge_loop_transition(
     request: Request,
-) -> dict[str, Any]:
-    # proto-JSON camelCase; Connect-RPC unary body is the raw message JSON.
-    payload: dict[str, Any] = {}
-    try:
-        payload = await request.json()
-    except Exception:
-        pass
-    client_tx_id = str(payload.get("clientTransitionId") or "")
+) -> Response:
+    client_tx_id = await _read_client_transition_id(request)
+
+    fresh: bool
     if not client_tx_id:
         # Missing id from the caller: behave as "nothing to reserve" so the
         # usecase surfaces invalid_argument rather than crashing on nil.
-        return {"reserved": False}
+        fresh = False
+    elif client_tx_id in _seen_transitions:
+        fresh = False
+    else:
+        _seen_transitions.add(client_tx_id)
+        fresh = True
 
-    if client_tx_id in _seen_transitions:
-        return {
+    if _is_proto_content_type(request):
+        return _proto_response(
+            sovpb.ReserveKnowledgeLoopTransitionResponse(reserved=fresh)
+        )
+    if fresh:
+        return JSONResponse({"reserved": True})
+    return JSONResponse(
+        {
             "reserved": False,
             "cachedCanonicalEntryKey": "",
             "cachedResponsePayload": "",
         }
-    _seen_transitions.add(client_tx_id)
-    return {"reserved": True}
+    )
+
+
+@app.post(
+    "/services.sovereign.v1.KnowledgeSovereignService/AppendKnowledgeEvent"
+)
+async def sovereign_append_knowledge_event(request: Request) -> Response:
+    if _is_proto_content_type(request):
+        return _proto_response(sovpb.AppendKnowledgeEventResponse(event_seq=1))
+    # AppendKnowledgeEventResponse has one field only: event_seq (int64).
+    # Proto-JSON encodes int64 as a string. Returning the catchall envelope
+    # (method/items/events/lenses) instead trips alt-backend's sovereign_client
+    # because the backend's Connect-RPC parser rejects the response when
+    # DiscardUnknown is disabled anywhere in the call chain, which surfaces
+    # as a silent 500 on POST /alt.knowledge.loop.v1.KnowledgeLoopService/
+    # TransitionKnowledgeLoop. Keep the shape minimal and strictly typed.
+    return JSONResponse({"eventSeq": "1"})
 
 
 @app.post("/services.sovereign.v1.KnowledgeSovereignService/{method}")

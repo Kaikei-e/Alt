@@ -58,6 +58,19 @@ REPORT_DIR="$ROOT/e2e/reports/alt-backend-$RUN_ID"
 mkdir -p "$REPORT_DIR"
 
 cleanup() {
+  local exit_code=$?
+  # Dump per-container logs to stderr BEFORE teardown when Hurl failed.
+  # The Ansible wrapper (playbooks/run-e2e-suite.yml) has its own log dump
+  # task in `always:`, but it races with this `trap EXIT` — by the time the
+  # playbook's task runs, this trap has already torn the stack down and
+  # `docker compose logs` finds nothing. Dumping inline here is the only
+  # reliable path to capture alt-backend's ERROR-level log lines when a
+  # Connect-RPC handler fails (e.g. transition_knowledge_loop failed).
+  if [[ "$exit_code" -ne 0 && "${KEEP_STACK:-0}" != "1" ]]; then
+    echo "==> dumping $STAGING_PROJECT_NAME container logs (exit=$exit_code)" >&2
+    docker compose -f "$SLICE" -p "$STAGING_PROJECT_NAME" \
+      logs --no-color --tail=500 >&2 2>&1 || true
+  fi
   if [[ "${KEEP_STACK:-0}" != "1" ]]; then
     echo "==> tearing down $STAGING_PROJECT_NAME stack" >&2
     docker compose -f "$SLICE" -p "$STAGING_PROJECT_NAME" \

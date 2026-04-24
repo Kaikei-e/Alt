@@ -7,7 +7,15 @@ WORKDIR /app
 
 RUN pip install --no-cache-dir \
         "fastapi==0.115.6" \
-        "uvicorn[standard]==0.32.1"
+        "uvicorn[standard]==0.32.1" \
+        "protobuf==5.29.1"
+
+# Pre-generated Python proto bindings for the knowledge-sovereign RPCs the
+# stub answers as proto binary (alt-backend's sovereign_client negotiates
+# application/proto by default). Regenerate via ./regenerate.sh when
+# proto/services/sovereign/v1/sovereign.proto changes.
+COPY gen /app/gen
+ENV PYTHONPATH=/app/gen
 
 COPY main.py /app/main.py
 
