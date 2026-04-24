@@ -892,6 +892,16 @@ services:
       - AUTH_HUB_URL=http://auth-hub/
       - MQHUB_CONNECT_URL=http://mq-hub/
       - MQHUB_ENABLED=false
+      # knowledge-sovereign is served by alt-backend-deps-stub via a
+      # network alias. Without SOVEREIGN_URL the sovereign_client falls
+      # back to `enabled=false` and short-circuits every call with a
+      # benign "reserved=true" — which masks real idempotency semantics
+      # and makes the Knowledge Loop replay e2e (25-knowledge-loop-
+      # transition.hurl Test 3) see accepted=true on the duplicate
+      # client_transition_id. Point it at the stub so the stateful
+      # ReserveKnowledgeLoopTransition handler there drives the
+      # dedupe-barrier branch of the usecase.
+      - SOVEREIGN_URL=http://knowledge-sovereign
       # SSRF allowlist — only stub.invalid is reachable and feed
       # registration needs to bypass the private-IP guard for it.
       - FEED_ALLOWED_HOSTS=stub.invalid
