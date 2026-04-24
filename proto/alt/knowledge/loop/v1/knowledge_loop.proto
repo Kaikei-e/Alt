@@ -255,6 +255,13 @@ message GetKnowledgeLoopResponse {
   ServiceQuality overall_service_quality = 4;
   google.protobuf.Timestamp generated_at = 5;
   int64 projection_seq_hiwater = 6;
+
+  // Non-NOW bucket entries for /loop mid-context/deep-focus planes.
+  // Each entry carries its own surface_bucket so the client partitions into
+  // Continue / Changed / Review. Server caps per-bucket at 5 to avoid flooding.
+  // Field 7 is additive; clients built against the 2026-04-24 contract default
+  // to an empty list and render the legacy bucket-index view.
+  repeated KnowledgeLoopEntry bucket_entries = 7;
 }
 
 // ============================================================================
@@ -330,6 +337,100 @@ message SurfaceRebalanced {
 // after refreshing their JWT.
 message StreamExpired {
   string reason = 1;
+}
+
+// ============================================================================
+// Loop Event Payloads (append-only into knowledge_events)
+// ============================================================================
+// Each payload is the JSON body of a corresponding event_type string in knowledge_events:
+//   KnowledgeLoopObserved         -> knowledge_loop.observed.v1
+//   KnowledgeLoopOriented         -> knowledge_loop.oriented.v1
+//   KnowledgeLoopDecisionPresented-> knowledge_loop.decision_presented.v1
+//   KnowledgeLoopActed            -> knowledge_loop.acted.v1
+//   KnowledgeLoopReturned         -> knowledge_loop.returned.v1
+//   KnowledgeLoopDeferred         -> knowledge_loop.deferred.v1
+//   KnowledgeLoopSessionReset     -> knowledge_loop.session_reset.v1
+//   KnowledgeLoopLensModeSwitched -> knowledge_loop.lens_mode_switched.v1
+//
+// Reproject-safe contract: payloads carry every field needed to compute projection
+// deltas without reading latest projection state. Projectors derive business-fact
+// timestamps from the event's occurred_at.
+
+message KnowledgeLoopObservedPayload {
+  string entry_key = 1;
+  string lens_mode_id = 2;
+  LoopStage from_stage = 3;
+  LoopStage to_stage = 4;
+  TransitionTrigger trigger = 5;
+  int64 observed_projection_revision = 6;
+  optional string client_transition_id = 7;
+}
+
+message KnowledgeLoopOrientedPayload {
+  string entry_key = 1;
+  string lens_mode_id = 2;
+  LoopStage from_stage = 3;
+  LoopStage to_stage = 4;
+  TransitionTrigger trigger = 5;
+  int64 observed_projection_revision = 6;
+  optional string client_transition_id = 7;
+}
+
+message KnowledgeLoopDecisionPresentedPayload {
+  string entry_key = 1;
+  string lens_mode_id = 2;
+  LoopStage from_stage = 3;
+  LoopStage to_stage = 4;
+  TransitionTrigger trigger = 5;
+  int64 observed_projection_revision = 6;
+  optional string client_transition_id = 7;
+  repeated DecisionIntent presented_intents = 8;
+}
+
+message KnowledgeLoopActedPayload {
+  string entry_key = 1;
+  string lens_mode_id = 2;
+  LoopStage from_stage = 3;
+  LoopStage to_stage = 4;
+  TransitionTrigger trigger = 5;
+  int64 observed_projection_revision = 6;
+  optional string client_transition_id = 7;
+  optional DecisionIntent acted_intent = 8;
+  // true when the act should land on SurfaceBucket.CONTINUE rather than loop back to OBSERVE.
+  bool continue_flag = 9;
+}
+
+message KnowledgeLoopReturnedPayload {
+  string entry_key = 1;
+  string lens_mode_id = 2;
+  LoopStage from_stage = 3;
+  LoopStage to_stage = 4;
+  TransitionTrigger trigger = 5;
+  int64 observed_projection_revision = 6;
+  optional string client_transition_id = 7;
+}
+
+message KnowledgeLoopDeferredPayload {
+  string entry_key = 1;
+  string lens_mode_id = 2;
+  LoopStage from_stage = 3;
+  LoopStage to_stage = 4;
+  TransitionTrigger trigger = 5;
+  int64 observed_projection_revision = 6;
+  optional string client_transition_id = 7;
+}
+
+message KnowledgeLoopSessionResetPayload {
+  string lens_mode_id = 1;
+  LoopStage from_stage = 2;
+  optional string reason = 3;
+  optional string client_transition_id = 4;
+}
+
+message KnowledgeLoopLensModeSwitchedPayload {
+  string previous_lens_mode_id = 1;
+  string lens_mode_id = 2;
+  optional string client_transition_id = 3;
 }
 
 message StreamKnowledgeLoopUpdatesResponse {

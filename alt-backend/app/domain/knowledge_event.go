@@ -25,6 +25,17 @@ const (
 	EventHomeItemSuperseded    = "HomeItemSuperseded"
 	EventReasonMerged          = "ReasonMerged"
 	EventHomeItemTagClicked    = "HomeItemTagClicked"
+
+	// Knowledge Loop transition events (append-only, versioned string convention).
+	// See docs/plan/knowledge-loop-canonical-contract.md §8 and ADR-000831.
+	EventKnowledgeLoopObserved          = "knowledge_loop.observed.v1"
+	EventKnowledgeLoopOriented          = "knowledge_loop.oriented.v1"
+	EventKnowledgeLoopDecisionPresented = "knowledge_loop.decision_presented.v1"
+	EventKnowledgeLoopActed             = "knowledge_loop.acted.v1"
+	EventKnowledgeLoopReturned          = "knowledge_loop.returned.v1"
+	EventKnowledgeLoopDeferred          = "knowledge_loop.deferred.v1"
+	EventKnowledgeLoopSessionReset      = "knowledge_loop.session_reset.v1"
+	EventKnowledgeLoopLensModeSwitched  = "knowledge_loop.lens_mode_switched.v1"
 )
 
 // Actor type constants.
@@ -39,6 +50,7 @@ const (
 	AggregateArticle     = "article"
 	AggregateRecap       = "recap"
 	AggregateHomeSession = "home_session"
+	AggregateLoopSession = "loop_session"
 )
 
 // KnowledgeEvent represents a single event in the knowledge event store.
