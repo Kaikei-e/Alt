@@ -6,6 +6,7 @@ import (
 	"knowledge-sovereign/driver/sovereign_db"
 	"knowledge-sovereign/gen/proto/services/sovereign/v1/sovereignv1connect"
 	"knowledge-sovereign/handler"
+	"knowledge-sovereign/usecase/knowledge_loop_projector"
 	"log/slog"
 	"net/http"
 	"os"
@@ -94,6 +95,27 @@ func main() {
 		if err := mainServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			slog.Error("rpc server failed", "error", err)
 			os.Exit(1)
+		}
+	}()
+
+	// Knowledge Loop projector. Runs in-process now that the projection logic
+	// has moved here (ADR-000844 follow-up). The cadence is intentionally short
+	// — the projector is reproject-safe and idempotent, so re-running on a
+	// quiet log is cheap.
+	loopProjector := knowledge_loop_projector.NewProjector(repo, slog.Default(),
+		knowledge_loop_projector.Config{BatchSize: 100})
+	loopTick := time.NewTicker(5 * time.Second)
+	go func() {
+		defer loopTick.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-loopTick.C:
+				if err := loopProjector.RunBatch(ctx); err != nil {
+					slog.Error("knowledge_loop_projector batch failed", "error", err)
+				}
+			}
 		}
 	}()
 
