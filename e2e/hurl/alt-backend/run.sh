@@ -141,6 +141,13 @@ PY
 LOOP_TX_FORBIDDEN="$(uuidv7)"
 LOOP_TX_ACCEPT="$(uuidv7)"
 LOOP_TX_MALFORMED="$(uuidv7)"
+LOOP_TX_OBS_DECIDE="$(uuidv7)"
+LOOP_TX_ORIENT_DECIDE="$(uuidv7)"
+LOOP_TX_DECIDE_ACT="$(uuidv7)"
+LOOP_TX_ACT_OBSERVE="$(uuidv7)"
+LOOP_TX_ORIENT_ACT="$(uuidv7)"
+LOOP_TX_DECIDE_OBSERVE="$(uuidv7)"
+LOOP_TX_ACT_ACT="$(uuidv7)"
 
 # Run Hurl inside the staging network so alt-backend's service DNS
 # name resolves. Mount the repo at the same absolute path so any
@@ -164,6 +171,13 @@ common_vars=(
   --variable "loop_tx_forbidden=$LOOP_TX_FORBIDDEN"
   --variable "loop_tx_accept=$LOOP_TX_ACCEPT"
   --variable "loop_tx_malformed=$LOOP_TX_MALFORMED"
+  --variable "loop_tx_obs_decide=$LOOP_TX_OBS_DECIDE"
+  --variable "loop_tx_orient_decide=$LOOP_TX_ORIENT_DECIDE"
+  --variable "loop_tx_decide_act=$LOOP_TX_DECIDE_ACT"
+  --variable "loop_tx_act_observe=$LOOP_TX_ACT_OBSERVE"
+  --variable "loop_tx_orient_act=$LOOP_TX_ORIENT_ACT"
+  --variable "loop_tx_decide_observe=$LOOP_TX_DECIDE_OBSERVE"
+  --variable "loop_tx_act_act=$LOOP_TX_ACT_ACT"
   --secret   "jwt=$JWT"
 )
 
