@@ -12,20 +12,12 @@ import (
 	"github.com/google/uuid"
 )
 
-// WhyMappingVersion is the exhaustive-mapping-table version for Phase-0 why codes → WhyKind.
-// Bump this constant when the mapping changes; a bump triggers a full reproject via runbook.
-//
-// v2 (2026-04-24): EnrichWhyFromEvent replaced the fixed `shortEventWhy` strings with
-// structured evidence_refs derived from event payloads (ADR-000840). A full reproject is
-// required after deploying v2 so existing knowledge_loop_entries pick up the new
-// why_text / evidence_refs bindings.
-//
-// v3 (2026-04-26): why_text rewritten from placeholder strings ("New summary",
-// "Surfaced from a recent event.") to substantive narratives that explain why
-// the entry is on the user's loop. Stage-appropriate seedDecisionOptions
-// replaces the previous Source/Observe-only block. Existing entries must be
-// reprojected to refresh both why_text and decision_options.
-const WhyMappingVersion = 3
+// WhyMappingVersion is the historical exhaustive-mapping-table version. The
+// authoritative copy now lives in knowledge-sovereign's
+// usecase/knowledge_loop_projector package after the projection ownership move
+// (ADR-000844 follow-up). This constant remains in alt-backend only for the
+// boundary validators below, which still execute in the handler path.
+const WhyMappingVersion = 4
 
 var (
 	// keyFormat pins the canonical identifier format: alphanumeric plus _ : -, up to 128 chars.

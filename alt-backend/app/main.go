@@ -135,35 +135,10 @@ func main() {
 		}
 	}()
 
-	// Knowledge Loop projector (ADR-000831). Runs in parallel with the
-	// Knowledge Home projector against the same sovereign event log, using a
-	// separate checkpoint (`knowledge-loop-projector`). All storage access is
-	// routed through sovereign_client — the Loop projector never touches
-	// alt-db (ADR-000832 / boundary).
-	loopProjectorProcess := job.KnowledgeLoopProjectorJob(
-		container.SovereignClient,
-		container.SovereignClient,
-		container.SovereignClient,
-		container.SovereignClient,
-		container.SovereignClient,
-		container.SovereignClient,
-	)
-	loopProjectorRunner := job.NewKnowledgeProjectorRunner(job.KnowledgeProjectorRunnerConfig{
-		PollInterval: cfg.KnowledgeHome.ProjectorPollInterval,
-		Timeout:      cfg.KnowledgeHome.ProjectorTimeout,
-		Process:      loopProjectorProcess,
-		ListenerFactory: job.NewSovereignProjectorListenerFactory(
-			func(ctx context.Context, name string) (job.KnowledgeProjectorListener, error) {
-				return container.SovereignClient.ConnectProjectorWatch(ctx, name)
-			},
-			"knowledge-loop-projector",
-		),
-	})
-	go func() {
-		if err := loopProjectorRunner.Run(ctx); err != nil && ctx.Err() == nil {
-			logger.Logger.ErrorContext(ctx, "knowledge loop projector runner stopped unexpectedly", "error", err)
-		}
-	}()
+	// Knowledge Loop projector now runs inside knowledge-sovereign as part of
+	// the projection ownership consolidation (ADR-000844 follow-up). alt-backend
+	// keeps the Connect-RPC handler that proxies reads, but no longer schedules
+	// the projector job here.
 
 	e := echo.New()
 
