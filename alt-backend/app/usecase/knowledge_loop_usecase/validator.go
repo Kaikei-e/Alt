@@ -19,7 +19,13 @@ import (
 // structured evidence_refs derived from event payloads (ADR-000840). A full reproject is
 // required after deploying v2 so existing knowledge_loop_entries pick up the new
 // why_text / evidence_refs bindings.
-const WhyMappingVersion = 2
+//
+// v3 (2026-04-26): why_text rewritten from placeholder strings ("New summary",
+// "Surfaced from a recent event.") to substantive narratives that explain why
+// the entry is on the user's loop. Stage-appropriate seedDecisionOptions
+// replaces the previous Source/Observe-only block. Existing entries must be
+// reprojected to refresh both why_text and decision_options.
+const WhyMappingVersion = 3
 
 var (
 	// keyFormat pins the canonical identifier format: alphanumeric plus _ : -, up to 128 chars.

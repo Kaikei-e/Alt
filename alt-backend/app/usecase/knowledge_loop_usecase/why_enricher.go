@@ -47,14 +47,14 @@ func EnrichWhyFromEvent(ev *domain.KnowledgeEvent) EnrichedWhy {
 	case domain.EventHomeItemDismissed:
 		return EnrichedWhy{
 			Kind: domain.WhyKindSource,
-			Text: "You dismissed this item.",
+			Text: "You dismissed this earlier — review or remove from view.",
 		}
 	}
 	// Fallback: keep entries renderable even for event types without dedicated
 	// enrichment, so the projector never emits an empty why_text.
 	return EnrichedWhy{
 		Kind: domain.WhyKindSource,
-		Text: "Surfaced from a recent event.",
+		Text: "A recent event surfaced this entry — open to see what changed.",
 	}
 }
 
@@ -106,53 +106,77 @@ func readString(m map[string]any, keys ...string) string {
 
 // --- per-event enrichment ---------------------------------------------------
 
+// enrichSummaryVersion produces the source_why narrative for a fresh summary.
+// The article title (when present in the event payload) is the most informative
+// signal we can show; without it we fall back to a feed-oriented sentence so
+// the card still reads as a real proposition rather than a placeholder.
+//
+// Reproject-safe: relies only on event payload fields, never latest projection
+// state or wall-clock time.
 func enrichSummaryVersion(_ *domain.KnowledgeEvent, p enrichmentPayload) EnrichedWhy {
-	var sb strings.Builder
-	sb.WriteString("New summary")
-	if p.ArticleTitle != "" {
-		sb.WriteString(": ")
-		sb.WriteString(p.ArticleTitle)
+	var text string
+	switch {
+	case p.ArticleTitle != "":
+		text = p.ArticleTitle + " — fresh summary ready to read."
+	default:
+		text = "A new summary is ready in one of your feeds."
 	}
 	return EnrichedWhy{
 		Kind:         domain.WhyKindSource,
-		Text:         sanitizePlainText(sb.String()),
+		Text:         sanitizePlainText(text),
 		EvidenceRefs: boundEvidence(appendRefIfPresent(nil, p.SummaryVersionID, "summary", p.ArticleID, "article", p.TagSetVersionID, "tags")),
 	}
 }
 
 func enrichHomeItemsSeen(_ *domain.KnowledgeEvent, p enrichmentPayload) EnrichedWhy {
+	text := "Resurfaced from your home feed — pick up where you left off."
+	if p.ArticleTitle != "" {
+		text = p.ArticleTitle + " — back in your feed for a closer look."
+	}
 	return EnrichedWhy{
 		Kind:         domain.WhyKindSource,
-		Text:         "Surfaced in your home feed.",
+		Text:         sanitizePlainText(text),
 		EvidenceRefs: boundEvidence(appendRefIfPresent(nil, p.SummaryVersionID, "summary", p.TagSetVersionID, "tags", p.ArticleID, "article")),
 	}
 }
 
 func enrichHomeItemAsked(_ *domain.KnowledgeEvent, p enrichmentPayload) EnrichedWhy {
+	text := "You started a conversation with Augur about this — pick the thread back up."
+	if p.ArticleTitle != "" {
+		text = p.ArticleTitle + " — your Augur thread is still open here."
+	}
 	refs := appendRefIfPresent(nil, p.ConversationID, "conversation", p.ArticleID, "article")
 	return EnrichedWhy{
 		Kind:         domain.WhyKindSource,
-		Text:         "You asked about this item.",
+		Text:         sanitizePlainText(text),
 		EvidenceRefs: boundEvidence(refs),
 	}
 }
 
 func enrichHomeItemOpened(ev *domain.KnowledgeEvent, p enrichmentPayload) EnrichedWhy {
+	text := "You opened this before — worth a second pass?"
+	if p.ArticleTitle != "" {
+		text = p.ArticleTitle + " — you opened this earlier; worth a second pass?"
+	}
 	// The open event itself is the stable anchor — reproject replays point at
 	// the same event_id, so the UI can deep-link "last opened" to this row.
 	refs := appendRefIfPresent(nil, ev.EventID.String(), "open_event", p.ArticleID, "article")
 	return EnrichedWhy{
 		Kind:         domain.WhyKindRecall,
-		Text:         "You opened this before.",
+		Text:         sanitizePlainText(text),
 		EvidenceRefs: boundEvidence(refs),
 	}
 }
 
 func enrichSuperseded(_ *domain.KnowledgeEvent, p enrichmentPayload) EnrichedWhy {
+	text := "Updated since you last saw it — a newer version is available for review."
+	if p.ArticleTitle != "" {
+		text = p.ArticleTitle + " — a newer version replaces what you saw before."
+	}
 	refs := appendRefIfPresent(nil, p.PreviousSummaryVersion, "previous_summary", p.SummaryVersionID, "new_summary", p.EntryKey, "previous_entry", p.NewEntryKey, "new_entry")
 	return EnrichedWhy{
 		Kind:         domain.WhyKindChange,
-		Text:         "A newer version is available.",
+		Text:         sanitizePlainText(text),
 		EvidenceRefs: boundEvidence(refs),
 	}
 }

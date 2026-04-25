@@ -95,13 +95,19 @@ const inFlight = $derived(isInFlight ? isInFlight(entry.entryKey) : false);
 
 function ctaToStage(intent: DecisionIntentName): LoopStageName | null {
 	switch (intent) {
+		// observe → orient: the user is opening the entry's mid-context plane.
+		case "revisit":
+			return "orient";
+		// orient → decide: the user is comparing options before committing.
+		case "compare":
+			return "decide";
+		// decide → act: open / save are act-stage commits.
 		case "open":
 		case "save":
-		case "snooze":
 			return "act";
-		// `ask` does not drive a stage transition directly; the Augur handshake
-		// owns its own lifecycle. Returning null here makes the CTA disabled via
-		// `isAllowed` unless an `onAsk` callback is wired.
+		// `ask` and `snooze` do not drive a stage transition directly; ask
+		// hands off to Augur, snooze defers locally. Returning null here keeps
+		// them enabled regardless of the proposed_stage's transition allowlist.
 		default:
 			return null;
 	}
@@ -153,6 +159,15 @@ async function handleCta(option: DecisionOptionData) {
 	if (option.intent === "ask") {
 		if (!onAsk) return;
 		await onAsk(entry);
+		return;
+	}
+	// Snooze maps to the local dismiss path: KnowledgeLoopDeferred is the
+	// canonical defer event (contract §8.2) and the dismiss handler the page
+	// passes in already performs the optimistic removal + projection update.
+	if (option.intent === "snooze") {
+		if (!onDismiss) return;
+		dismissing = true;
+		await onDismiss(entry.entryKey);
 		return;
 	}
 
@@ -240,11 +255,14 @@ async function handleDismiss() {
 					{#each visibleOptions as option (option.actionId)}
 						{@const toStage = ctaToStage(option.intent)}
 						{@const isAskCta = option.intent === "ask"}
+						{@const isSnoozeCta = option.intent === "snooze"}
 						{@const disabled = isAskCta
 							? inFlight || !onAsk
-							: toStage
-								? inFlight || !isAllowed(toStage)
-								: true}
+							: isSnoozeCta
+								? inFlight || !onDismiss || dismissing
+								: toStage
+									? inFlight || !isAllowed(toStage)
+									: true}
 						<button
 							type="button"
 							class="cta cta--{option.intent}"

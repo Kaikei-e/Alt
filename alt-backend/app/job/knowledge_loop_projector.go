@@ -402,33 +402,52 @@ func buildEntryFromEvent(
 }
 
 // seedDecisionOptions materializes the CTA options the UI can offer for a newly
-// projected entry. The mapping is intentionally terse — a source-driven entry
-// (new article, fresh summary) is almost always actionable through the same
-// four paths; other why kinds keep empty options until the projector learns a
-// specific Decide-stage strategy for them (ADR-000831 / plan D1).
+// projected entry. Each option is paired with a stage transition the user is
+// actually allowed to take from the entry's proposed_stage per canonical
+// contract §7. Earlier seeds offered open/save/snooze on Observe entries —
+// those required observe → act, which §7 forbids, so the UI rendered them as
+// disabled and only the Ask CTA worked. The new shape proposes the canonical
+// next step for each stage instead.
 //
 // Reproject-safe: the seed is derived from the (static) why_kind and
 // proposed_stage alone, never from latest projection state or wall-clock.
-func seedDecisionOptions(whyKind domain.WhyKind, stage domain.LoopStage) []byte {
-	if whyKind != domain.WhyKindSource {
-		return nil
-	}
-	// Observe / Orient entries can offer all four; Decide/Act entries are
-	// intentionally left to the handler to narrow (Act has already happened).
-	if stage != domain.LoopStageObserve && stage != domain.LoopStageOrient {
-		return nil
-	}
-	// Ordered so the UI can treat the first as primary CTA.
+func seedDecisionOptions(_ domain.WhyKind, stage domain.LoopStage) []byte {
 	type opt struct {
 		ActionID string `json:"action_id"`
 		Intent   string `json:"intent"`
 		Label    string `json:"label,omitempty"`
 	}
-	seed := []opt{
-		{ActionID: "open", Intent: "open"},
-		{ActionID: "ask", Intent: "ask"},
-		{ActionID: "save", Intent: "save"},
-		{ActionID: "dismiss", Intent: "snooze"},
+	var seed []opt
+	switch stage {
+	case domain.LoopStageObserve:
+		// observe → orient is the canonical next move; ask + snooze do not transition.
+		seed = []opt{
+			{ActionID: "revisit", Intent: "revisit"},
+			{ActionID: "ask", Intent: "ask"},
+			{ActionID: "snooze", Intent: "snooze"},
+		}
+	case domain.LoopStageOrient:
+		// orient → decide is the canonical next move.
+		seed = []opt{
+			{ActionID: "compare", Intent: "compare"},
+			{ActionID: "ask", Intent: "ask"},
+			{ActionID: "snooze", Intent: "snooze"},
+		}
+	case domain.LoopStageDecide:
+		// decide → act is the canonical next move; open/save are act-stage commits.
+		seed = []opt{
+			{ActionID: "open", Intent: "open"},
+			{ActionID: "save", Intent: "save"},
+			{ActionID: "ask", Intent: "ask"},
+		}
+	case domain.LoopStageAct:
+		// Act-stage entries are mostly historical; allow reflective CTAs only.
+		seed = []opt{
+			{ActionID: "revisit", Intent: "revisit"},
+			{ActionID: "ask", Intent: "ask"},
+		}
+	default:
+		return nil
 	}
 	b, err := json.Marshal(seed)
 	if err != nil {

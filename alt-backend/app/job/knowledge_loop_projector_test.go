@@ -117,11 +117,13 @@ func TestProjectLoopEvent_NoUserIDIsNoOp(t *testing.T) {
 	require.Empty(t, repo.session)
 }
 
-// TestProjectLoopEvent_SummaryVersionCreated_SeedsDecisionOptions verifies the Observe-stage
-// CTA seed introduced in PR-L1 for the OODA UI wiring. A source_why entry (e.g. from
-// SummaryVersionCreated) gets the four default intents (open/ask/save/snooze) so the
-// /loop UI can render Decide-stage CTAs without reading stale projection state.
-func TestProjectLoopEvent_SummaryVersionCreated_SeedsDecisionOptions(t *testing.T) {
+// TestProjectLoopEvent_SummaryVersionCreated_SeedsObserveDecisionOptions verifies
+// that an Observe-stage entry receives stage-appropriate CTAs per canonical
+// contract §7. SummaryVersionCreated lands in Observe; the only allowed forward
+// transition is observe → orient (mapped to the `revisit` intent), plus
+// non-transitional `ask` and `snooze`. Earlier seeds emitted open/save/snooze
+// which require observe → act and rendered as disabled buttons.
+func TestProjectLoopEvent_SummaryVersionCreated_SeedsObserveDecisionOptions(t *testing.T) {
 	repo := &fakeLoopRepo{}
 	userID := uuid.New()
 	ev := makeLoopEvent(t, domain.EventSummaryVersionCreated, 400, userID)
@@ -132,7 +134,7 @@ func TestProjectLoopEvent_SummaryVersionCreated_SeedsDecisionOptions(t *testing.
 
 	entry := repo.entries[0]
 	require.Equal(t, domain.WhyKindSource, entry.WhyKind)
-	require.NotEmpty(t, entry.DecisionOptions, "source_why entry must have CTA seed")
+	require.NotEmpty(t, entry.DecisionOptions, "Observe-stage entry must have CTA seed")
 
 	var seeded []map[string]string
 	require.NoError(t, json.Unmarshal(entry.DecisionOptions, &seeded))
@@ -140,7 +142,33 @@ func TestProjectLoopEvent_SummaryVersionCreated_SeedsDecisionOptions(t *testing.
 	for _, s := range seeded {
 		intents = append(intents, s["intent"])
 	}
-	require.Equal(t, []string{"open", "ask", "save", "snooze"}, intents)
+	require.Equal(t, []string{"revisit", "ask", "snooze"}, intents,
+		"Observe entries must propose §7-allowed transitions; observe → act is forbidden")
+}
+
+// TestSeedDecisionOptions_StageAppropriate covers each LoopStage's canonical
+// CTA shape against the §7 transition allowlist.
+func TestSeedDecisionOptions_StageAppropriate(t *testing.T) {
+	cases := []struct {
+		stage   domain.LoopStage
+		intents []string
+	}{
+		{domain.LoopStageObserve, []string{"revisit", "ask", "snooze"}},
+		{domain.LoopStageOrient, []string{"compare", "ask", "snooze"}},
+		{domain.LoopStageDecide, []string{"open", "save", "ask"}},
+		{domain.LoopStageAct, []string{"revisit", "ask"}},
+	}
+	for _, tc := range cases {
+		raw := seedDecisionOptions(domain.WhyKindSource, tc.stage)
+		require.NotEmpty(t, raw, "stage %s must produce a seed", tc.stage)
+		var seeded []map[string]string
+		require.NoError(t, json.Unmarshal(raw, &seeded))
+		got := make([]string, 0, len(seeded))
+		for _, s := range seeded {
+			got = append(got, s["intent"])
+		}
+		require.Equal(t, tc.intents, got, "stage %s seed intents", tc.stage)
+	}
 }
 
 // TestProjectLoopEvent_HomeItemDismissed_NoDecisionSeed documents the narrowing: entries
