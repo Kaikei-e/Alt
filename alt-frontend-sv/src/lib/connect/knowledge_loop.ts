@@ -75,6 +75,15 @@ export interface ChangeSummaryData {
 	summary: string;
 	changedFields: string[];
 	previousEntryKey?: string;
+	// Additive redline-proof diff fields. The projector populates these when
+	// both old and new summary version ids resolve under the same user_id and
+	// article_id; otherwise they default to empty arrays / undefined and the
+	// component falls back to the legacy `summary` line.
+	addedPhrases?: string[];
+	removedPhrases?: string[];
+	unchangedPhrasesCount?: number;
+	addedTags?: string[];
+	removedTags?: string[];
 }
 
 export interface ContinueContextData {
@@ -246,6 +255,27 @@ function mapProtoEntry(e: ProtoKnowledgeLoopEntry): KnowledgeLoopEntryData {
 					summary: e.changeSummary.summary,
 					changedFields: [...e.changeSummary.changedFields],
 					previousEntryKey: e.changeSummary.previousEntryKey,
+					addedPhrases:
+						e.changeSummary.addedPhrases &&
+						e.changeSummary.addedPhrases.length > 0
+							? [...e.changeSummary.addedPhrases]
+							: undefined,
+					removedPhrases:
+						e.changeSummary.removedPhrases &&
+						e.changeSummary.removedPhrases.length > 0
+							? [...e.changeSummary.removedPhrases]
+							: undefined,
+					unchangedPhrasesCount: e.changeSummary.unchangedPhrasesCount,
+					addedTags:
+						e.changeSummary.addedTags &&
+						e.changeSummary.addedTags.length > 0
+							? [...e.changeSummary.addedTags]
+							: undefined,
+					removedTags:
+						e.changeSummary.removedTags &&
+						e.changeSummary.removedTags.length > 0
+							? [...e.changeSummary.removedTags]
+							: undefined,
 				}
 			: undefined,
 		continueContext: e.continueContext

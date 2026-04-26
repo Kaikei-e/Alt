@@ -8,6 +8,8 @@ import ChangedDiffCard from "$lib/components/knowledge-loop/ChangedDiffCard.svel
 import ContinueStream from "$lib/components/knowledge-loop/ContinueStream.svelte";
 import EmptyNow from "$lib/components/knowledge-loop/EmptyNow.svelte";
 import LoopEntryTile from "$lib/components/knowledge-loop/LoopEntryTile.svelte";
+import LoopPlaneStack from "$lib/components/knowledge-loop/LoopPlaneStack.svelte";
+import type { PlaneKey } from "$lib/components/knowledge-loop/loop-plane-keys";
 import LoopSurfacePlane from "$lib/components/knowledge-loop/LoopSurfacePlane.svelte";
 import OodaPipeline from "$lib/components/knowledge-loop/OodaPipeline.svelte";
 import ReviewDock from "$lib/components/knowledge-loop/ReviewDock.svelte";
@@ -220,6 +222,50 @@ const bucketIndex = $derived(
 );
 const hasBucketPlanes = $derived(bucketEntries.length > 0);
 
+// LoopPlaneStack input: descriptors for all four planes regardless of which
+// are populated. Empty planes still appear in the stack as receding "edge
+// peeks" so the user can see what bucket is currently quiet.
+const planeDescriptors = $derived([
+	{
+		key: "now" as const,
+		label: "Now",
+		caption:
+			foreground.length === 1
+				? "1 in focus"
+				: `${foreground.length} in focus`,
+		count: foreground.length,
+	},
+	{
+		key: "continue" as const,
+		label: "Continue",
+		caption:
+			continueEntries.length === 1
+				? "1 in motion"
+				: `${continueEntries.length} in motion`,
+		count: continueEntries.length,
+	},
+	{
+		key: "changed" as const,
+		label: "Changed",
+		caption:
+			changedEntries.length === 1
+				? "1 revised"
+				: `${changedEntries.length} revised`,
+		count: changedEntries.length,
+	},
+	{
+		key: "review" as const,
+		label: "Review",
+		caption:
+			reviewEntries.length === 1
+				? "1 to revisit"
+				: `${reviewEntries.length} to revisit`,
+		count: reviewEntries.length,
+	},
+]);
+
+let activePlaneKey = $state<PlaneKey>("now");
+
 // transitionTo derives `from` from the entry's proposedStage, so callers only
 // supply the target stage + trigger. Each plane maps to the canonical next
 // step per contract §7 allowed transitions.
@@ -281,7 +327,62 @@ function onReviewOpen(entry: KnowledgeLoopEntryData) {
 		</aside>
 	{/if}
 
-	{#if !data.error && foreground.length === 0}
+	{#if !data.error && hasBucketPlanes}
+		<LoopPlaneStack planes={planeDescriptors} bind:activeKey={activePlaneKey}>
+			{#snippet plane(key)}
+				{#if key === "now"}
+					{#if foreground.length === 0}
+						<EmptyNow />
+					{:else}
+						<div class="foreground-tiles" use:observeTiles={{ onObserve }}>
+							{#each foreground as entry, i (entry.entryKey)}
+								<div
+									class="foreground-row"
+									animate:flip={{ duration: 240, easing: cubicOut }}
+									out:loopRecede={{ duration: 280 }}
+								>
+									<LoopEntryTile
+										{entry}
+										stagger={i}
+										onTransition={loop.transitionTo}
+										onDismiss={loop.dismiss}
+										{onAsk}
+										canTransition={loop.canTransition}
+										isInFlight={loop.isInFlight}
+										{resolveSourceUrl}
+									/>
+								</div>
+							{/each}
+						</div>
+					{/if}
+				{:else if key === "continue"}
+					{#if continueEntries.length === 0}
+						<p class="plane-empty">Nothing in motion right now.</p>
+					{:else}
+						<ContinueStream
+							entries={continueEntries}
+							onResume={onContinueResume}
+						/>
+					{/if}
+				{:else if key === "changed"}
+					{#if changedEntries.length === 0}
+						<p class="plane-empty">No revisions to review.</p>
+					{:else}
+						<ChangedDiffCard
+							entries={changedEntries}
+							onConfirm={onChangedConfirm}
+						/>
+					{/if}
+				{:else if key === "review"}
+					{#if reviewEntries.length === 0}
+						<p class="plane-empty">Nothing waiting for review.</p>
+					{:else}
+						<ReviewDock entries={reviewEntries} onOpen={onReviewOpen} />
+					{/if}
+				{/if}
+			{/snippet}
+		</LoopPlaneStack>
+	{:else if !data.error && foreground.length === 0}
 		<EmptyNow />
 	{:else if !data.error}
 		<LoopSurfacePlane
@@ -310,55 +411,21 @@ function onReviewOpen(entry: KnowledgeLoopEntryData) {
 				{/each}
 			</div>
 		</LoopSurfacePlane>
-	{/if}
 
-	{#if hasBucketPlanes}
-		{#if continueEntries.length > 0}
-			<LoopSurfacePlane
-				plane="mid-context"
-				label="Continue"
-				caption="{continueEntries.length} in motion"
-			>
-				<ContinueStream
-					entries={continueEntries}
-					onResume={onContinueResume}
-				/>
-			</LoopSurfacePlane>
+		{#if bucketIndex.length > 0}
+			<nav class="bucket-index" aria-label="Other surface buckets">
+				<span class="bucket-kicker">Also waiting</span>
+				<ul class="bucket-list">
+					{#each bucketIndex as b (b.bucket)}
+						<li class="bucket-item">
+							<span class="bucket-label">{b.label}</span>
+							<span class="bucket-rule" aria-hidden="true"></span>
+							<span class="bucket-count">{b.count}</span>
+						</li>
+					{/each}
+				</ul>
+			</nav>
 		{/if}
-		{#if changedEntries.length > 0}
-			<LoopSurfacePlane
-				plane="mid-context"
-				label="Changed"
-				caption="{changedEntries.length} revised"
-			>
-				<ChangedDiffCard
-					entries={changedEntries}
-					onConfirm={onChangedConfirm}
-				/>
-			</LoopSurfacePlane>
-		{/if}
-		{#if reviewEntries.length > 0}
-			<LoopSurfacePlane
-				plane="deep-focus"
-				label="Review"
-				caption="{reviewEntries.length} to revisit"
-			>
-				<ReviewDock entries={reviewEntries} onOpen={onReviewOpen} />
-			</LoopSurfacePlane>
-		{/if}
-	{:else if bucketIndex.length > 0}
-		<nav class="bucket-index" aria-label="Other surface buckets">
-			<span class="bucket-kicker">Also waiting</span>
-			<ul class="bucket-list">
-				{#each bucketIndex as b (b.bucket)}
-					<li class="bucket-item">
-						<span class="bucket-label">{b.label}</span>
-						<span class="bucket-rule" aria-hidden="true"></span>
-						<span class="bucket-count">{b.count}</span>
-					</li>
-				{/each}
-			</ul>
-		</nav>
 	{/if}
 </main>
 
@@ -398,6 +465,14 @@ function onReviewOpen(entry: KnowledgeLoopEntryData) {
 		/* Each row participates in the parent's perspective — keep flat at rest;
 		 * `out:loopRecede` adds translateZ during exit only. */
 		transform-style: preserve-3d;
+	}
+
+	.plane-empty {
+		margin: 0;
+		padding: 0.4rem 0;
+		font-family: var(--font-mono, "IBM Plex Mono", ui-monospace, monospace);
+		font-size: 0.72rem;
+		color: var(--alt-ash, #999);
 	}
 
 	.masthead-title {

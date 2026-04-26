@@ -1,18 +1,22 @@
 <script lang="ts">
 /**
  * ChangedDiffCard — the mid-context plane's signature block. Renders a
- * single Changed entry as an editorial diptych: THEN on the left shows
- * the supersede target (what the entry was), NOW on the right shows the
- * current why_text / evidence_refs. A 1px vertical rule separates them —
- * this is the only place on /loop where a vertical rule carries meaning,
- * intentionally mirroring a newspaper's "then-and-now" layout.
+ * single Changed entry as a redline-proof diptych. When the projector has
+ * populated phrase / tag diff arrays the card draws editorial proof marks:
+ * removed phrases get a strike-through in alt-terracotta; added phrases get
+ * a bold underline; tags appear as chips with the same proof discipline.
+ * When the new arrays are absent the card falls back to a Then / Now
+ * single-line summary so the contract is fully additive.
  *
- * The Changed plane is the feature most uniquely Alt's: surfacing
- * revisions to the user's mental model. ADR-000831 §6.3 treats it as a
- * first-class bucket, not a badge on the NOW plane.
+ * Vertical rules carry meaning here — this is the only place on /loop
+ * where a 1px rule is intentional, mirroring a newspaper's then-and-now
+ * layout. ADR-000831 §6.3 treats Changed as a first-class bucket.
  */
 
-import type { KnowledgeLoopEntryData } from "$lib/connect/knowledge_loop";
+import type {
+	ChangeSummaryData,
+	KnowledgeLoopEntryData,
+} from "$lib/connect/knowledge_loop";
 import { loopPriorityAriaLabel } from "./loop-priority-labels";
 
 let {
@@ -27,9 +31,17 @@ function confirm(entry: KnowledgeLoopEntryData) {
 	onConfirm?.(entry);
 }
 
+function hasRedline(cs: ChangeSummaryData | undefined): cs is ChangeSummaryData {
+	if (!cs) return false;
+	return Boolean(
+		(cs.addedPhrases && cs.addedPhrases.length > 0) ||
+			(cs.removedPhrases && cs.removedPhrases.length > 0) ||
+			(cs.addedTags && cs.addedTags.length > 0) ||
+			(cs.removedTags && cs.removedTags.length > 0),
+	);
+}
+
 function thenLabel(entry: KnowledgeLoopEntryData): string {
-	// Prefer change_summary.summary when the projector populated it.
-	// Fall back to the supersede pointer so the card is never empty.
 	if (entry.changeSummary?.summary) return entry.changeSummary.summary;
 	if (entry.supersededByEntryKey)
 		return `Previous: ${entry.supersededByEntryKey}`;
@@ -37,20 +49,85 @@ function thenLabel(entry: KnowledgeLoopEntryData): string {
 		return `Previous: ${entry.changeSummary.previousEntryKey}`;
 	return "Previous version";
 }
+
+function ariaSummary(entry: KnowledgeLoopEntryData): string {
+	const cs = entry.changeSummary;
+	const priority = loopPriorityAriaLabel[entry.loopPriority];
+	if (!hasRedline(cs)) return priority;
+	const phraseAdds = cs.addedPhrases?.length ?? 0;
+	const phraseRemoves = cs.removedPhrases?.length ?? 0;
+	const tagAdds = cs.addedTags?.length ?? 0;
+	const tagRemoves = cs.removedTags?.length ?? 0;
+	const parts: string[] = [];
+	if (phraseAdds > 0)
+		parts.push(`${phraseAdds} ${phraseAdds === 1 ? "phrase" : "phrases"} added`);
+	if (phraseRemoves > 0)
+		parts.push(
+			`${phraseRemoves} ${phraseRemoves === 1 ? "phrase" : "phrases"} removed`,
+		);
+	if (tagAdds > 0)
+		parts.push(`${tagAdds} ${tagAdds === 1 ? "tag" : "tags"} added`);
+	if (tagRemoves > 0)
+		parts.push(`${tagRemoves} ${tagRemoves === 1 ? "tag" : "tags"} removed`);
+	return parts.length > 0
+		? `${priority}. Summary changed: ${parts.join(", ")}.`
+		: priority;
+}
 </script>
 
 <div class="diff-cards" data-testid="loop-changed-diff">
 	{#each entries as entry (entry.entryKey)}
-		<article class="card" aria-label={loopPriorityAriaLabel[entry.loopPriority]}>
-			<div class="col col-then">
-				<span class="kicker" aria-hidden="true">Then</span>
-				<p class="line">{thenLabel(entry)}</p>
-			</div>
-			<div class="rule" aria-hidden="true"></div>
-			<div class="col col-now">
-				<span class="kicker" aria-hidden="true">Now</span>
-				<p class="line line-now">{entry.whyPrimary.text || entry.entryKey}</p>
-			</div>
+		{@const cs = entry.changeSummary}
+		<article class="card" aria-label={ariaSummary(entry)}>
+			{#if hasRedline(cs)}
+				<div class="redline" data-testid="loop-changed-redline">
+					{#if cs.removedPhrases && cs.removedPhrases.length > 0}
+						<div class="band band-removed">
+							<span class="kicker" aria-hidden="true">Struck</span>
+							<ul class="phrase-list">
+								{#each cs.removedPhrases as phrase, i (i)}
+									<li class="phrase phrase-removed">{phrase}</li>
+								{/each}
+							</ul>
+						</div>
+					{/if}
+					{#if cs.addedPhrases && cs.addedPhrases.length > 0}
+						<div class="band band-added">
+							<span class="kicker" aria-hidden="true">Set</span>
+							<ul class="phrase-list">
+								{#each cs.addedPhrases as phrase, i (i)}
+									<li class="phrase phrase-added">{phrase}</li>
+								{/each}
+							</ul>
+						</div>
+					{/if}
+					{#if (cs.removedTags && cs.removedTags.length > 0) || (cs.addedTags && cs.addedTags.length > 0)}
+						<div class="band band-tags">
+							<span class="kicker" aria-hidden="true">Tags</span>
+							<ul class="chip-list">
+								{#each cs.removedTags ?? [] as tag, i (`r${i}`)}
+									<li class="chip chip-removed">{tag}</li>
+								{/each}
+								{#each cs.addedTags ?? [] as tag, i (`a${i}`)}
+									<li class="chip chip-added">{tag}</li>
+								{/each}
+							</ul>
+						</div>
+					{/if}
+				</div>
+			{:else}
+				<div class="col col-then">
+					<span class="kicker" aria-hidden="true">Then</span>
+					<p class="line">{thenLabel(entry)}</p>
+				</div>
+				<div class="rule" aria-hidden="true"></div>
+				<div class="col col-now">
+					<span class="kicker" aria-hidden="true">Now</span>
+					<p class="line line-now">
+						{entry.whyPrimary.text || entry.entryKey}
+					</p>
+				</div>
+			{/if}
 			<div class="actions">
 				<button
 					type="button"
@@ -80,6 +157,17 @@ function thenLabel(entry: KnowledgeLoopEntryData): string {
 		border-top: 1px solid var(--surface-border, #c8c8c8);
 		border-bottom: 1px solid var(--surface-border, #c8c8c8);
 	}
+	.redline {
+		grid-column: 1 / -1;
+		display: grid;
+		gap: 0.55rem;
+	}
+	.band {
+		display: grid;
+		grid-template-columns: 4.5rem 1fr;
+		align-items: baseline;
+		gap: 0.75rem;
+	}
 	.col {
 		display: grid;
 		gap: 0.3rem;
@@ -95,6 +183,53 @@ function thenLabel(entry: KnowledgeLoopEntryData): string {
 		letter-spacing: 0.16em;
 		text-transform: uppercase;
 		color: var(--alt-ash, #999);
+	}
+	.phrase-list {
+		list-style: none;
+		padding: 0;
+		margin: 0;
+		display: grid;
+		gap: 0.2rem;
+	}
+	.phrase {
+		font-family: var(--font-display, "Playfair Display", Georgia, serif);
+		font-size: 0.95rem;
+		line-height: 1.45;
+	}
+	.phrase-removed {
+		color: var(--alt-terracotta, #6e1f1f);
+		text-decoration: line-through;
+		text-decoration-thickness: 1.5px;
+	}
+	.phrase-added {
+		color: var(--alt-charcoal, #1a1a1a);
+		font-weight: 600;
+		text-decoration: underline;
+		text-decoration-thickness: 1.5px;
+		text-underline-offset: 3px;
+	}
+	.chip-list {
+		list-style: none;
+		padding: 0;
+		margin: 0;
+		display: flex;
+		flex-wrap: wrap;
+		gap: 0.4rem;
+	}
+	.chip {
+		font-family: var(--font-mono, "IBM Plex Mono", ui-monospace, monospace);
+		font-size: 0.65rem;
+		letter-spacing: 0.06em;
+		padding: 0.15rem 0.45rem;
+		border: 1px solid currentColor;
+	}
+	.chip-removed {
+		color: var(--alt-ash, #999);
+		text-decoration: line-through;
+	}
+	.chip-added {
+		color: var(--alt-charcoal, #1a1a1a);
+		background: rgba(0, 0, 0, 0.04);
 	}
 	.line {
 		margin: 0;

@@ -47,10 +47,12 @@ describe.each(
 	it(`${name} exposes an accessible priority label from loopPriority`, () => {
 		// aria-label (over aria-description) carries the single-line urgency cue
 		// for screen readers; aria-description lacks cross-browser typing support
-		// in Svelte 5 HTMLProps and lands as a hard type error.
-		expect(source).toMatch(
-			/aria-label=\{loopPriorityAriaLabel\[entry\.loopPriority\]\}/,
-		);
+		// in Svelte 5 HTMLProps and lands as a hard type error. The aria-label
+		// expression must reach loopPriorityAriaLabel[entry.loopPriority] —
+		// either inline or via a helper that returns it (e.g. ChangedDiffCard's
+		// ariaSummary, which augments the priority with diff counts).
+		expect(source).toMatch(/aria-label=/);
+		expect(source).toMatch(/loopPriorityAriaLabel\[entry\.loopPriority\]/);
 	});
 
 	it(`${name} exposes a stable data-testid for E2E hooks`, () => {
