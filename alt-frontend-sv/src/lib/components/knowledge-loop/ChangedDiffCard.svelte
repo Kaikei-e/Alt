@@ -163,6 +163,7 @@ function ariaSummary(entry: KnowledgeLoopEntryData): string {
 	}
 	.redline {
 		grid-column: 1 / -1;
+		grid-row: 1;
 		display: grid;
 		gap: 0.55rem;
 	}
@@ -172,13 +173,30 @@ function ariaSummary(entry: KnowledgeLoopEntryData): string {
 		align-items: baseline;
 		gap: 0.75rem;
 	}
-	.col {
+	/* Explicit cell placement so the diptych never collapses onto the same
+	 * column. Without these, the production rendering was placing all three
+	 * children at column 1 row 1 — the THEN/NOW kickers overlapped and the
+	 * narrative text superimposed (2026-04-27 production /loop screenshot).
+	 * `grid-row: 1` on each keeps `.actions` (grid-column: 1 / -1) safely in
+	 * row 2 even when auto-placement would otherwise pack into row 1. */
+	.col-then {
+		grid-column: 1;
+		grid-row: 1;
 		display: grid;
 		gap: 0.3rem;
+		min-width: 0;
+	}
+	.col-now {
+		grid-column: 3;
+		grid-row: 1;
+		display: grid;
+		gap: 0.3rem;
+		min-width: 0;
 	}
 	.rule {
-		background: var(--surface-border, #c8c8c8);
+		grid-column: 2;
 		grid-row: 1;
+		background: var(--surface-border, #c8c8c8);
 	}
 	.kicker {
 		font-family: var(--font-body, "Source Sans 3", system-ui, sans-serif);
