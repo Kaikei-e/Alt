@@ -19,10 +19,10 @@ import (
 // layer's own tests. Here we verify the projector emits the same upsert payload
 // for the same event on replay — the core reproject-safety invariant.
 type fakeRepo struct {
-	checkpoint int64
-	events     []sovereign_db.KnowledgeEvent
-	entries    []*sovereignv1.KnowledgeLoopEntry
-	sessions   []*sovereignv1.KnowledgeLoopSessionState
+	checkpoint  int64
+	events      []sovereign_db.KnowledgeEvent
+	entries     []*sovereignv1.KnowledgeLoopEntry
+	sessions    []*sovereignv1.KnowledgeLoopSessionState
 	checkpoints []int64
 }
 

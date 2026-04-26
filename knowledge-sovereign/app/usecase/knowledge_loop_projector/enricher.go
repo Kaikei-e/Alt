@@ -14,8 +14,8 @@ import (
 	"strings"
 	"unicode/utf8"
 
-	sovereignv1 "knowledge-sovereign/gen/proto/services/sovereign/v1"
 	"knowledge-sovereign/driver/sovereign_db"
+	sovereignv1 "knowledge-sovereign/gen/proto/services/sovereign/v1"
 )
 
 // maxWhyTextBytes matches the canonical DB CHECK on knowledge_loop_entries.why_text.

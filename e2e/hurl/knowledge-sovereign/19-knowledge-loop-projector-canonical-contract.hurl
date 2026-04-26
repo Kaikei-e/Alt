@@ -26,12 +26,15 @@
 # Payload decoded:
 # {"summary_version_id":"sv-hurl-canonical","article_id":"art-hurl-canonical",
 #  "article_title":"Event Sourcing in Practice"}
+# A locally-unique event_id avoids colliding with 03-event-append-happy.hurl,
+# which already consumed `{{event_id}}` from run.sh. The PRIMARY KEY on
+# knowledge_events.event_id would otherwise return 500.
 POST {{base_url}}/services.sovereign.v1.KnowledgeSovereignService/AppendKnowledgeEvent
 Content-Type: application/json
 Connect-Protocol-Version: 1
 {
   "event": {
-    "eventId": "{{event_id}}",
+    "eventId": "00000000-0000-4000-8000-000000000abc",
     "occurredAt": "{{occurred_at}}",
     "tenantId": "{{tenant_id}}",
     "userId": "{{user_id}}",
@@ -45,6 +48,8 @@ Connect-Protocol-Version: 1
   }
 }
 HTTP 200
+[Captures]
+loop_event_seq: jsonpath "$.eventSeq"
 [Asserts]
 jsonpath "$.eventSeq" matches "^[0-9]+$"
 
@@ -71,10 +76,12 @@ HTTP 200
 jsonpath "$.entries" count > 0
 # At least one entry must derive from our just-appended event. The
 # article_title flows through the v3 enricher into why_text, so a
-# string-contains assertion both pins §11 (substantive narrative) and
-# guards against the regression where the enricher emitted only
-# "New summary".
-jsonpath "$.entries[*].whyPrimary.text" includes "Event Sourcing in Practice"
+# substring assertion both pins §11 (substantive narrative) and guards
+# against the regression where the enricher emitted only "New summary".
+# We pick the first entry deterministically — the projector orders by
+# event_seq desc and our just-appended event has the largest seq.
+jsonpath "$.entries[0].whyPrimary.text" contains "Event Sourcing in Practice"
+jsonpath "$.entries[0].whyPrimary.text" contains "fresh summary ready to read"
 # Hard regression guard: the literal placeholder must not survive.
 jsonpath "$.entries[?(@.whyPrimary.text=='New summary')]" count == 0
 
@@ -100,11 +107,10 @@ Connect-Protocol-Version: 1
 }
 HTTP 200
 [Asserts]
-# Each Observe entry — the SummaryVersionCreated path produces these — must
-# carry decision_options that decode to the §7-allowed intent set.
-jsonpath "$.entries[?(@.proposedStage=='LOOP_STAGE_OBSERVE')]" count > 0
-# The proposedStage assertion above runs on the proto3-JSON enum-name form;
-# Connect-JSON emits enum values as their string name by default. If the
-# server emits numeric form instead, the assertion below catches it as a
-# fallback (proposedStage == 1 == LOOP_STAGE_OBSERVE).
-jsonpath "$.entries[*].proposedStage" includes "LOOP_STAGE_OBSERVE"
+# Connect-JSON emits enum values as their bare name (without the type
+# prefix) by default. The first entry — our just-appended SummaryVersionCreated
+# — must land in the Observe stage so the §7 allowlist applies.
+jsonpath "$.entries[0].proposedStage" == "LOOP_STAGE_OBSERVE"
+# Loop priority falls out of the surface-bucket → priority mapping for
+# fresh entries (NOW → CRITICAL).
+jsonpath "$.entries[0].surfaceBucket" == "SURFACE_BUCKET_NOW"
