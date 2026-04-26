@@ -110,7 +110,7 @@ Each bump triggers a full reproject per the Pre-flight + Procedure above, so exi
 | 3       | 2026-04-26 | [[000844]]   | why_text rewritten from placeholder strings to substantive narratives; stage-appropriate seedDecisionOptions replaces the previous Source/Observe-only block |
 | 4       | 2026-04-26 | [[000844]]   | projector ownership moved to knowledge-sovereign; runtime behavior unchanged from v3 but the bump signals operators that the projection is now driven from this service rather than alt-backend's job runner |
 | 5       | 2026-04-26 | [[000846]]   | `SummaryNarrativeBackfilled` event type added so historic entries whose original SummaryVersionCreated event lacked article_title can be patched with a real narrative; optional full reproject post-backfill verifies replay convergence |
-| 6       | tbd        | tbd          | adds `topic_affinity_why` / `tag_trending_why` / `unfinished_continue_why` to the WhyKind enum; mapping for `recap_topic_overlap` / `tag_frequency_rising` / `unfinished_thread` codes (canonical contract §11). Bump pairs with the SurfaceScoreResolver real implementation (Wave 4) emitting these kinds |
+| 6       | 2026-04-26 | [[000853]]   | EventLogSurfaceScoreResolver wired via WithScoreResolver; bucket placement now consults v2 evidence (recap topic overlap / augur link / open interaction / version drift) bounded to event.occurred_at - 7d. F-001 enforcement at the resolver seam. canonical contract §6.4.1 / §11 |
 
 ## SurfacePlannerVersion history
 
