@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
 func main() {
@@ -68,6 +69,11 @@ func main() {
 	// Metrics / health server
 	metricsMux := http.NewServeMux()
 	metricsMux.HandleFunc("/health", handler.HealthHandler)
+	// Prometheus scrape endpoint. Default registry collectors include
+	// process / Go runtime metrics out of the box; the Knowledge Loop
+	// projector counters in usecase/knowledge_loop_projector/metrics.go
+	// register with the same default registry via promauto.
+	metricsMux.Handle("/metrics", promhttp.Handler())
 	snapshotHandler.RegisterRoutes(metricsMux)
 	retentionHandler.RegisterRoutes(metricsMux)
 	storageHandler.RegisterRoutes(metricsMux)

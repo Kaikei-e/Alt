@@ -61,14 +61,21 @@ type Config struct {
 //   - UPSERTs enforce the seq-hiwater guard at the driver; same event replayed twice is idempotent.
 //   - knowledge_loop_transition_dedupes is NOT touched during reproject.
 type Projector struct {
-	repo   Repository
-	logger *slog.Logger
-	cfg    Config
+	repo          Repository
+	logger        *slog.Logger
+	cfg           Config
+	scoreResolver SurfaceScoreResolver
 }
 
 // NewProjector wires a repository + logger into a projector. Use RunBatch on a
 // timer (the service's main loop owns the cadence) — Projector does not own a
 // goroutine itself.
+//
+// The default score resolver is NullSurfaceScoreResolver: bucket placement
+// stays on the v1 mapping until a real resolver is plugged via
+// WithScoreResolver. This keeps Wave 2/3 changes additive — the live
+// projector still writes the same buckets it always did, but the v2 hook
+// + metrics are reachable from tests.
 func NewProjector(repo Repository, logger *slog.Logger, cfg Config) *Projector {
 	if logger == nil {
 		logger = slog.Default()
@@ -76,7 +83,23 @@ func NewProjector(repo Repository, logger *slog.Logger, cfg Config) *Projector {
 	if cfg.BatchSize <= 0 {
 		cfg.BatchSize = defaultBatchSize
 	}
-	return &Projector{repo: repo, logger: logger, cfg: cfg}
+	return &Projector{
+		repo:          repo,
+		logger:        logger,
+		cfg:           cfg,
+		scoreResolver: NullSurfaceScoreResolver{},
+	}
+}
+
+// WithScoreResolver swaps the SurfaceScoreResolver used to compute v2
+// bucket inputs. Wave 4 will plug a cross-service resolver here that
+// queries tag_set_versions / recap_topic_snapshots / augur_conversations
+// with mandatory user_id binding.
+func (p *Projector) WithScoreResolver(r SurfaceScoreResolver) *Projector {
+	if r != nil {
+		p.scoreResolver = r
+	}
+	return p
 }
 
 // RunBatch consumes one batch of events from the checkpoint forward. The caller
@@ -148,9 +171,10 @@ func (p *Projector) projectEvent(ctx context.Context, ev *sovereign_db.Knowledge
 
 	switch ev.EventType {
 	case EventSummaryVersionCreated, EventHomeItemsSeen, EventHomeItemAsked:
+		bucket := p.resolveBucket(ctx, ev)
 		entry, err := p.buildEntryFromEvent(ev, lensModeID,
 			sovereignv1.LoopStage_LOOP_STAGE_OBSERVE,
-			sovereignv1.SurfaceBucket_SURFACE_BUCKET_NOW)
+			bucket)
 		if err != nil {
 			return nil, err
 		}
@@ -165,9 +189,10 @@ func (p *Projector) projectEvent(ctx context.Context, ev *sovereign_db.Knowledge
 		return p.projectSummaryNarrativeBackfilled(ctx, ev, lensModeID)
 
 	case EventHomeItemOpened:
+		bucket := p.resolveBucket(ctx, ev)
 		entry, err := p.buildEntryFromEvent(ev, lensModeID,
 			sovereignv1.LoopStage_LOOP_STAGE_ACT,
-			sovereignv1.SurfaceBucket_SURFACE_BUCKET_CONTINUE)
+			bucket)
 		if err != nil {
 			return nil, err
 		}
@@ -192,9 +217,10 @@ func (p *Projector) projectEvent(ctx context.Context, ev *sovereign_db.Knowledge
 		return res, nil
 
 	case EventHomeItemDismissed:
+		bucket := p.resolveBucket(ctx, ev)
 		entry, err := p.buildEntryFromEvent(ev, lensModeID,
 			sovereignv1.LoopStage_LOOP_STAGE_OBSERVE,
-			sovereignv1.SurfaceBucket_SURFACE_BUCKET_REVIEW)
+			bucket)
 		if err != nil {
 			return nil, err
 		}
@@ -202,15 +228,34 @@ func (p *Projector) projectEvent(ctx context.Context, ev *sovereign_db.Knowledge
 		entry.DecisionOptions = nil
 		return p.repo.UpsertKnowledgeLoopEntry(ctx, entry)
 
-	case EventHomeItemSuperseded:
+	case EventHomeItemSuperseded, EventSummarySuperseded:
+		bucket := p.resolveBucket(ctx, ev)
 		entry, err := p.buildEntryFromEvent(ev, lensModeID,
 			sovereignv1.LoopStage_LOOP_STAGE_OBSERVE,
-			sovereignv1.SurfaceBucket_SURFACE_BUCKET_CHANGED)
+			bucket)
 		if err != nil {
 			return nil, err
 		}
 		if target := extractStringField(ev.Payload, "new_entry_key", "superseded_by_entry_key"); target != "" {
 			entry.SupersededByEntryKey = &target
+		}
+		// Populate change_summary JSONB. When the event payload carries old
+		// + new summary excerpts (or tag arrays) the redline diff fields are
+		// filled by computeChangeDiff; otherwise the legacy summary +
+		// changed_fields shape is preserved. Fully reproject-safe — inputs
+		// are read from event payload only.
+		csPayload := parseChangeSummaryPayload(ev.Payload)
+		if cs := buildChangeSummaryJSON(csPayload); cs != nil {
+			entry.ChangeSummary = cs
+			redlineCapable := csPayload.canRedline()
+			slog.DebugContext(ctx, "knowledge_loop_projector: change_summary written",
+				"event_type", ev.EventType,
+				"event_seq", ev.EventSeq,
+				"entry_key", entry.EntryKey,
+				"redline_capable", redlineCapable,
+				"change_summary_bytes", len(cs),
+			)
+			observeChangeSummaryWritten(redlineCapable)
 		}
 		return p.repo.UpsertKnowledgeLoopEntry(ctx, entry)
 

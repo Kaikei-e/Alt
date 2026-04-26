@@ -30,6 +30,16 @@ const (
 	EventKnowledgeLoopDeferred          = "knowledge_loop.deferred.v1"
 	EventKnowledgeLoopSessionReset      = "knowledge_loop.session_reset.v1"
 	EventKnowledgeLoopLensModeSwitched  = "knowledge_loop.lens_mode_switched.v1"
+
+	// Upstream snapshot events feeding Surface Planner v2. Emitted by
+	// recap-worker, augur, and knowledge-sovereign-internal respectively.
+	// The projector recognises them so a real SurfaceScoreResolver (Wave 4)
+	// can subscribe to them via the same event log; until then the projector
+	// silently no-ops on them so an early emitter doesn't break the batch.
+	// See canonical contract §6.4.1.
+	EventRecapTopicSnapshotted             = "recap.topic_snapshotted.v1"
+	EventAugurConversationLinked           = "augur.conversation_linked.v1"
+	EventKnowledgeLoopSurfacePlanRecomputed = "knowledge_loop.surface_plan_recomputed.v1"
 )
 
 // Aggregate type for Knowledge Loop session-state aggregates.
