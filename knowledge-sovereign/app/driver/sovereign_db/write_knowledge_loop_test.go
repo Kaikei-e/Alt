@@ -95,6 +95,120 @@ func TestUpsertKnowledgeLoopEntry_SeqHiwaterGuardSkipsStaleReplay(t *testing.T) 
 	require.NoError(t, mock.ExpectationsWereMet())
 }
 
+// TestPatchKnowledgeLoopEntryWhy_AppliesPatchOnly exercises the patch-only-why
+// path (ADR-000846). The SQL must NOT touch dismiss_state, freshness_at,
+// surface_bucket, or any other field — only the why_* columns. We assert the
+// SQL text directly so a regression that re-introduces the full UPSERT
+// columns (or accidentally writes dismiss_state) fails this test.
+func TestPatchKnowledgeLoopEntryWhy_AppliesPatchOnly(t *testing.T) {
+	mock, err := pgxmock.NewPool()
+	require.NoError(t, err)
+	defer mock.Close()
+
+	repo := &Repository{pool: mock}
+
+	why := &sovereignv1.KnowledgeLoopWhyPayload{
+		Kind: sovereignv1.WhyKind_WHY_KIND_SOURCE,
+		Text: "Article Title — fresh summary ready to read.",
+		EvidenceRefs: []*sovereignv1.KnowledgeLoopEvidenceRef{
+			{RefId: "sv-bf-1", Label: "summary"},
+		},
+	}
+
+	mock.ExpectQuery(regexp.QuoteMeta(patchKnowledgeLoopEntryWhyQuery)).
+		WithArgs(
+			pgxmock.AnyArg(), // user_id
+			pgxmock.AnyArg(), // tenant_id
+			"default",        // lens_mode_id
+			"article:42",     // entry_key
+			int64(400),       // event_seq
+			"source_why",     // why_kind
+			why.Text,         // why_text
+			pgxmock.AnyArg(), // why_confidence (nil)
+			pgxmock.AnyArg(), // why_evidence_ref_ids
+			pgxmock.AnyArg(), // why_evidence_refs JSONB
+		).
+		WillReturnRows(pgxmock.NewRows([]string{"projection_revision", "projection_seq_hiwater"}).
+			AddRow(int64(2), int64(400)))
+
+	res, err := repo.PatchKnowledgeLoopEntryWhy(
+		context.Background(),
+		uuid.New().String(),
+		uuid.New().String(),
+		"default",
+		"article:42",
+		400,
+		why,
+	)
+	require.NoError(t, err)
+	require.True(t, res.Applied)
+	require.False(t, res.SkippedBySeqHiwater)
+	require.Equal(t, int64(2), res.ProjectionRevision)
+	require.Equal(t, int64(400), res.ProjectionSeqHiwater)
+	require.NoError(t, mock.ExpectationsWereMet())
+
+	// The SQL string itself must not mention dismiss_state, freshness_at,
+	// surface_bucket, proposed_stage, or other entry-level fields. This is
+	// the structural guard that the patch path stays surgical.
+	for _, forbidden := range []string{
+		"dismiss_state",
+		"freshness_at",
+		"surface_bucket",
+		"proposed_stage",
+		"superseded_by_entry_key",
+		"render_depth_hint",
+		"loop_priority",
+		"change_summary",
+		"continue_context",
+		"decision_options",
+		"act_targets",
+		"artifact_summary_version_id",
+		"artifact_tag_set_version_id",
+		"artifact_lens_version_id",
+	} {
+		require.NotContains(t, patchKnowledgeLoopEntryWhyQuery, forbidden,
+			"patch SQL must NOT touch %s — that field belongs to the original "+
+				"SummaryVersionCreated upsert path. ADR-000846 §Goal 2.", forbidden)
+	}
+}
+
+// TestPatchKnowledgeLoopEntryWhy_SeqHiwaterGuardSkipsStaleReplay confirms that
+// a missing entry OR a stale seq surfaces as SkippedBySeqHiwater rather than
+// an error. Both outcomes are safe under reproject — the original
+// SummaryVersionCreated event will rebuild the entry on its turn.
+func TestPatchKnowledgeLoopEntryWhy_SeqHiwaterGuardSkipsStaleReplay(t *testing.T) {
+	mock, err := pgxmock.NewPool()
+	require.NoError(t, err)
+	defer mock.Close()
+
+	repo := &Repository{pool: mock}
+
+	anyPatchArgs := make([]interface{}, 10)
+	for i := range anyPatchArgs {
+		anyPatchArgs[i] = pgxmock.AnyArg()
+	}
+	mock.ExpectQuery(regexp.QuoteMeta(patchKnowledgeLoopEntryWhyQuery)).
+		WithArgs(anyPatchArgs...).
+		WillReturnError(pgx.ErrNoRows)
+
+	res, err := repo.PatchKnowledgeLoopEntryWhy(
+		context.Background(),
+		uuid.New().String(),
+		uuid.New().String(),
+		"default",
+		"article:missing",
+		50,
+		&sovereignv1.KnowledgeLoopWhyPayload{
+			Kind: sovereignv1.WhyKind_WHY_KIND_SOURCE,
+			Text: "x",
+		},
+	)
+	require.NoError(t, err)
+	require.False(t, res.Applied)
+	require.True(t, res.SkippedBySeqHiwater)
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
 // TestReserveKnowledgeLoopTransition_Fresh exercises a first-time idempotency claim.
 func TestReserveKnowledgeLoopTransition_Fresh(t *testing.T) {
 	mock, err := pgxmock.NewPool()

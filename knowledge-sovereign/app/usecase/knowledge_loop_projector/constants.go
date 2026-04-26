@@ -15,6 +15,13 @@ const (
 	EventSummarySuperseded     = "SummarySuperseded"
 	EventHomeItemSuperseded    = "HomeItemSuperseded"
 
+	// EventSummaryNarrativeBackfilled is the discovered event emitted by
+	// alt-backend's summary-narrative-backfill job to repair Knowledge Loop
+	// entries whose original SummaryVersionCreated event lacks article_title
+	// in payload. The projector handles this event with a patch-only-why path
+	// that preserves dismiss_state and other entry fields. See ADR-000846.
+	EventSummaryNarrativeBackfilled = "SummaryNarrativeBackfilled"
+
 	EventKnowledgeLoopObserved          = "knowledge_loop.observed.v1"
 	EventKnowledgeLoopOriented          = "knowledge_loop.oriented.v1"
 	EventKnowledgeLoopDecisionPresented = "knowledge_loop.decision_presented.v1"
@@ -39,4 +46,10 @@ const AggregateLoopSession = "knowledge_loop_session"
 // v4 (2026-04-26): projector ownership moved to knowledge-sovereign; runtime
 // behavior unchanged from v3 but the bump signals operators that the projection
 // is now driven from this service rather than the alt-backend job runner.
-const WhyMappingVersion = 4
+//
+// v5 (2026-04-26): SummaryNarrativeBackfilled event type added so historic
+// entries whose original SummaryVersionCreated event lacked article_title
+// can be patched with a real narrative. Bump is a runbook signal that
+// operators may optionally trigger a full reproject after backfill completes
+// to verify replay convergence. ADR-000846.
+const WhyMappingVersion = 5

@@ -53,6 +53,7 @@ type ProjectionAudit struct {
 type BackfillJob struct {
 	JobID             uuid.UUID
 	Status            string
+	Kind              string
 	ProjectionVersion int
 	CursorUserID      *uuid.UUID
 	CursorDate        *time.Time
@@ -386,7 +387,7 @@ func (r *Repository) CreateProjectionAudit(ctx context.Context, audit Projection
 
 // GetBackfillJob returns a backfill job by ID.
 func (r *Repository) GetBackfillJob(ctx context.Context, jobID uuid.UUID) (*BackfillJob, error) {
-	query := `SELECT job_id, status, projection_version, cursor_user_id, cursor_date, cursor_article_id,
+	query := `SELECT job_id, status, kind, projection_version, cursor_user_id, cursor_date, cursor_article_id,
 		total_events, processed_events, error_message, created_at, started_at, completed_at, updated_at
 		FROM knowledge_backfill_jobs WHERE job_id = $1`
 
@@ -407,7 +408,7 @@ func (r *Repository) GetBackfillJob(ctx context.Context, jobID uuid.UUID) (*Back
 
 // ListBackfillJobs returns all backfill jobs.
 func (r *Repository) ListBackfillJobs(ctx context.Context) ([]BackfillJob, error) {
-	query := `SELECT job_id, status, projection_version, cursor_user_id, cursor_date, cursor_article_id,
+	query := `SELECT job_id, status, kind, projection_version, cursor_user_id, cursor_date, cursor_article_id,
 		total_events, processed_events, error_message, created_at, started_at, completed_at, updated_at
 		FROM knowledge_backfill_jobs ORDER BY created_at DESC`
 
@@ -421,7 +422,7 @@ func (r *Repository) ListBackfillJobs(ctx context.Context) ([]BackfillJob, error
 	for rows.Next() {
 		var j BackfillJob
 		if err := rows.Scan(
-			&j.JobID, &j.Status, &j.ProjectionVersion, &j.CursorUserID, &j.CursorDate, &j.CursorArticleID,
+			&j.JobID, &j.Status, &j.Kind, &j.ProjectionVersion, &j.CursorUserID, &j.CursorDate, &j.CursorArticleID,
 			&j.TotalEvents, &j.ProcessedEvents, &j.ErrorMessage,
 			&j.CreatedAt, &j.StartedAt, &j.CompletedAt, &j.UpdatedAt,
 		); err != nil {
@@ -434,12 +435,17 @@ func (r *Repository) ListBackfillJobs(ctx context.Context) ([]BackfillJob, error
 
 // CreateBackfillJob inserts a new backfill job.
 func (r *Repository) CreateBackfillJob(ctx context.Context, j BackfillJob) error {
+	// kind defaults to 'articles' so legacy producers (proto v1 clients with
+	// no kind field set) keep their original semantics.
+	if j.Kind == "" {
+		j.Kind = "articles"
+	}
 	query := `INSERT INTO knowledge_backfill_jobs
-		(job_id, status, projection_version, cursor_user_id, cursor_date, cursor_article_id,
+		(job_id, status, kind, projection_version, cursor_user_id, cursor_date, cursor_article_id,
 		 total_events, processed_events, error_message, created_at, started_at, completed_at, updated_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)`
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)`
 	_, err := r.pool.Exec(ctx, query,
-		j.JobID, j.Status, j.ProjectionVersion, j.CursorUserID, j.CursorDate, j.CursorArticleID,
+		j.JobID, j.Status, j.Kind, j.ProjectionVersion, j.CursorUserID, j.CursorDate, j.CursorArticleID,
 		j.TotalEvents, j.ProcessedEvents, j.ErrorMessage,
 		j.CreatedAt, j.StartedAt, j.CompletedAt, j.UpdatedAt,
 	)

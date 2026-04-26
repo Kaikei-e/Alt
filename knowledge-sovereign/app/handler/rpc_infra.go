@@ -667,6 +667,7 @@ func backfillJobToProto(j sovereign_db.BackfillJob) *sovereignv1.BackfillJob {
 	pb := &sovereignv1.BackfillJob{
 		JobId:             j.JobID.String(),
 		Status:            j.Status,
+		Kind:              j.Kind,
 		ProjectionVersion: int32(j.ProjectionVersion),
 		TotalEvents:       int32(j.TotalEvents),
 		ProcessedEvents:   int32(j.ProcessedEvents),
@@ -699,6 +700,7 @@ func protoToBackfillJob(pb *sovereignv1.BackfillJob) sovereign_db.BackfillJob {
 	j := sovereign_db.BackfillJob{
 		JobID:             parseUUID(pb.JobId),
 		Status:            pb.Status,
+		Kind:              pb.Kind,
 		ProjectionVersion: int(pb.ProjectionVersion),
 		TotalEvents:       int(pb.TotalEvents),
 		ProcessedEvents:   int(pb.ProcessedEvents),

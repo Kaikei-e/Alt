@@ -38,6 +38,12 @@ func EnrichWhyFromEvent(ev *sovereign_db.KnowledgeEvent) *sovereignv1.KnowledgeL
 	switch ev.EventType {
 	case EventSummaryVersionCreated:
 		return enrichSummaryVersion(ev, payload)
+	case EventSummaryNarrativeBackfilled:
+		// Discovered event (ADR-000846) — same narrative shape as the original
+		// SummaryVersionCreated path so the patch SQL writes a substantive
+		// title-bearing why_text. Reusing enrichSummaryVersion guarantees a
+		// stable text format across new emissions and future replay.
+		return enrichSummaryVersion(ev, payload)
 	case EventHomeItemsSeen:
 		return enrichHomeItemsSeen(ev, payload)
 	case EventHomeItemAsked:

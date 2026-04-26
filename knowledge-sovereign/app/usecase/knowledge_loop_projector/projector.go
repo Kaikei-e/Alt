@@ -32,6 +32,12 @@ type Repository interface {
 	UpdateProjectionCheckpoint(ctx context.Context, projectorName string, lastSeq int64) error
 	UpsertKnowledgeLoopEntry(ctx context.Context, e *sovereignv1.KnowledgeLoopEntry) (*sovereign_db.KnowledgeLoopUpsertResult, error)
 	UpsertKnowledgeLoopSessionState(ctx context.Context, s *sovereignv1.KnowledgeLoopSessionState) (*sovereign_db.KnowledgeLoopUpsertResult, error)
+	// PatchKnowledgeLoopEntryWhy updates only the why_* columns of an existing
+	// entry row; dismiss_state, freshness_at, surface_bucket and other fields
+	// are preserved. Used by the SummaryNarrativeBackfilled projector branch
+	// (ADR-000846) to repair historic entries whose original
+	// SummaryVersionCreated event lacked article_title in payload.
+	PatchKnowledgeLoopEntryWhy(ctx context.Context, userID, tenantID, lensModeID, entryKey string, eventSeq int64, why *sovereignv1.KnowledgeLoopWhyPayload) (*sovereign_db.KnowledgeLoopUpsertResult, error)
 }
 
 // Config tunes the projector loop. Zero values fall back to defaults.
@@ -142,6 +148,14 @@ func (p *Projector) projectEvent(ctx context.Context, ev *sovereign_db.Knowledge
 		}
 		return p.repo.UpsertKnowledgeLoopEntry(ctx, entry)
 
+	case EventSummaryNarrativeBackfilled:
+		// ADR-000846: discovered event repairs historic entries' why_text via
+		// the patch path. The full UPSERT is intentionally avoided — it would
+		// overwrite dismiss_state and other entry-level fields that the user
+		// (or earlier events) may have transitioned. The patch SQL touches
+		// only the why_* columns; seq-hiwater guard ensures replay safety.
+		return p.projectSummaryNarrativeBackfilled(ctx, ev, lensModeID)
+
 	case EventHomeItemOpened:
 		entry, err := p.buildEntryFromEvent(ev, lensModeID,
 			sovereignv1.LoopStage_LOOP_STAGE_ACT,
@@ -205,6 +219,35 @@ func (p *Projector) projectEvent(ctx context.Context, ev *sovereign_db.Knowledge
 	default:
 		return nil, nil
 	}
+}
+
+// projectSummaryNarrativeBackfilled handles the discovered event emitted by
+// alt-backend's summary-narrative-backfill job (ADR-000846). It calls the
+// patch-only-why repo path so the existing entry's why_text is repaired
+// without disturbing dismiss_state, freshness_at, or any other field. The
+// projector is reproject-safe: enrichment uses event payload only.
+func (p *Projector) projectSummaryNarrativeBackfilled(
+	ctx context.Context,
+	ev *sovereign_db.KnowledgeEvent,
+	lensModeID string,
+) (*sovereign_db.KnowledgeLoopUpsertResult, error) {
+	if ev.UserID == nil {
+		return nil, nil
+	}
+	entryKey, err := deriveEntryKey(ev)
+	if err != nil {
+		return nil, err
+	}
+	why := EnrichWhyFromEvent(ev)
+	return p.repo.PatchKnowledgeLoopEntryWhy(
+		ctx,
+		ev.UserID.String(),
+		ev.TenantID.String(),
+		lensModeID,
+		entryKey,
+		ev.EventSeq,
+		why,
+	)
 }
 
 // projectTransition handles /loop-originated transition events. ADR-000831 §3.7

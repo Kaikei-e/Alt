@@ -23,7 +23,17 @@ type fakeRepo struct {
 	events      []sovereign_db.KnowledgeEvent
 	entries     []*sovereignv1.KnowledgeLoopEntry
 	sessions    []*sovereignv1.KnowledgeLoopSessionState
+	patches     []patchCall
 	checkpoints []int64
+}
+
+// patchCall records the arguments to PatchKnowledgeLoopEntryWhy so tests can
+// assert that the patch path was invoked with the right shape and that the
+// upsert path was NOT invoked (which would clobber dismiss_state).
+type patchCall struct {
+	UserID, TenantID, LensModeID, EntryKey string
+	EventSeq                               int64
+	Why                                    *sovereignv1.KnowledgeLoopWhyPayload
 }
 
 func (f *fakeRepo) ListKnowledgeEventsSince(ctx context.Context, afterSeq int64, limit int) ([]sovereign_db.KnowledgeEvent, error) {
@@ -57,6 +67,16 @@ func (f *fakeRepo) UpsertKnowledgeLoopEntry(ctx context.Context, e *sovereignv1.
 func (f *fakeRepo) UpsertKnowledgeLoopSessionState(ctx context.Context, s *sovereignv1.KnowledgeLoopSessionState) (*sovereign_db.KnowledgeLoopUpsertResult, error) {
 	f.sessions = append(f.sessions, s)
 	return &sovereign_db.KnowledgeLoopUpsertResult{Applied: true, ProjectionRevision: 1, ProjectionSeqHiwater: s.ProjectionSeqHiwater}, nil
+}
+
+func (f *fakeRepo) PatchKnowledgeLoopEntryWhy(ctx context.Context, userID, tenantID, lensModeID, entryKey string, eventSeq int64, why *sovereignv1.KnowledgeLoopWhyPayload) (*sovereign_db.KnowledgeLoopUpsertResult, error) {
+	f.patches = append(f.patches, patchCall{
+		UserID: userID, TenantID: tenantID, LensModeID: lensModeID,
+		EntryKey: entryKey, EventSeq: eventSeq, Why: why,
+	})
+	return &sovereign_db.KnowledgeLoopUpsertResult{
+		Applied: true, ProjectionRevision: 2, ProjectionSeqHiwater: eventSeq,
+	}, nil
 }
 
 func newProjector(repo Repository) *Projector {
@@ -193,6 +213,59 @@ func TestSeedDecisionOptions_StageAppropriate(t *testing.T) {
 		}
 		require.Equal(t, tc.intents, got, "stage %s seed intents", tc.stage)
 	}
+}
+
+func TestRunBatch_SummaryNarrativeBackfilled_PatchesWhyOnly(t *testing.T) {
+	// ADR-000846: discovered event repairs historic entries' why_text via the
+	// patch path, NOT the full UPSERT. dismiss_state and every other field
+	// must remain the projector's responsibility — preserved by the dedicated
+	// patch SQL.
+	userID := uuid.New()
+	ev := makeEvent(t, EventSummaryNarrativeBackfilled, 400, userID, map[string]any{
+		"summary_version_id": "sv-bf-1",
+		"article_id":         "art-bf-1",
+		"article_title":      "Discovered Title",
+	})
+	repo := &fakeRepo{events: []sovereign_db.KnowledgeEvent{ev}}
+	require.NoError(t, newProjector(repo).RunBatch(context.Background()))
+
+	require.Empty(t, repo.entries,
+		"backfill must NOT call UpsertKnowledgeLoopEntry — the full upsert "+
+			"would clobber dismiss_state and other entry fields")
+	require.Empty(t, repo.sessions,
+		"backfill must NOT touch session state")
+	require.Len(t, repo.patches, 1, "patch path must be invoked exactly once")
+
+	patch := repo.patches[0]
+	require.Equal(t, userID.String(), patch.UserID)
+	require.Equal(t, ev.TenantID.String(), patch.TenantID)
+	require.Equal(t, defaultLensModeID, patch.LensModeID)
+	require.Equal(t, "article:article:42", patch.EntryKey,
+		"entry_key derives from aggregate_type + aggregate_id; the test event "+
+			"uses the shared makeEvent fixture which sets aggregateID=\"article:42\"")
+	require.Equal(t, int64(400), patch.EventSeq)
+	require.NotNil(t, patch.Why)
+	require.Contains(t, patch.Why.Text, "Discovered Title",
+		"discovered article_title flows through enrichSummaryVersion's title "+
+			"branch, producing a narrative that inlines the title")
+	require.Contains(t, patch.Why.Text, "fresh summary ready to read",
+		"narrative shape matches enrichSummaryVersion (the enricher dispatches "+
+			"on event type — adding the new case must reuse the same shape)")
+}
+
+func TestRunBatch_SummaryNarrativeBackfilled_NoUserIDIsNoOp(t *testing.T) {
+	ev := sovereign_db.KnowledgeEvent{
+		EventID:    uuid.New(),
+		EventSeq:   500,
+		OccurredAt: time.Now().UTC(),
+		EventType:  EventSummaryNarrativeBackfilled,
+		UserID:     nil,
+		Payload:    json.RawMessage(`{"article_title":"X"}`),
+	}
+	repo := &fakeRepo{events: []sovereign_db.KnowledgeEvent{ev}}
+	require.NoError(t, newProjector(repo).RunBatch(context.Background()))
+	require.Empty(t, repo.patches)
+	require.Empty(t, repo.entries)
 }
 
 func TestRunBatch_EmptyBatchIsNoOp(t *testing.T) {

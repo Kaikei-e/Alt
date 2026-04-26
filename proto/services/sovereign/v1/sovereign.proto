@@ -259,6 +259,12 @@ message BackfillJob {
   google.protobuf.Timestamp started_at = 11;
   google.protobuf.Timestamp completed_at = 12;
   google.protobuf.Timestamp updated_at = 13;
+  // kind discriminates backfill streams: "articles" (default) for the
+  // original article-replay job, "summary_narratives" for the why-text
+  // repair job introduced by ADR-000846. New values may be added additively;
+  // empty string is treated as "articles" by both producer and consumer for
+  // backwards compatibility.
+  string kind = 14;
 }
 
 message Lens {

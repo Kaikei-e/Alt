@@ -173,6 +173,91 @@ func (r *Repository) UpsertKnowledgeLoopEntry(
 	}, nil
 }
 
+// patchKnowledgeLoopEntryWhyQuery updates only the why_* columns of an
+// existing entry row. ADR-000846: the SummaryNarrativeBackfilled discovered
+// event repairs historic entries whose original SummaryVersionCreated event
+// lacked article_title in payload. This SQL preserves dismiss_state,
+// freshness_at, surface_bucket, proposed_stage and every other field the
+// full UPSERT would have overwritten — only the why narrative is patched.
+//
+// Reproject-safety:
+//   - WHERE projection_seq_hiwater <= $5 makes idle replay a no-op once a
+//     newer patch event has already landed.
+//   - The patch event's effects converge across replay orders: the original
+//     SummaryVersionCreated (lower seq) creates the entry with the fallback
+//     narrative; the patch (higher seq) overwrites why_text only.
+const patchKnowledgeLoopEntryWhyQuery = `
+UPDATE knowledge_loop_entries SET
+  projection_revision    = projection_revision + 1,
+  projection_seq_hiwater = GREATEST(projection_seq_hiwater, $5),
+  source_event_seq       = GREATEST(source_event_seq, $5),
+  projected_at           = NOW(),
+  why_kind               = $6,
+  why_text               = $7,
+  why_confidence         = $8,
+  why_evidence_ref_ids   = $9,
+  why_evidence_refs      = $10
+WHERE user_id = $1 AND tenant_id = $2 AND lens_mode_id = $3 AND entry_key = $4
+  AND projection_seq_hiwater <= $5
+RETURNING projection_revision, projection_seq_hiwater
+`
+
+// PatchKnowledgeLoopEntryWhy patches only the why_* columns of an entry row,
+// preserving dismiss_state and every other field. Returns SkippedBySeqHiwater
+// if the row is missing OR the seq guard rejects (both safe outcomes — the
+// next reproject will converge).
+func (r *Repository) PatchKnowledgeLoopEntryWhy(
+	ctx context.Context,
+	userID, tenantID, lensModeID, entryKey string,
+	eventSeq int64,
+	why *sovereignv1.KnowledgeLoopWhyPayload,
+) (*KnowledgeLoopUpsertResult, error) {
+	if why == nil {
+		return nil, errors.New("sovereign_db: nil WhyPayload for patch")
+	}
+	uID, err := uuid.Parse(userID)
+	if err != nil {
+		return nil, fmt.Errorf("parse user_id: %w", err)
+	}
+	tID, err := uuid.Parse(tenantID)
+	if err != nil {
+		return nil, fmt.Errorf("parse tenant_id: %w", err)
+	}
+
+	whyKind := whyKindToDB(why.Kind)
+	var whyConfidence *float32
+	if why.Confidence != nil {
+		whyConfidence = why.Confidence
+	}
+	whyEvidenceRefIDs := make([]string, 0, len(why.EvidenceRefs))
+	whyEvidenceRefsJSON := []byte("[]")
+	if len(why.EvidenceRefs) > 0 {
+		arr := make([]map[string]string, 0, len(why.EvidenceRefs))
+		for _, r := range why.EvidenceRefs {
+			whyEvidenceRefIDs = append(whyEvidenceRefIDs, r.RefId)
+			arr = append(arr, map[string]string{"ref_id": r.RefId, "label": r.Label})
+		}
+		whyEvidenceRefsJSON, _ = json.Marshal(arr)
+	}
+
+	var revision, seqHiwater int64
+	row := r.pool.QueryRow(ctx, patchKnowledgeLoopEntryWhyQuery,
+		uID, tID, lensModeID, entryKey, eventSeq,
+		whyKind, why.Text, whyConfidence, whyEvidenceRefIDs, whyEvidenceRefsJSON,
+	)
+	if err := row.Scan(&revision, &seqHiwater); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return &KnowledgeLoopUpsertResult{SkippedBySeqHiwater: true}, nil
+		}
+		return nil, fmt.Errorf("patch knowledge_loop_entry why: %w", err)
+	}
+	return &KnowledgeLoopUpsertResult{
+		Applied:              true,
+		ProjectionRevision:   revision,
+		ProjectionSeqHiwater: seqHiwater,
+	}, nil
+}
+
 const upsertKnowledgeLoopSessionStateQuery = `
 INSERT INTO knowledge_loop_session_state (
   user_id, tenant_id, lens_mode_id,
