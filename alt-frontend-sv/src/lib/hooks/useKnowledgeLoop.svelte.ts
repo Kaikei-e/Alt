@@ -25,6 +25,7 @@ type TransitionResult =
 	| { status: "accepted"; replay?: boolean }
 	| { status: "forbidden"; reason: string }
 	| { status: "stale" }
+	| { status: "rate_limited" }
 	| { status: "error"; message: string };
 
 const OBSERVE_THROTTLE_MS = 60_000;
@@ -77,6 +78,7 @@ export function useKnowledgeLoop(opts: UseKnowledgeLoopOptions) {
 				return { status: "accepted", replay: json.replay === true };
 			}
 			if (res.status === 409) return { status: "stale" };
+			if (res.status === 429) return { status: "rate_limited" };
 			if (res.status === 400)
 				return { status: "forbidden", reason: "invalid_body" };
 			return { status: "error", message: `http_${res.status}` };
@@ -110,6 +112,16 @@ export function useKnowledgeLoop(opts: UseKnowledgeLoopOptions) {
 			if (result.status === "accepted") {
 				applyLocalStage(entryKey, "orient");
 				return true;
+			}
+			// On rate_limited the backend has already booked our attempt against
+			// the §8.4 (user_id, entry_key, lens_mode_id) 60s window. Resetting the
+			// local throttle here would invite the next IntersectionObserver tick
+			// to re-fire immediately, which the backend would also reject — the
+			// loop that produced the production console-log spam. Keep the
+			// throttle armed so the next emission is gated by the same 60s.
+			if (result.status === "rate_limited") {
+				lastError = "rate_limited";
+				return false;
 			}
 			if (result.status === "error" || result.status === "stale") {
 				observeThrottle.reset(entryKey);
@@ -156,7 +168,11 @@ export function useKnowledgeLoop(opts: UseKnowledgeLoopOptions) {
 			});
 			if (result.status === "accepted") {
 				applyLocalStage(entryKey, toStage);
-			} else if (result.status === "error" || result.status === "stale") {
+			} else if (
+				result.status === "error" ||
+				result.status === "stale" ||
+				result.status === "rate_limited"
+			) {
 				lastError = result.status;
 			}
 			return result;
