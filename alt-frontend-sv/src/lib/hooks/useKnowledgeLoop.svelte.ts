@@ -11,7 +11,10 @@
 
 import { uuidv7 } from "$lib/utils/uuidv7";
 import { canTransition } from "./loop-transitions";
-import { makeObserveThrottle } from "./loop-observe-throttle";
+import {
+	makeObserveThrottle,
+	type ObserveThrottleStorage,
+} from "./loop-observe-throttle";
 import type {
 	KnowledgeLoopEntryData,
 	KnowledgeLoopResult,
@@ -34,6 +37,26 @@ export interface UseKnowledgeLoopOptions {
 	initial: KnowledgeLoopResult;
 	lensModeId: string;
 	fetchImpl?: typeof fetch;
+	// Storage for the per-entry observe throttle. Defaults to localStorage in
+	// the browser and to in-memory only in SSR / tests. Aligning the FE
+	// throttle window with the backend §8.4 60s window across page reloads
+	// avoids the "burn one 429 per reload per visible entry" pattern: the
+	// in-memory throttle alone is reset on every reload, so the next dwell
+	// tick re-fires straight into a backend rate-limit rejection.
+	observeThrottleStorage?: ObserveThrottleStorage | null;
+}
+
+function defaultObserveThrottleStorage(): ObserveThrottleStorage | null {
+	if (typeof window === "undefined") return null;
+	try {
+		// Touch the API once so SSR / private-mode failures degrade silently to
+		// in-memory throttling — rather than crashing the hook on first call.
+		const probe = window.localStorage;
+		probe.getItem("__alt_loop_throttle_probe__");
+		return probe;
+	} catch {
+		return null;
+	}
 }
 
 export function useKnowledgeLoop(opts: UseKnowledgeLoopOptions) {
@@ -44,7 +67,12 @@ export function useKnowledgeLoop(opts: UseKnowledgeLoopOptions) {
 	);
 	let lastError = $state<string | null>(null);
 	const inFlight = new SvelteSet();
-	const observeThrottle = makeObserveThrottle(OBSERVE_THROTTLE_MS);
+	const observeThrottle = makeObserveThrottle(OBSERVE_THROTTLE_MS, {
+		storage:
+			opts.observeThrottleStorage === undefined
+				? defaultObserveThrottleStorage()
+				: opts.observeThrottleStorage,
+	});
 
 	function isInFlight(entryKey: string): boolean {
 		return inFlight.has(entryKey);

@@ -27,3 +27,7 @@ stats.html
 
 
 settings.json
+
+# Vitest browser test artefacts (Playwright provider screenshots / attachments)
+.vitest-attachments/
+src/**/__screenshots__/

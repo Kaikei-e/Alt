@@ -70,6 +70,7 @@ describe("useKnowledgeLoop.observe — backend 429 must NOT clear local throttle
 			initial: FRESH_FOREGROUND,
 			lensModeId: "default",
 			fetchImpl: countingFetch,
+			observeThrottleStorage: null,
 		});
 
 		const first = await loop.observe("article:42");
@@ -80,6 +81,52 @@ describe("useKnowledgeLoop.observe — backend 429 must NOT clear local throttle
 		expect(second).toBe(false); // throttle gates the second tick
 		expect(third).toBe(false); // and the third
 		expect(calls).toBe(1); // backend hit ONCE, not three times
+	});
+
+	it("persists throttle to injected Storage so a fresh hook (reload) does not re-fire", async () => {
+		// First "page session": single in-memory observe → 429 captured →
+		// throttle persisted to the shared Storage.
+		const storage = (() => {
+			const m = new Map<string, string>();
+			return {
+				getItem: (k: string) => m.get(k) ?? null,
+				setItem: (k: string, v: string) => {
+					m.set(k, v);
+				},
+				removeItem: (k: string) => {
+					m.delete(k);
+				},
+			};
+		})();
+		let calls = 0;
+		const fetchImpl = (async () => {
+			calls += 1;
+			return new Response(JSON.stringify({ error: "rate_limited" }), {
+				status: 429,
+			});
+		}) as unknown as typeof fetch;
+
+		const session1 = useKnowledgeLoop({
+			initial: FRESH_FOREGROUND,
+			lensModeId: "default",
+			fetchImpl,
+			observeThrottleStorage: storage,
+		});
+		await session1.observe("article:42");
+		expect(calls).toBe(1);
+
+		// Second "page session" reuses the same Storage — exactly what a
+		// browser reload looks like. The throttle MUST gate the new hook so
+		// no second fetch is issued, mirroring backend §8.4's 60s window.
+		const session2 = useKnowledgeLoop({
+			initial: FRESH_FOREGROUND,
+			lensModeId: "default",
+			fetchImpl,
+			observeThrottleStorage: storage,
+		});
+		await session2.observe("article:42");
+		await session2.observe("article:42");
+		expect(calls).toBe(1);
 	});
 
 	it("network error does still allow a retry (throttle reset preserved)", async () => {
@@ -95,6 +142,7 @@ describe("useKnowledgeLoop.observe — backend 429 must NOT clear local throttle
 			initial: FRESH_FOREGROUND,
 			lensModeId: "default",
 			fetchImpl: flakyFetch,
+			observeThrottleStorage: null,
 		});
 
 		await loop.observe("article:42");
