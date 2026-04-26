@@ -1,20 +1,24 @@
 <script lang="ts">
-import { onMount } from "svelte";
-import { goto, invalidateAll } from "$app/navigation";
-import LoopSurfacePlane from "$lib/components/knowledge-loop/LoopSurfacePlane.svelte";
-import LoopEntryTile from "$lib/components/knowledge-loop/LoopEntryTile.svelte";
-import EmptyNow from "$lib/components/knowledge-loop/EmptyNow.svelte";
-import ContinueStream from "$lib/components/knowledge-loop/ContinueStream.svelte";
-import ChangedDiffCard from "$lib/components/knowledge-loop/ChangedDiffCard.svelte";
-import ReviewDock from "$lib/components/knowledge-loop/ReviewDock.svelte";
-import { useKnowledgeLoop } from "$lib/hooks/useKnowledgeLoop.svelte";
-import { useKnowledgeLoopStream } from "$lib/hooks/useKnowledgeLoopStream.svelte";
+import { onDestroy, onMount } from "svelte";
+import { flip } from "svelte/animate";
+import { cubicOut } from "svelte/easing";
+import { goto, invalidate } from "$app/navigation";
 import { observeTiles } from "$lib/actions/observe-tiles";
-import { uuidv7 } from "$lib/utils/uuidv7";
+import ChangedDiffCard from "$lib/components/knowledge-loop/ChangedDiffCard.svelte";
+import ContinueStream from "$lib/components/knowledge-loop/ContinueStream.svelte";
+import EmptyNow from "$lib/components/knowledge-loop/EmptyNow.svelte";
+import LoopEntryTile from "$lib/components/knowledge-loop/LoopEntryTile.svelte";
+import LoopSurfacePlane from "$lib/components/knowledge-loop/LoopSurfacePlane.svelte";
+import ReviewDock from "$lib/components/knowledge-loop/ReviewDock.svelte";
 import type {
 	KnowledgeLoopEntryData,
 	KnowledgeLoopResult,
 } from "$lib/connect/knowledge_loop";
+import { makeCoalescedRefresh } from "$lib/hooks/loop-coalesce";
+import { useKnowledgeLoop } from "$lib/hooks/useKnowledgeLoop.svelte";
+import { useKnowledgeLoopStream } from "$lib/hooks/useKnowledgeLoopStream.svelte";
+import { loopRecede } from "$lib/transitions/loop-recede";
+import { uuidv7 } from "$lib/utils/uuidv7";
 import "$lib/styles/loop-depth.css";
 import type { PageData } from "./$types";
 
@@ -55,6 +59,24 @@ const loop = useKnowledgeLoop({
 	lensModeId: data.lensModeId ?? "default",
 });
 
+// When `invalidate("loop:data")` re-runs the load function, `data.loop`
+// updates with a fresh snapshot. Push it into the hook so the foreground
+// and sessionState track the projector without forcing a full SSR re-render.
+// The hook's `replaceSnapshot` preserves any optimistic local dismissals
+// until the projector catches up.
+//
+// Reference-equality against the constructor's seed, not a boolean gate, so
+// we still re-seed correctly if SSR initially returned `null` (unauthenticated)
+// and a subsequent invalidation supplies the first real snapshot.
+// svelte-ignore state_referenced_locally
+const initialDataLoop = data.loop;
+$effect(() => {
+	const next = data.loop;
+	if (!next) return;
+	if (next === initialDataLoop) return; // Hook constructor already seeded.
+	loop.replaceSnapshot(next);
+});
+
 const foreground = $derived(loop.entries);
 const sessionState = $derived(loop.sessionState);
 const surfaces = $derived(data.loop?.surfaces ?? []);
@@ -75,14 +97,31 @@ const reviewEntries = $derived(
 	bucketEntries.filter((e) => e.surfaceBucket === "review"),
 );
 
-// Server-sent Loop updates (ADR-000831 §9). Stream frames are hints: on every
-// non-silent frame we invalidate the SSR snapshot so the next load() refetches
-// foreground + surfaces from GetKnowledgeLoop. The stream is read-only — it
-// never mutates projection state, matching immutable-design-guard F3.
+// Server-sent Loop updates (ADR-000831 §9). Stream frames are hints: on
+// non-silent frames we ask SvelteKit to refresh just the `loop:data` resource
+// instead of the whole page tree. The refresh is *coalesced*: a 600 ms
+// trailing debounce + single-flight guard ensures a burst of frames (or a
+// JWT-expiry loop) maps to at most one `__data.json` refetch per window.
+//
+// The pre-fix code called `invalidateAll()` from both `onFrame` and
+// `onExpired`. That replaced `data` on every call, which churned the stream
+// hook's `data`-keyed `$effect`, which tore down + reopened the stream, which
+// hit immediate JWT expiry on the still-old SSR token, which fired
+// `onExpired` again. Live nginx + alt-backend logs (2026-04-26 04:30) caught
+// this as ~50 simultaneous `GetKnowledgeLoop` calls and ~50 lockstep
+// `stream_jwt_expired` log lines per cycle, eventually tripping
+// `ERR_INSUFFICIENT_RESOURCES` in the browser. The hook's own
+// `scheduleReconnect` already owns reconnect-with-backoff, so we no longer
+// need the page to react to expiry at all beyond the same coalesced refresh.
 let streamEnabled = $state(false);
 onMount(() => {
 	streamEnabled = true;
 });
+
+const coalescedRefresh = makeCoalescedRefresh(async () => {
+	await invalidate("loop:data");
+});
+onDestroy(() => coalescedRefresh.dispose());
 
 useKnowledgeLoopStream({
 	get enabled() {
@@ -93,12 +132,15 @@ useKnowledgeLoopStream({
 	},
 	onFrame(frame) {
 		// Silent updates per contract §9: revised/heartbeat do not disturb
-		// foreground. Appended/superseded/withdrawn/rebalanced warrant a refetch.
+		// foreground. Appended/superseded/withdrawn/rebalanced warrant a refetch
+		// — coalesced so a burst maps to one network call, not one per frame.
 		if (frame.kind === "revised" || frame.kind === "heartbeat") return;
-		void invalidateAll();
+		coalescedRefresh.trigger();
 	},
 	onExpired() {
-		void invalidateAll();
+		// Don't kick the SSR refresh off the JWT-expiry path. The stream hook
+		// schedules its own reconnect and the next non-silent frame on the
+		// fresh stream will trigger the coalesced refresh anyway.
 	},
 });
 
@@ -262,16 +304,22 @@ function onReviewOpen(entry: KnowledgeLoopEntryData) {
 		>
 			<div class="foreground-tiles" use:observeTiles={{ onObserve }}>
 				{#each foreground as entry, i (entry.entryKey)}
-					<LoopEntryTile
-						{entry}
-						stagger={i}
-						onTransition={loop.transitionTo}
-						onDismiss={loop.dismiss}
-						{onAsk}
-						canTransition={loop.canTransition}
-						isInFlight={loop.isInFlight}
-						{resolveSourceUrl}
-					/>
+					<div
+						class="foreground-row"
+						animate:flip={{ duration: 240, easing: cubicOut }}
+						out:loopRecede={{ duration: 280 }}
+					>
+						<LoopEntryTile
+							{entry}
+							stagger={i}
+							onTransition={loop.transitionTo}
+							onDismiss={loop.dismiss}
+							{onAsk}
+							canTransition={loop.canTransition}
+							isInFlight={loop.isInFlight}
+							{resolveSourceUrl}
+						/>
+					</div>
 				{/each}
 			</div>
 		</LoopSurfacePlane>
@@ -353,6 +401,16 @@ function onReviewOpen(entry: KnowledgeLoopEntryData) {
 	.foreground-tiles {
 		display: grid;
 		gap: 0.8rem;
+		/* Local 3D context so each foreground row receives Z transforms from
+		 * `out:loopRecede` against a shared vanishing point (perspective on
+		 * `.loop-plane-root` in loop-depth.css). Without preserve-3d here, each
+		 * tile renders flat and the Z-recede flattens into a 2D fade. */
+		transform-style: preserve-3d;
+	}
+	.foreground-row {
+		/* Each row participates in the parent's perspective — keep flat at rest;
+		 * `out:loopRecede` adds translateZ during exit only. */
+		transform-style: preserve-3d;
 	}
 
 	.kicker-row {

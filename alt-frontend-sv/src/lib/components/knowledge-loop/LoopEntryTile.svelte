@@ -200,7 +200,7 @@ async function handleDismiss() {
 <article
 	class="entry depth-{entry.renderDepthHint}"
 	class:expanded
-	class:dismissing
+	class:exit-pending={dismissing}
 	data-role="loop-entry"
 	data-testid="loop-entry-tile"
 	data-entry-key={entry.entryKey}
@@ -314,20 +314,24 @@ async function handleDismiss() {
 		opacity: 0;
 		cursor: pointer;
 		text-align: left;
-		max-height: 640px;
+		/* No `max-height` clamp here. Pre-fix the tile collapsed `max-height: 0`
+		 * during a `.dismissing` keyframe, which combined with the fetch-storm
+		 * starving the main thread caused content overflow into the next grid
+		 * row — visible as the OODA cards stacking onto each other. The exit
+		 * animation now lives on the parent `#each` (`out:loopRecede` +
+		 * `animate:flip`) and removes the row from the DOM cleanly. */
 		transition:
 			filter 180ms ease,
-			border-color 180ms ease,
-			opacity 160ms ease,
-			max-height 160ms ease;
+			border-color 180ms ease;
 	}
 	.entry:focus-visible {
 		outline: 2px solid var(--alt-charcoal, #1a1a1a);
 		outline-offset: 2px;
 	}
-	.entry.dismissing {
-		opacity: 0;
-		max-height: 0;
+	.entry.exit-pending {
+		/* Disable pointer events the moment Dismiss is clicked so the user can't
+		 * fire a second action mid-exit. Visual fade is owned by `out:loopRecede`
+		 * on the parent row. */
 		pointer-events: none;
 	}
 	@keyframes entry-in {
@@ -543,10 +547,6 @@ async function handleDismiss() {
 			animation: none;
 			opacity: 1;
 			transition: opacity 160ms ease;
-		}
-		.entry.dismissing {
-			opacity: 0;
-			max-height: 0;
 		}
 		.entry.depth-1,
 		.entry.depth-2,

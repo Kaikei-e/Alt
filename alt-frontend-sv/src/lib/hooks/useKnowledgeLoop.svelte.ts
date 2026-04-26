@@ -9,18 +9,18 @@
  * so the backend token wiring stays inside the SvelteKit server runtime.
  */
 
-import { uuidv7 } from "$lib/utils/uuidv7";
-import { canTransition } from "./loop-transitions";
-import {
-	makeObserveThrottle,
-	type ObserveThrottleStorage,
-} from "./loop-observe-throttle";
 import type {
 	KnowledgeLoopEntryData,
 	KnowledgeLoopResult,
 	KnowledgeLoopSessionStateData,
 	LoopStageName,
 } from "$lib/connect/knowledge_loop";
+import { uuidv7 } from "$lib/utils/uuidv7";
+import {
+	makeObserveThrottle,
+	type ObserveThrottleStorage,
+} from "./loop-observe-throttle";
+import { canTransition } from "./loop-transitions";
 
 type Trigger = "user_tap" | "dwell" | "keyboard" | "programmatic";
 
@@ -61,12 +61,19 @@ function defaultObserveThrottleStorage(): ObserveThrottleStorage | null {
 
 export function useKnowledgeLoop(opts: UseKnowledgeLoopOptions) {
 	const fetcher = opts.fetchImpl ?? fetch;
-	let entries = $state<KnowledgeLoopEntryData[]>([...opts.initial.foregroundEntries]);
+	let entries = $state<KnowledgeLoopEntryData[]>([
+		...opts.initial.foregroundEntries,
+	]);
 	let sessionState = $state<KnowledgeLoopSessionStateData | undefined>(
 		opts.initial.sessionState,
 	);
 	let lastError = $state<string | null>(null);
 	const inFlight = new SvelteSet();
+	// Tracks entry keys the user has optimistically dismissed locally. The
+	// server-side projection lags the dismiss event by one projector tick, so
+	// without this guard a stream-driven `replaceSnapshot` would briefly flash
+	// the dismissed tile back into the foreground until the next snapshot.
+	const optimisticallyDismissed = new Set<string>();
 	const observeThrottle = makeObserveThrottle(OBSERVE_THROTTLE_MS, {
 		storage:
 			opts.observeThrottleStorage === undefined
@@ -248,9 +255,34 @@ export function useKnowledgeLoop(opts: UseKnowledgeLoopOptions) {
 	}
 
 	function applyLocalDismiss(entryKey: string) {
-		entries = entries.map((e) =>
-			e.entryKey === entryKey ? { ...e, dismissState: "dismissed" } : e,
+		// Remove the entry from the foreground array so Svelte's keyed `#each`
+		// detects a leaver and plays the parent-level `out:` transition +
+		// `animate:flip` for survivors. The pre-fix path mutated `dismissState`
+		// in place, which left the row in the DOM with a `.dismissing` class
+		// collapsing `max-height` — combined with the fetch-storm starving the
+		// main thread of rAFs, neighbors visibly overlapped mid-collapse.
+		optimisticallyDismissed.add(entryKey);
+		entries = entries.filter((e) => e.entryKey !== entryKey);
+	}
+
+	function replaceSnapshot(next: KnowledgeLoopResult) {
+		// Stream-driven coalesced refresh path. Re-seed entries + sessionState
+		// from a freshly fetched GetKnowledgeLoop result without forcing an SSR
+		// `__data.json` refetch. Optimistically dismissed entries stay removed
+		// until the projection catches up and the server itself stops returning
+		// them.
+		entries = next.foregroundEntries.filter(
+			(e) => !optimisticallyDismissed.has(e.entryKey),
 		);
+		sessionState = next.sessionState;
+		// Garbage-collect dismissals the server has acknowledged: any key the
+		// new snapshot already omits no longer needs the local guard.
+		const stillReturned = new Set(
+			next.foregroundEntries.map((e) => e.entryKey),
+		);
+		for (const key of [...optimisticallyDismissed]) {
+			if (!stillReturned.has(key)) optimisticallyDismissed.delete(key);
+		}
 	}
 
 	return {
@@ -266,6 +298,7 @@ export function useKnowledgeLoop(opts: UseKnowledgeLoopOptions) {
 		observe,
 		transitionTo,
 		dismiss,
+		replaceSnapshot,
 		canTransition,
 		isInFlight,
 	};

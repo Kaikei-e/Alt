@@ -17,6 +17,7 @@
  */
 
 import { createClient } from "@connectrpc/connect";
+import { untrack } from "svelte";
 import { createClientTransport } from "$lib/connect/transport-client";
 import { KnowledgeLoopService } from "$lib/gen/alt/knowledge/loop/v1/knowledge_loop_pb";
 import {
@@ -146,14 +147,29 @@ export function useKnowledgeLoopStream(opts: UseKnowledgeLoopStreamOptions) {
 		isConnected = false;
 	}
 
+	// Track lens id by *value*, not by the surrounding `data` reference. Without
+	// this guard, an `invalidateAll()` triggered elsewhere on the page replaces
+	// `data` (a fresh prop reference each time), the effect's `data`-tracked
+	// dependency churns, and the cleanup tears down + re-opens the stream — the
+	// positive-feedback loop that produced the lockstep `stream_jwt_expired` log
+	// waves in production. `untrack` keeps the deep read out of the dependency
+	// graph; we feed lens id through a $derived value-equality gate instead.
+	const trackedLensId = $derived.by(() => opts.lensModeId);
+
 	$effect(() => {
 		const enabled = opts.enabled;
-		const _lens = opts.lensModeId; // re-subscribe when lens changes
-
+		// trackedLensId is a $derived, so the effect re-runs only on value change.
+		const _lens = trackedLensId;
 		if (!enabled) return;
-		stopped = false;
-		retryCount = 0;
-		void connect();
+
+		// Use untrack for the imperative connect/disconnect side so any reactive
+		// reads inside `connect()` (rare, but cheap insurance) do not subscribe
+		// the effect to additional state.
+		untrack(() => {
+			stopped = false;
+			retryCount = 0;
+			void connect();
+		});
 
 		return () => {
 			disconnect();

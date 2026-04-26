@@ -1,6 +1,6 @@
-import { describe, it, expect } from "vitest";
-import { useKnowledgeLoop } from "./useKnowledgeLoop.svelte.ts";
+import { describe, expect, it } from "vitest";
 import type { KnowledgeLoopResult } from "$lib/connect/knowledge_loop";
+import { useKnowledgeLoop } from "./useKnowledgeLoop.svelte.ts";
 
 /**
  * Knowledge Loop dwell rate-limit handling.
@@ -46,14 +46,6 @@ const FRESH_FOREGROUND: KnowledgeLoopResult = {
 	generatedAt: "2026-04-26T10:00:00Z",
 	projectionSeqHiwater: 100,
 };
-
-function fetchReturning(status: number, body: unknown = {}): typeof fetch {
-	return (async () =>
-		new Response(JSON.stringify(body), {
-			status,
-			headers: { "content-type": "application/json" },
-		})) as unknown as typeof fetch;
-}
 
 describe("useKnowledgeLoop.observe — backend 429 must NOT clear local throttle", () => {
 	it("does NOT re-fire after a 429 within the 60 s window", async () => {
@@ -149,5 +141,109 @@ describe("useKnowledgeLoop.observe — backend 429 must NOT clear local throttle
 		await loop.observe("article:42");
 
 		expect(calls).toBe(2); // 500 keeps reset semantics — retries are OK
+	});
+});
+
+/**
+ * Dismiss must remove the entry from `entries`, not just flag it as
+ * `dismissed`. The pre-fix behaviour kept the entry in the keyed `#each`
+ * with a `.dismissing` class that collapsed `max-height` — combined with the
+ * fetch storm starving the main thread, the half-collapsed tile bled into
+ * its neighbors. The new contract: dismiss removes the row immediately so
+ * Svelte's `out:` transition + `animate:flip` can play on the parent.
+ */
+describe("useKnowledgeLoop.dismiss — removes the entry from foreground", () => {
+	it("removes the dismissed entry from `entries` after the local apply", async () => {
+		const accepted = (async () =>
+			new Response(JSON.stringify({ accepted: true }), {
+				status: 200,
+				headers: { "content-type": "application/json" },
+			})) as unknown as typeof fetch;
+
+		const loop = useKnowledgeLoop({
+			initial: FRESH_FOREGROUND,
+			lensModeId: "default",
+			fetchImpl: accepted,
+			observeThrottleStorage: null,
+		});
+		expect(loop.entries).toHaveLength(1);
+
+		await loop.dismiss("article:42");
+		expect(loop.entries).toHaveLength(0);
+	});
+
+	it("dismissing an unknown entry is a no-op", async () => {
+		const fetchImpl = (async () =>
+			new Response("{}", { status: 200 })) as unknown as typeof fetch;
+		const loop = useKnowledgeLoop({
+			initial: FRESH_FOREGROUND,
+			lensModeId: "default",
+			fetchImpl,
+			observeThrottleStorage: null,
+		});
+
+		await loop.dismiss("does-not-exist");
+		expect(loop.entries).toHaveLength(1);
+	});
+});
+
+/**
+ * `replaceSnapshot` re-seeds entries and sessionState from a freshly fetched
+ * GetKnowledgeLoop result without forcing an SSR `__data.json` refetch. The
+ * coalesced stream-driven refresh feeds it. Optimistically dismissed entries
+ * (those the user just removed locally) must NOT come back, even if the
+ * server-side projection has not caught up to the dismiss event yet.
+ */
+describe("useKnowledgeLoop.replaceSnapshot — re-seed without losing optimistic state", () => {
+	it("replaces entries when no optimistic dismissals are pending", async () => {
+		const fetchImpl = (async () =>
+			new Response("{}", { status: 200 })) as unknown as typeof fetch;
+		const loop = useKnowledgeLoop({
+			initial: FRESH_FOREGROUND,
+			lensModeId: "default",
+			fetchImpl,
+			observeThrottleStorage: null,
+		});
+
+		const next: KnowledgeLoopResult = {
+			...FRESH_FOREGROUND,
+			foregroundEntries: [
+				{
+					...FRESH_FOREGROUND.foregroundEntries[0],
+					entryKey: "article:99",
+					projectionRevision: 2,
+				},
+			],
+			projectionSeqHiwater: 200,
+		};
+
+		loop.replaceSnapshot(next);
+		expect(loop.entries).toHaveLength(1);
+		expect(loop.entries[0].entryKey).toBe("article:99");
+	});
+
+	it("does NOT resurrect an entry the user just dismissed locally", async () => {
+		const accepted = (async () =>
+			new Response(JSON.stringify({ accepted: true }), {
+				status: 200,
+				headers: { "content-type": "application/json" },
+			})) as unknown as typeof fetch;
+		const loop = useKnowledgeLoop({
+			initial: FRESH_FOREGROUND,
+			lensModeId: "default",
+			fetchImpl: accepted,
+			observeThrottleStorage: null,
+		});
+
+		await loop.dismiss("article:42");
+		expect(loop.entries).toHaveLength(0);
+
+		// Server-side projection has not caught up yet — it still returns the
+		// dismissed entry. The hook must filter it out so the UI does not flash
+		// the re-appearance of a tile the user just removed.
+		loop.replaceSnapshot(FRESH_FOREGROUND);
+		expect(
+			loop.entries.find((e) => e.entryKey === "article:42"),
+		).toBeUndefined();
 	});
 });
