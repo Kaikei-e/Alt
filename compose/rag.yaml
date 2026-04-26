@@ -108,6 +108,13 @@ services:
       - HYBRID_BM25_SOURCE=${HYBRID_BM25_SOURCE:-meilisearch}
       - LLM_BACKEND=${LLM_BACKEND:-ollama}
       - OTEL_EXPORTER_OTLP_ENDPOINT=http://rask-log-aggregator:4318
+      # Knowledge Loop Wave 4-A emit (ADR-000855). When true, the augur
+      # handler publishes augur.conversation_linked.v1 into knowledge-
+      # sovereign so Surface Planner v2's resolver can credit Loop entries
+      # with HasAugurLink. Defaults to false-equivalent when unset, which
+      # keeps live behavior unchanged.
+      - RAG_ORCHESTRATOR_KNOWLEDGE_EVENT_EMIT=${RAG_ORCHESTRATOR_KNOWLEDGE_EVENT_EMIT:-true}
+      - RAG_ORCHESTRATOR_KNOWLEDGE_SOVEREIGN_URL=${RAG_ORCHESTRATOR_KNOWLEDGE_SOVEREIGN_URL:-http://knowledge-sovereign:9500}
     secrets:
       - rag_db_password
     ports:
