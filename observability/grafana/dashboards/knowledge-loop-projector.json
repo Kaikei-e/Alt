@@ -1,0 +1,224 @@
+{
+  "annotations": {
+    "list": []
+  },
+  "description": "Knowledge Loop projector health (ADR-000852 / Wave 4). Counters live in knowledge-sovereign at /metrics on port 9501. Pair with observability/alerts/knowledge-loop-rules.yaml.",
+  "editable": false,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 0,
+  "id": null,
+  "links": [],
+  "liveNow": false,
+  "panels": [
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "description": "Surface bucket assignment rate, stacked by planner version. Once Wave 4-A / 4-B are landed and emitting, v2 should rise above v1 baseline.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "smooth",
+            "stacking": {
+              "group": "A",
+              "mode": "normal"
+            }
+          },
+          "unit": "ops"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 0
+      },
+      "id": 1,
+      "title": "Surface bucket rate (5m, by version × bucket)",
+      "type": "timeseries",
+      "targets": [
+        {
+          "expr": "sum by (version, bucket) (rate(knowledge_loop_projector_surface_bucket_assigned_total[5m]))",
+          "legendFormat": "{{version}} / {{bucket}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "description": "Change-summary writes split by redline_capable. Higher redline_capable=true ratio means upstream supersede events carry old + new excerpts (Wave 1).",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "unit": "ops"
+        }
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 0
+      },
+      "id": 2,
+      "title": "Change summaries written (5m)",
+      "type": "timeseries",
+      "targets": [
+        {
+          "expr": "sum by (redline_capable) (rate(knowledge_loop_projector_change_summary_written_total[5m]))",
+          "legendFormat": "redline_capable={{redline_capable}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "description": "Cumulative event drops by reason. Any non-zero series during rollout points at a real wire-format drift — alert KnowledgeLoopEventDropSpike covers the rate side.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          }
+        }
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 8
+      },
+      "id": 3,
+      "title": "Events dropped (cumulative, by reason)",
+      "type": "timeseries",
+      "targets": [
+        {
+          "expr": "sum by (reason) (knowledge_loop_projector_event_dropped_total)",
+          "legendFormat": "{{reason}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "description": "F-001 cross-tenant isolation breach counter. Must stay at 0. The matching alert pages on the first non-zero increase.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 1
+              }
+            ]
+          }
+        }
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 6,
+        "x": 12,
+        "y": 8
+      },
+      "id": 4,
+      "title": "Cross-user isolation violations (cumulative)",
+      "type": "stat",
+      "targets": [
+        {
+          "expr": "sum(knowledge_loop_projector_cross_user_isolation_violation_total)",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "description": "Projector lag = max(knowledge_events.event_seq) − projector checkpoint. Sustained values >1000 trigger KnowledgeLoopProjectorLag.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 500
+              },
+              {
+                "color": "red",
+                "value": 1000
+              }
+            ]
+          },
+          "unit": "short"
+        }
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 6,
+        "x": 18,
+        "y": 8
+      },
+      "id": 5,
+      "title": "Projector lag (events)",
+      "type": "stat",
+      "targets": [
+        {
+          "expr": "max(knowledge_events_max_event_seq) - max(knowledge_projection_checkpoint_last_event_seq{projector=\"knowledge-loop-projector\"})",
+          "refId": "A"
+        }
+      ]
+    }
+  ],
+  "refresh": "30s",
+  "schemaVersion": 38,
+  "tags": [
+    "knowledge-loop",
+    "projector",
+    "wave-4"
+  ],
+  "templating": {
+    "list": []
+  },
+  "time": {
+    "from": "now-1h",
+    "to": "now"
+  },
+  "timepicker": {},
+  "timezone": "browser",
+  "title": "Knowledge Loop Projector",
+  "uid": "knowledge-loop-projector",
+  "version": 1,
+  "weekStart": ""
+}

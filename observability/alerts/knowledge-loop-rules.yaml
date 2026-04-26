@@ -1,0 +1,90 @@
+# Knowledge Loop projector alerting rules.
+#
+# Surfaces the four counters wired in Wave 3 (ADR-000852) plus a
+# computed projector lag gauge for the Wave 4 rollout. Pair with
+# observability/grafana/dashboards/knowledge-loop-projector.json.
+#
+# These rules are written in Prometheus-native YAML so they slot
+# directly into prometheus.yml's `rule_files`. The Grafana Unified
+# Alerting variants in observability/grafana/provisioning/alerting/
+# can be derived from this file when needed; keeping the source of
+# truth here avoids the verbose Grafana JSON drift problem the other
+# rule sets have hit.
+
+groups:
+  - name: knowledge-loop-projector
+    interval: 30s
+    rules:
+      # F-001 cross-tenant isolation breach. Even one hit means a
+      # projector path queried evidence outside the user's scope and
+      # the resolver caught it. This is a hard-error alert: page on
+      # the first occurrence, no smoothing.
+      - alert: KnowledgeLoopCrossUserIsolationViolation
+        expr: increase(knowledge_loop_projector_cross_user_isolation_violation_total[5m]) > 0
+        for: 0m
+        labels:
+          severity: critical
+          service: knowledge-sovereign
+          source: knowledge-loop-projector
+        annotations:
+          summary: "Knowledge Loop projector observed cross-user isolation breach"
+          description: |
+            knowledge_loop_projector_cross_user_isolation_violation_total
+            increased in the last 5m. The projector tried to surface
+            evidence_refs from one user against another tenant scope.
+            Investigate immediately — quarantine the affected user
+            partition and replay events through the audited resolver.
+          runbook_url: "docs/runbooks/knowledge-loop-rls-rollout.md"
+
+      # Event drop spike. The projector skips events when it cannot
+      # bind the caller's user_id (Wave 4-A reject path) or when the
+      # resolver returns a hard error. A modest steady-state drop is
+      # OK during rollout; anything above 0.1/s sustained for 5m
+      # warrants investigation.
+      - alert: KnowledgeLoopEventDropSpike
+        expr: rate(knowledge_loop_projector_event_dropped_total[5m]) > 0.1
+        for: 5m
+        labels:
+          severity: warning
+          service: knowledge-sovereign
+          source: knowledge-loop-projector
+        annotations:
+          summary: "Knowledge Loop projector dropping events"
+          description: |
+            knowledge_loop_projector_event_dropped_total is rising at
+            >0.1 events/s for 5m. Check projector logs for the most
+            common drop reason: user_mismatch (Wave 4-A tenant header
+            absent) is the likely root cause during rollout.
+
+      # Projection lag. When events outpace the projector by more
+      # than 1000 rows for 10m, downstream surfaces (Knowledge Loop
+      # Decide bucket, Continue plane) silently fall behind. The
+      # threshold is chosen so a single batch dip doesn't fire.
+      - alert: KnowledgeLoopProjectorLag
+        expr: |
+          (
+            max(knowledge_events_max_event_seq) -
+            max(knowledge_projection_checkpoint_last_event_seq{projector="knowledge-loop-projector"})
+          ) > 1000
+        for: 10m
+        labels:
+          severity: warning
+          service: knowledge-sovereign
+          source: knowledge-loop-projector
+        annotations:
+          summary: "Knowledge Loop projector is >1000 events behind"
+          description: |
+            The projector's last_event_seq is more than 1000 rows
+            behind knowledge_events.max(event_seq) for 10m. UI may
+            show stale Stage / Surface placement until it catches up.
+            Check the projector container's CPU + DB write throughput.
+
+      # Surface bucket assignment ratio. Once Wave 4-A / 4-B are
+      # landed and emitting, v2 placements should rise. This rule
+      # is informational (no severity), kept as a recording rule so
+      # the dashboard's stacked area chart has a stable input.
+      - record: knowledge_loop:surface_bucket_v2_ratio_5m
+        expr: |
+          sum(rate(knowledge_loop_projector_surface_bucket_assigned_total{version="v2"}[5m]))
+          /
+          clamp_min(sum(rate(knowledge_loop_projector_surface_bucket_assigned_total[5m])), 1)
