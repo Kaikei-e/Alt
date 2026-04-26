@@ -422,17 +422,27 @@ func decodeChangeSummary(b []byte) *loopv1.ChangeSummary {
 		return nil
 	}
 	var raw struct {
-		Summary          string   `json:"summary"`
-		ChangedFields    []string `json:"changed_fields"`
-		PreviousEntryKey *string  `json:"previous_entry_key"`
+		Summary               string   `json:"summary"`
+		ChangedFields         []string `json:"changed_fields"`
+		PreviousEntryKey      *string  `json:"previous_entry_key"`
+		AddedPhrases          []string `json:"added_phrases"`
+		RemovedPhrases        []string `json:"removed_phrases"`
+		UnchangedPhrasesCount *uint32  `json:"unchanged_phrases_count"`
+		AddedTags             []string `json:"added_tags"`
+		RemovedTags           []string `json:"removed_tags"`
 	}
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return nil
 	}
 	return &loopv1.ChangeSummary{
-		Summary:          raw.Summary,
-		ChangedFields:    raw.ChangedFields,
-		PreviousEntryKey: raw.PreviousEntryKey,
+		Summary:               raw.Summary,
+		ChangedFields:         raw.ChangedFields,
+		PreviousEntryKey:      raw.PreviousEntryKey,
+		AddedPhrases:          raw.AddedPhrases,
+		RemovedPhrases:        raw.RemovedPhrases,
+		UnchangedPhrasesCount: raw.UnchangedPhrasesCount,
+		AddedTags:             raw.AddedTags,
+		RemovedTags:           raw.RemovedTags,
 	}
 }
 

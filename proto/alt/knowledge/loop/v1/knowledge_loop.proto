@@ -67,6 +67,16 @@ enum WhyKind {
   WHY_KIND_PATTERN = 2;
   WHY_KIND_RECALL = 3;
   WHY_KIND_CHANGE = 4;
+  // Surfaces because the entry's topic terms overlap with the user's recent
+  // reading corpus (recap clusters within event.occurred_at - 7d).
+  WHY_KIND_TOPIC_AFFINITY = 5;
+  // Surfaces because one or more of the entry's tags are rising in frequency
+  // across the user's recent tag_set_versions (within event.occurred_at - 7d).
+  WHY_KIND_TAG_TRENDING = 6;
+  // Surfaces because the entry continues an unfinished Augur thread or
+  // partially-read article. Linkage carried by AugurConversationLinked or by
+  // payload-resident continue_context fields.
+  WHY_KIND_UNFINISHED_CONTINUE = 7;
 }
 
 enum RenderDepthHint {
@@ -116,6 +126,23 @@ enum TransitionTrigger {
   TRANSITION_TRIGGER_DEFER = 5;
 }
 
+// SurfacePlannerVersion gates which planner produced a given entry's
+// surface_bucket assignment. Bumping this value requires a full reproject
+// (see runbooks/knowledge-loop-reproject.md) so that legacy entries pick up
+// the new bucket placement deterministically.
+enum SurfacePlannerVersion {
+  SURFACE_PLANNER_VERSION_UNSPECIFIED = 0;
+  // v1: event-type → bucket fixed mapping. SummaryVersionCreated → NOW,
+  // HomeItemOpened → CONTINUE, HomeItemSuperseded → CHANGED,
+  // HomeItemDismissed → REVIEW.
+  SURFACE_PLANNER_VERSION_V1 = 1;
+  // v2: knowledge-state-based scoring. Inputs are immutable evidence
+  // (topic_overlap_count, tag_overlap_count, augur_link_id,
+  // version_drift_count, freshness_at). decideBucketV2 is a pure function
+  // of these inputs — same inputs always yield the same bucket.
+  SURFACE_PLANNER_VERSION_V2 = 2;
+}
+
 // ============================================================================
 // Payloads
 // ============================================================================
@@ -148,6 +175,17 @@ message ChangeSummary {
   string summary = 1;
   repeated string changed_fields = 2;
   optional string previous_entry_key = 3;
+
+  // Redline-proof diff fields. Populated by the projector when the
+  // SummarySuperseded event payload carries both old_summary_version_id and
+  // new_summary_version_id and both versions resolve under the same user_id
+  // and article_id. Fully additive — older clients render summary +
+  // changed_fields and ignore these.
+  repeated string added_phrases = 4;
+  repeated string removed_phrases = 5;
+  optional uint32 unchanged_phrases_count = 6;
+  repeated string added_tags = 7;
+  repeated string removed_tags = 8;
 }
 
 message ContinueContext {
@@ -200,6 +238,11 @@ message KnowledgeLoopEntry {
 
   reserved 21 to 30;
   reserved "updated_at", "last_modified", "loop_priority_label", "projected_at", "wall_clock", "ingest_time";
+
+  // surface_planner_version records which planner placed this entry into its
+  // bucket. Older rows default to UNSPECIFIED (treated as v1 by clients) so
+  // additivity holds. Bumping the planner requires a full reproject.
+  optional SurfacePlannerVersion surface_planner_version = 31;
 }
 
 message SurfaceState {
@@ -435,6 +478,32 @@ message KnowledgeLoopLensModeSwitchedPayload {
   string previous_lens_mode_id = 1;
   string lens_mode_id = 2;
   optional string client_transition_id = 3;
+}
+
+// KnowledgeLoopSurfacePlanRecomputedPayload is a system-only event. It is
+// emitted by knowledge-sovereign when a planner version bump or a fresh
+// snapshot of cross-source signals causes one or more entries to change
+// buckets. It is NEVER user-emittable: the BFF rejects this payload type on
+// the user transition path.
+//
+// Reproject-safe: every input listed is a versioned id (immutable) or a count
+// derived from versioned tables, scoped to event.occurred_at. Replaying the
+// event against the same versioned tables always yields the same bucket.
+message KnowledgeLoopSurfacePlanRecomputedPayload {
+  string lens_mode_id = 1;
+  SurfacePlannerVersion planner_version = 2;
+  int64 plan_seq = 3;
+
+  message EntryScoreInput {
+    string entry_key = 1;
+    optional uint32 topic_overlap_count = 2;
+    optional uint32 tag_overlap_count = 3;
+    optional string augur_link_id = 4;
+    optional uint32 version_drift_count = 5;
+    google.protobuf.Timestamp freshness_at = 6;
+    optional string recap_topic_snapshot_id = 7;
+  }
+  repeated EntryScoreInput entry_inputs = 4;
 }
 
 message StreamKnowledgeLoopUpdatesResponse {
