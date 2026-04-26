@@ -110,6 +110,55 @@ func TestCreateSummaryVersionUsecase_Execute(t *testing.T) {
 	}
 }
 
+func TestCreateSummaryVersionUsecase_PayloadCarriesArticleTitle(t *testing.T) {
+	logger.InitLogger()
+
+	summaryPort := &mockSummaryPort{}
+	eventPort := &mockEventPort{}
+	uc := NewCreateSummaryVersionUsecase(summaryPort, eventPort, nil)
+
+	err := uc.Execute(context.Background(), domain.SummaryVersion{
+		ArticleID:    uuid.New(),
+		UserID:       uuid.New(),
+		SummaryText:  "Test summary",
+		ArticleTitle: "How Event Sourcing Changes Everything",
+	})
+	require.NoError(t, err)
+	require.Len(t, eventPort.appended, 1)
+
+	// The Knowledge Loop projector's reproject-safe enricher reads
+	// payload.article_title to render a substantive narrative; the producer
+	// (this usecase) is the only place the title can be captured at the
+	// event-time invariant. Missing title would force the enricher to fall
+	// back to the generic feed-level sentence — the production regression
+	// the user reported as "all 3 cards say A new summary is ready in one
+	// of your feeds.".
+	var payload map[string]string
+	require.NoError(t, json.Unmarshal(eventPort.appended[0].Payload, &payload))
+	require.Equal(t, "How Event Sourcing Changes Everything", payload["article_title"])
+}
+
+func TestCreateSummaryVersionUsecase_PayloadOmitsEmptyArticleTitle(t *testing.T) {
+	logger.InitLogger()
+
+	summaryPort := &mockSummaryPort{}
+	eventPort := &mockEventPort{}
+	uc := NewCreateSummaryVersionUsecase(summaryPort, eventPort, nil)
+
+	err := uc.Execute(context.Background(), domain.SummaryVersion{
+		ArticleID:   uuid.New(),
+		UserID:      uuid.New(),
+		SummaryText: "Test summary",
+	})
+	require.NoError(t, err)
+	require.Len(t, eventPort.appended, 1)
+
+	var payload map[string]string
+	require.NoError(t, json.Unmarshal(eventPort.appended[0].Payload, &payload))
+	_, present := payload["article_title"]
+	require.False(t, present, "empty title is omitted so the enricher's default-branch fallback engages")
+}
+
 func TestCreateSummaryVersionUsecase_FirstVersion_NoSupersedeEvent(t *testing.T) {
 	logger.InitLogger()
 

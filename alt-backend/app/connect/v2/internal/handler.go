@@ -481,6 +481,17 @@ func (h *Handler) SaveArticleSummary(ctx context.Context, req *connect.Request[b
 				SummaryText: req.Msg.Summary,
 				Model:       "pre-processor",
 			}
+			// Capture the article title at event-emission time so the
+			// Knowledge Loop projector's reproject-safe enricher can render a
+			// real card narrative (e.g. "{title} — fresh summary ready to
+			// read.") instead of falling back to the generic feed-level
+			// sentence. The lookup happens here at the handler boundary —
+			// projection time stays pure (event payload only).
+			if h.getArticleByID != nil {
+				if article, lookupErr := h.getArticleByID.GetArticleByID(ctx, req.Msg.ArticleId); lookupErr == nil && article != nil {
+					sv.ArticleTitle = article.Title
+				}
+			}
 			if svErr := h.createSummaryVersionUsecase.Execute(ctx, sv); svErr != nil {
 				h.logger.Error("failed to create summary version", "error", svErr, "article_id", req.Msg.ArticleId)
 			}
