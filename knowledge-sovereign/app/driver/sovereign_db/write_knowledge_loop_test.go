@@ -209,6 +209,111 @@ func TestPatchKnowledgeLoopEntryWhy_SeqHiwaterGuardSkipsStaleReplay(t *testing.T
 	require.NoError(t, mock.ExpectationsWereMet())
 }
 
+// TestPatchKnowledgeLoopEntryDismissState_AppliesPatchOnly mirrors the why-only
+// patch test (ADR-000846) for the canonical contract §8.2 Deferred path. The
+// SQL must touch ONLY the dismiss_state column — every other entry-level field
+// must remain untouched. A regression that broadens this UPDATE would reset the
+// entry's freshness_at / why_text / decision_options from a stale event payload.
+func TestPatchKnowledgeLoopEntryDismissState_AppliesPatchOnly(t *testing.T) {
+	mock, err := pgxmock.NewPool()
+	require.NoError(t, err)
+	defer mock.Close()
+
+	repo := &Repository{pool: mock}
+
+	mock.ExpectQuery(regexp.QuoteMeta(patchKnowledgeLoopEntryDismissStateQuery)).
+		WithArgs(
+			pgxmock.AnyArg(), // user_id
+			pgxmock.AnyArg(), // tenant_id
+			"default",        // lens_mode_id
+			"article:42",     // entry_key
+			int64(600),       // event_seq
+			"deferred",       // dismiss_state
+		).
+		WillReturnRows(pgxmock.NewRows([]string{"projection_revision", "projection_seq_hiwater"}).
+			AddRow(int64(3), int64(600)))
+
+	res, err := repo.PatchKnowledgeLoopEntryDismissState(
+		context.Background(),
+		uuid.New().String(),
+		uuid.New().String(),
+		"default",
+		"article:42",
+		600,
+		sovereignv1.DismissState_DISMISS_STATE_DEFERRED,
+	)
+	require.NoError(t, err)
+	require.True(t, res.Applied)
+	require.False(t, res.SkippedBySeqHiwater)
+	require.Equal(t, int64(3), res.ProjectionRevision)
+	require.Equal(t, int64(600), res.ProjectionSeqHiwater)
+	require.NoError(t, mock.ExpectationsWereMet())
+
+	// Structural guard: the SQL must touch dismiss_state but no other
+	// entry-level field. why_text / freshness_at / surface_bucket / proposed_stage
+	// etc. belong to the build-from-event upsert path and would clobber state
+	// the user has already moved through.
+	require.Contains(t, patchKnowledgeLoopEntryDismissStateQuery, "dismiss_state")
+	for _, forbidden := range []string{
+		"why_kind",
+		"why_text",
+		"why_confidence",
+		"why_evidence_ref_ids",
+		"why_evidence_refs",
+		"freshness_at",
+		"surface_bucket",
+		"proposed_stage",
+		"superseded_by_entry_key",
+		"render_depth_hint",
+		"loop_priority",
+		"change_summary",
+		"continue_context",
+		"decision_options",
+		"act_targets",
+		"artifact_summary_version_id",
+		"artifact_tag_set_version_id",
+		"artifact_lens_version_id",
+	} {
+		require.NotContains(t, patchKnowledgeLoopEntryDismissStateQuery, forbidden,
+			"patch SQL must NOT touch %s — that field belongs to the build-from-event "+
+				"upsert path. canonical-contract §8.2 / immutable-design-guard merge-safe.", forbidden)
+	}
+}
+
+// TestPatchKnowledgeLoopEntryDismissState_SeqHiwaterGuardSkipsStaleReplay
+// confirms that a missing entry or an out-of-order Deferred event surfaces as
+// SkippedBySeqHiwater rather than an error. Both outcomes are safe under
+// reproject — a later Deferred event will land normally on its turn.
+func TestPatchKnowledgeLoopEntryDismissState_SeqHiwaterGuardSkipsStaleReplay(t *testing.T) {
+	mock, err := pgxmock.NewPool()
+	require.NoError(t, err)
+	defer mock.Close()
+
+	repo := &Repository{pool: mock}
+
+	anyPatchArgs := make([]interface{}, 6)
+	for i := range anyPatchArgs {
+		anyPatchArgs[i] = pgxmock.AnyArg()
+	}
+	mock.ExpectQuery(regexp.QuoteMeta(patchKnowledgeLoopEntryDismissStateQuery)).
+		WithArgs(anyPatchArgs...).
+		WillReturnError(pgx.ErrNoRows)
+
+	res, err := repo.PatchKnowledgeLoopEntryDismissState(
+		context.Background(),
+		uuid.New().String(),
+		uuid.New().String(),
+		"default",
+		"article:missing",
+		50,
+		sovereignv1.DismissState_DISMISS_STATE_DEFERRED,
+	)
+	require.NoError(t, err)
+	require.False(t, res.Applied)
+	require.True(t, res.SkippedBySeqHiwater)
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
 // TestReserveKnowledgeLoopTransition_Fresh exercises a first-time idempotency claim.
 func TestReserveKnowledgeLoopTransition_Fresh(t *testing.T) {
 	mock, err := pgxmock.NewPool()

@@ -38,6 +38,14 @@ type Repository interface {
 	// (ADR-000846) to repair historic entries whose original
 	// SummaryVersionCreated event lacked article_title in payload.
 	PatchKnowledgeLoopEntryWhy(ctx context.Context, userID, tenantID, lensModeID, entryKey string, eventSeq int64, why *sovereignv1.KnowledgeLoopWhyPayload) (*sovereign_db.KnowledgeLoopUpsertResult, error)
+	// PatchKnowledgeLoopEntryDismissState updates only the dismiss_state column of
+	// an existing entry row; why_text, freshness_at, surface_bucket and any other
+	// field are preserved. Used by the KnowledgeLoopDeferred projector branch to
+	// flip an entry to `deferred` (canonical contract §8.2 passive dismiss) without
+	// clobbering the row's other state. The driver MUST enforce a
+	// `projection_seq_hiwater <= eventSeq` guard so replays are idempotent and
+	// out-of-order events are no-ops.
+	PatchKnowledgeLoopEntryDismissState(ctx context.Context, userID, tenantID, lensModeID, entryKey string, eventSeq int64, dismissState sovereignv1.DismissState) (*sovereign_db.KnowledgeLoopUpsertResult, error)
 }
 
 // Config tunes the projector loop. Zero values fall back to defaults.
@@ -253,6 +261,12 @@ func (p *Projector) projectSummaryNarrativeBackfilled(
 // projectTransition handles /loop-originated transition events. ADR-000831 §3.7
 // (single-emission rule) pins this split: /loop transitions write session state,
 // /feeds actions write entries.
+//
+// The Deferred branch additionally patches the entry's dismiss_state to
+// DEFERRED via PatchKnowledgeLoopEntryDismissState (canonical contract §8.2).
+// The patch is a single-column UPDATE guarded by projection_seq_hiwater so
+// reproject and out-of-order delivery remain idempotent — no other entry
+// fields are touched, preserving why_text / freshness_at / surface_bucket.
 func (p *Projector) projectTransition(ctx context.Context, ev *sovereign_db.KnowledgeEvent) (*sovereign_db.KnowledgeLoopUpsertResult, error) {
 	payload := parseLoopTransitionPayload(ev.Payload)
 	lensModeID := payload.LensModeID
@@ -287,7 +301,28 @@ func (p *Projector) projectTransition(ctx context.Context, ev *sovereign_db.Know
 		}
 	}
 
-	return p.repo.UpsertKnowledgeLoopSessionState(ctx, state)
+	sessionRes, sessionErr := p.repo.UpsertKnowledgeLoopSessionState(ctx, state)
+	if sessionErr != nil {
+		return sessionRes, sessionErr
+	}
+
+	// Deferred uniquely flips the entry's dismiss_state. All other transitions
+	// leave the entry row untouched — they only update session state above.
+	if ev.EventType == EventKnowledgeLoopDeferred && entryKey != "" {
+		if _, patchErr := p.repo.PatchKnowledgeLoopEntryDismissState(
+			ctx,
+			ev.UserID.String(),
+			ev.TenantID.String(),
+			lensModeID,
+			entryKey,
+			ev.EventSeq,
+			sovereignv1.DismissState_DISMISS_STATE_DEFERRED,
+		); patchErr != nil {
+			return sessionRes, fmt.Errorf("patch dismiss_state on Deferred: %w", patchErr)
+		}
+	}
+
+	return sessionRes, nil
 }
 
 // buildEntryFromEvent materializes a KnowledgeLoopEntry from an event with

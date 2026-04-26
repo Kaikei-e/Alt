@@ -258,6 +258,67 @@ func (r *Repository) PatchKnowledgeLoopEntryWhy(
 	}, nil
 }
 
+// patchKnowledgeLoopEntryDismissStateQuery flips the dismiss_state column of
+// an existing entry row to the supplied state (typically `deferred` for the
+// canonical contract §8.2 "passive dismiss / snooze" path).
+//
+// Reproject-safety / merge-safety:
+//   - Single-column UPDATE; why_text, freshness_at, surface_bucket, decision_options,
+//     etc. are intentionally NOT in the SET clause. A structural test asserts no
+//     other column name appears here so a future edit cannot regress this.
+//   - WHERE projection_seq_hiwater <= $5 + the SET's GREATEST() bump enforces the
+//     monotonic seq guard so out-of-order delivery / replay is idempotent.
+//   - dismiss_state itself is monotonic in practice: the only writer that uses
+//     this query is the Deferred branch with a constant DEFERRED state, and the
+//     ACTIVE → DEFERRED transition does not regress.
+const patchKnowledgeLoopEntryDismissStateQuery = `
+UPDATE knowledge_loop_entries SET
+  projection_revision    = projection_revision + 1,
+  projection_seq_hiwater = GREATEST(projection_seq_hiwater, $5),
+  source_event_seq       = GREATEST(source_event_seq, $5),
+  projected_at           = NOW(),
+  dismiss_state          = $6
+WHERE user_id = $1 AND tenant_id = $2 AND lens_mode_id = $3 AND entry_key = $4
+  AND projection_seq_hiwater <= $5
+RETURNING projection_revision, projection_seq_hiwater
+`
+
+// PatchKnowledgeLoopEntryDismissState patches only the dismiss_state column of
+// an entry row, preserving every other field. Returns SkippedBySeqHiwater if the
+// row is missing OR the seq guard rejects (both safe — replay converges).
+func (r *Repository) PatchKnowledgeLoopEntryDismissState(
+	ctx context.Context,
+	userID, tenantID, lensModeID, entryKey string,
+	eventSeq int64,
+	dismissState sovereignv1.DismissState,
+) (*KnowledgeLoopUpsertResult, error) {
+	uID, err := uuid.Parse(userID)
+	if err != nil {
+		return nil, fmt.Errorf("parse user_id: %w", err)
+	}
+	tID, err := uuid.Parse(tenantID)
+	if err != nil {
+		return nil, fmt.Errorf("parse tenant_id: %w", err)
+	}
+
+	var revision, seqHiwater int64
+	row := r.pool.QueryRow(ctx, patchKnowledgeLoopEntryDismissStateQuery,
+		uID, tID, lensModeID, entryKey, eventSeq,
+		dismissStateToDB(dismissState),
+	)
+	if err := row.Scan(&revision, &seqHiwater); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return &KnowledgeLoopUpsertResult{SkippedBySeqHiwater: true}, nil
+		}
+		return nil, fmt.Errorf("patch knowledge_loop_entry dismiss_state: %w", err)
+	}
+	return &KnowledgeLoopUpsertResult{
+		Applied:              true,
+		ProjectionRevision:   revision,
+		ProjectionSeqHiwater: seqHiwater,
+	}, nil
+}
+
 const upsertKnowledgeLoopSessionStateQuery = `
 INSERT INTO knowledge_loop_session_state (
   user_id, tenant_id, lens_mode_id,

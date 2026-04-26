@@ -19,12 +19,13 @@ import (
 // layer's own tests. Here we verify the projector emits the same upsert payload
 // for the same event on replay — the core reproject-safety invariant.
 type fakeRepo struct {
-	checkpoint  int64
-	events      []sovereign_db.KnowledgeEvent
-	entries     []*sovereignv1.KnowledgeLoopEntry
-	sessions    []*sovereignv1.KnowledgeLoopSessionState
-	patches     []patchCall
-	checkpoints []int64
+	checkpoint     int64
+	events         []sovereign_db.KnowledgeEvent
+	entries        []*sovereignv1.KnowledgeLoopEntry
+	sessions       []*sovereignv1.KnowledgeLoopSessionState
+	patches        []patchCall
+	dismissPatches []dismissPatchCall
+	checkpoints    []int64
 }
 
 // patchCall records the arguments to PatchKnowledgeLoopEntryWhy so tests can
@@ -34,6 +35,17 @@ type patchCall struct {
 	UserID, TenantID, LensModeID, EntryKey string
 	EventSeq                               int64
 	Why                                    *sovereignv1.KnowledgeLoopWhyPayload
+}
+
+// dismissPatchCall records arguments to PatchKnowledgeLoopEntryDismissState so
+// the Deferred projector branch can be asserted in isolation: the test verifies
+// that exactly the dismiss_state column was patched, and that the broader
+// UpsertKnowledgeLoopEntry path (which would clobber freshness/why) was NOT
+// invoked alongside.
+type dismissPatchCall struct {
+	UserID, TenantID, LensModeID, EntryKey string
+	EventSeq                               int64
+	DismissState                           sovereignv1.DismissState
 }
 
 func (f *fakeRepo) ListKnowledgeEventsSince(ctx context.Context, afterSeq int64, limit int) ([]sovereign_db.KnowledgeEvent, error) {
@@ -76,6 +88,16 @@ func (f *fakeRepo) PatchKnowledgeLoopEntryWhy(ctx context.Context, userID, tenan
 	})
 	return &sovereign_db.KnowledgeLoopUpsertResult{
 		Applied: true, ProjectionRevision: 2, ProjectionSeqHiwater: eventSeq,
+	}, nil
+}
+
+func (f *fakeRepo) PatchKnowledgeLoopEntryDismissState(ctx context.Context, userID, tenantID, lensModeID, entryKey string, eventSeq int64, dismissState sovereignv1.DismissState) (*sovereign_db.KnowledgeLoopUpsertResult, error) {
+	f.dismissPatches = append(f.dismissPatches, dismissPatchCall{
+		UserID: userID, TenantID: tenantID, LensModeID: lensModeID,
+		EntryKey: entryKey, EventSeq: eventSeq, DismissState: dismissState,
+	})
+	return &sovereign_db.KnowledgeLoopUpsertResult{
+		Applied: true, ProjectionRevision: 3, ProjectionSeqHiwater: eventSeq,
 	}, nil
 }
 
@@ -275,4 +297,47 @@ func TestRunBatch_EmptyBatchIsNoOp(t *testing.T) {
 	require.Empty(t, repo.entries)
 	require.Empty(t, repo.sessions)
 	require.Equal(t, int64(0), repo.checkpoint)
+}
+
+// TestRunBatch_KnowledgeLoopDeferred_FlipsDismissState pins the persistence
+// fix for the dismiss bug: the canonical contract §8.2 Deferred event must
+// flip the entry's dismiss_state to DEFERRED via the patch path. The full
+// UpsertKnowledgeLoopEntry path must NOT run for this event — that would
+// re-seed why_text / freshness / decision_options from the (sparse) Deferred
+// payload, clobbering the existing entry. Session state still updates so
+// `last_deferred_entry_key` reflects the user's action.
+func TestRunBatch_KnowledgeLoopDeferred_FlipsDismissState(t *testing.T) {
+	userID := uuid.New()
+	ev := makeEvent(t, EventKnowledgeLoopDeferred, 600, userID, map[string]any{
+		"entry_key":    "article:42",
+		"lens_mode_id": "default",
+		"from_stage":   "LOOP_STAGE_OBSERVE",
+		"to_stage":     "LOOP_STAGE_OBSERVE",
+		"trigger":      "TRANSITION_TRIGGER_DEFER",
+	})
+	repo := &fakeRepo{events: []sovereign_db.KnowledgeEvent{ev}}
+
+	require.NoError(t, newProjector(repo).RunBatch(context.Background()))
+
+	// The Deferred branch must call PatchKnowledgeLoopEntryDismissState exactly
+	// once with the event's seq so the driver's seq-hiwater guard makes replay
+	// idempotent.
+	require.Len(t, repo.dismissPatches, 1, "Deferred event must flip dismiss_state via patch path")
+	patch := repo.dismissPatches[0]
+	require.Equal(t, "article:42", patch.EntryKey)
+	require.Equal(t, "default", patch.LensModeID)
+	require.Equal(t, int64(600), patch.EventSeq)
+	require.Equal(t, sovereignv1.DismissState_DISMISS_STATE_DEFERRED, patch.DismissState)
+	require.Equal(t, userID.String(), patch.UserID)
+
+	// Critically: the projector MUST NOT run the full upsert path for Deferred
+	// events. Doing so would overwrite freshness_at / why / decision_options
+	// from the sparse Deferred payload (canonical contract §3 immutable invariants).
+	require.Empty(t, repo.entries, "Deferred must not call UpsertKnowledgeLoopEntry — that would clobber other fields")
+
+	// Session state still tracks last_deferred_entry_key so /loop UI can
+	// reflect the user's deferral action.
+	require.Len(t, repo.sessions, 1)
+	require.NotNil(t, repo.sessions[0].LastDeferredEntryKey)
+	require.Equal(t, "article:42", *repo.sessions[0].LastDeferredEntryKey)
 }
