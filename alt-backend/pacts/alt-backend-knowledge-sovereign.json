@@ -4,6 +4,69 @@
   },
   "interactions": [
     {
+      "description": "an AppendKnowledgeEvent request for knowledge_loop.deferred.v1",
+      "providerStates": [
+        {
+          "name": "sovereign accepts Deferred Loop events with same-stage transitions"
+        }
+      ],
+      "request": {
+        "body": {
+          "event": {
+            "actorId": "503a3fc4-e55a-4ef3-9f0f-3fc60de7c39a",
+            "actorType": "user",
+            "aggregateId": "article:42",
+            "aggregateType": "loop_session",
+            "dedupeKey": "b3be26ac-f49e-46ba-a344-a02fdc0e7190",
+            "eventId": "fe7eb946-7903-42ee-aabc-cfb25582fffc",
+            "eventType": "knowledge_loop.deferred.v1",
+            "occurredAt": "2026-04-26T10:00:00Z",
+            "payload": "eyJlbnRyeV9rZXkiOiJhcnRpY2xlOjQyIn0",
+            "tenantId": "708c9796-dc6a-482d-988a-3c6426d98f30",
+            "userId": "503a3fc4-e55a-4ef3-9f0f-3fc60de7c39a"
+          }
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "matchingRules": {
+          "body": {
+            "$.event": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            }
+          }
+        },
+        "method": "POST",
+        "path": "/services.sovereign.v1.KnowledgeSovereignService/AppendKnowledgeEvent"
+      },
+      "response": {
+        "body": {
+          "success": true
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "matchingRules": {
+          "body": {
+            "$.success": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            }
+          }
+        },
+        "status": 200
+      }
+    },
+    {
       "description": "an ApplyCurationMutation request of kind create_lens",
       "providerStates": [
         {

@@ -99,6 +99,50 @@ func TestClassifyTransitionEvent(t *testing.T) {
 			trigger: "TRANSITION_TRIGGER_USER_TAP",
 			wantErr: true,
 		},
+		// DEFER trigger: same-stage Deferred regardless of OODA stage
+		// (canonical contract §8.2 passive dismiss / snooze).
+		{
+			name:     "observe->observe via DEFER => Deferred",
+			from:     "LOOP_STAGE_OBSERVE",
+			to:       "LOOP_STAGE_OBSERVE",
+			trigger:  "TRANSITION_TRIGGER_DEFER",
+			wantType: domain.EventKnowledgeLoopDeferred,
+		},
+		{
+			name:     "orient->orient via DEFER => Deferred",
+			from:     "LOOP_STAGE_ORIENT",
+			to:       "LOOP_STAGE_ORIENT",
+			trigger:  "TRANSITION_TRIGGER_DEFER",
+			wantType: domain.EventKnowledgeLoopDeferred,
+		},
+		{
+			name:     "decide->decide via DEFER => Deferred",
+			from:     "LOOP_STAGE_DECIDE",
+			to:       "LOOP_STAGE_DECIDE",
+			trigger:  "TRANSITION_TRIGGER_DEFER",
+			wantType: domain.EventKnowledgeLoopDeferred,
+		},
+		{
+			name:     "act->act via DEFER => Deferred (overrides act->act forbid)",
+			from:     "LOOP_STAGE_ACT",
+			to:       "LOOP_STAGE_ACT",
+			trigger:  "TRANSITION_TRIGGER_DEFER",
+			wantType: domain.EventKnowledgeLoopDeferred,
+		},
+		{
+			name:    "DEFER with non-equal stages is rejected",
+			from:    "LOOP_STAGE_OBSERVE",
+			to:      "LOOP_STAGE_ORIENT",
+			trigger: "TRANSITION_TRIGGER_DEFER",
+			wantErr: true,
+		},
+		{
+			name:    "DEFER on UNSPECIFIED stage is rejected",
+			from:    "LOOP_STAGE_UNSPECIFIED",
+			to:      "LOOP_STAGE_UNSPECIFIED",
+			trigger: "TRANSITION_TRIGGER_DEFER",
+			wantErr: true,
+		},
 	}
 
 	for _, tc := range cases {

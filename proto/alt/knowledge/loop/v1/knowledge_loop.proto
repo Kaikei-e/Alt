@@ -110,6 +110,10 @@ enum TransitionTrigger {
   TRANSITION_TRIGGER_DWELL = 2; // valid only when to_stage == OBSERVE
   TRANSITION_TRIGGER_KEYBOARD = 3;
   TRANSITION_TRIGGER_PROGRAMMATIC = 4;
+  // Soft dismiss / snooze. Routes to KnowledgeLoopDeferred (canonical contract
+  // §8.2). Same-stage transitions (from_stage == to_stage) are allowed only
+  // when paired with this trigger.
+  TRANSITION_TRIGGER_DEFER = 5;
 }
 
 // ============================================================================

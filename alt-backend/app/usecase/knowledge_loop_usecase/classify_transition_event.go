@@ -17,6 +17,10 @@ const (
 	triggerUserTap  = "TRANSITION_TRIGGER_USER_TAP"
 	triggerKeyboard = "TRANSITION_TRIGGER_KEYBOARD"
 	triggerProgram  = "TRANSITION_TRIGGER_PROGRAMMATIC"
+	// triggerDefer routes a "soft dismiss / snooze" intent to the canonical
+	// KnowledgeLoopDeferred event (canonical contract §8.2). It is the only
+	// trigger that allows from_stage == to_stage.
+	triggerDefer = "TRANSITION_TRIGGER_DEFER"
 )
 
 // ClassifyTransitionEvent derives the canonical knowledge_events.event_type string
@@ -28,6 +32,18 @@ const (
 // it reproject-safe: projector replay derives the same event classification as
 // the original append path.
 func ClassifyTransitionEvent(fromStage, toStage, trigger string) (string, error) {
+	// DEFER trigger short-circuits the OODA stage matrix. It is a passive
+	// "soft dismiss / snooze" intent (canonical contract §8.2) that does not
+	// move the user along the loop — it just records that the user wants this
+	// entry out of view. Same-stage is required (and is the only place same-
+	// stage transitions are allowed).
+	if trigger == triggerDefer {
+		if !isCanonicalStage(fromStage) || fromStage != toStage {
+			return "", fmt.Errorf("%w: defer trigger requires from_stage == to_stage and a canonical OODA stage", ErrInvalidArgument)
+		}
+		return domain.EventKnowledgeLoopDeferred, nil
+	}
+
 	// Forbidden transitions (reject before any allow-list check).
 	if fromStage == stageObserve && toStage == stageAct {
 		return "", fmt.Errorf("%w: observe->act not allowed", ErrInvalidArgument)
@@ -72,4 +88,15 @@ func safeStageLabel(s string) string {
 	default:
 		return "UNSPECIFIED"
 	}
+}
+
+// isCanonicalStage reports whether s is one of the four OODA stages. Used by
+// the DEFER short-circuit to reject UNSPECIFIED / unknown stages without
+// echoing the raw value.
+func isCanonicalStage(s string) bool {
+	switch s {
+	case stageObserve, stageOrient, stageDecide, stageAct:
+		return true
+	}
+	return false
 }
