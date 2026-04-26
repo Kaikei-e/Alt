@@ -44,23 +44,34 @@ type Handler struct {
 	answerUsecase       usecase.AnswerWithRAGUsecase
 	retrieveUsecase     usecase.RetrieveContextUsecase
 	conversationUsecase usecase.AugurConversationUsecase
+	eventEmitter        usecase.KnowledgeEventEmitter
 	logger              *slog.Logger
 }
 
 // Ensure Handler implements the interface
 var _ augurv2connect.AugurServiceHandler = (*Handler)(nil)
 
-// NewHandler creates a new AugurService handler
+// NewHandler creates a new AugurService handler. eventEmitter publishes
+// augur.conversation_linked.v1 into knowledge-sovereign so Knowledge
+// Loop's Surface Planner v2 can pick up the linkage. Pass
+// usecase.NoopKnowledgeEventEmitter{} when emit is intentionally disabled
+// (tests, or production until alt-deploy services.yaml registers
+// rag-orchestrator as a knowledge-sovereign pacticipant).
 func NewHandler(
 	answerUsecase usecase.AnswerWithRAGUsecase,
 	retrieveUsecase usecase.RetrieveContextUsecase,
 	conversationUsecase usecase.AugurConversationUsecase,
+	eventEmitter usecase.KnowledgeEventEmitter,
 	logger *slog.Logger,
 ) *Handler {
+	if eventEmitter == nil {
+		eventEmitter = usecase.NoopKnowledgeEventEmitter{}
+	}
 	return &Handler{
 		answerUsecase:       answerUsecase,
 		retrieveUsecase:     retrieveUsecase,
 		conversationUsecase: conversationUsecase,
+		eventEmitter:        eventEmitter,
 		logger:              logger,
 	}
 }
@@ -631,6 +642,28 @@ func (h *Handler) CreateAugurSessionFromLoopEntry(
 	if err != nil {
 		h.logger.Error("create augur loop session failed", slog.String("error", err.Error()))
 		return nil, connect.NewError(connect.CodeInternal, err)
+	}
+
+	// Emit augur.conversation_linked.v1 into knowledge-sovereign so the
+	// Knowledge Loop Surface Planner v2 resolver can credit this entry
+	// with HasAugurLink and route it to the Continue plane on the next
+	// projector tick. Best-effort warn-and-continue: emit failure must
+	// NOT fail the conversation creation. The linked_at timestamp is the
+	// persisted conversation's CreatedAt — payload-resident, event-time
+	// pure (canonical contract §6.4.1, ADR-000853 / ADR-000854).
+	emitInput := usecase.AugurConversationLinkedInput{
+		UserID:         userID,
+		EntryKey:       sanitizeUTF8(m.EntryKey),
+		LensModeID:     sanitizeUTF8(m.LensModeId),
+		ConversationID: conv.ID,
+		LinkedAt:       conv.CreatedAt.UnixMilli(),
+	}
+	if emitErr := h.eventEmitter.EmitAugurConversationLinked(ctx, emitInput); emitErr != nil {
+		h.logger.Warn("augur.conversation_linked.v1 emit failed (non-fatal)",
+			slog.String("error", emitErr.Error()),
+			slog.String("entry_key", emitInput.EntryKey),
+			slog.String("conversation_id", emitInput.ConversationID.String()),
+		)
 	}
 
 	return connect.NewResponse(&augurv2.CreateAugurSessionFromLoopEntryResponse{

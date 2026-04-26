@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"os"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -15,6 +16,7 @@ import (
 	rag_http "rag-orchestrator/internal/adapter/rag_http"
 	"rag-orchestrator/internal/adapter/recap_worker"
 	"rag-orchestrator/internal/adapter/repository"
+	"rag-orchestrator/internal/adapter/sovereign_client"
 	"rag-orchestrator/internal/adapter/tools"
 	"rag-orchestrator/internal/domain"
 	"rag-orchestrator/internal/infra/config"
@@ -56,6 +58,13 @@ type ApplicationComponents struct {
 	LetterFetcher   domain.MorningLetterFetcher
 	EmbeddingModel  string
 	EmbedderTimeout int
+
+	// EventEmitter publishes augur.conversation_linked.v1 into
+	// knowledge-sovereign so Knowledge Loop's Surface Planner v2 resolver
+	// picks up the link. Defaults to NoopKnowledgeEventEmitter unless the
+	// RAG_ORCHESTRATOR_KNOWLEDGE_EVENT_EMIT env var enables a real
+	// sovereign-client adapter (Wave 4-A; ADR-000853 / ADR-000854).
+	EventEmitter usecase.KnowledgeEventEmitter
 }
 
 // NewApplicationComponents wires all dependencies from config and database pool.
@@ -302,6 +311,27 @@ func NewApplicationComponents(cfg *config.Config, pool *pgxpool.Pool, log *slog.
 	// Worker
 	jobWorker := worker.NewJobWorker(jobRepo, indexUsecase, log)
 
+	// EventEmitter — wire the real sovereign client when both
+	// RAG_ORCHESTRATOR_KNOWLEDGE_EVENT_EMIT=true and
+	// RAG_ORCHESTRATOR_KNOWLEDGE_SOVEREIGN_URL are set. Otherwise
+	// fall back to a no-op so the live behaviour is unchanged until
+	// alt-deploy registers rag-orchestrator as a knowledge-sovereign
+	// pacticipant.
+	var eventEmitter usecase.KnowledgeEventEmitter = usecase.NoopKnowledgeEventEmitter{}
+	if os.Getenv("RAG_ORCHESTRATOR_KNOWLEDGE_EVENT_EMIT") == "true" {
+		sovereignURL := os.Getenv("RAG_ORCHESTRATOR_KNOWLEDGE_SOVEREIGN_URL")
+		if sovereignURL != "" {
+			eventEmitter = sovereign_client.NewAppendEventClient(
+				sovereignURL,
+				httpclient.NewPooledClient(10*time.Second),
+			)
+			log.Info("knowledge-sovereign event emitter enabled",
+				"url", sovereignURL)
+		} else {
+			log.Warn("RAG_ORCHESTRATOR_KNOWLEDGE_EVENT_EMIT=true but RAG_ORCHESTRATOR_KNOWLEDGE_SOVEREIGN_URL is empty; falling back to no-op emitter")
+		}
+	}
+
 	return &ApplicationComponents{
 		ChunkRepo:            chunkRepo,
 		DocRepo:              docRepo,
@@ -311,6 +341,7 @@ func NewApplicationComponents(cfg *config.Config, pool *pgxpool.Pool, log *slog.
 		AnswerUsecase:        answerUsecase,
 		MorningLetterUsecase: morningLetterUsecase,
 		ConversationUsecase:  conversationUsecase,
+		EventEmitter:         eventEmitter,
 		Worker:               jobWorker,
 		EmbedderFactory:      embedderFactory,
 		IndexUsecaseFactory:  indexUsecaseFactory,

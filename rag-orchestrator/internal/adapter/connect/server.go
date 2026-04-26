@@ -21,13 +21,18 @@ type ServerConfig struct {
 	Port string
 }
 
-// SetupConnectHandlers registers all Connect-RPC handlers on the given mux
+// SetupConnectHandlers registers all Connect-RPC handlers on the given mux.
+// eventEmitter publishes augur.conversation_linked.v1 into knowledge-sovereign;
+// pass usecase.NoopKnowledgeEventEmitter{} when emit is intentionally
+// disabled (tests, or production until alt-deploy registers
+// rag-orchestrator as a knowledge-sovereign pacticipant).
 func SetupConnectHandlers(
 	mux *http.ServeMux,
 	articleClient domain.ArticleClient,
 	answerUsecase usecase.AnswerWithRAGUsecase,
 	retrieveUsecase usecase.RetrieveContextUsecase,
 	conversationUsecase usecase.AugurConversationUsecase,
+	eventEmitter usecase.KnowledgeEventEmitter,
 	letterFetcher domain.MorningLetterFetcher,
 	logger *slog.Logger,
 ) {
@@ -47,6 +52,7 @@ func SetupConnectHandlers(
 		answerUsecase,
 		retrieveUsecase,
 		conversationUsecase,
+		eventEmitter,
 		logger,
 	)
 	augurPath, augurHTTPHandler := augurv2connect.NewAugurServiceHandler(augurHandler)
@@ -60,6 +66,7 @@ func CreateConnectServer(
 	answerUsecase usecase.AnswerWithRAGUsecase,
 	retrieveUsecase usecase.RetrieveContextUsecase,
 	conversationUsecase usecase.AugurConversationUsecase,
+	eventEmitter usecase.KnowledgeEventEmitter,
 	letterFetcher domain.MorningLetterFetcher,
 	logger *slog.Logger,
 ) http.Handler {
@@ -72,7 +79,7 @@ func CreateConnectServer(
 		_, _ = w.Write([]byte(`{"status":"healthy","service":"connect-rpc"}`))
 	})
 
-	SetupConnectHandlers(mux, articleClient, answerUsecase, retrieveUsecase, conversationUsecase, letterFetcher, logger)
+	SetupConnectHandlers(mux, articleClient, answerUsecase, retrieveUsecase, conversationUsecase, eventEmitter, letterFetcher, logger)
 
 	// Support HTTP/2 without TLS (h2c) for Connect-RPC streaming
 	return h2c.NewHandler(mux, &http2.Server{})

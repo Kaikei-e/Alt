@@ -1,0 +1,18 @@
+version: v2
+managed:
+  enabled: true
+  override:
+    - file_option: go_package
+      path: services/sovereign/v1/sovereign.proto
+      value: alt/gen/proto/services/sovereign/v1;sovereignv1
+inputs:
+  - directory: .
+    paths:
+      - services/sovereign
+plugins:
+  - local: protoc-gen-go
+    out: ../rag-orchestrator/internal/gen/proto
+    opt: paths=source_relative
+  - local: protoc-gen-connect-go
+    out: ../rag-orchestrator/internal/gen/proto
+    opt: paths=source_relative

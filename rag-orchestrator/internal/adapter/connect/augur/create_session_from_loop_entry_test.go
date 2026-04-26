@@ -27,7 +27,7 @@ func newLoopHandler(t *testing.T, conv *MockAugurConversationUsecase) *augur.Han
 	mockAnswer := new(MockAnswerWithRAGUsecase)
 	mockRetrieve := new(MockRetrieveContextUsecase)
 	logger := slog.New(slog.NewJSONHandler(io.Discard, nil))
-	return augur.NewHandler(mockAnswer, mockRetrieve, conv, logger)
+	return augur.NewHandler(mockAnswer, mockRetrieve, conv, nil, logger)
 }
 
 func newLoopRequest(userID uuid.UUID, body *augurv2.CreateAugurSessionFromLoopEntryRequest) *connect.Request[augurv2.CreateAugurSessionFromLoopEntryRequest] {
