@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type Route } from "@playwright/test";
 import { LOOP_FIXTURE_ENTRY_KEY } from "../../infra/data/knowledge-loop";
 
 /**
@@ -17,10 +17,37 @@ import { LOOP_FIXTURE_ENTRY_KEY } from "../../infra/data/knowledge-loop";
  * highlight fade + color shift replace depth simulation).
  */
 
+const KL_TRANSITION_PATH = "**/loop/transition";
+
+// Reject the IntersectionObserver-fired dwell so applyLocalStage doesn't flip
+// the fixture entry to `orient` between mount and assertion. The pattern
+// matches canonical-contract.spec.ts / dismiss-persistence.spec.ts — depth is
+// asserted on the seeded `observe` stage, not the post-dwell `orient`.
+async function rejectDwellTransitions(route: Route) {
+	const body = route.request().postDataJSON() as { trigger?: string };
+	if (body.trigger === "dwell") {
+		await route.fulfill({
+			status: 409,
+			contentType: "application/json",
+			body: JSON.stringify({ error: "projection_stale" }),
+		});
+		return;
+	}
+	await route.fulfill({
+		status: 200,
+		contentType: "application/json",
+		body: JSON.stringify({
+			accepted: true,
+			canonicalEntryKey: LOOP_FIXTURE_ENTRY_KEY,
+		}),
+	});
+}
+
 test.describe("Knowledge Loop — OODA tile depth", () => {
 	test("foreground tile carries a non-flat 3D transform tied to its stage", async ({
 		page,
 	}) => {
+		await page.route(KL_TRANSITION_PATH, rejectDwellTransitions);
 		await page.goto("/loop");
 
 		const tile = page
@@ -46,6 +73,7 @@ test.describe("Knowledge Loop — OODA tile depth", () => {
 		const ctx = await browser.newContext({ reducedMotion: "reduce" });
 		const page = await ctx.newPage();
 		try {
+			await page.route(KL_TRANSITION_PATH, rejectDwellTransitions);
 			await page.goto("/loop");
 			const tile = page
 				.locator(

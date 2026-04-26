@@ -37,8 +37,8 @@ const (
 	// can subscribe to them via the same event log; until then the projector
 	// silently no-ops on them so an early emitter doesn't break the batch.
 	// See canonical contract §6.4.1.
-	EventRecapTopicSnapshotted             = "recap.topic_snapshotted.v1"
-	EventAugurConversationLinked           = "augur.conversation_linked.v1"
+	EventRecapTopicSnapshotted              = "recap.topic_snapshotted.v1"
+	EventAugurConversationLinked            = "augur.conversation_linked.v1"
 	EventKnowledgeLoopSurfacePlanRecomputed = "knowledge_loop.surface_plan_recomputed.v1"
 )
 
@@ -62,4 +62,12 @@ const AggregateLoopSession = "knowledge_loop_session"
 // can be patched with a real narrative. Bump is a runbook signal that
 // operators may optionally trigger a full reproject after backfill completes
 // to verify replay convergence. ADR-000846.
-const WhyMappingVersion = 5
+//
+// v6 (2026-04-26): EventLogSurfaceScoreResolver wired via WithScoreResolver.
+// Adds three new WhyKinds — `topic_affinity_why`, `tag_trending_why`,
+// `unfinished_continue_why` — emitted by enricher when the resolver returns
+// non-zero v2 evidence (recap topic overlap, tag set overlap, or augur
+// link / open interaction). Bump triggers a full reproject so historic
+// entries pick up the v2 placement and Why narrative deterministically.
+// Wave 4-C wiring (ADR-000853).
+const WhyMappingVersion = 6
