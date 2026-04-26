@@ -69,21 +69,27 @@ ORDER BY projection_seq_hiwater DESC
 LIMIT $%d
 `, where, len(args))
 
-	rows, err := r.pool.Query(ctx, query, args...)
-	if err != nil {
-		return nil, fmt.Errorf("query knowledge_loop_entries: %w", err)
-	}
-	defer rows.Close()
-
 	var out []*sovereignv1.KnowledgeLoopEntry
-	for rows.Next() {
-		e, err := scanKnowledgeLoopEntry(rows)
+	err := r.withUserContext(ctx, f.UserID, func(tx pgx.Tx) error {
+		rows, err := tx.Query(ctx, query, args...)
 		if err != nil {
-			return nil, err
+			return fmt.Errorf("query knowledge_loop_entries: %w", err)
 		}
-		out = append(out, e)
+		defer rows.Close()
+
+		for rows.Next() {
+			e, err := scanKnowledgeLoopEntry(rows)
+			if err != nil {
+				return err
+			}
+			out = append(out, e)
+		}
+		return rows.Err()
+	})
+	if err != nil {
+		return nil, err
 	}
-	return out, rows.Err()
+	return out, nil
 }
 
 func scanKnowledgeLoopEntry(row pgx.Row) (*sovereignv1.KnowledgeLoopEntry, error) {
@@ -192,13 +198,21 @@ WHERE user_id = $1 AND tenant_id = $2 AND lens_mode_id = $3
 		lastObs, lastOri, lastDec, lastAct, lastRet, lastDef *string
 		rev, seq                                             int64
 	)
-	err := r.pool.QueryRow(ctx, query, userID, tenantID, lensModeID).Scan(
-		&uid, &tid, &lens, &stage, &stageEnteredAt,
-		&focused, &foreground,
-		&lastObs, &lastOri, &lastDec, &lastAct, &lastRet, &lastDef,
-		&rev, &seq,
-	)
-	if errors.Is(err, pgx.ErrNoRows) {
+	var noRows bool
+	err := r.withUserContext(ctx, userID, func(tx pgx.Tx) error {
+		scanErr := tx.QueryRow(ctx, query, userID, tenantID, lensModeID).Scan(
+			&uid, &tid, &lens, &stage, &stageEnteredAt,
+			&focused, &foreground,
+			&lastObs, &lastOri, &lastDec, &lastAct, &lastRet, &lastDef,
+			&rev, &seq,
+		)
+		if errors.Is(scanErr, pgx.ErrNoRows) {
+			noRows = true
+			return nil
+		}
+		return scanErr
+	})
+	if noRows {
 		return nil, nil
 	}
 	if err != nil {
@@ -238,47 +252,53 @@ FROM knowledge_loop_surfaces
 WHERE user_id = $1 AND tenant_id = $2 AND lens_mode_id = $3
 ORDER BY surface_bucket
 `
-	rows, err := r.pool.Query(ctx, query, userID, tenantID, lensModeID)
-	if err != nil {
-		return nil, fmt.Errorf("query knowledge_loop_surfaces: %w", err)
-	}
-	defer rows.Close()
-
 	var out []*sovereignv1.KnowledgeLoopSurface
-	for rows.Next() {
-		var (
-			uid, tid     uuid.UUID
-			lens, bucket string
-			primary      *string
-			secondary    []string
-			rev, seq     int64
-			freshness    time.Time
-			quality      string
-			health       []byte
-		)
-		if err := rows.Scan(
-			&uid, &tid, &lens, &bucket,
-			&primary, &secondary,
-			&rev, &seq,
-			&freshness, &quality, &health,
-		); err != nil {
-			return nil, fmt.Errorf("scan knowledge_loop_surface: %w", err)
+	err := r.withUserContext(ctx, userID, func(tx pgx.Tx) error {
+		rows, err := tx.Query(ctx, query, userID, tenantID, lensModeID)
+		if err != nil {
+			return fmt.Errorf("query knowledge_loop_surfaces: %w", err)
 		}
-		out = append(out, &sovereignv1.KnowledgeLoopSurface{
-			UserId:               uid.String(),
-			TenantId:             tid.String(),
-			LensModeId:           lens,
-			SurfaceBucket:        surfaceBucketFromDB(bucket),
-			PrimaryEntryKey:      primary,
-			SecondaryEntryKeys:   secondary,
-			ProjectionRevision:   rev,
-			ProjectionSeqHiwater: seq,
-			FreshnessAt:          timestampFromTime(freshness),
-			ServiceQuality:       serviceQualityFromDB(quality),
-			LoopHealth:           health,
-		})
+		defer rows.Close()
+
+		for rows.Next() {
+			var (
+				uid, tid     uuid.UUID
+				lens, bucket string
+				primary      *string
+				secondary    []string
+				rev, seq     int64
+				freshness    time.Time
+				quality      string
+				health       []byte
+			)
+			if err := rows.Scan(
+				&uid, &tid, &lens, &bucket,
+				&primary, &secondary,
+				&rev, &seq,
+				&freshness, &quality, &health,
+			); err != nil {
+				return fmt.Errorf("scan knowledge_loop_surface: %w", err)
+			}
+			out = append(out, &sovereignv1.KnowledgeLoopSurface{
+				UserId:               uid.String(),
+				TenantId:             tid.String(),
+				LensModeId:           lens,
+				SurfaceBucket:        surfaceBucketFromDB(bucket),
+				PrimaryEntryKey:      primary,
+				SecondaryEntryKeys:   secondary,
+				ProjectionRevision:   rev,
+				ProjectionSeqHiwater: seq,
+				FreshnessAt:          timestampFromTime(freshness),
+				ServiceQuality:       serviceQualityFromDB(quality),
+				LoopHealth:           health,
+			})
+		}
+		return rows.Err()
+	})
+	if err != nil {
+		return nil, err
 	}
-	return out, rows.Err()
+	return out, nil
 }
 
 // ---------- inverse enum mappers ----------

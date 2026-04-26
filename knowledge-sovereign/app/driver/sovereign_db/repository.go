@@ -13,10 +13,20 @@ import (
 )
 
 // PgxIface defines the interface for pgx operations.
+//
+// BeginTx is used by the Wave 4-D caller-first session-var path
+// (knowledge_loop_entries RLS rollout). The Knowledge Loop read methods
+// open a short-lived ReadOnly transaction, issue `SELECT set_config(
+// 'alt.user_id', $1, true)` so the value is scoped to the transaction
+// (pgbouncer transaction-pooling compatible), then run the SELECTs.
+// Once Phase 2's CREATE POLICY ships, the session var becomes the
+// fail-closed gate that blocks cross-user evidence_refs reads if the
+// caller forgets to bind. See docs/plan/knowledge-loop-wave4-remaining-tasks.md §3.
 type PgxIface interface {
 	Query(ctx context.Context, sql string, args ...interface{}) (pgx.Rows, error)
 	QueryRow(ctx context.Context, sql string, args ...interface{}) pgx.Row
 	Exec(ctx context.Context, sql string, arguments ...interface{}) (pgconn.CommandTag, error)
+	BeginTx(ctx context.Context, txOptions pgx.TxOptions) (pgx.Tx, error)
 }
 
 var _ PgxIface = (*pgxpool.Pool)(nil)
