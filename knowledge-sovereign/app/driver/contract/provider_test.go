@@ -91,6 +91,22 @@ func startStubServer(t *testing.T, reject *bool) int {
 	mux.HandleFunc("/services.sovereign.v1.KnowledgeSovereignService/ApplyRecallMutation", mutationHandler)
 	mux.HandleFunc("/services.sovereign.v1.KnowledgeSovereignService/ApplyCurationMutation", mutationHandler)
 
+	// AppendKnowledgeEvent (ADR-000840 versioned event_type convention).
+	// Consumer is alt-backend's TransitionKnowledgeLoopUsecase, which
+	// appends knowledge_loop.{observed,deferred,acted}.v1 events. The
+	// provider's wire-shape responsibility is just `{"success": true}`
+	// on a well-formed request — projector-side dedupe / same-stage
+	// validation lives in the sovereign DB driver, out of this contract.
+	mux.HandleFunc("/services.sovereign.v1.KnowledgeSovereignService/AppendKnowledgeEvent", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			w.WriteHeader(http.StatusMethodNotAllowed)
+			return
+		}
+		_, _ = io.Copy(io.Discard, r.Body)
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{"success": true})
+	})
+
 	// Admin REST surface on the same listener: pact-go routes every
 	// consumer interaction through the single ProviderBaseURL, so we
 	// serve Connect-RPC and admin REST on the same port.
@@ -234,6 +250,21 @@ func TestVerifyAltBackendConsumerContract(t *testing.T) {
 			},
 			"the curation mutation create_lens is accepted": func(setup bool, s models.ProviderState) (models.ProviderStateResponse, error) {
 				reject = false
+				return nil, nil
+			},
+			// Knowledge Loop append states (ADR-000840). The handlers
+			// don't mutate stub state — the wire contract for
+			// AppendKnowledgeEvent is identical for all three event_types,
+			// the differentiation happens in the projector. Pact-go still
+			// requires the state name to be registered or it fails the
+			// interaction with "no setup handler".
+			"sovereign accepts append-only Loop transition events": func(setup bool, s models.ProviderState) (models.ProviderStateResponse, error) {
+				return nil, nil
+			},
+			"sovereign accepts Deferred Loop events with same-stage transitions": func(setup bool, s models.ProviderState) (models.ProviderStateResponse, error) {
+				return nil, nil
+			},
+			"sovereign accepts Act-stage Loop events without inferring HomeItemOpened": func(setup bool, s models.ProviderState) (models.ProviderStateResponse, error) {
 				return nil, nil
 			},
 		},
