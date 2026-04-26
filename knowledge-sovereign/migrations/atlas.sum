@@ -1,4 +1,4 @@
-h1:vn8r8LQHkrJP7372T+uZyST2EkGwUbYZiPXvv7K5Rfs=
+h1:F/7BLTplC4E+ODgK2OkfpUMuY9OYyhAcKmqjcf/RqjM=
 00001_initial_schema.sql h1:CSFJx5Q5Jv44C4sqoKpzvdh6t8Unwog8bZw9/VBd3NQ=
 00002_add_link_column.sql h1:A2QxniA5wEK9bo0UnqTNKX5TgvkR/zugtdCKs8O07DE=
 00003_fix_user_events_dedupe_constraint.sql h1:5EpJwNHbInepPLqTMNG3YL/FPTqvpkpqazjt6rK0PkQ=
@@ -12,3 +12,4 @@ h1:vn8r8LQHkrJP7372T+uZyST2EkGwUbYZiPXvv7K5Rfs=
 00011_create_knowledge_loop_tables.sql h1:xH9xQbTM3U1/85HVC2Z08KN7BXtlbcR5m+hEz2SBOto=
 00012_add_kind_to_knowledge_backfill_jobs.sql h1:g0wqTbgGPHUm5hr/ilWmlfoGkGJTkeTo2QAfrC8JL9o=
 00013_add_surface_planner_v2_columns.sql h1:dygYPD1VDwGxd8dhSgTPYkaGfQzwSLKb2r1AFSf/LI4=
+00014_add_rls_to_knowledge_loop_entries.sql h1:kaApvGNbayuSygefnKBqdohsnhEdHIZvxkDM6nfDtBA=
