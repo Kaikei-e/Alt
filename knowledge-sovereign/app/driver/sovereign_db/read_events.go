@@ -111,6 +111,43 @@ func (r *Repository) AppendKnowledgeEvent(ctx context.Context, event KnowledgeEv
 	return eventSeq, nil
 }
 
+// ListKnowledgeEventsForUserInWindow returns events scoped strictly to the
+// supplied user_id within [since, until), filtered by an event_type
+// allowlist. Used by Surface Planner v2's resolver to pull cross-source
+// evidence (recap topic snapshots / augur conversation links / summary
+// version churn) without ever reading mutable views or latest state.
+//
+// F-001 mitigation: user_id is bound physically as a SQL parameter and
+// the predicate is `user_id = $1` (no OR user_id IS NULL — system events
+// never feed v2 evidence). Tenant-wide events would not be addressable to
+// a single user's score window, and admitting them would let cross-tenant
+// signals bleed into per-user placement.
+//
+// `eventTypes` is passed as a TEXT[] and matched with `= ANY(...)`. Empty
+// slice returns no rows.
+func (r *Repository) ListKnowledgeEventsForUserInWindow(
+	ctx context.Context,
+	userID uuid.UUID,
+	eventTypes []string,
+	since, until time.Time,
+	limit int,
+) ([]KnowledgeEvent, error) {
+	if len(eventTypes) == 0 || limit <= 0 {
+		return nil, nil
+	}
+	query := `SELECT event_id, event_seq, occurred_at, tenant_id, user_id,
+		actor_type, actor_id, event_type, aggregate_type, aggregate_id,
+		correlation_id, causation_id, dedupe_key, payload
+		FROM knowledge_events
+		WHERE user_id = $1
+		  AND occurred_at >= $2
+		  AND occurred_at < $3
+		  AND event_type = ANY($4::text[])
+		ORDER BY event_seq ASC LIMIT $5`
+
+	return r.scanEvents(ctx, query, userID, since, until, eventTypes, limit)
+}
+
 // KnowledgeUserEvent represents a user interaction event (seen, opened, etc.).
 type KnowledgeUserEvent struct {
 	UserEventID uuid.UUID

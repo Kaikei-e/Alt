@@ -109,7 +109,8 @@ func main() {
 	// — the projector is reproject-safe and idempotent, so re-running on a
 	// quiet log is cheap.
 	loopProjector := knowledge_loop_projector.NewProjector(repo, slog.Default(),
-		knowledge_loop_projector.Config{BatchSize: 100})
+		knowledge_loop_projector.Config{BatchSize: 100}).
+		WithScoreResolver(knowledge_loop_projector.NewEventLogSurfaceScoreResolver(repo))
 	loopTick := time.NewTicker(5 * time.Second)
 	go func() {
 		defer loopTick.Stop()
