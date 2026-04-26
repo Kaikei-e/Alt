@@ -19,6 +19,7 @@ Canonical contract: [[knowledge-loop-canonical-contract]]
 Full-reproject procedure for the Knowledge Loop read model. Use this when:
 
 - the `WhyMappingVersion` constant in `alt-backend/app/usecase/knowledge_loop_usecase/validator.go` bumps
+- the `SurfacePlannerVersion` enum value used by the projector is bumped (canonical contract §6.5)
 - the projector emit rules change in `job/knowledge_loop_projector.go`
 - the `dangling_supersede_refs` view is non-empty
 - a migration modifies the projection schema in a non-idempotent way
@@ -106,4 +107,25 @@ Each bump triggers a full reproject per the Pre-flight + Procedure above, so exi
 |---------|------------|--------------|--------------|
 | 1       | 2026-04-23 | [[000831]]   | initial mapping table (fixed-string rationales via `shortEventWhy`) |
 | 2       | 2026-04-24 | [[000840]]   | `EnrichWhyFromEvent` replaces fixed strings with structured evidence_refs derived from event payload (summary_version_id / tag_set_version_id / article_id / conversation_id / open event_id) |
+| 3       | 2026-04-26 | [[000844]]   | why_text rewritten from placeholder strings to substantive narratives; stage-appropriate seedDecisionOptions replaces the previous Source/Observe-only block |
+| 4       | 2026-04-26 | [[000844]]   | projector ownership moved to knowledge-sovereign; runtime behavior unchanged from v3 but the bump signals operators that the projection is now driven from this service rather than alt-backend's job runner |
+| 5       | 2026-04-26 | [[000846]]   | `SummaryNarrativeBackfilled` event type added so historic entries whose original SummaryVersionCreated event lacked article_title can be patched with a real narrative; optional full reproject post-backfill verifies replay convergence |
+| 6       | tbd        | tbd          | adds `topic_affinity_why` / `tag_trending_why` / `unfinished_continue_why` to the WhyKind enum; mapping for `recap_topic_overlap` / `tag_frequency_rising` / `unfinished_thread` codes (canonical contract §11). Bump pairs with the SurfaceScoreResolver real implementation (Wave 4) emitting these kinds |
+
+## SurfacePlannerVersion history
+
+Each bump triggers a full reproject so that legacy entries pick up the new bucket placement deterministically. The bumped value is recorded on each row in `KnowledgeLoopEntry.surface_planner_version` (proto field 31).
+
+| version | date       | ADR          | what changed |
+|---------|------------|--------------|--------------|
+| `v1`    | 2026-04-23 | [[000831]]   | event-type → bucket fixed mapping (`SummaryVersionCreated` → Now, `HomeItemOpened` → Continue, `HomeItemSuperseded` → Changed, `HomeItemDismissed` → Review) |
+| `v2`    | tbd        | tbd          | knowledge-state-based scoring via `decideBucketV2(SurfaceScoreInputs) → SurfaceBucket`. Inputs are immutable evidence drawn from `event.occurred_at - 7d` windows on versioned tables only |
+
+### v2 cutover checklist (in addition to the Procedure above)
+
+1. Confirm the upstream snapshot events are flowing: `RecapTopicSnapshotted` (recap-worker) and `AugurConversationLinked` (augur). The v2 planner is starved without them and falls back to v1 placement.
+2. Ensure the new evidence columns / tables required by v2 inputs exist (see Atlas migration history).
+3. Drain in-flight projector work and run the Procedure transaction.
+4. Verify the post-check `SELECT DISTINCT surface_planner_version` returns exactly `v2` once the projector has caught up.
+
 - **`projected_at` in API response**: a serious bug. The canonical contract forbids it. Treat as a security incident; see ADR-000831 §12 and the `TestProjectedAtNotSerialized` test.
