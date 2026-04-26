@@ -40,10 +40,13 @@ export const CONNECT_KNOWLEDGE_LOOP_RESPONSE = {
 			dismissState: 1, // DISMISS_STATE_ACTIVE
 			renderDepthHint: 2, // RENDER_DEPTH_HINT_LIGHT
 			loopPriority: 1, // LOOP_PRIORITY_CRITICAL
+			// Stage-appropriate seed per ADR-000844 / canonical contract §7.
+			// Observe → orient via revisit; ask + snooze are non-transition CTAs.
+			// The pre-ADR seed (open/save/snooze) required observe → act, which
+			// §7 forbids — those CTAs rendered as disabled buttons in the UI.
 			decisionOptions: [
-				{ actionId: "open-1", intent: 1, label: "Open" }, // OPEN
-				{ actionId: "ask-1", intent: 2, label: "Ask" }, // ASK (UI filters)
-				{ actionId: "save-1", intent: 3, label: "Save" }, // SAVE
+				{ actionId: "revisit-1", intent: 5, label: "Revisit" }, // REVISIT
+				{ actionId: "ask-1", intent: 2, label: "Ask" }, // ASK
 				{ actionId: "snooze-1", intent: 6, label: "Snooze" }, // SNOOZE
 			],
 			actTargets: [

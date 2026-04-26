@@ -1,10 +1,7 @@
 import { expect, test } from "@playwright/test";
 import { gotoMobileRoute } from "../helpers/navigation";
 import { fulfillJson } from "../utils/mockHelpers";
-import {
-	LOOP_FIXTURE_ENTRY_KEY,
-	LOOP_FIXTURE_SOURCE_URL,
-} from "../infra/data/knowledge-loop";
+import { LOOP_FIXTURE_ENTRY_KEY } from "../infra/data/knowledge-loop";
 
 /**
  * Knowledge Loop OODA transition UI — Playwright E2E.
@@ -40,7 +37,7 @@ async function routeTransitionAccepted(
 }
 
 test.describe("Mobile Knowledge Loop — OODA transition", () => {
-	test("tile tap reveals the decision-option CTAs (ask filtered out)", async ({
+	test("tile tap reveals stage-appropriate CTAs (§7 transition allowlist)", async ({
 		page,
 	}) => {
 		const captured: CapturedRequest[] = [];
@@ -65,23 +62,27 @@ test.describe("Mobile Knowledge Loop — OODA transition", () => {
 		await expect(target).toBeVisible();
 		await target.click();
 
-		// Ask CTA must be filtered out (PR-L3 scope), Dismiss always present.
-		await expect(target.getByRole("button", { name: /^open$/i })).toBeVisible();
-		await expect(target.getByRole("button", { name: /^save$/i })).toBeVisible();
+		// Per ADR-000844 §7: an Observe entry seeds revisit (→ orient), ask,
+		// snooze. Earlier seeds emitted open/save (→ act), which §7 forbids.
+		await expect(
+			target.getByRole("button", { name: /^revisit$/i }),
+		).toBeVisible();
+		await expect(target.getByRole("button", { name: /^ask$/i })).toBeVisible();
 		await expect(
 			target.getByRole("button", { name: /^snooze$/i }),
 		).toBeVisible();
 		await expect(
 			target.getByRole("button", { name: /^dismiss$/i }),
 		).toBeVisible();
-		await expect(target.getByRole("button", { name: /^ask$/i })).toHaveCount(0);
+		// Forbidden CTAs must NOT appear on Observe entries.
+		await expect(target.getByRole("button", { name: /^open$/i })).toHaveCount(0);
+		await expect(target.getByRole("button", { name: /^save$/i })).toHaveCount(0);
 
 		await expect(target).toHaveAttribute("aria-expanded", "true");
 	});
 
-	test("Open CTA opens a new tab and posts an act transition", async ({
+	test("Revisit CTA posts an observe → orient transition", async ({
 		page,
-		context,
 	}) => {
 		const captured: CapturedRequest[] = [];
 		await routeTransitionAccepted(page, captured);
@@ -96,23 +97,20 @@ test.describe("Mobile Knowledge Loop — OODA transition", () => {
 
 		await target.click();
 
-		const openCta = target.getByRole("button", { name: /^open$/i });
-		await expect(openCta).toBeVisible();
-
-		const newPagePromise = context.waitForEvent("page", { timeout: 5_000 });
-		await openCta.click();
-
-		const popup = await newPagePromise;
-		await popup.waitForLoadState("domcontentloaded").catch(() => {});
-		expect(popup.url()).toContain(new URL(LOOP_FIXTURE_SOURCE_URL).hostname);
+		const revisitCta = target.getByRole("button", { name: /^revisit$/i });
+		await expect(revisitCta).toBeVisible();
+		await revisitCta.click();
 
 		await expect
 			.poll(() => captured.length, { timeout: 3_000 })
 			.toBeGreaterThanOrEqual(1);
-		const actReq = captured.find((r) => r.toStage === "act");
-		expect(actReq).toBeTruthy();
-		expect(actReq?.entryKey).toBe(LOOP_FIXTURE_ENTRY_KEY);
-		expect(actReq?.clientTransitionId).toMatch(
+		// §7: observe → orient is the only forward transition the Revisit CTA
+		// drives. fromStage / toStage are the BFF-side transition request fields.
+		const orientReq = captured.find((r) => r.toStage === "orient");
+		expect(orientReq).toBeTruthy();
+		expect(orientReq?.fromStage).toBe("observe");
+		expect(orientReq?.entryKey).toBe(LOOP_FIXTURE_ENTRY_KEY);
+		expect(orientReq?.clientTransitionId).toMatch(
 			/^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i,
 		);
 	});
