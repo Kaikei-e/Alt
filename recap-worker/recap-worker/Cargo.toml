@@ -57,7 +57,10 @@ opentelemetry-otlp = { version = "0.30", features = [
   "grpc-tonic",
   "http-proto",
 ] }
-uuid = { version = "1.20", features = ["v4", "serde"] }
+uuid = { version = "1.20", features = ["v4", "v7", "serde"] }
+# base64 is needed by the knowledge_sovereign client to encode the
+# protojson `bytes` payload field (Wave 4-B, ADR-000853 §6.4.1).
+base64 = "0.22"
 chrono = { version = "0.4", features = ["clock", "std", "serde"] }
 futures = "0.3"
 unicode-normalization = "0.1"

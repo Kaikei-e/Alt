@@ -1,0 +1,164 @@
+{
+  "consumer": {
+    "name": "recap-worker"
+  },
+  "interactions": [
+    {
+      "description": "an AppendKnowledgeEvent request for recap.topic_snapshotted.v1",
+      "providerStates": [
+        {
+          "name": "sovereign accepts append-only Loop transition events"
+        }
+      ],
+      "request": {
+        "body": {
+          "event": {
+            "actorId": "persist-stage",
+            "actorType": "service:recap-worker",
+            "aggregateId": "recap-topic-snapshot:44444444-4444-4444-4444-444444444444:2026-04-26T00:00:00+00:00",
+            "aggregateType": "knowledge_loop_session",
+            "dedupeKey": "recap.topic_snapshotted.v1:44444444-4444-4444-4444-444444444444:01939001-aaaa-7000-8000-000000000001",
+            "eventId": "00000000-0000-0000-0000-000000000000",
+            "eventType": "recap.topic_snapshotted.v1",
+            "occurredAt": "2026-04-26T01:00:00+00:00",
+            "payload": "eyJjbHVzdGVyX2lkIjo3LCJyZWNhcF90b3BpY19zbmFwc2hvdF9pZCI6IjAxOTM5MDAxLWFhYWEtNzAwMC04MDAwLTAwMDAwMDAwMDAwMSIsInNuYXBzaG90X3dpbmRvd19lbmQiOiIyMDI2LTA0LTI2VDAxOjAwOjAwKzAwOjAwIiwic25hcHNob3Rfd2luZG93X3N0YXJ0IjoiMjAyNi0wNC0yNlQwMDowMDowMCswMDowMCIsInRvcF90ZXJtcyI6WyJhaSIsImxsbSJdfQ==",
+            "tenantId": "11111111-1111-1111-1111-111111111111",
+            "userId": "44444444-4444-4444-4444-444444444444"
+          }
+        },
+        "headers": {
+          "content-type": "application/json"
+        },
+        "matchingRules": {
+          "body": {
+            "$.event.actorId": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.event.actorType": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.event.aggregateId": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.event.aggregateType": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.event.dedupeKey": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.event.eventId": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+                }
+              ]
+            },
+            "$.event.eventType": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.event.occurredAt": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.event.payload": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.event.tenantId": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.event.userId": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            }
+          }
+        },
+        "method": "POST",
+        "path": "/services.sovereign.v1.KnowledgeSovereignService/AppendKnowledgeEvent"
+      },
+      "response": {
+        "body": {
+          "success": true
+        },
+        "headers": {
+          "content-type": "application/json"
+        },
+        "matchingRules": {
+          "body": {
+            "$.success": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            }
+          }
+        },
+        "status": 200
+      }
+    }
+  ],
+  "metadata": {
+    "pactRust": {
+      "consumer": "1.4.2",
+      "mockserver": "2.1.3",
+      "models": "1.3.8"
+    },
+    "pactSpecification": {
+      "version": "3.0.0"
+    }
+  },
+  "provider": {
+    "name": "knowledge-sovereign"
+  }
+}
