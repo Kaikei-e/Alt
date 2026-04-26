@@ -19,6 +19,13 @@ import (
 // the JWT trust boundary; rag-orchestrator trusts this header implicitly.
 const userIDHeader = "X-Alt-User-Id"
 
+// tenantIDHeader carries the caller's tenant uuid so rag-orchestrator can
+// stamp augur.conversation_linked.v1 events with a non-empty tenant_id when
+// it forwards them to knowledge-sovereign. Wave 4-A (ADR-000853) made this
+// header required end-to-end — Surface Planner v2's resolver multi-tenant
+// isolation depends on a physical tenant binding rather than session lookup.
+const tenantIDHeader = "X-Alt-Tenant-Id"
+
 // Handler implements augurv2connect.AugurServiceHandler
 type Handler struct {
 	retrieveContextUsecase retrieve_context_usecase.RetrieveContextUsecase
@@ -76,6 +83,7 @@ func (h *Handler) StreamChat(
 	// Propagate the authenticated user id to rag-orchestrator so it can scope
 	// conversation persistence. Client-provided headers are overwritten.
 	req.Header().Set(userIDHeader, user.UserID.String())
+	req.Header().Set(tenantIDHeader, user.TenantID.String())
 
 	// Call rag-orchestrator directly via Connect-RPC
 	ragStream, err := h.ragStreamPort.StreamChat(ctx, req)
@@ -198,6 +206,7 @@ func (h *Handler) ListConversations(
 		return nil, connect.NewError(connect.CodeUnauthenticated, nil)
 	}
 	req.Header().Set(userIDHeader, user.UserID.String())
+	req.Header().Set(tenantIDHeader, user.TenantID.String())
 	resp, err := h.ragStreamPort.ListConversations(ctx, req)
 	if err != nil {
 		return nil, errorhandler.HandleInternalError(ctx, h.logger, err, "ListConversations")
@@ -215,6 +224,7 @@ func (h *Handler) GetConversation(
 		return nil, connect.NewError(connect.CodeUnauthenticated, nil)
 	}
 	req.Header().Set(userIDHeader, user.UserID.String())
+	req.Header().Set(tenantIDHeader, user.TenantID.String())
 	resp, err := h.ragStreamPort.GetConversation(ctx, req)
 	if err != nil {
 		return nil, errorhandler.HandleInternalError(ctx, h.logger, err, "GetConversation")
@@ -232,6 +242,7 @@ func (h *Handler) DeleteConversation(
 		return nil, connect.NewError(connect.CodeUnauthenticated, nil)
 	}
 	req.Header().Set(userIDHeader, user.UserID.String())
+	req.Header().Set(tenantIDHeader, user.TenantID.String())
 	resp, err := h.ragStreamPort.DeleteConversation(ctx, req)
 	if err != nil {
 		return nil, errorhandler.HandleInternalError(ctx, h.logger, err, "DeleteConversation")
@@ -253,6 +264,7 @@ func (h *Handler) CreateAugurSessionFromLoopEntry(
 		return nil, connect.NewError(connect.CodeUnauthenticated, nil)
 	}
 	req.Header().Set(userIDHeader, user.UserID.String())
+	req.Header().Set(tenantIDHeader, user.TenantID.String())
 	resp, err := h.ragStreamPort.CreateAugurSessionFromLoopEntry(ctx, req)
 	if err != nil {
 		return nil, errorhandler.HandleInternalError(ctx, h.logger, err, "CreateAugurSessionFromLoopEntry")

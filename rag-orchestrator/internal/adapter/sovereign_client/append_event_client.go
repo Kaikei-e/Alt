@@ -36,9 +36,17 @@ type AppendEventClient struct {
 // knowledge-sovereign service address (no trailing slash). httpClient is
 // the pre-configured transport — the caller injects mTLS / service token
 // configuration there.
+//
+// The codec is pinned to JSON via connect.WithProtoJSON() so the wire
+// format matches ADR-000764 (Connect-RPC over HTTP/1.1 + JSON) and the
+// Pact CDC contract that pins protojson camelCase field names. Without
+// this option Connect-go defaults to application/proto, which the
+// provider stub does not decode and which silently breaks the pact gate.
 func NewAppendEventClient(baseURL string, httpClient *http.Client) *AppendEventClient {
 	return &AppendEventClient{
-		rpc: sovereignv1connect.NewKnowledgeSovereignServiceClient(httpClient, baseURL),
+		rpc: sovereignv1connect.NewKnowledgeSovereignServiceClient(
+			httpClient, baseURL, connect.WithProtoJSON(),
+		),
 	}
 }
 
@@ -62,6 +70,9 @@ func (c *AppendEventClient) EmitAugurConversationLinked(
 	if in.UserID == uuid.Nil {
 		return errors.New("AugurConversationLinkedInput.UserID required")
 	}
+	if in.TenantID == uuid.Nil {
+		return errors.New("AugurConversationLinkedInput.TenantID required")
+	}
 	if in.ConversationID == uuid.Nil {
 		return errors.New("AugurConversationLinkedInput.ConversationID required")
 	}
@@ -81,16 +92,11 @@ func (c *AppendEventClient) EmitAugurConversationLinked(
 		in.ConversationID.String(), in.EntryKey, in.LensModeID, in.LinkedAt,
 	)
 
-	tenantID := ""
-	if in.TenantID != uuid.Nil {
-		tenantID = in.TenantID.String()
-	}
-
 	req := connect.NewRequest(&sovereignv1.AppendKnowledgeEventRequest{
 		Event: &sovereignv1.KnowledgeEvent{
 			EventId:       uuid.New().String(),
 			OccurredAt:    timestamppb.New(occurredAt),
-			TenantId:      tenantID,
+			TenantId:      in.TenantID.String(),
 			UserId:        in.UserID.String(),
 			ActorType:     "service:rag-orchestrator",
 			ActorId:       "augur-handler",

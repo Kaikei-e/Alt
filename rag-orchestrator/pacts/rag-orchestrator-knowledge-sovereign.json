@@ -1,0 +1,95 @@
+{
+  "consumer": {
+    "name": "rag-orchestrator"
+  },
+  "interactions": [
+    {
+      "description": "an AppendKnowledgeEvent request for augur.conversation_linked.v1",
+      "providerStates": [
+        {
+          "name": "sovereign accepts append-only Loop transition events"
+        }
+      ],
+      "request": {
+        "body": {
+          "event": {
+            "actorId": "augur-handler",
+            "actorType": "service:rag-orchestrator",
+            "aggregateId": "article:42",
+            "aggregateType": "knowledge_loop_session",
+            "dedupeKey": "augur.conversation_linked.v1:article:42:33333333-3333-3333-3333-333333333333",
+            "eventId": "00000000-0000-0000-0000-000000000000",
+            "eventType": "augur.conversation_linked.v1",
+            "occurredAt": "2024-04-25T16:00:00Z",
+            "payload": "eyJjb252ZXJzYXRpb25faWQiOiIzMzMzMzMzMy0zMzMzLTMzMzMtMzMzMy0zMzMzMzMzMzMzMzMiLCJlbnRyeV9rZXkiOiJhcnRpY2xlOjQyIiwibGVuc19tb2RlX2lkIjoiZGVmYXVsdCIsImxpbmtlZF9hdCI6MTcxNDA2MDgwMDAwMH0=",
+            "tenantId": "11111111-1111-1111-1111-111111111111",
+            "userId": "22222222-2222-2222-2222-222222222222"
+          }
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "matchingRules": {
+          "body": {
+            "$.event": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.event.eventId": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+                }
+              ]
+            }
+          }
+        },
+        "method": "POST",
+        "path": "/services.sovereign.v1.KnowledgeSovereignService/AppendKnowledgeEvent"
+      },
+      "response": {
+        "body": {
+          "success": true
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "matchingRules": {
+          "body": {
+            "$.success": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            }
+          }
+        },
+        "status": 200
+      }
+    }
+  ],
+  "metadata": {
+    "pact-go": {
+      "version": "2.4.2"
+    },
+    "pactRust": {
+      "ffi": "0.4.28",
+      "mockserver": "1.2.16",
+      "models": "1.3.5"
+    },
+    "pactSpecification": {
+      "version": "3.0.0"
+    }
+  },
+  "provider": {
+    "name": "knowledge-sovereign"
+  }
+}

@@ -31,11 +31,15 @@ import (
 )
 
 const (
-	providerName         = "knowledge-sovereign"
-	altBackendPactFile   = "../../../../alt-backend/pacts/alt-backend-knowledge-sovereign.json"
-	altBackendPactAtRoot = "../../../../pacts/alt-backend-knowledge-sovereign.json"
-	altctlPactFile       = "../../../../pacts/altctl-knowledge-sovereign.json"
-	altctlPactAtAlt      = "../../../../altctl/pacts/altctl-knowledge-sovereign.json"
+	providerName          = "knowledge-sovereign"
+	altBackendPactFile    = "../../../../alt-backend/pacts/alt-backend-knowledge-sovereign.json"
+	altBackendPactAtRoot  = "../../../../pacts/alt-backend-knowledge-sovereign.json"
+	altctlPactFile        = "../../../../pacts/altctl-knowledge-sovereign.json"
+	altctlPactAtAlt       = "../../../../altctl/pacts/altctl-knowledge-sovereign.json"
+	ragOrchPactFile       = "../../../../rag-orchestrator/pacts/rag-orchestrator-knowledge-sovereign.json"
+	ragOrchPactAtRoot     = "../../../../pacts/rag-orchestrator-knowledge-sovereign.json"
+	recapWorkerPactFile   = "../../../../recap-worker/pacts/recap-worker-knowledge-sovereign.json"
+	recapWorkerPactAtRoot = "../../../../pacts/recap-worker-knowledge-sovereign.json"
 )
 
 // applyMutationRequest mirrors the shared wire shape of
@@ -277,6 +281,131 @@ func TestVerifyAltBackendConsumerContract(t *testing.T) {
 		verifyRequest.ConsumerVersionSelectors = []provider.Selector{
 			&provider.ConsumerVersionSelector{Consumer: "alt-backend", MainBranch: true},
 			&provider.ConsumerVersionSelector{Consumer: "alt-backend", DeployedOrReleased: true},
+		}
+		if ver := os.Getenv("PACT_PROVIDER_VERSION"); ver != "" {
+			verifyRequest.ProviderVersion = ver
+		}
+		if branch := os.Getenv("PACT_PROVIDER_BRANCH"); branch != "" {
+			verifyRequest.ProviderBranch = branch
+		}
+		verifyRequest.PublishVerificationResults = os.Getenv("PACT_PROVIDER_VERSION") != ""
+		if os.Getenv("PACT_DISABLE_PENDING") != "true" {
+			verifyRequest.EnablePending = true
+		}
+		if since := os.Getenv("PACT_INCLUDE_WIP_SINCE"); since != "" {
+			if ts, err := time.Parse(time.RFC3339, since); err == nil {
+				verifyRequest.IncludeWIPPactsSince = &ts
+			}
+		}
+	} else {
+		verifyRequest.PactFiles = []string{localPact}
+	}
+
+	verifier := provider.NewVerifier()
+	err := verifier.VerifyProvider(t, verifyRequest)
+	require.NoError(t, err)
+}
+
+// TestVerifyRagOrchestratorConsumerContract verifies the rag-orchestrator
+// consumer pact for AppendKnowledgeEvent on the augur.conversation_linked.v1
+// path (Wave 4-A, ADR-000853 / ADR-000855). The provider state is identical
+// to the alt-backend Loop-event states — sovereign does not interpret the
+// event_type at the wire layer; the projector does. Stub server is shared
+// with the alt-backend verifier.
+func TestVerifyRagOrchestratorConsumerContract(t *testing.T) {
+	brokerURL := os.Getenv("PACT_BROKER_BASE_URL")
+	localPact := resolvePactFile(ragOrchPactFile, ragOrchPactAtRoot)
+
+	if brokerURL == "" && localPact == "" {
+		t.Skipf("No Broker URL set and no local pact file found at %s or %s. "+
+			"Run rag-orchestrator consumer tests first: "+
+			"cd rag-orchestrator && CGO_ENABLED=1 go test -tags=contract ./internal/adapter/contract/ -v",
+			ragOrchPactFile, ragOrchPactAtRoot)
+	}
+
+	reject := false
+	port := startStubServer(t, &reject)
+
+	verifyRequest := provider.VerifyRequest{
+		Provider:        providerName,
+		ProviderBaseURL: fmt.Sprintf("http://127.0.0.1:%d", port),
+		StateHandlers: models.StateHandlers{
+			"sovereign accepts append-only Loop transition events": func(setup bool, s models.ProviderState) (models.ProviderStateResponse, error) {
+				return nil, nil
+			},
+		},
+	}
+
+	if brokerURL != "" {
+		verifyRequest.BrokerURL = brokerURL
+		verifyRequest.BrokerUsername = os.Getenv("PACT_BROKER_USERNAME")
+		verifyRequest.BrokerPassword = os.Getenv("PACT_BROKER_PASSWORD")
+		verifyRequest.ConsumerVersionSelectors = []provider.Selector{
+			&provider.ConsumerVersionSelector{Consumer: "rag-orchestrator", MainBranch: true},
+			&provider.ConsumerVersionSelector{Consumer: "rag-orchestrator", DeployedOrReleased: true},
+		}
+		if ver := os.Getenv("PACT_PROVIDER_VERSION"); ver != "" {
+			verifyRequest.ProviderVersion = ver
+		}
+		if branch := os.Getenv("PACT_PROVIDER_BRANCH"); branch != "" {
+			verifyRequest.ProviderBranch = branch
+		}
+		verifyRequest.PublishVerificationResults = os.Getenv("PACT_PROVIDER_VERSION") != ""
+		if os.Getenv("PACT_DISABLE_PENDING") != "true" {
+			verifyRequest.EnablePending = true
+		}
+		if since := os.Getenv("PACT_INCLUDE_WIP_SINCE"); since != "" {
+			if ts, err := time.Parse(time.RFC3339, since); err == nil {
+				verifyRequest.IncludeWIPPactsSince = &ts
+			}
+		}
+	} else {
+		verifyRequest.PactFiles = []string{localPact}
+	}
+
+	verifier := provider.NewVerifier()
+	err := verifier.VerifyProvider(t, verifyRequest)
+	require.NoError(t, err)
+}
+
+// TestVerifyRecapWorkerConsumerContract verifies the recap-worker consumer
+// pact for AppendKnowledgeEvent on the recap.topic_snapshotted.v1 path
+// (Wave 4-B, ADR-000853). recap-worker is the Rust producer for the
+// topic_overlap_count signal Surface Planner v2 consumes; this verifier
+// holds the wire shape stable so an actor_type / event_type rename in
+// the producer is caught at the pact gate rather than in production
+// metric stalls.
+func TestVerifyRecapWorkerConsumerContract(t *testing.T) {
+	brokerURL := os.Getenv("PACT_BROKER_BASE_URL")
+	localPact := resolvePactFile(recapWorkerPactFile, recapWorkerPactAtRoot)
+
+	if brokerURL == "" && localPact == "" {
+		t.Skipf("No Broker URL set and no local pact file found at %s or %s. "+
+			"Run recap-worker consumer tests first: "+
+			"cd recap-worker/recap-worker && cargo test contract -- --ignored",
+			recapWorkerPactFile, recapWorkerPactAtRoot)
+	}
+
+	reject := false
+	port := startStubServer(t, &reject)
+
+	verifyRequest := provider.VerifyRequest{
+		Provider:        providerName,
+		ProviderBaseURL: fmt.Sprintf("http://127.0.0.1:%d", port),
+		StateHandlers: models.StateHandlers{
+			"sovereign accepts append-only Loop transition events": func(setup bool, s models.ProviderState) (models.ProviderStateResponse, error) {
+				return nil, nil
+			},
+		},
+	}
+
+	if brokerURL != "" {
+		verifyRequest.BrokerURL = brokerURL
+		verifyRequest.BrokerUsername = os.Getenv("PACT_BROKER_USERNAME")
+		verifyRequest.BrokerPassword = os.Getenv("PACT_BROKER_PASSWORD")
+		verifyRequest.ConsumerVersionSelectors = []provider.Selector{
+			&provider.ConsumerVersionSelector{Consumer: "recap-worker", MainBranch: true},
+			&provider.ConsumerVersionSelector{Consumer: "recap-worker", DeployedOrReleased: true},
 		}
 		if ver := os.Getenv("PACT_PROVIDER_VERSION"); ver != "" {
 			verifyRequest.ProviderVersion = ver

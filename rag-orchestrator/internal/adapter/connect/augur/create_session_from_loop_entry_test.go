@@ -30,10 +30,25 @@ func newLoopHandler(t *testing.T, conv *MockAugurConversationUsecase) *augur.Han
 	return augur.NewHandler(mockAnswer, mockRetrieve, conv, nil, logger)
 }
 
+// defaultTestTenantID is a fixed non-zero tenant uuid used by every loop
+// request unless the test explicitly overrides it. Wave 4-A made
+// X-Alt-Tenant-Id required on this path; every legitimate caller sends it.
+var defaultTestTenantID = uuid.MustParse("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa")
+
 func newLoopRequest(userID uuid.UUID, body *augurv2.CreateAugurSessionFromLoopEntryRequest) *connect.Request[augurv2.CreateAugurSessionFromLoopEntryRequest] {
+	return newLoopRequestWithTenant(userID, defaultTestTenantID, body)
+}
+
+// newLoopRequestWithTenant lets a single test override the tenant header
+// (e.g. to simulate alt-backend dropping it). userID == uuid.Nil omits the
+// user header; tenantID == uuid.Nil omits the tenant header.
+func newLoopRequestWithTenant(userID, tenantID uuid.UUID, body *augurv2.CreateAugurSessionFromLoopEntryRequest) *connect.Request[augurv2.CreateAugurSessionFromLoopEntryRequest] {
 	req := connect.NewRequest(body)
 	if userID != uuid.Nil {
 		req.Header().Set("X-Alt-User-Id", userID.String())
+	}
+	if tenantID != uuid.Nil {
+		req.Header().Set("X-Alt-Tenant-Id", tenantID.String())
 	}
 	return req
 }
@@ -41,6 +56,26 @@ func newLoopRequest(userID uuid.UUID, body *augurv2.CreateAugurSessionFromLoopEn
 func TestCreateAugurSessionFromLoopEntry_MissingUserHeader_401(t *testing.T) {
 	handler := newLoopHandler(t, new(MockAugurConversationUsecase))
 	req := newLoopRequest(uuid.Nil, &augurv2.CreateAugurSessionFromLoopEntryRequest{
+		ClientHandshakeId: validUUIDv7,
+		EntryKey:          "entry-1",
+		WhyText:           "a why",
+	})
+
+	_, err := handler.CreateAugurSessionFromLoopEntry(context.Background(), req)
+	require.Error(t, err)
+	var cerr *connect.Error
+	require.ErrorAs(t, err, &cerr)
+	assert.Equal(t, connect.CodeUnauthenticated, cerr.Code())
+}
+
+// TestCreateAugurSessionFromLoopEntry_MissingTenantHeader_401 pins the
+// Wave 4-A strictness contract: a caller that supplies X-Alt-User-Id but
+// not X-Alt-Tenant-Id is rejected as Unauthenticated. Without this guard
+// the projector would persist knowledge_events.tenant_id = ” and
+// Surface Planner v2's tenant-scoped resolver could leak across tenants.
+func TestCreateAugurSessionFromLoopEntry_MissingTenantHeader_401(t *testing.T) {
+	handler := newLoopHandler(t, new(MockAugurConversationUsecase))
+	req := newLoopRequestWithTenant(uuid.New(), uuid.Nil, &augurv2.CreateAugurSessionFromLoopEntryRequest{
 		ClientHandshakeId: validUUIDv7,
 		EntryKey:          "entry-1",
 		WhyText:           "a why",
