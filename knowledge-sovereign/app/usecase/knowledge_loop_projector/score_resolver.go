@@ -60,6 +60,18 @@ func (p *Projector) resolveBucket(
 	ctx context.Context,
 	ev *sovereign_db.KnowledgeEvent,
 ) sovereignv1.SurfaceBucket {
+	bucket, _ := p.resolveBucketAndInputs(ctx, ev)
+	return bucket
+}
+
+// resolveBucketAndInputs returns both the bucket and the resolved inputs so
+// downstream code (Wave 4-C narrative override) can re-apply the same v2
+// evidence to the WhyPayload without invoking the resolver twice. Callers
+// that only need the bucket should keep using resolveBucket.
+func (p *Projector) resolveBucketAndInputs(
+	ctx context.Context,
+	ev *sovereign_db.KnowledgeEvent,
+) (sovereignv1.SurfaceBucket, SurfaceScoreInputs) {
 	resolver := p.scoreResolver
 	if resolver == nil {
 		resolver = NullSurfaceScoreResolver{}
@@ -71,7 +83,7 @@ func (p *Projector) resolveBucket(
 		version = "v2"
 	}
 	observeSurfaceBucketAssigned(version, bucketMetricLabel(bucket))
-	return bucket
+	return bucket, in
 }
 
 func hasV2Signal(in SurfaceScoreInputs) bool {

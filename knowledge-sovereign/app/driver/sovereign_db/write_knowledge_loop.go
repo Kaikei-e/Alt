@@ -561,6 +561,12 @@ func whyKindToDB(k sovereignv1.WhyKind) string {
 		return "recall_why"
 	case sovereignv1.WhyKind_WHY_KIND_CHANGE:
 		return "change_why"
+	case sovereignv1.WhyKind_WHY_KIND_TOPIC_AFFINITY:
+		return "topic_affinity_why"
+	case sovereignv1.WhyKind_WHY_KIND_TAG_TRENDING:
+		return "tag_trending_why"
+	case sovereignv1.WhyKind_WHY_KIND_UNFINISHED_CONTINUE:
+		return "unfinished_continue_why"
 	}
 	return "source_why"
 }

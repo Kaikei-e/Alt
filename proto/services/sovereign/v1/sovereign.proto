@@ -723,6 +723,15 @@ enum WhyKind {
   WHY_KIND_PATTERN = 2;
   WHY_KIND_RECALL = 3;
   WHY_KIND_CHANGE = 4;
+  // Wave 4-C v3 narrative kinds. Knowledge Loop Surface Planner v2 produces
+  // these when the EventLogSurfaceScoreResolver returns non-zero v2 evidence
+  // (recap topic overlap, tag set overlap, augur link). The DB enum already
+  // carries these values via knowledge-sovereign migration 00013; the proto
+  // catches up so the projector can emit a typed value rather than a magic
+  // string. Reproject is required after rollout (WhyMappingVersion v6).
+  WHY_KIND_TOPIC_AFFINITY = 5;
+  WHY_KIND_TAG_TRENDING = 6;
+  WHY_KIND_UNFINISHED_CONTINUE = 7;
 }
 
 enum LoopPriority {

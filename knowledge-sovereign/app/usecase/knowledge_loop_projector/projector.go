@@ -171,10 +171,10 @@ func (p *Projector) projectEvent(ctx context.Context, ev *sovereign_db.Knowledge
 
 	switch ev.EventType {
 	case EventSummaryVersionCreated, EventHomeItemsSeen, EventHomeItemAsked:
-		bucket := p.resolveBucket(ctx, ev)
+		bucket, inputs := p.resolveBucketAndInputs(ctx, ev)
 		entry, err := p.buildEntryFromEvent(ev, lensModeID,
 			sovereignv1.LoopStage_LOOP_STAGE_OBSERVE,
-			bucket)
+			bucket, inputs)
 		if err != nil {
 			return nil, err
 		}
@@ -189,10 +189,10 @@ func (p *Projector) projectEvent(ctx context.Context, ev *sovereign_db.Knowledge
 		return p.projectSummaryNarrativeBackfilled(ctx, ev, lensModeID)
 
 	case EventHomeItemOpened:
-		bucket := p.resolveBucket(ctx, ev)
+		bucket, inputs := p.resolveBucketAndInputs(ctx, ev)
 		entry, err := p.buildEntryFromEvent(ev, lensModeID,
 			sovereignv1.LoopStage_LOOP_STAGE_ACT,
-			bucket)
+			bucket, inputs)
 		if err != nil {
 			return nil, err
 		}
@@ -217,10 +217,10 @@ func (p *Projector) projectEvent(ctx context.Context, ev *sovereign_db.Knowledge
 		return res, nil
 
 	case EventHomeItemDismissed:
-		bucket := p.resolveBucket(ctx, ev)
+		bucket, inputs := p.resolveBucketAndInputs(ctx, ev)
 		entry, err := p.buildEntryFromEvent(ev, lensModeID,
 			sovereignv1.LoopStage_LOOP_STAGE_OBSERVE,
-			bucket)
+			bucket, inputs)
 		if err != nil {
 			return nil, err
 		}
@@ -229,10 +229,10 @@ func (p *Projector) projectEvent(ctx context.Context, ev *sovereign_db.Knowledge
 		return p.repo.UpsertKnowledgeLoopEntry(ctx, entry)
 
 	case EventHomeItemSuperseded, EventSummarySuperseded:
-		bucket := p.resolveBucket(ctx, ev)
+		bucket, inputs := p.resolveBucketAndInputs(ctx, ev)
 		entry, err := p.buildEntryFromEvent(ev, lensModeID,
 			sovereignv1.LoopStage_LOOP_STAGE_OBSERVE,
-			bucket)
+			bucket, inputs)
 		if err != nil {
 			return nil, err
 		}
@@ -371,12 +371,18 @@ func (p *Projector) projectTransition(ctx context.Context, ev *sovereign_db.Know
 }
 
 // buildEntryFromEvent materializes a KnowledgeLoopEntry from an event with
-// reproject-safe timestamps and a Why payload from the enricher.
+// reproject-safe timestamps and a Why payload from the enricher. When
+// `inputs` carries a non-zero Surface Planner v2 signal, the enricher
+// output is re-stamped with the v3 narrative kind (topic_affinity_why /
+// tag_trending_why / unfinished_continue_why) before the entry is
+// returned. Callers that don't need v2 inputs may pass the empty
+// SurfaceScoreInputs{} — the override is a no-op then.
 func (p *Projector) buildEntryFromEvent(
 	ev *sovereign_db.KnowledgeEvent,
 	lensModeID string,
 	proposedStage sovereignv1.LoopStage,
 	surfaceBucket sovereignv1.SurfaceBucket,
+	inputs SurfaceScoreInputs,
 ) (*sovereignv1.KnowledgeLoopEntry, error) {
 	if ev.UserID == nil {
 		return nil, fmt.Errorf("event has no user_id; cannot project to Knowledge Loop entry")
@@ -394,6 +400,7 @@ func (p *Projector) buildEntryFromEvent(
 	}
 
 	why := EnrichWhyFromEvent(ev)
+	why = OverrideWhyFromSurfaceInputs(ev, why, inputs)
 
 	return &sovereignv1.KnowledgeLoopEntry{
 		UserId:               ev.UserID.String(),
