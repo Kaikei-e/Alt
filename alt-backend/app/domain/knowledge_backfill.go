@@ -15,11 +15,20 @@ const (
 	BackfillStatusFailed    = "failed"
 )
 
+// Backfill job kind discriminator. The knowledge_backfill_jobs table now
+// hosts more than one backfill stream; the kind column tells the job runner
+// which source rows to walk and which event type to emit.
+const (
+	BackfillKindArticles          = "articles"
+	BackfillKindSummaryNarratives = "summary_narratives"
+)
+
 // KnowledgeBackfillJob represents a backfill job that replays historical data
 // into the knowledge event store for projection.
 type KnowledgeBackfillJob struct {
 	JobID             uuid.UUID  `json:"job_id" db:"job_id"`
 	Status            string     `json:"status" db:"status"`
+	Kind              string     `json:"kind" db:"kind"`
 	ProjectionVersion int        `json:"projection_version" db:"projection_version"`
 	CursorUserID      *uuid.UUID `json:"cursor_user_id" db:"cursor_user_id"`
 	CursorDate        *time.Time `json:"cursor_date" db:"cursor_date"`
@@ -42,4 +51,17 @@ type KnowledgeBackfillArticle struct {
 	PublishedAt time.Time
 	Title       string
 	URL         string
+}
+
+// KnowledgeBackfillSummaryTitle represents one (summary_version, article)
+// pair the summary-narrative-backfill job will emit a discovered event for.
+// Title is sourced from the current articles row at backfill time — the
+// article_versions snapshot table does not exist yet (ADR-000846 trade-off).
+type KnowledgeBackfillSummaryTitle struct {
+	SummaryVersionID uuid.UUID
+	ArticleID        uuid.UUID
+	UserID           uuid.UUID
+	TenantID         uuid.UUID
+	Title            string
+	GeneratedAt      time.Time
 }

@@ -26,6 +26,13 @@ const (
 	EventReasonMerged          = "ReasonMerged"
 	EventHomeItemTagClicked    = "HomeItemTagClicked"
 
+	// EventSummaryNarrativeBackfilled is a discovered event emitted by the
+	// summary-narrative-backfill job. It carries an article_title sourced from
+	// the current articles row at backfill time so the Knowledge Loop projector
+	// can patch why_text on entries whose original SummaryVersionCreated event
+	// pre-dated the producer's article_title capture. ADR-000846.
+	EventSummaryNarrativeBackfilled = "SummaryNarrativeBackfilled"
+
 	// Knowledge Loop transition events (append-only, versioned string convention).
 	// See docs/plan/knowledge-loop-canonical-contract.md §8 and ADR-000831.
 	EventKnowledgeLoopObserved          = "knowledge_loop.observed.v1"

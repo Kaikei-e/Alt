@@ -84,6 +84,7 @@ func domainBackfillJobToProto(j domain.KnowledgeBackfillJob) *sovereignv1.Backfi
 	pb := &sovereignv1.BackfillJob{
 		JobId:             j.JobID.String(),
 		Status:            j.Status,
+		Kind:              j.Kind,
 		ProjectionVersion: int32(j.ProjectionVersion),
 		TotalEvents:       int32(j.TotalEvents),
 		ProcessedEvents:   int32(j.ProcessedEvents),
@@ -116,6 +117,7 @@ func protoToBackfillJob(pb *sovereignv1.BackfillJob) domain.KnowledgeBackfillJob
 	j := domain.KnowledgeBackfillJob{
 		JobID:             parseUUID(pb.JobId),
 		Status:            pb.Status,
+		Kind:              pb.Kind,
 		ProjectionVersion: int(pb.ProjectionVersion),
 		TotalEvents:       int(pb.TotalEvents),
 		ProcessedEvents:   int(pb.ProcessedEvents),

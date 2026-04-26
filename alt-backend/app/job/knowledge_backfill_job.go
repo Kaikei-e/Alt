@@ -41,8 +41,21 @@ func processBackfillBatch(
 		return fmt.Errorf("list backfill jobs: %w", err)
 	}
 
+	// kind discriminator (ADR-000846): the knowledge_backfill_jobs table now
+	// hosts more than one backfill stream. The articles-replay stream is the
+	// original; the new summary_narratives stream has its own dedicated
+	// SummaryNarrativeBackfillJob. Filter so this job ignores rows belonging
+	// to other streams. Rows without a kind value (legacy / migration default)
+	// are treated as 'articles'.
 	var activeJob *domain.KnowledgeBackfillJob
 	for i := range jobs {
+		kind := jobs[i].Kind
+		if kind == "" {
+			kind = domain.BackfillKindArticles
+		}
+		if kind != domain.BackfillKindArticles {
+			continue
+		}
 		if jobs[i].Status == domain.BackfillStatusRunning || jobs[i].Status == domain.BackfillStatusPending {
 			activeJob = &jobs[i]
 			break

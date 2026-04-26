@@ -35,3 +35,21 @@ func (g *Gateway) CountBackfillArticles(ctx context.Context) (int, error) {
 	}
 	return g.repo.CountBackfillArticles(ctx)
 }
+
+// ListBackfillSummaryTitles implements
+// knowledge_backfill_port.ListBackfillSummaryTitlesPort. ADR-000846.
+func (g *Gateway) ListBackfillSummaryTitles(ctx context.Context, lastGeneratedAt *time.Time, lastSummaryVersionID *uuid.UUID, limit int) ([]domain.KnowledgeBackfillSummaryTitle, error) {
+	if g.repo == nil {
+		return nil, fmt.Errorf("ListBackfillSummaryTitles: database connection not available")
+	}
+	return g.repo.ListBackfillSummaryTitles(ctx, lastGeneratedAt, lastSummaryVersionID, limit)
+}
+
+// CountBackfillSummaryTitles implements
+// knowledge_backfill_port.CountBackfillSummaryTitlesPort. ADR-000846.
+func (g *Gateway) CountBackfillSummaryTitles(ctx context.Context) (int, error) {
+	if g.repo == nil {
+		return 0, fmt.Errorf("CountBackfillSummaryTitles: database connection not available")
+	}
+	return g.repo.CountBackfillSummaryTitles(ctx)
+}

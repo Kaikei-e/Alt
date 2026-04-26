@@ -52,6 +52,17 @@ func RegisterAllJobs(scheduler *JobScheduler, container *di.ApplicationComponent
 		),
 	})
 	scheduler.Add(Job{
+		Name:     "summary-narrative-backfill",
+		Interval: 15 * time.Second,
+		Timeout:  25 * time.Second,
+		Fn: SummaryNarrativeBackfillJob(
+			container.SovereignClient,
+			container.SovereignClient,
+			container.KnowledgeBackfillArticlesGateway,
+			container.SovereignClient,
+		),
+	})
+	scheduler.Add(Job{
 		Name:     "knowledge-reproject",
 		Interval: 30 * time.Second,
 		Timeout:  25 * time.Second,
