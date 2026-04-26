@@ -185,6 +185,42 @@ describe("useKnowledgeLoop.dismiss — removes the entry from foreground", () =>
 		await loop.dismiss("does-not-exist");
 		expect(loop.entries).toHaveLength(1);
 	});
+
+	// Persistence regression (canonical contract §8.2): dismiss must always
+	// route to KnowledgeLoopDeferred — same-stage transition with the `defer`
+	// trigger — regardless of the entry's proposedStage. Pre-fix the hook
+	// short-circuited on observe/orient/act because it tried to force a
+	// `decide → act` transition that those stages can't make, so the server
+	// was never told and the projection still considered the entry active.
+	it("posts a same-stage DEFER transition on dismiss (observe entry)", async () => {
+		const calls: Array<Record<string, unknown>> = [];
+		const captureFetch = (async (
+			_url: unknown,
+			init?: { body?: string },
+		) => {
+			calls.push(JSON.parse(init?.body ?? "{}"));
+			return new Response(JSON.stringify({ accepted: true }), {
+				status: 200,
+				headers: { "content-type": "application/json" },
+			});
+		}) as unknown as typeof fetch;
+
+		const loop = useKnowledgeLoop({
+			initial: FRESH_FOREGROUND, // proposedStage === "observe"
+			lensModeId: "default",
+			fetchImpl: captureFetch,
+			observeThrottleStorage: null,
+		});
+
+		await loop.dismiss("article:42");
+
+		expect(calls).toHaveLength(1);
+		const body = calls[0];
+		expect(body.trigger).toBe("defer");
+		expect(body.fromStage).toBe("observe");
+		expect(body.toStage).toBe("observe");
+		expect(body.entryKey).toBe("article:42");
+	});
 });
 
 /**

@@ -181,7 +181,9 @@ export async function transitionKnowledgeLoop(
 		entryKey: string;
 		fromStage: LoopStageName;
 		toStage: LoopStageName;
-		trigger: "user_tap" | "dwell" | "keyboard" | "programmatic";
+		// `defer` routes to KnowledgeLoopDeferred (canonical contract §8.2 — soft
+		// dismiss / snooze). It is the only trigger that allows fromStage===toStage.
+		trigger: "user_tap" | "dwell" | "keyboard" | "programmatic" | "defer";
 		observedProjectionRevision: number;
 	},
 ): Promise<TransitionKnowledgeLoopResponse> {
@@ -454,7 +456,7 @@ function mapServiceQuality(
 }
 
 function mapTriggerToProto(
-	t: "user_tap" | "dwell" | "keyboard" | "programmatic",
+	t: "user_tap" | "dwell" | "keyboard" | "programmatic" | "defer",
 ): TransitionTrigger {
 	switch (t) {
 		case "user_tap":
@@ -465,6 +467,8 @@ function mapTriggerToProto(
 			return TransitionTrigger.KEYBOARD;
 		case "programmatic":
 			return TransitionTrigger.PROGRAMMATIC;
+		case "defer":
+			return TransitionTrigger.DEFER;
 	}
 }
 

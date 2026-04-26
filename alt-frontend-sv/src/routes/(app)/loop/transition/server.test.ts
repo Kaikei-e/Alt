@@ -77,6 +77,68 @@ describe("/loop/transition +server.ts", () => {
 		expect(transitionKnowledgeLoopForUser).not.toHaveBeenCalled();
 	});
 
+	it("200 when trigger is `defer` and fromStage === toStage", async () => {
+		// Canonical contract §8.2: dismiss / snooze routes through DEFER with
+		// the same stage on both sides. The classifier at alt-backend will
+		// emit KnowledgeLoopDeferred and the projector will flip dismiss_state.
+		vi.mocked(transitionKnowledgeLoopForUser).mockResolvedValue({
+			accepted: true,
+		});
+		const res = await invoke({
+			body: {
+				lensModeId: "default",
+				clientTransitionId: "0193c8e5-7d6c-7c4a-b000-0000000000aa",
+				entryKey: "article:42",
+				fromStage: "observe",
+				toStage: "observe",
+				trigger: "defer",
+				observedProjectionRevision: 1,
+			},
+		});
+		expect(res.status).toBe(200);
+		expect(transitionKnowledgeLoopForUser).toHaveBeenCalledTimes(1);
+		const args = vi.mocked(transitionKnowledgeLoopForUser).mock.calls[0][1];
+		expect(args.trigger).toBe("defer");
+		expect(args.fromStage).toBe("observe");
+		expect(args.toStage).toBe("observe");
+	});
+
+	it("400 when trigger is `defer` but fromStage !== toStage", async () => {
+		// DEFER must not piggy-back a stage change. Reject at the BFF so we
+		// don't even hit the upstream classifier.
+		const res = await invoke({
+			body: {
+				lensModeId: "default",
+				clientTransitionId: "0193c8e5-7d6c-7c4a-b000-0000000000ab",
+				entryKey: "article:42",
+				fromStage: "observe",
+				toStage: "orient",
+				trigger: "defer",
+				observedProjectionRevision: 1,
+			},
+		});
+		expect(res.status).toBe(400);
+		expect(transitionKnowledgeLoopForUser).not.toHaveBeenCalled();
+	});
+
+	it("400 when trigger is non-defer with fromStage === toStage (regression)", async () => {
+		// Same-stage transitions remain rejected for every non-DEFER trigger,
+		// so the OODA matrix's forbidden cells stay closed.
+		const res = await invoke({
+			body: {
+				lensModeId: "default",
+				clientTransitionId: "0193c8e5-7d6c-7c4a-b000-0000000000ac",
+				entryKey: "article:42",
+				fromStage: "observe",
+				toStage: "observe",
+				trigger: "user_tap",
+				observedProjectionRevision: 1,
+			},
+		});
+		expect(res.status).toBe(400);
+		expect(transitionKnowledgeLoopForUser).not.toHaveBeenCalled();
+	});
+
 	it("200 with accepted=true on happy path", async () => {
 		vi.mocked(transitionKnowledgeLoopForUser).mockResolvedValue({
 			accepted: true,

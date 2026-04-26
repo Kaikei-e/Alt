@@ -29,7 +29,7 @@ import { canTransition } from "$lib/hooks/loop-transitions";
 import { extractConnectCode } from "$lib/connect/error";
 import type { LoopStageName } from "$lib/connect/knowledge_loop";
 
-type Trigger = "user_tap" | "dwell" | "keyboard" | "programmatic";
+type Trigger = "user_tap" | "dwell" | "keyboard" | "programmatic" | "defer";
 
 interface TransitionBody {
 	lensModeId: string;
@@ -47,6 +47,10 @@ const TRIGGERS: readonly Trigger[] = [
 	"dwell",
 	"keyboard",
 	"programmatic",
+	// `defer` routes the request to KnowledgeLoopDeferred (canonical contract
+	// §8.2). It is the only trigger that allows fromStage === toStage; the
+	// alt-backend usecase rejects defer with non-equal stages.
+	"defer",
 ];
 
 const UUIDV7_RE =
@@ -70,8 +74,18 @@ function parseBody(raw: unknown): TransitionBody | null {
 	if (!STAGES.includes(b.fromStage as LoopStageName)) return null;
 	if (!STAGES.includes(b.toStage as LoopStageName)) return null;
 	if (!TRIGGERS.includes(b.trigger as Trigger)) return null;
-	if (!canTransition(b.fromStage as LoopStageName, b.toStage as LoopStageName))
-		return null;
+	// `defer` allows fromStage === toStage and skips the OODA stage allow-list;
+	// every other trigger must satisfy the canonical contract §7 transition
+	// matrix.
+	if (b.trigger === "defer") {
+		if (b.fromStage !== b.toStage) return null;
+	} else {
+		if (
+			!canTransition(b.fromStage as LoopStageName, b.toStage as LoopStageName)
+		) {
+			return null;
+		}
+	}
 	if (!Number.isInteger(b.observedProjectionRevision)) return null;
 	if (b.entryKey.length === 0 || b.entryKey.length > 128) return null;
 

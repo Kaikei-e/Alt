@@ -69,4 +69,27 @@ describe("LoopEntryTile source guards", () => {
 		expect(tileSource).not.toMatch(/\{@html/);
 		expect(tileSource).toMatch(/\{entry\.whyPrimary\.text\}/);
 	});
+
+	it("maps each OODA stage to a distinct translateZ band (canonical contract §12)", () => {
+		// Each OODA stage gets its own Z position inside the foreground plane.
+		// observe sits in front (Z=0), act recedes furthest. The cycle then
+		// wraps via `act → observe` on transitionTo. Reduced motion strips Z
+		// (covered by the @media query test above).
+		expect(tileSource).toMatch(
+			/\.entry\[data-stage="observe"\][\s\S]*?translateZ\(0/,
+		);
+		expect(tileSource).toMatch(
+			/\.entry\[data-stage="orient"\][\s\S]*?translateZ\(-\d+px\)/,
+		);
+		expect(tileSource).toMatch(
+			/\.entry\[data-stage="decide"\][\s\S]*?translateZ\(-\d+px\)/,
+		);
+		expect(tileSource).toMatch(
+			/\.entry\[data-stage="act"\][\s\S]*?translateZ\(-\d+px\)/,
+		);
+	});
+
+	it("transitions transform smoothly so a stage change is animated", () => {
+		expect(tileSource).toMatch(/transition:[\s\S]*?transform\s+\d+ms/);
+	});
 });

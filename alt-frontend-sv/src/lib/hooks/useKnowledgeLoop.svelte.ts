@@ -22,7 +22,7 @@ import {
 } from "./loop-observe-throttle";
 import { canTransition } from "./loop-transitions";
 
-type Trigger = "user_tap" | "dwell" | "keyboard" | "programmatic";
+type Trigger = "user_tap" | "dwell" | "keyboard" | "programmatic" | "defer";
 
 type TransitionResult =
 	| { status: "accepted"; replay?: boolean }
@@ -220,25 +220,32 @@ export function useKnowledgeLoop(opts: UseKnowledgeLoopOptions) {
 	 * Optimistic dismiss. The UI fades the tile immediately; the server call is
 	 * fire-and-forget for responsiveness. Network errors are logged to lastError
 	 * but not re-surfaced as blocking UI.
+	 *
+	 * Dismiss routes to `KnowledgeLoopDeferred` (canonical contract §8.2 — soft
+	 * dismiss / snooze). Same-stage transition (`fromStage === toStage`) with
+	 * the `defer` trigger is the only shape the BFF + classifier allows for
+	 * this event; the projector flips `dismiss_state` to `deferred` and the
+	 * read filter then excludes the row from the foreground on next reload.
+	 *
+	 * Pre-fix: dismiss only fired the network call when the entry was already
+	 * in the `decide` stage (the only stage from which `decide → act` was a
+	 * legal OODA transition). Every other stage early-returned silently, so
+	 * `optimisticallyDismissed` was the only thing keeping the tile out of view
+	 * — wiped on reload, hence "dismissed tiles came back".
 	 */
 	async function dismiss(entryKey: string): Promise<void> {
 		const entry = findEntry(entryKey);
 		if (!entry) return;
 		applyLocalDismiss(entryKey);
-		// Dismiss is expressed as decide→act with an intent hint on the UI side.
-		// In the Loop event log it is a normal Act with target_type = "ask" /
-		// "article" plus an optional "snooze" action id.
-		const from = entry.proposedStage;
-		const to: LoopStageName = canTransition(from, "act") ? "act" : from;
-		if (to === from) return;
+		const stage = entry.proposedStage;
 
 		try {
 			await post({
 				clientTransitionId: uuidv7(),
 				entryKey,
-				fromStage: from,
-				toStage: to,
-				trigger: "user_tap",
+				fromStage: stage,
+				toStage: stage,
+				trigger: "defer",
 			});
 		} catch {
 			// optimistic: stay dismissed locally even if upstream reports an error

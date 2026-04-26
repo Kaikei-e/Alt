@@ -322,7 +322,8 @@ async function handleDismiss() {
 		 * `animate:flip`) and removes the row from the DOM cleanly. */
 		transition:
 			filter 180ms ease,
-			border-color 180ms ease;
+			border-color 180ms ease,
+			transform 240ms cubic-bezier(0.2, 0, 0.1, 1);
 	}
 	.entry:focus-visible {
 		outline: 2px solid var(--alt-charcoal, #1a1a1a);
@@ -542,6 +543,27 @@ async function handleDismiss() {
 		border: 1.5px solid var(--alt-charcoal, #1a1a1a);
 	}
 
+	/* OODA Z-axis (canonical contract §12 — "deeper focus: 奥へ入る /
+	   return: 手前に戻る"). Each tile's `data-stage` maps to a translateZ
+	   band inside the foreground plane's perspective container. The eye
+	   reads `Observe` as up-front and `Act` as committed (deepest), with
+	   the cycle closing back to Observe via `act → observe` returns.
+	   Animated transitioning is handled by the global `.entry`'s
+	   `transition: transform 240ms` so a `transitionTo()` smoothly
+	   slides the tile to its new Z position. */
+	.entry[data-stage="observe"] {
+		transform: translateZ(0px);
+	}
+	.entry[data-stage="orient"] {
+		transform: translateZ(-12px);
+	}
+	.entry[data-stage="decide"] {
+		transform: translateZ(-24px);
+	}
+	.entry[data-stage="act"] {
+		transform: translateZ(-36px);
+	}
+
 	@media (prefers-reduced-motion: reduce) {
 		.entry {
 			animation: none;
@@ -553,6 +575,24 @@ async function handleDismiss() {
 		.entry.depth-3,
 		.entry.depth-4 {
 			filter: none;
+		}
+		/* Reduced motion replaces Z translation with a flat tile and a
+		   saturate accent that still encodes hierarchy (contract §5/§12.5
+		   dissolve + highlight fade + color shift). */
+		.entry[data-stage="observe"],
+		.entry[data-stage="orient"],
+		.entry[data-stage="decide"],
+		.entry[data-stage="act"] {
+			transform: none;
+		}
+		.entry[data-stage="orient"] {
+			filter: saturate(0.96);
+		}
+		.entry[data-stage="decide"] {
+			filter: saturate(0.92);
+		}
+		.entry[data-stage="act"] {
+			filter: saturate(0.88);
 		}
 	}
 </style>

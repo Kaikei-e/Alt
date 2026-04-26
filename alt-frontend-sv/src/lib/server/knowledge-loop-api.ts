@@ -32,7 +32,9 @@ export async function transitionKnowledgeLoopForUser(
 		entryKey: string;
 		fromStage: "observe" | "orient" | "decide" | "act";
 		toStage: "observe" | "orient" | "decide" | "act";
-		trigger: "user_tap" | "dwell" | "keyboard" | "programmatic";
+		// `defer` is the soft dismiss / snooze trigger (canonical contract §8.2)
+		// — the only trigger that allows fromStage===toStage.
+		trigger: "user_tap" | "dwell" | "keyboard" | "programmatic" | "defer";
 		observedProjectionRevision: number;
 	},
 ): Promise<{ accepted: boolean; canonicalEntryKey?: string; message?: string }> {

@@ -9,6 +9,7 @@ import ContinueStream from "$lib/components/knowledge-loop/ContinueStream.svelte
 import EmptyNow from "$lib/components/knowledge-loop/EmptyNow.svelte";
 import LoopEntryTile from "$lib/components/knowledge-loop/LoopEntryTile.svelte";
 import LoopSurfacePlane from "$lib/components/knowledge-loop/LoopSurfacePlane.svelte";
+import OodaPipeline from "$lib/components/knowledge-loop/OodaPipeline.svelte";
 import ReviewDock from "$lib/components/knowledge-loop/ReviewDock.svelte";
 import type {
 	KnowledgeLoopEntryData,
@@ -247,21 +248,7 @@ function onReviewOpen(entry: KnowledgeLoopEntryData) {
 	data-stage={stageName}
 >
 	<header class="loop-masthead">
-		<div class="kicker-row" aria-hidden="true">
-			<span class="kicker" class:kicker--active={stageName === "observe"}
-				>Observe</span
-			>
-			<span class="kicker-sep">·</span>
-			<span class="kicker" class:kicker--active={stageName === "orient"}
-				>Orient</span
-			>
-			<span class="kicker-sep">·</span>
-			<span class="kicker" class:kicker--active={stageName === "decide"}
-				>Decide</span
-			>
-			<span class="kicker-sep">·</span>
-			<span class="kicker" class:kicker--active={stageName === "act"}>Act</span>
-		</div>
+		<OodaPipeline currentStage={stageName} />
 		<h1 class="masthead-title">Knowledge Loop</h1>
 		<p class="byline" aria-live="polite">
 			<span class="byline-cell">
@@ -411,25 +398,6 @@ function onReviewOpen(entry: KnowledgeLoopEntryData) {
 		/* Each row participates in the parent's perspective — keep flat at rest;
 		 * `out:loopRecede` adds translateZ during exit only. */
 		transform-style: preserve-3d;
-	}
-
-	.kicker-row {
-		display: flex;
-		flex-wrap: wrap;
-		align-items: baseline;
-		gap: 0.35rem;
-		font-family: var(--font-body, "Source Sans 3", system-ui, sans-serif);
-		font-size: 0.6rem;
-		font-weight: 700;
-		letter-spacing: 0.16em;
-		text-transform: uppercase;
-		color: var(--alt-ash, #999);
-	}
-	.kicker--active {
-		color: var(--alt-charcoal, #1a1a1a);
-	}
-	.kicker-sep {
-		color: var(--surface-border, #c8c8c8);
 	}
 
 	.masthead-title {
