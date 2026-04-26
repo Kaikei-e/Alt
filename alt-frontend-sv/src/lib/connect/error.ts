@@ -69,8 +69,10 @@ export function extractConnectCode(err: unknown): ConnectCode | undefined {
 	}
 	if (typeof c === "string") {
 		const lower = c.toLowerCase();
-		return (CODE_TO_STRING as unknown as Record<string, ConnectCode>)[lower] ??
-			(lower in reverseIndex ? (lower as ConnectCode) : undefined);
+		return (
+			(CODE_TO_STRING as unknown as Record<string, ConnectCode>)[lower] ??
+			(lower in reverseIndex ? (lower as ConnectCode) : undefined)
+		);
 	}
 	return undefined;
 }

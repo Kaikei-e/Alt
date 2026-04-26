@@ -31,7 +31,9 @@ function confirm(entry: KnowledgeLoopEntryData) {
 	onConfirm?.(entry);
 }
 
-function hasRedline(cs: ChangeSummaryData | undefined): cs is ChangeSummaryData {
+function hasRedline(
+	cs: ChangeSummaryData | undefined,
+): cs is ChangeSummaryData {
 	if (!cs) return false;
 	return Boolean(
 		(cs.addedPhrases && cs.addedPhrases.length > 0) ||
@@ -60,7 +62,9 @@ function ariaSummary(entry: KnowledgeLoopEntryData): string {
 	const tagRemoves = cs.removedTags?.length ?? 0;
 	const parts: string[] = [];
 	if (phraseAdds > 0)
-		parts.push(`${phraseAdds} ${phraseAdds === 1 ? "phrase" : "phrases"} added`);
+		parts.push(
+			`${phraseAdds} ${phraseAdds === 1 ? "phrase" : "phrases"} added`,
+		);
 	if (phraseRemoves > 0)
 		parts.push(
 			`${phraseRemoves} ${phraseRemoves === 1 ? "phrase" : "phrases"} removed`,

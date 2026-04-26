@@ -37,7 +37,10 @@ test.describe("Knowledge Loop — dismiss persistence", () => {
 			transitionBodies.push(body);
 			// Reject dwell observes so the entry stays in `observe` and the only
 			// transition we measure is the explicit Dismiss.
-			if (body.trigger === "dwell" || body.trigger === "TRANSITION_TRIGGER_DWELL") {
+			if (
+				body.trigger === "dwell" ||
+				body.trigger === "TRANSITION_TRIGGER_DWELL"
+			) {
 				await fulfillJson(route, { error: "projection_stale" }, 409);
 				return;
 			}
@@ -86,7 +89,10 @@ test.describe("Knowledge Loop — dismiss persistence", () => {
 
 		await page.route(KL_TRANSITION_PATH, async (route) => {
 			const body = route.request().postDataJSON() as Record<string, unknown>;
-			if (body.trigger === "dwell" || body.trigger === "TRANSITION_TRIGGER_DWELL") {
+			if (
+				body.trigger === "dwell" ||
+				body.trigger === "TRANSITION_TRIGGER_DWELL"
+			) {
 				await fulfillJson(route, { error: "projection_stale" }, 409);
 				return;
 			}

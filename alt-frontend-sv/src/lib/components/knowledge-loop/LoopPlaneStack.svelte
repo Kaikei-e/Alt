@@ -72,8 +72,7 @@ function setActive(next: PlaneKey) {
 function step(delta: number) {
 	if (orderedPlanes.length === 0) return;
 	const current = activeIndex < 0 ? 0 : activeIndex;
-	const next =
-		(current + delta + orderedPlanes.length) % orderedPlanes.length;
+	const next = (current + delta + orderedPlanes.length) % orderedPlanes.length;
 	setActive(orderedPlanes[next].key);
 }
 

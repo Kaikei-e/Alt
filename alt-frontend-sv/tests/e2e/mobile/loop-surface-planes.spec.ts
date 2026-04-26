@@ -42,7 +42,10 @@ test.describe("Mobile Knowledge Loop — Surface planes", () => {
 
 		const plane = page.getByTestId("loop-continue-stream");
 		if ((await plane.count()) === 0) {
-			test.skip(true, "Continue fixture not rendered — mock server did not ship bucketEntries");
+			test.skip(
+				true,
+				"Continue fixture not rendered — mock server did not ship bucketEntries",
+			);
 			return;
 		}
 		await expect(plane).toBeVisible();
@@ -81,7 +84,10 @@ test.describe("Mobile Knowledge Loop — Surface planes", () => {
 				entryKey?: string;
 				toStage?: string;
 			};
-			if (body.entryKey === LOOP_FIXTURE_CHANGED_ENTRY_KEY && body.toStage === "act") {
+			if (
+				body.entryKey === LOOP_FIXTURE_CHANGED_ENTRY_KEY &&
+				body.toStage === "act"
+			) {
 				gotTransition = true;
 			}
 			await fulfillJson(route, { accepted: true });

@@ -75,15 +75,17 @@ test.describe("Mobile Knowledge Loop — OODA transition", () => {
 			target.getByRole("button", { name: /^dismiss$/i }),
 		).toBeVisible();
 		// Forbidden CTAs must NOT appear on Observe entries.
-		await expect(target.getByRole("button", { name: /^open$/i })).toHaveCount(0);
-		await expect(target.getByRole("button", { name: /^save$/i })).toHaveCount(0);
+		await expect(target.getByRole("button", { name: /^open$/i })).toHaveCount(
+			0,
+		);
+		await expect(target.getByRole("button", { name: /^save$/i })).toHaveCount(
+			0,
+		);
 
 		await expect(target).toHaveAttribute("aria-expanded", "true");
 	});
 
-	test("Revisit CTA posts an observe → orient transition", async ({
-		page,
-	}) => {
+	test("Revisit CTA posts an observe → orient transition", async ({ page }) => {
 		const captured: CapturedRequest[] = [];
 		await routeTransitionAccepted(page, captured);
 
@@ -191,9 +193,9 @@ test.describe("Mobile Knowledge Loop — OODA transition", () => {
 		await expect(askCta).toBeVisible();
 		await askCta.click();
 
-		await expect.poll(() => page.url(), { timeout: 5_000 }).toContain(
-			"/augur/conv-fixture-1",
-		);
+		await expect
+			.poll(() => page.url(), { timeout: 5_000 })
+			.toContain("/augur/conv-fixture-1");
 		expect(captured).toHaveLength(1);
 		expect(captured[0]?.entryKey).toBe(LOOP_FIXTURE_ENTRY_KEY);
 		expect(captured[0]?.clientHandshakeId).toMatch(

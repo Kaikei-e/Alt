@@ -194,10 +194,7 @@ describe("useKnowledgeLoop.dismiss — removes the entry from foreground", () =>
 	// was never told and the projection still considered the entry active.
 	it("posts a same-stage DEFER transition on dismiss (observe entry)", async () => {
 		const calls: Array<Record<string, unknown>> = [];
-		const captureFetch = (async (
-			_url: unknown,
-			init?: { body?: string },
-		) => {
+		const captureFetch = (async (_url: unknown, init?: { body?: string }) => {
 			calls.push(JSON.parse(init?.body ?? "{}"));
 			return new Response(JSON.stringify({ accepted: true }), {
 				status: 200,

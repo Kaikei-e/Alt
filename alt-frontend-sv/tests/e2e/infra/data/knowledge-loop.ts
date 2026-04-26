@@ -17,7 +17,8 @@ export const LOOP_FIXTURE_SOURCE_URL =
 // is unambiguous.
 export const LOOP_FIXTURE_CONTINUE_ENTRY_KEY = "loop-entry-fixture-continue-1";
 export const LOOP_FIXTURE_CHANGED_ENTRY_KEY = "loop-entry-fixture-changed-1";
-export const LOOP_FIXTURE_CHANGED_NEW_ENTRY_KEY = "loop-entry-fixture-changed-2";
+export const LOOP_FIXTURE_CHANGED_NEW_ENTRY_KEY =
+	"loop-entry-fixture-changed-2";
 export const LOOP_FIXTURE_REVIEW_ENTRY_KEY = "loop-entry-fixture-review-1";
 
 export const CONNECT_KNOWLEDGE_LOOP_RESPONSE = {

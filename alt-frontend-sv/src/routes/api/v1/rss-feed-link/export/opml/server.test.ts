@@ -23,12 +23,11 @@ describe("GET /api/v1/rss-feed-link/export/opml", () => {
 	});
 
 	it("does not leak error messages to the client when fetch throws", async () => {
-		const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
+		const consoleError = vi
+			.spyOn(console, "error")
+			.mockImplementation(() => {});
 		const secret = "internal stack trace with /var/www/app.js:42";
-		vi.stubGlobal(
-			"fetch",
-			vi.fn().mockRejectedValue(new Error(secret)),
-		);
+		vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new Error(secret)));
 
 		const res = await GET(makeRequestEvent());
 
@@ -42,13 +41,11 @@ describe("GET /api/v1/rss-feed-link/export/opml", () => {
 	it("does not leak upstream error body on non-OK responses", async () => {
 		vi.stubGlobal(
 			"fetch",
-			vi
-				.fn()
-				.mockResolvedValue(
-					new Response("stack: /internal/path/handler.go:128", {
-						status: 503,
-					}),
-				),
+			vi.fn().mockResolvedValue(
+				new Response("stack: /internal/path/handler.go:128", {
+					status: 503,
+				}),
+			),
 		);
 
 		const res = await GET(makeRequestEvent());

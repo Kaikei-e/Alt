@@ -125,8 +125,12 @@ describe("knowledge_loop mapProtoEntry — PR-L1 OODA decide/act payload", () =>
 			}),
 		);
 		expect(mapped.continueContext?.summary).toBe("Read 3m ago");
-		expect(mapped.continueContext?.recentActionLabels).toEqual(["scroll_30pct"]);
-		expect(mapped.continueContext?.lastInteractedAt).toBe("2026-04-20T09:15:00.000Z");
+		expect(mapped.continueContext?.recentActionLabels).toEqual([
+			"scroll_30pct",
+		]);
+		expect(mapped.continueContext?.lastInteractedAt).toBe(
+			"2026-04-20T09:15:00.000Z",
+		);
 	});
 
 	it("maps decision_options array with intent enum + optional label", async () => {
@@ -152,13 +156,21 @@ describe("knowledge_loop mapProtoEntry — PR-L1 OODA decide/act payload", () =>
 		const mapped = await fetchWith(
 			baseProtoEntry({
 				actTargets: [
-					{ targetType: 1, targetRef: "article:42", route: "/feeds/article:42" },
+					{
+						targetType: 1,
+						targetRef: "article:42",
+						route: "/feeds/article:42",
+					},
 					{ targetType: 2, targetRef: "entry:42" },
 				],
 			}),
 		);
 		expect(mapped.actTargets).toEqual([
-			{ targetType: "article", targetRef: "article:42", route: "/feeds/article:42" },
+			{
+				targetType: "article",
+				targetRef: "article:42",
+				route: "/feeds/article:42",
+			},
 			{ targetType: "ask", targetRef: "entry:42" },
 		]);
 	});

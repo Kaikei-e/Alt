@@ -1,11 +1,11 @@
 <script lang="ts">
-	/**
-	 * Empty-state block when the foreground plane has no entries. ADR-000831
-	 * §14 treats an empty Now as a normal terminal state — not an error. We
-	 * honour that with editorial restraint: a kicker, an italic serif
-	 * statement, and a short prose list of next moves. No padding with
-	 * filler items; the Now remains deliberately empty.
-	 */
+/**
+ * Empty-state block when the foreground plane has no entries. ADR-000831
+ * §14 treats an empty Now as a normal terminal state — not an error. We
+ * honour that with editorial restraint: a kicker, an italic serif
+ * statement, and a short prose list of next moves. No padding with
+ * filler items; the Now remains deliberately empty.
+ */
 </script>
 
 <section

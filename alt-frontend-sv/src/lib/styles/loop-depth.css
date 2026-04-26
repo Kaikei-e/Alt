@@ -33,7 +33,7 @@
 
 .loop-plane[data-plane="foreground"] {
 	transform: translateZ(0);
-	filter: saturate(1.04) brightness(1.0);
+	filter: saturate(1.04) brightness(1);
 	opacity: 1;
 }
 

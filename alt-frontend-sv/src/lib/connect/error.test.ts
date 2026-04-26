@@ -28,13 +28,10 @@ describe("extractConnectCode", () => {
 		[Code.Unavailable, "unavailable"],
 		[Code.DataLoss, "data_loss"],
 		[Code.Unauthenticated, "unauthenticated"],
-	])(
-		"maps real ConnectError with Code=%i to %s",
-		(code, expected) => {
-			const err = new ConnectError("boom", code);
-			expect(extractConnectCode(err)).toBe(expected);
-		},
-	);
+	])("maps real ConnectError with Code=%i to %s", (code, expected) => {
+		const err = new ConnectError("boom", code);
+		expect(extractConnectCode(err)).toBe(expected);
+	});
 
 	it("accepts a pre-lowercased string code (back-compat with hand-crafted test mocks)", () => {
 		const shim = Object.assign(new Error("x"), { code: "invalid_argument" });
@@ -47,7 +44,9 @@ describe("extractConnectCode", () => {
 	});
 
 	it("returns undefined for a bare Error (fetch TypeError / ECONNREFUSED)", () => {
-		expect(extractConnectCode(new Error("network unreachable"))).toBeUndefined();
+		expect(
+			extractConnectCode(new Error("network unreachable")),
+		).toBeUndefined();
 	});
 
 	it("returns undefined for null / undefined / primitives", () => {

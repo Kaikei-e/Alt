@@ -1,25 +1,25 @@
 <script lang="ts">
-	/**
-	 * A single "plane" on the Knowledge Loop page. Alt-Paper renders planes
-	 * as section bands — a monospace plane label, a thin rule, then the
-	 * entries. No drop shadows; tonal hierarchy between foreground / mid
-	 * context / deep focus is carried by subtle background + saturation
-	 * shifts (ADR-000831 §12).
-	 */
+/**
+ * A single "plane" on the Knowledge Loop page. Alt-Paper renders planes
+ * as section bands — a monospace plane label, a thin rule, then the
+ * entries. No drop shadows; tonal hierarchy between foreground / mid
+ * context / deep focus is carried by subtle background + saturation
+ * shifts (ADR-000831 §12).
+ */
 
-	type Plane = "foreground" | "mid-context" | "deep-focus";
+type Plane = "foreground" | "mid-context" | "deep-focus";
 
-	let {
-		plane = "foreground" as Plane,
-		label,
-		caption,
-		children,
-	}: {
-		plane?: Plane;
-		label: string;
-		caption?: string;
-		children?: import("svelte").Snippet;
-	} = $props();
+let {
+	plane = "foreground" as Plane,
+	label,
+	caption,
+	children,
+}: {
+	plane?: Plane;
+	label: string;
+	caption?: string;
+	children?: import("svelte").Snippet;
+} = $props();
 </script>
 
 <section

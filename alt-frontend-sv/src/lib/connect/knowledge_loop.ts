@@ -267,8 +267,7 @@ function mapProtoEntry(e: ProtoKnowledgeLoopEntry): KnowledgeLoopEntryData {
 							: undefined,
 					unchangedPhrasesCount: e.changeSummary.unchangedPhrasesCount,
 					addedTags:
-						e.changeSummary.addedTags &&
-						e.changeSummary.addedTags.length > 0
+						e.changeSummary.addedTags && e.changeSummary.addedTags.length > 0
 							? [...e.changeSummary.addedTags]
 							: undefined,
 					removedTags:

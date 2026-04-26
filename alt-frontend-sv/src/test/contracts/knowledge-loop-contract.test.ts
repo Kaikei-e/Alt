@@ -65,7 +65,10 @@ const STAGE_ALLOWED_INTENTS: Record<LoopStage, DecisionIntent[]> = {
 };
 
 // Hard regression guard — the literal placeholder the v3 enricher removed.
-const PLACEHOLDER_PATTERNS = [/^New summary$/, /^Surfaced from a recent event\.$/];
+const PLACEHOLDER_PATTERNS = [
+	/^New summary$/,
+	/^Surfaced from a recent event\.$/,
+];
 
 describe("Knowledge Loop API Contract (ADR-000844)", () => {
 	describe("WhyPayload — narrative substance (§11)", () => {
@@ -124,9 +127,18 @@ describe("Knowledge Loop API Contract (ADR-000844)", () => {
 
 	describe("DecisionOption — §7 transition allowlist", () => {
 		it.each([
-			[LoopStage.OBSERVE, [DecisionIntent.REVISIT, DecisionIntent.ASK, DecisionIntent.SNOOZE]],
-			[LoopStage.ORIENT, [DecisionIntent.COMPARE, DecisionIntent.ASK, DecisionIntent.SNOOZE]],
-			[LoopStage.DECIDE, [DecisionIntent.OPEN, DecisionIntent.SAVE, DecisionIntent.ASK]],
+			[
+				LoopStage.OBSERVE,
+				[DecisionIntent.REVISIT, DecisionIntent.ASK, DecisionIntent.SNOOZE],
+			],
+			[
+				LoopStage.ORIENT,
+				[DecisionIntent.COMPARE, DecisionIntent.ASK, DecisionIntent.SNOOZE],
+			],
+			[
+				LoopStage.DECIDE,
+				[DecisionIntent.OPEN, DecisionIntent.SAVE, DecisionIntent.ASK],
+			],
 			[LoopStage.ACT, [DecisionIntent.REVISIT, DecisionIntent.ASK]],
 		])("stage %s seeds only §7-allowed intents", (stage, intents) => {
 			const allowed = STAGE_ALLOWED_INTENTS[stage as LoopStage];

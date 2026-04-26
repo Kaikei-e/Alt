@@ -60,7 +60,9 @@ export function makeObserveThrottle(
 	};
 }
 
-function loadFromStorage(storage: ObserveThrottleStorage | null): Map<string, number> {
+function loadFromStorage(
+	storage: ObserveThrottleStorage | null,
+): Map<string, number> {
 	const map = new Map<string, number>();
 	if (!storage) return map;
 	let raw: string | null = null;

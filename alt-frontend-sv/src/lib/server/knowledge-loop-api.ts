@@ -37,7 +37,11 @@ export async function transitionKnowledgeLoopForUser(
 		trigger: "user_tap" | "dwell" | "keyboard" | "programmatic" | "defer";
 		observedProjectionRevision: number;
 	},
-): Promise<{ accepted: boolean; canonicalEntryKey?: string; message?: string }> {
+): Promise<{
+	accepted: boolean;
+	canonicalEntryKey?: string;
+	message?: string;
+}> {
 	const transport = createServerTransportWithToken(backendToken);
 	const resp = await transitionKnowledgeLoopClient(transport, args);
 	return {
@@ -64,7 +68,9 @@ export async function createAugurSessionFromLoopEntryForUser(
 	const loop = await getKnowledgeLoopForUser(backendToken, args.lensModeId, {
 		foregroundLimit: 12,
 	});
-	const entry = loop.foregroundEntries.find((e) => e.entryKey === args.entryKey);
+	const entry = loop.foregroundEntries.find(
+		(e) => e.entryKey === args.entryKey,
+	);
 	if (!entry) {
 		const err = new Error("entry_not_found");
 		(err as Error & { code: string }).code = "not_found";
