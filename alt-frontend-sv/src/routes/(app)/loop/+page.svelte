@@ -18,6 +18,7 @@ import type {
 	KnowledgeLoopResult,
 } from "$lib/connect/knowledge_loop";
 import { makeCoalescedRefresh } from "$lib/hooks/loop-coalesce";
+import { makeFirstFrameSkipper } from "$lib/hooks/loop-stream-skip-first";
 import { useKnowledgeLoop } from "$lib/hooks/useKnowledgeLoop.svelte";
 import { useKnowledgeLoopStream } from "$lib/hooks/useKnowledgeLoopStream.svelte";
 import { loopRecede } from "$lib/transitions/loop-recede";
@@ -126,6 +127,22 @@ const coalescedRefresh = makeCoalescedRefresh(async () => {
 });
 onDestroy(() => coalescedRefresh.dispose());
 
+// Skip the first non-silent frame the stream emits after `onMount`.
+// The server inlines the current snapshot into `data.loop` during SSR,
+// then replays the same state as the first frame on every fresh
+// subscription so reconnecting clients catch up. Re-invalidating on
+// that frame is pure churn: SvelteKit re-runs the load function,
+// allocates a new `data.loop` object, and the keyed `{#each}` over
+// `foreground` re-keys against the new reference. Any first-click on
+// an article tile that was mid-flight during the re-render is
+// dropped, which is the production "first click does nothing until
+// reload" symptom we caught on /loop. The skipper rearms on stream
+// reconnect (`onExpired`) because the server replays state on the
+// new connection.
+const skipFirstStreamRefresh = makeFirstFrameSkipper(() => {
+	coalescedRefresh.trigger();
+});
+
 useKnowledgeLoopStream({
 	get enabled() {
 		return streamEnabled;
@@ -138,12 +155,13 @@ useKnowledgeLoopStream({
 		// foreground. Appended/superseded/withdrawn/rebalanced warrant a refetch
 		// — coalesced so a burst maps to one network call, not one per frame.
 		if (frame.kind === "revised" || frame.kind === "heartbeat") return;
-		coalescedRefresh.trigger();
+		skipFirstStreamRefresh();
 	},
 	onExpired() {
 		// Don't kick the SSR refresh off the JWT-expiry path. The stream hook
 		// schedules its own reconnect and the next non-silent frame on the
 		// fresh stream will trigger the coalesced refresh anyway.
+		skipFirstStreamRefresh.reset();
 	},
 });
 
@@ -230,9 +248,7 @@ const planeDescriptors = $derived([
 		key: "now" as const,
 		label: "Now",
 		caption:
-			foreground.length === 1
-				? "1 in focus"
-				: `${foreground.length} in focus`,
+			foreground.length === 1 ? "1 in focus" : `${foreground.length} in focus`,
 		count: foreground.length,
 	},
 	{
