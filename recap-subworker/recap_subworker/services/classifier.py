@@ -88,7 +88,7 @@ def _load_sidecar_metadata(model_path: Path) -> ClassifierMetadata | None:
     meta_path = model_path.with_suffix(".meta.json")
     try:
         payload_text = meta_path.read_text()
-    except (FileNotFoundError, IsADirectoryError, PermissionError):
+    except FileNotFoundError, IsADirectoryError, PermissionError:
         logger.warning(
             "classifier sidecar metadata missing",
             model_path=str(model_path),
@@ -271,6 +271,26 @@ class GenreClassifierService:
 
         if self.model is None:  # Should be loaded by now
             logger.info("Classification model and artifacts loaded")
+
+    @staticmethod
+    def _record_top_genres(results: list[dict[str, Any]]) -> None:
+        """Increment the classifier_top_genre_total Counter for each prediction.
+
+        Surfaces the top-1 distribution as a Prometheus metric so a future
+        cardinality collapse (the 2026-04-14 incident) is visible inside one
+        dashboard refresh, not 13 days later via ``recap_failed_tasks``.
+        Empty / missing ``top_genre`` entries are dropped to avoid leaking
+        catch-all labels into the registry.
+        """
+        try:
+            from recap_subworker.infra.telemetry import CLASSIFIER_TOP_GENRE_TOTAL
+        except ImportError:
+            return
+        for entry in results:
+            label = entry.get("top_genre")
+            if not isinstance(label, str) or not label:
+                continue
+            CLASSIFIER_TOP_GENRE_TOTAL.labels(genre=label).inc()
 
     def predict_batch(
         self,
@@ -473,6 +493,8 @@ class GenreClassifierService:
             total_texts=total_texts,
             total_seconds=round(embed_elapsed + predict_elapsed, 2),
         )
+
+        self._record_top_genres(results)
 
         try:
             per_genre_probs: dict[str, list[float]] = {}

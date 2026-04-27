@@ -124,6 +124,12 @@ LEARNING_TASK_FAILURE = Counter(
     "Total number of failed learning task executions",
 )
 
+CLASSIFIER_TOP_GENRE_TOTAL = Counter(
+    "recap_subworker_classifier_top_genre",
+    "Top-1 genre selected by GenreClassifierService.predict_batch, labelled by genre.",
+    labelnames=("genre",),
+)
+
 # Admin job metrics (graph build / learning)
 ADMIN_JOB_STATUS_TOTAL = Counter(
     "recap_subworker_admin_job_status_total",
