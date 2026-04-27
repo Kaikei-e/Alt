@@ -33,6 +33,14 @@ type TransitionResult =
 
 const OBSERVE_THROTTLE_MS = 60_000;
 
+/**
+ * Per-call deadline for `/loop/transition` so a stalled fetch (server JWT
+ * expiry mid-flight, network drop, bfcache-frozen await frame) cannot leave
+ * `inFlight` populated forever. Exported for tests so they can advance fake
+ * timers past it deterministically.
+ */
+export const TRANSITION_TIMEOUT_MS = 8_000;
+
 export interface UseKnowledgeLoopOptions {
 	initial: KnowledgeLoopResult;
 	lensModeId: string;
@@ -69,6 +77,10 @@ export function useKnowledgeLoop(opts: UseKnowledgeLoopOptions) {
 	);
 	let lastError = $state<string | null>(null);
 	const inFlight = new SvelteSet();
+	// Wall-clock stamp per inFlight key. Used by `replaceSnapshot` to gc keys
+	// older than `TRANSITION_TIMEOUT_MS` so a pre-fix stalled fetch never
+	// leaves `LoopEntryTile`'s `disabled={inFlight}` gate stuck on reload.
+	const inFlightStartedAt = new Map<string, number>();
 	// Tracks entry keys the user has optimistically dismissed locally. The
 	// server-side projection lags the dismiss event by one projector tick, so
 	// without this guard a stream-driven `replaceSnapshot` would briefly flash
@@ -97,10 +109,19 @@ export function useKnowledgeLoop(opts: UseKnowledgeLoopOptions) {
 		trigger: Trigger;
 	}): Promise<TransitionResult> {
 		const entry = findEntry(body.entryKey);
+		// Per-call deadline so a stalled fetch (server JWT expiry mid-flight,
+		// network drop, bfcache freeze) cannot leave the `finally` block — and
+		// therefore `inFlight.delete(...)` — pending forever.
+		const ac = new AbortController();
+		const deadline = setTimeout(
+			() => ac.abort(new DOMException("transition_timeout", "AbortError")),
+			TRANSITION_TIMEOUT_MS,
+		);
 		try {
 			const res = await fetcher("/loop/transition", {
 				method: "POST",
 				headers: { "content-type": "application/json" },
+				signal: ac.signal,
 				body: JSON.stringify({
 					lensModeId: opts.lensModeId,
 					observedProjectionRevision:
@@ -118,10 +139,17 @@ export function useKnowledgeLoop(opts: UseKnowledgeLoopOptions) {
 				return { status: "forbidden", reason: "invalid_body" };
 			return { status: "error", message: `http_${res.status}` };
 		} catch (e) {
+			const isAbort = e instanceof DOMException && e.name === "AbortError";
 			return {
 				status: "error",
-				message: e instanceof Error ? e.message : "network_error",
+				message: isAbort
+					? "transition_timeout"
+					: e instanceof Error
+						? e.message
+						: "network_error",
 			};
+		} finally {
+			clearTimeout(deadline);
 		}
 	}
 
@@ -136,6 +164,7 @@ export function useKnowledgeLoop(opts: UseKnowledgeLoopOptions) {
 		if (!entry || entry.proposedStage !== "observe") return false;
 
 		inFlight.add(entryKey);
+		inFlightStartedAt.set(entryKey, Date.now());
 		try {
 			const result = await post({
 				clientTransitionId: uuidv7(),
@@ -165,6 +194,7 @@ export function useKnowledgeLoop(opts: UseKnowledgeLoopOptions) {
 			return false;
 		} finally {
 			inFlight.delete(entryKey);
+			inFlightStartedAt.delete(entryKey);
 		}
 	}
 
@@ -193,6 +223,7 @@ export function useKnowledgeLoop(opts: UseKnowledgeLoopOptions) {
 		}
 
 		inFlight.add(entryKey);
+		inFlightStartedAt.set(entryKey, Date.now());
 		try {
 			const result = await post({
 				clientTransitionId: uuidv7(),
@@ -213,6 +244,7 @@ export function useKnowledgeLoop(opts: UseKnowledgeLoopOptions) {
 			return result;
 		} finally {
 			inFlight.delete(entryKey);
+			inFlightStartedAt.delete(entryKey);
 		}
 	}
 
@@ -282,14 +314,43 @@ export function useKnowledgeLoop(opts: UseKnowledgeLoopOptions) {
 			(e) => !optimisticallyDismissed.has(e.entryKey),
 		);
 		sessionState = next.sessionState;
-		// Garbage-collect dismissals the server has acknowledged: any key the
-		// new snapshot already omits no longer needs the local guard.
 		const stillReturned = new Set(
 			next.foregroundEntries.map((e) => e.entryKey),
 		);
+		// Garbage-collect dismissals the server has acknowledged: any key the
+		// new snapshot already omits no longer needs the local guard.
 		for (const key of [...optimisticallyDismissed]) {
 			if (!stillReturned.has(key)) optimisticallyDismissed.delete(key);
 		}
+		// Garbage-collect stale `inFlight` keys. Two ways an entry becomes
+		// stale: (a) the snapshot no longer contains it (server moved past it
+		// while we were waiting), or (b) its start timestamp is older than the
+		// per-call deadline (the awaited fetch never resolved — bfcache freeze,
+		// JWT expiry, dropped connection — so the `try/finally` never ran).
+		// Without this gc, `LoopEntryTile`'s `disabled={inFlight}` gate would
+		// stay locked permanently after a long idle.
+		const now = Date.now();
+		for (const key of [...inFlight]) {
+			const startedAt = inFlightStartedAt.get(key);
+			const tooOld =
+				startedAt !== undefined && now - startedAt > TRANSITION_TIMEOUT_MS;
+			if (!stillReturned.has(key) || tooOld) {
+				inFlight.delete(key);
+				inFlightStartedAt.delete(key);
+			}
+		}
+	}
+
+	/**
+	 * Clears every tracked in-flight key. Called by the page when
+	 * `loop-visibility-recovery` detects the user has returned from a long
+	 * background period — at which point any pending `/loop/transition`
+	 * request is functionally lost (server JWT expired, network reset) and
+	 * gating button clicks on it would lock the UI indefinitely.
+	 */
+	function resetInFlight(_reason: "snapshot" | "visibility" | "timeout") {
+		inFlight.clear();
+		inFlightStartedAt.clear();
 	}
 
 	return {
@@ -306,6 +367,7 @@ export function useKnowledgeLoop(opts: UseKnowledgeLoopOptions) {
 		transitionTo,
 		dismiss,
 		replaceSnapshot,
+		resetInFlight,
 		canTransition,
 		isInFlight,
 	};

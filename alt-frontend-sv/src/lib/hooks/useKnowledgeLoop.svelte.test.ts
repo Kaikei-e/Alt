@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { KnowledgeLoopResult } from "$lib/connect/knowledge_loop";
 import { useKnowledgeLoop } from "./useKnowledgeLoop.svelte.ts";
 
@@ -278,5 +278,189 @@ describe("useKnowledgeLoop.replaceSnapshot — re-seed without losing optimistic
 		expect(
 			loop.entries.find((e) => e.entryKey === "article:42"),
 		).toBeUndefined();
+	});
+});
+
+/**
+ * Production regression (re-occurring): when the user backgrounds the tab for
+ * a long time and an in-flight `/loop/transition` request never resolves
+ * (server JWT expiry mid-flight, network drop, bfcache freeze), the hook's
+ * `try/finally { inFlight.delete(...) }` never runs. A subsequent
+ * `replaceSnapshot()` (driven by `invalidate("loop:data")`) re-seeds entries
+ * but does not garbage-collect stale `inFlight` keys, so `isInFlight(key)`
+ * keeps returning true forever and `LoopEntryTile`'s `disabled={inFlight}`
+ * gate locks the buttons.
+ *
+ * Three-layer defense:
+ *   (a) Per-call AbortController + 8s timeout so the `finally` always fires.
+ *   (b) `replaceSnapshot` gc: drop inFlight keys absent from the next snapshot
+ *       OR whose start timestamp is older than the timeout window.
+ *   (c) `resetInFlight(reason)` for the visibility-change recovery path.
+ */
+describe("useKnowledgeLoop.replaceSnapshot — inFlight stale gc", () => {
+	it("clears inFlight keys not present in the next snapshot", async () => {
+		// Stall the first fetch so `inFlight` retains the key, then call
+		// replaceSnapshot with an entirely different foreground.
+		let resolveFirst!: (r: Response) => void;
+		const stallingFetch = ((..._args: unknown[]) =>
+			new Promise<Response>((res) => {
+				resolveFirst = res;
+			})) as unknown as typeof fetch;
+
+		const loop = useKnowledgeLoop({
+			initial: FRESH_FOREGROUND,
+			lensModeId: "default",
+			fetchImpl: stallingFetch,
+			observeThrottleStorage: null,
+		});
+
+		// Kick off a transition that will hang.
+		const pending = loop.transitionTo("article:42", "orient");
+		// Yield once so the synchronous `inFlight.add(...)` runs before our
+		// assertion below.
+		await Promise.resolve();
+		expect(loop.isInFlight("article:42")).toBe(true);
+
+		// New snapshot does NOT include article:42 anymore.
+		loop.replaceSnapshot({
+			...FRESH_FOREGROUND,
+			foregroundEntries: [
+				{
+					...FRESH_FOREGROUND.foregroundEntries[0],
+					entryKey: "article:99",
+					projectionRevision: 5,
+				},
+			],
+			projectionSeqHiwater: 500,
+		});
+
+		expect(loop.isInFlight("article:42")).toBe(false);
+
+		// Cleanup — let the stalled fetch resolve so the test does not leak.
+		resolveFirst(
+			new Response(JSON.stringify({ accepted: true }), { status: 200 }),
+		);
+		await pending;
+	});
+
+	it("retains inFlight for keys still present in the next snapshot and started recently", async () => {
+		let resolveFirst!: (r: Response) => void;
+		const stallingFetch = ((..._args: unknown[]) =>
+			new Promise<Response>((res) => {
+				resolveFirst = res;
+			})) as unknown as typeof fetch;
+
+		const loop = useKnowledgeLoop({
+			initial: FRESH_FOREGROUND,
+			lensModeId: "default",
+			fetchImpl: stallingFetch,
+			observeThrottleStorage: null,
+		});
+
+		const pending = loop.transitionTo("article:42", "orient");
+		await Promise.resolve();
+		expect(loop.isInFlight("article:42")).toBe(true);
+
+		// Same foreground (article:42 still present), recent start → keep gating.
+		loop.replaceSnapshot(FRESH_FOREGROUND);
+		expect(loop.isInFlight("article:42")).toBe(true);
+
+		resolveFirst(
+			new Response(JSON.stringify({ accepted: true }), { status: 200 }),
+		);
+		await pending;
+	});
+});
+
+describe("useKnowledgeLoop — per-call AbortController timeout", () => {
+	it("aborts a stalled transitionTo after the timeout and clears inFlight", async () => {
+		// Capture the AbortSignal so we can inspect that the hook actually
+		// installs one. Using a real timer would make this test slow; instead
+		// we verify the abort path by listening for the 'abort' event the hook
+		// must trigger when the deadline expires.
+		let installedSignal: AbortSignal | undefined;
+		const stallingFetch = ((_url: unknown, init?: RequestInit) => {
+			installedSignal = init?.signal as AbortSignal | undefined;
+			return new Promise<Response>((_res, rej) => {
+				init?.signal?.addEventListener("abort", () => {
+					rej(new DOMException("aborted", "AbortError"));
+				});
+			});
+		}) as unknown as typeof fetch;
+
+		vi.useFakeTimers();
+		try {
+			const loop = useKnowledgeLoop({
+				initial: FRESH_FOREGROUND,
+				lensModeId: "default",
+				fetchImpl: stallingFetch,
+				observeThrottleStorage: null,
+			});
+
+			const pending = loop.transitionTo("article:42", "orient");
+			// allow the hook to install its signal + timeout
+			await Promise.resolve();
+			expect(installedSignal).toBeDefined();
+			expect(loop.isInFlight("article:42")).toBe(true);
+
+			// Advance past the 8s timeout.
+			await vi.advanceTimersByTimeAsync(9_000);
+			const result = await pending;
+
+			expect(result.status).toBe("error");
+			expect(loop.isInFlight("article:42")).toBe(false);
+			expect(installedSignal?.aborted).toBe(true);
+		} finally {
+			vi.useRealTimers();
+		}
+	});
+});
+
+describe("useKnowledgeLoop.resetInFlight", () => {
+	it("clears every tracked inFlight key", async () => {
+		// One resolver per call so the second `transitionTo` doesn't overwrite
+		// the first resolver and leak a never-settling promise.
+		const resolvers: Array<(r: Response) => void> = [];
+		const stallingFetch = ((..._args: unknown[]) =>
+			new Promise<Response>((res) => {
+				resolvers.push(res);
+			})) as unknown as typeof fetch;
+
+		const loop = useKnowledgeLoop({
+			initial: {
+				...FRESH_FOREGROUND,
+				foregroundEntries: [
+					FRESH_FOREGROUND.foregroundEntries[0],
+					{
+						...FRESH_FOREGROUND.foregroundEntries[0],
+						entryKey: "article:43",
+					},
+				],
+			},
+			lensModeId: "default",
+			fetchImpl: stallingFetch,
+			observeThrottleStorage: null,
+		});
+
+		const a = loop.transitionTo("article:42", "orient");
+		const b = loop.transitionTo("article:43", "orient");
+		// Yield twice so both microtasks (and therefore both `inFlight.add`
+		// calls) have run before we assert.
+		await Promise.resolve();
+		await Promise.resolve();
+		expect(loop.isInFlight("article:42")).toBe(true);
+		expect(loop.isInFlight("article:43")).toBe(true);
+
+		loop.resetInFlight("visibility");
+
+		expect(loop.isInFlight("article:42")).toBe(false);
+		expect(loop.isInFlight("article:43")).toBe(false);
+
+		// Drain — fulfil both pending fetches so the test does not leak
+		// promises into the next test.
+		for (const r of resolvers) {
+			r(new Response(JSON.stringify({ accepted: true }), { status: 200 }));
+		}
+		await Promise.allSettled([a, b]);
 	});
 });

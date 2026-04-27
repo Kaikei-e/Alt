@@ -19,6 +19,7 @@ import type {
 } from "$lib/connect/knowledge_loop";
 import { makeCoalescedRefresh } from "$lib/hooks/loop-coalesce";
 import { makeFirstFrameSkipper } from "$lib/hooks/loop-stream-skip-first";
+import { startVisibilityRecovery } from "$lib/hooks/loop-visibility-recovery";
 import { useKnowledgeLoop } from "$lib/hooks/useKnowledgeLoop.svelte";
 import { useKnowledgeLoopStream } from "$lib/hooks/useKnowledgeLoopStream.svelte";
 import { loopRecede } from "$lib/transitions/loop-recede";
@@ -126,6 +127,25 @@ const coalescedRefresh = makeCoalescedRefresh(async () => {
 	await invalidate("loop:data");
 });
 onDestroy(() => coalescedRefresh.dispose());
+
+// Tab-return recovery: if the user has backgrounded the tab for >30s and
+// returns, any in-flight `/loop/transition` request is functionally lost
+// (server JWT may have expired, the connection may have been reset, the
+// await frame may have been bfcache-frozen). Without this, `inFlight` keys
+// would stay set forever and `LoopEntryTile`'s `disabled={inFlight}` gate
+// would lock the buttons. We also coalesce-refresh so the foreground
+// snapshot reflects whatever the server moved to during the idle window.
+let visibilityRecovery: { dispose: () => void } | null = null;
+onMount(() => {
+	visibilityRecovery = startVisibilityRecovery({
+		thresholdMs: 30_000,
+		onRecover() {
+			loop.resetInFlight("visibility");
+			coalescedRefresh.trigger();
+		},
+	});
+});
+onDestroy(() => visibilityRecovery?.dispose());
 
 // Skip the first non-silent frame the stream emits after `onMount`.
 // The server inlines the current snapshot into `data.loop` during SSR,
