@@ -402,6 +402,9 @@ func toProtoEntry(e *domain.KnowledgeLoopEntry) *loopv1.KnowledgeLoopEntry {
 	if e.SupersededByEntryKey != nil {
 		pb.SupersededByEntryKey = e.SupersededByEntryKey
 	}
+	if plannerVersion := mapSurfacePlannerVersion(e.SurfacePlannerVersion); plannerVersion != nil {
+		pb.SurfacePlannerVersion = plannerVersion
+	}
 	pb.ChangeSummary = decodeChangeSummary(e.ChangeSummary)
 	pb.ContinueContext = decodeContinueContext(e.ContinueContext)
 	pb.DecisionOptions = decodeDecisionOptions(e.DecisionOptions)
@@ -683,8 +686,25 @@ func mapWhyKind(k domain.WhyKind) loopv1.WhyKind {
 		return loopv1.WhyKind_WHY_KIND_RECALL
 	case domain.WhyKindChange:
 		return loopv1.WhyKind_WHY_KIND_CHANGE
+	case domain.WhyKindTopicAffinity:
+		return loopv1.WhyKind_WHY_KIND_TOPIC_AFFINITY
+	case domain.WhyKindTagTrending:
+		return loopv1.WhyKind_WHY_KIND_TAG_TRENDING
+	case domain.WhyKindUnfinishedContinue:
+		return loopv1.WhyKind_WHY_KIND_UNFINISHED_CONTINUE
 	default:
 		return loopv1.WhyKind_WHY_KIND_UNSPECIFIED
+	}
+}
+
+func mapSurfacePlannerVersion(v domain.SurfacePlannerVersion) *loopv1.SurfacePlannerVersion {
+	switch v {
+	case domain.SurfacePlannerV1:
+		return loopv1.SurfacePlannerVersion_SURFACE_PLANNER_VERSION_V1.Enum()
+	case domain.SurfacePlannerV2:
+		return loopv1.SurfacePlannerVersion_SURFACE_PLANNER_VERSION_V2.Enum()
+	default:
+		return nil
 	}
 }
 

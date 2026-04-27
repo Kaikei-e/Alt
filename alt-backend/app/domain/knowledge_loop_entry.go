@@ -42,10 +42,21 @@ const (
 type WhyKind string
 
 const (
-	WhyKindSource  WhyKind = "source_why"
-	WhyKindPattern WhyKind = "pattern_why"
-	WhyKindRecall  WhyKind = "recall_why"
-	WhyKindChange  WhyKind = "change_why"
+	WhyKindSource             WhyKind = "source_why"
+	WhyKindPattern            WhyKind = "pattern_why"
+	WhyKindRecall             WhyKind = "recall_why"
+	WhyKindChange             WhyKind = "change_why"
+	WhyKindTopicAffinity      WhyKind = "topic_affinity_why"
+	WhyKindTagTrending        WhyKind = "tag_trending_why"
+	WhyKindUnfinishedContinue WhyKind = "unfinished_continue_why"
+)
+
+// SurfacePlannerVersion records which planner placed an entry into its bucket.
+type SurfacePlannerVersion string
+
+const (
+	SurfacePlannerV1 SurfacePlannerVersion = "v1"
+	SurfacePlannerV2 SurfacePlannerVersion = "v2"
 )
 
 // LoopPriority is the accessibility-facing priority token.
@@ -143,6 +154,9 @@ type KnowledgeLoopEntry struct {
 
 	RenderDepthHint RenderDepthHint `json:"render_depth_hint" db:"render_depth_hint"`
 	LoopPriority    LoopPriority    `json:"loop_priority" db:"loop_priority"`
+
+	SurfacePlannerVersion SurfacePlannerVersion `json:"surface_planner_version,omitempty" db:"surface_planner_version"`
+	SurfaceScoreInputs    []byte                `json:"surface_score_inputs,omitempty" db:"surface_score_inputs"`
 }
 
 // ProjectedAtForDebug returns the internal projected_at; callers MUST NOT expose this value.

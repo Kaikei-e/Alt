@@ -247,6 +247,10 @@ func domainEntryToProto(e *domain.KnowledgeLoopEntry) *sovereignv1.KnowledgeLoop
 		DismissState:         dismissStateToProto(e.DismissState),
 		RenderDepthHint:      int32(e.RenderDepthHint),
 		LoopPriority:         loopPriorityToProto(e.LoopPriority),
+		SurfaceScoreInputs:   e.SurfaceScoreInputs,
+	}
+	if plannerVersion := surfacePlannerVersionToProto(e.SurfacePlannerVersion); plannerVersion != nil {
+		pb.SurfacePlannerVersion = plannerVersion
 	}
 	if e.WhyConfidence != nil {
 		pb.WhyPrimary.Confidence = e.WhyConfidence
@@ -309,24 +313,26 @@ func protoEntryToDomain(pb *sovereignv1.KnowledgeLoopEntry) (*domain.KnowledgeLo
 		return nil, fmt.Errorf("parse tenant_id: %w", err)
 	}
 	e := &domain.KnowledgeLoopEntry{
-		UserID:               userID,
-		TenantID:             tenantID,
-		LensModeID:           pb.LensModeId,
-		EntryKey:             pb.EntryKey,
-		SourceItemKey:        pb.SourceItemKey,
-		ProposedStage:        loopStageFromProto(pb.ProposedStage),
-		SurfaceBucket:        surfaceBucketFromProto(pb.SurfaceBucket),
-		ProjectionRevision:   pb.ProjectionRevision,
-		ProjectionSeqHiwater: pb.ProjectionSeqHiwater,
-		SourceEventSeq:       pb.SourceEventSeq,
-		ChangeSummary:        pb.ChangeSummary,
-		ContinueContext:      pb.ContinueContext,
-		DecisionOptions:      pb.DecisionOptions,
-		ActTargets:           pb.ActTargets,
-		SupersededByEntryKey: pb.SupersededByEntryKey,
-		DismissState:         dismissStateFromProto(pb.DismissState),
-		RenderDepthHint:      domain.RenderDepthHint(pb.RenderDepthHint),
-		LoopPriority:         loopPriorityFromProto(pb.LoopPriority),
+		UserID:                userID,
+		TenantID:              tenantID,
+		LensModeID:            pb.LensModeId,
+		EntryKey:              pb.EntryKey,
+		SourceItemKey:         pb.SourceItemKey,
+		ProposedStage:         loopStageFromProto(pb.ProposedStage),
+		SurfaceBucket:         surfaceBucketFromProto(pb.SurfaceBucket),
+		ProjectionRevision:    pb.ProjectionRevision,
+		ProjectionSeqHiwater:  pb.ProjectionSeqHiwater,
+		SourceEventSeq:        pb.SourceEventSeq,
+		ChangeSummary:         pb.ChangeSummary,
+		ContinueContext:       pb.ContinueContext,
+		DecisionOptions:       pb.DecisionOptions,
+		ActTargets:            pb.ActTargets,
+		SupersededByEntryKey:  pb.SupersededByEntryKey,
+		DismissState:          dismissStateFromProto(pb.DismissState),
+		RenderDepthHint:       domain.RenderDepthHint(pb.RenderDepthHint),
+		LoopPriority:          loopPriorityFromProto(pb.LoopPriority),
+		SurfacePlannerVersion: surfacePlannerVersionFromProto(pb.GetSurfacePlannerVersion()),
+		SurfaceScoreInputs:    pb.SurfaceScoreInputs,
 	}
 	if pb.FreshnessAt != nil {
 		e.FreshnessAt = pb.FreshnessAt.AsTime()
@@ -508,6 +514,12 @@ func whyKindToProto(k domain.WhyKind) sovereignv1.WhyKind {
 		return sovereignv1.WhyKind_WHY_KIND_RECALL
 	case domain.WhyKindChange:
 		return sovereignv1.WhyKind_WHY_KIND_CHANGE
+	case domain.WhyKindTopicAffinity:
+		return sovereignv1.WhyKind_WHY_KIND_TOPIC_AFFINITY
+	case domain.WhyKindTagTrending:
+		return sovereignv1.WhyKind_WHY_KIND_TAG_TRENDING
+	case domain.WhyKindUnfinishedContinue:
+		return sovereignv1.WhyKind_WHY_KIND_UNFINISHED_CONTINUE
 	}
 	return sovereignv1.WhyKind_WHY_KIND_SOURCE
 }
@@ -522,8 +534,32 @@ func whyKindFromProto(k sovereignv1.WhyKind) domain.WhyKind {
 		return domain.WhyKindRecall
 	case sovereignv1.WhyKind_WHY_KIND_CHANGE:
 		return domain.WhyKindChange
+	case sovereignv1.WhyKind_WHY_KIND_TOPIC_AFFINITY:
+		return domain.WhyKindTopicAffinity
+	case sovereignv1.WhyKind_WHY_KIND_TAG_TRENDING:
+		return domain.WhyKindTagTrending
+	case sovereignv1.WhyKind_WHY_KIND_UNFINISHED_CONTINUE:
+		return domain.WhyKindUnfinishedContinue
 	}
 	return domain.WhyKindSource
+}
+
+func surfacePlannerVersionToProto(v domain.SurfacePlannerVersion) *sovereignv1.SurfacePlannerVersion {
+	switch v {
+	case domain.SurfacePlannerV1:
+		return sovereignv1.SurfacePlannerVersion_SURFACE_PLANNER_VERSION_V1.Enum()
+	case domain.SurfacePlannerV2:
+		return sovereignv1.SurfacePlannerVersion_SURFACE_PLANNER_VERSION_V2.Enum()
+	default:
+		return nil
+	}
+}
+
+func surfacePlannerVersionFromProto(v sovereignv1.SurfacePlannerVersion) domain.SurfacePlannerVersion {
+	if v == sovereignv1.SurfacePlannerVersion_SURFACE_PLANNER_VERSION_V2 {
+		return domain.SurfacePlannerV2
+	}
+	return domain.SurfacePlannerV1
 }
 
 func loopPriorityToProto(p domain.LoopPriority) sovereignv1.LoopPriority {

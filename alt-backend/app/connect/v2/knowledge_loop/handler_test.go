@@ -145,6 +145,17 @@ func TestToProtoEntry_MalformedBlobIsTolerated(t *testing.T) {
 	require.Empty(t, pb.DecisionOptions)
 }
 
+func TestToProtoEntry_MapsSurfacePlannerVersionAndNarrativeWhyKind(t *testing.T) {
+	in := baseEntry()
+	in.WhyKind = domain.WhyKind("topic_affinity_why")
+	in.SurfacePlannerVersion = domain.SurfacePlannerV2
+
+	pb := toProtoEntry(in)
+	require.Equal(t, loopv1.WhyKind_WHY_KIND_TOPIC_AFFINITY, pb.WhyPrimary.Kind)
+	require.NotNil(t, pb.SurfacePlannerVersion)
+	require.Equal(t, loopv1.SurfacePlannerVersion_SURFACE_PLANNER_VERSION_V2, *pb.SurfacePlannerVersion)
+}
+
 // ---------------------------------------------------------------------------
 // TransitionKnowledgeLoop error-classification tests
 //
