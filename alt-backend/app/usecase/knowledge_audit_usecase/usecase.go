@@ -52,6 +52,12 @@ func (u *Usecase) RunProjectionAudit(ctx context.Context, projectionName, projec
 		return nil, fmt.Errorf("sample_size must be greater than 0")
 	}
 
+	// knowledge_projection_audits.details_json is JSONB NOT NULL DEFAULT '{}'.
+	// PostgreSQL applies DEFAULT only when the column is OMITTED from the
+	// INSERT — passing a nil json.RawMessage explicitly sends NULL and the
+	// NOT NULL constraint trips. Seed the empty-object JSON now so the
+	// downstream INSERT always carries valid JSONB even if verifyProjection
+	// is skipped (comparePort == nil) or returns a nil RawMessage.
 	audit := &domain.ProjectionAudit{
 		AuditID:           uuid.New(),
 		ProjectionName:    projectionName,
@@ -59,13 +65,16 @@ func (u *Usecase) RunProjectionAudit(ctx context.Context, projectionName, projec
 		CheckedAt:         time.Now(),
 		SampleSize:        sampleSize,
 		MismatchCount:     0,
+		DetailsJSON:       json.RawMessage([]byte(`{}`)),
 	}
 
 	// Run verification if compare port is available
 	if u.comparePort != nil {
 		mismatchCount, detailsJSON := u.verifyProjection(ctx, projectionVersion)
 		audit.MismatchCount = mismatchCount
-		audit.DetailsJSON = detailsJSON
+		if len(detailsJSON) > 0 {
+			audit.DetailsJSON = detailsJSON
+		}
 	}
 
 	if err := u.createAuditPort.CreateProjectionAudit(ctx, audit); err != nil {

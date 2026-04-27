@@ -78,6 +78,22 @@ func TestRunProjectionAudit(t *testing.T) {
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "projection_name")
 	})
+
+	// Regression guard: knowledge_projection_audits.details_json is JSONB
+	// NOT NULL DEFAULT '{}'. Same trap as knowledge_reproject_runs — without
+	// a seeded empty object the INSERT trips the NOT NULL constraint when
+	// comparePort is nil (or returns nil RawMessage). PM-2026-040.
+	t.Run("seeds empty-object JSON into details_json when no compare port", func(t *testing.T) {
+		createPort := &mockCreateProjectionAuditPort{}
+		uc := NewUsecase(createPort, nil)
+
+		_, err := uc.RunProjectionAudit(context.Background(), "knowledge_home", "v1", 10)
+		require.NoError(t, err)
+		require.NotNil(t, createPort.created)
+		require.NotEmpty(t, createPort.created.DetailsJSON,
+			"DetailsJSON must not be nil — would NULL-violate the NOT NULL JSONB column")
+		assert.JSONEq(t, "{}", string(createPort.created.DetailsJSON))
+	})
 }
 
 // --- mock compare port ---

@@ -387,14 +387,19 @@ func (r *Repository) ListProjectionAudits(ctx context.Context, projectionName st
 	return audits, nil
 }
 
-// CreateProjectionAudit inserts an audit record.
+// CreateProjectionAudit inserts an audit record. details_json is JSONB
+// NOT NULL DEFAULT '{}' — same rationale as CreateReprojectRun: pgx sends
+// nil json.RawMessage as NULL, which trips the constraint instead of
+// activating the DEFAULT. emptyJSONIfNil normalises nil → '{}' so callers
+// (including ones that skip verification when comparePort == nil) cannot
+// silent-fail the INSERT.
 func (r *Repository) CreateProjectionAudit(ctx context.Context, audit ProjectionAudit) error {
 	query := `INSERT INTO knowledge_projection_audits
 		(audit_id, projection_name, projection_version, checked_at, sample_size, mismatch_count, details_json)
 		VALUES ($1, $2, $3, $4, $5, $6, $7)`
 	_, err := r.pool.Exec(ctx, query,
 		audit.AuditID, audit.ProjectionName, audit.ProjectionVersion, audit.CheckedAt,
-		audit.SampleSize, audit.MismatchCount, audit.DetailsJSON,
+		audit.SampleSize, audit.MismatchCount, emptyJSONIfNil(audit.DetailsJSON),
 	)
 	if err != nil {
 		return fmt.Errorf("CreateProjectionAudit: %w", err)
