@@ -5,24 +5,25 @@
  * Authentication is handled by the transport layer (server-side JWT injection).
  */
 
-import { createClient } from "@connectrpc/connect";
 import type { Client, Transport } from "@connectrpc/connect";
+import { createClient } from "@connectrpc/connect";
 import {
-	KnowledgeLoopService,
-	type GetKnowledgeLoopResponse,
-	type KnowledgeLoopEntry as ProtoKnowledgeLoopEntry,
-	type KnowledgeLoopSessionState as ProtoKnowledgeLoopSessionState,
-	type SurfaceState as ProtoSurfaceState,
-	type StreamKnowledgeLoopUpdatesResponse,
-	type TransitionKnowledgeLoopResponse,
 	ActTargetType,
 	DecisionIntent,
 	DismissState,
+	type GetKnowledgeLoopResponse,
+	KnowledgeLoopService,
 	LoopPriority,
 	LoopStage,
+	type KnowledgeLoopEntry as ProtoKnowledgeLoopEntry,
+	type KnowledgeLoopSessionState as ProtoKnowledgeLoopSessionState,
+	type SurfaceState as ProtoSurfaceState,
 	RenderDepthHint,
 	ServiceQuality,
+	type StreamKnowledgeLoopUpdatesResponse,
 	SurfaceBucket,
+	SurfacePlannerVersion,
+	type TransitionKnowledgeLoopResponse,
 	TransitionTrigger,
 	WhyKind,
 } from "$lib/gen/alt/knowledge/loop/v1/knowledge_loop_pb";
@@ -40,7 +41,11 @@ export type WhyKindName =
 	| "source_why"
 	| "pattern_why"
 	| "recall_why"
-	| "change_why";
+	| "change_why"
+	| "topic_affinity_why"
+	| "tag_trending_why"
+	| "unfinished_continue_why";
+export type SurfacePlannerVersionName = "v1" | "v2";
 export type DismissStateName =
 	| "active"
 	| "deferred"
@@ -117,6 +122,7 @@ export interface KnowledgeLoopEntryData {
 	dismissState: DismissStateName;
 	renderDepthHint: 1 | 2 | 3 | 4;
 	loopPriority: LoopPriorityName;
+	surfacePlannerVersion?: SurfacePlannerVersionName;
 	supersededByEntryKey?: string;
 	changeSummary?: ChangeSummaryData;
 	continueContext?: ContinueContextData;
@@ -249,6 +255,9 @@ function mapProtoEntry(e: ProtoKnowledgeLoopEntry): KnowledgeLoopEntryData {
 		dismissState: mapDismissFromProto(e.dismissState),
 		renderDepthHint: mapDepthHintFromProto(e.renderDepthHint),
 		loopPriority: mapPriorityFromProto(e.loopPriority),
+		surfacePlannerVersion: mapSurfacePlannerVersionFromProto(
+			e.surfacePlannerVersion,
+		),
 		supersededByEntryKey: e.supersededByEntryKey,
 		changeSummary: e.changeSummary
 			? {
@@ -464,9 +473,22 @@ function mapWhyKindFromProto(k: WhyKind | undefined): WhyKindName {
 			return "recall_why";
 		case WhyKind.CHANGE:
 			return "change_why";
+		case WhyKind.TOPIC_AFFINITY:
+			return "topic_affinity_why";
+		case WhyKind.TAG_TRENDING:
+			return "tag_trending_why";
+		case WhyKind.UNFINISHED_CONTINUE:
+			return "unfinished_continue_why";
 		default:
 			return "source_why";
 	}
+}
+
+function mapSurfacePlannerVersionFromProto(
+	v: SurfacePlannerVersion | undefined,
+): SurfacePlannerVersionName {
+	if (v === SurfacePlannerVersion.V2) return "v2";
+	return "v1";
 }
 
 function mapServiceQuality(

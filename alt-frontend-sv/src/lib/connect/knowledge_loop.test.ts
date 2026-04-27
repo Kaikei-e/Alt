@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("@connectrpc/connect", () => ({
 	createClient: vi.fn(),
@@ -12,8 +12,17 @@ vi.mock("$lib/gen/alt/knowledge/loop/v1/knowledge_loop_pb", () => ({
 	RenderDepthHint: { FLAT: 1, LIGHT: 2, STRONG: 3, CRITICAL: 4 },
 	ServiceQuality: { FULL: 1, DEGRADED: 2, FALLBACK: 3 },
 	SurfaceBucket: { NOW: 1, CONTINUE: 2, CHANGED: 3, REVIEW: 4 },
+	SurfacePlannerVersion: { UNSPECIFIED: 0, V1: 1, V2: 2 },
 	TransitionTrigger: { USER_TAP: 1, DWELL: 2, KEYBOARD: 3, PROGRAMMATIC: 4 },
-	WhyKind: { SOURCE: 1, PATTERN: 2, RECALL: 3, CHANGE: 4 },
+	WhyKind: {
+		SOURCE: 1,
+		PATTERN: 2,
+		RECALL: 3,
+		CHANGE: 4,
+		TOPIC_AFFINITY: 5,
+		TAG_TRENDING: 6,
+		UNFINISHED_CONTINUE: 7,
+	},
 	DecisionIntent: {
 		UNSPECIFIED: 0,
 		OPEN: 1,
@@ -33,8 +42,8 @@ vi.mock("$lib/gen/alt/knowledge/loop/v1/knowledge_loop_pb", () => ({
 	},
 }));
 
-import { createClient } from "@connectrpc/connect";
 import type { Transport } from "@connectrpc/connect";
+import { createClient } from "@connectrpc/connect";
 import { getKnowledgeLoop } from "./knowledge_loop";
 
 type MockClient = {
@@ -181,5 +190,22 @@ describe("knowledge_loop mapProtoEntry — PR-L1 OODA decide/act payload", () =>
 		expect(mapped.continueContext).toBeUndefined();
 		expect(mapped.decisionOptions).toEqual([]);
 		expect(mapped.actTargets).toEqual([]);
+	});
+
+	it("maps Surface Planner v2 metadata and narrative WhyKind variants", async () => {
+		const mapped = await fetchWith(
+			baseProtoEntry({
+				surfacePlannerVersion: 2,
+				whyPrimary: {
+					kind: 5,
+					text: "Connects to topics you've been reading about.",
+					evidenceRefs: [],
+				},
+			}),
+		);
+		expect(mapped.whyPrimary.kind).toBe("topic_affinity_why");
+		expect(
+			(mapped as { surfacePlannerVersion?: string }).surfacePlannerVersion,
+		).toBe("v2");
 	});
 });
