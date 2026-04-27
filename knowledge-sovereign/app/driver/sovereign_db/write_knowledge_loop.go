@@ -48,7 +48,8 @@ INSERT INTO knowledge_loop_entries (
   artifact_summary_version_id, artifact_tag_set_version_id, artifact_lens_version_id,
   why_kind, why_text, why_confidence, why_evidence_ref_ids, why_evidence_refs,
   change_summary, continue_context, decision_options, act_targets,
-  superseded_by_entry_key, dismiss_state, render_depth_hint, loop_priority
+  superseded_by_entry_key, dismiss_state, render_depth_hint, loop_priority,
+  surface_planner_version, surface_score_inputs
 ) VALUES (
   $1, $2, $3, $4, $5,
   $6, $7,
@@ -57,7 +58,8 @@ INSERT INTO knowledge_loop_entries (
   $12, $13, $14,
   $15, $16, $17, $18, $19,
   $20, $21, $22, $23,
-  $24, $25, $26, $27
+  $24, $25, $26, $27,
+  $28, $29
 )
 ON CONFLICT (user_id, lens_mode_id, entry_key) DO UPDATE SET
   proposed_stage         = EXCLUDED.proposed_stage,
@@ -83,7 +85,9 @@ ON CONFLICT (user_id, lens_mode_id, entry_key) DO UPDATE SET
   superseded_by_entry_key = COALESCE(EXCLUDED.superseded_by_entry_key, knowledge_loop_entries.superseded_by_entry_key),
   dismiss_state          = EXCLUDED.dismiss_state,
   render_depth_hint      = EXCLUDED.render_depth_hint,
-  loop_priority          = EXCLUDED.loop_priority
+  loop_priority          = EXCLUDED.loop_priority,
+  surface_planner_version = EXCLUDED.surface_planner_version,
+  surface_score_inputs   = EXCLUDED.surface_score_inputs
 WHERE knowledge_loop_entries.projection_seq_hiwater <= EXCLUDED.projection_seq_hiwater
 RETURNING projection_revision, projection_seq_hiwater
 `
@@ -159,6 +163,7 @@ func (r *Repository) UpsertKnowledgeLoopEntry(
 		whyKind, whyText, whyConfidence, whyEvidenceRefIDs, whyEvidenceRefsJSON,
 		e.ChangeSummary, e.ContinueContext, e.DecisionOptions, e.ActTargets,
 		supersededBy, dismissStateToDB(e.DismissState), int16(e.RenderDepthHint), loopPriorityToDB(e.LoopPriority),
+		plannerVersionToDB(e.SurfacePlannerVersion), e.SurfaceScoreInputs,
 	)
 	if err := row.Scan(&revision, &seqHiwater); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -569,6 +574,16 @@ func whyKindToDB(k sovereignv1.WhyKind) string {
 		return "unfinished_continue_why"
 	}
 	return "source_why"
+}
+
+func plannerVersionToDB(v *sovereignv1.SurfacePlannerVersion) int16 {
+	if v == nil {
+		return 1
+	}
+	if *v == sovereignv1.SurfacePlannerVersion_SURFACE_PLANNER_VERSION_V2 {
+		return 2
+	}
+	return 1
 }
 
 func loopPriorityToDB(p sovereignv1.LoopPriority) string {

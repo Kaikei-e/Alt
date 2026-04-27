@@ -50,7 +50,7 @@ func TestUpsertKnowledgeLoopEntry_Insert(t *testing.T) {
 	repo := &Repository{pool: mock}
 	entry := newLoopEntryProto(100)
 
-	anyArgs := make([]interface{}, 27)
+	anyArgs := make([]interface{}, 29)
 	for i := range anyArgs {
 		anyArgs[i] = pgxmock.AnyArg()
 	}
@@ -68,6 +68,34 @@ func TestUpsertKnowledgeLoopEntry_Insert(t *testing.T) {
 	require.NoError(t, mock.ExpectationsWereMet())
 }
 
+func TestUpsertKnowledgeLoopEntry_WritesSurfacePlannerMetadata(t *testing.T) {
+	mock, err := pgxmock.NewPool()
+	require.NoError(t, err)
+	defer mock.Close()
+
+	repo := &Repository{pool: mock}
+	entry := newLoopEntryProto(120)
+	v2 := sovereignv1.SurfacePlannerVersion_SURFACE_PLANNER_VERSION_V2
+	entry.SurfacePlannerVersion = &v2
+	entry.SurfaceScoreInputs = []byte(`{"topic_overlap_count":1,"event_type":"SummaryVersionCreated"}`)
+
+	anyArgs := make([]interface{}, 29)
+	for i := range anyArgs {
+		anyArgs[i] = pgxmock.AnyArg()
+	}
+	anyArgs[27] = int16(2)
+	anyArgs[28] = entry.SurfaceScoreInputs
+	mock.ExpectQuery(regexp.QuoteMeta(upsertKnowledgeLoopEntryQuery)).
+		WithArgs(anyArgs...).
+		WillReturnRows(pgxmock.NewRows([]string{"projection_revision", "projection_seq_hiwater"}).
+			AddRow(int64(1), int64(120)))
+
+	res, err := repo.UpsertKnowledgeLoopEntry(context.Background(), entry)
+	require.NoError(t, err)
+	require.True(t, res.Applied)
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
 // TestUpsertKnowledgeLoopEntry_SeqHiwaterGuardSkipsStaleReplay verifies the seq-hiwater
 // guard: an event with an older seq than the existing row's returns SkippedBySeqHiwater=true.
 // This is the reproject-safety invariant — replaying historical events is a no-op when the
@@ -80,7 +108,7 @@ func TestUpsertKnowledgeLoopEntry_SeqHiwaterGuardSkipsStaleReplay(t *testing.T) 
 	repo := &Repository{pool: mock}
 	stale := newLoopEntryProto(50)
 
-	anyArgs := make([]interface{}, 27)
+	anyArgs := make([]interface{}, 29)
 	for i := range anyArgs {
 		anyArgs[i] = pgxmock.AnyArg()
 	}

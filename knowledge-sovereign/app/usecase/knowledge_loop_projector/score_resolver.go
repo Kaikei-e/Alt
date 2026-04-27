@@ -60,7 +60,7 @@ func (p *Projector) resolveBucket(
 	ctx context.Context,
 	ev *sovereign_db.KnowledgeEvent,
 ) sovereignv1.SurfaceBucket {
-	bucket, _ := p.resolveBucketAndInputs(ctx, ev)
+	bucket, _, _ := p.resolveBucketAndInputs(ctx, ev)
 	return bucket
 }
 
@@ -71,19 +71,16 @@ func (p *Projector) resolveBucket(
 func (p *Projector) resolveBucketAndInputs(
 	ctx context.Context,
 	ev *sovereign_db.KnowledgeEvent,
-) (sovereignv1.SurfaceBucket, SurfaceScoreInputs) {
+) (sovereignv1.SurfaceBucket, SurfaceScoreInputs, sovereignv1.SurfacePlannerVersion) {
 	resolver := p.scoreResolver
 	if resolver == nil {
 		resolver = NullSurfaceScoreResolver{}
 	}
 	in := resolver.Resolve(ctx, ev)
 	bucket := decideBucketV2(in)
-	version := "v1"
-	if hasV2Signal(in) {
-		version = "v2"
-	}
-	observeSurfaceBucketAssigned(version, bucketMetricLabel(bucket))
-	return bucket, in
+	plannerVersion := plannerVersionForResolver(resolver)
+	observeSurfaceBucketAssigned(plannerVersionMetricLabel(plannerVersion), bucketMetricLabel(bucket))
+	return bucket, in, plannerVersion
 }
 
 func hasV2Signal(in SurfaceScoreInputs) bool {
@@ -92,4 +89,20 @@ func hasV2Signal(in SurfaceScoreInputs) bool {
 		in.VersionDriftCount > 0 ||
 		in.HasAugurLink ||
 		in.HasOpenInteraction
+}
+
+func plannerVersionForResolver(resolver SurfaceScoreResolver) sovereignv1.SurfacePlannerVersion {
+	switch resolver.(type) {
+	case NullSurfaceScoreResolver, *NullSurfaceScoreResolver:
+		return sovereignv1.SurfacePlannerVersion_SURFACE_PLANNER_VERSION_V1
+	default:
+		return sovereignv1.SurfacePlannerVersion_SURFACE_PLANNER_VERSION_V2
+	}
+}
+
+func plannerVersionMetricLabel(v sovereignv1.SurfacePlannerVersion) string {
+	if v == sovereignv1.SurfacePlannerVersion_SURFACE_PLANNER_VERSION_V2 {
+		return "v2"
+	}
+	return "v1"
 }

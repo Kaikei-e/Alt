@@ -179,6 +179,29 @@ func TestRunBatch_SummaryVersionCreated_ObserveSeed(t *testing.T) {
 		"Observe entries must propose §7-allowed transitions; observe → act is forbidden")
 }
 
+func TestRunBatch_WithRealScoreResolverMarksPlannerV2AndStoresInputs(t *testing.T) {
+	userID := uuid.New()
+	ev := makeEvent(t, EventSummaryVersionCreated, 210, userID, map[string]any{
+		"entry_key":     "article:42",
+		"article_title": "Planner evidence",
+		"tags":          []string{"ai"},
+	})
+	repo := &fakeRepo{events: []sovereign_db.KnowledgeEvent{ev}}
+	p := newProjector(repo).WithScoreResolver(fakeResolver{out: SurfaceScoreInputs{
+		TopicOverlapCount: 1,
+	}})
+
+	require.NoError(t, p.RunBatch(context.Background()))
+	require.Len(t, repo.entries, 1)
+
+	entry := repo.entries[0]
+	require.Equal(t, sovereignv1.SurfacePlannerVersion_SURFACE_PLANNER_VERSION_V2, entry.GetSurfacePlannerVersion())
+	require.JSONEq(t,
+		`{"topic_overlap_count":1,"tag_overlap_count":0,"has_augur_link":false,"version_drift_count":0,"has_open_interaction":false,"freshness_at":"2026-04-26T10:00:00Z","event_type":"SummaryVersionCreated"}`,
+		string(entry.SurfaceScoreInputs),
+	)
+}
+
 func TestRunBatch_NoUserIDIsNoOp(t *testing.T) {
 	ev := sovereign_db.KnowledgeEvent{
 		EventID:    uuid.New(),

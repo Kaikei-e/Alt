@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"regexp"
 	"strings"
+	"time"
 
 	"github.com/google/uuid"
 	"google.golang.org/protobuf/types/known/timestamppb"
@@ -171,10 +172,10 @@ func (p *Projector) projectEvent(ctx context.Context, ev *sovereign_db.Knowledge
 
 	switch ev.EventType {
 	case EventSummaryVersionCreated, EventHomeItemsSeen, EventHomeItemAsked:
-		bucket, inputs := p.resolveBucketAndInputs(ctx, ev)
+		bucket, inputs, plannerVersion := p.resolveBucketAndInputs(ctx, ev)
 		entry, err := p.buildEntryFromEvent(ev, lensModeID,
 			sovereignv1.LoopStage_LOOP_STAGE_OBSERVE,
-			bucket, inputs)
+			bucket, inputs, plannerVersion)
 		if err != nil {
 			return nil, err
 		}
@@ -189,10 +190,10 @@ func (p *Projector) projectEvent(ctx context.Context, ev *sovereign_db.Knowledge
 		return p.projectSummaryNarrativeBackfilled(ctx, ev, lensModeID)
 
 	case EventHomeItemOpened:
-		bucket, inputs := p.resolveBucketAndInputs(ctx, ev)
+		bucket, inputs, plannerVersion := p.resolveBucketAndInputs(ctx, ev)
 		entry, err := p.buildEntryFromEvent(ev, lensModeID,
 			sovereignv1.LoopStage_LOOP_STAGE_ACT,
-			bucket, inputs)
+			bucket, inputs, plannerVersion)
 		if err != nil {
 			return nil, err
 		}
@@ -217,10 +218,10 @@ func (p *Projector) projectEvent(ctx context.Context, ev *sovereign_db.Knowledge
 		return res, nil
 
 	case EventHomeItemDismissed:
-		bucket, inputs := p.resolveBucketAndInputs(ctx, ev)
+		bucket, inputs, plannerVersion := p.resolveBucketAndInputs(ctx, ev)
 		entry, err := p.buildEntryFromEvent(ev, lensModeID,
 			sovereignv1.LoopStage_LOOP_STAGE_OBSERVE,
-			bucket, inputs)
+			bucket, inputs, plannerVersion)
 		if err != nil {
 			return nil, err
 		}
@@ -229,10 +230,10 @@ func (p *Projector) projectEvent(ctx context.Context, ev *sovereign_db.Knowledge
 		return p.repo.UpsertKnowledgeLoopEntry(ctx, entry)
 
 	case EventHomeItemSuperseded, EventSummarySuperseded:
-		bucket, inputs := p.resolveBucketAndInputs(ctx, ev)
+		bucket, inputs, plannerVersion := p.resolveBucketAndInputs(ctx, ev)
 		entry, err := p.buildEntryFromEvent(ev, lensModeID,
 			sovereignv1.LoopStage_LOOP_STAGE_OBSERVE,
-			bucket, inputs)
+			bucket, inputs, plannerVersion)
 		if err != nil {
 			return nil, err
 		}
@@ -383,6 +384,7 @@ func (p *Projector) buildEntryFromEvent(
 	proposedStage sovereignv1.LoopStage,
 	surfaceBucket sovereignv1.SurfaceBucket,
 	inputs SurfaceScoreInputs,
+	plannerVersion sovereignv1.SurfacePlannerVersion,
 ) (*sovereignv1.KnowledgeLoopEntry, error) {
 	if ev.UserID == nil {
 		return nil, fmt.Errorf("event has no user_id; cannot project to Knowledge Loop entry")
@@ -402,24 +404,57 @@ func (p *Projector) buildEntryFromEvent(
 	why := EnrichWhyFromEvent(ev)
 	why = OverrideWhyFromSurfaceInputs(ev, why, inputs)
 
-	return &sovereignv1.KnowledgeLoopEntry{
-		UserId:               ev.UserID.String(),
-		TenantId:             ev.TenantID.String(),
-		LensModeId:           lensModeID,
-		EntryKey:             entryKey,
-		SourceItemKey:        sourceItemKey,
-		ProposedStage:        proposedStage,
-		SurfaceBucket:        surfaceBucket,
-		ProjectionSeqHiwater: ev.EventSeq,
-		SourceEventSeq:       ev.EventSeq,
-		FreshnessAt:          timestamppb.New(ev.OccurredAt),
-		ArtifactVersionRef:   art,
-		WhyPrimary:           why,
-		DecisionOptions:      seedDecisionOptions(proposedStage),
-		DismissState:         sovereignv1.DismissState_DISMISS_STATE_ACTIVE,
-		RenderDepthHint:      pickRenderDepth(surfaceBucket),
-		LoopPriority:         pickLoopPriority(surfaceBucket),
-	}, nil
+	entry := &sovereignv1.KnowledgeLoopEntry{
+		UserId:                ev.UserID.String(),
+		TenantId:              ev.TenantID.String(),
+		LensModeId:            lensModeID,
+		EntryKey:              entryKey,
+		SourceItemKey:         sourceItemKey,
+		ProposedStage:         proposedStage,
+		SurfaceBucket:         surfaceBucket,
+		ProjectionSeqHiwater:  ev.EventSeq,
+		SourceEventSeq:        ev.EventSeq,
+		FreshnessAt:           timestamppb.New(ev.OccurredAt),
+		ArtifactVersionRef:    art,
+		WhyPrimary:            why,
+		DecisionOptions:       seedDecisionOptions(proposedStage),
+		DismissState:          sovereignv1.DismissState_DISMISS_STATE_ACTIVE,
+		RenderDepthHint:       pickRenderDepth(surfaceBucket),
+		LoopPriority:          pickLoopPriority(surfaceBucket),
+		SurfacePlannerVersion: plannerVersion.Enum(),
+	}
+	if plannerVersion == sovereignv1.SurfacePlannerVersion_SURFACE_PLANNER_VERSION_V2 {
+		entry.SurfaceScoreInputs = marshalSurfaceScoreInputs(inputs)
+	}
+	return entry, nil
+}
+
+func marshalSurfaceScoreInputs(in SurfaceScoreInputs) []byte {
+	type surfaceScoreInputsJSON struct {
+		TopicOverlapCount  uint32 `json:"topic_overlap_count"`
+		TagOverlapCount    uint32 `json:"tag_overlap_count"`
+		HasAugurLink       bool   `json:"has_augur_link"`
+		VersionDriftCount  uint32 `json:"version_drift_count"`
+		HasOpenInteraction bool   `json:"has_open_interaction"`
+		FreshnessAt        string `json:"freshness_at,omitempty"`
+		EventType          string `json:"event_type"`
+	}
+	out := surfaceScoreInputsJSON{
+		TopicOverlapCount:  in.TopicOverlapCount,
+		TagOverlapCount:    in.TagOverlapCount,
+		HasAugurLink:       in.HasAugurLink,
+		VersionDriftCount:  in.VersionDriftCount,
+		HasOpenInteraction: in.HasOpenInteraction,
+		EventType:          in.EventType,
+	}
+	if !in.FreshnessAt.IsZero() {
+		out.FreshnessAt = in.FreshnessAt.UTC().Format(time.RFC3339Nano)
+	}
+	b, err := json.Marshal(out)
+	if err != nil {
+		return nil
+	}
+	return b
 }
 
 // seedDecisionOptions materializes the CTA options the UI can offer for a

@@ -742,6 +742,15 @@ enum LoopPriority {
   LOOP_PRIORITY_REFERENCE = 4;
 }
 
+enum SurfacePlannerVersion {
+  SURFACE_PLANNER_VERSION_UNSPECIFIED = 0;
+  // v1: event-type fixed mapping. This is the additive default for rows
+  // projected before Surface Planner v2 evidence was wired.
+  SURFACE_PLANNER_VERSION_V1 = 1;
+  // v2: knowledge-state-based scoring via reproject-safe evidence inputs.
+  SURFACE_PLANNER_VERSION_V2 = 2;
+}
+
 enum LoopServiceQuality {
   LOOP_SERVICE_QUALITY_UNSPECIFIED = 0;
   LOOP_SERVICE_QUALITY_FULL = 1;
@@ -795,6 +804,8 @@ message KnowledgeLoopEntry {
   DismissState dismiss_state = 20;
   int32 render_depth_hint = 21; // 1..4
   LoopPriority loop_priority = 22;
+  optional SurfacePlannerVersion surface_planner_version = 23;
+  bytes surface_score_inputs = 24; // JSONB opaque, sovereign-internal diagnostics
 
   reserved "updated_at", "projected_at", "wall_clock", "ingest_time";
 }

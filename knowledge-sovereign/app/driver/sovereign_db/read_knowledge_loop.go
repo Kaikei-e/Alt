@@ -62,7 +62,8 @@ SELECT
   artifact_summary_version_id, artifact_tag_set_version_id, artifact_lens_version_id,
   why_kind, why_text, why_confidence, why_evidence_ref_ids, why_evidence_refs,
   change_summary, continue_context, decision_options, act_targets,
-  superseded_by_entry_key, dismiss_state, render_depth_hint, loop_priority
+  superseded_by_entry_key, dismiss_state, render_depth_hint, loop_priority,
+  surface_planner_version, surface_score_inputs
 FROM knowledge_loop_entries_public
 WHERE %s
 ORDER BY projection_seq_hiwater DESC
@@ -111,6 +112,8 @@ func scanKnowledgeLoopEntry(row pgx.Row) (*sovereignv1.KnowledgeLoopEntry, error
 		dismissState                              string
 		renderDepth                               int16
 		loopPriority                              string
+		surfacePlannerVersion                     int16
+		surfaceScoreInputs                        []byte
 	)
 
 	err := row.Scan(
@@ -122,6 +125,7 @@ func scanKnowledgeLoopEntry(row pgx.Row) (*sovereignv1.KnowledgeLoopEntry, error
 		&whyKind, &whyText, &whyConfidence, &whyEvidenceRefIDs, &whyEvidenceRefsJSON,
 		&changeSummary, &continueContext, &decisionOptions, &actTargets,
 		&supersededBy, &dismissState, &renderDepth, &loopPriority,
+		&surfacePlannerVersion, &surfaceScoreInputs,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("scan knowledge_loop_entry: %w", err)
@@ -150,14 +154,16 @@ func scanKnowledgeLoopEntry(row pgx.Row) (*sovereignv1.KnowledgeLoopEntry, error
 			Text:       whyText,
 			Confidence: whyConfidence,
 		},
-		ChangeSummary:        changeSummary,
-		ContinueContext:      continueContext,
-		DecisionOptions:      decisionOptions,
-		ActTargets:           actTargets,
-		SupersededByEntryKey: supersededBy,
-		DismissState:         dismissStateFromDB(dismissState),
-		RenderDepthHint:      int32(renderDepth),
-		LoopPriority:         loopPriorityFromDB(loopPriority),
+		ChangeSummary:         changeSummary,
+		ContinueContext:       continueContext,
+		DecisionOptions:       decisionOptions,
+		ActTargets:            actTargets,
+		SupersededByEntryKey:  supersededBy,
+		DismissState:          dismissStateFromDB(dismissState),
+		RenderDepthHint:       int32(renderDepth),
+		LoopPriority:          loopPriorityFromDB(loopPriority),
+		SurfacePlannerVersion: plannerVersionFromDB(surfacePlannerVersion).Enum(),
+		SurfaceScoreInputs:    surfaceScoreInputs,
 	}
 
 	if len(whyEvidenceRefsJSON) > 0 {
@@ -355,8 +361,21 @@ func whyKindFromDB(k string) sovereignv1.WhyKind {
 		return sovereignv1.WhyKind_WHY_KIND_RECALL
 	case "change_why":
 		return sovereignv1.WhyKind_WHY_KIND_CHANGE
+	case "topic_affinity_why":
+		return sovereignv1.WhyKind_WHY_KIND_TOPIC_AFFINITY
+	case "tag_trending_why":
+		return sovereignv1.WhyKind_WHY_KIND_TAG_TRENDING
+	case "unfinished_continue_why":
+		return sovereignv1.WhyKind_WHY_KIND_UNFINISHED_CONTINUE
 	}
 	return sovereignv1.WhyKind_WHY_KIND_UNSPECIFIED
+}
+
+func plannerVersionFromDB(v int16) sovereignv1.SurfacePlannerVersion {
+	if v == 2 {
+		return sovereignv1.SurfacePlannerVersion_SURFACE_PLANNER_VERSION_V2
+	}
+	return sovereignv1.SurfacePlannerVersion_SURFACE_PLANNER_VERSION_V1
 }
 
 func loopPriorityFromDB(p string) sovereignv1.LoopPriority {
