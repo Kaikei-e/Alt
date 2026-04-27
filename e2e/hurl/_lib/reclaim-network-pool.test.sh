@@ -44,10 +44,22 @@ assert() {
 
 echo "[behavioural] reclaim_network_pool calls docker network prune correctly"
 
-# Capture invocations into an array we can inspect.
-declare -a DOCKER_INVOCATIONS=()
+# Capture invocations into a temp file. We need a file (not a bash array)
+# because the helper uses `$(docker ...)` / `< <(docker ...)` patterns that
+# run docker in a subshell — array mutations from a subshell don't
+# propagate back, but file appends do. The stub also feeds a fake network
+# name on stdout when invoked as `docker network ls ...` so the helper's
+# list+remove flow exercises both the listing and the removal call.
+DOCKER_LOG=$(mktemp)
+trap 'rm -f "$DOCKER_LOG"' EXIT
+
 docker() {
-  DOCKER_INVOCATIONS+=("$*")
+  echo "$*" >> "$DOCKER_LOG"
+  if [[ "$1" == "network" && "$2" == "ls" ]]; then
+    # Fake one alt-staging network so the helper's per-network rm path
+    # actually runs and gets recorded.
+    echo "alt-staging-knowledge-sovereign-fake-run-id"
+  fi
   return 0
 }
 export -f docker
@@ -55,28 +67,36 @@ export -f docker
 # shellcheck source=./reclaim-network-pool.sh
 source "$SCRIPT_DIR/reclaim-network-pool.sh"
 
-DOCKER_INVOCATIONS=()
+: > "$DOCKER_LOG"
 reclaim_network_pool
 
-assert "exactly one docker invocation" \
-  test "${#DOCKER_INVOCATIONS[@]}" -eq 1
-assert "subcommand is 'network prune'" \
-  bash -c "[[ '${DOCKER_INVOCATIONS[0]:-}' == 'network prune'* ]]"
-assert "uses --force (CI must not prompt)" \
-  bash -c "[[ '${DOCKER_INVOCATIONS[0]:-}' == *'--force'* ]]"
-assert "uses --filter until=... so active networks stay safe" \
-  bash -c "[[ '${DOCKER_INVOCATIONS[0]:-}' == *'--filter'*'until='* ]]"
+mapfile -t DOCKER_INVOCATIONS < "$DOCKER_LOG"
+ALL_INVOCATIONS="${DOCKER_INVOCATIONS[*]:-}"
+
+assert "at least one docker invocation" \
+  test "${#DOCKER_INVOCATIONS[@]}" -ge 1
+assert "performs network listing or pruning" \
+  bash -c "[[ '$ALL_INVOCATIONS' == *'network '* ]]"
+# F-003: prune must NOT touch unrelated networks on the shared runner host.
+# The helper either (a) `prune --filter "label=alt.project=staging"` /
+# `--filter "name=^alt-staging-"`, or (b) lists networks via name prefix
+# filter and removes them individually. Either way, an alt-staging
+# scoping must be present somewhere in the docker invocation chain.
+assert "scopes the cleanup to alt-staging-* (label or name filter)" \
+  bash -c "[[ '$ALL_INVOCATIONS' == *'alt-staging'* ]]"
+assert "uses --force (CI must not prompt) when prune is invoked" \
+  bash -c "[[ '$ALL_INVOCATIONS' != *'network prune'* || '$ALL_INVOCATIONS' == *'--force'* ]]"
 
 # Failure resilience: a `docker` exit non-zero must NOT propagate. The
 # whole point of this helper is best-effort cleanup; failing it would
 # block the actual Hurl run.
 docker() {
-  DOCKER_INVOCATIONS+=("$*")
+  echo "$*" >> "$DOCKER_LOG"
   return 1
 }
 export -f docker
 
-DOCKER_INVOCATIONS=()
+: > "$DOCKER_LOG"
 if reclaim_network_pool; then
   echo "  PASS  swallows docker non-zero exit"
   PASS=$((PASS + 1))

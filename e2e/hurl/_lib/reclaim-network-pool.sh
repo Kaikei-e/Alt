@@ -44,10 +44,17 @@ reclaim_network_pool() {
   if [[ "${RECLAIM_NETWORK_POOL}" != "1" ]]; then
     return 0
   fi
-  # `until=2h` matches Go's ParseDuration syntax. The filter targets
-  # network creation timestamp; any network actively attached to a
-  # running container is protected by docker's own logic regardless
-  # of age.
-  docker network prune --force --filter "until=2h" >/dev/null 2>&1 || true
+  # Scope the reclaim strictly to alt-staging-* networks so we never
+  # touch unrelated networks on a shared self-hosted runner host
+  # (security audit F-003 / OWASP A05). docker network prune does not
+  # accept name-prefix filters, so we list + remove individually.
+  # Docker's own logic protects networks an active container is
+  # attached to (it returns an error and the `|| true` swallows it),
+  # which means concurrent CI runs on the same host stay safe.
+  docker network ls --format '{{.Name}}' --filter 'name=^alt-staging-' \
+    | while IFS= read -r net; do
+        [[ -z "$net" ]] && continue
+        docker network rm "$net" >/dev/null 2>&1 || true
+      done
   return 0
 }

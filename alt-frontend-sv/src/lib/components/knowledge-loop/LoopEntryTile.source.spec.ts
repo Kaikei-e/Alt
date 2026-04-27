@@ -118,4 +118,15 @@ describe("LoopEntryTile source guards", () => {
 		expect(tileSource).toMatch(/startsWith\(["']\/["']\)/);
 		expect(tileSource).toMatch(/\.includes\(["']:["']\)/);
 	});
+
+	// CWE-601 / OWASP A01 (open-redirect) defence-in-depth gap: a route
+	// like `//evil.com/x` passes `startsWith("/")` and contains no `:`, so
+	// the original two-line allowlist let it render as a protocol-relative
+	// anchor. Browsers resolve `<a href="//evil.com/x">` to the origin's
+	// scheme + evil.com — full open-redirect. The component must explicitly
+	// reject `//` and the backslash-normalised `/\\` shape too.
+	it("rejects protocol-relative URLs (CWE-601 open-redirect bypass)", () => {
+		expect(tileSource).toMatch(/startsWith\(["']\/\/["']\)/);
+		expect(tileSource).toMatch(/startsWith\(["']\/\\\\["']\)/);
+	});
 });

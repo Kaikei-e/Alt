@@ -107,7 +107,14 @@ const recapTarget = $derived(
 const recapRoute = $derived.by(() => {
 	const r = recapTarget?.route;
 	if (!r) return null;
+	// Must be a single-leading-slash absolute path. `//evil.com/x` is a
+	// protocol-relative URL the browser resolves to https://evil.com/x —
+	// open-redirect (CWE-601). `/\evil.com/x` is the same after browser
+	// backslash-normalisation, so reject that shape too. The colon check
+	// catches `javascript:` / `data:` / explicit `:port` smuggling.
 	if (!r.startsWith("/")) return null;
+	if (r.startsWith("//")) return null;
+	if (r.startsWith("/\\")) return null;
 	if (r.includes(":")) return null;
 	return r;
 });
