@@ -114,12 +114,12 @@ Each bump triggers a full reproject per the Pre-flight + Procedure above, so exi
 
 ## SurfacePlannerVersion history
 
-Each bump triggers a full reproject so that legacy entries pick up the new bucket placement deterministically. The bumped value is recorded on each row in `KnowledgeLoopEntry.surface_planner_version` (proto field 31).
+Each bump triggers a full reproject so that legacy entries pick up the new bucket placement deterministically. The bumped value is recorded on each row in `KnowledgeLoopEntry.surface_planner_version` (proto field 23).
 
 | version | date       | ADR          | what changed |
 |---------|------------|--------------|--------------|
 | `v1`    | 2026-04-23 | [[000831]]   | event-type → bucket fixed mapping (`SummaryVersionCreated` → Now, `HomeItemOpened` → Continue, `HomeItemSuperseded` → Changed, `HomeItemDismissed` → Review) |
-| `v2`    | tbd        | tbd          | knowledge-state-based scoring via `decideBucketV2(SurfaceScoreInputs) → SurfaceBucket`. Inputs are immutable evidence drawn from `event.occurred_at - 7d` windows on versioned tables only |
+| `v2`    | 2026-04-27 | [[000856]]   | knowledge-state-based scoring via `decideBucketV2(SurfaceScoreInputs) → SurfaceBucket`. Inputs are immutable evidence drawn from `event.occurred_at - 7d` windows on versioned tables only; `surface_planner_version` and `surface_score_inputs` are written through the Sovereign projection path |
 
 ### v2 cutover checklist (in addition to the Procedure above)
 
