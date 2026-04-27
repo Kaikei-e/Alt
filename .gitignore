@@ -149,6 +149,8 @@ scripts/migrate_sovereign_data.sh
 scripts/migrate-pre-processor-db.sh
 scripts/pgbouncer_stats.sh
 scripts/benchmark_augur.sh
+scripts/bench-bonsai.*
+scripts/bench-prompts.*
 scripts/backup/
 setup.sh
 rerank-server/deploy.sh
