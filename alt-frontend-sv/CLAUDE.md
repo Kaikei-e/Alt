@@ -10,7 +10,7 @@ Primary frontend. **SvelteKit 2.x**, **Svelte 5 Runes**, **TailwindCSS v4**, **T
 
 ```bash
 # Test (TDD first)
-bun test                  # Unit/Component
+bun run test              # Unit/Component (vitest — DO NOT use `bun test`)
 bun run test:e2e          # E2E (requires stack)
 
 # Dev
@@ -18,8 +18,7 @@ bun dev
 
 # Lint & Type Check & Build
 bun run lint && bun run format
-bun run check && bun run build   # tsgo-based type check (primary, 10x fast)
-bun run check:tsc                # tsc-based type check (TS5.9 fallback)
+bun run check && bun run build   # tsgo (TypeScript 7 Beta), 10x faster than tsc
 ```
 
 ## TDD Workflow
