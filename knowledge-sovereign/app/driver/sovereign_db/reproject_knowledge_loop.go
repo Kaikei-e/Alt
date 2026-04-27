@@ -41,7 +41,7 @@ func (r *Repository) TruncateKnowledgeLoopProjections(
 	if err != nil {
 		return out, fmt.Errorf("TruncateKnowledgeLoopProjections: BeginTx: %w", err)
 	}
-	defer tx.Rollback(ctx)
+	defer func() { _ = tx.Rollback(ctx) }()
 
 	// Pre-truncate counts give the operator a number to compare against the
 	// "row count within 1-5% of pre-snapshot" post-check in the runbook.
