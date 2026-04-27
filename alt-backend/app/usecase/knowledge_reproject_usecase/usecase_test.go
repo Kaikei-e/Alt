@@ -153,6 +153,31 @@ func TestStartReproject(t *testing.T) {
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "create reproject run")
 	})
+
+	// Regression guard: knowledge_reproject_runs.{checkpoint_payload, stats_json,
+	// diff_summary_json} are NOT NULL JSONB with DEFAULT '{}'. PostgreSQL only
+	// applies DEFAULT when a column is omitted from the INSERT — passing a nil
+	// json.RawMessage explicitly sends NULL and the constraint kicks. The
+	// usecase therefore has to seed empty-object JSON into all three fields,
+	// otherwise the create port fans out a 500 from the DB driver. Live
+	// production hit this on /admin/knowledge-home Start Reproject (502).
+	t.Run("seeds empty-object JSON into checkpoint_payload / stats_json / diff_summary_json", func(t *testing.T) {
+		createPort := &mockCreateReprojectRunPort{}
+		uc := NewUsecase(createPort, nil, nil, nil, nil, nil, nil)
+
+		_, err := uc.StartReproject(context.Background(), domain.ReprojectModeFull, "v3", "v4", nil, nil)
+		require.NoError(t, err)
+		require.NotNil(t, createPort.created)
+
+		for label, raw := range map[string]json.RawMessage{
+			"CheckpointPayload": createPort.created.CheckpointPayload,
+			"StatsJSON":         createPort.created.StatsJSON,
+			"DiffSummaryJSON":   createPort.created.DiffSummaryJSON,
+		} {
+			require.NotEmptyf(t, raw, "%s must not be nil — would NULL-violate the NOT NULL JSONB column", label)
+			assert.JSONEqf(t, "{}", string(raw), "%s must be canonical empty JSON object", label)
+		}
+	})
 }
 
 func TestGetReprojectStatus(t *testing.T) {

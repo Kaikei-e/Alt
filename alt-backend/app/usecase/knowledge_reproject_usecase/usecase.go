@@ -78,16 +78,26 @@ func (u *Usecase) StartReproject(ctx context.Context, mode, fromVersion, toVersi
 	}
 
 	now := time.Now()
+	// JSONB columns on knowledge_reproject_runs are NOT NULL with DEFAULT '{}'.
+	// PostgreSQL applies DEFAULT only when the column is OMITTED from the
+	// INSERT, but the driver explicitly passes every column, so a nil
+	// json.RawMessage becomes NULL and trips the NOT NULL constraint.
+	// Initialize to empty objects here so the INSERT carries valid JSON
+	// regardless of the downstream driver wiring.
+	emptyJSON := json.RawMessage([]byte(`{}`))
 	run := &domain.ReprojectRun{
-		ReprojectRunID: uuid.New(),
-		ProjectionName: "knowledge_home",
-		FromVersion:    fromVersion,
-		ToVersion:      toVersion,
-		Mode:           mode,
-		Status:         domain.ReprojectStatusPending,
-		RangeStart:     rangeStart,
-		RangeEnd:       rangeEnd,
-		CreatedAt:      now,
+		ReprojectRunID:    uuid.New(),
+		ProjectionName:    "knowledge_home",
+		FromVersion:       fromVersion,
+		ToVersion:         toVersion,
+		Mode:              mode,
+		Status:            domain.ReprojectStatusPending,
+		RangeStart:        rangeStart,
+		RangeEnd:          rangeEnd,
+		CheckpointPayload: emptyJSON,
+		StatsJSON:         emptyJSON,
+		DiffSummaryJSON:   emptyJSON,
+		CreatedAt:         now,
 	}
 
 	// Ensure target version exists in knowledge_projection_versions

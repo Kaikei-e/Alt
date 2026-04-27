@@ -272,6 +272,13 @@ func (r *Repository) ListReprojectRuns(ctx context.Context, statusFilter string,
 }
 
 // CreateReprojectRun inserts a new reproject run.
+//
+// The JSONB columns (checkpoint_payload / stats_json / diff_summary_json) are
+// NOT NULL with DEFAULT '{}'. PostgreSQL only applies DEFAULT when a column
+// is omitted from the INSERT — passing a nil json.RawMessage explicitly
+// sends NULL, which trips the NOT NULL constraint. Normalise nil → '{}' here
+// so any caller (RPC client, DB-direct, future migrations) can safely leave
+// these unset.
 func (r *Repository) CreateReprojectRun(ctx context.Context, run ReprojectRun) error {
 	query := `INSERT INTO knowledge_reproject_runs
 		(reproject_run_id, projection_name, from_version, to_version, initiated_by,
@@ -281,13 +288,24 @@ func (r *Repository) CreateReprojectRun(ctx context.Context, run ReprojectRun) e
 	_, err := r.pool.Exec(ctx, query,
 		run.ReprojectRunID, run.ProjectionName, run.FromVersion, run.ToVersion, run.InitiatedBy,
 		run.Mode, run.Status, run.RangeStart, run.RangeEnd,
-		run.CheckpointPayload, run.StatsJSON, run.DiffSummaryJSON,
+		emptyJSONIfNil(run.CheckpointPayload), emptyJSONIfNil(run.StatsJSON), emptyJSONIfNil(run.DiffSummaryJSON),
 		run.CreatedAt, run.StartedAt, run.FinishedAt,
 	)
 	if err != nil {
 		return fmt.Errorf("CreateReprojectRun: %w", err)
 	}
 	return nil
+}
+
+// emptyJSONIfNil returns the canonical empty JSON object when the input is
+// nil or empty. NOT NULL JSONB columns with DEFAULT '{}' need an explicit
+// value when listed in the INSERT column list — DEFAULT does not fire for
+// values that are sent as NULL.
+func emptyJSONIfNil(v json.RawMessage) json.RawMessage {
+	if len(v) == 0 {
+		return json.RawMessage([]byte(`{}`))
+	}
+	return v
 }
 
 // UpdateReprojectRun updates a reproject run.
@@ -297,7 +315,8 @@ func (r *Repository) UpdateReprojectRun(ctx context.Context, run ReprojectRun) e
 		started_at = $6, finished_at = $7
 		WHERE reproject_run_id = $1`
 	_, err := r.pool.Exec(ctx, query,
-		run.ReprojectRunID, run.Status, run.CheckpointPayload, run.StatsJSON, run.DiffSummaryJSON,
+		run.ReprojectRunID, run.Status,
+		emptyJSONIfNil(run.CheckpointPayload), emptyJSONIfNil(run.StatsJSON), emptyJSONIfNil(run.DiffSummaryJSON),
 		run.StartedAt, run.FinishedAt,
 	)
 	if err != nil {
