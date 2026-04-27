@@ -14,6 +14,7 @@ expected fail-closed behaviour:
 
 from __future__ import annotations
 
+import json
 import os
 from pathlib import Path
 
@@ -50,9 +51,15 @@ def ja_model_path_30(tmp_path: Path) -> Path:
 
 @pytest.fixture
 def ja_thresholds_path(tmp_path: Path) -> Path:
-    """Sidecar thresholds file so ``_validate_joblib_artifacts`` does not complain."""
+    """Sidecar thresholds file covering every fixture class.
+
+    The 17- and 30-class tiny models use ``class_0``..``class_N`` labels.  The
+    coverage validator added 2026-04-27 refuses to start when classes_ is
+    not fully covered by the thresholds JSON, so this fixture writes an entry
+    for each potential label up to the largest fixture (30).
+    """
     path = tmp_path / "genre_thresholds_ja.json"
-    path.write_text("{}")
+    path.write_text(json.dumps({f"class_{i}": 0.5 for i in range(30)}))
     return path
 
 

@@ -204,6 +204,80 @@ class Settings(BaseSettings):
                 )
         return self
 
+    @model_validator(mode="after")
+    def _validate_threshold_coverage(self) -> Settings:
+        """Refuse to boot when the classifier emits classes that have no entry
+        in the JA thresholds file.
+
+        Without this guard, ``GenreClassifierService.predict_batch`` falls back
+        to a hard-coded 0.5 threshold for every uncovered class. Combined with
+        skewed ``predict_proba`` (HF transformers issue #44534, observed
+        2026-04-14..2026-04-27) the uncovered classes silently dropped out of
+        the candidate set, producing the ``no_evidence`` cascade visible in
+        ``recap_failed_tasks``. Boot-time fail-closed forces every retrain to
+        update the thresholds artefact in lockstep.
+        """
+        if self.classification_backend != "joblib":
+            return self
+
+        from pathlib import Path
+
+        classifier_path: str | None = getattr(self, "genre_classifier_model_path_ja", None)
+        thresholds_path: str | None = getattr(self, "genre_thresholds_path_ja", None)
+        if not classifier_path or not thresholds_path:
+            return self
+
+        model_file = Path(classifier_path)
+        thresholds_file = Path(thresholds_path)
+        if not model_file.is_file() or not thresholds_file.is_file():
+            # Missing file is handled by neighbouring validators (joblib path
+            # check, runtime _ensure_model). Coverage check has nothing to
+            # compare against — skip silently rather than double-firing.
+            return self
+
+        import pickle
+
+        try:
+            import joblib
+
+            model = joblib.load(model_file)
+        except (
+            OSError,
+            ValueError,
+            EOFError,
+            ImportError,
+            KeyError,
+            TypeError,
+            AttributeError,
+            pickle.UnpicklingError,
+        ):
+            return self
+
+        classes = getattr(model, "classes_", None)
+        if classes is None:
+            return self
+
+        try:
+            thresholds_payload = json.loads(thresholds_file.read_text())
+        except OSError, json.JSONDecodeError:
+            return self
+
+        if not isinstance(thresholds_payload, dict):
+            return self
+
+        covered = set(thresholds_payload.keys())
+        declared = {str(c) for c in classes}
+        missing = sorted(declared - covered)
+        if missing:
+            raise ValueError(
+                "genre_thresholds_path_ja: threshold coverage gap — classifier "
+                f"declares {len(declared)} classes but {len(missing)} have no "
+                f"threshold entry: {missing}. Update {thresholds_file} so every "
+                "class in classes_ has a threshold (or set classification_backend "
+                "to a non-joblib value to bypass)."
+            )
+        return self
+
     @property
     def db_url_str(self) -> str:
         """Return the DB URL as a plain string for SQLAlchemy."""
@@ -687,8 +761,18 @@ class Settings(BaseSettings):
         description="Maximum concurrent /v1/extract requests",
     )
     genre_classifier_model_path: str = Field(
-        "data/genre_classifier.joblib",
-        description="Path to the trained genre classifier model (deprecated, use JA/EN specific paths)",
+        "data/genre_classifier_ja.joblib",
+        description=(
+            "Path to the trained genre classifier model loaded by the inprocess "
+            "container and the multiprocess classification worker. Defaults to "
+            "the 30-class Japanese artefact retrained on 2026-04-23 (sklearn 1.8.0). "
+            "Override with RECAP_SUBWORKER_GENRE_CLASSIFIER_MODEL_PATH for "
+            "language-specific deployments."
+        ),
+        validation_alias=AliasChoices(
+            "RECAP_GENRE_CLASSIFIER_MODEL_PATH",
+            "RECAP_SUBWORKER_GENRE_CLASSIFIER_MODEL_PATH",
+        ),
     )
     genre_classifier_model_path_ja: str = Field(
         "data/genre_classifier_ja.joblib",
@@ -759,13 +843,12 @@ class Settings(BaseSettings):
         ),
     )
     genre_baseline_cardinality: int = Field(
-        15,
+        30,
         ge=0,
         description=(
             "Minimum classifier.classes_ cardinality enforced at boot. "
             "ADR-000835 stage 3: fail-closed when a retrain regressed below this. "
-            "Set to 30 once the JA model is retrained on the full taxonomy; "
-            "set to 0 to disable the check during recovery."
+            "30 is the canonical taxonomy; set to 0 to disable the check during recovery."
         ),
         validation_alias=AliasChoices(
             "RECAP_GENRE_BASELINE_CARDINALITY",
