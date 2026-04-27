@@ -58,6 +58,13 @@ export IMAGE_TAG GHCR_OWNER STAGING_PROJECT_NAME AUTH_HUB_IMAGE_TAG
 source "$ROOT/e2e/hurl/_lib/render-slice.sh"
 render_slice auth-hub
 
+# Pre-cleanup: reclaim Docker's pre-defined address pool from networks
+# left by cancelled prior runs. Safe-by-default: docker network prune
+# refuses to touch networks an active container is attached to.
+# shellcheck source=../_lib/reclaim-network-pool.sh
+source "$ROOT/e2e/hurl/_lib/reclaim-network-pool.sh"
+reclaim_network_pool
+
 # Read fixtures. Secrets go through --secret so Hurl redacts them from
 # --report-html / --report-junit (audit F-002); non-sensitive values
 # ride --variable.

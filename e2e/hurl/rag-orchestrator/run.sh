@@ -51,6 +51,13 @@ export IMAGE_TAG GHCR_OWNER STAGING_PROJECT_NAME RAG_ORCHESTRATOR_IMAGE_TAG
 source "$ROOT/e2e/hurl/_lib/render-slice.sh"
 render_slice rag-orchestrator
 
+# Pre-cleanup: reclaim Docker's pre-defined address pool from networks
+# left by cancelled prior runs. Safe-by-default: docker network prune
+# refuses to touch networks an active container is attached to.
+# shellcheck source=../_lib/reclaim-network-pool.sh
+source "$ROOT/e2e/hurl/_lib/reclaim-network-pool.sh"
+reclaim_network_pool
+
 USER_ID_A="$(tr -d '\n' < "$ROOT/e2e/fixtures/rag-orchestrator/test-user-id.txt")"
 USER_ID_EMPTY="$(tr -d '\n' < "$ROOT/e2e/fixtures/rag-orchestrator/test-empty-user-id.txt")"
 CONV_ID="$(tr -d '\n' < "$ROOT/e2e/fixtures/rag-orchestrator/test-conversation-id.txt")"

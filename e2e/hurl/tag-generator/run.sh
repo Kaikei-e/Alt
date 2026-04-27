@@ -52,6 +52,13 @@ export IMAGE_TAG GHCR_OWNER STAGING_PROJECT_NAME TAG_GENERATOR_IMAGE_TAG
 source "$ROOT/e2e/hurl/_lib/render-slice.sh"
 render_slice tag-generator
 
+# Pre-cleanup: reclaim Docker's pre-defined address pool from networks
+# left by cancelled prior runs. Safe-by-default: docker network prune
+# refuses to touch networks an active container is attached to.
+# shellcheck source=../_lib/reclaim-network-pool.sh
+source "$ROOT/e2e/hurl/_lib/reclaim-network-pool.sh"
+reclaim_network_pool
+
 REPORT_DIR="$ROOT/e2e/reports/tag-generator-$RUN_ID"
 mkdir -p "$REPORT_DIR"
 

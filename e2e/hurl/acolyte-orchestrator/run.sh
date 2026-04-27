@@ -48,6 +48,13 @@ export IMAGE_TAG GHCR_OWNER STAGING_PROJECT_NAME
 source "$ROOT/e2e/hurl/_lib/render-slice.sh"
 render_slice acolyte-orchestrator
 
+# Pre-cleanup: reclaim Docker's pre-defined address pool from networks
+# left by cancelled prior runs. Safe-by-default: docker network prune
+# refuses to touch networks an active container is attached to.
+# shellcheck source=../_lib/reclaim-network-pool.sh
+source "$ROOT/e2e/hurl/_lib/reclaim-network-pool.sh"
+reclaim_network_pool
+
 # Master key for the Meilisearch seed step in scenario 09 (gatherer
 # needs an indexed corpus to return non-empty hits). Anchored on the
 # same fixture file the compose `secrets:` block mounts so changing

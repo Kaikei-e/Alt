@@ -49,6 +49,13 @@ export IMAGE_TAG GHCR_OWNER STAGING_PROJECT_NAME SEARCH_INDEXER_IMAGE_TAG
 source "$ROOT/e2e/hurl/_lib/render-slice.sh"
 render_slice search-indexer
 
+# Pre-cleanup: reclaim Docker's pre-defined address pool from networks
+# left by cancelled prior runs. Safe-by-default: docker network prune
+# refuses to touch networks an active container is attached to.
+# shellcheck source=../_lib/reclaim-network-pool.sh
+source "$ROOT/e2e/hurl/_lib/reclaim-network-pool.sh"
+reclaim_network_pool
+
 # Master key is a committed staging-only test fixture. Anchor through
 # the same file the compose `secrets:` block mounts, so changing one
 # rotates both.
