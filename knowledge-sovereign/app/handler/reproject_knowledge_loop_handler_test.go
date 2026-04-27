@@ -13,14 +13,22 @@ import (
 )
 
 type fakeReprojectRepo struct {
-	result sovereign_db.KnowledgeLoopReprojectResult
-	err    error
-	called int
+	result         sovereign_db.KnowledgeLoopReprojectResult
+	err            error
+	called         int
+	checkpointSeq  int64
+	checkpointErr  error
+	checkpointName string
 }
 
 func (f *fakeReprojectRepo) TruncateKnowledgeLoopProjections(_ context.Context) (sovereign_db.KnowledgeLoopReprojectResult, error) {
 	f.called++
 	return f.result, f.err
+}
+
+func (f *fakeReprojectRepo) GetProjectionCheckpoint(_ context.Context, projectorName string) (int64, error) {
+	f.checkpointName = projectorName
+	return f.checkpointSeq, f.checkpointErr
 }
 
 func TestKnowledgeLoopReprojectHandler_HappyPath(t *testing.T) {
@@ -81,6 +89,42 @@ func TestKnowledgeLoopReprojectHandler_RepoErrorReturns500(t *testing.T) {
 	}
 	if !strings.Contains(body, "boom") {
 		t.Errorf("body = %q; want error message echoed", body)
+	}
+}
+
+func TestKnowledgeLoopReprojectHandler_StatusReturnsVersionAndCheckpoint(t *testing.T) {
+	repo := &fakeReprojectRepo{checkpointSeq: 42}
+	h := NewKnowledgeLoopReprojectHandler(repo)
+	mux := http.NewServeMux()
+	h.RegisterRoutes(mux)
+
+	req := httptest.NewRequest(http.MethodGet, "/admin/knowledge-loop/reproject/status", nil)
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d; want 200", rec.Code)
+	}
+	if repo.checkpointName != "knowledge-loop-projector" {
+		t.Errorf("checkpoint queried for %q; want knowledge-loop-projector",
+			repo.checkpointName)
+	}
+	if repo.called != 0 {
+		t.Errorf("status endpoint must not mutate; truncate called %d", repo.called)
+	}
+
+	var body map[string]any
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if body["why_mapping_version"] == nil {
+		t.Error("why_mapping_version missing")
+	}
+	if body["last_event_seq"] != float64(42) {
+		t.Errorf("last_event_seq = %v; want 42", body["last_event_seq"])
+	}
+	if body["projector_name"] != "knowledge-loop-projector" {
+		t.Errorf("projector_name = %v; want knowledge-loop-projector", body["projector_name"])
 	}
 }
 

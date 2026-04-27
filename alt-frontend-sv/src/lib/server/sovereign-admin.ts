@@ -172,6 +172,31 @@ export interface KnowledgeLoopReprojectResult {
 }
 
 /**
+ * Operator-facing status snapshot for the Knowledge Loop projector. Mirrors
+ * knowledgeLoopReprojectStatus on the Go side. Lets the admin UI surface
+ * "current code is at WhyMappingVersion N; projector caught up to event_seq
+ * M" so the operator knows whether a reproject is warranted.
+ */
+export interface KnowledgeLoopReprojectStatus {
+	why_mapping_version: number;
+	last_event_seq: number;
+	projector_name: string;
+	error?: string;
+}
+
+export async function fetchKnowledgeLoopReprojectStatus(): Promise<KnowledgeLoopReprojectStatus> {
+	const response = await fetch(
+		`${SOVEREIGN_METRICS_URL}/admin/knowledge-loop/reproject/status`,
+	);
+	if (!response.ok) {
+		throw new Error(
+			`Knowledge Loop reproject status failed (${response.status})`,
+		);
+	}
+	return (await response.json()) as KnowledgeLoopReprojectStatus;
+}
+
+/**
  * Triggers a full Knowledge Loop reproject on knowledge-sovereign. Runbook:
  * docs/runbooks/knowledge-loop-reproject.md.
  *

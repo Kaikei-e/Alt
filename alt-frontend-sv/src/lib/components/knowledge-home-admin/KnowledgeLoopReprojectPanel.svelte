@@ -1,5 +1,9 @@
 <script lang="ts">
-import type { KnowledgeLoopReprojectResult } from "$lib/server/sovereign-admin";
+import { onMount } from "svelte";
+import type {
+	KnowledgeLoopReprojectResult,
+	KnowledgeLoopReprojectStatus,
+} from "$lib/server/sovereign-admin";
 
 /**
  * Operator panel for the Knowledge Loop full-reproject procedure
@@ -9,13 +13,24 @@ import type { KnowledgeLoopReprojectResult } from "$lib/server/sovereign-admin";
  * with TRUNCATE-and-rerun semantics, so the UX is a single destructive
  * "Reproject" action gated by an inline confirmation.
  *
+ * The header surfaces the current WhyMappingVersion (the operator-facing
+ * signal that placement / narrative rules changed in code) and the
+ * projector's last_event_seq checkpoint. This is the "v7" the operator
+ * cares about — it is NOT the same as the Knowledge Home projection_version
+ * shown elsewhere on this page; the two systems are independent.
+ *
  * Confirmation gate: the user must type "REPROJECT" exactly. Cheap human
  * speed bump that matches the runbook's intent and stops a stray click /
  * fat finger from wiping projections.
  */
 
-let { onTrigger, disabled = false } = $props<{
+let {
+	onTrigger,
+	onFetchStatus,
+	disabled = false,
+} = $props<{
 	onTrigger: () => Promise<KnowledgeLoopReprojectResult>;
+	onFetchStatus?: () => Promise<KnowledgeLoopReprojectStatus>;
 	disabled?: boolean;
 }>();
 
@@ -23,8 +38,24 @@ let confirmation = $state("");
 let inFlight = $state(false);
 let result = $state<KnowledgeLoopReprojectResult | null>(null);
 let errorMessage = $state<string | null>(null);
+let status = $state<KnowledgeLoopReprojectStatus | null>(null);
+let statusError = $state<string | null>(null);
 
 const armed = $derived(confirmation.trim() === "REPROJECT");
+
+async function refreshStatus() {
+	if (!onFetchStatus) return;
+	try {
+		status = await onFetchStatus();
+		statusError = null;
+	} catch (e) {
+		statusError = e instanceof Error ? e.message : "unknown_error";
+	}
+}
+
+onMount(() => {
+	void refreshStatus();
+});
 
 async function run() {
 	if (!armed || inFlight) return;
@@ -34,6 +65,9 @@ async function run() {
 	try {
 		result = await onTrigger();
 		confirmation = "";
+		// Refresh the version + checkpoint readout so the operator can verify
+		// the projector is advancing past zero again.
+		void refreshStatus();
 	} catch (e) {
 		errorMessage = e instanceof Error ? e.message : "unknown_error";
 	} finally {
@@ -50,6 +84,25 @@ async function run() {
 			projector checkpoint. Dedupe table is preserved. The projector picks
 			up from event_seq=0 on its next 5-second tick.
 		</p>
+		{#if status}
+			<dl class="status-readout" data-testid="knowledge-loop-reproject-status">
+				<dt>WhyMappingVersion</dt>
+				<dd data-testid="knowledge-loop-reproject-status-version">
+					v{status.why_mapping_version}
+				</dd>
+				<dt>Projector checkpoint</dt>
+				<dd>event_seq {status.last_event_seq}</dd>
+				<dt>Projector</dt>
+				<dd>{status.projector_name}</dd>
+			</dl>
+			<p class="status-note">
+				This is the projector's <em>code-side</em> version. It is not the
+				same as the Knowledge Home <code>projection_version</code> shown
+				elsewhere on this page.
+			</p>
+		{:else if statusError}
+			<p class="status status--error">Status unavailable: {statusError}</p>
+		{/if}
 	</header>
 
 	<div class="panel-body">
@@ -124,6 +177,35 @@ async function run() {
 		font-family: var(--font-body, "Source Sans 3", system-ui, sans-serif);
 		font-size: 0.78rem;
 		line-height: 1.5;
+		color: var(--alt-slate, #666);
+	}
+	.status-readout {
+		display: grid;
+		grid-template-columns: max-content 1fr;
+		row-gap: 0.18rem;
+		column-gap: 1rem;
+		margin: 0.5rem 0 0.35rem;
+		font-family: var(--font-mono, "IBM Plex Mono", ui-monospace, monospace);
+		font-size: 0.74rem;
+	}
+	.status-readout dt {
+		color: var(--alt-ash, #999);
+		letter-spacing: 0.05em;
+	}
+	.status-readout dd {
+		margin: 0;
+		color: var(--alt-charcoal, #1a1a1a);
+	}
+	.status-note {
+		margin: 0;
+		font-family: var(--font-body, "Source Sans 3", system-ui, sans-serif);
+		font-size: 0.7rem;
+		color: var(--alt-ash, #999);
+		line-height: 1.5;
+	}
+	.status-note code {
+		font-family: var(--font-mono, "IBM Plex Mono", ui-monospace, monospace);
+		font-size: 0.66rem;
 		color: var(--alt-slate, #666);
 	}
 	.panel-body {

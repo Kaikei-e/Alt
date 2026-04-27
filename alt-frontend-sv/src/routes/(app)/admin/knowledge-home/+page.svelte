@@ -10,7 +10,10 @@ import AlertStatusPanel from "$lib/components/knowledge-home-admin/AlertStatusPa
 import ReprojectActions from "$lib/components/knowledge-home-admin/ReprojectActions.svelte";
 import ReprojectRunsTable from "$lib/components/knowledge-home-admin/ReprojectRunsTable.svelte";
 import KnowledgeLoopReprojectPanel from "$lib/components/knowledge-home-admin/KnowledgeLoopReprojectPanel.svelte";
-import type { KnowledgeLoopReprojectResult } from "$lib/server/sovereign-admin";
+import type {
+	KnowledgeLoopReprojectResult,
+	KnowledgeLoopReprojectStatus,
+} from "$lib/server/sovereign-admin";
 import DiffSummaryPanel from "$lib/components/knowledge-home-admin/DiffSummaryPanel.svelte";
 import StorageStatsPanel from "$lib/components/knowledge-home-admin/StorageStatsPanel.svelte";
 import SnapshotListPanel from "$lib/components/knowledge-home-admin/SnapshotListPanel.svelte";
@@ -139,6 +142,17 @@ async function triggerKnowledgeLoopReproject(): Promise<KnowledgeLoopReprojectRe
 		);
 	}
 	return (await response.json()) as KnowledgeLoopReprojectResult;
+}
+
+async function fetchKnowledgeLoopReprojectStatus(): Promise<KnowledgeLoopReprojectStatus> {
+	const response = await fetch("/admin/knowledge-home/reproject-loop", {
+		method: "GET",
+		credentials: "include",
+	});
+	if (!response.ok) {
+		throw new Error(`Reproject status failed (${response.status})`);
+	}
+	return (await response.json()) as KnowledgeLoopReprojectStatus;
 }
 
 $effect(() => {
@@ -297,6 +311,7 @@ onDestroy(() => {
 			<div class="ops-section" style="--stagger: 4">
 				<KnowledgeLoopReprojectPanel
 					onTrigger={triggerKnowledgeLoopReproject}
+					onFetchStatus={fetchKnowledgeLoopReprojectStatus}
 				/>
 			</div>
 		{:else if activeTab === "storage"}

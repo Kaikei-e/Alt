@@ -7,6 +7,7 @@ import (
 	"net/http"
 
 	"knowledge-sovereign/driver/sovereign_db"
+	knowledge_loop_projector "knowledge-sovereign/usecase/knowledge_loop_projector"
 )
 
 // KnowledgeLoopReprojectRepository is the narrow port the handler depends on.
@@ -14,7 +15,12 @@ import (
 // the full Repository surface.
 type KnowledgeLoopReprojectRepository interface {
 	TruncateKnowledgeLoopProjections(ctx context.Context) (sovereign_db.KnowledgeLoopReprojectResult, error)
+	GetProjectionCheckpoint(ctx context.Context, projectorName string) (int64, error)
 }
+
+// projectorName is the canonical projector_name key for the Knowledge Loop
+// projector — matches the constant the projector + runbook use.
+const knowledgeLoopProjectorName = "knowledge-loop-projector"
 
 // KnowledgeLoopReprojectHandler exposes the Knowledge Loop full-reproject
 // procedure as an admin HTTP endpoint. The runbook
@@ -36,6 +42,7 @@ func NewKnowledgeLoopReprojectHandler(repo KnowledgeLoopReprojectRepository) *Kn
 // path prefix.
 func (h *KnowledgeLoopReprojectHandler) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /admin/knowledge-loop/reproject", h.handleReproject)
+	mux.HandleFunc("GET /admin/knowledge-loop/reproject/status", h.handleStatus)
 }
 
 type knowledgeLoopReprojectResponse struct {
@@ -46,6 +53,19 @@ type knowledgeLoopReprojectResponse struct {
 	CheckpointReset        bool   `json:"checkpoint_reset"`
 	ProjectorWillRunOnTick string `json:"projector_will_run_on_tick"`
 	Error                  string `json:"error,omitempty"`
+}
+
+// knowledgeLoopReprojectStatus surfaces the bookkeeping the operator needs to
+// decide whether a full reproject is warranted: the projector's compile-time
+// WhyMappingVersion (the operator-facing signal that placement / narrative
+// rules changed) and the current event-seq checkpoint (so the operator can
+// see how far the projector has advanced and confirm it's ahead of zero
+// when no reproject is in flight).
+type knowledgeLoopReprojectStatus struct {
+	WhyMappingVersion int    `json:"why_mapping_version"`
+	LastEventSeq      int64  `json:"last_event_seq"`
+	ProjectorName     string `json:"projector_name"`
+	Error             string `json:"error,omitempty"`
 }
 
 func (h *KnowledgeLoopReprojectHandler) handleReproject(w http.ResponseWriter, r *http.Request) {
@@ -80,4 +100,25 @@ func (h *KnowledgeLoopReprojectHandler) handleReproject(w http.ResponseWriter, r
 		CheckpointReset:        res.CheckpointReset,
 		ProjectorWillRunOnTick: "Projector picks up from event_seq=0 on next scheduler tick (~5s).",
 	})
+}
+
+// handleStatus returns the operator-facing version + checkpoint snapshot so
+// the admin UI can show "current code is at WhyMappingVersion N; projector
+// has caught up to event_seq M" alongside the Reproject button. Bookkeeping
+// only — never mutates state.
+func (h *KnowledgeLoopReprojectHandler) handleStatus(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	resp := knowledgeLoopReprojectStatus{
+		WhyMappingVersion: knowledge_loop_projector.WhyMappingVersion,
+		ProjectorName:     knowledgeLoopProjectorName,
+	}
+	seq, err := h.repo.GetProjectionCheckpoint(ctx, knowledgeLoopProjectorName)
+	if err != nil {
+		slog.WarnContext(ctx, "reproject status: checkpoint read failed", "error", err)
+		resp.Error = "checkpoint read failed"
+	} else {
+		resp.LastEventSeq = seq
+	}
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(resp)
 }
