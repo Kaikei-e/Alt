@@ -146,6 +146,79 @@ func TestEventLogResolver_TopicOverlapFromRecap(t *testing.T) {
 	}
 }
 
+// Recap CTA wiring: when the resolver sees a RecapTopicSnapshotted event whose
+// top_terms overlap with the entry's tags, it must remember the snapshot id of
+// the most-recent matching event so the projector can seed an act_target with
+// target_type=recap pointing at /recap/topic/<id>.
+func TestEventLogResolver_RecordsMostRecentMatchingRecapTopicSnapshotID(t *testing.T) {
+	t.Parallel()
+
+	uid := uuid.New()
+	now := time.Date(2026, 4, 26, 12, 0, 0, 0, time.UTC)
+
+	lookup := &fakeEventLogLookup{events: []sovereign_db.KnowledgeEvent{
+		// Older snapshot — overlap, but should be shadowed by the newer one.
+		ev(EventRecapTopicSnapshotted, now.Add(-3*time.Hour), uid, map[string]any{
+			"recap_topic_snapshot_id": "11111111-1111-4111-8111-111111111111",
+			"top_terms":               []any{"energy"},
+		}),
+		// Newer snapshot — also overlap; this is the one we should expose.
+		ev(EventRecapTopicSnapshotted, now.Add(-1*time.Hour), uid, map[string]any{
+			"recap_topic_snapshot_id": "22222222-2222-4222-8222-222222222222",
+			"top_terms":               []any{"energy", "markets"},
+		}),
+		// Newest snapshot — but no overlap; must NOT be picked.
+		ev(EventRecapTopicSnapshotted, now.Add(-30*time.Minute), uid, map[string]any{
+			"recap_topic_snapshot_id": "33333333-3333-4333-8333-333333333333",
+			"top_terms":               []any{"medicine", "biotech"},
+		}),
+	}}
+	r := NewEventLogSurfaceScoreResolver(lookup)
+	target := ev(EventSummaryVersionCreated, now, uid, map[string]any{
+		"article_id": "art-1",
+		"tags":       []any{"energy", "earnings"},
+	})
+	out := r.Resolve(context.Background(), &target)
+
+	if out.TopicOverlapCount != 2 {
+		t.Errorf("TopicOverlapCount = %d; want 2", out.TopicOverlapCount)
+	}
+	if out.RecapTopicSnapshotID != "22222222-2222-4222-8222-222222222222" {
+		t.Errorf("RecapTopicSnapshotID = %q; want the most-recent overlapping snapshot",
+			out.RecapTopicSnapshotID)
+	}
+}
+
+func TestEventLogResolver_RejectsNonUuidRecapTopicSnapshotID(t *testing.T) {
+	t.Parallel()
+
+	uid := uuid.New()
+	now := time.Date(2026, 4, 26, 12, 0, 0, 0, time.UTC)
+
+	lookup := &fakeEventLogLookup{events: []sovereign_db.KnowledgeEvent{
+		ev(EventRecapTopicSnapshotted, now.Add(-1*time.Hour), uid, map[string]any{
+			// Not a UUID — open-redirect / path-traversal vector if forwarded
+			// to /recap/topic/<id>. The resolver must drop it.
+			"recap_topic_snapshot_id": "../etc/passwd",
+			"top_terms":               []any{"energy"},
+		}),
+	}}
+	r := NewEventLogSurfaceScoreResolver(lookup)
+	target := ev(EventSummaryVersionCreated, now, uid, map[string]any{
+		"article_id": "art-1",
+		"tags":       []any{"energy"},
+	})
+	out := r.Resolve(context.Background(), &target)
+
+	if out.RecapTopicSnapshotID != "" {
+		t.Errorf("RecapTopicSnapshotID = %q; non-UUID input must be rejected", out.RecapTopicSnapshotID)
+	}
+	// Overlap should still count; only the snapshot id is dropped.
+	if out.TopicOverlapCount != 1 {
+		t.Errorf("TopicOverlapCount = %d; want 1", out.TopicOverlapCount)
+	}
+}
+
 func TestEventLogResolver_OpenInteractionFromHomeItemOpened(t *testing.T) {
 	t.Parallel()
 

@@ -93,6 +93,25 @@ let dismissing = $state(false);
 
 const inFlight = $derived(isInFlight ? isInFlight(entry.entryKey) : false);
 
+/**
+ * Recap first-class CTA (Stream 2C). The projector seeds
+ * `entry.actTargets` with `{targetType: "recap", route: "/recap/topic/<id>"}`
+ * when its Surface Planner v2 inputs resolved a matching
+ * RecapTopicSnapshotted event. We only render the CTA when the route is a
+ * server-relative path with no scheme separator — defense in depth against
+ * a regressed upstream that could otherwise smuggle a `javascript:` URL.
+ */
+const recapTarget = $derived(
+	entry.actTargets.find((t) => t.targetType === "recap"),
+);
+const recapRoute = $derived.by(() => {
+	const r = recapTarget?.route;
+	if (!r) return null;
+	if (!r.startsWith("/")) return null;
+	if (r.includes(":")) return null;
+	return r;
+});
+
 function ctaToStage(intent: DecisionIntentName): LoopStageName | null {
 	switch (intent) {
 		// observe → orient: the user is opening the entry's mid-context plane.
@@ -278,6 +297,15 @@ async function handleDismiss() {
 							{option.label ?? intentLabel(option.intent)}
 						</button>
 					{/each}
+					{#if recapRoute}
+						<a
+							class="cta cta--recap"
+							href={recapRoute}
+							onclick={(event) => event.stopPropagation()}
+						>
+							Open Recap
+						</a>
+					{/if}
 					<button
 						type="button"
 						class="cta cta--dismiss"

@@ -92,4 +92,30 @@ describe("LoopEntryTile source guards", () => {
 	it("transitions transform smoothly so a stage change is animated", () => {
 		expect(tileSource).toMatch(/transition:[\s\S]*?transform\s+\d+ms/);
 	});
+
+	// --- Recap first-class CTA (Stream 2C) -----------------------------------
+	// The projector seeds entry.actTargets with `{targetType: "recap", route:
+	// "/recap/topic/<id>"}` when SurfaceScoreInputs.RecapTopicSnapshotID is
+	// non-empty. The tile renders an "Open Recap" CTA that links to that
+	// route. The route must be validated as server-relative + scheme-free so
+	// a future resolver bug cannot smuggle a `javascript:` URL through.
+
+	it("renders an Open Recap CTA when entry.actTargets contains a recap target", () => {
+		// The CTA is rendered as a real anchor (semantic link, ctrl+click,
+		// keyboard) and its label is the functional word "Open Recap" — Alt-
+		// Paper keeps metaphor in the visual layer; CTA text stays functional.
+		expect(tileSource).toContain("Open Recap");
+		expect(tileSource).toMatch(
+			/actTargets[\s\S]*?targetType\s*===\s*["']recap["']/,
+		);
+	});
+
+	it("guards the recap route against javascript: schemes and absolute URLs", () => {
+		// Defense in depth: the projector already rejects non-UUID snapshot
+		// ids, but the FE refuses to render a CTA whose route contains ":"
+		// or doesn't start with "/". Open-redirect / scheme-injection
+		// (OWASP A01/A05) cannot land even if upstream regresses.
+		expect(tileSource).toMatch(/startsWith\(["']\/["']\)/);
+		expect(tileSource).toMatch(/\.includes\(["']:["']\)/);
+	});
 });

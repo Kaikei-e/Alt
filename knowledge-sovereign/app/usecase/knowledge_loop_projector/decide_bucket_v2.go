@@ -38,6 +38,15 @@ type SurfaceScoreInputs struct {
 	HasOpenInteraction bool
 	FreshnessAt        time.Time
 	EventType          string
+
+	// RecapTopicSnapshotID is the canonical id of the most-recent
+	// RecapTopicSnapshotted event whose top_terms overlap with this entry's
+	// tags inside the score window. The resolver validates the id is a UUID
+	// before exposing it; the projector formats `/recap/topic/<id>` from it
+	// and seeds an act_target with target_type=recap. Empty when no
+	// matching snapshot exists. Reproject-safe: derived from event payload
+	// only, never from latest cross-table state.
+	RecapTopicSnapshotID string
 }
 
 // decideBucketV2 picks a SurfaceBucket from the score inputs. The order

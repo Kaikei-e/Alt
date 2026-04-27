@@ -3,6 +3,7 @@ package knowledge_loop_projector
 import (
 	"context"
 	"encoding/json"
+	"regexp"
 	"strings"
 	"time"
 
@@ -10,6 +11,12 @@ import (
 
 	"knowledge-sovereign/driver/sovereign_db"
 )
+
+// uuidPattern is the canonical UUID v1-v5 form. We reject anything else from
+// upstream payloads before forwarding it into URL formatters, since a
+// malformed `recap_topic_snapshot_id` is the obvious open-redirect /
+// path-traversal vector when the projector builds /recap/topic/<id>.
+var uuidPattern = regexp.MustCompile(`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$`)
 
 // scoreWindow is the lookback applied when summing v2 evidence. The
 // canonical contract §6.4.1 / §11 documents this as "within
@@ -118,6 +125,13 @@ func (r *EventLogSurfaceScoreResolver) Resolve(
 	thisTags := readArticleTagSet(ev.Payload)
 	thisEntryKey := readEntryKey(ev.Payload)
 
+	// Track the most-recent RecapTopicSnapshotted whose top_terms overlap with
+	// the entry's tags. The projector uses this to seed a Recap act_target so
+	// the UI can render an "Open Recap" CTA on the entry without us having to
+	// extend the projector to treat the snapshot itself as an entry-creating
+	// event (canonical contract §6.4.1: snapshot events feed Surface Planner
+	// inputs only).
+	var matchedRecapAt time.Time
 	for _, e := range events {
 		switch e.EventType {
 		case EventSummaryVersionCreated:
@@ -151,12 +165,30 @@ func (r *EventLogSurfaceScoreResolver) Resolve(
 			if len(eTerms) > 0 && len(thisTags) > 0 {
 				if hasIntersection(thisTags, eTerms) {
 					out.TopicOverlapCount++
+					// Pin the most-recent matching snapshot id (security:
+					// validate as UUID before forwarding to the URL formatter
+					// so a malformed payload can't smuggle a path-traversal
+					// or javascript: scheme into /recap/topic/<id>).
+					if e.OccurredAt.After(matchedRecapAt) {
+						sid := readPayloadString(e.Payload, "recap_topic_snapshot_id")
+						if sid != "" && isUUID(sid) {
+							out.RecapTopicSnapshotID = sid
+							matchedRecapAt = e.OccurredAt
+						}
+					}
 				}
 			}
 		}
 	}
 
 	return out
+}
+
+// isUUID rejects any string that is not a canonical 36-char hyphenated UUID.
+// Cheap regex check so the resolver does not depend on uuid.Parse being free
+// of allocation in hot paths.
+func isUUID(s string) bool {
+	return uuidPattern.MatchString(s)
 }
 
 // --- payload field readers (pure, stateless) -------------------------------

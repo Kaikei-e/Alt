@@ -418,6 +418,7 @@ func (p *Projector) buildEntryFromEvent(
 		ArtifactVersionRef:    art,
 		WhyPrimary:            why,
 		DecisionOptions:       seedDecisionOptions(proposedStage),
+		ActTargets:            seedActTargets(inputs),
 		DismissState:          sovereignv1.DismissState_DISMISS_STATE_ACTIVE,
 		RenderDepthHint:       pickRenderDepth(surfaceBucket),
 		LoopPriority:          pickLoopPriority(surfaceBucket),
@@ -429,23 +430,63 @@ func (p *Projector) buildEntryFromEvent(
 	return entry, nil
 }
 
+// seedActTargets materializes the act_targets[] JSON the projector writes onto
+// the entry. The downstream chain — knowledge_loop_entries.act_targets (JSONB)
+// → alt-backend's decodeActTargets → loopv1.ActTarget — uses the same JSON
+// shape decision_options uses, so we marshal `[{target_type, target_ref,
+// route}]` as plain JSON bytes here.
+//
+// For Recap: the route template is constant (`/recap/topic/<id>`); the
+// snapshot id is supplied by the resolver, which has already validated it as
+// a UUID. The frontend additionally guards against non-relative routes when
+// rendering the CTA, so even a future resolver bug cannot smuggle a
+// `javascript:` scheme through this seam.
+//
+// Reproject-safe: pure function of `inputs`, which is itself derived from
+// event payload + versioned artifacts only.
+func seedActTargets(inputs SurfaceScoreInputs) []byte {
+	type actTarget struct {
+		TargetType string `json:"target_type"`
+		TargetRef  string `json:"target_ref"`
+		Route      string `json:"route,omitempty"`
+	}
+	out := []actTarget{}
+	if inputs.RecapTopicSnapshotID != "" {
+		out = append(out, actTarget{
+			TargetType: "recap",
+			TargetRef:  inputs.RecapTopicSnapshotID,
+			Route:      "/recap/topic/" + inputs.RecapTopicSnapshotID,
+		})
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	b, err := json.Marshal(out)
+	if err != nil {
+		return nil
+	}
+	return b
+}
+
 func marshalSurfaceScoreInputs(in SurfaceScoreInputs) []byte {
 	type surfaceScoreInputsJSON struct {
-		TopicOverlapCount  uint32 `json:"topic_overlap_count"`
-		TagOverlapCount    uint32 `json:"tag_overlap_count"`
-		HasAugurLink       bool   `json:"has_augur_link"`
-		VersionDriftCount  uint32 `json:"version_drift_count"`
-		HasOpenInteraction bool   `json:"has_open_interaction"`
-		FreshnessAt        string `json:"freshness_at,omitempty"`
-		EventType          string `json:"event_type"`
+		TopicOverlapCount    uint32 `json:"topic_overlap_count"`
+		TagOverlapCount      uint32 `json:"tag_overlap_count"`
+		HasAugurLink         bool   `json:"has_augur_link"`
+		VersionDriftCount    uint32 `json:"version_drift_count"`
+		HasOpenInteraction   bool   `json:"has_open_interaction"`
+		FreshnessAt          string `json:"freshness_at,omitempty"`
+		EventType            string `json:"event_type"`
+		RecapTopicSnapshotID string `json:"recap_topic_snapshot_id,omitempty"`
 	}
 	out := surfaceScoreInputsJSON{
-		TopicOverlapCount:  in.TopicOverlapCount,
-		TagOverlapCount:    in.TagOverlapCount,
-		HasAugurLink:       in.HasAugurLink,
-		VersionDriftCount:  in.VersionDriftCount,
-		HasOpenInteraction: in.HasOpenInteraction,
-		EventType:          in.EventType,
+		TopicOverlapCount:    in.TopicOverlapCount,
+		TagOverlapCount:      in.TagOverlapCount,
+		HasAugurLink:         in.HasAugurLink,
+		VersionDriftCount:    in.VersionDriftCount,
+		HasOpenInteraction:   in.HasOpenInteraction,
+		EventType:            in.EventType,
+		RecapTopicSnapshotID: in.RecapTopicSnapshotID,
 	}
 	if !in.FreshnessAt.IsZero() {
 		out.FreshnessAt = in.FreshnessAt.UTC().Format(time.RFC3339Nano)
