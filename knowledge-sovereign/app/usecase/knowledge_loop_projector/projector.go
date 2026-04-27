@@ -470,23 +470,35 @@ func seedActTargets(inputs SurfaceScoreInputs) []byte {
 
 func marshalSurfaceScoreInputs(in SurfaceScoreInputs) []byte {
 	type surfaceScoreInputsJSON struct {
-		TopicOverlapCount    uint32 `json:"topic_overlap_count"`
-		TagOverlapCount      uint32 `json:"tag_overlap_count"`
-		HasAugurLink         bool   `json:"has_augur_link"`
-		VersionDriftCount    uint32 `json:"version_drift_count"`
-		HasOpenInteraction   bool   `json:"has_open_interaction"`
-		FreshnessAt          string `json:"freshness_at,omitempty"`
-		EventType            string `json:"event_type"`
-		RecapTopicSnapshotID string `json:"recap_topic_snapshot_id,omitempty"`
+		TopicOverlapCount         uint32 `json:"topic_overlap_count"`
+		TagOverlapCount           uint32 `json:"tag_overlap_count"`
+		HasAugurLink              bool   `json:"has_augur_link"`
+		VersionDriftCount         uint32 `json:"version_drift_count"`
+		HasOpenInteraction        bool   `json:"has_open_interaction"`
+		FreshnessAt               string `json:"freshness_at,omitempty"`
+		EventType                 string `json:"event_type"`
+		RecapTopicSnapshotID      string `json:"recap_topic_snapshot_id,omitempty"`
+		EvidenceDensity           uint32 `json:"evidence_density,omitempty"`
+		RecapClusterMomentum      uint32 `json:"recap_cluster_momentum,omitempty"`
+		QuestionContinuationScore uint32 `json:"question_continuation_score,omitempty"`
+		ReportWorthinessScore     uint32 `json:"report_worthiness_score,omitempty"`
+		StalenessScore            uint32 `json:"staleness_score,omitempty"`
+		ContradictionCount        uint32 `json:"contradiction_count,omitempty"`
 	}
 	out := surfaceScoreInputsJSON{
-		TopicOverlapCount:    in.TopicOverlapCount,
-		TagOverlapCount:      in.TagOverlapCount,
-		HasAugurLink:         in.HasAugurLink,
-		VersionDriftCount:    in.VersionDriftCount,
-		HasOpenInteraction:   in.HasOpenInteraction,
-		EventType:            in.EventType,
-		RecapTopicSnapshotID: in.RecapTopicSnapshotID,
+		TopicOverlapCount:         in.TopicOverlapCount,
+		TagOverlapCount:           in.TagOverlapCount,
+		HasAugurLink:              in.HasAugurLink,
+		VersionDriftCount:         in.VersionDriftCount,
+		HasOpenInteraction:        in.HasOpenInteraction,
+		EventType:                 in.EventType,
+		RecapTopicSnapshotID:      in.RecapTopicSnapshotID,
+		EvidenceDensity:           in.EvidenceDensity,
+		RecapClusterMomentum:      in.RecapClusterMomentum,
+		QuestionContinuationScore: in.QuestionContinuationScore,
+		ReportWorthinessScore:     in.ReportWorthinessScore,
+		StalenessScore:            in.StalenessScore,
+		ContradictionCount:        in.ContradictionCount,
 	}
 	if !in.FreshnessAt.IsZero() {
 		out.FreshnessAt = in.FreshnessAt.UTC().Format(time.RFC3339Nano)

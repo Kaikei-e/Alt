@@ -181,6 +181,96 @@ func TestDecideBucketV2(t *testing.T) {
 	}
 }
 
+// --- Priority tests for the fb.md §B-2 expanded SurfaceScoreInputs --------
+
+// ContradictionCount mirrors VersionDriftCount and must promote Changed when
+// either is set, even if Continue or Now signals also fire.
+func TestDecideBucketV2_ContradictionBeatsContinue(t *testing.T) {
+	t.Parallel()
+	in := SurfaceScoreInputs{
+		ContradictionCount: 1,
+		HasAugurLink:       true, // would otherwise route to Continue
+		EventType:          EventSummaryVersionCreated,
+	}
+	got := decideBucketV2(in)
+	if got != sovereignv1.SurfaceBucket_SURFACE_BUCKET_CHANGED {
+		t.Errorf("got %v; want CHANGED (ContradictionCount must outrank HasAugurLink)", got)
+	}
+}
+
+// QuestionContinuationScore alone (no HasAugurLink, no HasOpenInteraction)
+// must still route to Continue.
+func TestDecideBucketV2_QuestionContinuationPromotesContinue(t *testing.T) {
+	t.Parallel()
+	in := SurfaceScoreInputs{
+		QuestionContinuationScore: 2,
+		EventType:                 EventSummaryVersionCreated,
+	}
+	got := decideBucketV2(in)
+	if got != sovereignv1.SurfaceBucket_SURFACE_BUCKET_CONTINUE {
+		t.Errorf("got %v; want CONTINUE (QuestionContinuationScore should promote)", got)
+	}
+}
+
+// RecapClusterMomentum alone (no TopicOverlap, no TagOverlap) must promote
+// the entry to Now.
+func TestDecideBucketV2_RecapClusterMomentumPromotesNow(t *testing.T) {
+	t.Parallel()
+	in := SurfaceScoreInputs{
+		RecapClusterMomentum: 1,
+		EventType:            EventSummaryVersionCreated,
+	}
+	got := decideBucketV2(in)
+	if got != sovereignv1.SurfaceBucket_SURFACE_BUCKET_NOW {
+		t.Errorf("got %v; want NOW (RecapClusterMomentum should promote)", got)
+	}
+}
+
+// StalenessScore ≥ 2 (older than 7 days) elevates Review even when no other
+// signals fire, turning Review into a deliberate re-evaluation queue rather
+// than a leftover bucket.
+func TestDecideBucketV2_StalenessElevatesReview(t *testing.T) {
+	t.Parallel()
+	in := SurfaceScoreInputs{
+		StalenessScore: 3, // aging — 7-30 days old
+		EventType:      EventSummaryVersionCreated,
+	}
+	got := decideBucketV2(in)
+	if got != sovereignv1.SurfaceBucket_SURFACE_BUCKET_REVIEW {
+		t.Errorf("got %v; want REVIEW (StalenessScore >= 2 should elevate)", got)
+	}
+}
+
+// StalenessScore < 2 (fresh / current / recent) must NOT elevate Review.
+// Without this guard the v1 fallback for SummaryVersionCreated (Now) would
+// be silently overridden.
+func TestDecideBucketV2_FreshDoesNotElevateReview(t *testing.T) {
+	t.Parallel()
+	in := SurfaceScoreInputs{
+		StalenessScore: 1, // current
+		EventType:      EventSummaryVersionCreated,
+	}
+	got := decideBucketV2(in)
+	if got != sovereignv1.SurfaceBucket_SURFACE_BUCKET_NOW {
+		t.Errorf("got %v; want NOW (Staleness=1 should fall through to v1 fallback)", got)
+	}
+}
+
+// EvidenceDensity == 0 must NOT trigger Review on its own. The Null
+// resolver leaves it zero by default; gating Review on it would route every
+// v1 placement to Review and break back-compat.
+func TestDecideBucketV2_ZeroEvidenceDensityDoesNotForceReview(t *testing.T) {
+	t.Parallel()
+	in := SurfaceScoreInputs{
+		EvidenceDensity: 0, // default
+		EventType:       EventSummaryVersionCreated,
+	}
+	got := decideBucketV2(in)
+	if got != sovereignv1.SurfaceBucket_SURFACE_BUCKET_NOW {
+		t.Errorf("got %v; want NOW (zero EvidenceDensity must not break v1 fallback)", got)
+	}
+}
+
 // TestDecideBucketV2_Determinism asserts the function is pure: the same
 // inputs must always produce the same bucket regardless of when it runs.
 // This guards reproject-safety — replaying the same event must yield the

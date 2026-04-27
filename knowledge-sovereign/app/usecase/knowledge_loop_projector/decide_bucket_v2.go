@@ -47,6 +47,48 @@ type SurfaceScoreInputs struct {
 	// matching snapshot exists. Reproject-safe: derived from event payload
 	// only, never from latest cross-table state.
 	RecapTopicSnapshotID string
+
+	// EvidenceDensity is the count of distinct evidence_ref_id strings the
+	// enricher attached to the entry's why_primary. Zero is a strong "we
+	// have no anchors" signal and tips the entry into Review. Reproject-safe
+	// because evidence refs are derived from event payload + versioned ids.
+	EvidenceDensity uint32
+
+	// RecapClusterMomentum counts RecapTopicSnapshotted events in the score
+	// window whose top_terms overlap with the entry. Differs from
+	// TopicOverlapCount in semantic intent: TopicOverlapCount measures
+	// per-event overlap (how often a recap touched this article's topics);
+	// RecapClusterMomentum is the same number with a cleaner name fb.md
+	// Phase B-2 maps to a Now-promotion priority. Kept separate so a future
+	// resolver can distinguish "hot cluster" from "any overlap".
+	RecapClusterMomentum uint32
+
+	// QuestionContinuationScore counts AugurConversationLinked events in
+	// the score window for this entry. Distinct from HasAugurLink (which is
+	// a bool) because Phase B-2 wants count semantics so multiple parallel
+	// threads can promote Continue. v1 definition: count of links — does
+	// not infer "open vs closed" because no Resolved/Cancelled event exists
+	// yet (immutable-design-guard finding 5).
+	QuestionContinuationScore uint32
+
+	// ReportWorthinessScore is reserved for the Acolyte integration. Until
+	// AcolyteReportRequested / *Generated / *Reviewed events land we always
+	// populate 0; decideBucketV2 ignores it. Wire-ready, behaviour-gated.
+	ReportWorthinessScore uint32
+
+	// StalenessScore is the pureStalenessBucket of (event.OccurredAt,
+	// source_observed_at). 0 = fresh, 4 = ≥30 days. Bumps the Review
+	// fallback when ≥ 2 (older than 7 days). Reproject-safe — derived from
+	// event payload only.
+	StalenessScore uint32
+
+	// ContradictionCount is v1-defined as count(SummarySuperseded events
+	// targeting this article in 7d). Strong "your understanding may be
+	// wrong" signal, promotes Changed alongside VersionDriftCount.
+	// immutable-design-guard finding 5: an LLM-based contradiction judge
+	// is non-deterministic and would need its own SummaryContradicted
+	// event before we can use it.
+	ContradictionCount uint32
 }
 
 // decideBucketV2 picks a SurfaceBucket from the score inputs. The order
@@ -60,30 +102,44 @@ type SurfaceScoreInputs struct {
 // all-or-nothing flag day. This means a row with surface_planner_version=2
 // is allowed to inherit a v1-shaped placement when no v2 inputs apply.
 func decideBucketV2(in SurfaceScoreInputs) sovereignv1.SurfaceBucket {
-	// Changed: a versioned summary supersede is the single strongest signal
-	// the user's mental model needs updating. Even one drift outranks fresh
-	// observation because the user has already seen the article once.
-	if in.VersionDriftCount > 0 {
+	// Changed: versioned supersede or a contradiction count is the single
+	// strongest signal the user's mental model needs updating. Even one
+	// drift outranks fresh observation because the user has already seen
+	// the article once. ContradictionCount joins VersionDriftCount here
+	// because both come from the same SummarySuperseded chain — keeping
+	// them additive avoids accidental "drift but no contradiction"
+	// double-counting bugs.
+	if in.VersionDriftCount > 0 || in.ContradictionCount > 0 {
 		return sovereignv1.SurfaceBucket_SURFACE_BUCKET_CHANGED
 	}
 
-	// Continue: an unfinished Augur thread or an explicit open interaction
-	// outranks fresh material — the user is mid-flow on this article.
-	if in.HasAugurLink || in.HasOpenInteraction {
+	// Continue: an unfinished Augur thread, an explicit open interaction,
+	// or a non-zero question-continuation score puts the entry mid-flow.
+	if in.HasAugurLink || in.HasOpenInteraction || in.QuestionContinuationScore > 0 {
 		return sovereignv1.SurfaceBucket_SURFACE_BUCKET_CONTINUE
 	}
 
-	// Now: strong topic affinity (recap overlap) or trending tags promote the
-	// entry to the foreground. The threshold of 1 is intentional — even one
-	// overlap means the article connects to something the user is currently
-	// thinking about.
-	if in.TopicOverlapCount > 0 || in.TagOverlapCount > 0 {
+	// Now: strong topic affinity (recap overlap), trending tags, or hot-
+	// cluster momentum promote the entry to the foreground. The threshold
+	// of 1 is intentional — even one overlap means the article connects to
+	// something the user is currently thinking about.
+	if in.TopicOverlapCount > 0 || in.TagOverlapCount > 0 || in.RecapClusterMomentum > 0 {
 		return sovereignv1.SurfaceBucket_SURFACE_BUCKET_NOW
 	}
 
-	// Review: nothing connects this entry to recent activity. v1 would have
-	// also placed dismissals + low-priority items here.
-	if isV1ReviewEvent(in.EventType) {
+	// Review: explicitly elevate the bucket from "leftover" to "needs
+	// re-evaluation". An entry with stale evidence (StalenessScore ≥ 2 →
+	// older than 7 days) lands here so the Review surface becomes the
+	// deliberate re-evaluation queue (fb.md §F goal). v1 dismissals also
+	// map here for back-compat.
+	//
+	// EvidenceDensity is intentionally NOT used as a Review trigger because
+	// the NullSurfaceScoreResolver never populates it (always 0), so a
+	// "0 == no anchors" rule would route every v1 placement to Review and
+	// break the fallback. EvidenceDensity remains in the inputs for
+	// downstream diagnostics and a future v2-only resolver can choose to
+	// consult it once the v1 fallback path is retired.
+	if in.StalenessScore >= 2 || isV1ReviewEvent(in.EventType) {
 		return sovereignv1.SurfaceBucket_SURFACE_BUCKET_REVIEW
 	}
 

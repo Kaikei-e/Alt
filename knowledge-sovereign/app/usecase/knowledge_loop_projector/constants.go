@@ -70,4 +70,17 @@ const AggregateLoopSession = "knowledge_loop_session"
 // link / open interaction). Bump triggers a full reproject so historic
 // entries pick up the v2 placement and Why narrative deterministically.
 // Wave 4-C wiring (ADR-000853).
-const WhyMappingVersion = 6
+//
+// v7 (2026-04-27): Surface Planner v2 signal expansion (fb.md §B-2).
+// Adds StalenessScore (pure function of event.OccurredAt - source_observed_at),
+// ContradictionCount (= count of SummarySuperseded targeting the article in
+// the score window), QuestionContinuationScore (count of
+// AugurConversationLinked events for this entry), RecapClusterMomentum
+// (count of overlapping RecapTopicSnapshotted events), and EvidenceDensity /
+// ReportWorthinessScore (wire-ready, behavior-gated until Acolyte ships).
+// decideBucketV2 priority order tightened so Review becomes a deliberate
+// re-evaluation queue rather than a leftover bucket. Projector also seeds
+// `act_targets[]` with a Recap entry when the resolver pinned a matching
+// snapshot id. Bump triggers a full reproject (knowledge-loop-reproject
+// runbook v7 row).
+const WhyMappingVersion = 7

@@ -125,6 +125,11 @@ func (r *EventLogSurfaceScoreResolver) Resolve(
 	thisTags := readArticleTagSet(ev.Payload)
 	thisEntryKey := readEntryKey(ev.Payload)
 
+	// StalenessScore is purely event-bound: gap between the event's
+	// occurrence time and the source's observed time (article published_at /
+	// observed_at on the payload). Reproject-safe — no time.Now() involved.
+	out.StalenessScore = pureStalenessBucket(ev.OccurredAt, readSourceObservedAt(ev.Payload))
+
 	// Track the most-recent RecapTopicSnapshotted whose top_terms overlap with
 	// the entry's tags. The projector uses this to seed a Recap act_target so
 	// the UI can render an "Open Recap" CTA on the entry without us having to
@@ -149,6 +154,11 @@ func (r *EventLogSurfaceScoreResolver) Resolve(
 			eArticleID := readArticleID(e.Payload)
 			if eArticleID != "" && eArticleID == thisArticleID {
 				out.VersionDriftCount++
+				// ContradictionCount is v1-defined as "count of summary
+				// supersedes targeting this article in 7d"; the same event
+				// drives both signals so a future SummaryContradicted event
+				// can split them without breaking replay.
+				out.ContradictionCount++
 			}
 		case EventHomeItemOpened:
 			eEntryKey := readEntryKey(e.Payload)
@@ -159,12 +169,17 @@ func (r *EventLogSurfaceScoreResolver) Resolve(
 			eEntryKey := readEntryKey(e.Payload)
 			if eEntryKey != "" && eEntryKey == thisEntryKey {
 				out.HasAugurLink = true
+				out.QuestionContinuationScore++
 			}
 		case EventRecapTopicSnapshotted:
 			eTerms := readTopicTerms(e.Payload)
 			if len(eTerms) > 0 && len(thisTags) > 0 {
 				if hasIntersection(thisTags, eTerms) {
 					out.TopicOverlapCount++
+					// RecapClusterMomentum echoes TopicOverlapCount until a
+					// future resolver can distinguish "hot cluster" from
+					// "any term overlap" by counting unique cluster_ids.
+					out.RecapClusterMomentum++
 					// Pin the most-recent matching snapshot id (security:
 					// validate as UUID before forwarding to the URL formatter
 					// so a malformed payload can't smuggle a path-traversal
@@ -207,6 +222,24 @@ func readArticleTagSet(raw json.RawMessage) []string {
 
 func readTopicTerms(raw json.RawMessage) []string {
 	return readPayloadStringSlice(raw, "top_terms", "topic_terms")
+}
+
+// readSourceObservedAt extracts the source observation time (article
+// published_at, recap snapshot start, etc.) from a knowledge_event payload.
+// Returns the zero value when no recognised field is present, which
+// pureStalenessBucket interprets as "treat as fresh".
+func readSourceObservedAt(raw json.RawMessage) time.Time {
+	s := readPayloadString(raw, "source_observed_at", "published_at", "observed_at")
+	if s == "" {
+		return time.Time{}
+	}
+	if t, err := time.Parse(time.RFC3339Nano, s); err == nil {
+		return t
+	}
+	if t, err := time.Parse(time.RFC3339, s); err == nil {
+		return t
+	}
+	return time.Time{}
 }
 
 func readPayloadString(raw json.RawMessage, keys ...string) string {

@@ -219,6 +219,100 @@ func TestEventLogResolver_RejectsNonUuidRecapTopicSnapshotID(t *testing.T) {
 	}
 }
 
+func TestEventLogResolver_PopulatesContradictionCountFromSupersededChain(t *testing.T) {
+	t.Parallel()
+	uid := uuid.New()
+	now := time.Date(2026, 4, 26, 12, 0, 0, 0, time.UTC)
+	lookup := &fakeEventLogLookup{events: []sovereign_db.KnowledgeEvent{
+		ev(EventSummarySuperseded, now.Add(-2*time.Hour), uid, map[string]any{"article_id": "art-1"}),
+		ev(EventSummarySuperseded, now.Add(-1*time.Hour), uid, map[string]any{"article_id": "art-1"}),
+		ev(EventSummarySuperseded, now.Add(-30*time.Minute), uid, map[string]any{"article_id": "art-other"}),
+	}}
+	r := NewEventLogSurfaceScoreResolver(lookup)
+	target := ev(EventSummaryVersionCreated, now, uid, map[string]any{"article_id": "art-1"})
+	out := r.Resolve(context.Background(), &target)
+	if out.ContradictionCount != 2 {
+		t.Errorf("ContradictionCount = %d; want 2 (only art-1 supersedes count)", out.ContradictionCount)
+	}
+	if out.VersionDriftCount != 2 {
+		t.Errorf("VersionDriftCount = %d; want 2", out.VersionDriftCount)
+	}
+}
+
+func TestEventLogResolver_PopulatesQuestionContinuationFromAugur(t *testing.T) {
+	t.Parallel()
+	uid := uuid.New()
+	now := time.Date(2026, 4, 26, 12, 0, 0, 0, time.UTC)
+	lookup := &fakeEventLogLookup{events: []sovereign_db.KnowledgeEvent{
+		ev(EventAugurConversationLinked, now.Add(-2*time.Hour), uid, map[string]any{"entry_key": "entry:art-1"}),
+		ev(EventAugurConversationLinked, now.Add(-1*time.Hour), uid, map[string]any{"entry_key": "entry:art-1"}),
+	}}
+	r := NewEventLogSurfaceScoreResolver(lookup)
+	target := ev(EventSummaryVersionCreated, now, uid, map[string]any{
+		"article_id": "art-1",
+		"entry_key":  "entry:art-1",
+	})
+	out := r.Resolve(context.Background(), &target)
+	if !out.HasAugurLink {
+		t.Error("HasAugurLink = false; want true")
+	}
+	if out.QuestionContinuationScore != 2 {
+		t.Errorf("QuestionContinuationScore = %d; want 2", out.QuestionContinuationScore)
+	}
+}
+
+func TestEventLogResolver_PopulatesRecapClusterMomentumAlongsideTopicOverlap(t *testing.T) {
+	t.Parallel()
+	uid := uuid.New()
+	now := time.Date(2026, 4, 26, 12, 0, 0, 0, time.UTC)
+	lookup := &fakeEventLogLookup{events: []sovereign_db.KnowledgeEvent{
+		ev(EventRecapTopicSnapshotted, now.Add(-2*time.Hour), uid, map[string]any{
+			"top_terms": []any{"finance", "energy"},
+		}),
+		ev(EventRecapTopicSnapshotted, now.Add(-1*time.Hour), uid, map[string]any{
+			"top_terms": []any{"energy", "markets"},
+		}),
+	}}
+	r := NewEventLogSurfaceScoreResolver(lookup)
+	target := ev(EventSummaryVersionCreated, now, uid, map[string]any{
+		"article_id": "art-1",
+		"tags":       []any{"energy"},
+	})
+	out := r.Resolve(context.Background(), &target)
+	if out.TopicOverlapCount != 2 || out.RecapClusterMomentum != 2 {
+		t.Errorf("expected TopicOverlap=RecapMomentum=2, got %d / %d",
+			out.TopicOverlapCount, out.RecapClusterMomentum)
+	}
+}
+
+func TestEventLogResolver_PopulatesStalenessScoreFromSourceObservedAt(t *testing.T) {
+	t.Parallel()
+	uid := uuid.New()
+	now := time.Date(2026, 4, 26, 12, 0, 0, 0, time.UTC)
+	target := ev(EventSummaryVersionCreated, now, uid, map[string]any{
+		"article_id":   "art-1",
+		"published_at": now.Add(-10 * 24 * time.Hour).Format(time.RFC3339),
+	})
+	r := NewEventLogSurfaceScoreResolver(&fakeEventLogLookup{})
+	out := r.Resolve(context.Background(), &target)
+	// 10d ago → bucket 3 (aging, 7d ≤ gap < 30d)
+	if out.StalenessScore != 3 {
+		t.Errorf("StalenessScore = %d; want 3 for 10d-old source", out.StalenessScore)
+	}
+}
+
+func TestEventLogResolver_StalenessScoreZeroWhenSourceObservedAtMissing(t *testing.T) {
+	t.Parallel()
+	uid := uuid.New()
+	now := time.Date(2026, 4, 26, 12, 0, 0, 0, time.UTC)
+	target := ev(EventSummaryVersionCreated, now, uid, map[string]any{"article_id": "art-1"})
+	r := NewEventLogSurfaceScoreResolver(&fakeEventLogLookup{})
+	out := r.Resolve(context.Background(), &target)
+	if out.StalenessScore != 0 {
+		t.Errorf("StalenessScore = %d; want 0 when no source_observed_at on payload", out.StalenessScore)
+	}
+}
+
 func TestEventLogResolver_OpenInteractionFromHomeItemOpened(t *testing.T) {
 	t.Parallel()
 
