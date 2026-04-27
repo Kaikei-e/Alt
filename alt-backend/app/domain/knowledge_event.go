@@ -43,6 +43,14 @@ const (
 	EventKnowledgeLoopDeferred          = "knowledge_loop.deferred.v1"
 	EventKnowledgeLoopSessionReset      = "knowledge_loop.session_reset.v1"
 	EventKnowledgeLoopLensModeSwitched  = "knowledge_loop.lens_mode_switched.v1"
+
+	// EventKnowledgeLoopReviewed records a deliberate Review-lane action: the
+	// user asked the system to recheck (re-surface as NOW with fresh why),
+	// archive (dismiss permanently), or mark as reviewed (acknowledge without
+	// surfacing again unless new evidence). Promotes Review from a leftover
+	// bucket to a re-evaluation queue (fb.md §F goal). Same-stage transition
+	// like Deferred — the OODA stage doesn't move; only dismiss_state does.
+	EventKnowledgeLoopReviewed = "knowledge_loop.reviewed.v1"
 )
 
 // Actor type constants.

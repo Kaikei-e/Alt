@@ -32,9 +32,18 @@ export async function transitionKnowledgeLoopForUser(
 		entryKey: string;
 		fromStage: "observe" | "orient" | "decide" | "act";
 		toStage: "observe" | "orient" | "decide" | "act";
-		// `defer` is the soft dismiss / snooze trigger (canonical contract §8.2)
-		// — the only trigger that allows fromStage===toStage.
-		trigger: "user_tap" | "dwell" | "keyboard" | "programmatic" | "defer";
+		// `defer` is the soft dismiss / snooze trigger (canonical contract §8.2);
+		// `recheck` / `archive` / `mark_reviewed` are the Review-lane re-evaluation
+		// triggers (fb.md §F). All four require fromStage===toStage.
+		trigger:
+			| "user_tap"
+			| "dwell"
+			| "keyboard"
+			| "programmatic"
+			| "defer"
+			| "recheck"
+			| "archive"
+			| "mark_reviewed";
 		observedProjectionRevision: number;
 	},
 ): Promise<{

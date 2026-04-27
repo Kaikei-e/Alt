@@ -22,7 +22,17 @@ import {
 } from "./loop-observe-throttle";
 import { canTransition } from "./loop-transitions";
 
-type Trigger = "user_tap" | "dwell" | "keyboard" | "programmatic" | "defer";
+type Trigger =
+	| "user_tap"
+	| "dwell"
+	| "keyboard"
+	| "programmatic"
+	| "defer"
+	| "recheck"
+	| "archive"
+	| "mark_reviewed";
+
+export type ReviewAction = "recheck" | "archive" | "mark_reviewed";
 
 type TransitionResult =
 	| { status: "accepted"; replay?: boolean }
@@ -284,6 +294,53 @@ export function useKnowledgeLoop(opts: UseKnowledgeLoopOptions) {
 		}
 	}
 
+	/**
+	 * Review-lane re-evaluation (fb.md §F). Recheck re-surfaces the entry as
+	 * NOW with fresh `freshness_at`; archive permanently dismisses; mark
+	 * reviewed acknowledges without re-surfacing unless new evidence arrives.
+	 *
+	 * Same-stage transition (`fromStage === toStage`) like dismiss — the
+	 * OODA stage doesn't move, only `dismiss_state` does. The projector
+	 * reads the trigger to choose between recheck (re-arms the entry),
+	 * archive, and mark-reviewed.
+	 *
+	 * Optimistic UI: archive / mark_reviewed remove the entry locally
+	 * immediately; recheck leaves the entry visible (it'll re-render at
+	 * the next `replaceSnapshot` once the projector has caught up).
+	 */
+	async function reviewAction(
+		entryKey: string,
+		action: ReviewAction,
+	): Promise<TransitionResult> {
+		const entry = findEntry(entryKey);
+		if (!entry) return { status: "error", message: "unknown_entry" };
+		if (inFlight.has(entryKey)) {
+			return { status: "forbidden", reason: "in_flight" };
+		}
+
+		// Archive and mark-reviewed pull the entry out of view immediately —
+		// just like dismiss does — so the foreground reflects the user's
+		// decision before the projector catches up.
+		if (action === "archive" || action === "mark_reviewed") {
+			applyLocalDismiss(entryKey);
+		}
+
+		inFlight.add(entryKey);
+		inFlightStartedAt.set(entryKey, Date.now());
+		try {
+			return await post({
+				clientTransitionId: uuidv7(),
+				entryKey,
+				fromStage: entry.proposedStage,
+				toStage: entry.proposedStage,
+				trigger: action,
+			});
+		} finally {
+			inFlight.delete(entryKey);
+			inFlightStartedAt.delete(entryKey);
+		}
+	}
+
 	function applyLocalStage(entryKey: string, to: LoopStageName) {
 		entries = entries.map((e) =>
 			e.entryKey === entryKey ? { ...e, proposedStage: to } : e,
@@ -366,6 +423,7 @@ export function useKnowledgeLoop(opts: UseKnowledgeLoopOptions) {
 		observe,
 		transitionTo,
 		dismiss,
+		reviewAction,
 		replaceSnapshot,
 		resetInFlight,
 		canTransition,

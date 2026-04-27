@@ -28,6 +28,7 @@ const (
 	EventKnowledgeLoopActed             = "knowledge_loop.acted.v1"
 	EventKnowledgeLoopReturned          = "knowledge_loop.returned.v1"
 	EventKnowledgeLoopDeferred          = "knowledge_loop.deferred.v1"
+	EventKnowledgeLoopReviewed          = "knowledge_loop.reviewed.v1"
 	EventKnowledgeLoopSessionReset      = "knowledge_loop.session_reset.v1"
 	EventKnowledgeLoopLensModeSwitched  = "knowledge_loop.lens_mode_switched.v1"
 

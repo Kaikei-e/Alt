@@ -124,6 +124,14 @@ enum TransitionTrigger {
   // §8.2). Same-stage transitions (from_stage == to_stage) are allowed only
   // when paired with this trigger.
   TRANSITION_TRIGGER_DEFER = 5;
+  // Review-lane re-evaluation triggers (fb.md §F: Review re-evaluation engine).
+  // Each routes to KnowledgeLoopReviewed and requires from_stage == to_stage,
+  // mirroring the DEFER constraint. The action distinction (recheck /
+  // archive / mark_reviewed) is in the trigger value itself; the projector
+  // patches dismiss_state per action.
+  TRANSITION_TRIGGER_RECHECK = 6;
+  TRANSITION_TRIGGER_ARCHIVE = 7;
+  TRANSITION_TRIGGER_MARK_REVIEWED = 8;
 }
 
 // SurfacePlannerVersion gates which planner produced a given entry's

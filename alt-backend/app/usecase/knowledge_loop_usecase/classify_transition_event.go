@@ -21,7 +21,27 @@ const (
 	// KnowledgeLoopDeferred event (canonical contract §8.2). It is the only
 	// trigger that allows from_stage == to_stage.
 	triggerDefer = "TRANSITION_TRIGGER_DEFER"
+
+	// Review-lane triggers (fb.md §F: Review re-evaluation engine). Each is
+	// same-stage like triggerDefer — the OODA stage doesn't move; only
+	// dismiss_state does. Distinct from Deferred because the user is making
+	// an explicit re-evaluation decision, not a "look at this later" snooze.
+	triggerRecheck      = "TRANSITION_TRIGGER_RECHECK"
+	triggerArchive      = "TRANSITION_TRIGGER_ARCHIVE"
+	triggerMarkReviewed = "TRANSITION_TRIGGER_MARK_REVIEWED"
 )
+
+// isReviewActionTrigger reports whether the trigger is one of the three
+// Review-lane intents that route to KnowledgeLoopReviewed. They share the
+// same dispatch shape as triggerDefer (same-stage, OODA-canonical) so the
+// classifier handles them through one branch.
+func isReviewActionTrigger(t string) bool {
+	switch t {
+	case triggerRecheck, triggerArchive, triggerMarkReviewed:
+		return true
+	}
+	return false
+}
 
 // ClassifyTransitionEvent derives the canonical knowledge_events.event_type string
 // from (from_stage, to_stage, trigger). It rejects forbidden transitions listed
@@ -42,6 +62,18 @@ func ClassifyTransitionEvent(fromStage, toStage, trigger string) (string, error)
 			return "", fmt.Errorf("%w: defer trigger requires from_stage == to_stage and a canonical OODA stage", ErrInvalidArgument)
 		}
 		return domain.EventKnowledgeLoopDeferred, nil
+	}
+
+	// Review-lane triggers (recheck / archive / mark_reviewed) all route to
+	// KnowledgeLoopReviewed. The distinction between actions lives in the
+	// event payload (action: "recheck"|"archive"|"mark_reviewed"), so the
+	// projector can patch dismiss_state appropriately while replay stays
+	// deterministic. Same-stage requirement matches triggerDefer.
+	if isReviewActionTrigger(trigger) {
+		if !isCanonicalStage(fromStage) || fromStage != toStage {
+			return "", fmt.Errorf("%w: review-lane trigger requires from_stage == to_stage and a canonical OODA stage", ErrInvalidArgument)
+		}
+		return domain.EventKnowledgeLoopReviewed, nil
 	}
 
 	// Forbidden transitions (reject before any allow-list check).

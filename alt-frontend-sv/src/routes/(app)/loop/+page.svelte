@@ -317,6 +317,17 @@ function onReviewOpen(entry: KnowledgeLoopEntryData) {
 		void goto(href);
 	}
 }
+
+// Review-lane re-evaluation (fb.md §F). Routes the user's choice through
+// `loop.reviewAction` which posts a same-stage transition with the matching
+// recheck / archive / mark_reviewed trigger. The projector then patches
+// dismiss_state per action so the next snapshot reflects the decision.
+function onReviewAction(
+	entry: KnowledgeLoopEntryData,
+	action: "recheck" | "archive" | "mark_reviewed",
+) {
+	void loop.reviewAction(entry.entryKey, action);
+}
 </script>
 
 <svelte:head>
@@ -413,7 +424,11 @@ function onReviewOpen(entry: KnowledgeLoopEntryData) {
 					{#if reviewEntries.length === 0}
 						<p class="plane-empty">Nothing waiting for review.</p>
 					{:else}
-						<ReviewDock entries={reviewEntries} onOpen={onReviewOpen} />
+						<ReviewDock
+							entries={reviewEntries}
+							onOpen={onReviewOpen}
+							{onReviewAction}
+						/>
 					{/if}
 				{/if}
 			{/snippet}

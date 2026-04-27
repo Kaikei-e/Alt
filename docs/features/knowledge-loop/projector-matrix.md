@@ -55,6 +55,7 @@ omissions in either step.
 | knowledge_loop.acted.v1 | yes | yes | yes | continue | recall_why | article, ask |
 | knowledge_loop.returned.v1 | yes | yes | yes | continue | recall_why | article, ask |
 | knowledge_loop.deferred.v1 | patch | yes | yes | review | recall_why | (preserved) |
+| knowledge_loop.reviewed.v1 | patch | yes | yes | review | recall_why | (preserved) |
 | knowledge_loop.session_reset.v1 | no | yes | no | — | — | — |
 | knowledge_loop.lens_mode_switched.v1 | no | yes | no | — | — | — |
 | recap.topic_snapshotted.v1 | no | no | no | — | — | (Surface Planner v2 input only) |

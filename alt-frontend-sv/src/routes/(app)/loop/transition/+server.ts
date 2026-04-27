@@ -29,7 +29,15 @@ import { canTransition } from "$lib/hooks/loop-transitions";
 import { extractConnectCode } from "$lib/connect/error";
 import type { LoopStageName } from "$lib/connect/knowledge_loop";
 
-type Trigger = "user_tap" | "dwell" | "keyboard" | "programmatic" | "defer";
+type Trigger =
+	| "user_tap"
+	| "dwell"
+	| "keyboard"
+	| "programmatic"
+	| "defer"
+	| "recheck"
+	| "archive"
+	| "mark_reviewed";
 
 interface TransitionBody {
 	lensModeId: string;
@@ -51,7 +59,23 @@ const TRIGGERS: readonly Trigger[] = [
 	// §8.2). It is the only trigger that allows fromStage === toStage; the
 	// alt-backend usecase rejects defer with non-equal stages.
 	"defer",
+	// Review-lane re-evaluation triggers (fb.md §F: Review re-evaluation
+	// engine). Same fromStage===toStage constraint as defer; routes to
+	// KnowledgeLoopReviewed and the projector patches dismiss_state per
+	// action.
+	"recheck",
+	"archive",
+	"mark_reviewed",
 ];
+
+// Triggers that require fromStage === toStage (Review-lane + Defer share the
+// passive dispatch shape).
+const SAME_STAGE_TRIGGERS: ReadonlySet<Trigger> = new Set<Trigger>([
+	"defer",
+	"recheck",
+	"archive",
+	"mark_reviewed",
+]);
 
 const UUIDV7_RE =
 	/^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -74,10 +98,10 @@ function parseBody(raw: unknown): TransitionBody | null {
 	if (!STAGES.includes(b.fromStage as LoopStageName)) return null;
 	if (!STAGES.includes(b.toStage as LoopStageName)) return null;
 	if (!TRIGGERS.includes(b.trigger as Trigger)) return null;
-	// `defer` allows fromStage === toStage and skips the OODA stage allow-list;
-	// every other trigger must satisfy the canonical contract §7 transition
-	// matrix.
-	if (b.trigger === "defer") {
+	// Same-stage triggers (defer + Review-lane recheck/archive/mark_reviewed)
+	// allow fromStage === toStage and skip the OODA stage allow-list; every
+	// other trigger must satisfy the canonical contract §7 transition matrix.
+	if (SAME_STAGE_TRIGGERS.has(b.trigger as Trigger)) {
 		if (b.fromStage !== b.toStage) return null;
 	} else {
 		if (

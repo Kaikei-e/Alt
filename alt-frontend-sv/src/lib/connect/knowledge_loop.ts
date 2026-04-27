@@ -197,8 +197,18 @@ export async function transitionKnowledgeLoop(
 		fromStage: LoopStageName;
 		toStage: LoopStageName;
 		// `defer` routes to KnowledgeLoopDeferred (canonical contract §8.2 — soft
-		// dismiss / snooze). It is the only trigger that allows fromStage===toStage.
-		trigger: "user_tap" | "dwell" | "keyboard" | "programmatic" | "defer";
+		// dismiss / snooze). `recheck` / `archive` / `mark_reviewed` are the
+		// Review-lane re-evaluation triggers (fb.md §F) that route to
+		// KnowledgeLoopReviewed. All four require fromStage === toStage.
+		trigger:
+			| "user_tap"
+			| "dwell"
+			| "keyboard"
+			| "programmatic"
+			| "defer"
+			| "recheck"
+			| "archive"
+			| "mark_reviewed";
 		observedProjectionRevision: number;
 	},
 ): Promise<TransitionKnowledgeLoopResponse> {
@@ -507,7 +517,15 @@ function mapServiceQuality(
 }
 
 function mapTriggerToProto(
-	t: "user_tap" | "dwell" | "keyboard" | "programmatic" | "defer",
+	t:
+		| "user_tap"
+		| "dwell"
+		| "keyboard"
+		| "programmatic"
+		| "defer"
+		| "recheck"
+		| "archive"
+		| "mark_reviewed",
 ): TransitionTrigger {
 	switch (t) {
 		case "user_tap":
@@ -520,6 +538,12 @@ function mapTriggerToProto(
 			return TransitionTrigger.PROGRAMMATIC;
 		case "defer":
 			return TransitionTrigger.DEFER;
+		case "recheck":
+			return TransitionTrigger.RECHECK;
+		case "archive":
+			return TransitionTrigger.ARCHIVE;
+		case "mark_reviewed":
+			return TransitionTrigger.MARK_REVIEWED;
 	}
 }
 

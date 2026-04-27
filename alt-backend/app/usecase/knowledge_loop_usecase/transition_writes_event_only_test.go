@@ -83,6 +83,48 @@ func TestClassifyTransitionEvent_OnlyEmitsKnowledgeLoopEvents(t *testing.T) {
 	}
 }
 
+// fb.md §F (Review re-evaluation engine): the recheck / archive /
+// mark_reviewed triggers route to KnowledgeLoopReviewed under the same
+// same-stage rule as defer. Adds tests that pin the classifier behaviour so
+// a future refactor can't silently re-route them somewhere else.
+
+func TestClassifyTransitionEvent_RecheckRoutesToReviewedWithSameStage(t *testing.T) {
+	t.Parallel()
+	for _, stage := range []string{"LOOP_STAGE_OBSERVE", "LOOP_STAGE_ORIENT", "LOOP_STAGE_DECIDE", "LOOP_STAGE_ACT"} {
+		ev, err := ClassifyTransitionEvent(stage, stage, "TRANSITION_TRIGGER_RECHECK")
+		require.NoError(t, err)
+		require.Equal(t, domain.EventKnowledgeLoopReviewed, ev,
+			"recheck on %s must classify as KnowledgeLoopReviewed", stage)
+	}
+}
+
+func TestClassifyTransitionEvent_ArchiveRoutesToReviewed(t *testing.T) {
+	t.Parallel()
+	ev, err := ClassifyTransitionEvent("LOOP_STAGE_ORIENT", "LOOP_STAGE_ORIENT", "TRANSITION_TRIGGER_ARCHIVE")
+	require.NoError(t, err)
+	require.Equal(t, domain.EventKnowledgeLoopReviewed, ev)
+}
+
+func TestClassifyTransitionEvent_MarkReviewedRoutesToReviewed(t *testing.T) {
+	t.Parallel()
+	ev, err := ClassifyTransitionEvent("LOOP_STAGE_OBSERVE", "LOOP_STAGE_OBSERVE", "TRANSITION_TRIGGER_MARK_REVIEWED")
+	require.NoError(t, err)
+	require.Equal(t, domain.EventKnowledgeLoopReviewed, ev)
+}
+
+func TestClassifyTransitionEvent_RecheckRejectsCrossStageTransition(t *testing.T) {
+	t.Parallel()
+	// Review-lane triggers must reject from_stage != to_stage like Defer.
+	_, err := ClassifyTransitionEvent("LOOP_STAGE_OBSERVE", "LOOP_STAGE_ORIENT", "TRANSITION_TRIGGER_RECHECK")
+	require.Error(t, err, "recheck cross-stage must be rejected")
+}
+
+func TestClassifyTransitionEvent_ArchiveRejectsUnspecifiedStage(t *testing.T) {
+	t.Parallel()
+	_, err := ClassifyTransitionEvent("LOOP_STAGE_UNSPECIFIED", "LOOP_STAGE_UNSPECIFIED", "TRANSITION_TRIGGER_ARCHIVE")
+	require.Error(t, err, "archive on UNSPECIFIED must be rejected")
+}
+
 // TestClassifyTransitionEvent_NeverEmitsHomeItemForArbitraryTrigger guards
 // against future regressions where someone wires a /feeds-style trigger label
 // into the /loop classifier. ClassifyTransitionEvent disambiguates within

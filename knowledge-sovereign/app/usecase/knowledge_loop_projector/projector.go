@@ -266,6 +266,7 @@ func (p *Projector) projectEvent(ctx context.Context, ev *sovereign_db.Knowledge
 		EventKnowledgeLoopActed,
 		EventKnowledgeLoopReturned,
 		EventKnowledgeLoopDeferred,
+		EventKnowledgeLoopReviewed,
 		EventKnowledgeLoopSessionReset,
 		EventKnowledgeLoopLensModeSwitched:
 		return p.projectTransition(ctx, ev)
@@ -352,8 +353,17 @@ func (p *Projector) projectTransition(ctx context.Context, ev *sovereign_db.Know
 		return sessionRes, sessionErr
 	}
 
-	// Deferred uniquely flips the entry's dismiss_state. All other transitions
-	// leave the entry row untouched — they only update session state above.
+	// Deferred uniquely flips the entry's dismiss_state to DEFERRED. The
+	// Review-lane KnowledgeLoopReviewed event also flips dismiss_state, but
+	// to a value chosen by the action sub-field on the event payload:
+	//   recheck       → ACTIVE   (re-arms the entry; freshness is already
+	//                              the event.OccurredAt via the projection
+	//                              pipeline, so the next snapshot promotes
+	//                              it back into the foreground)
+	//   archive       → COMPLETED
+	//   mark_reviewed → COMPLETED
+	// All other transitions leave the entry row untouched and only update
+	// session state above.
 	if ev.EventType == EventKnowledgeLoopDeferred && entryKey != "" {
 		if _, patchErr := p.repo.PatchKnowledgeLoopEntryDismissState(
 			ctx,
@@ -367,8 +377,48 @@ func (p *Projector) projectTransition(ctx context.Context, ev *sovereign_db.Know
 			return sessionRes, fmt.Errorf("patch dismiss_state on Deferred: %w", patchErr)
 		}
 	}
+	if ev.EventType == EventKnowledgeLoopReviewed && entryKey != "" {
+		newState := dismissStateForReviewedEvent(ev.Payload)
+		if _, patchErr := p.repo.PatchKnowledgeLoopEntryDismissState(
+			ctx,
+			ev.UserID.String(),
+			ev.TenantID.String(),
+			lensModeID,
+			entryKey,
+			ev.EventSeq,
+			newState,
+		); patchErr != nil {
+			return sessionRes, fmt.Errorf("patch dismiss_state on Reviewed: %w", patchErr)
+		}
+	}
 
 	return sessionRes, nil
+}
+
+// dismissStateForReviewedEvent maps the action sub-field on a
+// KnowledgeLoopReviewed event payload to the dismiss_state the projector
+// should patch onto the entry. Pure: depends only on payload bytes, never on
+// latest projection state. Reproject-safe by construction.
+func dismissStateForReviewedEvent(payload json.RawMessage) sovereignv1.DismissState {
+	if len(payload) == 0 {
+		// Unknown payload — preserve the entry by treating as "mark reviewed"
+		// (acknowledged). Avoids a stuck row when an upstream emits a
+		// malformed payload.
+		return sovereignv1.DismissState_DISMISS_STATE_COMPLETED
+	}
+	var m map[string]any
+	if err := json.Unmarshal(payload, &m); err != nil {
+		return sovereignv1.DismissState_DISMISS_STATE_COMPLETED
+	}
+	action, _ := m["action"].(string)
+	switch action {
+	case "recheck":
+		return sovereignv1.DismissState_DISMISS_STATE_ACTIVE
+	case "archive", "mark_reviewed":
+		return sovereignv1.DismissState_DISMISS_STATE_COMPLETED
+	default:
+		return sovereignv1.DismissState_DISMISS_STATE_COMPLETED
+	}
 }
 
 // buildEntryFromEvent materializes a KnowledgeLoopEntry from an event with
