@@ -65,6 +65,7 @@ func main() {
 	}
 	retentionHandler := handler.NewRetentionHandler(repo, archiveDir)
 	storageHandler := handler.NewStorageHandler(repo)
+	knowledgeLoopReprojectHandler := handler.NewKnowledgeLoopReprojectHandler(repo)
 
 	// Metrics / health server
 	metricsMux := http.NewServeMux()
@@ -77,6 +78,7 @@ func main() {
 	snapshotHandler.RegisterRoutes(metricsMux)
 	retentionHandler.RegisterRoutes(metricsMux)
 	storageHandler.RegisterRoutes(metricsMux)
+	knowledgeLoopReprojectHandler.RegisterRoutes(metricsMux)
 	metricsServer := &http.Server{Addr: cfg.MetricsAddr, Handler: metricsMux}
 
 	go func() {

@@ -5,11 +5,13 @@ on:
     branches: [ main, master ]
     paths:
       - 'knowledge-sovereign/**'
+      - 'docs/features/knowledge-loop/**'
       - '.github/workflows/knowledge-sovereign.yaml'
   pull_request:
     branches: [ main, master ]
     paths:
       - 'knowledge-sovereign/**'
+      - 'docs/features/knowledge-loop/**'
       - '.github/workflows/knowledge-sovereign.yaml'
   workflow_dispatch:
 
@@ -26,7 +28,9 @@ jobs:
     with:
       working-directory: 'knowledge-sovereign/app'
       coverage-flags: 'knowledge-sovereign'
-      sparse-checkout: 'knowledge-sovereign'
+      sparse-checkout: |
+        knowledge-sovereign
+        docs/features/knowledge-loop
       use-local-persistent-cache: false
 
   quality:

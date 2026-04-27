@@ -155,3 +155,40 @@ export async function runSovereignRetention(
 	}
 	return response.json() as Promise<RetentionRunResponse>;
 }
+
+/**
+ * Mirrors the Go handler's response shape
+ * (knowledge-sovereign/app/handler/reproject_knowledge_loop_handler.go).
+ * Upstream changes need conscious updates here.
+ */
+export interface KnowledgeLoopReprojectResult {
+	ok: boolean;
+	entries_truncated: number;
+	session_state_truncated: number;
+	surfaces_truncated: number;
+	checkpoint_reset: boolean;
+	projector_will_run_on_tick: string;
+	error?: string;
+}
+
+/**
+ * Triggers a full Knowledge Loop reproject on knowledge-sovereign. Runbook:
+ * docs/runbooks/knowledge-loop-reproject.md.
+ *
+ * Destructive — TRUNCATEs three projection tables and resets the projector
+ * checkpoint. The caller (SvelteKit +server.ts) MUST enforce admin auth
+ * before invoking. Idempotent: safe to call again after a previous success.
+ */
+export async function triggerKnowledgeLoopReproject(): Promise<KnowledgeLoopReprojectResult> {
+	const response = await fetch(
+		`${SOVEREIGN_METRICS_URL}/admin/knowledge-loop/reproject`,
+		{ method: "POST" },
+	);
+	const body = (await response.json()) as KnowledgeLoopReprojectResult;
+	if (!response.ok) {
+		throw new Error(
+			`Knowledge Loop reproject failed (${response.status}): ${body.error ?? "unknown"}`,
+		);
+	}
+	return body;
+}
