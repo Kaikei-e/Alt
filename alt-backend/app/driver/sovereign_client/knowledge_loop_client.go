@@ -249,6 +249,13 @@ func domainEntryToProto(e *domain.KnowledgeLoopEntry) *sovereignv1.KnowledgeLoop
 		LoopPriority:         loopPriorityToProto(e.LoopPriority),
 		SurfaceScoreInputs:   e.SurfaceScoreInputs,
 	}
+	if e.CurrentEntryStage != nil {
+		stage := loopStageToProto(*e.CurrentEntryStage)
+		pb.CurrentEntryStage = &stage
+	}
+	if e.CurrentEntryStageEnteredAt != nil {
+		pb.CurrentEntryStageEnteredAt = timestamppb.New(*e.CurrentEntryStageEnteredAt)
+	}
 	if plannerVersion := surfacePlannerVersionToProto(e.SurfacePlannerVersion); plannerVersion != nil {
 		pb.SurfacePlannerVersion = plannerVersion
 	}
@@ -333,6 +340,14 @@ func protoEntryToDomain(pb *sovereignv1.KnowledgeLoopEntry) (*domain.KnowledgeLo
 		LoopPriority:          loopPriorityFromProto(pb.LoopPriority),
 		SurfacePlannerVersion: surfacePlannerVersionFromProto(pb.GetSurfacePlannerVersion()),
 		SurfaceScoreInputs:    pb.SurfaceScoreInputs,
+	}
+	if pb.CurrentEntryStage != nil {
+		stage := loopStageFromProto(*pb.CurrentEntryStage)
+		e.CurrentEntryStage = &stage
+	}
+	if pb.CurrentEntryStageEnteredAt != nil {
+		t := pb.CurrentEntryStageEnteredAt.AsTime()
+		e.CurrentEntryStageEnteredAt = &t
 	}
 	if pb.FreshnessAt != nil {
 		e.FreshnessAt = pb.FreshnessAt.AsTime()

@@ -155,6 +155,10 @@ LOOP_TX_ACT_OBSERVE="$(uuidv7)"
 LOOP_TX_ORIENT_ACT="$(uuidv7)"
 LOOP_TX_DECIDE_OBSERVE="$(uuidv7)"
 LOOP_TX_ACT_ACT="$(uuidv7)"
+LOOP_TX_REVIEW_RECHECK="$(uuidv7)"
+LOOP_TX_REVIEW_ARCHIVE="$(uuidv7)"
+LOOP_TX_REVIEW_MARK_REVIEWED="$(uuidv7)"
+LOOP_TX_REVIEW_CROSS_STAGE="$(uuidv7)"
 
 # Run Hurl inside the staging network so alt-backend's service DNS
 # name resolves. Mount the repo at the same absolute path so any
@@ -185,6 +189,10 @@ common_vars=(
   --variable "loop_tx_orient_act=$LOOP_TX_ORIENT_ACT"
   --variable "loop_tx_decide_observe=$LOOP_TX_DECIDE_OBSERVE"
   --variable "loop_tx_act_act=$LOOP_TX_ACT_ACT"
+  --variable "loop_tx_review_recheck=$LOOP_TX_REVIEW_RECHECK"
+  --variable "loop_tx_review_archive=$LOOP_TX_REVIEW_ARCHIVE"
+  --variable "loop_tx_review_mark_reviewed=$LOOP_TX_REVIEW_MARK_REVIEWED"
+  --variable "loop_tx_review_cross_stage=$LOOP_TX_REVIEW_CROSS_STAGE"
   --secret   "jwt=$JWT"
 )
 

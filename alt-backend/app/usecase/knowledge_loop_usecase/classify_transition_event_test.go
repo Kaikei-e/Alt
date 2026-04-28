@@ -143,6 +143,34 @@ func TestClassifyTransitionEvent(t *testing.T) {
 			trigger: "TRANSITION_TRIGGER_DEFER",
 			wantErr: true,
 		},
+		{
+			name:     "observe->observe via RECHECK => Reviewed",
+			from:     "LOOP_STAGE_OBSERVE",
+			to:       "LOOP_STAGE_OBSERVE",
+			trigger:  "TRANSITION_TRIGGER_RECHECK",
+			wantType: domain.EventKnowledgeLoopReviewed,
+		},
+		{
+			name:     "orient->orient via ARCHIVE => Reviewed",
+			from:     "LOOP_STAGE_ORIENT",
+			to:       "LOOP_STAGE_ORIENT",
+			trigger:  "TRANSITION_TRIGGER_ARCHIVE",
+			wantType: domain.EventKnowledgeLoopReviewed,
+		},
+		{
+			name:     "decide->decide via MARK_REVIEWED => Reviewed",
+			from:     "LOOP_STAGE_DECIDE",
+			to:       "LOOP_STAGE_DECIDE",
+			trigger:  "TRANSITION_TRIGGER_MARK_REVIEWED",
+			wantType: domain.EventKnowledgeLoopReviewed,
+		},
+		{
+			name:    "RECHECK with non-equal stages is rejected",
+			from:    "LOOP_STAGE_OBSERVE",
+			to:      "LOOP_STAGE_ORIENT",
+			trigger: "TRANSITION_TRIGGER_RECHECK",
+			wantErr: true,
+		},
 	}
 
 	for _, tc := range cases {

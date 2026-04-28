@@ -399,6 +399,13 @@ func toProtoEntry(e *domain.KnowledgeLoopEntry) *loopv1.KnowledgeLoopEntry {
 	if e.SourceObservedAt != nil {
 		pb.SourceObservedAt = timestamppb.New(*e.SourceObservedAt)
 	}
+	if e.CurrentEntryStage != nil {
+		stage := mapLoopStage(*e.CurrentEntryStage)
+		pb.CurrentEntryStage = &stage
+	}
+	if e.CurrentEntryStageEnteredAt != nil {
+		pb.CurrentEntryStageEnteredAt = timestamppb.New(*e.CurrentEntryStageEnteredAt)
+	}
 	if e.SupersededByEntryKey != nil {
 		pb.SupersededByEntryKey = e.SupersededByEntryKey
 	}

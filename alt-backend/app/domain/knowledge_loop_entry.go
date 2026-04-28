@@ -128,6 +128,9 @@ type KnowledgeLoopEntry struct {
 	ProposedStage LoopStage     `json:"proposed_stage" db:"proposed_stage"`
 	SurfaceBucket SurfaceBucket `json:"surface_bucket" db:"surface_bucket"`
 
+	CurrentEntryStage          *LoopStage `json:"current_entry_stage,omitempty" db:"current_entry_stage"`
+	CurrentEntryStageEnteredAt *time.Time `json:"current_entry_stage_entered_at,omitempty" db:"current_entry_stage_entered_at"`
+
 	ProjectionRevision   int64 `json:"projection_revision" db:"projection_revision"`
 	ProjectionSeqHiwater int64 `json:"projection_seq_hiwater" db:"projection_seq_hiwater"`
 	SourceEventSeq       int64 `json:"source_event_seq" db:"source_event_seq"`

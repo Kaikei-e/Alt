@@ -65,10 +65,9 @@ func ClassifyTransitionEvent(fromStage, toStage, trigger string) (string, error)
 	}
 
 	// Review-lane triggers (recheck / archive / mark_reviewed) all route to
-	// KnowledgeLoopReviewed. The distinction between actions lives in the
-	// event payload (action: "recheck"|"archive"|"mark_reviewed"), so the
-	// projector can patch dismiss_state appropriately while replay stays
-	// deterministic. Same-stage requirement matches triggerDefer.
+	// KnowledgeLoopReviewed. The action distinction is the trigger value
+	// itself, so the projector can patch dismiss_state appropriately while
+	// replay stays deterministic. Same-stage requirement matches triggerDefer.
 	if isReviewActionTrigger(trigger) {
 		if !isCanonicalStage(fromStage) || fromStage != toStage {
 			return "", fmt.Errorf("%w: review-lane trigger requires from_stage == to_stage and a canonical OODA stage", ErrInvalidArgument)

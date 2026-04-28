@@ -221,6 +221,91 @@ func TestAppendKnowledgeEvent_KnowledgeLoopDeferred(t *testing.T) {
 	assert.NoError(t, err)
 }
 
+// TestAppendKnowledgeEvent_KnowledgeLoopReviewed pins the Review-lane event
+// contract. The action distinction is the TransitionTrigger value in payload;
+// alt-backend must not invent a parallel `action` field.
+func TestAppendKnowledgeEvent_KnowledgeLoopReviewed(t *testing.T) {
+	mockProvider, err := consumer.NewV3Pact(consumer.MockHTTPProviderConfig{
+		Consumer: "alt-backend",
+		Provider: "knowledge-sovereign",
+		PactDir:  filepath.Join(pactDir),
+	})
+	require.NoError(t, err)
+
+	eventID := uuid.New()
+	clientTransitionID := uuid.NewString()
+	tenantID := uuid.New()
+	userID := uuid.New()
+	occurredAt := time.Date(2026, 4, 28, 10, 0, 0, 0, time.UTC)
+	payload, _ := json.Marshal(map[string]any{
+		"entry_key":                    "article:42",
+		"lens_mode_id":                 "default",
+		"from_stage":                   "LOOP_STAGE_OBSERVE",
+		"to_stage":                     "LOOP_STAGE_OBSERVE",
+		"trigger":                      "TRANSITION_TRIGGER_RECHECK",
+		"observed_projection_revision": 1,
+		"client_transition_id":         clientTransitionID,
+	})
+
+	err = mockProvider.
+		AddInteraction().
+		Given("sovereign accepts Reviewed Loop events with trigger-based actions").
+		UponReceiving("an AppendKnowledgeEvent request for knowledge_loop.reviewed.v1").
+		WithCompleteRequest(consumer.Request{
+			Method: "POST",
+			Path:   matchers.String("/services.sovereign.v1.KnowledgeSovereignService/AppendKnowledgeEvent"),
+			Headers: matchers.MapMatcher{
+				"Content-Type": matchers.String("application/json"),
+			},
+			Body: loopEventBody(map[string]any{
+				"eventId":       eventID.String(),
+				"occurredAt":    "2026-04-28T10:00:00Z",
+				"tenantId":      tenantID.String(),
+				"userId":        userID.String(),
+				"actorType":     "user",
+				"actorId":       userID.String(),
+				"eventType":     "knowledge_loop.reviewed.v1",
+				"aggregateType": "loop_session",
+				"aggregateId":   "article:42",
+				"dedupeKey":     clientTransitionID,
+				"payload":       "eyJlbnRyeV9rZXkiOiJhcnRpY2xlOjQyIn0",
+			}),
+		}).
+		WithCompleteResponse(consumer.Response{
+			Status: 200,
+			Headers: matchers.MapMatcher{
+				"Content-Type": matchers.String("application/json"),
+			},
+			Body: matchers.MapMatcher{
+				"success": matchers.Like(true),
+			},
+		}).
+		ExecuteTest(t, func(config consumer.MockServerConfig) error {
+			client := sovereignv1connect.NewKnowledgeSovereignServiceClient(
+				http.DefaultClient,
+				fmt.Sprintf("http://%s:%d", config.Host, config.Port),
+				connect.WithProtoJSON(),
+			)
+			_, err := client.AppendKnowledgeEvent(context.Background(), connect.NewRequest(&sovereignv1.AppendKnowledgeEventRequest{
+				Event: &sovereignv1.KnowledgeEvent{
+					EventId:       eventID.String(),
+					OccurredAt:    timestamppb.New(occurredAt),
+					TenantId:      tenantID.String(),
+					UserId:        userID.String(),
+					ActorType:     "user",
+					ActorId:       userID.String(),
+					EventType:     "knowledge_loop.reviewed.v1",
+					AggregateType: "loop_session",
+					AggregateId:   "article:42",
+					DedupeKey:     clientTransitionID,
+					Payload:       payload,
+				},
+			}))
+			return err
+		})
+	assert.NoError(t, err)
+}
+
 // TestAppendKnowledgeEvent_KnowledgeLoopActed pins the event_type for the
 // Act stage so sovereign's projection can react to it distinctly from
 // HomeItemOpened (single-emission rule, ADR-000831 §3.8).

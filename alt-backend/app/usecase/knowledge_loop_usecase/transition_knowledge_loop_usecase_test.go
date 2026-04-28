@@ -146,6 +146,27 @@ func TestTransition_DwellObserveToOrient_EmitsObservedEvent(t *testing.T) {
 		"dwell on observe→orient must classify as KnowledgeLoopObserved (contract §8.2)")
 }
 
+func TestTransition_ReviewActionPayloadUsesTriggerNotAction(t *testing.T) {
+	dedupe := &fakeDedupePort{reserved: true}
+	appendPort := &fakeAppendPort{}
+	uc := NewTransitionKnowledgeLoopUsecase(dedupe, appendPort, nil, time.Now)
+
+	in := newTransitionInput(t, "LOOP_STAGE_OBSERVE", "LOOP_STAGE_OBSERVE", "TRANSITION_TRIGGER_RECHECK")
+	res, err := uc.Execute(context.Background(), in)
+
+	require.NoError(t, err)
+	require.True(t, res.Accepted)
+	require.Len(t, appendPort.events, 1)
+	ev := appendPort.events[0]
+	require.Equal(t, domain.EventKnowledgeLoopReviewed, ev.EventType)
+
+	var payload map[string]any
+	require.NoError(t, json.Unmarshal(ev.Payload, &payload))
+	require.Equal(t, "TRANSITION_TRIGGER_RECHECK", payload["trigger"])
+	require.NotContains(t, payload, "action",
+		"review action distinction lives in TransitionTrigger, not a parallel action field")
+}
+
 func TestTransition_SkipsAppendOnDuplicateReservation(t *testing.T) {
 	canonical := "article:42"
 	dedupe := &fakeDedupePort{
