@@ -117,4 +117,34 @@ describe("KnowledgeCard", () => {
 
 		await expect.element(page.getByText("New")).toBeInTheDocument();
 	});
+
+	it("marks the card link-unavailable when item.link is empty", async () => {
+		render(KnowledgeCard as never, {
+			props: {
+				item: makeItem({ link: undefined }),
+				onAction: vi.fn(),
+			},
+		});
+
+		await expect
+			.element(page.getByTestId("kh-card-link-unavailable"))
+			.toBeInTheDocument();
+		await expect
+			.element(page.getByTestId("kh-card-link-unavailable"))
+			.toHaveAttribute("aria-disabled", "true");
+	});
+
+	it("does not mark the card link-unavailable when item.link is present", async () => {
+		const { container } = render(KnowledgeCard as never, {
+			props: {
+				item: makeItem({ link: "https://example.com/article" }),
+				onAction: vi.fn(),
+			},
+		});
+
+		const flag = container.querySelector(
+			"[data-testid='kh-card-link-unavailable']",
+		);
+		expect(flag).toBeNull();
+	});
 });
