@@ -29,7 +29,7 @@ type FeedPageRow struct {
 
 func (r *FeedRepository) GetSingleFeed(ctx context.Context) (*models.Feed, error) {
 	query := `
-		SELECT id, title, description, link, pub_date, created_at, updated_at FROM feeds ORDER BY created_at DESC LIMIT 1
+		SELECT id, title, description, website_url, pub_date, created_at, updated_at FROM feeds ORDER BY created_at DESC LIMIT 1
 	`
 
 	var feed models.Feed
@@ -44,7 +44,7 @@ func (r *FeedRepository) GetSingleFeed(ctx context.Context) (*models.Feed, error
 
 func (r *FeedRepository) FetchFeedsList(ctx context.Context) ([]*models.Feed, error) {
 	query := `
-		SELECT id, title, description, link, pub_date, created_at, updated_at FROM feeds ORDER BY created_at DESC LIMIT 10000
+		SELECT id, title, description, website_url, pub_date, created_at, updated_at FROM feeds ORDER BY created_at DESC LIMIT 10000
 	`
 
 	var feeds []*models.Feed
@@ -69,7 +69,7 @@ func (r *FeedRepository) FetchFeedsList(ctx context.Context) ([]*models.Feed, er
 
 func (r *FeedRepository) FetchFeedsListLimit(ctx context.Context, limit int) ([]*models.Feed, error) {
 	query := `
-		SELECT id, title, description, link, pub_date, created_at, updated_at FROM feeds ORDER BY created_at DESC LIMIT $1
+		SELECT id, title, description, website_url, pub_date, created_at, updated_at FROM feeds ORDER BY created_at DESC LIMIT $1
 	`
 
 	var feeds []*models.Feed
@@ -95,7 +95,7 @@ func (r *FeedRepository) FetchFeedsListLimit(ctx context.Context, limit int) ([]
 
 func (r *FeedRepository) FetchFeedsListPage(ctx context.Context, page int) ([]*models.Feed, error) {
 	query := `
-		SELECT id, title, description, link, pub_date, created_at, updated_at FROM feeds ORDER BY created_at DESC LIMIT $1 OFFSET $2
+		SELECT id, title, description, website_url, pub_date, created_at, updated_at FROM feeds ORDER BY created_at DESC LIMIT $1 OFFSET $2
 	`
 
 	var feeds []*models.Feed

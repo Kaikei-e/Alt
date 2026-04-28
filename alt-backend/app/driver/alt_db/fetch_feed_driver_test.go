@@ -53,7 +53,7 @@ func TestAltDBRepository_FetchReadFeedsListCursor_OrdersByReadAt(t *testing.T) {
 		// The important part is verifying rs.read_at is in the ORDER BY clause
 		mock.ExpectQuery("SELECT.*FROM feeds.*INNER JOIN read_status.*ORDER BY rs.read_at DESC").
 			WithArgs(limit, userID).
-			WillReturnRows(pgxmock.NewRows([]string{"id", "title", "description", "link", "pub_date", "created_at", "updated_at"}).
+			WillReturnRows(pgxmock.NewRows([]string{"id", "title", "description", "website_url", "pub_date", "created_at", "updated_at"}).
 				AddRow(feedID1, "Recently Read Feed", "desc1", "https://example.com/feed1", now, oldTime, now).
 				AddRow(feedID2, "Older Read Feed", "desc2", "https://example.com/feed2", now, oldTime, now.Add(-2*time.Hour)))
 
@@ -96,7 +96,7 @@ func TestAltDBRepository_FetchReadFeedsListCursor_OrdersByReadAt(t *testing.T) {
 		// Use AnyArg() for flexibility in argument matching since cursor format can vary
 		mock.ExpectQuery("SELECT.*FROM feeds.*INNER JOIN read_status.*ORDER BY rs.read_at DESC").
 			WithArgs(pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg()).
-			WillReturnRows(pgxmock.NewRows([]string{"id", "title", "description", "link", "pub_date", "created_at", "updated_at"}).
+			WillReturnRows(pgxmock.NewRows([]string{"id", "title", "description", "website_url", "pub_date", "created_at", "updated_at"}).
 				AddRow(feedID, "Feed Title", "desc", "https://example.com/feed", now, now, now))
 
 		feeds, err := repo.FetchReadFeedsListCursor(ctx, &cursor, limit)

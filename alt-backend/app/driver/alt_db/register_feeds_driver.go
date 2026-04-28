@@ -21,7 +21,7 @@ func (r *FeedRepository) RegisterSingleFeed(ctx context.Context, feed *models.Fe
 	const upsertQuery = `
 		INSERT INTO feeds (title, description, website_url, pub_date, created_at, updated_at, feed_link_id, og_image_url)
 		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-		ON CONFLICT (link) DO UPDATE SET
+		ON CONFLICT (website_url) DO UPDATE SET
 			title = EXCLUDED.title,
 			description = EXCLUDED.description,
 			pub_date = EXCLUDED.pub_date,
@@ -76,7 +76,7 @@ func (r *FeedRepository) RegisterMultipleFeedsWithState(ctx context.Context, fee
 	const upsertQuery = `
 		INSERT INTO feeds (title, description, website_url, pub_date, created_at, updated_at, feed_link_id, og_image_url)
 		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-		ON CONFLICT (link) DO UPDATE SET
+		ON CONFLICT (website_url) DO UPDATE SET
 			title = EXCLUDED.title,
 			description = EXCLUDED.description,
 			pub_date = EXCLUDED.pub_date,

@@ -26,7 +26,7 @@ func (r *FeedRepository) ListFeedURLs(ctx context.Context, cursor string, limit 
 		query = `
 			SELECT f.id, fl.url
 			FROM feeds f
-			JOIN feed_links fl ON f.link = fl.url
+			JOIN feed_links fl ON f.website_url = fl.url
 			LEFT JOIN feed_link_availability fla ON fl.id = fla.feed_link_id
 			WHERE fla.is_active IS NULL OR fla.is_active = true
 			ORDER BY f.id ASC
@@ -37,7 +37,7 @@ func (r *FeedRepository) ListFeedURLs(ctx context.Context, cursor string, limit 
 		query = `
 			SELECT f.id, fl.url
 			FROM feeds f
-			JOIN feed_links fl ON f.link = fl.url
+			JOIN feed_links fl ON f.website_url = fl.url
 			LEFT JOIN feed_link_availability fla ON fl.id = fla.feed_link_id
 			WHERE (fla.is_active IS NULL OR fla.is_active = true)
 			  AND f.id > $1

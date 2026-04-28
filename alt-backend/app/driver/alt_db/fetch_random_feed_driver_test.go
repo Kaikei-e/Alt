@@ -32,7 +32,7 @@ func TestAltDBRepository_FetchRandomFeed(t *testing.T) {
 		expectedLink := "https://example.com"
 
 		mock.ExpectQuery("SELECT f.id, f.title, f.description, f.website_url FROM feeds f WHERE EXISTS").
-			WillReturnRows(pgxmock.NewRows([]string{"id", "title", "description", "link"}).
+			WillReturnRows(pgxmock.NewRows([]string{"id", "title", "description", "website_url"}).
 				AddRow(feedID, expectedTitle, expectedDescription, expectedLink))
 
 		feed, err := repo.FetchRandomFeed(ctx)
@@ -55,7 +55,7 @@ func TestAltDBRepository_FetchRandomFeed(t *testing.T) {
 		ctx := context.Background()
 
 		mock.ExpectQuery("SELECT f.id, f.title, f.description, f.website_url FROM feeds f WHERE EXISTS").
-			WillReturnRows(pgxmock.NewRows([]string{"id", "title", "description", "link"}))
+			WillReturnRows(pgxmock.NewRows([]string{"id", "title", "description", "website_url"}))
 
 		feed, err := repo.FetchRandomFeed(ctx)
 
@@ -77,7 +77,7 @@ func TestAltDBRepository_FetchRandomFeed(t *testing.T) {
 		expectedLink := "https://example.com"
 
 		mock.ExpectQuery("SELECT f.id, f.title, f.description, f.website_url FROM feeds f WHERE EXISTS").
-			WillReturnRows(pgxmock.NewRows([]string{"id", "title", "description", "link"}).
+			WillReturnRows(pgxmock.NewRows([]string{"id", "title", "description", "website_url"}).
 				AddRow(feedID, expectedTitle, nil, expectedLink))
 
 		feed, err := repo.FetchRandomFeed(ctx)
