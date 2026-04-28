@@ -46,6 +46,8 @@ let {
  * never elevation. Reduced-motion users get the weight bump alone.
  */
 
+const effectiveStage = $derived(entry.currentEntryStage ?? entry.proposedStage);
+
 const stageLabel = $derived(
 	(
 		{
@@ -54,7 +56,7 @@ const stageLabel = $derived(
 			decide: "Decide",
 			act: "Act",
 		} as const
-	)[entry.proposedStage],
+	)[effectiveStage],
 );
 
 const priorityLabel = $derived(
@@ -160,7 +162,7 @@ function intentLabel(intent: DecisionIntentName): string {
 
 function isAllowed(to: LoopStageName): boolean {
 	if (!canTransition) return true;
-	return canTransition(entry.proposedStage, to);
+	return canTransition(effectiveStage, to);
 }
 
 function sourceUrl(): string | null {
@@ -231,7 +233,7 @@ async function handleDismiss() {
 	data-testid="loop-entry-tile"
 	data-entry-key={entry.entryKey}
 	data-priority={entry.loopPriority}
-	data-stage={entry.proposedStage}
+	data-stage={effectiveStage}
 	aria-label={ariaDescription}
 	aria-expanded={expanded}
 	role="button"

@@ -82,6 +82,9 @@ export function useKnowledgeLoop(opts: UseKnowledgeLoopOptions) {
 	let entries = $state<KnowledgeLoopEntryData[]>([
 		...opts.initial.foregroundEntries,
 	]);
+	let bucketEntries = $state<KnowledgeLoopEntryData[]>([
+		...opts.initial.bucketEntries,
+	]);
 	let sessionState = $state<KnowledgeLoopSessionStateData | undefined>(
 		opts.initial.sessionState,
 	);
@@ -96,6 +99,7 @@ export function useKnowledgeLoop(opts: UseKnowledgeLoopOptions) {
 	// without this guard a stream-driven `replaceSnapshot` would briefly flash
 	// the dismissed tile back into the foreground until the next snapshot.
 	const optimisticallyDismissed = new Set<string>();
+	const optimisticallyStaged = new Map<string, LoopStageName>();
 	const observeThrottle = makeObserveThrottle(OBSERVE_THROTTLE_MS, {
 		storage:
 			opts.observeThrottleStorage === undefined
@@ -108,7 +112,14 @@ export function useKnowledgeLoop(opts: UseKnowledgeLoopOptions) {
 	}
 
 	function findEntry(entryKey: string): KnowledgeLoopEntryData | undefined {
-		return entries.find((e) => e.entryKey === entryKey);
+		return (
+			entries.find((e) => e.entryKey === entryKey) ??
+			bucketEntries.find((e) => e.entryKey === entryKey)
+		);
+	}
+
+	function effectiveStage(entry: KnowledgeLoopEntryData): LoopStageName {
+		return entry.currentEntryStage ?? entry.proposedStage;
 	}
 
 	async function post(body: {
@@ -171,7 +182,7 @@ export function useKnowledgeLoop(opts: UseKnowledgeLoopOptions) {
 		if (!observeThrottle.shouldEmit(entryKey, Date.now())) return false;
 		if (inFlight.has(entryKey)) return false;
 		const entry = findEntry(entryKey);
-		if (!entry || entry.proposedStage !== "observe") return false;
+		if (!entry || effectiveStage(entry) !== "observe") return false;
 
 		inFlight.add(entryKey);
 		inFlightStartedAt.set(entryKey, Date.now());
@@ -220,7 +231,7 @@ export function useKnowledgeLoop(opts: UseKnowledgeLoopOptions) {
 		const entry = findEntry(entryKey);
 		if (!entry) return { status: "error", message: "unknown_entry" };
 
-		const from = entry.proposedStage;
+		const from = effectiveStage(entry);
 		if (!canTransition(from, toStage)) {
 			return {
 				status: "forbidden",
@@ -279,7 +290,7 @@ export function useKnowledgeLoop(opts: UseKnowledgeLoopOptions) {
 		const entry = findEntry(entryKey);
 		if (!entry) return;
 		applyLocalDismiss(entryKey);
-		const stage = entry.proposedStage;
+		const stage = effectiveStage(entry);
 
 		try {
 			await post({
@@ -331,8 +342,8 @@ export function useKnowledgeLoop(opts: UseKnowledgeLoopOptions) {
 			return await post({
 				clientTransitionId: uuidv7(),
 				entryKey,
-				fromStage: entry.proposedStage,
-				toStage: entry.proposedStage,
+				fromStage: effectiveStage(entry),
+				toStage: effectiveStage(entry),
 				trigger: action,
 			});
 		} finally {
@@ -342,8 +353,12 @@ export function useKnowledgeLoop(opts: UseKnowledgeLoopOptions) {
 	}
 
 	function applyLocalStage(entryKey: string, to: LoopStageName) {
+		optimisticallyStaged.set(entryKey, to);
 		entries = entries.map((e) =>
-			e.entryKey === entryKey ? { ...e, proposedStage: to } : e,
+			e.entryKey === entryKey ? { ...e, currentEntryStage: to } : e,
+		);
+		bucketEntries = bucketEntries.map((e) =>
+			e.entryKey === entryKey ? { ...e, currentEntryStage: to } : e,
 		);
 		if (sessionState) {
 			sessionState = { ...sessionState, currentStage: to };
@@ -359,6 +374,18 @@ export function useKnowledgeLoop(opts: UseKnowledgeLoopOptions) {
 		// main thread of rAFs, neighbors visibly overlapped mid-collapse.
 		optimisticallyDismissed.add(entryKey);
 		entries = entries.filter((e) => e.entryKey !== entryKey);
+		bucketEntries = bucketEntries.filter((e) => e.entryKey !== entryKey);
+	}
+
+	function applyOptimisticOverlays(
+		list: KnowledgeLoopEntryData[],
+	): KnowledgeLoopEntryData[] {
+		return list
+			.filter((e) => !optimisticallyDismissed.has(e.entryKey))
+			.map((e) => {
+				const stage = optimisticallyStaged.get(e.entryKey);
+				return stage ? { ...e, currentEntryStage: stage } : e;
+			});
 	}
 
 	function replaceSnapshot(next: KnowledgeLoopResult) {
@@ -367,17 +394,28 @@ export function useKnowledgeLoop(opts: UseKnowledgeLoopOptions) {
 		// `__data.json` refetch. Optimistically dismissed entries stay removed
 		// until the projection catches up and the server itself stops returning
 		// them.
-		entries = next.foregroundEntries.filter(
-			(e) => !optimisticallyDismissed.has(e.entryKey),
-		);
+		entries = applyOptimisticOverlays(next.foregroundEntries);
+		bucketEntries = applyOptimisticOverlays(next.bucketEntries);
 		sessionState = next.sessionState;
 		const stillReturned = new Set(
-			next.foregroundEntries.map((e) => e.entryKey),
+			[...next.foregroundEntries, ...next.bucketEntries].map((e) => e.entryKey),
+		);
+		const returnedByKey = new Map(
+			[...next.foregroundEntries, ...next.bucketEntries].map((e) => [
+				e.entryKey,
+				e,
+			]),
 		);
 		// Garbage-collect dismissals the server has acknowledged: any key the
 		// new snapshot already omits no longer needs the local guard.
 		for (const key of [...optimisticallyDismissed]) {
 			if (!stillReturned.has(key)) optimisticallyDismissed.delete(key);
+		}
+		for (const [key, stage] of [...optimisticallyStaged]) {
+			const returned = returnedByKey.get(key);
+			if (!returned || returned.currentEntryStage === stage) {
+				optimisticallyStaged.delete(key);
+			}
 		}
 		// Garbage-collect stale `inFlight` keys. Two ways an entry becomes
 		// stale: (a) the snapshot no longer contains it (server moved past it
@@ -413,6 +451,9 @@ export function useKnowledgeLoop(opts: UseKnowledgeLoopOptions) {
 	return {
 		get entries() {
 			return entries;
+		},
+		get bucketEntries() {
+			return bucketEntries;
 		},
 		get sessionState() {
 			return sessionState;

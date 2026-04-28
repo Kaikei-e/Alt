@@ -113,6 +113,8 @@ export interface KnowledgeLoopEntryData {
 	entryKey: string;
 	sourceItemKey: string;
 	proposedStage: LoopStageName;
+	currentEntryStage?: LoopStageName;
+	currentEntryStageEnteredAt?: string;
 	surfaceBucket: SurfaceBucketName;
 	projectionRevision: number;
 	projectionSeqHiwater: number;
@@ -245,6 +247,13 @@ function mapProtoEntry(e: ProtoKnowledgeLoopEntry): KnowledgeLoopEntryData {
 		entryKey: e.entryKey,
 		sourceItemKey: e.sourceItemKey,
 		proposedStage: mapStageFromProto(e.proposedStage),
+		currentEntryStage:
+			e.currentEntryStage !== undefined
+				? mapStageFromProto(e.currentEntryStage)
+				: undefined,
+		currentEntryStageEnteredAt: e.currentEntryStageEnteredAt
+			? tsToIso(e.currentEntryStageEnteredAt)
+			: undefined,
 		surfaceBucket: mapBucketFromProto(e.surfaceBucket),
 		projectionRevision: Number(e.projectionRevision),
 		projectionSeqHiwater: Number(e.projectionSeqHiwater),

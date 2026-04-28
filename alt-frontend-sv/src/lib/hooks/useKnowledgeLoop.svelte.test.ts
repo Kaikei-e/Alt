@@ -47,6 +47,20 @@ const FRESH_FOREGROUND: KnowledgeLoopResult = {
 	projectionSeqHiwater: 100,
 };
 
+const REVIEW_BUCKET: KnowledgeLoopResult = {
+	...FRESH_FOREGROUND,
+	foregroundEntries: [],
+	bucketEntries: [
+		{
+			...FRESH_FOREGROUND.foregroundEntries[0],
+			entryKey: "article:review-1",
+			sourceItemKey: "article:review-1",
+			surfaceBucket: "review",
+			proposedStage: "observe",
+		},
+	],
+};
+
 describe("useKnowledgeLoop.observe — backend 429 must NOT clear local throttle", () => {
 	it("does NOT re-fire after a 429 within the 60 s window", async () => {
 		let calls = 0;
@@ -141,6 +155,104 @@ describe("useKnowledgeLoop.observe — backend 429 must NOT clear local throttle
 		await loop.observe("article:42");
 
 		expect(calls).toBe(2); // 500 keeps reset semantics — retries are OK
+	});
+});
+
+describe("useKnowledgeLoop.bucketEntries — review lane state ownership", () => {
+	it("exposes bucket entries from the initial snapshot", () => {
+		const loop = useKnowledgeLoop({
+			initial: REVIEW_BUCKET,
+			lensModeId: "default",
+			fetchImpl: (async () =>
+				new Response("{}", { status: 200 })) as unknown as typeof fetch,
+			observeThrottleStorage: null,
+		});
+
+		expect(loop.entries).toHaveLength(0);
+		expect(loop.bucketEntries).toHaveLength(1);
+		expect(loop.bucketEntries[0].entryKey).toBe("article:review-1");
+	});
+
+	it("posts Review actions for bucket entries and optimistically removes completed actions", async () => {
+		const calls: Array<Record<string, unknown>> = [];
+		const captureFetch = (async (_url: unknown, init?: { body?: string }) => {
+			calls.push(JSON.parse(init?.body ?? "{}"));
+			return new Response(JSON.stringify({ accepted: true }), {
+				status: 200,
+				headers: { "content-type": "application/json" },
+			});
+		}) as unknown as typeof fetch;
+
+		const loop = useKnowledgeLoop({
+			initial: REVIEW_BUCKET,
+			lensModeId: "default",
+			fetchImpl: captureFetch,
+			observeThrottleStorage: null,
+		});
+
+		const result = await loop.reviewAction("article:review-1", "archive");
+
+		expect(result.status).toBe("accepted");
+		expect(calls).toHaveLength(1);
+		expect(calls[0].trigger).toBe("archive");
+		expect(calls[0].fromStage).toBe("observe");
+		expect(calls[0].toStage).toBe("observe");
+		expect(loop.bucketEntries).toHaveLength(0);
+	});
+
+	it("filters optimistically dismissed bucket entries during snapshot replacement", async () => {
+		const accepted = (async () =>
+			new Response(JSON.stringify({ accepted: true }), {
+				status: 200,
+				headers: { "content-type": "application/json" },
+			})) as unknown as typeof fetch;
+		const loop = useKnowledgeLoop({
+			initial: REVIEW_BUCKET,
+			lensModeId: "default",
+			fetchImpl: accepted,
+			observeThrottleStorage: null,
+		});
+
+		await loop.reviewAction("article:review-1", "mark_reviewed");
+		loop.replaceSnapshot(REVIEW_BUCKET);
+
+		expect(loop.bucketEntries).toHaveLength(0);
+	});
+});
+
+describe("useKnowledgeLoop.currentEntryStage — proposed stage is not local progress", () => {
+	it("uses currentEntryStage as transition fromStage without mutating proposedStage", async () => {
+		const calls: Array<Record<string, unknown>> = [];
+		const captureFetch = (async (_url: unknown, init?: { body?: string }) => {
+			calls.push(JSON.parse(init?.body ?? "{}"));
+			return new Response(JSON.stringify({ accepted: true }), {
+				status: 200,
+				headers: { "content-type": "application/json" },
+			});
+		}) as unknown as typeof fetch;
+		const loop = useKnowledgeLoop({
+			initial: {
+				...FRESH_FOREGROUND,
+				foregroundEntries: [
+					{
+						...FRESH_FOREGROUND.foregroundEntries[0],
+						proposedStage: "observe",
+						currentEntryStage: "orient",
+					},
+				],
+			},
+			lensModeId: "default",
+			fetchImpl: captureFetch,
+			observeThrottleStorage: null,
+		});
+
+		const result = await loop.transitionTo("article:42", "decide");
+
+		expect(result.status).toBe("accepted");
+		expect(calls[0].fromStage).toBe("orient");
+		expect(calls[0].toStage).toBe("decide");
+		expect(loop.entries[0].proposedStage).toBe("observe");
+		expect(loop.entries[0].currentEntryStage).toBe("decide");
 	});
 });
 

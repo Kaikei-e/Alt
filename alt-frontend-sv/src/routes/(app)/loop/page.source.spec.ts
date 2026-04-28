@@ -36,6 +36,15 @@ describe("/loop/+page.svelte wiring guards", () => {
 		expect(pageSource).toMatch(/isInFlight/);
 	});
 
+	it("derives bucket planes from hook-owned bucketEntries", () => {
+		expect(pageSource).toMatch(
+			/const bucketEntries = \$derived\(loop\.bucketEntries\)/,
+		);
+		expect(pageSource).not.toMatch(
+			/const bucketEntries = \$derived\(data\.loop\?\.bucketEntries/,
+		);
+	});
+
 	it("never imports knowledge_home from the loop route (§8 single-emission)", () => {
 		expect(pageSource).not.toMatch(/\$lib\/connect\/knowledge_home/);
 		expect(pageSource).not.toMatch(/trackHomeAction/);

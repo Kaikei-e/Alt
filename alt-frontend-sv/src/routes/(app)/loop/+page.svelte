@@ -91,7 +91,7 @@ const quality = $derived(data.loop?.overallServiceQuality ?? "unspecified");
 // projector scopes each entry to exactly one bucket, so these three arrays
 // never overlap. Empty arrays collapse their plane — the page stays quiet
 // when the user has nothing queued in that surface (contract §14 empty-state).
-const bucketEntries = $derived(data.loop?.bucketEntries ?? []);
+const bucketEntries = $derived(loop.bucketEntries);
 const continueEntries = $derived(
 	bucketEntries.filter((e) => e.surfaceBucket === "continue"),
 );
@@ -302,9 +302,9 @@ const planeDescriptors = $derived([
 
 let activePlaneKey = $state<PlaneKey>("now");
 
-// transitionTo derives `from` from the entry's proposedStage, so callers only
-// supply the target stage + trigger. Each plane maps to the canonical next
-// step per contract §7 allowed transitions.
+// transitionTo derives `from` from the entry's currentEntryStage fallback, so
+// callers only supply the target stage + trigger. Each plane maps to the
+// canonical next step per contract §7 allowed transitions.
 function onContinueResume(entry: KnowledgeLoopEntryData) {
 	void loop.transitionTo(entry.entryKey, "decide", "user_tap");
 }
