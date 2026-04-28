@@ -15,6 +15,22 @@ interface Props {
 
 const { item, onAction, onTagClick }: Props = $props();
 
+const linkAvailable = $derived(
+	item.itemType === "article" ? !!item.link : true,
+);
+
+const warnedItemKeys = new Set<string>();
+$effect(() => {
+	if (linkAvailable) return;
+	if (warnedItemKeys.has(item.itemKey)) return;
+	warnedItemKeys.add(item.itemKey);
+	console.warn(
+		"kh-card-link-unavailable",
+		item.itemKey,
+		"projector returned an empty link for an article item — see knowledge-event-payload-tag-audit-2026-04-28",
+	);
+});
+
 const nonEmptyTags = $derived(item.tags.filter((t) => t.trim() !== ""));
 const displayTags = $derived(nonEmptyTags.slice(0, 3));
 const remainingTagCount = $derived(
@@ -52,9 +68,22 @@ function handleAction(type: string) {
 </script>
 
 <article
-	class="card {isNeedToKnow ? 'card--urgent' : ''}"
+	class="card {isNeedToKnow ? 'card--urgent' : ''} {linkAvailable
+		? ''
+		: 'card--no-source'}"
 	data-item-key={item.itemKey}
+	data-link-unavailable={linkAvailable ? undefined : "true"}
 >
+	{#if !linkAvailable}
+		<div
+			class="card-no-source"
+			data-testid="kh-card-link-unavailable"
+			aria-disabled="true"
+		>
+			Archived · No source URL projected
+		</div>
+	{/if}
+
 	<!-- Header: Title + Supersede Badge + Relative Time -->
 	<div class="flex items-start justify-between gap-2 mb-2">
 		<div class="flex-1 min-w-0">
@@ -174,6 +203,24 @@ function handleAction(type: string) {
 
 	.card--urgent {
 		border-left: 3px solid var(--accent-emphasis-text);
+	}
+
+	.card--no-source {
+		border-color: color-mix(in srgb, var(--surface-border) 60%, transparent);
+		background: color-mix(in srgb, var(--surface-bg) 90%, transparent);
+	}
+
+	.card-no-source {
+		display: inline-block;
+		font-family: var(--font-mono);
+		font-size: 0.6rem;
+		font-weight: 600;
+		letter-spacing: 0.12em;
+		text-transform: uppercase;
+		color: var(--accent-emphasis-text);
+		padding: 0.125rem 0.5rem;
+		border: 1px solid var(--accent-emphasis-text);
+		margin-bottom: 0.5rem;
 	}
 
 	.card-title {
