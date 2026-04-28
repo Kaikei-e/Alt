@@ -150,3 +150,78 @@ docker exec alt-db sh -lc \
 | Swap fails with lock timeout | Another process holds a lock on the projection table; retry after checking `pg_locks` |
 | Rollback not available | The old table has been cleaned up (default: 24h retention); use [[knowledge-home-projection-recovery]] instead |
 | Reproject is too slow | Increase batch size with `--batch-size=1000` or run during low-traffic hours |
+| Mode=Dry Run was selected and Swap was clicked | Previously this would activate an empty v_new (PM-2026-041 / ADR-000867 cause). ADR-000867 added a usecase guard that rejects SwapReproject for `dry_run` runs. Re-run with `--mode=full` and Swap again. |
+| Article cards all show `Archived · No source URL` after Reproject Swap | See **Post-tag-fix backfill** below — this is the PM-2026-041 / ADR-000867 symptom |
+
+## Post-tag-fix backfill (ADR-000867)
+
+When a wire-form fix lands that corrects how the producer marshals the article URL into `knowledge_events.payload` (e.g. ADR-000865, ADR-000867), the **historical events stay immutable** with their old payload schema. A Full Reproject by itself will read those old events with the new consumer struct and project empty URLs — exactly the PM-2026-041 / 2026-04-28 symptom on `v5`.
+
+The recovery procedure is a one-shot **append-first** corrective wave: emit `ArticleUrlBackfilled` events, run a Full Reproject, then Swap.
+
+### Step 1 — Emit corrective events
+
+Run on the alt-backend host (as a one-shot job, until the admin endpoint lands in a follow-up PR). The script reads `articles.url` for every article whose Knowledge Home row has an empty `url` and appends one `ArticleUrlBackfilled` knowledge event per article. Idempotent via `dedupe_key = "article-url-backfill:<article_id>"`.
+
+```bash
+docker exec alt-alt-backend-1 sh -lc '
+psql "$DATABASE_URL" -At -c "
+  SELECT a.id, a.user_id, a.url
+  FROM articles a
+  WHERE a.url IS NOT NULL AND a.url != ''\'''\''
+    AND a.url ~* '\''^https?://[^[:space:]]+$'\''
+  LIMIT 50000
+" | while IFS="|" read -r article_id user_id url; do
+  payload=$(printf "{\"article_id\":\"%s\",\"url\":\"%s\"}" "$article_id" "$url")
+  curl -fsS -X POST \
+    "$KNOWLEDGE_SOVEREIGN_URL/services.sovereign.v1.KnowledgeSovereignService/AppendKnowledgeEvent" \
+    -H "Content-Type: application/json" \
+    -d "$(jq -nc --arg eid "$(uuidgen)" --arg now "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+        --arg tid "$user_id" --arg uid "$user_id" --arg aid "$article_id" \
+        --arg ddk "article-url-backfill:$article_id" --arg pl "$payload" \
+        '\''{event:{eventId:$eid,occurredAt:$now,tenantId:$tid,userId:$uid,actorType:"service",actorId:"backfill-cli",eventType:"ArticleUrlBackfilled",aggregateType:"article",aggregateId:$aid,dedupeKey:$ddk,payload:($pl|@base64)}}'\'')"
+done
+'
+```
+
+URL allowlist (`^https?://[^[:space:]]+$`) is enforced at the source query — non-HTTP schemes are filtered out before any event is appended (security-auditor F-001 defense layer 1; the projector and SQL apply layers 2 and 3).
+
+### Step 2 — Verify event emission
+
+```bash
+docker exec alt-knowledge-sovereign-db-1 \
+  psql -U sovereign -d knowledge_sovereign -c \
+  "SELECT count(*), max(occurred_at) FROM knowledge_events
+   WHERE event_type='ArticleUrlBackfilled';"
+```
+
+Count should match the number of articles processed in Step 1.
+
+### Step 3 — Full Reproject (Mode=Full only — Dry Run is rejected at swap)
+
+```bash
+altctl home reproject start --mode=full --from=<v_active> --to=<v_active+1>
+altctl home reproject status --run-id=<uuid>   # wait for Swappable
+altctl home reproject compare --run-id=<uuid>  # diff should show ~12k+ "url added" rows
+altctl home reproject swap --run-id=<uuid>
+```
+
+### Step 4 — Verify URL recovery
+
+```bash
+docker exec alt-knowledge-sovereign-db-1 \
+  psql -U sovereign -d knowledge_sovereign -c \
+  "SELECT projection_version, count(*) AS total,
+          count(*) FILTER (WHERE url='') AS empty_url
+   FROM knowledge_home_items
+   WHERE item_type='article'
+   GROUP BY 1 ORDER BY 1 DESC LIMIT 3;"
+```
+
+Expected: the new `v_active` has `empty_url` ≤ original-no-URL count (≈14,946 as of 2026-04-28). Articles with `articles.url` truly missing in the source-of-truth table stay empty (legitimate `Archived` kicker).
+
+### Step 5 — UI verification
+
+Browse `/home`. The `Archived · No source URL` kicker should now appear only on the small subset of articles whose `articles.url` was never recorded — not the majority.
+
+If many cards still show the kicker, re-emit Step 1 with the corrected SQL filter and repeat Steps 2–4.
