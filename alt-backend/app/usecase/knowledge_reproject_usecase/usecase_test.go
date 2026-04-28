@@ -428,6 +428,34 @@ func TestSwapReproject(t *testing.T) {
 		// No checkpoint reset when payload is nil
 		assert.Equal(t, int64(0), checkpointPort.lastEventSeq)
 	})
+
+	// Reproject Mode == dry_run skips event projection entirely
+	// (knowledge_reproject_job.go:99-114), so the resulting "swappable" run has
+	// an empty target version. Activating it would flip the read path to a
+	// projection with zero rows, presenting the canonical PM-2026-041 symptom
+	// (empty link kicker) on every Knowledge Home article. SwapReproject must
+	// reject dry_run runs at the usecase boundary so the admin UI cannot
+	// accidentally activate a preview-only projection.
+	t.Run("rejects swap when run mode is dry_run (preview-only)", func(t *testing.T) {
+		runID := uuid.New()
+		getPort := &mockGetReprojectRunPort{
+			run: &domain.ReprojectRun{
+				ReprojectRunID: runID,
+				Status:         domain.ReprojectStatusSwappable,
+				Mode:           domain.ReprojectModeDryRun,
+				ToVersion:      "v2",
+			},
+		}
+		updatePort := &mockUpdateReprojectRunPort{}
+		activatePort := &mockActivateVersionPort{}
+		uc := NewUsecase(nil, getPort, updatePort, nil, nil, nil, activatePort)
+
+		err := uc.SwapReproject(context.Background(), runID)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "dry_run")
+		assert.Equal(t, 0, activatePort.activated, "ActivateVersion must not be called for dry_run runs")
+		assert.Nil(t, updatePort.updated, "run status must not be transitioned to swapped")
+	})
 }
 
 func TestRollbackReproject(t *testing.T) {

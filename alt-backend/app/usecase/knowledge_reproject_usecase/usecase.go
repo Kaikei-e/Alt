@@ -185,6 +185,17 @@ func (u *Usecase) SwapReproject(ctx context.Context, runID uuid.UUID) error {
 		return fmt.Errorf("cannot swap run in status %q; must be swappable", run.Status)
 	}
 
+	// Defense-in-depth: dry_run mode skips event projection entirely
+	// (knowledge_reproject_job.go:99-114), so the resulting "swappable" run
+	// has an empty target version. Activating it would flip the read path
+	// to a projection with zero rows — the canonical PM-2026-041 symptom
+	// (empty link kicker on every Knowledge Home article). Reject at the
+	// usecase boundary so the admin UI cannot accidentally activate a
+	// preview-only projection regardless of which entry point invokes it.
+	if run.Mode == domain.ReprojectModeDryRun {
+		return fmt.Errorf("cannot swap dry_run reproject run %s: dry_run mode does not project events; use mode=full|user_subset|time_range", run.ReprojectRunID)
+	}
+
 	version, err := strconv.Atoi(strings.TrimPrefix(strings.ToLower(run.ToVersion), "v"))
 	if err != nil {
 		return fmt.Errorf("parse version for activation %q: %w", run.ToVersion, err)
