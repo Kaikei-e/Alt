@@ -448,7 +448,7 @@ func protoToHomeItem(pb *sovereignv1.KnowledgeHomeItem) domain.KnowledgeHomeItem
 		SummaryState:      pb.SummaryState,
 		SupersedeState:    pb.SupersedeState,
 		PreviousRefJSON:   pb.PreviousRefJson,
-		Link:              pb.Link,
+		URL:               pb.Url,
 	}
 	if pb.GeneratedAt != nil {
 		item.GeneratedAt = pb.GeneratedAt.AsTime()

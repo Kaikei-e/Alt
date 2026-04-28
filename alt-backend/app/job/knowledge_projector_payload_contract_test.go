@@ -61,7 +61,7 @@ func TestArticleCreatedPayloadContract_LinkRoundTrips(t *testing.T) {
 	require.Len(t, homeItemsPort.upserted, 1)
 	assert.Equal(t,
 		"https://example.com/contract-article",
-		homeItemsPort.upserted[0].Link,
+		homeItemsPort.upserted[0].URL,
 		"projector must read the article URL from the canonical producer wire key (json:\"url\"), not a divergent consumer-only key — see knowledge-event-payload-tag-audit-2026-04-28.md",
 	)
 }

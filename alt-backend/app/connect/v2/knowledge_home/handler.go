@@ -122,7 +122,7 @@ func convertHomeItemToProto(item domain.KnowledgeHomeItem) *knowledgehomev1.Know
 		Tags:         item.Tags,
 		Score:        item.Score,
 		SummaryState: item.SummaryState,
-		Link:         item.Link,
+		Url:          item.URL,
 	}
 
 	if item.PrimaryRefID != nil {

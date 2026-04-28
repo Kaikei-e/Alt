@@ -422,11 +422,11 @@ func TestConvertHomeItemToProto_LinkMapping(t *testing.T) {
 			PrimaryRefID: &refID,
 			Title:        "Article with Link",
 			Score:        0.9,
-			Link:         "https://example.com/article",
+			URL:          "https://example.com/article",
 			WhyReasons:   []domain.WhyReason{{Code: "new_unread"}},
 		}
 		proto := convertHomeItemToProto(item)
-		assert.Equal(t, "https://example.com/article", proto.Link)
+		assert.Equal(t, "https://example.com/article", proto.Url)
 		require.NotNil(t, proto.ArticleId)
 		assert.Equal(t, refID.String(), *proto.ArticleId)
 	})
@@ -439,11 +439,11 @@ func TestConvertHomeItemToProto_LinkMapping(t *testing.T) {
 			PrimaryRefID: &refID,
 			Title:        "Article without Link",
 			Score:        0.8,
-			Link:         "",
+			URL:          "",
 			WhyReasons:   []domain.WhyReason{{Code: "new_unread"}},
 		}
 		proto := convertHomeItemToProto(item)
-		assert.Empty(t, proto.Link)
+		assert.Empty(t, proto.Url)
 	})
 
 	t.Run("recap anchor has no link", func(t *testing.T) {
@@ -457,7 +457,7 @@ func TestConvertHomeItemToProto_LinkMapping(t *testing.T) {
 			WhyReasons:   []domain.WhyReason{{Code: "in_weekly_recap"}},
 		}
 		proto := convertHomeItemToProto(item)
-		assert.Empty(t, proto.Link)
+		assert.Empty(t, proto.Url)
 		require.NotNil(t, proto.RecapId)
 	})
 }

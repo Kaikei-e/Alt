@@ -54,7 +54,7 @@ type KnowledgeHomeItem struct {
 	SupersedeState    string      `json:"supersede_state,omitempty" db:"supersede_state"`
 	SupersededAt      *time.Time  `json:"superseded_at,omitempty" db:"superseded_at"`
 	PreviousRefJSON   string      `json:"previous_ref_json,omitempty" db:"previous_ref_json"`
-	Link              string      `json:"link,omitempty" db:"link"`
+	URL               string      `json:"url,omitempty" db:"url"`
 }
 
 // Summary state constants.

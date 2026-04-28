@@ -13,6 +13,11 @@ const (
 	MutationClearSupersede        = "clear_supersede"
 	MutationUpsertTodayDigest     = "upsert_today_digest"
 	MutationUpsertRecallCandidate = "upsert_recall_candidate"
+	// MutationPatchHomeItemURL targets sovereign's PatchKnowledgeHomeItemURL
+	// driver — single-column URL patch on knowledge_home_items, used by the
+	// corrective `ArticleUrlBackfilled` projector branch to repair historical
+	// rows whose original ArticleCreated event landed without a "url" key.
+	MutationPatchHomeItemURL = "patch_home_item_url"
 )
 
 // Curation mutation types.

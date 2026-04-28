@@ -84,7 +84,7 @@ func (u *RecallRailUsecase) enrichMissingItems(ctx context.Context, candidates [
 			ItemType:     domain.ItemArticle,
 			PrimaryRefID: &aid,
 			Title:        title,
-			Link:         link,
+			URL:          link,
 			PublishedAt:  publishedAt,
 			SummaryState: domain.SummaryStateMissing,
 		}

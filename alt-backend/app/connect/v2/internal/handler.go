@@ -389,12 +389,16 @@ func (h *Handler) CreateArticle(ctx context.Context, req *connect.Request[backen
 	// Fire-and-forget: append Knowledge Home ArticleCreated event to sovereign-db
 	if h.knowledgeEventPort != nil && created {
 		if userID, parseErr := uuid.Parse(req.Msg.UserId); parseErr == nil {
-			payload, _ := json.Marshal(map[string]string{
-				"article_id":   articleID,
-				"title":        req.Msg.Title,
-				"published_at": publishedAt.Format(time.RFC3339),
-				"tenant_id":    req.Msg.UserId,
-				"link":         req.Msg.Url,
+			// Canonical wire schema — see domain.ArticleCreatedPayload comment
+			// and docs/glossary/ubiquitous-language.md. URL goes under the
+			// "url" key; raw map literals here historically wrote "link"
+			// (PM-2026-041) and silently broke the projector.
+			payload, _ := json.Marshal(domain.ArticleCreatedPayload{
+				ArticleID:   articleID,
+				Title:       req.Msg.Title,
+				PublishedAt: publishedAt.Format(time.RFC3339),
+				TenantID:    req.Msg.UserId,
+				URL:         req.Msg.Url,
 			})
 			kevent := domain.KnowledgeEvent{
 				EventID:       uuid.New(),
@@ -406,7 +410,7 @@ func (h *Handler) CreateArticle(ctx context.Context, req *connect.Request[backen
 				EventType:     domain.EventArticleCreated,
 				AggregateType: domain.AggregateArticle,
 				AggregateID:   articleID,
-				DedupeKey:     fmt.Sprintf("article-created:%s", articleID),
+				DedupeKey:     fmt.Sprintf(domain.DedupeKeyArticleCreated, articleID),
 				Payload:       payload,
 			}
 			if appendErr := h.knowledgeEventPort.AppendKnowledgeEvent(ctx, kevent); appendErr != nil {

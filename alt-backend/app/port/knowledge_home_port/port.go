@@ -31,6 +31,15 @@ type ClearSupersedeStatePort interface {
 	ClearSupersedeState(ctx context.Context, userID uuid.UUID, itemKey string, projectionVersion int) error
 }
 
+// PatchKnowledgeHomeItemURLPort applies a single-column URL patch to one
+// knowledge_home_items row. Used exclusively by the corrective
+// ArticleUrlBackfilled projector branch — see ADR-000867 and
+// docs/glossary/ubiquitous-language.md. Other URL writes route through
+// UpsertKnowledgeHomeItemPort.
+type PatchKnowledgeHomeItemURLPort interface {
+	PatchKnowledgeHomeItemURL(ctx context.Context, userID uuid.UUID, itemKey string, projectionVersion int, url string) error
+}
+
 // ListDistinctUserIDsPort returns distinct user IDs that have knowledge home items.
 // Used by scheduled jobs (RecallProjector, DigestReconcile) to discover active users
 // instead of relying on static AllowedUserIDs from configuration.

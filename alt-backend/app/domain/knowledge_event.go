@@ -51,6 +51,33 @@ const (
 	// bucket to a re-evaluation queue (fb.md §F goal). Same-stage transition
 	// like Deferred — the OODA stage doesn't move; only dismiss_state does.
 	EventKnowledgeLoopReviewed = "knowledge_loop.reviewed.v1"
+
+	// EventArticleUrlBackfilled is a corrective event that repairs the
+	// `link` column on `knowledge_home_items` for articles whose original
+	// `ArticleCreated` event was written with the legacy wire key (`"link"`)
+	// or with no URL key at all. Append-first recovery: the historical
+	// event is never mutated; this new event is appended and the projector
+	// applies it as a patch-only update. Payload schema lives at
+	// `ArticleUrlBackfilledPayload` in knowledge_event_payload.go.
+	EventArticleUrlBackfilled = "ArticleUrlBackfilled"
+)
+
+// Dedupe key namespaces for AppendKnowledgeEvent. Each producer MUST use
+// the namespace that matches its event_type so the sovereign dedupe
+// registry can reject true duplicates without colliding across producers
+// that may legitimately reference the same aggregate id.
+const (
+	// DedupeKeyArticleCreated is the namespace for `ArticleCreated` events
+	// emitted by outbox-worker / connect/v2/internal article-created /
+	// knowledge_backfill_job. Format: `article-created:<article_id>`.
+	DedupeKeyArticleCreated = "article-created:%s"
+
+	// DedupeKeyArticleUrlBackfill is the namespace for the corrective
+	// `ArticleUrlBackfilled` events emitted by the admin one-shot backfill
+	// tool. A separate namespace from DedupeKeyArticleCreated so a
+	// corrective event for an already-emitted ArticleCreated does NOT
+	// collide with the original. Format: `article-url-backfill:<article_id>`.
+	DedupeKeyArticleUrlBackfill = "article-url-backfill:%s"
 )
 
 // Actor type constants.

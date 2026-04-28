@@ -50,6 +50,34 @@ func (c *Client) DismissKnowledgeHomeItem(ctx context.Context, userID uuid.UUID,
 	})
 }
 
+// PatchKnowledgeHomeItemURL implements knowledge_home_port.PatchKnowledgeHomeItemURLPort.
+// Routes to sovereign's PatchKnowledgeHomeItemURL driver via the
+// ApplyProjectionMutation envelope with MutationType ==
+// MutationPatchHomeItemURL. Used by the corrective ArticleUrlBackfilled
+// projector branch only.
+func (c *Client) PatchKnowledgeHomeItemURL(ctx context.Context, userID uuid.UUID, itemKey string, projectionVersion int, url string) error {
+	if !c.enabled {
+		return nil
+	}
+	if url == "" {
+		return fmt.Errorf("sovereign PatchKnowledgeHomeItemURL: empty url rejected at client boundary")
+	}
+	payload, err := json.Marshal(map[string]any{
+		"user_id":            userID.String(),
+		"item_key":           itemKey,
+		"projection_version": projectionVersion,
+		"url":                url,
+	})
+	if err != nil {
+		return fmt.Errorf("sovereign PatchKnowledgeHomeItemURL marshal: %w", err)
+	}
+	return c.ApplyProjectionMutation(ctx, knowledge_sovereign_port.ProjectionMutation{
+		MutationType: knowledge_sovereign_port.MutationPatchHomeItemURL,
+		EntityID:     itemKey,
+		Payload:      payload,
+	})
+}
+
 // ClearSupersedeState implements knowledge_home_port.ClearSupersedeStatePort.
 func (c *Client) ClearSupersedeState(ctx context.Context, userID uuid.UUID, itemKey string, projectionVersion int) error {
 	if !c.enabled {

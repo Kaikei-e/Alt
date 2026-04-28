@@ -36,6 +36,7 @@ func KnowledgeReprojectJob(
 		knowledge_home_port.UpsertKnowledgeHomeItemPort
 		knowledge_home_port.DismissKnowledgeHomeItemPort
 		knowledge_home_port.ClearSupersedeStatePort
+		knowledge_home_port.PatchKnowledgeHomeItemURLPort
 	},
 	todayDigestPort today_digest_port.UpsertTodayDigestPort,
 	summaryVersionPort summary_version_port.GetSummaryVersionByIDPort,
@@ -58,6 +59,7 @@ func processReprojectBatch(
 		knowledge_home_port.UpsertKnowledgeHomeItemPort
 		knowledge_home_port.DismissKnowledgeHomeItemPort
 		knowledge_home_port.ClearSupersedeStatePort
+		knowledge_home_port.PatchKnowledgeHomeItemURLPort
 	},
 	_ today_digest_port.UpsertTodayDigestPort,
 	summaryVersionPort summary_version_port.GetSummaryVersionByIDPort,

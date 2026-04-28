@@ -95,12 +95,17 @@ func emitArticleCreatedEvent(ctx context.Context, port knowledge_event_port.Appe
 		return
 	}
 
-	eventPayload, _ := json.Marshal(map[string]string{
-		"article_id":   p.ArticleID,
-		"title":        p.Title,
-		"published_at": time.Now().Format(time.RFC3339),
-		"tenant_id":    p.UserID,
-		"link":         p.URL,
+	// Marshal through the canonical domain.ArticleCreatedPayload struct so
+	// the wire key for the article URL is locked to "url" — using a raw
+	// map[string]any literal here historically wrote the legacy "link" key
+	// which silently broke the projector (PM-2026-041). The shared struct
+	// is the single source of truth for this wire schema.
+	eventPayload, _ := json.Marshal(domain.ArticleCreatedPayload{
+		ArticleID:   p.ArticleID,
+		Title:       p.Title,
+		PublishedAt: time.Now().Format(time.RFC3339),
+		TenantID:    p.UserID,
+		URL:         p.URL,
 	})
 
 	kevent := domain.KnowledgeEvent{
@@ -113,7 +118,7 @@ func emitArticleCreatedEvent(ctx context.Context, port knowledge_event_port.Appe
 		EventType:     domain.EventArticleCreated,
 		AggregateType: domain.AggregateArticle,
 		AggregateID:   p.ArticleID,
-		DedupeKey:     fmt.Sprintf("article-created:%s", p.ArticleID),
+		DedupeKey:     fmt.Sprintf(domain.DedupeKeyArticleCreated, p.ArticleID),
 		Payload:       eventPayload,
 	}
 

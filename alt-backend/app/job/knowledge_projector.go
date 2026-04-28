@@ -16,6 +16,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	neturl "net/url"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -42,6 +44,7 @@ func KnowledgeProjectorJob(
 	homeItemsPort interface {
 		knowledge_home_port.UpsertKnowledgeHomeItemPort
 		knowledge_home_port.DismissKnowledgeHomeItemPort
+		knowledge_home_port.PatchKnowledgeHomeItemURLPort
 	},
 	todayDigestPort today_digest_port.UpsertTodayDigestPort,
 	activeVersionPort knowledge_projection_version_port.GetActiveVersionPort,
@@ -72,6 +75,7 @@ func KnowledgeProjectorJobWithConfig(
 	homeItemsPort interface {
 		knowledge_home_port.UpsertKnowledgeHomeItemPort
 		knowledge_home_port.DismissKnowledgeHomeItemPort
+		knowledge_home_port.PatchKnowledgeHomeItemURLPort
 	},
 	todayDigestPort today_digest_port.UpsertTodayDigestPort,
 	activeVersionPort knowledge_projection_version_port.GetActiveVersionPort,
@@ -112,6 +116,7 @@ func processKnowledgeEvents(
 	homeItemsPort interface {
 		knowledge_home_port.UpsertKnowledgeHomeItemPort
 		knowledge_home_port.DismissKnowledgeHomeItemPort
+		knowledge_home_port.PatchKnowledgeHomeItemURLPort
 	},
 	todayDigestPort today_digest_port.UpsertTodayDigestPort,
 	summaryVersionPort summary_version_port.GetSummaryVersionByIDPort,
@@ -233,6 +238,7 @@ func projectEvent(
 	homeItemsPort interface {
 		knowledge_home_port.UpsertKnowledgeHomeItemPort
 		knowledge_home_port.DismissKnowledgeHomeItemPort
+		knowledge_home_port.PatchKnowledgeHomeItemURLPort
 	},
 	todayDigestPort today_digest_port.UpsertTodayDigestPort,
 	summaryVersionPort summary_version_port.GetSummaryVersionByIDPort,
@@ -244,6 +250,8 @@ func projectEvent(
 	switch event.EventType {
 	case domain.EventArticleCreated:
 		return projectArticleCreated(ctx, event, homeItemsPort, todayDigestPort, projectionVersion)
+	case domain.EventArticleUrlBackfilled:
+		return projectArticleUrlBackfilled(ctx, event, homeItemsPort, projectionVersion)
 	case domain.EventSummaryVersionCreated:
 		return projectSummaryVersionCreated(ctx, event, homeItemsPort, todayDigestPort, summaryVersionPort, projectionVersion)
 	case domain.EventTagSetVersionCreated:
@@ -264,25 +272,13 @@ func projectEvent(
 	}
 }
 
-// articleCreatedPayload is the expected payload for ArticleCreated events.
-//
-// The wire schema is owned by the producer in
-// alt-backend/app/driver/mqhub_connect/client.go (ArticleCreatedPayload). The
-// canonical key for the source URL is "url" — see audit
-// docs/review/knowledge-event-payload-tag-audit-2026-04-28.md. The Go field is
-// named URL (not Link) so a future tag-drift between the two sides fails the
-// compiler / the contract test in knowledge_projector_payload_contract_test.go,
-// instead of silently producing empty link columns in the projection.
-type articleCreatedPayload struct {
-	ArticleID   string `json:"article_id"`
-	Title       string `json:"title"`
-	PublishedAt string `json:"published_at"`
-	TenantID    string `json:"tenant_id"`
-	URL         string `json:"url"`
-}
-
 func projectArticleCreated(ctx context.Context, event domain.KnowledgeEvent, port knowledge_home_port.UpsertKnowledgeHomeItemPort, todayDigestPort today_digest_port.UpsertTodayDigestPort, projectionVersion int) error {
-	var payload articleCreatedPayload
+	// The wire schema is owned by domain.ArticleCreatedPayload — the same
+	// struct all 3 producers (outbox_worker / connect/v2/internal /
+	// knowledge_backfill_job) marshal through. Keeping a separate consumer
+	// struct here is what allowed PM-2026-041's drift to slip in; the
+	// shared struct is now the single source of truth.
+	var payload domain.ArticleCreatedPayload
 	if err := json.Unmarshal(event.Payload, &payload); err != nil {
 		return fmt.Errorf("unmarshal ArticleCreated payload: %w", err)
 	}
@@ -324,7 +320,7 @@ func projectArticleCreated(ctx context.Context, event domain.KnowledgeEvent, por
 		ItemType:          domain.ItemArticle,
 		PrimaryRefID:      &articleID,
 		Title:             payload.Title,
-		Link:              payload.URL,
+		URL:               payload.URL,
 		WhyReasons:        []domain.WhyReason{{Code: domain.WhyNewUnread}},
 		Score:             score,
 		SummaryState:      domain.SummaryStatePending,
@@ -355,6 +351,70 @@ func projectArticleCreated(ctx context.Context, event domain.KnowledgeEvent, por
 	}
 
 	return nil
+}
+
+// projectArticleUrlBackfilled handles the corrective ArticleUrlBackfilled
+// event by patching only the `url` column of the matching
+// knowledge_home_items row. ADR-000867 / docs/glossary/ubiquitous-language.md.
+//
+// Defense-in-depth: URL scheme is allowlisted to {http, https} both here
+// and at the sovereign-side WHERE clause. Empty URL is also rejected
+// at both layers. The corrective event itself comes from a vetted
+// admin-authenticated emitter that reads the producer-side `articles.url`
+// (a stable resource), so dangerous schemes should never get this far,
+// but we treat the projector as untrusted boundary input regardless.
+func projectArticleUrlBackfilled(
+	ctx context.Context,
+	event domain.KnowledgeEvent,
+	port knowledge_home_port.PatchKnowledgeHomeItemURLPort,
+	projectionVersion int,
+) error {
+	var payload domain.ArticleUrlBackfilledPayload
+	if err := json.Unmarshal(event.Payload, &payload); err != nil {
+		return fmt.Errorf("unmarshal ArticleUrlBackfilled payload: %w", err)
+	}
+	if !isHTTPURL(payload.URL) {
+		// Skip silently: the corrective event carries an unusable URL.
+		// Logged at debug; the row stays with the existing (possibly
+		// empty) url so downstream FE shows the Archived kicker rather
+		// than smuggling a dangerous href.
+		logger.WarnContext(ctx, "skipping ArticleUrlBackfilled with non-HTTP URL",
+			"event_id", event.EventID, "article_id", payload.ArticleID)
+		return nil
+	}
+	articleID, err := uuid.Parse(payload.ArticleID)
+	if err != nil {
+		return fmt.Errorf("parse article_id: %w", err)
+	}
+	userID := event.TenantID
+	if event.UserID != nil {
+		userID = *event.UserID
+	}
+	itemKey := fmt.Sprintf("article:%s", articleID)
+	if err := port.PatchKnowledgeHomeItemURL(ctx, userID, itemKey, projectionVersion, payload.URL); err != nil {
+		return fmt.Errorf("patch knowledge_home_items.url: %w", err)
+	}
+	return nil
+}
+
+// isHTTPURL allowlist. Mirrors the FE-side safeArticleHref guard so a
+// dangerous scheme rejected on the FE never sneaks back via the corrective
+// event. Returns false for empty, malformed, or non-(http|https) URLs.
+func isHTTPURL(raw string) bool {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return false
+	}
+	parsed, err := neturl.Parse(raw)
+	if err != nil {
+		return false
+	}
+	switch strings.ToLower(parsed.Scheme) {
+	case "http", "https":
+		return parsed.Host != ""
+	default:
+		return false
+	}
 }
 
 type summaryVersionPayload struct {

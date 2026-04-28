@@ -56,8 +56,9 @@ type mockHomeItemsPort struct {
 		userID  uuid.UUID
 		itemKey string
 	}
-	err   error
-	items map[string]domain.KnowledgeHomeItem
+	patchedURLs []patchURLCall
+	err         error
+	items       map[string]domain.KnowledgeHomeItem
 }
 
 func (m *mockHomeItemsPort) UpsertKnowledgeHomeItem(_ context.Context, item domain.KnowledgeHomeItem) error {
@@ -114,6 +115,26 @@ func (m *mockHomeItemsPort) DismissKnowledgeHomeItem(_ context.Context, userID u
 
 func (m *mockHomeItemsPort) ClearSupersedeState(_ context.Context, _ uuid.UUID, _ string, _ int) error {
 	return m.err
+}
+
+// patchedURLs records every PatchKnowledgeHomeItemURL call made via this
+// mock so projector branch tests can assert the corrective-event path
+// hits the patch method (not the upsert method).
+type patchURLCall struct {
+	UserID            uuid.UUID
+	ItemKey           string
+	ProjectionVersion int
+	URL               string
+}
+
+func (m *mockHomeItemsPort) PatchKnowledgeHomeItemURL(_ context.Context, userID uuid.UUID, itemKey string, projectionVersion int, url string) error {
+	if m.err != nil {
+		return m.err
+	}
+	m.patchedURLs = append(m.patchedURLs, patchURLCall{
+		UserID: userID, ItemKey: itemKey, ProjectionVersion: projectionVersion, URL: url,
+	})
+	return nil
 }
 
 func mergeWhyReasons(newReasons []domain.WhyReason, existingReasons []domain.WhyReason) []domain.WhyReason {
@@ -207,7 +228,7 @@ func TestKnowledgeProjectorJob_ArticleCreated(t *testing.T) {
 
 	tenantID := uuid.New()
 	articleID := uuid.New()
-	payload, _ := json.Marshal(articleCreatedPayload{
+	payload, _ := json.Marshal(domain.ArticleCreatedPayload{
 		ArticleID:   articleID.String(),
 		Title:       "Test Article",
 		PublishedAt: "2026-03-17T10:00:00Z",
@@ -245,12 +266,106 @@ func TestKnowledgeProjectorJob_ArticleCreated(t *testing.T) {
 	assert.Equal(t, 1, homeItemsPort.upserted[0].ProjectionVersion) // default version
 }
 
+// Corrective ArticleUrlBackfilled event repairs an existing knowledge_home_items
+// row that was projected with an empty URL (the legacy "link" wire-key bug,
+// PM-2026-041 + ADR-000867). The projector branch must:
+//   - call PatchKnowledgeHomeItemURL (NOT UpsertKnowledgeHomeItem) so other
+//     fields are preserved
+//   - pass through the URL from the event payload as-is
+//   - reject non-HTTP(S) schemes silently as defense-in-depth
+func TestKnowledgeProjectorJob_ArticleUrlBackfilled_PatchesURLOnly(t *testing.T) {
+	logger.InitLogger()
+
+	tenantID := uuid.New()
+	userID := uuid.New()
+	articleID := uuid.New()
+	payload, _ := json.Marshal(domain.ArticleUrlBackfilledPayload{
+		ArticleID: articleID.String(),
+		URL:       "https://example.com/recovered",
+	})
+
+	eventsPort := &mockEventsPort{
+		events: []domain.KnowledgeEvent{
+			{
+				EventID:       uuid.New(),
+				EventSeq:      1,
+				TenantID:      tenantID,
+				UserID:        &userID,
+				EventType:     domain.EventArticleUrlBackfilled,
+				AggregateType: domain.AggregateArticle,
+				AggregateID:   articleID.String(),
+				Payload:       payload,
+			},
+		},
+	}
+	checkpointPort := &mockCheckpointPort{lastSeq: 0}
+	homeItemsPort := &mockHomeItemsPort{}
+	digestPort := &mockDigestPort{}
+
+	fn := KnowledgeProjectorJob(eventsPort, checkpointPort, checkpointPort, homeItemsPort, digestPort, nil, nil, nil, nil)
+	require.NoError(t, fn(context.Background()))
+
+	// MUST NOT touch upsert path — this is a patch-only event.
+	require.Empty(t, homeItemsPort.upserted, "ArticleUrlBackfilled must NOT trigger UpsertKnowledgeHomeItem")
+	require.Len(t, homeItemsPort.patchedURLs, 1)
+	patch := homeItemsPort.patchedURLs[0]
+	assert.Equal(t, userID, patch.UserID)
+	assert.Equal(t, "article:"+articleID.String(), patch.ItemKey)
+	assert.Equal(t, "https://example.com/recovered", patch.URL)
+}
+
+func TestKnowledgeProjectorJob_ArticleUrlBackfilled_RejectsBlockedSchemes(t *testing.T) {
+	logger.InitLogger()
+
+	tenantID := uuid.New()
+	userID := uuid.New()
+	articleID := uuid.New()
+
+	for _, badURL := range []string{
+		"javascript:alert(1)",
+		"data:text/html,<script>alert(1)</script>",
+		"file:///etc/passwd",
+		"vbscript:msgbox",
+		"   javascript:alert(1)",
+		"//evil.com/redirect",
+		"",
+	} {
+		t.Run(badURL, func(t *testing.T) {
+			payload, _ := json.Marshal(domain.ArticleUrlBackfilledPayload{
+				ArticleID: articleID.String(),
+				URL:       badURL,
+			})
+			eventsPort := &mockEventsPort{
+				events: []domain.KnowledgeEvent{
+					{
+						EventID:       uuid.New(),
+						EventSeq:      1,
+						TenantID:      tenantID,
+						UserID:        &userID,
+						EventType:     domain.EventArticleUrlBackfilled,
+						AggregateType: domain.AggregateArticle,
+						AggregateID:   articleID.String(),
+						Payload:       payload,
+					},
+				},
+			}
+			checkpointPort := &mockCheckpointPort{lastSeq: 0}
+			homeItemsPort := &mockHomeItemsPort{}
+			digestPort := &mockDigestPort{}
+
+			fn := KnowledgeProjectorJob(eventsPort, checkpointPort, checkpointPort, homeItemsPort, digestPort, nil, nil, nil, nil)
+			require.NoError(t, fn(context.Background()), "non-HTTP scheme must skip silently, not error")
+			require.Empty(t, homeItemsPort.patchedURLs, "blocked URL scheme %q must NOT reach the patch driver", badURL)
+		})
+	}
+}
+
 func TestKnowledgeProjectorJob_ArticleCreated_LinkPropagation(t *testing.T) {
 	logger.InitLogger()
 
 	tenantID := uuid.New()
 	articleID := uuid.New()
-	payload, _ := json.Marshal(articleCreatedPayload{
+	payload, _ := json.Marshal(domain.ArticleCreatedPayload{
 		ArticleID:   articleID.String(),
 		Title:       "Article With Link",
 		PublishedAt: "2026-03-23T10:00:00Z",
@@ -280,18 +395,18 @@ func TestKnowledgeProjectorJob_ArticleCreated_LinkPropagation(t *testing.T) {
 
 	require.NoError(t, err)
 	require.Len(t, homeItemsPort.upserted, 1)
-	assert.Equal(t, "https://example.com/article-with-link", homeItemsPort.upserted[0].Link)
+	assert.Equal(t, "https://example.com/article-with-link", homeItemsPort.upserted[0].URL)
 }
 
 func TestKnowledgeProjectorJob_CheckpointAdvances(t *testing.T) {
 	logger.InitLogger()
 
 	tenantID := uuid.New()
-	payload1, _ := json.Marshal(articleCreatedPayload{
+	payload1, _ := json.Marshal(domain.ArticleCreatedPayload{
 		ArticleID: uuid.New().String(),
 		Title:     "Article 1",
 	})
-	payload2, _ := json.Marshal(articleCreatedPayload{
+	payload2, _ := json.Marshal(domain.ArticleCreatedPayload{
 		ArticleID: uuid.New().String(),
 		Title:     "Article 2",
 	})
@@ -320,7 +435,7 @@ func TestKnowledgeProjectorJob_DrainsMultipleBatchesWithinSingleRun(t *testing.T
 	tenantID := uuid.New()
 	events := make([]domain.KnowledgeEvent, 0, 150)
 	for i := 0; i < 150; i++ {
-		payload, _ := json.Marshal(articleCreatedPayload{
+		payload, _ := json.Marshal(domain.ArticleCreatedPayload{
 			ArticleID: uuid.New().String(),
 			Title:     "Article",
 		})
@@ -357,7 +472,7 @@ func TestKnowledgeProjectorJob_SummaryVersionCreated_PopulatesExcerpt(t *testing
 	svID := uuid.New()
 
 	// First create the article
-	articlePayload, _ := json.Marshal(articleCreatedPayload{
+	articlePayload, _ := json.Marshal(domain.ArticleCreatedPayload{
 		ArticleID:   articleID.String(),
 		Title:       "Test Article",
 		PublishedAt: "2026-03-17T10:00:00Z",
@@ -447,7 +562,7 @@ func TestKnowledgeProjectorJob_TagSetVersionCreated_PreservesSummaryCompletedRea
 	summaryVersionID := uuid.New()
 	tagSetVersionID := uuid.New()
 
-	articlePayload, _ := json.Marshal(articleCreatedPayload{
+	articlePayload, _ := json.Marshal(domain.ArticleCreatedPayload{
 		ArticleID:   articleID.String(),
 		Title:       "Test Article",
 		PublishedAt: "2026-03-17T10:00:00Z",
@@ -504,7 +619,7 @@ func TestKnowledgeProjectorJob_ArticleCreated_UpdatesTodayDigest(t *testing.T) {
 
 	tenantID := uuid.New()
 	articleID := uuid.New()
-	payload, _ := json.Marshal(articleCreatedPayload{
+	payload, _ := json.Marshal(domain.ArticleCreatedPayload{
 		ArticleID:   articleID.String(),
 		Title:       "Test Article",
 		PublishedAt: "2026-03-17T10:00:00Z",
@@ -744,7 +859,7 @@ func TestKnowledgeProjectorJob_ArticleCreated_SetsSummaryStatePending(t *testing
 
 	tenantID := uuid.New()
 	articleID := uuid.New()
-	payload, _ := json.Marshal(articleCreatedPayload{
+	payload, _ := json.Marshal(domain.ArticleCreatedPayload{
 		ArticleID:   articleID.String(),
 		Title:       "Test Article",
 		PublishedAt: "2026-03-17T10:00:00Z",
@@ -919,7 +1034,7 @@ func TestKnowledgeProjectorJob_UsesActiveVersion(t *testing.T) {
 
 	tenantID := uuid.New()
 	articleID := uuid.New()
-	payload, _ := json.Marshal(articleCreatedPayload{
+	payload, _ := json.Marshal(domain.ArticleCreatedPayload{
 		ArticleID: articleID.String(),
 		Title:     "Test Article V2",
 	})

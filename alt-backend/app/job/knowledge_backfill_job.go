@@ -126,13 +126,15 @@ func processBackfillBatch(
 
 // GenerateBackfillEvent creates a synthetic event for backfill purposes.
 // The dedupe_key ensures idempotency if the same article is backfilled again.
-func GenerateBackfillEvent(tenantID uuid.UUID, userID *uuid.UUID, articleID uuid.UUID, title string, publishedAt time.Time, link string) domain.KnowledgeEvent {
-	payload, _ := json.Marshal(articleCreatedPayload{
+// Marshals through domain.ArticleCreatedPayload (the single source of truth
+// for the wire schema) so the URL key is canonical "url".
+func GenerateBackfillEvent(tenantID uuid.UUID, userID *uuid.UUID, articleID uuid.UUID, title string, publishedAt time.Time, url string) domain.KnowledgeEvent {
+	payload, _ := json.Marshal(domain.ArticleCreatedPayload{
 		ArticleID:   articleID.String(),
 		Title:       title,
 		PublishedAt: publishedAt.Format(time.RFC3339),
 		TenantID:    tenantID.String(),
-		URL:         link,
+		URL:         url,
 	})
 
 	return domain.KnowledgeEvent{
@@ -145,7 +147,7 @@ func GenerateBackfillEvent(tenantID uuid.UUID, userID *uuid.UUID, articleID uuid
 		EventType:     domain.EventArticleCreated,
 		AggregateType: domain.AggregateArticle,
 		AggregateID:   articleID.String(),
-		DedupeKey:     fmt.Sprintf("article-created:%s", articleID),
+		DedupeKey:     fmt.Sprintf(domain.DedupeKeyArticleCreated, articleID),
 		Payload:       payload,
 	}
 }

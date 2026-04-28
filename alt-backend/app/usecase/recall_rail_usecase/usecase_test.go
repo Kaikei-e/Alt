@@ -82,7 +82,7 @@ func TestExecute_FallbackEnrichesNilItems(t *testing.T) {
 	item := candidates[0].Item
 	require.NotNil(t, item, "fallback should have enriched the nil item")
 	assert.Equal(t, "Test Article", item.Title)
-	assert.Equal(t, "https://example.com/article", item.Link)
+	assert.Equal(t, "https://example.com/article", item.URL)
 	assert.Equal(t, &now, item.PublishedAt)
 	assert.Equal(t, domain.ItemArticle, item.ItemType)
 	assert.Equal(t, domain.SummaryStateMissing, item.SummaryState)

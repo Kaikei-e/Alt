@@ -80,7 +80,7 @@ func TestKnowledgeReprojectJob_ReplaysDismissIntoTargetVersion(t *testing.T) {
 				EventType:     domain.EventArticleCreated,
 				AggregateType: domain.AggregateArticle,
 				AggregateID:   articleID.String(),
-				Payload:       mustJSON(articleCreatedPayload{ArticleID: articleID.String(), Title: "Replay target", PublishedAt: "2026-03-18T10:00:00Z"}),
+				Payload:       mustJSON(domain.ArticleCreatedPayload{ArticleID: articleID.String(), Title: "Replay target", PublishedAt: "2026-03-18T10:00:00Z"}),
 			},
 			{
 				EventID:       uuid.New(),
@@ -158,7 +158,7 @@ func TestKnowledgeReprojectJob_ProcessesMultipleBatchesPerTick(t *testing.T) {
 			EventType:     domain.EventArticleCreated,
 			AggregateType: domain.AggregateArticle,
 			AggregateID:   articleID.String(),
-			Payload: mustJSON(articleCreatedPayload{
+			Payload: mustJSON(domain.ArticleCreatedPayload{
 				ArticleID:   articleID.String(),
 				Title:       fmt.Sprintf("Article %d", i),
 				PublishedAt: "2026-03-18T10:00:00Z",
