@@ -132,7 +132,7 @@ func GenerateBackfillEvent(tenantID uuid.UUID, userID *uuid.UUID, articleID uuid
 		Title:       title,
 		PublishedAt: publishedAt.Format(time.RFC3339),
 		TenantID:    tenantID.String(),
-		Link:        link,
+		URL:         link,
 	})
 
 	return domain.KnowledgeEvent{

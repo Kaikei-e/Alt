@@ -265,12 +265,20 @@ func projectEvent(
 }
 
 // articleCreatedPayload is the expected payload for ArticleCreated events.
+//
+// The wire schema is owned by the producer in
+// alt-backend/app/driver/mqhub_connect/client.go (ArticleCreatedPayload). The
+// canonical key for the source URL is "url" — see audit
+// docs/review/knowledge-event-payload-tag-audit-2026-04-28.md. The Go field is
+// named URL (not Link) so a future tag-drift between the two sides fails the
+// compiler / the contract test in knowledge_projector_payload_contract_test.go,
+// instead of silently producing empty link columns in the projection.
 type articleCreatedPayload struct {
 	ArticleID   string `json:"article_id"`
 	Title       string `json:"title"`
 	PublishedAt string `json:"published_at"`
 	TenantID    string `json:"tenant_id"`
-	Link        string `json:"link"`
+	URL         string `json:"url"`
 }
 
 func projectArticleCreated(ctx context.Context, event domain.KnowledgeEvent, port knowledge_home_port.UpsertKnowledgeHomeItemPort, todayDigestPort today_digest_port.UpsertTodayDigestPort, projectionVersion int) error {
@@ -316,7 +324,7 @@ func projectArticleCreated(ctx context.Context, event domain.KnowledgeEvent, por
 		ItemType:          domain.ItemArticle,
 		PrimaryRefID:      &articleID,
 		Title:             payload.Title,
-		Link:              payload.Link,
+		Link:              payload.URL,
 		WhyReasons:        []domain.WhyReason{{Code: domain.WhyNewUnread}},
 		Score:             score,
 		SummaryState:      domain.SummaryStatePending,

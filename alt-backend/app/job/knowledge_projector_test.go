@@ -255,7 +255,7 @@ func TestKnowledgeProjectorJob_ArticleCreated_LinkPropagation(t *testing.T) {
 		Title:       "Article With Link",
 		PublishedAt: "2026-03-23T10:00:00Z",
 		TenantID:    tenantID.String(),
-		Link:        "https://example.com/article-with-link",
+		URL:         "https://example.com/article-with-link",
 	})
 
 	eventsPort := &mockEventsPort{
