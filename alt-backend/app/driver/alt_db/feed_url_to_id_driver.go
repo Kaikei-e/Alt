@@ -12,14 +12,16 @@ import (
 // ErrFeedNotFoundByURL is returned when a feed URL is not found in the database.
 var ErrFeedNotFoundByURL = errors.New("feed not found by URL")
 
-// GetFeedIDByArticleURL retrieves the feed ID for a given article URL by looking up feeds.link.
-// This is used by SaveArticle where the URL is an article page URL stored in feeds.link.
+// GetFeedIDByArticleURL retrieves the feed ID for a given article URL by
+// looking up feeds.website_url (renamed from `link` under ADR-000868).
+// Used by SaveArticle where the URL is an article page URL stored in
+// feeds.website_url.
 func (r *FeedRepository) GetFeedIDByArticleURL(ctx context.Context, articleURL string) (string, error) {
 	if r.pool == nil {
 		return "", errors.New("database connection not available")
 	}
 
-	query := `SELECT id FROM feeds WHERE link = $1`
+	query := `SELECT id FROM feeds WHERE website_url = $1`
 
 	var feedID string
 	err := r.pool.QueryRow(ctx, query, articleURL).Scan(&feedID)

@@ -85,7 +85,7 @@ func TestGetFeedIDByArticleURL_Success(t *testing.T) {
 	repo := &FeedRepository{pool: mock}
 
 	// The query should look up feeds.id by feeds.link (article URL, not RSS URL)
-	mock.ExpectQuery(`SELECT id FROM feeds WHERE link = \$1`).
+	mock.ExpectQuery(`SELECT id FROM feeds WHERE website_url = \$1`).
 		WithArgs("https://dev.to/some-article").
 		WillReturnRows(pgxmock.NewRows([]string{"id"}).AddRow("feed-uuid-1"))
 
@@ -103,7 +103,7 @@ func TestGetFeedIDByArticleURL_NotFound(t *testing.T) {
 
 	repo := &FeedRepository{pool: mock}
 
-	mock.ExpectQuery(`SELECT id FROM feeds WHERE link = \$1`).
+	mock.ExpectQuery(`SELECT id FROM feeds WHERE website_url = \$1`).
 		WithArgs("https://nonexistent.com/article").
 		WillReturnRows(pgxmock.NewRows([]string{"id"}))
 

@@ -24,7 +24,7 @@ func TestAltDBRepository_SearchFeedsByTitle(t *testing.T) {
 			query:  "tech",
 			userID: "11111111-1111-1111-1111-111111111111",
 			mockSetup: func(mock pgxmock.PgxPoolIface) {
-				rows := pgxmock.NewRows([]string{"id", "title", "description", "link", "pub_date", "created_at"}).
+				rows := pgxmock.NewRows([]string{"id", "title", "description", "website_url", "pub_date", "created_at"}).
 					AddRow(
 						"22222222-2222-2222-2222-222222222222",
 						"Tech News",
@@ -42,7 +42,7 @@ func TestAltDBRepository_SearchFeedsByTitle(t *testing.T) {
 						time.Now(),
 					)
 
-				mock.ExpectQuery(`SELECT DISTINCT f\.id, f\.title, f\.description, f\.link, f\.pub_date, f\.created_at`).
+				mock.ExpectQuery(`SELECT DISTINCT f\.id, f\.title, f\.description, f\.website_url, f\.pub_date, f\.created_at`).
 					WithArgs("11111111-1111-1111-1111-111111111111", "%tech%").
 					WillReturnRows(rows)
 			},
@@ -54,9 +54,9 @@ func TestAltDBRepository_SearchFeedsByTitle(t *testing.T) {
 			query:  "nonexistent",
 			userID: "11111111-1111-1111-1111-111111111111",
 			mockSetup: func(mock pgxmock.PgxPoolIface) {
-				rows := pgxmock.NewRows([]string{"id", "title", "description", "link", "pub_date", "created_at"})
+				rows := pgxmock.NewRows([]string{"id", "title", "description", "website_url", "pub_date", "created_at"})
 
-				mock.ExpectQuery(`SELECT DISTINCT f\.id, f\.title, f\.description, f\.link, f\.pub_date, f\.created_at`).
+				mock.ExpectQuery(`SELECT DISTINCT f\.id, f\.title, f\.description, f\.website_url, f\.pub_date, f\.created_at`).
 					WithArgs("11111111-1111-1111-1111-111111111111", "%nonexistent%").
 					WillReturnRows(rows)
 			},
@@ -68,7 +68,7 @@ func TestAltDBRepository_SearchFeedsByTitle(t *testing.T) {
 			query:  "TECH",
 			userID: "11111111-1111-1111-1111-111111111111",
 			mockSetup: func(mock pgxmock.PgxPoolIface) {
-				rows := pgxmock.NewRows([]string{"id", "title", "description", "link", "pub_date", "created_at"}).
+				rows := pgxmock.NewRows([]string{"id", "title", "description", "website_url", "pub_date", "created_at"}).
 					AddRow(
 						"22222222-2222-2222-2222-222222222222",
 						"Tech News",
@@ -78,7 +78,7 @@ func TestAltDBRepository_SearchFeedsByTitle(t *testing.T) {
 						time.Now(),
 					)
 
-				mock.ExpectQuery(`SELECT DISTINCT f\.id, f\.title, f\.description, f\.link, f\.pub_date, f\.created_at`).
+				mock.ExpectQuery(`SELECT DISTINCT f\.id, f\.title, f\.description, f\.website_url, f\.pub_date, f\.created_at`).
 					WithArgs("11111111-1111-1111-1111-111111111111", "%tech%").
 					WillReturnRows(rows)
 			},

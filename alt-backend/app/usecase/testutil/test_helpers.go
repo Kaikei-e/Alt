@@ -102,7 +102,7 @@ func CreateMockDomainFeeds(count int) []*domain.Feed {
 			ID:          uuid.New(),
 			Title:       "Test Feed " + string(rune('0'+i+1)),
 			Description: "Test Description " + string(rune('0'+i+1)),
-			Link:        "https://test.com/feed" + string(rune('0'+i+1)),
+			WebsiteURL:  "https://test.com/feed" + string(rune('0'+i+1)),
 			CreatedAt:   now,
 			UpdatedAt:   now,
 		}

@@ -46,7 +46,7 @@ func buildFeedModels(ctx context.Context, feeds []*domain.FeedItem) []models.Fee
 		feedModel := &models.Feed{
 			Title:       strings.TrimSpace(feedItem.Title),
 			Description: feedItem.Description,
-			Link:        normalizedLink,
+			WebsiteURL:  normalizedLink,
 			PubDate:     feedItem.PublishedParsed,
 			CreatedAt:   time.Now(),
 			UpdatedAt:   time.Now(),
@@ -56,7 +56,7 @@ func buildFeedModels(ctx context.Context, feeds []*domain.FeedItem) []models.Fee
 			feedModel.OgImageURL = &feedItem.OgImageURL
 		}
 
-		logger.SafeInfoContext(ctx, "Feed model link", "feedModel", feedModel.Link)
+		logger.SafeInfoContext(ctx, "Feed model link", "feedModel", feedModel.WebsiteURL)
 		items = append(items, *feedModel)
 	}
 	return items

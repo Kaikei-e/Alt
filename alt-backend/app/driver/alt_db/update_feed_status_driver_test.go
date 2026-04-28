@@ -53,7 +53,7 @@ func TestUpdateFeedStatus_WithUTMParameters(t *testing.T) {
 		AddRow(testFeedID)
 
 	// The implementation normalizes the input URL before querying
-	mock.ExpectQuery("SELECT id FROM feeds WHERE link").
+	mock.ExpectQuery("SELECT id FROM feeds WHERE website_url").
 		WithArgs(pgxmock.AnyArg()). // Normalized URL
 		WillReturnRows(rows)
 
@@ -103,7 +103,7 @@ func TestUpdateFeedStatus_WithTrailingSlash(t *testing.T) {
 		AddRow(testFeedID)
 
 	// The implementation normalizes the input URL before querying
-	mock.ExpectQuery("SELECT id FROM feeds WHERE link").
+	mock.ExpectQuery("SELECT id FROM feeds WHERE website_url").
 		WithArgs(pgxmock.AnyArg()). // Normalized URL
 		WillReturnRows(rows)
 
@@ -152,7 +152,7 @@ func TestUpdateFeedStatus_RealWorldExample(t *testing.T) {
 		AddRow(testFeedID)
 
 	// The implementation normalizes the input URL before querying
-	mock.ExpectQuery("SELECT id FROM feeds WHERE link").
+	mock.ExpectQuery("SELECT id FROM feeds WHERE website_url").
 		WithArgs(pgxmock.AnyArg()). // Normalized URL
 		WillReturnRows(rows)
 
@@ -194,7 +194,7 @@ func TestUpdateFeedStatus_FeedNotFound(t *testing.T) {
 	ctx, _ := createTestUserContext(testUserID)
 
 	// Mock the SELECT query with WHERE clause that returns no rows
-	mock.ExpectQuery("SELECT id FROM feeds WHERE link").
+	mock.ExpectQuery("SELECT id FROM feeds WHERE website_url").
 		WithArgs(pgxmock.AnyArg()).
 		WillReturnError(pgx.ErrNoRows)
 
@@ -258,7 +258,7 @@ func TestUpdateFeedStatus_MultipleFeeds(t *testing.T) {
 		AddRow(testFeedID)
 
 	// The implementation normalizes the input URL before querying
-	mock.ExpectQuery("SELECT id FROM feeds WHERE link").
+	mock.ExpectQuery("SELECT id FROM feeds WHERE website_url").
 		WithArgs(pgxmock.AnyArg()). // Normalized URL
 		WillReturnRows(rows)
 

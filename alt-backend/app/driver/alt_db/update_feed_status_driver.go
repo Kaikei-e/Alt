@@ -27,8 +27,8 @@ func (r *FeedRepository) UpdateFeedStatus(ctx context.Context, feedURL url.URL) 
 	}
 
 	// OPTIMIZATION: Query feed directly by normalized URL instead of loading all feeds
-	// This changes from O(n) to O(1) with the index on feeds.link
-	getFeedQuery := `SELECT id FROM feeds WHERE link = $1`
+	// This changes from O(n) to O(1) with the index on feeds.website_url
+	getFeedQuery := `SELECT id FROM feeds WHERE website_url = $1`
 
 	var feedID string
 	err = r.pool.QueryRow(ctx, getFeedQuery, normalizedInputURL).Scan(&feedID)

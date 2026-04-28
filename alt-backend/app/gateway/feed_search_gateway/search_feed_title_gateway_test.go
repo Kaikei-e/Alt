@@ -31,10 +31,10 @@ func TestSearchByTitleGateway_SearchFeedsByTitle(t *testing.T) {
 			userID: "11111111-1111-1111-1111-111111111111",
 			mockSetup: func(mock pgxmock.PgxPoolIface) {
 				now := time.Now()
-				rows := pgxmock.NewRows([]string{"id", "title", "description", "link", "pub_date", "created_at"}).
+				rows := pgxmock.NewRows([]string{"id", "title", "description", "website_url", "pub_date", "created_at"}).
 					AddRow(uuid.New().String(), "Test Feed 1", "Test Description 1", "https://test1.com", &now, now).
 					AddRow(uuid.New().String(), "Test Feed 2", "Test Description 2", "https://test2.com", (*time.Time)(nil), now)
-				mock.ExpectQuery(`SELECT DISTINCT f\.id, f\.title, f\.description, f\.link, f\.pub_date, f\.created_at`).
+				mock.ExpectQuery(`SELECT DISTINCT f\.id, f\.title, f\.description, f\.website_url, f\.pub_date, f\.created_at`).
 					WithArgs("11111111-1111-1111-1111-111111111111", "%test%").
 					WillReturnRows(rows)
 			},
@@ -57,8 +57,8 @@ func TestSearchByTitleGateway_SearchFeedsByTitle(t *testing.T) {
 			query:  "nonexistent",
 			userID: "11111111-1111-1111-1111-111111111111",
 			mockSetup: func(mock pgxmock.PgxPoolIface) {
-				rows := pgxmock.NewRows([]string{"id", "title", "description", "link", "pub_date", "created_at"})
-				mock.ExpectQuery(`SELECT DISTINCT f\.id, f\.title, f\.description, f\.link, f\.pub_date, f\.created_at`).
+				rows := pgxmock.NewRows([]string{"id", "title", "description", "website_url", "pub_date", "created_at"})
+				mock.ExpectQuery(`SELECT DISTINCT f\.id, f\.title, f\.description, f\.website_url, f\.pub_date, f\.created_at`).
 					WithArgs("11111111-1111-1111-1111-111111111111", "%nonexistent%").
 					WillReturnRows(rows)
 			},
@@ -70,7 +70,7 @@ func TestSearchByTitleGateway_SearchFeedsByTitle(t *testing.T) {
 			query:  "error",
 			userID: "11111111-1111-1111-1111-111111111111",
 			mockSetup: func(mock pgxmock.PgxPoolIface) {
-				mock.ExpectQuery(`SELECT DISTINCT f\.id, f\.title, f\.description, f\.link, f\.pub_date, f\.created_at`).
+				mock.ExpectQuery(`SELECT DISTINCT f\.id, f\.title, f\.description, f\.website_url, f\.pub_date, f\.created_at`).
 					WithArgs("11111111-1111-1111-1111-111111111111", "%error%").
 					WillReturnError(errors.New("database error"))
 			},
@@ -180,7 +180,7 @@ func TestSearchByTitleGateway_ContextCancellation(t *testing.T) {
 	defer mock.Close()
 
 	// Setup mock to expect query but return context cancelled error
-	mock.ExpectQuery(`SELECT DISTINCT f\.id, f\.title, f\.description, f\.link, f\.pub_date, f\.created_at`).
+	mock.ExpectQuery(`SELECT DISTINCT f\.id, f\.title, f\.description, f\.website_url, f\.pub_date, f\.created_at`).
 		WithArgs("11111111-1111-1111-1111-111111111111", "%test query%").
 		WillReturnError(context.Canceled)
 
@@ -230,8 +230,8 @@ func TestSearchByTitleGateway_EmptyResultHandling(t *testing.T) {
 			// Empty or whitespace queries should not make database calls
 			if tc.query != "" && tc.query != "   " {
 				// Setup mock to return empty results
-				rows := pgxmock.NewRows([]string{"id", "title", "description", "link", "pub_date", "created_at"})
-				mock.ExpectQuery(`SELECT DISTINCT f\.id, f\.title, f\.description, f\.link, f\.pub_date, f\.created_at`).
+				rows := pgxmock.NewRows([]string{"id", "title", "description", "website_url", "pub_date", "created_at"})
+				mock.ExpectQuery(`SELECT DISTINCT f\.id, f\.title, f\.description, f\.website_url, f\.pub_date, f\.created_at`).
 					WithArgs(tc.userID, "%"+tc.query+"%").
 					WillReturnRows(rows)
 			}
@@ -269,7 +269,7 @@ func TestSearchByTitleGateway_ErrorPropagation(t *testing.T) {
 	defer mock.Close()
 
 	// Setup mock to return an error
-	mock.ExpectQuery(`SELECT DISTINCT f\.id, f\.title, f\.description, f\.link, f\.pub_date, f\.created_at`).
+	mock.ExpectQuery(`SELECT DISTINCT f\.id, f\.title, f\.description, f\.website_url, f\.pub_date, f\.created_at`).
 		WithArgs("11111111-1111-1111-1111-111111111111", "%test%").
 		WillReturnError(errors.New("database error"))
 

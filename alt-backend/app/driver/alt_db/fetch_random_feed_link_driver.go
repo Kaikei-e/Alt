@@ -52,7 +52,7 @@ func (r *FeedRepository) FetchRandomFeed(ctx context.Context) (*domain.Feed, err
 	}
 
 	query := `
-		SELECT f.id, f.title, f.description, f.link
+		SELECT f.id, f.title, f.description, f.website_url
 		FROM feeds f
 		WHERE EXISTS (SELECT 1 FROM feed_tags ft WHERE ft.feed_id = f.id)
 		ORDER BY RANDOM()
@@ -82,6 +82,6 @@ func (r *FeedRepository) FetchRandomFeed(ctx context.Context) (*domain.Feed, err
 		ID:          id,
 		Title:       title,
 		Description: description.String, // converts NULL to empty string
-		Link:        link,
+		WebsiteURL:  link,
 	}, nil
 }

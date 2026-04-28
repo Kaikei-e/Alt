@@ -19,7 +19,7 @@ func (r *FeedRepository) RegisterSingleFeed(ctx context.Context, feed *models.Fe
 	// Use ON CONFLICT for atomic upsert, eliminating TOCTOU race condition.
 	// Same pattern as RegisterMultipleFeeds.
 	const upsertQuery = `
-		INSERT INTO feeds (title, description, link, pub_date, created_at, updated_at, feed_link_id, og_image_url)
+		INSERT INTO feeds (title, description, website_url, pub_date, created_at, updated_at, feed_link_id, og_image_url)
 		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
 		ON CONFLICT (link) DO UPDATE SET
 			title = EXCLUDED.title,
@@ -31,12 +31,12 @@ func (r *FeedRepository) RegisterSingleFeed(ctx context.Context, feed *models.Fe
 	`
 
 	if _, err := r.pool.Exec(ctx, upsertQuery,
-		feed.Title, feed.Description, feed.Link, feed.PubDate, feed.CreatedAt, feed.UpdatedAt, feed.FeedLinkID, feed.OgImageURL,
+		feed.Title, feed.Description, feed.WebsiteURL, feed.PubDate, feed.CreatedAt, feed.UpdatedAt, feed.FeedLinkID, feed.OgImageURL,
 	); err != nil {
 		return fmt.Errorf("upsert feed: %w", err)
 	}
 
-	logger.Logger.InfoContext(ctx, "Feed upserted", "link", feed.Link)
+	logger.Logger.InfoContext(ctx, "Feed upserted", "link", feed.WebsiteURL)
 	return nil
 }
 
@@ -74,7 +74,7 @@ func (r *FeedRepository) RegisterMultipleFeedsWithState(ctx context.Context, fee
 	// COALESCE preserves existing og_image_url/feed_link_id if already set
 	// RETURNING id: returns the id for both INSERT and ON CONFLICT UPDATE cases
 	const upsertQuery = `
-		INSERT INTO feeds (title, description, link, pub_date, created_at, updated_at, feed_link_id, og_image_url)
+		INSERT INTO feeds (title, description, website_url, pub_date, created_at, updated_at, feed_link_id, og_image_url)
 		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
 		ON CONFLICT (link) DO UPDATE SET
 			title = EXCLUDED.title,
@@ -88,7 +88,7 @@ func (r *FeedRepository) RegisterMultipleFeedsWithState(ctx context.Context, fee
 
 	batch := &pgx.Batch{}
 	for _, feed := range feeds {
-		batch.Queue(upsertQuery, feed.Title, feed.Description, feed.Link, feed.PubDate, feed.CreatedAt, feed.UpdatedAt, feed.FeedLinkID, feed.OgImageURL)
+		batch.Queue(upsertQuery, feed.Title, feed.Description, feed.WebsiteURL, feed.PubDate, feed.CreatedAt, feed.UpdatedAt, feed.FeedLinkID, feed.OgImageURL)
 	}
 
 	br := tx.SendBatch(ctx, batch)

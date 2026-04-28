@@ -209,7 +209,7 @@ func (h *Handler) RandomSubscription(
 		Id:          feed.ID.String(),
 		Title:       feed.Title,
 		Description: feed.Description,
-		Link:        feed.Link,
+		Link:        feed.WebsiteURL,
 		PublishedAt: feed.UpdatedAt.Format(time.RFC3339),
 	}), nil
 }

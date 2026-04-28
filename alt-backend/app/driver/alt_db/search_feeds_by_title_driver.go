@@ -23,7 +23,7 @@ func (a *FeedRepository) SearchFeedsByTitle(ctx context.Context, query string, u
 	searchPattern := "%" + strings.ToLower(strings.TrimSpace(query)) + "%"
 
 	queryString := `
-		SELECT DISTINCT f.id, f.title, f.description, f.link, f.pub_date, f.created_at
+		SELECT DISTINCT f.id, f.title, f.description, f.website_url, f.pub_date, f.created_at
 		FROM feeds f
 		INNER JOIN articles a ON f.id = a.feed_id
 		WHERE a.user_id = $1
@@ -54,6 +54,11 @@ func (a *FeedRepository) SearchFeedsByTitle(ctx context.Context, query string, u
 		var pubDate *time.Time
 		var createdAt time.Time
 
+		// SQL position 4 (feeds.website_url) maps onto the RSS-spec
+		// `Link` field of domain.FeedItem at the driver→domain seam.
+		// docs/glossary/ubiquitous-language.md keeps `Link` for the
+		// RSS spec layer; the column rename only flips the DB-side
+		// canonical name.
 		err := rows.Scan(
 			&feedID,
 			&feed.Title,

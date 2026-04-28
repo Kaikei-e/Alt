@@ -5,13 +5,26 @@ import (
 	"time"
 )
 
-// Feed represents a RSS/Atom feed
+// Feed represents a RSS/Atom feed.
+//
+// Two distinct URL fields, per docs/glossary/ubiquitous-language.md:
+//
+//   - URL        — RSS Subscription URL (the feed XML location, the URL
+//     the user subscribed to; populated from feed_links.url
+//     via FeedLinkID JOIN).
+//   - WebsiteURL — Website URL (the URL of the website the feed
+//     describes; the value of the RSS <channel><link>
+//     element). Persisted in feeds.website_url. Was
+//     formerly named Link/feeds.link, which collided with
+//     HTML/RSS "link" terminology and HTML <a> hyperlink
+//     semantics; renamed under ADR-000868 to make the
+//     domain noun unambiguous.
 type Feed struct {
 	ID            uuid.UUID  `json:"id" db:"id"`
 	Title         string     `json:"title" db:"title"`
 	Description   string     `json:"description" db:"description"`
-	URL           string     `json:"url" db:"url"`   // Feed URL
-	Link          string     `json:"link" db:"link"` // Website URL
+	URL           string     `json:"url" db:"url"`                 // RSS Subscription URL (feed XML)
+	WebsiteURL    string     `json:"website_url" db:"website_url"` // Website URL (RSS <channel><link>)
 	TenantID      uuid.UUID  `json:"tenant_id" db:"tenant_id"`
 	Language      string     `json:"language" db:"language"`
 	Category      string     `json:"category" db:"category"`

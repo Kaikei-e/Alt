@@ -71,14 +71,14 @@ func TestFeedModelURLNormalization(t *testing.T) {
 			feedModel := models.Feed{
 				Title:       "Test Article",
 				Description: "Test description",
-				Link:        normalizedLink,
+				WebsiteURL:  normalizedLink,
 				PubDate:     time.Now().UTC(),
 				CreatedAt:   time.Now().UTC(),
 				UpdatedAt:   time.Now().UTC(),
 			}
 
-			if feedModel.Link != tt.expectedURL {
-				t.Errorf("Feed model Link expected '%s', got '%s'", tt.expectedURL, feedModel.Link)
+			if feedModel.WebsiteURL != tt.expectedURL {
+				t.Errorf("Feed model Link expected '%s', got '%s'", tt.expectedURL, feedModel.WebsiteURL)
 			}
 		})
 	}

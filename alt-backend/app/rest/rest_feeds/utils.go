@@ -119,7 +119,7 @@ func OptimizeFeedsResponse(feeds []*domain.FeedItem) []map[string]interface{} {
 	optimized := make([]map[string]interface{}, 0, len(feeds))
 	for _, feed := range feeds {
 		optimized = append(optimized, map[string]interface{}{
-			"id":          feed.Link, // Use Link as ID for consistency with frontend
+			"id":          feed.Link, // domain.FeedItem keeps RSS-spec Link
 			"title":       feed.Title,
 			"description": feed.Description,
 			"link":        feed.Link,

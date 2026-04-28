@@ -16,7 +16,7 @@ func getFeedIDByArticleURL(ctx context.Context, pool PgxIface, articleURL string
 		return "", errors.New("database connection not available")
 	}
 
-	query := `SELECT id FROM feeds WHERE link = $1`
+	query := `SELECT id FROM feeds WHERE website_url = $1`
 
 	var feedID string
 	err := pool.QueryRow(ctx, query, articleURL).Scan(&feedID)

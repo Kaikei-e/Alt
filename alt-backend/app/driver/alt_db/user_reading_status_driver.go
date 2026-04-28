@@ -11,7 +11,7 @@ import (
 )
 
 // MarkArticleAsRead marks a feed as read for the current user.
-// It resolves the feed by URL (feeds.link) and upserts a record in read_status.
+// It resolves the feed by URL (feeds.website_url) and upserts a record in read_status.
 // Note: This function is named MarkArticleAsRead for API compatibility, but it
 // operates on feeds (not articles) because not all feeds have corresponding articles.
 func (r *SubscriptionRepository) MarkArticleAsRead(ctx context.Context, articleURL url.URL) error {
@@ -34,7 +34,7 @@ func (r *SubscriptionRepository) MarkArticleAsRead(ctx context.Context, articleU
 	upsertQuery := `
 		INSERT INTO read_status (feed_id, user_id, is_read, read_at, created_at)
 		SELECT f.id, $2, TRUE, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
-		FROM feeds f WHERE f.link = $1
+		FROM feeds f WHERE f.website_url = $1
 		ON CONFLICT (feed_id, user_id) DO UPDATE
 		SET is_read = TRUE, read_at = CURRENT_TIMESTAMP
 	`

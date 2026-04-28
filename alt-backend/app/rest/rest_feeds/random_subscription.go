@@ -45,7 +45,7 @@ func RestHandleFetchRandomSubscription(container *di.ApplicationComponents) echo
 		response := RandomFeedResponse{
 			Feed: &RandomFeedData{
 				ID:          feed.ID.String(),
-				URL:         feed.Link, // Link is the website URL
+				URL:         feed.WebsiteURL, // Link is the website URL
 				Title:       feed.Title,
 				Description: feed.Description,
 			},

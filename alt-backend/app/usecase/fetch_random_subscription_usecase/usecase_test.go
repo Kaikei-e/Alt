@@ -40,7 +40,7 @@ func TestFetchRandomSubscriptionUsecase_Execute_Success(t *testing.T) {
 		ID:          uuid.New(),
 		Title:       "Test Feed",
 		Description: "A test feed description",
-		Link:        "https://example.com",
+		WebsiteURL:  "https://example.com",
 	}
 
 	mockPort.On("FetchRandomSubscription", mock.Anything).Return(expectedFeed, nil)
@@ -54,7 +54,7 @@ func TestFetchRandomSubscriptionUsecase_Execute_Success(t *testing.T) {
 	assert.Equal(t, expectedFeed.ID, result.ID)
 	assert.Equal(t, expectedFeed.Title, result.Title)
 	assert.Equal(t, expectedFeed.Description, result.Description)
-	assert.Equal(t, expectedFeed.Link, result.Link)
+	assert.Equal(t, expectedFeed.WebsiteURL, result.WebsiteURL)
 	mockPort.AssertExpectations(t)
 }
 

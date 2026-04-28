@@ -205,8 +205,8 @@ func TestHandleFetchArticle_Compliance(t *testing.T) {
 
 		// Mock: GetFeedIDByURL -> Not Found (used inside SaveArticle)
 		// We expect this to fail or return empty, and SaveArticle handles it.
-		// GetFeedIDByURL uses separate query: SELECT id FROM feeds WHERE link = $1
-		mockPool.ExpectQuery(`(?is)SELECT id FROM feeds WHERE link = \$1`).
+		// GetFeedIDByURL uses separate query: SELECT id FROM feeds WHERE website_url = $1
+		mockPool.ExpectQuery(`(?is)SELECT id FROM feeds WHERE website_url = \$1`).
 			WithArgs(targetURLStr).
 			WillReturnRows(pgxmock.NewRows([]string{"id"})) // Returns empty, so Scan returns ErrNoRows
 

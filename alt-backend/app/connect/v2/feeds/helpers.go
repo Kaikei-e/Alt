@@ -26,7 +26,7 @@ func convertFeedsToProto(feeds []*domain.FeedItem) []*feedsv2.FeedItem {
 			Id:              id,
 			Title:           feed.Title,
 			Description:     feed.Description,
-			Link:            feed.Link,
+			Link:            feed.Link, // domain.FeedItem keeps RSS-spec Link
 			Published:       formatTimeAgo(feed.PublishedParsed),
 			CreatedAt:       feed.PublishedParsed.Format(time.RFC3339),
 			Author:          formatAuthor(feed.Author, feed.Authors),

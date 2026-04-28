@@ -31,7 +31,7 @@ func TestAltDBRepository_FetchRandomFeed(t *testing.T) {
 		expectedDescription := "Test feed description"
 		expectedLink := "https://example.com"
 
-		mock.ExpectQuery("SELECT f.id, f.title, f.description, f.link FROM feeds f WHERE EXISTS").
+		mock.ExpectQuery("SELECT f.id, f.title, f.description, f.website_url FROM feeds f WHERE EXISTS").
 			WillReturnRows(pgxmock.NewRows([]string{"id", "title", "description", "link"}).
 				AddRow(feedID, expectedTitle, expectedDescription, expectedLink))
 
@@ -42,7 +42,7 @@ func TestAltDBRepository_FetchRandomFeed(t *testing.T) {
 		require.Equal(t, feedID, feed.ID)
 		require.Equal(t, expectedTitle, feed.Title)
 		require.Equal(t, expectedDescription, feed.Description)
-		require.Equal(t, expectedLink, feed.Link)
+		require.Equal(t, expectedLink, feed.WebsiteURL)
 		require.NoError(t, mock.ExpectationsWereMet())
 	})
 
@@ -54,7 +54,7 @@ func TestAltDBRepository_FetchRandomFeed(t *testing.T) {
 		repo := &FeedRepository{pool: mock}
 		ctx := context.Background()
 
-		mock.ExpectQuery("SELECT f.id, f.title, f.description, f.link FROM feeds f WHERE EXISTS").
+		mock.ExpectQuery("SELECT f.id, f.title, f.description, f.website_url FROM feeds f WHERE EXISTS").
 			WillReturnRows(pgxmock.NewRows([]string{"id", "title", "description", "link"}))
 
 		feed, err := repo.FetchRandomFeed(ctx)
@@ -76,7 +76,7 @@ func TestAltDBRepository_FetchRandomFeed(t *testing.T) {
 		expectedTitle := "Test Feed"
 		expectedLink := "https://example.com"
 
-		mock.ExpectQuery("SELECT f.id, f.title, f.description, f.link FROM feeds f WHERE EXISTS").
+		mock.ExpectQuery("SELECT f.id, f.title, f.description, f.website_url FROM feeds f WHERE EXISTS").
 			WillReturnRows(pgxmock.NewRows([]string{"id", "title", "description", "link"}).
 				AddRow(feedID, expectedTitle, nil, expectedLink))
 
@@ -87,7 +87,7 @@ func TestAltDBRepository_FetchRandomFeed(t *testing.T) {
 		require.Equal(t, feedID, feed.ID)
 		require.Equal(t, expectedTitle, feed.Title)
 		require.Equal(t, "", feed.Description) // nil becomes empty string
-		require.Equal(t, expectedLink, feed.Link)
+		require.Equal(t, expectedLink, feed.WebsiteURL)
 		require.NoError(t, mock.ExpectationsWereMet())
 	})
 }

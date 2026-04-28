@@ -146,7 +146,7 @@ func convertGofeedToDomain(feed *gofeed.Feed) *domain.RSSFeed {
 	domainFeed := &domain.RSSFeed{
 		Title:       feed.Title,
 		Description: feed.Description,
-		Link:        feed.Link,
+		Link:        feed.Link, // RSS-spec channel link; gofeed uses .Link
 		FeedLink:    feed.FeedLink,
 		Updated:     feed.Updated,
 		Language:    feed.Language,

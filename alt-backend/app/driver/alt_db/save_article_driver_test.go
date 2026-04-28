@@ -34,7 +34,7 @@ func TestAltDBRepository_SaveArticle_Success(t *testing.T) {
 	ctx := domain.SetUserContext(context.Background(), userCtx)
 
 	// Mock GetFeedIDByArticleURL call - feed not found (will use NULL feed_id)
-	mock.ExpectQuery(`SELECT id FROM feeds WHERE link = \$1`).
+	mock.ExpectQuery(`SELECT id FROM feeds WHERE website_url = \$1`).
 		WithArgs("https://example.com/article").
 		WillReturnError(errors.New("no rows"))
 
@@ -71,7 +71,7 @@ func TestAltDBRepository_SaveArticle_UpsertAndOutbox(t *testing.T) {
 	}
 	ctx := domain.SetUserContext(context.Background(), userCtx)
 
-	mock.ExpectQuery(`SELECT id FROM feeds WHERE link = \$1`).
+	mock.ExpectQuery(`SELECT id FROM feeds WHERE website_url = \$1`).
 		WithArgs("https://example.com/article").
 		WillReturnError(errors.New("no rows"))
 	mock.ExpectBegin()

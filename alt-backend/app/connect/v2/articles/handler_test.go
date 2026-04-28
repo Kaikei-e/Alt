@@ -907,8 +907,8 @@ func TestFetchRandomFeed_NoArticles_FetchesContentAndGeneratesTags_Documented(t 
 		// When FetchRandomFeed is called and the feed has no articles:
 		// 1. Get a random feed from FetchRandomSubscriptionUsecase
 		// 2. FetchLatestArticleByFeedID returns nil (no articles)
-		// 3. Parse feed.Link as article URL
-		// 4. Call ArticleUsecase.FetchCompliantArticle(feed.Link)
+		// 3. Parse feed.WebsiteURL as article URL
+		// 4. Call ArticleUsecase.FetchCompliantArticle(feed.WebsiteURL)
 		//    - This fetches article content from the web
 		//    - Saves article to DB with proper feed_id
 		//    - Returns articleID
@@ -934,7 +934,7 @@ func TestFetchRandomFeed_NoArticles_FetchesContentAndGeneratesTags_Documented(t 
 		// - UI remains functional
 
 		// Expected failure scenarios:
-		// - Invalid feed.Link URL -> skip article fetch, return empty tags
+		// - Invalid feed.WebsiteURL URL -> skip article fetch, return empty tags
 		// - ArticleUsecase not available -> skip article fetch, return empty tags
 		// - FetchCompliantArticle fails -> log warning, return empty tags
 		// - FetchArticleTags fails -> log warning, return empty tags
@@ -947,7 +947,7 @@ func TestFetchRandomFeed_NoArticles_FetchesContentAndGeneratesTags_Documented(t 
 func TestFetchRandomFeed_NoArticles_FlowCorrectness(t *testing.T) {
 	// Verify the flow logic is correct by testing the URL parsing and article ID handling
 	t.Run("url_parsing", func(t *testing.T) {
-		// Test that we correctly parse feed.Link URLs
+		// Test that we correctly parse feed.WebsiteURL URLs
 		testURLs := []struct {
 			link  string
 			valid bool

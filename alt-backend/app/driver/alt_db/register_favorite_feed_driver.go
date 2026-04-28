@@ -38,7 +38,7 @@ func (r *FeedRepository) RegisterFavoriteFeed(ctx context.Context, url string) (
 	}()
 
 	var feedID string
-	err = tx.QueryRow(ctx, "SELECT id FROM feeds WHERE link = $1", cleanURL).Scan(&feedID)
+	err = tx.QueryRow(ctx, "SELECT id FROM feeds WHERE website_url = $1", cleanURL).Scan(&feedID)
 	if err != nil {
 		logger.SafeErrorContext(ctx, "feed not found for URL", "error", err, "url", cleanURL)
 		return pgx.ErrNoRows
@@ -89,7 +89,7 @@ func (r *FeedRepository) RemoveFavoriteFeed(ctx context.Context, url string) (er
 	}()
 
 	var feedID string
-	err = tx.QueryRow(ctx, "SELECT id FROM feeds WHERE link = $1", cleanURL).Scan(&feedID)
+	err = tx.QueryRow(ctx, "SELECT id FROM feeds WHERE website_url = $1", cleanURL).Scan(&feedID)
 	if err != nil {
 		logger.SafeErrorContext(ctx, "feed not found for URL", "error", err, "url", cleanURL)
 		return pgx.ErrNoRows

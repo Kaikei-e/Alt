@@ -48,7 +48,7 @@ func CollectFeedsJob(r *alt_db.AltDBRepository) func(ctx context.Context) error 
 			feedModels[i] = models.Feed{
 				Title:       feedItem.Title,
 				Description: feedItem.Description,
-				Link:        normalizedLink,
+				WebsiteURL:  normalizedLink,
 				PubDate:     pubDate,
 				CreatedAt:   time.Now().UTC(),
 				UpdatedAt:   time.Now().UTC(),

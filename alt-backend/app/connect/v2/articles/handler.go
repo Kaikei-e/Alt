@@ -464,7 +464,7 @@ func (h *Handler) FetchRandomFeed(
 
 	return connect.NewResponse(&articlesv2.FetchRandomFeedResponse{
 		Id:              feed.ID.String(),
-		Url:             feed.Link, // Site URL (feeds.link)
+		Url:             feed.WebsiteURL, // Site URL (feeds.link)
 		Title:           feed.Title,
 		Description:     feed.Description,
 		Tags:            protoTags,

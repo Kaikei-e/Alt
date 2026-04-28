@@ -33,7 +33,7 @@ func (r *FeedRepository) GetSingleFeed(ctx context.Context) (*models.Feed, error
 	`
 
 	var feed models.Feed
-	err := r.pool.QueryRow(ctx, query).Scan(&feed.ID, &feed.Title, &feed.Description, &feed.Link, &feed.PubDate, &feed.CreatedAt, &feed.UpdatedAt)
+	err := r.pool.QueryRow(ctx, query).Scan(&feed.ID, &feed.Title, &feed.Description, &feed.WebsiteURL, &feed.PubDate, &feed.CreatedAt, &feed.UpdatedAt)
 	if err != nil {
 		logger.Logger.ErrorContext(ctx, "error fetching single feed", "error", err)
 		return nil, errors.New("error fetching single feed")
@@ -56,7 +56,7 @@ func (r *FeedRepository) FetchFeedsList(ctx context.Context) ([]*models.Feed, er
 
 	for rows.Next() {
 		var feed models.Feed
-		err := rows.Scan(&feed.ID, &feed.Title, &feed.Description, &feed.Link, &feed.PubDate, &feed.CreatedAt, &feed.UpdatedAt)
+		err := rows.Scan(&feed.ID, &feed.Title, &feed.Description, &feed.WebsiteURL, &feed.PubDate, &feed.CreatedAt, &feed.UpdatedAt)
 		if err != nil {
 			logger.Logger.ErrorContext(ctx, "error scanning feeds list", "error", err)
 			return nil, errors.New("error scanning feeds list")
@@ -82,7 +82,7 @@ func (r *FeedRepository) FetchFeedsListLimit(ctx context.Context, limit int) ([]
 
 	for rows.Next() {
 		var feed models.Feed
-		err := rows.Scan(&feed.ID, &feed.Title, &feed.Description, &feed.Link, &feed.PubDate, &feed.CreatedAt, &feed.UpdatedAt)
+		err := rows.Scan(&feed.ID, &feed.Title, &feed.Description, &feed.WebsiteURL, &feed.PubDate, &feed.CreatedAt, &feed.UpdatedAt)
 		if err != nil {
 			logger.Logger.ErrorContext(ctx, "error scanning feeds list offset", "error", err)
 			return nil, errors.New("error scanning feeds list offset")
@@ -108,7 +108,7 @@ func (r *FeedRepository) FetchFeedsListPage(ctx context.Context, page int) ([]*m
 
 	for rows.Next() {
 		var feed models.Feed
-		err := rows.Scan(&feed.ID, &feed.Title, &feed.Description, &feed.Link, &feed.PubDate, &feed.CreatedAt, &feed.UpdatedAt)
+		err := rows.Scan(&feed.ID, &feed.Title, &feed.Description, &feed.WebsiteURL, &feed.PubDate, &feed.CreatedAt, &feed.UpdatedAt)
 		if err != nil {
 			logger.Logger.ErrorContext(ctx, "error scanning feeds list page", "error", err)
 			return nil, errors.New("error scanning feeds list page")
@@ -129,7 +129,7 @@ func (r *FeedRepository) FetchUnreadFeedsListPage(ctx context.Context, page int)
 	// For now, keeping the original OFFSET-based implementation for backward compatibility
 	// Consider migrating to cursor-based pagination (FetchUnreadFeedsListCursor) for better performance
 	query := `
-		SELECT f.id, f.title, f.description, f.link, f.pub_date, f.created_at, f.updated_at
+		SELECT f.id, f.title, f.description, f.website_url, f.pub_date, f.created_at, f.updated_at
 		FROM feeds f
 		WHERE NOT EXISTS (
 			SELECT 1
@@ -152,7 +152,7 @@ func (r *FeedRepository) FetchUnreadFeedsListPage(ctx context.Context, page int)
 	var feeds []*models.Feed
 	for rows.Next() {
 		var feed models.Feed
-		err := rows.Scan(&feed.ID, &feed.Title, &feed.Description, &feed.Link, &feed.PubDate, &feed.CreatedAt, &feed.UpdatedAt)
+		err := rows.Scan(&feed.ID, &feed.Title, &feed.Description, &feed.WebsiteURL, &feed.PubDate, &feed.CreatedAt, &feed.UpdatedAt)
 		if err != nil {
 			logger.Logger.ErrorContext(ctx, "error scanning unread feeds list page", "error", err)
 			return nil, errors.New("error scanning feeds list page")
@@ -210,7 +210,7 @@ func (r *FeedRepository) FetchUnreadFeedsListCursor(ctx context.Context, cursor 
 		args = []interface{}{limit, user.UserID}
 		excludeClause, args = buildExcludeClauseMultiple(args, excludeFeedLinkIDs)
 		query = fmt.Sprintf(`
-			SELECT f.id, f.title, f.description, f.link, f.pub_date, f.created_at, f.updated_at,
+			SELECT f.id, f.title, f.description, f.website_url, f.pub_date, f.created_at, f.updated_at,
 			       (SELECT a.id FROM articles a WHERE a.feed_id = f.id AND a.deleted_at IS NULL ORDER BY a.created_at DESC LIMIT 1) AS article_id,
 			       f.og_image_url
 			FROM feeds f
@@ -230,7 +230,7 @@ func (r *FeedRepository) FetchUnreadFeedsListCursor(ctx context.Context, cursor 
 		args = []interface{}{cursor, limit, user.UserID}
 		excludeClause, args = buildExcludeClauseMultiple(args, excludeFeedLinkIDs)
 		query = fmt.Sprintf(`
-			SELECT f.id, f.title, f.description, f.link, f.pub_date, f.created_at, f.updated_at,
+			SELECT f.id, f.title, f.description, f.website_url, f.pub_date, f.created_at, f.updated_at,
 			       (SELECT a.id FROM articles a WHERE a.feed_id = f.id AND a.deleted_at IS NULL ORDER BY a.created_at DESC LIMIT 1) AS article_id,
 			       f.og_image_url
 			FROM feeds f
@@ -259,7 +259,7 @@ func (r *FeedRepository) FetchUnreadFeedsListCursor(ctx context.Context, cursor 
 	var feeds []*models.Feed
 	for rows.Next() {
 		var feed models.Feed
-		err := rows.Scan(&feed.ID, &feed.Title, &feed.Description, &feed.Link, &feed.PubDate, &feed.CreatedAt, &feed.UpdatedAt, &feed.ArticleID, &feed.OgImageURL)
+		err := rows.Scan(&feed.ID, &feed.Title, &feed.Description, &feed.WebsiteURL, &feed.PubDate, &feed.CreatedAt, &feed.UpdatedAt, &feed.ArticleID, &feed.OgImageURL)
 		if err != nil {
 			logger.Logger.ErrorContext(ctx, "error scanning unread feeds with cursor", "error", err)
 			return nil, errors.New("error scanning feeds list")
@@ -292,7 +292,7 @@ func (r *FeedRepository) FetchAllFeedsListCursor(ctx context.Context, cursor *ti
 		args = []interface{}{limit, user.UserID}
 		excludeClause, args = buildExcludeClauseMultiple(args, excludeFeedLinkIDs)
 		query = fmt.Sprintf(`
-			SELECT f.id, f.title, f.description, f.link, f.pub_date, f.created_at, f.updated_at,
+			SELECT f.id, f.title, f.description, f.website_url, f.pub_date, f.created_at, f.updated_at,
 			       (SELECT a.id FROM articles a WHERE a.feed_id = f.id AND a.deleted_at IS NULL ORDER BY a.created_at DESC LIMIT 1) AS article_id,
 			       COALESCE(rs.is_read, FALSE) AS is_read,
 			       f.og_image_url
@@ -307,7 +307,7 @@ func (r *FeedRepository) FetchAllFeedsListCursor(ctx context.Context, cursor *ti
 		args = []interface{}{cursor, limit, user.UserID}
 		excludeClause, args = buildExcludeClauseMultiple(args, excludeFeedLinkIDs)
 		query = fmt.Sprintf(`
-			SELECT f.id, f.title, f.description, f.link, f.pub_date, f.created_at, f.updated_at,
+			SELECT f.id, f.title, f.description, f.website_url, f.pub_date, f.created_at, f.updated_at,
 			       (SELECT a.id FROM articles a WHERE a.feed_id = f.id AND a.deleted_at IS NULL ORDER BY a.created_at DESC LIMIT 1) AS article_id,
 			       COALESCE(rs.is_read, FALSE) AS is_read,
 			       f.og_image_url
@@ -331,7 +331,7 @@ func (r *FeedRepository) FetchAllFeedsListCursor(ctx context.Context, cursor *ti
 	var feeds []*models.Feed
 	for rows.Next() {
 		var feed models.Feed
-		err := rows.Scan(&feed.ID, &feed.Title, &feed.Description, &feed.Link, &feed.PubDate, &feed.CreatedAt, &feed.UpdatedAt, &feed.ArticleID, &feed.IsRead, &feed.OgImageURL)
+		err := rows.Scan(&feed.ID, &feed.Title, &feed.Description, &feed.WebsiteURL, &feed.PubDate, &feed.CreatedAt, &feed.UpdatedAt, &feed.ArticleID, &feed.IsRead, &feed.OgImageURL)
 		if err != nil {
 			logger.Logger.ErrorContext(ctx, "error scanning all feeds with cursor", "error", err)
 			return nil, errors.New("error scanning feeds list")
@@ -360,7 +360,7 @@ func (r *FeedRepository) FetchReadFeedsListCursor(ctx context.Context, cursor *t
 
 	if cursor == nil {
 		query = `
-			SELECT f.id, f.title, f.description, f.link, f.pub_date, f.created_at, f.updated_at
+			SELECT f.id, f.title, f.description, f.website_url, f.pub_date, f.created_at, f.updated_at
 			FROM feeds f
 			INNER JOIN read_status rs ON rs.feed_id = f.id
 			WHERE rs.is_read = TRUE
@@ -372,7 +372,7 @@ func (r *FeedRepository) FetchReadFeedsListCursor(ctx context.Context, cursor *t
 		args = []interface{}{limit, user.UserID}
 	} else {
 		query = `
-			SELECT f.id, f.title, f.description, f.link, f.pub_date, f.created_at, f.updated_at
+			SELECT f.id, f.title, f.description, f.website_url, f.pub_date, f.created_at, f.updated_at
 			FROM feeds f
 			INNER JOIN read_status rs ON rs.feed_id = f.id
 			WHERE rs.is_read = TRUE
@@ -395,7 +395,7 @@ func (r *FeedRepository) FetchReadFeedsListCursor(ctx context.Context, cursor *t
 	var feeds []*models.Feed
 	for rows.Next() {
 		var feed models.Feed
-		err := rows.Scan(&feed.ID, &feed.Title, &feed.Description, &feed.Link, &feed.PubDate, &feed.CreatedAt, &feed.UpdatedAt)
+		err := rows.Scan(&feed.ID, &feed.Title, &feed.Description, &feed.WebsiteURL, &feed.PubDate, &feed.CreatedAt, &feed.UpdatedAt)
 		if err != nil {
 			logger.Logger.ErrorContext(ctx, "error scanning read feeds with cursor", "error", err)
 			return nil, errors.New("error scanning read feeds list")
@@ -419,7 +419,7 @@ func (r *FeedRepository) FetchFavoriteFeedsListCursor(ctx context.Context, curso
 
 	if cursor == nil {
 		query = `
-                       SELECT f.id, f.title, f.description, f.link, f.pub_date, f.created_at, f.updated_at,
+                       SELECT f.id, f.title, f.description, f.website_url, f.pub_date, f.created_at, f.updated_at,
                               (SELECT a.id FROM articles a WHERE a.feed_id = f.id AND a.deleted_at IS NULL ORDER BY a.created_at DESC LIMIT 1) AS article_id,
                               f.og_image_url
                        FROM feeds f
@@ -432,7 +432,7 @@ func (r *FeedRepository) FetchFavoriteFeedsListCursor(ctx context.Context, curso
 		args = []interface{}{limit, user.UserID}
 	} else {
 		query = `
-                       SELECT f.id, f.title, f.description, f.link, f.pub_date, f.created_at, f.updated_at,
+                       SELECT f.id, f.title, f.description, f.website_url, f.pub_date, f.created_at, f.updated_at,
                               (SELECT a.id FROM articles a WHERE a.feed_id = f.id AND a.deleted_at IS NULL ORDER BY a.created_at DESC LIMIT 1) AS article_id,
                               f.og_image_url
                        FROM feeds f
@@ -455,7 +455,7 @@ func (r *FeedRepository) FetchFavoriteFeedsListCursor(ctx context.Context, curso
 	var feeds []*models.Feed
 	for rows.Next() {
 		var feed models.Feed
-		err := rows.Scan(&feed.ID, &feed.Title, &feed.Description, &feed.Link, &feed.PubDate, &feed.CreatedAt, &feed.UpdatedAt, &feed.ArticleID, &feed.OgImageURL)
+		err := rows.Scan(&feed.ID, &feed.Title, &feed.Description, &feed.WebsiteURL, &feed.PubDate, &feed.CreatedAt, &feed.UpdatedAt, &feed.ArticleID, &feed.OgImageURL)
 		if err != nil {
 			logger.Logger.ErrorContext(ctx, "error scanning favorite feeds with cursor", "error", err)
 			return nil, errors.New("error scanning favorite feeds list")
@@ -468,7 +468,7 @@ func (r *FeedRepository) FetchFavoriteFeedsListCursor(ctx context.Context, curso
 
 func (r *FeedRepository) FetchFeedsByFeedLinkID(ctx context.Context, feedLinkID uuid.UUID) ([]*FeedPageRow, error) {
 	query := `
-		SELECT f.id, f.title, f.description, f.link, f.pub_date, f.created_at, f.updated_at,
+		SELECT f.id, f.title, f.description, f.website_url, f.pub_date, f.created_at, f.updated_at,
 		       (SELECT a.id FROM articles a WHERE a.feed_id = f.id AND a.deleted_at IS NULL
 		        ORDER BY a.created_at DESC LIMIT 1) AS article_id,
 		       f.og_image_url

@@ -117,7 +117,7 @@ func (g *FetchFeedsGateway) FetchFeedsList(ctx context.Context) ([]*domain.FeedI
 		feedItems = append(feedItems, &domain.FeedItem{
 			Title:           feed.Title,
 			Description:     sanitize.SanitizeDescription(feed.Description),
-			Link:            feed.Link,
+			Link:            feed.WebsiteURL,
 			Published:       publishedTime.Format(time.RFC3339),
 			PublishedParsed: publishedTime,
 		})
@@ -141,7 +141,7 @@ func (g *FetchFeedsGateway) FetchFeedsListLimit(ctx context.Context, offset int)
 		feedItems = append(feedItems, &domain.FeedItem{
 			Title:           feed.Title,
 			Description:     sanitize.SanitizeDescription(feed.Description),
-			Link:            feed.Link,
+			Link:            feed.WebsiteURL,
 			Published:       publishedTime.Format(time.RFC3339),
 			PublishedParsed: publishedTime,
 		})
@@ -168,7 +168,7 @@ func (g *FetchFeedsGateway) FetchFeedsListPage(ctx context.Context, page int) ([
 		feedItems = append(feedItems, &domain.FeedItem{
 			Title:           feed.Title,
 			Description:     sanitize.SanitizeDescription(feed.Description),
-			Link:            feed.Link,
+			Link:            feed.WebsiteURL,
 			Published:       publishedTime.Format(time.RFC3339),
 			PublishedParsed: publishedTime,
 		})
@@ -198,7 +198,7 @@ func (g *FetchFeedsGateway) FetchFeedsListCursor(ctx context.Context, cursor *ti
 		feedItem := &domain.FeedItem{
 			Title:           feed.Title,
 			Description:     sanitize.SanitizeDescription(feed.Description),
-			Link:            feed.Link,
+			Link:            feed.WebsiteURL,
 			Published:       publishedTime.Format(time.RFC3339),
 			PublishedParsed: publishedTime,
 			IsRead:          feed.IsRead,
@@ -246,7 +246,7 @@ func (g *FetchFeedsGateway) FetchUnreadFeedsListCursor(ctx context.Context, curs
 				"total", len(feeds),
 				"created_at", feed.CreatedAt,
 				"published_parsed", publishedTime,
-				"link", feed.Link,
+				"link", feed.WebsiteURL,
 				"article_id", feed.ArticleID,
 			)
 		}
@@ -254,7 +254,7 @@ func (g *FetchFeedsGateway) FetchUnreadFeedsListCursor(ctx context.Context, curs
 		feedItem := &domain.FeedItem{
 			Title:           feed.Title,
 			Description:     sanitize.SanitizeDescription(feed.Description),
-			Link:            feed.Link,
+			Link:            feed.WebsiteURL,
 			Published:       publishedTime.Format(time.RFC3339),
 			PublishedParsed: publishedTime,
 			OgImageURL:      derefString(feed.OgImageURL),
@@ -291,7 +291,7 @@ func (g *FetchFeedsGateway) FetchReadFeedsListCursor(ctx context.Context, cursor
 		feedItems = append(feedItems, &domain.FeedItem{
 			Title:           feed.Title,
 			Description:     sanitize.SanitizeDescription(feed.Description),
-			Link:            feed.Link,
+			Link:            feed.WebsiteURL,
 			Published:       publishedTime.Format(time.RFC3339),
 			PublishedParsed: publishedTime,
 		})
@@ -317,7 +317,7 @@ func (g *FetchFeedsGateway) FetchFavoriteFeedsListCursor(ctx context.Context, cu
 		feedItem := &domain.FeedItem{
 			Title:           feed.Title,
 			Description:     sanitize.SanitizeDescription(feed.Description),
-			Link:            feed.Link,
+			Link:            feed.WebsiteURL,
 			Published:       publishedTime.Format(time.RFC3339),
 			PublishedParsed: publishedTime,
 			OgImageURL:      derefString(feed.OgImageURL),

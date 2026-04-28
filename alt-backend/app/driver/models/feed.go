@@ -2,11 +2,16 @@ package models
 
 import "time"
 
+// Feed mirrors the feeds table; the WebsiteURL field maps to the
+// website_url column (renamed from `link` under ADR-000868 — the value
+// is the RSS <channel><link> element value, i.e. the website URL of
+// the feed source). Distinct from feed_links.url (RSS subscription
+// URL) which is referenced via FeedLinkID.
 type Feed struct {
 	ID          string    `db:"id"`
 	Title       string    `db:"title"`
 	Description string    `db:"description"`
-	Link        string    `db:"link"`
+	WebsiteURL  string    `db:"website_url"`
 	PubDate     time.Time `db:"pub_date"`
 	CreatedAt   time.Time `db:"created_at"`
 	UpdatedAt   time.Time `db:"updated_at"`
