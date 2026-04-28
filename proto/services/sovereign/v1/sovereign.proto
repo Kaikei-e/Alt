@@ -807,6 +807,12 @@ message KnowledgeLoopEntry {
   optional SurfacePlannerVersion surface_planner_version = 23;
   bytes surface_score_inputs = 24; // JSONB opaque, sovereign-internal diagnostics
 
+  // User-specific per-entry progress. proposed_stage remains the projector's
+  // recommendation; current_entry_stage is joined from
+  // knowledge_loop_entry_session_state on reads.
+  optional LoopStage current_entry_stage = 25;
+  optional google.protobuf.Timestamp current_entry_stage_entered_at = 26;
+
   reserved "updated_at", "projected_at", "wall_clock", "ingest_time";
 }
 

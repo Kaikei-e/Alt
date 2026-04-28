@@ -251,6 +251,11 @@ message KnowledgeLoopEntry {
   // bucket. Older rows default to UNSPECIFIED (treated as v1 by clients) so
   // additivity holds. Bumping the planner requires a full reproject.
   optional SurfacePlannerVersion surface_planner_version = 31;
+
+  // current_entry_stage is the user's per-entry progress. It is distinct from
+  // proposed_stage, which remains the projector's recommendation for this card.
+  optional LoopStage current_entry_stage = 32;
+  optional google.protobuf.Timestamp current_entry_stage_entered_at = 33;
 }
 
 message SurfaceState {
@@ -404,6 +409,7 @@ message StreamExpired {
 //   KnowledgeLoopActed            -> knowledge_loop.acted.v1
 //   KnowledgeLoopReturned         -> knowledge_loop.returned.v1
 //   KnowledgeLoopDeferred         -> knowledge_loop.deferred.v1
+//   KnowledgeLoopReviewed         -> knowledge_loop.reviewed.v1
 //   KnowledgeLoopSessionReset     -> knowledge_loop.session_reset.v1
 //   KnowledgeLoopLensModeSwitched -> knowledge_loop.lens_mode_switched.v1
 //
@@ -470,6 +476,18 @@ message KnowledgeLoopDeferredPayload {
   string lens_mode_id = 2;
   LoopStage from_stage = 3;
   LoopStage to_stage = 4;
+  TransitionTrigger trigger = 5;
+  int64 observed_projection_revision = 6;
+  optional string client_transition_id = 7;
+}
+
+message KnowledgeLoopReviewedPayload {
+  string entry_key = 1;
+  string lens_mode_id = 2;
+  LoopStage from_stage = 3;
+  LoopStage to_stage = 4;
+  // Action distinction lives in this trigger value:
+  // RECHECK re-arms; ARCHIVE and MARK_REVIEWED complete.
   TransitionTrigger trigger = 5;
   int64 observed_projection_revision = 6;
   optional string client_transition_id = 7;
