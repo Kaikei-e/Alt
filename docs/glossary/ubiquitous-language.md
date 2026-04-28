@@ -22,11 +22,12 @@ PM-2026-041 / ADR-000865 / 2026-04-28 セッションの根本原因は **「同
 「HTTP(S) location を持つ resource」は **常に `URL` と呼ぶ**。
 Go field 名・proto field 名・DB column 名・JSON wire key・FE TS 型・UI 文言、すべての層で `URL` (大文字 / `url` / `URL` のケース変種は文脈に従う)。
 
-| 文脈 | canonical 名 | 該当箇所 (本 PR で執行) | 備考 |
+| 文脈 | canonical 名 | 該当箇所 | 備考 |
 |---|---|---|---|
-| Article URL (Knowledge Home item の article 元 URL) | `URL` (Go field), `url` (proto / db column / wire) | `domain.KnowledgeHomeItem.URL`, `proto/.../knowledge_home.proto` field 13, `knowledge_home_items.url` 列 | **本 PR 1 で rename**。歴史的に `Link` と呼んでいたが PM-2026-041 / 今回バグの真因 |
-| Article URL (event payload) | `URL` (Go field), `url` (wire key) | `domain.ArticleCreatedPayload.URL`, `domain.ArticleUrlBackfilledPayload.URL` | 本 PR 1 で確立。canonical |
-| Feed Subscription URL (ユーザが購読登録した RSS feed の URL) | `URL` (Go field), `url` (proto / db / wire) | `domain.Feed.URL` (現状 `Feed.Link`)、`feeds.url` 列 (現状 `feeds.link`) | **PR 2 で rename** schedule。命名ミスだが本 PR scope 外 |
+| Article URL (Knowledge Home item の article 元 URL) | `URL` (Go field), `url` (proto / db column / wire) | `domain.KnowledgeHomeItem.URL`, `proto/.../knowledge_home.proto` field 13, `knowledge_home_items.url` 列 | **PR 1 (ADR-000867) で rename 完了**。歴史的に `Link` と呼んでいたが PM-2026-041 の真因 |
+| Article URL (event payload) | `URL` (Go field), `url` (wire key) | `domain.ArticleCreatedPayload.URL`, `domain.ArticleUrlBackfilledPayload.URL` | PR 1 (ADR-000867) で確立 |
+| Website URL (RSS `<channel><link>` 値、サイト本体の URL) | `WebsiteURL` (Go field), `website_url` (db column) | `domain.Feed.WebsiteURL`, `models.Feed.WebsiteURL`, `feeds.website_url` 列 | **PR 2 (ADR-000868) で rename 完了**。「Link」は HTML/RSS 両方で使われ Article URL とも紛らわしい |
+| RSS Subscription URL (ユーザが購読登録した RSS XML feed file の URL) | `URL` (Go field), `url` (db column) | `domain.Feed.URL` (`feed_links.url` から JOIN populate)、`feed_links.url` 列 | 既に canonical (`feed_links` table 側) |
 | Article Source URL (article scrape 元の URL) | `URL` | `articles.url`, `domain.Article.URL` | 既に canonical |
 | Recap Topic URL (Recap snapshot の HTTP route) | `Route` または `URL` | act_target.route | 既に canonical |
 
@@ -40,14 +41,18 @@ Go field 名・proto field 名・DB column 名・JSON wire key・FE TS 型・UI 
 
 ## RSS Item Link カテゴリ (例外)
 
-**RSS spec が定める `<link>` element** は wire schema を spec に合わせる必要があるため例外。
+**RSS spec が定める `<link>` element** は wire schema を spec に合わせる必要があるため例外。Item-level (個別記事の URL) のみが対象 — Channel-level (`<channel><link>`) は Website URL カテゴリで `WebsiteURL` に rename 済 (PR 2)。
 
 | 文脈 | canonical 名 | 該当箇所 | 備考 |
 |---|---|---|---|
-| RSS XML `<link>` element | `Link` (Go field、RSS parser 内に閉じる) | `domain.RSSFeed.Link`, `domain.RSSItem.Link` | RSS 2.0 / Atom spec 準拠で `Link` 維持。**ただし parser 出口で `URL` に rename して以降は URL** |
-| RSS feed XML 本体の URL | `FeedURL` (Go field) | 現状 `FeedLink` → PR 2 で rename | meta vs item の混同を避ける |
+| RSS Item `<link>` element | `Link` (Go field、driver/gateway 内に閉じる) | `domain.RSSItem.Link`, `domain.FeedItem.Link`, `domain.TagTrail.Link`, gofeed `*Item.Link` | Item-level の RSS spec 準拠で `Link` 維持 |
+| RSS Channel `<link>` element の値 | `WebsiteURL` (Go field、driver/gateway 出口で rename) | `domain.RSSFeed.Link` (RSS parser 内のみ) → `domain.Feed.WebsiteURL` (driver 出口以降) | RSS parser 内では Link、domain layer 以降は WebsiteURL に rename |
 
-**境界規約**: RSS XML を parse する driver / gateway 層では `Link` を使ってよい。**それ以外 (handler / usecase / domain entity / DB / FE) では URL に rename して扱う**。境界は driver/gateway の return 文。
+**境界規約**:
+- RSS XML を parse する gofeed / driver / gateway 層 (例: `convertGofeedToDomain`) では `Link` を使ってよい
+- domain entity / handler / usecase / DB / FE では:
+  - **Item-level URL** → `Link` 維持 (RSS Item Link カテゴリ)
+  - **Channel-level / Article URL** → `WebsiteURL` または `URL` に rename (Website URL / Article URL カテゴリ)
 
 ---
 
@@ -73,11 +78,11 @@ grep -nE '"link"|\.Link\b|Link\s+string' \
 
 ## マイグレーション ロードマップ
 
-| PR | scope | 執行タイミング |
+| PR | scope | status |
 |---|---|---|
-| **PR 1 (本セッション)** | Article URL カテゴリ全層: KnowledgeHomeItem.Link → URL (Go / proto / DB / BFF / FE) + 共通 ArticleCreatedPayload + ArticleUrlBackfilled corrective event | 即 |
-| **PR 2** | Feed Subscription URL: Feed.Link → URL (Go / DB / handler / gateway / FE) + 命名違反 lint 追加 | follow-up (`/schedule` で teeup 予定) |
-| **PR 3** (将来) | RSS parser 出口で Link → URL の rename を強制する layer 設計 | optional |
+| **PR 1** ADR-000867 | Article URL カテゴリ全層: KnowledgeHomeItem.Link → URL (Go / proto / DB / BFF / FE) + 共通 ArticleCreatedPayload + ArticleUrlBackfilled corrective event | **完了** |
+| **PR 2** ADR-000868 | Website URL カテゴリ: Feed.Link → WebsiteURL + feeds.link → website_url (Atlas migration + index/constraint rename) + 全 consumer 追従 + 命名違反 lint script | **完了** |
+| **PR 3** (将来) | RSS parser 出口で driver→domain の境界マッピングを enforce する layer test | optional |
 
 ---
 
