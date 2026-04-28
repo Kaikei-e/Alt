@@ -178,8 +178,8 @@ function handleAction(type: string, item: KnowledgeHomeItemData) {
 	const articleId = itemKey.startsWith("article:") ? itemKey.slice(8) : null;
 
 	if (type === "open" && articleId) {
-		if (item.link) {
-			const params = new URLSearchParams({ url: item.link });
+		if (item.url) {
+			const params = new URLSearchParams({ url: item.url });
 			if (item.title) params.set("title", item.title);
 			goto(`/articles/${articleId}?${params.toString()}`);
 		} else {
@@ -211,9 +211,9 @@ function handleRecallOpen(itemKey: string) {
 	const articleId = itemKey.startsWith("article:") ? itemKey.slice(8) : null;
 	if (!articleId) return;
 	const candidate = recall.candidates.find((c) => c.itemKey === itemKey);
-	const link = candidate?.item?.link;
-	if (link) {
-		const params = new URLSearchParams({ url: link });
+	const url = candidate?.item?.url;
+	if (url) {
+		const params = new URLSearchParams({ url });
 		if (candidate?.item?.title) params.set("title", candidate.item.title);
 		goto(`/articles/${articleId}?${params.toString()}`);
 	}

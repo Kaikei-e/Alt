@@ -65,7 +65,8 @@ export interface KnowledgeHomeItemData {
 	why: WhyReasonData[];
 	score: number;
 	supersedeInfo?: SupersedeInfoData;
-	link?: string;
+	/** Canonical Article URL — see docs/glossary/ubiquitous-language.md. */
+	url?: string;
 }
 
 /** Supersede info for version changes */
@@ -216,7 +217,7 @@ function convertItem(proto: ProtoKnowledgeHomeItem): KnowledgeHomeItemData {
 					previousWhyCodes: [...(proto.supersedeInfo.previousWhyCodes || [])],
 				}
 			: undefined,
-		link: proto.link || undefined,
+		url: proto.url || undefined,
 	};
 }
 

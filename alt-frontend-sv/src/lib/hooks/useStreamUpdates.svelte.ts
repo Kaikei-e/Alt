@@ -146,7 +146,7 @@ export function useStreamUpdates(opts: StreamUpdateOptions) {
 												tag: why.tag || undefined,
 											})),
 											score: event.recallChange.item.score,
-											link: event.recallChange.item.link || undefined,
+											url: event.recallChange.item.url || undefined,
 										}
 									: undefined,
 							}

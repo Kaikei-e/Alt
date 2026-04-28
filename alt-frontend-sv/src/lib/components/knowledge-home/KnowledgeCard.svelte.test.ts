@@ -118,10 +118,10 @@ describe("KnowledgeCard", () => {
 		await expect.element(page.getByText("New")).toBeInTheDocument();
 	});
 
-	it("marks the card link-unavailable when item.link is empty", async () => {
+	it("marks the card link-unavailable when item.url is empty", async () => {
 		render(KnowledgeCard as never, {
 			props: {
-				item: makeItem({ link: undefined }),
+				item: makeItem({ url: undefined }),
 				onAction: vi.fn(),
 			},
 		});
@@ -134,10 +134,10 @@ describe("KnowledgeCard", () => {
 			.toHaveAttribute("aria-disabled", "true");
 	});
 
-	it("does not mark the card link-unavailable when item.link is present", async () => {
+	it("does not mark the card link-unavailable when item.url is present", async () => {
 		const { container } = render(KnowledgeCard as never, {
 			props: {
-				item: makeItem({ link: "https://example.com/article" }),
+				item: makeItem({ url: "https://example.com/article" }),
 				onAction: vi.fn(),
 			},
 		});

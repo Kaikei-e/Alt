@@ -1,5 +1,6 @@
 <script lang="ts">
 import type { KnowledgeHomeItemData } from "$lib/connect/knowledge_home";
+import { safeArticleHref } from "$lib/utils/safeHref";
 import QuickActionRow from "./QuickActionRow.svelte";
 import SummaryStateChip from "./SummaryStateChip.svelte";
 import SupersedeBadge from "./SupersedeBadge.svelte";
@@ -15,8 +16,25 @@ interface Props {
 
 const { item, onAction, onTagClick }: Props = $props();
 
+// safeHref: null = no usable URL. Three reasons in increasing severity:
+//   - missing      : item.url is empty (legitimate gap, e.g. corrective
+//                    event hasn't run yet for a historical row)
+//   - scheme-blocked: item.url is non-empty but scheme is not http(s)
+//                    (defense-in-depth; backend should never let this
+//                    through but FE renders the kicker either way)
+// Both surface the same Archived kicker per docs/glossary —
+// frontend-design ruled visual disambiguation as noise. Operator can
+// distinguish via the data-link-unavailable-reason attribute / DevTools.
+const safeHref = $derived(safeArticleHref(item.url));
 const linkAvailable = $derived(
-	item.itemType === "article" ? !!item.link : true,
+	item.itemType === "article" ? safeHref != null : true,
+);
+const linkUnavailableReason = $derived(
+	item.itemType !== "article" || linkAvailable
+		? undefined
+		: !item.url
+			? "missing"
+			: "scheme-blocked",
 );
 
 const warnedItemKeys = new Set<string>();
@@ -27,7 +45,8 @@ $effect(() => {
 	console.warn(
 		"kh-card-link-unavailable",
 		item.itemKey,
-		"projector returned an empty link for an article item — see knowledge-event-payload-tag-audit-2026-04-28",
+		linkUnavailableReason,
+		"see docs/glossary/ubiquitous-language.md (Article URL)",
 	);
 });
 
@@ -73,14 +92,16 @@ function handleAction(type: string) {
 		: 'card--no-source'}"
 	data-item-key={item.itemKey}
 	data-link-unavailable={linkAvailable ? undefined : "true"}
+	data-link-unavailable-reason={linkUnavailableReason}
 >
 	{#if !linkAvailable}
 		<div
 			class="card-no-source"
 			data-testid="kh-card-link-unavailable"
 			aria-disabled="true"
+			aria-label="Archived — no source URL"
 		>
-			Archived · No source URL projected
+			Archived · No source URL
 		</div>
 	{/if}
 

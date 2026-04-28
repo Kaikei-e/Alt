@@ -29,7 +29,7 @@ function makeCandidate(
 			tags: ["AI", "Go", "Rust"],
 			why: [{ code: "summary_completed" }],
 			score: 0.81,
-			link: "https://example.com/article",
+			url: "https://example.com/article",
 		},
 		...overrides,
 	};
