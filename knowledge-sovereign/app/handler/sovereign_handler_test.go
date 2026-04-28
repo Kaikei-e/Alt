@@ -64,6 +64,11 @@ func (m *mockRepo) DismissRecallCandidate(_ context.Context, p json.RawMessage) 
 	m.lastPayload = p
 	return m.returnErr
 }
+func (m *mockRepo) PatchKnowledgeHomeItemURL(_ context.Context, p json.RawMessage) error {
+	m.lastMethod = "PatchKnowledgeHomeItemURL"
+	m.lastPayload = p
+	return m.returnErr
+}
 
 // --- ReadOperations stubs (return empty results) ---
 func (m *mockRepo) GetKnowledgeHomeItems(_ context.Context, _ uuid.UUID, _ string, _ int, _ *sovereign_db.LensFilter) ([]sovereign_db.KnowledgeHomeItem, string, bool, error) {

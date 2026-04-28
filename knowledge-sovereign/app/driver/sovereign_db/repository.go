@@ -71,7 +71,7 @@ func (r *Repository) UpsertKnowledgeHomeItem(ctx context.Context, payload json.R
 		SupersedeState    string     `json:"supersede_state"`
 		SupersededAt      *time.Time `json:"superseded_at"`
 		PreviousRefJSON   string     `json:"previous_ref_json"`
-		Link              string     `json:"link"`
+		URL               string     `json:"url"`
 	}
 	if err := json.Unmarshal(payload, &item); err != nil {
 		return fmt.Errorf("UpsertKnowledgeHomeItem: unmarshal: %w", err)
@@ -106,7 +106,7 @@ func (r *Repository) UpsertKnowledgeHomeItem(ctx context.Context, payload json.R
 		 title, summary_excerpt, tags_json, why_json, score,
 		 freshness_at, published_at, last_interacted_at, generated_at, updated_at, dismissed_at,
 		 projection_version, summary_state,
-		 supersede_state, superseded_at, previous_ref_json, link)
+		 supersede_state, superseded_at, previous_ref_json, url)
 		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22)
 		ON CONFLICT (user_id, item_key, projection_version) DO UPDATE SET
 		 title = CASE WHEN EXCLUDED.title != '' THEN EXCLUDED.title ELSE knowledge_home_items.title END,
@@ -153,14 +153,14 @@ func (r *Repository) UpsertKnowledgeHomeItem(ctx context.Context, payload json.R
 			 WHEN EXCLUDED.previous_ref_json IS NOT NULL THEN COALESCE(knowledge_home_items.previous_ref_json, '{}'::jsonb) || EXCLUDED.previous_ref_json
 			 ELSE knowledge_home_items.previous_ref_json
 		 END,
-		 link = CASE WHEN EXCLUDED.link != '' THEN EXCLUDED.link ELSE knowledge_home_items.link END`
+		 url = CASE WHEN EXCLUDED.url != '' THEN EXCLUDED.url ELSE knowledge_home_items.url END`
 
 	_, err := r.pool.Exec(ctx, query,
 		item.UserID, item.TenantID, item.ItemKey, item.ItemType, item.PrimaryRefID,
 		item.Title, item.SummaryExcerpt, string(tagsJSON), string(whyJSON), item.Score,
 		item.FreshnessAt, item.PublishedAt, item.LastInteractedAt, item.GeneratedAt, item.UpdatedAt, item.DismissedAt,
 		item.ProjectionVersion, item.SummaryState,
-		supersedeState, item.SupersededAt, previousRefJSON, item.Link,
+		supersedeState, item.SupersededAt, previousRefJSON, item.URL,
 	)
 	if err != nil {
 		return fmt.Errorf("UpsertKnowledgeHomeItem: %w", err)

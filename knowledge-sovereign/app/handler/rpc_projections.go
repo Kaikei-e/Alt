@@ -170,7 +170,7 @@ func homeItemToProto(item sovereign_db.KnowledgeHomeItem) *sovereignv1.Knowledge
 		SummaryState:      item.SummaryState,
 		SupersedeState:    item.SupersedeState,
 		PreviousRefJson:   item.PreviousRefJSON,
-		Link:              item.Link,
+		Url:               item.URL,
 	}
 	if item.PrimaryRefID != nil {
 		pb.PrimaryRefId = item.PrimaryRefID.String()

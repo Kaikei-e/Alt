@@ -19,6 +19,12 @@ const (
 	MutationClearSupersede        = "clear_supersede"
 	MutationUpsertTodayDigest     = "upsert_today_digest"
 	MutationUpsertRecallCandidate = "upsert_recall_candidate"
+	// MutationPatchHomeItemURL is the corrective-event patch path.
+	// Updates only the `url` column on knowledge_home_items, preserving
+	// every other field. Used by alt-backend's projector when consuming
+	// `ArticleUrlBackfilled` events that repair historical legacy-keyed
+	// payloads.
+	MutationPatchHomeItemURL = "patch_home_item_url"
 
 	MutationUpsertCandidate  = "upsert_candidate"
 	MutationSnoozeCandidate  = "snooze_candidate"
@@ -36,6 +42,10 @@ type MutationRepository interface {
 	UpsertRecallCandidate(ctx context.Context, payload json.RawMessage) error
 	SnoozeRecallCandidate(ctx context.Context, payload json.RawMessage) error
 	DismissRecallCandidate(ctx context.Context, payload json.RawMessage) error
+	// PatchKnowledgeHomeItemURL applies a single-column URL patch to one
+	// knowledge_home_items row. Used by the corrective ArticleUrlBackfilled
+	// projector branch.
+	PatchKnowledgeHomeItemURL(ctx context.Context, payload json.RawMessage) error
 }
 
 // SovereignHandler implements the Connect-RPC KnowledgeSovereignService.
@@ -90,6 +100,8 @@ func (h *SovereignHandler) ApplyProjectionMutation(
 		err = h.repo.UpsertTodayDigest(ctx, payload)
 	case MutationUpsertRecallCandidate:
 		err = h.repo.UpsertRecallCandidate(ctx, payload)
+	case MutationPatchHomeItemURL:
+		err = h.repo.PatchKnowledgeHomeItemURL(ctx, payload)
 	default:
 		return nil, connect.NewError(connect.CodeInvalidArgument,
 			fmt.Errorf("unknown projection mutation type: %s", msg.MutationType))

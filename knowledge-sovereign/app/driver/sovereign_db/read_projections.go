@@ -35,7 +35,7 @@ type KnowledgeHomeItem struct {
 	SupersedeState    string
 	SupersededAt      *time.Time
 	PreviousRefJSON   string
-	Link              string
+	URL               string
 }
 
 // WhyReason explains why an item appears in the Knowledge Home.
@@ -91,7 +91,7 @@ type RecallReason struct {
 }
 
 // GetKnowledgeHomeItems returns paginated items for a user.
-// No articles JOIN — link is stored directly in knowledge_home_items.
+// No articles JOIN — url is stored directly in knowledge_home_items.
 func (r *Repository) GetKnowledgeHomeItems(ctx context.Context, userID uuid.UUID, cursor string, limit int, filter *LensFilter) ([]KnowledgeHomeItem, string, bool, error) {
 	var query strings.Builder
 	args := []interface{}{userID}
@@ -100,7 +100,7 @@ func (r *Repository) GetKnowledgeHomeItems(ctx context.Context, userID uuid.UUID
 	query.WriteString(`SELECT khi.user_id, khi.tenant_id, khi.item_key, khi.item_type, khi.primary_ref_id,
 		khi.title, khi.summary_excerpt, khi.tags_json, khi.why_json, khi.score,
 		khi.freshness_at, khi.published_at, khi.last_interacted_at, khi.generated_at, khi.updated_at,
-		khi.dismissed_at, khi.summary_state, COALESCE(khi.link, '') AS link,
+		khi.dismissed_at, khi.summary_state, COALESCE(khi.url, '') AS url,
 		khi.supersede_state, khi.superseded_at, khi.previous_ref_json
 		FROM knowledge_home_items khi
 		WHERE khi.user_id = $1
@@ -176,7 +176,7 @@ func (r *Repository) GetKnowledgeHomeItems(ctx context.Context, userID uuid.UUID
 			&item.UserID, &item.TenantID, &item.ItemKey, &item.ItemType, &item.PrimaryRefID,
 			&item.Title, &item.SummaryExcerpt, &tagsJSON, &whyJSON, &item.Score,
 			&item.FreshnessAt, &item.PublishedAt, &item.LastInteractedAt, &item.GeneratedAt, &item.UpdatedAt,
-			&item.DismissedAt, &item.SummaryState, &item.Link,
+			&item.DismissedAt, &item.SummaryState, &item.URL,
 			&supersedeState, &item.SupersededAt, &previousRefJSON,
 		); err != nil {
 			return nil, "", false, fmt.Errorf("GetKnowledgeHomeItems scan: %w", err)
@@ -279,7 +279,7 @@ func (r *Repository) GetRecallCandidates(ctx context.Context, userID uuid.UUID, 
 	query := `SELECT rcv.user_id, rcv.item_key, rcv.recall_score, rcv.reason_json,
 		rcv.next_suggest_at, rcv.first_eligible_at, rcv.snoozed_until, rcv.updated_at, rcv.projection_version,
 		khi.title, khi.summary_excerpt, khi.tags_json, khi.why_json, khi.score,
-		khi.published_at, khi.summary_state, COALESCE(khi.link, '') AS link,
+		khi.published_at, khi.summary_state, COALESCE(khi.url, '') AS url,
 		khi.item_type, khi.primary_ref_id
 		FROM recall_candidate_view rcv
 		LEFT JOIN knowledge_home_items khi ON rcv.user_id = khi.user_id AND rcv.item_key = khi.item_key
@@ -304,7 +304,7 @@ func (r *Repository) GetRecallCandidates(ctx context.Context, userID uuid.UUID, 
 	for rows.Next() {
 		var c RecallCandidate
 		var reasonJSON []byte
-		var itemTitle, itemSummary, itemLink, itemType, itemSummaryState *string
+		var itemTitle, itemSummary, itemURL, itemType, itemSummaryState *string
 		var itemTagsJSON, itemWhyJSON []byte
 		var itemScore *float64
 		var itemPublishedAt *time.Time
@@ -314,7 +314,7 @@ func (r *Repository) GetRecallCandidates(ctx context.Context, userID uuid.UUID, 
 			&c.UserID, &c.ItemKey, &c.RecallScore, &reasonJSON,
 			&c.NextSuggestAt, &c.FirstEligibleAt, &c.SnoozedUntil, &c.UpdatedAt, &c.ProjectionVersion,
 			&itemTitle, &itemSummary, &itemTagsJSON, &itemWhyJSON, &itemScore,
-			&itemPublishedAt, &itemSummaryState, &itemLink,
+			&itemPublishedAt, &itemSummaryState, &itemURL,
 			&itemType, &itemPrimaryRefID,
 		); err != nil {
 			return nil, fmt.Errorf("GetRecallCandidates scan: %w", err)
@@ -340,8 +340,8 @@ func (r *Repository) GetRecallCandidates(ctx context.Context, userID uuid.UUID, 
 			if itemSummaryState != nil {
 				item.SummaryState = *itemSummaryState
 			}
-			if itemLink != nil {
-				item.Link = *itemLink
+			if itemURL != nil {
+				item.URL = *itemURL
 			}
 			if itemType != nil {
 				item.ItemType = *itemType
