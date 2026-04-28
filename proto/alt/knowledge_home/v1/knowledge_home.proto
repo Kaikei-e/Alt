@@ -125,8 +125,11 @@ message KnowledgeHomeItem {
   optional SupersedeInfo supersede_info = 11;
   // Summary processing state: missing, pending, ready
   string summary_state = 12;
-  // Original article URL enriched from articles at read time
-  string link = 13;
+  // Article source URL. Canonical Article URL per
+  // docs/glossary/ubiquitous-language.md. Field name renamed from `link`
+  // to `url` 2026-04-28; field number 13 preserved so historical wire
+  // payloads stay readable.
+  string url = 13;
 }
 
 // WhyReason explains why an item appears in the Knowledge Home.
