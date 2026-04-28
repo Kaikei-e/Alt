@@ -4,8 +4,12 @@ import (
 	"encoding/json"
 	"strings"
 	"testing"
+	"time"
 
+	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
+
+	"knowledge-sovereign/driver/sovereign_db"
 )
 
 // seedActTargets materialises the JSON bytes the projector writes into
@@ -21,13 +25,13 @@ import (
 
 func TestSeedActTargets_NoRecapID_ReturnsNil(t *testing.T) {
 	t.Parallel()
-	out := seedActTargets(SurfaceScoreInputs{})
+	out := seedActTargets(nil, SurfaceScoreInputs{})
 	require.Nil(t, out, "no act_targets should be seeded when no recap snapshot resolved")
 }
 
 func TestSeedActTargets_RecapID_WritesRecapTarget(t *testing.T) {
 	t.Parallel()
-	out := seedActTargets(SurfaceScoreInputs{
+	out := seedActTargets(nil, SurfaceScoreInputs{
 		RecapTopicSnapshotID: "11111111-1111-4111-8111-111111111111",
 	})
 	require.NotEmpty(t, out)
@@ -48,7 +52,7 @@ func TestSeedActTargets_RecapID_WritesRecapTarget(t *testing.T) {
 // test is the projector's belt-and-suspenders.
 func TestSeedActTargets_RouteIsAbsolutePath(t *testing.T) {
 	t.Parallel()
-	out := seedActTargets(SurfaceScoreInputs{
+	out := seedActTargets(nil, SurfaceScoreInputs{
 		RecapTopicSnapshotID: "22222222-2222-4222-8222-222222222222",
 	})
 	var raw []map[string]string
@@ -57,4 +61,28 @@ func TestSeedActTargets_RouteIsAbsolutePath(t *testing.T) {
 	route := raw[0]["route"]
 	require.True(t, strings.HasPrefix(route, "/"), "route must be a server-relative path")
 	require.False(t, strings.Contains(route, ":"), "route must not contain a scheme separator")
+}
+
+func TestSeedActTargets_ArticleEvent_WritesArticleTarget(t *testing.T) {
+	t.Parallel()
+	userID := uuid.New()
+	ev := &sovereign_db.KnowledgeEvent{
+		EventID:       uuid.New(),
+		EventSeq:      1,
+		OccurredAt:    time.Date(2026, 4, 28, 10, 0, 0, 0, time.UTC),
+		TenantID:      uuid.New(),
+		UserID:        &userID,
+		AggregateType: "article",
+		AggregateID:   "art-article-target",
+		Payload:       json.RawMessage(`{"article_id":"art-article-target"}`),
+	}
+
+	out := seedActTargets(ev, SurfaceScoreInputs{})
+
+	var raw []map[string]string
+	require.NoError(t, json.Unmarshal(out, &raw))
+	require.Len(t, raw, 1)
+	require.Equal(t, "article", raw[0]["target_type"])
+	require.Equal(t, "art-article-target", raw[0]["target_ref"])
+	require.Equal(t, "/articles/art-article-target", raw[0]["route"])
 }

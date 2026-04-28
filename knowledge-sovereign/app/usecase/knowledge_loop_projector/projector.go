@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"net/url"
 	"regexp"
 	"strings"
 	"time"
@@ -31,8 +32,11 @@ type Repository interface {
 	ListKnowledgeEventsSince(ctx context.Context, afterSeq int64, limit int) ([]sovereign_db.KnowledgeEvent, error)
 	GetProjectionCheckpoint(ctx context.Context, projectorName string) (int64, error)
 	UpdateProjectionCheckpoint(ctx context.Context, projectorName string, lastSeq int64) error
+	GetKnowledgeLoopEntries(ctx context.Context, filter sovereign_db.GetKnowledgeLoopEntriesFilter) ([]*sovereignv1.KnowledgeLoopEntry, error)
 	UpsertKnowledgeLoopEntry(ctx context.Context, e *sovereignv1.KnowledgeLoopEntry) (*sovereign_db.KnowledgeLoopUpsertResult, error)
 	UpsertKnowledgeLoopSessionState(ctx context.Context, s *sovereignv1.KnowledgeLoopSessionState) (*sovereign_db.KnowledgeLoopUpsertResult, error)
+	UpsertKnowledgeLoopEntrySessionState(ctx context.Context, userID, tenantID, lensModeID, entryKey string, currentStage sovereignv1.LoopStage, currentStageEnteredAt time.Time, eventSeq int64) (*sovereign_db.KnowledgeLoopUpsertResult, error)
+	UpsertKnowledgeLoopSurface(ctx context.Context, s *sovereignv1.KnowledgeLoopSurface) (*sovereign_db.KnowledgeLoopUpsertResult, error)
 	// PatchKnowledgeLoopEntryWhy updates only the why_* columns of an existing
 	// entry row; dismiss_state, freshness_at, surface_bucket and other fields
 	// are preserved. Used by the SummaryNarrativeBackfilled projector branch
@@ -57,7 +61,8 @@ type Config struct {
 // Projector runs the Knowledge Loop projection job over knowledge_events.
 //
 // Reproject-safety invariants (see docs/plan/knowledge-loop-canonical-contract.md):
-//   - Reads only event payloads. Never reads latest projection state.
+//   - Entry/session state derives from event payloads; surface summaries are
+//     deterministic compactions over the disposable Loop entry projection.
 //   - freshness_at and current_stage_entered_at come from event.occurred_at, never wall-clock.
 //   - UPSERTs enforce the seq-hiwater guard at the driver; same event replayed twice is idempotent.
 //   - knowledge_loop_transition_dedupes is NOT touched during reproject.
@@ -179,7 +184,11 @@ func (p *Projector) projectEvent(ctx context.Context, ev *sovereign_db.Knowledge
 		if err != nil {
 			return nil, err
 		}
-		return p.repo.UpsertKnowledgeLoopEntry(ctx, entry)
+		res, err := p.repo.UpsertKnowledgeLoopEntry(ctx, entry)
+		if err != nil {
+			return res, err
+		}
+		return res, p.recomputeSurfaces(ctx, ev, lensModeID)
 
 	case EventSummaryNarrativeBackfilled:
 		// ADR-000846: discovered event repairs historic entries' why_text via
@@ -202,6 +211,18 @@ func (p *Projector) projectEvent(ctx context.Context, ev *sovereign_db.Knowledge
 		if err != nil {
 			return nil, err
 		}
+		if _, entryStateErr := p.repo.UpsertKnowledgeLoopEntrySessionState(
+			ctx,
+			ev.UserID.String(),
+			ev.TenantID.String(),
+			lensModeID,
+			entry.EntryKey,
+			sovereignv1.LoopStage_LOOP_STAGE_ACT,
+			ev.OccurredAt,
+			ev.EventSeq,
+		); entryStateErr != nil {
+			return res, fmt.Errorf("entry session upsert after opened: %w", entryStateErr)
+		}
 		entryKey := entry.EntryKey
 		state := &sovereignv1.KnowledgeLoopSessionState{
 			UserId:                ev.UserID.String(),
@@ -215,7 +236,7 @@ func (p *Projector) projectEvent(ctx context.Context, ev *sovereign_db.Knowledge
 		if _, sErr := p.repo.UpsertKnowledgeLoopSessionState(ctx, state); sErr != nil {
 			return res, fmt.Errorf("session upsert after opened: %w", sErr)
 		}
-		return res, nil
+		return res, p.recomputeSurfaces(ctx, ev, lensModeID)
 
 	case EventHomeItemDismissed:
 		bucket, inputs, plannerVersion := p.resolveBucketAndInputs(ctx, ev)
@@ -227,7 +248,11 @@ func (p *Projector) projectEvent(ctx context.Context, ev *sovereign_db.Knowledge
 		}
 		entry.DismissState = sovereignv1.DismissState_DISMISS_STATE_DISMISSED
 		entry.DecisionOptions = nil
-		return p.repo.UpsertKnowledgeLoopEntry(ctx, entry)
+		res, err := p.repo.UpsertKnowledgeLoopEntry(ctx, entry)
+		if err != nil {
+			return res, err
+		}
+		return res, p.recomputeSurfaces(ctx, ev, lensModeID)
 
 	case EventHomeItemSuperseded, EventSummarySuperseded:
 		bucket, inputs, plannerVersion := p.resolveBucketAndInputs(ctx, ev)
@@ -258,7 +283,11 @@ func (p *Projector) projectEvent(ctx context.Context, ev *sovereign_db.Knowledge
 			)
 			observeChangeSummaryWritten(redlineCapable)
 		}
-		return p.repo.UpsertKnowledgeLoopEntry(ctx, entry)
+		res, err := p.repo.UpsertKnowledgeLoopEntry(ctx, entry)
+		if err != nil {
+			return res, err
+		}
+		return res, p.recomputeSurfaces(ctx, ev, lensModeID)
 
 	case EventKnowledgeLoopObserved,
 		EventKnowledgeLoopOriented,
@@ -352,10 +381,24 @@ func (p *Projector) projectTransition(ctx context.Context, ev *sovereign_db.Know
 	if sessionErr != nil {
 		return sessionRes, sessionErr
 	}
+	if entryKey != "" {
+		if _, entrySessionErr := p.repo.UpsertKnowledgeLoopEntrySessionState(
+			ctx,
+			ev.UserID.String(),
+			ev.TenantID.String(),
+			lensModeID,
+			entryKey,
+			state.CurrentStage,
+			ev.OccurredAt,
+			ev.EventSeq,
+		); entrySessionErr != nil {
+			return sessionRes, fmt.Errorf("entry session upsert on transition: %w", entrySessionErr)
+		}
+	}
 
 	// Deferred uniquely flips the entry's dismiss_state to DEFERRED. The
 	// Review-lane KnowledgeLoopReviewed event also flips dismiss_state, but
-	// to a value chosen by the action sub-field on the event payload:
+	// to a value chosen by the trigger sub-field on the event payload:
 	//   recheck       → ACTIVE   (re-arms the entry; freshness is already
 	//                              the event.OccurredAt via the projection
 	//                              pipeline, so the next snapshot promotes
@@ -392,13 +435,12 @@ func (p *Projector) projectTransition(ctx context.Context, ev *sovereign_db.Know
 		}
 	}
 
-	return sessionRes, nil
+	return sessionRes, p.recomputeSurfaces(ctx, ev, lensModeID)
 }
 
-// dismissStateForReviewedEvent maps the action sub-field on a
+// dismissStateForReviewedEvent maps the trigger sub-field on a
 // KnowledgeLoopReviewed event payload to the dismiss_state the projector
-// should patch onto the entry. Pure: depends only on payload bytes, never on
-// latest projection state. Reproject-safe by construction.
+// should patch onto the entry. Pure: depends only on payload bytes.
 func dismissStateForReviewedEvent(payload json.RawMessage) sovereignv1.DismissState {
 	if len(payload) == 0 {
 		// Unknown payload — preserve the entry by treating as "mark reviewed"
@@ -410,15 +452,72 @@ func dismissStateForReviewedEvent(payload json.RawMessage) sovereignv1.DismissSt
 	if err := json.Unmarshal(payload, &m); err != nil {
 		return sovereignv1.DismissState_DISMISS_STATE_COMPLETED
 	}
-	action, _ := m["action"].(string)
-	switch action {
-	case "recheck":
+	trigger, _ := m["trigger"].(string)
+	switch trigger {
+	case "TRANSITION_TRIGGER_RECHECK":
 		return sovereignv1.DismissState_DISMISS_STATE_ACTIVE
-	case "archive", "mark_reviewed":
+	case "TRANSITION_TRIGGER_ARCHIVE", "TRANSITION_TRIGGER_MARK_REVIEWED":
 		return sovereignv1.DismissState_DISMISS_STATE_COMPLETED
 	default:
 		return sovereignv1.DismissState_DISMISS_STATE_COMPLETED
 	}
+}
+
+func (p *Projector) recomputeSurfaces(ctx context.Context, ev *sovereign_db.KnowledgeEvent, lensModeID string) error {
+	if ev.UserID == nil {
+		return nil
+	}
+	userID := ev.UserID.String()
+	tenantID := ev.TenantID.String()
+	for _, bucket := range []sovereignv1.SurfaceBucket{
+		sovereignv1.SurfaceBucket_SURFACE_BUCKET_NOW,
+		sovereignv1.SurfaceBucket_SURFACE_BUCKET_CONTINUE,
+		sovereignv1.SurfaceBucket_SURFACE_BUCKET_CHANGED,
+		sovereignv1.SurfaceBucket_SURFACE_BUCKET_REVIEW,
+	} {
+		b := bucket
+		entries, err := p.repo.GetKnowledgeLoopEntries(ctx, sovereign_db.GetKnowledgeLoopEntriesFilter{
+			TenantID:      ev.TenantID,
+			UserID:        *ev.UserID,
+			LensModeID:    lensModeID,
+			SurfaceBucket: &b,
+			Limit:         3,
+		})
+		if err != nil {
+			return fmt.Errorf("recompute surface %s: %w", bucket.String(), err)
+		}
+
+		var primary *string
+		secondary := make([]string, 0, 2)
+		if len(entries) > 0 {
+			key := entries[0].EntryKey
+			primary = &key
+			for _, e := range entries[1:] {
+				if len(secondary) >= 2 {
+					break
+				}
+				secondary = append(secondary, e.EntryKey)
+			}
+		}
+
+		health, _ := json.Marshal(map[string]int{"active_count": len(entries)})
+		surface := &sovereignv1.KnowledgeLoopSurface{
+			UserId:               userID,
+			TenantId:             tenantID,
+			LensModeId:           lensModeID,
+			SurfaceBucket:        bucket,
+			PrimaryEntryKey:      primary,
+			SecondaryEntryKeys:   secondary,
+			ProjectionSeqHiwater: ev.EventSeq,
+			FreshnessAt:          timestamppb.New(ev.OccurredAt),
+			ServiceQuality:       sovereignv1.LoopServiceQuality_LOOP_SERVICE_QUALITY_FULL,
+			LoopHealth:           health,
+		}
+		if _, err := p.repo.UpsertKnowledgeLoopSurface(ctx, surface); err != nil {
+			return fmt.Errorf("upsert surface %s: %w", bucket.String(), err)
+		}
+	}
+	return nil
 }
 
 // buildEntryFromEvent materializes a KnowledgeLoopEntry from an event with
@@ -468,7 +567,7 @@ func (p *Projector) buildEntryFromEvent(
 		ArtifactVersionRef:    art,
 		WhyPrimary:            why,
 		DecisionOptions:       seedDecisionOptions(proposedStage),
-		ActTargets:            seedActTargets(inputs),
+		ActTargets:            seedActTargets(ev, inputs),
 		DismissState:          sovereignv1.DismissState_DISMISS_STATE_ACTIVE,
 		RenderDepthHint:       pickRenderDepth(surfaceBucket),
 		LoopPriority:          pickLoopPriority(surfaceBucket),
@@ -494,13 +593,20 @@ func (p *Projector) buildEntryFromEvent(
 //
 // Reproject-safe: pure function of `inputs`, which is itself derived from
 // event payload + versioned artifacts only.
-func seedActTargets(inputs SurfaceScoreInputs) []byte {
+func seedActTargets(ev *sovereign_db.KnowledgeEvent, inputs SurfaceScoreInputs) []byte {
 	type actTarget struct {
 		TargetType string `json:"target_type"`
 		TargetRef  string `json:"target_ref"`
 		Route      string `json:"route,omitempty"`
 	}
 	out := []actTarget{}
+	if articleID := articleActTargetID(ev); articleID != "" {
+		out = append(out, actTarget{
+			TargetType: "article",
+			TargetRef:  articleID,
+			Route:      "/articles/" + url.PathEscape(articleID),
+		})
+	}
 	if inputs.RecapTopicSnapshotID != "" {
 		out = append(out, actTarget{
 			TargetType: "recap",
@@ -516,6 +622,22 @@ func seedActTargets(inputs SurfaceScoreInputs) []byte {
 		return nil
 	}
 	return b
+}
+
+func articleActTargetID(ev *sovereign_db.KnowledgeEvent) string {
+	if ev == nil {
+		return ""
+	}
+	if id := extractStringField(ev.Payload, "article_id"); id != "" {
+		return id
+	}
+	if ev.AggregateType == "article" && ev.AggregateID != "" {
+		return ev.AggregateID
+	}
+	if key := extractStringField(ev.Payload, "entry_key", "item_key"); strings.HasPrefix(key, "article:") {
+		return strings.TrimPrefix(key, "article:")
+	}
+	return ""
 }
 
 func marshalSurfaceScoreInputs(in SurfaceScoreInputs) []byte {

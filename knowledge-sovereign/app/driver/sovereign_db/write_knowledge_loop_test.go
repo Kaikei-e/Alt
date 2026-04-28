@@ -342,6 +342,54 @@ func TestPatchKnowledgeLoopEntryDismissState_SeqHiwaterGuardSkipsStaleReplay(t *
 	require.NoError(t, mock.ExpectationsWereMet())
 }
 
+func TestUpsertKnowledgeLoopEntrySessionState_AppliesSeqGuard(t *testing.T) {
+	mock, err := pgxmock.NewPool()
+	require.NoError(t, err)
+	defer mock.Close()
+
+	repo := &Repository{pool: mock}
+	userID := uuid.New()
+	tenantID := uuid.New()
+	enteredAt := time.Date(2026, 4, 28, 10, 0, 0, 0, time.UTC)
+
+	mock.ExpectQuery(regexp.QuoteMeta(upsertKnowledgeLoopEntrySessionStateQuery)).
+		WithArgs(
+			userID,
+			tenantID,
+			"default",
+			"article:42",
+			"orient",
+			enteredAt,
+			int64(700),
+		).
+		WillReturnRows(pgxmock.NewRows([]string{"projection_revision", "projection_seq_hiwater"}).
+			AddRow(int64(1), int64(700)))
+
+	res, err := repo.UpsertKnowledgeLoopEntrySessionState(
+		context.Background(),
+		userID.String(),
+		tenantID.String(),
+		"default",
+		"article:42",
+		sovereignv1.LoopStage_LOOP_STAGE_ORIENT,
+		enteredAt,
+		700,
+	)
+
+	require.NoError(t, err)
+	require.True(t, res.Applied)
+	require.False(t, res.SkippedBySeqHiwater)
+	require.Equal(t, int64(700), res.ProjectionSeqHiwater)
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestUpsertKnowledgeLoopSurface_AllowsClearingPrimary(t *testing.T) {
+	require.Contains(t, upsertKnowledgeLoopSurfaceQuery, "primary_entry_key      = EXCLUDED.primary_entry_key",
+		"surface recompute must be able to clear a stale primary when a bucket becomes empty")
+	require.NotContains(t, upsertKnowledgeLoopSurfaceQuery, "COALESCE(EXCLUDED.primary_entry_key",
+		"COALESCE would preserve stale primary_entry_key after archive/mark_reviewed")
+}
+
 // TestReserveKnowledgeLoopTransition_Fresh exercises a first-time idempotency claim.
 func TestReserveKnowledgeLoopTransition_Fresh(t *testing.T) {
 	mock, err := pgxmock.NewPool()

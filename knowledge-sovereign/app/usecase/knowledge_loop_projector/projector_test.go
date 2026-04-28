@@ -23,6 +23,8 @@ type fakeRepo struct {
 	events         []sovereign_db.KnowledgeEvent
 	entries        []*sovereignv1.KnowledgeLoopEntry
 	sessions       []*sovereignv1.KnowledgeLoopSessionState
+	entrySessions  []entrySessionCall
+	surfaces       []*sovereignv1.KnowledgeLoopSurface
 	patches        []patchCall
 	dismissPatches []dismissPatchCall
 	checkpoints    []int64
@@ -46,6 +48,13 @@ type dismissPatchCall struct {
 	UserID, TenantID, LensModeID, EntryKey string
 	EventSeq                               int64
 	DismissState                           sovereignv1.DismissState
+}
+
+type entrySessionCall struct {
+	UserID, TenantID, LensModeID, EntryKey string
+	CurrentStage                           sovereignv1.LoopStage
+	CurrentStageEnteredAt                  time.Time
+	EventSeq                               int64
 }
 
 func (f *fakeRepo) ListKnowledgeEventsSince(ctx context.Context, afterSeq int64, limit int) ([]sovereign_db.KnowledgeEvent, error) {
@@ -81,6 +90,39 @@ func (f *fakeRepo) UpsertKnowledgeLoopSessionState(ctx context.Context, s *sover
 	return &sovereign_db.KnowledgeLoopUpsertResult{Applied: true, ProjectionRevision: 1, ProjectionSeqHiwater: s.ProjectionSeqHiwater}, nil
 }
 
+func (f *fakeRepo) UpsertKnowledgeLoopEntrySessionState(ctx context.Context, userID, tenantID, lensModeID, entryKey string, currentStage sovereignv1.LoopStage, currentStageEnteredAt time.Time, eventSeq int64) (*sovereign_db.KnowledgeLoopUpsertResult, error) {
+	f.entrySessions = append(f.entrySessions, entrySessionCall{
+		UserID: userID, TenantID: tenantID, LensModeID: lensModeID, EntryKey: entryKey,
+		CurrentStage: currentStage, CurrentStageEnteredAt: currentStageEnteredAt, EventSeq: eventSeq,
+	})
+	return &sovereign_db.KnowledgeLoopUpsertResult{Applied: true, ProjectionRevision: 1, ProjectionSeqHiwater: eventSeq}, nil
+}
+
+func (f *fakeRepo) UpsertKnowledgeLoopSurface(ctx context.Context, s *sovereignv1.KnowledgeLoopSurface) (*sovereign_db.KnowledgeLoopUpsertResult, error) {
+	f.surfaces = append(f.surfaces, s)
+	return &sovereign_db.KnowledgeLoopUpsertResult{Applied: true, ProjectionRevision: 1, ProjectionSeqHiwater: s.ProjectionSeqHiwater}, nil
+}
+
+func (f *fakeRepo) GetKnowledgeLoopEntries(ctx context.Context, filter sovereign_db.GetKnowledgeLoopEntriesFilter) ([]*sovereignv1.KnowledgeLoopEntry, error) {
+	out := make([]*sovereignv1.KnowledgeLoopEntry, 0)
+	for _, e := range f.entries {
+		if e.UserId != filter.UserID.String() || e.TenantId != filter.TenantID.String() || e.LensModeId != filter.LensModeID {
+			continue
+		}
+		if filter.SurfaceBucket != nil && e.SurfaceBucket != *filter.SurfaceBucket {
+			continue
+		}
+		if !filter.IncludeDismissed && e.DismissState != sovereignv1.DismissState_DISMISS_STATE_ACTIVE {
+			continue
+		}
+		out = append(out, e)
+		if filter.Limit > 0 && len(out) >= filter.Limit {
+			break
+		}
+	}
+	return out, nil
+}
+
 func (f *fakeRepo) PatchKnowledgeLoopEntryWhy(ctx context.Context, userID, tenantID, lensModeID, entryKey string, eventSeq int64, why *sovereignv1.KnowledgeLoopWhyPayload) (*sovereign_db.KnowledgeLoopUpsertResult, error) {
 	f.patches = append(f.patches, patchCall{
 		UserID: userID, TenantID: tenantID, LensModeID: lensModeID,
@@ -96,6 +138,12 @@ func (f *fakeRepo) PatchKnowledgeLoopEntryDismissState(ctx context.Context, user
 		UserID: userID, TenantID: tenantID, LensModeID: lensModeID,
 		EntryKey: entryKey, EventSeq: eventSeq, DismissState: dismissState,
 	})
+	for _, e := range f.entries {
+		if e.UserId == userID && e.TenantId == tenantID && e.LensModeId == lensModeID && e.EntryKey == entryKey {
+			e.DismissState = dismissState
+			e.ProjectionSeqHiwater = eventSeq
+		}
+	}
 	return &sovereign_db.KnowledgeLoopUpsertResult{
 		Applied: true, ProjectionRevision: 3, ProjectionSeqHiwater: eventSeq,
 	}, nil
@@ -177,6 +225,14 @@ func TestRunBatch_SummaryVersionCreated_ObserveSeed(t *testing.T) {
 	}
 	require.Equal(t, []string{"revisit", "ask", "snooze"}, intents,
 		"Observe entries must propose §7-allowed transitions; observe → act is forbidden")
+
+	var targets []map[string]string
+	require.NoError(t, json.Unmarshal(entry.ActTargets, &targets))
+	require.Equal(t, []map[string]string{{
+		"target_type": "article",
+		"target_ref":  "article:42",
+		"route":       "/articles/article:42",
+	}}, targets)
 }
 
 func TestRunBatch_WithRealScoreResolverMarksPlannerV2AndStoresInputs(t *testing.T) {
@@ -363,4 +419,83 @@ func TestRunBatch_KnowledgeLoopDeferred_FlipsDismissState(t *testing.T) {
 	require.Len(t, repo.sessions, 1)
 	require.NotNil(t, repo.sessions[0].LastDeferredEntryKey)
 	require.Equal(t, "article:42", *repo.sessions[0].LastDeferredEntryKey)
+}
+
+func TestRunBatch_KnowledgeLoopReviewed_UsesTriggerForDismissState(t *testing.T) {
+	userID := uuid.New()
+	cases := []struct {
+		name    string
+		trigger string
+		want    sovereignv1.DismissState
+	}{
+		{"recheck re-arms", "TRANSITION_TRIGGER_RECHECK", sovereignv1.DismissState_DISMISS_STATE_ACTIVE},
+		{"archive completes", "TRANSITION_TRIGGER_ARCHIVE", sovereignv1.DismissState_DISMISS_STATE_COMPLETED},
+		{"mark reviewed completes", "TRANSITION_TRIGGER_MARK_REVIEWED", sovereignv1.DismissState_DISMISS_STATE_COMPLETED},
+	}
+
+	for i, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			ev := makeEvent(t, EventKnowledgeLoopReviewed, int64(700+i), userID, map[string]any{
+				"entry_key":    "article:42",
+				"lens_mode_id": "default",
+				"from_stage":   "LOOP_STAGE_OBSERVE",
+				"to_stage":     "LOOP_STAGE_OBSERVE",
+				"trigger":      tc.trigger,
+			})
+			repo := &fakeRepo{events: []sovereign_db.KnowledgeEvent{ev}}
+
+			require.NoError(t, newProjector(repo).RunBatch(context.Background()))
+
+			require.Len(t, repo.dismissPatches, 1)
+			require.Equal(t, tc.want, repo.dismissPatches[0].DismissState)
+		})
+	}
+}
+
+func TestRunBatch_TransitionUpdatesEntrySessionWithoutChangingEntryProposal(t *testing.T) {
+	userID := uuid.New()
+	ev := makeEvent(t, EventKnowledgeLoopOriented, 800, userID, map[string]any{
+		"entry_key":    "article:42",
+		"lens_mode_id": "default",
+		"from_stage":   "LOOP_STAGE_OBSERVE",
+		"to_stage":     "LOOP_STAGE_ORIENT",
+		"trigger":      "TRANSITION_TRIGGER_USER_TAP",
+	})
+	repo := &fakeRepo{events: []sovereign_db.KnowledgeEvent{ev}}
+
+	require.NoError(t, newProjector(repo).RunBatch(context.Background()))
+
+	require.Empty(t, repo.entries, "transition events must not mutate KnowledgeLoopEntry.proposed_stage")
+	require.Len(t, repo.entrySessions, 1)
+	entryState := repo.entrySessions[0]
+	require.Equal(t, "article:42", entryState.EntryKey)
+	require.Equal(t, sovereignv1.LoopStage_LOOP_STAGE_ORIENT, entryState.CurrentStage)
+	require.Equal(t, ev.OccurredAt.UTC(), entryState.CurrentStageEnteredAt.UTC())
+	require.Equal(t, int64(800), entryState.EventSeq)
+}
+
+func TestRunBatch_SummaryVersionCreated_RecomputesSurface(t *testing.T) {
+	userID := uuid.New()
+	ev := makeEvent(t, EventSummaryVersionCreated, 900, userID, map[string]any{
+		"entry_key":          "article:surface-1",
+		"article_id":         "art-surface-1",
+		"article_title":      "Surface Candidate",
+		"summary_version_id": "sv-surface-1",
+	})
+	repo := &fakeRepo{events: []sovereign_db.KnowledgeEvent{ev}}
+
+	require.NoError(t, newProjector(repo).RunBatch(context.Background()))
+
+	require.NotEmpty(t, repo.surfaces)
+	var nowSurface *sovereignv1.KnowledgeLoopSurface
+	for _, s := range repo.surfaces {
+		if s.SurfaceBucket == sovereignv1.SurfaceBucket_SURFACE_BUCKET_NOW {
+			nowSurface = s
+			break
+		}
+	}
+	require.NotNil(t, nowSurface)
+	require.NotNil(t, nowSurface.PrimaryEntryKey)
+	require.Equal(t, "article:surface-1", *nowSurface.PrimaryEntryKey)
+	require.JSONEq(t, `{"active_count":1}`, string(nowSurface.LoopHealth))
 }

@@ -411,7 +411,7 @@ INSERT INTO knowledge_loop_surfaces (
   $9, $10
 )
 ON CONFLICT (user_id, lens_mode_id, surface_bucket) DO UPDATE SET
-  primary_entry_key      = COALESCE(EXCLUDED.primary_entry_key, knowledge_loop_surfaces.primary_entry_key),
+  primary_entry_key      = EXCLUDED.primary_entry_key,
   secondary_entry_keys   = EXCLUDED.secondary_entry_keys,
   projection_revision    = knowledge_loop_surfaces.projection_revision + 1,
   projection_seq_hiwater = GREATEST(knowledge_loop_surfaces.projection_seq_hiwater, EXCLUDED.projection_seq_hiwater),
@@ -456,6 +456,63 @@ func (r *Repository) UpsertKnowledgeLoopSurface(
 			return &KnowledgeLoopUpsertResult{SkippedBySeqHiwater: true}, nil
 		}
 		return nil, fmt.Errorf("upsert knowledge_loop_surface: %w", err)
+	}
+	return &KnowledgeLoopUpsertResult{
+		Applied:              true,
+		ProjectionRevision:   revision,
+		ProjectionSeqHiwater: seqHiwater,
+	}, nil
+}
+
+const upsertKnowledgeLoopEntrySessionStateQuery = `
+INSERT INTO knowledge_loop_entry_session_state (
+  user_id, tenant_id, lens_mode_id, entry_key,
+  current_stage, current_stage_entered_at,
+  projection_revision, projection_seq_hiwater
+) VALUES (
+  $1, $2, $3, $4,
+  $5, $6,
+  1, $7
+)
+ON CONFLICT (user_id, tenant_id, lens_mode_id, entry_key) DO UPDATE SET
+  current_stage            = EXCLUDED.current_stage,
+  current_stage_entered_at = EXCLUDED.current_stage_entered_at,
+  projection_revision      = knowledge_loop_entry_session_state.projection_revision + 1,
+  projection_seq_hiwater   = GREATEST(knowledge_loop_entry_session_state.projection_seq_hiwater, EXCLUDED.projection_seq_hiwater),
+  projected_at             = NOW()
+WHERE knowledge_loop_entry_session_state.projection_seq_hiwater <= EXCLUDED.projection_seq_hiwater
+RETURNING projection_revision, projection_seq_hiwater
+`
+
+// UpsertKnowledgeLoopEntrySessionState writes per-entry user progress. The
+// currentStageEnteredAt argument MUST come from event.occurred_at.
+func (r *Repository) UpsertKnowledgeLoopEntrySessionState(
+	ctx context.Context,
+	userID, tenantID, lensModeID, entryKey string,
+	currentStage sovereignv1.LoopStage,
+	currentStageEnteredAt time.Time,
+	eventSeq int64,
+) (*KnowledgeLoopUpsertResult, error) {
+	uID, err := uuid.Parse(userID)
+	if err != nil {
+		return nil, fmt.Errorf("parse user_id: %w", err)
+	}
+	tID, err := uuid.Parse(tenantID)
+	if err != nil {
+		return nil, fmt.Errorf("parse tenant_id: %w", err)
+	}
+
+	var revision, seqHiwater int64
+	row := r.pool.QueryRow(ctx, upsertKnowledgeLoopEntrySessionStateQuery,
+		uID, tID, lensModeID, entryKey,
+		loopStageToDB(currentStage), currentStageEnteredAt,
+		eventSeq,
+	)
+	if err := row.Scan(&revision, &seqHiwater); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return &KnowledgeLoopUpsertResult{SkippedBySeqHiwater: true}, nil
+		}
+		return nil, fmt.Errorf("upsert knowledge_loop_entry_session_state: %w", err)
 	}
 	return &KnowledgeLoopUpsertResult{
 		Applied:              true,

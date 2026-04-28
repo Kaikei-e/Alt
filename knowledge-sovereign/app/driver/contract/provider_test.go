@@ -268,6 +268,9 @@ func TestVerifyAltBackendConsumerContract(t *testing.T) {
 			"sovereign accepts Deferred Loop events with same-stage transitions": func(setup bool, s models.ProviderState) (models.ProviderStateResponse, error) {
 				return nil, nil
 			},
+			"sovereign accepts Reviewed Loop events with trigger-based actions": func(setup bool, s models.ProviderState) (models.ProviderStateResponse, error) {
+				return nil, nil
+			},
 			"sovereign accepts Act-stage Loop events without inferring HomeItemOpened": func(setup bool, s models.ProviderState) (models.ProviderStateResponse, error) {
 				return nil, nil
 			},

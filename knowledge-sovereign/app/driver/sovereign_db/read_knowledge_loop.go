@@ -38,14 +38,14 @@ func (r *Repository) GetKnowledgeLoopEntries(
 	}
 
 	args := []interface{}{f.UserID, f.TenantID, f.LensModeID}
-	where := "user_id = $1 AND tenant_id = $2 AND lens_mode_id = $3"
+	where := "e.user_id = $1 AND e.tenant_id = $2 AND e.lens_mode_id = $3"
 
 	if !f.IncludeDismissed {
-		where += " AND dismiss_state = 'active'"
+		where += " AND e.dismiss_state = 'active'"
 	}
 	if f.SurfaceBucket != nil {
 		args = append(args, surfaceBucketToDB(*f.SurfaceBucket))
-		where += fmt.Sprintf(" AND surface_bucket = $%d", len(args))
+		where += fmt.Sprintf(" AND e.surface_bucket = $%d", len(args))
 	}
 
 	limit := f.Limit
@@ -55,18 +55,24 @@ func (r *Repository) GetKnowledgeLoopEntries(
 	args = append(args, limit)
 	query := fmt.Sprintf(`
 SELECT
-  user_id, tenant_id, lens_mode_id, entry_key, source_item_key,
-  proposed_stage, surface_bucket,
-  projection_revision, projection_seq_hiwater, source_event_seq,
-  freshness_at, source_observed_at,
-  artifact_summary_version_id, artifact_tag_set_version_id, artifact_lens_version_id,
-  why_kind, why_text, why_confidence, why_evidence_ref_ids, why_evidence_refs,
-  change_summary, continue_context, decision_options, act_targets,
-  superseded_by_entry_key, dismiss_state, render_depth_hint, loop_priority,
-  surface_planner_version, surface_score_inputs
-FROM knowledge_loop_entries_public
+  e.user_id, e.tenant_id, e.lens_mode_id, e.entry_key, e.source_item_key,
+  e.proposed_stage, e.surface_bucket,
+  e.projection_revision, e.projection_seq_hiwater, e.source_event_seq,
+  e.freshness_at, e.source_observed_at,
+  e.artifact_summary_version_id, e.artifact_tag_set_version_id, e.artifact_lens_version_id,
+  e.why_kind, e.why_text, e.why_confidence, e.why_evidence_ref_ids, e.why_evidence_refs,
+  e.change_summary, e.continue_context, e.decision_options, e.act_targets,
+  e.superseded_by_entry_key, e.dismiss_state, e.render_depth_hint, e.loop_priority,
+  e.surface_planner_version, e.surface_score_inputs,
+  s.current_stage, s.current_stage_entered_at
+FROM knowledge_loop_entries_public e
+LEFT JOIN knowledge_loop_entry_session_state s
+  ON s.user_id = e.user_id
+ AND s.tenant_id = e.tenant_id
+ AND s.lens_mode_id = e.lens_mode_id
+ AND s.entry_key = e.entry_key
 WHERE %s
-ORDER BY projection_seq_hiwater DESC
+ORDER BY e.projection_seq_hiwater DESC
 LIMIT $%d
 `, where, len(args))
 
@@ -114,6 +120,8 @@ func scanKnowledgeLoopEntry(row pgx.Row) (*sovereignv1.KnowledgeLoopEntry, error
 		loopPriority                              string
 		surfacePlannerVersion                     int16
 		surfaceScoreInputs                        []byte
+		currentEntryStage                         *string
+		currentEntryStageEnteredAt                *time.Time
 	)
 
 	err := row.Scan(
@@ -126,6 +134,7 @@ func scanKnowledgeLoopEntry(row pgx.Row) (*sovereignv1.KnowledgeLoopEntry, error
 		&changeSummary, &continueContext, &decisionOptions, &actTargets,
 		&supersededBy, &dismissState, &renderDepth, &loopPriority,
 		&surfacePlannerVersion, &surfaceScoreInputs,
+		&currentEntryStage, &currentEntryStageEnteredAt,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("scan knowledge_loop_entry: %w", err)
@@ -164,6 +173,13 @@ func scanKnowledgeLoopEntry(row pgx.Row) (*sovereignv1.KnowledgeLoopEntry, error
 		LoopPriority:          loopPriorityFromDB(loopPriority),
 		SurfacePlannerVersion: plannerVersionFromDB(surfacePlannerVersion).Enum(),
 		SurfaceScoreInputs:    surfaceScoreInputs,
+	}
+	if currentEntryStage != nil {
+		stage := loopStageFromDB(*currentEntryStage)
+		e.CurrentEntryStage = &stage
+	}
+	if currentEntryStageEnteredAt != nil {
+		e.CurrentEntryStageEnteredAt = timestampFromTimePtr(currentEntryStageEnteredAt)
 	}
 
 	if len(whyEvidenceRefsJSON) > 0 {
