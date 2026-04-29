@@ -161,7 +161,18 @@ The recovery procedure is a one-shot **append-first** corrective wave: emit `Art
 
 ### Step 1 — Emit corrective events
 
-Run on the alt-backend host (as a one-shot job, until the admin endpoint lands in a follow-up PR). The script reads `articles.url` for every article whose Knowledge Home row has an empty `url` and appends one `ArticleUrlBackfilled` knowledge event per article. Idempotent via `dedupe_key = "article-url-backfill:<article_id>"`.
+**Preferred (ADR-000869):** open `/admin/knowledge-home` and click **Emit URL Backfill** in the page header. The button calls `KnowledgeHomeAdminService.EmitArticleUrlBackfill` through the BFF and returns an inline summary of the form `URL backfill: N appended / M scanned · K blocked-scheme · more remaining`. The handler walks `articles.url` for every Knowledge Home article with an empty URL, applies the http(s) scheme allowlist, and appends one `ArticleUrlBackfilled` knowledge event per qualifying row. Idempotent via `dedupe_key = "article-url-backfill:<article_id>"`.
+
+For preview-only runs, send `dry_run=true` directly to the endpoint via:
+
+```bash
+curl -fsS -X POST "$BFF_URL/alt.knowledge_home.v1.KnowledgeHomeAdminService/EmitArticleUrlBackfill" \
+  -H "Content-Type: application/json" \
+  -H "X-Alt-Backend-Token: $ADMIN_JWT" \
+  -d '{"maxArticles":0,"dryRun":true}'
+```
+
+**Fallback (pre-ADR-000869, do not use once the admin endpoint is live):** the legacy one-shot shell loop below is preserved only for historical reference. It is brittle (psql in container, hand-rolled base64 + UUID generation, no audit log) and is superseded by the admin endpoint above.
 
 ```bash
 docker exec alt-alt-backend-1 sh -lc '
