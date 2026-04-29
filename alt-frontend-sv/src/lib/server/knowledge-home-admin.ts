@@ -14,6 +14,7 @@ import {
 	pauseBackfill,
 	resumeBackfill,
 	triggerBackfill,
+	emitArticleUrlBackfill,
 	getSLOStatus,
 	getSystemMetrics,
 	listReprojectRuns,
@@ -22,6 +23,7 @@ import {
 	swapReproject,
 	rollbackReproject,
 	runProjectionAudit,
+	type ArticleUrlBackfillResultData,
 	type ProjectionAuditData,
 } from "$lib/connect/knowledge_home_admin";
 
@@ -76,6 +78,15 @@ export async function triggerKnowledgeHomeBackfill(
 ) {
 	const transport = createBffTransport(backendToken);
 	return triggerBackfill(transport, projectionVersion);
+}
+
+export async function emitKnowledgeHomeArticleUrlBackfill(
+	backendToken: string,
+	maxArticles: number,
+	dryRun: boolean,
+): Promise<ArticleUrlBackfillResultData> {
+	const transport = createBffTransport(backendToken);
+	return emitArticleUrlBackfill(transport, maxArticles, dryRun);
 }
 
 export async function pauseKnowledgeHomeBackfill(

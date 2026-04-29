@@ -1,4 +1,5 @@
 import type {
+	ArticleUrlBackfillResultData,
 	FeatureFlagsConfigData,
 	ProjectionHealthData,
 	SLOStatusData,
@@ -70,6 +71,7 @@ export function useKnowledgeHomeAdmin(
 	let reprojectRuns = $state<ReprojectRunData[]>([]);
 	let reprojectDiff = $state<ReprojectDiffSummaryData | null>(null);
 	let auditResult = $state<ProjectionAuditData | null>(null);
+	let urlBackfillResult = $state<ArticleUrlBackfillResultData | null>(null);
 	let systemMetrics = $state<SystemMetricsData | null>(null);
 	let sliHistory = $state<SLIHistoryEntry[]>([]);
 	let error = $state<Error | null>(null);
@@ -213,6 +215,37 @@ export function useKnowledgeHomeAdmin(
 	const rollbackReprojectAction = async (reprojectRunId: string) =>
 		runAction({ action: "rollback_reproject", reprojectRunId });
 
+	const emitArticleUrlBackfillAction = async (
+		maxArticles: number,
+		dryRun: boolean,
+	) => {
+		if (!actionRunner) throw new Error("Admin actions are unavailable.");
+		acting = true;
+		try {
+			const response = await fetch("/api/admin/knowledge-home", {
+				method: "POST",
+				credentials: "include",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify({
+					action: "emit_article_url_backfill",
+					maxArticles,
+					dryRun,
+				}),
+			});
+			if (!response.ok) {
+				const body = await response.json().catch(() => null);
+				throw new Error(body?.error ?? "Failed to emit article URL backfill.");
+			}
+			const result = await response.json();
+			urlBackfillResult = (result.result ??
+				null) as ArticleUrlBackfillResultData | null;
+		} catch (err) {
+			error = err instanceof Error ? err : new Error("Unknown error");
+		} finally {
+			acting = false;
+		}
+	};
+
 	const runAuditAction = async (
 		projectionName: string,
 		projectionVersion: string,
@@ -265,6 +298,9 @@ export function useKnowledgeHomeAdmin(
 		get auditResult() {
 			return auditResult;
 		},
+		get urlBackfillResult() {
+			return urlBackfillResult;
+		},
 		get systemMetrics() {
 			return systemMetrics;
 		},
@@ -289,6 +325,7 @@ export function useKnowledgeHomeAdmin(
 		},
 		triggerBackfill: async (projectionVersion: number) =>
 			runAction({ action: "trigger", projectionVersion }),
+		emitArticleUrlBackfill: emitArticleUrlBackfillAction,
 		pauseBackfill: async (jobId: string) =>
 			runAction({ action: "pause", jobId }),
 		resumeBackfill: async (jobId: string) =>

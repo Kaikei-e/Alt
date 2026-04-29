@@ -154,6 +154,80 @@ describe("useKnowledgeHomeAdmin", () => {
 		expect(admin.acting).toBe(false);
 	});
 
+	it("surfaces emit_article_url_backfill counters via urlBackfillResult", async () => {
+		const fetcher = vi.fn().mockResolvedValue(initialSnapshot);
+		const actionRunner = vi
+			.fn<(action: KnowledgeHomeAdminActionRequest) => Promise<void>>()
+			.mockResolvedValue(undefined);
+
+		const fetchMock = vi.fn().mockResolvedValue({
+			ok: true,
+			json: async () => ({
+				ok: true,
+				result: {
+					articlesScanned: 12252,
+					eventsAppended: 12000,
+					skippedBlockedScheme: 252,
+					skippedDuplicate: 0,
+					moreRemaining: false,
+				},
+			}),
+		});
+		vi.stubGlobal("fetch", fetchMock);
+
+		const admin = useKnowledgeHomeAdmin(fetcher, actionRunner);
+		admin.seed(initialSnapshot);
+
+		await admin.emitArticleUrlBackfill(0, false);
+
+		expect(fetchMock).toHaveBeenCalledWith(
+			"/api/admin/knowledge-home",
+			expect.objectContaining({
+				method: "POST",
+				body: JSON.stringify({
+					action: "emit_article_url_backfill",
+					maxArticles: 0,
+					dryRun: false,
+				}),
+			}),
+		);
+		expect(admin.urlBackfillResult).toEqual({
+			articlesScanned: 12252,
+			eventsAppended: 12000,
+			skippedBlockedScheme: 252,
+			skippedDuplicate: 0,
+			moreRemaining: false,
+		});
+		expect(admin.error).toBe(null);
+		expect(admin.acting).toBe(false);
+
+		vi.unstubAllGlobals();
+	});
+
+	it("captures the error and leaves prior urlBackfillResult untouched on failure", async () => {
+		const fetcher = vi.fn().mockResolvedValue(initialSnapshot);
+		const actionRunner = vi
+			.fn<(action: KnowledgeHomeAdminActionRequest) => Promise<void>>()
+			.mockResolvedValue(undefined);
+
+		const fetchMock = vi.fn().mockResolvedValue({
+			ok: false,
+			json: async () => ({ error: "Failed to run admin action." }),
+		});
+		vi.stubGlobal("fetch", fetchMock);
+
+		const admin = useKnowledgeHomeAdmin(fetcher, actionRunner);
+		admin.seed(initialSnapshot);
+
+		await admin.emitArticleUrlBackfill(50, true);
+
+		expect(admin.error?.message).toBe("Failed to run admin action.");
+		expect(admin.urlBackfillResult).toBe(null);
+		expect(admin.acting).toBe(false);
+
+		vi.unstubAllGlobals();
+	});
+
 	it("keeps stale data when a backfill action fails", async () => {
 		const fetcher = vi.fn().mockResolvedValue(initialSnapshot);
 		const actionRunner = vi

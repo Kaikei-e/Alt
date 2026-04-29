@@ -472,6 +472,40 @@ export async function runProjectionAudit(
 	};
 }
 
+/** Article URL backfill emit result.
+ *
+ * Surfaces the operator-facing counters returned by
+ * KnowledgeHomeAdminService.EmitArticleUrlBackfill (ADR-000869). All
+ * counts are scoped to a single invocation. `moreRemaining` indicates
+ * the operator hit `maxArticles` and should re-invoke to continue.
+ */
+export interface ArticleUrlBackfillResultData {
+	articlesScanned: number;
+	eventsAppended: number;
+	skippedBlockedScheme: number;
+	skippedDuplicate: number;
+	moreRemaining: boolean;
+}
+
+export async function emitArticleUrlBackfill(
+	transport: Transport,
+	maxArticles: number,
+	dryRun: boolean,
+): Promise<ArticleUrlBackfillResultData> {
+	const client = createAdminClient(transport);
+	const response = await client.emitArticleUrlBackfill({
+		maxArticles,
+		dryRun,
+	});
+	return {
+		articlesScanned: response.articlesScanned,
+		eventsAppended: response.eventsAppended,
+		skippedBlockedScheme: response.skippedBlockedScheme,
+		skippedDuplicate: response.skippedDuplicate,
+		moreRemaining: response.moreRemaining,
+	};
+}
+
 function convertReprojectRun(r: {
 	reprojectRunId: string;
 	projectionName: string;

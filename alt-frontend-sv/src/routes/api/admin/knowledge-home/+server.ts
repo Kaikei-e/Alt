@@ -4,6 +4,7 @@ import {
 	pauseKnowledgeHomeBackfill,
 	resumeKnowledgeHomeBackfill,
 	triggerKnowledgeHomeBackfill,
+	emitKnowledgeHomeArticleUrlBackfill,
 	startKnowledgeHomeReproject,
 	compareKnowledgeHomeReproject,
 	swapKnowledgeHomeReproject,
@@ -64,6 +65,34 @@ export const POST: RequestHandler = async ({ locals, request }) => {
 			);
 			return json(
 				{ ok: true, job },
+				{ headers: { "Cache-Control": "no-store" } },
+			);
+		}
+
+		if (
+			typeof body === "object" &&
+			body !== null &&
+			"action" in body &&
+			body.action === "emit_article_url_backfill"
+		) {
+			const maxArticles =
+				"maxArticles" in body && typeof body.maxArticles === "number"
+					? body.maxArticles
+					: 0;
+			const dryRun = "dryRun" in body && body.dryRun === true;
+			if (maxArticles < 0) {
+				return json(
+					{ error: "maxArticles must be non-negative." },
+					{ status: 400 },
+				);
+			}
+			const result = await emitKnowledgeHomeArticleUrlBackfill(
+				locals.backendToken,
+				maxArticles,
+				dryRun,
+			);
+			return json(
+				{ ok: true, result },
 				{ headers: { "Cache-Control": "no-store" } },
 			);
 		}

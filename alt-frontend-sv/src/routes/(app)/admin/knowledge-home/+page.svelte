@@ -195,6 +195,25 @@ onDestroy(() => {
 				>
 					{admin.acting && admin.activeJobId === null ? "Triggering..." : "Trigger Backfill"}
 				</button>
+				<button
+					class="ops-action-btn"
+					disabled={admin.acting}
+					data-testid="emit-article-url-backfill-button"
+					title="Emit ArticleUrlBackfilled corrective events for articles whose Knowledge Home projection has an empty URL. Run a Full Reproject + Swap afterwards to land the URLs."
+					onclick={() => void admin.emitArticleUrlBackfill(0, false)}
+				>
+					{admin.acting ? "Emitting..." : "Emit URL Backfill"}
+				</button>
+				{#if admin.urlBackfillResult}
+					<span class="ops-status-text" data-testid="url-backfill-result-summary">
+						URL backfill: {admin.urlBackfillResult.eventsAppended} appended /
+						{admin.urlBackfillResult.articlesScanned} scanned
+						{admin.urlBackfillResult.skippedBlockedScheme > 0
+							? ` · ${admin.urlBackfillResult.skippedBlockedScheme} blocked-scheme`
+							: ""}
+						{admin.urlBackfillResult.moreRemaining ? " · more remaining" : ""}
+					</span>
+				{/if}
 				<span class="ops-status-text">
 					{admin.refreshing ? "Updating..." : "Up to date"}
 				</span>
