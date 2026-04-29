@@ -17,6 +17,7 @@ import (
 	"alt/gen/proto/alt/knowledge_home/v1/knowledgehomev1connect"
 	"alt/usecase/knowledge_backfill_usecase"
 	"alt/usecase/knowledge_projection_health_usecase"
+	"alt/usecase/knowledge_url_backfill_usecase"
 )
 
 // ReprojectUsecase defines the reproject operations interface.
@@ -44,9 +45,19 @@ type MetricsUsecase interface {
 	GetSystemMetrics(ctx context.Context) (*domain.SystemMetrics, error)
 }
 
+// URLBackfillUsecase emits ArticleUrlBackfilled corrective events for
+// articles whose Knowledge Home projection has an empty URL. Defined
+// as an interface so the handler can be unit-tested without booting
+// the sovereign client; the production wiring passes a concrete
+// *knowledge_url_backfill_usecase.Usecase.
+type URLBackfillUsecase interface {
+	Emit(ctx context.Context, maxArticles int, dryRun bool) (*knowledge_url_backfill_usecase.EmitResult, error)
+}
+
 // Handler implements KnowledgeHomeAdminServiceHandler.
 type Handler struct {
 	backfillUsecase         *knowledge_backfill_usecase.Usecase
+	urlBackfillUsecase      URLBackfillUsecase
 	projectionHealthUsecase *knowledge_projection_health_usecase.Usecase
 	reprojectUsecase        ReprojectUsecase
 	sloUsecase              SLOUsecase
@@ -62,6 +73,7 @@ var _ knowledgehomev1connect.KnowledgeHomeAdminServiceHandler = (*Handler)(nil)
 // NewHandler creates a new KnowledgeHomeAdminService handler.
 func NewHandler(
 	backfill *knowledge_backfill_usecase.Usecase,
+	urlBackfill *knowledge_url_backfill_usecase.Usecase,
 	health *knowledge_projection_health_usecase.Usecase,
 	reproject ReprojectUsecase,
 	slo SLOUsecase,
@@ -72,6 +84,7 @@ func NewHandler(
 ) *Handler {
 	return &Handler{
 		backfillUsecase:         backfill,
+		urlBackfillUsecase:      urlBackfill,
 		projectionHealthUsecase: health,
 		reprojectUsecase:        reproject,
 		sloUsecase:              slo,
@@ -80,6 +93,53 @@ func NewHandler(
 		cfg:                     cfg,
 		logger:                  logger,
 	}
+}
+
+// EmitArticleUrlBackfill appends ArticleUrlBackfilled corrective events
+// for every article whose Knowledge Home projection currently shows an
+// empty URL but whose alt-db `articles.url` is non-empty and http(s)-
+// scheme. Idempotent across retries via the
+// `article-url-backfill:<article_id>` dedupe namespace.
+//
+// See ADR-000869, and the operator runbook in
+// docs/runbooks/knowledge-home-reproject-operations.md
+// §Post-tag-fix backfill.
+func (h *Handler) EmitArticleUrlBackfill(
+	ctx context.Context,
+	req *connect.Request[knowledgehomev1.EmitArticleUrlBackfillRequest],
+) (*connect.Response[knowledgehomev1.EmitArticleUrlBackfillResponse], error) {
+	max := int(req.Msg.MaxArticles)
+	if max < 0 {
+		return nil, connect.NewError(connect.CodeInvalidArgument,
+			fmt.Errorf("max_articles must be non-negative"))
+	}
+
+	res, err := h.urlBackfillUsecase.Emit(ctx, max, req.Msg.DryRun)
+	if err != nil {
+		h.logger.ErrorContext(ctx, "failed to emit article url backfill",
+			"error", err,
+			"max_articles", max,
+			"dry_run", req.Msg.DryRun,
+		)
+		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("emit article url backfill: %w", err))
+	}
+
+	h.logger.InfoContext(ctx, "emitted article url backfill",
+		"articles_scanned", res.ArticlesScanned,
+		"events_appended", res.EventsAppended,
+		"skipped_blocked_scheme", res.SkippedBlockedScheme,
+		"skipped_duplicate", res.SkippedDuplicate,
+		"more_remaining", res.MoreRemaining,
+		"dry_run", req.Msg.DryRun,
+	)
+
+	return connect.NewResponse(&knowledgehomev1.EmitArticleUrlBackfillResponse{
+		ArticlesScanned:      int32(res.ArticlesScanned),
+		EventsAppended:       int32(res.EventsAppended),
+		SkippedBlockedScheme: int32(res.SkippedBlockedScheme),
+		SkippedDuplicate:     int32(res.SkippedDuplicate),
+		MoreRemaining:        res.MoreRemaining,
+	}), nil
 }
 
 // TriggerBackfill starts a new backfill job.

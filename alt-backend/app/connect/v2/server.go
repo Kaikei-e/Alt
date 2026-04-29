@@ -182,6 +182,7 @@ func SetupConnectHandlers(mux *http.ServeMux, container *di.ApplicationComponent
 	)
 	khAdminHandler := knowledge_home_admin.NewHandler(
 		container.KnowledgeBackfillUsecase,
+		container.KnowledgeURLBackfillUsecase,
 		container.KnowledgeProjectionHealthUsecase,
 		container.ReprojectUsecase,
 		container.SLOUsecase,

@@ -22,6 +22,7 @@ import (
 	"alt/usecase/knowledge_projection_health_usecase"
 	"alt/usecase/knowledge_reproject_usecase"
 	"alt/usecase/knowledge_slo_usecase"
+	"alt/usecase/knowledge_url_backfill_usecase"
 	"alt/usecase/list_lenses_usecase"
 	"alt/usecase/recall_dismiss_usecase"
 	"alt/usecase/recall_rail_usecase"
@@ -46,6 +47,7 @@ type KnowledgeModule struct {
 	CreateSummaryVersionUsecase      *create_summary_version_usecase.CreateSummaryVersionUsecase
 	CreateTagSetVersionUsecase       *create_tag_set_version_usecase.CreateTagSetVersionUsecase
 	KnowledgeBackfillUsecase         *knowledge_backfill_usecase.Usecase
+	KnowledgeURLBackfillUsecase      *knowledge_url_backfill_usecase.Usecase
 	KnowledgeProjectionHealthUsecase *knowledge_projection_health_usecase.Usecase
 	ReprojectUsecase                 *knowledge_reproject_usecase.Usecase
 	SLOUsecase                       *knowledge_slo_usecase.Usecase
@@ -111,6 +113,10 @@ func newKnowledgeModule(infra *InfraModule, article *ArticleModule) *KnowledgeMo
 		sovereignCli,
 		knowledgeBackfillGw, // ListBackfillArticlesPort (articles table in alt-db)
 		sovereignCli,
+	)
+	knowledgeURLBackfillUC := knowledge_url_backfill_usecase.NewUsecase(
+		knowledgeBackfillGw, // same articles source as TriggerBackfill
+		sovereignCli,        // AppendKnowledgeEventPort
 	)
 	knowledgeProjectionHealthUC := knowledge_projection_health_usecase.NewUsecase(sovereignCli, sovereignCli, sovereignCli, sovereignCli)
 
@@ -202,6 +208,7 @@ func newKnowledgeModule(infra *InfraModule, article *ArticleModule) *KnowledgeMo
 		CreateSummaryVersionUsecase:      createSummaryVersionUC,
 		CreateTagSetVersionUsecase:       createTagSetVersionUC,
 		KnowledgeBackfillUsecase:         knowledgeBackfillUC,
+		KnowledgeURLBackfillUsecase:      knowledgeURLBackfillUC,
 		KnowledgeProjectionHealthUsecase: knowledgeProjectionHealthUC,
 		ReprojectUsecase:                 reprojectUC,
 		SLOUsecase:                       sloUC,

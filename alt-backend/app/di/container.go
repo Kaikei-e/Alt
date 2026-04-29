@@ -52,6 +52,7 @@ import (
 	"alt/usecase/knowledge_projection_health_usecase"
 	"alt/usecase/knowledge_reproject_usecase"
 	"alt/usecase/knowledge_slo_usecase"
+	"alt/usecase/knowledge_url_backfill_usecase"
 	"alt/usecase/list_lenses_usecase"
 	"alt/usecase/opml_usecase"
 	"alt/usecase/reading_status"
@@ -192,6 +193,7 @@ type ApplicationComponents struct {
 	FeatureFlagGateway               *feature_flag_gateway.Gateway
 	KnowledgeBackfillArticlesGateway *knowledge_backfill_gateway.Gateway
 	KnowledgeBackfillUsecase         *knowledge_backfill_usecase.Usecase
+	KnowledgeURLBackfillUsecase      *knowledge_url_backfill_usecase.Usecase
 	KnowledgeProjectionHealthUsecase *knowledge_projection_health_usecase.Usecase
 	ReprojectUsecase                 *knowledge_reproject_usecase.Usecase
 	SLOUsecase                       *knowledge_slo_usecase.Usecase
@@ -372,6 +374,7 @@ func NewApplicationComponents(pool *pgxpool.Pool) *ApplicationComponents {
 		FeatureFlagGateway:               knowledge.FeatureFlagGateway,
 		KnowledgeBackfillArticlesGateway: knowledge.KnowledgeBackfillArticlesGateway,
 		KnowledgeBackfillUsecase:         knowledge.KnowledgeBackfillUsecase,
+		KnowledgeURLBackfillUsecase:      knowledge.KnowledgeURLBackfillUsecase,
 		KnowledgeProjectionHealthUsecase: knowledge.KnowledgeProjectionHealthUsecase,
 		ReprojectUsecase:                 knowledge.ReprojectUsecase,
 		SLOUsecase:                       knowledge.SLOUsecase,

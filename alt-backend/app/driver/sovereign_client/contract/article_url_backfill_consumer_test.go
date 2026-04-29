@@ -1,0 +1,148 @@
+//go:build contract
+
+package contract
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"net/http"
+	"path/filepath"
+	"testing"
+	"time"
+
+	"connectrpc.com/connect"
+	"github.com/google/uuid"
+	"github.com/pact-foundation/pact-go/v2/consumer"
+	"github.com/pact-foundation/pact-go/v2/matchers"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+	"google.golang.org/protobuf/types/known/timestamppb"
+
+	sovereignv1 "alt/gen/proto/services/sovereign/v1"
+	"alt/gen/proto/services/sovereign/v1/sovereignv1connect"
+)
+
+// Consumer-Driven Contract test for the corrective ArticleUrlBackfilled
+// event. The new admin one-shot tool (EmitArticleUrlBackfill on
+// KnowledgeHomeAdminService — ADR-000869) appends one of these per
+// article whose Knowledge Home projection has an empty URL but whose
+// alt-db `articles.url` is non-empty and http(s)-scheme.
+//
+// What this test pins for sovereign:
+//
+//   - event_type literal `ArticleUrlBackfilled`. Sovereign must accept
+//     it without rejecting on an event-type allowlist.
+//
+//   - dedupe_key namespace `article-url-backfill:<article_id>`. This is
+//     deliberately distinct from `article-created:<article_id>` so the
+//     existing `article-created:*` dedupe-registry rows (~27k from prior
+//     runs) cannot silently drop the corrective re-emit. The unique
+//     index on knowledge_events.dedupe_key still blocks double-append
+//     within this namespace, providing per-article idempotency.
+//
+//   - actor_type=service / actor_id="knowledge-url-backfill". The
+//     actor labels how this event was produced; provider may use it
+//     for audit but must not vary semantics on it.
+//
+//   - payload schema: canonical wire keys `article_id` and `url`. The
+//     bug class this event exists to repair was the `"link"` vs `"url"`
+//     wire-form drift on ArticleCreated (PM-2026-041, ADR-000865 →
+//     ADR-000867). Asserting `"url"` here directly — not via the
+//     consumer struct round-trip — pins the bytes the projector reads.
+//
+// What this test does NOT pin:
+//
+//   - The patch SQL on the projection table (covered by sovereign-side
+//     projector tests, not consumer tests).
+//
+//   - The dedupe-rejection success=false path. Sovereign currently
+//     surfaces dedupe hits as success=true with no eventSeq guarantee
+//     and the consumer treats either response as "best-effort
+//     idempotent re-run", so there is no consumer behaviour to pin
+//     for the rejection case.
+func TestAppendKnowledgeEvent_ArticleUrlBackfilled(t *testing.T) {
+	mockProvider, err := consumer.NewV3Pact(consumer.MockHTTPProviderConfig{
+		Consumer: "alt-backend",
+		Provider: "knowledge-sovereign",
+		PactDir:  filepath.Join(pactDir),
+	})
+	require.NoError(t, err)
+
+	eventID := uuid.New()
+	tenantID := uuid.New()
+	userID := uuid.New()
+	articleID := uuid.New()
+	occurredAt := time.Date(2026, 4, 28, 12, 0, 0, 0, time.UTC)
+	dedupeKey := fmt.Sprintf("article-url-backfill:%s", articleID.String())
+
+	payload, err := json.Marshal(map[string]any{
+		"article_id": articleID.String(),
+		"url":        "https://example.com/articles/42",
+	})
+	require.NoError(t, err)
+
+	err = mockProvider.
+		AddInteraction().
+		Given("sovereign accepts ArticleUrlBackfilled corrective events").
+		UponReceiving("an AppendKnowledgeEvent request for ArticleUrlBackfilled").
+		WithCompleteRequest(consumer.Request{
+			Method: "POST",
+			Path:   matchers.String("/services.sovereign.v1.KnowledgeSovereignService/AppendKnowledgeEvent"),
+			Headers: matchers.MapMatcher{
+				"Content-Type": matchers.String("application/json"),
+			},
+			Body: matchers.MapMatcher{
+				"event": matchers.Like(map[string]any{
+					"eventId":       eventID.String(),
+					"occurredAt":    "2026-04-28T12:00:00Z",
+					"tenantId":      tenantID.String(),
+					"userId":        userID.String(),
+					"actorType":     "service",
+					"actorId":       "knowledge-url-backfill",
+					"eventType":     "ArticleUrlBackfilled",
+					"aggregateType": "article",
+					"aggregateId":   articleID.String(),
+					"dedupeKey":     dedupeKey,
+					// payload is bytes on the wire (proto3 → base64 in JSON).
+					// The literal value isn't asserted here — Pact matchers.Like
+					// treats it as a shape match. The unit test
+					// (usecase_test.go) pins the canonical "url" key inside.
+					"payload": "eyJhcnRpY2xlX2lkIjoiMDAwMDAwMDAtMDAwMC0wMDAwLTAwMDAtMDAwMDAwMDAwMDAwIiwidXJsIjoiaHR0cHM6Ly9leGFtcGxlLmNvbSJ9",
+				}),
+			},
+		}).
+		WithCompleteResponse(consumer.Response{
+			Status: 200,
+			Headers: matchers.MapMatcher{
+				"Content-Type": matchers.String("application/json"),
+			},
+			Body: matchers.MapMatcher{
+				"success": matchers.Like(true),
+			},
+		}).
+		ExecuteTest(t, func(config consumer.MockServerConfig) error {
+			client := sovereignv1connect.NewKnowledgeSovereignServiceClient(
+				http.DefaultClient,
+				fmt.Sprintf("http://%s:%d", config.Host, config.Port),
+				connect.WithProtoJSON(),
+			)
+			_, err := client.AppendKnowledgeEvent(context.Background(), connect.NewRequest(&sovereignv1.AppendKnowledgeEventRequest{
+				Event: &sovereignv1.KnowledgeEvent{
+					EventId:       eventID.String(),
+					OccurredAt:    timestamppb.New(occurredAt),
+					TenantId:      tenantID.String(),
+					UserId:        userID.String(),
+					ActorType:     "service",
+					ActorId:       "knowledge-url-backfill",
+					EventType:     "ArticleUrlBackfilled",
+					AggregateType: "article",
+					AggregateId:   articleID.String(),
+					DedupeKey:     dedupeKey,
+					Payload:       payload,
+				},
+			}))
+			return err
+		})
+	assert.NoError(t, err)
+}

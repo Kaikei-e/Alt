@@ -4,6 +4,69 @@
   },
   "interactions": [
     {
+      "description": "an AppendKnowledgeEvent request for ArticleUrlBackfilled",
+      "providerStates": [
+        {
+          "name": "sovereign accepts ArticleUrlBackfilled corrective events"
+        }
+      ],
+      "request": {
+        "body": {
+          "event": {
+            "actorId": "knowledge-url-backfill",
+            "actorType": "service",
+            "aggregateId": "43d84ae6-f06e-4fa7-adfc-24d58a69706a",
+            "aggregateType": "article",
+            "dedupeKey": "article-url-backfill:43d84ae6-f06e-4fa7-adfc-24d58a69706a",
+            "eventId": "1ef117b0-2877-4a93-b141-35a0e5801457",
+            "eventType": "ArticleUrlBackfilled",
+            "occurredAt": "2026-04-28T12:00:00Z",
+            "payload": "eyJhcnRpY2xlX2lkIjoiMDAwMDAwMDAtMDAwMC0wMDAwLTAwMDAtMDAwMDAwMDAwMDAwIiwidXJsIjoiaHR0cHM6Ly9leGFtcGxlLmNvbSJ9",
+            "tenantId": "4840eeb4-14be-458c-b6a0-fe53ff5c237a",
+            "userId": "c1e709c9-97e3-4062-8735-be52c7834cb1"
+          }
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "matchingRules": {
+          "body": {
+            "$.event": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            }
+          }
+        },
+        "method": "POST",
+        "path": "/services.sovereign.v1.KnowledgeSovereignService/AppendKnowledgeEvent"
+      },
+      "response": {
+        "body": {
+          "success": true
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "matchingRules": {
+          "body": {
+            "$.success": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            }
+          }
+        },
+        "status": 200
+      }
+    },
+    {
       "description": "an AppendKnowledgeEvent request for knowledge_loop.acted.v1",
       "providerStates": [
         {
@@ -13,17 +76,17 @@
       "request": {
         "body": {
           "event": {
-            "actorId": "b480c259-467a-4d09-9cad-5ca0ce4d9173",
+            "actorId": "52ce8480-f821-43ac-8c32-6533cde52f9c",
             "actorType": "user",
             "aggregateId": "article:42",
             "aggregateType": "loop_session",
-            "dedupeKey": "c5110142-2ed9-453f-8a13-2487b0b15857",
-            "eventId": "e702ce86-fdff-4fdc-b707-2ae0e7989593",
+            "dedupeKey": "8031e364-95d5-4775-a70a-2d2855639249",
+            "eventId": "8adcc523-7279-468e-be2b-6075a7ce7da4",
             "eventType": "knowledge_loop.acted.v1",
             "occurredAt": "2026-04-24T10:00:00Z",
             "payload": "eyJlbnRyeV9rZXkiOiJhcnRpY2xlOjQyIn0",
-            "tenantId": "53663c19-a1a3-4d44-a2b2-a30bf2979579",
-            "userId": "b480c259-467a-4d09-9cad-5ca0ce4d9173"
+            "tenantId": "5545a38e-fe37-44dd-a01a-4a71bad76af2",
+            "userId": "52ce8480-f821-43ac-8c32-6533cde52f9c"
           }
         },
         "headers": {
@@ -76,17 +139,17 @@
       "request": {
         "body": {
           "event": {
-            "actorId": "7c7d81c1-9d37-4a61-8c80-2d99a6916558",
+            "actorId": "f23ac510-4a96-44c5-995d-e0959aaedd3d",
             "actorType": "user",
             "aggregateId": "article:42",
             "aggregateType": "loop_session",
-            "dedupeKey": "313882e6-46dc-42f9-b2c5-0a153e139197",
-            "eventId": "88f1e451-2e94-44ca-8199-c1766963dc5c",
+            "dedupeKey": "872f8355-dfaf-414f-9512-a0560113cb36",
+            "eventId": "4b1b43d4-161c-4230-9a53-8a863c5e85e8",
             "eventType": "knowledge_loop.deferred.v1",
             "occurredAt": "2026-04-26T10:00:00Z",
             "payload": "eyJlbnRyeV9rZXkiOiJhcnRpY2xlOjQyIn0",
-            "tenantId": "706fc375-9b87-45ef-8372-563b129c597a",
-            "userId": "7c7d81c1-9d37-4a61-8c80-2d99a6916558"
+            "tenantId": "f2c8456a-5210-45be-8f28-53e13869aeff",
+            "userId": "f23ac510-4a96-44c5-995d-e0959aaedd3d"
           }
         },
         "headers": {
@@ -139,17 +202,17 @@
       "request": {
         "body": {
           "event": {
-            "actorId": "f6f727f5-92ae-420f-a02f-4062d23aa96f",
+            "actorId": "01aecaec-d2a4-4e52-a364-2f5ae96b1f6c",
             "actorType": "user",
             "aggregateId": "article:42",
             "aggregateType": "loop_session",
-            "dedupeKey": "fca044e0-d089-42ab-b9eb-d1854fb287c4",
-            "eventId": "cd1c9f7c-f749-4308-9da9-462d6391a664",
+            "dedupeKey": "3d647650-0643-46b1-a7b9-3f961ec4d98f",
+            "eventId": "21a6638e-0316-4305-9839-a4411699135d",
             "eventType": "knowledge_loop.observed.v1",
             "occurredAt": "2026-04-24T10:00:00Z",
             "payload": "eyJlbnRyeV9rZXkiOiJhcnRpY2xlOjQyIn0",
-            "tenantId": "7b246cf7-9ca7-404f-9f08-e033f67ce503",
-            "userId": "f6f727f5-92ae-420f-a02f-4062d23aa96f"
+            "tenantId": "42be346d-9c05-4575-9f91-a7a7e1f65cd0",
+            "userId": "01aecaec-d2a4-4e52-a364-2f5ae96b1f6c"
           }
         },
         "headers": {
@@ -202,17 +265,17 @@
       "request": {
         "body": {
           "event": {
-            "actorId": "8c2e45b0-6c6f-48a3-981d-337c8a63edb8",
+            "actorId": "cc65eaa7-13ac-453f-add8-7e252f8b35ea",
             "actorType": "user",
             "aggregateId": "article:42",
             "aggregateType": "loop_session",
-            "dedupeKey": "9c33d085-f2bc-408c-ac0f-e91e1cfcbdc9",
-            "eventId": "3a557958-c5b9-461d-b310-40ca04347465",
+            "dedupeKey": "c597b3be-21d8-4fd9-be0a-a957b1a96bf4",
+            "eventId": "cf22f9eb-8570-4566-81b1-3ed44b71aac8",
             "eventType": "knowledge_loop.reviewed.v1",
             "occurredAt": "2026-04-28T10:00:00Z",
             "payload": "eyJlbnRyeV9rZXkiOiJhcnRpY2xlOjQyIn0",
-            "tenantId": "c5f5b290-1e6a-48f6-9910-cc5fb0e91692",
-            "userId": "8c2e45b0-6c6f-48a3-981d-337c8a63edb8"
+            "tenantId": "6f60ec12-63d9-4d53-9cd9-9c73ac4d66f8",
+            "userId": "cc65eaa7-13ac-453f-add8-7e252f8b35ea"
           }
         },
         "headers": {
