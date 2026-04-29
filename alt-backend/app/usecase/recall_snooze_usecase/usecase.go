@@ -57,6 +57,6 @@ func (u *RecallSnoozeUsecase) Execute(ctx context.Context, userID uuid.UUID, ten
 		Payload:       payload,
 	}
 
-	_ = u.eventPort.AppendKnowledgeEvent(ctx, event)
+	_, _ = u.eventPort.AppendKnowledgeEvent(ctx, event)
 	return nil
 }

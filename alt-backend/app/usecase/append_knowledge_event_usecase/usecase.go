@@ -53,7 +53,8 @@ func (u *AppendKnowledgeEventUsecase) Execute(ctx context.Context, event domain.
 		}
 	}
 
-	return u.eventPort.AppendKnowledgeEvent(ctx, event)
+	_, err := u.eventPort.AppendKnowledgeEvent(ctx, event)
+	return err
 }
 
 // reasonMergedPayload mirrors the projector's expected shape.

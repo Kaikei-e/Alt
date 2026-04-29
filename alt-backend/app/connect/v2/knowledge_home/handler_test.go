@@ -73,8 +73,11 @@ type mockKnowledgeEventPort struct {
 	err error
 }
 
-func (m *mockKnowledgeEventPort) AppendKnowledgeEvent(_ context.Context, _ domain.KnowledgeEvent) error {
-	return m.err
+func (m *mockKnowledgeEventPort) AppendKnowledgeEvent(_ context.Context, _ domain.KnowledgeEvent) (int64, error) {
+	if m.err != nil {
+		return 0, m.err
+	}
+	return 1, nil
 }
 
 // mockFeatureFlagPort implements feature_flag_port.FeatureFlagPort.

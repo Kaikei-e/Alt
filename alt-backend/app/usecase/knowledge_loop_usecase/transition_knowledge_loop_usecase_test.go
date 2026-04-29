@@ -40,13 +40,13 @@ type fakeAppendPort struct {
 	callCount int
 }
 
-func (f *fakeAppendPort) AppendKnowledgeEvent(_ context.Context, ev domain.KnowledgeEvent) error {
+func (f *fakeAppendPort) AppendKnowledgeEvent(_ context.Context, ev domain.KnowledgeEvent) (int64, error) {
 	f.callCount++
 	if f.err != nil {
-		return f.err
+		return 0, f.err
 	}
 	f.events = append(f.events, ev)
-	return nil
+	return int64(len(f.events)), nil
 }
 
 // mustMintUUIDv7 builds a UUIDv7 whose embedded Unix-milli timestamp equals

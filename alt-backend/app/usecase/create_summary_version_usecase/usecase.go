@@ -92,7 +92,7 @@ func (u *CreateSummaryVersionUsecase) Execute(ctx context.Context, sv domain.Sum
 		Payload:       payload,
 	}
 
-	if err := u.eventPort.AppendKnowledgeEvent(ctx, event); err != nil {
+	if _, err := u.eventPort.AppendKnowledgeEvent(ctx, event); err != nil {
 		return fmt.Errorf("append summary version event: %w", err)
 	}
 
@@ -128,7 +128,7 @@ func (u *CreateSummaryVersionUsecase) Execute(ctx context.Context, sv domain.Sum
 				Payload:       supersedePayload,
 			}
 
-			if err := u.eventPort.AppendKnowledgeEvent(ctx, supersedeEvent); err != nil {
+			if _, err := u.eventPort.AppendKnowledgeEvent(ctx, supersedeEvent); err != nil {
 				logger.Logger.ErrorContext(ctx, "failed to append SummarySuperseded event",
 					"error", err, "article_id", sv.ArticleID)
 			}

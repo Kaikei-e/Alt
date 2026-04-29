@@ -140,7 +140,7 @@ func (u *TransitionKnowledgeLoopUsecase) Execute(ctx context.Context, in Transit
 		if buildErr != nil {
 			return nil, fmt.Errorf("transition_knowledge_loop: build event: %w", buildErr)
 		}
-		if err := u.appendPort.AppendKnowledgeEvent(ctx, event); err != nil {
+		if _, err := u.appendPort.AppendKnowledgeEvent(ctx, event); err != nil {
 			return nil, fmt.Errorf("transition_knowledge_loop: append event: %w", ClassifyDriverError(err))
 		}
 	}

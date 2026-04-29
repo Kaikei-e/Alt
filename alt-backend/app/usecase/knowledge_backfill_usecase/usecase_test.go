@@ -69,9 +69,12 @@ type mockAppendKnowledgeEventPort struct {
 	err    error
 }
 
-func (m *mockAppendKnowledgeEventPort) AppendKnowledgeEvent(_ context.Context, event domain.KnowledgeEvent) error {
+func (m *mockAppendKnowledgeEventPort) AppendKnowledgeEvent(_ context.Context, event domain.KnowledgeEvent) (int64, error) {
 	m.events = append(m.events, event)
-	return m.err
+	if m.err != nil {
+		return 0, m.err
+	}
+	return int64(len(m.events)), nil
 }
 
 func TestStartBackfill(t *testing.T) {

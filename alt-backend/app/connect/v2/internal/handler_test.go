@@ -1198,10 +1198,13 @@ type stubKnowledgeEventPort struct {
 	err       error
 }
 
-func (s *stubKnowledgeEventPort) AppendKnowledgeEvent(_ context.Context, event domain.KnowledgeEvent) error {
+func (s *stubKnowledgeEventPort) AppendKnowledgeEvent(_ context.Context, event domain.KnowledgeEvent) (int64, error) {
 	s.called = true
 	s.lastEvent = event
-	return s.err
+	if s.err != nil {
+		return 0, s.err
+	}
+	return 1, nil
 }
 
 func TestCreateArticle_AppendsKnowledgeEvent(t *testing.T) {

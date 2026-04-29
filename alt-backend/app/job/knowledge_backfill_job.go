@@ -103,7 +103,7 @@ func processBackfillBatch(
 		articleID := article.ArticleID
 		userID := article.UserID
 		event := GenerateBackfillEvent(userID, &userID, articleID, article.Title, article.PublishedAt, article.URL)
-		if err := eventPort.AppendKnowledgeEvent(ctx, event); err != nil {
+		if _, err := eventPort.AppendKnowledgeEvent(ctx, event); err != nil {
 			return fmt.Errorf("append backfill event: %w", err)
 		}
 		activeJob.ProcessedEvents++

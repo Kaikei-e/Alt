@@ -133,7 +133,7 @@ func (u *TrackHomeActionUsecase) Execute(ctx context.Context, userID uuid.UUID, 
 		Payload:       knowledgePayload,
 	}
 
-	if err := u.knowledgeEventPort.AppendKnowledgeEvent(ctx, knowledgeEvent); err != nil {
+	if _, err := u.knowledgeEventPort.AppendKnowledgeEvent(ctx, knowledgeEvent); err != nil {
 		logger.Logger.ErrorContext(ctx, "failed to append knowledge event for action",
 			"error", err, "action_type", actionType)
 		// Non-fatal: user event was already recorded

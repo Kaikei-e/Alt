@@ -60,7 +60,17 @@ type ArticleCreatedPayload struct {
 // one. A distinct event type lets the projector apply a patch-only
 // branch that survives any replay order via the seq-hiwater guard at
 // the driver.
+//
+// `OriginalOccurredAt` is the original ArticleCreated timestamp (= the
+// source row's `articles.created_at`) carried in RFC3339 form. Verraes'
+// multi-temporal events pattern: the event's wall-clock OccurredAt
+// records when the corrective event was emitted, while the payload's
+// `original_occurred_at` records the fact-time when the article was
+// first observed. Empty string is accepted (e.g. article rows whose
+// source created_at is zero); future projectors may treat empty as
+// "fact-time unknown" rather than rejecting.
 type ArticleUrlBackfilledPayload struct {
-	ArticleID string `json:"article_id"`
-	URL       string `json:"url"`
+	ArticleID          string `json:"article_id"`
+	URL                string `json:"url"`
+	OriginalOccurredAt string `json:"original_occurred_at"`
 }

@@ -122,7 +122,7 @@ func emitArticleCreatedEvent(ctx context.Context, port knowledge_event_port.Appe
 		Payload:       eventPayload,
 	}
 
-	if err := port.AppendKnowledgeEvent(ctx, kevent); err != nil {
+	if _, err := port.AppendKnowledgeEvent(ctx, kevent); err != nil {
 		logger.Logger.WarnContext(ctx, "failed to append knowledge ArticleCreated event (non-fatal)",
 			"article_id", p.ArticleID, "error", err)
 	}

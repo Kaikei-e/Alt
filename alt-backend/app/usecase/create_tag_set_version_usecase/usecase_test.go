@@ -30,12 +30,12 @@ type mockEventPort struct {
 	err      error
 }
 
-func (m *mockEventPort) AppendKnowledgeEvent(_ context.Context, event domain.KnowledgeEvent) error {
+func (m *mockEventPort) AppendKnowledgeEvent(_ context.Context, event domain.KnowledgeEvent) (int64, error) {
 	if m.err != nil {
-		return m.err
+		return 0, m.err
 	}
 	m.appended = append(m.appended, event)
-	return nil
+	return int64(len(m.appended)), nil
 }
 
 type mockMarkTagSupersededPort struct {

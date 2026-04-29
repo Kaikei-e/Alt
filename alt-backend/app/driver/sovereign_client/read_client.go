@@ -271,18 +271,24 @@ func (c *Client) AreArticlesVisibleInLens(ctx context.Context, tenantID, userID 
 	return out, nil
 }
 
-func (c *Client) AppendKnowledgeEvent(ctx context.Context, event domain.KnowledgeEvent) error {
+func (c *Client) AppendKnowledgeEvent(ctx context.Context, event domain.KnowledgeEvent) (int64, error) {
 	if !c.enabled {
-		return nil
+		// disabled-mode is a no-op; treat as "appended" with zero seq so
+		// callers that count emits (e.g. ADR-869 URL backfill) don't
+		// over-report duplicates against a stub.
+		return 0, nil
 	}
 	pbEvent := domainEventToProto(event)
-	_, err := c.client.AppendKnowledgeEvent(ctx, connect.NewRequest(&sovereignv1.AppendKnowledgeEventRequest{
+	resp, err := c.client.AppendKnowledgeEvent(ctx, connect.NewRequest(&sovereignv1.AppendKnowledgeEventRequest{
 		Event: pbEvent,
 	}))
 	if err != nil {
-		return fmt.Errorf("sovereign AppendKnowledgeEvent: %w", err)
+		return 0, fmt.Errorf("sovereign AppendKnowledgeEvent: %w", err)
 	}
-	return nil
+	if resp == nil || resp.Msg == nil {
+		return 0, nil
+	}
+	return resp.Msg.GetEventSeq(), nil
 }
 
 // === Projection infra ===

@@ -34,12 +34,12 @@ type mockKnowledgeEventPort struct {
 	err            error
 }
 
-func (m *mockKnowledgeEventPort) AppendKnowledgeEvent(_ context.Context, event domain.KnowledgeEvent) error {
+func (m *mockKnowledgeEventPort) AppendKnowledgeEvent(_ context.Context, event domain.KnowledgeEvent) (int64, error) {
 	if m.err != nil {
-		return m.err
+		return 0, m.err
 	}
 	m.appendedEvents = append(m.appendedEvents, event)
-	return nil
+	return int64(len(m.appendedEvents)), nil
 }
 
 // mockRecallSignalPort implements recall_signal_port.AppendRecallSignalPort.

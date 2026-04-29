@@ -79,7 +79,7 @@ func (u *CreateTagSetVersionUsecase) Execute(ctx context.Context, tsv domain.Tag
 		Payload:       payload,
 	}
 
-	if err := u.eventPort.AppendKnowledgeEvent(ctx, event); err != nil {
+	if _, err := u.eventPort.AppendKnowledgeEvent(ctx, event); err != nil {
 		return fmt.Errorf("append tag set version event: %w", err)
 	}
 
@@ -124,7 +124,7 @@ func (u *CreateTagSetVersionUsecase) Execute(ctx context.Context, tsv domain.Tag
 				Payload:       supersedePayload,
 			}
 
-			if err := u.eventPort.AppendKnowledgeEvent(ctx, supersedeEvent); err != nil {
+			if _, err := u.eventPort.AppendKnowledgeEvent(ctx, supersedeEvent); err != nil {
 				logger.Logger.ErrorContext(ctx, "failed to append TagSetSuperseded event",
 					"error", err, "article_id", tsv.ArticleID)
 			}

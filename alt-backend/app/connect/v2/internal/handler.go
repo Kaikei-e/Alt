@@ -413,7 +413,7 @@ func (h *Handler) CreateArticle(ctx context.Context, req *connect.Request[backen
 				DedupeKey:     fmt.Sprintf(domain.DedupeKeyArticleCreated, articleID),
 				Payload:       payload,
 			}
-			if appendErr := h.knowledgeEventPort.AppendKnowledgeEvent(ctx, kevent); appendErr != nil {
+			if _, appendErr := h.knowledgeEventPort.AppendKnowledgeEvent(ctx, kevent); appendErr != nil {
 				h.logger.Warn("failed to append knowledge ArticleCreated event (non-fatal)",
 					"article_id", articleID, "error", appendErr)
 			}

@@ -85,7 +85,7 @@ func (u *Usecase) Emit(ctx context.Context, maxArticles int, dryRun bool) (*Emit
 			if !isHTTPURL(a.URL) {
 				res.SkippedBlockedScheme++
 			} else if !dryRun {
-				appended, err := u.appendCorrective(ctx, a.ArticleID, a.URL, a.UserID)
+				appended, err := u.appendCorrective(ctx, a.ArticleID, a.URL, a.CreatedAt, a.UserID)
 				if err != nil {
 					return res, fmt.Errorf("append corrective for %s: %w", a.ArticleID, err)
 				}
@@ -117,10 +117,21 @@ func (u *Usecase) Emit(ctx context.Context, maxArticles int, dryRun bool) (*Emit
 // appendCorrective marshals one ArticleUrlBackfilled event with the
 // canonical wire form and appends it. Returns (appended, err) where
 // appended == false signals dedupe-registry hit (idempotent re-run).
-func (u *Usecase) appendCorrective(ctx context.Context, articleID uuid.UUID, url string, userID uuid.UUID) (bool, error) {
+//
+// The payload carries `original_occurred_at` = the article's source-row
+// `created_at` (RFC3339) per Verraes' multi-temporal events pattern:
+// the event's wall-clock OccurredAt records when the corrective event
+// was emitted, while the payload's `original_occurred_at` records the
+// fact-time when the article was first observed.
+func (u *Usecase) appendCorrective(ctx context.Context, articleID uuid.UUID, url string, originalCreatedAt time.Time, userID uuid.UUID) (bool, error) {
+	originalOccurredAt := ""
+	if !originalCreatedAt.IsZero() {
+		originalOccurredAt = originalCreatedAt.UTC().Format(time.RFC3339)
+	}
 	payload, err := json.Marshal(domain.ArticleUrlBackfilledPayload{
-		ArticleID: articleID.String(),
-		URL:       url,
+		ArticleID:          articleID.String(),
+		URL:                url,
+		OriginalOccurredAt: originalOccurredAt,
 	})
 	if err != nil {
 		return false, fmt.Errorf("marshal payload: %w", err)
@@ -138,17 +149,15 @@ func (u *Usecase) appendCorrective(ctx context.Context, articleID uuid.UUID, url
 		DedupeKey:     fmt.Sprintf(domain.DedupeKeyArticleUrlBackfill, articleID.String()),
 		Payload:       payload,
 	}
-	if err := u.eventPort.AppendKnowledgeEvent(ctx, event); err != nil {
-		// AppendKnowledgeEventPort is fire-and-forget on dedupe, so
-		// any returned error is genuine (network / RPC). Surface it.
+	eventSeq, err := u.eventPort.AppendKnowledgeEvent(ctx, event)
+	if err != nil {
 		return false, err
 	}
-	// AppendKnowledgeEventPort.AppendKnowledgeEvent's contract is void
-	// (no eventSeq returned to the caller), so we cannot distinguish
-	// "appended" vs "dedupe-no-op" from here. The corrective re-runs
-	// are still safe — the projector applies the patch idempotently —
-	// and operator-facing counts approximate eventually correct.
-	return true, nil
+	// Per the AppendKnowledgeEventPort contract: eventSeq==0 signals
+	// the sovereign dedupe registry already had this dedupe_key, so
+	// no new event row was written. Treat as idempotent skip — the
+	// projector still has the prior corrective patch applied.
+	return eventSeq != 0, nil
 }
 
 // isHTTPURL allowlist mirrors alt-backend/app/job/knowledge_projector.go

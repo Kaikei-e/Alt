@@ -40,9 +40,9 @@ type mockBackfillEventPort struct {
 	events []domain.KnowledgeEvent
 }
 
-func (m *mockBackfillEventPort) AppendKnowledgeEvent(_ context.Context, event domain.KnowledgeEvent) error {
+func (m *mockBackfillEventPort) AppendKnowledgeEvent(_ context.Context, event domain.KnowledgeEvent) (int64, error) {
 	m.events = append(m.events, event)
-	return nil
+	return int64(len(m.events)), nil
 }
 
 func TestProcessBackfillBatch_AppendsEventsAndAdvancesCursor(t *testing.T) {

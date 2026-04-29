@@ -31,17 +31,32 @@ func (m *mockArticlesPort) ListBackfillArticles(_ context.Context, _ *time.Time,
 	return m.pages[m.calls], nil
 }
 
+// mockEventPort simulates the sovereign-side dedupe registry: each unique
+// dedupe_key gets a fresh event_seq on first call, then returns seq=0
+// (the dedupe-hit signal) on every subsequent call for that key. This
+// lets us assert the usecase's SkippedDuplicate counter is honest after
+// the AppendKnowledgeEventPort signature change (ADR-869 contract drift).
 type mockEventPort struct {
-	appended []domain.KnowledgeEvent
-	err      error
+	appended    []domain.KnowledgeEvent
+	seenDedupe  map[string]bool
+	nextSeq     int64
+	err         error
 }
 
-func (m *mockEventPort) AppendKnowledgeEvent(_ context.Context, ev domain.KnowledgeEvent) error {
+func (m *mockEventPort) AppendKnowledgeEvent(_ context.Context, ev domain.KnowledgeEvent) (int64, error) {
 	if m.err != nil {
-		return m.err
+		return 0, m.err
 	}
+	if m.seenDedupe == nil {
+		m.seenDedupe = make(map[string]bool)
+	}
+	if m.seenDedupe[ev.DedupeKey] {
+		return 0, nil
+	}
+	m.seenDedupe[ev.DedupeKey] = true
 	m.appended = append(m.appended, ev)
-	return nil
+	m.nextSeq++
+	return m.nextSeq, nil
 }
 
 // --- helpers ---
@@ -176,4 +191,65 @@ func TestEmit_StopsCleanlyOnEventPortError(t *testing.T) {
 	require.Contains(t, err.Error(), "sovereign down")
 	assert.Equal(t, 1, res.ArticlesScanned)
 	assert.Equal(t, 0, res.EventsAppended)
+}
+
+// TestEmit_ReportsSkippedDuplicateAccurately is the regression guard for
+// the ADR-869 contract drift: when the sovereign dedupe registry already
+// has a row for `article-url-backfill:<id>`, the AppendKnowledgeEvent RPC
+// returns event_seq=0 (no new event recorded). The usecase MUST count
+// that as SkippedDuplicate, not as EventsAppended. Before the port
+// signature change the usecase had no way to distinguish appended vs
+// dedupe-hit and reported all calls as "appended".
+func TestEmit_ReportsSkippedDuplicateAccurately(t *testing.T) {
+	t.Parallel()
+	a1 := mkArticle(t, "https://example.com/a1")
+	a2 := mkArticle(t, "https://example.com/a2")
+	a3 := mkArticle(t, "https://example.com/a3")
+
+	// Two pages so the second Emit() actually re-walks (exhausted page
+	// cursors return nil — the same articles must be fed back in).
+	articles := &mockArticlesPort{pages: [][]domain.KnowledgeBackfillArticle{{a1, a2, a3}, {a1, a2, a3}}}
+	events := &mockEventPort{}
+	uc := NewUsecase(articles, events)
+
+	res1, err := uc.Emit(context.Background(), 0, false)
+	require.NoError(t, err)
+	assert.Equal(t, 3, res1.EventsAppended, "first run appends every article")
+	assert.Equal(t, 0, res1.SkippedDuplicate)
+
+	res2, err := uc.Emit(context.Background(), 0, false)
+	require.NoError(t, err)
+	assert.Equal(t, 0, res2.EventsAppended, "second run sees every dedupe key already present")
+	assert.Equal(t, 3, res2.SkippedDuplicate, "every replay must be reported as duplicate")
+}
+
+// TestEmit_PassesOriginalOccurredAtFromArticleCreatedAt pins the Verraes
+// multi-temporal events shape: the corrective event's payload carries
+// the article's *original* observed time (= articles.created_at) so
+// future projectors can distinguish recorded-time (= when the operator
+// re-emitted) from fact-time (= when the article was first seen).
+func TestEmit_PassesOriginalOccurredAtFromArticleCreatedAt(t *testing.T) {
+	t.Parallel()
+	originalCreatedAt := time.Date(2026, 1, 15, 8, 30, 0, 0, time.UTC)
+	a := domain.KnowledgeBackfillArticle{
+		ArticleID:   uuid.New(),
+		UserID:      uuid.New(),
+		CreatedAt:   originalCreatedAt,
+		PublishedAt: originalCreatedAt,
+		Title:       "old article",
+		URL:         "https://example.com/old",
+	}
+	articles := &mockArticlesPort{pages: [][]domain.KnowledgeBackfillArticle{{a}}}
+	events := &mockEventPort{}
+	uc := NewUsecase(articles, events)
+
+	_, err := uc.Emit(context.Background(), 0, false)
+	require.NoError(t, err)
+	require.Len(t, events.appended, 1)
+
+	// Assert directly on the marshalled bytes — the bug class this
+	// payload exists to prevent (PM-2026-041) was wire-form drift.
+	body := string(events.appended[0].Payload)
+	assert.Contains(t, body, `"original_occurred_at":"2026-01-15T08:30:00Z"`,
+		"corrective payload must carry original observed time as RFC3339")
 }

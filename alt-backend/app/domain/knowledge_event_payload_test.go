@@ -40,13 +40,18 @@ func TestArticleCreatedPayload_MarshalsCanonicalUrlKey(t *testing.T) {
 // Wire-form contract: ArticleUrlBackfilledPayload is the corrective event
 // emitted to repair historical ArticleCreated events whose payload was
 // written with the legacy "link" key (or no key at all). It MUST use the
-// canonical "url" key so projector replay and reproject converge.
+// canonical "url" key so projector replay and reproject converge, AND it
+// MUST carry `original_occurred_at` (= the original `articles.created_at`)
+// per Verraes' multi-temporal events pattern so future projectors can
+// distinguish recorded-time (= when the corrective event was emitted)
+// from fact-time (= when the article was first observed).
 func TestArticleUrlBackfilledPayload_MarshalsCanonicalUrlKey(t *testing.T) {
 	t.Parallel()
 
 	p := ArticleUrlBackfilledPayload{
-		ArticleID: "11111111-1111-4111-8111-111111111111",
-		URL:       "https://example.com/x",
+		ArticleID:          "11111111-1111-4111-8111-111111111111",
+		URL:                "https://example.com/x",
+		OriginalOccurredAt: "2026-04-01T00:00:00Z",
 	}
 
 	raw, err := json.Marshal(p)
@@ -54,9 +59,33 @@ func TestArticleUrlBackfilledPayload_MarshalsCanonicalUrlKey(t *testing.T) {
 
 	var asMap map[string]any
 	require.NoError(t, json.Unmarshal(raw, &asMap))
-	assert.Equal(t, []string{"article_id", "url"}, sortedKeys(asMap),
-		"corrective payload carries only article_id + url; no other fields permitted")
+	assert.Equal(t, []string{"article_id", "original_occurred_at", "url"}, sortedKeys(asMap),
+		"corrective payload carries article_id + url + original_occurred_at; no other fields permitted")
 	assert.Equal(t, "https://example.com/x", asMap["url"])
+	assert.Equal(t, "2026-04-01T00:00:00Z", asMap["original_occurred_at"])
+}
+
+// Defensive: empty OriginalOccurredAt (e.g. an article whose source row
+// has a zero created_at) must still marshal — the field is required on
+// the wire shape but its value can be the empty string. Future migrations
+// may tighten this, but for now we accept the empty case so admin re-emits
+// against partial historical data don't fail.
+func TestArticleUrlBackfilledPayload_AcceptsEmptyOriginalOccurredAt(t *testing.T) {
+	t.Parallel()
+
+	p := ArticleUrlBackfilledPayload{
+		ArticleID:          "11111111-1111-4111-8111-111111111111",
+		URL:                "https://example.com/x",
+		OriginalOccurredAt: "",
+	}
+
+	raw, err := json.Marshal(p)
+	require.NoError(t, err)
+
+	var asMap map[string]any
+	require.NoError(t, json.Unmarshal(raw, &asMap))
+	assert.Contains(t, asMap, "original_occurred_at")
+	assert.Equal(t, "", asMap["original_occurred_at"])
 }
 
 // Round-trip: a producer-emitted bytestream with "url" can be read back

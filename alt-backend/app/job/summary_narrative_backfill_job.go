@@ -105,7 +105,7 @@ func processSummaryNarrativeBatch(
 
 	for _, row := range rows {
 		event := GenerateSummaryNarrativeBackfilledEvent(row)
-		if err := eventPort.AppendKnowledgeEvent(ctx, event); err != nil {
+		if _, err := eventPort.AppendKnowledgeEvent(ctx, event); err != nil {
 			return fmt.Errorf("append summary-narrative backfill event: %w", err)
 		}
 		activeJob.ProcessedEvents++
