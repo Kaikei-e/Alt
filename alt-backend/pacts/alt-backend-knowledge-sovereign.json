@@ -15,15 +15,15 @@
           "event": {
             "actorId": "knowledge-url-backfill",
             "actorType": "service",
-            "aggregateId": "43d84ae6-f06e-4fa7-adfc-24d58a69706a",
+            "aggregateId": "b65cda73-8023-45bc-99e6-1231dae2f25e",
             "aggregateType": "article",
-            "dedupeKey": "article-url-backfill:43d84ae6-f06e-4fa7-adfc-24d58a69706a",
-            "eventId": "1ef117b0-2877-4a93-b141-35a0e5801457",
+            "dedupeKey": "article-url-backfill:b65cda73-8023-45bc-99e6-1231dae2f25e",
+            "eventId": "9f5adaf7-3f58-4470-be29-5fdba38a32ec",
             "eventType": "ArticleUrlBackfilled",
             "occurredAt": "2026-04-28T12:00:00Z",
             "payload": "eyJhcnRpY2xlX2lkIjoiMDAwMDAwMDAtMDAwMC0wMDAwLTAwMDAtMDAwMDAwMDAwMDAwIiwidXJsIjoiaHR0cHM6Ly9leGFtcGxlLmNvbSJ9",
-            "tenantId": "4840eeb4-14be-458c-b6a0-fe53ff5c237a",
-            "userId": "c1e709c9-97e3-4062-8735-be52c7834cb1"
+            "tenantId": "8bbfec34-cf03-49e4-b07e-c1504604e9b6",
+            "userId": "c6c3afdf-0d00-4a7d-a0c4-16e7ba389538"
           }
         },
         "headers": {
@@ -46,6 +46,7 @@
       },
       "response": {
         "body": {
+          "eventSeq": 123,
           "success": true
         },
         "headers": {
@@ -53,6 +54,14 @@
         },
         "matchingRules": {
           "body": {
+            "$.eventSeq": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
             "$.success": {
               "combine": "AND",
               "matchers": [
