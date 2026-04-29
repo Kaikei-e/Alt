@@ -109,9 +109,13 @@ func (r *Repository) UpsertKnowledgeHomeItem(ctx context.Context, payload json.R
 		 supersede_state, superseded_at, previous_ref_json, url)
 		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22)
 		ON CONFLICT (user_id, item_key, projection_version) DO UPDATE SET
-		 title = CASE WHEN EXCLUDED.title != '' THEN EXCLUDED.title ELSE knowledge_home_items.title END,
-		 summary_excerpt = CASE WHEN EXCLUDED.summary_excerpt != '' THEN EXCLUDED.summary_excerpt ELSE knowledge_home_items.summary_excerpt END,
-		 tags_json = CASE WHEN EXCLUDED.tags_json != '[]'::jsonb THEN EXCLUDED.tags_json ELSE knowledge_home_items.tags_json END,
+		 -- Merge-safe upsert (memory feedback_merge_safe_upsert.md +
+		 -- .claude/rules/knowledge-home.md): "preserve previous on
+		 -- empty new" is encoded with COALESCE/NULLIF rather than
+		 -- SQL CASE so business logic stays in Go.
+		 title = COALESCE(NULLIF(EXCLUDED.title, ''), knowledge_home_items.title),
+		 summary_excerpt = COALESCE(NULLIF(EXCLUDED.summary_excerpt, ''), knowledge_home_items.summary_excerpt),
+		 tags_json = COALESCE(NULLIF(EXCLUDED.tags_json, '[]'::jsonb), knowledge_home_items.tags_json),
 		 why_json = CASE
 			 WHEN EXCLUDED.why_json = '[]'::jsonb THEN knowledge_home_items.why_json
 			 ELSE (
@@ -146,14 +150,19 @@ func (r *Repository) UpsertKnowledgeHomeItem(ctx context.Context, payload json.R
 		 updated_at = EXCLUDED.updated_at,
 		 dismissed_at = COALESCE(knowledge_home_items.dismissed_at, EXCLUDED.dismissed_at),
 		 projection_version = EXCLUDED.projection_version,
-		 summary_state = CASE WHEN EXCLUDED.summary_state = 'ready' THEN 'ready' WHEN EXCLUDED.summary_state NOT IN ('', 'missing') THEN EXCLUDED.summary_state ELSE knowledge_home_items.summary_state END,
+		 -- summary_state monotonic latch via lexicographic ordering:
+		 -- '' < missing < pending < ready (alphabetical). GREATEST preserves
+		 -- the highest stage reached and forbids regression without
+		 -- smuggling a CASE state machine into SQL. Same merge shape as
+		 -- score below.
+		 summary_state = GREATEST(knowledge_home_items.summary_state, EXCLUDED.summary_state),
 		 supersede_state = COALESCE(EXCLUDED.supersede_state, knowledge_home_items.supersede_state),
 		 superseded_at = COALESCE(EXCLUDED.superseded_at, knowledge_home_items.superseded_at),
 		 previous_ref_json = CASE
 			 WHEN EXCLUDED.previous_ref_json IS NOT NULL THEN COALESCE(knowledge_home_items.previous_ref_json, '{}'::jsonb) || EXCLUDED.previous_ref_json
 			 ELSE knowledge_home_items.previous_ref_json
 		 END,
-		 url = CASE WHEN EXCLUDED.url != '' THEN EXCLUDED.url ELSE knowledge_home_items.url END`
+		 url = COALESCE(NULLIF(EXCLUDED.url, ''), knowledge_home_items.url)`
 
 	_, err := r.pool.Exec(ctx, query,
 		item.UserID, item.TenantID, item.ItemKey, item.ItemType, item.PrimaryRefID,
