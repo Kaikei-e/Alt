@@ -45,11 +45,62 @@ service KnowledgeHomeAdminService {
   // Phase 6: System Observability
   // GetSystemMetrics returns aggregated system metrics from OTel instrumentation and service health.
   rpc GetSystemMetrics(GetSystemMetricsRequest) returns (GetSystemMetricsResponse);
+
+  // EmitArticleUrlBackfill emits ArticleUrlBackfilled corrective events
+  // for every article whose source URL is recorded in `articles.url` but
+  // whose Knowledge Home projection currently shows an empty URL. The
+  // events use the canonical "url" wire key (ADR-000867) and the
+  // dedicated `article-url-backfill:<article_id>` dedupe namespace
+  // (ADR-000868), bypassing the existing `article-created:<article_id>`
+  // dedupe records that would otherwise silently drop a re-emit through
+  // TriggerBackfill. Combine with a Full Reproject + Swap to land the
+  // recovered URLs on the active projection (see
+  // docs/runbooks/knowledge-home-reproject-operations.md
+  // §Post-tag-fix backfill).
+  rpc EmitArticleUrlBackfill(EmitArticleUrlBackfillRequest) returns (EmitArticleUrlBackfillResponse);
 }
 
 // TriggerBackfillRequest starts a backfill job.
 message TriggerBackfillRequest {
   int32 projection_version = 1;
+}
+
+// EmitArticleUrlBackfillRequest controls a one-shot URL backfill emit.
+//
+// The handler reads from `articles` (alt-backend DB), filters to URL
+// scheme http/https only (security defense), and appends one
+// `ArticleUrlBackfilled` knowledge event per qualifying article via
+// the sovereign AppendKnowledgeEvent RPC. Idempotent across retries
+// because the dedupe registry on `article-url-backfill:<article_id>`
+// silently drops re-emits.
+message EmitArticleUrlBackfillRequest {
+  // Optional cap on how many articles to process in this invocation.
+  // Set to 0 (default) to process all qualifying articles.
+  int32 max_articles = 1;
+  // When true, the handler scans + reports counts but does not append
+  // any events. Useful to preview the impact before a real run.
+  bool dry_run = 2;
+}
+
+// EmitArticleUrlBackfillResponse summarises a backfill emit result.
+message EmitArticleUrlBackfillResponse {
+  // Total articles read from `articles` that had a non-empty URL.
+  int32 articles_scanned = 1;
+  // Number of `ArticleUrlBackfilled` events the sovereign accepted.
+  // Excludes events the dedupe registry already had (idempotent
+  // re-runs report this number as 0 once the broker is caught up).
+  int32 events_appended = 2;
+  // Articles dropped because their URL scheme is outside the
+  // {http, https} allowlist. Surfaced for operator visibility — these
+  // values are typically `javascript:` / `data:` / scheme-less strings
+  // that should never reach the FE href.
+  int32 skipped_blocked_scheme = 3;
+  // Articles dropped because the sovereign side reported a duplicate
+  // (the corrective event was already appended in a previous run).
+  int32 skipped_duplicate = 4;
+  // True when `max_articles` was hit before the article cursor was
+  // exhausted. Operator should re-run to continue.
+  bool more_remaining = 5;
 }
 
 // TriggerBackfillResponse returns the created job.

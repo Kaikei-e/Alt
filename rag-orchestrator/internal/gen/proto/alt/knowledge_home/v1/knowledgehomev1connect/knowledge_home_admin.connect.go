@@ -79,6 +79,9 @@ const (
 	// KnowledgeHomeAdminServiceGetSystemMetricsProcedure is the fully-qualified name of the
 	// KnowledgeHomeAdminService's GetSystemMetrics RPC.
 	KnowledgeHomeAdminServiceGetSystemMetricsProcedure = "/alt.knowledge_home.v1.KnowledgeHomeAdminService/GetSystemMetrics"
+	// KnowledgeHomeAdminServiceEmitArticleUrlBackfillProcedure is the fully-qualified name of the
+	// KnowledgeHomeAdminService's EmitArticleUrlBackfill RPC.
+	KnowledgeHomeAdminServiceEmitArticleUrlBackfillProcedure = "/alt.knowledge_home.v1.KnowledgeHomeAdminService/EmitArticleUrlBackfill"
 )
 
 // KnowledgeHomeAdminServiceClient is a client for the
@@ -118,6 +121,18 @@ type KnowledgeHomeAdminServiceClient interface {
 	// Phase 6: System Observability
 	// GetSystemMetrics returns aggregated system metrics from OTel instrumentation and service health.
 	GetSystemMetrics(context.Context, *connect.Request[v1.GetSystemMetricsRequest]) (*connect.Response[v1.GetSystemMetricsResponse], error)
+	// EmitArticleUrlBackfill emits ArticleUrlBackfilled corrective events
+	// for every article whose source URL is recorded in `articles.url` but
+	// whose Knowledge Home projection currently shows an empty URL. The
+	// events use the canonical "url" wire key (ADR-000867) and the
+	// dedicated `article-url-backfill:<article_id>` dedupe namespace
+	// (ADR-000868), bypassing the existing `article-created:<article_id>`
+	// dedupe records that would otherwise silently drop a re-emit through
+	// TriggerBackfill. Combine with a Full Reproject + Swap to land the
+	// recovered URLs on the active projection (see
+	// docs/runbooks/knowledge-home-reproject-operations.md
+	// §Post-tag-fix backfill).
+	EmitArticleUrlBackfill(context.Context, *connect.Request[v1.EmitArticleUrlBackfillRequest]) (*connect.Response[v1.EmitArticleUrlBackfillResponse], error)
 }
 
 // NewKnowledgeHomeAdminServiceClient constructs a client for the
@@ -222,26 +237,33 @@ func NewKnowledgeHomeAdminServiceClient(httpClient connect.HTTPClient, baseURL s
 			connect.WithSchema(knowledgeHomeAdminServiceMethods.ByName("GetSystemMetrics")),
 			connect.WithClientOptions(opts...),
 		),
+		emitArticleUrlBackfill: connect.NewClient[v1.EmitArticleUrlBackfillRequest, v1.EmitArticleUrlBackfillResponse](
+			httpClient,
+			baseURL+KnowledgeHomeAdminServiceEmitArticleUrlBackfillProcedure,
+			connect.WithSchema(knowledgeHomeAdminServiceMethods.ByName("EmitArticleUrlBackfill")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
 // knowledgeHomeAdminServiceClient implements KnowledgeHomeAdminServiceClient.
 type knowledgeHomeAdminServiceClient struct {
-	triggerBackfill     *connect.Client[v1.TriggerBackfillRequest, v1.TriggerBackfillResponse]
-	pauseBackfill       *connect.Client[v1.PauseBackfillRequest, v1.PauseBackfillResponse]
-	resumeBackfill      *connect.Client[v1.ResumeBackfillRequest, v1.ResumeBackfillResponse]
-	getBackfillStatus   *connect.Client[v1.GetBackfillStatusRequest, v1.GetBackfillStatusResponse]
-	getProjectionHealth *connect.Client[v1.GetProjectionHealthRequest, v1.GetProjectionHealthResponse]
-	getFeatureFlags     *connect.Client[v1.GetFeatureFlagsRequest, v1.GetFeatureFlagsResponse]
-	startReproject      *connect.Client[v1.StartReprojectRequest, v1.StartReprojectResponse]
-	getReprojectStatus  *connect.Client[v1.GetReprojectStatusRequest, v1.GetReprojectStatusResponse]
-	listReprojectRuns   *connect.Client[v1.ListReprojectRunsRequest, v1.ListReprojectRunsResponse]
-	compareReproject    *connect.Client[v1.CompareReprojectRequest, v1.CompareReprojectResponse]
-	swapReproject       *connect.Client[v1.SwapReprojectRequest, v1.SwapReprojectResponse]
-	rollbackReproject   *connect.Client[v1.RollbackReprojectRequest, v1.RollbackReprojectResponse]
-	getSLOStatus        *connect.Client[v1.GetSLOStatusRequest, v1.GetSLOStatusResponse]
-	runProjectionAudit  *connect.Client[v1.RunProjectionAuditRequest, v1.RunProjectionAuditResponse]
-	getSystemMetrics    *connect.Client[v1.GetSystemMetricsRequest, v1.GetSystemMetricsResponse]
+	triggerBackfill        *connect.Client[v1.TriggerBackfillRequest, v1.TriggerBackfillResponse]
+	pauseBackfill          *connect.Client[v1.PauseBackfillRequest, v1.PauseBackfillResponse]
+	resumeBackfill         *connect.Client[v1.ResumeBackfillRequest, v1.ResumeBackfillResponse]
+	getBackfillStatus      *connect.Client[v1.GetBackfillStatusRequest, v1.GetBackfillStatusResponse]
+	getProjectionHealth    *connect.Client[v1.GetProjectionHealthRequest, v1.GetProjectionHealthResponse]
+	getFeatureFlags        *connect.Client[v1.GetFeatureFlagsRequest, v1.GetFeatureFlagsResponse]
+	startReproject         *connect.Client[v1.StartReprojectRequest, v1.StartReprojectResponse]
+	getReprojectStatus     *connect.Client[v1.GetReprojectStatusRequest, v1.GetReprojectStatusResponse]
+	listReprojectRuns      *connect.Client[v1.ListReprojectRunsRequest, v1.ListReprojectRunsResponse]
+	compareReproject       *connect.Client[v1.CompareReprojectRequest, v1.CompareReprojectResponse]
+	swapReproject          *connect.Client[v1.SwapReprojectRequest, v1.SwapReprojectResponse]
+	rollbackReproject      *connect.Client[v1.RollbackReprojectRequest, v1.RollbackReprojectResponse]
+	getSLOStatus           *connect.Client[v1.GetSLOStatusRequest, v1.GetSLOStatusResponse]
+	runProjectionAudit     *connect.Client[v1.RunProjectionAuditRequest, v1.RunProjectionAuditResponse]
+	getSystemMetrics       *connect.Client[v1.GetSystemMetricsRequest, v1.GetSystemMetricsResponse]
+	emitArticleUrlBackfill *connect.Client[v1.EmitArticleUrlBackfillRequest, v1.EmitArticleUrlBackfillResponse]
 }
 
 // TriggerBackfill calls alt.knowledge_home.v1.KnowledgeHomeAdminService.TriggerBackfill.
@@ -319,6 +341,12 @@ func (c *knowledgeHomeAdminServiceClient) GetSystemMetrics(ctx context.Context, 
 	return c.getSystemMetrics.CallUnary(ctx, req)
 }
 
+// EmitArticleUrlBackfill calls
+// alt.knowledge_home.v1.KnowledgeHomeAdminService.EmitArticleUrlBackfill.
+func (c *knowledgeHomeAdminServiceClient) EmitArticleUrlBackfill(ctx context.Context, req *connect.Request[v1.EmitArticleUrlBackfillRequest]) (*connect.Response[v1.EmitArticleUrlBackfillResponse], error) {
+	return c.emitArticleUrlBackfill.CallUnary(ctx, req)
+}
+
 // KnowledgeHomeAdminServiceHandler is an implementation of the
 // alt.knowledge_home.v1.KnowledgeHomeAdminService service.
 type KnowledgeHomeAdminServiceHandler interface {
@@ -356,6 +384,18 @@ type KnowledgeHomeAdminServiceHandler interface {
 	// Phase 6: System Observability
 	// GetSystemMetrics returns aggregated system metrics from OTel instrumentation and service health.
 	GetSystemMetrics(context.Context, *connect.Request[v1.GetSystemMetricsRequest]) (*connect.Response[v1.GetSystemMetricsResponse], error)
+	// EmitArticleUrlBackfill emits ArticleUrlBackfilled corrective events
+	// for every article whose source URL is recorded in `articles.url` but
+	// whose Knowledge Home projection currently shows an empty URL. The
+	// events use the canonical "url" wire key (ADR-000867) and the
+	// dedicated `article-url-backfill:<article_id>` dedupe namespace
+	// (ADR-000868), bypassing the existing `article-created:<article_id>`
+	// dedupe records that would otherwise silently drop a re-emit through
+	// TriggerBackfill. Combine with a Full Reproject + Swap to land the
+	// recovered URLs on the active projection (see
+	// docs/runbooks/knowledge-home-reproject-operations.md
+	// §Post-tag-fix backfill).
+	EmitArticleUrlBackfill(context.Context, *connect.Request[v1.EmitArticleUrlBackfillRequest]) (*connect.Response[v1.EmitArticleUrlBackfillResponse], error)
 }
 
 // NewKnowledgeHomeAdminServiceHandler builds an HTTP handler from the service implementation. It
@@ -455,6 +495,12 @@ func NewKnowledgeHomeAdminServiceHandler(svc KnowledgeHomeAdminServiceHandler, o
 		connect.WithSchema(knowledgeHomeAdminServiceMethods.ByName("GetSystemMetrics")),
 		connect.WithHandlerOptions(opts...),
 	)
+	knowledgeHomeAdminServiceEmitArticleUrlBackfillHandler := connect.NewUnaryHandler(
+		KnowledgeHomeAdminServiceEmitArticleUrlBackfillProcedure,
+		svc.EmitArticleUrlBackfill,
+		connect.WithSchema(knowledgeHomeAdminServiceMethods.ByName("EmitArticleUrlBackfill")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/alt.knowledge_home.v1.KnowledgeHomeAdminService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case KnowledgeHomeAdminServiceTriggerBackfillProcedure:
@@ -487,6 +533,8 @@ func NewKnowledgeHomeAdminServiceHandler(svc KnowledgeHomeAdminServiceHandler, o
 			knowledgeHomeAdminServiceRunProjectionAuditHandler.ServeHTTP(w, r)
 		case KnowledgeHomeAdminServiceGetSystemMetricsProcedure:
 			knowledgeHomeAdminServiceGetSystemMetricsHandler.ServeHTTP(w, r)
+		case KnowledgeHomeAdminServiceEmitArticleUrlBackfillProcedure:
+			knowledgeHomeAdminServiceEmitArticleUrlBackfillHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -554,4 +602,8 @@ func (UnimplementedKnowledgeHomeAdminServiceHandler) RunProjectionAudit(context.
 
 func (UnimplementedKnowledgeHomeAdminServiceHandler) GetSystemMetrics(context.Context, *connect.Request[v1.GetSystemMetricsRequest]) (*connect.Response[v1.GetSystemMetricsResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("alt.knowledge_home.v1.KnowledgeHomeAdminService.GetSystemMetrics is not implemented"))
+}
+
+func (UnimplementedKnowledgeHomeAdminServiceHandler) EmitArticleUrlBackfill(context.Context, *connect.Request[v1.EmitArticleUrlBackfillRequest]) (*connect.Response[v1.EmitArticleUrlBackfillResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("alt.knowledge_home.v1.KnowledgeHomeAdminService.EmitArticleUrlBackfill is not implemented"))
 }

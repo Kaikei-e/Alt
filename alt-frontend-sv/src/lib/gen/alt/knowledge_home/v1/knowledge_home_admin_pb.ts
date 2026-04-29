@@ -10,7 +10,7 @@ import type { Message } from "@bufbuild/protobuf";
  * Describes the file alt/knowledge_home/v1/knowledge_home_admin.proto.
  */
 export const file_alt_knowledge_home_v1_knowledge_home_admin: GenFile = /*@__PURE__*/
-  fileDesc("CjBhbHQva25vd2xlZGdlX2hvbWUvdjEva25vd2xlZGdlX2hvbWVfYWRtaW4ucHJvdG8SFWFsdC5rbm93bGVkZ2VfaG9tZS52MSI0ChZUcmlnZ2VyQmFja2ZpbGxSZXF1ZXN0EhoKEnByb2plY3Rpb25fdmVyc2lvbhgBIAEoBSJKChdUcmlnZ2VyQmFja2ZpbGxSZXNwb25zZRIvCgNqb2IYASABKAsyIi5hbHQua25vd2xlZGdlX2hvbWUudjEuQmFja2ZpbGxKb2IiJgoUUGF1c2VCYWNrZmlsbFJlcXVlc3QSDgoGam9iX2lkGAEgASgJIhcKFVBhdXNlQmFja2ZpbGxSZXNwb25zZSInChVSZXN1bWVCYWNrZmlsbFJlcXVlc3QSDgoGam9iX2lkGAEgASgJIhgKFlJlc3VtZUJhY2tmaWxsUmVzcG9uc2UiKgoYR2V0QmFja2ZpbGxTdGF0dXNSZXF1ZXN0Eg4KBmpvYl9pZBgBIAEoCSJMChlHZXRCYWNrZmlsbFN0YXR1c1Jlc3BvbnNlEi8KA2pvYhgBIAEoCzIiLmFsdC5rbm93bGVkZ2VfaG9tZS52MS5CYWNrZmlsbEpvYiIcChpHZXRQcm9qZWN0aW9uSGVhbHRoUmVxdWVzdCKeAQobR2V0UHJvamVjdGlvbkhlYWx0aFJlc3BvbnNlEhYKDmFjdGl2ZV92ZXJzaW9uGAEgASgFEhYKDmNoZWNrcG9pbnRfc2VxGAIgASgDEhQKDGxhc3RfdXBkYXRlZBgDIAEoCRI5Cg1iYWNrZmlsbF9qb2JzGAQgAygLMiIuYWx0Lmtub3dsZWRnZV9ob21lLnYxLkJhY2tmaWxsSm9iIhgKFkdldEZlYXR1cmVGbGFnc1JlcXVlc3Qi8wEKF0dldEZlYXR1cmVGbGFnc1Jlc3BvbnNlEhgKEGVuYWJsZV9ob21lX3BhZ2UYASABKAgSFwoPZW5hYmxlX3RyYWNraW5nGAIgASgIEhwKFGVuYWJsZV9wcm9qZWN0aW9uX3YyGAMgASgIEhoKEnJvbGxvdXRfcGVyY2VudGFnZRgEIAEoBRIaChJlbmFibGVfcmVjYWxsX3JhaWwYBSABKAgSEwoLZW5hYmxlX2xlbnMYBiABKAgSHQoVZW5hYmxlX3N0cmVhbV91cGRhdGVzGAcgASgIEhsKE2VuYWJsZV9zdXBlcnNlZGVfdXgYCCABKAgizgEKC0JhY2tmaWxsSm9iEg4KBmpvYl9pZBgBIAEoCRIOCgZzdGF0dXMYAiABKAkSGgoScHJvamVjdGlvbl92ZXJzaW9uGAMgASgFEhQKDHRvdGFsX2V2ZW50cxgEIAEoBRIYChBwcm9jZXNzZWRfZXZlbnRzGAUgASgFEhUKDWVycm9yX21lc3NhZ2UYBiABKAkSEgoKY3JlYXRlZF9hdBgHIAEoCRISCgpzdGFydGVkX2F0GAggASgJEhQKDGNvbXBsZXRlZF9hdBgJIAEoCSKfAQoVU3RhcnRSZXByb2plY3RSZXF1ZXN0EgwKBG1vZGUYASABKAkSEgoKdG9fdmVyc2lvbhgCIAEoCRIUCgxmcm9tX3ZlcnNpb24YAyABKAkSGAoLcmFuZ2Vfc3RhcnQYBCABKAlIAIgBARIWCglyYW5nZV9lbmQYBSABKAlIAYgBAUIOCgxfcmFuZ2Vfc3RhcnRCDAoKX3JhbmdlX2VuZCJKChZTdGFydFJlcHJvamVjdFJlc3BvbnNlEjAKA3J1bhgBIAEoCzIjLmFsdC5rbm93bGVkZ2VfaG9tZS52MS5SZXByb2plY3RSdW4iNQoZR2V0UmVwcm9qZWN0U3RhdHVzUmVxdWVzdBIYChByZXByb2plY3RfcnVuX2lkGAEgASgJIk4KGkdldFJlcHJvamVjdFN0YXR1c1Jlc3BvbnNlEjAKA3J1bhgBIAEoCzIjLmFsdC5rbm93bGVkZ2VfaG9tZS52MS5SZXByb2plY3RSdW4iVwoYTGlzdFJlcHJvamVjdFJ1bnNSZXF1ZXN0EhoKDXN0YXR1c19maWx0ZXIYASABKAlIAIgBARINCgVsaW1pdBgCIAEoBUIQCg5fc3RhdHVzX2ZpbHRlciJOChlMaXN0UmVwcm9qZWN0UnVuc1Jlc3BvbnNlEjEKBHJ1bnMYASADKAsyIy5hbHQua25vd2xlZGdlX2hvbWUudjEuUmVwcm9qZWN0UnVuIjMKF0NvbXBhcmVSZXByb2plY3RSZXF1ZXN0EhgKEHJlcHJvamVjdF9ydW5faWQYASABKAkiVQoYQ29tcGFyZVJlcHJvamVjdFJlc3BvbnNlEjkKBGRpZmYYASABKAsyKy5hbHQua25vd2xlZGdlX2hvbWUudjEuUmVwcm9qZWN0RGlmZlN1bW1hcnkiMAoUU3dhcFJlcHJvamVjdFJlcXVlc3QSGAoQcmVwcm9qZWN0X3J1bl9pZBgBIAEoCSIXChVTd2FwUmVwcm9qZWN0UmVzcG9uc2UiNAoYUm9sbGJhY2tSZXByb2plY3RSZXF1ZXN0EhgKEHJlcHJvamVjdF9ydW5faWQYASABKAkiGwoZUm9sbGJhY2tSZXByb2plY3RSZXNwb25zZSKzAgoMUmVwcm9qZWN0UnVuEhgKEHJlcHJvamVjdF9ydW5faWQYASABKAkSFwoPcHJvamVjdGlvbl9uYW1lGAIgASgJEhQKDGZyb21fdmVyc2lvbhgDIAEoCRISCgp0b192ZXJzaW9uGAQgASgJEhQKDGluaXRpYXRlZF9ieRgFIAEoCRIMCgRtb2RlGAYgASgJEg4KBnN0YXR1cxgHIAEoCRITCgtyYW5nZV9zdGFydBgIIAEoCRIRCglyYW5nZV9lbmQYCSABKAkSEgoKc3RhdHNfanNvbhgKIAEoCRIZChFkaWZmX3N1bW1hcnlfanNvbhgLIAEoCRISCgpjcmVhdGVkX2F0GAwgASgJEhIKCnN0YXJ0ZWRfYXQYDSABKAkSEwoLZmluaXNoZWRfYXQYDiABKAki4gEKFFJlcHJvamVjdERpZmZTdW1tYXJ5EhcKD2Zyb21faXRlbV9jb3VudBgBIAEoAxIVCg10b19pdGVtX2NvdW50GAIgASgDEhgKEGZyb21fZW1wdHlfY291bnQYAyABKAMSFgoOdG9fZW1wdHlfY291bnQYBCABKAMSFgoOZnJvbV9hdmdfc2NvcmUYBSABKAESFAoMdG9fYXZnX3Njb3JlGAYgASgBEh0KFWZyb21fd2h5X2Rpc3RyaWJ1dGlvbhgHIAEoCRIbChN0b193aHlfZGlzdHJpYnV0aW9uGAggASgJIhUKE0dldFNMT1N0YXR1c1JlcXVlc3Qi0QEKFEdldFNMT1N0YXR1c1Jlc3BvbnNlEhYKDm92ZXJhbGxfaGVhbHRoGAEgASgJEi4KBHNsaXMYAiADKAsyIC5hbHQua25vd2xlZGdlX2hvbWUudjEuU0xJU3RhdHVzEiAKGGVycm9yX2J1ZGdldF93aW5kb3dfZGF5cxgDIAEoBRI6Cg1hY3RpdmVfYWxlcnRzGAQgAygLMiMuYWx0Lmtub3dsZWRnZV9ob21lLnYxLkFsZXJ0U3VtbWFyeRITCgtjb21wdXRlZF9hdBgFIAEoCSKHAQoJU0xJU3RhdHVzEgwKBG5hbWUYASABKAkSFQoNY3VycmVudF92YWx1ZRgCIAEoARIUCgx0YXJnZXRfdmFsdWUYAyABKAESDAoEdW5pdBgEIAEoCRIOCgZzdGF0dXMYBSABKAkSIQoZZXJyb3JfYnVkZ2V0X2NvbnN1bWVkX3BjdBgGIAEoASJrCgxBbGVydFN1bW1hcnkSEgoKYWxlcnRfbmFtZRgBIAEoCRIQCghzZXZlcml0eRgCIAEoCRIOCgZzdGF0dXMYAyABKAkSEAoIZmlyZWRfYXQYBCABKAkSEwoLZGVzY3JpcHRpb24YBSABKAkiZQoZUnVuUHJvamVjdGlvbkF1ZGl0UmVxdWVzdBIXCg9wcm9qZWN0aW9uX25hbWUYASABKAkSGgoScHJvamVjdGlvbl92ZXJzaW9uGAIgASgJEhMKC3NhbXBsZV9zaXplGAMgASgFIlMKGlJ1blByb2plY3Rpb25BdWRpdFJlc3BvbnNlEjUKBWF1ZGl0GAEgASgLMiYuYWx0Lmtub3dsZWRnZV9ob21lLnYxLlByb2plY3Rpb25BdWRpdCKvAQoPUHJvamVjdGlvbkF1ZGl0EhAKCGF1ZGl0X2lkGAEgASgJEhcKD3Byb2plY3Rpb25fbmFtZRgCIAEoCRIaChJwcm9qZWN0aW9uX3ZlcnNpb24YAyABKAkSEgoKY2hlY2tlZF9hdBgEIAEoCRITCgtzYW1wbGVfc2l6ZRgFIAEoBRIWCg5taXNtYXRjaF9jb3VudBgGIAEoBRIUCgxkZXRhaWxzX2pzb24YByABKAkiGQoXR2V0U3lzdGVtTWV0cmljc1JlcXVlc3Qi9AMKGEdldFN5c3RlbU1ldHJpY3NSZXNwb25zZRI6Cglwcm9qZWN0b3IYASABKAsyJy5hbHQua25vd2xlZGdlX2hvbWUudjEuUHJvamVjdG9yTWV0cmljcxI2CgdoYW5kbGVyGAIgASgLMiUuYWx0Lmtub3dsZWRnZV9ob21lLnYxLkhhbmRsZXJNZXRyaWNzEjgKCHRyYWNraW5nGAMgASgLMiYuYWx0Lmtub3dsZWRnZV9ob21lLnYxLlRyYWNraW5nTWV0cmljcxI0CgZzdHJlYW0YBCABKAsyJC5hbHQua25vd2xlZGdlX2hvbWUudjEuU3RyZWFtTWV0cmljcxI+Cgtjb3JyZWN0bmVzcxgFIAEoCzIpLmFsdC5rbm93bGVkZ2VfaG9tZS52MS5Db3JyZWN0bmVzc01ldHJpY3MSOgoJc292ZXJlaWduGAYgASgLMicuYWx0Lmtub3dsZWRnZV9ob21lLnYxLlNvdmVyZWlnbk1ldHJpY3MSNAoGcmVjYWxsGAcgASgLMiQuYWx0Lmtub3dsZWRnZV9ob21lLnYxLlJlY2FsbE1ldHJpY3MSQgoOc2VydmljZV9oZWFsdGgYCCADKAsyKi5hbHQua25vd2xlZGdlX2hvbWUudjEuU2VydmljZUhlYWx0aFN0YXR1cyKuAQoQUHJvamVjdG9yTWV0cmljcxIYChBldmVudHNfcHJvY2Vzc2VkGAEgASgDEhMKC2xhZ19zZWNvbmRzGAIgASgBEh0KFWJhdGNoX2R1cmF0aW9uX21zX3A1MBgDIAEoARIdChViYXRjaF9kdXJhdGlvbl9tc19wOTUYBCABKAESHQoVYmF0Y2hfZHVyYXRpb25fbXNfcDk5GAUgASgBEg4KBmVycm9ycxgGIAEoAyJZCg5IYW5kbGVyTWV0cmljcxIUCgxwYWdlc19zZXJ2ZWQYASABKAMSFgoOcGFnZXNfZGVncmFkZWQYAiABKAMSGQoRZGVncmFkZWRfcmF0ZV9wY3QYAyABKAEiiAEKD1RyYWNraW5nTWV0cmljcxIVCg1pdGVtc19leHBvc2VkGAEgASgDEhQKDGl0ZW1zX29wZW5lZBgCIAEoAxIXCg9pdGVtc19kaXNtaXNzZWQYAyABKAMSFQoNb3Blbl9yYXRlX3BjdBgEIAEoARIYChBkaXNtaXNzX3JhdGVfcGN0GAUgASgBIpYBCg1TdHJlYW1NZXRyaWNzEhkKEWNvbm5lY3Rpb25zX3RvdGFsGAEgASgDEhkKEWRpc2Nvbm5lY3RzX3RvdGFsGAIgASgDEhgKEHJlY29ubmVjdHNfdG90YWwYAyABKAMSGAoQZGVsaXZlcmllc190b3RhbBgEIAEoAxIbChNkaXNjb25uZWN0X3JhdGVfcGN0GAUgASgBIq0BChJDb3JyZWN0bmVzc01ldHJpY3MSFwoPZW1wdHlfcmVzcG9uc2VzGAEgASgDEhUKDW1hbGZvcm1lZF93aHkYAiABKAMSFAoMb3JwaGFuX2l0ZW1zGAMgASgDEhoKEnN1cGVyc2VkZV9taXNtYXRjaBgEIAEoAxIWCg5yZXF1ZXN0c190b3RhbBgFIAEoAxIdChVjb3JyZWN0bmVzc19zY29yZV9wY3QYBiABKAEiowEKEFNvdmVyZWlnbk1ldHJpY3MSGQoRbXV0YXRpb25zX2FwcGxpZWQYASABKAMSGAoQbXV0YXRpb25zX2Vycm9ycxgCIAEoAxIgChhtdXRhdGlvbl9kdXJhdGlvbl9tc19wNTAYAyABKAESIAoYbXV0YXRpb25fZHVyYXRpb25fbXNfcDk1GAQgASgBEhYKDmVycm9yX3JhdGVfcGN0GAUgASgBItcBCg1SZWNhbGxNZXRyaWNzEhgKEHNpZ25hbHNfYXBwZW5kZWQYASABKAMSFQoNc2lnbmFsX2Vycm9ycxgCIAEoAxIcChRjYW5kaWRhdGVzX2dlbmVyYXRlZBgDIAEoAxIYChBjYW5kaWRhdGVzX2VtcHR5GAQgASgDEhcKD3VzZXJzX3Byb2Nlc3NlZBgFIAEoAxIhChlwcm9qZWN0b3JfZHVyYXRpb25fbXNfcDUwGAYgASgBEiEKGXByb2plY3Rvcl9kdXJhdGlvbl9tc19wOTUYByABKAEijAEKE1NlcnZpY2VIZWFsdGhTdGF0dXMSFAoMc2VydmljZV9uYW1lGAEgASgJEhAKCGVuZHBvaW50GAIgASgJEg4KBnN0YXR1cxgDIAEoCRISCgpsYXRlbmN5X21zGAQgASgDEhIKCmNoZWNrZWRfYXQYBSABKAkSFQoNZXJyb3JfbWVzc2FnZRgGIAEoCTLkDQoZS25vd2xlZGdlSG9tZUFkbWluU2VydmljZRJwCg9UcmlnZ2VyQmFja2ZpbGwSLS5hbHQua25vd2xlZGdlX2hvbWUudjEuVHJpZ2dlckJhY2tmaWxsUmVxdWVzdBouLmFsdC5rbm93bGVkZ2VfaG9tZS52MS5UcmlnZ2VyQmFja2ZpbGxSZXNwb25zZRJqCg1QYXVzZUJhY2tmaWxsEisuYWx0Lmtub3dsZWRnZV9ob21lLnYxLlBhdXNlQmFja2ZpbGxSZXF1ZXN0GiwuYWx0Lmtub3dsZWRnZV9ob21lLnYxLlBhdXNlQmFja2ZpbGxSZXNwb25zZRJtCg5SZXN1bWVCYWNrZmlsbBIsLmFsdC5rbm93bGVkZ2VfaG9tZS52MS5SZXN1bWVCYWNrZmlsbFJlcXVlc3QaLS5hbHQua25vd2xlZGdlX2hvbWUudjEuUmVzdW1lQmFja2ZpbGxSZXNwb25zZRJ2ChFHZXRCYWNrZmlsbFN0YXR1cxIvLmFsdC5rbm93bGVkZ2VfaG9tZS52MS5HZXRCYWNrZmlsbFN0YXR1c1JlcXVlc3QaMC5hbHQua25vd2xlZGdlX2hvbWUudjEuR2V0QmFja2ZpbGxTdGF0dXNSZXNwb25zZRJ8ChNHZXRQcm9qZWN0aW9uSGVhbHRoEjEuYWx0Lmtub3dsZWRnZV9ob21lLnYxLkdldFByb2plY3Rpb25IZWFsdGhSZXF1ZXN0GjIuYWx0Lmtub3dsZWRnZV9ob21lLnYxLkdldFByb2plY3Rpb25IZWFsdGhSZXNwb25zZRJwCg9HZXRGZWF0dXJlRmxhZ3MSLS5hbHQua25vd2xlZGdlX2hvbWUudjEuR2V0RmVhdHVyZUZsYWdzUmVxdWVzdBouLmFsdC5rbm93bGVkZ2VfaG9tZS52MS5HZXRGZWF0dXJlRmxhZ3NSZXNwb25zZRJtCg5TdGFydFJlcHJvamVjdBIsLmFsdC5rbm93bGVkZ2VfaG9tZS52MS5TdGFydFJlcHJvamVjdFJlcXVlc3QaLS5hbHQua25vd2xlZGdlX2hvbWUudjEuU3RhcnRSZXByb2plY3RSZXNwb25zZRJ5ChJHZXRSZXByb2plY3RTdGF0dXMSMC5hbHQua25vd2xlZGdlX2hvbWUudjEuR2V0UmVwcm9qZWN0U3RhdHVzUmVxdWVzdBoxLmFsdC5rbm93bGVkZ2VfaG9tZS52MS5HZXRSZXByb2plY3RTdGF0dXNSZXNwb25zZRJ2ChFMaXN0UmVwcm9qZWN0UnVucxIvLmFsdC5rbm93bGVkZ2VfaG9tZS52MS5MaXN0UmVwcm9qZWN0UnVuc1JlcXVlc3QaMC5hbHQua25vd2xlZGdlX2hvbWUudjEuTGlzdFJlcHJvamVjdFJ1bnNSZXNwb25zZRJzChBDb21wYXJlUmVwcm9qZWN0Ei4uYWx0Lmtub3dsZWRnZV9ob21lLnYxLkNvbXBhcmVSZXByb2plY3RSZXF1ZXN0Gi8uYWx0Lmtub3dsZWRnZV9ob21lLnYxLkNvbXBhcmVSZXByb2plY3RSZXNwb25zZRJqCg1Td2FwUmVwcm9qZWN0EisuYWx0Lmtub3dsZWRnZV9ob21lLnYxLlN3YXBSZXByb2plY3RSZXF1ZXN0GiwuYWx0Lmtub3dsZWRnZV9ob21lLnYxLlN3YXBSZXByb2plY3RSZXNwb25zZRJ2ChFSb2xsYmFja1JlcHJvamVjdBIvLmFsdC5rbm93bGVkZ2VfaG9tZS52MS5Sb2xsYmFja1JlcHJvamVjdFJlcXVlc3QaMC5hbHQua25vd2xlZGdlX2hvbWUudjEuUm9sbGJhY2tSZXByb2plY3RSZXNwb25zZRJnCgxHZXRTTE9TdGF0dXMSKi5hbHQua25vd2xlZGdlX2hvbWUudjEuR2V0U0xPU3RhdHVzUmVxdWVzdBorLmFsdC5rbm93bGVkZ2VfaG9tZS52MS5HZXRTTE9TdGF0dXNSZXNwb25zZRJ5ChJSdW5Qcm9qZWN0aW9uQXVkaXQSMC5hbHQua25vd2xlZGdlX2hvbWUudjEuUnVuUHJvamVjdGlvbkF1ZGl0UmVxdWVzdBoxLmFsdC5rbm93bGVkZ2VfaG9tZS52MS5SdW5Qcm9qZWN0aW9uQXVkaXRSZXNwb25zZRJzChBHZXRTeXN0ZW1NZXRyaWNzEi4uYWx0Lmtub3dsZWRnZV9ob21lLnYxLkdldFN5c3RlbU1ldHJpY3NSZXF1ZXN0Gi8uYWx0Lmtub3dsZWRnZV9ob21lLnYxLkdldFN5c3RlbU1ldHJpY3NSZXNwb25zZUI1WjNhbHQvZ2VuL3Byb3RvL2FsdC9rbm93bGVkZ2VfaG9tZS92MTtrbm93bGVkZ2Vob21ldjFiBnByb3RvMw");
+  fileDesc("CjBhbHQva25vd2xlZGdlX2hvbWUvdjEva25vd2xlZGdlX2hvbWVfYWRtaW4ucHJvdG8SFWFsdC5rbm93bGVkZ2VfaG9tZS52MSI0ChZUcmlnZ2VyQmFja2ZpbGxSZXF1ZXN0EhoKEnByb2plY3Rpb25fdmVyc2lvbhgBIAEoBSJGCh1FbWl0QXJ0aWNsZVVybEJhY2tmaWxsUmVxdWVzdBIUCgxtYXhfYXJ0aWNsZXMYASABKAUSDwoHZHJ5X3J1bhgCIAEoCCKmAQoeRW1pdEFydGljbGVVcmxCYWNrZmlsbFJlc3BvbnNlEhgKEGFydGljbGVzX3NjYW5uZWQYASABKAUSFwoPZXZlbnRzX2FwcGVuZGVkGAIgASgFEh4KFnNraXBwZWRfYmxvY2tlZF9zY2hlbWUYAyABKAUSGQoRc2tpcHBlZF9kdXBsaWNhdGUYBCABKAUSFgoObW9yZV9yZW1haW5pbmcYBSABKAgiSgoXVHJpZ2dlckJhY2tmaWxsUmVzcG9uc2USLwoDam9iGAEgASgLMiIuYWx0Lmtub3dsZWRnZV9ob21lLnYxLkJhY2tmaWxsSm9iIiYKFFBhdXNlQmFja2ZpbGxSZXF1ZXN0Eg4KBmpvYl9pZBgBIAEoCSIXChVQYXVzZUJhY2tmaWxsUmVzcG9uc2UiJwoVUmVzdW1lQmFja2ZpbGxSZXF1ZXN0Eg4KBmpvYl9pZBgBIAEoCSIYChZSZXN1bWVCYWNrZmlsbFJlc3BvbnNlIioKGEdldEJhY2tmaWxsU3RhdHVzUmVxdWVzdBIOCgZqb2JfaWQYASABKAkiTAoZR2V0QmFja2ZpbGxTdGF0dXNSZXNwb25zZRIvCgNqb2IYASABKAsyIi5hbHQua25vd2xlZGdlX2hvbWUudjEuQmFja2ZpbGxKb2IiHAoaR2V0UHJvamVjdGlvbkhlYWx0aFJlcXVlc3QingEKG0dldFByb2plY3Rpb25IZWFsdGhSZXNwb25zZRIWCg5hY3RpdmVfdmVyc2lvbhgBIAEoBRIWCg5jaGVja3BvaW50X3NlcRgCIAEoAxIUCgxsYXN0X3VwZGF0ZWQYAyABKAkSOQoNYmFja2ZpbGxfam9icxgEIAMoCzIiLmFsdC5rbm93bGVkZ2VfaG9tZS52MS5CYWNrZmlsbEpvYiIYChZHZXRGZWF0dXJlRmxhZ3NSZXF1ZXN0IvMBChdHZXRGZWF0dXJlRmxhZ3NSZXNwb25zZRIYChBlbmFibGVfaG9tZV9wYWdlGAEgASgIEhcKD2VuYWJsZV90cmFja2luZxgCIAEoCBIcChRlbmFibGVfcHJvamVjdGlvbl92MhgDIAEoCBIaChJyb2xsb3V0X3BlcmNlbnRhZ2UYBCABKAUSGgoSZW5hYmxlX3JlY2FsbF9yYWlsGAUgASgIEhMKC2VuYWJsZV9sZW5zGAYgASgIEh0KFWVuYWJsZV9zdHJlYW1fdXBkYXRlcxgHIAEoCBIbChNlbmFibGVfc3VwZXJzZWRlX3V4GAggASgIIs4BCgtCYWNrZmlsbEpvYhIOCgZqb2JfaWQYASABKAkSDgoGc3RhdHVzGAIgASgJEhoKEnByb2plY3Rpb25fdmVyc2lvbhgDIAEoBRIUCgx0b3RhbF9ldmVudHMYBCABKAUSGAoQcHJvY2Vzc2VkX2V2ZW50cxgFIAEoBRIVCg1lcnJvcl9tZXNzYWdlGAYgASgJEhIKCmNyZWF0ZWRfYXQYByABKAkSEgoKc3RhcnRlZF9hdBgIIAEoCRIUCgxjb21wbGV0ZWRfYXQYCSABKAkinwEKFVN0YXJ0UmVwcm9qZWN0UmVxdWVzdBIMCgRtb2RlGAEgASgJEhIKCnRvX3ZlcnNpb24YAiABKAkSFAoMZnJvbV92ZXJzaW9uGAMgASgJEhgKC3JhbmdlX3N0YXJ0GAQgASgJSACIAQESFgoJcmFuZ2VfZW5kGAUgASgJSAGIAQFCDgoMX3JhbmdlX3N0YXJ0QgwKCl9yYW5nZV9lbmQiSgoWU3RhcnRSZXByb2plY3RSZXNwb25zZRIwCgNydW4YASABKAsyIy5hbHQua25vd2xlZGdlX2hvbWUudjEuUmVwcm9qZWN0UnVuIjUKGUdldFJlcHJvamVjdFN0YXR1c1JlcXVlc3QSGAoQcmVwcm9qZWN0X3J1bl9pZBgBIAEoCSJOChpHZXRSZXByb2plY3RTdGF0dXNSZXNwb25zZRIwCgNydW4YASABKAsyIy5hbHQua25vd2xlZGdlX2hvbWUudjEuUmVwcm9qZWN0UnVuIlcKGExpc3RSZXByb2plY3RSdW5zUmVxdWVzdBIaCg1zdGF0dXNfZmlsdGVyGAEgASgJSACIAQESDQoFbGltaXQYAiABKAVCEAoOX3N0YXR1c19maWx0ZXIiTgoZTGlzdFJlcHJvamVjdFJ1bnNSZXNwb25zZRIxCgRydW5zGAEgAygLMiMuYWx0Lmtub3dsZWRnZV9ob21lLnYxLlJlcHJvamVjdFJ1biIzChdDb21wYXJlUmVwcm9qZWN0UmVxdWVzdBIYChByZXByb2plY3RfcnVuX2lkGAEgASgJIlUKGENvbXBhcmVSZXByb2plY3RSZXNwb25zZRI5CgRkaWZmGAEgASgLMisuYWx0Lmtub3dsZWRnZV9ob21lLnYxLlJlcHJvamVjdERpZmZTdW1tYXJ5IjAKFFN3YXBSZXByb2plY3RSZXF1ZXN0EhgKEHJlcHJvamVjdF9ydW5faWQYASABKAkiFwoVU3dhcFJlcHJvamVjdFJlc3BvbnNlIjQKGFJvbGxiYWNrUmVwcm9qZWN0UmVxdWVzdBIYChByZXByb2plY3RfcnVuX2lkGAEgASgJIhsKGVJvbGxiYWNrUmVwcm9qZWN0UmVzcG9uc2UiswIKDFJlcHJvamVjdFJ1bhIYChByZXByb2plY3RfcnVuX2lkGAEgASgJEhcKD3Byb2plY3Rpb25fbmFtZRgCIAEoCRIUCgxmcm9tX3ZlcnNpb24YAyABKAkSEgoKdG9fdmVyc2lvbhgEIAEoCRIUCgxpbml0aWF0ZWRfYnkYBSABKAkSDAoEbW9kZRgGIAEoCRIOCgZzdGF0dXMYByABKAkSEwoLcmFuZ2Vfc3RhcnQYCCABKAkSEQoJcmFuZ2VfZW5kGAkgASgJEhIKCnN0YXRzX2pzb24YCiABKAkSGQoRZGlmZl9zdW1tYXJ5X2pzb24YCyABKAkSEgoKY3JlYXRlZF9hdBgMIAEoCRISCgpzdGFydGVkX2F0GA0gASgJEhMKC2ZpbmlzaGVkX2F0GA4gASgJIuIBChRSZXByb2plY3REaWZmU3VtbWFyeRIXCg9mcm9tX2l0ZW1fY291bnQYASABKAMSFQoNdG9faXRlbV9jb3VudBgCIAEoAxIYChBmcm9tX2VtcHR5X2NvdW50GAMgASgDEhYKDnRvX2VtcHR5X2NvdW50GAQgASgDEhYKDmZyb21fYXZnX3Njb3JlGAUgASgBEhQKDHRvX2F2Z19zY29yZRgGIAEoARIdChVmcm9tX3doeV9kaXN0cmlidXRpb24YByABKAkSGwoTdG9fd2h5X2Rpc3RyaWJ1dGlvbhgIIAEoCSIVChNHZXRTTE9TdGF0dXNSZXF1ZXN0ItEBChRHZXRTTE9TdGF0dXNSZXNwb25zZRIWCg5vdmVyYWxsX2hlYWx0aBgBIAEoCRIuCgRzbGlzGAIgAygLMiAuYWx0Lmtub3dsZWRnZV9ob21lLnYxLlNMSVN0YXR1cxIgChhlcnJvcl9idWRnZXRfd2luZG93X2RheXMYAyABKAUSOgoNYWN0aXZlX2FsZXJ0cxgEIAMoCzIjLmFsdC5rbm93bGVkZ2VfaG9tZS52MS5BbGVydFN1bW1hcnkSEwoLY29tcHV0ZWRfYXQYBSABKAkihwEKCVNMSVN0YXR1cxIMCgRuYW1lGAEgASgJEhUKDWN1cnJlbnRfdmFsdWUYAiABKAESFAoMdGFyZ2V0X3ZhbHVlGAMgASgBEgwKBHVuaXQYBCABKAkSDgoGc3RhdHVzGAUgASgJEiEKGWVycm9yX2J1ZGdldF9jb25zdW1lZF9wY3QYBiABKAEiawoMQWxlcnRTdW1tYXJ5EhIKCmFsZXJ0X25hbWUYASABKAkSEAoIc2V2ZXJpdHkYAiABKAkSDgoGc3RhdHVzGAMgASgJEhAKCGZpcmVkX2F0GAQgASgJEhMKC2Rlc2NyaXB0aW9uGAUgASgJImUKGVJ1blByb2plY3Rpb25BdWRpdFJlcXVlc3QSFwoPcHJvamVjdGlvbl9uYW1lGAEgASgJEhoKEnByb2plY3Rpb25fdmVyc2lvbhgCIAEoCRITCgtzYW1wbGVfc2l6ZRgDIAEoBSJTChpSdW5Qcm9qZWN0aW9uQXVkaXRSZXNwb25zZRI1CgVhdWRpdBgBIAEoCzImLmFsdC5rbm93bGVkZ2VfaG9tZS52MS5Qcm9qZWN0aW9uQXVkaXQirwEKD1Byb2plY3Rpb25BdWRpdBIQCghhdWRpdF9pZBgBIAEoCRIXCg9wcm9qZWN0aW9uX25hbWUYAiABKAkSGgoScHJvamVjdGlvbl92ZXJzaW9uGAMgASgJEhIKCmNoZWNrZWRfYXQYBCABKAkSEwoLc2FtcGxlX3NpemUYBSABKAUSFgoObWlzbWF0Y2hfY291bnQYBiABKAUSFAoMZGV0YWlsc19qc29uGAcgASgJIhkKF0dldFN5c3RlbU1ldHJpY3NSZXF1ZXN0IvQDChhHZXRTeXN0ZW1NZXRyaWNzUmVzcG9uc2USOgoJcHJvamVjdG9yGAEgASgLMicuYWx0Lmtub3dsZWRnZV9ob21lLnYxLlByb2plY3Rvck1ldHJpY3MSNgoHaGFuZGxlchgCIAEoCzIlLmFsdC5rbm93bGVkZ2VfaG9tZS52MS5IYW5kbGVyTWV0cmljcxI4Cgh0cmFja2luZxgDIAEoCzImLmFsdC5rbm93bGVkZ2VfaG9tZS52MS5UcmFja2luZ01ldHJpY3MSNAoGc3RyZWFtGAQgASgLMiQuYWx0Lmtub3dsZWRnZV9ob21lLnYxLlN0cmVhbU1ldHJpY3MSPgoLY29ycmVjdG5lc3MYBSABKAsyKS5hbHQua25vd2xlZGdlX2hvbWUudjEuQ29ycmVjdG5lc3NNZXRyaWNzEjoKCXNvdmVyZWlnbhgGIAEoCzInLmFsdC5rbm93bGVkZ2VfaG9tZS52MS5Tb3ZlcmVpZ25NZXRyaWNzEjQKBnJlY2FsbBgHIAEoCzIkLmFsdC5rbm93bGVkZ2VfaG9tZS52MS5SZWNhbGxNZXRyaWNzEkIKDnNlcnZpY2VfaGVhbHRoGAggAygLMiouYWx0Lmtub3dsZWRnZV9ob21lLnYxLlNlcnZpY2VIZWFsdGhTdGF0dXMirgEKEFByb2plY3Rvck1ldHJpY3MSGAoQZXZlbnRzX3Byb2Nlc3NlZBgBIAEoAxITCgtsYWdfc2Vjb25kcxgCIAEoARIdChViYXRjaF9kdXJhdGlvbl9tc19wNTAYAyABKAESHQoVYmF0Y2hfZHVyYXRpb25fbXNfcDk1GAQgASgBEh0KFWJhdGNoX2R1cmF0aW9uX21zX3A5ORgFIAEoARIOCgZlcnJvcnMYBiABKAMiWQoOSGFuZGxlck1ldHJpY3MSFAoMcGFnZXNfc2VydmVkGAEgASgDEhYKDnBhZ2VzX2RlZ3JhZGVkGAIgASgDEhkKEWRlZ3JhZGVkX3JhdGVfcGN0GAMgASgBIogBCg9UcmFja2luZ01ldHJpY3MSFQoNaXRlbXNfZXhwb3NlZBgBIAEoAxIUCgxpdGVtc19vcGVuZWQYAiABKAMSFwoPaXRlbXNfZGlzbWlzc2VkGAMgASgDEhUKDW9wZW5fcmF0ZV9wY3QYBCABKAESGAoQZGlzbWlzc19yYXRlX3BjdBgFIAEoASKWAQoNU3RyZWFtTWV0cmljcxIZChFjb25uZWN0aW9uc190b3RhbBgBIAEoAxIZChFkaXNjb25uZWN0c190b3RhbBgCIAEoAxIYChByZWNvbm5lY3RzX3RvdGFsGAMgASgDEhgKEGRlbGl2ZXJpZXNfdG90YWwYBCABKAMSGwoTZGlzY29ubmVjdF9yYXRlX3BjdBgFIAEoASKtAQoSQ29ycmVjdG5lc3NNZXRyaWNzEhcKD2VtcHR5X3Jlc3BvbnNlcxgBIAEoAxIVCg1tYWxmb3JtZWRfd2h5GAIgASgDEhQKDG9ycGhhbl9pdGVtcxgDIAEoAxIaChJzdXBlcnNlZGVfbWlzbWF0Y2gYBCABKAMSFgoOcmVxdWVzdHNfdG90YWwYBSABKAMSHQoVY29ycmVjdG5lc3Nfc2NvcmVfcGN0GAYgASgBIqMBChBTb3ZlcmVpZ25NZXRyaWNzEhkKEW11dGF0aW9uc19hcHBsaWVkGAEgASgDEhgKEG11dGF0aW9uc19lcnJvcnMYAiABKAMSIAoYbXV0YXRpb25fZHVyYXRpb25fbXNfcDUwGAMgASgBEiAKGG11dGF0aW9uX2R1cmF0aW9uX21zX3A5NRgEIAEoARIWCg5lcnJvcl9yYXRlX3BjdBgFIAEoASLXAQoNUmVjYWxsTWV0cmljcxIYChBzaWduYWxzX2FwcGVuZGVkGAEgASgDEhUKDXNpZ25hbF9lcnJvcnMYAiABKAMSHAoUY2FuZGlkYXRlc19nZW5lcmF0ZWQYAyABKAMSGAoQY2FuZGlkYXRlc19lbXB0eRgEIAEoAxIXCg91c2Vyc19wcm9jZXNzZWQYBSABKAMSIQoZcHJvamVjdG9yX2R1cmF0aW9uX21zX3A1MBgGIAEoARIhChlwcm9qZWN0b3JfZHVyYXRpb25fbXNfcDk1GAcgASgBIowBChNTZXJ2aWNlSGVhbHRoU3RhdHVzEhQKDHNlcnZpY2VfbmFtZRgBIAEoCRIQCghlbmRwb2ludBgCIAEoCRIOCgZzdGF0dXMYAyABKAkSEgoKbGF0ZW5jeV9tcxgEIAEoAxISCgpjaGVja2VkX2F0GAUgASgJEhUKDWVycm9yX21lc3NhZ2UYBiABKAky7A4KGUtub3dsZWRnZUhvbWVBZG1pblNlcnZpY2UScAoPVHJpZ2dlckJhY2tmaWxsEi0uYWx0Lmtub3dsZWRnZV9ob21lLnYxLlRyaWdnZXJCYWNrZmlsbFJlcXVlc3QaLi5hbHQua25vd2xlZGdlX2hvbWUudjEuVHJpZ2dlckJhY2tmaWxsUmVzcG9uc2USagoNUGF1c2VCYWNrZmlsbBIrLmFsdC5rbm93bGVkZ2VfaG9tZS52MS5QYXVzZUJhY2tmaWxsUmVxdWVzdBosLmFsdC5rbm93bGVkZ2VfaG9tZS52MS5QYXVzZUJhY2tmaWxsUmVzcG9uc2USbQoOUmVzdW1lQmFja2ZpbGwSLC5hbHQua25vd2xlZGdlX2hvbWUudjEuUmVzdW1lQmFja2ZpbGxSZXF1ZXN0Gi0uYWx0Lmtub3dsZWRnZV9ob21lLnYxLlJlc3VtZUJhY2tmaWxsUmVzcG9uc2USdgoRR2V0QmFja2ZpbGxTdGF0dXMSLy5hbHQua25vd2xlZGdlX2hvbWUudjEuR2V0QmFja2ZpbGxTdGF0dXNSZXF1ZXN0GjAuYWx0Lmtub3dsZWRnZV9ob21lLnYxLkdldEJhY2tmaWxsU3RhdHVzUmVzcG9uc2USfAoTR2V0UHJvamVjdGlvbkhlYWx0aBIxLmFsdC5rbm93bGVkZ2VfaG9tZS52MS5HZXRQcm9qZWN0aW9uSGVhbHRoUmVxdWVzdBoyLmFsdC5rbm93bGVkZ2VfaG9tZS52MS5HZXRQcm9qZWN0aW9uSGVhbHRoUmVzcG9uc2UScAoPR2V0RmVhdHVyZUZsYWdzEi0uYWx0Lmtub3dsZWRnZV9ob21lLnYxLkdldEZlYXR1cmVGbGFnc1JlcXVlc3QaLi5hbHQua25vd2xlZGdlX2hvbWUudjEuR2V0RmVhdHVyZUZsYWdzUmVzcG9uc2USbQoOU3RhcnRSZXByb2plY3QSLC5hbHQua25vd2xlZGdlX2hvbWUudjEuU3RhcnRSZXByb2plY3RSZXF1ZXN0Gi0uYWx0Lmtub3dsZWRnZV9ob21lLnYxLlN0YXJ0UmVwcm9qZWN0UmVzcG9uc2USeQoSR2V0UmVwcm9qZWN0U3RhdHVzEjAuYWx0Lmtub3dsZWRnZV9ob21lLnYxLkdldFJlcHJvamVjdFN0YXR1c1JlcXVlc3QaMS5hbHQua25vd2xlZGdlX2hvbWUudjEuR2V0UmVwcm9qZWN0U3RhdHVzUmVzcG9uc2USdgoRTGlzdFJlcHJvamVjdFJ1bnMSLy5hbHQua25vd2xlZGdlX2hvbWUudjEuTGlzdFJlcHJvamVjdFJ1bnNSZXF1ZXN0GjAuYWx0Lmtub3dsZWRnZV9ob21lLnYxLkxpc3RSZXByb2plY3RSdW5zUmVzcG9uc2UScwoQQ29tcGFyZVJlcHJvamVjdBIuLmFsdC5rbm93bGVkZ2VfaG9tZS52MS5Db21wYXJlUmVwcm9qZWN0UmVxdWVzdBovLmFsdC5rbm93bGVkZ2VfaG9tZS52MS5Db21wYXJlUmVwcm9qZWN0UmVzcG9uc2USagoNU3dhcFJlcHJvamVjdBIrLmFsdC5rbm93bGVkZ2VfaG9tZS52MS5Td2FwUmVwcm9qZWN0UmVxdWVzdBosLmFsdC5rbm93bGVkZ2VfaG9tZS52MS5Td2FwUmVwcm9qZWN0UmVzcG9uc2USdgoRUm9sbGJhY2tSZXByb2plY3QSLy5hbHQua25vd2xlZGdlX2hvbWUudjEuUm9sbGJhY2tSZXByb2plY3RSZXF1ZXN0GjAuYWx0Lmtub3dsZWRnZV9ob21lLnYxLlJvbGxiYWNrUmVwcm9qZWN0UmVzcG9uc2USZwoMR2V0U0xPU3RhdHVzEiouYWx0Lmtub3dsZWRnZV9ob21lLnYxLkdldFNMT1N0YXR1c1JlcXVlc3QaKy5hbHQua25vd2xlZGdlX2hvbWUudjEuR2V0U0xPU3RhdHVzUmVzcG9uc2USeQoSUnVuUHJvamVjdGlvbkF1ZGl0EjAuYWx0Lmtub3dsZWRnZV9ob21lLnYxLlJ1blByb2plY3Rpb25BdWRpdFJlcXVlc3QaMS5hbHQua25vd2xlZGdlX2hvbWUudjEuUnVuUHJvamVjdGlvbkF1ZGl0UmVzcG9uc2UScwoQR2V0U3lzdGVtTWV0cmljcxIuLmFsdC5rbm93bGVkZ2VfaG9tZS52MS5HZXRTeXN0ZW1NZXRyaWNzUmVxdWVzdBovLmFsdC5rbm93bGVkZ2VfaG9tZS52MS5HZXRTeXN0ZW1NZXRyaWNzUmVzcG9uc2UShQEKFkVtaXRBcnRpY2xlVXJsQmFja2ZpbGwSNC5hbHQua25vd2xlZGdlX2hvbWUudjEuRW1pdEFydGljbGVVcmxCYWNrZmlsbFJlcXVlc3QaNS5hbHQua25vd2xlZGdlX2hvbWUudjEuRW1pdEFydGljbGVVcmxCYWNrZmlsbFJlc3BvbnNlQjVaM2FsdC9nZW4vcHJvdG8vYWx0L2tub3dsZWRnZV9ob21lL3YxO2tub3dsZWRnZWhvbWV2MWIGcHJvdG8z");
 
 /**
  * TriggerBackfillRequest starts a backfill job.
@@ -32,6 +32,99 @@ export const TriggerBackfillRequestSchema: GenMessage<TriggerBackfillRequest> = 
   messageDesc(file_alt_knowledge_home_v1_knowledge_home_admin, 0);
 
 /**
+ * EmitArticleUrlBackfillRequest controls a one-shot URL backfill emit.
+ *
+ * The handler reads from `articles` (alt-backend DB), filters to URL
+ * scheme http/https only (security defense), and appends one
+ * `ArticleUrlBackfilled` knowledge event per qualifying article via
+ * the sovereign AppendKnowledgeEvent RPC. Idempotent across retries
+ * because the dedupe registry on `article-url-backfill:<article_id>`
+ * silently drops re-emits.
+ *
+ * @generated from message alt.knowledge_home.v1.EmitArticleUrlBackfillRequest
+ */
+export type EmitArticleUrlBackfillRequest = Message<"alt.knowledge_home.v1.EmitArticleUrlBackfillRequest"> & {
+  /**
+   * Optional cap on how many articles to process in this invocation.
+   * Set to 0 (default) to process all qualifying articles.
+   *
+   * @generated from field: int32 max_articles = 1;
+   */
+  maxArticles: number;
+
+  /**
+   * When true, the handler scans + reports counts but does not append
+   * any events. Useful to preview the impact before a real run.
+   *
+   * @generated from field: bool dry_run = 2;
+   */
+  dryRun: boolean;
+};
+
+/**
+ * Describes the message alt.knowledge_home.v1.EmitArticleUrlBackfillRequest.
+ * Use `create(EmitArticleUrlBackfillRequestSchema)` to create a new message.
+ */
+export const EmitArticleUrlBackfillRequestSchema: GenMessage<EmitArticleUrlBackfillRequest> = /*@__PURE__*/
+  messageDesc(file_alt_knowledge_home_v1_knowledge_home_admin, 1);
+
+/**
+ * EmitArticleUrlBackfillResponse summarises a backfill emit result.
+ *
+ * @generated from message alt.knowledge_home.v1.EmitArticleUrlBackfillResponse
+ */
+export type EmitArticleUrlBackfillResponse = Message<"alt.knowledge_home.v1.EmitArticleUrlBackfillResponse"> & {
+  /**
+   * Total articles read from `articles` that had a non-empty URL.
+   *
+   * @generated from field: int32 articles_scanned = 1;
+   */
+  articlesScanned: number;
+
+  /**
+   * Number of `ArticleUrlBackfilled` events the sovereign accepted.
+   * Excludes events the dedupe registry already had (idempotent
+   * re-runs report this number as 0 once the broker is caught up).
+   *
+   * @generated from field: int32 events_appended = 2;
+   */
+  eventsAppended: number;
+
+  /**
+   * Articles dropped because their URL scheme is outside the
+   * {http, https} allowlist. Surfaced for operator visibility — these
+   * values are typically `javascript:` / `data:` / scheme-less strings
+   * that should never reach the FE href.
+   *
+   * @generated from field: int32 skipped_blocked_scheme = 3;
+   */
+  skippedBlockedScheme: number;
+
+  /**
+   * Articles dropped because the sovereign side reported a duplicate
+   * (the corrective event was already appended in a previous run).
+   *
+   * @generated from field: int32 skipped_duplicate = 4;
+   */
+  skippedDuplicate: number;
+
+  /**
+   * True when `max_articles` was hit before the article cursor was
+   * exhausted. Operator should re-run to continue.
+   *
+   * @generated from field: bool more_remaining = 5;
+   */
+  moreRemaining: boolean;
+};
+
+/**
+ * Describes the message alt.knowledge_home.v1.EmitArticleUrlBackfillResponse.
+ * Use `create(EmitArticleUrlBackfillResponseSchema)` to create a new message.
+ */
+export const EmitArticleUrlBackfillResponseSchema: GenMessage<EmitArticleUrlBackfillResponse> = /*@__PURE__*/
+  messageDesc(file_alt_knowledge_home_v1_knowledge_home_admin, 2);
+
+/**
  * TriggerBackfillResponse returns the created job.
  *
  * @generated from message alt.knowledge_home.v1.TriggerBackfillResponse
@@ -48,7 +141,7 @@ export type TriggerBackfillResponse = Message<"alt.knowledge_home.v1.TriggerBack
  * Use `create(TriggerBackfillResponseSchema)` to create a new message.
  */
 export const TriggerBackfillResponseSchema: GenMessage<TriggerBackfillResponse> = /*@__PURE__*/
-  messageDesc(file_alt_knowledge_home_v1_knowledge_home_admin, 1);
+  messageDesc(file_alt_knowledge_home_v1_knowledge_home_admin, 3);
 
 /**
  * PauseBackfillRequest pauses a job by ID.
@@ -67,7 +160,7 @@ export type PauseBackfillRequest = Message<"alt.knowledge_home.v1.PauseBackfillR
  * Use `create(PauseBackfillRequestSchema)` to create a new message.
  */
 export const PauseBackfillRequestSchema: GenMessage<PauseBackfillRequest> = /*@__PURE__*/
-  messageDesc(file_alt_knowledge_home_v1_knowledge_home_admin, 2);
+  messageDesc(file_alt_knowledge_home_v1_knowledge_home_admin, 4);
 
 /**
  * PauseBackfillResponse is empty on success.
@@ -82,7 +175,7 @@ export type PauseBackfillResponse = Message<"alt.knowledge_home.v1.PauseBackfill
  * Use `create(PauseBackfillResponseSchema)` to create a new message.
  */
 export const PauseBackfillResponseSchema: GenMessage<PauseBackfillResponse> = /*@__PURE__*/
-  messageDesc(file_alt_knowledge_home_v1_knowledge_home_admin, 3);
+  messageDesc(file_alt_knowledge_home_v1_knowledge_home_admin, 5);
 
 /**
  * ResumeBackfillRequest resumes a job by ID.
@@ -101,7 +194,7 @@ export type ResumeBackfillRequest = Message<"alt.knowledge_home.v1.ResumeBackfil
  * Use `create(ResumeBackfillRequestSchema)` to create a new message.
  */
 export const ResumeBackfillRequestSchema: GenMessage<ResumeBackfillRequest> = /*@__PURE__*/
-  messageDesc(file_alt_knowledge_home_v1_knowledge_home_admin, 4);
+  messageDesc(file_alt_knowledge_home_v1_knowledge_home_admin, 6);
 
 /**
  * ResumeBackfillResponse is empty on success.
@@ -116,7 +209,7 @@ export type ResumeBackfillResponse = Message<"alt.knowledge_home.v1.ResumeBackfi
  * Use `create(ResumeBackfillResponseSchema)` to create a new message.
  */
 export const ResumeBackfillResponseSchema: GenMessage<ResumeBackfillResponse> = /*@__PURE__*/
-  messageDesc(file_alt_knowledge_home_v1_knowledge_home_admin, 5);
+  messageDesc(file_alt_knowledge_home_v1_knowledge_home_admin, 7);
 
 /**
  * GetBackfillStatusRequest queries a job by ID.
@@ -135,7 +228,7 @@ export type GetBackfillStatusRequest = Message<"alt.knowledge_home.v1.GetBackfil
  * Use `create(GetBackfillStatusRequestSchema)` to create a new message.
  */
 export const GetBackfillStatusRequestSchema: GenMessage<GetBackfillStatusRequest> = /*@__PURE__*/
-  messageDesc(file_alt_knowledge_home_v1_knowledge_home_admin, 6);
+  messageDesc(file_alt_knowledge_home_v1_knowledge_home_admin, 8);
 
 /**
  * GetBackfillStatusResponse returns the job status.
@@ -154,7 +247,7 @@ export type GetBackfillStatusResponse = Message<"alt.knowledge_home.v1.GetBackfi
  * Use `create(GetBackfillStatusResponseSchema)` to create a new message.
  */
 export const GetBackfillStatusResponseSchema: GenMessage<GetBackfillStatusResponse> = /*@__PURE__*/
-  messageDesc(file_alt_knowledge_home_v1_knowledge_home_admin, 7);
+  messageDesc(file_alt_knowledge_home_v1_knowledge_home_admin, 9);
 
 /**
  * GetProjectionHealthRequest is empty.
@@ -169,7 +262,7 @@ export type GetProjectionHealthRequest = Message<"alt.knowledge_home.v1.GetProje
  * Use `create(GetProjectionHealthRequestSchema)` to create a new message.
  */
 export const GetProjectionHealthRequestSchema: GenMessage<GetProjectionHealthRequest> = /*@__PURE__*/
-  messageDesc(file_alt_knowledge_home_v1_knowledge_home_admin, 8);
+  messageDesc(file_alt_knowledge_home_v1_knowledge_home_admin, 10);
 
 /**
  * GetProjectionHealthResponse returns projection health.
@@ -203,7 +296,7 @@ export type GetProjectionHealthResponse = Message<"alt.knowledge_home.v1.GetProj
  * Use `create(GetProjectionHealthResponseSchema)` to create a new message.
  */
 export const GetProjectionHealthResponseSchema: GenMessage<GetProjectionHealthResponse> = /*@__PURE__*/
-  messageDesc(file_alt_knowledge_home_v1_knowledge_home_admin, 9);
+  messageDesc(file_alt_knowledge_home_v1_knowledge_home_admin, 11);
 
 /**
  * GetFeatureFlagsRequest is empty.
@@ -218,7 +311,7 @@ export type GetFeatureFlagsRequest = Message<"alt.knowledge_home.v1.GetFeatureFl
  * Use `create(GetFeatureFlagsRequestSchema)` to create a new message.
  */
 export const GetFeatureFlagsRequestSchema: GenMessage<GetFeatureFlagsRequest> = /*@__PURE__*/
-  messageDesc(file_alt_knowledge_home_v1_knowledge_home_admin, 10);
+  messageDesc(file_alt_knowledge_home_v1_knowledge_home_admin, 12);
 
 /**
  * GetFeatureFlagsResponse returns feature flag states.
@@ -272,7 +365,7 @@ export type GetFeatureFlagsResponse = Message<"alt.knowledge_home.v1.GetFeatureF
  * Use `create(GetFeatureFlagsResponseSchema)` to create a new message.
  */
 export const GetFeatureFlagsResponseSchema: GenMessage<GetFeatureFlagsResponse> = /*@__PURE__*/
-  messageDesc(file_alt_knowledge_home_v1_knowledge_home_admin, 11);
+  messageDesc(file_alt_knowledge_home_v1_knowledge_home_admin, 13);
 
 /**
  * BackfillJob represents a backfill job status.
@@ -331,7 +424,7 @@ export type BackfillJob = Message<"alt.knowledge_home.v1.BackfillJob"> & {
  * Use `create(BackfillJobSchema)` to create a new message.
  */
 export const BackfillJobSchema: GenMessage<BackfillJob> = /*@__PURE__*/
-  messageDesc(file_alt_knowledge_home_v1_knowledge_home_admin, 12);
+  messageDesc(file_alt_knowledge_home_v1_knowledge_home_admin, 14);
 
 /**
  * StartReprojectRequest initiates a projection re-build.
@@ -378,7 +471,7 @@ export type StartReprojectRequest = Message<"alt.knowledge_home.v1.StartReprojec
  * Use `create(StartReprojectRequestSchema)` to create a new message.
  */
 export const StartReprojectRequestSchema: GenMessage<StartReprojectRequest> = /*@__PURE__*/
-  messageDesc(file_alt_knowledge_home_v1_knowledge_home_admin, 13);
+  messageDesc(file_alt_knowledge_home_v1_knowledge_home_admin, 15);
 
 /**
  * StartReprojectResponse returns the created reproject run.
@@ -397,7 +490,7 @@ export type StartReprojectResponse = Message<"alt.knowledge_home.v1.StartReproje
  * Use `create(StartReprojectResponseSchema)` to create a new message.
  */
 export const StartReprojectResponseSchema: GenMessage<StartReprojectResponse> = /*@__PURE__*/
-  messageDesc(file_alt_knowledge_home_v1_knowledge_home_admin, 14);
+  messageDesc(file_alt_knowledge_home_v1_knowledge_home_admin, 16);
 
 /**
  * GetReprojectStatusRequest queries a reproject run by ID.
@@ -416,7 +509,7 @@ export type GetReprojectStatusRequest = Message<"alt.knowledge_home.v1.GetReproj
  * Use `create(GetReprojectStatusRequestSchema)` to create a new message.
  */
 export const GetReprojectStatusRequestSchema: GenMessage<GetReprojectStatusRequest> = /*@__PURE__*/
-  messageDesc(file_alt_knowledge_home_v1_knowledge_home_admin, 15);
+  messageDesc(file_alt_knowledge_home_v1_knowledge_home_admin, 17);
 
 /**
  * GetReprojectStatusResponse returns the reproject run status.
@@ -435,7 +528,7 @@ export type GetReprojectStatusResponse = Message<"alt.knowledge_home.v1.GetRepro
  * Use `create(GetReprojectStatusResponseSchema)` to create a new message.
  */
 export const GetReprojectStatusResponseSchema: GenMessage<GetReprojectStatusResponse> = /*@__PURE__*/
-  messageDesc(file_alt_knowledge_home_v1_knowledge_home_admin, 16);
+  messageDesc(file_alt_knowledge_home_v1_knowledge_home_admin, 18);
 
 /**
  * ListReprojectRunsRequest lists all reproject runs.
@@ -461,7 +554,7 @@ export type ListReprojectRunsRequest = Message<"alt.knowledge_home.v1.ListReproj
  * Use `create(ListReprojectRunsRequestSchema)` to create a new message.
  */
 export const ListReprojectRunsRequestSchema: GenMessage<ListReprojectRunsRequest> = /*@__PURE__*/
-  messageDesc(file_alt_knowledge_home_v1_knowledge_home_admin, 17);
+  messageDesc(file_alt_knowledge_home_v1_knowledge_home_admin, 19);
 
 /**
  * ListReprojectRunsResponse returns reproject runs.
@@ -480,7 +573,7 @@ export type ListReprojectRunsResponse = Message<"alt.knowledge_home.v1.ListRepro
  * Use `create(ListReprojectRunsResponseSchema)` to create a new message.
  */
 export const ListReprojectRunsResponseSchema: GenMessage<ListReprojectRunsResponse> = /*@__PURE__*/
-  messageDesc(file_alt_knowledge_home_v1_knowledge_home_admin, 18);
+  messageDesc(file_alt_knowledge_home_v1_knowledge_home_admin, 20);
 
 /**
  * CompareReprojectRequest compares projection versions.
@@ -499,7 +592,7 @@ export type CompareReprojectRequest = Message<"alt.knowledge_home.v1.CompareRepr
  * Use `create(CompareReprojectRequestSchema)` to create a new message.
  */
 export const CompareReprojectRequestSchema: GenMessage<CompareReprojectRequest> = /*@__PURE__*/
-  messageDesc(file_alt_knowledge_home_v1_knowledge_home_admin, 19);
+  messageDesc(file_alt_knowledge_home_v1_knowledge_home_admin, 21);
 
 /**
  * CompareReprojectResponse returns a diff summary.
@@ -518,7 +611,7 @@ export type CompareReprojectResponse = Message<"alt.knowledge_home.v1.CompareRep
  * Use `create(CompareReprojectResponseSchema)` to create a new message.
  */
 export const CompareReprojectResponseSchema: GenMessage<CompareReprojectResponse> = /*@__PURE__*/
-  messageDesc(file_alt_knowledge_home_v1_knowledge_home_admin, 20);
+  messageDesc(file_alt_knowledge_home_v1_knowledge_home_admin, 22);
 
 /**
  * SwapReprojectRequest swaps the active projection version.
@@ -537,7 +630,7 @@ export type SwapReprojectRequest = Message<"alt.knowledge_home.v1.SwapReprojectR
  * Use `create(SwapReprojectRequestSchema)` to create a new message.
  */
 export const SwapReprojectRequestSchema: GenMessage<SwapReprojectRequest> = /*@__PURE__*/
-  messageDesc(file_alt_knowledge_home_v1_knowledge_home_admin, 21);
+  messageDesc(file_alt_knowledge_home_v1_knowledge_home_admin, 23);
 
 /**
  * SwapReprojectResponse is empty on success.
@@ -552,7 +645,7 @@ export type SwapReprojectResponse = Message<"alt.knowledge_home.v1.SwapReproject
  * Use `create(SwapReprojectResponseSchema)` to create a new message.
  */
 export const SwapReprojectResponseSchema: GenMessage<SwapReprojectResponse> = /*@__PURE__*/
-  messageDesc(file_alt_knowledge_home_v1_knowledge_home_admin, 22);
+  messageDesc(file_alt_knowledge_home_v1_knowledge_home_admin, 24);
 
 /**
  * RollbackReprojectRequest rolls back to the previous version.
@@ -571,7 +664,7 @@ export type RollbackReprojectRequest = Message<"alt.knowledge_home.v1.RollbackRe
  * Use `create(RollbackReprojectRequestSchema)` to create a new message.
  */
 export const RollbackReprojectRequestSchema: GenMessage<RollbackReprojectRequest> = /*@__PURE__*/
-  messageDesc(file_alt_knowledge_home_v1_knowledge_home_admin, 23);
+  messageDesc(file_alt_knowledge_home_v1_knowledge_home_admin, 25);
 
 /**
  * RollbackReprojectResponse is empty on success.
@@ -586,7 +679,7 @@ export type RollbackReprojectResponse = Message<"alt.knowledge_home.v1.RollbackR
  * Use `create(RollbackReprojectResponseSchema)` to create a new message.
  */
 export const RollbackReprojectResponseSchema: GenMessage<RollbackReprojectResponse> = /*@__PURE__*/
-  messageDesc(file_alt_knowledge_home_v1_knowledge_home_admin, 24);
+  messageDesc(file_alt_knowledge_home_v1_knowledge_home_admin, 26);
 
 /**
  * ReprojectRun represents a single reproject operation.
@@ -670,7 +763,7 @@ export type ReprojectRun = Message<"alt.knowledge_home.v1.ReprojectRun"> & {
  * Use `create(ReprojectRunSchema)` to create a new message.
  */
 export const ReprojectRunSchema: GenMessage<ReprojectRun> = /*@__PURE__*/
-  messageDesc(file_alt_knowledge_home_v1_knowledge_home_admin, 25);
+  messageDesc(file_alt_knowledge_home_v1_knowledge_home_admin, 27);
 
 /**
  * ReprojectDiffSummary contains comparison metrics between two projection versions.
@@ -726,7 +819,7 @@ export type ReprojectDiffSummary = Message<"alt.knowledge_home.v1.ReprojectDiffS
  * Use `create(ReprojectDiffSummarySchema)` to create a new message.
  */
 export const ReprojectDiffSummarySchema: GenMessage<ReprojectDiffSummary> = /*@__PURE__*/
-  messageDesc(file_alt_knowledge_home_v1_knowledge_home_admin, 26);
+  messageDesc(file_alt_knowledge_home_v1_knowledge_home_admin, 28);
 
 /**
  * GetSLOStatusRequest is empty.
@@ -741,7 +834,7 @@ export type GetSLOStatusRequest = Message<"alt.knowledge_home.v1.GetSLOStatusReq
  * Use `create(GetSLOStatusRequestSchema)` to create a new message.
  */
 export const GetSLOStatusRequestSchema: GenMessage<GetSLOStatusRequest> = /*@__PURE__*/
-  messageDesc(file_alt_knowledge_home_v1_knowledge_home_admin, 27);
+  messageDesc(file_alt_knowledge_home_v1_knowledge_home_admin, 29);
 
 /**
  * GetSLOStatusResponse returns SLO health status.
@@ -790,7 +883,7 @@ export type GetSLOStatusResponse = Message<"alt.knowledge_home.v1.GetSLOStatusRe
  * Use `create(GetSLOStatusResponseSchema)` to create a new message.
  */
 export const GetSLOStatusResponseSchema: GenMessage<GetSLOStatusResponse> = /*@__PURE__*/
-  messageDesc(file_alt_knowledge_home_v1_knowledge_home_admin, 28);
+  messageDesc(file_alt_knowledge_home_v1_knowledge_home_admin, 30);
 
 /**
  * SLIStatus represents the status of a single SLI.
@@ -846,7 +939,7 @@ export type SLIStatus = Message<"alt.knowledge_home.v1.SLIStatus"> & {
  * Use `create(SLIStatusSchema)` to create a new message.
  */
 export const SLIStatusSchema: GenMessage<SLIStatus> = /*@__PURE__*/
-  messageDesc(file_alt_knowledge_home_v1_knowledge_home_admin, 29);
+  messageDesc(file_alt_knowledge_home_v1_knowledge_home_admin, 31);
 
 /**
  * AlertSummary represents an active alert.
@@ -885,7 +978,7 @@ export type AlertSummary = Message<"alt.knowledge_home.v1.AlertSummary"> & {
  * Use `create(AlertSummarySchema)` to create a new message.
  */
 export const AlertSummarySchema: GenMessage<AlertSummary> = /*@__PURE__*/
-  messageDesc(file_alt_knowledge_home_v1_knowledge_home_admin, 30);
+  messageDesc(file_alt_knowledge_home_v1_knowledge_home_admin, 32);
 
 /**
  * RunProjectionAuditRequest runs a projection audit.
@@ -914,7 +1007,7 @@ export type RunProjectionAuditRequest = Message<"alt.knowledge_home.v1.RunProjec
  * Use `create(RunProjectionAuditRequestSchema)` to create a new message.
  */
 export const RunProjectionAuditRequestSchema: GenMessage<RunProjectionAuditRequest> = /*@__PURE__*/
-  messageDesc(file_alt_knowledge_home_v1_knowledge_home_admin, 31);
+  messageDesc(file_alt_knowledge_home_v1_knowledge_home_admin, 33);
 
 /**
  * RunProjectionAuditResponse returns audit results.
@@ -933,7 +1026,7 @@ export type RunProjectionAuditResponse = Message<"alt.knowledge_home.v1.RunProje
  * Use `create(RunProjectionAuditResponseSchema)` to create a new message.
  */
 export const RunProjectionAuditResponseSchema: GenMessage<RunProjectionAuditResponse> = /*@__PURE__*/
-  messageDesc(file_alt_knowledge_home_v1_knowledge_home_admin, 32);
+  messageDesc(file_alt_knowledge_home_v1_knowledge_home_admin, 34);
 
 /**
  * ProjectionAudit represents an audit result.
@@ -982,7 +1075,7 @@ export type ProjectionAudit = Message<"alt.knowledge_home.v1.ProjectionAudit"> &
  * Use `create(ProjectionAuditSchema)` to create a new message.
  */
 export const ProjectionAuditSchema: GenMessage<ProjectionAudit> = /*@__PURE__*/
-  messageDesc(file_alt_knowledge_home_v1_knowledge_home_admin, 33);
+  messageDesc(file_alt_knowledge_home_v1_knowledge_home_admin, 35);
 
 /**
  * GetSystemMetricsRequest is empty.
@@ -997,7 +1090,7 @@ export type GetSystemMetricsRequest = Message<"alt.knowledge_home.v1.GetSystemMe
  * Use `create(GetSystemMetricsRequestSchema)` to create a new message.
  */
 export const GetSystemMetricsRequestSchema: GenMessage<GetSystemMetricsRequest> = /*@__PURE__*/
-  messageDesc(file_alt_knowledge_home_v1_knowledge_home_admin, 34);
+  messageDesc(file_alt_knowledge_home_v1_knowledge_home_admin, 36);
 
 /**
  * GetSystemMetricsResponse returns aggregated system metrics.
@@ -1051,7 +1144,7 @@ export type GetSystemMetricsResponse = Message<"alt.knowledge_home.v1.GetSystemM
  * Use `create(GetSystemMetricsResponseSchema)` to create a new message.
  */
 export const GetSystemMetricsResponseSchema: GenMessage<GetSystemMetricsResponse> = /*@__PURE__*/
-  messageDesc(file_alt_knowledge_home_v1_knowledge_home_admin, 35);
+  messageDesc(file_alt_knowledge_home_v1_knowledge_home_admin, 37);
 
 /**
  * ProjectorMetrics captures event processing pipeline health.
@@ -1095,7 +1188,7 @@ export type ProjectorMetrics = Message<"alt.knowledge_home.v1.ProjectorMetrics">
  * Use `create(ProjectorMetricsSchema)` to create a new message.
  */
 export const ProjectorMetricsSchema: GenMessage<ProjectorMetrics> = /*@__PURE__*/
-  messageDesc(file_alt_knowledge_home_v1_knowledge_home_admin, 36);
+  messageDesc(file_alt_knowledge_home_v1_knowledge_home_admin, 38);
 
 /**
  * HandlerMetrics captures Knowledge Home page serving health.
@@ -1124,7 +1217,7 @@ export type HandlerMetrics = Message<"alt.knowledge_home.v1.HandlerMetrics"> & {
  * Use `create(HandlerMetricsSchema)` to create a new message.
  */
 export const HandlerMetricsSchema: GenMessage<HandlerMetrics> = /*@__PURE__*/
-  messageDesc(file_alt_knowledge_home_v1_knowledge_home_admin, 37);
+  messageDesc(file_alt_knowledge_home_v1_knowledge_home_admin, 39);
 
 /**
  * TrackingMetrics captures user interaction tracking health.
@@ -1163,7 +1256,7 @@ export type TrackingMetrics = Message<"alt.knowledge_home.v1.TrackingMetrics"> &
  * Use `create(TrackingMetricsSchema)` to create a new message.
  */
 export const TrackingMetricsSchema: GenMessage<TrackingMetrics> = /*@__PURE__*/
-  messageDesc(file_alt_knowledge_home_v1_knowledge_home_admin, 38);
+  messageDesc(file_alt_knowledge_home_v1_knowledge_home_admin, 40);
 
 /**
  * StreamMetrics captures SSE stream connection health.
@@ -1202,7 +1295,7 @@ export type StreamMetrics = Message<"alt.knowledge_home.v1.StreamMetrics"> & {
  * Use `create(StreamMetricsSchema)` to create a new message.
  */
 export const StreamMetricsSchema: GenMessage<StreamMetrics> = /*@__PURE__*/
-  messageDesc(file_alt_knowledge_home_v1_knowledge_home_admin, 39);
+  messageDesc(file_alt_knowledge_home_v1_knowledge_home_admin, 41);
 
 /**
  * CorrectnessMetrics captures data quality signals.
@@ -1246,7 +1339,7 @@ export type CorrectnessMetrics = Message<"alt.knowledge_home.v1.CorrectnessMetri
  * Use `create(CorrectnessMetricsSchema)` to create a new message.
  */
 export const CorrectnessMetricsSchema: GenMessage<CorrectnessMetrics> = /*@__PURE__*/
-  messageDesc(file_alt_knowledge_home_v1_knowledge_home_admin, 40);
+  messageDesc(file_alt_knowledge_home_v1_knowledge_home_admin, 42);
 
 /**
  * SovereignMetrics captures knowledge-sovereign mutation health.
@@ -1285,7 +1378,7 @@ export type SovereignMetrics = Message<"alt.knowledge_home.v1.SovereignMetrics">
  * Use `create(SovereignMetricsSchema)` to create a new message.
  */
 export const SovereignMetricsSchema: GenMessage<SovereignMetrics> = /*@__PURE__*/
-  messageDesc(file_alt_knowledge_home_v1_knowledge_home_admin, 41);
+  messageDesc(file_alt_knowledge_home_v1_knowledge_home_admin, 43);
 
 /**
  * RecallMetrics captures recall pipeline health.
@@ -1334,7 +1427,7 @@ export type RecallMetrics = Message<"alt.knowledge_home.v1.RecallMetrics"> & {
  * Use `create(RecallMetricsSchema)` to create a new message.
  */
 export const RecallMetricsSchema: GenMessage<RecallMetrics> = /*@__PURE__*/
-  messageDesc(file_alt_knowledge_home_v1_knowledge_home_admin, 42);
+  messageDesc(file_alt_knowledge_home_v1_knowledge_home_admin, 44);
 
 /**
  * ServiceHealthStatus represents the health of a downstream service.
@@ -1380,7 +1473,7 @@ export type ServiceHealthStatus = Message<"alt.knowledge_home.v1.ServiceHealthSt
  * Use `create(ServiceHealthStatusSchema)` to create a new message.
  */
 export const ServiceHealthStatusSchema: GenMessage<ServiceHealthStatus> = /*@__PURE__*/
-  messageDesc(file_alt_knowledge_home_v1_knowledge_home_admin, 43);
+  messageDesc(file_alt_knowledge_home_v1_knowledge_home_admin, 45);
 
 /**
  * KnowledgeHomeAdminService provides admin operations for Knowledge Home.
@@ -1542,6 +1635,26 @@ export const KnowledgeHomeAdminService: GenService<{
     methodKind: "unary";
     input: typeof GetSystemMetricsRequestSchema;
     output: typeof GetSystemMetricsResponseSchema;
+  },
+  /**
+   * EmitArticleUrlBackfill emits ArticleUrlBackfilled corrective events
+   * for every article whose source URL is recorded in `articles.url` but
+   * whose Knowledge Home projection currently shows an empty URL. The
+   * events use the canonical "url" wire key (ADR-000867) and the
+   * dedicated `article-url-backfill:<article_id>` dedupe namespace
+   * (ADR-000868), bypassing the existing `article-created:<article_id>`
+   * dedupe records that would otherwise silently drop a re-emit through
+   * TriggerBackfill. Combine with a Full Reproject + Swap to land the
+   * recovered URLs on the active projection (see
+   * docs/runbooks/knowledge-home-reproject-operations.md
+   * §Post-tag-fix backfill).
+   *
+   * @generated from rpc alt.knowledge_home.v1.KnowledgeHomeAdminService.EmitArticleUrlBackfill
+   */
+  emitArticleUrlBackfill: {
+    methodKind: "unary";
+    input: typeof EmitArticleUrlBackfillRequestSchema;
+    output: typeof EmitArticleUrlBackfillResponseSchema;
   },
 }> = /*@__PURE__*/
   serviceDesc(file_alt_knowledge_home_v1_knowledge_home_admin, 0);
