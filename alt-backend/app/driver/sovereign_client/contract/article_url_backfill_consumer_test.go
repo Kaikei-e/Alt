@@ -51,16 +51,23 @@ import (
 //     ADR-000867). Asserting `"url"` here directly — not via the
 //     consumer struct round-trip — pins the bytes the projector reads.
 //
+//   - response field `event_seq` (int64). Pinned because the consumer
+//     (knowledge_url_backfill_usecase, ADR-869) now distinguishes
+//     newly-appended events (seq > 0) from dedupe-registry hits
+//     (seq == 0) to keep the operator-facing skipped_duplicate counter
+//     honest. Without this pin the response shape could silently lose
+//     the field and the counter would regress to "always 0".
+//
 // What this test does NOT pin:
 //
 //   - The patch SQL on the projection table (covered by sovereign-side
 //     projector tests, not consumer tests).
 //
-//   - The dedupe-rejection success=false path. Sovereign currently
-//     surfaces dedupe hits as success=true with no eventSeq guarantee
-//     and the consumer treats either response as "best-effort
-//     idempotent re-run", so there is no consumer behaviour to pin
-//     for the rejection case.
+//   - The seq==0 dedupe-hit response. The Pact API expresses one
+//     interaction; we pin the happy-path "newly appended" shape. The
+//     usecase unit test (TestEmit_ReportsSkippedDuplicateAccurately)
+//     covers the seq==0 branch via an in-process mock, which is the
+//     correct boundary for that semantic.
 func TestAppendKnowledgeEvent_ArticleUrlBackfilled(t *testing.T) {
 	mockProvider, err := consumer.NewV3Pact(consumer.MockHTTPProviderConfig{
 		Consumer: "alt-backend",
@@ -77,8 +84,9 @@ func TestAppendKnowledgeEvent_ArticleUrlBackfilled(t *testing.T) {
 	dedupeKey := fmt.Sprintf("article-url-backfill:%s", articleID.String())
 
 	payload, err := json.Marshal(map[string]any{
-		"article_id": articleID.String(),
-		"url":        "https://example.com/articles/42",
+		"article_id":           articleID.String(),
+		"url":                  "https://example.com/articles/42",
+		"original_occurred_at": "2026-01-15T08:30:00Z",
 	})
 	require.NoError(t, err)
 
@@ -119,6 +127,11 @@ func TestAppendKnowledgeEvent_ArticleUrlBackfilled(t *testing.T) {
 			},
 			Body: matchers.MapMatcher{
 				"success": matchers.Like(true),
+				// Pin the eventSeq field shape so the consumer's accurate
+				// SkippedDuplicate counter (ADR-869, port returning
+				// (eventSeq int64, err error)) keeps working if the
+				// provider ever re-renames the proto field.
+				"eventSeq": matchers.Like(123),
 			},
 		}).
 		ExecuteTest(t, func(config consumer.MockServerConfig) error {

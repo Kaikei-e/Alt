@@ -27,6 +27,16 @@ Content-Type: application/json
 }
 HTTP 200
 [Asserts]
+# Field shape: every counter must be an integer. The
+# AppendKnowledgeEventPort signature change (port returns
+# (eventSeq int64, err error)) keeps the SkippedDuplicate counter
+# honest end-to-end; if a future refactor drops one of these fields
+# the Hurl assertion fires and the regression is caught at the boundary.
+jsonpath "$.articlesScanned" isInteger
+jsonpath "$.eventsAppended" isInteger
+jsonpath "$.skippedBlockedScheme" isInteger
+jsonpath "$.skippedDuplicate" isInteger
+jsonpath "$.moreRemaining" isBoolean
 jsonpath "$.articlesScanned" == 0
 jsonpath "$.eventsAppended" == 0
 jsonpath "$.skippedBlockedScheme" == 0
@@ -44,5 +54,7 @@ Content-Type: application/json
 }
 HTTP 200
 [Asserts]
+jsonpath "$.articlesScanned" isInteger
+jsonpath "$.skippedDuplicate" isInteger
 jsonpath "$.articlesScanned" == 0
 jsonpath "$.moreRemaining" == false

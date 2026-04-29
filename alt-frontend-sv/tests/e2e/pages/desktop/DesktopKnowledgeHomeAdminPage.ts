@@ -32,6 +32,11 @@ export class DesktopKnowledgeHomeAdminPage extends BasePage {
 	readonly auditSampleSizeInput: Locator;
 	readonly runAuditButton: Locator;
 
+	// Article URL backfill (ADR-869) — header-level ops bar
+	readonly emitUrlBackfillButton: Locator;
+	readonly urlBackfillResultSummary: Locator;
+	readonly errorBanner: Locator;
+
 	constructor(page: Page) {
 		super(page);
 
@@ -68,6 +73,15 @@ export class DesktopKnowledgeHomeAdminPage extends BasePage {
 		this.auditProjectionVersionInput = page.getByLabel("Projection Version");
 		this.auditSampleSizeInput = page.getByLabel("Sample Size");
 		this.runAuditButton = page.getByRole("button", { name: "Run Audit" });
+
+		// URL backfill ops (ADR-869)
+		this.emitUrlBackfillButton = page.getByTestId(
+			"emit-article-url-backfill-button",
+		);
+		this.urlBackfillResultSummary = page.getByTestId(
+			"url-backfill-result-summary",
+		);
+		this.errorBanner = page.locator('[data-role="error-banner"]');
 	}
 
 	get url(): string {
