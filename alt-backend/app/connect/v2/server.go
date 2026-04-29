@@ -26,6 +26,7 @@ import (
 	"alt/connect/v2/admin_monitor"
 	"alt/connect/v2/articles"
 	"alt/connect/v2/augur"
+	"alt/connect/v2/codec"
 	"alt/connect/v2/feeds"
 	global_search "alt/connect/v2/global_search"
 	internalhandler "alt/connect/v2/internal"
@@ -177,6 +178,13 @@ func SetupConnectHandlers(mux *http.ServeMux, container *di.ApplicationComponent
 
 	// Register KnowledgeHomeAdminService (service-to-service API). Auth is
 	// established at the TLS transport layer (mTLS peer-identity).
+	//
+	// The custom JSON codec replaces Connect-RPC's default protojson
+	// marshaler so proto3 default-valued scalars (zero counters, false
+	// flags) stay present in the JSON response. The admin Hurl
+	// boundary contracts (e.g. 72-admin-emit-article-url-backfill.hurl)
+	// assert that every field of the response envelope round-trips,
+	// which is impossible if the wire encoder strips zero values.
 	adminOpts := connect.WithInterceptors(
 		cancelInterceptor.Interceptor(),
 	)
@@ -191,7 +199,12 @@ func SetupConnectHandlers(mux *http.ServeMux, container *di.ApplicationComponent
 		&cfg.KnowledgeHome,
 		logger,
 	)
-	khAdminPath, khAdminServiceHandler := knowledgehomev1connect.NewKnowledgeHomeAdminServiceHandler(khAdminHandler, adminOpts)
+	khAdminPath, khAdminServiceHandler := knowledgehomev1connect.NewKnowledgeHomeAdminServiceHandler(
+		khAdminHandler,
+		adminOpts,
+		connect.WithCodec(codec.EmitUnpopulatedJSONCodec{}),
+		connect.WithCodec(codec.EmitUnpopulatedJSONCharsetUTF8Codec{}),
+	)
 	mux.Handle(khAdminPath, khAdminServiceHandler)
 	logger.Info("Registered Connect-RPC KnowledgeHomeAdminService", "path", khAdminPath)
 

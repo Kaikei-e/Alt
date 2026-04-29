@@ -37,10 +37,10 @@ func (m *mockArticlesPort) ListBackfillArticles(_ context.Context, _ *time.Time,
 // lets us assert the usecase's SkippedDuplicate counter is honest after
 // the AppendKnowledgeEventPort signature change (ADR-869 contract drift).
 type mockEventPort struct {
-	appended    []domain.KnowledgeEvent
-	seenDedupe  map[string]bool
-	nextSeq     int64
-	err         error
+	appended   []domain.KnowledgeEvent
+	seenDedupe map[string]bool
+	nextSeq    int64
+	err        error
 }
 
 func (m *mockEventPort) AppendKnowledgeEvent(_ context.Context, ev domain.KnowledgeEvent) (int64, error) {
