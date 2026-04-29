@@ -33,7 +33,7 @@ git pull origin main
 1. **pre-deploy Pact gate** (`scripts/pre-deploy-verify.sh`)
 2. **レイヤ順 rolling recreate** — サービスを 1 つずつ `--no-deps --force-recreate`
 3. **global smoke** (nginx / alt-backend / bff / meilisearch)
-4. **`pact-broker-cli record-deployment`** × 14 pacticipants
+4. **`pact-broker-cli record-deployment`** × 15 pacticipants (`c2quay.yml` `production.services` の件数に追従)
 
 途中で失敗すると直前 SHA に自動でロールバックし、record-deployment は打刻されない。
 record-deployment が 1 件でも失敗した場合は exit 12 で終了 (broker matrix と現実が乖離しないよう構造的に fail-fast)。

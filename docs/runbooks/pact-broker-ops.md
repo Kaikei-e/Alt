@@ -33,10 +33,16 @@ curl -u pact:$(cat secrets/pact_broker_basic_auth_password.txt) \
 > **本番ゲートは単一ホストが唯一の真実ソース**。ADR-000740 は CI で
 > `can-i-deploy` を回す設計だったが、OSS リポで機微情報を GitHub Actions
 > に置かない方針に合わせ `deploy.sh` に移管済。現在は
-> [c2quay](https://github.com/Kaikei-e/c2quay) が can-i-deploy ×13 と
+> [c2quay](https://github.com/Kaikei-e/c2quay) が can-i-deploy ×15 と
 > `docker compose up --wait` と record-deployment を担い、別ホストの
 > tts-speaker だけ `scripts/record-remote-pacticipant.sh` が打刻する。
+> 数は `c2quay.yml` の `production.services` 件数に追従する — pacticipant
+> 追加 / 削除のたびに本文も更新する。
 > 詳細は [[deploy]] runbook を参照。
+
+> **新 pacticipant を `c2quay.yml` に足した直後** は §5.5 を実行しないと
+> can-i-deploy gate が `unknown` で全 pacticipant を巻き込んで落ちる。
+> [[000834]] 後に `knowledge-sovereign` を昇格させたときがこの経路にあたった。
 
 ## 1. Broker 起動と認証
 
@@ -135,6 +141,46 @@ docker compose -f compose/compose.yaml -p alt up -d pact-broker
 4. 対応する provider の `provider_test.go` / `test_provider_verification.py` に pact file path を追加し、`PactFiles` or broker selector で拾うようにする。
 5. PR に `./scripts/pact-check.sh` 15/N passed の出力を貼る。
 
+## 5.5 新しい pacticipant を deploy environment に bootstrap する
+
+`c2quay.yml` の `production.services` に pacticipant を新規追加した直後 1 回だけ
+実行する手順。`c2quay deploy` は **デプロイ後** に `record-deployment` を打つフロー
+だが、新 pacticipant は production 環境にまだ deploy として記録されていないため
+初回 can-i-deploy が `unknown` で落ち、`all_or_nothing: true` のおかげで他の全
+pacticipant も同じ run でブロックされる (chicken-and-egg)。
+
+`scripts/seed-pacticipant-deployment.sh` がこのブートストラップ専用ヘルパーで、
+broker 側 `record-deployment` を 1 行だけ idempotent に書き込む:
+
+```bash
+# 例: ADR-000834 で knowledge-sovereign を pacticipant に昇格させた直後
+PACTICIPANT=knowledge-sovereign \
+VERSION=$(git rev-parse --short HEAD) \
+ENVIRONMENT=production \
+  ./scripts/seed-pacticipant-deployment.sh
+```
+
+実行後の動作確認:
+
+```bash
+pact-broker-cli can-i-deploy \
+  --pacticipant <consumer-svc> --version $(git rev-parse --short HEAD) \
+  --to-environment production
+# Computer says yes に転じれば bootstrap 成功
+```
+
+注意:
+
+- **VERSION は broker に publish 済みの SHA を選ぶ** (consumer pact published 経由
+  でも provider verification 経由でも構わない)。`pact-broker-cli record-deployment`
+  は当該 pacticipant version row が無いと拒否する。
+- **2 回目以降は不要**。次回以降の `scripts/deploy.sh production` で c2quay 自身が
+  `record-deployment` を打つので、production version は自動更新される。
+- **`scripts/record-remote-pacticipant.sh` とは責務が違う**。あちらは別ホストで
+  動く pacticipant (tts-speaker 等) が c2quay の手の届かないところに居る場合の
+  恒常運用ループ。本スクリプトは「同ホスト稼働だが昇格直後で初回 gate を通せない」
+  ケースの 1 回限りの bootstrap。
+
 ## 6. Orphan pact (consumer はあるが provider が verify していない) 検出
 
 Broker UI の "Pacticipants" → provider → Tab "Contract requiring verification"
@@ -177,7 +223,8 @@ export GH_TOKEN=...
 for provider in alt-backend alt-butterfly-facade auth-hub pre-processor \
                 search-indexer mq-hub rag-orchestrator \
                 recap-worker recap-subworker recap-evaluator \
-                news-creator tag-generator acolyte-orchestrator; do
+                news-creator tag-generator acolyte-orchestrator \
+                knowledge-sovereign; do
   pact-broker-cli create-webhook \
     --request POST \
     --url "https://api.github.com/repos/Kaikei-e/alt-deploy/dispatches" \
