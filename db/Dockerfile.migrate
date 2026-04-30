@@ -1,6 +1,9 @@
 # Atlas Migration Container for Alt RSS Reader Database
 # Based on 2025 Kubernetes-native migration best practices
-FROM arigaio/atlas:latest-alpine
+# Pinned to a specific Atlas release rather than `latest-alpine` for
+# build determinism (supply-chain hardening — security-auditor F-3,
+# 2026-04-30). Bump in lockstep across all 7 migrators when upgrading.
+FROM arigaio/atlas:1.2.0-alpine
 
 # Connectivity is checked via busybox `nc` (already in arigaio/atlas:*-alpine)
 # instead of pg_isready. The previous `apk add --no-cache postgresql-client`

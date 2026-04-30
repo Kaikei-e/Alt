@@ -1,5 +1,8 @@
 # Atlas Migration Container for RAG DB
-FROM arigaio/atlas:latest-alpine
+# Pinned to a specific Atlas release rather than `latest-alpine` for
+# build determinism (supply-chain hardening — security-auditor F-3,
+# 2026-04-30). Bump in lockstep across all 7 migrators when upgrading.
+FROM arigaio/atlas:1.2.0-alpine
 
 # Connectivity check uses busybox `nc` (already in arigaio/atlas:*-alpine).
 # The previous apk install was the sole network dependency at build time

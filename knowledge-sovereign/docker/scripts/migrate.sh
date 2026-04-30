@@ -174,6 +174,13 @@ apply_migrations() {
     # long-running SELECT in the running service would otherwise hang
     # the entire deploy. Defense-in-depth against the class of incident
     # that bit alt-deploy run 25143212120 (2026-04-30).
+    #
+    # Caller-side contract: $DATABASE_URL must already have any
+    # special characters in the password percent-encoded per
+    # https://www.postgresql.org/docs/current/libpq-connect.html#LIBPQ-CONNSTRING-URIS
+    # Production Docker secrets are alphanumeric+`-_` so this holds; if
+    # the secret rotation policy ever admits `?` `&` `%` `@` `/` `:` `#`,
+    # the compose entrypoint must percent-encode before exporting.
     local apply_url="$DATABASE_URL"
     case "$apply_url" in
         *\?*) apply_url="${apply_url}&options=-c%20lock_timeout%3D30000" ;;
