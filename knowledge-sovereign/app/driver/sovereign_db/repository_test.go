@@ -60,16 +60,23 @@ func TestUpsertRecallCandidate_PreservesReasonTypeAndDescription(t *testing.T) {
 // TestUpsertKnowledgeHomeItem_UsesMergeSafeSQL is the structural guard
 // for the merge-safe-upsert invariant (see memory feedback_merge_safe_upsert.md
 // + .claude/rules/knowledge-home.md). The UPSERT MUST NOT use SQL
-// `CASE WHEN EXCLUDED.x != '' …` patterns to encode "preserve if empty";
-// that's business logic in SQL. Instead:
+// CASE expressions of the shape "WHEN EXCLUDED.x is non-empty THEN
+// EXCLUDED.x ELSE <table>.x" — that smuggles business judgement into
+// SQL. Instead:
 //
 //   - string fields (title, summary_excerpt, url) use
-//     `COALESCE(NULLIF(EXCLUDED.x, ''), <table>.x)`;
+//     COALESCE(NULLIF(EXCLUDED.x, <EMPTY>), <table>.x);
 //   - the jsonb tags array uses
-//     `COALESCE(NULLIF(EXCLUDED.tags_json, '[]'::jsonb), <table>.tags_json)`;
-//   - summary_state uses `GREATEST(<table>.summary_state, EXCLUDED.summary_state)`
-//     (lexicographic monotonic latch: '' < 'missing' < 'pending' < 'ready';
-//     same pattern used for `score = GREATEST(...)` already in this file).
+//     COALESCE(NULLIF(EXCLUDED.tags_json, <EMPTY-ARRAY>::jsonb), <table>.tags_json);
+//   - summary_state uses GREATEST(<table>.summary_state, EXCLUDED.summary_state)
+//     (lexicographic monotonic latch: empty < missing < pending < ready;
+//     same pattern used for score = GREATEST(...) already in this file).
+//
+// Inline placeholders <EMPTY> and <EMPTY-ARRAY> stand for the SQL empty
+// string literal and the JSONB empty array literal respectively — the
+// raw two-single-quote forms are avoided in this comment because Go
+// 1.26's gofmt normalises consecutive single quotes inside doc comments
+// into Unicode close-quotes, which would corrupt the SQL examples.
 //
 // The why_json merge intentionally keeps its `SELECT DISTINCT ON … source_rank`
 // expression — that is a deterministic merge over array members keyed
