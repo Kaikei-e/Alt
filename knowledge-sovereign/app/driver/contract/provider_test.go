@@ -97,10 +97,17 @@ func startStubServer(t *testing.T, reject *bool) int {
 
 	// AppendKnowledgeEvent (ADR-000840 versioned event_type convention).
 	// Consumer is alt-backend's TransitionKnowledgeLoopUsecase, which
-	// appends knowledge_loop.{observed,deferred,acted}.v1 events. The
-	// provider's wire-shape responsibility is just `{"success": true}`
-	// on a well-formed request — projector-side dedupe / same-stage
-	// validation lives in the sovereign DB driver, out of this contract.
+	// appends knowledge_loop.{observed,deferred,acted}.v1 events, plus
+	// the URL-backfill admin path (ADR-000869) which appends
+	// ArticleUrlBackfilled corrective events. The provider's wire shape
+	// is `{"success": true, "eventSeq": <int64>}` on a well-formed
+	// request — projector-side dedupe / same-stage validation lives in
+	// the sovereign DB driver, out of this contract. `eventSeq` is
+	// required because alt-backend's URL-backfill SkippedDuplicate
+	// counter (ADR-000869) distinguishes `seq > 0` (genuinely appended)
+	// from `seq == 0` (dedupe registry hit), and the alt-backend
+	// consumer pact pins this field so a future drop of the field would
+	// silently regress the operator-visible counter.
 	mux.HandleFunc("/services.sovereign.v1.KnowledgeSovereignService/AppendKnowledgeEvent", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			w.WriteHeader(http.StatusMethodNotAllowed)
@@ -108,7 +115,10 @@ func startStubServer(t *testing.T, reject *bool) int {
 		}
 		_, _ = io.Copy(io.Discard, r.Body)
 		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(map[string]any{"success": true})
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"success":  true,
+			"eventSeq": 1,
+		})
 	})
 
 	// Admin REST surface on the same listener: pact-go routes every
