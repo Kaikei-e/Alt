@@ -77,9 +77,7 @@ class FakeClusterer:
         )
 
     def subcluster_other(self, embeddings, token_counts=None):
-        return self.cluster(
-            embeddings, min_cluster_size=3, min_samples=2
-        )
+        return self.cluster(embeddings, min_cluster_size=3, min_samples=2)
 
     def recursive_cluster(self, embeddings, labels, probabilities, token_counts):
         return labels, probabilities
@@ -95,6 +93,22 @@ def fake_embedder() -> HashEmbedder:
 def fake_clusterer() -> FakeClusterer:
     """Fake clusterer returning n_clusters groups."""
     return FakeClusterer(n_clusters=3)
+
+
+@pytest.fixture(autouse=True, scope="session")
+def _allow_embedding_drift_in_tests() -> None:
+    """Disable the embedder fingerprint guard for the entire test session.
+
+    Tests routinely construct ``Settings(model_id="fake")`` (or rely on
+    HashEmbedder fixtures) while the recap-subworker repo carries a real
+    BGE-M3 sidecar at ``data/genre_classifier_ja.meta.json``. The boot
+    validator added in ADR-... compares those identities and would crash
+    every test that touches Settings without this opt-out. Production is
+    unaffected — the env var defaults to False and the validator runs.
+    """
+    import os
+
+    os.environ.setdefault("RECAP_SUBWORKER_ALLOW_EMBEDDING_DRIFT", "true")
 
 
 @pytest.fixture
@@ -125,10 +139,7 @@ def make_evidence_request(
     return EvidenceRequest(
         job_id=job_id,
         genre=genre,
-        documents=[
-            make_cluster_document(article_id=f"art-{i}")
-            for i in range(n_docs)
-        ],
+        documents=[make_cluster_document(article_id=f"art-{i}") for i in range(n_docs)],
         constraints=EvidenceConstraints(),
     )
 
@@ -262,11 +273,11 @@ def _override_heavy_dependencies(request):
                 submitter=stub_manager,
             ),
             _deps.get_get_run_usecase_dep: lambda: GetRunUsecase(reader=stub_manager),
-            _deps.get_submit_classification_run_usecase_dep: lambda: (
-                SubmitClassificationRunUsecase(submitter=stub_manager)
+            _deps.get_submit_classification_run_usecase_dep: lambda: SubmitClassificationRunUsecase(
+                submitter=stub_manager
             ),
-            _deps.get_get_classification_run_usecase_dep: lambda: (
-                GetClassificationRunUsecase(reader=stub_manager)
+            _deps.get_get_classification_run_usecase_dep: lambda: GetClassificationRunUsecase(
+                reader=stub_manager
             ),
             _deps.get_classifier_dep: lambda: _StubClassifier(),
             _deps.get_classification_runner_dep: lambda: _StubClassificationRunner(),

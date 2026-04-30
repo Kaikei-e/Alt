@@ -14,6 +14,7 @@ import structlog
 from sudachipy import dictionary, tokenizer
 
 from recap_subworker.domain.errors import ConfigValidationError
+from recap_subworker.infra.embedding_identity import canonicalize_embedding_id
 
 from .embedder import Embedder
 
@@ -116,19 +117,97 @@ def _load_sidecar_metadata(model_path: Path) -> ClassifierMetadata | None:
     return metadata
 
 
-def _guard_metadata_against_runtime(metadata: ClassifierMetadata) -> None:
-    """Raise ConfigValidationError if the sidecar disagrees with the runtime."""
+def _resolve_runtime_embedder_identity(embedder: Embedder) -> str | None:
+    """Return the runtime embedder's effective model identity, or ``None``
+    when the active backend has no comparable identity (``hash`` testing
+    backend) or the underlying config attribute is unset.
+    """
+    config = embedder.config
+    backend = config.backend
+    if backend == "sentence-transformers":
+        return config.model_id or None
+    if backend == "onnx":
+        return config.onnx_tokenizer_name or config.model_id or None
+    if backend == "ollama-remote":
+        return config.ollama_embed_model or None
+    # ``hash`` backend is the deterministic dev fixture; bypass.
+    return None
+
+
+def _guard_metadata_against_runtime(
+    metadata: ClassifierMetadata, embedder: Embedder | None = None
+) -> None:
+    """Raise ConfigValidationError if the sidecar disagrees with the runtime.
+
+    Two layers of drift are checked:
+
+    1. ``sklearn`` minor version (ADR-000835 stage 3).
+    2. Embedder model identity vs. the sidecar's recorded
+       ``embedding_model_id``. The 2026-04-14..30 silent classification
+       collapse landed because a 30-class head trained on BGE-M3 was being
+       served against ``mxbai-embed-large`` (different vector space, same
+       1024-dim, no ``n_features_in_`` error). When ``embedder`` is supplied
+       the identity is resolved per backend; when ``None`` the embedder
+       check is skipped (legacy callers).
+    """
     try:
         runtime_sklearn = importlib.metadata.version("scikit-learn")
     except importlib.metadata.PackageNotFoundError:
-        return
-    if _minor(runtime_sklearn) != _minor(metadata.sklearn_version):
+        runtime_sklearn = None
+    if runtime_sklearn is not None and _minor(runtime_sklearn) != _minor(metadata.sklearn_version):
         raise ConfigValidationError(
             f"sklearn_version mismatch: sidecar={metadata.sklearn_version} "
             f"runtime={runtime_sklearn} (minor precision). Retrain the "
             "classifier on the current runtime — ADR-000835 stage 3 "
             "requires fail-closed behaviour here."
         )
+
+    if embedder is None:
+        return
+
+    sidecar_id = metadata.embedding_model_id
+    if not sidecar_id:
+        # Legacy artefacts predating the sidecar contract: warn-only, the
+        # cardinality / threshold-coverage validators still apply.
+        logger.warning(
+            "classifier sidecar has empty embedding_model_id; embedder "
+            "identity guard is bypassed (legacy artefact compatibility)",
+            model_path=str(getattr(metadata, "trained_at", "<unknown>")),
+        )
+        return
+
+    runtime_id = _resolve_runtime_embedder_identity(embedder)
+    if runtime_id is None:
+        # ``hash`` / unset backend → not comparable, bypass.
+        return
+
+    if canonicalize_embedding_id(sidecar_id) == canonicalize_embedding_id(runtime_id):
+        return
+
+    if getattr(embedder.config, "allow_embedding_drift", False):
+        logger.warning(
+            "embedding_model_id drift allowed by operator override "
+            "(RECAP_SUBWORKER_ALLOW_EMBEDDING_DRIFT=true) — classifier "
+            "predictions are NOT trustworthy until retrained",
+            sidecar_embedding_model_id=sidecar_id,
+            runtime_embedding_model_id=runtime_id,
+            backend=embedder.config.backend,
+        )
+        return
+
+    raise ConfigValidationError(
+        "embedding_model_id mismatch: sidecar="
+        f"{sidecar_id!r} runtime={runtime_id!r} "
+        f"(backend={embedder.config.backend}). The classifier head was "
+        "trained against a different encoder than the runtime embedder. "
+        "Both encoders may emit the same vector dimension, but they "
+        "occupy different vector spaces — the LogReg head silently "
+        "collapses to a small subset of classes when fed cross-encoder "
+        "vectors. Either restore the runtime embedder to match the "
+        "sidecar, retrain the classifier on the current encoder, or "
+        "set RECAP_SUBWORKER_ALLOW_EMBEDDING_DRIFT=true to override "
+        "(predictions will remain degraded)."
+    )
 
 
 class SudachiTokenizer:
@@ -210,7 +289,7 @@ class GenreClassifierService:
 
                     metadata = _load_sidecar_metadata(self.model_path)
                     if metadata is not None:
-                        _guard_metadata_against_runtime(metadata)
+                        _guard_metadata_against_runtime(metadata, self.embedder)
                     self.model_metadata = metadata
 
                     if self.tfidf_path.exists():

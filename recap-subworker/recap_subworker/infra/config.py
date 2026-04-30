@@ -10,6 +10,8 @@ from urllib.parse import urlparse, urlunparse
 from pydantic import AliasChoices, Field, SecretStr, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from recap_subworker.infra.embedding_identity import canonicalize_embedding_id
+
 
 class Settings(BaseSettings):
     """Runtime configuration derived from environment variables."""
@@ -277,6 +279,89 @@ class Settings(BaseSettings):
                 "to a non-joblib value to bypass)."
             )
         return self
+
+    @model_validator(mode="after")
+    def _validate_classifier_embedding_consistency(self) -> Settings:
+        """Refuse to boot when the classifier sidecar's ``embedding_model_id``
+        disagrees with the runtime embedder identity.
+
+        The 2026-04-14..30 silent classification collapse landed because the
+        30-class head was trained on ``BAAI/bge-m3`` (sidecar) but production
+        had drifted to Ollama-served ``mxbai-embed-large`` (env override).
+        Both produce 1024-dim vectors, so neither ``feature_dim`` nor
+        ``n_features_in_`` raises — the LogReg head silently collapses to a
+        small subset of genres in the wrong vector space.
+
+        ADR-000835 stage 3 sklearn-version drift validator at runtime is the
+        prior art; this peer validator extends the same posture to embedder
+        identity at boot time so the deploy fails-closed instead of shipping
+        degraded predictions.
+        """
+        if self.classification_backend != "joblib":
+            return self
+        if self.allow_embedding_drift:
+            return self
+
+        from pathlib import Path
+
+        classifier_path: str | None = getattr(self, "genre_classifier_model_path_ja", None)
+        if not classifier_path:
+            return self
+
+        meta_path = Path(classifier_path).with_suffix(".meta.json")
+        try:
+            payload_text = meta_path.read_text()
+        except FileNotFoundError, IsADirectoryError, PermissionError:
+            # Missing sidecar is the responsibility of
+            # GenreClassifierService._load_sidecar_metadata which warns; do
+            # not double-fire here.
+            return self
+        try:
+            payload = json.loads(payload_text)
+        except json.JSONDecodeError:
+            return self
+        if not isinstance(payload, dict):
+            return self
+        sidecar_id = payload.get("embedding_model_id")
+        if not isinstance(sidecar_id, str) or not sidecar_id:
+            # Legacy sidecar predating ADR-000835 stage 3.
+            return self
+
+        runtime_id = self._effective_runtime_embedder_identity()
+        if runtime_id is None:
+            return self
+
+        if canonicalize_embedding_id(sidecar_id) == canonicalize_embedding_id(runtime_id):
+            return self
+
+        raise ValueError(
+            f"{meta_path}: embedding_model_id mismatch — sidecar={sidecar_id!r} "
+            f"runtime={runtime_id!r} (model_backend={self.model_backend}). The "
+            "classifier head was trained against a different encoder than the "
+            "runtime embedder. Both encoders may emit the same vector dimension "
+            "but they occupy different vector spaces; the LogReg head silently "
+            "collapses to a small subset of classes when fed cross-encoder "
+            "vectors. Either restore the runtime embedder to match the sidecar, "
+            "retrain the classifier on the current encoder, or set "
+            "RECAP_SUBWORKER_ALLOW_EMBEDDING_DRIFT=true to override."
+        )
+
+    def _effective_runtime_embedder_identity(self) -> str | None:
+        """Return the runtime embedder identity for the configured backend.
+
+        Mirrors the resolution map in
+        ``recap_subworker.services.classifier._resolve_runtime_embedder_identity``
+        but operates on Settings directly so the boot-time validator does not
+        instantiate an Embedder. ``hash`` backend has no comparable identity.
+        """
+        backend = self.model_backend
+        if backend == "sentence-transformers":
+            return self.model_id or None
+        if backend == "onnx":
+            return self.onnx_tokenizer_name or self.model_id or None
+        if backend == "ollama-remote":
+            return self.ollama_embed_model or None
+        return None
 
     @property
     def db_url_str(self) -> str:
@@ -853,6 +938,19 @@ class Settings(BaseSettings):
         validation_alias=AliasChoices(
             "RECAP_GENRE_BASELINE_CARDINALITY",
             "RECAP_SUBWORKER_GENRE_BASELINE_CARDINALITY",
+        ),
+    )
+    allow_embedding_drift: bool = Field(
+        False,
+        description=(
+            "Operator escape hatch for the embedder fingerprint guard. "
+            "When True, sidecar↔runtime embedding_model_id drift downgrades "
+            "to a warning instead of ConfigValidationError at boot. Default "
+            "False. Flip on only during emergency rollback when classifier "
+            "predictions are knowingly degraded."
+        ),
+        validation_alias=AliasChoices(
+            "RECAP_SUBWORKER_ALLOW_EMBEDDING_DRIFT",
         ),
     )
     learning_machine_student_ja_dir: str | None = Field(

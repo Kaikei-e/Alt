@@ -129,6 +129,7 @@ class ServiceContainer:
                 ollama_embed_url=self.settings.ollama_embed_url,
                 ollama_embed_model=self.settings.ollama_embed_model,
                 ollama_embed_timeout=self.settings.ollama_embed_timeout,
+                allow_embedding_drift=self.settings.allow_embedding_drift,
             )
             self._embedder = Embedder(config)
         return self._embedder

@@ -23,6 +23,7 @@ logger = structlog.get_logger(__name__)
 # Optional ONNX imports
 try:
     import onnxruntime as ort
+
     ONNX_AVAILABLE = True
 except ImportError:
     ONNX_AVAILABLE = False
@@ -30,6 +31,7 @@ except ImportError:
 
 try:
     from transformers import AutoTokenizer
+
     TRANSFORMERS_AVAILABLE = True
 except ImportError:
     TRANSFORMERS_AVAILABLE = False
@@ -55,6 +57,10 @@ class EmbedderConfig:
     ollama_embed_url: str | None = None
     ollama_embed_model: str = "mxbai-embed-large"
     ollama_embed_timeout: float = 30.0
+    # Operator escape hatch propagated from Settings.allow_embedding_drift —
+    # when True, sidecar↔runtime embedder identity drift downgrades to a
+    # warning instead of ConfigValidationError. See classifier.py.
+    allow_embedding_drift: bool = False
 
 
 class Embedder:
@@ -73,14 +79,14 @@ class Embedder:
         logger.info(
             "Loading SentenceTransformer",
             model_id=self.config.model_id,
-            backend=self.config.backend
+            backend=self.config.backend,
         )
 
         if self.config.model_id != "intfloat/multilingual-e5-large":
             logger.warn(
                 "Model ID mismatch recommendation",
                 current=self.config.model_id,
-                recommended="intfloat/multilingual-e5-large"
+                recommended="intfloat/multilingual-e5-large",
             )
 
         model_kwargs = {
@@ -90,10 +96,13 @@ class Embedder:
 
         if self.config.device.startswith("cuda"):
             import torch
+
             logger.info("Enabling FP16 for CUDA device")
             model_kwargs["torch_dtype"] = torch.float16
 
-        logger.info("Initializing SentenceTransformer model (this may take time for large models)...")
+        logger.info(
+            "Initializing SentenceTransformer model (this may take time for large models)..."
+        )
         model = SentenceTransformer(
             self.config.model_id,
             device=self.config.device,
@@ -106,13 +115,11 @@ class Embedder:
         """Load ONNX model for inference."""
         if not ONNX_AVAILABLE:
             raise ImportError(
-                "onnxruntime is required for ONNX backend. "
-                "Install with: pip install onnxruntime"
+                "onnxruntime is required for ONNX backend. Install with: pip install onnxruntime"
             )
         if not TRANSFORMERS_AVAILABLE:
             raise ImportError(
-                "transformers is required for ONNX backend. "
-                "Install with: pip install transformers"
+                "transformers is required for ONNX backend. Install with: pip install transformers"
             )
 
         assert ort is not None  # guarded by ONNX_AVAILABLE check above
@@ -125,9 +132,7 @@ class Embedder:
             )
 
         if not Path(self.config.onnx_model_path).exists():
-            raise FileNotFoundError(
-                f"ONNX model not found: {self.config.onnx_model_path}"
-            )
+            raise FileNotFoundError(f"ONNX model not found: {self.config.onnx_model_path}")
 
         tokenizer_name = self.config.onnx_tokenizer_name or self.config.model_id
 
@@ -176,9 +181,7 @@ class Embedder:
         available = set(ort.get_available_providers())
 
         if configured_providers:
-            requested = [
-                p.strip() for p in configured_providers.split(",") if p.strip()
-            ]
+            requested = [p.strip() for p in configured_providers.split(",") if p.strip()]
             providers = [p for p in requested if p in available]
             if not providers:
                 logger.warning(
@@ -188,7 +191,9 @@ class Embedder:
                 )
                 providers = ["CPUExecutionProvider"]
         else:
-            providers = ["CPUExecutionProvider"] if "CPUExecutionProvider" in available else list(available)
+            providers = (
+                ["CPUExecutionProvider"] if "CPUExecutionProvider" in available else list(available)
+            )
 
         # Create inference session
         session = ort.InferenceSession(
@@ -218,7 +223,7 @@ class Embedder:
                 embeddings_list: list[np.ndarray] = []
 
                 for i in range(0, len(sentences), batch_size):
-                    batch = sentences[i:i + batch_size]
+                    batch = sentences[i : i + batch_size]
 
                     # Tokenize
                     tokens = self.tokenizer(
@@ -253,7 +258,9 @@ class Embedder:
 
                 return np.vstack(embeddings_list)
 
-        return OnnxModelAdapter(session, tokenizer, self.config.onnx_pooling, self.config.onnx_max_length)
+        return OnnxModelAdapter(
+            session, tokenizer, self.config.onnx_pooling, self.config.onnx_max_length
+        )
 
     def _load_ollama_remote_model(self):
         """Load Ollama remote embedding client."""
@@ -315,12 +322,12 @@ class Embedder:
                 # Long text: split into chunks and average embeddings
                 chunks = []
                 for i in range(0, len(text), self.MAX_CHUNK_CHARS):
-                    chunk = text[i:i + self.MAX_CHUNK_CHARS]
+                    chunk = text[i : i + self.MAX_CHUNK_CHARS]
                     if chunk.strip():
                         chunks.append(chunk)
 
                 if not chunks:
-                    chunks = [text[:self.MAX_CHUNK_CHARS]]
+                    chunks = [text[: self.MAX_CHUNK_CHARS]]
 
                 logger.debug(
                     "Chunking long text for embedding",
@@ -359,7 +366,7 @@ class Embedder:
                 all_embeddings: list[np.ndarray] = []
 
                 for i in range(0, len(sentences), batch_size):
-                    batch = list(sentences[i:i + batch_size])
+                    batch = list(sentences[i : i + batch_size])
                     embeddings = self._get_embeddings(batch)
                     batch_array = np.array(embeddings, dtype=np.float32)
 
@@ -442,7 +449,7 @@ class Embedder:
                     start_time = time.time()
 
                     for batch_idx in range(0, len(pending), self.config.batch_size):
-                        batch = pending[batch_idx:batch_idx + self.config.batch_size]
+                        batch = pending[batch_idx : batch_idx + self.config.batch_size]
                         batch_start = time.time()
 
                         batch_embeddings = model.encode(  # type: ignore[attr-defined]
@@ -482,7 +489,9 @@ class Embedder:
                         "Embedding generation completed",
                         total_sentences=len(pending),
                         total_seconds=round(total_elapsed, 2),
-                        throughput_per_sec=round(len(pending) / total_elapsed, 2) if total_elapsed > 0 else 0,
+                        throughput_per_sec=round(len(pending) / total_elapsed, 2)
+                        if total_elapsed > 0
+                        else 0,
                     )
                 else:
                     # Small batches: use direct encoding without progress logging
