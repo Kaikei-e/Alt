@@ -66,13 +66,14 @@ test_connection() {
 
     DB_HOST=$(echo "$DATABASE_URL" | sed -n 's/.*@\([^:]*\):.*/\1/p')
     DB_PORT=$(echo "$DATABASE_URL" | sed -n 's/.*:\([0-9]*\)\/.*/\1/p')
-    DB_NAME=$(echo "$DATABASE_URL" | sed -n 's/.*\/\([^?]*\).*/\1/p')
-    DB_USER=$(echo "$DATABASE_URL" | sed -n 's/.*:\/\/\([^:]*\):.*/\1/p')
 
-    if timeout 30 pg_isready -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" -d "$DB_NAME"; then
-        log_success "Database connectivity verified"
+    # Busybox `nc` ships in arigaio/atlas:*-alpine; no apk install needed
+    # at build time. TCP open-port probe is sufficient — Atlas surfaces
+    # auth/database-name errors on `migrate apply` itself.
+    if nc -z -w 5 "$DB_HOST" "$DB_PORT"; then
+        log_success "Database listener reachable at $DB_HOST:$DB_PORT"
     else
-        log_error "Cannot connect to database"
+        log_error "Cannot reach database listener at $DB_HOST:$DB_PORT"
         exit 1
     fi
 }
@@ -157,9 +158,19 @@ init_migrations() {
 apply_migrations() {
     log_info "Applying database migrations..."
 
+    # Force PostgreSQL to fail any single SQL statement that cannot
+    # acquire its required lock within 30s instead of waiting forever.
+    # See knowledge-sovereign/docker/scripts/migrate.sh for the full
+    # rationale (alt-deploy run 25143212120, 2026-04-30).
+    local apply_url="$DATABASE_URL"
+    case "$apply_url" in
+        *\?*) apply_url="${apply_url}&options=-c%20lock_timeout%3D30000" ;;
+        *)    apply_url="${apply_url}?options=-c%20lock_timeout%3D30000" ;;
+    esac
+
     log_info "Performing dry run..."
     atlas migrate apply \
-        --url "$DATABASE_URL" \
+        --url "$apply_url" \
         --dir "file://$MIGRATION_DIR" \
         --revisions-schema "${ATLAS_REVISIONS_SCHEMA:-public}" \
         --dry-run || {
@@ -171,7 +182,7 @@ apply_migrations() {
 
     log_info "Applying migrations to database..."
     atlas migrate apply \
-        --url "$DATABASE_URL" \
+        --url "$apply_url" \
         --dir "file://$MIGRATION_DIR" \
         --revisions-schema "${ATLAS_REVISIONS_SCHEMA:-public}" || {
             log_error "Migration apply failed"

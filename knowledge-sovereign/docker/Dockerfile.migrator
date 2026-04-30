@@ -2,8 +2,14 @@
 # Pattern: migrations-atlas/docker/Dockerfile
 FROM arigaio/atlas:latest-alpine
 
-# Install PostgreSQL client for connectivity testing
-RUN apk add --no-cache postgresql-client
+# Connectivity is checked via busybox `nc` (already in arigaio/atlas:*-alpine)
+# instead of pg_isready. The previous `apk add --no-cache postgresql-client`
+# step was the sole network dependency at image build time and caused
+# multi-hour hangs when dl-cdn.alpinelinux.org was slow / IPv6-only on the
+# build host (observed 2026-04-30 on alt-deploy run 25143212120).
+# A TCP open-port probe is sufficient: Atlas itself surfaces auth/db errors
+# on `migrate apply`, so the pre-flight check only needs to verify the
+# database listener is reachable.
 
 # Create migration directory and set working directory
 WORKDIR /migrations
