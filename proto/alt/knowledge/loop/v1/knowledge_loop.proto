@@ -340,6 +340,16 @@ message TransitionKnowledgeLoopRequest {
 
   reserved 8 to 15;
   reserved "user_id", "tenant_id";
+
+  // Optional UI intent metadata. These are not used for authorization or
+  // classification; they make the appended KnowledgeLoopDecisionPresented /
+  // KnowledgeLoopActed payload self-describing under replay.
+  repeated DecisionIntent presented_intents = 16;
+  optional DecisionIntent acted_intent = 17;
+  optional string action_id = 18;
+  optional ActTargetType target_type = 19;
+  optional string target_ref = 20;
+  bool continue_flag = 21;
 }
 
 message TransitionKnowledgeLoopResponse {
@@ -459,6 +469,9 @@ message KnowledgeLoopActedPayload {
   optional DecisionIntent acted_intent = 8;
   // true when the act should land on SurfaceBucket.CONTINUE rather than loop back to OBSERVE.
   bool continue_flag = 9;
+  optional string action_id = 10;
+  optional ActTargetType target_type = 11;
+  optional string target_ref = 12;
 }
 
 message KnowledgeLoopReturnedPayload {

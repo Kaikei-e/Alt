@@ -721,6 +721,20 @@ enum DismissState {
   DISMISS_STATE_COMPLETED = 4;
 }
 
+enum LoopVisibilityState {
+  LOOP_VISIBILITY_STATE_UNSPECIFIED = 0;
+  LOOP_VISIBILITY_STATE_VISIBLE = 1;
+  LOOP_VISIBILITY_STATE_HIDDEN = 2;
+  LOOP_VISIBILITY_STATE_SNOOZED = 3;
+}
+
+enum LoopCompletionState {
+  LOOP_COMPLETION_STATE_UNSPECIFIED = 0;
+  LOOP_COMPLETION_STATE_OPEN = 1;
+  LOOP_COMPLETION_STATE_COMPLETED = 2;
+  LOOP_COMPLETION_STATE_DISMISSED = 3;
+}
+
 enum WhyKind {
   WHY_KIND_UNSPECIFIED = 0;
   WHY_KIND_SOURCE = 1;
@@ -816,6 +830,12 @@ message KnowledgeLoopEntry {
   // knowledge_loop_entry_session_state on reads.
   optional LoopStage current_entry_stage = 25;
   optional google.protobuf.Timestamp current_entry_stage_entered_at = 26;
+
+  // visibility_state controls read-path inclusion. dismiss_state is retained
+  // for compatibility but no longer decides whether Continue / Review rows are
+  // visible to the Loop read model.
+  LoopVisibilityState visibility_state = 27;
+  LoopCompletionState completion_state = 28;
 
   reserved "updated_at", "projected_at", "wall_clock", "ingest_time";
 }
