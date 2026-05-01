@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"log/slog"
+	"os"
 	"time"
 
 	"connectrpc.com/connect"
@@ -21,14 +22,42 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
-// Stream wall-clock constants. Picked to match the Knowledge Home stream contract
-// so both subscriptions drain in the same reconnect cadence.
+// Stream wall-clock defaults. Operators can tune the cadence at runtime via:
+//
+//	ALT_BACKEND_LOOP_STREAM_POLL_INTERVAL   (default 5s)
+//	ALT_BACKEND_LOOP_STREAM_HEARTBEAT_EVERY (default 10s)
+//
+// Picked to match the Knowledge Home stream contract so both subscriptions
+// drain in the same reconnect cadence.
 const (
-	streamPollInterval   = 5 * time.Second
-	streamHeartbeatEvery = 10 * time.Second
-	streamStaleTimeout   = 30 * time.Minute
-	streamFetchBatchSize = 50
+	defaultStreamPollInterval   = 5 * time.Second
+	defaultStreamHeartbeatEvery = 10 * time.Second
+	streamStaleTimeout          = 30 * time.Minute
+	streamFetchBatchSize        = 50
 )
+
+// streamPollInterval / streamHeartbeatEvery are package-scope vars (not consts)
+// so they can be set from env once at process start. They are still read in the
+// hot path; mutating them after handler construction is undefined.
+var (
+	streamPollInterval   = parseStreamDurationEnv("ALT_BACKEND_LOOP_STREAM_POLL_INTERVAL", defaultStreamPollInterval)
+	streamHeartbeatEvery = parseStreamDurationEnv("ALT_BACKEND_LOOP_STREAM_HEARTBEAT_EVERY", defaultStreamHeartbeatEvery)
+)
+
+// parseStreamDurationEnv reads a duration env var, falling back to the supplied
+// default when unset, unparseable, or non-positive. Misconfiguration must not
+// crash the loop stream — silent fallback is the safer failure mode.
+func parseStreamDurationEnv(name string, fallback time.Duration) time.Duration {
+	v := os.Getenv(name)
+	if v == "" {
+		return fallback
+	}
+	d, err := time.ParseDuration(v)
+	if err != nil || d <= 0 {
+		return fallback
+	}
+	return d
+}
 
 // Handler implements knowledgeloopv1connect.KnowledgeLoopServiceHandler.
 type Handler struct {

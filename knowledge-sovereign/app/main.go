@@ -7,6 +7,7 @@ import (
 	"knowledge-sovereign/gen/proto/services/sovereign/v1/sovereignv1connect"
 	"knowledge-sovereign/handler"
 	"knowledge-sovereign/usecase/knowledge_loop_projector"
+	"knowledge-sovereign/usecase/surface_planner_cron"
 	"log/slog"
 	"net/http"
 	"os"
@@ -113,7 +114,7 @@ func main() {
 	loopProjector := knowledge_loop_projector.NewProjector(repo, slog.Default(),
 		knowledge_loop_projector.Config{BatchSize: 100}).
 		WithScoreResolver(knowledge_loop_projector.NewEventLogSurfaceScoreResolver(repo))
-	loopTick := time.NewTicker(5 * time.Second)
+	loopTick := time.NewTicker(parseDurationEnv("KNOWLEDGE_SOVEREIGN_PROJECTOR_TICK_INTERVAL", 5*time.Second))
 	go func() {
 		defer loopTick.Stop()
 		for {
@@ -123,6 +124,28 @@ func main() {
 			case <-loopTick.C:
 				if err := loopProjector.RunBatch(ctx); err != nil {
 					slog.Error("knowledge_loop_projector batch failed", "error", err)
+				}
+			}
+		}
+	}()
+
+	// Surface planner v2 producer cron. Emits KnowledgeLoopSurfacePlanRecomputed
+	// for upstream signal events (AugurConversationLinked v1) so the projector
+	// branch added in ADR-000873 has a real source. Cadence is intentionally
+	// looser than the projector tick — replanning is more expensive than
+	// projecting, and the projector is patch-only seq-hiwater-guarded so
+	// occasional miss-windows degrade to no-op patches.
+	plannerCron := surface_planner_cron.New(repo, slog.Default(), surface_planner_cron.Config{BatchSize: 256})
+	plannerTick := time.NewTicker(parseDurationEnv("KNOWLEDGE_SOVEREIGN_PLANNER_TICK_INTERVAL", 60*time.Second))
+	go func() {
+		defer plannerTick.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-plannerTick.C:
+				if err := plannerCron.RunBatch(ctx); err != nil {
+					slog.Error("surface_planner_cron batch failed", "error", err)
 				}
 			}
 		}
@@ -147,4 +170,20 @@ func main() {
 	metricsServer.Shutdown(shutdownCtx)
 	mainServer.Shutdown(shutdownCtx)
 	slog.Info("shutdown complete")
+}
+
+// parseDurationEnv reads a duration from env, falling back to the supplied
+// default. Negative or unparseable values fall back without error so a
+// misconfigured operator override does not crash the service.
+func parseDurationEnv(name string, fallback time.Duration) time.Duration {
+	v := os.Getenv(name)
+	if v == "" {
+		return fallback
+	}
+	d, err := time.ParseDuration(v)
+	if err != nil || d <= 0 {
+		slog.Warn("invalid duration env, using fallback", "env", name, "value", v, "fallback", fallback.String())
+		return fallback
+	}
+	return d
 }
