@@ -55,4 +55,11 @@ describe("/loop/+page.svelte wiring guards", () => {
 		expect(pageSource).not.toMatch(/\$lib\/connect\/knowledge_home/);
 		expect(pageSource).not.toMatch(/trackHomeAction/);
 	});
+
+	it("routes external Open CTA into the SPA /articles/ reader instead of window.open", () => {
+		// fb.md §5 / ADR-000875: Loop's Open intent goes through the in-app
+		// reader so popup-blocker races and external-tab bounces are gone.
+		expect(pageSource).toMatch(/goto\(`\/articles\/\$\{encodeURIComponent\(entry\.entryKey\)\}/);
+		expect(pageSource).not.toMatch(/window\.open\(href, "_blank"/);
+	});
 });

@@ -202,12 +202,22 @@ function isSafeInternalPath(href: string): boolean {
 	);
 }
 
-function onEntryOpen(_entry: KnowledgeLoopEntryData, href: string) {
+function onEntryOpen(entry: KnowledgeLoopEntryData, href: string) {
 	if (isSafeInternalPath(href)) {
 		void goto(href);
 		return;
 	}
-	window.open(href, "_blank", "noopener,noreferrer");
+	// External article URL → SPA reader view, not a new tab.
+	// Knowledge Loop's "Act" deserves to land inside the app: the reader
+	// supports summarisation, reading-time, and citation rails, and avoids
+	// the popup-blocker race (window.open after async work). Mirrors the
+	// pattern already used by `home/+page.svelte`.
+	const params = new URLSearchParams();
+	params.set("url", href);
+	if (entry.whyPrimary.text) {
+		params.set("title", entry.whyPrimary.text);
+	}
+	void goto(`/articles/${encodeURIComponent(entry.entryKey)}?${params.toString()}`);
 }
 
 function onObserve(entryKey: string) {
