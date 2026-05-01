@@ -1,0 +1,18 @@
+{
+  "$comment": "Knowledge Loop OODA transition matrix — canonical source of truth for ADR-000831 §7. The FE allowlist (loop-transitions.ts), BE classifier (classify_transition_event.go), and e2e tests all derive from this file via the conformance tests transition_policy_test.go (Go) and loop-transitions.policy.test.ts (TS). Edit this first; the conformance tests will drive any required implementation update.",
+  "version": 1,
+  "allowed_edges": [
+    { "from": "observe", "to": "orient",  "triggers": ["user_tap", "dwell", "keyboard", "programmatic"] },
+    { "from": "observe", "to": "decide",  "triggers": ["user_tap", "keyboard", "programmatic"] },
+    { "from": "orient",  "to": "observe", "triggers": ["user_tap", "programmatic"] },
+    { "from": "orient",  "to": "decide",  "triggers": ["user_tap", "dwell", "keyboard", "programmatic"] },
+    { "from": "decide",  "to": "act",     "triggers": ["user_tap", "keyboard", "programmatic"] },
+    { "from": "act",     "to": "observe", "triggers": ["user_tap", "programmatic"] }
+  ],
+  "same_stage_triggers": ["defer", "recheck", "archive", "mark_reviewed"],
+  "forbidden_edges": [
+    { "from": "observe", "to": "act" },
+    { "from": "act",     "to": "act" },
+    { "from": "decide",  "to": "observe" }
+  ]
+}
