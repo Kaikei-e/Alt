@@ -27,6 +27,15 @@ jobs:
       coverage-flags: 'alt-backend'
       # GitHub-hosted runner では GitHub Actions Cache を使用
       use-local-persistent-cache: false
+      # The Knowledge Loop transition-policy conformance test
+      # (alt-backend/app/usecase/knowledge_loop_usecase/transition_policy_test.go)
+      # walks up the working tree to read
+      # proto/alt/knowledge/loop/v1/loop_transition_policy.json. Without
+      # the proto/ tree in the sparse checkout it fails with
+      # "could not locate ... loop_transition_policy.json".
+      sparse-checkout: |
+        alt-backend
+        proto
 
   # M-001: govulncheck と gosec を SARIF として GitHub Code Scanning に
   # アップロードして PR 時点で依存 CVE / コードの脆弱性を検出する。

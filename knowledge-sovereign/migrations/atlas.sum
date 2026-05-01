@@ -1,4 +1,4 @@
-h1:0jdXazM3bgCes6pF61dPuSnq6fPtpxY2sgegif+MJZU=
+h1:Nz/cR27fFGH3xbTSIUwEnZZJ0/YpiRimOuqo7EyQkoQ=
 00001_initial_schema.sql h1:CSFJx5Q5Jv44C4sqoKpzvdh6t8Unwog8bZw9/VBd3NQ=
 00002_add_link_column.sql h1:A2QxniA5wEK9bo0UnqTNKX5TgvkR/zugtdCKs8O07DE=
 00003_fix_user_events_dedupe_constraint.sql h1:5EpJwNHbInepPLqTMNG3YL/FPTqvpkpqazjt6rK0PkQ=
@@ -16,4 +16,4 @@ h1:0jdXazM3bgCes6pF61dPuSnq6fPtpxY2sgegif+MJZU=
 00015_refresh_knowledge_loop_public_view_surface_planner.sql h1:hz0Am+PHXUIccPliu5MUNZ/R2GVwkQ25X6MP923bfBw=
 00016_add_knowledge_loop_entry_session_state.sql h1:cLn3UDjZip3Ahajo8qf3Ts9KYAuSkCbzhNRXvaU5xXY=
 00017_rename_knowledge_home_items_link_to_url.sql h1:02K05r3dToId9kx+MHWPVrM5BNygwnicpNbDst4wgOc=
-00018_add_knowledge_loop_visibility_lifecycle.sql h1:HwiKNqfuNzOkkEELLnm2EOH38kLDEGLSDuProIpatA8=
+00018_add_knowledge_loop_visibility_lifecycle.sql h1:bna6/mm70aFwm6entgWiRtVhgQLOURJLrLVjNE48K28=

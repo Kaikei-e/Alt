@@ -33,7 +33,7 @@ Connect-Protocol-Version: 1
     "actorId": "e2e-hurl",
     "eventType": "SummaryVersionCreated",
     "aggregateType": "article",
-    "aggregateId": "art-planner-cron-{{run_id}}",
+    "aggregateId": "art-planner-cron",
     "dedupeKey": "hurl-planner-cron-{{run_id}}-ev1",
     "payload": "eyJzdW1tYXJ5X3ZlcnNpb25faWQiOiJzdi1wbGFubmVyLWNyb24iLCJhcnRpY2xlX2lkIjoiYXJ0LXBsYW5uZXItY3JvbiIsImFydGljbGVfdGl0bGUiOiJTdXJmYWNlIFBsYW5uZXIgdjIgY3JvbiBjb3ZlcmFnZSJ9"
   }
@@ -74,7 +74,7 @@ jsonpath "$.eventSeq" matches "^[0-9]+$"
 #
 # CI runs with KNOWLEDGE_SOVEREIGN_PLANNER_TICK_INTERVAL=2s so retries cover
 # 30 seconds at 1.5 s spacing — enough for the cron to fire several times.
-POST {{base_url}}/services.sovereign.v1.KnowledgeSovereignService/ListKnowledgeEventsSince
+POST {{base_url}}/services.sovereign.v1.KnowledgeSovereignService/ListKnowledgeEvents
 Content-Type: application/json
 Connect-Protocol-Version: 1
 [Options]

@@ -49,6 +49,11 @@ CREATE INDEX idx_kle_visible_surface_rank
   )
   WHERE visibility_state = 'visible';
 
+-- CREATE OR REPLACE VIEW only permits *appending* columns to the existing
+-- column list — inserting visibility_state/completion_state between
+-- dismiss_state and render_depth_hint would rename existing positional
+-- columns and Postgres rejects it (42P16). Keep the legacy projection
+-- order intact and append the lifecycle fields at the end.
 CREATE OR REPLACE VIEW knowledge_loop_entries_public AS
 SELECT
   user_id,
@@ -77,12 +82,12 @@ SELECT
   act_targets,
   superseded_by_entry_key,
   dismiss_state,
-  visibility_state,
-  completion_state,
   render_depth_hint,
   loop_priority,
   surface_planner_version,
-  surface_score_inputs
+  surface_score_inputs,
+  visibility_state,
+  completion_state
 FROM knowledge_loop_entries;
 
 COMMENT ON COLUMN knowledge_loop_entries.visibility_state IS

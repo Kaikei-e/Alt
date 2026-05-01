@@ -258,6 +258,12 @@ services:
       - ARCHIVE_DIR=/tmp/archives
       - BUILD_REF=staging
       - LOG_LEVEL=info
+      # Tighten cron cadence so the Hurl suite (22-surface-planner-cron)
+      # can observe a SurfacePlanRecomputed emission within its 45 s
+      # retry budget (30 retries × 1.5 s). Production defaults stay at
+      # 60 s / 5 s.
+      - KNOWLEDGE_SOVEREIGN_PLANNER_TICK_INTERVAL=2s
+      - KNOWLEDGE_SOVEREIGN_PROJECTOR_TICK_INTERVAL=2s
     ports:
       - "19510:9500"
       - "19511:9501"
