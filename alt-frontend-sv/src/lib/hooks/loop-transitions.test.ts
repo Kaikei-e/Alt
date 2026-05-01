@@ -8,6 +8,7 @@ describe("canTransition — ADR-000831 §7 allowlist", () => {
 	it.each([
 		["observe", "orient"],
 		["observe", "decide"],
+		["orient", "observe"],
 		["orient", "decide"],
 		["decide", "act"],
 		["act", "observe"],
@@ -21,7 +22,6 @@ describe("canTransition — ADR-000831 §7 allowlist", () => {
 		["act", "orient"],
 		["act", "decide"],
 		["decide", "observe"],
-		["orient", "observe"],
 		["decide", "orient"],
 	] as const)("forbids %s → %s", (from, to) => {
 		expect(canTransition(from, to)).toBe(false);

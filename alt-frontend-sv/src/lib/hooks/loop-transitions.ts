@@ -5,6 +5,7 @@ import type { LoopStageName } from "$lib/connect/knowledge_loop";
 const ALLOWED: ReadonlySet<`${LoopStageName}->${LoopStageName}`> = new Set([
 	"observe->orient",
 	"observe->decide",
+	"orient->observe",
 	"orient->decide",
 	"decide->act",
 	"act->observe",

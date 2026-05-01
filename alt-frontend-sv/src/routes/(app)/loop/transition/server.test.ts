@@ -159,6 +159,40 @@ describe("/loop/transition +server.ts", () => {
 		expect(json).toEqual({ accepted: true });
 	});
 
+	it("passes optional intent metadata through to backend wrapper", async () => {
+		vi.mocked(transitionKnowledgeLoopForUser).mockResolvedValue({
+			accepted: true,
+		});
+		const res = await invoke({
+			body: {
+				lensModeId: "default",
+				clientTransitionId: "0193c8e5-7d6c-7c4a-b000-0000000000ad",
+				entryKey: "article:42",
+				fromStage: "decide",
+				toStage: "act",
+				trigger: "user_tap",
+				observedProjectionRevision: 1,
+				presentedIntents: ["open", "ask"],
+				actedIntent: "open",
+				actionId: "open",
+				targetType: "article",
+				targetRef: "article:42",
+				continueFlag: true,
+			},
+		});
+
+		expect(res.status).toBe(200);
+		const args = vi.mocked(transitionKnowledgeLoopForUser).mock.calls[0][1];
+		expect(args).toMatchObject({
+			presentedIntents: ["open", "ask"],
+			actedIntent: "open",
+			actionId: "open",
+			targetType: "article",
+			targetRef: "article:42",
+			continueFlag: true,
+		});
+	});
+
 	it("200 silent replay on AlreadyExists (sovereign idempotency)", async () => {
 		vi.mocked(transitionKnowledgeLoopForUser).mockRejectedValue(
 			Object.assign(new Error("already_exists"), { code: "already_exists" }),

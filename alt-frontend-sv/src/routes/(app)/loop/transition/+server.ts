@@ -28,6 +28,10 @@ import { transitionKnowledgeLoopForUser } from "$lib/server/knowledge-loop-api";
 import { canTransition } from "$lib/hooks/loop-transitions";
 import { extractConnectCode } from "$lib/connect/error";
 import type { LoopStageName } from "$lib/connect/knowledge_loop";
+import type {
+	ActTargetTypeName,
+	DecisionIntentName,
+} from "$lib/connect/knowledge_loop";
 
 type Trigger =
 	| "user_tap"
@@ -39,6 +43,9 @@ type Trigger =
 	| "archive"
 	| "mark_reviewed";
 
+type MetadataIntent = Exclude<DecisionIntentName, "unspecified">;
+type MetadataTargetType = Exclude<ActTargetTypeName, "unspecified">;
+
 interface TransitionBody {
 	lensModeId: string;
 	clientTransitionId: string;
@@ -47,9 +54,30 @@ interface TransitionBody {
 	toStage: LoopStageName;
 	trigger: Trigger;
 	observedProjectionRevision: number;
+	presentedIntents?: MetadataIntent[];
+	actedIntent?: MetadataIntent;
+	actionId?: string;
+	targetType?: MetadataTargetType;
+	targetRef?: string;
+	continueFlag?: boolean;
 }
 
 const STAGES: readonly LoopStageName[] = ["observe", "orient", "decide", "act"];
+const INTENTS: readonly MetadataIntent[] = [
+	"open",
+	"ask",
+	"save",
+	"compare",
+	"revisit",
+	"snooze",
+];
+const TARGET_TYPES: readonly MetadataTargetType[] = [
+	"article",
+	"ask",
+	"recap",
+	"diff",
+	"cluster",
+];
 const TRIGGERS: readonly Trigger[] = [
 	"user_tap",
 	"dwell",
@@ -112,6 +140,41 @@ function parseBody(raw: unknown): TransitionBody | null {
 	}
 	if (!Number.isInteger(b.observedProjectionRevision)) return null;
 	if (b.entryKey.length === 0 || b.entryKey.length > 128) return null;
+	const presentedIntents = parseIntentList(b.presentedIntents);
+	if (b.presentedIntents !== undefined && !presentedIntents) return null;
+	if (
+		b.actedIntent !== undefined &&
+		(typeof b.actedIntent !== "string" ||
+			!INTENTS.includes(b.actedIntent as MetadataIntent))
+	) {
+		return null;
+	}
+	if (
+		b.actionId !== undefined &&
+		(typeof b.actionId !== "string" ||
+			b.actionId.length === 0 ||
+			b.actionId.length > 64)
+	) {
+		return null;
+	}
+	if (
+		b.targetType !== undefined &&
+		(typeof b.targetType !== "string" ||
+			!TARGET_TYPES.includes(b.targetType as MetadataTargetType))
+	) {
+		return null;
+	}
+	if (
+		b.targetRef !== undefined &&
+		(typeof b.targetRef !== "string" ||
+			b.targetRef.length === 0 ||
+			b.targetRef.length > 128)
+	) {
+		return null;
+	}
+	if (b.continueFlag !== undefined && typeof b.continueFlag !== "boolean") {
+		return null;
+	}
 
 	return {
 		lensModeId: b.lensModeId,
@@ -121,7 +184,28 @@ function parseBody(raw: unknown): TransitionBody | null {
 		toStage: b.toStage as LoopStageName,
 		trigger: b.trigger as Trigger,
 		observedProjectionRevision: b.observedProjectionRevision,
+		presentedIntents:
+			presentedIntents && presentedIntents.length > 0
+				? presentedIntents
+				: undefined,
+		actedIntent: b.actedIntent as MetadataIntent | undefined,
+		actionId: b.actionId as string | undefined,
+		targetType: b.targetType as MetadataTargetType | undefined,
+		targetRef: b.targetRef as string | undefined,
+		continueFlag: b.continueFlag as boolean | undefined,
 	};
+}
+
+function parseIntentList(raw: unknown): MetadataIntent[] | null {
+	if (raw === undefined) return [];
+	if (!Array.isArray(raw) || raw.length > 8) return null;
+	const out: MetadataIntent[] = [];
+	for (const item of raw) {
+		if (typeof item !== "string") return null;
+		if (!INTENTS.includes(item as MetadataIntent)) return null;
+		out.push(item as MetadataIntent);
+	}
+	return out;
 }
 
 export const POST: RequestHandler = async ({ request, locals }) => {

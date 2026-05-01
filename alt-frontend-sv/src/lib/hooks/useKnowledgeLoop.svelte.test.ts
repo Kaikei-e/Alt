@@ -218,6 +218,37 @@ describe("useKnowledgeLoop.bucketEntries — review lane state ownership", () =>
 
 		expect(loop.bucketEntries).toHaveLength(0);
 	});
+
+	it("applies stream inline entries without a coalesced refetch", () => {
+		const loop = useKnowledgeLoop({
+			initial: FRESH_FOREGROUND,
+			lensModeId: "default",
+			fetchImpl: (async () =>
+				new Response("{}", { status: 200 })) as unknown as typeof fetch,
+			observeThrottleStorage: null,
+		});
+
+		const applied = loop.applyStreamFrame({
+			kind: "appended",
+			entryKey: "article:continue-1",
+			revision: 101n,
+			projectionSeqHiwater: 101n,
+			inlineEntry: {
+				...FRESH_FOREGROUND.foregroundEntries[0],
+				entryKey: "article:continue-1",
+				sourceItemKey: "article:continue-1",
+				surfaceBucket: "continue",
+				projectionRevision: 2,
+				projectionSeqHiwater: 101,
+			},
+		});
+
+		expect(applied).toBe(true);
+		expect(loop.entries.map((e) => e.entryKey)).toEqual(["article:42"]);
+		expect(loop.bucketEntries.map((e) => e.entryKey)).toEqual([
+			"article:continue-1",
+		]);
+	});
 });
 
 describe("useKnowledgeLoop.currentEntryStage — proposed stage is not local progress", () => {

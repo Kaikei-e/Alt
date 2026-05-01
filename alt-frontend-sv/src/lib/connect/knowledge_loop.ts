@@ -212,6 +212,12 @@ export async function transitionKnowledgeLoop(
 			| "archive"
 			| "mark_reviewed";
 		observedProjectionRevision: number;
+		presentedIntents?: DecisionIntentName[];
+		actedIntent?: DecisionIntentName;
+		actionId?: string;
+		targetType?: ActTargetTypeName;
+		targetRef?: string;
+		continueFlag?: boolean;
 	},
 ): Promise<TransitionKnowledgeLoopResponse> {
 	const client = createKnowledgeLoopClient(transport);
@@ -223,6 +229,16 @@ export async function transitionKnowledgeLoop(
 		toStage: mapStageToProto(args.toStage),
 		trigger: mapTriggerToProto(args.trigger),
 		observedProjectionRevision: BigInt(args.observedProjectionRevision),
+		presentedIntents: args.presentedIntents?.map(mapDecisionIntentToProto),
+		actedIntent: args.actedIntent
+			? mapDecisionIntentToProto(args.actedIntent)
+			: undefined,
+		actionId: args.actionId,
+		targetType: args.targetType
+			? mapActTargetTypeToProto(args.targetType)
+			: undefined,
+		targetRef: args.targetRef,
+		continueFlag: args.continueFlag === true,
 	});
 }
 
@@ -242,7 +258,9 @@ function mapGetKnowledgeLoopResponse(
 	};
 }
 
-function mapProtoEntry(e: ProtoKnowledgeLoopEntry): KnowledgeLoopEntryData {
+export function mapProtoEntry(
+	e: ProtoKnowledgeLoopEntry,
+): KnowledgeLoopEntryData {
 	return {
 		entryKey: e.entryKey,
 		sourceItemKey: e.sourceItemKey,
@@ -465,6 +483,25 @@ function mapDecisionIntentFromProto(i: DecisionIntent): DecisionIntentName {
 	}
 }
 
+function mapDecisionIntentToProto(i: DecisionIntentName): DecisionIntent {
+	switch (i) {
+		case "open":
+			return DecisionIntent.OPEN;
+		case "ask":
+			return DecisionIntent.ASK;
+		case "save":
+			return DecisionIntent.SAVE;
+		case "compare":
+			return DecisionIntent.COMPARE;
+		case "revisit":
+			return DecisionIntent.REVISIT;
+		case "snooze":
+			return DecisionIntent.SNOOZE;
+		default:
+			return DecisionIntent.UNSPECIFIED;
+	}
+}
+
 function mapActTargetTypeFromProto(t: ActTargetType): ActTargetTypeName {
 	switch (t) {
 		case ActTargetType.ARTICLE:
@@ -479,6 +516,23 @@ function mapActTargetTypeFromProto(t: ActTargetType): ActTargetTypeName {
 			return "cluster";
 		default:
 			return "unspecified";
+	}
+}
+
+function mapActTargetTypeToProto(t: ActTargetTypeName): ActTargetType {
+	switch (t) {
+		case "article":
+			return ActTargetType.ARTICLE;
+		case "ask":
+			return ActTargetType.ASK;
+		case "recap":
+			return ActTargetType.RECAP;
+		case "diff":
+			return ActTargetType.DIFF;
+		case "cluster":
+			return ActTargetType.CLUSTER;
+		default:
+			return ActTargetType.UNSPECIFIED;
 	}
 }
 

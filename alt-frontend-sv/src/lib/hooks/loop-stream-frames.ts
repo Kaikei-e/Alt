@@ -8,6 +8,10 @@
  */
 
 import type { StreamKnowledgeLoopUpdatesResponse } from "$lib/gen/alt/knowledge/loop/v1/knowledge_loop_pb";
+import {
+	mapProtoEntry,
+	type KnowledgeLoopEntryData,
+} from "$lib/connect/knowledge_loop";
 
 export type LoopStreamFrame =
 	| {
@@ -15,12 +19,14 @@ export type LoopStreamFrame =
 			entryKey: string;
 			revision: bigint;
 			projectionSeqHiwater: bigint;
+			inlineEntry?: KnowledgeLoopEntryData;
 	  }
 	| {
 			kind: "revised";
 			entryKey: string;
 			revision: bigint;
 			projectionSeqHiwater: bigint;
+			inlineEntry?: KnowledgeLoopEntryData;
 	  }
 	| {
 			kind: "superseded";
@@ -67,6 +73,7 @@ export function classifyLoopStreamFrame(
 				entryKey: v.entryKey,
 				revision: v.revision,
 				projectionSeqHiwater: seq,
+				inlineEntry: v.inlineEntry ? mapProtoEntry(v.inlineEntry) : undefined,
 			};
 		}
 		case "revised": {
@@ -76,6 +83,7 @@ export function classifyLoopStreamFrame(
 				entryKey: v.entryKey,
 				revision: v.revision,
 				projectionSeqHiwater: seq,
+				inlineEntry: v.inlineEntry ? mapProtoEntry(v.inlineEntry) : undefined,
 			};
 		}
 		case "superseded": {

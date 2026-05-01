@@ -45,6 +45,12 @@ describe("/loop/+page.svelte wiring guards", () => {
 		);
 	});
 
+	it("keeps LoopPlaneStack mounted whenever the route has no data error", () => {
+		expect(pageSource).toMatch(/\{#if !data\.error\}\s*<LoopPlaneStack/);
+		expect(pageSource).not.toMatch(/hasBucketPlanes/);
+		expect(pageSource).not.toMatch(/LoopSurfacePlane/);
+	});
+
 	it("never imports knowledge_home from the loop route (§8 single-emission)", () => {
 		expect(pageSource).not.toMatch(/\$lib\/connect\/knowledge_home/);
 		expect(pageSource).not.toMatch(/trackHomeAction/);

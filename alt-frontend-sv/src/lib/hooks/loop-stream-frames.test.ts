@@ -1,6 +1,17 @@
 import { describe, it, expect } from "vitest";
 import { classifyLoopStreamFrame } from "./loop-stream-frames";
-import type { StreamKnowledgeLoopUpdatesResponse } from "$lib/gen/alt/knowledge/loop/v1/knowledge_loop_pb";
+import {
+	DismissState,
+	LoopPriority,
+	LoopStage,
+	KnowledgeLoopEntrySchema,
+	RenderDepthHint,
+	StreamKnowledgeLoopUpdatesResponseSchema,
+	SurfaceBucket,
+	WhyKind,
+	type StreamKnowledgeLoopUpdatesResponse,
+} from "$lib/gen/alt/knowledge/loop/v1/knowledge_loop_pb";
+import { create } from "@bufbuild/protobuf";
 
 // Minimal shape helpers — we only build the fields the classifier inspects.
 // Casting to the generated type is safe: proto-es is a tagged union at runtime
@@ -39,6 +50,47 @@ describe("classifyLoopStreamFrame", () => {
 		if (frame?.kind === "appended") {
 			expect(frame.entryKey).toBe("article:42");
 			expect(frame.revision).toBe(10n);
+		}
+	});
+
+	it("maps appended inline_entry into frontend entry data", () => {
+		const inline = create(KnowledgeLoopEntrySchema, {
+			entryKey: "article:42",
+			sourceItemKey: "article:42",
+			proposedStage: LoopStage.OBSERVE,
+			surfaceBucket: SurfaceBucket.NOW,
+			projectionRevision: 2n,
+			projectionSeqHiwater: 42n,
+			sourceEventSeq: 42n,
+			freshnessAt: { seconds: 1_777_000_000n, nanos: 0 },
+			dismissState: DismissState.ACTIVE,
+			renderDepthHint: RenderDepthHint.LIGHT,
+			loopPriority: LoopPriority.CRITICAL,
+			whyPrimary: {
+				kind: WhyKind.SOURCE,
+				text: "Ready to read.",
+				evidenceRefs: [],
+			},
+			decisionOptions: [],
+			actTargets: [],
+		});
+		const frame = classifyLoopStreamFrame(
+			create(StreamKnowledgeLoopUpdatesResponseSchema, {
+				update: {
+					case: "appended",
+					value: {
+						entryKey: "article:42",
+						revision: 42n,
+						inlineEntry: inline,
+					},
+				},
+				projectionSeqHiwater: 42n,
+			}),
+		);
+		expect(frame?.kind).toBe("appended");
+		if (frame?.kind === "appended") {
+			expect(frame.inlineEntry?.entryKey).toBe("article:42");
+			expect(frame.inlineEntry?.whyPrimary.text).toBe("Ready to read.");
 		}
 	});
 

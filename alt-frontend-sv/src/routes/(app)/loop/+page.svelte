@@ -10,7 +10,6 @@ import EmptyNow from "$lib/components/knowledge-loop/EmptyNow.svelte";
 import LoopEntryTile from "$lib/components/knowledge-loop/LoopEntryTile.svelte";
 import LoopPlaneStack from "$lib/components/knowledge-loop/LoopPlaneStack.svelte";
 import type { PlaneKey } from "$lib/components/knowledge-loop/loop-plane-keys";
-import LoopSurfacePlane from "$lib/components/knowledge-loop/LoopSurfacePlane.svelte";
 import OodaPipeline from "$lib/components/knowledge-loop/OodaPipeline.svelte";
 import ReviewDock from "$lib/components/knowledge-loop/ReviewDock.svelte";
 import type {
@@ -84,13 +83,12 @@ $effect(() => {
 
 const foreground = $derived(loop.entries);
 const sessionState = $derived(loop.sessionState);
-const surfaces = $derived(data.loop?.surfaces ?? []);
 const quality = $derived(data.loop?.overallServiceQuality ?? "unspecified");
 
 // Partition non-NOW entries into Continue / Changed / Review planes. The
 // projector scopes each entry to exactly one bucket, so these three arrays
-// never overlap. Empty arrays collapse their plane — the page stays quiet
-// when the user has nothing queued in that surface (contract §14 empty-state).
+// never overlap. The plane stack itself stays mounted even when every bucket
+// is empty so users still see the Loop's four surfaces.
 const bucketEntries = $derived(loop.bucketEntries);
 const continueEntries = $derived(
 	bucketEntries.filter((e) => e.surfaceBucket === "continue"),
@@ -174,7 +172,9 @@ useKnowledgeLoopStream({
 		// Silent updates per contract §9: revised/heartbeat do not disturb
 		// foreground. Appended/superseded/withdrawn/rebalanced warrant a refetch
 		// — coalesced so a burst maps to one network call, not one per frame.
-		if (frame.kind === "revised" || frame.kind === "heartbeat") return;
+		if (frame.kind === "heartbeat") return;
+		if (loop.applyStreamFrame(frame)) return;
+		if (frame.kind === "revised") return;
 		skipFirstStreamRefresh();
 	},
 	onExpired() {
@@ -191,6 +191,23 @@ function resolveSourceUrl(entry: KnowledgeLoopEntryData): string | null {
 	const ref = entry.whyPrimary.evidenceRefs[0];
 	if (ref?.refId && /^https?:\/\//i.test(ref.refId)) return ref.refId;
 	return null;
+}
+
+function isSafeInternalPath(href: string): boolean {
+	return (
+		href.startsWith("/") &&
+		!href.startsWith("//") &&
+		!href.startsWith("/\\") &&
+		!href.includes(":")
+	);
+}
+
+function onEntryOpen(_entry: KnowledgeLoopEntryData, href: string) {
+	if (isSafeInternalPath(href)) {
+		void goto(href);
+		return;
+	}
+	window.open(href, "_blank", "noopener,noreferrer");
 }
 
 function onObserve(entryKey: string) {
@@ -239,26 +256,6 @@ const stageDisplay = $derived(
 
 const seqHi = $derived(data.loop?.projectionSeqHiwater ?? 0);
 const lensId = $derived(data.lensModeId ?? "default");
-
-// Legacy bucket index — retained as a fallback when the server returns no
-// bucket_entries (older build or degraded fetch path). The dedicated Surface
-// plane components (ContinueStream / ChangedDiffCard / ReviewDock) supersede
-// this view whenever bucket_entries is populated.
-const bucketIndex = $derived(
-	[
-		{ bucket: "continue" as const, label: "Continue" },
-		{ bucket: "changed" as const, label: "Changed" },
-		{ bucket: "review" as const, label: "Review" },
-	]
-		.map(({ bucket, label }) => {
-			const s = surfaces.find((s) => s.surfaceBucket === bucket);
-			const count =
-				(s?.primaryEntryKey ? 1 : 0) + (s?.secondaryEntryKeys?.length ?? 0);
-			return { bucket, label, count };
-		})
-		.filter((x) => x.count > 0),
-);
-const hasBucketPlanes = $derived(bucketEntries.length > 0);
 
 // LoopPlaneStack input: descriptors for all four planes regardless of which
 // are populated. Empty planes still appear in the stack as receding "edge
@@ -374,7 +371,7 @@ function onReviewAction(
 		</aside>
 	{/if}
 
-	{#if !data.error && hasBucketPlanes}
+	{#if !data.error}
 		<LoopPlaneStack planes={planeDescriptors} bind:activeKey={activePlaneKey}>
 			{#snippet plane(key)}
 				{#if key === "now"}
@@ -394,6 +391,7 @@ function onReviewAction(
 										onTransition={loop.transitionTo}
 										onDismiss={loop.dismiss}
 										{onAsk}
+										onOpen={onEntryOpen}
 										canTransition={loop.canTransition}
 										isInFlight={loop.isInFlight}
 										{resolveSourceUrl}
@@ -433,50 +431,6 @@ function onReviewAction(
 				{/if}
 			{/snippet}
 		</LoopPlaneStack>
-	{:else if !data.error && foreground.length === 0}
-		<EmptyNow />
-	{:else if !data.error}
-		<LoopSurfacePlane
-			plane="foreground"
-			label="Foreground"
-			caption="{foreground.length} in focus"
-		>
-			<div class="foreground-tiles" use:observeTiles={{ onObserve }}>
-				{#each foreground as entry, i (entry.entryKey)}
-					<div
-						class="foreground-row"
-						animate:flip={{ duration: 240, easing: cubicOut }}
-						out:loopRecede={{ duration: 280 }}
-					>
-						<LoopEntryTile
-							{entry}
-							stagger={i}
-							onTransition={loop.transitionTo}
-							onDismiss={loop.dismiss}
-							{onAsk}
-							canTransition={loop.canTransition}
-							isInFlight={loop.isInFlight}
-							{resolveSourceUrl}
-						/>
-					</div>
-				{/each}
-			</div>
-		</LoopSurfacePlane>
-
-		{#if bucketIndex.length > 0}
-			<nav class="bucket-index" aria-label="Other surface buckets">
-				<span class="bucket-kicker">Also waiting</span>
-				<ul class="bucket-list">
-					{#each bucketIndex as b (b.bucket)}
-						<li class="bucket-item">
-							<span class="bucket-label">{b.label}</span>
-							<span class="bucket-rule" aria-hidden="true"></span>
-							<span class="bucket-count">{b.count}</span>
-						</li>
-					{/each}
-				</ul>
-			</nav>
-		{/if}
 	{/if}
 </main>
 
@@ -595,52 +549,6 @@ function onReviewAction(
 		font-family: var(--font-mono, "IBM Plex Mono", ui-monospace, monospace);
 		font-size: 0.75rem;
 		color: var(--alt-charcoal, #1a1a1a);
-	}
-
-	.bucket-index {
-		margin-top: 2rem;
-		padding-top: 0.9rem;
-		border-top: 1px solid var(--surface-border, #c8c8c8);
-	}
-	.bucket-kicker {
-		display: block;
-		font-family: var(--font-body, "Source Sans 3", system-ui, sans-serif);
-		font-size: 0.6rem;
-		font-weight: 700;
-		letter-spacing: 0.16em;
-		text-transform: uppercase;
-		color: var(--alt-ash, #999);
-		margin-bottom: 0.55rem;
-	}
-	.bucket-list {
-		list-style: none;
-		padding: 0;
-		margin: 0;
-		display: grid;
-		gap: 0.35rem;
-	}
-	.bucket-item {
-		display: grid;
-		grid-template-columns: auto 1fr auto;
-		align-items: baseline;
-		gap: 0.6rem;
-	}
-	.bucket-label {
-		font-family: var(--font-display, "Playfair Display", Georgia, serif);
-		font-size: 0.95rem;
-		font-weight: 600;
-		color: var(--alt-charcoal, #1a1a1a);
-	}
-	.bucket-rule {
-		height: 1px;
-		background: var(--surface-border, #c8c8c8);
-		align-self: center;
-		transform: translateY(1px);
-	}
-	.bucket-count {
-		font-family: var(--font-mono, "IBM Plex Mono", ui-monospace, monospace);
-		font-size: 0.72rem;
-		color: var(--alt-slate, #666);
 	}
 
 	@media (prefers-reduced-motion: reduce) {

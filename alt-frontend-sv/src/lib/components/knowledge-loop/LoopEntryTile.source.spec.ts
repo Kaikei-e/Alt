@@ -65,6 +65,14 @@ describe("LoopEntryTile source guards", () => {
 		expect(tileSource).toMatch(/noopener/);
 	});
 
+	it("does not await transition acceptance before handling the Open CTA", () => {
+		expect(tileSource).toMatch(/function openHref/);
+		expect(tileSource).toMatch(
+			/void onTransition\(entry\.entryKey, to, ["']user_tap["'], metadata\)/,
+		);
+		expect(tileSource).not.toMatch(/const result = await onTransition/);
+	});
+
 	it("still routes why_primary text through escaped interpolation (no @html)", () => {
 		expect(tileSource).not.toMatch(/\{@html/);
 		expect(tileSource).toMatch(/\{entry\.whyPrimary\.text\}/);

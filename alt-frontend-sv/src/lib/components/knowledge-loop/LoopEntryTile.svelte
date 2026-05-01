@@ -5,6 +5,7 @@ import type {
 	KnowledgeLoopEntryData,
 	LoopStageName,
 } from "$lib/connect/knowledge_loop";
+import type { TransitionMetadata } from "$lib/hooks/useKnowledgeLoop.svelte";
 
 type TransitionTrigger = "user_tap" | "dwell" | "keyboard" | "programmatic";
 
@@ -15,9 +16,14 @@ type Props = {
 		entryKey: string,
 		toStage: LoopStageName,
 		trigger?: TransitionTrigger,
+		metadata?: TransitionMetadata,
 	) => Promise<unknown> | unknown;
 	onDismiss?: (entryKey: string) => Promise<unknown> | unknown;
 	onAsk?: (entry: KnowledgeLoopEntryData) => Promise<unknown> | unknown;
+	onOpen?: (
+		entry: KnowledgeLoopEntryData,
+		href: string,
+	) => Promise<unknown> | unknown;
 	canTransition?: (from: LoopStageName, to: LoopStageName) => boolean;
 	isInFlight?: (entryKey: string) => boolean;
 	resolveSourceUrl?: (entry: KnowledgeLoopEntryData) => string | null;
@@ -29,6 +35,7 @@ let {
 	onTransition,
 	onDismiss,
 	onAsk,
+	onOpen,
 	canTransition,
 	isInFlight,
 	resolveSourceUrl,
@@ -172,6 +179,38 @@ function sourceUrl(): string | null {
 	return null;
 }
 
+function transitionMetadata(option: DecisionOptionData): TransitionMetadata {
+	const presentedIntents = entry.decisionOptions
+		.map((o) => o.intent)
+		.filter((intent) => intent !== "unspecified");
+	const target =
+		entry.actTargets.find((t) => t.targetType === "article") ??
+		entry.actTargets[0];
+	const metadata: TransitionMetadata = {
+		actionId: option.actionId || option.intent,
+	};
+	if (presentedIntents.length > 0) {
+		metadata.presentedIntents = presentedIntents;
+	}
+	if (option.intent === "open" || option.intent === "save") {
+		metadata.actedIntent = option.intent;
+		metadata.continueFlag = option.intent === "open";
+		if (target && target.targetType !== "unspecified") {
+			metadata.targetType = target.targetType;
+			metadata.targetRef = target.targetRef;
+		}
+	}
+	return metadata;
+}
+
+function openHref(href: string) {
+	if (onOpen) {
+		void onOpen(entry, href);
+		return;
+	}
+	window.open(href, "_blank", "noopener,noreferrer");
+}
+
 function toggleExpanded() {
 	expanded = !expanded;
 }
@@ -202,19 +241,16 @@ async function handleCta(option: DecisionOptionData) {
 	const to = ctaToStage(option.intent);
 	if (!to || !onTransition) return;
 	if (!isAllowed(to)) return;
-	const result = await onTransition(entry.entryKey, to, "user_tap");
-	if (
-		option.intent === "open" &&
-		result &&
-		typeof result === "object" &&
-		"status" in result &&
-		(result as { status: string }).status === "accepted"
-	) {
+	const metadata = transitionMetadata(option);
+	if (option.intent === "open") {
 		const url = sourceUrl();
 		if (url) {
-			window.open(url, "_blank", "noopener,noreferrer");
+			openHref(url);
 		}
+		void onTransition(entry.entryKey, to, "user_tap", metadata);
+		return;
 	}
+	await onTransition(entry.entryKey, to, "user_tap", metadata);
 }
 
 async function handleDismiss() {

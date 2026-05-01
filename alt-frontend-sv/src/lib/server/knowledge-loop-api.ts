@@ -45,6 +45,14 @@ export async function transitionKnowledgeLoopForUser(
 			| "archive"
 			| "mark_reviewed";
 		observedProjectionRevision: number;
+		presentedIntents?: Array<
+			"open" | "ask" | "save" | "compare" | "revisit" | "snooze"
+		>;
+		actedIntent?: "open" | "ask" | "save" | "compare" | "revisit" | "snooze";
+		actionId?: string;
+		targetType?: "article" | "ask" | "recap" | "diff" | "cluster";
+		targetRef?: string;
+		continueFlag?: boolean;
 	},
 ): Promise<{
 	accepted: boolean;

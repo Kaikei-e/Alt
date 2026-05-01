@@ -10,6 +10,8 @@
  */
 
 import type {
+	ActTargetTypeName,
+	DecisionIntentName,
 	KnowledgeLoopEntryData,
 	KnowledgeLoopResult,
 	KnowledgeLoopSessionStateData,
@@ -20,6 +22,7 @@ import {
 	makeObserveThrottle,
 	type ObserveThrottleStorage,
 } from "./loop-observe-throttle";
+import type { LoopStreamFrame } from "./loop-stream-frames";
 import { canTransition } from "./loop-transitions";
 
 type Trigger =
@@ -33,6 +36,15 @@ type Trigger =
 	| "mark_reviewed";
 
 export type ReviewAction = "recheck" | "archive" | "mark_reviewed";
+
+export interface TransitionMetadata {
+	presentedIntents?: DecisionIntentName[];
+	actedIntent?: Exclude<DecisionIntentName, "unspecified">;
+	actionId?: string;
+	targetType?: Exclude<ActTargetTypeName, "unspecified">;
+	targetRef?: string;
+	continueFlag?: boolean;
+}
 
 type TransitionResult =
 	| { status: "accepted"; replay?: boolean }
@@ -128,6 +140,7 @@ export function useKnowledgeLoop(opts: UseKnowledgeLoopOptions) {
 		fromStage: LoopStageName;
 		toStage: LoopStageName;
 		trigger: Trigger;
+		metadata?: TransitionMetadata;
 	}): Promise<TransitionResult> {
 		const entry = findEntry(body.entryKey);
 		// Per-call deadline so a stalled fetch (server JWT expiry mid-flight,
@@ -148,6 +161,8 @@ export function useKnowledgeLoop(opts: UseKnowledgeLoopOptions) {
 					observedProjectionRevision:
 						entry?.projectionRevision ?? sessionState?.projectionRevision ?? 0,
 					...body,
+					...body.metadata,
+					metadata: undefined,
 				}),
 			});
 			if (res.status === 200) {
@@ -227,6 +242,7 @@ export function useKnowledgeLoop(opts: UseKnowledgeLoopOptions) {
 		entryKey: string,
 		toStage: LoopStageName,
 		trigger: Trigger = "user_tap",
+		metadata?: TransitionMetadata,
 	): Promise<TransitionResult> {
 		const entry = findEntry(entryKey);
 		if (!entry) return { status: "error", message: "unknown_entry" };
@@ -252,6 +268,7 @@ export function useKnowledgeLoop(opts: UseKnowledgeLoopOptions) {
 				fromStage: from,
 				toStage,
 				trigger,
+				metadata,
 			});
 			if (result.status === "accepted") {
 				applyLocalStage(entryKey, toStage);
@@ -345,6 +362,7 @@ export function useKnowledgeLoop(opts: UseKnowledgeLoopOptions) {
 				fromStage: effectiveStage(entry),
 				toStage: effectiveStage(entry),
 				trigger: action,
+				metadata: { actionId: action },
 			});
 		} finally {
 			inFlight.delete(entryKey);
@@ -375,6 +393,37 @@ export function useKnowledgeLoop(opts: UseKnowledgeLoopOptions) {
 		optimisticallyDismissed.add(entryKey);
 		entries = entries.filter((e) => e.entryKey !== entryKey);
 		bucketEntries = bucketEntries.filter((e) => e.entryKey !== entryKey);
+	}
+
+	function applyInlineEntry(entry: KnowledgeLoopEntryData) {
+		const foregroundWithout = entries.filter(
+			(e) => e.entryKey !== entry.entryKey,
+		);
+		const bucketWithout = bucketEntries.filter(
+			(e) => e.entryKey !== entry.entryKey,
+		);
+		if (entry.surfaceBucket === "now") {
+			entries = applyOptimisticOverlays([entry, ...foregroundWithout]);
+			bucketEntries = applyOptimisticOverlays(bucketWithout);
+			return;
+		}
+		entries = applyOptimisticOverlays(foregroundWithout);
+		bucketEntries = applyOptimisticOverlays([entry, ...bucketWithout]);
+	}
+
+	function applyStreamFrame(frame: LoopStreamFrame): boolean {
+		switch (frame.kind) {
+			case "appended":
+			case "revised":
+				if (!frame.inlineEntry) return false;
+				applyInlineEntry(frame.inlineEntry);
+				return true;
+			case "withdrawn":
+				applyLocalDismiss(frame.entryKey);
+				return true;
+			default:
+				return false;
+		}
 	}
 
 	function applyOptimisticOverlays(
@@ -466,6 +515,7 @@ export function useKnowledgeLoop(opts: UseKnowledgeLoopOptions) {
 		dismiss,
 		reviewAction,
 		replaceSnapshot,
+		applyStreamFrame,
 		resetInFlight,
 		canTransition,
 		isInFlight,
