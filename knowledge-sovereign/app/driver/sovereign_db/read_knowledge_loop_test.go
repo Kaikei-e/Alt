@@ -24,3 +24,18 @@ func TestWhyKindFromDB_SurfacePlannerNarrativeKinds(t *testing.T) {
 		})
 	}
 }
+
+func TestLifecycleStateFromDB(t *testing.T) {
+	require.Equal(t,
+		sovereignv1.LoopVisibilityState_LOOP_VISIBILITY_STATE_VISIBLE,
+		visibilityStateFromDB("visible"))
+	require.Equal(t,
+		sovereignv1.LoopVisibilityState_LOOP_VISIBILITY_STATE_SNOOZED,
+		visibilityStateFromDB("snoozed"))
+	require.Equal(t,
+		sovereignv1.LoopCompletionState_LOOP_COMPLETION_STATE_COMPLETED,
+		completionStateFromDB("completed"))
+	require.Equal(t,
+		sovereignv1.LoopCompletionState_LOOP_COMPLETION_STATE_DISMISSED,
+		completionStateFromDB("dismissed"))
+}

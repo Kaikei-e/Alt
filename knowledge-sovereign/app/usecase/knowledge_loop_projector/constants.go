@@ -84,4 +84,11 @@ const AggregateLoopSession = "knowledge_loop_session"
 // `act_targets[]` with a Recap entry when the resolver pinned a matching
 // snapshot id. Bump triggers a full reproject (knowledge-loop-reproject
 // runbook v7 row).
-const WhyMappingVersion = 7
+//
+// v8 (2026-05-01): SurfacePlanRecomputed projector branch added. The
+// system-only replan event now patches planner-owned entry placement columns
+// (surface_bucket, render_depth_hint, loop_priority, planner version, score
+// inputs) without touching why/lifecycle/freshness fields, then recomputes the
+// four surfaces. Bump signals operators to include the new branch in replay
+// validation.
+const WhyMappingVersion = 8

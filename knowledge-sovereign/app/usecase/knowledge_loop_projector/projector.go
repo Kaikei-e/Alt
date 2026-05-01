@@ -51,6 +51,11 @@ type Repository interface {
 	// `projection_seq_hiwater <= eventSeq` guard so replays are idempotent and
 	// out-of-order events are no-ops.
 	PatchKnowledgeLoopEntryDismissState(ctx context.Context, userID, tenantID, lensModeID, entryKey string, eventSeq int64, dismissState sovereignv1.DismissState) (*sovereign_db.KnowledgeLoopUpsertResult, error)
+	// PatchKnowledgeLoopEntrySurfacePlan updates only planner-owned placement
+	// columns on an existing entry. It is used by the system-only
+	// KnowledgeLoopSurfacePlanRecomputed event and must preserve why_*, lifecycle,
+	// freshness, artifacts, and action metadata.
+	PatchKnowledgeLoopEntrySurfacePlan(ctx context.Context, userID, tenantID, lensModeID, entryKey string, eventSeq int64, surfaceBucket sovereignv1.SurfaceBucket, renderDepthHint int32, loopPriority sovereignv1.LoopPriority, plannerVersion sovereignv1.SurfacePlannerVersion, scoreInputs []byte) (*sovereign_db.KnowledgeLoopUpsertResult, error)
 }
 
 // Config tunes the projector loop. Zero values fall back to defaults.
@@ -198,6 +203,9 @@ func (p *Projector) projectEvent(ctx context.Context, ev *sovereign_db.Knowledge
 		// only the why_* columns; seq-hiwater guard ensures replay safety.
 		return p.projectSummaryNarrativeBackfilled(ctx, ev, lensModeID)
 
+	case EventKnowledgeLoopSurfacePlanRecomputed:
+		return p.projectSurfacePlanRecomputed(ctx, ev, lensModeID)
+
 	case EventHomeItemOpened:
 		bucket, inputs, plannerVersion := p.resolveBucketAndInputs(ctx, ev)
 		entry, err := p.buildEntryFromEvent(ev, lensModeID,
@@ -207,6 +215,8 @@ func (p *Projector) projectEvent(ctx context.Context, ev *sovereign_db.Knowledge
 			return nil, err
 		}
 		entry.DismissState = sovereignv1.DismissState_DISMISS_STATE_COMPLETED
+		entry.VisibilityState = sovereignv1.LoopVisibilityState_LOOP_VISIBILITY_STATE_VISIBLE
+		entry.CompletionState = sovereignv1.LoopCompletionState_LOOP_COMPLETION_STATE_COMPLETED
 		res, err := p.repo.UpsertKnowledgeLoopEntry(ctx, entry)
 		if err != nil {
 			return nil, err
@@ -247,6 +257,8 @@ func (p *Projector) projectEvent(ctx context.Context, ev *sovereign_db.Knowledge
 			return nil, err
 		}
 		entry.DismissState = sovereignv1.DismissState_DISMISS_STATE_DISMISSED
+		entry.VisibilityState = sovereignv1.LoopVisibilityState_LOOP_VISIBILITY_STATE_VISIBLE
+		entry.CompletionState = sovereignv1.LoopCompletionState_LOOP_COMPLETION_STATE_DISMISSED
 		entry.DecisionOptions = nil
 		res, err := p.repo.UpsertKnowledgeLoopEntry(ctx, entry)
 		if err != nil {
@@ -569,6 +581,8 @@ func (p *Projector) buildEntryFromEvent(
 		DecisionOptions:       seedDecisionOptions(proposedStage),
 		ActTargets:            seedActTargets(ev, inputs),
 		DismissState:          sovereignv1.DismissState_DISMISS_STATE_ACTIVE,
+		VisibilityState:       sovereignv1.LoopVisibilityState_LOOP_VISIBILITY_STATE_VISIBLE,
+		CompletionState:       sovereignv1.LoopCompletionState_LOOP_COMPLETION_STATE_OPEN,
 		RenderDepthHint:       pickRenderDepth(surfaceBucket),
 		LoopPriority:          pickLoopPriority(surfaceBucket),
 		SurfacePlannerVersion: plannerVersion.Enum(),

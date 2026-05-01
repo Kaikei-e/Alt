@@ -20,10 +20,12 @@ import (
 
 // GetKnowledgeLoopEntriesFilter scopes a read request.
 type GetKnowledgeLoopEntriesFilter struct {
-	TenantID         uuid.UUID
-	UserID           uuid.UUID
-	LensModeID       string
-	SurfaceBucket    *sovereignv1.SurfaceBucket
+	TenantID      uuid.UUID
+	UserID        uuid.UUID
+	LensModeID    string
+	SurfaceBucket *sovereignv1.SurfaceBucket
+	// IncludeDismissed is retained for the RPC contract. When false, the read
+	// path now filters on visibility_state='visible' instead of dismiss_state.
 	IncludeDismissed bool
 	Limit            int
 }
@@ -41,7 +43,7 @@ func (r *Repository) GetKnowledgeLoopEntries(
 	where := "e.user_id = $1 AND e.tenant_id = $2 AND e.lens_mode_id = $3"
 
 	if !f.IncludeDismissed {
-		where += " AND e.dismiss_state = 'active'"
+		where += " AND e.visibility_state = 'visible'"
 	}
 	if f.SurfaceBucket != nil {
 		args = append(args, surfaceBucketToDB(*f.SurfaceBucket))
@@ -62,7 +64,8 @@ SELECT
   e.artifact_summary_version_id, e.artifact_tag_set_version_id, e.artifact_lens_version_id,
   e.why_kind, e.why_text, e.why_confidence, e.why_evidence_ref_ids, e.why_evidence_refs,
   e.change_summary, e.continue_context, e.decision_options, e.act_targets,
-  e.superseded_by_entry_key, e.dismiss_state, e.render_depth_hint, e.loop_priority,
+  e.superseded_by_entry_key, e.dismiss_state, e.visibility_state, e.completion_state,
+  e.render_depth_hint, e.loop_priority,
   e.surface_planner_version, e.surface_score_inputs,
   s.current_stage, s.current_stage_entered_at
 FROM knowledge_loop_entries_public e
@@ -72,7 +75,17 @@ LEFT JOIN knowledge_loop_entry_session_state s
  AND s.lens_mode_id = e.lens_mode_id
  AND s.entry_key = e.entry_key
 WHERE %s
-ORDER BY e.projection_seq_hiwater DESC
+ORDER BY
+  CASE e.loop_priority
+    WHEN 'critical' THEN 1
+    WHEN 'continuing' THEN 2
+    WHEN 'confirm' THEN 3
+    WHEN 'reference' THEN 4
+    ELSE 5
+  END ASC,
+  e.render_depth_hint DESC,
+  e.freshness_at DESC,
+  e.projection_seq_hiwater DESC
 LIMIT $%d
 `, where, len(args))
 
@@ -101,27 +114,27 @@ LIMIT $%d
 
 func scanKnowledgeLoopEntry(row pgx.Row) (*sovereignv1.KnowledgeLoopEntry, error) {
 	var (
-		userID, tenantID                          uuid.UUID
-		lensModeID, entryKey, sourceItemKey       string
-		proposedStage, surfaceBucket              string
-		projectionRevision, seqHiwater, sourceSeq int64
-		freshnessAt                               time.Time
-		sourceObservedAt                          *time.Time
-		artSummary, artTagSet, artLens            *string
-		whyKind, whyText                          string
-		whyConfidence                             *float32
-		whyEvidenceRefIDs                         []string
-		whyEvidenceRefsJSON                       []byte
-		changeSummary, continueContext            []byte
-		decisionOptions, actTargets               []byte
-		supersededBy                              *string
-		dismissState                              string
-		renderDepth                               int16
-		loopPriority                              string
-		surfacePlannerVersion                     int16
-		surfaceScoreInputs                        []byte
-		currentEntryStage                         *string
-		currentEntryStageEnteredAt                *time.Time
+		userID, tenantID                               uuid.UUID
+		lensModeID, entryKey, sourceItemKey            string
+		proposedStage, surfaceBucket                   string
+		projectionRevision, seqHiwater, sourceSeq      int64
+		freshnessAt                                    time.Time
+		sourceObservedAt                               *time.Time
+		artSummary, artTagSet, artLens                 *string
+		whyKind, whyText                               string
+		whyConfidence                                  *float32
+		whyEvidenceRefIDs                              []string
+		whyEvidenceRefsJSON                            []byte
+		changeSummary, continueContext                 []byte
+		decisionOptions, actTargets                    []byte
+		supersededBy                                   *string
+		dismissState, visibilityState, completionState string
+		renderDepth                                    int16
+		loopPriority                                   string
+		surfacePlannerVersion                          int16
+		surfaceScoreInputs                             []byte
+		currentEntryStage                              *string
+		currentEntryStageEnteredAt                     *time.Time
 	)
 
 	err := row.Scan(
@@ -132,7 +145,8 @@ func scanKnowledgeLoopEntry(row pgx.Row) (*sovereignv1.KnowledgeLoopEntry, error
 		&artSummary, &artTagSet, &artLens,
 		&whyKind, &whyText, &whyConfidence, &whyEvidenceRefIDs, &whyEvidenceRefsJSON,
 		&changeSummary, &continueContext, &decisionOptions, &actTargets,
-		&supersededBy, &dismissState, &renderDepth, &loopPriority,
+		&supersededBy, &dismissState, &visibilityState, &completionState,
+		&renderDepth, &loopPriority,
 		&surfacePlannerVersion, &surfaceScoreInputs,
 		&currentEntryStage, &currentEntryStageEnteredAt,
 	)
@@ -169,6 +183,8 @@ func scanKnowledgeLoopEntry(row pgx.Row) (*sovereignv1.KnowledgeLoopEntry, error
 		ActTargets:            actTargets,
 		SupersededByEntryKey:  supersededBy,
 		DismissState:          dismissStateFromDB(dismissState),
+		VisibilityState:       visibilityStateFromDB(visibilityState),
+		CompletionState:       completionStateFromDB(completionState),
 		RenderDepthHint:       int32(renderDepth),
 		LoopPriority:          loopPriorityFromDB(loopPriority),
 		SurfacePlannerVersion: plannerVersionFromDB(surfacePlannerVersion).Enum(),
@@ -365,6 +381,30 @@ func dismissStateFromDB(d string) sovereignv1.DismissState {
 		return sovereignv1.DismissState_DISMISS_STATE_COMPLETED
 	}
 	return sovereignv1.DismissState_DISMISS_STATE_UNSPECIFIED
+}
+
+func visibilityStateFromDB(v string) sovereignv1.LoopVisibilityState {
+	switch v {
+	case "visible":
+		return sovereignv1.LoopVisibilityState_LOOP_VISIBILITY_STATE_VISIBLE
+	case "hidden":
+		return sovereignv1.LoopVisibilityState_LOOP_VISIBILITY_STATE_HIDDEN
+	case "snoozed":
+		return sovereignv1.LoopVisibilityState_LOOP_VISIBILITY_STATE_SNOOZED
+	}
+	return sovereignv1.LoopVisibilityState_LOOP_VISIBILITY_STATE_UNSPECIFIED
+}
+
+func completionStateFromDB(c string) sovereignv1.LoopCompletionState {
+	switch c {
+	case "open":
+		return sovereignv1.LoopCompletionState_LOOP_COMPLETION_STATE_OPEN
+	case "completed":
+		return sovereignv1.LoopCompletionState_LOOP_COMPLETION_STATE_COMPLETED
+	case "dismissed":
+		return sovereignv1.LoopCompletionState_LOOP_COMPLETION_STATE_DISMISSED
+	}
+	return sovereignv1.LoopCompletionState_LOOP_COMPLETION_STATE_UNSPECIFIED
 }
 
 func whyKindFromDB(k string) sovereignv1.WhyKind {

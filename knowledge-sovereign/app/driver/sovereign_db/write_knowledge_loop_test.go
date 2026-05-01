@@ -50,7 +50,7 @@ func TestUpsertKnowledgeLoopEntry_Insert(t *testing.T) {
 	repo := &Repository{pool: mock}
 	entry := newLoopEntryProto(100)
 
-	anyArgs := make([]interface{}, 29)
+	anyArgs := make([]interface{}, 31)
 	for i := range anyArgs {
 		anyArgs[i] = pgxmock.AnyArg()
 	}
@@ -79,12 +79,12 @@ func TestUpsertKnowledgeLoopEntry_WritesSurfacePlannerMetadata(t *testing.T) {
 	entry.SurfacePlannerVersion = &v2
 	entry.SurfaceScoreInputs = []byte(`{"topic_overlap_count":1,"event_type":"SummaryVersionCreated"}`)
 
-	anyArgs := make([]interface{}, 29)
+	anyArgs := make([]interface{}, 31)
 	for i := range anyArgs {
 		anyArgs[i] = pgxmock.AnyArg()
 	}
-	anyArgs[27] = int16(2)
-	anyArgs[28] = entry.SurfaceScoreInputs
+	anyArgs[29] = int16(2)
+	anyArgs[30] = entry.SurfaceScoreInputs
 	mock.ExpectQuery(regexp.QuoteMeta(upsertKnowledgeLoopEntryQuery)).
 		WithArgs(anyArgs...).
 		WillReturnRows(pgxmock.NewRows([]string{"projection_revision", "projection_seq_hiwater"}).
@@ -108,7 +108,7 @@ func TestUpsertKnowledgeLoopEntry_SeqHiwaterGuardSkipsStaleReplay(t *testing.T) 
 	repo := &Repository{pool: mock}
 	stale := newLoopEntryProto(50)
 
-	anyArgs := make([]interface{}, 29)
+	anyArgs := make([]interface{}, 31)
 	for i := range anyArgs {
 		anyArgs[i] = pgxmock.AnyArg()
 	}
@@ -239,8 +239,8 @@ func TestPatchKnowledgeLoopEntryWhy_SeqHiwaterGuardSkipsStaleReplay(t *testing.T
 
 // TestPatchKnowledgeLoopEntryDismissState_AppliesPatchOnly mirrors the why-only
 // patch test (ADR-000846) for the canonical contract §8.2 Deferred path. The
-// SQL must touch ONLY the dismiss_state column — every other entry-level field
-// must remain untouched. A regression that broadens this UPDATE would reset the
+// SQL must touch only lifecycle columns — every other entry-level field must
+// remain untouched. A regression that broadens this UPDATE would reset the
 // entry's freshness_at / why_text / decision_options from a stale event payload.
 func TestPatchKnowledgeLoopEntryDismissState_AppliesPatchOnly(t *testing.T) {
 	mock, err := pgxmock.NewPool()
@@ -257,6 +257,8 @@ func TestPatchKnowledgeLoopEntryDismissState_AppliesPatchOnly(t *testing.T) {
 			"article:42",     // entry_key
 			int64(600),       // event_seq
 			"deferred",       // dismiss_state
+			"snoozed",        // visibility_state
+			"open",           // completion_state
 		).
 		WillReturnRows(pgxmock.NewRows([]string{"projection_revision", "projection_seq_hiwater"}).
 			AddRow(int64(3), int64(600)))
@@ -277,11 +279,13 @@ func TestPatchKnowledgeLoopEntryDismissState_AppliesPatchOnly(t *testing.T) {
 	require.Equal(t, int64(600), res.ProjectionSeqHiwater)
 	require.NoError(t, mock.ExpectationsWereMet())
 
-	// Structural guard: the SQL must touch dismiss_state but no other
-	// entry-level field. why_text / freshness_at / surface_bucket / proposed_stage
-	// etc. belong to the build-from-event upsert path and would clobber state
-	// the user has already moved through.
+	// Structural guard: the SQL may touch only lifecycle columns. why_text /
+	// freshness_at / surface_bucket / proposed_stage etc. belong to the
+	// build-from-event upsert path and would clobber state the user has
+	// already moved through.
 	require.Contains(t, patchKnowledgeLoopEntryDismissStateQuery, "dismiss_state")
+	require.Contains(t, patchKnowledgeLoopEntryDismissStateQuery, "visibility_state")
+	require.Contains(t, patchKnowledgeLoopEntryDismissStateQuery, "completion_state")
 	for _, forbidden := range []string{
 		"why_kind",
 		"why_text",
@@ -319,7 +323,7 @@ func TestPatchKnowledgeLoopEntryDismissState_SeqHiwaterGuardSkipsStaleReplay(t *
 
 	repo := &Repository{pool: mock}
 
-	anyPatchArgs := make([]interface{}, 6)
+	anyPatchArgs := make([]interface{}, 8)
 	for i := range anyPatchArgs {
 		anyPatchArgs[i] = pgxmock.AnyArg()
 	}
@@ -335,6 +339,119 @@ func TestPatchKnowledgeLoopEntryDismissState_SeqHiwaterGuardSkipsStaleReplay(t *
 		"article:missing",
 		50,
 		sovereignv1.DismissState_DISMISS_STATE_DEFERRED,
+	)
+	require.NoError(t, err)
+	require.False(t, res.Applied)
+	require.True(t, res.SkippedBySeqHiwater)
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+// TestPatchKnowledgeLoopEntrySurfacePlan_AppliesPatchOnly pins the
+// SurfacePlanRecomputed write contract. The event is a planner correction over
+// an existing entry, so it may update only surface placement metadata and the
+// seq/projection bookkeeping needed for replay safety.
+func TestPatchKnowledgeLoopEntrySurfacePlan_AppliesPatchOnly(t *testing.T) {
+	mock, err := pgxmock.NewPool()
+	require.NoError(t, err)
+	defer mock.Close()
+
+	repo := &Repository{pool: mock}
+	scoreInputs := []byte(`{"version_drift_count":1,"event_type":"knowledge_loop.surface_plan_recomputed.v1"}`)
+
+	mock.ExpectQuery(regexp.QuoteMeta(patchKnowledgeLoopEntrySurfacePlanQuery)).
+		WithArgs(
+			pgxmock.AnyArg(), // user_id
+			pgxmock.AnyArg(), // tenant_id
+			"default",        // lens_mode_id
+			"article:42",     // entry_key
+			int64(950),       // event_seq
+			"changed",        // surface_bucket
+			int16(2),         // render_depth_hint
+			"confirm",        // loop_priority
+			int16(2),         // surface_planner_version
+			scoreInputs,      // surface_score_inputs
+		).
+		WillReturnRows(pgxmock.NewRows([]string{"projection_revision", "projection_seq_hiwater"}).
+			AddRow(int64(4), int64(950)))
+
+	res, err := repo.PatchKnowledgeLoopEntrySurfacePlan(
+		context.Background(),
+		uuid.New().String(),
+		uuid.New().String(),
+		"default",
+		"article:42",
+		950,
+		sovereignv1.SurfaceBucket_SURFACE_BUCKET_CHANGED,
+		2,
+		sovereignv1.LoopPriority_LOOP_PRIORITY_CONFIRM,
+		sovereignv1.SurfacePlannerVersion_SURFACE_PLANNER_VERSION_V2,
+		scoreInputs,
+	)
+	require.NoError(t, err)
+	require.True(t, res.Applied)
+	require.False(t, res.SkippedBySeqHiwater)
+	require.Equal(t, int64(4), res.ProjectionRevision)
+	require.Equal(t, int64(950), res.ProjectionSeqHiwater)
+	require.NoError(t, mock.ExpectationsWereMet())
+
+	require.Contains(t, patchKnowledgeLoopEntrySurfacePlanQuery, "surface_bucket")
+	require.Contains(t, patchKnowledgeLoopEntrySurfacePlanQuery, "render_depth_hint")
+	require.Contains(t, patchKnowledgeLoopEntrySurfacePlanQuery, "loop_priority")
+	require.Contains(t, patchKnowledgeLoopEntrySurfacePlanQuery, "surface_planner_version")
+	require.Contains(t, patchKnowledgeLoopEntrySurfacePlanQuery, "surface_score_inputs")
+	for _, forbidden := range []string{
+		"dismiss_state",
+		"visibility_state",
+		"completion_state",
+		"why_kind",
+		"why_text",
+		"why_confidence",
+		"why_evidence_ref_ids",
+		"why_evidence_refs",
+		"freshness_at",
+		"source_observed_at",
+		"proposed_stage",
+		"superseded_by_entry_key",
+		"change_summary",
+		"continue_context",
+		"decision_options",
+		"act_targets",
+		"artifact_summary_version_id",
+		"artifact_tag_set_version_id",
+		"artifact_lens_version_id",
+	} {
+		require.NotContains(t, patchKnowledgeLoopEntrySurfacePlanQuery, forbidden,
+			"surface replan patch must not touch %s; it is a planner-only correction", forbidden)
+	}
+}
+
+func TestPatchKnowledgeLoopEntrySurfacePlan_SeqHiwaterGuardSkipsStaleReplay(t *testing.T) {
+	mock, err := pgxmock.NewPool()
+	require.NoError(t, err)
+	defer mock.Close()
+
+	repo := &Repository{pool: mock}
+
+	anyPatchArgs := make([]interface{}, 10)
+	for i := range anyPatchArgs {
+		anyPatchArgs[i] = pgxmock.AnyArg()
+	}
+	mock.ExpectQuery(regexp.QuoteMeta(patchKnowledgeLoopEntrySurfacePlanQuery)).
+		WithArgs(anyPatchArgs...).
+		WillReturnError(pgx.ErrNoRows)
+
+	res, err := repo.PatchKnowledgeLoopEntrySurfacePlan(
+		context.Background(),
+		uuid.New().String(),
+		uuid.New().String(),
+		"default",
+		"article:missing",
+		50,
+		sovereignv1.SurfaceBucket_SURFACE_BUCKET_NOW,
+		4,
+		sovereignv1.LoopPriority_LOOP_PRIORITY_CRITICAL,
+		sovereignv1.SurfacePlannerVersion_SURFACE_PLANNER_VERSION_V2,
+		[]byte(`{"topic_overlap_count":1}`),
 	)
 	require.NoError(t, err)
 	require.False(t, res.Applied)

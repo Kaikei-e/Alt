@@ -48,7 +48,8 @@ INSERT INTO knowledge_loop_entries (
   artifact_summary_version_id, artifact_tag_set_version_id, artifact_lens_version_id,
   why_kind, why_text, why_confidence, why_evidence_ref_ids, why_evidence_refs,
   change_summary, continue_context, decision_options, act_targets,
-  superseded_by_entry_key, dismiss_state, render_depth_hint, loop_priority,
+  superseded_by_entry_key, dismiss_state, visibility_state, completion_state,
+  render_depth_hint, loop_priority,
   surface_planner_version, surface_score_inputs
 ) VALUES (
   $1, $2, $3, $4, $5,
@@ -59,7 +60,7 @@ INSERT INTO knowledge_loop_entries (
   $15, $16, $17, $18, $19,
   $20, $21, $22, $23,
   $24, $25, $26, $27,
-  $28, $29
+  $28, $29, $30, $31
 )
 ON CONFLICT (user_id, lens_mode_id, entry_key) DO UPDATE SET
   proposed_stage         = EXCLUDED.proposed_stage,
@@ -84,6 +85,8 @@ ON CONFLICT (user_id, lens_mode_id, entry_key) DO UPDATE SET
   act_targets            = COALESCE(EXCLUDED.act_targets,      knowledge_loop_entries.act_targets),
   superseded_by_entry_key = COALESCE(EXCLUDED.superseded_by_entry_key, knowledge_loop_entries.superseded_by_entry_key),
   dismiss_state          = EXCLUDED.dismiss_state,
+  visibility_state       = EXCLUDED.visibility_state,
+  completion_state       = EXCLUDED.completion_state,
   render_depth_hint      = EXCLUDED.render_depth_hint,
   loop_priority          = EXCLUDED.loop_priority,
   surface_planner_version = EXCLUDED.surface_planner_version,
@@ -153,6 +156,15 @@ func (r *Repository) UpsertKnowledgeLoopEntry(
 		supersededBy = *e.SupersededByEntryKey
 	}
 
+	visibilityState := e.VisibilityState
+	if visibilityState == sovereignv1.LoopVisibilityState_LOOP_VISIBILITY_STATE_UNSPECIFIED {
+		visibilityState = defaultVisibilityState(e.DismissState, e.SurfaceBucket)
+	}
+	completionState := e.CompletionState
+	if completionState == sovereignv1.LoopCompletionState_LOOP_COMPLETION_STATE_UNSPECIFIED {
+		completionState = defaultCompletionState(e.DismissState)
+	}
+
 	var revision, seqHiwater int64
 	row := r.pool.QueryRow(ctx, upsertKnowledgeLoopEntryQuery,
 		userID, tenantID, e.LensModeId, e.EntryKey, e.SourceItemKey,
@@ -162,7 +174,9 @@ func (r *Repository) UpsertKnowledgeLoopEntry(
 		summaryVer, tagVer, lensVer,
 		whyKind, whyText, whyConfidence, whyEvidenceRefIDs, whyEvidenceRefsJSON,
 		e.ChangeSummary, e.ContinueContext, e.DecisionOptions, e.ActTargets,
-		supersededBy, dismissStateToDB(e.DismissState), int16(e.RenderDepthHint), loopPriorityToDB(e.LoopPriority),
+		supersededBy, dismissStateToDB(e.DismissState),
+		visibilityStateToDB(visibilityState), completionStateToDB(completionState),
+		int16(e.RenderDepthHint), loopPriorityToDB(e.LoopPriority),
 		plannerVersionToDB(e.SurfacePlannerVersion), e.SurfaceScoreInputs,
 	)
 	if err := row.Scan(&revision, &seqHiwater); err != nil {
@@ -263,6 +277,74 @@ func (r *Repository) PatchKnowledgeLoopEntryWhy(
 	}, nil
 }
 
+// patchKnowledgeLoopEntrySurfacePlanQuery applies a planner correction to an
+// existing entry. It intentionally touches only planner-owned placement
+// metadata, plus projection bookkeeping. Lifecycle state, why narrative,
+// freshness, artifacts, and action metadata are preserved so a system replan
+// cannot clobber user progress or source-derived context.
+const patchKnowledgeLoopEntrySurfacePlanQuery = `
+UPDATE knowledge_loop_entries SET
+  projection_revision     = projection_revision + 1,
+  projection_seq_hiwater  = GREATEST(projection_seq_hiwater, $5),
+  source_event_seq        = GREATEST(source_event_seq, $5),
+  projected_at            = NOW(),
+  surface_bucket          = $6,
+  render_depth_hint       = $7,
+  loop_priority           = $8,
+  surface_planner_version = $9,
+  surface_score_inputs    = $10
+WHERE user_id = $1 AND tenant_id = $2 AND lens_mode_id = $3 AND entry_key = $4
+  AND projection_seq_hiwater <= $5
+RETURNING projection_revision, projection_seq_hiwater
+`
+
+// PatchKnowledgeLoopEntrySurfacePlan patches only planner-owned surface
+// placement fields. Returns SkippedBySeqHiwater if the row is missing OR the
+// seq guard rejects, which are both safe outcomes during reproject.
+func (r *Repository) PatchKnowledgeLoopEntrySurfacePlan(
+	ctx context.Context,
+	userID, tenantID, lensModeID, entryKey string,
+	eventSeq int64,
+	surfaceBucket sovereignv1.SurfaceBucket,
+	renderDepthHint int32,
+	loopPriority sovereignv1.LoopPriority,
+	plannerVersion sovereignv1.SurfacePlannerVersion,
+	scoreInputs []byte,
+) (*KnowledgeLoopUpsertResult, error) {
+	uID, err := uuid.Parse(userID)
+	if err != nil {
+		return nil, fmt.Errorf("parse user_id: %w", err)
+	}
+	tID, err := uuid.Parse(tenantID)
+	if err != nil {
+		return nil, fmt.Errorf("parse tenant_id: %w", err)
+	}
+	if len(scoreInputs) == 0 {
+		scoreInputs = []byte("{}")
+	}
+
+	var revision, seqHiwater int64
+	row := r.pool.QueryRow(ctx, patchKnowledgeLoopEntrySurfacePlanQuery,
+		uID, tID, lensModeID, entryKey, eventSeq,
+		surfaceBucketToDB(surfaceBucket),
+		int16(renderDepthHint),
+		loopPriorityToDB(loopPriority),
+		plannerVersionToDB(plannerVersion.Enum()),
+		scoreInputs,
+	)
+	if err := row.Scan(&revision, &seqHiwater); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return &KnowledgeLoopUpsertResult{SkippedBySeqHiwater: true}, nil
+		}
+		return nil, fmt.Errorf("patch knowledge_loop_entry surface_plan: %w", err)
+	}
+	return &KnowledgeLoopUpsertResult{
+		Applied:              true,
+		ProjectionRevision:   revision,
+		ProjectionSeqHiwater: seqHiwater,
+	}, nil
+}
+
 // patchKnowledgeLoopEntryDismissStateQuery flips the dismiss_state column of
 // an existing entry row to the supplied state (typically `deferred` for the
 // canonical contract §8.2 "passive dismiss / snooze" path).
@@ -282,7 +364,9 @@ UPDATE knowledge_loop_entries SET
   projection_seq_hiwater = GREATEST(projection_seq_hiwater, $5),
   source_event_seq       = GREATEST(source_event_seq, $5),
   projected_at           = NOW(),
-  dismiss_state          = $6
+  dismiss_state          = $6,
+  visibility_state       = $7,
+  completion_state       = $8
 WHERE user_id = $1 AND tenant_id = $2 AND lens_mode_id = $3 AND entry_key = $4
   AND projection_seq_hiwater <= $5
 RETURNING projection_revision, projection_seq_hiwater
@@ -307,9 +391,13 @@ func (r *Repository) PatchKnowledgeLoopEntryDismissState(
 	}
 
 	var revision, seqHiwater int64
+	visibilityState := lifecycleVisibilityForDismissPatch(dismissState)
+	completionState := lifecycleCompletionForDismissPatch(dismissState)
 	row := r.pool.QueryRow(ctx, patchKnowledgeLoopEntryDismissStateQuery,
 		uID, tID, lensModeID, entryKey, eventSeq,
 		dismissStateToDB(dismissState),
+		visibilityStateToDB(visibilityState),
+		completionStateToDB(completionState),
 	)
 	if err := row.Scan(&revision, &seqHiwater); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -611,6 +699,83 @@ func dismissStateToDB(d sovereignv1.DismissState) string {
 		return "completed"
 	}
 	return "active"
+}
+
+func defaultVisibilityState(
+	d sovereignv1.DismissState,
+	b sovereignv1.SurfaceBucket,
+) sovereignv1.LoopVisibilityState {
+	switch d {
+	case sovereignv1.DismissState_DISMISS_STATE_DEFERRED:
+		return sovereignv1.LoopVisibilityState_LOOP_VISIBILITY_STATE_SNOOZED
+	case sovereignv1.DismissState_DISMISS_STATE_DISMISSED:
+		if b == sovereignv1.SurfaceBucket_SURFACE_BUCKET_REVIEW {
+			return sovereignv1.LoopVisibilityState_LOOP_VISIBILITY_STATE_VISIBLE
+		}
+		return sovereignv1.LoopVisibilityState_LOOP_VISIBILITY_STATE_HIDDEN
+	case sovereignv1.DismissState_DISMISS_STATE_COMPLETED:
+		if b == sovereignv1.SurfaceBucket_SURFACE_BUCKET_CONTINUE {
+			return sovereignv1.LoopVisibilityState_LOOP_VISIBILITY_STATE_VISIBLE
+		}
+		return sovereignv1.LoopVisibilityState_LOOP_VISIBILITY_STATE_HIDDEN
+	default:
+		return sovereignv1.LoopVisibilityState_LOOP_VISIBILITY_STATE_VISIBLE
+	}
+}
+
+func defaultCompletionState(d sovereignv1.DismissState) sovereignv1.LoopCompletionState {
+	switch d {
+	case sovereignv1.DismissState_DISMISS_STATE_COMPLETED:
+		return sovereignv1.LoopCompletionState_LOOP_COMPLETION_STATE_COMPLETED
+	case sovereignv1.DismissState_DISMISS_STATE_DISMISSED:
+		return sovereignv1.LoopCompletionState_LOOP_COMPLETION_STATE_DISMISSED
+	default:
+		return sovereignv1.LoopCompletionState_LOOP_COMPLETION_STATE_OPEN
+	}
+}
+
+func lifecycleVisibilityForDismissPatch(d sovereignv1.DismissState) sovereignv1.LoopVisibilityState {
+	switch d {
+	case sovereignv1.DismissState_DISMISS_STATE_ACTIVE:
+		return sovereignv1.LoopVisibilityState_LOOP_VISIBILITY_STATE_VISIBLE
+	case sovereignv1.DismissState_DISMISS_STATE_DEFERRED:
+		return sovereignv1.LoopVisibilityState_LOOP_VISIBILITY_STATE_SNOOZED
+	default:
+		return sovereignv1.LoopVisibilityState_LOOP_VISIBILITY_STATE_HIDDEN
+	}
+}
+
+func lifecycleCompletionForDismissPatch(d sovereignv1.DismissState) sovereignv1.LoopCompletionState {
+	switch d {
+	case sovereignv1.DismissState_DISMISS_STATE_COMPLETED:
+		return sovereignv1.LoopCompletionState_LOOP_COMPLETION_STATE_COMPLETED
+	case sovereignv1.DismissState_DISMISS_STATE_DISMISSED:
+		return sovereignv1.LoopCompletionState_LOOP_COMPLETION_STATE_DISMISSED
+	default:
+		return sovereignv1.LoopCompletionState_LOOP_COMPLETION_STATE_OPEN
+	}
+}
+
+func visibilityStateToDB(v sovereignv1.LoopVisibilityState) string {
+	switch v {
+	case sovereignv1.LoopVisibilityState_LOOP_VISIBILITY_STATE_HIDDEN:
+		return "hidden"
+	case sovereignv1.LoopVisibilityState_LOOP_VISIBILITY_STATE_SNOOZED:
+		return "snoozed"
+	default:
+		return "visible"
+	}
+}
+
+func completionStateToDB(c sovereignv1.LoopCompletionState) string {
+	switch c {
+	case sovereignv1.LoopCompletionState_LOOP_COMPLETION_STATE_COMPLETED:
+		return "completed"
+	case sovereignv1.LoopCompletionState_LOOP_COMPLETION_STATE_DISMISSED:
+		return "dismissed"
+	default:
+		return "open"
+	}
 }
 
 func whyKindToDB(k sovereignv1.WhyKind) string {

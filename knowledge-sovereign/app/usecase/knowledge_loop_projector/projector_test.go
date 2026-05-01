@@ -9,6 +9,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
+	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"knowledge-sovereign/driver/sovereign_db"
 	sovereignv1 "knowledge-sovereign/gen/proto/services/sovereign/v1"
@@ -27,6 +28,7 @@ type fakeRepo struct {
 	surfaces       []*sovereignv1.KnowledgeLoopSurface
 	patches        []patchCall
 	dismissPatches []dismissPatchCall
+	surfacePatches []surfacePlanPatchCall
 	checkpoints    []int64
 }
 
@@ -48,6 +50,18 @@ type dismissPatchCall struct {
 	UserID, TenantID, LensModeID, EntryKey string
 	EventSeq                               int64
 	DismissState                           sovereignv1.DismissState
+}
+
+// surfacePlanPatchCall records the arguments to PatchKnowledgeLoopEntrySurfacePlan
+// so SurfacePlanRecomputed can be asserted as a patch-only projector branch.
+type surfacePlanPatchCall struct {
+	UserID, TenantID, LensModeID, EntryKey string
+	EventSeq                               int64
+	SurfaceBucket                          sovereignv1.SurfaceBucket
+	RenderDepthHint                        int32
+	LoopPriority                           sovereignv1.LoopPriority
+	PlannerVersion                         sovereignv1.SurfacePlannerVersion
+	ScoreInputs                            []byte
 }
 
 type entrySessionCall struct {
@@ -112,7 +126,7 @@ func (f *fakeRepo) GetKnowledgeLoopEntries(ctx context.Context, filter sovereign
 		if filter.SurfaceBucket != nil && e.SurfaceBucket != *filter.SurfaceBucket {
 			continue
 		}
-		if !filter.IncludeDismissed && e.DismissState != sovereignv1.DismissState_DISMISS_STATE_ACTIVE {
+		if !filter.IncludeDismissed && e.VisibilityState != sovereignv1.LoopVisibilityState_LOOP_VISIBILITY_STATE_VISIBLE {
 			continue
 		}
 		out = append(out, e)
@@ -141,12 +155,53 @@ func (f *fakeRepo) PatchKnowledgeLoopEntryDismissState(ctx context.Context, user
 	for _, e := range f.entries {
 		if e.UserId == userID && e.TenantId == tenantID && e.LensModeId == lensModeID && e.EntryKey == entryKey {
 			e.DismissState = dismissState
+			switch dismissState {
+			case sovereignv1.DismissState_DISMISS_STATE_ACTIVE:
+				e.VisibilityState = sovereignv1.LoopVisibilityState_LOOP_VISIBILITY_STATE_VISIBLE
+				e.CompletionState = sovereignv1.LoopCompletionState_LOOP_COMPLETION_STATE_OPEN
+			case sovereignv1.DismissState_DISMISS_STATE_DEFERRED:
+				e.VisibilityState = sovereignv1.LoopVisibilityState_LOOP_VISIBILITY_STATE_SNOOZED
+				e.CompletionState = sovereignv1.LoopCompletionState_LOOP_COMPLETION_STATE_OPEN
+			case sovereignv1.DismissState_DISMISS_STATE_DISMISSED:
+				e.VisibilityState = sovereignv1.LoopVisibilityState_LOOP_VISIBILITY_STATE_HIDDEN
+				e.CompletionState = sovereignv1.LoopCompletionState_LOOP_COMPLETION_STATE_DISMISSED
+			case sovereignv1.DismissState_DISMISS_STATE_COMPLETED:
+				e.VisibilityState = sovereignv1.LoopVisibilityState_LOOP_VISIBILITY_STATE_HIDDEN
+				e.CompletionState = sovereignv1.LoopCompletionState_LOOP_COMPLETION_STATE_COMPLETED
+			}
 			e.ProjectionSeqHiwater = eventSeq
 		}
 	}
 	return &sovereign_db.KnowledgeLoopUpsertResult{
 		Applied: true, ProjectionRevision: 3, ProjectionSeqHiwater: eventSeq,
 	}, nil
+}
+
+func (f *fakeRepo) PatchKnowledgeLoopEntrySurfacePlan(ctx context.Context, userID, tenantID, lensModeID, entryKey string, eventSeq int64, surfaceBucket sovereignv1.SurfaceBucket, renderDepthHint int32, loopPriority sovereignv1.LoopPriority, plannerVersion sovereignv1.SurfacePlannerVersion, scoreInputs []byte) (*sovereign_db.KnowledgeLoopUpsertResult, error) {
+	f.surfacePatches = append(f.surfacePatches, surfacePlanPatchCall{
+		UserID: userID, TenantID: tenantID, LensModeID: lensModeID,
+		EntryKey: entryKey, EventSeq: eventSeq, SurfaceBucket: surfaceBucket,
+		RenderDepthHint: renderDepthHint, LoopPriority: loopPriority,
+		PlannerVersion: plannerVersion, ScoreInputs: append([]byte(nil), scoreInputs...),
+	})
+	for _, e := range f.entries {
+		if e.UserId == userID && e.TenantId == tenantID && e.LensModeId == lensModeID && e.EntryKey == entryKey {
+			if e.ProjectionSeqHiwater > eventSeq {
+				return &sovereign_db.KnowledgeLoopUpsertResult{SkippedBySeqHiwater: true}, nil
+			}
+			e.SurfaceBucket = surfaceBucket
+			e.RenderDepthHint = renderDepthHint
+			e.LoopPriority = loopPriority
+			e.SurfacePlannerVersion = plannerVersion.Enum()
+			e.SurfaceScoreInputs = append([]byte(nil), scoreInputs...)
+			e.ProjectionSeqHiwater = eventSeq
+			e.SourceEventSeq = eventSeq
+			return &sovereign_db.KnowledgeLoopUpsertResult{
+				Applied: true, ProjectionRevision: 4, ProjectionSeqHiwater: eventSeq,
+			}, nil
+		}
+	}
+	return &sovereign_db.KnowledgeLoopUpsertResult{SkippedBySeqHiwater: true}, nil
 }
 
 func newProjector(repo Repository) *Projector {
@@ -190,6 +245,8 @@ func TestRunBatch_HomeItemOpened_ProjectsEntryAndSession(t *testing.T) {
 	require.Equal(t, sovereignv1.LoopStage_LOOP_STAGE_ACT, entry.ProposedStage)
 	require.Equal(t, sovereignv1.SurfaceBucket_SURFACE_BUCKET_CONTINUE, entry.SurfaceBucket)
 	require.Equal(t, sovereignv1.DismissState_DISMISS_STATE_COMPLETED, entry.DismissState)
+	require.Equal(t, sovereignv1.LoopVisibilityState_LOOP_VISIBILITY_STATE_VISIBLE, entry.VisibilityState)
+	require.Equal(t, sovereignv1.LoopCompletionState_LOOP_COMPLETION_STATE_COMPLETED, entry.CompletionState)
 	require.Equal(t, ev.OccurredAt.UTC(), entry.FreshnessAt.AsTime().UTC(),
 		"freshness_at must come from event occurred_at, not wall-clock")
 
@@ -199,6 +256,55 @@ func TestRunBatch_HomeItemOpened_ProjectsEntryAndSession(t *testing.T) {
 		"current_stage_entered_at must come from event occurred_at, not wall-clock")
 
 	require.Equal(t, int64(100), repo.checkpoint, "checkpoint advances to last processed seq")
+}
+
+func TestRunBatch_HomeItemOpened_RemainsVisibleInContinueSurface(t *testing.T) {
+	userID := uuid.New()
+	ev := makeEvent(t, EventHomeItemOpened, 110, userID, map[string]any{"entry_key": "article:continue-visible"})
+
+	repo := &fakeRepo{events: []sovereign_db.KnowledgeEvent{ev}}
+	p := newProjector(repo)
+	require.NoError(t, p.RunBatch(context.Background()))
+
+	var continueSurface *sovereignv1.KnowledgeLoopSurface
+	for _, s := range repo.surfaces {
+		if s.SurfaceBucket == sovereignv1.SurfaceBucket_SURFACE_BUCKET_CONTINUE {
+			continueSurface = s
+			break
+		}
+	}
+	require.NotNil(t, continueSurface)
+	require.NotNil(t, continueSurface.PrimaryEntryKey)
+	require.Equal(t, "article:continue-visible", *continueSurface.PrimaryEntryKey,
+		"HomeItemOpened carries completion metadata but must remain read-visible in Continue")
+	require.JSONEq(t, `{"active_count":1}`, string(continueSurface.LoopHealth))
+}
+
+func TestRunBatch_HomeItemDismissed_RemainsVisibleInReviewSurface(t *testing.T) {
+	userID := uuid.New()
+	ev := makeEvent(t, EventHomeItemDismissed, 120, userID, map[string]any{"entry_key": "article:review-visible"})
+
+	repo := &fakeRepo{events: []sovereign_db.KnowledgeEvent{ev}}
+	p := newProjector(repo)
+	require.NoError(t, p.RunBatch(context.Background()))
+
+	entry := repo.entries[0]
+	require.Equal(t, sovereignv1.SurfaceBucket_SURFACE_BUCKET_REVIEW, entry.SurfaceBucket)
+	require.Equal(t, sovereignv1.DismissState_DISMISS_STATE_DISMISSED, entry.DismissState)
+	require.Equal(t, sovereignv1.LoopVisibilityState_LOOP_VISIBILITY_STATE_VISIBLE, entry.VisibilityState)
+	require.Equal(t, sovereignv1.LoopCompletionState_LOOP_COMPLETION_STATE_DISMISSED, entry.CompletionState)
+
+	var reviewSurface *sovereignv1.KnowledgeLoopSurface
+	for _, s := range repo.surfaces {
+		if s.SurfaceBucket == sovereignv1.SurfaceBucket_SURFACE_BUCKET_REVIEW {
+			reviewSurface = s
+			break
+		}
+	}
+	require.NotNil(t, reviewSurface)
+	require.NotNil(t, reviewSurface.PrimaryEntryKey)
+	require.Equal(t, "article:review-visible", *reviewSurface.PrimaryEntryKey,
+		"HomeItemDismissed is Review work, not a read-path hide")
 }
 
 func TestRunBatch_SummaryVersionCreated_ObserveSeed(t *testing.T) {
@@ -498,4 +604,81 @@ func TestRunBatch_SummaryVersionCreated_RecomputesSurface(t *testing.T) {
 	require.NotNil(t, nowSurface.PrimaryEntryKey)
 	require.Equal(t, "article:surface-1", *nowSurface.PrimaryEntryKey)
 	require.JSONEq(t, `{"active_count":1}`, string(nowSurface.LoopHealth))
+}
+
+func TestRunBatch_SurfacePlanRecomputed_PatchesEntryAndRecomputesSurfaces(t *testing.T) {
+	userID := uuid.New()
+	ev := makeEvent(t, EventKnowledgeLoopSurfacePlanRecomputed, 950, userID, map[string]any{
+		"lens_mode_id":    "default",
+		"planner_version": "SURFACE_PLANNER_VERSION_V2",
+		"plan_seq":        1,
+		"entry_inputs": []map[string]any{{
+			"entry_key":            "article:replan-1",
+			"version_drift_count":  1,
+			"freshness_at":         "2026-04-26T10:00:00Z",
+			"recap_topic_snapshot": "ignored-by-test",
+		}},
+	})
+	v1 := sovereignv1.SurfacePlannerVersion_SURFACE_PLANNER_VERSION_V1
+	repo := &fakeRepo{
+		events: []sovereign_db.KnowledgeEvent{ev},
+		entries: []*sovereignv1.KnowledgeLoopEntry{{
+			UserId:                userID.String(),
+			TenantId:              ev.TenantID.String(),
+			LensModeId:            "default",
+			EntryKey:              "article:replan-1",
+			SourceItemKey:         "article:replan-1",
+			ProposedStage:         sovereignv1.LoopStage_LOOP_STAGE_OBSERVE,
+			SurfaceBucket:         sovereignv1.SurfaceBucket_SURFACE_BUCKET_NOW,
+			ProjectionSeqHiwater:  100,
+			SourceEventSeq:        100,
+			FreshnessAt:           timestamppb.New(ev.OccurredAt.Add(-time.Hour)),
+			DismissState:          sovereignv1.DismissState_DISMISS_STATE_ACTIVE,
+			VisibilityState:       sovereignv1.LoopVisibilityState_LOOP_VISIBILITY_STATE_VISIBLE,
+			CompletionState:       sovereignv1.LoopCompletionState_LOOP_COMPLETION_STATE_OPEN,
+			RenderDepthHint:       pickRenderDepth(sovereignv1.SurfaceBucket_SURFACE_BUCKET_NOW),
+			LoopPriority:          pickLoopPriority(sovereignv1.SurfaceBucket_SURFACE_BUCKET_NOW),
+			SurfacePlannerVersion: &v1,
+			SurfaceScoreInputs:    []byte(`{"event_type":"SummaryVersionCreated"}`),
+		}},
+	}
+
+	require.NoError(t, newProjector(repo).RunBatch(context.Background()))
+
+	require.Len(t, repo.entries, 1, "replan must not use full entry upsert")
+	require.Len(t, repo.surfacePatches, 1, "replan must patch existing entries")
+	patch := repo.surfacePatches[0]
+	require.Equal(t, "article:replan-1", patch.EntryKey)
+	require.Equal(t, int64(950), patch.EventSeq)
+	require.Equal(t, sovereignv1.SurfaceBucket_SURFACE_BUCKET_CHANGED, patch.SurfaceBucket)
+	require.Equal(t, sovereignv1.SurfacePlannerVersion_SURFACE_PLANNER_VERSION_V2, patch.PlannerVersion)
+	require.JSONEq(t,
+		`{"topic_overlap_count":0,"tag_overlap_count":0,"has_augur_link":false,"version_drift_count":1,"has_open_interaction":false,"freshness_at":"2026-04-26T10:00:00Z","event_type":"knowledge_loop.surface_plan_recomputed.v1"}`,
+		string(patch.ScoreInputs),
+	)
+
+	entry := repo.entries[0]
+	require.Equal(t, sovereignv1.SurfaceBucket_SURFACE_BUCKET_CHANGED, entry.SurfaceBucket)
+	require.Equal(t, pickRenderDepth(sovereignv1.SurfaceBucket_SURFACE_BUCKET_CHANGED), entry.RenderDepthHint)
+	require.Equal(t, pickLoopPriority(sovereignv1.SurfaceBucket_SURFACE_BUCKET_CHANGED), entry.LoopPriority)
+	require.Equal(t, sovereignv1.SurfacePlannerVersion_SURFACE_PLANNER_VERSION_V2, entry.GetSurfacePlannerVersion())
+	require.Equal(t, int64(950), entry.ProjectionSeqHiwater)
+	require.Equal(t, sovereignv1.DismissState_DISMISS_STATE_ACTIVE, entry.DismissState,
+		"surface replan must not alter lifecycle state")
+
+	var changedSurface *sovereignv1.KnowledgeLoopSurface
+	var nowSurface *sovereignv1.KnowledgeLoopSurface
+	for _, s := range repo.surfaces {
+		switch s.SurfaceBucket {
+		case sovereignv1.SurfaceBucket_SURFACE_BUCKET_CHANGED:
+			changedSurface = s
+		case sovereignv1.SurfaceBucket_SURFACE_BUCKET_NOW:
+			nowSurface = s
+		}
+	}
+	require.NotNil(t, changedSurface)
+	require.NotNil(t, changedSurface.PrimaryEntryKey)
+	require.Equal(t, "article:replan-1", *changedSurface.PrimaryEntryKey)
+	require.NotNil(t, nowSurface)
+	require.Nil(t, nowSurface.PrimaryEntryKey, "recompute must clear the old bucket surface")
 }
