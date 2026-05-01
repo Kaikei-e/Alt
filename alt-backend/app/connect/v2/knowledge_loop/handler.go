@@ -110,6 +110,34 @@ func (h *Handler) TransitionKnowledgeLoop(
 		return nil, connect.NewError(connect.CodeUnauthenticated, errors.New("unauthenticated"))
 	}
 
+	presentedIntents := make([]string, 0, len(req.Msg.PresentedIntents))
+	for _, intent := range req.Msg.PresentedIntents {
+		if intent == loopv1.DecisionIntent_DECISION_INTENT_UNSPECIFIED {
+			continue
+		}
+		presentedIntents = append(presentedIntents, intent.String())
+	}
+	var actedIntent *string
+	if req.Msg.ActedIntent != nil && req.Msg.GetActedIntent() != loopv1.DecisionIntent_DECISION_INTENT_UNSPECIFIED {
+		v := req.Msg.GetActedIntent().String()
+		actedIntent = &v
+	}
+	var actionID *string
+	if req.Msg.ActionId != nil && req.Msg.GetActionId() != "" {
+		v := req.Msg.GetActionId()
+		actionID = &v
+	}
+	var targetType *string
+	if req.Msg.TargetType != nil && req.Msg.GetTargetType() != loopv1.ActTargetType_ACT_TARGET_TYPE_UNSPECIFIED {
+		v := req.Msg.GetTargetType().String()
+		targetType = &v
+	}
+	var targetRef *string
+	if req.Msg.TargetRef != nil && req.Msg.GetTargetRef() != "" {
+		v := req.Msg.GetTargetRef()
+		targetRef = &v
+	}
+
 	in := knowledge_loop_usecase.TransitionInput{
 		TenantID:             user.TenantID,
 		UserID:               user.UserID,
@@ -120,6 +148,12 @@ func (h *Handler) TransitionKnowledgeLoop(
 		ToStage:              req.Msg.ToStage.String(),
 		Trigger:              req.Msg.Trigger.String(),
 		ObservedProjRevision: req.Msg.ObservedProjectionRevision,
+		PresentedIntents:     presentedIntents,
+		ActedIntent:          actedIntent,
+		ActionID:             actionID,
+		TargetType:           targetType,
+		TargetRef:            targetRef,
+		ContinueFlag:         req.Msg.ContinueFlag,
 	}
 
 	result, err := h.transitionUsecase.Execute(ctx, in)
@@ -274,7 +308,8 @@ func (h *Handler) StreamKnowledgeLoopUpdates(
 					}
 					continue
 				}
-				msg := frameToProto(frame, lastSeq)
+				frame = h.attachInlineLoopEntry(ctx, user, req.Msg.LensModeId, frame, ev.EventSeq)
+				msg := frameToProto(frame, ev.EventSeq)
 				if msg == nil {
 					if ev.EventSeq > lastSeq {
 						lastSeq = ev.EventSeq
@@ -290,6 +325,42 @@ func (h *Handler) StreamKnowledgeLoopUpdates(
 			}
 		}
 	}
+}
+
+func (h *Handler) attachInlineLoopEntry(
+	ctx context.Context,
+	user *domain.UserContext,
+	lensModeID string,
+	frame knowledge_loop_usecase.StreamUpdateFrame,
+	eventSeq int64,
+) knowledge_loop_usecase.StreamUpdateFrame {
+	if h.getUsecase == nil || frame.EntryKey == "" {
+		return frame
+	}
+	if lensModeID == "" {
+		lensModeID = "default"
+	}
+	if frame.Kind != knowledge_loop_usecase.StreamUpdateKindAppended &&
+		frame.Kind != knowledge_loop_usecase.StreamUpdateKindRevised {
+		return frame
+	}
+	result, err := h.getUsecase.Execute(ctx, user.TenantID, user.UserID, lensModeID, 5)
+	if err != nil {
+		h.logger.WarnContext(ctx, "alt.knowledge_loop.stream_inline_lookup_failed",
+			"user_id", user.UserID, "entry_key", frame.EntryKey, "err", err)
+		return frame
+	}
+	for _, entry := range append(result.ForegroundEntries, result.BucketEntries...) {
+		if entry.EntryKey != frame.EntryKey {
+			continue
+		}
+		if entry.ProjectionSeqHiwater < eventSeq {
+			return frame
+		}
+		frame.InlineEntry = entry
+		return frame
+	}
+	return frame
 }
 
 // sendStreamExpired emits a terminal StreamExpired envelope with the given reason.
@@ -311,12 +382,14 @@ func frameToProto(frame knowledge_loop_usecase.StreamUpdateFrame, seqHiwater int
 	msg := &loopv1.StreamKnowledgeLoopUpdatesResponse{ProjectionSeqHiwater: seqHiwater}
 	switch frame.Kind {
 	case knowledge_loop_usecase.StreamUpdateKindAppended:
+		entry := toProtoEntry(frame.InlineEntry)
 		msg.Update = &loopv1.StreamKnowledgeLoopUpdatesResponse_Appended{
-			Appended: &loopv1.EntryAppended{EntryKey: frame.EntryKey, Revision: frame.Revision},
+			Appended: &loopv1.EntryAppended{EntryKey: frame.EntryKey, Revision: frame.Revision, InlineEntry: entry},
 		}
 	case knowledge_loop_usecase.StreamUpdateKindRevised:
+		entry := toProtoEntry(frame.InlineEntry)
 		msg.Update = &loopv1.StreamKnowledgeLoopUpdatesResponse_Revised{
-			Revised: &loopv1.EntryRevised{EntryKey: frame.EntryKey, Revision: frame.Revision},
+			Revised: &loopv1.EntryRevised{EntryKey: frame.EntryKey, Revision: frame.Revision, InlineEntry: entry},
 		}
 	case knowledge_loop_usecase.StreamUpdateKindSuperseded:
 		msg.Update = &loopv1.StreamKnowledgeLoopUpdatesResponse_Superseded{

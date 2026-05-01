@@ -167,6 +167,38 @@ func TestTransition_ReviewActionPayloadUsesTriggerNotAction(t *testing.T) {
 		"review action distinction lives in TransitionTrigger, not a parallel action field")
 }
 
+func TestTransition_ActedPayloadCarriesIntentMetadata(t *testing.T) {
+	dedupe := &fakeDedupePort{reserved: true}
+	appendPort := &fakeAppendPort{}
+	uc := NewTransitionKnowledgeLoopUsecase(dedupe, appendPort, nil, time.Now)
+
+	acted := "DECISION_INTENT_OPEN"
+	actionID := "open"
+	targetType := "ACT_TARGET_TYPE_ARTICLE"
+	targetRef := "article:42"
+	in := newTransitionInput(t, "LOOP_STAGE_DECIDE", "LOOP_STAGE_ACT", "TRANSITION_TRIGGER_USER_TAP")
+	in.ActedIntent = &acted
+	in.ActionID = &actionID
+	in.TargetType = &targetType
+	in.TargetRef = &targetRef
+	in.ContinueFlag = true
+
+	res, err := uc.Execute(context.Background(), in)
+
+	require.NoError(t, err)
+	require.True(t, res.Accepted)
+	require.Len(t, appendPort.events, 1)
+	require.Equal(t, domain.EventKnowledgeLoopActed, appendPort.events[0].EventType)
+
+	var payload map[string]any
+	require.NoError(t, json.Unmarshal(appendPort.events[0].Payload, &payload))
+	require.Equal(t, "DECISION_INTENT_OPEN", payload["acted_intent"])
+	require.Equal(t, "open", payload["action_id"])
+	require.Equal(t, "ACT_TARGET_TYPE_ARTICLE", payload["target_type"])
+	require.Equal(t, "article:42", payload["target_ref"])
+	require.Equal(t, true, payload["continue_flag"])
+}
+
 func TestTransition_SkipsAppendOnDuplicateReservation(t *testing.T) {
 	canonical := "article:42"
 	dedupe := &fakeDedupePort{

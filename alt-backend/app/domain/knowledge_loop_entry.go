@@ -36,6 +36,25 @@ const (
 	DismissCompleted DismissState = "completed"
 )
 
+// LoopVisibilityState controls read-path visibility independently from
+// DismissState, which remains as compatibility lifecycle metadata.
+type LoopVisibilityState string
+
+const (
+	LoopVisibilityVisible LoopVisibilityState = "visible"
+	LoopVisibilityHidden  LoopVisibilityState = "hidden"
+	LoopVisibilitySnoozed LoopVisibilityState = "snoozed"
+)
+
+// LoopCompletionState captures semantic completion independent of visibility.
+type LoopCompletionState string
+
+const (
+	LoopCompletionOpen      LoopCompletionState = "open"
+	LoopCompletionCompleted LoopCompletionState = "completed"
+	LoopCompletionDismissed LoopCompletionState = "dismissed"
+)
+
 // WhyKind is the structural categorization of a why payload.
 // The projector maps legacy Phase-0 why codes (new_unread, in_weekly_recap, ...) into a WhyKind
 // via an exhaustive mapping table versioned by WhyMappingVersion.
@@ -152,8 +171,10 @@ type KnowledgeLoopEntry struct {
 	DecisionOptions []byte `json:"decision_options,omitempty" db:"decision_options"`
 	ActTargets      []byte `json:"act_targets,omitempty" db:"act_targets"`
 
-	SupersededByEntryKey *string      `json:"superseded_by_entry_key,omitempty" db:"superseded_by_entry_key"`
-	DismissState         DismissState `json:"dismiss_state" db:"dismiss_state"`
+	SupersededByEntryKey *string             `json:"superseded_by_entry_key,omitempty" db:"superseded_by_entry_key"`
+	DismissState         DismissState        `json:"dismiss_state" db:"dismiss_state"`
+	VisibilityState      LoopVisibilityState `json:"visibility_state,omitempty" db:"visibility_state"`
+	CompletionState      LoopCompletionState `json:"completion_state,omitempty" db:"completion_state"`
 
 	RenderDepthHint RenderDepthHint `json:"render_depth_hint" db:"render_depth_hint"`
 	LoopPriority    LoopPriority    `json:"loop_priority" db:"loop_priority"`

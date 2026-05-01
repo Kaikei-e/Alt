@@ -245,6 +245,8 @@ func domainEntryToProto(e *domain.KnowledgeLoopEntry) *sovereignv1.KnowledgeLoop
 		ActTargets:           e.ActTargets,
 		SupersededByEntryKey: e.SupersededByEntryKey,
 		DismissState:         dismissStateToProto(e.DismissState),
+		VisibilityState:      visibilityStateToProto(e.VisibilityState),
+		CompletionState:      completionStateToProto(e.CompletionState),
 		RenderDepthHint:      int32(e.RenderDepthHint),
 		LoopPriority:         loopPriorityToProto(e.LoopPriority),
 		SurfaceScoreInputs:   e.SurfaceScoreInputs,
@@ -336,6 +338,8 @@ func protoEntryToDomain(pb *sovereignv1.KnowledgeLoopEntry) (*domain.KnowledgeLo
 		ActTargets:            pb.ActTargets,
 		SupersededByEntryKey:  pb.SupersededByEntryKey,
 		DismissState:          dismissStateFromProto(pb.DismissState),
+		VisibilityState:       visibilityStateFromProto(pb.VisibilityState),
+		CompletionState:       completionStateFromProto(pb.CompletionState),
 		RenderDepthHint:       domain.RenderDepthHint(pb.RenderDepthHint),
 		LoopPriority:          loopPriorityFromProto(pb.LoopPriority),
 		SurfacePlannerVersion: surfacePlannerVersionFromProto(pb.GetSurfacePlannerVersion()),
@@ -517,6 +521,50 @@ func dismissStateFromProto(d sovereignv1.DismissState) domain.DismissState {
 		return domain.DismissCompleted
 	}
 	return domain.DismissActive
+}
+
+func visibilityStateToProto(v domain.LoopVisibilityState) sovereignv1.LoopVisibilityState {
+	switch v {
+	case domain.LoopVisibilityHidden:
+		return sovereignv1.LoopVisibilityState_LOOP_VISIBILITY_STATE_HIDDEN
+	case domain.LoopVisibilitySnoozed:
+		return sovereignv1.LoopVisibilityState_LOOP_VISIBILITY_STATE_SNOOZED
+	default:
+		return sovereignv1.LoopVisibilityState_LOOP_VISIBILITY_STATE_VISIBLE
+	}
+}
+
+func visibilityStateFromProto(v sovereignv1.LoopVisibilityState) domain.LoopVisibilityState {
+	switch v {
+	case sovereignv1.LoopVisibilityState_LOOP_VISIBILITY_STATE_HIDDEN:
+		return domain.LoopVisibilityHidden
+	case sovereignv1.LoopVisibilityState_LOOP_VISIBILITY_STATE_SNOOZED:
+		return domain.LoopVisibilitySnoozed
+	default:
+		return domain.LoopVisibilityVisible
+	}
+}
+
+func completionStateToProto(c domain.LoopCompletionState) sovereignv1.LoopCompletionState {
+	switch c {
+	case domain.LoopCompletionCompleted:
+		return sovereignv1.LoopCompletionState_LOOP_COMPLETION_STATE_COMPLETED
+	case domain.LoopCompletionDismissed:
+		return sovereignv1.LoopCompletionState_LOOP_COMPLETION_STATE_DISMISSED
+	default:
+		return sovereignv1.LoopCompletionState_LOOP_COMPLETION_STATE_OPEN
+	}
+}
+
+func completionStateFromProto(c sovereignv1.LoopCompletionState) domain.LoopCompletionState {
+	switch c {
+	case sovereignv1.LoopCompletionState_LOOP_COMPLETION_STATE_COMPLETED:
+		return domain.LoopCompletionCompleted
+	case sovereignv1.LoopCompletionState_LOOP_COMPLETION_STATE_DISMISSED:
+		return domain.LoopCompletionDismissed
+	default:
+		return domain.LoopCompletionOpen
+	}
 }
 
 func whyKindToProto(k domain.WhyKind) sovereignv1.WhyKind {

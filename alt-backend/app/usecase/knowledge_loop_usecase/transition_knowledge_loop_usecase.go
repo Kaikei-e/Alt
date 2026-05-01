@@ -68,6 +68,12 @@ type TransitionInput struct {
 	ToStage              string
 	Trigger              string // raw proto enum name (e.g. "TRANSITION_TRIGGER_DWELL")
 	ObservedProjRevision int64
+	PresentedIntents     []string
+	ActedIntent          *string
+	ActionID             *string
+	TargetType           *string
+	TargetRef            *string
+	ContinueFlag         bool
 }
 
 // TransitionResult mirrors the proto response contract.
@@ -155,7 +161,7 @@ func (u *TransitionKnowledgeLoopUsecase) Execute(ctx context.Context, in Transit
 // dedupe_key equals client_transition_id so the slow-path knowledge_events unique
 // index is unified with the fast-path knowledge_loop_transition_dedupes barrier.
 func buildTransitionEvent(eventType string, in TransitionInput, occurredAt time.Time) (domain.KnowledgeEvent, error) {
-	payload, err := json.Marshal(map[string]any{
+	body := map[string]any{
 		"entry_key":                    in.EntryKey,
 		"lens_mode_id":                 in.LensModeID,
 		"from_stage":                   in.FromStage,
@@ -163,7 +169,27 @@ func buildTransitionEvent(eventType string, in TransitionInput, occurredAt time.
 		"trigger":                      in.Trigger,
 		"observed_projection_revision": in.ObservedProjRevision,
 		"client_transition_id":         in.ClientTransitionID,
-	})
+	}
+	if len(in.PresentedIntents) > 0 {
+		body["presented_intents"] = in.PresentedIntents
+	}
+	if in.ActedIntent != nil {
+		body["acted_intent"] = *in.ActedIntent
+	}
+	if in.ActionID != nil {
+		body["action_id"] = *in.ActionID
+	}
+	if in.TargetType != nil {
+		body["target_type"] = *in.TargetType
+	}
+	if in.TargetRef != nil {
+		body["target_ref"] = *in.TargetRef
+	}
+	if in.ContinueFlag {
+		body["continue_flag"] = true
+	}
+
+	payload, err := json.Marshal(body)
 	if err != nil {
 		return domain.KnowledgeEvent{}, err
 	}

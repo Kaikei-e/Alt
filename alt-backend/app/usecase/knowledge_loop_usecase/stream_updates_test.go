@@ -68,11 +68,11 @@ func TestClassifyLoopStreamUpdate_SupersededCarriesNewEntryKey(t *testing.T) {
 	require.Equal(t, "article:43", frame.NewEntryKey)
 }
 
-func TestClassifyLoopStreamUpdate_DismissedBecomesWithdrawn(t *testing.T) {
+func TestClassifyLoopStreamUpdate_DismissedBecomesReviewAppend(t *testing.T) {
 	ev := makeEvent(t, domain.EventHomeItemDismissed, "article:42", 13, map[string]any{"entry_key": "article:42"})
 	frame, ok := ClassifyLoopStreamUpdate(&ev)
 	require.True(t, ok)
-	require.Equal(t, StreamUpdateKindWithdrawn, frame.Kind)
+	require.Equal(t, StreamUpdateKindAppended, frame.Kind)
 	require.Equal(t, "article:42", frame.EntryKey)
 }
 
@@ -89,6 +89,17 @@ func TestClassifyLoopStreamUpdate_LoopTransitionTriggersRebalance(t *testing.T) 
 	require.True(t, ok)
 	require.Equal(t, StreamUpdateKindSurfaceRebalanced, frame.Kind)
 	require.Equal(t, int64(14), frame.Revision)
+}
+
+func TestClassifyLoopStreamUpdate_ReviewedTriggersRebalance(t *testing.T) {
+	ev := makeEvent(t, domain.EventKnowledgeLoopReviewed, "article:42", 18, map[string]any{
+		"entry_key": "article:42",
+		"trigger":   "TRANSITION_TRIGGER_RECHECK",
+	})
+	frame, ok := ClassifyLoopStreamUpdate(&ev)
+	require.True(t, ok)
+	require.Equal(t, StreamUpdateKindSurfaceRebalanced, frame.Kind)
+	require.Equal(t, int64(18), frame.Revision)
 }
 
 func TestClassifyLoopStreamUpdate_ObservedIsSuppressed(t *testing.T) {

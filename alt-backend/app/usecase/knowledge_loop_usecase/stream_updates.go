@@ -26,6 +26,7 @@ type StreamUpdateFrame struct {
 	EntryKey    string
 	NewEntryKey string // populated for Superseded
 	Revision    int64  // event_seq; client compares to its local projection_revision
+	InlineEntry *domain.KnowledgeLoopEntry
 }
 
 // ClassifyLoopStreamUpdate maps a knowledge_events row to a Knowledge Loop stream
@@ -72,7 +73,7 @@ func ClassifyLoopStreamUpdate(ev *domain.KnowledgeEvent) (StreamUpdateFrame, boo
 
 	case domain.EventHomeItemDismissed:
 		return StreamUpdateFrame{
-			Kind:     StreamUpdateKindWithdrawn,
+			Kind:     StreamUpdateKindAppended,
 			EntryKey: entryKey,
 			Revision: ev.EventSeq,
 		}, true
@@ -87,6 +88,7 @@ func ClassifyLoopStreamUpdate(ev *domain.KnowledgeEvent) (StreamUpdateFrame, boo
 		domain.EventKnowledgeLoopActed,
 		domain.EventKnowledgeLoopReturned,
 		domain.EventKnowledgeLoopDeferred,
+		domain.EventKnowledgeLoopReviewed,
 		domain.EventKnowledgeLoopSessionReset,
 		domain.EventKnowledgeLoopLensModeSwitched:
 		// Session-level transitions can reshuffle foreground/bucket composition;
