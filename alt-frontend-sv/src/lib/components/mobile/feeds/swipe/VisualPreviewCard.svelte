@@ -207,11 +207,11 @@ async function handleToggleContent() {
 			if (res.content) {
 				fullContent = res.content;
 			} else {
-				contentError = "Could not fetch article content";
+				contentError = "Source content unavailable.";
 			}
 		} catch (err) {
 			console.warn("Error fetching content:", err);
-			contentError = "Could not fetch article content";
+			contentError = "Source content unavailable.";
 		} finally {
 			isLoadingContent = false;
 		}
@@ -472,7 +472,17 @@ function handleImgError() {
                 <span class="loading-label">Loading article...</span>
               </div>
             {:else if contentError}
-              <p class="error-hint">{contentError}</p>
+              <p class="fallback-notice" data-testid="source-unavailable-notice">
+                {contentError} Showing summary.
+              </p>
+              {#if hasDescription}
+                <div
+                  class="summary-prose article-prose"
+                  data-testid="article-fallback-summary"
+                >
+                  {feed.description}
+                </div>
+              {/if}
             {:else if sanitizedFullContent}
               <div class="article-prose">
                 {@html sanitizedFullContent}
@@ -798,6 +808,15 @@ function handleImgError() {
     text-align: center;
     padding: 0.5rem 0;
     margin: 0;
+  }
+
+  .fallback-notice {
+    font-family: var(--font-mono);
+    font-size: 0.65rem;
+    letter-spacing: 0.06em;
+    color: var(--alt-ash);
+    margin: 0 0 0.5rem;
+    padding: 0;
   }
 
   /* ── Footer ── */
