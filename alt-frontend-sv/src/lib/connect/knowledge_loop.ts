@@ -106,7 +106,17 @@ export interface DecisionOptionData {
 export interface ActTargetData {
 	targetType: ActTargetTypeName;
 	targetRef: string;
+	/**
+	 * Internal SPA navigation target (e.g. "/articles/<id>", "/recap/topic/<id>").
+	 * Display-only; never threaded through `?url=` to the SPA reader.
+	 */
 	route?: string;
+	/**
+	 * External HTTPS source URL when targetType is "article".
+	 * Used by the SPA reader as `?url=` (see ADR for source_url decision).
+	 * Independent of `route`; absent for legacy projection rows.
+	 */
+	sourceUrl?: string;
 }
 
 export interface KnowledgeLoopEntryData {
@@ -341,6 +351,7 @@ export function mapProtoEntry(
 			targetType: mapActTargetTypeFromProto(t.targetType),
 			targetRef: t.targetRef,
 			route: t.route,
+			sourceUrl: t.sourceUrl,
 		})),
 	};
 }
