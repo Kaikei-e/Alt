@@ -3,6 +3,7 @@ package di
 import (
 	"alt/driver/health_checker"
 	"alt/driver/sovereign_client"
+	"alt/gateway/article_gateway"
 	"alt/gateway/feature_flag_gateway"
 	"alt/gateway/knowledge_backfill_gateway"
 	"alt/gateway/knowledge_metrics_gateway"
@@ -97,12 +98,13 @@ func newKnowledgeModule(infra *InfraModule, article *ArticleModule) *KnowledgeMo
 	tagSetVersionGw := tag_set_version_gateway.NewGateway(altDB)
 	featureFlagGw := feature_flag_gateway.NewGateway(&cfg.KnowledgeHome)
 	knowledgeBackfillGw := knowledge_backfill_gateway.NewGateway(altDB)
+	articleURLLookupGw := article_gateway.NewArticleURLLookupGateway(infra.Pool)
 
 	// Knowledge Home usecases
 	trendingTagsGw := trending_tags_gateway.NewTrendingTagsGateway(altDB, 30*time.Minute)
 	getKnowledgeHomeUC := get_knowledge_home_usecase.NewGetKnowledgeHomeUsecase(sovereignCli, sovereignCli, sovereignCli, sovereignCli, sovereignCli, trendingTagsGw)
 	trackHomeSeenUC := track_home_seen_usecase.NewTrackHomeSeenUsecase(sovereignCli, featureFlagGw)
-	trackHomeActionUC := track_home_action_usecase.NewTrackHomeActionUsecase(sovereignCli, sovereignCli, featureFlagGw, sovereignCli, sovereignCli, sovereignCli)
+	trackHomeActionUC := track_home_action_usecase.NewTrackHomeActionUsecase(sovereignCli, sovereignCli, featureFlagGw, sovereignCli, sovereignCli, sovereignCli, articleURLLookupGw)
 	appendKnowledgeEventUC := append_knowledge_event_usecase.NewAppendKnowledgeEventUsecase(sovereignCli)
 	createSummaryVersionUC := create_summary_version_usecase.NewCreateSummaryVersionUsecase(summaryVersionGw, sovereignCli, summaryVersionGw)
 	createTagSetVersionUC := create_tag_set_version_usecase.NewCreateTagSetVersionUsecase(tagSetVersionGw, sovereignCli, tagSetVersionGw)

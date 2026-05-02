@@ -195,7 +195,7 @@ func TestTrackHomeActionUsecase_Execute(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			uc := NewTrackHomeActionUsecase(tt.userEventPort, tt.knowledgePort, tt.flagPort, nil, nil, nil)
+			uc := NewTrackHomeActionUsecase(tt.userEventPort, tt.knowledgePort, tt.flagPort, nil, nil, nil, nil)
 			err := uc.Execute(context.Background(), userID, tenantID, tt.actionType, tt.itemKey, tt.metadataJSON)
 
 			if tt.wantErr {
@@ -220,7 +220,7 @@ func TestTrackHomeActionUsecase_RecallSignal(t *testing.T) {
 
 	t.Run("open action appends SignalOpened", func(t *testing.T) {
 		recallPort := &mockRecallSignalPort{}
-		uc := NewTrackHomeActionUsecase(&mockUserEventPort{}, &mockKnowledgeEventPort{}, nil, recallPort, nil, nil)
+		uc := NewTrackHomeActionUsecase(&mockUserEventPort{}, &mockKnowledgeEventPort{}, nil, recallPort, nil, nil, nil)
 
 		err := uc.Execute(context.Background(), userID, tenantID, "open", itemKey, "")
 		require.NoError(t, err)
@@ -232,7 +232,7 @@ func TestTrackHomeActionUsecase_RecallSignal(t *testing.T) {
 
 	t.Run("ask action appends SignalAugurReferenced", func(t *testing.T) {
 		recallPort := &mockRecallSignalPort{}
-		uc := NewTrackHomeActionUsecase(&mockUserEventPort{}, &mockKnowledgeEventPort{}, nil, recallPort, nil, nil)
+		uc := NewTrackHomeActionUsecase(&mockUserEventPort{}, &mockKnowledgeEventPort{}, nil, recallPort, nil, nil, nil)
 
 		err := uc.Execute(context.Background(), userID, tenantID, "ask", itemKey, "")
 		require.NoError(t, err)
@@ -242,7 +242,7 @@ func TestTrackHomeActionUsecase_RecallSignal(t *testing.T) {
 
 	t.Run("listen action appends SignalTagInterest", func(t *testing.T) {
 		recallPort := &mockRecallSignalPort{}
-		uc := NewTrackHomeActionUsecase(&mockUserEventPort{}, &mockKnowledgeEventPort{}, nil, recallPort, nil, nil)
+		uc := NewTrackHomeActionUsecase(&mockUserEventPort{}, &mockKnowledgeEventPort{}, nil, recallPort, nil, nil, nil)
 
 		err := uc.Execute(context.Background(), userID, tenantID, "listen", itemKey, "")
 		require.NoError(t, err)
@@ -252,7 +252,7 @@ func TestTrackHomeActionUsecase_RecallSignal(t *testing.T) {
 
 	t.Run("open_search action appends SignalSearchRelated", func(t *testing.T) {
 		recallPort := &mockRecallSignalPort{}
-		uc := NewTrackHomeActionUsecase(&mockUserEventPort{}, &mockKnowledgeEventPort{}, nil, recallPort, nil, nil)
+		uc := NewTrackHomeActionUsecase(&mockUserEventPort{}, &mockKnowledgeEventPort{}, nil, recallPort, nil, nil, nil)
 
 		metadata := `{"search_query":"RAG pipeline"}`
 		err := uc.Execute(context.Background(), userID, tenantID, "open_search", itemKey, metadata)
@@ -264,7 +264,7 @@ func TestTrackHomeActionUsecase_RecallSignal(t *testing.T) {
 
 	t.Run("open_search action includes search_query in signal payload", func(t *testing.T) {
 		recallPort := &mockRecallSignalPort{}
-		uc := NewTrackHomeActionUsecase(&mockUserEventPort{}, &mockKnowledgeEventPort{}, nil, recallPort, nil, nil)
+		uc := NewTrackHomeActionUsecase(&mockUserEventPort{}, &mockKnowledgeEventPort{}, nil, recallPort, nil, nil, nil)
 
 		metadata := `{"query":"rust async"}`
 		err := uc.Execute(context.Background(), userID, tenantID, "open_search", itemKey, metadata)
@@ -275,7 +275,7 @@ func TestTrackHomeActionUsecase_RecallSignal(t *testing.T) {
 
 	t.Run("dismiss action does not append signal", func(t *testing.T) {
 		recallPort := &mockRecallSignalPort{}
-		uc := NewTrackHomeActionUsecase(&mockUserEventPort{}, &mockKnowledgeEventPort{}, nil, recallPort, nil, nil)
+		uc := NewTrackHomeActionUsecase(&mockUserEventPort{}, &mockKnowledgeEventPort{}, nil, recallPort, nil, nil, nil)
 
 		err := uc.Execute(context.Background(), userID, tenantID, "dismiss", itemKey, "")
 		require.NoError(t, err)
@@ -284,14 +284,14 @@ func TestTrackHomeActionUsecase_RecallSignal(t *testing.T) {
 
 	t.Run("recall signal failure is non-fatal", func(t *testing.T) {
 		recallPort := &mockRecallSignalPort{err: errors.New("db error")}
-		uc := NewTrackHomeActionUsecase(&mockUserEventPort{}, &mockKnowledgeEventPort{}, nil, recallPort, nil, nil)
+		uc := NewTrackHomeActionUsecase(&mockUserEventPort{}, &mockKnowledgeEventPort{}, nil, recallPort, nil, nil, nil)
 
 		err := uc.Execute(context.Background(), userID, tenantID, "open", itemKey, "")
 		require.NoError(t, err)
 	})
 
 	t.Run("nil recall signal port does not panic", func(t *testing.T) {
-		uc := NewTrackHomeActionUsecase(&mockUserEventPort{}, &mockKnowledgeEventPort{}, nil, nil, nil, nil)
+		uc := NewTrackHomeActionUsecase(&mockUserEventPort{}, &mockKnowledgeEventPort{}, nil, nil, nil, nil, nil)
 
 		err := uc.Execute(context.Background(), userID, tenantID, "open", itemKey, "")
 		require.NoError(t, err)
@@ -299,7 +299,7 @@ func TestTrackHomeActionUsecase_RecallSignal(t *testing.T) {
 
 	t.Run("tracking disabled skips signal generation", func(t *testing.T) {
 		recallPort := &mockRecallSignalPort{}
-		uc := NewTrackHomeActionUsecase(&mockUserEventPort{}, &mockKnowledgeEventPort{}, &mockFeatureFlagPort{enabled: false}, recallPort, nil, nil)
+		uc := NewTrackHomeActionUsecase(&mockUserEventPort{}, &mockKnowledgeEventPort{}, &mockFeatureFlagPort{enabled: false}, recallPort, nil, nil, nil)
 
 		err := uc.Execute(context.Background(), userID, tenantID, "open", itemKey, "")
 		require.NoError(t, err)
@@ -308,7 +308,7 @@ func TestTrackHomeActionUsecase_RecallSignal(t *testing.T) {
 
 	t.Run("tag_click action appends SignalTagClicked with tag in payload", func(t *testing.T) {
 		recallPort := &mockRecallSignalPort{}
-		uc := NewTrackHomeActionUsecase(&mockUserEventPort{}, &mockKnowledgeEventPort{}, nil, recallPort, nil, nil)
+		uc := NewTrackHomeActionUsecase(&mockUserEventPort{}, &mockKnowledgeEventPort{}, nil, recallPort, nil, nil, nil)
 
 		metadata := `{"tag":"rust"}`
 		err := uc.Execute(context.Background(), userID, tenantID, "tag_click", itemKey, metadata)
@@ -331,7 +331,7 @@ func TestTrackHomeActionUsecase_DismissWriteThrough(t *testing.T) {
 		versionPort := &mockActiveProjectionVersionPort{
 			version: &domain.KnowledgeProjectionVersion{Version: 7},
 		}
-		uc := NewTrackHomeActionUsecase(&mockUserEventPort{}, &mockKnowledgeEventPort{}, nil, nil, dismissPort, versionPort)
+		uc := NewTrackHomeActionUsecase(&mockUserEventPort{}, &mockKnowledgeEventPort{}, nil, nil, dismissPort, versionPort, nil)
 
 		err := uc.Execute(context.Background(), userID, tenantID, "dismiss", itemKey, "")
 		require.NoError(t, err)
@@ -344,7 +344,7 @@ func TestTrackHomeActionUsecase_DismissWriteThrough(t *testing.T) {
 
 	t.Run("dismiss read model failure is non fatal", func(t *testing.T) {
 		dismissPort := &mockDismissPort{err: errors.New("db failed")}
-		uc := NewTrackHomeActionUsecase(&mockUserEventPort{}, &mockKnowledgeEventPort{}, nil, nil, dismissPort, &mockActiveProjectionVersionPort{})
+		uc := NewTrackHomeActionUsecase(&mockUserEventPort{}, &mockKnowledgeEventPort{}, nil, nil, dismissPort, &mockActiveProjectionVersionPort{}, nil)
 
 		err := uc.Execute(context.Background(), userID, tenantID, "dismiss", itemKey, "")
 		require.NoError(t, err)
@@ -353,7 +353,7 @@ func TestTrackHomeActionUsecase_DismissWriteThrough(t *testing.T) {
 
 	t.Run("dismiss target not found is non fatal", func(t *testing.T) {
 		dismissPort := &mockDismissPort{err: knowledge_home_port.ErrDismissTargetNotFound}
-		uc := NewTrackHomeActionUsecase(&mockUserEventPort{}, &mockKnowledgeEventPort{}, nil, nil, dismissPort, &mockActiveProjectionVersionPort{})
+		uc := NewTrackHomeActionUsecase(&mockUserEventPort{}, &mockKnowledgeEventPort{}, nil, nil, dismissPort, &mockActiveProjectionVersionPort{}, nil)
 
 		err := uc.Execute(context.Background(), userID, tenantID, "dismiss", itemKey, "")
 		require.NoError(t, err)
@@ -362,7 +362,7 @@ func TestTrackHomeActionUsecase_DismissWriteThrough(t *testing.T) {
 
 	t.Run("non dismiss actions skip read model update", func(t *testing.T) {
 		dismissPort := &mockDismissPort{}
-		uc := NewTrackHomeActionUsecase(&mockUserEventPort{}, &mockKnowledgeEventPort{}, nil, nil, dismissPort, &mockActiveProjectionVersionPort{})
+		uc := NewTrackHomeActionUsecase(&mockUserEventPort{}, &mockKnowledgeEventPort{}, nil, nil, dismissPort, &mockActiveProjectionVersionPort{}, nil)
 
 		err := uc.Execute(context.Background(), userID, tenantID, "open", itemKey, "")
 		require.NoError(t, err)
@@ -372,7 +372,7 @@ func TestTrackHomeActionUsecase_DismissWriteThrough(t *testing.T) {
 	t.Run("dismiss falls back to default projection version when lookup fails", func(t *testing.T) {
 		dismissPort := &mockDismissPort{}
 		versionPort := &mockActiveProjectionVersionPort{err: errors.New("lookup failed")}
-		uc := NewTrackHomeActionUsecase(&mockUserEventPort{}, &mockKnowledgeEventPort{}, nil, nil, dismissPort, versionPort)
+		uc := NewTrackHomeActionUsecase(&mockUserEventPort{}, &mockKnowledgeEventPort{}, nil, nil, dismissPort, versionPort, nil)
 
 		err := uc.Execute(context.Background(), userID, tenantID, "dismiss", itemKey, "")
 		require.NoError(t, err)
