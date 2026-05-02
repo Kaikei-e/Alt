@@ -56,6 +56,14 @@ type Repository interface {
 	// KnowledgeLoopSurfacePlanRecomputed event and must preserve why_*, lifecycle,
 	// freshness, artifacts, and action metadata.
 	PatchKnowledgeLoopEntrySurfacePlan(ctx context.Context, userID, tenantID, lensModeID, entryKey string, eventSeq int64, surfaceBucket sovereignv1.SurfaceBucket, renderDepthHint int32, loopPriority sovereignv1.LoopPriority, plannerVersion sovereignv1.SurfacePlannerVersion, scoreInputs []byte) (*sovereign_db.KnowledgeLoopUpsertResult, error)
+	// PatchKnowledgeLoopActTargetSourceURL fills act_targets[0].source_url for an
+	// existing entry whose seed event predated the producer-side URL injection
+	// added in ADR-000879. Driven by the corrective ArticleUrlBackfilled event:
+	// touches only the JSONB key, preserves dismiss_state, why_*, freshness_at,
+	// surface_bucket, and the rest of act_targets[0]. Idempotent at the SQL
+	// boundary (a `NOT (act_targets->0 ? 'source_url')` predicate makes a
+	// re-applied event a no-op once the URL is in place).
+	PatchKnowledgeLoopActTargetSourceURL(ctx context.Context, userID, tenantID, lensModeID, entryKey, articleID, sourceURL string, eventSeq int64) (*sovereign_db.KnowledgeLoopUpsertResult, error)
 }
 
 // Config tunes the projector loop. Zero values fall back to defaults.
@@ -203,6 +211,15 @@ func (p *Projector) projectEvent(ctx context.Context, ev *sovereign_db.Knowledge
 		// only the why_* columns; seq-hiwater guard ensures replay safety.
 		return p.projectSummaryNarrativeBackfilled(ctx, ev, lensModeID)
 
+	case EventArticleUrlBackfilled:
+		// ADR-000879: corrective event repairs legacy Loop entries whose seed
+		// event predated producer-side URL injection. The Loop projector
+		// applies it as a JSONB patch on act_targets[0].source_url, preserving
+		// every other field on the row. Reproject-safe: URL comes only from
+		// payload; the driver's `NOT (act_targets->0 ? 'source_url')` predicate
+		// keeps the patch idempotent across replays.
+		return p.projectArticleUrlBackfilled(ctx, ev, lensModeID)
+
 	case EventKnowledgeLoopSurfacePlanRecomputed:
 		return p.projectSurfacePlanRecomputed(ctx, ev, lensModeID)
 
@@ -344,6 +361,60 @@ func (p *Projector) projectSummaryNarrativeBackfilled(
 		entryKey,
 		ev.EventSeq,
 		why,
+	)
+}
+
+// projectArticleUrlBackfilled handles the corrective ArticleUrlBackfilled
+// event emitted by alt-backend's knowledge-url-backfill job (ADR-000867).
+// The Loop projector consumes the same event the home projector uses (see
+// alt-backend job/knowledge_projector.go projectArticleUrlBackfilled) and
+// applies it as a JSONB patch on knowledge_loop_entries.act_targets[0]
+// .source_url so legacy entries — created before producer-side URL injection
+// shipped (ADR-000879) — recover their external HTTPS URL without a full
+// reproject sweep.
+//
+// Reproject-safe / merge-safe:
+//   - URL comes strictly from event payload; never reads latest article state.
+//   - http/https allowlist applied here (defense-in-depth — the SQL boundary
+//     also rejects empty URL).
+//   - Patch is a JSONB-key write; dismiss_state, why_*, freshness_at,
+//     surface_bucket, and the rest of act_targets[0] stay untouched.
+//   - Idempotent at the SQL boundary via `NOT (act_targets->0 ? 'source_url')`
+//     so a replayed event becomes a no-op once the URL is populated.
+func (p *Projector) projectArticleUrlBackfilled(
+	ctx context.Context,
+	ev *sovereign_db.KnowledgeEvent,
+	lensModeID string,
+) (*sovereign_db.KnowledgeLoopUpsertResult, error) {
+	if ev.UserID == nil {
+		return nil, nil
+	}
+	articleID := extractStringField(ev.Payload, "article_id")
+	if articleID == "" {
+		return nil, nil
+	}
+	rawURL := extractStringField(ev.Payload, "url", "link")
+	if rawURL == "" {
+		return nil, nil
+	}
+	parsed, err := url.Parse(rawURL)
+	if err != nil {
+		return nil, nil
+	}
+	scheme := strings.ToLower(parsed.Scheme)
+	if (scheme != "http" && scheme != "https") || parsed.Host == "" {
+		return nil, nil
+	}
+	entryKey := "article:" + articleID
+	return p.repo.PatchKnowledgeLoopActTargetSourceURL(
+		ctx,
+		ev.UserID.String(),
+		ev.TenantID.String(),
+		lensModeID,
+		entryKey,
+		articleID,
+		rawURL,
+		ev.EventSeq,
 	)
 }
 

@@ -20,16 +20,17 @@ import (
 // layer's own tests. Here we verify the projector emits the same upsert payload
 // for the same event on replay — the core reproject-safety invariant.
 type fakeRepo struct {
-	checkpoint     int64
-	events         []sovereign_db.KnowledgeEvent
-	entries        []*sovereignv1.KnowledgeLoopEntry
-	sessions       []*sovereignv1.KnowledgeLoopSessionState
-	entrySessions  []entrySessionCall
-	surfaces       []*sovereignv1.KnowledgeLoopSurface
-	patches        []patchCall
-	dismissPatches []dismissPatchCall
-	surfacePatches []surfacePlanPatchCall
-	checkpoints    []int64
+	checkpoint          int64
+	events              []sovereign_db.KnowledgeEvent
+	entries             []*sovereignv1.KnowledgeLoopEntry
+	sessions            []*sovereignv1.KnowledgeLoopSessionState
+	entrySessions       []entrySessionCall
+	surfaces            []*sovereignv1.KnowledgeLoopSurface
+	patches             []patchCall
+	dismissPatches      []dismissPatchCall
+	surfacePatches      []surfacePlanPatchCall
+	actTargetURLPatches []actTargetURLPatchCall
+	checkpoints         []int64
 }
 
 // patchCall records the arguments to PatchKnowledgeLoopEntryWhy so tests can
@@ -69,6 +70,18 @@ type entrySessionCall struct {
 	CurrentStage                           sovereignv1.LoopStage
 	CurrentStageEnteredAt                  time.Time
 	EventSeq                               int64
+}
+
+// actTargetURLPatchCall records arguments to PatchKnowledgeLoopActTargetSourceURL
+// so the ArticleUrlBackfilled projector branch can be asserted as a patch-only
+// path that touches just the act_targets[].source_url JSONB key (everything
+// else on the row — why_*, dismiss_state, freshness_at, surface_bucket — must
+// stay untouched). Used to recover legacy projection rows whose original
+// HomeItemOpened / HomeItemSurfaced events did not carry the article URL in
+// payload (the canonical contract source_url field added in ADR-000879).
+type actTargetURLPatchCall struct {
+	UserID, TenantID, LensModeID, EntryKey, ArticleID, SourceURL string
+	EventSeq                                                     int64
 }
 
 func (f *fakeRepo) ListKnowledgeEventsSince(ctx context.Context, afterSeq int64, limit int) ([]sovereign_db.KnowledgeEvent, error) {
@@ -174,6 +187,17 @@ func (f *fakeRepo) PatchKnowledgeLoopEntryDismissState(ctx context.Context, user
 	}
 	return &sovereign_db.KnowledgeLoopUpsertResult{
 		Applied: true, ProjectionRevision: 3, ProjectionSeqHiwater: eventSeq,
+	}, nil
+}
+
+func (f *fakeRepo) PatchKnowledgeLoopActTargetSourceURL(ctx context.Context, userID, tenantID, lensModeID, entryKey, articleID, sourceURL string, eventSeq int64) (*sovereign_db.KnowledgeLoopUpsertResult, error) {
+	f.actTargetURLPatches = append(f.actTargetURLPatches, actTargetURLPatchCall{
+		UserID: userID, TenantID: tenantID, LensModeID: lensModeID,
+		EntryKey: entryKey, ArticleID: articleID, SourceURL: sourceURL,
+		EventSeq: eventSeq,
+	})
+	return &sovereign_db.KnowledgeLoopUpsertResult{
+		Applied: true, ProjectionRevision: 5, ProjectionSeqHiwater: eventSeq,
 	}, nil
 }
 
@@ -483,6 +507,105 @@ func TestRunBatch_SummaryNarrativeBackfilled_PatchesWhyOnly(t *testing.T) {
 	require.Contains(t, patch.Why.Text, "fresh summary ready to read",
 		"narrative shape matches enrichSummaryVersion (the enricher dispatches "+
 			"on event type — adding the new case must reuse the same shape)")
+}
+
+// TestRunBatch_ArticleUrlBackfilled_PatchesActTargetSourceURL pins the recovery
+// path for legacy Loop entries whose act_targets[].source_url is empty because
+// their seed event predated the ADR-000879 producer-side URL injection. The
+// existing ArticleUrlBackfilled corrective event (already used by the home
+// projector to repair knowledge_home_items.url) is now also consumed by the
+// Loop projector to patch act_targets[0].source_url onto matching entries.
+//
+// Append-first / reproject-safe: the patch reads URL strictly from the event
+// payload; no latest-state lookup. Idempotent at the driver layer via a
+// JSONB existence guard (`NOT (act_targets->0 ? 'source_url')`).
+func TestRunBatch_ArticleUrlBackfilled_PatchesActTargetSourceURL(t *testing.T) {
+	userID := uuid.New()
+	ev := makeEvent(t, EventArticleUrlBackfilled, 600, userID, map[string]any{
+		"article_id":           "art-recover-1",
+		"url":                  "https://example.com/recovered",
+		"original_occurred_at": "2026-04-01T00:00:00Z",
+	})
+	repo := &fakeRepo{events: []sovereign_db.KnowledgeEvent{ev}}
+	require.NoError(t, newProjector(repo).RunBatch(context.Background()))
+
+	require.Empty(t, repo.entries,
+		"backfill must NOT call UpsertKnowledgeLoopEntry — the full upsert "+
+			"would clobber dismiss_state, why_*, surface_bucket, and lifecycle")
+	require.Empty(t, repo.sessions, "backfill must NOT touch session state")
+	require.Empty(t, repo.patches, "why patch path is unrelated")
+	require.Empty(t, repo.dismissPatches, "dismiss patch path is unrelated")
+	require.Empty(t, repo.surfacePatches, "surface plan patch path is unrelated")
+	require.Len(t, repo.actTargetURLPatches, 1, "act_target URL patch must be invoked exactly once")
+
+	patch := repo.actTargetURLPatches[0]
+	require.Equal(t, userID.String(), patch.UserID)
+	require.Equal(t, ev.TenantID.String(), patch.TenantID)
+	require.Equal(t, defaultLensModeID, patch.LensModeID)
+	require.Equal(t, "article:art-recover-1", patch.EntryKey,
+		"entry_key derives from article_id (item_key namespace), not from aggregate_id")
+	require.Equal(t, "art-recover-1", patch.ArticleID)
+	require.Equal(t, "https://example.com/recovered", patch.SourceURL)
+	require.Equal(t, int64(600), patch.EventSeq)
+}
+
+// TestRunBatch_ArticleUrlBackfilled_NonHTTPRejected — defense-in-depth against
+// a malformed corrective payload smuggling javascript:/data:/file: schemes
+// into the projection. Rejected at the projector boundary; the driver SQL
+// also enforces a `<>”` guard.
+func TestRunBatch_ArticleUrlBackfilled_NonHTTPRejected(t *testing.T) {
+	userID := uuid.New()
+	for _, badURL := range []string{
+		"",
+		"javascript:alert(1)",
+		"data:text/html,xss",
+		"file:///etc/passwd",
+		"not-a-url",
+	} {
+		t.Run(badURL, func(t *testing.T) {
+			ev := makeEvent(t, EventArticleUrlBackfilled, 601, userID, map[string]any{
+				"article_id": "art-bad",
+				"url":        badURL,
+			})
+			repo := &fakeRepo{events: []sovereign_db.KnowledgeEvent{ev}}
+			require.NoError(t, newProjector(repo).RunBatch(context.Background()))
+			require.Empty(t, repo.actTargetURLPatches,
+				"non-http(s) URL %q must not reach the patch driver", badURL)
+		})
+	}
+}
+
+// TestRunBatch_ArticleUrlBackfilled_NoUserIDIsNoOp — events lacking UserID
+// are system-level and the Loop projector has nothing to patch (entries are
+// per-user). Mirrors the existing handling at projector.go: `if ev.UserID
+// == nil { return nil, nil }`.
+func TestRunBatch_ArticleUrlBackfilled_NoUserIDIsNoOp(t *testing.T) {
+	ev := sovereign_db.KnowledgeEvent{
+		EventID:    uuid.New(),
+		EventSeq:   602,
+		OccurredAt: time.Now().UTC(),
+		EventType:  EventArticleUrlBackfilled,
+		UserID:     nil,
+		Payload:    json.RawMessage(`{"article_id":"art-x","url":"https://example.com/x"}`),
+	}
+	repo := &fakeRepo{events: []sovereign_db.KnowledgeEvent{ev}}
+	require.NoError(t, newProjector(repo).RunBatch(context.Background()))
+	require.Empty(t, repo.actTargetURLPatches)
+	require.Empty(t, repo.entries)
+}
+
+// TestRunBatch_ArticleUrlBackfilled_MissingArticleIDIsNoOp — payload without
+// article_id cannot identify a Loop entry to patch. Skip silently rather than
+// crash the batch, matching the "skipped_by_guard" observability pattern the
+// other branches use.
+func TestRunBatch_ArticleUrlBackfilled_MissingArticleIDIsNoOp(t *testing.T) {
+	userID := uuid.New()
+	ev := makeEvent(t, EventArticleUrlBackfilled, 603, userID, map[string]any{
+		"url": "https://example.com/orphan",
+	})
+	repo := &fakeRepo{events: []sovereign_db.KnowledgeEvent{ev}}
+	require.NoError(t, newProjector(repo).RunBatch(context.Background()))
+	require.Empty(t, repo.actTargetURLPatches)
 }
 
 func TestRunBatch_SummaryNarrativeBackfilled_NoUserIDIsNoOp(t *testing.T) {

@@ -22,6 +22,15 @@ const (
 	// that preserves dismiss_state and other entry fields. See ADR-000846.
 	EventSummaryNarrativeBackfilled = "SummaryNarrativeBackfilled"
 
+	// EventArticleUrlBackfilled is the corrective event emitted by
+	// alt-backend's knowledge-url-backfill job (ADR-000867 / ADR-000879).
+	// Its payload carries `article_id` + `url` and the Loop projector applies
+	// it as a patch-only path to fill act_targets[].source_url on legacy
+	// projection rows whose seed event predated producer-side URL injection.
+	// dismiss_state, why_*, freshness_at, surface_bucket are preserved by
+	// the dedicated patch SQL.
+	EventArticleUrlBackfilled = "ArticleUrlBackfilled"
+
 	EventKnowledgeLoopObserved          = "knowledge_loop.observed.v1"
 	EventKnowledgeLoopOriented          = "knowledge_loop.oriented.v1"
 	EventKnowledgeLoopDecisionPresented = "knowledge_loop.decision_presented.v1"

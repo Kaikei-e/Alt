@@ -43,6 +43,7 @@ omissions in either step.
 | ArticleCreated | yes | no | no | — | — | — |
 | SummaryVersionCreated | yes | no | yes | now | source_why | article, ask |
 | SummaryNarrativeBackfilled | patch | no | no | — | source_why | (preserved) |
+| ArticleUrlBackfilled | patch | no | no | — | (preserved) | source_url |
 | HomeItemsSeen | no | no | no | — | — | — |
 | HomeItemOpened | yes | yes | yes | continue | recall_why | article, ask |
 | HomeItemDismissed | patch | no | yes | review | recall_why | (preserved) |
