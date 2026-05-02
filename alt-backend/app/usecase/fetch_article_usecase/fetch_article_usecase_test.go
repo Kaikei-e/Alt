@@ -782,20 +782,22 @@ func TestFetchCompliantArticle_WebFetchTimeout(t *testing.T) {
 	mockRepo.EXPECT().IsDomainDeclined(gomock.Any(), gomock.Any(), gomock.Any()).Return(false, nil)
 	mockRobotsTxt.EXPECT().IsPathAllowed(gomock.Any(), gomock.Any(), gomock.Any()).Return(true, nil)
 
-	// Simulate a fetch that respects context cancellation (the 25s usecase timeout)
+	// Simulate a fetch that respects context cancellation (the 8s usecase timeout)
 	mockArticleFetcher.EXPECT().FetchArticleContents(gomock.Any(), articleURLStr).DoAndReturn(
 		func(ctx context.Context, _ string) (*string, error) {
-			// Verify that the context has a deadline (from the 25s timeout)
+			// Verify that the context has a deadline (from the 8s timeout)
 			deadline, ok := ctx.Deadline()
 			if !ok {
 				t.Error("Expected context to have a deadline from web fetch timeout")
 				content := "no deadline"
 				return &content, nil
 			}
-			// The deadline should be ~25s from now (give or take)
+			// The deadline should be ~8s from now. We trimmed from 25s because the
+			// BFF tail observation showed origins regularly take 5-19s and capping
+			// at 8s prevents user-visible 10-19s freezes.
 			remaining := time.Until(deadline)
-			if remaining > 26*time.Second || remaining < 20*time.Second {
-				t.Errorf("Expected ~25s timeout, got remaining %v", remaining)
+			if remaining > 9*time.Second || remaining < 5*time.Second {
+				t.Errorf("Expected ~8s timeout, got remaining %v", remaining)
 			}
 			return nil, context.DeadlineExceeded
 		},
@@ -804,5 +806,104 @@ func TestFetchCompliantArticle_WebFetchTimeout(t *testing.T) {
 	_, _, _, err := usecase.FetchCompliantArticle(context.Background(), articleURL, userContext)
 	if err == nil {
 		t.Fatal("Expected error from timed-out fetch")
+	}
+}
+
+// TestFetchCompliantArticle_HitsCacheBelowOldTier1Threshold verifies that articles
+// stored with content >= 100 bytes (the cache validity floor) are returned from
+// the DB without triggering a re-fetch, even when below the legacy 500-byte
+// "Inoreader Tier1" ingestion threshold which historically lived here by mistake.
+func TestFetchCompliantArticle_HitsCacheBelowOldTier1Threshold(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockArticleFetcher := mocks.NewMockFetchArticlePort(ctrl)
+	mockRobotsTxt := mocks.NewMockRobotsTxtPort(ctrl)
+	mockRepo := mocks.NewMockArticleRepository(ctrl)
+	mockRag := mocks.NewMockRagIntegrationPort(ctrl)
+
+	usecase := NewArticleUsecase(mockArticleFetcher, mockRobotsTxt, mockRepo, mockRag)
+
+	articleURLStr := "https://example.com/short-article"
+	articleURL, _ := url.Parse(articleURLStr)
+	userID := uuid.MustParse("00000000-0000-0000-0000-000000000001")
+	userContext := domain.UserContext{UserID: userID}
+
+	// 200-byte cached article: above new 100-byte cache floor, below old 500-byte threshold.
+	cachedContent := strings.Repeat("a", 200)
+	cachedID := "article-short-cache"
+
+	mockRepo.EXPECT().FetchArticleByURL(gomock.Any(), articleURLStr).Return(&domain.ArticleContent{
+		ID:      cachedID,
+		Content: cachedContent,
+	}, nil)
+	mockRepo.EXPECT().FetchOgImageURLByArticleID(gomock.Any(), cachedID).Return("https://og.example.com/img.png", nil)
+
+	// MUST NOT call the external fetcher.
+	mockArticleFetcher.EXPECT().FetchArticleContents(gomock.Any(), gomock.Any()).Times(0)
+	mockRepo.EXPECT().IsDomainDeclined(gomock.Any(), gomock.Any(), gomock.Any()).Times(0)
+
+	content, retID, ogImage, err := usecase.FetchCompliantArticle(context.Background(), articleURL, userContext)
+	if err != nil {
+		t.Fatalf("Unexpected error: %v", err)
+	}
+	if content != cachedContent {
+		t.Errorf("Expected cached content, got %q", content)
+	}
+	if retID != cachedID {
+		t.Errorf("Expected cached id %q, got %q", cachedID, retID)
+	}
+	if ogImage != "https://og.example.com/img.png" {
+		t.Errorf("Expected cached og image, got %q", ogImage)
+	}
+}
+
+// TestFetchCompliantArticle_RefetchesWhenCachedContentIsTooShort verifies that
+// articles whose stored content is below the 100-byte cache floor (e.g.
+// extractor failure, empty body) trigger a fresh web fetch.
+func TestFetchCompliantArticle_RefetchesWhenCachedContentIsTooShort(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockArticleFetcher := mocks.NewMockFetchArticlePort(ctrl)
+	mockRobotsTxt := mocks.NewMockRobotsTxtPort(ctrl)
+	mockRepo := mocks.NewMockArticleRepository(ctrl)
+	mockRag := mocks.NewMockRagIntegrationPort(ctrl)
+
+	usecase := NewArticleUsecase(mockArticleFetcher, mockRobotsTxt, mockRepo, mockRag)
+
+	articleURLStr := "https://example.com/empty-article"
+	articleURL, _ := url.Parse(articleURLStr)
+	userID := uuid.MustParse("00000000-0000-0000-0000-000000000001")
+	userContext := domain.UserContext{UserID: userID}
+
+	// 50-byte cached article: below 100-byte floor → must re-fetch.
+	mockRepo.EXPECT().FetchArticleByURL(gomock.Any(), articleURLStr).Return(&domain.ArticleContent{
+		ID:      "article-too-short",
+		Content: strings.Repeat("a", 50),
+	}, nil)
+	mockRepo.EXPECT().IsDomainDeclined(gomock.Any(), gomock.Any(), gomock.Any()).Return(false, nil)
+	mockRobotsTxt.EXPECT().IsPathAllowed(gomock.Any(), gomock.Any(), gomock.Any()).Return(true, nil)
+
+	rawHTML := "<html><body><p>" + strings.Repeat("Article body ", 30) + "</p></body></html>"
+	mockArticleFetcher.EXPECT().FetchArticleContents(gomock.Any(), articleURLStr).Return(&rawHTML, nil)
+	mockRepo.EXPECT().SaveArticle(gomock.Any(), articleURLStr, gomock.Any(), gomock.Any()).Return("article-fresh", nil)
+	mockRag.EXPECT().UpsertArticle(gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
+
+	_, retID, _, err := usecase.FetchCompliantArticle(context.Background(), articleURL, userContext)
+	if err != nil {
+		t.Fatalf("Unexpected error: %v", err)
+	}
+	if retID != "article-fresh" {
+		t.Errorf("Expected fresh fetch id, got %q", retID)
+	}
+	time.Sleep(50 * time.Millisecond)
+}
+
+// TestFetchCompliantArticle_DefaultExternalFetchTimeoutIs8s verifies the default.
+func TestFetchCompliantArticle_DefaultExternalFetchTimeoutIs8s(t *testing.T) {
+	uc := NewArticleUsecase(nil, nil, nil, nil).(*ArticleUsecaseImpl)
+	if uc.externalFetchTimeout != 8*time.Second {
+		t.Errorf("Expected default 8s timeout, got %v", uc.externalFetchTimeout)
 	}
 }

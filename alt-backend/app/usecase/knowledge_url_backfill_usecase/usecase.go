@@ -18,6 +18,7 @@ import (
 	"alt/port/knowledge_event_port"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	neturl "net/url"
 	"strings"
@@ -74,6 +75,13 @@ func (u *Usecase) Emit(ctx context.Context, maxArticles int, dryRun bool) (*Emit
 	for {
 		articles, err := u.articlesPort.ListBackfillArticles(ctx, cursorTime, cursorID, pageSize)
 		if err != nil {
+			if isContextCancellation(err) {
+				// Caller deadline (e.g. BFF 30s) hit before we could load the
+				// next page. Already-appended events are durable; report
+				// partial progress so the operator can resume safely.
+				res.MoreRemaining = true
+				return res, nil
+			}
 			return res, fmt.Errorf("list backfill articles: %w", err)
 		}
 		if len(articles) == 0 {
@@ -87,6 +95,17 @@ func (u *Usecase) Emit(ctx context.Context, maxArticles int, dryRun bool) (*Emit
 			} else if !dryRun {
 				appended, err := u.appendCorrective(ctx, a.ArticleID, a.URL, a.CreatedAt, a.UserID)
 				if err != nil {
+					if isContextCancellation(err) {
+						// One iteration was canceled mid-flight. The
+						// AppendKnowledgeEvent on the sovereign side is its
+						// own transaction so prior iterations stuck. Stop
+						// here, not as failure but as partial progress: the
+						// operator re-running picks up the rest via the
+						// dedupe registry.
+						res.ArticlesScanned-- // this article wasn't actually scanned to completion
+						res.MoreRemaining = true
+						return res, nil
+					}
 					return res, fmt.Errorf("append corrective for %s: %w", a.ArticleID, err)
 				}
 				if appended {
@@ -112,6 +131,28 @@ func (u *Usecase) Emit(ctx context.Context, maxArticles int, dryRun bool) (*Emit
 			return res, nil
 		}
 	}
+}
+
+// isContextCancellation reports whether err is rooted in a context.Canceled
+// or context.DeadlineExceeded — including the wrapped form returned by
+// connect-go's RPC client when the caller deadline trips during the upstream
+// AppendKnowledgeEvent call.
+func isContextCancellation(err error) bool {
+	if err == nil {
+		return false
+	}
+	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+		return true
+	}
+	// connect-go wraps the cancel as `connect.CodeCanceled` without setting
+	// the standard library's context.Canceled in the chain when the cancel
+	// originates upstream. Match by error string as a defensive fallback so
+	// the BFF 30s deadline scenario is treated as partial progress, not a
+	// hard failure.
+	msg := err.Error()
+	return strings.Contains(msg, "context canceled") ||
+		strings.Contains(msg, "context deadline exceeded") ||
+		strings.Contains(msg, "canceled: context canceled")
 }
 
 // appendCorrective marshals one ArticleUrlBackfilled event with the

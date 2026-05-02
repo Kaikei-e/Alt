@@ -3,6 +3,7 @@ package feeds
 import (
 	"context"
 	"fmt"
+	"sync"
 	"time"
 
 	"connectrpc.com/connect"
@@ -11,6 +12,29 @@ import (
 
 	"alt/connect/errorhandler"
 	"alt/connect/v2/middleware"
+)
+
+// statsCacheTTL caps how often the StreamFeedStats handler hits the database
+// for the underlying COUNT() lookups. Each stream still emits an update every
+// updateInterval (5s by default), but multiple ticks within statsCacheTTL
+// reuse the cached counts. With ~22 concurrent streams in production this
+// reduces COUNT(*) load on the 100k-row feeds table by ~100x.
+//
+// Cache scope is per-process (single struct guarded by sync.Mutex). The cached
+// values are derived from resource tables (feeds, articles), not from event
+// projections, so a TTL cache is reproject-safe by construction.
+const statsCacheTTL = 30 * time.Second
+
+type cachedFeedStats struct {
+	feedCount         int
+	unsummarizedCount int
+	totalArticles     int
+	fetchedAt         time.Time
+}
+
+var (
+	feedStatsCacheMu sync.Mutex
+	feedStatsCache   cachedFeedStats
 )
 
 // GetFeedStats returns basic feed statistics (feed count, summarized count).
@@ -168,26 +192,51 @@ func (h *Handler) sendStatsUpdate(
 	}
 
 	if !isHeartbeat {
-		// Fetch actual stats from usecases
-		feedCount, err := h.deps.FeedAmount.Execute(ctx)
+		stats, err := h.fetchStatsCached(ctx)
 		if err != nil {
-			return fmt.Errorf("get feed count: %w", err)
+			return err
 		}
-
-		unsummarized, err := h.deps.UnsummarizedCount.Execute(ctx)
-		if err != nil {
-			return fmt.Errorf("get unsummarized count: %w", err)
-		}
-
-		totalArticles, err := h.deps.TotalCount.Execute(ctx)
-		if err != nil {
-			return fmt.Errorf("get total articles: %w", err)
-		}
-
-		resp.FeedAmount = int64(feedCount)
-		resp.UnsummarizedFeedAmount = int64(unsummarized)
-		resp.TotalArticles = int64(totalArticles)
+		resp.FeedAmount = int64(stats.feedCount)
+		resp.UnsummarizedFeedAmount = int64(stats.unsummarizedCount)
+		resp.TotalArticles = int64(stats.totalArticles)
 	}
 
 	return stream.Send(resp)
+}
+
+// fetchStatsCached returns recently-fetched stats when available (cache age <
+// statsCacheTTL), otherwise queries the underlying usecases and updates the
+// cache. The cache is per-process and shared across all concurrent streams.
+func (h *Handler) fetchStatsCached(ctx context.Context) (cachedFeedStats, error) {
+	feedStatsCacheMu.Lock()
+	if !feedStatsCache.fetchedAt.IsZero() && time.Since(feedStatsCache.fetchedAt) < statsCacheTTL {
+		fresh := feedStatsCache
+		feedStatsCacheMu.Unlock()
+		return fresh, nil
+	}
+	feedStatsCacheMu.Unlock()
+
+	feedCount, err := h.deps.FeedAmount.Execute(ctx)
+	if err != nil {
+		return cachedFeedStats{}, fmt.Errorf("get feed count: %w", err)
+	}
+	unsummarized, err := h.deps.UnsummarizedCount.Execute(ctx)
+	if err != nil {
+		return cachedFeedStats{}, fmt.Errorf("get unsummarized count: %w", err)
+	}
+	totalArticles, err := h.deps.TotalCount.Execute(ctx)
+	if err != nil {
+		return cachedFeedStats{}, fmt.Errorf("get total articles: %w", err)
+	}
+
+	stats := cachedFeedStats{
+		feedCount:         feedCount,
+		unsummarizedCount: unsummarized,
+		totalArticles:     totalArticles,
+		fetchedAt:         time.Now(),
+	}
+	feedStatsCacheMu.Lock()
+	feedStatsCache = stats
+	feedStatsCacheMu.Unlock()
+	return stats, nil
 }

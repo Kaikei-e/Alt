@@ -1,10 +1,15 @@
 /**
  * Svelte 5 hook for streaming feed statistics via Connect-RPC Server Streaming.
  *
- * Replaces useSSEFeedsStats with type-safe gRPC streaming.
+ * The hook is backed by a module-scope singleton so multiple components on the
+ * same page (or rapid SvelteKit navigations) reuse a single stream rather than
+ * opening one per mount. Production data showed 22+ concurrent streams from a
+ * single user as components mounted and re-mounted; the singleton + refcount
+ * pattern collapses those to a single stream while still supporting cleanup
+ * on the last subscriber unmount.
  */
 
-import { onDestroy } from "svelte";
+import { onDestroy, untrack } from "svelte";
 import { createClientTransport } from "$lib/connect/transport.client";
 import { streamFeedStats } from "$lib/connect/feeds";
 
@@ -17,119 +22,166 @@ interface StreamingFeedStatsState {
 	reconnect: () => void;
 }
 
-const MAX_RETRIES = 10;
+const MAX_RETRIES = 5;
 const BASE_RETRY_DELAY = 1000; // 1 second
-const MAX_RETRY_DELAY = 10000; // 10 seconds
+const MAX_RETRY_DELAY = 30_000; // 30 seconds
 
-/**
- * Hook for streaming feed statistics via Connect-RPC.
- *
- * Returns reactive state with getter pattern for Svelte 5 compatibility.
- *
- * @returns Streaming feed stats state
- */
-export function useStreamingFeedStats(): StreamingFeedStatsState {
-	// Reactive state with $state runes
-	let feedAmount = $state(0);
-	let unsummarizedArticlesAmount = $state(0);
-	let totalArticlesAmount = $state(0);
-	let isConnected = $state(false);
-	let retryCount = $state(0);
+// =============================================================================
+// Module-scope singleton state
+// =============================================================================
 
-	let abortController: AbortController | null = null;
-	let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+let feedAmount = $state(0);
+let unsummarizedArticlesAmount = $state(0);
+let totalArticlesAmount = $state(0);
+let isConnected = $state(false);
+let retryCount = $state(0);
 
-	/**
-	 * Establish streaming connection
-	 */
-	async function connect() {
-		if (retryCount >= MAX_RETRIES) {
-			console.error("[useStreamingFeedStats] Max retry attempts reached");
-			return;
-		}
+let abortController: AbortController | null = null;
+let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+let subscriberCount = 0;
+let visibilityListenersAttached = false;
+let suspendedForHidden = false;
 
+function connect(): void {
+	// Only connect when at least one subscriber is active.
+	if (subscriberCount === 0) return;
+	if (abortController) return;
+	if (untrack(() => retryCount) >= MAX_RETRIES) {
+		console.error("[useStreamingFeedStats] Max retry attempts reached");
+		return;
+	}
+
+	void (async () => {
 		try {
 			const transport = createClientTransport();
-
 			abortController = await streamFeedStats(
 				transport,
 				(stats) => {
-					// Ignore heartbeat messages for data updates
 					if (!stats.isHeartbeat) {
 						feedAmount = stats.feedAmount;
 						unsummarizedArticlesAmount = stats.unsummarizedFeedAmount;
 						totalArticlesAmount = stats.totalArticles;
 					}
-
-					// Mark as connected (even for heartbeats)
 					isConnected = true;
-					retryCount = 0; // Reset on successful data
+					retryCount = 0;
 				},
 				(error) => {
 					console.error("[useStreamingFeedStats] Stream error:", error);
 					isConnected = false;
-					scheduleReconnect();
+					abortController = null;
+					if (subscriberCount > 0 && !suspendedForHidden) {
+						scheduleReconnect();
+					}
 				},
 			);
-
 			isConnected = true;
 		} catch (error) {
 			console.error("[useStreamingFeedStats] Connection failed:", error);
 			isConnected = false;
-			scheduleReconnect();
-		}
-	}
-
-	/**
-	 * Schedule reconnection with exponential backoff
-	 */
-	function scheduleReconnect() {
-		if (reconnectTimer) return; // Already scheduled
-
-		const delay = Math.min(BASE_RETRY_DELAY * 2 ** retryCount, MAX_RETRY_DELAY);
-
-		reconnectTimer = setTimeout(() => {
-			reconnectTimer = null;
-			retryCount++;
-			connect();
-		}, delay);
-	}
-
-	/**
-	 * Disconnect and cleanup
-	 */
-	function disconnect() {
-		if (abortController) {
-			abortController.abort();
 			abortController = null;
+			if (subscriberCount > 0 && !suspendedForHidden) {
+				scheduleReconnect();
+			}
 		}
+	})();
+}
 
-		if (reconnectTimer) {
-			clearTimeout(reconnectTimer);
-			reconnectTimer = null;
-		}
+function scheduleReconnect(): void {
+	if (reconnectTimer) return;
+	const attempt = untrack(() => retryCount);
+	const delay = Math.min(BASE_RETRY_DELAY * 2 ** attempt, MAX_RETRY_DELAY);
+	reconnectTimer = setTimeout(() => {
+		reconnectTimer = null;
+		retryCount = attempt + 1;
+		connect();
+	}, delay);
+}
 
-		isConnected = false;
+function disconnect(): void {
+	if (abortController) {
+		abortController.abort();
+		abortController = null;
 	}
+	if (reconnectTimer) {
+		clearTimeout(reconnectTimer);
+		reconnectTimer = null;
+	}
+	isConnected = false;
+}
 
-	// Initial connection
-	connect();
+function suspend(): void {
+	if (suspendedForHidden) return;
+	suspendedForHidden = true;
+	disconnect();
+}
 
-	// Cleanup on component destroy
-	onDestroy(() => {
-		disconnect();
-	});
-
-	/**
-	 * Manual reconnection - resets retry count and re-establishes connection
-	 */
-	function reconnect() {
+function resume(): void {
+	if (!suspendedForHidden) return;
+	suspendedForHidden = false;
+	if (subscriberCount > 0) {
 		retryCount = 0;
-		disconnect();
+		connect();
+	}
+}
+
+function attachVisibilityListenersOnce(): void {
+	if (visibilityListenersAttached) return;
+	if (typeof document === "undefined") return;
+	visibilityListenersAttached = true;
+	document.addEventListener("visibilitychange", () => {
+		if (document.visibilityState === "hidden") {
+			suspend();
+		} else {
+			resume();
+		}
+	});
+	// pagehide fires when the page enters BFCache / before unload; pause to
+	// avoid stranded streams on the server.
+	window.addEventListener("pagehide", () => {
+		suspend();
+	});
+	window.addEventListener("pageshow", (e) => {
+		// pageshow with persisted=true means BFCache restore.
+		if ((e as PageTransitionEvent).persisted) {
+			resume();
+		}
+	});
+}
+
+// =============================================================================
+// Public hook
+// =============================================================================
+
+/**
+ * Hook for streaming feed statistics via Connect-RPC.
+ *
+ * Returns reactive state with getter pattern for Svelte 5 compatibility.
+ * Multiple consumers across the page share a single underlying stream.
+ */
+export function useStreamingFeedStats(): StreamingFeedStatsState {
+	attachVisibilityListenersOnce();
+
+	subscriberCount += 1;
+	if (subscriberCount === 1) {
+		retryCount = 0;
 		connect();
 	}
 
-	// Return reactive getters (preserves Svelte 5 reactivity)
+	onDestroy(() => {
+		subscriberCount = Math.max(0, subscriberCount - 1);
+		if (subscriberCount === 0) {
+			disconnect();
+		}
+	});
+
+	function reconnect(): void {
+		retryCount = 0;
+		disconnect();
+		if (subscriberCount > 0) {
+			connect();
+		}
+	}
+
 	return {
 		get feedAmount() {
 			return feedAmount;

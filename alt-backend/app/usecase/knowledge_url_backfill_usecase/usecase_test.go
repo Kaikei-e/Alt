@@ -253,3 +253,65 @@ func TestEmit_PassesOriginalOccurredAtFromArticleCreatedAt(t *testing.T) {
 	assert.Contains(t, body, `"original_occurred_at":"2026-01-15T08:30:00Z"`,
 		"corrective payload must carry original observed time as RFC3339")
 }
+
+// TestEmit_OnContextCanceledDuringAppend_ReturnsPartialNotError verifies that
+// the BFF 30s deadline (or any other parent ctx cancel) is treated as partial
+// progress, not a hard failure. Already-appended events are durable on the
+// sovereign side so the operator can re-run safely; the user no longer sees
+// "Failed to emit article URL backfill." for what is actually a successful
+// partial run.
+func TestEmit_OnContextCanceledDuringAppend_ReturnsPartialNotError(t *testing.T) {
+	t.Parallel()
+	a1 := mkArticle(t, "https://example.com/a1")
+	a2 := mkArticle(t, "https://example.com/a2")
+	articles := &mockArticlesPort{pages: [][]domain.KnowledgeBackfillArticle{{a1, a2}}}
+
+	// Event port returns context.Canceled on the second append (mid-iteration
+	// cancel) — mimicking BFF deadline tripping during the upstream RPC.
+	calls := 0
+	events := &cancelOnNthCall{n: 2}
+
+	uc := NewUsecase(articles, events)
+	res, err := uc.Emit(context.Background(), 0, false)
+
+	require.NoError(t, err, "ctx cancel must surface as partial, not error")
+	assert.True(t, res.MoreRemaining, "MoreRemaining should signal the operator to re-run")
+	assert.Equal(t, 1, res.EventsAppended, "first append should have stuck")
+	assert.Equal(t, 1, res.ArticlesScanned, "the canceled iteration should not count as scanned")
+	_ = calls // silence unused
+}
+
+// TestEmit_OnContextCanceledStringFromConnect_AlsoTreatedAsPartial covers
+// the case where the cancel comes back via connect-go wrapped as a
+// connect.CodeCanceled error string ("canceled: context canceled") rather
+// than the std-lib context.Canceled sentinel — exactly what we observed in
+// alt-backend logs for the 02:42 BFF-deadline incident.
+func TestEmit_OnContextCanceledStringFromConnect_AlsoTreatedAsPartial(t *testing.T) {
+	t.Parallel()
+	a1 := mkArticle(t, "https://example.com/a1")
+	articles := &mockArticlesPort{pages: [][]domain.KnowledgeBackfillArticle{{a1}}}
+	events := &mockEventPort{err: errors.New("sovereign AppendKnowledgeEvent: canceled: context canceled")}
+
+	uc := NewUsecase(articles, events)
+	res, err := uc.Emit(context.Background(), 0, false)
+
+	require.NoError(t, err)
+	assert.True(t, res.MoreRemaining)
+	assert.Equal(t, 0, res.EventsAppended)
+}
+
+// cancelOnNthCall returns context.Canceled on the n-th AppendKnowledgeEvent
+// call, simulating BFF deadline tripping mid-iteration.
+type cancelOnNthCall struct {
+	mockEventPort
+	n     int
+	count int
+}
+
+func (c *cancelOnNthCall) AppendKnowledgeEvent(ctx context.Context, ev domain.KnowledgeEvent) (int64, error) {
+	c.count++
+	if c.count == c.n {
+		return 0, context.Canceled
+	}
+	return c.mockEventPort.AppendKnowledgeEvent(ctx, ev)
+}

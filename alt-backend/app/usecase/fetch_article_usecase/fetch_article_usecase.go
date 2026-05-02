@@ -44,13 +44,21 @@ type fetchResult struct {
 	ogImageURL string
 }
 
+// defaultExternalFetchTimeout caps the external article fetch (origin HTTP GET +
+// HTML extraction) so a single slow origin cannot stall the user-visible request
+// path beyond this budget. Set to 8s based on the BFF tail observation that
+// origins regularly take 5-19s; tail beyond 8s is rejected and the cache miss
+// state is preserved for the next attempt.
+const defaultExternalFetchTimeout = 8 * time.Second
+
 type ArticleUsecaseImpl struct {
-	articleFetcher     fetch_article_port.FetchArticlePort
-	robotsTxt          robots_txt_port.RobotsTxtPort
-	repo               ArticleRepository
-	ragIntegration     rag_integration_port.RagIntegrationPort
-	scrapingPolicyPort scraping_policy_port.ScrapingPolicyPort // optional, nil = fallback to robotsTxt
-	fetchGroup         singleflight.Group                      // deduplicates concurrent fetches for the same URL
+	articleFetcher       fetch_article_port.FetchArticlePort
+	robotsTxt            robots_txt_port.RobotsTxtPort
+	repo                 ArticleRepository
+	ragIntegration       rag_integration_port.RagIntegrationPort
+	scrapingPolicyPort   scraping_policy_port.ScrapingPolicyPort // optional, nil = fallback to robotsTxt
+	fetchGroup           singleflight.Group                      // deduplicates concurrent fetches for the same URL
+	externalFetchTimeout time.Duration                           // zero = defaultExternalFetchTimeout
 }
 
 func NewArticleUsecase(
@@ -60,10 +68,11 @@ func NewArticleUsecase(
 	ragIntegration rag_integration_port.RagIntegrationPort,
 ) ArticleUsecase {
 	return &ArticleUsecaseImpl{
-		articleFetcher: articleFetcher,
-		robotsTxt:      robotsTxt,
-		repo:           repo,
-		ragIntegration: ragIntegration,
+		articleFetcher:       articleFetcher,
+		robotsTxt:            robotsTxt,
+		repo:                 repo,
+		ragIntegration:       ragIntegration,
+		externalFetchTimeout: defaultExternalFetchTimeout,
 	}
 }
 
@@ -78,11 +87,12 @@ func NewArticleUsecaseWithScrapingPolicy(
 	scrapingPolicyPort scraping_policy_port.ScrapingPolicyPort,
 ) ArticleUsecase {
 	return &ArticleUsecaseImpl{
-		articleFetcher:     articleFetcher,
-		robotsTxt:          robotsTxt,
-		repo:               repo,
-		ragIntegration:     ragIntegration,
-		scrapingPolicyPort: scrapingPolicyPort,
+		articleFetcher:       articleFetcher,
+		robotsTxt:            robotsTxt,
+		repo:                 repo,
+		ragIntegration:       ragIntegration,
+		scrapingPolicyPort:   scrapingPolicyPort,
+		externalFetchTimeout: defaultExternalFetchTimeout,
 	}
 }
 
@@ -110,10 +120,12 @@ func (u *ArticleUsecaseImpl) FetchCompliantArticleWithRefresh(ctx context.Contex
 	urlStr := targetURL.String()
 	domainStr := targetURL.Hostname()
 
-	// minFulltextContentLength is the byte threshold below which cached article
-	// content is considered an RSS summary rather than full article text.
-	// Cached articles shorter than this trigger a web fetch for full content.
-	const minFulltextContentLength = 500
+	// minCachedContentLength is the byte floor for treating saved article content
+	// as a valid cache hit. Saved content shorter than this is presumed to be an
+	// extractor error, an empty body, or a placeholder, so we re-fetch.
+	// NOT the Inoreader Tier1 (500+ byte) ingestion criterion — that gate lives
+	// upstream in pre-processor and does not belong on this read path.
+	const minCachedContentLength = 100
 
 	// 1. Check if article already exists in DB (skip when force refresh)
 	if !forceRefresh {
@@ -124,7 +136,7 @@ func (u *ArticleUsecaseImpl) FetchCompliantArticleWithRefresh(ctx context.Contex
 			return "", "", "", fmt.Errorf("failed to check existing article: %w", err)
 		}
 
-		if existingArticle != nil && len(existingArticle.Content) >= minFulltextContentLength {
+		if existingArticle != nil && len(strings.TrimSpace(existingArticle.Content)) >= minCachedContentLength {
 			logger.Logger.InfoContext(ctx, "Article found in database", "url", urlStr, "id", existingArticle.ID)
 			// Try to retrieve cached og:image (lightweight query, no head_html)
 			cachedOgImage, ogErr := u.repo.FetchOgImageURLByArticleID(ctx, existingArticle.ID)
@@ -135,8 +147,8 @@ func (u *ArticleUsecaseImpl) FetchCompliantArticleWithRefresh(ctx context.Contex
 		}
 
 		if existingArticle != nil {
-			logger.Logger.InfoContext(ctx, "Cached article content below fulltext threshold, fetching from web",
-				"url", urlStr, "cached_length", len(existingArticle.Content), "threshold", minFulltextContentLength)
+			logger.Logger.InfoContext(ctx, "Cached article content too short, fetching from web",
+				"url", urlStr, "cached_length", len(existingArticle.Content), "min_required", minCachedContentLength)
 		}
 	} else {
 		logger.Logger.InfoContext(ctx, "Force refresh: skipping DB cache", "url", urlStr)
@@ -192,9 +204,13 @@ func (u *ArticleUsecaseImpl) FetchCompliantArticleWithRefresh(ctx context.Contex
 	if forceRefresh {
 		sfKey = urlStr + ":refresh"
 	}
-	logger.Logger.InfoContext(ctx, "Fetching article from Web", "url", urlStr, "force_refresh", forceRefresh)
+	timeout := u.externalFetchTimeout
+	if timeout <= 0 {
+		timeout = defaultExternalFetchTimeout
+	}
+	logger.Logger.InfoContext(ctx, "Fetching article from Web", "url", urlStr, "force_refresh", forceRefresh, "timeout", timeout)
 	resultIface, err, _ := u.fetchGroup.Do(sfKey, func() (interface{}, error) {
-		fetchCtx, fetchCancel := context.WithTimeout(ctx, 25*time.Second)
+		fetchCtx, fetchCancel := context.WithTimeout(ctx, timeout)
 		defer fetchCancel()
 		contentPtr, fetchErr := u.articleFetcher.FetchArticleContents(fetchCtx, urlStr)
 		if fetchErr != nil {

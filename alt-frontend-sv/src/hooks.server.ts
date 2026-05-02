@@ -1,4 +1,4 @@
-import type { Handle } from "@sveltejs/kit";
+import type { Handle, HandleServerError } from "@sveltejs/kit";
 import { redirect } from "@sveltejs/kit";
 import {
 	isPublicRoute,
@@ -73,4 +73,38 @@ export const handle: Handle = async ({ event, resolve: resolveEvent }) => {
 	}
 
 	return resolveEvent(event, resolveOptions);
+};
+
+// handleError captures every uncaught exception thrown from load functions and
+// server hooks, emitting a structured JSON line to stderr so docker logs can be
+// tailed and grepped. The production frontend container runs node adapter with
+// production NODE_ENV which otherwise swallows raw console.error from load
+// functions; this handler restores that visibility.
+export const handleError: HandleServerError = ({ error, event, status, message }) => {
+	const errInfo =
+		error instanceof Error
+			? {
+					name: error.name,
+					message: error.message,
+					stack: error.stack,
+				}
+			: { message: String(error) };
+	const cause = (error as { cause?: unknown })?.cause;
+	console.error(
+		JSON.stringify({
+			level: "error",
+			source: "sveltekit-handleError",
+			ts: new Date().toISOString(),
+			path: event.url.pathname,
+			query: event.url.search || undefined,
+			method: event.request.method,
+			status,
+			message,
+			error: errInfo,
+			cause: cause === undefined ? undefined : String(cause),
+			userAgent: event.request.headers.get("user-agent") || undefined,
+			remote: event.getClientAddress?.(),
+		}),
+	);
+	return { message: "Internal error" };
 };

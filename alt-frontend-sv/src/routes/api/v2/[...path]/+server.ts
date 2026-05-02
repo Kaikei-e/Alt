@@ -104,7 +104,28 @@ export const fallback: RequestHandler = async ({ request, params, locals }) => {
 			headers: responseHeaders,
 		});
 	} catch (error) {
-		console.error("[Connect-RPC Proxy] Error:", error);
+		// Structured log so docker logs / rask-log-aggregator can correlate
+		// per-path proxy failures (notably the iPhone Safari intermittent 500s
+		// that surface here when the backend fetch fails).
+		const errCause = (error as { cause?: { code?: unknown } })?.cause;
+		console.error(
+			JSON.stringify({
+				level: "error",
+				source: "connect-proxy",
+				ts: new Date().toISOString(),
+				path,
+				method: request.method,
+				error:
+					error instanceof Error
+						? { name: error.name, message: error.message }
+						: { message: String(error) },
+				cause:
+					errCause && typeof errCause === "object" && "code" in errCause
+						? String((errCause as { code: unknown }).code)
+						: undefined,
+				userAgent: request.headers.get("user-agent") || undefined,
+			}),
+		);
 		return new Response(
 			JSON.stringify({
 				code: "internal",
