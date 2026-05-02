@@ -17,6 +17,11 @@ import {
 	type FeedSearchResponse,
 } from "./client";
 
+// Cap unary feed reads at 5s. The BFF derives its backend deadline from the
+// Connect-Timeout-Ms header; without it the call hangs against a stale upstream
+// during a backend rolling restart and surfaces as 502 to the user.
+const UNARY_FEED_TIMEOUT_MS = 5000;
+
 /**
  * Get unread feeds with cursor-based pagination via Connect-RPC.
  *
@@ -34,12 +39,15 @@ export async function getUnreadFeeds(
 	excludeFeedLinkIds?: string[],
 ): Promise<FeedCursorResponse> {
 	const client = createFeedClient(transport);
-	const response = (await client.getUnreadFeeds({
-		cursor,
-		limit,
-		view,
-		excludeFeedLinkIds: excludeFeedLinkIds ?? [],
-	})) as GetUnreadFeedsResponse;
+	const response = (await client.getUnreadFeeds(
+		{
+			cursor,
+			limit,
+			view,
+			excludeFeedLinkIds: excludeFeedLinkIds ?? [],
+		},
+		{ timeoutMs: UNARY_FEED_TIMEOUT_MS },
+	)) as GetUnreadFeedsResponse;
 
 	return {
 		data: response.data.map(convertProtoFeed),
@@ -63,11 +71,14 @@ export async function getAllFeeds(
 	excludeFeedLinkIds?: string[],
 ): Promise<FeedCursorResponse> {
 	const client = createFeedClient(transport);
-	const response = (await client.getAllFeeds({
-		cursor,
-		limit,
-		excludeFeedLinkIds: excludeFeedLinkIds ?? [],
-	})) as GetAllFeedsResponse;
+	const response = (await client.getAllFeeds(
+		{
+			cursor,
+			limit,
+			excludeFeedLinkIds: excludeFeedLinkIds ?? [],
+		},
+		{ timeoutMs: UNARY_FEED_TIMEOUT_MS },
+	)) as GetAllFeedsResponse;
 
 	return {
 		data: response.data.map(convertProtoFeed),
@@ -90,10 +101,13 @@ export async function getReadFeeds(
 	limit: number = 32,
 ): Promise<FeedCursorResponse> {
 	const client = createFeedClient(transport);
-	const response = (await client.getReadFeeds({
-		cursor,
-		limit,
-	})) as GetReadFeedsResponse;
+	const response = (await client.getReadFeeds(
+		{
+			cursor,
+			limit,
+		},
+		{ timeoutMs: UNARY_FEED_TIMEOUT_MS },
+	)) as GetReadFeedsResponse;
 
 	return {
 		data: response.data.map(convertProtoFeed),
@@ -116,10 +130,13 @@ export async function getFavoriteFeeds(
 	limit: number = 20,
 ): Promise<FeedCursorResponse> {
 	const client = createFeedClient(transport);
-	const response = (await client.getFavoriteFeeds({
-		cursor,
-		limit,
-	})) as GetFavoriteFeedsResponse;
+	const response = (await client.getFavoriteFeeds(
+		{
+			cursor,
+			limit,
+		},
+		{ timeoutMs: UNARY_FEED_TIMEOUT_MS },
+	)) as GetFavoriteFeedsResponse;
 
 	return {
 		data: response.data.map(convertProtoFeed),

@@ -13,6 +13,11 @@ import type {
 } from "$lib/gen/alt/feeds/v2/feeds_pb";
 import { createFeedClient, normalizeUrl } from "./client";
 
+// Cap unary feed actions at 5s. The BFF derives its backend deadline from the
+// Connect-Timeout-Ms header; without it the call hangs against a stale upstream
+// during a backend rolling restart and surfaces as 502 to the user.
+const UNARY_FEED_TIMEOUT_MS = 5000;
+
 // =============================================================================
 // Mark As Read
 // =============================================================================
@@ -39,9 +44,12 @@ export async function markAsRead(
 	const normalizedUrl = normalizeUrl(articleUrl);
 
 	const client = createFeedClient(transport);
-	const response = (await client.markAsRead({
-		articleUrl: normalizedUrl,
-	})) as MarkAsReadResponse;
+	const response = (await client.markAsRead(
+		{
+			articleUrl: normalizedUrl,
+		},
+		{ timeoutMs: UNARY_FEED_TIMEOUT_MS },
+	)) as MarkAsReadResponse;
 
 	return {
 		message: response.message,
@@ -75,6 +83,7 @@ export async function listSubscriptions(
 	const client = createFeedClient(transport);
 	const response = (await client.listSubscriptions(
 		{},
+		{ timeoutMs: UNARY_FEED_TIMEOUT_MS },
 	)) as ListSubscriptionsResponse;
 
 	return response.sources.map((source: FeedSource) => ({
@@ -98,9 +107,12 @@ export async function subscribe(
 	feedLinkId: string,
 ): Promise<string> {
 	const client = createFeedClient(transport);
-	const response = (await client.subscribe({
-		feedLinkId,
-	})) as SubscribeResponse;
+	const response = (await client.subscribe(
+		{
+			feedLinkId,
+		},
+		{ timeoutMs: UNARY_FEED_TIMEOUT_MS },
+	)) as SubscribeResponse;
 
 	return response.message;
 }
@@ -117,9 +129,12 @@ export async function unsubscribe(
 	feedLinkId: string,
 ): Promise<string> {
 	const client = createFeedClient(transport);
-	const response = (await client.unsubscribe({
-		feedLinkId,
-	})) as UnsubscribeResponse;
+	const response = (await client.unsubscribe(
+		{
+			feedLinkId,
+		},
+		{ timeoutMs: UNARY_FEED_TIMEOUT_MS },
+	)) as UnsubscribeResponse;
 
 	return response.message;
 }
