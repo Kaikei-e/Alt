@@ -616,6 +616,7 @@ func decodeActTargets(b []byte) []*loopv1.ActTarget {
 		TargetType string  `json:"target_type"`
 		TargetRef  string  `json:"target_ref"`
 		Route      *string `json:"route"`
+		SourceURL  *string `json:"source_url"`
 	}
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return nil
@@ -629,6 +630,7 @@ func decodeActTargets(b []byte) []*loopv1.ActTarget {
 			TargetType: mapActTargetType(r.TargetType),
 			TargetRef:  r.TargetRef,
 			Route:      r.Route,
+			SourceUrl:  r.SourceURL,
 		})
 	}
 	return out

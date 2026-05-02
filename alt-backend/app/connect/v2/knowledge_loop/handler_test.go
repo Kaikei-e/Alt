@@ -22,6 +22,39 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// TestDecodeActTargets_RoundtripsSourceURL pins the BFF JSONB → proto mapping
+// for the source_url field added in the ACT-Open canonical fix. Both
+// presence and absence must round-trip cleanly so legacy projection rows
+// that pre-date the field continue to decode.
+func TestDecodeActTargets_RoundtripsSourceURL(t *testing.T) {
+	t.Run("decodes source_url alongside route", func(t *testing.T) {
+		b := []byte(`[{"target_type":"article","target_ref":"art-1","route":"/articles/art-1","source_url":"https://example.com/post"}]`)
+		out := decodeActTargets(b)
+		require.Len(t, out, 1)
+		require.Equal(t, loopv1.ActTargetType_ACT_TARGET_TYPE_ARTICLE, out[0].TargetType)
+		require.Equal(t, "art-1", out[0].TargetRef)
+		require.NotNil(t, out[0].Route)
+		require.Equal(t, "/articles/art-1", *out[0].Route)
+		require.NotNil(t, out[0].SourceUrl)
+		require.Equal(t, "https://example.com/post", *out[0].SourceUrl)
+	})
+
+	t.Run("legacy entry without source_url decodes with nil SourceUrl", func(t *testing.T) {
+		b := []byte(`[{"target_type":"article","target_ref":"art-1","route":"/articles/art-1"}]`)
+		out := decodeActTargets(b)
+		require.Len(t, out, 1)
+		require.NotNil(t, out[0].Route)
+		require.Equal(t, "/articles/art-1", *out[0].Route)
+		require.Nil(t, out[0].SourceUrl, "missing source_url must decode to nil, not empty string")
+	})
+
+	t.Run("returns nil for empty input", func(t *testing.T) {
+		require.Nil(t, decodeActTargets(nil))
+		require.Nil(t, decodeActTargets([]byte("")))
+		require.Nil(t, decodeActTargets([]byte("[]")))
+	})
+}
+
 // TestToProtoEntry_MapsChangeSummary verifies that the JSONB change_summary blob
 // stored on domain.KnowledgeLoopEntry is unmarshaled into the proto ChangeSummary
 // message so /loop UI can render the "what changed" band (PR-L1).
