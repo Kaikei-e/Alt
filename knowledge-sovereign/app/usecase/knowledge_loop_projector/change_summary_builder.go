@@ -126,6 +126,13 @@ func parseChangeSummaryPayload(raw json.RawMessage) changeSummaryPayload {
 	out.newTags = readStringSlice(m, "tags", "new_tags")
 	out.changedFields = readStringSlice(m, "changed_fields")
 
+	if out.summary == "" && out.oldSummaryText != "" {
+		out.summary = out.oldSummaryText
+	}
+	if len(out.changedFields) == 0 && (out.summary != "" || out.oldSummaryText != "" || out.newSummaryText != "") {
+		out.changedFields = []string{"summary"}
+	}
+
 	return out
 }
 

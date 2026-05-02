@@ -12,6 +12,7 @@ package knowledge_loop_projector
 import (
 	"encoding/json"
 	"strings"
+	"time"
 	"unicode/utf8"
 
 	"knowledge-sovereign/driver/sovereign_db"
@@ -53,10 +54,7 @@ func EnrichWhyFromEvent(ev *sovereign_db.KnowledgeEvent) *sovereignv1.KnowledgeL
 	case EventHomeItemSuperseded, EventSummarySuperseded:
 		return enrichSuperseded(ev, payload)
 	case EventHomeItemDismissed:
-		return &sovereignv1.KnowledgeLoopWhyPayload{
-			Kind: sovereignv1.WhyKind_WHY_KIND_SOURCE,
-			Text: "You dismissed this earlier — review or remove from view.",
-		}
+		return enrichHomeItemDismissed(ev, payload)
 	}
 	// Fallback: keep entries renderable even for event types without dedicated
 	// enrichment, so the projector never emits an empty why_text.
@@ -78,6 +76,8 @@ type enrichmentPayload struct {
 	PreviousSummaryVersion string
 	EntryKey               string
 	NewEntryKey            string
+	ActionType             string
+	OpenedAt               string
 }
 
 func parseEnrichmentPayload(raw json.RawMessage) enrichmentPayload {
@@ -98,6 +98,8 @@ func parseEnrichmentPayload(raw json.RawMessage) enrichmentPayload {
 	out.PreviousSummaryVersion = readString(m, "previous_summary_version", "old_summary_version_id")
 	out.EntryKey = readString(m, "entry_key", "item_key")
 	out.NewEntryKey = readString(m, "new_entry_key", "superseded_by_entry_key")
+	out.ActionType = readString(m, "action_type", "action")
+	out.OpenedAt = readString(m, "opened_at", "dismissed_at")
 	return out
 }
 
@@ -181,6 +183,23 @@ func enrichSuperseded(_ *sovereign_db.KnowledgeEvent, p enrichmentPayload) *sove
 	refs := appendRefIfPresent(nil, p.PreviousSummaryVersion, "previous_summary", p.SummaryVersionID, "new_summary", p.EntryKey, "previous_entry", p.NewEntryKey, "new_entry")
 	return &sovereignv1.KnowledgeLoopWhyPayload{
 		Kind:         sovereignv1.WhyKind_WHY_KIND_CHANGE,
+		Text:         sanitizePlainText(text),
+		EvidenceRefs: boundEvidence(refs),
+	}
+}
+
+func enrichHomeItemDismissed(ev *sovereign_db.KnowledgeEvent, p enrichmentPayload) *sovereignv1.KnowledgeLoopWhyPayload {
+	when := p.OpenedAt
+	if when == "" && ev != nil && !ev.OccurredAt.IsZero() {
+		when = ev.OccurredAt.UTC().Format(time.RFC3339)
+	}
+	text := "Dismissed earlier — recheck, mark reviewed, or archive."
+	if when != "" {
+		text = "Dismissed at " + when + " — recheck, mark reviewed, or archive."
+	}
+	refs := appendRefIfPresent(nil, ev.EventID.String(), "dismiss_event", p.EntryKey, "entry")
+	return &sovereignv1.KnowledgeLoopWhyPayload{
+		Kind:         sovereignv1.WhyKind_WHY_KIND_SOURCE,
 		Text:         sanitizePlainText(text),
 		EvidenceRefs: boundEvidence(refs),
 	}

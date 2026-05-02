@@ -217,6 +217,7 @@ func (p *Projector) projectEvent(ctx context.Context, ev *sovereign_db.Knowledge
 		entry.DismissState = sovereignv1.DismissState_DISMISS_STATE_COMPLETED
 		entry.VisibilityState = sovereignv1.LoopVisibilityState_LOOP_VISIBILITY_STATE_VISIBLE
 		entry.CompletionState = sovereignv1.LoopCompletionState_LOOP_COMPLETION_STATE_COMPLETED
+		entry.ContinueContext = buildContinueContextJSON(ev)
 		res, err := p.repo.UpsertKnowledgeLoopEntry(ctx, entry)
 		if err != nil {
 			return nil, err
@@ -576,6 +577,7 @@ func (p *Projector) buildEntryFromEvent(
 		ProjectionSeqHiwater:  ev.EventSeq,
 		SourceEventSeq:        ev.EventSeq,
 		FreshnessAt:           timestamppb.New(ev.OccurredAt),
+		SourceObservedAt:      timestamppb.New(eventObservedAt(ev)),
 		ArtifactVersionRef:    art,
 		WhyPrimary:            why,
 		DecisionOptions:       seedDecisionOptions(proposedStage),
@@ -888,6 +890,37 @@ func extractStringField(payload json.RawMessage, keys ...string) string {
 		}
 	}
 	return ""
+}
+
+func eventObservedAt(ev *sovereign_db.KnowledgeEvent) time.Time {
+	if ev == nil {
+		return time.Time{}
+	}
+	if t := readPayloadTimestamp(ev.Payload,
+		"source_observed_at",
+		"published_at",
+		"observed_at",
+		"opened_at",
+		"dismissed_at",
+		"linked_at",
+	); !t.IsZero() {
+		return t
+	}
+	return ev.OccurredAt
+}
+
+func readPayloadTimestamp(payload json.RawMessage, keys ...string) time.Time {
+	s := extractStringField(payload, keys...)
+	if s == "" {
+		return time.Time{}
+	}
+	if t, err := time.Parse(time.RFC3339Nano, s); err == nil {
+		return t
+	}
+	if t, err := time.Parse(time.RFC3339, s); err == nil {
+		return t
+	}
+	return time.Time{}
 }
 
 func extractArtifactVersionRef(payload json.RawMessage) *sovereignv1.KnowledgeLoopArtifactVersionRef {

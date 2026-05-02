@@ -232,7 +232,11 @@ func makeEvent(t *testing.T, eventType string, seq int64, userID uuid.UUID, payl
 
 func TestRunBatch_HomeItemOpened_ProjectsEntryAndSession(t *testing.T) {
 	userID := uuid.New()
-	ev := makeEvent(t, EventHomeItemOpened, 100, userID, map[string]any{"entry_key": "article:42"})
+	ev := makeEvent(t, EventHomeItemOpened, 100, userID, map[string]any{
+		"entry_key":   "article:42",
+		"opened_at":   "2026-04-26T09:57:00Z",
+		"action_type": "open",
+	})
 
 	repo := &fakeRepo{events: []sovereign_db.KnowledgeEvent{ev}}
 	p := newProjector(repo)
@@ -249,6 +253,19 @@ func TestRunBatch_HomeItemOpened_ProjectsEntryAndSession(t *testing.T) {
 	require.Equal(t, sovereignv1.LoopCompletionState_LOOP_COMPLETION_STATE_COMPLETED, entry.CompletionState)
 	require.Equal(t, ev.OccurredAt.UTC(), entry.FreshnessAt.AsTime().UTC(),
 		"freshness_at must come from event occurred_at, not wall-clock")
+	require.NotNil(t, entry.SourceObservedAt)
+	require.Equal(t, time.Date(2026, 4, 26, 9, 57, 0, 0, time.UTC), entry.SourceObservedAt.AsTime().UTC(),
+		"source_observed_at must come from payload interaction time")
+	require.NotEmpty(t, entry.ContinueContext, "Continue entries must carry resume context")
+	var ctxPayload struct {
+		Summary            string   `json:"summary"`
+		RecentActionLabels []string `json:"recent_action_labels"`
+		LastInteractedAt   string   `json:"last_interacted_at"`
+	}
+	require.NoError(t, json.Unmarshal(entry.ContinueContext, &ctxPayload))
+	require.Equal(t, "Last opened before this loop pass.", ctxPayload.Summary)
+	require.Equal(t, []string{"open"}, ctxPayload.RecentActionLabels)
+	require.Equal(t, "2026-04-26T09:57:00Z", ctxPayload.LastInteractedAt)
 
 	state := repo.sessions[0]
 	require.Equal(t, sovereignv1.LoopStage_LOOP_STAGE_ACT, state.CurrentStage)
@@ -282,7 +299,11 @@ func TestRunBatch_HomeItemOpened_RemainsVisibleInContinueSurface(t *testing.T) {
 
 func TestRunBatch_HomeItemDismissed_RemainsVisibleInReviewSurface(t *testing.T) {
 	userID := uuid.New()
-	ev := makeEvent(t, EventHomeItemDismissed, 120, userID, map[string]any{"entry_key": "article:review-visible"})
+	ev := makeEvent(t, EventHomeItemDismissed, 120, userID, map[string]any{
+		"entry_key":   "article:review-visible",
+		"opened_at":   "2026-04-26T09:58:00Z",
+		"action_type": "dismiss",
+	})
 
 	repo := &fakeRepo{events: []sovereign_db.KnowledgeEvent{ev}}
 	p := newProjector(repo)
@@ -293,6 +314,10 @@ func TestRunBatch_HomeItemDismissed_RemainsVisibleInReviewSurface(t *testing.T) 
 	require.Equal(t, sovereignv1.DismissState_DISMISS_STATE_DISMISSED, entry.DismissState)
 	require.Equal(t, sovereignv1.LoopVisibilityState_LOOP_VISIBILITY_STATE_VISIBLE, entry.VisibilityState)
 	require.Equal(t, sovereignv1.LoopCompletionState_LOOP_COMPLETION_STATE_DISMISSED, entry.CompletionState)
+	require.NotNil(t, entry.SourceObservedAt)
+	require.Equal(t, time.Date(2026, 4, 26, 9, 58, 0, 0, time.UTC), entry.SourceObservedAt.AsTime().UTC())
+	require.Contains(t, entry.WhyPrimary.Text, "Dismissed")
+	require.NotEmpty(t, entry.WhyPrimary.EvidenceRefs)
 
 	var reviewSurface *sovereignv1.KnowledgeLoopSurface
 	for _, s := range repo.surfaces {

@@ -96,6 +96,32 @@ func TestBuildChangeSummaryJSON_RedlineFromExcerpts(t *testing.T) {
 	}
 }
 
+func TestBuildChangeSummaryJSON_PreviousExcerptOnlyStillCarriesContext(t *testing.T) {
+	t.Parallel()
+
+	raw := []byte(`{
+		"old_summary_version_id": "summary-v1",
+		"new_summary_version_id": "summary-v2",
+		"previous_summary_excerpt": "The first version said bonds were flat."
+	}`)
+	parsed := parseChangeSummaryPayload(raw)
+	got := buildChangeSummaryJSON(parsed)
+	if got == nil {
+		t.Fatal("expected non-nil JSON for DB-shaped SummarySuperseded payload")
+	}
+
+	dec := unmarshalCS(t, got)
+	if dec.Summary != "The first version said bonds were flat." {
+		t.Errorf("Summary = %q; want previous excerpt", dec.Summary)
+	}
+	if len(dec.ChangedFields) != 1 || dec.ChangedFields[0] != "summary" {
+		t.Errorf("ChangedFields = %v; want [summary]", dec.ChangedFields)
+	}
+	if len(dec.AddedPhrases) != 0 || len(dec.RemovedPhrases) != 0 {
+		t.Errorf("expected no redline arrays without the new excerpt; got %+v", dec)
+	}
+}
+
 func TestParseChangeSummaryPayload_AcceptsAlternateKeys(t *testing.T) {
 	t.Parallel()
 
