@@ -76,8 +76,12 @@ const (
 	// `ArticleUrlBackfilled` events emitted by the admin one-shot backfill
 	// tool. A separate namespace from DedupeKeyArticleCreated so a
 	// corrective event for an already-emitted ArticleCreated does NOT
-	// collide with the original. Format: `article-url-backfill:<article_id>`.
-	DedupeKeyArticleUrlBackfill = "article-url-backfill:%s"
+	// collide with the original. Bumped to v2 so the Loop projector
+	// (added after v1 had populated the dedupe registry) can finally
+	// receive ArticleUrlBackfilled for legacy entries.
+	// See: docs/proposals/knowledge-loop-source-url-recovery-dedupe-bump.md
+	// Format: `article-url-backfill-v2:<article_id>`.
+	DedupeKeyArticleUrlBackfill = "article-url-backfill-v2:%s"
 )
 
 // Actor type constants.

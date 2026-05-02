@@ -15,15 +15,15 @@
           "event": {
             "actorId": "knowledge-url-backfill",
             "actorType": "service",
-            "aggregateId": "b65cda73-8023-45bc-99e6-1231dae2f25e",
+            "aggregateId": "c0e0256e-2278-43f4-8d9e-1d869e44f135",
             "aggregateType": "article",
-            "dedupeKey": "article-url-backfill:b65cda73-8023-45bc-99e6-1231dae2f25e",
-            "eventId": "9f5adaf7-3f58-4470-be29-5fdba38a32ec",
+            "dedupeKey": "article-url-backfill-v2:c0e0256e-2278-43f4-8d9e-1d869e44f135",
+            "eventId": "536fe47a-cc70-4b4d-b0ed-0ab365071a29",
             "eventType": "ArticleUrlBackfilled",
             "occurredAt": "2026-04-28T12:00:00Z",
             "payload": "eyJhcnRpY2xlX2lkIjoiMDAwMDAwMDAtMDAwMC0wMDAwLTAwMDAtMDAwMDAwMDAwMDAwIiwidXJsIjoiaHR0cHM6Ly9leGFtcGxlLmNvbSJ9",
-            "tenantId": "8bbfec34-cf03-49e4-b07e-c1504604e9b6",
-            "userId": "c6c3afdf-0d00-4a7d-a0c4-16e7ba389538"
+            "tenantId": "473f6b0a-ec99-4e31-8e0e-8132682933e6",
+            "userId": "22596ea4-4671-439e-8de7-19aab7424dda"
           }
         },
         "headers": {

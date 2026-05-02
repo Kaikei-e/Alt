@@ -19,6 +19,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
+	"alt/domain"
 	sovereignv1 "alt/gen/proto/services/sovereign/v1"
 	"alt/gen/proto/services/sovereign/v1/sovereignv1connect"
 )
@@ -81,7 +82,12 @@ func TestAppendKnowledgeEvent_ArticleUrlBackfilled(t *testing.T) {
 	userID := uuid.New()
 	articleID := uuid.New()
 	occurredAt := time.Date(2026, 4, 28, 12, 0, 0, 0, time.UTC)
-	dedupeKey := fmt.Sprintf("article-url-backfill:%s", articleID.String())
+	// Build the dedupe key via the producer-side const so the contract
+	// example follows future namespace bumps (v1 → v2 → …) without drift.
+	// matchers.Like below treats the value as a string-shape match, so
+	// provider verification stays compatible regardless of the exact
+	// namespace prefix the consumer emits.
+	dedupeKey := fmt.Sprintf(domain.DedupeKeyArticleUrlBackfill, articleID.String())
 
 	payload, err := json.Marshal(map[string]any{
 		"article_id":           articleID.String(),

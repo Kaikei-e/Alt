@@ -4,6 +4,7 @@ import (
 	"alt/domain"
 	"context"
 	"errors"
+	"fmt"
 	"testing"
 	"time"
 
@@ -100,10 +101,13 @@ func TestEmit_AppendsArticleUrlBackfilledForEveryHTTPArticle(t *testing.T) {
 		// round-tripping through the same struct.
 		assert.Contains(t, string(ev.Payload), `"url":`)
 		assert.NotContains(t, string(ev.Payload), `"link":`)
-		// Dedupe key uses the ADR-000868 namespace, NOT the
+		// Dedupe key uses the corrective-event namespace, NOT the
 		// ArticleCreated namespace — otherwise the existing dedupe
-		// registry entries would silent-drop this emit.
-		expectedDedupe := "article-url-backfill:" + []domain.KnowledgeBackfillArticle{a1, a2}[i].ArticleID.String()
+		// registry entries would silent-drop this emit. Resolved via
+		// the const so future namespace bumps (v1 → v2 → …) keep this
+		// assertion in sync with the producer code path.
+		expectedDedupe := fmt.Sprintf(domain.DedupeKeyArticleUrlBackfill,
+			[]domain.KnowledgeBackfillArticle{a1, a2}[i].ArticleID.String())
 		assert.Equal(t, expectedDedupe, ev.DedupeKey)
 	}
 }
