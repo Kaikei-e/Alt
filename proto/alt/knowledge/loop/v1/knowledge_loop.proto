@@ -211,7 +211,16 @@ message DecisionOption {
 message ActTarget {
   ActTargetType target_type = 1;
   string target_ref = 2;
+  // route is the internal SPA navigation target (e.g. "/articles/<id>",
+  // "/recap/topic/<id>"). It is server-relative and MUST NOT be used as a
+  // public source URL. Used for display in the workspace and for in-app
+  // navigation when the target is itself an internal SPA route.
   optional string route = 3;
+  // source_url is the article's external HTTPS source URL when the target is
+  // an article. It is read from the event payload (reproject-safe) and used
+  // by the SPA reader as `?url=`. Independent of `route`. Empty / absent for
+  // legacy events that did not carry the URL in their payload.
+  optional string source_url = 4;
 }
 
 // KnowledgeLoopEntry is one Loop proposal unit.
