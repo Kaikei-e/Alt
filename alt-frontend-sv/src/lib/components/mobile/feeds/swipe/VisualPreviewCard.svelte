@@ -141,6 +141,10 @@ onMount(() => {
 			})
 			.catch((err) => {
 				console.warn("[VisualPreviewCard] Error auto-fetching content:", err);
+				// ADR-000884: surface the unified fallback notice on auto-fetch
+				// failure so the manual-tap and auto paths converge on the same
+				// "Source content unavailable" markup.
+				contentError = "Source content unavailable.";
 			});
 	}
 });
@@ -195,6 +199,13 @@ async function handleToggleContent() {
 		const cached = getCachedContent?.(feed.normalizedUrl);
 		if (cached) {
 			fullContent = cached;
+			isContentExpanded = true;
+			return;
+		}
+
+		// Auto-fetch already failed and surfaced an error — expand straight
+		// to the fallback markup instead of issuing another doomed request.
+		if (contentError) {
 			isContentExpanded = true;
 			return;
 		}

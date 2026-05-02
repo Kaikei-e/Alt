@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { Code, ConnectError } from "@connectrpc/connect";
 
 // Mock the client API to prevent transitive $app/* resolution
 vi.mock("$lib/api/client", () => ({
@@ -29,7 +30,9 @@ describe("ArticlePrefetcher", () => {
 	let prefetcher: ArticlePrefetcher;
 
 	beforeEach(() => {
-		vi.clearAllMocks();
+		// resetAllMocks (not clearAllMocks) so mockResolvedValueOnce queues
+		// from a previous test do not leak into the next.
+		vi.resetAllMocks();
 		vi.useFakeTimers();
 		prefetcher = new ArticlePrefetcher();
 	});
@@ -100,17 +103,21 @@ describe("ArticlePrefetcher", () => {
 		});
 	});
 
-	describe("same-host prefetch limiting", () => {
-		it("skips prefetch when another fetch for the same host is in-flight", async () => {
-			let resolveFirst: (value: unknown) => void = () => {};
-			const firstCallPromise = new Promise((resolve) => {
-				resolveFirst = resolve;
-			});
-
-			// Only mock the first call — the second should be skipped entirely
-			mockedGetContent.mockImplementationOnce(
-				() => firstCallPromise as Promise<FeedContentOnTheFlyResponse>,
+	describe("per-host serialization", () => {
+		it("serializes prefetches to the same host (no parallel fan-out)", async () => {
+			let resolveFirst: (value: FeedContentOnTheFlyResponse) => void = () => {};
+			const firstCallPromise = new Promise<FeedContentOnTheFlyResponse>(
+				(resolve) => {
+					resolveFirst = resolve;
+				},
 			);
+
+			mockedGetContent.mockImplementationOnce(() => firstCallPromise);
+			mockedGetContent.mockResolvedValueOnce({
+				content: "<p>Second</p>",
+				article_id: "art-2",
+				og_image_url: null,
+			} as unknown as FeedContentOnTheFlyResponse);
 
 			const feeds = [
 				makeFeed("0", "https://example.com/active"),
@@ -118,31 +125,37 @@ describe("ArticlePrefetcher", () => {
 				makeFeed("2", "https://zenn.dev/article-2"),
 			];
 
-			// Prefetch next 2 articles (both on zenn.dev)
 			prefetcher.triggerPrefetch(feeds, 0, 2);
 
-			// Advance past both PREFETCH_DELAY windows (500ms, 1000ms)
-			// Use async to flush microtasks between timer steps
+			// Advance past both PREFETCH_DELAY windows.
 			await vi.advanceTimersByTimeAsync(1100);
 
-			// Only 1 call should have been made (second skipped due to same host)
+			// Only the first call should have started — the second is queued
+			// behind the first promise on the same host.
 			expect(mockedGetContent).toHaveBeenCalledTimes(1);
-			expect(mockedGetContent).toHaveBeenCalledWith(
+			expect(mockedGetContent).toHaveBeenNthCalledWith(
+				1,
 				"https://zenn.dev/article-1",
 			);
 
-			// Resolve the first call
-			resolveFirst?.({
+			// Resolve first → second runs.
+			resolveFirst({
 				content: "<p>First</p>",
 				article_id: "art-1",
 				og_image_url: null,
-			});
+			} as unknown as FeedContentOnTheFlyResponse);
 
 			await vi.waitFor(() => {
-				expect(prefetcher.getCachedContent("https://zenn.dev/article-1")).toBe(
-					"<p>First</p>",
+				expect(prefetcher.getCachedContent("https://zenn.dev/article-2")).toBe(
+					"<p>Second</p>",
 				);
 			});
+
+			expect(mockedGetContent).toHaveBeenCalledTimes(2);
+			expect(mockedGetContent).toHaveBeenNthCalledWith(
+				2,
+				"https://zenn.dev/article-2",
+			);
 		});
 
 		it("allows prefetch for different hosts concurrently", async () => {
@@ -181,6 +194,137 @@ describe("ArticlePrefetcher", () => {
 
 			// Both calls should have been made (different hosts)
 			expect(mockedGetContent).toHaveBeenCalledTimes(2);
+		});
+	});
+
+	describe("429 cooldown", () => {
+		it("applies a 30s cooldown to a host after ConnectError ResourceExhausted", async () => {
+			// First call rejects with 429; subsequent prefetches on the same host
+			// must skip until the cooldown lifts.
+			mockedGetContent.mockRejectedValueOnce(
+				new ConnectError("rate limited", Code.ResourceExhausted),
+			);
+
+			const feeds = [
+				makeFeed("0", "https://example.com/active"),
+				makeFeed("1", "https://dev.to/article-1"),
+			];
+
+			prefetcher.triggerPrefetch(feeds, 0, 1);
+
+			await vi.advanceTimersByTimeAsync(1_100);
+			await vi.waitFor(() => {
+				expect(mockedGetContent).toHaveBeenCalledTimes(1);
+			});
+
+			// Re-trigger before cooldown expires — must NOT call client again.
+			await vi.advanceTimersByTimeAsync(15_000);
+			prefetcher.triggerPrefetch(feeds, 0, 1);
+			await vi.advanceTimersByTimeAsync(2_000);
+			expect(mockedGetContent).toHaveBeenCalledTimes(1);
+
+			// Past 30s — cooldown lifted, prefetch resumes.
+			mockedGetContent.mockResolvedValueOnce({
+				content: "<p>OK</p>",
+				article_id: "art-ok",
+				og_image_url: null,
+			} as unknown as FeedContentOnTheFlyResponse);
+
+			await vi.advanceTimersByTimeAsync(20_000);
+			prefetcher.triggerPrefetch(feeds, 0, 1);
+			await vi.advanceTimersByTimeAsync(1_100);
+
+			await vi.waitFor(() => {
+				expect(mockedGetContent).toHaveBeenCalledTimes(2);
+			});
+		});
+
+		it("cooldown is per-host: a 429 on host A does not block host B", async () => {
+			mockedGetContent.mockRejectedValueOnce(
+				new ConnectError("rate limited", Code.ResourceExhausted),
+			);
+			mockedGetContent.mockResolvedValueOnce({
+				content: "<p>B</p>",
+				article_id: "art-b",
+				og_image_url: null,
+			} as unknown as FeedContentOnTheFlyResponse);
+
+			const feeds = [
+				makeFeed("0", "https://active.com/page"),
+				makeFeed("1", "https://dev.to/article-a"),
+				makeFeed("2", "https://zenn.dev/article-b"),
+			];
+
+			prefetcher.triggerPrefetch(feeds, 0, 2);
+			await vi.advanceTimersByTimeAsync(1_100);
+
+			await vi.waitFor(() => {
+				expect(prefetcher.getCachedContent("https://zenn.dev/article-b")).toBe(
+					"<p>B</p>",
+				);
+			});
+
+			expect(mockedGetContent).toHaveBeenCalledTimes(2);
+		});
+
+		it("honors Retry-After header (delta-seconds) when shorter than the default 30s", async () => {
+			const meta = new Headers({ "Retry-After": "2" });
+			mockedGetContent.mockRejectedValueOnce(
+				new ConnectError("rate limited", Code.ResourceExhausted, meta),
+			);
+			mockedGetContent.mockResolvedValueOnce({
+				content: "<p>OK</p>",
+				article_id: "art-ok",
+				og_image_url: null,
+			} as unknown as FeedContentOnTheFlyResponse);
+
+			const feeds = [
+				makeFeed("0", "https://example.com/active"),
+				makeFeed("1", "https://dev.to/article-1"),
+			];
+
+			prefetcher.triggerPrefetch(feeds, 0, 1);
+			await vi.advanceTimersByTimeAsync(1_100);
+
+			// Wait through Retry-After window and re-trigger.
+			await vi.advanceTimersByTimeAsync(2_500);
+			prefetcher.triggerPrefetch(feeds, 0, 1);
+			await vi.advanceTimersByTimeAsync(1_100);
+
+			await vi.waitFor(() => {
+				expect(prefetcher.getCachedContent("https://dev.to/article-1")).toBe(
+					"<p>OK</p>",
+				);
+			});
+		});
+
+		it("seedCache bypasses cooldown (manual path is unaffected)", async () => {
+			mockedGetContent.mockRejectedValueOnce(
+				new ConnectError("rate limited", Code.ResourceExhausted),
+			);
+
+			const feeds = [
+				makeFeed("0", "https://example.com/active"),
+				makeFeed("1", "https://dev.to/article-1"),
+			];
+
+			prefetcher.triggerPrefetch(feeds, 0, 1);
+			await vi.advanceTimersByTimeAsync(1_100);
+			await vi.waitFor(() => {
+				expect(mockedGetContent).toHaveBeenCalledTimes(1);
+			});
+
+			// Manual seed during cooldown still populates the cache.
+			prefetcher.seedCache(
+				"https://dev.to/article-1",
+				"<p>Manual</p>",
+				"art-m",
+				null,
+			);
+
+			expect(prefetcher.getCachedContent("https://dev.to/article-1")).toBe(
+				"<p>Manual</p>",
+			);
 		});
 	});
 

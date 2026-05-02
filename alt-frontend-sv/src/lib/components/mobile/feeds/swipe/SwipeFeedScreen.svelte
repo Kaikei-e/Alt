@@ -36,7 +36,9 @@ const {
 }: Props = $props();
 
 const isVisualPreview = $derived(mode === "visual-preview");
-const prefetchAhead = $derived(isVisualPreview ? 10 : 2);
+// ADR-000884: visual-preview was 10; reduced to 4 to stay within the
+// backend's 5 rps per-host budget under the per-host serialization gate.
+const prefetchAhead = $derived(isVisualPreview ? 4 : 2);
 
 const PAGE_SIZE = 20;
 

@@ -1,9 +1,15 @@
+import { Code, ConnectError } from "@connectrpc/connect";
 import { getFeedContentOnTheFlyClient } from "$lib/api/client";
 import type { RenderFeed } from "$lib/schema/feed";
+import { parseRetryAfter } from "./retryAfter";
 
 const MAX_CACHE_SIZE = 30;
 const PREFETCH_DELAY = 500; // ms
 const DISMISSED_CLEANUP_DELAY = 3000; // ms
+// Default cooldown applied to a host after a 429 / ResourceExhausted.
+// ADR-000884: matches the typical reset window of the backend host rate limiter
+// (5 rps). When the server returns Retry-After, that value wins.
+const HOST_COOLDOWN_MS = 30_000;
 
 export class ArticlePrefetcher {
 	private contentCache = new Map<string, string | "loading">();
@@ -12,7 +18,11 @@ export class ArticlePrefetcher {
 	private prefetchTimeouts: ReturnType<typeof setTimeout>[] = [];
 	private dismissedArticles = new Set<string>();
 	private dismissalTimeouts = new Map<string, ReturnType<typeof setTimeout>>();
-	private activeHostFetches = new Set<string>();
+	// Per-host promise chain: a new prefetch on the same host awaits the
+	// previous one before issuing the actual HTTP call. Serialization, not skip.
+	private hostInflight = new Map<string, Promise<void>>();
+	// Per-host cooldown (epoch ms when the cooldown ends). Set on 429.
+	private hostCooldown = new Map<string, number>();
 	private onContentFetched:
 		| ((feedUrl: string, content: string) => void)
 		| null = null;
@@ -41,42 +51,50 @@ export class ArticlePrefetcher {
 	 * Prefetch content for a single article
 	 * Uses normalizedUrl as cache key for consistency with FeedDetailModal
 	 */
-	private async prefetchContent(feed: RenderFeed) {
+	private prefetchContent(feed: RenderFeed): Promise<void> {
 		const cacheKey = feed.normalizedUrl;
 
-		// Skip feeds with empty URL
-		if (!cacheKey) return;
+		if (!cacheKey) return Promise.resolve();
+		if (this.dismissedArticles.has(cacheKey)) return Promise.resolve();
+		if (this.contentCache.has(cacheKey)) return Promise.resolve();
 
-		// Skip if article is being dismissed
-		if (this.dismissedArticles.has(cacheKey)) {
-			console.log(
-				`[ArticlePrefetcher] Skipping dismissed article: ${cacheKey}`,
-			);
-			return;
-		}
-
-		// Skip if already in cache
-		if (this.contentCache.has(cacheKey)) {
-			return;
-		}
-
-		// Skip if another fetch for the same host is in-flight (prevent rate limit exhaustion)
 		let host: string;
 		try {
 			host = new URL(cacheKey).host;
 		} catch {
-			return;
+			return Promise.resolve();
 		}
-		if (this.activeHostFetches.has(host)) {
-			return;
+
+		// Honor cooldown: if this host returned 429 recently, skip until it lifts.
+		const cooldownUntil = this.hostCooldown.get(host);
+		if (cooldownUntil !== undefined) {
+			if (Date.now() < cooldownUntil) return Promise.resolve();
+			this.hostCooldown.delete(host);
 		}
+
+		// Serialize per-host: chain after any in-flight prefetch on this host.
+		const previous = this.hostInflight.get(host) ?? Promise.resolve();
+		const next = previous.then(() => this.runPrefetch(cacheKey, host));
+		this.hostInflight.set(host, next);
+		void next.finally(() => {
+			if (this.hostInflight.get(host) === next) {
+				this.hostInflight.delete(host);
+			}
+		});
+		return next;
+	}
+
+	private async runPrefetch(cacheKey: string, host: string): Promise<void> {
+		// A cooldown may have been set by a peer chained behind us — re-check
+		// once the chain reaches our turn so we do not issue a doomed call.
+		const cooldownUntil = this.hostCooldown.get(host);
+		if (cooldownUntil !== undefined && Date.now() < cooldownUntil) return;
+		// Another path may have populated the cache while we waited.
+		if (this.contentCache.has(cacheKey)) return;
 
 		try {
-			// Mark as loading
 			this.contentCache.set(cacheKey, "loading");
-			this.activeHostFetches.add(host);
 
-			// Fetch content using normalizedUrl for consistent caching
 			const response = await getFeedContentOnTheFlyClient(cacheKey);
 
 			if (response.content) {
@@ -86,25 +104,29 @@ export class ArticlePrefetcher {
 				this.contentCache.delete(cacheKey);
 			}
 
-			// Cache article_id if present and notify listeners
 			if (response.article_id) {
 				this.articleIdCache.set(cacheKey, response.article_id);
 				this.onArticleIdCached?.(cacheKey, response.article_id);
 			}
 
-			// Cache raw og_image_url; proxy URL comes from BatchPrefetchImages
 			this.ogImageCache.set(cacheKey, response.og_image_url || null);
 			this.onOgImageFetched?.();
 
 			this.evictOldEntries();
 		} catch (error) {
 			this.contentCache.delete(cacheKey);
+			const connectErr = ConnectError.from(error);
+			if (connectErr.code === Code.ResourceExhausted) {
+				const retryAfterMs = parseRetryAfter(
+					connectErr.metadata.get("Retry-After"),
+				);
+				const cooldown = retryAfterMs ?? HOST_COOLDOWN_MS;
+				this.hostCooldown.set(host, Date.now() + cooldown);
+			}
 			console.warn(
 				`[ArticlePrefetcher] Failed to prefetch content: ${cacheKey}`,
 				error,
 			);
-		} finally {
-			this.activeHostFetches.delete(host);
 		}
 	}
 
