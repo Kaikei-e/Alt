@@ -2,8 +2,18 @@
 // @generated from file alt/morning_letter/v2/morning_letter.proto (package alt.morning_letter.v2, syntax proto3)
 /* eslint-disable */
 
-import type { GenEnum, GenFile, GenMessage, GenService } from "@bufbuild/protobuf/codegenv2";
-import { enumDesc, fileDesc, messageDesc, serviceDesc } from "@bufbuild/protobuf/codegenv2";
+import type {
+	GenEnum,
+	GenFile,
+	GenMessage,
+	GenService,
+} from "@bufbuild/protobuf/codegenv2";
+import {
+	enumDesc,
+	fileDesc,
+	messageDesc,
+	serviceDesc,
+} from "@bufbuild/protobuf/codegenv2";
 import type { Timestamp } from "@bufbuild/protobuf/wkt";
 import { file_google_protobuf_timestamp } from "@bufbuild/protobuf/wkt";
 import type { Message } from "@bufbuild/protobuf";
@@ -11,165 +21,186 @@ import type { Message } from "@bufbuild/protobuf";
 /**
  * Describes the file alt/morning_letter/v2/morning_letter.proto.
  */
-export const file_alt_morning_letter_v2_morning_letter: GenFile = /*@__PURE__*/
-  fileDesc("CiphbHQvbW9ybmluZ19sZXR0ZXIvdjIvbW9ybmluZ19sZXR0ZXIucHJvdG8SFWFsdC5tb3JuaW5nX2xldHRlci52MiIYChZHZXRMYXRlc3RMZXR0ZXJSZXF1ZXN0IlcKF0dldExhdGVzdExldHRlclJlc3BvbnNlEjwKBmxldHRlchgBIAEoCzIsLmFsdC5tb3JuaW5nX2xldHRlci52Mi5Nb3JuaW5nTGV0dGVyRG9jdW1lbnQiLQoWR2V0TGV0dGVyQnlEYXRlUmVxdWVzdBITCgt0YXJnZXRfZGF0ZRgBIAEoCSJXChdHZXRMZXR0ZXJCeURhdGVSZXNwb25zZRI8CgZsZXR0ZXIYASABKAsyLC5hbHQubW9ybmluZ19sZXR0ZXIudjIuTW9ybmluZ0xldHRlckRvY3VtZW50IiwKF0dldExldHRlclNvdXJjZXNSZXF1ZXN0EhEKCWxldHRlcl9pZBgBIAEoCSJcChhHZXRMZXR0ZXJTb3VyY2VzUmVzcG9uc2USQAoHc291cmNlcxgBIAMoCzIvLmFsdC5tb3JuaW5nX2xldHRlci52Mi5Nb3JuaW5nTGV0dGVyU291cmNlUHJvdG8iTQoXUmVnZW5lcmF0ZUxhdGVzdFJlcXVlc3QSHQoQZWRpdGlvbl90aW1lem9uZRgBIAEoCUgAiAEBQhMKEV9lZGl0aW9uX3RpbWV6b25lIi8KGkdldExldHRlckVucmljaG1lbnRSZXF1ZXN0EhEKCWxldHRlcl9pZBgBIAEoCSJoChtHZXRMZXR0ZXJFbnJpY2htZW50UmVzcG9uc2USSQoLZW5yaWNobWVudHMYASADKAsyNC5hbHQubW9ybmluZ19sZXR0ZXIudjIuTW9ybmluZ0xldHRlckJ1bGxldEVucmljaG1lbnQiowIKHU1vcm5pbmdMZXR0ZXJCdWxsZXRFbnJpY2htZW50EhMKC3NlY3Rpb25fa2V5GAEgASgJEhIKCmFydGljbGVfaWQYAiABKAkSFQoNYXJ0aWNsZV90aXRsZRgDIAEoCRITCgthcnRpY2xlX3VybBgEIAEoCRIYChBhcnRpY2xlX2FsdF9ocmVmGAUgASgJEhIKCmZlZWRfdGl0bGUYBiABKAkSDAoEdGFncxgHIAMoCRJFChByZWxhdGVkX2FydGljbGVzGAggAygLMisuYWx0Lm1vcm5pbmdfbGV0dGVyLnYyLlJlbGF0ZWRBcnRpY2xlVGVhc2VyEhcKD3N1bW1hcnlfZXhjZXJwdBgJIAEoCRIRCgljaGF0X2hyZWYYCiABKAkiZwoUUmVsYXRlZEFydGljbGVUZWFzZXISEgoKYXJ0aWNsZV9pZBgBIAEoCRINCgV0aXRsZRgCIAEoCRIYChBhcnRpY2xlX2FsdF9ocmVmGAMgASgJEhIKCmZlZWRfdGl0bGUYBCABKAkiigEKGFJlZ2VuZXJhdGVMYXRlc3RSZXNwb25zZRI8CgZsZXR0ZXIYASABKAsyLC5hbHQubW9ybmluZ19sZXR0ZXIudjIuTW9ybmluZ0xldHRlckRvY3VtZW50EhMKC3JlZ2VuZXJhdGVkGAIgASgIEhsKE3JldHJ5X2FmdGVyX3NlY29uZHMYAyABKAUioQIKFU1vcm5pbmdMZXR0ZXJEb2N1bWVudBIKCgJpZBgBIAEoCRITCgt0YXJnZXRfZGF0ZRgCIAEoCRIYChBlZGl0aW9uX3RpbWV6b25lGAMgASgJEhMKC2lzX2RlZ3JhZGVkGAQgASgIEhYKDnNjaGVtYV92ZXJzaW9uGAUgASgFEhsKE2dlbmVyYXRpb25fcmV2aXNpb24YBiABKAUSDQoFbW9kZWwYByABKAkSLgoKY3JlYXRlZF9hdBgIIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1lc3RhbXASNgoEYm9keRgJIAEoCzIoLmFsdC5tb3JuaW5nX2xldHRlci52Mi5Nb3JuaW5nTGV0dGVyQm9keRIMCgRldGFnGAogASgJIuYCChFNb3JuaW5nTGV0dGVyQm9keRIMCgRsZWFkGAEgASgJEj0KCHNlY3Rpb25zGAIgAygLMisuYWx0Lm1vcm5pbmdfbGV0dGVyLnYyLk1vcm5pbmdMZXR0ZXJTZWN0aW9uEjAKDGdlbmVyYXRlZF9hdBgDIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1lc3RhbXASJQoYc291cmNlX3JlY2FwX3dpbmRvd19kYXlzGAQgASgFSACIAQESGQoMdGhyb3VnaF9saW5lGAUgASgJSAGIAQESSgoTcHJldmlvdXNfbGV0dGVyX3JlZhgGIAEoCzIoLmFsdC5tb3JuaW5nX2xldHRlci52Mi5QcmV2aW91c0xldHRlclJlZkgCiAEBQhsKGV9zb3VyY2VfcmVjYXBfd2luZG93X2RheXNCDwoNX3Rocm91Z2hfbGluZUIWChRfcHJldmlvdXNfbGV0dGVyX3JlZiK+AQoUTW9ybmluZ0xldHRlclNlY3Rpb24SCwoDa2V5GAEgASgJEg0KBXRpdGxlGAIgASgJEg8KB2J1bGxldHMYAyADKAkSEgoFZ2VucmUYBCABKAlIAIgBARIWCgluYXJyYXRpdmUYBSABKAlIAYgBARI1Cgt3aHlfcmVhc29ucxgGIAMoCzIgLmFsdC5tb3JuaW5nX2xldHRlci52Mi5XaHlSZWFzb25CCAoGX2dlbnJlQgwKCl9uYXJyYXRpdmUiSgoRUHJldmlvdXNMZXR0ZXJSZWYSCgoCaWQYASABKAkSEwoLdGFyZ2V0X2RhdGUYAiABKAkSFAoMdGhyb3VnaF9saW5lGAMgASgJIlMKCVdoeVJlYXNvbhIMCgRjb2RlGAEgASgJEhMKBnJlZl9pZBgCIAEoCUgAiAEBEhAKA3RhZxgDIAEoCUgBiAEBQgkKB19yZWZfaWRCBgoEX3RhZyKtAQoYTW9ybmluZ0xldHRlclNvdXJjZVByb3RvEhEKCWxldHRlcl9pZBgBIAEoCRITCgtzZWN0aW9uX2tleRgCIAEoCRISCgphcnRpY2xlX2lkGAMgASgJEkMKC3NvdXJjZV90eXBlGAQgASgOMi4uYWx0Lm1vcm5pbmdfbGV0dGVyLnYyLk1vcm5pbmdMZXR0ZXJTb3VyY2VUeXBlEhAKCHBvc2l0aW9uGAUgASgFIokBChFTdHJlYW1DaGF0UmVxdWVzdBI0CghtZXNzYWdlcxgBIAMoCzIiLmFsdC5tb3JuaW5nX2xldHRlci52Mi5DaGF0TWVzc2FnZRIUCgx3aXRoaW5faG91cnMYAiABKAUSGAoLdGFyZ2V0X2RhdGUYAyABKAlIAIgBAUIOCgxfdGFyZ2V0X2RhdGUiLAoLQ2hhdE1lc3NhZ2USDAoEcm9sZRgBIAEoCRIPCgdjb250ZW50GAIgASgJItgBChJTdHJlYW1DaGF0UmVzcG9uc2USDAoEa2luZBgBIAEoCRIPCgVkZWx0YRgCIAEoCUgAEjIKBG1ldGEYAyABKAsyIi5hbHQubW9ybmluZ19sZXR0ZXIudjIuTWV0YVBheWxvYWRIABIyCgRkb25lGAQgASgLMiIuYWx0Lm1vcm5pbmdfbGV0dGVyLnYyLkRvbmVQYXlsb2FkSAASFwoNZmFsbGJhY2tfY29kZRgFIAEoCUgAEhcKDWVycm9yX21lc3NhZ2UYBiABKAlIAEIJCgdwYXlsb2FkIpMBCgtNZXRhUGF5bG9hZBIyCgljaXRhdGlvbnMYASADKAsyHy5hbHQubW9ybmluZ19sZXR0ZXIudjIuQ2l0YXRpb24SNgoLdGltZV93aW5kb3cYAiABKAsyIS5hbHQubW9ybmluZ19sZXR0ZXIudjIuVGltZVdpbmRvdxIYChBhcnRpY2xlc19zY2FubmVkGAMgASgFIjwKCENpdGF0aW9uEgsKA3VybBgBIAEoCRINCgV0aXRsZRgCIAEoCRIUCgxwdWJsaXNoZWRfYXQYAyABKAkiKgoKVGltZVdpbmRvdxINCgVzaW5jZRgBIAEoCRINCgV1bnRpbBgCIAEoCSJRCgtEb25lUGF5bG9hZBIOCgZhbnN3ZXIYASABKAkSMgoJY2l0YXRpb25zGAIgAygLMh8uYWx0Lm1vcm5pbmdfbGV0dGVyLnYyLkNpdGF0aW9uKpUBChdNb3JuaW5nTGV0dGVyU291cmNlVHlwZRIqCiZNT1JOSU5HX0xFVFRFUl9TT1VSQ0VfVFlQRV9VTlNQRUNJRklFRBAAEiQKIE1PUk5JTkdfTEVUVEVSX1NPVVJDRV9UWVBFX1JFQ0FQEAESKAokTU9STklOR19MRVRURVJfU09VUkNFX1RZUEVfT1ZFUk5JR0hUEAIyewoUTW9ybmluZ0xldHRlclNlcnZpY2USYwoKU3RyZWFtQ2hhdBIoLmFsdC5tb3JuaW5nX2xldHRlci52Mi5TdHJlYW1DaGF0UmVxdWVzdBopLmFsdC5tb3JuaW5nX2xldHRlci52Mi5TdHJlYW1DaGF0UmVzcG9uc2UwATLmBAoYTW9ybmluZ0xldHRlclJlYWRTZXJ2aWNlEnAKD0dldExhdGVzdExldHRlchItLmFsdC5tb3JuaW5nX2xldHRlci52Mi5HZXRMYXRlc3RMZXR0ZXJSZXF1ZXN0Gi4uYWx0Lm1vcm5pbmdfbGV0dGVyLnYyLkdldExhdGVzdExldHRlclJlc3BvbnNlEnAKD0dldExldHRlckJ5RGF0ZRItLmFsdC5tb3JuaW5nX2xldHRlci52Mi5HZXRMZXR0ZXJCeURhdGVSZXF1ZXN0Gi4uYWx0Lm1vcm5pbmdfbGV0dGVyLnYyLkdldExldHRlckJ5RGF0ZVJlc3BvbnNlEnMKEEdldExldHRlclNvdXJjZXMSLi5hbHQubW9ybmluZ19sZXR0ZXIudjIuR2V0TGV0dGVyU291cmNlc1JlcXVlc3QaLy5hbHQubW9ybmluZ19sZXR0ZXIudjIuR2V0TGV0dGVyU291cmNlc1Jlc3BvbnNlEnMKEFJlZ2VuZXJhdGVMYXRlc3QSLi5hbHQubW9ybmluZ19sZXR0ZXIudjIuUmVnZW5lcmF0ZUxhdGVzdFJlcXVlc3QaLy5hbHQubW9ybmluZ19sZXR0ZXIudjIuUmVnZW5lcmF0ZUxhdGVzdFJlc3BvbnNlEnwKE0dldExldHRlckVucmljaG1lbnQSMS5hbHQubW9ybmluZ19sZXR0ZXIudjIuR2V0TGV0dGVyRW5yaWNobWVudFJlcXVlc3QaMi5hbHQubW9ybmluZ19sZXR0ZXIudjIuR2V0TGV0dGVyRW5yaWNobWVudFJlc3BvbnNlQjVaM2FsdC9nZW4vcHJvdG8vYWx0L21vcm5pbmdfbGV0dGVyL3YyO21vcm5pbmdsZXR0ZXJ2MmIGcHJvdG8z", [file_google_protobuf_timestamp]);
+export const file_alt_morning_letter_v2_morning_letter: GenFile =
+	/*@__PURE__*/
+	fileDesc(
+		"CiphbHQvbW9ybmluZ19sZXR0ZXIvdjIvbW9ybmluZ19sZXR0ZXIucHJvdG8SFWFsdC5tb3JuaW5nX2xldHRlci52MiIYChZHZXRMYXRlc3RMZXR0ZXJSZXF1ZXN0IlcKF0dldExhdGVzdExldHRlclJlc3BvbnNlEjwKBmxldHRlchgBIAEoCzIsLmFsdC5tb3JuaW5nX2xldHRlci52Mi5Nb3JuaW5nTGV0dGVyRG9jdW1lbnQiLQoWR2V0TGV0dGVyQnlEYXRlUmVxdWVzdBITCgt0YXJnZXRfZGF0ZRgBIAEoCSJXChdHZXRMZXR0ZXJCeURhdGVSZXNwb25zZRI8CgZsZXR0ZXIYASABKAsyLC5hbHQubW9ybmluZ19sZXR0ZXIudjIuTW9ybmluZ0xldHRlckRvY3VtZW50IiwKF0dldExldHRlclNvdXJjZXNSZXF1ZXN0EhEKCWxldHRlcl9pZBgBIAEoCSJcChhHZXRMZXR0ZXJTb3VyY2VzUmVzcG9uc2USQAoHc291cmNlcxgBIAMoCzIvLmFsdC5tb3JuaW5nX2xldHRlci52Mi5Nb3JuaW5nTGV0dGVyU291cmNlUHJvdG8iTQoXUmVnZW5lcmF0ZUxhdGVzdFJlcXVlc3QSHQoQZWRpdGlvbl90aW1lem9uZRgBIAEoCUgAiAEBQhMKEV9lZGl0aW9uX3RpbWV6b25lIi8KGkdldExldHRlckVucmljaG1lbnRSZXF1ZXN0EhEKCWxldHRlcl9pZBgBIAEoCSJoChtHZXRMZXR0ZXJFbnJpY2htZW50UmVzcG9uc2USSQoLZW5yaWNobWVudHMYASADKAsyNC5hbHQubW9ybmluZ19sZXR0ZXIudjIuTW9ybmluZ0xldHRlckJ1bGxldEVucmljaG1lbnQiowIKHU1vcm5pbmdMZXR0ZXJCdWxsZXRFbnJpY2htZW50EhMKC3NlY3Rpb25fa2V5GAEgASgJEhIKCmFydGljbGVfaWQYAiABKAkSFQoNYXJ0aWNsZV90aXRsZRgDIAEoCRITCgthcnRpY2xlX3VybBgEIAEoCRIYChBhcnRpY2xlX2FsdF9ocmVmGAUgASgJEhIKCmZlZWRfdGl0bGUYBiABKAkSDAoEdGFncxgHIAMoCRJFChByZWxhdGVkX2FydGljbGVzGAggAygLMisuYWx0Lm1vcm5pbmdfbGV0dGVyLnYyLlJlbGF0ZWRBcnRpY2xlVGVhc2VyEhcKD3N1bW1hcnlfZXhjZXJwdBgJIAEoCRIRCgljaGF0X2hyZWYYCiABKAkiZwoUUmVsYXRlZEFydGljbGVUZWFzZXISEgoKYXJ0aWNsZV9pZBgBIAEoCRINCgV0aXRsZRgCIAEoCRIYChBhcnRpY2xlX2FsdF9ocmVmGAMgASgJEhIKCmZlZWRfdGl0bGUYBCABKAkiigEKGFJlZ2VuZXJhdGVMYXRlc3RSZXNwb25zZRI8CgZsZXR0ZXIYASABKAsyLC5hbHQubW9ybmluZ19sZXR0ZXIudjIuTW9ybmluZ0xldHRlckRvY3VtZW50EhMKC3JlZ2VuZXJhdGVkGAIgASgIEhsKE3JldHJ5X2FmdGVyX3NlY29uZHMYAyABKAUioQIKFU1vcm5pbmdMZXR0ZXJEb2N1bWVudBIKCgJpZBgBIAEoCRITCgt0YXJnZXRfZGF0ZRgCIAEoCRIYChBlZGl0aW9uX3RpbWV6b25lGAMgASgJEhMKC2lzX2RlZ3JhZGVkGAQgASgIEhYKDnNjaGVtYV92ZXJzaW9uGAUgASgFEhsKE2dlbmVyYXRpb25fcmV2aXNpb24YBiABKAUSDQoFbW9kZWwYByABKAkSLgoKY3JlYXRlZF9hdBgIIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1lc3RhbXASNgoEYm9keRgJIAEoCzIoLmFsdC5tb3JuaW5nX2xldHRlci52Mi5Nb3JuaW5nTGV0dGVyQm9keRIMCgRldGFnGAogASgJIuYCChFNb3JuaW5nTGV0dGVyQm9keRIMCgRsZWFkGAEgASgJEj0KCHNlY3Rpb25zGAIgAygLMisuYWx0Lm1vcm5pbmdfbGV0dGVyLnYyLk1vcm5pbmdMZXR0ZXJTZWN0aW9uEjAKDGdlbmVyYXRlZF9hdBgDIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1lc3RhbXASJQoYc291cmNlX3JlY2FwX3dpbmRvd19kYXlzGAQgASgFSACIAQESGQoMdGhyb3VnaF9saW5lGAUgASgJSAGIAQESSgoTcHJldmlvdXNfbGV0dGVyX3JlZhgGIAEoCzIoLmFsdC5tb3JuaW5nX2xldHRlci52Mi5QcmV2aW91c0xldHRlclJlZkgCiAEBQhsKGV9zb3VyY2VfcmVjYXBfd2luZG93X2RheXNCDwoNX3Rocm91Z2hfbGluZUIWChRfcHJldmlvdXNfbGV0dGVyX3JlZiK+AQoUTW9ybmluZ0xldHRlclNlY3Rpb24SCwoDa2V5GAEgASgJEg0KBXRpdGxlGAIgASgJEg8KB2J1bGxldHMYAyADKAkSEgoFZ2VucmUYBCABKAlIAIgBARIWCgluYXJyYXRpdmUYBSABKAlIAYgBARI1Cgt3aHlfcmVhc29ucxgGIAMoCzIgLmFsdC5tb3JuaW5nX2xldHRlci52Mi5XaHlSZWFzb25CCAoGX2dlbnJlQgwKCl9uYXJyYXRpdmUiSgoRUHJldmlvdXNMZXR0ZXJSZWYSCgoCaWQYASABKAkSEwoLdGFyZ2V0X2RhdGUYAiABKAkSFAoMdGhyb3VnaF9saW5lGAMgASgJIlMKCVdoeVJlYXNvbhIMCgRjb2RlGAEgASgJEhMKBnJlZl9pZBgCIAEoCUgAiAEBEhAKA3RhZxgDIAEoCUgBiAEBQgkKB19yZWZfaWRCBgoEX3RhZyKtAQoYTW9ybmluZ0xldHRlclNvdXJjZVByb3RvEhEKCWxldHRlcl9pZBgBIAEoCRITCgtzZWN0aW9uX2tleRgCIAEoCRISCgphcnRpY2xlX2lkGAMgASgJEkMKC3NvdXJjZV90eXBlGAQgASgOMi4uYWx0Lm1vcm5pbmdfbGV0dGVyLnYyLk1vcm5pbmdMZXR0ZXJTb3VyY2VUeXBlEhAKCHBvc2l0aW9uGAUgASgFIokBChFTdHJlYW1DaGF0UmVxdWVzdBI0CghtZXNzYWdlcxgBIAMoCzIiLmFsdC5tb3JuaW5nX2xldHRlci52Mi5DaGF0TWVzc2FnZRIUCgx3aXRoaW5faG91cnMYAiABKAUSGAoLdGFyZ2V0X2RhdGUYAyABKAlIAIgBAUIOCgxfdGFyZ2V0X2RhdGUiLAoLQ2hhdE1lc3NhZ2USDAoEcm9sZRgBIAEoCRIPCgdjb250ZW50GAIgASgJItgBChJTdHJlYW1DaGF0UmVzcG9uc2USDAoEa2luZBgBIAEoCRIPCgVkZWx0YRgCIAEoCUgAEjIKBG1ldGEYAyABKAsyIi5hbHQubW9ybmluZ19sZXR0ZXIudjIuTWV0YVBheWxvYWRIABIyCgRkb25lGAQgASgLMiIuYWx0Lm1vcm5pbmdfbGV0dGVyLnYyLkRvbmVQYXlsb2FkSAASFwoNZmFsbGJhY2tfY29kZRgFIAEoCUgAEhcKDWVycm9yX21lc3NhZ2UYBiABKAlIAEIJCgdwYXlsb2FkIpMBCgtNZXRhUGF5bG9hZBIyCgljaXRhdGlvbnMYASADKAsyHy5hbHQubW9ybmluZ19sZXR0ZXIudjIuQ2l0YXRpb24SNgoLdGltZV93aW5kb3cYAiABKAsyIS5hbHQubW9ybmluZ19sZXR0ZXIudjIuVGltZVdpbmRvdxIYChBhcnRpY2xlc19zY2FubmVkGAMgASgFIjwKCENpdGF0aW9uEgsKA3VybBgBIAEoCRINCgV0aXRsZRgCIAEoCRIUCgxwdWJsaXNoZWRfYXQYAyABKAkiKgoKVGltZVdpbmRvdxINCgVzaW5jZRgBIAEoCRINCgV1bnRpbBgCIAEoCSJRCgtEb25lUGF5bG9hZBIOCgZhbnN3ZXIYASABKAkSMgoJY2l0YXRpb25zGAIgAygLMh8uYWx0Lm1vcm5pbmdfbGV0dGVyLnYyLkNpdGF0aW9uKpUBChdNb3JuaW5nTGV0dGVyU291cmNlVHlwZRIqCiZNT1JOSU5HX0xFVFRFUl9TT1VSQ0VfVFlQRV9VTlNQRUNJRklFRBAAEiQKIE1PUk5JTkdfTEVUVEVSX1NPVVJDRV9UWVBFX1JFQ0FQEAESKAokTU9STklOR19MRVRURVJfU09VUkNFX1RZUEVfT1ZFUk5JR0hUEAIyewoUTW9ybmluZ0xldHRlclNlcnZpY2USYwoKU3RyZWFtQ2hhdBIoLmFsdC5tb3JuaW5nX2xldHRlci52Mi5TdHJlYW1DaGF0UmVxdWVzdBopLmFsdC5tb3JuaW5nX2xldHRlci52Mi5TdHJlYW1DaGF0UmVzcG9uc2UwATLmBAoYTW9ybmluZ0xldHRlclJlYWRTZXJ2aWNlEnAKD0dldExhdGVzdExldHRlchItLmFsdC5tb3JuaW5nX2xldHRlci52Mi5HZXRMYXRlc3RMZXR0ZXJSZXF1ZXN0Gi4uYWx0Lm1vcm5pbmdfbGV0dGVyLnYyLkdldExhdGVzdExldHRlclJlc3BvbnNlEnAKD0dldExldHRlckJ5RGF0ZRItLmFsdC5tb3JuaW5nX2xldHRlci52Mi5HZXRMZXR0ZXJCeURhdGVSZXF1ZXN0Gi4uYWx0Lm1vcm5pbmdfbGV0dGVyLnYyLkdldExldHRlckJ5RGF0ZVJlc3BvbnNlEnMKEEdldExldHRlclNvdXJjZXMSLi5hbHQubW9ybmluZ19sZXR0ZXIudjIuR2V0TGV0dGVyU291cmNlc1JlcXVlc3QaLy5hbHQubW9ybmluZ19sZXR0ZXIudjIuR2V0TGV0dGVyU291cmNlc1Jlc3BvbnNlEnMKEFJlZ2VuZXJhdGVMYXRlc3QSLi5hbHQubW9ybmluZ19sZXR0ZXIudjIuUmVnZW5lcmF0ZUxhdGVzdFJlcXVlc3QaLy5hbHQubW9ybmluZ19sZXR0ZXIudjIuUmVnZW5lcmF0ZUxhdGVzdFJlc3BvbnNlEnwKE0dldExldHRlckVucmljaG1lbnQSMS5hbHQubW9ybmluZ19sZXR0ZXIudjIuR2V0TGV0dGVyRW5yaWNobWVudFJlcXVlc3QaMi5hbHQubW9ybmluZ19sZXR0ZXIudjIuR2V0TGV0dGVyRW5yaWNobWVudFJlc3BvbnNlQjVaM2FsdC9nZW4vcHJvdG8vYWx0L21vcm5pbmdfbGV0dGVyL3YyO21vcm5pbmdsZXR0ZXJ2MmIGcHJvdG8z",
+		[file_google_protobuf_timestamp],
+	);
 
 /**
  * @generated from message alt.morning_letter.v2.GetLatestLetterRequest
  */
-export type GetLatestLetterRequest = Message<"alt.morning_letter.v2.GetLatestLetterRequest"> & {
-};
+export type GetLatestLetterRequest =
+	Message<"alt.morning_letter.v2.GetLatestLetterRequest"> & {};
 
 /**
  * Describes the message alt.morning_letter.v2.GetLatestLetterRequest.
  * Use `create(GetLatestLetterRequestSchema)` to create a new message.
  */
-export const GetLatestLetterRequestSchema: GenMessage<GetLatestLetterRequest> = /*@__PURE__*/
-  messageDesc(file_alt_morning_letter_v2_morning_letter, 0);
+export const GetLatestLetterRequestSchema: GenMessage<GetLatestLetterRequest> =
+	/*@__PURE__*/
+	messageDesc(file_alt_morning_letter_v2_morning_letter, 0);
 
 /**
  * @generated from message alt.morning_letter.v2.GetLatestLetterResponse
  */
-export type GetLatestLetterResponse = Message<"alt.morning_letter.v2.GetLatestLetterResponse"> & {
-  /**
-   * @generated from field: alt.morning_letter.v2.MorningLetterDocument letter = 1;
-   */
-  letter?: MorningLetterDocument;
-};
+export type GetLatestLetterResponse =
+	Message<"alt.morning_letter.v2.GetLatestLetterResponse"> & {
+		/**
+		 * @generated from field: alt.morning_letter.v2.MorningLetterDocument letter = 1;
+		 */
+		letter?: MorningLetterDocument;
+	};
 
 /**
  * Describes the message alt.morning_letter.v2.GetLatestLetterResponse.
  * Use `create(GetLatestLetterResponseSchema)` to create a new message.
  */
-export const GetLatestLetterResponseSchema: GenMessage<GetLatestLetterResponse> = /*@__PURE__*/
-  messageDesc(file_alt_morning_letter_v2_morning_letter, 1);
+export const GetLatestLetterResponseSchema: GenMessage<GetLatestLetterResponse> =
+	/*@__PURE__*/
+	messageDesc(file_alt_morning_letter_v2_morning_letter, 1);
 
 /**
  * target_date format: ISO 8601 civil date "YYYY-MM-DD" in edition timezone.
  *
  * @generated from message alt.morning_letter.v2.GetLetterByDateRequest
  */
-export type GetLetterByDateRequest = Message<"alt.morning_letter.v2.GetLetterByDateRequest"> & {
-  /**
-   * @generated from field: string target_date = 1;
-   */
-  targetDate: string;
-};
+export type GetLetterByDateRequest =
+	Message<"alt.morning_letter.v2.GetLetterByDateRequest"> & {
+		/**
+		 * @generated from field: string target_date = 1;
+		 */
+		targetDate: string;
+	};
 
 /**
  * Describes the message alt.morning_letter.v2.GetLetterByDateRequest.
  * Use `create(GetLetterByDateRequestSchema)` to create a new message.
  */
-export const GetLetterByDateRequestSchema: GenMessage<GetLetterByDateRequest> = /*@__PURE__*/
-  messageDesc(file_alt_morning_letter_v2_morning_letter, 2);
+export const GetLetterByDateRequestSchema: GenMessage<GetLetterByDateRequest> =
+	/*@__PURE__*/
+	messageDesc(file_alt_morning_letter_v2_morning_letter, 2);
 
 /**
  * @generated from message alt.morning_letter.v2.GetLetterByDateResponse
  */
-export type GetLetterByDateResponse = Message<"alt.morning_letter.v2.GetLetterByDateResponse"> & {
-  /**
-   * @generated from field: alt.morning_letter.v2.MorningLetterDocument letter = 1;
-   */
-  letter?: MorningLetterDocument;
-};
+export type GetLetterByDateResponse =
+	Message<"alt.morning_letter.v2.GetLetterByDateResponse"> & {
+		/**
+		 * @generated from field: alt.morning_letter.v2.MorningLetterDocument letter = 1;
+		 */
+		letter?: MorningLetterDocument;
+	};
 
 /**
  * Describes the message alt.morning_letter.v2.GetLetterByDateResponse.
  * Use `create(GetLetterByDateResponseSchema)` to create a new message.
  */
-export const GetLetterByDateResponseSchema: GenMessage<GetLetterByDateResponse> = /*@__PURE__*/
-  messageDesc(file_alt_morning_letter_v2_morning_letter, 3);
+export const GetLetterByDateResponseSchema: GenMessage<GetLetterByDateResponse> =
+	/*@__PURE__*/
+	messageDesc(file_alt_morning_letter_v2_morning_letter, 3);
 
 /**
  * @generated from message alt.morning_letter.v2.GetLetterSourcesRequest
  */
-export type GetLetterSourcesRequest = Message<"alt.morning_letter.v2.GetLetterSourcesRequest"> & {
-  /**
-   * @generated from field: string letter_id = 1;
-   */
-  letterId: string;
-};
+export type GetLetterSourcesRequest =
+	Message<"alt.morning_letter.v2.GetLetterSourcesRequest"> & {
+		/**
+		 * @generated from field: string letter_id = 1;
+		 */
+		letterId: string;
+	};
 
 /**
  * Describes the message alt.morning_letter.v2.GetLetterSourcesRequest.
  * Use `create(GetLetterSourcesRequestSchema)` to create a new message.
  */
-export const GetLetterSourcesRequestSchema: GenMessage<GetLetterSourcesRequest> = /*@__PURE__*/
-  messageDesc(file_alt_morning_letter_v2_morning_letter, 4);
+export const GetLetterSourcesRequestSchema: GenMessage<GetLetterSourcesRequest> =
+	/*@__PURE__*/
+	messageDesc(file_alt_morning_letter_v2_morning_letter, 4);
 
 /**
  * @generated from message alt.morning_letter.v2.GetLetterSourcesResponse
  */
-export type GetLetterSourcesResponse = Message<"alt.morning_letter.v2.GetLetterSourcesResponse"> & {
-  /**
-   * @generated from field: repeated alt.morning_letter.v2.MorningLetterSourceProto sources = 1;
-   */
-  sources: MorningLetterSourceProto[];
-};
+export type GetLetterSourcesResponse =
+	Message<"alt.morning_letter.v2.GetLetterSourcesResponse"> & {
+		/**
+		 * @generated from field: repeated alt.morning_letter.v2.MorningLetterSourceProto sources = 1;
+		 */
+		sources: MorningLetterSourceProto[];
+	};
 
 /**
  * Describes the message alt.morning_letter.v2.GetLetterSourcesResponse.
  * Use `create(GetLetterSourcesResponseSchema)` to create a new message.
  */
-export const GetLetterSourcesResponseSchema: GenMessage<GetLetterSourcesResponse> = /*@__PURE__*/
-  messageDesc(file_alt_morning_letter_v2_morning_letter, 5);
+export const GetLetterSourcesResponseSchema: GenMessage<GetLetterSourcesResponse> =
+	/*@__PURE__*/
+	messageDesc(file_alt_morning_letter_v2_morning_letter, 5);
 
 /**
  * @generated from message alt.morning_letter.v2.RegenerateLatestRequest
  */
-export type RegenerateLatestRequest = Message<"alt.morning_letter.v2.RegenerateLatestRequest"> & {
-  /**
-   * Optional edition timezone override (IANA name, e.g. "Asia/Tokyo").
-   * When absent, the caller's configured edition timezone is used.
-   *
-   * @generated from field: optional string edition_timezone = 1;
-   */
-  editionTimezone?: string;
-};
+export type RegenerateLatestRequest =
+	Message<"alt.morning_letter.v2.RegenerateLatestRequest"> & {
+		/**
+		 * Optional edition timezone override (IANA name, e.g. "Asia/Tokyo").
+		 * When absent, the caller's configured edition timezone is used.
+		 *
+		 * @generated from field: optional string edition_timezone = 1;
+		 */
+		editionTimezone?: string;
+	};
 
 /**
  * Describes the message alt.morning_letter.v2.RegenerateLatestRequest.
  * Use `create(RegenerateLatestRequestSchema)` to create a new message.
  */
-export const RegenerateLatestRequestSchema: GenMessage<RegenerateLatestRequest> = /*@__PURE__*/
-  messageDesc(file_alt_morning_letter_v2_morning_letter, 6);
+export const RegenerateLatestRequestSchema: GenMessage<RegenerateLatestRequest> =
+	/*@__PURE__*/
+	messageDesc(file_alt_morning_letter_v2_morning_letter, 6);
 
 /**
  * @generated from message alt.morning_letter.v2.GetLetterEnrichmentRequest
  */
-export type GetLetterEnrichmentRequest = Message<"alt.morning_letter.v2.GetLetterEnrichmentRequest"> & {
-  /**
-   * @generated from field: string letter_id = 1;
-   */
-  letterId: string;
-};
+export type GetLetterEnrichmentRequest =
+	Message<"alt.morning_letter.v2.GetLetterEnrichmentRequest"> & {
+		/**
+		 * @generated from field: string letter_id = 1;
+		 */
+		letterId: string;
+	};
 
 /**
  * Describes the message alt.morning_letter.v2.GetLetterEnrichmentRequest.
  * Use `create(GetLetterEnrichmentRequestSchema)` to create a new message.
  */
-export const GetLetterEnrichmentRequestSchema: GenMessage<GetLetterEnrichmentRequest> = /*@__PURE__*/
-  messageDesc(file_alt_morning_letter_v2_morning_letter, 7);
+export const GetLetterEnrichmentRequestSchema: GenMessage<GetLetterEnrichmentRequest> =
+	/*@__PURE__*/
+	messageDesc(file_alt_morning_letter_v2_morning_letter, 7);
 
 /**
  * @generated from message alt.morning_letter.v2.GetLetterEnrichmentResponse
  */
-export type GetLetterEnrichmentResponse = Message<"alt.morning_letter.v2.GetLetterEnrichmentResponse"> & {
-  /**
-   * One enrichment entry per (section_key, article_id) pair in the Letter.
-   * Frontend joins on section_key to decorate bullets in-place.
-   *
-   * @generated from field: repeated alt.morning_letter.v2.MorningLetterBulletEnrichment enrichments = 1;
-   */
-  enrichments: MorningLetterBulletEnrichment[];
-};
+export type GetLetterEnrichmentResponse =
+	Message<"alt.morning_letter.v2.GetLetterEnrichmentResponse"> & {
+		/**
+		 * One enrichment entry per (section_key, article_id) pair in the Letter.
+		 * Frontend joins on section_key to decorate bullets in-place.
+		 *
+		 * @generated from field: repeated alt.morning_letter.v2.MorningLetterBulletEnrichment enrichments = 1;
+		 */
+		enrichments: MorningLetterBulletEnrichment[];
+	};
 
 /**
  * Describes the message alt.morning_letter.v2.GetLetterEnrichmentResponse.
  * Use `create(GetLetterEnrichmentResponseSchema)` to create a new message.
  */
-export const GetLetterEnrichmentResponseSchema: GenMessage<GetLetterEnrichmentResponse> = /*@__PURE__*/
-  messageDesc(file_alt_morning_letter_v2_morning_letter, 8);
+export const GetLetterEnrichmentResponseSchema: GenMessage<GetLetterEnrichmentResponse> =
+	/*@__PURE__*/
+	messageDesc(file_alt_morning_letter_v2_morning_letter, 8);
 
 /**
  * MorningLetterBulletEnrichment is a rendered-view augmentation of a
@@ -178,313 +209,325 @@ export const GetLetterEnrichmentResponseSchema: GenMessage<GetLetterEnrichmentRe
  *
  * @generated from message alt.morning_letter.v2.MorningLetterBulletEnrichment
  */
-export type MorningLetterBulletEnrichment = Message<"alt.morning_letter.v2.MorningLetterBulletEnrichment"> & {
-  /**
-   * Join keys back to MorningLetterSourceProto.
-   *
-   * @generated from field: string section_key = 1;
-   */
-  sectionKey: string;
+export type MorningLetterBulletEnrichment =
+	Message<"alt.morning_letter.v2.MorningLetterBulletEnrichment"> & {
+		/**
+		 * Join keys back to MorningLetterSourceProto.
+		 *
+		 * @generated from field: string section_key = 1;
+		 */
+		sectionKey: string;
 
-  /**
-   * @generated from field: string article_id = 2;
-   */
-  articleId: string;
+		/**
+		 * @generated from field: string article_id = 2;
+		 */
+		articleId: string;
 
-  /**
-   * Article navigation.
-   *
-   * @generated from field: string article_title = 3;
-   */
-  articleTitle: string;
+		/**
+		 * Article navigation.
+		 *
+		 * @generated from field: string article_title = 3;
+		 */
+		articleTitle: string;
 
-  /**
-   * Original source URL.
-   *
-   * @generated from field: string article_url = 4;
-   */
-  articleUrl: string;
+		/**
+		 * Original source URL.
+		 *
+		 * @generated from field: string article_url = 4;
+		 */
+		articleUrl: string;
 
-  /**
-   * In-Alt route, e.g. "/articles/<uuid>".
-   *
-   * @generated from field: string article_alt_href = 5;
-   */
-  articleAltHref: string;
+		/**
+		 * In-Alt route, e.g. "/articles/<uuid>".
+		 *
+		 * @generated from field: string article_alt_href = 5;
+		 */
+		articleAltHref: string;
 
-  /**
-   * @generated from field: string feed_title = 6;
-   */
-  feedTitle: string;
+		/**
+		 * @generated from field: string feed_title = 6;
+		 */
+		feedTitle: string;
 
-  /**
-   * Tag chips. Empty when tags have not been generated yet.
-   *
-   * @generated from field: repeated string tags = 7;
-   */
-  tags: string[];
+		/**
+		 * Tag chips. Empty when tags have not been generated yet.
+		 *
+		 * @generated from field: repeated string tags = 7;
+		 */
+		tags: string[];
 
-  /**
-   * Up to ~3 related-article teasers surfaced by search-indexer.
-   *
-   * @generated from field: repeated alt.morning_letter.v2.RelatedArticleTeaser related_articles = 8;
-   */
-  relatedArticles: RelatedArticleTeaser[];
+		/**
+		 * Up to ~3 related-article teasers surfaced by search-indexer.
+		 *
+		 * @generated from field: repeated alt.morning_letter.v2.RelatedArticleTeaser related_articles = 8;
+		 */
+		relatedArticles: RelatedArticleTeaser[];
 
-  /**
-   * Optional short summary excerpt (1-3 sentences) drawn from
-   * summary_versions or the article content cache. Empty when the
-   * summary pipeline has not caught up yet.
-   *
-   * @generated from field: string summary_excerpt = 9;
-   */
-  summaryExcerpt: string;
+		/**
+		 * Optional short summary excerpt (1-3 sentences) drawn from
+		 * summary_versions or the article content cache. Empty when the
+		 * summary pipeline has not caught up yet.
+		 *
+		 * @generated from field: string summary_excerpt = 9;
+		 */
+		summaryExcerpt: string;
 
-  /**
-   * Deep-link into Augur (the Alt chat surface), pre-seeded with
-   * article context so the user can ask a follow-up question about
-   * this specific item. Empty when no chat seed can be produced.
-   *
-   * @generated from field: string chat_href = 10;
-   */
-  chatHref: string;
-};
+		/**
+		 * Deep-link into Augur (the Alt chat surface), pre-seeded with
+		 * article context so the user can ask a follow-up question about
+		 * this specific item. Empty when no chat seed can be produced.
+		 *
+		 * @generated from field: string chat_href = 10;
+		 */
+		chatHref: string;
+	};
 
 /**
  * Describes the message alt.morning_letter.v2.MorningLetterBulletEnrichment.
  * Use `create(MorningLetterBulletEnrichmentSchema)` to create a new message.
  */
-export const MorningLetterBulletEnrichmentSchema: GenMessage<MorningLetterBulletEnrichment> = /*@__PURE__*/
-  messageDesc(file_alt_morning_letter_v2_morning_letter, 9);
+export const MorningLetterBulletEnrichmentSchema: GenMessage<MorningLetterBulletEnrichment> =
+	/*@__PURE__*/
+	messageDesc(file_alt_morning_letter_v2_morning_letter, 9);
 
 /**
  * @generated from message alt.morning_letter.v2.RelatedArticleTeaser
  */
-export type RelatedArticleTeaser = Message<"alt.morning_letter.v2.RelatedArticleTeaser"> & {
-  /**
-   * @generated from field: string article_id = 1;
-   */
-  articleId: string;
+export type RelatedArticleTeaser =
+	Message<"alt.morning_letter.v2.RelatedArticleTeaser"> & {
+		/**
+		 * @generated from field: string article_id = 1;
+		 */
+		articleId: string;
 
-  /**
-   * @generated from field: string title = 2;
-   */
-  title: string;
+		/**
+		 * @generated from field: string title = 2;
+		 */
+		title: string;
 
-  /**
-   * @generated from field: string article_alt_href = 3;
-   */
-  articleAltHref: string;
+		/**
+		 * @generated from field: string article_alt_href = 3;
+		 */
+		articleAltHref: string;
 
-  /**
-   * @generated from field: string feed_title = 4;
-   */
-  feedTitle: string;
-};
+		/**
+		 * @generated from field: string feed_title = 4;
+		 */
+		feedTitle: string;
+	};
 
 /**
  * Describes the message alt.morning_letter.v2.RelatedArticleTeaser.
  * Use `create(RelatedArticleTeaserSchema)` to create a new message.
  */
-export const RelatedArticleTeaserSchema: GenMessage<RelatedArticleTeaser> = /*@__PURE__*/
-  messageDesc(file_alt_morning_letter_v2_morning_letter, 10);
+export const RelatedArticleTeaserSchema: GenMessage<RelatedArticleTeaser> =
+	/*@__PURE__*/
+	messageDesc(file_alt_morning_letter_v2_morning_letter, 10);
 
 /**
  * @generated from message alt.morning_letter.v2.RegenerateLatestResponse
  */
-export type RegenerateLatestResponse = Message<"alt.morning_letter.v2.RegenerateLatestResponse"> & {
-  /**
-   * The Letter produced by the on-demand regeneration.
-   *
-   * @generated from field: alt.morning_letter.v2.MorningLetterDocument letter = 1;
-   */
-  letter?: MorningLetterDocument;
+export type RegenerateLatestResponse =
+	Message<"alt.morning_letter.v2.RegenerateLatestResponse"> & {
+		/**
+		 * The Letter produced by the on-demand regeneration.
+		 *
+		 * @generated from field: alt.morning_letter.v2.MorningLetterDocument letter = 1;
+		 */
+		letter?: MorningLetterDocument;
 
-  /**
-   * True when the projector ran; false when a cached row was returned
-   * because the per-user rate limit was already consumed.
-   *
-   * @generated from field: bool regenerated = 2;
-   */
-  regenerated: boolean;
+		/**
+		 * True when the projector ran; false when a cached row was returned
+		 * because the per-user rate limit was already consumed.
+		 *
+		 * @generated from field: bool regenerated = 2;
+		 */
+		regenerated: boolean;
 
-  /**
-   * Number of seconds until the caller may request another regeneration.
-   *
-   * @generated from field: int32 retry_after_seconds = 3;
-   */
-  retryAfterSeconds: number;
-};
+		/**
+		 * Number of seconds until the caller may request another regeneration.
+		 *
+		 * @generated from field: int32 retry_after_seconds = 3;
+		 */
+		retryAfterSeconds: number;
+	};
 
 /**
  * Describes the message alt.morning_letter.v2.RegenerateLatestResponse.
  * Use `create(RegenerateLatestResponseSchema)` to create a new message.
  */
-export const RegenerateLatestResponseSchema: GenMessage<RegenerateLatestResponse> = /*@__PURE__*/
-  messageDesc(file_alt_morning_letter_v2_morning_letter, 11);
+export const RegenerateLatestResponseSchema: GenMessage<RegenerateLatestResponse> =
+	/*@__PURE__*/
+	messageDesc(file_alt_morning_letter_v2_morning_letter, 11);
 
 /**
  * @generated from message alt.morning_letter.v2.MorningLetterDocument
  */
-export type MorningLetterDocument = Message<"alt.morning_letter.v2.MorningLetterDocument"> & {
-  /**
-   * @generated from field: string id = 1;
-   */
-  id: string;
+export type MorningLetterDocument =
+	Message<"alt.morning_letter.v2.MorningLetterDocument"> & {
+		/**
+		 * @generated from field: string id = 1;
+		 */
+		id: string;
 
-  /**
-   * Civil date in edition timezone, format "YYYY-MM-DD".
-   *
-   * @generated from field: string target_date = 2;
-   */
-  targetDate: string;
+		/**
+		 * Civil date in edition timezone, format "YYYY-MM-DD".
+		 *
+		 * @generated from field: string target_date = 2;
+		 */
+		targetDate: string;
 
-  /**
-   * @generated from field: string edition_timezone = 3;
-   */
-  editionTimezone: string;
+		/**
+		 * @generated from field: string edition_timezone = 3;
+		 */
+		editionTimezone: string;
 
-  /**
-   * @generated from field: bool is_degraded = 4;
-   */
-  isDegraded: boolean;
+		/**
+		 * @generated from field: bool is_degraded = 4;
+		 */
+		isDegraded: boolean;
 
-  /**
-   * @generated from field: int32 schema_version = 5;
-   */
-  schemaVersion: number;
+		/**
+		 * @generated from field: int32 schema_version = 5;
+		 */
+		schemaVersion: number;
 
-  /**
-   * @generated from field: int32 generation_revision = 6;
-   */
-  generationRevision: number;
+		/**
+		 * @generated from field: int32 generation_revision = 6;
+		 */
+		generationRevision: number;
 
-  /**
-   * @generated from field: string model = 7;
-   */
-  model: string;
+		/**
+		 * @generated from field: string model = 7;
+		 */
+		model: string;
 
-  /**
-   * @generated from field: google.protobuf.Timestamp created_at = 8;
-   */
-  createdAt?: Timestamp;
+		/**
+		 * @generated from field: google.protobuf.Timestamp created_at = 8;
+		 */
+		createdAt?: Timestamp;
 
-  /**
-   * @generated from field: alt.morning_letter.v2.MorningLetterBody body = 9;
-   */
-  body?: MorningLetterBody;
+		/**
+		 * @generated from field: alt.morning_letter.v2.MorningLetterBody body = 9;
+		 */
+		body?: MorningLetterBody;
 
-  /**
-   * Opaque tag for cache validation (AIP-154). Derived from generation_revision.
-   *
-   * @generated from field: string etag = 10;
-   */
-  etag: string;
-};
+		/**
+		 * Opaque tag for cache validation (AIP-154). Derived from generation_revision.
+		 *
+		 * @generated from field: string etag = 10;
+		 */
+		etag: string;
+	};
 
 /**
  * Describes the message alt.morning_letter.v2.MorningLetterDocument.
  * Use `create(MorningLetterDocumentSchema)` to create a new message.
  */
-export const MorningLetterDocumentSchema: GenMessage<MorningLetterDocument> = /*@__PURE__*/
-  messageDesc(file_alt_morning_letter_v2_morning_letter, 12);
+export const MorningLetterDocumentSchema: GenMessage<MorningLetterDocument> =
+	/*@__PURE__*/
+	messageDesc(file_alt_morning_letter_v2_morning_letter, 12);
 
 /**
  * @generated from message alt.morning_letter.v2.MorningLetterBody
  */
-export type MorningLetterBody = Message<"alt.morning_letter.v2.MorningLetterBody"> & {
-  /**
-   * @generated from field: string lead = 1;
-   */
-  lead: string;
+export type MorningLetterBody =
+	Message<"alt.morning_letter.v2.MorningLetterBody"> & {
+		/**
+		 * @generated from field: string lead = 1;
+		 */
+		lead: string;
 
-  /**
-   * @generated from field: repeated alt.morning_letter.v2.MorningLetterSection sections = 2;
-   */
-  sections: MorningLetterSection[];
+		/**
+		 * @generated from field: repeated alt.morning_letter.v2.MorningLetterSection sections = 2;
+		 */
+		sections: MorningLetterSection[];
 
-  /**
-   * @generated from field: google.protobuf.Timestamp generated_at = 3;
-   */
-  generatedAt?: Timestamp;
+		/**
+		 * @generated from field: google.protobuf.Timestamp generated_at = 3;
+		 */
+		generatedAt?: Timestamp;
 
-  /**
-   * @generated from field: optional int32 source_recap_window_days = 4;
-   */
-  sourceRecapWindowDays?: number;
+		/**
+		 * @generated from field: optional int32 source_recap_window_days = 4;
+		 */
+		sourceRecapWindowDays?: number;
 
-  /**
-   * Editorial through-line: one sentence tying the day's events together.
-   * Produced deterministically from the event projector; the LLM may rewrite
-   * it as prose but must not change its meaning.
-   *
-   * @generated from field: optional string through_line = 5;
-   */
-  throughLine?: string;
+		/**
+		 * Editorial through-line: one sentence tying the day's events together.
+		 * Produced deterministically from the event projector; the LLM may rewrite
+		 * it as prose but must not change its meaning.
+		 *
+		 * @generated from field: optional string through_line = 5;
+		 */
+		throughLine?: string;
 
-  /**
-   * Reference to the previous edition (for the Since-yesterday band).
-   * Absent on the very first Letter for a user.
-   *
-   * @generated from field: optional alt.morning_letter.v2.PreviousLetterRef previous_letter_ref = 6;
-   */
-  previousLetterRef?: PreviousLetterRef;
-};
+		/**
+		 * Reference to the previous edition (for the Since-yesterday band).
+		 * Absent on the very first Letter for a user.
+		 *
+		 * @generated from field: optional alt.morning_letter.v2.PreviousLetterRef previous_letter_ref = 6;
+		 */
+		previousLetterRef?: PreviousLetterRef;
+	};
 
 /**
  * Describes the message alt.morning_letter.v2.MorningLetterBody.
  * Use `create(MorningLetterBodySchema)` to create a new message.
  */
-export const MorningLetterBodySchema: GenMessage<MorningLetterBody> = /*@__PURE__*/
-  messageDesc(file_alt_morning_letter_v2_morning_letter, 13);
+export const MorningLetterBodySchema: GenMessage<MorningLetterBody> =
+	/*@__PURE__*/
+	messageDesc(file_alt_morning_letter_v2_morning_letter, 13);
 
 /**
  * @generated from message alt.morning_letter.v2.MorningLetterSection
  */
-export type MorningLetterSection = Message<"alt.morning_letter.v2.MorningLetterSection"> & {
-  /**
-   * @generated from field: string key = 1;
-   */
-  key: string;
+export type MorningLetterSection =
+	Message<"alt.morning_letter.v2.MorningLetterSection"> & {
+		/**
+		 * @generated from field: string key = 1;
+		 */
+		key: string;
 
-  /**
-   * @generated from field: string title = 2;
-   */
-  title: string;
+		/**
+		 * @generated from field: string title = 2;
+		 */
+		title: string;
 
-  /**
-   * @generated from field: repeated string bullets = 3;
-   */
-  bullets: string[];
+		/**
+		 * @generated from field: repeated string bullets = 3;
+		 */
+		bullets: string[];
 
-  /**
-   * @generated from field: optional string genre = 4;
-   */
-  genre?: string;
+		/**
+		 * @generated from field: optional string genre = 4;
+		 */
+		genre?: string;
 
-  /**
-   * Optional short prose paragraph (1-3 sentences) written by the LLM.
-   * If LLM generation fails the string is empty; bullets remain usable.
-   *
-   * @generated from field: optional string narrative = 5;
-   */
-  narrative?: string;
+		/**
+		 * Optional short prose paragraph (1-3 sentences) written by the LLM.
+		 * If LLM generation fails the string is empty; bullets remain usable.
+		 *
+		 * @generated from field: optional string narrative = 5;
+		 */
+		narrative?: string;
 
-  /**
-   * Why-reasons parallel `bullets` by index. A section is considered to
-   * have why-attribution only when len(why_reasons) == len(bullets).
-   *
-   * @generated from field: repeated alt.morning_letter.v2.WhyReason why_reasons = 6;
-   */
-  whyReasons: WhyReason[];
-};
+		/**
+		 * Why-reasons parallel `bullets` by index. A section is considered to
+		 * have why-attribution only when len(why_reasons) == len(bullets).
+		 *
+		 * @generated from field: repeated alt.morning_letter.v2.WhyReason why_reasons = 6;
+		 */
+		whyReasons: WhyReason[];
+	};
 
 /**
  * Describes the message alt.morning_letter.v2.MorningLetterSection.
  * Use `create(MorningLetterSectionSchema)` to create a new message.
  */
-export const MorningLetterSectionSchema: GenMessage<MorningLetterSection> = /*@__PURE__*/
-  messageDesc(file_alt_morning_letter_v2_morning_letter, 14);
+export const MorningLetterSectionSchema: GenMessage<MorningLetterSection> =
+	/*@__PURE__*/
+	messageDesc(file_alt_morning_letter_v2_morning_letter, 14);
 
 /**
  * PreviousLetterRef points to the Letter immediately preceding this one
@@ -492,31 +535,33 @@ export const MorningLetterSectionSchema: GenMessage<MorningLetterSection> = /*@_
  *
  * @generated from message alt.morning_letter.v2.PreviousLetterRef
  */
-export type PreviousLetterRef = Message<"alt.morning_letter.v2.PreviousLetterRef"> & {
-  /**
-   * @generated from field: string id = 1;
-   */
-  id: string;
+export type PreviousLetterRef =
+	Message<"alt.morning_letter.v2.PreviousLetterRef"> & {
+		/**
+		 * @generated from field: string id = 1;
+		 */
+		id: string;
 
-  /**
-   * @generated from field: string target_date = 2;
-   */
-  targetDate: string;
+		/**
+		 * @generated from field: string target_date = 2;
+		 */
+		targetDate: string;
 
-  /**
-   * Short headline from the previous Letter's through_line for display.
-   *
-   * @generated from field: string through_line = 3;
-   */
-  throughLine: string;
-};
+		/**
+		 * Short headline from the previous Letter's through_line for display.
+		 *
+		 * @generated from field: string through_line = 3;
+		 */
+		throughLine: string;
+	};
 
 /**
  * Describes the message alt.morning_letter.v2.PreviousLetterRef.
  * Use `create(PreviousLetterRefSchema)` to create a new message.
  */
-export const PreviousLetterRefSchema: GenMessage<PreviousLetterRef> = /*@__PURE__*/
-  messageDesc(file_alt_morning_letter_v2_morning_letter, 15);
+export const PreviousLetterRefSchema: GenMessage<PreviousLetterRef> =
+	/*@__PURE__*/
+	messageDesc(file_alt_morning_letter_v2_morning_letter, 15);
 
 /**
  * WhyReason mirrors the shape used by knowledge_home_items.why_json
@@ -530,102 +575,107 @@ export const PreviousLetterRefSchema: GenMessage<PreviousLetterRef> = /*@__PURE_
  * @generated from message alt.morning_letter.v2.WhyReason
  */
 export type WhyReason = Message<"alt.morning_letter.v2.WhyReason"> & {
-  /**
-   * @generated from field: string code = 1;
-   */
-  code: string;
+	/**
+	 * @generated from field: string code = 1;
+	 */
+	code: string;
 
-  /**
-   * @generated from field: optional string ref_id = 2;
-   */
-  refId?: string;
+	/**
+	 * @generated from field: optional string ref_id = 2;
+	 */
+	refId?: string;
 
-  /**
-   * @generated from field: optional string tag = 3;
-   */
-  tag?: string;
+	/**
+	 * @generated from field: optional string tag = 3;
+	 */
+	tag?: string;
 };
 
 /**
  * Describes the message alt.morning_letter.v2.WhyReason.
  * Use `create(WhyReasonSchema)` to create a new message.
  */
-export const WhyReasonSchema: GenMessage<WhyReason> = /*@__PURE__*/
-  messageDesc(file_alt_morning_letter_v2_morning_letter, 16);
+export const WhyReasonSchema: GenMessage<WhyReason> =
+	/*@__PURE__*/
+	messageDesc(file_alt_morning_letter_v2_morning_letter, 16);
 
 /**
  * @generated from message alt.morning_letter.v2.MorningLetterSourceProto
  */
-export type MorningLetterSourceProto = Message<"alt.morning_letter.v2.MorningLetterSourceProto"> & {
-  /**
-   * @generated from field: string letter_id = 1;
-   */
-  letterId: string;
+export type MorningLetterSourceProto =
+	Message<"alt.morning_letter.v2.MorningLetterSourceProto"> & {
+		/**
+		 * @generated from field: string letter_id = 1;
+		 */
+		letterId: string;
 
-  /**
-   * @generated from field: string section_key = 2;
-   */
-  sectionKey: string;
+		/**
+		 * @generated from field: string section_key = 2;
+		 */
+		sectionKey: string;
 
-  /**
-   * @generated from field: string article_id = 3;
-   */
-  articleId: string;
+		/**
+		 * @generated from field: string article_id = 3;
+		 */
+		articleId: string;
 
-  /**
-   * @generated from field: alt.morning_letter.v2.MorningLetterSourceType source_type = 4;
-   */
-  sourceType: MorningLetterSourceType;
+		/**
+		 * @generated from field: alt.morning_letter.v2.MorningLetterSourceType source_type = 4;
+		 */
+		sourceType: MorningLetterSourceType;
 
-  /**
-   * @generated from field: int32 position = 5;
-   */
-  position: number;
-};
+		/**
+		 * @generated from field: int32 position = 5;
+		 */
+		position: number;
+	};
 
 /**
  * Describes the message alt.morning_letter.v2.MorningLetterSourceProto.
  * Use `create(MorningLetterSourceProtoSchema)` to create a new message.
  */
-export const MorningLetterSourceProtoSchema: GenMessage<MorningLetterSourceProto> = /*@__PURE__*/
-  messageDesc(file_alt_morning_letter_v2_morning_letter, 17);
+export const MorningLetterSourceProtoSchema: GenMessage<MorningLetterSourceProto> =
+	/*@__PURE__*/
+	messageDesc(file_alt_morning_letter_v2_morning_letter, 17);
 
 /**
  * StreamChatRequest is the request for streaming chat with time filtering.
  *
  * @generated from message alt.morning_letter.v2.StreamChatRequest
  */
-export type StreamChatRequest = Message<"alt.morning_letter.v2.StreamChatRequest"> & {
-  /**
-   * Chat message history (alternating user/assistant messages)
-   *
-   * @generated from field: repeated alt.morning_letter.v2.ChatMessage messages = 1;
-   */
-  messages: ChatMessage[];
+export type StreamChatRequest =
+	Message<"alt.morning_letter.v2.StreamChatRequest"> & {
+		/**
+		 * Chat message history (alternating user/assistant messages)
+		 *
+		 * @generated from field: repeated alt.morning_letter.v2.ChatMessage messages = 1;
+		 */
+		messages: ChatMessage[];
 
-  /**
-   * Time window in hours (default: 24, max: 168 = 7 days)
-   *
-   * @generated from field: int32 within_hours = 2;
-   */
-  withinHours: number;
+		/**
+		 * Time window in hours (default: 24, max: 168 = 7 days)
+		 *
+		 * @generated from field: int32 within_hours = 2;
+		 */
+		withinHours: number;
 
-  /**
-   * Civil date of the morning letter the user is viewing (format: "YYYY-MM-DD").
-   * When set, the follow-up chat is grounded on that specific letter.
-   * When absent, the rag-orchestrator fetches the latest letter.
-   *
-   * @generated from field: optional string target_date = 3;
-   */
-  targetDate?: string;
-};
+		/**
+		 * Civil date of the morning letter the user is viewing (format: "YYYY-MM-DD").
+		 * When set, the follow-up chat is grounded on that specific letter.
+		 * When absent, the rag-orchestrator fetches the latest letter.
+		 *
+		 * @generated from field: optional string target_date = 3;
+		 */
+		targetDate?: string;
+	};
 
 /**
  * Describes the message alt.morning_letter.v2.StreamChatRequest.
  * Use `create(StreamChatRequestSchema)` to create a new message.
  */
-export const StreamChatRequestSchema: GenMessage<StreamChatRequest> = /*@__PURE__*/
-  messageDesc(file_alt_morning_letter_v2_morning_letter, 18);
+export const StreamChatRequestSchema: GenMessage<StreamChatRequest> =
+	/*@__PURE__*/
+	messageDesc(file_alt_morning_letter_v2_morning_letter, 18);
 
 /**
  * ChatMessage represents a single message in the conversation.
@@ -633,27 +683,28 @@ export const StreamChatRequestSchema: GenMessage<StreamChatRequest> = /*@__PURE_
  * @generated from message alt.morning_letter.v2.ChatMessage
  */
 export type ChatMessage = Message<"alt.morning_letter.v2.ChatMessage"> & {
-  /**
-   * Role of the message sender: "user" or "assistant"
-   *
-   * @generated from field: string role = 1;
-   */
-  role: string;
+	/**
+	 * Role of the message sender: "user" or "assistant"
+	 *
+	 * @generated from field: string role = 1;
+	 */
+	role: string;
 
-  /**
-   * Content of the message
-   *
-   * @generated from field: string content = 2;
-   */
-  content: string;
+	/**
+	 * Content of the message
+	 *
+	 * @generated from field: string content = 2;
+	 */
+	content: string;
 };
 
 /**
  * Describes the message alt.morning_letter.v2.ChatMessage.
  * Use `create(ChatMessageSchema)` to create a new message.
  */
-export const ChatMessageSchema: GenMessage<ChatMessage> = /*@__PURE__*/
-  messageDesc(file_alt_morning_letter_v2_morning_letter, 19);
+export const ChatMessageSchema: GenMessage<ChatMessage> =
+	/*@__PURE__*/
+	messageDesc(file_alt_morning_letter_v2_morning_letter, 19);
 
 /**
  * StreamChatResponse is a single event in the streaming response.
@@ -661,68 +712,76 @@ export const ChatMessageSchema: GenMessage<ChatMessage> = /*@__PURE__*/
  *
  * @generated from message alt.morning_letter.v2.StreamChatResponse
  */
-export type StreamChatResponse = Message<"alt.morning_letter.v2.StreamChatResponse"> & {
-  /**
-   * Event kind: "delta", "meta", "done", "fallback", "error"
-   *
-   * @generated from field: string kind = 1;
-   */
-  kind: string;
+export type StreamChatResponse =
+	Message<"alt.morning_letter.v2.StreamChatResponse"> & {
+		/**
+		 * Event kind: "delta", "meta", "done", "fallback", "error"
+		 *
+		 * @generated from field: string kind = 1;
+		 */
+		kind: string;
 
-  /**
-   * Payload based on kind (only one will be set)
-   *
-   * @generated from oneof alt.morning_letter.v2.StreamChatResponse.payload
-   */
-  payload: {
-    /**
-     * Text chunk (when kind = "delta")
-     *
-     * @generated from field: string delta = 2;
-     */
-    value: string;
-    case: "delta";
-  } | {
-    /**
-     * Citations and time window metadata (when kind = "meta")
-     *
-     * @generated from field: alt.morning_letter.v2.MetaPayload meta = 3;
-     */
-    value: MetaPayload;
-    case: "meta";
-  } | {
-    /**
-     * Completion result (when kind = "done")
-     *
-     * @generated from field: alt.morning_letter.v2.DonePayload done = 4;
-     */
-    value: DonePayload;
-    case: "done";
-  } | {
-    /**
-     * Fallback reason code (when kind = "fallback")
-     *
-     * @generated from field: string fallback_code = 5;
-     */
-    value: string;
-    case: "fallbackCode";
-  } | {
-    /**
-     * Error message (when kind = "error")
-     *
-     * @generated from field: string error_message = 6;
-     */
-    value: string;
-    case: "errorMessage";
-  } | { case: undefined; value?: undefined };
-};
+		/**
+		 * Payload based on kind (only one will be set)
+		 *
+		 * @generated from oneof alt.morning_letter.v2.StreamChatResponse.payload
+		 */
+		payload:
+			| {
+					/**
+					 * Text chunk (when kind = "delta")
+					 *
+					 * @generated from field: string delta = 2;
+					 */
+					value: string;
+					case: "delta";
+			  }
+			| {
+					/**
+					 * Citations and time window metadata (when kind = "meta")
+					 *
+					 * @generated from field: alt.morning_letter.v2.MetaPayload meta = 3;
+					 */
+					value: MetaPayload;
+					case: "meta";
+			  }
+			| {
+					/**
+					 * Completion result (when kind = "done")
+					 *
+					 * @generated from field: alt.morning_letter.v2.DonePayload done = 4;
+					 */
+					value: DonePayload;
+					case: "done";
+			  }
+			| {
+					/**
+					 * Fallback reason code (when kind = "fallback")
+					 *
+					 * @generated from field: string fallback_code = 5;
+					 */
+					value: string;
+					case: "fallbackCode";
+			  }
+			| {
+					/**
+					 * Error message (when kind = "error")
+					 *
+					 * @generated from field: string error_message = 6;
+					 */
+					value: string;
+					case: "errorMessage";
+			  }
+			| { case: undefined; value?: undefined };
+	};
 
 /**
  * Describes the message alt.morning_letter.v2.StreamChatResponse.
  * Use `create(StreamChatResponseSchema)` to create a new message.
  */
-export const StreamChatResponseSchema: GenMessage<StreamChatResponse> = /*@__PURE__*/
-  messageDesc(file_alt_morning_letter_v2_morning_letter, 20);
+export const StreamChatResponseSchema: GenMessage<StreamChatResponse> =
+	/*@__PURE__*/
+	messageDesc(file_alt_morning_letter_v2_morning_letter, 20);
 
 /**
  * MetaPayload contains metadata about the response, including citations and time window.
@@ -730,34 +789,35 @@ export const StreamChatResponseSchema: GenMessage<StreamChatResponse> = /*@__PUR
  * @generated from message alt.morning_letter.v2.MetaPayload
  */
 export type MetaPayload = Message<"alt.morning_letter.v2.MetaPayload"> & {
-  /**
-   * List of citations/sources used in the response
-   *
-   * @generated from field: repeated alt.morning_letter.v2.Citation citations = 1;
-   */
-  citations: Citation[];
+	/**
+	 * List of citations/sources used in the response
+	 *
+	 * @generated from field: repeated alt.morning_letter.v2.Citation citations = 1;
+	 */
+	citations: Citation[];
 
-  /**
-   * Time window used for filtering articles
-   *
-   * @generated from field: alt.morning_letter.v2.TimeWindow time_window = 2;
-   */
-  timeWindow?: TimeWindow;
+	/**
+	 * Time window used for filtering articles
+	 *
+	 * @generated from field: alt.morning_letter.v2.TimeWindow time_window = 2;
+	 */
+	timeWindow?: TimeWindow;
 
-  /**
-   * Number of articles scanned in the time window
-   *
-   * @generated from field: int32 articles_scanned = 3;
-   */
-  articlesScanned: number;
+	/**
+	 * Number of articles scanned in the time window
+	 *
+	 * @generated from field: int32 articles_scanned = 3;
+	 */
+	articlesScanned: number;
 };
 
 /**
  * Describes the message alt.morning_letter.v2.MetaPayload.
  * Use `create(MetaPayloadSchema)` to create a new message.
  */
-export const MetaPayloadSchema: GenMessage<MetaPayload> = /*@__PURE__*/
-  messageDesc(file_alt_morning_letter_v2_morning_letter, 21);
+export const MetaPayloadSchema: GenMessage<MetaPayload> =
+	/*@__PURE__*/
+	messageDesc(file_alt_morning_letter_v2_morning_letter, 21);
 
 /**
  * Citation represents a source reference.
@@ -765,34 +825,35 @@ export const MetaPayloadSchema: GenMessage<MetaPayload> = /*@__PURE__*/
  * @generated from message alt.morning_letter.v2.Citation
  */
 export type Citation = Message<"alt.morning_letter.v2.Citation"> & {
-  /**
-   * URL of the source article
-   *
-   * @generated from field: string url = 1;
-   */
-  url: string;
+	/**
+	 * URL of the source article
+	 *
+	 * @generated from field: string url = 1;
+	 */
+	url: string;
 
-  /**
-   * Title of the source article
-   *
-   * @generated from field: string title = 2;
-   */
-  title: string;
+	/**
+	 * Title of the source article
+	 *
+	 * @generated from field: string title = 2;
+	 */
+	title: string;
 
-  /**
-   * Publication date (ISO8601 format)
-   *
-   * @generated from field: string published_at = 3;
-   */
-  publishedAt: string;
+	/**
+	 * Publication date (ISO8601 format)
+	 *
+	 * @generated from field: string published_at = 3;
+	 */
+	publishedAt: string;
 };
 
 /**
  * Describes the message alt.morning_letter.v2.Citation.
  * Use `create(CitationSchema)` to create a new message.
  */
-export const CitationSchema: GenMessage<Citation> = /*@__PURE__*/
-  messageDesc(file_alt_morning_letter_v2_morning_letter, 22);
+export const CitationSchema: GenMessage<Citation> =
+	/*@__PURE__*/
+	messageDesc(file_alt_morning_letter_v2_morning_letter, 22);
 
 /**
  * TimeWindow represents the time range for filtering.
@@ -800,27 +861,28 @@ export const CitationSchema: GenMessage<Citation> = /*@__PURE__*/
  * @generated from message alt.morning_letter.v2.TimeWindow
  */
 export type TimeWindow = Message<"alt.morning_letter.v2.TimeWindow"> & {
-  /**
-   * Start of the time window (ISO8601 format)
-   *
-   * @generated from field: string since = 1;
-   */
-  since: string;
+	/**
+	 * Start of the time window (ISO8601 format)
+	 *
+	 * @generated from field: string since = 1;
+	 */
+	since: string;
 
-  /**
-   * End of the time window (ISO8601 format)
-   *
-   * @generated from field: string until = 2;
-   */
-  until: string;
+	/**
+	 * End of the time window (ISO8601 format)
+	 *
+	 * @generated from field: string until = 2;
+	 */
+	until: string;
 };
 
 /**
  * Describes the message alt.morning_letter.v2.TimeWindow.
  * Use `create(TimeWindowSchema)` to create a new message.
  */
-export const TimeWindowSchema: GenMessage<TimeWindow> = /*@__PURE__*/
-  messageDesc(file_alt_morning_letter_v2_morning_letter, 23);
+export const TimeWindowSchema: GenMessage<TimeWindow> =
+	/*@__PURE__*/
+	messageDesc(file_alt_morning_letter_v2_morning_letter, 23);
 
 /**
  * DonePayload is sent when streaming completes successfully.
@@ -828,134 +890,133 @@ export const TimeWindowSchema: GenMessage<TimeWindow> = /*@__PURE__*/
  * @generated from message alt.morning_letter.v2.DonePayload
  */
 export type DonePayload = Message<"alt.morning_letter.v2.DonePayload"> & {
-  /**
-   * Full answer text
-   *
-   * @generated from field: string answer = 1;
-   */
-  answer: string;
+	/**
+	 * Full answer text
+	 *
+	 * @generated from field: string answer = 1;
+	 */
+	answer: string;
 
-  /**
-   * List of citations used in the answer
-   *
-   * @generated from field: repeated alt.morning_letter.v2.Citation citations = 2;
-   */
-  citations: Citation[];
+	/**
+	 * List of citations used in the answer
+	 *
+	 * @generated from field: repeated alt.morning_letter.v2.Citation citations = 2;
+	 */
+	citations: Citation[];
 };
 
 /**
  * Describes the message alt.morning_letter.v2.DonePayload.
  * Use `create(DonePayloadSchema)` to create a new message.
  */
-export const DonePayloadSchema: GenMessage<DonePayload> = /*@__PURE__*/
-  messageDesc(file_alt_morning_letter_v2_morning_letter, 24);
+export const DonePayloadSchema: GenMessage<DonePayload> =
+	/*@__PURE__*/
+	messageDesc(file_alt_morning_letter_v2_morning_letter, 24);
 
 /**
  * @generated from enum alt.morning_letter.v2.MorningLetterSourceType
  */
 export enum MorningLetterSourceType {
-  /**
-   * @generated from enum value: MORNING_LETTER_SOURCE_TYPE_UNSPECIFIED = 0;
-   */
-  UNSPECIFIED = 0,
+	/**
+	 * @generated from enum value: MORNING_LETTER_SOURCE_TYPE_UNSPECIFIED = 0;
+	 */
+	UNSPECIFIED = 0,
 
-  /**
-   * @generated from enum value: MORNING_LETTER_SOURCE_TYPE_RECAP = 1;
-   */
-  RECAP = 1,
+	/**
+	 * @generated from enum value: MORNING_LETTER_SOURCE_TYPE_RECAP = 1;
+	 */
+	RECAP = 1,
 
-  /**
-   * @generated from enum value: MORNING_LETTER_SOURCE_TYPE_OVERNIGHT = 2;
-   */
-  OVERNIGHT = 2,
+	/**
+	 * @generated from enum value: MORNING_LETTER_SOURCE_TYPE_OVERNIGHT = 2;
+	 */
+	OVERNIGHT = 2,
 }
 
 /**
  * Describes the enum alt.morning_letter.v2.MorningLetterSourceType.
  */
-export const MorningLetterSourceTypeSchema: GenEnum<MorningLetterSourceType> = /*@__PURE__*/
-  enumDesc(file_alt_morning_letter_v2_morning_letter, 0);
+export const MorningLetterSourceTypeSchema: GenEnum<MorningLetterSourceType> =
+	/*@__PURE__*/
+	enumDesc(file_alt_morning_letter_v2_morning_letter, 0);
 
 /**
  * @generated from service alt.morning_letter.v2.MorningLetterService
  */
 export const MorningLetterService: GenService<{
-  /**
-   * StreamChat performs a streaming chat with RAG context, filtered by time window.
-   * Returns a stream of events: delta (text chunks), meta (citations + time window), done (completion), or error.
-   *
-   * @generated from rpc alt.morning_letter.v2.MorningLetterService.StreamChat
-   */
-  streamChat: {
-    methodKind: "server_streaming";
-    input: typeof StreamChatRequestSchema;
-    output: typeof StreamChatResponseSchema;
-  },
-}> = /*@__PURE__*/
-  serviceDesc(file_alt_morning_letter_v2_morning_letter, 0);
+	/**
+	 * StreamChat performs a streaming chat with RAG context, filtered by time window.
+	 * Returns a stream of events: delta (text chunks), meta (citations + time window), done (completion), or error.
+	 *
+	 * @generated from rpc alt.morning_letter.v2.MorningLetterService.StreamChat
+	 */
+	streamChat: {
+		methodKind: "server_streaming";
+		input: typeof StreamChatRequestSchema;
+		output: typeof StreamChatResponseSchema;
+	};
+}> = /*@__PURE__*/ serviceDesc(file_alt_morning_letter_v2_morning_letter, 0);
 
 /**
  * @generated from service alt.morning_letter.v2.MorningLetterReadService
  */
 export const MorningLetterReadService: GenService<{
-  /**
-   * GetLatestLetter returns the most recent morning letter (by edition timezone).
-   *
-   * @generated from rpc alt.morning_letter.v2.MorningLetterReadService.GetLatestLetter
-   */
-  getLatestLetter: {
-    methodKind: "unary";
-    input: typeof GetLatestLetterRequestSchema;
-    output: typeof GetLatestLetterResponseSchema;
-  },
-  /**
-   * GetLetterByDate returns the morning letter for a specific civil date.
-   * The date is interpreted in the edition timezone (default: Asia/Tokyo).
-   *
-   * @generated from rpc alt.morning_letter.v2.MorningLetterReadService.GetLetterByDate
-   */
-  getLetterByDate: {
-    methodKind: "unary";
-    input: typeof GetLetterByDateRequestSchema;
-    output: typeof GetLetterByDateResponseSchema;
-  },
-  /**
-   * GetLetterSources returns the article provenance for a letter's sections.
-   * Sources are filtered by the requesting user's feed subscriptions.
-   *
-   * @generated from rpc alt.morning_letter.v2.MorningLetterReadService.GetLetterSources
-   */
-  getLetterSources: {
-    methodKind: "unary";
-    input: typeof GetLetterSourcesRequestSchema;
-    output: typeof GetLetterSourcesResponseSchema;
-  },
-  /**
-   * RegenerateLatest triggers an on-demand regeneration of the caller's
-   * Morning Letter for the current target_date in the edition timezone.
-   * Rate-limited to 1 request per hour per user.
-   *
-   * @generated from rpc alt.morning_letter.v2.MorningLetterReadService.RegenerateLatest
-   */
-  regenerateLatest: {
-    methodKind: "unary";
-    input: typeof RegenerateLatestRequestSchema;
-    output: typeof RegenerateLatestResponseSchema;
-  },
-  /**
-   * GetLetterEnrichment returns per-bullet enrichment (article link,
-   * feed title, tags, related articles, Acolyte chat seed, summary
-   * excerpt) computed at render time from Alt's knowledge graph.
-   * The Letter projector stays pure; this RPC does the outbound
-   * fan-out that turns bullets into clickable cards.
-   *
-   * @generated from rpc alt.morning_letter.v2.MorningLetterReadService.GetLetterEnrichment
-   */
-  getLetterEnrichment: {
-    methodKind: "unary";
-    input: typeof GetLetterEnrichmentRequestSchema;
-    output: typeof GetLetterEnrichmentResponseSchema;
-  },
-}> = /*@__PURE__*/
-  serviceDesc(file_alt_morning_letter_v2_morning_letter, 1);
-
+	/**
+	 * GetLatestLetter returns the most recent morning letter (by edition timezone).
+	 *
+	 * @generated from rpc alt.morning_letter.v2.MorningLetterReadService.GetLatestLetter
+	 */
+	getLatestLetter: {
+		methodKind: "unary";
+		input: typeof GetLatestLetterRequestSchema;
+		output: typeof GetLatestLetterResponseSchema;
+	};
+	/**
+	 * GetLetterByDate returns the morning letter for a specific civil date.
+	 * The date is interpreted in the edition timezone (default: Asia/Tokyo).
+	 *
+	 * @generated from rpc alt.morning_letter.v2.MorningLetterReadService.GetLetterByDate
+	 */
+	getLetterByDate: {
+		methodKind: "unary";
+		input: typeof GetLetterByDateRequestSchema;
+		output: typeof GetLetterByDateResponseSchema;
+	};
+	/**
+	 * GetLetterSources returns the article provenance for a letter's sections.
+	 * Sources are filtered by the requesting user's feed subscriptions.
+	 *
+	 * @generated from rpc alt.morning_letter.v2.MorningLetterReadService.GetLetterSources
+	 */
+	getLetterSources: {
+		methodKind: "unary";
+		input: typeof GetLetterSourcesRequestSchema;
+		output: typeof GetLetterSourcesResponseSchema;
+	};
+	/**
+	 * RegenerateLatest triggers an on-demand regeneration of the caller's
+	 * Morning Letter for the current target_date in the edition timezone.
+	 * Rate-limited to 1 request per hour per user.
+	 *
+	 * @generated from rpc alt.morning_letter.v2.MorningLetterReadService.RegenerateLatest
+	 */
+	regenerateLatest: {
+		methodKind: "unary";
+		input: typeof RegenerateLatestRequestSchema;
+		output: typeof RegenerateLatestResponseSchema;
+	};
+	/**
+	 * GetLetterEnrichment returns per-bullet enrichment (article link,
+	 * feed title, tags, related articles, Acolyte chat seed, summary
+	 * excerpt) computed at render time from Alt's knowledge graph.
+	 * The Letter projector stays pure; this RPC does the outbound
+	 * fan-out that turns bullets into clickable cards.
+	 *
+	 * @generated from rpc alt.morning_letter.v2.MorningLetterReadService.GetLetterEnrichment
+	 */
+	getLetterEnrichment: {
+		methodKind: "unary";
+		input: typeof GetLetterEnrichmentRequestSchema;
+		output: typeof GetLetterEnrichmentResponseSchema;
+	};
+}> = /*@__PURE__*/ serviceDesc(file_alt_morning_letter_v2_morning_letter, 1);
