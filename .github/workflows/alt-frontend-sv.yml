@@ -86,25 +86,20 @@ jobs:
 
           echo "::endgroup::"
 
-      - name: Install unzip (required by setup-bun in Playwright container)
+      - name: Install Bun
         run: |
           set -eu
-          for attempt in 1 2 3; do
-            apt-get clean
-            rm -rf /var/lib/apt/lists/*
-            if apt-get update && apt-get install -y --no-install-recommends unzip; then
-              exit 0
-            fi
-            echo "::warning::apt install failed (attempt ${attempt}/3); retrying..."
-            sleep $((attempt * 15))
-          done
-          echo "::error::apt install failed after 3 attempts"
-          exit 1
-
-      - name: Setup Bun
-        uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: 1.2.14
+          ARCH=$(uname -m)
+          if [ "$ARCH" = "aarch64" ]; then
+            BUN_ARCH="bun-linux-aarch64"
+          else
+            BUN_ARCH="bun-linux-x64"
+          fi
+          curl -fsSL "https://github.com/oven-sh/bun/releases/download/bun-v1.2.14/${BUN_ARCH}.zip" -o /tmp/bun.zip
+          python3 -c "import zipfile; zipfile.ZipFile('/tmp/bun.zip').extractall('/tmp/bun-install')"
+          mv "/tmp/bun-install/${BUN_ARCH}/bun" /usr/local/bin/bun
+          chmod +x /usr/local/bin/bun
+          bun --version
 
       - name: Cache bun dependencies
         uses: actions/cache@v4
