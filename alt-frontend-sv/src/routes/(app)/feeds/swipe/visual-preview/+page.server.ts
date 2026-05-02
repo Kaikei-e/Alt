@@ -100,7 +100,9 @@ async function loadFirstArticle(
 			firstArticleImageUrl = article.ogImageProxyUrl;
 		} else if (!firstArticleImageUrl && article.articleId) {
 			try {
-				const images = await batchPrefetchImages(transport, [article.articleId]);
+				const images = await batchPrefetchImages(transport, [
+					article.articleId,
+				]);
 				if (images.length > 0 && images[0].proxyUrl) {
 					firstArticleImageUrl = images[0].proxyUrl;
 				}

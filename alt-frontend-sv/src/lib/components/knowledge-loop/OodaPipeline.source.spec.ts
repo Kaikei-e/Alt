@@ -54,7 +54,9 @@ describe("OodaPipeline source guards", () => {
 		expect(source).toMatch(/onStageSelect/);
 		expect(source).toMatch(/<button/);
 		expect(source).toMatch(/onclick=\{\(\) => selectStage\(stage\.name\)\}/);
-		expect(source).toMatch(/aria-current=\{depth === 0 \? "step" : undefined\}/);
+		expect(source).toMatch(
+			/aria-current=\{depth === 0 \? "step" : undefined\}/,
+		);
 	});
 
 	it("keeps a reduced-motion fallback that flattens the ribbon", () => {

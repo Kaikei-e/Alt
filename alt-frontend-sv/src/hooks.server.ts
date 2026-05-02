@@ -80,7 +80,12 @@ export const handle: Handle = async ({ event, resolve: resolveEvent }) => {
 // tailed and grepped. The production frontend container runs node adapter with
 // production NODE_ENV which otherwise swallows raw console.error from load
 // functions; this handler restores that visibility.
-export const handleError: HandleServerError = ({ error, event, status, message }) => {
+export const handleError: HandleServerError = ({
+	error,
+	event,
+	status,
+	message,
+}) => {
 	const errInfo =
 		error instanceof Error
 			? {

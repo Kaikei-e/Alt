@@ -104,7 +104,7 @@
 .loop-plane-root[data-stage="act"] {
 	--loop-bg-near-opacity: 0.72;
 	--loop-bg-mid-opacity: 0.56;
-	--loop-bg-far-opacity: 0.40;
+	--loop-bg-far-opacity: 0.4;
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -115,6 +115,6 @@
 	.loop-plane-root[data-stage="act"] {
 		--loop-bg-near-opacity: 0.78;
 		--loop-bg-mid-opacity: 0.64;
-		--loop-bg-far-opacity: 0.50;
+		--loop-bg-far-opacity: 0.5;
 	}
 }

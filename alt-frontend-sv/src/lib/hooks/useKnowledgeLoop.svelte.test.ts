@@ -721,7 +721,9 @@ describe("useKnowledgeLoop.applyStreamFrame — inline patch protocol", () => {
 		});
 
 		expect(applied).toBe(true);
-		expect(loop.entries.find((e) => e.entryKey === "article:42")).toBeUndefined();
+		expect(
+			loop.entries.find((e) => e.entryKey === "article:42"),
+		).toBeUndefined();
 	});
 
 	it("superseded removes old entryKey from bucketEntries and returns true", () => {

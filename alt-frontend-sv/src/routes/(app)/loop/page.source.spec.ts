@@ -80,8 +80,12 @@ describe("/loop/+page.svelte wiring guards", () => {
 		// active state — the user clicks and gets nothing because the browser
 		// silently drops the event. Pin the rule so it cannot regress to the
 		// invisible-disabled state again.
-		expect(pageSource).toMatch(/\.workspace-command:disabled\b[\s\S]*?cursor:\s*not-allowed/);
-		expect(pageSource).toMatch(/\.workspace-command:disabled\b[\s\S]*?opacity:/);
+		expect(pageSource).toMatch(
+			/\.workspace-command:disabled\b[\s\S]*?cursor:\s*not-allowed/,
+		);
+		expect(pageSource).toMatch(
+			/\.workspace-command:disabled\b[\s\S]*?opacity:/,
+		);
 	});
 
 	it("delegates source-URL resolution to the shared resolveLoopSourceUrl helper", () => {
