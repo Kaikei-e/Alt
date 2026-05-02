@@ -87,6 +87,8 @@ jobs:
           echo "::endgroup::"
 
       - name: Install Bun
+        env:
+          BUN_VERSION: "1.2.14"
         run: |
           set -eu
           ARCH=$(uname -m)
@@ -95,9 +97,21 @@ jobs:
           else
             BUN_ARCH="bun-linux-x64"
           fi
-          curl -fsSL "https://github.com/oven-sh/bun/releases/download/bun-v1.2.14/${BUN_ARCH}.zip" -o /tmp/bun.zip
-          python3 -c "import zipfile; zipfile.ZipFile('/tmp/bun.zip').extractall('/tmp/bun-install')"
-          mv "/tmp/bun-install/${BUN_ARCH}/bun" /usr/local/bin/bun
+          BUN_BASE="https://github.com/oven-sh/bun/releases/download/bun-v${BUN_VERSION}"
+          curl -fsSL "${BUN_BASE}/${BUN_ARCH}.zip" -o /tmp/bun.zip
+          curl -fsSL "${BUN_BASE}/SHASUMS256.txt"  -o /tmp/bun-sha256.txt
+          grep "  ${BUN_ARCH}\.zip$" /tmp/bun-sha256.txt | sha256sum -c -
+          python3 - "$BUN_ARCH" <<'PYEOF'
+          import sys, zipfile
+          arch = sys.argv[1]
+          entry = f"{arch}/bun"
+          with zipfile.ZipFile("/tmp/bun.zip") as z:
+              if entry not in z.namelist():
+                  sys.exit(f"expected entry {entry!r} not found in zip")
+              data = z.read(entry)
+          with open("/usr/local/bin/bun", "wb") as f:
+              f.write(data)
+          PYEOF
           chmod +x /usr/local/bin/bun
           bun --version
 
