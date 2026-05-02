@@ -20,11 +20,18 @@ import type { LoopStageName } from "$lib/connect/knowledge_loop";
  *   - The ribbon is laid out in a 2-row grid: kickers on top, an arc rule
  *     under the active one. A `→` between kickers signals direction, with
  *     a wrap-around `↻` after Act to close the loop visually.
- *   - The component is presentational only — it does not call any hooks
- *     or load data; it receives `currentStage` from `+page.svelte`.
+ *   - The component is hook-free — `+page.svelte` passes the selected stage
+ *     callback so the ribbon can act as the OODA controller without owning
+ *     application state.
  */
 
-let { currentStage }: { currentStage: LoopStageName } = $props();
+let {
+	currentStage,
+	onStageSelect,
+}: {
+	currentStage: LoopStageName;
+	onStageSelect?: (stage: LoopStageName) => void;
+} = $props();
 
 type Stage = { name: LoopStageName; label: string };
 const stages: Stage[] = [
@@ -50,6 +57,10 @@ function depthFor(stage: LoopStageName): number {
 	const distance = (order[stage] - order[currentStage] + 4) % 4;
 	return distance; // 0..3
 }
+
+function selectStage(stage: LoopStageName) {
+	onStageSelect?.(stage);
+}
 </script>
 
 <nav
@@ -67,10 +78,17 @@ function depthFor(stage: LoopStageName): number {
 				data-depth={depth}
 				data-stage={stage.name}
 			>
-				<span class="kicker-label">{stage.label}</span>
-				{#if depth === 0}
-					<span class="kicker-rule" aria-hidden="true"></span>
-				{/if}
+				<button
+					type="button"
+					class="stage-button"
+					aria-current={depth === 0 ? "step" : undefined}
+					onclick={() => selectStage(stage.name)}
+				>
+					<span class="kicker-label">{stage.label}</span>
+					{#if depth === 0}
+						<span class="kicker-rule" aria-hidden="true"></span>
+					{/if}
+				</button>
 			</li>
 			{#if i < stages.length - 1}
 				<li class="arrow" aria-hidden="true">→</li>
@@ -144,6 +162,27 @@ function depthFor(stage: LoopStageName): number {
 		display: inline-block;
 	}
 
+	.stage-button {
+		appearance: none;
+		border: none;
+		background: transparent;
+		padding: 0;
+		margin: 0;
+		display: inline-flex;
+		flex-direction: column;
+		align-items: center;
+		gap: 0.18rem;
+		font: inherit;
+		letter-spacing: inherit;
+		text-transform: inherit;
+		color: inherit;
+		cursor: pointer;
+	}
+	.stage-button:focus-visible {
+		outline: 2px solid var(--alt-terracotta, #b85450);
+		outline-offset: 3px;
+	}
+
 	/* The arc rule appears only under the active kicker. A subtle inverse
 	 * curve plus a 2px stroke evokes the OODA cycle's continuous loop without
 	 * leaving the Alt-Paper "thin rule" vocabulary. */
@@ -157,6 +196,18 @@ function depthFor(stage: LoopStageName): number {
 		 * the active kicker, so the eye reads it as the user's current
 		 * "page line" in the loop. */
 		transform: translateY(2px);
+		animation: stage-active 3s ease-in-out infinite;
+	}
+
+	@keyframes stage-active {
+		0%, 100% { opacity: 1; }
+		50%       { opacity: 0.45; }
+	}
+
+	@media (prefers-reduced-motion: reduce) {
+		.kicker-rule {
+			animation: none;
+		}
 	}
 
 	.arrow {

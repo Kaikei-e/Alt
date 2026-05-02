@@ -607,3 +607,142 @@ describe("useKnowledgeLoop.resetInFlight", () => {
 		await Promise.allSettled([a, b]);
 	});
 });
+
+const NOOP_FETCH = (async () =>
+	new Response("{}", { status: 200 })) as unknown as typeof fetch;
+
+const BUCKET_ENTRY_CONTINUE: KnowledgeLoopResult["bucketEntries"][number] = {
+	...FRESH_FOREGROUND.foregroundEntries[0],
+	entryKey: "article:continue-99",
+	sourceItemKey: "article:continue-99",
+	surfaceBucket: "continue",
+	projectionRevision: 3,
+	projectionSeqHiwater: 200,
+};
+
+describe("useKnowledgeLoop.applyStreamFrame — inline patch protocol", () => {
+	it("revised with inlineEntry patches the matching foreground entry in-place", () => {
+		const loop = useKnowledgeLoop({
+			initial: FRESH_FOREGROUND,
+			lensModeId: "default",
+			fetchImpl: NOOP_FETCH,
+			observeThrottleStorage: null,
+		});
+
+		const revised = {
+			...FRESH_FOREGROUND.foregroundEntries[0],
+			projectionRevision: 7,
+		};
+		const applied = loop.applyStreamFrame({
+			kind: "revised",
+			entryKey: "article:42",
+			revision: 102n,
+			projectionSeqHiwater: 102n,
+			inlineEntry: revised,
+		});
+
+		expect(applied).toBe(true);
+		expect(loop.entries).toHaveLength(1);
+		expect(loop.entries[0].projectionRevision).toBe(7);
+	});
+
+	it("withdrawn removes the entry from foreground and returns true", () => {
+		const loop = useKnowledgeLoop({
+			initial: FRESH_FOREGROUND,
+			lensModeId: "default",
+			fetchImpl: NOOP_FETCH,
+			observeThrottleStorage: null,
+		});
+
+		const applied = loop.applyStreamFrame({
+			kind: "withdrawn",
+			entryKey: "article:42",
+			revision: 103n,
+			projectionSeqHiwater: 103n,
+		});
+
+		expect(applied).toBe(true);
+		expect(loop.entries).toHaveLength(0);
+	});
+
+	it("withdrawn removes a bucket entry and returns true", () => {
+		const loop = useKnowledgeLoop({
+			initial: { ...FRESH_FOREGROUND, bucketEntries: [BUCKET_ENTRY_CONTINUE] },
+			lensModeId: "default",
+			fetchImpl: NOOP_FETCH,
+			observeThrottleStorage: null,
+		});
+
+		const applied = loop.applyStreamFrame({
+			kind: "withdrawn",
+			entryKey: "article:continue-99",
+			revision: 104n,
+			projectionSeqHiwater: 104n,
+		});
+
+		expect(applied).toBe(true);
+		expect(loop.bucketEntries).toHaveLength(0);
+	});
+
+	it("appended without inlineEntry returns false (signals fallback to invalidate)", () => {
+		const loop = useKnowledgeLoop({
+			initial: FRESH_FOREGROUND,
+			lensModeId: "default",
+			fetchImpl: NOOP_FETCH,
+			observeThrottleStorage: null,
+		});
+
+		const applied = loop.applyStreamFrame({
+			kind: "appended",
+			entryKey: "article:new-1",
+			revision: 105n,
+			projectionSeqHiwater: 105n,
+			// inlineEntry intentionally absent
+		});
+
+		expect(applied).toBe(false);
+		expect(loop.entries).toHaveLength(1); // unchanged
+	});
+
+	it("superseded removes old entryKey from foreground and returns true", () => {
+		const loop = useKnowledgeLoop({
+			initial: FRESH_FOREGROUND,
+			lensModeId: "default",
+			fetchImpl: NOOP_FETCH,
+			observeThrottleStorage: null,
+		});
+
+		const applied = loop.applyStreamFrame({
+			kind: "superseded",
+			entryKey: "article:42",
+			newEntryKey: "article:42-v2",
+			revision: 106n,
+			projectionSeqHiwater: 106n,
+		});
+
+		expect(applied).toBe(true);
+		expect(loop.entries.find((e) => e.entryKey === "article:42")).toBeUndefined();
+	});
+
+	it("superseded removes old entryKey from bucketEntries and returns true", () => {
+		const loop = useKnowledgeLoop({
+			initial: { ...FRESH_FOREGROUND, bucketEntries: [BUCKET_ENTRY_CONTINUE] },
+			lensModeId: "default",
+			fetchImpl: NOOP_FETCH,
+			observeThrottleStorage: null,
+		});
+
+		const applied = loop.applyStreamFrame({
+			kind: "superseded",
+			entryKey: "article:continue-99",
+			newEntryKey: "article:continue-99-v2",
+			revision: 107n,
+			projectionSeqHiwater: 107n,
+		});
+
+		expect(applied).toBe(true);
+		expect(
+			loop.bucketEntries.find((e) => e.entryKey === "article:continue-99"),
+		).toBeUndefined();
+	});
+});

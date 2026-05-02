@@ -343,6 +343,33 @@ function depthState(idx: number): "active" | "near" | "mid" | "far" {
 		z-index: 1;
 	}
 
+	/* Stage-aware depth overrides via CSS custom properties set on
+	 * .loop-plane-root[data-stage="..."] in loop-depth.css.
+	 *
+	 * orient: Continue pane rises toward active depth so the user perceives
+	 *   it as the relevant mid-context for the current Now entry.
+	 * act:    Non-active panes recede further — the workspace commands own
+	 *   the visual floor and the stack reads as background reference. */
+	.pane[data-plane-key="continue"][data-depth-state="near"] {
+		opacity: var(--loop-context-near-opacity, 0.86);
+		filter: var(--loop-context-near-filter, saturate(0.92));
+		transform: var(--loop-context-near-transform, translateZ(-8px) scale(0.965));
+	}
+	.pane[data-plane-key="continue"][data-depth-state="mid"] {
+		opacity: var(--loop-context-mid-opacity, 0.72);
+		filter: var(--loop-context-mid-filter, saturate(0.78) blur(0.4px));
+		transform: var(--loop-context-mid-transform, translateZ(-16px) scale(0.93));
+	}
+	.pane:not([data-plane-key="continue"])[data-depth-state="near"] {
+		opacity: var(--loop-bg-near-opacity, 0.86);
+	}
+	.pane:not([data-plane-key="continue"])[data-depth-state="mid"] {
+		opacity: var(--loop-bg-mid-opacity, 0.72);
+	}
+	.pane:not([data-plane-key="continue"])[data-depth-state="far"] {
+		opacity: var(--loop-bg-far-opacity, 0.60);
+	}
+
 	/* Body content collapses on inactive panes so only the header peeks out of
 	 * the stack — preserves the "newspaper edge sticking out" feel without
 	 * starving the active plane of vertical space. */

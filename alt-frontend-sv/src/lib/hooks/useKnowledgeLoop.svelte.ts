@@ -421,6 +421,14 @@ export function useKnowledgeLoop(opts: UseKnowledgeLoopOptions) {
 			case "withdrawn":
 				applyLocalDismiss(frame.entryKey);
 				return true;
+			case "superseded":
+				// Remove old entry immediately; the replacement arrives via a
+				// subsequent "appended" frame with an inlineEntry.
+				entries = entries.filter((e) => e.entryKey !== frame.entryKey);
+				bucketEntries = bucketEntries.filter(
+					(e) => e.entryKey !== frame.entryKey,
+				);
+				return true;
 			default:
 				return false;
 		}

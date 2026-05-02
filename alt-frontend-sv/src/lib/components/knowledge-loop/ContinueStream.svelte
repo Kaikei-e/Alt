@@ -48,15 +48,25 @@ function formatFreshness(iso: string): string {
 	{#each entries as entry (entry.entryKey)}
 		<li class="row" aria-label={loopPriorityAriaLabel[entry.loopPriority]}>
 			<span class="stamp" aria-hidden="true">{formatFreshness(entry.freshnessAt)}</span>
-			<button
-				type="button"
-				class="title"
-				onclick={() => resume(entry)}
-				data-testid="loop-continue-resume"
-				data-entry-key={entry.entryKey}
-			>
-				{entry.whyPrimary.text || entry.entryKey}
-			</button>
+			<div class="entry-text">
+				<button
+					type="button"
+					class="title"
+					onclick={() => resume(entry)}
+					data-testid="loop-continue-resume"
+					data-entry-key={entry.entryKey}
+				>
+					{entry.whyPrimary.text || entry.entryKey}
+				</button>
+				{#if entry.continueContext}
+					<span class="context">
+						{entry.continueContext.summary}
+						{#if entry.continueContext.recentActionLabels.length > 0}
+							· {entry.continueContext.recentActionLabels.join(" / ")}
+						{/if}
+					</span>
+				{/if}
+			</div>
 			<span class="badge">{loopPriorityLabel[entry.loopPriority]}</span>
 		</li>
 	{/each}
@@ -99,6 +109,18 @@ function formatFreshness(iso: string): string {
 		font-size: 0.95rem;
 		line-height: 1.45;
 		color: var(--alt-charcoal, #1a1a1a);
+	}
+	.entry-text {
+		display: grid;
+		gap: 0.18rem;
+		min-width: 0;
+	}
+	.context {
+		font-family: var(--font-mono, "IBM Plex Mono", ui-monospace, monospace);
+		font-size: 0.64rem;
+		line-height: 1.35;
+		color: var(--alt-slate, #666);
+		overflow-wrap: anywhere;
 	}
 	.title:hover {
 		text-decoration: underline;

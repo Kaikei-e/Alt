@@ -15,6 +15,7 @@ import ReviewDock from "$lib/components/knowledge-loop/ReviewDock.svelte";
 import type {
 	KnowledgeLoopEntryData,
 	KnowledgeLoopResult,
+	LoopStageName,
 } from "$lib/connect/knowledge_loop";
 import { makeCoalescedRefresh } from "$lib/hooks/loop-coalesce";
 import { makeFirstFrameSkipper } from "$lib/hooks/loop-stream-skip-first";
@@ -202,7 +203,9 @@ function isSafeInternalPath(href: string): boolean {
 	);
 }
 
-function onEntryOpen(entry: KnowledgeLoopEntryData, href: string) {
+function onEntryOpen(entry: KnowledgeLoopEntryData, href?: string) {
+	href = href ?? resolveSourceUrl(entry) ?? "";
+	if (!href) return;
 	if (isSafeInternalPath(href)) {
 		void goto(href);
 		return;
@@ -217,7 +220,9 @@ function onEntryOpen(entry: KnowledgeLoopEntryData, href: string) {
 	if (entry.whyPrimary.text) {
 		params.set("title", entry.whyPrimary.text);
 	}
-	void goto(`/articles/${encodeURIComponent(entry.entryKey)}?${params.toString()}`);
+	void goto(
+		`/articles/${encodeURIComponent(entry.entryKey)}?${params.toString()}`,
+	);
 }
 
 function onObserve(entryKey: string) {
@@ -250,19 +255,80 @@ async function onAsk(entry: KnowledgeLoopEntryData): Promise<void> {
 	}
 }
 
-// Monospace byline parts. Intentionally en-dash separated for editorial
-// readability; never longer than one visual row on mobile.
-const stageName = $derived(sessionState?.currentStage ?? "observe");
-const stageDisplay = $derived(
-	(
+function effectiveEntryStage(entry: KnowledgeLoopEntryData): LoopStageName {
+	return entry.currentEntryStage ?? entry.proposedStage;
+}
+
+function nextStage(entry: KnowledgeLoopEntryData): LoopStageName {
+	switch (effectiveEntryStage(entry)) {
+		case "observe":
+			return "orient";
+		case "orient":
+			return "decide";
+		case "decide":
+			return "act";
+		case "act":
+			return "observe";
+	}
+}
+
+function stageLabel(stage: LoopStageName): string {
+	return (
 		{
 			observe: "Observe",
 			orient: "Orient",
 			decide: "Decide",
 			act: "Act",
 		} as const
-	)[stageName] ?? "Observe",
+	)[stage];
+}
+
+function advanceEntry(entry: KnowledgeLoopEntryData) {
+	const from = effectiveEntryStage(entry);
+	const to = nextStage(entry);
+	if (!loop.canTransition(from, to)) return;
+	void loop.transitionTo(entry.entryKey, to, "user_tap");
+}
+
+function onPipelineStageSelect(to: LoopStageName) {
+	const entry = activeEntry;
+	if (!entry) return;
+	const from = effectiveEntryStage(entry);
+	if (from === to || !loop.canTransition(from, to)) return;
+	void loop.transitionTo(entry.entryKey, to, "user_tap");
+}
+
+function onWorkspaceOpen(entry: KnowledgeLoopEntryData) {
+	const href = resolveSourceUrl(entry);
+	if (href) {
+		void onEntryOpen(entry, href);
+	}
+}
+
+// Monospace byline parts. Intentionally en-dash separated for editorial
+// readability; never longer than one visual row on mobile.
+const stageName = $derived(sessionState?.currentStage ?? "observe");
+let activePlaneKey = $state<PlaneKey>("now");
+const activePlaneEntries = $derived(
+	activePlaneKey === "now"
+		? foreground
+		: activePlaneKey === "continue"
+			? continueEntries
+			: activePlaneKey === "changed"
+				? changedEntries
+				: reviewEntries,
 );
+const activeEntry = $derived(
+	activePlaneEntries[0] ??
+		foreground[0] ??
+		continueEntries[0] ??
+		changedEntries[0] ??
+		reviewEntries[0],
+);
+const selectedStageName = $derived(
+	activeEntry ? effectiveEntryStage(activeEntry) : stageName,
+);
+const stageDisplay = $derived(stageLabel(selectedStageName));
 
 const seqHi = $derived(data.loop?.projectionSeqHiwater ?? 0);
 const lensId = $derived(data.lensModeId ?? "default");
@@ -307,22 +373,17 @@ const planeDescriptors = $derived([
 	},
 ]);
 
-let activePlaneKey = $state<PlaneKey>("now");
-
 // transitionTo derives `from` from the entry's currentEntryStage fallback, so
 // callers only supply the target stage + trigger. Each plane maps to the
 // canonical next step per contract §7 allowed transitions.
 function onContinueResume(entry: KnowledgeLoopEntryData) {
-	void loop.transitionTo(entry.entryKey, "decide", "user_tap");
+	advanceEntry(entry);
 }
 function onChangedConfirm(entry: KnowledgeLoopEntryData) {
-	void loop.transitionTo(entry.entryKey, "act", "user_tap");
+	advanceEntry(entry);
 }
 function onReviewOpen(entry: KnowledgeLoopEntryData) {
-	const href = resolveSourceUrl(entry);
-	if (href) {
-		void goto(href);
-	}
+	onEntryOpen(entry);
 }
 
 // Review-lane re-evaluation (fb.md §F). Routes the user's choice through
@@ -345,10 +406,13 @@ function onReviewAction(
 	class="loop-root loop-plane-root"
 	class:revealed
 	data-testid="knowledge-loop-root"
-	data-stage={stageName}
+	data-stage={selectedStageName}
 >
 	<header class="loop-masthead">
-		<OodaPipeline currentStage={stageName} />
+		<OodaPipeline
+			currentStage={selectedStageName}
+			onStageSelect={onPipelineStageSelect}
+		/>
 		<h1 class="masthead-title">Knowledge Loop</h1>
 		<p class="byline" aria-live="polite">
 			<span class="byline-cell">
@@ -382,6 +446,149 @@ function onReviewAction(
 	{/if}
 
 	{#if !data.error}
+		{#if activeEntry}
+			<section
+				class="ooda-workspace"
+				data-testid="loop-ooda-workspace"
+				data-stage={selectedStageName}
+			>
+				<div class="workspace-head">
+					<span class="workspace-kicker">{activePlaneKey} / {stageDisplay}</span>
+					<h2>{activeEntry.whyPrimary.text || activeEntry.entryKey}</h2>
+				</div>
+				<div class="workspace-body">
+					{#if selectedStageName === "observe"}
+						<!-- Observe: scan metadata, signal count, freshness date -->
+						<div class="workspace-context workspace-context--observe">
+							<p class="workspace-meta workspace-meta--signals">
+								{#if activeEntry.freshnessAt}
+									{new Date(activeEntry.freshnessAt).toLocaleDateString("en", { month: "short", day: "numeric" })}
+								{/if}
+								{#if activeEntry.loopPriority === "critical" || activeEntry.loopPriority === "continuing"}
+									<span class="meta-sep">·</span>{activeEntry.loopPriority}
+								{/if}
+								{#if activeEntry.whyPrimary.evidenceRefs.length > 0}
+									<span class="meta-sep">·</span>{activeEntry.whyPrimary.evidenceRefs.length} signal{activeEntry.whyPrimary.evidenceRefs.length === 1 ? "" : "s"}
+								{/if}
+							</p>
+						</div>
+					{:else if selectedStageName === "orient"}
+						<!-- Orient: context expands with labelled evidence section -->
+						<div class="workspace-context workspace-context--orient">
+							{#if activeEntry.continueContext}
+								<p class="workspace-context-label">Continue context</p>
+								<p>{activeEntry.continueContext.summary}</p>
+								{#if activeEntry.continueContext.recentActionLabels.length > 0}
+									<p class="workspace-meta">{activeEntry.continueContext.recentActionLabels.join(" / ")}</p>
+								{/if}
+							{:else if activeEntry.changeSummary}
+								<p class="workspace-context-label">Changed</p>
+								<p>{activeEntry.changeSummary.summary}</p>
+								{#if activeEntry.changeSummary.changedFields.length > 0}
+									<p class="workspace-meta">{activeEntry.changeSummary.changedFields.join(" / ")}</p>
+								{/if}
+							{:else if activeEntry.sourceObservedAt}
+								<p class="workspace-context-label">Observed</p>
+								<p class="workspace-meta">{activeEntry.sourceObservedAt}</p>
+							{:else}
+								<p class="workspace-meta">{activeEntry.entryKey}</p>
+							{/if}
+						</div>
+					{:else if selectedStageName === "decide"}
+						<!-- Decide: editorial choice list when options exist -->
+						{#if activeEntry.decisionOptions.length > 0}
+							<ol class="decision-options" aria-label="Available actions">
+								{#each activeEntry.decisionOptions as opt}
+									<li class="decision-option">
+										<button
+											type="button"
+											class="decision-btn"
+											data-intent={opt.intent}
+											onclick={() => advanceEntry(activeEntry)}
+										>
+											{opt.label ?? opt.actionId}
+										</button>
+									</li>
+								{/each}
+							</ol>
+						{:else}
+							<div class="workspace-context">
+								{#if activeEntry.continueContext}
+									<p>{activeEntry.continueContext.summary}</p>
+								{:else if activeEntry.changeSummary}
+									<p>{activeEntry.changeSummary.summary}</p>
+								{:else}
+									<p class="workspace-meta">{activeEntry.whyPrimary.text || activeEntry.entryKey}</p>
+								{/if}
+							</div>
+						{/if}
+					{:else if selectedStageName === "act"}
+						<!-- Act: target confirmation before Open command -->
+						{#if activeEntry.actTargets.length > 0}
+							<div class="act-targets">
+								{#each activeEntry.actTargets.slice(0, 2) as target}
+									<div class="act-target" data-type={target.targetType}>
+										<span class="act-target-type">{target.targetType}</span>
+										<span class="act-target-ref">{target.route ?? target.targetRef}</span>
+									</div>
+								{/each}
+							</div>
+						{:else}
+							<div class="workspace-context">
+								{#if activeEntry.continueContext}
+									<p>{activeEntry.continueContext.summary}</p>
+								{:else}
+									<p class="workspace-meta">{activeEntry.whyPrimary.text || activeEntry.entryKey}</p>
+								{/if}
+							</div>
+						{/if}
+					{/if}
+
+					<div class="workspace-actions" aria-label="OODA commands">
+						{#if selectedStageName === "act"}
+							<button
+								type="button"
+								class="workspace-command"
+								onclick={() => onWorkspaceOpen(activeEntry)}
+							>
+								Open
+							</button>
+							<button
+								type="button"
+								class="workspace-command workspace-command--secondary"
+								onclick={() => advanceEntry(activeEntry)}
+							>
+								Return
+							</button>
+						{:else if selectedStageName === "decide" && activeEntry.decisionOptions.length > 0}
+							<button
+								type="button"
+								class="workspace-command workspace-command--secondary"
+								onclick={() => onAsk(activeEntry)}
+							>
+								Ask
+							</button>
+						{:else}
+							<button
+								type="button"
+								class="workspace-command"
+								onclick={() => advanceEntry(activeEntry)}
+							>
+								{stageLabel(nextStage(activeEntry))}
+							</button>
+							<button
+								type="button"
+								class="workspace-command workspace-command--secondary"
+								onclick={() => onAsk(activeEntry)}
+							>
+								Ask
+							</button>
+						{/if}
+					</div>
+				</div>
+			</section>
+		{/if}
+
 		<LoopPlaneStack planes={planeDescriptors} bind:activeKey={activePlaneKey}>
 			{#snippet plane(key)}
 				{#if key === "now"}
@@ -467,6 +674,89 @@ function onReviewAction(
 		margin-bottom: 1.5rem;
 	}
 
+	.ooda-workspace {
+		display: grid;
+		gap: 0.75rem;
+		margin: 0 0 1.25rem;
+		padding: 0.85rem 0;
+		border-top: 2px solid var(--alt-charcoal, #1a1a1a);
+		border-bottom: 1px solid var(--surface-border, #c8c8c8);
+	}
+	.workspace-head {
+		display: grid;
+		gap: 0.25rem;
+	}
+	.workspace-kicker {
+		font-family: var(--font-mono, "IBM Plex Mono", ui-monospace, monospace);
+		font-size: 0.64rem;
+		font-weight: 700;
+		letter-spacing: 0.12em;
+		text-transform: uppercase;
+		color: var(--alt-ash, #999);
+	}
+	.workspace-head h2 {
+		margin: 0;
+		font-family: var(--font-display, "Playfair Display", Georgia, serif);
+		font-size: 1.15rem;
+		line-height: 1.25;
+		color: var(--alt-charcoal, #1a1a1a);
+	}
+	.workspace-body {
+		display: grid;
+		gap: 0.8rem;
+	}
+	.workspace-context {
+		display: grid;
+		gap: 0.25rem;
+		min-width: 0;
+	}
+	.workspace-context p {
+		margin: 0;
+		font-family: var(--font-body, "Source Sans 3", system-ui, sans-serif);
+		font-size: 0.86rem;
+		line-height: 1.45;
+		color: var(--alt-charcoal, #1a1a1a);
+	}
+	.workspace-context .workspace-meta {
+		font-family: var(--font-mono, "IBM Plex Mono", ui-monospace, monospace);
+		font-size: 0.68rem;
+		color: var(--alt-slate, #666);
+		overflow-wrap: anywhere;
+	}
+	.workspace-actions {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 0.55rem;
+		align-items: center;
+	}
+	.workspace-command {
+		appearance: none;
+		border: 1px solid var(--alt-charcoal, #1a1a1a);
+		border-radius: 0;
+		background: var(--alt-charcoal, #1a1a1a);
+		color: var(--surface-bg, #faf9f7);
+		padding: 0.38rem 0.72rem;
+		font-family: var(--font-mono, "IBM Plex Mono", ui-monospace, monospace);
+		font-size: 0.68rem;
+		font-weight: 700;
+		letter-spacing: 0.08em;
+		text-transform: uppercase;
+		cursor: pointer;
+	}
+	.workspace-command--secondary {
+		background: transparent;
+		color: var(--alt-charcoal, #1a1a1a);
+	}
+	.workspace-command:hover {
+		background: var(--alt-terracotta, #b85450);
+		border-color: var(--alt-terracotta, #b85450);
+		color: var(--surface-bg, #faf9f7);
+	}
+	.workspace-command:focus-visible {
+		outline: 2px solid var(--alt-terracotta, #b85450);
+		outline-offset: 2px;
+	}
+
 	.foreground-tiles {
 		display: grid;
 		gap: 0.8rem;
@@ -488,6 +778,125 @@ function onReviewAction(
 		font-family: var(--font-mono, "IBM Plex Mono", ui-monospace, monospace);
 		font-size: 0.72rem;
 		color: var(--alt-ash, #999);
+	}
+
+	/* ── Stage-specific workspace panels ─────────────────────────────────── */
+
+	/* Orient: heavier top rule signals entry into context mode */
+	.ooda-workspace[data-stage="orient"] {
+		border-top-width: 3px;
+	}
+
+	/* Act: tinted surface beneath the command area */
+	.ooda-workspace[data-stage="act"] {
+		background: rgba(26, 26, 26, 0.025);
+		padding-inline: 0.6rem;
+		margin-inline: -0.6rem;
+	}
+
+	.workspace-context-label {
+		margin: 0 0 0.2rem;
+		font-family: var(--font-mono, "IBM Plex Mono", ui-monospace, monospace);
+		font-size: 0.58rem;
+		font-weight: 700;
+		letter-spacing: 0.14em;
+		text-transform: uppercase;
+		color: var(--alt-ash, #999);
+	}
+
+	.workspace-meta--signals {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		gap: 0.3rem;
+	}
+	.meta-sep {
+		color: var(--alt-ash, #999);
+	}
+
+	/* ── Decision options (Decide stage) ─────────────────────────────────── */
+	.decision-options {
+		list-style: none;
+		margin: 0;
+		padding: 0;
+		display: grid;
+		gap: 0.3rem;
+		counter-reset: decision;
+	}
+	.decision-option {
+		counter-increment: decision;
+		display: flex;
+		align-items: stretch;
+	}
+	.decision-option::before {
+		content: counter(decision, upper-roman) ".";
+		font-family: var(--font-mono, "IBM Plex Mono", ui-monospace, monospace);
+		font-size: 0.6rem;
+		color: var(--alt-ash, #999);
+		width: 1.6rem;
+		flex-shrink: 0;
+		display: flex;
+		align-items: center;
+		padding-top: 0.05rem;
+	}
+	.decision-btn {
+		appearance: none;
+		background: transparent;
+		border: 1px solid var(--surface-border, #c8c8c8);
+		border-radius: 0;
+		padding: 0.35rem 0.65rem;
+		text-align: left;
+		font-family: var(--font-body, "Source Sans 3", system-ui, sans-serif);
+		font-size: 0.82rem;
+		line-height: 1.3;
+		color: var(--alt-charcoal, #1a1a1a);
+		cursor: pointer;
+		flex: 1;
+		transition:
+			border-color 160ms ease,
+			background-color 160ms ease;
+	}
+	.decision-btn:hover {
+		border-color: var(--alt-charcoal, #1a1a1a);
+		background: rgba(0, 0, 0, 0.03);
+	}
+	.decision-btn:focus-visible {
+		outline: 2px solid var(--alt-terracotta, #b85450);
+		outline-offset: 2px;
+	}
+	.decision-btn[data-intent="open"]:hover {
+		border-color: var(--alt-terracotta, #b85450);
+	}
+
+	/* ── Act targets (Act stage) ─────────────────────────────────────────── */
+	.act-targets {
+		display: grid;
+		gap: 0.3rem;
+	}
+	.act-target {
+		display: grid;
+		grid-template-columns: 4.5rem 1fr;
+		gap: 0.5rem;
+		align-items: baseline;
+		padding: 0.35rem 0.55rem;
+		border: 1px solid var(--surface-border, #c8c8c8);
+		background: var(--surface-bg, #faf9f7);
+	}
+	.act-target-type {
+		font-family: var(--font-mono, "IBM Plex Mono", ui-monospace, monospace);
+		font-size: 0.58rem;
+		font-weight: 700;
+		letter-spacing: 0.1em;
+		text-transform: uppercase;
+		color: var(--alt-ash, #999);
+	}
+	.act-target-ref {
+		font-family: var(--font-mono, "IBM Plex Mono", ui-monospace, monospace);
+		font-size: 0.7rem;
+		color: var(--alt-charcoal, #1a1a1a);
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
 	}
 
 	.masthead-title {
@@ -571,6 +980,14 @@ function onReviewAction(
 	@media (min-width: 768px) {
 		.loop-root {
 			padding: 2rem 1.5rem 4rem;
+		}
+		.ooda-workspace {
+			grid-template-columns: minmax(0, 1.15fr) minmax(18rem, 0.85fr);
+			align-items: start;
+		}
+		.workspace-body {
+			border-left: 1px solid var(--surface-border, #c8c8c8);
+			padding-left: 1rem;
 		}
 	}
 </style>

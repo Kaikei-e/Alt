@@ -46,7 +46,7 @@ describe("/loop/+page.svelte wiring guards", () => {
 	});
 
 	it("keeps LoopPlaneStack mounted whenever the route has no data error", () => {
-		expect(pageSource).toMatch(/\{#if !data\.error\}\s*<LoopPlaneStack/);
+		expect(pageSource).toMatch(/\{#if !data\.error\}[\s\S]*?<LoopPlaneStack/);
 		expect(pageSource).not.toMatch(/hasBucketPlanes/);
 		expect(pageSource).not.toMatch(/LoopSurfacePlane/);
 	});
@@ -59,7 +59,18 @@ describe("/loop/+page.svelte wiring guards", () => {
 	it("routes external Open CTA into the SPA /articles/ reader instead of window.open", () => {
 		// fb.md §5 / ADR-000875: Loop's Open intent goes through the in-app
 		// reader so popup-blocker races and external-tab bounces are gone.
-		expect(pageSource).toMatch(/goto\(`\/articles\/\$\{encodeURIComponent\(entry\.entryKey\)\}/);
+		expect(pageSource).toMatch(
+			/goto\([\s\S]*?`\/articles\/\$\{encodeURIComponent\(entry\.entryKey\)\}/,
+		);
 		expect(pageSource).not.toMatch(/window\.open\(href, "_blank"/);
+	});
+
+	it("routes Review Open through the same SPA reader helper as foreground Open", () => {
+		expect(pageSource).toMatch(
+			/function onReviewOpen\(entry: KnowledgeLoopEntryData\)[\s\S]*?onEntryOpen\(entry\)/,
+		);
+		expect(pageSource).not.toMatch(
+			/function onReviewOpen\(entry: KnowledgeLoopEntryData\)[\s\S]*?goto\(href\)/,
+		);
 	});
 });

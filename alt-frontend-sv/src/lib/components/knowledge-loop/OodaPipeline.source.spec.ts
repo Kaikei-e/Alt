@@ -50,6 +50,13 @@ describe("OodaPipeline source guards", () => {
 		expect(source).toMatch(/↻/);
 	});
 
+	it("can act as the OODA stage controller when a transition callback is provided", () => {
+		expect(source).toMatch(/onStageSelect/);
+		expect(source).toMatch(/<button/);
+		expect(source).toMatch(/onclick=\{\(\) => selectStage\(stage\.name\)\}/);
+		expect(source).toMatch(/aria-current=\{depth === 0 \? "step" : undefined\}/);
+	});
+
 	it("keeps a reduced-motion fallback that flattens the ribbon", () => {
 		expect(source).toMatch(/prefers-reduced-motion[\s\S]*?reduce/);
 		// Reduced motion must remove translateZ from every kicker bucket.

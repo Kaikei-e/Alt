@@ -80,3 +80,41 @@
 		will-change: auto;
 	}
 }
+
+/* Stage-driven CSS custom properties for OODA-aware plane prominence.
+ *
+ * LoopPlaneStack.svelte consumes these via var() fallbacks in its own
+ * scoped style block. Using custom properties avoids any specificity
+ * contest with Svelte's scoped hash selectors.
+ *
+ * orient — the user is contextualising the Now entry; Continue rises
+ *   toward active depth to communicate "this is the relevant mid-context."
+ * act — workspace has the floor; background planes recede an extra step
+ *   so the action command area reads as the sole focus point.
+ */
+.loop-plane-root[data-stage="orient"] {
+	--loop-context-near-opacity: 0.94;
+	--loop-context-near-filter: saturate(0.98);
+	--loop-context-near-transform: translateZ(-5px) scale(0.975);
+	--loop-context-mid-opacity: 0.86;
+	--loop-context-mid-filter: saturate(0.93) blur(0.15px);
+	--loop-context-mid-transform: translateZ(-12px) scale(0.946);
+}
+
+.loop-plane-root[data-stage="act"] {
+	--loop-bg-near-opacity: 0.72;
+	--loop-bg-mid-opacity: 0.56;
+	--loop-bg-far-opacity: 0.40;
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.loop-plane-root[data-stage="orient"] {
+		--loop-context-near-transform: none;
+		--loop-context-mid-transform: none;
+	}
+	.loop-plane-root[data-stage="act"] {
+		--loop-bg-near-opacity: 0.78;
+		--loop-bg-mid-opacity: 0.64;
+		--loop-bg-far-opacity: 0.50;
+	}
+}
