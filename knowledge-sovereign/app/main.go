@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strconv"
 	"syscall"
 	"time"
 
@@ -135,7 +136,10 @@ func main() {
 	// looser than the projector tick — replanning is more expensive than
 	// projecting, and the projector is patch-only seq-hiwater-guarded so
 	// occasional miss-windows degrade to no-op patches.
-	plannerCron := surface_planner_cron.New(repo, slog.Default(), surface_planner_cron.Config{BatchSize: 256})
+	plannerCron := surface_planner_cron.New(repo, slog.Default(), surface_planner_cron.Config{
+		BatchSize:         parseIntEnv("KNOWLEDGE_SOVEREIGN_PLANNER_BATCH_SIZE", 256),
+		MaxBatchesPerTick: parseIntEnv("KNOWLEDGE_SOVEREIGN_PLANNER_MAX_BATCHES_PER_TICK", 1),
+	})
 	plannerTick := time.NewTicker(parseDurationEnv("KNOWLEDGE_SOVEREIGN_PLANNER_TICK_INTERVAL", 60*time.Second))
 	go func() {
 		defer plannerTick.Stop()
@@ -186,4 +190,17 @@ func parseDurationEnv(name string, fallback time.Duration) time.Duration {
 		return fallback
 	}
 	return d
+}
+
+func parseIntEnv(name string, fallback int) int {
+	v := os.Getenv(name)
+	if v == "" {
+		return fallback
+	}
+	i, err := strconv.Atoi(v)
+	if err != nil || i <= 0 {
+		slog.Warn("invalid int env, using fallback", "env", name, "value", v, "fallback", fallback)
+		return fallback
+	}
+	return i
 }

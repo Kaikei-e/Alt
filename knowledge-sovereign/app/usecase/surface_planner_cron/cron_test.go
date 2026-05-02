@@ -209,6 +209,22 @@ func TestRunBatch_DedupeKey_IsBatchSeqBased_Idempotent(t *testing.T) {
 	require.Equal(t, firstKey, repo.appended[0].DedupeKey)
 }
 
+func TestRunBatch_MaxBatchesPerTickCatchesUpMultipleWindows(t *testing.T) {
+	userID := uuid.New()
+	repo := &fakeRepo{events: []sovereign_db.KnowledgeEvent{
+		augurEvent(101, userID, "article:42"),
+		augurEvent(102, userID, "article:99"),
+		augurEvent(103, userID, "article:100"),
+	}}
+	c := New(repo, nopLogger(), Config{BatchSize: 1, MaxBatchesPerTick: 3})
+
+	require.NoError(t, c.RunBatch(context.Background()))
+
+	require.Len(t, repo.appended, 3, "three one-event windows should drain in one tick")
+	require.Equal(t, []int64{101, 102, 103}, repo.checkpointSets)
+	require.Equal(t, int64(103), repo.checkpoint)
+}
+
 func TestRunBatch_DoesNotUseWallClock_UsesTriggerOccurredAt(t *testing.T) {
 	userID := uuid.New()
 	ev := augurEvent(101, userID, "article:42")

@@ -63,7 +63,8 @@ type Repository interface {
 
 // Config tunes the cron loop. Zero values fall back to defaults.
 type Config struct {
-	BatchSize int
+	BatchSize         int
+	MaxBatchesPerTick int
 }
 
 // Cron is the surface planner v2 producer. It mirrors the structure of
@@ -78,6 +79,9 @@ type Cron struct {
 func New(repo Repository, logger *slog.Logger, cfg Config) *Cron {
 	if cfg.BatchSize == 0 {
 		cfg.BatchSize = 256
+	}
+	if cfg.MaxBatchesPerTick <= 0 {
+		cfg.MaxBatchesPerTick = 1
 	}
 	if logger == nil {
 		logger = slog.Default()
@@ -94,94 +98,110 @@ func (c *Cron) RunBatch(ctx context.Context) error {
 		return fmt.Errorf("surface_planner_cron: get checkpoint: %w", err)
 	}
 
-	events, err := c.repo.ListKnowledgeEventsSince(ctx, lastSeq, c.cfg.BatchSize)
-	if err != nil {
-		return fmt.Errorf("surface_planner_cron: list events: %w", err)
-	}
-	if len(events) == 0 {
-		return nil
-	}
+	currentSeq := lastSeq
+	totalEvents := 0
+	totalEmitted := 0
+	batches := 0
 
-	// Group signal events by (tenant_id, user_id). Inside a group, dedupe by
-	// entry_key — a user can have several Augur links touching the same
-	// entry within one tick and we want a single entry_input per entry.
-	type groupKey struct {
-		tenant uuid.UUID
-		user   uuid.UUID
-	}
-	type group struct {
-		entries     map[string]struct{}
-		batchMaxSeq int64
-		anchor      sovereign_db.KnowledgeEvent
-	}
-	groups := map[groupKey]*group{}
-	maxSeq := lastSeq
-
-	for i := range events {
-		ev := events[i]
-		if ev.EventSeq > maxSeq {
-			maxSeq = ev.EventSeq
-		}
-		if _, ok := signalEventTypes[ev.EventType]; !ok {
-			continue
-		}
-		if ev.UserID == nil {
-			continue
-		}
-		entryKey := readPayloadEntryKey(ev.Payload)
-		if entryKey == "" {
-			continue
-		}
-		key := groupKey{tenant: ev.TenantID, user: *ev.UserID}
-		g, ok := groups[key]
-		if !ok {
-			g = &group{entries: map[string]struct{}{}, anchor: ev, batchMaxSeq: ev.EventSeq}
-			groups[key] = g
-		}
-		g.entries[entryKey] = struct{}{}
-		if ev.EventSeq > g.batchMaxSeq {
-			g.batchMaxSeq = ev.EventSeq
-			// keep the latest signal as the group anchor so occurred_at
-			// reflects the most recent context change.
-			g.anchor = ev
-		}
-	}
-
-	emitted := 0
-	for key, g := range groups {
-		if len(g.entries) == 0 {
-			continue
-		}
-		entryKeys := make([]string, 0, len(g.entries))
-		for k := range g.entries {
-			entryKeys = append(entryKeys, k)
-		}
-		sort.Strings(entryKeys)
-
-		ev, err := buildSurfacePlanEvent(key.tenant, key.user, g.anchor, g.batchMaxSeq, entryKeys)
+	for batches < c.cfg.MaxBatchesPerTick {
+		events, err := c.repo.ListKnowledgeEventsSince(ctx, currentSeq, c.cfg.BatchSize)
 		if err != nil {
-			c.logger.ErrorContext(ctx, "surface_planner_cron: build event failed",
-				slog.String("err", err.Error()))
-			continue
+			return fmt.Errorf("surface_planner_cron: list events: %w", err)
 		}
-		if _, err := c.repo.AppendKnowledgeEvent(ctx, ev); err != nil {
-			c.logger.ErrorContext(ctx, "surface_planner_cron: append failed",
-				slog.String("err", err.Error()))
-			continue
+		if len(events) == 0 {
+			break
 		}
-		emitted++
-	}
+		batches++
+		totalEvents += len(events)
 
-	if err := c.repo.UpdateProjectionCheckpoint(ctx, PlannerName, maxSeq); err != nil {
-		return fmt.Errorf("surface_planner_cron: update checkpoint: %w", err)
+		// Group signal events by (tenant_id, user_id). Inside a group, dedupe by
+		// entry_key — a user can have several Augur links touching the same
+		// entry within one tick and we want a single entry_input per entry.
+		type groupKey struct {
+			tenant uuid.UUID
+			user   uuid.UUID
+		}
+		type group struct {
+			entries     map[string]struct{}
+			batchMaxSeq int64
+			anchor      sovereign_db.KnowledgeEvent
+		}
+		groups := map[groupKey]*group{}
+		maxSeq := currentSeq
+
+		for i := range events {
+			ev := events[i]
+			if ev.EventSeq > maxSeq {
+				maxSeq = ev.EventSeq
+			}
+			if _, ok := signalEventTypes[ev.EventType]; !ok {
+				continue
+			}
+			if ev.UserID == nil {
+				continue
+			}
+			entryKey := readPayloadEntryKey(ev.Payload)
+			if entryKey == "" {
+				continue
+			}
+			key := groupKey{tenant: ev.TenantID, user: *ev.UserID}
+			g, ok := groups[key]
+			if !ok {
+				g = &group{entries: map[string]struct{}{}, anchor: ev, batchMaxSeq: ev.EventSeq}
+				groups[key] = g
+			}
+			g.entries[entryKey] = struct{}{}
+			if ev.EventSeq > g.batchMaxSeq {
+				g.batchMaxSeq = ev.EventSeq
+				// keep the latest signal as the group anchor so occurred_at
+				// reflects the most recent context change.
+				g.anchor = ev
+			}
+		}
+
+		emitted := 0
+		for key, g := range groups {
+			if len(g.entries) == 0 {
+				continue
+			}
+			entryKeys := make([]string, 0, len(g.entries))
+			for k := range g.entries {
+				entryKeys = append(entryKeys, k)
+			}
+			sort.Strings(entryKeys)
+
+			ev, err := buildSurfacePlanEvent(key.tenant, key.user, g.anchor, g.batchMaxSeq, entryKeys)
+			if err != nil {
+				c.logger.ErrorContext(ctx, "surface_planner_cron: build event failed",
+					slog.String("err", err.Error()))
+				continue
+			}
+			if _, err := c.repo.AppendKnowledgeEvent(ctx, ev); err != nil {
+				c.logger.ErrorContext(ctx, "surface_planner_cron: append failed",
+					slog.String("err", err.Error()))
+				continue
+			}
+			emitted++
+		}
+
+		if err := c.repo.UpdateProjectionCheckpoint(ctx, PlannerName, maxSeq); err != nil {
+			return fmt.Errorf("surface_planner_cron: update checkpoint: %w", err)
+		}
+		currentSeq = maxSeq
+		totalEmitted += emitted
+
+		if len(events) < c.cfg.BatchSize {
+			break
+		}
 	}
 
 	c.logger.InfoContext(ctx, "surface_planner.batch_complete",
 		slog.String("planner", PlannerName),
 		slog.Int64("from_seq", lastSeq),
-		slog.Int64("to_seq", maxSeq),
-		slog.Int("signals_seen", len(events)),
-		slog.Int("emitted", emitted),
+		slog.Int64("to_seq", currentSeq),
+		slog.Int("batches", batches),
+		slog.Int("events_seen", totalEvents),
+		slog.Int("emitted", totalEmitted),
 	)
 	return nil
 }
