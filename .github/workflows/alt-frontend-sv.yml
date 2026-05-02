@@ -98,14 +98,16 @@ jobs:
             BUN_ARCH="bun-linux-x64"
           fi
           BUN_BASE="https://github.com/oven-sh/bun/releases/download/bun-v${BUN_VERSION}"
-          curl -fsSL "${BUN_BASE}/${BUN_ARCH}.zip" -o /tmp/bun.zip
+          curl -fsSL "${BUN_BASE}/${BUN_ARCH}.zip" -o "/tmp/${BUN_ARCH}.zip"
           curl -fsSL "${BUN_BASE}/SHASUMS256.txt"  -o /tmp/bun-sha256.txt
-          grep "  ${BUN_ARCH}\.zip$" /tmp/bun-sha256.txt | sha256sum -c -
+          EXPECTED_SHA="$(grep "  ${BUN_ARCH}\.zip$" /tmp/bun-sha256.txt | awk '{print $1}')"
+          [ -n "$EXPECTED_SHA" ] || { echo "no checksum entry for ${BUN_ARCH}.zip"; exit 1; }
+          echo "${EXPECTED_SHA}  /tmp/${BUN_ARCH}.zip" | sha256sum -c -
           python3 - "$BUN_ARCH" <<'PYEOF'
           import sys, zipfile
           arch = sys.argv[1]
           entry = f"{arch}/bun"
-          with zipfile.ZipFile("/tmp/bun.zip") as z:
+          with zipfile.ZipFile(f"/tmp/{arch}.zip") as z:
               if entry not in z.namelist():
                   sys.exit(f"expected entry {entry!r} not found in zip")
               data = z.read(entry)
