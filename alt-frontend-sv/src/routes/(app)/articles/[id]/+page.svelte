@@ -16,9 +16,15 @@ import RenderFeedDetails from "$lib/components/mobile/RenderFeedDetails.svelte";
 import PageKicker from "$lib/components/recap/job-status/PageKicker.svelte";
 import { Button } from "$lib/components/ui/button";
 import { useSummarize } from "$lib/hooks/useSummarize.svelte";
+import { safeArticleHref } from "$lib/utils/safeHref";
 
 const articleId = $derived(page.params.id);
-const articleUrl = $derived(page.url.searchParams.get("url"));
+// Sanitize the `?url=` handoff before any consumer (fetch / <a href>) sees
+// it: rejects javascript:/data:/file: and private/loopback hosts. With the
+// canonical Loop ACT fix the projector + FE only ever produce public HTTPS
+// URLs here, but a hand-typed share URL or external linker could still
+// arrive with a hostile scheme — defense-in-depth.
+const articleUrl = $derived(safeArticleHref(page.url.searchParams.get("url")));
 const articleTitle = $derived(page.url.searchParams.get("title"));
 
 let isFetching = $state(false);

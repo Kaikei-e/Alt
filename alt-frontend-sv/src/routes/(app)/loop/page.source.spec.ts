@@ -73,4 +73,18 @@ describe("/loop/+page.svelte wiring guards", () => {
 			/function onReviewOpen\(entry: KnowledgeLoopEntryData\)[\s\S]*?goto\(href\)/,
 		);
 	});
+
+	it("delegates source-URL resolution to the shared resolveLoopSourceUrl helper", () => {
+		// `actTargets[].route` is an internal SPA path the projector emits; it
+		// MUST NOT be returned as a source URL or threaded through `?url=`.
+		// The helper centralises the sourceUrl-first / evidenceRefs-fallback
+		// logic and applies safeArticleHref defense.
+		expect(pageSource).toMatch(/from\s+["']\$lib\/utils\/loop-source-url["']/);
+		expect(pageSource).toMatch(/resolveLoopSourceUrl\s*\(/);
+		// The pre-fix conflation: `if (article?.route) return article.route;`
+		// returned the internal SPA path as a URL fallback. Must be gone.
+		expect(pageSource).not.toMatch(
+			/article\?\.route\s*\)\s*return\s+article\.route/,
+		);
+	});
 });

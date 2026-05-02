@@ -12,6 +12,15 @@ export const LOOP_FIXTURE_ENTRY_KEY = "loop-entry-fixture-1";
 export const LOOP_FIXTURE_SOURCE_URL =
 	"https://example.com/loop-source-article";
 
+// ACT-stage scenario fixture: serves a single foreground entry pre-positioned at
+// currentEntryStage = ACT so the workspace renders the Open command directly.
+// Backend mock switches to this fixture when the request body's lensModeId is
+// "e2e-act" (see tests/e2e/infra/handlers/backend.ts).
+export const LOOP_FIXTURE_ACT_ENTRY_KEY = "loop-entry-fixture-act-1";
+export const LOOP_FIXTURE_ACT_ARTICLE_ID = "article-act-fixture";
+export const LOOP_FIXTURE_ACT_SOURCE_URL =
+	"https://example.com/loop-act-article";
+
 // Non-NOW bucket fixtures driving the Surface plane tests (PR-L8).
 // Each belongs to exactly one bucket so partitioning in /loop/+page.svelte
 // is unambiguous.
@@ -54,7 +63,8 @@ export const CONNECT_KNOWLEDGE_LOOP_RESPONSE = {
 				{
 					targetType: 1, // ACT_TARGET_TYPE_ARTICLE
 					targetRef: "article-fixture-1",
-					route: LOOP_FIXTURE_SOURCE_URL,
+					route: "/articles/article-fixture-1",
+					sourceUrl: LOOP_FIXTURE_SOURCE_URL,
 				},
 			],
 		},
@@ -82,7 +92,8 @@ export const CONNECT_KNOWLEDGE_LOOP_RESPONSE = {
 				{
 					targetType: 1,
 					targetRef: "article-fixture-continue",
-					route: "https://example.com/loop-continue",
+					route: "/articles/article-fixture-continue",
+					sourceUrl: "https://example.com/loop-continue",
 				},
 			],
 		},
@@ -137,7 +148,8 @@ export const CONNECT_KNOWLEDGE_LOOP_RESPONSE = {
 				{
 					targetType: 1,
 					targetRef: "article-fixture-review",
-					route: "https://example.com/loop-review",
+					route: "/articles/article-fixture-review",
+					sourceUrl: "https://example.com/loop-review",
 				},
 			],
 		},
@@ -170,4 +182,76 @@ export const CONNECT_TRANSITION_LOOP_RESPONSE = {
 	accepted: true,
 	canonicalEntryKey: LOOP_FIXTURE_ENTRY_KEY,
 	message: "",
+};
+
+// ACT-stage scenario: a foreground entry pre-positioned at currentEntryStage =
+// ACT so the workspace renders the Open command directly. Used by the e2e spec
+// at tests/e2e/desktop/loop/act-open-loads-article.spec.ts via lensModeId
+// "e2e-act" — see backend mock handler.
+//
+// `route` is the production-shape internal SPA path (the projector writes
+// "/articles/<article_id>"); `sourceUrl` is the external HTTPS URL the SPA
+// reader needs as `?url=`.  Keeping these distinct catches the regression
+// where the FE conflated the two and navigated without `?url=`.
+export const CONNECT_KNOWLEDGE_LOOP_ACT_RESPONSE = {
+	foregroundEntries: [
+		{
+			entryKey: LOOP_FIXTURE_ACT_ENTRY_KEY,
+			sourceItemKey: `article:${LOOP_FIXTURE_ACT_ARTICLE_ID}`,
+			proposedStage: 4, // LOOP_STAGE_ACT
+			currentEntryStage: 4, // ACT
+			currentEntryStageEnteredAt: NOW_ISO,
+			surfaceBucket: 1, // SURFACE_BUCKET_NOW
+			projectionRevision: "1",
+			projectionSeqHiwater: "20",
+			freshnessAt: NOW_ISO,
+			sourceObservedAt: NOW_ISO,
+			whyPrimary: {
+				kind: 1, // SOURCE
+				text: "Article ready to open from the Act workspace.",
+				confidence: 0.9,
+				evidenceRefs: [
+					{
+						refId: LOOP_FIXTURE_ACT_ARTICLE_ID,
+						label: "primary source",
+					},
+				],
+			},
+			dismissState: 1,
+			renderDepthHint: 2,
+			loopPriority: 1,
+			decisionOptions: [],
+			actTargets: [
+				{
+					targetType: 1, // ARTICLE
+					targetRef: LOOP_FIXTURE_ACT_ARTICLE_ID,
+					route: `/articles/${LOOP_FIXTURE_ACT_ARTICLE_ID}`,
+					sourceUrl: LOOP_FIXTURE_ACT_SOURCE_URL,
+				},
+			],
+		},
+	],
+	bucketEntries: [],
+	surfaces: [
+		{
+			surfaceBucket: 1, // NOW
+			primaryEntryKey: LOOP_FIXTURE_ACT_ENTRY_KEY,
+			secondaryEntryKeys: [],
+			projectionRevision: "1",
+			projectionSeqHiwater: "20",
+			freshnessAt: NOW_ISO,
+			serviceQuality: 1,
+		},
+	],
+	sessionState: {
+		currentStage: 4, // ACT
+		currentStageEnteredAt: NOW_ISO,
+		foregroundEntryKey: LOOP_FIXTURE_ACT_ENTRY_KEY,
+		focusedEntryKey: LOOP_FIXTURE_ACT_ENTRY_KEY,
+		projectionRevision: "1",
+		projectionSeqHiwater: "20",
+	},
+	overallServiceQuality: 1,
+	generatedAt: NOW_ISO,
+	projectionSeqHiwater: "20",
 };

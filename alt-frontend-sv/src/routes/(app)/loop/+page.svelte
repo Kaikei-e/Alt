@@ -22,6 +22,7 @@ import { makeFirstFrameSkipper } from "$lib/hooks/loop-stream-skip-first";
 import { startVisibilityRecovery } from "$lib/hooks/loop-visibility-recovery";
 import { useKnowledgeLoop } from "$lib/hooks/useKnowledgeLoop.svelte";
 import { useKnowledgeLoopStream } from "$lib/hooks/useKnowledgeLoopStream.svelte";
+import { resolveLoopSourceUrl } from "$lib/utils/loop-source-url";
 import { loopRecede } from "$lib/transitions/loop-recede";
 import { uuidv7 } from "$lib/utils/uuidv7";
 import "$lib/styles/loop-depth.css";
@@ -186,14 +187,23 @@ useKnowledgeLoopStream({
 	},
 });
 
+// resolveSourceUrl is a wrapper around the shared `resolveLoopSourceUrl`
+// helper so existing callers (LoopEntryTile, Review-lane) keep their
+// signature. The helper enforces:
+//   - actTargets[].sourceUrl (article) → safeArticleHref → returned
+//   - whyPrimary.evidenceRefs[0].refId → safeArticleHref → fallback
+//   - actTargets[].route is *display-only* (internal SPA path) and is
+//     never returned as a URL — that conflation was the ACT Open bug.
 function resolveSourceUrl(entry: KnowledgeLoopEntryData): string | null {
-	const article = entry.actTargets.find((t) => t.targetType === "article");
-	if (article?.route) return article.route;
-	const ref = entry.whyPrimary.evidenceRefs[0];
-	if (ref?.refId && /^https?:\/\//i.test(ref.refId)) return ref.refId;
-	return null;
+	return resolveLoopSourceUrl(entry);
 }
 
+// isSafeInternalPath stays for defense-in-depth: future Open targets that
+// resolve to an internal SPA route (e.g. `/augur/<id>`) need a same-origin
+// goto without the SPA-reader query handoff. With resolveSourceUrl now
+// returning HTTPS-only output, the article-open path no longer reaches
+// this branch — but Review-lane's onReviewOpen and any external `href`
+// passed to onEntryOpen() may.
 function isSafeInternalPath(href: string): boolean {
 	return (
 		href.startsWith("/") &&
@@ -329,6 +339,14 @@ const selectedStageName = $derived(
 	activeEntry ? effectiveEntryStage(activeEntry) : stageName,
 );
 const stageDisplay = $derived(stageLabel(selectedStageName));
+
+// Graceful fallback for legacy projection rows that pre-date `source_url`
+// in act_targets[]: when the helper cannot derive a public HTTPS URL,
+// the Open button must visibly disable rather than navigate into a
+// broken reader state.
+const activeEntrySourceUrl = $derived(
+	activeEntry ? resolveSourceUrl(activeEntry) : null,
+);
 
 const seqHi = $derived(data.loop?.projectionSeqHiwater ?? 0);
 const lensId = $derived(data.lensModeId ?? "default");
@@ -549,6 +567,8 @@ function onReviewAction(
 							<button
 								type="button"
 								class="workspace-command"
+								disabled={!activeEntrySourceUrl}
+								aria-label={activeEntrySourceUrl ? "Open" : "Source URL unavailable"}
 								onclick={() => onWorkspaceOpen(activeEntry)}
 							>
 								Open
