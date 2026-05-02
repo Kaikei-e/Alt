@@ -74,6 +74,16 @@ describe("/loop/+page.svelte wiring guards", () => {
 		);
 	});
 
+	it("renders a visible :disabled style for the workspace command so 'no source URL' is observable", () => {
+		// The Open command in ACT mode binds `disabled={!activeEntrySourceUrl}`.
+		// Without a `:disabled` rule the button stays visually identical to the
+		// active state — the user clicks and gets nothing because the browser
+		// silently drops the event. Pin the rule so it cannot regress to the
+		// invisible-disabled state again.
+		expect(pageSource).toMatch(/\.workspace-command:disabled\b[\s\S]*?cursor:\s*not-allowed/);
+		expect(pageSource).toMatch(/\.workspace-command:disabled\b[\s\S]*?opacity:/);
+	});
+
 	it("delegates source-URL resolution to the shared resolveLoopSourceUrl helper", () => {
 		// `actTargets[].route` is an internal SPA path the projector emits; it
 		// MUST NOT be returned as a source URL or threaded through `?url=`.

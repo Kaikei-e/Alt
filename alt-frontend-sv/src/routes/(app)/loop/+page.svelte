@@ -776,6 +776,18 @@ function onReviewAction(
 		outline: 2px solid var(--alt-terracotta, #b85450);
 		outline-offset: 2px;
 	}
+	.workspace-command:disabled {
+		opacity: 0.4;
+		cursor: not-allowed;
+		background: var(--surface-2, #f5f4f1);
+		border-color: var(--surface-border, #c8c8c8);
+		color: var(--alt-ash, #999);
+	}
+	.workspace-command:disabled:hover {
+		background: var(--surface-2, #f5f4f1);
+		border-color: var(--surface-border, #c8c8c8);
+		color: var(--alt-ash, #999);
+	}
 
 	.foreground-tiles {
 		display: grid;
