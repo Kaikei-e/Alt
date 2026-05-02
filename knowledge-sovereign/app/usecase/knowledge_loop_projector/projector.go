@@ -614,6 +614,7 @@ func seedActTargets(ev *sovereign_db.KnowledgeEvent, inputs SurfaceScoreInputs) 
 		TargetType string `json:"target_type"`
 		TargetRef  string `json:"target_ref"`
 		Route      string `json:"route,omitempty"`
+		SourceURL  string `json:"source_url,omitempty"`
 	}
 	out := []actTarget{}
 	if articleID := articleActTargetID(ev); articleID != "" {
@@ -621,6 +622,7 @@ func seedActTargets(ev *sovereign_db.KnowledgeEvent, inputs SurfaceScoreInputs) 
 			TargetType: "article",
 			TargetRef:  articleID,
 			Route:      "/articles/" + url.PathEscape(articleID),
+			SourceURL:  articleActSourceURL(ev),
 		})
 	}
 	if inputs.RecapTopicSnapshotID != "" {
@@ -638,6 +640,37 @@ func seedActTargets(ev *sovereign_db.KnowledgeEvent, inputs SurfaceScoreInputs) 
 		return nil
 	}
 	return b
+}
+
+// articleActSourceURL extracts the article's external HTTPS source URL from
+// the event payload. Reads the canonical "url" key first; falls back to the
+// legacy "link" key (PM-2026-041 historic events). Only http(s) schemes pass;
+// javascript:/data:/file:/relative/etc. are rejected to defense-in-depth the
+// FE's safeArticleHref guard.
+//
+// Reproject-safe: pure function of `ev.Payload`. Never reads latest article
+// state; the article URL is treated as immutable per article_id, and producers
+// must include it in the event payload at append time.
+func articleActSourceURL(ev *sovereign_db.KnowledgeEvent) string {
+	if ev == nil {
+		return ""
+	}
+	raw := extractStringField(ev.Payload, "url", "link")
+	if raw == "" {
+		return ""
+	}
+	parsed, err := url.Parse(raw)
+	if err != nil {
+		return ""
+	}
+	scheme := strings.ToLower(parsed.Scheme)
+	if scheme != "http" && scheme != "https" {
+		return ""
+	}
+	if parsed.Host == "" {
+		return ""
+	}
+	return raw
 }
 
 func articleActTargetID(ev *sovereign_db.KnowledgeEvent) string {

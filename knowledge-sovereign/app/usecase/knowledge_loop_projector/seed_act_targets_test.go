@@ -86,3 +86,138 @@ func TestSeedActTargets_ArticleEvent_WritesArticleTarget(t *testing.T) {
 	require.Equal(t, "art-article-target", raw[0]["target_ref"])
 	require.Equal(t, "/articles/art-article-target", raw[0]["route"])
 }
+
+// TestSeedActTargets_ArticleEvent_WithURL_WritesSourceURL pins the contract
+// the FE relies on: when the event payload carries the article's external
+// HTTPS source URL, the projector copies it into act_targets[].source_url so
+// the SPA reader can use it as `?url=` (route stays the internal SPA path).
+//
+// Reproject-safe: the URL is read from the event payload only, never from
+// the latest article state.
+func TestSeedActTargets_ArticleEvent_WithURL_WritesSourceURL(t *testing.T) {
+	t.Parallel()
+	userID := uuid.New()
+	ev := &sovereign_db.KnowledgeEvent{
+		EventID:       uuid.New(),
+		EventSeq:      2,
+		OccurredAt:    time.Date(2026, 4, 28, 10, 0, 0, 0, time.UTC),
+		TenantID:      uuid.New(),
+		UserID:        &userID,
+		AggregateType: "article",
+		AggregateID:   "art-with-url",
+		Payload:       json.RawMessage(`{"article_id":"art-with-url","url":"https://example.com/post"}`),
+	}
+
+	out := seedActTargets(ev, SurfaceScoreInputs{})
+
+	var raw []map[string]string
+	require.NoError(t, json.Unmarshal(out, &raw))
+	require.Len(t, raw, 1)
+	require.Equal(t, "article", raw[0]["target_type"])
+	require.Equal(t, "art-with-url", raw[0]["target_ref"])
+	require.Equal(t, "/articles/art-with-url", raw[0]["route"])
+	require.Equal(t, "https://example.com/post", raw[0]["source_url"])
+}
+
+// TestSeedActTargets_ArticleEvent_NoURL_OmitsSourceURL — payload without a
+// URL must produce an act_target whose source_url key is absent (not present
+// as empty string), so legacy events round-trip cleanly through the
+// `omitempty` JSON tag.
+func TestSeedActTargets_ArticleEvent_NoURL_OmitsSourceURL(t *testing.T) {
+	t.Parallel()
+	userID := uuid.New()
+	ev := &sovereign_db.KnowledgeEvent{
+		EventID:       uuid.New(),
+		EventSeq:      3,
+		OccurredAt:    time.Date(2026, 4, 28, 10, 0, 0, 0, time.UTC),
+		TenantID:      uuid.New(),
+		UserID:        &userID,
+		AggregateType: "article",
+		AggregateID:   "art-no-url",
+		Payload:       json.RawMessage(`{"article_id":"art-no-url"}`),
+	}
+
+	out := seedActTargets(ev, SurfaceScoreInputs{})
+
+	var raw []map[string]any
+	require.NoError(t, json.Unmarshal(out, &raw))
+	require.Len(t, raw, 1)
+	require.Equal(t, "article", raw[0]["target_type"])
+	require.Equal(t, "/articles/art-no-url", raw[0]["route"])
+	_, hasSourceURL := raw[0]["source_url"]
+	require.False(t, hasSourceURL, "source_url key must be absent for legacy payloads")
+}
+
+// TestSeedActTargets_ArticleEvent_LegacyLinkKey_FallsBack — wire compatibility
+// with legacy events that used `"link"` instead of `"url"` (the postmortem
+// PM-2026-041 left a small population of historical events with this key).
+func TestSeedActTargets_ArticleEvent_LegacyLinkKey_FallsBack(t *testing.T) {
+	t.Parallel()
+	userID := uuid.New()
+	ev := &sovereign_db.KnowledgeEvent{
+		EventID:       uuid.New(),
+		EventSeq:      4,
+		OccurredAt:    time.Date(2026, 4, 28, 10, 0, 0, 0, time.UTC),
+		TenantID:      uuid.New(),
+		UserID:        &userID,
+		AggregateType: "article",
+		AggregateID:   "art-legacy-link",
+		Payload:       json.RawMessage(`{"article_id":"art-legacy-link","link":"https://example.com/legacy"}`),
+	}
+
+	out := seedActTargets(ev, SurfaceScoreInputs{})
+
+	var raw []map[string]string
+	require.NoError(t, json.Unmarshal(out, &raw))
+	require.Len(t, raw, 1)
+	require.Equal(t, "https://example.com/legacy", raw[0]["source_url"])
+}
+
+// TestSeedActTargets_ArticleEvent_NonHTTPURL_Rejected — defense-in-depth
+// against a `javascript:` (or other non-HTTP) scheme leaking from a malformed
+// event payload into the projection. The FE's safeArticleHref provides a
+// second layer; the projector must not be the weak link.
+func TestSeedActTargets_ArticleEvent_NonHTTPURL_Rejected(t *testing.T) {
+	t.Parallel()
+	userID := uuid.New()
+	for _, badURL := range []string{
+		"javascript:alert(1)",
+		"data:text/html;base64,PHNjcmlwdD4=",
+		"file:///etc/passwd",
+		"not-a-url-at-all",
+	} {
+		t.Run(badURL, func(t *testing.T) {
+			t.Parallel()
+			payload := []byte(`{"article_id":"art-bad","url":` + mustJSONString(badURL) + `}`)
+			ev := &sovereign_db.KnowledgeEvent{
+				EventID:       uuid.New(),
+				EventSeq:      5,
+				OccurredAt:    time.Date(2026, 4, 28, 10, 0, 0, 0, time.UTC),
+				TenantID:      uuid.New(),
+				UserID:        &userID,
+				AggregateType: "article",
+				AggregateID:   "art-bad",
+				Payload:       json.RawMessage(payload),
+			}
+
+			out := seedActTargets(ev, SurfaceScoreInputs{})
+
+			var raw []map[string]any
+			require.NoError(t, json.Unmarshal(out, &raw))
+			require.Len(t, raw, 1)
+			_, hasSourceURL := raw[0]["source_url"]
+			require.False(t, hasSourceURL, "non-http(s) URL %q must not leak into source_url", badURL)
+		})
+	}
+}
+
+// mustJSONString returns a JSON-encoded string literal for embedding inside
+// a hand-written JSON template. Used to keep the table-driven test readable
+// without escaping every embedded value by hand.
+func mustJSONString(s string) string {
+	b, err := json.Marshal(s)
+	if err != nil {
+		panic(err)
+	}
+	return string(b)
+}
