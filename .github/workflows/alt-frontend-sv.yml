@@ -115,7 +115,14 @@ jobs:
               f.write(data)
           PYEOF
           chmod +x /usr/local/bin/bun
+          # `bunx` is the same binary dispatched via argv[0]; the zip
+          # only carries `bun-linux-x64/bun`, so create the launcher
+          # ourselves instead of pulling a second entry. Without this,
+          # later steps that invoke `bunx playwright test` fail with
+          # "bunx: not found" inside the playwright container.
+          ln -sf /usr/local/bin/bun /usr/local/bin/bunx
           bun --version
+          bunx --version
 
       - name: Cache bun dependencies
         uses: actions/cache@v4
