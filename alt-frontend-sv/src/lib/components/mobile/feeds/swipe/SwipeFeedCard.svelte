@@ -540,9 +540,17 @@ async function handleSwipe(event: CustomEvent<{ direction: SwipeDirection }>) {
               <span class="loading-label">Loading article...</span>
             </div>
           {:else if contentError}
-            <div class="error-box" role="alert">
-              {contentError}
-            </div>
+            <p class="fallback-notice" data-testid="source-unavailable-notice">
+              {contentError} Showing summary.
+            </p>
+            {#if feed.description}
+              <div
+                class="summary-prose article-prose"
+                data-testid="article-fallback-summary"
+              >
+                {feed.description}
+              </div>
+            {/if}
           {:else if sanitizedFullContent}
             <div class="article-prose">
               {@html sanitizedFullContent}
@@ -817,6 +825,15 @@ async function handleSwipe(event: CustomEvent<{ direction: SwipeDirection }>) {
     font-size: 0.7rem;
     color: var(--alt-terracotta);
     margin: 0.35rem 0 0;
+  }
+
+  .fallback-notice {
+    font-family: var(--font-mono);
+    font-size: 0.65rem;
+    letter-spacing: 0.06em;
+    color: var(--alt-ash);
+    margin: 0 0 0.5rem;
+    padding: 0;
   }
 
   /* ── Footer ── */
