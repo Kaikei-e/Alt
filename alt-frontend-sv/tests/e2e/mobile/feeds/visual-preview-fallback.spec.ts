@@ -43,16 +43,34 @@ test.describe("mobile feeds — visual-preview 429 fallback", () => {
 		const card = page.getByTestId("visual-preview-card").first();
 		await expect(card).toBeVisible();
 
+		// The first card has SSR-provided content from +page.server.ts (which hits
+		// the mock backend, not Playwright's route mocks). Swipe left to dismiss
+		// and move to the second card where client-side 429 handling applies.
+		const cardBox = await card.boundingBox();
+		if (!cardBox) throw new Error("Card not visible");
+
+		// Perform swipe left gesture
+		await page.mouse.move(cardBox.x + cardBox.width * 0.8, cardBox.y + cardBox.height / 2);
+		await page.mouse.down();
+		await page.mouse.move(cardBox.x + cardBox.width * 0.1, cardBox.y + cardBox.height / 2, { steps: 10 });
+		await page.mouse.up();
+
+		// Wait for the transition to complete and second card to appear
+		await page.waitForTimeout(500);
+
+		const secondCard = page.getByTestId("visual-preview-card").first();
+		await expect(secondCard).toBeVisible();
+
 		// Description fallback (above-the-fold) must always render
 		// so the card is never blank, even with auto-fetch failure.
-		await expect(card.getByText("Deep dive into the ecosystem.")).toBeVisible();
+		await expect(secondCard.getByText("Deep dive into the ecosystem.")).toBeVisible();
 
 		// Tap "Article" to expand. Under 429, the in-card path must surface
 		// the unified source-unavailable notice instead of leaving the
 		// expanded section blank.
-		await card.getByRole("button", { name: /article/i }).click();
+		await secondCard.getByRole("button", { name: /article/i }).click();
 
-		await expect(card.getByTestId("source-unavailable-notice")).toBeVisible();
-		await expect(card.getByTestId("article-fallback-summary")).toBeVisible();
+		await expect(secondCard.getByTestId("source-unavailable-notice")).toBeVisible();
+		await expect(secondCard.getByTestId("article-fallback-summary")).toBeVisible();
 	});
 });
