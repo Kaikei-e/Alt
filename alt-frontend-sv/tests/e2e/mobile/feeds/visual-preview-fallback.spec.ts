@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type Locator } from "@playwright/test";
 import { gotoMobileRoute } from "../../helpers/navigation";
 import { fulfillJson, fulfillError } from "../../utils/mockHelpers";
 import {
@@ -15,6 +15,52 @@ const VISUAL_PREVIEW_PATHS = {
 	batchPrefetchImages:
 		"**/api/v2/alt.articles.v2.ArticleService/BatchPrefetchImages",
 };
+
+/**
+ * Dispatch touch events to simulate a swipe left gesture.
+ * Playwright's mouse events don't work for touch-based swipe detection.
+ * See: https://playwright.dev/docs/touch-events
+ */
+async function swipeLeft(locator: Locator, distance: number = 150) {
+	const { centerX, centerY } = await locator.evaluate((el: HTMLElement) => {
+		const rect = el.getBoundingClientRect();
+		return {
+			centerX: rect.left + rect.width / 2,
+			centerY: rect.top + rect.height / 2,
+		};
+	});
+
+	// touchstart
+	const startTouches = [{ identifier: 0, clientX: centerX, clientY: centerY }];
+	await locator.dispatchEvent("touchstart", {
+		touches: startTouches,
+		changedTouches: startTouches,
+		targetTouches: startTouches,
+	});
+
+	// touchmove in steps (swipe left = negative X)
+	const steps = 5;
+	for (let i = 1; i <= steps; i++) {
+		const moveTouches = [{
+			identifier: 0,
+			clientX: centerX - (distance * i / steps),
+			centerY,
+		}];
+		await locator.dispatchEvent("touchmove", {
+			touches: moveTouches,
+			changedTouches: moveTouches,
+			targetTouches: moveTouches,
+		});
+	}
+
+	// touchend
+	const endTouches = [{ identifier: 0, clientX: centerX - distance, clientY: centerY }];
+	await locator.dispatchEvent("touchend", {
+		touches: [],
+		changedTouches: endTouches,
+		targetTouches: [],
+	});
+}
 
 test.describe("mobile feeds — visual-preview 429 fallback", () => {
 	test("surfaces source-unavailable notice when FetchArticleContent returns 429", async ({
@@ -46,17 +92,10 @@ test.describe("mobile feeds — visual-preview 429 fallback", () => {
 		// The first card has SSR-provided content from +page.server.ts (which hits
 		// the mock backend, not Playwright's route mocks). Swipe left to dismiss
 		// and move to the second card where client-side 429 handling applies.
-		const cardBox = await card.boundingBox();
-		if (!cardBox) throw new Error("Card not visible");
+		await swipeLeft(card, 200);
 
-		// Perform swipe left gesture
-		await page.mouse.move(cardBox.x + cardBox.width * 0.8, cardBox.y + cardBox.height / 2);
-		await page.mouse.down();
-		await page.mouse.move(cardBox.x + cardBox.width * 0.1, cardBox.y + cardBox.height / 2, { steps: 10 });
-		await page.mouse.up();
-
-		// Wait for the transition to complete and second card to appear
-		await page.waitForTimeout(500);
+		// Wait for the swipe animation and card transition
+		await page.waitForTimeout(600);
 
 		const secondCard = page.getByTestId("visual-preview-card").first();
 		await expect(secondCard).toBeVisible();
