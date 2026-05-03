@@ -540,7 +540,11 @@ async function handleSwipe(event: CustomEvent<{ direction: SwipeDirection }>) {
               <span class="loading-label">Loading article...</span>
             </div>
           {:else if contentError}
-            <p class="fallback-notice" data-testid="source-unavailable-notice">
+            <p
+              class="fallback-notice"
+              role="alert"
+              data-testid="source-unavailable-notice"
+            >
               {contentError} Showing summary.
             </p>
             {#if feed.description}
