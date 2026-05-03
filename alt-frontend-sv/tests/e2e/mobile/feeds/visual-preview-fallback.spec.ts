@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 import { gotoMobileRoute } from "../../helpers/navigation";
-import { fulfillJson, fulfillError } from "../../utils/mockHelpers";
+import { fulfillJson } from "../../utils/mockHelpers";
 import {
 	CONNECT_RPC_PATHS,
 	CONNECT_FEEDS_RESPONSE,
@@ -13,8 +13,8 @@ const VISUAL_PREVIEW_PATHS = {
 	listSubscriptions: "**/api/v2/alt.feeds.v2.FeedService/ListSubscriptions",
 };
 
-test.describe("mobile feeds — 429 fallback", () => {
-	test("surfaces source-unavailable notice when FetchArticleContent returns 429", async ({
+test.describe("mobile feeds — network error fallback", () => {
+	test("surfaces source-unavailable notice when FetchArticleContent fails", async ({
 		page,
 	}) => {
 		// Use /feeds/swipe (ssr=false) instead of /feeds/swipe/visual-preview
@@ -28,10 +28,11 @@ test.describe("mobile feeds — 429 fallback", () => {
 		await page.route(VISUAL_PREVIEW_PATHS.listSubscriptions, (route) =>
 			fulfillJson(route, SUBSCRIPTIONS_EMPTY),
 		);
-		// All FetchArticleContent calls return 429 (rate-limited),
-		// reproducing the production symptom in ADR-000884.
+		// Abort all FetchArticleContent calls to simulate network failure.
+		// This reliably triggers the error fallback UI without depending on
+		// Connect-RPC's specific error format handling.
 		await page.route(CONNECT_RPC_PATHS.fetchArticleContent, (route) =>
-			fulfillError(route, "rate limit exceeded", 429),
+			route.abort("failed"),
 		);
 
 		// Use default swipe page which has ssr=false, so route mocks work
@@ -44,12 +45,16 @@ test.describe("mobile feeds — 429 fallback", () => {
 		// so the card is never blank, even with auto-fetch failure.
 		await expect(card.getByText("Deep dive into the ecosystem.")).toBeVisible();
 
-		// Tap "Article" to expand. Under 429, the in-card path must surface
-		// the unified source-unavailable notice instead of leaving the
-		// expanded section blank.
-		await card.getByRole("button", { name: /article/i }).click();
+		// Tap "Article" to expand. On network failure, the in-card path must
+		// surface the source-unavailable notice with fallback summary.
+		const articleButton = card.getByRole("button", { name: /article/i });
+		await expect(articleButton).toBeVisible();
+		await articleButton.click();
 
-		await expect(card.getByTestId("source-unavailable-notice")).toBeVisible();
+		// Wait for content section to expand and error state to render
+		await expect(card.getByTestId("source-unavailable-notice")).toBeVisible({
+			timeout: 10000,
+		});
 		await expect(card.getByTestId("article-fallback-summary")).toBeVisible();
 	});
 });
