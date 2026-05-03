@@ -1,5 +1,5 @@
 <script lang="ts">
-import { onMount } from "svelte";
+import { getContext, onMount } from "svelte";
 import {
 	listSubscriptionsClient,
 	updateFeedReadStatusClient,
@@ -13,6 +13,10 @@ import MobileFeedExcludeFilter from "$lib/components/mobile/feeds/MobileFeedExcl
 import type { ConnectFeedSource } from "$lib/connect/feeds";
 import type { RenderFeed } from "$lib/schema/feed";
 import { useViewport } from "$lib/stores/viewport.svelte";
+import {
+	CONNECTION_RECOVERY_KEY,
+	type ConnectionRecoveryStore,
+} from "$lib/stores/connection-recovery.svelte";
 
 interface PageData {
 	initialFeeds?: RenderFeed[];
@@ -21,6 +25,9 @@ interface PageData {
 
 const { data }: { data: PageData } = $props();
 const { isDesktop } = useViewport();
+const connectionRecovery = getContext<ConnectionRecoveryStore | undefined>(
+	CONNECTION_RECOVERY_KEY,
+);
 
 let mobileExcludedFeedLinkIds = $state<string[]>([]);
 let selectedFeedUrl = $state<string | null>(null);
@@ -43,15 +50,29 @@ const dateStr = new Date().toLocaleDateString("en-US", {
 	day: "numeric",
 });
 
-onMount(async () => {
-	requestAnimationFrame(() => {
-		revealed = true;
-	});
+async function loadFeedSources() {
 	try {
 		feedSources = await listSubscriptionsClient();
 	} catch (e) {
 		console.error("Failed to load feed sources:", e);
 	}
+}
+
+onMount(() => {
+	requestAnimationFrame(() => {
+		revealed = true;
+	});
+	loadFeedSources();
+});
+
+$effect(() => {
+	if (!connectionRecovery) return;
+	const unsubscribe = connectionRecovery.subscribe((info) => {
+		console.info("[Feeds] Connection recovery triggered:", info.reason);
+		loadFeedSources();
+		feedGridApi?.refresh();
+	});
+	return unsubscribe;
 });
 
 const selectedFeed = $derived.by(() => {

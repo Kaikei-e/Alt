@@ -1,5 +1,5 @@
 <script lang="ts">
-import { onMount } from "svelte";
+import { getContext, onMount } from "svelte";
 import { browser } from "$app/environment";
 import { infiniteScroll } from "$lib/actions/infinite-scroll";
 import {
@@ -12,6 +12,10 @@ import { toRenderFeed } from "$lib/schema/feed";
 import { canonicalize } from "$lib/utils/feed";
 import EmptyFeedState from "./EmptyFeedState.svelte";
 import FeedCard from "./FeedCard.svelte";
+import {
+	CONNECTION_RECOVERY_KEY,
+	type ConnectionRecoveryStore,
+} from "$lib/stores/connection-recovery.svelte";
 
 interface Props {
 	initialFeeds?: RenderFeed[];
@@ -19,6 +23,9 @@ interface Props {
 }
 
 const { initialFeeds = [], excludeFeedLinkIds = [] }: Props = $props();
+const connectionRecovery = getContext<ConnectionRecoveryStore | undefined>(
+	CONNECTION_RECOVERY_KEY,
+);
 
 const PAGE_SIZE = 20;
 
@@ -234,6 +241,16 @@ onMount(() => {
 	if (hasMore && !isLoading && feeds.length === 0) {
 		void loadInitial();
 	}
+});
+
+// Safari connection recovery: refresh feeds when tab returns from extended background
+$effect(() => {
+	if (!connectionRecovery) return;
+	const unsubscribe = connectionRecovery.subscribe((info) => {
+		console.info("[FeedsClient] Connection recovery triggered:", info.reason);
+		void refresh();
+	});
+	return unsubscribe;
 });
 
 // Handle marking feed as read with optimistic update

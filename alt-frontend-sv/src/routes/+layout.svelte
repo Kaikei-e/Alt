@@ -9,6 +9,10 @@ import {
 	createLoadingStore,
 	LOADING_STORE_KEY,
 } from "$lib/stores/loading.svelte";
+import {
+	createConnectionRecoveryStore,
+	CONNECTION_RECOVERY_KEY,
+} from "$lib/stores/connection-recovery.svelte";
 
 const { children } = $props();
 
@@ -18,6 +22,10 @@ setContext(AUTH_STORE_KEY, auth);
 
 const loadingStore = createLoadingStore();
 setContext(LOADING_STORE_KEY, loadingStore);
+
+// Safari connection recovery store for refetching after idle
+const connectionRecovery = createConnectionRecoveryStore();
+setContext(CONNECTION_RECOVERY_KEY, connectionRecovery);
 
 // Sync auth store with page data (user from +layout.server.ts)
 $effect(() => {
@@ -32,12 +40,15 @@ onMount(() => {
 	document.body.classList.add("hydrated");
 });
 
-// Create QueryClient for TanStack Query
+// Create QueryClient for TanStack Query with Safari-friendly defaults
 const queryClient = new QueryClient({
 	defaultOptions: {
 		queries: {
 			staleTime: 1000 * 60 * 5, // 5 minutes
-			retry: 1,
+			retry: 2,
+			retryDelay: (attemptIndex) => Math.min(1000 * 2 ** attemptIndex, 10000),
+			refetchOnWindowFocus: true,
+			refetchOnReconnect: true,
 		},
 	},
 });
