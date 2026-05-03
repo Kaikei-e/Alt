@@ -151,6 +151,23 @@ export type { RemoveFeedResult, FeedGridApi } from "./feed-grid-types";
 			});
 	}
 
+	/**
+	 * Refresh the feed list from scratch.
+	 * Used for Safari connection recovery after prolonged background.
+	 */
+	function refresh(): void {
+		feeds = [];
+		nextCursor = undefined;
+		hasNextPage = true;
+		removedUrls = new Set();
+		error = null;
+		isLoading = true;
+
+		loadFeeds().finally(() => {
+			isLoading = false;
+		});
+	}
+
 	// Track if onReady has been called
 	let onReadyCalled = false;
 
@@ -164,6 +181,7 @@ export type { RemoveFeedResult, FeedGridApi } from "./feed-grid-types";
 			getVisibleFeeds: () => visibleFeeds,
 			getFeedByUrl,
 			fetchReplacementFeed,
+			refresh,
 		});
 	});
 	let isLoading = $state(true);

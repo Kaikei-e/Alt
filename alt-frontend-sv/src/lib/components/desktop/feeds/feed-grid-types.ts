@@ -14,4 +14,6 @@ export type FeedGridApi = {
 	getFeedByUrl: (url: string) => RenderFeed | null;
 	/** Fetch a replacement feed in the background (fire-and-forget) */
 	fetchReplacementFeed: () => void;
+	/** Refresh the feed list (for connection recovery after Safari idle) */
+	refresh: () => void;
 };
