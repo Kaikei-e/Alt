@@ -11,7 +11,7 @@ use crate::pipeline::fetch::{AltBackendFetchStage, FetchStage};
 use crate::pipeline::preprocess::{PreprocessStage, TextPreprocessStage};
 use crate::scheduler::JobContext;
 use crate::store::dao::RecapDao;
-use crate::store::models::{MorningLetter, MorningLetterSource};
+use crate::store::models::{GenreWithSummary, MorningLetter, MorningLetterSource};
 use crate::util::retry::RetryConfig;
 use anyhow::Result;
 use std::collections::HashMap;
@@ -226,8 +226,7 @@ impl MorningPipeline {
                         let inputs: Vec<_> = genres
                             .iter()
                             .filter_map(|g| {
-                                let (title, bullets) =
-                                    extract_title_and_bullets(g.summary_ja.as_deref());
+                                let (title, bullets) = extract_title_and_bullets_from_genre(g);
                                 if bullets.is_empty() {
                                     tracing::debug!(
                                         genre = %g.genre_name,
@@ -547,11 +546,57 @@ fn dominant_genres_for(
     out
 }
 
-/// Extract title and bullets from the summary_ja JSON string.
+/// Resolve `(title, bullets)` for a recap genre, preferring the structured
+/// `recap_outputs.title_ja` / `bullets_ja` columns and falling back to the
+/// legacy `summary_ja` JSON path when those are absent or empty.
 ///
-/// summary_ja is stored as a JSON string with format:
-/// `{"summary": {"title": "...", "bullets": [...]}, ...}`
-/// or simply `{"title": "...", "bullets": [...]}`
+/// Production rows store editorial Japanese prose in `summary_ja` and the
+/// machine-readable structure in the dedicated columns; the legacy JSON
+/// parser cannot recover bullets from prose and silently drops every genre,
+/// which forces Morning Letter into degraded mode.
+fn extract_title_and_bullets_from_genre(g: &GenreWithSummary) -> (String, Vec<String>) {
+    if let Some(value) = g.bullets_ja.as_ref() {
+        if let Some(arr) = value.as_array() {
+            let bullets: Vec<String> = arr
+                .iter()
+                .filter_map(|v| match v {
+                    serde_json::Value::String(s) => {
+                        let t = s.trim();
+                        if t.is_empty() {
+                            None
+                        } else {
+                            Some(t.to_string())
+                        }
+                    }
+                    serde_json::Value::Object(obj) => obj
+                        .get("text")
+                        .and_then(serde_json::Value::as_str)
+                        .map(str::trim)
+                        .filter(|s| !s.is_empty())
+                        .map(str::to_string),
+                    _ => None,
+                })
+                .collect();
+            if !bullets.is_empty() {
+                let title = g.title_ja.clone().unwrap_or_default();
+                return (title, bullets);
+            }
+        }
+    }
+
+    // Fallback: legacy summary_ja that contained nested JSON. Prose-only
+    // values yield (raw, []) here, which the caller treats as "drop".
+    // Title and bullets stay paired with the same source so a returned
+    // title never advertises content that did not actually feed the bullets.
+    extract_title_and_bullets(g.summary_ja.as_deref())
+}
+
+/// Extract title and bullets from the legacy `summary_ja` JSON string.
+///
+/// Accepts both `{"summary": {"title": "...", "bullets": [...]}, ...}` and
+/// the flat `{"title": "...", "bullets": [...]}` shape. Returns
+/// `(raw, vec![])` when the input is non-JSON prose so the caller can drop
+/// it explicitly instead of inheriting a fake bullet list.
 fn extract_title_and_bullets(summary_ja: Option<&str>) -> (String, Vec<String>) {
     let raw = match summary_ja {
         Some(s) if !s.trim().is_empty() => s,
@@ -740,5 +785,98 @@ mod tests {
         let (title, bullets) = extract_title_and_bullets(Some(json));
         assert_eq!(title, "T");
         assert_eq!(bullets, vec!["Good", "Also Good"]);
+    }
+
+    // ---- extract_title_and_bullets_from_genre: structured columns first ----
+    //
+    // Production rows in `recap_outputs` carry `title_ja` (TEXT) and
+    // `bullets_ja` (JSONB array of {text, sources, ...}) populated by the
+    // recap reduce stage. `summary_ja` is editorial Japanese prose, *not*
+    // JSON — so the legacy parser drops every genre when the genre row is
+    // built from real DB data. Morning Letter then runs degraded with
+    // `recap_summaries: None` and the LLM hallucinates from overnight
+    // stubs alone (production observation 2026-05-04).
+
+    fn genre(name: &str) -> GenreWithSummary {
+        GenreWithSummary {
+            genre_name: name.to_string(),
+            summary_ja: None,
+            title_ja: None,
+            bullets_ja: None,
+        }
+    }
+
+    #[test]
+    fn from_genre_prefers_structured_bullets_ja_over_prose_summary() {
+        let g = GenreWithSummary {
+            title_ja: Some("AIの次世代研究：LLMの限界".into()),
+            bullets_ja: Some(serde_json::json!([
+                { "text": "LLM は次トークン予測に特化している", "sources": [] },
+                { "text": "世界モデルへの研究が注目されている", "sources": [] }
+            ])),
+            // Real prose, not JSON. Legacy parser treats this as an opaque
+            // single-line title with zero bullets.
+            summary_ja: Some("著名研究者ヤン・ルカン氏らが主導する次世代AI研究では…".into()),
+            ..genre("ai_data")
+        };
+        let (title, bullets) = extract_title_and_bullets_from_genre(&g);
+        assert_eq!(title, "AIの次世代研究：LLMの限界");
+        assert_eq!(bullets.len(), 2);
+        assert_eq!(bullets[0], "LLM は次トークン予測に特化している");
+    }
+
+    #[test]
+    fn from_genre_handles_string_bullets_in_jsonb_array() {
+        let g = GenreWithSummary {
+            title_ja: Some("Plain".into()),
+            bullets_ja: Some(serde_json::json!(["A", "", "  ", "B"])),
+            ..genre("g")
+        };
+        let (title, bullets) = extract_title_and_bullets_from_genre(&g);
+        assert_eq!(title, "Plain");
+        assert_eq!(bullets, vec!["A", "B"]);
+    }
+
+    #[test]
+    fn from_genre_falls_back_to_legacy_summary_ja_when_structured_missing() {
+        let g = GenreWithSummary {
+            title_ja: None,
+            bullets_ja: None,
+            summary_ja: Some(r#"{"summary":{"title":"Legacy","bullets":["x","y"]}}"#.into()),
+            ..genre("legacy")
+        };
+        let (title, bullets) = extract_title_and_bullets_from_genre(&g);
+        assert_eq!(title, "Legacy");
+        assert_eq!(bullets, vec!["x", "y"]);
+    }
+
+    #[test]
+    fn from_genre_falls_back_when_bullets_ja_is_empty_array() {
+        let g = GenreWithSummary {
+            title_ja: Some("Empty".into()),
+            bullets_ja: Some(serde_json::json!([])),
+            summary_ja: Some(r#"{"summary":{"title":"FromProse","bullets":["one"]}}"#.into()),
+            ..genre("empty_struct")
+        };
+        let (title, bullets) = extract_title_and_bullets_from_genre(&g);
+        // Empty structured bullets must not shadow a usable legacy summary.
+        assert_eq!(title, "FromProse");
+        assert_eq!(bullets, vec!["one"]);
+    }
+
+    #[test]
+    fn from_genre_returns_empty_when_only_prose_summary_ja_is_present() {
+        // The exact production failure mode: prose `summary_ja`, no
+        // structured columns. The pipeline must surface "no bullets" so
+        // the genre is dropped explicitly rather than slipping through
+        // with a non-empty bullet list cobbled from prose.
+        let g = GenreWithSummary {
+            title_ja: None,
+            bullets_ja: None,
+            summary_ja: Some("著名研究者ヤン・ルカン氏らが主導する次世代AI研究…".into()),
+            ..genre("prose_only")
+        };
+        let (_title, bullets) = extract_title_and_bullets_from_genre(&g);
+        assert!(bullets.is_empty(), "bullets should be empty for prose-only");
     }
 }
