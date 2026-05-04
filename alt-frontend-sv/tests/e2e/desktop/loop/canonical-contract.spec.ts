@@ -97,17 +97,22 @@ test.describe("Knowledge Loop — canonical contract (ADR-000844)", () => {
 		await expect(tile.getByRole("button", { name: /^save$/i })).toHaveCount(0);
 	});
 
-	test("Revisit CTA fires observe → orient transition", async ({ page }) => {
+	test("tap on an observe tile fires the observe → orient user_tap transition", async ({
+		page,
+	}) => {
+		// Auto-OODA suppression (Knowledge Loop 体験回復プラン Pillar 1):
+		// the tile's tap-to-expand gesture is the explicit user_tap that
+		// advances Observe → Orient. The pre-fix Revisit CTA path is folded
+		// into the tap itself — Boyd's Orientation must be a conscious step,
+		// not a side effect of the IntersectionObserver. Dwell is rejected
+		// at the BFF; we still mock 409 for backwards-safety in case any
+		// transitional code path briefly emits it.
 		const captured: Array<Record<string, unknown>> = [];
-		// Reject the IntersectionObserver-fired dwell so the entry stays in
-		// observe and the explicit Revisit click is the user_tap we assert on.
-		// Without this, applyLocalStage would flip proposedStage to orient and
-		// the Revisit click would target orient → orient (forbidden by §7).
 		await page.route(KL_TRANSITION_PATH, async (route) => {
 			const body = route.request().postDataJSON() as Record<string, unknown>;
 			captured.push(body);
 			if (body.trigger === "dwell") {
-				await fulfillJson(route, { error: "projection_stale" }, 409);
+				await fulfillJson(route, { error: "invalid_argument" }, 400);
 				return;
 			}
 			await fulfillJson(route, {
@@ -124,7 +129,6 @@ test.describe("Knowledge Loop — canonical contract (ADR-000844)", () => {
 			)
 			.first();
 		await tile.click();
-		await tile.getByRole("button", { name: /^revisit$/i }).click();
 
 		await expect
 			.poll(() => captured.filter((c) => c.trigger === "user_tap").length)

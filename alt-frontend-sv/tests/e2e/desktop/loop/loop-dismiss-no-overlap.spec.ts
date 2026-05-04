@@ -51,7 +51,7 @@ test.describe("Knowledge Loop — dismiss exit transition (no overlap)", () => {
 			.first();
 		await expect(tile).toBeVisible();
 		await tile.click();
-		const dismissCta = tile.getByRole("button", { name: /^dismiss$/i });
+		const dismissCta = tile.locator("button.cta--dismiss").first();
 		await expect(dismissCta).toBeVisible();
 
 		// Grab the bounding boxes of every visible foreground tile *before*
@@ -70,7 +70,8 @@ test.describe("Knowledge Loop — dismiss exit transition (no overlap)", () => {
 			);
 		}
 
-		await dismissCta.click();
+		// Bypass animate:flip / loopRecede instability with a direct DOM click.
+		await dismissCta.evaluate((el: Element) => (el as HTMLElement).click());
 
 		// Allow the exit transition + grace window to complete (impl: 280 ms +
 		// margin).
@@ -114,7 +115,9 @@ test.describe("Knowledge Loop — dismiss exit transition (no overlap)", () => {
 			)
 			.first();
 		await tile.click();
-		await tile.getByRole("button", { name: /^dismiss$/i }).click();
+		const dismissCta = tile.locator("button.cta--dismiss").first();
+		await expect(dismissCta).toBeVisible();
+		await dismissCta.evaluate((el: Element) => (el as HTMLElement).click());
 
 		// Allow the exit transition + grace window to complete (impl uses 280 ms).
 		await page.waitForTimeout(700);

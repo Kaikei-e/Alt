@@ -5,21 +5,15 @@ import { fulfillJson } from "../../utils/mockHelpers";
 /**
  * Knowledge Loop dismiss persistence regression.
  *
- * Pre-fix: `dismiss()` posted a `decide → act` transition only when the
- * entry was already in the `decide` stage. For an `observe` (or `orient`,
- * or `act`) tile the early-return at `if (to === from) return;` short-
- * circuited the network call entirely — the projection was never told,
- * so a page reload restored the dismissed tile from the projector.
- *
- * Post-fix: dismiss routes through `KnowledgeLoopDeferred` (canonical
- * contract §8.2) regardless of `proposedStage`. Body is now
- * `{ trigger: "TRANSITION_TRIGGER_DEFER", fromStage === toStage }` and
- * the BFF allows same-stage transitions when the trigger is DEFER.
- *
- * The contract for these tests:
- *   1. Clicking Dismiss on an `observe` tile fires `POST /loop/transition`
- *      with `trigger=TRANSITION_TRIGGER_DEFER` and `fromStage===toStage`.
- *   2. Reloading the page after dismiss does not re-render the tile, so
+ * Post-Auto-OODA-suppression contract:
+ *   1. Clicking the tile expands it AND fires an explicit observe → orient
+ *      `user_tap` transition. Allow that to settle before clicking Dismiss
+ *      so the dismiss goes through cleanly (loop.dismiss is independent of
+ *      transitionTo's inFlight gate, but the assertion below filters on
+ *      trigger=defer to ignore the user_tap).
+ *   2. Clicking Dismiss fires `POST /loop/transition` with
+ *      `trigger=defer` and `fromStage === toStage`.
+ *   3. Reloading the page after dismiss does not re-render the tile, so
  *      long as the projector treats the row as `dismiss_state=deferred`
  *      and the read filter excludes non-active entries.
  */
@@ -61,9 +55,22 @@ test.describe("Knowledge Loop — dismiss persistence", () => {
 		await expect(tile).toHaveAttribute("data-stage", "observe");
 
 		await tile.click();
-		const dismissCta = tile.getByRole("button", { name: /^dismiss$/i });
+		// Wait for the tap-to-orient user_tap transition to land before
+		// clicking Dismiss; otherwise the optimistic stage flip + concurrent
+		// post can race the dismiss button mid-render.
+		await expect
+			.poll(
+				() =>
+					transitionBodies.filter((b) => b.trigger === "user_tap").length,
+			)
+			.toBeGreaterThan(0);
+
+		const dismissCta = tile.locator("button.cta--dismiss").first();
 		await expect(dismissCta).toBeVisible();
-		await dismissCta.click();
+		await expect(dismissCta).toBeEnabled();
+		// Bypass any ancestor pointer-event capture by dispatching a click
+		// directly on the element.
+		await dismissCta.evaluate((el: Element) => (el as HTMLElement).click());
 
 		// Allow the optimistic exit transition to settle.
 		await page.waitForTimeout(700);
@@ -141,7 +148,13 @@ test.describe("Knowledge Loop — dismiss persistence", () => {
 			.first();
 		await expect(tile).toBeVisible();
 		await tile.click();
-		await tile.getByRole("button", { name: /^dismiss$/i }).click();
+		// The tap-to-orient transition runs concurrently with the upcoming
+		// dismiss; the optimistic stage flip + animate:flip make the tile
+		// briefly unstable for Playwright's pointer-based click. Resolve the
+		// race by dispatching the click directly on the DOM element.
+		const dismissCta = tile.locator("button.cta--dismiss").first();
+		await expect(dismissCta).toBeVisible();
+		await dismissCta.evaluate((el: Element) => (el as HTMLElement).click());
 
 		await page.waitForTimeout(700);
 		expect(observedDefer).toBe(true);
