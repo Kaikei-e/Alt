@@ -181,9 +181,13 @@ async def test_background_check_updates_state(checker, remotes):
 
     checker._session = _build_mock_session(mock_response)
 
-    # Force all remotes to be due for probe
+    # Force all remotes to be due for probe. Use an offset relative to
+    # time.monotonic() rather than the literal 0; on a freshly provisioned
+    # CI VM monotonic time can be smaller than cooldown_seconds, leaving
+    # _should_probe() to skip every remote.
+    past = time.monotonic() - (checker._cooldown_seconds + 1)
     for url in remotes:
-        checker._states[url]["last_checked"] = 0
+        checker._states[url]["last_checked"] = past
 
     await checker._check_all()
 
