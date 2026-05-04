@@ -9,6 +9,35 @@ import aiohttp
 from news_creator.gateway.remote_health_checker import RemoteHealthChecker
 
 
+class _StubGetContext:
+    """Hand-rolled async context manager for ``aiohttp.ClientSession.get``.
+
+    Using ``AsyncMock`` for ``__aenter__`` / ``__aexit__`` on a ``MagicMock``
+    auto-provisioned by ``MagicMock(spec=aiohttp.ClientSession)`` regressed
+    on CPython 3.14.4 (the spec inspector started flagging the synchronous
+    ``ClientSession.get`` as if it were a coroutine, swallowing the
+    response on the second probe inside ``_check_all``). A real class
+    sidesteps that detection entirely and is also easier to read.
+    """
+
+    def __init__(self, response):
+        self._response = response
+
+    async def __aenter__(self):
+        return self._response
+
+    async def __aexit__(self, exc_type, exc, tb):
+        return False
+
+
+def _build_mock_session(response):
+    """Return a ``ClientSession``-shaped mock whose ``get`` yields ``response``."""
+    session = MagicMock()
+    session.closed = False
+    session.get = MagicMock(return_value=_StubGetContext(response))
+    return session
+
+
 @pytest.fixture
 def remotes():
     return [
@@ -100,13 +129,8 @@ async def test_probe_marks_healthy_when_model_present(checker, remotes):
     mock_response = MagicMock()
     mock_response.status = 200
     mock_response.text = AsyncMock(return_value=json.dumps(tags_response))
-    mock_response.__aenter__ = AsyncMock(return_value=mock_response)
-    mock_response.__aexit__ = AsyncMock(return_value=False)
 
-    mock_session = MagicMock(spec=aiohttp.ClientSession)
-    mock_session.closed = False
-    mock_session.get = MagicMock(return_value=mock_response)
-    checker._session = mock_session
+    checker._session = _build_mock_session(mock_response)
 
     await checker._probe(remotes[0])
 
@@ -121,13 +145,8 @@ async def test_probe_marks_unhealthy_when_model_missing(checker, remotes):
     mock_response = MagicMock()
     mock_response.status = 200
     mock_response.text = AsyncMock(return_value=json.dumps(tags_response))
-    mock_response.__aenter__ = AsyncMock(return_value=mock_response)
-    mock_response.__aexit__ = AsyncMock(return_value=False)
 
-    mock_session = MagicMock(spec=aiohttp.ClientSession)
-    mock_session.closed = False
-    mock_session.get = MagicMock(return_value=mock_response)
-    checker._session = mock_session
+    checker._session = _build_mock_session(mock_response)
 
     await checker._probe(remotes[0])
 
@@ -159,13 +178,8 @@ async def test_background_check_updates_state(checker, remotes):
     mock_response = MagicMock()
     mock_response.status = 200
     mock_response.text = AsyncMock(return_value=json.dumps(tags_response))
-    mock_response.__aenter__ = AsyncMock(return_value=mock_response)
-    mock_response.__aexit__ = AsyncMock(return_value=False)
 
-    mock_session = MagicMock(spec=aiohttp.ClientSession)
-    mock_session.closed = False
-    mock_session.get = MagicMock(return_value=mock_response)
-    checker._session = mock_session
+    checker._session = _build_mock_session(mock_response)
 
     # Force all remotes to be due for probe
     for url in remotes:
