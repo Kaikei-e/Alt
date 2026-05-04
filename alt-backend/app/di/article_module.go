@@ -24,6 +24,7 @@ import (
 	"alt/usecase/fetch_latest_article_usecase"
 	"alt/usecase/fetch_recent_articles_usecase"
 	"alt/usecase/fetch_tag_cloud_usecase"
+	"alt/usecase/get_article_source_url_usecase"
 	"alt/usecase/search_article_usecase"
 	"alt/usecase/stream_article_tags_usecase"
 	"alt/utils/batch_article_fetcher"
@@ -45,6 +46,7 @@ type ArticleModule struct {
 	ArticleSearchUsecase       *search_article_usecase.SearchArticleUsecase
 	BatchArticleFetcher        *batch_article_fetcher.BatchArticleFetcher
 	FetchTagCloudUsecase       *fetch_tag_cloud_usecase.FetchTagCloudUsecase
+	GetArticleSourceURLUsecase *get_article_source_url_usecase.GetArticleSourceURLUsecase
 
 	// Gateways exposed for cross-module wiring
 	InternalArticleGateway  *internal_article_gateway.Gateway
@@ -113,6 +115,12 @@ func newArticleModule(infra *InfraModule, feed *FeedModule, ragAdapter rag_integ
 	// Internal article API gateway (for BackendInternalService)
 	internalArticleGw := internal_article_gateway.NewGateway(altDB)
 
+	// GetArticleSourceURL: tenant-scoped read-side lookup for the Knowledge
+	// Loop ACT workspace's Open recovery affordance. Reuses the
+	// ArticleURLLookupGateway already defined in knowledge_module.go.
+	articleURLLookupGw := article_gateway.NewArticleURLLookupGateway(infra.Pool)
+	getArticleSourceURLUC := get_article_source_url_usecase.NewGetArticleSourceURLUsecase(articleURLLookupGw)
+
 	return &ArticleModule{
 		ArticleUsecase:             fetchArticleUC,
 		ArchiveArticleUsecase:      archiveArticleUC,
@@ -126,6 +134,7 @@ func newArticleModule(infra *InfraModule, feed *FeedModule, ragAdapter rag_integ
 		ArticleSearchUsecase:       articleSearchUC,
 		BatchArticleFetcher:        batchFetcher,
 		FetchTagCloudUsecase:       fetchTagCloudUC,
+		GetArticleSourceURLUsecase: getArticleSourceURLUC,
 
 		InternalArticleGateway:  internalArticleGw,
 		FetchArticleTagsGateway: fetchArticleTagsGw,

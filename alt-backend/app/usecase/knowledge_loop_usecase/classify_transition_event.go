@@ -87,11 +87,16 @@ func ClassifyTransitionEvent(fromStage, toStage, trigger string) (string, error)
 		return "", fmt.Errorf("%w: decide->observe not allowed", ErrInvalidArgument)
 	}
 
+	// Auto-OODA suppression: dwell is rejected outright. ValidateDwellTriggerTarget
+	// catches it one layer earlier; this guard keeps the classifier itself
+	// independently safe so direct callers (tests, future consumers) cannot
+	// reintroduce passive stage advancement.
+	if trigger == triggerDwell {
+		return "", fmt.Errorf("%w: dwell trigger is no longer accepted", ErrInvalidArgument)
+	}
+
 	switch {
 	case fromStage == stageObserve && toStage == stageOrient:
-		if trigger == triggerDwell {
-			return domain.EventKnowledgeLoopObserved, nil
-		}
 		return domain.EventKnowledgeLoopOriented, nil
 	case fromStage == stageObserve && toStage == stageDecide:
 		// Bypassing orient — classify as coarse Oriented to keep session state continuous.

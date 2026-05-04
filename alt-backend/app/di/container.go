@@ -42,6 +42,7 @@ import (
 	"alt/usecase/fetch_recent_articles_usecase"
 	"alt/usecase/fetch_tag_cloud_usecase"
 	"alt/usecase/fetch_trend_stats_usecase"
+	"alt/usecase/get_article_source_url_usecase"
 	"alt/usecase/get_knowledge_home_usecase"
 	"alt/usecase/image_fetch_usecase"
 	"alt/usecase/image_proxy_usecase"
@@ -169,6 +170,7 @@ type ApplicationComponents struct {
 	FetchArticleSummaryUsecase *fetch_article_summary_usecase.FetchArticleSummaryUsecase
 	StreamArticleTagsUsecase   *stream_article_tags_usecase.StreamArticleTagsUsecase
 	FetchTagCloudUsecase       *fetch_tag_cloud_usecase.FetchTagCloudUsecase
+	GetArticleSourceURLUsecase *get_article_source_url_usecase.GetArticleSourceURLUsecase
 
 	// OPML
 	ExportOPMLUsecase *opml_usecase.ExportOPMLUsecase
@@ -335,6 +337,7 @@ func NewApplicationComponents(pool *pgxpool.Pool) *ApplicationComponents {
 		ArticleSearchUsecase:       article.ArticleSearchUsecase,
 		BatchArticleFetcher:        article.BatchArticleFetcher,
 		FetchTagCloudUsecase:       article.FetchTagCloudUsecase,
+		GetArticleSourceURLUsecase: article.GetArticleSourceURLUsecase,
 		InternalArticleGateway:     article.InternalArticleGateway,
 
 		// RAG usecases

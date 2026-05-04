@@ -30,6 +30,7 @@ import (
 	"alt/usecase/fetch_latest_article_usecase"
 	"alt/usecase/fetch_random_subscription_usecase"
 	"alt/usecase/fetch_tag_cloud_usecase"
+	"alt/usecase/get_article_source_url_usecase"
 	"alt/usecase/image_proxy_usecase"
 	"alt/usecase/stream_article_tags_usecase"
 	"alt/utils/perf"
@@ -51,6 +52,7 @@ type ArticleHandlerDeps struct {
 	FetchLatestArticle      *fetch_latest_article_usecase.FetchLatestArticleUsecase
 	FetchRandomSubscription *fetch_random_subscription_usecase.FetchRandomSubscriptionUsecase
 	FetchTagCloud           *fetch_tag_cloud_usecase.FetchTagCloudUsecase
+	GetArticleSourceURL     *get_article_source_url_usecase.GetArticleSourceURLUsecase
 	ImageProxy              *image_proxy_usecase.ImageProxyUsecase
 	StreamArticleTags       *stream_article_tags_usecase.StreamArticleTagsUsecase
 }
@@ -749,5 +751,39 @@ func (h *Handler) FetchArticleSummary(
 		MatchedArticles: items,
 		TotalMatched:    int32(len(items)),
 		RequestedCount:  int32(len(feedUrls)),
+	}), nil
+}
+
+// GetArticleSourceURL resolves the canonical external HTTPS URL for an article
+// id, scoped to the caller's tenant via JWT. Used by the Knowledge Loop ACT
+// workspace's Open recovery affordance when the projection's
+// actTargets[].source_url is empty (legacy entry, or producer-side ADR-879
+// lookup miss). Read-side query: never appends events.
+func (h *Handler) GetArticleSourceURL(
+	ctx context.Context,
+	req *connect.Request[articlesv2.GetArticleSourceURLRequest],
+) (*connect.Response[articlesv2.GetArticleSourceURLResponse], error) {
+	user, err := middleware.GetUserContext(ctx)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeUnauthenticated, nil)
+	}
+	if h.deps.GetArticleSourceURL == nil {
+		return nil, connect.NewError(connect.CodeUnimplemented, errors.New("get_article_source_url usecase not wired"))
+	}
+
+	url, err := h.deps.GetArticleSourceURL.Execute(ctx, req.Msg.GetArticleId(), user.UserID)
+	if err != nil {
+		switch {
+		case errors.Is(err, get_article_source_url_usecase.ErrInvalidArgument):
+			return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("malformed article_id"))
+		case errors.Is(err, get_article_source_url_usecase.ErrNotFound):
+			return nil, connect.NewError(connect.CodeNotFound, errors.New("article not found"))
+		default:
+			h.logger.ErrorContext(ctx, "get_article_source_url failed", "error", err)
+			return nil, connect.NewError(connect.CodeUnavailable, errors.New("source url lookup unavailable"))
+		}
+	}
+	return connect.NewResponse(&articlesv2.GetArticleSourceURLResponse{
+		SourceUrl: url,
 	}), nil
 }

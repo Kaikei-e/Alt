@@ -98,6 +98,7 @@ func SetupConnectHandlers(mux *http.ServeMux, container *di.ApplicationComponent
 		FetchLatestArticle:      container.FetchLatestArticleUsecase,
 		FetchRandomSubscription: container.FetchRandomSubscriptionUsecase,
 		FetchTagCloud:           container.FetchTagCloudUsecase,
+		GetArticleSourceURL:     container.GetArticleSourceURLUsecase,
 		ImageProxy:              container.ImageProxyUsecase,
 		StreamArticleTags:       container.StreamArticleTagsUsecase,
 	}, cfg, logger)

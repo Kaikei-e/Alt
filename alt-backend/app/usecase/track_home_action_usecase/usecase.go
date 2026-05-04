@@ -146,11 +146,41 @@ func (u *TrackHomeActionUsecase) Execute(ctx context.Context, userID uuid.UUID, 
 		if _, parseErr := uuid.Parse(articleID); parseErr != nil {
 			logger.Logger.WarnContext(ctx, "skipping article URL lookup: malformed article id",
 				"article_id", articleID)
-		} else if foundURL, lookupErr := u.articleURLLookupPort.LookupArticleURL(ctx, articleID, userID); lookupErr != nil {
-			logger.Logger.WarnContext(ctx, "lookup_article_url failed",
-				"article_id", articleID, "error", lookupErr)
-		} else if foundURL != "" {
-			knowledgePayloadFields["url"] = foundURL
+		} else {
+			// Plan: Knowledge Loop 体験回復 — Pillar 2C. Retry transient lookup
+			// failures up to 3 times with a 100ms backoff. The append below
+			// stays unconditional (append-first invariant): if every retry
+			// fails, the event is still appended without a `url` key, and the
+			// long-term self-heal lives in the ArticleUrlBackfilled corrective
+			// projector path. Suppressing the append on lookup failure would
+			// silently drop user actions from the event log — explicitly
+			// rejected by immutable-design-guard.
+			const maxAttempts = 3
+			const backoff = 100 * time.Millisecond
+			var foundURL string
+			for attempt := 1; attempt <= maxAttempts; attempt++ {
+				url, lookupErr := u.articleURLLookupPort.LookupArticleURL(ctx, articleID, userID)
+				if lookupErr == nil {
+					foundURL = url
+					break
+				}
+				if attempt == maxAttempts {
+					logger.Logger.WarnContext(ctx, "lookup_article_url failed after retries",
+						"article_id", articleID, "attempts", maxAttempts, "error", lookupErr)
+					break
+				}
+				select {
+				case <-ctx.Done():
+					logger.Logger.WarnContext(ctx, "lookup_article_url cancelled mid-retry",
+						"article_id", articleID, "attempt", attempt)
+					attempt = maxAttempts // exit loop without further sleep
+				case <-time.After(backoff):
+					// next attempt
+				}
+			}
+			if foundURL != "" {
+				knowledgePayloadFields["url"] = foundURL
+			}
 		}
 	}
 	knowledgePayload, _ := json.Marshal(knowledgePayloadFields)

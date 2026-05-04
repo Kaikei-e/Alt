@@ -107,19 +107,20 @@ func ValidateObservedProjectionRevision(rev int64) error {
 	return nil
 }
 
-// ValidateDwellTriggerTarget enforces that a DWELL trigger can only target the
-// passive stages (OBSERVE, ORIENT). Dwell on observe→orient is the canonical
-// path that fires KnowledgeLoopObserved per canonical contract §8.2 and
-// ClassifyTransitionEvent. Dwelling into DECIDE / ACT is not a legitimate
-// passive signal and is rejected as ErrInvalidArgument.
+// ValidateDwellTriggerTarget rejects every TRANSITION_TRIGGER_DWELL transition.
 //
-// toStage and trigger are passed as string to keep this package free of proto imports.
-func ValidateDwellTriggerTarget(trigger, toStage string) error {
-	if trigger != "TRANSITION_TRIGGER_DWELL" {
-		return nil
+// Auto-OODA suppression (plan: Knowledge Loop 体験回復 — Pillar 1):
+// passive viewing must NOT advance OODA stage. The frontend no longer fires
+// dwell at all; this validator stays as a defensive guard so a future
+// consumer cannot silently re-introduce passive stage advancement. Boyd's
+// OODA model treats Orientation as a conscious step (see web research output)
+// and Linear-style command-center UIs separate read-state from workflow
+// status — dwell-as-advance contradicts both.
+//
+// toStage / trigger are passed as string to keep this package free of proto imports.
+func ValidateDwellTriggerTarget(trigger, _ string) error {
+	if trigger == "TRANSITION_TRIGGER_DWELL" {
+		return fmt.Errorf("%w: dwell trigger is no longer accepted (Auto-OODA suppression)", ErrInvalidArgument)
 	}
-	if toStage == "LOOP_STAGE_OBSERVE" || toStage == "LOOP_STAGE_ORIENT" {
-		return nil
-	}
-	return fmt.Errorf("%w: dwell trigger only valid for OBSERVE or ORIENT target", ErrInvalidArgument)
+	return nil
 }
