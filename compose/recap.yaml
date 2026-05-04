@@ -126,6 +126,7 @@ services:
       - PULSE_ENABLED=true
       - PULSE_ROLLOUT_PERCENT=100
       - PULSE_VERSION=v4
+      - MORNING_DAEMON_ENABLED=${MORNING_DAEMON_ENABLED:-true}
       # OpenTelemetry
       - OTEL_EXPORTER_OTLP_ENDPOINT=http://rask-log-aggregator:4318
       - OTEL_SERVICE_NAME=recap-worker
