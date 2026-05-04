@@ -317,3 +317,53 @@ async def test_llm_validation_error_is_tagged_in_degradation_reason(caplog):
         reason.startswith(p + ":")
         for p in ("json_decode", "parse_runtime", "pydantic_validation")
     ), f"unexpected reason: {reason}"
+
+
+# ============================================================================
+# Prompt placeholder leakage guard (regression: 2026-05-04 morning letter
+# rote-copied JSON-schema example strings verbatim into production output).
+# Format=json_schema (GBNF, ADR-887) already enforces structure, so the
+# prompt must not embed concrete example strings the LLM can echo.
+# ============================================================================
+
+
+def _render_prompt(*, is_degraded: bool) -> str:
+    config = _make_config()
+    llm_provider = AsyncMock()
+    usecase = MorningLetterUsecase(config=config, llm_provider=llm_provider)
+    request = MorningLetterRequest(
+        target_date="2026-05-04",
+        recap_summaries=None if is_degraded else [_make_recap_input("ai")],
+        overnight_groups=[_make_overnight_group()],
+    )
+    return usecase._build_prompt(request, is_degraded=is_degraded)
+
+
+_LEAKABLE_PLACEHOLDERS = (
+    "本日の最重要トピックを1-2文で要約",
+    "具体的な要約 [1]",
+    "直近の変化 [n]",
+    '"ISO8601"',
+    "ISO8601",
+    '"ジャンル名"',
+    "1-2文のトップニュース要約",
+)
+
+
+@pytest.mark.parametrize("is_degraded", [False, True])
+def test_prompt_does_not_embed_copyable_placeholder_strings(is_degraded):
+    """Prompt must describe field shape via prose, not via concrete example
+    strings that a low-temperature LLM will copy verbatim into output."""
+    prompt = _render_prompt(is_degraded=is_degraded)
+    leaked = [p for p in _LEAKABLE_PLACEHOLDERS if p in prompt]
+    assert leaked == [], (
+        f"Prompt embeds placeholder strings the LLM may echo as content: {leaked}"
+    )
+
+
+def test_prompt_keeps_section_key_constraints_as_text():
+    """Removing the JSON skeleton must not erase section-key validation cues."""
+    prompt = _render_prompt(is_degraded=False)
+    assert "top3" in prompt
+    assert "what_changed" in prompt
+    assert "by_genre:" in prompt

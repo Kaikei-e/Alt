@@ -226,23 +226,32 @@ class MorningLetterUsecase:
             for article in group.articles:
                 parts.append(f"- {article.text}")
 
-        sections_spec = "top3, by_genre:*"
+        allowed_keys = "top3, by_genre:<genre名>"
         if not is_degraded:
-            sections_spec = "top3, what_changed, by_genre:*"
+            allowed_keys = "top3, what_changed, by_genre:<genre名>"
+        window_days_rule = (
+            "source_recap_window_days は null"
+            if is_degraded
+            else "source_recap_window_days は 3"
+        )
 
         parts.extend(
             [
                 "",
                 "### 出力仕様",
-                "JSON オブジェクト 1 つのみ。以下の構造:",
-                '{ "schema_version": 1, "lead": "1-2文のトップニュース要約",',
-                f'  "sections": [{{key: "{sections_spec}", title, bullets,'
-                ' "narrative": "セクションのブリッジ段落 (1-3文, 任意)"}}...],',
-                '  "generated_at": "ISO8601", "source_recap_window_days": 3 }',
+                "出力スキーマは format=json_schema (GBNF) で強制されます。",
+                "プロンプト内の説明文を値としてコピーせず、入力データから具体的な内容を抽出してください。",
                 "",
-                "section の key は lead, top3, what_changed, by_genre:<genre名> のいずれかのみ使用。",
+                "- schema_version: 整数値 1",
+                "- lead: 本日の最重要トピックを 1〜2 文で具体的に要約した日本語",
+                f"- sections[].key: {allowed_keys} のいずれかのみ",
+                "- sections[].bullets: 各要素は固有名詞・数値を含む日本語の文",
+                "- sections[].narrative: 任意の地の文 (1〜3 文)。不要なら省略可",
+                "- generated_at: 生成時刻の ISO8601 タイムスタンプ",
+                f"- {window_days_rule}",
+                "",
                 "各 bullet は具体的な事実と固有名詞を含む日本語。",
-                "narrative は任意の短い段落 (bullets を文脈化する地の文)。不要なら省略可。",
+                "入力にない事実は作らない。",
             ]
         )
 
