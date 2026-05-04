@@ -63,6 +63,9 @@ const (
 	// ArticleServiceFetchTagCloudProcedure is the fully-qualified name of the ArticleService's
 	// FetchTagCloud RPC.
 	ArticleServiceFetchTagCloudProcedure = "/alt.articles.v2.ArticleService/FetchTagCloud"
+	// ArticleServiceGetArticleSourceURLProcedure is the fully-qualified name of the ArticleService's
+	// GetArticleSourceURL RPC.
+	ArticleServiceGetArticleSourceURLProcedure = "/alt.articles.v2.ArticleService/GetArticleSourceURL"
 )
 
 // ArticleServiceClient is a client for the alt.articles.v2.ArticleService service.
@@ -96,6 +99,12 @@ type ArticleServiceClient interface {
 	// FetchTagCloud fetches tag cloud data (tag names with article counts)
 	// Used by Tag Verse 3D visualization
 	FetchTagCloud(context.Context, *connect.Request[v2.FetchTagCloudRequest]) (*connect.Response[v2.FetchTagCloudResponse], error)
+	// GetArticleSourceURL resolves the canonical external HTTPS URL for an
+	// article id, scoped to the caller's tenant via JWT. Used by the Knowledge
+	// Loop ACT workspace's Open recovery affordance when the projection's
+	// actTargets[].source_url is empty. Returns invalid_argument on malformed
+	// UUID, not_found when no row matches the (article_id, user_id) pair.
+	GetArticleSourceURL(context.Context, *connect.Request[v2.GetArticleSourceURLRequest]) (*connect.Response[v2.GetArticleSourceURLResponse], error)
 }
 
 // NewArticleServiceClient constructs a client for the alt.articles.v2.ArticleService service. By
@@ -169,6 +178,12 @@ func NewArticleServiceClient(httpClient connect.HTTPClient, baseURL string, opts
 			connect.WithSchema(articleServiceMethods.ByName("FetchTagCloud")),
 			connect.WithClientOptions(opts...),
 		),
+		getArticleSourceURL: connect.NewClient[v2.GetArticleSourceURLRequest, v2.GetArticleSourceURLResponse](
+			httpClient,
+			baseURL+ArticleServiceGetArticleSourceURLProcedure,
+			connect.WithSchema(articleServiceMethods.ByName("GetArticleSourceURL")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
@@ -184,6 +199,7 @@ type articleServiceClient struct {
 	streamArticleTags   *connect.Client[v2.StreamArticleTagsRequest, v2.StreamArticleTagsResponse]
 	batchPrefetchImages *connect.Client[v2.BatchPrefetchImagesRequest, v2.BatchPrefetchImagesResponse]
 	fetchTagCloud       *connect.Client[v2.FetchTagCloudRequest, v2.FetchTagCloudResponse]
+	getArticleSourceURL *connect.Client[v2.GetArticleSourceURLRequest, v2.GetArticleSourceURLResponse]
 }
 
 // FetchArticleContent calls alt.articles.v2.ArticleService.FetchArticleContent.
@@ -236,6 +252,11 @@ func (c *articleServiceClient) FetchTagCloud(ctx context.Context, req *connect.R
 	return c.fetchTagCloud.CallUnary(ctx, req)
 }
 
+// GetArticleSourceURL calls alt.articles.v2.ArticleService.GetArticleSourceURL.
+func (c *articleServiceClient) GetArticleSourceURL(ctx context.Context, req *connect.Request[v2.GetArticleSourceURLRequest]) (*connect.Response[v2.GetArticleSourceURLResponse], error) {
+	return c.getArticleSourceURL.CallUnary(ctx, req)
+}
+
 // ArticleServiceHandler is an implementation of the alt.articles.v2.ArticleService service.
 type ArticleServiceHandler interface {
 	// FetchArticleContent fetches and extracts compliant article content
@@ -267,6 +288,12 @@ type ArticleServiceHandler interface {
 	// FetchTagCloud fetches tag cloud data (tag names with article counts)
 	// Used by Tag Verse 3D visualization
 	FetchTagCloud(context.Context, *connect.Request[v2.FetchTagCloudRequest]) (*connect.Response[v2.FetchTagCloudResponse], error)
+	// GetArticleSourceURL resolves the canonical external HTTPS URL for an
+	// article id, scoped to the caller's tenant via JWT. Used by the Knowledge
+	// Loop ACT workspace's Open recovery affordance when the projection's
+	// actTargets[].source_url is empty. Returns invalid_argument on malformed
+	// UUID, not_found when no row matches the (article_id, user_id) pair.
+	GetArticleSourceURL(context.Context, *connect.Request[v2.GetArticleSourceURLRequest]) (*connect.Response[v2.GetArticleSourceURLResponse], error)
 }
 
 // NewArticleServiceHandler builds an HTTP handler from the service implementation. It returns the
@@ -336,6 +363,12 @@ func NewArticleServiceHandler(svc ArticleServiceHandler, opts ...connect.Handler
 		connect.WithSchema(articleServiceMethods.ByName("FetchTagCloud")),
 		connect.WithHandlerOptions(opts...),
 	)
+	articleServiceGetArticleSourceURLHandler := connect.NewUnaryHandler(
+		ArticleServiceGetArticleSourceURLProcedure,
+		svc.GetArticleSourceURL,
+		connect.WithSchema(articleServiceMethods.ByName("GetArticleSourceURL")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/alt.articles.v2.ArticleService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case ArticleServiceFetchArticleContentProcedure:
@@ -358,6 +391,8 @@ func NewArticleServiceHandler(svc ArticleServiceHandler, opts ...connect.Handler
 			articleServiceBatchPrefetchImagesHandler.ServeHTTP(w, r)
 		case ArticleServiceFetchTagCloudProcedure:
 			articleServiceFetchTagCloudHandler.ServeHTTP(w, r)
+		case ArticleServiceGetArticleSourceURLProcedure:
+			articleServiceGetArticleSourceURLHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -405,4 +440,8 @@ func (UnimplementedArticleServiceHandler) BatchPrefetchImages(context.Context, *
 
 func (UnimplementedArticleServiceHandler) FetchTagCloud(context.Context, *connect.Request[v2.FetchTagCloudRequest]) (*connect.Response[v2.FetchTagCloudResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("alt.articles.v2.ArticleService.FetchTagCloud is not implemented"))
+}
+
+func (UnimplementedArticleServiceHandler) GetArticleSourceURL(context.Context, *connect.Request[v2.GetArticleSourceURLRequest]) (*connect.Response[v2.GetArticleSourceURLResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("alt.articles.v2.ArticleService.GetArticleSourceURL is not implemented"))
 }

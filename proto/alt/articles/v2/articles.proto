@@ -302,6 +302,24 @@ message FetchTagCloudResponse {
   int32 total_tags = 2;
 }
 
+// GetArticleSourceURLRequest looks up the canonical external HTTPS URL for an
+// article. Used by the Knowledge Loop ACT workspace as a recovery affordance
+// when the projection's actTargets[].source_url is empty (legacy entry, or
+// producer-side ADR-879 lookup miss). Tenant scope is derived from the JWT;
+// the request body must NOT include a tenant or user id.
+message GetArticleSourceURLRequest {
+  // Article id (UUID). Validated server-side; malformed values return
+  // invalid_argument WITHOUT echoing the bad input.
+  string article_id = 1;
+}
+
+// GetArticleSourceURLResponse carries the resolved URL. The field is required
+// on a 200 response; empty / absent maps to not_found at the handler.
+message GetArticleSourceURLResponse {
+  // Canonical HTTPS source URL for the article.
+  string source_url = 1;
+}
+
 // =============================================================================
 // ArticleService Definition
 // =============================================================================
@@ -346,4 +364,11 @@ service ArticleService {
   // FetchTagCloud fetches tag cloud data (tag names with article counts)
   // Used by Tag Verse 3D visualization
   rpc FetchTagCloud(FetchTagCloudRequest) returns (FetchTagCloudResponse);
+
+  // GetArticleSourceURL resolves the canonical external HTTPS URL for an
+  // article id, scoped to the caller's tenant via JWT. Used by the Knowledge
+  // Loop ACT workspace's Open recovery affordance when the projection's
+  // actTargets[].source_url is empty. Returns invalid_argument on malformed
+  // UUID, not_found when no row matches the (article_id, user_id) pair.
+  rpc GetArticleSourceURL(GetArticleSourceURLRequest) returns (GetArticleSourceURLResponse);
 }
