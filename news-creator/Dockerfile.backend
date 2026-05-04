@@ -1,7 +1,7 @@
 # Dockerfile.backend - Ollama-only service
 # Separated from news-creator for faster deployments and smaller images
 
-FROM ollama/ollama:latest
+FROM ollama/ollama:0.22.1
 
 USER root
 
