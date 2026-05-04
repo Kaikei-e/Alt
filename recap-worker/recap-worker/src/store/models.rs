@@ -18,6 +18,8 @@ pub(crate) struct RecapJob {
 pub(crate) struct GenreWithSummary {
     pub(crate) genre_name: String,
     pub(crate) summary_ja: Option<String>,
+    pub(crate) title_ja: Option<String>,
+    pub(crate) bullets_ja: Option<Value>,
 }
 
 /// Recap search hit — a genre from a completed job matching a search term.

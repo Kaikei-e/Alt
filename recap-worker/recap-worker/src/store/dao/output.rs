@@ -208,14 +208,18 @@ impl RecapDao {
         }
     }
 
-    /// Get all genres for a job with their summaries
+    /// Get all genres for a job with their summaries.
+    ///
+    /// Selects the structured `title_ja` / `bullets_ja` columns alongside
+    /// the legacy `summary_ja` so Morning Letter can ground on real bullets
+    /// instead of trying to JSON-parse editorial prose.
     pub(crate) async fn get_genres_by_job(
         pool: &PgPool,
         job_id: Uuid,
     ) -> Result<Vec<GenreWithSummary>> {
         let rows = sqlx::query(
             r"
-            SELECT genre AS genre_name, summary_ja
+            SELECT genre AS genre_name, summary_ja, title_ja, bullets_ja
             FROM recap_outputs
             WHERE job_id = $1
             ORDER BY genre
@@ -231,6 +235,8 @@ impl RecapDao {
             genres.push(GenreWithSummary {
                 genre_name: row.try_get("genre_name")?,
                 summary_ja: row.try_get("summary_ja").ok(),
+                title_ja: row.try_get("title_ja").ok(),
+                bullets_ja: row.try_get("bullets_ja").ok(),
             });
         }
 
