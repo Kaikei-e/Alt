@@ -28,6 +28,7 @@ import {
 } from "../data/recap";
 import {
 	CONNECT_KNOWLEDGE_LOOP_ACT_RESPONSE,
+	CONNECT_KNOWLEDGE_LOOP_NO_SOURCE_RESPONSE,
 	CONNECT_KNOWLEDGE_LOOP_RESPONSE,
 	CONNECT_TRANSITION_LOOP_RESPONSE,
 } from "../data/knowledge-loop";
@@ -376,8 +377,9 @@ export function createBackendServer(): http.Server {
 		}
 
 		// GetKnowledgeLoop (Connect-RPC) — body-aware switch:
-		// - lensModeId === "e2e-act"  → ACT-stage scenario fixture
-		// - otherwise                 → default fixture (back-compat for existing tests)
+		// - lensModeId === "e2e-act"        → ACT-stage scenario fixture
+		// - lensModeId === "e2e-no-source"  → ACT entry with sourceUrl absent
+		// - otherwise                       → default fixture
 		if (
 			path === "/alt.knowledge.loop.v1.KnowledgeLoopService/GetKnowledgeLoop"
 		) {
@@ -398,10 +400,12 @@ export function createBackendServer(): http.Server {
 				} catch {
 					// Tolerate non-JSON or empty bodies — fall back to default fixture.
 				}
-				const payload =
-					lensModeId === "e2e-act"
-						? CONNECT_KNOWLEDGE_LOOP_ACT_RESPONSE
-						: CONNECT_KNOWLEDGE_LOOP_RESPONSE;
+				let payload: unknown = CONNECT_KNOWLEDGE_LOOP_RESPONSE;
+				if (lensModeId === "e2e-act") {
+					payload = CONNECT_KNOWLEDGE_LOOP_ACT_RESPONSE;
+				} else if (lensModeId === "e2e-no-source") {
+					payload = CONNECT_KNOWLEDGE_LOOP_NO_SOURCE_RESPONSE;
+				}
 				res.setHeader("Content-Type", "application/json");
 				res.writeHead(200);
 				res.end(JSON.stringify(payload));

@@ -90,23 +90,29 @@ func TestValidateClientTransitionID_RejectsStale(t *testing.T) {
 }
 
 func TestValidateDwellTriggerTarget(t *testing.T) {
-	// Dwell permitted for OBSERVE (observation stays put) and ORIENT (dwell
-	// fires KnowledgeLoopObserved on observe->orient per canonical contract
-	// §8.2 and classify_transition_event.go L45-47 — the single source of
-	// truth for valid (from, to, trigger) tuples).
-	require.NoError(t, ValidateDwellTriggerTarget("TRANSITION_TRIGGER_DWELL", "LOOP_STAGE_OBSERVE"))
-	require.NoError(t, ValidateDwellTriggerTarget("TRANSITION_TRIGGER_DWELL", "LOOP_STAGE_ORIENT"))
+	// Auto-OODA suppression: TRANSITION_TRIGGER_DWELL is rejected for every
+	// to_stage. The frontend no longer sends dwell at all (passive viewing
+	// must not advance OODA stage — see plan: image-zed-agent-pasted-image-
+	// name-image-pure-stearns.md, Pillar 1). The validator stays as a
+	// defensive guard so a future consumer cannot silently re-introduce
+	// passive stage advancement.
+	for _, target := range []string{
+		"LOOP_STAGE_OBSERVE",
+		"LOOP_STAGE_ORIENT",
+		"LOOP_STAGE_DECIDE",
+		"LOOP_STAGE_ACT",
+	} {
+		err := ValidateDwellTriggerTarget("TRANSITION_TRIGGER_DWELL", target)
+		require.Error(t, err, "dwell→%s must be rejected", target)
+		require.True(t, errors.Is(err, ErrInvalidArgument))
+	}
 
 	// Non-dwell triggers pass through untouched.
 	require.NoError(t, ValidateDwellTriggerTarget("TRANSITION_TRIGGER_USER_TAP", "LOOP_STAGE_ACT"))
-
-	// Dwell must not target DECIDE / ACT: those are deliberate user actions,
-	// not passive observations.
-	for _, badTo := range []string{"LOOP_STAGE_DECIDE", "LOOP_STAGE_ACT"} {
-		err := ValidateDwellTriggerTarget("TRANSITION_TRIGGER_DWELL", badTo)
-		require.Error(t, err, "dwell→%s must be rejected", badTo)
-		require.True(t, errors.Is(err, ErrInvalidArgument))
-	}
+	require.NoError(t, ValidateDwellTriggerTarget("TRANSITION_TRIGGER_USER_TAP", "LOOP_STAGE_ORIENT"))
+	require.NoError(t, ValidateDwellTriggerTarget("TRANSITION_TRIGGER_KEYBOARD", "LOOP_STAGE_OBSERVE"))
+	require.NoError(t, ValidateDwellTriggerTarget("TRANSITION_TRIGGER_DEFER", "LOOP_STAGE_OBSERVE"))
+	require.NoError(t, ValidateDwellTriggerTarget("TRANSITION_TRIGGER_UNSPECIFIED", "LOOP_STAGE_OBSERVE"))
 }
 
 func TestValidateObservedProjectionRevision(t *testing.T) {

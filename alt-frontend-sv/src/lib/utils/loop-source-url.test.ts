@@ -1,6 +1,9 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { KnowledgeLoopEntryData } from "$lib/connect/knowledge_loop";
-import { resolveLoopSourceUrl } from "./loop-source-url";
+import {
+	resolveLoopSourceUrl,
+	resolveLoopSourceUrlAsync,
+} from "./loop-source-url";
 
 /**
  * Pure-function tests for resolveLoopSourceUrl. The function returns the
@@ -144,5 +147,102 @@ describe("resolveLoopSourceUrl", () => {
 			],
 		};
 		expect(resolveLoopSourceUrl(entry)).toBeNull();
+	});
+});
+
+describe("resolveLoopSourceUrlAsync — Open recovery path", () => {
+	// Auto-OODA / Open recoverable plan, Pillar 2A:
+	//   When the sync resolver returns null (sourceUrl missing on the entry),
+	//   the FE may call a tenant-scoped BFF lookup as a recovery affordance.
+	//   This async resolver wraps that fallback. It MUST:
+	//     1. short-circuit to the sync URL when one is already available
+	//     2. only call the fetcher for article-typed actTargets
+	//     3. return null on lookup failure (caller renders inline error)
+	//     4. only return URLs that pass safeArticleHref (defence-in-depth)
+
+	it("short-circuits to the sync URL without calling the fetcher", async () => {
+		const fetcher = vi.fn();
+		const entry: KnowledgeLoopEntryData = {
+			...baseEntry,
+			actTargets: [
+				{
+					targetType: "article",
+					targetRef: "art-1",
+					route: "/articles/art-1",
+					sourceUrl: "https://example.com/post",
+				},
+			],
+		};
+		const result = await resolveLoopSourceUrlAsync(entry, fetcher);
+		expect(result).toBe("https://example.com/post");
+		expect(fetcher).not.toHaveBeenCalled();
+	});
+
+	it("calls the fetcher with the article target_ref when sourceUrl is missing", async () => {
+		const fetcher = vi
+			.fn()
+			.mockResolvedValueOnce("https://example.com/recovered");
+		const entry: KnowledgeLoopEntryData = {
+			...baseEntry,
+			actTargets: [
+				{
+					targetType: "article",
+					targetRef: "art-2",
+					route: "/articles/art-2",
+				},
+			],
+		};
+		const result = await resolveLoopSourceUrlAsync(entry, fetcher);
+		expect(result).toBe("https://example.com/recovered");
+		expect(fetcher).toHaveBeenCalledWith("art-2");
+	});
+
+	it("returns null when no article target_ref is present", async () => {
+		const fetcher = vi.fn();
+		const entry: KnowledgeLoopEntryData = {
+			...baseEntry,
+			actTargets: [
+				{
+					targetType: "recap",
+					targetRef: "recap-1",
+					route: "/recap/topic/recap-1",
+				},
+			],
+		};
+		const result = await resolveLoopSourceUrlAsync(entry, fetcher);
+		expect(result).toBeNull();
+		expect(fetcher).not.toHaveBeenCalled();
+	});
+
+	it("returns null when the fetcher rejects (caller surfaces inline error)", async () => {
+		const fetcher = vi.fn().mockRejectedValueOnce(new Error("404"));
+		const entry: KnowledgeLoopEntryData = {
+			...baseEntry,
+			actTargets: [
+				{
+					targetType: "article",
+					targetRef: "art-3",
+					route: "/articles/art-3",
+				},
+			],
+		};
+		const result = await resolveLoopSourceUrlAsync(entry, fetcher);
+		expect(result).toBeNull();
+	});
+
+	it("rejects fetcher results that fail safeArticleHref (defence-in-depth)", async () => {
+		const fetcher = vi.fn().mockResolvedValueOnce("javascript:alert(1)");
+		const entry: KnowledgeLoopEntryData = {
+			...baseEntry,
+			actTargets: [
+				{
+					targetType: "article",
+					targetRef: "art-4",
+					route: "/articles/art-4",
+				},
+			],
+		};
+		const result = await resolveLoopSourceUrlAsync(entry, fetcher);
+		expect(result).toBeNull();
 	});
 });

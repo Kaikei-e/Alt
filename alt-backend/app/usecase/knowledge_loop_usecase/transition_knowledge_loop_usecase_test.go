@@ -125,25 +125,43 @@ func TestTransition_AppendsEventOnFreshReservation(t *testing.T) {
 	require.Equal(t, float64(in.ObservedProjRevision), payload["observed_projection_revision"])
 }
 
-// Dwell from observe→orient is the canonical KnowledgeLoopObserved event
-// fired by the FE IntersectionObserver. Prior to 2026-04-24, the validator
-// rejected this tuple (dwell → ORIENT) even though ClassifyTransitionEvent
-// explicitly classifies it as EventKnowledgeLoopObserved — producing the
-// production 502 bursts on `/loop/transition`. This test pins the end-to-end
-// Execute path so the regression can't return.
-func TestTransition_DwellObserveToOrient_EmitsObservedEvent(t *testing.T) {
+// Auto-OODA suppression (Knowledge Loop 体験回復プラン Pillar 1):
+// dwell triggers are rejected at the validator. The frontend no longer
+// sends dwell at all — passive viewing must not advance OODA stage.
+// This test replaces the pre-fix "dwell → KnowledgeLoopObserved" path and
+// pins the new contract end-to-end so a future regression cannot
+// silently re-introduce passive stage advancement.
+func TestTransition_DwellRejected_NoEventAppended(t *testing.T) {
 	dedupe := &fakeDedupePort{reserved: true}
 	appendPort := &fakeAppendPort{}
 	uc := NewTransitionKnowledgeLoopUsecase(dedupe, appendPort, nil, time.Now)
 
 	in := newTransitionInput(t, "LOOP_STAGE_OBSERVE", "LOOP_STAGE_ORIENT", "TRANSITION_TRIGGER_DWELL")
+	_, err := uc.Execute(context.Background(), in)
+
+	require.Error(t, err)
+	require.True(t, errors.Is(err, ErrInvalidArgument),
+		"dwell trigger must surface as invalid_argument so the BFF returns 400")
+	require.Empty(t, appendPort.events,
+		"rejected dwell must not append any event (no projection pollution)")
+}
+
+// User-tap on observe→orient is the explicit replacement for the old dwell
+// path. Pins that the cross-stage transition still works under the new
+// contract.
+func TestTransition_UserTapObserveToOrient_EmitsOriented(t *testing.T) {
+	dedupe := &fakeDedupePort{reserved: true}
+	appendPort := &fakeAppendPort{}
+	uc := NewTransitionKnowledgeLoopUsecase(dedupe, appendPort, nil, time.Now)
+
+	in := newTransitionInput(t, "LOOP_STAGE_OBSERVE", "LOOP_STAGE_ORIENT", "TRANSITION_TRIGGER_USER_TAP")
 	res, err := uc.Execute(context.Background(), in)
 
 	require.NoError(t, err)
 	require.True(t, res.Accepted)
 	require.Len(t, appendPort.events, 1)
-	require.Equal(t, domain.EventKnowledgeLoopObserved, appendPort.events[0].EventType,
-		"dwell on observe→orient must classify as KnowledgeLoopObserved (contract §8.2)")
+	require.Equal(t, domain.EventKnowledgeLoopOriented, appendPort.events[0].EventType,
+		"user_tap on observe→orient must classify as KnowledgeLoopOriented")
 }
 
 func TestTransition_ReviewActionPayloadUsesTriggerNotAction(t *testing.T) {
@@ -277,18 +295,29 @@ func TestTransition_RateLimit_RejectsOverGlobalCeiling(t *testing.T) {
 		"a rate-limited transition must not consume the dedupe reservation")
 }
 
-func TestTransition_DwellNonObserveStillRejected(t *testing.T) {
-	// DWELL trigger is only valid when to_stage == OBSERVE; ValidateDwellTriggerTarget
-	// continues to apply even when the new classify function runs afterward.
-	dedupe := &fakeDedupePort{reserved: true}
-	appendPort := &fakeAppendPort{}
-	uc := NewTransitionKnowledgeLoopUsecase(dedupe, appendPort, nil, time.Now)
+func TestTransition_DwellAlwaysRejected(t *testing.T) {
+	// Auto-OODA suppression: dwell is rejected for every (from, to) tuple.
+	// This pins the "no passive stage advancement" invariant defensively;
+	// the frontend no longer fires dwell at all.
+	for _, target := range []string{
+		"LOOP_STAGE_OBSERVE",
+		"LOOP_STAGE_ORIENT",
+		"LOOP_STAGE_DECIDE",
+		"LOOP_STAGE_ACT",
+	} {
+		t.Run("dwell→"+target, func(t *testing.T) {
+			dedupe := &fakeDedupePort{reserved: true}
+			appendPort := &fakeAppendPort{}
+			uc := NewTransitionKnowledgeLoopUsecase(dedupe, appendPort, nil, time.Now)
 
-	in := newTransitionInput(t, "LOOP_STAGE_OBSERVE", "LOOP_STAGE_ORIENT", "TRANSITION_TRIGGER_DWELL")
-	in.ToStage = "LOOP_STAGE_DECIDE" // dwell target != OBSERVE
-	_, err := uc.Execute(context.Background(), in)
+			in := newTransitionInput(t, "LOOP_STAGE_OBSERVE", "LOOP_STAGE_ORIENT", "TRANSITION_TRIGGER_DWELL")
+			in.ToStage = target
+			_, err := uc.Execute(context.Background(), in)
 
-	require.Error(t, err)
-	require.ErrorIs(t, err, ErrInvalidArgument)
-	require.Equal(t, 0, appendPort.callCount)
+			require.Error(t, err)
+			require.ErrorIs(t, err, ErrInvalidArgument)
+			require.Equal(t, 0, appendPort.callCount,
+				"dwell→%s must not append any event", target)
+		})
+	}
 }

@@ -159,6 +159,11 @@ LOOP_TX_REVIEW_RECHECK="$(uuidv7)"
 LOOP_TX_REVIEW_ARCHIVE="$(uuidv7)"
 LOOP_TX_REVIEW_MARK_REVIEWED="$(uuidv7)"
 LOOP_TX_REVIEW_CROSS_STAGE="$(uuidv7)"
+LOOP_TX_DWELL_CROSS="$(uuidv7)"
+LOOP_TX_DWELL_SAME="$(uuidv7)"
+LOOP_TX_DWELL_RETURN="$(uuidv7)"
+LOOP_TX_USER_TAP="$(uuidv7)"
+ARTICLE_ID_SEED="${ARTICLE_ID_SEED:-00000000-0000-0000-0000-000000000001}"
 
 # Run Hurl inside the staging network so alt-backend's service DNS
 # name resolves. Mount the repo at the same absolute path so any
@@ -193,6 +198,11 @@ common_vars=(
   --variable "loop_tx_review_archive=$LOOP_TX_REVIEW_ARCHIVE"
   --variable "loop_tx_review_mark_reviewed=$LOOP_TX_REVIEW_MARK_REVIEWED"
   --variable "loop_tx_review_cross_stage=$LOOP_TX_REVIEW_CROSS_STAGE"
+  --variable "loop_tx_dwell_cross=$LOOP_TX_DWELL_CROSS"
+  --variable "loop_tx_dwell_same=$LOOP_TX_DWELL_SAME"
+  --variable "loop_tx_dwell_return=$LOOP_TX_DWELL_RETURN"
+  --variable "loop_tx_user_tap=$LOOP_TX_USER_TAP"
+  --variable "article_id_seed=$ARTICLE_ID_SEED"
   --secret   "jwt=$JWT"
 )
 

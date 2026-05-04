@@ -102,6 +102,27 @@ func (m *mockActiveProjectionVersionPort) GetActiveVersion(_ context.Context) (*
 	return m.version, m.err
 }
 
+// flakyArticleURLLookupPort fails the first n calls then succeeds. Used to
+// test the retry-on-transient-failure behaviour on the producer-side URL
+// injection path (Auto-OODA suppression plan, Pillar 2C).
+type flakyArticleURLLookupPort struct {
+	calls      int
+	failUntil  int
+	succeedURL string
+	err        error // returned for every failing call
+}
+
+func (m *flakyArticleURLLookupPort) LookupArticleURL(_ context.Context, _ string, _ uuid.UUID) (string, error) {
+	m.calls++
+	if m.calls <= m.failUntil {
+		if m.err != nil {
+			return "", m.err
+		}
+		return "", errors.New("transient lookup failure")
+	}
+	return m.succeedURL, nil
+}
+
 func TestTrackHomeActionUsecase_Execute(t *testing.T) {
 	logger.InitLogger()
 
@@ -378,5 +399,59 @@ func TestTrackHomeActionUsecase_DismissWriteThrough(t *testing.T) {
 		require.NoError(t, err)
 		require.Len(t, dismissPort.calls, 1)
 		assert.Equal(t, 1, dismissPort.calls[0].projectionVersion)
+	})
+}
+
+func TestTrackHomeActionUsecase_ArticleURLRetry(t *testing.T) {
+	// Auto-OODA / Open recoverable plan, Pillar 2C: producer-side LookupArticleURL
+	// must retry on transient failure so URL injection succeeds when the article
+	// row is briefly unavailable. Append-first invariant: the knowledge_event
+	// MUST be appended even if every retry fails — the absent source_url is
+	// recovered later by ArticleUrlBackfilled (immutable-design-guard PASS).
+	logger.InitLogger()
+	userID := uuid.New()
+	tenantID := uuid.New()
+	articleID := uuid.New()
+	itemKey := "article:" + articleID.String()
+
+	t.Run("succeeds on attempt 1: URL is injected, no extra retries", func(t *testing.T) {
+		flaky := &flakyArticleURLLookupPort{failUntil: 0, succeedURL: "https://example.com/a"}
+		knPort := &mockKnowledgeEventPort{}
+		uc := NewTrackHomeActionUsecase(&mockUserEventPort{}, knPort, nil, nil, nil, nil, flaky)
+
+		err := uc.Execute(context.Background(), userID, tenantID, "open", itemKey, "")
+		require.NoError(t, err)
+		assert.Equal(t, 1, flaky.calls, "no retry on first-attempt success")
+		require.Len(t, knPort.appendedEvents, 1)
+		assert.Contains(t, string(knPort.appendedEvents[0].Payload), "https://example.com/a")
+	})
+
+	t.Run("succeeds on retry 2 of 3: URL is injected", func(t *testing.T) {
+		flaky := &flakyArticleURLLookupPort{failUntil: 1, succeedURL: "https://example.com/b"}
+		knPort := &mockKnowledgeEventPort{}
+		uc := NewTrackHomeActionUsecase(&mockUserEventPort{}, knPort, nil, nil, nil, nil, flaky)
+
+		err := uc.Execute(context.Background(), userID, tenantID, "open", itemKey, "")
+		require.NoError(t, err)
+		assert.Equal(t, 2, flaky.calls, "must retry exactly until success")
+		require.Len(t, knPort.appendedEvents, 1)
+		assert.Contains(t, string(knPort.appendedEvents[0].Payload), "https://example.com/b")
+	})
+
+	t.Run("3 failures: event still appended with no URL (append-first)", func(t *testing.T) {
+		// Append-first invariant (immutable-design-guard): URL lookup is best-
+		// effort. Refusing to append when lookup fails would create silent
+		// observation gaps in the event log. ArticleUrlBackfilled is the
+		// long-term self-heal path.
+		flaky := &flakyArticleURLLookupPort{failUntil: 3, succeedURL: "https://example.com/c"}
+		knPort := &mockKnowledgeEventPort{}
+		uc := NewTrackHomeActionUsecase(&mockUserEventPort{}, knPort, nil, nil, nil, nil, flaky)
+
+		err := uc.Execute(context.Background(), userID, tenantID, "open", itemKey, "")
+		require.NoError(t, err, "lookup failure must not cascade")
+		assert.Equal(t, 3, flaky.calls, "must attempt exactly 3 times")
+		require.Len(t, knPort.appendedEvents, 1, "event MUST still be appended (append-first)")
+		assert.NotContains(t, string(knPort.appendedEvents[0].Payload), "url",
+			"payload must not carry an empty 'url' field; absence is the contract")
 	})
 }

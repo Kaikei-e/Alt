@@ -22,11 +22,22 @@ func TestClassifyTransitionEvent(t *testing.T) {
 		wantActed bool // if true: acted event with continue_flag semantics
 	}{
 		{
-			name:     "observe->orient via dwell => Observed",
-			from:     "LOOP_STAGE_OBSERVE",
-			to:       "LOOP_STAGE_ORIENT",
-			trigger:  "TRANSITION_TRIGGER_DWELL",
-			wantType: domain.EventKnowledgeLoopObserved,
+			// Auto-OODA suppression: dwell is rejected at the classifier (and
+			// caught one layer earlier by ValidateDwellTriggerTarget). Passive
+			// viewing must not advance OODA stage; user_tap is the only legal
+			// path to Orient.
+			name:    "observe->orient via dwell => rejected (Auto-OODA suppression)",
+			from:    "LOOP_STAGE_OBSERVE",
+			to:      "LOOP_STAGE_ORIENT",
+			trigger: "TRANSITION_TRIGGER_DWELL",
+			wantErr: true,
+		},
+		{
+			name:    "observe->observe via dwell => rejected (no passive ack)",
+			from:    "LOOP_STAGE_OBSERVE",
+			to:      "LOOP_STAGE_OBSERVE",
+			trigger: "TRANSITION_TRIGGER_DWELL",
+			wantErr: true,
 		},
 		{
 			name:     "observe->orient via user_tap => Oriented",

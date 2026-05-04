@@ -5,10 +5,11 @@ import { fileURLToPath } from "node:url";
 /**
  * Structural guard for /loop/+page.svelte.
  *
- * Pins the PR-L2 wiring: the page must instantiate `useKnowledgeLoop`, attach
- * the `observeTiles` action to the foreground container, and forward the hook
+ * Pins the page wiring: instantiates `useKnowledgeLoop`, forwards hook
  * actions (onTransition / onDismiss / canTransition / isInFlight) into each
- * tile. Runtime rendering is exercised by the Playwright spec.
+ * tile, and — post Auto-OODA suppression (Knowledge Loop 体験回復 plan,
+ * Pillar 1) — does NOT attach an IntersectionObserver-driven `observeTiles`
+ * action. Passive viewing must not advance OODA stage.
  */
 
 const pageSource = readFileSync(
@@ -24,9 +25,12 @@ describe("/loop/+page.svelte wiring guards", () => {
 		);
 	});
 
-	it("attaches the observeTiles action to a container", () => {
-		expect(pageSource).toMatch(/use:observeTiles/);
-		expect(pageSource).toMatch(/onObserve/);
+	it("does NOT attach observeTiles or any dwell-driven observer", () => {
+		// Auto-OODA suppression: passive viewing must not fire transitions.
+		expect(pageSource).not.toMatch(/use:observeTiles/);
+		expect(pageSource).not.toMatch(/onObserve\b/);
+		expect(pageSource).not.toMatch(/observe-tiles/);
+		expect(pageSource).not.toMatch(/loop\.observe\(/);
 	});
 
 	it("forwards the transition / dismiss / gating handlers to each tile", () => {
@@ -74,18 +78,14 @@ describe("/loop/+page.svelte wiring guards", () => {
 		);
 	});
 
-	it("renders a visible :disabled style for the workspace command so 'no source URL' is observable", () => {
-		// The Open command in ACT mode binds `disabled={!activeEntrySourceUrl}`.
-		// Without a `:disabled` rule the button stays visually identical to the
-		// active state — the user clicks and gets nothing because the browser
-		// silently drops the event. Pin the rule so it cannot regress to the
-		// invisible-disabled state again.
-		expect(pageSource).toMatch(
-			/\.workspace-command:disabled\b[\s\S]*?cursor:\s*not-allowed/,
-		);
-		expect(pageSource).toMatch(
-			/\.workspace-command:disabled\b[\s\S]*?opacity:/,
-		);
+	it("Open CTA stays enabled and becomes 'Open · resolve url' when source URL is missing", () => {
+		// Open recoverable (Knowledge Loop 体験回復 plan, Pillar 2A): NN/G's
+		// rule that disabled buttons hide the reason and offer no recovery.
+		// The button stays enabled; the secondary label signals that a BFF
+		// lookup will fire on click. Pin both halves of the contract.
+		expect(pageSource).not.toMatch(/disabled=\{!activeEntrySourceUrl\}/);
+		expect(pageSource).toMatch(/Open · resolve url/);
+		expect(pageSource).toMatch(/loop-open-resolve-error/);
 	});
 
 	it("delegates source-URL resolution to the shared resolveLoopSourceUrl helper", () => {

@@ -21,6 +21,17 @@ export const LOOP_FIXTURE_ACT_ARTICLE_ID = "article-act-fixture";
 export const LOOP_FIXTURE_ACT_SOURCE_URL =
 	"https://example.com/loop-act-article";
 
+// Open-recoverable scenario: an ACT-stage entry whose article-typed actTarget
+// has `route` populated but `sourceUrl` ABSENT. Mirrors the production state
+// where ADR-879 producer URL injection failed (legacy / lookup miss) and the
+// projection row carries no source_url. The Open CTA must remain enabled with
+// a recovery label and resolve the URL via the BFF lookup path.
+export const LOOP_FIXTURE_NO_SOURCE_ENTRY_KEY =
+	"loop-entry-fixture-no-source-1";
+export const LOOP_FIXTURE_NO_SOURCE_ARTICLE_ID = "article-no-source-fixture";
+export const LOOP_FIXTURE_NO_SOURCE_RECOVERED_URL =
+	"https://example.com/loop-no-source-recovered";
+
 // Non-NOW bucket fixtures driving the Surface plane tests (PR-L8).
 // Each belongs to exactly one bucket so partitioning in /loop/+page.svelte
 // is unambiguous.
@@ -254,4 +265,74 @@ export const CONNECT_KNOWLEDGE_LOOP_ACT_RESPONSE = {
 	overallServiceQuality: 1,
 	generatedAt: NOW_ISO,
 	projectionSeqHiwater: "20",
+};
+
+// Open-recoverable scenario: identical to the ACT response but the article
+// actTarget omits `sourceUrl`. The page is expected to render the Open CTA
+// enabled with a "Open · resolve url" secondary label and call the BFF article
+// source-url lookup on click.
+export const CONNECT_KNOWLEDGE_LOOP_NO_SOURCE_RESPONSE = {
+	foregroundEntries: [
+		{
+			entryKey: LOOP_FIXTURE_NO_SOURCE_ENTRY_KEY,
+			sourceItemKey: `article:${LOOP_FIXTURE_NO_SOURCE_ARTICLE_ID}`,
+			proposedStage: 4, // LOOP_STAGE_ACT
+			currentEntryStage: 4,
+			currentEntryStageEnteredAt: NOW_ISO,
+			surfaceBucket: 1, // NOW
+			projectionRevision: "1",
+			projectionSeqHiwater: "30",
+			freshnessAt: NOW_ISO,
+			sourceObservedAt: NOW_ISO,
+			whyPrimary: {
+				kind: 1,
+				text: "Article whose source URL needs runtime resolution.",
+				confidence: 0.7,
+				evidenceRefs: [
+					{
+						// Non-URL refId — forces the FE to depend on actTargets.sourceUrl
+						// (which is absent) or the BFF lookup. The legacy fallback to
+						// evidenceRefs[0].refId would not produce a valid HTTPS URL here.
+						refId: LOOP_FIXTURE_NO_SOURCE_ARTICLE_ID,
+						label: "primary source",
+					},
+				],
+			},
+			dismissState: 1,
+			renderDepthHint: 2,
+			loopPriority: 1,
+			decisionOptions: [],
+			actTargets: [
+				{
+					targetType: 1, // ARTICLE
+					targetRef: LOOP_FIXTURE_NO_SOURCE_ARTICLE_ID,
+					route: `/articles/${LOOP_FIXTURE_NO_SOURCE_ARTICLE_ID}`,
+					// sourceUrl deliberately omitted to simulate the regression.
+				},
+			],
+		},
+	],
+	bucketEntries: [],
+	surfaces: [
+		{
+			surfaceBucket: 1,
+			primaryEntryKey: LOOP_FIXTURE_NO_SOURCE_ENTRY_KEY,
+			secondaryEntryKeys: [],
+			projectionRevision: "1",
+			projectionSeqHiwater: "30",
+			freshnessAt: NOW_ISO,
+			serviceQuality: 1,
+		},
+	],
+	sessionState: {
+		currentStage: 4,
+		currentStageEnteredAt: NOW_ISO,
+		foregroundEntryKey: LOOP_FIXTURE_NO_SOURCE_ENTRY_KEY,
+		focusedEntryKey: LOOP_FIXTURE_NO_SOURCE_ENTRY_KEY,
+		projectionRevision: "1",
+		projectionSeqHiwater: "30",
+	},
+	overallServiceQuality: 1,
+	generatedAt: NOW_ISO,
+	projectionSeqHiwater: "30",
 };

@@ -3,22 +3,16 @@ import type { KnowledgeLoopResult } from "$lib/connect/knowledge_loop";
 import { useKnowledgeLoop } from "./useKnowledgeLoop.svelte.ts";
 
 /**
- * Knowledge Loop dwell rate-limit handling.
+ * Auto-OODA suppression (Knowledge Loop 体験回復プラン Pillar 1).
  *
- * Production regression (2026-04-26 logs): the IntersectionObserver fires
- * a `dwell` transition (observe → orient) for every tile entering the
- * viewport. Backend §8.4 caps emissions at one per
- * (user_id, entry_key, lens_mode_id) per 60 s and returns 429 above that.
+ * The dwell-fired `(observe, orient, dwell)` transition is removed entirely.
+ * Passive viewing must NOT advance OODA stage — Boyd's OODA model treats
+ * Orientation as a conscious step, and Linear-class command-center UIs
+ * separate read-state from workflow status.
  *
- * The pre-fix `observe()` mapped the 429 response to `{status: "error"}`
- * and then `observeThrottle.reset(entryKey)` cleared the local 60 s gate.
- * The next IntersectionObserver tick re-fired immediately, hit 429 again,
- * cleared the throttle again — a tight loop the user saw as `POST .../loop/transition 429`
- * spam in the browser console.
- *
- * The contract: a 429 from the backend is a *successful* signal that the
- * window is still active. The local throttle MUST stay armed so we honor
- * the same 60 s cap on the client side.
+ * The hook no longer exposes an `observe()` method. The only way to advance
+ * out of Observe is an explicit `transitionTo(entryKey, "orient", "user_tap")`
+ * driven by a user gesture (tap-to-expand on the tile).
  */
 
 const FRESH_FOREGROUND: KnowledgeLoopResult = {
@@ -61,100 +55,42 @@ const REVIEW_BUCKET: KnowledgeLoopResult = {
 	],
 };
 
-describe("useKnowledgeLoop.observe — backend 429 must NOT clear local throttle", () => {
-	it("does NOT re-fire after a 429 within the 60 s window", async () => {
+describe("useKnowledgeLoop — dwell removed, no observe() method", () => {
+	it("does not expose observe() any more (passive stage advancement is suppressed)", () => {
+		const loop = useKnowledgeLoop({
+			initial: FRESH_FOREGROUND,
+			lensModeId: "default",
+			fetchImpl: (async () =>
+				new Response("{}", { status: 200 })) as unknown as typeof fetch,
+		});
+		// The only legitimate way to leave Observe is now an explicit user_tap
+		// transition. The hook surface MUST NOT carry a method that fires
+		// (observe, orient, dwell) implicitly.
+		expect("observe" in loop).toBe(false);
+	});
+
+	it("never fires a /loop/transition POST without an explicit caller invoking transitionTo", async () => {
 		let calls = 0;
 		const countingFetch = (async () => {
 			calls += 1;
-			return new Response(JSON.stringify({ error: "rate_limited" }), {
-				status: 429,
-				headers: { "content-type": "application/json" },
-			});
+			return new Response(
+				JSON.stringify({ accepted: true, canonicalEntryKey: "article:42" }),
+				{ status: 200 },
+			);
 		}) as unknown as typeof fetch;
 
 		const loop = useKnowledgeLoop({
 			initial: FRESH_FOREGROUND,
 			lensModeId: "default",
 			fetchImpl: countingFetch,
-			observeThrottleStorage: null,
 		});
+		await Promise.resolve();
+		await Promise.resolve();
+		expect(calls).toBe(0);
 
-		const first = await loop.observe("article:42");
-		const second = await loop.observe("article:42");
-		const third = await loop.observe("article:42");
-
-		expect(first).toBe(false); // 429 → not accepted
-		expect(second).toBe(false); // throttle gates the second tick
-		expect(third).toBe(false); // and the third
-		expect(calls).toBe(1); // backend hit ONCE, not three times
-	});
-
-	it("persists throttle to injected Storage so a fresh hook (reload) does not re-fire", async () => {
-		// First "page session": single in-memory observe → 429 captured →
-		// throttle persisted to the shared Storage.
-		const storage = (() => {
-			const m = new Map<string, string>();
-			return {
-				getItem: (k: string) => m.get(k) ?? null,
-				setItem: (k: string, v: string) => {
-					m.set(k, v);
-				},
-				removeItem: (k: string) => {
-					m.delete(k);
-				},
-			};
-		})();
-		let calls = 0;
-		const fetchImpl = (async () => {
-			calls += 1;
-			return new Response(JSON.stringify({ error: "rate_limited" }), {
-				status: 429,
-			});
-		}) as unknown as typeof fetch;
-
-		const session1 = useKnowledgeLoop({
-			initial: FRESH_FOREGROUND,
-			lensModeId: "default",
-			fetchImpl,
-			observeThrottleStorage: storage,
-		});
-		await session1.observe("article:42");
+		const result = await loop.transitionTo("article:42", "orient", "user_tap");
+		expect(result.status).toBe("accepted");
 		expect(calls).toBe(1);
-
-		// Second "page session" reuses the same Storage — exactly what a
-		// browser reload looks like. The throttle MUST gate the new hook so
-		// no second fetch is issued, mirroring backend §8.4's 60s window.
-		const session2 = useKnowledgeLoop({
-			initial: FRESH_FOREGROUND,
-			lensModeId: "default",
-			fetchImpl,
-			observeThrottleStorage: storage,
-		});
-		await session2.observe("article:42");
-		await session2.observe("article:42");
-		expect(calls).toBe(1);
-	});
-
-	it("network error does still allow a retry (throttle reset preserved)", async () => {
-		let calls = 0;
-		// 500 → status "error" → reset throttle (the original behavior, preserved
-		// for transient infra errors where re-tries are appropriate).
-		const flakyFetch = (async () => {
-			calls += 1;
-			return new Response("internal", { status: 500 });
-		}) as unknown as typeof fetch;
-
-		const loop = useKnowledgeLoop({
-			initial: FRESH_FOREGROUND,
-			lensModeId: "default",
-			fetchImpl: flakyFetch,
-			observeThrottleStorage: null,
-		});
-
-		await loop.observe("article:42");
-		await loop.observe("article:42");
-
-		expect(calls).toBe(2); // 500 keeps reset semantics — retries are OK
 	});
 });
 
@@ -165,7 +101,6 @@ describe("useKnowledgeLoop.bucketEntries — review lane state ownership", () =>
 			lensModeId: "default",
 			fetchImpl: (async () =>
 				new Response("{}", { status: 200 })) as unknown as typeof fetch,
-			observeThrottleStorage: null,
 		});
 
 		expect(loop.entries).toHaveLength(0);
@@ -187,7 +122,6 @@ describe("useKnowledgeLoop.bucketEntries — review lane state ownership", () =>
 			initial: REVIEW_BUCKET,
 			lensModeId: "default",
 			fetchImpl: captureFetch,
-			observeThrottleStorage: null,
 		});
 
 		const result = await loop.reviewAction("article:review-1", "archive");
@@ -210,7 +144,6 @@ describe("useKnowledgeLoop.bucketEntries — review lane state ownership", () =>
 			initial: REVIEW_BUCKET,
 			lensModeId: "default",
 			fetchImpl: accepted,
-			observeThrottleStorage: null,
 		});
 
 		await loop.reviewAction("article:review-1", "mark_reviewed");
@@ -225,7 +158,6 @@ describe("useKnowledgeLoop.bucketEntries — review lane state ownership", () =>
 			lensModeId: "default",
 			fetchImpl: (async () =>
 				new Response("{}", { status: 200 })) as unknown as typeof fetch,
-			observeThrottleStorage: null,
 		});
 
 		const applied = loop.applyStreamFrame({
@@ -274,7 +206,6 @@ describe("useKnowledgeLoop.currentEntryStage — proposed stage is not local pro
 			},
 			lensModeId: "default",
 			fetchImpl: captureFetch,
-			observeThrottleStorage: null,
 		});
 
 		const result = await loop.transitionTo("article:42", "decide");
@@ -307,7 +238,6 @@ describe("useKnowledgeLoop.dismiss — removes the entry from foreground", () =>
 			initial: FRESH_FOREGROUND,
 			lensModeId: "default",
 			fetchImpl: accepted,
-			observeThrottleStorage: null,
 		});
 		expect(loop.entries).toHaveLength(1);
 
@@ -322,7 +252,6 @@ describe("useKnowledgeLoop.dismiss — removes the entry from foreground", () =>
 			initial: FRESH_FOREGROUND,
 			lensModeId: "default",
 			fetchImpl,
-			observeThrottleStorage: null,
 		});
 
 		await loop.dismiss("does-not-exist");
@@ -349,7 +278,6 @@ describe("useKnowledgeLoop.dismiss — removes the entry from foreground", () =>
 			initial: FRESH_FOREGROUND, // proposedStage === "observe"
 			lensModeId: "default",
 			fetchImpl: captureFetch,
-			observeThrottleStorage: null,
 		});
 
 		await loop.dismiss("article:42");
@@ -378,7 +306,6 @@ describe("useKnowledgeLoop.replaceSnapshot — re-seed without losing optimistic
 			initial: FRESH_FOREGROUND,
 			lensModeId: "default",
 			fetchImpl,
-			observeThrottleStorage: null,
 		});
 
 		const next: KnowledgeLoopResult = {
@@ -408,7 +335,6 @@ describe("useKnowledgeLoop.replaceSnapshot — re-seed without losing optimistic
 			initial: FRESH_FOREGROUND,
 			lensModeId: "default",
 			fetchImpl: accepted,
-			observeThrottleStorage: null,
 		});
 
 		await loop.dismiss("article:42");
@@ -454,7 +380,6 @@ describe("useKnowledgeLoop.replaceSnapshot — inFlight stale gc", () => {
 			initial: FRESH_FOREGROUND,
 			lensModeId: "default",
 			fetchImpl: stallingFetch,
-			observeThrottleStorage: null,
 		});
 
 		// Kick off a transition that will hang.
@@ -497,7 +422,6 @@ describe("useKnowledgeLoop.replaceSnapshot — inFlight stale gc", () => {
 			initial: FRESH_FOREGROUND,
 			lensModeId: "default",
 			fetchImpl: stallingFetch,
-			observeThrottleStorage: null,
 		});
 
 		const pending = loop.transitionTo("article:42", "orient");
@@ -537,7 +461,6 @@ describe("useKnowledgeLoop — per-call AbortController timeout", () => {
 				initial: FRESH_FOREGROUND,
 				lensModeId: "default",
 				fetchImpl: stallingFetch,
-				observeThrottleStorage: null,
 			});
 
 			const pending = loop.transitionTo("article:42", "orient");
@@ -582,7 +505,6 @@ describe("useKnowledgeLoop.resetInFlight", () => {
 			},
 			lensModeId: "default",
 			fetchImpl: stallingFetch,
-			observeThrottleStorage: null,
 		});
 
 		const a = loop.transitionTo("article:42", "orient");
@@ -626,7 +548,6 @@ describe("useKnowledgeLoop.applyStreamFrame — inline patch protocol", () => {
 			initial: FRESH_FOREGROUND,
 			lensModeId: "default",
 			fetchImpl: NOOP_FETCH,
-			observeThrottleStorage: null,
 		});
 
 		const revised = {
@@ -651,7 +572,6 @@ describe("useKnowledgeLoop.applyStreamFrame — inline patch protocol", () => {
 			initial: FRESH_FOREGROUND,
 			lensModeId: "default",
 			fetchImpl: NOOP_FETCH,
-			observeThrottleStorage: null,
 		});
 
 		const applied = loop.applyStreamFrame({
@@ -670,7 +590,6 @@ describe("useKnowledgeLoop.applyStreamFrame — inline patch protocol", () => {
 			initial: { ...FRESH_FOREGROUND, bucketEntries: [BUCKET_ENTRY_CONTINUE] },
 			lensModeId: "default",
 			fetchImpl: NOOP_FETCH,
-			observeThrottleStorage: null,
 		});
 
 		const applied = loop.applyStreamFrame({
@@ -689,7 +608,6 @@ describe("useKnowledgeLoop.applyStreamFrame — inline patch protocol", () => {
 			initial: FRESH_FOREGROUND,
 			lensModeId: "default",
 			fetchImpl: NOOP_FETCH,
-			observeThrottleStorage: null,
 		});
 
 		const applied = loop.applyStreamFrame({
@@ -709,7 +627,6 @@ describe("useKnowledgeLoop.applyStreamFrame — inline patch protocol", () => {
 			initial: FRESH_FOREGROUND,
 			lensModeId: "default",
 			fetchImpl: NOOP_FETCH,
-			observeThrottleStorage: null,
 		});
 
 		const applied = loop.applyStreamFrame({
@@ -731,7 +648,6 @@ describe("useKnowledgeLoop.applyStreamFrame — inline patch protocol", () => {
 			initial: { ...FRESH_FOREGROUND, bucketEntries: [BUCKET_ENTRY_CONTINUE] },
 			lensModeId: "default",
 			fetchImpl: NOOP_FETCH,
-			observeThrottleStorage: null,
 		});
 
 		const applied = loop.applyStreamFrame({
