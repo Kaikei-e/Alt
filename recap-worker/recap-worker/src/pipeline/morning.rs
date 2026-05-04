@@ -167,14 +167,24 @@ impl MorningPipeline {
             .into_iter()
             .map(|(group_id, articles)| MorningLetterGroupInput { group_id, articles })
             .collect();
+        let overnight_groups = cap_overnight_groups_for_prompt(overnight_groups);
 
         let target_date = chrono::Utc::now().format("%Y-%m-%d").to_string();
         let edition_timezone = "Asia/Tokyo".to_string();
 
+        // Cap recap context to fit the LLM prompt budget — once the
+        // grounding flow ships every genre's full prose, the prompt
+        // overflows the 8k context window and the LLM degenerates into
+        // a malformed JSON repetition that the Pydantic validator rejects.
+        let capped_recap_summaries = recap_ctx
+            .summaries
+            .map(cap_recap_inputs_for_prompt)
+            .filter(|s| !s.is_empty());
+
         let request = MorningLetterGenerateRequest {
             target_date: target_date.clone(),
             edition_timezone: edition_timezone.clone(),
-            recap_summaries: recap_ctx.summaries,
+            recap_summaries: capped_recap_summaries,
             overnight_groups,
         };
 
@@ -546,6 +556,72 @@ fn dominant_genres_for(
     out
 }
 
+/// Maximum number of recap genres included in the Morning Letter prompt.
+/// Calibrated against gemma4-e4b-12k's 8k context window: 8 genres × 2
+/// bullets × 200 chars ≈ 4 KiB of recap content, leaving headroom for the
+/// overnight section, the static template, and `num_predict=1200` output
+/// tokens.
+const MAX_RECAP_GENRES_FOR_PROMPT: usize = 8;
+
+/// Maximum bullets retained per genre when building the prompt.
+const MAX_BULLETS_PER_GENRE_FOR_PROMPT: usize = 2;
+
+/// Maximum unicode characters per bullet when building the prompt. Real
+/// `recap_outputs.bullets_ja` entries are full prose paragraphs (~700 chars);
+/// truncating to roughly two sentences is enough for the LLM to ground on
+/// without forcing the prompt past the context limit.
+const MAX_BULLET_CHARS_FOR_PROMPT: usize = 200;
+
+/// Maximum overnight groups passed to the prompt. The dedup pipeline can
+/// emit 250+ groups in a busy night; the LLM only needs a representative
+/// slice to produce top3/by_genre sections.
+const MAX_OVERNIGHT_GROUPS_FOR_PROMPT: usize = 40;
+
+fn truncate_to_chars(s: &str, limit: usize) -> String {
+    if s.chars().count() <= limit {
+        s.to_string()
+    } else {
+        s.chars().take(limit).collect()
+    }
+}
+
+/// Cap a recap-input vector so the rendered Morning Letter prompt fits
+/// inside the LLM context window. Drops genres whose bullets all become
+/// empty after trimming so a phantom header never ships without content.
+fn cap_recap_inputs_for_prompt(
+    inputs: Vec<MorningLetterRecapInput>,
+) -> Vec<MorningLetterRecapInput> {
+    inputs
+        .into_iter()
+        .take(MAX_RECAP_GENRES_FOR_PROMPT)
+        .filter_map(|mut input| {
+            let trimmed: Vec<String> = input
+                .bullets
+                .into_iter()
+                .take(MAX_BULLETS_PER_GENRE_FOR_PROMPT)
+                .map(|b| truncate_to_chars(b.trim(), MAX_BULLET_CHARS_FOR_PROMPT))
+                .filter(|b| !b.is_empty())
+                .collect();
+            if trimmed.is_empty() {
+                return None;
+            }
+            input.bullets = trimmed;
+            Some(input)
+        })
+        .collect()
+}
+
+/// Cap overnight groups so a busy night's 250+ entries don't displace
+/// recap context inside the prompt.
+fn cap_overnight_groups_for_prompt(
+    groups: Vec<MorningLetterGroupInput>,
+) -> Vec<MorningLetterGroupInput> {
+    groups
+        .into_iter()
+        .take(MAX_OVERNIGHT_GROUPS_FOR_PROMPT)
+        .collect()
+}
+
 /// Resolve `(title, bullets)` for a recap genre, preferring the structured
 /// `recap_outputs.title_ja` / `bullets_ja` columns and falling back to the
 /// legacy `summary_ja` JSON path when those are absent or empty.
@@ -862,6 +938,109 @@ mod tests {
         // Empty structured bullets must not shadow a usable legacy summary.
         assert_eq!(title, "FromProse");
         assert_eq!(bullets, vec!["one"]);
+    }
+
+    // ---- prompt budget caps ----
+    //
+    // Once recap_summaries flows end-to-end, the unbounded payload
+    // overflows the 8k context window of gemma4-e4b-12k (observed
+    // 2026-05-04: 32530 chars / 8132 tokens at 99.3% usage, which
+    // forced extractive fallback). Producer-side caps keep the prompt
+    // under budget regardless of how rich the recap reduce stage gets.
+
+    #[test]
+    fn cap_recap_inputs_for_prompt_keeps_top_genres_and_truncates_bullets() {
+        let mut inputs = Vec::new();
+        for i in 0..20 {
+            inputs.push(MorningLetterRecapInput {
+                genre: format!("g{i:02}"),
+                title: format!("title {i}"),
+                bullets: vec![
+                    "あ".repeat(500), // way over MAX_BULLET_CHARS_FOR_PROMPT
+                    "い".repeat(500),
+                    "う".repeat(500),
+                    "え".repeat(500),
+                ],
+                window_days: 3,
+            });
+        }
+        let capped = cap_recap_inputs_for_prompt(inputs);
+        assert!(capped.len() <= MAX_RECAP_GENRES_FOR_PROMPT);
+        assert!(!capped.is_empty());
+        for input in &capped {
+            assert!(input.bullets.len() <= MAX_BULLETS_PER_GENRE_FOR_PROMPT);
+            for bullet in &input.bullets {
+                assert!(
+                    bullet.chars().count() <= MAX_BULLET_CHARS_FOR_PROMPT,
+                    "bullet over {} chars: {} chars",
+                    MAX_BULLET_CHARS_FOR_PROMPT,
+                    bullet.chars().count()
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn cap_recap_inputs_preserves_short_payloads_unchanged() {
+        let inputs = vec![MorningLetterRecapInput {
+            genre: "ai".into(),
+            title: "t".into(),
+            bullets: vec!["short bullet".into()],
+            window_days: 3,
+        }];
+        let capped = cap_recap_inputs_for_prompt(inputs.clone());
+        assert_eq!(capped.len(), 1);
+        assert_eq!(capped[0].bullets, inputs[0].bullets);
+    }
+
+    #[test]
+    fn cap_recap_inputs_drops_genre_entirely_when_no_bullets_survive() {
+        // Defensive: empty bullets after truncation shouldn't ship as
+        // a phantom genre header with nothing under it.
+        let inputs = vec![MorningLetterRecapInput {
+            genre: "empty".into(),
+            title: "t".into(),
+            bullets: vec!["   ".into(), String::new()],
+            window_days: 3,
+        }];
+        let capped = cap_recap_inputs_for_prompt(inputs);
+        assert!(capped.is_empty());
+    }
+
+    #[test]
+    fn cap_overnight_groups_for_prompt_limits_count() {
+        let groups: Vec<MorningLetterGroupInput> = (0..200)
+            .map(|i| MorningLetterGroupInput {
+                group_id: Uuid::new_v4(),
+                articles: vec![RepresentativeSentence {
+                    text: format!("article {i}"),
+                    published_at: None,
+                    source_url: None,
+                    article_id: None,
+                    is_centroid: true,
+                }],
+            })
+            .collect();
+        let capped = cap_overnight_groups_for_prompt(groups);
+        assert_eq!(capped.len(), MAX_OVERNIGHT_GROUPS_FOR_PROMPT);
+    }
+
+    #[test]
+    fn cap_overnight_groups_preserves_short_inputs() {
+        let groups: Vec<MorningLetterGroupInput> = (0..5)
+            .map(|i| MorningLetterGroupInput {
+                group_id: Uuid::new_v4(),
+                articles: vec![RepresentativeSentence {
+                    text: format!("a{i}"),
+                    published_at: None,
+                    source_url: None,
+                    article_id: None,
+                    is_centroid: true,
+                }],
+            })
+            .collect();
+        let capped = cap_overnight_groups_for_prompt(groups);
+        assert_eq!(capped.len(), 5);
     }
 
     #[test]
