@@ -460,7 +460,7 @@ class MorningLetterSection(BaseModel):
     """A section in the Morning Letter."""
 
     key: str = Field(
-        min_length=1, pattern=r"^(lead|top3|what_changed|by_genre:[a-z0-9_\-]+)$"
+        min_length=1, pattern=r"^(lead|top3|what_changed|by_genre:[a-z0-9_-]+)$"
     )
     title: str = Field(min_length=1)
     bullets: List[str] = Field(min_length=1)
