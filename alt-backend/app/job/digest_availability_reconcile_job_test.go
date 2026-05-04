@@ -224,6 +224,43 @@ func TestDigestAvailabilityReconcile(t *testing.T) {
 		assert.True(t, digestPort.upserted[0].EveningPulseAvailable)
 	})
 
+	t.Run("pulse with topics - PulseRefs populated from cluster IDs", func(t *testing.T) {
+		listUsersPort := &mockListDistinctUserIDsPort{userIDs: []uuid.UUID{userID}}
+		recapPort := &mockRecapPortForDigest{
+			eveningPulse: &domain.EveningPulse{
+				Status: domain.PulseStatusNormal,
+				Topics: []domain.PulseTopic{
+					{ClusterID: 42},
+					{ClusterID: 99},
+				},
+			},
+		}
+		digestPort := &mockDigestUpsertPort{}
+
+		err := digestAvailabilityReconcile(context.Background(), listUsersPort, recapPort, digestPort)
+		require.NoError(t, err)
+		require.Len(t, digestPort.upserted, 1)
+		assert.Equal(t, []string{"cluster:42", "cluster:99"}, digestPort.upserted[0].PulseRefs,
+			"PulseRefs must be populated from EveningPulse.Topics so today_digest_view.pulse_refs_json is non-empty")
+	})
+
+	t.Run("pulse PulseStatusError - PulseRefs empty (no topics to reference)", func(t *testing.T) {
+		listUsersPort := &mockListDistinctUserIDsPort{userIDs: []uuid.UUID{userID}}
+		recapPort := &mockRecapPortForDigest{
+			eveningPulse: &domain.EveningPulse{
+				Status: domain.PulseStatusError,
+				Topics: []domain.PulseTopic{{ClusterID: 1}},
+			},
+		}
+		digestPort := &mockDigestUpsertPort{}
+
+		err := digestAvailabilityReconcile(context.Background(), listUsersPort, recapPort, digestPort)
+		require.NoError(t, err)
+		require.Len(t, digestPort.upserted, 1)
+		assert.Empty(t, digestPort.upserted[0].PulseRefs,
+			"PulseStatusError must not propagate PulseRefs — pulse is not actually available")
+	})
+
 	t.Run("upsert error for one user - continues to next", func(t *testing.T) {
 		user2 := uuid.New()
 		listUsersPort := &mockListDistinctUserIDsPort{userIDs: []uuid.UUID{userID, user2}}

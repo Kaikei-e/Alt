@@ -255,7 +255,7 @@ func projectEvent(
 	case domain.EventSummaryVersionCreated:
 		return projectSummaryVersionCreated(ctx, event, homeItemsPort, todayDigestPort, summaryVersionPort, projectionVersion)
 	case domain.EventTagSetVersionCreated:
-		return projectTagSetVersionCreated(ctx, event, homeItemsPort, tagSetVersionPort, projectionVersion)
+		return projectTagSetVersionCreated(ctx, event, homeItemsPort, todayDigestPort, tagSetVersionPort, projectionVersion)
 	case domain.EventHomeItemOpened:
 		return projectHomeItemOpened(ctx, event, homeItemsPort, recallCandidatePort, clearSupersedePort, projectionVersion)
 	case domain.EventHomeItemDismissed:
@@ -557,7 +557,7 @@ func parseTagNames(raw json.RawMessage) []string {
 	return nil
 }
 
-func projectTagSetVersionCreated(ctx context.Context, event domain.KnowledgeEvent, port knowledge_home_port.UpsertKnowledgeHomeItemPort, tagSetVersionPort tag_set_version_port.GetTagSetVersionByIDPort, projectionVersion int) error {
+func projectTagSetVersionCreated(ctx context.Context, event domain.KnowledgeEvent, port knowledge_home_port.UpsertKnowledgeHomeItemPort, todayDigestPort today_digest_port.UpsertTodayDigestPort, tagSetVersionPort tag_set_version_port.GetTagSetVersionByIDPort, projectionVersion int) error {
 	var payload tagSetVersionPayload
 	if err := json.Unmarshal(event.Payload, &payload); err != nil {
 		return fmt.Errorf("unmarshal TagSetVersionCreated payload: %w", err)
@@ -587,8 +587,13 @@ func projectTagSetVersionCreated(ctx context.Context, event domain.KnowledgeEven
 	}
 
 	now := time.Now()
+	userID := event.TenantID
+	if event.UserID != nil {
+		userID = *event.UserID
+	}
+
 	item := domain.KnowledgeHomeItem{
-		UserID:            event.TenantID,
+		UserID:            userID,
 		TenantID:          event.TenantID,
 		ItemKey:           fmt.Sprintf("article:%s", articleID),
 		ItemType:          domain.ItemArticle,
@@ -602,11 +607,27 @@ func projectTagSetVersionCreated(ctx context.Context, event domain.KnowledgeEven
 		ProjectionVersion: projectionVersion,
 	}
 
-	if event.UserID != nil {
-		item.UserID = *event.UserID
+	if err := port.UpsertKnowledgeHomeItem(ctx, item); err != nil {
+		return err
 	}
 
-	return port.UpsertKnowledgeHomeItem(ctx, item)
+	// Surface tags into today_digest_view.top_tags_json. The projection table
+	// merges via COALESCE(NULLIF(EXCLUDED.top_tags_json, '[]'::jsonb), …) so
+	// sending an empty list preserves whatever was previously written.
+	if todayDigestPort != nil && len(tags) > 0 {
+		digest := domain.TodayDigest{
+			UserID:     userID,
+			DigestDate: now,
+			TopTags:    tags,
+			UpdatedAt:  now,
+		}
+		if err := todayDigestPort.UpsertTodayDigest(ctx, digest); err != nil {
+			logger.ErrorContext(ctx, "failed to update today digest top_tags from TagSetVersionCreated", "error", err)
+			// Non-fatal: home item upsert already succeeded.
+		}
+	}
+
+	return nil
 }
 
 type homeItemOpenedPayload struct {

@@ -24,6 +24,7 @@ type TodayDigest struct {
 	SummarizedArticles    int        `json:"summarized_articles" db:"summarized_articles"`
 	UnsummarizedArticles  int        `json:"unsummarized_articles" db:"unsummarized_articles"`
 	TopTags               []string   `json:"top_tags"`
+	PulseRefs             []string   `json:"pulse_refs"`
 	WeeklyRecapAvailable  bool       `json:"weekly_recap_available"`
 	EveningPulseAvailable bool       `json:"evening_pulse_available"`
 	NeedToKnowCount       int        `json:"need_to_know_count"`

@@ -61,9 +61,16 @@ func digestAvailabilityReconcile(
 	// Check pulse availability (global, once)
 	pulseAvailable := false
 	pulseSkip := false
+	var pulseRefs []string
 	pulse, err := recapPort.GetEveningPulse(ctx, today)
 	if err == nil {
 		pulseAvailable = pulse.Status != domain.PulseStatusError
+		if pulseAvailable {
+			pulseRefs = make([]string, 0, len(pulse.Topics))
+			for _, topic := range pulse.Topics {
+				pulseRefs = append(pulseRefs, fmt.Sprintf("cluster:%d", topic.ClusterID))
+			}
+		}
 	} else if errors.Is(err, domain.ErrEveningPulseNotFound) {
 		pulseAvailable = false
 	} else {
@@ -92,6 +99,7 @@ func digestAvailabilityReconcile(
 			DigestDate:            now,
 			WeeklyRecapAvailable:  recapAvailable,
 			EveningPulseAvailable: pulseAvailable,
+			PulseRefs:             pulseRefs,
 			UpdatedAt:             now,
 		}
 

@@ -1110,6 +1110,57 @@ func TestKnowledgeProjectorJob_TagSetVersionCreated_ProjectsTags(t *testing.T) {
 	assert.Equal(t, userID, item.UserID)
 }
 
+// TestKnowledgeProjectorJob_TagSetVersionCreated_PopulatesTodayDigestTopTags
+// pins the contract that today_digest_view.top_tags_json is updated when a
+// TagSetVersionCreated event is projected. Without this wire-up, top_tags_json
+// remained at '[]' permanently because no projector path ever wrote to it
+// (only ArticleCreated did, which has no tags).
+func TestKnowledgeProjectorJob_TagSetVersionCreated_PopulatesTodayDigestTopTags(t *testing.T) {
+	logger.InitLogger()
+
+	tenantID := uuid.New()
+	userID := uuid.New()
+	articleID := uuid.New()
+	tsvID := uuid.New()
+
+	tagsJSON, _ := json.Marshal([]tagItem{
+		{Name: "rust", Confidence: 0.95},
+		{Name: "event-sourcing", Confidence: 0.8},
+	})
+
+	tagPayload, _ := json.Marshal(tagSetVersionPayload{
+		TagSetVersionID: tsvID.String(),
+		ArticleID:       articleID.String(),
+	})
+
+	eventsPort := &mockEventsPort{
+		events: []domain.KnowledgeEvent{
+			{EventID: uuid.New(), EventSeq: 1, TenantID: tenantID, UserID: &userID, EventType: domain.EventTagSetVersionCreated, AggregateType: domain.AggregateArticle, AggregateID: articleID.String(), Payload: tagPayload},
+		},
+	}
+	checkpointPort := &mockCheckpointPort{lastSeq: 0}
+	homeItemsPort := &mockHomeItemsPort{}
+	digestPort := &mockDigestPort{}
+	tagSetVersionPort := &mockTagSetVersionPort{
+		tsv: domain.TagSetVersion{
+			TagSetVersionID: tsvID,
+			ArticleID:       articleID,
+			UserID:          userID,
+			Generator:       "tag-generator",
+			TagsJSON:        tagsJSON,
+		},
+	}
+
+	fn := KnowledgeProjectorJob(eventsPort, checkpointPort, checkpointPort, homeItemsPort, digestPort, nil, nil, nil, tagSetVersionPort)
+	require.NoError(t, fn(context.Background()))
+
+	require.Len(t, digestPort.upserted, 1, "today digest should be upserted once for TagSetVersionCreated")
+	digest := digestPort.upserted[0]
+	assert.Equal(t, userID, digest.UserID)
+	assert.Equal(t, []string{"rust", "event-sourcing"}, digest.TopTags,
+		"TopTags must be propagated from the TagSetVersion so today_digest_view.top_tags_json is non-empty")
+}
+
 func TestKnowledgeProjectorJob_TagSetVersionCreated_NoTagHotspotInProjector(t *testing.T) {
 	logger.InitLogger()
 

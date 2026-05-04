@@ -258,6 +258,7 @@ func (r *Repository) UpsertTodayDigest(ctx context.Context, payload json.RawMess
 		SummarizedArticles    int       `json:"summarized_articles"`
 		UnsummarizedArticles  int       `json:"unsummarized_articles"`
 		TopTags               []string  `json:"top_tags"`
+		PulseRefs             []string  `json:"pulse_refs"`
 		UpdatedAt             time.Time `json:"updated_at"`
 		WeeklyRecapAvailable  bool      `json:"weekly_recap_available"`
 		EveningPulseAvailable bool      `json:"evening_pulse_available"`
@@ -271,7 +272,12 @@ func (r *Repository) UpsertTodayDigest(ctx context.Context, payload json.RawMess
 		topTags = []string{}
 	}
 	topTagsJSON, _ := json.Marshal(topTags)
-	pulseRefsJSON := []byte("[]")
+
+	pulseRefs := digest.PulseRefs
+	if pulseRefs == nil {
+		pulseRefs = []string{}
+	}
+	pulseRefsJSON, _ := json.Marshal(pulseRefs)
 
 	query := `INSERT INTO today_digest_view
 		(user_id, digest_date, new_articles, summarized_articles,
@@ -282,8 +288,8 @@ func (r *Repository) UpsertTodayDigest(ctx context.Context, payload json.RawMess
 		 new_articles = today_digest_view.new_articles + EXCLUDED.new_articles,
 		 summarized_articles = today_digest_view.summarized_articles + EXCLUDED.summarized_articles,
 		 unsummarized_articles = GREATEST(0, today_digest_view.unsummarized_articles + EXCLUDED.unsummarized_articles),
-		 top_tags_json = CASE WHEN EXCLUDED.top_tags_json != '[]'::jsonb THEN EXCLUDED.top_tags_json ELSE today_digest_view.top_tags_json END,
-		 pulse_refs_json = CASE WHEN EXCLUDED.pulse_refs_json != '[]'::jsonb THEN EXCLUDED.pulse_refs_json ELSE today_digest_view.pulse_refs_json END,
+		 top_tags_json = COALESCE(NULLIF(EXCLUDED.top_tags_json, '[]'::jsonb), today_digest_view.top_tags_json),
+		 pulse_refs_json = COALESCE(NULLIF(EXCLUDED.pulse_refs_json, '[]'::jsonb), today_digest_view.pulse_refs_json),
 		 updated_at = EXCLUDED.updated_at,
 		 weekly_recap_available = EXCLUDED.weekly_recap_available OR today_digest_view.weekly_recap_available,
 		 evening_pulse_available = EXCLUDED.evening_pulse_available OR today_digest_view.evening_pulse_available`
