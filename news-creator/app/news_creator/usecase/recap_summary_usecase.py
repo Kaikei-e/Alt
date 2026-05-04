@@ -33,11 +33,19 @@ from news_creator.domain.models import (
     Reference,
     RepresentativeSentence,
 )
+from news_creator.gateway.hybrid_priority_semaphore import PreemptedException
 from news_creator.port.cache_port import CachePort
 from news_creator.port.llm_provider_port import LLMProviderPort
 from news_creator.utils.repetition_detector import detect_repetition
 
 logger = logging.getLogger(__name__)
+
+# Number of attempts for hold_slot+generate_raw when a BE map/reduce request
+# is preempted by an RT request. The retry loop applies exponential backoff
+# (1s, 2s) before the final attempt. Beyond this, the chunk falls back to
+# the existing graceful-degradation path (returns None and the orchestrator
+# rebuilds with extractive intermediate summaries).
+_PREEMPT_RETRY_ATTEMPTS = 3
 
 REFERENCE_MARKER_RE = re.compile(r"\[(\d+)\]")
 PLACEHOLDER_BULLET_RE = re.compile(r"^\s*(?:\.\.\.|…)(?:\s*\[\d+\])?\s*$")
@@ -432,20 +440,12 @@ class RecapSummaryUsecase:
         )
 
         try:
-            async with self.llm_provider.hold_slot(is_high_priority=False) as (
-                _wait_time,
-                cancel_event,
-                task_id,
-            ):
-                llm_response = await self.llm_provider.generate_raw(
-                    chunk_prompt,
-                    cancel_event=cancel_event,
-                    task_id=task_id,
-                    num_predict=self.config.recap_summary_num_predict // 2,
-                    format=json_schema,
-                    options=llm_options,
-                )
-
+            llm_response = await self._hold_slot_generate_raw_with_preempt_retry(
+                chunk_prompt,
+                num_predict=self.config.recap_summary_num_predict // 2,
+                format=json_schema,
+                options=llm_options,
+            )
             return self._parse_intermediate_summary_json(llm_response.response, request)
         except Exception as e:
             logger.warning(
@@ -675,20 +675,12 @@ class RecapSummaryUsecase:
         reduce_prompt = self._build_reduce_group_prompt(request, combined_bullets)
 
         try:
-            async with self.llm_provider.hold_slot(is_high_priority=False) as (
-                _wait_time,
-                cancel_event,
-                task_id,
-            ):
-                llm_response = await self.llm_provider.generate_raw(
-                    reduce_prompt,
-                    cancel_event=cancel_event,
-                    task_id=task_id,
-                    num_predict=self.config.recap_summary_num_predict // 2,
-                    format=json_schema,
-                    options=llm_options,
-                )
-
+            llm_response = await self._hold_slot_generate_raw_with_preempt_retry(
+                reduce_prompt,
+                num_predict=self.config.recap_summary_num_predict // 2,
+                format=json_schema,
+                options=llm_options,
+            )
             return self._parse_intermediate_summary_json(llm_response.response, request)
         except Exception as e:
             logger.warning(
@@ -700,6 +692,55 @@ class RecapSummaryUsecase:
                 },
             )
             return None
+
+    async def _hold_slot_generate_raw_with_preempt_retry(
+        self,
+        prompt: str,
+        *,
+        num_predict: int,
+        format: Dict[str, Any],
+        options: Dict[str, Any],
+    ) -> LLMGenerateResponse:
+        """Acquire a BE slot and run generate_raw, retrying when an RT request preempts.
+
+        PreemptedException is not a permanent failure — it signals that an RT
+        request bumped the BE work mid-flight. Re-acquiring a slot and replaying
+        the prompt usually succeeds. Up to ``_PREEMPT_RETRY_ATTEMPTS`` total
+        attempts are made with exponential backoff (1s, 2s) before the
+        exception propagates to the caller's graceful-degradation path.
+        """
+        last_exc: Optional[BaseException] = None
+        for attempt in range(_PREEMPT_RETRY_ATTEMPTS):
+            try:
+                async with self.llm_provider.hold_slot(is_high_priority=False) as (
+                    _wait_time,
+                    cancel_event,
+                    task_id,
+                ):
+                    return await self.llm_provider.generate_raw(
+                        prompt,
+                        cancel_event=cancel_event,
+                        task_id=task_id,
+                        num_predict=num_predict,
+                        format=format,
+                        options=options,
+                    )
+            except PreemptedException as exc:
+                last_exc = exc
+                if attempt + 1 >= _PREEMPT_RETRY_ATTEMPTS:
+                    raise
+                backoff = 2**attempt
+                logger.info(
+                    "Preempted during generate_raw, retrying after backoff",
+                    extra={"attempt": attempt + 1, "backoff_seconds": backoff},
+                )
+                await asyncio.sleep(backoff)
+        # Defensive: the loop must have either returned or raised.
+        raise (
+            last_exc
+            if last_exc is not None
+            else RuntimeError("preempt retry loop exited without result")
+        )
 
     def _build_reduce_group_prompt(
         self,

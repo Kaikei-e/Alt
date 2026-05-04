@@ -84,6 +84,34 @@ def test_recap_summary_handler_runtime_error():
     assert resp.json()["detail"] == "llm failure"
 
 
+def test_recap_summary_handler_preempted_returns_502():
+    """Pins the contract: PreemptedException must surface as HTTP 502 (retryable
+    upstream signal) — never 500.
+
+    Earlier behaviour leaked PreemptedException into the generic Exception
+    branch, returning 500 'Internal server error', which clients read as a
+    permanent failure rather than 'BE was preempted by an RT request, please
+    retry.' That mistranslation is what produced the May 3 2026 17:20-17:36
+    error storm.
+    """
+    from news_creator.gateway.hybrid_priority_semaphore import PreemptedException
+
+    usecase = AsyncMock()
+    usecase.generate_summary.side_effect = PreemptedException(
+        "request preempted during generation"
+    )
+
+    app = FastAPI()
+    app.include_router(create_recap_summary_router(usecase))
+    client = TestClient(app)
+
+    payload = _build_request_payload()
+    resp = client.post("/v1/summary/generate", json=payload)
+
+    assert resp.status_code == 502
+    assert "preempt" in resp.json()["detail"].lower()
+
+
 # ============================================================================
 # Batch Endpoint Tests
 # ============================================================================

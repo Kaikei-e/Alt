@@ -2850,3 +2850,81 @@ async def test_recap_uses_recap_summary_num_predict():
         call_args.args[0] if call_args.args else call_args.kwargs.get("payload", {})
     )
     assert payload["options"]["num_predict"] == 4000
+
+
+# ============================================================================
+# Preemption retry — chunk path
+#
+# Pins the contract that _generate_chunk_summary recovers from a transient
+# PreemptedException (RT request bumping a BE chunk) by retrying with
+# exponential backoff before giving up. Without this loop, every preempt
+# silently dropped an intermediate summary, which is what cascaded into the
+# May 3 2026 17:20 fallback storm.
+# ============================================================================
+
+
+@pytest.mark.asyncio
+async def test_chunk_summary_retries_on_preemption(monkeypatch):
+    from contextlib import asynccontextmanager
+
+    from news_creator.gateway.hybrid_priority_semaphore import PreemptedException
+
+    # Skip the actual sleep so the test runs instantly.
+    import asyncio as _asyncio
+
+    async def _fake_sleep(_):
+        return None
+
+    monkeypatch.setattr(_asyncio, "sleep", _fake_sleep)
+
+    config = _make_recap_config_for_hierarchical()
+    llm_provider = Mock()
+
+    @asynccontextmanager
+    async def mock_hold_slot(is_high_priority=False):
+        yield 0.0, None, None
+
+    call_count = 0
+
+    async def mock_generate_raw(prompt, **kwargs):
+        nonlocal call_count
+        call_count += 1
+        if call_count == 1:
+            raise PreemptedException("preempted by RT request")
+        return LLMGenerateResponse(
+            response=json.dumps({"bullets": ["要点A", "要点B"]}),
+            model="gemma4-e4b-q4km",
+        )
+
+    async def mock_generate(prompt, **kwargs):
+        return LLMGenerateResponse(
+            response=json.dumps(
+                {"title": "最終要約", "bullets": ["最終要点1"], "language": "ja"}
+            ),
+            model="gemma4-e4b-q4km",
+        )
+
+    llm_provider.hold_slot = mock_hold_slot
+    llm_provider.generate_raw = AsyncMock(side_effect=mock_generate_raw)
+    llm_provider.generate = AsyncMock(side_effect=mock_generate)
+
+    clusters = _make_hierarchical_clusters(3)
+    request = RecapSummaryRequest(
+        job_id=uuid4(),
+        genre="tech",
+        clusters=clusters,
+        options=RecapSummaryOptions(max_bullets=3),
+    )
+
+    usecase = RecapSummaryUsecase(config=config, llm_provider=llm_provider)
+    response = await usecase.generate_summary(request)
+
+    assert call_count >= 2, (
+        "generate_raw must be retried at least once after PreemptedException, "
+        "got %d calls" % call_count
+    )
+    assert response.summary is not None
+    assert response.summary.title, (
+        "After retry recovery, the final summary must still be produced — "
+        "previous behaviour silently dropped the chunk and fell back to extractive mode"
+    )

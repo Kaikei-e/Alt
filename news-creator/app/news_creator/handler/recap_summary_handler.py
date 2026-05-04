@@ -9,6 +9,7 @@ from news_creator.domain.models import (
     RecapSummaryRequest,
     RecapSummaryResponse,
 )
+from news_creator.gateway.hybrid_priority_semaphore import PreemptedException
 from news_creator.usecase.recap_summary_usecase import RecapSummaryUsecase
 from news_creator.utils.context_logger import (
     set_job_id,
@@ -59,6 +60,17 @@ def create_recap_summary_router(usecase: RecapSummaryUsecase) -> APIRouter:
                 extra={"error": str(exc), "job_id": str(request.job_id)},
             )
             raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+        except PreemptedException as exc:
+            logger.warning(
+                "Recap summary preempted by higher-priority request",
+                extra={
+                    "error": str(exc),
+                    "job_id": str(request.job_id),
+                    "genre": request.genre,
+                },
+            )
+            raise HTTPException(status_code=502, detail=str(exc)) from exc
 
         except RuntimeError as exc:
             logger.error(
