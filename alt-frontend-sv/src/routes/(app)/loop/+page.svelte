@@ -3,7 +3,6 @@ import { onDestroy, onMount } from "svelte";
 import { flip } from "svelte/animate";
 import { cubicOut } from "svelte/easing";
 import { goto, invalidate } from "$app/navigation";
-import { observeTiles } from "$lib/actions/observe-tiles";
 import ChangedDiffCard from "$lib/components/knowledge-loop/ChangedDiffCard.svelte";
 import ContinueStream from "$lib/components/knowledge-loop/ContinueStream.svelte";
 import EmptyNow from "$lib/components/knowledge-loop/EmptyNow.svelte";
@@ -22,7 +21,10 @@ import { makeFirstFrameSkipper } from "$lib/hooks/loop-stream-skip-first";
 import { startVisibilityRecovery } from "$lib/hooks/loop-visibility-recovery";
 import { useKnowledgeLoop } from "$lib/hooks/useKnowledgeLoop.svelte";
 import { useKnowledgeLoopStream } from "$lib/hooks/useKnowledgeLoopStream.svelte";
-import { resolveLoopSourceUrl } from "$lib/utils/loop-source-url";
+import {
+	resolveLoopSourceUrl,
+	resolveLoopSourceUrlAsync,
+} from "$lib/utils/loop-source-url";
 import { loopRecede } from "$lib/transitions/loop-recede";
 import { uuidv7 } from "$lib/utils/uuidv7";
 import "$lib/styles/loop-depth.css";
@@ -235,10 +237,6 @@ function onEntryOpen(entry: KnowledgeLoopEntryData, href?: string) {
 	);
 }
 
-function onObserve(entryKey: string) {
-	void loop.observe(entryKey);
-}
-
 const askInFlight = new Set<string>();
 
 async function onAsk(entry: KnowledgeLoopEntryData): Promise<void> {
@@ -308,11 +306,57 @@ function onPipelineStageSelect(to: LoopStageName) {
 	void loop.transitionTo(entry.entryKey, to, "user_tap");
 }
 
-function onWorkspaceOpen(entry: KnowledgeLoopEntryData) {
-	const href = resolveSourceUrl(entry);
-	if (href) {
-		void onEntryOpen(entry, href);
+// Inline error wording for the Open recovery path (Auto-OODA suppression
+// plan, Pillar 2A). Surfaced under the workspace Open button when the BFF
+// lookup fails so the user can act on the failure code (NN/G "explain why")
+// instead of facing a silent disabled control.
+let openInlineError = $state<string | null>(null);
+
+async function bffArticleSourceUrlFetcher(articleId: string): Promise<string> {
+	const res = await fetch(
+		`/loop/article-source-url?article_id=${encodeURIComponent(articleId)}`,
+	);
+	if (!res.ok) {
+		const code =
+			res.status === 404
+				? "not_found"
+				: res.status === 400
+					? "invalid_argument"
+					: res.status === 401
+						? "unauthenticated"
+						: "upstream_unavailable";
+		throw new Error(code);
 	}
+	const body = (await res.json()) as { sourceUrl?: string };
+	if (!body.sourceUrl) throw new Error("not_found");
+	return body.sourceUrl;
+}
+
+async function onWorkspaceOpen(entry: KnowledgeLoopEntryData) {
+	openInlineError = null;
+	const sync = resolveSourceUrl(entry);
+	if (sync) {
+		void onEntryOpen(entry, sync);
+		return;
+	}
+	let resolved: string | null = null;
+	try {
+		resolved = await resolveLoopSourceUrlAsync(
+			entry,
+			bffArticleSourceUrlFetcher,
+		);
+	} catch (err) {
+		// fetcher already wraps response codes into Error.message; default to
+		// upstream_unavailable for anything we cannot classify.
+		openInlineError =
+			err instanceof Error ? err.message : "upstream_unavailable";
+		return;
+	}
+	if (!resolved) {
+		openInlineError = "URL UNAVAILABLE — not_found";
+		return;
+	}
+	void onEntryOpen(entry, resolved);
 }
 
 // Monospace byline parts. Intentionally en-dash separated for editorial
@@ -567,12 +611,20 @@ function onReviewAction(
 							<button
 								type="button"
 								class="workspace-command"
-								disabled={!activeEntrySourceUrl}
-								aria-label={activeEntrySourceUrl ? "Open" : "Source URL unavailable"}
-								onclick={() => onWorkspaceOpen(activeEntry)}
+								aria-label={activeEntrySourceUrl ? "Open" : "Open · resolve url"}
+								onclick={() => void onWorkspaceOpen(activeEntry)}
 							>
-								Open
+								{activeEntrySourceUrl ? "Open" : "Open · resolve url"}
 							</button>
+							{#if openInlineError}
+								<p
+									class="workspace-open-error"
+									data-testid="loop-open-resolve-error"
+									role="status"
+								>
+									URL UNAVAILABLE — {openInlineError}
+								</p>
+							{/if}
 							<button
 								type="button"
 								class="workspace-command workspace-command--secondary"
@@ -615,7 +667,7 @@ function onReviewAction(
 					{#if foreground.length === 0}
 						<EmptyNow />
 					{:else}
-						<div class="foreground-tiles" use:observeTiles={{ onObserve }}>
+						<div class="foreground-tiles">
 							{#each foreground as entry, i (entry.entryKey)}
 								<div
 									class="foreground-row"
@@ -787,6 +839,23 @@ function onReviewAction(
 		background: var(--surface-2, #f5f4f1);
 		border-color: var(--surface-border, #c8c8c8);
 		color: var(--alt-ash, #999);
+	}
+
+	/* Inline error for Open · resolve url failure path. NN/G "explain why":
+	   single mono kicker line beneath the workspace commands so the user
+	   can act on the failure code. No background fill, no shadow — Alt-Paper
+	   communicates problems with rule weight + saturation, not chrome. */
+	.workspace-open-error {
+		flex-basis: 100%;
+		margin: 0.25rem 0 0;
+		padding: 0;
+		font-family: var(--font-mono, "IBM Plex Mono", ui-monospace, monospace);
+		font-size: 0.65rem;
+		letter-spacing: 0.08em;
+		text-transform: uppercase;
+		color: var(--alt-terracotta, #b85450);
+		border-top: 1px solid var(--alt-terracotta, #b85450);
+		padding-top: 0.3rem;
 	}
 
 	.foreground-tiles {

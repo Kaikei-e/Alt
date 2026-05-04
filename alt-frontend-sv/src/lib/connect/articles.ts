@@ -597,3 +597,22 @@ export async function fetchTagCloud(
 		}),
 	);
 }
+
+/**
+ * Resolves the canonical external HTTPS source URL for an article id, scoped
+ * to the caller's tenant via the JWT carried by the transport. Used by the
+ * Knowledge Loop ACT workspace's Open recovery affordance when the
+ * projection's actTargets[].source_url is empty (legacy entry, or
+ * producer-side ADR-879 lookup miss).
+ *
+ * Throws on transport / Connect errors. The caller (BFF route) maps not_found
+ * to HTTP 404 and invalid_argument to HTTP 400; everything else is 5xx.
+ */
+export async function getArticleSourceURL(
+	transport: Transport,
+	articleId: string,
+): Promise<string> {
+	const client = createArticleClient(transport);
+	const response = await client.getArticleSourceURL({ articleId });
+	return response.sourceUrl;
+}

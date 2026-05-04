@@ -14,6 +14,7 @@ import {
 	type KnowledgeLoopResult,
 } from "$lib/connect/knowledge_loop";
 import { createAugurSessionFromLoopEntry as createAugurSessionFromLoopEntryClient } from "$lib/connect/augur";
+import { getArticleSourceURL as getArticleSourceURLClient } from "$lib/connect/articles";
 
 export async function getKnowledgeLoopForUser(
 	backendToken: string,
@@ -104,4 +105,18 @@ export async function createAugurSessionFromLoopEntryForUser(
 			label: r.label,
 		})),
 	});
+}
+
+/**
+ * Tenant-scoped article source URL lookup for the Knowledge Loop ACT
+ * workspace's Open recovery affordance (Auto-OODA suppression plan,
+ * Pillar 2A). Returns the canonical HTTPS URL, throws on missing /
+ * cross-tenant / invalid input — caller (BFF route) maps to 404 / 400 / 502.
+ */
+export async function getArticleSourceURLForUser(
+	backendToken: string,
+	articleId: string,
+): Promise<string> {
+	const transport = createServerTransportWithToken(backendToken);
+	return getArticleSourceURLClient(transport, articleId);
 }

@@ -18,10 +18,6 @@ import type {
 	LoopStageName,
 } from "$lib/connect/knowledge_loop";
 import { uuidv7 } from "$lib/utils/uuidv7";
-import {
-	makeObserveThrottle,
-	type ObserveThrottleStorage,
-} from "./loop-observe-throttle";
 import type { LoopStreamFrame } from "./loop-stream-frames";
 import { canTransition } from "./loop-transitions";
 
@@ -53,8 +49,6 @@ type TransitionResult =
 	| { status: "rate_limited" }
 	| { status: "error"; message: string };
 
-const OBSERVE_THROTTLE_MS = 60_000;
-
 /**
  * Per-call deadline for `/loop/transition` so a stalled fetch (server JWT
  * expiry mid-flight, network drop, bfcache-frozen await frame) cannot leave
@@ -67,26 +61,6 @@ export interface UseKnowledgeLoopOptions {
 	initial: KnowledgeLoopResult;
 	lensModeId: string;
 	fetchImpl?: typeof fetch;
-	// Storage for the per-entry observe throttle. Defaults to localStorage in
-	// the browser and to in-memory only in SSR / tests. Aligning the FE
-	// throttle window with the backend §8.4 60s window across page reloads
-	// avoids the "burn one 429 per reload per visible entry" pattern: the
-	// in-memory throttle alone is reset on every reload, so the next dwell
-	// tick re-fires straight into a backend rate-limit rejection.
-	observeThrottleStorage?: ObserveThrottleStorage | null;
-}
-
-function defaultObserveThrottleStorage(): ObserveThrottleStorage | null {
-	if (typeof window === "undefined") return null;
-	try {
-		// Touch the API once so SSR / private-mode failures degrade silently to
-		// in-memory throttling — rather than crashing the hook on first call.
-		const probe = window.localStorage;
-		probe.getItem("__alt_loop_throttle_probe__");
-		return probe;
-	} catch {
-		return null;
-	}
 }
 
 export function useKnowledgeLoop(opts: UseKnowledgeLoopOptions) {
@@ -112,12 +86,6 @@ export function useKnowledgeLoop(opts: UseKnowledgeLoopOptions) {
 	// the dismissed tile back into the foreground until the next snapshot.
 	const optimisticallyDismissed = new Set<string>();
 	const optimisticallyStaged = new Map<string, LoopStageName>();
-	const observeThrottle = makeObserveThrottle(OBSERVE_THROTTLE_MS, {
-		storage:
-			opts.observeThrottleStorage === undefined
-				? defaultObserveThrottleStorage()
-				: opts.observeThrottleStorage,
-	});
 
 	function isInFlight(entryKey: string): boolean {
 		return inFlight.has(entryKey);
@@ -190,51 +158,6 @@ export function useKnowledgeLoop(opts: UseKnowledgeLoopOptions) {
 	}
 
 	/**
-	 * Emit `KnowledgeLoopObserved` once per 60-second window per entry.
-	 * Returns true if the transition was actually posted.
-	 */
-	async function observe(entryKey: string): Promise<boolean> {
-		if (!observeThrottle.shouldEmit(entryKey, Date.now())) return false;
-		if (inFlight.has(entryKey)) return false;
-		const entry = findEntry(entryKey);
-		if (!entry || effectiveStage(entry) !== "observe") return false;
-
-		inFlight.add(entryKey);
-		inFlightStartedAt.set(entryKey, Date.now());
-		try {
-			const result = await post({
-				clientTransitionId: uuidv7(),
-				entryKey,
-				fromStage: "observe",
-				toStage: "orient",
-				trigger: "dwell",
-			});
-			if (result.status === "accepted") {
-				applyLocalStage(entryKey, "orient");
-				return true;
-			}
-			// On rate_limited the backend has already booked our attempt against
-			// the §8.4 (user_id, entry_key, lens_mode_id) 60s window. Resetting the
-			// local throttle here would invite the next IntersectionObserver tick
-			// to re-fire immediately, which the backend would also reject — the
-			// loop that produced the production console-log spam. Keep the
-			// throttle armed so the next emission is gated by the same 60s.
-			if (result.status === "rate_limited") {
-				lastError = "rate_limited";
-				return false;
-			}
-			if (result.status === "error" || result.status === "stale") {
-				observeThrottle.reset(entryKey);
-				lastError = result.status;
-			}
-			return false;
-		} finally {
-			inFlight.delete(entryKey);
-			inFlightStartedAt.delete(entryKey);
-		}
-	}
-
-	/**
 	 * Perform a deliberate transition (Decide / Act / Return). Returns the result
 	 * so the caller can react (e.g. open a URL when the server has accepted Act).
 	 */
@@ -243,6 +166,7 @@ export function useKnowledgeLoop(opts: UseKnowledgeLoopOptions) {
 		toStage: LoopStageName,
 		trigger: Trigger = "user_tap",
 		metadata?: TransitionMetadata,
+		options: { optimistic?: boolean } = {},
 	): Promise<TransitionResult> {
 		const entry = findEntry(entryKey);
 		if (!entry) return { status: "error", message: "unknown_entry" };
@@ -261,6 +185,15 @@ export function useKnowledgeLoop(opts: UseKnowledgeLoopOptions) {
 
 		inFlight.add(entryKey);
 		inFlightStartedAt.set(entryKey, Date.now());
+		// Optimistic patch is opt-in. The tile's tap-to-expand gesture passes
+		// `optimistic: true` so the OODA experience flips data-stage before the
+		// BFF reply lands. Other transitionTo callers (workspace pipeline,
+		// advanceEntry) keep the conservative "apply on accepted" semantics
+		// pre-existing tests rely on.
+		const previousStage = effectiveStage(entry);
+		if (options.optimistic) {
+			applyLocalStage(entryKey, toStage);
+		}
 		try {
 			const result = await post({
 				clientTransitionId: uuidv7(),
@@ -271,13 +204,21 @@ export function useKnowledgeLoop(opts: UseKnowledgeLoopOptions) {
 				metadata,
 			});
 			if (result.status === "accepted") {
-				applyLocalStage(entryKey, toStage);
+				if (!options.optimistic) {
+					applyLocalStage(entryKey, toStage);
+				}
 			} else if (
 				result.status === "error" ||
 				result.status === "stale" ||
-				result.status === "rate_limited"
+				result.status === "rate_limited" ||
+				result.status === "forbidden"
 			) {
-				lastError = result.status;
+				lastError =
+					result.status === "forbidden" ? "forbidden" : result.status;
+				if (options.optimistic) {
+					// Revert when the server refused after we already flipped.
+					applyLocalStage(entryKey, previousStage);
+				}
 			}
 			return result;
 		} finally {
@@ -306,8 +247,8 @@ export function useKnowledgeLoop(opts: UseKnowledgeLoopOptions) {
 	async function dismiss(entryKey: string): Promise<void> {
 		const entry = findEntry(entryKey);
 		if (!entry) return;
-		applyLocalDismiss(entryKey);
 		const stage = effectiveStage(entry);
+		applyLocalDismiss(entryKey);
 
 		try {
 			await post({
@@ -518,7 +459,6 @@ export function useKnowledgeLoop(opts: UseKnowledgeLoopOptions) {
 		get error() {
 			return lastError;
 		},
-		observe,
 		transitionTo,
 		dismiss,
 		reviewAction,

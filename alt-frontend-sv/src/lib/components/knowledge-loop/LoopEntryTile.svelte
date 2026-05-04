@@ -17,6 +17,7 @@ type Props = {
 		toStage: LoopStageName,
 		trigger?: TransitionTrigger,
 		metadata?: TransitionMetadata,
+		options?: { optimistic?: boolean },
 	) => Promise<unknown> | unknown;
 	onDismiss?: (entryKey: string) => Promise<unknown> | unknown;
 	onAsk?: (entry: KnowledgeLoopEntryData) => Promise<unknown> | unknown;
@@ -212,7 +213,27 @@ function openHref(href: string) {
 }
 
 function toggleExpanded() {
+	const wasCollapsed = !expanded;
 	expanded = !expanded;
+	// Auto-OODA suppression (plan: Knowledge Loop 体験回復 — Pillar 1):
+	// the explicit user tap that expands the tile is also the gesture that
+	// advances Observe → Orient. The previous IntersectionObserver-driven
+	// dwell path is removed; this is the only legitimate cross-stage entry
+	// for an observe-stage entry. Optimistic — onTransition is fire-and-
+	// forget; the hook's applyLocalStage flips data-stage immediately.
+	if (
+		wasCollapsed &&
+		effectiveStage === "observe" &&
+		onTransition &&
+		isAllowed("orient")
+	) {
+		// Optimistic: flip the local stage immediately so the user sees the
+		// gesture they just performed reflected in the workspace before the
+		// BFF reply lands. The hook reverts on non-accepted results.
+		void onTransition(entry.entryKey, "orient", "user_tap", undefined, {
+			optimistic: true,
+		});
+	}
 }
 
 function onTriggerKey(event: KeyboardEvent) {
@@ -354,7 +375,7 @@ async function handleDismiss() {
 					<button
 						type="button"
 						class="cta cta--dismiss"
-						disabled={inFlight || dismissing}
+						disabled={dismissing}
 						onclick={(event) => {
 							event.stopPropagation();
 							void handleDismiss();

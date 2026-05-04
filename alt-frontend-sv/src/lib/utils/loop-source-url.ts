@@ -34,3 +34,35 @@ export function resolveLoopSourceUrl(
 
 	return null;
 }
+
+/**
+ * Async resolver for the Knowledge Loop "Open · resolve url" recovery path.
+ *
+ * Tries the sync resolver first; if it succeeds the fetcher is never called.
+ * Otherwise — and only when the entry has an article-typed actTarget — calls
+ * the BFF lookup with the article's `target_ref`. On lookup failure or a URL
+ * that fails `safeArticleHref` (defence-in-depth), returns null so the caller
+ * can render an inline error.
+ *
+ * The fetcher is injected so the same function works in the page (real fetch)
+ * and unit tests (vi.fn). It is expected to throw on non-2xx responses; the
+ * caller already maps Connect codes to inline-error wording.
+ */
+export async function resolveLoopSourceUrlAsync(
+	entry: KnowledgeLoopEntryData,
+	fetcher: (articleId: string) => Promise<string>,
+): Promise<string | null> {
+	const sync = resolveLoopSourceUrl(entry);
+	if (sync) return sync;
+
+	const article = entry.actTargets.find((t) => t.targetType === "article");
+	const articleId = article?.targetRef;
+	if (!articleId) return null;
+
+	try {
+		const fetched = await fetcher(articleId);
+		return safeArticleHref(fetched);
+	} catch {
+		return null;
+	}
+}
