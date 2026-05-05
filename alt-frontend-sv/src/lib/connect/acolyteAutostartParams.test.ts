@@ -1,5 +1,8 @@
 import { describe, it, expect } from "vitest";
-import { resolveAutostartIntent } from "./acolyteAutostartParams";
+import {
+	resolveAutostartIntent,
+	resolveResumeIntent,
+} from "./acolyteAutostartParams";
 
 describe("resolveAutostartIntent", () => {
 	it("returns kind='resume' with the runId when ?run= is present", () => {
@@ -41,5 +44,47 @@ describe("resolveAutostartIntent", () => {
 		expect(
 			resolveAutostartIntent(new URLSearchParams("autostart_failed=0")),
 		).toEqual({ kind: "none" });
+	});
+});
+
+describe("resolveResumeIntent", () => {
+	it("prefers server active_run over the URL param", () => {
+		const intent = resolveResumeIntent(new URLSearchParams("run=stale-run"), {
+			runId: "fresh-run",
+			runStatus: "running",
+		});
+		expect(intent).toEqual({ kind: "resume", runId: "fresh-run" });
+	});
+
+	it("falls back to URL ?run= when active_run is undefined", () => {
+		const intent = resolveResumeIntent(
+			new URLSearchParams("run=url-run"),
+			undefined,
+		);
+		expect(intent).toEqual({ kind: "resume", runId: "url-run" });
+	});
+
+	it("ignores active_run when its status is terminal", () => {
+		const intent = resolveResumeIntent(new URLSearchParams(""), {
+			runId: "old-run",
+			runStatus: "succeeded",
+		});
+		expect(intent).toEqual({ kind: "none" });
+	});
+
+	it("treats 'pending' active_run as resume target", () => {
+		const intent = resolveResumeIntent(new URLSearchParams(""), {
+			runId: "queued-run",
+			runStatus: "pending",
+		});
+		expect(intent).toEqual({ kind: "resume", runId: "queued-run" });
+	});
+
+	it("returns autostart-failed when no active_run and ?autostart_failed=1", () => {
+		const intent = resolveResumeIntent(
+			new URLSearchParams("autostart_failed=1"),
+			undefined,
+		);
+		expect(intent).toEqual({ kind: "autostart-failed" });
 	});
 });

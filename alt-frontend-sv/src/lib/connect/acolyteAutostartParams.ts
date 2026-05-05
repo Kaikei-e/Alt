@@ -23,3 +23,33 @@ export function resolveAutostartIntent(
 		return { kind: "autostart-failed" };
 	return { kind: "none" };
 }
+
+/**
+ * Combine the server-supplied active run (from `GetReport.active_run`) with
+ * the URL-derived intent so the detail page can resume polling on mount.
+ *
+ * Backend wins: a pending/running run from the server is the source of
+ * truth — the URL `?run=` query param is a hint from the prior /new
+ * navigation and may be stale (e.g. an old run already terminated). When
+ * the backend reports an active run, we use that runId. Otherwise we fall
+ * back to the URL hint or the autostart-failed marker.
+ */
+
+export interface ServerActiveRun {
+	runId: string;
+	runStatus: string;
+}
+
+export function resolveResumeIntent(
+	params: URLSearchParams,
+	activeRun: ServerActiveRun | undefined,
+): AutostartIntent {
+	if (activeRun && isInFlight(activeRun.runStatus)) {
+		return { kind: "resume", runId: activeRun.runId };
+	}
+	return resolveAutostartIntent(params);
+}
+
+function isInFlight(status: string): boolean {
+	return status === "pending" || status === "running";
+}

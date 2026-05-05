@@ -13,10 +13,11 @@ import {
 	rerunSection,
 	type AcolyteCitation,
 	type AcolyteReport,
+	type AcolyteRun,
 	type AcolyteSection,
 	type AcolyteVersionSummary,
 } from "$lib/connect/acolyte";
-import { resolveAutostartIntent } from "$lib/connect/acolyteAutostartParams";
+import { resolveResumeIntent } from "$lib/connect/acolyteAutostartParams";
 import { parseMarkdown } from "$lib/utils/simpleMarkdown";
 import { useViewport } from "$lib/stores/viewport.svelte";
 import RunStatusPill from "$lib/components/acolyte/RunStatusPill.svelte";
@@ -139,6 +140,8 @@ function startPolling(runId: string) {
 	}, POLL_INTERVAL_MS);
 }
 
+let lastActiveRun = $state<AcolyteRun | undefined>(undefined);
+
 async function loadReport() {
 	const id = page.params.id;
 	if (!id) return;
@@ -151,6 +154,7 @@ async function loadReport() {
 		report = rpt.report ?? null;
 		sections = rpt.sections ?? [];
 		versions = ver.versions ?? [];
+		lastActiveRun = rpt.activeRun;
 		if (sections.length > 0 && !activeSection) {
 			activeSection = sections[0].sectionKey;
 		}
@@ -256,7 +260,7 @@ function stripAutostartParamsFromUrl() {
 
 onMount(async () => {
 	await loadReport();
-	const intent = resolveAutostartIntent(page.url.searchParams);
+	const intent = resolveResumeIntent(page.url.searchParams, lastActiveRun);
 	if (intent.kind === "resume") {
 		startPolling(intent.runId);
 	} else if (intent.kind === "autostart-failed") {

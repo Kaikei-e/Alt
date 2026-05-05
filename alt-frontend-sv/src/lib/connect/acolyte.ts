@@ -125,9 +125,11 @@ export async function createReport(
 	return rpc("CreateReport", { title, reportType, scope: scope ?? {} });
 }
 
-export async function getReport(
-	reportId: string,
-): Promise<{ report: AcolyteReport; sections: AcolyteSection[] }> {
+export async function getReport(reportId: string): Promise<{
+	report: AcolyteReport;
+	sections: AcolyteSection[];
+	activeRun?: AcolyteRun;
+}> {
 	return rpc("GetReport", { reportId });
 }
 
