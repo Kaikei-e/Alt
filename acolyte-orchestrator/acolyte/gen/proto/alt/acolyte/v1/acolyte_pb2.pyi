@@ -36,12 +36,14 @@ class GetReportRequest(_message.Message):
     def __init__(self, report_id: _Optional[str] = ...) -> None: ...
 
 class GetReportResponse(_message.Message):
-    __slots__ = ("report", "sections")
+    __slots__ = ("report", "sections", "active_run")
     REPORT_FIELD_NUMBER: _ClassVar[int]
     SECTIONS_FIELD_NUMBER: _ClassVar[int]
+    ACTIVE_RUN_FIELD_NUMBER: _ClassVar[int]
     report: Report
     sections: _containers.RepeatedCompositeFieldContainer[ReportSection]
-    def __init__(self, report: _Optional[_Union[Report, _Mapping]] = ..., sections: _Optional[_Iterable[_Union[ReportSection, _Mapping]]] = ...) -> None: ...
+    active_run: ReportRun
+    def __init__(self, report: _Optional[_Union[Report, _Mapping]] = ..., sections: _Optional[_Iterable[_Union[ReportSection, _Mapping]]] = ..., active_run: _Optional[_Union[ReportRun, _Mapping]] = ...) -> None: ...
 
 class ListReportsRequest(_message.Message):
     __slots__ = ("cursor", "limit")

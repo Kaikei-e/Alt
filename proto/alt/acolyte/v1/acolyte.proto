@@ -58,6 +58,10 @@ message GetReportRequest {
 message GetReportResponse {
   Report report = 1;
   repeated ReportSection sections = 2;
+  // Latest pending/running run for this report, if any.
+  // Lets the FE resume polling after navigation/reload without storing
+  // the run_id client-side. Absent when no run is in flight.
+  optional ReportRun active_run = 3;
 }
 
 message ListReportsRequest {
