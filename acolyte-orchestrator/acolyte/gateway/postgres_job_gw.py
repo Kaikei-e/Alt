@@ -82,6 +82,43 @@ class PostgresJobGateway:
                 failure_message=r[10],
             )
 
+    async def get_active_run_for_report(self, report_id: UUID) -> ReportRun | None:
+        """Return the latest pending/running run for a report, or None.
+
+        Uses the partial index `idx_report_runs_active` so the lookup stays
+        cheap even as `report_runs` grows. `started_at NULLS LAST` keeps
+        runs that have not yet started ordered after running ones, so a
+        running run wins over a pending one for the same report.
+        """
+        async with self._pool.connection() as conn:
+            cur = await conn.execute(
+                "SELECT run_id, report_id, target_version_no, run_status, "
+                "planner_model, writer_model, critic_model, "
+                "started_at, finished_at, failure_code, failure_message "
+                "FROM report_runs "
+                "WHERE report_id = %s "
+                "  AND run_status IN ('pending', 'running') "
+                "ORDER BY started_at DESC NULLS LAST, run_id "
+                "LIMIT 1",
+                [report_id],
+            )
+            r = await cur.fetchone()
+            if r is None:
+                return None
+            return ReportRun(
+                run_id=r[0],
+                report_id=r[1],
+                target_version_no=r[2],
+                run_status=r[3],
+                planner_model=r[4],
+                writer_model=r[5],
+                critic_model=r[6],
+                started_at=r[7],
+                finished_at=r[8],
+                failure_code=r[9],
+                failure_message=r[10],
+            )
+
     async def claim_job(self, worker_id: str) -> ReportJob | None:
         """Claim a pending job using SELECT ... FOR UPDATE SKIP LOCKED."""
         async with self._pool.connection() as conn:

@@ -97,7 +97,27 @@ class AcolyteConnectService:
                 )
             )
 
-        return acolyte_pb2.GetReportResponse(
+        # Surface any in-flight run so the FE can resume polling after a
+        # navigation/reload without remembering the run_id client-side.
+        active_run_proto: acolyte_pb2.ReportRun | None = None
+        if self._jobs is not None:
+            active_run = await self._jobs.get_active_run_for_report(report.report_id)
+            if active_run is not None:
+                active_run_proto = acolyte_pb2.ReportRun(
+                    run_id=str(active_run.run_id),
+                    report_id=str(active_run.report_id),
+                    target_version_no=active_run.target_version_no,
+                    run_status=active_run.run_status,
+                    planner_model=active_run.planner_model or "",
+                    writer_model=active_run.writer_model or "",
+                    critic_model=active_run.critic_model or "",
+                    started_at=active_run.started_at.isoformat() if active_run.started_at else None,
+                    finished_at=active_run.finished_at.isoformat() if active_run.finished_at else None,
+                    failure_code=active_run.failure_code,
+                    failure_message=active_run.failure_message,
+                )
+
+        response = acolyte_pb2.GetReportResponse(
             report=acolyte_pb2.Report(
                 report_id=str(report.report_id),
                 title=report.title,
@@ -108,6 +128,9 @@ class AcolyteConnectService:
             ),
             sections=proto_sections,
         )
+        if active_run_proto is not None:
+            response.active_run.CopyFrom(active_run_proto)
+        return response
 
     async def list_reports(
         self, request: acolyte_pb2.ListReportsRequest, ctx: RequestContext

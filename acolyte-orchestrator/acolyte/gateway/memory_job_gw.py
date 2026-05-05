@@ -35,6 +35,20 @@ class MemoryJobGateway:
     async def get_run(self, run_id: UUID) -> ReportRun | None:
         return self._runs.get(run_id)
 
+    async def get_active_run_for_report(self, report_id: UUID) -> ReportRun | None:
+        active = [r for r in self._runs.values() if r.report_id == report_id and r.run_status in ("pending", "running")]
+        if not active:
+            return None
+        # started_at DESC NULLS LAST — match Postgres ordering.
+        active.sort(
+            key=lambda r: (
+                r.started_at is None,
+                -(r.started_at.timestamp() if r.started_at else 0.0),
+                str(r.run_id),
+            )
+        )
+        return active[0]
+
     async def claim_job(self, worker_id: str) -> ReportJob | None:
         for job in self._jobs.values():
             if job.job_status == "pending":
