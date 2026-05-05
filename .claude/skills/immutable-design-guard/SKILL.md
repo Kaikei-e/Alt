@@ -10,15 +10,6 @@ description: |
   "projection", "read model", or kawasima's resource/event modeling.
 user-invocable: true
 allowed-tools: Bash, Read, Glob, Grep, mcp__obsidian__view
-paths:
-  - "migrations-atlas/migrations/**/*.sql"
-  - "**/*projector*.go"
-  - "**/*projector*.rs"
-  - "**/*projector*.py"
-  - "**/*event*store*.go"
-  - "**/*event*store*.rs"
-  - "**/*reproject*.go"
-  - "**/*_repository.go"
 ---
 
 # Immutable Design Guard
