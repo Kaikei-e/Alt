@@ -1,7 +1,8 @@
 <script lang="ts">
 import { goto } from "$app/navigation";
 import { onMount } from "svelte";
-import { createReport } from "$lib/connect/acolyte";
+import { createReport, startReportRun } from "$lib/connect/acolyte";
+import { createAndAutostart } from "$lib/connect/acolyteAutostart";
 import { useViewport } from "$lib/stores/viewport.svelte";
 import MobileAcolyteNew from "$lib/components/mobile/acolyte/MobileAcolyteNew.svelte";
 
@@ -46,18 +47,21 @@ async function handleSubmit() {
 		error = "A title is required to proceed.";
 		return;
 	}
-	try {
-		submitting = true;
-		error = null;
-		const scope: Record<string, string> = {};
-		if (topic.trim()) scope.topic = topic.trim();
-		const result = await createReport(title.trim(), reportType, scope);
-		goto(`/acolyte/reports/${result.reportId}`);
-	} catch (e) {
-		error = e instanceof Error ? e.message : "Failed to create report";
-	} finally {
-		submitting = false;
+	submitting = true;
+	error = null;
+	const scope: Record<string, string> = {};
+	if (topic.trim()) scope.topic = topic.trim();
+	const result = await createAndAutostart(
+		{ createReport, startReportRun, goto },
+		title.trim(),
+		reportType,
+		scope,
+	);
+	if (!result.ok && !result.reportId) {
+		// createReport itself failed — stay on /new and surface the error.
+		error = result.error ?? "Failed to create report";
 	}
+	submitting = false;
 }
 
 async function handleMobileSubmit(
@@ -65,18 +69,20 @@ async function handleMobileSubmit(
 	reportTypeVal: string,
 	topicVal: string,
 ) {
-	try {
-		submitting = true;
-		error = null;
-		const scope: Record<string, string> = {};
-		if (topicVal) scope.topic = topicVal;
-		const result = await createReport(titleVal, reportTypeVal, scope);
-		goto(`/acolyte/reports/${result.reportId}`);
-	} catch (e) {
-		error = e instanceof Error ? e.message : "Failed to create report";
-	} finally {
-		submitting = false;
+	submitting = true;
+	error = null;
+	const scope: Record<string, string> = {};
+	if (topicVal) scope.topic = topicVal;
+	const result = await createAndAutostart(
+		{ createReport, startReportRun, goto },
+		titleVal,
+		reportTypeVal,
+		scope,
+	);
+	if (!result.ok && !result.reportId) {
+		error = result.error ?? "Failed to create report";
 	}
+	submitting = false;
 }
 
 onMount(() => {

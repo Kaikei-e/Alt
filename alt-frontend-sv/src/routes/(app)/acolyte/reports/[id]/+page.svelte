@@ -16,6 +16,7 @@ import {
 	type AcolyteSection,
 	type AcolyteVersionSummary,
 } from "$lib/connect/acolyte";
+import { resolveAutostartIntent } from "$lib/connect/acolyteAutostartParams";
 import { parseMarkdown } from "$lib/utils/simpleMarkdown";
 import { useViewport } from "$lib/stores/viewport.svelte";
 import RunStatusPill from "$lib/components/acolyte/RunStatusPill.svelte";
@@ -127,6 +128,7 @@ function startPolling(runId: string) {
 					error = run.failureMessage || "Report generation failed";
 				}
 				activeRunId = null;
+				stripAutostartParamsFromUrl();
 			}
 		} catch (e) {
 			stopPolling();
@@ -239,8 +241,28 @@ function changeKindIcon(kind: string): string {
 	return m[kind] ?? "?";
 }
 
-onMount(() => {
-	loadReport();
+function stripAutostartParamsFromUrl() {
+	const id = page.params.id;
+	if (!id) return;
+	const search = page.url.search;
+	if (!search) return;
+	if (!/(?:^|[?&])(?:run|autostart_failed)=/.test(search)) return;
+	void goto(`/acolyte/reports/${id}`, {
+		replaceState: true,
+		noScroll: true,
+		keepFocus: true,
+	});
+}
+
+onMount(async () => {
+	await loadReport();
+	const intent = resolveAutostartIntent(page.url.searchParams);
+	if (intent.kind === "resume") {
+		startPolling(intent.runId);
+	} else if (intent.kind === "autostart-failed") {
+		error =
+			"Auto-start failed after the report was created. Click Generate to retry.";
+	}
 });
 
 onDestroy(stopPolling);
