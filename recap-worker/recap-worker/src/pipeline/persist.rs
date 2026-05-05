@@ -1,9 +1,12 @@
-use std::sync::Arc;
+use std::collections::{BTreeSet, HashMap};
+use std::sync::{Arc, LazyLock};
 
 use anyhow::{Context, Result};
 use async_trait::async_trait;
+use regex::Regex;
 use tracing::{debug, info, warn};
 
+use crate::clients::news_creator::Reference;
 use crate::clients::tag_generator::TagGeneratorClient;
 use crate::scheduler::JobContext;
 use crate::store::dao::RecapDao;
@@ -13,6 +16,67 @@ use super::dispatch::DispatchResult;
 use crate::store::models::PersistedGenre;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
+
+/// `[1]` / `[42]` 形式の出典マーカーを抽出する。news-creator の REFERENCE_MARKER_RE と対称。
+static REFERENCE_MARKER_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"\[(\d+)\]").expect("REFERENCE_MARKER_RE must compile"));
+
+/// bullet 内の `[n]` を `references[n-1]` 経由で article_id に解決し、
+/// `recap_subworker_sentences.id` の集合を返す純粋関数。
+///
+/// 解決順:
+/// 1. `references[n-1].article_id` がある → そのまま採用 (singleton)
+/// 2. 無ければ `references[n-1].url` を `url_to_article` に当てて解決 (multi-match 許容)
+/// 3. それでも解決しない marker は無視 (`debug!` log)
+///
+/// 結果は重複除去 + 昇順ソート。bullet に `[n]` が無いまたは references が空なら `vec![]`。
+fn reconcile_bullet_citations(
+    bullet: &str,
+    refs: &[Reference],
+    url_to_article: &HashMap<String, String>,
+    article_to_sentence_ids: &HashMap<String, Vec<i64>>,
+) -> Vec<i64> {
+    let mut seen = BTreeSet::<i64>::new();
+
+    if refs.is_empty() {
+        return Vec::new();
+    }
+
+    for cap in REFERENCE_MARKER_RE.captures_iter(bullet) {
+        let n: usize = match cap[1].parse() {
+            Ok(v) if v >= 1 && v <= refs.len() => v,
+            Ok(_) | Err(_) => {
+                debug!(marker = %&cap[0], refs_len = refs.len(),
+                    "ignoring out-of-range citation marker");
+                continue;
+            }
+        };
+        let r = &refs[n - 1];
+        let mut article_ids: Vec<&String> = Vec::new();
+        if let Some(aid) = r.article_id.as_ref() {
+            article_ids.push(aid);
+        } else {
+            for (u, a) in url_to_article {
+                if u == &r.url {
+                    article_ids.push(a);
+                }
+            }
+        }
+
+        if article_ids.is_empty() {
+            debug!(unmatched_ref_url = %r.url, "could not resolve reference url to article_id");
+            continue;
+        }
+
+        for aid in article_ids {
+            if let Some(ids) = article_to_sentence_ids.get(aid) {
+                seen.extend(ids.iter().copied());
+            }
+        }
+    }
+
+    seen.into_iter().collect()
+}
 
 /// Sanitize title and summary text by removing markdown code blocks
 fn sanitize_title(text: &str) -> String {
@@ -359,15 +423,59 @@ impl PersistStage for FinalSectionPersistStage {
                 .expect("checked above")
                 .clone();
 
+            // Build (url -> article_id) for URL-fallback in citation reconciliation.
+            // top_sources は [{title, url, published_at, article_id}, ...] 形式。
+            let url_to_article: HashMap<String, String> = top_sources
+                .iter()
+                .filter_map(|s| {
+                    let aid = s.get("article_id")?.as_str()?.to_string();
+                    let url = s.get("url")?.as_str()?.to_string();
+                    Some((url, aid))
+                })
+                .collect();
+
+            // Fetch (article_id -> Vec<sentence DB id>) for this genre's run.
+            // 失敗・resume パス・run_id 0 は空 map で degrade (fail-open)。
+            let article_to_sentence_ids: HashMap<String, Vec<i64>> =
+                match genre_result.clustering_response.as_ref().map(|c| c.run_id) {
+                    Some(run_id) if run_id > 0 => self
+                        .dao
+                        .get_sentence_ids_by_run(run_id)
+                        .await
+                        .unwrap_or_else(|e| {
+                            warn!(
+                                job_id = %job.job_id,
+                                genre = %genre,
+                                error = ?e,
+                                "failed to fetch sentence ids for citation reconciliation"
+                            );
+                            HashMap::new()
+                        }),
+                    // TODO(ADR-followup): resume path needs run_id from recap_subworker_runs lookup.
+                    _ => HashMap::new(),
+                };
+
+            let refs: &[Reference] = summary_response
+                .summary
+                .references
+                .as_deref()
+                .unwrap_or(&[]);
+
             let bullet_values = summary_response
                 .summary
                 .bullets
                 .iter()
                 .map(|bullet| {
+                    let sentence_ids = reconcile_bullet_citations(
+                        bullet,
+                        refs,
+                        &url_to_article,
+                        &article_to_sentence_ids,
+                    );
                     json!({
                         "text": bullet,
                         "sources": top_sources,
-                        "source_sentence_ids": Vec::<i64>::new(),
+                        "source_sentence_ids": sentence_ids,
                     })
                 })
                 .collect::<Vec<_>>();
@@ -495,10 +603,36 @@ impl PersistStage for FinalSectionPersistStage {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::clients::news_creator::{Reference, SummaryResponse};
+    use crate::clients::subworker::ClusteringResponse;
     use crate::pipeline::dispatch::GenreResult;
     use crate::scheduler::JobContext;
     use crate::store::dao::mock::MockRecapDao;
-    use std::collections::HashMap;
+
+    /// reconciler 用テストフィクスチャ。`refs` / `url_to_article` / `article_to_sentence_ids` を
+    /// 個別のテストで一行で組み立てるためのヘルパ。
+    fn ref_with_id(id: i32, url: &str, article_id: Option<&str>) -> Reference {
+        Reference {
+            id,
+            url: url.to_string(),
+            domain: "example.com".to_string(),
+            article_id: article_id.map(str::to_string),
+        }
+    }
+
+    fn url_map(pairs: &[(&str, &str)]) -> HashMap<String, String> {
+        pairs
+            .iter()
+            .map(|(u, a)| ((*u).to_string(), (*a).to_string()))
+            .collect()
+    }
+
+    fn sid_map(pairs: &[(&str, Vec<i64>)]) -> HashMap<String, Vec<i64>> {
+        pairs
+            .iter()
+            .map(|(a, ids)| ((*a).to_string(), ids.clone()))
+            .collect()
+    }
 
     #[test]
     fn persist_result_tracks_success_and_failure() {
@@ -605,6 +739,242 @@ mod tests {
         assert!(
             recorded.is_empty(),
             "insufficient documents is an expected skip, must not pollute recap_failed_tasks"
+        );
+    }
+
+    // === reconcile_bullet_citations: edge case pins (ADR-832 followup) ===
+
+    #[test]
+    fn reconcile_returns_empty_when_bullet_has_no_marker() {
+        let refs = vec![ref_with_id(1, "https://example.com/a", Some("a-1"))];
+        let result = reconcile_bullet_citations(
+            "プレーン文章で出典マーカーは無い",
+            &refs,
+            &url_map(&[]),
+            &sid_map(&[("a-1", vec![10, 11])]),
+        );
+        assert!(result.is_empty(), "no marker → empty");
+    }
+
+    #[test]
+    fn reconcile_ignores_marker_index_out_of_range() {
+        let refs = vec![ref_with_id(1, "https://example.com/a", Some("a-1"))];
+        // [5] は refs.len()==1 を超えるため無視
+        let result = reconcile_bullet_citations(
+            "本文 [5] の続き",
+            &refs,
+            &url_map(&[]),
+            &sid_map(&[("a-1", vec![10])]),
+        );
+        assert!(result.is_empty(), "out-of-range marker silently skipped");
+    }
+
+    #[test]
+    fn reconcile_treats_zero_index_as_invalid() {
+        let refs = vec![ref_with_id(1, "https://example.com/a", Some("a-1"))];
+        // [0] は 1-indexed なので invalid
+        let result = reconcile_bullet_citations(
+            "本文 [0]",
+            &refs,
+            &url_map(&[]),
+            &sid_map(&[("a-1", vec![10])]),
+        );
+        assert!(result.is_empty(), "[0] must be treated as invalid");
+    }
+
+    #[test]
+    fn reconcile_uses_article_id_when_present_on_reference() {
+        let refs = vec![ref_with_id(1, "https://example.com/a", Some("a-1"))];
+        let result = reconcile_bullet_citations(
+            "事実 [1]",
+            &refs,
+            &url_map(&[("https://example.com/a", "a-1")]),
+            &sid_map(&[("a-1", vec![10, 11])]),
+        );
+        assert_eq!(result, vec![10, 11]);
+    }
+
+    #[test]
+    fn reconcile_falls_back_to_url_when_article_id_missing() {
+        // article_id 欠落 → URL から article_id を解決
+        let refs = vec![ref_with_id(1, "https://example.com/a", None)];
+        let result = reconcile_bullet_citations(
+            "事実 [1]",
+            &refs,
+            &url_map(&[("https://example.com/a", "a-1")]),
+            &sid_map(&[("a-1", vec![20, 21])]),
+        );
+        assert_eq!(result, vec![20, 21]);
+    }
+
+    #[test]
+    fn reconcile_skips_unresolvable_url_without_panic() {
+        // article_id 欠落 + URL も map に無い → そのマーカーは捨てる
+        let refs = vec![ref_with_id(1, "https://unknown.example/x", None)];
+        let result = reconcile_bullet_citations(
+            "事実 [1]",
+            &refs,
+            &url_map(&[("https://example.com/a", "a-1")]),
+            &sid_map(&[("a-1", vec![10])]),
+        );
+        assert!(result.is_empty(), "unresolvable url must not panic");
+    }
+
+    #[test]
+    fn reconcile_returns_empty_when_article_has_no_sentences() {
+        let refs = vec![ref_with_id(1, "https://example.com/a", Some("a-1"))];
+        // article_id は解決するが sentence map に entry 無し → empty
+        let result = reconcile_bullet_citations(
+            "事実 [1]",
+            &refs,
+            &url_map(&[]),
+            &sid_map(&[("b-1", vec![99])]),
+        );
+        assert!(result.is_empty());
+    }
+
+    #[test]
+    fn reconcile_dedupes_and_sorts_repeated_markers() {
+        let refs = vec![
+            ref_with_id(1, "https://example.com/a", Some("a-1")),
+            ref_with_id(2, "https://example.com/b", Some("b-1")),
+        ];
+        // 重複 [1] [1] [2] → dedup + sorted union
+        let result = reconcile_bullet_citations(
+            "foo [1] bar [1] baz [2]",
+            &refs,
+            &url_map(&[]),
+            &sid_map(&[("a-1", vec![30, 31]), ("b-1", vec![40])]),
+        );
+        assert_eq!(result, vec![30, 31, 40]);
+    }
+
+    #[test]
+    fn reconcile_returns_empty_when_references_is_none() {
+        // references が空 (LLM が出さなかったケース) では bullet 内 [n] は全て無視
+        let refs: Vec<Reference> = Vec::new();
+        let result = reconcile_bullet_citations(
+            "事実 [1] と [2]",
+            &refs,
+            &url_map(&[("https://example.com/a", "a-1")]),
+            &sid_map(&[("a-1", vec![10, 11])]),
+        );
+        assert!(result.is_empty(), "empty refs → no grounding");
+    }
+
+    // === Integration: persist が source_sentence_ids を埋めて upsert する ===
+
+    #[tokio::test]
+    async fn persist_writes_non_empty_source_sentence_ids_when_references_resolve() {
+        use uuid::Uuid;
+
+        let job_id = Uuid::new_v4();
+        let genre = "consumer_tech".to_string();
+        let run_id: i64 = 4242;
+        let article_id = "a-1".to_string();
+        let summary_id = Uuid::new_v4().to_string();
+
+        let dao = Arc::new(MockRecapDao::new());
+        // article metadata: url + article_id 紐付け
+        dao.set_article_metadata({
+            let mut m = HashMap::new();
+            m.insert(
+                article_id.clone(),
+                (
+                    Some(chrono::Utc::now()),
+                    Some("https://example.com/a-1".to_string()),
+                ),
+            );
+            m
+        });
+        // sentence_id store: run_id 4242 で a-1 → [10, 11]
+        dao.set_sentence_ids(run_id, {
+            let mut m = HashMap::new();
+            m.insert(article_id.clone(), vec![10_i64, 11_i64]);
+            m
+        });
+
+        // SummaryResponse: bullet が [1] を 1 つ含み、references[0].article_id = "a-1"
+        // SummaryMetadata は private field を含むため serde 経由で構築。
+        let summary_response: SummaryResponse = serde_json::from_value(serde_json::json!({
+            "job_id": job_id,
+            "genre": genre,
+            "summary": {
+                "title": "テストタイトル",
+                "bullets": ["事実 [1]"],
+                "language": "ja",
+                "references": [{
+                    "id": 1,
+                    "url": "https://example.com/a-1",
+                    "domain": "example.com",
+                    "article_id": article_id,
+                }]
+            },
+            "metadata": { "model": "gemma-test" }
+        }))
+        .expect("summary_response fixture must deserialize");
+
+        // ClusteringResponse: representative に article_id を含む。run_id を持つ。
+        let clustering_response: ClusteringResponse = serde_json::from_value(serde_json::json!({
+            "run_id": run_id,
+            "job_id": job_id,
+            "genre": genre,
+            "status": "succeeded",
+            "cluster_count": 1,
+            "clusters": [{
+                "cluster_id": 0,
+                "size": 1,
+                "representatives": [{
+                    "article_id": article_id,
+                    "sentence_text": "代表文",
+                    "lang": "ja",
+                    "score": 1.0
+                }]
+            }]
+        }))
+        .expect("clustering_response fixture must deserialize");
+
+        let mut genre_results = HashMap::new();
+        genre_results.insert(
+            genre.clone(),
+            GenreResult {
+                genre: genre.clone(),
+                clustering_response: Some(clustering_response),
+                summary_response_id: Some(summary_id.clone()),
+                summary_response: Some(summary_response),
+                error: None,
+            },
+        );
+        let dispatch = DispatchResult {
+            job_id,
+            genre_results,
+            success_count: 1,
+            failure_count: 0,
+            all_genres: vec![genre.clone()],
+        };
+        let job = JobContext::new(dispatch.job_id, dispatch.all_genres.clone());
+
+        let stage = FinalSectionPersistStage::new(dao.clone(), None);
+        let result = stage.persist(&job, dispatch).await.expect("persist ok");
+        assert_eq!(result.genres_stored, 1);
+
+        let outputs = dao.outputs();
+        assert_eq!(outputs.len(), 1, "expected 1 RecapOutput upserted");
+        let output = &outputs[0];
+        let bullets = output
+            .bullets_ja
+            .as_array()
+            .expect("bullets_ja must be JSON array");
+        assert_eq!(bullets.len(), 1);
+        let sids = bullets[0]
+            .get("source_sentence_ids")
+            .and_then(|v| v.as_array())
+            .expect("source_sentence_ids must be present and an array");
+        let parsed: Vec<i64> = sids.iter().filter_map(serde_json::Value::as_i64).collect();
+        assert_eq!(
+            parsed,
+            vec![10_i64, 11_i64],
+            "bullet [1] must be grounded to a-1 sentences"
         );
     }
 }
