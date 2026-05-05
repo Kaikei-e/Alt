@@ -54,4 +54,11 @@ pub trait OutputDao: Send + Sync {
         term: &str,
         limit: i32,
     ) -> impl Future<Output = Result<Vec<RecapSearchHit>>> + Send;
+
+    /// 指定 run の `recap_subworker_sentences` を `(article_id -> Vec<sentence DB id>)` に集約して返す。
+    /// citation reconciliation で `references[n-1].article_id` を sentence id に解決するために使う。
+    fn get_sentence_ids_by_run(
+        &self,
+        run_id: i64,
+    ) -> impl Future<Output = Result<HashMap<String, Vec<i64>>>> + Send;
 }

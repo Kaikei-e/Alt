@@ -364,6 +364,10 @@ impl OutputDao for UnifiedDao {
     async fn search_recaps_by_term(&self, term: &str, limit: i32) -> Result<Vec<RecapSearchHit>> {
         crate::store::dao::output::RecapDao::search_recaps_by_term(&self.pool, term, limit).await
     }
+
+    async fn get_sentence_ids_by_run(&self, run_id: i64) -> Result<HashMap<String, Vec<i64>>> {
+        crate::store::dao::output::RecapDao::get_sentence_ids_by_run(&self.pool, run_id).await
+    }
 }
 
 // SubworkerDao implementation

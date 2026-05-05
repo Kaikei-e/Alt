@@ -478,6 +478,35 @@ impl RecapDao {
         hits.sort_by_key(|b| std::cmp::Reverse(b.executed_at));
         Ok(hits)
     }
+
+    /// `recap_subworker_sentences.id` を `(article_id -> Vec<id>)` に集約して返す。
+    /// citation reconciliation 用。run の cluster に属する全文の DB id を 1 query で取得。
+    pub(crate) async fn get_sentence_ids_by_run(
+        pool: &PgPool,
+        run_id: i64,
+    ) -> Result<HashMap<String, Vec<i64>>> {
+        let rows = sqlx::query(
+            r"
+            SELECT s.id, s.source_article_id
+            FROM recap_subworker_sentences s
+            JOIN recap_subworker_clusters c ON c.id = s.cluster_row_id
+            WHERE c.run_id = $1
+            ORDER BY s.id
+            ",
+        )
+        .bind(run_id)
+        .fetch_all(pool)
+        .await
+        .context("failed to fetch recap_subworker_sentences for run")?;
+
+        let mut grouped: HashMap<String, Vec<i64>> = HashMap::new();
+        for row in rows {
+            let id: i64 = row.try_get("id")?;
+            let article_id: String = row.try_get("source_article_id")?;
+            grouped.entry(article_id).or_default().push(id);
+        }
+        Ok(grouped)
+    }
 }
 
 fn process_cluster_rows(

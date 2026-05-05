@@ -35,11 +35,30 @@ pub(crate) struct RecordedFailedTask {
 }
 
 #[cfg(test)]
+/// `get_article_metadata` 用のテスト fixture: `article_id -> (published_at, source_url)`。
+type ArticleMetadataMap =
+    std::collections::HashMap<String, (Option<chrono::DateTime<chrono::Utc>>, Option<String>)>;
+
+#[cfg(test)]
+/// `get_sentence_ids_by_run` 用のテスト fixture: `article_id -> Vec<recap_subworker_sentences.id>`。
+type SentenceIdsByArticle = std::collections::HashMap<String, Vec<i64>>;
+
+#[cfg(test)]
+/// `get_sentence_ids_by_run` の run_id 軸インデックス: `run_id -> SentenceIdsByArticle`。
+type SentenceIdsByRun = std::collections::HashMap<i64, SentenceIdsByArticle>;
+
+#[cfg(test)]
 /// テスト用のモックRecapDao（DB接続なしで動作）
 #[allow(dead_code)]
 #[derive(Clone, Default)]
 pub(crate) struct MockRecapDao {
     failed_tasks: Arc<Mutex<Vec<RecordedFailedTask>>>,
+    /// `upsert_recap_output` 呼び出しを記録するためのスナップショット。
+    outputs: Arc<Mutex<Vec<crate::store::models::RecapOutput>>>,
+    /// `get_article_metadata` の応答。
+    article_metadata: Arc<Mutex<ArticleMetadataMap>>,
+    /// `get_sentence_ids_by_run` の応答。
+    sentence_ids: Arc<Mutex<SentenceIdsByRun>>,
 }
 
 #[cfg(test)]
@@ -56,6 +75,30 @@ impl MockRecapDao {
             .lock()
             .expect("failed_tasks mutex poisoned")
             .clone()
+    }
+
+    /// 記録された `upsert_recap_output` 呼び出しのスナップショットを取得する。
+    #[allow(dead_code)]
+    pub(crate) fn outputs(&self) -> Vec<crate::store::models::RecapOutput> {
+        self.outputs.lock().expect("outputs mutex poisoned").clone()
+    }
+
+    /// テスト用に `get_article_metadata` の応答をセットする。
+    #[allow(dead_code)]
+    pub(crate) fn set_article_metadata(&self, metadata: ArticleMetadataMap) {
+        *self
+            .article_metadata
+            .lock()
+            .expect("article_metadata mutex poisoned") = metadata;
+    }
+
+    /// テスト用に `get_sentence_ids_by_run` の応答をセットする。
+    #[allow(dead_code)]
+    pub(crate) fn set_sentence_ids(&self, run_id: i64, ids: SentenceIdsByArticle) {
+        self.sentence_ids
+            .lock()
+            .expect("sentence_ids mutex poisoned")
+            .insert(run_id, ids);
     }
 }
 
@@ -213,11 +256,23 @@ impl RecapDao for MockRecapDao {
     async fn get_article_metadata(
         &self,
         _job_id: Uuid,
-        _article_ids: &[String],
+        article_ids: &[String],
     ) -> Result<
         std::collections::HashMap<String, (Option<chrono::DateTime<chrono::Utc>>, Option<String>)>,
     > {
-        Ok(std::collections::HashMap::new())
+        let store = self
+            .article_metadata
+            .lock()
+            .expect("article_metadata mutex poisoned");
+        let filtered: std::collections::HashMap<_, _> = if article_ids.is_empty() {
+            store.clone()
+        } else {
+            article_ids
+                .iter()
+                .filter_map(|id| store.get(id).map(|v| (id.clone(), v.clone())))
+                .collect()
+        };
+        Ok(filtered)
     }
 
     async fn get_articles_by_ids(
@@ -347,8 +402,24 @@ impl RecapDao for MockRecapDao {
     }
 
     #[allow(dead_code)]
-    async fn upsert_recap_output(&self, _output: &crate::store::models::RecapOutput) -> Result<()> {
+    async fn upsert_recap_output(&self, output: &crate::store::models::RecapOutput) -> Result<()> {
+        self.outputs
+            .lock()
+            .expect("outputs mutex poisoned")
+            .push(output.clone());
         Ok(())
+    }
+
+    #[allow(dead_code)]
+    async fn get_sentence_ids_by_run(
+        &self,
+        run_id: i64,
+    ) -> Result<std::collections::HashMap<String, Vec<i64>>> {
+        let store = self
+            .sentence_ids
+            .lock()
+            .expect("sentence_ids mutex poisoned");
+        Ok(store.get(&run_id).cloned().unwrap_or_default())
     }
 
     async fn get_recap_output_body_json(

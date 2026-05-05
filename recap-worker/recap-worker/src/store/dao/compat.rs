@@ -272,6 +272,12 @@ pub trait RecapDao: Send + Sync {
         limit: i32,
     ) -> anyhow::Result<Vec<RecapSearchHit>>;
 
+    /// citation reconciliation 用。run の cluster に属する全文の DB id を `(article_id -> Vec<sentence_id>)` で返す。
+    async fn get_sentence_ids_by_run(
+        &self,
+        run_id: i64,
+    ) -> anyhow::Result<HashMap<String, Vec<i64>>>;
+
     // === SubworkerDao methods ===
     async fn insert_subworker_run(&self, run: &NewSubworkerRun) -> anyhow::Result<i64>;
 
@@ -712,6 +718,13 @@ where
         limit: i32,
     ) -> anyhow::Result<Vec<RecapSearchHit>> {
         OutputDao::search_recaps_by_term(self, term, limit).await
+    }
+
+    async fn get_sentence_ids_by_run(
+        &self,
+        run_id: i64,
+    ) -> anyhow::Result<HashMap<String, Vec<i64>>> {
+        OutputDao::get_sentence_ids_by_run(self, run_id).await
     }
 
     async fn insert_subworker_run(&self, run: &NewSubworkerRun) -> anyhow::Result<i64> {
