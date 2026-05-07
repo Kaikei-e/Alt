@@ -22,13 +22,24 @@ type KnowledgeProjectorRunnerConfig struct {
 	Timeout         time.Duration
 	Process         func(ctx context.Context) error
 	ListenerFactory func(ctx context.Context) (KnowledgeProjectorListener, error)
+
+	// Bounded backoff and circuit breaker for systemic listener failures.
+	// Defaults are applied when a field is zero.
+	InitialBackoff   time.Duration // first delay after a listener failure (default 1s)
+	MaxBackoff       time.Duration // cap on the exponential backoff (default 30s)
+	BreakerThreshold int           // consecutive failures to open the breaker (default 5)
+	BreakerCooldown  time.Duration // sleep between attempts while breaker is open (default 60s)
 }
 
 type KnowledgeProjectorRunner struct {
-	pollInterval    time.Duration
-	timeout         time.Duration
-	process         func(ctx context.Context) error
-	listenerFactory func(ctx context.Context) (KnowledgeProjectorListener, error)
+	pollInterval     time.Duration
+	timeout          time.Duration
+	initialBackoff   time.Duration
+	maxBackoff       time.Duration
+	breakerThreshold int
+	breakerCooldown  time.Duration
+	process          func(ctx context.Context) error
+	listenerFactory  func(ctx context.Context) (KnowledgeProjectorListener, error)
 }
 
 func NewKnowledgeProjectorRunner(cfg KnowledgeProjectorRunnerConfig) *KnowledgeProjectorRunner {
@@ -38,11 +49,27 @@ func NewKnowledgeProjectorRunner(cfg KnowledgeProjectorRunnerConfig) *KnowledgeP
 	if cfg.Timeout <= 0 {
 		cfg.Timeout = 25 * time.Second
 	}
+	if cfg.InitialBackoff <= 0 {
+		cfg.InitialBackoff = 1 * time.Second
+	}
+	if cfg.MaxBackoff <= 0 {
+		cfg.MaxBackoff = 30 * time.Second
+	}
+	if cfg.BreakerThreshold <= 0 {
+		cfg.BreakerThreshold = 5
+	}
+	if cfg.BreakerCooldown <= 0 {
+		cfg.BreakerCooldown = 60 * time.Second
+	}
 	return &KnowledgeProjectorRunner{
-		pollInterval:    cfg.PollInterval,
-		timeout:         cfg.Timeout,
-		process:         cfg.Process,
-		listenerFactory: cfg.ListenerFactory,
+		pollInterval:     cfg.PollInterval,
+		timeout:          cfg.Timeout,
+		initialBackoff:   cfg.InitialBackoff,
+		maxBackoff:       cfg.MaxBackoff,
+		breakerThreshold: cfg.BreakerThreshold,
+		breakerCooldown:  cfg.BreakerCooldown,
+		process:          cfg.Process,
+		listenerFactory:  cfg.ListenerFactory,
 	}
 }
 
@@ -62,6 +89,53 @@ func (r *KnowledgeProjectorRunner) Run(ctx context.Context) error {
 		}
 	}()
 
+	consecutiveFailures := 0
+	breakerOpen := false
+
+	recordFailure := func(err error, msg string) {
+		consecutiveFailures++
+		switch {
+		case consecutiveFailures == r.breakerThreshold:
+			breakerOpen = true
+			logger.ErrorContext(ctx, "knowledge projector circuit breaker opened",
+				"consecutive_failures", consecutiveFailures,
+				"cooldown", r.breakerCooldown,
+				"reason", msg,
+				"error", err)
+		case !breakerOpen:
+			logger.WarnContext(ctx, msg,
+				"consecutive_failures", consecutiveFailures,
+				"error", err)
+		}
+		// While the breaker is open and the threshold has been crossed,
+		// per-iteration logs are suppressed so a sustained upstream
+		// misconfiguration cannot flood the container log driver.
+	}
+
+	recordSuccess := func() {
+		if consecutiveFailures > 0 {
+			if breakerOpen {
+				logger.InfoContext(ctx, "knowledge projector circuit breaker closed after recovery")
+			}
+			consecutiveFailures = 0
+			breakerOpen = false
+		}
+	}
+
+	failureBackoff := func() time.Duration {
+		if breakerOpen {
+			return r.breakerCooldown
+		}
+		delay := r.initialBackoff
+		for i := 1; i < consecutiveFailures; i++ {
+			delay *= 2
+			if delay > r.maxBackoff {
+				return r.maxBackoff
+			}
+		}
+		return delay
+	}
+
 	for {
 		if ctx.Err() != nil {
 			return nil
@@ -70,17 +144,25 @@ func (r *KnowledgeProjectorRunner) Run(ctx context.Context) error {
 		if listener == nil && r.listenerFactory != nil {
 			created, err := r.listenerFactory(ctx)
 			if err != nil {
-				logger.WarnContext(ctx, "knowledge projector listener unavailable; falling back to polling", "error", err)
+				recordFailure(err, "knowledge projector listener unavailable; falling back to polling")
 			} else {
+				// A factory call that returns a listener is not yet a
+				// "success" — the upstream may still reject the first
+				// WaitForNotification immediately. Only confirmed wait
+				// outcomes (notification or deadline) reset the breaker.
 				listener = created
 			}
 		}
 
 		if listener == nil {
+			delay := r.pollInterval
+			if consecutiveFailures > 0 {
+				delay = failureBackoff()
+			}
 			select {
 			case <-ctx.Done():
 				return nil
-			case <-time.After(r.pollInterval):
+			case <-time.After(delay):
 				if err := r.runOnce(ctx); err != nil && ctx.Err() == nil {
 					logger.ErrorContext(ctx, "knowledge projector poll run failed", "error", err)
 				}
@@ -93,6 +175,7 @@ func (r *KnowledgeProjectorRunner) Run(ctx context.Context) error {
 		cancel()
 
 		if err == nil || errors.Is(err, context.DeadlineExceeded) {
+			recordSuccess()
 			if runErr := r.runOnce(ctx); runErr != nil && ctx.Err() == nil {
 				logger.ErrorContext(ctx, "knowledge projector wake run failed", "error", runErr)
 			}
@@ -103,12 +186,21 @@ func (r *KnowledgeProjectorRunner) Run(ctx context.Context) error {
 			return nil
 		}
 
-		logger.WarnContext(ctx, "knowledge projector listener failed; switching to poll fallback", "error", err)
+		recordFailure(err, "knowledge projector listener failed; switching to poll fallback")
 		_ = listener.Close(context.Background())
 		listener = nil
 
 		if runErr := r.runOnce(ctx); runErr != nil && ctx.Err() == nil {
 			logger.ErrorContext(ctx, "knowledge projector recovery run failed", "error", runErr)
+		}
+
+		// Bounded backoff before the next factory attempt prevents tight
+		// ms-scale loops when the upstream is systemically broken (e.g. the
+		// staging slice misroute that triggered PM-2026-042).
+		select {
+		case <-ctx.Done():
+			return nil
+		case <-time.After(failureBackoff()):
 		}
 	}
 }

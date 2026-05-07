@@ -5,13 +5,71 @@ import (
 	"log/slog"
 	"os"
 	"strings"
+	"sync/atomic"
 )
 
+// dynamicHandler delegates to a swappable inner slog.Handler. The inner
+// handler is held in an atomic.Pointer so swaps are race-free with concurrent
+// readers — and, critically, the package-level *slog.Logger that wraps this
+// handler can stay stable for the lifetime of the process. That stability is
+// what allows hundreds of `logger.Logger.X(...)` call sites to remain safe
+// without an accessor migration.
+//
+// Pattern reference: log/slog itself stores its default logger in an
+// atomic.Pointer[Logger] (see go.dev/src/log/slog/logger.go). We use the same
+// approach one level down (the handler instead of the logger) so that the
+// public *slog.Logger value is never reassigned after package init.
+type dynamicHandler struct {
+	inner atomic.Pointer[slog.Handler]
+}
+
+func (d *dynamicHandler) currentHandler() slog.Handler {
+	if h := d.inner.Load(); h != nil {
+		return *h
+	}
+	return nil
+}
+
+func (d *dynamicHandler) Enabled(ctx context.Context, lvl slog.Level) bool {
+	if h := d.currentHandler(); h != nil {
+		return h.Enabled(ctx, lvl)
+	}
+	return false
+}
+
+func (d *dynamicHandler) Handle(ctx context.Context, r slog.Record) error {
+	if h := d.currentHandler(); h != nil {
+		return h.Handle(ctx, r)
+	}
+	return nil
+}
+
+func (d *dynamicHandler) WithAttrs(attrs []slog.Attr) slog.Handler {
+	if h := d.currentHandler(); h != nil {
+		return h.WithAttrs(attrs)
+	}
+	return d
+}
+
+func (d *dynamicHandler) WithGroup(name string) slog.Handler {
+	if h := d.currentHandler(); h != nil {
+		return h.WithGroup(name)
+	}
+	return d
+}
+
+// swap atomically replaces the underlying handler. Safe to call concurrently
+// with any number of Handle/Enabled/WithAttrs/WithGroup readers.
+func (d *dynamicHandler) swap(h slog.Handler) {
+	d.inner.Store(&h)
+}
+
 var (
+	rootHandler   = &dynamicHandler{}
 	Logger        *slog.Logger
 	GlobalContext *ContextLogger
 	GlobalPerf    *PerformanceLogger
-	otelEnabled   bool
+	otelEnabledV  atomic.Bool
 )
 
 type LogConfig struct {
@@ -20,56 +78,68 @@ type LogConfig struct {
 	OTelEnabled bool
 }
 
+func init() {
+	// Pre-initialize the package globals before any goroutine can observe
+	// them. Subsequent InitLoggerWithOTel calls atomically swap the
+	// underlying handler without reassigning Logger / GlobalContext /
+	// GlobalPerf, eliminating the data race that occurs when one test calls
+	// InitLogger while a previous test's fire-and-forget goroutine is still
+	// reading the globals.
+	rootHandler.swap(buildHandler(false))
+	Logger = slog.New(rootHandler)
+	slog.SetDefault(Logger)
+	GlobalContext = NewContextLogger(Logger)
+	GlobalPerf = NewPerformanceLogger(Logger)
+}
+
 // InitLogger initializes the logger (legacy mode - stdout only)
 func InitLogger() *slog.Logger {
 	return InitLoggerWithOTel(false)
 }
 
-// InitLoggerWithOTel initializes the logger with optional OTel support
+// InitLoggerWithOTel atomically swaps the active handler. The package globals
+// (Logger, GlobalContext, GlobalPerf) keep the same pointer values they had
+// after package init, so any goroutine already holding a reference continues
+// to see a valid Logger and observes the new handler on its next call.
+//
+// Production calls this exactly once from main.go after the OTel provider is
+// initialized (or has been confirmed unavailable). Tests may call it for
+// setup; it is now safe to do so concurrently with background goroutines
+// from prior tests.
 func InitLoggerWithOTel(enableOTel bool) *slog.Logger {
+	otelEnabledV.Store(enableOTel)
+	rootHandler.swap(buildHandler(enableOTel))
 	config := getLogConfig()
-	config.OTelEnabled = enableOTel
-	otelEnabled = enableOTel
-
-	var handler slog.Handler
-
-	if enableOTel && strings.ToLower(config.Format) == "json" {
-		// Use MultiHandler for JSON + OTel
-		handler = NewMultiHandler(config.Level)
-	} else {
-		// Fallback to single handler
-		options := &slog.HandlerOptions{
-			Level: config.Level,
-		}
-		switch strings.ToLower(config.Format) {
-		case "json":
-			jsonHandler := slog.NewJSONHandler(os.Stdout, options)
-			// Always wrap with TraceContextHandler to add trace_id/span_id to stdout logs
-			handler = NewTraceContextHandler(jsonHandler)
-		default:
-			handler = slog.NewTextHandler(os.Stdout, options)
-		}
-	}
-
-	Logger = slog.New(handler)
-	slog.SetDefault(Logger)
-
-	// Initialize context and performance loggers
-	GlobalContext = NewContextLogger(Logger)
-	GlobalPerf = NewPerformanceLogger(Logger)
-
 	Logger.Info("Logger initialized",
 		"level", config.Level.String(),
 		"format", config.Format,
 		"otel_enabled", enableOTel,
 	)
-
 	return Logger
+}
+
+func buildHandler(enableOTel bool) slog.Handler {
+	config := getLogConfig()
+	config.OTelEnabled = enableOTel
+
+	if enableOTel && strings.ToLower(config.Format) == "json" {
+		// Use MultiHandler for JSON + OTel
+		return NewMultiHandler(config.Level)
+	}
+
+	options := &slog.HandlerOptions{Level: config.Level}
+	switch strings.ToLower(config.Format) {
+	case "json":
+		// Always wrap with TraceContextHandler to add trace_id/span_id to stdout logs
+		return NewTraceContextHandler(slog.NewJSONHandler(os.Stdout, options))
+	default:
+		return slog.NewTextHandler(os.Stdout, options)
+	}
 }
 
 // IsOTelEnabled returns whether OTel is enabled
 func IsOTelEnabled() bool {
-	return otelEnabled
+	return otelEnabledV.Load()
 }
 
 func getLogConfig() LogConfig {
