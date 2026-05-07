@@ -173,11 +173,14 @@ func TestNewClient_StaysEnabledWhenUpstreamIsConnectCompatible(t *testing.T) {
 	assert.Equal(t, "upsert_home_item", handler.lastMutationType)
 }
 
-func TestNewClient_DegradesGracefullyOnContentTypeMismatch(t *testing.T) {
-	// Simulate the staging-slice misroute scenario: the upstream returns
-	// HTTP 200 with application/json instead of a Connect-encoded proto
-	// response. The probe must detect this and disable the client so the
-	// runtime does NOT enter the listener-error retry loop.
+func TestNewClient_StaysEnabledOnNonConnectResponse(t *testing.T) {
+	// The probe's content-type check cannot distinguish a misrouted upstream
+	// from a Connect-compatible server that simply doesn't implement the
+	// probe method (e.g. a test stub catch-all). To avoid breaking those
+	// environments, the probe stays observational: it logs a warning and
+	// leaves the client enabled. PM-2026-042 P-1 (bounded backoff +
+	// circuit breaker on the projector retry loop) is what actually
+	// contains the runtime damage from a real misroute.
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
@@ -187,12 +190,6 @@ func TestNewClient_DegradesGracefullyOnContentTypeMismatch(t *testing.T) {
 
 	client := NewClient(srv.URL, true)
 	require.NotNil(t, client)
-	assert.False(t, client.Enabled(),
-		"client must degrade to disabled when probe detects content-type mismatch")
-
-	// Subsequent mutations are no-ops, NOT failed RPCs.
-	err := client.ApplyProjectionMutation(context.Background(), knowledge_sovereign_port.ProjectionMutation{
-		MutationType: "upsert_home_item",
-	})
-	assert.NoError(t, err, "disabled client must no-op without erroring")
+	assert.True(t, client.Enabled(),
+		"client must stay enabled even when probe sees non-Connect response (stub catch-all, real misroute, etc. cannot be distinguished from the wire)")
 }

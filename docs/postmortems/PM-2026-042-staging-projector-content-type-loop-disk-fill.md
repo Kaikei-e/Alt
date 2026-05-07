@@ -116,7 +116,7 @@
 | # | アクション | 担当 | 期限 | 状態 |
 |---|---|---|---|---|
 | P-1 | `KnowledgeProjectorRunner` に **bounded exponential backoff**（初期 1s、係数 2、上限 30s、成功で reset）と **circuit breaker**（連続失敗 5 回で open、open 中は per-cooldown の単発ログのみ、cooldown 60s）を導入 | 開発担当 | 2026-05-31 | **完了 (2026-05-07)** |
-| P-2 | `sovereign_client.NewClient` に **起動時 health probe** を追加。cheap な unary RPC（`GetActiveProjectionVersion`）で Connect-RPC compatible レスポンスが返るかを検証し、content-type mismatch を検出した場合は client を `enabled=false` にグレースフル劣化、誤配線を runtime まで持ち越さない | 開発担当 | 2026-05-31 | **完了 (2026-05-07)** |
+| P-2 | `sovereign_client.NewClient` に **起動時 health probe** を追加。cheap な unary RPC（`GetActiveProjectionVersion`）を 1 度叩き、`invalid content-type` 等の非 Connect 応答を検出した場合は **operator 向けに loud warning ログを出す**（client は `enabled=true` のまま維持）。当初は misroute 検出時に degrade させる設計としたが、Connect-RPC の "endpoint 未実装" 応答 (test stub の catch-all 等) と "misroute" 応答 (本番 nginx 404 等) が wire 上区別不能であり、CI 環境の deps-stub catch-all で false-positive degrade を起こしてカスケード障害を生んだため (PM-2026-042 と同セッション内に発覚、`fix(alt-backend): make sovereign client health probe observation-only`)、observation-only に改訂した。runtime 防御は P-1 (bounded backoff + circuit breaker) が担う | 開発担当 | 2026-05-31 | **完了 (2026-05-07、改訂を含む)** |
 | P-3 | staging slice 生成フローで sovereign baseURL の到達性を事前検証。production と routing が乖離している場合は CI で失敗させる | 開発担当 | 2026-05-31 | 未着手 |
 
 ### 検知（Detect）
@@ -147,7 +147,7 @@
 ### 技術的教訓
 
 1. **bounded backoff + circuit breaker は optional ではなく構造的要件**: 5 秒固定リトライ（fast-path では待機なし）は systemic 失敗に対しては log flooding 装置でしかない。外部 RPC 依存を持つ retry loop の実装には bounded backoff と circuit breaker を最初から組み込むべき
-2. **外部 RPC client は起動時に upstream の正当性を検証すべき**: baseURL の構成不整合は ephemeral 環境で容易に混入する。startup health probe で fail-fast にしないと誤配線を runtime まで持ち越し、永久リトライと相まって必ず log flooding になる
+2. **外部 RPC client は起動時に upstream の正当性を観測すべき (ただし degrade はしない)**: baseURL の構成不整合は ephemeral 環境で容易に混入する。startup health probe を入れることで operator-facing logs に loud な警告を出せる。一方、content-type シグナル単独で client を degrade してしまうと、Connect-compatible だが該当 RPC 未実装の test stub / catch-all 環境で false-positive のカスケード障害を起こす (本 PM の P-2 改訂で実証)。runtime 防御は bounded backoff + circuit breaker (P-1) に任せる
 3. **container log volume は health の first-class metric**: ディスク逼迫 alert がないインフラでは、log flooding が起きると必ず全停止リスクに直結する。host 共有 Docker daemon を使う構成では特に重要
 4. **Connect-RPC の content-type 不整合エラーは upstream routing をまず疑う**: client codec のデフォルトは binary proto なので、`expecting "application/proto"` というエラーが出たらレスポンス側 Content-Type を見る。client codec を変える対処（`WithProtoJSON()` 追加等）は最後の選択肢
 

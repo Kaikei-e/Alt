@@ -33,10 +33,14 @@ type Client struct {
 }
 
 // NewClient creates a new Knowledge Sovereign Connect-RPC client. When
-// enabled, NewClient performs a startup health probe to detect upstream
-// misrouting (e.g. a staging slice whose baseURL points at a JSON-returning
-// proxy instead of the sovereign service). Detected misroutes degrade the
-// client to disabled so the caller does not enter a content-type retry loop.
+// enabled, NewClient runs a one-shot startup health probe purely to surface
+// likely misconfiguration (e.g. a staging slice whose baseURL points at a
+// JSON-returning proxy instead of the sovereign service). The probe is
+// observational only — it does NOT disable the client on failure, because
+// "endpoint not implemented" and "wrong upstream" are not distinguishable
+// from the wire (both look like content-type mismatches to connect-go).
+// The bounded backoff and circuit breaker on the projector retry loop is
+// what actually contains the runtime failure mode (PM-2026-042 P-1).
 func NewClient(baseURL string, enabled bool) *Client {
 	if !enabled {
 		return &Client{enabled: false}
@@ -60,9 +64,7 @@ func NewClient(baseURL string, enabled bool) *Client {
 		enabled: true,
 	}
 
-	if !c.healthProbe(context.Background()) {
-		c.enabled = false
-	}
+	c.runHealthProbe(context.Background())
 	return c
 }
 
@@ -72,34 +74,35 @@ func (c *Client) Enabled() bool {
 	return c.enabled
 }
 
-// healthProbe issues one cheap unary RPC and reports whether the response
-// looks like a Connect-RPC compatible upstream. Network errors and
-// application-level errors (e.g. CodeUnimplemented) are treated as healthy:
-// they prove the upstream speaks Connect even if this specific method is
-// unavailable. Only content-type mismatches are treated as misroutes.
-func (c *Client) healthProbe(ctx context.Context) bool {
+// runHealthProbe issues one cheap unary RPC and logs the outcome. The probe
+// always lets the caller stay enabled; its job is to make startup-time
+// misconfiguration loud in operator-facing logs, not to silently degrade.
+func (c *Client) runHealthProbe(ctx context.Context) {
 	probeCtx, cancel := context.WithTimeout(ctx, healthProbeTimeout)
 	defer cancel()
 
 	_, err := c.client.GetActiveProjectionVersion(probeCtx,
 		connect.NewRequest(&sovereignv1.GetActiveProjectionVersionRequest{}))
 	if err == nil {
-		return true
+		slog.Info("knowledge sovereign health probe ok", "base_url", c.baseURL)
+		return
 	}
 	if isContentTypeMismatch(err) {
-		slog.Warn("knowledge sovereign health probe detected upstream content-type mismatch; degrading client",
+		// This signal is shared by two very different conditions: a real
+		// upstream misroute (the PM-2026-042 staging slice scenario) AND a
+		// reachable Connect server that simply does not implement the probe
+		// method (common in test stubs). Surface a loud warning so operators
+		// can investigate, but keep the client enabled so legitimate stub
+		// environments are not broken.
+		slog.Warn("knowledge sovereign health probe saw non-Connect response; verify upstream routing",
 			"base_url", c.baseURL,
 			"error", err,
-			"hint", "verify the configured KNOWLEDGE_SOVEREIGN_BASE_URL routes to the sovereign service, not a JSON proxy")
-		return false
+			"hint", "if running against the real sovereign service, check KNOWLEDGE_SOVEREIGN_BASE_URL")
+		return
 	}
-	// Any other error (Unimplemented, network blip, transient code) is
-	// treated as healthy — runtime retries with the bounded-backoff loop
-	// will recover. Fail-fast only on the misroute signature.
 	slog.Info("knowledge sovereign health probe returned a non-fatal error; client stays enabled",
 		"base_url", c.baseURL,
 		"error", err)
-	return true
 }
 
 func isContentTypeMismatch(err error) bool {
