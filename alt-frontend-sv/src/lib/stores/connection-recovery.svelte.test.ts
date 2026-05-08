@@ -62,7 +62,11 @@ describe("createConnectionRecoveryStore", () => {
 		const callback = vi.fn();
 		store.subscribe(callback);
 
-		(mockMod as unknown as { __triggerRecovery: (info: { reason: string }) => void }).__triggerRecovery({
+		(
+			mockMod as unknown as {
+				__triggerRecovery: (info: { reason: string }) => void;
+			}
+		).__triggerRecovery({
 			reason: "visibility",
 		});
 
@@ -77,13 +81,21 @@ describe("createConnectionRecoveryStore", () => {
 
 		expect(store.recoveryCount).toBe(0);
 
-		(mockMod as unknown as { __triggerRecovery: (info: { reason: string }) => void }).__triggerRecovery({
+		(
+			mockMod as unknown as {
+				__triggerRecovery: (info: { reason: string }) => void;
+			}
+		).__triggerRecovery({
 			reason: "visibility",
 		});
 
 		expect(store.recoveryCount).toBe(1);
 
-		(mockMod as unknown as { __triggerRecovery: (info: { reason: string }) => void }).__triggerRecovery({
+		(
+			mockMod as unknown as {
+				__triggerRecovery: (info: { reason: string }) => void;
+			}
+		).__triggerRecovery({
 			reason: "online",
 		});
 
@@ -97,7 +109,14 @@ describe("createConnectionRecoveryStore", () => {
 
 		expect(store.lastRecoveryInfo).toBeNull();
 
-		(mockMod as unknown as { __triggerRecovery: (info: { reason: string; hiddenDurationMs?: number }) => void }).__triggerRecovery({
+		(
+			mockMod as unknown as {
+				__triggerRecovery: (info: {
+					reason: string;
+					hiddenDurationMs?: number;
+				}) => void;
+			}
+		).__triggerRecovery({
 			reason: "bfcache",
 			hiddenDurationMs: undefined,
 		});
@@ -122,7 +141,11 @@ describe("createConnectionRecoveryStore", () => {
 		store.subscribe(errorCallback);
 		store.subscribe(goodCallback);
 
-		(mockMod as unknown as { __triggerRecovery: (info: { reason: string }) => void }).__triggerRecovery({
+		(
+			mockMod as unknown as {
+				__triggerRecovery: (info: { reason: string }) => void;
+			}
+		).__triggerRecovery({
 			reason: "visibility",
 		});
 

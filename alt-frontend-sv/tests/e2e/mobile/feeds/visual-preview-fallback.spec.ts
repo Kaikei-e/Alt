@@ -46,16 +46,14 @@ test.describe("mobile feeds — swipe card rendering", () => {
 		await expect(card).toBeVisible();
 
 		// Check feed title and description from mock data
-		await expect(card.getByRole("heading", { name: "AI Trends" })).toBeVisible();
+		await expect(
+			card.getByRole("heading", { name: "AI Trends" }),
+		).toBeVisible();
 		await expect(card.getByText("Deep dive into the ecosystem.")).toBeVisible();
 
 		// Check action buttons are present
-		await expect(
-			card.getByRole("button", { name: /article/i }),
-		).toBeVisible();
-		await expect(
-			card.getByRole("button", { name: /summary/i }),
-		).toBeVisible();
+		await expect(card.getByRole("button", { name: /article/i })).toBeVisible();
+		await expect(card.getByRole("button", { name: /summary/i })).toBeVisible();
 	});
 
 	test("shows description as fallback when article content is unavailable", async ({

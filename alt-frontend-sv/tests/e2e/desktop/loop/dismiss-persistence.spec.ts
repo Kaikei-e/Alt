@@ -60,8 +60,7 @@ test.describe("Knowledge Loop — dismiss persistence", () => {
 		// post can race the dismiss button mid-render.
 		await expect
 			.poll(
-				() =>
-					transitionBodies.filter((b) => b.trigger === "user_tap").length,
+				() => transitionBodies.filter((b) => b.trigger === "user_tap").length,
 			)
 			.toBeGreaterThan(0);
 
