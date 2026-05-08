@@ -90,6 +90,98 @@ Full-reproject procedure for the Knowledge Loop read model. Use this when:
    ```
 3. Row count within 1-5% of the pre-snapshot (if the projection rules have not changed).
 
+### v2 Surface Planner post-check (Knowledge Loop Completion Phase 1)
+
+Run after a v2 cutover (Wave 4-A augur emit + Wave 4-B recap emit are both
+flowing) to confirm `EventLogSurfaceScoreResolver` actually receives
+non-zero evidence. A v2 reproject that silently produces all-zero
+`surface_score_inputs` means the upstream signal isn't reaching the event
+log — investigate before declaring the cutover successful.
+
+4. v2 / v1 placement breakdown.
+   ```sql
+   SELECT surface_planner_version, surface_bucket, COUNT(*)
+   FROM knowledge_loop_entries
+   GROUP BY 1, 2
+   ORDER BY 1, 2;
+   ```
+   Expect a non-zero count for `surface_planner_version = 2` once Wave 4-A
+   and Wave 4-B are emitting and the resolver has events to score against.
+   A 100% v1 result here means the resolver returned `SurfaceScoreInputs{}`
+   (zero-value fallback) for every entry — the signal is missing.
+
+5. Evidence non-zero rate per v2 row.
+   ```sql
+   SELECT
+     COUNT(*) FILTER (WHERE surface_score_inputs IS NULL) AS null_inputs,
+     COUNT(*) FILTER (WHERE (surface_score_inputs->>'topic_overlap_count')::int > 0) AS topic_overlap_present,
+     COUNT(*) FILTER (WHERE (surface_score_inputs->>'has_augur_link')::bool) AS augur_link_present,
+     COUNT(*) FILTER (WHERE (surface_score_inputs->>'recap_cluster_momentum')::numeric > 0) AS recap_momentum_present,
+     COUNT(*) FILTER (WHERE continue_context IS NULL) AS null_continue_context,
+     COUNT(*) FILTER (WHERE change_summary IS NULL) AS null_change_summary,
+     COUNT(*) FILTER (WHERE source_observed_at IS NULL) AS null_source_observed_at
+   FROM knowledge_loop_entries
+   WHERE surface_planner_version = 2;
+   ```
+   Record these values in the cutover ticket. They are the rollout-visible
+   evidence that the Phase 1 emit chain is actually producing signal.
+
+6. Recap target presence in `act_targets[]`.
+   ```sql
+   SELECT COUNT(*) AS recap_targeted_entries
+   FROM knowledge_loop_entries, jsonb_array_elements(act_targets) t
+   WHERE t->>'target_type' = 'recap';
+   ```
+   Expect a non-zero count once recap-worker's persist-stage emit (Phase 1
+   §2) is actually running and has produced at least one
+   `recap.topic_snapshotted.v1` event whose `top_terms` overlap a Loop
+   entry's tags. Zero here while §5 shows a `topic_overlap_present > 0` is
+   a smell: the snapshot id field probably failed UUID validation in the
+   resolver — inspect a sample with
+   `SELECT recap_topic_snapshot_id FROM ...` plus the resolver log.
+
+### Deterministic-replay verification
+
+To confirm the reproject is truly idempotent (a Phase 1 §4 acceptance
+criterion), run the full TRUNCATE + replay procedure twice in a row and
+diff the resulting projections row-by-row. The outputs must be byte-level
+identical for `surface_score_inputs`, `surface_bucket`, `act_targets`,
+`why_text`, `why_evidence_refs`, and `change_summary`. Any drift here is a
+non-deterministic resolver/projector bug — open a postmortem before
+shipping.
+
+```sql
+-- After the first reproject, snapshot to a temp table:
+CREATE TEMP TABLE reproject_pass1 AS
+SELECT entry_key, surface_planner_version, surface_bucket,
+       surface_score_inputs::text AS si_text,
+       act_targets::text          AS at_text,
+       why_text, why_kind,
+       change_summary::text       AS cs_text
+FROM knowledge_loop_entries
+ORDER BY entry_key;
+
+-- Run the TRUNCATE + replay procedure a second time, then:
+SELECT COUNT(*) AS divergent_rows
+FROM (
+  SELECT entry_key, surface_planner_version, surface_bucket,
+         surface_score_inputs::text AS si_text,
+         act_targets::text          AS at_text,
+         why_text, why_kind,
+         change_summary::text       AS cs_text
+  FROM knowledge_loop_entries
+  ORDER BY entry_key
+) AS pass2
+FULL OUTER JOIN reproject_pass1 USING (entry_key)
+WHERE (pass2.surface_bucket, pass2.si_text, pass2.at_text, pass2.why_text,
+       pass2.why_kind, pass2.cs_text)
+   IS DISTINCT FROM
+      (reproject_pass1.surface_bucket, reproject_pass1.si_text,
+       reproject_pass1.at_text, reproject_pass1.why_text,
+       reproject_pass1.why_kind, reproject_pass1.cs_text);
+-- expect 0
+```
+
 ## Troubleshooting
 
 - **`dangling_supersede_refs` non-empty**: a supersede target is missing from `knowledge_loop_entries`. Check whether the referenced entry was filtered out by the projector (e.g. a `user_id IS NULL` event). Inspect via:
