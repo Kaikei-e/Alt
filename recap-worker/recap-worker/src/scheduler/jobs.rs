@@ -31,6 +31,17 @@ pub(crate) struct JobContext {
     ///   - `"morning"` (`POST /v1/morning/letters/regenerate` 由来)
     ///   - `"user"`    (manual `/v1/generate/recaps/*`)
     pub(crate) trigger_source: &'static str,
+    /// Owning user, when the recap is per-user (morning_update / manual
+    /// `/v1/generate/recaps/*`). Stays `None` for system batches that don't
+    /// produce a single-user knowledge_events row. Persist-stage
+    /// `recap.topic_snapshotted.v1` emit (Knowledge Loop Completion Phase 1
+    /// §2) requires both `user_id` and `tenant_id` to be set; the publish
+    /// helper skips emit when either is `None`.
+    pub(crate) user_id: Option<Uuid>,
+    /// Tenant scope for the knowledge_events emit. Resolved alongside
+    /// `user_id`; missing tenant means we cannot place the event in the
+    /// right multi-tenant projection scope and must skip emit.
+    pub(crate) tenant_id: Option<Uuid>,
 }
 
 impl JobContext {
@@ -41,6 +52,8 @@ impl JobContext {
             current_stage: None,
             window_days: 7, // Default to 7 days for backward compatibility
             trigger_source: "system",
+            user_id: None,
+            tenant_id: None,
         }
     }
 
@@ -51,6 +64,8 @@ impl JobContext {
             current_stage: None,
             window_days,
             trigger_source: "system",
+            user_id: None,
+            tenant_id: None,
         }
     }
 
@@ -65,11 +80,25 @@ impl JobContext {
             // morning_update は overnight 1 日の窓で dedup + group する
             window_days: 1,
             trigger_source: "morning",
+            user_id: None,
+            tenant_id: None,
         }
     }
 
     pub(crate) fn with_stage(mut self, stage: String) -> Self {
         self.current_stage = Some(stage);
+        self
+    }
+
+    /// Bind the owning user + tenant to the job. Used by per-user job
+    /// constructors (morning_update, manual recap requests) so the
+    /// persist-stage `recap.topic_snapshotted.v1` emit has the scope it
+    /// needs. System batches keep both `None` and the publish helper
+    /// gracefully skips emit.
+    #[allow(dead_code)]
+    pub(crate) fn with_user_scope(mut self, user_id: Uuid, tenant_id: Uuid) -> Self {
+        self.user_id = Some(user_id);
+        self.tenant_id = Some(tenant_id);
         self
     }
 
@@ -83,6 +112,16 @@ impl JobContext {
 
     pub(crate) fn trigger_source(&self) -> &'static str {
         self.trigger_source
+    }
+
+    #[allow(dead_code)]
+    pub(crate) fn user_id(&self) -> Option<Uuid> {
+        self.user_id
+    }
+
+    #[allow(dead_code)]
+    pub(crate) fn tenant_id(&self) -> Option<Uuid> {
+        self.tenant_id
     }
 }
 

@@ -130,6 +130,15 @@ services:
       # OpenTelemetry
       - OTEL_EXPORTER_OTLP_ENDPOINT=http://rask-log-aggregator:4318
       - OTEL_SERVICE_NAME=recap-worker
+      # Knowledge Loop Completion Phase 1 §2: persist-stage emit of
+      # recap.topic_snapshotted.v1 into knowledge-sovereign so Surface
+      # Planner v2 can credit Loop entries with topic_overlap_count /
+      # recap_cluster_momentum signals. Default true mirrors
+      # rag-orchestrator's emit gating; flip to false to disable emit
+      # without redeploying. URL stays internal (port 9500) — Prometheus
+      # scrape uses 9501 separately.
+      - RECAP_KNOWLEDGE_EMIT=${RECAP_KNOWLEDGE_EMIT:-true}
+      - RECAP_KNOWLEDGE_SOVEREIGN_URL=${RECAP_KNOWLEDGE_SOVEREIGN_URL:-http://knowledge-sovereign:9500}
     secrets:
       - recap_db_password
       - hugging_face_token
