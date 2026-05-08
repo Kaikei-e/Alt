@@ -4,6 +4,7 @@ package contract
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -354,6 +355,109 @@ func TestAppendKnowledgeEvent_KnowledgeLoopActed(t *testing.T) {
 				"aggregateId":   "article:42",
 				"dedupeKey":     clientTransitionID,
 				"payload":       "eyJlbnRyeV9rZXkiOiJhcnRpY2xlOjQyIn0",
+			}),
+		}).
+		WithCompleteResponse(consumer.Response{
+			Status: 200,
+			Headers: matchers.MapMatcher{
+				"Content-Type": matchers.String("application/json"),
+			},
+			Body: matchers.MapMatcher{
+				"success": matchers.Like(true),
+			},
+		}).
+		ExecuteTest(t, func(config consumer.MockServerConfig) error {
+			client := sovereignv1connect.NewKnowledgeSovereignServiceClient(
+				http.DefaultClient,
+				fmt.Sprintf("http://%s:%d", config.Host, config.Port),
+				connect.WithProtoJSON(),
+			)
+			_, err := client.AppendKnowledgeEvent(context.Background(), connect.NewRequest(&sovereignv1.AppendKnowledgeEventRequest{
+				Event: &sovereignv1.KnowledgeEvent{
+					EventId:       eventID.String(),
+					OccurredAt:    timestamppb.New(occurredAt),
+					TenantId:      tenantID.String(),
+					UserId:        userID.String(),
+					ActorType:     "user",
+					ActorId:       userID.String(),
+					EventType:     "knowledge_loop.acted.v1",
+					AggregateType: "loop_session",
+					AggregateId:   "article:42",
+					DedupeKey:     clientTransitionID,
+					Payload:       payload,
+				},
+			}))
+			return err
+		})
+	assert.NoError(t, err)
+}
+
+// TestAppendKnowledgeEvent_KnowledgeLoopActed_SemanticPayload pins the Phase 2
+// canonical wire shape. The KnowledgeLoopActed payload now carries semantic
+// metadata (`acted_intent`, `target_type`, `target_ref`, `continue_flag`,
+// `presented_intents`, `action_id`) so the projector can reproject
+// `continue_context.recent_action_labels` and Surface Planner v2 can use
+// `continue_flag=true` as a Continue signal.
+//
+// This sibling test is additive: the original
+// TestAppendKnowledgeEvent_KnowledgeLoopActed continues to pin the
+// stage-only legacy shape, so a regression in either direction is caught.
+func TestAppendKnowledgeEvent_KnowledgeLoopActed_SemanticPayload(t *testing.T) {
+	mockProvider, err := consumer.NewV3Pact(consumer.MockHTTPProviderConfig{
+		Consumer: "alt-backend",
+		Provider: "knowledge-sovereign",
+		PactDir:  filepath.Join(pactDir),
+	})
+	require.NoError(t, err)
+
+	eventID := uuid.New()
+	clientTransitionID := uuid.NewString()
+	tenantID := uuid.New()
+	userID := uuid.New()
+	occurredAt := time.Date(2026, 5, 9, 10, 0, 0, 0, time.UTC)
+	conversationID := uuid.NewString()
+
+	semanticPayload := map[string]any{
+		"entry_key":                    "article:42",
+		"lens_mode_id":                 "default",
+		"from_stage":                   "LOOP_STAGE_DECIDE",
+		"to_stage":                     "LOOP_STAGE_ACT",
+		"trigger":                      "TRANSITION_TRIGGER_USER_TAP",
+		"observed_projection_revision": 1,
+		"client_transition_id":         clientTransitionID,
+		// Phase 2 semantic fields:
+		"presented_intents": []string{"open", "ask", "snooze"},
+		"acted_intent":      "DECISION_INTENT_ASK",
+		"action_id":         "ask",
+		"target_type":       "ACT_TARGET_TYPE_CONVERSATION",
+		"target_ref":        conversationID,
+		"continue_flag":     true,
+	}
+	payload, _ := json.Marshal(semanticPayload)
+	encoded := base64.StdEncoding.EncodeToString(payload)
+
+	err = mockProvider.
+		AddInteraction().
+		Given("sovereign accepts Acted events with Phase 2 semantic metadata").
+		UponReceiving("an AppendKnowledgeEvent request with acted_intent + target_type + continue_flag").
+		WithCompleteRequest(consumer.Request{
+			Method: "POST",
+			Path:   matchers.String("/services.sovereign.v1.KnowledgeSovereignService/AppendKnowledgeEvent"),
+			Headers: matchers.MapMatcher{
+				"Content-Type": matchers.String("application/json"),
+			},
+			Body: loopEventBody(map[string]any{
+				"eventId":       eventID.String(),
+				"occurredAt":    "2026-05-09T10:00:00Z",
+				"tenantId":      tenantID.String(),
+				"userId":        userID.String(),
+				"actorType":     "user",
+				"actorId":       userID.String(),
+				"eventType":     "knowledge_loop.acted.v1",
+				"aggregateType": "loop_session",
+				"aggregateId":   "article:42",
+				"dedupeKey":     clientTransitionID,
+				"payload":       encoded,
 			}),
 		}).
 		WithCompleteResponse(consumer.Response{

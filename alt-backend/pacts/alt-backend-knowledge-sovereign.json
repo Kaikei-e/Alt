@@ -15,15 +15,15 @@
           "event": {
             "actorId": "knowledge-url-backfill",
             "actorType": "service",
-            "aggregateId": "c0e0256e-2278-43f4-8d9e-1d869e44f135",
+            "aggregateId": "3c8dfbb8-8e6a-4a0e-af38-2807340f8617",
             "aggregateType": "article",
-            "dedupeKey": "article-url-backfill-v2:c0e0256e-2278-43f4-8d9e-1d869e44f135",
-            "eventId": "536fe47a-cc70-4b4d-b0ed-0ab365071a29",
+            "dedupeKey": "article-url-backfill-v2:3c8dfbb8-8e6a-4a0e-af38-2807340f8617",
+            "eventId": "b0d3e7cb-5e27-451f-8aed-f815ce34352d",
             "eventType": "ArticleUrlBackfilled",
             "occurredAt": "2026-04-28T12:00:00Z",
             "payload": "eyJhcnRpY2xlX2lkIjoiMDAwMDAwMDAtMDAwMC0wMDAwLTAwMDAtMDAwMDAwMDAwMDAwIiwidXJsIjoiaHR0cHM6Ly9leGFtcGxlLmNvbSJ9",
-            "tenantId": "473f6b0a-ec99-4e31-8e0e-8132682933e6",
-            "userId": "22596ea4-4671-439e-8de7-19aab7424dda"
+            "tenantId": "e956c192-6d65-4f58-aaf9-083fa535e178",
+            "userId": "bf7d7293-9f1b-469a-9187-93a661136533"
           }
         },
         "headers": {
@@ -85,17 +85,17 @@
       "request": {
         "body": {
           "event": {
-            "actorId": "52ce8480-f821-43ac-8c32-6533cde52f9c",
+            "actorId": "31fe33af-f5b4-4b4e-89aa-acad6d4bfd45",
             "actorType": "user",
             "aggregateId": "article:42",
             "aggregateType": "loop_session",
-            "dedupeKey": "8031e364-95d5-4775-a70a-2d2855639249",
-            "eventId": "8adcc523-7279-468e-be2b-6075a7ce7da4",
+            "dedupeKey": "6bf2e87b-3414-43e8-b185-72c0c2ccc20b",
+            "eventId": "08fd2d55-27dd-417b-8a24-4998783cd188",
             "eventType": "knowledge_loop.acted.v1",
             "occurredAt": "2026-04-24T10:00:00Z",
             "payload": "eyJlbnRyeV9rZXkiOiJhcnRpY2xlOjQyIn0",
-            "tenantId": "5545a38e-fe37-44dd-a01a-4a71bad76af2",
-            "userId": "52ce8480-f821-43ac-8c32-6533cde52f9c"
+            "tenantId": "11bc2cea-fd16-4cef-bed6-80610089c242",
+            "userId": "31fe33af-f5b4-4b4e-89aa-acad6d4bfd45"
           }
         },
         "headers": {
@@ -148,17 +148,17 @@
       "request": {
         "body": {
           "event": {
-            "actorId": "f23ac510-4a96-44c5-995d-e0959aaedd3d",
+            "actorId": "8050f23c-86f2-42d9-90f0-bbde66fa60b2",
             "actorType": "user",
             "aggregateId": "article:42",
             "aggregateType": "loop_session",
-            "dedupeKey": "872f8355-dfaf-414f-9512-a0560113cb36",
-            "eventId": "4b1b43d4-161c-4230-9a53-8a863c5e85e8",
+            "dedupeKey": "679091c3-7935-4810-a119-f398016f91ad",
+            "eventId": "b0eb1111-8cd0-49c8-8499-64d7c3361b25",
             "eventType": "knowledge_loop.deferred.v1",
             "occurredAt": "2026-04-26T10:00:00Z",
             "payload": "eyJlbnRyeV9rZXkiOiJhcnRpY2xlOjQyIn0",
-            "tenantId": "f2c8456a-5210-45be-8f28-53e13869aeff",
-            "userId": "f23ac510-4a96-44c5-995d-e0959aaedd3d"
+            "tenantId": "f15d0aab-26fc-4520-b9a2-d510a3613239",
+            "userId": "8050f23c-86f2-42d9-90f0-bbde66fa60b2"
           }
         },
         "headers": {
@@ -211,17 +211,17 @@
       "request": {
         "body": {
           "event": {
-            "actorId": "01aecaec-d2a4-4e52-a364-2f5ae96b1f6c",
+            "actorId": "6e637be3-5acd-4784-8c48-460faddf5025",
             "actorType": "user",
             "aggregateId": "article:42",
             "aggregateType": "loop_session",
-            "dedupeKey": "3d647650-0643-46b1-a7b9-3f961ec4d98f",
-            "eventId": "21a6638e-0316-4305-9839-a4411699135d",
+            "dedupeKey": "6f857d5e-a032-4865-afd4-ef172c8a8b53",
+            "eventId": "099d0812-71e6-415f-ba6c-76b882a5399c",
             "eventType": "knowledge_loop.observed.v1",
             "occurredAt": "2026-04-24T10:00:00Z",
             "payload": "eyJlbnRyeV9rZXkiOiJhcnRpY2xlOjQyIn0",
-            "tenantId": "42be346d-9c05-4575-9f91-a7a7e1f65cd0",
-            "userId": "01aecaec-d2a4-4e52-a364-2f5ae96b1f6c"
+            "tenantId": "3ebd8b0f-5c4d-4304-aabb-6df47ddba77d",
+            "userId": "6e637be3-5acd-4784-8c48-460faddf5025"
           }
         },
         "headers": {
@@ -274,17 +274,80 @@
       "request": {
         "body": {
           "event": {
-            "actorId": "cc65eaa7-13ac-453f-add8-7e252f8b35ea",
+            "actorId": "7c73bcfa-69a1-4a3f-be5a-e3dd10fafbc1",
             "actorType": "user",
             "aggregateId": "article:42",
             "aggregateType": "loop_session",
-            "dedupeKey": "c597b3be-21d8-4fd9-be0a-a957b1a96bf4",
-            "eventId": "cf22f9eb-8570-4566-81b1-3ed44b71aac8",
+            "dedupeKey": "53f4b15f-9a69-49e9-8cfa-f612379185ea",
+            "eventId": "3825afc4-af87-4bb8-8b68-93a0d45dbb8c",
             "eventType": "knowledge_loop.reviewed.v1",
             "occurredAt": "2026-04-28T10:00:00Z",
             "payload": "eyJlbnRyeV9rZXkiOiJhcnRpY2xlOjQyIn0",
-            "tenantId": "6f60ec12-63d9-4d53-9cd9-9c73ac4d66f8",
-            "userId": "cc65eaa7-13ac-453f-add8-7e252f8b35ea"
+            "tenantId": "cc8afb59-5fff-428d-868a-d0bd16206597",
+            "userId": "7c73bcfa-69a1-4a3f-be5a-e3dd10fafbc1"
+          }
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "matchingRules": {
+          "body": {
+            "$.event": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            }
+          }
+        },
+        "method": "POST",
+        "path": "/services.sovereign.v1.KnowledgeSovereignService/AppendKnowledgeEvent"
+      },
+      "response": {
+        "body": {
+          "success": true
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "matchingRules": {
+          "body": {
+            "$.success": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            }
+          }
+        },
+        "status": 200
+      }
+    },
+    {
+      "description": "an AppendKnowledgeEvent request with acted_intent + target_type + continue_flag",
+      "providerStates": [
+        {
+          "name": "sovereign accepts Acted events with Phase 2 semantic metadata"
+        }
+      ],
+      "request": {
+        "body": {
+          "event": {
+            "actorId": "b126d9d1-a326-4822-8a27-6f5566481153",
+            "actorType": "user",
+            "aggregateId": "article:42",
+            "aggregateType": "loop_session",
+            "dedupeKey": "a78c57e8-d615-4b29-9690-be0441d4a94b",
+            "eventId": "735f0ad3-2812-4fa2-82c7-11428e0b737d",
+            "eventType": "knowledge_loop.acted.v1",
+            "occurredAt": "2026-05-09T10:00:00Z",
+            "payload": "eyJhY3RlZF9pbnRlbnQiOiJERUNJU0lPTl9JTlRFTlRfQVNLIiwiYWN0aW9uX2lkIjoiYXNrIiwiY2xpZW50X3RyYW5zaXRpb25faWQiOiJhNzhjNTdlOC1kNjE1LTRiMjktOTY5MC1iZTA0NDFkNGE5NGIiLCJjb250aW51ZV9mbGFnIjp0cnVlLCJlbnRyeV9rZXkiOiJhcnRpY2xlOjQyIiwiZnJvbV9zdGFnZSI6IkxPT1BfU1RBR0VfREVDSURFIiwibGVuc19tb2RlX2lkIjoiZGVmYXVsdCIsIm9ic2VydmVkX3Byb2plY3Rpb25fcmV2aXNpb24iOjEsInByZXNlbnRlZF9pbnRlbnRzIjpbIm9wZW4iLCJhc2siLCJzbm9vemUiXSwidGFyZ2V0X3JlZiI6ImRhYTFkMGE5LTg2YjQtNGI1ZC04MTJlLWYzYWI2YzRlODQyNyIsInRhcmdldF90eXBlIjoiQUNUX1RBUkdFVF9UWVBFX0NPTlZFUlNBVElPTiIsInRvX3N0YWdlIjoiTE9PUF9TVEFHRV9BQ1QiLCJ0cmlnZ2VyIjoiVFJBTlNJVElPTl9UUklHR0VSX1VTRVJfVEFQIn0=",
+            "tenantId": "8c178b90-ddaa-431a-bbae-1f3252bbe667",
+            "userId": "b126d9d1-a326-4822-8a27-6f5566481153"
           }
         },
         "headers": {
