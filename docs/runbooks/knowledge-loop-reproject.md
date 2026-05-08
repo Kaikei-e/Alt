@@ -140,6 +140,63 @@ log — investigate before declaring the cutover successful.
    resolver — inspect a sample with
    `SELECT recap_topic_snapshot_id FROM ...` plus the resolver log.
 
+### v2 Surface Planner post-check (Knowledge Loop Completion Phase 2)
+
+Phase 2 introduced semantic Decide / Act feedback so user actions
+(`knowledge_loop.acted.v1` events with `acted_intent` + `target_type` +
+`continue_flag`) round-trip back to Loop. Reproject post-checks below verify
+that the projector reconstructs `continue_context.recent_action_labels` and
+the `RecentContinueActionCount` Continue signal purely from the event log.
+
+7. Bound assertion on `recent_action_labels` (must never exceed 5).
+   ```sql
+   SELECT COUNT(*) FROM knowledge_loop_entries
+   WHERE continue_context IS NOT NULL
+     AND jsonb_array_length(continue_context->'recent_action_labels') > 5;
+   -- expect 0
+   ```
+   A non-zero count means the projector wrote an unbounded list — investigate
+   `buildContinueContextFromActed` and the bound constant
+   (`recentActionLabelsBound`).
+
+8. Semantic action label coverage.
+   ```sql
+   SELECT
+     COUNT(*) FILTER (WHERE continue_context->'recent_action_labels' ? 'opened')   AS opened,
+     COUNT(*) FILTER (WHERE continue_context->'recent_action_labels' ? 'asked')    AS asked,
+     COUNT(*) FILTER (WHERE continue_context->'recent_action_labels' ? 'saved')    AS saved,
+     COUNT(*) FILTER (WHERE continue_context->'recent_action_labels' ? 'compared') AS compared,
+     COUNT(*) FILTER (WHERE continue_context->'recent_action_labels' ? 'revisited')AS revisited,
+     COUNT(*) FILTER (WHERE continue_context->'recent_action_labels' ? 'snoozed')  AS snoozed
+   FROM knowledge_loop_entries;
+   ```
+   Once Phase 2 has been live for a day, expect non-zero counts across `opened`
+   / `asked` / `revisited` (the Continue intents) and at least some `saved` /
+   `compared` / `snoozed`. Zero in every column means the frontend isn't
+   emitting semantic metadata — check the `/loop/transition` request body in
+   the BFF logs.
+
+9. Recap target preservation across reproject.
+   ```sql
+   -- Run before TRUNCATE:
+   CREATE TEMP TABLE reproject_recap_pre AS
+   SELECT user_id, entry_key,
+          (SELECT COUNT(*) FROM jsonb_array_elements(act_targets) t
+           WHERE t->>'target_type' = 'recap') AS recap_targets
+   FROM knowledge_loop_entries
+   WHERE EXISTS (SELECT 1 FROM jsonb_array_elements(act_targets) t
+                 WHERE t->>'target_type' = 'recap');
+   -- TRUNCATE + reproject ...
+   -- Then assert reproduction:
+   SELECT COUNT(*) FROM reproject_recap_pre p
+   LEFT JOIN knowledge_loop_entries e
+     ON p.user_id = e.user_id AND p.entry_key = e.entry_key
+   WHERE e.entry_key IS NULL
+      OR (SELECT COUNT(*) FROM jsonb_array_elements(e.act_targets) t
+          WHERE t->>'target_type' = 'recap') <> p.recap_targets;
+   -- expect 0 (every entry that had a recap target before still has one).
+   ```
+
 ### Deterministic-replay verification
 
 To confirm the reproject is truly idempotent (a Phase 1 §4 acceptance
