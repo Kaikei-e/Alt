@@ -34,6 +34,10 @@ services:
     volumes:
       - prometheus_data:/prometheus
       - ../observability/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      # rule_files: /etc/prometheus/rules/*.yml in prometheus.yml — without
+      # this mount the glob matches nothing and recording/alerting rules
+      # silently fail to load. Knowledge Loop Completion Phase 1 §5.
+      - ../observability/prometheus/rules:/etc/prometheus/rules:ro
     command:
       - '--config.file=/etc/prometheus/prometheus.yml'
       - '--storage.tsdb.path=/prometheus'

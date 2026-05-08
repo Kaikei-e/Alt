@@ -118,3 +118,29 @@ scrape_configs:
         labels: { service: 'pki-agent', subject: 'acolyte-orchestrator' }
     scrape_interval: 30s
     metrics_path: /metrics
+
+  # knowledge-sovereign: /metrics on container port 9501 (host 9511 is for
+  # external probes, not Prometheus). Surfaces the Knowledge Loop projector
+  # counters wired in ADR-000852 — surface_bucket_assigned_total{version,bucket},
+  # event_dropped_total, cross_user_isolation_violation_total, etc. Knowledge
+  # Loop Completion Phase 1 §5 wires this scrape so Grafana's
+  # knowledge-loop-projector dashboard finally has a live target.
+  - job_name: 'knowledge-sovereign'
+    static_configs:
+      - targets: ['knowledge-sovereign:9501']
+        labels:
+          service: 'knowledge-sovereign'
+    scrape_interval: 15s
+    metrics_path: /metrics
+
+  # rag-orchestrator: /metrics on the Echo server (PORT=9010). Surfaces the
+  # rag_orchestrator_knowledge_event_emitter_failure_total counter from
+  # Knowledge Loop Completion Phase 1 §1 so an emit-side degradation is
+  # observable distinct from projector-side event drops.
+  - job_name: 'rag-orchestrator'
+    static_configs:
+      - targets: ['rag-orchestrator:9010']
+        labels:
+          service: 'rag-orchestrator'
+    scrape_interval: 15s
+    metrics_path: /metrics
