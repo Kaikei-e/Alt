@@ -2,7 +2,72 @@ package knowledge_loop_projector
 
 import (
 	"encoding/json"
+	"strings"
 )
+
+// changeSummaryUpdateHintMaxLen caps the composed "what changed + what to
+// update" sentence so the FE Changed card stays compact and the JSONB stays
+// well under the 512-char why_text ceiling.
+const changeSummaryUpdateHintMaxLen = 240
+
+// updateHintForChangedFields returns a deterministic imperative hint
+// describing what the user should do about the change, derived from the set
+// of changed fields. Hint clauses are pinned constants — no LLM, no
+// per-event variation — so reproject yields the same hint for the same
+// changed_fields slice byte-for-byte.
+//
+// Returns empty string when no recognised field is in the input. The caller
+// then leaves summary unchanged so an unfamiliar field set doesn't get
+// arbitrary text appended.
+func updateHintForChangedFields(changed []string) string {
+	const (
+		hintSummary = "re-read the lede before quoting"
+		hintTags    = "rethink which thread this belongs to"
+		hintSource  = "verify the canonical link"
+	)
+	set := make(map[string]struct{}, len(changed))
+	for _, f := range changed {
+		key := strings.ToLower(strings.TrimSpace(f))
+		if key == "" {
+			continue
+		}
+		set[key] = struct{}{}
+	}
+	parts := make([]string, 0, 3)
+	if _, ok := set["summary"]; ok {
+		parts = append(parts, hintSummary)
+	}
+	if _, ok := set["tags"]; ok {
+		parts = append(parts, hintTags)
+	}
+	if _, ok := set["source"]; ok {
+		parts = append(parts, hintSource)
+	}
+	return strings.Join(parts, "; ")
+}
+
+// composeChangeSummaryWithHint joins the producer's "what changed"
+// description with the deterministic "what to update" hint via an em-dash.
+// When the producer omits a summary the hint stands alone (capitalized,
+// terminated). When changedFields produces no hint the producer summary is
+// returned unchanged. Bounded length keeps the FE band compact.
+func composeChangeSummaryWithHint(summary string, changedFields []string) string {
+	hint := updateHintForChangedFields(changedFields)
+	if hint == "" {
+		return summary
+	}
+	trimmed := strings.TrimRight(summary, ". \n\t")
+	var out string
+	if trimmed == "" {
+		out = strings.ToUpper(hint[:1]) + hint[1:] + "."
+	} else {
+		out = trimmed + " — " + hint + "."
+	}
+	if len(out) > changeSummaryUpdateHintMaxLen {
+		out = strings.TrimRight(out[:changeSummaryUpdateHintMaxLen], " ")
+	}
+	return out
+}
 
 // buildChangeSummaryJSON assembles the JSONB blob stored in
 // knowledge_loop_entries.change_summary from a Supersede event payload.
@@ -37,7 +102,7 @@ func buildChangeSummaryJSON(payload changeSummaryPayload) []byte {
 	}
 
 	body := out{
-		Summary:       payload.summary,
+		Summary:       composeChangeSummaryWithHint(payload.summary, payload.changedFields),
 		ChangedFields: payload.changedFields,
 	}
 	if payload.previousEntryKey != "" {

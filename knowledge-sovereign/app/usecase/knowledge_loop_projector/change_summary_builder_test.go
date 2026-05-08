@@ -2,6 +2,7 @@ package knowledge_loop_projector
 
 import (
 	"encoding/json"
+	"strings"
 	"testing"
 )
 
@@ -52,14 +53,130 @@ func TestBuildChangeSummaryJSON_LegacyOnly(t *testing.T) {
 		t.Fatal("expected non-nil JSON")
 	}
 	dec := unmarshalCS(t, got)
-	if dec.Summary != in.summary {
-		t.Errorf("Summary = %q; want %q", dec.Summary, in.summary)
+	// Phase 3: producer summary now carries an appended deterministic
+	// update hint derived from changed_fields. Assert the producer text
+	// is preserved as the prefix and the hint is appended after an em-dash.
+	wantPrefix := "Newer version available — "
+	if !strings.HasPrefix(dec.Summary, wantPrefix) {
+		t.Errorf("Summary prefix = %q; want HasPrefix %q", dec.Summary, wantPrefix)
+	}
+	if !strings.Contains(dec.Summary, "re-read the lede") {
+		t.Errorf("Summary missing summary-field hint clause: %q", dec.Summary)
+	}
+	if !strings.Contains(dec.Summary, "rethink which thread") {
+		t.Errorf("Summary missing tags-field hint clause: %q", dec.Summary)
 	}
 	if len(dec.AddedPhrases) != 0 || len(dec.RemovedPhrases) != 0 {
 		t.Errorf("expected no redline arrays; got %+v", dec)
 	}
 	if dec.PreviousEntryKey == nil || *dec.PreviousEntryKey != prev {
 		t.Errorf("PreviousEntryKey = %v; want %q", dec.PreviousEntryKey, prev)
+	}
+}
+
+// TestComposeChangeSummaryWithHint_Templates pins the deterministic update
+// hint templates per changed_fields combination. Phase 3 acceptance: the
+// "What to update" copy is reproject-stable and never depends on wall-clock
+// or LLM output.
+func TestComposeChangeSummaryWithHint_Templates(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name       string
+		summary    string
+		changed    []string
+		wantSubstr []string
+		wantPrefix string
+	}{
+		{
+			name:       "summary only",
+			summary:    "Author rewrote the lede.",
+			changed:    []string{"summary"},
+			wantSubstr: []string{"re-read the lede"},
+			wantPrefix: "Author rewrote the lede — ",
+		},
+		{
+			name:       "tags only",
+			summary:    "Tag set rotated.",
+			changed:    []string{"tags"},
+			wantSubstr: []string{"rethink which thread"},
+			wantPrefix: "Tag set rotated — ",
+		},
+		{
+			name:       "source only",
+			summary:    "Canonical URL moved.",
+			changed:    []string{"source"},
+			wantSubstr: []string{"verify the canonical link"},
+			wantPrefix: "Canonical URL moved — ",
+		},
+		{
+			name:       "summary and tags joined by semicolon",
+			summary:    "Both shifted.",
+			changed:    []string{"summary", "tags"},
+			wantSubstr: []string{"re-read the lede", "rethink which thread", "; "},
+			wantPrefix: "Both shifted — ",
+		},
+		{
+			name:       "no producer summary - hint stands alone capitalized",
+			summary:    "",
+			changed:    []string{"summary"},
+			wantSubstr: []string{"Re-read the lede"},
+			wantPrefix: "Re-read the lede",
+		},
+		{
+			name:       "unknown field returns producer summary unchanged",
+			summary:    "Author rewrote the lede.",
+			changed:    []string{"some_unknown_field"},
+			wantSubstr: []string{"Author rewrote the lede."},
+			wantPrefix: "Author rewrote the lede.",
+		},
+		{
+			name:       "case insensitive field matching",
+			summary:    "x",
+			changed:    []string{"SUMMARY", "Tags"},
+			wantSubstr: []string{"re-read", "rethink"},
+			wantPrefix: "x — ",
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			got := composeChangeSummaryWithHint(tc.summary, tc.changed)
+			if !strings.HasPrefix(got, tc.wantPrefix) {
+				t.Errorf("composeChangeSummaryWithHint(%q, %v) = %q; want prefix %q",
+					tc.summary, tc.changed, got, tc.wantPrefix)
+			}
+			for _, sub := range tc.wantSubstr {
+				if !strings.Contains(got, sub) {
+					t.Errorf("missing substring %q in %q", sub, got)
+				}
+			}
+		})
+	}
+}
+
+// TestComposeChangeSummaryWithHint_BoundedLength pins that the composed
+// summary never exceeds the FE-friendly cap, even with extreme inputs.
+func TestComposeChangeSummaryWithHint_BoundedLength(t *testing.T) {
+	t.Parallel()
+	long := strings.Repeat("Lorem ipsum dolor sit amet. ", 20)
+	got := composeChangeSummaryWithHint(long, []string{"summary", "tags", "source"})
+	if len(got) > changeSummaryUpdateHintMaxLen {
+		t.Errorf("composed summary length %d exceeds cap %d", len(got), changeSummaryUpdateHintMaxLen)
+	}
+}
+
+// TestComposeChangeSummaryWithHint_Determinism confirms repeated invocations
+// with the same inputs produce byte-identical output (reproject-safety).
+func TestComposeChangeSummaryWithHint_Determinism(t *testing.T) {
+	t.Parallel()
+	first := composeChangeSummaryWithHint("Author rewrote.", []string{"summary", "tags"})
+	for i := range 5 {
+		got := composeChangeSummaryWithHint("Author rewrote.", []string{"summary", "tags"})
+		if got != first {
+			t.Fatalf("invocation %d diverged: %q vs %q", i, got, first)
+		}
 	}
 }
 
@@ -111,8 +228,15 @@ func TestBuildChangeSummaryJSON_PreviousExcerptOnlyStillCarriesContext(t *testin
 	}
 
 	dec := unmarshalCS(t, got)
-	if dec.Summary != "The first version said bonds were flat." {
-		t.Errorf("Summary = %q; want previous excerpt", dec.Summary)
+	// Phase 3: producer summary (derived here from previous excerpt) is now
+	// suffixed with the deterministic update hint clause for the
+	// changed_fields=["summary"] case.
+	wantPrefix := "The first version said bonds were flat — "
+	if !strings.HasPrefix(dec.Summary, wantPrefix) {
+		t.Errorf("Summary = %q; want HasPrefix %q", dec.Summary, wantPrefix)
+	}
+	if !strings.Contains(dec.Summary, "re-read the lede") {
+		t.Errorf("Summary missing summary-field hint: %q", dec.Summary)
 	}
 	if len(dec.ChangedFields) != 1 || dec.ChangedFields[0] != "summary" {
 		t.Errorf("ChangedFields = %v; want [summary]", dec.ChangedFields)
