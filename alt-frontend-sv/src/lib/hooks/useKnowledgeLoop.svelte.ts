@@ -243,7 +243,10 @@ export function useKnowledgeLoop(opts: UseKnowledgeLoopOptions) {
 	 * `optimisticallyDismissed` was the only thing keeping the tile out of view
 	 * — wiped on reload, hence "dismissed tiles came back".
 	 */
-	async function dismiss(entryKey: string): Promise<void> {
+	async function dismiss(
+		entryKey: string,
+		metadata?: TransitionMetadata,
+	): Promise<void> {
 		const entry = findEntry(entryKey);
 		if (!entry) return;
 		const stage = effectiveStage(entry);
@@ -256,6 +259,7 @@ export function useKnowledgeLoop(opts: UseKnowledgeLoopOptions) {
 				fromStage: stage,
 				toStage: stage,
 				trigger: "defer",
+				metadata,
 			});
 		} catch {
 			// optimistic: stay dismissed locally even if upstream reports an error

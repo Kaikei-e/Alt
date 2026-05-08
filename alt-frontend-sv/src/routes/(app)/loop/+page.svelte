@@ -346,17 +346,23 @@ function onWorkspaceDecide(
 	entry: KnowledgeLoopEntryData,
 	option: DecisionOptionData,
 ) {
+	const metadata = buildTransitionMetadata(entry, option);
 	if (option.intent === "ask") {
 		void onAsk(entry);
+		return;
+	}
+	if (option.intent === "snooze") {
+		// Snooze threads through the hook's `dismiss` path which posts a
+		// same-stage `defer` transition; passing the semantic metadata lets
+		// the projector record snooze in continue_context.recent_action_labels.
+		void loop.dismiss(entry.entryKey, metadata);
 		return;
 	}
 	const to = decideOptionStage(entry, option);
 	if (!to) return;
 	const from = effectiveEntryStage(entry);
-	const trigger = option.intent === "snooze" ? ("defer" as const) : "user_tap";
-	if (trigger === "user_tap" && !loop.canTransition(from, to)) return;
-	const metadata = buildTransitionMetadata(entry, option);
-	void loop.transitionTo(entry.entryKey, to, trigger, metadata);
+	if (!loop.canTransition(from, to)) return;
+	void loop.transitionTo(entry.entryKey, to, "user_tap", metadata);
 }
 
 function onPipelineStageSelect(to: LoopStageName) {

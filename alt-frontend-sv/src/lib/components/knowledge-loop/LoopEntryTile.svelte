@@ -30,7 +30,10 @@ type Props = {
 		metadata?: TransitionMetadata,
 		options?: { optimistic?: boolean },
 	) => Promise<unknown> | unknown;
-	onDismiss?: (entryKey: string) => Promise<unknown> | unknown;
+	onDismiss?: (
+		entryKey: string,
+		metadata?: TransitionMetadata,
+	) => Promise<unknown> | unknown;
 	onAsk?: (
 		entry: KnowledgeLoopEntryData,
 	) => Promise<{ conversationId?: string } | void | unknown> | unknown;
@@ -256,16 +259,16 @@ async function handleCta(option: DecisionOptionData) {
 		}
 		return;
 	}
-	// Snooze: send the canonical defer transition (KnowledgeLoopDeferred,
-	// contract §8.2) with semantic metadata, then run the local dismiss path.
+	// Snooze maps to the canonical defer transition (KnowledgeLoopDeferred,
+	// contract §8.2). The hook's `dismiss` already emits a same-stage
+	// `defer` transition; we extend it with Phase 2 semantic metadata so
+	// the projector can record `acted_intent=snooze` / `target_type=entry`
+	// in continue_context.recent_action_labels.
 	if (option.intent === "snooze") {
 		if (!onDismiss) return;
 		const snoozeMeta = transitionMetadata(option);
-		if (onTransition) {
-			void onTransition(entry.entryKey, effectiveStage, "defer", snoozeMeta);
-		}
 		dismissing = true;
-		await onDismiss(entry.entryKey);
+		await onDismiss(entry.entryKey, snoozeMeta);
 		return;
 	}
 
@@ -284,16 +287,34 @@ async function handleCta(option: DecisionOptionData) {
 	await onTransition(entry.entryKey, to, "user_tap", metadata);
 }
 
+function nextStageFor(stage: LoopStageName): LoopStageName {
+	switch (stage) {
+		case "observe":
+			return "orient";
+		case "orient":
+			return "decide";
+		case "decide":
+			return "act";
+		case "act":
+			return "observe";
+	}
+}
+
 async function handleOpenRecap(event: Event) {
 	event.preventDefault();
 	event.stopPropagation();
 	if (!recapRoute || !recapTarget) return;
 	if (onTransition) {
 		const meta = buildRecapTransitionMetadata(entry, recapTarget);
+		// Open Recap advances one OODA step (per canonical contract §7). The
+		// fixed `act` target before this fix violated `orient → act` which the
+		// allow-list rejects. Picking the natural next stage keeps the
+		// transition legal regardless of where the entry is in the loop.
+		const to = nextStageFor(effectiveStage);
 		// Fire transition before navigation so Loop sees the deliberate intent.
 		// We deliberately do not await: warn-and-continue keeps Open Recap
 		// responsive even if the BFF is degraded (UI failure here is silent).
-		void onTransition(entry.entryKey, "act", "user_tap", meta);
+		void onTransition(entry.entryKey, to, "user_tap", meta);
 	}
 	await goto(recapRoute);
 }
