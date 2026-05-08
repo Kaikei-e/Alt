@@ -28,7 +28,9 @@ import {
 } from "../data/recap";
 import {
 	CONNECT_KNOWLEDGE_LOOP_ACT_RESPONSE,
+	CONNECT_KNOWLEDGE_LOOP_DECIDE_RESPONSE,
 	CONNECT_KNOWLEDGE_LOOP_NO_SOURCE_RESPONSE,
+	CONNECT_KNOWLEDGE_LOOP_RECAP_RESPONSE,
 	CONNECT_KNOWLEDGE_LOOP_RESPONSE,
 	CONNECT_TRANSITION_LOOP_RESPONSE,
 } from "../data/knowledge-loop";
@@ -379,6 +381,8 @@ export function createBackendServer(): http.Server {
 		// GetKnowledgeLoop (Connect-RPC) — body-aware switch:
 		// - lensModeId === "e2e-act"        → ACT-stage scenario fixture
 		// - lensModeId === "e2e-no-source"  → ACT entry with sourceUrl absent
+		// - lensModeId === "e2e-decide"     → DECIDE-stage decision-option list
+		// - lensModeId === "e2e-recap"      → entry with a recap actTarget
 		// - otherwise                       → default fixture
 		if (
 			path === "/alt.knowledge.loop.v1.KnowledgeLoopService/GetKnowledgeLoop"
@@ -405,6 +409,10 @@ export function createBackendServer(): http.Server {
 					payload = CONNECT_KNOWLEDGE_LOOP_ACT_RESPONSE;
 				} else if (lensModeId === "e2e-no-source") {
 					payload = CONNECT_KNOWLEDGE_LOOP_NO_SOURCE_RESPONSE;
+				} else if (lensModeId === "e2e-decide") {
+					payload = CONNECT_KNOWLEDGE_LOOP_DECIDE_RESPONSE;
+				} else if (lensModeId === "e2e-recap") {
+					payload = CONNECT_KNOWLEDGE_LOOP_RECAP_RESPONSE;
 				}
 				res.setHeader("Content-Type", "application/json");
 				res.writeHead(200);

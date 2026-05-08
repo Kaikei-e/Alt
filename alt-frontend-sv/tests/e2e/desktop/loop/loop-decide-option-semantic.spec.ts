@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { LOOP_FIXTURE_ENTRY_KEY } from "../../infra/data/knowledge-loop";
+import { LOOP_FIXTURE_DECIDE_ENTRY_KEY } from "../../infra/data/knowledge-loop";
 import {
 	field,
 	installTransitionCapture,
@@ -18,43 +18,42 @@ import {
  */
 
 test.describe("Knowledge Loop — Decide workspace fires semantic transition", () => {
-	test("clicking the Revisit decision option sends acted_intent=revisit + target_type=entry", async ({
+	test("clicking the Snooze decision option sends acted_intent=snooze + target_type=entry + continue_flag=false", async ({
 		page,
 	}) => {
 		const capture = await installTransitionCapture(page, {
-			canonicalEntryKey: LOOP_FIXTURE_ENTRY_KEY,
+			canonicalEntryKey: LOOP_FIXTURE_DECIDE_ENTRY_KEY,
 		});
 
+		// The e2e-decide fixture pre-positions the entry at currentEntryStage=DECIDE
+		// so the workspace renders the decision-option list directly. Snooze is
+		// the cleanest semantic option to assert here: it routes through the
+		// canonical `defer` same-stage transition (contract §8.2) and exercises
+		// the Phase 2 metadata threading via `loop.dismiss(entryKey, metadata)`.
 		await page.goto("/loop?lens=e2e-decide");
-
-		// Pipeline: jump to Decide so the workspace renders the decision option
-		// list (the Now fixture has decisionOptions revisit/ask/snooze).
-		const pipeline = page.locator('[data-testid="loop-ooda-pipeline"]');
-		await expect(pipeline).toBeVisible();
-		const decideStage = pipeline.getByRole("button", { name: /decide/i });
-		await decideStage.click();
 
 		const workspace = page.getByTestId("loop-ooda-workspace");
 		await expect(workspace).toBeVisible();
 		await expect(workspace).toHaveAttribute("data-stage", "decide");
 
-		const revisitOption = workspace.locator(
-			'.decision-btn[data-intent="revisit"]',
+		const snoozeOption = workspace.locator(
+			'.decision-btn[data-intent="snooze"]',
 		);
-		await expect(revisitOption).toBeVisible();
-		await revisitOption.click();
+		await expect(snoozeOption).toBeVisible();
+		await snoozeOption.click();
 
 		await expect.poll(() => capture.posts.length).toBeGreaterThanOrEqual(1);
 		const post = capture.posts[0];
 		expect(field<string>(post, "entryKey", "entry_key")).toBe(
-			LOOP_FIXTURE_ENTRY_KEY,
+			LOOP_FIXTURE_DECIDE_ENTRY_KEY,
 		);
-		expect(field<string>(post, "actedIntent", "acted_intent")).toBe("revisit");
+		expect(field<string>(post, "actedIntent", "acted_intent")).toBe("snooze");
 		expect(field<string>(post, "targetType", "target_type")).toBe("entry");
 		expect(field<string>(post, "targetRef", "target_ref")).toBe(
-			LOOP_FIXTURE_ENTRY_KEY,
+			LOOP_FIXTURE_DECIDE_ENTRY_KEY,
 		);
-		expect(field<boolean>(post, "continueFlag", "continue_flag")).toBe(true);
+		expect(field<boolean>(post, "continueFlag", "continue_flag")).toBe(false);
+		expect(field<string>(post, "trigger", "trigger")).toBe("defer");
 		expect(
 			field<string[]>(post, "presentedIntents", "presented_intents"),
 		).toEqual(expect.arrayContaining(["revisit", "ask", "snooze"]));

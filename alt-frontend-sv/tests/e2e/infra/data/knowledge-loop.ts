@@ -41,6 +41,22 @@ export const LOOP_FIXTURE_CHANGED_NEW_ENTRY_KEY =
 	"loop-entry-fixture-changed-2";
 export const LOOP_FIXTURE_REVIEW_ENTRY_KEY = "loop-entry-fixture-review-1";
 
+// Decide-stage scenario (Phase 2 semantic Decide / Act feedback): foreground
+// entry pre-positioned at currentEntryStage = DECIDE so the workspace renders
+// the decision-option list directly. Used by
+// tests/e2e/desktop/loop/loop-decide-option-semantic.spec.ts via
+// lensModeId "e2e-decide".
+export const LOOP_FIXTURE_DECIDE_ENTRY_KEY = "loop-entry-fixture-decide-1";
+
+// Recap-target scenario (Phase 2 Open Recap as semantic Act): foreground entry
+// whose actTargets carries a recap target. Used by
+// tests/e2e/desktop/loop/loop-open-recap-emits-transition.spec.ts via
+// lensModeId "e2e-recap". The recap target ref is a UUID per
+// score_resolver_event_log.go's UUID validation guard.
+export const LOOP_FIXTURE_RECAP_ENTRY_KEY = "loop-entry-fixture-recap-1";
+export const LOOP_FIXTURE_RECAP_TOPIC_SNAPSHOT_ID =
+	"00000000-0000-7000-8000-000000000042";
+
 export const CONNECT_KNOWLEDGE_LOOP_RESPONSE = {
 	foregroundEntries: [
 		{
@@ -335,4 +351,132 @@ export const CONNECT_KNOWLEDGE_LOOP_NO_SOURCE_RESPONSE = {
 	overallServiceQuality: 1,
 	generatedAt: NOW_ISO,
 	projectionSeqHiwater: "30",
+};
+
+// Phase 2 semantic Decide / Act feedback. Foreground entry pre-positioned at
+// currentEntryStage = DECIDE so the workspace renders the decision-option list
+// without the user having to advance through Observe → Orient. The three
+// options match the canonical contract §4.1 enum names so
+// `data-intent="<intent>"` selectors in the spec are stable.
+export const CONNECT_KNOWLEDGE_LOOP_DECIDE_RESPONSE = {
+	foregroundEntries: [
+		{
+			entryKey: LOOP_FIXTURE_DECIDE_ENTRY_KEY,
+			sourceItemKey: "article-decide-fixture",
+			proposedStage: 3, // LOOP_STAGE_DECIDE
+			currentEntryStage: 3, // DECIDE — workspace renders decision options
+			currentEntryStageEnteredAt: NOW_ISO,
+			surfaceBucket: 1, // SURFACE_BUCKET_NOW
+			projectionRevision: "1",
+			projectionSeqHiwater: "40",
+			freshnessAt: NOW_ISO,
+			sourceObservedAt: NOW_ISO,
+			whyPrimary: {
+				kind: 1, // SOURCE
+				text: "Article ready for a deliberate Decide step.",
+				confidence: 0.85,
+				evidenceRefs: [
+					{ refId: "article-decide-fixture", label: "primary source" },
+				],
+			},
+			dismissState: 1, // ACTIVE
+			renderDepthHint: 2,
+			loopPriority: 1, // CRITICAL
+			// Three semantically distinct options. The spec clicks `revisit` and
+			// expects target_type=entry / continue_flag=true (canonical §1 table).
+			decisionOptions: [
+				{ actionId: "revisit-1", intent: 5, label: "Revisit" }, // REVISIT
+				{ actionId: "ask-1", intent: 2, label: "Ask" }, // ASK
+				{ actionId: "snooze-1", intent: 6, label: "Snooze" }, // SNOOZE
+			],
+			actTargets: [],
+		},
+	],
+	bucketEntries: [],
+	surfaces: [
+		{
+			surfaceBucket: 1,
+			primaryEntryKey: LOOP_FIXTURE_DECIDE_ENTRY_KEY,
+			secondaryEntryKeys: [],
+			projectionRevision: "1",
+			projectionSeqHiwater: "40",
+			freshnessAt: NOW_ISO,
+			serviceQuality: 1,
+		},
+	],
+	sessionState: {
+		currentStage: 3, // DECIDE
+		currentStageEnteredAt: NOW_ISO,
+		foregroundEntryKey: LOOP_FIXTURE_DECIDE_ENTRY_KEY,
+		focusedEntryKey: LOOP_FIXTURE_DECIDE_ENTRY_KEY,
+		projectionRevision: "1",
+		projectionSeqHiwater: "40",
+	},
+	overallServiceQuality: 1,
+	generatedAt: NOW_ISO,
+	projectionSeqHiwater: "40",
+};
+
+// Phase 2 Open Recap CTA scenario. Foreground entry that carries a recap
+// target seeded by Surface Planner v2 from a RecapTopicSnapshotted event.
+// The tile renders the "Open Recap" button when actTargets has a target_type
+// "recap" entry whose `route` passes safeRecapRoute (single leading slash,
+// no `//`, no `:`).
+export const CONNECT_KNOWLEDGE_LOOP_RECAP_RESPONSE = {
+	foregroundEntries: [
+		{
+			entryKey: LOOP_FIXTURE_RECAP_ENTRY_KEY,
+			sourceItemKey: "article-recap-fixture",
+			proposedStage: 2, // ORIENT — recap targets are Orient/Decide signals
+			currentEntryStage: 2,
+			currentEntryStageEnteredAt: NOW_ISO,
+			surfaceBucket: 1, // NOW
+			projectionRevision: "1",
+			projectionSeqHiwater: "50",
+			freshnessAt: NOW_ISO,
+			sourceObservedAt: NOW_ISO,
+			whyPrimary: {
+				kind: 1,
+				text: "Recent recap cluster overlaps your reading.",
+				confidence: 0.78,
+				evidenceRefs: [
+					{ refId: "article-recap-fixture", label: "primary source" },
+				],
+			},
+			dismissState: 1,
+			renderDepthHint: 2,
+			loopPriority: 2, // CONTINUING
+			decisionOptions: [],
+			actTargets: [
+				{
+					targetType: 3, // ACT_TARGET_TYPE_RECAP
+					targetRef: LOOP_FIXTURE_RECAP_TOPIC_SNAPSHOT_ID,
+					route: `/recap/topic/${LOOP_FIXTURE_RECAP_TOPIC_SNAPSHOT_ID}`,
+				},
+			],
+		},
+	],
+	bucketEntries: [],
+	surfaces: [
+		{
+			surfaceBucket: 1,
+			primaryEntryKey: LOOP_FIXTURE_RECAP_ENTRY_KEY,
+			secondaryEntryKeys: [],
+			projectionRevision: "1",
+			projectionSeqHiwater: "50",
+			freshnessAt: NOW_ISO,
+			serviceQuality: 1,
+		},
+	],
+	sessionState: {
+		currentStage: 2,
+		currentStageEnteredAt: NOW_ISO,
+		foregroundEntryKey: LOOP_FIXTURE_RECAP_ENTRY_KEY,
+		focusedEntryKey: LOOP_FIXTURE_RECAP_ENTRY_KEY,
+		projectionRevision: "1",
+		projectionSeqHiwater: "50",
+	},
+	overallServiceQuality: 1,
+	generatedAt: NOW_ISO,
+	projectionSeqHiwater: "50",
 };
