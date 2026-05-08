@@ -127,6 +127,106 @@ func TestOverrideWhy_PriorityAugurBeatsTopic(t *testing.T) {
 	require.Equal(t, sovereignv1.WhyKind_WHY_KIND_UNFINISHED_CONTINUE, out.Kind)
 }
 
+// TestOverrideWhy_PriorityV9Ladder pins the v9 priority ladder
+// (canonical contract §11): change > unfinished_continue > topic_affinity >
+// tag_trending > recall > source. Each row asserts that the highest-ranked
+// non-zero signal wins, even when lower-ranked signals are also present.
+// This test enumerates the priority ordering changes Phase 3 introduced —
+// most importantly that topic_affinity and tag_trending now beat recall
+// (HasOpenInteraction), reversing the v8 order.
+func TestOverrideWhy_PriorityV9Ladder(t *testing.T) {
+	ev := mkEvent(t, "Priority Ladder")
+
+	cases := []struct {
+		name   string
+		inputs SurfaceScoreInputs
+		want   sovereignv1.WhyKind
+	}{
+		{
+			name: "version_drift outranks everything else",
+			inputs: SurfaceScoreInputs{
+				VersionDriftCount:  1,
+				HasAugurLink:       true,
+				TopicOverlapCount:  5,
+				TagOverlapCount:    5,
+				HasOpenInteraction: true,
+			},
+			want: sovereignv1.WhyKind_WHY_KIND_CHANGE,
+		},
+		{
+			name: "augur_link beats topic+tag+recall",
+			inputs: SurfaceScoreInputs{
+				HasAugurLink:       true,
+				TopicOverlapCount:  5,
+				TagOverlapCount:    5,
+				HasOpenInteraction: true,
+			},
+			want: sovereignv1.WhyKind_WHY_KIND_UNFINISHED_CONTINUE,
+		},
+		{
+			name: "topic_overlap beats tag_overlap and recall (v9 reversal)",
+			inputs: SurfaceScoreInputs{
+				TopicOverlapCount:  3,
+				TagOverlapCount:    5,
+				HasOpenInteraction: true,
+			},
+			want: sovereignv1.WhyKind_WHY_KIND_TOPIC_AFFINITY,
+		},
+		{
+			name: "tag_overlap beats recall (v9 reversal)",
+			inputs: SurfaceScoreInputs{
+				TagOverlapCount:    2,
+				HasOpenInteraction: true,
+			},
+			want: sovereignv1.WhyKind_WHY_KIND_TAG_TRENDING,
+		},
+		{
+			name: "recall wins only as residual kind",
+			inputs: SurfaceScoreInputs{
+				HasOpenInteraction: true,
+			},
+			want: sovereignv1.WhyKind_WHY_KIND_RECALL,
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			// Each subcase needs an enricher output that lets us tell the
+			// branches apart. SummarySuperseded produces CHANGE; HomeItemOpened
+			// produces RECALL (preserved by override); other rows use the
+			// SummaryVersionCreated default whose enricher output the override
+			// re-stamps to TOPIC_AFFINITY / TAG_TRENDING / UNFINISHED_CONTINUE.
+			seedEv := ev
+			switch tc.want {
+			case sovereignv1.WhyKind_WHY_KIND_CHANGE:
+				uid := uuid.New()
+				seedEv = &sovereign_db.KnowledgeEvent{
+					EventID:    uuid.New(),
+					EventSeq:   1,
+					OccurredAt: time.Date(2026, 5, 9, 10, 0, 0, 0, time.UTC),
+					TenantID:   uuid.New(),
+					UserID:     &uid,
+					EventType:  EventSummarySuperseded,
+					Payload:    json.RawMessage(`{"article_id":"article:42","article_title":"Changed"}`),
+				}
+			case sovereignv1.WhyKind_WHY_KIND_RECALL:
+				uid := uuid.New()
+				seedEv = &sovereign_db.KnowledgeEvent{
+					EventID:    uuid.New(),
+					EventSeq:   1,
+					OccurredAt: time.Date(2026, 5, 9, 10, 0, 0, 0, time.UTC),
+					TenantID:   uuid.New(),
+					UserID:     &uid,
+					EventType:  EventHomeItemOpened,
+					Payload:    json.RawMessage(`{"article_id":"article:42","article_title":"Recall Me"}`),
+				}
+			}
+			out := OverrideWhyFromSurfaceInputs(seedEv, EnrichWhyFromEvent(seedEv), tc.inputs)
+			require.Equal(t, tc.want, out.Kind, "v9 priority ladder")
+		})
+	}
+}
+
 // TestOverrideWhy_NoSignalsFallsBackToEnricher pins that with no v2
 // signals the override is a no-op — same behaviour as v1.
 func TestOverrideWhy_NoSignalsFallsBackToEnricher(t *testing.T) {

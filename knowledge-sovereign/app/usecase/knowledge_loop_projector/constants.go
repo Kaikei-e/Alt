@@ -100,4 +100,14 @@ const AggregateLoopSession = "knowledge_loop_session"
 // inputs) without touching why/lifecycle/freshness fields, then recomputes the
 // four surfaces. Bump signals operators to include the new branch in replay
 // validation.
-const WhyMappingVersion = 8
+//
+// v9 (2026-05-09): why_override priority reordered to the canonical contract
+// §11 ladder (change > unfinished_continue > topic_affinity > tag_trending >
+// recall > source). RECALL was previously checked before topic / tag overlap;
+// now it is the residual kind so a single prior open does not crowd out an
+// active recap-cluster or tag-stream connection. Also: KnowledgeLoopReviewed
+// projection split into recheck / archive / mark_reviewed lifecycle outcomes
+// — mark_reviewed keeps the entry visible in Review (was hidden under v8).
+// Bump triggers a full reproject; runbook history table updated. Phase 3 of
+// docs/plan/knowledge-loop-completion-03-review-why-quality.md.
+const WhyMappingVersion = 9

@@ -13,16 +13,31 @@ import (
 // produce the same output, so reproject yields the same Why text and kind
 // for the same event.
 //
-// Priority order (canonical contract §11):
+// Priority order (canonical contract §11, WhyMappingVersion v9):
 //
-//  1. version_drift > 0 → keep enricher's WHY_KIND_CHANGE narrative
-//     (the supersede signal is the strongest "what changed" hint).
-//  2. augur_link → WHY_KIND_UNFINISHED_CONTINUE — the user has an open
-//     conversation thread; the entry should pick that thread back up.
-//  3. open_interaction → keep enricher's WHY_KIND_RECALL (single open).
-//  4. topic_overlap > 0 → WHY_KIND_TOPIC_AFFINITY.
-//  5. tag_overlap > 0 → WHY_KIND_TAG_TRENDING.
-//  6. otherwise → return enricher output unchanged.
+//  1. version_drift > 0       → keep enricher's WHY_KIND_CHANGE narrative
+//                               (the supersede signal is the strongest
+//                               "what changed" hint and must not be
+//                               downgraded by overlap signals).
+//  2. has_augur_link          → WHY_KIND_UNFINISHED_CONTINUE — the user has
+//                               an open conversation thread; the entry
+//                               should pick that thread back up.
+//  3. topic_overlap_count > 0 → WHY_KIND_TOPIC_AFFINITY (recap-cluster
+//                               connection beats single-open recall).
+//  4. tag_overlap_count > 0   → WHY_KIND_TAG_TRENDING.
+//  5. has_open_interaction    → keep enricher's WHY_KIND_RECALL — RECALL
+//                               is now an evidence-of-last-resort kind:
+//                               a single open is a weaker connection than
+//                               an active topic / tag cluster the user is
+//                               currently following.
+//  6. otherwise               → return enricher output unchanged.
+//
+// v9 change vs v8: RECALL was previously checked before topic / tag overlap.
+// That order surfaced "you opened this once" as the why even when the entry
+// also belonged to a hot recap cluster the user was actively reading. The
+// v9 order surfaces the cluster connection instead, matching the canonical
+// contract intent that RECALL is the residual kind. WhyMappingVersion is
+// bumped to v9 so a full reproject converges to the new narrative.
 //
 // The function only mutates Kind and Text. EvidenceRefs from the enricher
 // are preserved so deep-link targets (article id, summary version, open
@@ -35,32 +50,39 @@ func OverrideWhyFromSurfaceInputs(
 	if why == nil {
 		return nil
 	}
-	// Defer to enricher when the supersede / change_why path has
-	// already produced the strongest narrative. Don't downgrade.
+	// 1. Defer to enricher when the supersede / change_why path has
+	//    already produced the strongest narrative. Don't downgrade.
 	if inputs.VersionDriftCount > 0 {
 		return why
 	}
+	// 2. Augur thread continuation outranks all overlap signals because the
+	//    user has an explicit, scoped intent (the open thread).
 	if inputs.HasAugurLink {
 		out := proto.Clone(why).(*sovereignv1.KnowledgeLoopWhyPayload)
 		out.Kind = sovereignv1.WhyKind_WHY_KIND_UNFINISHED_CONTINUE
 		out.Text = sanitizePlainText(unfinishedContinueNarrative(ev))
 		return out
 	}
-	// HasOpenInteraction is already enricher's RECALL path; keep it.
-	if inputs.HasOpenInteraction {
-		return why
-	}
+	// 3. Topic affinity (recap cluster overlap) outranks tag trending and
+	//    recall because it captures a current-thinking connection.
 	if inputs.TopicOverlapCount > 0 {
 		out := proto.Clone(why).(*sovereignv1.KnowledgeLoopWhyPayload)
 		out.Kind = sovereignv1.WhyKind_WHY_KIND_TOPIC_AFFINITY
 		out.Text = sanitizePlainText(topicAffinityNarrative(ev))
 		return out
 	}
+	// 4. Tag trending — the user is following these tags as a stream.
 	if inputs.TagOverlapCount > 0 {
 		out := proto.Clone(why).(*sovereignv1.KnowledgeLoopWhyPayload)
 		out.Kind = sovereignv1.WhyKind_WHY_KIND_TAG_TRENDING
 		out.Text = sanitizePlainText(tagTrendingNarrative(ev))
 		return out
+	}
+	// 5. RECALL is the residual evidence kind — a prior single open is the
+	//    weakest "you've encountered this" signal and only wins when no
+	//    cluster / tag overlap exists.
+	if inputs.HasOpenInteraction {
+		return why
 	}
 	return why
 }
