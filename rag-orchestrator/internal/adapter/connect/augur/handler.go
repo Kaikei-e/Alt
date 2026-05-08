@@ -15,6 +15,7 @@ import (
 	augurv2 "alt/gen/proto/alt/augur/v2"
 	"alt/gen/proto/alt/augur/v2/augurv2connect"
 
+	"rag-orchestrator/internal/adapter/sovereign_client"
 	"rag-orchestrator/internal/domain"
 	"rag-orchestrator/internal/usecase"
 
@@ -692,6 +693,11 @@ func (h *Handler) CreateAugurSessionFromLoopEntry(
 		LinkedAt:       conv.CreatedAt.UnixMilli(),
 	}
 	if emitErr := h.eventEmitter.EmitAugurConversationLinked(ctx, emitInput); emitErr != nil {
+		// rag_orchestrator_knowledge_event_emitter_failure_total{event_type=...}
+		// is the rollout-visible signal that an emit failed. Distinct from the
+		// projector's event_dropped_total so an emitter degradation here does
+		// not get masked by, or attributed to, projector-side drops.
+		sovereign_client.IncEmitterFailure("augur.conversation_linked.v1")
 		h.logger.Warn("augur.conversation_linked.v1 emit failed (non-fatal)",
 			slog.String("error", emitErr.Error()),
 			slog.String("entry_key", emitInput.EntryKey),

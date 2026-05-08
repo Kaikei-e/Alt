@@ -12,6 +12,7 @@ import (
 
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 
 	connectserver "rag-orchestrator/internal/adapter/connect"
 	rag_http "rag-orchestrator/internal/adapter/rag_http"
@@ -95,6 +96,13 @@ func main() {
 		}
 		return c.JSON(http.StatusOK, map[string]string{"status": "ready"})
 	})
+
+	// 9.1 Prometheus /metrics. Exposes the rag_orchestrator_knowledge_event_emitter_*
+	// counters (Knowledge Loop Completion Phase 1 §1) and any future
+	// promauto-registered process metrics. The default registry is fine — no
+	// need to namespace per-instance because the Prometheus scrape job
+	// already labels rows with service="rag-orchestrator".
+	e.GET("/metrics", echo.WrapHandler(promhttp.Handler()))
 
 	// 10. Start Echo Server
 	go func() {
