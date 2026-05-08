@@ -51,6 +51,13 @@ type Repository interface {
 	// `projection_seq_hiwater <= eventSeq` guard so replays are idempotent and
 	// out-of-order events are no-ops.
 	PatchKnowledgeLoopEntryDismissState(ctx context.Context, userID, tenantID, lensModeID, entryKey string, eventSeq int64, dismissState sovereignv1.DismissState) (*sovereign_db.KnowledgeLoopUpsertResult, error)
+	// PatchKnowledgeLoopEntryReviewLifecycle updates dismiss_state, visibility_state,
+	// and completion_state in one statement, with all three states supplied
+	// explicitly. Used by the KnowledgeLoopReviewed projector branch so the
+	// trigger semantics (recheck / archive / mark_reviewed) are not collapsed
+	// through a flat dismiss → visibility lookup. Other columns are preserved
+	// and the same seq-hiwater guard applies as for PatchKnowledgeLoopEntryDismissState.
+	PatchKnowledgeLoopEntryReviewLifecycle(ctx context.Context, userID, tenantID, lensModeID, entryKey string, eventSeq int64, dismissState sovereignv1.DismissState, visibilityState sovereignv1.LoopVisibilityState, completionState sovereignv1.LoopCompletionState) (*sovereign_db.KnowledgeLoopUpsertResult, error)
 	// PatchKnowledgeLoopEntrySurfacePlan updates only planner-owned placement
 	// columns on an existing entry. It is used by the system-only
 	// KnowledgeLoopSurfacePlanRecomputed event and must preserve why_*, lifecycle,
@@ -518,17 +525,19 @@ func (p *Projector) projectTransition(ctx context.Context, ev *sovereign_db.Know
 		}
 	}
 	if ev.EventType == EventKnowledgeLoopReviewed && entryKey != "" {
-		newState := dismissStateForReviewedEvent(ev.Payload)
-		if _, patchErr := p.repo.PatchKnowledgeLoopEntryDismissState(
+		lc := reviewLifecycleForReviewedEvent(ev.Payload)
+		if _, patchErr := p.repo.PatchKnowledgeLoopEntryReviewLifecycle(
 			ctx,
 			ev.UserID.String(),
 			ev.TenantID.String(),
 			lensModeID,
 			entryKey,
 			ev.EventSeq,
-			newState,
+			lc.DismissState,
+			lc.VisibilityState,
+			lc.CompletionState,
 		); patchErr != nil {
-			return sessionRes, fmt.Errorf("patch dismiss_state on Reviewed: %w", patchErr)
+			return sessionRes, fmt.Errorf("patch review lifecycle on Reviewed: %w", patchErr)
 		}
 	}
 
@@ -571,30 +580,12 @@ func (p *Projector) projectTransition(ctx context.Context, ev *sovereign_db.Know
 	return sessionRes, p.recomputeSurfaces(ctx, ev, lensModeID)
 }
 
-// dismissStateForReviewedEvent maps the trigger sub-field on a
-// KnowledgeLoopReviewed event payload to the dismiss_state the projector
-// should patch onto the entry. Pure: depends only on payload bytes.
-func dismissStateForReviewedEvent(payload json.RawMessage) sovereignv1.DismissState {
-	if len(payload) == 0 {
-		// Unknown payload — preserve the entry by treating as "mark reviewed"
-		// (acknowledged). Avoids a stuck row when an upstream emits a
-		// malformed payload.
-		return sovereignv1.DismissState_DISMISS_STATE_COMPLETED
-	}
-	var m map[string]any
-	if err := json.Unmarshal(payload, &m); err != nil {
-		return sovereignv1.DismissState_DISMISS_STATE_COMPLETED
-	}
-	trigger, _ := m["trigger"].(string)
-	switch trigger {
-	case "TRANSITION_TRIGGER_RECHECK":
-		return sovereignv1.DismissState_DISMISS_STATE_ACTIVE
-	case "TRANSITION_TRIGGER_ARCHIVE", "TRANSITION_TRIGGER_MARK_REVIEWED":
-		return sovereignv1.DismissState_DISMISS_STATE_COMPLETED
-	default:
-		return sovereignv1.DismissState_DISMISS_STATE_COMPLETED
-	}
-}
+// dismissStateForReviewedEvent has moved to review_lifecycle.go alongside
+// reviewLifecycleForReviewedEvent so the trigger semantics for recheck /
+// archive / mark_reviewed live in one place. New code should call
+// reviewLifecycleForReviewedEvent directly to avoid the dismiss-state /
+// visibility-state collapse that conflated archive (hide) with mark_reviewed
+// (keep visible in Review).
 
 func (p *Projector) recomputeSurfaces(ctx context.Context, ev *sovereign_db.KnowledgeEvent, lensModeID string) error {
 	if ev.UserID == nil {

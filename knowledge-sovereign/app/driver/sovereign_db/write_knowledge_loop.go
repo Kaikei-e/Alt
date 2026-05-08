@@ -412,6 +412,54 @@ func (r *Repository) PatchKnowledgeLoopEntryDismissState(
 	}, nil
 }
 
+// PatchKnowledgeLoopEntryReviewLifecycle patches the dismiss_state,
+// visibility_state, and completion_state columns of an entry row in one
+// statement, with all three states supplied explicitly by the caller. This is
+// the patch path for knowledge_loop.reviewed.v1 events, where the trigger
+// (recheck / archive / mark_reviewed) maps to combinations the flat
+// dismiss → visibility derivation cannot express — specifically that
+// mark_reviewed must remain VISIBLE in Review while archive must HIDE.
+//
+// Other columns (why_*, freshness_at, surface_bucket, change_summary,
+// continue_context, decision_options, act_targets, ...) are preserved.
+// Returns SkippedBySeqHiwater if the row is missing OR the seq guard rejects.
+func (r *Repository) PatchKnowledgeLoopEntryReviewLifecycle(
+	ctx context.Context,
+	userID, tenantID, lensModeID, entryKey string,
+	eventSeq int64,
+	dismissState sovereignv1.DismissState,
+	visibilityState sovereignv1.LoopVisibilityState,
+	completionState sovereignv1.LoopCompletionState,
+) (*KnowledgeLoopUpsertResult, error) {
+	uID, err := uuid.Parse(userID)
+	if err != nil {
+		return nil, fmt.Errorf("parse user_id: %w", err)
+	}
+	tID, err := uuid.Parse(tenantID)
+	if err != nil {
+		return nil, fmt.Errorf("parse tenant_id: %w", err)
+	}
+
+	var revision, seqHiwater int64
+	row := r.pool.QueryRow(ctx, patchKnowledgeLoopEntryDismissStateQuery,
+		uID, tID, lensModeID, entryKey, eventSeq,
+		dismissStateToDB(dismissState),
+		visibilityStateToDB(visibilityState),
+		completionStateToDB(completionState),
+	)
+	if err := row.Scan(&revision, &seqHiwater); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return &KnowledgeLoopUpsertResult{SkippedBySeqHiwater: true}, nil
+		}
+		return nil, fmt.Errorf("patch knowledge_loop_entry review lifecycle: %w", err)
+	}
+	return &KnowledgeLoopUpsertResult{
+		Applied:              true,
+		ProjectionRevision:   revision,
+		ProjectionSeqHiwater: seqHiwater,
+	}, nil
+}
+
 // patchKnowledgeLoopEntryContinueContextQuery applies a Phase 2 semantic
 // continue_context patch derived from a knowledge_loop.acted.v1 event. It
 // touches only continue_context + projection bookkeeping, preserving every

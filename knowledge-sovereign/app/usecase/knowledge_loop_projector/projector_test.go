@@ -28,6 +28,7 @@ type fakeRepo struct {
 	surfaces                []*sovereignv1.KnowledgeLoopSurface
 	patches                 []patchCall
 	dismissPatches          []dismissPatchCall
+	reviewLifecyclePatches  []reviewLifecyclePatchCall
 	surfacePatches          []surfacePlanPatchCall
 	actTargetURLPatches     []actTargetURLPatchCall
 	continueContextPatches  []continueContextPatchCall
@@ -59,6 +60,19 @@ type dismissPatchCall struct {
 	UserID, TenantID, LensModeID, EntryKey string
 	EventSeq                               int64
 	DismissState                           sovereignv1.DismissState
+}
+
+// reviewLifecyclePatchCall records arguments to
+// PatchKnowledgeLoopEntryReviewLifecycle so the KnowledgeLoopReviewed
+// projector branch can be asserted with the trigger semantics intact —
+// archive (hide) and mark_reviewed (keep visible in Review) must produce
+// distinct visibility outcomes even though they share dismiss_state=COMPLETED.
+type reviewLifecyclePatchCall struct {
+	UserID, TenantID, LensModeID, EntryKey string
+	EventSeq                               int64
+	DismissState                           sovereignv1.DismissState
+	VisibilityState                        sovereignv1.LoopVisibilityState
+	CompletionState                        sovereignv1.LoopCompletionState
 }
 
 // surfacePlanPatchCall records the arguments to PatchKnowledgeLoopEntrySurfacePlan
@@ -165,6 +179,25 @@ func (f *fakeRepo) PatchKnowledgeLoopEntryWhy(ctx context.Context, userID, tenan
 	})
 	return &sovereign_db.KnowledgeLoopUpsertResult{
 		Applied: true, ProjectionRevision: 2, ProjectionSeqHiwater: eventSeq,
+	}, nil
+}
+
+func (f *fakeRepo) PatchKnowledgeLoopEntryReviewLifecycle(ctx context.Context, userID, tenantID, lensModeID, entryKey string, eventSeq int64, dismissState sovereignv1.DismissState, visibilityState sovereignv1.LoopVisibilityState, completionState sovereignv1.LoopCompletionState) (*sovereign_db.KnowledgeLoopUpsertResult, error) {
+	f.reviewLifecyclePatches = append(f.reviewLifecyclePatches, reviewLifecyclePatchCall{
+		UserID: userID, TenantID: tenantID, LensModeID: lensModeID,
+		EntryKey: entryKey, EventSeq: eventSeq,
+		DismissState: dismissState, VisibilityState: visibilityState, CompletionState: completionState,
+	})
+	for _, e := range f.entries {
+		if e.UserId == userID && e.TenantId == tenantID && e.LensModeId == lensModeID && e.EntryKey == entryKey {
+			e.DismissState = dismissState
+			e.VisibilityState = visibilityState
+			e.CompletionState = completionState
+			e.ProjectionSeqHiwater = eventSeq
+		}
+	}
+	return &sovereign_db.KnowledgeLoopUpsertResult{
+		Applied: true, ProjectionRevision: 4, ProjectionSeqHiwater: eventSeq,
 	}, nil
 }
 
@@ -809,16 +842,36 @@ func TestRunBatch_KnowledgeLoopActed_NoIntentSkipsContinueContextPatch(t *testin
 		"legacy Acted events without acted_intent must not trigger a continue_context patch")
 }
 
-func TestRunBatch_KnowledgeLoopReviewed_UsesTriggerForDismissState(t *testing.T) {
+func TestRunBatch_KnowledgeLoopReviewed_UsesTriggerForReviewLifecycle(t *testing.T) {
 	userID := uuid.New()
 	cases := []struct {
-		name    string
-		trigger string
-		want    sovereignv1.DismissState
+		name            string
+		trigger         string
+		dismissState    sovereignv1.DismissState
+		visibilityState sovereignv1.LoopVisibilityState
+		completionState sovereignv1.LoopCompletionState
 	}{
-		{"recheck re-arms", "TRANSITION_TRIGGER_RECHECK", sovereignv1.DismissState_DISMISS_STATE_ACTIVE},
-		{"archive completes", "TRANSITION_TRIGGER_ARCHIVE", sovereignv1.DismissState_DISMISS_STATE_COMPLETED},
-		{"mark reviewed completes", "TRANSITION_TRIGGER_MARK_REVIEWED", sovereignv1.DismissState_DISMISS_STATE_COMPLETED},
+		{
+			name:            "recheck re-arms ACTIVE+VISIBLE+OPEN",
+			trigger:         "TRANSITION_TRIGGER_RECHECK",
+			dismissState:    sovereignv1.DismissState_DISMISS_STATE_ACTIVE,
+			visibilityState: sovereignv1.LoopVisibilityState_LOOP_VISIBILITY_STATE_VISIBLE,
+			completionState: sovereignv1.LoopCompletionState_LOOP_COMPLETION_STATE_OPEN,
+		},
+		{
+			name:            "archive hides COMPLETED+HIDDEN+COMPLETED",
+			trigger:         "TRANSITION_TRIGGER_ARCHIVE",
+			dismissState:    sovereignv1.DismissState_DISMISS_STATE_COMPLETED,
+			visibilityState: sovereignv1.LoopVisibilityState_LOOP_VISIBILITY_STATE_HIDDEN,
+			completionState: sovereignv1.LoopCompletionState_LOOP_COMPLETION_STATE_COMPLETED,
+		},
+		{
+			name:            "mark_reviewed keeps visible COMPLETED+VISIBLE+COMPLETED",
+			trigger:         "TRANSITION_TRIGGER_MARK_REVIEWED",
+			dismissState:    sovereignv1.DismissState_DISMISS_STATE_COMPLETED,
+			visibilityState: sovereignv1.LoopVisibilityState_LOOP_VISIBILITY_STATE_VISIBLE,
+			completionState: sovereignv1.LoopCompletionState_LOOP_COMPLETION_STATE_COMPLETED,
+		},
 	}
 
 	for i, tc := range cases {
@@ -834,8 +887,13 @@ func TestRunBatch_KnowledgeLoopReviewed_UsesTriggerForDismissState(t *testing.T)
 
 			require.NoError(t, newProjector(repo).RunBatch(context.Background()))
 
-			require.Len(t, repo.dismissPatches, 1)
-			require.Equal(t, tc.want, repo.dismissPatches[0].DismissState)
+			require.Len(t, repo.reviewLifecyclePatches, 1)
+			patch := repo.reviewLifecyclePatches[0]
+			require.Equal(t, tc.dismissState, patch.DismissState, "dismiss_state")
+			require.Equal(t, tc.visibilityState, patch.VisibilityState, "visibility_state")
+			require.Equal(t, tc.completionState, patch.CompletionState, "completion_state")
+			require.Empty(t, repo.dismissPatches,
+				"Reviewed events must use the review-lifecycle patch path, not the flat dismiss patch")
 		})
 	}
 }
