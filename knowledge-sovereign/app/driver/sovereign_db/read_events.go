@@ -148,6 +148,44 @@ func (r *Repository) ListKnowledgeEventsForUserInWindow(
 	return r.scanEvents(ctx, query, userID, since, until, eventTypes, limit)
 }
 
+// ListKnowledgeLoopActedEventsForEntry returns the most recent
+// `knowledge_loop.acted.v1` events scoped to (user, lens_mode, entry) at or
+// before `untilSeq`, descending by seq. Used by the Phase 2 continue_context
+// builder to derive a bounded `recent_action_labels` list purely from event
+// log — never from the projection row.
+//
+// Reproject-safe: every input is event-derived. The lens_mode filter is
+// applied as a JSON predicate so callers can pass the canonical id
+// (default lens fallback handled by the caller).
+//
+// F-001 mitigation: user_id is bound as a SQL parameter; tenant_id is
+// included so RLS policies remain applicable. Empty entry_key returns no
+// rows.
+func (r *Repository) ListKnowledgeLoopActedEventsForEntry(
+	ctx context.Context,
+	userID, tenantID uuid.UUID,
+	lensModeID, entryKey string,
+	untilSeq int64,
+	limit int,
+) ([]KnowledgeEvent, error) {
+	if entryKey == "" || limit <= 0 {
+		return nil, nil
+	}
+	query := `SELECT event_id, event_seq, occurred_at, tenant_id, user_id,
+		actor_type, actor_id, event_type, aggregate_type, aggregate_id,
+		correlation_id, causation_id, dedupe_key, payload
+		FROM knowledge_events
+		WHERE user_id = $1
+		  AND tenant_id = $2
+		  AND event_type = 'knowledge_loop.acted.v1'
+		  AND aggregate_id = $3
+		  AND event_seq <= $4
+		  AND (payload->>'lens_mode_id' = $5 OR (payload->>'lens_mode_id' IS NULL AND $5 = 'default'))
+		ORDER BY event_seq DESC LIMIT $6`
+
+	return r.scanEvents(ctx, query, userID, tenantID, entryKey, untilSeq, lensModeID, limit)
+}
+
 // KnowledgeUserEvent represents a user interaction event (seen, opened, etc.).
 type KnowledgeUserEvent struct {
 	UserEventID uuid.UUID

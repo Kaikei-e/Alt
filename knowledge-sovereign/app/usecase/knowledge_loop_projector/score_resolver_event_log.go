@@ -78,6 +78,10 @@ var resolverEventTypes = []string{
 	EventHomeItemOpened,
 	EventRecapTopicSnapshotted,
 	EventAugurConversationLinked,
+	// Phase 2 semantic Continue signal. Only events with continue_flag=true
+	// are tallied (gate inside the resolver loop). Snooze / Save (continue
+	// false) deliberately do not feed Continue placement.
+	EventKnowledgeLoopActed,
 }
 
 // Resolve queries the event log and aggregates the v2 evidence. It returns
@@ -193,10 +197,39 @@ func (r *EventLogSurfaceScoreResolver) Resolve(
 					}
 				}
 			}
+		case EventKnowledgeLoopActed:
+			// Phase 2 semantic Continue signal. We deliberately gate on
+			// continue_flag=true so Snooze (false) does not promote Continue.
+			// The match is entry-keyed (aggregate_id == entry_key for Loop
+			// transitions) so cross-entry behaviour cannot bleed.
+			if !readPayloadBool(e.Payload, "continue_flag") {
+				continue
+			}
+			eEntryKey := readEntryKey(e.Payload)
+			if eEntryKey == "" || eEntryKey != thisEntryKey {
+				continue
+			}
+			out.RecentContinueActionCount++
 		}
 	}
 
 	return out
+}
+
+// readPayloadBool returns the bool value of `key` on a JSON payload. Returns
+// false when the key is missing or not a bool.
+func readPayloadBool(raw json.RawMessage, key string) bool {
+	if len(raw) == 0 {
+		return false
+	}
+	var m map[string]any
+	if err := json.Unmarshal(raw, &m); err != nil {
+		return false
+	}
+	if v, ok := m[key].(bool); ok {
+		return v
+	}
+	return false
 }
 
 // isUUID rejects any string that is not a canonical 36-char hyphenated UUID.

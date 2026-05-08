@@ -412,6 +412,61 @@ func (r *Repository) PatchKnowledgeLoopEntryDismissState(
 	}, nil
 }
 
+// patchKnowledgeLoopEntryContinueContextQuery applies a Phase 2 semantic
+// continue_context patch derived from a knowledge_loop.acted.v1 event. It
+// touches only continue_context + projection bookkeeping, preserving every
+// other column. Reproject-safe: the caller computes the JSONB from event
+// payload only.
+const patchKnowledgeLoopEntryContinueContextQuery = `
+UPDATE knowledge_loop_entries SET
+  projection_revision     = projection_revision + 1,
+  projection_seq_hiwater  = GREATEST(projection_seq_hiwater, $5),
+  source_event_seq        = GREATEST(source_event_seq, $5),
+  projected_at            = NOW(),
+  continue_context        = $6
+WHERE user_id = $1 AND tenant_id = $2 AND lens_mode_id = $3 AND entry_key = $4
+  AND projection_seq_hiwater <= $5
+RETURNING projection_revision, projection_seq_hiwater
+`
+
+// PatchKnowledgeLoopEntryContinueContext patches only continue_context. The
+// JSONB body is supplied verbatim by the caller (continue_context_builder).
+// Returns SkippedBySeqHiwater when the row is missing or the seq guard
+// rejects — both are safe outcomes during reproject.
+func (r *Repository) PatchKnowledgeLoopEntryContinueContext(
+	ctx context.Context,
+	userID, tenantID, lensModeID, entryKey string,
+	eventSeq int64,
+	continueContext []byte,
+) (*KnowledgeLoopUpsertResult, error) {
+	uID, err := uuid.Parse(userID)
+	if err != nil {
+		return nil, fmt.Errorf("parse user_id: %w", err)
+	}
+	tID, err := uuid.Parse(tenantID)
+	if err != nil {
+		return nil, fmt.Errorf("parse tenant_id: %w", err)
+	}
+	if len(continueContext) == 0 {
+		return &KnowledgeLoopUpsertResult{SkippedBySeqHiwater: true}, nil
+	}
+	var revision, seqHiwater int64
+	row := r.pool.QueryRow(ctx, patchKnowledgeLoopEntryContinueContextQuery,
+		uID, tID, lensModeID, entryKey, eventSeq, continueContext,
+	)
+	if err := row.Scan(&revision, &seqHiwater); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return &KnowledgeLoopUpsertResult{SkippedBySeqHiwater: true}, nil
+		}
+		return nil, fmt.Errorf("patch knowledge_loop_entry continue_context: %w", err)
+	}
+	return &KnowledgeLoopUpsertResult{
+		Applied:              true,
+		ProjectionRevision:   revision,
+		ProjectionSeqHiwater: seqHiwater,
+	}, nil
+}
+
 const upsertKnowledgeLoopSessionStateQuery = `
 INSERT INTO knowledge_loop_session_state (
   user_id, tenant_id, lens_mode_id,

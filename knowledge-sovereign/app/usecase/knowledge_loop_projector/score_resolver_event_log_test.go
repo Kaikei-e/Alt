@@ -391,9 +391,77 @@ func TestEventLogResolver_AllowlistMatchesContract(t *testing.T) {
 		EventHomeItemOpened,
 		EventRecapTopicSnapshotted,
 		EventAugurConversationLinked,
+		// Phase 2: knowledge_loop.acted.v1 with continue_flag=true is a
+		// Continue signal — the resolver gates on continue_flag inside the
+		// loop so Snooze (false) does not promote.
+		EventKnowledgeLoopActed,
 	}
 	if !reflect.DeepEqual(resolverEventTypes, want) {
 		t.Errorf("resolverEventTypes drifted from contract §6.4.1: got %v want %v",
 			resolverEventTypes, want)
 	}
+}
+
+// TestEventLogResolver_KnowledgeLoopActedContinueFlagSemantics pins the
+// Phase 2 Continue signal: only knowledge_loop.acted.v1 events with
+// continue_flag=true tally toward RecentContinueActionCount, and the match
+// is entry-keyed so cross-entry behaviour cannot bleed.
+func TestEventLogResolver_KnowledgeLoopActedContinueFlagSemantics(t *testing.T) {
+	t.Parallel()
+
+	userID := uuid.New()
+	tenantID := uuid.New()
+	entryKey := "article:42"
+	now := time.Date(2026, 5, 8, 12, 0, 0, 0, time.UTC)
+
+	mkActed := func(seq int64, entry string, continueFlag bool, when time.Time) sovereign_db.KnowledgeEvent {
+		body, _ := json.Marshal(map[string]any{
+			"entry_key":     entry,
+			"acted_intent":  "DECISION_INTENT_OPEN",
+			"continue_flag": continueFlag,
+		})
+		uid := userID
+		return sovereign_db.KnowledgeEvent{
+			EventSeq:      seq,
+			OccurredAt:    when,
+			TenantID:      tenantID,
+			UserID:        &uid,
+			EventType:     EventKnowledgeLoopActed,
+			AggregateType: "loop_session",
+			AggregateID:   entry,
+			Payload:       body,
+		}
+	}
+
+	lookup := &fakeEventLogLookup{events: []sovereign_db.KnowledgeEvent{
+		mkActed(1, entryKey, true, now.Add(-2*time.Hour)),
+		mkActed(2, entryKey, false, now.Add(-1*time.Hour)),          // snooze — must NOT count
+		mkActed(3, "article:other", true, now.Add(-30*time.Minute)), // other entry — must NOT count
+		mkActed(4, entryKey, true, now.Add(-15*time.Minute)),
+	}}
+	r := NewEventLogSurfaceScoreResolver(lookup)
+
+	uid := userID
+	thisEvent := &sovereign_db.KnowledgeEvent{
+		EventSeq:   100,
+		OccurredAt: now,
+		TenantID:   tenantID,
+		UserID:     &uid,
+		EventType:  EventKnowledgeLoopActed,
+		Payload:    mustJSON(t, map[string]any{"entry_key": entryKey, "continue_flag": true}),
+	}
+
+	out := r.Resolve(context.Background(), thisEvent)
+	if out.RecentContinueActionCount != 2 {
+		t.Errorf("RecentContinueActionCount: want 2 (continue_flag=true on this entry), got %d", out.RecentContinueActionCount)
+	}
+}
+
+func mustJSON(t *testing.T, v any) []byte {
+	t.Helper()
+	b, err := json.Marshal(v)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	return b
 }

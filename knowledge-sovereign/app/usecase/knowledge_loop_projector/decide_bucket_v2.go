@@ -89,6 +89,14 @@ type SurfaceScoreInputs struct {
 	// is non-deterministic and would need its own SummaryContradicted
 	// event before we can use it.
 	ContradictionCount uint32
+
+	// RecentContinueActionCount counts knowledge_loop.acted.v1 events with
+	// continue_flag=true scoped to this entry inside the v2 score window
+	// (7 days, event-time bound). Phase 2 semantic feedback signal: a user
+	// who Open-ed / Ask-ed / Revisit-ed an entry within the last week is
+	// continuing a thought, so the entry promotes to Continue regardless of
+	// v1 mapping. Reproject-safe — derived from event payload only.
+	RecentContinueActionCount uint32
 }
 
 // decideBucketV2 picks a SurfaceBucket from the score inputs. The order
@@ -114,8 +122,10 @@ func decideBucketV2(in SurfaceScoreInputs) sovereignv1.SurfaceBucket {
 	}
 
 	// Continue: an unfinished Augur thread, an explicit open interaction,
-	// or a non-zero question-continuation score puts the entry mid-flow.
-	if in.HasAugurLink || in.HasOpenInteraction || in.QuestionContinuationScore > 0 {
+	// a non-zero question-continuation score, or a recent semantic continue
+	// action (Phase 2: open / ask / revisit / open-recap with
+	// continue_flag=true) puts the entry mid-flow.
+	if in.HasAugurLink || in.HasOpenInteraction || in.QuestionContinuationScore > 0 || in.RecentContinueActionCount > 0 {
 		return sovereignv1.SurfaceBucket_SURFACE_BUCKET_CONTINUE
 	}
 

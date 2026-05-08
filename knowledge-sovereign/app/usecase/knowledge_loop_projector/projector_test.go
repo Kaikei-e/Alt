@@ -20,17 +20,25 @@ import (
 // layer's own tests. Here we verify the projector emits the same upsert payload
 // for the same event on replay — the core reproject-safety invariant.
 type fakeRepo struct {
-	checkpoint          int64
-	events              []sovereign_db.KnowledgeEvent
-	entries             []*sovereignv1.KnowledgeLoopEntry
-	sessions            []*sovereignv1.KnowledgeLoopSessionState
-	entrySessions       []entrySessionCall
-	surfaces            []*sovereignv1.KnowledgeLoopSurface
-	patches             []patchCall
-	dismissPatches      []dismissPatchCall
-	surfacePatches      []surfacePlanPatchCall
-	actTargetURLPatches []actTargetURLPatchCall
-	checkpoints         []int64
+	checkpoint              int64
+	events                  []sovereign_db.KnowledgeEvent
+	entries                 []*sovereignv1.KnowledgeLoopEntry
+	sessions                []*sovereignv1.KnowledgeLoopSessionState
+	entrySessions           []entrySessionCall
+	surfaces                []*sovereignv1.KnowledgeLoopSurface
+	patches                 []patchCall
+	dismissPatches          []dismissPatchCall
+	surfacePatches          []surfacePlanPatchCall
+	actTargetURLPatches     []actTargetURLPatchCall
+	continueContextPatches  []continueContextPatchCall
+	checkpoints             []int64
+}
+
+// continueContextPatchCall records arguments to PatchKnowledgeLoopEntryContinueContext.
+type continueContextPatchCall struct {
+	UserID, TenantID, LensModeID, EntryKey string
+	EventSeq                               int64
+	ContinueContext                        []byte
 }
 
 // patchCall records the arguments to PatchKnowledgeLoopEntryWhy so tests can
@@ -188,6 +196,53 @@ func (f *fakeRepo) PatchKnowledgeLoopEntryDismissState(ctx context.Context, user
 	return &sovereign_db.KnowledgeLoopUpsertResult{
 		Applied: true, ProjectionRevision: 3, ProjectionSeqHiwater: eventSeq,
 	}, nil
+}
+
+func (f *fakeRepo) PatchKnowledgeLoopEntryContinueContext(ctx context.Context, userID, tenantID, lensModeID, entryKey string, eventSeq int64, continueContext []byte) (*sovereign_db.KnowledgeLoopUpsertResult, error) {
+	f.continueContextPatches = append(f.continueContextPatches, continueContextPatchCall{
+		UserID: userID, TenantID: tenantID, LensModeID: lensModeID,
+		EntryKey: entryKey, EventSeq: eventSeq, ContinueContext: append([]byte(nil), continueContext...),
+	})
+	for _, e := range f.entries {
+		if e.UserId == userID && e.TenantId == tenantID && e.LensModeId == lensModeID && e.EntryKey == entryKey {
+			if e.ProjectionSeqHiwater > eventSeq {
+				return &sovereign_db.KnowledgeLoopUpsertResult{SkippedBySeqHiwater: true}, nil
+			}
+			e.ContinueContext = append([]byte(nil), continueContext...)
+			e.ProjectionSeqHiwater = eventSeq
+		}
+	}
+	return &sovereign_db.KnowledgeLoopUpsertResult{
+		Applied: true, ProjectionRevision: 6, ProjectionSeqHiwater: eventSeq,
+	}, nil
+}
+
+func (f *fakeRepo) ListKnowledgeLoopActedEventsForEntry(ctx context.Context, userID, tenantID uuid.UUID, lensModeID, entryKey string, untilSeq int64, limit int) ([]sovereign_db.KnowledgeEvent, error) {
+	out := make([]sovereign_db.KnowledgeEvent, 0)
+	// Walk events newest first so the projector receives them in descending seq order.
+	for i := len(f.events) - 1; i >= 0; i-- {
+		ev := f.events[i]
+		if ev.EventType != EventKnowledgeLoopActed {
+			continue
+		}
+		if ev.UserID == nil || *ev.UserID != userID {
+			continue
+		}
+		if ev.TenantID != tenantID {
+			continue
+		}
+		if ev.AggregateID != entryKey {
+			continue
+		}
+		if ev.EventSeq > untilSeq {
+			continue
+		}
+		out = append(out, ev)
+		if len(out) >= limit {
+			break
+		}
+	}
+	return out, nil
 }
 
 func (f *fakeRepo) PatchKnowledgeLoopActTargetSourceURL(ctx context.Context, userID, tenantID, lensModeID, entryKey, articleID, sourceURL string, eventSeq int64) (*sovereign_db.KnowledgeLoopUpsertResult, error) {
@@ -673,6 +728,85 @@ func TestRunBatch_KnowledgeLoopDeferred_FlipsDismissState(t *testing.T) {
 	require.Len(t, repo.sessions, 1)
 	require.NotNil(t, repo.sessions[0].LastDeferredEntryKey)
 	require.Equal(t, "article:42", *repo.sessions[0].LastDeferredEntryKey)
+}
+
+// TestRunBatch_KnowledgeLoopActed_PatchesContinueContextSemantically pins the
+// Phase 2 semantic feedback loop. When the Acted event payload carries an
+// `acted_intent`, the projector must:
+//   1. List recent acted events ≤ this event's seq (event-log derived only).
+//   2. Build a bounded `recent_action_labels` list via continue_context_builder.
+//   3. Patch continue_context onto the entry — never the full upsert path.
+// The test also asserts reproject-safety: the projector reads the event log
+// for derivation, not the existing projection row.
+func TestRunBatch_KnowledgeLoopActed_PatchesContinueContextSemantically(t *testing.T) {
+	userID := uuid.New()
+	earlier := makeEvent(t, EventKnowledgeLoopActed, 1000, userID, map[string]any{
+		"entry_key":     "article:42",
+		"lens_mode_id":  "default",
+		"from_stage":    "LOOP_STAGE_DECIDE",
+		"to_stage":      "LOOP_STAGE_ACT",
+		"trigger":       "TRANSITION_TRIGGER_USER_TAP",
+		"acted_intent":  "DECISION_INTENT_OPEN",
+		"target_type":   "ACT_TARGET_TYPE_ARTICLE",
+		"target_ref":    "article:42",
+		"continue_flag": true,
+	})
+	current := makeEvent(t, EventKnowledgeLoopActed, 1001, userID, map[string]any{
+		"entry_key":     "article:42",
+		"lens_mode_id":  "default",
+		"from_stage":    "LOOP_STAGE_DECIDE",
+		"to_stage":      "LOOP_STAGE_ACT",
+		"trigger":       "TRANSITION_TRIGGER_USER_TAP",
+		"acted_intent":  "DECISION_INTENT_REVISIT",
+		"target_type":   "ACT_TARGET_TYPE_ENTRY",
+		"target_ref":    "article:42",
+		"continue_flag": true,
+	})
+	// Share the tenantID so the projector's per-(user,tenant,entry) listing
+	// can see both events in the same window.
+	current.TenantID = earlier.TenantID
+	repo := &fakeRepo{events: []sovereign_db.KnowledgeEvent{earlier, current}}
+
+	require.NoError(t, newProjector(repo).RunBatch(context.Background()))
+
+	require.Len(t, repo.continueContextPatches, 2,
+		"each Acted event with acted_intent must trigger a continue_context patch")
+
+	last := repo.continueContextPatches[len(repo.continueContextPatches)-1]
+	require.Equal(t, "article:42", last.EntryKey)
+	require.Equal(t, "default", last.LensModeID)
+	require.Equal(t, int64(1001), last.EventSeq)
+
+	var body map[string]any
+	require.NoError(t, json.Unmarshal(last.ContinueContext, &body))
+	labels, _ := body["recent_action_labels"].([]any)
+	require.Equal(t, []any{"revisited", "opened"}, labels,
+		"semantic labels must reflect recent acted events, newest first")
+
+	// Critical: the projector MUST NOT call the full UpsertKnowledgeLoopEntry
+	// path for Acted — that would clobber decision_options / why / freshness.
+	require.Empty(t, repo.entries, "Acted must patch only continue_context, not upsert the entry")
+}
+
+// TestRunBatch_KnowledgeLoopActed_NoIntentSkipsContinueContextPatch pins the
+// guard: only Acted events that actually carry an `acted_intent` produce a
+// continue_context patch. Stage-only Acted events (legacy, no semantic
+// metadata) leave the entry's continue_context untouched.
+func TestRunBatch_KnowledgeLoopActed_NoIntentSkipsContinueContextPatch(t *testing.T) {
+	userID := uuid.New()
+	ev := makeEvent(t, EventKnowledgeLoopActed, 1100, userID, map[string]any{
+		"entry_key":    "article:42",
+		"lens_mode_id": "default",
+		"from_stage":   "LOOP_STAGE_DECIDE",
+		"to_stage":     "LOOP_STAGE_ACT",
+		"trigger":      "TRANSITION_TRIGGER_USER_TAP",
+	})
+	repo := &fakeRepo{events: []sovereign_db.KnowledgeEvent{ev}}
+
+	require.NoError(t, newProjector(repo).RunBatch(context.Background()))
+
+	require.Empty(t, repo.continueContextPatches,
+		"legacy Acted events without acted_intent must not trigger a continue_context patch")
 }
 
 func TestRunBatch_KnowledgeLoopReviewed_UsesTriggerForDismissState(t *testing.T) {

@@ -64,6 +64,19 @@ type Repository interface {
 	// boundary (a `NOT (act_targets->0 ? 'source_url')` predicate makes a
 	// re-applied event a no-op once the URL is in place).
 	PatchKnowledgeLoopActTargetSourceURL(ctx context.Context, userID, tenantID, lensModeID, entryKey, articleID, sourceURL string, eventSeq int64) (*sovereign_db.KnowledgeLoopUpsertResult, error)
+	// PatchKnowledgeLoopEntryContinueContext patches only continue_context for an
+	// existing entry, preserving every other column. Driven by Phase 2 semantic
+	// knowledge_loop.acted.v1 events: the projector derives a bounded
+	// `recent_action_labels` list from the event payload (no projection-row read)
+	// and writes it back. Reproject-safe — the body is a pure function of
+	// already-seen events ≤ eventSeq.
+	PatchKnowledgeLoopEntryContinueContext(ctx context.Context, userID, tenantID, lensModeID, entryKey string, eventSeq int64, continueContext []byte) (*sovereign_db.KnowledgeLoopUpsertResult, error)
+	// ListKnowledgeLoopActedEventsForEntry returns the most recent acted events
+	// for (user, lens_mode, entry) at-or-before `untilSeq`, descending by seq,
+	// limited to `limit` rows. Used by continue_context_builder to derive the
+	// bounded recent_action_labels purely from the event log, never from the
+	// projection row.
+	ListKnowledgeLoopActedEventsForEntry(ctx context.Context, userID, tenantID uuid.UUID, lensModeID, entryKey string, untilSeq int64, limit int) ([]sovereign_db.KnowledgeEvent, error)
 }
 
 // Config tunes the projector loop. Zero values fall back to defaults.
@@ -519,6 +532,42 @@ func (p *Projector) projectTransition(ctx context.Context, ev *sovereign_db.Know
 		}
 	}
 
+	// Phase 2 semantic feedback loop: when the Acted event carries an
+	// acted_intent, derive a bounded recent_action_labels list purely from
+	// the event log (≤ this event's seq) and patch continue_context. The
+	// builder is pure; reproject reproduces the same JSONB from the same
+	// log slice.
+	if ev.EventType == EventKnowledgeLoopActed && entryKey != "" && payload.ActedIntent != "" && ev.UserID != nil {
+		recent, listErr := p.repo.ListKnowledgeLoopActedEventsForEntry(
+			ctx,
+			*ev.UserID,
+			ev.TenantID,
+			lensModeID,
+			entryKey,
+			ev.EventSeq,
+			recentActionLabelsBound,
+		)
+		if listErr != nil {
+			p.logger.WarnContext(ctx, "knowledge_loop_projector: list acted events for continue_context failed",
+				"event_seq", ev.EventSeq,
+				"entry_key", entryKey,
+				"err", listErr,
+			)
+		} else if body := buildContinueContextFromActed(recent); body != nil {
+			if _, patchErr := p.repo.PatchKnowledgeLoopEntryContinueContext(
+				ctx,
+				ev.UserID.String(),
+				ev.TenantID.String(),
+				lensModeID,
+				entryKey,
+				ev.EventSeq,
+				body,
+			); patchErr != nil {
+				return sessionRes, fmt.Errorf("patch continue_context on Acted: %w", patchErr)
+			}
+		}
+	}
+
 	return sessionRes, p.recomputeSurfaces(ctx, ev, lensModeID)
 }
 
@@ -887,6 +936,17 @@ type loopTransitionPayload struct {
 	FromStage  string
 	ToStage    string
 	Trigger    string
+	// Phase 2 semantic Decide / Act feedback loop. The projector reads these
+	// to update continue_context.recent_action_labels, act_targets, and the
+	// Surface Planner v2 Continue signal — all from event payload only, so
+	// reproject reproduces the same projection from the same event log.
+	ActedIntent      string
+	ActionID         string
+	TargetType       string
+	TargetRef        string
+	ContinueFlag     bool
+	HasContinueFlag  bool
+	PresentedIntents []string
 }
 
 func parseLoopTransitionPayload(raw json.RawMessage) loopTransitionPayload {
@@ -903,6 +963,22 @@ func parseLoopTransitionPayload(raw json.RawMessage) loopTransitionPayload {
 	out.FromStage = pickStringField(m, "from_stage")
 	out.ToStage = pickStringField(m, "to_stage")
 	out.Trigger = pickStringField(m, "trigger")
+	out.ActedIntent = pickStringField(m, "acted_intent")
+	out.ActionID = pickStringField(m, "action_id")
+	out.TargetType = pickStringField(m, "target_type")
+	out.TargetRef = pickStringField(m, "target_ref")
+	if v, ok := m["continue_flag"].(bool); ok {
+		out.ContinueFlag = v
+		out.HasContinueFlag = true
+	}
+	if raw, ok := m["presented_intents"].([]any); ok {
+		out.PresentedIntents = make([]string, 0, len(raw))
+		for _, x := range raw {
+			if s, ok := x.(string); ok && s != "" {
+				out.PresentedIntents = append(out.PresentedIntents, s)
+			}
+		}
+	}
 	return out
 }
 
