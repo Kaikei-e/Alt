@@ -53,6 +53,9 @@ func (r *RemoteTokenRepository) GetCurrentToken(ctx context.Context) (*models.OA
 	}
 	defer resp.Body.Close()
 
+	if resp.StatusCode == http.StatusNotFound {
+		return nil, ErrTokenNotFound
+	}
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("auth-token-manager returned status: %d", resp.StatusCode)
 	}
