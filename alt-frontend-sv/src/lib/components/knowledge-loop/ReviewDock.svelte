@@ -27,6 +27,7 @@
 import type { KnowledgeLoopEntryData } from "$lib/connect/knowledge_loop";
 import type { ReviewAction } from "$lib/hooks/useKnowledgeLoop.svelte";
 import { loopPriorityAriaLabel } from "./loop-priority-labels";
+import { resolveReviewReason } from "./review-reason-map";
 
 let {
 	entries,
@@ -52,7 +53,16 @@ function act(entry: KnowledgeLoopEntryData, action: ReviewAction) {
 
 <ul class="review-dock" data-testid="loop-review-dock">
 	{#each entries as entry (entry.entryKey)}
-		<li class="row" aria-label={loopPriorityAriaLabel[entry.loopPriority]}>
+		{@const reviewReason = resolveReviewReason({
+			dismissState: entry.dismissState,
+			surfaceBucket: entry.surfaceBucket,
+		})}
+		<li
+			class="row"
+			aria-label={reviewReason
+				? `${loopPriorityAriaLabel[entry.loopPriority]} — ${reviewReason.ariaText}`
+				: loopPriorityAriaLabel[entry.loopPriority]}
+		>
 			<div class="entry">
 				<button
 					type="button"
@@ -63,6 +73,15 @@ function act(entry: KnowledgeLoopEntryData, action: ReviewAction) {
 				>
 					<span class="dot" aria-hidden="true">·</span>
 					<span class="text">{entry.whyPrimary.text || entry.entryKey}</span>
+					{#if reviewReason}
+						<span
+							class="reason"
+							data-testid="loop-review-reason"
+							data-review-reason={reviewReason.reason}
+						>
+							{reviewReason.label}
+						</span>
+					{/if}
 					<span class="why-kind">{entry.whyPrimary.kind.replace(/_why$/, "")}</span>
 				</button>
 				{#if onReviewAction}
@@ -125,7 +144,7 @@ function act(entry: KnowledgeLoopEntryData, action: ReviewAction) {
 		width: 100%;
 		padding: 0;
 		display: grid;
-		grid-template-columns: 1ch 1fr auto;
+		grid-template-columns: 1ch 1fr auto auto;
 		align-items: baseline;
 		gap: 0.7rem;
 		cursor: pointer;
@@ -134,6 +153,12 @@ function act(entry: KnowledgeLoopEntryData, action: ReviewAction) {
 		font-size: 0.78rem;
 		line-height: 1.5;
 		color: var(--alt-slate, #666);
+	}
+	.reason {
+		font-size: 0.62rem;
+		letter-spacing: 0.06em;
+		color: var(--alt-slate, #666);
+		font-variant: small-caps;
 	}
 	.open:hover .text {
 		text-decoration: underline;
