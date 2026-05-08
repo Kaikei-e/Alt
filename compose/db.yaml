@@ -91,7 +91,7 @@ services:
   clickhouse:
     image: clickhouse/clickhouse-server:25.9
     restart: unless-stopped
-    mem_limit: 2g
+    mem_limit: 4g
     entrypoint: ["/entrypoint-wrapper.sh"]
     command: []
     environment:
@@ -121,6 +121,11 @@ services:
       timeout: 5s
       retries: 5
       start_period: 60s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
 
   # Pre-processor dedicated database (ADR-000246)
   pre-processor-db:
