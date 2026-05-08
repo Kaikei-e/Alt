@@ -667,6 +667,10 @@ func mapActTargetType(s string) loopv1.ActTargetType {
 		return loopv1.ActTargetType_ACT_TARGET_TYPE_DIFF
 	case "cluster":
 		return loopv1.ActTargetType_ACT_TARGET_TYPE_CLUSTER
+	case "conversation":
+		return loopv1.ActTargetType_ACT_TARGET_TYPE_CONVERSATION
+	case "entry":
+		return loopv1.ActTargetType_ACT_TARGET_TYPE_ENTRY
 	default:
 		return loopv1.ActTargetType_ACT_TARGET_TYPE_UNSPECIFIED
 	}

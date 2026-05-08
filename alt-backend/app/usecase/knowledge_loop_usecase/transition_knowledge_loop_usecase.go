@@ -171,7 +171,7 @@ func buildTransitionEvent(eventType string, in TransitionInput, occurredAt time.
 		"client_transition_id":         in.ClientTransitionID,
 	}
 	if len(in.PresentedIntents) > 0 {
-		body["presented_intents"] = in.PresentedIntents
+		body["presented_intents"] = dedupeBounded(in.PresentedIntents, 8)
 	}
 	if in.ActedIntent != nil {
 		body["acted_intent"] = *in.ActedIntent
@@ -185,7 +185,12 @@ func buildTransitionEvent(eventType string, in TransitionInput, occurredAt time.
 	if in.TargetRef != nil {
 		body["target_ref"] = *in.TargetRef
 	}
-	if in.ContinueFlag {
+	// Phase 2 (semantic Decide / Act): when an actedIntent is present, always
+	// write continue_flag so the projector and resolver can rely on a
+	// deterministic boolean instead of inferring `false` from absence.
+	if in.ActedIntent != nil {
+		body["continue_flag"] = in.ContinueFlag
+	} else if in.ContinueFlag {
 		body["continue_flag"] = true
 	}
 
@@ -208,4 +213,27 @@ func buildTransitionEvent(eventType string, in TransitionInput, occurredAt time.
 		DedupeKey:     in.ClientTransitionID,
 		Payload:       payload,
 	}, nil
+}
+
+// dedupeBounded preserves the order of the first occurrence and drops the
+// rest, then truncates to `cap`. The BFF already validates len <= 8 and
+// rejects duplicates, but the backend defends in depth so a misbehaving
+// caller cannot inflate the projection's presented_intents memory.
+func dedupeBounded(in []string, cap int) []string {
+	if len(in) == 0 {
+		return in
+	}
+	seen := make(map[string]struct{}, len(in))
+	out := make([]string, 0, len(in))
+	for _, v := range in {
+		if _, ok := seen[v]; ok {
+			continue
+		}
+		seen[v] = struct{}{}
+		out = append(out, v)
+		if len(out) >= cap {
+			break
+		}
+	}
+	return out
 }

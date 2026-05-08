@@ -217,6 +217,62 @@ func TestTransition_ActedPayloadCarriesIntentMetadata(t *testing.T) {
 	require.Equal(t, true, payload["continue_flag"])
 }
 
+// TestTransition_ActedPayloadAlwaysWritesContinueFlag pins the Phase 2
+// always-write rule: when an actedIntent is supplied, continue_flag must be
+// present in the event payload regardless of value (true OR false). The
+// projector and v2 surface resolver rely on a deterministic boolean, not on
+// inferring `false` from absence.
+func TestTransition_ActedPayloadAlwaysWritesContinueFlag(t *testing.T) {
+	dedupe := &fakeDedupePort{reserved: true}
+	appendPort := &fakeAppendPort{}
+	uc := NewTransitionKnowledgeLoopUsecase(dedupe, appendPort, nil, time.Now)
+
+	acted := "DECISION_INTENT_SAVE"
+	in := newTransitionInput(t, "LOOP_STAGE_DECIDE", "LOOP_STAGE_ACT", "TRANSITION_TRIGGER_USER_TAP")
+	in.ActedIntent = &acted
+	in.ContinueFlag = false // save = no continue
+
+	res, err := uc.Execute(context.Background(), in)
+	require.NoError(t, err)
+	require.True(t, res.Accepted)
+	require.Len(t, appendPort.events, 1)
+
+	var payload map[string]any
+	require.NoError(t, json.Unmarshal(appendPort.events[0].Payload, &payload))
+	require.Contains(t, payload, "continue_flag",
+		"continue_flag must be written when actedIntent is present, even if false")
+	require.Equal(t, false, payload["continue_flag"])
+}
+
+// TestTransition_PresentedIntentsDedupedAndCapped pins the defense-in-depth
+// cap on presented_intents. The BFF rejects len>8 and duplicates, but the
+// usecase must not trust caller-supplied arrays unbounded.
+func TestTransition_PresentedIntentsDedupedAndCapped(t *testing.T) {
+	dedupe := &fakeDedupePort{reserved: true}
+	appendPort := &fakeAppendPort{}
+	uc := NewTransitionKnowledgeLoopUsecase(dedupe, appendPort, nil, time.Now)
+
+	in := newTransitionInput(t, "LOOP_STAGE_DECIDE", "LOOP_STAGE_ACT", "TRANSITION_TRIGGER_USER_TAP")
+	in.PresentedIntents = []string{
+		"open", "open", "ask", "save", "compare", "revisit", "snooze",
+		"open", "ask", "duplicate-9", "duplicate-10",
+	}
+
+	res, err := uc.Execute(context.Background(), in)
+	require.NoError(t, err)
+	require.True(t, res.Accepted)
+	require.Len(t, appendPort.events, 1)
+
+	var payload map[string]any
+	require.NoError(t, json.Unmarshal(appendPort.events[0].Payload, &payload))
+	got, ok := payload["presented_intents"].([]any)
+	require.True(t, ok)
+	require.LessOrEqual(t, len(got), 8)
+	// First-occurrence preserved.
+	require.Equal(t, "open", got[0])
+	require.Equal(t, "ask", got[1])
+}
+
 func TestTransition_SkipsAppendOnDuplicateReservation(t *testing.T) {
 	canonical := "article:42"
 	dedupe := &fakeDedupePort{
