@@ -529,8 +529,26 @@ const planeDescriptors = $derived([
 function onContinueResume(entry: KnowledgeLoopEntryData) {
 	advanceEntry(entry);
 }
-function onChangedConfirm(entry: KnowledgeLoopEntryData) {
-	advanceEntry(entry);
+/**
+ * Phase 3: Changed CTA fires `acted_intent=compare` with a `target_type=diff`
+ * via transition-metadata::buildTransitionMetadata. The intent is encoded in a
+ * synthetic DecisionOption since `compare` is the canonical Decide-stage
+ * option for this bucket (see Knowledge Loop canonical contract §11). The
+ * metadata is forwarded through the standard same-stage transition path so
+ * the projector records the comparison in continue_context.recent_action_labels
+ * — that is what eventually surfaces "Compare" on the Continue card.
+ */
+function onChangedCompare(entry: KnowledgeLoopEntryData) {
+	const presented = entry.decisionOptions.find((o) => o.intent === "compare");
+	const synthetic: DecisionOptionData = presented ?? {
+		actionId: "compare",
+		intent: "compare",
+		label: "Compare",
+	};
+	const metadata = buildTransitionMetadata(entry, synthetic);
+	const from = effectiveEntryStage(entry);
+	if (!loop.canTransition(from, from)) return;
+	void loop.transitionTo(entry.entryKey, from, "user_tap", metadata);
 }
 function onReviewOpen(entry: KnowledgeLoopEntryData) {
 	onEntryOpen(entry);
@@ -792,7 +810,7 @@ function onReviewAction(
 					{:else}
 						<ChangedDiffCard
 							entries={changedEntries}
-							onConfirm={onChangedConfirm}
+							onCompare={onChangedCompare}
 						/>
 					{/if}
 				{:else if key === "review"}

@@ -82,8 +82,11 @@ describe("ChangedDiffCard encodes the THEN / NOW diptych", () => {
 		// left column when change_summary is missing.
 		expect(source).toMatch(/entry\.supersededByEntryKey/);
 	});
-	it("wires the confirm callback so Act transitions can emit KnowledgeLoopActed", () => {
-		expect(source).toMatch(/onConfirm\?\.\(entry\)/);
+	it("wires the Compare callback so Act transitions emit acted_intent=compare (Phase 3)", () => {
+		expect(source).toMatch(/onCompare\?\.\(entry\)/);
+	});
+	it('renders the "What to update" hint band sourced from change_summary.summary', () => {
+		expect(source).toMatch(/loop-changed-update-hint/);
 	});
 });
 

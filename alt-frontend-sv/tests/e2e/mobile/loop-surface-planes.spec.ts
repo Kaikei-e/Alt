@@ -59,7 +59,7 @@ test.describe("Mobile Knowledge Loop — Surface planes", () => {
 		await expect(parentLi).toHaveAttribute("aria-label", /Continuing/);
 	});
 
-	test("Changed plane renders THEN/NOW diptych with confirm CTA", async ({
+	test("Changed plane renders THEN/NOW diptych with Compare CTA (Phase 3)", async ({
 		page,
 	}) => {
 		await gotoMobileRoute(page, "loop");
@@ -75,31 +75,37 @@ test.describe("Mobile Knowledge Loop — Surface planes", () => {
 		await expect(diff.getByText(/^Then$/)).toBeVisible();
 		await expect(diff.getByText(/^Now$/)).toBeVisible();
 
-		// Confirm CTA POSTs a transition to the Act stage. We don't validate the
-		// navigation here — the separate transition spec covers it — but we
-		// confirm the button fires the BFF route.
-		let gotTransition = false;
+		// Compare CTA POSTs a same-stage transition with acted_intent=compare
+		// and target_type=diff per Phase 3 (knowledge-loop-completion-03).
+		// The Confirm-then-advance behavior was a v8-era placeholder.
+		let gotCompareTransition = false;
 		await page.route(LOOP_TRANSITION_PATH, async (route) => {
 			const body = route.request().postDataJSON() as {
 				entryKey?: string;
+				fromStage?: string;
 				toStage?: string;
+				actedIntent?: string;
+				targetType?: string;
 			};
 			if (
 				body.entryKey === LOOP_FIXTURE_CHANGED_ENTRY_KEY &&
-				body.toStage === "act"
+				body.fromStage === body.toStage &&
+				body.actedIntent === "compare" &&
+				body.targetType === "diff"
 			) {
-				gotTransition = true;
+				gotCompareTransition = true;
 			}
 			await fulfillJson(route, { accepted: true });
 		});
 
-		const confirm = diff
+		const compare = diff
 			.locator(`[data-entry-key="${LOOP_FIXTURE_CHANGED_ENTRY_KEY}"]`)
 			.first();
-		await expect(confirm).toBeVisible();
-		await confirm.click();
+		await expect(compare).toBeVisible();
+		await expect(compare).toHaveText(/Compare/);
+		await compare.click();
 
-		await expect.poll(() => gotTransition, { timeout: 3_000 }).toBe(true);
+		await expect.poll(() => gotCompareTransition, { timeout: 3_000 }).toBe(true);
 
 		// supersededByEntryKey is surfaced in the THEN column when change_summary
 		// is empty, but our fixture has change_summary so the THEN line should

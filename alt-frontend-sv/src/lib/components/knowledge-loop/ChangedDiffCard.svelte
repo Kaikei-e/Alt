@@ -21,14 +21,23 @@ import { loopPriorityAriaLabel } from "./loop-priority-labels";
 
 let {
 	entries,
-	onConfirm,
+	onCompare,
 }: {
 	entries: KnowledgeLoopEntryData[];
-	onConfirm?: (entry: KnowledgeLoopEntryData) => void;
+	/**
+	 * Phase 3: Changed CTA emits acted_intent=compare, target_type=diff (per
+	 * canonical contract §11 + transition-metadata::pickTargetForIntent).
+	 * The parent typically forwards into useKnowledgeLoop's Act mutation,
+	 * which wires up `buildTransitionMetadata(entry, {intent: "compare"})`
+	 * and routes the diff drawer behavior. Replaced the v8-era `onConfirm`
+	 * since "Confirm" was a placeholder — the semantic intent of Changed is
+	 * comparison.
+	 */
+	onCompare?: (entry: KnowledgeLoopEntryData) => void;
 } = $props();
 
-function confirm(entry: KnowledgeLoopEntryData) {
-	onConfirm?.(entry);
+function compare(entry: KnowledgeLoopEntryData) {
+	onCompare?.(entry);
 }
 
 function hasRedline(
@@ -132,15 +141,21 @@ function ariaSummary(entry: KnowledgeLoopEntryData): string {
 					</p>
 				</div>
 			{/if}
+			{#if cs?.summary}
+				<div class="update-hint" data-testid="loop-changed-update-hint">
+					<span class="kicker" aria-hidden="true">Updated</span>
+					<p class="hint-line">{cs.summary}</p>
+				</div>
+			{/if}
 			<div class="actions">
 				<button
 					type="button"
 					class="confirm"
-					onclick={() => confirm(entry)}
-					data-testid="loop-changed-confirm"
+					onclick={() => compare(entry)}
+					data-testid="loop-changed-compare"
 					data-entry-key={entry.entryKey}
 				>
-					Confirm
+					Compare
 				</button>
 			</div>
 		</article>
@@ -262,6 +277,23 @@ function ariaSummary(entry: KnowledgeLoopEntryData): string {
 	}
 	.line-now {
 		color: var(--alt-charcoal, #1a1a1a);
+	}
+	/* "What to update" band sits between the redline / Then-Now diptych and
+	 * the Compare CTA. Renders only when change_summary.summary is populated
+	 * (Phase 3 backend appends a deterministic update-hint clause to it). */
+	.update-hint {
+		grid-column: 1 / -1;
+		display: grid;
+		grid-template-columns: 4.5rem 1fr;
+		align-items: baseline;
+		gap: 0.75rem;
+	}
+	.hint-line {
+		margin: 0;
+		font-family: var(--font-body, "Source Sans 3", system-ui, sans-serif);
+		font-size: 0.78rem;
+		line-height: 1.5;
+		color: var(--alt-slate, #666);
 	}
 	.actions {
 		grid-column: 1 / -1;
