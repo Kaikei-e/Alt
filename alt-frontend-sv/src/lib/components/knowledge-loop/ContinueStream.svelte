@@ -17,6 +17,7 @@ import {
 	loopPriorityAriaLabel,
 	loopPriorityLabel,
 } from "./loop-priority-labels";
+import { formatRecentActionLabel } from "./recent-action-label-map";
 
 let {
 	entries,
@@ -62,7 +63,14 @@ function formatFreshness(iso: string): string {
 					<span class="context">
 						{entry.continueContext.summary}
 						{#if entry.continueContext.recentActionLabels.length > 0}
-							· {entry.continueContext.recentActionLabels.join(" / ")}
+							·
+							{#each entry.continueContext.recentActionLabels as label, i (label + i)}
+								{#if i > 0}<span aria-hidden="true"> · </span>{/if}<span
+									class="action-label"
+									data-testid="loop-continue-action-label"
+									data-action-label={label}
+								>{formatRecentActionLabel(label)}</span>
+							{/each}
 						{/if}
 					</span>
 				{/if}
@@ -121,6 +129,9 @@ function formatFreshness(iso: string): string {
 		line-height: 1.35;
 		color: var(--alt-slate, #666);
 		overflow-wrap: anywhere;
+	}
+	.action-label {
+		color: var(--alt-charcoal, #1a1a1a);
 	}
 	.title:hover {
 		text-decoration: underline;
