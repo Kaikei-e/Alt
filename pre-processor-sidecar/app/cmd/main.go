@@ -193,6 +193,41 @@ func performHealthCheck() {
 	performHealthCheckWithOutput()
 }
 
+// healthRealClock is the wall-clock implementation of handler.HealthClock used in production.
+type healthRealClock struct{}
+
+func (healthRealClock) Now() time.Time { return time.Now() }
+
+// ingestionHealthAdapter joins InoreaderService (fetch + circuit breaker) with the token
+// provider so handler.HealthHandler can read all three signals from a single value.
+type ingestionHealthAdapter struct {
+	inoreaderSvc *service.InoreaderService
+	tokenSvc     *service.RemoteTokenService
+}
+
+func newIngestionHealthAdapter(inoreaderSvc *service.InoreaderService, tokenProvider service.TokenProvider) *ingestionHealthAdapter {
+	a := &ingestionHealthAdapter{inoreaderSvc: inoreaderSvc}
+	if rts, ok := tokenProvider.(*service.RemoteTokenService); ok {
+		a.tokenSvc = rts
+	}
+	return a
+}
+
+func (a *ingestionHealthAdapter) LastSuccessfulFetch() time.Time {
+	return a.inoreaderSvc.LastSuccessfulFetch()
+}
+
+func (a *ingestionHealthAdapter) CircuitBreakerState() string {
+	return a.inoreaderSvc.CircuitBreakerState()
+}
+
+func (a *ingestionHealthAdapter) TokenAvailable() bool {
+	if a.tokenSvc == nil {
+		return true
+	}
+	return a.tokenSvc.TokenAvailable()
+}
+
 func performOAuth2Initialization(cfg *config.Config, logger *slog.Logger) {
 	logger.Info("OAuth2 initialization starting", "service", "oauth2-init")
 
@@ -384,6 +419,12 @@ func runScheduleMode(ctx context.Context, cfg *config.Config, logger *slog.Logge
 	adminMux := http.NewServeMux()
 	adminMux.HandleFunc("/admin/oauth2/refresh-token", adminAPIHandler.HandleRefreshTokenUpdate)
 	adminMux.HandleFunc("/admin/oauth2/token-status", adminAPIHandler.HandleTokenStatus)
+
+	// /admin/health surfaces ingestion staleness + token availability so the silent
+	// failure mode observed during the 2026-05-05 to 2026-05-08 outage becomes pollable.
+	healthAdapter := newIngestionHealthAdapter(inoreaderService, tokenProvider)
+	healthHandler := handler.NewHealthHandler(healthAdapter, healthRealClock{}, 1800, logger)
+	adminMux.HandleFunc("/admin/health", healthHandler.HandleHealth)
 
 	// Manual trigger endpoints for testing
 	adminMux.HandleFunc("/admin/trigger/article-fetch", func(w http.ResponseWriter, r *http.Request) {

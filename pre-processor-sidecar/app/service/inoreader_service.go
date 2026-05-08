@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"log/slog"
 	"strconv"
+	"sync"
 	"time"
 
 	"pre-processor-sidecar/models"
@@ -53,6 +54,9 @@ type InoreaderService struct {
 	rateLimitInfo         *models.APIRateLimitInfo
 	circuitBreaker        *utils.CircuitBreaker // TDD Phase 3 - REFACTOR: Circuit Breaker
 	monitor               *utils.Monitor        // TDD Phase 3 - REFACTOR: Structured Logging & Monitoring
+
+	fetchMu             sync.Mutex
+	lastSuccessfulFetch time.Time
 }
 
 // TokenProvider interface for token operations
@@ -269,6 +273,7 @@ func (s *InoreaderService) FetchStreamContents(ctx context.Context, streamID, co
 			"has_next_page", nextContinuation != "",
 			"api_usage", s.rateLimitInfo.Zone1Usage)
 
+		s.recordSuccessfulFetch()
 		return nil
 	})
 
@@ -532,6 +537,27 @@ func (s *InoreaderService) GetCurrentAPIUsageInfo(ctx context.Context) (*models.
 // TDD Phase 3 - REFACTOR: GetCircuitBreakerStats returns circuit breaker statistics for monitoring
 func (s *InoreaderService) GetCircuitBreakerStats() utils.CircuitBreakerStats {
 	return s.circuitBreaker.GetStats()
+}
+
+// CircuitBreakerState returns the circuit breaker state as a string ("CLOSED", "OPEN",
+// "HALF_OPEN"). Used by the /admin/health surface so the IngestionHealthProvider impl
+// stays decoupled from the utils package types.
+func (s *InoreaderService) CircuitBreakerState() string {
+	return s.circuitBreaker.GetState().String()
+}
+
+// LastSuccessfulFetch returns the wall-clock timestamp of the most recent successful
+// stream-content fetch. Zero value means no successful fetch since process start.
+func (s *InoreaderService) LastSuccessfulFetch() time.Time {
+	s.fetchMu.Lock()
+	defer s.fetchMu.Unlock()
+	return s.lastSuccessfulFetch
+}
+
+func (s *InoreaderService) recordSuccessfulFetch() {
+	s.fetchMu.Lock()
+	defer s.fetchMu.Unlock()
+	s.lastSuccessfulFetch = time.Now()
 }
 
 // TDD Phase 3 - REFACTOR: ResetCircuitBreaker resets the circuit breaker (for admin use)
