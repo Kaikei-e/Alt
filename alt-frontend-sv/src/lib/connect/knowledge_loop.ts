@@ -74,6 +74,8 @@ export type ActTargetTypeName =
 	| "recap"
 	| "diff"
 	| "cluster"
+	| "conversation"
+	| "entry"
 	| "unspecified";
 
 export interface ChangeSummaryData {
@@ -525,6 +527,10 @@ function mapActTargetTypeFromProto(t: ActTargetType): ActTargetTypeName {
 			return "diff";
 		case ActTargetType.CLUSTER:
 			return "cluster";
+		case ActTargetType.CONVERSATION:
+			return "conversation";
+		case ActTargetType.ENTRY:
+			return "entry";
 		default:
 			return "unspecified";
 	}
@@ -542,6 +548,10 @@ function mapActTargetTypeToProto(t: ActTargetTypeName): ActTargetType {
 			return ActTargetType.DIFF;
 		case "cluster":
 			return ActTargetType.CLUSTER;
+		case "conversation":
+			return ActTargetType.CONVERSATION;
+		case "entry":
+			return ActTargetType.ENTRY;
 		default:
 			return ActTargetType.UNSPECIFIED;
 	}

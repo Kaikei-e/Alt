@@ -51,7 +51,14 @@ export async function transitionKnowledgeLoopForUser(
 		>;
 		actedIntent?: "open" | "ask" | "save" | "compare" | "revisit" | "snooze";
 		actionId?: string;
-		targetType?: "article" | "ask" | "recap" | "diff" | "cluster";
+		targetType?:
+			| "article"
+			| "ask"
+			| "recap"
+			| "diff"
+			| "cluster"
+			| "conversation"
+			| "entry";
 		targetRef?: string;
 		continueFlag?: boolean;
 	},

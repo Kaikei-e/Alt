@@ -213,8 +213,7 @@ export function useKnowledgeLoop(opts: UseKnowledgeLoopOptions) {
 				result.status === "rate_limited" ||
 				result.status === "forbidden"
 			) {
-				lastError =
-					result.status === "forbidden" ? "forbidden" : result.status;
+				lastError = result.status === "forbidden" ? "forbidden" : result.status;
 				if (options.optimistic) {
 					// Revert when the server refused after we already flipped.
 					applyLocalStage(entryKey, previousStage);

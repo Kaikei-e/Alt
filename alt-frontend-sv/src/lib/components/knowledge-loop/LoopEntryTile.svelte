@@ -1,4 +1,5 @@
 <script lang="ts">
+import { goto } from "$app/navigation";
 import type {
 	DecisionIntentName,
 	DecisionOptionData,
@@ -6,8 +7,18 @@ import type {
 	LoopStageName,
 } from "$lib/connect/knowledge_loop";
 import type { TransitionMetadata } from "$lib/hooks/useKnowledgeLoop.svelte";
+import {
+	buildAskTransitionMetadata,
+	buildRecapTransitionMetadata,
+	buildTransitionMetadata,
+} from "./transition-metadata";
 
-type TransitionTrigger = "user_tap" | "dwell" | "keyboard" | "programmatic";
+type TransitionTrigger =
+	| "user_tap"
+	| "dwell"
+	| "keyboard"
+	| "programmatic"
+	| "defer";
 
 type Props = {
 	entry: KnowledgeLoopEntryData;
@@ -20,7 +31,9 @@ type Props = {
 		options?: { optimistic?: boolean },
 	) => Promise<unknown> | unknown;
 	onDismiss?: (entryKey: string) => Promise<unknown> | unknown;
-	onAsk?: (entry: KnowledgeLoopEntryData) => Promise<unknown> | unknown;
+	onAsk?: (
+		entry: KnowledgeLoopEntryData,
+	) => Promise<{ conversationId?: string } | void | unknown> | unknown;
 	onOpen?: (
 		entry: KnowledgeLoopEntryData,
 		href: string,
@@ -181,27 +194,7 @@ function sourceUrl(): string | null {
 }
 
 function transitionMetadata(option: DecisionOptionData): TransitionMetadata {
-	const presentedIntents = entry.decisionOptions
-		.map((o) => o.intent)
-		.filter((intent) => intent !== "unspecified");
-	const target =
-		entry.actTargets.find((t) => t.targetType === "article") ??
-		entry.actTargets[0];
-	const metadata: TransitionMetadata = {
-		actionId: option.actionId || option.intent,
-	};
-	if (presentedIntents.length > 0) {
-		metadata.presentedIntents = presentedIntents;
-	}
-	if (option.intent === "open" || option.intent === "save") {
-		metadata.actedIntent = option.intent;
-		metadata.continueFlag = option.intent === "open";
-		if (target && target.targetType !== "unspecified") {
-			metadata.targetType = target.targetType;
-			metadata.targetRef = target.targetRef;
-		}
-	}
-	return metadata;
+	return buildTransitionMetadata(entry, option);
 }
 
 function openHref(href: string) {
@@ -246,14 +239,31 @@ function onTriggerKey(event: KeyboardEvent) {
 async function handleCta(option: DecisionOptionData) {
 	if (option.intent === "ask") {
 		if (!onAsk) return;
-		await onAsk(entry);
+		// Phase 2 semantic loop: only emit the Loop transition after the Augur
+		// handshake succeeds (per plan §3 — session creation failure must not
+		// produce a phantom acted=ask event).
+		const result = (await onAsk(entry)) as
+			| { conversationId?: string }
+			| void
+			| undefined;
+		const conversationId =
+			result && typeof result === "object" && "conversationId" in result
+				? result.conversationId
+				: undefined;
+		if (conversationId && onTransition) {
+			const askMeta = buildAskTransitionMetadata(entry, conversationId);
+			void onTransition(entry.entryKey, "decide", "user_tap", askMeta);
+		}
 		return;
 	}
-	// Snooze maps to the local dismiss path: KnowledgeLoopDeferred is the
-	// canonical defer event (contract §8.2) and the dismiss handler the page
-	// passes in already performs the optimistic removal + projection update.
+	// Snooze: send the canonical defer transition (KnowledgeLoopDeferred,
+	// contract §8.2) with semantic metadata, then run the local dismiss path.
 	if (option.intent === "snooze") {
 		if (!onDismiss) return;
+		const snoozeMeta = transitionMetadata(option);
+		if (onTransition) {
+			void onTransition(entry.entryKey, effectiveStage, "defer", snoozeMeta);
+		}
 		dismissing = true;
 		await onDismiss(entry.entryKey);
 		return;
@@ -272,6 +282,20 @@ async function handleCta(option: DecisionOptionData) {
 		return;
 	}
 	await onTransition(entry.entryKey, to, "user_tap", metadata);
+}
+
+async function handleOpenRecap(event: Event) {
+	event.preventDefault();
+	event.stopPropagation();
+	if (!recapRoute || !recapTarget) return;
+	if (onTransition) {
+		const meta = buildRecapTransitionMetadata(entry, recapTarget);
+		// Fire transition before navigation so Loop sees the deliberate intent.
+		// We deliberately do not await: warn-and-continue keeps Open Recap
+		// responsive even if the BFF is degraded (UI failure here is silent).
+		void onTransition(entry.entryKey, "act", "user_tap", meta);
+	}
+	await goto(recapRoute);
 }
 
 async function handleDismiss() {
@@ -364,13 +388,13 @@ async function handleDismiss() {
 						</button>
 					{/each}
 					{#if recapRoute}
-						<a
+						<button
+							type="button"
 							class="cta cta--recap"
-							href={recapRoute}
-							onclick={(event) => event.stopPropagation()}
+							onclick={(event) => void handleOpenRecap(event)}
 						>
 							Open Recap
-						</a>
+						</button>
 					{/if}
 					<button
 						type="button"

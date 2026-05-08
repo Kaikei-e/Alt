@@ -11,7 +11,12 @@ import LoopPlaneStack from "$lib/components/knowledge-loop/LoopPlaneStack.svelte
 import type { PlaneKey } from "$lib/components/knowledge-loop/loop-plane-keys";
 import OodaPipeline from "$lib/components/knowledge-loop/OodaPipeline.svelte";
 import ReviewDock from "$lib/components/knowledge-loop/ReviewDock.svelte";
+import {
+	buildAskTransitionMetadata,
+	buildTransitionMetadata,
+} from "$lib/components/knowledge-loop/transition-metadata";
 import type {
+	DecisionOptionData,
 	KnowledgeLoopEntryData,
 	KnowledgeLoopResult,
 	LoopStageName,
@@ -239,7 +244,9 @@ function onEntryOpen(entry: KnowledgeLoopEntryData, href?: string) {
 
 const askInFlight = new Set<string>();
 
-async function onAsk(entry: KnowledgeLoopEntryData): Promise<void> {
+async function onAsk(
+	entry: KnowledgeLoopEntryData,
+): Promise<{ conversationId?: string } | void> {
 	if (askInFlight.has(entry.entryKey)) return;
 	askInFlight.add(entry.entryKey);
 	try {
@@ -256,7 +263,19 @@ async function onAsk(entry: KnowledgeLoopEntryData): Promise<void> {
 		if (!res.ok) return;
 		const json = (await res.json()) as { conversationId?: string };
 		if (json.conversationId) {
+			// Phase 2 single-emission: Augur session create succeeded → emit a
+			// semantic Loop transition so projector / resolver see the user
+			// action. This is intentionally separate from the upstream
+			// `augur.conversation_linked.v1` system signal (rag-orchestrator
+			// emit). See plan §3.
+			void loop.transitionTo(
+				entry.entryKey,
+				"decide",
+				"user_tap",
+				buildAskTransitionMetadata(entry, json.conversationId),
+			);
 			await goto(`/augur/${encodeURIComponent(json.conversationId)}`);
+			return { conversationId: json.conversationId };
 		}
 	} finally {
 		askInFlight.delete(entry.entryKey);
@@ -298,6 +317,48 @@ function advanceEntry(entry: KnowledgeLoopEntryData) {
 	void loop.transitionTo(entry.entryKey, to, "user_tap");
 }
 
+/**
+ * Phase 2 semantic Decide / Act feedback loop. The workspace decision-option
+ * button fires a transition with the *option's* semantic intent + target so
+ * the projector can update continue_context.recent_action_labels and
+ * Surface Planner v2 can use continue_flag as a Continue signal.
+ */
+function decideOptionStage(
+	entry: KnowledgeLoopEntryData,
+	option: DecisionOptionData,
+): LoopStageName | null {
+	switch (option.intent) {
+		case "revisit":
+			return "orient";
+		case "compare":
+			return "decide";
+		case "open":
+		case "save":
+			return "act";
+		case "snooze":
+			return effectiveEntryStage(entry);
+		default:
+			return null;
+	}
+}
+
+function onWorkspaceDecide(
+	entry: KnowledgeLoopEntryData,
+	option: DecisionOptionData,
+) {
+	if (option.intent === "ask") {
+		void onAsk(entry);
+		return;
+	}
+	const to = decideOptionStage(entry, option);
+	if (!to) return;
+	const from = effectiveEntryStage(entry);
+	const trigger = option.intent === "snooze" ? ("defer" as const) : "user_tap";
+	if (trigger === "user_tap" && !loop.canTransition(from, to)) return;
+	const metadata = buildTransitionMetadata(entry, option);
+	void loop.transitionTo(entry.entryKey, to, trigger, metadata);
+}
+
 function onPipelineStageSelect(to: LoopStageName) {
 	const entry = activeEntry;
 	if (!entry) return;
@@ -336,6 +397,7 @@ async function onWorkspaceOpen(entry: KnowledgeLoopEntryData) {
 	openInlineError = null;
 	const sync = resolveSourceUrl(entry);
 	if (sync) {
+		emitWorkspaceOpenTransition(entry);
 		void onEntryOpen(entry, sync);
 		return;
 	}
@@ -356,7 +418,27 @@ async function onWorkspaceOpen(entry: KnowledgeLoopEntryData) {
 		openInlineError = "URL UNAVAILABLE — not_found";
 		return;
 	}
+	emitWorkspaceOpenTransition(entry);
 	void onEntryOpen(entry, resolved);
+}
+
+/**
+ * Phase 2: workspace Open is a semantic Act, not just a stage advance. The
+ * synthetic option mirrors what the tile would have constructed if the user
+ * had clicked Open from the tile CTA row instead of the workspace command.
+ */
+function emitWorkspaceOpenTransition(entry: KnowledgeLoopEntryData) {
+	const presented = entry.decisionOptions.find((o) => o.intent === "open");
+	const synthetic: DecisionOptionData = presented ?? {
+		actionId: "open",
+		intent: "open",
+		label: "Open",
+	};
+	const metadata = buildTransitionMetadata(entry, synthetic);
+	const from = effectiveEntryStage(entry);
+	if (from === "act") return; // already in act; advanceEntry handles the return
+	if (!loop.canTransition(from, "act")) return;
+	void loop.transitionTo(entry.entryKey, "act", "user_tap", metadata);
 }
 
 // Monospace byline parts. Intentionally en-dash separated for editorial
@@ -566,7 +648,7 @@ function onReviewAction(
 											type="button"
 											class="decision-btn"
 											data-intent={opt.intent}
-											onclick={() => advanceEntry(activeEntry)}
+											onclick={() => onWorkspaceDecide(activeEntry, opt)}
 										>
 											{opt.label ?? opt.actionId}
 										</button>

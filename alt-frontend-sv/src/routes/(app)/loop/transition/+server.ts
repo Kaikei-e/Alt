@@ -77,6 +77,8 @@ const TARGET_TYPES: readonly MetadataTargetType[] = [
 	"recap",
 	"diff",
 	"cluster",
+	"conversation",
+	"entry",
 ];
 const TRIGGERS: readonly Trigger[] = [
 	"user_tap",
