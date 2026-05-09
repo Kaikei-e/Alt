@@ -19,7 +19,7 @@ const sectionFixture: TagSectionData = {
 
 describe("TagSearchSection Alt-Paper compliance", () => {
 	it("renders section with data-role attribute", async () => {
-		render(TagSearchSection as never, {
+		render(TagSearchSection, {
 			props: { section: sectionFixture, query: "AI" },
 		});
 
@@ -30,7 +30,7 @@ describe("TagSearchSection Alt-Paper compliance", () => {
 	});
 
 	it("renders TAGS section label", async () => {
-		render(TagSearchSection as never, {
+		render(TagSearchSection, {
 			props: { section: sectionFixture, query: "AI" },
 		});
 
@@ -39,7 +39,7 @@ describe("TagSearchSection Alt-Paper compliance", () => {
 	});
 
 	it("renders tag buttons with name and count", async () => {
-		render(TagSearchSection as never, {
+		render(TagSearchSection, {
 			props: { section: sectionFixture, query: "AI" },
 		});
 
@@ -53,7 +53,7 @@ describe("TagSearchSection Alt-Paper compliance", () => {
 	it("shows empty state for no tags", async () => {
 		const empty: TagSectionData = { hits: [], total: 0 };
 
-		render(TagSearchSection as never, {
+		render(TagSearchSection, {
 			props: { section: empty, query: "AI" },
 		});
 

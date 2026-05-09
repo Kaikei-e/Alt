@@ -60,7 +60,7 @@ describe("FeedDetails Alt-Paper compliance", () => {
 	});
 
 	it("renders Show Details button when showButton is true", async () => {
-		render(FeedDetails as never, {
+		render(FeedDetails, {
 			props: {
 				feedURL: testFeedURL,
 				feedTitle: testFeedTitle,
@@ -72,7 +72,7 @@ describe("FeedDetails Alt-Paper compliance", () => {
 	});
 
 	it("does NOT render Archive button when open", async () => {
-		render(FeedDetails as never, {
+		render(FeedDetails, {
 			props: {
 				feedURL: testFeedURL,
 				feedTitle: testFeedTitle,
@@ -89,7 +89,7 @@ describe("FeedDetails Alt-Paper compliance", () => {
 	});
 
 	it("renders Favorite button when open", async () => {
-		render(FeedDetails as never, {
+		render(FeedDetails, {
 			props: {
 				feedURL: testFeedURL,
 				feedTitle: testFeedTitle,
@@ -113,7 +113,7 @@ describe("FeedDetails Android layout", () => {
 	});
 
 	it("uses dvh (not vh) for bottom sheet height to avoid Android toolbar clip", async () => {
-		render(FeedDetails as never, {
+		render(FeedDetails, {
 			props: {
 				feedURL: testFeedURL,
 				feedTitle: testFeedTitle,
@@ -137,7 +137,7 @@ describe("FeedDetails Android layout", () => {
 		const longTitle =
 			"This is an extremely long article title that would normally overflow the sheet header area and collide with the close X button in the top right corner of the sheet on a narrow Android viewport";
 
-		render(FeedDetails as never, {
+		render(FeedDetails, {
 			props: {
 				feedURL: testFeedURL,
 				feedTitle: longTitle,
@@ -158,7 +158,7 @@ describe("FeedDetails Android layout", () => {
 	});
 
 	it("sheet header reserves space for close button via padding-inline-end", async () => {
-		render(FeedDetails as never, {
+		render(FeedDetails, {
 			props: {
 				feedURL: testFeedURL,
 				feedTitle: testFeedTitle,
@@ -196,7 +196,7 @@ describe("FeedDetails retry", () => {
 				new Error("Server error"),
 			);
 
-			render(FeedDetails as never, {
+			render(FeedDetails, {
 				props: {
 					feedURL: testFeedURL,
 					feedTitle: testFeedTitle,
@@ -236,7 +236,7 @@ describe("FeedDetails retry", () => {
 				},
 			);
 
-			render(FeedDetails as never, {
+			render(FeedDetails, {
 				props: {
 					feedURL: testFeedURL,
 					feedTitle: testFeedTitle,
@@ -279,7 +279,7 @@ describe("FeedDetails retry", () => {
 				},
 			);
 
-			render(FeedDetails as never, {
+			render(FeedDetails, {
 				props: {
 					feedURL: testFeedURL,
 					feedTitle: testFeedTitle,

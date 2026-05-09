@@ -118,7 +118,7 @@ jobs:
       # Self-hosted runner: 従来の actions/cache を使用
       - name: Cache cargo registry and build (self-hosted)
         if: runner.environment == 'self-hosted'
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: |
             ~/.cargo/registry/index/

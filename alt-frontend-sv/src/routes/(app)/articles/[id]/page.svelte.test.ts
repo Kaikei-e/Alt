@@ -52,7 +52,7 @@ describe("Article page fetch button", () => {
 	it("shows disabled Fetching... button while loading", async () => {
 		mockGetFeedContent.mockReturnValue(new Promise(() => {}));
 
-		render(Page as never);
+		render(Page);
 
 		const button = testPage.getByTestId("fetch-button");
 		await expect.element(button).toBeInTheDocument();
@@ -66,7 +66,7 @@ describe("Article page fetch button", () => {
 			article_id: "a1",
 		});
 
-		render(Page as never);
+		render(Page);
 
 		const button = testPage.getByTestId("fetch-button");
 		await expect.element(button).toHaveTextContent("Re-fetch");
@@ -75,7 +75,7 @@ describe("Article page fetch button", () => {
 	it("shows destructive Try again button on fetch error", async () => {
 		mockGetFeedContent.mockRejectedValueOnce(new Error("Network error"));
 
-		render(Page as never);
+		render(Page);
 
 		const button = testPage.getByTestId("fetch-button");
 		await expect.element(button).toHaveTextContent("Try again");
@@ -91,7 +91,7 @@ describe("Article page fetch button", () => {
 			article_id: "a1",
 		});
 
-		render(Page as never);
+		render(Page);
 
 		const button = testPage.getByTestId("fetch-button");
 		await expect.element(button).toHaveTextContent("Re-fetch");
@@ -115,7 +115,7 @@ describe("Article page fetch button", () => {
 			article_id: "a1",
 		});
 
-		render(Page as never);
+		render(Page);
 
 		const button = testPage.getByTestId("fetch-button");
 		await expect.element(button).toHaveTextContent("Re-fetch");
@@ -138,7 +138,7 @@ describe("Article page Alt-Paper mobile layout", () => {
 			article_id: "a1",
 		});
 
-		render(Page as never);
+		render(Page);
 
 		const masthead = testPage.getByTestId("article-masthead");
 		await expect.element(masthead).toBeInTheDocument();
@@ -152,7 +152,7 @@ describe("Article page Alt-Paper mobile layout", () => {
 			article_id: "a1",
 		});
 
-		const { container } = render(Page as never);
+		const { container } = render(Page);
 
 		await expect
 			.element(testPage.getByTestId("article-content-surface"))
@@ -174,7 +174,7 @@ describe("Article page Alt-Paper mobile layout", () => {
 			article_id: "a1",
 		});
 
-		render(Page as never);
+		render(Page);
 
 		const summary = testPage.getByTestId("ai-summary");
 		await expect.element(summary).toBeInTheDocument();
@@ -188,7 +188,7 @@ describe("Article page Alt-Paper mobile layout", () => {
 			article_id: "a1",
 		});
 
-		render(Page as never);
+		render(Page);
 
 		await expect
 			.element(testPage.getByRole("button", { name: /back to home/i }))

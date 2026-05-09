@@ -6,7 +6,7 @@ import { MOCK_RECAP } from "./dashboard-fixtures";
 
 describe("RecapSummaryWidget", () => {
 	it("renders THREE-DAY BRIEF heading", async () => {
-		render(RecapSummaryWidget as never, {
+		render(RecapSummaryWidget, {
 			props: { recapData: MOCK_RECAP, isLoading: false, error: null },
 		});
 
@@ -14,7 +14,7 @@ describe("RecapSummaryWidget", () => {
 	});
 
 	it("renders genre names", async () => {
-		render(RecapSummaryWidget as never, {
+		render(RecapSummaryWidget, {
 			props: { recapData: MOCK_RECAP, isLoading: false, error: null },
 		});
 
@@ -26,7 +26,7 @@ describe("RecapSummaryWidget", () => {
 	});
 
 	it("renders genre summaries", async () => {
-		render(RecapSummaryWidget as never, {
+		render(RecapSummaryWidget, {
 			props: { recapData: MOCK_RECAP, isLoading: false, error: null },
 		});
 
@@ -36,7 +36,7 @@ describe("RecapSummaryWidget", () => {
 	});
 
 	it("renders article counts", async () => {
-		render(RecapSummaryWidget as never, {
+		render(RecapSummaryWidget, {
 			props: { recapData: MOCK_RECAP, isLoading: false, error: null },
 		});
 
@@ -44,7 +44,7 @@ describe("RecapSummaryWidget", () => {
 	});
 
 	it("renders top terms inline", async () => {
-		render(RecapSummaryWidget as never, {
+		render(RecapSummaryWidget, {
 			props: { recapData: MOCK_RECAP, isLoading: false, error: null },
 		});
 
@@ -52,7 +52,7 @@ describe("RecapSummaryWidget", () => {
 	});
 
 	it("shows loading state", async () => {
-		render(RecapSummaryWidget as never, {
+		render(RecapSummaryWidget, {
 			props: { recapData: null, isLoading: true, error: null },
 		});
 
@@ -62,7 +62,7 @@ describe("RecapSummaryWidget", () => {
 	});
 
 	it("shows empty state when no data", async () => {
-		render(RecapSummaryWidget as never, {
+		render(RecapSummaryWidget, {
 			props: { recapData: null, isLoading: false, error: null },
 		});
 
@@ -72,7 +72,7 @@ describe("RecapSummaryWidget", () => {
 	});
 
 	it("shows error state", async () => {
-		render(RecapSummaryWidget as never, {
+		render(RecapSummaryWidget, {
 			props: {
 				recapData: null,
 				isLoading: false,
@@ -86,7 +86,7 @@ describe("RecapSummaryWidget", () => {
 	});
 
 	it("renders updated timestamp", async () => {
-		render(RecapSummaryWidget as never, {
+		render(RecapSummaryWidget, {
 			props: { recapData: MOCK_RECAP, isLoading: false, error: null },
 		});
 

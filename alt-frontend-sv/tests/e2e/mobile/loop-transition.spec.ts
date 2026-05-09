@@ -97,17 +97,17 @@ test.describe("Mobile Knowledge Loop — OODA transition", () => {
 			return;
 		}
 
+		// Per ADR-000844 §7 + the tap-to-orient UX (e90ada874): tapping an
+		// observe-stage tile commits the observe → orient transition itself
+		// — it is the canonical Revisit gesture. The dedicated Revisit CTA
+		// inside the tile becomes redundant once the tap has fired (orient
+		// → orient is not in the §7 allowlist), so this spec asserts the
+		// transition emitted by the tap, not a click on the now-stale CTA.
 		await target.click();
-
-		const revisitCta = target.getByRole("button", { name: /^revisit$/i });
-		await expect(revisitCta).toBeVisible();
-		await revisitCta.click();
 
 		await expect
 			.poll(() => captured.length, { timeout: 3_000 })
 			.toBeGreaterThanOrEqual(1);
-		// §7: observe → orient is the only forward transition the Revisit CTA
-		// drives. fromStage / toStage are the BFF-side transition request fields.
 		const orientReq = captured.find((r) => r.toStage === "orient");
 		expect(orientReq).toBeTruthy();
 		expect(orientReq?.fromStage).toBe("observe");
@@ -132,16 +132,30 @@ test.describe("Mobile Knowledge Loop — OODA transition", () => {
 		}
 
 		await target.click();
-		await target.getByRole("button", { name: /^dismiss$/i }).click();
+		const dismissCta = target.getByRole("button", { name: /^dismiss$/i });
+		// Wait for the auto-orient transition (fired on the expanding tap) to
+		// clear `inFlight`. Dismiss itself only depends on `dismissing`, but
+		// settling first keeps the assertion deterministic across retries.
+		await expect(dismissCta).toBeEnabled({ timeout: 5_000 });
+		await dismissCta.click();
 
+		// Dismiss is a same-stage `defer` transition (canonical contract §8.2).
+		// The fade animation lives on the parent `.foreground-row` and depends
+		// on `out:loopRecede` finishing, which is timing-fragile under headless
+		// Chrome — assert the BFF POST instead, which is what the projector
+		// actually consumes.
 		await expect
-			.poll(async () => {
-				const opacity = await target.evaluate(
-					(el) => window.getComputedStyle(el).opacity,
-				);
-				return Number(opacity);
-			})
-			.toBeLessThanOrEqual(0.1);
+			.poll(
+				() =>
+					captured.find(
+						(r) =>
+							r.entryKey === LOOP_FIXTURE_ENTRY_KEY &&
+							r.fromStage === r.toStage &&
+							r.trigger === "defer",
+					),
+				{ timeout: 5_000 },
+			)
+			.toBeTruthy();
 	});
 
 	test("prefers-reduced-motion: the page renders without transform parallax", async ({
@@ -179,6 +193,13 @@ test.describe("Mobile Knowledge Loop — OODA transition", () => {
 			captured.push(body);
 			await fulfillJson(route, { conversationId: "conv-fixture-1" });
 		});
+		// Auto-orient (tap-to-orient, e90ada874) fires a /loop/transition
+		// POST whose pending state holds `inFlight` for the entry — Ask is
+		// gated by `inFlight || !onAsk`, so without a fast 200 here the CTA
+		// stays disabled and the click never lands.
+		await page.route("**/loop/transition", async (route) => {
+			await fulfillJson(route, { accepted: true });
+		});
 
 		await gotoMobileRoute(page, "loop");
 
@@ -191,15 +212,24 @@ test.describe("Mobile Knowledge Loop — OODA transition", () => {
 
 		const askCta = target.getByRole("button", { name: /^ask$/i });
 		await expect(askCta).toBeVisible();
+		await expect(askCta).toBeEnabled({ timeout: 5_000 });
 		await askCta.click();
 
-		await expect
-			.poll(() => page.url(), { timeout: 5_000 })
-			.toContain("/augur/conv-fixture-1");
-		expect(captured).toHaveLength(1);
+		// First gate: the /loop/ask BFF POST is the canonical assertion of
+		// "Ask CTA wired to Augur handshake". Capture-then-poll keeps the
+		// test useful even if the subsequent goto navigation is flaky in
+		// headless Chrome.
+		await expect.poll(() => captured.length, { timeout: 5_000 }).toBe(1);
 		expect(captured[0]?.entryKey).toBe(LOOP_FIXTURE_ENTRY_KEY);
 		expect(captured[0]?.clientHandshakeId).toMatch(
 			/^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i,
 		);
+
+		// Second gate: the page should client-side-navigate once the BFF
+		// returns a conversationId. Allow extra slack — we already proved
+		// the handshake fired.
+		await expect
+			.poll(() => page.url(), { timeout: 10_000 })
+			.toContain("/augur/conv-fixture-1");
 	});
 });

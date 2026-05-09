@@ -11,7 +11,7 @@ describe("MobileAcolyteReportCard", () => {
 	const draftReport = MOCK_REPORT_SUMMARIES[3]; // draft
 
 	it("renders report title", async () => {
-		render(MobileAcolyteReportCard as never, {
+		render(MobileAcolyteReportCard, {
 			props: {
 				report: succeededReport,
 				onClick: vi.fn(),
@@ -24,7 +24,7 @@ describe("MobileAcolyteReportCard", () => {
 	});
 
 	it("renders report type in uppercase", async () => {
-		render(MobileAcolyteReportCard as never, {
+		render(MobileAcolyteReportCard, {
 			props: {
 				report: succeededReport,
 				onClick: vi.fn(),
@@ -35,7 +35,7 @@ describe("MobileAcolyteReportCard", () => {
 	});
 
 	it("renders version badge", async () => {
-		render(MobileAcolyteReportCard as never, {
+		render(MobileAcolyteReportCard, {
 			props: {
 				report: succeededReport,
 				onClick: vi.fn(),
@@ -46,7 +46,7 @@ describe("MobileAcolyteReportCard", () => {
 	});
 
 	it("renders status label for succeeded", async () => {
-		render(MobileAcolyteReportCard as never, {
+		render(MobileAcolyteReportCard, {
 			props: {
 				report: succeededReport,
 				onClick: vi.fn(),
@@ -57,7 +57,7 @@ describe("MobileAcolyteReportCard", () => {
 	});
 
 	it("renders status label for running", async () => {
-		render(MobileAcolyteReportCard as never, {
+		render(MobileAcolyteReportCard, {
 			props: {
 				report: runningReport,
 				onClick: vi.fn(),
@@ -68,7 +68,7 @@ describe("MobileAcolyteReportCard", () => {
 	});
 
 	it("renders status label for failed", async () => {
-		render(MobileAcolyteReportCard as never, {
+		render(MobileAcolyteReportCard, {
 			props: {
 				report: failedReport,
 				onClick: vi.fn(),
@@ -79,7 +79,7 @@ describe("MobileAcolyteReportCard", () => {
 	});
 
 	it("renders status label for draft", async () => {
-		render(MobileAcolyteReportCard as never, {
+		render(MobileAcolyteReportCard, {
 			props: {
 				report: draftReport,
 				onClick: vi.fn(),
@@ -90,7 +90,7 @@ describe("MobileAcolyteReportCard", () => {
 	});
 
 	it("has data-testid attribute", async () => {
-		render(MobileAcolyteReportCard as never, {
+		render(MobileAcolyteReportCard, {
 			props: {
 				report: succeededReport,
 				onClick: vi.fn(),
@@ -104,10 +104,9 @@ describe("MobileAcolyteReportCard", () => {
 
 	it("calls onClick when card is tapped", async () => {
 		const onClick = vi.fn();
-		render(MobileAcolyteReportCard as never, {
+		render(MobileAcolyteReportCard, {
 			props: {
 				report: succeededReport,
-				onStartRun: vi.fn(),
 				onClick,
 			},
 		});
@@ -117,7 +116,7 @@ describe("MobileAcolyteReportCard", () => {
 	});
 
 	it("does not render a run button", async () => {
-		render(MobileAcolyteReportCard as never, {
+		render(MobileAcolyteReportCard, {
 			props: {
 				report: succeededReport,
 				onClick: vi.fn(),
@@ -129,7 +128,7 @@ describe("MobileAcolyteReportCard", () => {
 	});
 
 	it("applies status stripe color class", async () => {
-		render(MobileAcolyteReportCard as never, {
+		render(MobileAcolyteReportCard, {
 			props: {
 				report: succeededReport,
 				onClick: vi.fn(),

@@ -22,7 +22,7 @@ function makeDigest(overrides: Partial<TodayDigestData> = {}): TodayDigestData {
 
 describe("TodayBar", () => {
 	it("renders digest stats when digest is provided", async () => {
-		render(TodayBar as never, { props: { digest: makeDigest() } });
+		render(TodayBar, { props: { digest: makeDigest() } });
 
 		await expect.element(page.getByText("42")).toBeInTheDocument();
 		await expect.element(page.getByText("new")).toBeInTheDocument();
@@ -31,7 +31,7 @@ describe("TodayBar", () => {
 	});
 
 	it("renders compact placeholder when digest is null", async () => {
-		render(TodayBar as never, { props: { digest: null } });
+		render(TodayBar, { props: { digest: null } });
 
 		await expect
 			.element(page.getByText("Today's digest is still being prepared."))
@@ -39,7 +39,7 @@ describe("TodayBar", () => {
 	});
 
 	it("shows stale indicator when digest freshness is stale", async () => {
-		render(TodayBar as never, {
+		render(TodayBar, {
 			props: { digest: makeDigest({ digestFreshness: "stale" }) },
 		});
 
@@ -47,7 +47,7 @@ describe("TodayBar", () => {
 	});
 
 	it("shows pending count when unsummarized > 0", async () => {
-		render(TodayBar as never, {
+		render(TodayBar, {
 			props: { digest: makeDigest({ unsummarizedArticles: 5 }) },
 		});
 
@@ -56,7 +56,7 @@ describe("TodayBar", () => {
 	});
 
 	it("shows fallback message when digestFreshness is unknown", async () => {
-		render(TodayBar as never, {
+		render(TodayBar, {
 			props: {
 				digest: makeDigest({ digestFreshness: "unknown" }),
 				serviceQuality: "fallback",
@@ -71,7 +71,7 @@ describe("TodayBar", () => {
 	});
 
 	it("renders top tags", async () => {
-		render(TodayBar as never, {
+		render(TodayBar, {
 			props: { digest: makeDigest({ topTags: ["AI", "Go"] }) },
 		});
 
@@ -84,7 +84,7 @@ describe("TodayBar", () => {
 	});
 
 	it("renders morning letter link always", async () => {
-		render(TodayBar as never, { props: { digest: makeDigest() } });
+		render(TodayBar, { props: { digest: makeDigest() } });
 
 		await expect.element(page.getByText("Morning Letter")).toBeInTheDocument();
 	});

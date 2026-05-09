@@ -5,7 +5,7 @@ import MobileAcolyteNew from "./MobileAcolyteNew.svelte";
 
 describe("MobileAcolyteNew", () => {
 	it("renders form header", async () => {
-		render(MobileAcolyteNew as never, {
+		render(MobileAcolyteNew, {
 			props: { onSubmit: vi.fn() },
 		});
 
@@ -15,7 +15,7 @@ describe("MobileAcolyteNew", () => {
 	});
 
 	it("renders back link to /acolyte", async () => {
-		render(MobileAcolyteNew as never, {
+		render(MobileAcolyteNew, {
 			props: { onSubmit: vi.fn() },
 		});
 
@@ -25,7 +25,7 @@ describe("MobileAcolyteNew", () => {
 	});
 
 	it("renders title input", async () => {
-		render(MobileAcolyteNew as never, {
+		render(MobileAcolyteNew, {
 			props: { onSubmit: vi.fn() },
 		});
 
@@ -34,7 +34,7 @@ describe("MobileAcolyteNew", () => {
 	});
 
 	it("renders all 4 report type options", async () => {
-		render(MobileAcolyteNew as never, {
+		render(MobileAcolyteNew, {
 			props: { onSubmit: vi.fn() },
 		});
 
@@ -47,7 +47,7 @@ describe("MobileAcolyteNew", () => {
 	});
 
 	it("renders topic textarea", async () => {
-		render(MobileAcolyteNew as never, {
+		render(MobileAcolyteNew, {
 			props: { onSubmit: vi.fn() },
 		});
 
@@ -56,7 +56,7 @@ describe("MobileAcolyteNew", () => {
 	});
 
 	it("submit button is disabled when title is empty", async () => {
-		render(MobileAcolyteNew as never, {
+		render(MobileAcolyteNew, {
 			props: { onSubmit: vi.fn() },
 		});
 
@@ -65,7 +65,7 @@ describe("MobileAcolyteNew", () => {
 	});
 
 	it("renders cancel link", async () => {
-		render(MobileAcolyteNew as never, {
+		render(MobileAcolyteNew, {
 			props: { onSubmit: vi.fn() },
 		});
 
@@ -74,7 +74,7 @@ describe("MobileAcolyteNew", () => {
 	});
 
 	it("shows error message when error prop is set", async () => {
-		render(MobileAcolyteNew as never, {
+		render(MobileAcolyteNew, {
 			props: { onSubmit: vi.fn(), error: "Title is required" },
 		});
 
@@ -84,7 +84,7 @@ describe("MobileAcolyteNew", () => {
 	});
 
 	it("shows submitting state", async () => {
-		render(MobileAcolyteNew as never, {
+		render(MobileAcolyteNew, {
 			props: { onSubmit: vi.fn(), submitting: true },
 		});
 

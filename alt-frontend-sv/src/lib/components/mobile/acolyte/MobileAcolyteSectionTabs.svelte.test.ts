@@ -6,7 +6,7 @@ import { MOCK_SECTIONS } from "./acolyte-fixtures";
 
 describe("MobileAcolyteSectionTabs", () => {
 	it("renders all section tabs", async () => {
-		render(MobileAcolyteSectionTabs as never, {
+		render(MobileAcolyteSectionTabs, {
 			props: {
 				sections: MOCK_SECTIONS,
 				activeSection: "overview",
@@ -22,7 +22,7 @@ describe("MobileAcolyteSectionTabs", () => {
 	});
 
 	it("renders version badge for each tab", async () => {
-		render(MobileAcolyteSectionTabs as never, {
+		render(MobileAcolyteSectionTabs, {
 			props: {
 				sections: MOCK_SECTIONS,
 				activeSection: "overview",
@@ -34,7 +34,7 @@ describe("MobileAcolyteSectionTabs", () => {
 	});
 
 	it("marks active tab", async () => {
-		render(MobileAcolyteSectionTabs as never, {
+		render(MobileAcolyteSectionTabs, {
 			props: {
 				sections: MOCK_SECTIONS,
 				activeSection: "overview",
@@ -48,7 +48,7 @@ describe("MobileAcolyteSectionTabs", () => {
 
 	it("calls onSelect when tab is clicked", async () => {
 		const onSelect = vi.fn();
-		render(MobileAcolyteSectionTabs as never, {
+		render(MobileAcolyteSectionTabs, {
 			props: {
 				sections: MOCK_SECTIONS,
 				activeSection: "overview",

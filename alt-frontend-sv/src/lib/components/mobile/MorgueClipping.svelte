@@ -14,7 +14,6 @@ let isDetailsOpen = $state(false);
 <article
 	class="morgue-card"
 	data-role="morgue-clipping"
-	role="article"
 	aria-label="Filed: {feed.title}"
 >
 	<div class="morgue-content">

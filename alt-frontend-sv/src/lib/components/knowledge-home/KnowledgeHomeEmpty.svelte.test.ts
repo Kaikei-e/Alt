@@ -5,7 +5,7 @@ import KnowledgeHomeEmpty from "./KnowledgeHomeEmpty.svelte";
 
 describe("KnowledgeHomeEmpty", () => {
 	it("shows generic warming-up message when no reason specified", async () => {
-		render(KnowledgeHomeEmpty as never, { props: {} });
+		render(KnowledgeHomeEmpty, { props: {} });
 
 		await expect
 			.element(page.getByText("Your knowledge is warming up"))
@@ -13,7 +13,7 @@ describe("KnowledgeHomeEmpty", () => {
 	});
 
 	it("shows ingest_pending message when reason is ingest_pending", async () => {
-		render(KnowledgeHomeEmpty as never, {
+		render(KnowledgeHomeEmpty, {
 			props: { reason: "ingest_pending" },
 		});
 
@@ -23,7 +23,7 @@ describe("KnowledgeHomeEmpty", () => {
 	});
 
 	it("shows no_data message when reason is no_data", async () => {
-		render(KnowledgeHomeEmpty as never, {
+		render(KnowledgeHomeEmpty, {
 			props: { reason: "no_data" },
 		});
 
@@ -31,7 +31,7 @@ describe("KnowledgeHomeEmpty", () => {
 	});
 
 	it("shows lens-specific message when reason is lens_strict", async () => {
-		render(KnowledgeHomeEmpty as never, {
+		render(KnowledgeHomeEmpty, {
 			props: { reason: "lens_strict", activeLensName: "AI News" },
 		});
 
@@ -41,7 +41,7 @@ describe("KnowledgeHomeEmpty", () => {
 	});
 
 	it("shows hard_error message when reason is hard_error", async () => {
-		render(KnowledgeHomeEmpty as never, {
+		render(KnowledgeHomeEmpty, {
 			props: { reason: "hard_error" },
 		});
 
@@ -52,7 +52,7 @@ describe("KnowledgeHomeEmpty", () => {
 
 	it("shows clear lens button when lens_strict and onClearLens provided", async () => {
 		const clearFn = vi.fn();
-		render(KnowledgeHomeEmpty as never, {
+		render(KnowledgeHomeEmpty, {
 			props: {
 				reason: "lens_strict",
 				activeLensName: "AI News",
@@ -64,7 +64,7 @@ describe("KnowledgeHomeEmpty", () => {
 	});
 
 	it("does not show clear lens button when reason is not lens_strict", async () => {
-		render(KnowledgeHomeEmpty as never, {
+		render(KnowledgeHomeEmpty, {
 			props: { reason: "no_data", onClearLens: vi.fn() },
 		});
 

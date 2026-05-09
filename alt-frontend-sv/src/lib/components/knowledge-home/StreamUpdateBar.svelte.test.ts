@@ -5,7 +5,7 @@ import StreamUpdateBar from "./StreamUpdateBar.svelte";
 
 describe("StreamUpdateBar", () => {
 	it("shows pending update count and apply button", async () => {
-		render(StreamUpdateBar as never, {
+		render(StreamUpdateBar, {
 			props: {
 				pendingCount: 3,
 				isConnected: true,
@@ -18,7 +18,7 @@ describe("StreamUpdateBar", () => {
 	});
 
 	it("shows singular for 1 item", async () => {
-		render(StreamUpdateBar as never, {
+		render(StreamUpdateBar, {
 			props: {
 				pendingCount: 1,
 				isConnected: true,
@@ -31,7 +31,7 @@ describe("StreamUpdateBar", () => {
 	});
 
 	it("shows disconnected status when not connected and no pending", async () => {
-		render(StreamUpdateBar as never, {
+		render(StreamUpdateBar, {
 			props: {
 				pendingCount: 0,
 				isConnected: false,
@@ -44,7 +44,7 @@ describe("StreamUpdateBar", () => {
 	});
 
 	it("shows fallback status", async () => {
-		render(StreamUpdateBar as never, {
+		render(StreamUpdateBar, {
 			props: {
 				pendingCount: 0,
 				isConnected: false,
@@ -59,7 +59,7 @@ describe("StreamUpdateBar", () => {
 	});
 
 	it("renders nothing when connected with no pending updates", async () => {
-		const { container } = render(StreamUpdateBar as never, {
+		const { container } = render(StreamUpdateBar, {
 			props: {
 				pendingCount: 0,
 				isConnected: true,

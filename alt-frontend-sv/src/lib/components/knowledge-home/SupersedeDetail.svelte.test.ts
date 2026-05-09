@@ -19,7 +19,7 @@ function makeInfo(
 
 describe("SupersedeDetail", () => {
 	it("shows the supersede label", async () => {
-		render(SupersedeDetail as never, {
+		render(SupersedeDetail, {
 			props: { info: makeInfo() },
 		});
 
@@ -27,7 +27,7 @@ describe("SupersedeDetail", () => {
 	});
 
 	it("shows previous summary excerpt", async () => {
-		render(SupersedeDetail as never, {
+		render(SupersedeDetail, {
 			props: { info: makeInfo() },
 		});
 
@@ -37,7 +37,7 @@ describe("SupersedeDetail", () => {
 	});
 
 	it("shows previous tags with strikethrough", async () => {
-		render(SupersedeDetail as never, {
+		render(SupersedeDetail, {
 			props: { info: makeInfo({ previousTags: ["OldTag", "Removed"] }) },
 		});
 
@@ -46,7 +46,7 @@ describe("SupersedeDetail", () => {
 	});
 
 	it("shows change description for summary_updated", async () => {
-		render(SupersedeDetail as never, {
+		render(SupersedeDetail, {
 			props: { info: makeInfo({ state: "summary_updated" }) },
 		});
 
@@ -58,7 +58,7 @@ describe("SupersedeDetail", () => {
 	});
 
 	it("shows change description for tags_updated", async () => {
-		render(SupersedeDetail as never, {
+		render(SupersedeDetail, {
 			props: { info: makeInfo({ state: "tags_updated" }) },
 		});
 
@@ -68,7 +68,7 @@ describe("SupersedeDetail", () => {
 	});
 
 	it("shows change description for both_updated", async () => {
-		render(SupersedeDetail as never, {
+		render(SupersedeDetail, {
 			props: { info: makeInfo({ state: "both_updated" }) },
 		});
 
@@ -78,7 +78,7 @@ describe("SupersedeDetail", () => {
 	});
 
 	it("shows previous why codes", async () => {
-		render(SupersedeDetail as never, {
+		render(SupersedeDetail, {
 			props: {
 				info: makeInfo({ previousWhyCodes: ["new_unread", "tag_hotspot"] }),
 			},
@@ -89,7 +89,7 @@ describe("SupersedeDetail", () => {
 	});
 
 	it("handles empty previous data gracefully", async () => {
-		render(SupersedeDetail as never, {
+		render(SupersedeDetail, {
 			props: {
 				info: makeInfo({
 					previousSummaryExcerpt: "",

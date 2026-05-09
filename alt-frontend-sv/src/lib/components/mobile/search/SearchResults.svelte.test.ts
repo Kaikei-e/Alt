@@ -34,13 +34,13 @@ describe("SearchResults Alt-Paper compliance", () => {
 	});
 
 	it("renders result count in monospace style", async () => {
-		render(SearchResults as never, { props: baseProps() });
+		render(SearchResults, { props: baseProps() });
 
 		await expect.element(page.getByText(/Search Results/)).toBeInTheDocument();
 	});
 
 	it("renders search time", async () => {
-		render(SearchResults as never, { props: baseProps() });
+		render(SearchResults, { props: baseProps() });
 
 		await expect.element(page.getByText(/150ms/)).toBeInTheDocument();
 	});
@@ -50,7 +50,7 @@ describe("SearchResults Alt-Paper compliance", () => {
 		props.results = [];
 		props.isLoading = true;
 
-		render(SearchResults as never, { props });
+		render(SearchResults, { props });
 
 		// Should have pulsing dot indicator
 		await expect.element(page.getByText(/Searching/i)).toBeInTheDocument();
@@ -61,7 +61,7 @@ describe("SearchResults Alt-Paper compliance", () => {
 		props.results = [];
 		props.isLoading = false;
 
-		render(SearchResults as never, { props });
+		render(SearchResults, { props });
 
 		await expect
 			.element(page.getByText(/No results found/i))
@@ -69,7 +69,7 @@ describe("SearchResults Alt-Paper compliance", () => {
 	});
 
 	it("renders result list items", async () => {
-		render(SearchResults as never, { props: baseProps() });
+		render(SearchResults, { props: baseProps() });
 
 		await expect
 			.element(page.getByRole("link", { name: "First Article" }))
@@ -80,7 +80,7 @@ describe("SearchResults Alt-Paper compliance", () => {
 	});
 
 	it("shows end marker when no more results", async () => {
-		render(SearchResults as never, { props: baseProps() });
+		render(SearchResults, { props: baseProps() });
 
 		await expect
 			.element(page.getByText(/No more results/i))

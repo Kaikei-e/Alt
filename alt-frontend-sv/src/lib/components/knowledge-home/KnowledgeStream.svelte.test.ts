@@ -24,7 +24,7 @@ function makeItem(
 
 describe("KnowledgeStream", () => {
 	it("renders items as cards", async () => {
-		render(KnowledgeStream as never, {
+		render(KnowledgeStream, {
 			props: {
 				items: [makeItem()],
 				loading: false,
@@ -39,7 +39,7 @@ describe("KnowledgeStream", () => {
 	});
 
 	it("shows skeleton when loading with no items", async () => {
-		const { container } = render(KnowledgeStream as never, {
+		const { container } = render(KnowledgeStream, {
 			props: {
 				items: [],
 				loading: true,
@@ -55,7 +55,7 @@ describe("KnowledgeStream", () => {
 	});
 
 	it("shows empty state with correct reason", async () => {
-		render(KnowledgeStream as never, {
+		render(KnowledgeStream, {
 			props: {
 				items: [],
 				loading: false,
@@ -71,7 +71,7 @@ describe("KnowledgeStream", () => {
 	});
 
 	it("shows lens empty state", async () => {
-		render(KnowledgeStream as never, {
+		render(KnowledgeStream, {
 			props: {
 				items: [],
 				loading: false,
@@ -90,7 +90,7 @@ describe("KnowledgeStream", () => {
 	});
 
 	it("shows degraded note when streamMode is provided and degraded", async () => {
-		render(KnowledgeStream as never, {
+		render(KnowledgeStream, {
 			props: {
 				items: [makeItem()],
 				loading: false,

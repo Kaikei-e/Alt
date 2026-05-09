@@ -6,7 +6,7 @@ import { renderFeedFixture } from "../../../../../tests/fixtures/feeds";
 
 describe("DesktopFeedCard", () => {
 	it("renders feed title", async () => {
-		render(DesktopFeedCard as never, {
+		render(DesktopFeedCard, {
 			props: { feed: renderFeedFixture, onSelect: vi.fn() },
 		});
 
@@ -14,7 +14,7 @@ describe("DesktopFeedCard", () => {
 	});
 
 	it("renders dateline with date and author", async () => {
-		render(DesktopFeedCard as never, {
+		render(DesktopFeedCard, {
 			props: { feed: renderFeedFixture, onSelect: vi.fn() },
 		});
 
@@ -23,7 +23,7 @@ describe("DesktopFeedCard", () => {
 	});
 
 	it("renders excerpt", async () => {
-		render(DesktopFeedCard as never, {
+		render(DesktopFeedCard, {
 			props: { feed: renderFeedFixture, onSelect: vi.fn() },
 		});
 
@@ -33,7 +33,7 @@ describe("DesktopFeedCard", () => {
 	});
 
 	it("renders tags as inline text", async () => {
-		render(DesktopFeedCard as never, {
+		render(DesktopFeedCard, {
 			props: { feed: renderFeedFixture, onSelect: vi.fn() },
 		});
 
@@ -44,7 +44,7 @@ describe("DesktopFeedCard", () => {
 	});
 
 	it("shows unread stripe for unread items", async () => {
-		render(DesktopFeedCard as never, {
+		render(DesktopFeedCard, {
 			props: { feed: renderFeedFixture, isRead: false, onSelect: vi.fn() },
 		});
 
@@ -54,7 +54,7 @@ describe("DesktopFeedCard", () => {
 
 	it("calls onSelect when clicked", async () => {
 		const onSelect = vi.fn();
-		render(DesktopFeedCard as never, {
+		render(DesktopFeedCard, {
 			props: { feed: renderFeedFixture, onSelect },
 		});
 

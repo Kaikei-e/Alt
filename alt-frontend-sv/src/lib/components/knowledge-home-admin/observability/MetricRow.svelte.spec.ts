@@ -48,7 +48,7 @@ describe("MetricRow", () => {
 			unit: "ratio",
 			values: [0.002, 0.005, 0.015],
 		});
-		const screen = render(MetricRow as never, {
+		const screen = render(MetricRow, {
 			props: { metric, label: "HTTP 5xx ratio" },
 		});
 		// Primary value rendering — digest may repeat the value, so scope to .value-num.
@@ -62,7 +62,7 @@ describe("MetricRow", () => {
 			unit: "ratio",
 			values: [0.02, 0.04],
 		});
-		const screen = render(MetricRow as never, {
+		const screen = render(MetricRow, {
 			props: {
 				metric,
 				label: "HTTP 5xx ratio",
@@ -79,7 +79,7 @@ describe("MetricRow", () => {
 			unit: "seconds",
 			values: [0.1, 0.1, 0.1, 0.2, 0.2, 0.2],
 		});
-		render(MetricRow as never, {
+		render(MetricRow, {
 			props: { metric, label: "HTTP p95 latency" },
 		});
 		// Glyph is aria-hidden; look for the percentage text, which is visible.
@@ -94,7 +94,7 @@ describe("MetricRow", () => {
 			degraded: true,
 			reason: "prometheus_timeout",
 		});
-		render(MetricRow as never, { props: { metric, label: "Availability" } });
+		render(MetricRow, { props: { metric, label: "Availability" } });
 		await expect
 			.element(page.getByText(/prometheus_timeout/))
 			.toBeInTheDocument();
@@ -107,14 +107,14 @@ describe("MetricRow", () => {
 			values: [1, 2, 3, 4],
 			grafanaUrl: "",
 		});
-		const screen = render(MetricRow as never, {
+		const screen = render(MetricRow, {
 			props: { metric, label: "Traffic" },
 		});
 		expect(screen.container.querySelector(".grafana")).toBeNull();
 	});
 
 	it("shows em-dash when the metric has no series", async () => {
-		render(MetricRow as never, {
+		render(MetricRow, {
 			props: { metric: undefined, label: "Traffic" },
 		});
 		await expect.element(page.getByLabelText(/Traffic —/)).toBeInTheDocument();

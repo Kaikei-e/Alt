@@ -38,7 +38,7 @@ describe("SearchWindow", () => {
 
 	it("shows validation error when query is too short", async () => {
 		const props = baseProps();
-		const { rerender } = render(SearchWindow as never, { props });
+		const { rerender } = render(SearchWindow, { props });
 
 		const input = page.getByRole("textbox", { name: /search query/i });
 		await input.fill("a");
@@ -70,7 +70,7 @@ describe("SearchWindow", () => {
 			has_more: true,
 		});
 
-		const { rerender } = render(SearchWindow as never, { props });
+		const { rerender } = render(SearchWindow, { props });
 
 		const input = page.getByRole("textbox", { name: /search query/i });
 		await input.fill("Svelte");

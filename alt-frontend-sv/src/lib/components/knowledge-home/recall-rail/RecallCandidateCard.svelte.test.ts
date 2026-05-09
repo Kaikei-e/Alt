@@ -49,7 +49,7 @@ describe("RecallCandidateCard", () => {
 	});
 
 	it("renders summary excerpt only when the item is ready", async () => {
-		render(RecallCandidateCard as never, {
+		render(RecallCandidateCard, {
 			props: {
 				candidate: makeCandidate(),
 				onSnooze: vi.fn(),
@@ -64,7 +64,7 @@ describe("RecallCandidateCard", () => {
 	});
 
 	it("renders up to two non-empty tags", async () => {
-		render(RecallCandidateCard as never, {
+		render(RecallCandidateCard, {
 			props: {
 				candidate: makeCandidate({
 					item: {
@@ -90,7 +90,7 @@ describe("RecallCandidateCard", () => {
 	});
 
 	it("uses publishedAt for age display and falls back to recent for invalid dates", async () => {
-		render(RecallCandidateCard as never, {
+		render(RecallCandidateCard, {
 			props: {
 				candidate: makeCandidate({
 					item: {
@@ -108,7 +108,7 @@ describe("RecallCandidateCard", () => {
 	});
 
 	it("falls back to itemKey when item is missing", async () => {
-		render(RecallCandidateCard as never, {
+		render(RecallCandidateCard, {
 			props: {
 				candidate: makeCandidate({
 					item: undefined,
@@ -129,7 +129,7 @@ describe("RecallCandidateCard", () => {
 		const onSnooze = vi.fn();
 		const onDismiss = vi.fn();
 
-		render(RecallCandidateCard as never, {
+		render(RecallCandidateCard, {
 			props: {
 				candidate: makeCandidate(),
 				onSnooze,

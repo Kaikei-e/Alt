@@ -33,7 +33,7 @@ const sectionFixture: ArticleSectionData = {
 
 describe("ArticleSearchSection Alt-Paper compliance", () => {
 	it("renders section with data-role attribute", async () => {
-		render(ArticleSearchSection as never, {
+		render(ArticleSearchSection, {
 			props: { section: sectionFixture, query: "AI" },
 		});
 
@@ -44,7 +44,7 @@ describe("ArticleSearchSection Alt-Paper compliance", () => {
 	});
 
 	it("renders ARTICLES section label in uppercase", async () => {
-		render(ArticleSearchSection as never, {
+		render(ArticleSearchSection, {
 			props: { section: sectionFixture, query: "AI" },
 		});
 
@@ -53,7 +53,7 @@ describe("ArticleSearchSection Alt-Paper compliance", () => {
 	});
 
 	it("renders see all button with text character instead of icon", async () => {
-		render(ArticleSearchSection as never, {
+		render(ArticleSearchSection, {
 			props: { section: sectionFixture, query: "AI" },
 		});
 
@@ -61,7 +61,7 @@ describe("ArticleSearchSection Alt-Paper compliance", () => {
 	});
 
 	it("renders article hit cards", async () => {
-		render(ArticleSearchSection as never, {
+		render(ArticleSearchSection, {
 			props: { section: sectionFixture, query: "AI" },
 		});
 
@@ -74,7 +74,7 @@ describe("ArticleSearchSection Alt-Paper compliance", () => {
 	});
 
 	it("renders field badges and tag tokens", async () => {
-		render(ArticleSearchSection as never, {
+		render(ArticleSearchSection, {
 			props: { section: sectionFixture, query: "AI" },
 		});
 
@@ -91,7 +91,7 @@ describe("ArticleSearchSection Alt-Paper compliance", () => {
 			hasMore: false,
 		};
 
-		render(ArticleSearchSection as never, {
+		render(ArticleSearchSection, {
 			props: { section: emptySection, query: "AI" },
 		});
 

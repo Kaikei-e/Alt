@@ -5,7 +5,7 @@ import DegradedModeBanner from "./DegradedModeBanner.svelte";
 
 describe("DegradedModeBanner", () => {
 	it("renders the degraded message when service quality is degraded", async () => {
-		render(DegradedModeBanner as never, {
+		render(DegradedModeBanner, {
 			props: {
 				serviceQuality: "degraded",
 			},
@@ -21,7 +21,7 @@ describe("DegradedModeBanner", () => {
 	});
 
 	it("renders the fallback message when service quality is fallback", async () => {
-		render(DegradedModeBanner as never, {
+		render(DegradedModeBanner, {
 			props: {
 				serviceQuality: "fallback",
 			},
@@ -37,7 +37,7 @@ describe("DegradedModeBanner", () => {
 	});
 
 	it("renders nothing when service quality is full", async () => {
-		const { container } = render(DegradedModeBanner as never, {
+		const { container } = render(DegradedModeBanner, {
 			props: {
 				serviceQuality: "full",
 			},
@@ -47,7 +47,7 @@ describe("DegradedModeBanner", () => {
 	});
 
 	it("shows dismiss button when onDismiss is provided", async () => {
-		render(DegradedModeBanner as never, {
+		render(DegradedModeBanner, {
 			props: {
 				serviceQuality: "degraded",
 				onDismiss: vi.fn(),
@@ -58,7 +58,7 @@ describe("DegradedModeBanner", () => {
 	});
 
 	it("does not show dismiss button when onDismiss is not provided", async () => {
-		render(DegradedModeBanner as never, {
+		render(DegradedModeBanner, {
 			props: {
 				serviceQuality: "degraded",
 			},

@@ -61,17 +61,31 @@ test.describe("System Loader", () => {
 		// Use domcontentloaded to catch the loader before JS finishes
 		await page.goto(recapPage.url, { waitUntil: "domcontentloaded" });
 
-		// The loader might or might not be visible depending on timing
-		// Instead, we'll just verify that when the loader IS in the DOM, it has correct attributes
+		// The loader is conditional on `navigating.type !== null` and unmounts
+		// the moment SvelteKit reports navigation complete (or the 10s safety
+		// timeout in (app)/+layout.svelte fires). On a hard page load
+		// `navigating.type` may already be null by the time we query — so we
+		// snapshot the attributes via a single `evaluate` call against the
+		// live DOM, and skip when the loader was never mounted in this
+		// scenario. Polling-style `toHaveAttribute` here is too racy: the
+		// element can detach between the `waitFor` and the assertion.
 		const loader = page.getByTestId("system-loader");
-		const isLoaderVisible = await loader.isVisible().catch(() => false);
+		const snapshot = await loader
+			.evaluate((el) => ({
+				role: el.getAttribute("role"),
+				ariaLabel: el.getAttribute("aria-label"),
+				hasLoadingText: !!el.querySelector("p")?.textContent
+					?.trim()
+					.startsWith("Loading Alt"),
+				hasLogo: !!el.querySelector('img[alt="Alt Logo"]'),
+			}))
+			.catch(() => null);
 
-		if (isLoaderVisible) {
-			await expect(loader).toHaveAttribute("role", "status");
-			await expect(loader).toHaveAttribute("aria-label", "Loading Alt");
-			await expect(loader.getByText("Loading Alt")).toBeVisible();
-			const logo = loader.locator('img[alt="Alt Logo"]');
-			await expect(logo).toBeVisible();
+		if (snapshot) {
+			expect(snapshot.role).toBe("status");
+			expect(snapshot.ariaLabel).toBe("Loading Alt");
+			expect(snapshot.hasLoadingText).toBe(true);
+			expect(snapshot.hasLogo).toBe(true);
 		}
 
 		// Release the API

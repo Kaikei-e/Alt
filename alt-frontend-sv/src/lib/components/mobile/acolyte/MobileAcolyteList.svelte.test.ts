@@ -6,7 +6,7 @@ import { MOCK_REPORT_SUMMARIES } from "./acolyte-fixtures";
 
 describe("MobileAcolyteList", () => {
 	it("renders masthead with title Acolyte", async () => {
-		render(MobileAcolyteList as never, {
+		render(MobileAcolyteList, {
 			props: {
 				reports: MOCK_REPORT_SUMMARIES,
 				loading: false,
@@ -18,7 +18,7 @@ describe("MobileAcolyteList", () => {
 	});
 
 	it("renders report count", async () => {
-		render(MobileAcolyteList as never, {
+		render(MobileAcolyteList, {
 			props: {
 				reports: MOCK_REPORT_SUMMARIES,
 				loading: false,
@@ -30,7 +30,7 @@ describe("MobileAcolyteList", () => {
 	});
 
 	it("renders all report cards", async () => {
-		render(MobileAcolyteList as never, {
+		render(MobileAcolyteList, {
 			props: {
 				reports: MOCK_REPORT_SUMMARIES,
 				loading: false,
@@ -53,7 +53,7 @@ describe("MobileAcolyteList", () => {
 	});
 
 	it("renders New Report link", async () => {
-		render(MobileAcolyteList as never, {
+		render(MobileAcolyteList, {
 			props: {
 				reports: MOCK_REPORT_SUMMARIES,
 				loading: false,
@@ -67,7 +67,7 @@ describe("MobileAcolyteList", () => {
 	});
 
 	it("shows loading state", async () => {
-		render(MobileAcolyteList as never, {
+		render(MobileAcolyteList, {
 			props: {
 				reports: [],
 				loading: true,
@@ -81,7 +81,7 @@ describe("MobileAcolyteList", () => {
 	});
 
 	it("shows empty state when no reports", async () => {
-		render(MobileAcolyteList as never, {
+		render(MobileAcolyteList, {
 			props: {
 				reports: [],
 				loading: false,
@@ -95,7 +95,7 @@ describe("MobileAcolyteList", () => {
 	});
 
 	it("shows error message", async () => {
-		render(MobileAcolyteList as never, {
+		render(MobileAcolyteList, {
 			props: {
 				reports: [],
 				loading: false,
@@ -107,7 +107,7 @@ describe("MobileAcolyteList", () => {
 	});
 
 	it("renders singular report count for 1 report", async () => {
-		render(MobileAcolyteList as never, {
+		render(MobileAcolyteList, {
 			props: {
 				reports: [MOCK_REPORT_SUMMARIES[0]],
 				loading: false,

@@ -17,7 +17,7 @@ const fullData: RecapModalData = {
 
 function renderModal(overrides: Partial<RecapModalData> | null = {}) {
 	const data = overrides === null ? null : { ...fullData, ...overrides };
-	return render(RecapPreviewModal as never, {
+	return render(RecapPreviewModal, {
 		props: {
 			data,
 			open: true,

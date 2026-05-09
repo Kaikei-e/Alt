@@ -27,13 +27,13 @@ vi.mock("$app/environment", () => ({
 
 describe("SearchFeedsClient Alt-Paper compliance", () => {
 	it("renders archive desk title", async () => {
-		render(SearchFeedsClient as never, { props: {} });
+		render(SearchFeedsClient, { props: {} });
 
 		await expect.element(page.getByText("Search Feeds")).toBeInTheDocument();
 	});
 
 	it("renders subtitle", async () => {
-		render(SearchFeedsClient as never, { props: {} });
+		render(SearchFeedsClient, { props: {} });
 
 		await expect
 			.element(page.getByText(/Search across your RSS feeds/))
@@ -41,14 +41,14 @@ describe("SearchFeedsClient Alt-Paper compliance", () => {
 	});
 
 	it("renders search input area", async () => {
-		render(SearchFeedsClient as never, { props: {} });
+		render(SearchFeedsClient, { props: {} });
 
 		const input = page.getByRole("textbox", { name: /search query/i });
 		await expect.element(input).toBeInTheDocument();
 	});
 
 	it("renders tip text without emoji", async () => {
-		render(SearchFeedsClient as never, { props: {} });
+		render(SearchFeedsClient, { props: {} });
 
 		await expect
 			.element(page.getByText(/Try searching for topics/))

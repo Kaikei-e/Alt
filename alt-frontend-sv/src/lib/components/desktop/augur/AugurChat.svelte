@@ -1,5 +1,5 @@
 <script lang="ts">
-import { onMount, tick } from "svelte";
+import { onMount, tick, untrack } from "svelte";
 import ThreadEntry from "./ThreadEntry.svelte";
 import QuestionInput from "./QuestionInput.svelte";
 import CitationRail from "./CitationRail.svelte";
@@ -44,14 +44,14 @@ const {
 	onConversationIdChange,
 }: Props = $props();
 
-let messages = $state<Message[]>(initialMessages);
-let conversationId = $state<string>(initialConversationId);
+let messages = $state<Message[]>(untrack(() => [...initialMessages]));
+let conversationId = $state<string>(untrack(() => initialConversationId));
 
 let isLoading = $state(false);
 let progressStage = $state<string>("");
 let statusText = $state("");
 let isProvisional = $state(false);
-let threadContainer: HTMLDivElement;
+let threadContainer = $state<HTMLDivElement | undefined>(undefined);
 let currentAbortController: AbortController | null = null;
 let lastAutoSentQuestion = $state("");
 let revealed = $state(false);
@@ -89,9 +89,10 @@ function handleScroll() {
 
 async function scrollToBottom() {
 	await tick();
-	if (threadContainer) {
+	const container = threadContainer;
+	if (container) {
 		setTimeout(() => {
-			threadContainer.scrollTop = threadContainer.scrollHeight;
+			container.scrollTop = container.scrollHeight;
 		}, 100);
 	}
 }

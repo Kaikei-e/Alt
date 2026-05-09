@@ -14,14 +14,14 @@ describe("WhyPanel", () => {
 			{ code: "tag_hotspot", tag: "AI" },
 		];
 
-		const view = render(WhyPanel as never, { props: { reasons } });
+		const view = render(WhyPanel, { props: { reasons } });
 
 		expect(view.container.textContent).toContain("New");
 		expect(view.container.textContent).toContain("Trending: AI");
 	});
 
 	it("shows heading", async () => {
-		const view = render(WhyPanel as never, {
+		const view = render(WhyPanel, {
 			props: { reasons: [{ code: "new_unread" }] },
 		});
 
@@ -31,7 +31,7 @@ describe("WhyPanel", () => {
 	});
 
 	it("shows fallback when no reasons provided", async () => {
-		const view = render(WhyPanel as never, { props: { reasons: [] } });
+		const view = render(WhyPanel, { props: { reasons: [] } });
 
 		await expect
 			.element(view.getByText("Matched by general relevance"))
@@ -44,7 +44,7 @@ describe("WhyPanel", () => {
 			{ code: "summary_completed" },
 		];
 
-		const view = render(WhyPanel as never, { props: { reasons } });
+		const view = render(WhyPanel, { props: { reasons } });
 
 		expect(view.container.textContent).toContain("New");
 		expect(view.container.textContent).toContain("Summarized");
@@ -53,7 +53,7 @@ describe("WhyPanel", () => {
 	it("shows change_why for supersede-related reasons", async () => {
 		const reasons: WhyReasonData[] = [{ code: "summary_completed" }];
 
-		const view = render(WhyPanel as never, { props: { reasons } });
+		const view = render(WhyPanel, { props: { reasons } });
 
 		expect(view.container.textContent).toContain("Summarized");
 	});

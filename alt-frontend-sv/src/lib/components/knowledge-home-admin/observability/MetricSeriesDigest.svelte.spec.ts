@@ -17,7 +17,7 @@ function series(label: string, values: number[]): SimpleSeries {
 
 describe("MetricSeriesDigest", () => {
 	it("renders top-N rows sorted by lead value", async () => {
-		render(MetricSeriesDigest as never, {
+		render(MetricSeriesDigest, {
 			props: {
 				series: [
 					series("alpha", [1]),
@@ -36,14 +36,14 @@ describe("MetricSeriesDigest", () => {
 
 	it("shows +N more when overflow exists", async () => {
 		const s = Array.from({ length: 6 }, (_, i) => series(`svc-${i}`, [i]));
-		render(MetricSeriesDigest as never, {
+		render(MetricSeriesDigest, {
 			props: { series: s, preferLabel: "job", limit: 3 },
 		});
 		await expect.element(page.getByText(/\+3 more/)).toBeInTheDocument();
 	});
 
 	it("renders em-dash when series is empty", async () => {
-		render(MetricSeriesDigest as never, {
+		render(MetricSeriesDigest, {
 			props: { series: [], preferLabel: "job", limit: 3 },
 		});
 		await expect.element(page.getByLabelText(/No series/)).toBeInTheDocument();

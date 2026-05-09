@@ -91,10 +91,6 @@ const hasChat = $derived(Boolean(enrichment.chatHref));
 		border-bottom: 1px solid var(--surface-border, #c8c8c8);
 	}
 
-	.deck-card + .deck-card {
-		border-top: 1px solid var(--surface-border, #c8c8c8);
-	}
-
 	.deck-head {
 		display: flex;
 		flex-direction: column;

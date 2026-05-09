@@ -27,7 +27,7 @@ function makeLens(overrides: Partial<LensData> = {}): LensData {
 
 describe("LensSelector", () => {
 	it("renders All button and lens buttons", async () => {
-		render(LensSelector as never, {
+		render(LensSelector, {
 			props: {
 				lenses: [makeLens()],
 				activeLensId: null,
@@ -41,7 +41,7 @@ describe("LensSelector", () => {
 	});
 
 	it("highlights active lens", async () => {
-		render(LensSelector as never, {
+		render(LensSelector, {
 			props: {
 				lenses: [makeLens()],
 				activeLensId: "lens-1",
@@ -56,7 +56,7 @@ describe("LensSelector", () => {
 	});
 
 	it("shows match count when provided for active lens", async () => {
-		render(LensSelector as never, {
+		render(LensSelector, {
 			props: {
 				lenses: [makeLens()],
 				activeLensId: "lens-1",
@@ -70,7 +70,7 @@ describe("LensSelector", () => {
 	});
 
 	it("does not show match count when no lens is active", async () => {
-		render(LensSelector as never, {
+		render(LensSelector, {
 			props: {
 				lenses: [makeLens()],
 				activeLensId: null,
@@ -84,7 +84,7 @@ describe("LensSelector", () => {
 	});
 
 	it("shows Save view button", async () => {
-		render(LensSelector as never, {
+		render(LensSelector, {
 			props: {
 				lenses: [],
 				activeLensId: null,
@@ -99,7 +99,7 @@ describe("LensSelector", () => {
 	});
 
 	it("shows active lens search summary when query is present", async () => {
-		render(LensSelector as never, {
+		render(LensSelector, {
 			props: {
 				lenses: [makeLens()],
 				activeLensId: "lens-1",

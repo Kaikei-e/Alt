@@ -5,7 +5,7 @@ import RecallRailCollapsible from "./RecallRailCollapsible.svelte";
 
 describe("RecallRailCollapsible", () => {
 	it("shows unavailable message when unavailable prop is true", async () => {
-		render(RecallRailCollapsible as never, {
+		render(RecallRailCollapsible, {
 			props: {
 				candidates: [],
 				unavailable: true,

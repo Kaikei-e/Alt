@@ -702,6 +702,19 @@ async function handleDismiss() {
 	.entry[data-stage="act"] {
 		transform: translateZ(-36px);
 	}
+	/* When the user expands a tile it has the user's focus — bring it back
+	 * to the front of the perspective stack so its CTAs sit visually (and
+	 * for hit-testing) above sibling planes / wrapper rows that are at z=0.
+	 * Without this, the auto-orient transition (e90ada874) pushes the tile
+	 * to translateZ(-12px) the instant the user taps, and inner CTAs
+	 * (Revisit/Ask/Snooze/Dismiss) become unreachable to real (coordinate-
+	 * based) clicks: every intermediate ancestor at z=0 wins hit-testing
+	 * over the receded article. The collapsed-stage Z bands stay intact for
+	 * sibling tiles in the bucket planes, which is where the OODA depth UX
+	 * actually reads. */
+	.entry.expanded {
+		transform: translateZ(0px);
+	}
 
 	@media (prefers-reduced-motion: reduce) {
 		.entry {

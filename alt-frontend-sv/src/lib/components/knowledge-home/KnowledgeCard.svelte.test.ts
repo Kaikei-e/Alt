@@ -24,7 +24,7 @@ function makeItem(
 
 describe("KnowledgeCard", () => {
 	it("labels overflow tags explicitly", async () => {
-		render(KnowledgeCard as never, {
+		render(KnowledgeCard, {
 			props: {
 				item: makeItem(),
 				onAction: vi.fn(),
@@ -35,7 +35,7 @@ describe("KnowledgeCard", () => {
 	});
 
 	it("renders title and summary when ready", async () => {
-		render(KnowledgeCard as never, {
+		render(KnowledgeCard, {
 			props: {
 				item: makeItem({
 					title: "My Article",
@@ -53,7 +53,7 @@ describe("KnowledgeCard", () => {
 	});
 
 	it("shows skeleton lines when summary_state is pending", async () => {
-		const { container } = render(KnowledgeCard as never, {
+		const { container } = render(KnowledgeCard, {
 			props: {
 				item: makeItem({
 					summaryState: "pending",
@@ -72,7 +72,7 @@ describe("KnowledgeCard", () => {
 	});
 
 	it("shows skeleton lines when summary_state is missing", async () => {
-		const { container } = render(KnowledgeCard as never, {
+		const { container } = render(KnowledgeCard, {
 			props: {
 				item: makeItem({
 					summaryState: "missing",
@@ -87,7 +87,7 @@ describe("KnowledgeCard", () => {
 	});
 
 	it("renders supersede badge when supersedeInfo is present", async () => {
-		render(KnowledgeCard as never, {
+		render(KnowledgeCard, {
 			props: {
 				item: makeItem({
 					supersedeInfo: {
@@ -106,7 +106,7 @@ describe("KnowledgeCard", () => {
 	});
 
 	it("renders why badges", async () => {
-		render(KnowledgeCard as never, {
+		render(KnowledgeCard, {
 			props: {
 				item: makeItem({
 					why: [{ code: "new_unread" }],
@@ -119,7 +119,7 @@ describe("KnowledgeCard", () => {
 	});
 
 	it("marks the card link-unavailable when item.url is empty", async () => {
-		render(KnowledgeCard as never, {
+		render(KnowledgeCard, {
 			props: {
 				item: makeItem({ url: undefined }),
 				onAction: vi.fn(),
@@ -135,7 +135,7 @@ describe("KnowledgeCard", () => {
 	});
 
 	it("does not mark the card link-unavailable when item.url is present", async () => {
-		const { container } = render(KnowledgeCard as never, {
+		const { container } = render(KnowledgeCard, {
 			props: {
 				item: makeItem({ url: "https://example.com/article" }),
 				onAction: vi.fn(),

@@ -7,7 +7,7 @@ import FeedCard from "./FeedCard.svelte";
 
 describe("FeedCard", () => {
 	it("renders feed metadata and button when unread", async () => {
-		render(FeedCard as never, {
+		render(FeedCard, {
 			props: {
 				feed: renderFeedFixture,
 				isReadStatus: false,
@@ -28,7 +28,7 @@ describe("FeedCard", () => {
 
 	it("calls setIsReadStatus with normalized URL when Mark as read is clicked", async () => {
 		const setIsReadStatus = vi.fn();
-		render(FeedCard as never, {
+		render(FeedCard, {
 			props: {
 				feed: renderFeedFixture,
 				isReadStatus: false,
@@ -47,7 +47,7 @@ describe("FeedCard", () => {
 	});
 
 	it("renders nothing when feed is already read", async () => {
-		render(FeedCard as never, {
+		render(FeedCard, {
 			props: {
 				feed: renderFeedFixture,
 				isReadStatus: true,

@@ -21,7 +21,7 @@ const tags = [
 ];
 
 function renderModal(overrides: Record<string, unknown> = {}) {
-	return render(LensModal as never, {
+	return render(LensModal, {
 		props: {
 			open: true,
 			version: {

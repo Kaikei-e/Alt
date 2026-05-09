@@ -4,14 +4,14 @@ import SearchSectionSkeleton from "./SearchSectionSkeleton.svelte";
 
 describe("SearchSectionSkeleton Alt-Paper compliance", () => {
 	it("renders with data-role attribute", () => {
-		render(SearchSectionSkeleton as never, { props: { label: "Loading" } });
+		render(SearchSectionSkeleton, { props: { label: "Loading" } });
 
 		const section = document.querySelector("[data-role='skeleton-section']");
 		expect(section).not.toBeNull();
 	});
 
 	it("renders correct number of skeleton rows", () => {
-		render(SearchSectionSkeleton as never, {
+		render(SearchSectionSkeleton, {
 			props: { label: "Loading", rows: 2 },
 		});
 
@@ -20,7 +20,7 @@ describe("SearchSectionSkeleton Alt-Paper compliance", () => {
 	});
 
 	it("does not use rounded classes", () => {
-		const { container } = render(SearchSectionSkeleton as never, {
+		const { container } = render(SearchSectionSkeleton, {
 			props: { label: "Loading" },
 		});
 

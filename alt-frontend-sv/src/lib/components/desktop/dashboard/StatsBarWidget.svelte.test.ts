@@ -5,7 +5,7 @@ import StatsBarWidget from "./StatsBarWidget.svelte";
 
 describe("StatsBarWidget", () => {
 	it("renders feed count", async () => {
-		render(StatsBarWidget as never, {
+		render(StatsBarWidget, {
 			props: {
 				feedAmount: 127,
 				totalArticlesAmount: 4231,
@@ -18,7 +18,7 @@ describe("StatsBarWidget", () => {
 	});
 
 	it("renders total articles count formatted", async () => {
-		render(StatsBarWidget as never, {
+		render(StatsBarWidget, {
 			props: {
 				feedAmount: 127,
 				totalArticlesAmount: 4231,
@@ -31,7 +31,7 @@ describe("StatsBarWidget", () => {
 	});
 
 	it("renders summarized count", async () => {
-		render(StatsBarWidget as never, {
+		render(StatsBarWidget, {
 			props: {
 				feedAmount: 127,
 				totalArticlesAmount: 4231,
@@ -44,7 +44,7 @@ describe("StatsBarWidget", () => {
 	});
 
 	it("shows Live when connected", async () => {
-		render(StatsBarWidget as never, {
+		render(StatsBarWidget, {
 			props: {
 				feedAmount: 127,
 				totalArticlesAmount: 4231,
@@ -57,7 +57,7 @@ describe("StatsBarWidget", () => {
 	});
 
 	it("shows Offline when disconnected", async () => {
-		render(StatsBarWidget as never, {
+		render(StatsBarWidget, {
 			props: {
 				feedAmount: 0,
 				totalArticlesAmount: 0,
@@ -70,7 +70,7 @@ describe("StatsBarWidget", () => {
 	});
 
 	it("renders FEEDS label", async () => {
-		render(StatsBarWidget as never, {
+		render(StatsBarWidget, {
 			props: {
 				feedAmount: 127,
 				totalArticlesAmount: 4231,
@@ -83,7 +83,7 @@ describe("StatsBarWidget", () => {
 	});
 
 	it("renders ARTICLES label", async () => {
-		render(StatsBarWidget as never, {
+		render(StatsBarWidget, {
 			props: {
 				feedAmount: 127,
 				totalArticlesAmount: 4231,
@@ -96,7 +96,7 @@ describe("StatsBarWidget", () => {
 	});
 
 	it("renders SUMMARIZED label", async () => {
-		render(StatsBarWidget as never, {
+		render(StatsBarWidget, {
 			props: {
 				feedAmount: 127,
 				totalArticlesAmount: 4231,

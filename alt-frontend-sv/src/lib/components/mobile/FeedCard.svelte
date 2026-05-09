@@ -19,7 +19,6 @@ const handleReadStatus = () => {
 	<article
 		class="dispatch-card"
 		data-testid="feed-card-container"
-		role="article"
 		aria-label="Feed: {feed.title}"
 	>
 		<div class="dispatch-stripe" aria-hidden="true"></div>

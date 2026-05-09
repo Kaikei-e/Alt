@@ -17,6 +17,7 @@ import type {
 	KnowledgeLoopSessionStateData,
 	LoopStageName,
 } from "$lib/connect/knowledge_loop";
+import { SvelteSet } from "svelte/reactivity";
 import { uuidv7 } from "$lib/utils/uuidv7";
 import type { LoopStreamFrame } from "./loop-stream-frames";
 import { canTransition } from "./loop-transitions";
@@ -75,7 +76,7 @@ export function useKnowledgeLoop(opts: UseKnowledgeLoopOptions) {
 		opts.initial.sessionState,
 	);
 	let lastError = $state<string | null>(null);
-	const inFlight = new SvelteSet();
+	const inFlight = new SvelteSet<string>();
 	// Wall-clock stamp per inFlight key. Used by `replaceSnapshot` to gc keys
 	// older than `TRANSITION_TIMEOUT_MS` so a pre-fix stalled fetch never
 	// leaves `LoopEntryTile`'s `disabled={inFlight}` gate stuck on reload.
@@ -166,13 +167,18 @@ export function useKnowledgeLoop(opts: UseKnowledgeLoopOptions) {
 		toStage: LoopStageName,
 		trigger: Trigger = "user_tap",
 		metadata?: TransitionMetadata,
-		options: { optimistic?: boolean } = {},
+		options: { optimistic?: boolean; allowSameStage?: boolean } = {},
 	): Promise<TransitionResult> {
 		const entry = findEntry(entryKey);
 		if (!entry) return { status: "error", message: "unknown_entry" };
 
 		const from = effectiveStage(entry);
-		if (!canTransition(from, toStage)) {
+		// `allowSameStage` opt-in lets intent-driven same-stage signals (Compare
+		// on Changed, semantic Decide/Act feedback) post without the OODA matrix
+		// guard. The BFF still enforces SAME_STAGE_TRIGGERS in
+		// /loop/transition/+server.ts; this flag only relaxes the client gate.
+		const sameStage = from === toStage;
+		if (!(sameStage && options.allowSameStage) && !canTransition(from, toStage)) {
 			return {
 				status: "forbidden",
 				reason: `cannot go ${from} → ${toStage}`,
@@ -473,7 +479,3 @@ export function useKnowledgeLoop(opts: UseKnowledgeLoopOptions) {
 	};
 }
 
-// Svelte 5 does not (yet) ship a reactive Set primitive; we only need
-// membership checks for in-flight tracking, so a plain Set is fine here —
-// button disabled state polls `isInFlight` on each user action.
-class SvelteSet extends Set<string> {}

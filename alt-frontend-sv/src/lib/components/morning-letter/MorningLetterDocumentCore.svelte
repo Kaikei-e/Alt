@@ -165,11 +165,6 @@ const previousRef = $derived(letter.body?.previousLetterRef);
 		color: var(--alt-ash, #999);
 	}
 
-	.footer-sep {
-		margin: 0 0.35rem;
-		color: var(--surface-border, #c8c8c8);
-	}
-
 	@media (prefers-reduced-motion: reduce) {
 		.section-enter {
 			animation: none;

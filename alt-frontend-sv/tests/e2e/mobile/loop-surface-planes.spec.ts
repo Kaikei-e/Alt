@@ -40,6 +40,11 @@ test.describe("Mobile Knowledge Loop — Surface planes", () => {
 	}) => {
 		await gotoMobileRoute(page, "loop");
 
+		// LoopPlaneStack only marks the active plane visible/interactive
+		// (aria-hidden + inert on inactive planes). The default active plane
+		// is "now"; switch to "continue" so its testids become visible.
+		await page.getByTestId("loop-plane-tab-continue").click();
+
 		const plane = page.getByTestId("loop-continue-stream");
 		if ((await plane.count()) === 0) {
 			test.skip(
@@ -63,6 +68,9 @@ test.describe("Mobile Knowledge Loop — Surface planes", () => {
 		page,
 	}) => {
 		await gotoMobileRoute(page, "loop");
+
+		// Switch to the Changed plane — inactive planes are aria-hidden + inert.
+		await page.getByTestId("loop-plane-tab-changed").click();
 
 		const diff = page.getByTestId("loop-changed-diff");
 		if ((await diff.count()) === 0) {
@@ -119,6 +127,9 @@ test.describe("Mobile Knowledge Loop — Surface planes", () => {
 
 	test("Review plane renders a low-density mono list", async ({ page }) => {
 		await gotoMobileRoute(page, "loop");
+
+		// Switch to the Review plane — inactive planes are aria-hidden + inert.
+		await page.getByTestId("loop-plane-tab-review").click();
 
 		const dock = page.getByTestId("loop-review-dock");
 		if ((await dock.count()) === 0) {

@@ -69,7 +69,7 @@ describe("ChatWindow", () => {
 	});
 
 	it("auto-sends the initial question when provided", async () => {
-		render(ChatWindow as never, {
+		render(ChatWindow, {
 			props: {
 				initialQuestion:
 					"Context:\nAI chip summary\n\nQuestion:\nWhat changed?",
@@ -80,7 +80,7 @@ describe("ChatWindow", () => {
 	});
 
 	it("hydrates initialMessages so prior conversation renders instead of empty state", async () => {
-		render(ChatWindow as never, {
+		render(ChatWindow, {
 			props: {
 				initialMessages: [
 					{ role: "user", content: "Tell me about quantum chips" },
@@ -103,7 +103,7 @@ describe("ChatWindow", () => {
 	});
 
 	it("forwards initialConversationId to streamAugurChat so replies thread to the same conversation", async () => {
-		render(ChatWindow as never, {
+		render(ChatWindow, {
 			props: {
 				initialMessages: [{ role: "user", content: "first" }],
 				initialConversationId: "conv-abc-123",

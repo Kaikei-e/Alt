@@ -5,7 +5,7 @@ import RecallRail from "./RecallRail.svelte";
 
 describe("RecallRail", () => {
 	it("shows an empty state when there are no candidates", async () => {
-		render(RecallRail as never, {
+		render(RecallRail, {
 			props: {
 				candidates: [],
 				onSnooze: vi.fn(),
@@ -20,7 +20,7 @@ describe("RecallRail", () => {
 	});
 
 	it("shows unavailable message when unavailable prop is true", async () => {
-		render(RecallRail as never, {
+		render(RecallRail, {
 			props: {
 				candidates: [],
 				unavailable: true,
@@ -36,7 +36,7 @@ describe("RecallRail", () => {
 	});
 
 	it("shows heading", async () => {
-		render(RecallRail as never, {
+		render(RecallRail, {
 			props: {
 				candidates: [],
 				onSnooze: vi.fn(),

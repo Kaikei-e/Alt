@@ -14,7 +14,7 @@ const suggestions: TagSuggestion[] = [
 ];
 
 function renderCombobox(overrides: Record<string, unknown> = {}) {
-	return render(TagCombobox as never, {
+	return render(TagCombobox, {
 		props: {
 			selectedTags: [],
 			availableTags: suggestions,

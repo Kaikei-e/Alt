@@ -5,7 +5,7 @@ import MobileBottomNav from "./MobileBottomNav.svelte";
 
 describe("MobileBottomNav", () => {
 	it("renders 5 tab labels", async () => {
-		render(MobileBottomNav as never, { props: { pathname: "/home" } });
+		render(MobileBottomNav, { props: { pathname: "/home" } });
 
 		await expect.element(page.getByText("Home")).toBeInTheDocument();
 		await expect.element(page.getByText("Swipe")).toBeInTheDocument();
@@ -15,7 +15,7 @@ describe("MobileBottomNav", () => {
 	});
 
 	it("renders 5 tab links with correct hrefs in order", async () => {
-		render(MobileBottomNav as never, { props: { pathname: "/home" } });
+		render(MobileBottomNav, { props: { pathname: "/home" } });
 
 		const nav = page.getByRole("navigation");
 		const links = nav.getByRole("link");
@@ -29,7 +29,7 @@ describe("MobileBottomNav", () => {
 	});
 
 	it("marks the active tab with aria-current=page", async () => {
-		render(MobileBottomNav as never, { props: { pathname: "/augur" } });
+		render(MobileBottomNav, { props: { pathname: "/augur" } });
 
 		const nav = page.getByRole("navigation");
 		const links = nav.getByRole("link");
@@ -37,7 +37,7 @@ describe("MobileBottomNav", () => {
 	});
 
 	it("does not set aria-current on inactive tabs", async () => {
-		render(MobileBottomNav as never, { props: { pathname: "/augur" } });
+		render(MobileBottomNav, { props: { pathname: "/augur" } });
 
 		const nav = page.getByRole("navigation");
 		const links = nav.getByRole("link");
@@ -46,7 +46,7 @@ describe("MobileBottomNav", () => {
 	});
 
 	it("activates Feeds tab for /feeds/swipe", async () => {
-		render(MobileBottomNav as never, { props: { pathname: "/feeds/swipe" } });
+		render(MobileBottomNav, { props: { pathname: "/feeds/swipe" } });
 
 		const nav = page.getByRole("navigation");
 		const links = nav.getByRole("link");
@@ -54,7 +54,7 @@ describe("MobileBottomNav", () => {
 	});
 
 	it("activates Search tab for /feeds/search", async () => {
-		render(MobileBottomNav as never, { props: { pathname: "/feeds/search" } });
+		render(MobileBottomNav, { props: { pathname: "/feeds/search" } });
 
 		const nav = page.getByRole("navigation");
 		const links = nav.getByRole("link");
@@ -62,7 +62,7 @@ describe("MobileBottomNav", () => {
 	});
 
 	it("activates Menu tab for /recap (secondary destination)", async () => {
-		render(MobileBottomNav as never, { props: { pathname: "/recap" } });
+		render(MobileBottomNav, { props: { pathname: "/recap" } });
 
 		const nav = page.getByRole("navigation");
 		const links = nav.getByRole("link");
@@ -70,24 +70,24 @@ describe("MobileBottomNav", () => {
 	});
 
 	it("is always rendered (no HIDE_PATHS)", async () => {
-		render(MobileBottomNav as never, { props: { pathname: "/augur" } });
+		render(MobileBottomNav, { props: { pathname: "/augur" } });
 		await expect.element(page.getByRole("navigation")).toBeInTheDocument();
 	});
 
 	it("renders on /feeds/search (bottom nav is persistent)", async () => {
-		render(MobileBottomNav as never, { props: { pathname: "/feeds/search" } });
+		render(MobileBottomNav, { props: { pathname: "/feeds/search" } });
 		await expect.element(page.getByRole("navigation")).toBeInTheDocument();
 	});
 
 	it("has aria-label Main navigation on the nav element", async () => {
-		render(MobileBottomNav as never, { props: { pathname: "/home" } });
+		render(MobileBottomNav, { props: { pathname: "/home" } });
 		await expect
 			.element(page.getByRole("navigation"))
 			.toHaveAttribute("aria-label", "Main navigation");
 	});
 
 	it("does not use role=tab on links (ARIA nav pattern, not tablist)", async () => {
-		render(MobileBottomNav as never, { props: { pathname: "/home" } });
+		render(MobileBottomNav, { props: { pathname: "/home" } });
 		const nav = page.getByRole("navigation");
 		const links = nav.getByRole("link");
 		await expect.element(links.nth(0)).not.toHaveAttribute("role");

@@ -1,5 +1,5 @@
 <script lang="ts">
-import { tick } from "svelte";
+import { tick, untrack } from "svelte";
 import augurAvatar from "$lib/assets/augur-chat.webp";
 import {
 	type AugurCitation,
@@ -37,15 +37,15 @@ const {
 }: Props = $props();
 
 // State
-let messages: Message[] = $state(initialMessages);
-let conversationId = $state<string>(initialConversationId);
+let messages: Message[] = $state(untrack(() => [...initialMessages]));
+let conversationId = $state<string>(untrack(() => initialConversationId));
 let inputValue = $state("");
 let isLoading = $state(false);
 let progressStage = $state<string>("");
 let statusText = $state("");
 let isProvisional = $state(false);
-let messagesEndRef: HTMLDivElement;
-let messagesContainer: HTMLDivElement;
+let messagesEndRef = $state<HTMLDivElement | undefined>(undefined);
+let messagesContainer = $state<HTMLDivElement | undefined>(undefined);
 let lastAutoSentQuestion = $state("");
 
 // Auto-scroll: throttled, suppressed when user scrolls up
@@ -62,8 +62,9 @@ function handleScroll() {
 // Auto-scroll to bottom
 const scrollToBottom = async () => {
 	await tick();
-	if (messagesEndRef) {
-		messagesEndRef.scrollIntoView({ behavior: "smooth" });
+	const endRef = messagesEndRef;
+	if (endRef) {
+		endRef.scrollIntoView({ behavior: "smooth" });
 	}
 };
 

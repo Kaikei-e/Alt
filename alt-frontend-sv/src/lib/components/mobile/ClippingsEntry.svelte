@@ -30,7 +30,6 @@ const handleRemove = async () => {
 	class:clipping-entry--unread={!isRead}
 	class:clipping-entry--read={isRead}
 	data-role="clippings-entry"
-	role="article"
 	aria-label="Clipping: {feed.title}"
 >
 	<div class="clipping-content">

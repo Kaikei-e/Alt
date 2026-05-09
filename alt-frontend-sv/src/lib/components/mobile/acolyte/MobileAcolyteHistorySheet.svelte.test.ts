@@ -6,7 +6,7 @@ import { MOCK_VERSIONS } from "./acolyte-fixtures";
 
 describe("MobileAcolyteHistorySheet", () => {
 	it("renders Editions heading when open", async () => {
-		render(MobileAcolyteHistorySheet as never, {
+		render(MobileAcolyteHistorySheet, {
 			props: {
 				open: true,
 				versions: MOCK_VERSIONS,
@@ -18,7 +18,7 @@ describe("MobileAcolyteHistorySheet", () => {
 	});
 
 	it("renders version items with edition number", async () => {
-		render(MobileAcolyteHistorySheet as never, {
+		render(MobileAcolyteHistorySheet, {
 			props: {
 				open: true,
 				versions: MOCK_VERSIONS,
@@ -31,7 +31,7 @@ describe("MobileAcolyteHistorySheet", () => {
 	});
 
 	it("renders change reason", async () => {
-		render(MobileAcolyteHistorySheet as never, {
+		render(MobileAcolyteHistorySheet, {
 			props: {
 				open: true,
 				versions: MOCK_VERSIONS,
@@ -48,7 +48,7 @@ describe("MobileAcolyteHistorySheet", () => {
 	});
 
 	it("renders change tags with field names", async () => {
-		render(MobileAcolyteHistorySheet as never, {
+		render(MobileAcolyteHistorySheet, {
 			props: {
 				open: true,
 				versions: MOCK_VERSIONS,
@@ -61,7 +61,7 @@ describe("MobileAcolyteHistorySheet", () => {
 	});
 
 	it("shows empty state when no versions", async () => {
-		render(MobileAcolyteHistorySheet as never, {
+		render(MobileAcolyteHistorySheet, {
 			props: {
 				open: true,
 				versions: [],

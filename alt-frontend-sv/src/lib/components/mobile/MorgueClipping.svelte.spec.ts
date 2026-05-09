@@ -9,7 +9,7 @@ const feed = { ...renderFeedFixture, isRead: true };
 
 describe("MorgueClipping", () => {
 	it("renders feed title, excerpt, and author", async () => {
-		render(MorgueClipping as never, { props: { feed } });
+		render(MorgueClipping, { props: { feed } });
 
 		await expect
 			.element(page.getByText(renderFeedFixture.title))
@@ -27,7 +27,7 @@ describe("MorgueClipping", () => {
 	});
 
 	it("has data-role morgue-clipping attribute", async () => {
-		render(MorgueClipping as never, { props: { feed } });
+		render(MorgueClipping, { props: { feed } });
 
 		await expect
 			.element(page.getByRole("article"))
@@ -35,7 +35,7 @@ describe("MorgueClipping", () => {
 	});
 
 	it("has a Details button (text, no icon)", async () => {
-		render(MorgueClipping as never, { props: { feed } });
+		render(MorgueClipping, { props: { feed } });
 
 		await expect
 			.element(page.getByRole("button", { name: /details/i }))
@@ -43,7 +43,7 @@ describe("MorgueClipping", () => {
 	});
 
 	it("has an Open link pointing to normalizedUrl with target _blank", async () => {
-		render(MorgueClipping as never, { props: { feed } });
+		render(MorgueClipping, { props: { feed } });
 
 		const openLink = page.getByRole("link", { name: /open/i });
 		await expect.element(openLink).toBeInTheDocument();
@@ -54,7 +54,7 @@ describe("MorgueClipping", () => {
 	});
 
 	it("does not use glassmorphism styling", async () => {
-		render(MorgueClipping as never, { props: { feed } });
+		render(MorgueClipping, { props: { feed } });
 
 		const article = page.getByRole("article");
 		await expect.element(article).toBeInTheDocument();

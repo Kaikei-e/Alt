@@ -151,7 +151,17 @@ export const CONNECT_KNOWLEDGE_LOOP_RESPONSE = {
 				previousEntryKey: "article-fixture-changed-old",
 			},
 			decisionOptions: [],
-			actTargets: [],
+			// Compare CTA (Phase 3 — knowledge-loop-completion-03) requires a
+			// `diff` act-target so buildTransitionMetadata can attach
+			// targetType="diff" to the same-stage compare transition. Without
+			// it the BFF body lands as a stage-only transition and the e2e
+			// assertion (`body.targetType === "diff"`) fails.
+			actTargets: [
+				{
+					targetType: 4, // ACT_TARGET_TYPE_DIFF
+					targetRef: LOOP_FIXTURE_CHANGED_NEW_ENTRY_KEY,
+				},
+			],
 		},
 		// Review plane — peripheral recall candidate.
 		{

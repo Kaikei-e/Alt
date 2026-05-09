@@ -10,7 +10,7 @@ const unreadFeed = { ...renderFeedFixture, isRead: false };
 
 describe("ClippingsEntry", () => {
 	it("renders feed title, excerpt, and author", async () => {
-		render(ClippingsEntry as never, { props: { feed: unreadFeed } });
+		render(ClippingsEntry, { props: { feed: unreadFeed } });
 
 		await expect
 			.element(page.getByText(renderFeedFixture.title))
@@ -28,7 +28,7 @@ describe("ClippingsEntry", () => {
 	});
 
 	it("has data-role clippings-entry attribute", async () => {
-		render(ClippingsEntry as never, { props: { feed: unreadFeed } });
+		render(ClippingsEntry, { props: { feed: unreadFeed } });
 
 		await expect
 			.element(page.getByRole("article"))
@@ -36,19 +36,19 @@ describe("ClippingsEntry", () => {
 	});
 
 	it("shows Read label when feed.isRead is true", async () => {
-		render(ClippingsEntry as never, { props: { feed: readFeed } });
+		render(ClippingsEntry, { props: { feed: readFeed } });
 
 		await expect.element(page.getByText("Read")).toBeInTheDocument();
 	});
 
 	it("does not show Read label when feed.isRead is false", async () => {
-		render(ClippingsEntry as never, { props: { feed: unreadFeed } });
+		render(ClippingsEntry, { props: { feed: unreadFeed } });
 
 		await expect.element(page.getByText("Read")).not.toBeInTheDocument();
 	});
 
 	it("has a Details button", async () => {
-		render(ClippingsEntry as never, { props: { feed: unreadFeed } });
+		render(ClippingsEntry, { props: { feed: unreadFeed } });
 
 		await expect
 			.element(page.getByRole("button", { name: /details/i }))
@@ -56,7 +56,7 @@ describe("ClippingsEntry", () => {
 	});
 
 	it("has an Open link pointing to normalizedUrl", async () => {
-		render(ClippingsEntry as never, { props: { feed: unreadFeed } });
+		render(ClippingsEntry, { props: { feed: unreadFeed } });
 
 		const openLink = page.getByRole("link", { name: /open/i });
 		await expect.element(openLink).toBeInTheDocument();
@@ -68,7 +68,7 @@ describe("ClippingsEntry", () => {
 
 	it("shows Remove button and calls onRemove when clicked", async () => {
 		const onRemove = vi.fn();
-		render(ClippingsEntry as never, {
+		render(ClippingsEntry, {
 			props: { feed: unreadFeed, onRemove },
 		});
 
@@ -80,7 +80,7 @@ describe("ClippingsEntry", () => {
 	});
 
 	it("hides Remove button when onRemove is not provided", async () => {
-		render(ClippingsEntry as never, { props: { feed: unreadFeed } });
+		render(ClippingsEntry, { props: { feed: unreadFeed } });
 
 		await expect
 			.element(page.getByRole("button", { name: /remove/i }))
@@ -88,7 +88,7 @@ describe("ClippingsEntry", () => {
 	});
 
 	it("does not use glassmorphism styling", async () => {
-		render(ClippingsEntry as never, { props: { feed: unreadFeed } });
+		render(ClippingsEntry, { props: { feed: unreadFeed } });
 
 		const article = page.getByRole("article");
 		await expect.element(article).toBeInTheDocument();

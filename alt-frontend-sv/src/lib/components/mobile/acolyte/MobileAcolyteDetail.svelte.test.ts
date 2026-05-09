@@ -13,12 +13,21 @@ describe("MobileAcolyteDetail", () => {
 		loading: false,
 		error: null,
 		generating: false,
+		pendingUpdate: false,
+		runStatus: null,
+		confirmingDelete: false,
+		deleting: false,
 		onGenerate: vi.fn(),
 		onRerun: vi.fn(),
+		onRefresh: vi.fn(),
+		onDismissUpdate: vi.fn(),
+		onRequestDelete: vi.fn(),
+		onConfirmDelete: vi.fn(),
+		onCancelDelete: vi.fn(),
 	};
 
 	it("renders report title", async () => {
-		render(MobileAcolyteDetail as never, { props: baseProps });
+		render(MobileAcolyteDetail, { props: baseProps });
 
 		await expect
 			.element(page.getByText("AI Semiconductor Supply Chain Analysis"))
@@ -26,7 +35,7 @@ describe("MobileAcolyteDetail", () => {
 	});
 
 	it("renders report type and date", async () => {
-		render(MobileAcolyteDetail as never, { props: baseProps });
+		render(MobileAcolyteDetail, { props: baseProps });
 
 		await expect
 			.element(page.getByText(/weekly briefing/i))
@@ -34,27 +43,27 @@ describe("MobileAcolyteDetail", () => {
 	});
 
 	it("renders edition badge", async () => {
-		render(MobileAcolyteDetail as never, { props: baseProps });
+		render(MobileAcolyteDetail, { props: baseProps });
 
 		await expect.element(page.getByText("Edition 2")).toBeInTheDocument();
 	});
 
 	it("renders back link to /acolyte", async () => {
-		render(MobileAcolyteDetail as never, { props: baseProps });
+		render(MobileAcolyteDetail, { props: baseProps });
 
 		const link = page.getByRole("link", { name: /all reports/i });
 		await expect.element(link).toHaveAttribute("href", "/acolyte");
 	});
 
 	it("renders section tabs", async () => {
-		render(MobileAcolyteDetail as never, { props: baseProps });
+		render(MobileAcolyteDetail, { props: baseProps });
 
 		await expect.element(page.getByText("overview")).toBeInTheDocument();
 		await expect.element(page.getByText("market trends")).toBeInTheDocument();
 	});
 
 	it("renders Generate button", async () => {
-		render(MobileAcolyteDetail as never, { props: baseProps });
+		render(MobileAcolyteDetail, { props: baseProps });
 
 		await expect
 			.element(page.getByRole("button", { name: /generate/i }))
@@ -62,7 +71,7 @@ describe("MobileAcolyteDetail", () => {
 	});
 
 	it("renders History button", async () => {
-		render(MobileAcolyteDetail as never, { props: baseProps });
+		render(MobileAcolyteDetail, { props: baseProps });
 
 		await expect
 			.element(page.getByRole("button", { name: /history/i }))
@@ -70,7 +79,7 @@ describe("MobileAcolyteDetail", () => {
 	});
 
 	it("shows loading state", async () => {
-		render(MobileAcolyteDetail as never, {
+		render(MobileAcolyteDetail, {
 			props: { ...baseProps, report: null, loading: true },
 		});
 
@@ -80,7 +89,7 @@ describe("MobileAcolyteDetail", () => {
 	});
 
 	it("shows error state", async () => {
-		render(MobileAcolyteDetail as never, {
+		render(MobileAcolyteDetail, {
 			props: { ...baseProps, report: null, error: "Not found" },
 		});
 
@@ -88,7 +97,7 @@ describe("MobileAcolyteDetail", () => {
 	});
 
 	it("shows empty body when no sections", async () => {
-		render(MobileAcolyteDetail as never, {
+		render(MobileAcolyteDetail, {
 			props: { ...baseProps, sections: [] },
 		});
 
@@ -96,7 +105,7 @@ describe("MobileAcolyteDetail", () => {
 	});
 
 	it("renders Rerun button for active section", async () => {
-		render(MobileAcolyteDetail as never, { props: baseProps });
+		render(MobileAcolyteDetail, { props: baseProps });
 
 		await expect
 			.element(page.getByRole("button", { name: /rerun/i }))
@@ -104,7 +113,7 @@ describe("MobileAcolyteDetail", () => {
 	});
 
 	it("Generate button is disabled when generating is true", async () => {
-		render(MobileAcolyteDetail as never, {
+		render(MobileAcolyteDetail, {
 			props: { ...baseProps, generating: true },
 		});
 
@@ -113,7 +122,7 @@ describe("MobileAcolyteDetail", () => {
 	});
 
 	it("Generate button is enabled when generating is false", async () => {
-		render(MobileAcolyteDetail as never, {
+		render(MobileAcolyteDetail, {
 			props: { ...baseProps, generating: false },
 		});
 
@@ -122,7 +131,7 @@ describe("MobileAcolyteDetail", () => {
 	});
 
 	it("Generate button shows 'Generating…' text when generating", async () => {
-		render(MobileAcolyteDetail as never, {
+		render(MobileAcolyteDetail, {
 			props: { ...baseProps, generating: true },
 		});
 
@@ -151,7 +160,7 @@ describe("MobileAcolyteDetail", () => {
 		];
 
 		it("wraps long UUID source ids instead of overflowing horizontally", async () => {
-			render(MobileAcolyteDetail as never, {
+			render(MobileAcolyteDetail, {
 				props: { ...baseProps, sections: LONG_CITATION_SECTIONS },
 			});
 
@@ -169,7 +178,7 @@ describe("MobileAcolyteDetail", () => {
 		});
 
 		it("wraps long quote strings that contain raw URLs without breaks", async () => {
-			render(MobileAcolyteDetail as never, {
+			render(MobileAcolyteDetail, {
 				props: { ...baseProps, sections: LONG_CITATION_SECTIONS },
 			});
 
@@ -185,7 +194,7 @@ describe("MobileAcolyteDetail", () => {
 		});
 
 		it("constrains each source list item to the viewport width", async () => {
-			render(MobileAcolyteDetail as never, {
+			render(MobileAcolyteDetail, {
 				props: { ...baseProps, sections: LONG_CITATION_SECTIONS },
 			});
 

@@ -23,7 +23,7 @@ describe("SearchResultItem Alt-Paper compliance", () => {
 	});
 
 	it("renders with data-role attribute", async () => {
-		render(SearchResultItem as never, {
+		render(SearchResultItem, {
 			props: { result: searchResultFixture },
 		});
 
@@ -32,7 +32,7 @@ describe("SearchResultItem Alt-Paper compliance", () => {
 	});
 
 	it("renders title as a link with serif styling", async () => {
-		render(SearchResultItem as never, {
+		render(SearchResultItem, {
 			props: { result: searchResultFixture },
 		});
 
@@ -43,7 +43,7 @@ describe("SearchResultItem Alt-Paper compliance", () => {
 	});
 
 	it("renders dateline with author and date", async () => {
-		render(SearchResultItem as never, {
+		render(SearchResultItem, {
 			props: { result: searchResultFixture },
 		});
 
@@ -51,7 +51,7 @@ describe("SearchResultItem Alt-Paper compliance", () => {
 	});
 
 	it("renders description excerpt", async () => {
-		render(SearchResultItem as never, {
+		render(SearchResultItem, {
 			props: { result: searchResultFixture },
 		});
 
@@ -61,7 +61,7 @@ describe("SearchResultItem Alt-Paper compliance", () => {
 	});
 
 	it("does not render description when empty", async () => {
-		render(SearchResultItem as never, {
+		render(SearchResultItem, {
 			props: { result: searchResultNoDescFixture },
 		});
 
@@ -70,7 +70,7 @@ describe("SearchResultItem Alt-Paper compliance", () => {
 	});
 
 	it("has toggle summary button with uppercase text", async () => {
-		render(SearchResultItem as never, {
+		render(SearchResultItem, {
 			props: { result: searchResultFixture },
 		});
 
@@ -79,7 +79,7 @@ describe("SearchResultItem Alt-Paper compliance", () => {
 	});
 
 	it("does not contain Lucide SVG icons", async () => {
-		render(SearchResultItem as never, {
+		render(SearchResultItem, {
 			props: { result: searchResultFixture },
 		});
 
@@ -89,7 +89,7 @@ describe("SearchResultItem Alt-Paper compliance", () => {
 	});
 
 	it("does not contain emoji characters", async () => {
-		render(SearchResultItem as never, {
+		render(SearchResultItem, {
 			props: { result: searchResultFixture },
 		});
 

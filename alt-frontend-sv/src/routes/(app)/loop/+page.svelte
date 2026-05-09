@@ -547,8 +547,12 @@ function onChangedCompare(entry: KnowledgeLoopEntryData) {
 	};
 	const metadata = buildTransitionMetadata(entry, synthetic);
 	const from = effectiveEntryStage(entry);
-	if (!loop.canTransition(from, from)) return;
-	void loop.transitionTo(entry.entryKey, from, "user_tap", metadata);
+	// Compare is an intent-driven same-stage signal (no OODA advance). The
+	// canTransition matrix forbids fromStage === toStage by design, so opt
+	// into `allowSameStage` to let the metadata-bearing POST land.
+	void loop.transitionTo(entry.entryKey, from, "user_tap", metadata, {
+		allowSameStage: true,
+	});
 }
 function onReviewOpen(entry: KnowledgeLoopEntryData) {
 	onEntryOpen(entry);
@@ -972,11 +976,25 @@ function onReviewAction(
 		 * `.loop-plane-root` in loop-depth.css). Without preserve-3d here, each
 		 * tile renders flat and the Z-recede flattens into a 2D fade. */
 		transform-style: preserve-3d;
+		/* The wrapper and each row sit at z=0 while their child `.entry`
+		 * article is pushed back by `translateZ(-12..-36px)` per OODA stage.
+		 * In 3D hit-testing the wrapper-at-z=0 wins over the article-at-z=-12
+		 * for every screen pixel they share, so inner CTAs
+		 * (Revisit/Ask/Snooze/Dismiss) become unclickable in real (not
+		 * dispatchEvent) clicks — Playwright sees `.foreground-tiles` /
+		 * `.foreground-row` as the topmost hit. The wrapper and row have no
+		 * pointer affordances, so opt out at both levels and re-enable on the
+		 * `.entry` article so the article + inner buttons receive events. */
+		pointer-events: none;
 	}
 	.foreground-row {
 		/* Each row participates in the parent's perspective — keep flat at rest;
 		 * `out:loopRecede` adds translateZ during exit only. */
 		transform-style: preserve-3d;
+		pointer-events: none;
+	}
+	.foreground-tiles :global(.entry) {
+		pointer-events: auto;
 	}
 
 	.plane-empty {

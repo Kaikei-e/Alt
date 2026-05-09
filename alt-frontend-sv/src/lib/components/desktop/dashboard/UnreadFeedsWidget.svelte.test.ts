@@ -6,7 +6,7 @@ import { MOCK_FEEDS } from "./dashboard-fixtures";
 
 describe("UnreadFeedsWidget", () => {
 	it("renders LATEST DISPATCHES heading", async () => {
-		render(UnreadFeedsWidget as never, {
+		render(UnreadFeedsWidget, {
 			props: { feeds: MOCK_FEEDS, isLoading: false, error: null },
 		});
 
@@ -16,7 +16,7 @@ describe("UnreadFeedsWidget", () => {
 	});
 
 	it("renders feed titles when loaded", async () => {
-		render(UnreadFeedsWidget as never, {
+		render(UnreadFeedsWidget, {
 			props: { feeds: MOCK_FEEDS, isLoading: false, error: null },
 		});
 
@@ -31,7 +31,7 @@ describe("UnreadFeedsWidget", () => {
 	});
 
 	it("renders feed excerpts", async () => {
-		render(UnreadFeedsWidget as never, {
+		render(UnreadFeedsWidget, {
 			props: { feeds: MOCK_FEEDS, isLoading: false, error: null },
 		});
 
@@ -43,7 +43,7 @@ describe("UnreadFeedsWidget", () => {
 	});
 
 	it("shows loading state with pulsing dot text", async () => {
-		render(UnreadFeedsWidget as never, {
+		render(UnreadFeedsWidget, {
 			props: { feeds: [], isLoading: true, error: null },
 		});
 
@@ -53,7 +53,7 @@ describe("UnreadFeedsWidget", () => {
 	});
 
 	it("shows empty state", async () => {
-		render(UnreadFeedsWidget as never, {
+		render(UnreadFeedsWidget, {
 			props: { feeds: [], isLoading: false, error: null },
 		});
 
@@ -61,7 +61,7 @@ describe("UnreadFeedsWidget", () => {
 	});
 
 	it("shows error state", async () => {
-		render(UnreadFeedsWidget as never, {
+		render(UnreadFeedsWidget, {
 			props: {
 				feeds: [],
 				isLoading: false,
@@ -73,7 +73,7 @@ describe("UnreadFeedsWidget", () => {
 	});
 
 	it("renders View All link", async () => {
-		render(UnreadFeedsWidget as never, {
+		render(UnreadFeedsWidget, {
 			props: { feeds: MOCK_FEEDS, isLoading: false, error: null },
 		});
 
