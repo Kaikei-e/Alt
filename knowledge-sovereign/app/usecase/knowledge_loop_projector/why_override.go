@@ -16,20 +16,20 @@ import (
 // Priority order (canonical contract §11, WhyMappingVersion v9):
 //
 //  1. version_drift > 0       → keep enricher's WHY_KIND_CHANGE narrative
-//                               (the supersede signal is the strongest
-//                               "what changed" hint and must not be
-//                               downgraded by overlap signals).
+//     (the supersede signal is the strongest
+//     "what changed" hint and must not be
+//     downgraded by overlap signals).
 //  2. has_augur_link          → WHY_KIND_UNFINISHED_CONTINUE — the user has
-//                               an open conversation thread; the entry
-//                               should pick that thread back up.
+//     an open conversation thread; the entry
+//     should pick that thread back up.
 //  3. topic_overlap_count > 0 → WHY_KIND_TOPIC_AFFINITY (recap-cluster
-//                               connection beats single-open recall).
+//     connection beats single-open recall).
 //  4. tag_overlap_count > 0   → WHY_KIND_TAG_TRENDING.
 //  5. has_open_interaction    → keep enricher's WHY_KIND_RECALL — RECALL
-//                               is now an evidence-of-last-resort kind:
-//                               a single open is a weaker connection than
-//                               an active topic / tag cluster the user is
-//                               currently following.
+//     is now an evidence-of-last-resort kind:
+//     a single open is a weaker connection than
+//     an active topic / tag cluster the user is
+//     currently following.
 //  6. otherwise               → return enricher output unchanged.
 //
 // v9 change vs v8: RECALL was previously checked before topic / tag overlap.

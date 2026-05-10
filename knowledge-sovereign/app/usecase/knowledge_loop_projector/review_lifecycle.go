@@ -76,4 +76,3 @@ func triggerFromReviewedPayload(payload json.RawMessage) string {
 	t, _ := m["trigger"].(string)
 	return t
 }
-

@@ -14,8 +14,8 @@ import (
 func actedEvent(t *testing.T, intent string, occurredAt time.Time, seq int64) sovereign_db.KnowledgeEvent {
 	t.Helper()
 	payload, err := json.Marshal(map[string]any{
-		"entry_key":    "loop-entry-fixture",
-		"acted_intent": intent,
+		"entry_key":     "loop-entry-fixture",
+		"acted_intent":  intent,
 		"continue_flag": true,
 	})
 	require.NoError(t, err)

@@ -20,19 +20,19 @@ import (
 // layer's own tests. Here we verify the projector emits the same upsert payload
 // for the same event on replay — the core reproject-safety invariant.
 type fakeRepo struct {
-	checkpoint              int64
-	events                  []sovereign_db.KnowledgeEvent
-	entries                 []*sovereignv1.KnowledgeLoopEntry
-	sessions                []*sovereignv1.KnowledgeLoopSessionState
-	entrySessions           []entrySessionCall
-	surfaces                []*sovereignv1.KnowledgeLoopSurface
-	patches                 []patchCall
-	dismissPatches          []dismissPatchCall
-	reviewLifecyclePatches  []reviewLifecyclePatchCall
-	surfacePatches          []surfacePlanPatchCall
-	actTargetURLPatches     []actTargetURLPatchCall
-	continueContextPatches  []continueContextPatchCall
-	checkpoints             []int64
+	checkpoint             int64
+	events                 []sovereign_db.KnowledgeEvent
+	entries                []*sovereignv1.KnowledgeLoopEntry
+	sessions               []*sovereignv1.KnowledgeLoopSessionState
+	entrySessions          []entrySessionCall
+	surfaces               []*sovereignv1.KnowledgeLoopSurface
+	patches                []patchCall
+	dismissPatches         []dismissPatchCall
+	reviewLifecyclePatches []reviewLifecyclePatchCall
+	surfacePatches         []surfacePlanPatchCall
+	actTargetURLPatches    []actTargetURLPatchCall
+	continueContextPatches []continueContextPatchCall
+	checkpoints            []int64
 }
 
 // continueContextPatchCall records arguments to PatchKnowledgeLoopEntryContinueContext.
@@ -766,9 +766,10 @@ func TestRunBatch_KnowledgeLoopDeferred_FlipsDismissState(t *testing.T) {
 // TestRunBatch_KnowledgeLoopActed_PatchesContinueContextSemantically pins the
 // Phase 2 semantic feedback loop. When the Acted event payload carries an
 // `acted_intent`, the projector must:
-//   1. List recent acted events ≤ this event's seq (event-log derived only).
-//   2. Build a bounded `recent_action_labels` list via continue_context_builder.
-//   3. Patch continue_context onto the entry — never the full upsert path.
+//  1. List recent acted events ≤ this event's seq (event-log derived only).
+//  2. Build a bounded `recent_action_labels` list via continue_context_builder.
+//  3. Patch continue_context onto the entry — never the full upsert path.
+//
 // The test also asserts reproject-safety: the projector reads the event log
 // for derivation, not the existing projection row.
 func TestRunBatch_KnowledgeLoopActed_PatchesContinueContextSemantically(t *testing.T) {
