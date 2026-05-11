@@ -308,8 +308,13 @@ impl Scheduler {
     }
 
     pub(crate) async fn run_morning_update(&self, context: JobContext) -> Result<()> {
-        tracing::info!("running morning update job");
-        self.morning_pipeline.execute_update(&context).await
+        tracing::info!(job_id = %context.job_id, "running morning update job");
+        // `execute_update`'s fetch stage creates the `recap_jobs` row with the
+        // schema default `status='pending'`. Unlike the batch pipeline, the
+        // morning pipeline never advances that row — so close it out here, or it
+        // leaks one orphaned `pending` row every 30-min tick.
+        let outcome = self.morning_pipeline.execute_update(&context).await;
+        finalize_morning_job(self.recap_dao.as_ref(), context.job_id, outcome).await
     }
 
     pub(crate) async fn find_resumable_job(
@@ -409,6 +414,44 @@ impl Scheduler {
     }
 }
 
+/// Seal the `recap_jobs` row a morning-update tick created, mirroring how
+/// [`Scheduler::run_job`] seals batch jobs: success → [`JobStatus::MorningCompleted`],
+/// failure → [`JobStatus::Failed`] (with the error chain as the reason). A DAO
+/// write failure here is logged but never masks the pipeline's own result.
+async fn finalize_morning_job(
+    recap_dao: &dyn RecapDao,
+    job_id: Uuid,
+    outcome: Result<()>,
+) -> Result<()> {
+    match outcome {
+        Ok(()) => {
+            if let Err(dao_err) = recap_dao
+                .update_job_status_with_history(
+                    job_id,
+                    JobStatus::MorningCompleted,
+                    Some("persist"),
+                    None,
+                )
+                .await
+            {
+                tracing::error!(%job_id, error = %dao_err, "failed to mark morning update job completed");
+            }
+            Ok(())
+        }
+        Err(e) => {
+            let reason = format!("{:#}", e);
+            tracing::error!(%job_id, error = %reason, "morning update job execution failed");
+            if let Err(dao_err) = recap_dao
+                .update_job_status_with_history(job_id, JobStatus::Failed, None, Some(&reason))
+                .await
+            {
+                tracing::error!(%job_id, error = %dao_err, "failed to mark morning update job failed");
+            }
+            Err(e)
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -457,6 +500,68 @@ mod tests {
         let ctx = JobContext::new_morning_update(Uuid::new_v4()).with_stage("dedup".into());
         assert_eq!(ctx.trigger_source(), "morning");
         assert_eq!(ctx.current_stage.as_deref(), Some("dedup"));
+    }
+
+    /// `JobStatus::MorningCompleted` must round-trip through the textual form
+    /// stored in `recap_jobs.status` (and accepted by the history CHECK
+    /// constraint added alongside this status).
+    #[test]
+    fn job_status_morning_completed_round_trips_via_db_string() {
+        assert_eq!(JobStatus::MorningCompleted.as_ref(), "morning_completed");
+        assert_eq!(
+            JobStatus::from_db_str("morning_completed"),
+            JobStatus::MorningCompleted
+        );
+        assert!(JobStatus::MorningCompleted.is_terminal());
+        // Unknown / future values still degrade to Failed, as before.
+        assert_eq!(JobStatus::from_db_str("???"), JobStatus::Failed);
+    }
+
+    /// A morning-update tick that finishes cleanly must seal its `recap_jobs`
+    /// row as `morning_completed` — otherwise the row stays at the schema
+    /// default `pending` forever and a fresh one leaks every 30 minutes.
+    #[tokio::test]
+    async fn finalize_morning_job_seals_completed_on_success() {
+        use crate::store::dao::mock::MockRecapDao;
+
+        let dao = MockRecapDao::new();
+        let job_id = Uuid::new_v4();
+
+        finalize_morning_job(&dao, job_id, Ok(())).await.unwrap();
+
+        let transitions = dao.status_transitions();
+        assert_eq!(transitions.len(), 1, "exactly one terminal transition");
+        assert_eq!(transitions[0].job_id, job_id);
+        assert_eq!(transitions[0].status, JobStatus::MorningCompleted);
+        assert_eq!(transitions[0].last_stage.as_deref(), Some("persist"));
+        assert!(transitions[0].reason.is_none());
+    }
+
+    /// A failed morning-update tick seals the row as `failed` with the error
+    /// chain as the reason, and the original error still propagates so the
+    /// daemon logs it.
+    #[tokio::test]
+    async fn finalize_morning_job_seals_failed_and_propagates_error() {
+        use crate::store::dao::mock::MockRecapDao;
+
+        let dao = MockRecapDao::new();
+        let job_id = Uuid::new_v4();
+        let err = anyhow!("news-creator unreachable");
+
+        let result = finalize_morning_job(&dao, job_id, Err(err)).await;
+        assert!(result.is_err(), "pipeline error must propagate");
+        assert!(
+            format!("{:#}", result.unwrap_err()).contains("news-creator unreachable"),
+            "original error chain preserved"
+        );
+
+        let transitions = dao.status_transitions();
+        assert_eq!(transitions.len(), 1);
+        assert_eq!(transitions[0].status, JobStatus::Failed);
+        assert_eq!(
+            transitions[0].reason.as_deref(),
+            Some("news-creator unreachable")
+        );
     }
 
     /// Test: Job should be marked as Failed when genres_stored=0 but genres_failed>0

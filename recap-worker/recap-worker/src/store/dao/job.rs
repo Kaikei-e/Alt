@@ -145,12 +145,7 @@ impl RecapDao {
             let window_days: Option<i32> = row.try_get("window_days")?;
             let window_days = window_days.unwrap_or(7).cast_unsigned();
 
-            let status = match status_str.as_str() {
-                "pending" => JobStatus::Pending,
-                "running" => JobStatus::Running,
-                "completed" => JobStatus::Completed,
-                _ => JobStatus::Failed, // Default fallback
-            };
+            let status = JobStatus::from_db_str(&status_str);
 
             Ok(Some((job_id, status, last_stage, window_days)))
         } else {
@@ -435,12 +430,7 @@ impl RecapDao {
             let status_str: String = row.try_get("status")?;
             let actor_str: String = row.try_get("actor")?;
 
-            let status = match status_str.as_str() {
-                "pending" => JobStatus::Pending,
-                "running" => JobStatus::Running,
-                "completed" => JobStatus::Completed,
-                _ => JobStatus::Failed,
-            };
+            let status = JobStatus::from_db_str(&status_str);
 
             history.push(JobStatusTransition {
                 id: row.try_get("id")?,

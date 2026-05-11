@@ -291,12 +291,7 @@ fn parse_extended_job_row(row: &sqlx::postgres::PgRow) -> Result<ExtendedRecapJo
     let trigger_source_str: String = row.try_get("trigger_source")?;
     let note: Option<String> = row.try_get("note")?;
 
-    let status = match status_str.as_str() {
-        "pending" => JobStatus::Pending,
-        "running" => JobStatus::Running,
-        "completed" => JobStatus::Completed,
-        _ => JobStatus::Failed,
-    };
+    let status = JobStatus::from_db_str(&status_str);
 
     let trigger_source = match trigger_source_str.as_str() {
         "user" => TriggerSource::User,

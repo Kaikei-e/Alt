@@ -10,7 +10,7 @@ use crate::pipeline::dedup::{DedupStage, HashDedupStage};
 use crate::pipeline::fetch::{AltBackendFetchStage, FetchStage};
 use crate::pipeline::preprocess::{PreprocessStage, TextPreprocessStage};
 use crate::scheduler::JobContext;
-use crate::store::dao::RecapDao;
+use crate::store::dao::{JobStatus, RecapDao};
 use crate::store::models::{GenreWithSummary, MorningLetter, MorningLetterSource};
 use crate::util::retry::RetryConfig;
 use anyhow::Result;
@@ -126,6 +126,22 @@ impl MorningPipeline {
         tracing::info!(job_id = %job.job_id, "starting morning update pipeline");
 
         let fetched = self.fetch.fetch(job).await?;
+        // `fetch` just created the `recap_jobs` row (schema default
+        // `status='pending'`). Advance it so the dashboard shows the tick in
+        // flight; `Scheduler::run_morning_update` seals it to
+        // `morning_completed` / `failed` once `execute_update` returns.
+        if let Err(e) = self
+            .recap_dao
+            .update_job_status_with_history(
+                job.job_id,
+                JobStatus::Running,
+                Some("morning_fetch"),
+                None,
+            )
+            .await
+        {
+            tracing::warn!(job_id = %job.job_id, error = %e, "failed to mark morning update job running");
+        }
         let preprocessed = self.preprocess.preprocess(job, fetched).await?;
         let deduplicated = self.dedup.deduplicate(job, preprocessed).await?;
 

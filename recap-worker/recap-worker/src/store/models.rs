@@ -760,7 +760,7 @@ pub struct ExtendedRecapJob {
 
 impl ExtendedRecapJob {
     pub fn duration_secs(&self) -> Option<i64> {
-        if self.status == JobStatus::Completed || self.status == JobStatus::Failed {
+        if self.status.is_terminal() {
             Some((self.updated_at - self.kicked_at).num_seconds())
         } else {
             None

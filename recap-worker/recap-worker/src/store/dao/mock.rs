@@ -35,6 +35,18 @@ pub(crate) struct RecordedFailedTask {
 }
 
 #[cfg(test)]
+/// `update_job_status` / `update_job_status_with_history` 呼び出しを記録する
+/// ためのスナップショット。
+#[allow(dead_code)]
+#[derive(Debug, Clone)]
+pub(crate) struct RecordedStatusTransition {
+    pub(crate) job_id: Uuid,
+    pub(crate) status: JobStatus,
+    pub(crate) last_stage: Option<String>,
+    pub(crate) reason: Option<String>,
+}
+
+#[cfg(test)]
 /// `get_article_metadata` 用のテスト fixture: `article_id -> (published_at, source_url)`。
 type ArticleMetadataMap =
     std::collections::HashMap<String, (Option<chrono::DateTime<chrono::Utc>>, Option<String>)>;
@@ -53,6 +65,8 @@ type SentenceIdsByRun = std::collections::HashMap<i64, SentenceIdsByArticle>;
 #[derive(Clone, Default)]
 pub(crate) struct MockRecapDao {
     failed_tasks: Arc<Mutex<Vec<RecordedFailedTask>>>,
+    /// `update_job_status` / `update_job_status_with_history` 呼び出しの記録。
+    status_transitions: Arc<Mutex<Vec<RecordedStatusTransition>>>,
     /// `upsert_recap_output` 呼び出しを記録するためのスナップショット。
     outputs: Arc<Mutex<Vec<crate::store::models::RecapOutput>>>,
     /// `get_article_metadata` の応答。
@@ -74,6 +88,15 @@ impl MockRecapDao {
         self.failed_tasks
             .lock()
             .expect("failed_tasks mutex poisoned")
+            .clone()
+    }
+
+    /// 記録された status 遷移呼び出しのスナップショットを取得する。
+    #[allow(dead_code)]
+    pub(crate) fn status_transitions(&self) -> Vec<RecordedStatusTransition> {
+        self.status_transitions
+            .lock()
+            .expect("status_transitions mutex poisoned")
             .clone()
     }
 
@@ -149,10 +172,19 @@ impl RecapDao for MockRecapDao {
 
     async fn update_job_status(
         &self,
-        _job_id: Uuid,
-        _status: JobStatus,
-        _last_stage: Option<&str>,
+        job_id: Uuid,
+        status: JobStatus,
+        last_stage: Option<&str>,
     ) -> Result<()> {
+        self.status_transitions
+            .lock()
+            .expect("status_transitions mutex poisoned")
+            .push(RecordedStatusTransition {
+                job_id,
+                status,
+                last_stage: last_stage.map(str::to_owned),
+                reason: None,
+            });
         Ok(())
     }
 
@@ -189,11 +221,20 @@ impl RecapDao for MockRecapDao {
 
     async fn update_job_status_with_history(
         &self,
-        _job_id: Uuid,
-        _status: JobStatus,
-        _last_stage: Option<&str>,
-        _reason: Option<&str>,
+        job_id: Uuid,
+        status: JobStatus,
+        last_stage: Option<&str>,
+        reason: Option<&str>,
     ) -> Result<()> {
+        self.status_transitions
+            .lock()
+            .expect("status_transitions mutex poisoned")
+            .push(RecordedStatusTransition {
+                job_id,
+                status,
+                last_stage: last_stage.map(str::to_owned),
+                reason: reason.map(str::to_owned),
+            });
         Ok(())
     }
 

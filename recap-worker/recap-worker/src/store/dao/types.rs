@@ -11,6 +11,38 @@ pub enum JobStatus {
     Running,
     Completed,
     Failed,
+    /// Terminal status for morning-update jobs. The morning pipeline runs every
+    /// ~30 min and shares the `recap_jobs` row machinery (advisory lock + raw
+    /// article backup FK) with the batch pipeline, but it is not the same kind
+    /// of job — keeping it distinct from `Completed` lets the dashboard tell the
+    /// 30-min editorial ticks apart from real recap jobs.
+    #[sqlx(rename = "morning_completed")]
+    #[serde(rename = "morning_completed")]
+    MorningCompleted,
+}
+
+impl JobStatus {
+    /// `true` when the job has reached a terminal state and `updated_at` is the
+    /// finish time.
+    pub fn is_terminal(&self) -> bool {
+        matches!(
+            self,
+            JobStatus::Completed | JobStatus::Failed | JobStatus::MorningCompleted
+        )
+    }
+
+    /// Parse the textual representation stored in `recap_jobs.status` /
+    /// `recap_job_status_history.status`. Unknown values fall back to `Failed`
+    /// (mirrors the existing inline matches across the DAO layer).
+    pub fn from_db_str(s: &str) -> Self {
+        match s {
+            "pending" => JobStatus::Pending,
+            "running" => JobStatus::Running,
+            "completed" => JobStatus::Completed,
+            "morning_completed" => JobStatus::MorningCompleted,
+            _ => JobStatus::Failed,
+        }
+    }
 }
 
 impl AsRef<str> for JobStatus {
@@ -20,6 +52,7 @@ impl AsRef<str> for JobStatus {
             JobStatus::Running => "running",
             JobStatus::Completed => "completed",
             JobStatus::Failed => "failed",
+            JobStatus::MorningCompleted => "morning_completed",
         }
     }
 }
