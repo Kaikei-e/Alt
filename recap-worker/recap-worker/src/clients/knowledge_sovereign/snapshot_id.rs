@@ -22,11 +22,9 @@ use uuid::Uuid;
 /// the next retry's snapshot id differ from the first attempt, breaking
 /// idempotency for every in-flight retry. Generated once with
 /// `Uuid::new_v4()` and frozen here.
-const RECAP_TOPIC_SNAPSHOTTED_NAMESPACE: Uuid =
-    Uuid::from_bytes([
-        0x18, 0xc0, 0x67, 0x40, 0xa8, 0x46, 0x4b, 0x6e,
-        0x9d, 0x4a, 0x16, 0x6e, 0x7a, 0x32, 0xc1, 0x9f,
-    ]);
+const RECAP_TOPIC_SNAPSHOTTED_NAMESPACE: Uuid = Uuid::from_bytes([
+    0x18, 0xc0, 0x67, 0x40, 0xa8, 0x46, 0x4b, 0x6e, 0x9d, 0x4a, 0x16, 0x6e, 0x7a, 0x32, 0xc1, 0x9f,
+]);
 
 /// Compute a stable UUIDv5 from `(user_id, cluster_id, window_start,
 /// window_end)`. Same inputs → same output, retry-safe.
@@ -74,7 +72,10 @@ mod tests {
         let (start, end) = fixture_window();
         let a = deterministic_snapshot_id(fixture_user(), 7, start, end);
         let b = deterministic_snapshot_id(fixture_user(), 7, start, end);
-        assert_eq!(a, b, "deterministic_snapshot_id must be stable for same inputs");
+        assert_eq!(
+            a, b,
+            "deterministic_snapshot_id must be stable for same inputs"
+        );
     }
 
     /// Different cluster_id → different UUID. Guards against accidentally

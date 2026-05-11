@@ -154,7 +154,9 @@ mod tests {
     async fn publishes_one_event_per_non_empty_cluster() {
         let server = MockServer::start().await;
         Mock::given(method("POST"))
-            .and(path("/services.sovereign.v1.KnowledgeSovereignService/AppendKnowledgeEvent"))
+            .and(path(
+                "/services.sovereign.v1.KnowledgeSovereignService/AppendKnowledgeEvent",
+            ))
             .respond_with(
                 ResponseTemplate::new(200)
                     .insert_header("Content-Type", "application/json")
@@ -241,7 +243,9 @@ mod tests {
         // Every POST returns 500. The helper must still attempt every cluster
         // (warn-and-continue): a single emit failure must not abort the rest.
         Mock::given(method("POST"))
-            .and(path("/services.sovereign.v1.KnowledgeSovereignService/AppendKnowledgeEvent"))
+            .and(path(
+                "/services.sovereign.v1.KnowledgeSovereignService/AppendKnowledgeEvent",
+            ))
             .respond_with(ResponseTemplate::new(500).set_body_string("internal error"))
             .expect(2)
             .mount(&server)
@@ -336,7 +340,9 @@ mod tests {
     async fn retry_yields_same_snapshot_id() {
         let server = MockServer::start().await;
         Mock::given(method("POST"))
-            .and(path("/services.sovereign.v1.KnowledgeSovereignService/AppendKnowledgeEvent"))
+            .and(path(
+                "/services.sovereign.v1.KnowledgeSovereignService/AppendKnowledgeEvent",
+            ))
             .respond_with(
                 ResponseTemplate::new(200)
                     .insert_header("Content-Type", "application/json")
