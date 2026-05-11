@@ -2,8 +2,9 @@ import { describe, expect, it } from "vitest";
 import { statusToInk, statusToGlyph, statusToLabel } from "./jobStatusInk";
 
 describe("statusToInk", () => {
-	it("maps completed/succeeded to success ink", () => {
+	it("maps completed/morning_completed/succeeded to success ink", () => {
 		expect(statusToInk("completed")).toBe("success");
+		expect(statusToInk("morning_completed")).toBe("success");
 		expect(statusToInk("succeeded")).toBe("success");
 	});
 
@@ -21,8 +22,9 @@ describe("statusToInk", () => {
 });
 
 describe("statusToGlyph", () => {
-	it("returns ✓ for completed/succeeded", () => {
+	it("returns ✓ for completed/morning_completed/succeeded", () => {
 		expect(statusToGlyph("completed")).toBe("✓");
+		expect(statusToGlyph("morning_completed")).toBe("✓");
 		expect(statusToGlyph("succeeded")).toBe("✓");
 	});
 
@@ -42,6 +44,7 @@ describe("statusToGlyph", () => {
 describe("statusToLabel", () => {
 	it("returns visually-hidden labels in plain functional words", () => {
 		expect(statusToLabel("completed")).toBe("Completed");
+		expect(statusToLabel("morning_completed")).toBe("Morning Update");
 		expect(statusToLabel("succeeded")).toBe("Succeeded");
 		expect(statusToLabel("running")).toBe("Running");
 		expect(statusToLabel("pending")).toBe("Pending");

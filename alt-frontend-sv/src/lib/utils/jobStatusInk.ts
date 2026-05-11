@@ -8,6 +8,7 @@ export type StatusInput = JobStatus | GenreStatusType;
 export function statusToInk(status: StatusInput): StatusInk {
 	switch (status) {
 		case "completed":
+		case "morning_completed":
 		case "succeeded":
 			return "success";
 		case "failed":
@@ -22,6 +23,7 @@ export function statusToInk(status: StatusInput): StatusInk {
 export function statusToGlyph(status: StatusInput): StatusGlyph {
 	switch (status) {
 		case "completed":
+		case "morning_completed":
 		case "succeeded":
 			return "✓";
 		case "failed":
@@ -37,6 +39,8 @@ export function statusToLabel(status: StatusInput): string {
 	switch (status) {
 		case "completed":
 			return "Completed";
+		case "morning_completed":
+			return "Morning Update";
 		case "succeeded":
 			return "Succeeded";
 		case "failed":

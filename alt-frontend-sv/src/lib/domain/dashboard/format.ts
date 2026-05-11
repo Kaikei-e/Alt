@@ -19,6 +19,7 @@ export function getStatusColor(status: JobStatus | GenreStatusType): string {
 		pending: "text-gray-500",
 		running: "text-blue-500",
 		completed: "text-green-500",
+		morning_completed: "text-green-500",
 		succeeded: "text-green-500",
 		failed: "text-red-500",
 	};
@@ -30,6 +31,7 @@ export function getStatusBgColor(status: JobStatus | GenreStatusType): string {
 		pending: "bg-gray-100",
 		running: "bg-blue-100",
 		completed: "bg-green-100",
+		morning_completed: "bg-green-100",
 		succeeded: "bg-green-100",
 		failed: "bg-red-100",
 	};

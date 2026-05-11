@@ -46,8 +46,16 @@ export interface RecapJob {
 	updated_at: string;
 }
 
-export type JobStatus = "pending" | "running" | "completed" | "failed";
-export type TriggerSource = "system" | "user";
+export type JobStatus =
+	| "pending"
+	| "running"
+	| "completed"
+	| "failed"
+	// Terminal status for morning-update jobs (recap-worker's 30-min editorial
+	// tick), kept distinct from "completed" so the dashboard can tell them apart
+	// from real recap jobs.
+	| "morning_completed";
+export type TriggerSource = "system" | "user" | "morning";
 export type GenreStatusType = "pending" | "running" | "succeeded" | "failed";
 export type StatusTransitionActor =
 	| "system"
