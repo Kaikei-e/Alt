@@ -29,6 +29,8 @@ export interface ConnectionRecoveryStore {
 	readonly recoveryCount: number;
 	/** Last recovery info, if any. */
 	readonly lastRecoveryInfo: RecoveryInfo | null;
+	/** True if a recovery event fired within the last `windowMs`. */
+	wasRecentlyRecovered(windowMs: number): boolean;
 }
 
 const RECOVERY_THRESHOLD_MS = 30_000; // 30 seconds background triggers recovery
@@ -36,12 +38,14 @@ const RECOVERY_THRESHOLD_MS = 30_000; // 30 seconds background triggers recovery
 export function createConnectionRecoveryStore(): ConnectionRecoveryStore {
 	let recoveryCount = $state(0);
 	let lastRecoveryInfo = $state<RecoveryInfo | null>(null);
+	let lastRecoveryAt = $state<number | null>(null);
 	const callbacks = new Set<RecoveryCallback>();
 	let handle: SafariConnectionRecoveryHandle | null = null;
 
 	function notifySubscribers(info: RecoveryInfo) {
 		recoveryCount++;
 		lastRecoveryInfo = info;
+		lastRecoveryAt = Date.now();
 		for (const cb of callbacks) {
 			try {
 				cb(info);
@@ -70,6 +74,9 @@ export function createConnectionRecoveryStore(): ConnectionRecoveryStore {
 		},
 		get lastRecoveryInfo() {
 			return lastRecoveryInfo;
+		},
+		wasRecentlyRecovered(windowMs: number) {
+			return lastRecoveryAt !== null && Date.now() - lastRecoveryAt <= windowMs;
 		},
 	};
 }
