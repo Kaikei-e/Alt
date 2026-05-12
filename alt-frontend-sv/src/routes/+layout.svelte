@@ -2,7 +2,11 @@
 import { onMount, setContext } from "svelte";
 import "./layout.css";
 import favicon from "$lib/assets/favicon.svg";
-import { QueryClient, QueryClientProvider } from "@tanstack/svelte-query";
+import {
+	QueryCache,
+	QueryClient,
+	QueryClientProvider,
+} from "@tanstack/svelte-query";
 import { page } from "$app/state";
 import { createAuthStore, AUTH_STORE_KEY } from "$lib/stores/auth.svelte";
 import {
@@ -13,6 +17,10 @@ import {
 	createConnectionRecoveryStore,
 	CONNECTION_RECOVERY_KEY,
 } from "$lib/stores/connection-recovery.svelte";
+import {
+	isNetworkFailureError,
+	performGuardedReload,
+} from "$lib/hooks/safari-connection-recovery";
 
 const { children } = $props();
 
@@ -40,8 +48,20 @@ onMount(() => {
 	document.body.classList.add("hydrated");
 });
 
-// Create QueryClient for TanStack Query with Safari-friendly defaults
+// Create QueryClient for TanStack Query with Safari-friendly defaults.
+// If a query still fails with a network error shortly after a connection
+// recovery event, Safari is almost certainly holding a dead connection that
+// only a fresh navigation will clear — do one guarded full reload.
 const queryClient = new QueryClient({
+	queryCache: new QueryCache({
+		onError: (error) => {
+			if (typeof window === "undefined") return;
+			if (navigator?.onLine === false) return;
+			if (!isNetworkFailureError(error)) return;
+			if (!connectionRecovery.wasRecentlyRecovered(20_000)) return;
+			performGuardedReload();
+		},
+	}),
 	defaultOptions: {
 		queries: {
 			staleTime: 1000 * 60 * 5, // 5 minutes

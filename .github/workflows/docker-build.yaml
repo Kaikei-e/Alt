@@ -271,6 +271,10 @@ jobs:
           load: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && contains(fromJSON('["recap-subworker","news-creator","recap-evaluator","tag-generator","recap-worker"]'), matrix.service) }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+          # Stable build identifier. alt-frontend-sv pins SvelteKit's app
+          # version to it (svelte.config.js); other Dockerfiles ignore it.
+          build-args: |
+            GIT_COMMIT_SHA=${{ github.sha }}
           # Registry cache: 常時 read/write 可 (GHCR ACL で保護)。
           # GHA cache: public repo だと fork PR から読める仕様のため、cache-from/to
           # とも main branch への push イベント限定。PR ビルドは registry のみ参照。

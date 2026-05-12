@@ -22,6 +22,10 @@ RUN --mount=type=cache,id=bun-alt-frontend-sv,target=/root/.bun/install/cache \
 
 # ---------- Build ----------
 FROM base AS builder
+# Stable SvelteKit app version (see svelte.config.js). CI passes the commit SHA;
+# .git is dockerignored, so without this the build falls back to a timestamp.
+ARG GIT_COMMIT_SHA=""
+ENV GIT_COMMIT_SHA=${GIT_COMMIT_SHA}
 COPY --link --from=install /temp/dev/node_modules ./node_modules
 COPY --link . .
 ENV NODE_ENV=production

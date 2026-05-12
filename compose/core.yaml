@@ -63,6 +63,8 @@ services:
     build:
       context: ../alt-frontend-sv
       dockerfile: Dockerfile
+      args:
+        GIT_COMMIT_SHA: ${GIT_COMMIT_SHA:-}
     environment:
       - PORT=4173
       - ORIGIN=${ORIGIN:-http://localhost:4173}
