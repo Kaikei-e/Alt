@@ -561,7 +561,9 @@ class Settings(BaseSettings):
         validation_alias=AliasChoices("OLLAMA_EMBED_MODEL", "RECAP_SUBWORKER_OLLAMA_EMBED_MODEL"),
     )
     ollama_embed_timeout: float = Field(
-        30.0,
+        # ADR-890 followup: bge-m3 (8192 token) + cold model load を見越して 120s。
+        # production の 5/12 事故は 30s では足りずに全 chunk timeout した。
+        120.0,
         ge=1.0,
         description="Timeout in seconds for Ollama embedding API calls",
         validation_alias=AliasChoices(

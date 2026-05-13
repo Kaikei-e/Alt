@@ -56,7 +56,11 @@ class EmbedderConfig:
     # Ollama remote settings
     ollama_embed_url: str | None = None
     ollama_embed_model: str = "mxbai-embed-large"
-    ollama_embed_timeout: float = 30.0
+    # ADR-890 followup: bge-m3 (8192 token capacity) と cold model load を
+    # 見越して、Ollama 公式ガイドラインの ≥60s を上回る値を既定にする。
+    # 2026-05-12 17:00 UTC の事故では 30s 既定で全 chunk が timeout し、
+    # classification 0 results → 3-day Recap batch fail の root cause になった。
+    ollama_embed_timeout: float = 120.0
     # Operator escape hatch propagated from Settings.allow_embedding_drift —
     # when True, sidecar↔runtime embedder identity drift downgrades to a
     # warning instead of ConfigValidationError. See classifier.py.
@@ -295,22 +299,43 @@ class Embedder:
                 self._client = httpx.Client(timeout=timeout)
                 self._embedding_dim: int | None = None
 
+            # ADR-890 followup: bge-m3 endpoint への transient timeout/connect error を
+            # 吸収する exponential backoff retry。3 試行 (initial + 2 retry, sleep 1s/2s)。
+            # HTTPStatusError (4xx/5xx) は retry しない (内容由来のエラーなので逆効果)。
+            _RETRY_ATTEMPTS = 3
+            _RETRY_BACKOFFS = (1.0, 2.0)
+
             def _call_embed_api(self, texts: list[str]) -> list[list[float]]:
                 """Call Ollama /api/embed endpoint for a batch of short texts."""
-                try:
-                    response = self._client.post(
-                        f"{self.url}/api/embed",
-                        json={"model": self.model, "input": texts},
-                    )
-                    response.raise_for_status()
-                except httpx.HTTPStatusError as exc:
-                    raise RuntimeError(
-                        f"Ollama API error: {exc.response.status_code} - {exc.response.text[:200]}"
-                    ) from None
-                except httpx.RequestError as exc:
-                    raise RuntimeError(f"Ollama API request failed: {exc}") from None
-                data = response.json()
-                return data["embeddings"]
+                last_exc: httpx.RequestError | None = None
+                for attempt in range(self._RETRY_ATTEMPTS):
+                    try:
+                        response = self._client.post(
+                            f"{self.url}/api/embed",
+                            json={"model": self.model, "input": texts},
+                        )
+                        response.raise_for_status()
+                        data = response.json()
+                        return data["embeddings"]
+                    except httpx.HTTPStatusError as exc:
+                        # 4xx/5xx はリクエスト/モデル由来。retry しても直らない。
+                        raise RuntimeError(
+                            f"Ollama API error: {exc.response.status_code} - {exc.response.text[:200]}"
+                        ) from None
+                    except httpx.RequestError as exc:
+                        last_exc = exc
+                        if attempt + 1 >= self._RETRY_ATTEMPTS:
+                            break
+                        backoff = self._RETRY_BACKOFFS[attempt]
+                        logger.warning(
+                            "Ollama remote embed API transient failure, retrying",
+                            attempt=attempt + 1,
+                            max_attempts=self._RETRY_ATTEMPTS,
+                            backoff_seconds=backoff,
+                            error=str(exc),
+                        )
+                        time.sleep(backoff)
+                raise RuntimeError(f"Ollama API request failed: {last_exc}") from None
 
             def _embed_single_text(self, text: str) -> list[float]:
                 """Embed a single text, chunking if necessary."""

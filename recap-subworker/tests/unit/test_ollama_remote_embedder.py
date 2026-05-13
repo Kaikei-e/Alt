@@ -1,8 +1,9 @@
 """Tests for ollama-remote embedding backend."""
 
+from unittest.mock import Mock, patch
+
 import numpy as np
 import pytest
-from unittest.mock import Mock, patch
 
 from recap_subworker.infra.config import Settings
 from recap_subworker.services.embedder import Embedder, EmbedderConfig
@@ -22,9 +23,15 @@ class TestOllamaRemoteConfig:
         assert settings.ollama_embed_model == "mxbai-embed-large"
 
     def test_ollama_embed_timeout_default(self):
-        """ollama_embed_timeout のデフォルトは 30.0"""
+        """ollama_embed_timeout のデフォルトは 120.0 (ADR-890 followup).
+
+        bge-m3 は 8192 token まで処理でき、cold model load + 長文 embed には
+        Ollama 公式ガイド (≥60s) を超える時間がかかる。production で 30s は
+        timeout 多発 → 全 chunk fail → "classification returned 0 results"
+        の root cause だった。
+        """
         settings = Settings()
-        assert settings.ollama_embed_timeout == 30.0
+        assert settings.ollama_embed_timeout == 120.0
 
     def test_env_var_loading(self, monkeypatch):
         """環境変数から読み込み"""
@@ -219,6 +226,83 @@ class TestOllamaRemoteEmbedder:
 
             mock_client.close.assert_called_once()
             assert embedder._model is None
+
+    def test_ollama_remote_retries_on_transient_request_error(self):
+        """ADR-890 followup: Ollama remote が一過性に RequestError を出した時、
+        embedder は exponential backoff で再試行して最終的に成功する。
+
+        2026-05-12 17:00 UTC の事故では bge-m3 endpoint が timeout し、
+        retry されないまま全 chunk fail → classification 0 results → 3-day batch failed
+        の連鎖になった。最低 3 試行で transient error を吸収する。
+        """
+        import httpx
+
+        with patch("httpx.Client") as mock_client_class:
+            mock_client = Mock()
+            mock_client_class.return_value = mock_client
+
+            ok_response = Mock()
+            ok_response.json.return_value = {"embeddings": [[0.1, 0.2]]}
+            ok_response.raise_for_status = Mock()
+
+            # 2 回 transient エラー → 3 回目で成功
+            mock_client.post.side_effect = [
+                httpx.ReadTimeout("timed out"),
+                httpx.ReadTimeout("timed out again"),
+                ok_response,
+            ]
+
+            config = EmbedderConfig(
+                model_id="test",
+                distill_model_id="test",
+                backend="ollama-remote",
+                device="cpu",
+                batch_size=8,
+                cache_size=100,
+                ollama_embed_url="http://test-host:11436",
+            )
+            embedder = Embedder(config)
+
+            # Patch time.sleep to avoid real backoff delays in the test
+            with patch("time.sleep") as mock_sleep:
+                result = embedder.encode(["one short sentence"])
+
+            assert result.shape == (1, 2), "must produce one embedding after retries"
+            assert mock_client.post.call_count == 3, "retry must occur twice before success"
+            # backoff sleeps: 1s, 2s (exponential)
+            sleep_calls = [call.args[0] for call in mock_sleep.call_args_list]
+            assert sleep_calls == [1.0, 2.0], (
+                f"expected exponential backoff 1s/2s; got {sleep_calls}"
+            )
+
+    def test_ollama_remote_raises_after_retry_budget_exhausted(self):
+        """retry を尽くしても失敗するなら以前と同じ RuntimeError を上げて caller に伝える。"""
+        import httpx
+
+        with patch("httpx.Client") as mock_client_class:
+            mock_client = Mock()
+            mock_client_class.return_value = mock_client
+            mock_client.post.side_effect = httpx.ReadTimeout("persistent timeout")
+
+            config = EmbedderConfig(
+                model_id="test",
+                distill_model_id="test",
+                backend="ollama-remote",
+                device="cpu",
+                batch_size=8,
+                cache_size=100,
+                ollama_embed_url="http://test-host:11436",
+            )
+            embedder = Embedder(config)
+
+            with (
+                patch("time.sleep"),
+                pytest.raises(RuntimeError, match="Ollama API request failed"),
+            ):
+                embedder.encode(["unrecoverable text"])
+
+            # 3 attempts total (initial + 2 retries)
+            assert mock_client.post.call_count == 3, "must stop after 3 total attempts"
 
     def test_ollama_remote_long_text_chunking(self):
         """長いテキストはチャンク分割して平均化される"""
