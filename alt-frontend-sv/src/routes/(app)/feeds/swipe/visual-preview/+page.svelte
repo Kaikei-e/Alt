@@ -1,5 +1,4 @@
 <script lang="ts">
-import { browser } from "$app/environment";
 import { onMount } from "svelte";
 import { useViewport } from "$lib/stores/viewport.svelte";
 import SwipeFeedScreen from "$lib/components/mobile/feeds/swipe/SwipeFeedScreen.svelte";
@@ -17,42 +16,33 @@ interface ArticleData {
 interface PageData {
 	initialFeeds: RenderFeed[];
 	nextCursor: string | null;
-	articleData: Promise<ArticleData>;
+	articleData: ArticleData;
 }
 
 const { data }: { data: PageData } = $props();
 
-// Resolved article data from streaming
-let resolvedArticleData = $state<ArticleData | null>(null);
-let cacheSeeded = false;
+const resolvedArticleData = $derived(data.articleData);
 
-// Resolve streamed article data and seed prefetcher cache on mount
+// Seed the prefetcher cache once per mount so subsequent swipes hit the
+// in-memory cache instead of refetching.
 onMount(() => {
-	data.articleData.then((articleData) => {
-		resolvedArticleData = articleData;
-
-		if (
-			!cacheSeeded &&
-			data.initialFeeds.length > 0 &&
-			articleData.firstArticleId
-		) {
-			cacheSeeded = true;
-			const feedUrl = data.initialFeeds[0].normalizedUrl;
-			articlePrefetcher.seedCache(
-				feedUrl,
-				articleData.firstArticleContent || "",
-				articleData.firstArticleId,
-				articleData.firstArticleImageUrl,
-				null,
-			);
-		}
-	});
+	if (data.initialFeeds.length === 0 || !resolvedArticleData.firstArticleId) {
+		return;
+	}
+	const feedUrl = data.initialFeeds[0].normalizedUrl;
+	articlePrefetcher.seedCache(
+		feedUrl,
+		resolvedArticleData.firstArticleContent || "",
+		resolvedArticleData.firstArticleId,
+		resolvedArticleData.firstArticleImageUrl,
+		null,
+	);
 });
 </script>
 
 <svelte:head>
 	<title>Visual Preview - Alt</title>
-	{#if resolvedArticleData?.firstArticleImageUrl}
+	{#if resolvedArticleData.firstArticleImageUrl}
 		<link rel="preload" as="image" href={resolvedArticleData.firstArticleImageUrl} fetchpriority="high" />
 	{/if}
 </svelte:head>
@@ -73,8 +63,8 @@ onMount(() => {
 	<SwipeFeedScreen
 		initialFeeds={data.initialFeeds}
 		initialNextCursor={data.nextCursor}
-		initialArticleContent={resolvedArticleData?.firstArticleContent ?? null}
-		initialOgImageUrl={resolvedArticleData?.firstArticleImageUrl ?? null}
+		initialArticleContent={resolvedArticleData.firstArticleContent}
+		initialOgImageUrl={resolvedArticleData.firstArticleImageUrl}
 		mode="visual-preview"
 	/>
 {/if}

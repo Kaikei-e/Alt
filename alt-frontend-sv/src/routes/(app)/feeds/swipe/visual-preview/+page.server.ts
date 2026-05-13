@@ -38,28 +38,29 @@ export const load: ServerLoad = async ({ request, locals }) => {
 			ogImageProxyUrl: item.og_image_proxy_url,
 		}));
 
-		// Streamed data: article content is below-the-fold, so defer it.
-		// SvelteKit sends initial HTML immediately and resolves this promise on the client.
-		const articleDataPromise: Promise<{
-			firstArticleImageUrl: string | null;
-			firstArticleContent: string | null;
-			firstArticleId: string | null;
-		}> =
+		// Resolve the first-article data BEFORE returning so the SSR response is
+		// a single, fully-formed HTML payload. SvelteKit's deferred-promise
+		// streaming triggers chunked-transfer tails that iOS Safari treats as an
+		// incomplete document until the trailing 0\r\n\r\n arrives — under Bun
+		// 1.3.x that terminator is racy enough to surface "Cannot Open the Page"
+		// on slow upstream tails. The 6s AbortController inside loadFirstArticle
+		// still caps the wait; we just no longer stream the resolution.
+		const articleData =
 			feeds.length > 0
-				? loadFirstArticle(feeds[0], cookie, backendToken)
-				: Promise.resolve(emptyArticleData);
+				? await loadFirstArticle(feeds[0], cookie, backendToken)
+				: emptyArticleData;
 
 		return {
 			initialFeeds: feeds,
 			nextCursor: feedsData.next_cursor ?? null,
-			articleData: articleDataPromise,
+			articleData,
 		};
 	} catch (error) {
 		console.error("[visual-preview] Server load error:", error);
 		return {
 			initialFeeds: [],
 			nextCursor: null,
-			articleData: Promise.resolve(emptyArticleData),
+			articleData: emptyArticleData,
 		};
 	}
 };
