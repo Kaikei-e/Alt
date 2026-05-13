@@ -47,6 +47,14 @@ logger = logging.getLogger(__name__)
 # rebuilds with extractive intermediate summaries).
 _PREEMPT_RETRY_ATTEMPTS = 3
 
+# ADR-890 followup: production article_id is always a UUID. When the LLM fills
+# `article_id` with a domain string ("dev.to"), recap-worker cannot resolve it,
+# so the sanitizer null-outs non-UUID values and the downstream URL-fallback path
+# takes over. Pattern accepts UUID v1/v3/v4/v5/v7 (any variant, case insensitive).
+UUID_SHAPE_RE = re.compile(
+    r"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+)
+
 REFERENCE_MARKER_RE = re.compile(r"\[(\d+)\]")
 PLACEHOLDER_BULLET_RE = re.compile(r"^\s*(?:\.\.\.|…)(?:\s*\[\d+\])?\s*$")
 JAPANESE_CHAR_RE = re.compile(r"[\u3040-\u30ff\u3400-\u4dbf\u4e00-\u9fff]")
@@ -1427,22 +1435,15 @@ class RecapSummaryUsecase:
                 if sentence.published_at:
                     parts.append(f"  (公開日: {sentence.published_at})")
                 if sentence.source_url:
-                    # URLを短縮表示（urllib.parseで安全にドメインを抽出）
-                    try:
-                        # スキームがない場合は追加してからパース
-                        url_to_parse = sentence.source_url
-                        if "://" not in url_to_parse:
-                            url_to_parse = f"https://{url_to_parse}"
-                        parsed = urlparse(url_to_parse)
-                        source_domain = (
-                            parsed.netloc
-                            or parsed.path.split("/")[0]
-                            or sentence.source_url
-                        )
-                    except Exception:
-                        # パースに失敗した場合は元のURLを使用
-                        source_domain = sentence.source_url
-                    parts.append(f"  (出典: {source_domain})")
+                    # ADR-890 followup: 以前は domain だけを露出していたため LLM が
+                    # `url`/`article_id` をドメイン文字列で埋め、reconciler が
+                    # grounded=0 になる事故が発生した。full URL と UUID 形式の
+                    # article_id を sentence 行に出して LLM が verbatim echo できる
+                    # ようにする。LLM の UUID 直引き信頼性は低いため最終的には
+                    # recap-worker reconciler 側で UUID 検証 + URL fallback が走る。
+                    parts.append(f"  (source_url: {sentence.source_url})")
+                if sentence.article_id:
+                    parts.append(f"  (article_id: {sentence.article_id})")
                 sentence_lines.append(" ".join(parts))
             sentences = "\n".join(sentence_lines)
             cluster_block = textwrap.dedent(
@@ -1909,7 +1910,6 @@ class RecapSummaryUsecase:
                     ref_id = ref.get("id")
                     if not isinstance(ref_id, int) or ref_id < 1 or ref_id in seen_ids:
                         continue
-                    seen_ids.add(ref_id)
                     url = ref.get("url", "")
                     domain = ref.get("domain", "")
                     if not url or not domain:
@@ -1926,12 +1926,28 @@ class RecapSummaryUsecase:
                                 domain = url
                         else:
                             continue
+                    # ADR-890 followup: a bare-domain url like "dev.to" (no scheme,
+                    # no path) cannot be disambiguated to a specific article by the
+                    # recap-worker reconciler, so drop the entire reference.
+                    if "://" not in url and "/" not in url:
+                        continue
+                    # ADR-890 followup: production article_id is always a UUID.
+                    # LLM hallucinations ("article_id": "dev.to") must be nulled out
+                    # so the reconciler falls back to URL resolution.
+                    raw_article_id = ref.get("article_id")
+                    article_id = (
+                        raw_article_id
+                        if isinstance(raw_article_id, str)
+                        and UUID_SHAPE_RE.match(raw_article_id)
+                        else None
+                    )
+                    seen_ids.add(ref_id)
                     validated_refs.append(
                         {
                             "id": ref_id,
                             "url": url,
                             "domain": domain,
-                            "article_id": ref.get("article_id"),
+                            "article_id": article_id,
                         }
                     )
                 references = validated_refs if validated_refs else None

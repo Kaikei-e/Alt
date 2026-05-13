@@ -39,7 +39,11 @@
 - `bullets` は **2〜4 個**。空配列や `"..."` のようなダミーは禁止。
 - 各 bullet の末尾に **出典リンク [n] を必須で付ける**。
 - `references` は bullets 内で参照された出典のリスト（最大50件）。
-- 入力に含まれる `source_url` / `domain` のみを使い、入力にない URL は参照に入れない。
+- 入力に含まれる `source_url` / `article_id` のみを使い、入力にない URL や article_id を参照に入れない。
+- `references[].url` は必ず `http://` または `https://` で始まる **完全 URL** を入力からそのままコピーする（ドメインだけにしない）。
+- `references[].article_id` は入力の `(article_id: …)` に書かれた **UUID 文字列** をそのままコピーする。
+  - 入力に article_id が無い場合は `null` を入れる。
+  - **絶対にドメイン名 (`"dev.to"` など) や短い置き換え文字列 (`"art1"`) を article_id に入れない**。
 
 ### 良い例（この長さを目標にする）
 {
@@ -50,8 +54,8 @@
   ],
   "language": "ja",
   "references": [
-    {"id": 1, "url": "https://azure.microsoft.com/blog/ai-update", "domain": "azure.microsoft.com", "article_id": "art1"},
-    {"id": 2, "url": "https://cas.go.jp/ai-safety", "domain": "cas.go.jp", "article_id": "art2"}
+    {"id": 1, "url": "https://azure.microsoft.com/blog/ai-update", "domain": "azure.microsoft.com", "article_id": "1dce453b-e23d-4a32-9030-7e4529fad645"},
+    {"id": 2, "url": "https://cas.go.jp/ai-safety", "domain": "cas.go.jp", "article_id": "5ab015b7-1060-4e79-910d-c3e19acbb5cc"}
   ]
 }
 

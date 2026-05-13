@@ -29,7 +29,11 @@
 - "bullets" は **3〜7 個**。
 - 各 bullet の末尾に **出典リンク [n] を必須で付ける**（n は references の id に対応）。
 - "references" は bullets 内で参照された出典のリスト（最大50件）。
-  - 入力に含まれる source_url/domain のみを使用し、入力にない URL は参照に入れない。
+  - 入力に含まれる source_url / article_id のみを使用し、入力にない URL は参照に入れない。
+  - `references[].url` は必ず `http://` または `https://` で始まる **完全 URL** を入力からそのままコピーする（ドメインだけにしない）。
+  - `references[].article_id` は入力の `(article_id: …)` に書かれた **UUID 文字列** をそのままコピーする。
+    - 入力に article_id が無い場合は `null`。
+    - ドメイン名や短い置き換え文字列を article_id に入れない。
 {% endif %}
 - 各 bullet は:
   - 5〜10文の完結した日本語（**短い1〜3文の bullet は禁止**）

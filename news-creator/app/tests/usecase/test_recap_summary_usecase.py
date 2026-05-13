@@ -2535,6 +2535,154 @@ async def test_sanitize_auto_injects_reference_markers():
         assert "[" in bullet and "]" in bullet
 
 
+# ============================================================================
+# Reference Sanitization Tests (ADR-890 followup)
+#
+# In production the LLM started returning `article_id="dev.to"` and `url="dev.to"`
+# (domain strings instead of UUIDs and full URLs). The downstream citation
+# reconciler in recap-worker treated `Some(article_id)` as authoritative and
+# stopped grounding bullets — `recap_outputs.bullets_ja[].source_sentence_ids`
+# was `[]` for every row from 2026-05-05 onward.
+#
+# The sanitizer must drop values the reconciler cannot use:
+# - `article_id` that is not a UUID shape (production article_ids are always UUID)
+# - `url` that is a bare domain with no scheme and no path (useless for matching)
+# ============================================================================
+
+
+def _sanitize_via_usecase(payload, max_bullets: int = 5):
+    """Drive RecapSummaryUsecase._sanitize_summary_payload directly."""
+    config = _create_mock_config()
+    llm_provider = AsyncMock()
+    usecase = RecapSummaryUsecase(config=config, llm_provider=llm_provider)
+    return usecase._sanitize_summary_payload(payload, max_bullets)
+
+
+def test_sanitize_nulls_out_non_uuid_article_id():
+    """LLM が article_id=ドメイン文字列を返したら None に倒す。reference 自体は残す。"""
+    payload = {
+        "title": "テスト",
+        "bullets": ["事実 [1]"],
+        "language": "ja",
+        "references": [
+            {
+                "id": 1,
+                "url": "https://dev.to/foo/bar",
+                "domain": "dev.to",
+                "article_id": "dev.to",  # non-UUID
+            }
+        ],
+    }
+    sanitized = _sanitize_via_usecase(payload)
+    refs = sanitized.get("references")
+    assert refs is not None and len(refs) == 1, "reference must be kept; url is usable"
+    assert refs[0]["article_id"] is None, "non-UUID article_id must be nulled out"
+
+
+def test_sanitize_preserves_valid_uuid_article_id():
+    valid_uuid = "1dce453b-e23d-4a32-9030-7e4529fad645"
+    payload = {
+        "title": "テスト",
+        "bullets": ["事実 [1]"],
+        "language": "ja",
+        "references": [
+            {
+                "id": 1,
+                "url": "https://example.com/article",
+                "domain": "example.com",
+                "article_id": valid_uuid,
+            }
+        ],
+    }
+    sanitized = _sanitize_via_usecase(payload)
+    refs = sanitized["references"]
+    assert refs[0]["article_id"] == valid_uuid, (
+        "UUID-shape article_id must pass through unchanged"
+    )
+
+
+def test_sanitize_drops_reference_with_bare_domain_url():
+    """url='dev.to' (scheme/path 無しの純ドメイン) は reconciler が disambiguate できないので drop。"""
+    payload = {
+        "title": "テスト",
+        "bullets": ["事実 [1]"],
+        "language": "ja",
+        "references": [
+            {
+                "id": 1,
+                "url": "dev.to",  # bare domain — useless downstream
+                "domain": "dev.to",
+                "article_id": None,
+            },
+            {
+                "id": 2,
+                "url": "https://example.com/x",
+                "domain": "example.com",
+                "article_id": None,
+            },
+        ],
+    }
+    sanitized = _sanitize_via_usecase(payload)
+    refs = sanitized.get("references")
+    assert refs is not None and len(refs) == 1, "bare-domain url must be dropped"
+    assert refs[0]["id"] == 2, "only the well-formed reference survives"
+
+
+def test_render_prompt_body_exposes_full_source_url_and_uuid_article_id():
+    """ADR-890 followup: prompt は LLM が `references[].article_id` を verbatim 出力できるよう
+    full source_url と UUID-shape article_id を sentence 行に含める。
+    現状 prompt は domain だけ ("(出典: dev.to)") を渡しており、LLM がドメイン文字列を
+    article_id にコピーするのは prompt から見て合理的な挙動。
+    """
+    config = _create_mock_config()
+    llm_provider = AsyncMock()
+    usecase = RecapSummaryUsecase(config=config, llm_provider=llm_provider)
+
+    valid_uuid = "1dce453b-e23d-4a32-9030-7e4529fad645"
+    full_url = "https://dev.to/foo/bar-baz"
+
+    request = RecapSummaryRequest(
+        job_id=uuid4(),
+        genre="ai_data",
+        clusters=[
+            RecapClusterInput(
+                cluster_id=0,
+                representative_sentences=[
+                    RepresentativeSentence(
+                        text="Google released new AI model.",
+                        source_url=full_url,
+                        article_id=valid_uuid,
+                    ),
+                ],
+                top_terms=["AI", "model"],
+            )
+        ],
+        window_days=3,
+    )
+
+    prompt_body, cluster_section = usecase._render_prompt_body(request, max_bullets=3)
+    assert full_url in prompt_body, (
+        f"prompt must include full source_url, not just domain: {prompt_body[:500]!r}"
+    )
+    assert valid_uuid in prompt_body, (
+        f"prompt must include UUID article_id so LLM can echo it: {prompt_body[:500]!r}"
+    )
+
+
+def test_sanitize_returns_none_references_when_all_dropped():
+    """全 ref が drop されたら references キーごと None で消える。"""
+    payload = {
+        "title": "テスト",
+        "bullets": ["事実"],
+        "language": "ja",
+        "references": [
+            {"id": 1, "url": "dev.to", "domain": "dev.to", "article_id": "dev.to"},
+        ],
+    }
+    sanitized = _sanitize_via_usecase(payload)
+    assert "references" not in sanitized, "all-dropped → references key absent"
+
+
 @pytest.mark.asyncio
 async def test_thin_evidence_allows_single_bullet():
     """With thin evidence (<= 3 sentences), a single bullet should be accepted."""
