@@ -50,7 +50,7 @@ dependencies = [
     "aiohttp>=3.13.4",
     "redis>=5.0.0",  # Redis Streams consumer
     "PyJWT>=2.12.0",
-    "python-multipart>=0.0.6",
+    "python-multipart>=0.0.27",
 
     # OpenTelemetry
     "opentelemetry-sdk>=1.29.0",
@@ -91,9 +91,9 @@ dev = [
 # so transitive installs stay CPU-only (ADR-000762 / ADR-000812 pattern).
 ml = [
     "torch>=2.1.0,<3",
-    "sentence-transformers>=3.3.0,<5",
+    "sentence-transformers>=5.0.0,<6",
     "keybert>=0.8.5",
-    "transformers>=4.40.0,<5",
+    "transformers>=5.8.1,<6",
     "scikit-learn>=1.5.2",
     "numpy>=1.26.0",
     "onnxruntime>=1.21.0",
@@ -104,9 +104,9 @@ ml = [
 # Install with: uv sync --group ml-extended
 ml-extended = [
     "torch>=2.1.0,<3",
-    "sentence-transformers>=3.3.0,<5",
+    "sentence-transformers>=5.0.0,<6",
     "keybert>=0.8.5",
-    "transformers>=4.40.0,<5",
+    "transformers>=5.8.1,<6",
     "scikit-learn>=1.5.2",
     "numpy>=1.26.0",
     "onnxruntime>=1.21.0",
