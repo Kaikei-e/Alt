@@ -113,7 +113,9 @@ test.describe("Mobile Knowledge Loop — Surface planes", () => {
 		await expect(compare).toHaveText(/Compare/);
 		await compare.click();
 
-		await expect.poll(() => gotCompareTransition, { timeout: 3_000 }).toBe(true);
+		await expect
+			.poll(() => gotCompareTransition, { timeout: 3_000 })
+			.toBe(true);
 
 		// supersededByEntryKey is surfaced in the THEN column when change_summary
 		// is empty, but our fixture has change_summary so the THEN line should

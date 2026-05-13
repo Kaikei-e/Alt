@@ -74,8 +74,9 @@ test.describe("System Loader", () => {
 			.evaluate((el) => ({
 				role: el.getAttribute("role"),
 				ariaLabel: el.getAttribute("aria-label"),
-				hasLoadingText: !!el.querySelector("p")?.textContent
-					?.trim()
+				hasLoadingText: !!el
+					.querySelector("p")
+					?.textContent?.trim()
 					.startsWith("Loading Alt"),
 				hasLogo: !!el.querySelector('img[alt="Alt Logo"]'),
 			}))

@@ -178,7 +178,10 @@ export function useKnowledgeLoop(opts: UseKnowledgeLoopOptions) {
 		// guard. The BFF still enforces SAME_STAGE_TRIGGERS in
 		// /loop/transition/+server.ts; this flag only relaxes the client gate.
 		const sameStage = from === toStage;
-		if (!(sameStage && options.allowSameStage) && !canTransition(from, toStage)) {
+		if (
+			!(sameStage && options.allowSameStage) &&
+			!canTransition(from, toStage)
+		) {
 			return {
 				status: "forbidden",
 				reason: `cannot go ${from} → ${toStage}`,
@@ -478,4 +481,3 @@ export function useKnowledgeLoop(opts: UseKnowledgeLoopOptions) {
 		isInFlight,
 	};
 }
-
