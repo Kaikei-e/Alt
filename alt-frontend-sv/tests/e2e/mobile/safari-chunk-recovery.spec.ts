@@ -10,10 +10,11 @@ import { expect, test } from "@playwright/test";
  * full reload, breaking out of the broken state without user action.
  *
  * The test triggers the failure path synthetically via an unhandled
- * promise rejection and asserts that the reload-attempt counter in
- * sessionStorage was bumped — the scheduler bumps it just before
- * calling `location.reload()`, so we can verify intent without losing
- * the test page to an actual navigation.
+ * promise rejection and lets the real reload fire — `sessionStorage`
+ * survives that reload, so the bumped `alt:chunk-reload-attempts`
+ * counter persists and proves the scheduler took both legs (bump + go).
+ * `window.location.reload` is non-configurable on Chromium, so stubbing
+ * it cross-browser is not viable; observing the persisted counter is.
  */
 test.describe("client chunk-load failure self-recovers via reload", () => {
 	test("hooks.client bumps the reload counter on a chunk-load rejection", async ({
@@ -23,21 +24,14 @@ test.describe("client chunk-load failure self-recovers via reload", () => {
 		await page.waitForLoadState("domcontentloaded");
 
 		await page.evaluate(() => {
-			// Reset any prior state and stub the reload so the test page
-			// does not navigate away — we only verify the schedule path.
 			sessionStorage.removeItem("alt:chunk-reload-attempts");
-			(
-				window as unknown as { __reloadCalled: boolean }
-			).__reloadCalled = false;
-			Object.defineProperty(window.location, "reload", {
-				configurable: true,
-				value: () => {
-					(
-						window as unknown as { __reloadCalled: boolean }
-					).__reloadCalled = true;
-				},
-			});
+		});
 
+		// Arm a load-event waiter *before* we trigger the rejection; the next
+		// load event must come from the scheduler-driven location.reload().
+		const reloaded = page.waitForEvent("load", { timeout: 8_000 });
+
+		await page.evaluate(() => {
 			queueMicrotask(() => {
 				Promise.reject(
 					new Error(
@@ -47,17 +41,17 @@ test.describe("client chunk-load failure self-recovers via reload", () => {
 			});
 		});
 
+		await reloaded;
+		await page.waitForLoadState("domcontentloaded");
+
 		await expect
 			.poll(
 				async () =>
-					await page.evaluate(() => ({
-						counter: sessionStorage.getItem("alt:chunk-reload-attempts"),
-						reloaded: (
-							window as unknown as { __reloadCalled: boolean }
-						).__reloadCalled,
-					})),
+					await page.evaluate(() =>
+						sessionStorage.getItem("alt:chunk-reload-attempts"),
+					),
 				{ timeout: 5_000 },
 			)
-			.toMatchObject({ counter: "1", reloaded: true });
+			.toBe("1");
 	});
 });
