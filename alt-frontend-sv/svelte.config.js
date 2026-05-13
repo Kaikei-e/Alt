@@ -44,6 +44,12 @@ const config = {
 		},
 		version: {
 			name: resolveVersionName(),
+			// Poll the server for a newer deployed version every 5 min. When the
+			// build version changes, `updated.current` from $app/state flips to
+			// true and +layout.svelte triggers a reload before the next nav, so
+			// the tab cannot end up fetching an evicted /_app/immutable/* chunk
+			// and falling into "Cannot Open the Page" on iOS Safari.
+			pollInterval: 5 * 60 * 1000,
 		},
 	},
 };

@@ -7,7 +7,7 @@ import {
 	QueryClient,
 	QueryClientProvider,
 } from "@tanstack/svelte-query";
-import { page } from "$app/state";
+import { page, updated } from "$app/state";
 import { createAuthStore, AUTH_STORE_KEY } from "$lib/stores/auth.svelte";
 import {
 	createLoadingStore,
@@ -46,6 +46,19 @@ $effect(() => {
 // Signal hydration completion to hide splash screen
 onMount(() => {
 	document.body.classList.add("hydrated");
+});
+
+// When the deployed version diverges from the loaded one, reload before
+// the next chunk fetch lands on an evicted /_app/immutable/* hash — the
+// failure mode that surfaces as "Cannot Open the Page" on iOS Safari.
+let reloadOnUpdate = false;
+$effect(() => {
+	if (!updated.current || reloadOnUpdate) return;
+	reloadOnUpdate = true;
+	if (typeof window !== "undefined") {
+		console.warn("[layout] new build detected — reloading");
+		window.location.reload();
+	}
 });
 
 // Create QueryClient for TanStack Query with Safari-friendly defaults.

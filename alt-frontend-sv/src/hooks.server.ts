@@ -12,6 +12,7 @@ import {
 	buildRedirectUrl,
 } from "$lib/server/response-builder";
 import { resolveResponsiveRedirect } from "$lib/server/redirect-resolver";
+import { classifySafari, extractChunkHash } from "$lib/safari-error-utils";
 
 const resolveOptions = {
 	filterSerializedResponseHeaders: (name: string) => name === "content-type",
@@ -21,10 +22,13 @@ export const handle: Handle = async ({ event, resolve: resolveEvent }) => {
 	const { url } = event;
 	const pathname = url.pathname;
 
-	// Redirect old path-based routes to unified responsive routes (preserving query params)
+	// Redirect old path-based routes to unified responsive routes (preserving query params).
+	// 303 (See Other) so that iOS Safari does not pin the redirect to its cache
+	// the way it does for 301 — old bookmarks must be allowed to follow new
+	// mappings on every visit.
 	const redirectTarget = resolveResponsiveRedirect(pathname, url.search);
 	if (redirectTarget) {
-		throw redirect(301, redirectTarget);
+		throw redirect(303, redirectTarget);
 	}
 
 	const isPublic = isPublicRoute(pathname);
@@ -95,6 +99,7 @@ export const handleError: HandleServerError = ({
 				}
 			: { message: String(error) };
 	const cause = (error as { cause?: unknown })?.cause;
+	const userAgent = event.request.headers.get("user-agent") || undefined;
 	console.error(
 		JSON.stringify({
 			level: "error",
@@ -107,7 +112,9 @@ export const handleError: HandleServerError = ({
 			message,
 			error: errInfo,
 			cause: cause === undefined ? undefined : String(cause),
-			userAgent: event.request.headers.get("user-agent") || undefined,
+			userAgent,
+			safariBucket: classifySafari(userAgent),
+			chunkHash: extractChunkHash(errInfo.message || ""),
 			remote: event.getClientAddress?.(),
 		}),
 	);
