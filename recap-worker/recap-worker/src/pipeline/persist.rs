@@ -21,13 +21,40 @@ use serde_json::json;
 static REFERENCE_MARKER_RE: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"\[(\d+)\]").expect("REFERENCE_MARKER_RE must compile"));
 
+/// `references[].article_id` を信用してよいかを shape で判定する。
+/// 本物の article_id は常に UUID。production で LLM がドメイン文字列を返す事例が出たため
+/// (例: `"article_id": "dev.to"`)、UUID 形状でない値は捨てて URL 解決に倒す。
+fn is_uuid_shape(s: &str) -> bool {
+    uuid::Uuid::parse_str(s).is_ok()
+}
+
+/// URL から host 部分のみを取り出す。scheme/path/`www.` を剥がす。純ドメイン文字列
+/// (例: `"dev.to"`) はそのまま host 扱いになる。比較は lowercase。
+fn url_host(url: &str) -> Option<String> {
+    let s = url.trim();
+    let s = s
+        .strip_prefix("https://")
+        .or_else(|| s.strip_prefix("http://"))
+        .unwrap_or(s);
+    let host = s.split('/').next().unwrap_or("");
+    let host = host.strip_prefix("www.").unwrap_or(host);
+    if host.is_empty() {
+        None
+    } else {
+        Some(host.to_ascii_lowercase())
+    }
+}
+
 /// bullet 内の `[n]` を `references[n-1]` 経由で article_id に解決し、
 /// `recap_subworker_sentences.id` の集合を返す純粋関数。
 ///
-/// 解決順:
-/// 1. `references[n-1].article_id` がある → そのまま採用 (singleton)
-/// 2. 無ければ `references[n-1].url` を `url_to_article` に当てて解決 (multi-match 許容)
-/// 3. それでも解決しない marker は無視 (`debug!` log)
+/// 解決戦略 (ADR-890 followup, 排他ではなく合流させる):
+/// 1. `references[n-1].article_id` が UUID 形状なら候補集合に加える。
+///    UUID でない (LLM がドメイン文字列を埋めた) 場合は無視する。
+/// 2. `url_to_article` から URL を解決する (完全一致 + host 単位一致)。
+///    `ref.url` が純ドメイン (`"dev.to"`) でも host 一致で同ホストの article 群を拾う。
+/// 3. 集合 union を `article_to_sentence_ids` に問い合わせて sentence_id を集める。
+/// 4. 解決できない marker は `debug!` で skip。
 ///
 /// 結果は重複除去 + 昇順ソート。bullet に `[n]` が無いまたは references が空なら `vec![]`。
 fn reconcile_bullet_citations(
@@ -52,23 +79,39 @@ fn reconcile_bullet_citations(
             }
         };
         let r = &refs[n - 1];
-        let mut article_ids: Vec<&String> = Vec::new();
+        let mut article_ids: BTreeSet<String> = BTreeSet::new();
+
+        // Path 1: UUID-shape article_id を採用 (verbatim 信用ではなく、shape を見てから DB 照合)
         if let Some(aid) = r.article_id.as_ref() {
-            article_ids.push(aid);
-        } else {
-            for (u, a) in url_to_article {
-                if u == &r.url {
-                    article_ids.push(a);
+            if is_uuid_shape(aid) {
+                article_ids.insert(aid.clone());
+            }
+        }
+
+        // Path 2: URL match を常に併走。完全一致 → host 単位一致 (multi-match 許容)。
+        let ref_host = url_host(&r.url);
+        for (u, a) in url_to_article {
+            if u == &r.url {
+                article_ids.insert(a.clone());
+                continue;
+            }
+            if let (Some(rh), Some(uh)) = (ref_host.as_deref(), url_host(u).as_deref()) {
+                if rh == uh {
+                    article_ids.insert(a.clone());
                 }
             }
         }
 
         if article_ids.is_empty() {
-            debug!(unmatched_ref_url = %r.url, "could not resolve reference url to article_id");
+            debug!(
+                unmatched_ref_url = %r.url,
+                unmatched_article_id = ?r.article_id,
+                "could not resolve reference to article_id"
+            );
             continue;
         }
 
-        for aid in article_ids {
+        for aid in &article_ids {
             if let Some(ids) = article_to_sentence_ids.get(aid) {
                 seen.extend(ids.iter().copied());
             }
@@ -835,16 +878,19 @@ mod tests {
 
     #[test]
     fn reconcile_dedupes_and_sorts_repeated_markers() {
+        // ADR-890 followup: production の article_id は常に UUID。fixture も UUID で揃える。
+        let aid_a = "1dce453b-e23d-4a32-9030-7e4529fad645";
+        let aid_b = "5ab015b7-1060-4e79-910d-c3e19acbb5cc";
         let refs = vec![
-            ref_with_id(1, "https://example.com/a", Some("a-1")),
-            ref_with_id(2, "https://example.com/b", Some("b-1")),
+            ref_with_id(1, "https://example.com/a", Some(aid_a)),
+            ref_with_id(2, "https://example.com/b", Some(aid_b)),
         ];
         // 重複 [1] [1] [2] → dedup + sorted union
         let result = reconcile_bullet_citations(
             "foo [1] bar [1] baz [2]",
             &refs,
             &url_map(&[]),
-            &sid_map(&[("a-1", vec![30, 31]), ("b-1", vec![40])]),
+            &sid_map(&[(aid_a, vec![30, 31]), (aid_b, vec![40])]),
         );
         assert_eq!(result, vec![30, 31, 40]);
     }
@@ -860,6 +906,100 @@ mod tests {
             &sid_map(&[("a-1", vec![10, 11])]),
         );
         assert!(result.is_empty(), "empty refs → no grounding");
+    }
+
+    // === ADR-890 followup: reconciler must not trust non-UUID article_id verbatim ===
+    // production の LLM 出力で `article_id="dev.to"` (domain string) が観測されたため、
+    // UUID-shape でない article_id は捨てて URL fallback に倒す。
+
+    #[test]
+    fn reconcile_falls_back_to_url_when_article_id_is_non_uuid_string() {
+        // LLM が article_id をドメイン文字列で埋めた典型例。Some("dev.to") を信用して
+        // article_to_sentence_ids.get("dev.to") を引いて空になる、という現バグを潰す。
+        let refs = vec![ref_with_id(
+            1,
+            "https://dev.to/foo/bar",
+            Some("dev.to"), // non-UUID
+        )];
+        let valid_uuid = "1dce453b-e23d-4a32-9030-7e4529fad645";
+        let result = reconcile_bullet_citations(
+            "事実 [1]",
+            &refs,
+            &url_map(&[("https://dev.to/foo/bar", valid_uuid)]),
+            &sid_map(&[(valid_uuid, vec![100, 101])]),
+        );
+        assert_eq!(
+            result,
+            vec![100, 101],
+            "non-UUID article_id must be discarded and URL fallback must succeed"
+        );
+    }
+
+    #[test]
+    fn reconcile_falls_back_to_url_when_uuid_article_id_does_not_resolve() {
+        // UUID 形状だが article_to_sentence_ids にエントリ無し → URL fallback に倒す。
+        let stale_uuid = "00000000-0000-4000-8000-000000000000";
+        let live_uuid = "1dce453b-e23d-4a32-9030-7e4529fad645";
+        let refs = vec![ref_with_id(
+            1,
+            "https://example.com/article-x",
+            Some(stale_uuid),
+        )];
+        let result = reconcile_bullet_citations(
+            "事実 [1]",
+            &refs,
+            &url_map(&[("https://example.com/article-x", live_uuid)]),
+            &sid_map(&[(live_uuid, vec![200, 201])]),
+        );
+        assert_eq!(
+            result,
+            vec![200, 201],
+            "valid-shape UUID that misses must fall through to URL match"
+        );
+    }
+
+    #[test]
+    fn reconcile_matches_by_host_when_ref_url_is_domain_only() {
+        // ref.url が "dev.to" のような scheme/path 無しの純ドメイン。host 部一致で
+        // 同ホストの article 群を全て拾う (multi-match 許容: ADR-890 §Decision §3)。
+        let refs = vec![ref_with_id(1, "dev.to", None)];
+        let uuid_a = "1dce453b-e23d-4a32-9030-7e4529fad645";
+        let uuid_b = "5ab015b7-1060-4e79-910d-c3e19acbb5cc";
+        let result = reconcile_bullet_citations(
+            "事実 [1]",
+            &refs,
+            &url_map(&[
+                ("https://dev.to/foo", uuid_a),
+                ("https://dev.to/bar", uuid_b),
+                ("https://other.example.com/x", "x-1"),
+            ]),
+            &sid_map(&[(uuid_a, vec![300]), (uuid_b, vec![301, 302])]),
+        );
+        assert_eq!(
+            result,
+            vec![300, 301, 302],
+            "domain-only ref.url must host-match all same-host articles"
+        );
+    }
+
+    #[test]
+    fn reconcile_merges_uuid_article_id_and_url_match_non_exclusively() {
+        // article_id が有効 UUID で sentence にヒットしても、URL からも合流できる場合は
+        // BTreeSet に両方放り込んで union を返す (排他にしない)。
+        let uuid_a = "1dce453b-e23d-4a32-9030-7e4529fad645";
+        let uuid_b = "5ab015b7-1060-4e79-910d-c3e19acbb5cc";
+        let refs = vec![ref_with_id(1, "https://example.com/dual", Some(uuid_a))];
+        let result = reconcile_bullet_citations(
+            "事実 [1]",
+            &refs,
+            &url_map(&[("https://example.com/dual", uuid_b)]),
+            &sid_map(&[(uuid_a, vec![10]), (uuid_b, vec![20, 21])]),
+        );
+        assert_eq!(
+            result,
+            vec![10, 20, 21],
+            "valid article_id and matching URL must merge (union), not be exclusive"
+        );
     }
 
     // === Integration: persist が source_sentence_ids を埋めて upsert する ===
