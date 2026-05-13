@@ -341,9 +341,17 @@
           },
           "summary": {
             "bullets": [
-              "AI関連の進展が報告された。"
+              "AI関連の進展が報告された。 [1]"
             ],
             "language": "ja",
+            "references": [
+              {
+                "article_id": "1dce453b-e23d-4a32-9030-7e4529fad645",
+                "domain": "example.com",
+                "id": 1,
+                "url": "https://example.com/article-1"
+              }
+            ],
             "title": "テクノロジー週間要約"
           }
         },
@@ -406,6 +414,57 @@
               "matchers": [
                 {
                   "match": "type"
+                }
+              ]
+            },
+            "$.summary.references": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type",
+                  "min": 1
+                }
+              ]
+            },
+            "$.summary.references[*].*": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.summary.references[*].article_id": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+                }
+              ]
+            },
+            "$.summary.references[*].domain": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.summary.references[*].id": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.summary.references[*].url": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "^https?://[A-Za-z0-9.-]+(?:/[^\\s]*)?$"
                 }
               ]
             },

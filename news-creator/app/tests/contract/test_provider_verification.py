@@ -151,13 +151,23 @@ def _create_provider_app() -> FastAPI:
                 content={"error": "queue full"},
                 headers={"Retry-After": "30"},
             )
+        # ADR-890 followup: references[] uses full http(s):// URL and UUID
+        # article_id. Bullets carry [n] citation markers tied to references.id.
         return {
             "job_id": payload.get("job_id", "00000000-0000-0000-0000-000000000001"),
             "genre": payload.get("genre", "tech"),
             "summary": {
                 "title": "テクノロジー週間要約",
-                "bullets": ["AI関連の進展が報告された。"],
+                "bullets": ["AI関連の進展が報告された。 [1]"],
                 "language": "ja",
+                "references": [
+                    {
+                        "id": 1,
+                        "url": "https://example.com/article-1",
+                        "domain": "example.com",
+                        "article_id": "1dce453b-e23d-4a32-9030-7e4529fad645",
+                    }
+                ],
             },
             "metadata": {"model": "gemma4-e4b-q4km"},
         }

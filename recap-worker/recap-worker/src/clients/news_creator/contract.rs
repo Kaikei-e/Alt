@@ -37,13 +37,29 @@ async fn contract_news_creator_summary_generate() {
             }));
             i.response.status(200);
             i.response.content_type("application/json");
+            // ADR-890 followup: references[].url is a full http(s):// URL,
+            // references[].article_id is a UUID-or-null (production article_ids
+            // are always UUIDs; LLM hallucinations like "dev.to" must be
+            // null-ed by news-creator's sanitizer before they reach us).
             i.response.json_body(json_pattern!({
                 "job_id": like!("00000000-0000-0000-0000-000000000001"),
                 "genre": like!("tech"),
                 "summary": json_pattern!({
                     "title": like!("テクノロジー週間要約"),
-                    "bullets": each_like!(like!("AI関連の進展が報告された。")),
+                    "bullets": each_like!(like!("AI関連の進展が報告された。 [1]")),
                     "language": like!("ja"),
+                    "references": each_like!(json_pattern!({
+                        "id": like!(1i64),
+                        "url": term!(
+                            r"^https?://[A-Za-z0-9.-]+(?:/[^\s]*)?$",
+                            "https://example.com/article-1"
+                        ),
+                        "domain": like!("example.com"),
+                        "article_id": term!(
+                            r"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                            "1dce453b-e23d-4a32-9030-7e4529fad645"
+                        ),
+                    })),
                 }),
                 "metadata": json_pattern!({
                     "model": like!("gemma4-e4b-q4km"),
