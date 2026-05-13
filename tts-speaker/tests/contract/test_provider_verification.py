@@ -45,6 +45,15 @@ PACT_PROVIDER_BRANCH = os.environ.get("PACT_PROVIDER_BRANCH")
 PACT_DISABLE_PENDING = os.environ.get("PACT_DISABLE_PENDING") == "true"
 PACT_INCLUDE_WIP_SINCE = os.environ.get("PACT_INCLUDE_WIP_SINCE")
 
+# Build URL for the broker UI's "Build" hyperlink on each verification record.
+# pact-python's set_publish_options(url=...) is the CI build URL, not the
+# broker URL (see pact-foundation Verifier.set_publish_options docstring).
+_BUILD_URL = (
+    f"{os.environ['GITHUB_SERVER_URL']}/{os.environ['GITHUB_REPOSITORY']}/actions/runs/{os.environ['GITHUB_RUN_ID']}"
+    if all(os.environ.get(k) for k in ("GITHUB_SERVER_URL", "GITHUB_REPOSITORY", "GITHUB_RUN_ID"))
+    else None
+)
+
 # Local pact file
 PACT_DIR = Path(__file__).resolve().parent.parent.parent.parent / "pacts"
 BFF_PACT = PACT_DIR / "alt-butterfly-facade-tts-speaker.json"
@@ -170,6 +179,9 @@ def test_verify_bff_contract(provider_url: tuple[str, int]):
             consumer="alt-butterfly-facade", main_branch=True,
         )
         builder = builder.consumer_version(
+            consumer="alt-butterfly-facade", matching_branch=True,
+        )
+        builder = builder.consumer_version(
             consumer="alt-butterfly-facade", deployed_or_released=True,
         )
         if not PACT_DISABLE_PENDING:
@@ -178,10 +190,12 @@ def test_verify_bff_contract(provider_url: tuple[str, int]):
             builder = builder.include_wip_since(PACT_INCLUDE_WIP_SINCE)
         builder.build()
 
+        verifier.set_error_on_empty_pact(enabled=True)
+
         if PACT_PROVIDER_VERSION:
             verifier.set_publish_options(
                 version=PACT_PROVIDER_VERSION,
-                url=PACT_BROKER_URL,
+                url=_BUILD_URL,
                 branch=PACT_PROVIDER_BRANCH,
             )
     else:
