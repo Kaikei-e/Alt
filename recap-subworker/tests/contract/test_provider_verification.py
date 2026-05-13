@@ -130,9 +130,7 @@ def _create_provider_app() -> FastAPI:
                     "cluster_id": 0,
                     "size": 5,
                     "top_terms": ["AI"],
-                    "representatives": [
-                        {"sentence_text": "AI is transforming industries."}
-                    ],
+                    "representatives": [{"sentence_text": "AI is transforming industries."}],
                 }
             ],
         }
@@ -207,13 +205,16 @@ def _configure_verifier(
         # in production after a SHA bump, so can-i-deploy stays "unknown".
         if consumer_name:
             builder = builder.consumer_version(
-                consumer=consumer_name, main_branch=True,
+                consumer=consumer_name,
+                main_branch=True,
             )
             builder = builder.consumer_version(
-                consumer=consumer_name, matching_branch=True,
+                consumer=consumer_name,
+                matching_branch=True,
             )
             builder = builder.consumer_version(
-                consumer=consumer_name, deployed_or_released=True,
+                consumer=consumer_name,
+                deployed_or_released=True,
             )
         else:
             builder = builder.consumer_version(main_branch=True)

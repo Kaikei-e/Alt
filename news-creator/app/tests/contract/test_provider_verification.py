@@ -49,7 +49,10 @@ PACT_INCLUDE_WIP_SINCE = os.environ.get("PACT_INCLUDE_WIP_SINCE")
 # broker URL (see pact-foundation Verifier.set_publish_options docstring).
 _BUILD_URL = (
     f"{os.environ['GITHUB_SERVER_URL']}/{os.environ['GITHUB_REPOSITORY']}/actions/runs/{os.environ['GITHUB_RUN_ID']}"
-    if all(os.environ.get(k) for k in ("GITHUB_SERVER_URL", "GITHUB_REPOSITORY", "GITHUB_RUN_ID"))
+    if all(
+        os.environ.get(k)
+        for k in ("GITHUB_SERVER_URL", "GITHUB_REPOSITORY", "GITHUB_RUN_ID")
+    )
     else None
 )
 
