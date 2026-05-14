@@ -17,7 +17,7 @@ async def test_health_ok(client: AsyncClient):
     assert resp.status_code == 200
     body = resp.json()
     assert body["status"] == "ok"
-    assert body["model"] == "kokoro-82m"
+    assert body["model"] == "qwen3-tts-12hz-0.6b-customvoice"
     assert body["lang"] == "ja"
     assert body["device"] == "cpu"
     assert "gpu_name" not in body
@@ -37,7 +37,7 @@ async def test_health_not_ready(client: AsyncClient, mock_pipeline: MagicMock):
 async def test_health_with_gpu(mock_pipeline: MagicMock):
     """Health endpoint includes gpu_name when GPU is active."""
     mock_pipeline._device = "cuda"
-    mock_pipeline._gpu_name = "AMD Radeon 890M"
+    mock_pipeline._gpu_name = "AMD ROCm GPU"
 
     with patch.dict("os.environ", {"SERVICE_SECRET": ""}, clear=False):
         app = create_app(pipeline_override=mock_pipeline)
@@ -49,4 +49,4 @@ async def test_health_with_gpu(mock_pipeline: MagicMock):
     assert resp.status_code == 200
     body = resp.json()
     assert body["device"] == "cuda"
-    assert body["gpu_name"] == "AMD Radeon 890M"
+    assert body["gpu_name"] == "AMD ROCm GPU"

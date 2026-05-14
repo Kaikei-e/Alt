@@ -54,50 +54,108 @@ class TestJapaneseSplitPattern:
 
 
 def _make_pipeline_with_mock() -> tuple[TTSPipeline, MagicMock]:
-    """Create a TTSPipeline with a mocked KPipeline."""
-    mock_kpipeline = MagicMock()
+    """Create a TTSPipeline with a mocked Qwen3TTSModel."""
+    mock_model = MagicMock()
     mock_audio = np.zeros(100, dtype=np.float32)
-    mock_kpipeline.return_value = [("graphemes", "phonemes", mock_audio)]
+    # generate_custom_voice returns (wavs: list[np.ndarray], sr: int)
+    mock_model.generate_custom_voice.return_value = ([mock_audio], 24000)
 
     with patch.object(TTSPipeline, "__init__", lambda self: None):
         pipeline = TTSPipeline()
 
-    pipeline._pipeline = mock_kpipeline
+    pipeline._model = mock_model
     pipeline._ready = True
-    return pipeline, mock_kpipeline
+    pipeline._device = "cpu"
+    pipeline._gpu_name = None
+    return pipeline, mock_model
 
 
-class TestSynthesizeSplitPattern:
-    """Verify split_pattern=JAPANESE_SPLIT_PATTERN is passed to KPipeline."""
+class TestSynthesizeSentenceLoop:
+    """Verify sentence-by-sentence synthesis with JAPANESE_SPLIT_PATTERN."""
 
-    def test_synthesize_sync_passes_split_pattern(self):
-        """_synthesize_sync passes split_pattern to KPipeline.__call__."""
-        pipeline, mock_kpipeline = _make_pipeline_with_mock()
+    def test_synthesize_sync_calls_per_sentence(self):
+        """_synthesize_sync runs generate_custom_voice once per sentence."""
+        pipeline, mock_model = _make_pipeline_with_mock()
 
-        pipeline._synthesize_sync("テスト文。", "jf_alpha", 1.0)
+        audio, sr = pipeline._synthesize_sync("最初の文。次の文。", "qwen-ja-1", 1.0)
 
-        mock_kpipeline.assert_called_once_with(
-            "テスト文。",
-            voice="jf_alpha",
-            speed=1.0,
-            split_pattern=JAPANESE_SPLIT_PATTERN,
-        )
+        assert mock_model.generate_custom_voice.call_count == 2
+        assert sr == 24000
+        assert audio.dtype == np.float32
+
+    def test_synthesize_sync_single_sentence_no_split(self):
+        """Single sentence without terminator runs a single generation call."""
+        pipeline, mock_model = _make_pipeline_with_mock()
+
+        audio, sr = pipeline._synthesize_sync("句点なし", "qwen-ja-1", 1.0)
+
+        assert mock_model.generate_custom_voice.call_count == 1
+        assert sr == 24000
+        assert audio.size > 0
+
+    def test_synthesize_sync_passes_voice_preset_and_instruct(self):
+        """Voice preset name and instruct string reach generate_custom_voice."""
+        pipeline, mock_model = _make_pipeline_with_mock()
+
+        pipeline._synthesize_sync("テスト文。", "qwen-ja-2", 1.0)
+
+        call_kwargs = mock_model.generate_custom_voice.call_args.kwargs
+        assert call_kwargs["text"] == "テスト文。"
+        assert call_kwargs["language"] == "Japanese"
+        # qwen_speaker for qwen-ja-2 resolves via VOICES_CONFIG
+        assert call_kwargs["speaker"]  # non-empty
+        assert call_kwargs["instruct"]  # non-empty
+
+    def test_synthesize_sync_speed_hint_slow(self):
+        """speed < 0.85 maps to ゆっくり instruct hint."""
+        pipeline, mock_model = _make_pipeline_with_mock()
+
+        pipeline._synthesize_sync("テスト文。", "qwen-ja-1", 0.8)
+
+        instruct = mock_model.generate_custom_voice.call_args.kwargs["instruct"]
+        assert "ゆっくり" in instruct
+
+    def test_synthesize_sync_speed_hint_fast(self):
+        """speed > 1.15 maps to 速め instruct hint."""
+        pipeline, mock_model = _make_pipeline_with_mock()
+
+        pipeline._synthesize_sync("テスト文。", "qwen-ja-1", 1.25)
+
+        instruct = mock_model.generate_custom_voice.call_args.kwargs["instruct"]
+        assert "速め" in instruct
+
+    def test_synthesize_sync_speed_hint_neutral(self):
+        """0.85 <= speed <= 1.15 leaves base instruct alone."""
+        pipeline, mock_model = _make_pipeline_with_mock()
+
+        pipeline._synthesize_sync("テスト文。", "qwen-ja-1", 1.0)
+
+        instruct = mock_model.generate_custom_voice.call_args.kwargs["instruct"]
+        assert "ゆっくり" not in instruct
+        assert "速め" not in instruct
+
+    def test_synthesize_sync_unknown_voice_raises(self):
+        """Unknown voice ID raises ValueError before calling the model."""
+        pipeline, mock_model = _make_pipeline_with_mock()
+
+        with pytest.raises(ValueError, match="unknown voice"):
+            pipeline._synthesize_sync("テスト文。", "no-such-voice", 1.0)
+
+        mock_model.generate_custom_voice.assert_not_called()
 
     @pytest.mark.asyncio
-    async def test_synthesize_stream_passes_split_pattern(self):
-        """synthesize_stream passes split_pattern to KPipeline.__call__."""
-        pipeline, mock_kpipeline = _make_pipeline_with_mock()
+    async def test_synthesize_stream_yields_per_sentence(self):
+        """synthesize_stream yields one (audio, sr) tuple per sentence."""
+        pipeline, mock_model = _make_pipeline_with_mock()
 
         chunks = []
         async for chunk in pipeline.synthesize_stream(
-            text="テスト文。", voice="jf_alpha", speed=1.0
+            text="最初の文。次の文。", voice="qwen-ja-1", speed=1.0
         ):
             chunks.append(chunk)
 
-        mock_kpipeline.assert_called_once_with(
-            "テスト文。",
-            voice="jf_alpha",
-            speed=1.0,
-            split_pattern=JAPANESE_SPLIT_PATTERN,
-        )
-        assert len(chunks) == 1
+        assert mock_model.generate_custom_voice.call_count == 2
+        assert len(chunks) == 2
+        for audio, sr in chunks:
+            assert sr == 24000
+            assert audio.dtype == np.float32

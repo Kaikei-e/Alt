@@ -80,7 +80,7 @@ Alt は AI 拡張型 RSS ナレッジプラットフォームである。RSS フ
 - **全文検索**: Meilisearch + MeCab トークナイザーによる日本語対応検索
 - **Recap レポート**: 7 日間・3 日間の AI キュレーション定期レポート
 - **RAG 質問応答**: pgvector ベクトル検索 + LLM による記事ベースの回答生成
-- **TTS 音声合成**: Kokoro-82M による日本語記事の読み上げ
+- **TTS 音声合成**: Qwen3-TTS-12Hz-0.6B-CustomVoice (Apache 2.0) による日本語記事の読み上げ
 - **オブザーバビリティ**: SIMD パーサーベースの高速ログ収集・分析
 
 ### 1.2 技術スタック一覧
@@ -929,21 +929,19 @@ Meilisearch への文書インデックスと日本語全文検索を提供。
 
 ### 5.5 tts-speaker (Python) — 日本語 TTS
 
-Kokoro-82M (82M パラメータ) による日本語テキスト音声合成。
+Qwen3-TTS-12Hz-0.6B-CustomVoice (Apache 2.0) による日本語テキスト音声合成。
 
 **音声一覧:**
 
 | ID | 名前 | 性別 |
 |----|------|------|
-| `jf_alpha` | Alpha | 女性 (デフォルト) |
-| `jf_gongitsune` | Gongitsune | 女性 |
-| `jf_nezumi` | Nezumi | 女性 |
-| `jf_tebukuro` | Tebukuro | 女性 |
-| `jm_kumo` | Kumo | 男性 |
+| `qwen-ja-1` | JA Voice 1 | 女性 (デフォルト) |
+| `qwen-ja-2` | JA Voice 2 | 女性 |
+| `qwen-ja-3` | JA Voice 3 | 女性 |
 
-**音声仕様:** 24kHz float32 WAV
+**音声仕様:** 24kHz float32 WAV (動的、`sampleRate` フィールドで通知)
 
-**GPU 対応:** ROCm 7.2 (AMD iGPU)、CPU フォールバック対応
+**GPU 対応:** ROCm 7.2 (AMD)、CPU フォールバック対応。`attn_implementation="sdpa"` — `flash-attn` は使用しない。
 
 **エンドポイント:**
 

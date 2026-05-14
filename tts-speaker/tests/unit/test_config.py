@@ -13,24 +13,33 @@ def test_default_values():
         s = Settings()
     assert s.host == "0.0.0.0"
     assert s.port == 9700
-    assert s.default_voice == "jf_alpha"
+    assert s.default_voice == "qwen-ja-1"
     assert s.default_speed == 1.0
     assert s.log_level == "INFO"
     assert s.tts_max_stream_text_length == 30_000
+    assert s.qwen_model_id == "Qwen/Qwen3-TTS-12Hz-0.6B-CustomVoice"
+    assert s.qwen_dtype == "bfloat16"
+    assert s.qwen_attn_implementation == "sdpa"
 
 
 def test_env_override():
     """Settings can be overridden via environment variables."""
     env = {
-        "TTS_DEFAULT_VOICE": "jm_kumo",
+        "TTS_DEFAULT_VOICE": "qwen-ja-2",
         "TTS_DEFAULT_SPEED": "1.5",
         "LOG_LEVEL": "DEBUG",
+        "TTS_QWEN_MODEL_ID": "Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice",
+        "TTS_QWEN_DTYPE": "float16",
+        "TTS_QWEN_ATTN": "eager",
     }
     with patch.dict("os.environ", env, clear=True):
         s = Settings()
-    assert s.default_voice == "jm_kumo"
+    assert s.default_voice == "qwen-ja-2"
     assert s.default_speed == 1.5
     assert s.log_level == "DEBUG"
+    assert s.qwen_model_id == "Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice"
+    assert s.qwen_dtype == "float16"
+    assert s.qwen_attn_implementation == "eager"
 
 
 def test_speed_range():

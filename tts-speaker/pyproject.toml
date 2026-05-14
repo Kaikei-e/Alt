@@ -1,7 +1,7 @@
 [project]
 name = "tts-speaker"
-version = "0.1.0"
-description = "Kokoro-82M Japanese TTS microservice"
+version = "0.2.0"
+description = "Qwen3-TTS-12Hz-0.6B-CustomVoice Japanese TTS microservice"
 requires-python = "~=3.12.0"
 readme = "README.md"
 authors = [{ name = "Alt Engineering" }]
@@ -10,8 +10,9 @@ dependencies = [
     "uvicorn[standard]>=0.34.0",
     "pydantic>=2.9.0",
     "pydantic-settings>=2.3.0",
-    "kokoro>=0.9.4",
-    "misaki[ja]>=0.9.3",
+    "qwen-tts>=0.1.0",
+    "torchaudio>=2.6.0",
+    "transformers>=4.57,<5",
     "soundfile>=0.13.0",
     "numpy>=1.26.0",
     "protobuf>=7.34.1",
@@ -43,6 +44,7 @@ explicit = true
 
 [tool.uv.sources]
 torch = { index = "pytorch-cpu" }
+torchaudio = { index = "pytorch-cpu" }
 
 [tool.setuptools]
 packages = ["tts_speaker"]

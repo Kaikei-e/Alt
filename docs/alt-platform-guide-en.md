@@ -80,7 +80,7 @@ Key features:
 - **Full-Text Search**: Japanese-capable search using Meilisearch + MeCab tokenizer
 - **Recap Reports**: AI-curated periodic reports for 7-day and 3-day windows
 - **RAG Question Answering**: Article-based answer generation using pgvector vector search + LLM
-- **TTS Speech Synthesis**: Japanese article read-aloud using Kokoro-82M
+- **TTS Speech Synthesis**: Japanese article read-aloud using Qwen3-TTS-12Hz-0.6B-CustomVoice (Apache 2.0)
 - **Observability**: High-performance log collection and analysis based on SIMD parsers
 
 ### 1.2 Technology Stack
@@ -929,21 +929,19 @@ Provides document indexing to Meilisearch and Japanese full-text search.
 
 ### 5.5 tts-speaker (Python) — Japanese TTS
 
-Japanese text-to-speech synthesis using Kokoro-82M (82M parameters).
+Japanese text-to-speech synthesis using Qwen3-TTS-12Hz-0.6B-CustomVoice (Apache 2.0).
 
 **Voice List:**
 
 | ID | Name | Gender |
 |----|------|--------|
-| `jf_alpha` | Alpha | Female (default) |
-| `jf_gongitsune` | Gongitsune | Female |
-| `jf_nezumi` | Nezumi | Female |
-| `jf_tebukuro` | Tebukuro | Female |
-| `jm_kumo` | Kumo | Male |
+| `qwen-ja-1` | JA Voice 1 | Female (default) |
+| `qwen-ja-2` | JA Voice 2 | Female |
+| `qwen-ja-3` | JA Voice 3 | Female |
 
-**Audio Specification:** 24kHz float32 WAV
+**Audio Specification:** 24kHz float32 WAV (dynamic — value reported in `sampleRate`)
 
-**GPU Support:** ROCm 7.2 (AMD iGPU), with CPU fallback
+**GPU Support:** ROCm 7.2 (AMD), with CPU fallback. `attn_implementation="sdpa"` — `flash-attn` is not used.
 
 **Endpoints:**
 

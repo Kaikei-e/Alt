@@ -62,8 +62,8 @@ describe("synthesizeSpeech", () => {
 
 		expect(mockSynthesize).toHaveBeenCalledWith({
 			text: "Hello",
-			voice: "jf_gongitsune",
-			speed: 1.25,
+			voice: "qwen-ja-1",
+			speed: 1.0,
 		});
 		expect(result).toEqual({
 			audioWav: audioData,
@@ -81,13 +81,13 @@ describe("synthesizeSpeech", () => {
 
 		await synthesizeSpeech(mockTransport, {
 			text: "Test",
-			voice: "jm_beta",
+			voice: "qwen-ja-2",
 			speed: 1.5,
 		});
 
 		expect(mockSynthesize).toHaveBeenCalledWith({
 			text: "Test",
-			voice: "jm_beta",
+			voice: "qwen-ja-2",
 			speed: 1.5,
 		});
 	});
@@ -143,8 +143,8 @@ describe("synthesizeSpeechStream", () => {
 
 		expect(mockSynthesizeStream).toHaveBeenCalledWith({
 			text: "Hello world",
-			voice: "jf_gongitsune",
-			speed: 1.25,
+			voice: "qwen-ja-1",
+			speed: 1.0,
 		});
 		expect(results).toHaveLength(2);
 		expect(results[0]).toEqual(chunk1);
@@ -165,7 +165,7 @@ describe("synthesizeSpeechStream", () => {
 		const results = [];
 		for await (const result of synthesizeSpeechStream(mockTransport, {
 			text: "Test",
-			voice: "jm_beta",
+			voice: "qwen-ja-2",
 			speed: 1.5,
 		})) {
 			results.push(result);
@@ -173,7 +173,7 @@ describe("synthesizeSpeechStream", () => {
 
 		expect(mockSynthesizeStream).toHaveBeenCalledWith({
 			text: "Test",
-			voice: "jm_beta",
+			voice: "qwen-ja-2",
 			speed: 1.5,
 		});
 	});
@@ -215,16 +215,16 @@ describe("listVoices", () => {
 	it("returns available voices", async () => {
 		mockListVoices.mockResolvedValue({
 			voices: [
-				{ id: "jf_alpha", name: "Alpha Female", gender: "female" },
-				{ id: "jm_beta", name: "Beta Male", gender: "male" },
+				{ id: "qwen-ja-1", name: "JA Voice 1", gender: "female" },
+				{ id: "qwen-ja-2", name: "JA Voice 2", gender: "female" },
 			],
 		});
 
 		const result = await listVoices(mockTransport);
 
 		expect(result).toEqual([
-			{ id: "jf_alpha", name: "Alpha Female", gender: "female" },
-			{ id: "jm_beta", name: "Beta Male", gender: "male" },
+			{ id: "qwen-ja-1", name: "JA Voice 1", gender: "female" },
+			{ id: "qwen-ja-2", name: "JA Voice 2", gender: "female" },
 		]);
 	});
 

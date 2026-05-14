@@ -11,7 +11,6 @@ from connectrpc.errors import ConnectError
 from httpx import ASGITransport, AsyncClient
 
 from tts_speaker.app.main import create_app
-from tts_speaker.core.pipeline import TTSPipeline
 from tts_speaker.core.preprocess import preprocess_for_tts
 
 
@@ -36,12 +35,12 @@ async def test_synthesize_with_voice_and_speed(client: AsyncClient, mock_pipelin
     """Synthesize respects voice and speed parameters."""
     resp = await client.post(
         "/alt.tts.v1.TTSService/Synthesize",
-        json={"text": "テスト", "voice": "jm_kumo", "speed": 1.5},
+        json={"text": "テスト", "voice": "qwen-ja-2", "speed": 1.5},
         headers={"Content-Type": "application/json"},
     )
     assert resp.status_code == 200
     call_kwargs = mock_pipeline.synthesize.call_args
-    assert call_kwargs[1]["voice"] == "jm_kumo"
+    assert call_kwargs[1]["voice"] == "qwen-ja-2"
     assert call_kwargs[1]["speed"] == 1.5
 
 
@@ -115,7 +114,7 @@ async def test_synthesize_speed_out_of_range(client: AsyncClient):
 
 @pytest.mark.asyncio
 async def test_list_voices_returns_all(client: AsyncClient):
-    """ListVoices returns list of 5 Japanese voices."""
+    """ListVoices returns list of 3 Japanese voices."""
     resp = await client.post(
         "/alt.tts.v1.TTSService/ListVoices",
         json={},
@@ -123,7 +122,7 @@ async def test_list_voices_returns_all(client: AsyncClient):
     )
     assert resp.status_code == 200
     body = resp.json()
-    assert len(body["voices"]) == 5
+    assert len(body["voices"]) == 3
 
 
 @pytest.mark.asyncio
@@ -150,11 +149,9 @@ async def test_list_voices_ids(client: AsyncClient):
         headers={"Content-Type": "application/json"},
     )
     voice_ids = [v["id"] for v in resp.json()["voices"]]
-    assert "jf_alpha" in voice_ids
-    assert "jf_gongitsune" in voice_ids
-    assert "jf_nezumi" in voice_ids
-    assert "jf_tebukuro" in voice_ids
-    assert "jm_kumo" in voice_ids
+    assert "qwen-ja-1" in voice_ids
+    assert "qwen-ja-2" in voice_ids
+    assert "qwen-ja-3" in voice_ids
 
 
 @pytest.mark.asyncio
@@ -241,7 +238,7 @@ async def test_synthesize_stream_accepts_long_text(mock_pipeline: MagicMock):
     from tts_speaker.infra.config import Settings
 
     async def fake_stream(**kwargs):
-        yield np.zeros(2400, dtype=np.float32)
+        yield np.zeros(4410, dtype=np.float32), 44100
 
     mock_pipeline.synthesize_stream = MagicMock(side_effect=fake_stream)
 
@@ -289,7 +286,7 @@ async def test_synthesize_stream_long_text_preprocessed(mock_pipeline: MagicMock
     from tts_speaker.infra.config import Settings
 
     async def fake_stream(**kwargs):
-        yield np.zeros(2400, dtype=np.float32)
+        yield np.zeros(4410, dtype=np.float32), 44100
 
     mock_pipeline.synthesize_stream = MagicMock(side_effect=fake_stream)
 
@@ -318,7 +315,7 @@ async def test_synthesize_stream_preprocesses_english(mock_pipeline: MagicMock):
     from tts_speaker.infra.config import Settings
 
     async def fake_stream(**kwargs):
-        yield np.zeros(2400, dtype=np.float32)
+        yield np.zeros(4410, dtype=np.float32), 44100
 
     mock_pipeline.synthesize_stream = MagicMock(side_effect=fake_stream)
 

@@ -71,9 +71,9 @@ def _create_mock_pipeline():
     pipeline = MagicMock()
     pipeline.is_ready = True
 
-    # synthesize() returns audio ndarray (24kHz float32)
-    async def mock_synthesize(*, text, voice="jf_alpha", speed=1.0):
-        return np.zeros(24000, dtype=np.float32)
+    # synthesize() returns (audio_float32, sample_rate) at 44.1 kHz.
+    async def mock_synthesize(*, text, voice="qwen-ja-1", speed=1.0):
+        return np.zeros(24000, dtype=np.float32), 24000
 
     pipeline.synthesize = AsyncMock(side_effect=mock_synthesize)
     return pipeline

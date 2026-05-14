@@ -26,25 +26,24 @@ ENV UV_COMPILE_BYTECODE=0 UV_LINK_MODE=copy VIRTUAL_ENV=/opt/venv
 COPY pyproject.toml ./
 
 # 依存関係をインストール
-# uv pip compile で全依存関係を解決し、GPU エコシステム (torch, nvidia, cuda, triton) を除外
+# uv pip compile で全依存関係を解決し、GPU エコシステム (torch, nvidia, cuda, triton, flash-attn) を除外
 # ベースイメージに ROCm 版 torch がプリインストール済みのため、PyPI の CUDA 版との競合を回避
+# flash-attn は CUDA 専用、ROCm 上では絶対にインストールしない (qwen-tts は sdpa 経由で動作可)
 # --no-deps で依存解決をスキップ (compile 済みで全パッケージ列挙されているため安全)
 RUN uv pip compile pyproject.toml -o requirements.txt \
-    && sed -i -E '/(^torch|^kokoro|^nvidia-|^cuda-|^triton)/d' requirements.txt \
-    && echo "=== Installing (torch/CUDA excluded) ===" \
+    && sed -i -E '/(^torch|^qwen-tts|^nvidia-|^cuda-|^triton|^flash[-_]attn)/d' requirements.txt \
+    && echo "=== Installing (torch/CUDA/flash-attn excluded) ===" \
     && uv pip install --no-deps -r requirements.txt
 
-# kokoro をインストール (torch はベースイメージから利用)
-RUN uv pip install --no-deps "kokoro>=0.9.4"
+# qwen-tts をインストール (torch はベースイメージから利用、flash-attn は引き込まない)
+RUN uv pip install --no-deps "qwen-tts>=1.0.0" \
+    && uv pip uninstall flash-attn 2>/dev/null || true
 
 # アプリケーションコードをコピー
 COPY tts_speaker ./tts_speaker
 
 # プロジェクトをインストール
 RUN uv pip install --no-deps .
-
-# Download UniDic dictionary
-RUN python3 -m unidic download
 
 # キャッシュディレクトリ作成 & 権限設定
 RUN groupadd -r tts && useradd -r -g tts tts \

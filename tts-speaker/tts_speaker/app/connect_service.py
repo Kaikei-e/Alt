@@ -21,7 +21,6 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-SAMPLE_RATE = 24000
 MAX_TEXT_LENGTH = 5000
 
 
@@ -72,19 +71,21 @@ class TTSConnectService:
             )
 
         try:
-            audio = await self._pipeline.synthesize(text=text, voice=voice, speed=speed)
+            audio, sample_rate = await self._pipeline.synthesize(
+                text=text, voice=voice, speed=speed
+            )
         except Exception:
             logger.exception("TTS synthesis failed")
             raise ConnectError(Code.INTERNAL, "Synthesis failed")
 
         buf = io.BytesIO()
-        sf.write(buf, audio, samplerate=SAMPLE_RATE, format="WAV", subtype="FLOAT")
+        sf.write(buf, audio, samplerate=sample_rate, format="WAV", subtype="FLOAT")
         wav_bytes = buf.getvalue()
-        duration = len(audio) / SAMPLE_RATE
+        duration = len(audio) / sample_rate
 
         return tts_pb2.SynthesizeResponse(
             audio_wav=wav_bytes,
-            sample_rate=SAMPLE_RATE,
+            sample_rate=sample_rate,
             duration_seconds=duration,
         )
 
@@ -96,10 +97,7 @@ class TTSConnectService:
         """Return available Japanese voices."""
         self._verify_token(ctx)
 
-        voices = [
-            tts_pb2.Voice(id=v["id"], name=v["name"], gender=v["gender"])
-            for v in VOICES
-        ]
+        voices = [tts_pb2.Voice(id=v["id"], name=v["name"], gender=v["gender"]) for v in VOICES]
         return tts_pb2.ListVoicesResponse(voices=voices)
 
     async def synthesize_stream(
@@ -140,50 +138,17 @@ class TTSConnectService:
             )
 
         try:
-            async for chunk in self._pipeline.synthesize_stream(
+            async for chunk, sample_rate in self._pipeline.synthesize_stream(
                 text=text, voice=voice, speed=speed
             ):
-                # Encode chunk as WAV (headerless for streaming? or just raw PCM?)
-                # Usually streaming audio sends headers in first chunk or just raw samples if format is agreed.
-                # But here we probably want to send minimal WAV containers or just raw PCM float32/int16.
-                # Re-reading the proto: "bytes audio_wav = 1;"
-                # If we send multiple WAV files effectively, the client has to handle concatenation.
-                # A common pattern is to send a header in the first message, then raw PCM.
-                # Or just raw PCM and let client wrap.
-                # However, the previous implementation sent a full WAV file.
-                # Let's try to send raw PCM in bytes, or small WAV chunks?
-                # "audio_wav" suggests it contains WAV formatted data.
-                # If we send a WAV header in every chunk, it's valid individually but not concatenatable.
-                # Let's stick to sending a WAV header in the first chunk (if possible) or just raw bytes
-                # and assume the client knows what to do. The existing field is 'audio_wav'.
-                # Actually, soundfile.write with a file-like object writes a header.
-                # If we write small chunks, we might be writing headers every time.
-
-                # Let's look at how we can just send the float bytes.
-                # Using sf.write might be overhead.
-                # But we should respect the contract "audio_wav".
-                # If it expects a WAV file, maybe we should just send PCM bytes and let client handle header?
-                # Or use a streaming wav writer?
-
-                # For simplicity and given standard Connect/gRPC patterns:
-                # We often send a header in the first chunk.
-                # But calculating duration requires knowing total length.
-
-                # Let's write raw float32 bytes and let the client assume 24kHz.
-                # OR use soundfile to write to buffer.
-
                 buf = io.BytesIO()
-                # Writing raw float32 bytes for now as it's most robust for streaming
-                # But the field is 'audio_wav'.
-                # Let's write valid WAV for the chunk. The client can strip headers if needed.
-                sf.write(buf, chunk, samplerate=SAMPLE_RATE, format="WAV", subtype="FLOAT")
+                sf.write(buf, chunk, samplerate=sample_rate, format="WAV", subtype="FLOAT")
                 wav_bytes = buf.getvalue()
-
-                duration = len(chunk) / SAMPLE_RATE
+                duration = len(chunk) / sample_rate
 
                 yield tts_pb2.SynthesizeStreamResponse(
                     audio_wav=wav_bytes,
-                    sample_rate=SAMPLE_RATE,
+                    sample_rate=sample_rate,
                     duration_seconds=duration,
                 )
 

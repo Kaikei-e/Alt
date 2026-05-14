@@ -43,12 +43,17 @@ async def health_endpoint(request: "Request") -> JSONResponse:
     if not pipeline.is_ready:
         return JSONResponse(
             status_code=503,
-            content={"status": "loading", "model": "kokoro-82m", "lang": "ja"},
+            content={"status": "loading", "model": "qwen3-tts-12hz-0.6b-customvoice", "lang": "ja"},
         )
 
     device = getattr(pipeline, "_device", "cpu")
     gpu_name = getattr(pipeline, "_gpu_name", None)
-    content = {"status": "ok", "model": "kokoro-82m", "lang": "ja", "device": device}
+    content = {
+        "status": "ok",
+        "model": "qwen3-tts-12hz-0.6b-customvoice",
+        "lang": "ja",
+        "device": device,
+    }
     if gpu_name:
         content["gpu_name"] = gpu_name
     return JSONResponse(content=content)

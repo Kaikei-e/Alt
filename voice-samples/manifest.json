@@ -1,0 +1,82 @@
+{
+  "model_id": "Qwen/Qwen3-TTS-12Hz-0.6B-CustomVoice",
+  "language": "Japanese",
+  "text": "今日は5月15日、東京は穏やかな晴れです。AltというRSSアプリの新機能をご紹介します。",
+  "instruct": "落ち着いた声で、自然なペースで日本語で読み上げてください",
+  "device": "cpu",
+  "dtype": "float32",
+  "samples": [
+    {
+      "speaker": "aiden",
+      "file": "voice-samples/qwen-aiden.wav",
+      "sample_rate": 24000,
+      "duration_seconds": 8.64,
+      "wall_seconds": 67.81395993474871,
+      "rtf": 7.84883795541073
+    },
+    {
+      "speaker": "dylan",
+      "file": "voice-samples/qwen-dylan.wav",
+      "sample_rate": 24000,
+      "duration_seconds": 8.48,
+      "wall_seconds": 61.50784869492054,
+      "rtf": 7.253284044212328
+    },
+    {
+      "speaker": "eric",
+      "file": "voice-samples/qwen-eric.wav",
+      "sample_rate": 24000,
+      "duration_seconds": 9.28,
+      "wall_seconds": 70.97869594208896,
+      "rtf": 7.648566373069932
+    },
+    {
+      "speaker": "ono_anna",
+      "file": "voice-samples/qwen-ono_anna.wav",
+      "sample_rate": 24000,
+      "duration_seconds": 9.04,
+      "wall_seconds": 64.79583900701255,
+      "rtf": 7.167681306085459
+    },
+    {
+      "speaker": "ryan",
+      "file": "voice-samples/qwen-ryan.wav",
+      "sample_rate": 24000,
+      "duration_seconds": 9.52,
+      "wall_seconds": 74.42831586487591,
+      "rtf": 7.818100405974361
+    },
+    {
+      "speaker": "serena",
+      "file": "voice-samples/qwen-serena.wav",
+      "sample_rate": 24000,
+      "duration_seconds": 11.68,
+      "wall_seconds": 95.15928209852427,
+      "rtf": 8.147198809805161
+    },
+    {
+      "speaker": "sohee",
+      "file": "voice-samples/qwen-sohee.wav",
+      "sample_rate": 24000,
+      "duration_seconds": 9.36,
+      "wall_seconds": 68.6065614502877,
+      "rtf": 7.329760838705951
+    },
+    {
+      "speaker": "uncle_fu",
+      "file": "voice-samples/qwen-uncle_fu.wav",
+      "sample_rate": 24000,
+      "duration_seconds": 9.52,
+      "wall_seconds": 76.25361212808639,
+      "rtf": 8.009833206731765
+    },
+    {
+      "speaker": "vivian",
+      "file": "voice-samples/qwen-vivian.wav",
+      "sample_rate": 24000,
+      "duration_seconds": 9.12,
+      "wall_seconds": 69.50713436678052,
+      "rtf": 7.621396312146987
+    }
+  ]
+}

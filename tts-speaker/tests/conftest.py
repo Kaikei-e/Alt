@@ -24,16 +24,16 @@ def _clear_settings_cache():
 
 @pytest.fixture
 def mock_pipeline() -> MagicMock:
-    """Create a mock TTSPipeline that returns 1 second of silence (24kHz)."""
+    """Create a mock TTSPipeline that returns 1 second of silence at 44.1 kHz."""
     pipeline = MagicMock(spec=TTSPipeline)
     pipeline.is_ready = True
-    pipeline.synthesize = AsyncMock(return_value=np.zeros(24000, dtype=np.float32))
+    pipeline.synthesize = AsyncMock(
+        return_value=(np.zeros(24000, dtype=np.float32), 24000),
+    )
     pipeline.voices = [
-        {"id": "jf_alpha", "name": "Alpha", "gender": "female"},
-        {"id": "jf_gongitsune", "name": "Gongitsune", "gender": "female"},
-        {"id": "jf_nezumi", "name": "Nezumi", "gender": "female"},
-        {"id": "jf_tebukuro", "name": "Tebukuro", "gender": "female"},
-        {"id": "jm_kumo", "name": "Kumo", "gender": "male"},
+        {"id": "qwen-ja-1", "name": "JA Voice 1", "gender": "female"},
+        {"id": "qwen-ja-2", "name": "JA Voice 2", "gender": "female"},
+        {"id": "qwen-ja-3", "name": "JA Voice 3", "gender": "female"},
     ]
     pipeline._device = "cpu"
     pipeline._gpu_name = None

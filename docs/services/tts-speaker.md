@@ -7,9 +7,9 @@ _Last reviewed: March 18, 2026_
 
 ## Role
 
-- **Japanese TTS Service**: Text-to-speech synthesis using Kokoro-82M (82M parameters) for Japanese news audio.
+- **Japanese TTS Service**: Text-to-speech synthesis using Qwen3-TTS-12Hz-0.6B-CustomVoice for Japanese news audio.
 - **Evening Pulse Integration**: Provides audio narration for the Evening Pulse v4.0 daily news digest.
-- **iGPU Accelerated**: ROCm 7.2 on AMD Radeon iGPU with FP16, CPU fallback.
+- **iGPU Accelerated**: AMD ROCm 7.2 with `attn_implementation="sdpa"` (no FlashAttention 2), CPU fallback.
 - **connect-rpc API**: Accessed via alt-butterfly-facade using connect-rpc protocol.
 
 ## Architecture Overview
@@ -20,35 +20,36 @@ flowchart LR
         BFF[alt-butterfly-facade]
     end
 
-    subgraph AIX Machine
+    subgraph TTS GPU Node
         TTS[tts-speaker<br/>Port 9700]
-        Kokoro[Kokoro-82M<br/>KPipeline lang=ja<br/>ROCm iGPU]
+        Qwen[Qwen3-TTS-12Hz-0.6B-CustomVoice<br/>generate_custom_voice<br/>ROCm + sdpa]
     end
 
     BFF -->|connect-rpc<br/>TTS_CONNECT_URL| TTS
-    TTS --> Kokoro
+    TTS --> Qwen
 ```
 
 ## Model Configuration
 
-### Kokoro-82M
+### Qwen3-TTS-12Hz-0.6B-CustomVoice
 
-- **Parameters**: 82M
-- **Language**: Japanese (`lang_code="j"`)
-- **Sample Rate**: 24kHz
+- **License**: Apache 2.0
+- **Parameters**: 0.6B (autoregressive multi-codebook LM + Qwen3-TTS-Tokenizer-12Hz codec decoder)
+- **Language**: Japanese (`language="Japanese"` argument to `generate_custom_voice`)
+- **Sample Rate**: 24 kHz default from the 12 Hz codec decoder (dynamic — value reported in `sampleRate`)
 - **Output Format**: WAV (float32)
-- **First Load**: Downloads ~330MB from HuggingFace Hub
-- **GPU**: ROCm 7.2 FP16 on AMD Radeon iGPU (auto-detected, CPU fallback)
+- **First Load**: Downloads ~2 GB from HuggingFace Hub (Qwen3-TTS-12Hz-0.6B-CustomVoice + Tokenizer-12Hz)
+- **GPU**: AMD ROCm 7.2 bf16 on the self-hosted TTS GPU node, `attn_implementation="sdpa"`, CPU fallback for batch use
 
 ### Available Voices
 
 | Voice ID | Name | Gender |
 |----------|------|--------|
-| `jf_alpha` | Alpha | Female (default) |
-| `jf_gongitsune` | Gongitsune | Female |
-| `jf_nezumi` | Nezumi | Female |
-| `jf_tebukuro` | Tebukuro | Female |
-| `jm_kumo` | Kumo | Male |
+| `qwen-ja-1` | JA Voice 1 | Female (default) |
+| `qwen-ja-2` | JA Voice 2 | Female |
+| `qwen-ja-3` | JA Voice 3 | Female |
+
+Each voice ID maps to a Qwen3-TTS CustomVoice preset speaker via the `VOICES_CONFIG` table in `tts_speaker/core/pipeline.py`. The Alt-facing ID is stable; the underlying preset name is internal and may be retuned per voice-listening review.
 
 ## API Endpoints
 
@@ -67,14 +68,14 @@ flowchart LR
 ```json
 {
   "text": "本日の重要ニュースをお伝えします。",
-  "voice": "jf_alpha",
+  "voice": "qwen-ja-1",
   "speed": 1.0
 }
 ```
 
 - `text`: 1-5000 characters (required)
 - `voice`: Voice ID (optional, defaults to `TTS_DEFAULT_VOICE`)
-- `speed`: 0.5-2.0 (optional, defaults to `TTS_DEFAULT_SPEED`)
+- `speed`: 0.5-2.0 (optional, defaults to `TTS_DEFAULT_SPEED`). Qwen3-TTS has no scalar speed parameter; the value maps to a natural-language pacing hint inside the `instruct` string.
 
 **Response (`SynthesizeResponse`):**
 
@@ -86,10 +87,12 @@ flowchart LR
 }
 ```
 
+`sampleRate` is dynamic — it is whatever the Qwen codec decoder returns (24 kHz for the default 12 Hz tokenizer).
+
 ### GET /health
 
 ```json
-{"status": "ok", "model": "kokoro-82m", "lang": "ja", "device": "cuda"}
+{"status": "ok", "model": "qwen3-tts-12hz-0.6b-customvoice", "lang": "ja", "device": "cuda"}
 ```
 
 Returns 503 with `{"status": "loading"}` during model initialization.
@@ -162,7 +165,10 @@ Requests to `/alt.tts.v1.TTSService/*` are forwarded to the TTS service.
 |----------|---------|-------------|
 | `SERVICE_SECRET` | `` | Auth token (empty = skip auth) |
 | `SERVICE_SECRET_FILE` | - | Docker secrets file path |
-| `TTS_DEFAULT_VOICE` | `jf_alpha` | Default voice ID |
+| `TTS_DEFAULT_VOICE` | `qwen-ja-1` | Default voice ID |
+| `TTS_QWEN_MODEL_ID` | `Qwen/Qwen3-TTS-12Hz-0.6B-CustomVoice` | HuggingFace model id |
+| `TTS_QWEN_DTYPE` | `bfloat16` | Torch dtype |
+| `TTS_QWEN_ATTN` | `sdpa` | `attn_implementation` for `Qwen3TTSModel.from_pretrained` — leave `sdpa` on ROCm |
 | `TTS_DEFAULT_SPEED` | `1.0` | Default speech speed |
 | `LOG_LEVEL` | `INFO` | Application log level |
 | `HF_HOME` | `/app/.cache/huggingface` | HuggingFace model cache |

@@ -9,7 +9,7 @@ import pytest
 from tts_speaker.core.pipeline import TTSPipeline
 
 
-def _make_mock_torch(*, cuda_available: bool, device_name: str = "AMD Radeon 890M"):
+def _make_mock_torch(*, cuda_available: bool, device_name: str = "AMD ROCm GPU"):
     """Create a mock torch module with configurable GPU state."""
     mock_torch = MagicMock()
     mock_torch.cuda.is_available.return_value = cuda_available
@@ -34,7 +34,7 @@ def test_detect_device_gpu_available():
         device, gpu_name = TTSPipeline._detect_device()
 
     assert device == "cuda"
-    assert gpu_name == "AMD Radeon 890M"
+    assert gpu_name == "AMD ROCm GPU"
 
 
 def test_detect_device_no_gpu_raises_by_default():
@@ -67,7 +67,7 @@ def test_detect_device_gpu_compute_failure_raises():
     """Raises RuntimeError when GPU compute verification fails."""
     mock_torch = MagicMock()
     mock_torch.cuda.is_available.return_value = True
-    mock_torch.cuda.get_device_name.return_value = "AMD Radeon 890M"
+    mock_torch.cuda.get_device_name.return_value = "AMD ROCm GPU"
     mock_torch.tensor.side_effect = RuntimeError("HIP error")
 
     with (
@@ -82,7 +82,7 @@ def test_detect_device_gpu_compute_failure_fallback():
     """Falls back to CPU on compute failure when TTS_ALLOW_CPU_FALLBACK=1."""
     mock_torch = MagicMock()
     mock_torch.cuda.is_available.return_value = True
-    mock_torch.cuda.get_device_name.return_value = "AMD Radeon 890M"
+    mock_torch.cuda.get_device_name.return_value = "AMD ROCm GPU"
     mock_torch.tensor.side_effect = RuntimeError("HIP error")
 
     with (
