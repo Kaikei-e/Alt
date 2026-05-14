@@ -54,7 +54,7 @@ fn url_host(url: &str) -> Option<String> {
 /// 2. `url_to_article` から URL を解決する (完全一致 + host 単位一致)。
 ///    `ref.url` が純ドメイン (`"dev.to"`) でも host 一致で同ホストの article 群を拾う。
 /// 3. 集合 union を `article_to_sentence_ids` に問い合わせて sentence_id を集める。
-/// 4. 解決できない marker は `debug!` で skip。
+/// 4. 解決できない marker は `warn!` で surface する (silent loss を避ける)。
 ///
 /// 結果は重複除去 + 昇順ソート。bullet に `[n]` が無いまたは references が空なら `vec![]`。
 fn reconcile_bullet_citations(
@@ -103,10 +103,11 @@ fn reconcile_bullet_citations(
         }
 
         if article_ids.is_empty() {
-            debug!(
+            warn!(
                 unmatched_ref_url = %r.url,
                 unmatched_article_id = ?r.article_id,
-                "could not resolve reference to article_id"
+                marker = %&cap[0],
+                "citation marker unresolvable: article_id is non-UUID/None and URL did not match any known article (bullet citation will be silently empty)"
             );
             continue;
         }
