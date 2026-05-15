@@ -36,7 +36,7 @@ RUN uv pip compile pyproject.toml -o requirements.txt \
     && uv pip install --no-deps -r requirements.txt
 
 # qwen-tts をインストール (torch はベースイメージから利用、flash-attn は引き込まない)
-RUN uv pip install --no-deps "qwen-tts>=1.0.0" \
+RUN uv pip install --no-deps "qwen-tts>=0.1.0" \
     && uv pip uninstall flash-attn 2>/dev/null || true
 
 # アプリケーションコードをコピー
