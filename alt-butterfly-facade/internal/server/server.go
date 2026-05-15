@@ -205,7 +205,9 @@ func NewServerWithTransports(
 		ttsProxy := handler.NewProxyHandler(
 			ttsClient, cfg.Secret, cfg.Issuer, cfg.Audience, logger, cfg.StreamingTimeout, cfg.StreamingTimeout,
 		)
-		// Auth to tts-speaker is established at the TLS transport layer (mTLS).
+		// BFF validates JWT before forwarding (authInterceptor, line ~115).
+		// mTLS transport-layer auth is available when TTS_CONNECT_MTLS_URL is set.
+		// Without it, traffic runs HTTP/1.1 over the operator's overlay network.
 		mux.Handle("/alt.tts.v1.TTSService/", ttsProxy)
 	}
 
@@ -242,7 +244,7 @@ func NewServerWithTransports(
 	// Uses streaming timeout since report generation can be long-running.
 	if cfg.AcolyteConnectURL != "" {
 		acolyteTransport := transport
-		if acolyteTransport == nil {
+		if acolyteTransport == nil || strings.HasPrefix(cfg.AcolyteConnectURL, "http://") {
 			acolyteTransport = http.DefaultTransport
 		}
 		acolyteClient := client.NewBackendClientWithTransport(
