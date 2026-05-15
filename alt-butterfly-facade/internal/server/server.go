@@ -6,6 +6,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"strings"
 	"time"
 
 	"golang.org/x/net/http2"
@@ -186,10 +187,12 @@ func NewServerWithTransports(
 	}
 
 	// TTS service routing (before catch-all).
-	// Uses HTTP/1.1 transport because tts-speaker (uvicorn) does not support h2c.
+	// tts-speaker (uvicorn) does not support h2c; always use HTTP/1.1.
+	// When MTLS_ENFORCE=true, transport is &http2.Transport{TLSClientConfig}
+	// which rejects http:// URLs. Fall back to DefaultTransport for plaintext.
 	if cfg.TTSConnectURL != "" {
 		ttsTransport := transport
-		if ttsTransport == nil {
+		if ttsTransport == nil || strings.HasPrefix(cfg.TTSConnectURL, "http://") {
 			ttsTransport = http.DefaultTransport
 		}
 		// Use streaming timeout for TTS since synthesis can be slow
