@@ -162,6 +162,15 @@ class TTSPipeline:
         settings = get_settings()
         dtype = getattr(torch, settings.qwen_dtype)
 
+        # torch.backends.cudnn.benchmark defaults to TRUE on ROCm (opposite of
+        # CUDA). With variable conv1d shapes from the codec's chunked_decode,
+        # benchmark=True drives MIOpen into a workspace-search path that
+        # PyTorch calls with workspace=0, forcing the naive solver fallback
+        # (29s vs 251ms for a single conv on the same shape). Turning it off
+        # routes us through FindDb immediate-mode instead.
+        torch.backends.cudnn.benchmark = False
+        torch.backends.cudnn.deterministic = False
+
         logger.info(
             "Loading Qwen3-TTS model %s (device=%s, dtype=%s, attn=%s)...",
             settings.qwen_model_id,

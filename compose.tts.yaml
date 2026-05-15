@@ -26,6 +26,11 @@ services:
       - GPU_MAX_HW_QUEUES=${GPU_MAX_HW_QUEUES:-4}
       - HIP_VISIBLE_DEVICES=0
       - TTS_ALLOW_CPU_FALLBACK=1
+      # MIOpen workspace=0 → naive solver fallback was the gfx1150 RTF blow-up.
+      # FAST mode + disabling the direct-naive forward solver pushes MIOpen onto
+      # FindDb-backed real solvers. See TheRock#3077, MIOpen#3650, pytorch#150168.
+      - MIOPEN_FIND_MODE=${MIOPEN_FIND_MODE:-FAST}
+      - MIOPEN_DEBUG_CONV_DIRECT_NAIVE_CONV_FWD=${MIOPEN_DEBUG_CONV_DIRECT_NAIVE_CONV_FWD:-0}
     devices:
       - /dev/kfd
       - /dev/dri
