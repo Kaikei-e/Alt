@@ -46,8 +46,11 @@ COPY tts_speaker ./tts_speaker
 RUN uv pip install --no-deps .
 
 # キャッシュディレクトリ作成 & 権限設定
+# MIOpen の lock file / user db / kernel cache は HOME=/app の下に書こうとするが
+# tts user では書けない。明示的に /app/.cache/miopen を tts 所有で用意し、env で
+# 上書きする (下記 ENV ブロック参照)。
 RUN groupadd -r tts && useradd -r -g tts tts \
-    && mkdir -p /app/.cache/huggingface \
+    && mkdir -p /app/.cache/huggingface /app/.cache/miopen \
     && chown -R tts:tts /app/.cache \
     && chown -R tts:tts /app/tts_speaker
 
@@ -55,6 +58,8 @@ RUN groupadd -r tts && useradd -r -g tts tts \
 ENV HOME=/app \
     OMP_NUM_THREADS=2 \
     HF_HOME=/app/.cache/huggingface \
+    MIOPEN_USER_DB_PATH=/app/.cache/miopen \
+    MIOPEN_CUSTOM_CACHE_DIR=/app/.cache/miopen \
     HSA_OVERRIDE_GFX_VERSION=11.0.0 \
     PYTORCH_HIP_ALLOC_CONF=expandable_segments:True \
     HIP_VISIBLE_DEVICES=0
