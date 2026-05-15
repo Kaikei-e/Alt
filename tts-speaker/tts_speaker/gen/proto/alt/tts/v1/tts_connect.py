@@ -17,18 +17,31 @@ import alt.tts.v1.tts_pb2 as alt_dot_tts_dot_v1_dot_tts__pb2
 
 
 class TTSService(Protocol):
-    async def synthesize(self, request: alt_dot_tts_dot_v1_dot_tts__pb2.SynthesizeRequest, ctx: RequestContext) -> alt_dot_tts_dot_v1_dot_tts__pb2.SynthesizeResponse:
+    async def synthesize(
+        self, request: alt_dot_tts_dot_v1_dot_tts__pb2.SynthesizeRequest, ctx: RequestContext
+    ) -> alt_dot_tts_dot_v1_dot_tts__pb2.SynthesizeResponse:
         raise ConnectError(Code.UNIMPLEMENTED, "Not implemented")
 
-    def synthesize_stream(self, request: alt_dot_tts_dot_v1_dot_tts__pb2.SynthesizeStreamRequest, ctx: RequestContext) -> AsyncIterator[alt_dot_tts_dot_v1_dot_tts__pb2.SynthesizeStreamResponse]:
+    def synthesize_stream(
+        self, request: alt_dot_tts_dot_v1_dot_tts__pb2.SynthesizeStreamRequest, ctx: RequestContext
+    ) -> AsyncIterator[alt_dot_tts_dot_v1_dot_tts__pb2.SynthesizeStreamResponse]:
         raise ConnectError(Code.UNIMPLEMENTED, "Not implemented")
 
-    async def list_voices(self, request: alt_dot_tts_dot_v1_dot_tts__pb2.ListVoicesRequest, ctx: RequestContext) -> alt_dot_tts_dot_v1_dot_tts__pb2.ListVoicesResponse:
+    async def list_voices(
+        self, request: alt_dot_tts_dot_v1_dot_tts__pb2.ListVoicesRequest, ctx: RequestContext
+    ) -> alt_dot_tts_dot_v1_dot_tts__pb2.ListVoicesResponse:
         raise ConnectError(Code.UNIMPLEMENTED, "Not implemented")
 
 
 class TTSServiceASGIApplication(ConnectASGIApplication[TTSService]):
-    def __init__(self, service: TTSService | AsyncGenerator[TTSService], *, interceptors: Iterable[Interceptor]=(), read_max_bytes: int | None = None, compressions: Iterable[Compression] | None = None) -> None:
+    def __init__(
+        self,
+        service: TTSService | AsyncGenerator[TTSService],
+        *,
+        interceptors: Iterable[Interceptor] = (),
+        read_max_bytes: int | None = None,
+        compressions: Iterable[Compression] | None = None,
+    ) -> None:
         super().__init__(
             service=service,
             endpoints=lambda svc: {
@@ -137,16 +150,30 @@ class TTSServiceClient(ConnectClient):
 
 
 class TTSServiceSync(Protocol):
-    def synthesize(self, request: alt_dot_tts_dot_v1_dot_tts__pb2.SynthesizeRequest, ctx: RequestContext) -> alt_dot_tts_dot_v1_dot_tts__pb2.SynthesizeResponse:
+    def synthesize(
+        self, request: alt_dot_tts_dot_v1_dot_tts__pb2.SynthesizeRequest, ctx: RequestContext
+    ) -> alt_dot_tts_dot_v1_dot_tts__pb2.SynthesizeResponse:
         raise ConnectError(Code.UNIMPLEMENTED, "Not implemented")
-    def synthesize_stream(self, request: alt_dot_tts_dot_v1_dot_tts__pb2.SynthesizeStreamRequest, ctx: RequestContext) -> Iterator[alt_dot_tts_dot_v1_dot_tts__pb2.SynthesizeStreamResponse]:
+
+    def synthesize_stream(
+        self, request: alt_dot_tts_dot_v1_dot_tts__pb2.SynthesizeStreamRequest, ctx: RequestContext
+    ) -> Iterator[alt_dot_tts_dot_v1_dot_tts__pb2.SynthesizeStreamResponse]:
         raise ConnectError(Code.UNIMPLEMENTED, "Not implemented")
-    def list_voices(self, request: alt_dot_tts_dot_v1_dot_tts__pb2.ListVoicesRequest, ctx: RequestContext) -> alt_dot_tts_dot_v1_dot_tts__pb2.ListVoicesResponse:
+
+    def list_voices(
+        self, request: alt_dot_tts_dot_v1_dot_tts__pb2.ListVoicesRequest, ctx: RequestContext
+    ) -> alt_dot_tts_dot_v1_dot_tts__pb2.ListVoicesResponse:
         raise ConnectError(Code.UNIMPLEMENTED, "Not implemented")
 
 
 class TTSServiceWSGIApplication(ConnectWSGIApplication):
-    def __init__(self, service: TTSServiceSync, interceptors: Iterable[InterceptorSync]=(), read_max_bytes: int | None = None, compressions: Iterable[Compression] | None = None) -> None:
+    def __init__(
+        self,
+        service: TTSServiceSync,
+        interceptors: Iterable[InterceptorSync] = (),
+        read_max_bytes: int | None = None,
+        compressions: Iterable[Compression] | None = None,
+    ) -> None:
         super().__init__(
             endpoints={
                 "/alt.tts.v1.TTSService/Synthesize": EndpointSync.unary(

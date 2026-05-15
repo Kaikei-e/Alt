@@ -8,7 +8,11 @@ from unittest.mock import MagicMock, patch
 import numpy as np
 import pytest
 
-from tts_speaker.core.pipeline import JAPANESE_SPLIT_PATTERN, TTSPipeline
+from tts_speaker.core.pipeline import (
+    COMMA_SPLIT_THRESHOLD_CHARS,
+    JAPANESE_SPLIT_PATTERN,
+    TTSPipeline,
+)
 
 
 class TestJapaneseSplitPattern:
@@ -51,6 +55,43 @@ class TestJapaneseSplitPattern:
         result = re.split(JAPANESE_SPLIT_PATTERN, "前半。後半。")
         for segment in result:
             assert not segment.startswith("。")
+
+
+class TestCommaLevelFallback:
+    """Verify _split_sentences applies 「、」 fallback above the char threshold."""
+
+    def test_short_sentence_with_comma_not_split(self):
+        """Below threshold, `、` stays inside the sentence for natural prosody."""
+        text = "りんご、みかん。"
+        assert len(text) < COMMA_SPLIT_THRESHOLD_CHARS
+        result = TTSPipeline._split_sentences(text)
+        assert result == ["りんご、みかん。"]
+
+    def test_long_sentence_with_comma_split_on_comma(self):
+        """Above threshold, `、` becomes a chunk boundary."""
+        text = (
+            "今日は良い天気ですので散歩をしてから本屋に立ち寄ろうかと考えています、"
+            "そのあとカフェでゆっくり読書したいです。"
+        )
+        assert len(text) >= COMMA_SPLIT_THRESHOLD_CHARS
+        result = TTSPipeline._split_sentences(text)
+        # First comma triggers split; the original 。 still ends the last chunk.
+        assert len(result) >= 2
+        assert any(seg.endswith("、") for seg in result)
+
+    def test_long_sentence_without_comma_unchanged(self):
+        """Long sentence with no `、` stays as one chunk."""
+        text = "あ" * (COMMA_SPLIT_THRESHOLD_CHARS + 20) + "。"
+        result = TTSPipeline._split_sentences(text)
+        assert result == [text]
+
+    def test_comma_split_preserves_punctuation_attachment(self):
+        """Each `、`-level chunk keeps the comma attached to the preceding word."""
+        text = "あ" * COMMA_SPLIT_THRESHOLD_CHARS + "、つづき。"
+        result = TTSPipeline._split_sentences(text)
+        assert len(result) >= 2
+        assert result[0].endswith("、")
+        assert not result[1].startswith("、")
 
 
 def _make_pipeline_with_mock() -> tuple[TTSPipeline, MagicMock]:
@@ -101,7 +142,8 @@ class TestSynthesizeSentenceLoop:
 
         call_kwargs = mock_model.generate_custom_voice.call_args.kwargs
         assert call_kwargs["text"] == "テスト文。"
-        assert call_kwargs["language"] == "Japanese"
+        # Qwen3-TTS' get_supported_languages() returns lowercase names.
+        assert call_kwargs["language"] == "japanese"
         # qwen_speaker for qwen-ja-2 resolves via VOICES_CONFIG
         assert call_kwargs["speaker"]  # non-empty
         assert call_kwargs["instruct"]  # non-empty

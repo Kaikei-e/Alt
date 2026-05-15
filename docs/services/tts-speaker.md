@@ -169,6 +169,10 @@ Requests to `/alt.tts.v1.TTSService/*` are forwarded to the TTS service.
 | `TTS_QWEN_MODEL_ID` | `Qwen/Qwen3-TTS-12Hz-0.6B-CustomVoice` | HuggingFace model id |
 | `TTS_QWEN_DTYPE` | `bfloat16` | Torch dtype |
 | `TTS_QWEN_ATTN` | `sdpa` | `attn_implementation` for `Qwen3TTSModel.from_pretrained` — leave `sdpa` on ROCm |
+| `TTS_QWEN_KEEPALIVE_INTERVAL_SEC` | `15` | Idle GPU keepalive matmul interval (defeats AMD DPM downclock). `0` to disable |
+| `TORCH_ROCM_AOTRITON_ENABLE_EXPERIMENTAL` | `1` | Use AOTriton SDPA on ROCm |
+| `GPU_MAX_ALLOC_PERCENT` / `GPU_MAX_HEAP_SIZE` | `100` / `100` | iGPU heap limit override |
+| `HSA_ENABLE_SDMA` / `GPU_MAX_HW_QUEUES` | `0` / `4` | iGPU stability tuning |
 | `TTS_DEFAULT_SPEED` | `1.0` | Default speech speed |
 | `LOG_LEVEL` | `INFO` | Application log level |
 | `HF_HOME` | `/app/.cache/huggingface` | HuggingFace model cache |

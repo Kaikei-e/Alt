@@ -37,6 +37,7 @@ def mock_pipeline() -> MagicMock:
     ]
     pipeline._device = "cpu"
     pipeline._gpu_name = None
+    pipeline.keepalive_tick = AsyncMock(return_value=None)
     return pipeline
 
 

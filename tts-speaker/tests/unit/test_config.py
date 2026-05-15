@@ -20,6 +20,7 @@ def test_default_values():
     assert s.qwen_model_id == "Qwen/Qwen3-TTS-12Hz-0.6B-CustomVoice"
     assert s.qwen_dtype == "bfloat16"
     assert s.qwen_attn_implementation == "sdpa"
+    assert s.qwen_keepalive_interval_sec == 15.0
 
 
 def test_env_override():
@@ -31,6 +32,7 @@ def test_env_override():
         "TTS_QWEN_MODEL_ID": "Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice",
         "TTS_QWEN_DTYPE": "float16",
         "TTS_QWEN_ATTN": "eager",
+        "TTS_QWEN_KEEPALIVE_INTERVAL_SEC": "0",
     }
     with patch.dict("os.environ", env, clear=True):
         s = Settings()
@@ -40,6 +42,7 @@ def test_env_override():
     assert s.qwen_model_id == "Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice"
     assert s.qwen_dtype == "float16"
     assert s.qwen_attn_implementation == "eager"
+    assert s.qwen_keepalive_interval_sec == 0.0
 
 
 def test_speed_range():

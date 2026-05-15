@@ -22,6 +22,13 @@ logger = logging.getLogger(__name__)
 # chunks small (UX) and to bound peak VRAM during long-form synthesis.
 JAPANESE_SPLIT_PATTERN = r"(?<=[。！？\n])"
 
+# Comma-level split fallback. `、` is used when a single sentence (between full
+# stops) has accumulated COMMA_SPLIT_THRESHOLD_CHARS or more characters — without
+# this, a single 200-char sentence keeps the FE waiting for the whole synthesis
+# before the first chunk arrives. Below the threshold we keep `、` attached to
+# preserve natural prosody.
+COMMA_SPLIT_THRESHOLD_CHARS = 30
+
 MODEL_NAME = "qwen3-tts-12hz-0.6b-customvoice"
 
 
@@ -170,6 +177,31 @@ class TTSPipeline:
         )
         self._ready = True
         logger.info("Qwen3-TTS model loaded successfully")
+        self._warmup()
+
+    def _warmup(self) -> None:
+        """Pre-run a 1-character synthesis so the first user request does not
+        pay the MIOpen / ROCm kernel JIT compile cost.
+
+        On AMD ROCm, first-call latency is dominated by JIT, not arithmetic;
+        antonsokolskyy/Qwen3-TTS-Openai-Fastapi-Rocm and the TinyComputers
+        Strix Halo recipe both recommend warming up after model load.
+        """
+        if self._model is None:
+            return
+        try:
+            first_voice = VOICES_CONFIG[0]
+            logger.info("Warming up Qwen3-TTS on %s ...", self.device_map)
+            self._model.generate_custom_voice(
+                text="は",
+                language="japanese",
+                speaker=first_voice.qwen_speaker,
+                instruct=first_voice.instruct,
+            )
+            logger.info("Qwen3-TTS warmup complete")
+        except Exception:
+            # Warmup must not block service readiness — log and continue.
+            logger.exception("Qwen3-TTS warmup failed (continuing)")
 
     @staticmethod
     def _resolve_voice(voice: str) -> VoiceConfig:
@@ -197,19 +229,61 @@ class TTSPipeline:
 
     @staticmethod
     def _split_sentences(text: str) -> list[str]:
-        parts = [s for s in re.split(JAPANESE_SPLIT_PATTERN, text) if s.strip()]
-        return parts if parts else [text]
+        """Split on sentence terminators, with a comma-level fallback for long runs.
+
+        Long sentences (≥ COMMA_SPLIT_THRESHOLD_CHARS) are further split on `、`
+        so first-byte latency stays bounded. Shorter sentences keep `、` attached
+        to preserve natural prosody.
+        """
+        primary = [s for s in re.split(JAPANESE_SPLIT_PATTERN, text) if s.strip()]
+        if not primary:
+            return [text]
+        result: list[str] = []
+        for segment in primary:
+            if len(segment) < COMMA_SPLIT_THRESHOLD_CHARS or "、" not in segment:
+                result.append(segment)
+                continue
+            sub = [s for s in re.split(r"(?<=、)", segment) if s.strip()]
+            result.extend(sub if sub else [segment])
+        return result
+
+    @staticmethod
+    def _language() -> str:
+        # Qwen3-TTS supports lowercase language names; uppercase "Japanese" can
+        # silently fall through model.get_supported_languages() validation.
+        return "japanese"
 
     def _synth_one(self, sentence: str, cfg: VoiceConfig, instruct: str) -> tuple[np.ndarray, int]:
         if self._model is None:
             raise RuntimeError("Pipeline not loaded")
         wavs, sr = self._model.generate_custom_voice(
             text=sentence,
-            language="Japanese",
+            language=self._language(),
             speaker=cfg.qwen_speaker,
             instruct=instruct,
         )
         return np.asarray(wavs[0], dtype=np.float32), int(sr)
+
+    async def keepalive_tick(self) -> None:
+        """Run a no-op matmul on the model device to defeat AMD DPM idle downclock.
+
+        Strix Point / Strix Halo iGPUs drop to ~400 MHz when idle, which slows
+        the first chunk of a request that arrives after a quiet period. A tiny
+        periodic matmul keeps the GPU at performance state.
+        """
+        if self._device != "cuda" or self._model is None:
+            return
+        loop = asyncio.get_event_loop()
+        await loop.run_in_executor(None, self._keepalive_sync)
+
+    def _keepalive_sync(self) -> None:
+        try:
+            import torch
+
+            t = torch.ones((128, 128), device="cuda")
+            _ = (t @ t).sum().item()
+        except Exception:
+            logger.debug("keepalive matmul failed (continuing)", exc_info=True)
 
     async def synthesize(
         self,

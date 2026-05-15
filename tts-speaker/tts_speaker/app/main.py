@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from contextlib import asynccontextmanager
 from typing import TYPE_CHECKING
@@ -22,18 +23,56 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
+async def _gpu_keepalive_loop(pipeline: TTSPipeline, interval_sec: float) -> None:
+    """Periodically run a tiny GPU op to keep AMD DPM out of idle downclock.
+
+    Strix Point / Strix Halo iGPUs drop to ~400 MHz when idle. Without this
+    matmul, the first chunk of every request after a quiet period pays a
+    ramp-up tax. Loop exits on cancel.
+    """
+    if interval_sec <= 0:
+        return
+    while True:
+        try:
+            await asyncio.sleep(interval_sec)
+            await pipeline.keepalive_tick()
+        except asyncio.CancelledError:
+            return
+        except Exception:
+            logger.exception("gpu keepalive loop iteration failed (continuing)")
+
+
 @asynccontextmanager
 async def lifespan(app: Starlette) -> "AsyncGenerator[None]":
-    """Manage TTSPipeline lifecycle."""
+    """Manage TTSPipeline lifecycle and the GPU keepalive task."""
     pipeline: TTSPipeline = app.state.pipeline
+    settings: Settings = app.state.settings
 
     # Only load if not overridden (test mock)
     if not pipeline.is_ready:
         await pipeline.load()
 
-    yield
+    keepalive_task: asyncio.Task[None] | None = None
+    device = getattr(pipeline, "_device", "cpu")
+    if device == "cuda":
+        keepalive_task = asyncio.create_task(
+            _gpu_keepalive_loop(pipeline, settings.qwen_keepalive_interval_sec)
+        )
+        logger.info(
+            "GPU keepalive task started (interval=%.1fs)",
+            settings.qwen_keepalive_interval_sec,
+        )
 
-    pipeline.unload()
+    try:
+        yield
+    finally:
+        if keepalive_task is not None:
+            keepalive_task.cancel()
+            try:
+                await keepalive_task
+            except asyncio.CancelledError:
+                pass
+        pipeline.unload()
 
 
 async def health_endpoint(request: "Request") -> JSONResponse:

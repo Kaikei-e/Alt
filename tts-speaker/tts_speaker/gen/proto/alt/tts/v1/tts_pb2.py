@@ -4,48 +4,45 @@
 # source: alt/tts/v1/tts.proto
 # Protobuf Python Version: 7.34.1
 """Generated protocol buffer code."""
+
 from google.protobuf import descriptor as _descriptor
 from google.protobuf import descriptor_pool as _descriptor_pool
 from google.protobuf import runtime_version as _runtime_version
 from google.protobuf import symbol_database as _symbol_database
 from google.protobuf.internal import builder as _builder
+
 _runtime_version.ValidateProtobufRuntimeVersion(
-    _runtime_version.Domain.PUBLIC,
-    7,
-    34,
-    1,
-    '',
-    'alt/tts/v1/tts.proto'
+    _runtime_version.Domain.PUBLIC, 7, 34, 1, "", "alt/tts/v1/tts.proto"
 )
 # @@protoc_insertion_point(imports)
 
 _sym_db = _symbol_database.Default()
 
 
-
-
-DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x14\x61lt/tts/v1/tts.proto\x12\nalt.tts.v1\"S\n\x11SynthesizeRequest\x12\x12\n\x04text\x18\x01 \x01(\tR\x04text\x12\x14\n\x05voice\x18\x02 \x01(\tR\x05voice\x12\x14\n\x05speed\x18\x03 \x01(\x01R\x05speed\"}\n\x12SynthesizeResponse\x12\x1b\n\taudio_wav\x18\x01 \x01(\x0cR\x08\x61udioWav\x12\x1f\n\x0bsample_rate\x18\x02 \x01(\x05R\nsampleRate\x12)\n\x10\x64uration_seconds\x18\x03 \x01(\x01R\x0f\x64urationSeconds\"Y\n\x17SynthesizeStreamRequest\x12\x12\n\x04text\x18\x01 \x01(\tR\x04text\x12\x14\n\x05voice\x18\x02 \x01(\tR\x05voice\x12\x14\n\x05speed\x18\x03 \x01(\x01R\x05speed\"\x83\x01\n\x18SynthesizeStreamResponse\x12\x1b\n\taudio_wav\x18\x01 \x01(\x0cR\x08\x61udioWav\x12\x1f\n\x0bsample_rate\x18\x02 \x01(\x05R\nsampleRate\x12)\n\x10\x64uration_seconds\x18\x03 \x01(\x01R\x0f\x64urationSeconds\"C\n\x05Voice\x12\x0e\n\x02id\x18\x01 \x01(\tR\x02id\x12\x12\n\x04name\x18\x02 \x01(\tR\x04name\x12\x16\n\x06gender\x18\x03 \x01(\tR\x06gender\"\x13\n\x11ListVoicesRequest\"?\n\x12ListVoicesResponse\x12)\n\x06voices\x18\x01 \x03(\x0b\x32\x11.alt.tts.v1.VoiceR\x06voices2\x87\x02\n\nTTSService\x12K\n\nSynthesize\x12\x1d.alt.tts.v1.SynthesizeRequest\x1a\x1e.alt.tts.v1.SynthesizeResponse\x12_\n\x10SynthesizeStream\x12#.alt.tts.v1.SynthesizeStreamRequest\x1a$.alt.tts.v1.SynthesizeStreamResponse0\x01\x12K\n\nListVoices\x12\x1d.alt.tts.v1.ListVoicesRequest\x1a\x1e.alt.tts.v1.ListVoicesResponseB Z\x1e\x61lt/gen/proto/alt/tts/v1;ttsv1b\x06proto3')
+DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(
+    b'\n\x14\x61lt/tts/v1/tts.proto\x12\nalt.tts.v1"S\n\x11SynthesizeRequest\x12\x12\n\x04text\x18\x01 \x01(\tR\x04text\x12\x14\n\x05voice\x18\x02 \x01(\tR\x05voice\x12\x14\n\x05speed\x18\x03 \x01(\x01R\x05speed"}\n\x12SynthesizeResponse\x12\x1b\n\taudio_wav\x18\x01 \x01(\x0cR\x08\x61udioWav\x12\x1f\n\x0bsample_rate\x18\x02 \x01(\x05R\nsampleRate\x12)\n\x10\x64uration_seconds\x18\x03 \x01(\x01R\x0f\x64urationSeconds"Y\n\x17SynthesizeStreamRequest\x12\x12\n\x04text\x18\x01 \x01(\tR\x04text\x12\x14\n\x05voice\x18\x02 \x01(\tR\x05voice\x12\x14\n\x05speed\x18\x03 \x01(\x01R\x05speed"\x83\x01\n\x18SynthesizeStreamResponse\x12\x1b\n\taudio_wav\x18\x01 \x01(\x0cR\x08\x61udioWav\x12\x1f\n\x0bsample_rate\x18\x02 \x01(\x05R\nsampleRate\x12)\n\x10\x64uration_seconds\x18\x03 \x01(\x01R\x0f\x64urationSeconds"C\n\x05Voice\x12\x0e\n\x02id\x18\x01 \x01(\tR\x02id\x12\x12\n\x04name\x18\x02 \x01(\tR\x04name\x12\x16\n\x06gender\x18\x03 \x01(\tR\x06gender"\x13\n\x11ListVoicesRequest"?\n\x12ListVoicesResponse\x12)\n\x06voices\x18\x01 \x03(\x0b\x32\x11.alt.tts.v1.VoiceR\x06voices2\x87\x02\n\nTTSService\x12K\n\nSynthesize\x12\x1d.alt.tts.v1.SynthesizeRequest\x1a\x1e.alt.tts.v1.SynthesizeResponse\x12_\n\x10SynthesizeStream\x12#.alt.tts.v1.SynthesizeStreamRequest\x1a$.alt.tts.v1.SynthesizeStreamResponse0\x01\x12K\n\nListVoices\x12\x1d.alt.tts.v1.ListVoicesRequest\x1a\x1e.alt.tts.v1.ListVoicesResponseB Z\x1e\x61lt/gen/proto/alt/tts/v1;ttsv1b\x06proto3'
+)
 
 _globals = globals()
 _builder.BuildMessageAndEnumDescriptors(DESCRIPTOR, _globals)
-_builder.BuildTopDescriptorsAndMessages(DESCRIPTOR, 'alt.tts.v1.tts_pb2', _globals)
+_builder.BuildTopDescriptorsAndMessages(DESCRIPTOR, "alt.tts.v1.tts_pb2", _globals)
 if not _descriptor._USE_C_DESCRIPTORS:
-  _globals['DESCRIPTOR']._loaded_options = None
-  _globals['DESCRIPTOR']._serialized_options = b'Z\036alt/gen/proto/alt/tts/v1;ttsv1'
-  _globals['_SYNTHESIZEREQUEST']._serialized_start=36
-  _globals['_SYNTHESIZEREQUEST']._serialized_end=119
-  _globals['_SYNTHESIZERESPONSE']._serialized_start=121
-  _globals['_SYNTHESIZERESPONSE']._serialized_end=246
-  _globals['_SYNTHESIZESTREAMREQUEST']._serialized_start=248
-  _globals['_SYNTHESIZESTREAMREQUEST']._serialized_end=337
-  _globals['_SYNTHESIZESTREAMRESPONSE']._serialized_start=340
-  _globals['_SYNTHESIZESTREAMRESPONSE']._serialized_end=471
-  _globals['_VOICE']._serialized_start=473
-  _globals['_VOICE']._serialized_end=540
-  _globals['_LISTVOICESREQUEST']._serialized_start=542
-  _globals['_LISTVOICESREQUEST']._serialized_end=561
-  _globals['_LISTVOICESRESPONSE']._serialized_start=563
-  _globals['_LISTVOICESRESPONSE']._serialized_end=626
-  _globals['_TTSSERVICE']._serialized_start=629
-  _globals['_TTSSERVICE']._serialized_end=892
+    _globals["DESCRIPTOR"]._loaded_options = None
+    _globals["DESCRIPTOR"]._serialized_options = b"Z\036alt/gen/proto/alt/tts/v1;ttsv1"
+    _globals["_SYNTHESIZEREQUEST"]._serialized_start = 36
+    _globals["_SYNTHESIZEREQUEST"]._serialized_end = 119
+    _globals["_SYNTHESIZERESPONSE"]._serialized_start = 121
+    _globals["_SYNTHESIZERESPONSE"]._serialized_end = 246
+    _globals["_SYNTHESIZESTREAMREQUEST"]._serialized_start = 248
+    _globals["_SYNTHESIZESTREAMREQUEST"]._serialized_end = 337
+    _globals["_SYNTHESIZESTREAMRESPONSE"]._serialized_start = 340
+    _globals["_SYNTHESIZESTREAMRESPONSE"]._serialized_end = 471
+    _globals["_VOICE"]._serialized_start = 473
+    _globals["_VOICE"]._serialized_end = 540
+    _globals["_LISTVOICESREQUEST"]._serialized_start = 542
+    _globals["_LISTVOICESREQUEST"]._serialized_end = 561
+    _globals["_LISTVOICESRESPONSE"]._serialized_start = 563
+    _globals["_LISTVOICESRESPONSE"]._serialized_end = 626
+    _globals["_TTSSERVICE"]._serialized_start = 629
+    _globals["_TTSSERVICE"]._serialized_end = 892
 # @@protoc_insertion_point(module_scope)

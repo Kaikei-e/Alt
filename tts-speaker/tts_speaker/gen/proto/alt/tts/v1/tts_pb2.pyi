@@ -14,7 +14,9 @@ class SynthesizeRequest(_message.Message):
     text: str
     voice: str
     speed: float
-    def __init__(self, text: _Optional[str] = ..., voice: _Optional[str] = ..., speed: _Optional[float] = ...) -> None: ...
+    def __init__(
+        self, text: _Optional[str] = ..., voice: _Optional[str] = ..., speed: _Optional[float] = ...
+    ) -> None: ...
 
 class SynthesizeResponse(_message.Message):
     __slots__ = ("audio_wav", "sample_rate", "duration_seconds")
@@ -24,7 +26,12 @@ class SynthesizeResponse(_message.Message):
     audio_wav: bytes
     sample_rate: int
     duration_seconds: float
-    def __init__(self, audio_wav: _Optional[bytes] = ..., sample_rate: _Optional[int] = ..., duration_seconds: _Optional[float] = ...) -> None: ...
+    def __init__(
+        self,
+        audio_wav: _Optional[bytes] = ...,
+        sample_rate: _Optional[int] = ...,
+        duration_seconds: _Optional[float] = ...,
+    ) -> None: ...
 
 class SynthesizeStreamRequest(_message.Message):
     __slots__ = ("text", "voice", "speed")
@@ -34,7 +41,9 @@ class SynthesizeStreamRequest(_message.Message):
     text: str
     voice: str
     speed: float
-    def __init__(self, text: _Optional[str] = ..., voice: _Optional[str] = ..., speed: _Optional[float] = ...) -> None: ...
+    def __init__(
+        self, text: _Optional[str] = ..., voice: _Optional[str] = ..., speed: _Optional[float] = ...
+    ) -> None: ...
 
 class SynthesizeStreamResponse(_message.Message):
     __slots__ = ("audio_wav", "sample_rate", "duration_seconds")
@@ -44,7 +53,12 @@ class SynthesizeStreamResponse(_message.Message):
     audio_wav: bytes
     sample_rate: int
     duration_seconds: float
-    def __init__(self, audio_wav: _Optional[bytes] = ..., sample_rate: _Optional[int] = ..., duration_seconds: _Optional[float] = ...) -> None: ...
+    def __init__(
+        self,
+        audio_wav: _Optional[bytes] = ...,
+        sample_rate: _Optional[int] = ...,
+        duration_seconds: _Optional[float] = ...,
+    ) -> None: ...
 
 class Voice(_message.Message):
     __slots__ = ("id", "name", "gender")
@@ -54,7 +68,9 @@ class Voice(_message.Message):
     id: str
     name: str
     gender: str
-    def __init__(self, id: _Optional[str] = ..., name: _Optional[str] = ..., gender: _Optional[str] = ...) -> None: ...
+    def __init__(
+        self, id: _Optional[str] = ..., name: _Optional[str] = ..., gender: _Optional[str] = ...
+    ) -> None: ...
 
 class ListVoicesRequest(_message.Message):
     __slots__ = ()

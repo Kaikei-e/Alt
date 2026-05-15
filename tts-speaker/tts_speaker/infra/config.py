@@ -25,6 +25,9 @@ class Settings(BaseSettings):
     )
     qwen_dtype: str = Field(default="bfloat16", validation_alias="TTS_QWEN_DTYPE")
     qwen_attn_implementation: str = Field(default="sdpa", validation_alias="TTS_QWEN_ATTN")
+    qwen_keepalive_interval_sec: float = Field(
+        default=15.0, ge=0.0, validation_alias="TTS_QWEN_KEEPALIVE_INTERVAL_SEC"
+    )
 
 
 @lru_cache(maxsize=1)

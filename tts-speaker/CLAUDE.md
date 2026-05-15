@@ -65,8 +65,12 @@ cd proto && buf generate --template buf.gen.tts-speaker.yaml
 | `LOG_LEVEL` | `INFO` | Log level |
 | `HF_HOME` | `/app/.cache/huggingface` | Model cache directory |
 | `HSA_OVERRIDE_GFX_VERSION` | `11.0.0` | ROCm GPU override (operator-tuned for the deploy host) |
-| `PYTORCH_ROCM_ARCH` | _operator-supplied_ | ROCm arch hint, set per deploy host (omit to use ROCm runtime default) |
 | `HIP_VISIBLE_DEVICES` | `0` | GPU device index |
+| `TORCH_ROCM_AOTRITON_ENABLE_EXPERIMENTAL` | `1` | Enables AOTriton-backed SDPA on ROCm |
+| `GPU_MAX_ALLOC_PERCENT` / `GPU_MAX_HEAP_SIZE` | `100` / `100` | Lets PyTorch use the full GPU heap on iGPU (TinyComputers recipe) |
+| `HSA_ENABLE_SDMA` | `0` | Disables SDMA to avoid known iGPU hangs |
+| `GPU_MAX_HW_QUEUES` | `4` | Conservative HW queue count for iGPU stability |
+| `TTS_QWEN_KEEPALIVE_INTERVAL_SEC` | `15` | Period between idle GPU matmuls that defeat AMD DPM downclock |
 | `TTS_FORCE_CPU` | `1` (compose default) | Force CPU; flip to `0` to enable ROCm path |
 | `TTS_ALLOW_CPU_FALLBACK` | `1` | Allow CPU when GPU compute fails |
 
