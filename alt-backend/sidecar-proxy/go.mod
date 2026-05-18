@@ -1,6 +1,6 @@
 module github.com/alt-rss/alt-backend/sidecar-proxy
 
-go 1.26.2
+go 1.26.3
 
 require (
 	github.com/fsnotify/fsnotify v1.10.1

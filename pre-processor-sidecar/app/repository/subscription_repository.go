@@ -7,7 +7,7 @@ package repository
 
 import (
 	"context"
-	"database/sql"
+	"errors"
 	"fmt"
 	"log/slog"
 	"time"
@@ -16,6 +16,7 @@ import (
 	"pre-processor-sidecar/utils"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 )
 
 // SubscriptionRepository interface for subscription data operations
@@ -33,14 +34,14 @@ type SubscriptionRepository interface {
 
 // PostgreSQLSubscriptionRepository implements SubscriptionRepository using PostgreSQL
 type PostgreSQLSubscriptionRepository struct {
-	db     *sql.DB
+	pool   PgxIface
 	logger *slog.Logger
 }
 
 // NewPostgreSQLSubscriptionRepository creates a new PostgreSQL subscription repository
-func NewPostgreSQLSubscriptionRepository(db *sql.DB, logger *slog.Logger) SubscriptionRepository {
+func NewPostgreSQLSubscriptionRepository(pool PgxIface, logger *slog.Logger) SubscriptionRepository {
 	return &PostgreSQLSubscriptionRepository{
-		db:     db,
+		pool:   pool,
 		logger: logger,
 	}
 }
@@ -52,13 +53,15 @@ func (r *PostgreSQLSubscriptionRepository) SaveSubscriptions(ctx context.Context
 		return nil
 	}
 
-	tx, err := r.db.BeginTx(ctx, nil)
+	tx, err := r.pool.BeginTx(ctx, pgx.TxOptions{})
 	if err != nil {
 		return fmt.Errorf("failed to begin transaction: %w", err)
 	}
-	defer tx.Rollback()
+	defer tx.Rollback(ctx)
 
-	// Prepare upsert statement (INSERT ... ON CONFLICT DO UPDATE)
+	// Upsert statement (INSERT ... ON CONFLICT DO UPDATE).
+	// pgx caches prepared statements automatically per connection, so we issue
+	// the same query directly inside the loop instead of an explicit Prepare.
 	query := `
 		INSERT INTO inoreader_subscriptions (
 			id, inoreader_id, title, category, feed_url,
@@ -70,12 +73,6 @@ func (r *PostgreSQLSubscriptionRepository) SaveSubscriptions(ctx context.Context
 			feed_url = EXCLUDED.feed_url,
 			synced_at = EXCLUDED.synced_at
 	`
-
-	stmt, err := tx.PrepareContext(ctx, query)
-	if err != nil {
-		return fmt.Errorf("failed to prepare statement: %w", err)
-	}
-	defer stmt.Close()
 
 	now := time.Now()
 	saved := 0
@@ -99,7 +96,7 @@ func (r *PostgreSQLSubscriptionRepository) SaveSubscriptions(ctx context.Context
 			normalizedURL = sub.URL
 		}
 
-		_, err = stmt.ExecContext(ctx,
+		_, err = tx.Exec(ctx, query,
 			id,
 			sub.InoreaderID, // Inoreader ID
 			sub.Title,
@@ -118,7 +115,7 @@ func (r *PostgreSQLSubscriptionRepository) SaveSubscriptions(ctx context.Context
 		saved++
 	}
 
-	if err := tx.Commit(); err != nil {
+	if err := tx.Commit(ctx); err != nil {
 		return fmt.Errorf("failed to commit transaction: %w", err)
 	}
 
@@ -138,7 +135,7 @@ func (r *PostgreSQLSubscriptionRepository) GetAllSubscriptions(ctx context.Conte
 		ORDER BY title
 	`
 
-	rows, err := r.db.QueryContext(ctx, query)
+	rows, err := r.pool.Query(ctx, query)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query subscriptions: %w", err)
 	}
@@ -199,7 +196,7 @@ func (r *PostgreSQLSubscriptionRepository) FindByID(ctx context.Context, id uuid
 	var createdAt, syncedAt time.Time
 	var category string
 
-	err := r.db.QueryRowContext(ctx, query, id).Scan(
+	err := r.pool.QueryRow(ctx, query, id).Scan(
 		&sub.DatabaseID,  // Database UUID
 		&sub.InoreaderID, // Inoreader ID
 		&sub.Title,
@@ -210,7 +207,7 @@ func (r *PostgreSQLSubscriptionRepository) FindByID(ctx context.Context, id uuid
 	)
 
 	if err != nil {
-		if err == sql.ErrNoRows {
+		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, fmt.Errorf("subscription not found: %s", id)
 		}
 		return nil, fmt.Errorf("failed to query subscription: %w", err)
@@ -252,7 +249,7 @@ func (r *PostgreSQLSubscriptionRepository) UpdateSubscription(ctx context.Contex
 		WHERE inoreader_id = $1
 	`
 
-	_, err = r.db.ExecContext(ctx, query,
+	_, err = r.pool.Exec(ctx, query,
 		subscription.InoreaderID, // Inoreader ID
 		subscription.Title,
 		category,      // Extracted from Categories
@@ -270,17 +267,12 @@ func (r *PostgreSQLSubscriptionRepository) UpdateSubscription(ctx context.Contex
 func (r *PostgreSQLSubscriptionRepository) DeleteSubscription(ctx context.Context, inoreaderID string) error {
 	query := `DELETE FROM inoreader_subscriptions WHERE inoreader_id = $1`
 
-	result, err := r.db.ExecContext(ctx, query, inoreaderID)
+	tag, err := r.pool.Exec(ctx, query, inoreaderID)
 	if err != nil {
 		return fmt.Errorf("failed to delete subscription: %w", err)
 	}
 
-	rowsAffected, err := result.RowsAffected()
-	if err != nil {
-		return fmt.Errorf("failed to get affected rows: %w", err)
-	}
-
-	if rowsAffected == 0 {
+	if tag.RowsAffected() == 0 {
 		return fmt.Errorf("subscription not found: %s", inoreaderID)
 	}
 
@@ -308,7 +300,7 @@ func (r *PostgreSQLSubscriptionRepository) CreateSubscription(ctx context.Contex
 			category = EXCLUDED.category,
 			synced_at = EXCLUDED.synced_at`
 
-	_, err = r.db.ExecContext(ctx, query,
+	_, err = r.pool.Exec(ctx, query,
 		subscription.ID,
 		subscription.InoreaderID,
 		normalizedURL, // Feed URL (normalized)

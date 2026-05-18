@@ -4,7 +4,7 @@
 # proven CLI. The Go binary owns the lifecycle state machine, retries,
 # atomic writes, metrics, and health.
 
-FROM golang:1.26.2-alpine AS build
+FROM golang:1.26-alpine@sha256:91eda9776261207ea25fd06b5b7fed8d397dd2c0a283e77f2ab6e91bfa71079d AS build
 WORKDIR /src
 COPY go.mod go.sum ./
 RUN go mod download
@@ -15,7 +15,7 @@ RUN CGO_ENABLED=0 GOOS=linux go build \
 
 # Use the same step-ca base that the existing compose sidecars pull.
 # Already cached on every host that runs Alt.
-FROM smallstep/step-ca:0.27.5
+FROM smallstep/step-ca:0.30.2@sha256:a2b17872915c193259b75a5474c398326f41bd199f0842093e52cf4182bc8270
 USER root
 COPY --from=build /out/pki-agent /usr/local/bin/pki-agent
 ENTRYPOINT ["/usr/local/bin/pki-agent"]

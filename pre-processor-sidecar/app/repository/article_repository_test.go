@@ -5,27 +5,27 @@ package repository
 
 import (
 	"context"
-	"database/sql"
 	"log/slog"
 	"regexp"
 	"testing"
 	"time"
 
-	"github.com/DATA-DOG/go-sqlmock"
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
+	"github.com/pashagolub/pgxmock/v5"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"pre-processor-sidecar/models"
 )
 
-func newTestRepo(t *testing.T) (*PostgreSQLArticleRepository, sqlmock.Sqlmock) {
+func newTestRepo(t *testing.T) (*PostgreSQLArticleRepository, pgxmock.PgxPoolIface) {
 	t.Helper()
-	db, mock, err := sqlmock.New()
+	mock, err := pgxmock.NewPool()
 	require.NoError(t, err)
-	t.Cleanup(func() { db.Close() })
+	t.Cleanup(mock.Close)
 
 	logger := slog.Default()
-	repo := &PostgreSQLArticleRepository{db: db, logger: logger}
+	repo := &PostgreSQLArticleRepository{pool: mock, logger: logger}
 	return repo, mock
 }
 
@@ -86,10 +86,10 @@ func TestCreateWithResult_Insert_NewArticle(t *testing.T) {
 	repo, mock := newTestRepo(t)
 	article := newTestArticle()
 
-	// No existing row → sql.ErrNoRows
+	// No existing row → pgx.ErrNoRows
 	mock.ExpectQuery(selectContentLengthQuery).
 		WithArgs(article.InoreaderID).
-		WillReturnError(sql.ErrNoRows)
+		WillReturnError(pgx.ErrNoRows)
 
 	// Full upsert (INSERT)
 	mock.ExpectQuery(upsertFullQuery).
@@ -99,7 +99,7 @@ func TestCreateWithResult_Insert_NewArticle(t *testing.T) {
 			article.PublishedAt, article.FetchedAt, article.Processed,
 			article.Content, article.ContentLength, article.ContentType,
 		).
-		WillReturnRows(sqlmock.NewRows([]string{"was_inserted"}).AddRow(true))
+		WillReturnRows(pgxmock.NewRows([]string{"was_inserted"}).AddRow(true))
 
 	result, err := repo.CreateWithResult(context.Background(), article)
 	require.NoError(t, err)
@@ -116,7 +116,7 @@ func TestCreateWithResult_Update_LongerContent(t *testing.T) {
 	// Existing row has shorter content
 	mock.ExpectQuery(selectContentLengthQuery).
 		WithArgs(article.InoreaderID).
-		WillReturnRows(sqlmock.NewRows([]string{"content_length"}).AddRow(100))
+		WillReturnRows(pgxmock.NewRows([]string{"content_length"}).AddRow(100))
 
 	// Full upsert (UPDATE with new content)
 	mock.ExpectQuery(upsertFullQuery).
@@ -126,7 +126,7 @@ func TestCreateWithResult_Update_LongerContent(t *testing.T) {
 			article.PublishedAt, article.FetchedAt, article.Processed,
 			article.Content, article.ContentLength, article.ContentType,
 		).
-		WillReturnRows(sqlmock.NewRows([]string{"was_inserted"}).AddRow(false))
+		WillReturnRows(pgxmock.NewRows([]string{"was_inserted"}).AddRow(false))
 
 	result, err := repo.CreateWithResult(context.Background(), article)
 	require.NoError(t, err)
@@ -143,7 +143,7 @@ func TestCreateWithResult_Update_ShorterContent_PreservesExisting(t *testing.T) 
 	// Existing row has longer content
 	mock.ExpectQuery(selectContentLengthQuery).
 		WithArgs(article.InoreaderID).
-		WillReturnRows(sqlmock.NewRows([]string{"content_length"}).AddRow(500))
+		WillReturnRows(pgxmock.NewRows([]string{"content_length"}).AddRow(500))
 
 	// Metadata-only update (content preserved)
 	mock.ExpectExec(updateMetadataOnlyQuery).
@@ -152,7 +152,7 @@ func TestCreateWithResult_Update_ShorterContent_PreservesExisting(t *testing.T) 
 			article.ArticleURL, article.Title, article.Author,
 			article.PublishedAt, article.FetchedAt,
 		).
-		WillReturnResult(sqlmock.NewResult(0, 1))
+		WillReturnResult(pgxmock.NewResult("UPDATE", 1))
 
 	result, err := repo.CreateWithResult(context.Background(), article)
 	require.NoError(t, err)

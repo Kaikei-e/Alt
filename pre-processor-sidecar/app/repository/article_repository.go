@@ -5,26 +5,27 @@ package repository
 
 import (
 	"context"
-	"database/sql"
+	"errors"
 	"fmt"
 	"log/slog"
 	"strings"
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	"pre-processor-sidecar/models"
 )
 
 // PostgreSQLArticleRepository implements ArticleRepository using PostgreSQL
 type PostgreSQLArticleRepository struct {
-	db     *sql.DB
+	pool   PgxIface
 	logger *slog.Logger
 }
 
 // NewPostgreSQLArticleRepository creates a new PostgreSQL article repository
-func NewPostgreSQLArticleRepository(db *sql.DB, logger *slog.Logger) ArticleRepository {
+func NewPostgreSQLArticleRepository(pool PgxIface, logger *slog.Logger) ArticleRepository {
 	return &PostgreSQLArticleRepository{
-		db:     db,
+		pool:   pool,
 		logger: logger,
 	}
 }
@@ -60,10 +61,10 @@ func (r *PostgreSQLArticleRepository) CreateWithResult(ctx context.Context, arti
 }
 
 // getExistingContentLength returns the content_length of an existing article.
-// Returns sql.ErrNoRows if the article does not exist.
+// Returns pgx.ErrNoRows if the article does not exist.
 func (r *PostgreSQLArticleRepository) getExistingContentLength(ctx context.Context, inoreaderID string) (int, error) {
 	var contentLength int
-	err := r.db.QueryRowContext(ctx,
+	err := r.pool.QueryRow(ctx,
 		"SELECT COALESCE(content_length, 0) FROM inoreader_articles WHERE inoreader_id = $1",
 		inoreaderID,
 	).Scan(&contentLength)
@@ -81,7 +82,7 @@ func (r *PostgreSQLArticleRepository) updateMetadataOnly(ctx context.Context, ar
 			fetched_at = $7
 		WHERE inoreader_id = $1`
 
-	result, err := r.db.ExecContext(ctx, query,
+	tag, err := r.pool.Exec(ctx, query,
 		article.InoreaderID,
 		article.SubscriptionID,
 		article.ArticleURL,
@@ -97,11 +98,7 @@ func (r *PostgreSQLArticleRepository) updateMetadataOnly(ctx context.Context, ar
 		return nil, fmt.Errorf("failed to update article metadata: %w", err)
 	}
 
-	rowsAffected, err := result.RowsAffected()
-	if err != nil {
-		return nil, fmt.Errorf("failed to get affected rows: %w", err)
-	}
-	if rowsAffected == 0 {
+	if tag.RowsAffected() == 0 {
 		return nil, fmt.Errorf("article not found for metadata update: %s", article.InoreaderID)
 	}
 
@@ -132,7 +129,7 @@ func (r *PostgreSQLArticleRepository) upsertFull(ctx context.Context, article *m
 		RETURNING (xmax = 0) AS was_inserted`
 
 	var wasInserted bool
-	err := r.db.QueryRowContext(ctx, query,
+	err := r.pool.QueryRow(ctx, query,
 		article.ID,
 		article.InoreaderID,
 		article.SubscriptionID,
@@ -310,7 +307,7 @@ func (r *PostgreSQLArticleRepository) FindByInoreaderID(ctx context.Context, ino
 		WHERE inoreader_id = $1`
 
 	var article models.Article
-	err := r.db.QueryRowContext(ctx, query, inoreaderID).Scan(
+	err := r.pool.QueryRow(ctx, query, inoreaderID).Scan(
 		&article.ID,
 		&article.InoreaderID,
 		&article.SubscriptionID,
@@ -326,7 +323,7 @@ func (r *PostgreSQLArticleRepository) FindByInoreaderID(ctx context.Context, ino
 	)
 
 	if err != nil {
-		if err == sql.ErrNoRows {
+		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, fmt.Errorf("article not found with inoreader_id: %s", inoreaderID)
 		}
 		return nil, fmt.Errorf("failed to find article by inoreader_id: %w", err)
@@ -344,7 +341,7 @@ func (r *PostgreSQLArticleRepository) FindByID(ctx context.Context, id uuid.UUID
 		WHERE id = $1`
 
 	var article models.Article
-	err := r.db.QueryRowContext(ctx, query, id).Scan(
+	err := r.pool.QueryRow(ctx, query, id).Scan(
 		&article.ID,
 		&article.InoreaderID,
 		&article.SubscriptionID,
@@ -360,7 +357,7 @@ func (r *PostgreSQLArticleRepository) FindByID(ctx context.Context, id uuid.UUID
 	)
 
 	if err != nil {
-		if err == sql.ErrNoRows {
+		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, fmt.Errorf("article not found with id: %s", id.String())
 		}
 		return nil, fmt.Errorf("failed to find article by id: %w", err)
@@ -416,7 +413,7 @@ func (r *PostgreSQLArticleRepository) Update(ctx context.Context, article *model
 		    published_at = $6, processed = $7, content = $8, content_length = $9, content_type = $10
 		WHERE inoreader_id = $1`
 
-	result, err := r.db.ExecContext(ctx, query,
+	tag, err := r.pool.Exec(ctx, query,
 		article.InoreaderID,
 		article.SubscriptionID,
 		article.ArticleURL,
@@ -433,12 +430,7 @@ func (r *PostgreSQLArticleRepository) Update(ctx context.Context, article *model
 		return fmt.Errorf("failed to update article: %w", err)
 	}
 
-	rowsAffected, err := result.RowsAffected()
-	if err != nil {
-		return fmt.Errorf("failed to get affected rows: %w", err)
-	}
-
-	if rowsAffected == 0 {
+	if tag.RowsAffected() == 0 {
 		return fmt.Errorf("article not found for update: %s", article.InoreaderID)
 	}
 
@@ -449,17 +441,12 @@ func (r *PostgreSQLArticleRepository) Update(ctx context.Context, article *model
 func (r *PostgreSQLArticleRepository) MarkAsProcessed(ctx context.Context, inoreaderID string) error {
 	query := `UPDATE inoreader_articles SET processed = true WHERE inoreader_id = $1`
 
-	result, err := r.db.ExecContext(ctx, query, inoreaderID)
+	tag, err := r.pool.Exec(ctx, query, inoreaderID)
 	if err != nil {
 		return fmt.Errorf("failed to mark article as processed: %w", err)
 	}
 
-	rowsAffected, err := result.RowsAffected()
-	if err != nil {
-		return fmt.Errorf("failed to get affected rows: %w", err)
-	}
-
-	if rowsAffected == 0 {
+	if tag.RowsAffected() == 0 {
 		return fmt.Errorf("article not found for processing: %s", inoreaderID)
 	}
 
@@ -472,22 +459,17 @@ func (r *PostgreSQLArticleRepository) MarkBatchAsProcessed(ctx context.Context, 
 		return nil
 	}
 
-	tx, err := r.db.BeginTx(ctx, nil)
+	tx, err := r.pool.BeginTx(ctx, pgx.TxOptions{})
 	if err != nil {
 		return fmt.Errorf("failed to begin transaction: %w", err)
 	}
-	defer tx.Rollback()
+	defer tx.Rollback(ctx)
 
 	query := `UPDATE inoreader_articles SET processed = true WHERE inoreader_id = $1`
-	stmt, err := tx.PrepareContext(ctx, query)
-	if err != nil {
-		return fmt.Errorf("failed to prepare statement: %w", err)
-	}
-	defer stmt.Close()
 
 	processed := 0
 	for _, inoreaderID := range inoreaderIDs {
-		result, err := stmt.ExecContext(ctx, inoreaderID)
+		tag, err := tx.Exec(ctx, query, inoreaderID)
 		if err != nil {
 			r.logger.Warn("Failed to mark article as processed in batch",
 				"inoreader_id", inoreaderID,
@@ -495,13 +477,12 @@ func (r *PostgreSQLArticleRepository) MarkBatchAsProcessed(ctx context.Context, 
 			continue
 		}
 
-		rowsAffected, _ := result.RowsAffected()
-		if rowsAffected > 0 {
+		if tag.RowsAffected() > 0 {
 			processed++
 		}
 	}
 
-	if err := tx.Commit(); err != nil {
+	if err := tx.Commit(ctx); err != nil {
 		return fmt.Errorf("failed to commit transaction: %w", err)
 	}
 
@@ -516,17 +497,12 @@ func (r *PostgreSQLArticleRepository) MarkBatchAsProcessed(ctx context.Context, 
 func (r *PostgreSQLArticleRepository) Delete(ctx context.Context, id uuid.UUID) error {
 	query := `DELETE FROM inoreader_articles WHERE id = $1`
 
-	result, err := r.db.ExecContext(ctx, query, id)
+	tag, err := r.pool.Exec(ctx, query, id)
 	if err != nil {
 		return fmt.Errorf("failed to delete article: %w", err)
 	}
 
-	rowsAffected, err := result.RowsAffected()
-	if err != nil {
-		return fmt.Errorf("failed to get affected rows: %w", err)
-	}
-
-	if rowsAffected == 0 {
+	if tag.RowsAffected() == 0 {
 		return fmt.Errorf("article not found for deletion: %s", id.String())
 	}
 
@@ -537,17 +513,12 @@ func (r *PostgreSQLArticleRepository) Delete(ctx context.Context, id uuid.UUID) 
 func (r *PostgreSQLArticleRepository) DeleteByInoreaderID(ctx context.Context, inoreaderID string) error {
 	query := `DELETE FROM inoreader_articles WHERE inoreader_id = $1`
 
-	result, err := r.db.ExecContext(ctx, query, inoreaderID)
+	tag, err := r.pool.Exec(ctx, query, inoreaderID)
 	if err != nil {
 		return fmt.Errorf("failed to delete article by inoreader_id: %w", err)
 	}
 
-	rowsAffected, err := result.RowsAffected()
-	if err != nil {
-		return fmt.Errorf("failed to get affected rows: %w", err)
-	}
-
-	if rowsAffected == 0 {
+	if tag.RowsAffected() == 0 {
 		return fmt.Errorf("article not found for deletion: %s", inoreaderID)
 	}
 
@@ -558,17 +529,12 @@ func (r *PostgreSQLArticleRepository) DeleteByInoreaderID(ctx context.Context, i
 func (r *PostgreSQLArticleRepository) DeleteOld(ctx context.Context, olderThan time.Time) (int, error) {
 	query := `DELETE FROM inoreader_articles WHERE fetched_at < $1`
 
-	result, err := r.db.ExecContext(ctx, query, olderThan)
+	tag, err := r.pool.Exec(ctx, query, olderThan)
 	if err != nil {
 		return 0, fmt.Errorf("failed to delete old articles: %w", err)
 	}
 
-	rowsAffected, err := result.RowsAffected()
-	if err != nil {
-		return 0, fmt.Errorf("failed to get affected rows: %w", err)
-	}
-
-	deletedCount := int(rowsAffected)
+	deletedCount := int(tag.RowsAffected())
 	r.logger.Info("Deleted old articles",
 		"count", deletedCount,
 		"older_than", olderThan)
@@ -581,7 +547,7 @@ func (r *PostgreSQLArticleRepository) CountTotal(ctx context.Context) (int, erro
 	query := `SELECT COUNT(*) FROM inoreader_articles`
 
 	var count int
-	err := r.db.QueryRowContext(ctx, query).Scan(&count)
+	err := r.pool.QueryRow(ctx, query).Scan(&count)
 	if err != nil {
 		return 0, fmt.Errorf("failed to count total articles: %w", err)
 	}
@@ -594,7 +560,7 @@ func (r *PostgreSQLArticleRepository) CountUnprocessed(ctx context.Context) (int
 	query := `SELECT COUNT(*) FROM inoreader_articles WHERE processed = false`
 
 	var count int
-	err := r.db.QueryRowContext(ctx, query).Scan(&count)
+	err := r.pool.QueryRow(ctx, query).Scan(&count)
 	if err != nil {
 		return 0, fmt.Errorf("failed to count unprocessed articles: %w", err)
 	}
@@ -607,7 +573,7 @@ func (r *PostgreSQLArticleRepository) CountBySubscriptionID(ctx context.Context,
 	query := `SELECT COUNT(*) FROM inoreader_articles WHERE subscription_id = $1`
 
 	var count int
-	err := r.db.QueryRowContext(ctx, query, subscriptionID).Scan(&count)
+	err := r.pool.QueryRow(ctx, query, subscriptionID).Scan(&count)
 	if err != nil {
 		return 0, fmt.Errorf("failed to count articles by subscription_id: %w", err)
 	}
@@ -616,8 +582,8 @@ func (r *PostgreSQLArticleRepository) CountBySubscriptionID(ctx context.Context,
 }
 
 // queryArticles is a helper method to execute queries that return multiple articles
-func (r *PostgreSQLArticleRepository) queryArticles(ctx context.Context, query string, args ...interface{}) ([]*models.Article, error) {
-	rows, err := r.db.QueryContext(ctx, query, args...)
+func (r *PostgreSQLArticleRepository) queryArticles(ctx context.Context, query string, args ...any) ([]*models.Article, error) {
+	rows, err := r.pool.Query(ctx, query, args...)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query articles: %w", err)
 	}

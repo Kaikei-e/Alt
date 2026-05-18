@@ -24,7 +24,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/labstack/echo/v4"
-	"github.com/pashagolub/pgxmock/v3"
+	"github.com/pashagolub/pgxmock/v5"
 	"github.com/stretchr/testify/assert"
 	"go.uber.org/mock/gomock"
 )
@@ -213,10 +213,10 @@ func TestHandleFetchArticle_Compliance(t *testing.T) {
 		// Expect Transaction
 		mockPool.ExpectBegin()
 
-		// Expect Upsert Article
+		// Expect Upsert Article — RETURNING id, (xmax = 0) AS created
 		mockPool.ExpectQuery("(?is)INSERT INTO articles").
 			WithArgs("Title", pgxmock.AnyArg(), targetURLStr, userID, nil).
-			WillReturnRows(pgxmock.NewRows([]string{"id"}).AddRow(uuid.New()))
+			WillReturnRows(pgxmock.NewRows([]string{"id", "created"}).AddRow(uuid.New(), true))
 
 		// Expect Outbox Event Insert
 		mockPool.ExpectExec("(?is)INSERT INTO outbox_events").

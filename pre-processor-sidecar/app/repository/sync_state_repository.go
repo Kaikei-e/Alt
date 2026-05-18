@@ -5,7 +5,7 @@ package repository
 
 import (
 	"context"
-	"database/sql"
+	"errors"
 	"fmt"
 	"log/slog"
 	"time"
@@ -13,18 +13,19 @@ import (
 	"pre-processor-sidecar/models"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 )
 
 // PostgreSQLSyncStateRepository implements SyncStateRepository using PostgreSQL
 type PostgreSQLSyncStateRepository struct {
-	db     *sql.DB
+	pool   PgxIface
 	logger *slog.Logger
 }
 
 // NewPostgreSQLSyncStateRepository creates a new PostgreSQL sync state repository
-func NewPostgreSQLSyncStateRepository(db *sql.DB, logger *slog.Logger) SyncStateRepository {
+func NewPostgreSQLSyncStateRepository(pool PgxIface, logger *slog.Logger) SyncStateRepository {
 	return &PostgreSQLSyncStateRepository{
-		db:     db,
+		pool:   pool,
 		logger: logger,
 	}
 }
@@ -36,7 +37,7 @@ func (r *PostgreSQLSyncStateRepository) Create(ctx context.Context, syncState *m
 		VALUES ($1, $2, $3, $4, $5)`
 
 	now := time.Now()
-	_, err := r.db.ExecContext(ctx, query,
+	_, err := r.pool.Exec(ctx, query,
 		syncState.ID,
 		syncState.StreamID,
 		syncState.ContinuationToken,
@@ -66,7 +67,7 @@ func (r *PostgreSQLSyncStateRepository) FindByStreamID(ctx context.Context, stre
 		WHERE stream_id = $1`
 
 	var syncState models.SyncState
-	err := r.db.QueryRowContext(ctx, query, streamID).Scan(
+	err := r.pool.QueryRow(ctx, query, streamID).Scan(
 		&syncState.ID,
 		&syncState.StreamID,
 		&syncState.ContinuationToken,
@@ -74,7 +75,7 @@ func (r *PostgreSQLSyncStateRepository) FindByStreamID(ctx context.Context, stre
 	)
 
 	if err != nil {
-		if err == sql.ErrNoRows {
+		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, fmt.Errorf("sync state not found for stream_id: %s", streamID)
 		}
 		return nil, fmt.Errorf("failed to find sync state by stream_id: %w", err)
@@ -91,7 +92,7 @@ func (r *PostgreSQLSyncStateRepository) FindByID(ctx context.Context, id uuid.UU
 		WHERE id = $1`
 
 	var syncState models.SyncState
-	err := r.db.QueryRowContext(ctx, query, id).Scan(
+	err := r.pool.QueryRow(ctx, query, id).Scan(
 		&syncState.ID,
 		&syncState.StreamID,
 		&syncState.ContinuationToken,
@@ -99,7 +100,7 @@ func (r *PostgreSQLSyncStateRepository) FindByID(ctx context.Context, id uuid.UU
 	)
 
 	if err != nil {
-		if err == sql.ErrNoRows {
+		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, fmt.Errorf("sync state not found with id: %s", id.String())
 		}
 		return nil, fmt.Errorf("failed to find sync state by id: %w", err)
@@ -138,7 +139,7 @@ func (r *PostgreSQLSyncStateRepository) GetOldestOne(ctx context.Context) (*mode
 		LIMIT 1`
 
 	var syncState models.SyncState
-	err := r.db.QueryRowContext(ctx, query).Scan(
+	err := r.pool.QueryRow(ctx, query).Scan(
 		&syncState.ID,
 		&syncState.StreamID,
 		&syncState.ContinuationToken,
@@ -146,7 +147,7 @@ func (r *PostgreSQLSyncStateRepository) GetOldestOne(ctx context.Context) (*mode
 	)
 
 	if err != nil {
-		if err == sql.ErrNoRows {
+		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, nil // Return nil if no records found
 		}
 		return nil, fmt.Errorf("failed to get oldest sync state: %w", err)
@@ -162,7 +163,7 @@ func (r *PostgreSQLSyncStateRepository) Update(ctx context.Context, syncState *m
 		SET continuation_token = $2, last_sync = $3
 		WHERE stream_id = $1`
 
-	result, err := r.db.ExecContext(ctx, query,
+	tag, err := r.pool.Exec(ctx, query,
 		syncState.StreamID,
 		syncState.ContinuationToken,
 		syncState.LastSync,
@@ -175,12 +176,7 @@ func (r *PostgreSQLSyncStateRepository) Update(ctx context.Context, syncState *m
 		return fmt.Errorf("failed to update sync state: %w", err)
 	}
 
-	rowsAffected, err := result.RowsAffected()
-	if err != nil {
-		return fmt.Errorf("failed to get affected rows: %w", err)
-	}
-
-	if rowsAffected == 0 {
+	if tag.RowsAffected() == 0 {
 		return fmt.Errorf("sync state not found for update: %s", syncState.StreamID)
 	}
 
@@ -199,7 +195,7 @@ func (r *PostgreSQLSyncStateRepository) UpdateContinuationToken(ctx context.Cont
 		WHERE stream_id = $1`
 
 	now := time.Now()
-	result, err := r.db.ExecContext(ctx, query, streamID, token, now)
+	tag, err := r.pool.Exec(ctx, query, streamID, token, now)
 
 	if err != nil {
 		r.logger.Error("Failed to update continuation token",
@@ -208,12 +204,7 @@ func (r *PostgreSQLSyncStateRepository) UpdateContinuationToken(ctx context.Cont
 		return fmt.Errorf("failed to update continuation token: %w", err)
 	}
 
-	rowsAffected, err := result.RowsAffected()
-	if err != nil {
-		return fmt.Errorf("failed to get affected rows: %w", err)
-	}
-
-	if rowsAffected == 0 {
+	if tag.RowsAffected() == 0 {
 		return fmt.Errorf("sync state not found for token update: %s", streamID)
 	}
 
@@ -228,17 +219,12 @@ func (r *PostgreSQLSyncStateRepository) UpdateContinuationToken(ctx context.Cont
 func (r *PostgreSQLSyncStateRepository) Delete(ctx context.Context, id uuid.UUID) error {
 	query := `DELETE FROM sync_state WHERE id = $1`
 
-	result, err := r.db.ExecContext(ctx, query, id)
+	tag, err := r.pool.Exec(ctx, query, id)
 	if err != nil {
 		return fmt.Errorf("failed to delete sync state: %w", err)
 	}
 
-	rowsAffected, err := result.RowsAffected()
-	if err != nil {
-		return fmt.Errorf("failed to get affected rows: %w", err)
-	}
-
-	if rowsAffected == 0 {
+	if tag.RowsAffected() == 0 {
 		return fmt.Errorf("sync state not found for deletion: %s", id.String())
 	}
 
@@ -250,17 +236,12 @@ func (r *PostgreSQLSyncStateRepository) Delete(ctx context.Context, id uuid.UUID
 func (r *PostgreSQLSyncStateRepository) DeleteByStreamID(ctx context.Context, streamID string) error {
 	query := `DELETE FROM sync_state WHERE stream_id = $1`
 
-	result, err := r.db.ExecContext(ctx, query, streamID)
+	tag, err := r.pool.Exec(ctx, query, streamID)
 	if err != nil {
 		return fmt.Errorf("failed to delete sync state by stream_id: %w", err)
 	}
 
-	rowsAffected, err := result.RowsAffected()
-	if err != nil {
-		return fmt.Errorf("failed to get affected rows: %w", err)
-	}
-
-	if rowsAffected == 0 {
+	if tag.RowsAffected() == 0 {
 		return fmt.Errorf("sync state not found for deletion: %s", streamID)
 	}
 
@@ -272,17 +253,12 @@ func (r *PostgreSQLSyncStateRepository) DeleteByStreamID(ctx context.Context, st
 func (r *PostgreSQLSyncStateRepository) DeleteStale(ctx context.Context, olderThan time.Time) (int, error) {
 	query := `DELETE FROM sync_state WHERE last_sync < $1`
 
-	result, err := r.db.ExecContext(ctx, query, olderThan)
+	tag, err := r.pool.Exec(ctx, query, olderThan)
 	if err != nil {
 		return 0, fmt.Errorf("failed to delete stale sync states: %w", err)
 	}
 
-	rowsAffected, err := result.RowsAffected()
-	if err != nil {
-		return 0, fmt.Errorf("failed to get affected rows: %w", err)
-	}
-
-	deletedCount := int(rowsAffected)
+	deletedCount := int(tag.RowsAffected())
 	r.logger.Info("Deleted stale sync states",
 		"count", deletedCount,
 		"older_than", olderThan)
@@ -311,8 +287,8 @@ func (r *PostgreSQLSyncStateRepository) CleanupStale(ctx context.Context, retent
 }
 
 // querySyncStates is a helper method to execute queries that return multiple sync states
-func (r *PostgreSQLSyncStateRepository) querySyncStates(ctx context.Context, query string, args ...interface{}) ([]*models.SyncState, error) {
-	rows, err := r.db.QueryContext(ctx, query, args...)
+func (r *PostgreSQLSyncStateRepository) querySyncStates(ctx context.Context, query string, args ...any) ([]*models.SyncState, error) {
+	rows, err := r.pool.Query(ctx, query, args...)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query sync states: %w", err)
 	}

@@ -1,13 +1,13 @@
 module knowledge-sovereign
 
-go 1.26.2
+go 1.26.3
 
 require (
 	connectrpc.com/connect v1.19.2
 	github.com/google/uuid v1.6.0
 	github.com/jackc/pgx/v5 v5.9.2
 	github.com/pact-foundation/pact-go/v2 v2.4.3
-	github.com/pashagolub/pgxmock/v3 v3.4.0
+	github.com/pashagolub/pgxmock/v5 v5.1.0
 	github.com/prometheus/client_golang v1.23.2
 	github.com/stretchr/testify v1.11.1
 	google.golang.org/protobuf v1.36.11

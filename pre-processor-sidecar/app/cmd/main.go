@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"database/sql"
 	"flag"
 	"fmt"
 	"log/slog"
@@ -25,7 +24,7 @@ import (
 	// Import new scheduler package
 	"encoding/json"
 
-	_ "github.com/lib/pq"
+	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 // getNamespace gets the current Kubernetes namespace
@@ -249,17 +248,17 @@ func performOAuth2Initialization(cfg *config.Config, logger *slog.Logger) {
 		"dbname", cfg.Database.Name,
 		"sslmode", cfg.Database.SSLMode)
 
-	db, err := sql.Open("postgres", dbConnectionString)
+	pool, err := pgxpool.New(context.Background(), dbConnectionString)
 	if err != nil {
 		logger.Error("Failed to create database connection", "error", err)
 		os.Exit(1)
 	}
-	defer db.Close()
+	defer pool.Close()
 
 	// Test database connection with retry logic
 	maxRetries := 3
 	for i := 1; i <= maxRetries; i++ {
-		if err := db.Ping(); err != nil {
+		if err := pool.Ping(context.Background()); err != nil {
 			logger.Warn("Database ping failed, retrying...",
 				"attempt", i,
 				"error", err)
@@ -299,20 +298,25 @@ func runScheduleMode(ctx context.Context, cfg *config.Config, logger *slog.Logge
 		"dbname", cfg.Database.Name,
 		"sslmode", cfg.Database.SSLMode)
 
-	db, err := sql.Open("postgres", dbConnectionString)
+	poolCfg, err := pgxpool.ParseConfig(dbConnectionString)
+	if err != nil {
+		return fmt.Errorf("failed to parse database connection string: %w", err)
+	}
+	// Configure connection pool to prevent exhaustion
+	poolCfg.MaxConns = 25
+	poolCfg.MinConns = 5
+	poolCfg.MaxConnLifetime = 5 * time.Minute
+
+	pool, err := pgxpool.NewWithConfig(ctx, poolCfg)
 	if err != nil {
 		return fmt.Errorf("failed to open database connection: %w", err)
 	}
-	// Configure connection pool to prevent exhaustion
-	db.SetMaxOpenConns(25)
-	db.SetMaxIdleConns(5)
-	db.SetConnMaxLifetime(5 * time.Minute)
-	defer db.Close()
+	defer pool.Close()
 
 	// Test database connection with retry
 	maxRetries := 3
 	for i := 0; i < maxRetries; i++ {
-		if err := db.PingContext(ctx); err != nil {
+		if err := pool.Ping(ctx); err != nil {
 			logger.Warn("Database ping failed, retrying...", "attempt", i+1, "error", err)
 			if i == maxRetries-1 {
 				return fmt.Errorf("failed to ping database after %d attempts: %w", maxRetries, err)
@@ -327,9 +331,9 @@ func runScheduleMode(ctx context.Context, cfg *config.Config, logger *slog.Logge
 	logger.Info("HTTP client configured", "proxy", cfg.Proxy.HTTPSProxy)
 
 	// Initialize repositories
-	articleRepo := repository.NewPostgreSQLArticleRepository(db, logger)
-	syncStateRepo := repository.NewPostgreSQLSyncStateRepository(db, logger)
-	subscriptionRepo := repository.NewPostgreSQLSubscriptionRepository(db, logger)
+	articleRepo := repository.NewPostgreSQLArticleRepository(pool, logger)
+	syncStateRepo := repository.NewPostgreSQLSyncStateRepository(pool, logger)
+	subscriptionRepo := repository.NewPostgreSQLSubscriptionRepository(pool, logger)
 
 	// OAuth2クライアントの作成（Enhanced Token Serviceと同じ設定）
 	clientID := cfg.OAuth2.ClientID
