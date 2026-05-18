@@ -14,6 +14,8 @@ Monorepo with 20+ microservices. Docker Compose-first orchestration, TDD-first d
 
 Each service has its own `CLAUDE.md` with service-specific guidance. See `docs/services/MICROSERVICES.md` for the full reference.
 
+**Wiki entry**: `docs/wiki/HOME.md` — crystallized navigation layer over ADR / runbook / plan. Read this first to get the current map of the system.
+
 ## WHY
 
 - **TDD-first**: Write failing test → make it pass → refactor. Quality through tests, not hope.

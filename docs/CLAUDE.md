@@ -16,6 +16,7 @@
 - ADR参照は必ず `[[000NNN]]` wikilink形式を使う
 
 ## 検索ガイドライン
+- **まず `wiki/HOME.md` を見る** — 結晶化された navigation layer。ADR / runbook / plan の入口
 - vault内のノート検索にはObsidian MCPツールを優先して使うこと
 - ADRのキーワード検索は grep でも可だが、タグやリンク関係の探索にはMCPを使うこと
 - vault外のファイル（ソースコード等）には直接ファイルアクセスを使うこと

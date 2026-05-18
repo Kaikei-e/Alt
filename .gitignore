@@ -139,6 +139,7 @@ docs/daily/
 docs/review/
 docs/blog/
 docs/plan/
+docs/wiki/
 
 # ============================================
 # Deployment & operational scripts (infra IPs/SSH targets)
