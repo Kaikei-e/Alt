@@ -52,7 +52,10 @@ func TestProjector_ResolveBucket_NullDefault(t *testing.T) {
 		{EventHomeItemsSeen, sovereignv1.SurfaceBucket_SURFACE_BUCKET_NOW},
 		{EventHomeItemAsked, sovereignv1.SurfaceBucket_SURFACE_BUCKET_NOW},
 		{EventHomeItemOpened, sovereignv1.SurfaceBucket_SURFACE_BUCKET_CONTINUE},
-		{EventHomeItemDismissed, sovereignv1.SurfaceBucket_SURFACE_BUCKET_REVIEW},
+		// ADR-000907 §Δ8: dismiss is no longer a Review trigger; it falls
+		// through to Continue as a symbolic placement with dismiss/visibility
+		// state carrying the hide semantics.
+		{EventHomeItemDismissed, sovereignv1.SurfaceBucket_SURFACE_BUCKET_CONTINUE},
 		{EventHomeItemSuperseded, sovereignv1.SurfaceBucket_SURFACE_BUCKET_CHANGED},
 		{EventSummarySuperseded, sovereignv1.SurfaceBucket_SURFACE_BUCKET_CHANGED},
 	}

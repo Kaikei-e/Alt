@@ -409,7 +409,12 @@ func TestRunBatch_HomeItemOpened_RemainsVisibleInContinueSurface(t *testing.T) {
 	require.JSONEq(t, `{"active_count":1}`, string(continueSurface.LoopHealth))
 }
 
-func TestRunBatch_HomeItemDismissed_RemainsVisibleInReviewSurface(t *testing.T) {
+// ADR-000907 §Δ8: HomeItemDismissed no longer drives a Review placement.
+// Dismiss flips dismiss_state/completion_state and the symbolic surface
+// bucket is Continue (v1FallbackBucket). The Review surface stays reserved
+// for epistemic re-evaluation (staleness ≥ 2, etc.) — user-driven dismiss
+// is not "system が再評価を促す" work.
+func TestRunBatch_HomeItemDismissed_RoutesToContinueNotReview(t *testing.T) {
 	userID := uuid.New()
 	ev := makeEvent(t, EventHomeItemDismissed, 120, userID, map[string]any{
 		"entry_key":   "article:review-visible",
@@ -422,26 +427,24 @@ func TestRunBatch_HomeItemDismissed_RemainsVisibleInReviewSurface(t *testing.T) 
 	require.NoError(t, p.RunBatch(context.Background()))
 
 	entry := repo.entries[0]
-	require.Equal(t, sovereignv1.SurfaceBucket_SURFACE_BUCKET_REVIEW, entry.SurfaceBucket)
+	require.Equal(t, sovereignv1.SurfaceBucket_SURFACE_BUCKET_CONTINUE, entry.SurfaceBucket,
+		"dismiss should fall back to Continue, not Review")
 	require.Equal(t, sovereignv1.DismissState_DISMISS_STATE_DISMISSED, entry.DismissState)
-	require.Equal(t, sovereignv1.LoopVisibilityState_LOOP_VISIBILITY_STATE_VISIBLE, entry.VisibilityState)
 	require.Equal(t, sovereignv1.LoopCompletionState_LOOP_COMPLETION_STATE_DISMISSED, entry.CompletionState)
 	require.NotNil(t, entry.SourceObservedAt)
 	require.Equal(t, time.Date(2026, 4, 26, 9, 58, 0, 0, time.UTC), entry.SourceObservedAt.AsTime().UTC())
 	require.Contains(t, entry.WhyPrimary.Text, "Dismissed")
 	require.NotEmpty(t, entry.WhyPrimary.EvidenceRefs)
 
-	var reviewSurface *sovereignv1.KnowledgeLoopSurface
+	// Review surface must NOT carry the dismissed entry as its primary.
 	for _, s := range repo.surfaces {
 		if s.SurfaceBucket == sovereignv1.SurfaceBucket_SURFACE_BUCKET_REVIEW {
-			reviewSurface = s
-			break
+			if s.PrimaryEntryKey != nil {
+				require.NotEqual(t, "article:review-visible", *s.PrimaryEntryKey,
+					"HomeItemDismissed must not anchor the Review surface (ADR-000907 §Δ8)")
+			}
 		}
 	}
-	require.NotNil(t, reviewSurface)
-	require.NotNil(t, reviewSurface.PrimaryEntryKey)
-	require.Equal(t, "article:review-visible", *reviewSurface.PrimaryEntryKey,
-		"HomeItemDismissed is Review work, not a read-path hide")
 }
 
 func TestRunBatch_SummaryVersionCreated_ObserveSeed(t *testing.T) {

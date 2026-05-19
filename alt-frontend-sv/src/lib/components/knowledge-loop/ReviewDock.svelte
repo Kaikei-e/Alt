@@ -84,6 +84,15 @@ function act(entry: KnowledgeLoopEntryData, action: ReviewAction) {
 					{/if}
 					<span class="why-kind">{entry.whyPrimary.kind.replace(/_why$/, "")}</span>
 				</button>
+				{#if reviewReason}
+					<p
+						class="guidance"
+						data-testid="loop-review-guidance"
+						data-review-reason={reviewReason.reason}
+					>
+						{reviewReason.guidance}
+					</p>
+				{/if}
 				{#if onReviewAction}
 					<div class="actions" aria-label="Review actions">
 						<button
@@ -183,6 +192,19 @@ function act(entry: KnowledgeLoopEntryData, action: ReviewAction) {
 		letter-spacing: 0.12em;
 		text-transform: uppercase;
 		color: var(--alt-ash, #999);
+	}
+
+	/* Action-oriented guidance line per ADR-000907 §Δ8. Sits below the open
+	 * link, indented to align with the why text column. Deterministic
+	 * template — drives "how to update understanding". */
+	.guidance {
+		margin: 0.15rem 0 0;
+		padding-left: 1.7ch;
+		font-family: var(--font-mono, "IBM Plex Mono", ui-monospace, monospace);
+		font-size: 0.7rem;
+		line-height: 1.45;
+		color: var(--alt-slate, #666);
+		font-style: italic;
 	}
 
 	/* Review actions row — sits below the open link; functional buttons in

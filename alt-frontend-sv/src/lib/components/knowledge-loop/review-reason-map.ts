@@ -46,6 +46,13 @@ export interface ReviewReasonDisplay {
 	label: string;
 	kicker: string;
 	ariaText: string;
+	/**
+	 * Action-oriented guidance line per ADR-000907 §Δ8 / canonical contract §3.
+	 * "What changed" alone is insufficient; the Review card must hint at "how
+	 * to update understanding" so the bucket is a deliberate re-evaluation
+	 * queue rather than a leftover surface. Deterministic template (no LLM).
+	 */
+	guidance: string;
 }
 
 const DISPLAY: Record<ReviewReason, ReviewReasonDisplay> = {
@@ -54,24 +61,32 @@ const DISPLAY: Record<ReviewReason, ReviewReasonDisplay> = {
 		label: "Stale evidence",
 		kicker: "STALE",
 		ariaText: "Re-evaluation candidate: stale evidence",
+		guidance: "Last seen a while ago. Worth a 30-second refresh?",
 	},
 	previously_dismissed: {
 		reason: "previously_dismissed",
 		label: "Previously dismissed",
 		kicker: "DISMISSED",
 		ariaText: "Re-evaluation candidate: previously dismissed",
+		// Held for back-compat: ADR-000907 §Δ8 stopped routing dismiss to
+		// Review, so this branch is dormant on the new projector path. If a
+		// pre-cutover row is still rendered, surface the previous intent
+		// without urging re-evaluation.
+		guidance: "Dismissed earlier — nothing new since then.",
 	},
 	reviewed: {
 		reason: "reviewed",
 		label: "Reviewed",
 		kicker: "REVIEWED",
 		ariaText: "Acknowledged: reviewed",
+		guidance: "You've already reviewed this. No follow-up needed.",
 	},
 	deferred: {
 		reason: "deferred",
 		label: "Deferred",
 		kicker: "DEFERRED",
 		ariaText: "Re-evaluation candidate: deferred",
+		guidance: "Snoozed earlier — pick a moment to revisit.",
 	},
 };
 

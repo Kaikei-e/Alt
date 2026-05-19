@@ -137,11 +137,16 @@ func decideBucketV2(in SurfaceScoreInputs) sovereignv1.SurfaceBucket {
 		return sovereignv1.SurfaceBucket_SURFACE_BUCKET_NOW
 	}
 
-	// Review: explicitly elevate the bucket from "leftover" to "needs
-	// re-evaluation". An entry with stale evidence (StalenessScore ≥ 2 →
-	// older than 7 days) lands here so the Review surface becomes the
-	// deliberate re-evaluation queue (fb.md §F goal). v1 dismissals also
-	// map here for back-compat.
+	// Review: ADR-000907 §Δ8 reframes Review as the epistemic-change-driven
+	// re-evaluation queue. The only entry path is StalenessScore ≥ 2.
+	// Contradiction / VersionDrift route to Changed earlier, and
+	// HasAugurLink (unfinished thread) routes to Continue, so the v2
+	// signals already covered the other Review reasons before we get here.
+	//
+	// User-driven HomeItemDismissed is intentionally NOT a Review trigger.
+	// Dismiss flips dismiss_state/visibility_state to hidden via the entry
+	// patch path; placing it in Review would mix "ユーザが捨てた = もう見たくない"
+	// with "system が再評価を促す" and break the bucket's semantic.
 	//
 	// EvidenceDensity is intentionally NOT used as a Review trigger because
 	// the NullSurfaceScoreResolver never populates it (always 0), so a
@@ -149,7 +154,7 @@ func decideBucketV2(in SurfaceScoreInputs) sovereignv1.SurfaceBucket {
 	// break the fallback. EvidenceDensity remains in the inputs for
 	// downstream diagnostics and a future v2-only resolver can choose to
 	// consult it once the v1 fallback path is retired.
-	if in.StalenessScore >= 2 || isV1ReviewEvent(in.EventType) {
+	if in.StalenessScore >= 2 {
 		return sovereignv1.SurfaceBucket_SURFACE_BUCKET_REVIEW
 	}
 
@@ -157,26 +162,23 @@ func decideBucketV2(in SurfaceScoreInputs) sovereignv1.SurfaceBucket {
 	return v1FallbackBucket(in.EventType)
 }
 
-func isV1ReviewEvent(eventType string) bool {
-	switch eventType {
-	case EventHomeItemDismissed:
-		return true
-	default:
-		return false
-	}
-}
-
 func v1FallbackBucket(eventType string) sovereignv1.SurfaceBucket {
+	// ADR-000907 §Δ8: HomeItemDismissed no longer maps to Review here. It
+	// becomes a no-op on placement (visibility/dismiss state hides the row
+	// from the read path), and the fallback bucket value is symbolic. We
+	// default to CONTINUE because the entry has prior context — if visibility
+	// later flips back, Continue is a more honest landing than Review.
 	switch eventType {
 	case EventSummaryVersionCreated, EventHomeItemsSeen, EventHomeItemAsked:
 		return sovereignv1.SurfaceBucket_SURFACE_BUCKET_NOW
-	case EventHomeItemOpened:
+	case EventHomeItemOpened, EventHomeItemDismissed:
 		return sovereignv1.SurfaceBucket_SURFACE_BUCKET_CONTINUE
 	case EventHomeItemSuperseded, EventSummarySuperseded:
 		return sovereignv1.SurfaceBucket_SURFACE_BUCKET_CHANGED
-	case EventHomeItemDismissed:
-		return sovereignv1.SurfaceBucket_SURFACE_BUCKET_REVIEW
 	default:
-		return sovereignv1.SurfaceBucket_SURFACE_BUCKET_REVIEW
+		// Unknown / empty event types: prefer Continue over Review so the
+		// Review surface stays a deliberate re-evaluation queue rather than
+		// a catch-all leftover bucket.
+		return sovereignv1.SurfaceBucket_SURFACE_BUCKET_CONTINUE
 	}
 }

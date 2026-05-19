@@ -77,12 +77,15 @@ func TestDecideBucketV2(t *testing.T) {
 			want: sovereignv1.SurfaceBucket_SURFACE_BUCKET_NOW,
 		},
 		{
-			name: "no v2 signals on a Dismissed event falls back to Review",
+			// ADR-000907 §Δ8: HomeItemDismissed no longer drives a Review
+			// placement. visibility_state hides the entry regardless of
+			// bucket; the symbolic fallback bucket is Continue.
+			name: "no v2 signals on a Dismissed event falls back to Continue (epistemic-driven Review)",
 			in: SurfaceScoreInputs{
 				FreshnessAt: occurredAt,
 				EventType:   EventHomeItemDismissed,
 			},
-			want: sovereignv1.SurfaceBucket_SURFACE_BUCKET_REVIEW,
+			want: sovereignv1.SurfaceBucket_SURFACE_BUCKET_CONTINUE,
 		},
 		{
 			name: "no v2 signals on SummaryVersionCreated falls back to Now (v1 mapping)",
@@ -133,20 +136,23 @@ func TestDecideBucketV2(t *testing.T) {
 			want: sovereignv1.SurfaceBucket_SURFACE_BUCKET_NOW,
 		},
 		{
-			name: "unknown event type falls back to Review",
+			// ADR-000907 §Δ8: Review is reserved for epistemic re-evaluation
+			// queues. Unknown event types prefer Continue as a more honest
+			// fallback than a leftover Review placement.
+			name: "unknown event type falls back to Continue (epistemic-driven Review)",
 			in: SurfaceScoreInputs{
 				FreshnessAt: occurredAt,
 				EventType:   "UnknownEvent",
 			},
-			want: sovereignv1.SurfaceBucket_SURFACE_BUCKET_REVIEW,
+			want: sovereignv1.SurfaceBucket_SURFACE_BUCKET_CONTINUE,
 		},
 		{
-			name: "all-zero signals on empty event type falls back to Review",
+			name: "all-zero signals on empty event type falls back to Continue",
 			in: SurfaceScoreInputs{
 				FreshnessAt: occurredAt,
 				EventType:   "",
 			},
-			want: sovereignv1.SurfaceBucket_SURFACE_BUCKET_REVIEW,
+			want: sovereignv1.SurfaceBucket_SURFACE_BUCKET_CONTINUE,
 		},
 		{
 			name: "augur + drift: drift wins (priority order)",
