@@ -131,7 +131,7 @@
   ],
   "metadata": {
     "pact-go": {
-      "version": "2.4.2"
+      "version": "2.4.3"
     },
     "pactRust": {
       "ffi": "0.4.28",
