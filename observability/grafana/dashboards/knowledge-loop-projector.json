@@ -199,6 +199,98 @@
           "refId": "A"
         }
       ]
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "description": "ADR-000910: Act outcome events observed by the projector (Phase F §Δ1). Stacks by outcome enum so engaged / deep_engagement should dominate; rising no_engagement signals coverage gaps in the immediate outcome emitter.",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 16
+      },
+      "id": 6,
+      "title": "Act outcome rate (5m, by outcome)",
+      "type": "timeseries",
+      "targets": [
+        {
+          "expr": "sum by (outcome) (rate(knowledge_loop_projector_act_outcome_emitted_total[5m]))",
+          "legendFormat": "{{outcome}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "description": "ADR-000910: Lens mode switches per (from, to) pair. Use as a heatmap-style proxy for which cognitive modes the user traverses.",
+      "gridPos": {
+        "h": 8,
+        "w": 6,
+        "x": 12,
+        "y": 16
+      },
+      "id": 7,
+      "title": "Lens mode switches (1h)",
+      "type": "table",
+      "targets": [
+        {
+          "expr": "sum by (from, to) (increase(knowledge_loop_projector_lens_mode_switched_total[1h]))",
+          "instant": true,
+          "format": "table",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "description": "ADR-000910: 7-day delta of dismiss_state transitions to internalized (knowledge graduation, ADR-000908 §Δ3). A rising number confirms the卒業 loop is closing.",
+      "gridPos": {
+        "h": 8,
+        "w": 6,
+        "x": 18,
+        "y": 16
+      },
+      "id": 8,
+      "title": "Internalized this week",
+      "type": "stat",
+      "targets": [
+        {
+          "expr": "increase(knowledge_loop_projector_internalized_total[7d])",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "description": "ADR-000910: Rate of cron-filled no_engagement outcomes. Rising rate signals the immediate outcome emitter (alt-backend view tracker) is missing engagement events.",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 24
+      },
+      "id": 9,
+      "title": "Outcome missing fill rate (1h)",
+      "type": "timeseries",
+      "targets": [
+        {
+          "expr": "rate(knowledge_loop_projector_outcome_missing_total[1h])",
+          "legendFormat": "no_engagement / s",
+          "refId": "A"
+        }
+      ]
     }
   ],
   "refresh": "30s",

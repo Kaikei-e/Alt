@@ -1,0 +1,75 @@
+# Prometheus alerting rules for Knowledge Loop v2.
+#
+# ADR-000910 §Prometheus alert rules.
+#
+# Source counters:
+#   knowledge-sovereign/app/usecase/knowledge_loop_projector/metrics.go
+#
+# Reload after edits:
+#   docker compose exec prometheus kill -HUP 1
+#
+# Runbooks:
+#   F-001 leak               → docs/runbooks/knowledge-loop-reproject.md#F-001
+#   Event drop spike         → docs/runbooks/knowledge-loop-reproject.md#event-drop
+#   Projector lag            → docs/runbooks/knowledge-loop-reproject.md#lag
+#   Outcome emitter coverage → docs/runbooks/knowledge-loop-reproject.md#outcome-cron
+
+groups:
+  - name: knowledge-loop
+    rules:
+      - alert: KnowledgeLoopCrossUserIsolation
+        expr: increase(knowledge_loop_projector_cross_user_isolation_violation_total[5m]) > 0
+        for: 0m
+        labels:
+          severity: critical
+          subsystem: knowledge-loop
+        annotations:
+          summary: "Knowledge Loop projector observed a cross-user evidence_refs leak"
+          description: |
+            knowledge_loop_projector_cross_user_isolation_violation_total
+            rose by {{ printf "%.0f" $value }} in the last 5 minutes. The
+            projector rejected an event that referenced an evidence_ref
+            belonging to a different user (F-001 defense-in-depth).
+          runbook_url: "https://github.com/Kaikei-e/Alt/blob/main/docs/runbooks/knowledge-loop-reproject.md#F-001"
+
+      - alert: KnowledgeLoopEventDropSpike
+        expr: sum by (reason) (rate(knowledge_loop_projector_event_dropped_total[5m])) > 0.1
+        for: 5m
+        labels:
+          severity: warning
+          subsystem: knowledge-loop
+        annotations:
+          summary: "Knowledge Loop projector dropping events ({{ $labels.reason }})"
+          description: |
+            Event drop rate exceeded 0.1/s for the last 5 minutes, reason
+            label `{{ $labels.reason }}`. Typical causes: bad payload from a
+            consumer that skipped Pact CDC, projector schema drift, or an
+            upstream service emitting events with mismatched user_id.
+
+      - alert: KnowledgeLoopProjectorLag
+        expr: knowledge_loop_projector_lag_events > 1000
+        for: 10m
+        labels:
+          severity: warning
+          subsystem: knowledge-loop
+        annotations:
+          summary: "Knowledge Loop projector lag > 1000 events"
+          description: |
+            Difference between MAX(knowledge_events.event_seq) and the
+            projector checkpoint exceeded 1000 events for 10 minutes. v2
+            placements may be stale.
+
+      - alert: KnowledgeLoopOutcomeMissingSpike
+        expr: rate(knowledge_loop_projector_outcome_missing_total[1h]) > 10
+        for: 30m
+        labels:
+          severity: warning
+          subsystem: knowledge-loop
+        annotations:
+          summary: "Act outcome cron filling no_engagement too often"
+          description: |
+            act_outcome_cron filled {{ printf "%.0f" $value }} `no_engagement`
+            outcomes per hour over the last 30 minutes. The immediate outcome
+            emitter (alt-backend view tracker) is likely missing engagement
+            events; investigate before the cron-emitted backlog skews v2
+            placements toward Review.

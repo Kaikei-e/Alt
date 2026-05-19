@@ -69,7 +69,74 @@ var (
 			Help:      "F-001 guard: number of times the projector detected a cross-user evidence reference and rejected it. Should always be 0.",
 		},
 	)
+
+	// ADR-000910 v2 observability surface (counters consumed by Phase H
+	// dashboard panels + alert rules). All labels are bounded enums so the
+	// Prometheus cardinality stays tractable.
+
+	actOutcomeEmittedTotal = promauto.NewCounterVec(
+		prometheus.CounterOpts{
+			Namespace: "knowledge_loop",
+			Subsystem: "projector",
+			Name:      "act_outcome_emitted_total",
+			Help:      "Number of KnowledgeLoopActOutcome events the projector observed, labelled by outcome enum (engaged / deep_engagement / stale_save / accepted_change / no_engagement).",
+		},
+		[]string{"outcome"},
+	)
+
+	lensModeSwitchedTotal = promauto.NewCounterVec(
+		prometheus.CounterOpts{
+			Namespace: "knowledge_loop",
+			Subsystem: "projector",
+			Name:      "lens_mode_switched_total",
+			Help:      "Number of KnowledgeLoopLensModeSwitched events observed, labelled by from/to lens id.",
+		},
+		[]string{"from", "to"},
+	)
+
+	internalizedCountTotal = promauto.NewCounter(
+		prometheus.CounterOpts{
+			Namespace: "knowledge_loop",
+			Subsystem: "projector",
+			Name:      "internalized_total",
+			Help:      "Cumulative count of dismiss_state transitions to internalized (ADR-000908 §Δ3). 7-day rate is computed dashboard-side.",
+		},
+	)
+
+	outcomeMissingTotal = promauto.NewCounter(
+		prometheus.CounterOpts{
+			Namespace: "knowledge_loop",
+			Subsystem: "projector",
+			Name:      "outcome_missing_total",
+			Help:      "Number of times act_outcome_cron filled an Acted event with outcome=no_engagement because no explicit outcome arrived inside the 7-day window. Rising rate signals immediate outcome emitter coverage gaps.",
+		},
+	)
 )
+
+// observeActOutcomeEmitted is called by the projector when a
+// KnowledgeLoopActOutcome event is consumed.
+func observeActOutcomeEmitted(outcome string) {
+	actOutcomeEmittedTotal.WithLabelValues(outcome).Inc()
+}
+
+// observeLensModeSwitched is called when a KnowledgeLoopLensModeSwitched
+// event is consumed. `from` may be "unspecified" on the first switch.
+func observeLensModeSwitched(from, to string) {
+	lensModeSwitchedTotal.WithLabelValues(from, to).Inc()
+}
+
+// observeInternalizedTransition is called by the projector when an entry's
+// dismiss_state transitions to internalized.
+func observeInternalizedTransition() {
+	internalizedCountTotal.Inc()
+}
+
+// observeOutcomeMissingFill is called by act_outcome_cron when it backfills
+// a no_engagement outcome after the 7-day window expires without an
+// explicit outcome event.
+func observeOutcomeMissingFill() {
+	outcomeMissingTotal.Inc()
+}
 
 // observeSurfaceBucketAssigned increments the bucket counter once per
 // projected entry. Called by the projector's UPSERT-completion path in
