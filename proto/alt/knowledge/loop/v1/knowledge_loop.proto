@@ -52,6 +52,48 @@ enum DismissState {
   DISMISS_STATE_DEFERRED = 2;
   DISMISS_STATE_DISMISSED = 3;
   DISMISS_STATE_COMPLETED = 4;
+  // ADR-000908 §Δ3: terminal "knowledge internalized" state. The entry has
+  // been understood and graduated out of the Loop's read model. The event
+  // log retains the transition so reproject can rebuild this row, and the
+  // read path filters `dismiss_state=internalized` rows from foreground /
+  // bucket entries. macroState.recentInternalizedCount surfaces a 7-day
+  // count as the "卒業" feedback to the user.
+  DISMISS_STATE_INTERNALIZED = 5;
+}
+
+// ConfidenceLadder is the qualitative tier the projector publishes alongside
+// the optional numeric `WhyPayload.confidence`. The ladder gives downstream
+// UIs a coarse anchor for "how sure should I be" without forcing readers to
+// reason about a 0..1 float. ADR-000908 §Δ4.
+enum ConfidenceLadder {
+  CONFIDENCE_LADDER_UNSPECIFIED = 0;
+  // SPECULATION: derived from a single low-strength signal (e.g. one open).
+  CONFIDENCE_LADDER_SPECULATION = 1;
+  // PATTERN: multiple weak signals align (tag overlap + recall, etc.).
+  CONFIDENCE_LADDER_PATTERN = 2;
+  // EVIDENCE: at least one strong, recent versioned-artifact bound signal.
+  CONFIDENCE_LADDER_EVIDENCE = 3;
+  // VERIFIED: user has acted on (saved/asked-and-followed) similar entries.
+  CONFIDENCE_LADDER_VERIFIED = 4;
+}
+
+// ActOutcomeKind classifies the observed downstream signal of a prior
+// KnowledgeLoopActed event. System-emitted; the projector consumes it as
+// `act_outcome_signal` input to Surface Planner v2 so the Loop learns from
+// the user's behaviour (ADR-000908 §Δ1).
+enum ActOutcomeKind {
+  ACT_OUTCOME_KIND_UNSPECIFIED = 0;
+  // ENGAGED: open intent followed by ≥ 30s article dwell.
+  ACT_OUTCOME_KIND_ENGAGED = 1;
+  // DEEP_ENGAGEMENT: ask intent followed by ≥ 3 conversation turns.
+  ACT_OUTCOME_KIND_DEEP_ENGAGEMENT = 2;
+  // STALE_SAVE: save intent followed by ≥ 7 days without re-open.
+  ACT_OUTCOME_KIND_STALE_SAVE = 3;
+  // ACCEPTED_CHANGE: compare intent followed by dismiss (user reconciled).
+  ACT_OUTCOME_KIND_ACCEPTED_CHANGE = 4;
+  // NO_ENGAGEMENT: 7-day fallback emitted by act_outcome_cron when no
+  // explicit outcome signal arrived.
+  ACT_OUTCOME_KIND_NO_ENGAGEMENT = 5;
 }
 
 enum ServiceQuality {
@@ -170,7 +212,17 @@ message WhyPayload {
   // Length <= 8 (server-validated).
   repeated EvidenceRef evidence_refs = 4;
 
-  reserved 5 to 10;
+  // ADR-000908 §Δ4: counter-evidence and confidence ladder turn Why into a
+  // verifiable claim rather than one-way trust advertising. All optional and
+  // back-compat: older readers ignore these fields.
+  // Length <= 4 (server-validated).
+  repeated EvidenceRef counter_evidence_refs = 5;
+  optional ConfidenceLadder confidence_ladder = 6;
+  // Plain text. 1..256 chars. Articulates what observation would invalidate
+  // this why narrative, enabling epistemic transparency.
+  optional string what_would_change_my_mind = 7;
+
+  reserved 8 to 10;
 }
 
 message ArtifactVersionRef {
@@ -554,6 +606,30 @@ message KnowledgeLoopSurfacePlanRecomputedPayload {
     optional string recap_topic_snapshot_id = 7;
   }
   repeated EntryScoreInput entry_inputs = 4;
+}
+
+// KnowledgeLoopActOutcomePayload (ADR-000908 §Δ1) — system-emitted closure
+// signal for a prior KnowledgeLoopActed event. The projector uses this to
+// down-weight act intents that did not turn into engagement and to boost
+// those that did. Bound to the originating act_event_id so reproject is
+// deterministic. The 7-day NO_ENGAGEMENT fallback is emitted by
+// `app/cron/act_outcome_cron.go`; immediate ENGAGED / DEEP_ENGAGEMENT
+// signals come from alt-backend view trackers.
+message KnowledgeLoopActOutcomePayload {
+  // event_id of the originating KnowledgeLoopActed event.
+  string acted_event_id = 1;
+  // entry_key carried for the projector's UPSERT path; mirrors the Acted
+  // event's payload so the projector can look up the row without joining.
+  string entry_key = 2;
+  string lens_mode_id = 3;
+  ActOutcomeKind outcome = 4;
+  // observed_at is event-time and MUST equal the consuming
+  // knowledge_events.occurred_at; the field is duplicated in payload so
+  // reproject can derive signals without dereferencing the event header.
+  google.protobuf.Timestamp observed_at = 5;
+  // Stable IDs that justify the outcome (e.g. article_dwell event id,
+  // conversation_turn event id chain, recap_snapshot id). Length <= 4.
+  repeated EvidenceRef signal_evidence_refs = 6;
 }
 
 message StreamKnowledgeLoopUpdatesResponse {

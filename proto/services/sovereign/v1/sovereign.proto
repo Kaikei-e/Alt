@@ -719,6 +719,9 @@ enum DismissState {
   DISMISS_STATE_DEFERRED = 2;
   DISMISS_STATE_DISMISSED = 3;
   DISMISS_STATE_COMPLETED = 4;
+  // ADR-000908 §Δ3 — terminal "knowledge internalized" state. Read path
+  // filters this out; macroState reports the 7-day count.
+  DISMISS_STATE_INTERNALIZED = 5;
 }
 
 enum LoopVisibilityState {
