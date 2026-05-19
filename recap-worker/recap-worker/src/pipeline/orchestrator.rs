@@ -246,14 +246,19 @@ impl PipelineOrchestrator {
         // surface used by the persist stage.
         let _ = tag_generator_client;
 
-        // Knowledge Sovereign client is opt-in: enabled when
-        // `RECAP_WORKER_KNOWLEDGE_EVENT_EMIT=true` and a base URL is set.
-        // Default disabled so existing deployments keep their prior behaviour
-        // until Wave 4-B is rolled out per ADR-000905 §PR-C2.
+        // Knowledge Sovereign client wiring (Wave 4-B, ADR-000905 §PR-C2).
+        // Env var names follow the recap-worker convention (`RECAP_*` prefix,
+        // matching RECAP_DB_*, RECAP_KNOWLEDGE_*) and the compose default
+        // declared in `compose/recap.yaml`:
+        //   RECAP_KNOWLEDGE_EMIT=${RECAP_KNOWLEDGE_EMIT:-true}
+        //   RECAP_KNOWLEDGE_SOVEREIGN_URL=${RECAP_KNOWLEDGE_SOVEREIGN_URL:-http://knowledge-sovereign:9500}
+        // The :-true compose default flips emit ON at deploy time; production
+        // can still override to "false" without redeploying for an
+        // operational kill switch.
         let sovereign_client: Option<Arc<KnowledgeSovereignClient>> = {
-            let enabled = std::env::var("RECAP_WORKER_KNOWLEDGE_EVENT_EMIT")
+            let enabled = std::env::var("RECAP_KNOWLEDGE_EMIT")
                 .is_ok_and(|v| v.eq_ignore_ascii_case("true") || v == "1");
-            let base_url = std::env::var("RECAP_WORKER_KNOWLEDGE_SOVEREIGN_URL").ok();
+            let base_url = std::env::var("RECAP_KNOWLEDGE_SOVEREIGN_URL").ok();
             match (enabled, base_url) {
                 (true, Some(url)) if !url.trim().is_empty() => {
                     match KnowledgeSovereignClient::new(url) {
