@@ -336,6 +336,7 @@ async function handleDismiss() {
 	data-entry-key={entry.entryKey}
 	data-priority={entry.loopPriority}
 	data-stage={effectiveStage}
+	data-planner-version={entry.surfacePlannerVersion ?? "unspecified"}
 	aria-label={ariaDescription}
 	aria-expanded={expanded}
 	role="button"

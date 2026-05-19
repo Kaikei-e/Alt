@@ -24,7 +24,10 @@ import type {
 import { makeCoalescedRefresh } from "$lib/hooks/loop-coalesce";
 import { makeFirstFrameSkipper } from "$lib/hooks/loop-stream-skip-first";
 import { startVisibilityRecovery } from "$lib/hooks/loop-visibility-recovery";
-import { useKnowledgeLoop } from "$lib/hooks/useKnowledgeLoop.svelte";
+import {
+	type TransitionMetadata,
+	useKnowledgeLoop,
+} from "$lib/hooks/useKnowledgeLoop.svelte";
 import { useKnowledgeLoopStream } from "$lib/hooks/useKnowledgeLoopStream.svelte";
 import {
 	resolveLoopSourceUrl,
@@ -310,11 +313,26 @@ function stageLabel(stage: LoopStageName): string {
 	)[stage];
 }
 
-function advanceEntry(entry: KnowledgeLoopEntryData) {
+function advanceEntry(
+	entry: KnowledgeLoopEntryData,
+	intentOverride?: TransitionMetadata,
+) {
 	const from = effectiveEntryStage(entry);
 	const to = nextStage(entry);
 	if (!loop.canTransition(from, to)) return;
-	void loop.transitionTo(entry.entryKey, to, "user_tap");
+
+	// Workspace bare advances used to fire `transitionTo(entryKey, to, "user_tap")`
+	// with no metadata. The projector then fell back to v1 placement because
+	// continue_context.recent_action_labels stayed empty (Phase 2 defect, frontend
+	// audit 2026-05-20). Attach a minimal `revisit / entry` semantic by default so
+	// the workspace command is no longer indistinguishable from a passive dwell.
+	const metadata: TransitionMetadata = intentOverride ?? {
+		actedIntent: "revisit",
+		targetType: "entry",
+		targetRef: entry.entryKey,
+		continueFlag: true,
+	};
+	void loop.transitionTo(entry.entryKey, to, "user_tap", metadata);
 }
 
 /**

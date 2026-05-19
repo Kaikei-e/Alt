@@ -72,6 +72,15 @@ function formatFreshness(iso: string): string {
 								>{formatRecentActionLabel(label)}</span>
 							{/each}
 						{/if}
+						{#if entry.continueContext.lastInteractedAt}
+							<span aria-hidden="true"> · </span><span
+								class="last-interacted"
+								data-testid="loop-continue-last-interacted"
+								data-last-interacted-at={entry.continueContext.lastInteractedAt}
+								>last touch {formatFreshness(
+									entry.continueContext.lastInteractedAt,
+								)} ago</span>
+						{/if}
 					</span>
 				{/if}
 			</div>
@@ -132,6 +141,10 @@ function formatFreshness(iso: string): string {
 	}
 	.action-label {
 		color: var(--alt-charcoal, #1a1a1a);
+	}
+	.last-interacted {
+		color: var(--alt-slate, #666);
+		font-style: italic;
 	}
 	.title:hover {
 		text-decoration: underline;

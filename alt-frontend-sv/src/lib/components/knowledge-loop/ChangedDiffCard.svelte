@@ -238,12 +238,32 @@ function ariaSummary(entry: KnowledgeLoopEntryData): string {
 		text-decoration: line-through;
 		text-decoration-thickness: 1.5px;
 	}
+	.phrase-removed::before {
+		content: "−";
+		display: inline-block;
+		width: 0.95rem;
+		margin-right: 0.25rem;
+		font-family: var(--font-mono, "IBM Plex Mono", ui-monospace, monospace);
+		font-weight: 700;
+		color: var(--alt-terracotta, #6e1f1f);
+		text-decoration: none;
+	}
 	.phrase-added {
 		color: var(--alt-charcoal, #1a1a1a);
 		font-weight: 600;
 		text-decoration: underline;
 		text-decoration-thickness: 1.5px;
 		text-underline-offset: 3px;
+	}
+	.phrase-added::before {
+		content: "+";
+		display: inline-block;
+		width: 0.95rem;
+		margin-right: 0.25rem;
+		font-family: var(--font-mono, "IBM Plex Mono", ui-monospace, monospace);
+		font-weight: 700;
+		color: var(--alt-forest, #2f6b3a);
+		text-decoration: none;
 	}
 	.chip-list {
 		list-style: none;
@@ -261,12 +281,24 @@ function ariaSummary(entry: KnowledgeLoopEntryData): string {
 		border: 1px solid currentColor;
 	}
 	.chip-removed {
-		color: var(--alt-ash, #999);
+		color: var(--alt-terracotta, #6e1f1f);
 		text-decoration: line-through;
+	}
+	.chip-removed::before {
+		content: "−";
+		margin-right: 0.2rem;
+		font-weight: 700;
+		text-decoration: none;
 	}
 	.chip-added {
 		color: var(--alt-charcoal, #1a1a1a);
 		background: rgba(0, 0, 0, 0.04);
+	}
+	.chip-added::before {
+		content: "+";
+		margin-right: 0.2rem;
+		color: var(--alt-forest, #2f6b3a);
+		font-weight: 700;
 	}
 	.line {
 		margin: 0;

@@ -64,16 +64,31 @@
 /* Reduced Motion: strip Z, perspective, and scale. Keep opacity + saturation
  * so the plane still reads as layered, and drop transition to zero so the
  * final state applies instantly.
+ *
  * This realises the contract §12.5 "dissolve + highlight fade + color shift"
- * replacement for depth simulation. */
+ * replacement for depth simulation:
+ *   - dissolve   → opacity ladder (1.0 / 0.96 / 0.9)
+ *   - highlight  → saturation ladder (1.04 / 0.94 / 0.88)
+ *   - color shift → sepia ladder (0 / 0.06 / 0.12), reads as "aged paper"
+ *                   depth on Alt-Paper cream and keeps editorial palette
+ *                   (oxblood / forest / ochre) recognisable.
+ */
 @media (prefers-reduced-motion: reduce) {
 	.loop-plane-root {
 		perspective: none;
 		transform-style: flat;
 	}
-	.loop-plane[data-plane="mid-context"],
+	.loop-plane[data-plane="foreground"] {
+		transform: none;
+		filter: saturate(1.04) brightness(1) sepia(0);
+	}
+	.loop-plane[data-plane="mid-context"] {
+		transform: none;
+		filter: saturate(0.94) brightness(0.99) sepia(0.06);
+	}
 	.loop-plane[data-plane="deep-focus"] {
 		transform: none;
+		filter: saturate(0.88) brightness(0.98) sepia(0.12);
 	}
 	.loop-plane {
 		transition: opacity 0.2s ease;
