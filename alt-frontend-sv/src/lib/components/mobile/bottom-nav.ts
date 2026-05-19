@@ -8,13 +8,14 @@ export type { NavTab };
  *
  * Routing rules:
  * - /home → Home (0)
+ * - /loop/* → Loop (1) [primary cognitive-state surface]
  * - /search and /feeds/search → Search (2) [search is one concept]
- * - /feeds/* (other) → Feeds (1)
  * - /augur/* → Augur (3)
- * - everything else surfaced via the Menu page → Menu (4)
+ * - everything else surfaced via the Menu page (including /feeds raw inbox) → Menu (4)
  */
 export function getActiveTabIndex(pathname: string): number {
 	if (pathname === "/home" || pathname.startsWith("/home/")) return 0;
+	if (pathname === "/loop" || pathname.startsWith("/loop/")) return 1;
 	if (
 		pathname === "/search" ||
 		pathname.startsWith("/search/") ||
@@ -23,7 +24,6 @@ export function getActiveTabIndex(pathname: string): number {
 	) {
 		return 2;
 	}
-	if (pathname === "/feeds" || pathname.startsWith("/feeds/")) return 1;
 	if (pathname === "/augur" || pathname.startsWith("/augur/")) return 3;
 	return 4;
 }

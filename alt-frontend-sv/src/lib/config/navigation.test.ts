@@ -10,10 +10,10 @@ describe("NAV_TABS", () => {
 		expect(NAV_TABS).toHaveLength(5);
 	});
 
-	it("has Home, Swipe, Search, Augur, Menu in order", () => {
+	it("has Home, Loop, Search, Augur, Menu in order", () => {
 		expect(NAV_TABS.map((t) => t.label)).toEqual([
 			"Home",
-			"Swipe",
+			"Loop",
 			"Search",
 			"Augur",
 			"Menu",
@@ -23,7 +23,7 @@ describe("NAV_TABS", () => {
 	it("maps labels to expected hrefs", () => {
 		expect(NAV_TABS.map((t) => t.href)).toEqual([
 			"/home",
-			"/feeds/swipe/visual-preview",
+			"/loop",
 			"/search",
 			"/augur",
 			"/menu",
@@ -54,6 +54,7 @@ describe("MOBILE_MENU_SECTIONS", () => {
 		expect(hrefs).toContain("/recap/evening-pulse");
 		expect(hrefs).toContain("/recap/job-status");
 		expect(hrefs).toContain("/feeds/swipe");
+		expect(hrefs).toContain("/feeds/swipe/visual-preview");
 		expect(hrefs).toContain("/feeds");
 		expect(hrefs).toContain("/feeds/favorites");
 		expect(hrefs).toContain("/feeds/viewed");
@@ -80,6 +81,13 @@ describe("MOBILE_MENU_SECTIONS", () => {
 			s.items.map((i) => i.href),
 		);
 		expect(new Set(menuHrefs).size).toBe(menuHrefs.length);
+	});
+
+	it("does not surface Knowledge Loop in the mobile menu (now a primary tab)", () => {
+		const menuHrefs = MOBILE_MENU_SECTIONS.flatMap((s) =>
+			s.items.map((i) => i.href),
+		);
+		expect(menuHrefs).not.toContain("/loop");
 	});
 });
 

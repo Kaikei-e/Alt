@@ -1,16 +1,9 @@
 <script lang="ts">
-import { goto } from "$app/navigation";
 import logo from "$lib/assets/favicon.svg";
 import { Button } from "$lib/components/ui/button";
 import { getAuthStore } from "$lib/stores/auth.svelte";
 
 const auth = getAuthStore();
-
-$effect(() => {
-	if (auth.isAuthenticated) {
-		goto("/home", { replaceState: true });
-	}
-});
 </script>
 
 <div class="p-8 max-w-2xl mx-auto">
@@ -32,12 +25,12 @@ $effect(() => {
             Embark on a Journey of Discovery
           </p>
           <Button
-            href="/home"
+            href="/loop"
             size="lg"
             class="w-full sm:w-auto"
             variant="secondary"
           >
-            Explore Now →
+            Open Knowledge Loop →
           </Button>
         </div>
 

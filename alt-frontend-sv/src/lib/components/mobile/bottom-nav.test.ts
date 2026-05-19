@@ -6,10 +6,10 @@ describe("NAV_TABS (re-export)", () => {
 		expect(NAV_TABS).toHaveLength(5);
 	});
 
-	it("has Home, Swipe, Search, Augur, Menu in order", () => {
+	it("has Home, Loop, Search, Augur, Menu in order", () => {
 		expect(NAV_TABS.map((t) => t.label)).toEqual([
 			"Home",
-			"Swipe",
+			"Loop",
 			"Search",
 			"Augur",
 			"Menu",
@@ -23,13 +23,9 @@ describe("getActiveTabIndex", () => {
 		expect(getActiveTabIndex("/home/digest")).toBe(0);
 	});
 
-	it("returns 1 for /feeds root and sub-paths (except search)", () => {
-		expect(getActiveTabIndex("/feeds")).toBe(1);
-		expect(getActiveTabIndex("/feeds/swipe")).toBe(1);
-		expect(getActiveTabIndex("/feeds/swipe/visual-preview")).toBe(1);
-		expect(getActiveTabIndex("/feeds/favorites")).toBe(1);
-		expect(getActiveTabIndex("/feeds/viewed")).toBe(1);
-		expect(getActiveTabIndex("/feeds/tag-trail")).toBe(1);
+	it("returns 1 for /loop root and sub-paths", () => {
+		expect(getActiveTabIndex("/loop")).toBe(1);
+		expect(getActiveTabIndex("/loop/welcome")).toBe(1);
 	});
 
 	it("returns 2 for /search and /feeds/search", () => {
@@ -46,6 +42,15 @@ describe("getActiveTabIndex", () => {
 
 	it("returns 4 for /menu", () => {
 		expect(getActiveTabIndex("/menu")).toBe(4);
+	});
+
+	it("falls back to Menu (4) for /feeds (now a secondary destination)", () => {
+		expect(getActiveTabIndex("/feeds")).toBe(4);
+		expect(getActiveTabIndex("/feeds/swipe")).toBe(4);
+		expect(getActiveTabIndex("/feeds/swipe/visual-preview")).toBe(4);
+		expect(getActiveTabIndex("/feeds/favorites")).toBe(4);
+		expect(getActiveTabIndex("/feeds/viewed")).toBe(4);
+		expect(getActiveTabIndex("/feeds/tag-trail")).toBe(4);
 	});
 
 	it("falls back to Menu (4) for secondary destinations surfaced by the Menu page", () => {

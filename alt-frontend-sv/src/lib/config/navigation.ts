@@ -54,7 +54,7 @@ export interface MobileMenuSection {
  */
 export const NAV_TABS: NavTab[] = [
 	{ label: "Home", href: "/home", icon: Lightbulb },
-	{ label: "Swipe", href: "/feeds/swipe/visual-preview", icon: Rss },
+	{ label: "Loop", href: "/loop", icon: Workflow },
 	{ label: "Search", href: "/search", icon: Search },
 	{ label: "Augur", href: "/augur", icon: Bird },
 	{ label: "Menu", href: "/menu", icon: Menu },
@@ -70,6 +70,7 @@ export const MOBILE_MENU_SECTIONS: MobileMenuSection[] = [
 		title: "Browse",
 		items: [
 			{ label: "Library", href: "/feeds", icon: Rss },
+			{ label: "Swipe", href: "/feeds/swipe/visual-preview", icon: Rss },
 			{ label: "Swipe Mode", href: "/feeds/swipe", icon: InfinityIcon },
 			{ label: "Favorites", href: "/feeds/favorites", icon: Heart },
 			{ label: "Viewed", href: "/feeds/viewed", icon: Eye },
@@ -105,7 +106,6 @@ export const MOBILE_MENU_SECTIONS: MobileMenuSection[] = [
 				icon: MessagesSquare,
 			},
 			{ label: "Acolyte Reports", href: "/acolyte", icon: ScrollText },
-			{ label: "Knowledge Loop", href: "/loop", icon: Workflow },
 			{ label: "Statistics", href: "/stats", icon: BarChart3 },
 			{ label: "Daily Pulse", href: "/dashboard", icon: Sparkles },
 		],

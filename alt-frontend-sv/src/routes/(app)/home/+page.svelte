@@ -11,6 +11,7 @@ import Toast from "$lib/components/knowledge-home/Toast.svelte";
 import LensModal from "$lib/components/knowledge-home/lens/LensModal.svelte";
 import LensSelector from "$lib/components/knowledge-home/lens/LensSelector.svelte";
 import RecallRail from "$lib/components/knowledge-home/recall-rail/RecallRail.svelte";
+import LoopCrossLink from "$lib/components/knowledge-loop/LoopCrossLink.svelte";
 import StreamUpdateBar from "$lib/components/knowledge-home/StreamUpdateBar.svelte";
 import TodayBar from "$lib/components/knowledge-home/TodayBar.svelte";
 import UnifiedIntentBox from "$lib/components/knowledge-home/UnifiedIntentBox.svelte";
@@ -364,6 +365,8 @@ onMount(async () => {
 			<div class="desk-rule" aria-hidden="true"></div>
 		</header>
 
+		<LoopCrossLink source="From Home" />
+
 		{#if showBanner}
 			<div class="section-reveal" style="--delay: 1;">
 				<DegradedModeBanner
@@ -442,6 +445,10 @@ onMount(async () => {
 		<MobileKnowledgeHomeHeader
 			serviceQuality={home.serviceQuality}
 		/>
+
+		<div class="px-3 pt-2">
+			<LoopCrossLink source="From Home" />
+		</div>
 
 		{#if showBanner}
 			<div class="px-3 pt-2">
