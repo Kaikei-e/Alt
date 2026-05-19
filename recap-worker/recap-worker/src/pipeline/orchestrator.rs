@@ -6,6 +6,7 @@ use anyhow::{Context, Result};
 
 use crate::{
     clients::alt_backend::{AltBackendClient, AltBackendConfig},
+    clients::knowledge_sovereign::KnowledgeSovereignClient,
     clients::mtls::{self, MtlsPaths},
     clients::{NewsCreatorClient, SubworkerClient, TagGeneratorClient},
     config::Config,
@@ -244,6 +245,31 @@ impl PipelineOrchestrator {
         // tag_generator_client is retained only for the extract-tags
         // surface used by the persist stage.
         let _ = tag_generator_client;
+
+        // Knowledge Sovereign client is opt-in: enabled when
+        // `RECAP_WORKER_KNOWLEDGE_EVENT_EMIT=true` and a base URL is set.
+        // Default disabled so existing deployments keep their prior behaviour
+        // until Wave 4-B is rolled out per ADR-000905 §PR-C2.
+        let sovereign_client: Option<Arc<KnowledgeSovereignClient>> = {
+            let enabled = std::env::var("RECAP_WORKER_KNOWLEDGE_EVENT_EMIT")
+                .is_ok_and(|v| v.eq_ignore_ascii_case("true") || v == "1");
+            let base_url = std::env::var("RECAP_WORKER_KNOWLEDGE_SOVEREIGN_URL").ok();
+            match (enabled, base_url) {
+                (true, Some(url)) if !url.trim().is_empty() => {
+                    match KnowledgeSovereignClient::new(url) {
+                        Ok(client) => Some(Arc::new(client)),
+                        Err(err) => {
+                            tracing::warn!(
+                                error = ?err,
+                                "knowledge-sovereign client init failed; recap.topic_snapshotted.v1 emit disabled"
+                            );
+                            None
+                        }
+                    }
+                }
+                _ => None,
+            }
+        };
         Ok(PipelineBuilder::new(config)
             .with_fetch_stage(Arc::new(AltBackendFetchStage::new(
                 alt_backend_client,
@@ -276,10 +302,13 @@ impl PipelineOrchestrator {
                 max_concurrent,
                 config_for_dispatch,
             )))
-            .with_persist_stage(Arc::new(persist::FinalSectionPersistStage::new(
-                Arc::clone(&recap_dao),
-                tag_generator_for_persist,
-            )))
+            .with_persist_stage(Arc::new(
+                persist::FinalSectionPersistStage::new(
+                    Arc::clone(&recap_dao),
+                    tag_generator_for_persist,
+                )
+                .with_sovereign(sovereign_client),
+            ))
             .with_pulse_stage(pulse_stage)
             .with_pulse_rollout(pulse_rollout)
             .build(

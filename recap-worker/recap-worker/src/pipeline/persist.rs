@@ -6,6 +6,8 @@ use async_trait::async_trait;
 use regex::Regex;
 use tracing::{debug, info, warn};
 
+use crate::clients::KnowledgeSovereignClient;
+use crate::clients::knowledge_sovereign::publish::{ConfirmedCluster, publish_topic_snapshots};
 use crate::clients::news_creator::Reference;
 use crate::clients::tag_generator::TagGeneratorClient;
 use crate::scheduler::JobContext;
@@ -174,10 +176,17 @@ pub(crate) trait PersistStage: Send + Sync {
 }
 
 /// 最終確定物をJSONBフィールドに保存するPersistStage。
+///
+/// `sovereign` is the optional Knowledge Sovereign client used to emit
+/// `recap.topic_snapshotted.v1` events after the genre persist loop. When
+/// `None`, the emit is skipped silently (warn-and-continue). When `Some`,
+/// every successful cluster's `(cluster_id, top_terms)` is forwarded so
+/// Surface Planner v2 can light up `topic_overlap_count` (ADR-000905 §PR-C2).
 #[allow(dead_code)]
 pub(crate) struct FinalSectionPersistStage {
     dao: Arc<dyn RecapDao>,
     tag_generator: Option<Arc<TagGeneratorClient>>,
+    sovereign: Option<Arc<KnowledgeSovereignClient>>,
 }
 
 impl FinalSectionPersistStage {
@@ -185,7 +194,24 @@ impl FinalSectionPersistStage {
         dao: Arc<dyn RecapDao>,
         tag_generator: Option<Arc<TagGeneratorClient>>,
     ) -> Self {
-        Self { dao, tag_generator }
+        Self {
+            dao,
+            tag_generator,
+            sovereign: None,
+        }
+    }
+
+    /// Inject the Knowledge Sovereign client used by the
+    /// `recap.topic_snapshotted.v1` publish pass. Defaults to `None` so
+    /// existing call sites (orchestrator, tests) remain source-compatible
+    /// and the emit stays opt-in.
+    #[allow(dead_code)]
+    pub(crate) fn with_sovereign(
+        mut self,
+        sovereign: Option<Arc<KnowledgeSovereignClient>>,
+    ) -> Self {
+        self.sovereign = sovereign;
+        self
     }
 }
 
@@ -639,6 +665,57 @@ impl PersistStage for FinalSectionPersistStage {
             genres_no_evidence = persist_result.genres_no_evidence,
             "completed persisting final sections"
         );
+
+        // Knowledge Loop Completion Phase 1 §2 — emit `recap.topic_snapshotted.v1`
+        // for every successful cluster. The publish helper handles its own
+        // warn-and-continue logging; emit failures must NOT fail the recap
+        // pipeline (ADR-000905 §PR-C2). When the client or user/tenant scope
+        // is absent (system batch without a single-user owner) the helper
+        // short-circuits and the recap completes as today.
+        if let (Some(sovereign), Some(user_id), Some(tenant_id)) =
+            (self.sovereign.as_ref(), job.user_id, job.tenant_id)
+        {
+            let window_end = chrono::Utc::now();
+            let window_start = window_end - chrono::Duration::days(i64::from(job.window_days));
+
+            let confirmed: Vec<ConfirmedCluster> = result
+                .genre_results
+                .iter()
+                .filter(|(_genre, genre_result)| genre_result.error.is_none())
+                .filter_map(|(_genre, genre_result)| genre_result.clustering_response.as_ref())
+                .flat_map(|clustering| {
+                    clustering
+                        .clusters
+                        .iter()
+                        .filter(|cluster| !cluster.top_terms.is_empty())
+                        .map(|cluster| ConfirmedCluster {
+                            cluster_id: i64::from(cluster.cluster_id),
+                            top_terms: cluster.top_terms.clone(),
+                        })
+                })
+                .collect();
+
+            if !confirmed.is_empty() {
+                let outcome = publish_topic_snapshots(
+                    sovereign.as_ref(),
+                    user_id,
+                    tenant_id,
+                    window_start,
+                    window_end,
+                    &confirmed,
+                )
+                .await;
+                info!(
+                    job_id = %persist_result.job_id,
+                    user_id = %user_id,
+                    attempted = outcome.attempted,
+                    succeeded = outcome.succeeded,
+                    failed = outcome.failed,
+                    skipped_empty_terms = outcome.skipped_empty_terms,
+                    "recap.topic_snapshotted.v1 publish pass complete"
+                );
+            }
+        }
 
         Ok(persist_result)
     }

@@ -22,12 +22,10 @@
 
 mod client;
 // Building blocks for the persist-stage emit of `recap.topic_snapshotted.v1`
-// (Knowledge Loop Completion Phase 1 §2). Inner items stay reachable via
-// the explicit module path until `pipeline::persist` wires them in; that
-// integration is the next sub-step. The modules themselves are exercised by
-// their own #[cfg(test)] suites so `mod` declarations stay live.
-#[allow(dead_code)]
-mod publish;
+// (Knowledge Loop Completion Phase 1 §2). Wired in `pipeline::persist`
+// (ADR-000905 §PR-C2). The modules themselves are also exercised by their
+// own #[cfg(test)] suites.
+pub(crate) mod publish;
 #[allow(dead_code)]
 mod snapshot_id;
 
