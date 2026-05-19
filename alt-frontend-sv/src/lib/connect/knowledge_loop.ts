@@ -144,6 +144,19 @@ export interface KnowledgeLoopEntryData {
 	actTargets: ActTargetData[];
 }
 
+/**
+ * Macro layer of Knowledge Loop session state. ADR-000909 §Δ2: surfaces the
+ * day-to-week cognitive footprint (continuing threads, items pending
+ * re-evaluation, internalized graduations). Optional everywhere — older
+ * projectors omit this object and the UI hides the macro byline.
+ */
+export interface KnowledgeLoopMacroStateData {
+	activeContinueThreads?: number;
+	pendingReviewCount?: number;
+	recentInternalizedCount?: number;
+	cognitiveLoadHint?: "light" | "medium" | "heavy";
+}
+
 export interface KnowledgeLoopSessionStateData {
 	currentStage: LoopStageName;
 	currentStageEnteredAt: string;
@@ -151,6 +164,11 @@ export interface KnowledgeLoopSessionStateData {
 	focusedEntryKey?: string;
 	projectionRevision: number;
 	projectionSeqHiwater: number;
+	/**
+	 * Macro layer (multi-scale loop, ADR-000909). Backend may omit this until
+	 * the projector's macro_state_builder is wired.
+	 */
+	macroState?: KnowledgeLoopMacroStateData;
 }
 
 export interface SurfaceStateData {

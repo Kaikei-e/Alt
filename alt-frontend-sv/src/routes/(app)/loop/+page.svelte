@@ -7,8 +7,10 @@ import ChangedDiffCard from "$lib/components/knowledge-loop/ChangedDiffCard.svel
 import ContinueStream from "$lib/components/knowledge-loop/ContinueStream.svelte";
 import EmptyNow from "$lib/components/knowledge-loop/EmptyNow.svelte";
 import LoopEntryTile from "$lib/components/knowledge-loop/LoopEntryTile.svelte";
+import LensSelector from "$lib/components/knowledge-loop/LensSelector.svelte";
 import LoopPlaneStack from "$lib/components/knowledge-loop/LoopPlaneStack.svelte";
 import type { PlaneKey } from "$lib/components/knowledge-loop/loop-plane-keys";
+import MacroByline from "$lib/components/knowledge-loop/MacroByline.svelte";
 import OodaPipeline from "$lib/components/knowledge-loop/OodaPipeline.svelte";
 import ReviewDock from "$lib/components/knowledge-loop/ReviewDock.svelte";
 import {
@@ -604,12 +606,8 @@ function onReviewAction(
 			onStageSelect={onPipelineStageSelect}
 		/>
 		<h1 class="masthead-title">Knowledge Loop</h1>
+		<LensSelector activeLens={lensId} />
 		<p class="byline" aria-live="polite">
-			<span class="byline-cell">
-				<span class="byline-key">Lens</span>
-				<span class="byline-val">{lensId}</span>
-			</span>
-			<span class="byline-sep">—</span>
 			<span class="byline-cell">
 				<span class="byline-key">Stage</span>
 				<span class="byline-val">{stageDisplay}</span>
@@ -620,6 +618,14 @@ function onReviewAction(
 				<span class="byline-val">{seqHi}</span>
 			</span>
 		</p>
+		<MacroByline
+			activeContinueThreads={loop.sessionState?.macroState
+				?.activeContinueThreads}
+			pendingReviewCount={loop.sessionState?.macroState?.pendingReviewCount}
+			recentInternalizedCount={loop.sessionState?.macroState
+				?.recentInternalizedCount}
+			cognitiveLoadHint={loop.sessionState?.macroState?.cognitiveLoadHint}
+		/>
 		<div class="masthead-rule" aria-hidden="true"></div>
 	</header>
 
