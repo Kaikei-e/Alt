@@ -55,4 +55,48 @@ describe("nginx Connect streaming config", () => {
 			[];
 		expect(upgradeRefs.length).toBeGreaterThanOrEqual(2);
 	});
+
+	it("falls back stale /_app/immutable/*.js 404s to the @stale_chunk_reload stub so iOS Safari cannot reach a hard 'Cannot Open the Page'", () => {
+		const config = readFileSync(nginxConfigPath, "utf8");
+
+		// A dedicated regex location must intercept JS / MJS chunks so the
+		// fallback only fires on script assets (a CSS 404 must not return
+		// JS — the browser would silently execute it as CSS, which is just
+		// noise but still wrong).
+		expect(config).toMatch(
+			/location\s+~\*\s+\^\/_app\/immutable\/\.\*\\\.\(js\|mjs\)\$\s*\{/,
+		);
+
+		// nginx will not surface upstream 404s through `error_page` unless
+		// `proxy_intercept_errors on;` is set explicitly — this is a
+		// non-obvious nginx quirk that the next maintainer needs to keep.
+		const jsLocation =
+			/location\s+~\*\s+\^\/_app\/immutable\/\.\*\\\.\(js\|mjs\)\$\s*\{[\s\S]*?^\s{4}\}/m.exec(
+				config,
+			)?.[0] ?? "";
+		expect(jsLocation).toContain("proxy_intercept_errors on;");
+		expect(jsLocation).toMatch(/error_page\s+404\s*=\s*@stale_chunk_reload;/);
+
+		// The named location returning the reload stub must exist and use
+		// `application/javascript` so the browser executes the body even
+		// though the original request was for a missing JS chunk.
+		expect(config).toMatch(/location\s+@stale_chunk_reload\s*\{/);
+		const stubLocation =
+			/location\s+@stale_chunk_reload\s*\{[\s\S]*?\n\s{4}\}/m.exec(
+				config,
+			)?.[0] ?? "";
+		expect(stubLocation).toContain("default_type application/javascript;");
+		expect(stubLocation).toMatch(
+			/add_header\s+Cache-Control\s+"no-store"\s+always;/,
+		);
+		expect(stubLocation).toMatch(
+			/add_header\s+X-Stale-Chunk-Reload\s+"1"\s+always;/,
+		);
+		expect(stubLocation).toMatch(/return\s+200\s+/);
+		// The stub body must read & cap the sessionStorage counter and
+		// trigger a single location.reload() — otherwise a misconfigured
+		// build could loop forever.
+		expect(stubLocation).toContain("alt:chunk-reload-attempts");
+		expect(stubLocation).toContain("location.reload()");
+	});
 });

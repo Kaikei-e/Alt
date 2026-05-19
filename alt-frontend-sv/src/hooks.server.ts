@@ -13,6 +13,7 @@ import {
 } from "$lib/server/response-builder";
 import { resolveResponsiveRedirect } from "$lib/server/redirect-resolver";
 import { classifySafari, extractChunkHash } from "$lib/safari-error-utils";
+import { applyHtmlCacheControl } from "./hooks.server.cache-control";
 
 const resolveOptions = {
 	filterSerializedResponseHeaders: (name: string) => name === "content-type",
@@ -38,7 +39,9 @@ export const handle: Handle = async ({ event, resolve: resolveEvent }) => {
 		event.locals.session = null;
 		event.locals.user = null;
 		event.locals.backendToken = null;
-		return resolveEvent(event, resolveOptions);
+		const response = await resolveEvent(event, resolveOptions);
+		applyHtmlCacheControl(response);
+		return response;
 	}
 
 	event.locals.backendToken = null;
@@ -70,13 +73,17 @@ export const handle: Handle = async ({ event, resolve: resolveEvent }) => {
 		}
 
 		if (isPublic) {
-			return resolveEvent(event, resolveOptions);
+			const response = await resolveEvent(event, resolveOptions);
+			applyHtmlCacheControl(response);
+			return response;
 		}
 
 		throw redirect(303, buildRedirectUrl(pathname, url.origin));
 	}
 
-	return resolveEvent(event, resolveOptions);
+	const response = await resolveEvent(event, resolveOptions);
+	applyHtmlCacheControl(response);
+	return response;
 };
 
 // handleError captures every uncaught exception thrown from load functions and

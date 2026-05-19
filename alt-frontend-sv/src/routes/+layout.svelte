@@ -21,6 +21,7 @@ import {
 	isNetworkFailureError,
 	performGuardedReload,
 } from "$lib/hooks/safari-connection-recovery";
+import { installBfcacheVersionCheck } from "$lib/bfcache-version-check";
 
 const { children } = $props();
 
@@ -59,6 +60,18 @@ $effect(() => {
 		console.warn("[layout] new build detected — reloading");
 		window.location.reload();
 	}
+});
+
+// BFCache restore / tab return → check build version immediately. The
+// 5-minute version.pollInterval cannot react fast enough when the user
+// returns to a stale tab and taps before the next poll tick fires.
+$effect(() => {
+	if (typeof window === "undefined") return;
+	return installBfcacheVersionCheck({
+		window,
+		document,
+		check: () => updated.check(),
+	});
 });
 
 // Create QueryClient for TanStack Query with Safari-friendly defaults.

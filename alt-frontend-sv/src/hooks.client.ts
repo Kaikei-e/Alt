@@ -130,4 +130,14 @@ if (typeof window !== "undefined") {
 		}
 	};
 	window.addEventListener("unhandledrejection", onUnhandled);
+
+	// Vite's canonical event for dynamic-import preload failure — fires
+	// when __vitePreload cannot resolve a deferred chunk after a deploy.
+	// Captures the post-runtime path that the inline bootstrap in
+	// app.html cannot see (because vitePreload swallows the network error
+	// and emits this event instead of bubbling it to window.error).
+	window.addEventListener("vite:preloadError", () => {
+		console.warn("[hooks.client] vite:preloadError — scheduling reload");
+		scheduler.schedule("chunk-404");
+	});
 }

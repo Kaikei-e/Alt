@@ -9,6 +9,39 @@
 		<link rel="preconnect" href="https://fonts.googleapis.com" />
 		<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 		<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Playfair+Display:ital,wght@0,400;0,600;0,700;0,800;1,400&family=Source+Sans+3:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+		<!-- alt:chunk-bootstrap:begin -->
+		<!-- Recovery for stale /_app/immutable/* 404s. Mirrors the logic
+		     exported as BOOTSTRAP_SCRIPT_BODY in src/lib/safari-error-bootstrap.ts
+		     (drift-tested in safari-error-bootstrap.test.ts via normalized
+		     whitespace comparison). Must run before any SvelteKit runtime
+		     so the entry-chunk 404 case is covered — at that point
+		     hooks.client.ts has not been parsed. -->
+		<script>
+			(() => {
+				if (typeof window === "undefined") return;
+				const K = "alt:chunk-reload-attempts";
+				const L = 3;
+				let fired = false;
+				const go = () => {
+					if (fired) return;
+					fired = true;
+					try {
+						const n = Number(window.sessionStorage.getItem(K) || "0");
+						if (n >= L) return;
+						window.sessionStorage.setItem(K, String(n + 1));
+					} catch (e) {}
+					window.setTimeout(() => { window.location.reload(); }, 0);
+				};
+				const isChunk = (t) => {
+					if (!t) return false;
+					const s = t.src || t.href || "";
+					return typeof s === "string" && s.indexOf("/_app/immutable/") !== -1;
+				};
+				window.addEventListener("error", (e) => { if (isChunk(e.target)) go(); }, true);
+				window.addEventListener("vite:preloadError", () => { go(); });
+			})();
+		</script>
+		<!-- alt:chunk-bootstrap:end -->
 		%sveltekit.head%
 		<style>
 			/* Splash screen styles - inline for immediate availability */
