@@ -45,13 +45,18 @@ services:
     depends_on:
       pact-db:
         condition: service_healthy
-    # Bind on the prod-host Tailscale interface only so the alt-builder runner
-    # can reach the Broker over the tailnet while the port stays closed on
-    # public / LAN interfaces. Operator sets PROD_TAILNET_IP in .env to the
-    # output of `tailscale ip -4` on the prod host. Defaults to 127.0.0.1
-    # (loopback-only) when unset so a missed configuration fails closed.
+    # Bind on the prod-host Tailscale interface so external alt-builder
+    # runners can reach the Broker over the tailnet, AND on 127.0.0.1 so the
+    # prod-host shell itself (alt-deploy's `Record deployment per pacticipant`
+    # step) can reach it without going through the Tailnet stack. The port
+    # stays closed on public / LAN interfaces. Operator sets PROD_TAILNET_IP
+    # in .env to the output of `tailscale ip -4` on the prod host. The
+    # dev/CI fallback for the first line is 127.0.0.2 (a loopback alias, not
+    # a public interface) so it cannot collide with the second 127.0.0.1
+    # binding when PROD_TAILNET_IP is unset.
     ports:
-      - "${PROD_TAILNET_IP:-127.0.0.1}:9292:9292"
+      - "${PROD_TAILNET_IP:-127.0.0.2}:9292:9292"
+      - "127.0.0.1:9292:9292"
     # pact-broker expects the DB URL inline; we render it from the secret
     # via an entrypoint wrapper that reads the password from /run/secrets.
     entrypoint:
