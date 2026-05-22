@@ -41,11 +41,28 @@ describe("/loop/+page.svelte wiring guards", () => {
 	});
 
 	it("derives bucket planes from hook-owned bucketEntries", () => {
+		// ADR-000908 §Δ3 added a filter clause that excludes `internalized`
+		// entries from foreground / bucket surfaces. The source must still
+		// derive from loop.bucketEntries and must never re-read the raw
+		// data.loop snapshot here (that path mixes ungated SSR state with
+		// optimistic Runes state).
 		expect(pageSource).toMatch(
-			/const bucketEntries = \$derived\(loop\.bucketEntries\)/,
+			/const bucketEntries = \$derived\([\s\S]*loop\.bucketEntries/,
 		);
 		expect(pageSource).not.toMatch(
 			/const bucketEntries = \$derived\(data\.loop\?\.bucketEntries/,
+		);
+	});
+
+	// ADR-000908 §Δ3: foreground and bucket planes filter out internalized
+	// entries so the "I got this" graduation removes the row from every
+	// surface (only the MacroByline counter still references it).
+	it("filters internalized entries out of foreground and bucket planes", () => {
+		expect(pageSource).toMatch(
+			/foreground = \$derived\([\s\S]*dismissState !== "internalized"/,
+		);
+		expect(pageSource).toMatch(
+			/const bucketEntries = \$derived\([\s\S]*dismissState !== "internalized"/,
 		);
 	});
 

@@ -379,6 +379,14 @@ func dismissStateFromDB(d string) sovereignv1.DismissState {
 		return sovereignv1.DismissState_DISMISS_STATE_DISMISSED
 	case "completed":
 		return sovereignv1.DismissState_DISMISS_STATE_COMPLETED
+	case "internalized":
+		// ADR-000908 §Δ3: terminal "knowledge internalized" state. The
+		// projector's `visibility_state='hidden'` invariant for this row
+		// means read filters that gate on `visibility_state='visible'`
+		// already exclude internalized entries from foreground / Continue
+		// surfaces. Mapping here only enables downstream observability
+		// (e.g. MacroByline "N internalized this week" counters).
+		return sovereignv1.DismissState_DISMISS_STATE_INTERNALIZED
 	}
 	return sovereignv1.DismissState_DISMISS_STATE_UNSPECIFIED
 }

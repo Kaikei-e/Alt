@@ -89,4 +89,15 @@ describe("resolveReviewReason", () => {
 			}
 		}
 	});
+
+	// ADR-000908 §Δ3: an internalized entry should never appear in any
+	// bucket — including Review. The helper returns undefined so the caller
+	// skips the reason chip entirely.
+	it("internalized never produces a review reason (filtered upstream)", () => {
+		for (const bucket of ["now", "continue", "changed", "review"] as const) {
+			expect(
+				resolveReviewReason({ dismissState: "internalized", surfaceBucket: bucket }),
+			).toBeUndefined();
+		}
+	});
 });

@@ -95,7 +95,16 @@ $effect(() => {
 	loop.replaceSnapshot(next);
 });
 
-const foreground = $derived(loop.entries);
+// ADR-000908 §Δ3 read filter: an entry whose dismiss state is "internalized"
+// has graduated out of the foreground loop ("I got this" CTA). The
+// knowledge-sovereign SQL boundary already excludes these rows via
+// `visibility_state='visible'`, but a frontend defense-in-depth filter
+// guards against an out-of-band write that flips dismiss_state without
+// visibility — the MacroByline "N internalized this week" counter still
+// counts the events, but the bucket surfaces must stay clear.
+const foreground = $derived(
+	loop.entries.filter((e) => e.dismissState !== "internalized"),
+);
 const sessionState = $derived(loop.sessionState);
 const quality = $derived(data.loop?.overallServiceQuality ?? "unspecified");
 
@@ -103,7 +112,9 @@ const quality = $derived(data.loop?.overallServiceQuality ?? "unspecified");
 // projector scopes each entry to exactly one bucket, so these three arrays
 // never overlap. The plane stack itself stays mounted even when every bucket
 // is empty so users still see the Loop's four surfaces.
-const bucketEntries = $derived(loop.bucketEntries);
+const bucketEntries = $derived(
+	loop.bucketEntries.filter((e) => e.dismissState !== "internalized"),
+);
 const continueEntries = $derived(
 	bucketEntries.filter((e) => e.surfaceBucket === "continue"),
 );

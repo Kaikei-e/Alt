@@ -50,7 +50,12 @@ export type DismissStateName =
 	| "active"
 	| "deferred"
 	| "dismissed"
-	| "completed";
+	| "completed"
+	// ADR-000908 §Δ3: terminal "knowledge internalized" state set by the
+	// "I got this" CTA. Read paths filter these out of foreground / Continue
+	// / Now buckets; only the MacroByline "N internalized this week"
+	// counter still references the dismiss state.
+	| "internalized";
 
 export interface WhyPayloadData {
 	kind: WhyKindName;
