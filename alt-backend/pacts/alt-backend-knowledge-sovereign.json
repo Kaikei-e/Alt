@@ -76,6 +76,132 @@
       }
     },
     {
+      "description": "an AppendKnowledgeEvent request for knowledge_loop.act_outcome.v1 with outcome=deep_engagement",
+      "providerStates": [
+        {
+          "name": "sovereign accepts deep_engagement outcomes for prolonged Augur conversations"
+        }
+      ],
+      "request": {
+        "body": {
+          "event": {
+            "actorId": "alt-backend-view-tracker",
+            "actorType": "system",
+            "aggregateId": "article:42",
+            "aggregateType": "knowledge_loop_entry",
+            "dedupeKey": "knowledge_loop.act_outcome.v1:5296440b-bc87-45be-a485-4818caddb292:deep_engagement",
+            "eventId": "e0bcecb0-e9d8-4249-a165-fd7a3fa83567",
+            "eventType": "knowledge_loop.act_outcome.v1",
+            "occurredAt": "2026-05-23T12:05:00Z",
+            "payload": "eyJhY3RlZF9ldmVudF9pZCI6IjUyOTY0NDBiLWJjODctNDViZS1hNDg1LTQ4MThjYWRkYjI5MiIsImVudHJ5X2tleSI6ImFydGljbGU6NDIiLCJsZW5zX21vZGVfaWQiOiJkZWZhdWx0Iiwib2JzZXJ2ZWRfYXQiOiIyMDI2LTA1LTIzVDEyOjA1OjAwWiIsIm91dGNvbWUiOiJkZWVwX2VuZ2FnZW1lbnQifQ==",
+            "tenantId": "2ddb4aff-d29d-44d5-b1a5-ecd7d2958f07",
+            "userId": "069c07a6-60b3-4874-9351-cd3fdfc908c2"
+          }
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "matchingRules": {
+          "body": {
+            "$.event": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            }
+          }
+        },
+        "method": "POST",
+        "path": "/services.sovereign.v1.KnowledgeSovereignService/AppendKnowledgeEvent"
+      },
+      "response": {
+        "body": {
+          "success": true
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "matchingRules": {
+          "body": {
+            "$.success": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            }
+          }
+        },
+        "status": 200
+      }
+    },
+    {
+      "description": "an AppendKnowledgeEvent request for knowledge_loop.act_outcome.v1 with outcome=engaged",
+      "providerStates": [
+        {
+          "name": "sovereign accepts system-emitted ActOutcome closure events"
+        }
+      ],
+      "request": {
+        "body": {
+          "event": {
+            "actorId": "alt-backend-view-tracker",
+            "actorType": "system",
+            "aggregateId": "article:42",
+            "aggregateType": "knowledge_loop_entry",
+            "dedupeKey": "knowledge_loop.act_outcome.v1:697b6b58-b522-467c-b01e-7dc1de9b706d:engaged",
+            "eventId": "f3148609-09ce-4dc6-b034-790f45e3566e",
+            "eventType": "knowledge_loop.act_outcome.v1",
+            "occurredAt": "2026-05-23T12:00:00Z",
+            "payload": "eyJhY3RlZF9ldmVudF9pZCI6IjY5N2I2YjU4LWI1MjItNDY3Yy1iMDFlLTdkYzFkZTliNzA2ZCIsImVudHJ5X2tleSI6ImFydGljbGU6NDIiLCJsZW5zX21vZGVfaWQiOiJkZWZhdWx0Iiwib2JzZXJ2ZWRfYXQiOiIyMDI2LTA1LTIzVDEyOjAwOjAwWiIsIm91dGNvbWUiOiJlbmdhZ2VkIn0=",
+            "tenantId": "97543cdd-246c-449a-95b2-8a7d1845b0e7",
+            "userId": "2d16ea38-1b0b-446b-9050-9f751dbe1743"
+          }
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "matchingRules": {
+          "body": {
+            "$.event": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            }
+          }
+        },
+        "method": "POST",
+        "path": "/services.sovereign.v1.KnowledgeSovereignService/AppendKnowledgeEvent"
+      },
+      "response": {
+        "body": {
+          "success": true
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "matchingRules": {
+          "body": {
+            "$.success": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            }
+          }
+        },
+        "status": 200
+      }
+    },
+    {
       "description": "an AppendKnowledgeEvent request for knowledge_loop.acted.v1",
       "providerStates": [
         {

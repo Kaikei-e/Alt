@@ -6,7 +6,7 @@ vi.mock("@connectrpc/connect", () => ({
 
 vi.mock("$lib/gen/alt/knowledge/loop/v1/knowledge_loop_pb", () => ({
 	KnowledgeLoopService: {},
-	DismissState: { ACTIVE: 1, DEFERRED: 2, DISMISSED: 3, COMPLETED: 4 },
+	DismissState: { ACTIVE: 1, DEFERRED: 2, DISMISSED: 3, COMPLETED: 4, INTERNALIZED: 5 },
 	LoopPriority: { CRITICAL: 1, CONTINUING: 2, CONFIRM: 3, REFERENCE: 4 },
 	LoopStage: { OBSERVE: 1, ORIENT: 2, DECIDE: 3, ACT: 4 },
 	RenderDepthHint: { FLAT: 1, LIGHT: 2, STRONG: 3, CRITICAL: 4 },
@@ -207,5 +207,19 @@ describe("knowledge_loop mapProtoEntry — PR-L1 OODA decide/act payload", () =>
 		expect(
 			(mapped as { surfacePlannerVersion?: string }).surfacePlannerVersion,
 		).toBe("v2");
+	});
+
+	// ADR-000908 §Δ3: a proto DismissState.INTERNALIZED (numeric 5) must
+	// round-trip to the string "internalized" so /loop's read-path filter
+	// excludes the row and the MacroByline graduation counter can find it.
+	// Without this mapping the default branch returned "active" and the row
+	// would re-appear in the foreground after a graduation transition.
+	it("maps DismissState.INTERNALIZED through to the 'internalized' string", async () => {
+		const mapped = await fetchWith(
+			baseProtoEntry({
+				dismissState: 5, // DismissState.INTERNALIZED
+			}),
+		);
+		expect(mapped.dismissState).toBe("internalized");
 	});
 });

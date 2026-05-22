@@ -29,6 +29,7 @@ import {
 import {
 	CONNECT_KNOWLEDGE_LOOP_ACT_RESPONSE,
 	CONNECT_KNOWLEDGE_LOOP_DECIDE_RESPONSE,
+	CONNECT_KNOWLEDGE_LOOP_INTERNALIZED_RESPONSE,
 	CONNECT_KNOWLEDGE_LOOP_NO_SOURCE_RESPONSE,
 	CONNECT_KNOWLEDGE_LOOP_RECAP_RESPONSE,
 	CONNECT_KNOWLEDGE_LOOP_RESPONSE,
@@ -413,6 +414,8 @@ export function createBackendServer(): http.Server {
 					payload = CONNECT_KNOWLEDGE_LOOP_DECIDE_RESPONSE;
 				} else if (lensModeId === "e2e-recap") {
 					payload = CONNECT_KNOWLEDGE_LOOP_RECAP_RESPONSE;
+				} else if (lensModeId === "e2e-internalized") {
+					payload = CONNECT_KNOWLEDGE_LOOP_INTERNALIZED_RESPONSE;
 				}
 				res.setHeader("Content-Type", "application/json");
 				res.writeHead(200);

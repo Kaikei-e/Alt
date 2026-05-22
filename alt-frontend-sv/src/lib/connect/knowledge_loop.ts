@@ -465,6 +465,13 @@ function mapDismissFromProto(d: DismissState): DismissStateName {
 			return "dismissed";
 		case DismissState.COMPLETED:
 			return "completed";
+		case DismissState.INTERNALIZED:
+			// ADR-000908 §Δ3 graduation state. Without this case the proto enum
+			// value 5 would fall through to the default "active" and the
+			// /loop read-path filter could not exclude the row. The
+			// MacroByline "N internalized this week" counter also depends on
+			// this string form.
+			return "internalized";
 		default:
 			return "active";
 	}

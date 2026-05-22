@@ -392,6 +392,201 @@ func TestAppendKnowledgeEvent_KnowledgeLoopActed(t *testing.T) {
 	assert.NoError(t, err)
 }
 
+// TestAppendKnowledgeEvent_KnowledgeLoopActOutcome pins the system-emitted
+// closure event introduced by ADR-000908 §Δ1. The alt-backend view tracker
+// emits this event when dwell ≥ 30s or ask conversation turn count ≥ 3
+// clears; a separate cron in knowledge-sovereign emits the 7-day
+// no_engagement fallback. The wire shape this consumer test pins is the
+// immediate-emit path only — the cron path lives entirely inside
+// knowledge-sovereign and is not a cross-service contract.
+//
+// Three invariants the provider must honour:
+//
+//  1. actor_type = "system" — even though the trigger is a user action,
+//     the outcome event is system-derived (the view tracker, not the
+//     user, decides when an outcome has materialised). Sovereign's
+//     user-emittable allowlist must NOT include this event type.
+//  2. aggregate_type = "knowledge_loop_entry" — distinct from the
+//     "loop_session" aggregate that user transitions use, so projector
+//     dispatch can match on aggregate_type without parsing payload.
+//  3. dedupe_key = `knowledge_loop.act_outcome.v1:<acted_event_id>:<outcome>` —
+//     keyed on the originating Acted event id so the immediate and cron
+//     paths cannot double-emit the same logical closure. The sovereign
+//     unique index on knowledge_events.dedupe_key enforces idempotency at
+//     the slow path.
+func TestAppendKnowledgeEvent_KnowledgeLoopActOutcome(t *testing.T) {
+	mockProvider, err := consumer.NewV3Pact(consumer.MockHTTPProviderConfig{
+		Consumer: "alt-backend",
+		Provider: "knowledge-sovereign",
+		PactDir:  filepath.Join(pactDir),
+	})
+	require.NoError(t, err)
+
+	eventID := uuid.New()
+	actedEventID := uuid.New()
+	tenantID := uuid.New()
+	userID := uuid.New()
+	occurredAt := time.Date(2026, 5, 23, 12, 0, 0, 0, time.UTC)
+
+	outcomePayload := map[string]any{
+		"acted_event_id": actedEventID.String(),
+		"entry_key":      "article:42",
+		"lens_mode_id":   "default",
+		"outcome":        "engaged",
+		"observed_at":    "2026-05-23T12:00:00Z",
+	}
+	payload, _ := json.Marshal(outcomePayload)
+	encoded := base64.StdEncoding.EncodeToString(payload)
+	dedupeKey := "knowledge_loop.act_outcome.v1:" + actedEventID.String() + ":engaged"
+
+	err = mockProvider.
+		AddInteraction().
+		Given("sovereign accepts system-emitted ActOutcome closure events").
+		UponReceiving("an AppendKnowledgeEvent request for knowledge_loop.act_outcome.v1 with outcome=engaged").
+		WithCompleteRequest(consumer.Request{
+			Method: "POST",
+			Path:   matchers.String("/services.sovereign.v1.KnowledgeSovereignService/AppendKnowledgeEvent"),
+			Headers: matchers.MapMatcher{
+				"Content-Type": matchers.String("application/json"),
+			},
+			Body: loopEventBody(map[string]any{
+				"eventId":       eventID.String(),
+				"occurredAt":    "2026-05-23T12:00:00Z",
+				"tenantId":      tenantID.String(),
+				"userId":        userID.String(),
+				"actorType":     "system",
+				"actorId":       "alt-backend-view-tracker",
+				"eventType":     "knowledge_loop.act_outcome.v1",
+				"aggregateType": "knowledge_loop_entry",
+				"aggregateId":   "article:42",
+				"dedupeKey":     dedupeKey,
+				"payload":       encoded,
+			}),
+		}).
+		WithCompleteResponse(consumer.Response{
+			Status: 200,
+			Headers: matchers.MapMatcher{
+				"Content-Type": matchers.String("application/json"),
+			},
+			Body: matchers.MapMatcher{
+				"success": matchers.Like(true),
+			},
+		}).
+		ExecuteTest(t, func(config consumer.MockServerConfig) error {
+			client := sovereignv1connect.NewKnowledgeSovereignServiceClient(
+				http.DefaultClient,
+				fmt.Sprintf("http://%s:%d", config.Host, config.Port),
+				connect.WithProtoJSON(),
+			)
+			_, err := client.AppendKnowledgeEvent(context.Background(), connect.NewRequest(&sovereignv1.AppendKnowledgeEventRequest{
+				Event: &sovereignv1.KnowledgeEvent{
+					EventId:       eventID.String(),
+					OccurredAt:    timestamppb.New(occurredAt),
+					TenantId:      tenantID.String(),
+					UserId:        userID.String(),
+					ActorType:     "system",
+					ActorId:       "alt-backend-view-tracker",
+					EventType:     "knowledge_loop.act_outcome.v1",
+					AggregateType: "knowledge_loop_entry",
+					AggregateId:   "article:42",
+					DedupeKey:     dedupeKey,
+					Payload:       payload,
+				},
+			}))
+			return err
+		})
+	assert.NoError(t, err)
+}
+
+// TestAppendKnowledgeEvent_KnowledgeLoopActOutcome_DeepEngagement pins the
+// deep_engagement outcome label (ask turn ≥ 3 path). The wire shape is
+// identical to the engaged variant; the outcome string and dedupe_key
+// suffix are what changes, and the provider must accept both without
+// any payload interpretation.
+func TestAppendKnowledgeEvent_KnowledgeLoopActOutcome_DeepEngagement(t *testing.T) {
+	mockProvider, err := consumer.NewV3Pact(consumer.MockHTTPProviderConfig{
+		Consumer: "alt-backend",
+		Provider: "knowledge-sovereign",
+		PactDir:  filepath.Join(pactDir),
+	})
+	require.NoError(t, err)
+
+	eventID := uuid.New()
+	actedEventID := uuid.New()
+	tenantID := uuid.New()
+	userID := uuid.New()
+	occurredAt := time.Date(2026, 5, 23, 12, 5, 0, 0, time.UTC)
+
+	outcomePayload := map[string]any{
+		"acted_event_id": actedEventID.String(),
+		"entry_key":      "article:42",
+		"lens_mode_id":   "default",
+		"outcome":        "deep_engagement",
+		"observed_at":    "2026-05-23T12:05:00Z",
+	}
+	payload, _ := json.Marshal(outcomePayload)
+	encoded := base64.StdEncoding.EncodeToString(payload)
+	dedupeKey := "knowledge_loop.act_outcome.v1:" + actedEventID.String() + ":deep_engagement"
+
+	err = mockProvider.
+		AddInteraction().
+		Given("sovereign accepts deep_engagement outcomes for prolonged Augur conversations").
+		UponReceiving("an AppendKnowledgeEvent request for knowledge_loop.act_outcome.v1 with outcome=deep_engagement").
+		WithCompleteRequest(consumer.Request{
+			Method: "POST",
+			Path:   matchers.String("/services.sovereign.v1.KnowledgeSovereignService/AppendKnowledgeEvent"),
+			Headers: matchers.MapMatcher{
+				"Content-Type": matchers.String("application/json"),
+			},
+			Body: loopEventBody(map[string]any{
+				"eventId":       eventID.String(),
+				"occurredAt":    "2026-05-23T12:05:00Z",
+				"tenantId":      tenantID.String(),
+				"userId":        userID.String(),
+				"actorType":     "system",
+				"actorId":       "alt-backend-view-tracker",
+				"eventType":     "knowledge_loop.act_outcome.v1",
+				"aggregateType": "knowledge_loop_entry",
+				"aggregateId":   "article:42",
+				"dedupeKey":     dedupeKey,
+				"payload":       encoded,
+			}),
+		}).
+		WithCompleteResponse(consumer.Response{
+			Status: 200,
+			Headers: matchers.MapMatcher{
+				"Content-Type": matchers.String("application/json"),
+			},
+			Body: matchers.MapMatcher{
+				"success": matchers.Like(true),
+			},
+		}).
+		ExecuteTest(t, func(config consumer.MockServerConfig) error {
+			client := sovereignv1connect.NewKnowledgeSovereignServiceClient(
+				http.DefaultClient,
+				fmt.Sprintf("http://%s:%d", config.Host, config.Port),
+				connect.WithProtoJSON(),
+			)
+			_, err := client.AppendKnowledgeEvent(context.Background(), connect.NewRequest(&sovereignv1.AppendKnowledgeEventRequest{
+				Event: &sovereignv1.KnowledgeEvent{
+					EventId:       eventID.String(),
+					OccurredAt:    timestamppb.New(occurredAt),
+					TenantId:      tenantID.String(),
+					UserId:        userID.String(),
+					ActorType:     "system",
+					ActorId:       "alt-backend-view-tracker",
+					EventType:     "knowledge_loop.act_outcome.v1",
+					AggregateType: "knowledge_loop_entry",
+					AggregateId:   "article:42",
+					DedupeKey:     dedupeKey,
+					Payload:       payload,
+				},
+			}))
+			return err
+		})
+	assert.NoError(t, err)
+}
+
 // TestAppendKnowledgeEvent_KnowledgeLoopActed_SemanticPayload pins the Phase 2
 // canonical wire shape. The KnowledgeLoopActed payload now carries semantic
 // metadata (`acted_intent`, `target_type`, `target_ref`, `continue_flag`,

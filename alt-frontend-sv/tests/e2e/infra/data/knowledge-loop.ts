@@ -221,6 +221,93 @@ export const CONNECT_TRANSITION_LOOP_RESPONSE = {
 	message: "",
 };
 
+// ADR-000908 §Δ3 internalized graduation: a fixture that mixes one
+// `dismissState=INTERNALIZED` entry with one `dismissState=ACTIVE` entry so
+// the e2e spec can prove the read-path filter excludes the graduated entry
+// without hiding healthy entries. Backend mock switches to this fixture
+// when the request body's lensModeId is "e2e-internalized" (see backend.ts).
+export const LOOP_FIXTURE_INTERNALIZED_ENTRY_KEY =
+	"loop-entry-fixture-internalized-1";
+export const LOOP_FIXTURE_INTERNALIZED_SIBLING_KEY =
+	"loop-entry-fixture-internalized-sibling-1";
+
+export const CONNECT_KNOWLEDGE_LOOP_INTERNALIZED_RESPONSE = {
+	foregroundEntries: [
+		// The graduated entry must NOT render. Numeric 5 == DismissState.INTERNALIZED.
+		{
+			entryKey: LOOP_FIXTURE_INTERNALIZED_ENTRY_KEY,
+			sourceItemKey: "article-fixture-internalized",
+			proposedStage: 1,
+			surfaceBucket: 1, // NOW — proves the filter beats bucket placement
+			projectionRevision: "1",
+			projectionSeqHiwater: "20",
+			freshnessAt: NOW_ISO,
+			whyPrimary: {
+				kind: 1,
+				text: "Should be hidden because user said I got this.",
+				evidenceRefs: [],
+			},
+			dismissState: 5, // DISMISS_STATE_INTERNALIZED
+			renderDepthHint: 1,
+			loopPriority: 4,
+			decisionOptions: [],
+			actTargets: [],
+		},
+		// Sibling entry with the same shape but ACTIVE dismiss state — must
+		// render. Catches the regression where the filter is over-eager and
+		// hides healthy rows.
+		{
+			entryKey: LOOP_FIXTURE_INTERNALIZED_SIBLING_KEY,
+			sourceItemKey: "article-fixture-internalized-sibling",
+			proposedStage: 1,
+			surfaceBucket: 1, // NOW
+			projectionRevision: "1",
+			projectionSeqHiwater: "21",
+			freshnessAt: NOW_ISO,
+			whyPrimary: {
+				kind: 1,
+				text: "Active sibling that must remain visible.",
+				evidenceRefs: [],
+			},
+			dismissState: 1, // ACTIVE
+			renderDepthHint: 2,
+			loopPriority: 1,
+			decisionOptions: [],
+			actTargets: [
+				{
+					targetType: 1,
+					targetRef: "article-fixture-internalized-sibling",
+					route: "/articles/article-fixture-internalized-sibling",
+					sourceUrl: "https://example.com/loop-internalized-sibling",
+				},
+			],
+		},
+	],
+	bucketEntries: [],
+	surfaces: [
+		{
+			surfaceBucket: 1,
+			primaryEntryKey: LOOP_FIXTURE_INTERNALIZED_SIBLING_KEY,
+			secondaryEntryKeys: [],
+			projectionRevision: "1",
+			projectionSeqHiwater: "21",
+			freshnessAt: NOW_ISO,
+			serviceQuality: 1,
+		},
+	],
+	sessionState: {
+		currentStage: 1,
+		currentStageEnteredAt: NOW_ISO,
+		foregroundEntryKey: LOOP_FIXTURE_INTERNALIZED_SIBLING_KEY,
+		focusedEntryKey: LOOP_FIXTURE_INTERNALIZED_SIBLING_KEY,
+		projectionRevision: "1",
+		projectionSeqHiwater: "21",
+	},
+	overallServiceQuality: 1,
+	generatedAt: NOW_ISO,
+	projectionSeqHiwater: "21",
+};
+
 // ACT-stage scenario: a foreground entry pre-positioned at currentEntryStage =
 // ACT so the workspace renders the Open command directly. Used by the e2e spec
 // at tests/e2e/desktop/loop/act-open-loads-article.spec.ts via lensModeId
