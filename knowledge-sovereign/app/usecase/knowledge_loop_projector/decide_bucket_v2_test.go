@@ -277,6 +277,90 @@ func TestDecideBucketV2_ZeroEvidenceDensityDoesNotForceReview(t *testing.T) {
 	}
 }
 
+// ADR-000908 §Δ1: a strong "no engagement" signal (ActOutcomeSignal ≤ -2)
+// demotes Now-eligible entries to Review so the Loop stops re-promoting
+// content the user has actively skipped. Mirrors the Plan agent's
+// down-weight model: engaged=+1, deep=+2, accepted_change=+1, stale_save=-1,
+// no_engagement=-2.
+func TestDecideBucketV2_StrongNoEngagementDemotesNowToReview(t *testing.T) {
+	t.Parallel()
+	in := SurfaceScoreInputs{
+		TopicOverlapCount: 5,  // would otherwise route to NOW
+		ActOutcomeSignal:  -2, // 1× no_engagement
+		EventType:         EventSummaryVersionCreated,
+	}
+	got := decideBucketV2(in)
+	if got != sovereignv1.SurfaceBucket_SURFACE_BUCKET_REVIEW {
+		t.Errorf("got %v; want REVIEW (ActOutcomeSignal=-2 must demote Now)", got)
+	}
+}
+
+// ADR-000908 §Δ1: a strong "no engagement" signal also demotes Continue.
+// Once the user has demonstrated they are not engaging, even Continue
+// signals (HasOpenInteraction, HasAugurLink) should not force the entry
+// back into the foreground.
+func TestDecideBucketV2_StrongNoEngagementDemotesContinueToReview(t *testing.T) {
+	t.Parallel()
+	in := SurfaceScoreInputs{
+		HasOpenInteraction: true, // would otherwise route to CONTINUE
+		ActOutcomeSignal:   -2,
+		EventType:          EventHomeItemOpened,
+	}
+	got := decideBucketV2(in)
+	if got != sovereignv1.SurfaceBucket_SURFACE_BUCKET_REVIEW {
+		t.Errorf("got %v; want REVIEW (ActOutcomeSignal=-2 must demote Continue)", got)
+	}
+}
+
+// A mild negative signal (single stale_save / partial no_engagement) is not
+// enough to override otherwise-strong Now placement. The threshold must be
+// crossed to ≤ -2 before bucket demotion fires.
+func TestDecideBucketV2_MildNegativeSignalKeepsNow(t *testing.T) {
+	t.Parallel()
+	in := SurfaceScoreInputs{
+		TopicOverlapCount: 5,
+		ActOutcomeSignal:  -1, // 1× stale_save, not enough
+		EventType:         EventSummaryVersionCreated,
+	}
+	got := decideBucketV2(in)
+	if got != sovereignv1.SurfaceBucket_SURFACE_BUCKET_NOW {
+		t.Errorf("got %v; want NOW (ActOutcomeSignal=-1 must not demote)", got)
+	}
+}
+
+// CHANGED must outrank ActOutcomeSignal demotion: even when the user has
+// shown no engagement, a fresh version drift means their mental model is
+// out of date and the system must surface that — staying in Review would
+// silently hide an important update.
+func TestDecideBucketV2_ChangedBeatsActOutcomeDemotion(t *testing.T) {
+	t.Parallel()
+	in := SurfaceScoreInputs{
+		VersionDriftCount: 1,
+		ActOutcomeSignal:  -4, // even strong no engagement
+		EventType:         EventSummaryVersionCreated,
+	}
+	got := decideBucketV2(in)
+	if got != sovereignv1.SurfaceBucket_SURFACE_BUCKET_CHANGED {
+		t.Errorf("got %v; want CHANGED (drift outranks act outcome demotion)", got)
+	}
+}
+
+// Positive ActOutcomeSignal (engaged / deep_engagement) does not change
+// bucket placement. Plan agent: positive is used for within-bucket ranking,
+// not bucket selection.
+func TestDecideBucketV2_PositiveActOutcomeKeepsBucket(t *testing.T) {
+	t.Parallel()
+	in := SurfaceScoreInputs{
+		TopicOverlapCount: 1,
+		ActOutcomeSignal:  3, // deep_engagement
+		EventType:         EventSummaryVersionCreated,
+	}
+	got := decideBucketV2(in)
+	if got != sovereignv1.SurfaceBucket_SURFACE_BUCKET_NOW {
+		t.Errorf("got %v; want NOW (positive signal does not change bucket)", got)
+	}
+}
+
 // TestDecideBucketV2_Determinism asserts the function is pure: the same
 // inputs must always produce the same bucket regardless of when it runs.
 // This guards reproject-safety — replaying the same event must yield the

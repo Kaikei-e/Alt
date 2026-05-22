@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
@@ -1025,4 +1026,58 @@ func TestRunBatch_SurfacePlanRecomputed_PatchesEntryAndRecomputesSurfaces(t *tes
 	require.Equal(t, "article:replan-1", *changedSurface.PrimaryEntryKey)
 	require.NotNil(t, nowSurface)
 	require.Nil(t, nowSurface.PrimaryEntryKey, "recompute must clear the old bucket surface")
+}
+
+// ADR-000908 §Δ1: KnowledgeLoopActOutcome is a system-emitted closure signal
+// for a prior Acted event. The projector recognises the event type, bumps
+// act_outcome_emitted_total{outcome}, and advances the checkpoint, but does
+// not write an entry of its own — the signal is aggregated by
+// EventLogSurfaceScoreResolver via ActOutcomeSignal on the next entry
+// projection. Reproject-safe: counter labels are stable enums, and entry
+// placement remains a pure function of the event log.
+func TestRunBatch_KnowledgeLoopActOutcome_RecordsMetricAndAdvancesCheckpoint(t *testing.T) {
+	userID := uuid.New()
+	ev := makeEvent(t, EventKnowledgeLoopActOutcome, 700, userID, map[string]any{
+		"acted_event_id": uuid.NewString(),
+		"entry_key":      "article:42",
+		"lens_mode_id":   "default",
+		"outcome":        "engaged",
+		"observed_at":    "2026-04-26T10:30:00Z",
+	})
+	ev.AggregateType = "knowledge_loop_entry"
+	ev.AggregateID = "article:42"
+
+	before := testutil.ToFloat64(actOutcomeEmittedTotal.WithLabelValues("engaged"))
+
+	repo := &fakeRepo{events: []sovereign_db.KnowledgeEvent{ev}}
+	require.NoError(t, newProjector(repo).RunBatch(context.Background()))
+
+	require.Empty(t, repo.entries,
+		"KnowledgeLoopActOutcome must not produce an entry upsert — it feeds the resolver only")
+	require.Equal(t, int64(700), repo.checkpoint,
+		"checkpoint must advance past the outcome event so it is not reprocessed")
+	after := testutil.ToFloat64(actOutcomeEmittedTotal.WithLabelValues("engaged"))
+	require.Equal(t, float64(1), after-before,
+		"act_outcome_emitted_total{outcome=engaged} must increment exactly once")
+}
+
+// Unknown outcome label must not blow up cardinality. The projector
+// normalises the label to "unspecified" so dashboards stay bounded.
+func TestRunBatch_KnowledgeLoopActOutcome_UnknownOutcomeNormalisesLabel(t *testing.T) {
+	userID := uuid.New()
+	ev := makeEvent(t, EventKnowledgeLoopActOutcome, 710, userID, map[string]any{
+		"acted_event_id": uuid.NewString(),
+		"entry_key":      "article:42",
+		"outcome":        "totally_made_up",
+	})
+
+	before := testutil.ToFloat64(actOutcomeEmittedTotal.WithLabelValues("unspecified"))
+
+	repo := &fakeRepo{events: []sovereign_db.KnowledgeEvent{ev}}
+	require.NoError(t, newProjector(repo).RunBatch(context.Background()))
+
+	require.Equal(t, int64(710), repo.checkpoint)
+	after := testutil.ToFloat64(actOutcomeEmittedTotal.WithLabelValues("unspecified"))
+	require.Equal(t, float64(1), after-before,
+		"unknown outcome must be normalised to the 'unspecified' label, not propagate raw text")
 }

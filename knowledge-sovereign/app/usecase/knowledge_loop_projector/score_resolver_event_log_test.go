@@ -395,10 +395,117 @@ func TestEventLogResolver_AllowlistMatchesContract(t *testing.T) {
 		// Continue signal — the resolver gates on continue_flag inside the
 		// loop so Snooze (false) does not promote.
 		EventKnowledgeLoopActed,
+		// ADR-000908 §Δ1: knowledge_loop.act_outcome.v1 events feed the
+		// ActOutcomeSignal aggregation. Immediate engaged / deep_engagement
+		// signals come from alt-backend view trackers; the 7-day
+		// no_engagement fallback is emitted by act_outcome_cron.
+		EventKnowledgeLoopActOutcome,
 	}
 	if !reflect.DeepEqual(resolverEventTypes, want) {
-		t.Errorf("resolverEventTypes drifted from contract §6.4.1: got %v want %v",
+		t.Errorf("resolverEventTypes drifted from contract §6.4.1 / ADR-000908: got %v want %v",
 			resolverEventTypes, want)
+	}
+}
+
+// ADR-000908 §Δ1: ActOutcome events are aggregated into ActOutcomeSignal
+// using a fixed scoring table. The match is entry-keyed (mirrors the
+// RecentContinueActionCount pattern) so cross-entry outcomes do not bleed.
+//
+//	engaged          = +1
+//	deep_engagement  = +2
+//	accepted_change  = +1
+//	stale_save       = -1
+//	no_engagement    = -2
+func TestEventLogResolver_AggregatesActOutcomeSignal(t *testing.T) {
+	t.Parallel()
+
+	userID := uuid.New()
+	tenantID := uuid.New()
+	entryKey := "article:42"
+	now := time.Date(2026, 5, 8, 12, 0, 0, 0, time.UTC)
+
+	mkOutcome := func(seq int64, entry, outcome string, when time.Time) sovereign_db.KnowledgeEvent {
+		body, _ := json.Marshal(map[string]any{
+			"entry_key": entry,
+			"outcome":   outcome,
+		})
+		uid := userID
+		return sovereign_db.KnowledgeEvent{
+			EventSeq:      seq,
+			OccurredAt:    when,
+			TenantID:      tenantID,
+			UserID:        &uid,
+			EventType:     EventKnowledgeLoopActOutcome,
+			AggregateType: "knowledge_loop_entry",
+			AggregateID:   entry,
+			Payload:       body,
+		}
+	}
+
+	lookup := &fakeEventLogLookup{events: []sovereign_db.KnowledgeEvent{
+		mkOutcome(1, entryKey, "engaged", now.Add(-3*time.Hour)),                     // +1
+		mkOutcome(2, entryKey, "deep_engagement", now.Add(-2*time.Hour)),             // +2
+		mkOutcome(3, entryKey, "no_engagement", now.Add(-1*time.Hour)),               // -2
+		mkOutcome(4, "article:other", "deep_engagement", now.Add(-30*time.Minute)),   // must NOT count
+		mkOutcome(5, entryKey, "stale_save", now.Add(-15*time.Minute)),               // -1
+	}}
+	r := NewEventLogSurfaceScoreResolver(lookup)
+
+	uid := userID
+	target := sovereign_db.KnowledgeEvent{
+		EventSeq:   100,
+		OccurredAt: now,
+		TenantID:   tenantID,
+		UserID:     &uid,
+		EventType:  EventSummaryVersionCreated,
+		Payload:    mustJSON(t, map[string]any{"entry_key": entryKey, "article_id": "art-1"}),
+	}
+	out := r.Resolve(context.Background(), &target)
+
+	// 1 + 2 - 2 - 1 = 0 (cross-entry deep_engagement excluded)
+	if out.ActOutcomeSignal != 0 {
+		t.Errorf("ActOutcomeSignal = %d; want 0 (1+2-2-1; cross-entry excluded)", out.ActOutcomeSignal)
+	}
+}
+
+// Unknown outcome values must not crash the aggregator and must not affect
+// the signal. Defense against payload schema drift.
+func TestEventLogResolver_UnknownOutcomeIsZeroDelta(t *testing.T) {
+	t.Parallel()
+
+	userID := uuid.New()
+	tenantID := uuid.New()
+	entryKey := "article:42"
+	now := time.Date(2026, 5, 8, 12, 0, 0, 0, time.UTC)
+
+	uid := userID
+	lookup := &fakeEventLogLookup{events: []sovereign_db.KnowledgeEvent{{
+		EventSeq:      1,
+		OccurredAt:    now.Add(-1 * time.Hour),
+		TenantID:      tenantID,
+		UserID:        &uid,
+		EventType:     EventKnowledgeLoopActOutcome,
+		AggregateType: "knowledge_loop_entry",
+		AggregateID:   entryKey,
+		Payload: mustJSON(t, map[string]any{
+			"entry_key": entryKey,
+			"outcome":   "totally_made_up",
+		}),
+	}}}
+	r := NewEventLogSurfaceScoreResolver(lookup)
+
+	uid2 := userID
+	target := sovereign_db.KnowledgeEvent{
+		EventSeq:   100,
+		OccurredAt: now,
+		TenantID:   tenantID,
+		UserID:     &uid2,
+		EventType:  EventSummaryVersionCreated,
+		Payload:    mustJSON(t, map[string]any{"entry_key": entryKey}),
+	}
+	out := r.Resolve(context.Background(), &target)
+	if out.ActOutcomeSignal != 0 {
+		t.Errorf("unknown outcome must contribute 0; got %d", out.ActOutcomeSignal)
 	}
 }
 
