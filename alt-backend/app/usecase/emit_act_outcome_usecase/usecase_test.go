@@ -46,11 +46,11 @@ func (f *fakeAppendPort) AppendKnowledgeEvent(_ context.Context, ev domain.Knowl
 func TestDeriveOutcomeKind_Table(t *testing.T) {
 	t.Parallel()
 	cases := []struct {
-		name        string
-		dwellMs     int64
-		askTurns    int32
-		want        string
-		wantEmit    bool
+		name     string
+		dwellMs  int64
+		askTurns int32
+		want     string
+		wantEmit bool
 	}{
 		{name: "deep engagement from ask turns alone", dwellMs: 0, askTurns: 3, want: "deep_engagement", wantEmit: true},
 		{name: "deep engagement from many ask turns", dwellMs: 0, askTurns: 7, want: "deep_engagement", wantEmit: true},
