@@ -82,6 +82,11 @@ var resolverEventTypes = []string{
 	// are tallied (gate inside the resolver loop). Snooze / Save (continue
 	// false) deliberately do not feed Continue placement.
 	EventKnowledgeLoopActed,
+	// ADR-000908 §Δ1: knowledge_loop.act_outcome.v1 events drive the
+	// ActOutcomeSignal aggregation (engaged=+1, deep_engagement=+2,
+	// accepted_change=+1, stale_save=-1, no_engagement=-2). Entry-keyed
+	// match prevents cross-entry signal leakage.
+	EventKnowledgeLoopActOutcome,
 }
 
 // Resolve queries the event log and aggregates the v2 evidence. It returns
@@ -210,10 +215,42 @@ func (r *EventLogSurfaceScoreResolver) Resolve(
 				continue
 			}
 			out.RecentContinueActionCount++
+		case EventKnowledgeLoopActOutcome:
+			// ADR-000908 §Δ1: aggregate the cumulative outcome signal on
+			// this entry. Entry-keyed match — cross-entry outcomes do not
+			// leak into the current entry's ActOutcomeSignal. Unknown
+			// outcome labels contribute 0 (defensive against payload schema
+			// drift; new outcomes go through a coordinated release).
+			eEntryKey := readEntryKey(e.Payload)
+			if eEntryKey == "" || eEntryKey != thisEntryKey {
+				continue
+			}
+			out.ActOutcomeSignal += actOutcomeDelta(readPayloadString(e.Payload, "outcome"))
 		}
 	}
 
 	return out
+}
+
+// actOutcomeDelta maps an ActOutcomeKind enum string onto the
+// ActOutcomeSignal contribution (ADR-000908 §Δ1). Unknown / unspecified
+// outcomes contribute 0 so payload schema drift does not silently move
+// entries between buckets.
+func actOutcomeDelta(outcome string) int32 {
+	switch outcome {
+	case "engaged", "ACT_OUTCOME_KIND_ENGAGED":
+		return 1
+	case "deep_engagement", "ACT_OUTCOME_KIND_DEEP_ENGAGEMENT":
+		return 2
+	case "accepted_change", "ACT_OUTCOME_KIND_ACCEPTED_CHANGE":
+		return 1
+	case "stale_save", "ACT_OUTCOME_KIND_STALE_SAVE":
+		return -1
+	case "no_engagement", "ACT_OUTCOME_KIND_NO_ENGAGEMENT":
+		return -2
+	default:
+		return 0
+	}
 }
 
 // readPayloadBool returns the bool value of `key` on a JSON payload. Returns

@@ -41,6 +41,15 @@ const (
 	EventKnowledgeLoopSessionReset      = "knowledge_loop.session_reset.v1"
 	EventKnowledgeLoopLensModeSwitched  = "knowledge_loop.lens_mode_switched.v1"
 
+	// ADR-000908 §Δ1 — system-emitted closure signal for a prior Acted
+	// event. Two producers exist: alt-backend view trackers emit
+	// engaged / deep_engagement immediately when dwell or conversation-turn
+	// thresholds clear, and knowledge-sovereign's act_outcome_cron emits
+	// no_engagement after a 7-day event-time window expires without an
+	// explicit outcome. Consumed by the projector (metrics-only branch)
+	// and the EventLogSurfaceScoreResolver (ActOutcomeSignal aggregation).
+	EventKnowledgeLoopActOutcome = "knowledge_loop.act_outcome.v1"
+
 	// Upstream snapshot events feeding Surface Planner v2. Emitted by
 	// recap-worker, augur, and knowledge-sovereign-internal respectively.
 	// The projector recognises them so a real SurfaceScoreResolver (Wave 4)
@@ -110,4 +119,14 @@ const AggregateLoopSession = "knowledge_loop_session"
 // — mark_reviewed keeps the entry visible in Review (was hidden under v8).
 // Bump triggers a full reproject; runbook history table updated. Phase 3 of
 // docs/plan/knowledge-loop-completion-03-review-why-quality.md.
-const WhyMappingVersion = 9
+//
+// v10 (2026-05-23): ADR-000908 §Δ1 ActOutcomeSignal lands as a bucket
+// driver. EventLogSurfaceScoreResolver now aggregates
+// knowledge_loop.act_outcome.v1 events on the entry inside the 7d window
+// (engaged=+1, deep_engagement=+2, accepted_change=+1, stale_save=-1,
+// no_engagement=-2) and decideBucketV2 demotes Now/Continue placements to
+// Review when the cumulative signal is ≤ -2. CHANGED still outranks the
+// demotion so version drift is never silently hidden. Bump triggers a full
+// reproject; runbook history table will get the v9 → v10 row when the
+// reproject cutover is scheduled.
+const WhyMappingVersion = 10

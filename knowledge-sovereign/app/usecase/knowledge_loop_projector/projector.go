@@ -350,8 +350,38 @@ func (p *Projector) projectEvent(ctx context.Context, ev *sovereign_db.Knowledge
 		EventKnowledgeLoopLensModeSwitched:
 		return p.projectTransition(ctx, ev)
 
+	case EventKnowledgeLoopActOutcome:
+		// ADR-000908 §Δ1: outcome events are not entry-producing — the
+		// signal they carry is aggregated by EventLogSurfaceScoreResolver
+		// on the next entry projection (ActOutcomeSignal). The projector
+		// only emits the counter so dashboards / alert rules can track
+		// coverage. The outcome label is normalised to the bounded enum
+		// vocabulary so cardinality stays tractable.
+		observeActOutcomeEmitted(normaliseActOutcomeLabel(extractStringField(ev.Payload, "outcome")))
+		return nil, nil
+
 	default:
 		return nil, nil
+	}
+}
+
+// normaliseActOutcomeLabel maps an outcome payload field onto a bounded
+// metric label. Unknown values become "unspecified" so a typo or
+// schema-drifted outcome cannot blow up Prometheus cardinality.
+func normaliseActOutcomeLabel(raw string) string {
+	switch raw {
+	case "engaged", "ACT_OUTCOME_KIND_ENGAGED":
+		return "engaged"
+	case "deep_engagement", "ACT_OUTCOME_KIND_DEEP_ENGAGEMENT":
+		return "deep_engagement"
+	case "accepted_change", "ACT_OUTCOME_KIND_ACCEPTED_CHANGE":
+		return "accepted_change"
+	case "stale_save", "ACT_OUTCOME_KIND_STALE_SAVE":
+		return "stale_save"
+	case "no_engagement", "ACT_OUTCOME_KIND_NO_ENGAGEMENT":
+		return "no_engagement"
+	default:
+		return "unspecified"
 	}
 }
 

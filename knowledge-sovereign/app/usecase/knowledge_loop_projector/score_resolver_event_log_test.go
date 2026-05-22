@@ -443,11 +443,11 @@ func TestEventLogResolver_AggregatesActOutcomeSignal(t *testing.T) {
 	}
 
 	lookup := &fakeEventLogLookup{events: []sovereign_db.KnowledgeEvent{
-		mkOutcome(1, entryKey, "engaged", now.Add(-3*time.Hour)),                     // +1
-		mkOutcome(2, entryKey, "deep_engagement", now.Add(-2*time.Hour)),             // +2
-		mkOutcome(3, entryKey, "no_engagement", now.Add(-1*time.Hour)),               // -2
-		mkOutcome(4, "article:other", "deep_engagement", now.Add(-30*time.Minute)),   // must NOT count
-		mkOutcome(5, entryKey, "stale_save", now.Add(-15*time.Minute)),               // -1
+		mkOutcome(1, entryKey, "engaged", now.Add(-3*time.Hour)),                   // +1
+		mkOutcome(2, entryKey, "deep_engagement", now.Add(-2*time.Hour)),           // +2
+		mkOutcome(3, entryKey, "no_engagement", now.Add(-1*time.Hour)),             // -2
+		mkOutcome(4, "article:other", "deep_engagement", now.Add(-30*time.Minute)), // must NOT count
+		mkOutcome(5, entryKey, "stale_save", now.Add(-15*time.Minute)),             // -1
 	}}
 	r := NewEventLogSurfaceScoreResolver(lookup)
 

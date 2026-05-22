@@ -97,6 +97,24 @@ type SurfaceScoreInputs struct {
 	// continuing a thought, so the entry promotes to Continue regardless of
 	// v1 mapping. Reproject-safe — derived from event payload only.
 	RecentContinueActionCount uint32
+
+	// ActOutcomeSignal is the cumulative downstream outcome score derived
+	// from knowledge_loop.act_outcome.v1 events on the entry inside the v2
+	// score window (ADR-000908 §Δ1). The aggregation table is:
+	//
+	//	engaged          = +1
+	//	deep_engagement  = +2
+	//	accepted_change  = +1
+	//	stale_save       = -1
+	//	no_engagement    = -2
+	//
+	// A strong negative cumulative (≤ -2) demotes Now/Continue placements to
+	// Review so the Loop stops re-promoting content the user has actively
+	// skipped. CHANGED still outranks the demotion because version drift
+	// must always surface. Positive values are used as within-bucket ranking
+	// hints; they do not change bucket selection. Reproject-safe — derived
+	// from event payload only.
+	ActOutcomeSignal int32
 }
 
 // decideBucketV2 picks a SurfaceBucket from the score inputs. The order
@@ -117,8 +135,26 @@ func decideBucketV2(in SurfaceScoreInputs) sovereignv1.SurfaceBucket {
 	// because both come from the same SummarySuperseded chain — keeping
 	// them additive avoids accidental "drift but no contradiction"
 	// double-counting bugs.
+	//
+	// CHANGED also outranks ActOutcomeSignal demotion (ADR-000908 §Δ1) —
+	// even when the user has shown no engagement, fresh version drift
+	// means their mental model is out of date and the system must surface
+	// the change.
 	if in.VersionDriftCount > 0 || in.ContradictionCount > 0 {
 		return sovereignv1.SurfaceBucket_SURFACE_BUCKET_CHANGED
+	}
+
+	// ADR-000908 §Δ1 demotion: a cumulative outcome signal of ≤ -2 in the
+	// v2 score window means the user has actively skipped or stale-saved
+	// this entry more than they have engaged with it. Re-promoting it to
+	// Now/Continue would repeat a mistake the event log already records;
+	// route it into Review for deliberate re-evaluation instead. The
+	// threshold of -2 is the smallest single signal that should fire
+	// demotion (one no_engagement) — milder negatives (a single
+	// stale_save = -1) remain bucket-neutral so a partial signal cannot
+	// flap an entry between Now and Review.
+	if in.ActOutcomeSignal <= -2 {
+		return sovereignv1.SurfaceBucket_SURFACE_BUCKET_REVIEW
 	}
 
 	// Continue: an unfinished Augur thread, an explicit open interaction,
