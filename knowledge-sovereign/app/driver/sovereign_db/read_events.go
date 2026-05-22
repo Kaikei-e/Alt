@@ -186,6 +186,49 @@ func (r *Repository) ListKnowledgeLoopActedEventsForEntry(
 	return r.scanEvents(ctx, query, userID, tenantID, entryKey, untilSeq, lensModeID, limit)
 }
 
+// ListActedEventsWithoutOutcome returns user-emitted
+// `knowledge_loop.acted.v1` events that occurred at or before `cutoff` and
+// for which no matching `knowledge_loop.act_outcome.v1` event has been
+// appended yet (ADR-000908 §Δ1). It is the read side of act_outcome_cron's
+// no_engagement fallback path.
+//
+// The NOT-EXISTS subquery joins on
+// `acted.event_id::text = outcome.payload->>'acted_event_id'` so the cron
+// does not have to walk the entire event log to spot which acted events
+// are already closed. We order by event_seq ASC and cap with LIMIT so
+// per-tick latency stays bounded; the next tick picks up anything we
+// didn't process.
+//
+// F-001: user_id is not bound here because the cron is system-scoped and
+// must scan across all users to fill outcomes for every acted event. The
+// emitted outcome event carries the originating event's user_id, so
+// downstream RLS / projection paths remain user-scoped.
+func (r *Repository) ListActedEventsWithoutOutcome(
+	ctx context.Context,
+	cutoff time.Time,
+	limit int,
+) ([]KnowledgeEvent, error) {
+	if limit <= 0 {
+		return nil, nil
+	}
+	query := `SELECT acted.event_id, acted.event_seq, acted.occurred_at,
+			acted.tenant_id, acted.user_id, acted.actor_type, acted.actor_id,
+			acted.event_type, acted.aggregate_type, acted.aggregate_id,
+			acted.correlation_id, acted.causation_id, acted.dedupe_key,
+			acted.payload
+		FROM knowledge_events AS acted
+		WHERE acted.event_type = 'knowledge_loop.acted.v1'
+		  AND acted.occurred_at <= $1
+		  AND NOT EXISTS (
+		    SELECT 1 FROM knowledge_events AS outcome
+		    WHERE outcome.event_type = 'knowledge_loop.act_outcome.v1'
+		      AND outcome.payload->>'acted_event_id' = acted.event_id::text
+		  )
+		ORDER BY acted.event_seq ASC LIMIT $2`
+
+	return r.scanEvents(ctx, query, cutoff, limit)
+}
+
 // KnowledgeUserEvent represents a user interaction event (seen, opened, etc.).
 type KnowledgeUserEvent struct {
 	UserEventID uuid.UUID

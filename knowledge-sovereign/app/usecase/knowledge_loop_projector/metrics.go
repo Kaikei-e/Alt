@@ -138,6 +138,15 @@ func observeOutcomeMissingFill() {
 	outcomeMissingTotal.Inc()
 }
 
+// ObserveOutcomeMissingFill is the exported entry point for the
+// act_outcome_cron package (ADR-000908 §Δ1). The metric counter lives in
+// the projector package so the /metrics endpoint exposes a single
+// `knowledge_loop_projector_outcome_missing_total` series rather than two
+// process-local registrations.
+func ObserveOutcomeMissingFill() {
+	observeOutcomeMissingFill()
+}
+
 // observeSurfaceBucketAssigned increments the bucket counter once per
 // projected entry. Called by the projector's UPSERT-completion path in
 // Wave 3 when decideBucketV2 starts producing v2 placements.

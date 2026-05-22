@@ -6,6 +6,7 @@ import (
 	"knowledge-sovereign/driver/sovereign_db"
 	"knowledge-sovereign/gen/proto/services/sovereign/v1/sovereignv1connect"
 	"knowledge-sovereign/handler"
+	"knowledge-sovereign/usecase/act_outcome_cron"
 	"knowledge-sovereign/usecase/knowledge_loop_projector"
 	"knowledge-sovereign/usecase/surface_planner_cron"
 	"log/slog"
@@ -150,6 +151,31 @@ func main() {
 			case <-plannerTick.C:
 				if err := plannerCron.RunBatch(ctx); err != nil {
 					slog.Error("surface_planner_cron batch failed", "error", err)
+				}
+			}
+		}
+	}()
+
+	// ADR-000908 §Δ1 act_outcome_cron. Backfills `outcome=no_engagement` for
+	// KnowledgeLoopActed events that aged past the 7-day window without an
+	// explicit outcome from the alt-backend view tracker. Reproject-safe —
+	// the emitted outcome event's occurred_at is bound to
+	// acted.occurred_at + 7d, not wall-clock. The cadence is loose because
+	// the cutoff itself is in days; one tick per hour catches the boundary
+	// promptly enough.
+	outcomeCron := act_outcome_cron.New(repo, slog.Default(), act_outcome_cron.Config{
+		BatchSize: parseIntEnv("KNOWLEDGE_SOVEREIGN_ACT_OUTCOME_BATCH_SIZE", 256),
+	})
+	outcomeTick := time.NewTicker(parseDurationEnv("KNOWLEDGE_SOVEREIGN_ACT_OUTCOME_TICK_INTERVAL", 1*time.Hour))
+	go func() {
+		defer outcomeTick.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-outcomeTick.C:
+				if err := outcomeCron.RunBatch(ctx); err != nil {
+					slog.Error("act_outcome_cron batch failed", "error", err)
 				}
 			}
 		}
