@@ -52,6 +52,17 @@ const (
 	// like Deferred — the OODA stage doesn't move; only dismiss_state does.
 	EventKnowledgeLoopReviewed = "knowledge_loop.reviewed.v1"
 
+	// EventKnowledgeLoopActOutcome is a system-emitted closure signal for a
+	// prior KnowledgeLoopActed event (ADR-000908 §Δ1). alt-backend view
+	// trackers emit `engaged` / `deep_engagement` when dwell or
+	// conversation-turn thresholds clear; knowledge-sovereign's
+	// act_outcome_cron emits `no_engagement` after a 7-day event-time
+	// window expires without an explicit outcome. Consumed by the projector
+	// for metrics and by EventLogSurfaceScoreResolver for the
+	// ActOutcomeSignal aggregation that drives the down-weight clause in
+	// decideBucketV2.
+	EventKnowledgeLoopActOutcome = "knowledge_loop.act_outcome.v1"
+
 	// EventArticleUrlBackfilled is a corrective event that repairs the
 	// `link` column on `knowledge_home_items` for articles whose original
 	// `ArticleCreated` event was written with the legacy wire key (`"link"`)
