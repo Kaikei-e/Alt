@@ -8,11 +8,13 @@
 import type { Client, Transport } from "@connectrpc/connect";
 import { createClient } from "@connectrpc/connect";
 import {
+	ActOutcomeKind,
 	ActTargetType,
 	CognitiveLoadHint,
 	ConfidenceLadder,
 	DecisionIntent,
 	DismissState,
+	type EmitActOutcomeResponse,
 	type GetKnowledgeLoopResponse,
 	type KnowledgeLoopMacroState as ProtoKnowledgeLoopMacroState,
 	KnowledgeLoopService,
@@ -288,6 +290,63 @@ export async function transitionKnowledgeLoop(
 		targetRef: args.targetRef,
 		continueFlag: args.continueFlag === true,
 	});
+}
+
+/** ActOutcomeKind values the FE is allowed to emit. INTERNALIZED routes
+ * through transitionKnowledgeLoop (dismiss_state flip), and NO_ENGAGEMENT
+ * is the cron's exclusive label, so neither appears here. */
+export type ActOutcomeKindName =
+	| "engaged"
+	| "deep_engagement"
+	| "stale_save"
+	| "accepted_change";
+
+/** Append a knowledge_loop.act_outcome.v1 event from the FE. ADR-000912.
+ * `clientOutcomeId` MUST be a UUIDv7 so a retried emit collapses at the
+ * server's knowledge_event_dedupes UNIQUE constraint. */
+export async function emitActOutcome(
+	transport: Transport,
+	args: {
+		entryKey: string;
+		outcome: ActOutcomeKindName;
+		clientOutcomeId: string;
+		occurredAt: Date;
+		dwellSeconds?: number;
+		askTurns?: number;
+		lensModeId?: string;
+	},
+): Promise<EmitActOutcomeResponse> {
+	const client = createKnowledgeLoopClient(transport);
+	return client.emitActOutcome({
+		entryKey: args.entryKey,
+		outcome: mapActOutcomeKindToProto(args.outcome),
+		clientOutcomeId: args.clientOutcomeId,
+		occurredAt: dateToTs(args.occurredAt),
+		dwellSeconds: args.dwellSeconds,
+		askTurns: args.askTurns,
+		lensModeId: args.lensModeId,
+	});
+}
+
+function mapActOutcomeKindToProto(o: ActOutcomeKindName): ActOutcomeKind {
+	switch (o) {
+		case "engaged":
+			return ActOutcomeKind.ENGAGED;
+		case "deep_engagement":
+			return ActOutcomeKind.DEEP_ENGAGEMENT;
+		case "stale_save":
+			return ActOutcomeKind.STALE_SAVE;
+		case "accepted_change":
+			return ActOutcomeKind.ACCEPTED_CHANGE;
+	}
+}
+
+function dateToTs(d: Date): { seconds: bigint; nanos: number } {
+	const ms = d.getTime();
+	return {
+		seconds: BigInt(Math.floor(ms / 1000)),
+		nanos: (ms % 1000) * 1_000_000,
+	};
 }
 
 function mapGetKnowledgeLoopResponse(

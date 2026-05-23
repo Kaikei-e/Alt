@@ -42,6 +42,9 @@ const (
 	// KnowledgeLoopServiceStreamKnowledgeLoopUpdatesProcedure is the fully-qualified name of the
 	// KnowledgeLoopService's StreamKnowledgeLoopUpdates RPC.
 	KnowledgeLoopServiceStreamKnowledgeLoopUpdatesProcedure = "/alt.knowledge.loop.v1.KnowledgeLoopService/StreamKnowledgeLoopUpdates"
+	// KnowledgeLoopServiceEmitActOutcomeProcedure is the fully-qualified name of the
+	// KnowledgeLoopService's EmitActOutcome RPC.
+	KnowledgeLoopServiceEmitActOutcomeProcedure = "/alt.knowledge.loop.v1.KnowledgeLoopService/EmitActOutcome"
 )
 
 // KnowledgeLoopServiceClient is a client for the alt.knowledge.loop.v1.KnowledgeLoopService
@@ -58,6 +61,14 @@ type KnowledgeLoopServiceClient interface {
 	// StreamKnowledgeLoopUpdates subscribes the client to revision updates. The server
 	// terminates with a stream_expired envelope when the JWT exp is reached.
 	StreamKnowledgeLoopUpdates(context.Context, *connect.Request[v1.StreamKnowledgeLoopUpdatesRequest]) (*connect.ServerStreamForClient[v1.StreamKnowledgeLoopUpdatesResponse], error)
+	// EmitActOutcome lets the frontend close the OODA loop in real time
+	// instead of waiting for the 7-day no_engagement fallback cron
+	// (ADR-000908 §Δ1). The server appends a
+	// knowledge_loop.act_outcome.v1 event whose dedupe_key is derived from
+	// (user_id, entry_key, client_outcome_id) so the cron and the frontend
+	// can share the same UUIDv7 namespace and a duplicate emit collapses to
+	// a no-op. ADR-000912.
+	EmitActOutcome(context.Context, *connect.Request[v1.EmitActOutcomeRequest]) (*connect.Response[v1.EmitActOutcomeResponse], error)
 }
 
 // NewKnowledgeLoopServiceClient constructs a client for the
@@ -89,6 +100,12 @@ func NewKnowledgeLoopServiceClient(httpClient connect.HTTPClient, baseURL string
 			connect.WithSchema(knowledgeLoopServiceMethods.ByName("StreamKnowledgeLoopUpdates")),
 			connect.WithClientOptions(opts...),
 		),
+		emitActOutcome: connect.NewClient[v1.EmitActOutcomeRequest, v1.EmitActOutcomeResponse](
+			httpClient,
+			baseURL+KnowledgeLoopServiceEmitActOutcomeProcedure,
+			connect.WithSchema(knowledgeLoopServiceMethods.ByName("EmitActOutcome")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
@@ -97,6 +114,7 @@ type knowledgeLoopServiceClient struct {
 	getKnowledgeLoop           *connect.Client[v1.GetKnowledgeLoopRequest, v1.GetKnowledgeLoopResponse]
 	transitionKnowledgeLoop    *connect.Client[v1.TransitionKnowledgeLoopRequest, v1.TransitionKnowledgeLoopResponse]
 	streamKnowledgeLoopUpdates *connect.Client[v1.StreamKnowledgeLoopUpdatesRequest, v1.StreamKnowledgeLoopUpdatesResponse]
+	emitActOutcome             *connect.Client[v1.EmitActOutcomeRequest, v1.EmitActOutcomeResponse]
 }
 
 // GetKnowledgeLoop calls alt.knowledge.loop.v1.KnowledgeLoopService.GetKnowledgeLoop.
@@ -115,6 +133,11 @@ func (c *knowledgeLoopServiceClient) StreamKnowledgeLoopUpdates(ctx context.Cont
 	return c.streamKnowledgeLoopUpdates.CallServerStream(ctx, req)
 }
 
+// EmitActOutcome calls alt.knowledge.loop.v1.KnowledgeLoopService.EmitActOutcome.
+func (c *knowledgeLoopServiceClient) EmitActOutcome(ctx context.Context, req *connect.Request[v1.EmitActOutcomeRequest]) (*connect.Response[v1.EmitActOutcomeResponse], error) {
+	return c.emitActOutcome.CallUnary(ctx, req)
+}
+
 // KnowledgeLoopServiceHandler is an implementation of the
 // alt.knowledge.loop.v1.KnowledgeLoopService service.
 type KnowledgeLoopServiceHandler interface {
@@ -129,6 +152,14 @@ type KnowledgeLoopServiceHandler interface {
 	// StreamKnowledgeLoopUpdates subscribes the client to revision updates. The server
 	// terminates with a stream_expired envelope when the JWT exp is reached.
 	StreamKnowledgeLoopUpdates(context.Context, *connect.Request[v1.StreamKnowledgeLoopUpdatesRequest], *connect.ServerStream[v1.StreamKnowledgeLoopUpdatesResponse]) error
+	// EmitActOutcome lets the frontend close the OODA loop in real time
+	// instead of waiting for the 7-day no_engagement fallback cron
+	// (ADR-000908 §Δ1). The server appends a
+	// knowledge_loop.act_outcome.v1 event whose dedupe_key is derived from
+	// (user_id, entry_key, client_outcome_id) so the cron and the frontend
+	// can share the same UUIDv7 namespace and a duplicate emit collapses to
+	// a no-op. ADR-000912.
+	EmitActOutcome(context.Context, *connect.Request[v1.EmitActOutcomeRequest]) (*connect.Response[v1.EmitActOutcomeResponse], error)
 }
 
 // NewKnowledgeLoopServiceHandler builds an HTTP handler from the service implementation. It returns
@@ -156,6 +187,12 @@ func NewKnowledgeLoopServiceHandler(svc KnowledgeLoopServiceHandler, opts ...con
 		connect.WithSchema(knowledgeLoopServiceMethods.ByName("StreamKnowledgeLoopUpdates")),
 		connect.WithHandlerOptions(opts...),
 	)
+	knowledgeLoopServiceEmitActOutcomeHandler := connect.NewUnaryHandler(
+		KnowledgeLoopServiceEmitActOutcomeProcedure,
+		svc.EmitActOutcome,
+		connect.WithSchema(knowledgeLoopServiceMethods.ByName("EmitActOutcome")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/alt.knowledge.loop.v1.KnowledgeLoopService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case KnowledgeLoopServiceGetKnowledgeLoopProcedure:
@@ -164,6 +201,8 @@ func NewKnowledgeLoopServiceHandler(svc KnowledgeLoopServiceHandler, opts ...con
 			knowledgeLoopServiceTransitionKnowledgeLoopHandler.ServeHTTP(w, r)
 		case KnowledgeLoopServiceStreamKnowledgeLoopUpdatesProcedure:
 			knowledgeLoopServiceStreamKnowledgeLoopUpdatesHandler.ServeHTTP(w, r)
+		case KnowledgeLoopServiceEmitActOutcomeProcedure:
+			knowledgeLoopServiceEmitActOutcomeHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -183,4 +222,8 @@ func (UnimplementedKnowledgeLoopServiceHandler) TransitionKnowledgeLoop(context.
 
 func (UnimplementedKnowledgeLoopServiceHandler) StreamKnowledgeLoopUpdates(context.Context, *connect.Request[v1.StreamKnowledgeLoopUpdatesRequest], *connect.ServerStream[v1.StreamKnowledgeLoopUpdatesResponse]) error {
 	return connect.NewError(connect.CodeUnimplemented, errors.New("alt.knowledge.loop.v1.KnowledgeLoopService.StreamKnowledgeLoopUpdates is not implemented"))
+}
+
+func (UnimplementedKnowledgeLoopServiceHandler) EmitActOutcome(context.Context, *connect.Request[v1.EmitActOutcomeRequest]) (*connect.Response[v1.EmitActOutcomeResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("alt.knowledge.loop.v1.KnowledgeLoopService.EmitActOutcome is not implemented"))
 }

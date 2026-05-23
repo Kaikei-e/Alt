@@ -61,10 +61,11 @@ func parseStreamDurationEnv(name string, fallback time.Duration) time.Duration {
 
 // Handler implements knowledgeloopv1connect.KnowledgeLoopServiceHandler.
 type Handler struct {
-	getUsecase        *knowledge_loop_usecase.GetKnowledgeLoopUsecase
-	transitionUsecase *knowledge_loop_usecase.TransitionKnowledgeLoopUsecase
-	eventsForUserPort knowledge_event_port.ListKnowledgeEventsForUserPort
-	logger            *slog.Logger
+	getUsecase           *knowledge_loop_usecase.GetKnowledgeLoopUsecase
+	transitionUsecase    *knowledge_loop_usecase.TransitionKnowledgeLoopUsecase
+	emitActOutcomeUsecase *knowledge_loop_usecase.EmitActOutcomeUsecase
+	eventsForUserPort    knowledge_event_port.ListKnowledgeEventsForUserPort
+	logger               *slog.Logger
 }
 
 // Compile-time interface verification.
@@ -79,6 +80,7 @@ var _ knowledgeloopv1connect.KnowledgeLoopServiceHandler = (*Handler)(nil)
 func NewHandler(
 	getUsecase *knowledge_loop_usecase.GetKnowledgeLoopUsecase,
 	transitionUsecase *knowledge_loop_usecase.TransitionKnowledgeLoopUsecase,
+	emitActOutcomeUsecase *knowledge_loop_usecase.EmitActOutcomeUsecase,
 	eventsForUserPort knowledge_event_port.ListKnowledgeEventsForUserPort,
 	logger *slog.Logger,
 ) *Handler {
@@ -86,11 +88,77 @@ func NewHandler(
 		logger = slog.Default()
 	}
 	return &Handler{
-		getUsecase:        getUsecase,
-		transitionUsecase: transitionUsecase,
-		eventsForUserPort: eventsForUserPort,
-		logger:            logger,
+		getUsecase:            getUsecase,
+		transitionUsecase:     transitionUsecase,
+		emitActOutcomeUsecase: emitActOutcomeUsecase,
+		eventsForUserPort:     eventsForUserPort,
+		logger:                logger,
 	}
+}
+
+// EmitActOutcome closes the OODA loop in real time by appending a
+// knowledge_loop.act_outcome.v1 event from the frontend (dwell-derived
+// engaged / deep_engagement / accepted_change). ADR-000912.
+func (h *Handler) EmitActOutcome(
+	ctx context.Context,
+	req *connect.Request[loopv1.EmitActOutcomeRequest],
+) (*connect.Response[loopv1.EmitActOutcomeResponse], error) {
+	user, err := domain.GetUserFromContext(ctx)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeUnauthenticated, errors.New("unauthenticated"))
+	}
+	if h.emitActOutcomeUsecase == nil {
+		return nil, connect.NewError(connect.CodeUnimplemented, errors.New("emit act outcome wiring missing"))
+	}
+
+	occurredAt := time.Time{}
+	if req.Msg.OccurredAt != nil {
+		occurredAt = req.Msg.OccurredAt.AsTime()
+	}
+	lensModeID := ""
+	if req.Msg.LensModeId != nil {
+		lensModeID = *req.Msg.LensModeId
+	}
+	in := knowledge_loop_usecase.EmitActOutcomeInput{
+		TenantID:        user.TenantID,
+		UserID:          user.UserID,
+		LensModeID:      lensModeID,
+		EntryKey:        req.Msg.EntryKey,
+		Outcome:         req.Msg.Outcome.String(),
+		ClientOutcomeID: req.Msg.ClientOutcomeId,
+		OccurredAt:      occurredAt,
+		DwellSeconds:    req.Msg.DwellSeconds,
+		AskTurns:        req.Msg.AskTurns,
+	}
+
+	result, err := h.emitActOutcomeUsecase.Execute(ctx, in)
+	if err != nil {
+		switch {
+		case errors.Is(err, knowledge_loop_usecase.ErrInvalidArgument):
+			return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("invalid argument"))
+		case errors.Is(err, context.DeadlineExceeded):
+			return nil, connect.NewError(connect.CodeDeadlineExceeded, errors.New("deadline exceeded"))
+		case errors.Is(err, context.Canceled):
+			return nil, connect.NewError(connect.CodeCanceled, errors.New("canceled"))
+		default:
+			h.logger.ErrorContext(ctx, "emit_act_outcome failed",
+				"user_id", user.UserID, "entry_key", req.Msg.EntryKey, "err", err)
+			return nil, connect.NewError(connect.CodeInternal, errors.New("internal"))
+		}
+	}
+
+	h.logger.InfoContext(ctx, "alt.knowledge_loop.emit_act_outcome",
+		"user_id", user.UserID,
+		"entry_key", req.Msg.EntryKey,
+		"outcome", req.Msg.Outcome.String(),
+		"accepted", result.Accepted,
+		"deduplicated", result.Deduplicated,
+	)
+	return connect.NewResponse(&loopv1.EmitActOutcomeResponse{
+		Accepted:     result.Accepted,
+		Deduplicated: result.Deduplicated,
+		EventSeq:     result.EventSeq,
+	}), nil
 }
 
 // GetKnowledgeLoop returns foreground entries, surfaces, and session state.

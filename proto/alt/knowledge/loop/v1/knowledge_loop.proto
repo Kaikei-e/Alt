@@ -24,6 +24,14 @@ service KnowledgeLoopService {
   // StreamKnowledgeLoopUpdates subscribes the client to revision updates. The server
   // terminates with a stream_expired envelope when the JWT exp is reached.
   rpc StreamKnowledgeLoopUpdates(StreamKnowledgeLoopUpdatesRequest) returns (stream StreamKnowledgeLoopUpdatesResponse);
+  // EmitActOutcome lets the frontend close the OODA loop in real time
+  // instead of waiting for the 7-day no_engagement fallback cron
+  // (ADR-000908 §Δ1). The server appends a
+  // knowledge_loop.act_outcome.v1 event whose dedupe_key is derived from
+  // (user_id, entry_key, client_outcome_id) so the cron and the frontend
+  // can share the same UUIDv7 namespace and a duplicate emit collapses to
+  // a no-op. ADR-000912.
+  rpc EmitActOutcome(EmitActOutcomeRequest) returns (EmitActOutcomeResponse);
 }
 
 // ============================================================================
@@ -708,4 +716,48 @@ message StreamKnowledgeLoopUpdatesResponse {
 
   reserved 7 to 9;
   reserved "kind";
+}
+
+// ============================================================================
+// EmitActOutcome (ADR-000912)
+// ============================================================================
+
+// EmitActOutcomeRequest carries the FE-derived closure signal for a prior
+// KnowledgeLoopActed event. The frontend collapses dwell timers, ask-turn
+// counts, and "I got this" CTAs into one of the canonical ActOutcomeKind
+// values; the server appends the matching knowledge_loop.act_outcome.v1
+// event with payload that mirrors the cron's NO_ENGAGEMENT fallback (so a
+// projector cannot tell the two emitters apart from the event log).
+//
+// Idempotency: client_outcome_id is a client-generated UUIDv7. The
+// server-side dedupe table (knowledge_loop_act_outcome_dedupes) keys on
+// (user_id, entry_key, client_outcome_id) so a retried emit is a no-op.
+// The cron derives its own UUIDv7 deterministically from
+// (user_id, entry_key, 7-day window_id) so FE emits in the same window
+// collapse with the cron's fallback emit and never produce a duplicate
+// signal.
+message EmitActOutcomeRequest {
+  string entry_key = 1;
+  ActOutcomeKind outcome = 2;
+  string client_outcome_id = 3; // UUIDv7
+  google.protobuf.Timestamp occurred_at = 4; // event-time, not wall-clock
+  optional uint32 dwell_seconds = 5;
+  optional uint32 ask_turns = 6;
+  optional string lens_mode_id = 7;
+
+  reserved 8 to 15;
+  reserved "user_id", "tenant_id"; // sourced from JWT claims, never request body
+}
+
+message EmitActOutcomeResponse {
+  // Whether the server accepted the emit or treated it as a duplicate.
+  // `accepted=true` means a new event was appended; `accepted=false` with
+  // `deduplicated=true` means the (user_id, entry_key, client_outcome_id)
+  // tuple has already been seen and the response is idempotent-OK.
+  bool accepted = 1;
+  bool deduplicated = 2;
+
+  // event_seq of the appended (or previously-appended) event so the FE can
+  // pair the outcome with its stream cursor for reconciliation.
+  int64 event_seq = 3;
 }

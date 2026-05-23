@@ -211,6 +211,16 @@ func (r *Repository) ListActedEventsWithoutOutcome(
 	if limit <= 0 {
 		return nil, nil
 	}
+	// ADR-000912: the NOT-EXISTS subquery now also matches outcome events
+	// keyed by entry_key + same user, not only acted_event_id. FE-emitted
+	// outcomes (EmitActOutcome) cannot know the originating acted_event_id
+	// from the client, so they reference the entry by entry_key only. The
+	// cron still uses acted_event_id as the primary key for the cron-emitted
+	// no_engagement linkage, but checks entry_key as a fallback so a single
+	// FE-supplied positive signal suppresses the cron's negative fallback
+	// for the same entry / user within the window. This keeps the projector's
+	// ActOutcomeSignal aggregation honest (no engaged + no_engagement double
+	// emit for the same closure).
 	query := `SELECT acted.event_id, acted.event_seq, acted.occurred_at,
 			acted.tenant_id, acted.user_id, acted.actor_type, acted.actor_id,
 			acted.event_type, acted.aggregate_type, acted.aggregate_id,
@@ -222,7 +232,14 @@ func (r *Repository) ListActedEventsWithoutOutcome(
 		  AND NOT EXISTS (
 		    SELECT 1 FROM knowledge_events AS outcome
 		    WHERE outcome.event_type = 'knowledge_loop.act_outcome.v1'
-		      AND outcome.payload->>'acted_event_id' = acted.event_id::text
+		      AND (
+		        outcome.payload->>'acted_event_id' = acted.event_id::text
+		        OR (
+		          outcome.user_id = acted.user_id
+		          AND outcome.aggregate_id = acted.aggregate_id
+		          AND outcome.occurred_at >= acted.occurred_at
+		        )
+		      )
 		  )
 		ORDER BY acted.event_seq ASC LIMIT $2`
 

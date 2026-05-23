@@ -1,5 +1,9 @@
 <script lang="ts">
 import { onDestroy, onMount } from "svelte";
+import {
+	createActOutcomeEmitter,
+	type ActOutcomeEmitter,
+} from "$lib/hooks/useActOutcomeEmitter.svelte";
 import { flip } from "svelte/animate";
 import { cubicOut } from "svelte/easing";
 import { goto, invalidate } from "$app/navigation";
@@ -170,6 +174,19 @@ onMount(() => {
 });
 onDestroy(() => visibilityRecovery?.dispose());
 
+// ADR-000912: dwell-based act outcome emitter. Closes the OODA loop in real
+// time so Surface Planner v2 picks up engagement signals without waiting
+// for the 7-day no_engagement fallback. The emitter is page-scoped; entries
+// start on first onOpen and stop when the page tears down.
+let actOutcomeEmitter: ActOutcomeEmitter | undefined;
+onMount(() => {
+	actOutcomeEmitter = createActOutcomeEmitter();
+});
+onDestroy(() => {
+	actOutcomeEmitter?.teardown();
+	actOutcomeEmitter = undefined;
+});
+
 // Skip the first non-silent frame the stream emits after `onMount`.
 // The server inlines the current snapshot into `data.loop` during SSR,
 // then replays the same state as the first frame on every fresh
@@ -237,6 +254,9 @@ function isSafeInternalPath(href: string): boolean {
 }
 
 function onEntryOpen(entry: KnowledgeLoopEntryData, href?: string) {
+	// ADR-000912: opening an entry arms the dwell timer that will fire
+	// engaged / deep_engagement once thresholds are crossed.
+	actOutcomeEmitter?.start(entry.entryKey);
 	href = href ?? resolveSourceUrl(entry) ?? "";
 	if (!href) return;
 	if (isSafeInternalPath(href)) {
@@ -264,6 +284,11 @@ async function onAsk(
 	entry: KnowledgeLoopEntryData,
 ): Promise<{ conversationId?: string } | void> {
 	if (askInFlight.has(entry.entryKey)) return;
+	// ADR-000912: every ask turn counts toward deep_engagement. The dwell
+	// timer may not be armed yet (user asked without opening the article),
+	// so start() is idempotent here.
+	actOutcomeEmitter?.start(entry.entryKey);
+	actOutcomeEmitter?.recordAskTurn(entry.entryKey);
 	askInFlight.add(entry.entryKey);
 	try {
 		const res = await fetch("/loop/ask", {

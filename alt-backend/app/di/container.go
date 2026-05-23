@@ -217,6 +217,7 @@ type ApplicationComponents struct {
 	// Knowledge Loop (new projection; see ADR-000831)
 	GetKnowledgeLoopUsecase        *knowledge_loop_usecase.GetKnowledgeLoopUsecase
 	TransitionKnowledgeLoopUsecase *knowledge_loop_usecase.TransitionKnowledgeLoopUsecase
+	EmitActOutcomeUsecase          *knowledge_loop_usecase.EmitActOutcomeUsecase
 
 	// Knowledge Sovereign (remote Connect-RPC service — all knowledge data access)
 	SovereignClient *sovereign_client.Client
@@ -399,6 +400,7 @@ func NewApplicationComponents(pool *pgxpool.Pool) *ApplicationComponents {
 		// Knowledge Loop (new projection; see ADR-000831)
 		GetKnowledgeLoopUsecase:        knowledge.GetKnowledgeLoopUsecase,
 		TransitionKnowledgeLoopUsecase: knowledge.TransitionKnowledgeLoopUsecase,
+		EmitActOutcomeUsecase:          knowledge.EmitActOutcomeUsecase,
 
 		// Knowledge Sovereign (all knowledge data access)
 		SovereignClient: knowledge.SovereignClient,

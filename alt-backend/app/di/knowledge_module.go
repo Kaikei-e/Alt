@@ -70,6 +70,7 @@ type KnowledgeModule struct {
 	// implements all Knowledge Loop ports; alt-db has no Knowledge Loop tables.
 	GetKnowledgeLoopUsecase        *knowledge_loop_usecase.GetKnowledgeLoopUsecase
 	TransitionKnowledgeLoopUsecase *knowledge_loop_usecase.TransitionKnowledgeLoopUsecase
+	EmitActOutcomeUsecase          *knowledge_loop_usecase.EmitActOutcomeUsecase
 
 	// Gateways
 	FeatureFlagGateway               *feature_flag_gateway.Gateway
@@ -201,6 +202,14 @@ func newKnowledgeModule(infra *InfraModule, article *ArticleModule) *KnowledgeMo
 		knowledgeLoopRateLimiter,
 		nil, // use time.Now by default
 	)
+	// ADR-000912: FE-initiated closure of the OODA loop. Shares the sovereign
+	// client's AppendKnowledgeEvent port — same dedupe semantics as the
+	// transition path, distinct dedupe_key namespace from the no_engagement
+	// cron.
+	emitActOutcomeUC := knowledge_loop_usecase.NewEmitActOutcomeUsecase(
+		sovereignCli,
+		nil, // use time.Now by default
+	)
 
 	return &KnowledgeModule{
 		GetKnowledgeHomeUsecase:          getKnowledgeHomeUC,
@@ -228,6 +237,7 @@ func newKnowledgeModule(infra *InfraModule, article *ArticleModule) *KnowledgeMo
 
 		GetKnowledgeLoopUsecase:        getKnowledgeLoopUC,
 		TransitionKnowledgeLoopUsecase: transitionKnowledgeLoopUC,
+		EmitActOutcomeUsecase:          emitActOutcomeUC,
 
 		FeatureFlagGateway:               featureFlagGw,
 		KnowledgeBackfillArticlesGateway: knowledgeBackfillGw,

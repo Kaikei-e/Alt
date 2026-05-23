@@ -170,6 +170,7 @@ func SetupConnectHandlers(mux *http.ServeMux, container *di.ApplicationComponent
 	knowledgeLoopHandler := knowledge_loop.NewHandler(
 		container.GetKnowledgeLoopUsecase,
 		container.TransitionKnowledgeLoopUsecase,
+		container.EmitActOutcomeUsecase,
 		container.SovereignClient,
 		logger,
 	)

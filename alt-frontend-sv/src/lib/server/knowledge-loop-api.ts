@@ -9,6 +9,7 @@
 
 import { createServerTransportWithToken } from "$lib/connect/transport-server";
 import {
+	emitActOutcome as emitActOutcomeClient,
 	getKnowledgeLoop as getKnowledgeLoopClient,
 	transitionKnowledgeLoop as transitionKnowledgeLoopClient,
 	type KnowledgeLoopResult,
@@ -126,4 +127,25 @@ export async function getArticleSourceURLForUser(
 ): Promise<string> {
 	const transport = createServerTransportWithToken(backendToken);
 	return getArticleSourceURLClient(transport, articleId);
+}
+
+/**
+ * Append a knowledge_loop.act_outcome.v1 event from the frontend's
+ * dwell-derived signal pipeline. ADR-000912. The clientOutcomeId MUST be a
+ * UUIDv7 so retries collide at the sovereign dedupe layer.
+ */
+export async function emitActOutcomeForUser(
+	backendToken: string,
+	args: {
+		entryKey: string;
+		outcome: "engaged" | "deep_engagement" | "stale_save" | "accepted_change";
+		clientOutcomeId: string;
+		occurredAt: Date;
+		dwellSeconds?: number;
+		askTurns?: number;
+		lensModeId?: string;
+	},
+) {
+	const transport = createServerTransportWithToken(backendToken);
+	return emitActOutcomeClient(transport, args);
 }

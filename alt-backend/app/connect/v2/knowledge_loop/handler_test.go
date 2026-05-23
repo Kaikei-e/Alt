@@ -219,7 +219,7 @@ func newTransitionHandlerWithDedupeErr(t *testing.T, dedupeErr error) *Handler {
 	// never runs. Tests that verify append behavior live in the usecase package.
 	// eventsForUserPort is nil: these tests exercise the transition RPC, not the stream RPC.
 	uc := knowledge_loop_usecase.NewTransitionKnowledgeLoopUsecase(&fakeDedupePort{err: dedupeErr}, nil, nil, time.Now)
-	return NewHandler(nil, uc, nil, slog.Default())
+	return NewHandler(nil, uc, nil, nil, slog.Default())
 }
 
 func authedContextForHandlerTests(t *testing.T) context.Context {
@@ -312,7 +312,7 @@ func TestTransitionKnowledgeLoop_LogsOnSuccess(t *testing.T) {
 	buf := &bytes.Buffer{}
 	logger := slog.New(slog.NewJSONHandler(buf, &slog.HandlerOptions{Level: slog.LevelInfo}))
 	uc := knowledge_loop_usecase.NewTransitionKnowledgeLoopUsecase(&fakeDedupePort{}, nil, nil, time.Now)
-	h := NewHandler(nil, uc, nil, logger)
+	h := NewHandler(nil, uc, nil, nil, logger)
 
 	req := validTransitionRequest(t)
 	resp, err := h.TransitionKnowledgeLoop(authedContextForHandlerTests(t), req)
