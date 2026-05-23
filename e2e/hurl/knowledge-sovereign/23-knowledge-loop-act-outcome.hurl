@@ -119,7 +119,17 @@ jsonpath "$.entries[?(@.entryKey=='article:art-act-outcome')]" count == 0
 # the suite may also touch this counter; we only assert the line is
 # present (proves the counter is wired) and that the projector reached
 # the observeActOutcomeEmitted("engaged") code path.
+#
+# Retry budget mirrors step 6 and 22-surface-planner-cron's projector
+# wait: the projector ticks every 5 s (main.go), and prior steps in this
+# scenario don't actually block on a tick — step 4's count==0 assertion
+# is vacuously true before the projector observes the event. Without
+# retry here, /metrics is scraped microseconds after the append and the
+# CounterVec child for {outcome="engaged"} has not been materialised yet.
 GET {{metrics_url}}/metrics
+[Options]
+retry: 20
+retry-interval: 1000
 HTTP 200
 [Asserts]
 # Counter line must exist and carry the engaged label.
