@@ -33,6 +33,7 @@ type fakeRepo struct {
 	surfacePatches         []surfacePlanPatchCall
 	actTargetURLPatches    []actTargetURLPatchCall
 	continueContextPatches []continueContextPatchCall
+	macroStates            []sovereign_db.KnowledgeLoopMacroStateRow
 	checkpoints            []int64
 }
 
@@ -277,6 +278,56 @@ func (f *fakeRepo) ListKnowledgeLoopActedEventsForEntry(ctx context.Context, use
 		}
 	}
 	return out, nil
+}
+
+func (f *fakeRepo) ListKnowledgeEventsForUserInWindow(_ context.Context, userID uuid.UUID, eventTypes []string, since, until time.Time, limit int) ([]sovereign_db.KnowledgeEvent, error) {
+	if len(eventTypes) == 0 || limit <= 0 {
+		return nil, nil
+	}
+	typeSet := make(map[string]struct{}, len(eventTypes))
+	for _, t := range eventTypes {
+		typeSet[t] = struct{}{}
+	}
+	out := make([]sovereign_db.KnowledgeEvent, 0, len(f.events))
+	for _, ev := range f.events {
+		if ev.UserID == nil || *ev.UserID != userID {
+			continue
+		}
+		if _, ok := typeSet[ev.EventType]; !ok {
+			continue
+		}
+		if ev.OccurredAt.Before(since) || !ev.OccurredAt.Before(until) {
+			continue
+		}
+		out = append(out, ev)
+		if len(out) >= limit {
+			break
+		}
+	}
+	return out, nil
+}
+
+func (f *fakeRepo) UpsertKnowledgeLoopMacroState(_ context.Context, row sovereign_db.KnowledgeLoopMacroStateRow) (*sovereign_db.KnowledgeLoopUpsertResult, error) {
+	// Mirror the merge-safe seq_hiwater guard the driver enforces: if a
+	// later row with a smaller seq lands first under shuffled replay,
+	// the earlier higher-seq state wins.
+	for i, existing := range f.macroStates {
+		if existing.UserID == row.UserID && existing.TenantID == row.TenantID && existing.LensModeID == row.LensModeID {
+			if row.SeqHiwater < existing.SeqHiwater {
+				return &sovereign_db.KnowledgeLoopUpsertResult{SkippedBySeqHiwater: true}, nil
+			}
+			f.macroStates[i] = row
+			return &sovereign_db.KnowledgeLoopUpsertResult{
+				Applied:              true,
+				ProjectionSeqHiwater: row.SeqHiwater,
+			}, nil
+		}
+	}
+	f.macroStates = append(f.macroStates, row)
+	return &sovereign_db.KnowledgeLoopUpsertResult{
+		Applied:              true,
+		ProjectionSeqHiwater: row.SeqHiwater,
+	}, nil
 }
 
 func (f *fakeRepo) PatchKnowledgeLoopActTargetSourceURL(ctx context.Context, userID, tenantID, lensModeID, entryKey, articleID, sourceURL string, eventSeq int64) (*sovereign_db.KnowledgeLoopUpsertResult, error) {

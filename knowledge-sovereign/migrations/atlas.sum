@@ -1,4 +1,4 @@
-h1:2bebiE88bUG3PNiFJc6WzFI0bs1Ar4EOAUQqOWU/yOw=
+h1:GdnRuKPb7X7OTUI+8UN+JnFL9kyHuG7EnjOhmZdydvY=
 00001_initial_schema.sql h1:CSFJx5Q5Jv44C4sqoKpzvdh6t8Unwog8bZw9/VBd3NQ=
 00002_add_link_column.sql h1:A2QxniA5wEK9bo0UnqTNKX5TgvkR/zugtdCKs8O07DE=
 00003_fix_user_events_dedupe_constraint.sql h1:5EpJwNHbInepPLqTMNG3YL/FPTqvpkpqazjt6rK0PkQ=
@@ -18,3 +18,4 @@ h1:2bebiE88bUG3PNiFJc6WzFI0bs1Ar4EOAUQqOWU/yOw=
 00017_rename_knowledge_home_items_link_to_url.sql h1:02K05r3dToId9kx+MHWPVrM5BNygwnicpNbDst4wgOc=
 00018_add_knowledge_loop_visibility_lifecycle.sql h1:bna6/mm70aFwm6entgWiRtVhgQLOURJLrLVjNE48K28=
 00019_add_internalized_dismiss_state.sql h1:44oXmZILZ5m9bFOnkyg0KajuXBStUMUezok4+Bmh3Nw=
+00020_create_knowledge_loop_macro_state.sql h1:LZiSiYc5B0LItka88aSYZrLB7zgL2ISm+QJjzrsWlj4=

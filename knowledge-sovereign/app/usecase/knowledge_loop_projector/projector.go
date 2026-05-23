@@ -84,6 +84,20 @@ type Repository interface {
 	// bounded recent_action_labels purely from the event log, never from the
 	// projection row.
 	ListKnowledgeLoopActedEventsForEntry(ctx context.Context, userID, tenantID uuid.UUID, lensModeID, entryKey string, untilSeq int64, limit int) ([]sovereign_db.KnowledgeEvent, error)
+
+	// ListKnowledgeEventsForUserInWindow returns all events of the given types
+	// scoped to a user whose occurred_at falls in [since, until). Used by the
+	// macro_state_builder branch to reduce the 7d window of acted / reviewed /
+	// act_outcome events into the knowledge_loop_macro_state projection. The
+	// window edges are caller-supplied (event-time bound) so reproject is
+	// deterministic regardless of wall-clock.
+	ListKnowledgeEventsForUserInWindow(ctx context.Context, userID uuid.UUID, eventTypes []string, since, until time.Time, limit int) ([]sovereign_db.KnowledgeEvent, error)
+
+	// UpsertKnowledgeLoopMacroState writes the 7d macro projection row for
+	// (user, tenant, lens). Merge-safe: the driver enforces a
+	// `seq_hiwater <= EXCLUDED.seq_hiwater` guard so out-of-order replays
+	// are no-ops. ADR-000909 §Δ2 supplement (2026-05-24).
+	UpsertKnowledgeLoopMacroState(ctx context.Context, row sovereign_db.KnowledgeLoopMacroStateRow) (*sovereign_db.KnowledgeLoopUpsertResult, error)
 }
 
 // Config tunes the projector loop. Zero values fall back to defaults.
@@ -358,6 +372,19 @@ func (p *Projector) projectEvent(ctx context.Context, ev *sovereign_db.Knowledge
 		// coverage. The outcome label is normalised to the bounded enum
 		// vocabulary so cardinality stays tractable.
 		observeActOutcomeEmitted(normaliseActOutcomeLabel(extractStringField(ev.Payload, "outcome")))
+
+		// ADR-000909 §Δ2 supplement: act_outcome=internalized changes the
+		// graduation count and removes the entry from active_continue. Other
+		// outcomes do not move the macro counts, but we recompute on every
+		// outcome event so the byline reflects the latest snapshot — the
+		// builder is pure and the upsert is merge-safe, so the additional
+		// write amplification is bounded by the seq-hiwater guard.
+		if err := p.recomputeMacroState(ctx, ev, lensModeID); err != nil {
+			p.logger.WarnContext(ctx, "knowledge_loop_projector: recompute macro state after act_outcome failed",
+				slog.Int64("event_seq", ev.EventSeq),
+				slog.String("err", err.Error()),
+			)
+		}
 		return nil, nil
 
 	default:
@@ -604,6 +631,21 @@ func (p *Projector) projectTransition(ctx context.Context, ev *sovereign_db.Know
 			); patchErr != nil {
 				return sessionRes, fmt.Errorf("patch continue_context on Acted: %w", patchErr)
 			}
+		}
+	}
+
+	// ADR-000909 §Δ2 supplement: recompute the macro projection when the
+	// transition is one that changes the user's 7d footprint. Acted/Reviewed
+	// land here directly; Deferred + Returned do not affect the macro counts
+	// in Phase A, so we skip them to keep the per-event write amplification
+	// bounded.
+	if ev.EventType == EventKnowledgeLoopActed || ev.EventType == EventKnowledgeLoopReviewed {
+		if err := p.recomputeMacroState(ctx, ev, lensModeID); err != nil {
+			p.logger.WarnContext(ctx, "knowledge_loop_projector: recompute macro state failed",
+				slog.Int64("event_seq", ev.EventSeq),
+				slog.String("event_type", ev.EventType),
+				slog.String("err", err.Error()),
+			)
 		}
 	}
 

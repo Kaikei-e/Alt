@@ -354,6 +354,68 @@ message KnowledgeLoopSessionState {
 
   reserved 13 to 20;
   reserved "updated_at", "projected_at";
+
+  // Macro (day-to-week) cognitive footprint. Optional — older projectors omit
+  // this field and the UI hides the macro byline. ADR-000909 §Δ2 supplement
+  // (2026-05-24): the field landed alongside macro_state_builder so Lens
+  // switches surface the multi-scale loop overview that was previously
+  // hardcoded to zeros in the frontend.
+  //
+  // Reproject-safety: every count derives from event payload only —
+  // active_continue_threads aggregates knowledge_loop.acted.v1 with
+  // continue_flag=true; pending_review_count aggregates
+  // knowledge_loop.reviewed.v1 with trigger=TRANSITION_TRIGGER_RECHECK and
+  // no superseding mark_reviewed/archive in window; recent_internalized_count
+  // aggregates knowledge_loop.act_outcome.v1 with outcome=internalized.
+  // window_end_at echoes the triggering event's occurred_at, never wall-clock.
+  optional KnowledgeLoopMacroState macro_state = 21;
+}
+
+// KnowledgeLoopMacroState is the disposable 7d projection of the user's macro
+// layer (multi-scale loop, ADR-000909 §Δ2). Field semantics live alongside
+// the projector contract: knowledge-sovereign/usecase/knowledge_loop_session_state.
+message KnowledgeLoopMacroState {
+  // Distinct entries with an in-window knowledge_loop.acted.v1 carrying
+  // continue_flag=true whose latest signal has not been internalized or
+  // explicitly closed.
+  uint32 active_continue_threads = 1;
+
+  // Distinct entries with an in-window TRANSITION_TRIGGER_RECHECK reviewed
+  // event with no later TRANSITION_TRIGGER_MARK_REVIEWED / ARCHIVE.
+  uint32 pending_review_count = 2;
+
+  // Distinct entries with an in-window knowledge_loop.act_outcome.v1 whose
+  // outcome string equals "internalized" (the "卒業" graduation signal).
+  uint32 recent_internalized_count = 3;
+
+  // Qualitative load hint derived from the lens-versioned weights table.
+  // UNSPECIFIED means the projector has nothing to report — the byline is
+  // hidden entirely.
+  CognitiveLoadHint cognitive_load_hint = 4;
+
+  // window_end_at echoes the triggering event's occurred_at (event-time
+  // purity). window_start_at = window_end_at - 7d.
+  google.protobuf.Timestamp window_end_at = 5;
+  google.protobuf.Timestamp window_start_at = 6;
+
+  // seq_hiwater is the max(event_seq) of in-window events the projector
+  // consumed when it computed this state. Used as the merge-safe upsert
+  // guard on the knowledge_loop_macro_state projection table.
+  int64 seq_hiwater = 7;
+
+  // lens_weights_version pins which compile-time weights table produced
+  // cognitive_load_hint. A bump signals operators to schedule a full
+  // reproject (knowledge-loop-reproject runbook).
+  int32 lens_weights_version = 8;
+}
+
+// CognitiveLoadHint is the qualitative summary the UI uses to bias macro-
+// layer affordances. Order is monotonic — higher value means heavier load.
+enum CognitiveLoadHint {
+  COGNITIVE_LOAD_HINT_UNSPECIFIED = 0;
+  COGNITIVE_LOAD_HINT_LIGHT = 1;
+  COGNITIVE_LOAD_HINT_MEDIUM = 2;
+  COGNITIVE_LOAD_HINT_HEAVY = 3;
 }
 
 // ============================================================================

@@ -864,7 +864,36 @@ message KnowledgeLoopSessionState {
   int64 projection_revision = 14;
   int64 projection_seq_hiwater = 15;
 
+  // Macro layer aggregation (ADR-000909 §Δ2 supplement). Internal mirror of
+  // alt.knowledge.loop.v1.KnowledgeLoopMacroState — the handler copies fields
+  // 1-to-1 when serialising the public response. Reproject-safe: every count
+  // derives from event payload only; window_end_at echoes the triggering
+  // event's occurred_at, never wall-clock.
+  optional KnowledgeLoopMacroState macro_state = 16;
+
   reserved "updated_at", "projected_at";
+}
+
+message KnowledgeLoopMacroState {
+  uint32 active_continue_threads = 1;
+  uint32 pending_review_count = 2;
+  uint32 recent_internalized_count = 3;
+  KnowledgeLoopCognitiveLoadHint cognitive_load_hint = 4;
+  google.protobuf.Timestamp window_end_at = 5;
+  google.protobuf.Timestamp window_start_at = 6;
+  int64 seq_hiwater = 7;
+  int32 lens_weights_version = 8;
+}
+
+// KnowledgeLoopCognitiveLoadHint mirrors alt.knowledge.loop.v1.CognitiveLoadHint
+// in the sovereign-internal namespace. The prefix avoids a collision with any
+// other CognitiveLoadHint message that might land in services.sovereign.v1
+// later.
+enum KnowledgeLoopCognitiveLoadHint {
+  KNOWLEDGE_LOOP_COGNITIVE_LOAD_HINT_UNSPECIFIED = 0;
+  KNOWLEDGE_LOOP_COGNITIVE_LOAD_HINT_LIGHT = 1;
+  KNOWLEDGE_LOOP_COGNITIVE_LOAD_HINT_MEDIUM = 2;
+  KNOWLEDGE_LOOP_COGNITIVE_LOAD_HINT_HEAVY = 3;
 }
 
 message KnowledgeLoopSurface {

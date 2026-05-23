@@ -217,8 +217,30 @@ type KnowledgeLoopSessionState struct {
 
 	ProjectionRevision   int64 `json:"projection_revision" db:"projection_revision"`
 	ProjectionSeqHiwater int64 `json:"projection_seq_hiwater" db:"projection_seq_hiwater"`
+
+	// MacroState is the day-to-week aggregation surfaced by the /loop macro
+	// byline (ADR-000909 §Δ2 supplement). Nil until knowledge-sovereign's
+	// macro_state_builder writes a projection row — the public proto field
+	// is `optional` and the UI hides the byline when absent.
+	MacroState *KnowledgeLoopMacroState `json:"macro_state,omitempty" db:"-"`
 	// Note: projected_at is not mirrored into alt-backend domain.
 	// It is owned by knowledge-sovereign (sovereign_db) and never crosses the RPC boundary.
+}
+
+// KnowledgeLoopMacroState is the disposable 7d projection of the user's
+// macro layer. Counts derive from event payload only (Acted /
+// Reviewed / ActOutcome events). See:
+//   - knowledge-sovereign/usecase/knowledge_loop_session_state.BuildMacroState
+//   - migrations/00020_create_knowledge_loop_macro_state.sql
+type KnowledgeLoopMacroState struct {
+	ActiveContinueThreads   uint32    `json:"active_continue_threads"`
+	PendingReviewCount      uint32    `json:"pending_review_count"`
+	RecentInternalizedCount uint32    `json:"recent_internalized_count"`
+	CognitiveLoadHint       string    `json:"cognitive_load_hint"`
+	WindowStartAt           time.Time `json:"window_start_at"`
+	WindowEndAt             time.Time `json:"window_end_at"`
+	SeqHiwater              int64     `json:"seq_hiwater"`
+	LensWeightsVersion      int32     `json:"lens_weights_version"`
 }
 
 // KnowledgeLoopSurface describes a per-bucket surface summary.

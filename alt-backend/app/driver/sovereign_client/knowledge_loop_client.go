@@ -403,11 +403,49 @@ func protoSessionToDomain(pb *sovereignv1.KnowledgeLoopSessionState) (*domain.Kn
 		LastDeferredEntryKey: pb.LastDeferredEntryKey,
 		ProjectionRevision:   pb.ProjectionRevision,
 		ProjectionSeqHiwater: pb.ProjectionSeqHiwater,
+		MacroState:           macroStateFromProto(pb.MacroState),
 	}
 	if pb.CurrentStageEnteredAt != nil {
 		s.CurrentStageEnteredAt = pb.CurrentStageEnteredAt.AsTime()
 	}
 	return s, nil
+}
+
+// macroStateFromProto translates the sovereign-internal macro projection
+// into the alt-backend domain. Returns nil when the upstream omits the
+// field — the UI hides the macro byline when domain.MacroState is nil.
+func macroStateFromProto(pb *sovereignv1.KnowledgeLoopMacroState) *domain.KnowledgeLoopMacroState {
+	if pb == nil {
+		return nil
+	}
+	out := &domain.KnowledgeLoopMacroState{
+		ActiveContinueThreads:   pb.ActiveContinueThreads,
+		PendingReviewCount:      pb.PendingReviewCount,
+		RecentInternalizedCount: pb.RecentInternalizedCount,
+		CognitiveLoadHint:       cognitiveLoadHintFromProto(pb.CognitiveLoadHint),
+		SeqHiwater:              pb.SeqHiwater,
+		LensWeightsVersion:      pb.LensWeightsVersion,
+	}
+	if pb.WindowStartAt != nil {
+		out.WindowStartAt = pb.WindowStartAt.AsTime()
+	}
+	if pb.WindowEndAt != nil {
+		out.WindowEndAt = pb.WindowEndAt.AsTime()
+	}
+	return out
+}
+
+func cognitiveLoadHintFromProto(h sovereignv1.KnowledgeLoopCognitiveLoadHint) string {
+	switch h {
+	case sovereignv1.KnowledgeLoopCognitiveLoadHint_KNOWLEDGE_LOOP_COGNITIVE_LOAD_HINT_LIGHT:
+		return "light"
+	case sovereignv1.KnowledgeLoopCognitiveLoadHint_KNOWLEDGE_LOOP_COGNITIVE_LOAD_HINT_MEDIUM:
+		return "medium"
+	case sovereignv1.KnowledgeLoopCognitiveLoadHint_KNOWLEDGE_LOOP_COGNITIVE_LOAD_HINT_HEAVY:
+		return "heavy"
+	default:
+		return ""
+	}
 }
 
 func protoSurfaceToDomain(pb *sovereignv1.KnowledgeLoopSurface) (*domain.KnowledgeLoopSurface, error) {

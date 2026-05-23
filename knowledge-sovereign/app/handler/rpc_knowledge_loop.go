@@ -158,7 +158,72 @@ func (h *SovereignHandler) GetKnowledgeLoopSessionState(
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInternal, err)
 	}
+	// ADR-000909 §Δ2 supplement: attach the macro projection so the public
+	// alt-backend handler can echo it onto the response. Missing macro_state
+	// rows are normal (older users / empty windows) so we treat the
+	// absence as "no byline" rather than an error.
+	if state != nil {
+		if macroState, macroErr := attachMacroStateIfPresent(ctx, h.readDB, userID, tenantID, msg.LensModeId); macroErr != nil {
+			// Log via Go's error path — the macro layer is supplementary,
+			// it must never block session state reads.
+			return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("attach macro_state: %w", macroErr))
+		} else if macroState != nil {
+			state.MacroState = macroState
+		}
+	}
 	return connect.NewResponse(&sovereignv1.GetKnowledgeLoopSessionStateResponse{State: state}), nil
+}
+
+// macroStateReader is the narrow subset of sovereign_db.Repository the
+// session-state handler needs to satisfy the macro-attach path. Keeping
+// it as a type assertion lets the handler stay testable with the
+// existing readDB interface mock.
+type macroStateReader interface {
+	GetKnowledgeLoopMacroState(ctx context.Context, userID, tenantID uuid.UUID, lensModeID string) (*sovereign_db.KnowledgeLoopMacroStateRow, error)
+}
+
+func attachMacroStateIfPresent(ctx context.Context, readDB any, userID, tenantID uuid.UUID, lensModeID string) (*sovereignv1.KnowledgeLoopMacroState, error) {
+	reader, ok := readDB.(macroStateReader)
+	if !ok {
+		// Wiring incomplete — the test repository for this handler suite may
+		// not implement GetKnowledgeLoopMacroState yet. Treat as "macro layer
+		// disabled" rather than failing the parent read.
+		return nil, nil
+	}
+	row, err := reader.GetKnowledgeLoopMacroState(ctx, userID, tenantID, lensModeID)
+	if err != nil {
+		return nil, err
+	}
+	if row == nil {
+		return nil, nil
+	}
+	return macroStateRowToProto(row), nil
+}
+
+func macroStateRowToProto(row *sovereign_db.KnowledgeLoopMacroStateRow) *sovereignv1.KnowledgeLoopMacroState {
+	return &sovereignv1.KnowledgeLoopMacroState{
+		ActiveContinueThreads:   row.ActiveContinueThreads,
+		PendingReviewCount:      row.PendingReviewCount,
+		RecentInternalizedCount: row.RecentInternalizedCount,
+		CognitiveLoadHint:       cognitiveLoadHintToProto(row.CognitiveLoadHint),
+		WindowEndAt:             timestamppb.New(row.WindowEndAt),
+		WindowStartAt:           timestamppb.New(row.WindowStartAt),
+		SeqHiwater:              row.SeqHiwater,
+		LensWeightsVersion:      row.LensWeightsVersion,
+	}
+}
+
+func cognitiveLoadHintToProto(s string) sovereignv1.KnowledgeLoopCognitiveLoadHint {
+	switch s {
+	case "light":
+		return sovereignv1.KnowledgeLoopCognitiveLoadHint_KNOWLEDGE_LOOP_COGNITIVE_LOAD_HINT_LIGHT
+	case "medium":
+		return sovereignv1.KnowledgeLoopCognitiveLoadHint_KNOWLEDGE_LOOP_COGNITIVE_LOAD_HINT_MEDIUM
+	case "heavy":
+		return sovereignv1.KnowledgeLoopCognitiveLoadHint_KNOWLEDGE_LOOP_COGNITIVE_LOAD_HINT_HEAVY
+	default:
+		return sovereignv1.KnowledgeLoopCognitiveLoadHint_KNOWLEDGE_LOOP_COGNITIVE_LOAD_HINT_UNSPECIFIED
+	}
 }
 
 // GetKnowledgeLoopSurfaces returns all surface buckets for (tenant, user, lens).

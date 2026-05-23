@@ -712,8 +712,41 @@ func toProtoSessionState(s *domain.KnowledgeLoopSessionState) *loopv1.KnowledgeL
 		LastDeferredEntryKey:  s.LastDeferredEntryKey,
 		ProjectionRevision:    s.ProjectionRevision,
 		ProjectionSeqHiwater:  s.ProjectionSeqHiwater,
+		MacroState:            toProtoMacroState(s.MacroState),
 	}
 	return pb
+}
+
+// toProtoMacroState mirrors domain.KnowledgeLoopMacroState into the public
+// alt.knowledge.loop.v1 message. Returns nil when the projector has not yet
+// written a macro row for the user — the UI hides the byline in that case.
+func toProtoMacroState(s *domain.KnowledgeLoopMacroState) *loopv1.KnowledgeLoopMacroState {
+	if s == nil {
+		return nil
+	}
+	return &loopv1.KnowledgeLoopMacroState{
+		ActiveContinueThreads:   s.ActiveContinueThreads,
+		PendingReviewCount:      s.PendingReviewCount,
+		RecentInternalizedCount: s.RecentInternalizedCount,
+		CognitiveLoadHint:       mapCognitiveLoadHint(s.CognitiveLoadHint),
+		WindowStartAt:           timestamppb.New(s.WindowStartAt),
+		WindowEndAt:             timestamppb.New(s.WindowEndAt),
+		SeqHiwater:              s.SeqHiwater,
+		LensWeightsVersion:      s.LensWeightsVersion,
+	}
+}
+
+func mapCognitiveLoadHint(s string) loopv1.CognitiveLoadHint {
+	switch s {
+	case "light":
+		return loopv1.CognitiveLoadHint_COGNITIVE_LOAD_HINT_LIGHT
+	case "medium":
+		return loopv1.CognitiveLoadHint_COGNITIVE_LOAD_HINT_MEDIUM
+	case "heavy":
+		return loopv1.CognitiveLoadHint_COGNITIVE_LOAD_HINT_HEAVY
+	default:
+		return loopv1.CognitiveLoadHint_COGNITIVE_LOAD_HINT_UNSPECIFIED
+	}
 }
 
 func mapLoopStage(s domain.LoopStage) loopv1.LoopStage {

@@ -9,9 +9,11 @@ import type { Client, Transport } from "@connectrpc/connect";
 import { createClient } from "@connectrpc/connect";
 import {
 	ActTargetType,
+	CognitiveLoadHint,
 	DecisionIntent,
 	DismissState,
 	type GetKnowledgeLoopResponse,
+	type KnowledgeLoopMacroState as ProtoKnowledgeLoopMacroState,
 	KnowledgeLoopService,
 	LoopPriority,
 	LoopStage,
@@ -403,7 +405,34 @@ function mapProtoSession(
 		focusedEntryKey: s.focusedEntryKey,
 		projectionRevision: Number(s.projectionRevision),
 		projectionSeqHiwater: Number(s.projectionSeqHiwater),
+		macroState: s.macroState ? mapProtoMacroState(s.macroState) : undefined,
 	};
+}
+
+function mapProtoMacroState(
+	m: ProtoKnowledgeLoopMacroState,
+): KnowledgeLoopMacroStateData {
+	return {
+		activeContinueThreads: m.activeContinueThreads,
+		pendingReviewCount: m.pendingReviewCount,
+		recentInternalizedCount: m.recentInternalizedCount,
+		cognitiveLoadHint: mapCognitiveLoadHintFromProto(m.cognitiveLoadHint),
+	};
+}
+
+function mapCognitiveLoadHintFromProto(
+	h: CognitiveLoadHint,
+): KnowledgeLoopMacroStateData["cognitiveLoadHint"] {
+	switch (h) {
+		case CognitiveLoadHint.LIGHT:
+			return "light";
+		case CognitiveLoadHint.MEDIUM:
+			return "medium";
+		case CognitiveLoadHint.HEAVY:
+			return "heavy";
+		default:
+			return undefined;
+	}
 }
 
 function tsToIso(ts: { seconds: bigint; nanos: number } | undefined): string {
