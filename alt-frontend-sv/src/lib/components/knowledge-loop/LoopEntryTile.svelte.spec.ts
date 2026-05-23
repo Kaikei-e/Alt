@@ -19,8 +19,20 @@ describe("LoopEntryTile source hygiene", () => {
 		expect(tileSource).not.toMatch(/\{@html\s/);
 	});
 
-	it("renders the why text via escaping Svelte interpolation", () => {
-		expect(tileSource).toMatch(/\{entry\.whyPrimary\.text\}/);
+	it("delegates the why payload to the WhyTypography primitive", () => {
+		// ADR-000911 Phase B: the inline why-text + evidence list moved into
+		// `lib/components/why/WhyTypography.svelte` so Loop and Home share a
+		// single Newspaper-Style presentation surface. The tile MUST pass the
+		// payload through props rather than reintroducing an inline renderer
+		// — duplicating the escape discipline in two places is exactly what
+		// invited the F-009 regressions canonical contract §27 warns about.
+		expect(tileSource).toMatch(/import\s+WhyTypography/);
+		expect(tileSource).toMatch(
+			/<WhyTypography[\s\S]*?text=\{entry\.whyPrimary\.text\}/,
+		);
+		expect(tileSource).toMatch(
+			/counterEvidenceRefs=\{entry\.whyPrimary\.counterEvidenceRefs\}/,
+		);
 	});
 
 	it("emits an aria-label carrying the loop priority so assistive tech can read it", () => {

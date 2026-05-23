@@ -23,6 +23,14 @@ vi.mock("$lib/gen/alt/knowledge/loop/v1/knowledge_loop_pb", () => ({
 		TAG_TRENDING: 6,
 		UNFINISHED_CONTINUE: 7,
 	},
+	CognitiveLoadHint: { UNSPECIFIED: 0, LIGHT: 1, MEDIUM: 2, HEAVY: 3 },
+	ConfidenceLadder: {
+		UNSPECIFIED: 0,
+		SPECULATION: 1,
+		PATTERN: 2,
+		EVIDENCE: 3,
+		VERIFIED: 4,
+	},
 	DecisionIntent: {
 		UNSPECIFIED: 0,
 		OPEN: 1,

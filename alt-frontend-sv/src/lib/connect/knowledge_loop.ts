@@ -10,6 +10,7 @@ import { createClient } from "@connectrpc/connect";
 import {
 	ActTargetType,
 	CognitiveLoadHint,
+	ConfidenceLadder,
 	DecisionIntent,
 	DismissState,
 	type GetKnowledgeLoopResponse,
@@ -59,11 +60,21 @@ export type DismissStateName =
 	// counter still references the dismiss state.
 	| "internalized";
 
+export type ConfidenceLadderName =
+	| "speculation"
+	| "pattern"
+	| "evidence"
+	| "verified"
+	| "unspecified";
+
 export interface WhyPayloadData {
 	kind: WhyKindName;
 	text: string;
 	confidence?: number;
+	confidenceLadder?: ConfidenceLadderName;
 	evidenceRefs: Array<{ refId: string; label: string }>;
+	counterEvidenceRefs?: Array<{ refId: string; label: string }>;
+	whatWouldChangeMyMind?: string;
 }
 
 export type DecisionIntentName =
@@ -320,11 +331,20 @@ export function mapProtoEntry(
 			kind: mapWhyKindFromProto(e.whyPrimary?.kind),
 			text: e.whyPrimary?.text ?? "",
 			confidence: e.whyPrimary?.confidence,
+			confidenceLadder: mapConfidenceLadderFromProto(
+				e.whyPrimary?.confidenceLadder,
+			),
 			evidenceRefs:
 				e.whyPrimary?.evidenceRefs.map((r) => ({
 					refId: r.refId,
 					label: r.label,
 				})) ?? [],
+			counterEvidenceRefs:
+				e.whyPrimary?.counterEvidenceRefs?.map((r) => ({
+					refId: r.refId,
+					label: r.label,
+				})) ?? [],
+			whatWouldChangeMyMind: e.whyPrimary?.whatWouldChangeMyMind,
 		},
 		dismissState: mapDismissFromProto(e.dismissState),
 		renderDepthHint: mapDepthHintFromProto(e.renderDepthHint),
@@ -430,6 +450,23 @@ function mapCognitiveLoadHintFromProto(
 			return "medium";
 		case CognitiveLoadHint.HEAVY:
 			return "heavy";
+		default:
+			return undefined;
+	}
+}
+
+function mapConfidenceLadderFromProto(
+	c: ConfidenceLadder | undefined,
+): ConfidenceLadderName | undefined {
+	switch (c) {
+		case ConfidenceLadder.SPECULATION:
+			return "speculation";
+		case ConfidenceLadder.PATTERN:
+			return "pattern";
+		case ConfidenceLadder.EVIDENCE:
+			return "evidence";
+		case ConfidenceLadder.VERIFIED:
+			return "verified";
 		default:
 			return undefined;
 	}

@@ -1,17 +1,41 @@
 <script lang="ts">
 import { goto } from "$app/navigation";
 import type {
+	ConfidenceLadderName,
 	DecisionIntentName,
 	DecisionOptionData,
 	KnowledgeLoopEntryData,
 	LoopStageName,
 } from "$lib/connect/knowledge_loop";
 import type { TransitionMetadata } from "$lib/hooks/useKnowledgeLoop.svelte";
+import WhyTypography, {
+	type ConfidenceLadderTier,
+} from "$lib/components/why/WhyTypography.svelte";
 import {
 	buildAskTransitionMetadata,
 	buildRecapTransitionMetadata,
 	buildTransitionMetadata,
 } from "./transition-metadata";
+
+// Convert the lowercase wire form of the confidence ladder ("speculation"
+// etc.) to the uppercase tier the typography primitive consumes. Missing /
+// undefined collapses to "UNSPECIFIED" so the indicator stays hidden.
+function ladderTierFromName(
+	name: ConfidenceLadderName | undefined,
+): ConfidenceLadderTier {
+	switch (name) {
+		case "speculation":
+			return "SPECULATION";
+		case "pattern":
+			return "PATTERN";
+		case "evidence":
+			return "EVIDENCE";
+		case "verified":
+			return "VERIFIED";
+		default:
+			return "UNSPECIFIED";
+	}
+}
 
 type TransitionTrigger =
 	| "user_tap"
@@ -351,23 +375,14 @@ async function handleDismiss() {
 			<span class="stage-label">{stageLabel}</span>
 			<span class="priority-label">{priorityLabel}</span>
 		</header>
-		<p class="why-text">{entry.whyPrimary.text}</p>
-		{#if entry.whyPrimary.evidenceRefs.length > 0}
-			<section class="evidence">
-				<h3 class="evidence-heading">Evidence</h3>
-				<ol class="evidence-list">
-					{#each entry.whyPrimary.evidenceRefs as ref (ref.refId)}
-						<li class="evidence-item">
-							<span class="evidence-id">{ref.refId}</span>
-							{#if ref.label}
-								<span class="evidence-sep">·</span>
-								<span class="evidence-label">{ref.label}</span>
-							{/if}
-						</li>
-					{/each}
-				</ol>
-			</section>
-		{/if}
+		<WhyTypography
+			kind={entry.whyPrimary.kind}
+			text={entry.whyPrimary.text}
+			confidenceLadder={ladderTierFromName(entry.whyPrimary.confidenceLadder)}
+			evidenceRefs={entry.whyPrimary.evidenceRefs}
+			counterEvidenceRefs={entry.whyPrimary.counterEvidenceRefs}
+			whatWouldChangeMyMind={entry.whyPrimary.whatWouldChangeMyMind}
+		/>
 		{#if expanded}
 			<section class="expand">
 				{#if entry.changeSummary?.summary}
