@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING
 
 from .engine import TTSEngine
 from .engines.qwen import QwenEngine
+from .engines.supertonic import SupertonicEngine
 
 if TYPE_CHECKING:
     from ..infra.config import Settings
@@ -15,4 +16,6 @@ def build_engine(settings: Settings) -> TTSEngine:
     """Construct the configured TTS engine."""
     if settings.engine == "qwen":
         return QwenEngine(settings)
+    if settings.engine == "supertonic":
+        return SupertonicEngine(settings)
     raise ValueError(f"unknown TTS engine: {settings.engine}")

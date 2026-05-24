@@ -7,12 +7,14 @@ services:
     ports:
       - "9700:9700"
     environment:
+      - TTS_ENGINE=${TTS_ENGINE:-qwen}
       - TTS_DEFAULT_VOICE=${TTS_DEFAULT_VOICE:-qwen-ja-1}
       - TTS_DEFAULT_SPEED=${TTS_DEFAULT_SPEED:-1.0}
       - TTS_QWEN_MODEL_ID=${TTS_QWEN_MODEL_ID:-Qwen/Qwen3-TTS-12Hz-0.6B-CustomVoice}
       - TTS_QWEN_DTYPE=${TTS_QWEN_DTYPE:-bfloat16}
       - TTS_QWEN_ATTN=${TTS_QWEN_ATTN:-sdpa}
       - TTS_QWEN_KEEPALIVE_INTERVAL_SEC=${TTS_QWEN_KEEPALIVE_INTERVAL_SEC:-15}
+      - TTS_SUP_TOTAL_STEPS=${TTS_SUP_TOTAL_STEPS:-8}
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
       - HF_HOME=/app/.cache/huggingface
       # ROCm runtime tuning (per AMD ROCm 7.2 + community Qwen3-TTS recipes).

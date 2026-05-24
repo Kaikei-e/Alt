@@ -14,7 +14,7 @@ class Settings(BaseSettings):
 
     host: str = Field(default="0.0.0.0", validation_alias="HOST")
     port: int = Field(default=9700, validation_alias="PORT")
-    engine: Literal["qwen"] = Field(default="qwen", validation_alias="TTS_ENGINE")
+    engine: Literal["qwen", "supertonic"] = Field(default="qwen", validation_alias="TTS_ENGINE")
     default_voice: str = Field(default="qwen-ja-1", validation_alias="TTS_DEFAULT_VOICE")
     default_speed: float = Field(default=1.0, ge=0.5, le=2.0, validation_alias="TTS_DEFAULT_SPEED")
     log_level: str = Field(default="INFO", validation_alias="LOG_LEVEL")
@@ -30,6 +30,7 @@ class Settings(BaseSettings):
     qwen_keepalive_interval_sec: float = Field(
         default=15.0, ge=0.0, validation_alias="TTS_QWEN_KEEPALIVE_INTERVAL_SEC"
     )
+    sup_total_steps: int = Field(default=8, ge=1, le=12, validation_alias="TTS_SUP_TOTAL_STEPS")
 
 
 @lru_cache(maxsize=1)

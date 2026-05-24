@@ -1,0 +1,17 @@
+# Supertonic v3 engine override for tts-speaker.
+#
+# Usage on the AIX deploy node:
+#
+#   docker compose -f compose.tts.yaml -f compose.tts.supertonic.yaml \
+#       up --build -d tts-speaker
+#
+# Switches the engine driver from Qwen3-TTS to Supertonic v3
+# (CPU-only ONNX Runtime, ~99M params, ~260MB weights auto-downloaded
+# from huggingface.co/Supertone/supertonic-3 into the tts_models volume).
+# Only the sup-F4 voice is exposed at this stage.
+
+services:
+  tts-speaker:
+    environment:
+      - TTS_ENGINE=supertonic
+      - TTS_DEFAULT_VOICE=sup-F4

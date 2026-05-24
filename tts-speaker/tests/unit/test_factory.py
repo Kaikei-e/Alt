@@ -7,6 +7,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from tts_speaker.core.engines.qwen import QwenEngine
+from tts_speaker.core.engines.supertonic import SupertonicEngine
 from tts_speaker.core.factory import build_engine
 from tts_speaker.infra.config import Settings
 
@@ -16,6 +17,14 @@ def test_build_engine_qwen_default():
     with patch.object(QwenEngine, "_detect_device", return_value=("cpu", None)):
         engine = build_engine(Settings())
     assert isinstance(engine, QwenEngine)
+
+
+def test_build_engine_supertonic():
+    """TTS_ENGINE=supertonic selects the Supertonic engine."""
+    settings = MagicMock(spec=Settings)
+    settings.engine = "supertonic"
+    engine = build_engine(settings)
+    assert isinstance(engine, SupertonicEngine)
 
 
 def test_build_engine_unknown_raises():

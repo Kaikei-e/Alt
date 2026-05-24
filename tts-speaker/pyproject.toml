@@ -20,6 +20,8 @@ dependencies = [
     "connect-python>=0.9.0",
     "alkana>=0.0.2",
     "torch>=2.6.0",
+    "supertonic>=1.3",
+    "huggingface-hub>=0.24",
 ]
 
 [dependency-groups]

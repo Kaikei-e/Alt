@@ -62,3 +62,17 @@ def test_tts_max_stream_text_length_env_override():
     with patch.dict("os.environ", {"TTS_MAX_STREAM_TEXT_LENGTH": "50000"}, clear=True):
         s = Settings()
     assert s.tts_max_stream_text_length == 50_000
+
+
+def test_engine_supertonic_via_env():
+    """TTS_ENGINE=supertonic is accepted by the Literal."""
+    with patch.dict("os.environ", {"TTS_ENGINE": "supertonic"}, clear=True):
+        s = Settings()
+    assert s.engine == "supertonic"
+
+
+def test_sup_total_steps_default_and_override():
+    with patch.dict("os.environ", {}, clear=True):
+        assert Settings().sup_total_steps == 8
+    with patch.dict("os.environ", {"TTS_SUP_TOTAL_STEPS": "12"}, clear=True):
+        assert Settings().sup_total_steps == 12
