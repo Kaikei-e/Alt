@@ -2,165 +2,187 @@
 // @generated from file alt/admin_monitor/v1/admin_monitor.proto (package alt.admin_monitor.v1, syntax proto3)
 /* eslint-disable */
 
-import type { GenEnum, GenFile, GenMessage, GenService } from "@bufbuild/protobuf/codegenv2";
-import { enumDesc, fileDesc, messageDesc, serviceDesc } from "@bufbuild/protobuf/codegenv2";
+import type {
+	GenEnum,
+	GenFile,
+	GenMessage,
+	GenService,
+} from "@bufbuild/protobuf/codegenv2";
+import {
+	enumDesc,
+	fileDesc,
+	messageDesc,
+	serviceDesc,
+} from "@bufbuild/protobuf/codegenv2";
 import type { Message } from "@bufbuild/protobuf";
 
 /**
  * Describes the file alt/admin_monitor/v1/admin_monitor.proto.
  */
-export const file_alt_admin_monitor_v1_admin_monitor: GenFile = /*@__PURE__*/
-  fileDesc("CihhbHQvYWRtaW5fbW9uaXRvci92MS9hZG1pbl9tb25pdG9yLnByb3RvEhRhbHQuYWRtaW5fbW9uaXRvci52MSIQCg5DYXRhbG9nUmVxdWVzdCJGCg9DYXRhbG9nUmVzcG9uc2USMwoHZW50cmllcxgBIAMoCzIiLmFsdC5hZG1pbl9tb25pdG9yLnYxLkNhdGFsb2dFbnRyeSKSAQoMQ2F0YWxvZ0VudHJ5EgsKA2tleRgBIAEoCRINCgV0aXRsZRgCIAEoCRIMCgR1bml0GAMgASgJEhMKC2Rlc2NyaXB0aW9uGAQgASgJEhMKC2dyYWZhbmFfdXJsGAUgASgJEi4KBGtpbmQYBiABKA4yIC5hbHQuYWRtaW5fbW9uaXRvci52MS5TZXJpZXNLaW5kInwKD1NuYXBzaG90UmVxdWVzdBIMCgRrZXlzGAEgAygJEjEKBndpbmRvdxgCIAEoDjIhLmFsdC5hZG1pbl9tb25pdG9yLnYxLlJhbmdlV2luZG93EigKBHN0ZXAYAyABKA4yGi5hbHQuYWRtaW5fbW9uaXRvci52MS5TdGVwInkKDFdhdGNoUmVxdWVzdBIMCgRrZXlzGAEgAygJEjEKBndpbmRvdxgCIAEoDjIhLmFsdC5hZG1pbl9tb25pdG9yLnYxLlJhbmdlV2luZG93EigKBHN0ZXAYAyABKA4yGi5hbHQuYWRtaW5fbW9uaXRvci52MS5TdGVwIlUKEFNuYXBzaG90UmVzcG9uc2USDAoEdGltZRgBIAEoCRIzCgdtZXRyaWNzGAIgAygLMiIuYWx0LmFkbWluX21vbml0b3IudjEuTWV0cmljUmVzdWx0IlIKDVdhdGNoUmVzcG9uc2USDAoEdGltZRgBIAEoCRIzCgdtZXRyaWNzGAIgAygLMiIuYWx0LmFkbWluX21vbml0b3IudjEuTWV0cmljUmVzdWx0ItABCgxNZXRyaWNSZXN1bHQSCwoDa2V5GAEgASgJEi4KBGtpbmQYAiABKA4yIC5hbHQuYWRtaW5fbW9uaXRvci52MS5TZXJpZXNLaW5kEgwKBHVuaXQYAyABKAkSEwoLZ3JhZmFuYV91cmwYBCABKAkSLAoGc2VyaWVzGAUgAygLMhwuYWx0LmFkbWluX21vbml0b3IudjEuU2VyaWVzEhAKCGRlZ3JhZGVkGAYgASgIEg4KBnJlYXNvbhgHIAEoCRIQCgh3YXJuaW5ncxgIIAMoCSKeAQoGU2VyaWVzEjgKBmxhYmVscxgBIAMoCzIoLmFsdC5hZG1pbl9tb25pdG9yLnYxLlNlcmllcy5MYWJlbHNFbnRyeRIrCgZwb2ludHMYAiADKAsyGy5hbHQuYWRtaW5fbW9uaXRvci52MS5Qb2ludBotCgtMYWJlbHNFbnRyeRILCgNrZXkYASABKAkSDQoFdmFsdWUYAiABKAk6AjgBIiQKBVBvaW50EgwKBHRpbWUYASABKAkSDQoFdmFsdWUYAiABKAEqlgEKC1JhbmdlV2luZG93EhwKGFJBTkdFX1dJTkRPV19VTlNQRUNJRklFRBAAEhMKD1JBTkdFX1dJTkRPV181TRABEhQKEFJBTkdFX1dJTkRPV18xNU0QAhITCg9SQU5HRV9XSU5ET1dfMUgQAxITCg9SQU5HRV9XSU5ET1dfNkgQBBIUChBSQU5HRV9XSU5ET1dfMjRIEAUqUgoEU3RlcBIUChBTVEVQX1VOU1BFQ0lGSUVEEAASDAoIU1RFUF8xNVMQARIMCghTVEVQXzMwUxACEgsKB1NURVBfMU0QAxILCgdTVEVQXzVNEAQqWQoKU2VyaWVzS2luZBIbChdTRVJJRVNfS0lORF9VTlNQRUNJRklFRBAAEhcKE1NFUklFU19LSU5EX0lOU1RBTlQQARIVChFTRVJJRVNfS0lORF9SQU5HRRACMpwCChNBZG1pbk1vbml0b3JTZXJ2aWNlElYKB0NhdGFsb2cSJC5hbHQuYWRtaW5fbW9uaXRvci52MS5DYXRhbG9nUmVxdWVzdBolLmFsdC5hZG1pbl9tb25pdG9yLnYxLkNhdGFsb2dSZXNwb25zZRJZCghTbmFwc2hvdBIlLmFsdC5hZG1pbl9tb25pdG9yLnYxLlNuYXBzaG90UmVxdWVzdBomLmFsdC5hZG1pbl9tb25pdG9yLnYxLlNuYXBzaG90UmVzcG9uc2USUgoFV2F0Y2gSIi5hbHQuYWRtaW5fbW9uaXRvci52MS5XYXRjaFJlcXVlc3QaIy5hbHQuYWRtaW5fbW9uaXRvci52MS5XYXRjaFJlc3BvbnNlMAFCM1oxYWx0L2dlbi9wcm90by9hbHQvYWRtaW5fbW9uaXRvci92MTthZG1pbm1vbml0b3J2MWIGcHJvdG8z");
+export const file_alt_admin_monitor_v1_admin_monitor: GenFile =
+	/*@__PURE__*/
+	fileDesc(
+		"CihhbHQvYWRtaW5fbW9uaXRvci92MS9hZG1pbl9tb25pdG9yLnByb3RvEhRhbHQuYWRtaW5fbW9uaXRvci52MSIQCg5DYXRhbG9nUmVxdWVzdCJGCg9DYXRhbG9nUmVzcG9uc2USMwoHZW50cmllcxgBIAMoCzIiLmFsdC5hZG1pbl9tb25pdG9yLnYxLkNhdGFsb2dFbnRyeSKSAQoMQ2F0YWxvZ0VudHJ5EgsKA2tleRgBIAEoCRINCgV0aXRsZRgCIAEoCRIMCgR1bml0GAMgASgJEhMKC2Rlc2NyaXB0aW9uGAQgASgJEhMKC2dyYWZhbmFfdXJsGAUgASgJEi4KBGtpbmQYBiABKA4yIC5hbHQuYWRtaW5fbW9uaXRvci52MS5TZXJpZXNLaW5kInwKD1NuYXBzaG90UmVxdWVzdBIMCgRrZXlzGAEgAygJEjEKBndpbmRvdxgCIAEoDjIhLmFsdC5hZG1pbl9tb25pdG9yLnYxLlJhbmdlV2luZG93EigKBHN0ZXAYAyABKA4yGi5hbHQuYWRtaW5fbW9uaXRvci52MS5TdGVwInkKDFdhdGNoUmVxdWVzdBIMCgRrZXlzGAEgAygJEjEKBndpbmRvdxgCIAEoDjIhLmFsdC5hZG1pbl9tb25pdG9yLnYxLlJhbmdlV2luZG93EigKBHN0ZXAYAyABKA4yGi5hbHQuYWRtaW5fbW9uaXRvci52MS5TdGVwIlUKEFNuYXBzaG90UmVzcG9uc2USDAoEdGltZRgBIAEoCRIzCgdtZXRyaWNzGAIgAygLMiIuYWx0LmFkbWluX21vbml0b3IudjEuTWV0cmljUmVzdWx0IlIKDVdhdGNoUmVzcG9uc2USDAoEdGltZRgBIAEoCRIzCgdtZXRyaWNzGAIgAygLMiIuYWx0LmFkbWluX21vbml0b3IudjEuTWV0cmljUmVzdWx0ItABCgxNZXRyaWNSZXN1bHQSCwoDa2V5GAEgASgJEi4KBGtpbmQYAiABKA4yIC5hbHQuYWRtaW5fbW9uaXRvci52MS5TZXJpZXNLaW5kEgwKBHVuaXQYAyABKAkSEwoLZ3JhZmFuYV91cmwYBCABKAkSLAoGc2VyaWVzGAUgAygLMhwuYWx0LmFkbWluX21vbml0b3IudjEuU2VyaWVzEhAKCGRlZ3JhZGVkGAYgASgIEg4KBnJlYXNvbhgHIAEoCRIQCgh3YXJuaW5ncxgIIAMoCSKeAQoGU2VyaWVzEjgKBmxhYmVscxgBIAMoCzIoLmFsdC5hZG1pbl9tb25pdG9yLnYxLlNlcmllcy5MYWJlbHNFbnRyeRIrCgZwb2ludHMYAiADKAsyGy5hbHQuYWRtaW5fbW9uaXRvci52MS5Qb2ludBotCgtMYWJlbHNFbnRyeRILCgNrZXkYASABKAkSDQoFdmFsdWUYAiABKAk6AjgBIiQKBVBvaW50EgwKBHRpbWUYASABKAkSDQoFdmFsdWUYAiABKAEqlgEKC1JhbmdlV2luZG93EhwKGFJBTkdFX1dJTkRPV19VTlNQRUNJRklFRBAAEhMKD1JBTkdFX1dJTkRPV181TRABEhQKEFJBTkdFX1dJTkRPV18xNU0QAhITCg9SQU5HRV9XSU5ET1dfMUgQAxITCg9SQU5HRV9XSU5ET1dfNkgQBBIUChBSQU5HRV9XSU5ET1dfMjRIEAUqUgoEU3RlcBIUChBTVEVQX1VOU1BFQ0lGSUVEEAASDAoIU1RFUF8xNVMQARIMCghTVEVQXzMwUxACEgsKB1NURVBfMU0QAxILCgdTVEVQXzVNEAQqWQoKU2VyaWVzS2luZBIbChdTRVJJRVNfS0lORF9VTlNQRUNJRklFRBAAEhcKE1NFUklFU19LSU5EX0lOU1RBTlQQARIVChFTRVJJRVNfS0lORF9SQU5HRRACMpwCChNBZG1pbk1vbml0b3JTZXJ2aWNlElYKB0NhdGFsb2cSJC5hbHQuYWRtaW5fbW9uaXRvci52MS5DYXRhbG9nUmVxdWVzdBolLmFsdC5hZG1pbl9tb25pdG9yLnYxLkNhdGFsb2dSZXNwb25zZRJZCghTbmFwc2hvdBIlLmFsdC5hZG1pbl9tb25pdG9yLnYxLlNuYXBzaG90UmVxdWVzdBomLmFsdC5hZG1pbl9tb25pdG9yLnYxLlNuYXBzaG90UmVzcG9uc2USUgoFV2F0Y2gSIi5hbHQuYWRtaW5fbW9uaXRvci52MS5XYXRjaFJlcXVlc3QaIy5hbHQuYWRtaW5fbW9uaXRvci52MS5XYXRjaFJlc3BvbnNlMAFCM1oxYWx0L2dlbi9wcm90by9hbHQvYWRtaW5fbW9uaXRvci92MTthZG1pbm1vbml0b3J2MWIGcHJvdG8z",
+	);
 
 /**
  * @generated from message alt.admin_monitor.v1.CatalogRequest
  */
-export type CatalogRequest = Message<"alt.admin_monitor.v1.CatalogRequest"> & {
-};
+export type CatalogRequest =
+	Message<"alt.admin_monitor.v1.CatalogRequest"> & {};
 
 /**
  * Describes the message alt.admin_monitor.v1.CatalogRequest.
  * Use `create(CatalogRequestSchema)` to create a new message.
  */
-export const CatalogRequestSchema: GenMessage<CatalogRequest> = /*@__PURE__*/
-  messageDesc(file_alt_admin_monitor_v1_admin_monitor, 0);
+export const CatalogRequestSchema: GenMessage<CatalogRequest> =
+	/*@__PURE__*/
+	messageDesc(file_alt_admin_monitor_v1_admin_monitor, 0);
 
 /**
  * @generated from message alt.admin_monitor.v1.CatalogResponse
  */
-export type CatalogResponse = Message<"alt.admin_monitor.v1.CatalogResponse"> & {
-  /**
-   * @generated from field: repeated alt.admin_monitor.v1.CatalogEntry entries = 1;
-   */
-  entries: CatalogEntry[];
-};
+export type CatalogResponse =
+	Message<"alt.admin_monitor.v1.CatalogResponse"> & {
+		/**
+		 * @generated from field: repeated alt.admin_monitor.v1.CatalogEntry entries = 1;
+		 */
+		entries: CatalogEntry[];
+	};
 
 /**
  * Describes the message alt.admin_monitor.v1.CatalogResponse.
  * Use `create(CatalogResponseSchema)` to create a new message.
  */
-export const CatalogResponseSchema: GenMessage<CatalogResponse> = /*@__PURE__*/
-  messageDesc(file_alt_admin_monitor_v1_admin_monitor, 1);
+export const CatalogResponseSchema: GenMessage<CatalogResponse> =
+	/*@__PURE__*/
+	messageDesc(file_alt_admin_monitor_v1_admin_monitor, 1);
 
 /**
  * @generated from message alt.admin_monitor.v1.CatalogEntry
  */
 export type CatalogEntry = Message<"alt.admin_monitor.v1.CatalogEntry"> & {
-  /**
-   * @generated from field: string key = 1;
-   */
-  key: string;
+	/**
+	 * @generated from field: string key = 1;
+	 */
+	key: string;
 
-  /**
-   * @generated from field: string title = 2;
-   */
-  title: string;
+	/**
+	 * @generated from field: string title = 2;
+	 */
+	title: string;
 
-  /**
-   * @generated from field: string unit = 3;
-   */
-  unit: string;
+	/**
+	 * @generated from field: string unit = 3;
+	 */
+	unit: string;
 
-  /**
-   * @generated from field: string description = 4;
-   */
-  description: string;
+	/**
+	 * @generated from field: string description = 4;
+	 */
+	description: string;
 
-  /**
-   * @generated from field: string grafana_url = 5;
-   */
-  grafanaUrl: string;
+	/**
+	 * @generated from field: string grafana_url = 5;
+	 */
+	grafanaUrl: string;
 
-  /**
-   * @generated from field: alt.admin_monitor.v1.SeriesKind kind = 6;
-   */
-  kind: SeriesKind;
+	/**
+	 * @generated from field: alt.admin_monitor.v1.SeriesKind kind = 6;
+	 */
+	kind: SeriesKind;
 };
 
 /**
  * Describes the message alt.admin_monitor.v1.CatalogEntry.
  * Use `create(CatalogEntrySchema)` to create a new message.
  */
-export const CatalogEntrySchema: GenMessage<CatalogEntry> = /*@__PURE__*/
-  messageDesc(file_alt_admin_monitor_v1_admin_monitor, 2);
+export const CatalogEntrySchema: GenMessage<CatalogEntry> =
+	/*@__PURE__*/
+	messageDesc(file_alt_admin_monitor_v1_admin_monitor, 2);
 
 /**
  * @generated from message alt.admin_monitor.v1.SnapshotRequest
  */
-export type SnapshotRequest = Message<"alt.admin_monitor.v1.SnapshotRequest"> & {
-  /**
-   * @generated from field: repeated string keys = 1;
-   */
-  keys: string[];
+export type SnapshotRequest =
+	Message<"alt.admin_monitor.v1.SnapshotRequest"> & {
+		/**
+		 * @generated from field: repeated string keys = 1;
+		 */
+		keys: string[];
 
-  /**
-   * @generated from field: alt.admin_monitor.v1.RangeWindow window = 2;
-   */
-  window: RangeWindow;
+		/**
+		 * @generated from field: alt.admin_monitor.v1.RangeWindow window = 2;
+		 */
+		window: RangeWindow;
 
-  /**
-   * @generated from field: alt.admin_monitor.v1.Step step = 3;
-   */
-  step: Step;
-};
+		/**
+		 * @generated from field: alt.admin_monitor.v1.Step step = 3;
+		 */
+		step: Step;
+	};
 
 /**
  * Describes the message alt.admin_monitor.v1.SnapshotRequest.
  * Use `create(SnapshotRequestSchema)` to create a new message.
  */
-export const SnapshotRequestSchema: GenMessage<SnapshotRequest> = /*@__PURE__*/
-  messageDesc(file_alt_admin_monitor_v1_admin_monitor, 3);
+export const SnapshotRequestSchema: GenMessage<SnapshotRequest> =
+	/*@__PURE__*/
+	messageDesc(file_alt_admin_monitor_v1_admin_monitor, 3);
 
 /**
  * @generated from message alt.admin_monitor.v1.WatchRequest
  */
 export type WatchRequest = Message<"alt.admin_monitor.v1.WatchRequest"> & {
-  /**
-   * @generated from field: repeated string keys = 1;
-   */
-  keys: string[];
+	/**
+	 * @generated from field: repeated string keys = 1;
+	 */
+	keys: string[];
 
-  /**
-   * @generated from field: alt.admin_monitor.v1.RangeWindow window = 2;
-   */
-  window: RangeWindow;
+	/**
+	 * @generated from field: alt.admin_monitor.v1.RangeWindow window = 2;
+	 */
+	window: RangeWindow;
 
-  /**
-   * @generated from field: alt.admin_monitor.v1.Step step = 3;
-   */
-  step: Step;
+	/**
+	 * @generated from field: alt.admin_monitor.v1.Step step = 3;
+	 */
+	step: Step;
 };
 
 /**
  * Describes the message alt.admin_monitor.v1.WatchRequest.
  * Use `create(WatchRequestSchema)` to create a new message.
  */
-export const WatchRequestSchema: GenMessage<WatchRequest> = /*@__PURE__*/
-  messageDesc(file_alt_admin_monitor_v1_admin_monitor, 4);
+export const WatchRequestSchema: GenMessage<WatchRequest> =
+	/*@__PURE__*/
+	messageDesc(file_alt_admin_monitor_v1_admin_monitor, 4);
 
 /**
  * @generated from message alt.admin_monitor.v1.SnapshotResponse
  */
-export type SnapshotResponse = Message<"alt.admin_monitor.v1.SnapshotResponse"> & {
-  /**
-   * RFC3339 timestamp when the snapshot was assembled on the server.
-   *
-   * @generated from field: string time = 1;
-   */
-  time: string;
+export type SnapshotResponse =
+	Message<"alt.admin_monitor.v1.SnapshotResponse"> & {
+		/**
+		 * RFC3339 timestamp when the snapshot was assembled on the server.
+		 *
+		 * @generated from field: string time = 1;
+		 */
+		time: string;
 
-  /**
-   * @generated from field: repeated alt.admin_monitor.v1.MetricResult metrics = 2;
-   */
-  metrics: MetricResult[];
-};
+		/**
+		 * @generated from field: repeated alt.admin_monitor.v1.MetricResult metrics = 2;
+		 */
+		metrics: MetricResult[];
+	};
 
 /**
  * Describes the message alt.admin_monitor.v1.SnapshotResponse.
  * Use `create(SnapshotResponseSchema)` to create a new message.
  */
-export const SnapshotResponseSchema: GenMessage<SnapshotResponse> = /*@__PURE__*/
-  messageDesc(file_alt_admin_monitor_v1_admin_monitor, 5);
+export const SnapshotResponseSchema: GenMessage<SnapshotResponse> =
+	/*@__PURE__*/
+	messageDesc(file_alt_admin_monitor_v1_admin_monitor, 5);
 
 /**
  * WatchResponse has the same shape as SnapshotResponse; a distinct type is
@@ -170,121 +192,125 @@ export const SnapshotResponseSchema: GenMessage<SnapshotResponse> = /*@__PURE__*
  * @generated from message alt.admin_monitor.v1.WatchResponse
  */
 export type WatchResponse = Message<"alt.admin_monitor.v1.WatchResponse"> & {
-  /**
-   * @generated from field: string time = 1;
-   */
-  time: string;
+	/**
+	 * @generated from field: string time = 1;
+	 */
+	time: string;
 
-  /**
-   * @generated from field: repeated alt.admin_monitor.v1.MetricResult metrics = 2;
-   */
-  metrics: MetricResult[];
+	/**
+	 * @generated from field: repeated alt.admin_monitor.v1.MetricResult metrics = 2;
+	 */
+	metrics: MetricResult[];
 };
 
 /**
  * Describes the message alt.admin_monitor.v1.WatchResponse.
  * Use `create(WatchResponseSchema)` to create a new message.
  */
-export const WatchResponseSchema: GenMessage<WatchResponse> = /*@__PURE__*/
-  messageDesc(file_alt_admin_monitor_v1_admin_monitor, 6);
+export const WatchResponseSchema: GenMessage<WatchResponse> =
+	/*@__PURE__*/
+	messageDesc(file_alt_admin_monitor_v1_admin_monitor, 6);
 
 /**
  * @generated from message alt.admin_monitor.v1.MetricResult
  */
 export type MetricResult = Message<"alt.admin_monitor.v1.MetricResult"> & {
-  /**
-   * @generated from field: string key = 1;
-   */
-  key: string;
+	/**
+	 * @generated from field: string key = 1;
+	 */
+	key: string;
 
-  /**
-   * @generated from field: alt.admin_monitor.v1.SeriesKind kind = 2;
-   */
-  kind: SeriesKind;
+	/**
+	 * @generated from field: alt.admin_monitor.v1.SeriesKind kind = 2;
+	 */
+	kind: SeriesKind;
 
-  /**
-   * @generated from field: string unit = 3;
-   */
-  unit: string;
+	/**
+	 * @generated from field: string unit = 3;
+	 */
+	unit: string;
 
-  /**
-   * @generated from field: string grafana_url = 4;
-   */
-  grafanaUrl: string;
+	/**
+	 * @generated from field: string grafana_url = 4;
+	 */
+	grafanaUrl: string;
 
-  /**
-   * @generated from field: repeated alt.admin_monitor.v1.Series series = 5;
-   */
-  series: Series[];
+	/**
+	 * @generated from field: repeated alt.admin_monitor.v1.Series series = 5;
+	 */
+	series: Series[];
 
-  /**
-   * @generated from field: bool degraded = 6;
-   */
-  degraded: boolean;
+	/**
+	 * @generated from field: bool degraded = 6;
+	 */
+	degraded: boolean;
 
-  /**
-   * @generated from field: string reason = 7;
-   */
-  reason: string;
+	/**
+	 * @generated from field: string reason = 7;
+	 */
+	reason: string;
 
-  /**
-   * @generated from field: repeated string warnings = 8;
-   */
-  warnings: string[];
+	/**
+	 * @generated from field: repeated string warnings = 8;
+	 */
+	warnings: string[];
 };
 
 /**
  * Describes the message alt.admin_monitor.v1.MetricResult.
  * Use `create(MetricResultSchema)` to create a new message.
  */
-export const MetricResultSchema: GenMessage<MetricResult> = /*@__PURE__*/
-  messageDesc(file_alt_admin_monitor_v1_admin_monitor, 7);
+export const MetricResultSchema: GenMessage<MetricResult> =
+	/*@__PURE__*/
+	messageDesc(file_alt_admin_monitor_v1_admin_monitor, 7);
 
 /**
  * @generated from message alt.admin_monitor.v1.Series
  */
 export type Series = Message<"alt.admin_monitor.v1.Series"> & {
-  /**
-   * @generated from field: map<string, string> labels = 1;
-   */
-  labels: { [key: string]: string };
+	/**
+	 * @generated from field: map<string, string> labels = 1;
+	 */
+	labels: { [key: string]: string };
 
-  /**
-   * @generated from field: repeated alt.admin_monitor.v1.Point points = 2;
-   */
-  points: Point[];
+	/**
+	 * @generated from field: repeated alt.admin_monitor.v1.Point points = 2;
+	 */
+	points: Point[];
 };
 
 /**
  * Describes the message alt.admin_monitor.v1.Series.
  * Use `create(SeriesSchema)` to create a new message.
  */
-export const SeriesSchema: GenMessage<Series> = /*@__PURE__*/
-  messageDesc(file_alt_admin_monitor_v1_admin_monitor, 8);
+export const SeriesSchema: GenMessage<Series> =
+	/*@__PURE__*/
+	messageDesc(file_alt_admin_monitor_v1_admin_monitor, 8);
 
 /**
  * @generated from message alt.admin_monitor.v1.Point
  */
 export type Point = Message<"alt.admin_monitor.v1.Point"> & {
-  /**
-   * RFC3339 timestamp.
-   *
-   * @generated from field: string time = 1;
-   */
-  time: string;
+	/**
+	 * RFC3339 timestamp.
+	 *
+	 * @generated from field: string time = 1;
+	 */
+	time: string;
 
-  /**
-   * @generated from field: double value = 2;
-   */
-  value: number;
+	/**
+	 * @generated from field: double value = 2;
+	 */
+	value: number;
 };
 
 /**
  * Describes the message alt.admin_monitor.v1.Point.
  * Use `create(PointSchema)` to create a new message.
  */
-export const PointSchema: GenMessage<Point> = /*@__PURE__*/
-  messageDesc(file_alt_admin_monitor_v1_admin_monitor, 9);
+export const PointSchema: GenMessage<Point> =
+	/*@__PURE__*/
+	messageDesc(file_alt_admin_monitor_v1_admin_monitor, 9);
 
 /**
  * RangeWindow is the allowlisted range window for range queries.
@@ -292,42 +318,43 @@ export const PointSchema: GenMessage<Point> = /*@__PURE__*/
  * @generated from enum alt.admin_monitor.v1.RangeWindow
  */
 export enum RangeWindow {
-  /**
-   * @generated from enum value: RANGE_WINDOW_UNSPECIFIED = 0;
-   */
-  RANGE_WINDOW_UNSPECIFIED = 0,
+	/**
+	 * @generated from enum value: RANGE_WINDOW_UNSPECIFIED = 0;
+	 */
+	RANGE_WINDOW_UNSPECIFIED = 0,
 
-  /**
-   * @generated from enum value: RANGE_WINDOW_5M = 1;
-   */
-  RANGE_WINDOW_5M = 1,
+	/**
+	 * @generated from enum value: RANGE_WINDOW_5M = 1;
+	 */
+	RANGE_WINDOW_5M = 1,
 
-  /**
-   * @generated from enum value: RANGE_WINDOW_15M = 2;
-   */
-  RANGE_WINDOW_15M = 2,
+	/**
+	 * @generated from enum value: RANGE_WINDOW_15M = 2;
+	 */
+	RANGE_WINDOW_15M = 2,
 
-  /**
-   * @generated from enum value: RANGE_WINDOW_1H = 3;
-   */
-  RANGE_WINDOW_1H = 3,
+	/**
+	 * @generated from enum value: RANGE_WINDOW_1H = 3;
+	 */
+	RANGE_WINDOW_1H = 3,
 
-  /**
-   * @generated from enum value: RANGE_WINDOW_6H = 4;
-   */
-  RANGE_WINDOW_6H = 4,
+	/**
+	 * @generated from enum value: RANGE_WINDOW_6H = 4;
+	 */
+	RANGE_WINDOW_6H = 4,
 
-  /**
-   * @generated from enum value: RANGE_WINDOW_24H = 5;
-   */
-  RANGE_WINDOW_24H = 5,
+	/**
+	 * @generated from enum value: RANGE_WINDOW_24H = 5;
+	 */
+	RANGE_WINDOW_24H = 5,
 }
 
 /**
  * Describes the enum alt.admin_monitor.v1.RangeWindow.
  */
-export const RangeWindowSchema: GenEnum<RangeWindow> = /*@__PURE__*/
-  enumDesc(file_alt_admin_monitor_v1_admin_monitor, 0);
+export const RangeWindowSchema: GenEnum<RangeWindow> =
+	/*@__PURE__*/
+	enumDesc(file_alt_admin_monitor_v1_admin_monitor, 0);
 
 /**
  * Step is the allowlisted query step size.
@@ -335,37 +362,38 @@ export const RangeWindowSchema: GenEnum<RangeWindow> = /*@__PURE__*/
  * @generated from enum alt.admin_monitor.v1.Step
  */
 export enum Step {
-  /**
-   * @generated from enum value: STEP_UNSPECIFIED = 0;
-   */
-  STEP_UNSPECIFIED = 0,
+	/**
+	 * @generated from enum value: STEP_UNSPECIFIED = 0;
+	 */
+	STEP_UNSPECIFIED = 0,
 
-  /**
-   * @generated from enum value: STEP_15S = 1;
-   */
-  STEP_15S = 1,
+	/**
+	 * @generated from enum value: STEP_15S = 1;
+	 */
+	STEP_15S = 1,
 
-  /**
-   * @generated from enum value: STEP_30S = 2;
-   */
-  STEP_30S = 2,
+	/**
+	 * @generated from enum value: STEP_30S = 2;
+	 */
+	STEP_30S = 2,
 
-  /**
-   * @generated from enum value: STEP_1M = 3;
-   */
-  STEP_1M = 3,
+	/**
+	 * @generated from enum value: STEP_1M = 3;
+	 */
+	STEP_1M = 3,
 
-  /**
-   * @generated from enum value: STEP_5M = 4;
-   */
-  STEP_5M = 4,
+	/**
+	 * @generated from enum value: STEP_5M = 4;
+	 */
+	STEP_5M = 4,
 }
 
 /**
  * Describes the enum alt.admin_monitor.v1.Step.
  */
-export const StepSchema: GenEnum<Step> = /*@__PURE__*/
-  enumDesc(file_alt_admin_monitor_v1_admin_monitor, 1);
+export const StepSchema: GenEnum<Step> =
+	/*@__PURE__*/
+	enumDesc(file_alt_admin_monitor_v1_admin_monitor, 1);
 
 /**
  * SeriesKind distinguishes instant samples from range matrices.
@@ -373,27 +401,28 @@ export const StepSchema: GenEnum<Step> = /*@__PURE__*/
  * @generated from enum alt.admin_monitor.v1.SeriesKind
  */
 export enum SeriesKind {
-  /**
-   * @generated from enum value: SERIES_KIND_UNSPECIFIED = 0;
-   */
-  UNSPECIFIED = 0,
+	/**
+	 * @generated from enum value: SERIES_KIND_UNSPECIFIED = 0;
+	 */
+	UNSPECIFIED = 0,
 
-  /**
-   * @generated from enum value: SERIES_KIND_INSTANT = 1;
-   */
-  INSTANT = 1,
+	/**
+	 * @generated from enum value: SERIES_KIND_INSTANT = 1;
+	 */
+	INSTANT = 1,
 
-  /**
-   * @generated from enum value: SERIES_KIND_RANGE = 2;
-   */
-  RANGE = 2,
+	/**
+	 * @generated from enum value: SERIES_KIND_RANGE = 2;
+	 */
+	RANGE = 2,
 }
 
 /**
  * Describes the enum alt.admin_monitor.v1.SeriesKind.
  */
-export const SeriesKindSchema: GenEnum<SeriesKind> = /*@__PURE__*/
-  enumDesc(file_alt_admin_monitor_v1_admin_monitor, 2);
+export const SeriesKindSchema: GenEnum<SeriesKind> =
+	/*@__PURE__*/
+	enumDesc(file_alt_admin_monitor_v1_admin_monitor, 2);
 
 /**
  * AdminMonitorService serves Prometheus-backed observability data to the Admin UI.
@@ -403,36 +432,34 @@ export const SeriesKindSchema: GenEnum<SeriesKind> = /*@__PURE__*/
  * @generated from service alt.admin_monitor.v1.AdminMonitorService
  */
 export const AdminMonitorService: GenService<{
-  /**
-   * Catalog lists allowlisted metric keys and their descriptors.
-   *
-   * @generated from rpc alt.admin_monitor.v1.AdminMonitorService.Catalog
-   */
-  catalog: {
-    methodKind: "unary";
-    input: typeof CatalogRequestSchema;
-    output: typeof CatalogResponseSchema;
-  },
-  /**
-   * Snapshot returns a one-shot bundle for the requested keys.
-   *
-   * @generated from rpc alt.admin_monitor.v1.AdminMonitorService.Snapshot
-   */
-  snapshot: {
-    methodKind: "unary";
-    input: typeof SnapshotRequestSchema;
-    output: typeof SnapshotResponseSchema;
-  },
-  /**
-   * Watch emits WatchResponse messages on an interval until the client disconnects.
-   *
-   * @generated from rpc alt.admin_monitor.v1.AdminMonitorService.Watch
-   */
-  watch: {
-    methodKind: "server_streaming";
-    input: typeof WatchRequestSchema;
-    output: typeof WatchResponseSchema;
-  },
-}> = /*@__PURE__*/
-  serviceDesc(file_alt_admin_monitor_v1_admin_monitor, 0);
-
+	/**
+	 * Catalog lists allowlisted metric keys and their descriptors.
+	 *
+	 * @generated from rpc alt.admin_monitor.v1.AdminMonitorService.Catalog
+	 */
+	catalog: {
+		methodKind: "unary";
+		input: typeof CatalogRequestSchema;
+		output: typeof CatalogResponseSchema;
+	};
+	/**
+	 * Snapshot returns a one-shot bundle for the requested keys.
+	 *
+	 * @generated from rpc alt.admin_monitor.v1.AdminMonitorService.Snapshot
+	 */
+	snapshot: {
+		methodKind: "unary";
+		input: typeof SnapshotRequestSchema;
+		output: typeof SnapshotResponseSchema;
+	};
+	/**
+	 * Watch emits WatchResponse messages on an interval until the client disconnects.
+	 *
+	 * @generated from rpc alt.admin_monitor.v1.AdminMonitorService.Watch
+	 */
+	watch: {
+		methodKind: "server_streaming";
+		input: typeof WatchRequestSchema;
+		output: typeof WatchResponseSchema;
+	};
+}> = /*@__PURE__*/ serviceDesc(file_alt_admin_monitor_v1_admin_monitor, 0);

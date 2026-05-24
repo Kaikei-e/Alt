@@ -96,7 +96,10 @@ describe("resolveReviewReason", () => {
 	it("internalized never produces a review reason (filtered upstream)", () => {
 		for (const bucket of ["now", "continue", "changed", "review"] as const) {
 			expect(
-				resolveReviewReason({ dismissState: "internalized", surfaceBucket: bucket }),
+				resolveReviewReason({
+					dismissState: "internalized",
+					surfaceBucket: bucket,
+				}),
 			).toBeUndefined();
 		}
 	});

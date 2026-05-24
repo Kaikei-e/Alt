@@ -34,12 +34,7 @@ describe("WhyTypography source hygiene", () => {
 		// Pinning the four tiers in the source guards against a refactor
 		// that drops one (a missing tier means the bar that should fill
 		// silently stays empty).
-		for (const tier of [
-			"SPECULATION",
-			"PATTERN",
-			"EVIDENCE",
-			"VERIFIED",
-		]) {
+		for (const tier of ["SPECULATION", "PATTERN", "EVIDENCE", "VERIFIED"]) {
 			expect(source).toMatch(new RegExp(`['"]${tier}['"]`));
 		}
 	});
@@ -48,7 +43,9 @@ describe("WhyTypography source hygiene", () => {
 		// The UI must hide the indicator rather than show four empty bars.
 		// Easiest enforcement is a guard against rendering when the tier
 		// resolves to a 0-of-4 fill.
-		expect(source).toMatch(/UNSPECIFIED|ladderStep\s*[<>=!]==?\s*0|ladderStep\s*===?\s*null/);
+		expect(source).toMatch(
+			/UNSPECIFIED|ladderStep\s*[<>=!]==?\s*0|ladderStep\s*===?\s*null/,
+		);
 	});
 
 	it("declares the seven WhyKind labels used by the Loop variant", () => {

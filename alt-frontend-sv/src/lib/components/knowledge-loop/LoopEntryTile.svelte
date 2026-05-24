@@ -69,9 +69,7 @@ type Props = {
 	// TRANSITION_TRIGGER_INTERNALIZE same-stage transition; the projector
 	// flips dismiss_state to INTERNALIZED so the entry leaves foreground /
 	// Continue / Now reads without touching freshness_at or why_text.
-	onInternalize?: (
-		entry: KnowledgeLoopEntryData,
-	) => Promise<unknown> | unknown;
+	onInternalize?: (entry: KnowledgeLoopEntryData) => Promise<unknown> | unknown;
 	canTransition?: (from: LoopStageName, to: LoopStageName) => boolean;
 	isInFlight?: (entryKey: string) => boolean;
 	resolveSourceUrl?: (entry: KnowledgeLoopEntryData) => string | null;

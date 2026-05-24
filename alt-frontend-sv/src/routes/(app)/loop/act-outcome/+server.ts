@@ -28,11 +28,7 @@ import { json, type RequestHandler } from "@sveltejs/kit";
 import { emitActOutcomeForUser } from "$lib/server/knowledge-loop-api";
 import { extractConnectCode } from "$lib/connect/error";
 
-type Outcome =
-	| "engaged"
-	| "deep_engagement"
-	| "stale_save"
-	| "accepted_change";
+type Outcome = "engaged" | "deep_engagement" | "stale_save" | "accepted_change";
 
 const ALLOWED_OUTCOMES: ReadonlySet<Outcome> = new Set([
 	"engaged",

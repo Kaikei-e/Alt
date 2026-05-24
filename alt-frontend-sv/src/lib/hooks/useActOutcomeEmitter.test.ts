@@ -100,7 +100,9 @@ describe("useActOutcomeEmitter — dwell threshold engine", () => {
 		await emitter.tick();
 		const outcomes = calls.map((c) => c.outcome).sort();
 		expect(outcomes).toContain("deep_engagement");
-		expect(calls.find((c) => c.outcome === "deep_engagement")?.askTurns).toBe(3);
+		expect(calls.find((c) => c.outcome === "deep_engagement")?.askTurns).toBe(
+			3,
+		);
 		emitter.teardown();
 	});
 

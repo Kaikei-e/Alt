@@ -6,7 +6,13 @@ vi.mock("@connectrpc/connect", () => ({
 
 vi.mock("$lib/gen/alt/knowledge/loop/v1/knowledge_loop_pb", () => ({
 	KnowledgeLoopService: {},
-	DismissState: { ACTIVE: 1, DEFERRED: 2, DISMISSED: 3, COMPLETED: 4, INTERNALIZED: 5 },
+	DismissState: {
+		ACTIVE: 1,
+		DEFERRED: 2,
+		DISMISSED: 3,
+		COMPLETED: 4,
+		INTERNALIZED: 5,
+	},
 	LoopPriority: { CRITICAL: 1, CONTINUING: 2, CONFIRM: 3, REFERENCE: 4 },
 	LoopStage: { OBSERVE: 1, ORIENT: 2, DECIDE: 3, ACT: 4 },
 	RenderDepthHint: { FLAT: 1, LIGHT: 2, STRONG: 3, CRITICAL: 4 },

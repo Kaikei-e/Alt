@@ -2,1147 +2,1218 @@
 // @generated from file alt/acolyte/v1/acolyte.proto (package alt.acolyte.v1, syntax proto3)
 /* eslint-disable */
 
-import type { GenFile, GenMessage, GenService } from "@bufbuild/protobuf/codegenv2";
-import { fileDesc, messageDesc, serviceDesc } from "@bufbuild/protobuf/codegenv2";
+import type {
+	GenFile,
+	GenMessage,
+	GenService,
+} from "@bufbuild/protobuf/codegenv2";
+import {
+	fileDesc,
+	messageDesc,
+	serviceDesc,
+} from "@bufbuild/protobuf/codegenv2";
 import type { Message } from "@bufbuild/protobuf";
 
 /**
  * Describes the file alt/acolyte/v1/acolyte.proto.
  */
-export const file_alt_acolyte_v1_acolyte: GenFile = /*@__PURE__*/
-  fileDesc("ChxhbHQvYWNvbHl0ZS92MS9hY29seXRlLnByb3RvEg5hbHQuYWNvbHl0ZS52MSKmAQoTQ3JlYXRlUmVwb3J0UmVxdWVzdBINCgV0aXRsZRgBIAEoCRITCgtyZXBvcnRfdHlwZRgCIAEoCRI9CgVzY29wZRgDIAMoCzIuLmFsdC5hY29seXRlLnYxLkNyZWF0ZVJlcG9ydFJlcXVlc3QuU2NvcGVFbnRyeRosCgpTY29wZUVudHJ5EgsKA2tleRgBIAEoCRINCgV2YWx1ZRgCIAEoCToCOAEiKQoUQ3JlYXRlUmVwb3J0UmVzcG9uc2USEQoJcmVwb3J0X2lkGAEgASgJIiUKEEdldFJlcG9ydFJlcXVlc3QSEQoJcmVwb3J0X2lkGAEgASgJIq8BChFHZXRSZXBvcnRSZXNwb25zZRImCgZyZXBvcnQYASABKAsyFi5hbHQuYWNvbHl0ZS52MS5SZXBvcnQSLwoIc2VjdGlvbnMYAiADKAsyHS5hbHQuYWNvbHl0ZS52MS5SZXBvcnRTZWN0aW9uEjIKCmFjdGl2ZV9ydW4YAyABKAsyGS5hbHQuYWNvbHl0ZS52MS5SZXBvcnRSdW5IAIgBAUINCgtfYWN0aXZlX3J1biJDChJMaXN0UmVwb3J0c1JlcXVlc3QSEwoGY3Vyc29yGAEgASgJSACIAQESDQoFbGltaXQYAiABKAVCCQoHX2N1cnNvciJsChNMaXN0UmVwb3J0c1Jlc3BvbnNlEi4KB3JlcG9ydHMYASADKAsyHS5hbHQuYWNvbHl0ZS52MS5SZXBvcnRTdW1tYXJ5EhMKC25leHRfY3Vyc29yGAIgASgJEhAKCGhhc19tb3JlGAMgASgIIkAKF0dldFJlcG9ydFZlcnNpb25SZXF1ZXN0EhEKCXJlcG9ydF9pZBgBIAEoCRISCgp2ZXJzaW9uX25vGAIgASgFIrYBChhHZXRSZXBvcnRWZXJzaW9uUmVzcG9uc2USLgoHdmVyc2lvbhgBIAEoCzIdLmFsdC5hY29seXRlLnYxLlJlcG9ydFZlcnNpb24SMAoMY2hhbmdlX2l0ZW1zGAIgAygLMhouYWx0LmFjb2x5dGUudjEuQ2hhbmdlSXRlbRI4ChBzZWN0aW9uX3ZlcnNpb25zGAMgAygLMh4uYWx0LmFjb2x5dGUudjEuU2VjdGlvblZlcnNpb24iXQoZTGlzdFJlcG9ydFZlcnNpb25zUmVxdWVzdBIRCglyZXBvcnRfaWQYASABKAkSEwoGY3Vyc29yGAIgASgJSACIAQESDQoFbGltaXQYAyABKAVCCQoHX2N1cnNvciJ7ChpMaXN0UmVwb3J0VmVyc2lvbnNSZXNwb25zZRI2Cgh2ZXJzaW9ucxgBIAMoCzIkLmFsdC5hY29seXRlLnYxLlJlcG9ydFZlcnNpb25TdW1tYXJ5EhMKC25leHRfY3Vyc29yGAIgASgJEhAKCGhhc19tb3JlGAMgASgIIlgKGURpZmZSZXBvcnRWZXJzaW9uc1JlcXVlc3QSEQoJcmVwb3J0X2lkGAEgASgJEhQKDGZyb21fdmVyc2lvbhgCIAEoBRISCgp0b192ZXJzaW9uGAMgASgFIoIBChpEaWZmUmVwb3J0VmVyc2lvbnNSZXNwb25zZRIwCgxjaGFuZ2VfaXRlbXMYASADKAsyGi5hbHQuYWNvbHl0ZS52MS5DaGFuZ2VJdGVtEjIKDXNlY3Rpb25fZGlmZnMYAiADKAsyGy5hbHQuYWNvbHl0ZS52MS5TZWN0aW9uRGlmZiIqChVTdGFydFJlcG9ydFJ1blJlcXVlc3QSEQoJcmVwb3J0X2lkGAEgASgJIigKFlN0YXJ0UmVwb3J0UnVuUmVzcG9uc2USDgoGcnVuX2lkGAEgASgJIiUKE0dldFJ1blN0YXR1c1JlcXVlc3QSDgoGcnVuX2lkGAEgASgJImcKFEdldFJ1blN0YXR1c1Jlc3BvbnNlEiYKA3J1bhgBIAEoCzIZLmFsdC5hY29seXRlLnYxLlJlcG9ydFJ1bhInCgRqb2JzGAIgAygLMhkuYWx0LmFjb2x5dGUudjEuUmVwb3J0Sm9iIioKGFN0cmVhbVJ1blByb2dyZXNzUmVxdWVzdBIOCgZydW5faWQYASABKAkitwEKGVN0cmVhbVJ1blByb2dyZXNzUmVzcG9uc2USDAoEa2luZBgBIAEoCRIpCgRzdGVwGAIgASgLMhkuYWx0LmFjb2x5dGUudjEuU3RlcEV2ZW50SAASDwoFZGVsdGEYAyABKAlIABIXCg1lcnJvcl9tZXNzYWdlGAQgASgJSAASLAoEZG9uZRgFIAEoCzIcLmFsdC5hY29seXRlLnYxLlJ1bkRvbmVFdmVudEgAQgkKB3BheWxvYWQiRwoJU3RlcEV2ZW50EhEKCXN0ZXBfbmFtZRgBIAEoCRISCgpzdGVwX2luZGV4GAIgASgFEhMKC3RvdGFsX3N0ZXBzGAMgASgFIjoKDFJ1bkRvbmVFdmVudBIWCg5uZXdfdmVyc2lvbl9ubxgBIAEoBRISCgpydW5fc3RhdHVzGAIgASgJIj0KE1JlcnVuU2VjdGlvblJlcXVlc3QSEQoJcmVwb3J0X2lkGAEgASgJEhMKC3NlY3Rpb25fa2V5GAIgASgJIiYKFFJlcnVuU2VjdGlvblJlc3BvbnNlEg4KBnJ1bl9pZBgBIAEoCSIoChNEZWxldGVSZXBvcnRSZXF1ZXN0EhEKCXJlcG9ydF9pZBgBIAEoCSIWChREZWxldGVSZXBvcnRSZXNwb25zZSIUChJIZWFsdGhDaGVja1JlcXVlc3QiJQoTSGVhbHRoQ2hlY2tSZXNwb25zZRIOCgZzdGF0dXMYASABKAkikAIKBlJlcG9ydBIRCglyZXBvcnRfaWQYASABKAkSDQoFdGl0bGUYAiABKAkSEwoLcmVwb3J0X3R5cGUYAyABKAkSFwoPY3VycmVudF92ZXJzaW9uGAQgASgFEiUKGGxhdGVzdF9zdWNjZXNzZnVsX3J1bl9pZBgFIAEoCUgAiAEBEhIKCmNyZWF0ZWRfYXQYBiABKAkSMAoFc2NvcGUYByADKAsyIS5hbHQuYWNvbHl0ZS52MS5SZXBvcnQuU2NvcGVFbnRyeRosCgpTY29wZUVudHJ5EgsKA2tleRgBIAEoCRINCgV2YWx1ZRgCIAEoCToCOAFCGwoZX2xhdGVzdF9zdWNjZXNzZnVsX3J1bl9pZCKOAQoNUmVwb3J0U3VtbWFyeRIRCglyZXBvcnRfaWQYASABKAkSDQoFdGl0bGUYAiABKAkSEwoLcmVwb3J0X3R5cGUYAyABKAkSFwoPY3VycmVudF92ZXJzaW9uGAQgASgFEhkKEWxhdGVzdF9ydW5fc3RhdHVzGAUgASgJEhIKCmNyZWF0ZWRfYXQYBiABKAkilgEKDVJlcG9ydFZlcnNpb24SEQoJcmVwb3J0X2lkGAEgASgJEhIKCnZlcnNpb25fbm8YAiABKAUSEgoKY2hhbmdlX3NlcRgDIAEoAxIVCg1jaGFuZ2VfcmVhc29uGAQgASgJEhIKCmNyZWF0ZWRfYXQYBSABKAkSHwoXcHJvbXB0X3RlbXBsYXRlX3ZlcnNpb24YBiABKAkihwEKFFJlcG9ydFZlcnNpb25TdW1tYXJ5EhIKCnZlcnNpb25fbm8YASABKAUSFQoNY2hhbmdlX3JlYXNvbhgCIAEoCRISCgpjcmVhdGVkX2F0GAMgASgJEjAKDGNoYW5nZV9pdGVtcxgEIAMoCzIaLmFsdC5hY29seXRlLnYxLkNoYW5nZUl0ZW0iZwoKQ2hhbmdlSXRlbRISCgpmaWVsZF9uYW1lGAEgASgJEhMKC2NoYW5nZV9raW5kGAIgASgJEhcKD29sZF9maW5nZXJwcmludBgDIAEoCRIXCg9uZXdfZmluZ2VycHJpbnQYBCABKAkiegoNUmVwb3J0U2VjdGlvbhITCgtzZWN0aW9uX2tleRgBIAEoCRIXCg9jdXJyZW50X3ZlcnNpb24YAiABKAUSFQoNZGlzcGxheV9vcmRlchgDIAEoBRIMCgRib2R5GAQgASgJEhYKDmNpdGF0aW9uc19qc29uGAUgASgJInMKDlNlY3Rpb25WZXJzaW9uEhMKC3NlY3Rpb25fa2V5GAEgASgJEhIKCnZlcnNpb25fbm8YAiABKAUSDAoEYm9keRgDIAEoCRIWCg5jaXRhdGlvbnNfanNvbhgEIAEoCRISCgpjcmVhdGVkX2F0GAUgASgJIpQBCgtTZWN0aW9uRGlmZhITCgtzZWN0aW9uX2tleRgBIAEoCRIVCghvbGRfYm9keRgCIAEoCUgAiAEBEhUKCG5ld19ib2R5GAMgASgJSAGIAQESEwoLb2xkX3ZlcnNpb24YBCABKAUSEwoLbmV3X3ZlcnNpb24YBSABKAVCCwoJX29sZF9ib2R5QgsKCV9uZXdfYm9keSLQAgoJUmVwb3J0UnVuEg4KBnJ1bl9pZBgBIAEoCRIRCglyZXBvcnRfaWQYAiABKAkSGQoRdGFyZ2V0X3ZlcnNpb25fbm8YAyABKAUSEgoKcnVuX3N0YXR1cxgEIAEoCRIVCg1wbGFubmVyX21vZGVsGAUgASgJEhQKDHdyaXRlcl9tb2RlbBgGIAEoCRIUCgxjcml0aWNfbW9kZWwYByABKAkSFwoKc3RhcnRlZF9hdBgIIAEoCUgAiAEBEhgKC2ZpbmlzaGVkX2F0GAkgASgJSAGIAQESGQoMZmFpbHVyZV9jb2RlGAogASgJSAKIAQESHAoPZmFpbHVyZV9tZXNzYWdlGAsgASgJSAOIAQFCDQoLX3N0YXJ0ZWRfYXRCDgoMX2ZpbmlzaGVkX2F0Qg8KDV9mYWlsdXJlX2NvZGVCEgoQX2ZhaWx1cmVfbWVzc2FnZSK3AQoJUmVwb3J0Sm9iEg4KBmpvYl9pZBgBIAEoCRIOCgZydW5faWQYAiABKAkSEgoKam9iX3N0YXR1cxgDIAEoCRISCgphdHRlbXB0X25vGAQgASgFEhcKCmNsYWltZWRfYnkYBSABKAlIAIgBARIXCgpjbGFpbWVkX2F0GAYgASgJSAGIAQESEgoKY3JlYXRlZF9hdBgHIAEoCUINCgtfY2xhaW1lZF9ieUINCgtfY2xhaW1lZF9hdDKMCQoOQWNvbHl0ZVNlcnZpY2USWQoMQ3JlYXRlUmVwb3J0EiMuYWx0LmFjb2x5dGUudjEuQ3JlYXRlUmVwb3J0UmVxdWVzdBokLmFsdC5hY29seXRlLnYxLkNyZWF0ZVJlcG9ydFJlc3BvbnNlElAKCUdldFJlcG9ydBIgLmFsdC5hY29seXRlLnYxLkdldFJlcG9ydFJlcXVlc3QaIS5hbHQuYWNvbHl0ZS52MS5HZXRSZXBvcnRSZXNwb25zZRJWCgtMaXN0UmVwb3J0cxIiLmFsdC5hY29seXRlLnYxLkxpc3RSZXBvcnRzUmVxdWVzdBojLmFsdC5hY29seXRlLnYxLkxpc3RSZXBvcnRzUmVzcG9uc2USZQoQR2V0UmVwb3J0VmVyc2lvbhInLmFsdC5hY29seXRlLnYxLkdldFJlcG9ydFZlcnNpb25SZXF1ZXN0GiguYWx0LmFjb2x5dGUudjEuR2V0UmVwb3J0VmVyc2lvblJlc3BvbnNlEmsKEkxpc3RSZXBvcnRWZXJzaW9ucxIpLmFsdC5hY29seXRlLnYxLkxpc3RSZXBvcnRWZXJzaW9uc1JlcXVlc3QaKi5hbHQuYWNvbHl0ZS52MS5MaXN0UmVwb3J0VmVyc2lvbnNSZXNwb25zZRJrChJEaWZmUmVwb3J0VmVyc2lvbnMSKS5hbHQuYWNvbHl0ZS52MS5EaWZmUmVwb3J0VmVyc2lvbnNSZXF1ZXN0GiouYWx0LmFjb2x5dGUudjEuRGlmZlJlcG9ydFZlcnNpb25zUmVzcG9uc2USXwoOU3RhcnRSZXBvcnRSdW4SJS5hbHQuYWNvbHl0ZS52MS5TdGFydFJlcG9ydFJ1blJlcXVlc3QaJi5hbHQuYWNvbHl0ZS52MS5TdGFydFJlcG9ydFJ1blJlc3BvbnNlElkKDEdldFJ1blN0YXR1cxIjLmFsdC5hY29seXRlLnYxLkdldFJ1blN0YXR1c1JlcXVlc3QaJC5hbHQuYWNvbHl0ZS52MS5HZXRSdW5TdGF0dXNSZXNwb25zZRJqChFTdHJlYW1SdW5Qcm9ncmVzcxIoLmFsdC5hY29seXRlLnYxLlN0cmVhbVJ1blByb2dyZXNzUmVxdWVzdBopLmFsdC5hY29seXRlLnYxLlN0cmVhbVJ1blByb2dyZXNzUmVzcG9uc2UwARJZCgxSZXJ1blNlY3Rpb24SIy5hbHQuYWNvbHl0ZS52MS5SZXJ1blNlY3Rpb25SZXF1ZXN0GiQuYWx0LmFjb2x5dGUudjEuUmVydW5TZWN0aW9uUmVzcG9uc2USWQoMRGVsZXRlUmVwb3J0EiMuYWx0LmFjb2x5dGUudjEuRGVsZXRlUmVwb3J0UmVxdWVzdBokLmFsdC5hY29seXRlLnYxLkRlbGV0ZVJlcG9ydFJlc3BvbnNlElYKC0hlYWx0aENoZWNrEiIuYWx0LmFjb2x5dGUudjEuSGVhbHRoQ2hlY2tSZXF1ZXN0GiMuYWx0LmFjb2x5dGUudjEuSGVhbHRoQ2hlY2tSZXNwb25zZUIoWiZhbHQvZ2VuL3Byb3RvL2FsdC9hY29seXRlL3YxO2Fjb2x5dGV2MWIGcHJvdG8z");
+export const file_alt_acolyte_v1_acolyte: GenFile =
+	/*@__PURE__*/
+	fileDesc(
+		"ChxhbHQvYWNvbHl0ZS92MS9hY29seXRlLnByb3RvEg5hbHQuYWNvbHl0ZS52MSKmAQoTQ3JlYXRlUmVwb3J0UmVxdWVzdBINCgV0aXRsZRgBIAEoCRITCgtyZXBvcnRfdHlwZRgCIAEoCRI9CgVzY29wZRgDIAMoCzIuLmFsdC5hY29seXRlLnYxLkNyZWF0ZVJlcG9ydFJlcXVlc3QuU2NvcGVFbnRyeRosCgpTY29wZUVudHJ5EgsKA2tleRgBIAEoCRINCgV2YWx1ZRgCIAEoCToCOAEiKQoUQ3JlYXRlUmVwb3J0UmVzcG9uc2USEQoJcmVwb3J0X2lkGAEgASgJIiUKEEdldFJlcG9ydFJlcXVlc3QSEQoJcmVwb3J0X2lkGAEgASgJIq8BChFHZXRSZXBvcnRSZXNwb25zZRImCgZyZXBvcnQYASABKAsyFi5hbHQuYWNvbHl0ZS52MS5SZXBvcnQSLwoIc2VjdGlvbnMYAiADKAsyHS5hbHQuYWNvbHl0ZS52MS5SZXBvcnRTZWN0aW9uEjIKCmFjdGl2ZV9ydW4YAyABKAsyGS5hbHQuYWNvbHl0ZS52MS5SZXBvcnRSdW5IAIgBAUINCgtfYWN0aXZlX3J1biJDChJMaXN0UmVwb3J0c1JlcXVlc3QSEwoGY3Vyc29yGAEgASgJSACIAQESDQoFbGltaXQYAiABKAVCCQoHX2N1cnNvciJsChNMaXN0UmVwb3J0c1Jlc3BvbnNlEi4KB3JlcG9ydHMYASADKAsyHS5hbHQuYWNvbHl0ZS52MS5SZXBvcnRTdW1tYXJ5EhMKC25leHRfY3Vyc29yGAIgASgJEhAKCGhhc19tb3JlGAMgASgIIkAKF0dldFJlcG9ydFZlcnNpb25SZXF1ZXN0EhEKCXJlcG9ydF9pZBgBIAEoCRISCgp2ZXJzaW9uX25vGAIgASgFIrYBChhHZXRSZXBvcnRWZXJzaW9uUmVzcG9uc2USLgoHdmVyc2lvbhgBIAEoCzIdLmFsdC5hY29seXRlLnYxLlJlcG9ydFZlcnNpb24SMAoMY2hhbmdlX2l0ZW1zGAIgAygLMhouYWx0LmFjb2x5dGUudjEuQ2hhbmdlSXRlbRI4ChBzZWN0aW9uX3ZlcnNpb25zGAMgAygLMh4uYWx0LmFjb2x5dGUudjEuU2VjdGlvblZlcnNpb24iXQoZTGlzdFJlcG9ydFZlcnNpb25zUmVxdWVzdBIRCglyZXBvcnRfaWQYASABKAkSEwoGY3Vyc29yGAIgASgJSACIAQESDQoFbGltaXQYAyABKAVCCQoHX2N1cnNvciJ7ChpMaXN0UmVwb3J0VmVyc2lvbnNSZXNwb25zZRI2Cgh2ZXJzaW9ucxgBIAMoCzIkLmFsdC5hY29seXRlLnYxLlJlcG9ydFZlcnNpb25TdW1tYXJ5EhMKC25leHRfY3Vyc29yGAIgASgJEhAKCGhhc19tb3JlGAMgASgIIlgKGURpZmZSZXBvcnRWZXJzaW9uc1JlcXVlc3QSEQoJcmVwb3J0X2lkGAEgASgJEhQKDGZyb21fdmVyc2lvbhgCIAEoBRISCgp0b192ZXJzaW9uGAMgASgFIoIBChpEaWZmUmVwb3J0VmVyc2lvbnNSZXNwb25zZRIwCgxjaGFuZ2VfaXRlbXMYASADKAsyGi5hbHQuYWNvbHl0ZS52MS5DaGFuZ2VJdGVtEjIKDXNlY3Rpb25fZGlmZnMYAiADKAsyGy5hbHQuYWNvbHl0ZS52MS5TZWN0aW9uRGlmZiIqChVTdGFydFJlcG9ydFJ1blJlcXVlc3QSEQoJcmVwb3J0X2lkGAEgASgJIigKFlN0YXJ0UmVwb3J0UnVuUmVzcG9uc2USDgoGcnVuX2lkGAEgASgJIiUKE0dldFJ1blN0YXR1c1JlcXVlc3QSDgoGcnVuX2lkGAEgASgJImcKFEdldFJ1blN0YXR1c1Jlc3BvbnNlEiYKA3J1bhgBIAEoCzIZLmFsdC5hY29seXRlLnYxLlJlcG9ydFJ1bhInCgRqb2JzGAIgAygLMhkuYWx0LmFjb2x5dGUudjEuUmVwb3J0Sm9iIioKGFN0cmVhbVJ1blByb2dyZXNzUmVxdWVzdBIOCgZydW5faWQYASABKAkitwEKGVN0cmVhbVJ1blByb2dyZXNzUmVzcG9uc2USDAoEa2luZBgBIAEoCRIpCgRzdGVwGAIgASgLMhkuYWx0LmFjb2x5dGUudjEuU3RlcEV2ZW50SAASDwoFZGVsdGEYAyABKAlIABIXCg1lcnJvcl9tZXNzYWdlGAQgASgJSAASLAoEZG9uZRgFIAEoCzIcLmFsdC5hY29seXRlLnYxLlJ1bkRvbmVFdmVudEgAQgkKB3BheWxvYWQiRwoJU3RlcEV2ZW50EhEKCXN0ZXBfbmFtZRgBIAEoCRISCgpzdGVwX2luZGV4GAIgASgFEhMKC3RvdGFsX3N0ZXBzGAMgASgFIjoKDFJ1bkRvbmVFdmVudBIWCg5uZXdfdmVyc2lvbl9ubxgBIAEoBRISCgpydW5fc3RhdHVzGAIgASgJIj0KE1JlcnVuU2VjdGlvblJlcXVlc3QSEQoJcmVwb3J0X2lkGAEgASgJEhMKC3NlY3Rpb25fa2V5GAIgASgJIiYKFFJlcnVuU2VjdGlvblJlc3BvbnNlEg4KBnJ1bl9pZBgBIAEoCSIoChNEZWxldGVSZXBvcnRSZXF1ZXN0EhEKCXJlcG9ydF9pZBgBIAEoCSIWChREZWxldGVSZXBvcnRSZXNwb25zZSIUChJIZWFsdGhDaGVja1JlcXVlc3QiJQoTSGVhbHRoQ2hlY2tSZXNwb25zZRIOCgZzdGF0dXMYASABKAkikAIKBlJlcG9ydBIRCglyZXBvcnRfaWQYASABKAkSDQoFdGl0bGUYAiABKAkSEwoLcmVwb3J0X3R5cGUYAyABKAkSFwoPY3VycmVudF92ZXJzaW9uGAQgASgFEiUKGGxhdGVzdF9zdWNjZXNzZnVsX3J1bl9pZBgFIAEoCUgAiAEBEhIKCmNyZWF0ZWRfYXQYBiABKAkSMAoFc2NvcGUYByADKAsyIS5hbHQuYWNvbHl0ZS52MS5SZXBvcnQuU2NvcGVFbnRyeRosCgpTY29wZUVudHJ5EgsKA2tleRgBIAEoCRINCgV2YWx1ZRgCIAEoCToCOAFCGwoZX2xhdGVzdF9zdWNjZXNzZnVsX3J1bl9pZCKOAQoNUmVwb3J0U3VtbWFyeRIRCglyZXBvcnRfaWQYASABKAkSDQoFdGl0bGUYAiABKAkSEwoLcmVwb3J0X3R5cGUYAyABKAkSFwoPY3VycmVudF92ZXJzaW9uGAQgASgFEhkKEWxhdGVzdF9ydW5fc3RhdHVzGAUgASgJEhIKCmNyZWF0ZWRfYXQYBiABKAkilgEKDVJlcG9ydFZlcnNpb24SEQoJcmVwb3J0X2lkGAEgASgJEhIKCnZlcnNpb25fbm8YAiABKAUSEgoKY2hhbmdlX3NlcRgDIAEoAxIVCg1jaGFuZ2VfcmVhc29uGAQgASgJEhIKCmNyZWF0ZWRfYXQYBSABKAkSHwoXcHJvbXB0X3RlbXBsYXRlX3ZlcnNpb24YBiABKAkihwEKFFJlcG9ydFZlcnNpb25TdW1tYXJ5EhIKCnZlcnNpb25fbm8YASABKAUSFQoNY2hhbmdlX3JlYXNvbhgCIAEoCRISCgpjcmVhdGVkX2F0GAMgASgJEjAKDGNoYW5nZV9pdGVtcxgEIAMoCzIaLmFsdC5hY29seXRlLnYxLkNoYW5nZUl0ZW0iZwoKQ2hhbmdlSXRlbRISCgpmaWVsZF9uYW1lGAEgASgJEhMKC2NoYW5nZV9raW5kGAIgASgJEhcKD29sZF9maW5nZXJwcmludBgDIAEoCRIXCg9uZXdfZmluZ2VycHJpbnQYBCABKAkiegoNUmVwb3J0U2VjdGlvbhITCgtzZWN0aW9uX2tleRgBIAEoCRIXCg9jdXJyZW50X3ZlcnNpb24YAiABKAUSFQoNZGlzcGxheV9vcmRlchgDIAEoBRIMCgRib2R5GAQgASgJEhYKDmNpdGF0aW9uc19qc29uGAUgASgJInMKDlNlY3Rpb25WZXJzaW9uEhMKC3NlY3Rpb25fa2V5GAEgASgJEhIKCnZlcnNpb25fbm8YAiABKAUSDAoEYm9keRgDIAEoCRIWCg5jaXRhdGlvbnNfanNvbhgEIAEoCRISCgpjcmVhdGVkX2F0GAUgASgJIpQBCgtTZWN0aW9uRGlmZhITCgtzZWN0aW9uX2tleRgBIAEoCRIVCghvbGRfYm9keRgCIAEoCUgAiAEBEhUKCG5ld19ib2R5GAMgASgJSAGIAQESEwoLb2xkX3ZlcnNpb24YBCABKAUSEwoLbmV3X3ZlcnNpb24YBSABKAVCCwoJX29sZF9ib2R5QgsKCV9uZXdfYm9keSLQAgoJUmVwb3J0UnVuEg4KBnJ1bl9pZBgBIAEoCRIRCglyZXBvcnRfaWQYAiABKAkSGQoRdGFyZ2V0X3ZlcnNpb25fbm8YAyABKAUSEgoKcnVuX3N0YXR1cxgEIAEoCRIVCg1wbGFubmVyX21vZGVsGAUgASgJEhQKDHdyaXRlcl9tb2RlbBgGIAEoCRIUCgxjcml0aWNfbW9kZWwYByABKAkSFwoKc3RhcnRlZF9hdBgIIAEoCUgAiAEBEhgKC2ZpbmlzaGVkX2F0GAkgASgJSAGIAQESGQoMZmFpbHVyZV9jb2RlGAogASgJSAKIAQESHAoPZmFpbHVyZV9tZXNzYWdlGAsgASgJSAOIAQFCDQoLX3N0YXJ0ZWRfYXRCDgoMX2ZpbmlzaGVkX2F0Qg8KDV9mYWlsdXJlX2NvZGVCEgoQX2ZhaWx1cmVfbWVzc2FnZSK3AQoJUmVwb3J0Sm9iEg4KBmpvYl9pZBgBIAEoCRIOCgZydW5faWQYAiABKAkSEgoKam9iX3N0YXR1cxgDIAEoCRISCgphdHRlbXB0X25vGAQgASgFEhcKCmNsYWltZWRfYnkYBSABKAlIAIgBARIXCgpjbGFpbWVkX2F0GAYgASgJSAGIAQESEgoKY3JlYXRlZF9hdBgHIAEoCUINCgtfY2xhaW1lZF9ieUINCgtfY2xhaW1lZF9hdDKMCQoOQWNvbHl0ZVNlcnZpY2USWQoMQ3JlYXRlUmVwb3J0EiMuYWx0LmFjb2x5dGUudjEuQ3JlYXRlUmVwb3J0UmVxdWVzdBokLmFsdC5hY29seXRlLnYxLkNyZWF0ZVJlcG9ydFJlc3BvbnNlElAKCUdldFJlcG9ydBIgLmFsdC5hY29seXRlLnYxLkdldFJlcG9ydFJlcXVlc3QaIS5hbHQuYWNvbHl0ZS52MS5HZXRSZXBvcnRSZXNwb25zZRJWCgtMaXN0UmVwb3J0cxIiLmFsdC5hY29seXRlLnYxLkxpc3RSZXBvcnRzUmVxdWVzdBojLmFsdC5hY29seXRlLnYxLkxpc3RSZXBvcnRzUmVzcG9uc2USZQoQR2V0UmVwb3J0VmVyc2lvbhInLmFsdC5hY29seXRlLnYxLkdldFJlcG9ydFZlcnNpb25SZXF1ZXN0GiguYWx0LmFjb2x5dGUudjEuR2V0UmVwb3J0VmVyc2lvblJlc3BvbnNlEmsKEkxpc3RSZXBvcnRWZXJzaW9ucxIpLmFsdC5hY29seXRlLnYxLkxpc3RSZXBvcnRWZXJzaW9uc1JlcXVlc3QaKi5hbHQuYWNvbHl0ZS52MS5MaXN0UmVwb3J0VmVyc2lvbnNSZXNwb25zZRJrChJEaWZmUmVwb3J0VmVyc2lvbnMSKS5hbHQuYWNvbHl0ZS52MS5EaWZmUmVwb3J0VmVyc2lvbnNSZXF1ZXN0GiouYWx0LmFjb2x5dGUudjEuRGlmZlJlcG9ydFZlcnNpb25zUmVzcG9uc2USXwoOU3RhcnRSZXBvcnRSdW4SJS5hbHQuYWNvbHl0ZS52MS5TdGFydFJlcG9ydFJ1blJlcXVlc3QaJi5hbHQuYWNvbHl0ZS52MS5TdGFydFJlcG9ydFJ1blJlc3BvbnNlElkKDEdldFJ1blN0YXR1cxIjLmFsdC5hY29seXRlLnYxLkdldFJ1blN0YXR1c1JlcXVlc3QaJC5hbHQuYWNvbHl0ZS52MS5HZXRSdW5TdGF0dXNSZXNwb25zZRJqChFTdHJlYW1SdW5Qcm9ncmVzcxIoLmFsdC5hY29seXRlLnYxLlN0cmVhbVJ1blByb2dyZXNzUmVxdWVzdBopLmFsdC5hY29seXRlLnYxLlN0cmVhbVJ1blByb2dyZXNzUmVzcG9uc2UwARJZCgxSZXJ1blNlY3Rpb24SIy5hbHQuYWNvbHl0ZS52MS5SZXJ1blNlY3Rpb25SZXF1ZXN0GiQuYWx0LmFjb2x5dGUudjEuUmVydW5TZWN0aW9uUmVzcG9uc2USWQoMRGVsZXRlUmVwb3J0EiMuYWx0LmFjb2x5dGUudjEuRGVsZXRlUmVwb3J0UmVxdWVzdBokLmFsdC5hY29seXRlLnYxLkRlbGV0ZVJlcG9ydFJlc3BvbnNlElYKC0hlYWx0aENoZWNrEiIuYWx0LmFjb2x5dGUudjEuSGVhbHRoQ2hlY2tSZXF1ZXN0GiMuYWx0LmFjb2x5dGUudjEuSGVhbHRoQ2hlY2tSZXNwb25zZUIoWiZhbHQvZ2VuL3Byb3RvL2FsdC9hY29seXRlL3YxO2Fjb2x5dGV2MWIGcHJvdG8z",
+	);
 
 /**
  * @generated from message alt.acolyte.v1.CreateReportRequest
  */
-export type CreateReportRequest = Message<"alt.acolyte.v1.CreateReportRequest"> & {
-  /**
-   * @generated from field: string title = 1;
-   */
-  title: string;
+export type CreateReportRequest =
+	Message<"alt.acolyte.v1.CreateReportRequest"> & {
+		/**
+		 * @generated from field: string title = 1;
+		 */
+		title: string;
 
-  /**
-   * @generated from field: string report_type = 2;
-   */
-  reportType: string;
+		/**
+		 * @generated from field: string report_type = 2;
+		 */
+		reportType: string;
 
-  /**
-   * Scope parameters for report generation (e.g. topic, date range, sources).
-   *
-   * @generated from field: map<string, string> scope = 3;
-   */
-  scope: { [key: string]: string };
-};
+		/**
+		 * Scope parameters for report generation (e.g. topic, date range, sources).
+		 *
+		 * @generated from field: map<string, string> scope = 3;
+		 */
+		scope: { [key: string]: string };
+	};
 
 /**
  * Describes the message alt.acolyte.v1.CreateReportRequest.
  * Use `create(CreateReportRequestSchema)` to create a new message.
  */
-export const CreateReportRequestSchema: GenMessage<CreateReportRequest> = /*@__PURE__*/
-  messageDesc(file_alt_acolyte_v1_acolyte, 0);
+export const CreateReportRequestSchema: GenMessage<CreateReportRequest> =
+	/*@__PURE__*/
+	messageDesc(file_alt_acolyte_v1_acolyte, 0);
 
 /**
  * @generated from message alt.acolyte.v1.CreateReportResponse
  */
-export type CreateReportResponse = Message<"alt.acolyte.v1.CreateReportResponse"> & {
-  /**
-   * @generated from field: string report_id = 1;
-   */
-  reportId: string;
-};
+export type CreateReportResponse =
+	Message<"alt.acolyte.v1.CreateReportResponse"> & {
+		/**
+		 * @generated from field: string report_id = 1;
+		 */
+		reportId: string;
+	};
 
 /**
  * Describes the message alt.acolyte.v1.CreateReportResponse.
  * Use `create(CreateReportResponseSchema)` to create a new message.
  */
-export const CreateReportResponseSchema: GenMessage<CreateReportResponse> = /*@__PURE__*/
-  messageDesc(file_alt_acolyte_v1_acolyte, 1);
+export const CreateReportResponseSchema: GenMessage<CreateReportResponse> =
+	/*@__PURE__*/
+	messageDesc(file_alt_acolyte_v1_acolyte, 1);
 
 /**
  * @generated from message alt.acolyte.v1.GetReportRequest
  */
 export type GetReportRequest = Message<"alt.acolyte.v1.GetReportRequest"> & {
-  /**
-   * @generated from field: string report_id = 1;
-   */
-  reportId: string;
+	/**
+	 * @generated from field: string report_id = 1;
+	 */
+	reportId: string;
 };
 
 /**
  * Describes the message alt.acolyte.v1.GetReportRequest.
  * Use `create(GetReportRequestSchema)` to create a new message.
  */
-export const GetReportRequestSchema: GenMessage<GetReportRequest> = /*@__PURE__*/
-  messageDesc(file_alt_acolyte_v1_acolyte, 2);
+export const GetReportRequestSchema: GenMessage<GetReportRequest> =
+	/*@__PURE__*/
+	messageDesc(file_alt_acolyte_v1_acolyte, 2);
 
 /**
  * @generated from message alt.acolyte.v1.GetReportResponse
  */
 export type GetReportResponse = Message<"alt.acolyte.v1.GetReportResponse"> & {
-  /**
-   * @generated from field: alt.acolyte.v1.Report report = 1;
-   */
-  report?: Report | undefined;
+	/**
+	 * @generated from field: alt.acolyte.v1.Report report = 1;
+	 */
+	report?: Report | undefined;
 
-  /**
-   * @generated from field: repeated alt.acolyte.v1.ReportSection sections = 2;
-   */
-  sections: ReportSection[];
+	/**
+	 * @generated from field: repeated alt.acolyte.v1.ReportSection sections = 2;
+	 */
+	sections: ReportSection[];
 
-  /**
-   * Latest pending/running run for this report, if any.
-   * Lets the FE resume polling after navigation/reload without storing
-   * the run_id client-side. Absent when no run is in flight.
-   *
-   * @generated from field: optional alt.acolyte.v1.ReportRun active_run = 3;
-   */
-  activeRun?: ReportRun | undefined;
+	/**
+	 * Latest pending/running run for this report, if any.
+	 * Lets the FE resume polling after navigation/reload without storing
+	 * the run_id client-side. Absent when no run is in flight.
+	 *
+	 * @generated from field: optional alt.acolyte.v1.ReportRun active_run = 3;
+	 */
+	activeRun?: ReportRun | undefined;
 };
 
 /**
  * Describes the message alt.acolyte.v1.GetReportResponse.
  * Use `create(GetReportResponseSchema)` to create a new message.
  */
-export const GetReportResponseSchema: GenMessage<GetReportResponse> = /*@__PURE__*/
-  messageDesc(file_alt_acolyte_v1_acolyte, 3);
+export const GetReportResponseSchema: GenMessage<GetReportResponse> =
+	/*@__PURE__*/
+	messageDesc(file_alt_acolyte_v1_acolyte, 3);
 
 /**
  * @generated from message alt.acolyte.v1.ListReportsRequest
  */
-export type ListReportsRequest = Message<"alt.acolyte.v1.ListReportsRequest"> & {
-  /**
-   * @generated from field: optional string cursor = 1;
-   */
-  cursor?: string | undefined;
+export type ListReportsRequest =
+	Message<"alt.acolyte.v1.ListReportsRequest"> & {
+		/**
+		 * @generated from field: optional string cursor = 1;
+		 */
+		cursor?: string | undefined;
 
-  /**
-   * @generated from field: int32 limit = 2;
-   */
-  limit: number;
-};
+		/**
+		 * @generated from field: int32 limit = 2;
+		 */
+		limit: number;
+	};
 
 /**
  * Describes the message alt.acolyte.v1.ListReportsRequest.
  * Use `create(ListReportsRequestSchema)` to create a new message.
  */
-export const ListReportsRequestSchema: GenMessage<ListReportsRequest> = /*@__PURE__*/
-  messageDesc(file_alt_acolyte_v1_acolyte, 4);
+export const ListReportsRequestSchema: GenMessage<ListReportsRequest> =
+	/*@__PURE__*/
+	messageDesc(file_alt_acolyte_v1_acolyte, 4);
 
 /**
  * @generated from message alt.acolyte.v1.ListReportsResponse
  */
-export type ListReportsResponse = Message<"alt.acolyte.v1.ListReportsResponse"> & {
-  /**
-   * @generated from field: repeated alt.acolyte.v1.ReportSummary reports = 1;
-   */
-  reports: ReportSummary[];
+export type ListReportsResponse =
+	Message<"alt.acolyte.v1.ListReportsResponse"> & {
+		/**
+		 * @generated from field: repeated alt.acolyte.v1.ReportSummary reports = 1;
+		 */
+		reports: ReportSummary[];
 
-  /**
-   * @generated from field: string next_cursor = 2;
-   */
-  nextCursor: string;
+		/**
+		 * @generated from field: string next_cursor = 2;
+		 */
+		nextCursor: string;
 
-  /**
-   * @generated from field: bool has_more = 3;
-   */
-  hasMore: boolean;
-};
+		/**
+		 * @generated from field: bool has_more = 3;
+		 */
+		hasMore: boolean;
+	};
 
 /**
  * Describes the message alt.acolyte.v1.ListReportsResponse.
  * Use `create(ListReportsResponseSchema)` to create a new message.
  */
-export const ListReportsResponseSchema: GenMessage<ListReportsResponse> = /*@__PURE__*/
-  messageDesc(file_alt_acolyte_v1_acolyte, 5);
+export const ListReportsResponseSchema: GenMessage<ListReportsResponse> =
+	/*@__PURE__*/
+	messageDesc(file_alt_acolyte_v1_acolyte, 5);
 
 /**
  * @generated from message alt.acolyte.v1.GetReportVersionRequest
  */
-export type GetReportVersionRequest = Message<"alt.acolyte.v1.GetReportVersionRequest"> & {
-  /**
-   * @generated from field: string report_id = 1;
-   */
-  reportId: string;
+export type GetReportVersionRequest =
+	Message<"alt.acolyte.v1.GetReportVersionRequest"> & {
+		/**
+		 * @generated from field: string report_id = 1;
+		 */
+		reportId: string;
 
-  /**
-   * @generated from field: int32 version_no = 2;
-   */
-  versionNo: number;
-};
+		/**
+		 * @generated from field: int32 version_no = 2;
+		 */
+		versionNo: number;
+	};
 
 /**
  * Describes the message alt.acolyte.v1.GetReportVersionRequest.
  * Use `create(GetReportVersionRequestSchema)` to create a new message.
  */
-export const GetReportVersionRequestSchema: GenMessage<GetReportVersionRequest> = /*@__PURE__*/
-  messageDesc(file_alt_acolyte_v1_acolyte, 6);
+export const GetReportVersionRequestSchema: GenMessage<GetReportVersionRequest> =
+	/*@__PURE__*/
+	messageDesc(file_alt_acolyte_v1_acolyte, 6);
 
 /**
  * @generated from message alt.acolyte.v1.GetReportVersionResponse
  */
-export type GetReportVersionResponse = Message<"alt.acolyte.v1.GetReportVersionResponse"> & {
-  /**
-   * @generated from field: alt.acolyte.v1.ReportVersion version = 1;
-   */
-  version?: ReportVersion | undefined;
+export type GetReportVersionResponse =
+	Message<"alt.acolyte.v1.GetReportVersionResponse"> & {
+		/**
+		 * @generated from field: alt.acolyte.v1.ReportVersion version = 1;
+		 */
+		version?: ReportVersion | undefined;
 
-  /**
-   * @generated from field: repeated alt.acolyte.v1.ChangeItem change_items = 2;
-   */
-  changeItems: ChangeItem[];
+		/**
+		 * @generated from field: repeated alt.acolyte.v1.ChangeItem change_items = 2;
+		 */
+		changeItems: ChangeItem[];
 
-  /**
-   * @generated from field: repeated alt.acolyte.v1.SectionVersion section_versions = 3;
-   */
-  sectionVersions: SectionVersion[];
-};
+		/**
+		 * @generated from field: repeated alt.acolyte.v1.SectionVersion section_versions = 3;
+		 */
+		sectionVersions: SectionVersion[];
+	};
 
 /**
  * Describes the message alt.acolyte.v1.GetReportVersionResponse.
  * Use `create(GetReportVersionResponseSchema)` to create a new message.
  */
-export const GetReportVersionResponseSchema: GenMessage<GetReportVersionResponse> = /*@__PURE__*/
-  messageDesc(file_alt_acolyte_v1_acolyte, 7);
+export const GetReportVersionResponseSchema: GenMessage<GetReportVersionResponse> =
+	/*@__PURE__*/
+	messageDesc(file_alt_acolyte_v1_acolyte, 7);
 
 /**
  * @generated from message alt.acolyte.v1.ListReportVersionsRequest
  */
-export type ListReportVersionsRequest = Message<"alt.acolyte.v1.ListReportVersionsRequest"> & {
-  /**
-   * @generated from field: string report_id = 1;
-   */
-  reportId: string;
+export type ListReportVersionsRequest =
+	Message<"alt.acolyte.v1.ListReportVersionsRequest"> & {
+		/**
+		 * @generated from field: string report_id = 1;
+		 */
+		reportId: string;
 
-  /**
-   * @generated from field: optional string cursor = 2;
-   */
-  cursor?: string | undefined;
+		/**
+		 * @generated from field: optional string cursor = 2;
+		 */
+		cursor?: string | undefined;
 
-  /**
-   * @generated from field: int32 limit = 3;
-   */
-  limit: number;
-};
+		/**
+		 * @generated from field: int32 limit = 3;
+		 */
+		limit: number;
+	};
 
 /**
  * Describes the message alt.acolyte.v1.ListReportVersionsRequest.
  * Use `create(ListReportVersionsRequestSchema)` to create a new message.
  */
-export const ListReportVersionsRequestSchema: GenMessage<ListReportVersionsRequest> = /*@__PURE__*/
-  messageDesc(file_alt_acolyte_v1_acolyte, 8);
+export const ListReportVersionsRequestSchema: GenMessage<ListReportVersionsRequest> =
+	/*@__PURE__*/
+	messageDesc(file_alt_acolyte_v1_acolyte, 8);
 
 /**
  * @generated from message alt.acolyte.v1.ListReportVersionsResponse
  */
-export type ListReportVersionsResponse = Message<"alt.acolyte.v1.ListReportVersionsResponse"> & {
-  /**
-   * @generated from field: repeated alt.acolyte.v1.ReportVersionSummary versions = 1;
-   */
-  versions: ReportVersionSummary[];
+export type ListReportVersionsResponse =
+	Message<"alt.acolyte.v1.ListReportVersionsResponse"> & {
+		/**
+		 * @generated from field: repeated alt.acolyte.v1.ReportVersionSummary versions = 1;
+		 */
+		versions: ReportVersionSummary[];
 
-  /**
-   * @generated from field: string next_cursor = 2;
-   */
-  nextCursor: string;
+		/**
+		 * @generated from field: string next_cursor = 2;
+		 */
+		nextCursor: string;
 
-  /**
-   * @generated from field: bool has_more = 3;
-   */
-  hasMore: boolean;
-};
+		/**
+		 * @generated from field: bool has_more = 3;
+		 */
+		hasMore: boolean;
+	};
 
 /**
  * Describes the message alt.acolyte.v1.ListReportVersionsResponse.
  * Use `create(ListReportVersionsResponseSchema)` to create a new message.
  */
-export const ListReportVersionsResponseSchema: GenMessage<ListReportVersionsResponse> = /*@__PURE__*/
-  messageDesc(file_alt_acolyte_v1_acolyte, 9);
+export const ListReportVersionsResponseSchema: GenMessage<ListReportVersionsResponse> =
+	/*@__PURE__*/
+	messageDesc(file_alt_acolyte_v1_acolyte, 9);
 
 /**
  * @generated from message alt.acolyte.v1.DiffReportVersionsRequest
  */
-export type DiffReportVersionsRequest = Message<"alt.acolyte.v1.DiffReportVersionsRequest"> & {
-  /**
-   * @generated from field: string report_id = 1;
-   */
-  reportId: string;
+export type DiffReportVersionsRequest =
+	Message<"alt.acolyte.v1.DiffReportVersionsRequest"> & {
+		/**
+		 * @generated from field: string report_id = 1;
+		 */
+		reportId: string;
 
-  /**
-   * @generated from field: int32 from_version = 2;
-   */
-  fromVersion: number;
+		/**
+		 * @generated from field: int32 from_version = 2;
+		 */
+		fromVersion: number;
 
-  /**
-   * @generated from field: int32 to_version = 3;
-   */
-  toVersion: number;
-};
+		/**
+		 * @generated from field: int32 to_version = 3;
+		 */
+		toVersion: number;
+	};
 
 /**
  * Describes the message alt.acolyte.v1.DiffReportVersionsRequest.
  * Use `create(DiffReportVersionsRequestSchema)` to create a new message.
  */
-export const DiffReportVersionsRequestSchema: GenMessage<DiffReportVersionsRequest> = /*@__PURE__*/
-  messageDesc(file_alt_acolyte_v1_acolyte, 10);
+export const DiffReportVersionsRequestSchema: GenMessage<DiffReportVersionsRequest> =
+	/*@__PURE__*/
+	messageDesc(file_alt_acolyte_v1_acolyte, 10);
 
 /**
  * @generated from message alt.acolyte.v1.DiffReportVersionsResponse
  */
-export type DiffReportVersionsResponse = Message<"alt.acolyte.v1.DiffReportVersionsResponse"> & {
-  /**
-   * @generated from field: repeated alt.acolyte.v1.ChangeItem change_items = 1;
-   */
-  changeItems: ChangeItem[];
+export type DiffReportVersionsResponse =
+	Message<"alt.acolyte.v1.DiffReportVersionsResponse"> & {
+		/**
+		 * @generated from field: repeated alt.acolyte.v1.ChangeItem change_items = 1;
+		 */
+		changeItems: ChangeItem[];
 
-  /**
-   * @generated from field: repeated alt.acolyte.v1.SectionDiff section_diffs = 2;
-   */
-  sectionDiffs: SectionDiff[];
-};
+		/**
+		 * @generated from field: repeated alt.acolyte.v1.SectionDiff section_diffs = 2;
+		 */
+		sectionDiffs: SectionDiff[];
+	};
 
 /**
  * Describes the message alt.acolyte.v1.DiffReportVersionsResponse.
  * Use `create(DiffReportVersionsResponseSchema)` to create a new message.
  */
-export const DiffReportVersionsResponseSchema: GenMessage<DiffReportVersionsResponse> = /*@__PURE__*/
-  messageDesc(file_alt_acolyte_v1_acolyte, 11);
+export const DiffReportVersionsResponseSchema: GenMessage<DiffReportVersionsResponse> =
+	/*@__PURE__*/
+	messageDesc(file_alt_acolyte_v1_acolyte, 11);
 
 /**
  * @generated from message alt.acolyte.v1.StartReportRunRequest
  */
-export type StartReportRunRequest = Message<"alt.acolyte.v1.StartReportRunRequest"> & {
-  /**
-   * @generated from field: string report_id = 1;
-   */
-  reportId: string;
-};
+export type StartReportRunRequest =
+	Message<"alt.acolyte.v1.StartReportRunRequest"> & {
+		/**
+		 * @generated from field: string report_id = 1;
+		 */
+		reportId: string;
+	};
 
 /**
  * Describes the message alt.acolyte.v1.StartReportRunRequest.
  * Use `create(StartReportRunRequestSchema)` to create a new message.
  */
-export const StartReportRunRequestSchema: GenMessage<StartReportRunRequest> = /*@__PURE__*/
-  messageDesc(file_alt_acolyte_v1_acolyte, 12);
+export const StartReportRunRequestSchema: GenMessage<StartReportRunRequest> =
+	/*@__PURE__*/
+	messageDesc(file_alt_acolyte_v1_acolyte, 12);
 
 /**
  * @generated from message alt.acolyte.v1.StartReportRunResponse
  */
-export type StartReportRunResponse = Message<"alt.acolyte.v1.StartReportRunResponse"> & {
-  /**
-   * @generated from field: string run_id = 1;
-   */
-  runId: string;
-};
+export type StartReportRunResponse =
+	Message<"alt.acolyte.v1.StartReportRunResponse"> & {
+		/**
+		 * @generated from field: string run_id = 1;
+		 */
+		runId: string;
+	};
 
 /**
  * Describes the message alt.acolyte.v1.StartReportRunResponse.
  * Use `create(StartReportRunResponseSchema)` to create a new message.
  */
-export const StartReportRunResponseSchema: GenMessage<StartReportRunResponse> = /*@__PURE__*/
-  messageDesc(file_alt_acolyte_v1_acolyte, 13);
+export const StartReportRunResponseSchema: GenMessage<StartReportRunResponse> =
+	/*@__PURE__*/
+	messageDesc(file_alt_acolyte_v1_acolyte, 13);
 
 /**
  * @generated from message alt.acolyte.v1.GetRunStatusRequest
  */
-export type GetRunStatusRequest = Message<"alt.acolyte.v1.GetRunStatusRequest"> & {
-  /**
-   * @generated from field: string run_id = 1;
-   */
-  runId: string;
-};
+export type GetRunStatusRequest =
+	Message<"alt.acolyte.v1.GetRunStatusRequest"> & {
+		/**
+		 * @generated from field: string run_id = 1;
+		 */
+		runId: string;
+	};
 
 /**
  * Describes the message alt.acolyte.v1.GetRunStatusRequest.
  * Use `create(GetRunStatusRequestSchema)` to create a new message.
  */
-export const GetRunStatusRequestSchema: GenMessage<GetRunStatusRequest> = /*@__PURE__*/
-  messageDesc(file_alt_acolyte_v1_acolyte, 14);
+export const GetRunStatusRequestSchema: GenMessage<GetRunStatusRequest> =
+	/*@__PURE__*/
+	messageDesc(file_alt_acolyte_v1_acolyte, 14);
 
 /**
  * @generated from message alt.acolyte.v1.GetRunStatusResponse
  */
-export type GetRunStatusResponse = Message<"alt.acolyte.v1.GetRunStatusResponse"> & {
-  /**
-   * @generated from field: alt.acolyte.v1.ReportRun run = 1;
-   */
-  run?: ReportRun | undefined;
+export type GetRunStatusResponse =
+	Message<"alt.acolyte.v1.GetRunStatusResponse"> & {
+		/**
+		 * @generated from field: alt.acolyte.v1.ReportRun run = 1;
+		 */
+		run?: ReportRun | undefined;
 
-  /**
-   * @generated from field: repeated alt.acolyte.v1.ReportJob jobs = 2;
-   */
-  jobs: ReportJob[];
-};
+		/**
+		 * @generated from field: repeated alt.acolyte.v1.ReportJob jobs = 2;
+		 */
+		jobs: ReportJob[];
+	};
 
 /**
  * Describes the message alt.acolyte.v1.GetRunStatusResponse.
  * Use `create(GetRunStatusResponseSchema)` to create a new message.
  */
-export const GetRunStatusResponseSchema: GenMessage<GetRunStatusResponse> = /*@__PURE__*/
-  messageDesc(file_alt_acolyte_v1_acolyte, 15);
+export const GetRunStatusResponseSchema: GenMessage<GetRunStatusResponse> =
+	/*@__PURE__*/
+	messageDesc(file_alt_acolyte_v1_acolyte, 15);
 
 /**
  * @generated from message alt.acolyte.v1.StreamRunProgressRequest
  */
-export type StreamRunProgressRequest = Message<"alt.acolyte.v1.StreamRunProgressRequest"> & {
-  /**
-   * @generated from field: string run_id = 1;
-   */
-  runId: string;
-};
+export type StreamRunProgressRequest =
+	Message<"alt.acolyte.v1.StreamRunProgressRequest"> & {
+		/**
+		 * @generated from field: string run_id = 1;
+		 */
+		runId: string;
+	};
 
 /**
  * Describes the message alt.acolyte.v1.StreamRunProgressRequest.
  * Use `create(StreamRunProgressRequestSchema)` to create a new message.
  */
-export const StreamRunProgressRequestSchema: GenMessage<StreamRunProgressRequest> = /*@__PURE__*/
-  messageDesc(file_alt_acolyte_v1_acolyte, 16);
+export const StreamRunProgressRequestSchema: GenMessage<StreamRunProgressRequest> =
+	/*@__PURE__*/
+	messageDesc(file_alt_acolyte_v1_acolyte, 16);
 
 /**
  * @generated from message alt.acolyte.v1.StreamRunProgressResponse
  */
-export type StreamRunProgressResponse = Message<"alt.acolyte.v1.StreamRunProgressResponse"> & {
-  /**
-   * Event kind: "step_start", "step_complete", "delta", "error", "done"
-   *
-   * @generated from field: string kind = 1;
-   */
-  kind: string;
+export type StreamRunProgressResponse =
+	Message<"alt.acolyte.v1.StreamRunProgressResponse"> & {
+		/**
+		 * Event kind: "step_start", "step_complete", "delta", "error", "done"
+		 *
+		 * @generated from field: string kind = 1;
+		 */
+		kind: string;
 
-  /**
-   * @generated from oneof alt.acolyte.v1.StreamRunProgressResponse.payload
-   */
-  payload: {
-    /**
-     * @generated from field: alt.acolyte.v1.StepEvent step = 2;
-     */
-    value: StepEvent;
-    case: "step";
-  } | {
-    /**
-     * @generated from field: string delta = 3;
-     */
-    value: string;
-    case: "delta";
-  } | {
-    /**
-     * @generated from field: string error_message = 4;
-     */
-    value: string;
-    case: "errorMessage";
-  } | {
-    /**
-     * @generated from field: alt.acolyte.v1.RunDoneEvent done = 5;
-     */
-    value: RunDoneEvent;
-    case: "done";
-  } | { case: undefined; value?: undefined };
-};
+		/**
+		 * @generated from oneof alt.acolyte.v1.StreamRunProgressResponse.payload
+		 */
+		payload:
+			| {
+					/**
+					 * @generated from field: alt.acolyte.v1.StepEvent step = 2;
+					 */
+					value: StepEvent;
+					case: "step";
+			  }
+			| {
+					/**
+					 * @generated from field: string delta = 3;
+					 */
+					value: string;
+					case: "delta";
+			  }
+			| {
+					/**
+					 * @generated from field: string error_message = 4;
+					 */
+					value: string;
+					case: "errorMessage";
+			  }
+			| {
+					/**
+					 * @generated from field: alt.acolyte.v1.RunDoneEvent done = 5;
+					 */
+					value: RunDoneEvent;
+					case: "done";
+			  }
+			| { case: undefined; value?: undefined };
+	};
 
 /**
  * Describes the message alt.acolyte.v1.StreamRunProgressResponse.
  * Use `create(StreamRunProgressResponseSchema)` to create a new message.
  */
-export const StreamRunProgressResponseSchema: GenMessage<StreamRunProgressResponse> = /*@__PURE__*/
-  messageDesc(file_alt_acolyte_v1_acolyte, 17);
+export const StreamRunProgressResponseSchema: GenMessage<StreamRunProgressResponse> =
+	/*@__PURE__*/
+	messageDesc(file_alt_acolyte_v1_acolyte, 17);
 
 /**
  * @generated from message alt.acolyte.v1.StepEvent
  */
 export type StepEvent = Message<"alt.acolyte.v1.StepEvent"> & {
-  /**
-   * @generated from field: string step_name = 1;
-   */
-  stepName: string;
+	/**
+	 * @generated from field: string step_name = 1;
+	 */
+	stepName: string;
 
-  /**
-   * @generated from field: int32 step_index = 2;
-   */
-  stepIndex: number;
+	/**
+	 * @generated from field: int32 step_index = 2;
+	 */
+	stepIndex: number;
 
-  /**
-   * @generated from field: int32 total_steps = 3;
-   */
-  totalSteps: number;
+	/**
+	 * @generated from field: int32 total_steps = 3;
+	 */
+	totalSteps: number;
 };
 
 /**
  * Describes the message alt.acolyte.v1.StepEvent.
  * Use `create(StepEventSchema)` to create a new message.
  */
-export const StepEventSchema: GenMessage<StepEvent> = /*@__PURE__*/
-  messageDesc(file_alt_acolyte_v1_acolyte, 18);
+export const StepEventSchema: GenMessage<StepEvent> =
+	/*@__PURE__*/
+	messageDesc(file_alt_acolyte_v1_acolyte, 18);
 
 /**
  * @generated from message alt.acolyte.v1.RunDoneEvent
  */
 export type RunDoneEvent = Message<"alt.acolyte.v1.RunDoneEvent"> & {
-  /**
-   * @generated from field: int32 new_version_no = 1;
-   */
-  newVersionNo: number;
+	/**
+	 * @generated from field: int32 new_version_no = 1;
+	 */
+	newVersionNo: number;
 
-  /**
-   * @generated from field: string run_status = 2;
-   */
-  runStatus: string;
+	/**
+	 * @generated from field: string run_status = 2;
+	 */
+	runStatus: string;
 };
 
 /**
  * Describes the message alt.acolyte.v1.RunDoneEvent.
  * Use `create(RunDoneEventSchema)` to create a new message.
  */
-export const RunDoneEventSchema: GenMessage<RunDoneEvent> = /*@__PURE__*/
-  messageDesc(file_alt_acolyte_v1_acolyte, 19);
+export const RunDoneEventSchema: GenMessage<RunDoneEvent> =
+	/*@__PURE__*/
+	messageDesc(file_alt_acolyte_v1_acolyte, 19);
 
 /**
  * @generated from message alt.acolyte.v1.RerunSectionRequest
  */
-export type RerunSectionRequest = Message<"alt.acolyte.v1.RerunSectionRequest"> & {
-  /**
-   * @generated from field: string report_id = 1;
-   */
-  reportId: string;
+export type RerunSectionRequest =
+	Message<"alt.acolyte.v1.RerunSectionRequest"> & {
+		/**
+		 * @generated from field: string report_id = 1;
+		 */
+		reportId: string;
 
-  /**
-   * @generated from field: string section_key = 2;
-   */
-  sectionKey: string;
-};
+		/**
+		 * @generated from field: string section_key = 2;
+		 */
+		sectionKey: string;
+	};
 
 /**
  * Describes the message alt.acolyte.v1.RerunSectionRequest.
  * Use `create(RerunSectionRequestSchema)` to create a new message.
  */
-export const RerunSectionRequestSchema: GenMessage<RerunSectionRequest> = /*@__PURE__*/
-  messageDesc(file_alt_acolyte_v1_acolyte, 20);
+export const RerunSectionRequestSchema: GenMessage<RerunSectionRequest> =
+	/*@__PURE__*/
+	messageDesc(file_alt_acolyte_v1_acolyte, 20);
 
 /**
  * @generated from message alt.acolyte.v1.RerunSectionResponse
  */
-export type RerunSectionResponse = Message<"alt.acolyte.v1.RerunSectionResponse"> & {
-  /**
-   * @generated from field: string run_id = 1;
-   */
-  runId: string;
-};
+export type RerunSectionResponse =
+	Message<"alt.acolyte.v1.RerunSectionResponse"> & {
+		/**
+		 * @generated from field: string run_id = 1;
+		 */
+		runId: string;
+	};
 
 /**
  * Describes the message alt.acolyte.v1.RerunSectionResponse.
  * Use `create(RerunSectionResponseSchema)` to create a new message.
  */
-export const RerunSectionResponseSchema: GenMessage<RerunSectionResponse> = /*@__PURE__*/
-  messageDesc(file_alt_acolyte_v1_acolyte, 21);
+export const RerunSectionResponseSchema: GenMessage<RerunSectionResponse> =
+	/*@__PURE__*/
+	messageDesc(file_alt_acolyte_v1_acolyte, 21);
 
 /**
  * @generated from message alt.acolyte.v1.DeleteReportRequest
  */
-export type DeleteReportRequest = Message<"alt.acolyte.v1.DeleteReportRequest"> & {
-  /**
-   * @generated from field: string report_id = 1;
-   */
-  reportId: string;
-};
+export type DeleteReportRequest =
+	Message<"alt.acolyte.v1.DeleteReportRequest"> & {
+		/**
+		 * @generated from field: string report_id = 1;
+		 */
+		reportId: string;
+	};
 
 /**
  * Describes the message alt.acolyte.v1.DeleteReportRequest.
  * Use `create(DeleteReportRequestSchema)` to create a new message.
  */
-export const DeleteReportRequestSchema: GenMessage<DeleteReportRequest> = /*@__PURE__*/
-  messageDesc(file_alt_acolyte_v1_acolyte, 22);
+export const DeleteReportRequestSchema: GenMessage<DeleteReportRequest> =
+	/*@__PURE__*/
+	messageDesc(file_alt_acolyte_v1_acolyte, 22);
 
 /**
  * @generated from message alt.acolyte.v1.DeleteReportResponse
  */
-export type DeleteReportResponse = Message<"alt.acolyte.v1.DeleteReportResponse"> & {
-};
+export type DeleteReportResponse =
+	Message<"alt.acolyte.v1.DeleteReportResponse"> & {};
 
 /**
  * Describes the message alt.acolyte.v1.DeleteReportResponse.
  * Use `create(DeleteReportResponseSchema)` to create a new message.
  */
-export const DeleteReportResponseSchema: GenMessage<DeleteReportResponse> = /*@__PURE__*/
-  messageDesc(file_alt_acolyte_v1_acolyte, 23);
+export const DeleteReportResponseSchema: GenMessage<DeleteReportResponse> =
+	/*@__PURE__*/
+	messageDesc(file_alt_acolyte_v1_acolyte, 23);
 
 /**
  * @generated from message alt.acolyte.v1.HealthCheckRequest
  */
-export type HealthCheckRequest = Message<"alt.acolyte.v1.HealthCheckRequest"> & {
-};
+export type HealthCheckRequest =
+	Message<"alt.acolyte.v1.HealthCheckRequest"> & {};
 
 /**
  * Describes the message alt.acolyte.v1.HealthCheckRequest.
  * Use `create(HealthCheckRequestSchema)` to create a new message.
  */
-export const HealthCheckRequestSchema: GenMessage<HealthCheckRequest> = /*@__PURE__*/
-  messageDesc(file_alt_acolyte_v1_acolyte, 24);
+export const HealthCheckRequestSchema: GenMessage<HealthCheckRequest> =
+	/*@__PURE__*/
+	messageDesc(file_alt_acolyte_v1_acolyte, 24);
 
 /**
  * @generated from message alt.acolyte.v1.HealthCheckResponse
  */
-export type HealthCheckResponse = Message<"alt.acolyte.v1.HealthCheckResponse"> & {
-  /**
-   * @generated from field: string status = 1;
-   */
-  status: string;
-};
+export type HealthCheckResponse =
+	Message<"alt.acolyte.v1.HealthCheckResponse"> & {
+		/**
+		 * @generated from field: string status = 1;
+		 */
+		status: string;
+	};
 
 /**
  * Describes the message alt.acolyte.v1.HealthCheckResponse.
  * Use `create(HealthCheckResponseSchema)` to create a new message.
  */
-export const HealthCheckResponseSchema: GenMessage<HealthCheckResponse> = /*@__PURE__*/
-  messageDesc(file_alt_acolyte_v1_acolyte, 25);
+export const HealthCheckResponseSchema: GenMessage<HealthCheckResponse> =
+	/*@__PURE__*/
+	messageDesc(file_alt_acolyte_v1_acolyte, 25);
 
 /**
  * @generated from message alt.acolyte.v1.Report
  */
 export type Report = Message<"alt.acolyte.v1.Report"> & {
-  /**
-   * @generated from field: string report_id = 1;
-   */
-  reportId: string;
+	/**
+	 * @generated from field: string report_id = 1;
+	 */
+	reportId: string;
 
-  /**
-   * @generated from field: string title = 2;
-   */
-  title: string;
+	/**
+	 * @generated from field: string title = 2;
+	 */
+	title: string;
 
-  /**
-   * @generated from field: string report_type = 3;
-   */
-  reportType: string;
+	/**
+	 * @generated from field: string report_type = 3;
+	 */
+	reportType: string;
 
-  /**
-   * @generated from field: int32 current_version = 4;
-   */
-  currentVersion: number;
+	/**
+	 * @generated from field: int32 current_version = 4;
+	 */
+	currentVersion: number;
 
-  /**
-   * @generated from field: optional string latest_successful_run_id = 5;
-   */
-  latestSuccessfulRunId?: string | undefined;
+	/**
+	 * @generated from field: optional string latest_successful_run_id = 5;
+	 */
+	latestSuccessfulRunId?: string | undefined;
 
-  /**
-   * @generated from field: string created_at = 6;
-   */
-  createdAt: string;
+	/**
+	 * @generated from field: string created_at = 6;
+	 */
+	createdAt: string;
 
-  /**
-   * Report generation brief (topic / entities / time_range / exclude / custom constraints).
-   * Populated from the report_briefs table; empty when no brief was supplied at creation.
-   *
-   * @generated from field: map<string, string> scope = 7;
-   */
-  scope: { [key: string]: string };
+	/**
+	 * Report generation brief (topic / entities / time_range / exclude / custom constraints).
+	 * Populated from the report_briefs table; empty when no brief was supplied at creation.
+	 *
+	 * @generated from field: map<string, string> scope = 7;
+	 */
+	scope: { [key: string]: string };
 };
 
 /**
  * Describes the message alt.acolyte.v1.Report.
  * Use `create(ReportSchema)` to create a new message.
  */
-export const ReportSchema: GenMessage<Report> = /*@__PURE__*/
-  messageDesc(file_alt_acolyte_v1_acolyte, 26);
+export const ReportSchema: GenMessage<Report> =
+	/*@__PURE__*/
+	messageDesc(file_alt_acolyte_v1_acolyte, 26);
 
 /**
  * @generated from message alt.acolyte.v1.ReportSummary
  */
 export type ReportSummary = Message<"alt.acolyte.v1.ReportSummary"> & {
-  /**
-   * @generated from field: string report_id = 1;
-   */
-  reportId: string;
+	/**
+	 * @generated from field: string report_id = 1;
+	 */
+	reportId: string;
 
-  /**
-   * @generated from field: string title = 2;
-   */
-  title: string;
+	/**
+	 * @generated from field: string title = 2;
+	 */
+	title: string;
 
-  /**
-   * @generated from field: string report_type = 3;
-   */
-  reportType: string;
+	/**
+	 * @generated from field: string report_type = 3;
+	 */
+	reportType: string;
 
-  /**
-   * @generated from field: int32 current_version = 4;
-   */
-  currentVersion: number;
+	/**
+	 * @generated from field: int32 current_version = 4;
+	 */
+	currentVersion: number;
 
-  /**
-   * @generated from field: string latest_run_status = 5;
-   */
-  latestRunStatus: string;
+	/**
+	 * @generated from field: string latest_run_status = 5;
+	 */
+	latestRunStatus: string;
 
-  /**
-   * @generated from field: string created_at = 6;
-   */
-  createdAt: string;
+	/**
+	 * @generated from field: string created_at = 6;
+	 */
+	createdAt: string;
 };
 
 /**
  * Describes the message alt.acolyte.v1.ReportSummary.
  * Use `create(ReportSummarySchema)` to create a new message.
  */
-export const ReportSummarySchema: GenMessage<ReportSummary> = /*@__PURE__*/
-  messageDesc(file_alt_acolyte_v1_acolyte, 27);
+export const ReportSummarySchema: GenMessage<ReportSummary> =
+	/*@__PURE__*/
+	messageDesc(file_alt_acolyte_v1_acolyte, 27);
 
 /**
  * @generated from message alt.acolyte.v1.ReportVersion
  */
 export type ReportVersion = Message<"alt.acolyte.v1.ReportVersion"> & {
-  /**
-   * @generated from field: string report_id = 1;
-   */
-  reportId: string;
+	/**
+	 * @generated from field: string report_id = 1;
+	 */
+	reportId: string;
 
-  /**
-   * @generated from field: int32 version_no = 2;
-   */
-  versionNo: number;
+	/**
+	 * @generated from field: int32 version_no = 2;
+	 */
+	versionNo: number;
 
-  /**
-   * @generated from field: int64 change_seq = 3;
-   */
-  changeSeq: bigint;
+	/**
+	 * @generated from field: int64 change_seq = 3;
+	 */
+	changeSeq: bigint;
 
-  /**
-   * @generated from field: string change_reason = 4;
-   */
-  changeReason: string;
+	/**
+	 * @generated from field: string change_reason = 4;
+	 */
+	changeReason: string;
 
-  /**
-   * @generated from field: string created_at = 5;
-   */
-  createdAt: string;
+	/**
+	 * @generated from field: string created_at = 5;
+	 */
+	createdAt: string;
 
-  /**
-   * @generated from field: string prompt_template_version = 6;
-   */
-  promptTemplateVersion: string;
+	/**
+	 * @generated from field: string prompt_template_version = 6;
+	 */
+	promptTemplateVersion: string;
 };
 
 /**
  * Describes the message alt.acolyte.v1.ReportVersion.
  * Use `create(ReportVersionSchema)` to create a new message.
  */
-export const ReportVersionSchema: GenMessage<ReportVersion> = /*@__PURE__*/
-  messageDesc(file_alt_acolyte_v1_acolyte, 28);
+export const ReportVersionSchema: GenMessage<ReportVersion> =
+	/*@__PURE__*/
+	messageDesc(file_alt_acolyte_v1_acolyte, 28);
 
 /**
  * @generated from message alt.acolyte.v1.ReportVersionSummary
  */
-export type ReportVersionSummary = Message<"alt.acolyte.v1.ReportVersionSummary"> & {
-  /**
-   * @generated from field: int32 version_no = 1;
-   */
-  versionNo: number;
+export type ReportVersionSummary =
+	Message<"alt.acolyte.v1.ReportVersionSummary"> & {
+		/**
+		 * @generated from field: int32 version_no = 1;
+		 */
+		versionNo: number;
 
-  /**
-   * @generated from field: string change_reason = 2;
-   */
-  changeReason: string;
+		/**
+		 * @generated from field: string change_reason = 2;
+		 */
+		changeReason: string;
 
-  /**
-   * @generated from field: string created_at = 3;
-   */
-  createdAt: string;
+		/**
+		 * @generated from field: string created_at = 3;
+		 */
+		createdAt: string;
 
-  /**
-   * @generated from field: repeated alt.acolyte.v1.ChangeItem change_items = 4;
-   */
-  changeItems: ChangeItem[];
-};
+		/**
+		 * @generated from field: repeated alt.acolyte.v1.ChangeItem change_items = 4;
+		 */
+		changeItems: ChangeItem[];
+	};
 
 /**
  * Describes the message alt.acolyte.v1.ReportVersionSummary.
  * Use `create(ReportVersionSummarySchema)` to create a new message.
  */
-export const ReportVersionSummarySchema: GenMessage<ReportVersionSummary> = /*@__PURE__*/
-  messageDesc(file_alt_acolyte_v1_acolyte, 29);
+export const ReportVersionSummarySchema: GenMessage<ReportVersionSummary> =
+	/*@__PURE__*/
+	messageDesc(file_alt_acolyte_v1_acolyte, 29);
 
 /**
  * @generated from message alt.acolyte.v1.ChangeItem
  */
 export type ChangeItem = Message<"alt.acolyte.v1.ChangeItem"> & {
-  /**
-   * @generated from field: string field_name = 1;
-   */
-  fieldName: string;
+	/**
+	 * @generated from field: string field_name = 1;
+	 */
+	fieldName: string;
 
-  /**
-   * One of: added, updated, removed, regenerated
-   *
-   * @generated from field: string change_kind = 2;
-   */
-  changeKind: string;
+	/**
+	 * One of: added, updated, removed, regenerated
+	 *
+	 * @generated from field: string change_kind = 2;
+	 */
+	changeKind: string;
 
-  /**
-   * @generated from field: string old_fingerprint = 3;
-   */
-  oldFingerprint: string;
+	/**
+	 * @generated from field: string old_fingerprint = 3;
+	 */
+	oldFingerprint: string;
 
-  /**
-   * @generated from field: string new_fingerprint = 4;
-   */
-  newFingerprint: string;
+	/**
+	 * @generated from field: string new_fingerprint = 4;
+	 */
+	newFingerprint: string;
 };
 
 /**
  * Describes the message alt.acolyte.v1.ChangeItem.
  * Use `create(ChangeItemSchema)` to create a new message.
  */
-export const ChangeItemSchema: GenMessage<ChangeItem> = /*@__PURE__*/
-  messageDesc(file_alt_acolyte_v1_acolyte, 30);
+export const ChangeItemSchema: GenMessage<ChangeItem> =
+	/*@__PURE__*/
+	messageDesc(file_alt_acolyte_v1_acolyte, 30);
 
 /**
  * @generated from message alt.acolyte.v1.ReportSection
  */
 export type ReportSection = Message<"alt.acolyte.v1.ReportSection"> & {
-  /**
-   * @generated from field: string section_key = 1;
-   */
-  sectionKey: string;
+	/**
+	 * @generated from field: string section_key = 1;
+	 */
+	sectionKey: string;
 
-  /**
-   * @generated from field: int32 current_version = 2;
-   */
-  currentVersion: number;
+	/**
+	 * @generated from field: int32 current_version = 2;
+	 */
+	currentVersion: number;
 
-  /**
-   * @generated from field: int32 display_order = 3;
-   */
-  displayOrder: number;
+	/**
+	 * @generated from field: int32 display_order = 3;
+	 */
+	displayOrder: number;
 
-  /**
-   * @generated from field: string body = 4;
-   */
-  body: string;
+	/**
+	 * @generated from field: string body = 4;
+	 */
+	body: string;
 
-  /**
-   * @generated from field: string citations_json = 5;
-   */
-  citationsJson: string;
+	/**
+	 * @generated from field: string citations_json = 5;
+	 */
+	citationsJson: string;
 };
 
 /**
  * Describes the message alt.acolyte.v1.ReportSection.
  * Use `create(ReportSectionSchema)` to create a new message.
  */
-export const ReportSectionSchema: GenMessage<ReportSection> = /*@__PURE__*/
-  messageDesc(file_alt_acolyte_v1_acolyte, 31);
+export const ReportSectionSchema: GenMessage<ReportSection> =
+	/*@__PURE__*/
+	messageDesc(file_alt_acolyte_v1_acolyte, 31);
 
 /**
  * @generated from message alt.acolyte.v1.SectionVersion
  */
 export type SectionVersion = Message<"alt.acolyte.v1.SectionVersion"> & {
-  /**
-   * @generated from field: string section_key = 1;
-   */
-  sectionKey: string;
+	/**
+	 * @generated from field: string section_key = 1;
+	 */
+	sectionKey: string;
 
-  /**
-   * @generated from field: int32 version_no = 2;
-   */
-  versionNo: number;
+	/**
+	 * @generated from field: int32 version_no = 2;
+	 */
+	versionNo: number;
 
-  /**
-   * @generated from field: string body = 3;
-   */
-  body: string;
+	/**
+	 * @generated from field: string body = 3;
+	 */
+	body: string;
 
-  /**
-   * @generated from field: string citations_json = 4;
-   */
-  citationsJson: string;
+	/**
+	 * @generated from field: string citations_json = 4;
+	 */
+	citationsJson: string;
 
-  /**
-   * @generated from field: string created_at = 5;
-   */
-  createdAt: string;
+	/**
+	 * @generated from field: string created_at = 5;
+	 */
+	createdAt: string;
 };
 
 /**
  * Describes the message alt.acolyte.v1.SectionVersion.
  * Use `create(SectionVersionSchema)` to create a new message.
  */
-export const SectionVersionSchema: GenMessage<SectionVersion> = /*@__PURE__*/
-  messageDesc(file_alt_acolyte_v1_acolyte, 32);
+export const SectionVersionSchema: GenMessage<SectionVersion> =
+	/*@__PURE__*/
+	messageDesc(file_alt_acolyte_v1_acolyte, 32);
 
 /**
  * @generated from message alt.acolyte.v1.SectionDiff
  */
 export type SectionDiff = Message<"alt.acolyte.v1.SectionDiff"> & {
-  /**
-   * @generated from field: string section_key = 1;
-   */
-  sectionKey: string;
+	/**
+	 * @generated from field: string section_key = 1;
+	 */
+	sectionKey: string;
 
-  /**
-   * @generated from field: optional string old_body = 2;
-   */
-  oldBody?: string | undefined;
+	/**
+	 * @generated from field: optional string old_body = 2;
+	 */
+	oldBody?: string | undefined;
 
-  /**
-   * @generated from field: optional string new_body = 3;
-   */
-  newBody?: string | undefined;
+	/**
+	 * @generated from field: optional string new_body = 3;
+	 */
+	newBody?: string | undefined;
 
-  /**
-   * @generated from field: int32 old_version = 4;
-   */
-  oldVersion: number;
+	/**
+	 * @generated from field: int32 old_version = 4;
+	 */
+	oldVersion: number;
 
-  /**
-   * @generated from field: int32 new_version = 5;
-   */
-  newVersion: number;
+	/**
+	 * @generated from field: int32 new_version = 5;
+	 */
+	newVersion: number;
 };
 
 /**
  * Describes the message alt.acolyte.v1.SectionDiff.
  * Use `create(SectionDiffSchema)` to create a new message.
  */
-export const SectionDiffSchema: GenMessage<SectionDiff> = /*@__PURE__*/
-  messageDesc(file_alt_acolyte_v1_acolyte, 33);
+export const SectionDiffSchema: GenMessage<SectionDiff> =
+	/*@__PURE__*/
+	messageDesc(file_alt_acolyte_v1_acolyte, 33);
 
 /**
  * @generated from message alt.acolyte.v1.ReportRun
  */
 export type ReportRun = Message<"alt.acolyte.v1.ReportRun"> & {
-  /**
-   * @generated from field: string run_id = 1;
-   */
-  runId: string;
+	/**
+	 * @generated from field: string run_id = 1;
+	 */
+	runId: string;
 
-  /**
-   * @generated from field: string report_id = 2;
-   */
-  reportId: string;
+	/**
+	 * @generated from field: string report_id = 2;
+	 */
+	reportId: string;
 
-  /**
-   * @generated from field: int32 target_version_no = 3;
-   */
-  targetVersionNo: number;
+	/**
+	 * @generated from field: int32 target_version_no = 3;
+	 */
+	targetVersionNo: number;
 
-  /**
-   * @generated from field: string run_status = 4;
-   */
-  runStatus: string;
+	/**
+	 * @generated from field: string run_status = 4;
+	 */
+	runStatus: string;
 
-  /**
-   * @generated from field: string planner_model = 5;
-   */
-  plannerModel: string;
+	/**
+	 * @generated from field: string planner_model = 5;
+	 */
+	plannerModel: string;
 
-  /**
-   * @generated from field: string writer_model = 6;
-   */
-  writerModel: string;
+	/**
+	 * @generated from field: string writer_model = 6;
+	 */
+	writerModel: string;
 
-  /**
-   * @generated from field: string critic_model = 7;
-   */
-  criticModel: string;
+	/**
+	 * @generated from field: string critic_model = 7;
+	 */
+	criticModel: string;
 
-  /**
-   * @generated from field: optional string started_at = 8;
-   */
-  startedAt?: string | undefined;
+	/**
+	 * @generated from field: optional string started_at = 8;
+	 */
+	startedAt?: string | undefined;
 
-  /**
-   * @generated from field: optional string finished_at = 9;
-   */
-  finishedAt?: string | undefined;
+	/**
+	 * @generated from field: optional string finished_at = 9;
+	 */
+	finishedAt?: string | undefined;
 
-  /**
-   * @generated from field: optional string failure_code = 10;
-   */
-  failureCode?: string | undefined;
+	/**
+	 * @generated from field: optional string failure_code = 10;
+	 */
+	failureCode?: string | undefined;
 
-  /**
-   * @generated from field: optional string failure_message = 11;
-   */
-  failureMessage?: string | undefined;
+	/**
+	 * @generated from field: optional string failure_message = 11;
+	 */
+	failureMessage?: string | undefined;
 };
 
 /**
  * Describes the message alt.acolyte.v1.ReportRun.
  * Use `create(ReportRunSchema)` to create a new message.
  */
-export const ReportRunSchema: GenMessage<ReportRun> = /*@__PURE__*/
-  messageDesc(file_alt_acolyte_v1_acolyte, 34);
+export const ReportRunSchema: GenMessage<ReportRun> =
+	/*@__PURE__*/
+	messageDesc(file_alt_acolyte_v1_acolyte, 34);
 
 /**
  * @generated from message alt.acolyte.v1.ReportJob
  */
 export type ReportJob = Message<"alt.acolyte.v1.ReportJob"> & {
-  /**
-   * @generated from field: string job_id = 1;
-   */
-  jobId: string;
+	/**
+	 * @generated from field: string job_id = 1;
+	 */
+	jobId: string;
 
-  /**
-   * @generated from field: string run_id = 2;
-   */
-  runId: string;
+	/**
+	 * @generated from field: string run_id = 2;
+	 */
+	runId: string;
 
-  /**
-   * @generated from field: string job_status = 3;
-   */
-  jobStatus: string;
+	/**
+	 * @generated from field: string job_status = 3;
+	 */
+	jobStatus: string;
 
-  /**
-   * @generated from field: int32 attempt_no = 4;
-   */
-  attemptNo: number;
+	/**
+	 * @generated from field: int32 attempt_no = 4;
+	 */
+	attemptNo: number;
 
-  /**
-   * @generated from field: optional string claimed_by = 5;
-   */
-  claimedBy?: string | undefined;
+	/**
+	 * @generated from field: optional string claimed_by = 5;
+	 */
+	claimedBy?: string | undefined;
 
-  /**
-   * @generated from field: optional string claimed_at = 6;
-   */
-  claimedAt?: string | undefined;
+	/**
+	 * @generated from field: optional string claimed_at = 6;
+	 */
+	claimedAt?: string | undefined;
 
-  /**
-   * @generated from field: string created_at = 7;
-   */
-  createdAt: string;
+	/**
+	 * @generated from field: string created_at = 7;
+	 */
+	createdAt: string;
 };
 
 /**
  * Describes the message alt.acolyte.v1.ReportJob.
  * Use `create(ReportJobSchema)` to create a new message.
  */
-export const ReportJobSchema: GenMessage<ReportJob> = /*@__PURE__*/
-  messageDesc(file_alt_acolyte_v1_acolyte, 35);
+export const ReportJobSchema: GenMessage<ReportJob> =
+	/*@__PURE__*/
+	messageDesc(file_alt_acolyte_v1_acolyte, 35);
 
 /**
  * @generated from service alt.acolyte.v1.AcolyteService
  */
 export const AcolyteService: GenService<{
-  /**
-   * CreateReport creates a new report.
-   *
-   * @generated from rpc alt.acolyte.v1.AcolyteService.CreateReport
-   */
-  createReport: {
-    methodKind: "unary";
-    input: typeof CreateReportRequestSchema;
-    output: typeof CreateReportResponseSchema;
-  },
-  /**
-   * GetReport returns a report with its current version and sections.
-   *
-   * @generated from rpc alt.acolyte.v1.AcolyteService.GetReport
-   */
-  getReport: {
-    methodKind: "unary";
-    input: typeof GetReportRequestSchema;
-    output: typeof GetReportResponseSchema;
-  },
-  /**
-   * ListReports returns a paginated list of reports (metadata only, no body).
-   *
-   * @generated from rpc alt.acolyte.v1.AcolyteService.ListReports
-   */
-  listReports: {
-    methodKind: "unary";
-    input: typeof ListReportsRequestSchema;
-    output: typeof ListReportsResponseSchema;
-  },
-  /**
-   * GetReportVersion returns a specific version snapshot.
-   *
-   * @generated from rpc alt.acolyte.v1.AcolyteService.GetReportVersion
-   */
-  getReportVersion: {
-    methodKind: "unary";
-    input: typeof GetReportVersionRequestSchema;
-    output: typeof GetReportVersionResponseSchema;
-  },
-  /**
-   * ListReportVersions returns the version history with change items.
-   *
-   * @generated from rpc alt.acolyte.v1.AcolyteService.ListReportVersions
-   */
-  listReportVersions: {
-    methodKind: "unary";
-    input: typeof ListReportVersionsRequestSchema;
-    output: typeof ListReportVersionsResponseSchema;
-  },
-  /**
-   * DiffReportVersions returns the diff between two versions of a report.
-   *
-   * @generated from rpc alt.acolyte.v1.AcolyteService.DiffReportVersions
-   */
-  diffReportVersions: {
-    methodKind: "unary";
-    input: typeof DiffReportVersionsRequestSchema;
-    output: typeof DiffReportVersionsResponseSchema;
-  },
-  /**
-   * StartReportRun enqueues a generation run for a report.
-   *
-   * @generated from rpc alt.acolyte.v1.AcolyteService.StartReportRun
-   */
-  startReportRun: {
-    methodKind: "unary";
-    input: typeof StartReportRunRequestSchema;
-    output: typeof StartReportRunResponseSchema;
-  },
-  /**
-   * GetRunStatus returns the current status of a generation run.
-   *
-   * @generated from rpc alt.acolyte.v1.AcolyteService.GetRunStatus
-   */
-  getRunStatus: {
-    methodKind: "unary";
-    input: typeof GetRunStatusRequestSchema;
-    output: typeof GetRunStatusResponseSchema;
-  },
-  /**
-   * StreamRunProgress streams real-time generation progress events.
-   *
-   * @generated from rpc alt.acolyte.v1.AcolyteService.StreamRunProgress
-   */
-  streamRunProgress: {
-    methodKind: "server_streaming";
-    input: typeof StreamRunProgressRequestSchema;
-    output: typeof StreamRunProgressResponseSchema;
-  },
-  /**
-   * RerunSection re-generates a single section of a report.
-   *
-   * @generated from rpc alt.acolyte.v1.AcolyteService.RerunSection
-   */
-  rerunSection: {
-    methodKind: "unary";
-    input: typeof RerunSectionRequestSchema;
-    output: typeof RerunSectionResponseSchema;
-  },
-  /**
-   * DeleteReport hard-deletes a report and all related versions/sections/runs/briefs.
-   * Refuses when an active run (pending/running) exists for the report.
-   *
-   * @generated from rpc alt.acolyte.v1.AcolyteService.DeleteReport
-   */
-  deleteReport: {
-    methodKind: "unary";
-    input: typeof DeleteReportRequestSchema;
-    output: typeof DeleteReportResponseSchema;
-  },
-  /**
-   * HealthCheck returns the service health status.
-   *
-   * @generated from rpc alt.acolyte.v1.AcolyteService.HealthCheck
-   */
-  healthCheck: {
-    methodKind: "unary";
-    input: typeof HealthCheckRequestSchema;
-    output: typeof HealthCheckResponseSchema;
-  },
-}> = /*@__PURE__*/
-  serviceDesc(file_alt_acolyte_v1_acolyte, 0);
-
+	/**
+	 * CreateReport creates a new report.
+	 *
+	 * @generated from rpc alt.acolyte.v1.AcolyteService.CreateReport
+	 */
+	createReport: {
+		methodKind: "unary";
+		input: typeof CreateReportRequestSchema;
+		output: typeof CreateReportResponseSchema;
+	};
+	/**
+	 * GetReport returns a report with its current version and sections.
+	 *
+	 * @generated from rpc alt.acolyte.v1.AcolyteService.GetReport
+	 */
+	getReport: {
+		methodKind: "unary";
+		input: typeof GetReportRequestSchema;
+		output: typeof GetReportResponseSchema;
+	};
+	/**
+	 * ListReports returns a paginated list of reports (metadata only, no body).
+	 *
+	 * @generated from rpc alt.acolyte.v1.AcolyteService.ListReports
+	 */
+	listReports: {
+		methodKind: "unary";
+		input: typeof ListReportsRequestSchema;
+		output: typeof ListReportsResponseSchema;
+	};
+	/**
+	 * GetReportVersion returns a specific version snapshot.
+	 *
+	 * @generated from rpc alt.acolyte.v1.AcolyteService.GetReportVersion
+	 */
+	getReportVersion: {
+		methodKind: "unary";
+		input: typeof GetReportVersionRequestSchema;
+		output: typeof GetReportVersionResponseSchema;
+	};
+	/**
+	 * ListReportVersions returns the version history with change items.
+	 *
+	 * @generated from rpc alt.acolyte.v1.AcolyteService.ListReportVersions
+	 */
+	listReportVersions: {
+		methodKind: "unary";
+		input: typeof ListReportVersionsRequestSchema;
+		output: typeof ListReportVersionsResponseSchema;
+	};
+	/**
+	 * DiffReportVersions returns the diff between two versions of a report.
+	 *
+	 * @generated from rpc alt.acolyte.v1.AcolyteService.DiffReportVersions
+	 */
+	diffReportVersions: {
+		methodKind: "unary";
+		input: typeof DiffReportVersionsRequestSchema;
+		output: typeof DiffReportVersionsResponseSchema;
+	};
+	/**
+	 * StartReportRun enqueues a generation run for a report.
+	 *
+	 * @generated from rpc alt.acolyte.v1.AcolyteService.StartReportRun
+	 */
+	startReportRun: {
+		methodKind: "unary";
+		input: typeof StartReportRunRequestSchema;
+		output: typeof StartReportRunResponseSchema;
+	};
+	/**
+	 * GetRunStatus returns the current status of a generation run.
+	 *
+	 * @generated from rpc alt.acolyte.v1.AcolyteService.GetRunStatus
+	 */
+	getRunStatus: {
+		methodKind: "unary";
+		input: typeof GetRunStatusRequestSchema;
+		output: typeof GetRunStatusResponseSchema;
+	};
+	/**
+	 * StreamRunProgress streams real-time generation progress events.
+	 *
+	 * @generated from rpc alt.acolyte.v1.AcolyteService.StreamRunProgress
+	 */
+	streamRunProgress: {
+		methodKind: "server_streaming";
+		input: typeof StreamRunProgressRequestSchema;
+		output: typeof StreamRunProgressResponseSchema;
+	};
+	/**
+	 * RerunSection re-generates a single section of a report.
+	 *
+	 * @generated from rpc alt.acolyte.v1.AcolyteService.RerunSection
+	 */
+	rerunSection: {
+		methodKind: "unary";
+		input: typeof RerunSectionRequestSchema;
+		output: typeof RerunSectionResponseSchema;
+	};
+	/**
+	 * DeleteReport hard-deletes a report and all related versions/sections/runs/briefs.
+	 * Refuses when an active run (pending/running) exists for the report.
+	 *
+	 * @generated from rpc alt.acolyte.v1.AcolyteService.DeleteReport
+	 */
+	deleteReport: {
+		methodKind: "unary";
+		input: typeof DeleteReportRequestSchema;
+		output: typeof DeleteReportResponseSchema;
+	};
+	/**
+	 * HealthCheck returns the service health status.
+	 *
+	 * @generated from rpc alt.acolyte.v1.AcolyteService.HealthCheck
+	 */
+	healthCheck: {
+		methodKind: "unary";
+		input: typeof HealthCheckRequestSchema;
+		output: typeof HealthCheckResponseSchema;
+	};
+}> = /*@__PURE__*/ serviceDesc(file_alt_acolyte_v1_acolyte, 0);
