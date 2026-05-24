@@ -61,11 +61,11 @@ func parseStreamDurationEnv(name string, fallback time.Duration) time.Duration {
 
 // Handler implements knowledgeloopv1connect.KnowledgeLoopServiceHandler.
 type Handler struct {
-	getUsecase           *knowledge_loop_usecase.GetKnowledgeLoopUsecase
-	transitionUsecase    *knowledge_loop_usecase.TransitionKnowledgeLoopUsecase
+	getUsecase            *knowledge_loop_usecase.GetKnowledgeLoopUsecase
+	transitionUsecase     *knowledge_loop_usecase.TransitionKnowledgeLoopUsecase
 	emitActOutcomeUsecase *knowledge_loop_usecase.EmitActOutcomeUsecase
-	eventsForUserPort    knowledge_event_port.ListKnowledgeEventsForUserPort
-	logger               *slog.Logger
+	eventsForUserPort     knowledge_event_port.ListKnowledgeEventsForUserPort
+	logger                *slog.Logger
 }
 
 // Compile-time interface verification.
