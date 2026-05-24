@@ -266,6 +266,12 @@ services:
       - KNOWLEDGE_SOVEREIGN_PROJECTOR_TICK_INTERVAL=2s
       - KNOWLEDGE_SOVEREIGN_PLANNER_BATCH_SIZE=1024
       - KNOWLEDGE_SOVEREIGN_PLANNER_MAX_BATCHES_PER_TICK=4
+      # ADR-000914 §Δ5: loop projector throughput. Staging keeps the cap
+      # low since the Hurl suite seeds bounded fixtures; the production
+      # default lives in compose/sovereign.yaml with a ${VAR:-default}
+      # substitution so a reproject run can bump it without a redeploy.
+      - KNOWLEDGE_SOVEREIGN_LOOP_PROJECTOR_BATCH_SIZE=200
+      - KNOWLEDGE_SOVEREIGN_LOOP_PROJECTOR_MAX_BATCHES_PER_TICK=2
     ports:
       - "19510:9500"
       - "19511:9501"

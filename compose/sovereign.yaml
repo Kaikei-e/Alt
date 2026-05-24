@@ -68,6 +68,13 @@ services:
       - SNAPSHOT_DIR=/tmp/snapshots
       - KNOWLEDGE_SOVEREIGN_PLANNER_BATCH_SIZE=${KNOWLEDGE_SOVEREIGN_PLANNER_BATCH_SIZE:-8192}
       - KNOWLEDGE_SOVEREIGN_PLANNER_MAX_BATCHES_PER_TICK=${KNOWLEDGE_SOVEREIGN_PLANNER_MAX_BATCHES_PER_TICK:-8}
+      # ADR-000914 §Δ5: Knowledge Loop projector throughput. Defaults are
+      # 500 events / batch × 4 batches per 5 s tick = 400 events / sec.
+      # Bump KNOWLEDGE_SOVEREIGN_LOOP_PROJECTOR_MAX_BATCHES_PER_TICK to ~20
+      # during a reproject to hit ~2 000 events / sec without a code
+      # change; revert after the run so steady-state stays bounded.
+      - KNOWLEDGE_SOVEREIGN_LOOP_PROJECTOR_BATCH_SIZE=${KNOWLEDGE_SOVEREIGN_LOOP_PROJECTOR_BATCH_SIZE:-500}
+      - KNOWLEDGE_SOVEREIGN_LOOP_PROJECTOR_MAX_BATCHES_PER_TICK=${KNOWLEDGE_SOVEREIGN_LOOP_PROJECTOR_MAX_BATCHES_PER_TICK:-4}
     ports:
       - "9510:9500"
       - "9511:9501"
