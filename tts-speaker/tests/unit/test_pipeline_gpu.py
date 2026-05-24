@@ -1,4 +1,4 @@
-"""Tests for GPU detection and fallback in TTSPipeline."""
+"""Tests for QwenEngine._detect_device GPU detection and CPU fallback."""
 
 from __future__ import annotations
 
@@ -6,7 +6,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from tts_speaker.core.pipeline import TTSPipeline
+from tts_speaker.core.engines.qwen import QwenEngine
 
 
 def _make_mock_torch(*, cuda_available: bool, device_name: str = "AMD ROCm GPU"):
@@ -31,7 +31,7 @@ def test_detect_device_gpu_available():
     mock_torch = _make_mock_torch(cuda_available=True)
 
     with patch.dict("sys.modules", {"torch": mock_torch}):
-        device, gpu_name = TTSPipeline._detect_device()
+        device, gpu_name = QwenEngine._detect_device()
 
     assert device == "cuda"
     assert gpu_name == "AMD ROCm GPU"
@@ -46,7 +46,7 @@ def test_detect_device_no_gpu_raises_by_default():
         patch.dict("os.environ", {"TTS_ALLOW_CPU_FALLBACK": "0"}, clear=False),
         pytest.raises(RuntimeError, match="No GPU detected"),
     ):
-        TTSPipeline._detect_device()
+        QwenEngine._detect_device()
 
 
 def test_detect_device_cpu_fallback_when_allowed():
@@ -57,7 +57,7 @@ def test_detect_device_cpu_fallback_when_allowed():
         patch.dict("sys.modules", {"torch": mock_torch}),
         patch.dict("os.environ", {"TTS_ALLOW_CPU_FALLBACK": "1"}, clear=False),
     ):
-        device, gpu_name = TTSPipeline._detect_device()
+        device, gpu_name = QwenEngine._detect_device()
 
     assert device == "cpu"
     assert gpu_name is None
@@ -75,7 +75,7 @@ def test_detect_device_gpu_compute_failure_raises():
         patch.dict("os.environ", {"TTS_ALLOW_CPU_FALLBACK": "0"}, clear=False),
         pytest.raises(RuntimeError, match="GPU detected but compute verification failed"),
     ):
-        TTSPipeline._detect_device()
+        QwenEngine._detect_device()
 
 
 def test_detect_device_gpu_compute_failure_fallback():
@@ -89,7 +89,7 @@ def test_detect_device_gpu_compute_failure_fallback():
         patch.dict("sys.modules", {"torch": mock_torch}),
         patch.dict("os.environ", {"TTS_ALLOW_CPU_FALLBACK": "1"}, clear=False),
     ):
-        device, gpu_name = TTSPipeline._detect_device()
+        device, gpu_name = QwenEngine._detect_device()
 
     assert device == "cpu"
     assert gpu_name is None
@@ -106,9 +106,9 @@ def test_detect_device_logs_env_vars():
             {"HSA_OVERRIDE_GFX_VERSION": "11.0.0", "HIP_VISIBLE_DEVICES": "0"},
             clear=False,
         ),
-        patch("tts_speaker.core.pipeline.logger") as mock_logger,
+        patch("tts_speaker.core.engines.qwen.logger") as mock_logger,
     ):
-        TTSPipeline._detect_device()
+        QwenEngine._detect_device()
 
     mock_logger.info.assert_any_call(
         "HSA_OVERRIDE_GFX_VERSION=%s, HIP_VISIBLE_DEVICES=%s", "11.0.0", "0"

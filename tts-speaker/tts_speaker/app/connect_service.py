@@ -10,7 +10,7 @@ import soundfile as sf
 from connectrpc.code import Code
 from connectrpc.errors import ConnectError
 
-from ..core.pipeline import VOICES, TTSPipeline, VOICE_IDS
+from ..core.pipeline import TTSPipeline
 from ..core.preprocess import preprocess_for_tts
 from ..gen.proto.alt.tts.v1 import tts_pb2
 
@@ -60,7 +60,7 @@ class TTSConnectService:
             )
 
         voice = request.voice or self._settings.default_voice
-        if voice not in VOICE_IDS:
+        if voice not in self._pipeline.voice_ids:
             raise ConnectError(Code.INVALID_ARGUMENT, f"unknown voice: {voice}")
 
         speed = request.speed or self._settings.default_speed
@@ -97,7 +97,10 @@ class TTSConnectService:
         """Return available Japanese voices."""
         self._verify_token(ctx)
 
-        voices = [tts_pb2.Voice(id=v["id"], name=v["name"], gender=v["gender"]) for v in VOICES]
+        voices = [
+            tts_pb2.Voice(id=v["id"], name=v["name"], gender=v["gender"])
+            for v in self._pipeline.voices
+        ]
         return tts_pb2.ListVoicesResponse(voices=voices)
 
     async def synthesize_stream(
@@ -127,7 +130,7 @@ class TTSConnectService:
         logger.info("Text length: %d chars (after preprocess)", len(text))
 
         voice = request.voice or self._settings.default_voice
-        if voice not in VOICE_IDS:
+        if voice not in self._pipeline.voice_ids:
             raise ConnectError(Code.INVALID_ARGUMENT, f"unknown voice: {voice}")
 
         speed = request.speed or self._settings.default_speed

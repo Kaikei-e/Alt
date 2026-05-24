@@ -8,16 +8,18 @@ from contextlib import asynccontextmanager
 from typing import TYPE_CHECKING
 
 from starlette.applications import Starlette
-from starlette.routing import Mount, Route
 from starlette.responses import JSONResponse
+from starlette.routing import Mount, Route
 
+from ..core.factory import build_engine
 from ..core.pipeline import TTSPipeline
+from ..gen.proto.alt.tts.v1.tts_connect import TTSServiceASGIApplication
 from ..infra.config import Settings, get_settings
 from .connect_service import TTSConnectService
-from ..gen.proto.alt.tts.v1.tts_connect import TTSServiceASGIApplication
 
 if TYPE_CHECKING:
     from collections.abc import AsyncGenerator
+
     from starlette.requests import Request
 
 logger = logging.getLogger(__name__)
@@ -53,8 +55,7 @@ async def lifespan(app: Starlette) -> "AsyncGenerator[None]":
         await pipeline.load()
 
     keepalive_task: asyncio.Task[None] | None = None
-    device = getattr(pipeline, "_device", "cpu")
-    if device == "cuda":
+    if pipeline.device == "cuda":
         keepalive_task = asyncio.create_task(
             _gpu_keepalive_loop(pipeline, settings.qwen_keepalive_interval_sec)
         )
@@ -78,23 +79,22 @@ async def lifespan(app: Starlette) -> "AsyncGenerator[None]":
 async def health_endpoint(request: "Request") -> JSONResponse:
     """Health check endpoint for Docker healthcheck."""
     pipeline: TTSPipeline = request.app.state.pipeline
+    model_name = pipeline.engine.name
 
     if not pipeline.is_ready:
         return JSONResponse(
             status_code=503,
-            content={"status": "loading", "model": "qwen3-tts-12hz-0.6b-customvoice", "lang": "ja"},
+            content={"status": "loading", "model": model_name, "lang": "ja"},
         )
 
-    device = getattr(pipeline, "_device", "cpu")
-    gpu_name = getattr(pipeline, "_gpu_name", None)
-    content = {
+    content: dict[str, str] = {
         "status": "ok",
-        "model": "qwen3-tts-12hz-0.6b-customvoice",
+        "model": model_name,
         "lang": "ja",
-        "device": device,
+        "device": pipeline.device,
     }
-    if gpu_name:
-        content["gpu_name"] = gpu_name
+    if pipeline.gpu_name:
+        content["gpu_name"] = pipeline.gpu_name
     return JSONResponse(content=content)
 
 
@@ -111,7 +111,7 @@ def create_app(*, pipeline_override: TTSPipeline | None = None) -> Starlette:
         format="%(asctime)s %(levelname)s %(name)s: %(message)s",
     )
 
-    pipeline = pipeline_override or TTSPipeline()
+    pipeline = pipeline_override or TTSPipeline(engine=build_engine(settings))
 
     # Create connect-rpc TTS service
     tts_service = TTSConnectService(pipeline, settings)

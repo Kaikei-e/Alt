@@ -36,8 +36,8 @@ async def test_health_not_ready(client: AsyncClient, mock_pipeline: MagicMock):
 @pytest.mark.asyncio
 async def test_health_with_gpu(mock_pipeline: MagicMock):
     """Health endpoint includes gpu_name when GPU is active."""
-    mock_pipeline._device = "cuda"
-    mock_pipeline._gpu_name = "AMD ROCm GPU"
+    mock_pipeline.device = "cuda"
+    mock_pipeline.gpu_name = "AMD ROCm GPU"
 
     with patch.dict("os.environ", {"SERVICE_SECRET": ""}, clear=False):
         app = create_app(pipeline_override=mock_pipeline)

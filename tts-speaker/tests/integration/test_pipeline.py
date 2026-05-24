@@ -9,9 +9,11 @@ import pytest
 @pytest.mark.asyncio
 async def test_pipeline_synthesize():
     """TTSPipeline produces audio output for Japanese text."""
+    from tts_speaker.core.factory import build_engine
     from tts_speaker.core.pipeline import TTSPipeline
+    from tts_speaker.infra.config import Settings
 
-    pipeline = TTSPipeline()
+    pipeline = TTSPipeline(engine=build_engine(Settings()))
     await pipeline.load()
     assert pipeline.is_ready
 

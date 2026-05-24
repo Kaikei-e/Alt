@@ -13,6 +13,7 @@ def test_default_values():
         s = Settings()
     assert s.host == "0.0.0.0"
     assert s.port == 9700
+    assert s.engine == "qwen"
     assert s.default_voice == "qwen-ja-1"
     assert s.default_speed == 1.0
     assert s.log_level == "INFO"

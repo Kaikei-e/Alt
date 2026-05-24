@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from functools import lru_cache
+from typing import Literal
 
 from pydantic import Field
 from pydantic_settings import BaseSettings
@@ -13,6 +14,7 @@ class Settings(BaseSettings):
 
     host: str = Field(default="0.0.0.0", validation_alias="HOST")
     port: int = Field(default=9700, validation_alias="PORT")
+    engine: Literal["qwen"] = Field(default="qwen", validation_alias="TTS_ENGINE")
     default_voice: str = Field(default="qwen-ja-1", validation_alias="TTS_DEFAULT_VOICE")
     default_speed: float = Field(default=1.0, ge=0.5, le=2.0, validation_alias="TTS_DEFAULT_SPEED")
     log_level: str = Field(default="INFO", validation_alias="LOG_LEVEL")

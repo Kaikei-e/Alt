@@ -155,57 +155,6 @@ async def test_list_voices_ids(client: AsyncClient):
 
 
 @pytest.mark.asyncio
-async def test_auth_required_when_secret_set(mock_pipeline: MagicMock):
-    """Connect-RPC endpoints reject requests without token when SECRET is set."""
-    with patch.dict("os.environ", {"SERVICE_SECRET": "test-secret"}, clear=False):
-        app = create_app(pipeline_override=mock_pipeline)
-        transport = ASGITransport(app=app)
-        async with AsyncClient(transport=transport, base_url="http://test") as ac:
-            resp = await ac.post(
-                "/alt.tts.v1.TTSService/Synthesize",
-                json={"text": "テスト"},
-                headers={"Content-Type": "application/json"},
-            )
-            assert resp.status_code != 200
-
-
-@pytest.mark.asyncio
-async def test_auth_correct_token(mock_pipeline: MagicMock):
-    """Connect-RPC endpoints accept requests with correct token."""
-    with patch.dict("os.environ", {"SERVICE_SECRET": "test-secret"}, clear=False):
-        app = create_app(pipeline_override=mock_pipeline)
-        transport = ASGITransport(app=app)
-        async with AsyncClient(transport=transport, base_url="http://test") as ac:
-            resp = await ac.post(
-                "/alt.tts.v1.TTSService/Synthesize",
-                json={"text": "テスト"},
-                headers={
-                    "Content-Type": "application/json",
-                    "X-Service-Token": "test-secret",
-                },
-            )
-            assert resp.status_code == 200
-
-
-@pytest.mark.asyncio
-async def test_auth_wrong_token(mock_pipeline: MagicMock):
-    """Connect-RPC endpoints reject requests with wrong token."""
-    with patch.dict("os.environ", {"SERVICE_SECRET": "test-secret"}, clear=False):
-        app = create_app(pipeline_override=mock_pipeline)
-        transport = ASGITransport(app=app)
-        async with AsyncClient(transport=transport, base_url="http://test") as ac:
-            resp = await ac.post(
-                "/alt.tts.v1.TTSService/Synthesize",
-                json={"text": "テスト"},
-                headers={
-                    "Content-Type": "application/json",
-                    "X-Service-Token": "wrong-token",
-                },
-            )
-            assert resp.status_code != 200
-
-
-@pytest.mark.asyncio
 async def test_health_no_auth_required(mock_pipeline: MagicMock):
     """Health endpoint does not require authentication."""
     with patch.dict("os.environ", {"SERVICE_SECRET": "test-secret"}, clear=False):

@@ -70,6 +70,12 @@ def _create_mock_pipeline():
     """Create a mock TTSPipeline that returns silent audio."""
     pipeline = MagicMock()
     pipeline.is_ready = True
+    pipeline.voice_ids = {"qwen-ja-1", "qwen-ja-2", "qwen-ja-3"}
+    pipeline.voices = [
+        {"id": "qwen-ja-1", "name": "JA Voice 1", "gender": "female"},
+        {"id": "qwen-ja-2", "name": "JA Voice 2", "gender": "female"},
+        {"id": "qwen-ja-3", "name": "JA Voice 3", "gender": "female"},
+    ]
 
     # synthesize() returns (audio_float32, sample_rate) at 44.1 kHz.
     async def mock_synthesize(*, text, voice="qwen-ja-1", speed=1.0):

@@ -24,7 +24,7 @@ def _clear_settings_cache():
 
 @pytest.fixture
 def mock_pipeline() -> MagicMock:
-    """Create a mock TTSPipeline that returns 1 second of silence at 44.1 kHz."""
+    """TTSPipeline mock with a fake engine pre-wired for the 3 Qwen JA voices."""
     pipeline = MagicMock(spec=TTSPipeline)
     pipeline.is_ready = True
     pipeline.synthesize = AsyncMock(
@@ -35,9 +35,15 @@ def mock_pipeline() -> MagicMock:
         {"id": "qwen-ja-2", "name": "JA Voice 2", "gender": "female"},
         {"id": "qwen-ja-3", "name": "JA Voice 3", "gender": "female"},
     ]
-    pipeline._device = "cpu"
-    pipeline._gpu_name = None
+    pipeline.voice_ids = {"qwen-ja-1", "qwen-ja-2", "qwen-ja-3"}
+    pipeline.device = "cpu"
+    pipeline.gpu_name = None
     pipeline.keepalive_tick = AsyncMock(return_value=None)
+
+    # The /health endpoint reads pipeline.engine.name.
+    fake_engine = MagicMock()
+    fake_engine.name = "qwen3-tts-12hz-0.6b-customvoice"
+    pipeline.engine = fake_engine
     return pipeline
 
 
