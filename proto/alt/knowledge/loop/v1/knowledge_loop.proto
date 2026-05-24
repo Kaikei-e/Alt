@@ -184,6 +184,15 @@ enum TransitionTrigger {
   TRANSITION_TRIGGER_RECHECK = 6;
   TRANSITION_TRIGGER_ARCHIVE = 7;
   TRANSITION_TRIGGER_MARK_REVIEWED = 8;
+  // ADR-000914: intent-driven same-stage signals. All three require
+  // from_stage == to_stage. The classifier dispatches to the canonical
+  // event_type; payload.acted_intent / target_type carries the enrichment.
+  // The trigger encodes the stage-gate decision, not routing logic, so the
+  // "trigger = stage gate, payload = enrichment" invariant from §canonical
+  // contract §7 holds.
+  TRANSITION_TRIGGER_COMPARE = 9;        // CHANGED bucket compare CTA → KnowledgeLoopActed (intent recording)
+  TRANSITION_TRIGGER_INTERNALIZE = 10;   // "I got this" graduation → KnowledgeLoopInternalized (dismiss_state flip)
+  TRANSITION_TRIGGER_INTENT_SIGNAL = 11; // Generic payload-driven intent recording (future Acolyte / recap signals) → KnowledgeLoopActed
 }
 
 // SurfacePlannerVersion gates which planner produced a given entry's

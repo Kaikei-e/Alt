@@ -29,6 +29,17 @@ const (
 	triggerRecheck      = "TRANSITION_TRIGGER_RECHECK"
 	triggerArchive      = "TRANSITION_TRIGGER_ARCHIVE"
 	triggerMarkReviewed = "TRANSITION_TRIGGER_MARK_REVIEWED"
+
+	// ADR-000914: intent-driven same-stage triggers. Three new producers
+	// of canonical events that record user intent without advancing the
+	// OODA stage. The classifier routes each to its destination event_type
+	// based on the dismiss-state side effect:
+	//   COMPARE       → Acted        (no dismiss flip; pure intent record)
+	//   INTERNALIZE   → Internalized (flips dismiss_state to internalized)
+	//   INTENT_SIGNAL → Acted        (generic — Acolyte / recap signals)
+	triggerCompare      = "TRANSITION_TRIGGER_COMPARE"
+	triggerInternalize  = "TRANSITION_TRIGGER_INTERNALIZE"
+	triggerIntentSignal = "TRANSITION_TRIGGER_INTENT_SIGNAL"
 )
 
 // isReviewActionTrigger reports whether the trigger is one of the three
@@ -73,6 +84,33 @@ func ClassifyTransitionEvent(fromStage, toStage, trigger string) (string, error)
 			return "", fmt.Errorf("%w: review-lane trigger requires from_stage == to_stage and a canonical OODA stage", ErrInvalidArgument)
 		}
 		return domain.EventKnowledgeLoopReviewed, nil
+	}
+
+	// ADR-000914: intent-driven same-stage triggers. The trigger encodes the
+	// stage-gate decision (same-stage allowed) and the destination event
+	// type; payload.acted_intent / target_type carries the enrichment. The
+	// trio matches the Defer / Review-lane pattern: trigger is the stable
+	// projector-facing dispatch key, payload is the disposable enrichment.
+	//
+	//   COMPARE       → KnowledgeLoopActed       (intent recording into
+	//                                              continue_context, no
+	//                                              dismiss_state flip)
+	//   INTERNALIZE   → KnowledgeLoopInternalized (dismiss_state → internalized,
+	//                                              closes ADR-000913 deferred)
+	//   INTENT_SIGNAL → KnowledgeLoopActed       (generic payload-driven
+	//                                              recording; reserved for
+	//                                              future Acolyte / recap
+	//                                              signals)
+	if trigger == triggerCompare || trigger == triggerInternalize || trigger == triggerIntentSignal {
+		if !isCanonicalStage(fromStage) || fromStage != toStage {
+			return "", fmt.Errorf("%w: intent-driven trigger requires from_stage == to_stage and a canonical OODA stage", ErrInvalidArgument)
+		}
+		switch trigger {
+		case triggerInternalize:
+			return domain.EventKnowledgeLoopInternalized, nil
+		default:
+			return domain.EventKnowledgeLoopActed, nil
+		}
 	}
 
 	// Forbidden transitions (reject before any allow-list check).

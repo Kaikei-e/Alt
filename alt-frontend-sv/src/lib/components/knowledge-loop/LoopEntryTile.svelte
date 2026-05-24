@@ -65,6 +65,13 @@ type Props = {
 		entry: KnowledgeLoopEntryData,
 		href: string,
 	) => Promise<unknown> | unknown;
+	// ADR-000914: "I got this" graduation CTA. Fires the canonical
+	// TRANSITION_TRIGGER_INTERNALIZE same-stage transition; the projector
+	// flips dismiss_state to INTERNALIZED so the entry leaves foreground /
+	// Continue / Now reads without touching freshness_at or why_text.
+	onInternalize?: (
+		entry: KnowledgeLoopEntryData,
+	) => Promise<unknown> | unknown;
 	canTransition?: (from: LoopStageName, to: LoopStageName) => boolean;
 	isInFlight?: (entryKey: string) => boolean;
 	resolveSourceUrl?: (entry: KnowledgeLoopEntryData) => string | null;
@@ -77,6 +84,7 @@ let {
 	onDismiss,
 	onAsk,
 	onOpen,
+	onInternalize,
 	canTransition,
 	isInFlight,
 	resolveSourceUrl,
@@ -444,6 +452,20 @@ async function handleDismiss() {
 					>
 						Dismiss
 					</button>
+					{#if onInternalize}
+						<button
+							type="button"
+							class="cta cta--internalize"
+							aria-label="Mark as internalized; remove from Loop"
+							disabled={dismissing}
+							onclick={(event) => {
+								event.stopPropagation();
+								void onInternalize(entry);
+							}}
+						>
+							I got this
+						</button>
+					{/if}
 				</div>
 			</section>
 		{/if}
@@ -659,6 +681,27 @@ async function handleDismiss() {
 	.cta--dismiss:hover:not([disabled]) {
 		background: var(--alt-terracotta, #b85450);
 		color: var(--surface-bg, #faf9f7);
+	}
+
+	/* ADR-000914 "I got this" CTA — Newspaper Style graduation button.
+	   Sepia-3 border on rest, sepia-4 fill on hover; same dimensions as
+	   the other CTAs so the row stays uniform. No motion beyond color
+	   transitions; prefers-reduced-motion drops those too. */
+	.cta--internalize {
+		border-color: #8a6f47;
+		color: #5d4a2c;
+		transition: background 160ms linear, color 160ms linear,
+			border-color 160ms linear;
+	}
+	.cta--internalize:hover:not([disabled]) {
+		background: #5d4a2c;
+		border-color: #5d4a2c;
+		color: var(--surface-bg, #faf9f7);
+	}
+	@media (prefers-reduced-motion: reduce) {
+		.cta--internalize {
+			transition: none;
+		}
 	}
 
 	.entry-foot {

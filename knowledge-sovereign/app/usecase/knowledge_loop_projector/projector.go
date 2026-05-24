@@ -20,9 +20,22 @@ import (
 const (
 	// projectorName is the row key used in projection_checkpoints to track how
 	// far this projector has consumed the knowledge_events log.
-	projectorName     = "knowledge-loop-projector"
-	defaultBatchSize  = 100
-	defaultLensModeID = "default"
+	projectorName = "knowledge-loop-projector"
+	// defaultBatchSize was 100 pre-ADR-000914. Reproject of a high-traffic
+	// user produced O(N) macro_state recompute DB queries (one per Acted /
+	// Reviewed / ActOutcome event), so the per-tick ceiling of
+	// (batch_size / tick_interval) capped reproject throughput at ~20
+	// events / sec. Bumped to 500 to amortise the per-tick checkpoint
+	// round-trip; the per-event work is still bounded by
+	// MaxBatchesPerTick × BatchSize before the goroutine yields.
+	defaultBatchSize = 500
+	// defaultMaxBatchesPerTick lets one wake-up drain multiple batches in
+	// sequence when the log is backlogged. Mirrors the surface_planner_cron /
+	// act_outcome_cron pattern which has env-tunable MaxBatchesPerTick.
+	// Default is 4 so a quiet log still sleeps within tick_interval but a
+	// reproject can chew through 2 000 events per 5 s tick before yielding.
+	defaultMaxBatchesPerTick = 4
+	defaultLensModeID        = "default"
 )
 
 // Repository is the subset of sovereign_db.Repository that the projector needs.
@@ -103,6 +116,13 @@ type Repository interface {
 // Config tunes the projector loop. Zero values fall back to defaults.
 type Config struct {
 	BatchSize int
+	// MaxBatchesPerTick caps how many consecutive `BatchSize`-sized batches
+	// one `RunBatch` invocation will drain before yielding back to the
+	// scheduling goroutine. The default (4) keeps steady-state traffic
+	// bounded; operators bump it via env during reproject to clear backlog
+	// without changing the tick interval. A single-batch tick is restored
+	// by setting it to 1. Zero falls back to the default.
+	MaxBatchesPerTick int
 }
 
 // Projector runs the Knowledge Loop projection job over knowledge_events.
@@ -136,6 +156,9 @@ func NewProjector(repo Repository, logger *slog.Logger, cfg Config) *Projector {
 	if cfg.BatchSize <= 0 {
 		cfg.BatchSize = defaultBatchSize
 	}
+	if cfg.MaxBatchesPerTick <= 0 {
+		cfg.MaxBatchesPerTick = defaultMaxBatchesPerTick
+	}
 	return &Projector{
 		repo:          repo,
 		logger:        logger,
@@ -155,59 +178,99 @@ func (p *Projector) WithScoreResolver(r SurfaceScoreResolver) *Projector {
 	return p
 }
 
-// RunBatch consumes one batch of events from the checkpoint forward. The caller
-// schedules invocations (typically every few seconds). Errors are logged and
-// the checkpoint advances only across the events successfully read; bad
-// individual events are skipped without stalling the whole projector.
+// RunBatch drains up to `cfg.MaxBatchesPerTick` consecutive batches from
+// the projection checkpoint forward. The caller schedules invocations
+// (typically every few seconds); each invocation walks one or more
+// `cfg.BatchSize`-sized batches until either the log is drained or the
+// per-tick cap is hit, then yields back to its goroutine. ADR-000914 §3
+// — pre-bump the projector capped reproject throughput at 20 events / sec
+// (BatchSize=100 × tick=5s) which was insufficient for the
+// macro_state recompute work added by ADR-000911.
+//
+// Errors are logged and the checkpoint advances only across the events
+// successfully read; bad individual events are skipped without stalling
+// the whole projector. Context cancellation between batches is honoured
+// so a shutdown signal is observed within one batch's worth of work.
 func (p *Projector) RunBatch(ctx context.Context) error {
-	lastSeq, err := p.repo.GetProjectionCheckpoint(ctx, projectorName)
-	if err != nil {
-		return fmt.Errorf("knowledge_loop_projector: get checkpoint: %w", err)
+	batches := 0
+	totalEvents := 0
+	totalProjected := 0
+	totalSkipped := 0
+
+	for batches < p.cfg.MaxBatchesPerTick {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		default:
+		}
+
+		lastSeq, err := p.repo.GetProjectionCheckpoint(ctx, projectorName)
+		if err != nil {
+			return fmt.Errorf("knowledge_loop_projector: get checkpoint: %w", err)
+		}
+
+		events, err := p.repo.ListKnowledgeEventsSince(ctx, lastSeq, p.cfg.BatchSize)
+		if err != nil {
+			return fmt.Errorf("knowledge_loop_projector: list events: %w", err)
+		}
+		if len(events) == 0 {
+			// Log drained — yield back to the scheduling goroutine.
+			break
+		}
+
+		maxSeq := lastSeq
+		projected := 0
+		skipped := 0
+		for i := range events {
+			ev := events[i]
+			res, err := p.projectEvent(ctx, &ev)
+			if err != nil {
+				p.logger.ErrorContext(ctx, "knowledge_loop_projector: skip event",
+					slog.Int64("event_seq", ev.EventSeq),
+					slog.String("event_type", ev.EventType),
+					slog.String("err", err.Error()),
+				)
+			}
+			if res != nil && res.SkippedBySeqHiwater {
+				skipped++
+			}
+			if res != nil && res.Applied {
+				projected++
+			}
+			if ev.EventSeq > maxSeq {
+				maxSeq = ev.EventSeq
+			}
+		}
+
+		if err := p.repo.UpdateProjectionCheckpoint(ctx, projectorName, maxSeq); err != nil {
+			return fmt.Errorf("knowledge_loop_projector: update checkpoint: %w", err)
+		}
+
+		batches++
+		totalEvents += len(events)
+		totalProjected += projected
+		totalSkipped += skipped
+
+		// Short-batch — caller's log is drained or the page boundary is
+		// reached. Either way, no point spinning another batch within the
+		// same tick.
+		if len(events) < p.cfg.BatchSize {
+			break
+		}
 	}
 
-	events, err := p.repo.ListKnowledgeEventsSince(ctx, lastSeq, p.cfg.BatchSize)
-	if err != nil {
-		return fmt.Errorf("knowledge_loop_projector: list events: %w", err)
-	}
-	if len(events) == 0 {
+	if totalEvents == 0 {
 		return nil
 	}
 
-	maxSeq := lastSeq
-	projected := 0
-	skipped := 0
-	for i := range events {
-		ev := events[i]
-		res, err := p.projectEvent(ctx, &ev)
-		if err != nil {
-			p.logger.ErrorContext(ctx, "knowledge_loop_projector: skip event",
-				slog.Int64("event_seq", ev.EventSeq),
-				slog.String("event_type", ev.EventType),
-				slog.String("err", err.Error()),
-			)
-		}
-		if res != nil && res.SkippedBySeqHiwater {
-			skipped++
-		}
-		if res != nil && res.Applied {
-			projected++
-		}
-		if ev.EventSeq > maxSeq {
-			maxSeq = ev.EventSeq
-		}
-	}
-
-	if err := p.repo.UpdateProjectionCheckpoint(ctx, projectorName, maxSeq); err != nil {
-		return fmt.Errorf("knowledge_loop_projector: update checkpoint: %w", err)
-	}
-
-	p.logger.InfoContext(ctx, "knowledge_loop_projector: batch complete",
+	p.logger.InfoContext(ctx, "knowledge_loop_projector: tick complete",
 		slog.String("projector", projectorName),
-		slog.Int64("from_seq", lastSeq),
-		slog.Int64("to_seq", maxSeq),
-		slog.Int("events", len(events)),
-		slog.Int("projected", projected),
-		slog.Int("skipped_by_guard", skipped),
+		slog.Int("batches", batches),
+		slog.Int("events", totalEvents),
+		slog.Int("projected", totalProjected),
+		slog.Int("skipped_by_guard", totalSkipped),
+		slog.Int("max_batches_per_tick", p.cfg.MaxBatchesPerTick),
+		slog.Int("batch_size", p.cfg.BatchSize),
 	)
 	return nil
 }
@@ -363,6 +426,14 @@ func (p *Projector) projectEvent(ctx context.Context, ev *sovereign_db.Knowledge
 		EventKnowledgeLoopSessionReset,
 		EventKnowledgeLoopLensModeSwitched:
 		return p.projectTransition(ctx, ev)
+
+	case EventKnowledgeLoopInternalized:
+		// ADR-000914: "I got this" graduation. Same-stage transition that
+		// only flips dismiss_state to INTERNALIZED; the OODA stage and
+		// session_state cursor are untouched. Reuses the patch-only
+		// driver path so freshness_at / why_text / surface_bucket are
+		// preserved (same discipline as the Deferred branch above).
+		return p.projectInternalized(ctx, ev)
 
 	case EventKnowledgeLoopActOutcome:
 		// ADR-000908 §Δ1: outcome events are not entry-producing — the

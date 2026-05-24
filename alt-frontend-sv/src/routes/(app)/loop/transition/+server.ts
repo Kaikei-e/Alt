@@ -41,7 +41,15 @@ type Trigger =
 	| "defer"
 	| "recheck"
 	| "archive"
-	| "mark_reviewed";
+	| "mark_reviewed"
+	// ADR-000914: intent-driven same-stage triggers. All three require
+	// fromStage === toStage; the backend classifier dispatches to the
+	// canonical event type. compare / intent_signal route to Acted;
+	// internalize routes to KnowledgeLoopInternalized and flips
+	// dismiss_state to internalized.
+	| "compare"
+	| "internalize"
+	| "intent_signal";
 
 type MetadataIntent = Exclude<DecisionIntentName, "unspecified">;
 type MetadataTargetType = Exclude<ActTargetTypeName, "unspecified">;
@@ -96,15 +104,29 @@ const TRIGGERS: readonly Trigger[] = [
 	"recheck",
 	"archive",
 	"mark_reviewed",
+	// ADR-000914 intent-driven same-stage triggers (compare CTA on
+	// CHANGED bucket, "I got this" graduation, generic future signals).
+	"compare",
+	"internalize",
+	"intent_signal",
 ];
 
-// Triggers that require fromStage === toStage (Review-lane + Defer share the
-// passive dispatch shape).
+// Triggers that require fromStage === toStage. Canonical contract §7
+// positive enumeration. The set is mirrored in:
+//   alt-backend/app/usecase/knowledge_loop_usecase/classify_transition_event.go
+//   proto/alt/knowledge/loop/v1/loop_transition_policy.json (same_stage_triggers)
+//   alt-frontend-sv/src/lib/hooks/useKnowledgeLoop.svelte.ts (client gate)
+// All four MUST stay in sync; the `transition_policy_test.go` Go test
+// and `loop-transitions.policy.test.ts` TS test pin the YAML against the
+// implementation so divergence fails CI.
 const SAME_STAGE_TRIGGERS: ReadonlySet<Trigger> = new Set<Trigger>([
 	"defer",
 	"recheck",
 	"archive",
 	"mark_reviewed",
+	"compare",
+	"internalize",
+	"intent_signal",
 ]);
 
 const UUIDV7_RE =

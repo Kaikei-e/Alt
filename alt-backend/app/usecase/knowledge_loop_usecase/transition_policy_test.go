@@ -42,13 +42,20 @@ func TestTransitionPolicyConformance(t *testing.T) {
 			"yaml forbidden edge %s->%s must reject with ErrInvalidArgument, got %v", e.From, e.To, err)
 	}
 
-	// Same-stage triggers must produce KnowledgeLoopDeferred or
-	// KnowledgeLoopReviewed depending on intent.
+	// Same-stage triggers must produce one of:
+	//   KnowledgeLoopDeferred / Reviewed / Acted / Internalized
+	// depending on intent. ADR-000914 added the intent-driven trio
+	// (compare / internalize / intent_signal); compare and intent_signal
+	// fold into Acted because they only record intent, while internalize
+	// gets its own event type because it flips dismiss_state.
 	expectedSameStageEvents := map[string]string{
 		"defer":         domain.EventKnowledgeLoopDeferred,
 		"recheck":       domain.EventKnowledgeLoopReviewed,
 		"archive":       domain.EventKnowledgeLoopReviewed,
 		"mark_reviewed": domain.EventKnowledgeLoopReviewed,
+		"compare":       domain.EventKnowledgeLoopActed,
+		"internalize":   domain.EventKnowledgeLoopInternalized,
+		"intent_signal": domain.EventKnowledgeLoopActed,
 	}
 	for _, trig := range policy.SameStageTriggers {
 		eventType, err := ClassifyTransitionEvent(stageEnum("orient"), stageEnum("orient"), triggerEnum(trig))
@@ -134,6 +141,12 @@ func triggerEnum(short string) string {
 		return triggerArchive
 	case "mark_reviewed":
 		return triggerMarkReviewed
+	case "compare":
+		return triggerCompare
+	case "internalize":
+		return triggerInternalize
+	case "intent_signal":
+		return triggerIntentSignal
 	}
 	return ""
 }

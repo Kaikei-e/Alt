@@ -182,6 +182,70 @@ func TestClassifyTransitionEvent(t *testing.T) {
 			trigger: "TRANSITION_TRIGGER_RECHECK",
 			wantErr: true,
 		},
+		// ADR-000914: intent-driven same-stage triggers.
+		{
+			name:     "observe->observe via COMPARE => Acted",
+			from:     "LOOP_STAGE_OBSERVE",
+			to:       "LOOP_STAGE_OBSERVE",
+			trigger:  "TRANSITION_TRIGGER_COMPARE",
+			wantType: domain.EventKnowledgeLoopActed,
+		},
+		{
+			name:     "decide->decide via COMPARE => Acted",
+			from:     "LOOP_STAGE_DECIDE",
+			to:       "LOOP_STAGE_DECIDE",
+			trigger:  "TRANSITION_TRIGGER_COMPARE",
+			wantType: domain.EventKnowledgeLoopActed,
+		},
+		{
+			name:    "COMPARE with non-equal stages is rejected",
+			from:    "LOOP_STAGE_OBSERVE",
+			to:      "LOOP_STAGE_DECIDE",
+			trigger: "TRANSITION_TRIGGER_COMPARE",
+			wantErr: true,
+		},
+		{
+			name:    "COMPARE on UNSPECIFIED stage is rejected",
+			from:    "LOOP_STAGE_UNSPECIFIED",
+			to:      "LOOP_STAGE_UNSPECIFIED",
+			trigger: "TRANSITION_TRIGGER_COMPARE",
+			wantErr: true,
+		},
+		{
+			name:     "decide->decide via INTERNALIZE => Internalized",
+			from:     "LOOP_STAGE_DECIDE",
+			to:       "LOOP_STAGE_DECIDE",
+			trigger:  "TRANSITION_TRIGGER_INTERNALIZE",
+			wantType: domain.EventKnowledgeLoopInternalized,
+		},
+		{
+			name:     "act->act via INTERNALIZE => Internalized (graduation from Act stage)",
+			from:     "LOOP_STAGE_ACT",
+			to:       "LOOP_STAGE_ACT",
+			trigger:  "TRANSITION_TRIGGER_INTERNALIZE",
+			wantType: domain.EventKnowledgeLoopInternalized,
+		},
+		{
+			name:    "INTERNALIZE with non-equal stages is rejected",
+			from:    "LOOP_STAGE_DECIDE",
+			to:      "LOOP_STAGE_ACT",
+			trigger: "TRANSITION_TRIGGER_INTERNALIZE",
+			wantErr: true,
+		},
+		{
+			name:     "orient->orient via INTENT_SIGNAL => Acted",
+			from:     "LOOP_STAGE_ORIENT",
+			to:       "LOOP_STAGE_ORIENT",
+			trigger:  "TRANSITION_TRIGGER_INTENT_SIGNAL",
+			wantType: domain.EventKnowledgeLoopActed,
+		},
+		{
+			name:    "INTENT_SIGNAL with non-equal stages is rejected",
+			from:    "LOOP_STAGE_ORIENT",
+			to:      "LOOP_STAGE_DECIDE",
+			trigger: "TRANSITION_TRIGGER_INTENT_SIGNAL",
+			wantErr: true,
+		},
 	}
 
 	for _, tc := range cases {

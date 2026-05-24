@@ -260,7 +260,14 @@ export async function transitionKnowledgeLoop(
 			| "defer"
 			| "recheck"
 			| "archive"
-			| "mark_reviewed";
+			| "mark_reviewed"
+			// ADR-000914 intent-driven same-stage triggers. compare /
+			// intent_signal route to KnowledgeLoopActed for intent
+			// recording; internalize routes to KnowledgeLoopInternalized
+			// and flips dismiss_state to internalized.
+			| "compare"
+			| "internalize"
+			| "intent_signal";
 		observedProjectionRevision: number;
 		presentedIntents?: DecisionIntentName[];
 		actedIntent?: DecisionIntentName;
@@ -764,7 +771,10 @@ function mapTriggerToProto(
 		| "defer"
 		| "recheck"
 		| "archive"
-		| "mark_reviewed",
+		| "mark_reviewed"
+		| "compare"
+		| "internalize"
+		| "intent_signal",
 ): TransitionTrigger {
 	switch (t) {
 		case "user_tap":
@@ -783,6 +793,12 @@ function mapTriggerToProto(
 			return TransitionTrigger.ARCHIVE;
 		case "mark_reviewed":
 			return TransitionTrigger.MARK_REVIEWED;
+		case "compare":
+			return TransitionTrigger.COMPARE;
+		case "internalize":
+			return TransitionTrigger.INTERNALIZE;
+		case "intent_signal":
+			return TransitionTrigger.INTENT_SIGNAL;
 	}
 }
 

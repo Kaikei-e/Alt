@@ -52,6 +52,16 @@ const (
 	// like Deferred — the OODA stage doesn't move; only dismiss_state does.
 	EventKnowledgeLoopReviewed = "knowledge_loop.reviewed.v1"
 
+	// EventKnowledgeLoopInternalized is the "I got this" graduation signal
+	// emitted from a same-stage TRANSITION_TRIGGER_INTERNALIZE (ADR-000914).
+	// The projector flips dismiss_state to DISMISS_STATE_INTERNALIZED, which
+	// removes the entry from foreground / Continue / Now reads while keeping
+	// the event log appendable so reproject can reconstruct the row. Pairs
+	// with the DISMISS_STATE_INTERNALIZED enum value introduced by
+	// ADR-000908 §Δ3 — that ADR landed the dismiss state without a producer;
+	// this one supplies the canonical producer.
+	EventKnowledgeLoopInternalized = "knowledge_loop.internalized.v1"
+
 	// EventKnowledgeLoopActOutcome is a system-emitted closure signal for a
 	// prior KnowledgeLoopActed event (ADR-000908 §Δ1). alt-backend view
 	// trackers emit `engaged` / `deep_engagement` when dwell or

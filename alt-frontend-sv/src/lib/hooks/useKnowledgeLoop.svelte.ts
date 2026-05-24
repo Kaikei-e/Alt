@@ -30,9 +30,30 @@ type Trigger =
 	| "defer"
 	| "recheck"
 	| "archive"
-	| "mark_reviewed";
+	| "mark_reviewed"
+	// ADR-000914: intent-driven same-stage triggers. Replace the
+	// previous `allowSameStage` opt-in by encoding the same-stage
+	// permission in the trigger value itself.
+	| "compare"
+	| "internalize"
+	| "intent_signal";
 
 export type ReviewAction = "recheck" | "archive" | "mark_reviewed";
+
+// ADR-000914 §canonical contract §7 addendum. Mirrors the same set in
+// /loop/transition/+server.ts (BFF), proto/.../loop_transition_policy.json
+// (YAML pin), and alt-backend/.../classify_transition_event.go (classifier).
+// All four sources MUST stay in sync — drift is caught by
+// transition_policy_test.go (Go) and loop-transitions.policy.test.ts (TS).
+const SAME_STAGE_TRIGGERS: ReadonlySet<Trigger> = new Set<Trigger>([
+	"defer",
+	"recheck",
+	"archive",
+	"mark_reviewed",
+	"compare",
+	"internalize",
+	"intent_signal",
+]);
 
 export interface TransitionMetadata {
 	presentedIntents?: DecisionIntentName[];
@@ -167,21 +188,20 @@ export function useKnowledgeLoop(opts: UseKnowledgeLoopOptions) {
 		toStage: LoopStageName,
 		trigger: Trigger = "user_tap",
 		metadata?: TransitionMetadata,
-		options: { optimistic?: boolean; allowSameStage?: boolean } = {},
+		options: { optimistic?: boolean } = {},
 	): Promise<TransitionResult> {
 		const entry = findEntry(entryKey);
 		if (!entry) return { status: "error", message: "unknown_entry" };
 
 		const from = effectiveStage(entry);
-		// `allowSameStage` opt-in lets intent-driven same-stage signals (Compare
-		// on Changed, semantic Decide/Act feedback) post without the OODA matrix
-		// guard. The BFF still enforces SAME_STAGE_TRIGGERS in
-		// /loop/transition/+server.ts; this flag only relaxes the client gate.
+		// ADR-000914 canonical §7: same-stage transitions are permitted iff the
+		// trigger is one of the seven SAME_STAGE_TRIGGERS. Any other trigger
+		// must satisfy the OODA matrix encoded by canTransition. The old
+		// `allowSameStage` opt-in was removed because the trigger value
+		// itself carries the stage-gate decision now.
 		const sameStage = from === toStage;
-		if (
-			!(sameStage && options.allowSameStage) &&
-			!canTransition(from, toStage)
-		) {
+		const sameStageAllowed = sameStage && SAME_STAGE_TRIGGERS.has(trigger);
+		if (!sameStageAllowed && !canTransition(from, toStage)) {
 			return {
 				status: "forbidden",
 				reason: `cannot go ${from} → ${toStage}`,

@@ -41,6 +41,13 @@ const (
 	EventKnowledgeLoopSessionReset      = "knowledge_loop.session_reset.v1"
 	EventKnowledgeLoopLensModeSwitched  = "knowledge_loop.lens_mode_switched.v1"
 
+	// ADR-000914: "I got this" graduation producer. The projector flips
+	// dismiss_state to DISMISS_STATE_INTERNALIZED via
+	// PatchKnowledgeLoopEntryDismissState; downstream read paths already
+	// filter internalized rows so the entry disappears from foreground /
+	// Continue / Now without touching the event log.
+	EventKnowledgeLoopInternalized = "knowledge_loop.internalized.v1"
+
 	// ADR-000908 §Δ1 — system-emitted closure signal for a prior Acted
 	// event. Two producers exist: alt-backend view trackers emit
 	// engaged / deep_engagement immediately when dwell or conversation-turn

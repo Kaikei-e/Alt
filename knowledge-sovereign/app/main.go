@@ -113,8 +113,17 @@ func main() {
 	// has moved here (ADR-000844 follow-up). The cadence is intentionally short
 	// — the projector is reproject-safe and idempotent, so re-running on a
 	// quiet log is cheap.
+	//
+	// ADR-000914 §projector performance: BatchSize and MaxBatchesPerTick are
+	// env-tunable so reproject can be driven by bumping the env in the
+	// sovereign deployment without a redeploy of the projector code. The
+	// defaults match the constants in `projector.go` (500 × 4 batches per
+	// tick = 2 000 events / tick).
 	loopProjector := knowledge_loop_projector.NewProjector(repo, slog.Default(),
-		knowledge_loop_projector.Config{BatchSize: 100}).
+		knowledge_loop_projector.Config{
+			BatchSize:         parseIntEnv("KNOWLEDGE_SOVEREIGN_LOOP_PROJECTOR_BATCH_SIZE", 500),
+			MaxBatchesPerTick: parseIntEnv("KNOWLEDGE_SOVEREIGN_LOOP_PROJECTOR_MAX_BATCHES_PER_TICK", 4),
+		}).
 		WithScoreResolver(knowledge_loop_projector.NewEventLogSurfaceScoreResolver(repo))
 	loopTick := time.NewTicker(parseDurationEnv("KNOWLEDGE_SOVEREIGN_PROJECTOR_TICK_INTERVAL", 5*time.Second))
 	go func() {

@@ -9,7 +9,7 @@
     { "from": "decide",  "to": "act",     "triggers": ["user_tap", "keyboard", "programmatic"] },
     { "from": "act",     "to": "observe", "triggers": ["user_tap", "programmatic"] }
   ],
-  "same_stage_triggers": ["defer", "recheck", "archive", "mark_reviewed"],
+  "same_stage_triggers": ["defer", "recheck", "archive", "mark_reviewed", "compare", "internalize", "intent_signal"],
   "forbidden_edges": [
     { "from": "observe", "to": "act" },
     { "from": "act",     "to": "act" },

@@ -63,6 +63,7 @@ omissions in either step.
 | augur.conversation_linked.v1 | no | no | no | — | — | (Surface Planner v2 input only) |
 | knowledge_loop.surface_plan_recomputed.v1 | no | no | no | — | — | (system-only; never user-emittable) |
 | knowledge_loop.act_outcome.v1 | no | no | no | — | — | (system-only; ActOutcomeSignal aggregation only — ADR-000908 §Δ1) |
+| knowledge_loop.internalized.v1 | patch | no | yes | (current) | (preserved) | "I got this" graduation. Flips dismiss_state to internalized via PatchKnowledgeLoopEntryDismissState — freshness / why / surface_bucket / continue_context preserved. Recomputes macro_state so MacroByline picks up the +1. ADR-000914. |
 
 ## Canonical invariants reflected by this matrix
 

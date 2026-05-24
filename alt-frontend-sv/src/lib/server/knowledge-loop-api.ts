@@ -45,7 +45,11 @@ export async function transitionKnowledgeLoopForUser(
 			| "defer"
 			| "recheck"
 			| "archive"
-			| "mark_reviewed";
+			| "mark_reviewed"
+			// ADR-000914 intent-driven same-stage triggers.
+			| "compare"
+			| "internalize"
+			| "intent_signal";
 		observedProjectionRevision: number;
 		presentedIntents?: Array<
 			"open" | "ask" | "save" | "compare" | "revisit" | "snooze"

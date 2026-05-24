@@ -603,12 +603,29 @@ function onChangedCompare(entry: KnowledgeLoopEntryData) {
 	};
 	const metadata = buildTransitionMetadata(entry, synthetic);
 	const from = effectiveEntryStage(entry);
-	// Compare is an intent-driven same-stage signal (no OODA advance). The
-	// canTransition matrix forbids fromStage === toStage by design, so opt
-	// into `allowSameStage` to let the metadata-bearing POST land.
-	void loop.transitionTo(entry.entryKey, from, "user_tap", metadata, {
-		allowSameStage: true,
-	});
+	// ADR-000914: COMPARE is a canonical same-stage trigger that routes to
+	// KnowledgeLoopActed. The trigger itself carries the stage-gate
+	// decision so the previous `allowSameStage` opt-in is gone.
+	void loop.transitionTo(entry.entryKey, from, "compare", metadata);
+}
+/**
+ * ADR-000914 "I got this" graduation. Posts a canonical
+ * TRANSITION_TRIGGER_INTERNALIZE same-stage transition; the projector
+ * flips the entry's dismiss_state to INTERNALIZED so the row leaves the
+ * read paths (foreground / Continue / Now) without touching freshness or
+ * why. The optimistic close on the Macro byline happens automatically
+ * when the next stream frame lands — internalized rows are filtered
+ * server-side per ADR-000908 §Δ3.
+ */
+function onInternalize(entry: KnowledgeLoopEntryData) {
+	const presented = entry.decisionOptions.find(
+		(o) => o.intent === "save" || o.intent === "compare",
+	);
+	const metadata = presented
+		? buildTransitionMetadata(entry, presented)
+		: undefined;
+	const from = effectiveEntryStage(entry);
+	void loop.transitionTo(entry.entryKey, from, "internalize", metadata);
 }
 function onReviewOpen(entry: KnowledgeLoopEntryData) {
 	onEntryOpen(entry);
@@ -851,6 +868,7 @@ function onReviewAction(
 										onDismiss={loop.dismiss}
 										{onAsk}
 										onOpen={onEntryOpen}
+										{onInternalize}
 										canTransition={loop.canTransition}
 										isInFlight={loop.isInFlight}
 										{resolveSourceUrl}

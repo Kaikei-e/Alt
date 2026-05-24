@@ -39,4 +39,27 @@ describe("LoopEntryTile source hygiene", () => {
 		expect(tileSource).toMatch(/aria-label=\{ariaDescription\}/);
 		expect(tileSource).toMatch(/Priority:\s*\$\{priorityLabel\}/);
 	});
+
+	it("exposes the ADR-000914 'I got this' CTA only when onInternalize is wired", () => {
+		// The CTA must (a) be conditional on the onInternalize callback so
+		// surfaces without graduation semantics (e.g. recap-only embeds)
+		// stay clean, (b) carry an aria-label that names the destination
+		// state, and (c) call onInternalize with the entry payload so the
+		// caller can build the canonical TRANSITION_TRIGGER_INTERNALIZE
+		// transition without re-fetching the row.
+		expect(tileSource).toMatch(/\{#if onInternalize\}/);
+		expect(tileSource).toMatch(
+			/aria-label="Mark as internalized; remove from Loop"/,
+		);
+		expect(tileSource).toMatch(/onInternalize\(entry\)/);
+	});
+
+	it("respects prefers-reduced-motion on the internalize CTA transition", () => {
+		// Newspaper Style invariant + a11y: motion is opt-out everywhere.
+		// The CTA's color transition must collapse under reduced-motion so
+		// the click feedback stays static for users who request it.
+		expect(tileSource).toMatch(
+			/@media\s*\(\s*prefers-reduced-motion:\s*reduce\s*\)[\s\S]*?\.cta--internalize/,
+		);
+	});
 });
