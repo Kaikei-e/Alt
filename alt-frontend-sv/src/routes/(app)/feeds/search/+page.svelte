@@ -4,6 +4,7 @@ import { page } from "$app/state";
 import { useViewport } from "$lib/stores/viewport.svelte";
 
 import { searchFeedsClient } from "$lib/api/client/feeds";
+import { appendUniqueById } from "$lib/domain/feed/dedupe";
 import { type RenderFeed, sanitizeFeed, toRenderFeed } from "$lib/schema/feed";
 import { infiniteScroll } from "$lib/actions/infinite-scroll";
 import DesktopFeedCard from "$lib/components/desktop/feeds/DesktopFeedCard.svelte";
@@ -76,9 +77,15 @@ async function handleSearch() {
 		}
 
 		const rawResults = result.results ?? [];
-		feeds = rawResults.map((item) =>
+		const mapped = rawResults.map((item) =>
 			toRenderFeed(sanitizeFeed(item), item.tags),
 		);
+		// Dedupe the initial page too: Meilisearch hybrid scoring rarely but
+		// occasionally returns the same id twice within a single response (the
+		// fusion step can collide on adjacent scores). appendUniqueById against
+		// an empty list collapses any intra-page duplicates without altering
+		// the first-occurrence order.
+		feeds = appendUniqueById([], mapped);
 		cursor = result.next_cursor ?? null;
 		hasMore = result.has_more ?? false;
 	} catch (err) {
@@ -121,7 +128,17 @@ async function loadMore() {
 			hasMore = false;
 			return;
 		}
-		feeds = [...feeds, ...newFeeds];
+		// Dedupe by id before concat: Meilisearch hybrid pagination can return
+		// the same article on adjacent pages (BM25 + vector score fusion is
+		// not stable across offset boundaries), and the keyed each block on
+		// (feed.id) crashes on duplicates. If after dedupe the merged list did
+		// not grow, the backend is replaying the same page — stop the loop.
+		const beforeLen = feeds.length;
+		feeds = appendUniqueById(feeds, newFeeds);
+		if (feeds.length === beforeLen) {
+			hasMore = false;
+			return;
+		}
 		cursor = result.next_cursor ?? null;
 		hasMore = result.has_more ?? false;
 	} finally {
