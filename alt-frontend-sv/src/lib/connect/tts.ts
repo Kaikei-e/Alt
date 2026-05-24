@@ -38,7 +38,7 @@ export interface SynthesizeOptions {
 	speed?: number;
 }
 
-const DEFAULT_VOICE = "qwen-ja-1";
+const DEFAULT_VOICE = "sup-F4";
 const DEFAULT_SPEED = 1.0;
 
 /**

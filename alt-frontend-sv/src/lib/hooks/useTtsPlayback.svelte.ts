@@ -1,14 +1,18 @@
 /**
  * TTS playback hook for Recap genre summaries.
  *
- * Manages the lifecycle of text-to-speech synthesis and audio playback.
- * Uses server-streaming RPC — the server chunks text by sentence and yields
- * complete WAV files, which we play back sequentially.
+ * Streams server-side WAV chunks (`alt.tts.v1.TTSService/SynthesizeStream`)
+ * into a Web-Audio `SeamlessTtsPlayer` that schedules each chunk at
+ * sample-accurate end-of-previous offset so playback is gapless across
+ * sentence boundaries.
  */
 
 import { createClientTransport, synthesizeSpeechStream } from "$lib/connect";
-import { createAudioFromWav, splitTextForTts } from "$lib/utils/audio";
-import type { AudioPlayer } from "$lib/utils/audio";
+import {
+	createSeamlessTtsPlayer,
+	splitTextForTts,
+	type SeamlessTtsPlayer,
+} from "$lib/utils/audio";
 
 type TtsState = "idle" | "loading" | "playing" | "error";
 
@@ -29,28 +33,21 @@ export interface TtsPlayback {
 export function useTtsPlayback(): TtsPlayback {
 	let state = $state<TtsState>("idle");
 	let error = $state<string | null>(null);
-	let currentPlayer: AudioPlayer | null = null;
+	let currentPlayer: SeamlessTtsPlayer | null = null;
 	let cancelled = false;
-	let pendingResolve: (() => void) | null = null;
 
 	const stop = () => {
 		cancelled = true;
 		if (currentPlayer) {
 			currentPlayer.stop();
-			currentPlayer.cleanup();
+			void currentPlayer.cleanup();
 			currentPlayer = null;
-		}
-		// Resolve any pending onEnded promise so play() can exit
-		if (pendingResolve) {
-			pendingResolve();
-			pendingResolve = null;
 		}
 		state = "idle";
 		error = null;
 	};
 
 	const play = async (text: string, options?: TtsPlaybackOptions) => {
-		// Stop any existing playback
 		stop();
 		cancelled = false;
 
@@ -62,7 +59,10 @@ export function useTtsPlayback(): TtsPlayback {
 		const transport = createClientTransport();
 		const chunks = splitTextForTts(text);
 
+		let player: SeamlessTtsPlayer | null = null;
 		try {
+			player = createSeamlessTtsPlayer();
+			currentPlayer = player;
 			state = "loading";
 
 			for (const textChunk of chunks) {
@@ -76,35 +76,32 @@ export function useTtsPlayback(): TtsPlayback {
 
 				for await (const chunk of stream) {
 					if (cancelled) break;
-
-					const player = createAudioFromWav(chunk.audioWav);
-					currentPlayer = player;
-					state = "playing";
-
-					await player.play();
-
-					// Wait for playback to finish or cancellation
-					await new Promise<void>((resolve) => {
-						pendingResolve = resolve;
-						player.onEnded(() => {
-							pendingResolve = null;
-							resolve();
-						});
-					});
-
-					if (!cancelled) {
-						player.cleanup();
-						currentPlayer = null;
+					await player.append(chunk.audioWav);
+					if (state === "loading") {
+						state = "playing";
 					}
 				}
+			}
+
+			if (!cancelled) {
+				await player.done();
 			}
 		} catch (err) {
 			if (!cancelled) {
 				error = err instanceof Error ? err.message : "Unknown TTS error";
 				state = "error";
+				if (player) {
+					await player.cleanup();
+				}
+				if (currentPlayer === player) currentPlayer = null;
 				return;
 			}
 		}
+
+		if (player) {
+			await player.cleanup();
+		}
+		if (currentPlayer === player) currentPlayer = null;
 
 		if (!cancelled) {
 			state = "idle";

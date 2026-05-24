@@ -1,104 +1,156 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { createAudioFromWav, splitTextForTts } from "./audio";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { createSeamlessTtsPlayer, splitTextForTts } from "./audio";
 
-describe("createAudioFromWav", () => {
-	let mockAudio: {
-		play: ReturnType<typeof vi.fn>;
-		pause: ReturnType<typeof vi.fn>;
-		src: string;
-		currentTime: number;
-		addEventListener: ReturnType<typeof vi.fn>;
-		removeEventListener: ReturnType<typeof vi.fn>;
-	};
-	let mockUrl: string;
-	const originalURL = globalThis.URL;
-	const OriginalAudio = globalThis.Audio;
+interface MockSource {
+	buffer: AudioBuffer | null;
+	connect: ReturnType<typeof vi.fn>;
+	start: ReturnType<typeof vi.fn>;
+	stop: ReturnType<typeof vi.fn>;
+	onended: (() => void) | null;
+}
+
+interface MockContext {
+	currentTime: number;
+	state: AudioContextState;
+	destination: AudioDestinationNode;
+	decodeAudioData: ReturnType<typeof vi.fn>;
+	createBufferSource: ReturnType<typeof vi.fn>;
+	close: ReturnType<typeof vi.fn>;
+}
+
+describe("createSeamlessTtsPlayer", () => {
+	let mockCtx: MockContext;
+	let sources: MockSource[];
+	const originalAudioContext = (
+		globalThis as unknown as { AudioContext?: unknown }
+	).AudioContext;
 
 	beforeEach(() => {
-		mockUrl = "blob:http://localhost/fake-url";
-		mockAudio = {
-			play: vi.fn().mockResolvedValue(undefined),
-			pause: vi.fn(),
-			src: "",
+		sources = [];
+		mockCtx = {
 			currentTime: 0,
-			addEventListener: vi.fn(),
-			removeEventListener: vi.fn(),
+			state: "running" as AudioContextState,
+			destination: {} as AudioDestinationNode,
+			decodeAudioData: vi.fn(
+				async (bytes: ArrayBuffer) =>
+					({ duration: bytes.byteLength * 0.001 }) as AudioBuffer,
+			),
+			createBufferSource: vi.fn(() => {
+				const src: MockSource = {
+					buffer: null,
+					connect: vi.fn(),
+					start: vi.fn(),
+					stop: vi.fn(),
+					onended: null,
+				};
+				sources.push(src);
+				return src as unknown as AudioBufferSourceNode;
+			}),
+			close: vi.fn(async () => {
+				mockCtx.state = "closed" as AudioContextState;
+			}),
 		};
 
-		// Mock URL.createObjectURL / revokeObjectURL
-		globalThis.URL = Object.assign(
-			((...args: ConstructorParameters<typeof URL>) =>
-				new originalURL(...args)) as unknown as typeof URL,
-			{
-				...originalURL,
-				createObjectURL: vi.fn().mockReturnValue(mockUrl),
-				revokeObjectURL: vi.fn(),
-			},
-		);
-
-		// Mock Audio constructor using Proxy to intercept `new` calls
-		globalThis.Audio = new Proxy(class {} as typeof Audio, {
-			construct: () => mockAudio as unknown as object,
-		});
+		class MockAudioContext {
+			constructor() {
+				return mockCtx as unknown as AudioContext;
+			}
+		}
+		(globalThis as unknown as { AudioContext: unknown }).AudioContext =
+			MockAudioContext as unknown;
 	});
 
 	afterEach(() => {
-		globalThis.URL = originalURL;
-		globalThis.Audio = OriginalAudio;
+		if (originalAudioContext === undefined) {
+			delete (globalThis as unknown as { AudioContext?: unknown }).AudioContext;
+		} else {
+			(globalThis as unknown as { AudioContext: unknown }).AudioContext =
+				originalAudioContext;
+		}
 	});
 
-	it("creates an AudioPlayer from WAV bytes", () => {
-		const wavBytes = new Uint8Array([82, 73, 70, 70]); // "RIFF"
-		const player = createAudioFromWav(wavBytes);
-
-		expect(URL.createObjectURL).toHaveBeenCalled();
-		expect(player).toBeDefined();
-		expect(player.play).toBeInstanceOf(Function);
-		expect(player.stop).toBeInstanceOf(Function);
-		expect(player.cleanup).toBeInstanceOf(Function);
-		expect(player.onEnded).toBeInstanceOf(Function);
+	it("throws when AudioContext is not available", () => {
+		delete (globalThis as unknown as { AudioContext?: unknown }).AudioContext;
+		expect(() => createSeamlessTtsPlayer()).toThrow(
+			"Web Audio API (AudioContext) is not available",
+		);
 	});
 
-	it("throws on empty data", () => {
-		expect(() => createAudioFromWav(new Uint8Array(0))).toThrow(
+	it("rejects empty audio data", async () => {
+		const player = createSeamlessTtsPlayer();
+		await expect(player.append(new Uint8Array(0))).rejects.toThrow(
 			"Empty audio data",
 		);
 	});
 
-	it("play() calls audio.play()", async () => {
-		const player = createAudioFromWav(new Uint8Array([1, 2, 3]));
-		await player.play();
-		expect(mockAudio.play).toHaveBeenCalled();
+	it("decodes and schedules the first chunk at currentTime + primer", async () => {
+		mockCtx.currentTime = 1.0;
+		const player = createSeamlessTtsPlayer();
+		await player.append(new Uint8Array([1, 2, 3, 4]));
+
+		expect(mockCtx.decodeAudioData).toHaveBeenCalledTimes(1);
+		expect(sources).toHaveLength(1);
+		expect(sources[0].connect).toHaveBeenCalledWith(mockCtx.destination);
+		// First chunk starts at currentTime + FIRST_CHUNK_PRIMER_SECONDS (0.05)
+		expect(sources[0].start).toHaveBeenCalledWith(1.05);
 	});
 
-	it("stop() pauses and resets audio", () => {
-		const player = createAudioFromWav(new Uint8Array([1, 2, 3]));
+	it("schedules the second chunk at end-of-first to keep playback gapless", async () => {
+		mockCtx.currentTime = 0;
+		// Buffer 0 lasts 0.004s (4 bytes * 0.001s), buffer 1 lasts 0.006s.
+		const player = createSeamlessTtsPlayer();
+		await player.append(new Uint8Array([1, 2, 3, 4]));
+		await player.append(new Uint8Array([5, 6, 7, 8, 9, 10]));
+
+		expect(sources).toHaveLength(2);
+		expect(sources[0].start).toHaveBeenCalledWith(0.05);
+		// Second source starts at 0.05 (primed start) + 0.004 (first buffer dur).
+		// Use closeTo to tolerate float arithmetic in nextStartTime accumulation.
+		const secondStart = sources[1].start.mock.calls[0][0] as number;
+		expect(secondStart).toBeCloseTo(0.054, 6);
+	});
+
+	it("does not schedule new chunks after stop()", async () => {
+		const player = createSeamlessTtsPlayer();
+		await player.append(new Uint8Array([1, 2, 3, 4]));
 		player.stop();
-		expect(mockAudio.pause).toHaveBeenCalled();
-		expect(mockAudio.currentTime).toBe(0);
+		expect(sources[0].stop).toHaveBeenCalled();
+
+		await player.append(new Uint8Array([5, 6, 7, 8]));
+		// Still just the one source from the pre-stop append.
+		expect(sources).toHaveLength(1);
 	});
 
-	it("cleanup() revokes object URL", () => {
-		const player = createAudioFromWav(new Uint8Array([1, 2, 3]));
-		player.cleanup();
-		expect(URL.revokeObjectURL).toHaveBeenCalledWith(mockUrl);
+	it("done() resolves when the last source ends", async () => {
+		const player = createSeamlessTtsPlayer();
+		await player.append(new Uint8Array([1, 2, 3, 4]));
+		await player.append(new Uint8Array([5, 6, 7, 8]));
+
+		const tail = sources[sources.length - 1];
+		const donePromise = player.done();
+		// Simulate the engine firing the end-of-source event.
+		tail.onended?.();
+		await expect(donePromise).resolves.toBeUndefined();
 	});
 
-	it("onEnded() sets ended callback", () => {
-		const player = createAudioFromWav(new Uint8Array([1, 2, 3]));
-		const cb = vi.fn();
-		player.onEnded(cb);
-		expect(mockAudio.addEventListener).toHaveBeenCalledTimes(1);
-		const [event, handler, options] = mockAudio.addEventListener.mock.calls[0];
-		expect(event).toBe("ended");
-		expect(handler).toBe(cb);
-		expect(options.once).toBe(true);
+	it("done() resolves immediately when nothing has been appended", async () => {
+		const player = createSeamlessTtsPlayer();
+		await expect(player.done()).resolves.toBeUndefined();
 	});
 
-	it("cleanup after stop does not throw", () => {
-		const player = createAudioFromWav(new Uint8Array([1, 2, 3]));
+	it("done() resolves immediately after stop()", async () => {
+		const player = createSeamlessTtsPlayer();
+		await player.append(new Uint8Array([1, 2, 3, 4]));
 		player.stop();
-		expect(() => player.cleanup()).not.toThrow();
+		await expect(player.done()).resolves.toBeUndefined();
+	});
+
+	it("cleanup() closes the AudioContext and ignores duplicate calls", async () => {
+		const player = createSeamlessTtsPlayer();
+		await player.cleanup();
+		expect(mockCtx.close).toHaveBeenCalledTimes(1);
+		await player.cleanup();
+		expect(mockCtx.close).toHaveBeenCalledTimes(1);
 	});
 });
 
@@ -112,16 +164,13 @@ describe("splitTextForTts", () => {
 	});
 
 	it("returns single chunk for short text", () => {
-		const text = "Hello, world!";
-		const result = splitTextForTts(text);
-		expect(result).toEqual(["Hello, world!"]);
+		expect(splitTextForTts("Hello, world!")).toEqual(["Hello, world!"]);
 	});
 
 	it("splits on Japanese period (。)", () => {
 		const sentence1 = `${"あ".repeat(20000)}。`;
 		const sentence2 = `${"い".repeat(20000)}。`;
-		const text = `${sentence1}${sentence2}`;
-		const result = splitTextForTts(text);
+		const result = splitTextForTts(`${sentence1}${sentence2}`);
 		expect(result.length).toBe(2);
 		expect(result[0]).toBe(sentence1);
 		expect(result[1]).toBe(sentence2);
@@ -130,24 +179,21 @@ describe("splitTextForTts", () => {
 	it("splits on newlines", () => {
 		const line1 = "a".repeat(20000);
 		const line2 = "b".repeat(20000);
-		const text = `${line1}\n${line2}`;
-		const result = splitTextForTts(text);
+		const result = splitTextForTts(`${line1}\n${line2}`);
 		expect(result.length).toBe(2);
 		expect(result[0]).toBe(line1);
 		expect(result[1]).toBe(line2);
 	});
 
 	it("hard-cuts when no sentence boundary found within limit", () => {
-		const text = "あ".repeat(35000);
-		const result = splitTextForTts(text);
+		const result = splitTextForTts("あ".repeat(35000));
 		expect(result.length).toBe(2);
 		expect(result[0].length).toBe(30000);
 		expect(result[1].length).toBe(5000);
 	});
 
 	it("does not produce empty chunks", () => {
-		const text = "テスト。\n\nテスト2。";
-		const result = splitTextForTts(text);
+		const result = splitTextForTts("テスト。\n\nテスト2。");
 		for (const chunk of result) {
 			expect(chunk.length).toBeGreaterThan(0);
 		}
@@ -155,16 +201,13 @@ describe("splitTextForTts", () => {
 
 	it("handles text exactly at limit", () => {
 		const text = "a".repeat(30000);
-		const result = splitTextForTts(text);
-		expect(result).toEqual([text]);
+		expect(splitTextForTts(text)).toEqual([text]);
 	});
 
 	it("splits text exceeding 30000 chars into multiple chunks", () => {
-		// Total > 30000 with a period boundary at 25000
 		const part1 = `${"あ".repeat(25000)}。`;
 		const part2 = "い".repeat(20000);
-		const text = `${part1}${part2}`;
-		const result = splitTextForTts(text);
+		const result = splitTextForTts(`${part1}${part2}`);
 		expect(result.length).toBe(2);
 		expect(result[0]).toBe(part1);
 		expect(result[1]).toBe(part2);

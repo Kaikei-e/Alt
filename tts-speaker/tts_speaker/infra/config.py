@@ -31,6 +31,9 @@ class Settings(BaseSettings):
         default=15.0, ge=0.0, validation_alias="TTS_QWEN_KEEPALIVE_INTERVAL_SEC"
     )
     sup_total_steps: int = Field(default=8, ge=1, le=12, validation_alias="TTS_SUP_TOTAL_STEPS")
+    sup_silence_duration: float = Field(
+        default=0.05, ge=0.0, le=1.0, validation_alias="TTS_SUP_SILENCE_DURATION"
+    )
 
 
 @lru_cache(maxsize=1)

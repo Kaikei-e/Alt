@@ -62,7 +62,7 @@ describe("synthesizeSpeech", () => {
 
 		expect(mockSynthesize).toHaveBeenCalledWith({
 			text: "Hello",
-			voice: "qwen-ja-1",
+			voice: "sup-F4",
 			speed: 1.0,
 		});
 		expect(result).toEqual({
@@ -143,7 +143,7 @@ describe("synthesizeSpeechStream", () => {
 
 		expect(mockSynthesizeStream).toHaveBeenCalledWith({
 			text: "Hello world",
-			voice: "qwen-ja-1",
+			voice: "sup-F4",
 			speed: 1.0,
 		});
 		expect(results).toHaveLength(2);

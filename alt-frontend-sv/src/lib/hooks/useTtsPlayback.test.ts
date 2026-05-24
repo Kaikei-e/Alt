@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("$lib/connect", () => ({
 	createClientTransport: vi.fn(() => ({})),
@@ -6,15 +6,14 @@ vi.mock("$lib/connect", () => ({
 }));
 
 vi.mock("$lib/utils/audio", () => ({
-	createAudioFromWav: vi.fn(),
+	createSeamlessTtsPlayer: vi.fn(),
 	splitTextForTts: vi.fn((text: string) => [text]),
 }));
 
 import { synthesizeSpeechStream } from "$lib/connect";
-import { createAudioFromWav, splitTextForTts } from "$lib/utils/audio";
+import { createSeamlessTtsPlayer, splitTextForTts } from "$lib/utils/audio";
 import { useTtsPlayback } from "./useTtsPlayback.svelte";
 
-/** Helper: creates an async generator that yields the given chunks */
 function createMockStream(
 	chunks: Array<{
 		audioWav: Uint8Array;
@@ -27,6 +26,16 @@ function createMockStream(
 			yield chunk;
 		}
 	};
+}
+
+function makeMockPlayer() {
+	const player = {
+		append: vi.fn(async (_bytes: Uint8Array): Promise<void> => {}),
+		stop: vi.fn(),
+		done: vi.fn(async (): Promise<void> => {}),
+		cleanup: vi.fn(async (): Promise<void> => {}),
+	};
+	return player;
 }
 
 describe("useTtsPlayback", () => {
@@ -45,33 +54,39 @@ describe("useTtsPlayback", () => {
 	});
 
 	describe("play()", () => {
-		it("transitions through loading to playing state", async () => {
-			const mockPlayer = {
-				play: vi.fn().mockResolvedValue(undefined),
-				stop: vi.fn(),
-				cleanup: vi.fn(),
-				onEnded: vi.fn().mockImplementation((cb) => cb()),
-			};
-
+		it("appends every streamed chunk into a single seamless player", async () => {
+			const player = makeMockPlayer();
+			vi.mocked(createSeamlessTtsPlayer).mockReturnValue(player);
 			vi.mocked(synthesizeSpeechStream).mockReturnValue(
 				createMockStream([
 					{
 						audioWav: new Uint8Array([1, 2, 3]),
-						sampleRate: 24000,
+						sampleRate: 44100,
+						durationSeconds: 1.0,
+					},
+					{
+						audioWav: new Uint8Array([4, 5, 6]),
+						sampleRate: 44100,
 						durationSeconds: 1.0,
 					},
 				])(),
 			);
-			vi.mocked(createAudioFromWav).mockReturnValue(mockPlayer);
 
 			const tts = useTtsPlayback();
 			await tts.play("Hello");
 
-			expect(synthesizeSpeechStream).toHaveBeenCalled();
-			expect(createAudioFromWav).toHaveBeenCalledWith(
+			expect(createSeamlessTtsPlayer).toHaveBeenCalledTimes(1);
+			expect(player.append).toHaveBeenCalledTimes(2);
+			expect(player.append).toHaveBeenNthCalledWith(
+				1,
 				new Uint8Array([1, 2, 3]),
 			);
-			expect(mockPlayer.play).toHaveBeenCalled();
+			expect(player.append).toHaveBeenNthCalledWith(
+				2,
+				new Uint8Array([4, 5, 6]),
+			);
+			expect(player.done).toHaveBeenCalledTimes(1);
+			expect(player.cleanup).toHaveBeenCalledTimes(1);
 		});
 
 		it("handles empty text gracefully", async () => {
@@ -79,10 +94,13 @@ describe("useTtsPlayback", () => {
 			await tts.play("");
 
 			expect(synthesizeSpeechStream).not.toHaveBeenCalled();
+			expect(createSeamlessTtsPlayer).not.toHaveBeenCalled();
 			expect(tts.state).toBe("idle");
 		});
 
-		it("sets error state on stream failure", async () => {
+		it("sets error state on stream failure and cleans up the player", async () => {
+			const player = makeMockPlayer();
+			vi.mocked(createSeamlessTtsPlayer).mockReturnValue(player);
 			const failingStream: AsyncIterable<{
 				audioWav: Uint8Array;
 				sampleRate: number;
@@ -107,100 +125,45 @@ describe("useTtsPlayback", () => {
 
 			expect(tts.state).toBe("error");
 			expect(tts.error).toBe("TTS service unavailable");
+			expect(player.cleanup).toHaveBeenCalled();
 		});
 
 		it("passes voice and speed options", async () => {
-			const mockPlayer = {
-				play: vi.fn().mockResolvedValue(undefined),
-				stop: vi.fn(),
-				cleanup: vi.fn(),
-				onEnded: vi.fn().mockImplementation((cb) => cb()),
-			};
-
+			const player = makeMockPlayer();
+			vi.mocked(createSeamlessTtsPlayer).mockReturnValue(player);
 			vi.mocked(synthesizeSpeechStream).mockReturnValue(
 				createMockStream([
 					{
 						audioWav: new Uint8Array([1]),
-						sampleRate: 24000,
+						sampleRate: 44100,
 						durationSeconds: 0.5,
 					},
 				])(),
 			);
-			vi.mocked(createAudioFromWav).mockReturnValue(mockPlayer);
 
 			const tts = useTtsPlayback();
-			await tts.play("Test", { voice: "jm_beta", speed: 1.5 });
+			await tts.play("Test", { voice: "sup-F4", speed: 1.5 });
 
 			expect(synthesizeSpeechStream).toHaveBeenCalledWith(
 				expect.anything(),
 				expect.objectContaining({
 					text: "Test",
-					voice: "jm_beta",
+					voice: "sup-F4",
 					speed: 1.5,
 				}),
 			);
 		});
 
-		it("processes multiple streamed chunks sequentially", async () => {
-			const players = [
-				{
-					play: vi.fn().mockResolvedValue(undefined),
-					stop: vi.fn(),
-					cleanup: vi.fn(),
-					onEnded: vi.fn().mockImplementation((cb) => cb()),
-				},
-				{
-					play: vi.fn().mockResolvedValue(undefined),
-					stop: vi.fn(),
-					cleanup: vi.fn(),
-					onEnded: vi.fn().mockImplementation((cb) => cb()),
-				},
-			];
-
-			vi.mocked(synthesizeSpeechStream).mockReturnValue(
-				createMockStream([
-					{
-						audioWav: new Uint8Array([1]),
-						sampleRate: 24000,
-						durationSeconds: 1.0,
-					},
-					{
-						audioWav: new Uint8Array([2]),
-						sampleRate: 24000,
-						durationSeconds: 1.0,
-					},
-				])(),
-			);
-			vi.mocked(createAudioFromWav)
-				.mockReturnValueOnce(players[0])
-				.mockReturnValueOnce(players[1]);
-
-			const tts = useTtsPlayback();
-			await tts.play("Multiple sentences.");
-
-			expect(players[0].play).toHaveBeenCalled();
-			expect(players[1].play).toHaveBeenCalled();
-			expect(players[0].cleanup).toHaveBeenCalled();
-		});
-
-		it("splits long text into multiple chunks and streams each", async () => {
-			const mockPlayer = {
-				play: vi.fn().mockResolvedValue(undefined),
-				stop: vi.fn(),
-				cleanup: vi.fn(),
-				onEnded: vi.fn().mockImplementation((cb) => cb()),
-			};
-
-			// splitTextForTts returns two chunks
+		it("splits long text into multiple chunks and feeds each into the same player", async () => {
+			const player = makeMockPlayer();
+			vi.mocked(createSeamlessTtsPlayer).mockReturnValue(player);
 			vi.mocked(splitTextForTts).mockReturnValue(["chunk1", "chunk2"]);
-
-			// Each chunk creates its own stream with one audio response
 			vi.mocked(synthesizeSpeechStream)
 				.mockReturnValueOnce(
 					createMockStream([
 						{
 							audioWav: new Uint8Array([1]),
-							sampleRate: 24000,
+							sampleRate: 44100,
 							durationSeconds: 1.0,
 						},
 					])(),
@@ -209,69 +172,53 @@ describe("useTtsPlayback", () => {
 					createMockStream([
 						{
 							audioWav: new Uint8Array([2]),
-							sampleRate: 24000,
+							sampleRate: 44100,
 							durationSeconds: 1.0,
 						},
 					])(),
 				);
-			vi.mocked(createAudioFromWav).mockReturnValue(mockPlayer);
 
 			const tts = useTtsPlayback();
 			await tts.play("chunk1chunk2");
 
-			// synthesizeSpeechStream called once per chunk
 			expect(synthesizeSpeechStream).toHaveBeenCalledTimes(2);
-			expect(synthesizeSpeechStream).toHaveBeenCalledWith(
-				expect.anything(),
-				expect.objectContaining({ text: "chunk1" }),
-			);
-			expect(synthesizeSpeechStream).toHaveBeenCalledWith(
-				expect.anything(),
-				expect.objectContaining({ text: "chunk2" }),
-			);
-			expect(mockPlayer.play).toHaveBeenCalledTimes(2);
+			expect(createSeamlessTtsPlayer).toHaveBeenCalledTimes(1);
+			expect(player.append).toHaveBeenCalledTimes(2);
+			expect(player.done).toHaveBeenCalledTimes(1);
 		});
 	});
 
 	describe("stop()", () => {
-		it("stops and cleans up current player", async () => {
-			const mockPlayer = {
-				play: vi.fn().mockResolvedValue(undefined),
-				stop: vi.fn(),
-				cleanup: vi.fn(),
-				onEnded: vi.fn(), // Don't call cb - keep playing
-			};
-
+		it("stops the player and resets state to idle", async () => {
+			const player = makeMockPlayer();
+			let releaseDone: (() => void) | undefined;
+			player.done.mockReturnValue(
+				new Promise<void>((resolve) => {
+					releaseDone = resolve;
+				}),
+			);
+			vi.mocked(createSeamlessTtsPlayer).mockReturnValue(player);
 			vi.mocked(synthesizeSpeechStream).mockReturnValue(
 				createMockStream([
 					{
 						audioWav: new Uint8Array([1]),
-						sampleRate: 24000,
-						durationSeconds: 1.0,
-					},
-					{
-						audioWav: new Uint8Array([2]),
-						sampleRate: 24000,
+						sampleRate: 44100,
 						durationSeconds: 1.0,
 					},
 				])(),
 			);
-			vi.mocked(createAudioFromWav).mockReturnValue(mockPlayer);
 
 			const tts = useTtsPlayback();
-			// Start playing but don't await (it's waiting for onEnded)
 			const playPromise = tts.play("Hello World");
-			// Wait for first chunk to start
 			await vi.waitFor(() => {
-				expect(mockPlayer.play).toHaveBeenCalled();
+				expect(player.append).toHaveBeenCalled();
 			});
 
 			tts.stop();
 
-			expect(mockPlayer.stop).toHaveBeenCalled();
-			expect(mockPlayer.cleanup).toHaveBeenCalled();
-
-			// Let the play promise settle
+			expect(player.stop).toHaveBeenCalled();
+			expect(player.cleanup).toHaveBeenCalled();
+			(releaseDone as (() => void) | undefined)?.();
 			await playPromise;
 			expect(tts.state).toBe("idle");
 		});

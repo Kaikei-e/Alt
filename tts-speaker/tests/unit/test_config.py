@@ -76,3 +76,10 @@ def test_sup_total_steps_default_and_override():
         assert Settings().sup_total_steps == 8
     with patch.dict("os.environ", {"TTS_SUP_TOTAL_STEPS": "12"}, clear=True):
         assert Settings().sup_total_steps == 12
+
+
+def test_sup_silence_duration_default_and_override():
+    with patch.dict("os.environ", {}, clear=True):
+        assert Settings().sup_silence_duration == 0.05
+    with patch.dict("os.environ", {"TTS_SUP_SILENCE_DURATION": "0.3"}, clear=True):
+        assert Settings().sup_silence_duration == 0.3

@@ -36,8 +36,13 @@ class TestSupertonicVoiceCatalogue:
         for v in VOICES:
             assert set(v) == {"id", "name", "gender"}
 
-    def test_voice_ids_only_f4(self):
-        assert VOICE_IDS == {"sup-F4"}
+    def test_list_voices_advertises_only_sup_f4(self):
+        # Legacy Qwen aliases are accepted by synth_one but not surfaced
+        # through ListVoices — see LEGACY_ALIASES.
+        assert [v["id"] for v in VOICES] == ["sup-F4"]
+
+    def test_voice_ids_include_legacy_aliases(self):
+        assert VOICE_IDS == {"sup-F4", "qwen-ja-1", "qwen-ja-2", "qwen-ja-3"}
 
     def test_resolve_voice_unknown_raises(self):
         with pytest.raises(ValueError, match="unknown voice"):
@@ -45,6 +50,12 @@ class TestSupertonicVoiceCatalogue:
 
     def test_resolve_voice_returns_config(self):
         cfg = SupertonicEngine._resolve_voice("sup-F4")
+        assert cfg.id == "sup-F4"
+        assert cfg.sup_voice == "F4"
+
+    @pytest.mark.parametrize("alias", ["qwen-ja-1", "qwen-ja-2", "qwen-ja-3"])
+    def test_legacy_qwen_alias_resolves_to_sup_f4(self, alias: str):
+        cfg = SupertonicEngine._resolve_voice(alias)
         assert cfg.id == "sup-F4"
         assert cfg.sup_voice == "F4"
 
@@ -64,6 +75,9 @@ class TestSupertonicSynthOne:
         kwargs = mock_tts.synthesize.call_args.kwargs
         assert kwargs["speed"] == 1.25
         assert kwargs["total_steps"] == 8  # Settings default
+        assert (
+            kwargs["silence_duration"] == 0.05
+        )  # Settings default — tight join for FE seamless playback
         assert mock_tts.synthesize.call_args.args[0] == "テスト。"
 
     def test_synth_one_unknown_voice_raises(self):

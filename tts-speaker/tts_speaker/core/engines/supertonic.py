@@ -46,11 +46,21 @@ VOICES_CONFIG: tuple[SupVoiceConfig, ...] = (
     ),
 )
 
+# Legacy voice IDs from the Qwen3-TTS catalogue. Accepted by synth_one and
+# routed to sup-F4 so the existing frontend (DEFAULT_VOICE="qwen-ja-1") keeps
+# working during the side-by-side evaluation. ListVoices does NOT advertise
+# these — they're synth-only aliases. Removed in Phase 3 when the FE
+# DEFAULT_VOICE is renamed to "sup-F4".
+LEGACY_ALIASES: tuple[str, ...] = ("qwen-ja-1", "qwen-ja-2", "qwen-ja-3")
+
 VOICES: list[dict[str, str]] = [
     {"id": v.id, "name": v.name, "gender": v.gender} for v in VOICES_CONFIG
 ]
-VOICE_IDS: set[str] = {v.id for v in VOICES_CONFIG}
-_VOICE_BY_ID: dict[str, SupVoiceConfig] = {v.id: v for v in VOICES_CONFIG}
+VOICE_IDS: set[str] = {v.id for v in VOICES_CONFIG} | set(LEGACY_ALIASES)
+_VOICE_BY_ID: dict[str, SupVoiceConfig] = {
+    **{v.id: v for v in VOICES_CONFIG},
+    **{alias: VOICES_CONFIG[0] for alias in LEGACY_ALIASES},
+}
 
 
 class SupertonicEngine:
@@ -132,6 +142,7 @@ class SupertonicEngine:
             voice_style=style,
             total_steps=self._settings.sup_total_steps,
             speed=speed,
+            silence_duration=self._settings.sup_silence_duration,
         )
         # Supertonic returns shape (1, num_samples); flatten to mono float32.
         audio = np.asarray(wav, dtype=np.float32)
