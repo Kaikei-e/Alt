@@ -8,7 +8,13 @@ import (
 	"log/slog"
 	"sync"
 	"time"
+
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 )
+
+const tracerName = "alt-backend/global_search"
 
 const (
 	defaultArticleLimit = 5
@@ -20,14 +26,26 @@ const (
 	maxQueryLength      = 1000
 )
 
-// sectionTimeout bounds each parallel search section (articles / recaps /
-// tags). It is a var rather than a const so tests can shrink it for fast
-// behavioural assertions. The production ceiling was raised from 3s to 10s
-// after observing Meilisearch /indexes/articles/search idle time reach 5s
-// under synonyms-task-queue contention; even with the coalescing batcher
-// in search-indexer closing that gap, the wider ceiling keeps transient
-// Meilisearch batching from flipping articles into the degraded banner.
-var sectionTimeout = 10 * time.Second
+// sectionTimeouts caps each parallel search section independently. The
+// previous single 10s ceiling was a worst-case shock absorber for hybrid-
+// search cold-start (~1.1s embed) + saturated synonym task queue. Now that
+// the search-indexer warms the embedder at startup, the LRU cache absorbs
+// repeat traffic, and Meilisearch enforces searchCutoffMs=1500, the article
+// path consistently stays under 2s; recaps are similar. Tags resolve via a
+// short alt-db prefix query and never need more than a second.
+//
+// Lowering the ceilings tightens user-visible latency caps on the slow path
+// without compromising the cache-hit fast path.
+//
+// Kept as a package var (not a const) so tests can shrink the timeouts to
+// reproduce degraded scenarios in milliseconds.
+var sectionTimeouts = struct {
+	Articles, Recaps, Tags time.Duration
+}{
+	Articles: 5 * time.Second,
+	Recaps:   5 * time.Second,
+	Tags:     1 * time.Second,
+}
 
 // GlobalSearchUsecase aggregates search results from multiple verticals.
 type GlobalSearchUsecase struct {
@@ -35,6 +53,7 @@ type GlobalSearchUsecase struct {
 	recapSearch   global_search_port.SearchRecapsPort
 	tagSearch     global_search_port.SearchTagsPort
 	logger        *slog.Logger
+	tracer        trace.Tracer
 }
 
 // NewGlobalSearchUsecase creates a new GlobalSearchUsecase.
@@ -48,6 +67,7 @@ func NewGlobalSearchUsecase(
 		recapSearch:   recapSearch,
 		tagSearch:     tagSearch,
 		logger:        slog.Default(),
+		tracer:        otel.Tracer(tracerName),
 	}
 }
 
@@ -84,13 +104,25 @@ func (u *GlobalSearchUsecase) Execute(ctx context.Context, query string, article
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		sctx, cancel := context.WithTimeout(ctx, sectionTimeout)
+		sctx, cancel := context.WithTimeout(ctx, sectionTimeouts.Articles)
 		defer cancel()
+		sctx, span := u.tracer.Start(sctx, "global_search.section.articles",
+			trace.WithAttributes(attribute.Int("limit", articleLimit)))
+		start := time.Now()
+		degraded := false
+		defer func() {
+			span.SetAttributes(
+				attribute.Int64("duration_ms", time.Since(start).Milliseconds()),
+				attribute.Bool("degraded", degraded),
+			)
+			span.End()
+		}()
 
 		result, err := u.articleSearch.SearchArticlesForGlobal(sctx, query, userID, articleLimit)
 		mu.Lock()
 		defer mu.Unlock()
 		if err != nil {
+			degraded = true
 			u.logger.WarnContext(ctx, "article search failed", "error", err, "query", query)
 			degradedSections = append(degradedSections, "articles")
 			return
@@ -102,13 +134,25 @@ func (u *GlobalSearchUsecase) Execute(ctx context.Context, query string, article
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		sctx, cancel := context.WithTimeout(ctx, sectionTimeout)
+		sctx, cancel := context.WithTimeout(ctx, sectionTimeouts.Recaps)
 		defer cancel()
+		sctx, span := u.tracer.Start(sctx, "global_search.section.recaps",
+			trace.WithAttributes(attribute.Int("limit", recapLimit)))
+		start := time.Now()
+		degraded := false
+		defer func() {
+			span.SetAttributes(
+				attribute.Int64("duration_ms", time.Since(start).Milliseconds()),
+				attribute.Bool("degraded", degraded),
+			)
+			span.End()
+		}()
 
 		result, err := u.recapSearch.SearchRecapsForGlobal(sctx, query, recapLimit)
 		mu.Lock()
 		defer mu.Unlock()
 		if err != nil {
+			degraded = true
 			u.logger.WarnContext(ctx, "recap search failed", "error", err, "query", query)
 			degradedSections = append(degradedSections, "recaps")
 			return
@@ -120,13 +164,25 @@ func (u *GlobalSearchUsecase) Execute(ctx context.Context, query string, article
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		sctx, cancel := context.WithTimeout(ctx, sectionTimeout)
+		sctx, cancel := context.WithTimeout(ctx, sectionTimeouts.Tags)
 		defer cancel()
+		sctx, span := u.tracer.Start(sctx, "global_search.section.tags",
+			trace.WithAttributes(attribute.Int("limit", tagLimit)))
+		start := time.Now()
+		degraded := false
+		defer func() {
+			span.SetAttributes(
+				attribute.Int64("duration_ms", time.Since(start).Milliseconds()),
+				attribute.Bool("degraded", degraded),
+			)
+			span.End()
+		}()
 
 		result, err := u.tagSearch.SearchTagsByPrefix(sctx, query, tagLimit)
 		mu.Lock()
 		defer mu.Unlock()
 		if err != nil {
+			degraded = true
 			u.logger.WarnContext(ctx, "tag search failed", "error", err, "query", query)
 			degradedSections = append(degradedSections, "tags")
 			return

@@ -5,6 +5,7 @@ import (
 	"net/http"
 
 	"connectrpc.com/connect"
+	"connectrpc.com/otelconnect"
 	"golang.org/x/net/http2"
 	"golang.org/x/net/http2/h2c"
 	"golang.org/x/time/rate"
@@ -19,7 +20,9 @@ import (
 
 // CreateConnectServer creates the Connect-RPC server with HTTP/2 support.
 // Authentication is established at the TLS transport layer (mTLS peer-identity
-// on :9443); the plaintext h2c mux here carries only a shared rate limiter.
+// on :9443); the plaintext h2c mux here carries only a shared rate limiter and
+// the OTel server-side interceptor so Connect-RPC procedures emit spans into
+// the rask_logs otel_traces table.
 func CreateConnectServer(searchByUserUsecase *usecase.SearchByUserUsecase, searchRecapsUsecase *usecase.SearchRecapsUsecase, rlCfg config.RateLimitConfig) http.Handler {
 	mux := http.NewServeMux()
 
@@ -31,10 +34,21 @@ func CreateConnectServer(searchByUserUsecase *usecase.SearchByUserUsecase, searc
 	})
 
 	rateLimit := interceptor.NewRateLimitInterceptor(rate.Limit(rlCfg.RequestsPerSecond), rlCfg.Burst)
+
+	// otelInterceptor is the outermost layer so spans wrap rate-limit rejections too.
+	// Failure to construct it must not block service start: rate limiting still works.
+	interceptors := []connect.Interceptor{}
+	if otelInt, err := otelconnect.NewInterceptor(); err == nil {
+		interceptors = append(interceptors, otelInt)
+	} else {
+		logger.Logger.Warn("Failed to create OTel Connect interceptor, proceeding without tracing", "error", err)
+	}
+	interceptors = append(interceptors, rateLimit)
+
 	searchHandler := search.NewHandler(searchByUserUsecase, searchRecapsUsecase)
 	searchPath, searchServiceHandler := searchv2connect.NewSearchServiceHandler(
 		searchHandler,
-		connect.WithInterceptors(rateLimit),
+		connect.WithInterceptors(interceptors...),
 	)
 	mux.Handle(searchPath, searchServiceHandler)
 	logger.Logger.Info("Registered Connect-RPC SearchService", "path", searchPath)

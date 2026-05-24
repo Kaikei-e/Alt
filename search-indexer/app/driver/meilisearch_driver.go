@@ -9,6 +9,11 @@ import (
 	"unicode"
 
 	"github.com/meilisearch/meilisearch-go"
+	"golang.org/x/sync/singleflight"
+
+	"search-indexer/config"
+	"search-indexer/logger"
+	appotel "search-indexer/utils/otel"
 )
 
 // MeilisearchDriver isolates admin operations (IndexDocuments, Delete,
@@ -20,6 +25,8 @@ type MeilisearchDriver struct {
 	index       meilisearch.IndexManager
 	searchIndex meilisearch.IndexManager
 	hybrid      *HybridConfig
+	cache       *searchCache
+	sf          singleflight.Group
 }
 
 // NewMeilisearchDriver constructs a driver where the same client handles both
@@ -54,16 +61,73 @@ func (d *MeilisearchDriver) WithHybrid(cfg *HybridConfig) *MeilisearchDriver {
 	return d
 }
 
+// WithCache installs an in-memory LRU cache in front of the search path.
+// size=0 disables the cache (leaves it nil). The driver itself remains
+// safe to use without a cache; the search methods fall back to direct
+// Meilisearch calls when the cache is nil.
+func (d *MeilisearchDriver) WithCache(size int, ttl time.Duration) *MeilisearchDriver {
+	if size <= 0 {
+		d.cache = nil
+		return d
+	}
+	c, err := newSearchCache(size, ttl)
+	if err != nil {
+		logger.Logger.Warn("failed to construct search cache, continuing without it", "err", err)
+		return d
+	}
+	d.cache = c
+	return d
+}
+
+// hybridSnapshot returns the embedder name and ratio currently configured on
+// the driver. Used as part of the cache key so an env-driven config change
+// invalidates cached results.
+func (d *MeilisearchDriver) hybridSnapshot() (string, float64) {
+	if d.hybrid == nil {
+		return "", 0
+	}
+	return d.hybrid.Embedder, d.hybrid.SemanticRatio
+}
+
 // newBaseSearchRequest centralises SearchRequest construction so hybrid
 // plumbing stays consistent across Search, SearchWithFilters, and the
 // user-scoped search variants.
+//
+// AttributesToRetrieve excludes the full content field — the driver no
+// longer needs the raw body once Meilisearch is asked to crop it.
+// AttributesToCrop + CropLength make Meilisearch produce a bounded snippet
+// in hit["_formatted"]["content"]; the driver reads that via getCropped and
+// places it back into SearchDocumentDriver.Content so downstream layers see
+// no shape change. Net effect: ~7.5 KB → ~few hundred bytes per hit on the
+// wire and in the LRU cache.
 func (d *MeilisearchDriver) newBaseSearchRequest(query string, limit int) *meilisearch.SearchRequest {
 	return &meilisearch.SearchRequest{
-		Query:            query,
-		Limit:            int64(limit),
-		ShowRankingScore: true,
-		Hybrid:           d.hybrid.toSDK(),
+		Query:                query,
+		Limit:                int64(limit),
+		ShowRankingScore:     true,
+		Hybrid:               d.hybrid.toSDK(),
+		AttributesToRetrieve: []string{"id", "title", "tags", "user_id", "language", "published_at"},
+		AttributesToCrop:     []string{"content"},
+		CropLength:           120,
 	}
+}
+
+// recordProcessing surfaces Meilisearch's self-reported processingTimeMs as a
+// span attribute + debug log line. Hybrid search runs the embedder inside
+// Meilisearch, so this value is the cleanest signal for separating embedder
+// cold-start latency from BM25 search cost without invasive driver signature
+// changes.
+func (d *MeilisearchDriver) recordProcessing(ctx context.Context, op string, result *meilisearch.SearchResponse) {
+	if result == nil {
+		return
+	}
+	appotel.RecordMeilisearchProcessing(ctx, op, result.ProcessingTimeMs)
+	logger.Logger.DebugContext(ctx, "meilisearch search",
+		"op", op,
+		"processing_ms", result.ProcessingTimeMs,
+		"hits", len(result.Hits),
+		"estimated_total", result.EstimatedTotalHits,
+	)
 }
 
 func (d *MeilisearchDriver) IndexDocuments(ctx context.Context, docs []SearchDocumentDriver) error {
@@ -117,42 +181,75 @@ func (d *MeilisearchDriver) DeleteDocuments(ctx context.Context, ids []string) e
 }
 
 func (d *MeilisearchDriver) Search(ctx context.Context, query string, limit int) ([]SearchDocumentDriver, error) {
-	searchRequest := d.newBaseSearchRequest(query, limit)
-	// Locales intentionally omitted: let Meilisearch match across all configured
-	// locales (jpn + eng). Previously CJK queries were restricted to jpn-only,
-	// which prevented Japanese queries from matching English article content
-	// (e.g., "ヴァンス副大統領" could not find "JD Vance" articles).
-
-	result, err := d.searchIndex.Search(query, searchRequest)
-	if err != nil {
-		return nil, &DriverError{
-			Op:  "Search",
-			Err: err.Error(),
-		}
+	emb, ratio := d.hybridSnapshot()
+	key := cacheKey{
+		Query:         normalizeCacheKeyQuery(query),
+		Limit:         int64(limit),
+		Embedder:      emb,
+		SemanticRatio: ratio,
+	}
+	if e, ok := d.cache.get(key); ok {
+		appotel.RecordMeilisearchProcessing(ctx, "Search.cacheHit", e.ProcessingMs)
+		return e.Docs, nil
 	}
 
-	return d.hitsToDocs(result.Hits), nil
+	entry, err := d.singleflightSearch(ctx, key.String(), func() (cacheEntry, error) {
+		searchRequest := d.newBaseSearchRequest(query, limit)
+		// Locales intentionally omitted: let Meilisearch match across all configured
+		// locales (jpn + eng). Previously CJK queries were restricted to jpn-only,
+		// which prevented Japanese queries from matching English article content
+		// (e.g., "ヴァンス副大統領" could not find "JD Vance" articles).
+		result, err := d.searchIndex.Search(query, searchRequest)
+		if err != nil {
+			return cacheEntry{}, err
+		}
+		d.recordProcessing(ctx, "Search", result)
+		docs := d.hitsToDocs(result.Hits)
+		e := cacheEntry{Docs: docs, ProcessingMs: result.ProcessingTimeMs}
+		d.cache.put(key, e)
+		return e, nil
+	})
+	if err != nil {
+		return nil, &DriverError{Op: "Search", Err: err.Error()}
+	}
+	return entry.Docs, nil
 }
 
 func (d *MeilisearchDriver) SearchWithFilters(ctx context.Context, query string, filters []string, limit int) ([]SearchDocumentDriver, error) {
 	filter := d.buildSecureFilter(filters)
 
-	searchRequest := d.newBaseSearchRequest(query, limit)
-
-	// Only add filter if it's not empty
-	if filter != "" {
-		searchRequest.Filter = filter
+	emb, ratio := d.hybridSnapshot()
+	key := cacheKey{
+		Query:         normalizeCacheKeyQuery(query),
+		Filter:        filter,
+		Limit:         int64(limit),
+		Embedder:      emb,
+		SemanticRatio: ratio,
+	}
+	if e, ok := d.cache.get(key); ok {
+		appotel.RecordMeilisearchProcessing(ctx, "SearchWithFilters.cacheHit", e.ProcessingMs)
+		return e.Docs, nil
 	}
 
-	result, err := d.searchIndex.Search(query, searchRequest)
-	if err != nil {
-		return nil, &DriverError{
-			Op:  "SearchWithFilters",
-			Err: err.Error(),
+	entry, err := d.singleflightSearch(ctx, key.String(), func() (cacheEntry, error) {
+		searchRequest := d.newBaseSearchRequest(query, limit)
+		if filter != "" {
+			searchRequest.Filter = filter
 		}
+		result, err := d.searchIndex.Search(query, searchRequest)
+		if err != nil {
+			return cacheEntry{}, err
+		}
+		d.recordProcessing(ctx, "SearchWithFilters", result)
+		docs := d.hitsToDocs(result.Hits)
+		e := cacheEntry{Docs: docs, ProcessingMs: result.ProcessingTimeMs}
+		d.cache.put(key, e)
+		return e, nil
+	})
+	if err != nil {
+		return nil, &DriverError{Op: "SearchWithFilters", Err: err.Error()}
 	}
-
-	return d.hitsToDocs(result.Hits), nil
+	return entry.Docs, nil
 }
 
 // SearchWithDateFilter restricts results to documents whose ``published_at``
@@ -178,19 +275,22 @@ func (d *MeilisearchDriver) SearchWithDateFilter(ctx context.Context, query stri
 	if err != nil {
 		return nil, &DriverError{Op: "SearchWithDateFilter", Err: err.Error()}
 	}
+	d.recordProcessing(ctx, "SearchWithDateFilter", result)
 	return d.hitsToDocs(result.Hits), nil
 }
 
 // hitsToDocs flattens a Meilisearch result slice into SearchDocumentDriver
-// values, preserving the ``language`` and ``published_at`` attributes that
-// used to be dropped silently at this boundary.
+// values, preserving the language and published_at attributes that used to
+// be dropped silently at this boundary. Content is sourced from the cropped
+// variant (Meilisearch _formatted.content) so the driver never carries the
+// full body.
 func (d *MeilisearchDriver) hitsToDocs(hits []meilisearch.Hit) []SearchDocumentDriver {
 	docs := make([]SearchDocumentDriver, 0, len(hits))
 	for _, hit := range hits {
 		docs = append(docs, SearchDocumentDriver{
 			ID:          d.getString(hit, "id"),
 			Title:       d.getString(hit, "title"),
-			Content:     d.getString(hit, "content"),
+			Content:     d.getCropped(hit, "content"),
 			Tags:        d.getStringSlice(hit, "tags"),
 			UserID:      d.getString(hit, "user_id"),
 			Language:    d.getString(hit, "language"),
@@ -308,6 +408,26 @@ func (d *MeilisearchDriver) EnsureIndex(ctx context.Context) error {
 		}
 	}
 
+	// Apply searchCutoffMs so Meilisearch returns partial results within a
+	// bounded time budget instead of letting a slow hybrid query consume the
+	// full Connect-RPC section timeout. Setting 0 means "no cap" — skip the
+	// update in that case to leave the engine default in place.
+	if config.MeiliSearchCutoffMs > 0 {
+		cutoffTask, cutoffErr := d.index.UpdateSearchCutoffMsWithContext(ctx, int64(config.MeiliSearchCutoffMs))
+		if cutoffErr != nil {
+			return &DriverError{
+				Op:  "EnsureIndex",
+				Err: "failed to set search cutoff ms: " + cutoffErr.Error(),
+			}
+		}
+		if _, err := d.index.WaitForTask(cutoffTask.TaskUID, 15*time.Second); err != nil {
+			return &DriverError{
+				Op:  "EnsureIndex",
+				Err: "failed to wait for search cutoff update: " + err.Error(),
+			}
+		}
+	}
+
 	return nil
 }
 
@@ -319,6 +439,24 @@ func (d *MeilisearchDriver) getString(m meilisearch.Hit, key string) string {
 		}
 	}
 	return ""
+}
+
+// getCropped returns the Meilisearch-cropped value of a field, falling back
+// to the raw value when no cropped variant is present. Meilisearch puts crop
+// output under hit["_formatted"][key] when attributesToCrop is configured.
+// Reading the cropped version means the driver never has to ship the full
+// content body across the wire, dropping per-hit payload from ~7.5 KB to a
+// few hundred bytes.
+func (d *MeilisearchDriver) getCropped(m meilisearch.Hit, key string) string {
+	if raw, ok := m["_formatted"]; ok {
+		var formatted map[string]string
+		if err := json.Unmarshal(raw, &formatted); err == nil {
+			if v, ok := formatted[key]; ok && v != "" {
+				return v
+			}
+		}
+	}
+	return d.getString(m, key)
 }
 
 func (d *MeilisearchDriver) getStringSlice(m meilisearch.Hit, key string) []string {
@@ -354,17 +492,40 @@ func (d *MeilisearchDriver) getInt64(m meilisearch.Hit, key string) int64 {
 func (d *MeilisearchDriver) SearchByUserID(ctx context.Context, query string, userID string, limit int) ([]SearchDocumentDriver, error) {
 	filter := BuildUserFilter(userID)
 
-	req := d.newBaseSearchRequest(query, limit)
-	req.Filter = filter
-	if containsCJK(query) {
-		req.Locales = []string{"jpn"}
+	emb, ratio := d.hybridSnapshot()
+	key := cacheKey{
+		Query:         normalizeCacheKeyQuery(query),
+		UserID:        userID,
+		Filter:        filter,
+		Limit:         int64(limit),
+		Embedder:      emb,
+		SemanticRatio: ratio,
 	}
-	result, err := d.searchIndex.Search(query, req)
+	if e, ok := d.cache.get(key); ok {
+		appotel.RecordMeilisearchProcessing(ctx, "SearchByUserID.cacheHit", e.ProcessingMs)
+		return e.Docs, nil
+	}
+
+	entry, err := d.singleflightSearch(ctx, key.String(), func() (cacheEntry, error) {
+		req := d.newBaseSearchRequest(query, limit)
+		req.Filter = filter
+		if containsCJK(query) {
+			req.Locales = []string{"jpn"}
+		}
+		result, err := d.searchIndex.Search(query, req)
+		if err != nil {
+			return cacheEntry{}, err
+		}
+		d.recordProcessing(ctx, "SearchByUserID", result)
+		docs := d.extractDocs(result.Hits)
+		e := cacheEntry{Docs: docs, ProcessingMs: result.ProcessingTimeMs}
+		d.cache.put(key, e)
+		return e, nil
+	})
 	if err != nil {
 		return nil, &DriverError{Op: "SearchByUserID", Err: err.Error()}
 	}
-
-	return d.extractDocs(result.Hits), nil
+	return entry.Docs, nil
 }
 
 func (d *MeilisearchDriver) SearchByUserIDWithPagination(ctx context.Context, query string, userID string, offset, limit int64) ([]SearchDocumentDriver, int64, error) {
@@ -377,18 +538,46 @@ func (d *MeilisearchDriver) SearchByUserIDWithPagination(ctx context.Context, qu
 
 	filter := BuildUserFilter(userID)
 
-	paginReq := d.newBaseSearchRequest(query, int(limit))
-	paginReq.Offset = offset
-	paginReq.Filter = filter
-	if containsCJK(query) {
-		paginReq.Locales = []string{"jpn"}
+	emb, ratio := d.hybridSnapshot()
+	key := cacheKey{
+		Query:         normalizeCacheKeyQuery(query),
+		UserID:        userID,
+		Filter:        filter,
+		Offset:        offset,
+		Limit:         limit,
+		Embedder:      emb,
+		SemanticRatio: ratio,
 	}
-	result, err := d.searchIndex.Search(query, paginReq)
+	if e, ok := d.cache.get(key); ok {
+		appotel.RecordMeilisearchProcessing(ctx, "SearchByUserIDWithPagination.cacheHit", e.ProcessingMs)
+		return e.Docs, e.EstimatedTotal, nil
+	}
+
+	entry, err := d.singleflightSearch(ctx, key.String(), func() (cacheEntry, error) {
+		paginReq := d.newBaseSearchRequest(query, int(limit))
+		paginReq.Offset = offset
+		paginReq.Filter = filter
+		if containsCJK(query) {
+			paginReq.Locales = []string{"jpn"}
+		}
+		result, err := d.searchIndex.Search(query, paginReq)
+		if err != nil {
+			return cacheEntry{}, err
+		}
+		d.recordProcessing(ctx, "SearchByUserIDWithPagination", result)
+		docs := d.extractDocs(result.Hits)
+		e := cacheEntry{
+			Docs:           docs,
+			EstimatedTotal: result.EstimatedTotalHits,
+			ProcessingMs:   result.ProcessingTimeMs,
+		}
+		d.cache.put(key, e)
+		return e, nil
+	})
 	if err != nil {
 		return nil, 0, &DriverError{Op: "SearchByUserIDWithPagination", Err: err.Error()}
 	}
-
-	return d.extractDocs(result.Hits), result.EstimatedTotalHits, nil
+	return entry.Docs, entry.EstimatedTotal, nil
 }
 
 func (d *MeilisearchDriver) extractDocs(hits []meilisearch.Hit) []SearchDocumentDriver {
@@ -397,7 +586,7 @@ func (d *MeilisearchDriver) extractDocs(hits []meilisearch.Hit) []SearchDocument
 		docs = append(docs, SearchDocumentDriver{
 			ID:      d.getString(hit, "id"),
 			Title:   d.getString(hit, "title"),
-			Content: d.getString(hit, "content"),
+			Content: d.getCropped(hit, "content"),
 			Tags:    d.getStringSlice(hit, "tags"),
 			Score:   d.getFloat64(hit, "_rankingScore"),
 		})

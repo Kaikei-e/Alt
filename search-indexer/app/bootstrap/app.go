@@ -80,7 +80,8 @@ func Run(ctx context.Context) error {
 		WithHybrid(&driver.HybridConfig{
 			Embedder:      config.MeiliHybridEmbedder,
 			SemanticRatio: config.MeiliHybridSemanticRatio,
-		})
+		}).
+		WithCache(config.MeiliSearchCacheSize, config.MeiliSearchCacheTTL)
 
 	// ── Gateways (anti-corruption layer) ──
 	articleRepo := gateway.NewArticleRepositoryGateway(articleDriver)
@@ -90,6 +91,12 @@ func Run(ctx context.Context) error {
 		logger.Logger.Error("Failed to ensure search index", "err", err)
 		return err
 	}
+
+	// Issue a probe Search so Meilisearch loads the qwen3 embedding model into
+	// Ollama's resident set before real traffic arrives. Without this the first
+	// user-facing search pays the embedder cold-start cost (~1.1s observed).
+	// Goroutine so a stalled embedder cannot delay service start.
+	go warmupSearchEngine(ctx, searchEngine)
 
 	// ── Recap drivers & gateways ──
 	var indexRecapsUsecase *usecase.IndexRecapsUsecase

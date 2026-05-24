@@ -4,7 +4,9 @@ go 1.26.3
 
 require (
 	connectrpc.com/connect v1.19.2
+	connectrpc.com/otelconnect v0.9.0
 	github.com/cenkalti/backoff/v5 v5.0.3
+	github.com/hashicorp/golang-lru/v2 v2.0.7
 	github.com/ikawaha/kagome-dict/ipa v1.2.6
 	github.com/ikawaha/kagome/v2 v2.11.0
 	github.com/meilisearch/meilisearch-go v0.36.2
@@ -23,6 +25,7 @@ require (
 	go.opentelemetry.io/otel/sdk/metric v1.43.0
 	go.opentelemetry.io/otel/trace v1.43.0
 	golang.org/x/net v0.54.0
+	golang.org/x/sync v0.20.0
 	golang.org/x/text v0.37.0
 	golang.org/x/time v0.15.0
 	google.golang.org/protobuf v1.36.11

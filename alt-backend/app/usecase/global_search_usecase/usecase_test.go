@@ -200,16 +200,19 @@ func (m *slowArticleSearch) SearchArticlesForGlobal(ctx context.Context, _ strin
 	}
 }
 
-// TestSectionTimeout_DefaultMatches10Seconds anchors the production value.
-// The previous 3-second ceiling conflicted with the real /indexes/articles/
-// search latency when Meilisearch's synonyms task queue was saturated
-// (idle time up to 5s observed), pushing every /search request into the
-// degraded articles path. The coalescing batcher in search-indexer fixes
-// the underlying pressure, but an 8–10s ceiling provides headroom for any
-// residual Meilisearch task-queue contention.
-func TestSectionTimeout_DefaultMatches10Seconds(t *testing.T) {
-	if sectionTimeout != 10*time.Second {
-		t.Fatalf("sectionTimeout = %v, want 10s", sectionTimeout)
+// TestSectionTimeouts_ProductionValues anchors the production ceilings per
+// section: articles/recaps each get 5s (cache + warmup + searchCutoffMs cap
+// keep the realistic worst case well under this), tags get 1s (alt-db prefix
+// is fast).
+func TestSectionTimeouts_ProductionValues(t *testing.T) {
+	if sectionTimeouts.Articles != 5*time.Second {
+		t.Errorf("sectionTimeouts.Articles = %v, want 5s", sectionTimeouts.Articles)
+	}
+	if sectionTimeouts.Recaps != 5*time.Second {
+		t.Errorf("sectionTimeouts.Recaps = %v, want 5s", sectionTimeouts.Recaps)
+	}
+	if sectionTimeouts.Tags != 1*time.Second {
+		t.Errorf("sectionTimeouts.Tags = %v, want 1s", sectionTimeouts.Tags)
 	}
 }
 
@@ -218,9 +221,9 @@ func TestSectionTimeout_DefaultMatches10Seconds(t *testing.T) {
 // var to keep the sleep short.
 func TestSectionTimeout_SlowPortWithinWindow_NotDegraded(t *testing.T) {
 	logger.InitLogger()
-	orig := sectionTimeout
-	sectionTimeout = 500 * time.Millisecond
-	t.Cleanup(func() { sectionTimeout = orig })
+	orig := sectionTimeouts
+	sectionTimeouts.Articles = 500 * time.Millisecond
+	t.Cleanup(func() { sectionTimeouts = orig })
 
 	uc := NewGlobalSearchUsecase(
 		&slowArticleSearch{delay: 100 * time.Millisecond},
@@ -243,9 +246,9 @@ func TestSectionTimeout_SlowPortWithinWindow_NotDegraded(t *testing.T) {
 // still trips when sections genuinely exceed it.
 func TestSectionTimeout_SlowPortBeyondWindow_Degrades(t *testing.T) {
 	logger.InitLogger()
-	orig := sectionTimeout
-	sectionTimeout = 100 * time.Millisecond
-	t.Cleanup(func() { sectionTimeout = orig })
+	orig := sectionTimeouts
+	sectionTimeouts.Articles = 100 * time.Millisecond
+	t.Cleanup(func() { sectionTimeouts = orig })
 
 	uc := NewGlobalSearchUsecase(
 		&slowArticleSearch{delay: 300 * time.Millisecond},
@@ -265,5 +268,58 @@ func TestSectionTimeout_SlowPortBeyondWindow_Degrades(t *testing.T) {
 	}
 	if !found {
 		t.Fatalf("articles should be degraded when port exceeds timeout; got %v", result.DegradedSections)
+	}
+}
+
+// TestSectionTimeout_PerSectionIndependence asserts that tightening the tag
+// timeout to <delay-of-tag-mock degrades tags only, not articles. Catches
+// regressions that revert to a single shared sectionTimeout.
+func TestSectionTimeout_PerSectionIndependence(t *testing.T) {
+	logger.InitLogger()
+	orig := sectionTimeouts
+	sectionTimeouts.Tags = 50 * time.Millisecond
+	sectionTimeouts.Articles = 5 * time.Second
+	sectionTimeouts.Recaps = 5 * time.Second
+	t.Cleanup(func() { sectionTimeouts = orig })
+
+	uc := NewGlobalSearchUsecase(
+		&mockArticleSearch{result: &domain.ArticleSearchSection{Hits: []domain.GlobalArticleHit{{ID: "a1"}}}},
+		&mockRecapSearch{result: &domain.RecapSearchSection{Hits: []domain.GlobalRecapHit{{ID: "r1"}}}},
+		&slowTagSearch{delay: 200 * time.Millisecond},
+	)
+
+	result, err := uc.Execute(userCtx(), "q", 5, 3, 10)
+	if err != nil {
+		t.Fatalf("Execute: %v", err)
+	}
+	var tagsDegraded, articlesDegraded bool
+	for _, d := range result.DegradedSections {
+		switch d {
+		case "tags":
+			tagsDegraded = true
+		case "articles":
+			articlesDegraded = true
+		}
+	}
+	if !tagsDegraded {
+		t.Errorf("expected tags degraded, got %v", result.DegradedSections)
+	}
+	if articlesDegraded {
+		t.Errorf("articles must not be degraded when tag timeout is independent; got %v", result.DegradedSections)
+	}
+}
+
+// slowTagSearch is a tag-port mock that respects ctx so the per-section
+// timeout cancels it before the delay expires.
+type slowTagSearch struct {
+	delay time.Duration
+}
+
+func (m *slowTagSearch) SearchTagsByPrefix(ctx context.Context, _ string, _ int) (*domain.TagSearchSection, error) {
+	select {
+	case <-time.After(m.delay):
+		return &domain.TagSearchSection{Hits: []domain.GlobalTagHit{{TagName: "x"}}}, nil
+	case <-ctx.Done():
+		return nil, ctx.Err()
 	}
 }

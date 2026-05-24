@@ -72,6 +72,11 @@ services:
       # several seconds of latency. Operators with tight GPU headroom can override
       # back to 1 via the .env value if the combined footprint does not fit.
       - OLLAMA_MAX_LOADED_MODELS=${OLLAMA_MAX_LOADED_MODELS:-2}
+      # Hold loaded models in VRAM until eviction, instead of unloading on idle.
+      # With MAX_LOADED_MODELS=2 the qwen3-embedding model can stay co-resident
+      # with the generation model, preventing the ~1.1s cold-start every time a
+      # global search after a quiet period hits the embedder.
+      - OLLAMA_KEEP_ALIVE=${OLLAMA_KEEP_ALIVE:-24h}
       # Flash Attention 2.0: Disabled for stability
       # - OLLAMA_FLASH_ATTENTION=${OLLAMA_FLASH_ATTENTION:-1}
       # KV Cache quantization: Disabled (default f16) for stability
