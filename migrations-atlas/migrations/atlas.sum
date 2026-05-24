@@ -1,4 +1,4 @@
-h1:+odBzAtLSHhwcBk1BCQzVW3efajMrZwE+mtlJn9lTEQ=
+h1:d/nu9PI0En/kbku4Bu4hkhJizDwic+A8zgSZ2IyO32E=
 20240101000001_baseline_feeds_table.sql h1:7rmkOlWHMWTrwYTHMPrFH3wQmHoVyyHO4Dsnn1hwIOE=
 20240101000100_create_feeds_table.sql h1:C8x6uFaOROfdkNxLafBvtUFTbTUmWygr2E1dKgRvAD4=
 20240101000200_create_feed_links.sql h1:sRGrtBwxYYQjfPvTzoiLvPxib9D02vMFlTnUHjGxzi0=
@@ -107,3 +107,4 @@ h1:+odBzAtLSHhwcBk1BCQzVW3efajMrZwE+mtlJn9lTEQ=
 20260409000000_create_acolyte_tables.sql h1:+bALfeIaI0ldfNFeKW4griXOmykQb3j8iaiXoEG8ClM=
 20260419000000_add_language_to_articles.sql h1:FhMsjNZg2x0Blvtf2N3YPe5HLLVUPRkS93mFT3z8hZ8=
 20260428000000_rename_feeds_link_to_website_url.sql h1:4JxKhPYCpwOpR5kLLatzbUDm9HYZ8RFrs+Gaz3obQBM=
+20260524000000_add_feed_tags_lower_tag_name_idx.sql h1:wZXbVlaklyaDloB4G71Fyo//KaEOj0wpMw1u6c5q6FI=
