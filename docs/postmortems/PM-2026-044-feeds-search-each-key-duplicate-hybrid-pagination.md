@@ -19,7 +19,7 @@
 
 ## サマリー
 
-2026-05-24 深夜、ユーザーが Archive Desk `/feeds/search?q=Rust` で連続的に load-more（infinite scroll）を試したところ、ブラウザコンソールに `Uncaught Error: https://svelte.dev/e/each_key_duplicate` が出力され、表示件数が 20 件で停滞して新規アイテムが追加されない現象が発生した。直接原因は Meilisearch hybrid search（`semanticRatio=0.7`）の offset pagination が **page boundary で同 article_id を返す** こと。BM25 と vector 類似度を融合した score がページ間で安定せず、境界付近のアイテムが offset=N と offset=N+limit の両方に出現するため、frontend が `feeds = [...feeds, ...newFeeds]` で concat した瞬間に keyed each `(feed.id)` の制約に違反して Svelte が flush を中断、視覚的に「20 件で固まる」症状として顕在化した。データ損失・他機能影響なし。直接 Meilisearch に offset=20 / 40 で同 query を投げると `10a9f322...` `a4e5ac60...` の 2 件が両ページに出現することを確認、frontend 側に `appendUniqueById` を導入する application-layer dedupe で復旧した。
+2026-05-24 深夜、ユーザーが Archive Desk `/feeds/search?q=Rust` で連続的に load-more（infinite scroll）を試したところ、ブラウザコンソールに `Uncaught Error: https://svelte.dev/e/each_key_duplicate` が出力され、表示件数が 20 件で停滞して新規アイテムが追加されない現象が発生した。直接原因は Meilisearch hybrid search（`semanticRatio=0.7`）の offset pagination が **page boundary で同 article_id を返す** こと。BM25 と vector 類似度を融合した score がページ間で安定せず、境界付近のアイテムが offset=N と offset=N+limit の両方に出現するため、frontend が `feeds = [...feeds, ...newFeeds]` で concat した瞬間に keyed each `(feed.id)` の制約に違反して Svelte が flush を中断、視覚的に「20 件で固まる」症状として顕在化した。データ損失・他機能影響なし。直接 Meilisearch に offset=20 / 40 で同 query を投げると 2 件の article_id が両ページに出現することを確認、frontend 側に `appendUniqueById` を導入する application-layer dedupe で復旧した。
 
 ## 影響
 
@@ -55,12 +55,14 @@
 
 Meilisearch hybrid search（`semanticRatio > 0`）の offset pagination が、page boundary 付近で同一 document id を複数ページに返す。`/feeds/search/+page.svelte` の `loadMore` は `feeds = [...feeds, ...newFeeds]` で結果を concat し、keyed each `{#each feeds as feed, i (feed.id)}` で描画する。同 id が `feeds` 配列に複数現れた時点で Svelte が `each_key_duplicate` を throw し、reactive flush を中断する。
 
-実測（2026-05-25 00:02 JST、`articles` index、`q=Rust`、user filter、`hybrid={qwen3, 0.7}`、`limit=5`）:
+実測（2026-05-25 00:02 JST、`articles` index、`q=Rust`、user filter、`hybrid={qwen3, 0.7}`、`limit=5`）— article id は便宜上 A〜H に匿名化:
 
 ```
-offset=20: [1b7ae1b9, eff889df, 1469ba2b, 10a9f322, a4e5ac60]
-offset=40: [6a515cef, 10a9f322 ←重複, 92116152, a4e5ac60 ←重複, ...]
+offset=20: [A, B, C, D, E]
+offset=40: [F, D ←重複, G, E ←重複, H]
 ```
+
+重複した 2 件（D, E）はいずれも offset=20 の末尾近傍にあり、score 融合の微小揺らぎで page 40 側にスライドしたパターン。
 
 ### Five Whys
 
