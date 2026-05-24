@@ -1,0 +1,112 @@
+{
+  "language": "Japanese",
+  "text": "今日は5月15日、東京は穏やかな晴れです。AltというRSSアプリの新機能をご紹介します。",
+  "providers": [
+    "AzureExecutionProvider",
+    "CPUExecutionProvider"
+  ],
+  "supertonic_version": "1.3.1",
+  "sample_rate": 44100,
+  "samples": [
+    {
+      "voice": "M1",
+      "file": "voice-samples/sup-M1.wav",
+      "sample_rate": 44100,
+      "samples": 362496,
+      "duration_seconds": 8.219863945578231,
+      "reported_duration": 8.162158012390137,
+      "wall_seconds": 2.4381104920757934,
+      "rtf": 0.2966120252376371
+    },
+    {
+      "voice": "M2",
+      "file": "voice-samples/sup-M2.wav",
+      "sample_rate": 44100,
+      "samples": 356352,
+      "duration_seconds": 8.080544217687075,
+      "reported_duration": 8.03805923461914,
+      "wall_seconds": 2.3820883550215513,
+      "rtf": 0.2947930598297481
+    },
+    {
+      "voice": "M3",
+      "file": "voice-samples/sup-M3.wav",
+      "sample_rate": 44100,
+      "samples": 310272,
+      "duration_seconds": 7.035646258503402,
+      "reported_duration": 6.969720840454102,
+      "wall_seconds": 2.0606562870088965,
+      "rtf": 0.29288798943215094
+    },
+    {
+      "voice": "M4",
+      "file": "voice-samples/sup-M4.wav",
+      "sample_rate": 44100,
+      "samples": 344064,
+      "duration_seconds": 7.801904761904762,
+      "reported_duration": 7.741755962371826,
+      "wall_seconds": 2.079793498967774,
+      "rtf": 0.26657509447218786
+    },
+    {
+      "voice": "M5",
+      "file": "voice-samples/sup-M5.wav",
+      "sample_rate": 44100,
+      "samples": 362496,
+      "duration_seconds": 8.219863945578231,
+      "reported_duration": 8.157142639160156,
+      "wall_seconds": 2.416759758023545,
+      "rtf": 0.2940145693437675
+    },
+    {
+      "voice": "F1",
+      "file": "voice-samples/sup-F1.wav",
+      "sample_rate": 44100,
+      "samples": 362496,
+      "duration_seconds": 8.219863945578231,
+      "reported_duration": 8.158356666564941,
+      "wall_seconds": 2.3908585229655728,
+      "rtf": 0.2908635153568088
+    },
+    {
+      "voice": "F2",
+      "file": "voice-samples/sup-F2.wav",
+      "sample_rate": 44100,
+      "samples": 344064,
+      "duration_seconds": 7.801904761904762,
+      "reported_duration": 7.757840156555176,
+      "wall_seconds": 2.0720474669942632,
+      "rtf": 0.2655822559013643
+    },
+    {
+      "voice": "F3",
+      "file": "voice-samples/sup-F3.wav",
+      "sample_rate": 44100,
+      "samples": 371712,
+      "duration_seconds": 8.428843537414966,
+      "reported_duration": 8.372990608215332,
+      "wall_seconds": 2.43044523592107,
+      "rtf": 0.28834860027149833
+    },
+    {
+      "voice": "F4",
+      "file": "voice-samples/sup-F4.wav",
+      "sample_rate": 44100,
+      "samples": 316416,
+      "duration_seconds": 7.174965986394557,
+      "reported_duration": 7.1737847328186035,
+      "wall_seconds": 2.0530410929350182,
+      "rtf": 0.2861394878844126
+    },
+    {
+      "voice": "F5",
+      "file": "voice-samples/sup-F5.wav",
+      "sample_rate": 44100,
+      "samples": 353280,
+      "duration_seconds": 8.010884353741497,
+      "reported_duration": 7.96411657333374,
+      "wall_seconds": 2.3851990420371294,
+      "rtf": 0.297744785308643
+    }
+  ]
+}
