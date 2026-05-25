@@ -15,15 +15,15 @@
           "event": {
             "actorId": "knowledge-url-backfill",
             "actorType": "service",
-            "aggregateId": "216e68d0-7e7b-4312-8dc0-ee89fbf812ec",
+            "aggregateId": "729c737f-bbf1-4aa2-9c6a-71f229e4da80",
             "aggregateType": "article",
-            "dedupeKey": "article-url-backfill-v2:216e68d0-7e7b-4312-8dc0-ee89fbf812ec",
-            "eventId": "d1170fe8-7039-4ce3-84be-24ec613dc3be",
+            "dedupeKey": "article-url-backfill-v2:729c737f-bbf1-4aa2-9c6a-71f229e4da80",
+            "eventId": "9510f124-979a-4289-b487-cf26f61cde97",
             "eventType": "ArticleUrlBackfilled",
             "occurredAt": "2026-04-28T12:00:00Z",
             "payload": "eyJhcnRpY2xlX2lkIjoiMDAwMDAwMDAtMDAwMC0wMDAwLTAwMDAtMDAwMDAwMDAwMDAwIiwidXJsIjoiaHR0cHM6Ly9leGFtcGxlLmNvbSJ9",
-            "tenantId": "a42fc65f-52f8-408a-be10-abdbc6c5c1a0",
-            "userId": "e70901dd-38a5-4c09-9f6c-4279924b3952"
+            "tenantId": "1435d026-1b70-49f4-9840-d3df22201978",
+            "userId": "e06b5782-7604-4a99-b85f-7409a826d45b"
           }
         },
         "headers": {
@@ -89,13 +89,13 @@
             "actorType": "system",
             "aggregateId": "article:42",
             "aggregateType": "knowledge_loop_entry",
-            "dedupeKey": "knowledge_loop.act_outcome.v1:5296440b-bc87-45be-a485-4818caddb292:deep_engagement",
-            "eventId": "e0bcecb0-e9d8-4249-a165-fd7a3fa83567",
+            "dedupeKey": "knowledge_loop.act_outcome.v1:8b7b85e9-3f1b-4d26-a056-024d81b55f32:deep_engagement",
+            "eventId": "a9699ee0-b4c0-40a9-9f7f-1c64f691d4e7",
             "eventType": "knowledge_loop.act_outcome.v1",
             "occurredAt": "2026-05-23T12:05:00Z",
-            "payload": "eyJhY3RlZF9ldmVudF9pZCI6IjUyOTY0NDBiLWJjODctNDViZS1hNDg1LTQ4MThjYWRkYjI5MiIsImVudHJ5X2tleSI6ImFydGljbGU6NDIiLCJsZW5zX21vZGVfaWQiOiJkZWZhdWx0Iiwib2JzZXJ2ZWRfYXQiOiIyMDI2LTA1LTIzVDEyOjA1OjAwWiIsIm91dGNvbWUiOiJkZWVwX2VuZ2FnZW1lbnQifQ==",
-            "tenantId": "2ddb4aff-d29d-44d5-b1a5-ecd7d2958f07",
-            "userId": "069c07a6-60b3-4874-9351-cd3fdfc908c2"
+            "payload": "eyJhY3RlZF9ldmVudF9pZCI6IjhiN2I4NWU5LTNmMWItNGQyNi1hMDU2LTAyNGQ4MWI1NWYzMiIsImVudHJ5X2tleSI6ImFydGljbGU6NDIiLCJsZW5zX21vZGVfaWQiOiJkZWZhdWx0Iiwib2JzZXJ2ZWRfYXQiOiIyMDI2LTA1LTIzVDEyOjA1OjAwWiIsIm91dGNvbWUiOiJkZWVwX2VuZ2FnZW1lbnQifQ==",
+            "tenantId": "cd8a2761-23b5-4a66-914c-811141f70d1c",
+            "userId": "c425c1b8-ddd7-40cb-bf20-1c40123a60bc"
           }
         },
         "headers": {
@@ -152,13 +152,13 @@
             "actorType": "system",
             "aggregateId": "article:42",
             "aggregateType": "knowledge_loop_entry",
-            "dedupeKey": "knowledge_loop.act_outcome.v1:697b6b58-b522-467c-b01e-7dc1de9b706d:engaged",
-            "eventId": "f3148609-09ce-4dc6-b034-790f45e3566e",
+            "dedupeKey": "knowledge_loop.act_outcome.v1:6bb7350d-927b-409e-a22c-f51054a5dfa6:engaged",
+            "eventId": "d307a402-f533-40ee-8237-26218211be23",
             "eventType": "knowledge_loop.act_outcome.v1",
             "occurredAt": "2026-05-23T12:00:00Z",
-            "payload": "eyJhY3RlZF9ldmVudF9pZCI6IjY5N2I2YjU4LWI1MjItNDY3Yy1iMDFlLTdkYzFkZTliNzA2ZCIsImVudHJ5X2tleSI6ImFydGljbGU6NDIiLCJsZW5zX21vZGVfaWQiOiJkZWZhdWx0Iiwib2JzZXJ2ZWRfYXQiOiIyMDI2LTA1LTIzVDEyOjAwOjAwWiIsIm91dGNvbWUiOiJlbmdhZ2VkIn0=",
-            "tenantId": "97543cdd-246c-449a-95b2-8a7d1845b0e7",
-            "userId": "2d16ea38-1b0b-446b-9050-9f751dbe1743"
+            "payload": "eyJhY3RlZF9ldmVudF9pZCI6IjZiYjczNTBkLTkyN2ItNDA5ZS1hMjJjLWY1MTA1NGE1ZGZhNiIsImVudHJ5X2tleSI6ImFydGljbGU6NDIiLCJsZW5zX21vZGVfaWQiOiJkZWZhdWx0Iiwib2JzZXJ2ZWRfYXQiOiIyMDI2LTA1LTIzVDEyOjAwOjAwWiIsIm91dGNvbWUiOiJlbmdhZ2VkIn0=",
+            "tenantId": "a40848ab-5523-4697-8053-47d047a58214",
+            "userId": "4477a196-3464-4fd8-a830-19a0cdde1147"
           }
         },
         "headers": {
@@ -211,17 +211,17 @@
       "request": {
         "body": {
           "event": {
-            "actorId": "d44cc6dc-e4fb-494a-b2e1-c509dc349ab4",
+            "actorId": "e64a4d6b-f5a2-4970-8204-f63738301f89",
             "actorType": "user",
             "aggregateId": "article:42",
             "aggregateType": "loop_session",
-            "dedupeKey": "f8b71c8e-667e-434e-9d37-7542fda332f9",
-            "eventId": "127ebf66-6081-433e-b242-535772ad686b",
+            "dedupeKey": "e90f1bbe-475d-4ee2-ac57-2618bd16cae3",
+            "eventId": "3375eace-ca02-4355-b591-9c829de0af47",
             "eventType": "knowledge_loop.acted.v1",
             "occurredAt": "2026-04-24T10:00:00Z",
             "payload": "eyJlbnRyeV9rZXkiOiJhcnRpY2xlOjQyIn0",
-            "tenantId": "c5552afd-2564-43c1-8530-c4414d35343b",
-            "userId": "d44cc6dc-e4fb-494a-b2e1-c509dc349ab4"
+            "tenantId": "93fdba31-07e3-4951-8bb6-de8b0c2e147f",
+            "userId": "e64a4d6b-f5a2-4970-8204-f63738301f89"
           }
         },
         "headers": {
@@ -274,17 +274,17 @@
       "request": {
         "body": {
           "event": {
-            "actorId": "2427a3c1-6917-4b66-8362-a9d22fef062a",
+            "actorId": "4156a396-b421-4a60-a759-fcb51d0af504",
             "actorType": "user",
             "aggregateId": "article:42",
             "aggregateType": "loop_session",
-            "dedupeKey": "95ea4191-fcd3-42a5-8198-3003760c0785",
-            "eventId": "777e49e7-cb2f-4554-a302-a859b35aa30c",
+            "dedupeKey": "e822b9e2-a8ea-465e-b340-565bf52370ae",
+            "eventId": "059c3531-e3e9-4cf1-a529-72b817db5007",
             "eventType": "knowledge_loop.deferred.v1",
             "occurredAt": "2026-04-26T10:00:00Z",
             "payload": "eyJlbnRyeV9rZXkiOiJhcnRpY2xlOjQyIn0",
-            "tenantId": "f728bf72-4603-4f2f-acf5-adc499900563",
-            "userId": "2427a3c1-6917-4b66-8362-a9d22fef062a"
+            "tenantId": "12e466f3-89c2-4356-ad86-6d717816f84a",
+            "userId": "4156a396-b421-4a60-a759-fcb51d0af504"
           }
         },
         "headers": {
@@ -337,17 +337,17 @@
       "request": {
         "body": {
           "event": {
-            "actorId": "8697118a-5675-4b74-b8ae-86b7d04fffd9",
+            "actorId": "a7b2e159-8f49-4c66-a502-5352c896348f",
             "actorType": "user",
             "aggregateId": "article:42",
             "aggregateType": "loop_session",
-            "dedupeKey": "98a833c8-d3da-4e7e-9ce3-deece95d04d6",
-            "eventId": "233434f8-a4ae-4ea4-90fb-d14f87bd1038",
+            "dedupeKey": "4a2a2915-7562-4ec3-9ec8-d80eb0eb1c27",
+            "eventId": "372d0648-0f0d-4cbd-8c1d-51d33e451fc0",
             "eventType": "knowledge_loop.observed.v1",
             "occurredAt": "2026-04-24T10:00:00Z",
             "payload": "eyJlbnRyeV9rZXkiOiJhcnRpY2xlOjQyIn0",
-            "tenantId": "cf0e074b-81ac-47a1-8cc8-cafab859c21f",
-            "userId": "8697118a-5675-4b74-b8ae-86b7d04fffd9"
+            "tenantId": "4d59b92e-39d4-40cb-b94a-c6f4cd84e03a",
+            "userId": "a7b2e159-8f49-4c66-a502-5352c896348f"
           }
         },
         "headers": {
@@ -400,17 +400,17 @@
       "request": {
         "body": {
           "event": {
-            "actorId": "27f3300a-42ee-452c-95ae-c586723f71f2",
+            "actorId": "ecca449a-2e60-4eb5-9050-4e326ee10b40",
             "actorType": "user",
             "aggregateId": "article:42",
             "aggregateType": "loop_session",
-            "dedupeKey": "5971c640-2cb8-4e25-9ae0-c35c5fc259df",
-            "eventId": "4d74a9f3-3bbf-43a5-921c-06de7ad4ee0e",
+            "dedupeKey": "cd7ee199-1aab-40f2-8b65-81db0db75ca0",
+            "eventId": "9112b2d6-c637-4de4-9c3c-64cfa1b1d6c4",
             "eventType": "knowledge_loop.reviewed.v1",
             "occurredAt": "2026-04-28T10:00:00Z",
             "payload": "eyJlbnRyeV9rZXkiOiJhcnRpY2xlOjQyIn0",
-            "tenantId": "d847c4a7-9230-4879-aae1-00239eb27949",
-            "userId": "27f3300a-42ee-452c-95ae-c586723f71f2"
+            "tenantId": "2f12ec22-6c57-4744-873e-6dac3b4c5f7d",
+            "userId": "ecca449a-2e60-4eb5-9050-4e326ee10b40"
           }
         },
         "headers": {
@@ -463,17 +463,17 @@
       "request": {
         "body": {
           "event": {
-            "actorId": "7b0cb1a6-91da-456a-a5da-180029b0f077",
+            "actorId": "3d5f8177-7d19-4f58-9792-cc9be75f0d8c",
             "actorType": "user",
             "aggregateId": "article:42",
             "aggregateType": "loop_session",
-            "dedupeKey": "7bc3018e-c426-4d5d-8538-b28c5cc8a0ba",
-            "eventId": "4179ffb5-09ea-4cd1-802a-12e709338c19",
+            "dedupeKey": "4793763c-6ef1-4873-ac54-45b852698c57",
+            "eventId": "8992a9a2-dd31-4505-a9ec-7137acbc3155",
             "eventType": "knowledge_loop.acted.v1",
             "occurredAt": "2026-05-09T10:00:00Z",
-            "payload": "eyJhY3RlZF9pbnRlbnQiOiJERUNJU0lPTl9JTlRFTlRfQVNLIiwiYWN0aW9uX2lkIjoiYXNrIiwiY2xpZW50X3RyYW5zaXRpb25faWQiOiI3YmMzMDE4ZS1jNDI2LTRkNWQtODUzOC1iMjhjNWNjOGEwYmEiLCJjb250aW51ZV9mbGFnIjp0cnVlLCJlbnRyeV9rZXkiOiJhcnRpY2xlOjQyIiwiZnJvbV9zdGFnZSI6IkxPT1BfU1RBR0VfREVDSURFIiwibGVuc19tb2RlX2lkIjoiZGVmYXVsdCIsIm9ic2VydmVkX3Byb2plY3Rpb25fcmV2aXNpb24iOjEsInByZXNlbnRlZF9pbnRlbnRzIjpbIm9wZW4iLCJhc2siLCJzbm9vemUiXSwidGFyZ2V0X3JlZiI6ImU0ZjM3NmIyLTk4YTEtNGM1Yi04NTE1LTcwZmM1OGUyNTczNSIsInRhcmdldF90eXBlIjoiQUNUX1RBUkdFVF9UWVBFX0NPTlZFUlNBVElPTiIsInRvX3N0YWdlIjoiTE9PUF9TVEFHRV9BQ1QiLCJ0cmlnZ2VyIjoiVFJBTlNJVElPTl9UUklHR0VSX1VTRVJfVEFQIn0=",
-            "tenantId": "b82060e6-cd5b-4554-9206-4d27e2833821",
-            "userId": "7b0cb1a6-91da-456a-a5da-180029b0f077"
+            "payload": "eyJhY3RlZF9pbnRlbnQiOiJERUNJU0lPTl9JTlRFTlRfQVNLIiwiYWN0aW9uX2lkIjoiYXNrIiwiY2xpZW50X3RyYW5zaXRpb25faWQiOiI0NzkzNzYzYy02ZWYxLTQ4NzMtYWM1NC00NWI4NTI2OThjNTciLCJjb250aW51ZV9mbGFnIjp0cnVlLCJlbnRyeV9rZXkiOiJhcnRpY2xlOjQyIiwiZnJvbV9zdGFnZSI6IkxPT1BfU1RBR0VfREVDSURFIiwibGVuc19tb2RlX2lkIjoiZGVmYXVsdCIsIm9ic2VydmVkX3Byb2plY3Rpb25fcmV2aXNpb24iOjEsInByZXNlbnRlZF9pbnRlbnRzIjpbIm9wZW4iLCJhc2siLCJzbm9vemUiXSwidGFyZ2V0X3JlZiI6IjE0ZDVmNGQ5LTgwY2ItNDQyOS04ZjdmLTU1ZWQ5MjY5MDI2MiIsInRhcmdldF90eXBlIjoiQUNUX1RBUkdFVF9UWVBFX0NPTlZFUlNBVElPTiIsInRvX3N0YWdlIjoiTE9PUF9TVEFHRV9BQ1QiLCJ0cmlnZ2VyIjoiVFJBTlNJVElPTl9UUklHR0VSX1VTRVJfVEFQIn0=",
+            "tenantId": "ba3ade2d-1d9e-4e66-a163-4f113ea776ef",
+            "userId": "3d5f8177-7d19-4f58-9792-cc9be75f0d8c"
           }
         },
         "headers": {
