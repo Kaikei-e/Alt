@@ -561,10 +561,25 @@ func toProtoEntry(e *domain.KnowledgeLoopEntry) *loopv1.KnowledgeLoopEntry {
 		pb.WhyPrimary.Confidence = e.WhyConfidence
 	}
 	for _, ref := range e.WhyEvidenceRefs {
-		pb.WhyEvidenceRefs = append(pb.WhyEvidenceRefs, &loopv1.EvidenceRef{
+		evidence := &loopv1.EvidenceRef{
+			RefId: ref.RefID,
+			Label: ref.Label,
+		}
+		pb.WhyEvidenceRefs = append(pb.WhyEvidenceRefs, evidence)
+		pb.WhyPrimary.EvidenceRefs = append(pb.WhyPrimary.EvidenceRefs, evidence)
+	}
+	for _, ref := range e.WhyCounterEvidenceRefs {
+		pb.WhyPrimary.CounterEvidenceRefs = append(pb.WhyPrimary.CounterEvidenceRefs, &loopv1.EvidenceRef{
 			RefId: ref.RefID,
 			Label: ref.Label,
 		})
+	}
+	if e.WhyConfidenceLadder != nil {
+		ladder := mapConfidenceLadder(*e.WhyConfidenceLadder)
+		pb.WhyPrimary.ConfidenceLadder = &ladder
+	}
+	if e.WhyWhatWouldChangeMyMind != nil && *e.WhyWhatWouldChangeMyMind != "" {
+		pb.WhyPrimary.WhatWouldChangeMyMind = e.WhyWhatWouldChangeMyMind
 	}
 	if e.SourceObservedAt != nil {
 		pb.SourceObservedAt = timestamppb.New(*e.SourceObservedAt)
@@ -890,6 +905,20 @@ func mapLoopPriority(p domain.LoopPriority) loopv1.LoopPriority {
 	default:
 		return loopv1.LoopPriority_LOOP_PRIORITY_UNSPECIFIED
 	}
+}
+
+func mapConfidenceLadder(c domain.ConfidenceLadder) loopv1.ConfidenceLadder {
+	switch c {
+	case domain.ConfidenceLadderSpeculation:
+		return loopv1.ConfidenceLadder_CONFIDENCE_LADDER_SPECULATION
+	case domain.ConfidenceLadderPattern:
+		return loopv1.ConfidenceLadder_CONFIDENCE_LADDER_PATTERN
+	case domain.ConfidenceLadderEvidence:
+		return loopv1.ConfidenceLadder_CONFIDENCE_LADDER_EVIDENCE
+	case domain.ConfidenceLadderVerified:
+		return loopv1.ConfidenceLadder_CONFIDENCE_LADDER_VERIFIED
+	}
+	return loopv1.ConfidenceLadder_CONFIDENCE_LADDER_UNSPECIFIED
 }
 
 func mapWhyKind(k domain.WhyKind) loopv1.WhyKind {

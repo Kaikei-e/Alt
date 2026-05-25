@@ -275,4 +275,94 @@ describe("knowledge_home client", () => {
 			});
 		});
 	});
+
+	// ADR-000913 §D-9: explainable Heavy-Ranker scoring fields are additive on
+	// RecallCandidate. The conversion path must populate weightSetVersion and
+	// scoreBreakdown when present, and stay backward-compatible (older payloads
+	// omit them).
+	describe("convertRecallCandidate", () => {
+		it("maps weight_set_version and score_breakdown additively", async () => {
+			mockClient.getKnowledgeHome.mockResolvedValue({
+				items: [],
+				todayDigest: null,
+				nextCursor: "",
+				hasMore: false,
+				degraded: false,
+				generatedAt: "2026-05-25T00:00:00Z",
+				featureFlags: [],
+				recallCandidates: [
+					{
+						itemKey: "art:1",
+						recallScore: 0.7,
+						reasons: [{ type: "topic_affinity_why", description: "" }],
+						firstEligibleAt: "2026-05-20T00:00:00Z",
+						nextSuggestAt: "2026-05-25T00:00:00Z",
+						weightSetVersion: 2, // V2_HEAVY_RANKER
+						scoreBreakdown: [
+							{
+								signalCode: "opened_not_revisited",
+								weight: 1.5,
+								contribution: 0.9,
+								isNegative: false,
+							},
+							{
+								signalCode: "recently_dismissed",
+								weight: -2.0,
+								contribution: -0.2,
+								isNegative: true,
+							},
+						],
+					},
+				],
+				serviceQuality: 0,
+			});
+
+			const result = await getKnowledgeHome(mockTransport, "default");
+			expect(result.recallCandidates).toHaveLength(1);
+			const r = result.recallCandidates[0];
+			expect(r.weightSetVersion).toBe("v2_heavy_ranker");
+			expect(r.scoreBreakdown).toEqual([
+				{
+					signalCode: "opened_not_revisited",
+					weight: 1.5,
+					contribution: 0.9,
+					isNegative: false,
+				},
+				{
+					signalCode: "recently_dismissed",
+					weight: -2.0,
+					contribution: -0.2,
+					isNegative: true,
+				},
+			]);
+		});
+
+		it("omits v2 fields when proto leaves them empty (backward-compat)", async () => {
+			mockClient.getKnowledgeHome.mockResolvedValue({
+				items: [],
+				todayDigest: null,
+				nextCursor: "",
+				hasMore: false,
+				degraded: false,
+				generatedAt: "2026-05-25T00:00:00Z",
+				featureFlags: [],
+				recallCandidates: [
+					{
+						itemKey: "art:legacy",
+						recallScore: 0.3,
+						reasons: [],
+						firstEligibleAt: "",
+						nextSuggestAt: "",
+						weightSetVersion: 0, // UNSPECIFIED
+						scoreBreakdown: [],
+					},
+				],
+				serviceQuality: 0,
+			});
+
+			const result = await getKnowledgeHome(mockTransport, "default");
+			expect(result.recallCandidates[0].weightSetVersion).toBeUndefined();
+			expect(result.recallCandidates[0].scoreBreakdown).toBeUndefined();
+		});
+	});
 });

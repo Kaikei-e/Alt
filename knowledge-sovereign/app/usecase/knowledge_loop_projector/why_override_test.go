@@ -258,3 +258,50 @@ func TestOverrideWhy_FallbackTextWithoutTitle(t *testing.T) {
 	require.NotEmpty(t, out.Text)
 	require.LessOrEqual(t, len(out.Text), 512)
 }
+
+// TestOverrideWhy_AugurLinkRefreshesV2Fields pins that the override path
+// recomputes confidence_ladder and what_would_change_my_mind from the new Kind
+// so the v2 fields stay aligned with the surface narrative.
+func TestOverrideWhy_AugurLinkRefreshesV2Fields(t *testing.T) {
+	ev := mkEvent(t, "Open Thread")
+	out := OverrideWhyFromSurfaceInputs(ev, EnrichWhyFromEvent(ev), SurfaceScoreInputs{
+		HasAugurLink: true,
+	})
+	require.Equal(t, sovereignv1.WhyKind_WHY_KIND_UNFINISHED_CONTINUE, out.Kind)
+	require.NotNil(t, out.ConfidenceLadder)
+	require.Equal(t, sovereignv1.ConfidenceLadder_CONFIDENCE_LADDER_PATTERN, *out.ConfidenceLadder,
+		"UNFINISHED_CONTINUE kind must map to PATTERN ladder")
+	require.NotNil(t, out.WhatWouldChangeMyMind)
+	require.Contains(t, *out.WhatWouldChangeMyMind, "thread")
+}
+
+// TestOverrideWhy_VersionDriftRetainsEnricherV2Fields pins that the v2 fields
+// the enricher already populated (counter_evidence_refs etc.) survive the
+// override when version drift wins — the override returns the enricher output
+// unchanged for that branch.
+func TestOverrideWhy_VersionDriftRetainsEnricherV2Fields(t *testing.T) {
+	body, err := json.Marshal(map[string]any{
+		"previous_summary_version": "sv-prev",
+		"summary_version_id":       "sv-new",
+		"article_title":            "Updated",
+	})
+	require.NoError(t, err)
+	uid := uuid.New()
+	ev := &sovereign_db.KnowledgeEvent{
+		EventID:    uuid.New(),
+		EventSeq:   1,
+		OccurredAt: time.Date(2026, 4, 26, 10, 0, 0, 0, time.UTC),
+		TenantID:   uuid.New(),
+		UserID:     &uid,
+		EventType:  EventHomeItemSuperseded,
+		Payload:    body,
+	}
+	enriched := EnrichWhyFromEvent(ev)
+	out := OverrideWhyFromSurfaceInputs(ev, enriched, SurfaceScoreInputs{
+		VersionDriftCount: 1,
+	})
+	require.NotEmpty(t, out.CounterEvidenceRefs,
+		"version_drift branch must preserve enricher counter_evidence_refs")
+	require.NotNil(t, out.ConfidenceLadder)
+	require.Equal(t, sovereignv1.ConfidenceLadder_CONFIDENCE_LADDER_EVIDENCE, *out.ConfidenceLadder)
+}

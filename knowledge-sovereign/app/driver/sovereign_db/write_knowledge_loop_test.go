@@ -50,7 +50,7 @@ func TestUpsertKnowledgeLoopEntry_Insert(t *testing.T) {
 	repo := &Repository{pool: mock}
 	entry := newLoopEntryProto(100)
 
-	anyArgs := make([]interface{}, 31)
+	anyArgs := make([]interface{}, 34)
 	for i := range anyArgs {
 		anyArgs[i] = pgxmock.AnyArg()
 	}
@@ -79,12 +79,12 @@ func TestUpsertKnowledgeLoopEntry_WritesSurfacePlannerMetadata(t *testing.T) {
 	entry.SurfacePlannerVersion = &v2
 	entry.SurfaceScoreInputs = []byte(`{"topic_overlap_count":1,"event_type":"SummaryVersionCreated"}`)
 
-	anyArgs := make([]interface{}, 31)
+	anyArgs := make([]interface{}, 34)
 	for i := range anyArgs {
 		anyArgs[i] = pgxmock.AnyArg()
 	}
-	anyArgs[29] = int16(2)
-	anyArgs[30] = entry.SurfaceScoreInputs
+	anyArgs[32] = int16(2)
+	anyArgs[33] = entry.SurfaceScoreInputs
 	mock.ExpectQuery(regexp.QuoteMeta(upsertKnowledgeLoopEntryQuery)).
 		WithArgs(anyArgs...).
 		WillReturnRows(pgxmock.NewRows([]string{"projection_revision", "projection_seq_hiwater"}).
@@ -108,7 +108,7 @@ func TestUpsertKnowledgeLoopEntry_SeqHiwaterGuardSkipsStaleReplay(t *testing.T) 
 	repo := &Repository{pool: mock}
 	stale := newLoopEntryProto(50)
 
-	anyArgs := make([]interface{}, 31)
+	anyArgs := make([]interface{}, 34)
 	for i := range anyArgs {
 		anyArgs[i] = pgxmock.AnyArg()
 	}
@@ -155,6 +155,9 @@ func TestPatchKnowledgeLoopEntryWhy_AppliesPatchOnly(t *testing.T) {
 			pgxmock.AnyArg(), // why_confidence (nil)
 			pgxmock.AnyArg(), // why_evidence_ref_ids
 			pgxmock.AnyArg(), // why_evidence_refs JSONB
+			pgxmock.AnyArg(), // why_counter_evidence_refs JSONB
+			pgxmock.AnyArg(), // why_confidence_ladder
+			pgxmock.AnyArg(), // why_what_would_change_my_mind
 		).
 		WillReturnRows(pgxmock.NewRows([]string{"projection_revision", "projection_seq_hiwater"}).
 			AddRow(int64(2), int64(400)))
@@ -211,7 +214,7 @@ func TestPatchKnowledgeLoopEntryWhy_SeqHiwaterGuardSkipsStaleReplay(t *testing.T
 
 	repo := &Repository{pool: mock}
 
-	anyPatchArgs := make([]interface{}, 10)
+	anyPatchArgs := make([]interface{}, 13)
 	for i := range anyPatchArgs {
 		anyPatchArgs[i] = pgxmock.AnyArg()
 	}

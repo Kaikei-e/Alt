@@ -15,6 +15,11 @@ import (
 )
 
 // GetRecallRail returns recall candidates for the user.
+//
+// Deprecated: GetRecallRail is being merged into the GetKnowledgeHome payload
+// (see ADR-000913 §D-9). Callers that still rely on the dedicated rail are
+// counted by the `legacy.recall_rail.deprecated` log so we can confirm zero
+// remaining traffic before the RPC is removed.
 func (h *Handler) GetRecallRail(
 	ctx context.Context,
 	req *connect.Request[knowledgehomev1.GetRecallRailRequest],
@@ -23,6 +28,11 @@ func (h *Handler) GetRecallRail(
 	if err != nil {
 		return nil, connect.NewError(connect.CodeUnauthenticated, nil)
 	}
+
+	h.logger.WarnContext(ctx, "legacy.recall_rail.deprecated",
+		"rpc", "GetRecallRail",
+		"user_id", user.UserID,
+	)
 
 	if h.featureFlagPort != nil && !h.featureFlagPort.IsEnabled(domain.FlagRecallRail, user.UserID) {
 		return nil, connect.NewError(connect.CodePermissionDenied,
@@ -50,6 +60,10 @@ func (h *Handler) GetRecallRail(
 }
 
 // TrackRecallAction records a recall action (snooze/dismiss/open).
+//
+// Deprecated: snooze/dismiss are migrating to TrackHomeAction (ADR-000913
+// §D-9). The deprecation log lets us watch for any remaining caller before
+// the RPC is removed.
 func (h *Handler) TrackRecallAction(
 	ctx context.Context,
 	req *connect.Request[knowledgehomev1.TrackRecallActionRequest],
@@ -58,6 +72,12 @@ func (h *Handler) TrackRecallAction(
 	if err != nil {
 		return nil, connect.NewError(connect.CodeUnauthenticated, nil)
 	}
+
+	h.logger.WarnContext(ctx, "legacy.recall_rail.deprecated",
+		"rpc", "TrackRecallAction",
+		"user_id", user.UserID,
+		"action_type", req.Msg.ActionType,
+	)
 
 	if req.Msg.ActionType == "" {
 		return nil, connect.NewError(connect.CodeInvalidArgument,
@@ -95,6 +115,11 @@ func (h *Handler) TrackRecallAction(
 }
 
 // StreamRecallRailUpdates streams real-time updates for the recall rail.
+//
+// Deprecated: real-time recall updates merge into the GetKnowledgeHome
+// payload subscription (ADR-000913 §D-9). Until the RPC is removed, every
+// open of this stream is counted via the `legacy.recall_rail.deprecated`
+// log so operators can prove zero remaining traffic.
 func (h *Handler) StreamRecallRailUpdates(
 	ctx context.Context,
 	req *connect.Request[knowledgehomev1.StreamRecallRailUpdatesRequest],
@@ -104,6 +129,11 @@ func (h *Handler) StreamRecallRailUpdates(
 	if err != nil {
 		return connect.NewError(connect.CodeUnauthenticated, nil)
 	}
+
+	h.logger.WarnContext(ctx, "legacy.recall_rail.deprecated",
+		"rpc", "StreamRecallRailUpdates",
+		"user_id", user.UserID,
+	)
 
 	if h.featureFlagPort != nil && !h.featureFlagPort.IsEnabled(domain.FlagRecallRail, user.UserID) {
 		return connect.NewError(connect.CodePermissionDenied,

@@ -174,6 +174,11 @@ func main() {
 	// promptly enough.
 	outcomeCron := act_outcome_cron.New(repo, slog.Default(), act_outcome_cron.Config{
 		BatchSize: parseIntEnv("KNOWLEDGE_SOVEREIGN_ACT_OUTCOME_BATCH_SIZE", 256),
+		// Identifier-use only: scan boundary for "which acted events have
+		// aged past the 7d cutoff". The emitted event payloads remain pure
+		// (occurred_at = acted.OccurredAt + Window) regardless of when
+		// Clock() fires. See act_outcome_cron/invariants_test.go.
+		Clock: time.Now,
 	})
 	outcomeTick := time.NewTicker(parseDurationEnv("KNOWLEDGE_SOVEREIGN_ACT_OUTCOME_TICK_INTERVAL", 1*time.Hour))
 	go func() {

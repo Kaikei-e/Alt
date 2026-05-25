@@ -149,3 +149,61 @@ func TestWhyMappingVersion_BumpedForOwnershipMove(t *testing.T) {
 	require.GreaterOrEqual(t, WhyMappingVersion, 4,
 		"WhyMappingVersion must signal the knowledge-sovereign ownership move so the runbook triggers reproject")
 }
+
+// WhyPayload v2 producer wiring (ADR-000908 §Δ4). Once the enricher integrates
+// the pure helpers (boundCounterEvidence, confidenceLadderFromKind,
+// whatWouldChangeFromKind), every emitted WhyPayload must carry the v2 fields
+// so the wire format and the UI can rely on their presence.
+
+func TestEnrichWhyFromEvent_SummaryVersionCreated_PopulatesV2Fields(t *testing.T) {
+	ev := makeEnrichEvent(t, EventSummaryVersionCreated, 200, map[string]any{
+		"summary_version_id": "sv-200",
+		"article_id":         "article:200",
+		"article_title":      "Article 200",
+	})
+	why := EnrichWhyFromEvent(&ev)
+	require.NotNil(t, why.ConfidenceLadder,
+		"confidence_ladder must be populated for every enriched WhyPayload")
+	require.Equal(t, sovereignv1.ConfidenceLadder_CONFIDENCE_LADDER_SPECULATION, *why.ConfidenceLadder)
+	require.NotNil(t, why.WhatWouldChangeMyMind,
+		"what_would_change_my_mind must be populated for SOURCE kind")
+	require.NotEmpty(t, *why.WhatWouldChangeMyMind)
+}
+
+func TestEnrichWhyFromEvent_HomeItemSuperseded_PopulatesCounterEvidence(t *testing.T) {
+	ev := makeEnrichEvent(t, EventHomeItemSuperseded, 201, map[string]any{
+		"previous_summary_version": "sv-prev",
+		"summary_version_id":       "sv-new",
+		"entry_key":                "entry-old",
+		"new_entry_key":            "entry-new",
+		"article_title":            "Updated article",
+	})
+	why := EnrichWhyFromEvent(&ev)
+	require.Equal(t, sovereignv1.WhyKind_WHY_KIND_CHANGE, why.Kind)
+	require.NotNil(t, why.ConfidenceLadder)
+	require.Equal(t, sovereignv1.ConfidenceLadder_CONFIDENCE_LADDER_EVIDENCE, *why.ConfidenceLadder,
+		"CHANGE kind must map to EVIDENCE ladder per canonical contract §11")
+	require.NotEmpty(t, why.CounterEvidenceRefs,
+		"superseded entries must surface the previous version as counter-evidence")
+	require.Equal(t, "sv-prev", why.CounterEvidenceRefs[0].RefId)
+	require.Equal(t, "what_changed", why.CounterEvidenceRefs[0].Label)
+	require.NotNil(t, why.WhatWouldChangeMyMind)
+	require.Contains(t, *why.WhatWouldChangeMyMind, "newer")
+}
+
+func TestEnrichWhyFromEvent_HomeItemOpened_RecallLadderIsSpeculation(t *testing.T) {
+	ev := makeEnrichEvent(t, EventHomeItemOpened, 202, map[string]any{
+		"article_id": "article:202",
+	})
+	why := EnrichWhyFromEvent(&ev)
+	require.Equal(t, sovereignv1.WhyKind_WHY_KIND_RECALL, why.Kind)
+	require.NotNil(t, why.ConfidenceLadder)
+	require.Equal(t, sovereignv1.ConfidenceLadder_CONFIDENCE_LADDER_SPECULATION, *why.ConfidenceLadder)
+}
+
+func TestWhyMappingVersion_IsPinnedToEleven(t *testing.T) {
+	// Bumping WhyMappingVersion to 11 announces the v2 producer wiring landing
+	// (ADR-000908 §Δ4). The runbook cutover row must follow this bump.
+	require.Equal(t, 11, WhyMappingVersion,
+		"WhyMappingVersion must be 11 once WhyPayload v2 producer wiring lands")
+}

@@ -63,6 +63,7 @@ SELECT
   e.freshness_at, e.source_observed_at,
   e.artifact_summary_version_id, e.artifact_tag_set_version_id, e.artifact_lens_version_id,
   e.why_kind, e.why_text, e.why_confidence, e.why_evidence_ref_ids, e.why_evidence_refs,
+  e.why_counter_evidence_refs, e.why_confidence_ladder, e.why_what_would_change_my_mind,
   e.change_summary, e.continue_context, e.decision_options, e.act_targets,
   e.superseded_by_entry_key, e.dismiss_state, e.visibility_state, e.completion_state,
   e.render_depth_hint, e.loop_priority,
@@ -125,6 +126,9 @@ func scanKnowledgeLoopEntry(row pgx.Row) (*sovereignv1.KnowledgeLoopEntry, error
 		whyConfidence                                  *float32
 		whyEvidenceRefIDs                              []string
 		whyEvidenceRefsJSON                            []byte
+		whyCounterEvidenceRefsJSON                     []byte
+		whyConfidenceLadder                            *string
+		whyWhatWouldChangeMyMind                       *string
 		changeSummary, continueContext                 []byte
 		decisionOptions, actTargets                    []byte
 		supersededBy                                   *string
@@ -144,6 +148,7 @@ func scanKnowledgeLoopEntry(row pgx.Row) (*sovereignv1.KnowledgeLoopEntry, error
 		&freshnessAt, &sourceObservedAt,
 		&artSummary, &artTagSet, &artLens,
 		&whyKind, &whyText, &whyConfidence, &whyEvidenceRefIDs, &whyEvidenceRefsJSON,
+		&whyCounterEvidenceRefsJSON, &whyConfidenceLadder, &whyWhatWouldChangeMyMind,
 		&changeSummary, &continueContext, &decisionOptions, &actTargets,
 		&supersededBy, &dismissState, &visibilityState, &completionState,
 		&renderDepth, &loopPriority,
@@ -208,6 +213,26 @@ func scanKnowledgeLoopEntry(row pgx.Row) (*sovereignv1.KnowledgeLoopEntry, error
 				})
 			}
 		}
+	}
+	if len(whyCounterEvidenceRefsJSON) > 0 {
+		var arr []map[string]string
+		if err := json.Unmarshal(whyCounterEvidenceRefsJSON, &arr); err == nil {
+			for _, a := range arr {
+				e.WhyPrimary.CounterEvidenceRefs = append(e.WhyPrimary.CounterEvidenceRefs, &sovereignv1.KnowledgeLoopEvidenceRef{
+					RefId: a["ref_id"],
+					Label: a["label"],
+				})
+			}
+		}
+	}
+	if whyConfidenceLadder != nil && *whyConfidenceLadder != "" {
+		ladder := confidenceLadderFromDB(*whyConfidenceLadder)
+		if ladder != sovereignv1.ConfidenceLadder_CONFIDENCE_LADDER_UNSPECIFIED {
+			e.WhyPrimary.ConfidenceLadder = &ladder
+		}
+	}
+	if whyWhatWouldChangeMyMind != nil && *whyWhatWouldChangeMyMind != "" {
+		e.WhyPrimary.WhatWouldChangeMyMind = whyWhatWouldChangeMyMind
 	}
 	return e, nil
 }

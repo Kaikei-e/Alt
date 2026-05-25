@@ -779,6 +779,18 @@ enum LoopServiceQuality {
   LOOP_SERVICE_QUALITY_FALLBACK = 3;
 }
 
+// ConfidenceLadder mirrors alt.knowledge.loop.v1.ConfidenceLadder so the
+// internal projector can carry a qualitative tier alongside the WhyPayload.
+// Speculation = single weak signal, Pattern = multi-signal alignment,
+// Evidence = pinned versioned artifact, Verified = act_outcome confirmed.
+enum ConfidenceLadder {
+  CONFIDENCE_LADDER_UNSPECIFIED = 0;
+  CONFIDENCE_LADDER_SPECULATION = 1;
+  CONFIDENCE_LADDER_PATTERN = 2;
+  CONFIDENCE_LADDER_EVIDENCE = 3;
+  CONFIDENCE_LADDER_VERIFIED = 4;
+}
+
 message KnowledgeLoopEvidenceRef {
   string ref_id = 1;
   string label = 2;
@@ -789,6 +801,15 @@ message KnowledgeLoopWhyPayload {
   string text = 2; // 1..512 chars, plain text only
   optional float confidence = 3;
   repeated KnowledgeLoopEvidenceRef evidence_refs = 4; // length <= 8
+
+  // v2 producer fields (ADR-000908 §Δ4 / canonical contract §11).
+  // counter_evidence_refs lists refs that would weaken the Why claim
+  // (≤4 cap). confidence_ladder is the qualitative tier the projector
+  // assigned. what_would_change_my_mind is a short falsifier sentence
+  // (1..256 chars) the UI renders inline with the Why text.
+  repeated KnowledgeLoopEvidenceRef counter_evidence_refs = 5;
+  optional ConfidenceLadder confidence_ladder = 6;
+  optional string what_would_change_my_mind = 7;
 }
 
 message KnowledgeLoopArtifactVersionRef {

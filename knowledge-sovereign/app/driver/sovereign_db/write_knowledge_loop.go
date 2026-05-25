@@ -47,6 +47,7 @@ INSERT INTO knowledge_loop_entries (
   freshness_at, source_observed_at,
   artifact_summary_version_id, artifact_tag_set_version_id, artifact_lens_version_id,
   why_kind, why_text, why_confidence, why_evidence_ref_ids, why_evidence_refs,
+  why_counter_evidence_refs, why_confidence_ladder, why_what_would_change_my_mind,
   change_summary, continue_context, decision_options, act_targets,
   superseded_by_entry_key, dismiss_state, visibility_state, completion_state,
   render_depth_hint, loop_priority,
@@ -58,9 +59,10 @@ INSERT INTO knowledge_loop_entries (
   $10, $11,
   $12, $13, $14,
   $15, $16, $17, $18, $19,
-  $20, $21, $22, $23,
-  $24, $25, $26, $27,
-  $28, $29, $30, $31
+  $20, $21, $22,
+  $23, $24, $25, $26,
+  $27, $28, $29, $30,
+  $31, $32, $33, $34
 )
 ON CONFLICT (user_id, lens_mode_id, entry_key) DO UPDATE SET
   proposed_stage         = EXCLUDED.proposed_stage,
@@ -79,6 +81,9 @@ ON CONFLICT (user_id, lens_mode_id, entry_key) DO UPDATE SET
   why_confidence         = EXCLUDED.why_confidence,
   why_evidence_ref_ids   = EXCLUDED.why_evidence_ref_ids,
   why_evidence_refs      = EXCLUDED.why_evidence_refs,
+  why_counter_evidence_refs     = EXCLUDED.why_counter_evidence_refs,
+  why_confidence_ladder         = EXCLUDED.why_confidence_ladder,
+  why_what_would_change_my_mind = EXCLUDED.why_what_would_change_my_mind,
   change_summary         = COALESCE(EXCLUDED.change_summary,   knowledge_loop_entries.change_summary),
   continue_context       = COALESCE(EXCLUDED.continue_context, knowledge_loop_entries.continue_context),
   decision_options       = COALESCE(EXCLUDED.decision_options, knowledge_loop_entries.decision_options),
@@ -151,6 +156,26 @@ func (r *Repository) UpsertKnowledgeLoopEntry(
 		whyEvidenceRefsJSON, _ = json.Marshal(arr)
 	}
 
+	whyCounterEvidenceRefsJSON := []byte("[]")
+	if why != nil && len(why.CounterEvidenceRefs) > 0 {
+		arr := make([]map[string]string, 0, len(why.CounterEvidenceRefs))
+		for _, r := range why.CounterEvidenceRefs {
+			arr = append(arr, map[string]string{"ref_id": r.RefId, "label": r.Label})
+		}
+		whyCounterEvidenceRefsJSON, _ = json.Marshal(arr)
+	}
+	var whyConfidenceLadder *string
+	if why != nil && why.ConfidenceLadder != nil {
+		s := confidenceLadderToDB(*why.ConfidenceLadder)
+		if s != "" {
+			whyConfidenceLadder = &s
+		}
+	}
+	var whyWhatWouldChangeMyMind *string
+	if why != nil && why.WhatWouldChangeMyMind != nil && *why.WhatWouldChangeMyMind != "" {
+		whyWhatWouldChangeMyMind = why.WhatWouldChangeMyMind
+	}
+
 	var supersededBy interface{}
 	if e.SupersededByEntryKey != nil {
 		supersededBy = *e.SupersededByEntryKey
@@ -173,6 +198,7 @@ func (r *Repository) UpsertKnowledgeLoopEntry(
 		freshnessAt, sourceObservedAt,
 		summaryVer, tagVer, lensVer,
 		whyKind, whyText, whyConfidence, whyEvidenceRefIDs, whyEvidenceRefsJSON,
+		whyCounterEvidenceRefsJSON, whyConfidenceLadder, whyWhatWouldChangeMyMind,
 		e.ChangeSummary, e.ContinueContext, e.DecisionOptions, e.ActTargets,
 		supersededBy, dismissStateToDB(e.DismissState),
 		visibilityStateToDB(visibilityState), completionStateToDB(completionState),
@@ -207,15 +233,18 @@ func (r *Repository) UpsertKnowledgeLoopEntry(
 //     narrative; the patch (higher seq) overwrites why_text only.
 const patchKnowledgeLoopEntryWhyQuery = `
 UPDATE knowledge_loop_entries SET
-  projection_revision    = projection_revision + 1,
-  projection_seq_hiwater = GREATEST(projection_seq_hiwater, $5),
-  source_event_seq       = GREATEST(source_event_seq, $5),
-  projected_at           = NOW(),
-  why_kind               = $6,
-  why_text               = $7,
-  why_confidence         = $8,
-  why_evidence_ref_ids   = $9,
-  why_evidence_refs      = $10
+  projection_revision           = projection_revision + 1,
+  projection_seq_hiwater        = GREATEST(projection_seq_hiwater, $5),
+  source_event_seq              = GREATEST(source_event_seq, $5),
+  projected_at                  = NOW(),
+  why_kind                      = $6,
+  why_text                      = $7,
+  why_confidence                = $8,
+  why_evidence_ref_ids          = $9,
+  why_evidence_refs             = $10,
+  why_counter_evidence_refs     = $11,
+  why_confidence_ladder         = $12,
+  why_what_would_change_my_mind = $13
 WHERE user_id = $1 AND tenant_id = $2 AND lens_mode_id = $3 AND entry_key = $4
   AND projection_seq_hiwater <= $5
 RETURNING projection_revision, projection_seq_hiwater
@@ -258,11 +287,31 @@ func (r *Repository) PatchKnowledgeLoopEntryWhy(
 		}
 		whyEvidenceRefsJSON, _ = json.Marshal(arr)
 	}
+	whyCounterEvidenceRefsJSON := []byte("[]")
+	if len(why.CounterEvidenceRefs) > 0 {
+		arr := make([]map[string]string, 0, len(why.CounterEvidenceRefs))
+		for _, r := range why.CounterEvidenceRefs {
+			arr = append(arr, map[string]string{"ref_id": r.RefId, "label": r.Label})
+		}
+		whyCounterEvidenceRefsJSON, _ = json.Marshal(arr)
+	}
+	var whyConfidenceLadder *string
+	if why.ConfidenceLadder != nil {
+		s := confidenceLadderToDB(*why.ConfidenceLadder)
+		if s != "" {
+			whyConfidenceLadder = &s
+		}
+	}
+	var whyWhatWouldChangeMyMind *string
+	if why.WhatWouldChangeMyMind != nil && *why.WhatWouldChangeMyMind != "" {
+		whyWhatWouldChangeMyMind = why.WhatWouldChangeMyMind
+	}
 
 	var revision, seqHiwater int64
 	row := r.pool.QueryRow(ctx, patchKnowledgeLoopEntryWhyQuery,
 		uID, tID, lensModeID, entryKey, eventSeq,
 		whyKind, why.Text, whyConfidence, whyEvidenceRefIDs, whyEvidenceRefsJSON,
+		whyCounterEvidenceRefsJSON, whyConfidenceLadder, whyWhatWouldChangeMyMind,
 	)
 	if err := row.Scan(&revision, &seqHiwater); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -879,6 +928,37 @@ func completionStateToDB(c sovereignv1.LoopCompletionState) string {
 	default:
 		return "open"
 	}
+}
+
+// confidenceLadderToDB maps the proto enum to the DB CHECK value. Returns
+// "" for UNSPECIFIED so the column stays NULL when the projector has not
+// pinned a ladder yet.
+func confidenceLadderToDB(c sovereignv1.ConfidenceLadder) string {
+	switch c {
+	case sovereignv1.ConfidenceLadder_CONFIDENCE_LADDER_SPECULATION:
+		return "speculation"
+	case sovereignv1.ConfidenceLadder_CONFIDENCE_LADDER_PATTERN:
+		return "pattern"
+	case sovereignv1.ConfidenceLadder_CONFIDENCE_LADDER_EVIDENCE:
+		return "evidence"
+	case sovereignv1.ConfidenceLadder_CONFIDENCE_LADDER_VERIFIED:
+		return "verified"
+	}
+	return ""
+}
+
+func confidenceLadderFromDB(s string) sovereignv1.ConfidenceLadder {
+	switch s {
+	case "speculation":
+		return sovereignv1.ConfidenceLadder_CONFIDENCE_LADDER_SPECULATION
+	case "pattern":
+		return sovereignv1.ConfidenceLadder_CONFIDENCE_LADDER_PATTERN
+	case "evidence":
+		return sovereignv1.ConfidenceLadder_CONFIDENCE_LADDER_EVIDENCE
+	case "verified":
+		return sovereignv1.ConfidenceLadder_CONFIDENCE_LADDER_VERIFIED
+	}
+	return sovereignv1.ConfidenceLadder_CONFIDENCE_LADDER_UNSPECIFIED
 }
 
 func whyKindToDB(k sovereignv1.WhyKind) string {

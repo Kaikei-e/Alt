@@ -170,6 +170,34 @@ message RecallCandidate {
   string next_suggest_at = 5;
   // The full item data (optional, included for initial load)
   optional KnowledgeHomeItem item = 6;
+
+  // ADR-000913 §D-9: explainable scoring. weight_set_version pins the
+  // weights map the projector used to compute recall_score; score_breakdown
+  // explains the contribution of every signal that fired. Additive — older
+  // clients ignore both fields.
+  optional RecallWeightSetVersion weight_set_version = 7;
+  repeated RecallScoreContribution score_breakdown = 8;
+}
+
+// RecallWeightSetVersion identifies the weights map the recall projector
+// used to score a candidate. v1_fixed retains the pre-Heavy-Ranker scoring
+// for backward compatibility; v2_heavy_ranker introduces positive + negative
+// signals with explicit weights (Twitter Heavy Ranker grounding).
+enum RecallWeightSetVersion {
+  RECALL_WEIGHT_SET_VERSION_UNSPECIFIED = 0;
+  RECALL_WEIGHT_SET_VERSION_V1_FIXED = 1;
+  RECALL_WEIGHT_SET_VERSION_V2_HEAVY_RANKER = 2;
+}
+
+// RecallScoreContribution is one row of the recall score breakdown: a
+// signal code, the weight applied to it, the contribution (signal_value *
+// weight) that landed in the final score, and an explicit negative flag so
+// the UI can colour-cue dampening signals separately.
+message RecallScoreContribution {
+  string signal_code = 1;
+  double weight = 2;
+  double contribution = 3;
+  bool is_negative = 4;
 }
 
 // RecallReason explains why an item is being recalled.

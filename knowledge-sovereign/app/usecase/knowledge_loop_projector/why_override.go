@@ -61,6 +61,7 @@ func OverrideWhyFromSurfaceInputs(
 		out := proto.Clone(why).(*sovereignv1.KnowledgeLoopWhyPayload)
 		out.Kind = sovereignv1.WhyKind_WHY_KIND_UNFINISHED_CONTINUE
 		out.Text = sanitizePlainText(unfinishedContinueNarrative(ev))
+		refreshWhyV2OnKindChange(out)
 		return out
 	}
 	// 3. Topic affinity (recap cluster overlap) outranks tag trending and
@@ -69,6 +70,7 @@ func OverrideWhyFromSurfaceInputs(
 		out := proto.Clone(why).(*sovereignv1.KnowledgeLoopWhyPayload)
 		out.Kind = sovereignv1.WhyKind_WHY_KIND_TOPIC_AFFINITY
 		out.Text = sanitizePlainText(topicAffinityNarrative(ev))
+		refreshWhyV2OnKindChange(out)
 		return out
 	}
 	// 4. Tag trending — the user is following these tags as a stream.
@@ -76,6 +78,7 @@ func OverrideWhyFromSurfaceInputs(
 		out := proto.Clone(why).(*sovereignv1.KnowledgeLoopWhyPayload)
 		out.Kind = sovereignv1.WhyKind_WHY_KIND_TAG_TRENDING
 		out.Text = sanitizePlainText(tagTrendingNarrative(ev))
+		refreshWhyV2OnKindChange(out)
 		return out
 	}
 	// 5. RECALL is the residual evidence kind — a prior single open is the
@@ -85,6 +88,24 @@ func OverrideWhyFromSurfaceInputs(
 		return why
 	}
 	return why
+}
+
+// refreshWhyV2OnKindChange recomputes confidence_ladder and
+// what_would_change_my_mind from the post-override Kind. counter_evidence_refs
+// from the enricher (typically only the supersede branch) are preserved.
+// Reproject-safe: pure function of the post-override Kind.
+func refreshWhyV2OnKindChange(out *sovereignv1.KnowledgeLoopWhyPayload) {
+	if out == nil {
+		return
+	}
+	ladder := confidenceLadderFromKind(out.Kind).ToProto()
+	out.ConfidenceLadder = &ladder
+	wwcm := whatWouldChangeFromKind(out.Kind)
+	if wwcm != "" {
+		out.WhatWouldChangeMyMind = &wwcm
+	} else {
+		out.WhatWouldChangeMyMind = nil
+	}
 }
 
 // Narrative templates pin the v3 phrasing that maps WhyKind → user-visible

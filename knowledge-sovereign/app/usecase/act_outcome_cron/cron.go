@@ -59,8 +59,19 @@ type Config struct {
 	Window time.Duration
 
 	// Clock is the source of wall-clock now used to compute the cutoff.
-	// Tests pin a deterministic clock; production wires time.Now.
+	// Tests pin a deterministic clock; production wires time.Now. Treated
+	// strictly as a scan-cutoff identifier — it MUST NOT leak into emitted
+	// event payloads. The emitted event's occurred_at is always derived
+	// from acted.OccurredAt + Window.
 	Clock func() time.Time
+
+	// BackfillCutoff, when non-nil, replaces Clock() for the scan cutoff so
+	// operators can run a backfill against the full historical event log
+	// without the cron's wall-clock leaking into the batch boundary. The
+	// event payloads are still pure (occurred_at = acted.OccurredAt + Window),
+	// so reproject under the same event log yields identical output regardless
+	// of which BackfillCutoff was used.
+	BackfillCutoff *time.Time
 }
 
 // Cron is the no_engagement fallback producer.
@@ -91,9 +102,20 @@ func New(repo Repository, logger *slog.Logger, cfg Config) *Cron {
 // and emits one no_engagement outcome per event. The emitted event's
 // occurred_at is bound to acted.occurred_at + window so reproject is
 // deterministic regardless of cron wall-clock.
+//
+// scanAt is the scan-boundary identifier: it picks which acted events have
+// aged past the cutoff. It MUST NOT appear in any emitted event payload —
+// that is the event-time-purity invariant tested by invariants_test.go.
+// BackfillCutoff, when set, replaces Clock() so operators can run the cron
+// against a historical window without leaking the current wall-clock.
 func (c *Cron) RunBatch(ctx context.Context) error {
-	now := c.cfg.Clock()
-	cutoff := now.Add(-c.cfg.Window)
+	var scanAt time.Time
+	if c.cfg.BackfillCutoff != nil {
+		scanAt = *c.cfg.BackfillCutoff
+	} else {
+		scanAt = c.cfg.Clock()
+	}
+	cutoff := scanAt.Add(-c.cfg.Window)
 
 	events, err := c.repo.ListActedEventsWithoutOutcome(ctx, cutoff, c.cfg.BatchSize)
 	if err != nil {

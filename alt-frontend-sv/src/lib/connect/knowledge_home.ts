@@ -86,6 +86,10 @@ export interface RecallCandidateData {
 	firstEligibleAt: string;
 	nextSuggestAt: string;
 	item?: KnowledgeHomeItemData;
+	/** ADR-000913 §D-9 — pins the weights map the projector used to score this candidate. */
+	weightSetVersion?: RecallWeightSetVersionData;
+	/** ADR-000913 §D-9 — per-signal contribution rows for explainable scoring. */
+	scoreBreakdown?: RecallScoreContributionData[];
 }
 
 /** Recall reason */
@@ -93,6 +97,20 @@ export interface RecallReasonData {
 	type: string;
 	description: string;
 	sourceItemKey?: string;
+}
+
+/** Recall weight set version (string form for storage stability). */
+export type RecallWeightSetVersionData =
+	| "unspecified"
+	| "v1_fixed"
+	| "v2_heavy_ranker";
+
+/** One row of the recall score breakdown. */
+export interface RecallScoreContributionData {
+	signalCode: string;
+	weight: number;
+	contribution: number;
+	isNegative: boolean;
 }
 
 /** A saved lens viewpoint */
@@ -307,7 +325,7 @@ export async function trackHomeAction(
 function convertRecallCandidate(
 	proto: ProtoRecallCandidate,
 ): RecallCandidateData {
-	return {
+	const out: RecallCandidateData = {
 		itemKey: proto.itemKey,
 		recallScore: proto.recallScore,
 		reasons: proto.reasons.map((r) => ({
@@ -319,6 +337,29 @@ function convertRecallCandidate(
 		nextSuggestAt: proto.nextSuggestAt,
 		item: proto.item ? convertItem(proto.item) : undefined,
 	};
+	if (proto.weightSetVersion !== undefined && proto.weightSetVersion !== 0) {
+		out.weightSetVersion = mapRecallWeightSetVersion(proto.weightSetVersion);
+	}
+	if (proto.scoreBreakdown && proto.scoreBreakdown.length > 0) {
+		out.scoreBreakdown = proto.scoreBreakdown.map((row) => ({
+			signalCode: row.signalCode,
+			weight: row.weight,
+			contribution: row.contribution,
+			isNegative: row.isNegative,
+		}));
+	}
+	return out;
+}
+
+function mapRecallWeightSetVersion(value: number): RecallWeightSetVersionData {
+	switch (value) {
+		case 1:
+			return "v1_fixed";
+		case 2:
+			return "v2_heavy_ranker";
+		default:
+			return "unspecified";
+	}
 }
 
 function convertLens(proto: ProtoLens): LensData {

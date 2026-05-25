@@ -58,10 +58,12 @@ func EnrichWhyFromEvent(ev *sovereign_db.KnowledgeEvent) *sovereignv1.KnowledgeL
 	}
 	// Fallback: keep entries renderable even for event types without dedicated
 	// enrichment, so the projector never emits an empty why_text.
-	return &sovereignv1.KnowledgeLoopWhyPayload{
+	why := &sovereignv1.KnowledgeLoopWhyPayload{
 		Kind: sovereignv1.WhyKind_WHY_KIND_SOURCE,
 		Text: "A recent event surfaced this entry — open to see what changed.",
 	}
+	populateWhyV2(why, nil)
+	return why
 }
 
 // enrichmentPayload is the projection of event payload fields that the enricher
@@ -128,11 +130,13 @@ func enrichSummaryVersion(_ *sovereign_db.KnowledgeEvent, p enrichmentPayload) *
 	default:
 		text = "A new summary is ready in one of your feeds."
 	}
-	return &sovereignv1.KnowledgeLoopWhyPayload{
+	why := &sovereignv1.KnowledgeLoopWhyPayload{
 		Kind:         sovereignv1.WhyKind_WHY_KIND_SOURCE,
 		Text:         sanitizePlainText(text),
 		EvidenceRefs: boundEvidence(appendRefIfPresent(nil, p.SummaryVersionID, "summary", p.ArticleID, "article", p.TagSetVersionID, "tags")),
 	}
+	populateWhyV2(why, nil)
+	return why
 }
 
 func enrichHomeItemsSeen(_ *sovereign_db.KnowledgeEvent, p enrichmentPayload) *sovereignv1.KnowledgeLoopWhyPayload {
@@ -140,11 +144,13 @@ func enrichHomeItemsSeen(_ *sovereign_db.KnowledgeEvent, p enrichmentPayload) *s
 	if p.ArticleTitle != "" {
 		text = p.ArticleTitle + " — back in your feed for a closer look."
 	}
-	return &sovereignv1.KnowledgeLoopWhyPayload{
+	why := &sovereignv1.KnowledgeLoopWhyPayload{
 		Kind:         sovereignv1.WhyKind_WHY_KIND_SOURCE,
 		Text:         sanitizePlainText(text),
 		EvidenceRefs: boundEvidence(appendRefIfPresent(nil, p.SummaryVersionID, "summary", p.TagSetVersionID, "tags", p.ArticleID, "article")),
 	}
+	populateWhyV2(why, nil)
+	return why
 }
 
 func enrichHomeItemAsked(_ *sovereign_db.KnowledgeEvent, p enrichmentPayload) *sovereignv1.KnowledgeLoopWhyPayload {
@@ -153,11 +159,13 @@ func enrichHomeItemAsked(_ *sovereign_db.KnowledgeEvent, p enrichmentPayload) *s
 		text = p.ArticleTitle + " — your Augur thread is still open here."
 	}
 	refs := appendRefIfPresent(nil, p.ConversationID, "conversation", p.ArticleID, "article")
-	return &sovereignv1.KnowledgeLoopWhyPayload{
+	why := &sovereignv1.KnowledgeLoopWhyPayload{
 		Kind:         sovereignv1.WhyKind_WHY_KIND_SOURCE,
 		Text:         sanitizePlainText(text),
 		EvidenceRefs: boundEvidence(refs),
 	}
+	populateWhyV2(why, nil)
+	return why
 }
 
 func enrichHomeItemOpened(ev *sovereign_db.KnowledgeEvent, p enrichmentPayload) *sovereignv1.KnowledgeLoopWhyPayload {
@@ -168,11 +176,13 @@ func enrichHomeItemOpened(ev *sovereign_db.KnowledgeEvent, p enrichmentPayload) 
 	// The open event itself is the stable anchor — reproject replays point at
 	// the same event_id, so the UI can deep-link "last opened" to this row.
 	refs := appendRefIfPresent(nil, ev.EventID.String(), "open_event", p.ArticleID, "article")
-	return &sovereignv1.KnowledgeLoopWhyPayload{
+	why := &sovereignv1.KnowledgeLoopWhyPayload{
 		Kind:         sovereignv1.WhyKind_WHY_KIND_RECALL,
 		Text:         sanitizePlainText(text),
 		EvidenceRefs: boundEvidence(refs),
 	}
+	populateWhyV2(why, nil)
+	return why
 }
 
 func enrichSuperseded(_ *sovereign_db.KnowledgeEvent, p enrichmentPayload) *sovereignv1.KnowledgeLoopWhyPayload {
@@ -181,11 +191,14 @@ func enrichSuperseded(_ *sovereign_db.KnowledgeEvent, p enrichmentPayload) *sove
 		text = p.ArticleTitle + " — a newer version replaces what you saw before."
 	}
 	refs := appendRefIfPresent(nil, p.PreviousSummaryVersion, "previous_summary", p.SummaryVersionID, "new_summary", p.EntryKey, "previous_entry", p.NewEntryKey, "new_entry")
-	return &sovereignv1.KnowledgeLoopWhyPayload{
+	counter := appendRefIfPresent(nil, p.PreviousSummaryVersion, "what_changed")
+	why := &sovereignv1.KnowledgeLoopWhyPayload{
 		Kind:         sovereignv1.WhyKind_WHY_KIND_CHANGE,
 		Text:         sanitizePlainText(text),
 		EvidenceRefs: boundEvidence(refs),
 	}
+	populateWhyV2(why, counter)
+	return why
 }
 
 func enrichHomeItemDismissed(ev *sovereign_db.KnowledgeEvent, p enrichmentPayload) *sovereignv1.KnowledgeLoopWhyPayload {
@@ -198,11 +211,13 @@ func enrichHomeItemDismissed(ev *sovereign_db.KnowledgeEvent, p enrichmentPayloa
 		text = "Dismissed at " + when + " — recheck, mark reviewed, or archive."
 	}
 	refs := appendRefIfPresent(nil, ev.EventID.String(), "dismiss_event", p.EntryKey, "entry")
-	return &sovereignv1.KnowledgeLoopWhyPayload{
+	why := &sovereignv1.KnowledgeLoopWhyPayload{
 		Kind:         sovereignv1.WhyKind_WHY_KIND_SOURCE,
 		Text:         sanitizePlainText(text),
 		EvidenceRefs: boundEvidence(refs),
 	}
+	populateWhyV2(why, nil)
+	return why
 }
 
 // --- helpers ----------------------------------------------------------------

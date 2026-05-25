@@ -24,8 +24,8 @@ const maxCounterEvidenceRefs = 4
 const maxWhatWouldChangeBytes = 256
 
 // ConfidenceLadder is the qualitative tier the projector assigns to a WhyKind.
-// Values mirror the wire enum alt.knowledge.loop.v1.ConfidenceLadder so the
-// later proto-mapping step is a 1:1 translation.
+// Values mirror the wire enum alt.knowledge.loop.v1.ConfidenceLadder and
+// services.sovereign.v1.ConfidenceLadder so ToProto is a 1:1 translation.
 type ConfidenceLadder int
 
 const (
@@ -35,6 +35,61 @@ const (
 	ConfidenceLadderEvidence    ConfidenceLadder = 3
 	ConfidenceLadderVerified    ConfidenceLadder = 4
 )
+
+// ToProto converts the local enum to the sovereign wire enum. Use this when
+// populating a KnowledgeLoopWhyPayload.ConfidenceLadder field.
+func (c ConfidenceLadder) ToProto() sovereignv1.ConfidenceLadder {
+	switch c {
+	case ConfidenceLadderSpeculation:
+		return sovereignv1.ConfidenceLadder_CONFIDENCE_LADDER_SPECULATION
+	case ConfidenceLadderPattern:
+		return sovereignv1.ConfidenceLadder_CONFIDENCE_LADDER_PATTERN
+	case ConfidenceLadderEvidence:
+		return sovereignv1.ConfidenceLadder_CONFIDENCE_LADDER_EVIDENCE
+	case ConfidenceLadderVerified:
+		return sovereignv1.ConfidenceLadder_CONFIDENCE_LADDER_VERIFIED
+	}
+	return sovereignv1.ConfidenceLadder_CONFIDENCE_LADDER_UNSPECIFIED
+}
+
+// confidenceLadderFromProto is the inverse — used when reading projection rows
+// back into the local enum (e.g. invariants test fixtures).
+func confidenceLadderFromProto(p sovereignv1.ConfidenceLadder) ConfidenceLadder {
+	switch p {
+	case sovereignv1.ConfidenceLadder_CONFIDENCE_LADDER_SPECULATION:
+		return ConfidenceLadderSpeculation
+	case sovereignv1.ConfidenceLadder_CONFIDENCE_LADDER_PATTERN:
+		return ConfidenceLadderPattern
+	case sovereignv1.ConfidenceLadder_CONFIDENCE_LADDER_EVIDENCE:
+		return ConfidenceLadderEvidence
+	case sovereignv1.ConfidenceLadder_CONFIDENCE_LADDER_VERIFIED:
+		return ConfidenceLadderVerified
+	}
+	return ConfidenceLadderUnspecified
+}
+
+// populateWhyV2 fills the v2 fields on the payload from the WhyKind, leaving
+// already-set values intact. Use after enricher / why_override has chosen the
+// Kind. boundCounterEvidence is applied to whatever counter refs the caller
+// supplies (typically empty except for the supersede branch).
+func populateWhyV2(why *sovereignv1.KnowledgeLoopWhyPayload, counter []*sovereignv1.KnowledgeLoopEvidenceRef) {
+	if why == nil {
+		return
+	}
+	if why.CounterEvidenceRefs == nil {
+		why.CounterEvidenceRefs = boundCounterEvidence(counter)
+	}
+	if why.ConfidenceLadder == nil {
+		ladder := confidenceLadderFromKind(why.Kind).ToProto()
+		why.ConfidenceLadder = &ladder
+	}
+	if why.WhatWouldChangeMyMind == nil {
+		wwcm := whatWouldChangeFromKind(why.Kind)
+		if wwcm != "" {
+			why.WhatWouldChangeMyMind = &wwcm
+		}
+	}
+}
 
 // boundCounterEvidence caps the slice to the contract limit. Nil input is
 // passed through so callers can chain helpers without nil guards.

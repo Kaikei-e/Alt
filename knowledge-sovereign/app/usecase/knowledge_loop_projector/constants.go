@@ -136,4 +136,14 @@ const AggregateLoopSession = "knowledge_loop_session"
 // demotion so version drift is never silently hidden. Bump triggers a full
 // reproject; runbook history table will get the v9 → v10 row when the
 // reproject cutover is scheduled.
-const WhyMappingVersion = 10
+//
+// v11 (2026-05-25): ADR-000908 §Δ4 WhyPayload v2 producer wiring lands.
+// EnrichWhyFromEvent + OverrideWhyFromSurfaceInputs now populate the
+// counter_evidence_refs, confidence_ladder, and what_would_change_my_mind
+// fields on every emitted WhyPayload via the pure helpers
+// (boundCounterEvidence, confidenceLadderFromKind, whatWouldChangeFromKind).
+// Sovereign proto + DB schema gain three additive columns; alt-backend BFF
+// passes the new fields through to the alt.knowledge.loop.v1 wire types.
+// Bump triggers a full reproject so all historical entries gain the v2
+// fields deterministically.
+const WhyMappingVersion = 11

@@ -273,6 +273,19 @@ func domainEntryToProto(e *domain.KnowledgeLoopEntry) *sovereignv1.KnowledgeLoop
 			Label: r.Label,
 		})
 	}
+	for _, r := range e.WhyCounterEvidenceRefs {
+		pb.WhyPrimary.CounterEvidenceRefs = append(pb.WhyPrimary.CounterEvidenceRefs, &sovereignv1.KnowledgeLoopEvidenceRef{
+			RefId: r.RefID,
+			Label: r.Label,
+		})
+	}
+	if e.WhyConfidenceLadder != nil {
+		ladder := confidenceLadderToProto(*e.WhyConfidenceLadder)
+		pb.WhyPrimary.ConfidenceLadder = &ladder
+	}
+	if e.WhyWhatWouldChangeMyMind != nil && *e.WhyWhatWouldChangeMyMind != "" {
+		pb.WhyPrimary.WhatWouldChangeMyMind = e.WhyWhatWouldChangeMyMind
+	}
 	return pb
 }
 
@@ -375,8 +388,46 @@ func protoEntryToDomain(pb *sovereignv1.KnowledgeLoopEntry) (*domain.KnowledgeLo
 			e.WhyEvidenceRefIDs = append(e.WhyEvidenceRefIDs, r.RefId)
 			e.WhyEvidenceRefs = append(e.WhyEvidenceRefs, domain.EvidenceRef{RefID: r.RefId, Label: r.Label})
 		}
+		for _, r := range pb.WhyPrimary.CounterEvidenceRefs {
+			e.WhyCounterEvidenceRefs = append(e.WhyCounterEvidenceRefs, domain.EvidenceRef{RefID: r.RefId, Label: r.Label})
+		}
+		if pb.WhyPrimary.ConfidenceLadder != nil {
+			ladder := confidenceLadderFromProto(*pb.WhyPrimary.ConfidenceLadder)
+			e.WhyConfidenceLadder = &ladder
+		}
+		if pb.WhyPrimary.WhatWouldChangeMyMind != nil && *pb.WhyPrimary.WhatWouldChangeMyMind != "" {
+			e.WhyWhatWouldChangeMyMind = pb.WhyPrimary.WhatWouldChangeMyMind
+		}
 	}
 	return e, nil
+}
+
+func confidenceLadderToProto(c domain.ConfidenceLadder) sovereignv1.ConfidenceLadder {
+	switch c {
+	case domain.ConfidenceLadderSpeculation:
+		return sovereignv1.ConfidenceLadder_CONFIDENCE_LADDER_SPECULATION
+	case domain.ConfidenceLadderPattern:
+		return sovereignv1.ConfidenceLadder_CONFIDENCE_LADDER_PATTERN
+	case domain.ConfidenceLadderEvidence:
+		return sovereignv1.ConfidenceLadder_CONFIDENCE_LADDER_EVIDENCE
+	case domain.ConfidenceLadderVerified:
+		return sovereignv1.ConfidenceLadder_CONFIDENCE_LADDER_VERIFIED
+	}
+	return sovereignv1.ConfidenceLadder_CONFIDENCE_LADDER_UNSPECIFIED
+}
+
+func confidenceLadderFromProto(p sovereignv1.ConfidenceLadder) domain.ConfidenceLadder {
+	switch p {
+	case sovereignv1.ConfidenceLadder_CONFIDENCE_LADDER_SPECULATION:
+		return domain.ConfidenceLadderSpeculation
+	case sovereignv1.ConfidenceLadder_CONFIDENCE_LADDER_PATTERN:
+		return domain.ConfidenceLadderPattern
+	case sovereignv1.ConfidenceLadder_CONFIDENCE_LADDER_EVIDENCE:
+		return domain.ConfidenceLadderEvidence
+	case sovereignv1.ConfidenceLadder_CONFIDENCE_LADDER_VERIFIED:
+		return domain.ConfidenceLadderVerified
+	}
+	return domain.ConfidenceLadderUnspecified
 }
 
 func protoSessionToDomain(pb *sovereignv1.KnowledgeLoopSessionState) (*domain.KnowledgeLoopSessionState, error) {

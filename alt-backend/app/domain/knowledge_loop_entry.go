@@ -115,6 +115,19 @@ type EvidenceRef struct {
 	Label string `json:"label,omitempty"`
 }
 
+// ConfidenceLadder mirrors alt.knowledge.loop.v1.ConfidenceLadder so the
+// alt-backend domain can carry the projector's qualitative tier through to
+// the wire response. Reproject-safe: pure function of WhyKind upstream.
+type ConfidenceLadder int
+
+const (
+	ConfidenceLadderUnspecified ConfidenceLadder = 0
+	ConfidenceLadderSpeculation ConfidenceLadder = 1
+	ConfidenceLadderPattern     ConfidenceLadder = 2
+	ConfidenceLadderEvidence    ConfidenceLadder = 3
+	ConfidenceLadderVerified    ConfidenceLadder = 4
+)
+
 // WhyPayload is the structured explanation for why an entry surfaced.
 // Plain text only. Max 512 chars. No Markdown or HTML (UI renders as text).
 type WhyPayload struct {
@@ -122,6 +135,15 @@ type WhyPayload struct {
 	Text         string        `json:"text"`
 	Confidence   *float32      `json:"confidence,omitempty"`
 	EvidenceRefs []EvidenceRef `json:"evidence_refs"`
+
+	// v2 producer fields (ADR-000908 §Δ4). counter_evidence_refs lists refs
+	// that would weaken the Why claim (≤4 cap); confidence_ladder is the
+	// projector-assigned tier; what_would_change_my_mind is a short
+	// falsifier sentence (1..256 chars). Reproject-safe: each is a pure
+	// function of the WhyKind/event payload, recomputed on every replay.
+	CounterEvidenceRefs   []EvidenceRef     `json:"counter_evidence_refs,omitempty"`
+	ConfidenceLadder      *ConfidenceLadder `json:"confidence_ladder,omitempty"`
+	WhatWouldChangeMyMind *string           `json:"what_would_change_my_mind,omitempty"`
 }
 
 // ArtifactVersionRef points to at least one versioned artifact.
@@ -160,11 +182,14 @@ type KnowledgeLoopEntry struct {
 
 	ArtifactVersionRef ArtifactVersionRef `json:"artifact_version_ref"`
 
-	WhyKind           WhyKind       `json:"why_kind" db:"why_kind"`
-	WhyText           string        `json:"why_text" db:"why_text"`
-	WhyConfidence     *float32      `json:"why_confidence,omitempty" db:"why_confidence"`
-	WhyEvidenceRefIDs []string      `json:"why_evidence_ref_ids" db:"why_evidence_ref_ids"`
-	WhyEvidenceRefs   []EvidenceRef `json:"why_evidence_refs"`
+	WhyKind                  WhyKind           `json:"why_kind" db:"why_kind"`
+	WhyText                  string            `json:"why_text" db:"why_text"`
+	WhyConfidence            *float32          `json:"why_confidence,omitempty" db:"why_confidence"`
+	WhyEvidenceRefIDs        []string          `json:"why_evidence_ref_ids" db:"why_evidence_ref_ids"`
+	WhyEvidenceRefs          []EvidenceRef     `json:"why_evidence_refs"`
+	WhyCounterEvidenceRefs   []EvidenceRef     `json:"why_counter_evidence_refs,omitempty"`
+	WhyConfidenceLadder      *ConfidenceLadder `json:"why_confidence_ladder,omitempty" db:"why_confidence_ladder"`
+	WhyWhatWouldChangeMyMind *string           `json:"why_what_would_change_my_mind,omitempty" db:"why_what_would_change_my_mind"`
 
 	ChangeSummary   []byte `json:"change_summary,omitempty" db:"change_summary"`
 	ContinueContext []byte `json:"continue_context,omitempty" db:"continue_context"`
