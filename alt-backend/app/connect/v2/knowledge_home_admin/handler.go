@@ -254,10 +254,10 @@ func (h *Handler) GetFeatureFlags(
 	_ *connect.Request[knowledgehomev1.GetFeatureFlagsRequest],
 ) (*connect.Response[knowledgehomev1.GetFeatureFlagsResponse], error) {
 	return connect.NewResponse(&knowledgehomev1.GetFeatureFlagsResponse{
-		EnableHomePage:      h.cfg.EnableHomePage,
-		EnableTracking:      h.cfg.EnableTracking,
-		EnableProjectionV2:  h.cfg.EnableProjectionV2,
-		RolloutPercentage:   int32(h.cfg.RolloutPercentage),
+		EnableHomePage:     h.cfg.EnableHomePage,
+		EnableTracking:     h.cfg.EnableTracking,
+		EnableProjectionV2: h.cfg.EnableProjectionV2,
+		RolloutPercentage:  int32(h.cfg.RolloutPercentage),
 		// EnableRecallRail intentionally absent — ADR-000913 §D-9
 		// retired the flag once the recall rail merged into the
 		// canonical Home payload. The proto field stays in the wire
