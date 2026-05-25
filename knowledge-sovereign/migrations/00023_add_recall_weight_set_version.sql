@@ -7,6 +7,11 @@
 -- score_breakdown is the explainable per-signal contribution row list.
 -- Empty array for legacy rows lets clients treat absence as "no
 -- breakdown available" without an extra nullability check.
+--
+-- recall_candidate_view lives in knowledge-sovereign-db since
+-- migrations-atlas/20260323100000_drop_sovereign_tables.sql; this
+-- migration must run against the sovereign database, not alt-db.
+
 ALTER TABLE recall_candidate_view
   ADD COLUMN IF NOT EXISTS weight_set_version TEXT NOT NULL DEFAULT 'v1_fixed',
   ADD COLUMN IF NOT EXISTS score_breakdown    JSONB NOT NULL DEFAULT '[]'::jsonb;
