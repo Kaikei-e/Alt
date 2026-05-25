@@ -258,7 +258,10 @@ func (h *Handler) GetFeatureFlags(
 		EnableTracking:      h.cfg.EnableTracking,
 		EnableProjectionV2:  h.cfg.EnableProjectionV2,
 		RolloutPercentage:   int32(h.cfg.RolloutPercentage),
-		EnableRecallRail:    h.cfg.EnableRecallRail,
+		// EnableRecallRail intentionally absent — ADR-000913 §D-9
+		// retired the flag once the recall rail merged into the
+		// canonical Home payload. The proto field stays in the wire
+		// shape for backward compatibility but reads as 0/false.
 		EnableLens:          h.cfg.EnableLens,
 		EnableStreamUpdates: h.cfg.EnableStreamUpdates,
 		EnableSupersedeUx:   h.cfg.EnableSupersedeUX,

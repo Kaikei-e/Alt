@@ -30,7 +30,6 @@ var streamingProcedures = map[string]bool{
 	"/alt.morning_letter.v2.MorningLetterService/StreamChat":                 true,
 	"/alt.tts.v1.TTSService/SynthesizeStream":                                true,
 	"/alt.knowledge_home.v1.KnowledgeHomeService/StreamKnowledgeHomeUpdates": true,
-	"/alt.knowledge_home.v1.KnowledgeHomeService/StreamRecallRailUpdates":    true,
 	"/alt.knowledge.loop.v1.KnowledgeLoopService/StreamKnowledgeLoopUpdates": true,
 }
 

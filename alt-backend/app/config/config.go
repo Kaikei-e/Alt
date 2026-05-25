@@ -90,7 +90,6 @@ type KnowledgeHomeConfig struct {
 	EnableProjectionV2 bool   `json:"enable_projection_v2" env:"KNOWLEDGE_HOME_ENABLE_PROJECTION_V2" default:"false"`
 	RolloutPercentage  int    `json:"rollout_percentage" env:"KNOWLEDGE_HOME_ROLLOUT_PERCENTAGE" default:"0"`
 	AllowedUserIDs     string `json:"allowed_user_ids" env:"KNOWLEDGE_HOME_ALLOWED_USER_IDS" default:""`
-	EnableRecallRail   bool   `json:"enable_recall_rail" env:"KNOWLEDGE_HOME_ENABLE_RECALL_RAIL" default:"false"`
 	// RecallWeightSet pins which weights map the recall projector uses.
 	// ADR-000913 §D-9 (Twitter Heavy-Ranker grounding). "v1_fixed" is the
 	// pre-Heavy-Ranker default; "v2_heavy_ranker" introduces explicit

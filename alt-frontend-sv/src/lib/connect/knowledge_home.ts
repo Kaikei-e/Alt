@@ -384,53 +384,10 @@ function convertLens(proto: ProtoLens): LensData {
 	};
 }
 
-/**
- * @deprecated ADR-000913 §D-9. Recall candidates now flow through the
- * GetKnowledgeHome payload (`recallCandidates` field). PR 13 removes the
- * legacy GetRecallRail RPC after the deprecation watch window closes.
- */
-export async function getRecallRailCandidates(
-	transport: Transport,
-	limit: number = 5,
-): Promise<RecallCandidateData[]> {
-	const client = createKnowledgeHomeClient(transport);
-	const response = await client.getRecallRail({ limit });
-	return response.candidates.map(convertRecallCandidate);
-}
-
-/**
- * @deprecated ADR-000913 §D-9. Snooze now dispatches through
- * trackHomeAction("snooze", itemKey, { snooze_hours }). PR 13 removes the
- * legacy TrackRecallAction RPC after the deprecation watch window closes.
- */
-export async function snoozeRecallItem(
-	transport: Transport,
-	itemKey: string,
-	snoozeHours: number = 24,
-): Promise<void> {
-	const client = createKnowledgeHomeClient(transport);
-	await client.trackRecallAction({
-		actionType: "snooze",
-		itemKey,
-		snoozeHours,
-	});
-}
-
-/**
- * @deprecated ADR-000913 §D-9. Dismiss now dispatches through
- * trackHomeAction("dismiss_recall", itemKey). PR 13 removes the legacy
- * TrackRecallAction RPC after the deprecation watch window closes.
- */
-export async function dismissRecallItem(
-	transport: Transport,
-	itemKey: string,
-): Promise<void> {
-	const client = createKnowledgeHomeClient(transport);
-	await client.trackRecallAction({
-		actionType: "dismiss",
-		itemKey,
-	});
-}
+// ADR-000913 §D-9 removed the legacy getRecallRailCandidates /
+// snoozeRecallItem / dismissRecallItem helpers. Recall candidates now
+// arrive on the GetKnowledgeHome payload; snooze and dismiss dispatch
+// through trackHomeAction("snooze" | "dismiss_recall", itemKey, …).
 
 export async function listLenses(
 	transport: Transport,

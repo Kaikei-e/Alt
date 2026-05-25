@@ -9,7 +9,6 @@ const flagItems = $derived(
 				{ label: "Home Page", enabled: flags.enableHomePage },
 				{ label: "Tracking", enabled: flags.enableTracking },
 				{ label: "Projection V2", enabled: flags.enableProjectionV2 },
-				{ label: "Recall Rail", enabled: flags.enableRecallRail },
 				{ label: "Lens", enabled: flags.enableLens },
 				{ label: "Stream Updates", enabled: flags.enableStreamUpdates },
 				{ label: "Supersede UX", enabled: flags.enableSupersedeUx },

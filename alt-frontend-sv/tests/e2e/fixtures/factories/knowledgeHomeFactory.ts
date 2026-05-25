@@ -110,7 +110,6 @@ export const KNOWLEDGE_HOME_ITEM_SUPERSEDED = {
 export const FEATURE_FLAGS = [
 	{ name: "enable_knowledge_home_page", enabled: true },
 	{ name: "enable_knowledge_home_tracking", enabled: true },
-	{ name: "enable_recall_rail", enabled: true },
 	{ name: "enable_lens", enabled: false },
 	{ name: "enable_stream_updates", enabled: false },
 	{ name: "enable_supersede_ux", enabled: false },
@@ -120,9 +119,12 @@ export const FEATURE_FLAGS_WITH_LENS = FEATURE_FLAGS.map((f) =>
 	f.name === "enable_lens" ? { ...f, enabled: true } : f,
 );
 
-export const FEATURE_FLAGS_RECALL_DISABLED = FEATURE_FLAGS.map((f) =>
-	f.name === "enable_recall_rail" ? { ...f, enabled: false } : f,
-);
+// ADR-000913 §D-9: the legacy recall rail flag was retired with PR 13.
+// FEATURE_FLAGS_RECALL_DISABLED is preserved as an alias to the base
+// FEATURE_FLAGS so existing E2E fixtures keep compiling without breaking
+// their test intent (recall now flows unconditionally from the Home
+// payload — there is no per-flag disable).
+export const FEATURE_FLAGS_RECALL_DISABLED = FEATURE_FLAGS;
 
 export const FEATURE_FLAGS_WITH_SUPERSEDE = FEATURE_FLAGS.map((f) =>
 	f.name === "enable_supersede_ux" ? { ...f, enabled: true } : f,

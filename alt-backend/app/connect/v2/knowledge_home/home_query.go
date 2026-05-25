@@ -99,7 +99,6 @@ func (h *Handler) GetKnowledgeHome(
 			domain.FlagKnowledgeHomePage,
 			domain.FlagKnowledgeHomeTracking,
 			domain.FlagKnowledgeHomeProjectionV2,
-			domain.FlagRecallRail,
 			domain.FlagLensV0,
 			domain.FlagStreamUpdates,
 			domain.FlagSupersedeUX,
@@ -155,8 +154,11 @@ func (h *Handler) GetKnowledgeHome(
 		}
 	}
 
-	// Embed recall candidates if recall rail is enabled
-	if h.featureFlagPort != nil && h.featureFlagPort.IsEnabled(domain.FlagRecallRail, user.UserID) && h.recallRailUsecase != nil {
+	// ADR-000913 §D-9: recall candidates are now part of the canonical
+	// GetKnowledgeHome payload. The legacy FlagRecallRail gate was retired
+	// with PR 13; the rail surfaces unconditionally when the projector has
+	// candidates for the user.
+	if h.recallRailUsecase != nil {
 		candidates, err := h.recallRailUsecase.Execute(ctx, user.UserID, 5)
 		if err == nil {
 			for _, c := range candidates {

@@ -5,7 +5,6 @@ import (
 	"alt/port/feature_flag_port"
 	"alt/port/recall_candidate_port"
 	"context"
-	"fmt"
 	"log/slog"
 	"strings"
 
@@ -31,10 +30,9 @@ func NewRecallRailUsecase(
 }
 
 func (u *RecallRailUsecase) Execute(ctx context.Context, userID uuid.UUID, limit int) ([]domain.RecallCandidate, error) {
-	if u.featureFlag != nil && !u.featureFlag.IsEnabled(domain.FlagRecallRail, userID) {
-		return nil, fmt.Errorf("recall rail is not enabled for this user")
-	}
-
+	// ADR-000913 §D-9: the FlagRecallRail gate was retired with PR 13.
+	// Recall candidates are now part of the canonical Knowledge Home
+	// payload; the usecase always serves when invoked.
 	if limit <= 0 {
 		limit = 5
 	}

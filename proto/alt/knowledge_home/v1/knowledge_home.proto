@@ -5,6 +5,13 @@ package alt.knowledge_home.v1;
 option go_package = "alt/gen/proto/alt/knowledge_home/v1;knowledgehomev1";
 
 // KnowledgeHomeService provides the Knowledge Home API.
+//
+// ADR-000913 §D-9 removed the dedicated recall rail RPCs
+// (GetRecallRail / TrackRecallAction / StreamRecallRailUpdates) once
+// the GetKnowledgeHome payload and TrackHomeAction(snooze/dismiss_recall)
+// absorbed their semantics. The request / response message types are
+// kept in the file so unrelated migrations from the same proto file
+// keep applying cleanly; the rpc declarations themselves are gone.
 service KnowledgeHomeService {
   // GetKnowledgeHome returns the main Knowledge Home feed with today's digest.
   rpc GetKnowledgeHome(GetKnowledgeHomeRequest) returns (GetKnowledgeHomeResponse);
@@ -12,10 +19,6 @@ service KnowledgeHomeService {
   rpc TrackHomeItemsSeen(TrackHomeItemsSeenRequest) returns (TrackHomeItemsSeenResponse);
   // TrackHomeAction records a user action on a home item.
   rpc TrackHomeAction(TrackHomeActionRequest) returns (TrackHomeActionResponse);
-  // GetRecallRail returns recall candidates for the user.
-  rpc GetRecallRail(GetRecallRailRequest) returns (GetRecallRailResponse);
-  // TrackRecallAction records a recall action (snooze/dismiss/open).
-  rpc TrackRecallAction(TrackRecallActionRequest) returns (TrackRecallActionResponse);
   // CreateLens creates a new saved viewpoint.
   rpc CreateLens(CreateLensRequest) returns (CreateLensResponse);
   // UpdateLens creates a new version of an existing lens.
@@ -28,8 +31,6 @@ service KnowledgeHomeService {
   rpc SelectLens(SelectLensRequest) returns (SelectLensResponse);
   // StreamKnowledgeHomeUpdates streams real-time updates for the home feed.
   rpc StreamKnowledgeHomeUpdates(StreamKnowledgeHomeUpdatesRequest) returns (stream StreamKnowledgeHomeUpdatesResponse);
-  // StreamRecallRailUpdates streams real-time updates for the recall rail.
-  rpc StreamRecallRailUpdates(StreamRecallRailUpdatesRequest) returns (stream StreamRecallRailUpdatesResponse);
 }
 
 // GetKnowledgeHomeRequest is the request for GetKnowledgeHome.
