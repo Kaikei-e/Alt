@@ -7,12 +7,11 @@
  * sentence boundaries.
  */
 
-import { createClientTransport, synthesizeSpeechStream } from "$lib/connect";
 import {
 	createSeamlessTtsPlayer,
-	splitTextForTts,
 	type SeamlessTtsPlayer,
 } from "$lib/utils/audio";
+import { runTtsStreamLoop } from "$lib/utils/ttsStream";
 
 type TtsState = "idle" | "loading" | "playing" | "error";
 
@@ -56,36 +55,24 @@ export function useTtsPlayback(): TtsPlayback {
 			return;
 		}
 
-		const transport = createClientTransport();
-		const chunks = splitTextForTts(text);
-
 		let player: SeamlessTtsPlayer | null = null;
 		try {
 			player = createSeamlessTtsPlayer();
 			currentPlayer = player;
 			state = "loading";
 
-			for (const textChunk of chunks) {
-				if (cancelled) break;
-
-				const stream = synthesizeSpeechStream(transport, {
-					text: textChunk,
-					voice: options?.voice,
-					speed: options?.speed,
-				});
-
-				for await (const chunk of stream) {
-					if (cancelled) break;
-					await player.append(chunk.audioWav);
+			await runTtsStreamLoop({
+				player,
+				text,
+				voice: options?.voice,
+				speed: options?.speed,
+				isCancelled: () => cancelled,
+				onChunkAppended: () => {
 					if (state === "loading") {
 						state = "playing";
 					}
-				}
-			}
-
-			if (!cancelled) {
-				await player.done();
-			}
+				},
+			});
 		} catch (err) {
 			if (!cancelled) {
 				error = err instanceof Error ? err.message : "Unknown TTS error";

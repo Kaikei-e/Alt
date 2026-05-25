@@ -1,13 +1,30 @@
 <script lang="ts">
-import type { Snippet } from "svelte";
+import { type Snippet, setContext } from "svelte";
 import { navigating } from "$app/state";
 import ResponsiveLayout from "$lib/components/layout/ResponsiveLayout.svelte";
 import { SystemLoader } from "$lib/components/ui/system-loader";
 import { getLoadingStore } from "$lib/stores/loading.svelte";
+import {
+	createTtsPlaybackStore,
+	TTS_PLAYBACK_KEY,
+} from "$lib/stores/ttsPlayback.svelte";
+import {
+	createTtsPreferences,
+	TTS_PREFERENCES_KEY,
+} from "$lib/stores/ttsPreferences.svelte";
 
 let { children }: { children: Snippet } = $props();
 
 const loadingStore = getLoadingStore();
+
+// TTS stores are scoped to the (app) layout: client-only, auth-gated, and
+// shared by mobile/desktop callers. The mobile mini-player is mounted via
+// ResponsiveLayout below.
+const ttsPlayback = createTtsPlaybackStore();
+setContext(TTS_PLAYBACK_KEY, ttsPlayback);
+
+const ttsPreferences = createTtsPreferences();
+setContext(TTS_PREFERENCES_KEY, ttsPreferences);
 
 // Safety net: if navigation stays stuck for too long, hide the loader
 const NAVIGATION_TIMEOUT_MS = 10_000;
