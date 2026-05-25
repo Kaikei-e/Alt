@@ -42,6 +42,13 @@ export interface WhyEvidenceRef {
 	label?: string;
 }
 
+export interface ScoreBreakdownRow {
+	signalCode: string;
+	weight: number;
+	contribution: number;
+	isNegative: boolean;
+}
+
 interface Props {
 	kind?: WhyKindKey;
 	text: string;
@@ -49,6 +56,13 @@ interface Props {
 	evidenceRefs?: WhyEvidenceRef[];
 	counterEvidenceRefs?: WhyEvidenceRef[];
 	whatWouldChangeMyMind?: string;
+	/**
+	 * ADR-000913 §D-9 — per-signal contribution rows from the recall
+	 * projector. Rendered behind an expand toggle so the default state
+	 * stays the Newspaper-Style claim; the breakdown is one tap away for
+	 * users who want to see why the rail scored an item the way it did.
+	 */
+	scoreBreakdown?: ScoreBreakdownRow[];
 }
 
 const {
@@ -58,6 +72,7 @@ const {
 	evidenceRefs = [],
 	counterEvidenceRefs = [],
 	whatWouldChangeMyMind,
+	scoreBreakdown = [],
 }: Props = $props();
 
 // Newspaper-style banner: "WHY · PATTERN" / "WHY · CHANGE" / etc.
@@ -101,6 +116,14 @@ const counterCount = $derived(counterEvidenceRefs.length);
 
 function toggleCounter() {
 	counterExpanded = !counterExpanded;
+}
+
+let breakdownExpanded = $state(false);
+const hasScoreBreakdown = $derived(scoreBreakdown.length > 0);
+const breakdownCount = $derived(scoreBreakdown.length);
+
+function toggleBreakdown() {
+	breakdownExpanded = !breakdownExpanded;
 }
 </script>
 
@@ -194,6 +217,47 @@ function toggleCounter() {
 				<span class="why-refs-label">WHAT WOULD CHANGE MY MIND</span>
 			</h3>
 			<p class="why-falsifier-text">{whatWouldChangeMyMind}</p>
+		</section>
+	{/if}
+
+	{#if hasScoreBreakdown}
+		<section class="why-refs why-refs--breakdown">
+			<h3 class="why-refs-heading">
+				<button
+					type="button"
+					class="why-counter-toggle"
+					onclick={toggleBreakdown}
+					aria-expanded={breakdownExpanded}
+					aria-controls="why-score-breakdown-body"
+				>
+					<span class="why-counter-caret" aria-hidden="true">
+						{breakdownExpanded ? "▾" : "▸"}
+					</span>
+					<span class="why-refs-label">SCORE BREAKDOWN</span>
+					<span class="why-refs-count">{breakdownCount}</span>
+				</button>
+			</h3>
+			<ol
+				id="why-score-breakdown-body"
+				class="why-refs-list why-refs-list--breakdown"
+				class:why-refs-list--collapsed={!breakdownExpanded}
+				aria-hidden={!breakdownExpanded}
+			>
+				{#each scoreBreakdown as row (row.signalCode)}
+					<li
+						class="why-refs-item why-breakdown-row"
+						class:why-breakdown-row--negative={row.isNegative}
+					>
+						<span class="why-refs-id">{row.signalCode}</span>
+						<span class="why-refs-sep" aria-hidden="true">·</span>
+						<span class="why-breakdown-weight">w {row.weight.toFixed(2)}</span>
+						<span class="why-refs-sep" aria-hidden="true">·</span>
+						<span class="why-breakdown-contribution">
+							{row.contribution >= 0 ? "+" : ""}{row.contribution.toFixed(2)}
+						</span>
+					</li>
+				{/each}
+			</ol>
 		</section>
 	{/if}
 </section>
@@ -410,6 +474,29 @@ function toggleCounter() {
 	font-size: 0.88rem;
 	line-height: 1.4;
 	color: var(--alt-slate, #666);
+}
+
+/* Score breakdown rows: monospace signal code + signed contribution.
+   Negative contributions get a terracotta border-left so they read as
+   "this dampened the score" without colour-only encoding. */
+.why-refs-list--breakdown {
+	max-height: 12rem;
+	opacity: 1;
+}
+
+.why-breakdown-row {
+	padding-left: 0.4rem;
+	border-left: 3px solid transparent;
+}
+
+.why-breakdown-row--negative {
+	border-left-color: var(--alt-terracotta, #b85450);
+	color: var(--alt-terracotta, #b85450);
+}
+
+.why-breakdown-weight,
+.why-breakdown-contribution {
+	font-family: var(--font-mono, "IBM Plex Mono", ui-monospace, monospace);
 }
 
 /* Reduced motion: drop the disclosure transition. */

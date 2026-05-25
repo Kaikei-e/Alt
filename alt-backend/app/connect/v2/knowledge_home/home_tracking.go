@@ -2,6 +2,7 @@ package knowledge_home
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 
 	"connectrpc.com/connect"
@@ -82,8 +83,41 @@ func (h *Handler) TrackHomeAction(
 		metadataJSON = *req.Msg.MetadataJson
 	}
 
-	if err := h.trackActionUsecase.Execute(ctx, user.UserID, user.TenantID, req.Msg.ActionType, req.Msg.ItemKey, metadataJSON); err != nil {
-		return nil, errorhandler.HandleInternalError(ctx, h.logger, err, "TrackHomeAction")
+	// ADR-000913 §D-9 — TrackHomeAction absorbs the legacy
+	// TrackRecallAction snooze/dismiss path. Older clients route
+	// recall actions through the deprecated RPC; new clients send them
+	// through here. dispatch order: snooze/dismiss → recall usecases,
+	// everything else → trackActionUsecase.
+	switch req.Msg.ActionType {
+	case "snooze":
+		if h.recallSnoozeUsecase == nil {
+			return nil, connect.NewError(connect.CodeUnimplemented,
+				fmt.Errorf("recall snooze is not enabled on this deployment"))
+		}
+		snoozeHours := 24
+		if metadataJSON != "" {
+			var meta map[string]any
+			if err := json.Unmarshal([]byte(metadataJSON), &meta); err == nil {
+				if v, ok := meta["snooze_hours"].(float64); ok && v > 0 {
+					snoozeHours = int(v)
+				}
+			}
+		}
+		if err := h.recallSnoozeUsecase.Execute(ctx, user.UserID, user.TenantID, req.Msg.ItemKey, snoozeHours); err != nil {
+			return nil, errorhandler.HandleInternalError(ctx, h.logger, err, "TrackHomeAction.snooze")
+		}
+	case "dismiss_recall":
+		if h.recallDismissUsecase == nil {
+			return nil, connect.NewError(connect.CodeUnimplemented,
+				fmt.Errorf("recall dismiss is not enabled on this deployment"))
+		}
+		if err := h.recallDismissUsecase.Execute(ctx, user.UserID, user.TenantID, req.Msg.ItemKey); err != nil {
+			return nil, errorhandler.HandleInternalError(ctx, h.logger, err, "TrackHomeAction.dismiss_recall")
+		}
+	default:
+		if err := h.trackActionUsecase.Execute(ctx, user.UserID, user.TenantID, req.Msg.ActionType, req.Msg.ItemKey, metadataJSON); err != nil {
+			return nil, errorhandler.HandleInternalError(ctx, h.logger, err, "TrackHomeAction")
+		}
 	}
 
 	if h.metrics != nil {

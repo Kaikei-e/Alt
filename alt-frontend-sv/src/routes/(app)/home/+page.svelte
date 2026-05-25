@@ -432,7 +432,7 @@ onMount(async () => {
 			<div class="desk-rail">
 				<RecallRail
 					candidates={recall.candidates}
-					unavailable={Boolean(recall.error)}
+					unavailable={false}
 					onSnooze={(key: string) => recall.snooze(key)}
 					onDismiss={(key: string) => recall.dismiss(key)}
 					onOpen={handleRecallOpen}
@@ -479,7 +479,7 @@ onMount(async () => {
 
 		<MobileRecallSection
 			candidates={recall.candidates}
-			unavailable={Boolean(recall.error)}
+			unavailable={false}
 			onSnooze={(key: string) => recall.snooze(key)}
 			onDismiss={(key: string) => recall.dismiss(key)}
 			onOpen={handleRecallOpen}

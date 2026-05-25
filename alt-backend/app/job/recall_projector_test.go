@@ -107,7 +107,7 @@ func TestProcessRecallSignals(t *testing.T) {
 		require.Len(t, candidatePort.upserted, 1)
 		assert.Equal(t, "article:old-item", candidatePort.upserted[0].ItemKey)
 		assert.Equal(t, domain.ReasonOpenedNotRevisited, candidatePort.upserted[0].Reasons[0].Type)
-		assert.InDelta(t, weightOpenedNotRevisited, candidatePort.upserted[0].RecallScore, 0.01)
+		assert.InDelta(t, 0.30, candidatePort.upserted[0].RecallScore, 0.01)
 	})
 
 	t.Run("SignalOpened older than 1h creates candidate", func(t *testing.T) {
@@ -176,7 +176,7 @@ func TestProcessRecallSignals(t *testing.T) {
 		require.NoError(t, err)
 		require.Len(t, candidatePort.upserted, 1)
 		assert.Equal(t, domain.ReasonRelatedToAugurQ, candidatePort.upserted[0].Reasons[0].Type)
-		assert.InDelta(t, weightRelatedToAugur, candidatePort.upserted[0].RecallScore, 0.01)
+		assert.InDelta(t, 0.35, candidatePort.upserted[0].RecallScore, 0.01)
 	})
 
 	t.Run("signal below minRecallScore is skipped", func(t *testing.T) {
@@ -197,7 +197,7 @@ func TestProcessRecallSignals(t *testing.T) {
 
 		err := processRecallSignals(context.Background(), listUsersPort, signalPort, candidatePort, nil)
 		require.NoError(t, err)
-		// weightTagInterest = 0.15, which is below minRecallScore = 0.2
+		// 0.15 = 0.15, which is below minRecallScore = 0.2
 		assert.Empty(t, candidatePort.upserted)
 	})
 
@@ -389,7 +389,7 @@ func TestScoreRecallCandidates(t *testing.T) {
 		err := ScoreRecallCandidates(context.Background(), userID, signals, candidatePort)
 		require.NoError(t, err)
 		require.Len(t, candidatePort.upserted, 1)
-		expectedScore := weightOpenedNotRevisited + weightRelatedToAugur
+		expectedScore := 0.30 + 0.35
 		assert.InDelta(t, expectedScore, candidatePort.upserted[0].RecallScore, 0.01)
 		assert.Len(t, candidatePort.upserted[0].Reasons, 2)
 	})

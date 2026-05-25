@@ -15,6 +15,14 @@ const (
 	SignalPulseFollowup      = "pulse_followup"
 	SignalTagInterest        = "tag_interest"
 	SignalTagClicked         = "tag_clicked"
+
+	// ADR-000913 §D-9 negative recall signals. Heavy-Ranker grounding from
+	// Twitter's the-algorithm-ml introduces explicit negative weights so
+	// content the user has already pushed away does not keep cycling back
+	// into the recall rail. Producer wiring is tracked separately; the
+	// scorer treats absence as 0 contribution.
+	SignalRecentlyDismissed    = "recently_dismissed"
+	SignalLowSummaryConfidence = "low_summary_confidence"
 )
 
 // RecallSignal represents a user interaction signal that feeds the recall scoring algorithm.

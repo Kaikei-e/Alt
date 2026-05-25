@@ -1,58 +1,44 @@
 /**
  * Hook for RecallRail state management.
- * Fetches recall candidates and provides snooze/dismiss actions.
+ *
+ * ADR-000913 §D-9 single-source migration: candidates flow only from the
+ * GetKnowledgeHome payload (consumed via useKnowledgeHome). Snooze and
+ * dismiss dispatch through the unified TrackHomeAction RPC so the legacy
+ * GetRecallRail / TrackRecallAction endpoints can retire.
  */
-import { ConnectError, Code } from "@connectrpc/connect";
-import {
-	createClientTransport,
-	getRecallRailCandidates,
-	snoozeRecallItem,
-	dismissRecallItem,
-} from "$lib/connect";
+import { createClientTransport, trackHomeAction } from "$lib/connect";
 import type { RecallCandidateData } from "$lib/connect/knowledge_home";
 
 export function useRecallRail() {
 	let candidates = $state<RecallCandidateData[]>([]);
-	let loading = $state(false);
-	let error = $state<Error | null>(null);
-
-	const fetchCandidates = async (limit = 5) => {
-		try {
-			loading = true;
-			error = null;
-			const transport = createClientTransport();
-			candidates = await getRecallRailCandidates(transport, limit);
-		} catch (err) {
-			if (err instanceof ConnectError && err.code === Code.PermissionDenied) {
-				// Feature not enabled — not an error
-				candidates = [];
-				return;
-			}
-			error = err instanceof Error ? err : new Error("Unknown error");
-		} finally {
-			loading = false;
-		}
-	};
 
 	const snooze = async (itemKey: string, hours = 24) => {
-		// Optimistic removal
+		// Optimistic removal: keep the rail responsive even if the backend
+		// call lags. The server-side projection is idempotent — replays
+		// of the same snooze are a no-op.
 		candidates = candidates.filter((c) => c.itemKey !== itemKey);
 		try {
 			const transport = createClientTransport();
-			await snoozeRecallItem(transport, itemKey, hours);
+			await trackHomeAction(
+				transport,
+				"snooze",
+				itemKey,
+				JSON.stringify({ snooze_hours: hours }),
+			);
 		} catch {
-			// Fire-and-forget
+			// Fire-and-forget — the recall rail must not surface transient
+			// network failures as blocking errors. The next Home payload
+			// refresh will reconcile state.
 		}
 	};
 
 	const dismiss = async (itemKey: string) => {
-		// Optimistic removal
 		candidates = candidates.filter((c) => c.itemKey !== itemKey);
 		try {
 			const transport = createClientTransport();
-			await dismissRecallItem(transport, itemKey);
+			await trackHomeAction(transport, "dismiss_recall", itemKey);
 		} catch {
-			// Fire-and-forget
+			// Fire-and-forget.
 		}
 	};
 
@@ -65,13 +51,6 @@ export function useRecallRail() {
 		get candidates() {
 			return candidates;
 		},
-		get loading() {
-			return loading;
-		},
-		get error() {
-			return error;
-		},
-		fetchCandidates,
 		setCandidates,
 		snooze,
 		dismiss,
