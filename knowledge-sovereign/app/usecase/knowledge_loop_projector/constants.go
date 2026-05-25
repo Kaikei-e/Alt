@@ -146,4 +146,22 @@ const AggregateLoopSession = "knowledge_loop_session"
 // passes the new fields through to the alt.knowledge.loop.v1 wire types.
 // Bump triggers a full reproject so all historical entries gain the v2
 // fields deterministically.
-const WhyMappingVersion = 11
+//
+// v12 (2026-05-25): ADR-000907 epistemic-change review driver lands. The
+// projector populates review_reason on every entry via decideReviewReason
+// (pure function of SurfaceScoreInputs). Sovereign proto + DB schema gain
+// the review_reason column (DEFAULT 'none', CHECK IN canonical set).
+// Bump triggers a full reproject so all historical Review-bucket entries
+// gain a deterministic reason and the FE can render the guidance line
+// without inferring from supersede / staleness signals individually.
+//
+// v13 (2026-05-25): ADR-000913 §D-10 persist-stage calibrated uncertainty
+// lands. SurfaceScoreInputs gains ConfidenceLadder; decideBucketV2 demotes
+// NOW/CONTINUE to REVIEW when ConfidenceLadder == SPECULATION. Same
+// priority as ActOutcomeSignal ≤ -2; CHANGED still wins. The recap-worker
+// publishes `persist_stage_confidence_ladder` on TopicSnapshotted /
+// SurfacePlanRecomputed payloads; the projector reads it via
+// parseSurfaceScoreInputs. Bump triggers a full reproject so all entries
+// produced before the recap-worker started emitting the ladder pick up
+// the default (UNSPECIFIED → no demotion).
+const WhyMappingVersion = 13

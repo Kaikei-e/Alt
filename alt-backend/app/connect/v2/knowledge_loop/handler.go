@@ -581,6 +581,7 @@ func toProtoEntry(e *domain.KnowledgeLoopEntry) *loopv1.KnowledgeLoopEntry {
 	if e.WhyWhatWouldChangeMyMind != nil && *e.WhyWhatWouldChangeMyMind != "" {
 		pb.WhyPrimary.WhatWouldChangeMyMind = e.WhyWhatWouldChangeMyMind
 	}
+	pb.ReviewReason = mapReviewReason(e.ReviewReason)
 	if e.SourceObservedAt != nil {
 		pb.SourceObservedAt = timestamppb.New(*e.SourceObservedAt)
 	}
@@ -905,6 +906,22 @@ func mapLoopPriority(p domain.LoopPriority) loopv1.LoopPriority {
 	default:
 		return loopv1.LoopPriority_LOOP_PRIORITY_UNSPECIFIED
 	}
+}
+
+func mapReviewReason(r domain.ReviewReason) loopv1.ReviewReason {
+	switch r {
+	case domain.ReviewReasonStaleness:
+		return loopv1.ReviewReason_REVIEW_REASON_STALENESS
+	case domain.ReviewReasonContradiction:
+		return loopv1.ReviewReason_REVIEW_REASON_CONTRADICTION
+	case domain.ReviewReasonVersionDrift:
+		return loopv1.ReviewReason_REVIEW_REASON_VERSION_DRIFT
+	case domain.ReviewReasonUnfinishedThread:
+		return loopv1.ReviewReason_REVIEW_REASON_UNFINISHED_THREAD
+	case domain.ReviewReasonNone:
+		return loopv1.ReviewReason_REVIEW_REASON_NONE
+	}
+	return loopv1.ReviewReason_REVIEW_REASON_UNSPECIFIED
 }
 
 func mapConfidenceLadder(c domain.ConfidenceLadder) loopv1.ConfidenceLadder {

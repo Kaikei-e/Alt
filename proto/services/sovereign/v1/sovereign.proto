@@ -861,7 +861,24 @@ message KnowledgeLoopEntry {
   LoopVisibilityState visibility_state = 27;
   LoopCompletionState completion_state = 28;
 
+  // ADR-000907 epistemic-change review driver. The projector populates this
+  // when surface_bucket=REVIEW; UNSPECIFIED / NONE are wire-equivalent for
+  // "no review driver" and let older clients ignore the field.
+  ReviewReason review_reason = 29;
+
   reserved "updated_at", "projected_at", "wall_clock", "ingest_time";
+}
+
+// ReviewReason mirrors alt.knowledge.loop.v1.ReviewReason. The projector
+// uses it internally so the BFF can pass the value through to the public
+// proto without remapping.
+enum ReviewReason {
+  REVIEW_REASON_UNSPECIFIED = 0;
+  REVIEW_REASON_STALENESS = 1;
+  REVIEW_REASON_CONTRADICTION = 2;
+  REVIEW_REASON_VERSION_DRIFT = 3;
+  REVIEW_REASON_UNFINISHED_THREAD = 4;
+  REVIEW_REASON_NONE = 5;
 }
 
 message KnowledgeLoopSessionState {

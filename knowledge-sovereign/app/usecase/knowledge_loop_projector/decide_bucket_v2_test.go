@@ -4,6 +4,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/require"
+
 	sovereignv1 "knowledge-sovereign/gen/proto/services/sovereign/v1"
 )
 
@@ -385,4 +387,120 @@ func TestDecideBucketV2_Determinism(t *testing.T) {
 			t.Fatalf("decideBucketV2 not deterministic at iter %d: got %v want %v", i, got, want)
 		}
 	}
+}
+
+// decideReviewReason (ADR-000907) is the epistemic-change driver for the
+// Review bucket. Priority: version_drift > contradiction > unfinished_thread
+// > staleness > none. The function is pure; reproject must produce the same
+// reason for the same SurfaceScoreInputs.
+
+func TestDecideReviewReason_VersionDriftWins(t *testing.T) {
+	t.Parallel()
+
+	got := decideReviewReason(SurfaceScoreInputs{
+		VersionDriftCount:  1,
+		ContradictionCount: 1,
+		HasAugurLink:       true,
+		StalenessScore:     4,
+	})
+	require.Equal(t, sovereignv1.ReviewReason_REVIEW_REASON_VERSION_DRIFT, got,
+		"version_drift must outrank every other review signal")
+}
+
+func TestDecideReviewReason_ContradictionOverStaleness(t *testing.T) {
+	t.Parallel()
+
+	got := decideReviewReason(SurfaceScoreInputs{
+		ContradictionCount: 1,
+		StalenessScore:     4,
+	})
+	require.Equal(t, sovereignv1.ReviewReason_REVIEW_REASON_CONTRADICTION, got,
+		"contradiction must outrank staleness")
+}
+
+func TestDecideReviewReason_UnfinishedAugurThread(t *testing.T) {
+	t.Parallel()
+
+	got := decideReviewReason(SurfaceScoreInputs{
+		HasAugurLink:   true,
+		StalenessScore: 4,
+	})
+	require.Equal(t, sovereignv1.ReviewReason_REVIEW_REASON_UNFINISHED_THREAD, got)
+
+	gotByCount := decideReviewReason(SurfaceScoreInputs{
+		QuestionContinuationScore: 2,
+	})
+	require.Equal(t, sovereignv1.ReviewReason_REVIEW_REASON_UNFINISHED_THREAD, gotByCount,
+		"non-zero QuestionContinuationScore must also count as an unfinished thread")
+}
+
+func TestDecideReviewReason_StalenessOnly(t *testing.T) {
+	t.Parallel()
+
+	got := decideReviewReason(SurfaceScoreInputs{StalenessScore: 2})
+	require.Equal(t, sovereignv1.ReviewReason_REVIEW_REASON_STALENESS, got)
+}
+
+func TestDecideReviewReason_NoneWhenNoSignal(t *testing.T) {
+	t.Parallel()
+
+	got := decideReviewReason(SurfaceScoreInputs{})
+	require.Equal(t, sovereignv1.ReviewReason_REVIEW_REASON_NONE, got,
+		"empty inputs must yield NONE so the projection column has a deterministic default")
+}
+
+// ADR-000913 §D-10 — persist-stage confidence ladder demotion.
+// SPECULATION should demote a Now/Continue placement to Review.
+
+func TestDecideBucketV2_SpeculationLadder_DemotesToReview(t *testing.T) {
+	t.Parallel()
+
+	got := decideBucketV2(SurfaceScoreInputs{
+		TopicOverlapCount: 3,
+		EventType:         EventSummaryVersionCreated,
+		ConfidenceLadder:  int32(sovereignv1.ConfidenceLadder_CONFIDENCE_LADDER_SPECULATION),
+	})
+	require.Equal(t, sovereignv1.SurfaceBucket_SURFACE_BUCKET_REVIEW, got,
+		"SPECULATION confidence must demote NOW signals to Review")
+}
+
+func TestDecideBucketV2_VerifiedLadder_DoesNotDemoteNow(t *testing.T) {
+	t.Parallel()
+
+	got := decideBucketV2(SurfaceScoreInputs{
+		TopicOverlapCount: 3,
+		EventType:         EventSummaryVersionCreated,
+		ConfidenceLadder:  int32(sovereignv1.ConfidenceLadder_CONFIDENCE_LADDER_VERIFIED),
+	})
+	require.Equal(t, sovereignv1.SurfaceBucket_SURFACE_BUCKET_NOW, got,
+		"VERIFIED confidence must not demote NOW")
+}
+
+func TestDecideBucketV2_VersionDriftOverridesSpeculation(t *testing.T) {
+	t.Parallel()
+
+	got := decideBucketV2(SurfaceScoreInputs{
+		VersionDriftCount: 1,
+		ConfidenceLadder:  int32(sovereignv1.ConfidenceLadder_CONFIDENCE_LADDER_SPECULATION),
+	})
+	require.Equal(t, sovereignv1.SurfaceBucket_SURFACE_BUCKET_CHANGED, got,
+		"version drift must still surface as Changed even under SPECULATION confidence")
+}
+
+func TestParseSurfaceScoreInputs_ParsesConfidenceLadder(t *testing.T) {
+	t.Parallel()
+
+	occurredAt := time.Date(2026, 5, 25, 0, 0, 0, 0, time.UTC)
+	in := parseSurfaceScoreInputs(map[string]any{
+		"persist_stage_confidence_ladder": "speculation",
+	}, occurredAt)
+	require.Equal(t, int32(sovereignv1.ConfidenceLadder_CONFIDENCE_LADDER_SPECULATION), in.ConfidenceLadder)
+}
+
+func TestParseSurfaceScoreInputs_MissingLadder_DefaultsUnspecified(t *testing.T) {
+	t.Parallel()
+
+	occurredAt := time.Date(2026, 5, 25, 0, 0, 0, 0, time.UTC)
+	in := parseSurfaceScoreInputs(map[string]any{}, occurredAt)
+	require.Equal(t, int32(sovereignv1.ConfidenceLadder_CONFIDENCE_LADDER_UNSPECIFIED), in.ConfidenceLadder)
 }

@@ -115,6 +115,20 @@ type EvidenceRef struct {
 	Label string `json:"label,omitempty"`
 }
 
+// ReviewReason mirrors alt.knowledge.loop.v1.ReviewReason. The projector
+// populates it on every entry; the BFF passes the value through to the wire
+// type unchanged. Reproject-safe: derived from SurfaceScoreInputs.
+type ReviewReason string
+
+const (
+	ReviewReasonUnspecified      ReviewReason = ""
+	ReviewReasonStaleness        ReviewReason = "staleness"
+	ReviewReasonContradiction    ReviewReason = "contradiction"
+	ReviewReasonVersionDrift     ReviewReason = "version_drift"
+	ReviewReasonUnfinishedThread ReviewReason = "unfinished_thread"
+	ReviewReasonNone             ReviewReason = "none"
+)
+
 // ConfidenceLadder mirrors alt.knowledge.loop.v1.ConfidenceLadder so the
 // alt-backend domain can carry the projector's qualitative tier through to
 // the wire response. Reproject-safe: pure function of WhyKind upstream.
@@ -190,6 +204,11 @@ type KnowledgeLoopEntry struct {
 	WhyCounterEvidenceRefs   []EvidenceRef     `json:"why_counter_evidence_refs,omitempty"`
 	WhyConfidenceLadder      *ConfidenceLadder `json:"why_confidence_ladder,omitempty" db:"why_confidence_ladder"`
 	WhyWhatWouldChangeMyMind *string           `json:"why_what_would_change_my_mind,omitempty" db:"why_what_would_change_my_mind"`
+
+	// ADR-000907 epistemic-change review driver. Populated by the projector
+	// via decideReviewReason. Empty (treated as "none") for older rows
+	// projected before v12.
+	ReviewReason ReviewReason `json:"review_reason,omitempty" db:"review_reason"`
 
 	ChangeSummary   []byte `json:"change_summary,omitempty" db:"change_summary"`
 	ContinueContext []byte `json:"continue_context,omitempty" db:"continue_context"`

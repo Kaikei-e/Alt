@@ -846,6 +846,10 @@ func (p *Projector) buildEntryFromEvent(
 	if plannerVersion == sovereignv1.SurfacePlannerVersion_SURFACE_PLANNER_VERSION_V2 {
 		entry.SurfaceScoreInputs = marshalSurfaceScoreInputs(inputs)
 	}
+	// ADR-000907: review_reason is derived from the same SurfaceScoreInputs
+	// the bucket decision used, so reproject converges to the same value
+	// without consulting latest projection state.
+	entry.ReviewReason = decideReviewReason(inputs)
 	return entry, nil
 }
 

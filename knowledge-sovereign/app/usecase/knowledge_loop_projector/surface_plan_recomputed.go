@@ -168,7 +168,29 @@ func parseSurfaceScoreInputs(m map[string]any, occurredAt time.Time) SurfaceScor
 	if v, ok := pickUint32Field(m, "contradiction_count", "contradictionCount"); ok {
 		in.ContradictionCount = v
 	}
+	// ADR-000913 §D-10 persist-stage confidence ladder. The recap-worker
+	// publish path emits one of "speculation" / "pattern" / "evidence" /
+	// "verified" per topic snapshot; we map it to the proto enum so
+	// decideBucketV2 can demote SPECULATION placements. Missing field
+	// stays as UNSPECIFIED so older payloads are no-ops.
+	if v := pickAnyStringField(m, "persist_stage_confidence_ladder", "persistStageConfidenceLadder"); v != "" {
+		in.ConfidenceLadder = int32(parseConfidenceLadderString(v))
+	}
 	return in
+}
+
+func parseConfidenceLadderString(s string) sovereignv1.ConfidenceLadder {
+	switch s {
+	case "speculation":
+		return sovereignv1.ConfidenceLadder_CONFIDENCE_LADDER_SPECULATION
+	case "pattern":
+		return sovereignv1.ConfidenceLadder_CONFIDENCE_LADDER_PATTERN
+	case "evidence":
+		return sovereignv1.ConfidenceLadder_CONFIDENCE_LADDER_EVIDENCE
+	case "verified":
+		return sovereignv1.ConfidenceLadder_CONFIDENCE_LADDER_VERIFIED
+	}
+	return sovereignv1.ConfidenceLadder_CONFIDENCE_LADDER_UNSPECIFIED
 }
 
 func pickAnyField(m map[string]any, keys ...string) (any, bool) {

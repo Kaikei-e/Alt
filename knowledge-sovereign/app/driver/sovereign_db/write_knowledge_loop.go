@@ -51,7 +51,8 @@ INSERT INTO knowledge_loop_entries (
   change_summary, continue_context, decision_options, act_targets,
   superseded_by_entry_key, dismiss_state, visibility_state, completion_state,
   render_depth_hint, loop_priority,
-  surface_planner_version, surface_score_inputs
+  surface_planner_version, surface_score_inputs,
+  review_reason
 ) VALUES (
   $1, $2, $3, $4, $5,
   $6, $7,
@@ -62,7 +63,8 @@ INSERT INTO knowledge_loop_entries (
   $20, $21, $22,
   $23, $24, $25, $26,
   $27, $28, $29, $30,
-  $31, $32, $33, $34
+  $31, $32, $33, $34,
+  $35
 )
 ON CONFLICT (user_id, lens_mode_id, entry_key) DO UPDATE SET
   proposed_stage         = EXCLUDED.proposed_stage,
@@ -95,7 +97,8 @@ ON CONFLICT (user_id, lens_mode_id, entry_key) DO UPDATE SET
   render_depth_hint      = EXCLUDED.render_depth_hint,
   loop_priority          = EXCLUDED.loop_priority,
   surface_planner_version = EXCLUDED.surface_planner_version,
-  surface_score_inputs   = EXCLUDED.surface_score_inputs
+  surface_score_inputs   = EXCLUDED.surface_score_inputs,
+  review_reason          = EXCLUDED.review_reason
 WHERE knowledge_loop_entries.projection_seq_hiwater <= EXCLUDED.projection_seq_hiwater
 RETURNING projection_revision, projection_seq_hiwater
 `
@@ -204,6 +207,7 @@ func (r *Repository) UpsertKnowledgeLoopEntry(
 		visibilityStateToDB(visibilityState), completionStateToDB(completionState),
 		int16(e.RenderDepthHint), loopPriorityToDB(e.LoopPriority),
 		plannerVersionToDB(e.SurfacePlannerVersion), e.SurfaceScoreInputs,
+		reviewReasonToDB(e.ReviewReason),
 	)
 	if err := row.Scan(&revision, &seqHiwater); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -928,6 +932,37 @@ func completionStateToDB(c sovereignv1.LoopCompletionState) string {
 	default:
 		return "open"
 	}
+}
+
+// reviewReasonToDB maps the proto enum to the DB CHECK value. Returns
+// "none" for UNSPECIFIED so the NOT NULL column always has a valid value
+// without callers needing to set the field explicitly.
+func reviewReasonToDB(r sovereignv1.ReviewReason) string {
+	switch r {
+	case sovereignv1.ReviewReason_REVIEW_REASON_STALENESS:
+		return "staleness"
+	case sovereignv1.ReviewReason_REVIEW_REASON_CONTRADICTION:
+		return "contradiction"
+	case sovereignv1.ReviewReason_REVIEW_REASON_VERSION_DRIFT:
+		return "version_drift"
+	case sovereignv1.ReviewReason_REVIEW_REASON_UNFINISHED_THREAD:
+		return "unfinished_thread"
+	}
+	return "none"
+}
+
+func reviewReasonFromDB(s string) sovereignv1.ReviewReason {
+	switch s {
+	case "staleness":
+		return sovereignv1.ReviewReason_REVIEW_REASON_STALENESS
+	case "contradiction":
+		return sovereignv1.ReviewReason_REVIEW_REASON_CONTRADICTION
+	case "version_drift":
+		return sovereignv1.ReviewReason_REVIEW_REASON_VERSION_DRIFT
+	case "unfinished_thread":
+		return sovereignv1.ReviewReason_REVIEW_REASON_UNFINISHED_THREAD
+	}
+	return sovereignv1.ReviewReason_REVIEW_REASON_NONE
 }
 
 // confidenceLadderToDB maps the proto enum to the DB CHECK value. Returns

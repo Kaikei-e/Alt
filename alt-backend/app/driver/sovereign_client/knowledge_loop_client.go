@@ -286,6 +286,7 @@ func domainEntryToProto(e *domain.KnowledgeLoopEntry) *sovereignv1.KnowledgeLoop
 	if e.WhyWhatWouldChangeMyMind != nil && *e.WhyWhatWouldChangeMyMind != "" {
 		pb.WhyPrimary.WhatWouldChangeMyMind = e.WhyWhatWouldChangeMyMind
 	}
+	pb.ReviewReason = reviewReasonToProto(e.ReviewReason)
 	return pb
 }
 
@@ -399,7 +400,40 @@ func protoEntryToDomain(pb *sovereignv1.KnowledgeLoopEntry) (*domain.KnowledgeLo
 			e.WhyWhatWouldChangeMyMind = pb.WhyPrimary.WhatWouldChangeMyMind
 		}
 	}
+	e.ReviewReason = reviewReasonFromProto(pb.ReviewReason)
 	return e, nil
+}
+
+func reviewReasonToProto(r domain.ReviewReason) sovereignv1.ReviewReason {
+	switch r {
+	case domain.ReviewReasonStaleness:
+		return sovereignv1.ReviewReason_REVIEW_REASON_STALENESS
+	case domain.ReviewReasonContradiction:
+		return sovereignv1.ReviewReason_REVIEW_REASON_CONTRADICTION
+	case domain.ReviewReasonVersionDrift:
+		return sovereignv1.ReviewReason_REVIEW_REASON_VERSION_DRIFT
+	case domain.ReviewReasonUnfinishedThread:
+		return sovereignv1.ReviewReason_REVIEW_REASON_UNFINISHED_THREAD
+	case domain.ReviewReasonNone:
+		return sovereignv1.ReviewReason_REVIEW_REASON_NONE
+	}
+	return sovereignv1.ReviewReason_REVIEW_REASON_UNSPECIFIED
+}
+
+func reviewReasonFromProto(r sovereignv1.ReviewReason) domain.ReviewReason {
+	switch r {
+	case sovereignv1.ReviewReason_REVIEW_REASON_STALENESS:
+		return domain.ReviewReasonStaleness
+	case sovereignv1.ReviewReason_REVIEW_REASON_CONTRADICTION:
+		return domain.ReviewReasonContradiction
+	case sovereignv1.ReviewReason_REVIEW_REASON_VERSION_DRIFT:
+		return domain.ReviewReasonVersionDrift
+	case sovereignv1.ReviewReason_REVIEW_REASON_UNFINISHED_THREAD:
+		return domain.ReviewReasonUnfinishedThread
+	case sovereignv1.ReviewReason_REVIEW_REASON_NONE:
+		return domain.ReviewReasonNone
+	}
+	return domain.ReviewReasonUnspecified
 }
 
 func confidenceLadderToProto(c domain.ConfidenceLadder) sovereignv1.ConfidenceLadder {

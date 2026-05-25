@@ -115,6 +115,16 @@ type SurfaceScoreInputs struct {
 	// hints; they do not change bucket selection. Reproject-safe — derived
 	// from event payload only.
 	ActOutcomeSignal int32
+
+	// ConfidenceLadder is the persist-stage confidence the recap-worker
+	// computed for the originating topic cluster (ADR-000913 §D-10,
+	// Bayesian RAG grounding). The recap pipeline emits a per-cluster ladder
+	// (speculation / pattern / evidence / verified) based on evidence
+	// density and soft-failure ratios; the projector reads it from the
+	// surface_plan_recomputed event payload and uses SPECULATION to demote
+	// Now/Continue placements to Review (same priority as ActOutcomeSignal
+	// ≤ -2). Reproject-safe — comes from event payload, not latest state.
+	ConfidenceLadder int32
 }
 
 // decideBucketV2 picks a SurfaceBucket from the score inputs. The order
@@ -154,6 +164,14 @@ func decideBucketV2(in SurfaceScoreInputs) sovereignv1.SurfaceBucket {
 	// stale_save = -1) remain bucket-neutral so a partial signal cannot
 	// flap an entry between Now and Review.
 	if in.ActOutcomeSignal <= -2 {
+		return sovereignv1.SurfaceBucket_SURFACE_BUCKET_REVIEW
+	}
+	// ADR-000913 §D-10 demotion: SPECULATION-grade confidence from the
+	// recap persist stage means the cluster the entry belongs to has too
+	// few evidence anchors to be promoted. Route to Review so the user can
+	// re-evaluate when more evidence accumulates. Same priority as the
+	// negative ActOutcomeSignal demotion — CHANGED still wins.
+	if in.ConfidenceLadder == int32(sovereignv1.ConfidenceLadder_CONFIDENCE_LADDER_SPECULATION) {
 		return sovereignv1.SurfaceBucket_SURFACE_BUCKET_REVIEW
 	}
 
@@ -196,6 +214,32 @@ func decideBucketV2(in SurfaceScoreInputs) sovereignv1.SurfaceBucket {
 
 	// v1 fallback for events that lack any of the v2 evidence above.
 	return v1FallbackBucket(in.EventType)
+}
+
+// decideReviewReason picks the epistemic-change driver that put the entry
+// into Review (ADR-000907). Pure function of SurfaceScoreInputs — reproject
+// reproduces the same reason for the same event log.
+//
+// Priority follows the canonical contract §6: a version-drift / supersede
+// chain is the strongest "your mental model is stale" signal, then a
+// contradiction (different supersede semantics), then an unfinished thread,
+// then time-decay staleness. Returns NONE when no driver fired so callers
+// can distinguish "review bucket but no driver" (a v1 fallback corner case)
+// from "review bucket because of X".
+func decideReviewReason(in SurfaceScoreInputs) sovereignv1.ReviewReason {
+	if in.VersionDriftCount > 0 {
+		return sovereignv1.ReviewReason_REVIEW_REASON_VERSION_DRIFT
+	}
+	if in.ContradictionCount > 0 {
+		return sovereignv1.ReviewReason_REVIEW_REASON_CONTRADICTION
+	}
+	if in.HasAugurLink || in.QuestionContinuationScore > 0 {
+		return sovereignv1.ReviewReason_REVIEW_REASON_UNFINISHED_THREAD
+	}
+	if in.StalenessScore >= 2 {
+		return sovereignv1.ReviewReason_REVIEW_REASON_STALENESS
+	}
+	return sovereignv1.ReviewReason_REVIEW_REASON_NONE
 }
 
 func v1FallbackBucket(eventType string) sovereignv1.SurfaceBucket {

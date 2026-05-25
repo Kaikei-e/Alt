@@ -108,6 +108,28 @@ func refreshWhyV2OnKindChange(out *sovereignv1.KnowledgeLoopWhyPayload) {
 	}
 }
 
+// OverrideWhyFromPersistStageConfidence pulls down the WhyPayload's
+// confidence ladder when the recap persist stage reports SPECULATION-grade
+// confidence (ADR-000913 §D-10). This makes the UI surface the uncertainty
+// even for kinds whose default ladder would otherwise be PATTERN or
+// EVIDENCE — the persist-stage signal supersedes the static WhyKind →
+// ladder mapping. Pure: same inputs → same output.
+func OverrideWhyFromPersistStageConfidence(
+	why *sovereignv1.KnowledgeLoopWhyPayload,
+	persistLadder sovereignv1.ConfidenceLadder,
+) *sovereignv1.KnowledgeLoopWhyPayload {
+	if why == nil {
+		return nil
+	}
+	if persistLadder != sovereignv1.ConfidenceLadder_CONFIDENCE_LADDER_SPECULATION {
+		return why
+	}
+	out := proto.Clone(why).(*sovereignv1.KnowledgeLoopWhyPayload)
+	ladder := sovereignv1.ConfidenceLadder_CONFIDENCE_LADDER_SPECULATION
+	out.ConfidenceLadder = &ladder
+	return out
+}
+
 // Narrative templates pin the v3 phrasing that maps WhyKind → user-visible
 // text. The {article_title} substitution falls back to a neutral sentence
 // when the event payload omits it (older replays). Strings are kept short

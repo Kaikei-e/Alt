@@ -212,6 +212,19 @@ enum SurfacePlannerVersion {
   SURFACE_PLANNER_VERSION_V2 = 2;
 }
 
+// ReviewReason explains why an entry landed in the Review bucket so the
+// UI can pick a deterministic guidance line (ADR-000907). The projector's
+// decideReviewReason is a pure function of SurfaceScoreInputs, so a full
+// reproject produces the same reason for the same event log.
+enum ReviewReason {
+  REVIEW_REASON_UNSPECIFIED = 0;
+  REVIEW_REASON_STALENESS = 1;
+  REVIEW_REASON_CONTRADICTION = 2;
+  REVIEW_REASON_VERSION_DRIFT = 3;
+  REVIEW_REASON_UNFINISHED_THREAD = 4;
+  REVIEW_REASON_NONE = 5;
+}
+
 // ============================================================================
 // Payloads
 // ============================================================================
@@ -324,8 +337,17 @@ message KnowledgeLoopEntry {
   repeated ActTarget act_targets = 19;
   optional string superseded_by_entry_key = 20;
 
-  reserved 21 to 30;
+  reserved 21 to 29;
   reserved "updated_at", "last_modified", "loop_priority_label", "projected_at", "wall_clock", "ingest_time";
+
+  // ADR-000907 epistemic-change review driver. review_reason is populated
+  // when the projector places an entry into the Review bucket; the UI uses
+  // it to deterministically pick the right guidance line. Reproject-safe:
+  // decideReviewReason is a pure function of SurfaceScoreInputs. UNSPECIFIED
+  // and NONE are wire-equivalent and both indicate "no review driver"; the
+  // explicit NONE value lets older clients ignore the field without losing
+  // semantics when the projector emits a real value.
+  ReviewReason review_reason = 30;
 
   // surface_planner_version records which planner placed this entry into its
   // bucket. Older rows default to UNSPECIFIED (treated as v1 by clients) so

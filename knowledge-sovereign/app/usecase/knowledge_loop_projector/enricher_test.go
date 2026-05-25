@@ -201,9 +201,11 @@ func TestEnrichWhyFromEvent_HomeItemOpened_RecallLadderIsSpeculation(t *testing.
 	require.Equal(t, sovereignv1.ConfidenceLadder_CONFIDENCE_LADDER_SPECULATION, *why.ConfidenceLadder)
 }
 
-func TestWhyMappingVersion_IsPinnedToEleven(t *testing.T) {
-	// Bumping WhyMappingVersion to 11 announces the v2 producer wiring landing
-	// (ADR-000908 §Δ4). The runbook cutover row must follow this bump.
-	require.Equal(t, 11, WhyMappingVersion,
-		"WhyMappingVersion must be 11 once WhyPayload v2 producer wiring lands")
+func TestWhyMappingVersion_IsAtLeastEleven(t *testing.T) {
+	// WhyMappingVersion >= 11 means WhyPayload v2 producer wiring has landed
+	// (ADR-000908 §Δ4). Later bumps cover review_reason / persist_stage etc.
+	// — we keep this assertion permissive so a future bump does not need a
+	// duplicate update here.
+	require.GreaterOrEqual(t, WhyMappingVersion, 11,
+		"WhyMappingVersion must be ≥ 11 once WhyPayload v2 producer wiring lands")
 }
