@@ -118,4 +118,39 @@ describe("/loop/+page.svelte wiring guards", () => {
 			/article\?\.route\s*\)\s*return\s+article\.route/,
 		);
 	});
+
+	it("renders Open Article CTA in DECIDE stage workspace-actions", () => {
+		// ADR-924 follow-up: Ask 後の entry は DECIDE で停滞するため、Open は
+		// ACT stage 限定だと user が article を開く動線を見つけられない。
+		// `workspace-actions` の DECIDE 分岐に `onWorkspaceOpen` を呼ぶボタンを
+		// 追加し、`activeEntrySourceUrl` の有無に応じて "Open" / "Open · resolve url"
+		// を出し分ける (Open recoverable パターン §Pillar 2A と整合)。
+		const decideBranch = pageSource.match(
+			/selectedStageName === "decide" && activeEntry\.decisionOptions\.length > 0[\s\S]{0,1500}/,
+		);
+		expect(decideBranch).not.toBeNull();
+		const body = decideBranch?.[0] ?? "";
+		expect(body).toMatch(/onWorkspaceOpen\(activeEntry\)/);
+		expect(body).toMatch(/activeEntrySourceUrl \? "Open" : "Open · resolve url"/);
+		// inline error surface re-used from ACT branch so the BFF resolution
+		// failure has the same recovery affordance the user already knows.
+		expect(body).toMatch(/loop-open-resolve-error/);
+	});
+
+	it("emits a Revisited aria-live confirmation when same-stage intent_signal fires", () => {
+		// ADR-924 backend fix landed: Revisit is accepted as a same-stage
+		// intent_signal. But same-stage = `data-stage` does not change, so the
+		// user keeps clicking — 13.7s / 10 clicks observed in production. Add
+		// a polite aria-live status the assistive-tech surface sees as
+		// "Revisited" and that we can drive a 1.5s visible flash off the same
+		// state for sighted users.
+		expect(pageSource).toMatch(/justActed/);
+		expect(pageSource).toMatch(/aria-live=["']polite["']/);
+		expect(pageSource).toMatch(/data-testid=["']loop-revisited-toast["']/);
+		// Toast is rendered conditionally on the state flag (so it disappears
+		// after the timeout). Confirm the conditional + reset both exist.
+		expect(pageSource).toMatch(/\{#if justActed\}/);
+		// The reset must be timed (not manual) so the toast clears itself.
+		expect(pageSource).toMatch(/setTimeout\([\s\S]{0,200}justActed\s*=\s*false/);
+	});
 });

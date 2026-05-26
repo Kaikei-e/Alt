@@ -431,6 +431,7 @@ function onWorkspaceDecide(
 	if (sameStageTrigger) {
 		const from = effectiveEntryStage(entry);
 		void loop.transitionTo(entry.entryKey, from, sameStageTrigger, metadata);
+		flashJustActed();
 		return;
 	}
 	const to = decideOptionStage(entry, option);
@@ -453,6 +454,23 @@ function onPipelineStageSelect(to: LoopStageName) {
 // lookup fails so the user can act on the failure code (NN/G "explain why")
 // instead of facing a silent disabled control.
 let openInlineError = $state<string | null>(null);
+
+// ADR-924 follow-up: same-stage intents (Revisit) leave `data-stage`
+// unchanged, so without a separate visual signal the user reads "no
+// response" and double-/triple-taps the button (13.7s/10 clicks observed
+// 2026-05-26). A short polite aria-live toast confirms the signal landed
+// without rerouting OODA stage. Window matches NN/g's transient feedback
+// guidance (~1500ms) and prefers-reduced-motion is honoured via CSS, not JS.
+let justActed = $state(false);
+let justActedTimer: ReturnType<typeof setTimeout> | null = null;
+function flashJustActed() {
+	justActed = true;
+	if (justActedTimer) clearTimeout(justActedTimer);
+	justActedTimer = setTimeout(() => {
+		justActed = false;
+		justActedTimer = null;
+	}, 1500);
+}
 
 async function bffArticleSourceUrlFetcher(articleId: string): Promise<string> {
 	const res = await fetch(
@@ -839,6 +857,29 @@ function onReviewAction(
 								Return
 							</button>
 						{:else if selectedStageName === "decide" && activeEntry.decisionOptions.length > 0}
+							<!-- ADR-924 follow-up: Ask 後に DECIDE で停滞した entry から
+							     Article を開く動線が無いと user は「クリックできない」と
+							     感じる (実測: /loop/article-source-url が 15 分間ゼロ
+							     fetch)。ACT stage の Open recoverable パターンと同じ
+							     resolve-url ラベルを使い、`onWorkspaceOpen` 経由で BFF
+							     から source URL を引いて in-app reader に遷移する。 -->
+							<button
+								type="button"
+								class="workspace-command"
+								aria-label={activeEntrySourceUrl ? "Open" : "Open · resolve url"}
+								onclick={() => void onWorkspaceOpen(activeEntry)}
+							>
+								{activeEntrySourceUrl ? "Open" : "Open · resolve url"}
+							</button>
+							{#if openInlineError}
+								<p
+									class="workspace-open-error"
+									data-testid="loop-open-resolve-error"
+									role="status"
+								>
+									URL UNAVAILABLE — {openInlineError}
+								</p>
+							{/if}
 							<button
 								type="button"
 								class="workspace-command workspace-command--secondary"
@@ -861,6 +902,16 @@ function onReviewAction(
 							>
 								Ask
 							</button>
+						{/if}
+						{#if justActed}
+							<p
+								class="workspace-toast"
+								role="status"
+								aria-live="polite"
+								data-testid="loop-revisited-toast"
+							>
+								Revisited
+							</p>
 						{/if}
 					</div>
 				</div>
@@ -1063,6 +1114,45 @@ function onReviewAction(
 		color: var(--alt-terracotta, #b85450);
 		border-top: 1px solid var(--alt-terracotta, #b85450);
 		padding-top: 0.3rem;
+	}
+
+	/* Same-stage CTA confirmation toast (Revisited / future Compare etc.).
+	   data-stage does not change for these intents so the user needs an
+	   independent cue that the signal landed. Single mono kicker, top rule,
+	   1.5s lifetime driven from JS. Motion is opt-out under
+	   prefers-reduced-motion — the fade collapses to a static appearance. */
+	.workspace-toast {
+		flex-basis: 100%;
+		margin: 0.25rem 0 0;
+		padding: 0.3rem 0 0;
+		font-family: var(--font-mono, "IBM Plex Mono", ui-monospace, monospace);
+		font-size: 0.65rem;
+		letter-spacing: 0.08em;
+		text-transform: uppercase;
+		color: var(--alt-ink-soft, #2a2a2a);
+		border-top: 1px solid var(--alt-rule-soft, #c8c8c8);
+		animation: workspace-toast-fade 1.5s ease-out forwards;
+	}
+
+	@keyframes workspace-toast-fade {
+		0% {
+			opacity: 0.0;
+		}
+		15% {
+			opacity: 1;
+		}
+		80% {
+			opacity: 1;
+		}
+		100% {
+			opacity: 0.0;
+		}
+	}
+
+	@media (prefers-reduced-motion: reduce) {
+		.workspace-toast {
+			animation: none;
+		}
 	}
 
 	.foreground-tiles {
