@@ -400,6 +400,14 @@ func TestEventLogResolver_AllowlistMatchesContract(t *testing.T) {
 		// signals come from alt-backend view trackers; the 7-day
 		// no_engagement fallback is emitted by act_outcome_cron.
 		EventKnowledgeLoopActOutcome,
+		// Article URL pin sources for SurfaceScoreInputs.SourceURL. These do
+		// not feed bucket placement; the resolver only reads payload `url` /
+		// `link` and forwards it through isHTTPSourceURL so seedActTargets
+		// can recover act_targets[0].source_url when the projecting event
+		// itself carries no URL.
+		EventArticleCreated,
+		EventArticleUpdated,
+		EventArticleUrlBackfilled,
 	}
 	if !reflect.DeepEqual(resolverEventTypes, want) {
 		t.Errorf("resolverEventTypes drifted from contract §6.4.1 / ADR-000908: got %v want %v",

@@ -888,11 +888,22 @@ func seedActTargets(ev *sovereign_db.KnowledgeEvent, inputs SurfaceScoreInputs) 
 		articleID = inputs.ArticleID
 	}
 	if articleID != "" {
+		sourceURL := articleActSourceURL(ev)
+		if sourceURL == "" {
+			// Fallback to the resolver pin so a non-article event (notably
+			// augur.conversation_linked.v1, knowledge_loop.surface_plan_
+			// recomputed.v1, TagSetVersionCreated) that re-seeds the entry
+			// keeps act_targets[0].source_url stable. The pin is validated by
+			// isHTTPSourceURL inside the resolver so this only forwards an
+			// allowlisted URL. Event-derived URL still wins so reproject-
+			// safety is preserved: the event log remains canonical.
+			sourceURL = inputs.SourceURL
+		}
 		out = append(out, actTarget{
 			TargetType: "article",
 			TargetRef:  articleID,
 			Route:      "/articles/" + url.PathEscape(articleID),
-			SourceURL:  articleActSourceURL(ev),
+			SourceURL:  sourceURL,
 		})
 	}
 	if inputs.RecapTopicSnapshotID != "" {
@@ -929,18 +940,37 @@ func articleActSourceURL(ev *sovereign_db.KnowledgeEvent) string {
 	if raw == "" {
 		return ""
 	}
+	validated, ok := isHTTPSourceURL(raw)
+	if !ok {
+		return ""
+	}
+	return validated
+}
+
+// isHTTPSourceURL parses `raw` and returns it back when it carries an http(s)
+// scheme and a non-empty host. Returns ("", false) for empty input, parse
+// failure, non-http schemes (javascript:, data:, file:, relative paths, …),
+// and for malformed authority components. Shared between articleActSourceURL
+// (event-derived path) and EventLogSurfaceScoreResolver (inputs.SourceURL pin)
+// so both seams enforce the same allowlist and one regression fix covers
+// both producers of act_targets[0].source_url.
+func isHTTPSourceURL(raw string) (string, bool) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return "", false
+	}
 	parsed, err := url.Parse(raw)
 	if err != nil {
-		return ""
+		return "", false
 	}
 	scheme := strings.ToLower(parsed.Scheme)
 	if scheme != "http" && scheme != "https" {
-		return ""
+		return "", false
 	}
 	if parsed.Host == "" {
-		return ""
+		return "", false
 	}
-	return raw
+	return raw, true
 }
 
 func articleActTargetID(ev *sovereign_db.KnowledgeEvent) string {
@@ -976,6 +1006,7 @@ func marshalSurfaceScoreInputs(in SurfaceScoreInputs) []byte {
 		StalenessScore            uint32 `json:"staleness_score,omitempty"`
 		ContradictionCount        uint32 `json:"contradiction_count,omitempty"`
 		ArticleID                 string `json:"article_id,omitempty"`
+		SourceURL                 string `json:"source_url,omitempty"`
 	}
 	out := surfaceScoreInputsJSON{
 		TopicOverlapCount:         in.TopicOverlapCount,
@@ -992,6 +1023,7 @@ func marshalSurfaceScoreInputs(in SurfaceScoreInputs) []byte {
 		StalenessScore:            in.StalenessScore,
 		ContradictionCount:        in.ContradictionCount,
 		ArticleID:                 in.ArticleID,
+		SourceURL:                 in.SourceURL,
 	}
 	if !in.FreshnessAt.IsZero() {
 		out.FreshnessAt = in.FreshnessAt.UTC().Format(time.RFC3339Nano)

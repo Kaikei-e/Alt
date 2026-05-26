@@ -87,6 +87,15 @@ var resolverEventTypes = []string{
 	// accepted_change=+1, stale_save=-1, no_engagement=-2). Entry-keyed
 	// match prevents cross-entry signal leakage.
 	EventKnowledgeLoopActOutcome,
+	// Article URL pin sources. These do not feed bucket placement; they
+	// only let the resolver carry the article's canonical http(s) URL onto
+	// SurfaceScoreInputs.SourceURL so seedActTargets can keep
+	// act_targets[0].source_url stable when a non-article event re-seeds
+	// the entry. Order inside this list is irrelevant — the resolver scans
+	// by event_seq and validates the URL scheme via isHTTPSourceURL.
+	EventArticleCreated,
+	EventArticleUpdated,
+	EventArticleUrlBackfilled,
 }
 
 // Resolve queries the event log and aggregates the v2 evidence. It returns
@@ -245,6 +254,39 @@ func (r *EventLogSurfaceScoreResolver) Resolve(
 				continue
 			}
 			out.ActOutcomeSignal += actOutcomeDelta(readPayloadString(e.Payload, "outcome"))
+		}
+	}
+
+	// Second pass: pin SourceURL from prior article events on the same
+	// article_id. Runs after pass 1 so out.ArticleID is already filled from
+	// either the projecting event payload or a prior SummaryVersionCreated.
+	// Without this pass, non-article events (notably augur.conversation_linked
+	// .v1 / knowledge_loop.surface_plan_recomputed.v1 / TagSetVersionCreated)
+	// trigger seedActTargets with no url on payload, which rewrites
+	// act_targets[0].source_url to "" on every re-seed (systemic 8319-entry
+	// drop documented at 2026-05-27).
+	if out.ArticleID != "" {
+		var pinSeq int64
+		for _, e := range events {
+			switch e.EventType {
+			case EventArticleCreated, EventArticleUpdated, EventArticleUrlBackfilled:
+			default:
+				continue
+			}
+			eArticleID := readArticleID(e.Payload)
+			if eArticleID == "" || eArticleID != out.ArticleID {
+				continue
+			}
+			if e.EventSeq < pinSeq {
+				continue
+			}
+			raw := readPayloadString(e.Payload, "url", "link")
+			validated, ok := isHTTPSourceURL(raw)
+			if !ok {
+				continue
+			}
+			out.SourceURL = validated
+			pinSeq = e.EventSeq
 		}
 	}
 

@@ -7,6 +7,7 @@ package knowledge_loop_projector
 // also moves into knowledge-sovereign.
 const (
 	EventArticleCreated        = "ArticleCreated"
+	EventArticleUpdated        = "ArticleUpdated"
 	EventSummaryVersionCreated = "SummaryVersionCreated"
 	EventHomeItemsSeen         = "HomeItemsSeen"
 	EventHomeItemOpened        = "HomeItemOpened"
@@ -164,4 +165,17 @@ const AggregateLoopSession = "knowledge_loop_session"
 // parseSurfaceScoreInputs. Bump triggers a full reproject so all entries
 // produced before the recap-worker started emitting the ladder pick up
 // the default (UNSPECIFIED → no demotion).
-const WhyMappingVersion = 13
+//
+// v14 (2026-05-27): SurfaceScoreInputs gains SourceURL. The resolver scans
+// prior ArticleCreated / ArticleUpdated / ArticleUrlBackfilled events on the
+// same article_id and pins the latest http(s) URL by event_seq;
+// seedActTargets falls back to inputs.SourceURL when the projecting event
+// payload carries no url/link of its own. Previously act_targets[0].source_url
+// was rewritten to "" whenever a non-article event (SummaryVersionCreated /
+// TagSetVersionCreated / knowledge_loop.surface_plan_recomputed.v1 /
+// augur.conversation_linked.v1) landed on an article aggregate, which
+// systematically stripped the URL off ~8319 entries (count(*) /
+// count(act_targets->0->>'source_url') stood at 59129 / 50810 on 2026-05-27).
+// Bump triggers a full reproject so existing entries recover their URL
+// deterministically from the event log.
+const WhyMappingVersion = 14

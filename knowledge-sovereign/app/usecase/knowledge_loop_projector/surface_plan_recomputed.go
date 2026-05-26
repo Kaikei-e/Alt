@@ -153,6 +153,17 @@ func parseSurfaceScoreInputs(m map[string]any, occurredAt time.Time) SurfaceScor
 	if v := pickAnyStringField(m, "article_id", "articleId"); v != "" {
 		in.ArticleID = v
 	}
+	// SourceURL round-trip: the snapshot event payload carries it when the
+	// resolver pinned an article URL on the source SurfaceScoreInputs, so the
+	// downstream projector branch (projectSurfacePlanRecomputed) can keep
+	// emitting act_targets[0].source_url without re-querying the article
+	// chain. isHTTPSourceURL gates the value defensively in case a future
+	// emitter forwards a non-http payload.
+	if v := pickAnyStringField(m, "source_url", "sourceUrl"); v != "" {
+		if validated, ok := isHTTPSourceURL(v); ok {
+			in.SourceURL = validated
+		}
+	}
 	if v, ok := pickUint32Field(m, "evidence_density", "evidenceDensity"); ok {
 		in.EvidenceDensity = v
 	}

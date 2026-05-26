@@ -90,6 +90,24 @@ Full-reproject procedure for the Knowledge Loop read model. Use this when:
    ```
 3. Row count within 1-5% of the pre-snapshot (if the projection rules have not changed).
 
+### `act_targets[0].source_url` coverage (v14 post-check)
+
+After a v14 reproject, every `target_type=article` entry whose event log contains an `ArticleCreated` / `ArticleUpdated` / `ArticleUrlBackfilled` payload with a valid http(s) URL must carry that URL on `act_targets[0].source_url`. The query below counts the residual gap; a non-zero `article_no_url` means the projector still has an entry whose article-event chain never produced a usable URL (legitimate when the producer dropped the URL field, otherwise an incident).
+
+```sql
+SELECT
+  count(*)                                                    AS total,
+  count(act_targets->0->>'source_url')                        AS with_url,
+  count(*) FILTER (
+    WHERE act_targets->0->>'target_type' = 'article'
+      AND (act_targets->0->>'source_url') IS NULL
+  )                                                           AS article_no_url
+FROM knowledge_loop_entries;
+-- expect article_no_url = 0 (or a small, named residual covered by an issue/ADR follow-up)
+```
+
+If `article_no_url` is non-zero after a v14 reproject, the secondary remediation is `POST /admin/jobs/knowledge-url-backfill/run` on alt-backend — it emits `ArticleUrlBackfilled` corrective events that hit the patch-only projector branch and fill `act_targets[0].source_url` in place (idempotent via the `NOT (act_targets->0 ? 'source_url')` SQL guard).
+
 ### Cron heartbeat post-check (Pillar 3 — 2026-05-26)
 
 A reproject only resets the `knowledge-loop-projector` row; the
@@ -291,6 +309,7 @@ Each bump triggers a full reproject per the Pre-flight + Procedure above, so exi
 | 11      | 2026-05-25 | [[000908]]    | ADR-000908 §Δ4 WhyPayload v2 producer wiring lands. The projector populates three additive WhyPayload fields on every entry: `counter_evidence_refs` (≤4, supersede branch only), `confidence_ladder` (speculation/pattern/evidence/verified — pure function of WhyKind), `what_would_change_my_mind` (1..256 char falsifier sentence per WhyKind). Sovereign proto and `knowledge_loop_entries` schema gain three additive columns via migration `00021_add_why_v2_columns.sql`; alt-backend BFF passes the new fields through to the public `alt.knowledge.loop.v1.WhyPayload` wire type. Run the standard Procedure to backfill v11; post-check that `curl /v1/knowledge-loop \| jq '.entries[].whyPrimary.confidenceLadder'` is non-null on ≥80% of visible rows (the rest are kinds with no claim). |
 | 12      | 2026-05-25 | [[000907]]    | ADR-000907 epistemic-change review driver lands. `decideReviewReason` (pure function of SurfaceScoreInputs) populates a new `review_reason` column on every entry via migration `00022_add_review_reason.sql`. Priority: version_drift > contradiction > unfinished_thread > staleness > none. Sovereign + alt-backend protos gain `ReviewReason` enum + `KnowledgeLoopEntry.review_reason` (field 30 on the public proto, 29 on sovereign). Run the standard Procedure to backfill v12; post-check `curl /v1/knowledge-loop \| jq '.entries[].reviewReason' \| sort \| uniq -c` shows a mix of `version_drift` / `contradiction` / `unfinished_thread` / `staleness` / `none` rather than all `none`. |
 | 13      | 2026-05-25 | [[000913]]    | ADR-000913 §D-10 persist-stage calibrated uncertainty lands. SurfaceScoreInputs gains `ConfidenceLadder`; `decideBucketV2` demotes NOW/CONTINUE to REVIEW when `ConfidenceLadder == SPECULATION` (same priority as `ActOutcomeSignal ≤ -2`, CHANGED still wins). The recap-worker publishes `persist_stage_confidence_ladder` on TopicSnapshotted / SurfacePlanRecomputed payloads; the projector reads it via `parseSurfaceScoreInputs`. Bump triggers a full reproject so entries projected before the recap-worker started emitting the ladder pick up the default (UNSPECIFIED → no demotion). Post-check: `curl /v1/knowledge-loop \| jq '.entries[].whyPrimary.confidenceLadder' \| sort \| uniq -c` shows SPECULATION ladder rows once recap-worker has fired against a low-density cluster. |
+| 14      | 2026-05-27 | —             | SurfaceScoreInputs gains `SourceURL`. The resolver scans prior `ArticleCreated` / `ArticleUpdated` / `ArticleUrlBackfilled` events on the same `article_id` and pins the latest http(s) URL by `event_seq`; `seedActTargets` falls back to `inputs.SourceURL` when the projecting event payload carries no `url`/`link` of its own. Previously `act_targets[0].source_url` was rewritten to `""` whenever a non-article event (`SummaryVersionCreated`, `TagSetVersionCreated`, `knowledge_loop.surface_plan_recomputed.v1`, `augur.conversation_linked.v1`, …) landed on an article aggregate — which systematically stripped the URL off thousands of entries (observed at 2026-05-27: `count(*) / count(act_targets->0->>'source_url')` stood at 59129 / 50810, i.e. ~8319 rows missing the URL). Run the standard Procedure to backfill v14; the bug-specific post-check below must show `article_no_url = 0` afterwards. |
 
 ## SurfacePlannerVersion history
 

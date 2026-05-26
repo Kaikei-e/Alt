@@ -1,6 +1,7 @@
 package knowledge_loop_projector
 
 import (
+	"encoding/json"
 	"testing"
 	"time"
 
@@ -503,4 +504,72 @@ func TestParseSurfaceScoreInputs_MissingLadder_DefaultsUnspecified(t *testing.T)
 	occurredAt := time.Date(2026, 5, 25, 0, 0, 0, 0, time.UTC)
 	in := parseSurfaceScoreInputs(map[string]any{}, occurredAt)
 	require.Equal(t, int32(sovereignv1.ConfidenceLadder_CONFIDENCE_LADDER_UNSPECIFIED), in.ConfidenceLadder)
+}
+
+// TestParseSurfaceScoreInputs_ParsesSourceURL pins the v14 round-trip
+// contract: a snapshot event payload that carries source_url must restore
+// SurfaceScoreInputs.SourceURL so the downstream
+// projectSurfacePlanRecomputed branch can keep emitting
+// act_targets[0].source_url without re-querying the article chain.
+func TestParseSurfaceScoreInputs_ParsesSourceURL(t *testing.T) {
+	t.Parallel()
+
+	occurredAt := time.Date(2026, 5, 27, 0, 0, 0, 0, time.UTC)
+	in := parseSurfaceScoreInputs(map[string]any{
+		"source_url": "https://example.com/p",
+	}, occurredAt)
+	require.Equal(t, "https://example.com/p", in.SourceURL)
+
+	// CamelCase mirror — emitters that hand-build JSON sometimes use it.
+	in = parseSurfaceScoreInputs(map[string]any{
+		"sourceUrl": "https://example.com/q",
+	}, occurredAt)
+	require.Equal(t, "https://example.com/q", in.SourceURL)
+}
+
+// TestParseSurfaceScoreInputs_RejectsNonHTTPSourceURL pins the defense-in-
+// depth allowlist on the parse seam. A malformed emitter that forwards a
+// javascript: / data: / relative URL must not be able to slip past
+// surface_plan_recomputed into act_targets[].
+func TestParseSurfaceScoreInputs_RejectsNonHTTPSourceURL(t *testing.T) {
+	t.Parallel()
+
+	occurredAt := time.Date(2026, 5, 27, 0, 0, 0, 0, time.UTC)
+	for _, bad := range []string{
+		"javascript:alert(1)",
+		"data:text/html,oops",
+		"file:///etc/passwd",
+		"/articles/local-only",
+		"not-a-url-at-all",
+	} {
+		in := parseSurfaceScoreInputs(map[string]any{"source_url": bad}, occurredAt)
+		require.Emptyf(t, in.SourceURL, "non-http(s) URL %q must not survive parse", bad)
+	}
+}
+
+// TestMarshalSurfaceScoreInputs_RoundTripsSourceURL is the explicit round-
+// trip pin: marshal then parse must keep SourceURL byte-identical. This is
+// what keeps a knowledge_loop.surface_plan_recomputed.v1 replay
+// reproject-safe — the projector serialises SurfaceScoreInputs into the
+// snapshot's entry_inputs[] and the downstream branch parses it back.
+func TestMarshalSurfaceScoreInputs_RoundTripsSourceURL(t *testing.T) {
+	t.Parallel()
+
+	original := SurfaceScoreInputs{
+		FreshnessAt: time.Date(2026, 5, 27, 12, 0, 0, 0, time.UTC),
+		EventType:   EventAugurConversationLinked,
+		ArticleID:   "art-pinned",
+		SourceURL:   "https://example.com/p",
+	}
+	raw := marshalSurfaceScoreInputs(original)
+	require.NotEmpty(t, raw, "marshal must produce JSON bytes")
+
+	var decoded map[string]any
+	require.NoError(t, json.Unmarshal(raw, &decoded))
+	require.Equal(t, "https://example.com/p", decoded["source_url"],
+		"marshalled JSON must carry source_url so SurfacePlanRecomputed payloads round-trip")
+
+	parsed := parseSurfaceScoreInputs(decoded, original.FreshnessAt)
+	require.Equal(t, original.SourceURL, parsed.SourceURL)
+	require.Equal(t, original.ArticleID, parsed.ArticleID)
 }

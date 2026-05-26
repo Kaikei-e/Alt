@@ -83,6 +83,65 @@ func TestInvariant_ReplayDeterminism(t *testing.T) {
 	}
 }
 
+// TestInvariant_ReplayDeterminism_SourceURLPin pins the v14 reproject-safety
+// contract: when the resolver pins SourceURL from a prior ArticleCreated /
+// ArticleUpdated / ArticleUrlBackfilled, replaying the same event log must
+// produce a byte-identical SurfaceScoreInputs (including SourceURL). A
+// non-deterministic SourceURL pin would make every full reproject of an
+// article's chain drift, exactly the failure mode v14 is supposed to retire.
+func TestInvariant_ReplayDeterminism_SourceURLPin(t *testing.T) {
+	t.Parallel()
+
+	uid := uuid.New()
+	articleID := "art-replay"
+	entryKey := "entry:" + articleID
+	now := time.Date(2026, 5, 27, 12, 0, 0, 0, time.UTC)
+
+	fixture := []sovereign_db.KnowledgeEvent{
+		ev(EventArticleCreated, now.Add(-3*time.Hour), uid, map[string]any{
+			"article_id": articleID,
+			"url":        "https://example.com/p",
+		}),
+		ev(EventSummaryVersionCreated, now.Add(-2*time.Hour), uid, map[string]any{
+			"article_id": articleID,
+			"entry_key":  entryKey,
+		}),
+		ev(EventArticleUrlBackfilled, now.Add(-90*time.Minute), uid, map[string]any{
+			"article_id":  articleID,
+			"url":         "https://example.com/p-canonical",
+			"reason_code": "missing_at_emit",
+		}),
+	}
+	target := ev(EventAugurConversationLinked, now, uid, map[string]any{
+		"entry_key":       entryKey,
+		"conversation_id": "conv-1",
+	})
+
+	r := NewEventLogSurfaceScoreResolver(&fakeEventLogLookup{events: fixture})
+
+	first := r.Resolve(context.Background(), &target)
+	second := r.Resolve(context.Background(), &target)
+
+	if first.SourceURL == "" {
+		t.Fatalf("SourceURL not pinned on first resolve; want %q", "https://example.com/p-canonical")
+	}
+	if first.SourceURL != "https://example.com/p-canonical" {
+		t.Errorf("SourceURL: want latest-by-event-seq %q, got %q",
+			"https://example.com/p-canonical", first.SourceURL)
+	}
+	firstJSON, err := json.Marshal(first)
+	if err != nil {
+		t.Fatalf("marshal first: %v", err)
+	}
+	secondJSON, err := json.Marshal(second)
+	if err != nil {
+		t.Fatalf("marshal second: %v", err)
+	}
+	if string(firstJSON) != string(secondJSON) {
+		t.Errorf("SourceURL pin replay drift:\n  first  = %s\n  second = %s", firstJSON, secondJSON)
+	}
+}
+
 // TestInvariant_F001MetricIncrementsOnCrossUserLeak pins the F-001 telemetry
 // contract: when the lookup returns an event for a different user, the
 // resolver bumps cross_user_isolation_violation_total. The behavioural side

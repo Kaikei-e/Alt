@@ -41,6 +41,7 @@ omissions in either step.
 | Event type | Entry | Session | Surface | Bucket | WhyKind | Act target hint |
 |---|---|---|---|---|---|---|
 | ArticleCreated | yes | no | no | — | — | — |
+| ArticleUpdated | no | no | no | — | — | source_url (via resolver pin) |
 | SummaryVersionCreated | yes | no | yes | now | source_why | article, ask |
 | SummaryNarrativeBackfilled | patch | no | no | — | source_why | (preserved) |
 | ArticleUrlBackfilled | patch | no | no | — | (preserved) | source_url |
