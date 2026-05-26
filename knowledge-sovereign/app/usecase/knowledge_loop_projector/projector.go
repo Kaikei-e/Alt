@@ -875,7 +875,19 @@ func seedActTargets(ev *sovereign_db.KnowledgeEvent, inputs SurfaceScoreInputs) 
 		SourceURL  string `json:"source_url,omitempty"`
 	}
 	out := []actTarget{}
-	if articleID := articleActTargetID(ev); articleID != "" {
+	articleID := articleActTargetID(ev)
+	if articleID == "" {
+		// Reproject-safe fallback: when the projecting event does not name an
+		// article directly (e.g. augur.conversation_linked.v1 only carries
+		// entry_key + conversation_id), the resolver pins ArticleID from the
+		// entry's prior event chain so we still emit a stable article target.
+		// Without this fallback the projector would write an empty
+		// act_targets after every non-article event and the FE's `sourceUrl()`
+		// would return null — breaking "Open Article" once Ask has linked a
+		// conversation.
+		articleID = inputs.ArticleID
+	}
+	if articleID != "" {
 		out = append(out, actTarget{
 			TargetType: "article",
 			TargetRef:  articleID,
@@ -963,6 +975,7 @@ func marshalSurfaceScoreInputs(in SurfaceScoreInputs) []byte {
 		ReportWorthinessScore     uint32 `json:"report_worthiness_score,omitempty"`
 		StalenessScore            uint32 `json:"staleness_score,omitempty"`
 		ContradictionCount        uint32 `json:"contradiction_count,omitempty"`
+		ArticleID                 string `json:"article_id,omitempty"`
 	}
 	out := surfaceScoreInputsJSON{
 		TopicOverlapCount:         in.TopicOverlapCount,
@@ -978,6 +991,7 @@ func marshalSurfaceScoreInputs(in SurfaceScoreInputs) []byte {
 		ReportWorthinessScore:     in.ReportWorthinessScore,
 		StalenessScore:            in.StalenessScore,
 		ContradictionCount:        in.ContradictionCount,
+		ArticleID:                 in.ArticleID,
 	}
 	if !in.FreshnessAt.IsZero() {
 		out.FreshnessAt = in.FreshnessAt.UTC().Format(time.RFC3339Nano)

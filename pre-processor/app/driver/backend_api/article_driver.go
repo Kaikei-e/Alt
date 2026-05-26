@@ -252,12 +252,21 @@ func (r *ArticleRepository) FetchInoreaderArticlesForEmptyFeeds(ctx context.Cont
 // UpsertArticles batch upserts articles.
 // Articles with unresolvable feeds are skipped (matching legacy DB behavior),
 // while real errors (network, auth) abort the batch immediately.
+//
+// A per-batch FeedURL → FeedID cache coalesces GetFeedID calls so a fan-out of
+// articles for the same feed only hits alt-backend once (Pillar 4, 2026-05-26).
+// The cache also remembers misses ("" sentinel) so a single unregistered feed
+// no longer produces N "feed not found" log lines — one warn per feed per
+// batch is enough to drive operator action.
 func (r *ArticleRepository) UpsertArticles(ctx context.Context, articles []*domain.Article) error {
 	if len(articles) == 0 {
 		return nil
 	}
 
+	feedIDCache := make(map[string]string) // FeedURL → FeedID; "" means already-resolved miss.
+
 	var created int
+	var skippedFeedNotFound int
 	for _, article := range articles {
 		// Skip articles with empty FeedURL and no FeedID
 		if article.FeedURL == "" && article.FeedID == "" {
@@ -267,19 +276,30 @@ func (r *ArticleRepository) UpsertArticles(ctx context.Context, articles []*doma
 
 		// Pre-resolve FeedID if not set
 		if article.FeedID == "" {
-			id, err := r.getFeedID(ctx, article.FeedURL)
-			if err != nil {
-				// Feed not found in backend — skip gracefully (matches legacy behavior)
-				slog.WarnContext(ctx, "feed not found, skipping article",
-					"feedURL", article.FeedURL, "url", article.URL)
+			cached, hit := feedIDCache[article.FeedURL]
+			if !hit {
+				id, err := r.getFeedID(ctx, article.FeedURL)
+				if err != nil {
+					// Feed not found in backend — log once per feed, cache the miss,
+					// and skip the rest of the batch's articles for the same URL.
+					slog.WarnContext(ctx, "feed not found, skipping articles for feed",
+						"feedURL", article.FeedURL, "first_url", article.URL)
+					feedIDCache[article.FeedURL] = ""
+					cached = ""
+				} else {
+					if id == "" {
+						slog.WarnContext(ctx, "feed not found, skipping articles for feed",
+							"feedURL", article.FeedURL, "first_url", article.URL)
+					}
+					feedIDCache[article.FeedURL] = id
+					cached = id
+				}
+			}
+			if cached == "" {
+				skippedFeedNotFound++
 				continue
 			}
-			if id == "" {
-				slog.WarnContext(ctx, "feed not found, skipping article",
-					"feedURL", article.FeedURL, "url", article.URL)
-				continue
-			}
-			article.FeedID = id
+			article.FeedID = cached
 		}
 
 		// Create article — real errors (network, auth, etc.) abort the batch
@@ -289,7 +309,10 @@ func (r *ArticleRepository) UpsertArticles(ctx context.Context, articles []*doma
 		created++
 	}
 
-	slog.InfoContext(ctx, "articles upserted via API", "created", created, "total", len(articles))
+	slog.InfoContext(ctx, "articles upserted via API",
+		"created", created,
+		"total", len(articles),
+		"skipped_feed_not_found", skippedFeedNotFound)
 	return nil
 }
 

@@ -90,6 +90,30 @@ Full-reproject procedure for the Knowledge Loop read model. Use this when:
    ```
 3. Row count within 1-5% of the pre-snapshot (if the projection rules have not changed).
 
+### Cron heartbeat post-check (Pillar 3 — 2026-05-26)
+
+A reproject only resets the `knowledge-loop-projector` row; the
+`surface_planner_v2` checkpoint is untouched, and its `updated_at` may stay
+frozen on a quiet event log even though the cron is healthy. With the
+cron-side heartbeat the row is now bumped every tick regardless of emit —
+post-reproject the SLO query below should converge inside one tick interval
+(default 60s):
+
+```sql
+SELECT projector_name,
+       last_event_seq,
+       EXTRACT(EPOCH FROM (now() - updated_at))::int AS lag_seconds
+FROM knowledge_projection_checkpoints
+WHERE projector_name IN ('knowledge-loop-projector', 'surface_planner_v2', 'knowledge-home-projector')
+ORDER BY projector_name;
+-- expect every projector's lag_seconds <= 2 × tick interval within 5 minutes.
+```
+
+A `surface_planner_v2` row whose `lag_seconds` keeps climbing past the tick
+interval after the heartbeat fix is shipped means the cron itself is not
+running — check `docker compose logs alt-knowledge-sovereign-1 | grep
+surface_planner.batch_complete` before assuming a projector hang.
+
 ### v2 Surface Planner post-check (Knowledge Loop Completion Phase 1)
 
 Run after a v2 cutover (Wave 4-A augur emit + Wave 4-B recap emit are both

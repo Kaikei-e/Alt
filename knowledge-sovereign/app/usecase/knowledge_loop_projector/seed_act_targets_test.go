@@ -221,3 +221,64 @@ func mustJSONString(s string) string {
 	}
 	return string(b)
 }
+
+// TestSeedActTargets_AugurEvent_InputsArticleID_PreservesArticleTarget pins
+// the Ask-then-Open fix: when augur.conversation_linked.v1 lands, the event
+// payload carries no `article_id` of its own — only `entry_key`. Without
+// SurfaceScoreInputs.ArticleID the projector overwrites act_targets with an
+// empty slice and the FE's `sourceUrl()` returns null, leaving Article and
+// Summary clicks dead. The resolver must pin ArticleID from the entry's
+// prior event chain so seedActTargets keeps the article target stable across
+// the OODA lifecycle. Reproject-safe: derived from event payload only.
+func TestSeedActTargets_AugurEvent_InputsArticleID_PreservesArticleTarget(t *testing.T) {
+	t.Parallel()
+	userID := uuid.New()
+	ev := &sovereign_db.KnowledgeEvent{
+		EventID:       uuid.New(),
+		EventSeq:      6,
+		OccurredAt:    time.Date(2026, 4, 28, 10, 0, 0, 0, time.UTC),
+		TenantID:      uuid.New(),
+		UserID:        &userID,
+		AggregateType: "augur_conversation",
+		AggregateID:   "conv-1",
+		Payload:       json.RawMessage(`{"entry_key":"entry:art-pinned","conversation_id":"conv-1"}`),
+	}
+
+	out := seedActTargets(ev, SurfaceScoreInputs{ArticleID: "art-pinned"})
+
+	require.NotNil(t, out, "augur event with pinned ArticleID must seed an article target")
+	var raw []map[string]string
+	require.NoError(t, json.Unmarshal(out, &raw))
+	require.Len(t, raw, 1)
+	require.Equal(t, "article", raw[0]["target_type"])
+	require.Equal(t, "art-pinned", raw[0]["target_ref"])
+	require.Equal(t, "/articles/art-pinned", raw[0]["route"])
+}
+
+// TestSeedActTargets_InputsArticleID_OverridesEmptyEvent — without an
+// ArticleID pin from the resolver the legacy path (event payload extraction)
+// stays the only source, so a payload-empty event still produces no article
+// target. The Inputs path is opt-in, not a silent rewriter of valid events.
+func TestSeedActTargets_InputsArticleID_DoesNotOverrideExplicitArticleEvent(t *testing.T) {
+	t.Parallel()
+	userID := uuid.New()
+	ev := &sovereign_db.KnowledgeEvent{
+		EventID:       uuid.New(),
+		EventSeq:      7,
+		OccurredAt:    time.Date(2026, 4, 28, 10, 0, 0, 0, time.UTC),
+		TenantID:      uuid.New(),
+		UserID:        &userID,
+		AggregateType: "article",
+		AggregateID:   "art-from-event",
+		Payload:       json.RawMessage(`{"article_id":"art-from-event"}`),
+	}
+
+	out := seedActTargets(ev, SurfaceScoreInputs{ArticleID: "art-from-input-ignored"})
+
+	var raw []map[string]string
+	require.NoError(t, json.Unmarshal(out, &raw))
+	require.Len(t, raw, 1)
+	// Event-derived article_id wins over the input pin so reproject-safety is
+	// not weakened: the event log remains the canonical source.
+	require.Equal(t, "art-from-event", raw[0]["target_ref"])
+}

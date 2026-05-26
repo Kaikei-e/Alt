@@ -125,6 +125,17 @@ type SurfaceScoreInputs struct {
 	// Now/Continue placements to Review (same priority as ActOutcomeSignal
 	// ≤ -2). Reproject-safe — comes from event payload, not latest state.
 	ConfidenceLadder int32
+
+	// ArticleID is the canonical article identifier pinned for the entry
+	// from its prior event chain. Used by seedActTargets as a fallback when
+	// the projecting event (e.g. augur.conversation_linked.v1) does not
+	// carry article_id of its own — without this pin the projector would
+	// drop the article act_target each time a non-article event fires,
+	// breaking the "Open Article" CTA after Ask. The event-derived path
+	// (event payload article_id / aggregate_id=article) still wins so
+	// reproject-safety is preserved: the resolver only fills this when the
+	// event log unambiguously names a single article for the entry.
+	ArticleID string
 }
 
 // decideBucketV2 picks a SurfaceBucket from the score inputs. The order

@@ -90,6 +90,61 @@ func TestRunBatch_NoSignalEvents_NoEmit(t *testing.T) {
 	require.Empty(t, repo.appended, "no signal events → no SurfacePlanRecomputed emitted")
 }
 
+// TestRunBatch_NoEventsAtAll_HeartbeatsCheckpoint pins the post-reproject
+// stall fix. When the event log is caught up the cron must still touch the
+// checkpoint row so the `now() - updated_at` SLO metric does not climb past
+// 142+ seconds while the projector is healthy. The heartbeat writes back the
+// same `last_event_seq` (idempotent at the DB layer) — the only observable
+// change is the row's `updated_at`. Reproject-safe: no event payload is
+// mutated.
+func TestRunBatch_NoEventsAtAll_HeartbeatsCheckpoint(t *testing.T) {
+	repo := &fakeRepo{checkpoint: 1304271}
+	c := New(repo, nopLogger(), Config{BatchSize: 100})
+
+	require.NoError(t, c.RunBatch(context.Background()))
+
+	require.Empty(t, repo.appended, "caught-up tick must not emit")
+	require.Equal(t,
+		[]int64{1304271},
+		repo.checkpointSets,
+		"caught-up tick must heartbeat the checkpoint at the same seq so updated_at advances",
+	)
+}
+
+// TestRunBatch_OnlyNonSignalEvents_HeartbeatsAtMaxSeq — events arrive but
+// none match the signal allowlist. The checkpoint still has to move forward
+// (otherwise the cron rescans the same window every tick) and the heartbeat
+// must reflect the highest seq observed.
+func TestRunBatch_OnlyNonSignalEvents_HeartbeatsAtMaxSeq(t *testing.T) {
+	userID := uuid.New()
+	repo := &fakeRepo{
+		checkpoint: 100,
+		events: []sovereign_db.KnowledgeEvent{
+			{
+				EventSeq:      101,
+				OccurredAt:    time.Date(2026, 5, 1, 10, 0, 0, 0, time.UTC),
+				TenantID:      uuid.MustParse("00000000-0000-0000-0000-000000000001"),
+				UserID:        &userID,
+				EventType:     "knowledge.article.created.v1", // not a signal type
+				AggregateType: "article",
+				AggregateID:   "art-1",
+				Payload:       json.RawMessage(`{}`),
+			},
+		},
+	}
+	c := New(repo, nopLogger(), Config{BatchSize: 100})
+
+	require.NoError(t, c.RunBatch(context.Background()))
+
+	require.Empty(t, repo.appended, "non-signal events must not emit")
+	require.NotEmpty(t, repo.checkpointSets, "checkpoint must advance past scanned events")
+	require.Equal(t,
+		int64(101),
+		repo.checkpointSets[len(repo.checkpointSets)-1],
+		"checkpoint must heartbeat to the max scanned event_seq",
+	)
+}
+
 func TestRunBatch_SingleAugurLink_EmitsOneEventWithOneEntryInput(t *testing.T) {
 	userID := uuid.New()
 	repo := &fakeRepo{events: []sovereign_db.KnowledgeEvent{augurEvent(101, userID, "article:42")}}

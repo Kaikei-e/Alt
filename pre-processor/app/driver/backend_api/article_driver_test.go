@@ -178,6 +178,94 @@ func TestUpsertArticles_CreateErrorAbortsBatch(t *testing.T) {
 	}
 }
 
+// TestUpsertArticles_CoalescesGetFeedIDPerBatch pins the Pillar 4 fix for
+// the 262-line GetFeedID burst observed 2026-05-26 (pre-processor calling
+// GetFeedID once per article on a Reddit feed batch). The repository must
+// resolve each distinct FeedURL once per batch and reuse the result —
+// otherwise a single Inoreader fan-out can saturate alt-backend with
+// identical NotFound lookups and bury the actual error in log noise.
+func TestUpsertArticles_CoalescesGetFeedIDPerBatch(t *testing.T) {
+	const batchSize = 25
+	var getFeedIDCalls int
+	mock := &mockBackendClient{
+		createArticleFunc: func(_ context.Context, _ *connect.Request[backendv1.CreateArticleRequest]) (*connect.Response[backendv1.CreateArticleResponse], error) {
+			return connect.NewResponse(&backendv1.CreateArticleResponse{ArticleId: "new"}), nil
+		},
+		getFeedIDFunc: func(_ context.Context, _ *connect.Request[backendv1.GetFeedIDRequest]) (*connect.Response[backendv1.GetFeedIDResponse], error) {
+			getFeedIDCalls++
+			return connect.NewResponse(&backendv1.GetFeedIDResponse{FeedId: "feed-1"}), nil
+		},
+	}
+	repo := newTestRepo(mock)
+
+	articles := make([]*domain.Article, 0, batchSize)
+	for i := 0; i < batchSize; i++ {
+		articles = append(articles, &domain.Article{
+			URL:     "https://example.com/article-" + intToStr(i),
+			FeedURL: "https://example.com/feed.rss",
+		})
+	}
+
+	if err := repo.UpsertArticles(context.Background(), articles); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if getFeedIDCalls != 1 {
+		t.Errorf("expected GetFeedID called once (per-batch cache), got %d", getFeedIDCalls)
+	}
+}
+
+// TestUpsertArticles_CoalescesNotFoundPerBatch — a feed_url that returns
+// NotFound must also be remembered for the rest of the batch. Pre-fix, 262
+// articles for an unregistered feed produced 262 identical GetFeedID errors
+// and 262 "feed not found, skipping article" warn lines; the cache collapses
+// the lookups even for the negative case.
+func TestUpsertArticles_CoalescesNotFoundPerBatch(t *testing.T) {
+	const batchSize = 20
+	var getFeedIDCalls int
+	mock := &mockBackendClient{
+		createArticleFunc: func(_ context.Context, _ *connect.Request[backendv1.CreateArticleRequest]) (*connect.Response[backendv1.CreateArticleResponse], error) {
+			return connect.NewResponse(&backendv1.CreateArticleResponse{ArticleId: "new"}), nil
+		},
+		getFeedIDFunc: func(_ context.Context, _ *connect.Request[backendv1.GetFeedIDRequest]) (*connect.Response[backendv1.GetFeedIDResponse], error) {
+			getFeedIDCalls++
+			return nil, connect.NewError(connect.CodeNotFound, errors.New("feed not found"))
+		},
+	}
+	repo := newTestRepo(mock)
+
+	articles := make([]*domain.Article, 0, batchSize)
+	for i := 0; i < batchSize; i++ {
+		articles = append(articles, &domain.Article{
+			URL:     "https://reddit.com/r/webdev/comments/" + intToStr(i),
+			FeedURL: "https://www.reddit.com/r/webdev/.rss",
+		})
+	}
+
+	if err := repo.UpsertArticles(context.Background(), articles); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if getFeedIDCalls != 1 {
+		t.Errorf("expected GetFeedID called once even on NotFound (per-batch cache), got %d", getFeedIDCalls)
+	}
+}
+
+func intToStr(i int) string {
+	const digits = "0123456789"
+	if i == 0 {
+		return "0"
+	}
+	var buf [20]byte
+	pos := len(buf)
+	for i > 0 {
+		pos--
+		buf[pos] = digits[i%10]
+		i /= 10
+	}
+	return string(buf[pos:])
+}
+
 func TestUpsertArticles_WithPresetFeedID(t *testing.T) {
 	var createCalled int
 	var getFeedIDCalled int

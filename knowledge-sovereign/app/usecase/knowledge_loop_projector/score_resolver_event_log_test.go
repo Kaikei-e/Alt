@@ -572,3 +572,106 @@ func mustJSON(t *testing.T, v any) []byte {
 	}
 	return b
 }
+
+// TestEventLogResolver_PinsArticleIDForAugurEvent — when the projecting event
+// is augur.conversation_linked.v1 (payload has entry_key but no article_id),
+// the resolver must lift the article_id from a prior SummaryVersionCreated
+// event on the same entry_key. seedActTargets reads this pin so the article
+// act_target survives the augur event, keeping "Open Article" clickable after
+// Ask. Reproject-safe: the event log is the only source.
+func TestEventLogResolver_PinsArticleIDForAugurEvent(t *testing.T) {
+	t.Parallel()
+
+	userID := uuid.New()
+	tenantID := uuid.New()
+	articleID := "art-pinned-by-resolver"
+	entryKey := "entry:" + articleID
+	now := time.Date(2026, 5, 8, 12, 0, 0, 0, time.UTC)
+
+	uid := userID
+	lookup := &fakeEventLogLookup{events: []sovereign_db.KnowledgeEvent{
+		// Prior SummaryVersionCreated names the article; happens minutes
+		// before the augur link. The resolver must find this and pin it.
+		{
+			EventSeq:      1,
+			OccurredAt:    now.Add(-2 * time.Hour),
+			TenantID:      tenantID,
+			UserID:        &uid,
+			EventType:     EventSummaryVersionCreated,
+			AggregateType: "article",
+			AggregateID:   articleID,
+			Payload: mustJSON(t, map[string]any{
+				"article_id": articleID,
+				"entry_key":  entryKey,
+			}),
+		},
+	}}
+
+	r := NewEventLogSurfaceScoreResolver(lookup)
+	thisEvent := &sovereign_db.KnowledgeEvent{
+		EventSeq:      100,
+		OccurredAt:    now,
+		TenantID:      tenantID,
+		UserID:        &uid,
+		EventType:     EventAugurConversationLinked,
+		AggregateType: "augur_conversation",
+		AggregateID:   "conv-1",
+		Payload: mustJSON(t, map[string]any{
+			"entry_key":       entryKey,
+			"conversation_id": "conv-1",
+		}),
+	}
+
+	out := r.Resolve(context.Background(), thisEvent)
+	if out.ArticleID != articleID {
+		t.Errorf("ArticleID: want %q (pinned from prior SummaryVersionCreated), got %q", articleID, out.ArticleID)
+	}
+}
+
+// TestEventLogResolver_DoesNotPinArticleIDAcrossEntries — confirm the pin is
+// entry-keyed: a SummaryVersionCreated on a *different* entry must not leak
+// its article_id into this entry's resolution. F-001-style isolation.
+func TestEventLogResolver_DoesNotPinArticleIDAcrossEntries(t *testing.T) {
+	t.Parallel()
+
+	userID := uuid.New()
+	tenantID := uuid.New()
+	now := time.Date(2026, 5, 8, 12, 0, 0, 0, time.UTC)
+
+	uid := userID
+	lookup := &fakeEventLogLookup{events: []sovereign_db.KnowledgeEvent{
+		{
+			EventSeq:      1,
+			OccurredAt:    now.Add(-2 * time.Hour),
+			TenantID:      tenantID,
+			UserID:        &uid,
+			EventType:     EventSummaryVersionCreated,
+			AggregateType: "article",
+			AggregateID:   "art-other",
+			Payload: mustJSON(t, map[string]any{
+				"article_id": "art-other",
+				"entry_key":  "entry:art-other",
+			}),
+		},
+	}}
+
+	r := NewEventLogSurfaceScoreResolver(lookup)
+	thisEvent := &sovereign_db.KnowledgeEvent{
+		EventSeq:      100,
+		OccurredAt:    now,
+		TenantID:      tenantID,
+		UserID:        &uid,
+		EventType:     EventAugurConversationLinked,
+		AggregateType: "augur_conversation",
+		AggregateID:   "conv-1",
+		Payload: mustJSON(t, map[string]any{
+			"entry_key":       "entry:art-this",
+			"conversation_id": "conv-1",
+		}),
+	}
+
+	out := r.Resolve(context.Background(), thisEvent)
+	if out.ArticleID != "" {
+		t.Errorf("ArticleID: want \"\" (no match for this entry_key), got %q", out.ArticleID)
+	}
+}

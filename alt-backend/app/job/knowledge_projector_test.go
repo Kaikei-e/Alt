@@ -554,6 +554,173 @@ func TestKnowledgeProjectorJob_SummaryVersionCreated_ReplaySafe(t *testing.T) {
 	assert.Contains(t, homeItemsPort.upserted[0].SummaryExcerpt, "Old version excerpt")
 }
 
+// TestKnowledgeProjectorJob_EventLogReplay_IsBitIdentical pins the P0-4
+// "knowledge_home_repository tests must exercise reproject safety + schema
+// integrity" remediation. Replaying the same event log a second time after a
+// checkpoint reset must produce a bit-identical sequence of UpsertKnowledgeHomeItem
+// calls. Any drift — wall-clock GeneratedAt, non-deterministic score, ordering
+// — fails this test and exposes a violation of the canonical "same event log
+// → same read model" invariant (IMPL_BASE / canonical contract §6).
+func TestKnowledgeProjectorJob_EventLogReplay_IsBitIdentical(t *testing.T) {
+	logger.InitLogger()
+
+	tenantID := uuid.New()
+	userID := uuid.New()
+	articleID := uuid.New()
+	svID := uuid.New()
+	tsvID := uuid.New()
+
+	publishedAt := "2026-03-17T08:00:00Z"
+	articlePayload, _ := json.Marshal(domain.ArticleCreatedPayload{
+		ArticleID:   articleID.String(),
+		Title:       "Reproject-safe article",
+		PublishedAt: publishedAt,
+		TenantID:    tenantID.String(),
+	})
+	summaryPayload, _ := json.Marshal(summaryVersionPayload{
+		SummaryVersionID: svID.String(),
+		ArticleID:        articleID.String(),
+	})
+	tagPayload, _ := json.Marshal(tagSetVersionPayload{
+		TagSetVersionID: tsvID.String(),
+		ArticleID:       articleID.String(),
+	})
+
+	tagJSON, _ := json.Marshal([]tagItem{{Name: "go", Confidence: 0.9}, {Name: "tdd", Confidence: 0.8}})
+	tsv := domain.TagSetVersion{TagSetVersionID: tsvID, ArticleID: articleID, TagsJSON: tagJSON}
+	sv := domain.SummaryVersion{SummaryVersionID: svID, ArticleID: articleID, SummaryText: "Identical excerpt."}
+
+	t1 := time.Date(2026, 3, 17, 10, 0, 0, 0, time.UTC)
+	t2 := time.Date(2026, 3, 17, 10, 1, 0, 0, time.UTC)
+	t3 := time.Date(2026, 3, 17, 10, 2, 0, 0, time.UTC)
+
+	makeEvents := func() []domain.KnowledgeEvent {
+		return []domain.KnowledgeEvent{
+			{
+				EventID:       uuid.New(),
+				EventSeq:      1,
+				TenantID:      tenantID,
+				UserID:        &userID,
+				EventType:     domain.EventArticleCreated,
+				AggregateType: domain.AggregateArticle,
+				AggregateID:   articleID.String(),
+				OccurredAt:    t1,
+				Payload:       articlePayload,
+			},
+			{
+				EventID:       uuid.New(),
+				EventSeq:      2,
+				TenantID:      tenantID,
+				UserID:        &userID,
+				EventType:     domain.EventSummaryVersionCreated,
+				AggregateType: domain.AggregateArticle,
+				AggregateID:   articleID.String(),
+				OccurredAt:    t2,
+				Payload:       summaryPayload,
+			},
+			{
+				EventID:       uuid.New(),
+				EventSeq:      3,
+				TenantID:      tenantID,
+				UserID:        &userID,
+				EventType:     domain.EventTagSetVersionCreated,
+				AggregateType: domain.AggregateArticle,
+				AggregateID:   articleID.String(),
+				OccurredAt:    t3,
+				Payload:       tagPayload,
+			},
+		}
+	}
+
+	runProjector := func() []domain.KnowledgeHomeItem {
+		eventsPort := &mockEventsPort{events: makeEvents()}
+		checkpointPort := &mockCheckpointPort{lastSeq: 0}
+		homeItemsPort := &mockHomeItemsPort{}
+		digestPort := &mockDigestPort{}
+		summaryVersionPort := &mockSummaryVersionPort{sv: sv}
+		tagSetVersionPort := &mockTagSetVersionPort{tsv: tsv}
+		fn := KnowledgeProjectorJob(eventsPort, checkpointPort, checkpointPort, homeItemsPort, digestPort, nil, summaryVersionPort, nil, tagSetVersionPort)
+		require.NoError(t, fn(context.Background()))
+		return homeItemsPort.upserted
+	}
+
+	firstPass := runProjector()
+	secondPass := runProjector()
+
+	require.Equal(t, len(firstPass), len(secondPass), "replay must produce the same number of upserts")
+	for i := range firstPass {
+		a := firstPass[i]
+		b := secondPass[i]
+		// Timestamps must be event-derived, never wall-clock.
+		assert.Truef(t, a.GeneratedAt.Equal(b.GeneratedAt),
+			"upsert[%d].GeneratedAt drifted between replays: %s vs %s", i, a.GeneratedAt, b.GeneratedAt)
+		assert.Truef(t, a.UpdatedAt.Equal(b.UpdatedAt),
+			"upsert[%d].UpdatedAt drifted between replays: %s vs %s", i, a.UpdatedAt, b.UpdatedAt)
+		assert.Equalf(t, a.Score, b.Score,
+			"upsert[%d].Score drifted between replays: %v vs %v", i, a.Score, b.Score)
+		assert.Equalf(t, a.SummaryExcerpt, b.SummaryExcerpt,
+			"upsert[%d].SummaryExcerpt drifted between replays", i)
+		assert.Equalf(t, a.WhyReasons, b.WhyReasons,
+			"upsert[%d].WhyReasons drifted between replays", i)
+	}
+}
+
+// TestKnowledgeProjectorJob_SummaryVersionCreated_GeneratedAtIsEventTime pins
+// the P0-1 reproject-safety remediation: `GeneratedAt` and `UpdatedAt` on the
+// resulting KnowledgeHomeItem must be derived from the event's `OccurredAt`,
+// not `time.Now()`. Without this, replaying the same event log twice
+// produces read models that differ in the timestamp columns — a violation of
+// the canonical reproject-safe contract (IMPL_BASE §"same event log → same
+// read model").
+func TestKnowledgeProjectorJob_SummaryVersionCreated_GeneratedAtIsEventTime(t *testing.T) {
+	logger.InitLogger()
+
+	tenantID := uuid.New()
+	articleID := uuid.New()
+	svID := uuid.New()
+	occurredAt := time.Date(2026, 3, 17, 10, 0, 0, 0, time.UTC)
+
+	summaryPayload, _ := json.Marshal(summaryVersionPayload{
+		SummaryVersionID: svID.String(),
+		ArticleID:        articleID.String(),
+	})
+
+	eventsPort := &mockEventsPort{
+		events: []domain.KnowledgeEvent{
+			{
+				EventID:       uuid.New(),
+				EventSeq:      1,
+				TenantID:      tenantID,
+				EventType:     domain.EventSummaryVersionCreated,
+				AggregateType: domain.AggregateArticle,
+				AggregateID:   articleID.String(),
+				OccurredAt:    occurredAt,
+				Payload:       summaryPayload,
+			},
+		},
+	}
+	checkpointPort := &mockCheckpointPort{lastSeq: 0}
+	homeItemsPort := &mockHomeItemsPort{}
+	digestPort := &mockDigestPort{}
+	summaryVersionPort := &mockSummaryVersionPort{
+		sv: domain.SummaryVersion{
+			SummaryVersionID: svID,
+			ArticleID:        articleID,
+			SummaryText:      "Reproject-safe excerpt.",
+		},
+	}
+
+	fn := KnowledgeProjectorJob(eventsPort, checkpointPort, checkpointPort, homeItemsPort, digestPort, nil, summaryVersionPort, nil, nil)
+	require.NoError(t, fn(context.Background()))
+
+	require.Len(t, homeItemsPort.upserted, 1)
+	got := homeItemsPort.upserted[0]
+	assert.True(t, got.GeneratedAt.Equal(occurredAt),
+		"GeneratedAt must be event.OccurredAt for reproject-safety; got %s want %s", got.GeneratedAt, occurredAt)
+	assert.True(t, got.UpdatedAt.Equal(occurredAt),
+		"UpdatedAt must be event.OccurredAt for reproject-safety; got %s want %s", got.UpdatedAt, occurredAt)
+}
+
 func TestKnowledgeProjectorJob_TagSetVersionCreated_PreservesSummaryCompletedReason(t *testing.T) {
 	logger.InitLogger()
 

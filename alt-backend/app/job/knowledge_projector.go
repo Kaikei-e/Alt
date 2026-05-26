@@ -288,7 +288,11 @@ func projectArticleCreated(ctx context.Context, event domain.KnowledgeEvent, por
 		return fmt.Errorf("parse article_id: %w", err)
 	}
 
-	now := time.Now()
+	// Reproject-safe (P0-1, IMPL_BASE): all wall-clock-shaped facts on the
+	// projection (FreshnessAt, GeneratedAt, UpdatedAt, freshness score) must
+	// be derived from event.OccurredAt. A second replay of the same event
+	// log must converge to identical rows.
+	now := event.OccurredAt
 	var publishedAt *time.Time
 	if payload.PublishedAt != "" {
 		t, err := time.Parse(time.RFC3339, payload.PublishedAt)
@@ -297,13 +301,14 @@ func projectArticleCreated(ctx context.Context, event domain.KnowledgeEvent, por
 		}
 	}
 
-	// Calculate freshness score (newer = higher)
+	// Calculate freshness score (newer = higher). Use event-time as the
+	// reference clock so replay is bit-identical.
 	score := 1.0
 	if publishedAt != nil {
-		hoursOld := time.Since(*publishedAt).Hours()
+		hoursOld := now.Sub(*publishedAt).Hours()
 		if hoursOld < 24 {
 			score = 1.0 - (hoursOld / 48.0) // decays to 0.5 over 24h
-		} else {
+		} else if hoursOld > 0 {
 			score = 0.5 / (hoursOld / 24.0) // further decay
 		}
 	}
@@ -468,7 +473,11 @@ func projectSummaryVersionCreated(ctx context.Context, event domain.KnowledgeEve
 		whyReasons = append(whyReasons, domain.WhyReason{Code: domain.WhySummaryCompleted})
 	}
 
-	now := time.Now()
+	// Reproject-safe (P0-1, IMPL_BASE §"same event log → same read model"):
+	// every projection timestamp must derive from event.OccurredAt, never
+	// time.Now(). A replay must converge to identical rows; wall-clock would
+	// rewrite GeneratedAt / UpdatedAt every time and break the invariant.
+	now := event.OccurredAt
 	item := domain.KnowledgeHomeItem{
 		UserID:            userID,
 		TenantID:          event.TenantID,
@@ -586,7 +595,9 @@ func projectTagSetVersionCreated(ctx context.Context, event domain.KnowledgeEven
 		}
 	}
 
-	now := time.Now()
+	// Reproject-safe (P0-1, IMPL_BASE): projection timestamps come from
+	// event.OccurredAt so a second replay converges to identical rows.
+	now := event.OccurredAt
 	userID := event.TenantID
 	if event.UserID != nil {
 		userID = *event.UserID

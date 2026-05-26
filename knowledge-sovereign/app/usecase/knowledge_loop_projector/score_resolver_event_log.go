@@ -134,6 +134,15 @@ func (r *EventLogSurfaceScoreResolver) Resolve(
 	thisTags := readArticleTagSet(ev.Payload)
 	thisEntryKey := readEntryKey(ev.Payload)
 
+	// Pin the article_id for the entry so seedActTargets can keep emitting a
+	// stable article act_target across non-article events (notably
+	// augur.conversation_linked.v1 whose payload only names entry_key +
+	// conversation_id). The pin is conservative: only set when the current
+	// event names it directly, otherwise filled from a prior event on the
+	// same entry_key inside the score window. Reproject-safe because the
+	// event log is the only source.
+	out.ArticleID = thisArticleID
+
 	// StalenessScore is purely event-bound: gap between the event's
 	// occurrence time and the source's observed time (article published_at /
 	// observed_at on the payload). Reproject-safe — no time.Now() involved.
@@ -152,6 +161,16 @@ func (r *EventLogSurfaceScoreResolver) Resolve(
 			eArticleID := readArticleID(e.Payload)
 			if eArticleID != "" && eArticleID == thisArticleID {
 				out.VersionDriftCount++
+			}
+			// Fill the article_id pin from a prior SummaryVersionCreated on
+			// the same entry_key when the projecting event omitted it (the
+			// augur.conversation_linked.v1 case). entry_key is a stable
+			// natural key for the entry, so the first match wins.
+			if out.ArticleID == "" && eArticleID != "" {
+				eEntryKey := readEntryKey(e.Payload)
+				if eEntryKey != "" && eEntryKey == thisEntryKey {
+					out.ArticleID = eArticleID
+				}
 			}
 			eTags := readArticleTagSet(e.Payload)
 			if len(thisTags) > 0 && len(eTags) > 0 {

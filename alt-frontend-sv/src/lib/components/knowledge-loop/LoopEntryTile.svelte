@@ -16,6 +16,7 @@ import {
 	buildRecapTransitionMetadata,
 	buildTransitionMetadata,
 } from "./transition-metadata";
+import type { TransitionTrigger } from "$lib/hooks/loop-transitions";
 
 // Convert the lowercase wire form of the confidence ladder ("speculation"
 // etc.) to the uppercase tier the typography primitive consumes. Missing /
@@ -37,12 +38,19 @@ function ladderTierFromName(
 	}
 }
 
-type TransitionTrigger =
-	| "user_tap"
-	| "dwell"
-	| "keyboard"
-	| "programmatic"
-	| "defer";
+// ADR-000914 same-stage trigger mapping. Intents in this table do not change
+// OODA stage; they emit a same-stage signal with the canonical trigger so the
+// projector records `acted_intent` in continue_context.recent_action_labels
+// without forcing a (potentially backward) stage transition. Other intents
+// flow through ctaToStage / canTransition (cross-stage gating).
+const SAME_STAGE_INTENT_TRIGGER: ReadonlyMap<DecisionIntentName, TransitionTrigger> =
+	new Map([["revisit", "intent_signal"]]);
+
+function sameStageTriggerFor(
+	intent: DecisionIntentName,
+): TransitionTrigger | undefined {
+	return SAME_STAGE_INTENT_TRIGGER.get(intent);
+}
 
 type Props = {
 	entry: KnowledgeLoopEntryData;
@@ -223,7 +231,27 @@ function sourceUrl(): string | null {
 	if (resolveSourceUrl) return resolveSourceUrl(entry);
 	const article = entry.actTargets.find((t) => t.targetType === "article");
 	if (article?.route) return article.route;
+	// Defense in depth: if a future projector regression drops the article
+	// target while the entry is still article-typed, recover the destination
+	// from the canonical `entry:<article-id>` natural key. We accept only
+	// UUID-shaped tails so a malformed key cannot smuggle a route like
+	// `/articles/..` or `//evil.com`. The projector fix in this PR is what
+	// keeps act_targets stable in normal operation — this branch only fires
+	// when the projection has been corrupted.
+	const fromKey = articleFromEntryKey(entry.entryKey);
+	if (fromKey) return `/articles/${fromKey}`;
 	return null;
+}
+
+function articleFromEntryKey(entryKey: string): string | null {
+	if (!entryKey.startsWith("entry:")) return null;
+	const tail = entryKey.slice("entry:".length);
+	// UUID v1-v5 shape; matches the resolver-side regex.
+	const ok =
+		/^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$/.test(
+			tail,
+		);
+	return ok ? tail : null;
 }
 
 function transitionMetadata(option: DecisionOptionData): TransitionMetadata {
@@ -299,6 +327,24 @@ async function handleCta(option: DecisionOptionData) {
 		const snoozeMeta = transitionMetadata(option);
 		dismissing = true;
 		await onDismiss(entry.entryKey, snoozeMeta);
+		return;
+	}
+
+	const sameStageTrigger = sameStageTriggerFor(option.intent);
+	if (sameStageTrigger) {
+		if (!onTransition) return;
+		// Revisit and the rest of the ADR-914 same-stage CTAs do not move the
+		// OODA cursor; they emit a signal that the projector lifts into the
+		// entry's recent_action_labels. Skipping the cross-stage allowlist
+		// here is correct — same-stage gating lives in canTransition / the BE
+		// classifier via the same_stage_triggers list, not in this tile.
+		const metadata = transitionMetadata(option);
+		await onTransition(
+			entry.entryKey,
+			effectiveStage,
+			sameStageTrigger,
+			metadata,
+		);
 		return;
 	}
 
@@ -408,13 +454,17 @@ async function handleDismiss() {
 						{@const toStage = ctaToStage(option.intent)}
 						{@const isAskCta = option.intent === "ask"}
 						{@const isSnoozeCta = option.intent === "snooze"}
+						{@const isSameStageCta =
+							sameStageTriggerFor(option.intent) !== undefined}
 						{@const disabled = isAskCta
 							? inFlight || !onAsk
 							: isSnoozeCta
 								? inFlight || !onDismiss || dismissing
-								: toStage
-									? inFlight || !isAllowed(toStage)
-									: true}
+								: isSameStageCta
+									? inFlight || !onTransition
+									: toStage
+										? inFlight || !isAllowed(toStage)
+										: true}
 						<button
 							type="button"
 							class="cta cta--{option.intent}"

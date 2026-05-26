@@ -22,11 +22,13 @@ import {
 	buildTransitionMetadata,
 } from "$lib/components/knowledge-loop/transition-metadata";
 import type {
+	DecisionIntentName,
 	DecisionOptionData,
 	KnowledgeLoopEntryData,
 	KnowledgeLoopResult,
 	LoopStageName,
 } from "$lib/connect/knowledge_loop";
+import type { TransitionTrigger } from "$lib/hooks/loop-transitions";
 import { makeCoalescedRefresh } from "$lib/hooks/loop-coalesce";
 import { makeFirstFrameSkipper } from "$lib/hooks/loop-stream-skip-first";
 import { startVisibilityRecovery } from "$lib/hooks/loop-visibility-recovery";
@@ -398,6 +400,15 @@ function decideOptionStage(
 	}
 }
 
+// ADR-000914 same-stage intent → trigger mapping. Kept aligned with the
+// matching table inside LoopEntryTile.svelte so the workspace Decide row
+// and the tile CTA row behave identically. Future same-stage CTAs (e.g.
+// internalize "I got this") should be added in both places.
+const WORKSPACE_SAME_STAGE_INTENT_TRIGGER: ReadonlyMap<
+	DecisionIntentName,
+	TransitionTrigger
+> = new Map([["revisit", "intent_signal"]]);
+
 function onWorkspaceDecide(
 	entry: KnowledgeLoopEntryData,
 	option: DecisionOptionData,
@@ -412,6 +423,14 @@ function onWorkspaceDecide(
 		// same-stage `defer` transition; passing the semantic metadata lets
 		// the projector record snooze in continue_context.recent_action_labels.
 		void loop.dismiss(entry.entryKey, metadata);
+		return;
+	}
+	const sameStageTrigger = WORKSPACE_SAME_STAGE_INTENT_TRIGGER.get(
+		option.intent,
+	);
+	if (sameStageTrigger) {
+		const from = effectiveEntryStage(entry);
+		void loop.transitionTo(entry.entryKey, from, sameStageTrigger, metadata);
 		return;
 	}
 	const to = decideOptionStage(entry, option);

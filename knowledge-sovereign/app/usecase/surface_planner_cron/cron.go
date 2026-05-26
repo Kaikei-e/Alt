@@ -102,6 +102,7 @@ func (c *Cron) RunBatch(ctx context.Context) error {
 	totalEvents := 0
 	totalEmitted := 0
 	batches := 0
+	checkpointBumped := false
 
 	for batches < c.cfg.MaxBatchesPerTick {
 		events, err := c.repo.ListKnowledgeEventsSince(ctx, currentSeq, c.cfg.BatchSize)
@@ -187,11 +188,24 @@ func (c *Cron) RunBatch(ctx context.Context) error {
 		if err := c.repo.UpdateProjectionCheckpoint(ctx, PlannerName, maxSeq); err != nil {
 			return fmt.Errorf("surface_planner_cron: update checkpoint: %w", err)
 		}
+		checkpointBumped = true
 		currentSeq = maxSeq
 		totalEmitted += emitted
 
 		if len(events) < c.cfg.BatchSize {
 			break
+		}
+	}
+
+	// Heartbeat the checkpoint when the cron tick observed no advance — without
+	// this the row's `updated_at` stays frozen and the
+	// `now() - updated_at` SLO climbs into false-positive territory while the
+	// projector is in fact healthy. Idempotent at the DB layer: writes back
+	// the same `last_event_seq` we already hold. Reproject-safe: no event
+	// payload is touched.
+	if !checkpointBumped {
+		if err := c.repo.UpdateProjectionCheckpoint(ctx, PlannerName, currentSeq); err != nil {
+			return fmt.Errorf("surface_planner_cron: heartbeat checkpoint: %w", err)
 		}
 	}
 

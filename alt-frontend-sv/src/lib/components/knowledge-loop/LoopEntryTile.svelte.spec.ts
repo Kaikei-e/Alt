@@ -62,4 +62,43 @@ describe("LoopEntryTile source hygiene", () => {
 			/@media\s*\(\s*prefers-reduced-motion:\s*reduce\s*\)[\s\S]*?\.cta--internalize/,
 		);
 	});
+
+	it("dispatches Revisit as a same-stage intent_signal (ADR-000914)", () => {
+		// Revisit must not force a backward orient transition that the
+		// canonical transition policy rejects from decide / act. The CTA
+		// fires with the user's current stage and the canonical
+		// `intent_signal` same-stage trigger so the projector records the
+		// re-engagement without flipping data-stage.
+		expect(tileSource).toMatch(/SAME_STAGE_INTENT_TRIGGER/);
+		expect(tileSource).toMatch(
+			/SAME_STAGE_INTENT_TRIGGER[\s\S]*?\[\s*"revisit"\s*,\s*"intent_signal"\s*\]/,
+		);
+		expect(tileSource).toMatch(
+			/onTransition\(\s*entry\.entryKey\s*,\s*effectiveStage\s*,\s*sameStageTrigger\s*,/,
+		);
+	});
+
+	it("keeps same-stage CTAs enabled when onTransition is wired", () => {
+		// Without this branch the disabled computation falls through to the
+		// cross-stage `isAllowed(toStage)` check and Revisit is silently
+		// rejected from any stage past observe (the bug logged 2026-05).
+		expect(tileSource).toMatch(/isSameStageCta/);
+		expect(tileSource).toMatch(
+			/isSameStageCta[\s\S]*?inFlight\s*\|\|\s*!onTransition/,
+		);
+	});
+
+	it("recovers article URL from entry_key when act_targets is empty", () => {
+		// Defense-in-depth fallback for the Pillar 2 act_targets fix. The
+		// projector now keeps the article target stable across augur events,
+		// but a future regression must not leave Open Article silently dead;
+		// the tile recovers the destination from the canonical
+		// `entry:<article-id>` natural key. Restricted to UUID-shaped tails so
+		// a malformed key cannot smuggle a route.
+		expect(tileSource).toMatch(/articleFromEntryKey/);
+		expect(tileSource).toMatch(/entryKey\.startsWith\("entry:"\)/);
+		expect(tileSource).toMatch(
+			/\/\^\[0-9a-fA-F\]\{8\}-\[0-9a-fA-F\]\{4\}-\[1-5\]/,
+		);
+	});
 });

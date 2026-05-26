@@ -150,6 +150,9 @@ func parseSurfaceScoreInputs(m map[string]any, occurredAt time.Time) SurfaceScor
 	if v := pickAnyStringField(m, "recap_topic_snapshot_id", "recapTopicSnapshotId"); v != "" {
 		in.RecapTopicSnapshotID = v
 	}
+	if v := pickAnyStringField(m, "article_id", "articleId"); v != "" {
+		in.ArticleID = v
+	}
 	if v, ok := pickUint32Field(m, "evidence_density", "evidenceDensity"); ok {
 		in.EvidenceDensity = v
 	}
