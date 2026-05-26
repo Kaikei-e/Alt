@@ -136,6 +136,18 @@ type SurfaceScoreInputs struct {
 	// reproject-safety is preserved: the resolver only fills this when the
 	// event log unambiguously names a single article for the entry.
 	ArticleID string
+
+	// SourceURL mirrors ArticleID for the article's external HTTPS URL. The
+	// resolver pins this from the latest ArticleCreated / ArticleUpdated /
+	// ArticleUrlBackfilled payload (by event_seq) on the same article_id so
+	// seedActTargets can keep act_targets[0].source_url stable when a non-
+	// article event (notably SummaryVersionCreated, TagSetVersionCreated,
+	// knowledge_loop.surface_plan_recomputed.v1, augur.conversation_linked.v1)
+	// triggers a re-seed. The event-derived path inside articleActSourceURL
+	// still wins; this fallback only fires when the projecting event payload
+	// carries no url/link of its own. Reproject-safe — derived from the event
+	// log only, never from latest article state.
+	SourceURL string
 }
 
 // decideBucketV2 picks a SurfaceBucket from the score inputs. The order

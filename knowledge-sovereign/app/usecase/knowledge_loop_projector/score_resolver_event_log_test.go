@@ -675,3 +675,288 @@ func TestEventLogResolver_DoesNotPinArticleIDAcrossEntries(t *testing.T) {
 		t.Errorf("ArticleID: want \"\" (no match for this entry_key), got %q", out.ArticleID)
 	}
 }
+
+// TestEventLogResolver_PinsSourceURLForNonArticleEvent — when the projecting
+// event is augur.conversation_linked.v1 (payload has entry_key but no url),
+// the resolver must lift the article's source URL from a prior ArticleCreated
+// event for the same article_id. seedActTargets reads inputs.SourceURL as a
+// fallback when the projecting event payload carries no url of its own, so
+// without this pin act_targets[0].source_url would be rewritten to "" on
+// every non-article event that lands on the article aggregate.
+// Reproject-safe: the event log is the only source.
+func TestEventLogResolver_PinsSourceURLForNonArticleEvent(t *testing.T) {
+	t.Parallel()
+
+	userID := uuid.New()
+	tenantID := uuid.New()
+	articleID := "art-pinned-by-resolver-url"
+	entryKey := "entry:" + articleID
+	want := "https://example.com/p"
+	now := time.Date(2026, 5, 8, 12, 0, 0, 0, time.UTC)
+
+	uid := userID
+	lookup := &fakeEventLogLookup{events: []sovereign_db.KnowledgeEvent{
+		// Prior SummaryVersionCreated pins the article_id (pass 1, existing).
+		{
+			EventSeq:      1,
+			OccurredAt:    now.Add(-2 * time.Hour),
+			TenantID:      tenantID,
+			UserID:        &uid,
+			EventType:     EventSummaryVersionCreated,
+			AggregateType: "article",
+			AggregateID:   articleID,
+			Payload: mustJSON(t, map[string]any{
+				"article_id": articleID,
+				"entry_key":  entryKey,
+			}),
+		},
+		// Prior ArticleCreated carries the canonical URL the resolver must pin
+		// onto out.SourceURL (pass 2, new in this contract).
+		{
+			EventSeq:      2,
+			OccurredAt:    now.Add(-3 * time.Hour),
+			TenantID:      tenantID,
+			UserID:        &uid,
+			EventType:     EventArticleCreated,
+			AggregateType: "article",
+			AggregateID:   articleID,
+			Payload: mustJSON(t, map[string]any{
+				"article_id": articleID,
+				"url":        want,
+			}),
+		},
+	}}
+
+	r := NewEventLogSurfaceScoreResolver(lookup)
+	thisEvent := &sovereign_db.KnowledgeEvent{
+		EventSeq:      100,
+		OccurredAt:    now,
+		TenantID:      tenantID,
+		UserID:        &uid,
+		EventType:     EventAugurConversationLinked,
+		AggregateType: "augur_conversation",
+		AggregateID:   "conv-1",
+		Payload: mustJSON(t, map[string]any{
+			"entry_key":       entryKey,
+			"conversation_id": "conv-1",
+		}),
+	}
+
+	out := r.Resolve(context.Background(), thisEvent)
+	if out.SourceURL != want {
+		t.Errorf("SourceURL: want %q (pinned from prior ArticleCreated), got %q", want, out.SourceURL)
+	}
+	if out.ArticleID != articleID {
+		t.Errorf("ArticleID regression: want %q, got %q", articleID, out.ArticleID)
+	}
+}
+
+// TestEventLogResolver_PinsSourceURLFromLatestArticleEventByEventSeq — when
+// multiple article events exist for the same article_id (ArticleCreated +
+// ArticleUrlBackfilled / ArticleUpdated), the latest one by event_seq wins.
+// Mirrors the producer-side intent: ArticleUrlBackfilled / ArticleUpdated
+// supersede ArticleCreated for the canonical URL.
+func TestEventLogResolver_PinsSourceURLFromLatestArticleEventByEventSeq(t *testing.T) {
+	t.Parallel()
+
+	userID := uuid.New()
+	tenantID := uuid.New()
+	articleID := "art-multi-url-events"
+	entryKey := "entry:" + articleID
+	older := "https://example.com/old"
+	newer := "https://example.com/new"
+	now := time.Date(2026, 5, 8, 12, 0, 0, 0, time.UTC)
+
+	uid := userID
+	lookup := &fakeEventLogLookup{events: []sovereign_db.KnowledgeEvent{
+		{
+			EventSeq:      1,
+			OccurredAt:    now.Add(-3 * time.Hour),
+			TenantID:      tenantID,
+			UserID:        &uid,
+			EventType:     EventArticleCreated,
+			AggregateType: "article",
+			AggregateID:   articleID,
+			Payload: mustJSON(t, map[string]any{
+				"article_id": articleID,
+				"url":        older,
+			}),
+		},
+		{
+			EventSeq:      5,
+			OccurredAt:    now.Add(-2 * time.Hour),
+			TenantID:      tenantID,
+			UserID:        &uid,
+			EventType:     EventArticleUrlBackfilled,
+			AggregateType: "article",
+			AggregateID:   articleID,
+			Payload: mustJSON(t, map[string]any{
+				"article_id":  articleID,
+				"url":         newer,
+				"reason_code": "missing_at_emit",
+			}),
+		},
+		{
+			EventSeq:      6,
+			OccurredAt:    now.Add(-1 * time.Hour),
+			TenantID:      tenantID,
+			UserID:        &uid,
+			EventType:     EventSummaryVersionCreated,
+			AggregateType: "article",
+			AggregateID:   articleID,
+			Payload: mustJSON(t, map[string]any{
+				"article_id": articleID,
+				"entry_key":  entryKey,
+			}),
+		},
+	}}
+
+	r := NewEventLogSurfaceScoreResolver(lookup)
+	thisEvent := &sovereign_db.KnowledgeEvent{
+		EventSeq:      100,
+		OccurredAt:    now,
+		TenantID:      tenantID,
+		UserID:        &uid,
+		EventType:     EventAugurConversationLinked,
+		AggregateType: "augur_conversation",
+		AggregateID:   "conv-1",
+		Payload: mustJSON(t, map[string]any{
+			"entry_key":       entryKey,
+			"conversation_id": "conv-1",
+		}),
+	}
+
+	out := r.Resolve(context.Background(), thisEvent)
+	if out.SourceURL != newer {
+		t.Errorf("SourceURL: want %q (latest by event_seq), got %q", newer, out.SourceURL)
+	}
+}
+
+// TestEventLogResolver_DoesNotPinSourceURLAcrossArticles — confirm the pin is
+// article_id-keyed: an ArticleCreated for a different article must not leak
+// its URL into this entry's resolution. F-001-style isolation at the article
+// boundary inside a single user's event log.
+func TestEventLogResolver_DoesNotPinSourceURLAcrossArticles(t *testing.T) {
+	t.Parallel()
+
+	userID := uuid.New()
+	tenantID := uuid.New()
+	now := time.Date(2026, 5, 8, 12, 0, 0, 0, time.UTC)
+
+	uid := userID
+	lookup := &fakeEventLogLookup{events: []sovereign_db.KnowledgeEvent{
+		// SummaryVersionCreated pins ArticleID = "art-this".
+		{
+			EventSeq:      1,
+			OccurredAt:    now.Add(-2 * time.Hour),
+			TenantID:      tenantID,
+			UserID:        &uid,
+			EventType:     EventSummaryVersionCreated,
+			AggregateType: "article",
+			AggregateID:   "art-this",
+			Payload: mustJSON(t, map[string]any{
+				"article_id": "art-this",
+				"entry_key":  "entry:art-this",
+			}),
+		},
+		// ArticleCreated for a DIFFERENT article must not contribute its URL.
+		{
+			EventSeq:      2,
+			OccurredAt:    now.Add(-3 * time.Hour),
+			TenantID:      tenantID,
+			UserID:        &uid,
+			EventType:     EventArticleCreated,
+			AggregateType: "article",
+			AggregateID:   "art-other",
+			Payload: mustJSON(t, map[string]any{
+				"article_id": "art-other",
+				"url":        "https://example.com/other",
+			}),
+		},
+	}}
+
+	r := NewEventLogSurfaceScoreResolver(lookup)
+	thisEvent := &sovereign_db.KnowledgeEvent{
+		EventSeq:      100,
+		OccurredAt:    now,
+		TenantID:      tenantID,
+		UserID:        &uid,
+		EventType:     EventAugurConversationLinked,
+		AggregateType: "augur_conversation",
+		AggregateID:   "conv-1",
+		Payload: mustJSON(t, map[string]any{
+			"entry_key":       "entry:art-this",
+			"conversation_id": "conv-1",
+		}),
+	}
+
+	out := r.Resolve(context.Background(), thisEvent)
+	if out.SourceURL != "" {
+		t.Errorf("SourceURL: want \"\" (no article match), got %q", out.SourceURL)
+	}
+}
+
+// TestEventLogResolver_RejectsNonHTTPSourceURLInPin — defense-in-depth: even
+// if a producer attaches a javascript: / data: / file: / private-host URL to
+// an ArticleCreated payload, the resolver must drop it so seedActTargets
+// never surfaces a hostile URL through inputs.SourceURL. Mirrors the
+// allowlist articleActSourceURL already enforces on the projecting event.
+func TestEventLogResolver_RejectsNonHTTPSourceURLInPin(t *testing.T) {
+	t.Parallel()
+
+	userID := uuid.New()
+	tenantID := uuid.New()
+	articleID := "art-bad-url"
+	entryKey := "entry:" + articleID
+	now := time.Date(2026, 5, 8, 12, 0, 0, 0, time.UTC)
+
+	uid := userID
+	lookup := &fakeEventLogLookup{events: []sovereign_db.KnowledgeEvent{
+		{
+			EventSeq:      1,
+			OccurredAt:    now.Add(-2 * time.Hour),
+			TenantID:      tenantID,
+			UserID:        &uid,
+			EventType:     EventSummaryVersionCreated,
+			AggregateType: "article",
+			AggregateID:   articleID,
+			Payload: mustJSON(t, map[string]any{
+				"article_id": articleID,
+				"entry_key":  entryKey,
+			}),
+		},
+		{
+			EventSeq:      2,
+			OccurredAt:    now.Add(-3 * time.Hour),
+			TenantID:      tenantID,
+			UserID:        &uid,
+			EventType:     EventArticleCreated,
+			AggregateType: "article",
+			AggregateID:   articleID,
+			Payload: mustJSON(t, map[string]any{
+				"article_id": articleID,
+				"url":        "javascript:alert(1)",
+			}),
+		},
+	}}
+
+	r := NewEventLogSurfaceScoreResolver(lookup)
+	thisEvent := &sovereign_db.KnowledgeEvent{
+		EventSeq:      100,
+		OccurredAt:    now,
+		TenantID:      tenantID,
+		UserID:        &uid,
+		EventType:     EventAugurConversationLinked,
+		AggregateType: "augur_conversation",
+		AggregateID:   "conv-1",
+		Payload: mustJSON(t, map[string]any{
+			"entry_key":       entryKey,
+			"conversation_id": "conv-1",
+		}),
+	}
+
+	out := r.Resolve(context.Background(), thisEvent)
+	if out.SourceURL != "" {
+		t.Errorf("SourceURL: want \"\" (non-http URL rejected), got %q", out.SourceURL)
+	}
+}

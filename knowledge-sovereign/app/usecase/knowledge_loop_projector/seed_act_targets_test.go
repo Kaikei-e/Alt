@@ -282,3 +282,99 @@ func TestSeedActTargets_InputsArticleID_DoesNotOverrideExplicitArticleEvent(t *t
 	// not weakened: the event log remains the canonical source.
 	require.Equal(t, "art-from-event", raw[0]["target_ref"])
 }
+
+// TestSeedActTargets_NonArticleEvent_InputsSourceURL_PreservesSourceURL pins
+// the SourceURL fallback contract: when an augur.conversation_linked.v1 event
+// (or any non-article event) triggers a re-seed and inputs.SourceURL carries
+// the article URL from the resolver pin, seedActTargets must emit
+// act_targets[0].source_url so the FE's resolveLoopSourceUrl stays non-null
+// and "Open Article" remains a single-click action. Without this fallback the
+// projector rewrites source_url to "" on every non-article event, which is
+// exactly the systemic 8319-entry drop documented at 2026-05-26.
+func TestSeedActTargets_NonArticleEvent_InputsSourceURL_PreservesSourceURL(t *testing.T) {
+	t.Parallel()
+	userID := uuid.New()
+	ev := &sovereign_db.KnowledgeEvent{
+		EventID:       uuid.New(),
+		EventSeq:      10,
+		OccurredAt:    time.Date(2026, 4, 28, 10, 0, 0, 0, time.UTC),
+		TenantID:      uuid.New(),
+		UserID:        &userID,
+		AggregateType: "augur_conversation",
+		AggregateID:   "conv-1",
+		Payload:       json.RawMessage(`{"entry_key":"entry:art-pinned","conversation_id":"conv-1"}`),
+	}
+
+	out := seedActTargets(ev, SurfaceScoreInputs{
+		ArticleID: "art-pinned",
+		SourceURL: "https://example.com/post",
+	})
+
+	var raw []map[string]string
+	require.NoError(t, json.Unmarshal(out, &raw))
+	require.Len(t, raw, 1)
+	require.Equal(t, "article", raw[0]["target_type"])
+	require.Equal(t, "art-pinned", raw[0]["target_ref"])
+	require.Equal(t, "/articles/art-pinned", raw[0]["route"])
+	require.Equal(t, "https://example.com/post", raw[0]["source_url"],
+		"inputs.SourceURL must seed source_url when the event payload omits url")
+}
+
+// TestSeedActTargets_ArticleEventURL_Overrides_InputsSourceURL — the event-
+// derived URL must win over the input pin so reproject-safety is preserved:
+// the event log remains the canonical source of the URL when both are
+// available. Mirrors the ArticleID priority semantics.
+func TestSeedActTargets_ArticleEventURL_Overrides_InputsSourceURL(t *testing.T) {
+	t.Parallel()
+	userID := uuid.New()
+	ev := &sovereign_db.KnowledgeEvent{
+		EventID:       uuid.New(),
+		EventSeq:      11,
+		OccurredAt:    time.Date(2026, 4, 28, 10, 0, 0, 0, time.UTC),
+		TenantID:      uuid.New(),
+		UserID:        &userID,
+		AggregateType: "article",
+		AggregateID:   "art-with-url",
+		Payload:       json.RawMessage(`{"article_id":"art-with-url","url":"https://example.com/from-event"}`),
+	}
+
+	out := seedActTargets(ev, SurfaceScoreInputs{
+		ArticleID: "art-ignored",
+		SourceURL: "https://example.com/from-input-ignored",
+	})
+
+	var raw []map[string]string
+	require.NoError(t, json.Unmarshal(out, &raw))
+	require.Len(t, raw, 1)
+	require.Equal(t, "https://example.com/from-event", raw[0]["source_url"],
+		"event-derived URL must win over inputs.SourceURL")
+}
+
+// TestSeedActTargets_NonArticleEvent_NoInputsSourceURL_OmitsKey — when neither
+// the event payload nor inputs.SourceURL provides a URL, the source_url JSON
+// key must be absent (not present as ""), so legacy entries round-trip
+// cleanly through the `omitempty` JSON tag.
+func TestSeedActTargets_NonArticleEvent_NoInputsSourceURL_OmitsKey(t *testing.T) {
+	t.Parallel()
+	userID := uuid.New()
+	ev := &sovereign_db.KnowledgeEvent{
+		EventID:       uuid.New(),
+		EventSeq:      12,
+		OccurredAt:    time.Date(2026, 4, 28, 10, 0, 0, 0, time.UTC),
+		TenantID:      uuid.New(),
+		UserID:        &userID,
+		AggregateType: "augur_conversation",
+		AggregateID:   "conv-1",
+		Payload:       json.RawMessage(`{"entry_key":"entry:art-no-url","conversation_id":"conv-1"}`),
+	}
+
+	out := seedActTargets(ev, SurfaceScoreInputs{ArticleID: "art-no-url"})
+
+	var raw []map[string]any
+	require.NoError(t, json.Unmarshal(out, &raw))
+	require.Len(t, raw, 1)
+	require.Equal(t, "article", raw[0]["target_type"])
+	require.Equal(t, "/articles/art-no-url", raw[0]["route"])
+	_, hasSourceURL := raw[0]["source_url"]
+	require.False(t, hasSourceURL, "source_url key must be absent when neither event nor inputs provides one")
+}
