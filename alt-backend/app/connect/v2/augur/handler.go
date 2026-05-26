@@ -209,12 +209,25 @@ func (h *Handler) ListConversations(
 	req.Header().Set(tenantIDHeader, user.TenantID.String())
 	resp, err := h.ragStreamPort.ListConversations(ctx, req)
 	if err != nil {
+		if connect.CodeOf(err) == connect.CodeNotFound {
+			return nil, connect.NewError(connect.CodeNotFound, err)
+		}
 		return nil, errorhandler.HandleInternalError(ctx, h.logger, err, "ListConversations")
 	}
 	return resp, nil
 }
 
 // GetConversation forwards a single-conversation read to rag-orchestrator.
+//
+// rag-orchestrator returns CodeNotFound when (id, user_id) does not match a
+// row in augur_conversations — for example when the FE polls a conversation
+// id whose insert has not yet been replicated. The previous wrapper turned
+// every such response into CodeInternal with an "internal server error
+// (caused by: not_found)" body, which the UI rendered as a red
+// "Error ID: <hash>" banner. Forward NotFound transparently so the FE can
+// render a graceful "conversation not yet available" state. Other upstream
+// codes still flow through HandleInternalError so internal details stay
+// sanitised.
 func (h *Handler) GetConversation(
 	ctx context.Context,
 	req *connect.Request[augurv2.GetConversationRequest],
@@ -227,6 +240,9 @@ func (h *Handler) GetConversation(
 	req.Header().Set(tenantIDHeader, user.TenantID.String())
 	resp, err := h.ragStreamPort.GetConversation(ctx, req)
 	if err != nil {
+		if connect.CodeOf(err) == connect.CodeNotFound {
+			return nil, connect.NewError(connect.CodeNotFound, err)
+		}
 		return nil, errorhandler.HandleInternalError(ctx, h.logger, err, "GetConversation")
 	}
 	return resp, nil
@@ -245,6 +261,9 @@ func (h *Handler) DeleteConversation(
 	req.Header().Set(tenantIDHeader, user.TenantID.String())
 	resp, err := h.ragStreamPort.DeleteConversation(ctx, req)
 	if err != nil {
+		if connect.CodeOf(err) == connect.CodeNotFound {
+			return nil, connect.NewError(connect.CodeNotFound, err)
+		}
 		return nil, errorhandler.HandleInternalError(ctx, h.logger, err, "DeleteConversation")
 	}
 	return resp, nil
