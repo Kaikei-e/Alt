@@ -42,6 +42,16 @@ const config = {
 		paths: {
 			base: "",
 		},
+		// Inline route-specific CSS chunks (≤ 5 KB) into the HTML `<style>`
+		// block so SvelteKit stops emitting them as both `Link: rel="preload";
+		// as="style"` HTTP header entries *and* `<link rel="stylesheet">` head
+		// elements. Chrome flags that duplicate as "preloaded using link
+		// preload but not used within a few seconds from the window's load
+		// event" — see SvelteKit Issue #8549 and DebugBear's "duplicate
+		// resource loading" analysis. The big root-layout CSS (~85 KB) is
+		// left external for cache efficiency, so one warning may persist
+		// until #8549 lands the `modulepreload: 'tag' | 'header'` switch.
+		inlineStyleThreshold: 5000,
 		version: {
 			name: resolveVersionName(),
 			// Poll the server for a newer deployed version every 5 min. When the
