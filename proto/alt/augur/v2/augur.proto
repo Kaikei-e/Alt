@@ -67,6 +67,11 @@ message ChatMessage {
   google.protobuf.Timestamp created_at = 3;
   // Citations attached to assistant messages (empty for user messages).
   repeated Citation citations = 4;
+  // Articles semantically/lexically near the cited articles. Inline-projected
+  // snapshot fixed at the moment the assistant turn was materialized; never
+  // backfilled if the neighborhood later changes. Empty for user messages and
+  // for assistant turns persisted before this feature shipped.
+  repeated Citation related_citations = 5;
 }
 
 // StreamChatResponse is a single event in the streaming response.
@@ -93,6 +98,11 @@ message StreamChatResponse {
 }
 
 // MetaPayload contains metadata about the response, including citations.
+//
+// The meta event carries preview citations (derived from retrieval contexts)
+// so the UI can begin rendering sources early. It deliberately does NOT carry
+// related_citations: the neighbor set is only finalized at done-event time
+// once the LLM has confirmed which retrieved articles were actually cited.
 message MetaPayload {
   // List of citations/sources used in the response
   repeated Citation citations = 1;
@@ -132,7 +142,12 @@ message Citation {
   string ref_id = 5;
 }
 
-// DonePayload is sent when streaming completes successfully.
+// DonePayload is sent when streaming completes successfully. This is the
+// authoritative source for citations: it carries the final direct citations
+// the LLM grounded its answer on, plus a related_citations snapshot of
+// articles semantically/lexically near the direct set. Both lists are written
+// once at this point and never mutated; subsequent neighborhood changes do
+// not flow back into past turns.
 message DonePayload {
   // Full answer text
   string answer = 1;
@@ -142,6 +157,10 @@ message DonePayload {
   string intent = 3;
   // Retrieval strategy used (e.g. "general", "article_scoped", "synthesis")
   string strategy = 4;
+  // Inline-projected neighbors of the direct citations, fixed at done-event
+  // time. Empty when there are no direct citations or when neighbor lookup
+  // failed; the UI renders this as a sibling "Related" section.
+  repeated Citation related_citations = 5;
 }
 
 // =============================================================================
