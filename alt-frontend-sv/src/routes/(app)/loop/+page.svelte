@@ -212,6 +212,12 @@ useKnowledgeLoopStream({
 	get lensModeId() {
 		return data.lensModeId ?? "default";
 	},
+	// Persist the SSE resume cursor across remounts. Articles → /loop round-trips
+	// were restarting from resumeFromSeq=0 every time, so the stream replayed
+	// the full event log instead of resuming where the previous mount left off.
+	get cursorPersistKey() {
+		return data.lensModeId ?? "default";
+	},
 	onFrame(frame) {
 		// Silent updates per contract §9: revised/heartbeat do not disturb
 		// foreground. Appended/superseded/withdrawn/rebalanced warrant a refetch

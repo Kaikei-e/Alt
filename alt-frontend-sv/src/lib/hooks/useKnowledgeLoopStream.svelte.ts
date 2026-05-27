@@ -28,6 +28,7 @@ import {
 const BASE_RETRY_DELAY_MS = 1000;
 const MAX_RETRY_DELAY_MS = 15_000;
 const MAX_RETRIES = 10;
+const CURSOR_STORAGE_PREFIX = "knowledge-loop:resume:";
 
 export interface UseKnowledgeLoopStreamOptions {
 	/** Toggle the subscription on/off reactively (e.g. page unmount, flag off). */
@@ -42,11 +43,49 @@ export interface UseKnowledgeLoopStreamOptions {
 	 * the next reconnect starts from a fresh snapshot.
 	 */
 	onExpired?: (reason: string) => void | Promise<void>;
+	/**
+	 * Persist the SSE resume cursor across hook remounts (navigation to article
+	 * reader and back, SvelteKit invalidateAll). Set per (user, lensMode) so a
+	 * tab returning to /loop resumes from the last delivered projection seq
+	 * instead of replaying from zero. Falls back to in-memory state when
+	 * undefined or when sessionStorage is unavailable.
+	 */
+	cursorPersistKey?: string;
+}
+
+function loadPersistedCursor(key: string | undefined): bigint {
+	if (!key) return 0n;
+	try {
+		const raw = sessionStorage.getItem(CURSOR_STORAGE_PREFIX + key);
+		if (!raw) return 0n;
+		const parsed = BigInt(raw);
+		return parsed > 0n ? parsed : 0n;
+	} catch {
+		return 0n;
+	}
+}
+
+function savePersistedCursor(key: string | undefined, value: bigint): void {
+	if (!key) return;
+	try {
+		sessionStorage.setItem(CURSOR_STORAGE_PREFIX + key, value.toString());
+	} catch {
+		// sessionStorage may be unavailable (privacy mode, server-side); ignore.
+	}
+}
+
+function clearPersistedCursor(key: string | undefined): void {
+	if (!key) return;
+	try {
+		sessionStorage.removeItem(CURSOR_STORAGE_PREFIX + key);
+	} catch {
+		// ignore
+	}
 }
 
 export function useKnowledgeLoopStream(opts: UseKnowledgeLoopStreamOptions) {
 	let isConnected = $state(false);
-	let lastSeqHiwater = $state<bigint>(0n);
+	let lastSeqHiwater = $state<bigint>(loadPersistedCursor(opts.cursorPersistKey));
 	let retryCount = $state(0);
 	let lastError = $state<string | null>(null);
 
@@ -54,10 +93,17 @@ export function useKnowledgeLoopStream(opts: UseKnowledgeLoopStreamOptions) {
 	let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
 	let stopped = false;
 
+	function bumpCursor(next: bigint) {
+		if (next <= lastSeqHiwater) return;
+		lastSeqHiwater = next;
+		savePersistedCursor(opts.cursorPersistKey, next);
+	}
+
 	async function connect() {
 		if (stopped || retryCount >= MAX_RETRIES) return;
 
-		abortController = new AbortController();
+		const myAbort = new AbortController();
+		abortController = myAbort;
 		try {
 			const transport = createClientTransport();
 			const client = createClient(KnowledgeLoopService, transport);
@@ -67,7 +113,7 @@ export function useKnowledgeLoopStream(opts: UseKnowledgeLoopStreamOptions) {
 					lensModeId: opts.lensModeId,
 					resumeFromSeq: lastSeqHiwater,
 				},
-				{ signal: abortController.signal },
+				{ signal: myAbort.signal },
 			);
 
 			isConnected = true;
@@ -79,9 +125,7 @@ export function useKnowledgeLoopStream(opts: UseKnowledgeLoopStreamOptions) {
 
 				// Heartbeat advances the cursor silently.
 				if (frame.kind === "heartbeat") {
-					if (frame.projectionSeqHiwater > lastSeqHiwater) {
-						lastSeqHiwater = frame.projectionSeqHiwater;
-					}
+					bumpCursor(frame.projectionSeqHiwater);
 					continue;
 				}
 
@@ -93,16 +137,17 @@ export function useKnowledgeLoopStream(opts: UseKnowledgeLoopStreamOptions) {
 					} catch {
 						// onExpired failure should not block reconnect.
 					}
-					// Reset seq cursor because server will replay from scratch.
+					// Server replays from scratch on a fresh stream; drop persisted
+					// cursor so the reconnect does not skip events the server already
+					// committed to replay.
 					lastSeqHiwater = 0n;
+					clearPersistedCursor(opts.cursorPersistKey);
 					retryCount = 0;
 					scheduleReconnect(BASE_RETRY_DELAY_MS);
 					return;
 				}
 
-				if (frame.projectionSeqHiwater > lastSeqHiwater) {
-					lastSeqHiwater = frame.projectionSeqHiwater;
-				}
+				bumpCursor(frame.projectionSeqHiwater);
 
 				try {
 					opts.onFrame?.(frame);
@@ -114,10 +159,15 @@ export function useKnowledgeLoopStream(opts: UseKnowledgeLoopStreamOptions) {
 
 			// Stream ended without terminal envelope — server closed.
 			isConnected = false;
-			if (!stopped) scheduleReconnect();
+			if (!stopped && !myAbort.signal.aborted) scheduleReconnect();
 		} catch (err) {
 			isConnected = false;
 			lastError = err instanceof Error ? err.message : "stream_error";
+			// If this connect was aborted by *our own* disconnect/effect cleanup,
+			// the new effect run (or an explicit stop) has already taken
+			// ownership. Re-scheduling here is the ghost-reconnect that produced
+			// overlapping SSE sessions in production.
+			if (myAbort.signal.aborted) return;
 			if (!stopped) scheduleReconnect();
 		}
 	}
