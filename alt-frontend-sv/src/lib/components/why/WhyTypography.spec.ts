@@ -79,6 +79,26 @@ describe("WhyTypography source hygiene", () => {
 		expect(source).toMatch(/prefers-reduced-motion/);
 	});
 
+	it("does not render raw evidence refId as visible text", () => {
+		// Raw UUIDs like "8ddee42d-68d1-4dcd-beb6-230f0fad4674" leaked into the
+		// EVIDENCE list in 2026-05-27 because the projector parked the kind
+		// string ("summary" / "article") in the Label field and the template
+		// fell back to `{ref.refId}` whenever Label was effectively empty (kind
+		// was set but Label exposed the kind). The UUID is implementation
+		// detail and must not be visible to readers. If the routing layer needs
+		// it, it lives on a data-* attribute instead.
+		expect(source).not.toMatch(/<span[^>]*class="why-refs-id"[^>]*>\{ref\.refId\}<\/span>/);
+		expect(source).not.toMatch(/>\{\s*ref\.refId\s*\}</);
+	});
+
+	it("falls back to the kind discriminator when label is missing", () => {
+		// When the projector cannot derive a human-readable Label, the FE must
+		// still render *something* meaningful (the kind) so the row is not
+		// completely silent. Pin the conditional branch.
+		expect(source).toMatch(/ref\.label/);
+		expect(source).toMatch(/ref\.kind/);
+	});
+
 	it("uses Alt design tokens (sepia ladder + font tokens) rather than hard-coded colours", () => {
 		// The CSS must inherit from the Alt token vocabulary so a theme
 		// change flows through without component edits.
