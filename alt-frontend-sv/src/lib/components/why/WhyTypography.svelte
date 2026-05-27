@@ -37,9 +37,27 @@ export type ConfidenceLadderTier =
 	| "EVIDENCE"
 	| "VERIFIED";
 
+export type EvidenceKindKey =
+	| "UNSPECIFIED"
+	| "WEB"
+	| "ARTICLE"
+	| "SUMMARY";
+
 export interface WhyEvidenceRef {
 	refId: string;
 	label?: string;
+	kind?: EvidenceKindKey;
+}
+
+const EVIDENCE_KIND_LABELS: Record<EvidenceKindKey, string> = {
+	UNSPECIFIED: "Reference",
+	WEB: "Web",
+	ARTICLE: "Article",
+	SUMMARY: "Summary",
+};
+
+function displayKindLabel(kind: EvidenceKindKey | undefined): string {
+	return EVIDENCE_KIND_LABELS[kind ?? "UNSPECIFIED"];
 }
 
 export interface ScoreBreakdownRow {
@@ -163,10 +181,10 @@ function toggleBreakdown() {
 			</h3>
 			<ol class="why-refs-list">
 				{#each evidenceRefs as ref (ref.refId)}
-					<li class="why-refs-item">
-						<span class="why-refs-id">{ref.refId}</span>
+					<li class="why-refs-item" data-ref-id={ref.refId}>
+						<span class="why-refs-kind">{displayKindLabel(ref.kind)}</span>
 						{#if ref.label}
-							<span class="why-refs-sep" aria-hidden="true">—</span>
+							<span class="why-refs-sep" aria-hidden="true">·</span>
 							<span class="why-refs-label-text">{ref.label}</span>
 						{/if}
 					</li>
@@ -199,10 +217,10 @@ function toggleBreakdown() {
 				aria-hidden={!counterExpanded}
 			>
 				{#each counterEvidenceRefs as ref (ref.refId)}
-					<li class="why-refs-item">
-						<span class="why-refs-id">{ref.refId}</span>
+					<li class="why-refs-item" data-ref-id={ref.refId}>
+						<span class="why-refs-kind">{displayKindLabel(ref.kind)}</span>
 						{#if ref.label}
-							<span class="why-refs-sep" aria-hidden="true">—</span>
+							<span class="why-refs-sep" aria-hidden="true">·</span>
 							<span class="why-refs-label-text">{ref.label}</span>
 						{/if}
 					</li>
@@ -449,6 +467,11 @@ function toggleBreakdown() {
 
 .why-refs-id {
 	color: var(--alt-charcoal, #1a1a1a);
+}
+
+.why-refs-kind {
+	color: var(--alt-charcoal, #1a1a1a);
+	text-transform: lowercase;
 }
 
 .why-refs-sep {
