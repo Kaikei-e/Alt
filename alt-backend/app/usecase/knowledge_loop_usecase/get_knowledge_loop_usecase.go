@@ -73,7 +73,7 @@ func (u *GetKnowledgeLoopUsecase) Execute(
 		Limit:         foregroundLimit,
 	})
 	if err != nil {
-		return nil, fmt.Errorf("get_knowledge_loop: entries: %w", err)
+		return nil, fmt.Errorf("get_knowledge_loop: entries: %w", ClassifyDriverError(err))
 	}
 
 	var bucketEntries []*domain.KnowledgeLoopEntry
@@ -91,19 +91,19 @@ func (u *GetKnowledgeLoopUsecase) Execute(
 			Limit:         otherBucketLimitPerBucket,
 		})
 		if berr != nil {
-			return nil, fmt.Errorf("get_knowledge_loop: entries[%s]: %w", bucket, berr)
+			return nil, fmt.Errorf("get_knowledge_loop: entries[%s]: %w", bucket, ClassifyDriverError(berr))
 		}
 		bucketEntries = append(bucketEntries, batch...)
 	}
 
 	session, err := u.sessionPort.GetKnowledgeLoopSessionState(ctx, tenantID, userID, lensModeID)
 	if err != nil {
-		return nil, fmt.Errorf("get_knowledge_loop: session: %w", err)
+		return nil, fmt.Errorf("get_knowledge_loop: session: %w", ClassifyDriverError(err))
 	}
 
 	surfaces, err := u.surfacesPort.GetKnowledgeLoopSurfaces(ctx, tenantID, userID, lensModeID)
 	if err != nil {
-		return nil, fmt.Errorf("get_knowledge_loop: surfaces: %w", err)
+		return nil, fmt.Errorf("get_knowledge_loop: surfaces: %w", ClassifyDriverError(err))
 	}
 
 	// Pick the max seq_hiwater across entries / session / surfaces so the client can resume.

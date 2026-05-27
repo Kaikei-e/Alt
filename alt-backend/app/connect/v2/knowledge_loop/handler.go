@@ -140,6 +140,10 @@ func (h *Handler) EmitActOutcome(
 			return nil, connect.NewError(connect.CodeDeadlineExceeded, errors.New("deadline exceeded"))
 		case errors.Is(err, context.Canceled):
 			return nil, connect.NewError(connect.CodeCanceled, errors.New("canceled"))
+		case errors.Is(err, knowledge_loop_usecase.ErrUpstreamUnavailable):
+			h.logger.WarnContext(ctx, "emit_act_outcome upstream unavailable",
+				"user_id", user.UserID, "entry_key", req.Msg.EntryKey, "err", err)
+			return nil, connect.NewError(connect.CodeUnavailable, errors.New("upstream unavailable"))
 		default:
 			h.logger.ErrorContext(ctx, "emit_act_outcome failed",
 				"user_id", user.UserID, "entry_key", req.Msg.EntryKey, "err", err)
@@ -178,11 +182,24 @@ func (h *Handler) GetKnowledgeLoop(
 
 	result, err := h.getUsecase.Execute(ctx, user.TenantID, user.UserID, req.Msg.LensModeId, fgLimit)
 	if err != nil {
-		if errors.Is(err, knowledge_loop_usecase.ErrInvalidArgument) {
+		switch {
+		case errors.Is(err, knowledge_loop_usecase.ErrInvalidArgument):
 			return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("invalid argument"))
+		case errors.Is(err, context.DeadlineExceeded):
+			return nil, connect.NewError(connect.CodeDeadlineExceeded, errors.New("deadline exceeded"))
+		case errors.Is(err, context.Canceled):
+			return nil, connect.NewError(connect.CodeCanceled, errors.New("canceled"))
+		case errors.Is(err, knowledge_loop_usecase.ErrUpstreamUnavailable):
+			// Transient sovereign / driver failure (deploy gap, DNS hiccup).
+			// Surface Unavailable so the BFF can render a retry banner
+			// instead of the generic "[internal]" copy that masked the
+			// 2026-05-28 deploy-gap incident.
+			h.logger.WarnContext(ctx, "get_knowledge_loop upstream unavailable", "err", err)
+			return nil, connect.NewError(connect.CodeUnavailable, errors.New("upstream unavailable"))
+		default:
+			h.logger.ErrorContext(ctx, "get_knowledge_loop failed", "err", err)
+			return nil, connect.NewError(connect.CodeInternal, errors.New("internal"))
 		}
-		h.logger.ErrorContext(ctx, "get_knowledge_loop failed", "err", err)
-		return nil, connect.NewError(connect.CodeInternal, errors.New("internal"))
 	}
 
 	resp := &loopv1.GetKnowledgeLoopResponse{
