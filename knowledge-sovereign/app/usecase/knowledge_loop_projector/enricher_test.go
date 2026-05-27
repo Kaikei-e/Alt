@@ -116,6 +116,126 @@ func TestEnrichWhyFromEvent_HomeItemOpened_RecallWhy(t *testing.T) {
 	require.True(t, hasEventRef, "open recall evidence must reference the open event id")
 }
 
+// TestEvidenceRef_LabelDoesNotLeakKindStrings pins the 2026-05-27 regression
+// where EvidenceRef.Label held the projector's internal kind discriminator
+// ("summary", "article", "tags", ...) instead of a human-readable string.
+// The downstream FE rendered the kind string next to the raw refID UUID, which
+// looked like "8ddee42d-... — summary" to the user. Label must be either a
+// human-readable excerpt/title (when payload carries one) or empty — never one
+// of the discriminator strings the projector uses internally.
+func TestEvidenceRef_LabelDoesNotLeakKindStrings(t *testing.T) {
+	forbidden := map[string]struct{}{
+		"summary":          {},
+		"previous_summary": {},
+		"new_summary":      {},
+		"what_changed":     {},
+		"article":          {},
+		"tags":             {},
+		"conversation":     {},
+		"open_event":       {},
+		"dismiss_event":    {},
+		"entry":            {},
+		"previous_entry":   {},
+		"new_entry":        {},
+	}
+
+	cases := []struct {
+		name      string
+		eventType string
+		payload   map[string]any
+	}{
+		{
+			name:      "SummaryVersionCreated",
+			eventType: EventSummaryVersionCreated,
+			payload: map[string]any{
+				"summary_version_id": "sv-A",
+				"article_id":         "article:A",
+				"tag_set_version_id": "tsv-A",
+				"article_title":      "Why SDD Breaks Down in Microservices",
+			},
+		},
+		{
+			name:      "HomeItemsSeen",
+			eventType: EventHomeItemsSeen,
+			payload: map[string]any{
+				"summary_version_id": "sv-B",
+				"tag_set_version_id": "tsv-B",
+				"article_id":         "article:B",
+			},
+		},
+		{
+			name:      "HomeItemAsked",
+			eventType: EventHomeItemAsked,
+			payload: map[string]any{
+				"conversation_id": "conv-C",
+				"article_id":      "article:C",
+			},
+		},
+		{
+			name:      "HomeItemOpened",
+			eventType: EventHomeItemOpened,
+			payload: map[string]any{
+				"article_id": "article:D",
+				"entry_key":  "article:D",
+			},
+		},
+		{
+			name:      "HomeItemSuperseded",
+			eventType: EventHomeItemSuperseded,
+			payload: map[string]any{
+				"entry_key":                "article:E",
+				"new_entry_key":            "article:E2",
+				"previous_summary_version": "sv-E-old",
+				"summary_version_id":       "sv-E-new",
+			},
+		},
+		{
+			name:      "HomeItemDismissed",
+			eventType: EventHomeItemDismissed,
+			payload: map[string]any{
+				"entry_key": "article:F",
+			},
+		},
+	}
+
+	for _, tc := range cases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			ev := makeEnrichEvent(t, tc.eventType, 200, tc.payload)
+			why := EnrichWhyFromEvent(&ev)
+			for _, ref := range why.EvidenceRefs {
+				if _, bad := forbidden[ref.Label]; bad {
+					t.Fatalf("EvidenceRef.Label leaked kind discriminator %q (refID=%q kind=%v)", ref.Label, ref.RefId, ref.Kind)
+				}
+			}
+		})
+	}
+}
+
+// TestEvidenceRef_LabelHydratedFromArticleTitle confirms that when the event
+// payload carries article_title, the ARTICLE-kind evidence ref's Label is the
+// title (truncated and sanitized), not empty. This is the human-readable path
+// the FE renders next to "Article ·".
+func TestEvidenceRef_LabelHydratedFromArticleTitle(t *testing.T) {
+	ev := makeEnrichEvent(t, EventSummaryVersionCreated, 201, map[string]any{
+		"summary_version_id": "sv-T",
+		"article_id":         "article:T",
+		"article_title":      "Why SDD Breaks Down in Microservices",
+	})
+	why := EnrichWhyFromEvent(&ev)
+
+	var articleRef *sovereignv1.KnowledgeLoopEvidenceRef
+	for _, r := range why.EvidenceRefs {
+		if r.Kind == sovereignv1.EvidenceKind_EVIDENCE_KIND_ARTICLE {
+			articleRef = r
+			break
+		}
+	}
+	require.NotNil(t, articleRef, "expected an ARTICLE-kind evidence ref")
+	require.NotEmpty(t, articleRef.Label, "Label must be the article title, not empty")
+	require.Contains(t, articleRef.Label, "Why SDD Breaks Down")
+}
+
 func TestEnrichWhyFromEvent_UnknownEventFallsBack(t *testing.T) {
 	ev := makeEnrichEvent(t, "UnknownEventType", 105, map[string]any{"entry_key": "article:42"})
 	why := EnrichWhyFromEvent(&ev)
@@ -186,7 +306,8 @@ func TestEnrichWhyFromEvent_HomeItemSuperseded_PopulatesCounterEvidence(t *testi
 	require.NotEmpty(t, why.CounterEvidenceRefs,
 		"superseded entries must surface the previous version as counter-evidence")
 	require.Equal(t, "sv-prev", why.CounterEvidenceRefs[0].RefId)
-	require.Equal(t, "what_changed", why.CounterEvidenceRefs[0].Label)
+	require.Equal(t, sovereignv1.EvidenceKind_EVIDENCE_KIND_SUMMARY, why.CounterEvidenceRefs[0].Kind,
+		"counter-evidence on a superseded summary must route as SUMMARY")
 	require.NotNil(t, why.WhatWouldChangeMyMind)
 	require.Contains(t, *why.WhatWouldChangeMyMind, "newer")
 }
