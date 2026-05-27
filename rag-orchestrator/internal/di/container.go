@@ -155,10 +155,17 @@ func NewApplicationComponents(cfg *config.Config, pool *pgxpool.Pool, log *slog.
 			slog.String("url", cfg.Rerank.URL),
 			slog.String("model", cfg.Rerank.Model))
 	}
+	// Neighbor searcher for Ask Augur's inline-projected related citations.
+	// Always instantiated against pgvector + tsvector RRF independent of the
+	// user-facing bm25_source toggle, because neighbor scoring needs the same
+	// hybrid pipeline regardless of how primary retrieval is configured. The
+	// instance is also reused for the retrieval path when bm25_source=postgres
+	// so we do not double up on connections to the same pool.
+	neighborSearcher := repository.NewHybridSearchRepository(pool, int(cfg.RAG.RRFK))
+
 	if cfg.Hybrid.Enabled {
 		if cfg.Hybrid.BM25Source == "postgres" {
-			hybridSearcher := repository.NewHybridSearchRepository(pool, int(cfg.RAG.RRFK))
-			opts = append(opts, usecase.WithHybridSearcher(hybridSearcher))
+			opts = append(opts, usecase.WithHybridSearcher(neighborSearcher))
 			log.Info("hybrid_search_enabled",
 				slog.String("bm25_source", "postgres"),
 				slog.Int("rrfk", int(cfg.RAG.RRFK)))
@@ -264,6 +271,12 @@ func NewApplicationComponents(cfg *config.Config, pool *pgxpool.Pool, log *slog.
 	relevanceGate := usecase.NewRelevanceGate(0.5, 0.25)
 	answerOpts = append(answerOpts, usecase.WithRelevanceGate(relevanceGate))
 	log.Info("relevance_gate_enabled")
+
+	// Ask Augur related-citation inline projection (ADR-000927). Wired
+	// unconditionally so the done-event INSERT carries the neighbor snapshot
+	// regardless of which bm25_source primary retrieval uses.
+	answerOpts = append(answerOpts, usecase.WithNeighborSearcher(neighborSearcher))
+	log.Info("neighbor_searcher_enabled")
 
 	answerUsecase := usecase.NewAnswerWithRAGUsecase(
 		retrieveUsecase, promptBuilder, generator, usecase.NewOutputValidator(cfg.RAG.MinAnswerLength),
