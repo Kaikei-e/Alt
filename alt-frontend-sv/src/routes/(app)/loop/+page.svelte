@@ -726,9 +726,18 @@ function onReviewAction(
 	</header>
 
 	{#if data.error}
+		{@const transientError =
+			data.error === "unavailable" ||
+			data.error === "deadline_exceeded" ||
+			data.error === "canceled" ||
+			data.error === "upstream unavailable"}
 		<aside class="quality-banner quality-banner--error" role="status">
 			<span class="banner-label">Loop unavailable</span>
-			<span class="banner-msg">{data.error}</span>
+			<span class="banner-msg">
+				{transientError
+					? "Loop is briefly unavailable — refresh to retry."
+					: data.error}
+			</span>
 		</aside>
 	{:else if quality !== "full" && quality !== "unspecified"}
 		<aside class="quality-banner" role="status">
