@@ -40,6 +40,17 @@ describe("/loop/+page.svelte wiring guards", () => {
 		expect(pageSource).toMatch(/isInFlight/);
 	});
 
+	it("renders a retry-friendly banner copy for transient Connect codes", () => {
+		// 2026-05-28 deploy-gap incident: a 5-second knowledge-sovereign restart
+		// surfaced as "Loop unavailable / [internal]" because the FE printed
+		// data.error verbatim. The banner must distinguish transient codes
+		// ("unavailable" / "deadline_exceeded" / "canceled" — now propagated
+		// from alt-backend) from genuine internal failures so the user knows a
+		// refresh will resolve it.
+		expect(pageSource).toMatch(/data\.error\s*===?\s*["']unavailable["']/);
+		expect(pageSource).toMatch(/briefly unavailable/);
+	});
+
 	it("excludes the workspace spotlight entry from the NOW plane bench when foreground has siblings", () => {
 		// When foreground holds 2+ entries, the .ooda-workspace section already
 		// renders activeEntry (= foreground[0]) with its own action buttons; the
