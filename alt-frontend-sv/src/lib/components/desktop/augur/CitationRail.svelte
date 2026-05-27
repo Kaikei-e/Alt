@@ -1,11 +1,14 @@
 <script lang="ts">
 import { ArrowUpRight } from "@lucide/svelte";
+import { citationHref, type CitationKindName } from "./citation-href";
 
 export type Citation = {
 	URL: string;
 	Title: string;
 	PublishedAt?: string;
 	Score?: number;
+	Kind?: CitationKindName;
+	RefID?: string;
 };
 
 type Props = {
@@ -71,6 +74,25 @@ function handleKey(event: KeyboardEvent, i: number) {
 		handleSelect(i);
 	}
 }
+
+// hrefFor returns the click target for a citation, branching on Kind so a
+// bare UUID never lands in `href` (where the browser would resolve it
+// relative to /augur/<conversation_id>). Legacy / unknown kinds render
+// without a link.
+function hrefFor(c: Citation): string | undefined {
+	return citationHref({
+		kind: c.Kind ?? "UNSPECIFIED",
+		url: c.URL ?? "",
+		refId: c.RefID ?? "",
+	});
+}
+
+// isExternal marks WEB citations that should open in a new tab. ARTICLE /
+// SUMMARY links target same-origin /articles/<id> routes and must stay in the
+// current tab so the SvelteKit client router can take over.
+function isExternal(c: Citation): boolean {
+	return c.Kind === "WEB";
+}
 </script>
 
 <aside class="citation-rail" aria-label="Augur citations">
@@ -95,7 +117,9 @@ function handleKey(event: KeyboardEvent, i: number) {
 		<p class="rail-empty">No citations yet</p>
 	{:else}
 		<ol class="rail-list">
-			{#each citations as cite, i (i + cite.URL)}
+			{#each citations as cite, i (i + (cite.RefID ?? cite.URL))}
+				{@const href = hrefFor(cite)}
+				{@const external = isExternal(cite)}
 				<li class="rail-item-wrap">
 					<div
 						class="rail-item"
@@ -107,28 +131,36 @@ function handleKey(event: KeyboardEvent, i: number) {
 					>
 						<span class="item-num">{pad2(i + 1)}</span>
 						<div class="item-body">
-							<a
-								href={cite.URL}
-								class="item-title"
-								target="_blank"
-								rel="noopener noreferrer"
-								onclick={(e) => e.stopPropagation()}
-							>
-								{cite.Title || "Untitled source"}
-							</a>
+							{#if href}
+								<a
+									{href}
+									class="item-title"
+									target={external ? "_blank" : undefined}
+									rel={external ? "noopener noreferrer" : undefined}
+									onclick={(e) => e.stopPropagation()}
+								>
+									{cite.Title || "Untitled source"}
+								</a>
+							{:else}
+								<span class="item-title item-title-disabled">
+									{cite.Title || "Untitled source"}
+								</span>
+							{/if}
 							{#if cite.PublishedAt}
 								<p class="item-dateline">{formatDateline(cite.PublishedAt)}</p>
 							{/if}
-							<a
-								href={cite.URL}
-								class="item-domain"
-								target="_blank"
-								rel="noopener noreferrer"
-								onclick={(e) => e.stopPropagation()}
-							>
-								<span>{formatDomain(cite.URL)}</span>
-								<ArrowUpRight size={11} strokeWidth={2} />
-							</a>
+							{#if href && external}
+								<a
+									{href}
+									class="item-domain"
+									target="_blank"
+									rel="noopener noreferrer"
+									onclick={(e) => e.stopPropagation()}
+								>
+									<span>{formatDomain(cite.URL)}</span>
+									<ArrowUpRight size={11} strokeWidth={2} />
+								</a>
+							{/if}
 						</div>
 					</div>
 				</li>
@@ -241,6 +273,14 @@ function handleKey(event: KeyboardEvent, i: number) {
 		text-decoration: underline;
 		text-decoration-thickness: 1px;
 		text-underline-offset: 2px;
+	}
+
+	.item-title-disabled {
+		opacity: 0.5;
+		cursor: default;
+	}
+	.item-title-disabled:hover {
+		text-decoration: none;
 	}
 
 	.item-dateline {

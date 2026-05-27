@@ -478,9 +478,64 @@ func citationsFromProto(cs []*augurv2.Citation) []domain.AugurCitation {
 			URL:         c.Url,
 			Title:       c.Title,
 			PublishedAt: c.PublishedAt,
+			Kind:        domainCitationKind(c.Kind),
+			RefID:       c.RefId,
 		})
 	}
 	return out
+}
+
+// domainCitationKind translates the wire-format enum into the domain-layer
+// string so the domain package does not need to import the generated proto.
+func domainCitationKind(k augurv2.CitationKind) domain.CitationKind {
+	switch k {
+	case augurv2.CitationKind_CITATION_KIND_WEB:
+		return domain.CitationKindWeb
+	case augurv2.CitationKind_CITATION_KIND_ARTICLE:
+		return domain.CitationKindArticle
+	case augurv2.CitationKind_CITATION_KIND_SUMMARY:
+		return domain.CitationKindSummary
+	default:
+		return domain.CitationKindUnspecified
+	}
+}
+
+// protoCitationKind is the inverse of domainCitationKind, used when reading
+// stored citations back out for the client.
+func protoCitationKind(k domain.CitationKind) augurv2.CitationKind {
+	switch k {
+	case domain.CitationKindWeb:
+		return augurv2.CitationKind_CITATION_KIND_WEB
+	case domain.CitationKindArticle:
+		return augurv2.CitationKind_CITATION_KIND_ARTICLE
+	case domain.CitationKindSummary:
+		return augurv2.CitationKind_CITATION_KIND_SUMMARY
+	default:
+		return augurv2.CitationKind_CITATION_KIND_UNSPECIFIED
+	}
+}
+
+// citationFromEvidenceRef builds a persisted AugurCitation from the inbound
+// Knowledge Loop evidence. The kind discriminator decides whether the RefId
+// is an absolute URL (WEB) or an alt-db UUID (ARTICLE / SUMMARY) — never both
+// — so the bare-UUID-in-URL bug that previously sent users to /augur/<uuid>
+// cannot recur. The UNSPECIFIED fallback preserves the pre-kind behaviour for
+// rolling deploys, but the FE-side citation-href.ts treats it as unlinkable.
+func citationFromEvidenceRef(r *augurv2.LoopEvidenceRef) domain.AugurCitation {
+	refIDClean := sanitizeUTF8(r.RefId)
+	cit := domain.AugurCitation{
+		Title: sanitizeUTF8(r.Label),
+		Kind:  domainCitationKind(r.Kind),
+	}
+	switch cit.Kind {
+	case domain.CitationKindWeb:
+		cit.URL = refIDClean
+	case domain.CitationKindArticle, domain.CitationKindSummary:
+		cit.RefID = refIDClean
+	default:
+		cit.URL = refIDClean
+	}
+	return cit
 }
 
 // RetrieveContext retrieves relevant context for a query without generating an answer
@@ -609,6 +664,8 @@ func (h *Handler) GetConversation(
 				Url:         c.URL,
 				Title:       c.Title,
 				PublishedAt: c.PublishedAt,
+				Kind:        protoCitationKind(c.Kind),
+				RefId:       c.RefID,
 			})
 		}
 		resp.Messages = append(resp.Messages, &augurv2.ChatMessage{
@@ -659,10 +716,7 @@ func (h *Handler) CreateAugurSessionFromLoopEntry(
 
 	refs := make([]domain.AugurCitation, 0, len(m.EvidenceRefs))
 	for _, r := range m.EvidenceRefs {
-		refs = append(refs, domain.AugurCitation{
-			URL:   sanitizeUTF8(r.RefId),
-			Title: sanitizeUTF8(r.Label),
-		})
+		refs = append(refs, citationFromEvidenceRef(r))
 	}
 
 	conv, err := h.conversationUsecase.CreateSessionFromLoopEntry(ctx, usecase.CreateSessionFromLoopEntryInput{

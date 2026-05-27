@@ -115,6 +115,7 @@ export async function createAugurSessionFromLoopEntryForUser(
 		evidenceRefs: entry.whyPrimary.evidenceRefs.map((r) => ({
 			refId: r.refId,
 			label: r.label,
+			kind: r.kind,
 		})),
 	});
 }

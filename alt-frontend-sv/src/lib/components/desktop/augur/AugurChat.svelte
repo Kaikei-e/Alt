@@ -11,11 +11,15 @@ import {
 import { formatAugurFallbackMessage } from "$lib/utils/augurFallback";
 import augurAvatar from "$lib/assets/augur-chat.webp";
 
+type CitationKindName = "UNSPECIFIED" | "WEB" | "ARTICLE" | "SUMMARY";
+
 type Citation = {
 	URL: string;
 	Title: string;
 	PublishedAt?: string;
 	Score?: number;
+	Kind?: CitationKindName;
+	RefID?: string;
 };
 
 type Message = {
@@ -114,6 +118,8 @@ function convertCitations(citations: AugurCitation[]): Citation[] {
 		URL: c.url,
 		Title: c.title,
 		PublishedAt: c.publishedAt,
+		Kind: c.kind,
+		RefID: c.refId,
 	}));
 }
 

@@ -15,6 +15,14 @@ export type CitationLinkInput = {
  * must therefore render without a link rather than gambling on the contents
  * of `url`.
  */
-export function citationHref(_c: CitationLinkInput): string | undefined {
-	throw new Error("not implemented");
+export function citationHref(c: CitationLinkInput): string | undefined {
+	switch (c.kind) {
+		case "WEB":
+			return c.url || undefined;
+		case "ARTICLE":
+		case "SUMMARY":
+			return c.refId ? `/articles/${c.refId}` : undefined;
+		default:
+			return undefined;
+	}
 }

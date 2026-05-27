@@ -223,16 +223,39 @@ func enrichHomeItemDismissed(ev *sovereign_db.KnowledgeEvent, p enrichmentPayloa
 // --- helpers ----------------------------------------------------------------
 
 // appendRefIfPresent takes interleaved (refID, label) pairs and appends only
-// those whose refID is non-empty.
+// those whose refID is non-empty. The kind discriminator is derived from the
+// label so downstream consumers (Augur citation rail, Loop tile UI) know
+// whether the refID is an alt-db UUID (ARTICLE / SUMMARY) or some other
+// opaque identifier they should not route on.
 func appendRefIfPresent(acc []*sovereignv1.KnowledgeLoopEvidenceRef, pairs ...string) []*sovereignv1.KnowledgeLoopEvidenceRef {
 	for i := 0; i+1 < len(pairs); i += 2 {
 		id, label := pairs[i], pairs[i+1]
 		if id == "" {
 			continue
 		}
-		acc = append(acc, &sovereignv1.KnowledgeLoopEvidenceRef{RefId: id, Label: label})
+		acc = append(acc, &sovereignv1.KnowledgeLoopEvidenceRef{
+			RefId: id,
+			Label: label,
+			Kind:  labelToEvidenceKind(label),
+		})
 	}
 	return acc
+}
+
+// labelToEvidenceKind maps the projector's internal label string to the wire
+// EvidenceKind. Pure function — reproject-safe by construction (no time, no
+// latest state). Unknown labels stay UNSPECIFIED so the UI's citation-href
+// helper renders the citation without a link rather than gambling on the
+// shape of refID.
+func labelToEvidenceKind(label string) sovereignv1.EvidenceKind {
+	switch label {
+	case "summary", "previous_summary", "new_summary", "what_changed":
+		return sovereignv1.EvidenceKind_EVIDENCE_KIND_SUMMARY
+	case "article":
+		return sovereignv1.EvidenceKind_EVIDENCE_KIND_ARTICLE
+	default:
+		return sovereignv1.EvidenceKind_EVIDENCE_KIND_UNSPECIFIED
+	}
 }
 
 // boundEvidence enforces the ≤8 cap from the canonical contract.

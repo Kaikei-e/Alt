@@ -10,6 +10,8 @@ import {
 } from "$lib/connect";
 import { useViewport } from "$lib/stores/viewport.svelte";
 
+type CitationKindName = "UNSPECIFIED" | "WEB" | "ARTICLE" | "SUMMARY";
+
 type PaneMessage = {
 	id: string;
 	message: string;
@@ -19,6 +21,8 @@ type PaneMessage = {
 		URL: string;
 		Title: string;
 		PublishedAt?: string;
+		Kind?: CitationKindName;
+		RefID?: string;
 	}[];
 };
 
@@ -29,6 +33,8 @@ type MobileMessage = {
 		url: string;
 		title: string;
 		publishedAt: string;
+		kind?: CitationKindName;
+		refId?: string;
 	}[];
 };
 
@@ -50,6 +56,8 @@ function toPaneMessages(conv: AugurStoredConversation): PaneMessage[] {
 			URL: c.url,
 			Title: c.title,
 			PublishedAt: c.publishedAt,
+			Kind: c.kind,
+			RefID: c.refId,
 		})),
 	}));
 }
@@ -62,6 +70,8 @@ function toMobileMessages(conv: AugurStoredConversation): MobileMessage[] {
 			url: c.url,
 			title: c.title,
 			publishedAt: c.publishedAt,
+			kind: c.kind,
+			refId: c.refId,
 		})),
 	}));
 }

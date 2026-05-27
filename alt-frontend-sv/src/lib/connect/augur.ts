@@ -8,6 +8,7 @@ import { createClient } from "@connectrpc/connect";
 import type { Client, Transport } from "@connectrpc/connect";
 import {
 	AugurService,
+	CitationKind,
 	type StreamChatResponse,
 	type RetrieveContextResponse,
 	type Citation as ProtoCitation,
@@ -15,6 +16,25 @@ import {
 	type ConversationSummary as ProtoConversationSummary,
 	type ChatMessage as ProtoChatMessage,
 } from "$lib/gen/alt/augur/v2/augur_pb";
+
+/** Names mirror the proto CitationKind enum so the FE never has to deal
+ * with raw enum integers. UNSPECIFIED is the wire default and means the
+ * upstream emitter has not been redeployed yet — the UI treats it as a
+ * non-clickable citation rather than gambling on `url` being a real URL. */
+export type AugurCitationKind = "UNSPECIFIED" | "WEB" | "ARTICLE" | "SUMMARY";
+
+function citationKindFromProto(k: CitationKind): AugurCitationKind {
+	switch (k) {
+		case CitationKind.WEB:
+			return "WEB";
+		case CitationKind.ARTICLE:
+			return "ARTICLE";
+		case CitationKind.SUMMARY:
+			return "SUMMARY";
+		default:
+			return "UNSPECIFIED";
+	}
+}
 
 /** Type-safe AugurService client */
 type AugurClient = Client<typeof AugurService>;
@@ -24,12 +44,18 @@ type AugurClient = Client<typeof AugurService>;
 // =============================================================================
 
 /**
- * Citation/source reference from Augur responses
+ * Citation/source reference from Augur responses.
+ *
+ * `kind` disambiguates how the UI builds the click target: WEB uses `url`,
+ * ARTICLE / SUMMARY use `refId` (an alt-db UUID) to build `/articles/<refId>`.
+ * `url` for non-WEB kinds is empty by design — see citation-href.ts.
  */
 export interface AugurCitation {
 	url: string;
 	title: string;
 	publishedAt: string;
+	kind: AugurCitationKind;
+	refId: string;
 }
 
 /**
@@ -182,6 +208,8 @@ export function streamAugurChat(
 										url: c.url,
 										title: c.title,
 										publishedAt: c.publishedAt,
+										kind: citationKindFromProto(c.kind),
+										refId: c.refId,
 									}),
 								);
 								latestCitations = citations;
@@ -199,6 +227,8 @@ export function streamAugurChat(
 									url: c.url,
 									title: c.title,
 									publishedAt: c.publishedAt,
+									kind: citationKindFromProto(c.kind),
+									refId: c.refId,
 								}),
 							);
 							// Use final answer from done payload if available
@@ -427,6 +457,8 @@ export async function getAugurConversation(
 				url: c.url,
 				title: c.title,
 				publishedAt: c.publishedAt,
+				kind: citationKindFromProto(c.kind),
+				refId: c.refId,
 			})),
 		})),
 	};
@@ -451,7 +483,24 @@ export interface CreateAugurSessionFromLoopEntryInput {
 	entryKey: string;
 	lensModeId: string;
 	whyText: string;
-	evidenceRefs: Array<{ refId: string; label: string }>;
+	evidenceRefs: Array<{
+		refId: string;
+		label: string;
+		kind?: AugurCitationKind;
+	}>;
+}
+
+function citationKindToProto(k: AugurCitationKind | undefined): CitationKind {
+	switch (k) {
+		case "WEB":
+			return CitationKind.WEB;
+		case "ARTICLE":
+			return CitationKind.ARTICLE;
+		case "SUMMARY":
+			return CitationKind.SUMMARY;
+		default:
+			return CitationKind.UNSPECIFIED;
+	}
 }
 
 /** Mints a new Augur conversation seeded with a Knowledge Loop entry's Why. */
@@ -468,6 +517,7 @@ export async function createAugurSessionFromLoopEntry(
 		evidenceRefs: input.evidenceRefs.map((r) => ({
 			refId: r.refId,
 			label: r.label,
+			kind: citationKindToProto(r.kind),
 		})),
 	});
 	return { conversationId: response.conversationId };
