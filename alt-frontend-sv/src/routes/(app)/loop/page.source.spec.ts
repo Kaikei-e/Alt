@@ -40,6 +40,18 @@ describe("/loop/+page.svelte wiring guards", () => {
 		expect(pageSource).toMatch(/isInFlight/);
 	});
 
+	it("excludes the workspace spotlight entry from the NOW plane bench (spotlight + bench)", () => {
+		// The .ooda-workspace section already renders activeEntry (foreground[0])
+		// with its own action buttons. The NOW plane below MUST NOT render that
+		// same entry again as a LoopEntryTile, or the same article shows two
+		// stacked sets of REVISIT/ASK/SNOOZE controls (regression reported
+		// 2026-05-27 via screenshot). The {#each} that feeds the foreground tiles
+		// must filter on entryKey against activeEntry.
+		expect(pageSource).toMatch(
+			/foreground[\s\S]*?\.filter\([\s\S]*?activeEntry\?\.entryKey/,
+		);
+	});
+
 	it("derives bucket planes from hook-owned bucketEntries", () => {
 		// ADR-000908 §Δ3 added a filter clause that excludes `internalized`
 		// entries from foreground / bucket surfaces. The source must still
