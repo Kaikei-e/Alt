@@ -24,6 +24,18 @@ const tileSource = readFileSync(
 );
 
 describe("LoopEntryTile source guards", () => {
+	it("delegates the ASK transition to the +page parent (no duplicate emit)", () => {
+		// The /loop +page.svelte fires loop.transitionTo(...) right after the
+		// POST /loop/ask returns with a conversationId. The tile previously also
+		// emitted onTransition with buildAskTransitionMetadata, recording two
+		// acted=ask events per handshake — masked in production only because
+		// await goto() typically beat the second emit, but visible on slow
+		// networks or when the tile survived the navigation. The tile must not
+		// reconstruct the ASK transition metadata itself.
+		expect(tileSource).not.toMatch(/buildAskTransitionMetadata/);
+	});
+
+
 	it("accepts the PR-L2 props via $props() destructuring", () => {
 		expect(tileSource).toMatch(/onTransition/);
 		expect(tileSource).toMatch(/onDismiss/);
