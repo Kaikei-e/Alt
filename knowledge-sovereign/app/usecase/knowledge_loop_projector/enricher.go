@@ -147,8 +147,8 @@ func enrichSummaryVersion(_ *sovereign_db.KnowledgeEvent, p enrichmentPayload) *
 		text = "A new summary is ready in one of your feeds."
 	}
 	why := &sovereignv1.KnowledgeLoopWhyPayload{
-		Kind:         sovereignv1.WhyKind_WHY_KIND_SOURCE,
-		Text:         sanitizePlainText(text),
+		Kind: sovereignv1.WhyKind_WHY_KIND_SOURCE,
+		Text: sanitizePlainText(text),
 		EvidenceRefs: boundEvidence(appendRef(nil,
 			evidenceCandidate{RefID: p.SummaryVersionID, Kind: sovereignv1.EvidenceKind_EVIDENCE_KIND_SUMMARY},
 			evidenceCandidate{RefID: p.ArticleID, Label: p.ArticleTitle, Kind: sovereignv1.EvidenceKind_EVIDENCE_KIND_ARTICLE},
