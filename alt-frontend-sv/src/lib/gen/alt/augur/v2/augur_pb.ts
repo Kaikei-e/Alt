@@ -2,8 +2,8 @@
 // @generated from file alt/augur/v2/augur.proto (package alt.augur.v2, syntax proto3)
 /* eslint-disable */
 
-import type { GenFile, GenMessage, GenService } from "@bufbuild/protobuf/codegenv2";
-import { fileDesc, messageDesc, serviceDesc } from "@bufbuild/protobuf/codegenv2";
+import type { GenEnum, GenFile, GenMessage, GenService } from "@bufbuild/protobuf/codegenv2";
+import { enumDesc, fileDesc, messageDesc, serviceDesc } from "@bufbuild/protobuf/codegenv2";
 import type { Timestamp } from "@bufbuild/protobuf/wkt";
 import { file_google_protobuf_timestamp } from "@bufbuild/protobuf/wkt";
 import type { Message } from "@bufbuild/protobuf";
@@ -12,7 +12,7 @@ import type { Message } from "@bufbuild/protobuf";
  * Describes the file alt/augur/v2/augur.proto.
  */
 export const file_alt_augur_v2_augur: GenFile = /*@__PURE__*/
-  fileDesc("ChhhbHQvYXVndXIvdjIvYXVndXIucHJvdG8SDGFsdC5hdWd1ci52MiJZChFTdHJlYW1DaGF0UmVxdWVzdBIrCghtZXNzYWdlcxgBIAMoCzIZLmFsdC5hdWd1ci52Mi5DaGF0TWVzc2FnZRIXCg9jb252ZXJzYXRpb25faWQYAiABKAkihwEKC0NoYXRNZXNzYWdlEgwKBHJvbGUYASABKAkSDwoHY29udGVudBgCIAEoCRIuCgpjcmVhdGVkX2F0GAMgASgLMhouZ29vZ2xlLnByb3RvYnVmLlRpbWVzdGFtcBIpCgljaXRhdGlvbnMYBCADKAsyFi5hbHQuYXVndXIudjIuQ2l0YXRpb24i4AEKElN0cmVhbUNoYXRSZXNwb25zZRIMCgRraW5kGAEgASgJEg8KBWRlbHRhGAIgASgJSAASKQoEbWV0YRgDIAEoCzIZLmFsdC5hdWd1ci52Mi5NZXRhUGF5bG9hZEgAEikKBGRvbmUYBCABKAsyGS5hbHQuYXVndXIudjIuRG9uZVBheWxvYWRIABIXCg1mYWxsYmFja19jb2RlGAUgASgJSAASFwoNZXJyb3JfbWVzc2FnZRgGIAEoCUgAEhgKDnRoaW5raW5nX2RlbHRhGAcgASgJSABCCQoHcGF5bG9hZCJRCgtNZXRhUGF5bG9hZBIpCgljaXRhdGlvbnMYASADKAsyFi5hbHQuYXVndXIudjIuQ2l0YXRpb24SFwoPY29udmVyc2F0aW9uX2lkGAIgASgJIjwKCENpdGF0aW9uEgsKA3VybBgBIAEoCRINCgV0aXRsZRgCIAEoCRIUCgxwdWJsaXNoZWRfYXQYAyABKAkiagoLRG9uZVBheWxvYWQSDgoGYW5zd2VyGAEgASgJEikKCWNpdGF0aW9ucxgCIAMoCzIWLmFsdC5hdWd1ci52Mi5DaXRhdGlvbhIOCgZpbnRlbnQYAyABKAkSEAoIc3RyYXRlZ3kYBCABKAkiNgoWUmV0cmlldmVDb250ZXh0UmVxdWVzdBINCgVxdWVyeRgBIAEoCRINCgVsaW1pdBgCIAEoBSJGChdSZXRyaWV2ZUNvbnRleHRSZXNwb25zZRIrCghjb250ZXh0cxgBIAMoCzIZLmFsdC5hdWd1ci52Mi5Db250ZXh0SXRlbSJOCgtDb250ZXh0SXRlbRILCgN1cmwYASABKAkSDQoFdGl0bGUYAiABKAkSFAoMcHVibGlzaGVkX2F0GAMgASgJEg0KBXNjb3JlGAQgASgCIssBChNDb252ZXJzYXRpb25TdW1tYXJ5EgoKAmlkGAEgASgJEg0KBXRpdGxlGAIgASgJEi4KCmNyZWF0ZWRfYXQYAyABKAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1wEjQKEGxhc3RfYWN0aXZpdHlfYXQYBCABKAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1wEhwKFGxhc3RfbWVzc2FnZV9wcmV2aWV3GAUgASgJEhUKDW1lc3NhZ2VfY291bnQYBiABKAUiQQoYTGlzdENvbnZlcnNhdGlvbnNSZXF1ZXN0EhEKCXBhZ2Vfc2l6ZRgBIAEoBRISCgpwYWdlX3Rva2VuGAIgASgJIm4KGUxpc3RDb252ZXJzYXRpb25zUmVzcG9uc2USOAoNY29udmVyc2F0aW9ucxgBIAMoCzIhLmFsdC5hdWd1ci52Mi5Db252ZXJzYXRpb25TdW1tYXJ5EhcKD25leHRfcGFnZV90b2tlbhgCIAEoCSIkChZHZXRDb252ZXJzYXRpb25SZXF1ZXN0EgoKAmlkGAEgASgJIpEBChdHZXRDb252ZXJzYXRpb25SZXNwb25zZRIKCgJpZBgBIAEoCRINCgV0aXRsZRgCIAEoCRIuCgpjcmVhdGVkX2F0GAMgASgLMhouZ29vZ2xlLnByb3RvYnVmLlRpbWVzdGFtcBIrCghtZXNzYWdlcxgEIAMoCzIZLmFsdC5hdWd1ci52Mi5DaGF0TWVzc2FnZSInChlEZWxldGVDb252ZXJzYXRpb25SZXF1ZXN0EgoKAmlkGAEgASgJIhwKGkRlbGV0ZUNvbnZlcnNhdGlvblJlc3BvbnNlIjAKD0xvb3BFdmlkZW5jZVJlZhIOCgZyZWZfaWQYASABKAkSDQoFbGFiZWwYAiABKAkitgEKJkNyZWF0ZUF1Z3VyU2Vzc2lvbkZyb21Mb29wRW50cnlSZXF1ZXN0EhsKE2NsaWVudF9oYW5kc2hha2VfaWQYASABKAkSEQoJZW50cnlfa2V5GAIgASgJEhQKDGxlbnNfbW9kZV9pZBgDIAEoCRIQCgh3aHlfdGV4dBgEIAEoCRI0Cg1ldmlkZW5jZV9yZWZzGAUgAygLMh0uYWx0LmF1Z3VyLnYyLkxvb3BFdmlkZW5jZVJlZiJCCidDcmVhdGVBdWd1clNlc3Npb25Gcm9tTG9vcEVudHJ5UmVzcG9uc2USFwoPY29udmVyc2F0aW9uX2lkGAEgASgJMoEFCgxBdWd1clNlcnZpY2USUQoKU3RyZWFtQ2hhdBIfLmFsdC5hdWd1ci52Mi5TdHJlYW1DaGF0UmVxdWVzdBogLmFsdC5hdWd1ci52Mi5TdHJlYW1DaGF0UmVzcG9uc2UwARJeCg9SZXRyaWV2ZUNvbnRleHQSJC5hbHQuYXVndXIudjIuUmV0cmlldmVDb250ZXh0UmVxdWVzdBolLmFsdC5hdWd1ci52Mi5SZXRyaWV2ZUNvbnRleHRSZXNwb25zZRJkChFMaXN0Q29udmVyc2F0aW9ucxImLmFsdC5hdWd1ci52Mi5MaXN0Q29udmVyc2F0aW9uc1JlcXVlc3QaJy5hbHQuYXVndXIudjIuTGlzdENvbnZlcnNhdGlvbnNSZXNwb25zZRJeCg9HZXRDb252ZXJzYXRpb24SJC5hbHQuYXVndXIudjIuR2V0Q29udmVyc2F0aW9uUmVxdWVzdBolLmFsdC5hdWd1ci52Mi5HZXRDb252ZXJzYXRpb25SZXNwb25zZRJnChJEZWxldGVDb252ZXJzYXRpb24SJy5hbHQuYXVndXIudjIuRGVsZXRlQ29udmVyc2F0aW9uUmVxdWVzdBooLmFsdC5hdWd1ci52Mi5EZWxldGVDb252ZXJzYXRpb25SZXNwb25zZRKOAQofQ3JlYXRlQXVndXJTZXNzaW9uRnJvbUxvb3BFbnRyeRI0LmFsdC5hdWd1ci52Mi5DcmVhdGVBdWd1clNlc3Npb25Gcm9tTG9vcEVudHJ5UmVxdWVzdBo1LmFsdC5hdWd1ci52Mi5DcmVhdGVBdWd1clNlc3Npb25Gcm9tTG9vcEVudHJ5UmVzcG9uc2VCJFoiYWx0L2dlbi9wcm90by9hbHQvYXVndXIvdjI7YXVndXJ2MmIGcHJvdG8z", [file_google_protobuf_timestamp]);
+  fileDesc("ChhhbHQvYXVndXIvdjIvYXVndXIucHJvdG8SDGFsdC5hdWd1ci52MiJZChFTdHJlYW1DaGF0UmVxdWVzdBIrCghtZXNzYWdlcxgBIAMoCzIZLmFsdC5hdWd1ci52Mi5DaGF0TWVzc2FnZRIXCg9jb252ZXJzYXRpb25faWQYAiABKAkihwEKC0NoYXRNZXNzYWdlEgwKBHJvbGUYASABKAkSDwoHY29udGVudBgCIAEoCRIuCgpjcmVhdGVkX2F0GAMgASgLMhouZ29vZ2xlLnByb3RvYnVmLlRpbWVzdGFtcBIpCgljaXRhdGlvbnMYBCADKAsyFi5hbHQuYXVndXIudjIuQ2l0YXRpb24i4AEKElN0cmVhbUNoYXRSZXNwb25zZRIMCgRraW5kGAEgASgJEg8KBWRlbHRhGAIgASgJSAASKQoEbWV0YRgDIAEoCzIZLmFsdC5hdWd1ci52Mi5NZXRhUGF5bG9hZEgAEikKBGRvbmUYBCABKAsyGS5hbHQuYXVndXIudjIuRG9uZVBheWxvYWRIABIXCg1mYWxsYmFja19jb2RlGAUgASgJSAASFwoNZXJyb3JfbWVzc2FnZRgGIAEoCUgAEhgKDnRoaW5raW5nX2RlbHRhGAcgASgJSABCCQoHcGF5bG9hZCJRCgtNZXRhUGF5bG9hZBIpCgljaXRhdGlvbnMYASADKAsyFi5hbHQuYXVndXIudjIuQ2l0YXRpb24SFwoPY29udmVyc2F0aW9uX2lkGAIgASgJInYKCENpdGF0aW9uEgsKA3VybBgBIAEoCRINCgV0aXRsZRgCIAEoCRIUCgxwdWJsaXNoZWRfYXQYAyABKAkSKAoEa2luZBgEIAEoDjIaLmFsdC5hdWd1ci52Mi5DaXRhdGlvbktpbmQSDgoGcmVmX2lkGAUgASgJImoKC0RvbmVQYXlsb2FkEg4KBmFuc3dlchgBIAEoCRIpCgljaXRhdGlvbnMYAiADKAsyFi5hbHQuYXVndXIudjIuQ2l0YXRpb24SDgoGaW50ZW50GAMgASgJEhAKCHN0cmF0ZWd5GAQgASgJIjYKFlJldHJpZXZlQ29udGV4dFJlcXVlc3QSDQoFcXVlcnkYASABKAkSDQoFbGltaXQYAiABKAUiRgoXUmV0cmlldmVDb250ZXh0UmVzcG9uc2USKwoIY29udGV4dHMYASADKAsyGS5hbHQuYXVndXIudjIuQ29udGV4dEl0ZW0iTgoLQ29udGV4dEl0ZW0SCwoDdXJsGAEgASgJEg0KBXRpdGxlGAIgASgJEhQKDHB1Ymxpc2hlZF9hdBgDIAEoCRINCgVzY29yZRgEIAEoAiLLAQoTQ29udmVyc2F0aW9uU3VtbWFyeRIKCgJpZBgBIAEoCRINCgV0aXRsZRgCIAEoCRIuCgpjcmVhdGVkX2F0GAMgASgLMhouZ29vZ2xlLnByb3RvYnVmLlRpbWVzdGFtcBI0ChBsYXN0X2FjdGl2aXR5X2F0GAQgASgLMhouZ29vZ2xlLnByb3RvYnVmLlRpbWVzdGFtcBIcChRsYXN0X21lc3NhZ2VfcHJldmlldxgFIAEoCRIVCg1tZXNzYWdlX2NvdW50GAYgASgFIkEKGExpc3RDb252ZXJzYXRpb25zUmVxdWVzdBIRCglwYWdlX3NpemUYASABKAUSEgoKcGFnZV90b2tlbhgCIAEoCSJuChlMaXN0Q29udmVyc2F0aW9uc1Jlc3BvbnNlEjgKDWNvbnZlcnNhdGlvbnMYASADKAsyIS5hbHQuYXVndXIudjIuQ29udmVyc2F0aW9uU3VtbWFyeRIXCg9uZXh0X3BhZ2VfdG9rZW4YAiABKAkiJAoWR2V0Q29udmVyc2F0aW9uUmVxdWVzdBIKCgJpZBgBIAEoCSKRAQoXR2V0Q29udmVyc2F0aW9uUmVzcG9uc2USCgoCaWQYASABKAkSDQoFdGl0bGUYAiABKAkSLgoKY3JlYXRlZF9hdBgDIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1lc3RhbXASKwoIbWVzc2FnZXMYBCADKAsyGS5hbHQuYXVndXIudjIuQ2hhdE1lc3NhZ2UiJwoZRGVsZXRlQ29udmVyc2F0aW9uUmVxdWVzdBIKCgJpZBgBIAEoCSIcChpEZWxldGVDb252ZXJzYXRpb25SZXNwb25zZSJaCg9Mb29wRXZpZGVuY2VSZWYSDgoGcmVmX2lkGAEgASgJEg0KBWxhYmVsGAIgASgJEigKBGtpbmQYAyABKA4yGi5hbHQuYXVndXIudjIuQ2l0YXRpb25LaW5kIrYBCiZDcmVhdGVBdWd1clNlc3Npb25Gcm9tTG9vcEVudHJ5UmVxdWVzdBIbChNjbGllbnRfaGFuZHNoYWtlX2lkGAEgASgJEhEKCWVudHJ5X2tleRgCIAEoCRIUCgxsZW5zX21vZGVfaWQYAyABKAkSEAoId2h5X3RleHQYBCABKAkSNAoNZXZpZGVuY2VfcmVmcxgFIAMoCzIdLmFsdC5hdWd1ci52Mi5Mb29wRXZpZGVuY2VSZWYiQgonQ3JlYXRlQXVndXJTZXNzaW9uRnJvbUxvb3BFbnRyeVJlc3BvbnNlEhcKD2NvbnZlcnNhdGlvbl9pZBgBIAEoCSp6CgxDaXRhdGlvbktpbmQSHQoZQ0lUQVRJT05fS0lORF9VTlNQRUNJRklFRBAAEhUKEUNJVEFUSU9OX0tJTkRfV0VCEAESGQoVQ0lUQVRJT05fS0lORF9BUlRJQ0xFEAISGQoVQ0lUQVRJT05fS0lORF9TVU1NQVJZEAMygQUKDEF1Z3VyU2VydmljZRJRCgpTdHJlYW1DaGF0Eh8uYWx0LmF1Z3VyLnYyLlN0cmVhbUNoYXRSZXF1ZXN0GiAuYWx0LmF1Z3VyLnYyLlN0cmVhbUNoYXRSZXNwb25zZTABEl4KD1JldHJpZXZlQ29udGV4dBIkLmFsdC5hdWd1ci52Mi5SZXRyaWV2ZUNvbnRleHRSZXF1ZXN0GiUuYWx0LmF1Z3VyLnYyLlJldHJpZXZlQ29udGV4dFJlc3BvbnNlEmQKEUxpc3RDb252ZXJzYXRpb25zEiYuYWx0LmF1Z3VyLnYyLkxpc3RDb252ZXJzYXRpb25zUmVxdWVzdBonLmFsdC5hdWd1ci52Mi5MaXN0Q29udmVyc2F0aW9uc1Jlc3BvbnNlEl4KD0dldENvbnZlcnNhdGlvbhIkLmFsdC5hdWd1ci52Mi5HZXRDb252ZXJzYXRpb25SZXF1ZXN0GiUuYWx0LmF1Z3VyLnYyLkdldENvbnZlcnNhdGlvblJlc3BvbnNlEmcKEkRlbGV0ZUNvbnZlcnNhdGlvbhInLmFsdC5hdWd1ci52Mi5EZWxldGVDb252ZXJzYXRpb25SZXF1ZXN0GiguYWx0LmF1Z3VyLnYyLkRlbGV0ZUNvbnZlcnNhdGlvblJlc3BvbnNlEo4BCh9DcmVhdGVBdWd1clNlc3Npb25Gcm9tTG9vcEVudHJ5EjQuYWx0LmF1Z3VyLnYyLkNyZWF0ZUF1Z3VyU2Vzc2lvbkZyb21Mb29wRW50cnlSZXF1ZXN0GjUuYWx0LmF1Z3VyLnYyLkNyZWF0ZUF1Z3VyU2Vzc2lvbkZyb21Mb29wRW50cnlSZXNwb25zZUIkWiJhbHQvZ2VuL3Byb3RvL2FsdC9hdWd1ci92MjthdWd1cnYyYgZwcm90bzM", [file_google_protobuf_timestamp]);
 
 /**
  * StreamChatRequest is the request for streaming chat.
@@ -194,29 +194,48 @@ export const MetaPayloadSchema: GenMessage<MetaPayload> = /*@__PURE__*/
 /**
  * Citation represents a source reference.
  *
+ * `url` is meaningful only when `kind = CITATION_KIND_WEB`; for ARTICLE and
+ * SUMMARY the UI ignores `url` and routes via `ref_id`. Persisting both is
+ * safe (additive JSONB field) and lets readers fall back if kind is missing.
+ *
  * @generated from message alt.augur.v2.Citation
  */
 export type Citation = Message<"alt.augur.v2.Citation"> & {
   /**
-   * URL of the source article
+   * URL of the source article (kind = WEB).
    *
    * @generated from field: string url = 1;
    */
   url: string;
 
   /**
-   * Title of the source article
+   * Title of the source article.
    *
    * @generated from field: string title = 2;
    */
   title: string;
 
   /**
-   * Publication date (ISO8601 format)
+   * Publication date (ISO8601 format).
    *
    * @generated from field: string published_at = 3;
    */
   publishedAt: string;
+
+  /**
+   * Kind of citation; controls how `url` / `ref_id` are interpreted.
+   *
+   * @generated from field: alt.augur.v2.CitationKind kind = 4;
+   */
+  kind: CitationKind;
+
+  /**
+   * Opaque identifier of the cited artefact (alt-db articles.id or
+   * summary_versions.summary_version_id) when kind is ARTICLE or SUMMARY.
+   *
+   * @generated from field: string ref_id = 5;
+   */
+  refId: string;
 };
 
 /**
@@ -536,7 +555,13 @@ export const DeleteConversationResponseSchema: GenMessage<DeleteConversationResp
 /**
  * LoopEvidenceRef mirrors knowledge-sovereign's KnowledgeLoopEvidenceRef so the
  * Augur service can seed a conversation with the same citations the Loop tile
- * displayed. ref_id is typically a URL or article id, label is the display text.
+ * displayed.
+ *
+ * `kind` discriminates how `ref_id` is interpreted (mirrors CitationKind):
+ * WEB → `ref_id` is an absolute URL; ARTICLE / SUMMARY → `ref_id` is an
+ * alt-db UUID and the UI builds /articles/<ref_id>. UNSPECIFIED means the
+ * upstream emitter did not provide a kind — the server still persists the
+ * payload but the UI renders without a link.
  *
  * @generated from message alt.augur.v2.LoopEvidenceRef
  */
@@ -550,6 +575,11 @@ export type LoopEvidenceRef = Message<"alt.augur.v2.LoopEvidenceRef"> & {
    * @generated from field: string label = 2;
    */
   label: string;
+
+  /**
+   * @generated from field: alt.augur.v2.CitationKind kind = 3;
+   */
+  kind: CitationKind;
 };
 
 /**
@@ -634,6 +664,43 @@ export type CreateAugurSessionFromLoopEntryResponse = Message<"alt.augur.v2.Crea
  */
 export const CreateAugurSessionFromLoopEntryResponseSchema: GenMessage<CreateAugurSessionFromLoopEntryResponse> = /*@__PURE__*/
   messageDesc(file_alt_augur_v2_augur, 18);
+
+/**
+ * CitationKind discriminates how a Citation should be rendered into a click
+ * target. WEB carries a full URL in `url`; ARTICLE and SUMMARY carry an
+ * alt-db UUID in `ref_id` that the UI resolves to `/articles/<ref_id>`.
+ * UNSPECIFIED is the legacy / unknown case — the UI MUST render the citation
+ * without a link rather than gambling on `url` being a real URL.
+ *
+ * @generated from enum alt.augur.v2.CitationKind
+ */
+export enum CitationKind {
+  /**
+   * @generated from enum value: CITATION_KIND_UNSPECIFIED = 0;
+   */
+  UNSPECIFIED = 0,
+
+  /**
+   * @generated from enum value: CITATION_KIND_WEB = 1;
+   */
+  WEB = 1,
+
+  /**
+   * @generated from enum value: CITATION_KIND_ARTICLE = 2;
+   */
+  ARTICLE = 2,
+
+  /**
+   * @generated from enum value: CITATION_KIND_SUMMARY = 3;
+   */
+  SUMMARY = 3,
+}
+
+/**
+ * Describes the enum alt.augur.v2.CitationKind.
+ */
+export const CitationKindSchema: GenEnum<CitationKind> = /*@__PURE__*/
+  enumDesc(file_alt_augur_v2_augur, 0);
 
 /**
  * @generated from service alt.augur.v2.AugurService

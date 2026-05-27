@@ -15,6 +15,7 @@ import {
 	DecisionIntent,
 	DismissState,
 	type EmitActOutcomeResponse,
+	EvidenceKind,
 	type GetKnowledgeLoopResponse,
 	type KnowledgeLoopMacroState as ProtoKnowledgeLoopMacroState,
 	KnowledgeLoopService,
@@ -69,13 +70,23 @@ export type ConfidenceLadderName =
 	| "verified"
 	| "unspecified";
 
+export type EvidenceKindName = "UNSPECIFIED" | "WEB" | "ARTICLE" | "SUMMARY";
+
 export interface WhyPayloadData {
 	kind: WhyKindName;
 	text: string;
 	confidence?: number;
 	confidenceLadder?: ConfidenceLadderName;
-	evidenceRefs: Array<{ refId: string; label: string }>;
-	counterEvidenceRefs?: Array<{ refId: string; label: string }>;
+	evidenceRefs: Array<{
+		refId: string;
+		label: string;
+		kind: EvidenceKindName;
+	}>;
+	counterEvidenceRefs?: Array<{
+		refId: string;
+		label: string;
+		kind: EvidenceKindName;
+	}>;
 	whatWouldChangeMyMind?: string;
 }
 
@@ -404,11 +415,13 @@ export function mapProtoEntry(
 				e.whyPrimary?.evidenceRefs.map((r) => ({
 					refId: r.refId,
 					label: r.label,
+					kind: mapEvidenceKindFromProto(r.kind),
 				})) ?? [],
 			counterEvidenceRefs:
 				e.whyPrimary?.counterEvidenceRefs?.map((r) => ({
 					refId: r.refId,
 					label: r.label,
+					kind: mapEvidenceKindFromProto(r.kind),
 				})) ?? [],
 			whatWouldChangeMyMind: e.whyPrimary?.whatWouldChangeMyMind,
 		},
@@ -535,6 +548,21 @@ function mapConfidenceLadderFromProto(
 			return "verified";
 		default:
 			return undefined;
+	}
+}
+
+function mapEvidenceKindFromProto(
+	k: EvidenceKind | undefined,
+): EvidenceKindName {
+	switch (k) {
+		case EvidenceKind.WEB:
+			return "WEB";
+		case EvidenceKind.ARTICLE:
+			return "ARTICLE";
+		case EvidenceKind.SUMMARY:
+			return "SUMMARY";
+		default:
+			return "UNSPECIFIED";
 	}
 }
 

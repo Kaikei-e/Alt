@@ -229,9 +229,23 @@ enum ReviewReason {
 // Payloads
 // ============================================================================
 
+// EvidenceKind discriminates how `EvidenceRef.ref_id` should be interpreted
+// downstream: WEB means `ref_id` is an absolute URL; ARTICLE / SUMMARY mean
+// `ref_id` is an alt-db UUID (articles.id or summary_versions.summary_version_id)
+// and the UI builds `/articles/<ref_id>`. Mirrors alt.augur.v2.CitationKind so
+// the Knowledge Loop ↔ Augur handshake can carry the same discriminator end
+// to end without ambiguous URL-vs-UUID heuristics.
+enum EvidenceKind {
+  EVIDENCE_KIND_UNSPECIFIED = 0;
+  EVIDENCE_KIND_WEB = 1;
+  EVIDENCE_KIND_ARTICLE = 2;
+  EVIDENCE_KIND_SUMMARY = 3;
+}
+
 message EvidenceRef {
   string ref_id = 1;
   string label = 2;
+  EvidenceKind kind = 3;
 }
 
 message WhyPayload {

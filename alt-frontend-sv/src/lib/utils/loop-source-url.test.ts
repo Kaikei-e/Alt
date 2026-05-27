@@ -105,7 +105,11 @@ describe("resolveLoopSourceUrl", () => {
 			whyPrimary: {
 				...baseEntry.whyPrimary,
 				evidenceRefs: [
-					{ refId: "https://example.com/evidence", label: "primary" },
+					{
+						refId: "https://example.com/evidence",
+						label: "primary",
+						kind: "WEB",
+					},
 				],
 			},
 			actTargets: [
@@ -124,7 +128,9 @@ describe("resolveLoopSourceUrl", () => {
 			...baseEntry,
 			whyPrimary: {
 				...baseEntry.whyPrimary,
-				evidenceRefs: [{ refId: "art-1", label: "article" }],
+				evidenceRefs: [
+					{ refId: "art-1", label: "article", kind: "ARTICLE" },
+				],
 			},
 		};
 		expect(resolveLoopSourceUrl(entry)).toBeNull();

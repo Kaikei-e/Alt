@@ -101,14 +101,35 @@ message MetaPayload {
   string conversation_id = 2;
 }
 
+// CitationKind discriminates how a Citation should be rendered into a click
+// target. WEB carries a full URL in `url`; ARTICLE and SUMMARY carry an
+// alt-db UUID in `ref_id` that the UI resolves to `/articles/<ref_id>`.
+// UNSPECIFIED is the legacy / unknown case — the UI MUST render the citation
+// without a link rather than gambling on `url` being a real URL.
+enum CitationKind {
+  CITATION_KIND_UNSPECIFIED = 0;
+  CITATION_KIND_WEB = 1;
+  CITATION_KIND_ARTICLE = 2;
+  CITATION_KIND_SUMMARY = 3;
+}
+
 // Citation represents a source reference.
+//
+// `url` is meaningful only when `kind = CITATION_KIND_WEB`; for ARTICLE and
+// SUMMARY the UI ignores `url` and routes via `ref_id`. Persisting both is
+// safe (additive JSONB field) and lets readers fall back if kind is missing.
 message Citation {
-  // URL of the source article
+  // URL of the source article (kind = WEB).
   string url = 1;
-  // Title of the source article
+  // Title of the source article.
   string title = 2;
-  // Publication date (ISO8601 format)
+  // Publication date (ISO8601 format).
   string published_at = 3;
+  // Kind of citation; controls how `url` / `ref_id` are interpreted.
+  CitationKind kind = 4;
+  // Opaque identifier of the cited artefact (alt-db articles.id or
+  // summary_versions.summary_version_id) when kind is ARTICLE or SUMMARY.
+  string ref_id = 5;
 }
 
 // DonePayload is sent when streaming completes successfully.
@@ -205,10 +226,17 @@ message DeleteConversationResponse {}
 
 // LoopEvidenceRef mirrors knowledge-sovereign's KnowledgeLoopEvidenceRef so the
 // Augur service can seed a conversation with the same citations the Loop tile
-// displayed. ref_id is typically a URL or article id, label is the display text.
+// displayed.
+//
+// `kind` discriminates how `ref_id` is interpreted (mirrors CitationKind):
+// WEB → `ref_id` is an absolute URL; ARTICLE / SUMMARY → `ref_id` is an
+// alt-db UUID and the UI builds /articles/<ref_id>. UNSPECIFIED means the
+// upstream emitter did not provide a kind — the server still persists the
+// payload but the UI renders without a link.
 message LoopEvidenceRef {
   string ref_id = 1;
   string label = 2;
+  CitationKind kind = 3;
 }
 
 // CreateAugurSessionFromLoopEntryRequest is the handoff payload from the

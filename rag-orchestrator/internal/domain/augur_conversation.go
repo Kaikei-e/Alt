@@ -28,11 +28,35 @@ type AugurMessage struct {
 	CreatedAt      time.Time
 }
 
+// CitationKind discriminates how AugurCitation.URL / RefID should be used
+// when the UI builds a click target. Mirrors alt.augur.v2.CitationKind so
+// the handler/domain layers don't need to import the generated proto types.
+type CitationKind string
+
+const (
+	CitationKindUnspecified CitationKind = ""
+	CitationKindWeb         CitationKind = "web"
+	CitationKindArticle     CitationKind = "article"
+	CitationKindSummary     CitationKind = "summary"
+)
+
 // AugurCitation is persisted inside augur_messages.citations (JSONB).
+//
+// Field semantics by Kind:
+//
+//	web        → URL is an absolute https URL; RefID empty.
+//	article    → RefID is alt-db articles.id (UUID); URL empty.
+//	summary    → RefID is alt-db summary_versions.summary_version_id (UUID); URL empty.
+//	"" (legacy) → URL may contain anything the upstream emitter wrote (potentially a
+//	              raw UUID); the UI must NOT link these. Kept for rolling-deploy
+//	              backward compatibility and historical citations persisted before
+//	              the kind field existed.
 type AugurCitation struct {
-	URL         string `json:"url"`
-	Title       string `json:"title"`
-	PublishedAt string `json:"published_at,omitempty"`
+	URL         string       `json:"url"`
+	Title       string       `json:"title"`
+	PublishedAt string       `json:"published_at,omitempty"`
+	Kind        CitationKind `json:"kind,omitempty"`
+	RefID       string       `json:"ref_id,omitempty"`
 }
 
 // AugurConversationSummary is the disposable read model for the history list.

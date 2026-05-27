@@ -791,9 +791,24 @@ enum ConfidenceLadder {
   CONFIDENCE_LADDER_VERIFIED = 4;
 }
 
+// EvidenceKind discriminates how `KnowledgeLoopEvidenceRef.ref_id` should be
+// interpreted by downstream consumers (UI route builders, Augur seed handler).
+// Mirrors `alt.augur.v2.CitationKind`; kept in this proto package so the
+// upstream sovereign emitter can tag refs without cross-package proto imports.
+enum EvidenceKind {
+  EVIDENCE_KIND_UNSPECIFIED = 0;
+  EVIDENCE_KIND_WEB = 1;
+  EVIDENCE_KIND_ARTICLE = 2;
+  EVIDENCE_KIND_SUMMARY = 3;
+}
+
 message KnowledgeLoopEvidenceRef {
   string ref_id = 1;
   string label = 2;
+  // Kind of evidence; controls whether `ref_id` is a URL or a UUID and
+  // therefore how downstream surfaces (Augur citation rail, Loop tile)
+  // route the click target. See EvidenceKind.
+  EvidenceKind kind = 3;
 }
 
 message KnowledgeLoopWhyPayload {
