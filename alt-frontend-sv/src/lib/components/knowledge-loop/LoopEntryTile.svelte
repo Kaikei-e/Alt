@@ -12,7 +12,6 @@ import WhyTypography, {
 	type ConfidenceLadderTier,
 } from "$lib/components/why/WhyTypography.svelte";
 import {
-	buildAskTransitionMetadata,
 	buildRecapTransitionMetadata,
 	buildTransitionMetadata,
 } from "./transition-metadata";
@@ -302,21 +301,11 @@ function onTriggerKey(event: KeyboardEvent) {
 async function handleCta(option: DecisionOptionData) {
 	if (option.intent === "ask") {
 		if (!onAsk) return;
-		// Phase 2 semantic loop: only emit the Loop transition after the Augur
-		// handshake succeeds (per plan §3 — session creation failure must not
-		// produce a phantom acted=ask event).
-		const result = (await onAsk(entry)) as
-			| { conversationId?: string }
-			| void
-			| undefined;
-		const conversationId =
-			result && typeof result === "object" && "conversationId" in result
-				? result.conversationId
-				: undefined;
-		if (conversationId && onTransition) {
-			const askMeta = buildAskTransitionMetadata(entry, conversationId);
-			void onTransition(entry.entryKey, "decide", "user_tap", askMeta);
-		}
+		// The +page parent owns the ASK transition emit so the projector sees
+		// exactly one acted=ask event per handshake. Re-emitting here paired
+		// with the parent's emit and depended on `await goto()` winning the
+		// race; the tile must stay handshake-only.
+		await onAsk(entry);
 		return;
 	}
 	// Snooze maps to the canonical defer transition (KnowledgeLoopDeferred,
