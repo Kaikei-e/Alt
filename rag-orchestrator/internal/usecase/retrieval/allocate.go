@@ -66,6 +66,7 @@ func SelectContextsDynamic(hitsOriginal []domain.SearchResult, hitsExpanded []Co
 			Score:           res.Score,
 			DocumentVersion: res.DocumentVersion,
 			ChunkID:         res.Chunk.ID,
+			ArticleID:       res.ArticleID,
 		}
 		if rerankApplied {
 			item.RerankScore = res.Score
@@ -111,6 +112,7 @@ func allocateLegacy(hitsOriginal []domain.SearchResult, hitsExpanded []ContextIt
 				Score:           res.Score,
 				DocumentVersion: res.DocumentVersion,
 				ChunkID:         res.Chunk.ID,
+				ArticleID:       res.ArticleID,
 			})
 			seen[res.Chunk.ID] = true
 			countOriginal++

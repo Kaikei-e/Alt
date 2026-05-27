@@ -182,8 +182,8 @@ func (m *MockAugurConversationUsecase) AppendUserTurn(ctx context.Context, conve
 	return m.Called(ctx, conversationID, content).Error(0)
 }
 
-func (m *MockAugurConversationUsecase) AppendAssistantTurn(ctx context.Context, conversationID uuid.UUID, content string, citations []domain.AugurCitation) error {
-	return m.Called(ctx, conversationID, content, citations).Error(0)
+func (m *MockAugurConversationUsecase) AppendAssistantTurn(ctx context.Context, conversationID uuid.UUID, content string, citations []domain.AugurCitation, relatedCitations []domain.AugurCitation) error {
+	return m.Called(ctx, conversationID, content, citations, relatedCitations).Error(0)
 }
 
 func (m *MockAugurConversationUsecase) ListConversations(ctx context.Context, userID uuid.UUID, limit int, afterActivity *time.Time, afterID *uuid.UUID) ([]domain.AugurConversationSummary, error) {
@@ -258,7 +258,7 @@ func TestStreamChat_ClientAbortAfterDeltas_FlushesPartialAssistantTurn(t *testin
 		Run(func(args mock.Arguments) {
 			userTurnDone = args.Get(0).(context.Context).Done()
 		}).Return(nil)
-	mockConv.On("AppendAssistantTurn", mock.Anything, convID, mock.AnythingOfType("string"), mock.Anything).
+	mockConv.On("AppendAssistantTurn", mock.Anything, convID, mock.AnythingOfType("string"), mock.Anything, mock.Anything).
 		Run(func(args mock.Arguments) {
 			assistantDone = args.Get(0).(context.Context).Done()
 			assistantContent = args.String(2)

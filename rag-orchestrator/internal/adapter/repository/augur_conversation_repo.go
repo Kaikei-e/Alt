@@ -69,15 +69,29 @@ func (r *augurConversationRepository) AppendMessage(ctx context.Context, msg *do
 	if citations == nil {
 		citations = []domain.AugurCitation{}
 	}
-	payload, err := json.Marshal(citations)
+	citationsPayload, err := json.Marshal(citations)
 	if err != nil {
 		return fmt.Errorf("marshal citations: %w", err)
 	}
+	related := msg.RelatedCitations
+	if related == nil {
+		related = []domain.AugurCitation{}
+	}
+	relatedPayload, err := json.Marshal(related)
+	if err != nil {
+		return fmt.Errorf("marshal related citations: %w", err)
+	}
 	const q = `
-		INSERT INTO augur_messages (id, conversation_id, role, content, citations, created_at)
-		VALUES ($1, $2, $3, $4, $5::jsonb, $6)
+		INSERT INTO augur_messages (id, conversation_id, role, content, citations, related_citations, created_at)
+		VALUES ($1, $2, $3, $4, $5::jsonb, $6::jsonb, $7)
 	`
-	_, err = r.pool.Exec(ctx, q, msg.ID, msg.ConversationID, msg.Role, msg.Content, string(payload), msg.CreatedAt)
+	_, err = r.pool.Exec(
+		ctx,
+		q,
+		msg.ID, msg.ConversationID, msg.Role, msg.Content,
+		string(citationsPayload), string(relatedPayload),
+		msg.CreatedAt,
+	)
 	if err != nil {
 		return fmt.Errorf("insert augur_message: %w", err)
 	}
@@ -86,7 +100,7 @@ func (r *augurConversationRepository) AppendMessage(ctx context.Context, msg *do
 
 func (r *augurConversationRepository) ListMessages(ctx context.Context, conversationID uuid.UUID) ([]domain.AugurMessage, error) {
 	const q = `
-		SELECT id, conversation_id, role, content, citations, created_at
+		SELECT id, conversation_id, role, content, citations, related_citations, created_at
 		FROM augur_messages
 		WHERE conversation_id = $1
 		ORDER BY created_at ASC, id ASC
@@ -100,13 +114,18 @@ func (r *augurConversationRepository) ListMessages(ctx context.Context, conversa
 	var out []domain.AugurMessage
 	for rows.Next() {
 		var m domain.AugurMessage
-		var citationsRaw []byte
-		if err := rows.Scan(&m.ID, &m.ConversationID, &m.Role, &m.Content, &citationsRaw, &m.CreatedAt); err != nil {
+		var citationsRaw, relatedRaw []byte
+		if err := rows.Scan(&m.ID, &m.ConversationID, &m.Role, &m.Content, &citationsRaw, &relatedRaw, &m.CreatedAt); err != nil {
 			return nil, fmt.Errorf("scan augur_message: %w", err)
 		}
 		if len(citationsRaw) > 0 {
 			if err := json.Unmarshal(citationsRaw, &m.Citations); err != nil {
 				return nil, fmt.Errorf("unmarshal citations: %w", err)
+			}
+		}
+		if len(relatedRaw) > 0 {
+			if err := json.Unmarshal(relatedRaw, &m.RelatedCitations); err != nil {
+				return nil, fmt.Errorf("unmarshal related citations: %w", err)
 			}
 		}
 		out = append(out, m)

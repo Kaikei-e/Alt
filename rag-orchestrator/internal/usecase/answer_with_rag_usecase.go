@@ -41,6 +41,13 @@ type answerWithRAGUsecase struct {
 	strategies        map[IntentType]RetrievalStrategy
 	generalStrategy   RetrievalStrategy
 	templateRegistry  *TemplateRegistry
+	// neighborSearcher computes the inline-projected related citations once
+	// per assistant turn. Optional: nil leaves RelatedCitations empty, which
+	// the FE renders as the "Related" section being hidden.
+	neighborSearcher domain.HybridSearcher
+	// neighborLimit caps how many related citations the FE may render. Default
+	// 3 matches the rail's compact pencil-margin design.
+	neighborLimit int
 }
 
 // NewAnswerWithRAGUsecase wires together the components needed to generate a RAG answer.
@@ -74,6 +81,10 @@ func NewAnswerWithRAGUsecase(
 	if strategies == nil {
 		strategies = make(map[IntentType]RetrievalStrategy)
 	}
+	neighborLimit := cfg.neighborLimit
+	if neighborLimit <= 0 {
+		neighborLimit = 3
+	}
 	return &answerWithRAGUsecase{
 		retrieve:          retrieve,
 		promptBuilder:     promptBuilder,
@@ -98,6 +109,8 @@ func NewAnswerWithRAGUsecase(
 		strategies:        strategies,
 		generalStrategy:   generalStrat,
 		templateRegistry:  tmplRegistry,
+		neighborSearcher:  cfg.neighborSearcher,
+		neighborLimit:     neighborLimit,
 	}
 }
 
@@ -117,6 +130,8 @@ type answerUsecaseConfig struct {
 	conversationStore *ConversationStore
 	queryPlanner      domain.QueryPlannerPort
 	relevanceGate     *RelevanceGate
+	neighborSearcher  domain.HybridSearcher
+	neighborLimit     int
 }
 
 // WithCacheConfig sets the cache size and TTL.
@@ -187,6 +202,24 @@ func WithQueryPlanner(qp domain.QueryPlannerPort) AnswerUsecaseOption {
 func WithRelevanceGate(gate *RelevanceGate) AnswerUsecaseOption {
 	return func(cfg *answerUsecaseConfig) {
 		cfg.relevanceGate = gate
+	}
+}
+
+// WithNeighborSearcher wires the HybridSearcher used to project the inline
+// "related" citation snapshot. When unset, RelatedCitations stays empty and
+// the UI hides the Related section — a safe default for tests and any
+// deployment where neighbor lookup is intentionally disabled.
+func WithNeighborSearcher(s domain.HybridSearcher) AnswerUsecaseOption {
+	return func(cfg *answerUsecaseConfig) {
+		cfg.neighborSearcher = s
+	}
+}
+
+// WithNeighborLimit overrides the default number of related citations
+// returned per assistant turn. Default is 3.
+func WithNeighborLimit(limit int) AnswerUsecaseOption {
+	return func(cfg *answerUsecaseConfig) {
+		cfg.neighborLimit = limit
 	}
 }
 
@@ -331,13 +364,15 @@ func (u *answerWithRAGUsecase) Execute(ctx context.Context, input AnswerWithRAGI
 		debug.NeedsClarification = finalPromptData.plannerOutput.NeedsClarification
 	}
 
+	relatedCitations := u.buildRelatedCitations(ctx, finalCitations, input.Query)
 	output := &AnswerWithRAGOutput{
-		Answer:    strings.TrimSpace(parsedAnswer.Answer),
-		Citations: finalCitations,
-		Contexts:  finalPromptData.contexts,
-		Fallback:  false,
-		Reason:    "",
-		Debug:     debug,
+		Answer:           strings.TrimSpace(parsedAnswer.Answer),
+		Citations:        finalCitations,
+		RelatedCitations: relatedCitations,
+		Contexts:         finalPromptData.contexts,
+		Fallback:         false,
+		Reason:           "",
+		Debug:            debug,
 	}
 
 	// 5. Store in Cache
@@ -751,6 +786,89 @@ func (u *answerWithRAGUsecase) prepareFallback(
 	}, nil
 }
 
+// buildRelatedCitations returns an inline-projected snapshot of articles
+// semantically and lexically near the direct citations. The lookup runs once
+// per assistant turn after the LLM has committed to its grounded citations;
+// the result is persisted on the same INSERT as the direct citations and is
+// never backfilled — see the "Related" UX section of the plan and the
+// append-only invariant on augur_messages.
+//
+// Skipped (returns nil) when:
+//   - the searcher is not wired (test setups / opt-out deployments)
+//   - direct citations is empty (no seed to anchor neighbors to)
+//   - none of the direct citations carry a parseable ArticleID
+//   - the searcher errs (logged but does NOT bubble up; an empty Related
+//     section is a UX degradation, not a request failure)
+func (u *answerWithRAGUsecase) buildRelatedCitations(
+	ctx context.Context,
+	direct []Citation,
+	originalQuery string,
+) []Citation {
+	if u.neighborSearcher == nil || len(direct) == 0 {
+		return nil
+	}
+
+	seeds := make([]string, 0, len(direct))
+	titleParts := make([]string, 0, len(direct))
+	for _, c := range direct {
+		if c.ArticleID == "" {
+			continue
+		}
+		if _, err := uuid.Parse(c.ArticleID); err != nil {
+			continue
+		}
+		seeds = append(seeds, c.ArticleID)
+		if c.Title != "" {
+			titleParts = append(titleParts, c.Title)
+		}
+	}
+	if len(seeds) == 0 {
+		return nil
+	}
+
+	// Synthetic query: cited titles drive the RRF lexical arm. Fall back to
+	// the original user query when titles are empty so we still surface
+	// something coherent.
+	queryText := strings.TrimSpace(strings.Join(titleParts, " "))
+	if queryText == "" {
+		queryText = strings.TrimSpace(originalQuery)
+	}
+	if queryText == "" {
+		return nil
+	}
+
+	limit := u.neighborLimit
+	if limit <= 0 {
+		limit = 3
+	}
+
+	hits, err := u.neighborSearcher.SearchNeighbors(ctx, nil, queryText, seeds, limit)
+	if err != nil {
+		u.logger.Warn("related_citation_lookup_failed",
+			slog.String("error", err.Error()),
+			slog.Int("seed_count", len(seeds)))
+		return nil
+	}
+	if len(hits) == 0 {
+		return nil
+	}
+
+	related := make([]Citation, 0, len(hits))
+	for _, h := range hits {
+		related = append(related, Citation{
+			ChunkID:         h.Chunk.ID.String(),
+			ChunkText:       h.Chunk.Content,
+			URL:             h.URL,
+			Title:           h.Title,
+			Score:           h.Score,
+			DocumentVersion: h.DocumentVersion,
+			ArticleID:       h.ArticleID,
+			PublishedAt:     h.Chunk.CreatedAt.Format(time.RFC3339),
+		})
+	}
+	return related
+}
+
 func (u *answerWithRAGUsecase) buildCitations(contexts []ContextItem, raw []LLMCitation) []Citation {
 	ctxMap := make(map[string]ContextItem, len(contexts))
 	for _, ctx := range contexts {
@@ -788,6 +906,8 @@ func (u *answerWithRAGUsecase) buildCitations(contexts []ContextItem, raw []LLMC
 			Title:           meta.Title,
 			Score:           meta.Score, // Use retrieval score
 			DocumentVersion: meta.DocumentVersion,
+			ArticleID:       meta.ArticleID,
+			PublishedAt:     meta.PublishedAt,
 		})
 	}
 

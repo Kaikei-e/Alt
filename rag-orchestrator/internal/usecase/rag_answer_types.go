@@ -19,9 +19,16 @@ type AnswerWithRAGInput struct {
 }
 
 // AnswerWithRAGOutput represents the normalized answer response returned to API clients.
+//
+// RelatedCitations is the inline-projected snapshot of articles semantically
+// and lexically near the direct Citations, computed once after the LLM has
+// chosen its grounded citations. Empty when Citations is empty or when the
+// neighbor lookup returned nothing — the FE renders the "Related" section
+// only when this list is non-empty.
 type AnswerWithRAGOutput struct {
 	Answer           string
 	Citations        []Citation
+	RelatedCitations []Citation
 	Contexts         []ContextItem
 	Fallback         bool
 	Reason           string
@@ -30,6 +37,11 @@ type AnswerWithRAGOutput struct {
 }
 
 // Citation connects a chunk-level citation to the metadata needed by callers.
+//
+// ArticleID is the stable alt-db articles.id, used by the Augur Connect-RPC
+// handler to emit kind=ARTICLE citations with a proper ref_id. An empty
+// ArticleID means we cannot link to /articles/<id> and the citation falls
+// back to kind=WEB (when URL is present) or kind=UNSPECIFIED.
 type Citation struct {
 	ChunkID         string
 	ChunkText       string
@@ -37,6 +49,8 @@ type Citation struct {
 	Title           string
 	Score           float32
 	DocumentVersion int
+	ArticleID       string
+	PublishedAt     string // ISO8601; carried so neighbor citations expose dateline metadata
 }
 
 // AnswerDebug surfaces metadata that aids troubleshooting and golden-test matching.

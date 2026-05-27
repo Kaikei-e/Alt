@@ -211,7 +211,7 @@ func TestAppendTurns_PersistsInOrder(t *testing.T) {
 	require.NoError(t, err)
 
 	require.NoError(t, uc.AppendUserTurn(context.Background(), conv.ID, "first question"))
-	require.NoError(t, uc.AppendAssistantTurn(context.Background(), conv.ID, "first answer", []domain.AugurCitation{{URL: "https://example.com", Title: "Ex"}}))
+	require.NoError(t, uc.AppendAssistantTurn(context.Background(), conv.ID, "first answer", []domain.AugurCitation{{URL: "https://example.com", Title: "Ex"}}, nil))
 	require.NoError(t, uc.AppendUserTurn(context.Background(), conv.ID, "second question"))
 
 	_, msgs, err := uc.GetConversation(context.Background(), userID, conv.ID)

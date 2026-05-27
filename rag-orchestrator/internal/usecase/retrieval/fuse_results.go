@@ -127,6 +127,7 @@ func FuseResults(
 							DocumentVersion: res.DocumentVersion,
 							ChunkID:         res.Chunk.ID,
 							Score:           res.Score,
+							ArticleID:       res.ArticleID,
 						},
 						RRFScore: 0,
 					}

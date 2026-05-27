@@ -111,6 +111,14 @@ type SearchResult struct {
 type HybridSearcher interface {
 	// HybridSearch performs a combined vector + full-text search with RRF fusion.
 	HybridSearch(ctx context.Context, queryVector []float32, queryText string, limit int) ([]SearchResult, error)
+
+	// SearchNeighbors finds articles semantically and lexically near a seed set
+	// using the same hybrid (vector + full-text) RRF pipeline as HybridSearch,
+	// but excludes articles whose ArticleID appears in seedArticleIDs. Used to
+	// build the inline-projected "related" snapshot for Ask Augur citations.
+	// queryVector may be empty; in that case the fallback is text-only matching
+	// over queryText.
+	SearchNeighbors(ctx context.Context, queryVector []float32, queryText string, seedArticleIDs []string, limit int) ([]SearchResult, error)
 }
 
 // TransactionManager defines the interface for handling database transactions.

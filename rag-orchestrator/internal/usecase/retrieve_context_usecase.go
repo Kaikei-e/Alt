@@ -39,6 +39,10 @@ type ContextItem struct {
 	RerankScore     float32 // Cross-encoder reranker score (0 if reranking disabled)
 	DocumentVersion int
 	ChunkID         uuid.UUID
+	// ArticleID is the stable alt-db articles.id for this chunk's owning
+	// document. Required downstream by Augur to emit kind=ARTICLE citations
+	// instead of falling back to UNSPECIFIED / disabled links.
+	ArticleID string
 }
 
 // RetrieveContextUsecase defines the interface for retrieving context.
@@ -228,6 +232,7 @@ func SelectContextsDynamic(hitsOriginal []domain.SearchResult, hitsExpanded []Co
 			Score:           item.Score,
 			DocumentVersion: item.DocumentVersion,
 			ChunkID:         item.ChunkID,
+			ArticleID:       item.ArticleID,
 		}
 	}
 
@@ -247,6 +252,7 @@ func convertContextItems(items []retrieval.ContextItem) []ContextItem {
 			RerankScore:     item.RerankScore,
 			DocumentVersion: item.DocumentVersion,
 			ChunkID:         item.ChunkID,
+			ArticleID:       item.ArticleID,
 		}
 	}
 	return result

@@ -261,7 +261,11 @@ func (h *Handler) StreamChat(
 		}
 		flushCtx, flushCancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer flushCancel()
-		if err := h.conversationUsecase.AppendAssistantTurn(flushCtx, conv.ID, assistantBuffer.String(), lastCitations); err != nil {
+		// Partial-flush path: only meta-derived preview citations are known
+		// here. Related citations are computed at done-event time, so a
+		// partial turn persists with an empty related set rather than a
+		// stale guess.
+		if err := h.conversationUsecase.AppendAssistantTurn(flushCtx, conv.ID, assistantBuffer.String(), lastCitations, nil); err != nil {
 			h.logger.Error("failed to flush partial assistant turn", slog.String("error", err.Error()))
 		}
 	}()
@@ -306,7 +310,8 @@ loop:
 			if donePayload != nil && strings.TrimSpace(donePayload.Answer) != "" {
 				flushCtx, flushCancel := context.WithTimeout(context.Background(), 5*time.Second)
 				citations := citationsFromProto(donePayload.Citations)
-				if err := h.conversationUsecase.AppendAssistantTurn(flushCtx, conv.ID, donePayload.Answer, citations); err != nil {
+				related := citationsFromProto(donePayload.RelatedCitations)
+				if err := h.conversationUsecase.AppendAssistantTurn(flushCtx, conv.ID, donePayload.Answer, citations, related); err != nil {
 					h.logger.Error("failed to persist assistant turn", slog.String("error", err.Error()))
 				}
 				flushCancel()
@@ -361,11 +366,13 @@ func (h *Handler) convertStreamEvent(event usecase.StreamEvent) (*augurv2.Stream
 			return nil, false, nil
 		}
 		citations := h.convertCitationsToProtoCitations(output.Citations)
+		related := h.convertCitationsToProtoCitations(output.RelatedCitations)
 		done := &augurv2.DonePayload{
-			Answer:    sanitizeUTF8(output.Answer),
-			Citations: citations,
-			Intent:    output.Debug.IntentType,
-			Strategy:  output.Debug.StrategyUsed,
+			Answer:           sanitizeUTF8(output.Answer),
+			Citations:        citations,
+			Intent:           output.Debug.IntentType,
+			Strategy:         output.Debug.StrategyUsed,
+			RelatedCitations: related,
 		}
 		return &augurv2.StreamChatResponse{
 			Kind: "done",
@@ -442,26 +449,90 @@ func (h *Handler) convertStreamEvent(event usecase.StreamEvent) (*augurv2.Stream
 	}
 }
 
-// convertContextsToCitations converts usecase.ContextItem slice to augurv2.Citation slice
+// uuidLikeRe matches any 8-4-4-4-12 hex pattern (canonical UUID, any version).
+// Used as a defensive filter so a citation Title never carries a bare UUID
+// that would leak the internal identifier into the UI's visible text.
+var uuidLikeRe = regexp.MustCompile(`(?i)^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$`)
+
+// sanitizeCitationTitle strips a Title that is just a UUID (the historical
+// label-fallback bug from ADR-926). Empty result lets the FE fall back to the
+// URL's domain name or "Untitled source" — never the raw UUID.
+func sanitizeCitationTitle(title string) string {
+	trimmed := strings.TrimSpace(sanitizeUTF8(title))
+	if trimmed == "" || uuidLikeRe.MatchString(trimmed) {
+		return ""
+	}
+	return trimmed
+}
+
+// classifyCitation infers the Citation discriminator from the upstream
+// usecase Citation. An ArticleID that parses as a UUID makes this an ARTICLE
+// citation routed to /articles/<ref_id> on the FE; otherwise an https URL
+// makes it a WEB citation; otherwise UNSPECIFIED, which the FE renders as a
+// disabled span. The classifier deliberately ignores chunk-level UUIDs in
+// ChunkID — only stable article IDs are eligible to become ref_id.
+func classifyCitation(c usecase.Citation) (augurv2.CitationKind, string) {
+	if c.ArticleID != "" {
+		if _, err := uuid.Parse(c.ArticleID); err == nil {
+			return augurv2.CitationKind_CITATION_KIND_ARTICLE, c.ArticleID
+		}
+	}
+	if isHTTPURL(c.URL) {
+		return augurv2.CitationKind_CITATION_KIND_WEB, ""
+	}
+	return augurv2.CitationKind_CITATION_KIND_UNSPECIFIED, ""
+}
+
+// isHTTPURL accepts only http(s) URLs so a stray UUID parked in c.URL cannot
+// quietly become a WEB citation that the FE would then try to render.
+func isHTTPURL(s string) bool {
+	trimmed := strings.TrimSpace(s)
+	return strings.HasPrefix(trimmed, "https://") || strings.HasPrefix(trimmed, "http://")
+}
+
+// convertContextsToCitations converts usecase.ContextItem slice to augurv2.Citation slice.
+// This feeds the meta event, which is a preview surfaced before the LLM has
+// committed to its citations. Related citations are deliberately NOT computed
+// here; the done event is the single authoritative source for both lists.
 func (h *Handler) convertContextsToCitations(contexts []usecase.ContextItem) []*augurv2.Citation {
 	citations := make([]*augurv2.Citation, 0, len(contexts))
 	for _, ctx := range contexts {
+		kind := augurv2.CitationKind_CITATION_KIND_UNSPECIFIED
+		refID := ""
+		if ctx.ArticleID != "" {
+			if _, err := uuid.Parse(ctx.ArticleID); err == nil {
+				kind = augurv2.CitationKind_CITATION_KIND_ARTICLE
+				refID = ctx.ArticleID
+			}
+		}
+		if kind == augurv2.CitationKind_CITATION_KIND_UNSPECIFIED && isHTTPURL(ctx.URL) {
+			kind = augurv2.CitationKind_CITATION_KIND_WEB
+		}
 		citations = append(citations, &augurv2.Citation{
 			Url:         sanitizeUTF8(ctx.URL),
-			Title:       sanitizeUTF8(ctx.Title),
+			Title:       sanitizeCitationTitle(ctx.Title),
 			PublishedAt: sanitizeUTF8(ctx.PublishedAt),
+			Kind:        kind,
+			RefId:       refID,
 		})
 	}
 	return citations
 }
 
-// convertCitationsToProtoCitations converts usecase.Citation slice to augurv2.Citation slice
+// convertCitationsToProtoCitations converts usecase.Citation slice (the LLM's
+// final, grounded citations) into the wire form. Kind / RefId are inferred
+// from the ArticleID propagated through the retrieval pipeline so the UI can
+// route to /articles/<ref_id> instead of the legacy disabled-span fallback.
 func (h *Handler) convertCitationsToProtoCitations(citations []usecase.Citation) []*augurv2.Citation {
 	result := make([]*augurv2.Citation, 0, len(citations))
 	for _, c := range citations {
+		kind, refID := classifyCitation(c)
 		result = append(result, &augurv2.Citation{
-			Url:   sanitizeUTF8(c.URL),
-			Title: sanitizeUTF8(c.Title),
+			Url:         sanitizeUTF8(c.URL),
+			Title:       sanitizeCitationTitle(c.Title),
+			PublishedAt: sanitizeUTF8(c.PublishedAt),
+			Kind:        kind,
+			RefId:       refID,
 		})
 	}
 	return result
@@ -513,6 +584,24 @@ func protoCitationKind(k domain.CitationKind) augurv2.CitationKind {
 	default:
 		return augurv2.CitationKind_CITATION_KIND_UNSPECIFIED
 	}
+}
+
+// domainCitationsToProto rebuilds a wire-format slice from persisted citations
+// so GetConversation read paths return the kind / ref_id discriminator the FE
+// expects without having to re-classify by hand. Title is passed through the
+// same UUID-only filter that the write path applies.
+func domainCitationsToProto(cs []domain.AugurCitation) []*augurv2.Citation {
+	out := make([]*augurv2.Citation, 0, len(cs))
+	for _, c := range cs {
+		out = append(out, &augurv2.Citation{
+			Url:         sanitizeUTF8(c.URL),
+			Title:       sanitizeCitationTitle(c.Title),
+			PublishedAt: sanitizeUTF8(c.PublishedAt),
+			Kind:        protoCitationKind(c.Kind),
+			RefId:       sanitizeUTF8(c.RefID),
+		})
+	}
+	return out
 }
 
 // citationFromEvidenceRef builds a persisted AugurCitation from the inbound
@@ -658,21 +747,14 @@ func (h *Handler) GetConversation(
 		Messages:  make([]*augurv2.ChatMessage, 0, len(msgs)),
 	}
 	for _, m := range msgs {
-		protoCitations := make([]*augurv2.Citation, 0, len(m.Citations))
-		for _, c := range m.Citations {
-			protoCitations = append(protoCitations, &augurv2.Citation{
-				Url:         c.URL,
-				Title:       c.Title,
-				PublishedAt: c.PublishedAt,
-				Kind:        protoCitationKind(c.Kind),
-				RefId:       c.RefID,
-			})
-		}
+		protoCitations := domainCitationsToProto(m.Citations)
+		protoRelated := domainCitationsToProto(m.RelatedCitations)
 		resp.Messages = append(resp.Messages, &augurv2.ChatMessage{
-			Role:      m.Role,
-			Content:   sanitizeUTF8(m.Content),
-			CreatedAt: timestamppb.New(m.CreatedAt),
-			Citations: protoCitations,
+			Role:             m.Role,
+			Content:          sanitizeUTF8(m.Content),
+			CreatedAt:        timestamppb.New(m.CreatedAt),
+			Citations:        protoCitations,
+			RelatedCitations: protoRelated,
 		})
 	}
 	return connect.NewResponse(resp), nil

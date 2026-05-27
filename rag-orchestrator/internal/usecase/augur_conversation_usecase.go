@@ -23,7 +23,7 @@ type AugurConversationUsecase interface {
 	EnsureConversation(ctx context.Context, userID uuid.UUID, conversationID uuid.UUID, firstUserMessage string) (*domain.AugurConversation, error)
 
 	AppendUserTurn(ctx context.Context, conversationID uuid.UUID, content string) error
-	AppendAssistantTurn(ctx context.Context, conversationID uuid.UUID, content string, citations []domain.AugurCitation) error
+	AppendAssistantTurn(ctx context.Context, conversationID uuid.UUID, content string, citations []domain.AugurCitation, relatedCitations []domain.AugurCitation) error
 
 	// CreateSessionFromLoopEntry provisions a new conversation seeded with a
 	// Knowledge Loop entry's Why context. The caller (alt-frontend-sv BFF via
@@ -161,11 +161,17 @@ func renderLoopSeed(whyText string, refs []domain.AugurCitation) string {
 }
 
 func (u *augurConversationUsecase) AppendUserTurn(ctx context.Context, conversationID uuid.UUID, content string) error {
-	return u.appendTurn(ctx, conversationID, "user", content, nil)
+	return u.appendTurn(ctx, conversationID, "user", content, nil, nil)
 }
 
-func (u *augurConversationUsecase) AppendAssistantTurn(ctx context.Context, conversationID uuid.UUID, content string, citations []domain.AugurCitation) error {
-	return u.appendTurn(ctx, conversationID, "assistant", content, citations)
+func (u *augurConversationUsecase) AppendAssistantTurn(
+	ctx context.Context,
+	conversationID uuid.UUID,
+	content string,
+	citations []domain.AugurCitation,
+	relatedCitations []domain.AugurCitation,
+) error {
+	return u.appendTurn(ctx, conversationID, "assistant", content, citations, relatedCitations)
 }
 
 func (u *augurConversationUsecase) appendTurn(
@@ -174,6 +180,7 @@ func (u *augurConversationUsecase) appendTurn(
 	role string,
 	content string,
 	citations []domain.AugurCitation,
+	relatedCitations []domain.AugurCitation,
 ) error {
 	if conversationID == uuid.Nil {
 		return errors.New("augur usecase: conversationID required")
@@ -182,12 +189,13 @@ func (u *augurConversationUsecase) appendTurn(
 		return errors.New("augur usecase: empty message content")
 	}
 	msg := &domain.AugurMessage{
-		ID:             uuid.New(),
-		ConversationID: conversationID,
-		Role:           role,
-		Content:        content,
-		Citations:      citations,
-		CreatedAt:      u.clock().UTC(),
+		ID:               uuid.New(),
+		ConversationID:   conversationID,
+		Role:             role,
+		Content:          content,
+		Citations:        citations,
+		RelatedCitations: relatedCitations,
+		CreatedAt:        u.clock().UTC(),
 	}
 	if err := u.repo.AppendMessage(ctx, msg); err != nil {
 		return fmt.Errorf("append message: %w", err)

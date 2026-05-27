@@ -50,4 +50,8 @@ type ContextItem struct {
 	RerankScore     float32 // Cross-encoder reranker score (0 if reranking disabled)
 	DocumentVersion int
 	ChunkID         uuid.UUID
+	// ArticleID is the stable alt-db articles.id for this chunk's owning
+	// document. Carried through the pipeline so Augur can build kind=ARTICLE
+	// citations without falling back to a UUID-in-URL guess.
+	ArticleID string
 }

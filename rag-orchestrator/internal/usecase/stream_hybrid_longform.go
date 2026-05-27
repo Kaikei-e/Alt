@@ -378,12 +378,14 @@ waitHybridChatStream:
 
 	// Build final output
 	finalCitations := u.buildCitations(promptData.contexts, parsedAnswer.Citations)
+	relatedCitations := u.buildRelatedCitations(ctx, finalCitations, input.Query)
 	output := &AnswerWithRAGOutput{
-		Answer:    finalAnswerText,
-		Citations: finalCitations,
-		Contexts:  promptData.contexts,
-		Fallback:  false,
-		Reason:    "",
+		Answer:           finalAnswerText,
+		Citations:        finalCitations,
+		RelatedCitations: relatedCitations,
+		Contexts:         promptData.contexts,
+		Fallback:         false,
+		Reason:           "",
 		Debug: AnswerDebug{
 			RetrievalSetID:        promptData.retrievalSetID,
 			PromptVersion:         u.promptVersion,

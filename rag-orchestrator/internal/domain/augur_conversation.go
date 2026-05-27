@@ -19,13 +19,19 @@ type AugurConversation struct {
 }
 
 // AugurMessage is a single append-only turn in a conversation. No UPDATE path.
+//
+// RelatedCitations carries the inline-projected snapshot of articles
+// semantically and lexically near the direct citations at write time. It is
+// written on the same INSERT as Citations and never backfilled afterwards;
+// a future recomputation must yield a new turn instead of mutating this row.
 type AugurMessage struct {
-	ID             uuid.UUID
-	ConversationID uuid.UUID
-	Role           string // "user" or "assistant"
-	Content        string
-	Citations      []AugurCitation
-	CreatedAt      time.Time
+	ID               uuid.UUID
+	ConversationID   uuid.UUID
+	Role             string // "user" or "assistant"
+	Content          string
+	Citations        []AugurCitation
+	RelatedCitations []AugurCitation
+	CreatedAt        time.Time
 }
 
 // CitationKind discriminates how AugurCitation.URL / RefID should be used
