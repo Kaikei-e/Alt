@@ -931,7 +931,7 @@ function onReviewAction(
 						<EmptyNow />
 					{:else}
 						<div class="foreground-tiles">
-							{#each foreground as entry, i (entry.entryKey)}
+							{#each foreground.filter((e) => e.entryKey !== activeEntry?.entryKey) as entry, i (entry.entryKey)}
 								<div
 									class="foreground-row"
 									animate:flip={{ duration: 240, easing: cubicOut }}
