@@ -25,6 +25,22 @@ const maxWhyTextBytes = 512
 // maxEvidenceRefs matches the canonical contract §3.10 (evidence_refs length <= 8).
 const maxEvidenceRefs = 8
 
+// maxLabelBytes bounds an EvidenceRef.Label so the FE Newspaper-Style tile row
+// stays readable on mobile. Long article titles get truncated to a UTF-8 safe
+// boundary; the projector never emits a label longer than this.
+const maxLabelBytes = 80
+
+// evidenceCandidate is the construction shape for an EvidenceRef. RefID is the
+// only required field; empty RefID rows are skipped. Label is human-readable
+// (article title, summary excerpt, etc.) and must NEVER be one of the
+// projector's internal kind discriminator strings ("summary", "article",
+// "tags", ...). Kind is the canonical proto enum.
+type evidenceCandidate struct {
+	RefID string
+	Label string
+	Kind  sovereignv1.EvidenceKind
+}
+
 // EnrichWhyFromEvent derives a structured WhyPayload from a knowledge_events row.
 // The function is pure and reproject-safe: it reads event payload only (never
 // latest projection state or time.Now()). Same event → same enrichment on replay.
@@ -133,7 +149,11 @@ func enrichSummaryVersion(_ *sovereign_db.KnowledgeEvent, p enrichmentPayload) *
 	why := &sovereignv1.KnowledgeLoopWhyPayload{
 		Kind:         sovereignv1.WhyKind_WHY_KIND_SOURCE,
 		Text:         sanitizePlainText(text),
-		EvidenceRefs: boundEvidence(appendRefIfPresent(nil, p.SummaryVersionID, "summary", p.ArticleID, "article", p.TagSetVersionID, "tags")),
+		EvidenceRefs: boundEvidence(appendRef(nil,
+			evidenceCandidate{RefID: p.SummaryVersionID, Kind: sovereignv1.EvidenceKind_EVIDENCE_KIND_SUMMARY},
+			evidenceCandidate{RefID: p.ArticleID, Label: p.ArticleTitle, Kind: sovereignv1.EvidenceKind_EVIDENCE_KIND_ARTICLE},
+			evidenceCandidate{RefID: p.TagSetVersionID, Kind: sovereignv1.EvidenceKind_EVIDENCE_KIND_UNSPECIFIED},
+		)),
 	}
 	populateWhyV2(why, nil)
 	return why
@@ -145,9 +165,13 @@ func enrichHomeItemsSeen(_ *sovereign_db.KnowledgeEvent, p enrichmentPayload) *s
 		text = p.ArticleTitle + " — back in your feed for a closer look."
 	}
 	why := &sovereignv1.KnowledgeLoopWhyPayload{
-		Kind:         sovereignv1.WhyKind_WHY_KIND_SOURCE,
-		Text:         sanitizePlainText(text),
-		EvidenceRefs: boundEvidence(appendRefIfPresent(nil, p.SummaryVersionID, "summary", p.TagSetVersionID, "tags", p.ArticleID, "article")),
+		Kind: sovereignv1.WhyKind_WHY_KIND_SOURCE,
+		Text: sanitizePlainText(text),
+		EvidenceRefs: boundEvidence(appendRef(nil,
+			evidenceCandidate{RefID: p.SummaryVersionID, Kind: sovereignv1.EvidenceKind_EVIDENCE_KIND_SUMMARY},
+			evidenceCandidate{RefID: p.TagSetVersionID, Kind: sovereignv1.EvidenceKind_EVIDENCE_KIND_UNSPECIFIED},
+			evidenceCandidate{RefID: p.ArticleID, Label: p.ArticleTitle, Kind: sovereignv1.EvidenceKind_EVIDENCE_KIND_ARTICLE},
+		)),
 	}
 	populateWhyV2(why, nil)
 	return why
@@ -158,7 +182,10 @@ func enrichHomeItemAsked(_ *sovereign_db.KnowledgeEvent, p enrichmentPayload) *s
 	if p.ArticleTitle != "" {
 		text = p.ArticleTitle + " — your Augur thread is still open here."
 	}
-	refs := appendRefIfPresent(nil, p.ConversationID, "conversation", p.ArticleID, "article")
+	refs := appendRef(nil,
+		evidenceCandidate{RefID: p.ConversationID, Kind: sovereignv1.EvidenceKind_EVIDENCE_KIND_UNSPECIFIED},
+		evidenceCandidate{RefID: p.ArticleID, Label: p.ArticleTitle, Kind: sovereignv1.EvidenceKind_EVIDENCE_KIND_ARTICLE},
+	)
 	why := &sovereignv1.KnowledgeLoopWhyPayload{
 		Kind:         sovereignv1.WhyKind_WHY_KIND_SOURCE,
 		Text:         sanitizePlainText(text),
@@ -175,7 +202,10 @@ func enrichHomeItemOpened(ev *sovereign_db.KnowledgeEvent, p enrichmentPayload) 
 	}
 	// The open event itself is the stable anchor — reproject replays point at
 	// the same event_id, so the UI can deep-link "last opened" to this row.
-	refs := appendRefIfPresent(nil, ev.EventID.String(), "open_event", p.ArticleID, "article")
+	refs := appendRef(nil,
+		evidenceCandidate{RefID: ev.EventID.String(), Kind: sovereignv1.EvidenceKind_EVIDENCE_KIND_UNSPECIFIED},
+		evidenceCandidate{RefID: p.ArticleID, Label: p.ArticleTitle, Kind: sovereignv1.EvidenceKind_EVIDENCE_KIND_ARTICLE},
+	)
 	why := &sovereignv1.KnowledgeLoopWhyPayload{
 		Kind:         sovereignv1.WhyKind_WHY_KIND_RECALL,
 		Text:         sanitizePlainText(text),
@@ -190,8 +220,15 @@ func enrichSuperseded(_ *sovereign_db.KnowledgeEvent, p enrichmentPayload) *sove
 	if p.ArticleTitle != "" {
 		text = p.ArticleTitle + " — a newer version replaces what you saw before."
 	}
-	refs := appendRefIfPresent(nil, p.PreviousSummaryVersion, "previous_summary", p.SummaryVersionID, "new_summary", p.EntryKey, "previous_entry", p.NewEntryKey, "new_entry")
-	counter := appendRefIfPresent(nil, p.PreviousSummaryVersion, "what_changed")
+	refs := appendRef(nil,
+		evidenceCandidate{RefID: p.PreviousSummaryVersion, Kind: sovereignv1.EvidenceKind_EVIDENCE_KIND_SUMMARY},
+		evidenceCandidate{RefID: p.SummaryVersionID, Kind: sovereignv1.EvidenceKind_EVIDENCE_KIND_SUMMARY},
+		evidenceCandidate{RefID: p.EntryKey, Kind: sovereignv1.EvidenceKind_EVIDENCE_KIND_UNSPECIFIED},
+		evidenceCandidate{RefID: p.NewEntryKey, Kind: sovereignv1.EvidenceKind_EVIDENCE_KIND_UNSPECIFIED},
+	)
+	counter := appendRef(nil,
+		evidenceCandidate{RefID: p.PreviousSummaryVersion, Kind: sovereignv1.EvidenceKind_EVIDENCE_KIND_SUMMARY},
+	)
 	why := &sovereignv1.KnowledgeLoopWhyPayload{
 		Kind:         sovereignv1.WhyKind_WHY_KIND_CHANGE,
 		Text:         sanitizePlainText(text),
@@ -210,7 +247,10 @@ func enrichHomeItemDismissed(ev *sovereign_db.KnowledgeEvent, p enrichmentPayloa
 	if when != "" {
 		text = "Dismissed at " + when + " — recheck, mark reviewed, or archive."
 	}
-	refs := appendRefIfPresent(nil, ev.EventID.String(), "dismiss_event", p.EntryKey, "entry")
+	refs := appendRef(nil,
+		evidenceCandidate{RefID: ev.EventID.String(), Kind: sovereignv1.EvidenceKind_EVIDENCE_KIND_UNSPECIFIED},
+		evidenceCandidate{RefID: p.EntryKey, Kind: sovereignv1.EvidenceKind_EVIDENCE_KIND_UNSPECIFIED},
+	)
 	why := &sovereignv1.KnowledgeLoopWhyPayload{
 		Kind:         sovereignv1.WhyKind_WHY_KIND_SOURCE,
 		Text:         sanitizePlainText(text),
@@ -222,40 +262,22 @@ func enrichHomeItemDismissed(ev *sovereign_db.KnowledgeEvent, p enrichmentPayloa
 
 // --- helpers ----------------------------------------------------------------
 
-// appendRefIfPresent takes interleaved (refID, label) pairs and appends only
-// those whose refID is non-empty. The kind discriminator is derived from the
-// label so downstream consumers (Augur citation rail, Loop tile UI) know
-// whether the refID is an alt-db UUID (ARTICLE / SUMMARY) or some other
-// opaque identifier they should not route on.
-func appendRefIfPresent(acc []*sovereignv1.KnowledgeLoopEvidenceRef, pairs ...string) []*sovereignv1.KnowledgeLoopEvidenceRef {
-	for i := 0; i+1 < len(pairs); i += 2 {
-		id, label := pairs[i], pairs[i+1]
-		if id == "" {
+// appendRef appends only those candidates whose RefID is non-empty. The kind
+// is taken from the candidate as-is; the label is sanitized and truncated to
+// maxLabelBytes. This replaces the legacy interleaved-string helper that
+// conflated label and kind into a single string parameter.
+func appendRef(acc []*sovereignv1.KnowledgeLoopEvidenceRef, refs ...evidenceCandidate) []*sovereignv1.KnowledgeLoopEvidenceRef {
+	for _, r := range refs {
+		if r.RefID == "" {
 			continue
 		}
 		acc = append(acc, &sovereignv1.KnowledgeLoopEvidenceRef{
-			RefId: id,
-			Label: label,
-			Kind:  labelToEvidenceKind(label),
+			RefId: r.RefID,
+			Label: sanitizeLabel(r.Label),
+			Kind:  r.Kind,
 		})
 	}
 	return acc
-}
-
-// labelToEvidenceKind maps the projector's internal label string to the wire
-// EvidenceKind. Pure function — reproject-safe by construction (no time, no
-// latest state). Unknown labels stay UNSPECIFIED so the UI's citation-href
-// helper renders the citation without a link rather than gambling on the
-// shape of refID.
-func labelToEvidenceKind(label string) sovereignv1.EvidenceKind {
-	switch label {
-	case "summary", "previous_summary", "new_summary", "what_changed":
-		return sovereignv1.EvidenceKind_EVIDENCE_KIND_SUMMARY
-	case "article":
-		return sovereignv1.EvidenceKind_EVIDENCE_KIND_ARTICLE
-	default:
-		return sovereignv1.EvidenceKind_EVIDENCE_KIND_UNSPECIFIED
-	}
 }
 
 // boundEvidence enforces the ≤8 cap from the canonical contract.
@@ -264,6 +286,27 @@ func boundEvidence(refs []*sovereignv1.KnowledgeLoopEvidenceRef) []*sovereignv1.
 		return refs[:maxEvidenceRefs]
 	}
 	return refs
+}
+
+// sanitizeLabel strips HTML/script markers and truncates an EvidenceRef.Label
+// to maxLabelBytes (UTF-8 safe). Empty input returns empty (caller decides
+// whether to fall back to the kind discriminator on the FE).
+func sanitizeLabel(s string) string {
+	if s == "" {
+		return ""
+	}
+	s = stripAngleSpans(s)
+	s = strings.ReplaceAll(s, "\r", " ")
+	s = strings.ReplaceAll(s, "\n", " ")
+	s = strings.Join(strings.Fields(s), " ")
+	if len(s) <= maxLabelBytes {
+		return s
+	}
+	trimmed := s[:maxLabelBytes]
+	for !utf8.ValidString(trimmed) && len(trimmed) > 0 {
+		trimmed = trimmed[:len(trimmed)-1]
+	}
+	return trimmed
 }
 
 // sanitizePlainText strips obvious HTML/script markers and truncates to 512 bytes.
