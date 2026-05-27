@@ -12,30 +12,36 @@ import { useViewport } from "$lib/stores/viewport.svelte";
 
 type CitationKindName = "UNSPECIFIED" | "WEB" | "ARTICLE" | "SUMMARY";
 
+type PaneCitation = {
+	URL: string;
+	Title: string;
+	PublishedAt?: string;
+	Kind?: CitationKindName;
+	RefID?: string;
+};
+
 type PaneMessage = {
 	id: string;
 	message: string;
 	role: "user" | "assistant";
 	timestamp: string;
-	citations?: {
-		URL: string;
-		Title: string;
-		PublishedAt?: string;
-		Kind?: CitationKindName;
-		RefID?: string;
-	}[];
+	citations?: PaneCitation[];
+	relatedCitations?: PaneCitation[];
+};
+
+type MobileCitation = {
+	url: string;
+	title: string;
+	publishedAt: string;
+	kind?: CitationKindName;
+	refId?: string;
 };
 
 type MobileMessage = {
 	role: "user" | "assistant";
 	content: string;
-	citations?: {
-		url: string;
-		title: string;
-		publishedAt: string;
-		kind?: CitationKindName;
-		refId?: string;
-	}[];
+	citations?: MobileCitation[];
+	relatedCitations?: MobileCitation[];
 };
 
 const { isDesktop } = useViewport();
@@ -46,19 +52,34 @@ let isLoading = $state(true);
 
 const conversationId = $derived($page.params.conversationId ?? "");
 
+function toPaneCitation(c: AugurStoredConversation["messages"][number]["citations"][number]): PaneCitation {
+	return {
+		URL: c.url,
+		Title: c.title,
+		PublishedAt: c.publishedAt,
+		Kind: c.kind,
+		RefID: c.refId,
+	};
+}
+
+function toMobileCitation(c: AugurStoredConversation["messages"][number]["citations"][number]): MobileCitation {
+	return {
+		url: c.url,
+		title: c.title,
+		publishedAt: c.publishedAt,
+		kind: c.kind,
+		refId: c.refId,
+	};
+}
+
 function toPaneMessages(conv: AugurStoredConversation): PaneMessage[] {
 	return conv.messages.map((m, index) => ({
 		id: `${m.role}-${conv.id}-${index}`,
 		message: m.content,
 		role: m.role,
 		timestamp: m.createdAt ? m.createdAt.toLocaleTimeString() : "",
-		citations: m.citations.map((c) => ({
-			URL: c.url,
-			Title: c.title,
-			PublishedAt: c.publishedAt,
-			Kind: c.kind,
-			RefID: c.refId,
-		})),
+		citations: m.citations.map(toPaneCitation),
+		relatedCitations: m.relatedCitations.map(toPaneCitation),
 	}));
 }
 
@@ -66,13 +87,8 @@ function toMobileMessages(conv: AugurStoredConversation): MobileMessage[] {
 	return conv.messages.map((m) => ({
 		role: m.role,
 		content: m.content,
-		citations: m.citations.map((c) => ({
-			url: c.url,
-			title: c.title,
-			publishedAt: c.publishedAt,
-			kind: c.kind,
-			refId: c.refId,
-		})),
+		citations: m.citations.map(toMobileCitation),
+		relatedCitations: m.relatedCitations.map(toMobileCitation),
 	}));
 }
 
