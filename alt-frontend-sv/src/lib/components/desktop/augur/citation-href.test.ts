@@ -45,7 +45,9 @@ describe("citationHref", () => {
 
 	it("returns undefined when kind is UNSPECIFIED, regardless of url contents", () => {
 		expect(citationHref(input({ kind: "UNSPECIFIED" }))).toBeUndefined();
-		expect(citationHref(input({ kind: "UNSPECIFIED", url: bareUuid }))).toBeUndefined();
+		expect(
+			citationHref(input({ kind: "UNSPECIFIED", url: bareUuid })),
+		).toBeUndefined();
 		expect(
 			citationHref(input({ kind: "UNSPECIFIED", url: externalUrl })),
 		).toBeUndefined();
@@ -56,7 +58,9 @@ describe("citationHref", () => {
 		// raw UUID and no `kind`. The helper must NOT emit an href, otherwise the
 		// browser resolves the bare UUID relative to /augur/<conversation_id>
 		// and re-introduces the bug this change fixes.
-		expect(citationHref(input({ kind: "UNSPECIFIED", url: bareUuid }))).toBeUndefined();
+		expect(
+			citationHref(input({ kind: "UNSPECIFIED", url: bareUuid })),
+		).toBeUndefined();
 	});
 
 	it("returns external URL for WEB even when refId is also populated", () => {

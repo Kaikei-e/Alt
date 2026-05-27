@@ -43,8 +43,10 @@ function ladderTierFromName(
 // projector records `acted_intent` in continue_context.recent_action_labels
 // without forcing a (potentially backward) stage transition. Other intents
 // flow through ctaToStage / canTransition (cross-stage gating).
-const SAME_STAGE_INTENT_TRIGGER: ReadonlyMap<DecisionIntentName, TransitionTrigger> =
-	new Map([["revisit", "intent_signal"]]);
+const SAME_STAGE_INTENT_TRIGGER: ReadonlyMap<
+	DecisionIntentName,
+	TransitionTrigger
+> = new Map([["revisit", "intent_signal"]]);
 
 function sameStageTriggerFor(
 	intent: DecisionIntentName,

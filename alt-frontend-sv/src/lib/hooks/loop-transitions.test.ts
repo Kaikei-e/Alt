@@ -63,23 +63,21 @@ describe("canTransition — ADR-000914 same-stage triggers", () => {
 		"programmatic",
 	];
 
-	it.each(sameStageAllowed)(
-		"allows same-stage transition when trigger is %s",
-		(trigger) => {
-			for (const s of stages) {
-				expect(canTransition(s, s, trigger)).toBe(true);
-			}
-		},
-	);
+	it.each(
+		sameStageAllowed,
+	)("allows same-stage transition when trigger is %s", (trigger) => {
+		for (const s of stages) {
+			expect(canTransition(s, s, trigger)).toBe(true);
+		}
+	});
 
-	it.each(crossStageOnly)(
-		"forbids same-stage transition when trigger is %s (cross-stage trigger)",
-		(trigger) => {
-			for (const s of stages) {
-				expect(canTransition(s, s, trigger)).toBe(false);
-			}
-		},
-	);
+	it.each(
+		crossStageOnly,
+	)("forbids same-stage transition when trigger is %s (cross-stage trigger)", (trigger) => {
+		for (const s of stages) {
+			expect(canTransition(s, s, trigger)).toBe(false);
+		}
+	});
 
 	it("cross-stage transitions stay gated by the allowlist regardless of trigger", () => {
 		for (const trigger of [...sameStageAllowed, ...crossStageOnly]) {
@@ -91,6 +89,8 @@ describe("canTransition — ADR-000914 same-stage triggers", () => {
 	it("transitionReason treats trigger-eligible same-stage as valid", () => {
 		expect(transitionReason("orient", "orient", "intent_signal")).toBe("");
 		expect(transitionReason("decide", "decide", "compare")).toBe("");
-		expect(transitionReason("act", "act", "user_tap")).toMatch(/not available/i);
+		expect(transitionReason("act", "act", "user_tap")).toMatch(
+			/not available/i,
+		);
 	});
 });

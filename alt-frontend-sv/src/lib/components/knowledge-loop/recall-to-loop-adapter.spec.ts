@@ -40,7 +40,7 @@ describe("recall-to-loop-adapter", () => {
 			itemKey: "article:2",
 			recallScore: 0.8,
 			reasons: [
-				{ type: "tag_interaction", description: "You explored tag \"AI\"" },
+				{ type: "tag_interaction", description: 'You explored tag "AI"' },
 			],
 			firstEligibleAt: "2026-05-25T00:00:00Z",
 			nextSuggestAt: "2026-05-25T00:00:00Z",

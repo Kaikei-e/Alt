@@ -131,7 +131,9 @@ describe("/loop/+page.svelte wiring guards", () => {
 		expect(decideBranch).not.toBeNull();
 		const body = decideBranch?.[0] ?? "";
 		expect(body).toMatch(/onWorkspaceOpen\(activeEntry\)/);
-		expect(body).toMatch(/activeEntrySourceUrl \? "Open" : "Open · resolve url"/);
+		expect(body).toMatch(
+			/activeEntrySourceUrl \? "Open" : "Open · resolve url"/,
+		);
 		// inline error surface re-used from ACT branch so the BFF resolution
 		// failure has the same recovery affordance the user already knows.
 		expect(body).toMatch(/loop-open-resolve-error/);
@@ -151,6 +153,8 @@ describe("/loop/+page.svelte wiring guards", () => {
 		// after the timeout). Confirm the conditional + reset both exist.
 		expect(pageSource).toMatch(/\{#if justActed\}/);
 		// The reset must be timed (not manual) so the toast clears itself.
-		expect(pageSource).toMatch(/setTimeout\([\s\S]{0,200}justActed\s*=\s*false/);
+		expect(pageSource).toMatch(
+			/setTimeout\([\s\S]{0,200}justActed\s*=\s*false/,
+		);
 	});
 });

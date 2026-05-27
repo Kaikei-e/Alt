@@ -79,7 +79,8 @@ export function adaptRecallToLoopEntry(
 	const primaryReason: RecallReasonData | undefined = candidate.reasons[0];
 	const whyKind = mapRecallReasonToWhyKind(primaryReason?.type ?? "");
 	const text =
-		primaryReason?.description ?? "Recall candidate from your knowledge stream.";
+		primaryReason?.description ??
+		"Recall candidate from your knowledge stream.";
 
 	const why: WhyPayloadData = {
 		kind: whyKind,

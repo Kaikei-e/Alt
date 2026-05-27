@@ -128,9 +128,7 @@ describe("resolveLoopSourceUrl", () => {
 			...baseEntry,
 			whyPrimary: {
 				...baseEntry.whyPrimary,
-				evidenceRefs: [
-					{ refId: "art-1", label: "article", kind: "ARTICLE" },
-				],
+				evidenceRefs: [{ refId: "art-1", label: "article", kind: "ARTICLE" }],
 			},
 		};
 		expect(resolveLoopSourceUrl(entry)).toBeNull();

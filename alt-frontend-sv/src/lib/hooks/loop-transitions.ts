@@ -35,7 +35,9 @@ export type TransitionTrigger =
 	| "keyboard"
 	| "programmatic";
 
-const SAME_STAGE_TRIGGER_SET: ReadonlySet<string> = new Set(SAME_STAGE_TRIGGERS);
+const SAME_STAGE_TRIGGER_SET: ReadonlySet<string> = new Set(
+	SAME_STAGE_TRIGGERS,
+);
 
 export function canTransition(
 	from: LoopStageName,

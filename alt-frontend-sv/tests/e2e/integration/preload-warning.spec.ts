@@ -19,8 +19,7 @@ import { test, expect } from "@playwright/test";
  *   https://www.debugbear.com/blog/rel-preload-problems
  */
 
-const PRELOAD_WARNING_FRAGMENT =
-	"preloaded using link preload but not used";
+const PRELOAD_WARNING_FRAGMENT = "preloaded using link preload but not used";
 
 // Per-route warning ceiling. The root layout CSS chunk is large (~85 KB) and
 // stays external + preloaded by SvelteKit's default behavior, so one preload
