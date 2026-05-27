@@ -13,6 +13,7 @@ export type Citation = {
 
 type Props = {
 	citations: Citation[];
+	relatedCitations?: Citation[];
 	activeIndex?: number;
 	onSelect?: (index: number) => void;
 	loading?: boolean;
@@ -20,6 +21,7 @@ type Props = {
 
 let {
 	citations,
+	relatedCitations = [],
 	activeIndex = -1,
 	onSelect,
 	loading = false,
@@ -93,11 +95,20 @@ function hrefFor(c: Citation): string | undefined {
 function isExternal(c: Citation): boolean {
 	return c.Kind === "WEB";
 }
+
+// displayTitle never returns the raw RefID — a defence-in-depth fallback so
+// the internal UUID can't slip into the visible label even if the upstream
+// emitter regresses. Order: Title → URL domain → "Untitled source".
+function displayTitle(c: Citation): string {
+	if (c.Title) return c.Title;
+	if (c.URL) return formatDomain(c.URL);
+	return "Untitled source";
+}
 </script>
 
 <aside class="citation-rail" aria-label="Augur citations">
 	<header class="rail-head">
-		<h2 class="rail-title">Citations</h2>
+		<h2 id="rail-citations-heading" class="rail-title">Citations</h2>
 		<div class="rail-rule" aria-hidden="true"></div>
 	</header>
 
@@ -116,7 +127,7 @@ function isExternal(c: Citation): boolean {
 	{:else if citations.length === 0}
 		<p class="rail-empty">No citations yet</p>
 	{:else}
-		<ol class="rail-list">
+		<ol class="rail-list" aria-labelledby="rail-citations-heading">
 			{#each citations as cite, i (i + (cite.RefID ?? cite.URL))}
 				{@const href = hrefFor(cite)}
 				{@const external = isExternal(cite)}
@@ -139,11 +150,11 @@ function isExternal(c: Citation): boolean {
 									rel={external ? "noopener noreferrer" : undefined}
 									onclick={(e) => e.stopPropagation()}
 								>
-									{cite.Title || "Untitled source"}
+									{displayTitle(cite)}
 								</a>
 							{:else}
 								<span class="item-title item-title-disabled">
-									{cite.Title || "Untitled source"}
+									{displayTitle(cite)}
 								</span>
 							{/if}
 							{#if cite.PublishedAt}
@@ -156,6 +167,59 @@ function isExternal(c: Citation): boolean {
 									target="_blank"
 									rel="noopener noreferrer"
 									onclick={(e) => e.stopPropagation()}
+								>
+									<span>{formatDomain(cite.URL)}</span>
+									<ArrowUpRight size={11} strokeWidth={2} />
+								</a>
+							{/if}
+						</div>
+					</div>
+				</li>
+			{/each}
+		</ol>
+	{/if}
+
+	{#if relatedCitations.length > 0}
+		<header class="rail-head rail-head-related">
+			<h2 id="rail-related-heading" class="rail-title rail-title-related">
+				Related
+			</h2>
+			<div class="rail-rule" aria-hidden="true"></div>
+		</header>
+		<ol
+			class="rail-list rail-list-related"
+			aria-labelledby="rail-related-heading"
+		>
+			{#each relatedCitations as cite, i (`related-${i}-${cite.RefID ?? cite.URL}`)}
+				{@const href = hrefFor(cite)}
+				{@const external = isExternal(cite)}
+				<li class="rail-item-wrap">
+					<div class="rail-item rail-item-related">
+						<span class="item-num item-num-related" aria-hidden="true">★</span>
+						<div class="item-body">
+							{#if href}
+								<a
+									{href}
+									class="item-title item-title-related"
+									target={external ? "_blank" : undefined}
+									rel={external ? "noopener noreferrer" : undefined}
+								>
+									{displayTitle(cite)}
+								</a>
+							{:else}
+								<span class="item-title item-title-disabled item-title-related">
+									{displayTitle(cite)}
+								</span>
+							{/if}
+							{#if cite.PublishedAt}
+								<p class="item-dateline">{formatDateline(cite.PublishedAt)}</p>
+							{/if}
+							{#if href && external}
+								<a
+									{href}
+									class="item-domain"
+									target="_blank"
+									rel="noopener noreferrer"
 								>
 									<span>{formatDomain(cite.URL)}</span>
 									<ArrowUpRight size={11} strokeWidth={2} />
@@ -314,6 +378,38 @@ function isExternal(c: Citation): boolean {
 
 	.item-domain:hover {
 		color: var(--accent-primary, #2f4f4f);
+	}
+
+	/* Related section — typographically subordinated to Citations to keep
+	   the eye anchored on grounded sources while still letting the reader
+	   pivot to next-to-read articles. Pencil-margin ★ marker echoes the
+	   newspaper "See also" convention without inventing a new glyph. */
+	.rail-head-related {
+		margin-top: 1.4rem;
+	}
+	.rail-title-related {
+		font-size: 0.78rem;
+		letter-spacing: 0.18em;
+		text-transform: uppercase;
+		color: var(--text-muted, #777);
+	}
+	.rail-list-related {
+		opacity: 0.92;
+	}
+	.rail-item-related {
+		padding-left: 0.5rem;
+	}
+	.item-num-related {
+		font-family: var(--font-body, "Source Sans 3", sans-serif);
+		font-size: 0.85rem;
+		color: var(--accent-secondary, var(--text-muted, #999));
+		min-width: 1.4rem;
+		text-align: center;
+		padding-top: 0.05rem;
+	}
+	.item-title-related {
+		font-size: 0.82rem;
+		font-weight: 600;
 	}
 
 	/* skeleton */

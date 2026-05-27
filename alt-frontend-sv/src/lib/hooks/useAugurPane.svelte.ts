@@ -12,11 +12,15 @@ import {
 } from "$lib/connect";
 import { formatAugurFallbackMessage } from "$lib/utils/augurFallback";
 
+type CitationKindName = "UNSPECIFIED" | "WEB" | "ARTICLE" | "SUMMARY";
+
 type Citation = {
 	URL: string;
 	Title: string;
 	PublishedAt?: string;
 	Score?: number;
+	Kind?: CitationKindName;
+	RefID?: string;
 };
 
 export type AugurPaneMessage = {
@@ -25,15 +29,19 @@ export type AugurPaneMessage = {
 	role: "user" | "assistant";
 	timestamp: string;
 	citations?: Citation[];
+	relatedCitations?: Citation[];
 };
 
 const STREAM_TIMEOUT_MS = 180_000;
 
-function convertCitations(citations: AugurCitation[]): Citation[] {
+function convertCitations(citations: AugurCitation[] | undefined): Citation[] {
+	if (!citations) return [];
 	return citations.map((c) => ({
 		URL: c.url,
 		Title: c.title,
 		PublishedAt: c.publishedAt,
+		Kind: c.kind,
+		RefID: c.refId,
 	}));
 }
 
@@ -197,6 +205,7 @@ export function useAugurPane(options: UseAugurPaneOptions = {}) {
 						result.citations.length > 0
 							? convertCitations(result.citations)
 							: messages[assistantIndex].citations,
+					relatedCitations: convertCitations(result.relatedCitations),
 				};
 				finalize();
 			},

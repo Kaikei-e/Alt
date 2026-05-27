@@ -28,6 +28,7 @@ type Message = {
 	role: "user" | "assistant";
 	timestamp: string;
 	citations?: Citation[];
+	relatedCitations?: Citation[];
 };
 
 interface Props {
@@ -74,6 +75,19 @@ let railCitations = $derived.by<Citation[]>(() => {
 	return [];
 });
 
+// Sibling "Related" rail driven by the same latest assistant turn. Empty
+// arrays collapse the section so legacy conversations (no inline related
+// projection) render exactly as before.
+let railRelatedCitations = $derived.by<Citation[]>(() => {
+	for (let i = messages.length - 1; i >= 0; i--) {
+		const m = messages[i];
+		if (m.role === "assistant") {
+			return m.relatedCitations ?? [];
+		}
+	}
+	return [];
+});
+
 let railActiveIndex = $state(-1);
 
 function focusCitation(index: number) {
@@ -113,7 +127,8 @@ function throttledScrollToBottom() {
 /**
  * Convert AugurCitation from Connect-RPC to component Citation format
  */
-function convertCitations(citations: AugurCitation[]): Citation[] {
+function convertCitations(citations: AugurCitation[] | undefined): Citation[] {
+	if (!citations) return [];
 	return citations.map((c) => ({
 		URL: c.url,
 		Title: c.title,
@@ -233,6 +248,7 @@ async function handleSend(messageText: string) {
 						result.citations.length > 0
 							? convertCitations(result.citations)
 							: messages[currentAssistantMessageIndex].citations,
+					relatedCitations: convertCitations(result.relatedCitations),
 				};
 				isLoading = false;
 				progressStage = "";
@@ -369,6 +385,7 @@ $effect(() => {
 <aside class="augur-rail-slot">
 	<CitationRail
 		citations={railCitations as Citation[]}
+		relatedCitations={railRelatedCitations as Citation[]}
 		activeIndex={railActiveIndex}
 		onSelect={focusCitation}
 		loading={isLoading && railCitations.length === 0}

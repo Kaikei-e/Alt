@@ -36,6 +36,36 @@ function citationKindFromProto(k: CitationKind): AugurCitationKind {
 	}
 }
 
+const UUID_LIKE =
+	/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** Strip Titles that are literally a UUID. The backend already filters these,
+ * but the FE keeps a second line of defence so the historical label-fallback
+ * bug (an internal UUID surfacing as visible text — see ADR-926) cannot be
+ * re-introduced by a regressed emitter. Returns empty so the CitationRail
+ * domain / "Untitled source" fallback takes over. */
+function safeTitle(title: string | undefined | null): string {
+	if (!title) return "";
+	const trimmed = title.trim();
+	if (!trimmed || UUID_LIKE.test(trimmed)) return "";
+	return trimmed;
+}
+
+function mapProtoCitation(c: ProtoCitation): AugurCitation {
+	return {
+		url: c.url,
+		title: safeTitle(c.title),
+		publishedAt: c.publishedAt,
+		kind: citationKindFromProto(c.kind),
+		refId: c.refId,
+	};
+}
+
+function mapProtoCitations(cs: ProtoCitation[] | undefined): AugurCitation[] {
+	if (!cs || cs.length === 0) return [];
+	return cs.map(mapProtoCitation);
+}
+
 /** Type-safe AugurService client */
 type AugurClient = Client<typeof AugurService>;
 
@@ -87,6 +117,13 @@ export interface AugurStreamResult {
 	answer: string;
 	/** Citations used in the answer */
 	citations: AugurCitation[];
+	/**
+	 * Inline-projected snapshot of articles near the direct citations. Sized
+	 * by the backend (default 3); empty when no direct citations were grounded
+	 * or when neighbor lookup failed. The CitationRail renders this as a
+	 * sibling "Related" section.
+	 */
+	relatedCitations: AugurCitation[];
 }
 
 // =============================================================================
@@ -203,15 +240,7 @@ export function streamAugurChat(
 								onConversationId(payload.value.conversationId);
 							}
 							if (payload.value.citations?.length) {
-								const citations = payload.value.citations.map(
-									(c: ProtoCitation) => ({
-										url: c.url,
-										title: c.title,
-										publishedAt: c.publishedAt,
-										kind: citationKindFromProto(c.kind),
-										refId: c.refId,
-									}),
-								);
+								const citations = mapProtoCitations(payload.value.citations);
 								latestCitations = citations;
 								if (onMeta) {
 									onMeta(citations);
@@ -222,15 +251,8 @@ export function streamAugurChat(
 
 					case "done":
 						if (payload.value) {
-							const citations = payload.value.citations.map(
-								(c: ProtoCitation) => ({
-									url: c.url,
-									title: c.title,
-									publishedAt: c.publishedAt,
-									kind: citationKindFromProto(c.kind),
-									refId: c.refId,
-								}),
-							);
+							const citations = mapProtoCitations(payload.value.citations);
+							const related = mapProtoCitations(payload.value.relatedCitations);
 							// Use final answer from done payload if available
 							const finalAnswer = payload.value.answer || accumulatedText;
 							if (onComplete && !completeCalled) {
@@ -238,6 +260,7 @@ export function streamAugurChat(
 								onComplete({
 									answer: finalAnswer,
 									citations: citations.length > 0 ? citations : latestCitations,
+									relatedCitations: related,
 								});
 							}
 						}
@@ -268,6 +291,7 @@ export function streamAugurChat(
 				onComplete({
 					answer: accumulatedText,
 					citations: latestCitations,
+					relatedCitations: [],
 				});
 			}
 		} catch (error) {
@@ -387,6 +411,7 @@ export interface AugurStoredMessage {
 	content: string;
 	createdAt: Date | null;
 	citations: AugurCitation[];
+	relatedCitations: AugurCitation[];
 }
 
 /** Full conversation payload from GetConversation. */
@@ -453,13 +478,8 @@ export async function getAugurConversation(
 				| "assistant",
 			content: m.content,
 			createdAt: protoTimestampToDate(m.createdAt),
-			citations: (m.citations ?? []).map((c: ProtoCitation) => ({
-				url: c.url,
-				title: c.title,
-				publishedAt: c.publishedAt,
-				kind: citationKindFromProto(c.kind),
-				refId: c.refId,
-			})),
+			citations: mapProtoCitations(m.citations),
+			relatedCitations: mapProtoCitations(m.relatedCitations),
 		})),
 	};
 }
