@@ -331,6 +331,96 @@ func TestTransitionKnowledgeLoop_LogsOnSuccess(t *testing.T) {
 	require.Contains(t, out, `"accepted":true`)
 }
 
+// fakeEntriesPort lets a single test inject a deterministic error or payload
+// for the entries lookup. The session/surfaces ports below short-circuit on the
+// first non-nil entries error because the usecase fails fast on entries.
+type fakeEntriesPort struct {
+	err error
+}
+
+func (f *fakeEntriesPort) GetKnowledgeLoopEntries(
+	_ context.Context,
+	_ knowledge_loop_port.GetEntriesQuery,
+) ([]*domain.KnowledgeLoopEntry, error) {
+	if f.err != nil {
+		return nil, f.err
+	}
+	return nil, nil
+}
+
+type fakeSessionPort struct{}
+
+func (f *fakeSessionPort) GetKnowledgeLoopSessionState(
+	_ context.Context,
+	_, _ uuid.UUID,
+	_ string,
+) (*domain.KnowledgeLoopSessionState, error) {
+	return nil, nil
+}
+
+type fakeSurfacesPort struct{}
+
+func (f *fakeSurfacesPort) GetKnowledgeLoopSurfaces(
+	_ context.Context,
+	_, _ uuid.UUID,
+	_ string,
+) ([]*domain.KnowledgeLoopSurface, error) {
+	return nil, nil
+}
+
+func newGetHandlerWithEntriesErr(t *testing.T, entriesErr error) *Handler {
+	t.Helper()
+	uc := knowledge_loop_usecase.NewGetKnowledgeLoopUsecase(
+		&fakeEntriesPort{err: entriesErr},
+		&fakeSessionPort{},
+		&fakeSurfacesPort{},
+	)
+	return NewHandler(uc, nil, nil, nil, slog.Default())
+}
+
+func validGetRequest() *connect.Request[loopv1.GetKnowledgeLoopRequest] {
+	return connect.NewRequest(&loopv1.GetKnowledgeLoopRequest{
+		LensModeId: "default",
+	})
+}
+
+// TestGetKnowledgeLoop_ReturnsUnavailable_OnUpstreamUnavailable pins the
+// 2026-05-28 regression where a transient sovereign restart (~5s deploy gap)
+// surfaced to the FE as "[internal]" because the GetKnowledgeLoop handler
+// collapsed every non-ErrInvalidArgument error into CodeInternal. The
+// canonical pattern — already used by TransitionKnowledgeLoop — is to map
+// ErrUpstreamUnavailable to CodeUnavailable so the BFF can render a
+// retry-friendly banner.
+func TestGetKnowledgeLoop_ReturnsUnavailable_OnUpstreamUnavailable(t *testing.T) {
+	h := newGetHandlerWithEntriesErr(
+		t,
+		&net.OpError{Op: "dial", Net: "tcp", Err: errors.New("connection refused")},
+	)
+	_, err := h.GetKnowledgeLoop(authedContextForHandlerTests(t), validGetRequest())
+	require.Error(t, err)
+	var ce *connect.Error
+	require.ErrorAs(t, err, &ce)
+	require.Equal(t, connect.CodeUnavailable, ce.Code(), "net.OpError must map to CodeUnavailable")
+}
+
+func TestGetKnowledgeLoop_ReturnsInternal_OnOpaqueError(t *testing.T) {
+	h := newGetHandlerWithEntriesErr(t, errors.New("opaque boom"))
+	_, err := h.GetKnowledgeLoop(authedContextForHandlerTests(t), validGetRequest())
+	require.Error(t, err)
+	var ce *connect.Error
+	require.ErrorAs(t, err, &ce)
+	require.Equal(t, connect.CodeInternal, ce.Code())
+}
+
+func TestGetKnowledgeLoop_ReturnsDeadlineExceeded_OnContextDeadline(t *testing.T) {
+	h := newGetHandlerWithEntriesErr(t, context.DeadlineExceeded)
+	_, err := h.GetKnowledgeLoop(authedContextForHandlerTests(t), validGetRequest())
+	require.Error(t, err)
+	var ce *connect.Error
+	require.ErrorAs(t, err, &ce)
+	require.Equal(t, connect.CodeDeadlineExceeded, ce.Code())
+}
+
 // baseEntry returns a minimal valid domain entry used by toProtoEntry tests.
 func baseEntry() *domain.KnowledgeLoopEntry {
 	return &domain.KnowledgeLoopEntry{
