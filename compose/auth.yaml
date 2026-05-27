@@ -136,7 +136,7 @@ services:
       - BACKEND_TOKEN_SECRET_FILE=/run/secrets/backend_token_secret
       - BACKEND_TOKEN_ISSUER=auth-hub
       - BACKEND_TOKEN_AUDIENCE=alt-backend
-      - BACKEND_TOKEN_TTL=5m
+      - BACKEND_TOKEN_TTL=30m
       - MTLS_LISTEN=${MTLS_LISTEN:-true}
       - MTLS_PORT=9443
       - MTLS_CERT_FILE=/certs/svc-cert.pem

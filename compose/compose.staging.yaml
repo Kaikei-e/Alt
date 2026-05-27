@@ -1060,7 +1060,7 @@ services:
       - CACHE_TTL=5m
       - BACKEND_TOKEN_ISSUER=auth-hub
       - BACKEND_TOKEN_AUDIENCE=alt-backend
-      - BACKEND_TOKEN_TTL=5m
+      - BACKEND_TOKEN_TTL=30m
       # config.getEnv() resolves *_FILE -> file content. The HS256 secret
       # is shared with alt-backend so the JWT auth-hub issues is
       # verifiable by anyone already trusting alt_backend_token_secret.
