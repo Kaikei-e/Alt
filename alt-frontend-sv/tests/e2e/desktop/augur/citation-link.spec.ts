@@ -19,6 +19,10 @@ test.describe("Augur Citation Link Routing", () => {
 	const externalUrl = "https://example.test/posts/google-health-fitbit";
 	const legacyBareUuid = "44444444-4444-4444-8444-444444444444";
 
+	// protobuf-es uses proto3 JSON wire format: Timestamp is an RFC 3339 string,
+	// not a {seconds, nanos} object. Enums accept the full proto name (e.g.
+	// CITATION_KIND_SUMMARY) when sent as JSON.
+	const isoTimestamp = "2023-11-14T22:13:20Z";
 	const mockGetConversation = (route: import("@playwright/test").Route) =>
 		route.fulfill({
 			status: 200,
@@ -26,13 +30,13 @@ test.describe("Augur Citation Link Routing", () => {
 			body: JSON.stringify({
 				id: conversationId,
 				title: "Test Conversation",
-				createdAt: { seconds: "1700000000", nanos: 0 },
+				createdAt: isoTimestamp,
 				messages: [
 					{
 						role: "assistant",
 						content:
 							"From your Knowledge Loop: test answer with mixed citations.",
-						createdAt: { seconds: "1700000000", nanos: 0 },
+						createdAt: isoTimestamp,
 						citations: [
 							{
 								url: "",
