@@ -291,6 +291,88 @@
           "refId": "A"
         }
       ]
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "description": "PM-2026-045 action #5: SSE session lifecycle. started_total should track ended_total{reason=ctx_done} 1:1 in steady state. A growing gap means the catch-race or nginx buffering is back.",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 24
+      },
+      "id": 10,
+      "title": "SSE stream lifecycle (5m rate, by reason)",
+      "type": "timeseries",
+      "targets": [
+        {
+          "expr": "sum(rate(alt_knowledge_loop_stream_started_total[5m]))",
+          "legendFormat": "started",
+          "refId": "A"
+        },
+        {
+          "expr": "sum by (reason) (rate(alt_knowledge_loop_stream_ended_total[5m]))",
+          "legendFormat": "ended / {{reason}}",
+          "refId": "B"
+        }
+      ]
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "description": "PM-2026-045 action #4: JWT-expired share of stream terminations. Healthy value is near 0 with 30m TTL (ADR-000929). Climbing above ~5% means BACKEND_TOKEN_TTL × streamStaleTimeout drift.",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 32
+      },
+      "id": 11,
+      "title": "Stream JWT-expired ratio (5m)",
+      "type": "timeseries",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "unit": "percentunit"
+        }
+      },
+      "targets": [
+        {
+          "expr": "knowledge_loop:stream_jwt_expired_ratio_5m",
+          "legendFormat": "jwt_expired / started",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "description": "PM-2026-045 action #5: upstream fetch failures inside an active stream session. Three consecutive failures escalate to ended{reason=upstream_error}; this panel shows the precursor signal.",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 32
+      },
+      "id": 12,
+      "title": "Stream upstream fetch failures (5m rate)",
+      "type": "timeseries",
+      "targets": [
+        {
+          "expr": "rate(alt_knowledge_loop_stream_fetch_failed_total[5m])",
+          "legendFormat": "fetch_failed / s",
+          "refId": "A"
+        }
+      ]
     }
   ],
   "refresh": "30s",

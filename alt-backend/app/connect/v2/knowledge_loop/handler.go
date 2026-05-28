@@ -354,6 +354,7 @@ func (h *Handler) StreamKnowledgeLoopUpdates(
 
 	h.logger.InfoContext(ctx, "alt.knowledge_loop.stream_started",
 		"user_id", user.UserID, "tenant_id", user.TenantID, "start_seq", lastSeq)
+	streamStartedTotal.Inc()
 
 	updateTicker := time.NewTicker(streamPollInterval)
 	defer updateTicker.Stop()
@@ -376,16 +377,19 @@ func (h *Handler) StreamKnowledgeLoopUpdates(
 		case <-ctx.Done():
 			h.logger.InfoContext(ctx, "alt.knowledge_loop.stream_ended",
 				"user_id", user.UserID, "reason", ctx.Err())
+			streamEndedTotal.WithLabelValues("ctx_done").Inc()
 			return nil
 
 		case <-jwtCheckTicker.C:
 			if !jwtExpiry.IsZero() && time.Now().After(jwtExpiry) {
 				h.logger.InfoContext(ctx, "alt.knowledge_loop.stream_jwt_expired",
 					"user_id", user.UserID, "jwt_exp", jwtExpiry)
+				streamEndedTotal.WithLabelValues("jwt_expired").Inc()
 				return sendStreamExpired(stream, "jwt_expired")
 			}
 
 		case <-staleTimer.C:
+			streamEndedTotal.WithLabelValues("stale").Inc()
 			return sendStreamExpired(stream, "stale")
 
 		case <-heartbeatTicker.C:
@@ -406,7 +410,9 @@ func (h *Handler) StreamKnowledgeLoopUpdates(
 				consecutiveErrors++
 				h.logger.ErrorContext(ctx, "alt.knowledge_loop.stream_fetch_failed",
 					"err", fetchErr, "consecutive_errors", consecutiveErrors)
+				streamFetchFailedTotal.Inc()
 				if consecutiveErrors >= 3 {
+					streamEndedTotal.WithLabelValues("upstream_error").Inc()
 					return sendStreamExpired(stream, "upstream_error")
 				}
 				continue

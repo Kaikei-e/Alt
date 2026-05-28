@@ -73,3 +73,48 @@ groups:
             emitter (alt-backend view tracker) is likely missing engagement
             events; investigate before the cron-emitted backlog skews v2
             placements toward Review.
+
+      # PM-2026-045 action #4: stream_jwt_expired rate.
+      # JWT TTL is now 30m (ADR-000929); a sustained expiry rate above
+      # 3 events / 5m means either tokens are not refreshing or
+      # streamStaleTimeout drifted again. Either way, the silent 5-minute
+      # churn that hid the 4-week outage must be visible immediately.
+      - alert: KnowledgeLoopStreamJwtExpiredRate
+        expr: rate(alt_knowledge_loop_stream_ended_total{reason="jwt_expired"}[5m]) * 300 > 3
+        for: 5m
+        labels:
+          severity: warning
+          subsystem: knowledge-loop
+        annotations:
+          summary: "Knowledge Loop SSE JWT expiring too often"
+          description: |
+            More than 3 `stream_ended_total{reason="jwt_expired"}` events in
+            5 minutes. JWT TTL × streamStaleTimeout drift suspected. Check
+            BACKEND_TOKEN_TTL (auth-hub) and streamStaleTimeout (alt-backend
+            knowledge_loop handler) are aligned (both should be 30m).
+          runbook_url: "https://github.com/Kaikei-e/Alt/blob/main/docs/runbooks/connect-rpc-streaming-checklist.md"
+
+      # PM-2026-045 action #3: streaming session churn.
+      # A healthy session stays open until ctx_done or the 30m stale timer.
+      # Repeated openings (ratio of started:ctx_done > 3:1 over 10m) means
+      # clients are reconnecting in tight loops — the 5-minute churn pattern
+      # that produced the 4-week silent failure.
+      - alert: KnowledgeLoopStreamReconnectStorm
+        expr: |
+          rate(alt_knowledge_loop_stream_started_total[10m])
+          /
+          clamp_min(rate(alt_knowledge_loop_stream_ended_total{reason="ctx_done"}[10m]), 0.001)
+          > 3
+        for: 10m
+        labels:
+          severity: warning
+          subsystem: knowledge-loop
+        annotations:
+          summary: "Knowledge Loop SSE reconnecting faster than it ends cleanly"
+          description: |
+            `stream_started_total` is climbing more than 3× faster than
+            clean `stream_ended_total{reason="ctx_done"}`. The
+            useKnowledgeLoopStream catch-race or a nginx buffering
+            regression is suspected. Verify the
+            connect-rpc-streaming-checklist runbook still holds.
+          runbook_url: "https://github.com/Kaikei-e/Alt/blob/main/docs/runbooks/connect-rpc-streaming-checklist.md"

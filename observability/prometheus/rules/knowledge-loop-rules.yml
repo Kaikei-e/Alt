@@ -88,3 +88,55 @@ groups:
           sum(rate(knowledge_loop_projector_surface_bucket_assigned_total{version="v2"}[5m]))
           /
           clamp_min(sum(rate(knowledge_loop_projector_surface_bucket_assigned_total[5m])), 1)
+
+      # PM-2026-045 action #4 — JWT TTL drift on the SSE delivery path.
+      # The 4-week silent failure was masked because stream_jwt_expired
+      # was log-only. With the alt_knowledge_loop_stream_ended_total
+      # counter wired, a rising jwt_expired share is now alertable in
+      # real time.
+      - alert: KnowledgeLoopStreamJwtExpiredRate
+        expr: rate(alt_knowledge_loop_stream_ended_total{reason="jwt_expired"}[5m]) * 300 > 3
+        for: 5m
+        labels:
+          severity: warning
+          service: alt-backend
+          source: knowledge-loop-stream
+        annotations:
+          summary: "Knowledge Loop SSE JWT expiring too often"
+          description: |
+            More than 3 stream_ended{reason="jwt_expired"} events in
+            5 minutes. Verify auth-hub BACKEND_TOKEN_TTL and the
+            alt-backend streamStaleTimeout are aligned (both 30m).
+          runbook_url: "docs/runbooks/connect-rpc-streaming-checklist.md"
+
+      # PM-2026-045 action #3 — reconnect storm pattern.
+      # Healthy sessions terminate via ctx_done when the client closes
+      # the tab. When started:ctx_done > 3:1 the catch-race or nginx
+      # buffering is back; this is the symptom that hid the outage for
+      # 4 weeks.
+      - alert: KnowledgeLoopStreamReconnectStorm
+        expr: |
+          rate(alt_knowledge_loop_stream_started_total[10m])
+          /
+          clamp_min(rate(alt_knowledge_loop_stream_ended_total{reason="ctx_done"}[10m]), 0.001)
+          > 3
+        for: 10m
+        labels:
+          severity: warning
+          service: alt-backend
+          source: knowledge-loop-stream
+        annotations:
+          summary: "Knowledge Loop SSE reconnecting faster than it ends cleanly"
+          description: |
+            stream_started rate is more than 3× the clean ctx_done rate
+            over 10m. Likely cause: regression in useKnowledgeLoopStream
+            catch-race guard or nginx SSE buffering.
+          runbook_url: "docs/runbooks/connect-rpc-streaming-checklist.md"
+
+      # Recording rule for the streaming health panel on the Grafana
+      # knowledge-loop-projector dashboard.
+      - record: knowledge_loop:stream_jwt_expired_ratio_5m
+        expr: |
+          sum(rate(alt_knowledge_loop_stream_ended_total{reason="jwt_expired"}[5m]))
+          /
+          clamp_min(sum(rate(alt_knowledge_loop_stream_started_total[5m])), 0.001)
