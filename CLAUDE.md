@@ -56,6 +56,9 @@ docker compose -f compose/compose.yaml up --build -d <service>
 3. **IMPORTANT: Rebuild compiled services** — Go/Rust/F#/TS changes require `--build`. Without it, old binaries keep running silently.
 4. **No Secrets in Code** — Use `.env` and Docker secrets. Never hardcode credentials.
 5. **Service-specific rules** — Always check `<service>/CLAUDE.md` before modifying a service.
+6. **Reload canonical context before repair PRs** — Before starting a repair / regression-fix PR that touches the Knowledge Loop, Knowledge Home, or any append-first projection path, re-read `plan/knowledge-loop-core-concept.md` and the affected canonical contract via `/plan-context-loader`. Long-running sessions silently lose the invariants ("context rot") and bug fixes regress to single-axis collapses.
+7. **Producer wiring PRs require CDC RED first** — Any PR that adds or modifies a cross-service event producer (new event type, new payload field, new RPC) must land a Pact CDC RED test before the producer GREEN. "Proto compiled + E2E green" is not enough — the silent-fallback failure mode (ADR-000928) hides DI/wiring gaps that defensive nil-guards swallow.
+8. **No silent fallback for unwired dependencies** — Optional dependencies (DI options, feature flags, future hooks) must surface their wiring state with a loud `*_enabled` / `*_disabled` startup log AND `panic` when the unwired branch is taken inside business code. Defensive `if x == nil { return nil }` in producer / projector / resolver paths is forbidden — it makes "DI forgot to wire" indistinguishable from "intentionally disabled" (PM-2026-045 / ADR-000928 root cause).
 
 ## Planning with Obsidian
 
