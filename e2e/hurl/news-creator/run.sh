@@ -57,6 +57,9 @@ render_slice news-creator
 source "$ROOT/e2e/hurl/_lib/reclaim-network-pool.sh"
 reclaim_network_pool
 
+# shellcheck source=../_lib/compose-up-with-retry.sh
+source "$ROOT/e2e/hurl/_lib/compose-up-with-retry.sh"
+
 REPORT_DIR="$ROOT/e2e/reports/news-creator-$RUN_ID"
 mkdir -p "$REPORT_DIR"
 
@@ -73,8 +76,7 @@ cleanup() {
 trap cleanup EXIT
 
 echo "==> bringing up news-creator slice ($STAGING_PROJECT_NAME)" >&2
-docker compose -f "$SLICE" -p "$STAGING_PROJECT_NAME" \
-  up -d --wait --build news-creator-ollama-stub news-creator
+compose_up_with_retry --build news-creator-ollama-stub news-creator
 
 # Run Hurl inside the staging network so the `news-creator` service
 # DNS resolves. Mount the repo at the same absolute path so any

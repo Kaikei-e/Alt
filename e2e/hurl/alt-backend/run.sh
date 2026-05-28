@@ -61,6 +61,9 @@ render_slice alt-backend
 source "$ROOT/e2e/hurl/_lib/reclaim-network-pool.sh"
 reclaim_network_pool
 
+# shellcheck source=../_lib/compose-up-with-retry.sh
+source "$ROOT/e2e/hurl/_lib/compose-up-with-retry.sh"
+
 REPORT_DIR="$ROOT/e2e/reports/alt-backend-$RUN_ID"
 mkdir -p "$REPORT_DIR"
 
@@ -108,7 +111,7 @@ trap cleanup EXIT
 JWT="$(tr -d '\n' < e2e/fixtures/alt-backend/test-jwt.txt)"
 
 echo "==> bringing up alt-backend slice ($STAGING_PROJECT_NAME)" >&2
-if ! docker compose -f "$SLICE" -p "$STAGING_PROJECT_NAME" up -d --wait \
+if ! compose_up_with_retry \
     alt-backend-db \
     alt-backend-db-migrator \
     alt-backend-deps-stub \

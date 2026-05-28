@@ -55,6 +55,9 @@ render_slice acolyte-orchestrator
 source "$ROOT/e2e/hurl/_lib/reclaim-network-pool.sh"
 reclaim_network_pool
 
+# shellcheck source=../_lib/compose-up-with-retry.sh
+source "$ROOT/e2e/hurl/_lib/compose-up-with-retry.sh"
+
 # Master key for the Meilisearch seed step in scenario 09 (gatherer
 # needs an indexed corpus to return non-empty hits). Anchored on the
 # same fixture file the compose `secrets:` block mounts so changing
@@ -86,8 +89,7 @@ echo "==> bringing up acolyte-orchestrator slice ($STAGING_PROJECT_NAME)" >&2
 # news-creator-ollama-stub is the destination of acolyte's
 # OllamaGateway calls (/api/generate, /api/chat). search-indexer +
 # meilisearch + stub-backend back the gatherer node's hybrid search.
-docker compose -f "$SLICE" -p "$STAGING_PROJECT_NAME" \
-  up -d --wait --build \
+compose_up_with_retry --build \
   acolyte-db acolyte-db-migrator acolyte-orchestrator \
   news-creator-ollama-stub \
   meilisearch stub-backend search-indexer

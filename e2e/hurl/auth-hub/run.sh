@@ -65,6 +65,9 @@ render_slice auth-hub
 source "$ROOT/e2e/hurl/_lib/reclaim-network-pool.sh"
 reclaim_network_pool
 
+# shellcheck source=../_lib/compose-up-with-retry.sh
+source "$ROOT/e2e/hurl/_lib/compose-up-with-retry.sh"
+
 # Read fixtures. Secrets go through --secret so Hurl redacts them from
 # --report-html / --report-junit (audit F-002); non-sensitive values
 # ride --variable.
@@ -97,8 +100,7 @@ echo "==> bringing up auth-hub slice ($STAGING_PROJECT_NAME)" >&2
 # migrator's restart=no + kratos's service_completed_successfully gate
 # guarantees `kratos migrate sql` runs before Kratos proper starts, and
 # Kratos's healthcheck is the gate on auth-hub.
-docker compose -f "$SLICE" -p "$STAGING_PROJECT_NAME" \
-  up -d --wait --build \
+compose_up_with_retry --build \
   auth-hub-db auth-hub-db-migrator kratos auth-hub
 
 # Run Hurl inside the staging network so auth-hub / kratos DNS names

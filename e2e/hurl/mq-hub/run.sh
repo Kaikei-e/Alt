@@ -50,6 +50,9 @@ render_slice mq-hub
 source "$ROOT/e2e/hurl/_lib/reclaim-network-pool.sh"
 reclaim_network_pool
 
+# shellcheck source=../_lib/compose-up-with-retry.sh
+source "$ROOT/e2e/hurl/_lib/compose-up-with-retry.sh"
+
 REPORT_DIR="$ROOT/e2e/reports/mq-hub-$RUN_ID"
 mkdir -p "$REPORT_DIR"
 
@@ -70,8 +73,7 @@ python3 e2e/fixtures/mq-hub/gen-batch-oversize.py \
   e2e/fixtures/mq-hub/batch-oversize.json
 
 echo "==> bringing up redis-streams + mq-hub (IMAGE_TAG=$IMAGE_TAG, GHCR_OWNER=$GHCR_OWNER)" >&2
-docker compose -f "$SLICE" -p "$STAGING_PROJECT_NAME" \
-  up -d --wait redis-streams mq-hub
+compose_up_with_retry redis-streams mq-hub
 
 # Run Hurl inside the staging network. Mount repo at the same path so
 # `file,e2e/fixtures/...;` in the Hurl files resolves correctly.

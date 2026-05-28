@@ -59,6 +59,9 @@ render_slice tag-generator
 source "$ROOT/e2e/hurl/_lib/reclaim-network-pool.sh"
 reclaim_network_pool
 
+# shellcheck source=../_lib/compose-up-with-retry.sh
+source "$ROOT/e2e/hurl/_lib/compose-up-with-retry.sh"
+
 REPORT_DIR="$ROOT/e2e/reports/tag-generator-$RUN_ID"
 mkdir -p "$REPORT_DIR"
 
@@ -90,8 +93,7 @@ cleanup() {
 trap cleanup EXIT
 
 echo "==> bringing up tag-generator slice ($STAGING_PROJECT_NAME)" >&2
-docker compose -f "$SLICE" -p "$STAGING_PROJECT_NAME" \
-  up -d --wait redis-streams stub-backend mq-hub tag-generator
+compose_up_with_retry redis-streams stub-backend mq-hub tag-generator
 
 # Run Hurl inside the staging network so in-network DNS resolves both
 # the tag-generator and mq-hub services. Mount the repo at the same

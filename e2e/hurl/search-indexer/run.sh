@@ -56,6 +56,9 @@ render_slice search-indexer
 source "$ROOT/e2e/hurl/_lib/reclaim-network-pool.sh"
 reclaim_network_pool
 
+# shellcheck source=../_lib/compose-up-with-retry.sh
+source "$ROOT/e2e/hurl/_lib/compose-up-with-retry.sh"
+
 # Master key is a committed staging-only test fixture. Anchor through
 # the same file the compose `secrets:` block mounts, so changing one
 # rotates both.
@@ -77,8 +80,7 @@ cleanup() {
 trap cleanup EXIT
 
 echo "==> bringing up search-indexer slice (IMAGE_TAG=$IMAGE_TAG, GHCR_OWNER=$GHCR_OWNER)" >&2
-docker compose -f "$SLICE" -p "$STAGING_PROJECT_NAME" \
-  up -d --wait meilisearch stub-backend search-indexer
+compose_up_with_retry meilisearch stub-backend search-indexer
 
 # Run Hurl inside the staging network. Mount repo at the same path so
 # `file,e2e/fixtures/...;` body refs resolve via --file-root "$ROOT".

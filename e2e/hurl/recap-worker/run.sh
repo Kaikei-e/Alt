@@ -60,6 +60,9 @@ render_slice recap-worker
 source "$ROOT/e2e/hurl/_lib/reclaim-network-pool.sh"
 reclaim_network_pool
 
+# shellcheck source=../_lib/compose-up-with-retry.sh
+source "$ROOT/e2e/hurl/_lib/compose-up-with-retry.sh"
+
 REPORT_DIR="$ROOT/e2e/reports/recap-worker-$RUN_ID"
 mkdir -p "$REPORT_DIR"
 
@@ -79,8 +82,7 @@ cleanup() {
 trap cleanup EXIT
 
 echo "==> bringing up recap-worker slice ($STAGING_PROJECT_NAME)" >&2
-if ! docker compose -f "$SLICE" -p "$STAGING_PROJECT_NAME" \
-     up -d --wait recap-db recap-pipeline-stub recap-worker; then
+if ! compose_up_with_retry recap-db recap-pipeline-stub recap-worker; then
   # Bring-up failures (typically an exit 139 / SIGSEGV in recap-worker
   # during libtorch init) are otherwise lost: the trap cleanup tears the
   # slice down before the workflow's `Dump ... on failure` step runs, and

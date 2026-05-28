@@ -58,6 +58,9 @@ render_slice rag-orchestrator
 source "$ROOT/e2e/hurl/_lib/reclaim-network-pool.sh"
 reclaim_network_pool
 
+# shellcheck source=../_lib/compose-up-with-retry.sh
+source "$ROOT/e2e/hurl/_lib/compose-up-with-retry.sh"
+
 USER_ID_A="$(tr -d '\n' < "$ROOT/e2e/fixtures/rag-orchestrator/test-user-id.txt")"
 USER_ID_EMPTY="$(tr -d '\n' < "$ROOT/e2e/fixtures/rag-orchestrator/test-empty-user-id.txt")"
 CONV_ID="$(tr -d '\n' < "$ROOT/e2e/fixtures/rag-orchestrator/test-conversation-id.txt")"
@@ -89,8 +92,7 @@ echo "==> bringing up rag-orchestrator slice ($STAGING_PROJECT_NAME)" >&2
 # in CI (no GHCR image pulled). --wait blocks on healthcheck convergence;
 # rag-db-migrator's `restart: "no"` + service_completed_successfully gate
 # guarantees migrations apply before rag-orchestrator starts.
-docker compose -f "$SLICE" -p "$STAGING_PROJECT_NAME" \
-  up -d --wait --build \
+compose_up_with_retry --build \
   rag-db rag-db-migrator rag-orchestrator
 
 echo "==> seeding augur conversation fixtures via psql" >&2

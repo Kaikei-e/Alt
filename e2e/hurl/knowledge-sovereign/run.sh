@@ -46,6 +46,9 @@ render_slice knowledge-sovereign
 source "$ROOT/e2e/hurl/_lib/reclaim-network-pool.sh"
 reclaim_network_pool
 
+# shellcheck source=../_lib/compose-up-with-retry.sh
+source "$ROOT/e2e/hurl/_lib/compose-up-with-retry.sh"
+
 REPORT_DIR="$ROOT/e2e/reports/knowledge-sovereign-$RUN_ID"
 mkdir -p "$REPORT_DIR"
 
@@ -79,8 +82,7 @@ TODAY="$(date -u +%Y-%m-%d)"
 OCCURRED_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 
 echo "==> bringing up knowledge-sovereign slice ($STAGING_PROJECT_NAME)" >&2
-docker compose -f "$SLICE" -p "$STAGING_PROJECT_NAME" \
-  up -d --wait knowledge-sovereign-db knowledge-sovereign
+compose_up_with_retry knowledge-sovereign-db knowledge-sovereign
 
 # Run Hurl inside the staging network. Mount the repo at the same
 # absolute path so any `file,e2e/fixtures/...;` body resolves via
