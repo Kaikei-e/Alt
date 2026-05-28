@@ -8,7 +8,9 @@ type MetricKey string
 
 const (
 	MetricAvailability               MetricKey = "availability_services"
+	MetricHTTPLatencyP50             MetricKey = "http_latency_p50"
 	MetricHTTPLatencyP95             MetricKey = "http_latency_p95"
+	MetricHTTPLatencyP99             MetricKey = "http_latency_p99"
 	MetricHTTPRPS                    MetricKey = "http_rps"
 	MetricHTTPErrorRatio             MetricKey = "http_error_ratio"
 	MetricCPUSaturation              MetricKey = "cpu_saturation"
@@ -19,6 +21,9 @@ const (
 	MetricRecapWorkerRSS             MetricKey = "recap_worker_rss" //#nosec G101 -- Prometheus metric key, not a credential
 	MetricRecapRequestP95            MetricKey = "recap_request_p95"
 	MetricRecapSubworkerAdminSuccess MetricKey = "recap_subworker_admin_success"
+	MetricPrometheusScrapeLag        MetricKey = "prometheus_scrape_lag"
+	MetricAvailabilityBurn1h         MetricKey = "availability_burn_1h"
+	MetricAvailabilityBurn6h         MetricKey = "availability_burn_6h"
 )
 
 // SeriesKind distinguishes instant samples from range matrices.

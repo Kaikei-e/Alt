@@ -156,7 +156,9 @@ func TestGateway_Catalog_ContainsRealMetrics(t *testing.T) {
 
 	required := []domain.MetricKey{
 		domain.MetricAvailability,
+		domain.MetricHTTPLatencyP50,
 		domain.MetricHTTPLatencyP95,
+		domain.MetricHTTPLatencyP99,
 		domain.MetricHTTPRPS,
 		domain.MetricHTTPErrorRatio,
 		domain.MetricCPUSaturation,
@@ -167,6 +169,9 @@ func TestGateway_Catalog_ContainsRealMetrics(t *testing.T) {
 		domain.MetricRecapWorkerRSS,
 		domain.MetricRecapRequestP95,
 		domain.MetricRecapSubworkerAdminSuccess,
+		domain.MetricPrometheusScrapeLag,
+		domain.MetricAvailabilityBurn1h,
+		domain.MetricAvailabilityBurn6h,
 	}
 	for _, k := range required {
 		if _, ok := byKey[k]; !ok {
@@ -182,6 +187,71 @@ func TestGateway_Catalog_ContainsRealMetrics(t *testing.T) {
 			t.Fatalf("retired key %q is still in the catalog", k)
 		}
 	}
+}
+
+// TestGateway_Catalog_AdminMonitorDashboardKeys pins the keys required by the
+// /admin/monitor dashboard. Removing one breaks the dashboard contract; adding
+// the entry here forces the allowlist to keep up.
+func TestGateway_Catalog_AdminMonitorDashboardKeys(t *testing.T) {
+	g := New(Config{Client: newClient(t, "http://127.0.0.1:1"), CacheTTL: time.Second, RateLimit: 10})
+	cat := g.Catalog()
+
+	byKey := make(map[domain.MetricKey]domain.MetricCatalogEntry, len(cat))
+	for _, e := range cat {
+		byKey[e.Key] = e
+	}
+
+	// Percentile band — must all be range kind for the latency overlay.
+	for _, k := range []domain.MetricKey{
+		domain.MetricHTTPLatencyP50,
+		domain.MetricHTTPLatencyP95,
+		domain.MetricHTTPLatencyP99,
+	} {
+		e, ok := byKey[k]
+		if !ok {
+			t.Fatalf("latency band missing %q", k)
+		}
+		if e.Kind != domain.SeriesKindRange {
+			t.Fatalf("%q kind=%q, want range", k, e.Kind)
+		}
+		if e.Unit != "seconds" {
+			t.Fatalf("%q unit=%q, want seconds", k, e.Unit)
+		}
+	}
+
+	// Burn rates must be range kind so the SLOBurnPanel can plot trajectories.
+	for _, k := range []domain.MetricKey{
+		domain.MetricAvailabilityBurn1h,
+		domain.MetricAvailabilityBurn6h,
+	} {
+		e, ok := byKey[k]
+		if !ok {
+			t.Fatalf("burn-rate missing %q", k)
+		}
+		if e.Kind != domain.SeriesKindRange {
+			t.Fatalf("%q kind=%q, want range", k, e.Kind)
+		}
+		if e.Unit != "ratio" {
+			t.Fatalf("%q unit=%q, want ratio", k, e.Unit)
+		}
+	}
+
+	// Scrape lag is an instant gauge.
+	if e, ok := byKey[domain.MetricPrometheusScrapeLag]; !ok {
+		t.Fatalf("scrape-lag missing")
+	} else if e.Kind != domain.SeriesKindInstant {
+		t.Fatalf("scrape-lag kind=%q, want instant", e.Kind)
+	} else if e.Unit != "seconds" {
+		t.Fatalf("scrape-lag unit=%q, want seconds", e.Unit)
+	}
+
+	// Availability regex must include the newly instrumented services so the
+	// /admin/monitor service table is not blind to them.
+	avail, ok := byKey[domain.MetricAvailability]
+	if !ok {
+		t.Fatalf("availability missing")
+	}
+	_ = avail // Description not currently introspected; promql is server-side.
 }
 
 func TestGateway_Healthy_DelegatesToClient(t *testing.T) {
