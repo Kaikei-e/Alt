@@ -153,6 +153,40 @@ the bare "Not instrumented" badge instead of false-positive "down".
 | `recap_worker_rss` | `recap_worker_rss_bytes` | bytes |
 | `recap_request_p95` | `histogram_quantile(0.95, sum by (le) (rate(recap_request_process_seconds_bucket[5m])))` | seconds |
 | `recap_subworker_admin_success` | `sum by (status) (rate(recap_subworker_admin_job_status_total[5m]))` | jobs/s |
+| `http_latency_p50` | `histogram_quantile(0.50, sum by (job,le) (rate(http_request_duration_seconds_bucket[5m])))` | seconds |
+| `http_latency_p99` | `histogram_quantile(0.99, sum by (job,le) (rate(http_request_duration_seconds_bucket[5m])))` | seconds |
+| `prometheus_scrape_lag` | `time() - max by (job) (timestamp(up))` | seconds |
+| `availability_burn_1h` | `(sum(rate(http_requests_total{status=~"5.."}[1h])) / clamp_min(sum(rate(http_requests_total[1h])), 1e-9)) / 0.001` | ratio |
+| `availability_burn_6h` | `(sum(rate(http_requests_total{status=~"5.."}[6h])) / clamp_min(sum(rate(http_requests_total[6h])), 1e-9)) / 0.001` | ratio |
+
+The `availability_services` regex widened on the same refresh to cover
+`auth-hub|tag-generator|news-creator|knowledge-sovereign|rag-orchestrator`
+in addition to the original alt-backend|mq-hub|recap-* set. Services that
+do not yet expose `/metrics` continue to surface as a "Not instrumented"
+badge rather than as a false-positive down.
+
+## Monitor route (`/admin/monitor`)
+
+The dedicated **System Monitor** dashboard at `/admin/monitor` is the
+canonical operator landing page for "is Alt healthy right now". It uses the
+same `AdminMonitorService` Connect-RPC stream as the `/admin/knowledge-home`
+**Observability** tab but arranges metrics around the four golden signals,
+RED-per-service, USE-per-resource, and the 1h/6h SLO burn rates.
+
+- Tab inside Knowledge Home is preserved for the Knowledge Home view.
+- The Monitor route is self-contained: no Grafana iframes and no Grafana
+  link-out. The `grafana_url` field on `MetricResult` is still wired in proto
+  for future use; the dashboard does not render it.
+- Picker-driven `window` and `step` are bound to the same `RangeWindow`/`Step`
+  enums; the picker disables any step that would exceed the 720-point server
+  guard for the chosen window.
+- Burn-rate tiers follow the SRE Workbook 99.9% baseline: page-tier 1 at
+  14.4× (1h), page-tier 2 at 6× (6h), ticket at 1×. The SLOBurnPanel encodes
+  the tier with text + glyph; dashed reference lines mark the thresholds.
+- `MonitorErrorBanner` surfaces the `service_quality` 3-state (ADR-000485)
+  whenever any allowlisted key returns `degraded=true`, or the stream is in
+  `connecting`/`degraded`. Color is never the sole channel — banner uses
+  `●` glyph + the literal text `degraded`.
 
 ## Visual contract (Alt-Paper editorial palette)
 
