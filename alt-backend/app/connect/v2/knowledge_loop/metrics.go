@@ -8,8 +8,9 @@ import (
 // Streaming counters for the Knowledge Loop SSE handler.
 //
 // Pair with:
-//   observability/prometheus/rules/knowledge-loop-rules.yml (alerts)
-//   observability/grafana/dashboards/knowledge-loop-projector.json (panels)
+//
+//	observability/prometheus/rules/knowledge-loop-rules.yml (alerts)
+//	observability/grafana/dashboards/knowledge-loop-projector.json (panels)
 //
 // Labels are kept low-cardinality on purpose: only termination reason is
 // keyed on streamEndedTotal so dashboards can decompose by cause without
