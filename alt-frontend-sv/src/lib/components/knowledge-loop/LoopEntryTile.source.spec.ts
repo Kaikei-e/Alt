@@ -35,7 +35,6 @@ describe("LoopEntryTile source guards", () => {
 		expect(tileSource).not.toMatch(/buildAskTransitionMetadata/);
 	});
 
-
 	it("accepts the PR-L2 props via $props() destructuring", () => {
 		expect(tileSource).toMatch(/onTransition/);
 		expect(tileSource).toMatch(/onDismiss/);

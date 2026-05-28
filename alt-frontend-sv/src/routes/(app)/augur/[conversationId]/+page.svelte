@@ -52,7 +52,9 @@ let isLoading = $state(true);
 
 const conversationId = $derived($page.params.conversationId ?? "");
 
-function toPaneCitation(c: AugurStoredConversation["messages"][number]["citations"][number]): PaneCitation {
+function toPaneCitation(
+	c: AugurStoredConversation["messages"][number]["citations"][number],
+): PaneCitation {
 	return {
 		URL: c.url,
 		Title: c.title,
@@ -62,7 +64,9 @@ function toPaneCitation(c: AugurStoredConversation["messages"][number]["citation
 	};
 }
 
-function toMobileCitation(c: AugurStoredConversation["messages"][number]["citations"][number]): MobileCitation {
+function toMobileCitation(
+	c: AugurStoredConversation["messages"][number]["citations"][number],
+): MobileCitation {
 	return {
 		url: c.url,
 		title: c.title,

@@ -37,11 +37,7 @@ export type ConfidenceLadderTier =
 	| "EVIDENCE"
 	| "VERIFIED";
 
-export type EvidenceKindKey =
-	| "UNSPECIFIED"
-	| "WEB"
-	| "ARTICLE"
-	| "SUMMARY";
+export type EvidenceKindKey = "UNSPECIFIED" | "WEB" | "ARTICLE" | "SUMMARY";
 
 export interface WhyEvidenceRef {
 	refId: string;

@@ -85,7 +85,9 @@ function clearPersistedCursor(key: string | undefined): void {
 
 export function useKnowledgeLoopStream(opts: UseKnowledgeLoopStreamOptions) {
 	let isConnected = $state(false);
-	let lastSeqHiwater = $state<bigint>(loadPersistedCursor(opts.cursorPersistKey));
+	let lastSeqHiwater = $state<bigint>(
+		loadPersistedCursor(opts.cursorPersistKey),
+	);
 	let retryCount = $state(0);
 	let lastError = $state<string | null>(null);
 

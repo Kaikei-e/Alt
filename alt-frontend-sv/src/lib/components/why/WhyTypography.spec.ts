@@ -87,7 +87,9 @@ describe("WhyTypography source hygiene", () => {
 		// was set but Label exposed the kind). The UUID is implementation
 		// detail and must not be visible to readers. If the routing layer needs
 		// it, it lives on a data-* attribute instead.
-		expect(source).not.toMatch(/<span[^>]*class="why-refs-id"[^>]*>\{ref\.refId\}<\/span>/);
+		expect(source).not.toMatch(
+			/<span[^>]*class="why-refs-id"[^>]*>\{ref\.refId\}<\/span>/,
+		);
 		expect(source).not.toMatch(/>\{\s*ref\.refId\s*\}</);
 	});
 
