@@ -212,13 +212,24 @@ func (f *fakeDedupePort) ReserveTransitionIdempotency(
 	return true, nil, nil
 }
 
+// fakeAppendPort is a no-op event sink. appendPort is a REQUIRED producer
+// dependency for the transition usecase (it panics on nil per CLAUDE.md rule 8),
+// so handler tests that reach the append step must wire a real one even when
+// they only assert handler-level behaviour (logging, status mapping).
+type fakeAppendPort struct{}
+
+func (fakeAppendPort) AppendKnowledgeEvent(_ context.Context, _ domain.KnowledgeEvent) (int64, error) {
+	return 1, nil
+}
+
 func newTransitionHandlerWithDedupeErr(t *testing.T, dedupeErr error) *Handler {
 	t.Helper()
 	// nowFunc uses real time so UUIDv7 embedded timestamps pass ValidateClientTransitionID.
-	// appendPort is nil: these tests exercise the reserve-failure path, so event append
-	// never runs. Tests that verify append behavior live in the usecase package.
+	// appendPort is a no-op fake: it is a required producer dependency (the usecase
+	// panics on nil per rule 8), and the success-path tests reach the append step.
+	// Tests that verify real append behavior live in the usecase package.
 	// eventsForUserPort is nil: these tests exercise the transition RPC, not the stream RPC.
-	uc := knowledge_loop_usecase.NewTransitionKnowledgeLoopUsecase(&fakeDedupePort{err: dedupeErr}, nil, nil, time.Now)
+	uc := knowledge_loop_usecase.NewTransitionKnowledgeLoopUsecase(&fakeDedupePort{err: dedupeErr}, fakeAppendPort{}, nil, time.Now)
 	return NewHandler(nil, uc, nil, nil, slog.Default())
 }
 
@@ -311,7 +322,7 @@ func TestTransitionKnowledgeLoop_ReturnsUnauthenticated_OnMissingUser(t *testing
 func TestTransitionKnowledgeLoop_LogsOnSuccess(t *testing.T) {
 	buf := &bytes.Buffer{}
 	logger := slog.New(slog.NewJSONHandler(buf, &slog.HandlerOptions{Level: slog.LevelInfo}))
-	uc := knowledge_loop_usecase.NewTransitionKnowledgeLoopUsecase(&fakeDedupePort{}, nil, nil, time.Now)
+	uc := knowledge_loop_usecase.NewTransitionKnowledgeLoopUsecase(&fakeDedupePort{}, fakeAppendPort{}, nil, time.Now)
 	h := NewHandler(nil, uc, nil, nil, logger)
 
 	req := validTransitionRequest(t)

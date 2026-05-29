@@ -668,8 +668,8 @@ func projectHomeItemOpened(ctx context.Context, event domain.KnowledgeEvent, por
 		WhyReasons:        []domain.WhyReason{{Code: domain.WhyNewUnread}},
 		Score:             0.1, // Suppressed score
 		LastInteractedAt:  &eventTime,
-		GeneratedAt:       time.Now(),
-		UpdatedAt:         time.Now(),
+		GeneratedAt:       eventTime,
+		UpdatedAt:         eventTime,
 		ProjectionVersion: projectionVersion,
 	}
 
@@ -695,7 +695,7 @@ func projectHomeItemOpened(ctx context.Context, event domain.KnowledgeEvent, por
 			Reasons:           []domain.RecallReason{{Type: domain.ReasonOpenedNotRevisited, Description: "Opened but not revisited"}},
 			FirstEligibleAt:   &eligibleAt,
 			NextSuggestAt:     &eligibleAt,
-			UpdatedAt:         time.Now(),
+			UpdatedAt:         eventTime,
 			ProjectionVersion: projectionVersion,
 		}
 		if err := recallCandidatePort.UpsertRecallCandidate(ctx, candidate); err != nil {
@@ -728,10 +728,12 @@ func projectHomeItemDismissed(ctx context.Context, event domain.KnowledgeEvent, 
 		userID = *event.UserID
 	}
 
+	// Business fact from the event only (immutable data model: replay must
+	// converge). knowledge_events.occurred_at is NOT NULL, so there is no
+	// wall-clock fallback — a zero here would be a malformed event, not
+	// something to paper over with a wall clock (that breaks reproject
+	// determinism).
 	dismissedAt := event.OccurredAt
-	if dismissedAt.IsZero() {
-		dismissedAt = time.Now()
-	}
 
 	return port.DismissKnowledgeHomeItem(ctx, userID, payload.ItemKey, projectionVersion, dismissedAt)
 }
@@ -765,7 +767,9 @@ func projectSummarySuperseded(ctx context.Context, event domain.KnowledgeEvent, 
 		"previous_summary_excerpt": payload.PreviousSummaryExcerpt,
 	})
 
-	now := time.Now()
+	// Event-time, never wall-clock: supersede is a business fact, so replay must
+	// reproduce the same SupersededAt/GeneratedAt/UpdatedAt row.
+	eventTime := event.OccurredAt
 	item := domain.KnowledgeHomeItem{
 		UserID:            userID,
 		TenantID:          event.TenantID,
@@ -773,10 +777,10 @@ func projectSummarySuperseded(ctx context.Context, event domain.KnowledgeEvent, 
 		ItemType:          domain.ItemArticle,
 		Tags:              []string{}, // must be empty slice, not nil — symmetry with projectTagSetSuperseded
 		SupersedeState:    domain.SupersedeSummaryUpdated,
-		SupersededAt:      &now,
+		SupersededAt:      &eventTime,
 		PreviousRefJSON:   string(prevRef),
-		GeneratedAt:       now,
-		UpdatedAt:         now,
+		GeneratedAt:       eventTime,
+		UpdatedAt:         eventTime,
 		ProjectionVersion: projectionVersion,
 	}
 
@@ -810,7 +814,9 @@ func projectTagSetSuperseded(ctx context.Context, event domain.KnowledgeEvent, p
 		"previous_tags": payload.PreviousTags,
 	})
 
-	now := time.Now()
+	// Event-time, never wall-clock: supersede is a business fact, so replay must
+	// reproduce the same SupersededAt/GeneratedAt/UpdatedAt row.
+	eventTime := event.OccurredAt
 	item := domain.KnowledgeHomeItem{
 		UserID:            userID,
 		TenantID:          event.TenantID,
@@ -818,10 +824,10 @@ func projectTagSetSuperseded(ctx context.Context, event domain.KnowledgeEvent, p
 		ItemType:          domain.ItemArticle,
 		Tags:              []string{}, // must be empty slice, not nil — nil serializes to "null" JSON which overwrites existing tags
 		SupersedeState:    domain.SupersedeTagsUpdated,
-		SupersededAt:      &now,
+		SupersededAt:      &eventTime,
 		PreviousRefJSON:   string(prevRef),
-		GeneratedAt:       now,
-		UpdatedAt:         now,
+		GeneratedAt:       eventTime,
+		UpdatedAt:         eventTime,
 		ProjectionVersion: projectionVersion,
 	}
 
@@ -860,17 +866,19 @@ func projectReasonMerged(ctx context.Context, event domain.KnowledgeEvent, port 
 		"previous_why_codes": payload.PreviousWhyCodes,
 	})
 
-	now := time.Now()
+	// Event-time, never wall-clock: the merged-reason supersede is a business
+	// fact, so replay must reproduce the same SupersededAt/GeneratedAt/UpdatedAt.
+	eventTime := event.OccurredAt
 	item := domain.KnowledgeHomeItem{
 		UserID:            userID,
 		TenantID:          event.TenantID,
 		ItemKey:           itemKey,
 		ItemType:          domain.ItemArticle,
 		SupersedeState:    domain.SupersedeReasonUpdated,
-		SupersededAt:      &now,
+		SupersededAt:      &eventTime,
 		PreviousRefJSON:   string(prevRef),
-		GeneratedAt:       now,
-		UpdatedAt:         now,
+		GeneratedAt:       eventTime,
+		UpdatedAt:         eventTime,
 		ProjectionVersion: projectionVersion,
 	}
 

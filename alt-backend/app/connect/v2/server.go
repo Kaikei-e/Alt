@@ -174,6 +174,14 @@ func SetupConnectHandlers(mux *http.ServeMux, container *di.ApplicationComponent
 		container.SovereignClient,
 		logger,
 	)
+	// Rule 8: surface the Loop wiring state loudly at startup so a missing
+	// producer / stream dependency is visible in logs immediately, not
+	// discovered as a silent fallback weeks later (PM-2026-045 / ADR-000928).
+	logger.Info("alt.knowledge_loop.wiring",
+		"transition_producer_enabled", container.TransitionKnowledgeLoopUsecase != nil,
+		"act_outcome_producer_enabled", container.EmitActOutcomeUsecase != nil,
+		"stream_reader_enabled", container.SovereignClient != nil,
+	)
 	klPath, klServiceHandler := knowledgeloopv1connect.NewKnowledgeLoopServiceHandler(knowledgeLoopHandler, opts)
 	mux.Handle(klPath, klServiceHandler)
 	logger.Info("Registered Connect-RPC KnowledgeLoopService", "path", klPath)

@@ -334,6 +334,13 @@ func (h *Handler) StreamKnowledgeLoopUpdates(
 	}
 
 	if h.eventsForUserPort == nil {
+		// Rule 8: never fail silently on an unwired dependency. A nil reader here
+		// is a DI gap, not a degraded mode — surface it loudly (Error log + an
+		// explicit StreamExpired reason the client/ops can see) instead of a
+		// quiet empty stream that looks like "no updates".
+		h.logger.ErrorContext(ctx, "alt.knowledge_loop.stream_not_wired",
+			"user_id", user.UserID,
+			"detail", "eventsForUserPort is nil — Loop stream reader unwired (DI bug)")
 		return sendStreamExpired(stream, "stream not wired")
 	}
 

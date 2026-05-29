@@ -36,8 +36,9 @@ type TransitionKnowledgeLoopUsecase struct {
 }
 
 // NewTransitionKnowledgeLoopUsecase wires the usecase. nowFunc is injectable to keep tests deterministic.
-// appendPort may be nil in degraded wiring contexts (tests without event append verification),
-// in which case the append step is silently skipped so the idempotency reserve still runs.
+// appendPort is REQUIRED: Execute panics if it is nil when an append is due, so a
+// DI wiring gap is loud rather than a silent "accepted but never written" fallback
+// (CLAUDE.md rule 8; PM-2026-045 / ADR-000928 root cause).
 // rateLimiter may be nil in tests that exercise unrelated paths; production wiring
 // always supplies a shared limiter so the 600/minute ceiling holds across connections.
 func NewTransitionKnowledgeLoopUsecase(
@@ -141,14 +142,21 @@ func (u *TransitionKnowledgeLoopUsecase) Execute(ctx context.Context, in Transit
 		return res, nil
 	}
 
-	if u.appendPort != nil {
-		event, buildErr := buildTransitionEvent(eventType, in, u.nowFunc())
-		if buildErr != nil {
-			return nil, fmt.Errorf("transition_knowledge_loop: build event: %w", buildErr)
-		}
-		if _, err := u.appendPort.AppendKnowledgeEvent(ctx, event); err != nil {
-			return nil, fmt.Errorf("transition_knowledge_loop: append event: %w", ClassifyDriverError(err))
-		}
+	// Append the Loop event. appendPort is a REQUIRED producer dependency: a
+	// transition that cannot append is a wiring bug, never a valid degraded
+	// mode. Per CLAUDE.md rule 8 we refuse the silent-fallback that made
+	// PM-2026-045 / ADR-000928 a four-week silent failure — panic so a DI gap
+	// is loud at the first transition instead of an idempotency reserve that
+	// "accepts" while no event is ever written.
+	if u.appendPort == nil {
+		panic("knowledge_loop transition: appendPort not wired (DI bug) — refusing to silently drop the loop event")
+	}
+	event, buildErr := buildTransitionEvent(eventType, in, u.nowFunc())
+	if buildErr != nil {
+		return nil, fmt.Errorf("transition_knowledge_loop: build event: %w", buildErr)
+	}
+	if _, err := u.appendPort.AppendKnowledgeEvent(ctx, event); err != nil {
+		return nil, fmt.Errorf("transition_knowledge_loop: append event: %w", ClassifyDriverError(err))
 	}
 
 	return &TransitionResult{Accepted: true}, nil
