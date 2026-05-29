@@ -23,6 +23,7 @@ import {
 	Tag,
 	ScrollText,
 	MessagesSquare,
+	Gauge,
 } from "@lucide/svelte";
 import { page } from "$app/state";
 import { cn } from "$lib/utils";
@@ -167,6 +168,11 @@ const baseMenuItems = [
 				label: "Knowledge Home Ops",
 				href: `${svBasePath}/admin/knowledge-home`,
 				icon: Activity,
+			},
+			{
+				label: "System Monitor",
+				href: `${svBasePath}/admin/monitor`,
+				icon: Gauge,
 			},
 		],
 	},
