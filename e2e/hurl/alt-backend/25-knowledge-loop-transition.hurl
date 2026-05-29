@@ -26,7 +26,11 @@
 # For replay determinism we leave the tail zeroed.
 # Hurl variables cannot hold binary, so tests use --variable to override.
 
-# --- 1. forbidden transition (observe -> act) ---------------------------------
+# --- 1. forbidden transition (decide -> observe) ------------------------------
+# observe -> act / orient -> act are now legal Boyd implicit-guidance fast
+# paths (transition policy v2). decide -> observe stays forbidden: the only
+# legal return to observe is the explicit act -> observe edge.
+# fromStage 3 = decide, toStage 1 = observe.
 
 POST {{connect_url}}/alt.knowledge.loop.v1.KnowledgeLoopService/TransitionKnowledgeLoop
 X-Alt-Backend-Token: {{jwt}}
@@ -35,8 +39,8 @@ Content-Type: application/json
   "lensModeId": "default",
   "clientTransitionId": "{{loop_tx_forbidden}}",
   "entryKey": "article:fixture-42",
-  "fromStage": 1,
-  "toStage": 4,
+  "fromStage": 3,
+  "toStage": 1,
   "trigger": 1,
   "observedProjectionRevision": 1
 }

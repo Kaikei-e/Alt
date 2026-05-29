@@ -1,21 +1,21 @@
 # Knowledge Loop §7 transition allowlist — broader coverage for the canonical
 # contract pinned by ADR-000844.
 #
-# 25-knowledge-loop-transition.hurl covers observe → act (forbidden) and
+# 25-knowledge-loop-transition.hurl covers decide → observe (forbidden) and
 # observe → orient (allowed). This file fills out the rest of the §7 matrix
 # so the projector-level seedDecisionOptions rewrite cannot be undone at the
 # handler boundary without a test going red.
 #
-# Allowed (§7):
+# Allowed (§7, transition policy v2):
 #   observe → orient   ← covered by 25
 #   observe → decide
+#   observe → act      ← Boyd implicit-guidance fast path
 #   orient  → decide   ← canonical compare-CTA path
+#   orient  → act      ← Boyd implicit-guidance fast path
 #   decide  → act      ← canonical open/save commit path
 #   act     → observe
 #
 # Forbidden (§7):
-#   observe → act      ← covered by 25
-#   orient  → act
 #   decide  → observe  (without explicit cancel/return event)
 #   act     → act
 #
@@ -100,7 +100,9 @@ HTTP 200
 [Asserts]
 jsonpath "$.accepted" == true
 
-# --- 5. orient → act (forbidden: only allowed via decide) --------------------
+# --- 5. orient → act (Boyd implicit-guidance fast path, now accepted) --------
+# Transition policy v2: a trained reader commits straight to Act from Orient
+# without an explicit Decide step. Records as KnowledgeLoopActed.
 
 POST {{connect_url}}/alt.knowledge.loop.v1.KnowledgeLoopService/TransitionKnowledgeLoop
 X-Alt-Backend-Token: {{jwt}}
@@ -114,9 +116,9 @@ Content-Type: application/json
   "trigger": 1,
   "observedProjectionRevision": 1
 }
-HTTP 400
+HTTP 200
 [Asserts]
-jsonpath "$.code" == "invalid_argument"
+jsonpath "$.accepted" == true
 
 # --- 6. decide → observe (forbidden without explicit cancel/return event) ----
 
