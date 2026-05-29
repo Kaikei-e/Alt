@@ -170,8 +170,12 @@ func (u *TransitionKnowledgeLoopUsecase) Execute(ctx context.Context, in Transit
 // index is unified with the fast-path knowledge_loop_transition_dedupes barrier.
 func buildTransitionEvent(eventType string, in TransitionInput, occurredAt time.Time) (domain.KnowledgeEvent, error) {
 	body := map[string]any{
-		"entry_key":                    in.EntryKey,
-		"lens_mode_id":                 in.LensModeID,
+		"entry_key": in.EntryKey,
+		// Lens is a view over the canonical entries (ADR-000909 §Δ5), not a
+		// storage partition: normalize to the canonical partition so acting in a
+		// view mode (research / browse / decide / recall) records against the
+		// single canonical Loop instead of spawning an empty per-lens partition.
+		"lens_mode_id":                 canonicalLensModeID,
 		"from_stage":                   in.FromStage,
 		"to_stage":                     in.ToStage,
 		"trigger":                      in.Trigger,

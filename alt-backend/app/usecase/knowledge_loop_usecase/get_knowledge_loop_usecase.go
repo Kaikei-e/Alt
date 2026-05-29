@@ -50,7 +50,17 @@ type GetKnowledgeLoopResult struct {
 // planes: 5 per bucket × 3 buckets = 15 entries max.
 const otherBucketLimitPerBucket = 5
 
-// Execute reads the three projections. lens_mode_id is validated by the caller.
+// foregroundCandidatePool is how many NOW entries we read from the canonical
+// partition before lens weighting. We read wider than foregroundLimit so the
+// lens re-rank (applyLensWeighting) can pull the entries that fit the selected
+// cognitive mode into the visible foreground, then truncate to foregroundLimit.
+const foregroundCandidatePool = 24
+
+// Execute reads the three projections. The requested lensModeID is a *view* over
+// the canonical entries (ADR-000909 §Δ5), not a storage partition: every read
+// targets canonicalLensModeID, and the requested lens only re-ranks the result
+// via applyLensWeighting. This keeps every lens non-empty (the 2026-05-29
+// incident) while still differentiating what each lens surfaces.
 func (u *GetKnowledgeLoopUsecase) Execute(
 	ctx context.Context,
 	tenantID, userID uuid.UUID,
@@ -60,6 +70,8 @@ func (u *GetKnowledgeLoopUsecase) Execute(
 	if foregroundLimit <= 0 || foregroundLimit > 5 {
 		foregroundLimit = 3
 	}
+	// The requested lens is still validated (it flows into weighting), but it
+	// never selects the storage partition — reads always use the canonical one.
 	if err := ValidateKeyFormat("lens_mode_id", lensModeID); err != nil {
 		return nil, err
 	}
@@ -68,9 +80,9 @@ func (u *GetKnowledgeLoopUsecase) Execute(
 	entries, err := u.entriesPort.GetKnowledgeLoopEntries(ctx, knowledge_loop_port.GetEntriesQuery{
 		TenantID:      tenantID,
 		UserID:        userID,
-		LensModeID:    lensModeID,
+		LensModeID:    canonicalLensModeID,
 		SurfaceBucket: &nowBucket,
-		Limit:         foregroundLimit,
+		Limit:         foregroundCandidatePool,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("get_knowledge_loop: entries: %w", ClassifyDriverError(err))
@@ -86,7 +98,7 @@ func (u *GetKnowledgeLoopUsecase) Execute(
 		batch, berr := u.entriesPort.GetKnowledgeLoopEntries(ctx, knowledge_loop_port.GetEntriesQuery{
 			TenantID:      tenantID,
 			UserID:        userID,
-			LensModeID:    lensModeID,
+			LensModeID:    canonicalLensModeID,
 			SurfaceBucket: &b,
 			Limit:         otherBucketLimitPerBucket,
 		})
@@ -96,12 +108,12 @@ func (u *GetKnowledgeLoopUsecase) Execute(
 		bucketEntries = append(bucketEntries, batch...)
 	}
 
-	session, err := u.sessionPort.GetKnowledgeLoopSessionState(ctx, tenantID, userID, lensModeID)
+	session, err := u.sessionPort.GetKnowledgeLoopSessionState(ctx, tenantID, userID, canonicalLensModeID)
 	if err != nil {
 		return nil, fmt.Errorf("get_knowledge_loop: session: %w", ClassifyDriverError(err))
 	}
 
-	surfaces, err := u.surfacesPort.GetKnowledgeLoopSurfaces(ctx, tenantID, userID, lensModeID)
+	surfaces, err := u.surfacesPort.GetKnowledgeLoopSurfaces(ctx, tenantID, userID, canonicalLensModeID)
 	if err != nil {
 		return nil, fmt.Errorf("get_knowledge_loop: surfaces: %w", ClassifyDriverError(err))
 	}
@@ -125,6 +137,15 @@ func (u *GetKnowledgeLoopUsecase) Execute(
 		if s.ProjectionSeqHiwater > maxSeq {
 			maxSeq = s.ProjectionSeqHiwater
 		}
+	}
+
+	// Lens is a view over the canonical entries (ADR-000909 §Δ5): re-rank the
+	// foreground candidate pool by the requested lens, then truncate to the
+	// caller's limit. maxSeq above is computed over the full pool so the resume
+	// cursor reflects everything read, not just the visible slice.
+	applyLensWeighting(entries, lensModeID)
+	if len(entries) > foregroundLimit {
+		entries = entries[:foregroundLimit]
 	}
 
 	return &GetKnowledgeLoopResult{

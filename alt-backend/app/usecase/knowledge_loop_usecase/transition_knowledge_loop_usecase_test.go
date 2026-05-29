@@ -291,6 +291,19 @@ func TestTransition_SkipsAppendOnDuplicateReservation(t *testing.T) {
 		"duplicate reserve must not re-emit the event (single emission rule)")
 }
 
+func TestBuildTransitionEvent_NormalizesViewLensToCanonical(t *testing.T) {
+	in := newTransitionInput(t, "LOOP_STAGE_OBSERVE", "LOOP_STAGE_ORIENT", "TRANSITION_TRIGGER_USER_TAP")
+	in.LensModeID = "research" // a UI view lens, not a storage partition
+
+	ev, err := buildTransitionEvent(domain.EventKnowledgeLoopOriented, in, time.Date(2026, 5, 29, 10, 0, 0, 0, time.UTC))
+	require.NoError(t, err)
+
+	var payload map[string]any
+	require.NoError(t, json.Unmarshal(ev.Payload, &payload))
+	require.Equal(t, "default", payload["lens_mode_id"],
+		"a view lens must not partition the event; the projector keys to the canonical partition")
+}
+
 func TestTransition_ForbiddenTransitionRejected_NoSideEffects(t *testing.T) {
 	dedupe := &fakeDedupePort{reserved: true}
 	appendPort := &fakeAppendPort{}

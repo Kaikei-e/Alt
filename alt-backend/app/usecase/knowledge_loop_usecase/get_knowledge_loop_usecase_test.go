@@ -110,12 +110,73 @@ func TestGetKnowledgeLoop_PerBucketLimit(t *testing.T) {
 			continue
 		}
 		if *q.SurfaceBucket == domain.SurfaceNow {
-			require.Equal(t, 3, q.Limit, "foreground limit is caller-controlled")
+			require.Equal(t, foregroundCandidatePool, q.Limit,
+				"foreground reads a wider candidate pool before lens weighting; the caller-controlled limit is applied after the re-rank")
 			continue
 		}
 		require.Equal(t, otherBucketLimitPerBucket, q.Limit,
 			"non-NOW buckets must cap at the plan-default otherBucketLimitPerBucket")
 	}
+}
+
+type recordingSessionPort struct{ lens string }
+
+func (r *recordingSessionPort) GetKnowledgeLoopSessionState(
+	_ context.Context, _, _ uuid.UUID, lens string,
+) (*domain.KnowledgeLoopSessionState, error) {
+	r.lens = lens
+	// seq 0 so the assertion proves the entry pool (incl. the truncated tail)
+	// drives the resume hiwater, not the session.
+	return &domain.KnowledgeLoopSessionState{ProjectionSeqHiwater: 0}, nil
+}
+
+type recordingSurfacesPort struct{ lens string }
+
+func (r *recordingSurfacesPort) GetKnowledgeLoopSurfaces(
+	_ context.Context, _, _ uuid.UUID, lens string,
+) ([]*domain.KnowledgeLoopSurface, error) {
+	r.lens = lens
+	return nil, nil
+}
+
+// TestGetKnowledgeLoop_ReadsCanonicalPartitionRegardlessOfLens pins the
+// lens-as-view re-grounding: a requested view lens (research) must never select
+// the storage partition. Every read targets the canonical partition; the
+// requested lens only re-ranks. Foreground is truncated to the caller's limit
+// after weighting.
+func TestGetKnowledgeLoop_ReadsCanonicalPartitionRegardlessOfLens(t *testing.T) {
+	now := domain.SurfaceNow
+	entries := &fakeEntriesPort{
+		byBucket: map[domain.SurfaceBucket][]*domain.KnowledgeLoopEntry{
+			now: {
+				{EntryKey: "a", SurfaceBucket: now, ProjectionSeqHiwater: 1},
+				{EntryKey: "b", SurfaceBucket: now, ProjectionSeqHiwater: 2},
+				{EntryKey: "c", SurfaceBucket: now, ProjectionSeqHiwater: 3},
+				{EntryKey: "d", SurfaceBucket: now, ProjectionSeqHiwater: 4},
+				{EntryKey: "e", SurfaceBucket: now, ProjectionSeqHiwater: 5},
+			},
+		},
+	}
+	sess := &recordingSessionPort{}
+	surf := &recordingSurfacesPort{}
+	uc := NewGetKnowledgeLoopUsecase(entries, sess, surf)
+
+	result, err := uc.Execute(context.Background(), uuid.New(), uuid.New(), "research", 3)
+	require.NoError(t, err)
+
+	require.NotEmpty(t, entries.queries)
+	for _, q := range entries.queries {
+		require.Equalf(t, canonicalLensModeID, q.LensModeID,
+			"entries read must target the canonical partition, not the requested view lens; got %q", q.LensModeID)
+	}
+	require.Equal(t, canonicalLensModeID, sess.lens, "session read must use the canonical partition")
+	require.Equal(t, canonicalLensModeID, surf.lens, "surfaces read must use the canonical partition")
+
+	// Foreground is truncated to the caller-controlled limit after weighting,
+	// even though a wider candidate pool was read.
+	require.Len(t, result.ForegroundEntries, 3)
+	// Seq hiwater reflects the full pool that was read (resume correctness).
+	require.Equal(t, int64(5), result.ProjectionSeqHiwater)
 }
 
 func TestGetKnowledgeLoop_RejectsMalformedLensModeID(t *testing.T) {

@@ -165,6 +165,17 @@ describe("/loop/+page.svelte wiring guards", () => {
 		expect(pageSource).not.toMatch(/stageLabel\(nextStage\(activeEntry\)\)/);
 	});
 
+	it("guards the stream refresh against a non-advancing projection seq", () => {
+		// The 5s /loop/__data.json refetch loop on empty lenses (2026-05-29) was a
+		// stream frame re-firing invalidate without advancing the projection.
+		// onFrame must only refresh when projectionSeqHiwater advances past the
+		// last refresh, so a re-delivered / zero-seq frame cannot storm.
+		expect(pageSource).toMatch(/lastFrameRefreshSeq/);
+		expect(pageSource).toMatch(
+			/frame\.projectionSeqHiwater <= lastFrameRefreshSeq/,
+		);
+	});
+
 	it("emits a Revisited aria-live confirmation when same-stage intent_signal fires", () => {
 		// ADR-924 backend fix landed: Revisit is accepted as a same-stage
 		// intent_signal. But same-stage = `data-stage` does not change, so the

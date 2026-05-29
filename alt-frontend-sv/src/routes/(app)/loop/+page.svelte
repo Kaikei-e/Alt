@@ -205,6 +205,14 @@ const skipFirstStreamRefresh = makeFirstFrameSkipper(() => {
 	coalescedRefresh.trigger();
 });
 
+// Storm guard: the highest projection seq a stream frame has already driven a
+// refresh for. A frame that does not advance past this must not re-trigger
+// invalidate — otherwise a re-delivered tail (reconnect replay) or a
+// non-advancing projection drives the 5s `__data.json` refetch loop observed
+// on empty lenses (2026-05-29). Backend now reads the canonical partition so
+// lenses are never empty, but this keeps the loop structurally impossible.
+let lastFrameRefreshSeq = 0n;
+
 useKnowledgeLoopStream({
 	get enabled() {
 		return streamEnabled;
@@ -225,6 +233,12 @@ useKnowledgeLoopStream({
 		if (frame.kind === "heartbeat") return;
 		if (loop.applyStreamFrame(frame)) return;
 		if (frame.kind === "revised") return;
+		// `expired` carries no seq and is handled by onExpired / the stream hook.
+		if (frame.kind === "expired") return;
+		// Only refresh when the stream has genuinely advanced past the projection
+		// we already hold; a non-advancing frame must not re-fire invalidate.
+		if (frame.projectionSeqHiwater <= lastFrameRefreshSeq) return;
+		lastFrameRefreshSeq = frame.projectionSeqHiwater;
 		skipFirstStreamRefresh();
 	},
 	onExpired() {
