@@ -69,6 +69,13 @@ function cpuClass(r: ContainerRow): string {
 function memClass(r: ContainerRow): string {
 	return r.mem != null && memWarn(r.mem) ? "warn" : "ok";
 }
+
+// cAdvisor surfaces some cgroups under their raw 64-hex container ID instead of
+// a friendly compose name. Collapse those to a short hash so the cell title
+// stays one line; the full id is kept in the title attribute for hover.
+function shortName(name: string): string {
+	return /^[0-9a-f]{32,}$/i.test(name) ? `${name.slice(0, 12)}…` : name;
+}
 </script>
 
 <section class="sat" aria-label="Container saturation">
@@ -80,7 +87,7 @@ function memClass(r: ContainerRow): string {
 			{#each rows() as r (r.name)}
 				<article class="cell">
 					<header>
-						<span class="name">{r.name}</span>
+						<span class="name" title={r.name}>{shortName(r.name)}</span>
 					</header>
 					<div class="metric" data-state={cpuClass(r)}>
 						<div class="metric-head">
@@ -133,17 +140,30 @@ function memClass(r: ContainerRow): string {
 		padding: 0.6rem 0.75rem;
 		border: 0.5px solid var(--obs-rule, var(--surface-border));
 		background: var(--surface);
+		min-width: 0;
 	}
 
 	.name {
+		display: block;
 		font-family: var(--font-mono);
 		font-size: 0.78rem;
 		color: var(--alt-charcoal);
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
 	}
 
 	.metric {
 		display: grid;
 		gap: 0.15rem;
+		min-width: 0;
+	}
+
+	/* SLISparkline renders a fixed-width SVG; clamp it so a wide series never
+	   pushes the cell past its grid track and over the neighboring column. */
+	.metric :global(svg) {
+		max-width: 100%;
+		height: auto;
 	}
 
 	.metric-head {
