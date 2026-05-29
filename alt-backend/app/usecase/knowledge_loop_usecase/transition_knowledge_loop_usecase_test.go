@@ -296,8 +296,10 @@ func TestTransition_ForbiddenTransitionRejected_NoSideEffects(t *testing.T) {
 	appendPort := &fakeAppendPort{}
 	uc := NewTransitionKnowledgeLoopUsecase(dedupe, appendPort, nil, time.Now)
 
-	// observe->act is forbidden per ADR-000831 §7.
-	in := newTransitionInput(t, "LOOP_STAGE_OBSERVE", "LOOP_STAGE_ACT", "TRANSITION_TRIGGER_USER_TAP")
+	// decide->observe is forbidden per ADR-000831 §7 (the only legal return to
+	// observe is the explicit act->observe edge). observe->act / orient->act are
+	// now legal Boyd IG&C fast paths, so they are no longer the forbidden example.
+	in := newTransitionInput(t, "LOOP_STAGE_DECIDE", "LOOP_STAGE_OBSERVE", "TRANSITION_TRIGGER_USER_TAP")
 	_, err := uc.Execute(context.Background(), in)
 
 	require.Error(t, err)

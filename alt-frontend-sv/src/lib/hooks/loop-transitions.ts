@@ -6,8 +6,12 @@ import type { LoopStageName } from "$lib/connect/knowledge_loop";
 const ALLOWED: ReadonlySet<`${LoopStageName}->${LoopStageName}`> = new Set([
 	"observe->orient",
 	"observe->decide",
+	// Boyd implicit guidance & control: a trained reader commits straight to
+	// Act from Observe or Orient without walking the explicit Decide step.
+	"observe->act",
 	"orient->observe",
 	"orient->decide",
+	"orient->act",
 	"decide->act",
 	"act->observe",
 ]);

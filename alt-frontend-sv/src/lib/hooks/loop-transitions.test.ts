@@ -12,8 +12,11 @@ describe("canTransition — ADR-000831 §7 allowlist", () => {
 	it.each([
 		["observe", "orient"],
 		["observe", "decide"],
+		// Boyd implicit guidance & control: observe/orient commit straight to act.
+		["observe", "act"],
 		["orient", "observe"],
 		["orient", "decide"],
+		["orient", "act"],
 		["decide", "act"],
 		["act", "observe"],
 	] as const)("allows %s → %s", (from, to) => {
@@ -21,7 +24,6 @@ describe("canTransition — ADR-000831 §7 allowlist", () => {
 	});
 
 	it.each([
-		["observe", "act"],
 		["act", "act"],
 		["act", "orient"],
 		["act", "decide"],
@@ -38,7 +40,7 @@ describe("canTransition — ADR-000831 §7 allowlist", () => {
 	});
 
 	it("transitionReason returns a short human-readable string for forbidden pairs", () => {
-		expect(transitionReason("observe", "act")).toMatch(/not available/i);
+		expect(transitionReason("decide", "observe")).toMatch(/not available/i);
 		expect(transitionReason("observe", "orient")).toBe("");
 	});
 });
@@ -82,7 +84,7 @@ describe("canTransition — ADR-000914 same-stage triggers", () => {
 	it("cross-stage transitions stay gated by the allowlist regardless of trigger", () => {
 		for (const trigger of [...sameStageAllowed, ...crossStageOnly]) {
 			expect(canTransition("orient", "observe", trigger)).toBe(true);
-			expect(canTransition("observe", "act", trigger)).toBe(false);
+			expect(canTransition("decide", "observe", trigger)).toBe(false);
 		}
 	});
 

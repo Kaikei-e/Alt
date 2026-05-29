@@ -52,8 +52,8 @@ type Stage = "observe" | "orient" | "decide" | "act";
 const ALL_STAGES: Stage[] = ["observe", "orient", "decide", "act"];
 
 describe("loop-transitions ↔ loop_transition_policy.json conformance", () => {
-	it("uses policy version 1", () => {
-		expect(policy.version).toBe(1);
+	it("uses policy version 2", () => {
+		expect(policy.version).toBe(2);
 	});
 
 	it("accepts every allowed_edges entry", () => {

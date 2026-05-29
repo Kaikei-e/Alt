@@ -114,9 +114,6 @@ func ClassifyTransitionEvent(fromStage, toStage, trigger string) (string, error)
 	}
 
 	// Forbidden transitions (reject before any allow-list check).
-	if fromStage == stageObserve && toStage == stageAct {
-		return "", fmt.Errorf("%w: observe->act not allowed", ErrInvalidArgument)
-	}
 	if fromStage == stageAct && toStage == stageAct {
 		return "", fmt.Errorf("%w: act->act not allowed", ErrInvalidArgument)
 	}
@@ -141,6 +138,15 @@ func ClassifyTransitionEvent(fromStage, toStage, trigger string) (string, error)
 		return domain.EventKnowledgeLoopOriented, nil
 	case fromStage == stageOrient && toStage == stageDecide:
 		return domain.EventKnowledgeLoopDecisionPresented, nil
+	case fromStage == stageObserve && toStage == stageAct:
+		// Boyd implicit guidance & control fast path: a trained reader commits
+		// straight to Act from Observe without an explicit Decide step. The real
+		// intent is still an Act, so it records as Acted (event-time and payload
+		// carry the actual from_stage for reproject-safe session-state replay).
+		return domain.EventKnowledgeLoopActed, nil
+	case fromStage == stageOrient && toStage == stageAct:
+		// IG&C fast path from Orient — same rationale as observe->act.
+		return domain.EventKnowledgeLoopActed, nil
 	case fromStage == stageDecide && toStage == stageAct:
 		return domain.EventKnowledgeLoopActed, nil
 	case fromStage == stageAct && toStage == stageObserve:

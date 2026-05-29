@@ -74,6 +74,23 @@ func TestClassifyTransitionEvent(t *testing.T) {
 			trigger:  "TRANSITION_TRIGGER_USER_TAP",
 			wantType: domain.EventKnowledgeLoopActed,
 		},
+		// Boyd implicit guidance & control fast paths: a trained reader commits
+		// to Act directly from Observe or Orient without walking the explicit
+		// Decide step. Both record the real intent as Acted (ADR-000831 §7).
+		{
+			name:     "observe->act => Acted (IG&C fast path)",
+			from:     "LOOP_STAGE_OBSERVE",
+			to:       "LOOP_STAGE_ACT",
+			trigger:  "TRANSITION_TRIGGER_USER_TAP",
+			wantType: domain.EventKnowledgeLoopActed,
+		},
+		{
+			name:     "orient->act => Acted (IG&C fast path)",
+			from:     "LOOP_STAGE_ORIENT",
+			to:       "LOOP_STAGE_ACT",
+			trigger:  "TRANSITION_TRIGGER_USER_TAP",
+			wantType: domain.EventKnowledgeLoopActed,
+		},
 		{
 			name:     "act->observe => Returned",
 			from:     "LOOP_STAGE_ACT",
@@ -82,13 +99,6 @@ func TestClassifyTransitionEvent(t *testing.T) {
 			wantType: domain.EventKnowledgeLoopReturned,
 		},
 		// Invalid transitions must error per ADR-000831 §7 forbidden set
-		{
-			name:    "observe->act (forbidden) => error",
-			from:    "LOOP_STAGE_OBSERVE",
-			to:      "LOOP_STAGE_ACT",
-			trigger: "TRANSITION_TRIGGER_USER_TAP",
-			wantErr: true,
-		},
 		{
 			name:    "decide->observe without explicit return => error",
 			from:    "LOOP_STAGE_DECIDE",

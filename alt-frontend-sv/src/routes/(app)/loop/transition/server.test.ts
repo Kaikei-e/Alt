@@ -62,13 +62,16 @@ describe("/loop/transition +server.ts", () => {
 	});
 
 	it("400 when body fails schema (forbidden transition)", async () => {
+		// decide → observe stays forbidden (the only legal return to observe is
+		// the explicit act → observe edge). observe → act is now a legal Boyd
+		// IG&C fast path, so it is no longer the forbidden example here.
 		const res = await invoke({
 			body: {
 				lensModeId: "default",
 				clientTransitionId: "0193c8e5-7d6c-7c4a-b000-000000000001",
 				entryKey: "article:42",
-				fromStage: "observe",
-				toStage: "act",
+				fromStage: "decide",
+				toStage: "observe",
 				trigger: "user_tap",
 				observedProjectionRevision: 1,
 			},

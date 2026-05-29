@@ -100,7 +100,7 @@ func loadTransitionPolicyForTest(t *testing.T) transitionPolicy {
 			require.NoError(t, err)
 			var p transitionPolicy
 			require.NoError(t, json.Unmarshal(body, &p))
-			require.Equal(t, 1, p.Version, "policy version must be 1; bump conformance test alongside any version change")
+			require.Equal(t, 2, p.Version, "policy version must be 2; bump conformance test alongside any version change")
 			return p
 		}
 		dir = filepath.Dir(dir)
