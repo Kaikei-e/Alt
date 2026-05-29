@@ -58,7 +58,7 @@ export function stateBadge(
 			? { glyph: "▲", text: "up" }
 			: { glyph: "▼", text: "down" };
 	}
-	if (warn && warn(value)) {
+	if (warn?.(value)) {
 		return { glyph: "●", text: "warn" };
 	}
 	return { glyph: "▲", text: "ok" };
