@@ -143,24 +143,26 @@ describe("/loop/+page.svelte wiring guards", () => {
 		);
 	});
 
-	it("renders Open Article CTA in DECIDE stage workspace-actions", () => {
-		// ADR-924 follow-up: Ask 後の entry は DECIDE で停滞するため、Open は
-		// ACT stage 限定だと user が article を開く動線を見つけられない。
-		// `workspace-actions` の DECIDE 分岐に `onWorkspaceOpen` を呼ぶボタンを
-		// 追加し、`activeEntrySourceUrl` の有無に応じて "Open" / "Open · resolve url"
-		// を出し分ける (Open recoverable パターン §Pillar 2A と整合)。
-		const decideBranch = pageSource.match(
-			/selectedStageName === "decide" && activeEntry\.decisionOptions\.length > 0[\s\S]{0,1500}/,
-		);
-		expect(decideBranch).not.toBeNull();
-		const body = decideBranch?.[0] ?? "";
-		expect(body).toMatch(/onWorkspaceOpen\(activeEntry\)/);
-		expect(body).toMatch(
+	it("renders the Open command unconditionally in workspace-actions (Boyd IG&C)", () => {
+		// Open is the universal Act affordance — reachable from every OODA stage,
+		// never gated behind a `selectedStageName === "decide"/"act"` branch. The
+		// old stage-gated Open was the dead-button bug: a fresh observe entry
+		// could not be opened without first walking the loop by hand. It still
+		// shows the "Open" / "Open · resolve url" label off `activeEntrySourceUrl`
+		// and re-uses the inline resolve-error surface.
+		expect(pageSource).toMatch(/class="workspace-actions"/);
+		expect(pageSource).toMatch(/onWorkspaceOpen\(activeEntry\)/);
+		expect(pageSource).toMatch(
 			/activeEntrySourceUrl \? "Open" : "Open · resolve url"/,
 		);
-		// inline error surface re-used from ACT branch so the BFF resolution
-		// failure has the same recovery affordance the user already knows.
-		expect(body).toMatch(/loop-open-resolve-error/);
+		expect(pageSource).toMatch(/loop-open-resolve-error/);
+		// The stage gate that hid Open from observe / orient entries must be gone.
+		expect(pageSource).not.toMatch(
+			/selectedStageName === "decide" && activeEntry\.decisionOptions/,
+		);
+		// And no hand-walk "advance to next stage" stepper button remains in the
+		// workspace command surface (the pipeline-myth UX the redesign removes).
+		expect(pageSource).not.toMatch(/stageLabel\(nextStage\(activeEntry\)\)/);
 	});
 
 	it("emits a Revisited aria-live confirmation when same-stage intent_signal fires", () => {

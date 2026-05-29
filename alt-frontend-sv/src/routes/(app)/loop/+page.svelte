@@ -447,14 +447,6 @@ function onWorkspaceDecide(
 	void loop.transitionTo(entry.entryKey, to, "user_tap", metadata);
 }
 
-function onPipelineStageSelect(to: LoopStageName) {
-	const entry = activeEntry;
-	if (!entry) return;
-	const from = effectiveEntryStage(entry);
-	if (from === to || !loop.canTransition(from, to)) return;
-	void loop.transitionTo(entry.entryKey, to, "user_tap");
-}
-
 // Inline error wording for the Open recovery path (Auto-OODA suppression
 // plan, Pillar 2A). Surfaced under the workspace Open button when the BFF
 // lookup fails so the user can act on the failure code (NN/G "explain why")
@@ -697,10 +689,7 @@ function onReviewAction(
 	data-stage={selectedStageName}
 >
 	<header class="loop-masthead">
-		<OodaPipeline
-			currentStage={selectedStageName}
-			onStageSelect={onPipelineStageSelect}
-		/>
+		<OodaPipeline currentStage={selectedStageName} />
 		<h1 class="masthead-title">Knowledge Loop</h1>
 		<LensSelector activeLens={lensId} />
 		<p class="byline" aria-live="polite">
@@ -845,79 +834,39 @@ function onReviewAction(
 						{/if}
 					{/if}
 
-					<div class="workspace-actions" aria-label="OODA commands">
-						{#if selectedStageName === "act"}
-							<button
-								type="button"
-								class="workspace-command"
-								aria-label={activeEntrySourceUrl ? "Open" : "Open · resolve url"}
-								onclick={() => void onWorkspaceOpen(activeEntry)}
+					<!-- Single command surface. Boyd's implicit guidance & control:
+					     Open is the universal Act affordance, available from every
+					     stage and never gated by the OODA cursor — the stage moves as
+					     a consequence of acting, not as a precondition. We no longer
+					     render a stepper "advance to next stage" button; walking the
+					     loop by hand was the pipeline-myth UX the redesign removes.
+					     `onWorkspaceOpen` resolves the source URL (sync or via the BFF)
+					     and records the act transition best-effort. -->
+					<div class="workspace-actions" aria-label="Loop commands">
+						<button
+							type="button"
+							class="workspace-command"
+							aria-label={activeEntrySourceUrl ? "Open" : "Open · resolve url"}
+							onclick={() => void onWorkspaceOpen(activeEntry)}
+						>
+							{activeEntrySourceUrl ? "Open" : "Open · resolve url"}
+						</button>
+						{#if openInlineError}
+							<p
+								class="workspace-open-error"
+								data-testid="loop-open-resolve-error"
+								role="status"
 							>
-								{activeEntrySourceUrl ? "Open" : "Open · resolve url"}
-							</button>
-							{#if openInlineError}
-								<p
-									class="workspace-open-error"
-									data-testid="loop-open-resolve-error"
-									role="status"
-								>
-									URL UNAVAILABLE — {openInlineError}
-								</p>
-							{/if}
-							<button
-								type="button"
-								class="workspace-command workspace-command--secondary"
-								onclick={() => advanceEntry(activeEntry)}
-							>
-								Return
-							</button>
-						{:else if selectedStageName === "decide" && activeEntry.decisionOptions.length > 0}
-							<!-- ADR-924 follow-up: Ask 後に DECIDE で停滞した entry から
-							     Article を開く動線が無いと user は「クリックできない」と
-							     感じる (実測: /loop/article-source-url が 15 分間ゼロ
-							     fetch)。ACT stage の Open recoverable パターンと同じ
-							     resolve-url ラベルを使い、`onWorkspaceOpen` 経由で BFF
-							     から source URL を引いて in-app reader に遷移する。 -->
-							<button
-								type="button"
-								class="workspace-command"
-								aria-label={activeEntrySourceUrl ? "Open" : "Open · resolve url"}
-								onclick={() => void onWorkspaceOpen(activeEntry)}
-							>
-								{activeEntrySourceUrl ? "Open" : "Open · resolve url"}
-							</button>
-							{#if openInlineError}
-								<p
-									class="workspace-open-error"
-									data-testid="loop-open-resolve-error"
-									role="status"
-								>
-									URL UNAVAILABLE — {openInlineError}
-								</p>
-							{/if}
-							<button
-								type="button"
-								class="workspace-command workspace-command--secondary"
-								onclick={() => onAsk(activeEntry)}
-							>
-								Ask
-							</button>
-						{:else}
-							<button
-								type="button"
-								class="workspace-command"
-								onclick={() => advanceEntry(activeEntry)}
-							>
-								{stageLabel(nextStage(activeEntry))}
-							</button>
-							<button
-								type="button"
-								class="workspace-command workspace-command--secondary"
-								onclick={() => onAsk(activeEntry)}
-							>
-								Ask
-							</button>
+								URL UNAVAILABLE — {openInlineError}
+							</p>
 						{/if}
+						<button
+							type="button"
+							class="workspace-command workspace-command--secondary"
+							onclick={() => onAsk(activeEntry)}
+						>
+							Ask
+						</button>
 						{#if justActed}
 							<p
 								class="workspace-toast"

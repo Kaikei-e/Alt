@@ -340,17 +340,23 @@ async function handleCta(option: DecisionOptionData) {
 	}
 
 	const to = ctaToStage(option.intent);
-	if (!to || !onTransition) return;
-	if (!isAllowed(to)) return;
+	if (!to) return;
 	const metadata = transitionMetadata(option);
 	if (option.intent === "open") {
+		// Open is the Act itself and must never be gated by the OODA cursor
+		// (Boyd implicit guidance & control — a reader commits straight from
+		// observe to act). Always navigate; record the act transition
+		// best-effort when the edge is legal from the entry's current stage.
 		const url = sourceUrl();
 		if (url) {
 			openHref(url);
 		}
-		void onTransition(entry.entryKey, to, "user_tap", metadata);
+		if (onTransition && isAllowed(to)) {
+			void onTransition(entry.entryKey, to, "user_tap", metadata);
+		}
 		return;
 	}
+	if (!onTransition || !isAllowed(to)) return;
 	await onTransition(entry.entryKey, to, "user_tap", metadata);
 }
 
@@ -454,14 +460,11 @@ async function handleDismiss() {
 								: isSameStageCta
 									? inFlight || !onTransition
 									: toStage
-										? inFlight || !isAllowed(toStage)
+										? inFlight || !onTransition
 										: true}
 						<button
 							type="button"
 							class="cta cta--{option.intent}"
-							title={disabled && !inFlight
-								? "Not available from this stage."
-								: undefined}
 							{disabled}
 							onclick={(event) => {
 								event.stopPropagation();

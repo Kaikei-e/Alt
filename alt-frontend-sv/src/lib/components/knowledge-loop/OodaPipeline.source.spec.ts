@@ -50,13 +50,17 @@ describe("OodaPipeline source guards", () => {
 		expect(source).toMatch(/↻/);
 	});
 
-	it("can act as the OODA stage controller when a transition callback is provided", () => {
-		expect(source).toMatch(/onStageSelect/);
-		expect(source).toMatch(/<button/);
-		expect(source).toMatch(/onclick=\{\(\) => selectStage\(stage\.name\)\}/);
-		expect(source).toMatch(
-			/aria-current=\{depth === 0 \? "step" : undefined\}/,
-		);
+	it("is a passive orientation read-out, not a clickable stage controller", () => {
+		// Boyd's OODA is a continuous feedback loop, not a stepper. The ribbon
+		// reflects where the system orients the active entry; it never gates or
+		// drives a transition (that was the dead-button / pipeline-myth bug).
+		// So it dispatches no callback and exposes no interactive stage buttons.
+		expect(source).not.toMatch(/onStageSelect/);
+		expect(source).not.toMatch(/<button/);
+		expect(source).not.toMatch(/onclick=/);
+		// It announces the current orientation to assistive tech as an image.
+		expect(source).toMatch(/role="img"/);
+		expect(source).toMatch(/OODA orientation/);
 	});
 
 	it("keeps a reduced-motion fallback that flattens the ribbon", () => {

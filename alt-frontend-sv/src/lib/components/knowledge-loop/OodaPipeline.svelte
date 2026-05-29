@@ -2,10 +2,16 @@
 import type { LoopStageName } from "$lib/connect/knowledge_loop";
 
 /**
- * OODA pipeline kicker — replaces the flat horizontal stage labels in the
- * Knowledge Loop masthead with a perspective-aware "ribbon" that conveys the
- * cycle's direction and the user's current position. The active stage rises
- * to the foreground (Z=0); upcoming stages recede further into the page.
+ * OODA orientation ribbon — a passive read-out of where the system currently
+ * orients the active entry along the Observe→Orient→Decide→Act cycle.
+ *
+ * Boyd's OODA is a continuous feedback loop, not a stepper the user clicks
+ * through: orientation shapes what is observed and what is acted on, and a
+ * trained reader bypasses the explicit Decide step via implicit guidance &
+ * control (observe→act). So the ribbon does NOT gate or drive transitions —
+ * stage movement is a *consequence* of the user acting, surfaced here as a
+ * lens. It owns no application state and dispatches no callbacks; the loop
+ * commands live on the entry's single command surface.
  *
  * Alt-Paper composition (canonical contract §12, ADR-000831):
  *   - Depth lives on the planes, not on the glyphs. Letters stay flat —
@@ -16,21 +22,15 @@ import type { LoopStageName } from "$lib/connect/knowledge_loop";
  *     `var(--alt-charcoal)` and the others in `var(--alt-ash)`. The
  *     translateZ disappears, the arc rule remains horizontal.
  *
- * Layout choices:
- *   - The ribbon is laid out in a 2-row grid: kickers on top, an arc rule
- *     under the active one. A `→` between kickers signals direction, with
- *     a wrap-around `↻` after Act to close the loop visually.
- *   - The component is hook-free — `+page.svelte` passes the selected stage
- *     callback so the ribbon can act as the OODA controller without owning
- *     application state.
+ * Layout: kickers in a row with an arc rule under the active one, a `→`
+ * between kickers signalling direction, and a wrap-around `↻` after Act to
+ * close the loop visually (the cycle is continuous, not a one-way pipeline).
  */
 
 let {
 	currentStage,
-	onStageSelect,
 }: {
 	currentStage: LoopStageName;
-	onStageSelect?: (stage: LoopStageName) => void;
 } = $props();
 
 type Stage = { name: LoopStageName; label: string };
@@ -48,6 +48,10 @@ const order: Record<LoopStageName, number> = {
 	act: 3,
 };
 
+const currentLabel = $derived(
+	stages.find((s) => s.name === currentStage)?.label ?? "Observe",
+);
+
 // Each kicker's depth band is computed from its distance to the active stage
 // along the Observe→Orient→Decide→Act→Observe cycle. The active stage sits
 // at Z=0, the next at Z=-14, and so on. The cycle wraps so that after Act
@@ -57,19 +61,16 @@ function depthFor(stage: LoopStageName): number {
 	const distance = (order[stage] - order[currentStage] + 4) % 4;
 	return distance; // 0..3
 }
-
-function selectStage(stage: LoopStageName) {
-	onStageSelect?.(stage);
-}
 </script>
 
-<nav
+<div
 	class="ooda"
-	aria-label="OODA loop progression"
+	role="img"
+	aria-label={`OODA orientation — currently ${currentLabel}`}
 	data-testid="ooda-pipeline"
 	data-current-stage={currentStage}
 >
-	<ol class="row">
+	<ol class="row" aria-hidden="true">
 		{#each stages as stage, i (stage.name)}
 			{@const depth = depthFor(stage.name)}
 			<li
@@ -78,26 +79,19 @@ function selectStage(stage: LoopStageName) {
 				data-depth={depth}
 				data-stage={stage.name}
 			>
-				<button
-					type="button"
-					class="stage-button"
-					aria-current={depth === 0 ? "step" : undefined}
-					onclick={() => selectStage(stage.name)}
-				>
-					<span class="kicker-label">{stage.label}</span>
-					{#if depth === 0}
-						<span class="kicker-rule" aria-hidden="true"></span>
-					{/if}
-				</button>
+				<span class="kicker-label">{stage.label}</span>
+				{#if depth === 0}
+					<span class="kicker-rule"></span>
+				{/if}
 			</li>
 			{#if i < stages.length - 1}
-				<li class="arrow" aria-hidden="true">→</li>
+				<li class="arrow">→</li>
 			{:else}
-				<li class="arrow arrow--wrap" aria-hidden="true">↻</li>
+				<li class="arrow arrow--wrap">↻</li>
 			{/if}
 		{/each}
 	</ol>
-</nav>
+</div>
 
 <style>
 	.ooda {
@@ -160,27 +154,6 @@ function selectStage(stage: LoopStageName) {
 
 	.kicker-label {
 		display: inline-block;
-	}
-
-	.stage-button {
-		appearance: none;
-		border: none;
-		background: transparent;
-		padding: 0;
-		margin: 0;
-		display: inline-flex;
-		flex-direction: column;
-		align-items: center;
-		gap: 0.18rem;
-		font: inherit;
-		letter-spacing: inherit;
-		text-transform: inherit;
-		color: inherit;
-		cursor: pointer;
-	}
-	.stage-button:focus-visible {
-		outline: 2px solid var(--alt-terracotta, #b85450);
-		outline-offset: 3px;
 	}
 
 	/* The arc rule appears only under the active kicker. A subtle inverse
