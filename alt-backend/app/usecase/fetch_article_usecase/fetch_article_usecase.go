@@ -224,7 +224,7 @@ func (u *ArticleUsecaseImpl) FetchCompliantArticleWithRefresh(ctx context.Contex
 
 		// 5. Extract <head> and og:image from raw HTML (before sanitization removes them)
 		headHTML := html_parser.ExtractHead(htmlContent)
-		extractedOgImage := html_parser.ExtractOgImageURL(htmlContent)
+		extractedOgImage := html_parser.ExtractOgImageURL(htmlContent, urlStr)
 
 		// 6. Extract Title and Rich HTML Content
 		fetchedTitle := html_parser.ExtractTitle(htmlContent)
