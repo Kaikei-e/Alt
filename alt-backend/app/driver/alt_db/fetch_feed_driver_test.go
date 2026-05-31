@@ -214,3 +214,45 @@ func TestAltDBRepository_GetReadFeedIDs_UsesUUIDArrayCast(t *testing.T) {
 	require.True(t, got[feedID])
 	require.NoError(t, mock.ExpectationsWereMet())
 }
+
+// FetchUnreadFeedsListCursor must (a) fall back to the article_heads og:image
+// when the RSS-derived feeds.og_image_url is absent, and (b) only surface an
+// image within the 7-day copyright retention window.
+func TestAltDBRepository_FetchUnreadFeedsListCursor_ArticleHeadFallbackAndRetentionGate(t *testing.T) {
+	var buf bytes.Buffer
+	logger.Logger = slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelInfo}))
+
+	mock, err := pgxmock.NewPool()
+	require.NoError(t, err)
+	defer mock.Close()
+
+	repo := &FeedRepository{pool: mock}
+
+	userID := uuid.New()
+	ctx := domain.SetUserContext(context.Background(), &domain.UserContext{
+		UserID:    userID,
+		Email:     "test@example.com",
+		Role:      domain.UserRoleUser,
+		TenantID:  uuid.New(),
+		LoginAt:   time.Now(),
+		ExpiresAt: time.Now().Add(24 * time.Hour),
+	})
+
+	limit := 20
+	feedID := uuid.New().String()
+	now := time.Now()
+	ogURL := "https://img.example.com/from-article-head.jpg"
+
+	mock.ExpectQuery(`(?s)7 days.*article_heads`).
+		WithArgs(limit, userID).
+		WillReturnRows(pgxmock.NewRows([]string{
+			"id", "title", "description", "website_url", "pub_date", "created_at", "updated_at", "article_id", "og_image_url",
+		}).AddRow(feedID, "Title", "Desc", "https://example.com/feed", now, now, now, nil, &ogURL))
+
+	feeds, err := repo.FetchUnreadFeedsListCursor(ctx, nil, limit, nil)
+	require.NoError(t, err)
+	require.Len(t, feeds, 1)
+	require.NotNil(t, feeds[0].OgImageURL)
+	require.Equal(t, ogURL, *feeds[0].OgImageURL)
+	require.NoError(t, mock.ExpectationsWereMet())
+}

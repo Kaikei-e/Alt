@@ -27,6 +27,21 @@ type FeedPageRow struct {
 	OgImageURL  *string
 }
 
+// ogImageSelectExpr resolves the OG image for a feed row in the read path.
+// It prefers the scraped article_heads og:image (the article page's canonical
+// image, more stable than RSS dynamic/expiring URLs and the main remedy for
+// proxy 404s) and falls back to the RSS-derived feeds.og_image_url. The image
+// is only surfaced when the feed is within the 7-day copyright retention
+// window; older feeds return NULL so the frontend renders a placeholder.
+// Aliased as og_image_url so existing row scans are unchanged.
+const ogImageSelectExpr = `CASE WHEN f.created_at >= NOW() - INTERVAL '7 days' THEN COALESCE(
+		       (SELECT ah.og_image_url FROM article_heads ah
+		          JOIN articles a2 ON a2.id = ah.article_id
+		         WHERE a2.feed_id = f.id AND a2.deleted_at IS NULL
+		           AND ah.og_image_url IS NOT NULL AND ah.og_image_url <> ''
+		         ORDER BY a2.created_at DESC LIMIT 1),
+		       f.og_image_url) ELSE NULL END AS og_image_url`
+
 func (r *FeedRepository) GetSingleFeed(ctx context.Context) (*models.Feed, error) {
 	query := `
 		SELECT id, title, description, website_url, pub_date, created_at, updated_at FROM feeds ORDER BY created_at DESC LIMIT 1
@@ -212,7 +227,7 @@ func (r *FeedRepository) FetchUnreadFeedsListCursor(ctx context.Context, cursor 
 		query = fmt.Sprintf(`
 			SELECT f.id, f.title, f.description, f.website_url, f.pub_date, f.created_at, f.updated_at,
 			       (SELECT a.id FROM articles a WHERE a.feed_id = f.id AND a.deleted_at IS NULL ORDER BY a.created_at DESC LIMIT 1) AS article_id,
-			       f.og_image_url
+			       %s
 			FROM feeds f
 			WHERE NOT EXISTS (
 				SELECT 1
@@ -225,14 +240,14 @@ func (r *FeedRepository) FetchUnreadFeedsListCursor(ctx context.Context, cursor 
 			%s
 			ORDER BY f.created_at DESC, f.id DESC
 			LIMIT $1
-		`, excludeClause)
+		`, ogImageSelectExpr, excludeClause)
 	} else {
 		args = []interface{}{cursor, limit, user.UserID}
 		excludeClause, args = buildExcludeClauseMultiple(args, excludeFeedLinkIDs)
 		query = fmt.Sprintf(`
 			SELECT f.id, f.title, f.description, f.website_url, f.pub_date, f.created_at, f.updated_at,
 			       (SELECT a.id FROM articles a WHERE a.feed_id = f.id AND a.deleted_at IS NULL ORDER BY a.created_at DESC LIMIT 1) AS article_id,
-			       f.og_image_url
+			       %s
 			FROM feeds f
 			WHERE NOT EXISTS (
 				SELECT 1
@@ -246,7 +261,7 @@ func (r *FeedRepository) FetchUnreadFeedsListCursor(ctx context.Context, cursor 
 			%s
 			ORDER BY f.created_at DESC, f.id DESC
 			LIMIT $2
-		`, excludeClause)
+		`, ogImageSelectExpr, excludeClause)
 	}
 
 	rows, err := r.pool.Query(ctx, query, args...)
@@ -295,14 +310,14 @@ func (r *FeedRepository) FetchAllFeedsListCursor(ctx context.Context, cursor *ti
 			SELECT f.id, f.title, f.description, f.website_url, f.pub_date, f.created_at, f.updated_at,
 			       (SELECT a.id FROM articles a WHERE a.feed_id = f.id AND a.deleted_at IS NULL ORDER BY a.created_at DESC LIMIT 1) AS article_id,
 			       COALESCE(rs.is_read, FALSE) AS is_read,
-			       f.og_image_url
+			       %s
 			FROM feeds f
 			LEFT JOIN read_status rs ON rs.feed_id = f.id AND rs.user_id = $2
 			WHERE f.feed_link_id IN (SELECT feed_link_id FROM user_feed_subscriptions WHERE user_id = $2)
 			%s
 			ORDER BY f.created_at DESC, f.id DESC
 			LIMIT $1
-		`, excludeClause)
+		`, ogImageSelectExpr, excludeClause)
 	} else {
 		args = []interface{}{cursor, limit, user.UserID}
 		excludeClause, args = buildExcludeClauseMultiple(args, excludeFeedLinkIDs)
@@ -310,7 +325,7 @@ func (r *FeedRepository) FetchAllFeedsListCursor(ctx context.Context, cursor *ti
 			SELECT f.id, f.title, f.description, f.website_url, f.pub_date, f.created_at, f.updated_at,
 			       (SELECT a.id FROM articles a WHERE a.feed_id = f.id AND a.deleted_at IS NULL ORDER BY a.created_at DESC LIMIT 1) AS article_id,
 			       COALESCE(rs.is_read, FALSE) AS is_read,
-			       f.og_image_url
+			       %s
 			FROM feeds f
 			LEFT JOIN read_status rs ON rs.feed_id = f.id AND rs.user_id = $3
 			WHERE f.feed_link_id IN (SELECT feed_link_id FROM user_feed_subscriptions WHERE user_id = $3)
@@ -318,7 +333,7 @@ func (r *FeedRepository) FetchAllFeedsListCursor(ctx context.Context, cursor *ti
 			%s
 			ORDER BY f.created_at DESC, f.id DESC
 			LIMIT $2
-		`, excludeClause)
+		`, ogImageSelectExpr, excludeClause)
 	}
 
 	rows, err := r.pool.Query(ctx, query, args...)
@@ -418,30 +433,30 @@ func (r *FeedRepository) FetchFavoriteFeedsListCursor(ctx context.Context, curso
 	var args []interface{}
 
 	if cursor == nil {
-		query = `
+		query = fmt.Sprintf(`
                        SELECT f.id, f.title, f.description, f.website_url, f.pub_date, f.created_at, f.updated_at,
                               (SELECT a.id FROM articles a WHERE a.feed_id = f.id AND a.deleted_at IS NULL ORDER BY a.created_at DESC LIMIT 1) AS article_id,
-                              f.og_image_url
+                              %s
                        FROM feeds f
                        INNER JOIN favorite_feeds ff ON ff.feed_id = f.id
                        WHERE ff.user_id = $2
                        AND f.feed_link_id IN (SELECT feed_link_id FROM user_feed_subscriptions WHERE user_id = $2)
                        ORDER BY ff.created_at DESC, f.id DESC
                        LIMIT $1
-               `
+               `, ogImageSelectExpr)
 		args = []interface{}{limit, user.UserID}
 	} else {
-		query = `
+		query = fmt.Sprintf(`
                        SELECT f.id, f.title, f.description, f.website_url, f.pub_date, f.created_at, f.updated_at,
                               (SELECT a.id FROM articles a WHERE a.feed_id = f.id AND a.deleted_at IS NULL ORDER BY a.created_at DESC LIMIT 1) AS article_id,
-                              f.og_image_url
+                              %s
                        FROM feeds f
                        INNER JOIN favorite_feeds ff ON ff.feed_id = f.id
                        WHERE ff.user_id = $3 AND ff.created_at < $1
                        AND f.feed_link_id IN (SELECT feed_link_id FROM user_feed_subscriptions WHERE user_id = $3)
                        ORDER BY ff.created_at DESC, f.id DESC
                        LIMIT $2
-               `
+               `, ogImageSelectExpr)
 		args = []interface{}{cursor, limit, user.UserID}
 	}
 
