@@ -5,6 +5,7 @@ import (
 	"alt/driver/preprocessor_connect"
 	"alt/driver/sovereign_client"
 	"alt/gateway/feature_flag_gateway"
+	"alt/gateway/fetch_article_gateway"
 	"alt/gateway/internal_article_gateway"
 	"alt/gateway/knowledge_backfill_gateway"
 	"alt/gateway/rag_connect_gateway"
@@ -155,6 +156,7 @@ type ApplicationComponents struct {
 	MorningLetterUsecase                morning_letter_port.MorningLetterUsecase
 	ScrapingDomainUsecase               *scraping_domain_usecase.ScrapingDomainUsecase
 	BatchArticleFetcher                 *batch_article_fetcher.BatchArticleFetcher
+	FetchArticleGateway                 *fetch_article_gateway.FetchArticleGateway
 	RetrieveContextUsecase              retrieve_context_usecase.RetrieveContextUsecase
 	AnswerChatUsecase                   answer_chat_usecase.AnswerChatUsecase
 	FetchRandomSubscriptionUsecase      *fetch_random_subscription_usecase.FetchRandomSubscriptionUsecase
@@ -337,6 +339,7 @@ func NewApplicationComponents(pool *pgxpool.Pool) *ApplicationComponents {
 		FetchRecentArticlesUsecase: article.FetchRecentArticlesUsecase,
 		ArticleSearchUsecase:       article.ArticleSearchUsecase,
 		BatchArticleFetcher:        article.BatchArticleFetcher,
+		FetchArticleGateway:        article.FetchArticleGateway,
 		FetchTagCloudUsecase:       article.FetchTagCloudUsecase,
 		GetArticleSourceURLUsecase: article.GetArticleSourceURLUsecase,
 		InternalArticleGateway:     article.InternalArticleGateway,

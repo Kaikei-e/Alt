@@ -34,6 +34,18 @@ func RegisterAllJobs(scheduler *JobScheduler, container *di.ApplicationComponent
 		Fn:       OgpImageWarmerJob(container.AltDBRepository, container.ImageProxyUsecase),
 	})
 	scheduler.Add(Job{
+		Name:     "og-image-retention",
+		Interval: 6 * time.Hour,
+		Timeout:  10 * time.Minute,
+		Fn:       OgImageRetentionJob(container.AltDBRepository),
+	})
+	scheduler.Add(Job{
+		Name:     "og-image-backfill",
+		Interval: 30 * time.Minute,
+		Timeout:  20 * time.Minute,
+		Fn:       OgImageBackfillJob(container.AltDBRepository, container.FetchArticleGateway, container.ImageProxyUsecase),
+	})
+	scheduler.Add(Job{
 		Name:     "tag-cloud-cache-warmer",
 		Interval: 24 * time.Minute,
 		Timeout:  2 * time.Minute,

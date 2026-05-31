@@ -51,6 +51,7 @@ type ArticleModule struct {
 	// Gateways exposed for cross-module wiring
 	InternalArticleGateway  *internal_article_gateway.Gateway
 	FetchArticleTagsGateway *fetch_article_tags_gateway.FetchArticleTagsGateway
+	FetchArticleGateway     *fetch_article_gateway.FetchArticleGateway
 }
 
 func newArticleModule(infra *InfraModule, feed *FeedModule, ragAdapter rag_integration_port.RagIntegrationPort) *ArticleModule {
@@ -138,5 +139,6 @@ func newArticleModule(infra *InfraModule, feed *FeedModule, ragAdapter rag_integ
 
 		InternalArticleGateway:  internalArticleGw,
 		FetchArticleTagsGateway: fetchArticleTagsGw,
+		FetchArticleGateway:     fetchArticleGw,
 	}
 }

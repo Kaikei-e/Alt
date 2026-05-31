@@ -81,3 +81,19 @@ func (r *ImageRepository) CleanupExpiredImageProxyCache(ctx context.Context) (in
 	}
 	return tag.RowsAffected(), nil
 }
+
+// CleanupImageProxyCacheOlderThan enforces a hard copyright retention cap on
+// cached image bytes by first-acquisition time (created_at), independent of each
+// entry's TTL-based expires_at. Returns the number of rows deleted.
+func (r *ImageRepository) CleanupImageProxyCacheOlderThan(ctx context.Context, ttl time.Duration) (int64, error) {
+	cutoff := time.Now().Add(-ttl)
+	tag, err := r.pool.Exec(ctx,
+		`DELETE FROM image_proxy_cache WHERE created_at < $1`,
+		cutoff,
+	)
+	if err != nil {
+		logger.SafeErrorContext(ctx, "Error purging image proxy cache past retention window", "error", err)
+		return 0, fmt.Errorf("purge image proxy cache past retention: %w", err)
+	}
+	return tag.RowsAffected(), nil
+}
