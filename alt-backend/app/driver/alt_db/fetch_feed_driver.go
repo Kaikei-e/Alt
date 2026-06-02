@@ -374,8 +374,10 @@ func (r *FeedRepository) FetchReadFeedsListCursor(ctx context.Context, cursor *t
 	var args []interface{}
 
 	if cursor == nil {
-		query = `
-			SELECT f.id, f.title, f.description, f.website_url, f.pub_date, f.created_at, f.updated_at
+		query = fmt.Sprintf(`
+			SELECT f.id, f.title, f.description, f.website_url, f.pub_date, f.created_at, f.updated_at,
+			       (SELECT a.id FROM articles a WHERE a.feed_id = f.id AND a.deleted_at IS NULL ORDER BY a.created_at DESC LIMIT 1) AS article_id,
+			       %s
 			FROM feeds f
 			INNER JOIN read_status rs ON rs.feed_id = f.id
 			WHERE rs.is_read = TRUE
@@ -383,11 +385,13 @@ func (r *FeedRepository) FetchReadFeedsListCursor(ctx context.Context, cursor *t
 			AND f.feed_link_id IN (SELECT feed_link_id FROM user_feed_subscriptions WHERE user_id = $2)
 			ORDER BY rs.read_at DESC, f.id DESC
 			LIMIT $1
-		`
+		`, ogImageSelectExpr)
 		args = []interface{}{limit, user.UserID}
 	} else {
-		query = `
-			SELECT f.id, f.title, f.description, f.website_url, f.pub_date, f.created_at, f.updated_at
+		query = fmt.Sprintf(`
+			SELECT f.id, f.title, f.description, f.website_url, f.pub_date, f.created_at, f.updated_at,
+			       (SELECT a.id FROM articles a WHERE a.feed_id = f.id AND a.deleted_at IS NULL ORDER BY a.created_at DESC LIMIT 1) AS article_id,
+			       %s
 			FROM feeds f
 			INNER JOIN read_status rs ON rs.feed_id = f.id
 			WHERE rs.is_read = TRUE
@@ -396,7 +400,7 @@ func (r *FeedRepository) FetchReadFeedsListCursor(ctx context.Context, cursor *t
 			AND rs.read_at < $1
 			ORDER BY rs.read_at DESC, f.id DESC
 			LIMIT $2
-		`
+		`, ogImageSelectExpr)
 		args = []interface{}{cursor, limit, user.UserID}
 	}
 
@@ -410,7 +414,7 @@ func (r *FeedRepository) FetchReadFeedsListCursor(ctx context.Context, cursor *t
 	var feeds []*models.Feed
 	for rows.Next() {
 		var feed models.Feed
-		err := rows.Scan(&feed.ID, &feed.Title, &feed.Description, &feed.WebsiteURL, &feed.PubDate, &feed.CreatedAt, &feed.UpdatedAt)
+		err := rows.Scan(&feed.ID, &feed.Title, &feed.Description, &feed.WebsiteURL, &feed.PubDate, &feed.CreatedAt, &feed.UpdatedAt, &feed.ArticleID, &feed.OgImageURL)
 		if err != nil {
 			logger.Logger.ErrorContext(ctx, "error scanning read feeds with cursor", "error", err)
 			return nil, errors.New("error scanning read feeds list")

@@ -53,9 +53,9 @@ func TestAltDBRepository_FetchReadFeedsListCursor_OrdersByReadAt(t *testing.T) {
 		// The important part is verifying rs.read_at is in the ORDER BY clause
 		mock.ExpectQuery("SELECT.*FROM feeds.*INNER JOIN read_status.*ORDER BY rs.read_at DESC").
 			WithArgs(limit, userID).
-			WillReturnRows(pgxmock.NewRows([]string{"id", "title", "description", "website_url", "pub_date", "created_at", "updated_at"}).
-				AddRow(feedID1, "Recently Read Feed", "desc1", "https://example.com/feed1", now, oldTime, now).
-				AddRow(feedID2, "Older Read Feed", "desc2", "https://example.com/feed2", now, oldTime, now.Add(-2*time.Hour)))
+			WillReturnRows(pgxmock.NewRows([]string{"id", "title", "description", "website_url", "pub_date", "created_at", "updated_at", "article_id", "og_image_url"}).
+				AddRow(feedID1, "Recently Read Feed", "desc1", "https://example.com/feed1", now, oldTime, now, nil, nil).
+				AddRow(feedID2, "Older Read Feed", "desc2", "https://example.com/feed2", now, oldTime, now.Add(-2*time.Hour), nil, nil))
 
 		feeds, err := repo.FetchReadFeedsListCursor(ctx, nil, limit)
 
@@ -96,8 +96,8 @@ func TestAltDBRepository_FetchReadFeedsListCursor_OrdersByReadAt(t *testing.T) {
 		// Use AnyArg() for flexibility in argument matching since cursor format can vary
 		mock.ExpectQuery("SELECT.*FROM feeds.*INNER JOIN read_status.*ORDER BY rs.read_at DESC").
 			WithArgs(pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg()).
-			WillReturnRows(pgxmock.NewRows([]string{"id", "title", "description", "website_url", "pub_date", "created_at", "updated_at"}).
-				AddRow(feedID, "Feed Title", "desc", "https://example.com/feed", now, now, now))
+			WillReturnRows(pgxmock.NewRows([]string{"id", "title", "description", "website_url", "pub_date", "created_at", "updated_at", "article_id", "og_image_url"}).
+				AddRow(feedID, "Feed Title", "desc", "https://example.com/feed", now, now, now, nil, nil))
 
 		feeds, err := repo.FetchReadFeedsListCursor(ctx, &cursor, limit)
 
@@ -218,6 +218,51 @@ func TestAltDBRepository_GetReadFeedIDs_UsesUUIDArrayCast(t *testing.T) {
 // FetchUnreadFeedsListCursor must (a) fall back to the article_heads og:image
 // when the RSS-derived feeds.og_image_url is absent, and (b) only surface an
 // image within the 7-day copyright retention window.
+func TestAltDBRepository_FetchReadFeedsListCursor_ResolvesOgImage(t *testing.T) {
+	var buf bytes.Buffer
+	logger.Logger = slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelInfo}))
+
+	mock, err := pgxmock.NewPool()
+	require.NoError(t, err)
+	defer mock.Close()
+
+	repo := &FeedRepository{pool: mock}
+
+	userID := uuid.New()
+	ctx := domain.SetUserContext(context.Background(), &domain.UserContext{
+		UserID:    userID,
+		Email:     "test@example.com",
+		Role:      domain.UserRoleUser,
+		TenantID:  uuid.New(),
+		LoginAt:   time.Now(),
+		ExpiresAt: time.Now().Add(24 * time.Hour),
+	})
+
+	limit := 20
+	feedID := uuid.New().String()
+	articleID := uuid.New().String()
+	now := time.Now()
+	ogURL := "https://img.example.com/read-feed-og.jpg"
+
+	// The read path must resolve the OG image the same way as unread/all:
+	// the ogImageSelectExpr 7-day-gated article_heads COALESCE, within the
+	// INNER JOIN read_status query.
+	mock.ExpectQuery(`(?s)article_heads.*INNER JOIN read_status`).
+		WithArgs(limit, userID).
+		WillReturnRows(pgxmock.NewRows([]string{
+			"id", "title", "description", "website_url", "pub_date", "created_at", "updated_at", "article_id", "og_image_url",
+		}).AddRow(feedID, "Read Title", "Desc", "https://example.com/feed", now, now, now, &articleID, &ogURL))
+
+	feeds, err := repo.FetchReadFeedsListCursor(ctx, nil, limit)
+	require.NoError(t, err)
+	require.Len(t, feeds, 1)
+	require.NotNil(t, feeds[0].OgImageURL)
+	require.Equal(t, ogURL, *feeds[0].OgImageURL)
+	require.NotNil(t, feeds[0].ArticleID)
+	require.Equal(t, articleID, *feeds[0].ArticleID)
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
 func TestAltDBRepository_FetchUnreadFeedsListCursor_ArticleHeadFallbackAndRetentionGate(t *testing.T) {
 	var buf bytes.Buffer
 	logger.Logger = slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelInfo}))
