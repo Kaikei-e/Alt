@@ -1,10 +1,10 @@
 <script lang="ts">
 import { onMount } from "svelte";
+import { batchPrefetchImagesClient } from "$lib/api/client/articles";
 import {
 	listSubscriptionsClient,
 	updateFeedReadStatusClient,
 } from "$lib/api/client/feeds";
-import { batchPrefetchImagesClient } from "$lib/api/client/articles";
 import FeedDetailModal from "$lib/components/desktop/feeds/FeedDetailModal.svelte";
 import FeedFilters from "$lib/components/desktop/feeds/FeedFilters.svelte";
 import FeedGrid from "$lib/components/desktop/feeds/FeedGrid.svelte";
@@ -15,6 +15,7 @@ import { Button } from "$lib/components/ui/button";
 import type { ConnectFeedSource } from "$lib/connect/feeds";
 import type { RenderFeed } from "$lib/schema/feed";
 import { useViewport } from "$lib/stores/viewport.svelte";
+import { selectOgImagePrefetchIds } from "$lib/utils/ogImagePrefetch";
 
 interface PageData {
 	initialFeeds?: RenderFeed[];
@@ -38,7 +39,11 @@ let isProcessingMarkAsRead = $state(false);
 let isMarkingAsRead = $state(false);
 
 // --- OG Image prefetch tracking ---
-let prefetchedCount = $state(0);
+// Non-reactive set of articleIds already requested (or in-flight). Content-based,
+// not count-based: a mark-as-read remove + replacement append can leave the
+// visible count unchanged, so keying backfill off the count drops the
+// replacement's image. Keying off articleId never misses a new card.
+const requestedOgImageArticleIds = new Set<string>();
 
 onMount(async () => {
 	try {
@@ -52,34 +57,33 @@ onMount(async () => {
 $effect(() => {
 	if (!feedGridApi) return;
 	const visibleFeeds = feedGridApi.getVisibleFeeds();
-	// Only trigger when feed count changes (new page loaded)
-	if (visibleFeeds.length === prefetchedCount) return;
 
-	const needsPrefetch = visibleFeeds.filter(
-		(f: RenderFeed) => f.articleId && !f.ogImageProxyUrl,
+	const articleIds = selectOgImagePrefetchIds(
+		visibleFeeds,
+		requestedOgImageArticleIds,
 	);
+	if (articleIds.length === 0) return;
 
-	if (needsPrefetch.length > 0) {
-		const articleIds = needsPrefetch
-			.map((f: RenderFeed) => f.articleId)
-			.filter((id): id is string => id != null);
-		batchPrefetchImagesClient(articleIds)
-			.then((results) => {
-				for (const result of results) {
-					const feed = visibleFeeds.find(
-						(f: RenderFeed) => f.articleId === result.articleId,
-					);
-					if (feed) {
-						feed.ogImageProxyUrl = result.proxyUrl;
-					}
+	// Mark in-flight before awaiting so re-runs don't re-request the same ids.
+	for (const id of articleIds) requestedOgImageArticleIds.add(id);
+
+	batchPrefetchImagesClient(articleIds)
+		.then((results) => {
+			for (const result of results) {
+				if (!result.proxyUrl) continue;
+				const feed = visibleFeeds.find(
+					(f: RenderFeed) => f.articleId === result.articleId,
+				);
+				if (feed) {
+					feed.ogImageProxyUrl = result.proxyUrl;
 				}
-			})
-			.catch((err) => {
-				console.error("Failed to prefetch OG images:", err);
-			});
-	}
-
-	prefetchedCount = visibleFeeds.length;
+			}
+		})
+		.catch((err) => {
+			console.error("Failed to prefetch OG images:", err);
+			// Allow retry on the next change.
+			for (const id of articleIds) requestedOgImageArticleIds.delete(id);
+		});
 });
 
 const selectedFeed = $derived.by(() => {
