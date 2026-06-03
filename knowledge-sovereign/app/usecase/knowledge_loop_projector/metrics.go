@@ -51,6 +51,24 @@ var (
 		[]string{"redline_capable"},
 	)
 
+	// relationCoverageTotal is the HONEST replacement for the
+	// surface_planner_version=v2 ratio (ADR-000937). The v2 ratio tagged a
+	// placement "v2" whenever a non-Null resolver was wired, even when every
+	// placement was actually a v1 event-type fallback — so the dashboard could
+	// read ~100% v2 while no real evidence reached the surface. This counter
+	// instead labels each projected entry by whether it carries ≥1 first-class
+	// relation. If producers stop emitting evidence, relation coverage drops to
+	// ~0, surfacing the silent degradation the v2 ratio hid.
+	relationCoverageTotal = promauto.NewCounterVec(
+		prometheus.CounterOpts{
+			Namespace: "knowledge_loop",
+			Subsystem: "projector",
+			Name:      "relation_coverage_total",
+			Help:      "Projected entries labelled by whether they carry at least one first-class relation (ADR-000937). The honest signal that evidence is reaching the Orient surface.",
+		},
+		[]string{"has_relations"},
+	)
+
 	eventDroppedTotal = promauto.NewCounterVec(
 		prometheus.CounterOpts{
 			Namespace: "knowledge_loop",
@@ -152,6 +170,17 @@ func ObserveOutcomeMissingFill() {
 // Wave 3 when decideBucketV2 starts producing v2 placements.
 func observeSurfaceBucketAssigned(version string, bucket string) {
 	surfaceBucketAssignedTotal.WithLabelValues(version, bucket).Inc()
+}
+
+// observeRelationCoverage records whether a projected entry carried any
+// first-class relation. ADR-000937: this is the honest "is evidence reaching
+// the Orient surface" signal, replacing the misleading v2-planner ratio.
+func observeRelationCoverage(hasRelations bool) {
+	label := "false"
+	if hasRelations {
+		label = "true"
+	}
+	relationCoverageTotal.WithLabelValues(label).Inc()
 }
 
 // observeChangeSummaryWritten increments the change_summary counter every

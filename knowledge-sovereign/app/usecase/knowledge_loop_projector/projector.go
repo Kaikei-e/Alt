@@ -175,6 +175,18 @@ func (p *Projector) WithScoreResolver(r SurfaceScoreResolver) *Projector {
 	if r != nil {
 		p.scoreResolver = r
 	}
+	// CLAUDE.md #8: surface the wiring state loudly so "forgot to wire the real
+	// resolver" shows up in startup logs instead of silently degrading to a
+	// relation-less, v1-only Orient surface.
+	logger := p.logger
+	if logger == nil {
+		logger = slog.Default()
+	}
+	enabled := plannerVersionForResolver(p.scoreResolver) ==
+		sovereignv1.SurfacePlannerVersion_SURFACE_PLANNER_VERSION_V2
+	logger.Info("knowledge_loop_projector score resolver wired",
+		"score_resolver_enabled", enabled,
+		"resolver_type", fmt.Sprintf("%T", p.scoreResolver))
 	return p
 }
 
@@ -846,6 +858,15 @@ func (p *Projector) buildEntryFromEvent(
 	if plannerVersion == sovereignv1.SurfacePlannerVersion_SURFACE_PLANNER_VERSION_V2 {
 		entry.SurfaceScoreInputs = marshalSurfaceScoreInputs(inputs)
 	}
+	// ADR-000937: the relation-set is the primary axis — derived from the same
+	// inputs but kept as a first-class set instead of collapsed into the
+	// bucket. Set unconditionally (empty inputs yield no relations → NULL
+	// column) so the Orient surface always reflects the evidence that exists.
+	// observeRelationCoverage is the honest "is evidence reaching the surface"
+	// SLI, true/false by actual relation presence, not by resolver type.
+	rels := extractRelations(inputs)
+	entry.Relations = marshalRelations(rels)
+	observeRelationCoverage(len(rels) > 0)
 	// ADR-000907: review_reason is derived from the same SurfaceScoreInputs
 	// the bucket decision used, so reproject converges to the same value
 	// without consulting latest projection state.

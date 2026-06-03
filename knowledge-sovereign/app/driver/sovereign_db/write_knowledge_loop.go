@@ -52,7 +52,7 @@ INSERT INTO knowledge_loop_entries (
   superseded_by_entry_key, dismiss_state, visibility_state, completion_state,
   render_depth_hint, loop_priority,
   surface_planner_version, surface_score_inputs,
-  review_reason
+  review_reason, relations
 ) VALUES (
   $1, $2, $3, $4, $5,
   $6, $7,
@@ -64,7 +64,7 @@ INSERT INTO knowledge_loop_entries (
   $23, $24, $25, $26,
   $27, $28, $29, $30,
   $31, $32, $33, $34,
-  $35
+  $35, $36
 )
 ON CONFLICT (user_id, lens_mode_id, entry_key) DO UPDATE SET
   proposed_stage         = EXCLUDED.proposed_stage,
@@ -98,7 +98,8 @@ ON CONFLICT (user_id, lens_mode_id, entry_key) DO UPDATE SET
   loop_priority          = EXCLUDED.loop_priority,
   surface_planner_version = EXCLUDED.surface_planner_version,
   surface_score_inputs   = EXCLUDED.surface_score_inputs,
-  review_reason          = EXCLUDED.review_reason
+  review_reason          = EXCLUDED.review_reason,
+  relations              = EXCLUDED.relations
 WHERE knowledge_loop_entries.projection_seq_hiwater <= EXCLUDED.projection_seq_hiwater
 RETURNING projection_revision, projection_seq_hiwater
 `
@@ -207,7 +208,7 @@ func (r *Repository) UpsertKnowledgeLoopEntry(
 		visibilityStateToDB(visibilityState), completionStateToDB(completionState),
 		int16(e.RenderDepthHint), loopPriorityToDB(e.LoopPriority),
 		plannerVersionToDB(e.SurfacePlannerVersion), e.SurfaceScoreInputs,
-		reviewReasonToDB(e.ReviewReason),
+		reviewReasonToDB(e.ReviewReason), e.Relations,
 	)
 	if err := row.Scan(&revision, &seqHiwater); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {

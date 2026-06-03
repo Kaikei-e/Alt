@@ -74,7 +74,12 @@ func (p *Projector) resolveBucketAndInputs(
 ) (sovereignv1.SurfaceBucket, SurfaceScoreInputs, sovereignv1.SurfacePlannerVersion) {
 	resolver := p.scoreResolver
 	if resolver == nil {
-		resolver = NullSurfaceScoreResolver{}
+		// CLAUDE.md #8: a nil resolver means DI failed to wire it. Silently
+		// substituting the Null resolver would empty every Orient surface
+		// while looking "intentionally disabled" (PM-2026-045 / ADR-000928
+		// silent-fallback failure mode). Fail loud instead — the constructor
+		// always wires a resolver, so reaching here is a wiring bug.
+		panic("knowledge_loop_projector: score resolver not wired (DI bug, CLAUDE.md #8)")
 	}
 	in := resolver.Resolve(ctx, ev)
 	bucket := decideBucketV2(in)

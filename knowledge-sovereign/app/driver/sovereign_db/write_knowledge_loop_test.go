@@ -50,7 +50,7 @@ func TestUpsertKnowledgeLoopEntry_Insert(t *testing.T) {
 	repo := &Repository{pool: mock}
 	entry := newLoopEntryProto(100)
 
-	anyArgs := make([]interface{}, 35)
+	anyArgs := make([]interface{}, 36)
 	for i := range anyArgs {
 		anyArgs[i] = pgxmock.AnyArg()
 	}
@@ -79,7 +79,7 @@ func TestUpsertKnowledgeLoopEntry_WritesSurfacePlannerMetadata(t *testing.T) {
 	entry.SurfacePlannerVersion = &v2
 	entry.SurfaceScoreInputs = []byte(`{"topic_overlap_count":1,"event_type":"SummaryVersionCreated"}`)
 
-	anyArgs := make([]interface{}, 35)
+	anyArgs := make([]interface{}, 36)
 	for i := range anyArgs {
 		anyArgs[i] = pgxmock.AnyArg()
 	}
@@ -108,7 +108,7 @@ func TestUpsertKnowledgeLoopEntry_SeqHiwaterGuardSkipsStaleReplay(t *testing.T) 
 	repo := &Repository{pool: mock}
 	stale := newLoopEntryProto(50)
 
-	anyArgs := make([]interface{}, 35)
+	anyArgs := make([]interface{}, 36)
 	for i := range anyArgs {
 		anyArgs[i] = pgxmock.AnyArg()
 	}

@@ -68,7 +68,7 @@ SELECT
   e.superseded_by_entry_key, e.dismiss_state, e.visibility_state, e.completion_state,
   e.render_depth_hint, e.loop_priority,
   e.surface_planner_version, e.surface_score_inputs,
-  e.review_reason,
+  e.review_reason, e.relations,
   s.current_stage, s.current_stage_entered_at
 FROM knowledge_loop_entries_public e
 LEFT JOIN knowledge_loop_entry_session_state s
@@ -139,6 +139,7 @@ func scanKnowledgeLoopEntry(row pgx.Row) (*sovereignv1.KnowledgeLoopEntry, error
 		surfacePlannerVersion                          int16
 		surfaceScoreInputs                             []byte
 		reviewReason                                   string
+		relations                                      []byte
 		currentEntryStage                              *string
 		currentEntryStageEnteredAt                     *time.Time
 	)
@@ -155,7 +156,7 @@ func scanKnowledgeLoopEntry(row pgx.Row) (*sovereignv1.KnowledgeLoopEntry, error
 		&supersededBy, &dismissState, &visibilityState, &completionState,
 		&renderDepth, &loopPriority,
 		&surfacePlannerVersion, &surfaceScoreInputs,
-		&reviewReason,
+		&reviewReason, &relations,
 		&currentEntryStage, &currentEntryStageEnteredAt,
 	)
 	if err != nil {
@@ -198,6 +199,7 @@ func scanKnowledgeLoopEntry(row pgx.Row) (*sovereignv1.KnowledgeLoopEntry, error
 		SurfacePlannerVersion: plannerVersionFromDB(surfacePlannerVersion).Enum(),
 		SurfaceScoreInputs:    surfaceScoreInputs,
 		ReviewReason:          reviewReasonFromDB(reviewReason),
+		Relations:             relations,
 	}
 	if currentEntryStage != nil {
 		stage := loopStageFromDB(*currentEntryStage)
