@@ -140,3 +140,49 @@ groups:
           sum(rate(alt_knowledge_loop_stream_ended_total{reason="jwt_expired"}[5m]))
           /
           clamp_min(sum(rate(alt_knowledge_loop_stream_started_total[5m])), 0.001)
+
+      # ADR-000938 gate #3 — relation coverage collapse (the honest SLI).
+      # The Orient surface is empty when projected entries carry no first-class
+      # relation. relation_coverage_total{has_relations} replaced the misleading
+      # surface_planner_version=v2 ratio precisely so a producer silently dying
+      # (recap topic snapshots / augur links / supersede chain stop emitting)
+      # shows up as coverage → 0 instead of hiding behind a ~100% v2 reading.
+      # This is the gate that catches the PM-2026-045 failure mode the
+      # vertical-truth test and fail-loud guards cannot: HTTP stays 200, no
+      # malformed payloads, the relation set is just legitimately empty.
+      #
+      # The `and ... > 0.01` arm requires active projection traffic so the
+      # alert never fires while the projector is idle (ratio undefined).
+      - alert: KnowledgeLoopRelationCoverageCollapse
+        expr: |
+          (
+            sum(rate(knowledge_loop_projector_relation_coverage_total{has_relations="true"}[15m]))
+            /
+            clamp_min(sum(rate(knowledge_loop_projector_relation_coverage_total[15m])), 0.001)
+          ) < 0.01
+          and
+          sum(rate(knowledge_loop_projector_relation_coverage_total[15m])) > 0.01
+        for: 15m
+        labels:
+          severity: warning
+          service: knowledge-sovereign
+          source: knowledge-loop-projector
+        annotations:
+          summary: "Knowledge Loop relation coverage collapsed to ~0 (Orient surface empty)"
+          description: |
+            Fewer than 1% of projected entries carried a first-class relation
+            over 15m while projection traffic continued. The Orient surface is
+            rendering an empty relation-set for nearly every entry — the
+            "decorated feed" regression (ADR-000938). Likely cause: a producer
+            feeding SurfaceScoreInputs stopped emitting (recap topic snapshots,
+            augur conversation links, or the summary supersede chain), or
+            extractRelations regressed to dropping the evidence again.
+          runbook_url: "docs/ADR/000938.md"
+
+      # Recording rule for the relation coverage panel on the Grafana
+      # knowledge-loop-projector dashboard.
+      - record: knowledge_loop:relation_coverage_ratio_15m
+        expr: |
+          sum(rate(knowledge_loop_projector_relation_coverage_total{has_relations="true"}[15m]))
+          /
+          clamp_min(sum(rate(knowledge_loop_projector_relation_coverage_total[15m])), 0.001)
