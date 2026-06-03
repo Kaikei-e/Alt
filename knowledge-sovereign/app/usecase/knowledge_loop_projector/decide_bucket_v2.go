@@ -90,6 +90,20 @@ type SurfaceScoreInputs struct {
 	// event before we can use it.
 	ContradictionCount uint32
 
+	// CompareActionCount counts knowledge_loop.acted.v1 events whose
+	// acted_intent is compare, scoped to this entry inside the v2 score window
+	// (event-time bound). ADR-000938: drives the Contradiction relation's
+	// ADVANCING state — the user has compared the redline but not yet
+	// reconciled. Reproject-safe — derived from event payload only.
+	CompareActionCount uint32
+
+	// AcceptedChangeCount counts knowledge_loop.act_outcome.v1 events whose
+	// outcome is accepted_change ("compare → dismiss = reconciled",
+	// ADR-000908), scoped to this entry inside the v2 score window. ADR-000938:
+	// drives the Contradiction relation's RESOLVED state. Reproject-safe —
+	// derived from event payload only.
+	AcceptedChangeCount uint32
+
 	// RecentContinueActionCount counts knowledge_loop.acted.v1 events with
 	// continue_flag=true scoped to this entry inside the v2 score window
 	// (7 days, event-time bound). Phase 2 semantic feedback signal: a user

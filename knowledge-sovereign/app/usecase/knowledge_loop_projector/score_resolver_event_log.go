@@ -231,18 +231,24 @@ func (r *EventLogSurfaceScoreResolver) Resolve(
 				}
 			}
 		case EventKnowledgeLoopActed:
-			// Phase 2 semantic Continue signal. We deliberately gate on
-			// continue_flag=true so Snooze (false) does not promote Continue.
-			// The match is entry-keyed (aggregate_id == entry_key for Loop
+			// Entry-keyed match first (aggregate_id == entry_key for Loop
 			// transitions) so cross-entry behaviour cannot bleed.
-			if !readPayloadBool(e.Payload, "continue_flag") {
-				continue
-			}
 			eEntryKey := readEntryKey(e.Payload)
 			if eEntryKey == "" || eEntryKey != thisEntryKey {
 				continue
 			}
-			out.RecentContinueActionCount++
+			// Phase 2 semantic Continue signal. Gated on continue_flag=true so
+			// Snooze (false) does not promote Continue.
+			if readPayloadBool(e.Payload, "continue_flag") {
+				out.RecentContinueActionCount++
+			}
+			// ADR-000938: a compare act is the user inspecting the redline of a
+			// changed entry. It carries continue_flag=false, so it must be
+			// counted independently of RecentContinueActionCount. It drives the
+			// Contradiction relation's ADVANCING state.
+			if isCompareIntent(readPayloadString(e.Payload, "acted_intent")) {
+				out.CompareActionCount++
+			}
 		case EventKnowledgeLoopActOutcome:
 			// ADR-000908 §Δ1: aggregate the cumulative outcome signal on
 			// this entry. Entry-keyed match — cross-entry outcomes do not
@@ -253,7 +259,14 @@ func (r *EventLogSurfaceScoreResolver) Resolve(
 			if eEntryKey == "" || eEntryKey != thisEntryKey {
 				continue
 			}
-			out.ActOutcomeSignal += actOutcomeDelta(readPayloadString(e.Payload, "outcome"))
+			outcome := readPayloadString(e.Payload, "outcome")
+			out.ActOutcomeSignal += actOutcomeDelta(outcome)
+			// ADR-000938: accepted_change ("compare → dismiss = reconciled")
+			// drives the Contradiction relation's RESOLVED state — the visible
+			// close of the loop.
+			if isAcceptedChangeOutcome(outcome) {
+				out.AcceptedChangeCount++
+			}
 		}
 	}
 
@@ -291,6 +304,29 @@ func (r *EventLogSurfaceScoreResolver) Resolve(
 	}
 
 	return out
+}
+
+// isCompareIntent reports whether an acted_intent payload value is the compare
+// intent. Matches both the canonical enum form and the bare label so a producer
+// or test using either spelling is counted (mirrors actOutcomeDelta).
+func isCompareIntent(intent string) bool {
+	switch intent {
+	case "compare", "DECISION_INTENT_COMPARE":
+		return true
+	default:
+		return false
+	}
+}
+
+// isAcceptedChangeOutcome reports whether an outcome payload value is
+// accepted_change, in either the canonical enum form or the bare label.
+func isAcceptedChangeOutcome(outcome string) bool {
+	switch outcome {
+	case "accepted_change", "ACT_OUTCOME_KIND_ACCEPTED_CHANGE":
+		return true
+	default:
+		return false
+	}
 }
 
 // actOutcomeDelta maps an ActOutcomeKind enum string onto the
