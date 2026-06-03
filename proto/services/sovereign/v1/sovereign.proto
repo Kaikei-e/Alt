@@ -881,6 +881,15 @@ message KnowledgeLoopEntry {
   // "no review driver" and let older clients ignore the field.
   ReviewReason review_reason = 29;
 
+  // ADR-000937 relation-set. The projector populates this from the same
+  // SurfaceScoreInputs decideBucketV2 reads, but keeps the evidence as a
+  // first-class set instead of collapsing it into surface_bucket. JSONB
+  // opaque (sovereign-internal); the BFF projects it into the structured
+  // public Relation message. Reproject-safe: extractRelations is a pure
+  // function of the inputs. Each element:
+  //   {kind, target_ref, magnitude, state, why_text}
+  bytes relations = 30; // JSONB opaque
+
   reserved "updated_at", "projected_at", "wall_clock", "ingest_time";
 }
 

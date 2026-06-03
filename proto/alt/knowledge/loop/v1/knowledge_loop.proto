@@ -54,6 +54,28 @@ enum SurfaceBucket {
   SURFACE_BUCKET_REVIEW = 4;
 }
 
+// RelationKind classifies how an entry situates against the user's existing
+// orientation (ADR-000937). Continuation is the first kind wired end-to-end.
+enum RelationKind {
+  RELATION_KIND_UNSPECIFIED = 0;
+  RELATION_KIND_CONTINUATION = 1;
+  RELATION_KIND_CONTRADICTION = 2;
+  RELATION_KIND_CLUSTER = 3;
+  RELATION_KIND_INQUIRY = 4;
+}
+
+// RelationState is the lifecycle position of a relation. The transition shown
+// on the next observe is the visible "loop closed": a continuation surfaces
+// OPEN, advances to ADVANCING after the user returns once, ADVANCED after
+// repeated engagement, and RESOLVED when the thread is internalized.
+enum RelationState {
+  RELATION_STATE_UNSPECIFIED = 0;
+  RELATION_STATE_OPEN = 1;
+  RELATION_STATE_ADVANCING = 2;
+  RELATION_STATE_ADVANCED = 3;
+  RELATION_STATE_RESOLVED = 4;
+}
+
 enum DismissState {
   DISMISS_STATE_UNSPECIFIED = 0;
   DISMISS_STATE_ACTIVE = 1;
@@ -321,6 +343,21 @@ message ActTarget {
   optional string source_url = 4;
 }
 
+// Relation is a first-class edge from an entry to the user's existing
+// orientation (ADR-000937). The relation-set is the Orient surface.
+message Relation {
+  RelationKind kind = 1;
+  // Stable natural key of the related anchor (article id / entry key /
+  // versioned artifact id). Server-relative; never used as a public source URL.
+  string target_ref = 2;
+  // Strength of the relation (e.g. number of continuation contacts). Ranking
+  // hint only; the UI reads kind + state for placement.
+  int32 magnitude = 3;
+  RelationState state = 4;
+  // Plain text why at the relation grain. 1..512 chars, no markup.
+  string why_text = 5;
+}
+
 // KnowledgeLoopEntry is one Loop proposal unit.
 // projected_at is intentionally absent and reserved against accidental reintroduction.
 message KnowledgeLoopEntry {
@@ -372,6 +409,13 @@ message KnowledgeLoopEntry {
   // proposed_stage, which remains the projector's recommendation for this card.
   optional LoopStage current_entry_stage = 32;
   optional google.protobuf.Timestamp current_entry_stage_entered_at = 33;
+
+  // ADR-000937 relation-set. The Orient surface renders these directly instead
+  // of a collapsed single bucket; surface_bucket is demoted to a lens derived
+  // from the set. Each Relation situates the entry against the user's existing
+  // orientation and carries the State that drives the visible "loop closed"
+  // return diff. Reproject-safe — derived from the same SurfaceScoreInputs.
+  repeated Relation relations = 34;
 }
 
 message SurfaceState {
