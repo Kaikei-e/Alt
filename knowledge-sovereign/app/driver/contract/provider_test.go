@@ -121,6 +121,30 @@ func startStubServer(t *testing.T, reject *bool) int {
 		})
 	})
 
+	// GetKnowledgeLoopEntries read path (ADR-000937). The relation-set on
+	// `entries[].relations` is the wire contract the alt-backend consumer pins;
+	// returning a base64 JSONB-opaque value keeps the field present so a
+	// provider-side drop is caught at the pact gate rather than surfacing as an
+	// empty Orient surface in production.
+	mux.HandleFunc("/services.sovereign.v1.KnowledgeSovereignService/GetKnowledgeLoopEntries", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			w.WriteHeader(http.StatusMethodNotAllowed)
+			return
+		}
+		_, _ = io.Copy(io.Discard, r.Body)
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"entries": []map[string]any{
+				{
+					"userId":    "22222222-2222-2222-2222-222222222222",
+					"tenantId":  "11111111-1111-1111-1111-111111111111",
+					"entryKey":  "entry:article-1",
+					"relations": "W3sia2luZCI6ImNvbnRpbnVhdGlvbiIsInN0YXRlIjoib3BlbiJ9XQ==",
+				},
+			},
+		})
+	})
+
 	// Admin REST surface on the same listener: pact-go routes every
 	// consumer interaction through the single ProviderBaseURL, so we
 	// serve Connect-RPC and admin REST on the same port.
@@ -252,6 +276,10 @@ func TestVerifyAltBackendConsumerContract(t *testing.T) {
 		StateHandlers: models.StateHandlers{
 			"the projection mutation upsert_home_item is accepted": func(setup bool, s models.ProviderState) (models.ProviderStateResponse, error) {
 				reject = false
+				return nil, nil
+			},
+			// ADR-000937: the read path returns entries carrying the relation-set.
+			"a knowledge loop entry with a continuation relation exists": func(setup bool, s models.ProviderState) (models.ProviderStateResponse, error) {
 				return nil, nil
 			},
 			"the projection mutation is rejected with an error": func(setup bool, s models.ProviderState) (models.ProviderStateResponse, error) {

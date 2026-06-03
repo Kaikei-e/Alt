@@ -4,6 +4,115 @@
   },
   "interactions": [
     {
+      "description": "a GetKnowledgeLoopEntries request for the user's lens",
+      "providerStates": [
+        {
+          "name": "a knowledge loop entry with a continuation relation exists"
+        }
+      ],
+      "request": {
+        "body": {
+          "lensModeId": "default",
+          "tenantId": "11111111-1111-1111-1111-111111111111",
+          "userId": "22222222-2222-2222-2222-222222222222"
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "matchingRules": {
+          "body": {
+            "$.lensModeId": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.tenantId": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.userId": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            }
+          }
+        },
+        "method": "POST",
+        "path": "/services.sovereign.v1.KnowledgeSovereignService/GetKnowledgeLoopEntries"
+      },
+      "response": {
+        "body": {
+          "entries": [
+            {
+              "entryKey": "entry:article-1",
+              "relations": "W3sia2luZCI6ImNvbnRpbnVhdGlvbiIsInN0YXRlIjoib3BlbiJ9XQ==",
+              "tenantId": "11111111-1111-1111-1111-111111111111",
+              "userId": "22222222-2222-2222-2222-222222222222"
+            }
+          ]
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "matchingRules": {
+          "body": {
+            "$.entries": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type",
+                  "min": 1
+                }
+              ]
+            },
+            "$.entries[*].entryKey": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.entries[*].relations": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.entries[*].tenantId": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.entries[*].userId": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            }
+          }
+        },
+        "status": 200
+      }
+    },
+    {
       "description": "an AppendKnowledgeEvent request for ArticleUrlBackfilled",
       "providerStates": [
         {
@@ -15,15 +124,15 @@
           "event": {
             "actorId": "knowledge-url-backfill",
             "actorType": "service",
-            "aggregateId": "729c737f-bbf1-4aa2-9c6a-71f229e4da80",
+            "aggregateId": "1166019b-45da-4f5e-b563-b4a83eb75f27",
             "aggregateType": "article",
-            "dedupeKey": "article-url-backfill-v2:729c737f-bbf1-4aa2-9c6a-71f229e4da80",
-            "eventId": "9510f124-979a-4289-b487-cf26f61cde97",
+            "dedupeKey": "article-url-backfill-v2:1166019b-45da-4f5e-b563-b4a83eb75f27",
+            "eventId": "f8da05f2-ee2f-4e6b-97fb-03cb72d02398",
             "eventType": "ArticleUrlBackfilled",
             "occurredAt": "2026-04-28T12:00:00Z",
             "payload": "eyJhcnRpY2xlX2lkIjoiMDAwMDAwMDAtMDAwMC0wMDAwLTAwMDAtMDAwMDAwMDAwMDAwIiwidXJsIjoiaHR0cHM6Ly9leGFtcGxlLmNvbSJ9",
-            "tenantId": "1435d026-1b70-49f4-9840-d3df22201978",
-            "userId": "e06b5782-7604-4a99-b85f-7409a826d45b"
+            "tenantId": "c5d7e929-7ca9-4dfa-b8a8-b3971e5a9f5d",
+            "userId": "6411fe8d-0046-4b5a-b104-713a563c89ff"
           }
         },
         "headers": {
@@ -89,13 +198,13 @@
             "actorType": "system",
             "aggregateId": "article:42",
             "aggregateType": "knowledge_loop_entry",
-            "dedupeKey": "knowledge_loop.act_outcome.v1:8b7b85e9-3f1b-4d26-a056-024d81b55f32:deep_engagement",
-            "eventId": "a9699ee0-b4c0-40a9-9f7f-1c64f691d4e7",
+            "dedupeKey": "knowledge_loop.act_outcome.v1:efd74863-bbea-468a-84f7-854479a91273:deep_engagement",
+            "eventId": "1a60534f-a88c-4c6b-a3ee-e25ca5480ddb",
             "eventType": "knowledge_loop.act_outcome.v1",
             "occurredAt": "2026-05-23T12:05:00Z",
-            "payload": "eyJhY3RlZF9ldmVudF9pZCI6IjhiN2I4NWU5LTNmMWItNGQyNi1hMDU2LTAyNGQ4MWI1NWYzMiIsImVudHJ5X2tleSI6ImFydGljbGU6NDIiLCJsZW5zX21vZGVfaWQiOiJkZWZhdWx0Iiwib2JzZXJ2ZWRfYXQiOiIyMDI2LTA1LTIzVDEyOjA1OjAwWiIsIm91dGNvbWUiOiJkZWVwX2VuZ2FnZW1lbnQifQ==",
-            "tenantId": "cd8a2761-23b5-4a66-914c-811141f70d1c",
-            "userId": "c425c1b8-ddd7-40cb-bf20-1c40123a60bc"
+            "payload": "eyJhY3RlZF9ldmVudF9pZCI6ImVmZDc0ODYzLWJiZWEtNDY4YS04NGY3LTg1NDQ3OWE5MTI3MyIsImVudHJ5X2tleSI6ImFydGljbGU6NDIiLCJsZW5zX21vZGVfaWQiOiJkZWZhdWx0Iiwib2JzZXJ2ZWRfYXQiOiIyMDI2LTA1LTIzVDEyOjA1OjAwWiIsIm91dGNvbWUiOiJkZWVwX2VuZ2FnZW1lbnQifQ==",
+            "tenantId": "f96fa3d7-e190-407a-b0be-021d6c722d93",
+            "userId": "f7a1ee80-793b-4110-a8e3-78326d160726"
           }
         },
         "headers": {
@@ -152,13 +261,13 @@
             "actorType": "system",
             "aggregateId": "article:42",
             "aggregateType": "knowledge_loop_entry",
-            "dedupeKey": "knowledge_loop.act_outcome.v1:6bb7350d-927b-409e-a22c-f51054a5dfa6:engaged",
-            "eventId": "d307a402-f533-40ee-8237-26218211be23",
+            "dedupeKey": "knowledge_loop.act_outcome.v1:6833dc1e-0a97-43ea-bd06-fae0649914d2:engaged",
+            "eventId": "7d2ce3cf-1f2c-4db4-9885-36434483cab2",
             "eventType": "knowledge_loop.act_outcome.v1",
             "occurredAt": "2026-05-23T12:00:00Z",
-            "payload": "eyJhY3RlZF9ldmVudF9pZCI6IjZiYjczNTBkLTkyN2ItNDA5ZS1hMjJjLWY1MTA1NGE1ZGZhNiIsImVudHJ5X2tleSI6ImFydGljbGU6NDIiLCJsZW5zX21vZGVfaWQiOiJkZWZhdWx0Iiwib2JzZXJ2ZWRfYXQiOiIyMDI2LTA1LTIzVDEyOjAwOjAwWiIsIm91dGNvbWUiOiJlbmdhZ2VkIn0=",
-            "tenantId": "a40848ab-5523-4697-8053-47d047a58214",
-            "userId": "4477a196-3464-4fd8-a830-19a0cdde1147"
+            "payload": "eyJhY3RlZF9ldmVudF9pZCI6IjY4MzNkYzFlLTBhOTctNDNlYS1iZDA2LWZhZTA2NDk5MTRkMiIsImVudHJ5X2tleSI6ImFydGljbGU6NDIiLCJsZW5zX21vZGVfaWQiOiJkZWZhdWx0Iiwib2JzZXJ2ZWRfYXQiOiIyMDI2LTA1LTIzVDEyOjAwOjAwWiIsIm91dGNvbWUiOiJlbmdhZ2VkIn0=",
+            "tenantId": "1c871197-43a0-4425-827e-1cc16c04884d",
+            "userId": "8e3e81d6-9a6b-453f-bfef-998b2946c3f5"
           }
         },
         "headers": {
@@ -211,17 +320,17 @@
       "request": {
         "body": {
           "event": {
-            "actorId": "e64a4d6b-f5a2-4970-8204-f63738301f89",
+            "actorId": "8919ba26-0fa4-4f7d-93d9-63c297225b7c",
             "actorType": "user",
             "aggregateId": "article:42",
             "aggregateType": "loop_session",
-            "dedupeKey": "e90f1bbe-475d-4ee2-ac57-2618bd16cae3",
-            "eventId": "3375eace-ca02-4355-b591-9c829de0af47",
+            "dedupeKey": "89261071-4e0f-4a71-a844-8d3e49acb28d",
+            "eventId": "6d948656-38ce-49ac-a23a-52e6ef74df77",
             "eventType": "knowledge_loop.acted.v1",
             "occurredAt": "2026-04-24T10:00:00Z",
             "payload": "eyJlbnRyeV9rZXkiOiJhcnRpY2xlOjQyIn0",
-            "tenantId": "93fdba31-07e3-4951-8bb6-de8b0c2e147f",
-            "userId": "e64a4d6b-f5a2-4970-8204-f63738301f89"
+            "tenantId": "68a8db30-9a40-4e23-af10-d10a2aaa9184",
+            "userId": "8919ba26-0fa4-4f7d-93d9-63c297225b7c"
           }
         },
         "headers": {
@@ -274,17 +383,17 @@
       "request": {
         "body": {
           "event": {
-            "actorId": "4156a396-b421-4a60-a759-fcb51d0af504",
+            "actorId": "52e2780e-8d65-4db6-a1d8-8ccb4460d370",
             "actorType": "user",
             "aggregateId": "article:42",
             "aggregateType": "loop_session",
-            "dedupeKey": "e822b9e2-a8ea-465e-b340-565bf52370ae",
-            "eventId": "059c3531-e3e9-4cf1-a529-72b817db5007",
+            "dedupeKey": "2491f0d2-439f-44c9-9438-763bd282a356",
+            "eventId": "6767fab5-3e0c-4cfb-a15b-0ce8cc2ab15b",
             "eventType": "knowledge_loop.deferred.v1",
             "occurredAt": "2026-04-26T10:00:00Z",
             "payload": "eyJlbnRyeV9rZXkiOiJhcnRpY2xlOjQyIn0",
-            "tenantId": "12e466f3-89c2-4356-ad86-6d717816f84a",
-            "userId": "4156a396-b421-4a60-a759-fcb51d0af504"
+            "tenantId": "5f0c89b7-96d0-47c6-b4a6-26cd8b28fbc4",
+            "userId": "52e2780e-8d65-4db6-a1d8-8ccb4460d370"
           }
         },
         "headers": {
@@ -337,17 +446,17 @@
       "request": {
         "body": {
           "event": {
-            "actorId": "a7b2e159-8f49-4c66-a502-5352c896348f",
+            "actorId": "9b63b273-4b1e-49c5-bf71-288f225b06b9",
             "actorType": "user",
             "aggregateId": "article:42",
             "aggregateType": "loop_session",
-            "dedupeKey": "4a2a2915-7562-4ec3-9ec8-d80eb0eb1c27",
-            "eventId": "372d0648-0f0d-4cbd-8c1d-51d33e451fc0",
+            "dedupeKey": "d9b0b733-2687-4415-a108-34ef8602c4d6",
+            "eventId": "2433dfba-ebd8-47da-b0b9-26be40db2eda",
             "eventType": "knowledge_loop.observed.v1",
             "occurredAt": "2026-04-24T10:00:00Z",
             "payload": "eyJlbnRyeV9rZXkiOiJhcnRpY2xlOjQyIn0",
-            "tenantId": "4d59b92e-39d4-40cb-b94a-c6f4cd84e03a",
-            "userId": "a7b2e159-8f49-4c66-a502-5352c896348f"
+            "tenantId": "6b8a10d5-576b-4398-babc-fa82f338bcea",
+            "userId": "9b63b273-4b1e-49c5-bf71-288f225b06b9"
           }
         },
         "headers": {
@@ -400,17 +509,17 @@
       "request": {
         "body": {
           "event": {
-            "actorId": "ecca449a-2e60-4eb5-9050-4e326ee10b40",
+            "actorId": "b8ec0f9c-c2b9-4958-8712-147ff817c3bc",
             "actorType": "user",
             "aggregateId": "article:42",
             "aggregateType": "loop_session",
-            "dedupeKey": "cd7ee199-1aab-40f2-8b65-81db0db75ca0",
-            "eventId": "9112b2d6-c637-4de4-9c3c-64cfa1b1d6c4",
+            "dedupeKey": "db949820-08a2-47c6-ab33-1f01a14d19ae",
+            "eventId": "261637da-edc8-401b-94a2-39856b8cc229",
             "eventType": "knowledge_loop.reviewed.v1",
             "occurredAt": "2026-04-28T10:00:00Z",
             "payload": "eyJlbnRyeV9rZXkiOiJhcnRpY2xlOjQyIn0",
-            "tenantId": "2f12ec22-6c57-4744-873e-6dac3b4c5f7d",
-            "userId": "ecca449a-2e60-4eb5-9050-4e326ee10b40"
+            "tenantId": "289c051f-8382-4aee-9022-fbe33d1efac1",
+            "userId": "b8ec0f9c-c2b9-4958-8712-147ff817c3bc"
           }
         },
         "headers": {
@@ -463,17 +572,17 @@
       "request": {
         "body": {
           "event": {
-            "actorId": "3d5f8177-7d19-4f58-9792-cc9be75f0d8c",
+            "actorId": "2fc55c81-a110-4e54-89bd-4805a3978642",
             "actorType": "user",
             "aggregateId": "article:42",
             "aggregateType": "loop_session",
-            "dedupeKey": "4793763c-6ef1-4873-ac54-45b852698c57",
-            "eventId": "8992a9a2-dd31-4505-a9ec-7137acbc3155",
+            "dedupeKey": "2e99279f-70c1-424f-8e7d-7e5b1c2e1d1d",
+            "eventId": "982205b9-5129-449f-8555-3525a05feedf",
             "eventType": "knowledge_loop.acted.v1",
             "occurredAt": "2026-05-09T10:00:00Z",
-            "payload": "eyJhY3RlZF9pbnRlbnQiOiJERUNJU0lPTl9JTlRFTlRfQVNLIiwiYWN0aW9uX2lkIjoiYXNrIiwiY2xpZW50X3RyYW5zaXRpb25faWQiOiI0NzkzNzYzYy02ZWYxLTQ4NzMtYWM1NC00NWI4NTI2OThjNTciLCJjb250aW51ZV9mbGFnIjp0cnVlLCJlbnRyeV9rZXkiOiJhcnRpY2xlOjQyIiwiZnJvbV9zdGFnZSI6IkxPT1BfU1RBR0VfREVDSURFIiwibGVuc19tb2RlX2lkIjoiZGVmYXVsdCIsIm9ic2VydmVkX3Byb2plY3Rpb25fcmV2aXNpb24iOjEsInByZXNlbnRlZF9pbnRlbnRzIjpbIm9wZW4iLCJhc2siLCJzbm9vemUiXSwidGFyZ2V0X3JlZiI6IjE0ZDVmNGQ5LTgwY2ItNDQyOS04ZjdmLTU1ZWQ5MjY5MDI2MiIsInRhcmdldF90eXBlIjoiQUNUX1RBUkdFVF9UWVBFX0NPTlZFUlNBVElPTiIsInRvX3N0YWdlIjoiTE9PUF9TVEFHRV9BQ1QiLCJ0cmlnZ2VyIjoiVFJBTlNJVElPTl9UUklHR0VSX1VTRVJfVEFQIn0=",
-            "tenantId": "ba3ade2d-1d9e-4e66-a163-4f113ea776ef",
-            "userId": "3d5f8177-7d19-4f58-9792-cc9be75f0d8c"
+            "payload": "eyJhY3RlZF9pbnRlbnQiOiJERUNJU0lPTl9JTlRFTlRfQVNLIiwiYWN0aW9uX2lkIjoiYXNrIiwiY2xpZW50X3RyYW5zaXRpb25faWQiOiIyZTk5Mjc5Zi03MGMxLTQyNGYtOGU3ZC03ZTViMWMyZTFkMWQiLCJjb250aW51ZV9mbGFnIjp0cnVlLCJlbnRyeV9rZXkiOiJhcnRpY2xlOjQyIiwiZnJvbV9zdGFnZSI6IkxPT1BfU1RBR0VfREVDSURFIiwibGVuc19tb2RlX2lkIjoiZGVmYXVsdCIsIm9ic2VydmVkX3Byb2plY3Rpb25fcmV2aXNpb24iOjEsInByZXNlbnRlZF9pbnRlbnRzIjpbIm9wZW4iLCJhc2siLCJzbm9vemUiXSwidGFyZ2V0X3JlZiI6IjJjYjVjNzllLWZhM2YtNGJmNS04NDFlLTcwYTBmZjYyZDkxNyIsInRhcmdldF90eXBlIjoiQUNUX1RBUkdFVF9UWVBFX0NPTlZFUlNBVElPTiIsInRvX3N0YWdlIjoiTE9PUF9TVEFHRV9BQ1QiLCJ0cmlnZ2VyIjoiVFJBTlNJVElPTl9UUklHR0VSX1VTRVJfVEFQIn0=",
+            "tenantId": "35a6ffa7-ead9-41d7-924e-6b43720bf400",
+            "userId": "2fc55c81-a110-4e54-89bd-4805a3978642"
           }
         },
         "headers": {

@@ -150,6 +150,73 @@ func TestApplyProjectionMutationReturnsErrorMessageOnRejection(t *testing.T) {
 	require.NoError(t, err)
 }
 
+// TestGetKnowledgeLoopEntriesReturnsRelations pins the ADR-000937 relation-set
+// on the GetKnowledgeLoopEntries read path. alt-backend's sovereign_client maps
+// `entries[].relations` (a JSONB-opaque bytes field) into the domain entry the
+// BFF decodes into structured loopv1.Relation. This consumer pact is the CDC
+// RED that forces knowledge-sovereign to keep emitting the field; without it a
+// provider-side drop of `relations` would silently empty the Orient surface
+// (the PM-2026-045 / ADR-000928 silent-fallback failure mode).
+func TestGetKnowledgeLoopEntriesReturnsRelations(t *testing.T) {
+	mockProvider := newSovereignPact(t)
+
+	const (
+		userID   = "22222222-2222-2222-2222-222222222222"
+		tenantID = "11111111-1111-1111-1111-111111111111"
+		// base64 of a one-element relation-set: [{"kind":"continuation","state":"open"}]
+		relationsB64 = "W3sia2luZCI6ImNvbnRpbnVhdGlvbiIsInN0YXRlIjoib3BlbiJ9XQ=="
+	)
+
+	err := mockProvider.
+		AddInteraction().
+		Given("a knowledge loop entry with a continuation relation exists").
+		UponReceiving("a GetKnowledgeLoopEntries request for the user's lens").
+		WithCompleteRequest(consumer.Request{
+			Method: "POST",
+			Path:   matchers.String("/services.sovereign.v1.KnowledgeSovereignService/GetKnowledgeLoopEntries"),
+			Headers: matchers.MapMatcher{
+				"Content-Type": matchers.String("application/json"),
+			},
+			Body: matchers.MapMatcher{
+				"tenantId":   matchers.Like(tenantID),
+				"userId":     matchers.Like(userID),
+				"lensModeId": matchers.Like("default"),
+			},
+		}).
+		WithCompleteResponse(consumer.Response{
+			Status: 200,
+			Headers: matchers.MapMatcher{
+				"Content-Type": matchers.String("application/json"),
+			},
+			Body: matchers.MapMatcher{
+				"entries": matchers.EachLike(matchers.MapMatcher{
+					"userId":   matchers.Like(userID),
+					"tenantId": matchers.Like(tenantID),
+					"entryKey": matchers.Like("entry:article-1"),
+					// `relations` is a proto bytes field → base64 string on the
+					// wire. Its presence is the contract (ADR-000937).
+					"relations": matchers.Like(relationsB64),
+				}, 1),
+			},
+		}).
+		ExecuteTest(t, func(config consumer.MockServerConfig) error {
+			client := newSovereignClient(config)
+			resp, err := client.GetKnowledgeLoopEntries(context.Background(), connect.NewRequest(&sovereignv1.GetKnowledgeLoopEntriesRequest{
+				TenantId:   tenantID,
+				UserId:     userID,
+				LensModeId: "default",
+			}))
+			if err != nil {
+				return fmt.Errorf("GetKnowledgeLoopEntries failed: %w", err)
+			}
+			require.NotEmpty(t, resp.Msg.Entries, "provider must return at least one entry")
+			assert.NotEmpty(t, resp.Msg.Entries[0].Relations,
+				"entry.relations must be present (ADR-000937 relation-set)")
+			return nil
+		})
+	require.NoError(t, err)
+}
+
 func TestApplyRecallMutationSnoozeCandidate(t *testing.T) {
 	mockProvider := newSovereignPact(t)
 
