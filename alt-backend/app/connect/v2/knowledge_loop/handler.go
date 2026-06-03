@@ -632,6 +632,7 @@ func toProtoEntry(e *domain.KnowledgeLoopEntry) *loopv1.KnowledgeLoopEntry {
 	pb.ContinueContext = decodeContinueContext(e.ContinueContext)
 	pb.DecisionOptions = decodeDecisionOptions(e.DecisionOptions)
 	pb.ActTargets = decodeActTargets(e.ActTargets)
+	pb.Relations = decodeRelations(e.Relations)
 	return pb
 }
 
@@ -748,6 +749,69 @@ func decodeActTargets(b []byte) []*loopv1.ActTarget {
 		})
 	}
 	return out
+}
+
+// decodeRelations turns the sovereign relation-set JSONB (ADR-000937) into the
+// structured public Relation messages the FE renders as the Orient surface.
+// Tolerant of malformed payloads like the other decoders.
+func decodeRelations(b []byte) []*loopv1.Relation {
+	if len(b) == 0 {
+		return nil
+	}
+	var raw []struct {
+		Kind      string `json:"kind"`
+		TargetRef string `json:"target_ref"`
+		Magnitude int32  `json:"magnitude"`
+		State     string `json:"state"`
+		WhyText   string `json:"why_text"`
+	}
+	if err := json.Unmarshal(b, &raw); err != nil {
+		return nil
+	}
+	if len(raw) == 0 {
+		return nil
+	}
+	out := make([]*loopv1.Relation, 0, len(raw))
+	for _, r := range raw {
+		out = append(out, &loopv1.Relation{
+			Kind:      mapRelationKind(r.Kind),
+			TargetRef: r.TargetRef,
+			Magnitude: r.Magnitude,
+			State:     mapRelationState(r.State),
+			WhyText:   r.WhyText,
+		})
+	}
+	return out
+}
+
+func mapRelationKind(s string) loopv1.RelationKind {
+	switch s {
+	case "continuation":
+		return loopv1.RelationKind_RELATION_KIND_CONTINUATION
+	case "contradiction":
+		return loopv1.RelationKind_RELATION_KIND_CONTRADICTION
+	case "cluster":
+		return loopv1.RelationKind_RELATION_KIND_CLUSTER
+	case "inquiry":
+		return loopv1.RelationKind_RELATION_KIND_INQUIRY
+	default:
+		return loopv1.RelationKind_RELATION_KIND_UNSPECIFIED
+	}
+}
+
+func mapRelationState(s string) loopv1.RelationState {
+	switch s {
+	case "open":
+		return loopv1.RelationState_RELATION_STATE_OPEN
+	case "advancing":
+		return loopv1.RelationState_RELATION_STATE_ADVANCING
+	case "advanced":
+		return loopv1.RelationState_RELATION_STATE_ADVANCED
+	case "resolved":
+		return loopv1.RelationState_RELATION_STATE_RESOLVED
+	default:
+		return loopv1.RelationState_RELATION_STATE_UNSPECIFIED
+	}
 }
 
 func mapDecisionIntent(s string) loopv1.DecisionIntent {

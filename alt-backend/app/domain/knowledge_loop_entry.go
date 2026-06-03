@@ -214,6 +214,9 @@ type KnowledgeLoopEntry struct {
 	ContinueContext []byte `json:"continue_context,omitempty" db:"continue_context"`
 	DecisionOptions []byte `json:"decision_options,omitempty" db:"decision_options"`
 	ActTargets      []byte `json:"act_targets,omitempty" db:"act_targets"`
+	// ADR-000937 relation-set, carried as the JSONB opaque bytes the sovereign
+	// projection persists. The handler decodes it into structured loopv1.Relation.
+	Relations []byte `json:"relations,omitempty" db:"relations"`
 
 	SupersededByEntryKey *string             `json:"superseded_by_entry_key,omitempty" db:"superseded_by_entry_key"`
 	DismissState         DismissState        `json:"dismiss_state" db:"dismiss_state"`
