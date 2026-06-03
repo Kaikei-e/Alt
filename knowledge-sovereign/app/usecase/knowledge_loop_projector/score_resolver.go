@@ -83,17 +83,45 @@ func (p *Projector) resolveBucketAndInputs(
 	}
 	in := resolver.Resolve(ctx, ev)
 	bucket := decideBucketV2(in)
-	plannerVersion := plannerVersionForResolver(resolver)
+	// ADR-000938: the per-entry planner version is now honest — v2 only when
+	// real cross-source evidence actually applied to THIS entry, not merely
+	// because a non-Null resolver type is wired. The old
+	// plannerVersionForResolver(resolver) tagged every placement v2 whenever
+	// the resolver was non-Null, so the dashboard could read ~100% v2 while
+	// every entry was a v1 event-type fallback. plannerVersionForResolver
+	// survives only as the projector-level capability gate (see projector.go).
+	plannerVersion := plannerVersionForInputs(in)
 	observeSurfaceBucketAssigned(plannerVersionMetricLabel(plannerVersion), bucketMetricLabel(bucket))
 	return bucket, in, plannerVersion
 }
 
+// hasV2Signal reports whether any real cross-source evidence applied to the
+// entry. It is the honest "did v2 evidence actually fire" predicate behind the
+// per-entry planner version label (ADR-000938). Covers every signal that can
+// produce a relation or a non-fallback bucket so the label cannot read v2 for a
+// pure v1 event-type placement.
 func hasV2Signal(in SurfaceScoreInputs) bool {
 	return in.TopicOverlapCount > 0 ||
 		in.TagOverlapCount > 0 ||
+		in.RecapClusterMomentum > 0 ||
 		in.VersionDriftCount > 0 ||
+		in.ContradictionCount > 0 ||
 		in.HasAugurLink ||
-		in.HasOpenInteraction
+		in.QuestionContinuationScore > 0 ||
+		in.HasOpenInteraction ||
+		in.RecentContinueActionCount > 0 ||
+		in.CompareActionCount > 0 ||
+		in.AcceptedChangeCount > 0
+}
+
+// plannerVersionForInputs maps the honest hasV2Signal predicate onto the
+// SurfacePlannerVersion enum used for the per-entry label and the
+// SurfaceScoreInputs persistence gate.
+func plannerVersionForInputs(in SurfaceScoreInputs) sovereignv1.SurfacePlannerVersion {
+	if hasV2Signal(in) {
+		return sovereignv1.SurfacePlannerVersion_SURFACE_PLANNER_VERSION_V2
+	}
+	return sovereignv1.SurfacePlannerVersion_SURFACE_PLANNER_VERSION_V1
 }
 
 func plannerVersionForResolver(resolver SurfaceScoreResolver) sovereignv1.SurfacePlannerVersion {
