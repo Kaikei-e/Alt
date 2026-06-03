@@ -1,5 +1,9 @@
 <script lang="ts">
 import { goto } from "$app/navigation";
+import LoopRelations from "$lib/components/knowledge-loop/LoopRelations.svelte";
+import WhyTypography, {
+	type ConfidenceLadderTier,
+} from "$lib/components/why/WhyTypography.svelte";
 import type {
 	ConfidenceLadderName,
 	DecisionIntentName,
@@ -7,15 +11,12 @@ import type {
 	KnowledgeLoopEntryData,
 	LoopStageName,
 } from "$lib/connect/knowledge_loop";
+import type { TransitionTrigger } from "$lib/hooks/loop-transitions";
 import type { TransitionMetadata } from "$lib/hooks/useKnowledgeLoop.svelte";
-import WhyTypography, {
-	type ConfidenceLadderTier,
-} from "$lib/components/why/WhyTypography.svelte";
 import {
 	buildRecapTransitionMetadata,
 	buildTransitionMetadata,
 } from "./transition-metadata";
-import type { TransitionTrigger } from "$lib/hooks/loop-transitions";
 
 // Convert the lowercase wire form of the confidence ladder ("speculation"
 // etc.) to the uppercase tier the typography primitive consumes. Missing /
@@ -110,6 +111,11 @@ let {
  */
 
 const effectiveStage = $derived(entry.currentEntryStage ?? entry.proposedStage);
+
+// ADR-000937: the relation-set is the always-present Orient surface, rendered
+// via the shared LoopRelations component (also used by the active-entry
+// workspace) so relations reach the user regardless of which entry is focused.
+const relations = $derived(entry.relations ?? []);
 
 const stageLabel = $derived(
 	(
@@ -432,6 +438,7 @@ async function handleDismiss() {
 			counterEvidenceRefs={entry.whyPrimary.counterEvidenceRefs}
 			whatWouldChangeMyMind={entry.whyPrimary.whatWouldChangeMyMind}
 		/>
+		<LoopRelations {relations} />
 		{#if expanded}
 			<section class="expand">
 				{#if entry.changeSummary?.summary}

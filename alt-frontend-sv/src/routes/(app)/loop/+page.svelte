@@ -1,18 +1,15 @@
 <script lang="ts">
 import { onDestroy, onMount } from "svelte";
-import {
-	createActOutcomeEmitter,
-	type ActOutcomeEmitter,
-} from "$lib/hooks/useActOutcomeEmitter.svelte";
 import { flip } from "svelte/animate";
 import { cubicOut } from "svelte/easing";
 import { goto, invalidate } from "$app/navigation";
 import ChangedDiffCard from "$lib/components/knowledge-loop/ChangedDiffCard.svelte";
 import ContinueStream from "$lib/components/knowledge-loop/ContinueStream.svelte";
 import EmptyNow from "$lib/components/knowledge-loop/EmptyNow.svelte";
-import LoopEntryTile from "$lib/components/knowledge-loop/LoopEntryTile.svelte";
 import LensSelector from "$lib/components/knowledge-loop/LensSelector.svelte";
+import LoopEntryTile from "$lib/components/knowledge-loop/LoopEntryTile.svelte";
 import LoopPlaneStack from "$lib/components/knowledge-loop/LoopPlaneStack.svelte";
+import LoopRelations from "$lib/components/knowledge-loop/LoopRelations.svelte";
 import type { PlaneKey } from "$lib/components/knowledge-loop/loop-plane-keys";
 import MacroByline from "$lib/components/knowledge-loop/MacroByline.svelte";
 import OodaPipeline from "$lib/components/knowledge-loop/OodaPipeline.svelte";
@@ -28,20 +25,24 @@ import type {
 	KnowledgeLoopResult,
 	LoopStageName,
 } from "$lib/connect/knowledge_loop";
-import type { TransitionTrigger } from "$lib/hooks/loop-transitions";
 import { makeCoalescedRefresh } from "$lib/hooks/loop-coalesce";
 import { makeFirstFrameSkipper } from "$lib/hooks/loop-stream-skip-first";
+import type { TransitionTrigger } from "$lib/hooks/loop-transitions";
 import { startVisibilityRecovery } from "$lib/hooks/loop-visibility-recovery";
+import {
+	type ActOutcomeEmitter,
+	createActOutcomeEmitter,
+} from "$lib/hooks/useActOutcomeEmitter.svelte";
 import {
 	type TransitionMetadata,
 	useKnowledgeLoop,
 } from "$lib/hooks/useKnowledgeLoop.svelte";
 import { useKnowledgeLoopStream } from "$lib/hooks/useKnowledgeLoopStream.svelte";
+import { loopRecede } from "$lib/transitions/loop-recede";
 import {
 	resolveLoopSourceUrl,
 	resolveLoopSourceUrlAsync,
 } from "$lib/utils/loop-source-url";
-import { loopRecede } from "$lib/transitions/loop-recede";
 import { uuidv7 } from "$lib/utils/uuidv7";
 import "$lib/styles/loop-depth.css";
 import type { PageData } from "./$types";
@@ -847,6 +848,12 @@ function onReviewAction(
 							</div>
 						{/if}
 					{/if}
+
+					<!-- ADR-000937: relation-set as the always-present Orient surface
+					     for the active entry — rendered for every stage (Orient is a
+					     surface, not a step). The relation State shows the loop closing
+					     when an acted relation returns. -->
+					<LoopRelations relations={activeEntry.relations ?? []} />
 
 					<!-- Single command surface. Boyd's implicit guidance & control:
 					     Open is the universal Act affordance, available from every

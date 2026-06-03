@@ -17,13 +17,15 @@ import {
 	type EmitActOutcomeResponse,
 	EvidenceKind,
 	type GetKnowledgeLoopResponse,
-	type KnowledgeLoopMacroState as ProtoKnowledgeLoopMacroState,
 	KnowledgeLoopService,
 	LoopPriority,
 	LoopStage,
 	type KnowledgeLoopEntry as ProtoKnowledgeLoopEntry,
+	type KnowledgeLoopMacroState as ProtoKnowledgeLoopMacroState,
 	type KnowledgeLoopSessionState as ProtoKnowledgeLoopSessionState,
 	type SurfaceState as ProtoSurfaceState,
+	RelationKind,
+	RelationState,
 	RenderDepthHint,
 	ServiceQuality,
 	type StreamKnowledgeLoopUpdatesResponse,
@@ -152,6 +154,31 @@ export interface ActTargetData {
 	sourceUrl?: string;
 }
 
+export type RelationKindName =
+	| "unspecified"
+	| "continuation"
+	| "contradiction"
+	| "cluster"
+	| "inquiry";
+export type RelationStateName =
+	| "unspecified"
+	| "open"
+	| "advancing"
+	| "advanced"
+	| "resolved";
+
+/**
+ * ADR-000937 relation-set element. The Orient surface renders relations
+ * directly; `state` drives the visible "loop closed" return diff.
+ */
+export interface RelationData {
+	kind: RelationKindName;
+	targetRef: string;
+	magnitude: number;
+	state: RelationStateName;
+	whyText: string;
+}
+
 export interface KnowledgeLoopEntryData {
 	entryKey: string;
 	sourceItemKey: string;
@@ -173,6 +200,11 @@ export interface KnowledgeLoopEntryData {
 	continueContext?: ContinueContextData;
 	decisionOptions: DecisionOptionData[];
 	actTargets: ActTargetData[];
+	/**
+	 * ADR-000937 relation-set. Optional so existing entry literals (tests,
+	 * recall→loop adapter) stay valid; mapProtoEntry always populates an array.
+	 */
+	relations?: RelationData[];
 }
 
 /**
@@ -479,7 +511,44 @@ export function mapProtoEntry(
 			route: t.route,
 			sourceUrl: t.sourceUrl,
 		})),
+		relations: (e.relations ?? []).map((r) => ({
+			kind: mapRelationKindFromProto(r.kind),
+			targetRef: r.targetRef,
+			magnitude: r.magnitude,
+			state: mapRelationStateFromProto(r.state),
+			whyText: r.whyText,
+		})),
 	};
+}
+
+function mapRelationKindFromProto(k: RelationKind): RelationKindName {
+	switch (k) {
+		case RelationKind.CONTINUATION:
+			return "continuation";
+		case RelationKind.CONTRADICTION:
+			return "contradiction";
+		case RelationKind.CLUSTER:
+			return "cluster";
+		case RelationKind.INQUIRY:
+			return "inquiry";
+		default:
+			return "unspecified";
+	}
+}
+
+function mapRelationStateFromProto(s: RelationState): RelationStateName {
+	switch (s) {
+		case RelationState.OPEN:
+			return "open";
+		case RelationState.ADVANCING:
+			return "advancing";
+		case RelationState.ADVANCED:
+			return "advanced";
+		case RelationState.RESOLVED:
+			return "resolved";
+		default:
+			return "unspecified";
+	}
 }
 
 function mapProtoSurface(s: ProtoSurfaceState): SurfaceStateData {

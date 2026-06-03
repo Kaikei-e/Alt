@@ -102,3 +102,24 @@ describe("LoopEntryTile source hygiene", () => {
 		);
 	});
 });
+
+describe("LoopEntryTile relation-set (ADR-000937)", () => {
+	it("delegates the relation-set to the shared LoopRelations component", () => {
+		// The chip markup lives in LoopRelations so the active-entry workspace
+		// and the secondary tiles render the relation-set identically. The tile
+		// only threads its entry's relations through.
+		expect(tileSource).toMatch(/import\s+LoopRelations/);
+		expect(tileSource).toMatch(/<LoopRelations\s+\{relations\}\s*\/>/);
+	});
+
+	it("renders the relation-set as the always-present Orient surface (before the expand block)", () => {
+		// Orient is a surface, not a stage you advance into: the relations must
+		// render without expanding the tile. Enforce by source order — the
+		// LoopRelations element precedes the `{#if expanded}` block.
+		const relationsIdx = tileSource.indexOf("<LoopRelations");
+		const expandIdx = tileSource.indexOf("{#if expanded}");
+		expect(relationsIdx).toBeGreaterThan(-1);
+		expect(expandIdx).toBeGreaterThan(-1);
+		expect(relationsIdx).toBeLessThan(expandIdx);
+	});
+});

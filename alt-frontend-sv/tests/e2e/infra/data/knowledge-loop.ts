@@ -380,6 +380,93 @@ export const CONNECT_KNOWLEDGE_LOOP_ACT_RESPONSE = {
 	projectionSeqHiwater: "20",
 };
 
+// ADR-000937 relation-set scenario: a single foreground entry carrying one
+// Continuation relation. The active-entry workspace renders the relation chip
+// as the always-present Orient surface (LoopRelations). Two states prove the
+// "loop closed" cue: OPEN (thread started, no return) and ADVANCED (returned
+// repeatedly). Served via lensModeId "e2e-continuation" / "e2e-continuation-advanced".
+export const LOOP_FIXTURE_CONTINUATION_ENTRY_KEY =
+	"loop-entry-fixture-continuation-rel-1";
+export const LOOP_FIXTURE_CONTINUATION_ARTICLE_ID = "article-continuation-rel";
+
+// RELATION_STATE_*: 1=OPEN, 2=ADVANCING, 3=ADVANCED. RELATION_KIND_CONTINUATION=1.
+function continuationResponse(relationState: number, magnitude: number) {
+	return {
+		foregroundEntries: [
+			{
+				entryKey: LOOP_FIXTURE_CONTINUATION_ENTRY_KEY,
+				sourceItemKey: `article:${LOOP_FIXTURE_CONTINUATION_ARTICLE_ID}`,
+				proposedStage: 1, // OBSERVE
+				currentEntryStage: 1, // OBSERVE
+				currentEntryStageEnteredAt: NOW_ISO,
+				surfaceBucket: 1, // NOW — bucket is demoted to a lens (ADR-000937)
+				projectionRevision: "1",
+				projectionSeqHiwater: "20",
+				freshnessAt: NOW_ISO,
+				sourceObservedAt: NOW_ISO,
+				whyPrimary: {
+					kind: 1, // SOURCE
+					text: "A thread you have been building.",
+					confidence: 0.9,
+					evidenceRefs: [],
+				},
+				dismissState: 1,
+				renderDepthHint: 2,
+				loopPriority: 2, // continuing
+				decisionOptions: [],
+				actTargets: [
+					{
+						targetType: 1, // ARTICLE
+						targetRef: LOOP_FIXTURE_CONTINUATION_ARTICLE_ID,
+						route: `/articles/${LOOP_FIXTURE_CONTINUATION_ARTICLE_ID}`,
+						sourceUrl: "https://example.com/continuation-source",
+					},
+				],
+				relations: [
+					{
+						kind: 1, // RELATION_KIND_CONTINUATION
+						targetRef: LOOP_FIXTURE_CONTINUATION_ARTICLE_ID,
+						magnitude,
+						state: relationState,
+						whyText:
+							relationState === 3
+								? "A thread you keep returning to — your understanding is building."
+								: "Continuing a thread you opened but have not returned to.",
+					},
+				],
+			},
+		],
+		bucketEntries: [],
+		surfaces: [
+			{
+				surfaceBucket: 1, // NOW
+				primaryEntryKey: LOOP_FIXTURE_CONTINUATION_ENTRY_KEY,
+				secondaryEntryKeys: [],
+				projectionRevision: "1",
+				projectionSeqHiwater: "20",
+				freshnessAt: NOW_ISO,
+				serviceQuality: 1,
+			},
+		],
+		sessionState: {
+			currentStage: 1, // OBSERVE
+			currentStageEnteredAt: NOW_ISO,
+			foregroundEntryKey: LOOP_FIXTURE_CONTINUATION_ENTRY_KEY,
+			focusedEntryKey: LOOP_FIXTURE_CONTINUATION_ENTRY_KEY,
+			projectionRevision: "1",
+			projectionSeqHiwater: "20",
+		},
+		overallServiceQuality: 1,
+		generatedAt: NOW_ISO,
+		projectionSeqHiwater: "20",
+	};
+}
+
+export const CONNECT_KNOWLEDGE_LOOP_CONTINUATION_RESPONSE =
+	continuationResponse(1, 1); // OPEN
+export const CONNECT_KNOWLEDGE_LOOP_CONTINUATION_ADVANCED_RESPONSE =
+	continuationResponse(3, 2); // ADVANCED
+
 // Open-recoverable scenario: identical to the ACT response but the article
 // actTarget omits `sourceUrl`. The page is expected to render the Open CTA
 // enabled with a "Open · resolve url" secondary label and call the BFF article
