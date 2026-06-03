@@ -4,6 +4,8 @@ import (
 	"testing"
 
 	loopv1 "alt/gen/proto/alt/knowledge/loop/v1"
+
+	"github.com/prometheus/client_golang/prometheus/testutil"
 )
 
 // ADR-000937: the sovereign relation-set JSONB is decoded into structured
@@ -31,10 +33,14 @@ func TestDecodeRelations_EmptyAndMalformed(t *testing.T) {
 	if decodeRelations(nil) != nil {
 		t.Error("nil bytes must decode to nil")
 	}
+	if decodeRelations([]byte("[]")) != nil {
+		t.Error("empty array must decode to nil")
+	}
+	before := testutil.ToFloat64(relationsDecodeMalformedTotal)
 	if decodeRelations([]byte("not json")) != nil {
 		t.Error("malformed bytes must decode to nil")
 	}
-	if decodeRelations([]byte("[]")) != nil {
-		t.Error("empty array must decode to nil")
+	if got := testutil.ToFloat64(relationsDecodeMalformedTotal); got != before+1 {
+		t.Errorf("malformed decode must bump the fail-loud counter: got %v, want %v", got, before+1)
 	}
 }

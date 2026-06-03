@@ -43,4 +43,13 @@ var (
 			Help:      "Number of upstream fetch failures inside an active stream session.",
 		},
 	)
+
+	relationsDecodeMalformedTotal = promauto.NewCounter(
+		prometheus.CounterOpts{
+			Namespace: "alt_knowledge_loop",
+			Subsystem: "relations",
+			Name:      "decode_malformed_total",
+			Help:      "Number of relation-set JSONB payloads that failed to decode at the BFF boundary (schema drift / corruption). Should be 0.",
+		},
+	)
 )

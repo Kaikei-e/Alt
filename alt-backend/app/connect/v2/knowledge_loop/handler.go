@@ -766,6 +766,14 @@ func decodeRelations(b []byte) []*loopv1.Relation {
 		WhyText   string `json:"why_text"`
 	}
 	if err := json.Unmarshal(b, &raw); err != nil {
+		// ADR-000938 fail-loud: a malformed relation-set payload is schema
+		// drift / corruption, not a legitimately empty set (which arrives as
+		// len(b)==0 above). Count + log it loudly so it cannot masquerade as
+		// "no relations" the way the old silent return nil did. We still return
+		// nil so one bad row cannot 500 the whole loop page.
+		relationsDecodeMalformedTotal.Inc()
+		slog.Error("knowledge_loop: malformed relation-set JSONB at decode boundary",
+			"err", err, "bytes", len(b))
 		return nil
 	}
 	if len(raw) == 0 {
