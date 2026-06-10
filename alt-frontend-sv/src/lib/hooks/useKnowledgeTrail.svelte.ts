@@ -58,12 +58,24 @@ export function useKnowledgeTrail() {
 	}
 
 	return {
-		footprints: $derived.by(() => footprints),
-		loading: $derived.by(() => loading),
-		error: $derived.by(() => error),
-		hasMore: $derived.by(() => hasMore),
-		hasEverLoaded: $derived.by(() => hasEverLoaded),
-		activeTags: $derived.by(() => activeTags),
+		get footprints() {
+			return footprints;
+		},
+		get loading() {
+			return loading;
+		},
+		get error() {
+			return error;
+		},
+		get hasMore() {
+			return hasMore;
+		},
+		get hasEverLoaded() {
+			return hasEverLoaded;
+		},
+		get activeTags() {
+			return activeTags;
+		},
 		fetchData,
 		loadMore,
 		refresh,

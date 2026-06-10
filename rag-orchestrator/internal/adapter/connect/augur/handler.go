@@ -27,16 +27,6 @@ import (
 // this header; rag-orchestrator never accepts unauthenticated traffic.
 const userIDHeader = "X-Alt-User-Id"
 
-// tenantIDHeader carries the caller's tenant uuid. alt-backend extracts it
-// from the JWT claim set and forwards it alongside X-Alt-User-Id. Wave 4-A
-// (ADR-000853) made this header required on the augur emit path so
-// knowledge_events.tenant_id is never persisted as the zero uuid — Surface
-// Planner v2's resolver scopes its inputs by tenant_id physically.
-const tenantIDHeader = "X-Alt-Tenant-Id"
-
-// uuidv7Re matches RFC 9562 UUIDv7: version nibble == 7, variant bits 10.
-var uuidv7Re = regexp.MustCompile(`^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$`)
-
 // sanitizeUTF8 removes invalid UTF-8 sequences from a string.
 // This is necessary because Ollama LLM may return chunks containing
 // invalid UTF-8, which causes protobuf serialization to fail with
@@ -93,27 +83,6 @@ func extractUserID(headers interface{ Get(string) string }) (uuid.UUID, error) {
 	id, err := uuid.Parse(raw)
 	if err != nil {
 		return uuid.Nil, fmt.Errorf("invalid %s header: %w", userIDHeader, err)
-	}
-	return id, nil
-}
-
-// extractTenantID mirrors extractUserID for the tenant scope. It is used on
-// emit paths (Wave 4-A): knowledge_events rows MUST carry a non-zero
-// tenant_id, otherwise multi-tenant projector queries would surface
-// cross-tenant evidence. Empty or malformed values become Unauthenticated
-// rather than InvalidArgument because the missing tenant signals a broken
-// trust boundary on the alt-backend hop, not a bad user payload.
-func extractTenantID(headers interface{ Get(string) string }) (uuid.UUID, error) {
-	raw := strings.TrimSpace(headers.Get(tenantIDHeader))
-	if raw == "" {
-		return uuid.Nil, errors.New("missing " + tenantIDHeader + " header")
-	}
-	id, err := uuid.Parse(raw)
-	if err != nil {
-		return uuid.Nil, fmt.Errorf("invalid %s header: %w", tenantIDHeader, err)
-	}
-	if id == uuid.Nil {
-		return uuid.Nil, errors.New(tenantIDHeader + " header is the zero uuid")
 	}
 	return id, nil
 }
