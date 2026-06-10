@@ -8,3 +8,14 @@ lint:
 breaking:
   use:
     - FILE
+  # Knowledge Loop retire: the loop proto was deleted and the loop->augur
+  # handshake messages + loop RPCs/types were removed from augur.proto and
+  # sovereign.proto. Every consumer is updated atomically in the same change,
+  # so this break is intentional and coordinated. These ignores suppress the
+  # one-time breaking report against the pre-retire main baseline.
+  # TEMPORARY: remove these entries once this change is merged to main (the new
+  # baseline will match), so future genuine breaks on augur/sovereign are caught.
+  ignore:
+    - alt/knowledge/loop
+    - alt/augur/v2/augur.proto
+    - services/sovereign/v1/sovereign.proto
