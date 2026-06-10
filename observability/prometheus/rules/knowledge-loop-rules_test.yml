@@ -1,0 +1,108 @@
+# promtool unit tests for the ADR-000939 honest gate.
+#
+#   docker exec alt-prometheus-1 promtool test rules /tmp/kl-rules_test.yml
+#
+# These pin the behaviour the old rate-based alert could not deliver: the
+# coverage alert FIRES at the real ~250 entries/day traffic (the rate guard made
+# that impossible), stays quiet when projection is genuinely idle, and the recap
+# producer-liveness alert fires when the producer is dead while the pipeline is
+# alive.
+rule_files:
+  - knowledge-loop-rules.yml
+
+evaluation_interval: 1m
+
+tests:
+  # Relation coverage collapsed (ratio 0) with 244 entries/24h — the exact
+  # production state. The old rate alert could not fire here; this one does.
+  - interval: 1m
+    input_series:
+      - series: 'knowledge_loop_projection_relation_coverage_ratio_24h'
+        values: '0x40'
+      - series: 'knowledge_loop_projection_entries_24h'
+        values: '244x40'
+    alert_rule_test:
+      - eval_time: 35m
+        alertname: KnowledgeLoopRelationCoverageCollapse
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              service: knowledge-sovereign
+              source: knowledge-loop-projector
+            exp_annotations:
+              summary: "Knowledge Loop relation coverage collapsed to <5% (Orient surface empty)"
+              description: |
+                Fewer than 5% of entries sourced in the last 24h carry a first-class
+                relation, with ≥50 such entries. The Orient surface is rendering an
+                empty relation-set for nearly every entry — the "decorated feed"
+                regression (ADR-000939). Likely cause: a producer feeding the
+                evidence accumulator stopped emitting (recap topic snapshots, augur
+                links, or the summary supersede chain), or the accumulator's derive
+                path regressed to dropping the evidence again. Cross-check the
+                knowledge_event_last_occurrence_age_seconds gauges to find which
+                producer went silent.
+              runbook_url: "docs/ADR/000939.md"
+
+  # Healthy coverage (60%) → no alert even with plenty of entries.
+  - interval: 1m
+    input_series:
+      - series: 'knowledge_loop_projection_relation_coverage_ratio_24h'
+        values: '0.6x40'
+      - series: 'knowledge_loop_projection_entries_24h'
+        values: '300x40'
+    alert_rule_test:
+      - eval_time: 35m
+        alertname: KnowledgeLoopRelationCoverageCollapse
+        exp_alerts: []
+
+  # Idle projection (low ratio but only 10 entries) → the entries_24h guard
+  # keeps it quiet. This is what the broken rate guard was meant to do.
+  - interval: 1m
+    input_series:
+      - series: 'knowledge_loop_projection_relation_coverage_ratio_24h'
+        values: '0x40'
+      - series: 'knowledge_loop_projection_entries_24h'
+        values: '10x40'
+    alert_rule_test:
+      - eval_time: 35m
+        alertname: KnowledgeLoopRelationCoverageCollapse
+        exp_alerts: []
+
+  # Recap producer dead: no topic snapshot in >48h while SummaryVersionCreated
+  # stays fresh (<6h). The never-emitted sentinel (10y) also satisfies this.
+  - interval: 1m
+    input_series:
+      - series: 'knowledge_event_last_occurrence_age_seconds{event_type="recap.topic_snapshotted.v1"}'
+        values: '315360000x70'
+      - series: 'knowledge_event_last_occurrence_age_seconds{event_type="SummaryVersionCreated"}'
+        values: '1956x70'
+    alert_rule_test:
+      - eval_time: 65m
+        alertname: KnowledgeLoopRecapTopicSnapshotProducerDead
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              service: knowledge-sovereign
+              source: recap-worker
+              event_type: "recap.topic_snapshotted.v1"
+            exp_annotations:
+              summary: "recap.topic_snapshotted.v1 producer appears dead (no emit >48h, pipeline alive)"
+              description: |
+                No recap.topic_snapshotted.v1 event in >48h while SummaryVersionCreated
+                kept arriving (<6h). recap-worker's topic-snapshot emit is likely
+                unwired or failing (ADR-000939 / the RECAP_KNOWLEDGE_OWNER_* owner
+                binding). Cluster relations cannot form without this fuel.
+              runbook_url: "docs/ADR/000939.md"
+
+  # Whole pipeline quiet (SummaryVersionCreated also stale) → recap alert does
+  # NOT fire, because the staleness is not recap-specific.
+  - interval: 1m
+    input_series:
+      - series: 'knowledge_event_last_occurrence_age_seconds{event_type="recap.topic_snapshotted.v1"}'
+        values: '315360000x70'
+      - series: 'knowledge_event_last_occurrence_age_seconds{event_type="SummaryVersionCreated"}'
+        values: '90000x70'
+    alert_rule_test:
+      - eval_time: 65m
+        alertname: KnowledgeLoopRecapTopicSnapshotProducerDead
+        exp_alerts: []
