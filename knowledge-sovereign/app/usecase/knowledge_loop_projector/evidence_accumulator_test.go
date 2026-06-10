@@ -363,6 +363,60 @@ func TestRunBatch_LateFuel_TagSetVersionCreated(t *testing.T) {
 	require.True(t, hasCluster, "v must gain a Cluster relation from the shared tag, got %#v", parseRelations(last.Relations))
 }
 
+// TestRunBatch_LateFuel_AugurLink_NoFalseContradiction guards the bug the E2E
+// augur step would have masked: a fresh article carries one baseline
+// SummaryVersionCreated, and an augur link arriving later must situate it as a
+// CONTINUE/Inquiry thread — NOT invent a Contradiction from its own baseline
+// summary (drift comes only from supersedes).
+func TestRunBatch_LateFuel_AugurLink_NoFalseContradiction(t *testing.T) {
+	userID := uuid.New()
+	tenantID := uuid.New()
+	base := time.Date(2026, 6, 3, 0, 0, 0, 0, time.UTC)
+
+	summary := makeEvent(t, EventSummaryVersionCreated, 1, userID, map[string]any{
+		"article_id": "a", "summary_version_id": uuid.NewString(),
+	})
+	summary.TenantID = tenantID
+	summary.OccurredAt = base
+	summary.AggregateID = "a"
+	summary.AggregateType = "article"
+
+	augur := makeEvent(t, EventAugurConversationLinked, 2, userID, map[string]any{
+		"entry_key": "article:a", "conversation_id": "c1",
+	})
+	augur.TenantID = tenantID
+	augur.OccurredAt = base.Add(time.Hour)
+	augur.AggregateID = "article:a"
+	augur.AggregateType = "knowledge_loop_session"
+
+	repo := &fakeRepo{events: []sovereign_db.KnowledgeEvent{summary, augur}}
+	require.NoError(t, NewProjector(repo, testLogger(), Config{BatchSize: 100}).RunBatch(context.Background()))
+
+	var found *sovereignv1.KnowledgeLoopEntry
+	for _, e := range repo.entries {
+		if e.EntryKey == "article:a" {
+			found = e
+		}
+	}
+	require.NotNil(t, found)
+
+	rels := parseRelations(found.Relations)
+	var hasInquiry, hasContradiction bool
+	for _, r := range rels {
+		switch r.Kind {
+		case RelationKindInquiry:
+			hasInquiry = true
+		case RelationKindContradiction:
+			hasContradiction = true
+		}
+	}
+	require.True(t, hasInquiry, "augur link must add an Inquiry relation, got %#v", rels)
+	require.False(t, hasContradiction,
+		"a fresh article's own baseline summary must NOT be counted as drift, got %#v", rels)
+	require.Equal(t, sovereignv1.SurfaceBucket_SURFACE_BUCKET_CONTINUE, found.SurfaceBucket)
+	require.Equal(t, sovereignv1.SurfacePlannerVersion_SURFACE_PLANNER_VERSION_V2, found.GetSurfacePlannerVersion())
+}
+
 // --- fail-loud (ADR-000939 §4 / CLAUDE.md #8) -------------------------------
 
 // A read failure in the derive path must surface as a batch error, never
@@ -379,10 +433,12 @@ func TestRunBatch_FailsLoudOnAccumulatorReadError(t *testing.T) {
 }
 
 // A write failure in the apply path must likewise surface, not be swallowed.
+// SummarySuperseded is used because it writes a fact to the accumulator (a
+// lone SummaryVersionCreated intentionally writes nothing — see the drift fix).
 func TestRunBatch_FailsLoudOnAccumulatorWriteError(t *testing.T) {
 	userID := uuid.New()
-	ev := makeEvent(t, EventSummaryVersionCreated, 100, userID, map[string]any{
-		"entry_key": "article:v", "article_id": "art-v", "summary_version_id": uuid.NewString(),
+	ev := makeEvent(t, EventSummarySuperseded, 100, userID, map[string]any{
+		"entry_key": "article:v", "article_id": "art-v",
 	})
 	repo := &fakeRepo{events: []sovereign_db.KnowledgeEvent{ev}, evidenceFailOnApply: true}
 	err := NewProjector(repo, testLogger(), Config{BatchSize: 10}).RunBatch(context.Background())

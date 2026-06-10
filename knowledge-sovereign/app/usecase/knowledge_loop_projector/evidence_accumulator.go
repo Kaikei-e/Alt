@@ -102,11 +102,13 @@ func evidenceWritesForEvent(ev *sovereign_db.KnowledgeEvent) []sovereign_db.Know
 	var ws []sovereign_db.KnowledgeLoopEvidenceWrite
 
 	switch ev.EventType {
-	case EventSummaryVersionCreated:
-		if aid := evidenceArticleID(ev); aid != "" {
-			ws = append(ws, factWrite(ev, evScopeArticle, aid, evSigSummaryVersion,
-				extractStringField(ev.Payload, "summary_version_id")))
-		}
+	// SummaryVersionCreated is an entry-creating event but contributes NO
+	// accumulator fact: a single summary version is the article's baseline, not
+	// drift. Counting it would make a later late-fuel re-derive (e.g. an augur
+	// link arriving on a fresh article) see the entry's own baseline summary as
+	// version drift and invent a false Contradiction relation. Drift comes only
+	// from supersedes — and a real re-summary always emits a SummarySuperseded
+	// alongside the new version, so no signal is lost.
 
 	case EventSummarySuperseded, EventHomeItemSuperseded:
 		if aid := evidenceArticleID(ev); aid != "" {
@@ -352,12 +354,11 @@ func applyEntrySignal(out *SurfaceScoreInputs, st sovereign_db.KnowledgeLoopEvid
 // applyArticleSignal folds one article-scoped accumulator cell into the inputs.
 func applyArticleSignal(out *SurfaceScoreInputs, st sovereign_db.KnowledgeLoopEvidenceState, since, until time.Time, articleTags *[]string) {
 	switch st.SignalKind {
-	case evSigSummaryVersion:
-		// Prior re-summaries of this article are version drift.
-		out.VersionDriftCount += uint32(windowCount(st.Facts, since, until))
 	case evSigSummarySupersede:
 		// A supersede is both drift and a contradiction (a newer version
-		// replaced what the user read) — mirrors the v1 resolver semantics.
+		// replaced what the user read). It is the ONLY drift signal — a lone
+		// summary version is the article's baseline, not drift (see
+		// evidenceWritesForEvent).
 		c := uint32(windowCount(st.Facts, since, until))
 		out.VersionDriftCount += c
 		out.ContradictionCount += c
