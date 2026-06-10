@@ -28,6 +28,7 @@ import (
 	"alt/usecase/recall_dismiss_usecase"
 	"alt/usecase/recall_rail_usecase"
 	"alt/usecase/recall_snooze_usecase"
+	"alt/usecase/resolve_trail_branch_usecase"
 	"alt/usecase/select_lens_usecase"
 	"alt/usecase/track_home_action_usecase"
 	"alt/usecase/track_home_seen_usecase"
@@ -43,6 +44,7 @@ type KnowledgeModule struct {
 	// Usecases
 	GetKnowledgeHomeUsecase          *get_knowledge_home_usecase.GetKnowledgeHomeUsecase
 	GetKnowledgeTrailUsecase         *get_knowledge_trail_usecase.GetKnowledgeTrailUsecase
+	ResolveTrailBranchUsecase        *resolve_trail_branch_usecase.ResolveTrailBranchUsecase
 	TrackHomeSeenUsecase             *track_home_seen_usecase.TrackHomeSeenUsecase
 	TrackHomeActionUsecase           *track_home_action_usecase.TrackHomeActionUsecase
 	AppendKnowledgeEventUsecase      *append_knowledge_event_usecase.AppendKnowledgeEventUsecase
@@ -99,6 +101,7 @@ func newKnowledgeModule(infra *InfraModule, article *ArticleModule) *KnowledgeMo
 	trendingTagsGw := trending_tags_gateway.NewTrendingTagsGateway(altDB, 30*time.Minute)
 	getKnowledgeHomeUC := get_knowledge_home_usecase.NewGetKnowledgeHomeUsecase(sovereignCli, sovereignCli, sovereignCli, sovereignCli, sovereignCli, trendingTagsGw)
 	getKnowledgeTrailUC := get_knowledge_trail_usecase.NewGetKnowledgeTrailUsecase(sovereignCli)
+	resolveTrailBranchUC := resolve_trail_branch_usecase.NewResolveTrailBranchUsecase(sovereignCli)
 	trackHomeSeenUC := track_home_seen_usecase.NewTrackHomeSeenUsecase(sovereignCli, featureFlagGw)
 	trackHomeActionUC := track_home_action_usecase.NewTrackHomeActionUsecase(sovereignCli, sovereignCli, featureFlagGw, sovereignCli, sovereignCli, sovereignCli, articleURLLookupGw)
 	appendKnowledgeEventUC := append_knowledge_event_usecase.NewAppendKnowledgeEventUsecase(sovereignCli)
@@ -176,6 +179,7 @@ func newKnowledgeModule(infra *InfraModule, article *ArticleModule) *KnowledgeMo
 	return &KnowledgeModule{
 		GetKnowledgeHomeUsecase:          getKnowledgeHomeUC,
 		GetKnowledgeTrailUsecase:         getKnowledgeTrailUC,
+		ResolveTrailBranchUsecase:        resolveTrailBranchUC,
 		TrackHomeSeenUsecase:             trackHomeSeenUC,
 		TrackHomeActionUsecase:           trackHomeActionUC,
 		AppendKnowledgeEventUsecase:      appendKnowledgeEventUC,

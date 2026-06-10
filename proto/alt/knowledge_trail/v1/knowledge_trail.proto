@@ -11,6 +11,23 @@ option go_package = "alt/gen/proto/alt/knowledge_trail/v1;knowledgetrailv1";
 service KnowledgeTrailService {
   // GetTrail returns the user's footprint spine in reverse-chronological order.
   rpc GetTrail(GetTrailRequest) returns (GetTrailResponse);
+  // ResolveBranch records the user's response to a proposed branch (taken or
+  // dismissed). Idempotent via a client-supplied UUIDv7. Taking a branch closes
+  // the loop: the resolution drops the branch from the open set and the user's
+  // engagement with the target re-surfaces as a footprint (return-diff).
+  rpc ResolveBranch(ResolveBranchRequest) returns (ResolveBranchResponse);
+}
+
+message ResolveBranchRequest {
+  string branch_key = 1;
+  // resolution: "taken" | "dismissed".
+  string resolution = 2;
+  // client_resolution_id is a UUIDv7 the caller mints so retries are idempotent.
+  string client_resolution_id = 3;
+}
+
+message ResolveBranchResponse {
+  bool ok = 1;
 }
 
 message GetTrailRequest {

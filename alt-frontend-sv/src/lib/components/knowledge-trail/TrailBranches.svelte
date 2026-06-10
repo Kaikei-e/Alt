@@ -1,11 +1,15 @@
 <script lang="ts">
-import type { BranchData } from "$lib/connect/knowledge_trail";
+import type {
+	BranchData,
+	BranchResolution,
+} from "$lib/connect/knowledge_trail";
 
 interface Props {
 	branches: BranchData[];
+	onResolve: (branchKey: string, resolution: BranchResolution) => void;
 }
 
-const { branches }: Props = $props();
+const { branches, onResolve }: Props = $props();
 
 const KIND_LABEL: Record<string, string> = {
 	continuation: "Continues your thread",
@@ -37,6 +41,22 @@ function evidenceSummary(b: BranchData): string {
 				<p class="branch-why">{branch.why}</p>
 				<div class="branch-evidence">
 					evidence: {evidenceSummary(branch)} &nbsp;·&nbsp; confidence: {branch.confidence}
+				</div>
+				<div class="branch-actions">
+					<button
+						class="take-path"
+						data-testid="branch-take"
+						onclick={() => onResolve(branch.branchKey, "taken")}
+					>
+						Take this path
+					</button>
+					<button
+						class="dismiss-path"
+						data-testid="branch-dismiss"
+						onclick={() => onResolve(branch.branchKey, "dismissed")}
+					>
+						Dismiss
+					</button>
 				</div>
 			</article>
 		{/each}
@@ -117,5 +137,36 @@ function evidenceSummary(b: BranchData): string {
 		color: var(--alt-ash, #999);
 		margin-top: 0.45rem;
 		letter-spacing: 0.02em;
+	}
+	.branch-actions {
+		display: flex;
+		gap: 0.5rem;
+		margin-top: 0.65rem;
+	}
+	.take-path {
+		border: 1px solid var(--alt-primary, #2f4f4f);
+		background: var(--alt-primary, #2f4f4f);
+		color: var(--surface-bg, #faf9f7);
+		padding: 0.34rem 0.8rem;
+		font-family: var(--font-body);
+		font-size: 0.8rem;
+		font-weight: 600;
+		cursor: pointer;
+	}
+	.take-path:hover {
+		background: var(--interactive-text-hover, #223b3b);
+	}
+	.dismiss-path {
+		border: 1px solid var(--chip-border, #d0c8bb);
+		background: transparent;
+		color: var(--alt-slate, #666);
+		padding: 0.34rem 0.8rem;
+		font-family: var(--font-body);
+		font-size: 0.8rem;
+		cursor: pointer;
+	}
+	.dismiss-path:hover {
+		background: var(--surface-hover, #f3f1ed);
+		color: var(--alt-charcoal, #1a1a1a);
 	}
 </style>

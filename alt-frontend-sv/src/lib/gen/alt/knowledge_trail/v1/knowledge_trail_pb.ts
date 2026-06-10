@@ -10,7 +10,55 @@ import type { Message } from "@bufbuild/protobuf";
  * Describes the file alt/knowledge_trail/v1/knowledge_trail.proto.
  */
 export const file_alt_knowledge_trail_v1_knowledge_trail: GenFile = /*@__PURE__*/
-  fileDesc("CixhbHQva25vd2xlZGdlX3RyYWlsL3YxL2tub3dsZWRnZV90cmFpbC5wcm90bxIWYWx0Lmtub3dsZWRnZV90cmFpbC52MSJVCg9HZXRUcmFpbFJlcXVlc3QSEwoGY3Vyc29yGAEgASgJSACIAQESDQoFbGltaXQYAiABKAUSEwoLZmlsdGVyX3RhZ3MYAyADKAlCCQoHX2N1cnNvciK4AQoQR2V0VHJhaWxSZXNwb25zZRI1Cgpmb290cHJpbnRzGAEgAygLMiEuYWx0Lmtub3dsZWRnZV90cmFpbC52MS5Gb290cHJpbnQSEwoLbmV4dF9jdXJzb3IYAiABKAkSEAoIaGFzX21vcmUYAyABKAgSFAoMZ2VuZXJhdGVkX2F0GAQgASgJEjAKCGJyYW5jaGVzGAUgAygLMh4uYWx0Lmtub3dsZWRnZV90cmFpbC52MS5CcmFuY2gi3QEKBkJyYW5jaBISCgpicmFuY2hfa2V5GAEgASgJEhcKD2FuY2hvcl9pdGVtX2tleRgCIAEoCRIVCg1yZWxhdGlvbl9raW5kGAMgASgJEgsKA3doeRgEIAEoCRI/Cg1ldmlkZW5jZV9yZWZzGAUgAygLMiguYWx0Lmtub3dsZWRnZV90cmFpbC52MS5UcmFpbEV2aWRlbmNlUmVmEhIKCmNvbmZpZGVuY2UYBiABKAkSFwoPdGFyZ2V0X2l0ZW1fa2V5GAcgASgJEhQKDHRhcmdldF90aXRsZRgIIAEoCSI/ChBUcmFpbEV2aWRlbmNlUmVmEg4KBnJlZl9pZBgBIAEoCRINCgVsYWJlbBgCIAEoCRIMCgRraW5kGAMgASgJIqEBCglGb290cHJpbnQSFQoNZm9vdHByaW50X2tleRgBIAEoCRIMCgR2ZXJiGAIgASgJEhAKCGl0ZW1fa2V5GAMgASgJEg0KBXRpdGxlGAQgASgJEg8KB2V4Y2VycHQYBSABKAkSDAoEdGFncxgGIAMoCRIMCgRub3RlGAcgASgJEhMKC29jY3VycmVkX2F0GAggASgJEgwKBHdlYXIYCSABKAkydgoVS25vd2xlZGdlVHJhaWxTZXJ2aWNlEl0KCEdldFRyYWlsEicuYWx0Lmtub3dsZWRnZV90cmFpbC52MS5HZXRUcmFpbFJlcXVlc3QaKC5hbHQua25vd2xlZGdlX3RyYWlsLnYxLkdldFRyYWlsUmVzcG9uc2VCN1o1YWx0L2dlbi9wcm90by9hbHQva25vd2xlZGdlX3RyYWlsL3YxO2tub3dsZWRnZXRyYWlsdjFiBnByb3RvMw");
+  fileDesc("CixhbHQva25vd2xlZGdlX3RyYWlsL3YxL2tub3dsZWRnZV90cmFpbC5wcm90bxIWYWx0Lmtub3dsZWRnZV90cmFpbC52MSJcChRSZXNvbHZlQnJhbmNoUmVxdWVzdBISCgpicmFuY2hfa2V5GAEgASgJEhIKCnJlc29sdXRpb24YAiABKAkSHAoUY2xpZW50X3Jlc29sdXRpb25faWQYAyABKAkiIwoVUmVzb2x2ZUJyYW5jaFJlc3BvbnNlEgoKAm9rGAEgASgIIlUKD0dldFRyYWlsUmVxdWVzdBITCgZjdXJzb3IYASABKAlIAIgBARINCgVsaW1pdBgCIAEoBRITCgtmaWx0ZXJfdGFncxgDIAMoCUIJCgdfY3Vyc29yIrgBChBHZXRUcmFpbFJlc3BvbnNlEjUKCmZvb3RwcmludHMYASADKAsyIS5hbHQua25vd2xlZGdlX3RyYWlsLnYxLkZvb3RwcmludBITCgtuZXh0X2N1cnNvchgCIAEoCRIQCghoYXNfbW9yZRgDIAEoCBIUCgxnZW5lcmF0ZWRfYXQYBCABKAkSMAoIYnJhbmNoZXMYBSADKAsyHi5hbHQua25vd2xlZGdlX3RyYWlsLnYxLkJyYW5jaCLdAQoGQnJhbmNoEhIKCmJyYW5jaF9rZXkYASABKAkSFwoPYW5jaG9yX2l0ZW1fa2V5GAIgASgJEhUKDXJlbGF0aW9uX2tpbmQYAyABKAkSCwoDd2h5GAQgASgJEj8KDWV2aWRlbmNlX3JlZnMYBSADKAsyKC5hbHQua25vd2xlZGdlX3RyYWlsLnYxLlRyYWlsRXZpZGVuY2VSZWYSEgoKY29uZmlkZW5jZRgGIAEoCRIXCg90YXJnZXRfaXRlbV9rZXkYByABKAkSFAoMdGFyZ2V0X3RpdGxlGAggASgJIj8KEFRyYWlsRXZpZGVuY2VSZWYSDgoGcmVmX2lkGAEgASgJEg0KBWxhYmVsGAIgASgJEgwKBGtpbmQYAyABKAkioQEKCUZvb3RwcmludBIVCg1mb290cHJpbnRfa2V5GAEgASgJEgwKBHZlcmIYAiABKAkSEAoIaXRlbV9rZXkYAyABKAkSDQoFdGl0bGUYBCABKAkSDwoHZXhjZXJwdBgFIAEoCRIMCgR0YWdzGAYgAygJEgwKBG5vdGUYByABKAkSEwoLb2NjdXJyZWRfYXQYCCABKAkSDAoEd2VhchgJIAEoCTLkAQoVS25vd2xlZGdlVHJhaWxTZXJ2aWNlEl0KCEdldFRyYWlsEicuYWx0Lmtub3dsZWRnZV90cmFpbC52MS5HZXRUcmFpbFJlcXVlc3QaKC5hbHQua25vd2xlZGdlX3RyYWlsLnYxLkdldFRyYWlsUmVzcG9uc2USbAoNUmVzb2x2ZUJyYW5jaBIsLmFsdC5rbm93bGVkZ2VfdHJhaWwudjEuUmVzb2x2ZUJyYW5jaFJlcXVlc3QaLS5hbHQua25vd2xlZGdlX3RyYWlsLnYxLlJlc29sdmVCcmFuY2hSZXNwb25zZUI3WjVhbHQvZ2VuL3Byb3RvL2FsdC9rbm93bGVkZ2VfdHJhaWwvdjE7a25vd2xlZGdldHJhaWx2MWIGcHJvdG8z");
+
+/**
+ * @generated from message alt.knowledge_trail.v1.ResolveBranchRequest
+ */
+export type ResolveBranchRequest = Message<"alt.knowledge_trail.v1.ResolveBranchRequest"> & {
+  /**
+   * @generated from field: string branch_key = 1;
+   */
+  branchKey: string;
+
+  /**
+   * resolution: "taken" | "dismissed".
+   *
+   * @generated from field: string resolution = 2;
+   */
+  resolution: string;
+
+  /**
+   * client_resolution_id is a UUIDv7 the caller mints so retries are idempotent.
+   *
+   * @generated from field: string client_resolution_id = 3;
+   */
+  clientResolutionId: string;
+};
+
+/**
+ * Describes the message alt.knowledge_trail.v1.ResolveBranchRequest.
+ * Use `create(ResolveBranchRequestSchema)` to create a new message.
+ */
+export const ResolveBranchRequestSchema: GenMessage<ResolveBranchRequest> = /*@__PURE__*/
+  messageDesc(file_alt_knowledge_trail_v1_knowledge_trail, 0);
+
+/**
+ * @generated from message alt.knowledge_trail.v1.ResolveBranchResponse
+ */
+export type ResolveBranchResponse = Message<"alt.knowledge_trail.v1.ResolveBranchResponse"> & {
+  /**
+   * @generated from field: bool ok = 1;
+   */
+  ok: boolean;
+};
+
+/**
+ * Describes the message alt.knowledge_trail.v1.ResolveBranchResponse.
+ * Use `create(ResolveBranchResponseSchema)` to create a new message.
+ */
+export const ResolveBranchResponseSchema: GenMessage<ResolveBranchResponse> = /*@__PURE__*/
+  messageDesc(file_alt_knowledge_trail_v1_knowledge_trail, 1);
 
 /**
  * @generated from message alt.knowledge_trail.v1.GetTrailRequest
@@ -40,7 +88,7 @@ export type GetTrailRequest = Message<"alt.knowledge_trail.v1.GetTrailRequest"> 
  * Use `create(GetTrailRequestSchema)` to create a new message.
  */
 export const GetTrailRequestSchema: GenMessage<GetTrailRequest> = /*@__PURE__*/
-  messageDesc(file_alt_knowledge_trail_v1_knowledge_trail, 0);
+  messageDesc(file_alt_knowledge_trail_v1_knowledge_trail, 2);
 
 /**
  * @generated from message alt.knowledge_trail.v1.GetTrailResponse
@@ -79,7 +127,7 @@ export type GetTrailResponse = Message<"alt.knowledge_trail.v1.GetTrailResponse"
  * Use `create(GetTrailResponseSchema)` to create a new message.
  */
 export const GetTrailResponseSchema: GenMessage<GetTrailResponse> = /*@__PURE__*/
-  messageDesc(file_alt_knowledge_trail_v1_knowledge_trail, 1);
+  messageDesc(file_alt_knowledge_trail_v1_knowledge_trail, 3);
 
 /**
  * Branch is a system-proposed next step on the trail. It ALWAYS carries the
@@ -145,7 +193,7 @@ export type Branch = Message<"alt.knowledge_trail.v1.Branch"> & {
  * Use `create(BranchSchema)` to create a new message.
  */
 export const BranchSchema: GenMessage<Branch> = /*@__PURE__*/
-  messageDesc(file_alt_knowledge_trail_v1_knowledge_trail, 2);
+  messageDesc(file_alt_knowledge_trail_v1_knowledge_trail, 4);
 
 /**
  * @generated from message alt.knowledge_trail.v1.TrailEvidenceRef
@@ -174,7 +222,7 @@ export type TrailEvidenceRef = Message<"alt.knowledge_trail.v1.TrailEvidenceRef"
  * Use `create(TrailEvidenceRefSchema)` to create a new message.
  */
 export const TrailEvidenceRefSchema: GenMessage<TrailEvidenceRef> = /*@__PURE__*/
-  messageDesc(file_alt_knowledge_trail_v1_knowledge_trail, 3);
+  messageDesc(file_alt_knowledge_trail_v1_knowledge_trail, 5);
 
 /**
  * Footprint is one user cognitive act on the trail spine. It is a pure
@@ -242,7 +290,7 @@ export type Footprint = Message<"alt.knowledge_trail.v1.Footprint"> & {
  * Use `create(FootprintSchema)` to create a new message.
  */
 export const FootprintSchema: GenMessage<Footprint> = /*@__PURE__*/
-  messageDesc(file_alt_knowledge_trail_v1_knowledge_trail, 4);
+  messageDesc(file_alt_knowledge_trail_v1_knowledge_trail, 6);
 
 /**
  * KnowledgeTrailService is the front-facing API for the Knowledge Trail —
@@ -262,6 +310,19 @@ export const KnowledgeTrailService: GenService<{
     methodKind: "unary";
     input: typeof GetTrailRequestSchema;
     output: typeof GetTrailResponseSchema;
+  },
+  /**
+   * ResolveBranch records the user's response to a proposed branch (taken or
+   * dismissed). Idempotent via a client-supplied UUIDv7. Taking a branch closes
+   * the loop: the resolution drops the branch from the open set and the user's
+   * engagement with the target re-surfaces as a footprint (return-diff).
+   *
+   * @generated from rpc alt.knowledge_trail.v1.KnowledgeTrailService.ResolveBranch
+   */
+  resolveBranch: {
+    methodKind: "unary";
+    input: typeof ResolveBranchRequestSchema;
+    output: typeof ResolveBranchResponseSchema;
   },
 }> = /*@__PURE__*/
   serviceDesc(file_alt_knowledge_trail_v1_knowledge_trail, 0);

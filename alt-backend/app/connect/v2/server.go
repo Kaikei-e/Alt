@@ -162,7 +162,7 @@ func SetupConnectHandlers(mux *http.ServeMux, container *di.ApplicationComponent
 	logger.Info("Registered Connect-RPC KnowledgeHomeService", "path", khPath)
 
 	// Register KnowledgeTrailService — the footprint spine read API.
-	knowledgeTrailHandler := knowledge_trail.NewHandler(container.GetKnowledgeTrailUsecase, logger)
+	knowledgeTrailHandler := knowledge_trail.NewHandler(container.GetKnowledgeTrailUsecase, container.ResolveTrailBranchUsecase, logger)
 	ktPath, ktServiceHandler := knowledgetrailv1connect.NewKnowledgeTrailServiceHandler(knowledgeTrailHandler, opts)
 	mux.Handle(ktPath, ktServiceHandler)
 	logger.Info("Registered Connect-RPC KnowledgeTrailService", "path", ktPath)
