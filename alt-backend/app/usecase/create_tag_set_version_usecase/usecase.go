@@ -58,11 +58,18 @@ func (u *CreateTagSetVersionUsecase) Execute(ctx context.Context, tsv domain.Tag
 		return fmt.Errorf("create tag set version: %w", err)
 	}
 
+	// Extract canonical tag names from the version being created so the
+	// sovereign evidence accumulator can derive Cluster relations
+	// (readPayloadStringSlice "tags"). Reproject-safe: names come from this
+	// version's payload, never a latest-state lookup.
+	tagNames := tagNamesFromJSON(tsv.TagsJSON)
+
 	// Emit event
-	payload, _ := json.Marshal(map[string]string{
+	payload, _ := json.Marshal(map[string]any{
 		"tag_set_version_id": tsv.TagSetVersionID.String(),
 		"article_id":         tsv.ArticleID.String(),
 		"generator":          tsv.Generator,
+		"tags":               tagNames,
 	})
 
 	event := domain.KnowledgeEvent{
@@ -90,18 +97,7 @@ func (u *CreateTagSetVersionUsecase) Execute(ctx context.Context, tsv domain.Tag
 			logger.Logger.ErrorContext(ctx, "failed to mark tag set version superseded",
 				"error", err, "article_id", tsv.ArticleID)
 		} else if prev != nil {
-			// Extract previous tag names from JSON
-			var prevTagNames []string
-			var tagItems []struct {
-				Name string `json:"name"`
-			}
-			if err := json.Unmarshal(prev.TagsJSON, &tagItems); err == nil {
-				for _, t := range tagItems {
-					if t.Name != "" {
-						prevTagNames = append(prevTagNames, t.Name)
-					}
-				}
-			}
+			prevTagNames := tagNamesFromJSON(prev.TagsJSON)
 
 			supersedePayload, _ := json.Marshal(map[string]interface{}{
 				"article_id":             tsv.ArticleID.String(),
@@ -132,4 +128,22 @@ func (u *CreateTagSetVersionUsecase) Execute(ctx context.Context, tsv domain.Tag
 	}
 
 	return nil
+}
+
+// tagNamesFromJSON extracts the canonical tag-name list from a TagSetVersion's
+// TagsJSON ([{"name":...,"confidence":...}, ...]). Empty names are skipped.
+func tagNamesFromJSON(tagsJSON json.RawMessage) []string {
+	var items []struct {
+		Name string `json:"name"`
+	}
+	if err := json.Unmarshal(tagsJSON, &items); err != nil {
+		return nil
+	}
+	var names []string
+	for _, t := range items {
+		if t.Name != "" {
+			names = append(names, t.Name)
+		}
+	}
+	return names
 }

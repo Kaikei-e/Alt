@@ -109,6 +109,49 @@ func TestCreateTagSetVersionUsecase_Execute(t *testing.T) {
 	}
 }
 
+// TestCreateTagSetVersionUsecase_EmitsTagsInPayload pins the producer payload
+// shape for TagSetVersionCreated. The knowledge-sovereign evidence accumulator
+// reads the article's tag names from this event via
+// readPayloadStringSlice(raw, "tags", "article_tags") to derive Cluster
+// relations, so the `tags` key must carry the version's tag names as a JSON
+// array of strings. Reproject-safe: the names come from the version being
+// created, not a latest-state lookup.
+func TestCreateTagSetVersionUsecase_EmitsTagsInPayload(t *testing.T) {
+	logger.InitLogger()
+
+	tagSetPort := &mockTagSetPort{}
+	eventPort := &mockEventPort{}
+
+	uc := NewCreateTagSetVersionUsecase(tagSetPort, eventPort, nil)
+	err := uc.Execute(context.Background(), domain.TagSetVersion{
+		ArticleID: uuid.New(),
+		UserID:    uuid.New(),
+		Generator: "tag-generator",
+		TagsJSON:  json.RawMessage(`[{"name":"go","confidence":0.9},{"name":"rust","confidence":0.8}]`),
+	})
+
+	require.NoError(t, err)
+	require.Len(t, eventPort.appended, 1)
+	require.Equal(t, domain.EventTagSetVersionCreated, eventPort.appended[0].EventType)
+
+	var payload map[string]any
+	require.NoError(t, json.Unmarshal(eventPort.appended[0].Payload, &payload))
+
+	rawTags, ok := payload["tags"]
+	require.True(t, ok, "TagSetVersionCreated payload must carry a `tags` key")
+
+	tagsAny, ok := rawTags.([]any)
+	require.True(t, ok, "`tags` must be a JSON array")
+
+	var tags []string
+	for _, v := range tagsAny {
+		s, ok := v.(string)
+		require.True(t, ok, "`tags` entries must be strings")
+		tags = append(tags, s)
+	}
+	assert.Equal(t, []string{"go", "rust"}, tags)
+}
+
 func TestCreateTagSetVersionUsecase_FirstVersion_NoSupersedeEvent(t *testing.T) {
 	logger.InitLogger()
 
