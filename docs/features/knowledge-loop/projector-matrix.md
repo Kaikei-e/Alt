@@ -60,8 +60,9 @@ omissions in either step.
 | knowledge_loop.reviewed.v1 | patch | yes | yes | review | recall_why | (preserved) |
 | knowledge_loop.session_reset.v1 | no | yes | no | — | — | — |
 | knowledge_loop.lens_mode_switched.v1 | no | yes | no | — | — | — |
-| recap.topic_snapshotted.v1 | no | no | no | — | — | (Surface Planner v2 input only) |
-| augur.conversation_linked.v1 | no | no | no | — | — | (Surface Planner v2 input only) |
+| TagSetVersionCreated | patch | no | no | (re-derived) | (preserved) | (ADR-000939 late fuel: folds tag activity into the evidence accumulator and re-derives an existing entry's relation-set to add a Cluster relation when the tag is shared. Patches relations/lens only — why / lifecycle / freshness preserved. Creates no entry when none exists.) |
+| recap.topic_snapshotted.v1 | no | no | no | — | — | (ADR-000939 evidence accumulator input only — topic_term activity for Cluster overlap) |
+| augur.conversation_linked.v1 | patch | no | yes | (re-derived) | (preserved) | (ADR-000939 late fuel: folds an augur link into the accumulator and re-derives an existing entry's relation-set to add an Inquiry relation. Patches relations/lens only.) |
 | knowledge_loop.surface_plan_recomputed.v1 | no | no | no | — | — | (system-only; never user-emittable) |
 | knowledge_loop.act_outcome.v1 | no | no | no | — | — | (system-only; ActOutcomeSignal aggregation only — ADR-000908 §Δ1) |
 | knowledge_loop.internalized.v1 | patch | no | yes | (current) | (preserved) | "I got this" graduation. Flips dismiss_state to internalized via PatchKnowledgeLoopEntryDismissState — freshness / why / surface_bucket / continue_context preserved. Recomputes macro_state so MacroByline picks up the +1. ADR-000914. |

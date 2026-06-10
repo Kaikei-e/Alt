@@ -9,12 +9,17 @@ const (
 	EventArticleCreated        = "ArticleCreated"
 	EventArticleUpdated        = "ArticleUpdated"
 	EventSummaryVersionCreated = "SummaryVersionCreated"
-	EventHomeItemsSeen         = "HomeItemsSeen"
-	EventHomeItemOpened        = "HomeItemOpened"
-	EventHomeItemDismissed     = "HomeItemDismissed"
-	EventHomeItemAsked         = "HomeItemAsked"
-	EventSummarySuperseded     = "SummarySuperseded"
-	EventHomeItemSuperseded    = "HomeItemSuperseded"
+	// EventTagSetVersionCreated carries the article's tag name array (added to
+	// the payload in the alt-backend producer, ADR-000939). The accumulator
+	// records per-tag activity from it so a brand-new article can be situated
+	// in a Cluster relation once another article shares its tags.
+	EventTagSetVersionCreated = "TagSetVersionCreated"
+	EventHomeItemsSeen        = "HomeItemsSeen"
+	EventHomeItemOpened       = "HomeItemOpened"
+	EventHomeItemDismissed    = "HomeItemDismissed"
+	EventHomeItemAsked        = "HomeItemAsked"
+	EventSummarySuperseded    = "SummarySuperseded"
+	EventHomeItemSuperseded   = "HomeItemSuperseded"
 
 	// EventSummaryNarrativeBackfilled is the discovered event emitted by
 	// alt-backend's summary-narrative-backfill job to repair Knowledge Loop
@@ -178,4 +183,15 @@ const AggregateLoopSession = "knowledge_loop_session"
 // count(act_targets->0->>'source_url') stood at 59129 / 50810 on 2026-05-27).
 // Bump triggers a full reproject so existing entries recover their URL
 // deterministically from the event log.
-const WhyMappingVersion = 14
+//
+// v15 (2026-06-10): ADR-000939 evidence-as-projection. The per-entry 7-day
+// window re-scan resolver (which truncated at LIMIT 256 and lost all evidence
+// at production log density, leaving relations=[]) is replaced by the
+// co-projected knowledge_loop_evidence accumulator. SurfaceScoreInputs are now
+// derived from the accumulator state of the event-log prefix; relations,
+// surface_score_inputs, and the honest per-entry surface_planner_version all
+// change as a result, and late evidence (TagSetVersionCreated → Cluster,
+// AugurConversationLinked → Inquiry) re-derives an entry's relation-set on
+// arrival. Bump triggers a full reproject so every entry's relation-set is
+// rebuilt from the accumulator deterministically.
+const WhyMappingVersion = 15

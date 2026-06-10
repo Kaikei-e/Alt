@@ -399,6 +399,91 @@ func (r *Repository) PatchKnowledgeLoopEntrySurfacePlan(
 	}, nil
 }
 
+// patchKnowledgeLoopEntryRelationsQuery re-derives an existing entry's relation
+// set and the placement columns the relation set drives, when late evidence
+// (TagSetVersionCreated → Cluster, AugurConversationLinked → Inquiry) arrives
+// after the entry was first projected (ADR-000939 §3, immediate re-derivation).
+//
+// Reproject-safety / merge-safety:
+//   - why_*, dismiss_state, visibility_state, completion_state, freshness_at,
+//     source_observed_at, act_targets, change_summary, continue_context are
+//     intentionally NOT in the SET clause — late fuel only refreshes the
+//     relation-set and the lens (surface_bucket) over it, never the entry's
+//     lifecycle or narrative.
+//   - WHERE projection_seq_hiwater <= $5 + the GREATEST() bump enforces the
+//     monotonic seq guard, so this is idempotent on replay and a no-op when a
+//     newer event already advanced the entry.
+const patchKnowledgeLoopEntryRelationsQuery = `
+UPDATE knowledge_loop_entries SET
+  projection_revision     = projection_revision + 1,
+  projection_seq_hiwater  = GREATEST(projection_seq_hiwater, $5),
+  source_event_seq        = GREATEST(source_event_seq, $5),
+  projected_at            = NOW(),
+  surface_bucket          = $6,
+  render_depth_hint       = $7,
+  loop_priority           = $8,
+  surface_planner_version = $9,
+  surface_score_inputs    = $10,
+  review_reason           = $11,
+  relations               = $12
+WHERE user_id = $1 AND tenant_id = $2 AND lens_mode_id = $3 AND entry_key = $4
+  AND projection_seq_hiwater <= $5
+RETURNING projection_revision, projection_seq_hiwater
+`
+
+// PatchKnowledgeLoopEntryRelations refreshes the relation-set and its lens for
+// an existing entry. Returns SkippedBySeqHiwater if the row is missing OR the
+// seq guard rejects (both safe — an absent entry means the late-fuel event
+// names an entry that was never projected, which is a legitimate no-op, and a
+// rejected seq means a newer event already owns the placement).
+func (r *Repository) PatchKnowledgeLoopEntryRelations(
+	ctx context.Context,
+	userID, tenantID, lensModeID, entryKey string,
+	eventSeq int64,
+	surfaceBucket sovereignv1.SurfaceBucket,
+	renderDepthHint int32,
+	loopPriority sovereignv1.LoopPriority,
+	plannerVersion sovereignv1.SurfacePlannerVersion,
+	scoreInputs []byte,
+	reviewReason sovereignv1.ReviewReason,
+	relations []byte,
+) (*KnowledgeLoopUpsertResult, error) {
+	uID, err := uuid.Parse(userID)
+	if err != nil {
+		return nil, fmt.Errorf("parse user_id: %w", err)
+	}
+	tID, err := uuid.Parse(tenantID)
+	if err != nil {
+		return nil, fmt.Errorf("parse tenant_id: %w", err)
+	}
+	if len(scoreInputs) == 0 {
+		scoreInputs = []byte("{}")
+	}
+
+	var revision, seqHiwater int64
+	row := r.pool.QueryRow(ctx, patchKnowledgeLoopEntryRelationsQuery,
+		uID, tID, lensModeID, entryKey, eventSeq,
+		surfaceBucketToDB(surfaceBucket),
+		int16(renderDepthHint),
+		loopPriorityToDB(loopPriority),
+		plannerVersionToDB(plannerVersion.Enum()),
+		scoreInputs,
+		reviewReasonToDB(reviewReason),
+		relations,
+	)
+	if err := row.Scan(&revision, &seqHiwater); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return &KnowledgeLoopUpsertResult{SkippedBySeqHiwater: true}, nil
+		}
+		return nil, fmt.Errorf("patch knowledge_loop_entry relations: %w", err)
+	}
+	return &KnowledgeLoopUpsertResult{
+		Applied:              true,
+		ProjectionRevision:   revision,
+		ProjectionSeqHiwater: seqHiwater,
+	}, nil
+}
+
 // patchKnowledgeLoopEntryDismissStateQuery flips the dismiss_state column of
 // an existing entry row to the supplied state (typically `deferred` for the
 // canonical contract §8.2 "passive dismiss / snooze" path).

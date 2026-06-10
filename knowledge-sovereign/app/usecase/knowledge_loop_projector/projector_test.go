@@ -35,6 +35,14 @@ type fakeRepo struct {
 	continueContextPatches []continueContextPatchCall
 	macroStates            []sovereign_db.KnowledgeLoopMacroStateRow
 	checkpoints            []int64
+	// evidence is the in-memory stand-in for knowledge_loop_evidence. It
+	// replicates the ON CONFLICT ring-trim / seq-guard / pin-coalesce semantics
+	// of the real driver SQL (validated against Postgres in the migration's
+	// integration check) so the projector tests exercise the true derive path.
+	evidence            map[evKey]*evState
+	relationPatchCalls  []relationPatchCall
+	evidenceFailOnApply bool
+	evidenceFailOnRead  bool
 }
 
 // continueContextPatchCall records arguments to PatchKnowledgeLoopEntryContinueContext.
@@ -533,27 +541,43 @@ func TestRunBatch_SummaryVersionCreated_ObserveSeed(t *testing.T) {
 	}}, targets)
 }
 
-func TestRunBatch_WithRealScoreResolverMarksPlannerV2AndStoresInputs(t *testing.T) {
+// ADR-000939: real cross-source evidence — a prior supersede on the same
+// article — derived from the accumulator marks the entry planner v2 and stores
+// the score inputs. (Replaces the deleted fakeResolver injection: the inputs
+// now come from the accumulator the projector folds, not a stubbed resolver.)
+func TestRunBatch_AccumulatorEvidenceMarksPlannerV2AndStoresInputs(t *testing.T) {
 	userID := uuid.New()
-	ev := makeEvent(t, EventSummaryVersionCreated, 210, userID, map[string]any{
-		"entry_key":     "article:42",
-		"article_title": "Planner evidence",
-		"tags":          []string{"ai"},
-	})
-	repo := &fakeRepo{events: []sovereign_db.KnowledgeEvent{ev}}
-	p := newProjector(repo).WithScoreResolver(fakeResolver{out: SurfaceScoreInputs{
-		TopicOverlapCount: 1,
-	}})
+	tenantID := uuid.New()
+	mk := func(seq int64, etype string, off time.Duration, payload map[string]any) sovereign_db.KnowledgeEvent {
+		ev := makeEvent(t, etype, seq, userID, payload)
+		ev.TenantID = tenantID
+		ev.OccurredAt = ev.OccurredAt.Add(off)
+		ev.AggregateID = "article:42"
+		ev.AggregateType = "article"
+		return ev
+	}
+	events := []sovereign_db.KnowledgeEvent{
+		mk(200, EventSummarySuperseded, 0, map[string]any{"entry_key": "article:42", "article_id": "art-42"}),
+		mk(210, EventSummaryVersionCreated, time.Hour, map[string]any{
+			"entry_key": "article:42", "article_id": "art-42", "article_title": "Planner evidence",
+			"summary_version_id": uuid.NewString(),
+		}),
+	}
+	repo := &fakeRepo{events: events}
 
-	require.NoError(t, p.RunBatch(context.Background()))
-	require.Len(t, repo.entries, 1)
+	require.NoError(t, newProjector(repo).RunBatch(context.Background()))
 
-	entry := repo.entries[0]
-	require.Equal(t, sovereignv1.SurfacePlannerVersion_SURFACE_PLANNER_VERSION_V2, entry.GetSurfacePlannerVersion())
-	require.JSONEq(t,
-		`{"topic_overlap_count":1,"tag_overlap_count":0,"has_augur_link":false,"version_drift_count":0,"has_open_interaction":false,"freshness_at":"2026-04-26T10:00:00Z","event_type":"SummaryVersionCreated"}`,
-		string(entry.SurfaceScoreInputs),
-	)
+	var entry *sovereignv1.KnowledgeLoopEntry
+	for _, e := range repo.entries {
+		if e.EntryKey == "article:42" {
+			entry = e
+		}
+	}
+	require.NotNil(t, entry)
+	require.Equal(t, sovereignv1.SurfacePlannerVersion_SURFACE_PLANNER_VERSION_V2, entry.GetSurfacePlannerVersion(),
+		"a prior supersede in the window is real v2 evidence")
+	require.NotEmpty(t, entry.SurfaceScoreInputs, "v2 placements persist their score inputs")
+	require.NotEmpty(t, entry.Relations, "the contradiction fuel must reach the relation-set")
 }
 
 func TestRunBatch_NoUserIDIsNoOp(t *testing.T) {

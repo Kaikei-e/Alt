@@ -15,6 +15,7 @@ type KnowledgeLoopReprojectResult struct {
 	EntriesTruncated  int64 `json:"entries_truncated"`
 	SessionTruncated  int64 `json:"session_state_truncated"`
 	SurfacesTruncated int64 `json:"surfaces_truncated"`
+	EvidenceTruncated int64 `json:"evidence_truncated"`
 	CheckpointReset   bool  `json:"checkpoint_reset"`
 }
 
@@ -52,6 +53,7 @@ func (r *Repository) TruncateKnowledgeLoopProjections(
 		{"knowledge_loop_entries", &out.EntriesTruncated},
 		{"knowledge_loop_session_state", &out.SessionTruncated},
 		{"knowledge_loop_surfaces", &out.SurfacesTruncated},
+		{"knowledge_loop_evidence", &out.EvidenceTruncated},
 	} {
 		row := tx.QueryRow(ctx, fmt.Sprintf("SELECT COUNT(*) FROM %s", t.name))
 		if err := row.Scan(t.dst); err != nil {
@@ -59,10 +61,12 @@ func (r *Repository) TruncateKnowledgeLoopProjections(
 		}
 	}
 
-	// TRUNCATE the three projection tables. We do NOT touch
-	// `knowledge_loop_transition_dedupes` (canonical contract §3 invariant 8 —
-	// dedupe is ingest-side, not a projection).
-	if _, err := tx.Exec(ctx, `TRUNCATE knowledge_loop_entries, knowledge_loop_session_state, knowledge_loop_surfaces`); err != nil {
+	// TRUNCATE the projection tables together with the co-projected evidence
+	// accumulator (ADR-000939 §2c — knowledge_loop_evidence is disposable and
+	// rebuilt from the event log in the same ordered pass as the entries). We
+	// do NOT touch `knowledge_loop_transition_dedupes` (canonical contract §3
+	// invariant 8 — dedupe is ingest-side, not a projection).
+	if _, err := tx.Exec(ctx, `TRUNCATE knowledge_loop_entries, knowledge_loop_session_state, knowledge_loop_surfaces, knowledge_loop_evidence`); err != nil {
 		return out, fmt.Errorf("TRUNCATE projections: %w", err)
 	}
 

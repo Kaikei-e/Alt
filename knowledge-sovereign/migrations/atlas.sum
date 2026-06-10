@@ -1,4 +1,4 @@
-h1:mP1UJOZAF7URCUub+HFv9STVHSj8D+Ep449FHMCpeDQ=
+h1:5Pwk9d4WF4OJBen1fvvQMyTCfCfFz+4fqxCDVpXUJWY=
 00001_initial_schema.sql h1:CSFJx5Q5Jv44C4sqoKpzvdh6t8Unwog8bZw9/VBd3NQ=
 00002_add_link_column.sql h1:A2QxniA5wEK9bo0UnqTNKX5TgvkR/zugtdCKs8O07DE=
 00003_fix_user_events_dedupe_constraint.sql h1:5EpJwNHbInepPLqTMNG3YL/FPTqvpkpqazjt6rK0PkQ=
@@ -23,3 +23,4 @@ h1:mP1UJOZAF7URCUub+HFv9STVHSj8D+Ep449FHMCpeDQ=
 00022_add_review_reason.sql h1:PWqQFSKBZvsOJj4XQS1IF5TV8vxbrPwrqupuQy4Kc7o=
 00023_add_recall_weight_set_version.sql h1:BEnzME+wJ3k+qu7M8R5xILa5nUoFxwTe5S1+fF6elxA=
 00024_add_knowledge_loop_relations.sql h1:tZZwaL/bA+dPngI//obqJZB5F0v9dpHPi2pLdko7Cx4=
+00025_create_knowledge_loop_evidence.sql h1:5J6mPocizae/TkQzvliZRr+YcNziyJcTlLObzg6PwpY=

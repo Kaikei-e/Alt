@@ -3,6 +3,7 @@ package knowledge_loop_projector
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/url"
@@ -111,6 +112,20 @@ type Repository interface {
 	// `seq_hiwater <= EXCLUDED.seq_hiwater` guard so out-of-order replays
 	// are no-ops. ADR-000909 §Δ2 supplement (2026-05-24).
 	UpsertKnowledgeLoopMacroState(ctx context.Context, row sovereign_db.KnowledgeLoopMacroStateRow) (*sovereign_db.KnowledgeLoopUpsertResult, error)
+
+	// ADR-000939 co-projected evidence accumulator. The projector folds each
+	// event's evidence in (UpsertKnowledgeLoopEvidence) and derives an entry's
+	// SurfaceScoreInputs from the accumulator (GetKnowledgeLoopEvidenceForScopes)
+	// in the same ordered pass — replacing the per-entry window re-scan resolver.
+	UpsertKnowledgeLoopEvidence(ctx context.Context, w sovereign_db.KnowledgeLoopEvidenceWrite) error
+	GetKnowledgeLoopEvidenceForScopes(ctx context.Context, userID uuid.UUID, scopes []sovereign_db.KnowledgeLoopEvidenceScope) ([]sovereign_db.KnowledgeLoopEvidenceState, error)
+
+	// PatchKnowledgeLoopEntryRelations re-derives an existing entry's
+	// relation-set and its lens when late evidence (TagSetVersionCreated →
+	// Cluster, AugurConversationLinked → Inquiry) arrives after the entry was
+	// first projected (ADR-000939 §3). Seq-hiwater guarded; preserves why_* /
+	// lifecycle / freshness.
+	PatchKnowledgeLoopEntryRelations(ctx context.Context, userID, tenantID, lensModeID, entryKey string, eventSeq int64, surfaceBucket sovereignv1.SurfaceBucket, renderDepthHint int32, loopPriority sovereignv1.LoopPriority, plannerVersion sovereignv1.SurfacePlannerVersion, scoreInputs []byte, reviewReason sovereignv1.ReviewReason, relations []byte) (*sovereign_db.KnowledgeLoopUpsertResult, error)
 }
 
 // Config tunes the projector loop. Zero values fall back to defaults.
@@ -134,21 +149,21 @@ type Config struct {
 //   - UPSERTs enforce the seq-hiwater guard at the driver; same event replayed twice is idempotent.
 //   - knowledge_loop_transition_dedupes is NOT touched during reproject.
 type Projector struct {
-	repo          Repository
-	logger        *slog.Logger
-	cfg           Config
-	scoreResolver SurfaceScoreResolver
+	repo   Repository
+	logger *slog.Logger
+	cfg    Config
 }
 
 // NewProjector wires a repository + logger into a projector. Use RunBatch on a
 // timer (the service's main loop owns the cadence) — Projector does not own a
 // goroutine itself.
 //
-// The default score resolver is NullSurfaceScoreResolver: bucket placement
-// stays on the v1 mapping until a real resolver is plugged via
-// WithScoreResolver. This keeps Wave 2/3 changes additive — the live
-// projector still writes the same buckets it always did, but the v2 hook
-// + metrics are reachable from tests.
+// ADR-000939: the projector derives an entry's SurfaceScoreInputs from the
+// co-projected evidence accumulator (knowledge_loop_evidence) it folds in the
+// same ordered pass. There is no pluggable resolver any more — the accumulator
+// is the single, mandatory evidence path. The repository MUST implement the
+// evidence methods; a missing implementation is a compile error, not a silent
+// v1 fallback. A loud startup log records that the accumulator path is wired.
 func NewProjector(repo Repository, logger *slog.Logger, cfg Config) *Projector {
 	if logger == nil {
 		logger = slog.Default()
@@ -159,35 +174,16 @@ func NewProjector(repo Repository, logger *slog.Logger, cfg Config) *Projector {
 	if cfg.MaxBatchesPerTick <= 0 {
 		cfg.MaxBatchesPerTick = defaultMaxBatchesPerTick
 	}
+	// CLAUDE.md #8: surface the wiring state loudly so the operator can see the
+	// evidence accumulator path is live, instead of inferring it from an empty
+	// Orient surface.
+	logger.Info("knowledge_loop_projector evidence accumulator wired",
+		"evidence_accumulator_enabled", true)
 	return &Projector{
-		repo:          repo,
-		logger:        logger,
-		cfg:           cfg,
-		scoreResolver: NullSurfaceScoreResolver{},
+		repo:   repo,
+		logger: logger,
+		cfg:    cfg,
 	}
-}
-
-// WithScoreResolver swaps the SurfaceScoreResolver used to compute v2
-// bucket inputs. Wave 4 will plug a cross-service resolver here that
-// queries tag_set_versions / recap_topic_snapshots / augur_conversations
-// with mandatory user_id binding.
-func (p *Projector) WithScoreResolver(r SurfaceScoreResolver) *Projector {
-	if r != nil {
-		p.scoreResolver = r
-	}
-	// CLAUDE.md #8: surface the wiring state loudly so "forgot to wire the real
-	// resolver" shows up in startup logs instead of silently degrading to a
-	// relation-less, v1-only Orient surface.
-	logger := p.logger
-	if logger == nil {
-		logger = slog.Default()
-	}
-	enabled := plannerVersionForResolver(p.scoreResolver) ==
-		sovereignv1.SurfacePlannerVersion_SURFACE_PLANNER_VERSION_V2
-	logger.Info("knowledge_loop_projector score resolver wired",
-		"score_resolver_enabled", enabled,
-		"resolver_type", fmt.Sprintf("%T", p.scoreResolver))
-	return p
 }
 
 // RunBatch drains up to `cfg.MaxBatchesPerTick` consecutive batches from
@@ -237,6 +233,15 @@ func (p *Projector) RunBatch(ctx context.Context) error {
 			ev := events[i]
 			res, err := p.projectEvent(ctx, &ev)
 			if err != nil {
+				var fl failLoudError
+				if errors.As(err, &fl) {
+					// ADR-000939 §4: an accumulator read/write failure aborts the
+					// batch. Returning here leaves the checkpoint un-advanced, so
+					// the events from this batch re-project once the dependency
+					// recovers — no silent degrade to empty inputs.
+					return fmt.Errorf("knowledge_loop_projector: fail-loud abort at seq %d (%s): %w",
+						ev.EventSeq, ev.EventType, err)
+				}
 				p.logger.ErrorContext(ctx, "knowledge_loop_projector: skip event",
 					slog.Int64("event_seq", ev.EventSeq),
 					slog.String("event_type", ev.EventType),
@@ -287,19 +292,41 @@ func (p *Projector) RunBatch(ctx context.Context) error {
 	return nil
 }
 
-// projectEvent dispatches a single event to the right projection write path.
-// Returns (result, err); a non-nil err is logged and the projector continues.
+// projectEvent dispatches a single event to the right projection write path,
+// then folds the event's evidence into the accumulator (ADR-000939 §2b:
+// derive-before-apply — dispatch already derived from the prefix state, so the
+// apply must come after). Returns (result, err); a non-nil err is logged and
+// the projector continues.
 func (p *Projector) projectEvent(ctx context.Context, ev *sovereign_db.KnowledgeEvent) (*sovereign_db.KnowledgeLoopUpsertResult, error) {
 	if ev.UserID == nil {
-		// System-level events (e.g. ArticleCreated) lack per-user fan-out at
-		// this layer and are intentionally a no-op here.
+		// System-level events without a user_id cannot be scoped to a user's
+		// accumulator and are a no-op here.
 		return nil, nil
 	}
+	res, err := p.dispatchEvent(ctx, ev)
+	if applyErr := p.applyEvidence(ctx, ev); applyErr != nil {
+		// Fail loud: an accumulator write failure must stop the batch, not be
+		// swallowed (ADR-000939 §4 / CLAUDE.md #8).
+		if err == nil {
+			return res, applyErr
+		}
+		return res, errors.Join(err, applyErr)
+	}
+	return res, err
+}
+
+// dispatchEvent routes an event to its projection write path. Derivation
+// (resolveBucketAndInputs) reads the accumulator state of the prefix; the
+// caller folds this event's fact afterward.
+func (p *Projector) dispatchEvent(ctx context.Context, ev *sovereign_db.KnowledgeEvent) (*sovereign_db.KnowledgeLoopUpsertResult, error) {
 	lensModeID := defaultLensModeID
 
 	switch ev.EventType {
 	case EventSummaryVersionCreated, EventHomeItemsSeen, EventHomeItemAsked:
-		bucket, inputs, plannerVersion := p.resolveBucketAndInputs(ctx, ev)
+		bucket, inputs, plannerVersion, err := p.resolveBucketAndInputs(ctx, ev)
+		if err != nil {
+			return nil, err
+		}
 		entry, err := p.buildEntryFromEvent(ev, lensModeID,
 			sovereignv1.LoopStage_LOOP_STAGE_OBSERVE,
 			bucket, inputs, plannerVersion)
@@ -332,8 +359,18 @@ func (p *Projector) projectEvent(ctx context.Context, ev *sovereign_db.Knowledge
 	case EventKnowledgeLoopSurfacePlanRecomputed:
 		return p.projectSurfacePlanRecomputed(ctx, ev, lensModeID)
 
+	case EventTagSetVersionCreated, EventAugurConversationLinked:
+		// ADR-000939 §3: late fuel. These events are not entry-creating, but
+		// they carry evidence (tag activity → Cluster, augur link → Inquiry)
+		// that should land on an already-projected entry's relation-set
+		// immediately, not on the entry's next contact. Re-derive and patch.
+		return p.projectLateFuelRelations(ctx, ev, lensModeID)
+
 	case EventHomeItemOpened:
-		bucket, inputs, plannerVersion := p.resolveBucketAndInputs(ctx, ev)
+		bucket, inputs, plannerVersion, err := p.resolveBucketAndInputs(ctx, ev)
+		if err != nil {
+			return nil, err
+		}
 		entry, err := p.buildEntryFromEvent(ev, lensModeID,
 			sovereignv1.LoopStage_LOOP_STAGE_ACT,
 			bucket, inputs, plannerVersion)
@@ -376,7 +413,10 @@ func (p *Projector) projectEvent(ctx context.Context, ev *sovereign_db.Knowledge
 		return res, p.recomputeSurfaces(ctx, ev, lensModeID)
 
 	case EventHomeItemDismissed:
-		bucket, inputs, plannerVersion := p.resolveBucketAndInputs(ctx, ev)
+		bucket, inputs, plannerVersion, err := p.resolveBucketAndInputs(ctx, ev)
+		if err != nil {
+			return nil, err
+		}
 		entry, err := p.buildEntryFromEvent(ev, lensModeID,
 			sovereignv1.LoopStage_LOOP_STAGE_OBSERVE,
 			bucket, inputs, plannerVersion)
@@ -394,7 +434,10 @@ func (p *Projector) projectEvent(ctx context.Context, ev *sovereign_db.Knowledge
 		return res, p.recomputeSurfaces(ctx, ev, lensModeID)
 
 	case EventHomeItemSuperseded, EventSummarySuperseded:
-		bucket, inputs, plannerVersion := p.resolveBucketAndInputs(ctx, ev)
+		bucket, inputs, plannerVersion, err := p.resolveBucketAndInputs(ctx, ev)
+		if err != nil {
+			return nil, err
+		}
 		entry, err := p.buildEntryFromEvent(ev, lensModeID,
 			sovereignv1.LoopStage_LOOP_STAGE_OBSERVE,
 			bucket, inputs, plannerVersion)
@@ -576,6 +619,72 @@ func (p *Projector) projectArticleUrlBackfilled(
 		rawURL,
 		ev.EventSeq,
 	)
+}
+
+// projectLateFuelRelations re-derives an existing entry's relation-set when
+// late evidence arrives (ADR-000939 §3): TagSetVersionCreated brings Cluster
+// fuel, AugurConversationLinked brings Inquiry fuel, after the entry was first
+// projected. Unlike the entry-creating path this is apply-then-derive: the
+// event's facts are folded FIRST so the re-derivation reflects them (the
+// trailing applyEvidence in projectEvent is then a seq-guarded no-op).
+//
+// It only patches when real evidence applies (hasV2Signal). A late event with
+// no overlapping fuel must not move the entry: re-deriving a v1 fallback bucket
+// from a non-creating event type would misclassify it, so we leave the entry's
+// placement untouched.
+func (p *Projector) projectLateFuelRelations(
+	ctx context.Context,
+	ev *sovereign_db.KnowledgeEvent,
+	lensModeID string,
+) (*sovereign_db.KnowledgeLoopUpsertResult, error) {
+	if err := p.applyEvidence(ctx, ev); err != nil {
+		return nil, err
+	}
+	entryKey := evidenceEntryKey(ev)
+	if entryKey == "" {
+		return nil, nil
+	}
+
+	inputs, err := p.deriveSurfaceScoreInputs(ctx, ev)
+	if err != nil {
+		return nil, err
+	}
+	if !hasV2Signal(inputs) {
+		// No real evidence reached this entry — leave its existing placement
+		// and relation-set untouched.
+		return nil, nil
+	}
+
+	bucket := decideBucketV2(inputs)
+	plannerVersion := plannerVersionForInputs(inputs)
+	observeSurfaceBucketAssigned(plannerVersionMetricLabel(plannerVersion), bucketMetricLabel(bucket))
+
+	rels := extractRelations(inputs)
+	var scoreInputsJSON []byte
+	if plannerVersion == sovereignv1.SurfacePlannerVersion_SURFACE_PLANNER_VERSION_V2 {
+		scoreInputsJSON = marshalSurfaceScoreInputs(inputs)
+	}
+
+	res, err := p.repo.PatchKnowledgeLoopEntryRelations(
+		ctx,
+		ev.UserID.String(),
+		ev.TenantID.String(),
+		lensModeID,
+		entryKey,
+		ev.EventSeq,
+		bucket,
+		pickRenderDepth(bucket),
+		pickLoopPriority(bucket),
+		plannerVersion,
+		scoreInputsJSON,
+		decideReviewReason(inputs),
+		marshalRelations(rels),
+	)
+	if err != nil {
+		return res, err
+	}
+	observeRelationCoverage(len(rels) > 0)
+	return res, p.recomputeSurfaces(ctx, ev, lensModeID)
 }
 
 // projectTransition handles /loop-originated transition events. ADR-000831 §3.7

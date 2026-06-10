@@ -8,7 +8,7 @@ import (
 	"knowledge-sovereign/handler"
 	"knowledge-sovereign/usecase/act_outcome_cron"
 	"knowledge-sovereign/usecase/knowledge_loop_projector"
-	"knowledge-sovereign/usecase/surface_planner_cron"
+	"knowledge-sovereign/usecase/projection_health"
 	"log/slog"
 	"net/http"
 	"os"
@@ -123,8 +123,11 @@ func main() {
 		knowledge_loop_projector.Config{
 			BatchSize:         parseIntEnv("KNOWLEDGE_SOVEREIGN_LOOP_PROJECTOR_BATCH_SIZE", 500),
 			MaxBatchesPerTick: parseIntEnv("KNOWLEDGE_SOVEREIGN_LOOP_PROJECTOR_MAX_BATCHES_PER_TICK", 4),
-		}).
-		WithScoreResolver(knowledge_loop_projector.NewEventLogSurfaceScoreResolver(repo))
+		})
+	// ADR-000939: the projector derives evidence from the co-projected
+	// knowledge_loop_evidence accumulator it folds in the same pass — there is
+	// no separate resolver to wire. `repo` (sovereign_db.Repository) provides
+	// the accumulator methods; a missing implementation would be a compile error.
 	loopTick := time.NewTicker(parseDurationEnv("KNOWLEDGE_SOVEREIGN_PROJECTOR_TICK_INTERVAL", 5*time.Second))
 	go func() {
 		defer loopTick.Stop()
@@ -140,30 +143,35 @@ func main() {
 		}
 	}()
 
-	// Surface planner v2 producer cron. Emits KnowledgeLoopSurfacePlanRecomputed
-	// for upstream signal events (AugurConversationLinked v1) so the projector
-	// branch added in ADR-000873 has a real source. Cadence is intentionally
-	// looser than the projector tick — replanning is more expensive than
-	// projecting, and the projector is patch-only seq-hiwater-guarded so
-	// occasional miss-windows degrade to no-op patches.
-	plannerCron := surface_planner_cron.New(repo, slog.Default(), surface_planner_cron.Config{
-		BatchSize:         parseIntEnv("KNOWLEDGE_SOVEREIGN_PLANNER_BATCH_SIZE", 256),
-		MaxBatchesPerTick: parseIntEnv("KNOWLEDGE_SOVEREIGN_PLANNER_MAX_BATCHES_PER_TICK", 1),
-	})
-	plannerTick := time.NewTicker(parseDurationEnv("KNOWLEDGE_SOVEREIGN_PLANNER_TICK_INTERVAL", 60*time.Second))
+	// ADR-000939 honest gate: sample the relation-coverage and producer-liveness
+	// gauges on a slow tick. DB-truth gauges replace the old rate-based coverage
+	// alert that could never fire at the real projection traffic.
+	healthExporter := projection_health.New(repo, slog.Default())
+	healthTick := time.NewTicker(parseDurationEnv("KNOWLEDGE_SOVEREIGN_PROJECTION_HEALTH_TICK_INTERVAL", 60*time.Second))
 	go func() {
-		defer plannerTick.Stop()
+		defer healthTick.Stop()
 		for {
 			select {
 			case <-ctx.Done():
 				return
-			case <-plannerTick.C:
-				if err := plannerCron.RunBatch(ctx); err != nil {
-					slog.Error("surface_planner_cron batch failed", "error", err)
+			case <-healthTick.C:
+				if err := healthExporter.RunOnce(ctx); err != nil {
+					slog.Error("projection_health exporter failed", "error", err)
 				}
 			}
 		}
 	}()
+
+	// ADR-000939: surface_planner_cron is retired. It existed to re-emit
+	// KnowledgeLoopSurfacePlanRecomputed for AugurConversationLinked signals so
+	// the projector had a source, but that re-emit layer is a detour now that
+	// the projector consumes augur links directly as late fuel and derives
+	// placement from the co-projected evidence accumulator. The consumer
+	// projector branch is kept (44 historical surface_plan_recomputed events
+	// replay deterministically), but nothing emits new ones. The stale
+	// `surface_planner_v2` projection checkpoint row is removed during the
+	// rollout (see docs/runbooks/knowledge-loop-reproject.md) so its heartbeat
+	// SLO does not false-fire.
 
 	// ADR-000908 §Δ1 act_outcome_cron. Backfills `outcome=no_engagement` for
 	// KnowledgeLoopActed events that aged past the 7-day window without an
