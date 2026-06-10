@@ -47,6 +47,22 @@ _Avoid_: orient stage, orient step, orient tab
 **Inquiry**:
 当該エントリがユーザーの問い / 会話に答える関係。自己参照寄り。
 
+### Evidence supply
+
+**Evidence accumulator**:
+イベントを 1 件ずつ畳み込んで保持する、関係導出のための累積 evidence。entry の relations は
+この累積の純関数として導出される。イベント履歴から再生可能 (disposable)。
+_Avoid_: window re-scan, evidence query, resolver (旧方式の意味では)
+
+**Co-projection**:
+補助的な導出状態 (evidence accumulator) を主 projection と同一のイベント順序で更新し、
+導出結果が「その時点までのイベント履歴の決定的関数」であることを保つパターン。
+「最新状態を覗かない」不変条件の正当な例外はこの形に限る。
+
+**Late fuel (遅延燃料)**:
+entry が surface された後に到着する evidence (タグ付け・版差し替え・topic snapshot)。
+到着した時点で当該 entry の relation-set を即時再導出する。次回接触まで放置しない。
+
 ### Loop closure
 
 **Relation state**:
@@ -70,3 +86,11 @@ _Avoid_: bucket as primary axis, stage as gate
 
 **Decorated feed**:
 relation-set が空で、bucket + why 一文だけが並ぶ状態。Knowledge Loop の失敗形 (現状)。
+
+**Window re-scan**:
+entry を surface するたびに過去 window 全体の evidence を問い直す pull 型の取得方式。
+ログ密度に比例して破綻し、切り捨て (truncation) による無音の evidence 全損を誘発した失敗形。
+
+**Silent truncation**:
+エラーを発生させずに evidence を取りこぼす劣化。fail-loud では捕捉できず、
+密度を再現したテストと実測 coverage の計測でのみ検知できる。

@@ -41,12 +41,13 @@ Full-reproject procedure for the Knowledge Loop read model. Use this when:
    ```sql
    SELECT 'knowledge_loop_entries' AS table, COUNT(*) FROM knowledge_loop_entries
    UNION ALL SELECT 'knowledge_loop_session_state', COUNT(*) FROM knowledge_loop_session_state
-   UNION ALL SELECT 'knowledge_loop_surfaces', COUNT(*) FROM knowledge_loop_surfaces;
+   UNION ALL SELECT 'knowledge_loop_surfaces', COUNT(*) FROM knowledge_loop_surfaces
+   UNION ALL SELECT 'knowledge_loop_evidence', COUNT(*) FROM knowledge_loop_evidence;
    ```
 
 ## Procedure
 
-**Rule (invariant 18 of the plan): the projection tables are disposable; the dedupe table is NOT.** Reproject TRUNCATEs the three projection tables only.
+**Rule (invariant 18 of the plan): the projection tables are disposable; the dedupe table is NOT.** Reproject TRUNCATEs the projection tables and the co-projected evidence accumulator (ADR-000939) only.
 
 1. Drain in-flight projector work (wait for current scheduler tick to finish). If running under the long-lived scheduler, it is safe to simply stop the batch midway — the next tick will pick up from the last committed checkpoint.
 2. Inside a single transaction:
@@ -55,9 +56,16 @@ Full-reproject procedure for the Knowledge Loop read model. Use this when:
    TRUNCATE knowledge_loop_entries;
    TRUNCATE knowledge_loop_session_state;
    TRUNCATE knowledge_loop_surfaces;
+   TRUNCATE knowledge_loop_evidence;  -- ADR-000939: disposable co-projected accumulator, rebuilt in the same pass
    UPDATE knowledge_projection_checkpoints
    SET last_event_seq = 0, updated_at = NOW()
    WHERE projector_name = 'knowledge-loop-projector';
+   -- ADR-000939: surface_planner_cron is retired; drop its now-stale checkpoint
+   -- row so its heartbeat SLO (now() - updated_at) does not false-fire. The
+   -- 44 historical surface_plan_recomputed events still replay through the
+   -- projector's consumer branch on this reproject.
+   DELETE FROM knowledge_projection_checkpoints
+   WHERE projector_name = 'surface_planner_v2';
    COMMIT;
    ```
    **Do NOT truncate `knowledge_loop_transition_dedupes`.** It is an ingest-side idempotency barrier, not a projection; TRUNCATEing it would open a window for duplicate event append on client retry.
