@@ -14,13 +14,19 @@ export function useKnowledgeTrail() {
 	let hasMore = $state(false);
 	let nextCursor = $state("");
 	let hasEverLoaded = $state(false);
+	let activeTags = $state<string[]>([]);
 
 	async function fetchData(reset: boolean): Promise<void> {
 		loading = true;
 		error = null;
 		try {
 			const transport = createClientTransport();
-			const result = await getTrail(transport, reset ? undefined : nextCursor, 20);
+			const result = await getTrail(
+				transport,
+				reset ? undefined : nextCursor,
+				20,
+				activeTags,
+			);
 			footprints = reset ? result.footprints : [...footprints, ...result.footprints];
 			nextCursor = result.nextCursor;
 			hasMore = result.hasMore;
@@ -44,14 +50,23 @@ export function useKnowledgeTrail() {
 		await fetchData(true);
 	}
 
+	// setLens applies (or clears with []) the theme lens and re-fetches from the
+	// top. Pull-only: the re-fetch is an explicit user action, not an $effect.
+	async function setLens(tags: string[]): Promise<void> {
+		activeTags = tags;
+		await fetchData(true);
+	}
+
 	return {
 		footprints: $derived.by(() => footprints),
 		loading: $derived.by(() => loading),
 		error: $derived.by(() => error),
 		hasMore: $derived.by(() => hasMore),
 		hasEverLoaded: $derived.by(() => hasEverLoaded),
+		activeTags: $derived.by(() => activeTags),
 		fetchData,
 		loadMore,
 		refresh,
+		setLens,
 	};
 }

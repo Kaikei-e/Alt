@@ -39,7 +39,7 @@ func (h *Handler) GetTrail(
 		cursor = *req.Msg.Cursor
 	}
 
-	result, err := h.getTrailUsecase.Execute(ctx, user.UserID, cursor, int(req.Msg.Limit))
+	result, err := h.getTrailUsecase.Execute(ctx, user.UserID, cursor, int(req.Msg.Limit), req.Msg.FilterTags)
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInternal, err)
 	}

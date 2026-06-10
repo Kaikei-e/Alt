@@ -10,7 +10,7 @@ import type { Message } from "@bufbuild/protobuf";
  * Describes the file alt/knowledge_trail/v1/knowledge_trail.proto.
  */
 export const file_alt_knowledge_trail_v1_knowledge_trail: GenFile = /*@__PURE__*/
-  fileDesc("CixhbHQva25vd2xlZGdlX3RyYWlsL3YxL2tub3dsZWRnZV90cmFpbC5wcm90bxIWYWx0Lmtub3dsZWRnZV90cmFpbC52MSJACg9HZXRUcmFpbFJlcXVlc3QSEwoGY3Vyc29yGAEgASgJSACIAQESDQoFbGltaXQYAiABKAVCCQoHX2N1cnNvciKGAQoQR2V0VHJhaWxSZXNwb25zZRI1Cgpmb290cHJpbnRzGAEgAygLMiEuYWx0Lmtub3dsZWRnZV90cmFpbC52MS5Gb290cHJpbnQSEwoLbmV4dF9jdXJzb3IYAiABKAkSEAoIaGFzX21vcmUYAyABKAgSFAoMZ2VuZXJhdGVkX2F0GAQgASgJIpMBCglGb290cHJpbnQSFQoNZm9vdHByaW50X2tleRgBIAEoCRIMCgR2ZXJiGAIgASgJEhAKCGl0ZW1fa2V5GAMgASgJEg0KBXRpdGxlGAQgASgJEg8KB2V4Y2VycHQYBSABKAkSDAoEdGFncxgGIAMoCRIMCgRub3RlGAcgASgJEhMKC29jY3VycmVkX2F0GAggASgJMnYKFUtub3dsZWRnZVRyYWlsU2VydmljZRJdCghHZXRUcmFpbBInLmFsdC5rbm93bGVkZ2VfdHJhaWwudjEuR2V0VHJhaWxSZXF1ZXN0GiguYWx0Lmtub3dsZWRnZV90cmFpbC52MS5HZXRUcmFpbFJlc3BvbnNlQjdaNWFsdC9nZW4vcHJvdG8vYWx0L2tub3dsZWRnZV90cmFpbC92MTtrbm93bGVkZ2V0cmFpbHYxYgZwcm90bzM");
+  fileDesc("CixhbHQva25vd2xlZGdlX3RyYWlsL3YxL2tub3dsZWRnZV90cmFpbC5wcm90bxIWYWx0Lmtub3dsZWRnZV90cmFpbC52MSJVCg9HZXRUcmFpbFJlcXVlc3QSEwoGY3Vyc29yGAEgASgJSACIAQESDQoFbGltaXQYAiABKAUSEwoLZmlsdGVyX3RhZ3MYAyADKAlCCQoHX2N1cnNvciKGAQoQR2V0VHJhaWxSZXNwb25zZRI1Cgpmb290cHJpbnRzGAEgAygLMiEuYWx0Lmtub3dsZWRnZV90cmFpbC52MS5Gb290cHJpbnQSEwoLbmV4dF9jdXJzb3IYAiABKAkSEAoIaGFzX21vcmUYAyABKAgSFAoMZ2VuZXJhdGVkX2F0GAQgASgJIqEBCglGb290cHJpbnQSFQoNZm9vdHByaW50X2tleRgBIAEoCRIMCgR2ZXJiGAIgASgJEhAKCGl0ZW1fa2V5GAMgASgJEg0KBXRpdGxlGAQgASgJEg8KB2V4Y2VycHQYBSABKAkSDAoEdGFncxgGIAMoCRIMCgRub3RlGAcgASgJEhMKC29jY3VycmVkX2F0GAggASgJEgwKBHdlYXIYCSABKAkydgoVS25vd2xlZGdlVHJhaWxTZXJ2aWNlEl0KCEdldFRyYWlsEicuYWx0Lmtub3dsZWRnZV90cmFpbC52MS5HZXRUcmFpbFJlcXVlc3QaKC5hbHQua25vd2xlZGdlX3RyYWlsLnYxLkdldFRyYWlsUmVzcG9uc2VCN1o1YWx0L2dlbi9wcm90by9hbHQva25vd2xlZGdlX3RyYWlsL3YxO2tub3dsZWRnZXRyYWlsdjFiBnByb3RvMw");
 
 /**
  * @generated from message alt.knowledge_trail.v1.GetTrailRequest
@@ -25,6 +25,14 @@ export type GetTrailRequest = Message<"alt.knowledge_trail.v1.GetTrailRequest"> 
    * @generated from field: int32 limit = 2;
    */
   limit: number;
+
+  /**
+   * filter_tags applies the theme lens: only footprints whose item carries one
+   * of these tags are returned. Empty means the full spine.
+   *
+   * @generated from field: repeated string filter_tags = 3;
+   */
+  filterTags: string[];
 };
 
 /**
@@ -118,6 +126,13 @@ export type Footprint = Message<"alt.knowledge_trail.v1.Footprint"> & {
    * @generated from field: string occurred_at = 8;
    */
   occurredAt: string;
+
+  /**
+   * wear is the derived path-wear band: "thin" | "worn" | "deep". Never a number.
+   *
+   * @generated from field: string wear = 9;
+   */
+  wear: string;
 };
 
 /**

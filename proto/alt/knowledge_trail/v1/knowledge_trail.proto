@@ -16,6 +16,9 @@ service KnowledgeTrailService {
 message GetTrailRequest {
   optional string cursor = 1;
   int32 limit = 2;
+  // filter_tags applies the theme lens: only footprints whose item carries one
+  // of these tags are returned. Empty means the full spine.
+  repeated string filter_tags = 3;
 }
 
 message GetTrailResponse {
@@ -39,4 +42,6 @@ message Footprint {
   string note = 7;
   // occurred_at is the event-time of the act (RFC3339).
   string occurred_at = 8;
+  // wear is the derived path-wear band: "thin" | "worn" | "deep". Never a number.
+  string wear = 9;
 }

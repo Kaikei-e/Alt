@@ -12,6 +12,7 @@ function fp(key: string, occurredAt: string): FootprintData {
 		tags: [],
 		note: "",
 		occurredAt,
+		wear: "thin",
 	};
 }
 

@@ -691,6 +691,10 @@ message GetTrailFootprintsRequest {
   string user_id = 1;
   string cursor = 2;
   int32 limit = 3;
+  // filter_tags is the theme-lens filter: when non-empty, only footprints whose
+  // item carries at least one of these tags are returned. Lens is a computed
+  // filter over the one spine, never a second structure.
+  repeated string filter_tags = 4;
 }
 
 message GetTrailFootprintsResponse {
@@ -716,4 +720,7 @@ message TrailFootprint {
   // source_event_type records provenance so a footprint can explain itself.
   string source_event_type = 10;
   google.protobuf.Timestamp occurred_at = 11;
+  // wear is the derived path-wear band for the item's trail: "thin" | "worn" |
+  // "deep". Pure projection of how often the item was engaged; never a number.
+  string wear = 12;
 }

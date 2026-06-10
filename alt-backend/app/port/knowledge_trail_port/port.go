@@ -10,5 +10,5 @@ import (
 
 // GetTrailPort fetches the user's footprint spine from the knowledge authority.
 type GetTrailPort interface {
-	GetTrailFootprints(ctx context.Context, userID uuid.UUID, cursor string, limit int) ([]domain.TrailFootprint, string, bool, error)
+	GetTrailFootprints(ctx context.Context, userID uuid.UUID, cursor string, limit int, filterTags []string) ([]domain.TrailFootprint, string, bool, error)
 }

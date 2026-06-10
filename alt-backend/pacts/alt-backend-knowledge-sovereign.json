@@ -115,15 +115,15 @@
           "event": {
             "actorId": "knowledge-url-backfill",
             "actorType": "service",
-            "aggregateId": "89f41258-a1ec-475e-aed0-15440638b171",
+            "aggregateId": "354437f3-2f20-467c-8a45-5c401f1beeb1",
             "aggregateType": "article",
-            "dedupeKey": "article-url-backfill-v2:89f41258-a1ec-475e-aed0-15440638b171",
-            "eventId": "2c603eb9-0169-4815-888d-f3ade8533cf1",
+            "dedupeKey": "article-url-backfill-v2:354437f3-2f20-467c-8a45-5c401f1beeb1",
+            "eventId": "a6f18620-380a-4a62-83b9-e1df0ed3ec77",
             "eventType": "ArticleUrlBackfilled",
             "occurredAt": "2026-04-28T12:00:00Z",
             "payload": "eyJhcnRpY2xlX2lkIjoiMDAwMDAwMDAtMDAwMC0wMDAwLTAwMDAtMDAwMDAwMDAwMDAwIiwidXJsIjoiaHR0cHM6Ly9leGFtcGxlLmNvbSJ9",
-            "tenantId": "75ce5469-2899-47e8-9d23-a3978951ed64",
-            "userId": "4f7e6bae-7920-4181-bd48-bdc5baf85949"
+            "tenantId": "107cd0bb-7ec8-4d12-bb32-1b0e8d061a5c",
+            "userId": "69ac50e7-608e-43b9-8f25-fbb44165a3f8"
           }
         },
         "headers": {
@@ -187,15 +187,15 @@
           "event": {
             "actorId": "tag-generator",
             "actorType": "service",
-            "aggregateId": "122707cc-fbe5-407a-96c9-e2f4cabe6911",
+            "aggregateId": "06023505-79df-4169-b84f-09f0f8ae420b",
             "aggregateType": "article",
-            "dedupeKey": "TagSetVersionCreated:f7dc2e5b-26a2-4cc3-9936-05ef0b7f8063",
-            "eventId": "1ca0420b-2056-4e13-b099-be45013b6fae",
+            "dedupeKey": "TagSetVersionCreated:d0926118-b7e4-4b36-86a0-f8e10461546c",
+            "eventId": "d9666243-94dc-4b79-8536-52046aa98bcf",
             "eventType": "TagSetVersionCreated",
             "occurredAt": "2026-06-10T10:00:00Z",
-            "payload": "eyJhcnRpY2xlX2lkIjoiMTIyNzA3Y2MtZmJlNS00MDdhLTk2YzktZTJmNGNhYmU2OTExIiwiZ2VuZXJhdG9yIjoidGFnLWdlbmVyYXRvciIsInRhZ19zZXRfdmVyc2lvbl9pZCI6ImY3ZGMyZTViLTI2YTItNGNjMy05OTM2LTA1ZWYwYjdmODA2MyIsInRhZ3MiOlsiZ28iLCJydXN0Il19",
-            "tenantId": "46b925cb-2821-4b0d-b9c3-1013c37d4696",
-            "userId": "2338d8ab-46fe-49b4-9931-e9393c967506"
+            "payload": "eyJhcnRpY2xlX2lkIjoiMDYwMjM1MDUtNzlkZi00MTY5LWI4NGYtMDlmMGY4YWU0MjBiIiwiZ2VuZXJhdG9yIjoidGFnLWdlbmVyYXRvciIsInRhZ19zZXRfdmVyc2lvbl9pZCI6ImQwOTI2MTE4LWI3ZTQtNGIzNi04NmEwLWY4ZTEwNDYxNTQ2YyIsInRhZ3MiOlsiZ28iLCJydXN0Il19",
+            "tenantId": "cb4893ff-8771-402e-8c71-cfb858d92f86",
+            "userId": "aebcd7ce-9ca0-4262-89a7-5f3b51fd6c42"
           }
         },
         "headers": {

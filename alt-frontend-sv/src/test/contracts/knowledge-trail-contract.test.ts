@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { create, toBinary, fromBinary } from "@bufbuild/protobuf";
 import {
+	GetTrailRequestSchema,
 	GetTrailResponseSchema,
 	FootprintSchema,
 } from "$lib/gen/alt/knowledge_trail/v1/knowledge_trail_pb";
@@ -19,6 +20,7 @@ describe("Knowledge Trail API Contract", () => {
 						tags: ["rust", "async"],
 						note: "2nd visit",
 						occurredAt: "2026-06-10T09:12:00Z",
+						wear: "deep",
 					},
 				],
 				nextCursor: "cursor_abc",
@@ -29,7 +31,13 @@ describe("Knowledge Trail API Contract", () => {
 			expect(response.footprints).toHaveLength(1);
 			expect(response.footprints[0].verb).toBe("read");
 			expect(response.footprints[0].tags).toEqual(["rust", "async"]);
+			expect(response.footprints[0].wear).toBe("deep");
 			expect(response.hasMore).toBe(true);
+		});
+
+		it("carries the theme-lens filter on the request", () => {
+			const req = create(GetTrailRequestSchema, { filterTags: ["rust"], limit: 20 });
+			expect(req.filterTags).toEqual(["rust"]);
 		});
 
 		it("round-trips through proto serialization", () => {

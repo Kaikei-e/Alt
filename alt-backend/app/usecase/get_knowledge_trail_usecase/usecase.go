@@ -27,12 +27,13 @@ func NewGetKnowledgeTrailUsecase(trailPort knowledge_trail_port.GetTrailPort) *G
 	return &GetKnowledgeTrailUsecase{trailPort: trailPort}
 }
 
-// Execute returns one page of the user's footprint spine.
-func (u *GetKnowledgeTrailUsecase) Execute(ctx context.Context, userID uuid.UUID, cursor string, limit int) (*Result, error) {
+// Execute returns one page of the user's footprint spine, optionally filtered
+// to a theme lens (filterTags).
+func (u *GetKnowledgeTrailUsecase) Execute(ctx context.Context, userID uuid.UUID, cursor string, limit int, filterTags []string) (*Result, error) {
 	if limit <= 0 || limit > 100 {
 		limit = defaultLimit
 	}
-	footprints, nextCursor, hasMore, err := u.trailPort.GetTrailFootprints(ctx, userID, cursor, limit)
+	footprints, nextCursor, hasMore, err := u.trailPort.GetTrailFootprints(ctx, userID, cursor, limit, filterTags)
 	if err != nil {
 		return nil, err
 	}

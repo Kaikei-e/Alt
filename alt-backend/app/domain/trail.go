@@ -15,4 +15,5 @@ type TrailFootprint struct {
 	Note            string
 	SourceEventType string
 	OccurredAt      time.Time
+	Wear            string
 }

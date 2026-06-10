@@ -16,6 +16,11 @@ const VERB_LABEL: Record<string, string> = {
 };
 
 const verbLabel = $derived(VERB_LABEL[footprint.verb] ?? footprint.verb);
+const wear = $derived(
+	footprint.wear === "deep" || footprint.wear === "worn"
+		? footprint.wear
+		: "thin",
+);
 const timeLabel = $derived(formatTime(footprint.occurredAt));
 const displayTags = $derived(footprint.tags.filter((t) => t.trim() !== "").slice(0, 3));
 
@@ -26,10 +31,10 @@ function formatTime(iso: string): string {
 }
 </script>
 
-<div class="step" data-testid="trail-footprint">
+<div class="step" data-testid="trail-footprint" data-wear={wear}>
 	<div class="spine-cell">
-		<div class="spine-node"></div>
-		<div class="spine-seg"></div>
+		<div class="spine-node {wear}"></div>
+		<div class="spine-seg {wear}"></div>
 	</div>
 	<div class="footprint">
 		<div class="fp-meta">
@@ -65,20 +70,47 @@ function formatTime(iso: string): string {
 		flex-direction: column;
 		align-items: center;
 	}
+	/* Path wear: the trail to an item is dotted/thin on first pass, solid when
+	   worn (revisited), and bold when deep (revisited + asked). No numbers. */
 	.spine-node {
+		flex: none;
+		margin: 0.2rem 0;
+	}
+	.spine-node.thin {
+		width: 0.7rem;
+		height: 0.7rem;
+		border-radius: 50%;
+		background: var(--surface-bg, #faf9f7);
+		border: 2px solid var(--wear-worn, #8a8273);
+	}
+	.spine-node.worn {
 		width: 0.8rem;
 		height: 0.8rem;
 		border-radius: 50%;
-		flex: none;
-		margin: 0.2rem 0;
-		background: var(--alt-slate, #666);
-		border: 2px solid var(--alt-slate, #666);
+		background: var(--wear-worn, #8a8273);
+		border: 2px solid var(--wear-worn, #8a8273);
+	}
+	.spine-node.deep {
+		width: 0.78rem;
+		height: 0.78rem;
+		border-radius: 1px;
+		transform: rotate(45deg);
+		background: var(--wear-deep, #3e3a32);
+		border: 2px solid var(--wear-deep, #3e3a32);
 	}
 	.spine-seg {
 		flex: 1;
 		width: 0;
 		min-height: 0.7rem;
-		border-left: 2px solid var(--surface-border, #c8c8c8);
+	}
+	.spine-seg.thin {
+		border-left: 2px dotted var(--wear-thin, #c4beb2);
+	}
+	.spine-seg.worn {
+		border-left: 3px solid var(--wear-worn, #8a8273);
+	}
+	.spine-seg.deep {
+		border-left: 5px solid var(--wear-deep, #3e3a32);
 	}
 	.footprint {
 		flex: 1;

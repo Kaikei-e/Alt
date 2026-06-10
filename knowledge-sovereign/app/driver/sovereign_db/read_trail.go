@@ -26,6 +26,7 @@ type TrailFootprint struct {
 	Note            string
 	SourceEventType string
 	OccurredAt      time.Time
+	Wear            string
 }
 
 // UpsertTrailFootprint writes one footprint idempotently. Re-projection of the
@@ -57,8 +58,10 @@ ON CONFLICT (user_id, footprint_key) DO UPDATE SET
 
 // GetTrailFootprints returns the user's footprint spine in reverse-chronological
 // order. Display fields are LEFT JOINed from knowledge_home_items by item_key —
-// a read-time enrichment, never a projection-time cross-model read.
-func (r *Repository) GetTrailFootprints(ctx context.Context, userID uuid.UUID, cursor string, limit int) ([]TrailFootprint, string, bool, error) {
+// a read-time enrichment, never a projection-time cross-model read. Path wear is
+// derived per item over ALL the user's footprints (CTE), so it is stable across
+// pages. filterTags applies the theme lens (item must carry one of the tags).
+func (r *Repository) GetTrailFootprints(ctx context.Context, userID uuid.UUID, cursor string, limit int, filterTags []string) ([]TrailFootprint, string, bool, error) {
 	fetchLimit := limit + 1
 	args := []interface{}{userID}
 	var where strings.Builder
@@ -73,12 +76,32 @@ func (r *Repository) GetTrailFootprints(ctx context.Context, userID uuid.UUID, c
 		args = append(args, occurredAt, footprintKey)
 		argPos += 2
 	}
+	if len(filterTags) > 0 {
+		where.WriteString(fmt.Sprintf(` AND EXISTS (
+			SELECT 1 FROM jsonb_array_elements_text(COALESCE(khi.tags_json, '[]')) AS tag_name
+			WHERE tag_name = ANY($%d)
+		)`, argPos))
+		args = append(args, filterTags)
+		argPos++
+	}
 
+	// item_wear aggregates over the whole spine so the wear band does not change
+	// as the user pages. has_ask or a deep revisit count reads as "deep".
 	query := fmt.Sprintf(`
+WITH item_wear AS (
+  SELECT item_key, count(*) AS cnt, bool_or(verb = 'asked') AS has_ask
+  FROM knowledge_trail_footprints
+  WHERE user_id = $1
+  GROUP BY item_key
+)
 SELECT f.user_id, f.tenant_id, f.footprint_key, f.verb, f.item_key,
        COALESCE(f.note, ''), f.source_event_type, f.occurred_at,
-       COALESCE(khi.title, ''), COALESCE(khi.summary_excerpt, ''), COALESCE(khi.tags_json, '[]')
+       COALESCE(khi.title, ''), COALESCE(khi.summary_excerpt, ''), COALESCE(khi.tags_json, '[]'),
+       CASE WHEN iw.has_ask OR iw.cnt >= 4 THEN 'deep'
+            WHEN iw.cnt >= 2 THEN 'worn'
+            ELSE 'thin' END AS wear
 FROM knowledge_trail_footprints f
+JOIN item_wear iw ON iw.item_key = f.item_key
 LEFT JOIN knowledge_home_items khi
   ON khi.user_id = f.user_id
   AND khi.item_key = f.item_key
@@ -104,7 +127,7 @@ LIMIT $%d`, where.String(), argPos)
 		if err := rows.Scan(
 			&fp.UserID, &fp.TenantID, &fp.FootprintKey, &fp.Verb, &fp.ItemKey,
 			&fp.Note, &fp.SourceEventType, &fp.OccurredAt,
-			&fp.Title, &fp.Excerpt, &tagsJSON,
+			&fp.Title, &fp.Excerpt, &tagsJSON, &fp.Wear,
 		); err != nil {
 			return nil, "", false, fmt.Errorf("GetTrailFootprints scan: %w", err)
 		}

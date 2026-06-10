@@ -24,6 +24,9 @@ export type FootprintVerb =
 	| "dismissed"
 	| string;
 
+/** Derived path-wear band — never a number. */
+export type FootprintWear = "thin" | "worn" | "deep" | string;
+
 /** One footprint on the trail spine. */
 export interface FootprintData {
 	footprintKey: string;
@@ -34,6 +37,7 @@ export interface FootprintData {
 	tags: string[];
 	note: string;
 	occurredAt: string;
+	wear: FootprintWear;
 }
 
 /** One page of the trail spine. */
@@ -59,21 +63,25 @@ function convertFootprint(pb: ProtoFootprint): FootprintData {
 		tags: pb.tags ?? [],
 		note: pb.note,
 		occurredAt: pb.occurredAt,
+		wear: pb.wear,
 	};
 }
 
 /**
  * Fetches one page of the user's footprint spine, reverse-chronological.
+ * `filterTags` applies the theme lens (empty = full spine).
  */
 export async function getTrail(
 	transport: Transport,
 	cursor?: string,
 	limit = 20,
+	filterTags: string[] = [],
 ): Promise<TrailResult> {
 	const client = createKnowledgeTrailClient(transport);
 	const response = (await client.getTrail({
 		cursor,
 		limit,
+		filterTags,
 	})) as GetTrailResponse;
 
 	return {

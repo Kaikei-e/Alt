@@ -51,15 +51,16 @@ func (c *Client) GetKnowledgeHomeItems(ctx context.Context, userID uuid.UUID, cu
 }
 
 // GetTrailFootprints fetches the user's footprint spine from sovereign.
-func (c *Client) GetTrailFootprints(ctx context.Context, userID uuid.UUID, cursor string, limit int) ([]domain.TrailFootprint, string, bool, error) {
+func (c *Client) GetTrailFootprints(ctx context.Context, userID uuid.UUID, cursor string, limit int, filterTags []string) ([]domain.TrailFootprint, string, bool, error) {
 	if !c.enabled {
 		return nil, "", false, nil
 	}
 
 	resp, err := c.client.GetTrailFootprints(ctx, connect.NewRequest(&sovereignv1.GetTrailFootprintsRequest{
-		UserId: userID.String(),
-		Cursor: cursor,
-		Limit:  int32(limit),
+		UserId:     userID.String(),
+		Cursor:     cursor,
+		Limit:      int32(limit),
+		FilterTags: filterTags,
 	}))
 	if err != nil {
 		return nil, "", false, fmt.Errorf("sovereign GetTrailFootprints: %w", err)
@@ -76,6 +77,7 @@ func (c *Client) GetTrailFootprints(ctx context.Context, userID uuid.UUID, curso
 			Tags:            pb.Tags,
 			Note:            pb.Note,
 			SourceEventType: pb.SourceEventType,
+			Wear:            pb.Wear,
 		}
 		if pb.OccurredAt != nil {
 			fp.OccurredAt = pb.OccurredAt.AsTime()

@@ -18,7 +18,7 @@ func (h *SovereignHandler) GetTrailFootprints(
 	msg := req.Msg
 	userID := parseUUID(msg.UserId)
 
-	footprints, nextCursor, hasMore, err := h.readDB.GetTrailFootprints(ctx, userID, msg.Cursor, int(msg.Limit))
+	footprints, nextCursor, hasMore, err := h.readDB.GetTrailFootprints(ctx, userID, msg.Cursor, int(msg.Limit), msg.FilterTags)
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("GetTrailFootprints: %w", err))
 	}
@@ -37,6 +37,7 @@ func (h *SovereignHandler) GetTrailFootprints(
 			Note:            fp.Note,
 			SourceEventType: fp.SourceEventType,
 			OccurredAt:      timestamppb.New(fp.OccurredAt),
+			Wear:            fp.Wear,
 		}
 	}
 
