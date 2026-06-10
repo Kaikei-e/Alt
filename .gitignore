@@ -183,3 +183,4 @@ rag-orchestrator/start_backfill.sh
 docs/retrospective/
 .c2quay/snapshots/
 Alt.code-workspace
+scripts/rollout-knowledge-loop-evidence.sh
