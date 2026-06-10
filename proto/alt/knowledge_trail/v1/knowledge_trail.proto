@@ -1,0 +1,42 @@
+syntax = "proto3";
+
+package alt.knowledge_trail.v1;
+
+option go_package = "alt/gen/proto/alt/knowledge_trail/v1;knowledgetrailv1";
+
+// KnowledgeTrailService is the front-facing API for the Knowledge Trail —
+// the user's cognitive trail (footprints) with system-proposed branches.
+// It currently exposes the read-only footprint spine; branch proposal and
+// resolution are separate RPCs.
+service KnowledgeTrailService {
+  // GetTrail returns the user's footprint spine in reverse-chronological order.
+  rpc GetTrail(GetTrailRequest) returns (GetTrailResponse);
+}
+
+message GetTrailRequest {
+  optional string cursor = 1;
+  int32 limit = 2;
+}
+
+message GetTrailResponse {
+  repeated Footprint footprints = 1;
+  string next_cursor = 2;
+  bool has_more = 3;
+  string generated_at = 4;
+}
+
+// Footprint is one user cognitive act on the trail spine. It is a pure
+// projection of the event log; the system never authors a footprint.
+message Footprint {
+  string footprint_key = 1;
+  // verb is the user-facing action: "read" | "asked" | "returned" | "listened" | "dismissed".
+  string verb = 2;
+  string item_key = 3;
+  string title = 4;
+  string excerpt = 5;
+  repeated string tags = 6;
+  // note is a derived hint (e.g. "2nd visit"), never a stage label.
+  string note = 7;
+  // occurred_at is the event-time of the act (RFC3339).
+  string occurred_at = 8;
+}

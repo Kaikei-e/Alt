@@ -5,39 +5,9 @@ import (
 	"fmt"
 )
 
-// Projection-health read queries backing the ADR-000939 honest gate. These are
-// DB-truth gauges (sampled periodically), not rate counters — they evaluate
-// even at the low projection traffic (~250 entries/day) that made the old
-// rate-based coverage alert structurally unable to fire.
-
-// KnowledgeLoopRelationCoverage is the relation-coverage snapshot over recently
-// sourced entries. WithRelations / Total is the honest "is evidence reaching
-// the Orient surface" ratio.
-type KnowledgeLoopRelationCoverage struct {
-	Total         int64
-	WithRelations int64
-}
-
-// GetKnowledgeLoopRelationCoverage24h counts entries whose source event
-// occurred in the last 24h (freshness_at, event-time — NOT projected_at, which
-// is debug-only and not metric-exposed) and how many carry a non-empty
-// relation-set. A collapse to ~0 while entries keep flowing is the "decorated
-// feed" regression (ADR-000938/000939): a producer feeding the accumulator died
-// or extractRelations dropped the evidence.
-func (r *Repository) GetKnowledgeLoopRelationCoverage24h(ctx context.Context) (KnowledgeLoopRelationCoverage, error) {
-	const q = `
-SELECT count(*) AS total,
-       count(*) FILTER (
-         WHERE relations IS NOT NULL AND relations::text NOT IN ('[]', 'null')
-       ) AS with_relations
-FROM knowledge_loop_entries
-WHERE freshness_at >= now() - interval '24 hours'`
-	var out KnowledgeLoopRelationCoverage
-	if err := r.pool.QueryRow(ctx, q).Scan(&out.Total, &out.WithRelations); err != nil {
-		return out, fmt.Errorf("GetKnowledgeLoopRelationCoverage24h: %w", err)
-	}
-	return out, nil
-}
+// Projection-health read queries backing the producer-liveness gauges. These
+// are DB-truth gauges (sampled periodically), not rate counters — they evaluate
+// even at low projection traffic.
 
 // GetKnowledgeEventLastOccurrenceAges returns, per requested event_type, the
 // age in seconds of the most recent event of that type (now() - max(occurred_at)).

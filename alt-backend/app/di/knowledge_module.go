@@ -16,9 +16,9 @@ import (
 	"alt/usecase/create_summary_version_usecase"
 	"alt/usecase/create_tag_set_version_usecase"
 	"alt/usecase/get_knowledge_home_usecase"
+	"alt/usecase/get_knowledge_trail_usecase"
 	"alt/usecase/knowledge_audit_usecase"
 	"alt/usecase/knowledge_backfill_usecase"
-	"alt/usecase/knowledge_loop_usecase"
 	"alt/usecase/knowledge_metrics_usecase"
 	"alt/usecase/knowledge_projection_health_usecase"
 	"alt/usecase/knowledge_reproject_usecase"
@@ -42,6 +42,7 @@ import (
 type KnowledgeModule struct {
 	// Usecases
 	GetKnowledgeHomeUsecase          *get_knowledge_home_usecase.GetKnowledgeHomeUsecase
+	GetKnowledgeTrailUsecase         *get_knowledge_trail_usecase.GetKnowledgeTrailUsecase
 	TrackHomeSeenUsecase             *track_home_seen_usecase.TrackHomeSeenUsecase
 	TrackHomeActionUsecase           *track_home_action_usecase.TrackHomeActionUsecase
 	AppendKnowledgeEventUsecase      *append_knowledge_event_usecase.AppendKnowledgeEventUsecase
@@ -64,13 +65,6 @@ type KnowledgeModule struct {
 	ListLensesUsecase    *list_lenses_usecase.ListLensesUsecase
 	SelectLensUsecase    *select_lens_usecase.SelectLensUsecase
 	ArchiveLensUsecase   *archive_lens_usecase.ArchiveLensUsecase
-
-	// Knowledge Loop usecases (new projection; see docs/ADR/000831.md).
-	// Storage is sovereign-owned: the usecase talks to sovereign_client.Client which
-	// implements all Knowledge Loop ports; alt-db has no Knowledge Loop tables.
-	GetKnowledgeLoopUsecase        *knowledge_loop_usecase.GetKnowledgeLoopUsecase
-	TransitionKnowledgeLoopUsecase *knowledge_loop_usecase.TransitionKnowledgeLoopUsecase
-	EmitActOutcomeUsecase          *knowledge_loop_usecase.EmitActOutcomeUsecase
 
 	// Gateways
 	FeatureFlagGateway               *feature_flag_gateway.Gateway
@@ -104,6 +98,7 @@ func newKnowledgeModule(infra *InfraModule, article *ArticleModule) *KnowledgeMo
 	// Knowledge Home usecases
 	trendingTagsGw := trending_tags_gateway.NewTrendingTagsGateway(altDB, 30*time.Minute)
 	getKnowledgeHomeUC := get_knowledge_home_usecase.NewGetKnowledgeHomeUsecase(sovereignCli, sovereignCli, sovereignCli, sovereignCli, sovereignCli, trendingTagsGw)
+	getKnowledgeTrailUC := get_knowledge_trail_usecase.NewGetKnowledgeTrailUsecase(sovereignCli)
 	trackHomeSeenUC := track_home_seen_usecase.NewTrackHomeSeenUsecase(sovereignCli, featureFlagGw)
 	trackHomeActionUC := track_home_action_usecase.NewTrackHomeActionUsecase(sovereignCli, sovereignCli, featureFlagGw, sovereignCli, sovereignCli, sovereignCli, articleURLLookupGw)
 	appendKnowledgeEventUC := append_knowledge_event_usecase.NewAppendKnowledgeEventUsecase(sovereignCli)
@@ -178,41 +173,9 @@ func newKnowledgeModule(infra *InfraModule, article *ArticleModule) *KnowledgeMo
 	metricsGw := knowledge_metrics_gateway.NewGateway(metricsSnapshot)
 	metricsUC := knowledge_metrics_usecase.NewUsecase(metricsGw, healthChecker)
 
-	// Knowledge Loop wiring: storage lives in knowledge-sovereign, not alt-db.
-	// The sovereign_client.Client implements all Knowledge Loop ports (read + write + dedupe).
-	getKnowledgeLoopUC := knowledge_loop_usecase.NewGetKnowledgeLoopUsecase(
-		sovereignCli,
-		sovereignCli,
-		sovereignCli,
-	)
-	// sovereignCli implements both ReserveTransitionIdempotencyPort and AppendKnowledgeEventPort,
-	// so the transition usecase reserves idempotency and appends the Loop event through the
-	// same sovereign Connect-RPC client (single source of truth for knowledge_events).
-	//
-	// The rate limiter is shared process-wide so the canonical contract §8.4 minute
-	// ceiling (600 Loop events/user/minute + 60s per-entry dwell throttle) holds
-	// across concurrent /loop/transition requests. One process == one bucket set;
-	// a multi-pod deployment drifts by N× pods on the ceiling, which we accept:
-	// idempotency + dedupe guard prevent event store damage, and this limiter is
-	// the defense-in-depth layer on top.
-	knowledgeLoopRateLimiter := knowledge_loop_usecase.NewLoopRateLimiter(nil)
-	transitionKnowledgeLoopUC := knowledge_loop_usecase.NewTransitionKnowledgeLoopUsecase(
-		sovereignCli,
-		sovereignCli,
-		knowledgeLoopRateLimiter,
-		nil, // use time.Now by default
-	)
-	// ADR-000912: FE-initiated closure of the OODA loop. Shares the sovereign
-	// client's AppendKnowledgeEvent port — same dedupe semantics as the
-	// transition path, distinct dedupe_key namespace from the no_engagement
-	// cron.
-	emitActOutcomeUC := knowledge_loop_usecase.NewEmitActOutcomeUsecase(
-		sovereignCli,
-		nil, // use time.Now by default
-	)
-
 	return &KnowledgeModule{
 		GetKnowledgeHomeUsecase:          getKnowledgeHomeUC,
+		GetKnowledgeTrailUsecase:         getKnowledgeTrailUC,
 		TrackHomeSeenUsecase:             trackHomeSeenUC,
 		TrackHomeActionUsecase:           trackHomeActionUC,
 		AppendKnowledgeEventUsecase:      appendKnowledgeEventUC,
@@ -234,10 +197,6 @@ func newKnowledgeModule(infra *InfraModule, article *ArticleModule) *KnowledgeMo
 		ListLensesUsecase:    listLensesUC,
 		SelectLensUsecase:    selectLensUC,
 		ArchiveLensUsecase:   archiveLensUC,
-
-		GetKnowledgeLoopUsecase:        getKnowledgeLoopUC,
-		TransitionKnowledgeLoopUsecase: transitionKnowledgeLoopUC,
-		EmitActOutcomeUsecase:          emitActOutcomeUC,
 
 		FeatureFlagGateway:               featureFlagGw,
 		KnowledgeBackfillArticlesGateway: knowledgeBackfillGw,

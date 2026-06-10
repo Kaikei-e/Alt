@@ -6,8 +6,7 @@ import (
 	"knowledge-sovereign/driver/sovereign_db"
 	"knowledge-sovereign/gen/proto/services/sovereign/v1/sovereignv1connect"
 	"knowledge-sovereign/handler"
-	"knowledge-sovereign/usecase/act_outcome_cron"
-	"knowledge-sovereign/usecase/knowledge_loop_projector"
+	"knowledge-sovereign/usecase/knowledge_trail_projector"
 	"knowledge-sovereign/usecase/projection_health"
 	"log/slog"
 	"net/http"
@@ -68,7 +67,6 @@ func main() {
 	}
 	retentionHandler := handler.NewRetentionHandler(repo, archiveDir)
 	storageHandler := handler.NewStorageHandler(repo)
-	knowledgeLoopReprojectHandler := handler.NewKnowledgeLoopReprojectHandler(repo)
 
 	// Metrics / health server
 	metricsMux := http.NewServeMux()
@@ -81,7 +79,6 @@ func main() {
 	snapshotHandler.RegisterRoutes(metricsMux)
 	retentionHandler.RegisterRoutes(metricsMux)
 	storageHandler.RegisterRoutes(metricsMux)
-	knowledgeLoopReprojectHandler.RegisterRoutes(metricsMux)
 	metricsServer := &http.Server{Addr: cfg.MetricsAddr, Handler: metricsMux}
 
 	go func() {
@@ -109,43 +106,30 @@ func main() {
 		}
 	}()
 
-	// Knowledge Loop projector. Runs in-process now that the projection logic
-	// has moved here (ADR-000844 follow-up). The cadence is intentionally short
-	// — the projector is reproject-safe and idempotent, so re-running on a
-	// quiet log is cheap.
-	//
-	// ADR-000914 §projector performance: BatchSize and MaxBatchesPerTick are
-	// env-tunable so reproject can be driven by bumping the env in the
-	// sovereign deployment without a redeploy of the projector code. The
-	// defaults match the constants in `projector.go` (500 × 4 batches per
-	// tick = 2 000 events / tick).
-	loopProjector := knowledge_loop_projector.NewProjector(repo, slog.Default(),
-		knowledge_loop_projector.Config{
-			BatchSize:         parseIntEnv("KNOWLEDGE_SOVEREIGN_LOOP_PROJECTOR_BATCH_SIZE", 500),
-			MaxBatchesPerTick: parseIntEnv("KNOWLEDGE_SOVEREIGN_LOOP_PROJECTOR_MAX_BATCHES_PER_TICK", 4),
+	// Knowledge Trail spine projector. Folds the append-only event log into
+	// knowledge_trail_footprints in-process. Reproject-safe and idempotent, so a
+	// short tick over a quiet log is cheap.
+	trailProjector := knowledge_trail_projector.NewProjector(repo, slog.Default(),
+		knowledge_trail_projector.Config{
+			BatchSize:         parseIntEnv("KNOWLEDGE_SOVEREIGN_TRAIL_PROJECTOR_BATCH_SIZE", 500),
+			MaxBatchesPerTick: parseIntEnv("KNOWLEDGE_SOVEREIGN_TRAIL_PROJECTOR_MAX_BATCHES_PER_TICK", 4),
 		})
-	// ADR-000939: the projector derives evidence from the co-projected
-	// knowledge_loop_evidence accumulator it folds in the same pass — there is
-	// no separate resolver to wire. `repo` (sovereign_db.Repository) provides
-	// the accumulator methods; a missing implementation would be a compile error.
-	loopTick := time.NewTicker(parseDurationEnv("KNOWLEDGE_SOVEREIGN_PROJECTOR_TICK_INTERVAL", 5*time.Second))
+	trailTick := time.NewTicker(parseDurationEnv("KNOWLEDGE_SOVEREIGN_PROJECTOR_TICK_INTERVAL", 5*time.Second))
 	go func() {
-		defer loopTick.Stop()
+		defer trailTick.Stop()
 		for {
 			select {
 			case <-ctx.Done():
 				return
-			case <-loopTick.C:
-				if err := loopProjector.RunBatch(ctx); err != nil {
-					slog.Error("knowledge_loop_projector batch failed", "error", err)
+			case <-trailTick.C:
+				if err := trailProjector.RunBatch(ctx); err != nil {
+					slog.Error("knowledge_trail_projector batch failed", "error", err)
 				}
 			}
 		}
 	}()
 
-	// ADR-000939 honest gate: sample the relation-coverage and producer-liveness
-	// gauges on a slow tick. DB-truth gauges replace the old rate-based coverage
-	// alert that could never fire at the real projection traffic.
+	// Producer-liveness gauges sampled on a slow tick.
 	healthExporter := projection_health.New(repo, slog.Default())
 	healthTick := time.NewTicker(parseDurationEnv("KNOWLEDGE_SOVEREIGN_PROJECTION_HEALTH_TICK_INTERVAL", 60*time.Second))
 	go func() {
@@ -157,47 +141,6 @@ func main() {
 			case <-healthTick.C:
 				if err := healthExporter.RunOnce(ctx); err != nil {
 					slog.Error("projection_health exporter failed", "error", err)
-				}
-			}
-		}
-	}()
-
-	// ADR-000939: surface_planner_cron is retired. It existed to re-emit
-	// KnowledgeLoopSurfacePlanRecomputed for AugurConversationLinked signals so
-	// the projector had a source, but that re-emit layer is a detour now that
-	// the projector consumes augur links directly as late fuel and derives
-	// placement from the co-projected evidence accumulator. The consumer
-	// projector branch is kept (44 historical surface_plan_recomputed events
-	// replay deterministically), but nothing emits new ones. The stale
-	// `surface_planner_v2` projection checkpoint row is removed during the
-	// rollout (see docs/runbooks/knowledge-loop-reproject.md) so its heartbeat
-	// SLO does not false-fire.
-
-	// ADR-000908 §Δ1 act_outcome_cron. Backfills `outcome=no_engagement` for
-	// KnowledgeLoopActed events that aged past the 7-day window without an
-	// explicit outcome from the alt-backend view tracker. Reproject-safe —
-	// the emitted outcome event's occurred_at is bound to
-	// acted.occurred_at + 7d, not wall-clock. The cadence is loose because
-	// the cutoff itself is in days; one tick per hour catches the boundary
-	// promptly enough.
-	outcomeCron := act_outcome_cron.New(repo, slog.Default(), act_outcome_cron.Config{
-		BatchSize: parseIntEnv("KNOWLEDGE_SOVEREIGN_ACT_OUTCOME_BATCH_SIZE", 256),
-		// Identifier-use only: scan boundary for "which acted events have
-		// aged past the 7d cutoff". The emitted event payloads remain pure
-		// (occurred_at = acted.OccurredAt + Window) regardless of when
-		// Clock() fires. See act_outcome_cron/invariants_test.go.
-		Clock: time.Now,
-	})
-	outcomeTick := time.NewTicker(parseDurationEnv("KNOWLEDGE_SOVEREIGN_ACT_OUTCOME_TICK_INTERVAL", 1*time.Hour))
-	go func() {
-		defer outcomeTick.Stop()
-		for {
-			select {
-			case <-ctx.Done():
-				return
-			case <-outcomeTick.C:
-				if err := outcomeCron.RunBatch(ctx); err != nil {
-					slog.Error("act_outcome_cron batch failed", "error", err)
 				}
 			}
 		}

@@ -7,7 +7,7 @@
 	},
 	"files": {
 		"ignoreUnknown": false,
-		"includes": ["**", "!playwright-report"]
+		"includes": ["**", "!playwright-report", "!docs"]
 	},
 	"formatter": {
 		"enabled": true,
@@ -85,25 +85,6 @@
 											"$lib/components/*",
 											"$lib/server/*"
 										]
-									}
-								]
-							}
-						}
-					}
-				}
-			}
-		},
-		{
-			"includes": ["src/lib/hooks/useKnowledgeLoop.svelte.ts"],
-			"linter": {
-				"rules": {
-					"style": {
-						"noRestrictedImports": {
-							"level": "error",
-							"options": {
-								"patterns": [
-									{
-										"group": ["$lib/connect/knowledge_home*"]
 									}
 								]
 							}

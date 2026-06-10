@@ -74,6 +74,9 @@ func (m *mockRepo) PatchKnowledgeHomeItemURL(_ context.Context, p json.RawMessag
 func (m *mockRepo) GetKnowledgeHomeItems(_ context.Context, _ uuid.UUID, _ string, _ int, _ *sovereign_db.LensFilter) ([]sovereign_db.KnowledgeHomeItem, string, bool, error) {
 	return nil, "", false, m.returnErr
 }
+func (m *mockRepo) GetTrailFootprints(_ context.Context, _ uuid.UUID, _ string, _ int) ([]sovereign_db.TrailFootprint, string, bool, error) {
+	return nil, "", false, m.returnErr
+}
 func (m *mockRepo) GetTodayDigest(_ context.Context, _ uuid.UUID, _ time.Time) (*sovereign_db.TodayDigest, error) {
 	return nil, m.returnErr
 }

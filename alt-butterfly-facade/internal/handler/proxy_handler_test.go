@@ -169,39 +169,6 @@ func TestProxyHandler_ApplyConnectTimeout_StreamingCappedAtStreamingMax(t *testi
 	assert.LessOrEqual(t, remaining, 40*time.Minute)
 }
 
-func TestProxyHandler_ApplyConnectTimeout_LoopStreamUsesStreamingTimeout(t *testing.T) {
-	// Regression guard: StreamKnowledgeLoopUpdates must be recognized as a
-	// streaming procedure so it picks up the longer streaming timeout. Previously
-	// this path was treated as unary, which cancelled the backend stream after
-	// the 30s default timeout and caused a reconnect storm.
-	backendClient := client.NewBackendClientWithTransport(
-		"http://localhost:9101",
-		30*time.Second,
-		40*time.Minute,
-		http.DefaultTransport,
-	)
-	handler := NewProxyHandler(backendClient, []byte("test-secret"), "auth-hub", "alt-backend", nil, 30*time.Second, 40*time.Minute)
-
-	req := httptest.NewRequest(http.MethodPost, "/alt.knowledge.loop.v1.KnowledgeLoopService/StreamKnowledgeLoopUpdates", nil)
-
-	newReq, cancel := handler.applyConnectTimeout(req)
-	defer cancel()
-
-	deadline, ok := newReq.Context().Deadline()
-	assert.True(t, ok)
-	remaining := time.Until(deadline)
-	assert.Greater(t, remaining, 39*time.Minute+59*time.Second)
-	assert.LessOrEqual(t, remaining, 40*time.Minute)
-}
-
-func TestIsStreamingProcedure_KnowledgeLoopStream(t *testing.T) {
-	assert.True(
-		t,
-		isStreamingProcedure("/alt.knowledge.loop.v1.KnowledgeLoopService/StreamKnowledgeLoopUpdates"),
-		"StreamKnowledgeLoopUpdates must be on the streaming allowlist so the BFF keeps buffering off and uses the streaming timeout",
-	)
-}
-
 func TestProxyHandler_ApplyConnectTimeout_UnaryUsesDefaultTimeout(t *testing.T) {
 	backendClient := client.NewBackendClientWithTransport(
 		"http://localhost:9101",
@@ -388,7 +355,7 @@ func TestProxyHandler_ServeHTTP_LogsAccess(t *testing.T) {
 
 	req := httptest.NewRequest(
 		http.MethodPost,
-		"/alt.knowledge.loop.v1.KnowledgeLoopService/TransitionKnowledgeLoop",
+		"/alt.knowledge_home.v1.KnowledgeHomeService/GetKnowledgeHome",
 		strings.NewReader(`{}`),
 	)
 	req.Header.Set("Content-Type", "application/json")
@@ -400,7 +367,7 @@ func TestProxyHandler_ServeHTTP_LogsAccess(t *testing.T) {
 	assert.Equal(t, http.StatusOK, recorder.Code)
 	out := buf.String()
 	assert.Contains(t, out, `"msg":"bff.proxy_request"`, "expected inbound access log")
-	assert.Contains(t, out, `"path":"/alt.knowledge.loop.v1.KnowledgeLoopService/TransitionKnowledgeLoop"`)
+	assert.Contains(t, out, `"path":"/alt.knowledge_home.v1.KnowledgeHomeService/GetKnowledgeHome"`)
 	assert.Contains(t, out, `"streaming":false`)
 	assert.Contains(t, out, `"msg":"bff.proxy_response"`, "expected outbound response log")
 	assert.Contains(t, out, `"status":200`)

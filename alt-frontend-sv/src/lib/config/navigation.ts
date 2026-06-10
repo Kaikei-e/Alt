@@ -5,6 +5,7 @@ import {
 	CalendarRange,
 	Compass,
 	Eye,
+	Footprints,
 	Globe,
 	Heart,
 	Home,
@@ -22,7 +23,6 @@ import {
 	ShieldCheck,
 	Sparkles,
 	Tag,
-	Workflow,
 } from "@lucide/svelte";
 import type { IconProps } from "@lucide/svelte";
 import type { Component } from "svelte";
@@ -54,7 +54,7 @@ export interface MobileMenuSection {
  */
 export const NAV_TABS: NavTab[] = [
 	{ label: "Home", href: "/home", icon: Lightbulb },
-	{ label: "Loop", href: "/loop", icon: Workflow },
+	{ label: "Trail", href: "/knowledge/trail", icon: Footprints },
 	{ label: "Search", href: "/search", icon: Search },
 	{ label: "Augur", href: "/augur", icon: Bird },
 	{ label: "Menu", href: "/menu", icon: Menu },

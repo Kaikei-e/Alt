@@ -43,11 +43,12 @@ func (m *MockAppendKnowledgeEventPort) EXPECT() *MockAppendKnowledgeEventPortMoc
 }
 
 // AppendKnowledgeEvent mocks base method.
-func (m *MockAppendKnowledgeEventPort) AppendKnowledgeEvent(ctx context.Context, event domain.KnowledgeEvent) error {
+func (m *MockAppendKnowledgeEventPort) AppendKnowledgeEvent(ctx context.Context, event domain.KnowledgeEvent) (int64, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "AppendKnowledgeEvent", ctx, event)
-	ret0, _ := ret[0].(error)
-	return ret0
+	ret0, _ := ret[0].(int64)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
 }
 
 // AppendKnowledgeEvent indicates an expected call of AppendKnowledgeEvent.

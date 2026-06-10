@@ -14,8 +14,8 @@ import (
 	"alt/gen/proto/alt/articles/v2/articlesv2connect"
 	"alt/gen/proto/alt/augur/v2/augurv2connect"
 	"alt/gen/proto/alt/feeds/v2/feedsv2connect"
-	"alt/gen/proto/alt/knowledge/loop/v1/knowledgeloopv1connect"
 	"alt/gen/proto/alt/knowledge_home/v1/knowledgehomev1connect"
+	"alt/gen/proto/alt/knowledge_trail/v1/knowledgetrailv1connect"
 	"alt/gen/proto/alt/morning_letter/v2/morningletterv2connect"
 	"alt/gen/proto/alt/recap/v2/recapv2connect"
 	"alt/gen/proto/alt/rss/v2/rssv2connect"
@@ -32,7 +32,7 @@ import (
 	internalhandler "alt/connect/v2/internal"
 	knowledge_home "alt/connect/v2/knowledge_home"
 	"alt/connect/v2/knowledge_home_admin"
-	knowledge_loop "alt/connect/v2/knowledge_loop"
+	knowledge_trail "alt/connect/v2/knowledge_trail"
 	"alt/connect/v2/middleware"
 	"alt/connect/v2/morning_letter"
 	"alt/connect/v2/recap"
@@ -161,30 +161,11 @@ func SetupConnectHandlers(mux *http.ServeMux, container *di.ApplicationComponent
 	mux.Handle(khPath, khServiceHandler)
 	logger.Info("Registered Connect-RPC KnowledgeHomeService", "path", khPath)
 
-	// Register KnowledgeLoopService — new read model and state-machine API (ADR-000831).
-	// Tenant/lens scope is derived from the JWT via the same opts/interceptors as KnowledgeHome.
-	// SovereignClient implements ListKnowledgeEventsForUserPort, which drives the
-	// polling-based StreamKnowledgeLoopUpdates. The stream is read-only: it never
-	// writes to projection, preserving the immutable-data-model invariant that
-	// read paths cannot mutate state (ADR-000831 finding F3).
-	knowledgeLoopHandler := knowledge_loop.NewHandler(
-		container.GetKnowledgeLoopUsecase,
-		container.TransitionKnowledgeLoopUsecase,
-		container.EmitActOutcomeUsecase,
-		container.SovereignClient,
-		logger,
-	)
-	// Rule 8: surface the Loop wiring state loudly at startup so a missing
-	// producer / stream dependency is visible in logs immediately, not
-	// discovered as a silent fallback weeks later (PM-2026-045 / ADR-000928).
-	logger.Info("alt.knowledge_loop.wiring",
-		"transition_producer_enabled", container.TransitionKnowledgeLoopUsecase != nil,
-		"act_outcome_producer_enabled", container.EmitActOutcomeUsecase != nil,
-		"stream_reader_enabled", container.SovereignClient != nil,
-	)
-	klPath, klServiceHandler := knowledgeloopv1connect.NewKnowledgeLoopServiceHandler(knowledgeLoopHandler, opts)
-	mux.Handle(klPath, klServiceHandler)
-	logger.Info("Registered Connect-RPC KnowledgeLoopService", "path", klPath)
+	// Register KnowledgeTrailService — the footprint spine read API.
+	knowledgeTrailHandler := knowledge_trail.NewHandler(container.GetKnowledgeTrailUsecase, logger)
+	ktPath, ktServiceHandler := knowledgetrailv1connect.NewKnowledgeTrailServiceHandler(knowledgeTrailHandler, opts)
+	mux.Handle(ktPath, ktServiceHandler)
+	logger.Info("Registered Connect-RPC KnowledgeTrailService", "path", ktPath)
 
 	// Register KnowledgeHomeAdminService (service-to-service API). Auth is
 	// established at the TLS transport layer (mTLS peer-identity).

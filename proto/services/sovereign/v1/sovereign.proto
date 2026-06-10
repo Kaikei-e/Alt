@@ -73,14 +73,11 @@ service KnowledgeSovereignService {
   // === Projector watch (server streaming) ===
   rpc WatchProjectorEvents(WatchProjectorEventsRequest) returns (stream WatchProjectorEventsResponse);
 
-  // === Knowledge Loop (ADR-000831) ===
-  // Storage of the state-machine Loop read model. Called from alt-backend's
-  // KnowledgeLoopProjectorJob (write path) and Connect-RPC handler (read path).
-  rpc ApplyKnowledgeLoopMutation(ApplyKnowledgeLoopMutationRequest) returns (ApplyKnowledgeLoopMutationResponse);
-  rpc GetKnowledgeLoopEntries(GetKnowledgeLoopEntriesRequest) returns (GetKnowledgeLoopEntriesResponse);
-  rpc GetKnowledgeLoopSessionState(GetKnowledgeLoopSessionStateRequest) returns (GetKnowledgeLoopSessionStateResponse);
-  rpc GetKnowledgeLoopSurfaces(GetKnowledgeLoopSurfacesRequest) returns (GetKnowledgeLoopSurfacesResponse);
-  rpc ReserveKnowledgeLoopTransition(ReserveKnowledgeLoopTransitionRequest) returns (ReserveKnowledgeLoopTransitionResponse);
+  // === Knowledge Trail (spine read model) ===
+  // GetTrailFootprints returns the user's footprint spine in reverse-chronological
+  // order. Footprints are the pure projection of cognitive-act events; the read
+  // model is disposable and re-derivable from knowledge_events.
+  rpc GetTrailFootprints(GetTrailFootprintsRequest) returns (GetTrailFootprintsResponse);
 }
 
 // =============================================================================
@@ -687,364 +684,36 @@ message WatchProjectorEventsResponse {
 }
 
 // =============================================================================
-// Knowledge Loop (ADR-000831)
+// Knowledge Trail spine
 // =============================================================================
-// These types mirror domain.KnowledgeLoopEntry/SessionState/Surface in alt-backend.
-// They are duplicated from alt.knowledge.loop.v1 on purpose so the sovereign
-// service has no dependency on the UI-facing proto. alt-backend's
-// sovereign_client/knowledge_loop_client.go maps between the two.
-//
-// projected_at (internal debug wall-clock) is NOT carried over the wire. It is
-// intentionally absent and `reserved` on every message to prevent reintroduction.
 
-enum LoopStage {
-  LOOP_STAGE_UNSPECIFIED = 0;
-  LOOP_STAGE_OBSERVE = 1;
-  LOOP_STAGE_ORIENT = 2;
-  LOOP_STAGE_DECIDE = 3;
-  LOOP_STAGE_ACT = 4;
+message GetTrailFootprintsRequest {
+  string user_id = 1;
+  string cursor = 2;
+  int32 limit = 3;
 }
 
-enum SurfaceBucket {
-  SURFACE_BUCKET_UNSPECIFIED = 0;
-  SURFACE_BUCKET_NOW = 1;
-  SURFACE_BUCKET_CONTINUE = 2;
-  SURFACE_BUCKET_CHANGED = 3;
-  SURFACE_BUCKET_REVIEW = 4;
+message GetTrailFootprintsResponse {
+  repeated TrailFootprint footprints = 1;
+  string next_cursor = 2;
+  bool has_more = 3;
 }
 
-enum DismissState {
-  DISMISS_STATE_UNSPECIFIED = 0;
-  DISMISS_STATE_ACTIVE = 1;
-  DISMISS_STATE_DEFERRED = 2;
-  DISMISS_STATE_DISMISSED = 3;
-  DISMISS_STATE_COMPLETED = 4;
-  // ADR-000908 §Δ3 — terminal "knowledge internalized" state. Read path
-  // filters this out; macroState reports the 7-day count.
-  DISMISS_STATE_INTERNALIZED = 5;
-}
-
-enum LoopVisibilityState {
-  LOOP_VISIBILITY_STATE_UNSPECIFIED = 0;
-  LOOP_VISIBILITY_STATE_VISIBLE = 1;
-  LOOP_VISIBILITY_STATE_HIDDEN = 2;
-  LOOP_VISIBILITY_STATE_SNOOZED = 3;
-}
-
-enum LoopCompletionState {
-  LOOP_COMPLETION_STATE_UNSPECIFIED = 0;
-  LOOP_COMPLETION_STATE_OPEN = 1;
-  LOOP_COMPLETION_STATE_COMPLETED = 2;
-  LOOP_COMPLETION_STATE_DISMISSED = 3;
-}
-
-enum WhyKind {
-  WHY_KIND_UNSPECIFIED = 0;
-  WHY_KIND_SOURCE = 1;
-  WHY_KIND_PATTERN = 2;
-  WHY_KIND_RECALL = 3;
-  WHY_KIND_CHANGE = 4;
-  // Wave 4-C v3 narrative kinds. Knowledge Loop Surface Planner v2 produces
-  // these when the EventLogSurfaceScoreResolver returns non-zero v2 evidence
-  // (recap topic overlap, tag set overlap, augur link). The DB enum already
-  // carries these values via knowledge-sovereign migration 00013; the proto
-  // catches up so the projector can emit a typed value rather than a magic
-  // string. Reproject is required after rollout (WhyMappingVersion v6).
-  WHY_KIND_TOPIC_AFFINITY = 5;
-  WHY_KIND_TAG_TRENDING = 6;
-  WHY_KIND_UNFINISHED_CONTINUE = 7;
-}
-
-enum LoopPriority {
-  LOOP_PRIORITY_UNSPECIFIED = 0;
-  LOOP_PRIORITY_CRITICAL = 1;
-  LOOP_PRIORITY_CONTINUING = 2;
-  LOOP_PRIORITY_CONFIRM = 3;
-  LOOP_PRIORITY_REFERENCE = 4;
-}
-
-enum SurfacePlannerVersion {
-  SURFACE_PLANNER_VERSION_UNSPECIFIED = 0;
-  // v1: event-type fixed mapping. This is the additive default for rows
-  // projected before Surface Planner v2 evidence was wired.
-  SURFACE_PLANNER_VERSION_V1 = 1;
-  // v2: knowledge-state-based scoring via reproject-safe evidence inputs.
-  SURFACE_PLANNER_VERSION_V2 = 2;
-}
-
-enum LoopServiceQuality {
-  LOOP_SERVICE_QUALITY_UNSPECIFIED = 0;
-  LOOP_SERVICE_QUALITY_FULL = 1;
-  LOOP_SERVICE_QUALITY_DEGRADED = 2;
-  LOOP_SERVICE_QUALITY_FALLBACK = 3;
-}
-
-// ConfidenceLadder mirrors alt.knowledge.loop.v1.ConfidenceLadder so the
-// internal projector can carry a qualitative tier alongside the WhyPayload.
-// Speculation = single weak signal, Pattern = multi-signal alignment,
-// Evidence = pinned versioned artifact, Verified = act_outcome confirmed.
-enum ConfidenceLadder {
-  CONFIDENCE_LADDER_UNSPECIFIED = 0;
-  CONFIDENCE_LADDER_SPECULATION = 1;
-  CONFIDENCE_LADDER_PATTERN = 2;
-  CONFIDENCE_LADDER_EVIDENCE = 3;
-  CONFIDENCE_LADDER_VERIFIED = 4;
-}
-
-// EvidenceKind discriminates how `KnowledgeLoopEvidenceRef.ref_id` should be
-// interpreted by downstream consumers (UI route builders, Augur seed handler).
-// Mirrors `alt.augur.v2.CitationKind`; kept in this proto package so the
-// upstream sovereign emitter can tag refs without cross-package proto imports.
-enum EvidenceKind {
-  EVIDENCE_KIND_UNSPECIFIED = 0;
-  EVIDENCE_KIND_WEB = 1;
-  EVIDENCE_KIND_ARTICLE = 2;
-  EVIDENCE_KIND_SUMMARY = 3;
-}
-
-message KnowledgeLoopEvidenceRef {
-  string ref_id = 1;
-  string label = 2;
-  // Kind of evidence; controls whether `ref_id` is a URL or a UUID and
-  // therefore how downstream surfaces (Augur citation rail, Loop tile)
-  // route the click target. See EvidenceKind.
-  EvidenceKind kind = 3;
-}
-
-message KnowledgeLoopWhyPayload {
-  WhyKind kind = 1;
-  string text = 2; // 1..512 chars, plain text only
-  optional float confidence = 3;
-  repeated KnowledgeLoopEvidenceRef evidence_refs = 4; // length <= 8
-
-  // v2 producer fields (ADR-000908 §Δ4 / canonical contract §11).
-  // counter_evidence_refs lists refs that would weaken the Why claim
-  // (≤4 cap). confidence_ladder is the qualitative tier the projector
-  // assigned. what_would_change_my_mind is a short falsifier sentence
-  // (1..256 chars) the UI renders inline with the Why text.
-  repeated KnowledgeLoopEvidenceRef counter_evidence_refs = 5;
-  optional ConfidenceLadder confidence_ladder = 6;
-  optional string what_would_change_my_mind = 7;
-}
-
-message KnowledgeLoopArtifactVersionRef {
-  optional string summary_version_id = 1;
-  optional string tag_set_version_id = 2;
-  optional string lens_version_id = 3;
-}
-
-message KnowledgeLoopEntry {
+// TrailFootprint is one user cognitive act projected from the event log. It is
+// the only element of the trail spine; the system never produces footprints.
+message TrailFootprint {
   string user_id = 1;
   string tenant_id = 2;
-  string lens_mode_id = 3;
-  string entry_key = 4;
-  string source_item_key = 5;
-
-  LoopStage proposed_stage = 6;
-  SurfaceBucket surface_bucket = 7;
-
-  int64 projection_revision = 8;
-  int64 projection_seq_hiwater = 9;
-  int64 source_event_seq = 10;
-  google.protobuf.Timestamp freshness_at = 11;
-  optional google.protobuf.Timestamp source_observed_at = 12;
-
-  KnowledgeLoopArtifactVersionRef artifact_version_ref = 13;
-  KnowledgeLoopWhyPayload why_primary = 14;
-
-  bytes change_summary = 15;    // JSONB opaque
-  bytes continue_context = 16;  // JSONB opaque
-  bytes decision_options = 17;  // JSONB opaque
-  bytes act_targets = 18;       // JSONB opaque
-
-  optional string superseded_by_entry_key = 19;
-  DismissState dismiss_state = 20;
-  int32 render_depth_hint = 21; // 1..4
-  LoopPriority loop_priority = 22;
-  optional SurfacePlannerVersion surface_planner_version = 23;
-  bytes surface_score_inputs = 24; // JSONB opaque, sovereign-internal diagnostics
-
-  // User-specific per-entry progress. proposed_stage remains the projector's
-  // recommendation; current_entry_stage is joined from
-  // knowledge_loop_entry_session_state on reads.
-  optional LoopStage current_entry_stage = 25;
-  optional google.protobuf.Timestamp current_entry_stage_entered_at = 26;
-
-  // visibility_state controls read-path inclusion. dismiss_state is retained
-  // for compatibility but no longer decides whether Continue / Review rows are
-  // visible to the Loop read model.
-  LoopVisibilityState visibility_state = 27;
-  LoopCompletionState completion_state = 28;
-
-  // ADR-000907 epistemic-change review driver. The projector populates this
-  // when surface_bucket=REVIEW; UNSPECIFIED / NONE are wire-equivalent for
-  // "no review driver" and let older clients ignore the field.
-  ReviewReason review_reason = 29;
-
-  // ADR-000937 relation-set. The projector populates this from the same
-  // SurfaceScoreInputs decideBucketV2 reads, but keeps the evidence as a
-  // first-class set instead of collapsing it into surface_bucket. JSONB
-  // opaque (sovereign-internal); the BFF projects it into the structured
-  // public Relation message. Reproject-safe: extractRelations is a pure
-  // function of the inputs. Each element:
-  //   {kind, target_ref, magnitude, state, why_text}
-  bytes relations = 30; // JSONB opaque
-
-  reserved "updated_at", "projected_at", "wall_clock", "ingest_time";
-}
-
-// ReviewReason mirrors alt.knowledge.loop.v1.ReviewReason. The projector
-// uses it internally so the BFF can pass the value through to the public
-// proto without remapping.
-enum ReviewReason {
-  REVIEW_REASON_UNSPECIFIED = 0;
-  REVIEW_REASON_STALENESS = 1;
-  REVIEW_REASON_CONTRADICTION = 2;
-  REVIEW_REASON_VERSION_DRIFT = 3;
-  REVIEW_REASON_UNFINISHED_THREAD = 4;
-  REVIEW_REASON_NONE = 5;
-}
-
-message KnowledgeLoopSessionState {
-  string user_id = 1;
-  string tenant_id = 2;
-  string lens_mode_id = 3;
-
-  LoopStage current_stage = 4;
-  google.protobuf.Timestamp current_stage_entered_at = 5;
-
-  optional string focused_entry_key = 6;
-  optional string foreground_entry_key = 7;
-
-  optional string last_observed_entry_key = 8;
-  optional string last_oriented_entry_key = 9;
-  optional string last_decided_entry_key = 10;
-  optional string last_acted_entry_key = 11;
-  optional string last_returned_entry_key = 12;
-  optional string last_deferred_entry_key = 13;
-
-  int64 projection_revision = 14;
-  int64 projection_seq_hiwater = 15;
-
-  // Macro layer aggregation (ADR-000909 §Δ2 supplement). Internal mirror of
-  // alt.knowledge.loop.v1.KnowledgeLoopMacroState — the handler copies fields
-  // 1-to-1 when serialising the public response. Reproject-safe: every count
-  // derives from event payload only; window_end_at echoes the triggering
-  // event's occurred_at, never wall-clock.
-  optional KnowledgeLoopMacroState macro_state = 16;
-
-  reserved "updated_at", "projected_at";
-}
-
-message KnowledgeLoopMacroState {
-  uint32 active_continue_threads = 1;
-  uint32 pending_review_count = 2;
-  uint32 recent_internalized_count = 3;
-  KnowledgeLoopCognitiveLoadHint cognitive_load_hint = 4;
-  google.protobuf.Timestamp window_end_at = 5;
-  google.protobuf.Timestamp window_start_at = 6;
-  int64 seq_hiwater = 7;
-  int32 lens_weights_version = 8;
-}
-
-// KnowledgeLoopCognitiveLoadHint mirrors alt.knowledge.loop.v1.CognitiveLoadHint
-// in the sovereign-internal namespace. The prefix avoids a collision with any
-// other CognitiveLoadHint message that might land in services.sovereign.v1
-// later.
-enum KnowledgeLoopCognitiveLoadHint {
-  KNOWLEDGE_LOOP_COGNITIVE_LOAD_HINT_UNSPECIFIED = 0;
-  KNOWLEDGE_LOOP_COGNITIVE_LOAD_HINT_LIGHT = 1;
-  KNOWLEDGE_LOOP_COGNITIVE_LOAD_HINT_MEDIUM = 2;
-  KNOWLEDGE_LOOP_COGNITIVE_LOAD_HINT_HEAVY = 3;
-}
-
-message KnowledgeLoopSurface {
-  string user_id = 1;
-  string tenant_id = 2;
-  string lens_mode_id = 3;
-  SurfaceBucket surface_bucket = 4;
-
-  optional string primary_entry_key = 5;
-  repeated string secondary_entry_keys = 6;
-
-  int64 projection_revision = 7;
-  int64 projection_seq_hiwater = 8;
-  google.protobuf.Timestamp freshness_at = 9;
-  LoopServiceQuality service_quality = 10;
-  bytes loop_health = 11; // JSONB opaque
-
-  reserved "projected_at";
-}
-
-// ApplyKnowledgeLoopMutation is a generic write envelope, following the same
-// shape as ApplyProjectionMutation / ApplyRecallMutation / ApplyCurationMutation.
-// payload carries a proto-marshalled mutation message. Supported mutation_type:
-//   - "entry_upsert"   -> payload is KnowledgeLoopEntry (the full row to upsert)
-//   - "session_upsert" -> payload is KnowledgeLoopSessionState
-//   - "surface_upsert" -> payload is KnowledgeLoopSurface
-message ApplyKnowledgeLoopMutationRequest {
-  string mutation_type = 1;
-  string entity_id = 2;
-  bytes payload = 3;
-  string idempotency_key = 4;
-}
-
-message ApplyKnowledgeLoopMutationResponse {
-  bool applied = 1;
-  bool skipped_by_seq_hiwater = 2;
-  int64 projection_revision = 3;
-  int64 projection_seq_hiwater = 4;
-  string error_message = 5;
-}
-
-// Get RPCs read through knowledge_loop_entries_public / direct tables; they
-// intentionally do not expose projected_at.
-
-message GetKnowledgeLoopEntriesRequest {
-  string tenant_id = 1;
-  string user_id = 2;
-  string lens_mode_id = 3;
-  optional SurfaceBucket surface_bucket = 4;
-  bool include_dismissed = 5;
-  int32 limit = 6;
-}
-
-message GetKnowledgeLoopEntriesResponse {
-  repeated KnowledgeLoopEntry entries = 1;
-}
-
-message GetKnowledgeLoopSessionStateRequest {
-  string tenant_id = 1;
-  string user_id = 2;
-  string lens_mode_id = 3;
-}
-
-message GetKnowledgeLoopSessionStateResponse {
-  optional KnowledgeLoopSessionState state = 1;
-}
-
-message GetKnowledgeLoopSurfacesRequest {
-  string tenant_id = 1;
-  string user_id = 2;
-  string lens_mode_id = 3;
-}
-
-message GetKnowledgeLoopSurfacesResponse {
-  repeated KnowledgeLoopSurface surfaces = 1;
-}
-
-// ReserveKnowledgeLoopTransition is the ingest-side idempotency barrier.
-// reserved=true means a fresh claim; reserved=false means a duplicate, in which
-// case cached_canonical_entry_key and cached_response_payload carry the original
-// accepted response so the caller can replay it.
-message ReserveKnowledgeLoopTransitionRequest {
-  string user_id = 1;
-  string client_transition_id = 2; // UUIDv7
-}
-
-message ReserveKnowledgeLoopTransitionResponse {
-  bool reserved = 1;
-  optional string cached_canonical_entry_key = 2;
-  bytes cached_response_payload = 3;
-  optional google.protobuf.Timestamp cached_created_at = 4;
+  string footprint_key = 3;
+  // verb is the user-facing action: read | asked | returned | listened | dismissed.
+  string verb = 4;
+  string item_key = 5;
+  string title = 6;
+  string excerpt = 7;
+  repeated string tags = 8;
+  // note is a derived hint (e.g. "2nd visit") — never a stage label.
+  string note = 9;
+  // source_event_type records provenance so a footprint can explain itself.
+  string source_event_type = 10;
+  google.protobuf.Timestamp occurred_at = 11;
 }

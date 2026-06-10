@@ -10,12 +10,10 @@ import (
 	"strings"
 	"time"
 	"unicode"
-	"unicode/utf8"
 
 	augurv2 "alt/gen/proto/alt/augur/v2"
 	"alt/gen/proto/alt/augur/v2/augurv2connect"
 
-	"rag-orchestrator/internal/adapter/sovereign_client"
 	"rag-orchestrator/internal/domain"
 	"rag-orchestrator/internal/usecase"
 
@@ -604,29 +602,6 @@ func domainCitationsToProto(cs []domain.AugurCitation) []*augurv2.Citation {
 	return out
 }
 
-// citationFromEvidenceRef builds a persisted AugurCitation from the inbound
-// Knowledge Loop evidence. The kind discriminator decides whether the RefId
-// is an absolute URL (WEB) or an alt-db UUID (ARTICLE / SUMMARY) — never both
-// — so the bare-UUID-in-URL bug that previously sent users to /augur/<uuid>
-// cannot recur. The UNSPECIFIED fallback preserves the pre-kind behaviour for
-// rolling deploys, but the FE-side citation-href.ts treats it as unlinkable.
-func citationFromEvidenceRef(r *augurv2.LoopEvidenceRef) domain.AugurCitation {
-	refIDClean := sanitizeUTF8(r.RefId)
-	cit := domain.AugurCitation{
-		Title: sanitizeUTF8(r.Label),
-		Kind:  domainCitationKind(r.Kind),
-	}
-	switch cit.Kind {
-	case domain.CitationKindWeb:
-		cit.URL = refIDClean
-	case domain.CitationKindArticle, domain.CitationKindSummary:
-		cit.RefID = refIDClean
-	default:
-		cit.URL = refIDClean
-	}
-	return cit
-}
-
 // RetrieveContext retrieves relevant context for a query without generating an answer
 func (h *Handler) RetrieveContext(
 	ctx context.Context,
@@ -758,92 +733,6 @@ func (h *Handler) GetConversation(
 		})
 	}
 	return connect.NewResponse(resp), nil
-}
-
-// CreateAugurSessionFromLoopEntry provisions a new conversation seeded with a
-// Knowledge Loop entry's Why + evidence. Caller chain is alt-frontend-sv BFF
-// → alt-backend → rag-orchestrator; the BFF resolves the entry through
-// sovereign and passes the enriched payload through. Server is trusted and
-// does NOT re-verify sovereign. See ADR-000836.
-func (h *Handler) CreateAugurSessionFromLoopEntry(
-	ctx context.Context,
-	req *connect.Request[augurv2.CreateAugurSessionFromLoopEntryRequest],
-) (*connect.Response[augurv2.CreateAugurSessionFromLoopEntryResponse], error) {
-	userID, err := extractUserID(req.Header())
-	if err != nil {
-		return nil, connect.NewError(connect.CodeUnauthenticated, err)
-	}
-	tenantID, err := extractTenantID(req.Header())
-	if err != nil {
-		return nil, connect.NewError(connect.CodeUnauthenticated, err)
-	}
-
-	m := req.Msg
-	if !uuidv7Re.MatchString(strings.ToLower(strings.TrimSpace(m.ClientHandshakeId))) {
-		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("client_handshake_id must be UUIDv7"))
-	}
-	if strings.TrimSpace(m.EntryKey) == "" {
-		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("entry_key required"))
-	}
-	why := strings.TrimSpace(m.WhyText)
-	if why == "" {
-		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("why_text required"))
-	}
-	if utf8.RuneCountInString(why) > 512 {
-		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("why_text exceeds 512 runes"))
-	}
-	if len(m.EvidenceRefs) > 8 {
-		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("evidence_refs exceeds 8 entries"))
-	}
-
-	refs := make([]domain.AugurCitation, 0, len(m.EvidenceRefs))
-	for _, r := range m.EvidenceRefs {
-		refs = append(refs, citationFromEvidenceRef(r))
-	}
-
-	conv, err := h.conversationUsecase.CreateSessionFromLoopEntry(ctx, usecase.CreateSessionFromLoopEntryInput{
-		UserID:       userID,
-		EntryKey:     sanitizeUTF8(m.EntryKey),
-		LensModeID:   sanitizeUTF8(m.LensModeId),
-		WhyText:      sanitizeUTF8(why),
-		EvidenceRefs: refs,
-	})
-	if err != nil {
-		h.logger.Error("create augur loop session failed", slog.String("error", err.Error()))
-		return nil, connect.NewError(connect.CodeInternal, err)
-	}
-
-	// Emit augur.conversation_linked.v1 into knowledge-sovereign so the
-	// Knowledge Loop Surface Planner v2 resolver can credit this entry
-	// with HasAugurLink and route it to the Continue plane on the next
-	// projector tick. Best-effort warn-and-continue: emit failure must
-	// NOT fail the conversation creation. The linked_at timestamp is the
-	// persisted conversation's CreatedAt — payload-resident, event-time
-	// pure (canonical contract §6.4.1, ADR-000853 / ADR-000854).
-	emitInput := usecase.AugurConversationLinkedInput{
-		UserID:         userID,
-		TenantID:       tenantID,
-		EntryKey:       sanitizeUTF8(m.EntryKey),
-		LensModeID:     sanitizeUTF8(m.LensModeId),
-		ConversationID: conv.ID,
-		LinkedAt:       conv.CreatedAt.UnixMilli(),
-	}
-	if emitErr := h.eventEmitter.EmitAugurConversationLinked(ctx, emitInput); emitErr != nil {
-		// rag_orchestrator_knowledge_event_emitter_failure_total{event_type=...}
-		// is the rollout-visible signal that an emit failed. Distinct from the
-		// projector's event_dropped_total so an emitter degradation here does
-		// not get masked by, or attributed to, projector-side drops.
-		sovereign_client.IncEmitterFailure("augur.conversation_linked.v1")
-		h.logger.Warn("augur.conversation_linked.v1 emit failed (non-fatal)",
-			slog.String("error", emitErr.Error()),
-			slog.String("entry_key", emitInput.EntryKey),
-			slog.String("conversation_id", emitInput.ConversationID.String()),
-		)
-	}
-
-	return connect.NewResponse(&augurv2.CreateAugurSessionFromLoopEntryResponse{
-		ConversationId: conv.ID.String(),
-	}), nil
 }
 
 // DeleteConversation removes a conversation and its messages.

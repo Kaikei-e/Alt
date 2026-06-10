@@ -25,12 +25,12 @@ const auth = getAuthStore();
             Embark on a Journey of Discovery
           </p>
           <Button
-            href="/loop"
+            href="/home"
             size="lg"
             class="w-full sm:w-auto"
             variant="secondary"
           >
-            Open Knowledge Loop →
+            Open Knowledge Home →
           </Button>
         </div>
 

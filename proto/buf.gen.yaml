@@ -5,7 +5,7 @@ inputs:
       - alt
       - alt/tts
       - alt/knowledge_home
-      - alt/knowledge/loop
+      - alt/knowledge_trail
       - alt/admin_monitor
 plugins:
   # ============================================================================

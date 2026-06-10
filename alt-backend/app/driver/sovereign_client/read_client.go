@@ -50,6 +50,41 @@ func (c *Client) GetKnowledgeHomeItems(ctx context.Context, userID uuid.UUID, cu
 	return items, resp.Msg.NextCursor, resp.Msg.HasMore, nil
 }
 
+// GetTrailFootprints fetches the user's footprint spine from sovereign.
+func (c *Client) GetTrailFootprints(ctx context.Context, userID uuid.UUID, cursor string, limit int) ([]domain.TrailFootprint, string, bool, error) {
+	if !c.enabled {
+		return nil, "", false, nil
+	}
+
+	resp, err := c.client.GetTrailFootprints(ctx, connect.NewRequest(&sovereignv1.GetTrailFootprintsRequest{
+		UserId: userID.String(),
+		Cursor: cursor,
+		Limit:  int32(limit),
+	}))
+	if err != nil {
+		return nil, "", false, fmt.Errorf("sovereign GetTrailFootprints: %w", err)
+	}
+
+	footprints := make([]domain.TrailFootprint, len(resp.Msg.Footprints))
+	for i, pb := range resp.Msg.Footprints {
+		fp := domain.TrailFootprint{
+			FootprintKey:    pb.FootprintKey,
+			Verb:            pb.Verb,
+			ItemKey:         pb.ItemKey,
+			Title:           pb.Title,
+			Excerpt:         pb.Excerpt,
+			Tags:            pb.Tags,
+			Note:            pb.Note,
+			SourceEventType: pb.SourceEventType,
+		}
+		if pb.OccurredAt != nil {
+			fp.OccurredAt = pb.OccurredAt.AsTime()
+		}
+		footprints[i] = fp
+	}
+	return footprints, resp.Msg.NextCursor, resp.Msg.HasMore, nil
+}
+
 func (c *Client) GetTodayDigest(ctx context.Context, userID uuid.UUID, date time.Time) (domain.TodayDigest, error) {
 	if !c.enabled {
 		return domain.TodayDigest{UserID: userID, DigestDate: date}, nil

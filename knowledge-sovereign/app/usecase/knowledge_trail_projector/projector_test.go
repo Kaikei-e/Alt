@@ -1,0 +1,117 @@
+package knowledge_trail_projector
+
+import (
+	"context"
+	"testing"
+	"time"
+
+	"github.com/google/uuid"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
+	"knowledge-sovereign/driver/sovereign_db"
+)
+
+// fakeRepo is an in-memory stand-in for the sovereign repository. It records
+// upserts keyed by footprint_key so the test can assert reproject determinism.
+type fakeRepo struct {
+	events     []sovereign_db.KnowledgeEvent
+	checkpoint int64
+	upserts    map[string]sovereign_db.TrailFootprint
+}
+
+func newFakeRepo(events []sovereign_db.KnowledgeEvent) *fakeRepo {
+	return &fakeRepo{events: events, upserts: map[string]sovereign_db.TrailFootprint{}}
+}
+
+func (f *fakeRepo) GetProjectionCheckpoint(_ context.Context, _ string) (int64, error) {
+	return f.checkpoint, nil
+}
+func (f *fakeRepo) UpdateProjectionCheckpoint(_ context.Context, _ string, lastSeq int64) error {
+	f.checkpoint = lastSeq
+	return nil
+}
+func (f *fakeRepo) ListKnowledgeEventsSince(_ context.Context, afterSeq int64, limit int) ([]sovereign_db.KnowledgeEvent, error) {
+	var out []sovereign_db.KnowledgeEvent
+	for _, e := range f.events {
+		if e.EventSeq > afterSeq {
+			out = append(out, e)
+			if len(out) >= limit {
+				break
+			}
+		}
+	}
+	return out, nil
+}
+func (f *fakeRepo) UpsertTrailFootprint(_ context.Context, fp sovereign_db.TrailFootprint, _ int) error {
+	f.upserts[fp.FootprintKey] = fp
+	return nil
+}
+
+func userPtr() *uuid.UUID { u := uuid.New(); return &u }
+
+func actEvent(seq int64, eventType, itemKey, dedupe string, at time.Time, user *uuid.UUID) sovereign_db.KnowledgeEvent {
+	return sovereign_db.KnowledgeEvent{
+		EventID:     uuid.New(),
+		EventSeq:    seq,
+		OccurredAt:  at,
+		TenantID:    uuid.New(),
+		UserID:      user,
+		EventType:   eventType,
+		AggregateID: itemKey,
+		DedupeKey:   dedupe,
+	}
+}
+
+func TestProjector_FoldsActEventsToFootprints(t *testing.T) {
+	user := userPtr()
+	base := time.Date(2026, 6, 10, 9, 0, 0, 0, time.UTC)
+	events := []sovereign_db.KnowledgeEvent{
+		actEvent(1, "HomeItemOpened", "article:a", "open:a", base, user),
+		actEvent(2, "HomeItemAsked", "article:a", "ask:a", base.Add(time.Minute), user),
+		actEvent(3, "SummaryVersionCreated", "article:a", "sv:a", base.Add(2*time.Minute), user), // non-act → skipped
+		actEvent(4, "HomeItemListened", "article:b", "listen:b", base.Add(3*time.Minute), user),
+	}
+	repo := newFakeRepo(events)
+	p := NewProjector(repo, nil, Config{BatchSize: 500, MaxBatchesPerTick: 4})
+
+	require.NoError(t, p.RunBatch(context.Background()))
+
+	assert.Len(t, repo.upserts, 3, "3 act events become footprints; SummaryVersionCreated is skipped")
+	assert.Equal(t, "read", repo.upserts["open:a"].Verb)
+	assert.Equal(t, "asked", repo.upserts["ask:a"].Verb)
+	assert.Equal(t, "listened", repo.upserts["listen:b"].Verb)
+	assert.Equal(t, int64(4), repo.checkpoint, "checkpoint advances to the max seq in the batch")
+}
+
+func TestProjector_SkipsSystemEventsWithoutUser(t *testing.T) {
+	events := []sovereign_db.KnowledgeEvent{
+		actEvent(1, "HomeItemOpened", "article:a", "open:a", time.Now().UTC(), nil), // nil user → skipped
+	}
+	repo := newFakeRepo(events)
+	p := NewProjector(repo, nil, Config{})
+	require.NoError(t, p.RunBatch(context.Background()))
+	assert.Empty(t, repo.upserts, "events without a user_id do not produce footprints")
+	assert.Equal(t, int64(1), repo.checkpoint, "checkpoint still advances past skipped events")
+}
+
+func TestProjector_ReprojectIsDeterministic(t *testing.T) {
+	user := userPtr()
+	base := time.Date(2026, 6, 10, 9, 0, 0, 0, time.UTC)
+	events := []sovereign_db.KnowledgeEvent{
+		actEvent(1, "HomeItemOpened", "article:a", "open:a", base, user),
+		actEvent(2, "knowledge_loop.acted.v1", "article:c", "acted:c", base.Add(time.Minute), user),
+	}
+
+	first := newFakeRepo(events)
+	require.NoError(t, NewProjector(first, nil, Config{}).RunBatch(context.Background()))
+
+	// Re-run from a fresh checkpoint over the same log: identical footprints.
+	second := newFakeRepo(events)
+	require.NoError(t, NewProjector(second, nil, Config{}).RunBatch(context.Background()))
+
+	assert.Equal(t, first.upserts, second.upserts,
+		"replaying the same event log must reproduce an identical spine (reproject-safe)")
+	assert.Equal(t, "read", first.upserts["acted:c"].Verb,
+		"historical knowledge_loop.acted.v1 projects as a read footprint")
+}

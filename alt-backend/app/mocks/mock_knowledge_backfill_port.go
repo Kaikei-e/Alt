@@ -250,3 +250,81 @@ func (mr *MockCountBackfillArticlesPortMockRecorder) CountBackfillArticles(ctx a
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CountBackfillArticles", reflect.TypeOf((*MockCountBackfillArticlesPort)(nil).CountBackfillArticles), ctx)
 }
+
+// MockListBackfillSummaryTitlesPort is a mock of ListBackfillSummaryTitlesPort interface.
+type MockListBackfillSummaryTitlesPort struct {
+	ctrl     *gomock.Controller
+	recorder *MockListBackfillSummaryTitlesPortMockRecorder
+	isgomock struct{}
+}
+
+// MockListBackfillSummaryTitlesPortMockRecorder is the mock recorder for MockListBackfillSummaryTitlesPort.
+type MockListBackfillSummaryTitlesPortMockRecorder struct {
+	mock *MockListBackfillSummaryTitlesPort
+}
+
+// NewMockListBackfillSummaryTitlesPort creates a new mock instance.
+func NewMockListBackfillSummaryTitlesPort(ctrl *gomock.Controller) *MockListBackfillSummaryTitlesPort {
+	mock := &MockListBackfillSummaryTitlesPort{ctrl: ctrl}
+	mock.recorder = &MockListBackfillSummaryTitlesPortMockRecorder{mock}
+	return mock
+}
+
+// EXPECT returns an object that allows the caller to indicate expected use.
+func (m *MockListBackfillSummaryTitlesPort) EXPECT() *MockListBackfillSummaryTitlesPortMockRecorder {
+	return m.recorder
+}
+
+// ListBackfillSummaryTitles mocks base method.
+func (m *MockListBackfillSummaryTitlesPort) ListBackfillSummaryTitles(ctx context.Context, lastGeneratedAt *time.Time, lastSummaryVersionID *uuid.UUID, limit int) ([]domain.KnowledgeBackfillSummaryTitle, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ListBackfillSummaryTitles", ctx, lastGeneratedAt, lastSummaryVersionID, limit)
+	ret0, _ := ret[0].([]domain.KnowledgeBackfillSummaryTitle)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ListBackfillSummaryTitles indicates an expected call of ListBackfillSummaryTitles.
+func (mr *MockListBackfillSummaryTitlesPortMockRecorder) ListBackfillSummaryTitles(ctx, lastGeneratedAt, lastSummaryVersionID, limit any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListBackfillSummaryTitles", reflect.TypeOf((*MockListBackfillSummaryTitlesPort)(nil).ListBackfillSummaryTitles), ctx, lastGeneratedAt, lastSummaryVersionID, limit)
+}
+
+// MockCountBackfillSummaryTitlesPort is a mock of CountBackfillSummaryTitlesPort interface.
+type MockCountBackfillSummaryTitlesPort struct {
+	ctrl     *gomock.Controller
+	recorder *MockCountBackfillSummaryTitlesPortMockRecorder
+	isgomock struct{}
+}
+
+// MockCountBackfillSummaryTitlesPortMockRecorder is the mock recorder for MockCountBackfillSummaryTitlesPort.
+type MockCountBackfillSummaryTitlesPortMockRecorder struct {
+	mock *MockCountBackfillSummaryTitlesPort
+}
+
+// NewMockCountBackfillSummaryTitlesPort creates a new mock instance.
+func NewMockCountBackfillSummaryTitlesPort(ctrl *gomock.Controller) *MockCountBackfillSummaryTitlesPort {
+	mock := &MockCountBackfillSummaryTitlesPort{ctrl: ctrl}
+	mock.recorder = &MockCountBackfillSummaryTitlesPortMockRecorder{mock}
+	return mock
+}
+
+// EXPECT returns an object that allows the caller to indicate expected use.
+func (m *MockCountBackfillSummaryTitlesPort) EXPECT() *MockCountBackfillSummaryTitlesPortMockRecorder {
+	return m.recorder
+}
+
+// CountBackfillSummaryTitles mocks base method.
+func (m *MockCountBackfillSummaryTitlesPort) CountBackfillSummaryTitles(ctx context.Context) (int, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "CountBackfillSummaryTitles", ctx)
+	ret0, _ := ret[0].(int)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// CountBackfillSummaryTitles indicates an expected call of CountBackfillSummaryTitles.
+func (mr *MockCountBackfillSummaryTitlesPortMockRecorder) CountBackfillSummaryTitles(ctx any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CountBackfillSummaryTitles", reflect.TypeOf((*MockCountBackfillSummaryTitlesPort)(nil).CountBackfillSummaryTitles), ctx)
+}

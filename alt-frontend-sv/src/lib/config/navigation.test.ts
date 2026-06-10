@@ -10,10 +10,10 @@ describe("NAV_TABS", () => {
 		expect(NAV_TABS).toHaveLength(5);
 	});
 
-	it("has Home, Loop, Search, Augur, Menu in order", () => {
+	it("has Home, Trail, Search, Augur, Menu in order", () => {
 		expect(NAV_TABS.map((t) => t.label)).toEqual([
 			"Home",
-			"Loop",
+			"Trail",
 			"Search",
 			"Augur",
 			"Menu",
@@ -23,7 +23,7 @@ describe("NAV_TABS", () => {
 	it("maps labels to expected hrefs", () => {
 		expect(NAV_TABS.map((t) => t.href)).toEqual([
 			"/home",
-			"/loop",
+			"/knowledge/trail",
 			"/search",
 			"/augur",
 			"/menu",
@@ -83,7 +83,7 @@ describe("MOBILE_MENU_SECTIONS", () => {
 		expect(new Set(menuHrefs).size).toBe(menuHrefs.length);
 	});
 
-	it("does not surface Knowledge Loop in the mobile menu (now a primary tab)", () => {
+	it("does not surface the retired Knowledge Loop route anywhere in the menu", () => {
 		const menuHrefs = MOBILE_MENU_SECTIONS.flatMap((s) =>
 			s.items.map((i) => i.href),
 		);

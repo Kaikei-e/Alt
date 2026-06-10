@@ -4,16 +4,15 @@
   },
   "interactions": [
     {
-      "description": "a GetKnowledgeLoopEntries request for the user's lens",
+      "description": "a GetTrailFootprints request for the user",
       "providerStates": [
         {
-          "name": "a knowledge loop entry with a continuation relation exists"
+          "name": "a user with at least one footprint exists"
         }
       ],
       "request": {
         "body": {
-          "lensModeId": "default",
-          "tenantId": "11111111-1111-1111-1111-111111111111",
+          "limit": 20,
           "userId": "22222222-2222-2222-2222-222222222222"
         },
         "headers": {
@@ -21,15 +20,7 @@
         },
         "matchingRules": {
           "body": {
-            "$.lensModeId": {
-              "combine": "AND",
-              "matchers": [
-                {
-                  "match": "type"
-                }
-              ]
-            },
-            "$.tenantId": {
+            "$.limit": {
               "combine": "AND",
               "matchers": [
                 {
@@ -48,16 +39,16 @@
           }
         },
         "method": "POST",
-        "path": "/services.sovereign.v1.KnowledgeSovereignService/GetKnowledgeLoopEntries"
+        "path": "/services.sovereign.v1.KnowledgeSovereignService/GetTrailFootprints"
       },
       "response": {
         "body": {
-          "entries": [
+          "footprints": [
             {
-              "entryKey": "entry:article-1",
-              "relations": "W3sia2luZCI6ImNvbnRpbnVhdGlvbiIsInN0YXRlIjoib3BlbiJ9XQ==",
-              "tenantId": "11111111-1111-1111-1111-111111111111",
-              "userId": "22222222-2222-2222-2222-222222222222"
+              "footprintKey": "open:article:1",
+              "itemKey": "article:1",
+              "occurredAt": "2026-06-10T09:12:00Z",
+              "verb": "read"
             }
           ]
         },
@@ -66,7 +57,7 @@
         },
         "matchingRules": {
           "body": {
-            "$.entries": {
+            "$.footprints": {
               "combine": "AND",
               "matchers": [
                 {
@@ -75,7 +66,7 @@
                 }
               ]
             },
-            "$.entries[*].entryKey": {
+            "$.footprints[*].footprintKey": {
               "combine": "AND",
               "matchers": [
                 {
@@ -83,7 +74,7 @@
                 }
               ]
             },
-            "$.entries[*].relations": {
+            "$.footprints[*].itemKey": {
               "combine": "AND",
               "matchers": [
                 {
@@ -91,7 +82,7 @@
                 }
               ]
             },
-            "$.entries[*].tenantId": {
+            "$.footprints[*].occurredAt": {
               "combine": "AND",
               "matchers": [
                 {
@@ -99,7 +90,7 @@
                 }
               ]
             },
-            "$.entries[*].userId": {
+            "$.footprints[*].verb": {
               "combine": "AND",
               "matchers": [
                 {
@@ -124,15 +115,15 @@
           "event": {
             "actorId": "knowledge-url-backfill",
             "actorType": "service",
-            "aggregateId": "c0bc5dad-fd44-4e6b-a62d-bd8eb6586762",
+            "aggregateId": "89f41258-a1ec-475e-aed0-15440638b171",
             "aggregateType": "article",
-            "dedupeKey": "article-url-backfill-v2:c0bc5dad-fd44-4e6b-a62d-bd8eb6586762",
-            "eventId": "d7035548-b97a-44fa-a656-39df622ff732",
+            "dedupeKey": "article-url-backfill-v2:89f41258-a1ec-475e-aed0-15440638b171",
+            "eventId": "2c603eb9-0169-4815-888d-f3ade8533cf1",
             "eventType": "ArticleUrlBackfilled",
             "occurredAt": "2026-04-28T12:00:00Z",
             "payload": "eyJhcnRpY2xlX2lkIjoiMDAwMDAwMDAtMDAwMC0wMDAwLTAwMDAtMDAwMDAwMDAwMDAwIiwidXJsIjoiaHR0cHM6Ly9leGFtcGxlLmNvbSJ9",
-            "tenantId": "11623e50-4adb-4888-805f-c681e03edb43",
-            "userId": "c9f09d68-03e7-458f-a744-a343d9a37c92"
+            "tenantId": "75ce5469-2899-47e8-9d23-a3978951ed64",
+            "userId": "4f7e6bae-7920-4181-bd48-bdc5baf85949"
           }
         },
         "headers": {
@@ -196,456 +187,15 @@
           "event": {
             "actorId": "tag-generator",
             "actorType": "service",
-            "aggregateId": "33a555fd-d8d4-4e0e-acc7-81c29aa81089",
+            "aggregateId": "122707cc-fbe5-407a-96c9-e2f4cabe6911",
             "aggregateType": "article",
-            "dedupeKey": "TagSetVersionCreated:f40554a2-1962-4124-8ebe-6708e5318771",
-            "eventId": "1021871d-0c21-48f6-89fc-cd228145953e",
+            "dedupeKey": "TagSetVersionCreated:f7dc2e5b-26a2-4cc3-9936-05ef0b7f8063",
+            "eventId": "1ca0420b-2056-4e13-b099-be45013b6fae",
             "eventType": "TagSetVersionCreated",
             "occurredAt": "2026-06-10T10:00:00Z",
-            "payload": "eyJhcnRpY2xlX2lkIjoiMzNhNTU1ZmQtZDhkNC00ZTBlLWFjYzctODFjMjlhYTgxMDg5IiwiZ2VuZXJhdG9yIjoidGFnLWdlbmVyYXRvciIsInRhZ19zZXRfdmVyc2lvbl9pZCI6ImY0MDU1NGEyLTE5NjItNDEyNC04ZWJlLTY3MDhlNTMxODc3MSIsInRhZ3MiOlsiZ28iLCJydXN0Il19",
-            "tenantId": "28084f2b-e05b-49f5-9a0f-ce8f38811874",
-            "userId": "a1a383ac-e3ee-43f7-b9b1-111d6c6546d5"
-          }
-        },
-        "headers": {
-          "Content-Type": "application/json"
-        },
-        "matchingRules": {
-          "body": {
-            "$.event": {
-              "combine": "AND",
-              "matchers": [
-                {
-                  "match": "type"
-                }
-              ]
-            }
-          }
-        },
-        "method": "POST",
-        "path": "/services.sovereign.v1.KnowledgeSovereignService/AppendKnowledgeEvent"
-      },
-      "response": {
-        "body": {
-          "success": true
-        },
-        "headers": {
-          "Content-Type": "application/json"
-        },
-        "matchingRules": {
-          "body": {
-            "$.success": {
-              "combine": "AND",
-              "matchers": [
-                {
-                  "match": "type"
-                }
-              ]
-            }
-          }
-        },
-        "status": 200
-      }
-    },
-    {
-      "description": "an AppendKnowledgeEvent request for knowledge_loop.act_outcome.v1 with outcome=deep_engagement",
-      "providerStates": [
-        {
-          "name": "sovereign accepts deep_engagement outcomes for prolonged Augur conversations"
-        }
-      ],
-      "request": {
-        "body": {
-          "event": {
-            "actorId": "alt-backend-view-tracker",
-            "actorType": "system",
-            "aggregateId": "article:42",
-            "aggregateType": "knowledge_loop_entry",
-            "dedupeKey": "knowledge_loop.act_outcome.v1:abe4701c-1d40-4893-a06a-23286c48ce21:deep_engagement",
-            "eventId": "46fbeb8c-0feb-4e6c-914e-a2aea9bd5b5c",
-            "eventType": "knowledge_loop.act_outcome.v1",
-            "occurredAt": "2026-05-23T12:05:00Z",
-            "payload": "eyJhY3RlZF9ldmVudF9pZCI6ImFiZTQ3MDFjLTFkNDAtNDg5My1hMDZhLTIzMjg2YzQ4Y2UyMSIsImVudHJ5X2tleSI6ImFydGljbGU6NDIiLCJsZW5zX21vZGVfaWQiOiJkZWZhdWx0Iiwib2JzZXJ2ZWRfYXQiOiIyMDI2LTA1LTIzVDEyOjA1OjAwWiIsIm91dGNvbWUiOiJkZWVwX2VuZ2FnZW1lbnQifQ==",
-            "tenantId": "9e80393d-25ce-47a5-be16-67ccebd23a6f",
-            "userId": "bebe4418-480f-498e-a812-aa6aca5a69f5"
-          }
-        },
-        "headers": {
-          "Content-Type": "application/json"
-        },
-        "matchingRules": {
-          "body": {
-            "$.event": {
-              "combine": "AND",
-              "matchers": [
-                {
-                  "match": "type"
-                }
-              ]
-            }
-          }
-        },
-        "method": "POST",
-        "path": "/services.sovereign.v1.KnowledgeSovereignService/AppendKnowledgeEvent"
-      },
-      "response": {
-        "body": {
-          "success": true
-        },
-        "headers": {
-          "Content-Type": "application/json"
-        },
-        "matchingRules": {
-          "body": {
-            "$.success": {
-              "combine": "AND",
-              "matchers": [
-                {
-                  "match": "type"
-                }
-              ]
-            }
-          }
-        },
-        "status": 200
-      }
-    },
-    {
-      "description": "an AppendKnowledgeEvent request for knowledge_loop.act_outcome.v1 with outcome=engaged",
-      "providerStates": [
-        {
-          "name": "sovereign accepts system-emitted ActOutcome closure events"
-        }
-      ],
-      "request": {
-        "body": {
-          "event": {
-            "actorId": "alt-backend-view-tracker",
-            "actorType": "system",
-            "aggregateId": "article:42",
-            "aggregateType": "knowledge_loop_entry",
-            "dedupeKey": "knowledge_loop.act_outcome.v1:ece064df-82ee-462a-8a2f-be946b5df231:engaged",
-            "eventId": "25ffb6eb-c831-47f6-9557-fff3922ff920",
-            "eventType": "knowledge_loop.act_outcome.v1",
-            "occurredAt": "2026-05-23T12:00:00Z",
-            "payload": "eyJhY3RlZF9ldmVudF9pZCI6ImVjZTA2NGRmLTgyZWUtNDYyYS04YTJmLWJlOTQ2YjVkZjIzMSIsImVudHJ5X2tleSI6ImFydGljbGU6NDIiLCJsZW5zX21vZGVfaWQiOiJkZWZhdWx0Iiwib2JzZXJ2ZWRfYXQiOiIyMDI2LTA1LTIzVDEyOjAwOjAwWiIsIm91dGNvbWUiOiJlbmdhZ2VkIn0=",
-            "tenantId": "46fa507b-5895-4e97-9785-de6baf41c37e",
-            "userId": "a00ff894-c40e-4d5a-aee7-e51c025709f1"
-          }
-        },
-        "headers": {
-          "Content-Type": "application/json"
-        },
-        "matchingRules": {
-          "body": {
-            "$.event": {
-              "combine": "AND",
-              "matchers": [
-                {
-                  "match": "type"
-                }
-              ]
-            }
-          }
-        },
-        "method": "POST",
-        "path": "/services.sovereign.v1.KnowledgeSovereignService/AppendKnowledgeEvent"
-      },
-      "response": {
-        "body": {
-          "success": true
-        },
-        "headers": {
-          "Content-Type": "application/json"
-        },
-        "matchingRules": {
-          "body": {
-            "$.success": {
-              "combine": "AND",
-              "matchers": [
-                {
-                  "match": "type"
-                }
-              ]
-            }
-          }
-        },
-        "status": 200
-      }
-    },
-    {
-      "description": "an AppendKnowledgeEvent request for knowledge_loop.acted.v1",
-      "providerStates": [
-        {
-          "name": "sovereign accepts Act-stage Loop events without inferring HomeItemOpened"
-        }
-      ],
-      "request": {
-        "body": {
-          "event": {
-            "actorId": "2ebd022f-508f-4d17-aa27-5e37fd494adb",
-            "actorType": "user",
-            "aggregateId": "article:42",
-            "aggregateType": "loop_session",
-            "dedupeKey": "fccec370-46a6-4114-8e58-bf14f01af2b4",
-            "eventId": "f92af524-c7ba-47f4-8a4d-d2e7742ed509",
-            "eventType": "knowledge_loop.acted.v1",
-            "occurredAt": "2026-04-24T10:00:00Z",
-            "payload": "eyJlbnRyeV9rZXkiOiJhcnRpY2xlOjQyIn0",
-            "tenantId": "f6b45652-a30c-4cbf-9200-ee49da9fb784",
-            "userId": "2ebd022f-508f-4d17-aa27-5e37fd494adb"
-          }
-        },
-        "headers": {
-          "Content-Type": "application/json"
-        },
-        "matchingRules": {
-          "body": {
-            "$.event": {
-              "combine": "AND",
-              "matchers": [
-                {
-                  "match": "type"
-                }
-              ]
-            }
-          }
-        },
-        "method": "POST",
-        "path": "/services.sovereign.v1.KnowledgeSovereignService/AppendKnowledgeEvent"
-      },
-      "response": {
-        "body": {
-          "success": true
-        },
-        "headers": {
-          "Content-Type": "application/json"
-        },
-        "matchingRules": {
-          "body": {
-            "$.success": {
-              "combine": "AND",
-              "matchers": [
-                {
-                  "match": "type"
-                }
-              ]
-            }
-          }
-        },
-        "status": 200
-      }
-    },
-    {
-      "description": "an AppendKnowledgeEvent request for knowledge_loop.deferred.v1",
-      "providerStates": [
-        {
-          "name": "sovereign accepts Deferred Loop events with same-stage transitions"
-        }
-      ],
-      "request": {
-        "body": {
-          "event": {
-            "actorId": "60412eb6-c791-4c4c-9bd9-ca1116587fed",
-            "actorType": "user",
-            "aggregateId": "article:42",
-            "aggregateType": "loop_session",
-            "dedupeKey": "4c91c26b-b212-4ae1-8e69-90ea31e88d42",
-            "eventId": "1d9b7735-376a-4416-82dc-3f6674cb9979",
-            "eventType": "knowledge_loop.deferred.v1",
-            "occurredAt": "2026-04-26T10:00:00Z",
-            "payload": "eyJlbnRyeV9rZXkiOiJhcnRpY2xlOjQyIn0",
-            "tenantId": "84e2f8a0-d08c-4caa-80b2-e7df0adbe0b3",
-            "userId": "60412eb6-c791-4c4c-9bd9-ca1116587fed"
-          }
-        },
-        "headers": {
-          "Content-Type": "application/json"
-        },
-        "matchingRules": {
-          "body": {
-            "$.event": {
-              "combine": "AND",
-              "matchers": [
-                {
-                  "match": "type"
-                }
-              ]
-            }
-          }
-        },
-        "method": "POST",
-        "path": "/services.sovereign.v1.KnowledgeSovereignService/AppendKnowledgeEvent"
-      },
-      "response": {
-        "body": {
-          "success": true
-        },
-        "headers": {
-          "Content-Type": "application/json"
-        },
-        "matchingRules": {
-          "body": {
-            "$.success": {
-              "combine": "AND",
-              "matchers": [
-                {
-                  "match": "type"
-                }
-              ]
-            }
-          }
-        },
-        "status": 200
-      }
-    },
-    {
-      "description": "an AppendKnowledgeEvent request for knowledge_loop.observed.v1",
-      "providerStates": [
-        {
-          "name": "sovereign accepts append-only Loop transition events"
-        }
-      ],
-      "request": {
-        "body": {
-          "event": {
-            "actorId": "85136135-5f15-416d-8d08-f876b88d76cc",
-            "actorType": "user",
-            "aggregateId": "article:42",
-            "aggregateType": "loop_session",
-            "dedupeKey": "98a65a47-6cfe-4676-9b3a-f1bfeae1a316",
-            "eventId": "a7b141c1-d90a-4312-b66e-00f2f201c83e",
-            "eventType": "knowledge_loop.observed.v1",
-            "occurredAt": "2026-04-24T10:00:00Z",
-            "payload": "eyJlbnRyeV9rZXkiOiJhcnRpY2xlOjQyIn0",
-            "tenantId": "a8bd0362-e660-46b4-a833-76408074f838",
-            "userId": "85136135-5f15-416d-8d08-f876b88d76cc"
-          }
-        },
-        "headers": {
-          "Content-Type": "application/json"
-        },
-        "matchingRules": {
-          "body": {
-            "$.event": {
-              "combine": "AND",
-              "matchers": [
-                {
-                  "match": "type"
-                }
-              ]
-            }
-          }
-        },
-        "method": "POST",
-        "path": "/services.sovereign.v1.KnowledgeSovereignService/AppendKnowledgeEvent"
-      },
-      "response": {
-        "body": {
-          "success": true
-        },
-        "headers": {
-          "Content-Type": "application/json"
-        },
-        "matchingRules": {
-          "body": {
-            "$.success": {
-              "combine": "AND",
-              "matchers": [
-                {
-                  "match": "type"
-                }
-              ]
-            }
-          }
-        },
-        "status": 200
-      }
-    },
-    {
-      "description": "an AppendKnowledgeEvent request for knowledge_loop.reviewed.v1",
-      "providerStates": [
-        {
-          "name": "sovereign accepts Reviewed Loop events with trigger-based actions"
-        }
-      ],
-      "request": {
-        "body": {
-          "event": {
-            "actorId": "6bfa53b7-1f7a-496a-ba34-69a2cd1f5b90",
-            "actorType": "user",
-            "aggregateId": "article:42",
-            "aggregateType": "loop_session",
-            "dedupeKey": "34cc12b4-0bc3-4e1c-af39-6ed65c194232",
-            "eventId": "4ce495cc-d7d9-4ef8-8adb-6514e70569b7",
-            "eventType": "knowledge_loop.reviewed.v1",
-            "occurredAt": "2026-04-28T10:00:00Z",
-            "payload": "eyJlbnRyeV9rZXkiOiJhcnRpY2xlOjQyIn0",
-            "tenantId": "c658a3ac-8291-4f2d-ae42-20cf1a578a01",
-            "userId": "6bfa53b7-1f7a-496a-ba34-69a2cd1f5b90"
-          }
-        },
-        "headers": {
-          "Content-Type": "application/json"
-        },
-        "matchingRules": {
-          "body": {
-            "$.event": {
-              "combine": "AND",
-              "matchers": [
-                {
-                  "match": "type"
-                }
-              ]
-            }
-          }
-        },
-        "method": "POST",
-        "path": "/services.sovereign.v1.KnowledgeSovereignService/AppendKnowledgeEvent"
-      },
-      "response": {
-        "body": {
-          "success": true
-        },
-        "headers": {
-          "Content-Type": "application/json"
-        },
-        "matchingRules": {
-          "body": {
-            "$.success": {
-              "combine": "AND",
-              "matchers": [
-                {
-                  "match": "type"
-                }
-              ]
-            }
-          }
-        },
-        "status": 200
-      }
-    },
-    {
-      "description": "an AppendKnowledgeEvent request with acted_intent + target_type + continue_flag",
-      "providerStates": [
-        {
-          "name": "sovereign accepts Acted events with Phase 2 semantic metadata"
-        }
-      ],
-      "request": {
-        "body": {
-          "event": {
-            "actorId": "28ae19c4-f207-4f4b-8ed6-d889c5e06a0b",
-            "actorType": "user",
-            "aggregateId": "article:42",
-            "aggregateType": "loop_session",
-            "dedupeKey": "77e84dbe-e078-4cf3-9ebf-a138e025bc3a",
-            "eventId": "9ce256a2-888f-48c1-aaa6-e580219e3912",
-            "eventType": "knowledge_loop.acted.v1",
-            "occurredAt": "2026-05-09T10:00:00Z",
-            "payload": "eyJhY3RlZF9pbnRlbnQiOiJERUNJU0lPTl9JTlRFTlRfQVNLIiwiYWN0aW9uX2lkIjoiYXNrIiwiY2xpZW50X3RyYW5zaXRpb25faWQiOiI3N2U4NGRiZS1lMDc4LTRjZjMtOWViZi1hMTM4ZTAyNWJjM2EiLCJjb250aW51ZV9mbGFnIjp0cnVlLCJlbnRyeV9rZXkiOiJhcnRpY2xlOjQyIiwiZnJvbV9zdGFnZSI6IkxPT1BfU1RBR0VfREVDSURFIiwibGVuc19tb2RlX2lkIjoiZGVmYXVsdCIsIm9ic2VydmVkX3Byb2plY3Rpb25fcmV2aXNpb24iOjEsInByZXNlbnRlZF9pbnRlbnRzIjpbIm9wZW4iLCJhc2siLCJzbm9vemUiXSwidGFyZ2V0X3JlZiI6IjhhY2VlY2UyLTA5ZmEtNDNlNC1hZjUwLWM0MDkxNmIwYTM5NSIsInRhcmdldF90eXBlIjoiQUNUX1RBUkdFVF9UWVBFX0NPTlZFUlNBVElPTiIsInRvX3N0YWdlIjoiTE9PUF9TVEFHRV9BQ1QiLCJ0cmlnZ2VyIjoiVFJBTlNJVElPTl9UUklHR0VSX1VTRVJfVEFQIn0=",
-            "tenantId": "59130406-4130-4c00-8bf6-25f3b810c8b2",
-            "userId": "28ae19c4-f207-4f4b-8ed6-d889c5e06a0b"
+            "payload": "eyJhcnRpY2xlX2lkIjoiMTIyNzA3Y2MtZmJlNS00MDdhLTk2YzktZTJmNGNhYmU2OTExIiwiZ2VuZXJhdG9yIjoidGFnLWdlbmVyYXRvciIsInRhZ19zZXRfdmVyc2lvbl9pZCI6ImY3ZGMyZTViLTI2YTItNGNjMy05OTM2LTA1ZWYwYjdmODA2MyIsInRhZ3MiOlsiZ28iLCJydXN0Il19",
+            "tenantId": "46b925cb-2821-4b0d-b9c3-1013c37d4696",
+            "userId": "2338d8ab-46fe-49b4-9931-e9393c967506"
           }
         },
         "headers": {

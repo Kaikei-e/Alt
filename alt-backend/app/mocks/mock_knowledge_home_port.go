@@ -175,6 +175,44 @@ func (mr *MockClearSupersedeStatePortMockRecorder) ClearSupersedeState(ctx, user
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ClearSupersedeState", reflect.TypeOf((*MockClearSupersedeStatePort)(nil).ClearSupersedeState), ctx, userID, itemKey, projectionVersion)
 }
 
+// MockPatchKnowledgeHomeItemURLPort is a mock of PatchKnowledgeHomeItemURLPort interface.
+type MockPatchKnowledgeHomeItemURLPort struct {
+	ctrl     *gomock.Controller
+	recorder *MockPatchKnowledgeHomeItemURLPortMockRecorder
+	isgomock struct{}
+}
+
+// MockPatchKnowledgeHomeItemURLPortMockRecorder is the mock recorder for MockPatchKnowledgeHomeItemURLPort.
+type MockPatchKnowledgeHomeItemURLPortMockRecorder struct {
+	mock *MockPatchKnowledgeHomeItemURLPort
+}
+
+// NewMockPatchKnowledgeHomeItemURLPort creates a new mock instance.
+func NewMockPatchKnowledgeHomeItemURLPort(ctrl *gomock.Controller) *MockPatchKnowledgeHomeItemURLPort {
+	mock := &MockPatchKnowledgeHomeItemURLPort{ctrl: ctrl}
+	mock.recorder = &MockPatchKnowledgeHomeItemURLPortMockRecorder{mock}
+	return mock
+}
+
+// EXPECT returns an object that allows the caller to indicate expected use.
+func (m *MockPatchKnowledgeHomeItemURLPort) EXPECT() *MockPatchKnowledgeHomeItemURLPortMockRecorder {
+	return m.recorder
+}
+
+// PatchKnowledgeHomeItemURL mocks base method.
+func (m *MockPatchKnowledgeHomeItemURLPort) PatchKnowledgeHomeItemURL(ctx context.Context, userID uuid.UUID, itemKey string, projectionVersion int, url string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "PatchKnowledgeHomeItemURL", ctx, userID, itemKey, projectionVersion, url)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// PatchKnowledgeHomeItemURL indicates an expected call of PatchKnowledgeHomeItemURL.
+func (mr *MockPatchKnowledgeHomeItemURLPortMockRecorder) PatchKnowledgeHomeItemURL(ctx, userID, itemKey, projectionVersion, url any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "PatchKnowledgeHomeItemURL", reflect.TypeOf((*MockPatchKnowledgeHomeItemURLPort)(nil).PatchKnowledgeHomeItemURL), ctx, userID, itemKey, projectionVersion, url)
+}
+
 // MockListDistinctUserIDsPort is a mock of ListDistinctUserIDsPort interface.
 type MockListDistinctUserIDsPort struct {
 	ctrl     *gomock.Controller
