@@ -121,14 +121,23 @@ echo "==> running Hurl suite (serial; event_seq + lens FK require ordering)" >&2
 # which breaks this suite: CreateLens → CreateLensVersion → Select →
 # ListLenses, and AppendKnowledgeEvent → CreateSnapshot, require strict
 # ordering.
+# Collect suite files via nullglob so retired/empty slots (e.g. the removed
+# 2[0-9]-* knowledge-loop scenarios) never pass an unmatched literal to Hurl,
+# and future increments can land without script edits.
+shopt -s nullglob
+suite_files=(
+  e2e/hurl/knowledge-sovereign/0[1-9]-*.hurl
+  e2e/hurl/knowledge-sovereign/1[0-9]-*.hurl
+  e2e/hurl/knowledge-sovereign/2[0-9]-*.hurl
+)
+shopt -u nullglob
+
 hurl_run --test \
   --jobs 1 \
   --file-root "$ROOT" \
   "${common_vars[@]}" \
   --report-junit "$REPORT_DIR/junit.xml" \
   --report-html  "$REPORT_DIR/html" \
-  e2e/hurl/knowledge-sovereign/0[1-9]-*.hurl \
-  e2e/hurl/knowledge-sovereign/1[0-9]-*.hurl \
-  e2e/hurl/knowledge-sovereign/2[0-9]-*.hurl
+  "${suite_files[@]}"
 
 echo "==> suite passed. reports: $REPORT_DIR" >&2
