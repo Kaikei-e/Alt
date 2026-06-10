@@ -45,11 +45,11 @@ import (
 	"alt/usecase/fetch_trend_stats_usecase"
 	"alt/usecase/get_article_source_url_usecase"
 	"alt/usecase/get_knowledge_home_usecase"
+	"alt/usecase/get_knowledge_trail_usecase"
 	"alt/usecase/image_fetch_usecase"
 	"alt/usecase/image_proxy_usecase"
 	"alt/usecase/knowledge_audit_usecase"
 	"alt/usecase/knowledge_backfill_usecase"
-	"alt/usecase/knowledge_loop_usecase"
 	"alt/usecase/knowledge_metrics_usecase"
 	"alt/usecase/knowledge_projection_health_usecase"
 	"alt/usecase/knowledge_reproject_usecase"
@@ -189,6 +189,7 @@ type ApplicationComponents struct {
 
 	// Knowledge Home
 	GetKnowledgeHomeUsecase          *get_knowledge_home_usecase.GetKnowledgeHomeUsecase
+	GetKnowledgeTrailUsecase         *get_knowledge_trail_usecase.GetKnowledgeTrailUsecase
 	TrackHomeSeenUsecase             *track_home_seen_usecase.TrackHomeSeenUsecase
 	TrackHomeActionUsecase           *track_home_action_usecase.TrackHomeActionUsecase
 	AppendKnowledgeEventUsecase      *append_knowledge_event_usecase.AppendKnowledgeEventUsecase
@@ -215,11 +216,6 @@ type ApplicationComponents struct {
 	ArchiveLensUsecase    *archive_lens_usecase.ArchiveLensUsecase
 	SummaryVersionGateway *summary_version_gateway.Gateway
 	TagSetVersionGateway  *tag_set_version_gateway.Gateway
-
-	// Knowledge Loop (new projection; see ADR-000831)
-	GetKnowledgeLoopUsecase        *knowledge_loop_usecase.GetKnowledgeLoopUsecase
-	TransitionKnowledgeLoopUsecase *knowledge_loop_usecase.TransitionKnowledgeLoopUsecase
-	EmitActOutcomeUsecase          *knowledge_loop_usecase.EmitActOutcomeUsecase
 
 	// Knowledge Sovereign (remote Connect-RPC service — all knowledge data access)
 	SovereignClient *sovereign_client.Client
@@ -373,6 +369,7 @@ func NewApplicationComponents(pool *pgxpool.Pool) *ApplicationComponents {
 
 		// Knowledge Home
 		GetKnowledgeHomeUsecase:          knowledge.GetKnowledgeHomeUsecase,
+		GetKnowledgeTrailUsecase:         knowledge.GetKnowledgeTrailUsecase,
 		TrackHomeSeenUsecase:             knowledge.TrackHomeSeenUsecase,
 		TrackHomeActionUsecase:           knowledge.TrackHomeActionUsecase,
 		AppendKnowledgeEventUsecase:      knowledge.AppendKnowledgeEventUsecase,
@@ -399,11 +396,6 @@ func NewApplicationComponents(pool *pgxpool.Pool) *ApplicationComponents {
 		ArchiveLensUsecase:    knowledge.ArchiveLensUsecase,
 		SummaryVersionGateway: knowledge.SummaryVersionGateway,
 		TagSetVersionGateway:  knowledge.TagSetVersionGateway,
-
-		// Knowledge Loop (new projection; see ADR-000831)
-		GetKnowledgeLoopUsecase:        knowledge.GetKnowledgeLoopUsecase,
-		TransitionKnowledgeLoopUsecase: knowledge.TransitionKnowledgeLoopUsecase,
-		EmitActOutcomeUsecase:          knowledge.EmitActOutcomeUsecase,
 
 		// Knowledge Sovereign (all knowledge data access)
 		SovereignClient: knowledge.SovereignClient,

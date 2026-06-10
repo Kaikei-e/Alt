@@ -8,14 +8,14 @@ export type { NavTab };
  *
  * Routing rules:
  * - /home → Home (0)
- * - /loop/* → Loop (1) [primary cognitive-state surface]
+ * - /knowledge/trail/* → Trail (1) [the footprint spine]
  * - /search and /feeds/search → Search (2) [search is one concept]
  * - /augur/* → Augur (3)
  * - everything else surfaced via the Menu page (including /feeds raw inbox) → Menu (4)
  */
 export function getActiveTabIndex(pathname: string): number {
 	if (pathname === "/home" || pathname.startsWith("/home/")) return 0;
-	if (pathname === "/loop" || pathname.startsWith("/loop/")) return 1;
+	if (pathname === "/knowledge/trail" || pathname.startsWith("/knowledge/trail/")) return 1;
 	if (
 		pathname === "/search" ||
 		pathname.startsWith("/search/") ||

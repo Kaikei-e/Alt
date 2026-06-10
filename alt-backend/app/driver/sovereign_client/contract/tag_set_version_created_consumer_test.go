@@ -67,21 +67,23 @@ func TestAppendKnowledgeEvent_TagSetVersionCreatedCarriesTags(t *testing.T) {
 			Headers: matchers.MapMatcher{
 				"Content-Type": matchers.String("application/json"),
 			},
-			Body: loopEventBody(map[string]any{
-				"eventId":       eventID.String(),
-				"occurredAt":    "2026-06-10T10:00:00Z",
-				"tenantId":      tenantID.String(),
-				"userId":        userID.String(),
-				"actorType":     "service",
-				"actorId":       "tag-generator",
-				"eventType":     "TagSetVersionCreated",
-				"aggregateType": "article",
-				"aggregateId":   articleID.String(),
-				"dedupeKey":     "TagSetVersionCreated:" + tagSetVersionID.String(),
-				// payload ships as base64 on the wire (bytes field). The pinned
-				// blob decodes to {"...","tags":["go","rust"]}.
-				"payload": encoded,
-			}),
+			Body: matchers.MapMatcher{
+				"event": matchers.Like(map[string]any{
+					"eventId":       eventID.String(),
+					"occurredAt":    "2026-06-10T10:00:00Z",
+					"tenantId":      tenantID.String(),
+					"userId":        userID.String(),
+					"actorType":     "service",
+					"actorId":       "tag-generator",
+					"eventType":     "TagSetVersionCreated",
+					"aggregateType": "article",
+					"aggregateId":   articleID.String(),
+					"dedupeKey":     "TagSetVersionCreated:" + tagSetVersionID.String(),
+					// payload ships as base64 on the wire (bytes field). The pinned
+					// blob decodes to {"...","tags":["go","rust"]}.
+					"payload": encoded,
+				}),
+			},
 		}).
 		WithCompleteResponse(consumer.Response{
 			Status: 200,

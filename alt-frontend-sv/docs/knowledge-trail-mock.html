@@ -1,0 +1,585 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Alt Reader — Knowledge Trail (README mock)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:ital,wght@0,400;0,500;0,600;1,400&family=Playfair+Display:ital,wght@0,400;0,600;0,700;0,800;1,400&family=Source+Sans+3:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+<style>
+  /* ===== Alt-Paper design tokens (mirrors alt-frontend-sv/src/app.css) ===== */
+  :root {
+    --alt-charcoal: #1a1a1a;
+    --alt-slate: #666666;
+    --alt-ash: #999999;
+    --text-secondary: #333333;
+
+    --surface-bg: #faf9f7;
+    --surface-2: #f5f4f1;
+    --surface-border: #c8c8c8;
+    --surface-hover: #f3f1ed;
+
+    --alt-primary: #2f4f4f;
+    --interactive-text: #2f4f4f;
+    --interactive-text-hover: #223b3b;
+
+    --chip-bg: #ebe7df;
+    --chip-border: #d0c8bb;
+    --chip-text: #49443d;
+
+    --action-surface: #ebe8e1;
+    --action-surface-hover: #e0dbd2;
+
+    /* 3-tier accent system, mapped to branch relation kinds */
+    --accent-emphasis-text: #8c1d1d;                                  /* oxblood — contradiction */
+    --accent-emphasis-bg: color-mix(in srgb, #8c1d1d 7%, transparent);
+    --accent-emphasis-border: color-mix(in srgb, #8c1d1d 28%, transparent);
+    --accent-info-text: #1e3a5f;                                      /* ink navy — cluster */
+    --accent-info-bg: color-mix(in srgb, #1e3a5f 8%, transparent);
+    --accent-info-border: color-mix(in srgb, #1e3a5f 25%, transparent);
+    --accent-muted-text: #4b5563;                                     /* slate — inquiry */
+    --accent-muted-bg: color-mix(in srgb, #4b5563 6%, transparent);
+    --accent-muted-border: color-mix(in srgb, #4b5563 20%, transparent);
+    --accent-primary-bg: color-mix(in srgb, #2f4f4f 8%, transparent); /* teal — continuation */
+    --accent-primary-border: color-mix(in srgb, #2f4f4f 26%, transparent);
+
+    /* Field-notes layer: path wear inks */
+    --wear-thin: #c4beb2;
+    --wear-worn: #8a8273;
+    --wear-deep: #3e3a32;
+    --contour: color-mix(in srgb, #2f4f4f 7%, transparent);
+
+    --font-display: "Playfair Display", "Georgia", serif;
+    --font-body: "Source Sans 3", "system-ui", sans-serif;
+    --font-mono: "IBM Plex Mono", "Source Code Pro", ui-monospace, monospace;
+  }
+
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    background: var(--surface-bg);
+    color: var(--alt-charcoal);
+    font-family: var(--font-body);
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+
+  .ic { width: 1rem; height: 1rem; stroke: currentColor; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; flex: none; }
+
+  /* ===== App shell ===== */
+  .app { display: flex; max-width: 1660px; margin: 0 auto; min-height: 100vh; }
+
+  /* ===== Sidebar ===== */
+  .sidebar {
+    width: 240px; flex: none;
+    border-right: 1px solid var(--surface-border);
+    background: var(--surface-bg);
+    padding: 1.5rem 0.75rem;
+  }
+  .brand { padding: 0 0.5rem 1.25rem; }
+  .brand-title { font-family: var(--font-display); font-size: 1.35rem; font-weight: 800; letter-spacing: -0.01em; line-height: 1; }
+  .brand-sub { font-size: 0.72rem; color: var(--alt-ash); margin-top: 0.2rem; letter-spacing: 0.02em; }
+
+  .nav { display: flex; flex-direction: column; gap: 0.1rem; }
+  .nav-item {
+    display: flex; align-items: center; gap: 0.625rem;
+    padding: 0.45rem 0.55rem; font-size: 0.875rem; color: var(--alt-charcoal);
+    cursor: pointer; user-select: none;
+  }
+  .nav-item .ic { width: 1.05rem; height: 1.05rem; color: var(--alt-slate); }
+  .nav-item:hover { background: var(--surface-hover); }
+  .nav-item.active { color: var(--alt-primary); font-weight: 600; }
+  .nav-item.active .ic { color: var(--alt-primary); }
+
+  /* ===== Content column ===== */
+  .content { flex: 1; min-width: 0; padding: 1.75rem 2.25rem 3rem; position: relative; }
+
+  /* Topographic contour backdrop — the field-notes layer */
+  .contours {
+    position: absolute; inset: 0 0 auto 0; height: 340px; pointer-events: none; overflow: hidden;
+  }
+  .contours svg { width: 100%; height: 100%; }
+  .contours path { fill: none; stroke: var(--contour); stroke-width: 1.5; }
+
+  /* Editorial header */
+  .desk { position: relative; }
+  .desk-date { font-family: var(--font-mono); font-size: 0.7rem; color: var(--alt-ash); letter-spacing: 0.06em; text-transform: uppercase; }
+  .desk-title { font-family: var(--font-display); font-size: 1.85rem; font-weight: 800; letter-spacing: -0.01em; line-height: 1.15; margin-top: 0.2rem; }
+  .desk-subtitle { font-family: var(--font-body); font-size: 0.85rem; color: var(--alt-ash); margin-top: 0.25rem; font-style: italic; }
+  .desk-rule { height: 1px; background: var(--surface-border); margin: 0.9rem 0 0; }
+
+  /* Trailhead strip */
+  .trailhead { display: flex; align-items: center; gap: 1.5rem; margin-top: 1.1rem; position: relative; }
+  .figure { display: inline-flex; align-items: baseline; gap: 0.4rem; }
+  .figure .val { font-family: var(--font-mono); font-size: 1.1rem; font-weight: 600; color: var(--alt-charcoal); }
+  .figure .lab { font-family: var(--font-mono); font-size: 0.65rem; font-weight: 600; letter-spacing: 0.08em; color: var(--alt-ash); text-transform: uppercase; }
+  .trailhead-actions { margin-left: auto; display: flex; gap: 0.5rem; }
+  .action-link {
+    display: inline-flex; align-items: center; gap: 0.45rem;
+    border: 1px solid var(--chip-border); background: var(--action-surface);
+    padding: 0.45rem 0.85rem; font-family: var(--font-body); font-size: 0.85rem; font-weight: 500;
+    color: var(--interactive-text); cursor: pointer;
+  }
+  .action-link:hover { background: var(--action-surface-hover); }
+  .action-link .ic { width: 0.95rem; height: 0.95rem; }
+
+  /* Lens chips */
+  .lenses { display: flex; align-items: center; gap: 0.45rem; margin-top: 1.3rem; flex-wrap: wrap; position: relative; }
+  .lens-label { font-family: var(--font-mono); font-size: 0.65rem; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; color: var(--alt-ash); margin-right: 0.3rem; }
+  .lens {
+    display: inline-flex; align-items: center; gap: 0.45rem;
+    font-family: var(--font-mono); font-size: 0.75rem; color: var(--chip-text);
+    border: 1px solid var(--chip-border); background: var(--chip-bg);
+    padding: 0.28rem 0.7rem; cursor: pointer; user-select: none;
+  }
+  .lens:hover { background: var(--action-surface-hover); }
+  .lens.active { border-color: var(--alt-primary); color: var(--alt-primary); background: var(--accent-primary-bg); font-weight: 600; }
+  .lens .wear-dot { width: 0.5rem; height: 0.5rem; border-radius: 50%; }
+  .wear-dot.thin { background: transparent; border: 1px dashed var(--wear-worn); }
+  .wear-dot.worn { background: var(--wear-worn); }
+  .wear-dot.deep { background: var(--wear-deep); }
+
+  /* Wear legend — surveyor's key */
+  .legend {
+    margin-top: 1.1rem; display: inline-flex; align-items: center; gap: 1.1rem;
+    border: 1px solid var(--chip-border); background: var(--surface-2);
+    padding: 0.45rem 0.85rem; font-family: var(--font-mono); font-size: 0.68rem; color: var(--alt-slate);
+    position: relative;
+  }
+  .legend .key { font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; color: var(--alt-ash); }
+  .legend .swatch { display: inline-flex; align-items: center; gap: 0.4rem; }
+  .legend .line { width: 2rem; height: 0; }
+  .legend .line.thin { border-top: 2px dotted var(--wear-thin); }
+  .legend .line.worn { border-top: 3px solid var(--wear-worn); }
+  .legend .line.deep { border-top: 5px solid var(--wear-deep); }
+
+  /* ===== Trail layout: spine + branches ===== */
+  .trail { margin-top: 1.6rem; max-width: 880px; position: relative; }
+
+  .day-sep { display: flex; align-items: center; gap: 0.8rem; margin: 1.7rem 0 0.9rem; }
+  .day-sep:first-child { margin-top: 0.4rem; }
+  .day-sep .day { font-family: var(--font-display); font-size: 1.02rem; font-weight: 700; }
+  .day-sep .rule { flex: 1; height: 1px; background: var(--surface-border); }
+  .day-sep .count { font-family: var(--font-mono); font-size: 0.68rem; color: var(--alt-ash); letter-spacing: 0.06em; text-transform: uppercase; }
+
+  /* Footprint rows hang on a left spine; spine segment carries the wear */
+  .step { display: flex; gap: 1.1rem; }
+  .spine-cell { width: 3.4rem; flex: none; display: flex; flex-direction: column; align-items: center; }
+  .spine-seg { flex: 1; width: 0; min-height: 0.7rem; }
+  .spine-seg.thin { border-left: 2px dotted var(--wear-thin); }
+  .spine-seg.worn { border-left: 3px solid var(--wear-worn); }
+  .spine-seg.deep { border-left: 5px solid var(--wear-deep); }
+  .spine-node { width: 0.85rem; height: 0.85rem; border-radius: 50%; flex: none; margin: 0.15rem 0; }
+  .spine-node.thin { background: var(--surface-bg); border: 2px solid var(--wear-worn); }
+  .spine-node.worn { background: var(--wear-worn); border: 2px solid var(--wear-worn); }
+  .spine-node.deep { background: var(--wear-deep); border: 2px solid var(--wear-deep); transform: rotate(45deg); border-radius: 1px; width: 0.78rem; height: 0.78rem; }
+
+  .footprint { flex: 1; min-width: 0; padding: 0.15rem 0 1.15rem; }
+  .fp-meta { display: flex; align-items: center; gap: 0.6rem; }
+  .fp-time { font-family: var(--font-mono); font-size: 0.7rem; color: var(--alt-ash); letter-spacing: 0.04em; }
+  .fp-verb { font-family: var(--font-mono); font-size: 0.66rem; font-weight: 600; letter-spacing: 0.12em; text-transform: uppercase; color: var(--alt-slate); }
+  .fp-note { font-family: var(--font-mono); font-size: 0.68rem; color: var(--alt-ash); font-style: italic; }
+  .fp-title { font-family: var(--font-display); font-size: 1.08rem; font-weight: 600; line-height: 1.3; margin-top: 0.22rem; cursor: pointer; }
+  .fp-title:hover { color: var(--interactive-text-hover); text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: 3px; }
+  .fp-excerpt { font-size: 0.84rem; color: var(--text-secondary); line-height: 1.5; margin-top: 0.25rem; max-width: 60ch; }
+  .fp-tags { display: flex; gap: 0.35rem; margin-top: 0.4rem; flex-wrap: wrap; }
+  .fp-tag { font-family: var(--font-mono); font-size: 0.68rem; color: var(--chip-text); border: 1px solid var(--chip-border); background: var(--chip-bg); padding: 0.08rem 0.5rem; }
+  .fp-via { display: inline-flex; align-items: center; gap: 0.35rem; font-family: var(--font-mono); font-size: 0.66rem; color: var(--alt-primary); margin-top: 0.4rem; letter-spacing: 0.03em; }
+
+  /* ===== Branch: a fork off the spine ===== */
+  .branch-step { display: flex; gap: 0; }
+  .branch-connector { width: 3.4rem; flex: none; position: relative; }
+  .branch-connector::before {
+    content: ""; position: absolute; left: 50%; top: 0; bottom: 0; width: 0;
+  }
+  .branch-connector.thin::before { border-left: 2px dotted var(--wear-thin); }
+  .branch-connector.worn::before { border-left: 3px solid var(--wear-worn); }
+  .branch-connector.deep::before { border-left: 5px solid var(--wear-deep); }
+  .branch-connector .fork {
+    position: absolute; left: 50%; top: 1.1rem; width: 2.2rem; height: 1.4rem;
+    border-left: 2px dashed var(--alt-ash); border-bottom: 2px dashed var(--alt-ash);
+    border-bottom-left-radius: 1.1rem; transform: translateX(1px);
+  }
+
+  .branch {
+    flex: 1; max-width: 560px; margin: 0.6rem 0 1.2rem 2.4rem;
+    border: 1px solid var(--surface-border); background: var(--surface-2);
+    border-left-width: 3px; padding: 0.8rem 1rem 0.85rem; position: relative;
+  }
+  .branch.kind-contradiction { border-left-color: var(--accent-emphasis-text); }
+  .branch.kind-cluster { border-left-color: var(--accent-info-text); }
+  .branch.kind-continuation { border-left-color: var(--alt-primary); }
+  .branch.kind-inquiry { border-left-color: var(--accent-muted-text); }
+
+  .branch-kind {
+    display: inline-flex; align-items: center; gap: 0.4rem;
+    font-family: var(--font-mono); font-size: 0.64rem; font-weight: 600;
+    letter-spacing: 0.12em; text-transform: uppercase; padding: 0.14rem 0.55rem;
+    border: 1px solid;
+  }
+  .kind-contradiction .branch-kind { color: var(--accent-emphasis-text); background: var(--accent-emphasis-bg); border-color: var(--accent-emphasis-border); }
+  .kind-cluster .branch-kind { color: var(--accent-info-text); background: var(--accent-info-bg); border-color: var(--accent-info-border); }
+  .kind-continuation .branch-kind { color: var(--alt-primary); background: var(--accent-primary-bg); border-color: var(--accent-primary-border); }
+  .kind-inquiry .branch-kind { color: var(--accent-muted-text); background: var(--accent-muted-bg); border-color: var(--accent-muted-border); }
+
+  .branch-title { font-family: var(--font-display); font-size: 1.02rem; font-weight: 600; line-height: 1.3; margin-top: 0.45rem; cursor: pointer; }
+  .branch-title:hover { text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: 3px; }
+  .branch-why { font-size: 0.83rem; color: var(--text-secondary); line-height: 1.5; margin-top: 0.3rem; }
+  .branch-why em { font-style: italic; }
+  .branch-evidence { font-family: var(--font-mono); font-size: 0.67rem; color: var(--alt-ash); margin-top: 0.45rem; letter-spacing: 0.02em; }
+  .branch-actions { display: flex; gap: 0.5rem; margin-top: 0.65rem; }
+  .take-path {
+    display: inline-flex; align-items: center; gap: 0.4rem;
+    border: 1px solid var(--alt-primary); background: var(--alt-primary); color: #faf9f7;
+    padding: 0.34rem 0.8rem; font-family: var(--font-body); font-size: 0.8rem; font-weight: 600; cursor: pointer;
+  }
+  .take-path:hover { background: var(--interactive-text-hover); }
+  .dismiss-path {
+    display: inline-flex; align-items: center; gap: 0.4rem;
+    border: 1px solid var(--chip-border); background: transparent; color: var(--alt-slate);
+    padding: 0.34rem 0.8rem; font-family: var(--font-body); font-size: 0.8rem; cursor: pointer;
+  }
+  .dismiss-path:hover { background: var(--surface-hover); color: var(--alt-charcoal); }
+
+  .branch.resolved { opacity: 0; transform: translateX(8px); transition: opacity 0.35s ease, transform 0.35s ease; }
+
+  /* Trail end mark */
+  .trail-end { display: flex; gap: 1.1rem; }
+  .trail-end .spine-cell .spine-seg { min-height: 1.4rem; }
+  .trail-end-mark { font-family: var(--font-mono); font-size: 0.68rem; color: var(--alt-ash); letter-spacing: 0.12em; text-transform: uppercase; padding-top: 1.2rem; }
+
+  /* Mock banner */
+  .mock-note {
+    margin-top: 2.4rem; border-top: 1px solid var(--surface-border); padding-top: 0.7rem;
+    font-family: var(--font-mono); font-size: 0.68rem; color: var(--alt-ash); max-width: 880px;
+  }
+
+  [hidden] { display: none !important; }
+</style>
+</head>
+<body>
+<div class="app">
+
+  <!-- ===== Sidebar ===== -->
+  <aside class="sidebar">
+    <div class="brand">
+      <div class="brand-title">Alt Reader</div>
+      <div class="brand-sub">AI-augmented knowledge desk</div>
+    </div>
+    <nav class="nav">
+      <div class="nav-item">
+        <svg class="ic" viewBox="0 0 24 24"><path d="M3 10.5 12 4l9 6.5V20a1 1 0 0 1-1 1h-5v-6h-6v6H4a1 1 0 0 1-1-1z"/></svg>
+        Home
+      </div>
+      <div class="nav-item active">
+        <svg class="ic" viewBox="0 0 24 24"><path d="M5 21c0-6 4-7 7-9s4-4 3-8c5 3 6 8 3 12s-8 3-10 5"/><path d="M5 21c2-4 5-6 9-7"/></svg>
+        Trail
+      </div>
+      <div class="nav-item">
+        <svg class="ic" viewBox="0 0 24 24"><path d="M4 11a9 9 0 0 1 9 9"/><path d="M4 4a16 16 0 0 1 16 16"/><circle cx="5" cy="19" r="1"/></svg>
+        Feeds
+      </div>
+      <div class="nav-item">
+        <svg class="ic" viewBox="0 0 24 24"><path d="M12 3v3m0 12v3m9-9h-3M6 12H3m13.5-7.5-2 2m-7 7-2 2m11 0-2-2m-7-7-2-2"/></svg>
+        Augur
+      </div>
+      <div class="nav-item">
+        <svg class="ic" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a7.97 7.97 0 0 0 .1-6l-2.1.6a6 6 0 0 0-1.5-1.5l.6-2.1a8 8 0 0 0-6-.1l.6 2.2a6 6 0 0 0-1.5 1.5L7.5 9a8 8 0 0 0-.1 6l2.1-.6a6 6 0 0 0 1.5 1.5L10.4 18a8 8 0 0 0 6 .1l-.6-2.2a6 6 0 0 0 1.5-1.5z"/></svg>
+        Settings
+      </div>
+    </nav>
+  </aside>
+
+  <!-- ===== Content ===== -->
+  <main class="content">
+
+    <!-- Topographic contours: the field-notes backdrop -->
+    <div class="contours" aria-hidden="true">
+      <svg viewBox="0 0 1200 340" preserveAspectRatio="none">
+        <path d="M-20,300 C180,250 320,310 520,260 S900,300 1220,230" />
+        <path d="M-20,260 C200,210 360,270 560,220 S920,260 1220,190" />
+        <path d="M-20,220 C220,175 390,230 600,180 S940,220 1220,150" />
+        <path d="M-20,180 C240,140 420,190 640,140 S960,180 1220,110" />
+        <path d="M-20,140 C260,105 450,150 680,100 S980,140 1220,70" />
+      </svg>
+    </div>
+
+    <!-- Editorial header -->
+    <header class="desk">
+      <div class="desk-date">Wednesday · June 10, 2026 — Field Notes</div>
+      <h1 class="desk-title">Your Trail</h1>
+      <p class="desk-subtitle">The path you have worn through what you read. Branches are suggested; the trail is yours.</p>
+      <div class="desk-rule"></div>
+    </header>
+
+    <!-- Trailhead figures (pull-only: refresh is explicit) -->
+    <section class="trailhead">
+      <span class="figure"><span class="val">7</span><span class="lab">footprints today</span></span>
+      <span class="figure"><span class="val">3</span><span class="lab">open branches</span></span>
+      <span class="figure"><span class="val">2</span><span class="lab">worn paths</span></span>
+      <div class="trailhead-actions">
+        <button class="action-link" id="refresh">
+          <svg class="ic" viewBox="0 0 24 24"><path d="M21 12a9 9 0 1 1-2.6-6.4M21 3v6h-6"/></svg>
+          Refresh trail
+        </button>
+        <button class="action-link">
+          <svg class="ic" viewBox="0 0 24 24"><path d="M3 10.5 12 4l9 6.5V20a1 1 0 0 1-1 1h-5v-6h-6v6H4a1 1 0 0 1-1-1z"/></svg>
+          Back to Home
+        </button>
+      </div>
+    </section>
+
+    <!-- Theme lenses: computed filters over the one spine -->
+    <section class="lenses" id="lenses">
+      <span class="lens-label">Lens</span>
+      <button class="lens active" data-lens="all">All footprints</button>
+      <button class="lens" data-lens="async-runtimes"><span class="wear-dot deep"></span>async runtimes</button>
+      <button class="lens" data-lens="eu-ai-act"><span class="wear-dot worn"></span>EU AI Act</button>
+      <button class="lens" data-lens="local-inference"><span class="wear-dot thin"></span>local inference</button>
+    </section>
+
+    <!-- Surveyor's key -->
+    <div class="legend">
+      <span class="key">Path wear</span>
+      <span class="swatch"><span class="line thin"></span>first pass</span>
+      <span class="swatch"><span class="line worn"></span>worn — you return</span>
+      <span class="swatch"><span class="line deep"></span>deep — you return &amp; ask</span>
+    </div>
+
+    <!-- ===== The trail ===== -->
+    <section class="trail" id="trail">
+
+      <div class="day-sep">
+        <span class="day">Today — June 10</span>
+        <span class="rule"></span>
+        <span class="count">7 footprints · 3 branches</span>
+      </div>
+
+      <!-- Footprint: deep path (returned + asked before) -->
+      <div class="step" data-lens-tags="async-runtimes">
+        <div class="spine-cell"><div class="spine-node deep"></div><div class="spine-seg deep"></div></div>
+        <div class="footprint">
+          <div class="fp-meta">
+            <span class="fp-time">13:05</span>
+            <span class="fp-verb">Returned</span>
+            <span class="fp-note">2nd visit · 6 min, deep read</span>
+          </div>
+          <div class="fp-title">io_uring and the future of async I/O on Linux</div>
+          <p class="fp-excerpt">Second pass over the completion-queue model; this time the comparison against epoll-based reactors held attention the longest.</p>
+          <div class="fp-tags"><span class="fp-tag">rust</span><span class="fp-tag">async</span><span class="fp-tag">linux</span></div>
+        </div>
+      </div>
+
+      <!-- Branch: continuation (off the deep path) -->
+      <div class="branch-step" data-lens-tags="async-runtimes">
+        <div class="branch-connector deep"><div class="fork"></div></div>
+        <div class="branch kind-continuation">
+          <span class="branch-kind">Continues your thread</span>
+          <div class="branch-title">Tokio 2.0 RFC: io_uring as a first-class backend</div>
+          <p class="branch-why">You returned to io_uring twice and asked how tokio schedules wakeups — this RFC is the point where those two threads meet.</p>
+          <div class="branch-evidence">evidence: 3 footprints · jun 6 – today &nbsp;·&nbsp; confidence: corroborated</div>
+          <div class="branch-actions">
+            <button class="take-path">Take this path
+              <svg class="ic" viewBox="0 0 24 24" style="width:0.85rem;height:0.85rem"><path d="M5 12h14m-6-6 6 6-6 6"/></svg>
+            </button>
+            <button class="dismiss-path">Dismiss</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Footprint: asked -->
+      <div class="step" data-lens-tags="async-runtimes">
+        <div class="spine-cell"><div class="spine-node worn"></div><div class="spine-seg worn"></div></div>
+        <div class="footprint">
+          <div class="fp-meta">
+            <span class="fp-time">11:40</span>
+            <span class="fp-verb">Asked</span>
+            <span class="fp-note">answer saved</span>
+          </div>
+          <div class="fp-title">“How does tokio decide which task to wake first?”</div>
+          <p class="fp-excerpt">Scoped to your async-runtimes reading. The answer cited the LIFO slot optimisation and linked two of your saved articles.</p>
+          <div class="fp-tags"><span class="fp-tag">rust</span><span class="fp-tag">async</span></div>
+        </div>
+      </div>
+
+      <!-- Branch: contradiction -->
+      <div class="branch-step" data-lens-tags="eu-ai-act">
+        <div class="branch-connector worn"><div class="fork"></div></div>
+        <div class="branch kind-contradiction">
+          <span class="branch-kind">Challenges what you read</span>
+          <div class="branch-title">Brussels effect, reconsidered: early evidence that AI Act enforcement is diverging</div>
+          <p class="branch-why">On June 3 you read that member-state enforcement would be <em>uniform by design</em>. This analysis argues the opposite, with the first two national rulings as evidence.</p>
+          <div class="branch-evidence">evidence: contradicts footprint of jun 3 · 2 sources &nbsp;·&nbsp; confidence: plausible</div>
+          <div class="branch-actions">
+            <button class="take-path">Take this path
+              <svg class="ic" viewBox="0 0 24 24" style="width:0.85rem;height:0.85rem"><path d="M5 12h14m-6-6 6 6-6 6"/></svg>
+            </button>
+            <button class="dismiss-path">Dismiss</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Footprint: read, arrived via a taken branch (trail closure made visible) -->
+      <div class="step" data-lens-tags="eu-ai-act">
+        <div class="spine-cell"><div class="spine-node worn"></div><div class="spine-seg worn"></div></div>
+        <div class="footprint">
+          <div class="fp-meta">
+            <span class="fp-time">09:58</span>
+            <span class="fp-verb">Read</span>
+            <span class="fp-note">4 min</span>
+          </div>
+          <div class="fp-title">What the AI Act’s GPAI codes of practice actually require</div>
+          <p class="fp-excerpt">Obligations enter into force in stages; the codes of practice are the de-facto compliance baseline until harmonised standards land.</p>
+          <div class="fp-tags"><span class="fp-tag">eu-ai-act</span><span class="fp-tag">policy</span></div>
+          <span class="fp-via">
+            <svg class="ic" viewBox="0 0 24 24" style="width:0.8rem;height:0.8rem"><path d="M5 21c0-6 4-7 7-9s4-4 3-8c5 3 6 8 3 12s-8 3-10 5"/></svg>
+            via branch you took yesterday — “Joins a topic you follow”
+          </span>
+        </div>
+      </div>
+
+      <!-- Footprint: first pass / thin -->
+      <div class="step" data-lens-tags="local-inference">
+        <div class="spine-cell"><div class="spine-node thin"></div><div class="spine-seg thin"></div></div>
+        <div class="footprint">
+          <div class="fp-meta">
+            <span class="fp-time">09:12</span>
+            <span class="fp-verb">Read</span>
+            <span class="fp-note">first pass · 2 min</span>
+          </div>
+          <div class="fp-title">Quantisation tradeoffs for on-device summarisation</div>
+          <p class="fp-excerpt">Skimmed: int4 quality cliffs appear earlier on long-context summarisation than on QA workloads.</p>
+          <div class="fp-tags"><span class="fp-tag">local-inference</span><span class="fp-tag">llm</span></div>
+        </div>
+      </div>
+
+      <!-- Branch: cluster (situates a NEW item into an existing interest) -->
+      <div class="branch-step" data-lens-tags="local-inference">
+        <div class="branch-connector thin"><div class="fork"></div></div>
+        <div class="branch kind-cluster">
+          <span class="branch-kind">Joins a topic you follow</span>
+          <div class="branch-title">ROCm 7.2 brings paged-attention kernels to consumer iGPUs</div>
+          <p class="branch-why">New this morning. It connects two tags you walk often — <em>local-inference</em> and your hardware notes — and may change the quantisation tradeoff you skimmed at 09:12.</p>
+          <div class="branch-evidence">evidence: tag overlap × 2 · fresh today &nbsp;·&nbsp; confidence: corroborated</div>
+          <div class="branch-actions">
+            <button class="take-path">Take this path
+              <svg class="ic" viewBox="0 0 24 24" style="width:0.85rem;height:0.85rem"><path d="M5 12h14m-6-6 6 6-6 6"/></svg>
+            </button>
+            <button class="dismiss-path">Dismiss</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="day-sep">
+        <span class="day">Yesterday — June 9</span>
+        <span class="rule"></span>
+        <span class="count">5 footprints · 1 branch taken</span>
+      </div>
+
+      <!-- Footprint: listened -->
+      <div class="step" data-lens-tags="eu-ai-act">
+        <div class="spine-cell"><div class="spine-node worn"></div><div class="spine-seg worn"></div></div>
+        <div class="footprint">
+          <div class="fp-meta">
+            <span class="fp-time">21:30</span>
+            <span class="fp-verb">Listened</span>
+            <span class="fp-note">full queue · 12 min</span>
+          </div>
+          <div class="fp-title">Evening queue: three takes on AI Act enforcement</div>
+          <div class="fp-tags"><span class="fp-tag">eu-ai-act</span><span class="fp-tag">listen-queue</span></div>
+        </div>
+      </div>
+
+      <!-- Footprint: read -->
+      <div class="step" data-lens-tags="async-runtimes">
+        <div class="spine-cell"><div class="spine-node worn"></div><div class="spine-seg worn"></div></div>
+        <div class="footprint">
+          <div class="fp-meta">
+            <span class="fp-time">08:47</span>
+            <span class="fp-verb">Read</span>
+            <span class="fp-note">5 min</span>
+          </div>
+          <div class="fp-title">Async Rust in 2026: what the runtime wars left behind</div>
+          <p class="fp-excerpt">A retrospective on executor fragmentation — the section on cooperative budgets is what pulled you back to io_uring today.</p>
+          <div class="fp-tags"><span class="fp-tag">rust</span><span class="fp-tag">async</span></div>
+        </div>
+      </div>
+
+      <div class="day-sep">
+        <span class="day">Last week</span>
+        <span class="rule"></span>
+        <span class="count">18 footprints</span>
+      </div>
+
+      <!-- Older footprint, thin -->
+      <div class="step" data-lens-tags="eu-ai-act">
+        <div class="spine-cell"><div class="spine-node thin"></div><div class="spine-seg thin"></div></div>
+        <div class="footprint">
+          <div class="fp-meta">
+            <span class="fp-time">Jun 3</span>
+            <span class="fp-verb">Read</span>
+            <span class="fp-note">3 min</span>
+          </div>
+          <div class="fp-title">Why AI Act enforcement will be uniform by design</div>
+          <div class="fp-tags"><span class="fp-tag">eu-ai-act</span></div>
+        </div>
+      </div>
+
+      <!-- Trail end -->
+      <div class="trail-end">
+        <div class="spine-cell"><div class="spine-seg thin"></div></div>
+        <div class="trail-end-mark">Trailhead · your first footprint — May 2, 2026</div>
+      </div>
+
+    </section>
+
+    <p class="mock-note">
+      README MOCK — knowledge-trail-mock.html · static demonstration of /knowledge/trail ·
+      pull-only (no live updates) · branches always carry kind + why + evidence + confidence ·
+      OODA stages are never shown; only your own footprints and the wear of the path.
+    </p>
+  </main>
+</div>
+
+<script>
+  // Lens filter: lenses are computed filters over the single spine — never a second structure.
+  const lenses = document.querySelectorAll('.lens');
+  lenses.forEach((btn) => {
+    btn.addEventListener('click', () => {
+      lenses.forEach((b) => b.classList.remove('active'));
+      btn.classList.add('active');
+      const lens = btn.dataset.lens;
+      document.querySelectorAll('#trail [data-lens-tags]').forEach((el) => {
+        el.hidden = lens !== 'all' && !el.dataset.lensTags.split(' ').includes(lens);
+      });
+    });
+  });
+
+  // Branch resolution demo: dismissed branches leave quietly (a branch_resolved event in the real thing).
+  document.querySelectorAll('.dismiss-path').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const branch = btn.closest('.branch-step');
+      branch.querySelector('.branch').classList.add('resolved');
+      setTimeout(() => { branch.hidden = true; }, 360);
+    });
+  });
+
+  // Take this path: in the real app this appends trail.branch_resolved.v1 (taken) and opens the item.
+  document.querySelectorAll('.take-path').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      btn.textContent = 'On your trail ✓';
+      btn.disabled = true;
+      btn.style.opacity = '0.65';
+    });
+  });
+
+  // Pull-only: refresh is an explicit user action, never a stream.
+  document.getElementById('refresh').addEventListener('click', () => {
+    const label = document.getElementById('refresh');
+    label.style.opacity = '0.5';
+    setTimeout(() => { label.style.opacity = '1'; }, 400);
+  });
+</script>
+</body>
+</html>

@@ -50,6 +50,61 @@ func (c *Client) GetKnowledgeHomeItems(ctx context.Context, userID uuid.UUID, cu
 	return items, resp.Msg.NextCursor, resp.Msg.HasMore, nil
 }
 
+// GetTrailFootprints fetches the user's footprint spine and open branches.
+func (c *Client) GetTrailFootprints(ctx context.Context, userID uuid.UUID, cursor string, limit int, filterTags []string) ([]domain.TrailFootprint, []domain.TrailBranch, string, bool, error) {
+	if !c.enabled {
+		return nil, nil, "", false, nil
+	}
+
+	resp, err := c.client.GetTrailFootprints(ctx, connect.NewRequest(&sovereignv1.GetTrailFootprintsRequest{
+		UserId:     userID.String(),
+		Cursor:     cursor,
+		Limit:      int32(limit),
+		FilterTags: filterTags,
+	}))
+	if err != nil {
+		return nil, nil, "", false, fmt.Errorf("sovereign GetTrailFootprints: %w", err)
+	}
+
+	footprints := make([]domain.TrailFootprint, len(resp.Msg.Footprints))
+	for i, pb := range resp.Msg.Footprints {
+		fp := domain.TrailFootprint{
+			FootprintKey:    pb.FootprintKey,
+			Verb:            pb.Verb,
+			ItemKey:         pb.ItemKey,
+			Title:           pb.Title,
+			Excerpt:         pb.Excerpt,
+			Tags:            pb.Tags,
+			Note:            pb.Note,
+			SourceEventType: pb.SourceEventType,
+			Wear:            pb.Wear,
+		}
+		if pb.OccurredAt != nil {
+			fp.OccurredAt = pb.OccurredAt.AsTime()
+		}
+		footprints[i] = fp
+	}
+
+	branches := make([]domain.TrailBranch, len(resp.Msg.Branches))
+	for i, pb := range resp.Msg.Branches {
+		refs := make([]domain.TrailEvidenceRef, len(pb.EvidenceRefs))
+		for j, r := range pb.EvidenceRefs {
+			refs[j] = domain.TrailEvidenceRef{RefID: r.RefId, Label: r.Label, Kind: r.Kind}
+		}
+		branches[i] = domain.TrailBranch{
+			BranchKey:     pb.BranchKey,
+			AnchorItemKey: pb.AnchorItemKey,
+			RelationKind:  pb.RelationKind,
+			Why:           pb.Why,
+			EvidenceRefs:  refs,
+			Confidence:    pb.Confidence,
+			TargetItemKey: pb.TargetItemKey,
+			TargetTitle:   pb.TargetTitle,
+		}
+	}
+	return footprints, branches, resp.Msg.NextCursor, resp.Msg.HasMore, nil
+}
+
 func (c *Client) GetTodayDigest(ctx context.Context, userID uuid.UUID, date time.Time) (domain.TodayDigest, error) {
 	if !c.enabled {
 		return domain.TodayDigest{UserID: userID, DigestDate: date}, nil

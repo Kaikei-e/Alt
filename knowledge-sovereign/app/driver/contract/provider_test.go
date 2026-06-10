@@ -96,10 +96,9 @@ func startStubServer(t *testing.T, reject *bool) int {
 	mux.HandleFunc("/services.sovereign.v1.KnowledgeSovereignService/ApplyCurationMutation", mutationHandler)
 
 	// AppendKnowledgeEvent (ADR-000840 versioned event_type convention).
-	// Consumer is alt-backend's TransitionKnowledgeLoopUsecase, which
-	// appends knowledge_loop.{observed,deferred,acted}.v1 events, plus
-	// the URL-backfill admin path (ADR-000869) which appends
-	// ArticleUrlBackfilled corrective events. The provider's wire shape
+	// Consumers append events such as the URL-backfill admin path
+	// (ADR-000869) ArticleUrlBackfilled corrective events and
+	// TagSetVersionCreated events. The provider's wire shape
 	// is `{"success": true, "eventSeq": <int64>}` on a well-formed
 	// request — projector-side dedupe / same-stage validation lives in
 	// the sovereign DB driver, out of this contract. `eventSeq` is
@@ -121,12 +120,10 @@ func startStubServer(t *testing.T, reject *bool) int {
 		})
 	})
 
-	// GetKnowledgeLoopEntries read path (ADR-000937). The relation-set on
-	// `entries[].relations` is the wire contract the alt-backend consumer pins;
-	// returning a base64 JSONB-opaque value keeps the field present so a
-	// provider-side drop is caught at the pact gate rather than surfacing as an
-	// empty Orient surface in production.
-	mux.HandleFunc("/services.sovereign.v1.KnowledgeSovereignService/GetKnowledgeLoopEntries", func(w http.ResponseWriter, r *http.Request) {
+	// GetTrailFootprints read path (Knowledge Trail spine). The footprint's
+	// verb / item_key / occurred_at are the wire contract the alt-backend
+	// consumer pins; a provider-side drop empties the spine.
+	mux.HandleFunc("/services.sovereign.v1.KnowledgeSovereignService/GetTrailFootprints", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			w.WriteHeader(http.StatusMethodNotAllowed)
 			return
@@ -134,12 +131,25 @@ func startStubServer(t *testing.T, reject *bool) int {
 		_, _ = io.Copy(io.Discard, r.Body)
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]any{
-			"entries": []map[string]any{
+			"footprints": []map[string]any{
 				{
-					"userId":    "22222222-2222-2222-2222-222222222222",
-					"tenantId":  "11111111-1111-1111-1111-111111111111",
-					"entryKey":  "entry:article-1",
-					"relations": "W3sia2luZCI6ImNvbnRpbnVhdGlvbiIsInN0YXRlIjoib3BlbiJ9XQ==",
+					"footprintKey": "open:article:1",
+					"verb":         "read",
+					"itemKey":      "article:1",
+					"occurredAt":   "2026-06-10T09:12:00Z",
+				},
+			},
+			"branches": []map[string]any{
+				{
+					"branchKey":     "cluster:u:article:z",
+					"anchorItemKey": "article:1",
+					"relationKind":  "cluster",
+					"why":           "Joins a topic you follow.",
+					"confidence":    "plausible",
+					"targetItemKey": "article:z",
+					"evidenceRefs": []map[string]any{
+						{"refId": "rust", "label": "rust", "kind": "tag"},
+					},
 				},
 			},
 		})
@@ -278,8 +288,7 @@ func TestVerifyAltBackendConsumerContract(t *testing.T) {
 				reject = false
 				return nil, nil
 			},
-			// ADR-000937: the read path returns entries carrying the relation-set.
-			"a knowledge loop entry with a continuation relation exists": func(setup bool, s models.ProviderState) (models.ProviderStateResponse, error) {
+			"a user with at least one footprint exists": func(setup bool, s models.ProviderState) (models.ProviderStateResponse, error) {
 				return nil, nil
 			},
 			"the projection mutation is rejected with an error": func(setup bool, s models.ProviderState) (models.ProviderStateResponse, error) {

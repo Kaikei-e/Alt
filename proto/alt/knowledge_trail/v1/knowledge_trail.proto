@@ -1,0 +1,75 @@
+syntax = "proto3";
+
+package alt.knowledge_trail.v1;
+
+option go_package = "alt/gen/proto/alt/knowledge_trail/v1;knowledgetrailv1";
+
+// KnowledgeTrailService is the front-facing API for the Knowledge Trail —
+// the user's cognitive trail (footprints) with system-proposed branches.
+// It currently exposes the read-only footprint spine; branch proposal and
+// resolution are separate RPCs.
+service KnowledgeTrailService {
+  // GetTrail returns the user's footprint spine in reverse-chronological order.
+  rpc GetTrail(GetTrailRequest) returns (GetTrailResponse);
+}
+
+message GetTrailRequest {
+  optional string cursor = 1;
+  int32 limit = 2;
+  // filter_tags applies the theme lens: only footprints whose item carries one
+  // of these tags are returned. Empty means the full spine.
+  repeated string filter_tags = 3;
+}
+
+message GetTrailResponse {
+  repeated Footprint footprints = 1;
+  string next_cursor = 2;
+  bool has_more = 3;
+  string generated_at = 4;
+  // branches are the open, system-proposed next steps anchored on the spine.
+  repeated Branch branches = 5;
+}
+
+// Branch is a system-proposed next step on the trail. It ALWAYS carries the
+// four-tuple — relation_kind, why, evidence_refs, confidence — or it is not
+// surfaced. Untyped branches (the Loop "decorated feed" failure) are forbidden.
+message Branch {
+  string branch_key = 1;
+  // anchor_item_key is the footprint/item this branch forks from.
+  string anchor_item_key = 2;
+  // relation_kind: "continuation" | "cluster" | "contradiction" | "inquiry".
+  string relation_kind = 3;
+  // why is the plain-English reason this is surfaced now.
+  string why = 4;
+  repeated TrailEvidenceRef evidence_refs = 5;
+  // confidence: calibrated band "speculative" | "plausible" | "corroborated".
+  string confidence = 6;
+  // target_item_key is what taking the branch opens.
+  string target_item_key = 7;
+  string target_title = 8;
+}
+
+message TrailEvidenceRef {
+  string ref_id = 1;
+  string label = 2;
+  // kind: "article" | "summary" | "tag" | "version".
+  string kind = 3;
+}
+
+// Footprint is one user cognitive act on the trail spine. It is a pure
+// projection of the event log; the system never authors a footprint.
+message Footprint {
+  string footprint_key = 1;
+  // verb is the user-facing action: "read" | "asked" | "returned" | "listened" | "dismissed".
+  string verb = 2;
+  string item_key = 3;
+  string title = 4;
+  string excerpt = 5;
+  repeated string tags = 6;
+  // note is a derived hint (e.g. "2nd visit"), never a stage label.
+  string note = 7;
+  // occurred_at is the event-time of the act (RFC3339).
+  string occurred_at = 8;
+  // wear is the derived path-wear band: "thin" | "worn" | "deep". Never a number.
+  string wear = 9;
+}

@@ -6,10 +6,10 @@ describe("NAV_TABS (re-export)", () => {
 		expect(NAV_TABS).toHaveLength(5);
 	});
 
-	it("has Home, Loop, Search, Augur, Menu in order", () => {
+	it("has Home, Trail, Search, Augur, Menu in order", () => {
 		expect(NAV_TABS.map((t) => t.label)).toEqual([
 			"Home",
-			"Loop",
+			"Trail",
 			"Search",
 			"Augur",
 			"Menu",
@@ -23,9 +23,9 @@ describe("getActiveTabIndex", () => {
 		expect(getActiveTabIndex("/home/digest")).toBe(0);
 	});
 
-	it("returns 1 for /loop root and sub-paths", () => {
-		expect(getActiveTabIndex("/loop")).toBe(1);
-		expect(getActiveTabIndex("/loop/welcome")).toBe(1);
+	it("returns 1 for /knowledge/trail root and sub-paths", () => {
+		expect(getActiveTabIndex("/knowledge/trail")).toBe(1);
+		expect(getActiveTabIndex("/knowledge/trail/anything")).toBe(1);
 	});
 
 	it("returns 2 for /search and /feeds/search", () => {

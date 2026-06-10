@@ -9,11 +9,6 @@ import SLOSummaryPanel from "$lib/components/knowledge-home-admin/SLOSummaryPane
 import AlertStatusPanel from "$lib/components/knowledge-home-admin/AlertStatusPanel.svelte";
 import ReprojectActions from "$lib/components/knowledge-home-admin/ReprojectActions.svelte";
 import ReprojectRunsTable from "$lib/components/knowledge-home-admin/ReprojectRunsTable.svelte";
-import KnowledgeLoopReprojectPanel from "$lib/components/knowledge-home-admin/KnowledgeLoopReprojectPanel.svelte";
-import type {
-	KnowledgeLoopReprojectResult,
-	KnowledgeLoopReprojectStatus,
-} from "$lib/server/sovereign-admin";
 import DiffSummaryPanel from "$lib/components/knowledge-home-admin/DiffSummaryPanel.svelte";
 import StorageStatsPanel from "$lib/components/knowledge-home-admin/StorageStatsPanel.svelte";
 import SnapshotListPanel from "$lib/components/knowledge-home-admin/SnapshotListPanel.svelte";
@@ -122,38 +117,6 @@ const runSovereignAction = async (action: {
 };
 
 const sovereign = useSovereignAdmin(fetchSovereignSnapshot, runSovereignAction);
-
-// Knowledge Loop full reproject. Distinct from the Knowledge Home shadow/swap
-// reproject above: Loop is a disposable projection with TRUNCATE-and-rerun
-// semantics, so it gets its own one-shot panel rather than the compare /
-// swap / rollback flow.
-async function triggerKnowledgeLoopReproject(): Promise<KnowledgeLoopReprojectResult> {
-	const response = await fetch("/admin/knowledge-home/reproject-loop", {
-		method: "POST",
-		credentials: "include",
-	});
-	if (!response.ok) {
-		const body = (await response.json().catch(() => null)) as {
-			error?: string;
-			message?: string;
-		} | null;
-		throw new Error(
-			body?.error ?? body?.message ?? `Reproject failed (${response.status})`,
-		);
-	}
-	return (await response.json()) as KnowledgeLoopReprojectResult;
-}
-
-async function fetchKnowledgeLoopReprojectStatus(): Promise<KnowledgeLoopReprojectStatus> {
-	const response = await fetch("/admin/knowledge-home/reproject-loop", {
-		method: "GET",
-		credentials: "include",
-	});
-	if (!response.ok) {
-		throw new Error(`Reproject status failed (${response.status})`);
-	}
-	return (await response.json()) as KnowledgeLoopReprojectStatus;
-}
 
 $effect(() => {
 	admin.seed(data.adminData, data.error ? new Error(data.error) : null);
@@ -326,12 +289,6 @@ onDestroy(() => {
 			</div>
 			<div class="ops-section" style="--stagger: 3">
 				<DiffSummaryPanel diff={admin.reprojectDiff} />
-			</div>
-			<div class="ops-section" style="--stagger: 4">
-				<KnowledgeLoopReprojectPanel
-					onTrigger={triggerKnowledgeLoopReproject}
-					onFetchStatus={fetchKnowledgeLoopReprojectStatus}
-				/>
 			</div>
 		{:else if activeTab === "storage"}
 			<div class="ops-section" style="--stagger: 1">

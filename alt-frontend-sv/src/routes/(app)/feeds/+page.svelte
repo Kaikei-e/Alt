@@ -8,7 +8,6 @@ import FeedDetailModal from "$lib/components/desktop/feeds/FeedDetailModal.svelt
 import FeedFilters from "$lib/components/desktop/feeds/FeedFilters.svelte";
 import FeedGrid from "$lib/components/desktop/feeds/FeedGrid.svelte";
 import type { FeedGridApi } from "$lib/components/desktop/feeds/feed-grid-types";
-import LoopCrossLink from "$lib/components/knowledge-loop/LoopCrossLink.svelte";
 import FeedsClient from "$lib/components/mobile/FeedsClient.svelte";
 import MobileFeedExcludeFilter from "$lib/components/mobile/feeds/MobileFeedExcludeFilter.svelte";
 import type { ConnectFeedSource } from "$lib/connect/feeds";
@@ -181,8 +180,6 @@ function handleFeedGridReady(api: FeedGridApi) {
 			<div class="wire-rule" aria-hidden="true"></div>
 		</header>
 
-		<LoopCrossLink source="From Feeds" />
-
 		<FeedFilters
 			unreadOnly={filters.unreadOnly}
 			sortBy={filters.sortBy}
@@ -228,9 +225,6 @@ function handleFeedGridReady(api: FeedGridApi) {
 			<h1 class="wire-title-mobile">Feeds</h1>
 			<div class="wire-rule" aria-hidden="true"></div>
 		</header>
-		<div class="mobile-loop-cross-link">
-			<LoopCrossLink source="From Feeds" />
-		</div>
 		<MobileFeedExcludeFilter
 			sources={feedSources}
 			excludedFeedLinkIds={mobileExcludedFeedLinkIds}
