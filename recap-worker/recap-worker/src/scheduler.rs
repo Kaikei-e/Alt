@@ -8,5 +8,6 @@ const _SPAWN_JST_BATCH_DAEMON_GUARD: fn(
     Scheduler,
     Vec<String>,
     u32,
+    Option<crate::config::KnowledgeOwnerIds>,
 ) -> tokio::task::JoinHandle<()> = daemon::spawn_jst_batch_daemon;
 pub(crate) use jobs::{JobContext, Scheduler};

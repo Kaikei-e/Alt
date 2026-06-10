@@ -121,6 +121,19 @@ pub struct Config {
     clustering_stuck_threshold: Duration,
     batch_summary_chunk_size: usize,
     embedding_required: FeatureToggle,
+    knowledge_owner: Option<KnowledgeOwnerIds>,
+}
+
+/// Resolved knowledge-loop owner ids sourced from
+/// `RECAP_KNOWLEDGE_OWNER_USER_ID` / `RECAP_KNOWLEDGE_OWNER_TENANT_ID`.
+///
+/// Present only when BOTH env vars parse as UUIDs. The persist-stage
+/// `recap.topic_snapshotted.v1` emit guard needs both ids set, so a partial
+/// owner is treated as "no owner" (emission stays off).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct KnowledgeOwnerIds {
+    pub user_id: uuid::Uuid,
+    pub tenant_id: uuid::Uuid,
 }
 
 #[derive(Debug, Error)]
@@ -278,6 +291,7 @@ impl Config {
         } else {
             FeatureToggle::Disabled
         };
+        let knowledge_owner = load_knowledge_owner();
 
         Ok(Self::from_components(
             basic,
@@ -297,6 +311,7 @@ impl Config {
             clustering_min_success_genres,
             clustering_stuck_threshold,
             embedding_required,
+            knowledge_owner,
         ))
     }
 
@@ -319,6 +334,7 @@ impl Config {
         clustering_min_success_genres: usize,
         clustering_stuck_threshold: Duration,
         embedding_required: FeatureToggle,
+        knowledge_owner: Option<KnowledgeOwnerIds>,
     ) -> Self {
         Self {
             http_bind: basic.http_bind,
@@ -380,6 +396,7 @@ impl Config {
             clustering_stuck_threshold,
             batch_summary_chunk_size: basic.batch_summary_chunk_size,
             embedding_required,
+            knowledge_owner,
         }
     }
 
@@ -718,6 +735,16 @@ impl Config {
     pub fn embedding_required(&self) -> bool {
         self.embedding_required.is_enabled()
     }
+
+    /// Resolved knowledge-loop owner for the `recap.topic_snapshotted.v1`
+    /// emit, or `None` when `RECAP_KNOWLEDGE_OWNER_USER_ID` /
+    /// `RECAP_KNOWLEDGE_OWNER_TENANT_ID` are absent or not both valid UUIDs.
+    /// `None` means the scheduler leaves every `JobContext` scopeless and the
+    /// persist-stage emit guard keeps emission off.
+    #[must_use]
+    pub fn knowledge_owner(&self) -> Option<KnowledgeOwnerIds> {
+        self.knowledge_owner
+    }
 }
 
 fn load_basic_config() -> Result<BasicConfig, ConfigError> {
@@ -956,6 +983,55 @@ fn load_classification_queue_config() -> Result<QueueConfig, ConfigError> {
     })
 }
 
+/// Resolve the knowledge-loop owner from the two owner env vars.
+///
+/// Returns `Some` only when BOTH `RECAP_KNOWLEDGE_OWNER_USER_ID` and
+/// `RECAP_KNOWLEDGE_OWNER_TENANT_ID` are set to valid UUIDs. A partially-set
+/// or unparsable pair degrades to `None` (emission disabled) rather than
+/// failing startup, because the owner is a per-deployment optional feature.
+/// The daemon emits the loud enabled/disabled startup log; here we only warn
+/// on the surprising partial/invalid cases so a typo is never swallowed.
+fn load_knowledge_owner() -> Option<KnowledgeOwnerIds> {
+    let user_raw = env_var_optional("RECAP_KNOWLEDGE_OWNER_USER_ID");
+    let tenant_raw = env_var_optional("RECAP_KNOWLEDGE_OWNER_TENANT_ID");
+
+    match (user_raw, tenant_raw) {
+        (None, None) => None,
+        (Some(user), Some(tenant)) => {
+            if let (Ok(user_id), Ok(tenant_id)) = (
+                uuid::Uuid::parse_str(user.trim()),
+                uuid::Uuid::parse_str(tenant.trim()),
+            ) {
+                Some(KnowledgeOwnerIds { user_id, tenant_id })
+            } else {
+                tracing::warn!(
+                    "RECAP_KNOWLEDGE_OWNER_USER_ID / RECAP_KNOWLEDGE_OWNER_TENANT_ID set but not both valid UUIDs; recap.topic_snapshotted.v1 owner unresolved"
+                );
+                None
+            }
+        }
+        (user_set, _) => {
+            let (present, missing) = if user_set.is_some() {
+                (
+                    "RECAP_KNOWLEDGE_OWNER_USER_ID",
+                    "RECAP_KNOWLEDGE_OWNER_TENANT_ID",
+                )
+            } else {
+                (
+                    "RECAP_KNOWLEDGE_OWNER_TENANT_ID",
+                    "RECAP_KNOWLEDGE_OWNER_USER_ID",
+                )
+            };
+            tracing::warn!(
+                present,
+                missing,
+                "only one knowledge-owner env var is set; both are required — recap.topic_snapshotted.v1 owner unresolved"
+            );
+            None
+        }
+    }
+}
+
 fn env_var(name: &'static str) -> Result<String, ConfigError> {
     // Check for _FILE suffix
     let file_var = format!("{}_FILE", name);
@@ -1128,7 +1204,100 @@ mod tests {
             ("LLM_SUMMARY_TIMEOUT_SECS", None),
             ("MTLS_ENFORCE", None),
             ("RECAP_WORKER_EMBEDDING_REQUIRED", None),
+            ("RECAP_KNOWLEDGE_OWNER_USER_ID", None),
+            ("RECAP_KNOWLEDGE_OWNER_TENANT_ID", None),
         ]
+    }
+
+    fn required_base() -> Vec<(&'static str, Option<&'static str>)> {
+        let mut vars = base_env_vars();
+        vars.extend([
+            (
+                "RECAP_DB_DSN",
+                Some("postgres://recap:recap@localhost:5555/recap_db"),
+            ),
+            ("NEWS_CREATOR_BASE_URL", Some("http://localhost:8001/")),
+            ("SUBWORKER_BASE_URL", Some("http://localhost:8002/")),
+            ("ALT_BACKEND_BASE_URL", Some("http://localhost:9000/")),
+        ]);
+        vars
+    }
+
+    #[test]
+    fn from_env_resolves_knowledge_owner_when_both_uuids_present() {
+        let _lock = ENV_MUTEX.lock().expect("env mutex");
+        let mut vars = required_base();
+        vars.extend([
+            (
+                "RECAP_KNOWLEDGE_OWNER_USER_ID",
+                Some("44444444-4444-4444-4444-444444444444"),
+            ),
+            (
+                "RECAP_KNOWLEDGE_OWNER_TENANT_ID",
+                Some("11111111-1111-1111-1111-111111111111"),
+            ),
+        ]);
+        temp_env::with_vars(vars, || {
+            let config = Config::from_env().expect("config should load");
+            let owner = config.knowledge_owner().expect("owner should resolve");
+            assert_eq!(
+                owner.user_id,
+                uuid::Uuid::parse_str("44444444-4444-4444-4444-444444444444").unwrap()
+            );
+            assert_eq!(
+                owner.tenant_id,
+                uuid::Uuid::parse_str("11111111-1111-1111-1111-111111111111").unwrap()
+            );
+        });
+    }
+
+    #[test]
+    fn from_env_owner_none_when_both_absent() {
+        let _lock = ENV_MUTEX.lock().expect("env mutex");
+        temp_env::with_vars(required_base(), || {
+            let config = Config::from_env().expect("config should load");
+            assert!(
+                config.knowledge_owner().is_none(),
+                "absent owner env must leave emission off"
+            );
+        });
+    }
+
+    #[test]
+    fn from_env_owner_none_when_only_user_id_set() {
+        let _lock = ENV_MUTEX.lock().expect("env mutex");
+        let mut vars = required_base();
+        vars.push((
+            "RECAP_KNOWLEDGE_OWNER_USER_ID",
+            Some("44444444-4444-4444-4444-444444444444"),
+        ));
+        temp_env::with_vars(vars, || {
+            let config = Config::from_env().expect("config should load");
+            assert!(
+                config.knowledge_owner().is_none(),
+                "a partial owner (tenant missing) must degrade to no owner, not panic"
+            );
+        });
+    }
+
+    #[test]
+    fn from_env_owner_none_when_uuid_invalid() {
+        let _lock = ENV_MUTEX.lock().expect("env mutex");
+        let mut vars = required_base();
+        vars.extend([
+            ("RECAP_KNOWLEDGE_OWNER_USER_ID", Some("not-a-uuid")),
+            (
+                "RECAP_KNOWLEDGE_OWNER_TENANT_ID",
+                Some("11111111-1111-1111-1111-111111111111"),
+            ),
+        ]);
+        temp_env::with_vars(vars, || {
+            let config = Config::from_env().expect("invalid owner uuid must not fail startup");
+            assert!(
+                config.knowledge_owner().is_none(),
+                "an unparsable owner uuid must degrade to no owner (loud warn, not fatal)"
+            );
+        });
     }
 
     #[test]

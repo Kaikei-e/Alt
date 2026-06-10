@@ -95,7 +95,6 @@ impl JobContext {
     /// persist-stage `recap.topic_snapshotted.v1` emit has the scope it
     /// needs. System batches keep both `None` and the publish helper
     /// gracefully skips emit.
-    #[allow(dead_code)]
     pub(crate) fn with_user_scope(mut self, user_id: Uuid, tenant_id: Uuid) -> Self {
         self.user_id = Some(user_id);
         self.tenant_id = Some(tenant_id);

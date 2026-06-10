@@ -1195,4 +1195,110 @@ mod tests {
             "bullet [1] must be grounded to a-1 sentences"
         );
     }
+
+    /// Build a minimal DispatchResult with a single genre whose clustering
+    /// response carries one cluster with non-empty `top_terms` — the shape the
+    /// persist stage forwards to the `recap.topic_snapshotted.v1` publish pass.
+    fn dispatch_with_terms(genre: &str) -> DispatchResult {
+        let job_id = uuid::Uuid::new_v4();
+        let clustering_response: ClusteringResponse = serde_json::from_value(serde_json::json!({
+            "run_id": 7_i64,
+            "job_id": job_id.to_string(),
+            "genre": genre,
+            "status": "succeeded",
+            "cluster_count": 1,
+            "clusters": [{
+                "cluster_id": 7,
+                "size": 1,
+                "top_terms": ["ai", "llm"],
+                "representatives": []
+            }]
+        }))
+        .expect("clustering_response fixture must deserialize");
+
+        let mut genre_results = HashMap::new();
+        genre_results.insert(
+            genre.to_string(),
+            GenreResult {
+                genre: genre.to_string(),
+                clustering_response: Some(clustering_response),
+                summary_response_id: None,
+                // No summary_response: the persist loop classifies this as
+                // "no evidence" (genres_skipped), which keeps the genre out of
+                // the DB write path while the publish pass below still sees a
+                // confirmed cluster (error.is_none() + non-empty top_terms).
+                summary_response: None,
+                error: None,
+            },
+        );
+        DispatchResult {
+            job_id,
+            genre_results,
+            success_count: 0,
+            failure_count: 0,
+            all_genres: vec![genre.to_string()],
+        }
+    }
+
+    /// RED→GREEN end-to-end: a JobContext carrying an owner (user_id +
+    /// tenant_id) drives the persist stage to actually emit
+    /// `recap.topic_snapshotted.v1`. Before PR-7 the owner was never wired, so
+    /// the guard `(Some, Some, _)` was unreachable and zero events were emitted
+    /// in production. The mock pins exactly one AppendKnowledgeEvent RPC.
+    #[tokio::test]
+    async fn persist_emits_topic_snapshot_when_owner_present() {
+        use wiremock::matchers::{method, path};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path(
+                "/services.sovereign.v1.KnowledgeSovereignService/AppendKnowledgeEvent",
+            ))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .insert_header("Content-Type", "application/json")
+                    .set_body_string(r#"{"success":true,"eventSeq":1}"#),
+            )
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let dao = Arc::new(MockRecapDao::new());
+        let sovereign = Arc::new(KnowledgeSovereignClient::new_for_test(server.uri()));
+        let stage = FinalSectionPersistStage::new(dao, None).with_sovereign(Some(sovereign));
+
+        let dispatch = dispatch_with_terms("ai_data");
+        let job = JobContext::new(dispatch.job_id, dispatch.all_genres.clone())
+            .with_user_scope(uuid::Uuid::new_v4(), uuid::Uuid::new_v4());
+
+        stage.persist(&job, dispatch).await.expect("persist ok");
+        // `server` drop verifies `.expect(1)`: exactly one emit must have fired.
+    }
+
+    /// Companion: with NO owner on the JobContext (the production default
+    /// before PR-7), the guard short-circuits and the persist stage emits
+    /// nothing even though a sovereign client is wired and a cluster has terms.
+    #[tokio::test]
+    async fn persist_skips_topic_snapshot_when_owner_absent() {
+        use wiremock::matchers::method;
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .respond_with(ResponseTemplate::new(500))
+            .expect(0)
+            .mount(&server)
+            .await;
+
+        let dao = Arc::new(MockRecapDao::new());
+        let sovereign = Arc::new(KnowledgeSovereignClient::new_for_test(server.uri()));
+        let stage = FinalSectionPersistStage::new(dao, None).with_sovereign(Some(sovereign));
+
+        let dispatch = dispatch_with_terms("ai_data");
+        let job = JobContext::new(dispatch.job_id, dispatch.all_genres.clone());
+
+        stage.persist(&job, dispatch).await.expect("persist ok");
+        // `server` drop verifies `.expect(0)`: no emit when owner is unset.
+    }
 }

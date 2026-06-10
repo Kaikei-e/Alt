@@ -119,12 +119,21 @@ async fn main() -> anyhow::Result<()> {
         .context("failed to build component registry")?;
     let scheduler = registry.scheduler().clone();
     let default_genres = registry.config().recap_genres().to_vec();
+    // Knowledge-loop owner for the persist-stage recap.topic_snapshotted.v1
+    // emit. Resolved once from env; threaded into every JobContext both
+    // daemons build. `None` keeps emission off (intentionally disabled).
+    let knowledge_owner = registry.config().knowledge_owner();
 
     if default_genres.is_empty() {
         warn!("skipping automatic batch daemon because no default genres are configured");
     } else {
         let recap_window = registry.config().recap_3days_window_days();
-        let _batch_daemon = spawn_jst_batch_daemon(scheduler.clone(), default_genres, recap_window);
+        let _batch_daemon = spawn_jst_batch_daemon(
+            scheduler.clone(),
+            default_genres,
+            recap_window,
+            knowledge_owner,
+        );
     }
     // Morning Letter daemon: gated by MORNING_DAEMON_ENABLED env flag.
     // Default is "false" to preserve current behaviour; set to "true" to
@@ -134,8 +143,10 @@ async fn main() -> anyhow::Result<()> {
         .unwrap_or(false);
     if morning_daemon_enabled {
         info!("MORNING_DAEMON_ENABLED=true — starting morning editorial projector daemon");
-        let _morning_daemon =
-            recap_worker::scheduler::daemon::spawn_morning_update_daemon(scheduler);
+        let _morning_daemon = recap_worker::scheduler::daemon::spawn_morning_update_daemon(
+            scheduler,
+            knowledge_owner,
+        );
     } else {
         info!("morning daemon disabled (set MORNING_DAEMON_ENABLED=true to enable)");
     }
