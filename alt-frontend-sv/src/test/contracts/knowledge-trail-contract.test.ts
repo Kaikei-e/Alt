@@ -4,6 +4,7 @@ import {
 	GetTrailRequestSchema,
 	GetTrailResponseSchema,
 	FootprintSchema,
+	BranchSchema,
 } from "$lib/gen/alt/knowledge_trail/v1/knowledge_trail_pb";
 
 describe("Knowledge Trail API Contract", () => {
@@ -66,6 +67,32 @@ describe("Knowledge Trail API Contract", () => {
 					itemKey: "article:1",
 				});
 				expect(fp.verb).toBe(verb);
+			}
+		});
+	});
+
+	describe("Branch", () => {
+		it("carries the mandatory four-tuple (kind, why, evidence, confidence)", () => {
+			const branch = create(BranchSchema, {
+				branchKey: "cluster:u:article:z",
+				anchorItemKey: "article:a",
+				relationKind: "cluster",
+				why: "Joins a topic you follow — shares rust.",
+				evidenceRefs: [{ refId: "rust", label: "rust", kind: "tag" }],
+				confidence: "corroborated",
+				targetItemKey: "article:z",
+				targetTitle: "Async Rust",
+			});
+			expect(branch.relationKind).toBe("cluster");
+			expect(branch.why).not.toBe("");
+			expect(branch.evidenceRefs).toHaveLength(1);
+			expect(branch.confidence).toBe("corroborated");
+		});
+
+		it("accepts each canonical relation kind", () => {
+			for (const kind of ["continuation", "cluster", "contradiction", "inquiry"]) {
+				const b = create(BranchSchema, { branchKey: `${kind}:1`, relationKind: kind });
+				expect(b.relationKind).toBe(kind);
 			}
 		});
 	});

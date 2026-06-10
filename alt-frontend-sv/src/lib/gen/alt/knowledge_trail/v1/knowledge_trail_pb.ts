@@ -10,7 +10,7 @@ import type { Message } from "@bufbuild/protobuf";
  * Describes the file alt/knowledge_trail/v1/knowledge_trail.proto.
  */
 export const file_alt_knowledge_trail_v1_knowledge_trail: GenFile = /*@__PURE__*/
-  fileDesc("CixhbHQva25vd2xlZGdlX3RyYWlsL3YxL2tub3dsZWRnZV90cmFpbC5wcm90bxIWYWx0Lmtub3dsZWRnZV90cmFpbC52MSJVCg9HZXRUcmFpbFJlcXVlc3QSEwoGY3Vyc29yGAEgASgJSACIAQESDQoFbGltaXQYAiABKAUSEwoLZmlsdGVyX3RhZ3MYAyADKAlCCQoHX2N1cnNvciKGAQoQR2V0VHJhaWxSZXNwb25zZRI1Cgpmb290cHJpbnRzGAEgAygLMiEuYWx0Lmtub3dsZWRnZV90cmFpbC52MS5Gb290cHJpbnQSEwoLbmV4dF9jdXJzb3IYAiABKAkSEAoIaGFzX21vcmUYAyABKAgSFAoMZ2VuZXJhdGVkX2F0GAQgASgJIqEBCglGb290cHJpbnQSFQoNZm9vdHByaW50X2tleRgBIAEoCRIMCgR2ZXJiGAIgASgJEhAKCGl0ZW1fa2V5GAMgASgJEg0KBXRpdGxlGAQgASgJEg8KB2V4Y2VycHQYBSABKAkSDAoEdGFncxgGIAMoCRIMCgRub3RlGAcgASgJEhMKC29jY3VycmVkX2F0GAggASgJEgwKBHdlYXIYCSABKAkydgoVS25vd2xlZGdlVHJhaWxTZXJ2aWNlEl0KCEdldFRyYWlsEicuYWx0Lmtub3dsZWRnZV90cmFpbC52MS5HZXRUcmFpbFJlcXVlc3QaKC5hbHQua25vd2xlZGdlX3RyYWlsLnYxLkdldFRyYWlsUmVzcG9uc2VCN1o1YWx0L2dlbi9wcm90by9hbHQva25vd2xlZGdlX3RyYWlsL3YxO2tub3dsZWRnZXRyYWlsdjFiBnByb3RvMw");
+  fileDesc("CixhbHQva25vd2xlZGdlX3RyYWlsL3YxL2tub3dsZWRnZV90cmFpbC5wcm90bxIWYWx0Lmtub3dsZWRnZV90cmFpbC52MSJVCg9HZXRUcmFpbFJlcXVlc3QSEwoGY3Vyc29yGAEgASgJSACIAQESDQoFbGltaXQYAiABKAUSEwoLZmlsdGVyX3RhZ3MYAyADKAlCCQoHX2N1cnNvciK4AQoQR2V0VHJhaWxSZXNwb25zZRI1Cgpmb290cHJpbnRzGAEgAygLMiEuYWx0Lmtub3dsZWRnZV90cmFpbC52MS5Gb290cHJpbnQSEwoLbmV4dF9jdXJzb3IYAiABKAkSEAoIaGFzX21vcmUYAyABKAgSFAoMZ2VuZXJhdGVkX2F0GAQgASgJEjAKCGJyYW5jaGVzGAUgAygLMh4uYWx0Lmtub3dsZWRnZV90cmFpbC52MS5CcmFuY2gi3QEKBkJyYW5jaBISCgpicmFuY2hfa2V5GAEgASgJEhcKD2FuY2hvcl9pdGVtX2tleRgCIAEoCRIVCg1yZWxhdGlvbl9raW5kGAMgASgJEgsKA3doeRgEIAEoCRI/Cg1ldmlkZW5jZV9yZWZzGAUgAygLMiguYWx0Lmtub3dsZWRnZV90cmFpbC52MS5UcmFpbEV2aWRlbmNlUmVmEhIKCmNvbmZpZGVuY2UYBiABKAkSFwoPdGFyZ2V0X2l0ZW1fa2V5GAcgASgJEhQKDHRhcmdldF90aXRsZRgIIAEoCSI/ChBUcmFpbEV2aWRlbmNlUmVmEg4KBnJlZl9pZBgBIAEoCRINCgVsYWJlbBgCIAEoCRIMCgRraW5kGAMgASgJIqEBCglGb290cHJpbnQSFQoNZm9vdHByaW50X2tleRgBIAEoCRIMCgR2ZXJiGAIgASgJEhAKCGl0ZW1fa2V5GAMgASgJEg0KBXRpdGxlGAQgASgJEg8KB2V4Y2VycHQYBSABKAkSDAoEdGFncxgGIAMoCRIMCgRub3RlGAcgASgJEhMKC29jY3VycmVkX2F0GAggASgJEgwKBHdlYXIYCSABKAkydgoVS25vd2xlZGdlVHJhaWxTZXJ2aWNlEl0KCEdldFRyYWlsEicuYWx0Lmtub3dsZWRnZV90cmFpbC52MS5HZXRUcmFpbFJlcXVlc3QaKC5hbHQua25vd2xlZGdlX3RyYWlsLnYxLkdldFRyYWlsUmVzcG9uc2VCN1o1YWx0L2dlbi9wcm90by9hbHQva25vd2xlZGdlX3RyYWlsL3YxO2tub3dsZWRnZXRyYWlsdjFiBnByb3RvMw");
 
 /**
  * @generated from message alt.knowledge_trail.v1.GetTrailRequest
@@ -65,6 +65,13 @@ export type GetTrailResponse = Message<"alt.knowledge_trail.v1.GetTrailResponse"
    * @generated from field: string generated_at = 4;
    */
   generatedAt: string;
+
+  /**
+   * branches are the open, system-proposed next steps anchored on the spine.
+   *
+   * @generated from field: repeated alt.knowledge_trail.v1.Branch branches = 5;
+   */
+  branches: Branch[];
 };
 
 /**
@@ -73,6 +80,101 @@ export type GetTrailResponse = Message<"alt.knowledge_trail.v1.GetTrailResponse"
  */
 export const GetTrailResponseSchema: GenMessage<GetTrailResponse> = /*@__PURE__*/
   messageDesc(file_alt_knowledge_trail_v1_knowledge_trail, 1);
+
+/**
+ * Branch is a system-proposed next step on the trail. It ALWAYS carries the
+ * four-tuple — relation_kind, why, evidence_refs, confidence — or it is not
+ * surfaced. Untyped branches (the Loop "decorated feed" failure) are forbidden.
+ *
+ * @generated from message alt.knowledge_trail.v1.Branch
+ */
+export type Branch = Message<"alt.knowledge_trail.v1.Branch"> & {
+  /**
+   * @generated from field: string branch_key = 1;
+   */
+  branchKey: string;
+
+  /**
+   * anchor_item_key is the footprint/item this branch forks from.
+   *
+   * @generated from field: string anchor_item_key = 2;
+   */
+  anchorItemKey: string;
+
+  /**
+   * relation_kind: "continuation" | "cluster" | "contradiction" | "inquiry".
+   *
+   * @generated from field: string relation_kind = 3;
+   */
+  relationKind: string;
+
+  /**
+   * why is the plain-English reason this is surfaced now.
+   *
+   * @generated from field: string why = 4;
+   */
+  why: string;
+
+  /**
+   * @generated from field: repeated alt.knowledge_trail.v1.TrailEvidenceRef evidence_refs = 5;
+   */
+  evidenceRefs: TrailEvidenceRef[];
+
+  /**
+   * confidence: calibrated band "speculative" | "plausible" | "corroborated".
+   *
+   * @generated from field: string confidence = 6;
+   */
+  confidence: string;
+
+  /**
+   * target_item_key is what taking the branch opens.
+   *
+   * @generated from field: string target_item_key = 7;
+   */
+  targetItemKey: string;
+
+  /**
+   * @generated from field: string target_title = 8;
+   */
+  targetTitle: string;
+};
+
+/**
+ * Describes the message alt.knowledge_trail.v1.Branch.
+ * Use `create(BranchSchema)` to create a new message.
+ */
+export const BranchSchema: GenMessage<Branch> = /*@__PURE__*/
+  messageDesc(file_alt_knowledge_trail_v1_knowledge_trail, 2);
+
+/**
+ * @generated from message alt.knowledge_trail.v1.TrailEvidenceRef
+ */
+export type TrailEvidenceRef = Message<"alt.knowledge_trail.v1.TrailEvidenceRef"> & {
+  /**
+   * @generated from field: string ref_id = 1;
+   */
+  refId: string;
+
+  /**
+   * @generated from field: string label = 2;
+   */
+  label: string;
+
+  /**
+   * kind: "article" | "summary" | "tag" | "version".
+   *
+   * @generated from field: string kind = 3;
+   */
+  kind: string;
+};
+
+/**
+ * Describes the message alt.knowledge_trail.v1.TrailEvidenceRef.
+ * Use `create(TrailEvidenceRefSchema)` to create a new message.
+ */
+export const TrailEvidenceRefSchema: GenMessage<TrailEvidenceRef> = /*@__PURE__*/
+  messageDesc(file_alt_knowledge_trail_v1_knowledge_trail, 3);
 
 /**
  * Footprint is one user cognitive act on the trail spine. It is a pure
@@ -140,7 +242,7 @@ export type Footprint = Message<"alt.knowledge_trail.v1.Footprint"> & {
  * Use `create(FootprintSchema)` to create a new message.
  */
 export const FootprintSchema: GenMessage<Footprint> = /*@__PURE__*/
-  messageDesc(file_alt_knowledge_trail_v1_knowledge_trail, 2);
+  messageDesc(file_alt_knowledge_trail_v1_knowledge_trail, 4);
 
 /**
  * KnowledgeTrailService is the front-facing API for the Knowledge Trail —

@@ -7,9 +7,14 @@ package knowledge_trail_projector
 
 import (
 	"context"
+	"encoding/json"
 	"log/slog"
+	"time"
+
+	"github.com/google/uuid"
 
 	"knowledge-sovereign/driver/sovereign_db"
+	"knowledge-sovereign/usecase/trail_planner"
 )
 
 const (
@@ -35,6 +40,7 @@ type Repository interface {
 	UpdateProjectionCheckpoint(ctx context.Context, projectorName string, lastSeq int64) error
 	ListKnowledgeEventsSince(ctx context.Context, afterSeq int64, limit int) ([]sovereign_db.KnowledgeEvent, error)
 	UpsertTrailFootprint(ctx context.Context, fp sovereign_db.TrailFootprint, projectionVersion int) error
+	UpsertTrailBranch(ctx context.Context, userID, tenantID uuid.UUID, b sovereign_db.TrailBranch, createdAt time.Time, projectionVersion int) error
 }
 
 // Config tunes batch sizing.
@@ -84,6 +90,12 @@ func (p *Projector) RunBatch(ctx context.Context) error {
 			if evt.EventSeq > maxSeq {
 				maxSeq = evt.EventSeq
 			}
+			if evt.EventType == trail_planner.EventTrailBranchProposed {
+				if err := p.foldBranch(ctx, evt); err != nil {
+					return err
+				}
+				continue
+			}
 			fp, ok := footprintFromEvent(evt)
 			if !ok {
 				continue
@@ -101,6 +113,42 @@ func (p *Projector) RunBatch(ctx context.Context) error {
 		}
 	}
 	return nil
+}
+
+// foldBranch folds a trail.branch_proposed.v1 event into the branch read model.
+// A branch missing the four-tuple is rejected loudly and never surfaced (Rule 4
+// — untyped branches are the Loop decorated-feed failure). Malformed payloads
+// are skipped without failing the batch (the event stays in the log).
+func (p *Projector) foldBranch(ctx context.Context, evt sovereign_db.KnowledgeEvent) error {
+	if evt.UserID == nil {
+		return nil
+	}
+	var payload trail_planner.BranchProposedPayload
+	if err := json.Unmarshal(evt.Payload, &payload); err != nil {
+		p.logger.WarnContext(ctx, "trail projector: unparseable branch_proposed payload",
+			slog.String("event_id", evt.EventID.String()))
+		return nil
+	}
+	if !payload.Valid() {
+		p.logger.WarnContext(ctx, "trail projector: rejecting untyped branch_proposed",
+			slog.String("branch_key", payload.BranchKey))
+		return nil
+	}
+	refs := make([]sovereign_db.TrailEvidenceRef, len(payload.EvidenceRefs))
+	for i, r := range payload.EvidenceRefs {
+		refs[i] = sovereign_db.TrailEvidenceRef{RefID: r.RefID, Label: r.Label, Kind: r.Kind}
+	}
+	b := sovereign_db.TrailBranch{
+		BranchKey:     payload.BranchKey,
+		AnchorItemKey: payload.AnchorItemKey,
+		RelationKind:  payload.RelationKind,
+		Why:           payload.Why,
+		EvidenceRefs:  refs,
+		Confidence:    payload.Confidence,
+		TargetItemKey: payload.TargetItemKey,
+		TargetTitle:   payload.TargetTitle,
+	}
+	return p.repo.UpsertTrailBranch(ctx, *evt.UserID, evt.TenantID, b, evt.OccurredAt, 1)
 }
 
 // footprintFromEvent derives a footprint from an act event. Returns ok=false for

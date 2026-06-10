@@ -125,6 +125,18 @@ jobs:
 
       # --- Lint (golangci-lint v2系 / アクション v8) ---
       # v8 の公式アクション推奨。v2 では out-format が変わったため、注釈はProblem Matcherに任せる。
+      #
+      # PR では action 標準の only-new-issues が GitHub の patch API 経由で diff を取得するが、
+      # この API は 20000 行を超える diff を拒否する (HttpError: too_large)。巨大リファクタの PR
+      # では patch 取得に失敗してフィルタが無効化され、ツリー全体を lint して既存の指摘を一斉に
+      # 噴出させてしまう。そのため PR では golangci-lint ネイティブの git ベース --new-from-rev
+      # (行数上限なし) で「変更行の新規指摘」だけを対象にする。push は従来どおり action 標準。
+      - name: Fetch base ref for new-issue detection
+        if: github.event_name == 'pull_request' && inputs.lint-only-new
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: git fetch --no-tags --depth=1 origin "+refs/heads/${BASE_REF}:refs/remotes/origin/${BASE_REF}"
+
       - name: golangci-lint
         uses: golangci/golangci-lint-action@v8
         env:
@@ -133,9 +145,9 @@ jobs:
           version: v2.1
           install-mode: goinstall
           working-directory: ${{ inputs.working-directory }}
-          only-new-issues: ${{ inputs.lint-only-new }}
-          # 追加で引数を渡す場合（例：--timeout=5m）
-          # args: --timeout=5m
+          # PR は --new-from-rev で自前フィルタするので action 側の only-new-issues は無効化。
+          only-new-issues: ${{ github.event_name != 'pull_request' && inputs.lint-only-new }}
+          args: ${{ (github.event_name == 'pull_request' && inputs.lint-only-new) && format('--new-from-rev=origin/{0}', github.base_ref) || '' }}
 
       # --- Security: gosec → SARIF で Code Scanning に載せる ---
       - name: Install gosec

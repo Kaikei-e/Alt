@@ -14,6 +14,7 @@ import (
 
 type fakeTrailPort struct {
 	footprints []domain.TrailFootprint
+	branches   []domain.TrailBranch
 	nextCursor string
 	hasMore    bool
 	err        error
@@ -22,11 +23,11 @@ type fakeTrailPort struct {
 	gotTags    []string
 }
 
-func (f *fakeTrailPort) GetTrailFootprints(_ context.Context, _ uuid.UUID, cursor string, limit int, filterTags []string) ([]domain.TrailFootprint, string, bool, error) {
+func (f *fakeTrailPort) GetTrailFootprints(_ context.Context, _ uuid.UUID, cursor string, limit int, filterTags []string) ([]domain.TrailFootprint, []domain.TrailBranch, string, bool, error) {
 	f.gotCursor = cursor
 	f.gotLimit = limit
 	f.gotTags = filterTags
-	return f.footprints, f.nextCursor, f.hasMore, f.err
+	return f.footprints, f.branches, f.nextCursor, f.hasMore, f.err
 }
 
 func TestExecute_ReturnsFootprints(t *testing.T) {

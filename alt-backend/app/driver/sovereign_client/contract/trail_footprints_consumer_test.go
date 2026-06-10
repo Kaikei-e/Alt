@@ -54,6 +54,19 @@ func TestGetTrailFootprintsReturnsSpine(t *testing.T) {
 					"itemKey":      matchers.Like("article:1"),
 					"occurredAt":   matchers.Like("2026-06-10T09:12:00Z"),
 				}, 1),
+				// The branch four-tuple is the contract: a provider-side drop of
+				// relation_kind / why / evidence_refs / confidence empties the
+				// branch surface, so pin all four.
+				"branches": matchers.EachLike(matchers.MapMatcher{
+					"branchKey":    matchers.Like("cluster:u:article:z"),
+					"relationKind": matchers.Like("cluster"),
+					"why":          matchers.Like("Joins a topic you follow."),
+					"confidence":   matchers.Like("plausible"),
+					"evidenceRefs": matchers.EachLike(matchers.MapMatcher{
+						"refId": matchers.Like("rust"),
+						"kind":  matchers.Like("tag"),
+					}, 1),
+				}, 1),
 			},
 		}).
 		ExecuteTest(t, func(config consumer.MockServerConfig) error {
@@ -68,6 +81,12 @@ func TestGetTrailFootprintsReturnsSpine(t *testing.T) {
 			require.NotEmpty(t, resp.Msg.Footprints, "provider must return at least one footprint")
 			assert.NotEmpty(t, resp.Msg.Footprints[0].Verb, "footprint.verb must be present")
 			assert.NotNil(t, resp.Msg.Footprints[0].OccurredAt, "footprint.occurred_at must be present")
+			require.NotEmpty(t, resp.Msg.Branches, "provider must return the open branches")
+			b := resp.Msg.Branches[0]
+			assert.NotEmpty(t, b.RelationKind, "branch.relation_kind must be present")
+			assert.NotEmpty(t, b.Why, "branch.why must be present")
+			assert.NotEmpty(t, b.Confidence, "branch.confidence must be present")
+			assert.NotEmpty(t, b.EvidenceRefs, "branch.evidence_refs must be present")
 			return nil
 		})
 	require.NoError(t, err)

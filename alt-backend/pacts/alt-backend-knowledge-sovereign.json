@@ -43,6 +43,20 @@
       },
       "response": {
         "body": {
+          "branches": [
+            {
+              "branchKey": "cluster:u:article:z",
+              "confidence": "plausible",
+              "evidenceRefs": [
+                {
+                  "kind": "tag",
+                  "refId": "rust"
+                }
+              ],
+              "relationKind": "cluster",
+              "why": "Joins a topic you follow."
+            }
+          ],
           "footprints": [
             {
               "footprintKey": "open:article:1",
@@ -57,6 +71,72 @@
         },
         "matchingRules": {
           "body": {
+            "$.branches": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type",
+                  "min": 1
+                }
+              ]
+            },
+            "$.branches[*].branchKey": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.branches[*].confidence": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.branches[*].evidenceRefs": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type",
+                  "min": 1
+                }
+              ]
+            },
+            "$.branches[*].evidenceRefs[*].kind": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.branches[*].evidenceRefs[*].refId": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.branches[*].relationKind": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.branches[*].why": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
             "$.footprints": {
               "combine": "AND",
               "matchers": [
@@ -115,15 +195,15 @@
           "event": {
             "actorId": "knowledge-url-backfill",
             "actorType": "service",
-            "aggregateId": "354437f3-2f20-467c-8a45-5c401f1beeb1",
+            "aggregateId": "333619b1-0a0c-4a7a-b9a5-4519e4e2b1af",
             "aggregateType": "article",
-            "dedupeKey": "article-url-backfill-v2:354437f3-2f20-467c-8a45-5c401f1beeb1",
-            "eventId": "a6f18620-380a-4a62-83b9-e1df0ed3ec77",
+            "dedupeKey": "article-url-backfill-v2:333619b1-0a0c-4a7a-b9a5-4519e4e2b1af",
+            "eventId": "73749888-6030-4d29-8d15-35bdb1698a42",
             "eventType": "ArticleUrlBackfilled",
             "occurredAt": "2026-04-28T12:00:00Z",
             "payload": "eyJhcnRpY2xlX2lkIjoiMDAwMDAwMDAtMDAwMC0wMDAwLTAwMDAtMDAwMDAwMDAwMDAwIiwidXJsIjoiaHR0cHM6Ly9leGFtcGxlLmNvbSJ9",
-            "tenantId": "107cd0bb-7ec8-4d12-bb32-1b0e8d061a5c",
-            "userId": "69ac50e7-608e-43b9-8f25-fbb44165a3f8"
+            "tenantId": "32b47326-814d-46db-843c-49095a411780",
+            "userId": "4acc910d-9730-4162-82cb-85b99c9bd08f"
           }
         },
         "headers": {
@@ -187,15 +267,15 @@
           "event": {
             "actorId": "tag-generator",
             "actorType": "service",
-            "aggregateId": "06023505-79df-4169-b84f-09f0f8ae420b",
+            "aggregateId": "82b42bb3-49ab-4f37-a570-9b0f704ad8a5",
             "aggregateType": "article",
-            "dedupeKey": "TagSetVersionCreated:d0926118-b7e4-4b36-86a0-f8e10461546c",
-            "eventId": "d9666243-94dc-4b79-8536-52046aa98bcf",
+            "dedupeKey": "TagSetVersionCreated:90a40c3d-5244-4bde-b325-26b2cdd4038c",
+            "eventId": "120244f2-1da3-469a-8874-da6b02b6124b",
             "eventType": "TagSetVersionCreated",
             "occurredAt": "2026-06-10T10:00:00Z",
-            "payload": "eyJhcnRpY2xlX2lkIjoiMDYwMjM1MDUtNzlkZi00MTY5LWI4NGYtMDlmMGY4YWU0MjBiIiwiZ2VuZXJhdG9yIjoidGFnLWdlbmVyYXRvciIsInRhZ19zZXRfdmVyc2lvbl9pZCI6ImQwOTI2MTE4LWI3ZTQtNGIzNi04NmEwLWY4ZTEwNDYxNTQ2YyIsInRhZ3MiOlsiZ28iLCJydXN0Il19",
-            "tenantId": "cb4893ff-8771-402e-8c71-cfb858d92f86",
-            "userId": "aebcd7ce-9ca0-4262-89a7-5f3b51fd6c42"
+            "payload": "eyJhcnRpY2xlX2lkIjoiODJiNDJiYjMtNDlhYi00ZjM3LWE1NzAtOWIwZjcwNGFkOGE1IiwiZ2VuZXJhdG9yIjoidGFnLWdlbmVyYXRvciIsInRhZ19zZXRfdmVyc2lvbl9pZCI6IjkwYTQwYzNkLTUyNDQtNGJkZS1iMzI1LTI2YjJjZGQ0MDM4YyIsInRhZ3MiOlsiZ28iLCJydXN0Il19",
+            "tenantId": "26b56485-d840-45aa-943b-c4a3cae9cff0",
+            "userId": "8cb27732-47ee-4fc9-89f7-d5582e1cbf76"
           }
         },
         "headers": {

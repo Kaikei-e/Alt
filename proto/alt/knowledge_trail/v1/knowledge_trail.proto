@@ -26,6 +26,34 @@ message GetTrailResponse {
   string next_cursor = 2;
   bool has_more = 3;
   string generated_at = 4;
+  // branches are the open, system-proposed next steps anchored on the spine.
+  repeated Branch branches = 5;
+}
+
+// Branch is a system-proposed next step on the trail. It ALWAYS carries the
+// four-tuple — relation_kind, why, evidence_refs, confidence — or it is not
+// surfaced. Untyped branches (the Loop "decorated feed" failure) are forbidden.
+message Branch {
+  string branch_key = 1;
+  // anchor_item_key is the footprint/item this branch forks from.
+  string anchor_item_key = 2;
+  // relation_kind: "continuation" | "cluster" | "contradiction" | "inquiry".
+  string relation_kind = 3;
+  // why is the plain-English reason this is surfaced now.
+  string why = 4;
+  repeated TrailEvidenceRef evidence_refs = 5;
+  // confidence: calibrated band "speculative" | "plausible" | "corroborated".
+  string confidence = 6;
+  // target_item_key is what taking the branch opens.
+  string target_item_key = 7;
+  string target_title = 8;
+}
+
+message TrailEvidenceRef {
+  string ref_id = 1;
+  string label = 2;
+  // kind: "article" | "summary" | "tag" | "version".
+  string kind = 3;
 }
 
 // Footprint is one user cognitive act on the trail spine. It is a pure

@@ -58,9 +58,28 @@ func (h *Handler) GetTrail(
 		}
 	}
 
+	branches := make([]*knowledgetrailv1.Branch, len(result.Branches))
+	for i, b := range result.Branches {
+		refs := make([]*knowledgetrailv1.TrailEvidenceRef, len(b.EvidenceRefs))
+		for j, r := range b.EvidenceRefs {
+			refs[j] = &knowledgetrailv1.TrailEvidenceRef{RefId: r.RefID, Label: r.Label, Kind: r.Kind}
+		}
+		branches[i] = &knowledgetrailv1.Branch{
+			BranchKey:     b.BranchKey,
+			AnchorItemKey: b.AnchorItemKey,
+			RelationKind:  b.RelationKind,
+			Why:           b.Why,
+			EvidenceRefs:  refs,
+			Confidence:    b.Confidence,
+			TargetItemKey: b.TargetItemKey,
+			TargetTitle:   b.TargetTitle,
+		}
+	}
+
 	return connect.NewResponse(&knowledgetrailv1.GetTrailResponse{
 		Footprints: footprints,
 		NextCursor: result.NextCursor,
 		HasMore:    result.HasMore,
+		Branches:   branches,
 	}), nil
 }

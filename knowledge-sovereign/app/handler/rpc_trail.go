@@ -23,6 +23,11 @@ func (h *SovereignHandler) GetTrailFootprints(
 		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("GetTrailFootprints: %w", err))
 	}
 
+	branches, err := h.readDB.GetOpenTrailBranches(ctx, userID)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("GetOpenTrailBranches: %w", err))
+	}
+
 	pb := make([]*sovereignv1.TrailFootprint, len(footprints))
 	for i, fp := range footprints {
 		pb[i] = &sovereignv1.TrailFootprint{
@@ -41,9 +46,28 @@ func (h *SovereignHandler) GetTrailFootprints(
 		}
 	}
 
+	pbBranches := make([]*sovereignv1.TrailBranch, len(branches))
+	for i, b := range branches {
+		refs := make([]*sovereignv1.TrailEvidenceRef, len(b.EvidenceRefs))
+		for j, r := range b.EvidenceRefs {
+			refs[j] = &sovereignv1.TrailEvidenceRef{RefId: r.RefID, Label: r.Label, Kind: r.Kind}
+		}
+		pbBranches[i] = &sovereignv1.TrailBranch{
+			BranchKey:     b.BranchKey,
+			AnchorItemKey: b.AnchorItemKey,
+			RelationKind:  b.RelationKind,
+			Why:           b.Why,
+			EvidenceRefs:  refs,
+			Confidence:    b.Confidence,
+			TargetItemKey: b.TargetItemKey,
+			TargetTitle:   b.TargetTitle,
+		}
+	}
+
 	return connect.NewResponse(&sovereignv1.GetTrailFootprintsResponse{
 		Footprints: pb,
 		NextCursor: nextCursor,
 		HasMore:    hasMore,
+		Branches:   pbBranches,
 	}), nil
 }

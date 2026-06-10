@@ -1,5 +1,9 @@
 import { createClientTransport } from "$lib/connect/transport-client";
-import { getTrail, type FootprintData } from "$lib/connect/knowledge_trail";
+import {
+	getTrail,
+	type FootprintData,
+	type BranchData,
+} from "$lib/connect/knowledge_trail";
 
 /**
  * useKnowledgeTrail drives the Knowledge Trail spine. Pull-only by design: data
@@ -9,6 +13,7 @@ import { getTrail, type FootprintData } from "$lib/connect/knowledge_trail";
  */
 export function useKnowledgeTrail() {
 	let footprints = $state<FootprintData[]>([]);
+	let branches = $state<BranchData[]>([]);
 	let loading = $state(false);
 	let error = $state<Error | null>(null);
 	let hasMore = $state(false);
@@ -28,6 +33,8 @@ export function useKnowledgeTrail() {
 				activeTags,
 			);
 			footprints = reset ? result.footprints : [...footprints, ...result.footprints];
+			// Branches are a full snapshot of the user's open branches (not paged).
+			branches = result.branches;
 			nextCursor = result.nextCursor;
 			hasMore = result.hasMore;
 			hasEverLoaded = true;
@@ -60,6 +67,9 @@ export function useKnowledgeTrail() {
 	return {
 		get footprints() {
 			return footprints;
+		},
+		get branches() {
+			return branches;
 		},
 		get loading() {
 			return loading;

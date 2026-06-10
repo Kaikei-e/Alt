@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 )
 
 // TrailFootprint is the domain representation of one footprint on the trail
@@ -72,15 +73,15 @@ func (r *Repository) GetTrailFootprints(ctx context.Context, userID uuid.UUID, c
 		if err != nil {
 			return nil, "", false, fmt.Errorf("GetTrailFootprints: invalid cursor: %w", err)
 		}
-		where.WriteString(fmt.Sprintf(` AND (f.occurred_at, f.footprint_key) < ($%d, $%d)`, argPos, argPos+1))
+		fmt.Fprintf(&where, ` AND (f.occurred_at, f.footprint_key) < ($%d, $%d)`, argPos, argPos+1)
 		args = append(args, occurredAt, footprintKey)
 		argPos += 2
 	}
 	if len(filterTags) > 0 {
-		where.WriteString(fmt.Sprintf(` AND EXISTS (
+		fmt.Fprintf(&where, ` AND EXISTS (
 			SELECT 1 FROM jsonb_array_elements_text(COALESCE(khi.tags_json, '[]')) AS tag_name
 			WHERE tag_name = ANY($%d)
-		)`, argPos))
+		)`, argPos)
 		args = append(args, filterTags)
 		argPos++
 	}
@@ -148,6 +149,163 @@ LIMIT $%d`, where.String(), argPos)
 		nextCursor = encodeTrailCursor(last.OccurredAt, last.FootprintKey)
 	}
 	return footprints, nextCursor, hasMore, nil
+}
+
+// TrailEvidenceRef is one piece of evidence backing a branch.
+type TrailEvidenceRef struct {
+	RefID string `json:"ref_id"`
+	Label string `json:"label"`
+	Kind  string `json:"kind"`
+}
+
+// TrailBranch is the read-model view of a system-proposed branch.
+type TrailBranch struct {
+	BranchKey     string
+	AnchorItemKey string
+	RelationKind  string
+	Why           string
+	EvidenceRefs  []TrailEvidenceRef
+	Confidence    string
+	TargetItemKey string
+	TargetTitle   string
+}
+
+// TrailClusterCandidate is a new item that shares tags with the user's followed
+// topics and that the user has not yet engaged — the raw material for a Cluster
+// branch.
+type TrailClusterCandidate struct {
+	TargetItemKey string
+	TargetTitle   string
+	SharedTags    []string
+}
+
+// UpsertTrailBranch folds a branch_proposed event into the read model. It never
+// downgrades a resolved branch back to open (Wave 5 sets state separately), and
+// re-projection of the same event reproduces the same row.
+func (r *Repository) UpsertTrailBranch(ctx context.Context, userID, tenantID uuid.UUID, b TrailBranch, createdAt time.Time, projectionVersion int) error {
+	refs, err := json.Marshal(b.EvidenceRefs)
+	if err != nil {
+		return fmt.Errorf("UpsertTrailBranch marshal: %w", err)
+	}
+	const q = `
+INSERT INTO knowledge_trail_branches
+  (user_id, tenant_id, branch_key, anchor_item_key, relation_kind, why,
+   evidence_refs_json, confidence, target_item_key, target_title, state,
+   created_at, projection_version)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'open', $11, $12)
+ON CONFLICT (user_id, branch_key) DO UPDATE SET
+  anchor_item_key = EXCLUDED.anchor_item_key,
+  relation_kind = EXCLUDED.relation_kind,
+  why = EXCLUDED.why,
+  evidence_refs_json = EXCLUDED.evidence_refs_json,
+  confidence = EXCLUDED.confidence,
+  target_item_key = EXCLUDED.target_item_key,
+  target_title = EXCLUDED.target_title,
+  created_at = EXCLUDED.created_at,
+  projection_version = EXCLUDED.projection_version`
+	if _, err := r.pool.Exec(ctx, q,
+		userID, tenantID, b.BranchKey, b.AnchorItemKey, b.RelationKind, b.Why,
+		refs, b.Confidence, b.TargetItemKey, b.TargetTitle, createdAt, projectionVersion,
+	); err != nil {
+		return fmt.Errorf("UpsertTrailBranch: %w", err)
+	}
+	return nil
+}
+
+// GetOpenTrailBranches returns the user's open branches, newest first.
+func (r *Repository) GetOpenTrailBranches(ctx context.Context, userID uuid.UUID) ([]TrailBranch, error) {
+	const q = `
+SELECT branch_key, anchor_item_key, relation_kind, why, evidence_refs_json,
+       confidence, target_item_key, target_title
+FROM knowledge_trail_branches
+WHERE user_id = $1 AND state = 'open'
+ORDER BY created_at DESC, branch_key DESC`
+	rows, err := r.pool.Query(ctx, q, userID)
+	if err != nil {
+		return nil, fmt.Errorf("GetOpenTrailBranches: %w", err)
+	}
+	defer rows.Close()
+
+	var branches []TrailBranch
+	for rows.Next() {
+		var b TrailBranch
+		var refsJSON []byte
+		if err := rows.Scan(&b.BranchKey, &b.AnchorItemKey, &b.RelationKind, &b.Why,
+			&refsJSON, &b.Confidence, &b.TargetItemKey, &b.TargetTitle); err != nil {
+			return nil, fmt.Errorf("GetOpenTrailBranches scan: %w", err)
+		}
+		_ = json.Unmarshal(refsJSON, &b.EvidenceRefs)
+		branches = append(branches, b)
+	}
+	return branches, rows.Err()
+}
+
+// GetLatestFootprintAnchor returns the user's most recent footprint item_key and
+// tenant — the spine point a freshly proposed branch forks from.
+func (r *Repository) GetLatestFootprintAnchor(ctx context.Context, userID uuid.UUID) (itemKey string, tenantID uuid.UUID, ok bool, err error) {
+	const q = `SELECT item_key, tenant_id FROM knowledge_trail_footprints
+		WHERE user_id = $1 ORDER BY occurred_at DESC, footprint_key DESC LIMIT 1`
+	row := r.pool.QueryRow(ctx, q, userID)
+	if scanErr := row.Scan(&itemKey, &tenantID); scanErr != nil {
+		if scanErr == pgx.ErrNoRows {
+			return "", uuid.Nil, false, nil
+		}
+		return "", uuid.Nil, false, fmt.Errorf("GetLatestFootprintAnchor: %w", scanErr)
+	}
+	return itemKey, tenantID, true, nil
+}
+
+// DeriveTrailClusterCandidates finds articles that share a tag with the user's
+// engaged items but that the user has not footprinted — Cluster branch material.
+// Ranked by tag-overlap. Producer-side derivation (the planner reads current
+// state to decide what to emit); the projector that folds the resulting event
+// stays payload-only.
+func (r *Repository) DeriveTrailClusterCandidates(ctx context.Context, userID uuid.UUID, limit int) ([]TrailClusterCandidate, error) {
+	const q = `
+WITH active_version AS (
+  SELECT COALESCE((SELECT version FROM knowledge_projection_versions
+                   WHERE status = 'active' ORDER BY version DESC LIMIT 1), 1) AS v
+),
+user_tags AS (
+  SELECT DISTINCT lower(t.tag) AS tag
+  FROM knowledge_trail_footprints f
+  JOIN knowledge_home_items khi
+    ON khi.user_id = f.user_id AND khi.item_key = f.item_key
+   AND khi.projection_version = (SELECT v FROM active_version)
+  CROSS JOIN LATERAL jsonb_array_elements_text(khi.tags_json) AS t(tag)
+  WHERE f.user_id = $1
+),
+footprinted AS (
+  SELECT DISTINCT item_key FROM knowledge_trail_footprints WHERE user_id = $1
+)
+SELECT khi.item_key, khi.title,
+       array_agg(DISTINCT it.tag) AS shared_tags
+FROM knowledge_home_items khi
+CROSS JOIN LATERAL jsonb_array_elements_text(khi.tags_json) AS it(tag)
+WHERE khi.user_id = $1
+  AND khi.item_type = 'article'
+  AND khi.dismissed_at IS NULL
+  AND khi.projection_version = (SELECT v FROM active_version)
+  AND khi.item_key NOT IN (SELECT item_key FROM footprinted)
+  AND lower(it.tag) IN (SELECT tag FROM user_tags)
+GROUP BY khi.item_key, khi.title
+ORDER BY count(DISTINCT lower(it.tag)) DESC, khi.item_key
+LIMIT $2`
+	rows, err := r.pool.Query(ctx, q, userID, limit)
+	if err != nil {
+		return nil, fmt.Errorf("DeriveTrailClusterCandidates: %w", err)
+	}
+	defer rows.Close()
+
+	var out []TrailClusterCandidate
+	for rows.Next() {
+		var c TrailClusterCandidate
+		if err := rows.Scan(&c.TargetItemKey, &c.TargetTitle, &c.SharedTags); err != nil {
+			return nil, fmt.Errorf("DeriveTrailClusterCandidates scan: %w", err)
+		}
+		out = append(out, c)
+	}
+	return out, rows.Err()
 }
 
 func encodeTrailCursor(occurredAt time.Time, footprintKey string) string {

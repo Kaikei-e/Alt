@@ -77,6 +77,9 @@ func (m *mockRepo) GetKnowledgeHomeItems(_ context.Context, _ uuid.UUID, _ strin
 func (m *mockRepo) GetTrailFootprints(_ context.Context, _ uuid.UUID, _ string, _ int, _ []string) ([]sovereign_db.TrailFootprint, string, bool, error) {
 	return nil, "", false, m.returnErr
 }
+func (m *mockRepo) GetOpenTrailBranches(_ context.Context, _ uuid.UUID) ([]sovereign_db.TrailBranch, error) {
+	return nil, m.returnErr
+}
 func (m *mockRepo) GetTodayDigest(_ context.Context, _ uuid.UUID, _ time.Time) (*sovereign_db.TodayDigest, error) {
 	return nil, m.returnErr
 }

@@ -2,6 +2,7 @@ package knowledge_trail_projector
 
 import (
 	"context"
+	"encoding/json"
 	"testing"
 	"time"
 
@@ -10,18 +11,45 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"knowledge-sovereign/driver/sovereign_db"
+	"knowledge-sovereign/usecase/trail_planner"
 )
 
 // fakeRepo is an in-memory stand-in for the sovereign repository. It records
-// upserts keyed by footprint_key so the test can assert reproject determinism.
+// upserts keyed by footprint_key / branch_key so the test can assert reproject
+// determinism and the untyped-branch rejection.
 type fakeRepo struct {
 	events     []sovereign_db.KnowledgeEvent
 	checkpoint int64
 	upserts    map[string]sovereign_db.TrailFootprint
+	branches   map[string]sovereign_db.TrailBranch
 }
 
 func newFakeRepo(events []sovereign_db.KnowledgeEvent) *fakeRepo {
-	return &fakeRepo{events: events, upserts: map[string]sovereign_db.TrailFootprint{}}
+	return &fakeRepo{
+		events:   events,
+		upserts:  map[string]sovereign_db.TrailFootprint{},
+		branches: map[string]sovereign_db.TrailBranch{},
+	}
+}
+
+func (f *fakeRepo) UpsertTrailBranch(_ context.Context, _, _ uuid.UUID, b sovereign_db.TrailBranch, _ time.Time, _ int) error {
+	f.branches[b.BranchKey] = b
+	return nil
+}
+
+func branchEvent(seq int64, payload trail_planner.BranchProposedPayload, user *uuid.UUID) sovereign_db.KnowledgeEvent {
+	body, _ := json.Marshal(payload)
+	return sovereign_db.KnowledgeEvent{
+		EventID:       uuid.New(),
+		EventSeq:      seq,
+		OccurredAt:    time.Now().UTC(),
+		TenantID:      uuid.New(),
+		UserID:        user,
+		EventType:     trail_planner.EventTrailBranchProposed,
+		AggregateType: "trail_branch",
+		AggregateID:   payload.BranchKey,
+		Payload:       body,
+	}
 }
 
 func (f *fakeRepo) GetProjectionCheckpoint(_ context.Context, _ string) (int64, error) {
@@ -114,4 +142,59 @@ func TestProjector_ReprojectIsDeterministic(t *testing.T) {
 		"replaying the same event log must reproduce an identical spine (reproject-safe)")
 	assert.Equal(t, "read", first.upserts["acted:c"].Verb,
 		"historical knowledge_loop.acted.v1 projects as a read footprint")
+}
+
+func validBranchPayload() trail_planner.BranchProposedPayload {
+	return trail_planner.BranchProposedPayload{
+		BranchKey:     "cluster:u:article:z",
+		AnchorItemKey: "article:a",
+		RelationKind:  "cluster",
+		Why:           "Joins a topic you follow — shares rust.",
+		EvidenceRefs:  []trail_planner.EvidenceRef{{RefID: "rust", Label: "rust", Kind: "tag"}},
+		Confidence:    "plausible",
+		TargetItemKey: "article:z",
+		TargetTitle:   "Async Rust",
+	}
+}
+
+func TestProjector_FoldsValidBranch(t *testing.T) {
+	user := userPtr()
+	repo := newFakeRepo([]sovereign_db.KnowledgeEvent{branchEvent(1, validBranchPayload(), user)})
+	require.NoError(t, NewProjector(repo, nil, Config{}).RunBatch(context.Background()))
+
+	require.Len(t, repo.branches, 1)
+	b := repo.branches["cluster:u:article:z"]
+	assert.Equal(t, "cluster", b.RelationKind)
+	assert.NotEmpty(t, b.Why)
+	assert.Len(t, b.EvidenceRefs, 1)
+	assert.Equal(t, "plausible", b.Confidence)
+}
+
+func TestProjector_RejectsUntypedBranch(t *testing.T) {
+	user := userPtr()
+	// Each of these is missing one leg of the four-tuple → must NOT be folded.
+	noKind := validBranchPayload()
+	noKind.BranchKey = "b:nokind"
+	noKind.RelationKind = ""
+	noWhy := validBranchPayload()
+	noWhy.BranchKey = "b:nowhy"
+	noWhy.Why = ""
+	noEvidence := validBranchPayload()
+	noEvidence.BranchKey = "b:noev"
+	noEvidence.EvidenceRefs = nil
+	noConf := validBranchPayload()
+	noConf.BranchKey = "b:noconf"
+	noConf.Confidence = ""
+
+	repo := newFakeRepo([]sovereign_db.KnowledgeEvent{
+		branchEvent(1, noKind, user),
+		branchEvent(2, noWhy, user),
+		branchEvent(3, noEvidence, user),
+		branchEvent(4, noConf, user),
+	})
+	require.NoError(t, NewProjector(repo, nil, Config{}).RunBatch(context.Background()))
+
+	assert.Empty(t, repo.branches,
+		"a branch missing any of relation_kind/why/evidence/confidence must never be surfaced (no untyped branch)")
+	assert.Equal(t, int64(4), repo.checkpoint, "checkpoint still advances past rejected branches")
 }

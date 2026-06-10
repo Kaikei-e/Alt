@@ -14,6 +14,7 @@ const defaultLimit = 20
 // Result is the trail spine page returned to the handler.
 type Result struct {
 	Footprints []domain.TrailFootprint
+	Branches   []domain.TrailBranch
 	NextCursor string
 	HasMore    bool
 }
@@ -33,9 +34,9 @@ func (u *GetKnowledgeTrailUsecase) Execute(ctx context.Context, userID uuid.UUID
 	if limit <= 0 || limit > 100 {
 		limit = defaultLimit
 	}
-	footprints, nextCursor, hasMore, err := u.trailPort.GetTrailFootprints(ctx, userID, cursor, limit, filterTags)
+	footprints, branches, nextCursor, hasMore, err := u.trailPort.GetTrailFootprints(ctx, userID, cursor, limit, filterTags)
 	if err != nil {
 		return nil, err
 	}
-	return &Result{Footprints: footprints, NextCursor: nextCursor, HasMore: hasMore}, nil
+	return &Result{Footprints: footprints, Branches: branches, NextCursor: nextCursor, HasMore: hasMore}, nil
 }

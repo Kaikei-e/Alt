@@ -11,6 +11,7 @@ import {
 	KnowledgeTrailService,
 	type GetTrailResponse,
 	type Footprint as ProtoFootprint,
+	type Branch as ProtoBranch,
 } from "$lib/gen/alt/knowledge_trail/v1/knowledge_trail_pb";
 
 type KnowledgeTrailClient = Client<typeof KnowledgeTrailService>;
@@ -40,9 +41,37 @@ export interface FootprintData {
 	wear: FootprintWear;
 }
 
+/** The typed relation a branch expresses. */
+export type BranchRelationKind =
+	| "continuation"
+	| "cluster"
+	| "contradiction"
+	| "inquiry"
+	| string;
+
+/** One piece of evidence backing a branch. */
+export interface EvidenceRefData {
+	refId: string;
+	label: string;
+	kind: string;
+}
+
+/** A system-proposed next step on the trail. Always carries the four-tuple. */
+export interface BranchData {
+	branchKey: string;
+	anchorItemKey: string;
+	relationKind: BranchRelationKind;
+	why: string;
+	evidenceRefs: EvidenceRefData[];
+	confidence: string;
+	targetItemKey: string;
+	targetTitle: string;
+}
+
 /** One page of the trail spine. */
 export interface TrailResult {
 	footprints: FootprintData[];
+	branches: BranchData[];
 	nextCursor: string;
 	hasMore: boolean;
 }
@@ -86,7 +115,25 @@ export async function getTrail(
 
 	return {
 		footprints: response.footprints.map(convertFootprint),
+		branches: response.branches.map(convertBranch),
 		nextCursor: response.nextCursor,
 		hasMore: response.hasMore,
+	};
+}
+
+function convertBranch(pb: ProtoBranch): BranchData {
+	return {
+		branchKey: pb.branchKey,
+		anchorItemKey: pb.anchorItemKey,
+		relationKind: pb.relationKind,
+		why: pb.why,
+		evidenceRefs: (pb.evidenceRefs ?? []).map((r) => ({
+			refId: r.refId,
+			label: r.label,
+			kind: r.kind,
+		})),
+		confidence: pb.confidence,
+		targetItemKey: pb.targetItemKey,
+		targetTitle: pb.targetTitle,
 	};
 }

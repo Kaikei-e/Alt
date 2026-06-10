@@ -3,6 +3,7 @@ import { onMount } from "svelte";
 import { browser } from "$app/environment";
 import { useKnowledgeTrail } from "$lib/hooks/useKnowledgeTrail.svelte";
 import TrailSpine from "$lib/components/knowledge-trail/TrailSpine.svelte";
+import TrailBranches from "$lib/components/knowledge-trail/TrailBranches.svelte";
 
 const trail = useKnowledgeTrail();
 
@@ -64,6 +65,8 @@ onMount(() => {
 			The trail could not be loaded. Try refreshing.
 		</p>
 	{/if}
+
+	<TrailBranches branches={trail.branches} />
 
 	<TrailSpine
 		footprints={trail.footprints}

@@ -8,6 +8,7 @@ import (
 	"knowledge-sovereign/handler"
 	"knowledge-sovereign/usecase/knowledge_trail_projector"
 	"knowledge-sovereign/usecase/projection_health"
+	"knowledge-sovereign/usecase/trail_planner"
 	"log/slog"
 	"net/http"
 	"os"
@@ -124,6 +125,29 @@ func main() {
 			case <-trailTick.C:
 				if err := trailProjector.RunBatch(ctx); err != nil {
 					slog.Error("knowledge_trail_projector batch failed", "error", err)
+				}
+			}
+		}
+	}()
+
+	// Knowledge Trail branch producer (trail_planner). Rule 8: surface the wiring
+	// state loudly at startup so a missing producer is visible immediately, not
+	// as a silent absence of branches weeks later (PM-2026-045 / ADR-000928).
+	branchPlanner := trail_planner.NewPlanner(repo, slog.Default(), trail_planner.Config{
+		MaxBranchesPerUser: parseIntEnv("KNOWLEDGE_SOVEREIGN_TRAIL_MAX_BRANCHES_PER_USER", 5),
+		Clock:              time.Now,
+	})
+	slog.Info("trail.branch_producer.wiring", "enabled", branchPlanner != nil)
+	branchTick := time.NewTicker(parseDurationEnv("KNOWLEDGE_SOVEREIGN_BRANCH_PLANNER_TICK_INTERVAL", 30*time.Second))
+	go func() {
+		defer branchTick.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-branchTick.C:
+				if err := branchPlanner.RunBatch(ctx); err != nil {
+					slog.Error("trail_planner batch failed", "error", err)
 				}
 			}
 		}

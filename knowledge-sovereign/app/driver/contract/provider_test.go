@@ -139,6 +139,19 @@ func startStubServer(t *testing.T, reject *bool) int {
 					"occurredAt":   "2026-06-10T09:12:00Z",
 				},
 			},
+			"branches": []map[string]any{
+				{
+					"branchKey":     "cluster:u:article:z",
+					"anchorItemKey": "article:1",
+					"relationKind":  "cluster",
+					"why":           "Joins a topic you follow.",
+					"confidence":    "plausible",
+					"targetItemKey": "article:z",
+					"evidenceRefs": []map[string]any{
+						{"refId": "rust", "label": "rust", "kind": "tag"},
+					},
+				},
+			},
 		})
 	})
 

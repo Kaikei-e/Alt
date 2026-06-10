@@ -701,6 +701,28 @@ message GetTrailFootprintsResponse {
   repeated TrailFootprint footprints = 1;
   string next_cursor = 2;
   bool has_more = 3;
+  // branches are the user's open system-proposed branches (all anchors).
+  repeated TrailBranch branches = 4;
+}
+
+// TrailBranch is a system-proposed next step. The four-tuple
+// (relation_kind, why, evidence_refs, confidence) is always populated; the
+// projector never folds a branch_proposed event missing any of them.
+message TrailBranch {
+  string branch_key = 1;
+  string anchor_item_key = 2;
+  string relation_kind = 3;
+  string why = 4;
+  repeated TrailEvidenceRef evidence_refs = 5;
+  string confidence = 6;
+  string target_item_key = 7;
+  string target_title = 8;
+}
+
+message TrailEvidenceRef {
+  string ref_id = 1;
+  string label = 2;
+  string kind = 3;
 }
 
 // TrailFootprint is one user cognitive act projected from the event log. It is
