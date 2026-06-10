@@ -114,11 +114,11 @@ func TestExtractRelations_AllKinds_NotCollapsed(t *testing.T) {
 	// The anti-collapse guard: when the resolver computes fuel for several
 	// kinds at once, extractRelations keeps ALL of them instead of picking one.
 	got := extractRelations(SurfaceScoreInputs{
-		VersionDriftCount:         1, // Contradiction
-		HasOpenInteraction:        true, // Continuation
-		TopicOverlapCount:         1, // Cluster
-		HasAugurLink:              true, // Inquiry
-		ArticleID:                 "a",
+		VersionDriftCount:  1,    // Contradiction
+		HasOpenInteraction: true, // Continuation
+		TopicOverlapCount:  1,    // Cluster
+		HasAugurLink:       true, // Inquiry
+		ArticleID:          "a",
 	})
 	kinds := map[RelationKind]bool{}
 	for _, r := range got {
