@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Alt Reader — Knowledge Home (README hero)</title>
+<style>
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    /* warm editorial backdrop so the window's shadow reads as a hero shot */
+    background:
+      radial-gradient(120% 90% at 28% 12%, #f4f1ea 0%, #e8e3d9 55%, #ddd6ca 100%);
+    min-height: 100vh;
+    display: flex; align-items: center; justify-content: center;
+    padding: 72px 64px;
+    font-family: "IBM Plex Mono", ui-monospace, monospace;
+  }
+
+  .window {
+    width: 1660px;
+    border-radius: 14px;
+    overflow: hidden;
+    background: #faf9f7;
+    border: 1px solid rgba(40, 35, 28, 0.14);
+    box-shadow:
+      0 1px 0 rgba(255, 255, 255, 0.6) inset,
+      0 34px 70px -24px rgba(46, 40, 31, 0.40),
+      0 14px 28px -14px rgba(46, 40, 31, 0.28);
+  }
+
+  /* Title bar */
+  .titlebar {
+    height: 46px;
+    display: flex; align-items: center; gap: 14px;
+    padding: 0 16px;
+    background: linear-gradient(180deg, #efedea 0%, #e7e4de 100%);
+    border-bottom: 1px solid #d6d2cb;
+  }
+  .lights { display: flex; gap: 8px; }
+  .dot { width: 12px; height: 12px; border-radius: 50%; }
+  .dot.r { background: #ff5f57; border: 0.5px solid #e0443e; }
+  .dot.y { background: #febc2e; border: 0.5px solid #d89e24; }
+  .dot.g { background: #28c840; border: 0.5px solid #1aab29; }
+
+  .address {
+    margin: 0 auto;
+    display: inline-flex; align-items: center; gap: 8px;
+    min-width: 380px; max-width: 460px;
+    justify-content: center;
+    background: #faf9f7;
+    border: 1px solid #d6d2cb;
+    border-radius: 7px;
+    padding: 5px 16px;
+    font-size: 12px; letter-spacing: 0.02em;
+    color: #8a857c;
+  }
+  .address svg { width: 12px; height: 12px; stroke: #9a958c; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+  .address .host { color: #5a564f; }
+
+  /* leave space on the right to balance the traffic lights */
+  .titlebar .spacer { width: 52px; flex: none; }
+
+  iframe { display: block; width: 1660px; height: 940px; border: 0; background: #faf9f7; }
+</style>
+</head>
+<body>
+  <div class="window">
+    <div class="titlebar">
+      <div class="lights">
+        <span class="dot r"></span>
+        <span class="dot y"></span>
+        <span class="dot g"></span>
+      </div>
+      <div class="address">
+        <svg viewBox="0 0 24 24"><rect width="18" height="11" x="3" y="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+        <span><span class="host">localhost</span>/home</span>
+      </div>
+      <div class="spacer"></div>
+    </div>
+    <iframe src="knowledge-home-mock.html" scrolling="no" title="Knowledge Home"></iframe>
+  </div>
+</body>
+</html>
