@@ -41,6 +41,7 @@ type Repository interface {
 	ListKnowledgeEventsSince(ctx context.Context, afterSeq int64, limit int) ([]sovereign_db.KnowledgeEvent, error)
 	UpsertTrailFootprint(ctx context.Context, fp sovereign_db.TrailFootprint, projectionVersion int) error
 	UpsertTrailBranch(ctx context.Context, userID, tenantID uuid.UUID, b sovereign_db.TrailBranch, createdAt time.Time, projectionVersion int) error
+	SetTrailBranchState(ctx context.Context, userID uuid.UUID, branchKey, state string) error
 }
 
 // Config tunes batch sizing.
@@ -92,6 +93,12 @@ func (p *Projector) RunBatch(ctx context.Context) error {
 			}
 			if evt.EventType == trail_planner.EventTrailBranchProposed {
 				if err := p.foldBranch(ctx, evt); err != nil {
+					return err
+				}
+				continue
+			}
+			if evt.EventType == trail_planner.EventTrailBranchResolved {
+				if err := p.foldBranchResolved(ctx, evt); err != nil {
 					return err
 				}
 				continue
@@ -149,6 +156,27 @@ func (p *Projector) foldBranch(ctx context.Context, evt sovereign_db.KnowledgeEv
 		TargetTitle:   payload.TargetTitle,
 	}
 	return p.repo.UpsertTrailBranch(ctx, *evt.UserID, evt.TenantID, b, evt.OccurredAt, 1)
+}
+
+// foldBranchResolved transitions a branch's state from a branch_resolved event.
+// An invalid resolution is rejected loudly (never silently mis-folded).
+func (p *Projector) foldBranchResolved(ctx context.Context, evt sovereign_db.KnowledgeEvent) error {
+	if evt.UserID == nil {
+		return nil
+	}
+	var payload trail_planner.BranchResolvedPayload
+	if err := json.Unmarshal(evt.Payload, &payload); err != nil {
+		p.logger.WarnContext(ctx, "trail projector: unparseable branch_resolved payload",
+			slog.String("event_id", evt.EventID.String()))
+		return nil
+	}
+	if payload.BranchKey == "" || !trail_planner.ValidResolution(payload.Resolution) {
+		p.logger.WarnContext(ctx, "trail projector: rejecting invalid branch_resolved",
+			slog.String("branch_key", payload.BranchKey),
+			slog.String("resolution", payload.Resolution))
+		return nil
+	}
+	return p.repo.SetTrailBranchState(ctx, *evt.UserID, payload.BranchKey, payload.Resolution)
 }
 
 // footprintFromEvent derives a footprint from an act event. Returns ok=false for

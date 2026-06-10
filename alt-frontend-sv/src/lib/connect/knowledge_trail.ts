@@ -121,6 +121,23 @@ export async function getTrail(
 	};
 }
 
+/** How a user resolved a proposed branch. */
+export type BranchResolution = "taken" | "dismissed";
+
+/**
+ * Records the user's resolution of a branch. `clientResolutionId` must be a
+ * UUIDv7 so retries are idempotent server-side.
+ */
+export async function resolveBranch(
+	transport: Transport,
+	branchKey: string,
+	resolution: BranchResolution,
+	clientResolutionId: string,
+): Promise<void> {
+	const client = createKnowledgeTrailClient(transport);
+	await client.resolveBranch({ branchKey, resolution, clientResolutionId });
+}
+
 function convertBranch(pb: ProtoBranch): BranchData {
 	return {
 		branchKey: pb.branchKey,

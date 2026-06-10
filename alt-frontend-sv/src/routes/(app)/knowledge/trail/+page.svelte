@@ -66,7 +66,10 @@ onMount(() => {
 		</p>
 	{/if}
 
-	<TrailBranches branches={trail.branches} />
+	<TrailBranches
+		branches={trail.branches}
+		onResolve={(key, resolution) => trail.resolveBranch(key, resolution)}
+	/>
 
 	<TrailSpine
 		footprints={trail.footprints}

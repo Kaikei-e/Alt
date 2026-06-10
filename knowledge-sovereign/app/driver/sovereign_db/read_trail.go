@@ -212,6 +212,19 @@ ON CONFLICT (user_id, branch_key) DO UPDATE SET
 	return nil
 }
 
+// SetTrailBranchState transitions a branch to a resolved state (taken/dismissed),
+// folded from trail.branch_resolved.v1. A missing row (orphaned resolution) is a
+// no-op rather than a fabricated row; on a full replay the proposed event always
+// precedes the resolved one in seq order so the row is present.
+func (r *Repository) SetTrailBranchState(ctx context.Context, userID uuid.UUID, branchKey, state string) error {
+	const q = `UPDATE knowledge_trail_branches SET state = $3
+		WHERE user_id = $1 AND branch_key = $2`
+	if _, err := r.pool.Exec(ctx, q, userID, branchKey, state); err != nil {
+		return fmt.Errorf("SetTrailBranchState: %w", err)
+	}
+	return nil
+}
+
 // GetOpenTrailBranches returns the user's open branches, newest first.
 func (r *Repository) GetOpenTrailBranches(ctx context.Context, userID uuid.UUID) ([]TrailBranch, error) {
 	const q = `

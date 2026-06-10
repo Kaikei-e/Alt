@@ -22,6 +22,7 @@ type fakeRepo struct {
 	checkpoint int64
 	upserts    map[string]sovereign_db.TrailFootprint
 	branches   map[string]sovereign_db.TrailBranch
+	states     map[string]string
 }
 
 func newFakeRepo(events []sovereign_db.KnowledgeEvent) *fakeRepo {
@@ -29,12 +30,34 @@ func newFakeRepo(events []sovereign_db.KnowledgeEvent) *fakeRepo {
 		events:   events,
 		upserts:  map[string]sovereign_db.TrailFootprint{},
 		branches: map[string]sovereign_db.TrailBranch{},
+		states:   map[string]string{},
 	}
 }
 
 func (f *fakeRepo) UpsertTrailBranch(_ context.Context, _, _ uuid.UUID, b sovereign_db.TrailBranch, _ time.Time, _ int) error {
 	f.branches[b.BranchKey] = b
+	f.states[b.BranchKey] = "open"
 	return nil
+}
+
+func (f *fakeRepo) SetTrailBranchState(_ context.Context, _ uuid.UUID, branchKey, state string) error {
+	f.states[branchKey] = state
+	return nil
+}
+
+func resolvedEvent(seq int64, payload trail_planner.BranchResolvedPayload, user *uuid.UUID) sovereign_db.KnowledgeEvent {
+	body, _ := json.Marshal(payload)
+	return sovereign_db.KnowledgeEvent{
+		EventID:       uuid.New(),
+		EventSeq:      seq,
+		OccurredAt:    time.Now().UTC(),
+		TenantID:      uuid.New(),
+		UserID:        user,
+		EventType:     trail_planner.EventTrailBranchResolved,
+		AggregateType: "trail_branch",
+		AggregateID:   payload.BranchKey,
+		Payload:       body,
+	}
 }
 
 func branchEvent(seq int64, payload trail_planner.BranchProposedPayload, user *uuid.UUID) sovereign_db.KnowledgeEvent {
@@ -168,6 +191,32 @@ func TestProjector_FoldsValidBranch(t *testing.T) {
 	assert.NotEmpty(t, b.Why)
 	assert.Len(t, b.EvidenceRefs, 1)
 	assert.Equal(t, "plausible", b.Confidence)
+}
+
+func TestProjector_FoldsBranchResolution(t *testing.T) {
+	user := userPtr()
+	proposed := validBranchPayload()
+	repo := newFakeRepo([]sovereign_db.KnowledgeEvent{
+		branchEvent(1, proposed, user),
+		resolvedEvent(2, trail_planner.BranchResolvedPayload{BranchKey: proposed.BranchKey, Resolution: "taken"}, user),
+	})
+	require.NoError(t, NewProjector(repo, nil, Config{}).RunBatch(context.Background()))
+
+	assert.Equal(t, "taken", repo.states[proposed.BranchKey],
+		"branch_resolved transitions the branch out of the open set (trail closure)")
+}
+
+func TestProjector_RejectsInvalidResolution(t *testing.T) {
+	user := userPtr()
+	proposed := validBranchPayload()
+	repo := newFakeRepo([]sovereign_db.KnowledgeEvent{
+		branchEvent(1, proposed, user),
+		resolvedEvent(2, trail_planner.BranchResolvedPayload{BranchKey: proposed.BranchKey, Resolution: "wat"}, user),
+	})
+	require.NoError(t, NewProjector(repo, nil, Config{}).RunBatch(context.Background()))
+
+	assert.Equal(t, "open", repo.states[proposed.BranchKey],
+		"an invalid resolution must not transition the branch")
 }
 
 func TestProjector_RejectsUntypedBranch(t *testing.T) {

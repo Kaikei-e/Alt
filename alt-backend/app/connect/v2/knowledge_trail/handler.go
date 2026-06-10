@@ -3,6 +3,7 @@ package knowledge_trail
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 	"time"
 
@@ -11,17 +12,42 @@ import (
 	"alt/domain"
 	knowledgetrailv1 "alt/gen/proto/alt/knowledge_trail/v1"
 	"alt/usecase/get_knowledge_trail_usecase"
+	"alt/usecase/resolve_trail_branch_usecase"
 )
 
 // Handler implements knowledgetrailv1connect.KnowledgeTrailServiceHandler.
 type Handler struct {
 	getTrailUsecase *get_knowledge_trail_usecase.GetKnowledgeTrailUsecase
+	resolveUsecase  *resolve_trail_branch_usecase.ResolveTrailBranchUsecase
 	logger          *slog.Logger
 }
 
 // NewHandler creates a new KnowledgeTrailService handler.
-func NewHandler(getTrail *get_knowledge_trail_usecase.GetKnowledgeTrailUsecase, logger *slog.Logger) *Handler {
-	return &Handler{getTrailUsecase: getTrail, logger: logger}
+func NewHandler(
+	getTrail *get_knowledge_trail_usecase.GetKnowledgeTrailUsecase,
+	resolve *resolve_trail_branch_usecase.ResolveTrailBranchUsecase,
+	logger *slog.Logger,
+) *Handler {
+	return &Handler{getTrailUsecase: getTrail, resolveUsecase: resolve, logger: logger}
+}
+
+// ResolveBranch records a user's take/dismiss of a proposed branch.
+func (h *Handler) ResolveBranch(
+	ctx context.Context,
+	req *connect.Request[knowledgetrailv1.ResolveBranchRequest],
+) (*connect.Response[knowledgetrailv1.ResolveBranchResponse], error) {
+	user, err := domain.GetUserFromContext(ctx)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeUnauthenticated, nil)
+	}
+	msg := req.Msg
+	if err := h.resolveUsecase.Execute(ctx, user.UserID, user.TenantID, msg.BranchKey, msg.Resolution, msg.ClientResolutionId); err != nil {
+		if errors.Is(err, resolve_trail_branch_usecase.ErrInvalidRequest) {
+			return nil, connect.NewError(connect.CodeInvalidArgument, err)
+		}
+		return nil, connect.NewError(connect.CodeInternal, err)
+	}
+	return connect.NewResponse(&knowledgetrailv1.ResolveBranchResponse{Ok: true}), nil
 }
 
 // GetTrail returns the user's footprint spine, reverse-chronological.

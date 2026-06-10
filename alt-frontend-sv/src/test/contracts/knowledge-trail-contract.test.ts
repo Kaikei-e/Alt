@@ -5,6 +5,7 @@ import {
 	GetTrailResponseSchema,
 	FootprintSchema,
 	BranchSchema,
+	ResolveBranchRequestSchema,
 } from "$lib/gen/alt/knowledge_trail/v1/knowledge_trail_pb";
 
 describe("Knowledge Trail API Contract", () => {
@@ -94,6 +95,19 @@ describe("Knowledge Trail API Contract", () => {
 				const b = create(BranchSchema, { branchKey: `${kind}:1`, relationKind: kind });
 				expect(b.relationKind).toBe(kind);
 			}
+		});
+	});
+
+	describe("ResolveBranchRequest", () => {
+		it("carries branch_key, resolution and the idempotency id", () => {
+			const req = create(ResolveBranchRequestSchema, {
+				branchKey: "cluster:u:article:z",
+				resolution: "taken",
+				clientResolutionId: "01938e82-7c00-7a7b-9b10-0123456789ab",
+			});
+			expect(req.branchKey).toBe("cluster:u:article:z");
+			expect(req.resolution).toBe("taken");
+			expect(req.clientResolutionId).not.toBe("");
 		});
 	});
 });

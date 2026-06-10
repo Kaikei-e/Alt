@@ -36,6 +36,9 @@ const (
 	// KnowledgeTrailServiceGetTrailProcedure is the fully-qualified name of the KnowledgeTrailService's
 	// GetTrail RPC.
 	KnowledgeTrailServiceGetTrailProcedure = "/alt.knowledge_trail.v1.KnowledgeTrailService/GetTrail"
+	// KnowledgeTrailServiceResolveBranchProcedure is the fully-qualified name of the
+	// KnowledgeTrailService's ResolveBranch RPC.
+	KnowledgeTrailServiceResolveBranchProcedure = "/alt.knowledge_trail.v1.KnowledgeTrailService/ResolveBranch"
 )
 
 // KnowledgeTrailServiceClient is a client for the alt.knowledge_trail.v1.KnowledgeTrailService
@@ -43,6 +46,11 @@ const (
 type KnowledgeTrailServiceClient interface {
 	// GetTrail returns the user's footprint spine in reverse-chronological order.
 	GetTrail(context.Context, *connect.Request[v1.GetTrailRequest]) (*connect.Response[v1.GetTrailResponse], error)
+	// ResolveBranch records the user's response to a proposed branch (taken or
+	// dismissed). Idempotent via a client-supplied UUIDv7. Taking a branch closes
+	// the loop: the resolution drops the branch from the open set and the user's
+	// engagement with the target re-surfaces as a footprint (return-diff).
+	ResolveBranch(context.Context, *connect.Request[v1.ResolveBranchRequest]) (*connect.Response[v1.ResolveBranchResponse], error)
 }
 
 // NewKnowledgeTrailServiceClient constructs a client for the
@@ -63,12 +71,19 @@ func NewKnowledgeTrailServiceClient(httpClient connect.HTTPClient, baseURL strin
 			connect.WithSchema(knowledgeTrailServiceMethods.ByName("GetTrail")),
 			connect.WithClientOptions(opts...),
 		),
+		resolveBranch: connect.NewClient[v1.ResolveBranchRequest, v1.ResolveBranchResponse](
+			httpClient,
+			baseURL+KnowledgeTrailServiceResolveBranchProcedure,
+			connect.WithSchema(knowledgeTrailServiceMethods.ByName("ResolveBranch")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
 // knowledgeTrailServiceClient implements KnowledgeTrailServiceClient.
 type knowledgeTrailServiceClient struct {
-	getTrail *connect.Client[v1.GetTrailRequest, v1.GetTrailResponse]
+	getTrail      *connect.Client[v1.GetTrailRequest, v1.GetTrailResponse]
+	resolveBranch *connect.Client[v1.ResolveBranchRequest, v1.ResolveBranchResponse]
 }
 
 // GetTrail calls alt.knowledge_trail.v1.KnowledgeTrailService.GetTrail.
@@ -76,11 +91,21 @@ func (c *knowledgeTrailServiceClient) GetTrail(ctx context.Context, req *connect
 	return c.getTrail.CallUnary(ctx, req)
 }
 
+// ResolveBranch calls alt.knowledge_trail.v1.KnowledgeTrailService.ResolveBranch.
+func (c *knowledgeTrailServiceClient) ResolveBranch(ctx context.Context, req *connect.Request[v1.ResolveBranchRequest]) (*connect.Response[v1.ResolveBranchResponse], error) {
+	return c.resolveBranch.CallUnary(ctx, req)
+}
+
 // KnowledgeTrailServiceHandler is an implementation of the
 // alt.knowledge_trail.v1.KnowledgeTrailService service.
 type KnowledgeTrailServiceHandler interface {
 	// GetTrail returns the user's footprint spine in reverse-chronological order.
 	GetTrail(context.Context, *connect.Request[v1.GetTrailRequest]) (*connect.Response[v1.GetTrailResponse], error)
+	// ResolveBranch records the user's response to a proposed branch (taken or
+	// dismissed). Idempotent via a client-supplied UUIDv7. Taking a branch closes
+	// the loop: the resolution drops the branch from the open set and the user's
+	// engagement with the target re-surfaces as a footprint (return-diff).
+	ResolveBranch(context.Context, *connect.Request[v1.ResolveBranchRequest]) (*connect.Response[v1.ResolveBranchResponse], error)
 }
 
 // NewKnowledgeTrailServiceHandler builds an HTTP handler from the service implementation. It
@@ -96,10 +121,18 @@ func NewKnowledgeTrailServiceHandler(svc KnowledgeTrailServiceHandler, opts ...c
 		connect.WithSchema(knowledgeTrailServiceMethods.ByName("GetTrail")),
 		connect.WithHandlerOptions(opts...),
 	)
+	knowledgeTrailServiceResolveBranchHandler := connect.NewUnaryHandler(
+		KnowledgeTrailServiceResolveBranchProcedure,
+		svc.ResolveBranch,
+		connect.WithSchema(knowledgeTrailServiceMethods.ByName("ResolveBranch")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/alt.knowledge_trail.v1.KnowledgeTrailService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case KnowledgeTrailServiceGetTrailProcedure:
 			knowledgeTrailServiceGetTrailHandler.ServeHTTP(w, r)
+		case KnowledgeTrailServiceResolveBranchProcedure:
+			knowledgeTrailServiceResolveBranchHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -111,4 +144,8 @@ type UnimplementedKnowledgeTrailServiceHandler struct{}
 
 func (UnimplementedKnowledgeTrailServiceHandler) GetTrail(context.Context, *connect.Request[v1.GetTrailRequest]) (*connect.Response[v1.GetTrailResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("alt.knowledge_trail.v1.KnowledgeTrailService.GetTrail is not implemented"))
+}
+
+func (UnimplementedKnowledgeTrailServiceHandler) ResolveBranch(context.Context, *connect.Request[v1.ResolveBranchRequest]) (*connect.Response[v1.ResolveBranchResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("alt.knowledge_trail.v1.KnowledgeTrailService.ResolveBranch is not implemented"))
 }

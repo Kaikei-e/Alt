@@ -25,6 +25,21 @@ import (
 // EventTrailBranchProposed is the system-only branch proposal event type.
 const EventTrailBranchProposed = "trail.branch_proposed.v1"
 
+// EventTrailBranchResolved is the user-action event recording how a branch was
+// resolved (taken or dismissed).
+const EventTrailBranchResolved = "trail.branch_resolved.v1"
+
+// BranchResolvedPayload is the trail.branch_resolved.v1 event body.
+type BranchResolvedPayload struct {
+	BranchKey  string `json:"branch_key"`
+	Resolution string `json:"resolution"` // "taken" | "dismissed"
+}
+
+// ValidResolution reports whether r is an accepted branch resolution.
+func ValidResolution(r string) bool {
+	return r == "taken" || r == "dismissed"
+}
+
 const plannerVersion = "v1"
 
 // EvidenceRef mirrors the read-model evidence shape.
