@@ -42,4 +42,21 @@ describe("TrailBranches", () => {
 		await page.getByTestId("branch-dismiss").click();
 		expect(onResolve).toHaveBeenCalledWith("cluster:u:article:z", "dismissed");
 	});
+
+	it("caps visible branches and reveals the rest on demand", async () => {
+		const branches = Array.from({ length: 6 }, (_, i) =>
+			makeBranch({
+				branchKey: `cluster:u:article:${i}`,
+				targetItemKey: `article:${i}`,
+				targetTitle: `Title ${i}`,
+			}),
+		);
+		render(TrailBranches, { props: { branches, onResolve: vi.fn() } });
+
+		// The spine is the hero — branches stay capped so they do not bury it.
+		expect(page.getByTestId("trail-branch").elements()).toHaveLength(3);
+
+		await page.getByTestId("branches-show-more").click();
+		expect(page.getByTestId("trail-branch").elements()).toHaveLength(6);
+	});
 });

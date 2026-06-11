@@ -73,6 +73,25 @@ func TestPlanner_EmitsBranchProposedPerCandidate(t *testing.T) {
 	assert.True(t, payload.Valid())
 }
 
+func TestPlanner_SkipsTitlelessCandidate(t *testing.T) {
+	repo := &fakePlannerRepo{
+		users:    []uuid.UUID{uuid.New()},
+		anchor:   "article:a",
+		anchorOK: true,
+		candidates: []sovereign_db.TrailClusterCandidate{
+			{TargetItemKey: "article:z", TargetTitle: "", SharedTags: []string{"rust"}},         // unnameable
+			{TargetItemKey: "article:y", TargetTitle: "Real Title", SharedTags: []string{"go"}}, // nameable
+		},
+	}
+	p := NewPlanner(repo, nil, Config{Clock: func() time.Time { return time.Unix(0, 0) }})
+	require.NoError(t, p.RunBatch(context.Background()))
+
+	require.Len(t, repo.emitted, 1, "a title-less target cannot be named to the user — do not propose it")
+	var payload BranchProposedPayload
+	require.NoError(t, json.Unmarshal(repo.emitted[0].Payload, &payload))
+	assert.Equal(t, "article:y", payload.TargetItemKey)
+}
+
 func TestPlanner_NoAnchorEmitsNothing(t *testing.T) {
 	repo := &fakePlannerRepo{users: []uuid.UUID{uuid.New()}, anchorOK: false}
 	p := NewPlanner(repo, nil, Config{})

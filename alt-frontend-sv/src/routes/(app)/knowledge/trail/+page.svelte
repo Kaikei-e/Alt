@@ -66,11 +66,8 @@ onMount(() => {
 		</p>
 	{/if}
 
-	<TrailBranches
-		branches={trail.branches}
-		onResolve={(key, resolution) => trail.resolveBranch(key, resolution)}
-	/>
-
+	<!-- The spine (the path the user has worn) is the hero. System-proposed
+	     branches are secondary and rendered, capped, below it. -->
 	<TrailSpine
 		footprints={trail.footprints}
 		loading={trail.loading}
@@ -80,6 +77,11 @@ onMount(() => {
 		{availableTags}
 		onLoadMore={() => trail.loadMore()}
 		onSelectLens={(tags) => trail.setLens(tags)}
+	/>
+
+	<TrailBranches
+		branches={trail.branches}
+		onResolve={(key, resolution) => trail.resolveBranch(key, resolution)}
 	/>
 </div>
 

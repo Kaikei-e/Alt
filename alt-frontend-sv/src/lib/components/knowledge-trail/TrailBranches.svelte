@@ -11,6 +11,13 @@ interface Props {
 
 const { branches, onResolve }: Props = $props();
 
+// Branches are proposals layered on the spine, not the main column. Cap them so
+// they never bury the trail; the rest are one click away.
+const VISIBLE = 3;
+let showAll = $state(false);
+const visible = $derived(showAll ? branches : branches.slice(0, VISIBLE));
+const hiddenCount = $derived(Math.max(0, branches.length - VISIBLE));
+
 const KIND_LABEL: Record<string, string> = {
 	continuation: "Continues your thread",
 	cluster: "Joins a topic you follow",
@@ -29,8 +36,8 @@ function evidenceSummary(b: BranchData): string {
 
 {#if branches.length > 0}
 	<section class="branches" data-testid="trail-branches">
-		<h2 class="branches-heading">Branches</h2>
-		{#each branches as branch (branch.branchKey)}
+		<h2 class="branches-heading">Suggested branches <span class="branches-count">({branches.length})</span></h2>
+		{#each visible as branch (branch.branchKey)}
 			<article
 				class="branch kind-{branch.relationKind}"
 				data-testid="trail-branch"
@@ -60,6 +67,15 @@ function evidenceSummary(b: BranchData): string {
 				</div>
 			</article>
 		{/each}
+		{#if hiddenCount > 0 && !showAll}
+			<button
+				class="branches-more"
+				data-testid="branches-show-more"
+				onclick={() => (showAll = true)}
+			>
+				Show {hiddenCount} more
+			</button>
+		{/if}
 	</section>
 {/if}
 
@@ -74,6 +90,25 @@ function evidenceSummary(b: BranchData): string {
 		font-weight: 700;
 		color: var(--alt-charcoal, #1a1a1a);
 		margin: 0 0 0.6rem;
+	}
+	.branches-count {
+		font-family: var(--font-mono);
+		font-size: 0.75rem;
+		font-weight: 500;
+		color: var(--alt-ash, #999);
+	}
+	.branches-more {
+		border: 1px solid var(--chip-border, #d0c8bb);
+		background: var(--action-surface, #ebe8e1);
+		color: var(--interactive-text, #2f4f4f);
+		font-family: var(--font-body);
+		font-size: 0.82rem;
+		padding: 0.45rem 0.85rem;
+		cursor: pointer;
+		margin-top: 0.2rem;
+	}
+	.branches-more:hover {
+		background: var(--surface-hover, #f3f1ed);
 	}
 	.branch {
 		border: 1px solid var(--surface-border, #c8c8c8);

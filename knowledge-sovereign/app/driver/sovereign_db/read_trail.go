@@ -97,7 +97,13 @@ WITH item_wear AS (
 )
 SELECT f.user_id, f.tenant_id, f.footprint_key, f.verb, f.item_key,
        COALESCE(f.note, ''), f.source_event_type, f.occurred_at,
-       COALESCE(khi.title, ''), COALESCE(khi.summary_excerpt, ''), COALESCE(khi.tags_json, '[]'),
+       -- Display title with a readable fallback: a title-less item (upstream
+       -- knowledge_home_items.title gap) shows its source host, never the raw
+       -- item key. The excerpt is rendered separately, so it is not used here.
+       COALESCE(NULLIF(khi.title, ''),
+                NULLIF(split_part(split_part(khi.url, '://', 2), '/', 1), ''),
+                f.item_key),
+       COALESCE(khi.summary_excerpt, ''), COALESCE(khi.tags_json, '[]'),
        CASE WHEN iw.has_ask OR iw.cnt >= 4 THEN 'deep'
             WHEN iw.cnt >= 2 THEN 'worn'
             ELSE 'thin' END AS wear
@@ -227,12 +233,27 @@ func (r *Repository) SetTrailBranchState(ctx context.Context, userID uuid.UUID, 
 
 // GetOpenTrailBranches returns the user's open branches, newest first.
 func (r *Repository) GetOpenTrailBranches(ctx context.Context, userID uuid.UUID) ([]TrailBranch, error) {
+	// target_title carries a read-time display fallback for branches whose stored
+	// title is empty (title-less targets already in the log, before the planner
+	// title gate): live home title → excerpt snippet → source host → item key.
 	const q = `
-SELECT branch_key, anchor_item_key, relation_kind, why, evidence_refs_json,
-       confidence, target_item_key, target_title
-FROM knowledge_trail_branches
-WHERE user_id = $1 AND state = 'open'
-ORDER BY created_at DESC, branch_key DESC`
+SELECT b.branch_key, b.anchor_item_key, b.relation_kind, b.why, b.evidence_refs_json,
+       b.confidence, b.target_item_key,
+       COALESCE(NULLIF(b.target_title, ''),
+                NULLIF(khi.title, ''),
+                NULLIF(left(khi.summary_excerpt, 80), ''),
+                NULLIF(split_part(split_part(khi.url, '://', 2), '/', 1), ''),
+                b.target_item_key)
+FROM knowledge_trail_branches b
+LEFT JOIN knowledge_home_items khi
+  ON khi.user_id = b.user_id
+  AND khi.item_key = b.target_item_key
+  AND khi.projection_version = COALESCE((
+    SELECT version FROM knowledge_projection_versions
+    WHERE status = 'active' ORDER BY version DESC LIMIT 1
+  ), 1)
+WHERE b.user_id = $1 AND b.state = 'open'
+ORDER BY b.created_at DESC, b.branch_key DESC`
 	rows, err := r.pool.Query(ctx, q, userID)
 	if err != nil {
 		return nil, fmt.Errorf("GetOpenTrailBranches: %w", err)
@@ -299,6 +320,7 @@ WHERE khi.user_id = $1
   AND khi.item_type = 'article'
   AND khi.dismissed_at IS NULL
   AND khi.projection_version = (SELECT v FROM active_version)
+  AND coalesce(khi.title, '') <> ''
   AND khi.item_key NOT IN (SELECT item_key FROM footprinted)
   AND lower(it.tag) IN (SELECT tag FROM user_tags)
 GROUP BY khi.item_key, khi.title
