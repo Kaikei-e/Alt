@@ -149,20 +149,30 @@ func TestProjector_SkipsSystemEventsWithoutUser(t *testing.T) {
 func TestProjector_ReprojectIsDeterministic(t *testing.T) {
 	user := userPtr()
 	base := time.Date(2026, 6, 10, 9, 0, 0, 0, time.UTC)
+	proposed := validBranchPayload()
+	// The log spans the full Trail vocabulary: footprints (incl. a historical
+	// loop.acted event), a branch proposal, and a branch resolution. Reproject
+	// safety must hold across all three read models, not just the spine.
 	events := []sovereign_db.KnowledgeEvent{
 		actEvent(1, "HomeItemOpened", "article:a", "open:a", base, user),
 		actEvent(2, "knowledge_loop.acted.v1", "article:c", "acted:c", base.Add(time.Minute), user),
+		branchEvent(3, proposed, user),
+		resolvedEvent(4, trail_planner.BranchResolvedPayload{BranchKey: proposed.BranchKey, Resolution: "taken"}, user),
 	}
 
 	first := newFakeRepo(events)
 	require.NoError(t, NewProjector(first, nil, Config{}).RunBatch(context.Background()))
 
-	// Re-run from a fresh checkpoint over the same log: identical footprints.
+	// Re-run from a fresh checkpoint over the same log: identical read models.
 	second := newFakeRepo(events)
 	require.NoError(t, NewProjector(second, nil, Config{}).RunBatch(context.Background()))
 
 	assert.Equal(t, first.upserts, second.upserts,
 		"replaying the same event log must reproduce an identical spine (reproject-safe)")
+	assert.Equal(t, first.branches, second.branches,
+		"branches must reproject identically from the same log")
+	assert.Equal(t, first.states, second.states,
+		"branch resolution states must reproject identically")
 	assert.Equal(t, "read", first.upserts["acted:c"].Verb,
 		"historical knowledge_loop.acted.v1 projects as a read footprint")
 }

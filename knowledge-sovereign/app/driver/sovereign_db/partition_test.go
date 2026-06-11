@@ -3,7 +3,6 @@ package sovereign_db
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"testing"
 	"time"
 
@@ -14,7 +13,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// mockPgx implements PgxIface for unit-testing the dedupe registry logic.
+// mockPgx implements PgxIface for unit-testing the dedupe registry and
+// partition DDL logic without a live database.
 type mockPgx struct {
 	execCalls    []mockExecCall
 	queryRowFunc func(ctx context.Context, sql string, args ...interface{}) pgx.Row
@@ -41,16 +41,6 @@ func (m *mockPgx) Exec(ctx context.Context, sql string, args ...interface{}) (pg
 		return m.execFunc(ctx, sql, args...)
 	}
 	return pgconn.NewCommandTag("INSERT 0 1"), nil
-}
-
-// BeginTx is the Wave 4-D session-var entry point. The mock returns an
-// error so any unit test that accidentally enters the user-scoped read
-// path fails loudly rather than silently bypassing the isolation. Tests
-// that need a real tx mock should use a Postgres-backed integration test
-// against the real Repository — the partition / dedupe paths covered by
-// this mock never call BeginTx.
-func (m *mockPgx) BeginTx(_ context.Context, _ pgx.TxOptions) (pgx.Tx, error) {
-	return nil, errors.New("mockPgx.BeginTx: not implemented; use integration test")
 }
 
 type mockRow struct {
