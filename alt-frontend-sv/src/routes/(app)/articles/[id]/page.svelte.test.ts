@@ -16,9 +16,12 @@ vi.mock("$app/navigation", () => ({
 }));
 
 const mockGetFeedContent = vi.fn();
+const mockGetArticleSourceURL = vi.fn().mockResolvedValue("");
 vi.mock("$lib/api/client/articles", () => ({
 	getFeedContentOnTheFlyClient: (...args: unknown[]) =>
 		mockGetFeedContent(...args),
+	getArticleSourceURLClient: (...args: unknown[]) =>
+		mockGetArticleSourceURL(...args),
 }));
 
 const mockSummarizerReset = vi.fn();
