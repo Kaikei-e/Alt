@@ -132,6 +132,14 @@ func (p *Planner) RunBatch(ctx context.Context) error {
 			return fmt.Errorf("trail_planner candidates: %w", err)
 		}
 		for _, c := range candidates {
+			// A target the user cannot even read the name of is not a useful
+			// proposal — surfacing it would render as a bare item key. Title-less
+			// targets (upstream knowledge_home_items.title gaps) are skipped, not
+			// proposed. The read path still applies a display fallback for any
+			// title-less branches already in the log.
+			if strings.TrimSpace(c.TargetTitle) == "" {
+				continue
+			}
 			payload := buildClusterBranch(userID, anchor, c)
 			if !payload.Valid() {
 				p.logger.WarnContext(ctx, "trail_planner: dropping incomplete branch",

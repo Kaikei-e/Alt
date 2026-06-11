@@ -81,6 +81,7 @@ func (h *Handler) GetTrail(
 			Tags:         fp.Tags,
 			Note:         fp.Note,
 			OccurredAt:   fp.OccurredAt.UTC().Format(time.RFC3339),
+			Wear:         fp.Wear,
 		}
 	}
 
