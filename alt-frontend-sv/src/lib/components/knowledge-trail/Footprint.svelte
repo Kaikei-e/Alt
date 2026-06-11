@@ -16,6 +16,12 @@ const VERB_LABEL: Record<string, string> = {
 };
 
 const verbLabel = $derived(VERB_LABEL[footprint.verb] ?? footprint.verb);
+// Link to the in-app article reader by id only. The reader resolves the source
+// URL from the id server-side (GetArticleSourceURL) — no URL in the link, no
+// external href, no client-supplied URL.
+const articleId = $derived(
+	footprint.itemKey.startsWith("article:") ? footprint.itemKey.slice(8) : null,
+);
 const wear = $derived(
 	footprint.wear === "deep" || footprint.wear === "worn"
 		? footprint.wear
@@ -44,7 +50,11 @@ function formatTime(iso: string): string {
 				<span class="fp-note">{footprint.note}</span>
 			{/if}
 		</div>
-		<div class="fp-title">{footprint.title || footprint.itemKey}</div>
+		{#if articleId}
+			<a class="fp-title fp-title-link" href="/articles/{articleId}" data-testid="footprint-link">{footprint.title || footprint.itemKey}</a>
+		{:else}
+			<div class="fp-title">{footprint.title || footprint.itemKey}</div>
+		{/if}
 		{#if footprint.excerpt}
 			<p class="fp-excerpt">{footprint.excerpt}</p>
 		{/if}
@@ -149,6 +159,15 @@ function formatTime(iso: string): string {
 		line-height: 1.3;
 		margin-top: 0.2rem;
 		color: var(--alt-charcoal, #1a1a1a);
+	}
+	.fp-title-link {
+		display: block;
+		text-decoration: none;
+		cursor: pointer;
+	}
+	.fp-title-link:hover {
+		text-decoration: underline;
+		color: var(--interactive-text, #2f4f4f);
 	}
 	.fp-excerpt {
 		font-size: 0.84rem;

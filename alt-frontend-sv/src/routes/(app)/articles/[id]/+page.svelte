@@ -11,7 +11,10 @@ import { onDestroy } from "svelte";
 import { MediaQuery } from "svelte/reactivity";
 import { goto } from "$app/navigation";
 import { page } from "$app/state";
-import { getFeedContentOnTheFlyClient } from "$lib/api/client/articles";
+import {
+	getArticleSourceURLClient,
+	getFeedContentOnTheFlyClient,
+} from "$lib/api/client/articles";
 import RenderFeedDetails from "$lib/components/mobile/RenderFeedDetails.svelte";
 import ArticleOverflowMenu from "$lib/components/mobile/tts/ArticleOverflowMenu.svelte";
 import TtsSetupSheet from "$lib/components/mobile/tts/TtsSetupSheet.svelte";
@@ -31,8 +34,30 @@ const articleId = $derived(page.params.id);
 // canonical Loop ACT fix the projector + FE only ever produce public HTTPS
 // URLs here, but a hand-typed share URL or external linker could still
 // arrive with a hostile scheme — defense-in-depth.
-const articleUrl = $derived(safeArticleHref(page.url.searchParams.get("url")));
+// Primary source: a `?url=` handoff (home / recall / search). Sanitized before
+// any consumer sees it.
+const paramUrl = $derived(safeArticleHref(page.url.searchParams.get("url")));
+// id-only entry (e.g. the Knowledge Trail spine) passes no URL — it is resolved
+// from the article id server-side (GetArticleSourceURL), so the URL never
+// travels in the client URL bar and is never client-supplied.
+let resolvedUrl = $state<string | null>(null);
+const articleUrl = $derived(paramUrl ?? resolvedUrl);
 const articleTitle = $derived(page.url.searchParams.get("title"));
+
+$effect(() => {
+	if (paramUrl || resolvedUrl || !articleId) return;
+	let cancelled = false;
+	void getArticleSourceURLClient(articleId)
+		.then((u) => {
+			if (!cancelled) resolvedUrl = safeArticleHref(u);
+		})
+		.catch(() => {
+			// Leave resolvedUrl null — the page falls back to its empty state.
+		});
+	return () => {
+		cancelled = true;
+	};
+});
 
 let isFetching = $state(false);
 let articleContent = $state<string | null>(null);

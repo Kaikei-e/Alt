@@ -109,6 +109,20 @@ export async function getFeedContentOnTheFlyClient(
 }
 
 /**
+ * Resolve an article's canonical source URL by id (server-side, via
+ * GetArticleSourceURL). Used by id-only entry points such as the Knowledge Trail
+ * spine, so the URL is looked up from the trusted store by id and never travels
+ * in the client URL bar.
+ */
+export async function getArticleSourceURLClient(
+	articleId: string,
+): Promise<string> {
+	const transport = createClientTransport();
+	const { getArticleSourceURL } = await import("$lib/connect/articles");
+	return getArticleSourceURL(transport, articleId);
+}
+
+/**
  * Archive content (クライアントサイド)
  * Connect-RPC を使用
  */
