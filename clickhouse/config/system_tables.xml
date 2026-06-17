@@ -1,6 +1,25 @@
 <clickhouse>
-    <!-- TTL 1 day for all system log tables (updated 2026-01-14) -->
+    <!--
+      System log policy (updated 2026-06-17).
 
+      The heavy internal system logs were burning ~7 CPU cores at idle and had accumulated
+      ~8.6 GiB (trace_log 57M rows, processors_profile_log 32M rows, text_log 29M rows, ...).
+      For a log-storage ClickHouse these internal profiling/trace/metric logs have no
+      operational value, so they are disabled at the source. The low-volume, useful logs
+      (query_log / part_log / error_log) are kept with a 1-day TTL.
+    -->
+
+    <!-- Disabled: high-volume internal logs with no operational value in this deployment -->
+    <trace_log remove="1"/>
+    <text_log remove="1"/>
+    <metric_log remove="1"/>
+    <asynchronous_metric_log remove="1"/>
+    <query_thread_log remove="1"/>
+    <query_views_log remove="1"/>
+    <processors_profile_log remove="1"/>
+    <query_metric_log remove="1"/>
+
+    <!-- Kept (low volume, useful for debugging the log pipeline) with 1-day TTL -->
     <query_log replace="1">
         <database>system</database>
         <table>query_log</table>
@@ -13,54 +32,6 @@
         </engine>
     </query_log>
 
-    <trace_log replace="1">
-        <database>system</database>
-        <table>trace_log</table>
-        <engine>
-            ENGINE = MergeTree
-            PARTITION BY (event_date)
-            ORDER BY (event_time)
-            TTL event_date + INTERVAL 1 DAY DELETE
-            SETTINGS ttl_only_drop_parts = 1
-        </engine>
-    </trace_log>
-
-    <query_thread_log replace="1">
-        <database>system</database>
-        <table>query_thread_log</table>
-        <engine>
-            ENGINE = MergeTree
-            PARTITION BY (event_date)
-            ORDER BY (event_time)
-            TTL event_date + INTERVAL 1 DAY DELETE
-            SETTINGS ttl_only_drop_parts = 1
-        </engine>
-    </query_thread_log>
-
-    <asynchronous_metric_log replace="1">
-        <database>system</database>
-        <table>asynchronous_metric_log</table>
-        <engine>
-            ENGINE = MergeTree
-            PARTITION BY (event_date)
-            ORDER BY (event_time)
-            TTL event_date + INTERVAL 1 DAY DELETE
-            SETTINGS ttl_only_drop_parts = 1
-        </engine>
-    </asynchronous_metric_log>
-
-    <metric_log replace="1">
-        <database>system</database>
-        <table>metric_log</table>
-        <engine>
-            ENGINE = MergeTree
-            PARTITION BY (event_date)
-            ORDER BY (event_time)
-            TTL event_date + INTERVAL 1 DAY DELETE
-            SETTINGS ttl_only_drop_parts = 1
-        </engine>
-    </metric_log>
-
     <part_log replace="1">
         <database>system</database>
         <table>part_log</table>
@@ -72,18 +43,6 @@
             SETTINGS ttl_only_drop_parts = 1
         </engine>
     </part_log>
-
-    <text_log replace="1">
-        <database>system</database>
-        <table>text_log</table>
-        <engine>
-            ENGINE = MergeTree
-            PARTITION BY (event_date)
-            ORDER BY (event_time)
-            TTL event_date + INTERVAL 1 DAY DELETE
-            SETTINGS ttl_only_drop_parts = 1
-        </engine>
-    </text_log>
 
     <error_log replace="1">
         <database>system</database>

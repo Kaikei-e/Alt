@@ -108,6 +108,7 @@ services:
       - ../clickhouse/entrypoint-wrapper.sh:/entrypoint-wrapper.sh:ro
       - ../clickhouse/migrations:/migrations:ro
       - ../clickhouse/config/system_tables.xml:/etc/clickhouse-server/config.d/system_tables.xml:ro
+      - ../clickhouse/config/disable_profiler.xml:/etc/clickhouse-server/users.d/disable_profiler.xml:ro
       - clickhouse_data:/var/lib/clickhouse
     networks:
       - alt-network

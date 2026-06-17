@@ -1,0 +1,18 @@
+<clickhouse>
+    <!--
+      Source-level disable of the query profiler and high-volume per-query logging (2026-06-17).
+      The sampling profiler was filling trace_log (~57M rows) and burning CPU; the per-query
+      pipeline/view logs filled processors_profile_log / query_views_log. The corresponding
+      system tables are removed in config.d/system_tables.xml; these settings stop the writers
+      at the source. query_log itself is kept (log_queries left at default).
+    -->
+    <profiles>
+        <default>
+            <query_profiler_real_time_period_ns>0</query_profiler_real_time_period_ns>
+            <query_profiler_cpu_time_period_ns>0</query_profiler_cpu_time_period_ns>
+            <log_query_threads>0</log_query_threads>
+            <log_processors_profiles>0</log_processors_profiles>
+            <log_query_views>0</log_query_views>
+        </default>
+    </profiles>
+</clickhouse>
