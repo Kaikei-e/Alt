@@ -251,19 +251,23 @@ if [[ "$MODE" == "broker" && "$DRY_RUN" != "true" ]]; then
     fi
     export PACT_BROKER_PASSWORD
   fi
-  echo "Waiting for Pact Broker to be healthy..."
-  for i in $(seq 1 30); do
-    if curl -fsS -u "${PACT_BROKER_USERNAME}:${PACT_BROKER_PASSWORD}" \
-        "${PACT_BROKER_BASE_URL}/diagnostic/status/heartbeat" &>/dev/null; then
-      echo "Pact Broker is ready."
-      break
-    fi
-    if [[ $i -eq 30 ]]; then
-      echo "ERROR: Pact Broker did not start within 30s"
+  # Bound every probe: without --connect-timeout/--max-time a black-holed
+  # broker host makes each curl block on TCP connect for the kernel default
+  # (~2min), so a nominal "30s" loop silently hangs for over an hour before
+  # failing. A wall-clock deadline keeps the wait honest in every failure mode.
+  broker_wait="${PACT_BROKER_WAIT_SECONDS:-30}"
+  echo "Waiting for Pact Broker at ${PACT_BROKER_BASE_URL} to be healthy (up to ${broker_wait}s)..."
+  broker_wait_start=$SECONDS
+  until curl -fsS --connect-timeout 3 --max-time 5 \
+      -u "${PACT_BROKER_USERNAME}:${PACT_BROKER_PASSWORD}" \
+      "${PACT_BROKER_BASE_URL}/diagnostic/status/heartbeat" &>/dev/null; do
+    if (( SECONDS - broker_wait_start >= broker_wait )); then
+      echo "ERROR: Pact Broker at ${PACT_BROKER_BASE_URL} not healthy within ${broker_wait}s" >&2
       exit 1
     fi
     sleep 1
   done
+  echo "Pact Broker is ready."
   # Keep the version identifier consistent with pre-deploy-verify.sh and
   # deploy.sh so can-i-deploy / record-deployment can match what was published.
   # Respect CI-provided CONSUMER_VERSION / CONSUMER_BRANCH first — GitHub
