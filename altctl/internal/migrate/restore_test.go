@@ -3,6 +3,7 @@ package migrate
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -120,5 +121,58 @@ func TestMigrator_Restore_DryRun_UnknownVolume(t *testing.T) {
 	})
 	if err == nil {
 		t.Error("expected error for unknown volume name")
+	}
+}
+
+// TestMigrator_Restore_ReturnsErrorWhenAllVolumesFail guards against the
+// "restore complete, exit 0" false-success bug: individual volume restore
+// failures were only logged and continued past, so Restore() always
+// returned nil even when every volume failed to restore.
+func TestMigrator_Restore_ReturnsErrorWhenAllVolumesFail(t *testing.T) {
+	backupDir := createTestBackup(t)
+
+	migrator := &Migrator{
+		registry:     NewVolumeRegistry(),
+		volumeBackup: &fakeBackupEngine{err: errors.New("simulated tar restore failure")},
+		pgBackup:     &fakeBackupEngine{err: errors.New("simulated pg_restore failure")},
+		composeDir:   "/tmp/compose",
+		projectName:  "alt",
+		logger:       slog.Default(),
+		dryRun:       false,
+	}
+
+	err := migrator.Restore(context.Background(), RestoreOptions{
+		BackupDir: backupDir,
+		Force:     true,
+		Verify:    false,
+	})
+	if err == nil {
+		t.Fatal("expected Restore() to return an error when every volume restore fails")
+	}
+}
+
+// TestMigrator_Restore_ReturnsNilWhenVolumesSucceed is the GREEN-path
+// sibling: the new aggregate-error logic must not regress the
+// fully-successful restore case.
+func TestMigrator_Restore_ReturnsNilWhenVolumesSucceed(t *testing.T) {
+	backupDir := createTestBackup(t)
+
+	migrator := &Migrator{
+		registry:     NewVolumeRegistry(),
+		volumeBackup: &fakeBackupEngine{},
+		pgBackup:     &fakeBackupEngine{},
+		composeDir:   "/tmp/compose",
+		projectName:  "alt",
+		logger:       slog.Default(),
+		dryRun:       true,
+	}
+
+	err := migrator.Restore(context.Background(), RestoreOptions{
+		BackupDir: backupDir,
+		Force:     true,
+		Verify:    false,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error when all volumes succeed: %v", err)
 	}
 }

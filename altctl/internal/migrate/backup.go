@@ -12,6 +12,8 @@ import (
 	"time"
 
 	"golang.org/x/sync/errgroup"
+
+	"github.com/alt-project/altctl/internal/stack"
 )
 
 // BackupOptions configures the backup operation
@@ -45,11 +47,19 @@ type VolumeTiming struct {
 // defaultConcurrency is the default number of parallel pg_dump operations
 const defaultConcurrency = 4
 
+// backupEngine performs a single-volume backup/restore operation. Both
+// *PostgresBackuper and *VolumeBackuper satisfy it; tests substitute fakes to
+// simulate volume failures without invoking a real Docker daemon.
+type backupEngine interface {
+	Backup(ctx context.Context, spec VolumeSpec, outputPath string) error
+	Restore(ctx context.Context, spec VolumeSpec, inputPath string) error
+}
+
 // Migrator orchestrates backup and restore operations
 type Migrator struct {
 	registry     *VolumeRegistry
-	volumeBackup *VolumeBackuper
-	pgBackup     *PostgresBackuper
+	volumeBackup backupEngine
+	pgBackup     backupEngine
 	composeDir   string
 	projectName  string
 	logger       *slog.Logger
@@ -186,12 +196,14 @@ func (m *Migrator) Backup(ctx context.Context, opts BackupOptions) (*BackupResul
 	}
 
 	// Build manifest from timings
+	var failedVolumes []string
 	for _, timing := range allTimings {
 		if timing.Error != nil {
 			m.logger.Error("volume backup failed",
 				"volume", timing.Name,
 				"error", timing.Error,
 			)
+			failedVolumes = append(failedVolumes, timing.Name)
 			continue
 		}
 
@@ -263,6 +275,16 @@ func (m *Migrator) Backup(ctx context.Context, opts BackupOptions) (*BackupResul
 		}
 	}
 
+	if len(failedVolumes) > 0 {
+		m.logger.Error("backup finished with failures",
+			"output_dir", backupDir,
+			"volumes_backed_up", len(manifest.Volumes),
+			"volumes_failed", len(failedVolumes),
+			"elapsed", elapsed,
+		)
+		return result, fmt.Errorf("backup failed for %d volume(s): %s", len(failedVolumes), strings.Join(failedVolumes, ", "))
+	}
+
 	m.logger.Info("backup complete",
 		"output_dir", backupDir,
 		"volumes_backed_up", len(manifest.Volumes),
@@ -309,23 +331,31 @@ func (m *Migrator) backupVolumeWithTiming(ctx context.Context, spec VolumeSpec, 
 	return timing
 }
 
+// composeFileList returns the full paths to every compose file registered in
+// the stack registry, in a stable order. Backup and restore both use this as
+// their single source of truth for "which compose files make up this
+// project" so container detection / stop operations can't silently drift out
+// of sync and miss a stack (e.g. sovereign.yaml, whose DB volume would
+// otherwise be overwritten by a restore while its container is still up).
+func composeFileList(composeDir string) []string {
+	registry := stack.NewRegistry()
+	stacks := registry.All()
+	files := make([]string, 0, len(stacks))
+	for _, s := range stacks {
+		if s.ComposeFile == "" {
+			continue
+		}
+		files = append(files, filepath.Join(composeDir, s.ComposeFile))
+	}
+	return files
+}
+
 // getRunningContainers returns a list of running containers for this project
 func (m *Migrator) getRunningContainers(ctx context.Context) ([]string, error) {
 	// Build compose file arguments
 	args := []string{"compose"}
-	composeFiles := []string{
-		filepath.Join(m.composeDir, "base.yaml"),
-		filepath.Join(m.composeDir, "db.yaml"),
-		filepath.Join(m.composeDir, "auth.yaml"),
-		filepath.Join(m.composeDir, "core.yaml"),
-		filepath.Join(m.composeDir, "workers.yaml"),
-		filepath.Join(m.composeDir, "recap.yaml"),
-		filepath.Join(m.composeDir, "rag.yaml"),
-		filepath.Join(m.composeDir, "logging.yaml"),
-		filepath.Join(m.composeDir, "ai.yaml"),
-	}
 
-	for _, f := range composeFiles {
+	for _, f := range composeFileList(m.composeDir) {
 		if _, err := os.Stat(f); err == nil {
 			args = append(args, "-f", f)
 		}

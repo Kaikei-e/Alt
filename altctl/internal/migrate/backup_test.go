@@ -2,12 +2,27 @@ package migrate
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 )
+
+// fakeBackupEngine is a backupEngine stub that simulates volume backup/restore
+// failures without invoking a real Docker daemon.
+type fakeBackupEngine struct {
+	err error
+}
+
+func (f *fakeBackupEngine) Backup(ctx context.Context, spec VolumeSpec, outputPath string) error {
+	return f.err
+}
+
+func (f *fakeBackupEngine) Restore(ctx context.Context, spec VolumeSpec, inputPath string) error {
+	return f.err
+}
 
 func TestMigrator_Backup_DryRun_ProfileDB(t *testing.T) {
 	migrator := NewMigrator("/tmp/compose", "alt", slog.Default(), true)
@@ -236,5 +251,117 @@ func TestMigrator_Backup_WithCompress(t *testing.T) {
 	}
 	if !strings.HasSuffix(result.ArchivePath, ".tar.gz") {
 		t.Errorf("Expected .tar.gz suffix, got %s", result.ArchivePath)
+	}
+}
+
+// TestMigrator_Backup_ReturnsErrorWhenAllVolumesFail guards against the
+// "backup complete, exit 0" false-success bug: when every volume backup
+// fails, Backup() must surface an aggregate error instead of silently
+// returning nil (the per-volume errors were only visible in VolumeTiming,
+// which callers like runMigrateBackup never inspected for exit status).
+func TestMigrator_Backup_ReturnsErrorWhenAllVolumesFail(t *testing.T) {
+	migrator := &Migrator{
+		registry:     NewVolumeRegistry(),
+		volumeBackup: &fakeBackupEngine{err: errors.New("simulated tar backup failure")},
+		pgBackup:     &fakeBackupEngine{err: errors.New("simulated pg_dump failure")},
+		composeDir:   "/tmp/compose",
+		projectName:  "alt",
+		logger:       slog.Default(),
+		dryRun:       false,
+	}
+
+	result, err := migrator.Backup(context.Background(), BackupOptions{
+		OutputDir:     t.TempDir(),
+		Force:         true,
+		AltctlVersion: "test",
+		Profile:       ProfileDB,
+	})
+
+	if err == nil {
+		t.Fatal("expected Backup() to return an error when every volume backup fails")
+	}
+	if result == nil {
+		t.Fatal("expected a non-nil result carrying per-volume timings even on failure")
+	}
+	for _, timing := range result.VolumeTimings {
+		if timing.Error == nil {
+			t.Errorf("expected volume %s to have a recorded backup error", timing.Name)
+		}
+	}
+}
+
+// TestMigrator_Backup_ReturnsNilWhenVolumesSucceed is the GREEN-path sibling:
+// the new aggregate-error logic must not regress the fully-successful case.
+func TestMigrator_Backup_ReturnsNilWhenVolumesSucceed(t *testing.T) {
+	migrator := &Migrator{
+		registry:     NewVolumeRegistry(),
+		volumeBackup: &fakeBackupEngine{},
+		pgBackup:     &fakeBackupEngine{},
+		composeDir:   "/tmp/compose",
+		projectName:  "alt",
+		logger:       slog.Default(),
+		dryRun:       true,
+	}
+
+	result, err := migrator.Backup(context.Background(), BackupOptions{
+		OutputDir:     t.TempDir(),
+		Force:         true,
+		AltctlVersion: "test",
+		Profile:       ProfileDB,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error when all volumes succeed: %v", err)
+	}
+	if result == nil {
+		t.Fatal("expected non-nil result")
+	}
+}
+
+// TestComposeFileList_IncludesSovereign guards against configuration drift:
+// the compose file list backup/restore use to detect and stop running
+// containers must be derived from the stack registry (the single source of
+// truth also used by `altctl up`/`down`), not a hand-maintained list that can
+// forget a stack such as sovereign.yaml.
+func TestComposeFileList_IncludesSovereign(t *testing.T) {
+	files := composeFileList("/compose")
+
+	want := filepath.Join("/compose", "sovereign.yaml")
+	found := false
+	for _, f := range files {
+		if f == want {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("expected composeFileList to include %q, got %v", want, files)
+	}
+}
+
+// TestMigrator_BuildComposeArgs_IncludesSovereignWhenPresent verifies that
+// restore's pre-restore "down" (buildComposeArgs, restore.go) draws from the
+// same composeFileList as backup's getRunningContainers, so a stack like
+// sovereign can't be stopped by one code path and missed by the other.
+func TestMigrator_BuildComposeArgs_IncludesSovereignWhenPresent(t *testing.T) {
+	dir := t.TempDir()
+	for _, name := range []string{"base.yaml", "db.yaml", "sovereign.yaml"} {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte("services: {}\n"), 0644); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	m := &Migrator{composeDir: dir}
+	args := m.buildComposeArgs("down")
+
+	wantFlag := filepath.Join(dir, "sovereign.yaml")
+	found := false
+	for _, a := range args {
+		if a == wantFlag {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("expected buildComposeArgs to reference %q, got %v", wantFlag, args)
 	}
 }
