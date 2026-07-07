@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import sys
 from datetime import datetime
+from typing import Any
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.responses import HTMLResponse
@@ -18,6 +19,29 @@ from .monitors import (
 )
 
 app = FastAPI(title="Recap Job Resource Monitor")
+
+
+async def collect_snapshot() -> dict[str, Any]:
+    """各種メトリクスを収集する
+
+    psutil / subprocess のブロッキング呼び出しは別スレッドへ逃がし、
+    収集中もイベントループが他の接続をブロックしないようにする。
+    """
+    memory_info, cpu_info, gpu_info, hanging_count, top_processes = await asyncio.gather(
+        asyncio.to_thread(get_memory_info),
+        asyncio.to_thread(get_cpu_info),
+        asyncio.to_thread(get_gpu_info),
+        asyncio.to_thread(get_hanging_processes),
+        asyncio.to_thread(get_top_processes, 10),
+    )
+    return {
+        "timestamp": datetime.now().isoformat(),
+        "memory": memory_info,
+        "cpu": cpu_info,
+        "gpu": gpu_info,
+        "hanging_count": hanging_count,
+        "top_processes": top_processes,
+    }
 
 
 @app.get("/")
@@ -457,51 +481,98 @@ async def index() -> HTMLResponse:
             }
 
             // GPU情報
+            // 注意: gpu.name はホスト側コマンド出力由来の文字列であり、
+            // 信頼できない入力として扱う。innerHTML には絶対に連結せず、
+            // DOM API + textContent でのみ挿入すること（XSS対策）。
             const gpuGrid = document.getElementById('gpu-grid');
+            while (gpuGrid.firstChild) {
+                gpuGrid.removeChild(gpuGrid.firstChild);
+            }
             if (data.gpu && data.gpu.available && data.gpu.gpus && data.gpu.gpus.length > 0) {
                 gpuGrid.style.display = 'grid';
-                gpuGrid.innerHTML = data.gpu.gpus.map((gpu, index) => {
+                data.gpu.gpus.forEach((gpu, index) => {
                     const gpuUtilClass = gpu.utilization > 90 ? 'danger' : gpu.utilization > 70 ? 'warning' : '';
                     const memUtilClass = gpu.memory_percent > 90 ? 'danger' : gpu.memory_percent > 70 ? 'warning' : '';
-                    return `
-                        <div class="card gpu-card">
-                            <h2>🎮 GPU ${index} - ${gpu.name}</h2>
-                            <div class="gpu-temp">🌡️ ${gpu.temperature}°C</div>
-                            <div class="metric" id="gpu-util-${index}">${gpu.utilization}%</div>
-                            <div class="metric-label">使用率</div>
-                            <div class="progress-bar">
-                                <div class="progress-fill ${gpuUtilClass}" id="gpu-progress-${index}" style="width: ${gpu.utilization}%">
-                                    <span class="progress-text">${gpu.utilization}%</span>
-                                </div>
-                            </div>
-                            <div class="gpu-memory">
-                                メモリ: ${(gpu.memory_used / 1024).toFixed(1)}GB / ${(gpu.memory_total / 1024).toFixed(1)}GB (${gpu.memory_percent}%)
-                            </div>
-                            <div class="progress-bar" style="margin-top: 8px;">
-                                <div class="progress-fill ${memUtilClass}" style="width: ${gpu.memory_percent}%">
-                                    <span class="progress-text">${gpu.memory_percent}%</span>
-                                </div>
-                            </div>
-                        </div>
-                    `;
-                }).join('');
+
+                    const card = document.createElement('div');
+                    card.className = 'card gpu-card';
+
+                    const heading = document.createElement('h2');
+                    heading.textContent = `🎮 GPU ${index} - ${gpu.name}`;
+                    card.appendChild(heading);
+
+                    const temp = document.createElement('div');
+                    temp.className = 'gpu-temp';
+                    temp.textContent = `🌡️ ${gpu.temperature}°C`;
+                    card.appendChild(temp);
+
+                    const utilMetric = document.createElement('div');
+                    utilMetric.className = 'metric';
+                    utilMetric.id = `gpu-util-${index}`;
+                    utilMetric.textContent = `${gpu.utilization}%`;
+                    card.appendChild(utilMetric);
+
+                    const utilLabel = document.createElement('div');
+                    utilLabel.className = 'metric-label';
+                    utilLabel.textContent = '使用率';
+                    card.appendChild(utilLabel);
+
+                    const utilBar = document.createElement('div');
+                    utilBar.className = 'progress-bar';
+                    const utilFill = document.createElement('div');
+                    utilFill.className = `progress-fill ${gpuUtilClass}`.trim();
+                    utilFill.id = `gpu-progress-${index}`;
+                    utilFill.style.width = `${gpu.utilization}%`;
+                    const utilFillText = document.createElement('span');
+                    utilFillText.className = 'progress-text';
+                    utilFillText.textContent = `${gpu.utilization}%`;
+                    utilFill.appendChild(utilFillText);
+                    utilBar.appendChild(utilFill);
+                    card.appendChild(utilBar);
+
+                    const memory = document.createElement('div');
+                    memory.className = 'gpu-memory';
+                    memory.textContent = `メモリ: ${(gpu.memory_used / 1024).toFixed(1)}GB / ${(gpu.memory_total / 1024).toFixed(1)}GB (${gpu.memory_percent}%)`;
+                    card.appendChild(memory);
+
+                    const memBar = document.createElement('div');
+                    memBar.className = 'progress-bar';
+                    memBar.style.marginTop = '8px';
+                    const memFill = document.createElement('div');
+                    memFill.className = `progress-fill ${memUtilClass}`.trim();
+                    memFill.style.width = `${gpu.memory_percent}%`;
+                    const memFillText = document.createElement('span');
+                    memFillText.className = 'progress-text';
+                    memFillText.textContent = `${gpu.memory_percent}%`;
+                    memFill.appendChild(memFillText);
+                    memBar.appendChild(memFill);
+                    card.appendChild(memBar);
+
+                    gpuGrid.appendChild(card);
+                });
             } else {
                 gpuGrid.style.display = 'none';
             }
 
             // プロセス一覧 - 必ず更新されるようにする
+            // 注意: user/command はサーバー上の実プロセス情報由来であり、
+            // 悪意あるプロセス名/コマンドラインが含まれ得る信頼できない入力。
+            // innerHTML には絶対に連結せず、DOM API + textContent でのみ挿入する（XSS対策）。
             const tbody = document.getElementById('process-body');
             if (!tbody) {
                 console.error('process-body element not found');
                 return;
             }
 
+            while (tbody.firstChild) {
+                tbody.removeChild(tbody.firstChild);
+            }
+
             if (data.top_processes && Array.isArray(data.top_processes) && data.top_processes.length > 0) {
-                // プロセス一覧を更新（既存の内容を完全に置き換え）
                 // デバッグ: 受信したデータを確認
                 console.debug('Updating process list with', data.top_processes.length, 'processes');
 
-                const rows = data.top_processes.map(p => {
+                data.top_processes.forEach(p => {
                     const user = p.user || '-';
                     const pid = p.pid || '-';
                     const cpu = (p.cpu || 0).toFixed(1);
@@ -510,24 +581,25 @@ async def index() -> HTMLResponse:
                     const command = (p.command || '').substring(0, 50);
                     const commandSuffix = (p.command || '').length > 50 ? '...' : '';
 
-                    return `
-                        <tr>
-                            <td>${user}</td>
-                            <td>${pid}</td>
-                            <td>${cpu}%</td>
-                            <td>${mem}%</td>
-                            <td>${rss}</td>
-                            <td>${command}${commandSuffix}</td>
-                        </tr>
-                    `;
-                }).join('');
-
-                // 強制的にDOMを更新（確実に反映されるようにする）
-                tbody.innerHTML = rows;
+                    const row = document.createElement('tr');
+                    [user, pid, `${cpu}%`, `${mem}%`, rss, `${command}${commandSuffix}`].forEach(cellText => {
+                        const cell = document.createElement('td');
+                        cell.textContent = cellText;
+                        row.appendChild(cell);
+                    });
+                    tbody.appendChild(row);
+                });
             } else {
                 // データがない場合も明示的に表示
                 console.warn('No process data received or empty array');
-                tbody.innerHTML = '<tr><td colspan="6" style="text-align: center; color: var(--text-secondary);">プロセス情報を取得中...</td></tr>';
+                const row = document.createElement('tr');
+                const cell = document.createElement('td');
+                cell.colSpan = 6;
+                cell.style.textAlign = 'center';
+                cell.style.color = 'var(--text-secondary)';
+                cell.textContent = 'プロセス情報を取得中...';
+                row.appendChild(cell);
+                tbody.appendChild(row);
             }
 
             // 最終更新時刻
@@ -552,21 +624,7 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
     try:
         while True:
             try:
-                # 各データを個別に取得してエラーハンドリング
-                memory_info = get_memory_info()
-                cpu_info = get_cpu_info()
-                gpu_info = get_gpu_info()
-                hanging_count = get_hanging_processes()
-                top_processes = get_top_processes(10)
-
-                data = {
-                    "timestamp": datetime.now().isoformat(),
-                    "memory": memory_info,
-                    "cpu": cpu_info,
-                    "gpu": gpu_info,
-                    "hanging_count": hanging_count,
-                    "top_processes": top_processes,
-                }
+                data = await collect_snapshot()
                 await websocket.send_json(data)
             except Exception as exc:
                 # データ取得エラーをログに記録（本番環境では適切なロガーを使用）
