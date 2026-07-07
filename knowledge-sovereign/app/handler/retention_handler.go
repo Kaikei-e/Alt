@@ -109,7 +109,7 @@ func (h *RetentionHandler) handleRetentionStatus(w http.ResponseWriter, r *http.
 		logs = []sovereign_db.RetentionLogEntry{}
 	}
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(retentionStatusResponse{Logs: logs})
+	_ = json.NewEncoder(w).Encode(retentionStatusResponse{Logs: logs})
 }
 
 // eligiblePartitionRow is a flat, table-tagged partition row. altctl's
@@ -153,7 +153,7 @@ func (h *RetentionHandler) handleEligiblePartitions(w http.ResponseWriter, r *ht
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(eligiblePartitionsResponse{Partitions: rows})
+	_ = json.NewEncoder(w).Encode(eligiblePartitionsResponse{Partitions: rows})
 }
 
 // RunRetention executes the retention cycle: export → verify → log.

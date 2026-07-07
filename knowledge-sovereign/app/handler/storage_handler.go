@@ -46,5 +46,5 @@ func (h *StorageHandler) handleStorageStats(w http.ResponseWriter, r *http.Reque
 		stats = []sovereign_db.TableStorageInfo{}
 	}
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(storageStatsResponse{Tables: stats})
+	_ = json.NewEncoder(w).Encode(storageStatsResponse{Tables: stats})
 }

@@ -85,7 +85,7 @@ func (h *SnapshotHandler) handleListSnapshots(w http.ResponseWriter, r *http.Req
 		snapshots = []sovereign_db.SnapshotMetadata{}
 	}
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(snapshotListResponse{Snapshots: snapshots})
+	_ = json.NewEncoder(w).Encode(snapshotListResponse{Snapshots: snapshots})
 }
 
 func (h *SnapshotHandler) handleGetLatestSnapshot(w http.ResponseWriter, r *http.Request) {
