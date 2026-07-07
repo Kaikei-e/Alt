@@ -3,6 +3,7 @@ package handler
 import (
 	"context"
 	"encoding/json"
+	"log/slog"
 	"net/http"
 
 	"knowledge-sovereign/driver/sovereign_db"
@@ -46,5 +47,7 @@ func (h *StorageHandler) handleStorageStats(w http.ResponseWriter, r *http.Reque
 		stats = []sovereign_db.TableStorageInfo{}
 	}
 	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(storageStatsResponse{Tables: stats})
+	if err := json.NewEncoder(w).Encode(storageStatsResponse{Tables: stats}); err != nil {
+		slog.WarnContext(ctx, "failed to write storage stats response", "error", err)
+	}
 }

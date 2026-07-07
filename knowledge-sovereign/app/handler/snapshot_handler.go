@@ -85,7 +85,9 @@ func (h *SnapshotHandler) handleListSnapshots(w http.ResponseWriter, r *http.Req
 		snapshots = []sovereign_db.SnapshotMetadata{}
 	}
 	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(snapshotListResponse{Snapshots: snapshots})
+	if err := json.NewEncoder(w).Encode(snapshotListResponse{Snapshots: snapshots}); err != nil {
+		slog.WarnContext(ctx, "failed to write snapshot list response", "error", err)
+	}
 }
 
 func (h *SnapshotHandler) handleGetLatestSnapshot(w http.ResponseWriter, r *http.Request) {
