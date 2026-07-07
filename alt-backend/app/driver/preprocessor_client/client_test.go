@@ -80,7 +80,7 @@ func TestClient_StreamSummarize_Success(t *testing.T) {
 	client := NewClient(server.URL)
 	stream, err := client.StreamSummarize(context.Background(), "content", "article-1", "title")
 	require.NoError(t, err)
-	defer stream.Close()
+	defer func() { _ = stream.Close() }()
 
 	buf := make([]byte, 64)
 	n, _ := stream.Read(buf)

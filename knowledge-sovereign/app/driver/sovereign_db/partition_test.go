@@ -117,7 +117,7 @@ func (t *fakeTx) CopyFrom(ctx context.Context, tableName pgx.Identifier, columnN
 	return 0, nil
 }
 func (t *fakeTx) SendBatch(ctx context.Context, b *pgx.Batch) pgx.BatchResults { return nil }
-func (t *fakeTx) LargeObjects() pgx.LargeObjects                              { return pgx.LargeObjects{} }
+func (t *fakeTx) LargeObjects() pgx.LargeObjects                               { return pgx.LargeObjects{} }
 func (t *fakeTx) Prepare(ctx context.Context, name, sql string) (*pgconn.StatementDescription, error) {
 	return nil, nil
 }

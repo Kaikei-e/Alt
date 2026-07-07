@@ -85,7 +85,7 @@ func TestReclaimPending_ClaimsAndProcessesIdleMessage(t *testing.T) {
 
 	ctx := context.Background()
 	seedClient := redis.NewClient(&redis.Options{Addr: srv.Addr()})
-	defer seedClient.Close()
+	defer func() { _ = seedClient.Close() }()
 
 	msgID := seedStuckPendingMessage(t, ctx, seedClient)
 
@@ -156,7 +156,7 @@ func TestConsumer_Start_RunsReclaimLoopPeriodically(t *testing.T) {
 	defer cancel()
 
 	seedClient := redis.NewClient(&redis.Options{Addr: srv.Addr()})
-	defer seedClient.Close()
+	defer func() { _ = seedClient.Close() }()
 
 	seedStuckPendingMessage(t, ctx, seedClient)
 
