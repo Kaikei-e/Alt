@@ -131,13 +131,12 @@ async def evaluate_genres(
     else:
         # ユーザー入力のパスを検証
         try:
-            golden_data_path = validate_path(  # codeql[py/path-injection] -- validate_path + ALLOWED_BASE_DIRS enforces allow-list and symlink resolution
-                request.golden_data_path, ALLOWED_BASE_DIRS
-            )
+            golden_data_path = validate_path(request.golden_data_path, ALLOWED_BASE_DIRS)
         except ValueError as e:
             raise HTTPException(status_code=400, detail=str(e)) from e
 
-    if not golden_data_path.exists():  # codeql[py/path-injection] -- validate_path + ALLOWED_BASE_DIRS enforces allow-list and symlink resolution
+    # codeql[py/path-injection] -- validate_path + ALLOWED_BASE_DIRS enforces allow-list and symlink resolution
+    if not golden_data_path.exists():
         raise HTTPException(
             status_code=404,
             detail=f"Golden dataset file not found: {golden_data_path}",
@@ -146,13 +145,12 @@ async def evaluate_genres(
     if request.weights_path:
         # ユーザー入力のパスを検証
         try:
-            weights_path = validate_path(  # codeql[py/path-injection] -- validate_path + ALLOWED_BASE_DIRS enforces allow-list and symlink resolution
-                request.weights_path, ALLOWED_BASE_DIRS
-            )
+            weights_path = validate_path(request.weights_path, ALLOWED_BASE_DIRS)
         except ValueError as e:
             raise HTTPException(status_code=400, detail=str(e)) from e
 
-        if not weights_path.exists():  # codeql[py/path-injection] -- validate_path + ALLOWED_BASE_DIRS enforces allow-list and symlink resolution
+        # codeql[py/path-injection] -- validate_path + ALLOWED_BASE_DIRS enforces allow-list and symlink resolution
+        if not weights_path.exists():
             raise HTTPException(
                 status_code=404,
                 detail=f"Weights file not found: {request.weights_path}",
