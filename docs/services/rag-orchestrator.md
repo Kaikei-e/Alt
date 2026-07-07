@@ -1,6 +1,6 @@
 # RAG Orchestrator
 
-_Last reviewed: March 18, 2026_
+_Last reviewed: July 7, 2026_
 
 **Location:** `rag-orchestrator`
 
@@ -375,3 +375,17 @@ The Connect-RPC server runs on a separate port (default 9011) and supports HTTP/
 
 **MorningLetterService** (`connect/morning_letter/handler.go`):
 - `StreamChat`: Fetches recent articles from alt-backend (time-bounded, default 24h, max 7 days), sends a `meta` event with time window info, then streams the RAG answer. Events: `meta`, `delta`, `done`, `fallback`, `error`.
+
+## Known failure patterns
+
+Distilled from postmortems and ADRs; see [[crystallized-knowledge]] §1/§8 for the broader classes.
+
+- **401 cascade from provider auth hardening**: retrieval returned 0 chunks while handlers kept answering 200 and the LLM generated low-quality output → search-indexer started requiring service auth but this consumer was never updated; the 401 was swallowed as a WARN → PM-2026-026 (one day after the identical PM-2026-025 in Acolyte). A consumer without a Pact is not protected by CDC.
+- **Model migration without rebuild → immediate EOF**: Ask Augur completely down for 67 min → the Gemma4 migration renamed the model but rag-orchestrator was not rebuilt and kept sending the stale name → immediate EOF is the "model not found" signal; rebuild every container that references the model name via env → PM-2026-016.
+- **BM25 always returning 0 hits**: hybrid search silently degraded to vector-only → the `user_id="rag-orchestrator-system"` filter matched zero articles → question search-filter assumptions first; downstream ranking improvements are void while upstream retrieval is broken → [[000643]] [[000648]].
+- **Embedder is a SPOF without a degraded mode**: Ask Augur fully down while BM25 was healthy → embedding failure was treated as fatal → embedding failures are non-fatal; BM25-only degraded mode with the `degraded_mode: bm25_only` log tag → PM-2026-020, [[000693]]. Failure boundary: original-query embedding fatal, expanded-query embedding non-fatal → [[000519]].
+- **Raw HTML chunk contamination**: Ask Augur could not find articles that clearly existed → fulltext-fetch raw HTML passed the plain-text chunker, so 26% of all embeddings encoded site structure → DOM sanitizer + `ChunkerVersion` in the idempotency key so backfill auto-reindexes → PM-2026-018, [[000619]].
+- **Invalid UTF-8 hangs the stream**: `done` event never delivered, UI loads forever → citation metadata skipped `sanitizeUTF8()` and protobuf serialization failed (frequent with 3-byte Japanese characters) → sanitize every string field right before protobuf → PM-2026-009.
+- **Dead optional dependency = full timeout on every request**: +15s latency per answer with zero quality gain → a dead rerank-server timed out on every call → monitor optional dependencies; size timeouts from measurements → [[000386]].
+- **Cross-lingual retrieval fails multiplicatively**: Japanese queries could not reach 372 English articles → three independent gaps (prompt missing an English label, BM25 using only the original query, Meilisearch CJK locale) compounded → per-layer tests are insufficient; test JA→EN end to end → PM-2026-021.
+- **Few-shot examples get copied into output**: query expansion contaminated by example domains (AI chips, weather) → small models treat few-shot content as material, not format → abstract `[TOPIC_A]` placeholders + explicit "SAME TOPIC as input" constraint → [[000648]] [[000650]].

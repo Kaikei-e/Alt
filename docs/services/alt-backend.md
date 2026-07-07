@@ -1,6 +1,6 @@
 # Alt Backend
 
-_Last reviewed: March 18, 2026_
+_Last reviewed: July 7, 2026_
 
 **Location:** `alt-backend/app`
 
@@ -258,6 +258,20 @@ Overall health: breaching > at_risk > healthy. Multi-window multi-burn-rate aler
 - SSE connections at `/v1/sse/feeds/stats` keep heartbeats, respect the same CORS whitelist as the rest of the API, and flush cached counts every `SERVER_SSE_INTERVAL`.
 - All remote fetches (feeds, articles, images, summarization) re-validate URLs with `IsAllowedURL` to block private IPs before touching `security.SSRFValidator`.
 - Docker image uses `gcr.io/distroless/static-debian12:nonroot` runtime (UID 65532) for minimal attack surface.
+
+## Known failure patterns
+
+Cross-cutting incident patterns are catalogued in [[crystallized-knowledge]].
+
+- Streams cut at a fixed interval (~30s/100s) or never show output → Go `http.Server.WriteTimeout` (and any unary `http.Client` timeout) kills the entire stream; streaming servers need `WriteTimeout: 0`, first-byte-immediately heartbeats covering all phases, and context-deadline lifetime management → PM-2026-004, [[000478]] [[000553]], checklist: [[connect-rpc-streaming-checklist]].
+- 326 items missing / 1,947 stale for 4 days after a reproject → `SwapReproject` did not reset the projector checkpoint; checkpoints must be bound to the projection version, and version activation + checkpoint reset are inseparable → PM-2026-010, [[000598]].
+- `StartReproject` returned persistent 502 for months → nil `json.RawMessage` is sent as explicit NULL by pgx, and `NOT NULL DEFAULT '{}'` only fires on column omission; absorb with a driver-layer `emptyJSONIfNil` helper and integration-test every DB-touching path → PM-2026-040, [[000454]].
+- `knowledge_home_items.link` empty on all rows only after reproject → producer `json:"url"` vs consumer `json:"link"` struct-tag drift, hidden live by the merge-safe CASE preserve; wire-form contract tests must marshal raw `map[string]any`, not self round-trip the consumer struct → PM-2026-041, [[000865]] [[000867]].
+- Intermittent 634ms spikes on unrelated endpoints (MarkAsRead) → cache TTL expiry triggered a fan-out N+1 that exhausted the shared PgBouncer pool; evaluate caches with miss-time fan-out cost and shared-pool side effects included → PM-2026-019.
+- Image proxy returned 502 long-term → manually set `Accept-Encoding` disables Go's transparent decompression, so gzip bytes reached `image.Decode`; log magic bytes + upstream metadata on decode failures → PM-2026-022.
+- Wrong summary shown after fast article navigation → async streaming callbacks lacked a stale-response guard and two read queries lacked `user_id` scope; capture-and-compare IDs, and keep read-query scope aligned with UNIQUE constraints → PM-2026-003, [[000552]].
+- Feature "implemented" but no data flows, everything healthy → unwired optional DI dependency swallowed by `if x == nil { return nil }`; wiring state must surface via loud `*_enabled`/`*_disabled` startup logs and panic in business paths (Critical Rule 8), and producer wiring PRs need Pact CDC RED first (Critical Rule 7) → PM-2026-045, [[000928]].
+- Projector output differs between live and replay → `time.Now()` or latest-state reads in projector code make reproject non-deterministic; business time comes from `event.OccurredAt` only, pinned by a "two clocks, byte-identical" invariants test → [[000919]] [[000924]] [[000933]].
 
 ## Diagram
 

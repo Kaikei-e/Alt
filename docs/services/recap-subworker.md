@@ -1,6 +1,6 @@
 # Recap Subworker
 
-_Last reviewed: March 18, 2026_
+_Last reviewed: July 7, 2026_
 
 **Location:** `recap-subworker/`
 
@@ -305,6 +305,17 @@ uv run python -m recap_subworker.learning_machine.train --lang en
 
 ### Taxonomy Validation
 The `genres.yaml` taxonomy file defines the genre hierarchy and thresholds for the learning_machine backend. Ensure it's validated before deployment.
+
+## Known failure patterns
+
+- 8-day classification outage while the service reported healthy → a file-scoped bind mount whose host source had vanished was silently turned into an empty directory by Docker, so `Path.exists()` passed and loading raised `IsADirectoryError`; use directory binds / named volumes and validate artefacts with `is_file()` fail-closed → PM-2026-036.
+- Same-day recurrence after the PM-036 remediation → an init container gated by `service_completed_successfully` never runs under rolling deploy (`--no-deps`), leaving the named volume empty; each fail-closed layer must hold independently of deploy order → PM-2026-037.
+- `learning_machine` backend failed on the first real classify-run, 4 months after becoming the default → student-model artefacts were never distributed (`.gitignore`-excluded, empty bind) and lazy init hid the gap; eager `@model_validator` startup validation is required → PM-2026-035.
+- `/health` unresponsive (apparent deadlock) → Numba fell back to the non-thread-safe `workqueue` threading layer because `tbb` was missing; pin `tbb>=2022`, set `NUMBA_THREADING_LAYER=tbb` and `LD_LIBRARY_PATH=/app/.venv/lib` → PM-2026-007, [[000575]].
+- Symptomless pipeline hang → a spawn-pool child was OOM-killed with no error log and the parent's `.get()` blocked forever; spawn pools grow memory linearly (workers × model size), so size `mem_limit` from measured peaks and recompute when changing worker counts → [[000550]], PM-2026-001.
+- OOM (~2GiB cap) when clustering large inputs → single-shot encode plus plain KMeans; use fixed embedding batches + MiniBatchKMeans and pin the batch cap with a regression test → [[000637]].
+- Retries that only "re-read the same failure" → `failed` runs were being reused via Idempotency-Key; reuse only `running`/`succeeded` runs → [[000636]].
+- Misdiagnosed recurrences → the identical error string `classification returned 0 results` had four distinct root causes (PM-2026-033/035/036/037); identical error text ≠ identical root cause — segment by DB aggregation (`recap_failed_tasks`) before assuming a repeat.
 
 ## Key Dependencies
 

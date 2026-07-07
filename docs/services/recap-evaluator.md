@@ -1,12 +1,12 @@
 # Recap Evaluator
 
-_Last reviewed: March 18, 2026_
+_Last reviewed: July 7, 2026_
 
 **Location:** `recap-evaluator`
 
 ## Role
 - RecapJob 精度評価マイクロサービス
-- 7日間 Recap の品質を多角的に評価
+- 3-day Recap の品質を多角的に評価 (7-day 自動バッチは廃止済み [[000184]])
 - 多次元要約品質評価: G-Eval (Ollama), ROUGE, BERTScore, Faithfulness (NLI)
 
 ## Architecture & Flow
@@ -255,6 +255,13 @@ curl http://localhost:8085/health
 - FastAPI 自動計装: `opentelemetry-instrumentation-fastapi`
 - ビジネスコンテキスト: `alt.job.id`, `alt.processing.stage`, `alt.ai.pipeline`
 - rask.group ラベル: `recap-evaluator`
+
+## Known failure patterns
+
+- A 2-day genre-quality collapse (PM-2026-038) went undetected partly because the evaluator itself was down during the incident → quality-degradation failures never appear in `recap_failed_tasks`, so automated evaluation (G-Eval) is the only safety net for this failure class; treat evaluator scheduler-run success as a first-class monitoring signal → PM-2026-038.
+- G-Eval silently skipped when Ollama is unavailable → the run still completes with only a warning log, so composite scores quietly lose their 40% weight; degraded evaluation must be surfaced, not inferred — "healthy HTTP" is not "functionally evaluating" (silent-degrade class, cf. PM-2026-025).
+- Missing `RECAP_DB_DSN` at startup → intentionally has no default and must abort with a non-zero exit; never reintroduce a default or warn-and-limp → [[000197]].
+- Triage of low scores misled by logs → start from DB state tables (`recap_job_status_history.reason`, `recap_failed_tasks` aggregation), which held the full root cause of a 4-day recap outage while logs were noise → PM-2026-031.
 
 ## Dependencies
 - **Python**: >=3.13

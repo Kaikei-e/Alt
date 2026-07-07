@@ -1,6 +1,6 @@
 # metrics
 
-_Last reviewed: March 18, 2026_
+_Last reviewed: July 7, 2026_
 
 **Location:** `metrics/`
 **Python:** 3.13+
@@ -131,6 +131,17 @@ Log Gap:
 - **Structlog**: Structured logging
 - **Jinja2 Templates**: Report generation
 - **Custom Exceptions**: `CollectorError`, `ConfigurationError`, etc.
+
+## Known failure patterns
+
+Patterns from postmortems that shape what this analyzer must surface; see [[crystallized-knowledge]] §14 for the detection-gap metapattern.
+
+- **Almost every incident was detected by user report, not alerting**: ERROR/WARN evidence existed in ClickHouse for 20+ of the first 23 PMs but nothing watched it, and unimplemented "Detect" action items caused repeat incidents (PM-2026-008 → 016 → 020) → analysis output is only useful if it is actually run and reviewed.
+- **Bimodal latency is invisible at p50**: cache-expiry fan-out spikes (634ms MarkAsRead) hid for weeks → always report p95/p99, never mean/p50 alone → PM-2026-019.
+- **HTTP 200 / healthy ≠ functioning**: SSE served heartbeats only for 4 weeks with all-200 statuses → status-code SLIs miss silent failures; body size, stream counts, and reconnect intervals must become metrics → PM-2026-045.
+- **Log volume is a first-class health metric**: a retry storm generated 148GB of logs in 48-72h, nearly filling the shared host, and the resulting disk-full zeroed an OAuth token file (65h silent ingestion stop) → PM-2026-042/043.
+- **Per-service log formats differ in ClickHouse**: Rust tracing puts the message in `fields.message`, Python structlog in `event` → collectors need explicit per-service mapping; auto-detection is non-deterministic → [[000315]].
+- **"No Data" triage order for ClickHouse-backed views**: (1) table actually exists (migration applied), (2) datasource provisioning, (3) `OTEL_EXPORTER_OTLP_ENDPOINT` env, (4) writer type vs CH schema (RowBinary is strict: `FixedString(N)` needs exact bytes, `Enum8` as i8, `DateTime64` as i64) → [[000074]].
 
 ## References
 

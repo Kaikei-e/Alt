@@ -1,6 +1,6 @@
 # altctl
 
-_Last reviewed: March 18, 2026_
+_Last reviewed: July 7, 2026_
 
 **Location:** `altctl/`
 
@@ -172,6 +172,17 @@ altctl completion [bash|zsh|fish|powershell]  # Generate shell completions
 | 3 | Docker Compose error |
 | 4 | Configuration error |
 | 5 | Timeout |
+
+## Known failure patterns
+
+Cross-cutting incident patterns are catalogued in [[crystallized-knowledge]].
+
+- Every `altctl home` admin operation failed → one-character header drift (`Service-Token` vs `X-Service-Token`); service-to-service auth must standardize on a single pattern (JWT for public, `X-Service-Token` for internal) → [[000618]] [[000622]].
+- A service silently absent from the running stack → compose file include omissions are silent (sovereign.yaml sat unincluded with profiles); the stack registry test (`TestNoOrphanComposeFiles`) is the detection net — keep `internal/stack/registry.go` and compose files in lockstep → [[000578]].
+- "Deployed but old behavior persists" → `docker compose up --wait` neither rebuilds nor recreates same-tag containers (pre-build + `--force-recreate` required), and `latest` tags are implicitly pinned at container creation time → [[000761]], PM-2026-005 [[000564]].
+- Host port still unbound after restart → `docker compose restart` does not re-bind host ports; containers that failed the bind need `--force-recreate`.
+- `up --wait` aborts unexpectedly → `depends_on.condition: service_healthy` pointing at a service without a healthcheck; catch via a compose-config render gate in CI → [[000809]].
+- Ad-hoc `docker compose up --build` outside altctl / alt-deploy → bypasses the Pact-gated deploy pipeline and is recorded as a procedure deviation; production rollout goes through the deploy pipeline only → PM-2026-031.
 
 ## Common Pitfalls
 

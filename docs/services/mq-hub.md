@@ -1,6 +1,6 @@
 # MQ Hub
 
-_Last reviewed: March 18, 2026_
+_Last reviewed: July 7, 2026_
 
 **Location:** `mq-hub`
 
@@ -199,6 +199,16 @@ curl http://localhost:9500/health
   - `mqhub_batch_size` (histogram): バッチサイズ分布 (labels: stream)
   - `mqhub_errors_total` (counter): エラー合計 (labels: operation, error_type)
   - `mqhub_redis_connection_status` (gauge): Redis 接続状態 (1=接続, 0=切断)
+
+## Known failure patterns
+
+Cross-cutting incident patterns are catalogued in [[crystallized-knowledge]].
+
+- Crashed-consumer messages lost forever, DLQ conditions never fire → consumers that XACK on buffer-in (before the side effect is durable) or lack an XAUTOCLAIM reclaim loop silently drop work; ACK only after durable write, and every XREADGROUP consumer must run a reclaim loop (Critical Rule 10) → [[000083]] [[000089]], PM-2026-027 (false dead_letter).
+- Redis connection pool exhausted → a request-reply RPC (blocking reply wait 60s × parallel callers) drained the pool of 10 while the consumer was down; size the pool as "parallelism × hold time", and bound reply waits → [[000319]].
+- Duplicate processing storm on consumers → at-least-once redelivery enqueued the same `article_id` up to 895 times; consumers must be idempotent (`INSERT ... WHERE NOT EXISTS`, Meilisearch upsert, dedupe keys) → [[000387]] [[000083]].
+- "Event-driven feature implemented" but no events flow → publisher, consumer, and streams all existed; the single event-publish call in the producer was never wired, and nil-guards hid it. Producer wiring PRs need Pact CDC RED first (Critical Rule 7) and loud wiring-state startup logs (Critical Rule 8) → [[000249]] [[000928]].
+- Consumer code merged but never executes → the handler was added to `main.py` while the container entrypoint was `auth_service.py`; "tests pass + container healthy" does not prove the code is on the execution path → [[000319]].
 
 ## Common Pitfalls
 

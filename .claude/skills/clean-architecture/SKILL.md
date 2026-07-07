@@ -29,6 +29,25 @@ Handler -> Usecase -> Port -> Gateway -> Driver
 
 ## Common Violations
 
-- Handler importing Driver directly (must go through Usecase)
-- Usecase importing external packages (use Port interfaces)
+Concrete patterns found repeatedly in the 2026-07 full-repo review — check for these before finishing any change:
+
+- **Handler doing Driver work**: HTTP fetch, SSRF validation, or direct DB calls implemented inside a REST/RPC handler (seen as ~600 lines duplicated across 3 handlers). Handlers validate, delegate to a Usecase, and format the response — nothing else
+- **Driver importing Service/Usecase** (reverse dependency): a `driver/` package importing from `service/` or `usecase/` inverts the layer direction
+- **Usecase importing infrastructure**: `usecase/` importing `otel`, `httpx`, `asyncpg`, redis clients, or any `driver/` package directly — depend on a Port interface instead
+- **Cross-layer duplication instead of extraction**: the same logic pasted into multiple handlers because it lives at the wrong layer — extract into a Usecase
 - Circular dependencies between layers
+
+## Self-Check (run before handoff)
+
+```bash
+# Go: usecase importing driver or otel directly
+grep -rn --include="*.go" -E '"[^"]*/(driver|otel)' */app/usecase/ | grep -v _test
+
+# Go: driver importing service/usecase (reverse dependency)
+grep -rn --include="*.go" -E '"[^"]*/(service|usecase)' */app/driver/
+
+# Python: usecase importing infrastructure
+grep -rn --include="*.py" -E '^(from|import) .*(httpx|asyncpg|redis|driver)' */app/usecase/
+```
+
+For broad audits use the `layer-checker` agent.

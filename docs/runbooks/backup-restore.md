@@ -1,3 +1,12 @@
+---
+title: Alt Platform Backup & Restore Runbook
+date: 2026-04-11
+tags:
+  - runbook
+  - backup
+  - operations
+---
+
 # Alt Platform Backup & Restore Runbook
 
 This runbook provides operational procedures for the Alt platform backup system.

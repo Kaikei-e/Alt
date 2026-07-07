@@ -40,5 +40,10 @@ go run main.go
 
 1. **TDD First**: No implementation without failing tests
 2. **Event Validation**: Always validate before publishing
-3. **Idempotency**: Design for at-least-once delivery
-4. **Graceful Shutdown**: Handle SIGTERM properly
+3. **Idempotency**: Design for at-least-once delivery — dedupe key in the same transaction as the business write; absolute upserts, no additive merges
+4. **ACK after durable write only**: XACK only once the side effect is committed — never on receipt or buffer-in
+5. **XAUTOCLAIM loop mandatory**: `ClaimIdleTime` config alone does nothing; without the reclaim loop, crashed-consumer messages stay pending forever and DLQ conditions never fire
+6. **Graceful Shutdown**: stop intake → flush buffers → ack → cancel contexts, with a bounded deadline
+7. **HTTP server timeouts**: set `ReadHeaderTimeout`/`ReadTimeout`/`WriteTimeout`/`IdleTimeout` explicitly
+
+Full checklist: `.claude/rules/event-stream-consumer.md`, `docs/best_practices/go.md` §8

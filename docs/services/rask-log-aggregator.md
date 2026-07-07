@@ -1,6 +1,6 @@
 # Rask Log Aggregator
 
-_Last reviewed: March 18, 2026_
+_Last reviewed: July 7, 2026_
 
 **Location:** `rask-log-aggregator/app`
 
@@ -343,6 +343,19 @@ cargo build --release
 - `info!` ログ: バッチ到着時、エクスポート成功時
 - `error!` ログ: パース/エクスポート失敗時
 - rask.group ラベル: `rask-log-aggregator`
+
+## Known failure patterns
+
+Distilled from the ADR / postmortem corpus (see `docs/runbooks/crystallized-knowledge.md`).
+
+- **Trace context dropped hop-by-hop** — Grafana showed all-zero TraceIds; every hop (slog → stdout → forwarder → aggregator → ClickHouse) lost fields independently and took 8 ADRs to fix one hop at a time ([[000122]]–[[000135]]). The otelslog bridge puts trace_id only into *attributes*, so the aggregator must fall back to attributes when OTLP protocol fields are empty ([[000123]], [[000128]]).
+- **"Accepted ADR ≠ implemented"** — three pieces of the trace saga (port 4318 fix, logger.Init, slog context wiring) were found unimplemented after the ADRs were accepted ([[000127]]).
+- **ClickHouse RowBinary is type-strict** — `FixedString(N)` needs `[u8; N]`, `Enum8` needs `i8`, `DateTime64` needs `i64`; passing a Rust `String` corrupts the byte layout via its length prefix ([[000074]]).
+- **`Events` (String) and `Events.*` (Array) columns cannot coexist** — RowBinary INSERT fails with ILLEGAL_COLUMN; keep only the nested-array columns Grafana needs ([[000130]]).
+- **Never return 200 OK on export failure** — the aggregator once swallowed ClickHouse export errors and reported success to forwarders, defeating their retry/disk-fallback ([[000070]]).
+- **TTL and PARTITION interact** — a non-time-axis PARTITION (e.g. the legacy `logs` table's `(service_group, service_name)`) combined with `ttl_only_drop_parts=1` means TTL never fires; "unify all TTLs" migrations also miss MV-derived tables. Pin retention with a regression test that inspects `engine_full` ([[000934]]).
+- **DB container logs are intentionally not collected** — PostgreSQL-family containers were permanently removed from collection (74% noise reduction); do not re-add them ([[000098]]).
+- **Log volume is itself a health metric** — an ms-interval retry loop upstream generated 148 GB of logs in ~48-72h before any disk alert existed; watch per-container log volume and disk usage (PM-2026-042).
 
 ## LLM Notes
 - Rust 2024 Edition (edition = "2024")

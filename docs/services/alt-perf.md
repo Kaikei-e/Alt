@@ -1,6 +1,6 @@
 # alt-perf
 
-_Last reviewed: March 18, 2026_
+_Last reviewed: July 7, 2026_
 
 **Location:** `alt-perf/`
 
@@ -312,6 +312,16 @@ Environment variables in YAML files are expanded using `${VAR_NAME}` syntax.
 - Inject PerformanceObserver script (not web-vitals library) for measurement
 - Manage Kratos sessions for authenticated tests
 - Unit tests: `tests/unit/vitals_test.ts`, `tests/unit/statistics_test.ts`, `tests/unit/retry_policy_test.ts`
+
+## Known failure patterns
+
+Lessons from Alt's load-testing campaigns (the 3000VU series and later) that govern how this tool should be used.
+
+- Optimizing before measuring → every effective campaign started with a phase-0 instrumentation pass (OTel spans, `pg_stat_statements`, pprof, structured `usecase_ms`/`marshal_ms` logs); allocation hotspots turned out to be 93% concentrated in 3 functions. When a load test "fails", first rule out insufficient execution conditions (client saturation, warmup) before investigating server internals. → [[000364]] [[000366]]
+- Merged measurements hide the culprit → a combined "co-occurrence + layout" timing was undecidable; splitting phases revealed 418ms vs 65ms. Report per-phase numbers, never aggregates only. → [[000385]]
+- Load-test debris poisons production → deleting upstream test data leaves downstream queue jobs orphaned (1.9M ghost entries accumulated). After runs: stop workers, terminate lingering transactions, and retire jobs via dead_letter transitions rather than DELETE. → [[000504]]
+- 65% false rejections under load → circuit breaker layered *below* the semaphore capped concurrency first; the semaphore is the primary control and the CB a safety valve sized ~2x above it. Load tests are the tool that exposes such mislayering. → [[000332]]
+- Infra defaults die under load → PostgreSQL containers need explicit `shm_size` (the 64MB default fails with SQLSTATE 53100 under parallel query load). → [[000521]]
 
 ## Common Pitfalls
 

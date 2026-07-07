@@ -1,3 +1,12 @@
+---
+title: Knowledge Sovereign Cutover Runbook
+date: 2026-04-11
+tags:
+  - runbook
+  - knowledge-sovereign
+  - cutover
+---
+
 # Knowledge Sovereign Cutover Runbook
 
 ## 参照

@@ -112,6 +112,27 @@ $effect(() => {
 </script>
 ```
 
+### $effect Dependency-Tracking Pitfalls
+
+- `$effect` tracks every reactive source read synchronously **across the whole call stack** — `$state` reads inside functions called from the effect are registered too. If such a function also writes that state, the effect re-fires itself: self-refiring loops have produced request storms and `effect_update_depth_exceeded` crashes (ADR-000320, ADR-000441, PM-2026-039)
+- Guards against self-refire: write the guard condition directly in the effect body (not inside a helper that reads a `$state` flag), wrap reads that must not become dependencies in `untrack()`, or gate on a `$derived` value so the effect only re-runs when the value actually changes (ADR-000441, ADR-000847)
+- Dependency tracking is **runtime, not static**: with `if (!a || b) return`, `b` is never read — and never registered — while `a` is falsy, so the dependency set shifts between runs and the effect behaves unstably. Keep guards to a single variable and rely on template structure (`bind:this` inside `{#if}`) for implicit guarantees (ADR-000224)
+- Auto-fetch effects must record a terminal state on "empty success" responses — otherwise the still-empty state re-triggers the fetch forever (ADR-000581)
+
+```typescript
+// ❌ Guard flag read and written inside a helper — tracked, loops forever
+$effect(() => {
+  syncIfNeeded(); // reads + writes isFetching ($state) internally
+});
+
+// ✅ Guard directly in the effect body, non-dependency work in untrack()
+$effect(() => {
+  if (isFetching) return;
+  const id = articleId;
+  untrack(() => startFetch(id));
+});
+```
+
 > **Alt:** In `alt-frontend-sv`, `.svelte.ts` singleton state modules are appropriate for shared client-side state. Use `$effect` in route components for lifecycle work such as subscriptions, observers, and streaming connections.
 
 ## 2. Component Patterns
@@ -221,6 +242,21 @@ const { items, row, empty }: Props = $props();
 
 > **Alt:** Prefer callback props for new rune-first components in Alt. Reserve legacy event dispatchers for incremental migration only.
 
+### Keyed {#each} and Duplicate Keys
+
+- Duplicate keys in a keyed `{#each}` corrupt the reconciler's internal linked list and crash with `RangeError`/`TypeError` — **no warning is emitted** before the crash (ADR-000228, ADR-000229)
+- Key by an ID that is unique per rendered item: lists that can return multiple articles from the same feed URL must key by the article-specific ID, not the feed URL (ADR-000237)
+- Keying IDs are a presentation-layer concern — generate a stable-enough UUID fallback at the API-mapping boundary rather than leaking DB primary keys into the domain layer (ADR-000238)
+- Offset pagination against a backend with dynamic ranking (e.g. Meilisearch hybrid search) can return the same ID on consecutive pages — "pages are disjoint" is an implicit contract that ranking changes silently break. Dedupe on the frontend before appending (PM-2026-044)
+
+```typescript
+// ✅ Pure helper — dedupe before append so the keyed each stays safe
+export function appendUniqueById<T extends { id: string }>(current: T[], incoming: T[]): T[] {
+  const seen = new Set(current.map((item) => item.id));
+  return [...current, ...incoming.filter((item) => !seen.has(item.id))];
+}
+```
+
 ## 3. State Management
 
 ### .svelte.ts Files with Rune State
@@ -306,6 +342,21 @@ const state = getContext<ReturnType<typeof createSomeState>>('my-state');
 </script>
 ```
 
+### Bridging Non-Reactive Class Instances
+
+- Module-scope class instances live outside runes reactivity — wrapping one in `$state(...)` does not make mutations performed by its own methods observable (ADR-000269)
+- Bridge with a change callback plus a version counter: the instance notifies on mutation, a `$state` counter increments, and `$derived.by()` reads the counter to re-query the instance
+
+```typescript
+let version = $state(0);
+manager.onChange(() => { version++; });
+
+const entries = $derived.by(() => {
+  version; // establish the dependency
+  return manager.snapshot();
+});
+```
+
 ### When NOT to Use Global State
 
 - Do not put UI-only state (open/close, hover, scroll position) in global state
@@ -384,6 +435,18 @@ $effect(() => {
 
 {@render children()}
 ```
+
+### Invalidation & Stream-Driven Refresh
+
+- Never call `invalidateAll()` unconditionally from a stream/SSE callback — combined with `$effect`s that read `data`, one event amplifies into a fetch-storm positive feedback loop (50+ fetches in the same millisecond, `ERR_INSUFFICIENT_RESOURCES`) (ADR-000847, PM-2026-039)
+- Scope invalidation: register `depends('scoped:key')` in `load()` and call `invalidate('scoped:key')` so only the affected loads re-run
+- Debounce stream-driven refreshes and coalesce concurrent ones with a single-flight guard — at most one refresh in flight and one pending
+- Gate `$effect`s that react to `data` behind value equality (`$derived` + `untrack`) so re-runs with unchanged values are no-ops (ADR-000847)
+
+### URL Query State
+
+- Read search/filter state from URL query params **once in `onMount`** — watching the URL in an `$effect` and writing it back into the input steals input ownership from the user while typing (ADR-000453)
+- Redirects must carry `url.search` forward; extract query-parsing logic into pure functions and test them directly (ADR-000454)
 
 ### Route Groups
 
@@ -496,6 +559,11 @@ export interface ApiError {
 }
 ```
 
+### Backend Contract Discipline
+
+- Do not run ahead of the backend contract: placeholder fields or UI actions with no backend support create contract drift and "looks wired but isn't" experiences — shrink the UI to what the contract actually provides (ADR-000492)
+- Do not infer state on the frontend: "excerpt is empty → show Summarizing…" cannot distinguish not-requested / in-progress / failed, so the UX lies. Consume an explicit state field (e.g. `summary_state`) computed by the backend projection (ADR-000424)
+
 > **Alt:** Keep `types/api.ts` aligned with backend JSON contracts. Preserve field names and optionality unless the backend contract itself changes.
 
 ## 7. API Client & Data Fetching
@@ -591,6 +659,35 @@ export function createSSEConnection(options: SSEOptions): SSEConnection {
   return { close: () => source.close() };
 }
 ```
+
+### Stale-Response Guards for Async Callbacks
+
+- Every async callback that writes UI state needs a stale-response guard: capture the request-time identifier (article ID, URL) and compare it against the current value before applying the result — otherwise a navigation-crossed stream overwrites the new screen with old content. `AbortController` alone is not enough; an abort can lose the race with an already-scheduled callback (ADR-000552, PM-2026-003)
+- Check `signal.aborted` in `catch` blocks too — a reconnect-on-error loop that ignores abort races against `$effect` cleanup and resurrects dead streams (PM-2026-045)
+
+```typescript
+$effect(() => {
+  const id = articleId;
+  const controller = new AbortController();
+  (async () => {
+    try {
+      for await (const chunk of streamSummary(id, controller.signal)) {
+        if (articleId !== id) return; // stale-response guard
+        content += chunk;
+      }
+    } catch (err) {
+      if (controller.signal.aborted) return; // no reconnect after cleanup
+      error = String(err);
+    }
+  })();
+  return () => controller.abort();
+});
+```
+
+### fetch in Background Tabs
+
+- `await fetch` can stay pending forever when the tab is backgrounded or enters bfcache — an in-flight gate keyed on that promise then deadlocks the UI permanently (ADR-000858)
+- Triple defense: (a) `AbortController` + timeout so the promise always settles and `finally` releases the gate, (b) garbage-collect stale gate entries when the underlying snapshot is replaced, (c) explicitly reset in-flight state on `visibilitychange`/`pageshow`
 
 > **Alt:** Wrap streaming transports behind a small client module and let route or layout components own connection lifecycle through `$effect` cleanup.
 
@@ -848,6 +945,28 @@ describe('getProjects', () => {
 });
 ```
 
+### Waiting on $state in Browser-Mode Tests
+
+- `vi.waitFor` polls outside any reactive context, so it cannot observe `$state`/`$derived` changes; fake timers flush microtasks incompletely (ADR-000477)
+- Wrap the assertion in `$effect.root` + an `$effect` and resolve a promise when the expected state appears
+
+```typescript
+function waitForState(predicate: () => boolean): Promise<void> {
+  return new Promise((resolve) => {
+    const stop = $effect.root(() => {
+      $effect(() => {
+        if (predicate()) {
+          resolve();
+          queueMicrotask(stop);
+        }
+      });
+    });
+  });
+}
+```
+
+- Mock streams must hang instead of completing — a stream that resolves `done` immediately does not mimic a live SSE connection and injects reconnect noise into the test (ADR-000477)
+
 > **Alt:** In this repo, use `cd alt-frontend-sv && bun run test`, `cd alt-frontend-sv && bun run test:watch`, or run a focused Vitest command for a single file.
 
 ## 11. Linting & Formatting (Biome)
@@ -969,24 +1088,52 @@ $effect(() => {
 </script>
 ```
 
+### IntersectionObserver for Infinite Scroll
+
+- IntersectionObserver fires only on intersection **changes** — if the sentinel is still inside the viewport after a page of items loads, it never fires again and the scroll stalls (ADR-000226)
+- Pattern: `unobserve` the sentinel, `await` the load callback, wait one `requestAnimationFrame` for layout to settle, then re-observe
+- Reset `loading` flags in `try`/`finally` so a failed load does not leave the trigger permanently disabled
+- Centralize this in one shared action — per-page mitigations (cooldowns, disabled toggles) accumulate as symptomatic fixes that all had to be torn out later (ADR-000226)
+
 ## 13. Security
 
 ### {@html} XSS Prevention
 
 - Never use `{@html}` with unsanitized user input — it renders raw HTML
-- If `{@html}` is necessary, sanitize with DOMPurify or a similar library first
+- **"Remote" counts as user input**: RSS feed content, search-hit snippets, and any HTML from an upstream API are attacker-controlled. `{@html hit.snippet}` without sanitization is XSS
+- If `{@html}` is necessary, sanitize with DOMPurify — **on both server (SSR) and client**, since SvelteKit renders both
+- Enable the `svelte/no-at-html-tags` lint rule; every suppression needs a comment proving the input is sanitized
 - Prefer text interpolation `{value}` which auto-escapes by default
 
 ```svelte
 <!-- ✅ Safe — auto-escaped -->
 <p>{finding.advisory_id}</p>
 
-<!-- ❌ Dangerous — XSS risk -->
+<!-- ❌ Dangerous — XSS risk (also applies to RSS/API-derived HTML) -->
 {@html userComment}
+{@html hit.snippet}
 
 <!-- ✅ Sanitized if {@html} is required -->
 {@html DOMPurify.sanitize(markdownHtml)}
 ```
+
+### Open Redirect Prevention
+
+Login/register `redirect` / `returnTo` params must be validated with real URL parsing — string-prefix checks are bypassable (`//evil.com` is scheme-relative; `https:/evil.com` normalizes) ([OWASP](https://cheatsheetseries.owasp.org/cheatsheets/Unvalidated_Redirects_and_Forwards_Cheat_Sheet.html)):
+
+```typescript
+// ✅ resolve against own origin and require it to stay there
+function safeRedirect(target: string | null, fallback = '/'): string {
+  if (!target) return fallback;
+  const url = new URL(target, 'http://localhost');
+  if (url.origin !== 'http://localhost') return fallback; // absolute/external → reject
+  return url.pathname + url.search;
+}
+```
+
+### Session Cache Keys
+
+- Key server-side session caches by a **hash of the full cookie/token** (e.g. SHA-256), never a substring/prefix — prefix collisions serve one user's session to another
 
 ### Environment Variables
 
@@ -1048,6 +1195,13 @@ CMD ["node", "build"]
 
 - Always expose a `/healthz` endpoint — used by Docker HEALTHCHECK and orchestrators
 - Return `{ "status": "ok" }` with 200 — no database or external service checks in the health endpoint
+
+### Deploy-Time Chunk 404 Self-Healing
+
+- Every deploy changes `_app/immutable/*` chunk hashes; clients holding the previous HTML then 404 on dynamic imports (surfaces as "Cannot Open Page" on iOS Safari) (ADR-000898)
+- Serve the SSR/app HTML with `Cache-Control: no-cache` (revalidate on every request) and keep the 1-year immutable cache on a separate location for hashed assets only — without this split, cached HTML keeps referencing stale chunk hashes after every rebuild (ADR-000412)
+- Layered self-healing while the runtime is alive: detect chunk-load errors in `hooks.client` and reload once, set `version.pollInterval` in the SvelteKit config, and watch `updated.current` in `+layout.svelte` (ADR-000898)
+- When the entry chunk itself 404s the runtime never boots, so runtime-level recovery cannot run: have nginx answer missing immutable assets with a 200 reload stub, add a capture-phase error listener as an inline script in `app.html`, and call `updated.check()` on BFCache restore (`pageshow`) (ADR-000902)
 
 > **Alt:** Keep health endpoints simple and framework-native. Route, port, and adapter details should match the service's current deployment configuration rather than a copied example.
 

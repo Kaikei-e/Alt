@@ -1,6 +1,6 @@
 # Acolyte Orchestrator
 
-_Last reviewed: April 11, 2026_
+_Last reviewed: July 7, 2026_
 
 **Location:** `acolyte-orchestrator/`
 **Port:** 8090 (Connect-RPC + REST)
@@ -354,3 +354,13 @@ cd proto && buf generate --template buf.gen.acolyte.yaml
 | Empty sections | No evidence found | Check search-indexer connectivity, verify article indexing |
 | Revision loop exhausted | Quality threshold unmet | Review critic feedback, adjust prompts |
 | Connection refused | Service not ready | Wait for health check; verify port 8090 exposed |
+
+## Known failure patterns
+
+Cross-cutting incident knowledge lives in [[crystallized-knowledge]]; symptom-first entry points are in the [[README|runbooks index]].
+
+- **Empty report sections while every layer returns HTTP 200** → search-indexer started requiring `X-Service-Token` and the gateway swallowed the 401 as a warning, so reports were generated from zero evidence for 24h → PM-2026-025. Auth-boundary changes must ship consumer-side token injection in the same deploy; treat 401 as fail-fast, never as a silent degrade.
+- **Resume after crash re-runs a long node from its start** → the LangGraph checkpointer persists only at super-step (node) boundaries; resume is a replay from the node head, never mid-loop. Split multi-item loops into per-item self-loop super-steps, use `durability="sync"`, and keep node side effects idempotent → [[000673]], [[000679]], [[000690]], [[acolyte-checkpoint-resume]].
+- **Crashed run turns zombie or is resumed by the wrong pipeline** → in-flight job rows from a dead process are orphans by definition; boot-time sweep must seal them as `failed` (keeping at most one resume candidate inside an age window), and resume queries must filter on the `trigger_source` discriminator → [[000708]], [[000709]], PM-2026-024, [[acolyte-pipeline-recovery]].
+- **Truncated or invalid JSON from structured LLM calls** → three known Gemma4/Ollama bugs: thinking tokens consume `num_predict`, `think=false` + `format` ignores the format, and `/api/generate` ignores `think`. Design around them with a deterministic main path (LLM as secondary), micro-generation, and tiny schemas → [[000665]], [[000671]], [[000675]], [[acolyte-llm-timeout]].
+- **mTLS handshake failures although certs on disk are fresh** → a long-lived nginx TLS sidecar kept serving its in-memory old cert after pki-agent rotated the files; "cert renewed" and "cert being served" are different facts. Restart the sidecar, then verify the served cert, not the file → PM-2026-029, [[pki-agent-recovery]].

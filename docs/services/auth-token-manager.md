@@ -1,6 +1,6 @@
 # Auth Token Manager
 
-_Last reviewed: March 18, 2026_
+_Last reviewed: July 7, 2026_
 
 **Location:** `auth-token-manager`
 
@@ -73,6 +73,13 @@ _Last reviewed: March 18, 2026_
 5. Schedule `deno run --allow-env --allow-net main.ts monitor` (exit `0/1/2`) in your Cron jobs or health dashboards to detect horizon issues without hitting Inoreader.
 6. Use `deno run --allow-env --allow-net main.ts health` or `deno run --allow-env --allow-net main.ts validate` before deployments to confirm the CLI can read secrets and that the config is sane.
 7. Point `pre-processor-sidecar`/`pre-processor` at the same `TOKEN_STORAGE_PATH` (and keep `ENABLE_SECRET_WATCH=true` when you want live reloads) so everything downstream sees the newest tokens.
+
+## Known failure patterns
+
+- Inoreader ingestion silently dead for 65h → disk-full non-atomic write truncated `oauth2_token.env` to 0 bytes; downstream consumers got 404s and their circuit breaker oscillated OPEN↔HALF_OPEN forever while health kept reporting `token_manager_available: true`. Persist the token file via tmpfile + rename + fsync. → PM-2026-043
+- Health check green during total functional outage → "the process is up" and "the token is usable" are separate responsibilities; validate file content and freshness, not existence. Consumers now expose a typed sentinel (`ErrTokenUnavailable`) and an `/admin/health` `ingestion_silent` signal. → PM-2026-043
+- Alerts and tests cannot branch on failures → opaque string errors from the token path are indistinguishable; use typed sentinel errors so retry/alert policy can discriminate. → PM-2026-043
+- Root trigger was host disk exhaustion from a retry storm (148GB of logs) in an unrelated service → low-frequency supplementary paths like token refresh need automatic observability the most; unused features rot. → PM-2026-042, [[crystallized-knowledge]] §14
 
 ## Testing & tooling
 - `deno test` runs the unit/security suite under `tests/security/logger_security_test.ts`, which stubs console APIs to verify that sanitized logs never leak tokens or secrets.

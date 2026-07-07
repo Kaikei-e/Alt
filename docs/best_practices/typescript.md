@@ -578,6 +578,7 @@ it('Finding.ranking_score is optional number', () => {
 - Avoid barrel files — import directly for tree-shaking
 - `as const` produces smaller bundles than `const enum`
 - Lazy-load visualization renderers based on WebGPU availability
+- Never mix static and dynamic imports of the same module — Vite tree-shakes the statically imported chunk and the dynamic `import()` resolves to `undefined` at runtime (ADR-000257)
 
 ```typescript
 // ✅ Dynamic import for Three.js — only loaded when needed
@@ -601,6 +602,15 @@ import { getProjects } from '$lib/api/client';
 
 // ❌ Barrel import — pulls entire module
 import { getProjects } from '$lib/api';
+```
+
+```typescript
+// ❌ Module already imported statically elsewhere, then imported dynamically here
+// — after tree-shaking, the resolved namespace is undefined at runtime
+const { parseFeed } = await import('$lib/feed');
+
+// ✅ Pick one import style per module and keep it consistent everywhere
+import { parseFeed } from '$lib/feed/parse';
 ```
 
 > **Alt:** In `alt-frontend-sv`, dynamically import heavy visualization code paths so non-visual routes do not pay their bundle cost.
@@ -662,6 +672,175 @@ bun run check
 ```
 
 > **Alt:** Verification for the Svelte frontend: `cd alt-frontend-sv && bun run lint && bun run check`
+
+## 16. Startup Configuration Fail-Fast
+
+- **Missing required env (auth tokens, secrets, upstream URLs) must throw at startup** — never fall back to "run without auth" or a silent no-op. A token endpoint that serves credentials unauthenticated because `INTERNAL_AUTH_TOKEN` was unset is the worst-case outcome of warn-and-limp (CLAUDE.md Rule 8 / ADR-000928)
+- Validate all env in one place with a Zod schema at module load; export the parsed, typed config
+
+```typescript
+// ✅ fail-fast, typed config
+const Env = z.object({
+  INTERNAL_AUTH_TOKEN: z.string().min(32),
+  UPSTREAM_URL: z.string().url(),
+});
+export const env = Env.parse(Deno.env.toObject()); // throws with a precise message
+
+// ❌ warn-and-limp — misconfig indistinguishable from intentional
+const token = Deno.env.get("INTERNAL_AUTH_TOKEN");
+if (!token) console.warn("auth disabled"); // service now serves tokens unauthenticated
+```
+
+## 17. String & URL Handling Pitfalls
+
+- JS `String.split(sep, limit)` **discards** everything after the limit — unlike Go's `strings.SplitN`, which keeps the remainder in the last element. Splitting `key=value` pairs with `split('=', 2)` silently truncates Base64-padded tokens (ADR-000217)
+- Validate redirect targets with an allowlist **and** reject protocol-relative URLs — `//evil.com` passes a naive `startsWith('/')` check and the browser navigates to an external origin (ADR-000347)
+- `url.search` is already percent-encoded — re-applying `encodeURIComponent` double-encodes it (`%20` → `%2520`) and breaks downstream matching. Encode `pathname` only and append `search` as-is (ADR-000021)
+
+```typescript
+// ❌ split with limit — remainder is DISCARDED, unlike Go strings.SplitN
+const [, value] = 'token=abc123=='.split('=', 2);
+// value === "abc123" — the Base64 padding "==" is gone
+
+// ✅ indexOf + substring keeps the remainder intact
+const raw = 'token=abc123==';
+const sep = raw.indexOf('=');
+const key = raw.substring(0, sep);
+const value = raw.substring(sep + 1); // "abc123=="
+```
+
+```typescript
+// ✅ Redirect validation — allowlist + protocol-relative rejection
+function safeRedirect(target: string): string {
+	if (!target.startsWith('/') || target.startsWith('//')) return '/';
+	return ALLOWED_PREFIXES.some((p) => target.startsWith(p)) ? target : '/';
+}
+
+// ❌ "//evil.com".startsWith("/") === true — resolves to https://evil.com
+```
+
+```typescript
+// ✅ pathname is encoded, search is appended raw (already encoded)
+const returnTo = encodeURIComponent(url.pathname) + url.search;
+
+// ❌ Double-encoding — the redirect guard can no longer detect the loop
+const returnTo = encodeURIComponent(url.pathname + url.search);
+```
+
+> **Alt:** In SvelteKit hooks, exempt public routes such as `/login` from session-failure redirects — redirecting them to themselves creates an infinite loop that double-encoding then hides (ADR-000021).
+
+## 18. Connect-RPC (connect-es) Pitfalls
+
+- connect-es v2 `ConnectError.code` is a **numeric enum** (`Code.NotFound === 5`), not a string — string-based extraction silently maps every error to the default branch (ADR-000843)
+- Write error-mapping tests with **real `ConnectError` instances**, not hand-crafted mock objects — mocks with string codes pass against broken mappers and never validate the wire (ADR-000843)
+- Connect-RPC wraps the native `AbortError` in a `ConnectError` — `err.name === 'AbortError'` never matches. Check `ConnectError` with `Code.Canceled` (plus message content when needed) (ADR-000370)
+- protojson **omits zero-valued fields** (`false`, `0`, empty arrays) from the JSON — consumers must read missing fields as defaults, and int64 arrives as a string when present (ADR-000761, ADR-000764)
+- Browser `EventSource` cannot send custom headers — do not bolt authentication onto SSE. Use Connect-RPC server streaming, where auth interceptors apply transparently (ADR-000718)
+
+```typescript
+import { Code, ConnectError } from '@connectrpc/connect';
+
+// ✅ Numeric enum comparison
+function toHttpStatus(err: unknown): number {
+	if (err instanceof ConnectError) {
+		switch (err.code) {
+			case Code.NotFound: return 404;
+			case Code.Unauthenticated: return 401;
+			default: return 502;
+		}
+	}
+	return 502;
+}
+
+// ❌ String comparison — Code is numeric, everything falls through to default
+if (error.code === 'not_found') { /* never reached */ }
+
+// ❌ Native AbortError check — Connect wraps it, name never matches
+if (err instanceof Error && err.name === 'AbortError') { /* never reached */ }
+// ✅ Canceled requests arrive as ConnectError
+if (err instanceof ConnectError && err.code === Code.Canceled) { /* ... */ }
+```
+
+```typescript
+// ✅ Error-mapping test with a real ConnectError
+it('maps NotFound to 404', () => {
+	expect(toHttpStatus(new ConnectError('missing', Code.NotFound))).toBe(404);
+});
+
+// ❌ Hand-crafted mock — passes even when the mapper is broken
+expect(toHttpStatus({ code: 'not_found' })).toBe(404);
+```
+
+```typescript
+// ✅ protojson consumers treat absent fields as defaults
+const hasMore = body.hasMore ?? false;
+const total = Number(body.total ?? 0); // int64 is a string when present
+const items = body.items ?? [];
+```
+
+> **Alt:** When migrating SSE endpoints, prefer Connect-RPC streaming over adding auth workarounds (query-string tokens, cookies-only) to `EventSource` (ADR-000718).
+
+## 19. DTO Mapping & Wire Contracts
+
+- Force field coverage in DTO mappers with types — a manually maintained mapper dropped a field so the CSR path broke while SSR kept working (ADR-000309). Give mappers an explicit, fully-required return type so a dropped field is a compile error
+- Keep **one** canonical mapper per DTO — duplicated mapping logic per code path (SSR vs CSR) is where fields go missing
+- Never redeclare the same payload shape on producer and consumer sides — struct re-declaration is a wire-drift factory. Import the canonical schema (generated proto types, or a shared Zod schema) on both sides (ADR-000867, PM-2026-041)
+- Self round-trip tests (marshal your own type, unmarshal it back) do not validate the wire — build contract tests from raw JSON exactly as the other side sends it (ADR-000867, PM-2026-041)
+
+```typescript
+// ✅ Fully-required return type — dropping a field is a compile error
+function toRenderFeed(feed: ConnectFeed): Required<RenderFeed> {
+	return {
+		id: feed.id,
+		title: feed.title,
+		link: feed.link,
+		publishedAt: feed.publishedAt,
+	};
+}
+```
+
+```typescript
+// ❌ Hand-redeclared payload interface — drifts from the producer silently
+interface HomeItemPayload {
+	link: string;
+	// ...
+}
+
+// ✅ Import the canonical generated type instead
+import type { HomeItemPayload } from '$lib/gen/knowledge/v1/home_pb';
+```
+
+> **Alt:** API payload types come from one canonical source per contract. If a proto exists, the generated types are that source — a parallel hand-written interface is a bug waiting to ship.
+
+## 20. Client-Side Throttling & Periodic Tasks
+
+- Client-side throttles (e.g. 60s dedupe before hitting an API) must persist to `localStorage` if they need to survive reloads — an in-memory timestamp resets on every reload and burns 429s (ADR-000846)
+- Deno: do not schedule daemon work with `setInterval` — a slow iteration overlaps the next one and they run concurrently. Use a sequential `while` + `await delay()` loop so the next run starts only after the previous one finishes (ADR-000196)
+
+```typescript
+// ✅ Reload-surviving throttle — persist the last-sent timestamp
+const KEY = 'feed:lastMarkSentAt';
+function shouldSend(now: number): boolean {
+	const last = Number(localStorage.getItem(KEY) ?? 0);
+	if (now - last < 60_000) return false;
+	localStorage.setItem(KEY, String(now));
+	return true;
+}
+
+// ❌ let lastSentAt = 0; — resets on reload, server answers 429
+```
+
+```typescript
+// ❌ setInterval daemon — slow iterations overlap and run concurrently
+setInterval(() => rotateTokens(), 60_000);
+
+// ✅ Sequential loop — no overlap, errors surface in one place
+import { delay } from '@std/async/delay';
+while (true) {
+	await rotateTokens();
+	await delay(60_000);
+}
+```
 
 ---
 

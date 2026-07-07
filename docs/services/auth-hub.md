@@ -1,6 +1,6 @@
 # Auth Hub
 
-_Last reviewed: March 18, 2026_
+_Last reviewed: July 7, 2026_
 
 **Location:** `auth-hub`
 
@@ -235,6 +235,17 @@ curl -i http://localhost:8888/health
 - rask.group ラベル: `alt-auth`
 - OTel トレース: 全リクエストのスパン (`otelecho` + `OTelStatusMiddleware`)
 - OTel ログ: OTLP/HTTP 経由で構造化ログをエクスポート
+
+## Known failure patterns
+
+- Role-based 403 inconsistency ("page opens but every API call fails") → a role change must pierce the entire auth pipeline: Kratos traits → auth-hub → JWT claim → BFF → FE layout. FE reads traits directly while BFF-routed APIs read the JWT role, so fixing only one side breaks the other. → [[000405]] [[000407]]
+- Only one of two code paths fixed during migration → while legacy flat handlers and the `internal/` Clean Architecture path coexist, logic added to a single path silently breaks the other. Normalize unknown roles via allowlist (`normalizeRole`: everything except admin falls back to user). → [[000407]]
+- SSR totally down with 429 → SvelteKit SSR called `/session` 3 times per page load and tripped auth-hub's own rate limit. Fetch the session once per request and share it via request-scoped `locals`. → [[000305]]
+- `uuid.Nil` flowing downstream → JWT claim parse errors were swallowed (`uuid.Parse` result discarded with `_`). Parse subject/tenant claims with helpers that reject both non-UUID and Nil; the `tenantID = userID` hardcode was promoted into a token claim so multi-tenancy needs only one populate point on the issuing side. → [[000717]] [[000718]]
+- Session-cache race invisible to the race detector → RWMutex RLock→Lock upgrade is a TOCTOU anti-pattern; a single `sync.Mutex` critical section is the correct form. → [[000718]]
+- Silent degradation of static shared secrets → replaced by short-lived JWTs (TTL 5m) captured by nginx `auth_request_set`; the same structural weakness later retired X-Service-Token in favor of mTLS. Never host-expose the Kratos admin port (4434). → [[000375]] [[000717]] [[000743]]
+- Missing secret warn-and-limp → required secrets must abort startup (min 32 chars, no defaults), internal endpoints need app-layer auth with constant-time compare even when "protected by network policy", and an empty secret must fail closed (all requests 500), never silently succeed. → [[000197]] [[000200]] [[000719]] [[000720]]
+- Auth bolted onto SSE → browser `EventSource` cannot send custom headers; use Connect-RPC streaming where interceptors apply auth transparently instead of retrofitting SSE. → [[000718]]
 
 ## LLM Notes
 - 新アーキテクチャの主要ファイル: `internal/adapter/handler/*.go`, `internal/usecase/*.go`, `internal/adapter/gateway/kratos.go`, `internal/infrastructure/**/*.go`

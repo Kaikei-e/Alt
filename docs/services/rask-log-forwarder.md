@@ -1,6 +1,6 @@
 # Rask Log Forwarder
 
-_Last reviewed: March 18, 2026_
+_Last reviewed: July 7, 2026_
 
 **Location:** `rask-log-forwarder/app`
 
@@ -276,6 +276,16 @@ cargo run -- --target-service alt-backend \
 各 forwarder インスタンスは以下をマウント:
 - `/var/run/docker.sock:/var/run/docker.sock:ro` - Docker socket
 - `/var/lib/docker/containers:/var/lib/docker/containers:ro` - Container logs
+
+## Known failure patterns
+
+Distilled from the ADR / postmortem corpus (see `docs/runbooks/crystallized-knowledge.md`).
+
+- **Log parsers need an explicit per-service format mapping** — Rust `tracing` emits `fields.message`, Python structlog emits `event`; the auto-detect fallback is non-deterministic and silently produced empty `message` columns in ClickHouse. Map every service's log formatter explicitly ([[000315]]).
+- **Trace context fields were dropped at the forwarder hop** — trace_id/span_id passthrough had to be added to the forwarder as part of the 8-ADR trace-context saga; verify any new field end-to-end, not per-hop ([[000124]], [[000125]]; saga overview [[000122]]–[[000135]]).
+- **DB containers are excluded from collection by design** — collecting PostgreSQL-family container logs was permanently stopped (74% noise reduction); do not add forwarder instances for them ([[000098]]).
+- **A retry storm upstream floods the whole pipeline** — a component retrying at ms intervals produced 148 GB of logs before detection; per-container log volume is a first-class health metric, not just payload (PM-2026-042).
+- **Containers without a compose `logging` cap eat the host disk** — pin json-file `max-size`/`max-file`; an OOM-restart loop otherwise fills the disk ([[000895]]).
 
 ## LLM Notes
 - 各サービスに対応した forwarder インスタンスが存在

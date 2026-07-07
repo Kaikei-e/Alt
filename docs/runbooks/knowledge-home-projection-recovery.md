@@ -1,3 +1,12 @@
+---
+title: Knowledge Home Projection Recovery
+date: 2026-04-11
+tags:
+  - runbook
+  - knowledge-home
+  - projection
+---
+
 # Knowledge Home Projection Recovery
 
 This runbook restores Knowledge Home when the append-only event log is healthy but the read model is empty, stale, or malformed.

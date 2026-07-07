@@ -1,16 +1,16 @@
 # Recap Worker
 
-_Last reviewed: March 18, 2026_
+_Last reviewed: July 7, 2026_
 
 **Location:** `recap-worker` (Crate: `recap-worker/recap-worker`)
 
 ## Role
-`recap-worker` is the **orchestrator and pipeline runner** for the Alt recap system. Written in Rust (2024 edition), it manages the end-to-end flow of generating Japanese news recaps for both **7-day** (weekly deep-dive) and **3-day** (daily quick-catch) windows.
+`recap-worker` is the **orchestrator and pipeline runner** for the Alt recap system. Written in Rust (2024 edition), it manages the end-to-end flow of generating Japanese news recaps. The **3-day** (daily quick-catch) window is the automated production pipeline; the **7-day** deep-dive batch daemon was retired after LLM queue saturation and remains available via manual API trigger only ([[000184]]).
 
 It delegates **heavy ML tasks** (embedding generation, coarse classification, clustering) to `recap-subworker`, keeping the worker itself focused on high-throughput data processing, pipeline coordination, and persistence.
 
 **Pipelines:**
-1.  **7-Day Recap Pipeline:** Weekly deep-dive batch process (runs daily at 02:00 JST via `BatchDaemon`).
+1.  **7-Day Recap Pipeline:** Deep-dive pipeline. The automated batch was retired ([[000184]]); trigger manually via `/v1/generate/recaps/7days` only.
 2.  **3-Day Recap Pipeline:** Daily quick-catch batch process with smaller article window, faster processing, and reduced prompt sizes. The batch daemon uses `RECAP_3DAYS_WINDOW_DAYS` for window configuration.
 3.  **Evening Pulse Pipeline:** Daily digest delivering up to 3 high-quality news topics as an "entrance" to 7 Days Recap, helping users understand the day's news in 60 seconds. Controlled by `PULSE_ENABLED`, `PULSE_ROLLOUT_PERCENT`, and `PULSE_VERSION` feature flags.
 4.  **Morning Update Pipeline:** A lighter pipeline for daily article deduplication and grouping (Daemon currently **disabled** in `main.rs`, but logic exists).
@@ -414,6 +414,18 @@ curl http://localhost:9005/health/ready
     *   `recap_worker_config`: Dynamic configuration store.
     *   `recap_stage_state`: Pipeline stage state for resume support.
     *   `pulse_generations`: Evening Pulse generation results (job_id, target_date, version, status, result payload).
+
+## Known failure patterns
+
+- Cascading OOM across recap-worker / recap-db / recap-subworker halted 3-day generation for ~2h → undersized `mem_limit` plus glibc malloc fragmentation around libtorch; jemalloc as global allocator is mandatory and limits must be sized from measured peaks → PM-2026-001, [[000547]].
+- Empty recap persisted as a successful job → `Ok(_)` treated as success without inspecting the result payload; job outcome must check `PersistResult` contents (e.g. `genres_stored`) via the `JobOutcome` enum → [[000149]], [[000547]].
+- Genres collapsed into 2 buckets for 2 days while jobs stayed `completed` → rust-bert model cache was moved to an unpopulated host bind mount and embedder init failure degraded silently to keyword-only; `RECAP_WORKER_EMBEDDING_REQUIRED=true` now bails at startup, cache is populated via alt-deploy → PM-2026-038, [[3days-recap-artefact-recovery]].
+- `CertificateExpired` on outbound mTLS after cert rotation → reqwest baked the client cert in memory at startup; certs must be re-resolved per connection (certReloader semantics) → PM-2026-032.
+- `classification returned 0 results` accumulating for ~5 days → `https_only(true)` refused the plain-HTTP recap-subworker before sending; outbound `MTLS_ENFORCE` and callee server-side TLS must change as a symmetric pair — assert URL schemes at startup → PM-2026-033.
+- 3-day recap 404 for 4 consecutive days → mTLS listener :9443 served Connect-RPC only and the REST route was never registered after cutover; the root cause sat in `recap_job_status_history.reason` the whole time — start investigations from DB state tables, not logs → PM-2026-031.
+- Retryable upstream errors (429) never retried → `anyhow::bail!` stringified errors so `downcast_ref`-based retry classification lost the status code; propagate typed errors (thiserror) that preserve it → [[000390]].
+- Dashboard showed a permanent recap backlog → morning-update leaked ~48 `pending` rows/day into `recap_jobs`; high-frequency background jobs need their own terminal status (`morning_completed`) → [[000897]].
+- Embedding init failure invisible for 3 days → `EmbeddingService::new().ok()` swallowed the error, leaving only a one-line "unavailable"; never `.ok()` infrastructure init, and log successful init at INFO too → PM-2026-014, [[000611]].
 
 ## Dependencies
 

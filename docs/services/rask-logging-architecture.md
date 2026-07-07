@@ -1,6 +1,6 @@
 # Rask Logging Architecture
 
-_Last reviewed: March 18, 2026_
+_Last reviewed: July 7, 2026_
 
 ## Overview
 
@@ -310,6 +310,17 @@ open target/criterion/report/index.html
 | simd_docker_log | >4 GB/s |
 | single_threaded_push/100000 | <1 second |
 | 1M_messages_sustained | Within seconds |
+
+## Known failure patterns
+
+Distilled from the ADR / postmortem corpus (see `docs/runbooks/crystallized-knowledge.md`).
+
+- **Trace context propagation is a per-hop battle** — the TraceId-all-zero problem took 8 ADRs ([[000122]]–[[000135]]), fixing one hop at a time across slog → stdout → forwarder → aggregator → ClickHouse. Assume any new field will be dropped at some hop until verified end-to-end; "accepted ADR ≠ implemented" ([[000127]]). The otelslog bridge only fills attributes, so the aggregator falls back to attributes when OTLP protocol fields are empty ([[000123]]).
+- **Grafana "No Data" diagnosis order** — (1) ClickHouse table actually exists (missed migration), (2) datasource provisioning, (3) `OTEL_EXPORTER_OTLP_ENDPOINT` and related env, (4) Rust type vs ClickHouse schema mismatch ([[000074]]).
+- **Retention is fragile** — non-time PARTITION + `ttl_only_drop_parts=1` disables TTL forever, and TTL-unification migrations miss materialized-view target tables; guard retention with a regression test on `engine_full` ([[000934]]).
+- **Pipeline volume is a health metric** — a 148 GB log flood from an ms-interval retry loop went unnoticed for days; alert on per-container log volume and disk usage (PM-2026-042).
+- **Noise control is a standing decision** — PostgreSQL-family container logs are permanently excluded from collection (74% noise cut) ([[000098]]); business attributes are unified as `alt.*` (`alt.feed.id`, `alt.article.id`, `alt.job.id`, ...) across all languages ([[000099]], [[000100]], [[000120]]).
+- **Export failures must propagate** — the aggregator once returned 200 OK to forwarders on ClickHouse export failure, silently defeating forwarder retry and disk fallback ([[000070]]).
 
 ## Related Documentation
 

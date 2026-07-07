@@ -485,6 +485,7 @@ When modifying service-to-service communication, verify:
 - [ ] **Service token env wired end-to-end**: `SERVICE_TOKEN` / `SERVICE_TOKEN_FILE` / `SERVICE_SECRET_FILE` is set in the compose unit **and** read by the service's config loader **and** passed to the outbound client constructor
 - [ ] **CA bundle and cert paths exist in the container**: check `filepath.Clean` on any env-driven cert path; confirm the file exists in the compose `secrets:` or bind-mount list
 - [ ] **Provider-side pact verification lists every consumer pact**: the provider's verification test file includes each caller's pact file and is wired into `./scripts/pact-check.sh`
+- [ ] **New component is wired into the composition root**: the constructor is referenced from `main` / `di/` (verify by grep, excluding `_test`), the pipeline actually receives the instance (not bound to `_`), and the `*_enabled` / `*_disabled` startup log exists (CLAUDE.md Rule 8 / `.claude/rules/di-wiring.md`)
 
 ## Anti-Patterns (AVOID)
 
@@ -509,6 +510,7 @@ When modifying service-to-service communication, verify:
 19. **Writing unit tests first and backfilling E2E at the end** — this violates the outside-in order. The outer test is what drives the design of the inner layers
 20. **Declaring work complete without running Phase 5 (local CI parity)** — "tests pass" ≠ "CI will pass". Formatters, linters, static analyzers, and security scanners block PRs in the same commit you thought was done. Every touched microservice gets its CI-equivalent gate run locally before handoff
 21. **Suppressing a Phase 5 failure to finish the task** — disabling a lint rule, adding `// nolint`, loosening ruff config, or skipping a test to green the gate is a red flag. Fix the underlying code or escalate; never silence the gate as a shortcut
+22. **Declaring GREEN with an unwired component** — unit tests construct the component themselves, so they pass even when `main`/`di` never wires it into the production pipeline (the PM-2026-045 silent-fallback mode). GREEN includes wiring: grep the constructor in the composition root and confirm the startup wiring log. The 2026-07 full-repo review found this exact gap in 6+ services (ReliabilityManager, hybrid searcher, event emitters, cache gateways)
 
 ## References
 

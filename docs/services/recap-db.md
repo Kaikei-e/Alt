@@ -1,6 +1,6 @@
 # Recap Database Schema Contract
 
-_Last reviewed: March 18, 2026_
+_Last reviewed: July 7, 2026_
 
 **Location:** `recap-db`, `recap-migration-atlas`
 
@@ -170,3 +170,12 @@ Unique: `(generation_id, topic_rank)`.
 - `pulse_latest_generations` — Latest pulse generation per job
 - `pulse_quality_stats` — Quality statistics by version and tier
 - `pulse_syndication_stats` — Syndication detection statistics by version
+
+## Known failure patterns
+
+- Jobs stuck in impossible states ("pending but last_stage=persist") → mutable UPDATE-based status tracking; replaced by an immutable status-history table with transactionally atomic writes — the origin of the project-wide event-sourcing invariants → [[000114]] (repair-only precursor: [[000113]]).
+- Crashed morning job resumed for 7h as a batch recap pipeline → the `trigger_source` discriminator existed in the schema but every insert path left it at its default (dead schema); recovery required manual `UPDATE recap_jobs SET status='failed'`, and `RESUMABLE_MAX_AGE` was cut 12h→4h. A resume-attempt cap is the most reliable abandon signal → PM-2026-024.
+- Silent SQL failure in the same incident → binding an f64 into `make_interval` failed on every call and single-layer `anyhow` wrapping hid the SQL error entirely → PM-2026-024.
+- `recap_jobs` polluted with ~48 `pending` rows/day, misread as "Recap is stuck" → morning-update rode on the shared jobs table without its own lifecycle; separated with the dedicated terminal status `morning_completed` → [[000897]].
+- recap-db OOM-killed as part of the pipeline-wide cascade → undersized `mem_limit` (raised to 2G); size limits once from measured production-scale peaks plus margin, not in small increments → PM-2026-001.
+- Investigations: state tables beat logs → `recap_job_status_history.reason` contained the full root cause of a 4-day outage, and `recap_failed_tasks` segmentation is what finally separated four look-alike incidents; note that quality-degradation failures never reach `recap_failed_tasks` → PM-2026-031, PM-2026-033, PM-2026-038.

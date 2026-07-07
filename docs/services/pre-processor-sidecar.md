@@ -1,6 +1,6 @@
 # Pre-processor Sidecar
 
-_Last reviewed: March 18, 2026_
+_Last reviewed: July 7, 2026_
 
 **Location:** `pre-processor-sidecar/app`
 
@@ -146,6 +146,15 @@ flowchart TB
 - Admin access is gated by `security.KubernetesAuthenticator`, `MemoryRateLimiter`, and OWASP-aware sanitization; `MemoryRateLimiter` enforces 5 requests/hour by default.
 - Secrets and tokens stay out of logs (`security/sanitizer.go` and `utils.Sanitizer` ensure sensitive fields are removed).
 - Circuit breaker (`utils.CircuitBreaker`) around `InoreaderService` stops hammering the API during outages, while `RateLimitManager` enforces Zone1/Zone2 budgets with a configurable safety buffer.
+
+## Known failure patterns
+
+Cross-cutting incident patterns are catalogued in [[crystallized-knowledge]].
+
+- Inoreader ingestion silently stopped for 65 hours → a non-atomic write during disk exhaustion truncated `oauth2_token.env` to 0 bytes; auth-token-manager returned 404 and the circuit breaker flapped OPEN↔HALF_OPEN forever. Token persistence must be tmpfile + rename + fsync → PM-2026-043.
+- Health check reported `token_manager_available: true` throughout that outage → "process is up" and "responses are correct" are separate responsibilities; opaque string errors block both tests and alerts — use typed sentinels (`ErrTokenUnavailable`) and expose functional health (`/admin/health` with `ingestion_silent`) → PM-2026-043.
+- Duplicate feeds reappeared after a dedupe fix → zero-trust URL normalization was applied at `RegisterFeeds` but not on the sidecar ingestion route; normalization must run at save time on every write path → [[000049]] [[000052]].
+- Long TTD is structural for this service → the sidecar is a supplemental, low-frequency path, so failures surface only via user reports; staleness metrics (e.g. `last_sync` age) are required, not optional ("unused features rot") → PM-2026-043.
 
 ## LLM Notes
 - Mention `SimpleTokenService`, `TokenManagementService`, and `TokenRotationManager` when summarizing token logic; include env names `ENABLE_SECRET_WATCH`, `OAUTH2_TOKEN_SECRET_NAME`, `MAX_DAILY_ROTATIONS`, `ROTATION_INTERVAL_MINUTES`, `BATCH_SIZE`, `INOREADER_CLIENT_ID`, `INOREADER_CLIENT_SECRET`, `INOREADER_REFRESH_TOKEN`, `HTTPS_PROXY`, and `NO_PROXY` so prompts resolve to the right switches.

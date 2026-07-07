@@ -1,6 +1,6 @@
 # TTS Speaker
 
-_Last reviewed: March 18, 2026_
+_Last reviewed: July 7, 2026_
 
 **Location:** `tts-speaker/`
 **Port:** 9700
@@ -215,6 +215,14 @@ healthcheck:
 | Connection refused from BFF | `TTS_CONNECT_URL` misconfigured | Verify URL in compose/bff.yaml matches AMD Ryzen machine IP |
 | Slow first request | Model downloading | First run downloads ~330MB; subsequent starts use cached volume |
 | espeak-ng error | Missing system dependency | Ensure `espeak-ng` is in Dockerfile runtime stage |
+
+## Known failure patterns
+
+- **Japanese G2P silently skips out-of-dictionary English words**: audio missing words with no error raised → pyopenjtalk/unidic G2P drops unknown tokens → preprocessing pipeline (abbreviation→katakana expansion → alkana dictionary → isolated single-char expansion); run length validation AFTER preprocessing since conversion inflates text 2-3x → [[000233]] [[000240]] (Kokoro era, but the trap applies to any dictionary-based G2P).
+- **Default sentence splitting truncates Japanese**: text silently skipped mid-read → Kokoro's `split_pattern` default splits on newline only, hitting the 510-phoneme cap → pass `r"(?<=[。！？\n])"` and keep sentences in the 100-200 phoneme range → [[000304]] (legacy Kokoro).
+- **Unary vs streaming need different limits**: unary buffers all audio in memory while streaming processes per sentence → keep strict limits on unary, relax substantially for streaming → [[000240]].
+- **Engine selection is license- and hardware-gated**: Qwen3-TTS chosen as the migration target → AGPL dependencies rejected even when technically superior (network-use clause), and flash-attn must never be installed on ROCm (use `sdpa`) → [[000900]] (supersedes [[000232]]).
+- **Remote GPU service = separate compose + `extra_hosts`**: keeps tts-speaker out of the main stack's startup path and lets consumers be added incrementally → [[000230]].
 
 ## Development
 

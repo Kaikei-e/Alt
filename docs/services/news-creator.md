@@ -1,6 +1,6 @@
 # News Creator
 
-_Last reviewed: March 18, 2026_
+_Last reviewed: July 7, 2026_
 
 **Location:** `news-creator/app`
 
@@ -277,3 +277,15 @@ opentelemetry-instrumentation-fastapi>=0.50b0
 4. **VRAM Management**: The service aggressively manages `keep_alive` to ensure the 60K model unloads after use, preventing OOMs during subsequent standard tasks.
 5. **Testing**: `tests/` contains unit tests for handlers, usecases, and gateways. Use `SERVICE_SECRET=test-secret uv run pytest`.
 6. **Re-ranking**: First rerank request may be slow due to lazy model loading (~2-5s). Subsequent requests are fast (~150ms for 50 candidates).
+
+## Known failure patterns
+
+Distilled from postmortems and ADRs; see [[crystallized-knowledge]] §8 (LLM / GPU / Ollama) for the full pattern class.
+
+- **HybridPrioritySemaphore slot leaks (4 independent paths)**: RT requests block while the GPU sits idle, or `SLOT INVARIANT VIOLATION` logs appear → preempted slots migrated pools without ownership tracking, `call_soon_threadsafe` raced future cancellation, and slots "in transit" to a cancelled waiter were never reclaimed → PM-2026-012/013/014/015, [[000601]] [[000606]] [[000610]] [[000612]]. Track `home_pool`/`slot_id` explicitly; CancelledError handlers must reclaim transferred slots.
+- **Semaphore bypass is forbidden**: chat success rate 0% (300s timeouts) while batch summaries completed → rag-orchestrator called the inference server directly, so batch jobs monopolized the Ollama FIFO → every shared-GPU client must go through the `/api/chat` proxy at HIGH priority → PM-2026-006.
+- **Ollama options mismatch causes model reload ping-pong**: chat TTFT up to 259s → chat and batch carried different `options` (num_batch etc.), forcing runner reconfiguration per request → all LLM paths share base options via `config.get_llm_options()`, callers only overlay specifics → PM-2026-008.
+- **Single shared model + COLD_START**: TTFT degrades 0.65s → 100s+ on any model switch → with `OLLAMA_MAX_LOADED_MODELS=1`, a model-name mismatch anywhere (default, env, hardcode, stale binary) triggers a swap; PM-2026-014 saw 610 COLD_STARTs from an un-rebuilt pre-processor → [[000151]] [[000152]].
+- **Queue saturation needs all 3 layers**: retries re-entered the queue and waited 3500s+ → downstream 429 + Retry-After, `hold_slot()` during retry loops, and upstream exponential backoff exist because each alone was insufficient → [[000185]]. Degenerate output (whitespace-only) must be classified non-retryable or GPU time is burned forever → [[000203]] [[000214]].
+- **`.env` drift silently overrides compose defaults**: stale `OLLAMA_NUM_PARALLEL` / old model names in `.env` negated fixes shipped via compose → audit `.env` vs compose defaults after wiring changes → PM-2026-013/014, [[000609]].
+- **Outbound mTLS enforcement vs plain-HTTP listener asymmetry**: recap-worker with `https_only(true)` failed before sending because news-creator's listener was plain HTTP → pair `MTLS_ENFORCE` changes with server-side mTLS on every callee; assert URL schemes at startup → PM-2026-033.

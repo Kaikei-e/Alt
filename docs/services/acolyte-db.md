@@ -1,6 +1,6 @@
 # Acolyte DB
 
-_Last reviewed: April 11, 2026_
+_Last reviewed: July 7, 2026_
 
 **Location:** `acolyte-migration-atlas/`
 **Port:** 5438
@@ -348,6 +348,16 @@ psql -h localhost -p 5438 -U acolyte_user -d acolyte_db -c "SELECT 1"
 |---------|-------------|
 | `acolyte-orchestrator` | Primary consumer; stores reports and versions |
 | `acolyte-db-migrator` | Runs Atlas migrations on startup |
+
+## Known failure patterns
+
+Distilled from the ADR / postmortem corpus (see `docs/runbooks/crystallized-knowledge.md`).
+
+- **`FOR UPDATE SKIP LOCKED` in autocommit releases the lock immediately** — claiming from `report_jobs` must keep the SELECT and the status UPDATE in one transaction, ideally a single statement: `UPDATE ... WHERE job_id IN (SELECT ... FOR UPDATE SKIP LOCKED) RETURNING` ([[000282]], [[000509]]).
+- **"succeeded" must mean the side effect is durable** — logging a persistence failure and still transitioning the job/run to success is silent data loss; audit post-error state transitions ([[000509]]).
+- **LangGraph's Postgres checkpointer saves only at super-step (node) boundaries** — a multi-item loop inside one node cannot resume mid-way; split into per-item self-loops, set `durability="sync"`, and remember resume replays from the node start, so side effects must be idempotent ([[000673]], [[000679]], [[000690]]).
+- **Deletion is hard-delete with full `ON DELETE CASCADE`** — Acolyte is a version-first mutable entity store, not event-sourced; every new table must declare CASCADE, and deletes during an active run are rejected with `FAILED_PRECONDITION` ([[000712]]).
+- **Missing `shm_size` kills PostgreSQL under load** — Docker's 64 MB default collides with work_mem dynamic shared memory (SQLSTATE 53100); set it explicitly on the container ([[000521]]).
 
 ## Troubleshooting
 
