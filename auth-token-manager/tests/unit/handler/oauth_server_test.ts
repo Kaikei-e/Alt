@@ -85,7 +85,7 @@ describe("OAuthServer /api/token", {
     Deno.env.delete("INTERNAL_AUTH_TOKEN");
   });
 
-  it("should return full token data including access_token when INTERNAL_AUTH_TOKEN is not set", async () => {
+  it("should fail closed (503, no token data) when INTERNAL_AUTH_TOKEN is not set", async () => {
     secretManager.setData({
       access_token: "test-access-token-xyz",
       refresh_token: "test-refresh-token-abc",
@@ -96,19 +96,21 @@ describe("OAuthServer /api/token", {
     });
 
     const res = await fetch(`http://localhost:${TEST_PORT}/api/token`);
-    assertEquals(res.status, 200);
+    assertEquals(res.status, 503);
 
     const body = await res.json();
-    assertEquals(body.access_token, "test-access-token-xyz");
-    assertEquals(body.refresh_token, "test-refresh-token-abc");
-    assertEquals(body.token_type, "Bearer");
-    assertEquals(body.expires_at, "2025-12-31T00:00:00.000Z");
+    assertEquals(body.access_token, undefined);
+    assertEquals(body.refresh_token, undefined);
+    assertEquals(typeof body.error, "string");
   });
 
-  it("should return 404 when no token data exists", async () => {
+  it("should return 404 when no token data exists (authenticated)", async () => {
+    Deno.env.set("INTERNAL_AUTH_TOKEN", "correct-token");
     secretManager.setData(null);
 
-    const res = await fetch(`http://localhost:${TEST_PORT}/api/token`);
+    const res = await fetch(`http://localhost:${TEST_PORT}/api/token`, {
+      headers: { "X-Internal-Auth": "correct-token" },
+    });
     assertEquals(res.status, 404);
 
     const body = await res.json();

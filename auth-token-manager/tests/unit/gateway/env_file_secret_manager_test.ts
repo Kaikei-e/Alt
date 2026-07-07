@@ -158,6 +158,61 @@ describe("EnvFileSecretManager", {
     assertEquals(result?.refresh_token, refreshToken);
   });
 
+  it("should persist OAUTH2_UPDATED_AT on write and return the persisted value on read (not read-time)", async () => {
+    await Deno.mkdir(TEST_DIR, { recursive: true });
+    const filePath = `${TEST_DIR}/tokens.env`;
+    const manager = new EnvFileSecretManager(filePath);
+
+    const tokens: TokenResponse = {
+      access_token: "test-access-token-1234567890",
+      refresh_token: "test-refresh-token-1234567890",
+      expires_at: new Date(Date.now() + 3600 * 1000),
+    };
+
+    await manager.updateTokenSecret(tokens);
+
+    const first = await manager.getTokenSecret();
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    const second = await manager.getTokenSecret();
+
+    assertEquals(typeof first?.updated_at, "string");
+    assertEquals(first?.updated_at !== "", true);
+    // Reading twice must return the same persisted write time, not the
+    // current read time each call.
+    assertEquals(first?.updated_at, second?.updated_at);
+
+    const content = await Deno.readTextFile(filePath);
+    assertEquals(content.includes("OAUTH2_UPDATED_AT="), true);
+  });
+
+  it("should update OAUTH2_UPDATED_AT (not duplicate it) on a subsequent write", async () => {
+    await Deno.mkdir(TEST_DIR, { recursive: true });
+    const filePath = `${TEST_DIR}/tokens.env`;
+    const manager = new EnvFileSecretManager(filePath);
+
+    await manager.updateTokenSecret({
+      access_token: "first-access-token-1234567890",
+      refresh_token: "first-refresh-token-1234567890",
+      expires_at: new Date(Date.now() + 3600 * 1000),
+    });
+    const first = await manager.getTokenSecret();
+
+    await new Promise((resolve) => setTimeout(resolve, 20));
+
+    await manager.updateTokenSecret({
+      access_token: "second-access-token-1234567890",
+      refresh_token: "second-refresh-token-1234567890",
+      expires_at: new Date(Date.now() + 3600 * 1000),
+    });
+    const second = await manager.getTokenSecret();
+
+    assertEquals(second?.updated_at !== first?.updated_at, true);
+
+    const content = await Deno.readTextFile(filePath);
+    const matches = content.match(/OAUTH2_UPDATED_AT=/g) ?? [];
+    assertEquals(matches.length, 1);
+  });
+
   it("should set file permissions to 0o644 after writing", async () => {
     await Deno.mkdir(TEST_DIR, { recursive: true });
     const filePath = `${TEST_DIR}/tokens.env`;

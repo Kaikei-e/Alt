@@ -34,6 +34,7 @@ export class EnvFileSecretManager implements SecretManager {
         "OAUTH2_TOKEN_TYPE",
         "OAUTH2_EXPIRES_AT",
         "OAUTH2_EXPIRES_IN",
+        "OAUTH2_UPDATED_AT",
       ];
 
       for (const line of lines) {
@@ -56,12 +57,14 @@ export class EnvFileSecretManager implements SecretManager {
       const expiresIn = Math.floor(
         (tokens.expires_at.getTime() - Date.now()) / 1000,
       );
+      const updatedAt = new Date().toISOString();
 
       newLines.push(`OAUTH2_ACCESS_TOKEN=${tokens.access_token}`);
       newLines.push(`OAUTH2_REFRESH_TOKEN=${tokens.refresh_token}`);
       newLines.push(`OAUTH2_TOKEN_TYPE=${tokens.token_type || "Bearer"}`);
       newLines.push(`OAUTH2_EXPIRES_AT=${tokens.expires_at.toISOString()}`);
       newLines.push(`OAUTH2_EXPIRES_IN=${expiresIn}`);
+      newLines.push(`OAUTH2_UPDATED_AT=${updatedAt}`);
 
       // Ensure parent directory exists
       const dir = this.filePath.substring(
@@ -87,6 +90,7 @@ export class EnvFileSecretManager implements SecretManager {
 
       logger.info("Token file updated successfully", {
         expires_at: tokens.expires_at.toISOString(),
+        updated_at: updatedAt,
       });
     } catch (error) {
       const errorMessage = error instanceof Error
@@ -124,7 +128,7 @@ export class EnvFileSecretManager implements SecretManager {
         access_token: data["OAUTH2_ACCESS_TOKEN"],
         refresh_token: data["OAUTH2_REFRESH_TOKEN"],
         expires_at: data["OAUTH2_EXPIRES_AT"] || "",
-        updated_at: new Date().toISOString(),
+        updated_at: data["OAUTH2_UPDATED_AT"] || "",
         token_type: data["OAUTH2_TOKEN_TYPE"] || "Bearer",
         scope: "read write",
       };

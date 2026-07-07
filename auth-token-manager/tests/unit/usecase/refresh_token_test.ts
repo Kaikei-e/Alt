@@ -211,4 +211,81 @@ describe("RefreshTokenUsecase", {
     assertEquals(result.success, false);
     assertEquals(result.error?.includes("Invalid refresh token format"), true);
   });
+
+  it("should retry only the write (not the non-idempotent token refresh) when persisting fails", async () => {
+    const nearExpiryTokenData: SecretData = {
+      access_token: "old-access-token-1234567890",
+      refresh_token: "valid-refresh-token-1234567890",
+      expires_at: new Date(Date.now() + 60 * 1000).toISOString(), // 1 min left
+      updated_at: new Date().toISOString(),
+      token_type: "Bearer",
+      scope: "read write",
+    };
+
+    const rotatedTokens: TokenResponse = {
+      access_token: "rotated-access-token-1234567890",
+      refresh_token: "rotated-refresh-token-1234567890",
+      expires_at: new Date(Date.now() + 3600 * 1000),
+      token_type: "Bearer",
+      scope: "read write",
+    };
+
+    let refreshCallCount = 0;
+    const tokenClient: TokenClient = {
+      refreshToken: () => {
+        refreshCallCount++;
+        return Promise.resolve(rotatedTokens);
+      },
+      exchangeCode: () => Promise.reject(new Error("Not used in refresh")),
+    };
+
+    let updateCallCount = 0;
+    let persistedTokens: TokenResponse | null = null;
+    const secretManager: SecretManager = {
+      getTokenSecret: () => Promise.resolve(nearExpiryTokenData),
+      updateTokenSecret: (tokens: TokenResponse) => {
+        updateCallCount++;
+        if (updateCallCount === 1) {
+          return Promise.reject(new Error("disk write failed"));
+        }
+        persistedTokens = tokens;
+        return Promise.resolve();
+      },
+      checkSecretExists: () => Promise.resolve(true),
+    };
+
+    const httpClient = createMockHttpClient();
+    const retryConfig: RetryConfig = {
+      max_attempts: 2,
+      base_delay: 1,
+      max_delay: 10,
+      backoff_factor: 2,
+    };
+
+    const usecase = new RefreshTokenUsecase(
+      tokenClient,
+      secretManager,
+      httpClient,
+      defaultNetworkConfig,
+      retryConfig,
+    );
+
+    const result = await usecase.execute();
+
+    assertEquals(result.success, true);
+    // The refresh call rotates the refresh_token server-side (non-idempotent).
+    // It must never be retried, or a retry would resend the already-consumed
+    // refresh_token and fail with invalid_grant.
+    assertEquals(refreshCallCount, 1);
+    // Only the (idempotent) persistence step is retried.
+    assertEquals(updateCallCount, 2);
+    assertEquals(
+      persistedTokens!.refresh_token,
+      "rotated-refresh-token-1234567890",
+    );
+    assertEquals(
+      result.tokens?.refresh_token,
+      "rotated-refresh-token-1234567890",
+    );
+  });
 });

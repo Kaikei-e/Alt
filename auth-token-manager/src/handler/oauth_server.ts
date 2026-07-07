@@ -27,6 +27,12 @@ export class OAuthServer {
   start(signal?: AbortSignal): void {
     const redirectUrl = new URL(this.credentials.redirect_uri);
 
+    if (!Deno.env.get("INTERNAL_AUTH_TOKEN")) {
+      logger.error(
+        "token_api_disabled: INTERNAL_AUTH_TOKEN is not set at startup, /api/token will reject all requests until it is configured",
+      );
+    }
+
     logger.info(
       `Starting persistent OAuth callback listener at 0.0.0.0:${
         redirectUrl.port || 80
@@ -140,11 +146,28 @@ export class OAuthServer {
   }
 
   private async handleTokenApi(req: Request): Promise<Response> {
-    // Simple internal auth header check
-    const authHeader = req.headers.get("X-Internal-Auth");
     const expectedToken = Deno.env.get("INTERNAL_AUTH_TOKEN");
 
-    if (expectedToken && authHeader !== expectedToken) {
+    // Fail closed: without a configured secret there is no way to
+    // authenticate the caller, so refuse to serve tokens rather than
+    // silently skipping the auth check.
+    if (!expectedToken) {
+      logger.error(
+        "token_api_disabled: INTERNAL_AUTH_TOKEN is not configured, refusing /api/token request (fail-closed)",
+      );
+      return new Response(
+        JSON.stringify({
+          error: "Token API disabled: INTERNAL_AUTH_TOKEN is not configured",
+        }),
+        {
+          status: 503,
+          headers: { "Content-Type": "application/json" },
+        },
+      );
+    }
+
+    const authHeader = req.headers.get("X-Internal-Auth");
+    if (authHeader !== expectedToken) {
       return new Response(JSON.stringify({ error: "Unauthorized" }), {
         status: 401,
         headers: { "Content-Type": "application/json" },
