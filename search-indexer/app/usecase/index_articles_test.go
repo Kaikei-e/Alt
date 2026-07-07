@@ -80,7 +80,7 @@ func (m *mockArticleRepo) GetArticleByID(ctx context.Context, articleID string) 
 		}
 	}
 
-	return nil, &domain.RepositoryError{Op: "GetArticleByID", Err: "not found"}
+	return nil, domain.ErrArticleNotFound
 }
 
 type mockSearchEngineForIndexing struct {
@@ -357,5 +357,102 @@ func TestExecuteBackfill_SkipsSynonymsWhenAllTagsNonJapanese(t *testing.T) {
 
 	if engine.synonymsCallCount != 0 {
 		t.Fatalf("RegisterSynonyms call count = %d, want 0 (no Japanese tags)", engine.synonymsCallCount)
+	}
+}
+
+// TestExecuteBatchArticles_SkipsNotFoundArticle reproduces the HIGH finding
+// where a single deleted article ID in a batch failed the whole call,
+// dropping every other (already-ACKed) article alongside it. The gateway
+// now signals not-found via domain.ErrArticleNotFound instead of an opaque
+// *domain.RepositoryError, so the usecase can skip just that ID.
+func TestExecuteBatchArticles_SkipsNotFoundArticle(t *testing.T) {
+	now := time.Now()
+	article1, _ := domain.NewArticle("keep-1", "T1", "C1", []string{}, now, "u")
+	repo := &mockArticleRepo{articles: []*domain.Article{article1}}
+	engine := &mockSearchEngineForIndexing{}
+
+	u := NewIndexArticlesUsecase(repo, engine, nil)
+
+	result, err := u.ExecuteBatchArticles(context.Background(), []string{"keep-1", "deleted-id"})
+	if err != nil {
+		t.Fatalf("ExecuteBatchArticles() error = %v, want nil (not-found articles must be skipped)", err)
+	}
+	if result.IndexedCount != 1 {
+		t.Fatalf("IndexedCount = %d, want 1", result.IndexedCount)
+	}
+	if len(engine.indexedDocs) != 1 || engine.indexedDocs[0].ID != "keep-1" {
+		t.Fatalf("indexedDocs = %+v, want exactly [keep-1]", engine.indexedDocs)
+	}
+}
+
+// TestExecuteBatchArticles_PropagatesNonNotFoundError ensures a genuine
+// repository failure still fails the batch instead of being swallowed
+// alongside the not-found skip path.
+func TestExecuteBatchArticles_PropagatesNonNotFoundError(t *testing.T) {
+	repo := &mockArticleRepo{err: &domain.RepositoryError{Op: "GetArticleByID", Err: "db unavailable"}}
+	engine := &mockSearchEngineForIndexing{}
+	u := NewIndexArticlesUsecase(repo, engine, nil)
+
+	if _, err := u.ExecuteBatchArticles(context.Background(), []string{"any-id"}); err == nil {
+		t.Fatal("ExecuteBatchArticles() error = nil, want error for a non-not-found repository failure")
+	}
+}
+
+// TestExecuteSingleArticle_NotFound preserves the "0 indexed, no error"
+// contract for a single not-found article now that not-found is signalled
+// via an error rather than a nil article + nil error pair.
+func TestExecuteSingleArticle_NotFound(t *testing.T) {
+	repo := &mockArticleRepo{}
+	engine := &mockSearchEngineForIndexing{}
+	u := NewIndexArticlesUsecase(repo, engine, nil)
+
+	result, err := u.ExecuteSingleArticle(context.Background(), "missing")
+	if err != nil {
+		t.Fatalf("ExecuteSingleArticle() error = %v, want nil", err)
+	}
+	if result.IndexedCount != 0 {
+		t.Fatalf("IndexedCount = %d, want 0", result.IndexedCount)
+	}
+}
+
+// TestRegisterBatchSynonyms_AccumulatesAcrossBatches reproduces the HIGH
+// finding where Meilisearch's synonyms PUT is a full replace: calling
+// RegisterSynonyms with only the current batch's map erased every synonym
+// registered by an earlier batch, so only the last batch's synonyms
+// survived. The usecase must accumulate a process-wide union and PUT that
+// union on every flush.
+func TestRegisterBatchSynonyms_AccumulatesAcrossBatches(t *testing.T) {
+	now := time.Now()
+	tok, err := tokenize.InitTokenizer()
+	if err != nil {
+		t.Fatalf("InitTokenizer: %v", err)
+	}
+
+	engine := &mockSearchEngineForIndexing{}
+
+	a1, _ := domain.NewArticle("1", "T1", "C1", []string{"テスト1"}, now, "u")
+	repo1 := &mockArticleRepo{articles: []*domain.Article{a1}}
+	u := NewIndexArticlesUsecase(repo1, engine, tok)
+	if _, err := u.ExecuteBackfill(context.Background(), nil, "", 10); err != nil {
+		t.Fatalf("ExecuteBackfill (batch 1): %v", err)
+	}
+	if _, ok := engine.lastSynonymsArg["テスト1"]; !ok {
+		t.Fatalf("batch 1 synonyms missing テスト1: %v", engine.lastSynonymsArg)
+	}
+
+	// Second batch on the SAME usecase instance — mirrors production, where
+	// one long-lived IndexArticlesUsecase is shared across the polling loop
+	// and the event-driven consumer flush — with a different Japanese tag.
+	a2, _ := domain.NewArticle("2", "T2", "C2", []string{"テスト2"}, now.Add(time.Second), "u")
+	u.articleRepo = &mockArticleRepo{articles: []*domain.Article{a2}}
+	if _, err := u.ExecuteBackfill(context.Background(), nil, "", 10); err != nil {
+		t.Fatalf("ExecuteBackfill (batch 2): %v", err)
+	}
+
+	if _, ok := engine.lastSynonymsArg["テスト2"]; !ok {
+		t.Fatalf("batch 2 synonyms missing テスト2: %v", engine.lastSynonymsArg)
+	}
+	if _, ok := engine.lastSynonymsArg["テスト1"]; !ok {
+		t.Fatalf("batch 2 PUT dropped テスト1 from an earlier batch (full-replace overwrite bug): %v", engine.lastSynonymsArg)
 	}
 }

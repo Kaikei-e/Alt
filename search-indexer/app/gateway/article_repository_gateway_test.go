@@ -2,6 +2,7 @@ package gateway
 
 import (
 	"context"
+	"errors"
 	"search-indexer/domain"
 	"search-indexer/driver"
 	"testing"
@@ -271,5 +272,48 @@ func TestArticleRepositoryGateway_ConvertToDomain(t *testing.T) {
 				t.Errorf("convertToDomain() validation failed")
 			}
 		})
+	}
+}
+
+// TestArticleRepositoryGateway_GetArticleByID_NotFound pins the not-found
+// contract: the driver signals "no such article" with (nil, nil) — see
+// mockArticleDriver.GetArticleByID above, which mirrors backend_api's
+// Client.GetArticleByID when alt-backend returns an empty Article. Before
+// this fix the gateway wrapped that into a generic *domain.RepositoryError,
+// which usecase.ExecuteBatchArticles could not distinguish from a real
+// failure, so a single deleted article ID failed the entire batch and lost
+// every other (already ACKed) article in it.
+func TestArticleRepositoryGateway_GetArticleByID_NotFound(t *testing.T) {
+	driverMock := &mockArticleDriver{}
+	gw := NewArticleRepositoryGateway(driverMock)
+
+	article, err := gw.GetArticleByID(context.Background(), "missing-id")
+
+	if article != nil {
+		t.Errorf("GetArticleByID() article = %v, want nil", article)
+	}
+	if !errors.Is(err, domain.ErrArticleNotFound) {
+		t.Fatalf("GetArticleByID() error = %v, want errors.Is(err, domain.ErrArticleNotFound)", err)
+	}
+}
+
+// TestArticleRepositoryGateway_GetArticleByID_DriverError confirms a genuine
+// driver failure (as opposed to not-found) still surfaces as a
+// *domain.RepositoryError rather than being swallowed by the not-found path.
+func TestArticleRepositoryGateway_GetArticleByID_DriverError(t *testing.T) {
+	driverMock := &mockArticleDriver{err: errors.New("connection refused")}
+	gw := NewArticleRepositoryGateway(driverMock)
+
+	article, err := gw.GetArticleByID(context.Background(), "any-id")
+
+	if article != nil {
+		t.Errorf("GetArticleByID() article = %v, want nil", article)
+	}
+	if errors.Is(err, domain.ErrArticleNotFound) {
+		t.Fatalf("GetArticleByID() error should not be ErrArticleNotFound for a driver failure, got %v", err)
+	}
+	var repoErr *domain.RepositoryError
+	if !errors.As(err, &repoErr) {
+		t.Fatalf("GetArticleByID() error = %v, want *domain.RepositoryError", err)
 	}
 }

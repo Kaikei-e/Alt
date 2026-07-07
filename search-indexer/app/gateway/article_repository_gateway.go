@@ -147,10 +147,7 @@ func (g *ArticleRepositoryGateway) GetArticleByID(ctx context.Context, articleID
 	}
 
 	if driverArticle == nil {
-		return nil, &domain.RepositoryError{
-			Op:  "GetArticleByID",
-			Err: "article not found: " + articleID,
-		}
+		return nil, domain.ErrArticleNotFound
 	}
 
 	return g.convertToDomain(driverArticle)

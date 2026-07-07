@@ -16,6 +16,24 @@ import (
 	appotel "search-indexer/utils/otel"
 )
 
+// meilisearchTaskPollInterval and meilisearchTaskWaitTimeout bound every
+// WaitForTaskWithContext call made through the waitForTask helper below.
+//
+// meilisearch-go's WaitForTask(WithContext)'s second argument is a POLLING
+// INTERVAL, not a timeout -- confirmed by reading the vendored v0.36.2
+// source (meilisearch.go's waitForTask loops on a ticker set to that
+// interval and only returns early via ctx.Done(); it never times out on
+// its own). The old code called WaitForTask(taskUID, 15*time.Second) with
+// a "// 15 seconds timeout" comment that was simply wrong: it polled every
+// 15s and, with context.Background() baked in by the non-context variant,
+// waited forever if a task never completed. waitForTask fixes this by
+// wrapping every call in an explicit context.WithTimeout and using a much
+// shorter poll interval so completion is detected promptly.
+const (
+	meilisearchTaskPollInterval = 500 * time.Millisecond
+	meilisearchTaskWaitTimeout  = 15 * time.Second
+)
+
 // MeilisearchDriver isolates admin operations (IndexDocuments, Delete,
 // EnsureIndex, RegisterSynonyms) from search-only operations. If the operator
 // provisions a dedicated Search API key, L-001 lets us use it only for the
@@ -27,6 +45,12 @@ type MeilisearchDriver struct {
 	hybrid      *HybridConfig
 	cache       *searchCache
 	sf          singleflight.Group
+
+	// taskWaitTimeout/taskPollInterval back waitForTask. Exposed as fields
+	// (rather than the package constants directly) so tests can shrink the
+	// timeout instead of waiting out the full 15s default.
+	taskWaitTimeout  time.Duration
+	taskPollInterval time.Duration
 }
 
 // NewMeilisearchDriver constructs a driver where the same client handles both
@@ -34,9 +58,11 @@ type MeilisearchDriver struct {
 func NewMeilisearchDriver(client meilisearch.ServiceManager, indexName string) *MeilisearchDriver {
 	idx := client.Index(indexName)
 	return &MeilisearchDriver{
-		client:      client,
-		index:       idx,
-		searchIndex: idx,
+		client:           client,
+		index:            idx,
+		searchIndex:      idx,
+		taskWaitTimeout:  meilisearchTaskWaitTimeout,
+		taskPollInterval: meilisearchTaskPollInterval,
 	}
 }
 
@@ -44,14 +70,25 @@ func NewMeilisearchDriver(client meilisearch.ServiceManager, indexName string) *
 // clients. Pass nil for searchClient to fall back to the admin client.
 func NewMeilisearchDriverWithClients(adminClient meilisearch.ServiceManager, searchClient meilisearch.ServiceManager, indexName string) *MeilisearchDriver {
 	d := &MeilisearchDriver{
-		client:      adminClient,
-		index:       adminClient.Index(indexName),
-		searchIndex: adminClient.Index(indexName),
+		client:           adminClient,
+		index:            adminClient.Index(indexName),
+		searchIndex:      adminClient.Index(indexName),
+		taskWaitTimeout:  meilisearchTaskWaitTimeout,
+		taskPollInterval: meilisearchTaskPollInterval,
 	}
 	if searchClient != nil {
 		d.searchIndex = searchClient.Index(indexName)
 	}
 	return d
+}
+
+// waitForTask polls until a Meilisearch task completes or a bounded timeout
+// elapses. See the package-level comment on meilisearchTaskWaitTimeout for
+// why this can't just call WaitForTask(taskUID, timeout) directly.
+func (d *MeilisearchDriver) waitForTask(ctx context.Context, taskUID int64) (*meilisearch.Task, error) {
+	waitCtx, cancel := context.WithTimeout(ctx, d.taskWaitTimeout)
+	defer cancel()
+	return d.index.WaitForTaskWithContext(waitCtx, taskUID, d.taskPollInterval)
 }
 
 // WithHybrid installs a hybrid-search configuration on the driver. Pass nil
@@ -135,7 +172,7 @@ func (d *MeilisearchDriver) IndexDocuments(ctx context.Context, docs []SearchDoc
 		return nil
 	}
 
-	task, err := d.index.AddDocuments(docs, nil)
+	task, err := d.index.AddDocumentsWithContext(ctx, docs, nil)
 	if err != nil {
 		return &DriverError{
 			Op:  "IndexDocuments",
@@ -144,8 +181,7 @@ func (d *MeilisearchDriver) IndexDocuments(ctx context.Context, docs []SearchDoc
 	}
 
 	// Wait for the indexing task to complete
-	_, err = d.index.WaitForTask(task.TaskUID, 15 * time.Second) // 15 seconds timeout
-	if err != nil {
+	if _, err := d.waitForTask(ctx, task.TaskUID); err != nil {
 		return &DriverError{
 			Op:  "IndexDocuments",
 			Err: "failed to wait for indexing task: " + err.Error(),
@@ -160,7 +196,7 @@ func (d *MeilisearchDriver) DeleteDocuments(ctx context.Context, ids []string) e
 		return nil
 	}
 
-	task, err := d.index.DeleteDocuments(ids, nil)
+	task, err := d.index.DeleteDocumentsWithContext(ctx, ids, nil)
 	if err != nil {
 		return &DriverError{
 			Op:  "DeleteDocuments",
@@ -169,8 +205,7 @@ func (d *MeilisearchDriver) DeleteDocuments(ctx context.Context, ids []string) e
 	}
 
 	// Wait for the deletion task to complete
-	_, err = d.index.WaitForTask(task.TaskUID, 15 * time.Second) // 15 seconds timeout
-	if err != nil {
+	if _, err := d.waitForTask(ctx, task.TaskUID); err != nil {
 		return &DriverError{
 			Op:  "DeleteDocuments",
 			Err: "failed to wait for deletion task: " + err.Error(),
@@ -199,7 +234,7 @@ func (d *MeilisearchDriver) Search(ctx context.Context, query string, limit int)
 		// locales (jpn + eng). Previously CJK queries were restricted to jpn-only,
 		// which prevented Japanese queries from matching English article content
 		// (e.g., "ヴァンス副大統領" could not find "JD Vance" articles).
-		result, err := d.searchIndex.Search(query, searchRequest)
+		result, err := d.searchIndex.SearchWithContext(ctx, query, searchRequest)
 		if err != nil {
 			return cacheEntry{}, err
 		}
@@ -236,7 +271,7 @@ func (d *MeilisearchDriver) SearchWithFilters(ctx context.Context, query string,
 		if filter != "" {
 			searchRequest.Filter = filter
 		}
-		result, err := d.searchIndex.Search(query, searchRequest)
+		result, err := d.searchIndex.SearchWithContext(ctx, query, searchRequest)
 		if err != nil {
 			return cacheEntry{}, err
 		}
@@ -256,7 +291,6 @@ func (d *MeilisearchDriver) SearchWithFilters(ctx context.Context, query string,
 // (Unix seconds) is inside the requested window. Either bound may be nil.
 // When both are nil this degrades to a plain Search.
 func (d *MeilisearchDriver) SearchWithDateFilter(ctx context.Context, query string, publishedAfter, publishedBefore *time.Time, limit int) ([]SearchDocumentDriver, error) {
-	_ = ctx
 	if publishedAfter == nil && publishedBefore == nil {
 		return d.Search(ctx, query, limit)
 	}
@@ -271,7 +305,7 @@ func (d *MeilisearchDriver) SearchWithDateFilter(ctx context.Context, query stri
 	}
 	searchRequest.Filter = strings.Join(filterClauses, " AND ")
 
-	result, err := d.searchIndex.Search(query, searchRequest)
+	result, err := d.searchIndex.SearchWithContext(ctx, query, searchRequest)
 	if err != nil {
 		return nil, &DriverError{Op: "SearchWithDateFilter", Err: err.Error()}
 	}
@@ -303,7 +337,7 @@ func (d *MeilisearchDriver) hitsToDocs(hits []meilisearch.Hit) []SearchDocumentD
 
 func (d *MeilisearchDriver) EnsureIndex(ctx context.Context) error {
 	// Check if index exists
-	_, err := d.index.FetchInfo()
+	_, err := d.index.FetchInfoWithContext(ctx)
 	if err != nil {
 		// Index might not exist, try to create it by adding a dummy document
 		dummyDoc := []map[string]interface{}{
@@ -315,7 +349,7 @@ func (d *MeilisearchDriver) EnsureIndex(ctx context.Context) error {
 			},
 		}
 
-		task, err := d.index.AddDocuments(dummyDoc, nil)
+		task, err := d.index.AddDocumentsWithContext(ctx, dummyDoc, nil)
 		if err != nil {
 			return &DriverError{
 				Op:  "EnsureIndex",
@@ -324,8 +358,7 @@ func (d *MeilisearchDriver) EnsureIndex(ctx context.Context) error {
 		}
 
 		// Wait for index creation
-		_, err = d.index.WaitForTask(task.TaskUID, 15 * time.Second)
-		if err != nil {
+		if _, err := d.waitForTask(ctx, task.TaskUID); err != nil {
 			return &DriverError{
 				Op:  "EnsureIndex",
 				Err: "failed to wait for index creation: " + err.Error(),
@@ -333,9 +366,9 @@ func (d *MeilisearchDriver) EnsureIndex(ctx context.Context) error {
 		}
 
 		// Delete the dummy document
-		deleteTask, err := d.index.DeleteDocument("init", nil)
+		deleteTask, err := d.index.DeleteDocumentWithContext(ctx, "init", nil)
 		if err == nil {
-			_, _ = d.index.WaitForTask(deleteTask.TaskUID, 15 * time.Second)
+			_, _ = d.waitForTask(ctx, deleteTask.TaskUID)
 		}
 	}
 
@@ -343,7 +376,7 @@ func (d *MeilisearchDriver) EnsureIndex(ctx context.Context) error {
 
 	// Set searchable attributes (prioritized order)
 	searchableAttrs := []string{"title", "content", "tags"}
-	if _, err := d.index.UpdateSearchableAttributes(&searchableAttrs); err != nil {
+	if _, err := d.index.UpdateSearchableAttributesWithContext(ctx, &searchableAttrs); err != nil {
 		return &DriverError{
 			Op:  "EnsureIndex",
 			Err: "failed to set searchable attributes: " + err.Error(),
@@ -356,7 +389,7 @@ func (d *MeilisearchDriver) EnsureIndex(ctx context.Context) error {
 	// ``language`` pairs with the acolyte language_quota rebalancing so
 	// cross-lingual recall can be scoped when the caller opts in.
 	filterableAttrs := []interface{}{"tags", "user_id", "published_at", "language"}
-	if _, err := d.index.UpdateFilterableAttributes(&filterableAttrs); err != nil {
+	if _, err := d.index.UpdateFilterableAttributesWithContext(ctx, &filterableAttrs); err != nil {
 		return &DriverError{
 			Op:  "EnsureIndex",
 			Err: "failed to set filterable attributes: " + err.Error(),
@@ -372,7 +405,7 @@ func (d *MeilisearchDriver) EnsureIndex(ctx context.Context) error {
 		"sort",      // User-defined sort parameter
 		"exactness", // Similarity of matched vs. query words
 	}
-	if _, err := d.index.UpdateRankingRules(&rankingRules); err != nil {
+	if _, err := d.index.UpdateRankingRulesWithContext(ctx, &rankingRules); err != nil {
 		return &DriverError{
 			Op:  "EnsureIndex",
 			Err: "failed to set ranking rules: " + err.Error(),
@@ -394,14 +427,14 @@ func (d *MeilisearchDriver) EnsureIndex(ctx context.Context) error {
 			AttributePatterns: []string{"title", "content", "tags"},
 		},
 	}
-	task, localErr := d.index.UpdateLocalizedAttributes(localizedAttrs)
+	task, localErr := d.index.UpdateLocalizedAttributesWithContext(ctx, localizedAttrs)
 	if localErr != nil {
 		return &DriverError{
 			Op:  "EnsureIndex",
 			Err: "failed to set localized attributes: " + localErr.Error(),
 		}
 	}
-	if _, err := d.index.WaitForTask(task.TaskUID, 15*time.Second); err != nil {
+	if _, err := d.waitForTask(ctx, task.TaskUID); err != nil {
 		return &DriverError{
 			Op:  "EnsureIndex",
 			Err: "failed to wait for localized attributes update: " + err.Error(),
@@ -420,7 +453,7 @@ func (d *MeilisearchDriver) EnsureIndex(ctx context.Context) error {
 				Err: "failed to set search cutoff ms: " + cutoffErr.Error(),
 			}
 		}
-		if _, err := d.index.WaitForTask(cutoffTask.TaskUID, 15*time.Second); err != nil {
+		if _, err := d.waitForTask(ctx, cutoffTask.TaskUID); err != nil {
 			return &DriverError{
 				Op:  "EnsureIndex",
 				Err: "failed to wait for search cutoff update: " + err.Error(),
@@ -512,7 +545,7 @@ func (d *MeilisearchDriver) SearchByUserID(ctx context.Context, query string, us
 		if containsCJK(query) {
 			req.Locales = []string{"jpn"}
 		}
-		result, err := d.searchIndex.Search(query, req)
+		result, err := d.searchIndex.SearchWithContext(ctx, query, req)
 		if err != nil {
 			return cacheEntry{}, err
 		}
@@ -560,7 +593,7 @@ func (d *MeilisearchDriver) SearchByUserIDWithPagination(ctx context.Context, qu
 		if containsCJK(query) {
 			paginReq.Locales = []string{"jpn"}
 		}
-		result, err := d.searchIndex.Search(query, paginReq)
+		result, err := d.searchIndex.SearchWithContext(ctx, query, paginReq)
 		if err != nil {
 			return cacheEntry{}, err
 		}
@@ -595,7 +628,7 @@ func (d *MeilisearchDriver) extractDocs(hits []meilisearch.Hit) []SearchDocument
 }
 
 func (d *MeilisearchDriver) RegisterSynonyms(ctx context.Context, synonyms map[string][]string) error {
-	task, err := d.index.UpdateSynonyms(&synonyms)
+	task, err := d.index.UpdateSynonymsWithContext(ctx, &synonyms)
 	if err != nil {
 		return &DriverError{
 			Op:  "RegisterSynonyms",
@@ -603,8 +636,7 @@ func (d *MeilisearchDriver) RegisterSynonyms(ctx context.Context, synonyms map[s
 		}
 	}
 
-	_, err = d.index.WaitForTask(task.TaskUID, 15 * time.Second)
-	if err != nil {
+	if _, err := d.waitForTask(ctx, task.TaskUID); err != nil {
 		return &DriverError{
 			Op:  "RegisterSynonyms",
 			Err: "failed to wait for synonyms update: " + err.Error(),

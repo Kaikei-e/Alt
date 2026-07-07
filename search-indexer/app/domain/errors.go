@@ -1,5 +1,14 @@
 package domain
 
+import "errors"
+
+// ErrArticleNotFound is returned by ArticleRepository.GetArticleByID when the
+// requested article does not exist. Callers that treat a missing article as a
+// skippable condition (e.g. batch indexing after an article was deleted)
+// should check for it with errors.Is rather than relying on a nil article
+// paired with a nil error.
+var ErrArticleNotFound = errors.New("article not found")
+
 // RepositoryError represents an error from the repository layer.
 type RepositoryError struct {
 	Op  string
