@@ -8,7 +8,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class ErrorBudgetResult(BaseModel):
@@ -38,6 +38,22 @@ class ServiceHealth(BaseModel):
     last_seen: datetime | None = None
     p95_latency_ms: float = 0.0
     health_score: int = 100
+
+
+class ApiPerformanceStats(BaseModel):
+    """APIエンドポイント単位のパフォーマンス統計（`collect_api_performance`の結果）"""
+
+    model_config = ConfigDict(frozen=True)
+
+    service: str
+    endpoint: str
+    request_count: int
+    avg_ms: float
+    p50_ms: float
+    p95_ms: float
+    p99_ms: float
+    max_ms: float = 0.0
+    error_spans: int = 0
 
 
 class HttpEndpointStats(BaseModel):
@@ -94,7 +110,7 @@ class AnalysisResult(BaseModel):
     error_trends: list[dict[str, Any]] = Field(default_factory=list)
 
     # APIパフォーマンス
-    api_performance: list[dict[str, Any]] = Field(default_factory=list)
+    api_performance: list[ApiPerformanceStats] = Field(default_factory=list)
     bottlenecks: list[dict[str, Any]] = Field(default_factory=list)
 
     # エラー分析

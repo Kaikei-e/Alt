@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any
 
 from jinja2 import Environment, FileSystemLoader, select_autoescape
+from pydantic import BaseModel
 
 from alt_metrics.analysis import get_health_status, get_health_status_emoji
 from alt_metrics.models import AnalysisResult
@@ -25,11 +26,21 @@ def _get_template_env() -> Environment:
     )
 
 
-def format_table(data: list[dict[str, Any]], columns: list[str] | None = None) -> str:
+def _row_keys(row: dict[str, Any] | BaseModel) -> list[str]:
+    """行データ（dictまたはPydanticモデル）からカラム名一覧を取得"""
+    return list(row.model_fields.keys()) if isinstance(row, BaseModel) else list(row.keys())
+
+
+def _row_value(row: dict[str, Any] | BaseModel, column: str) -> Any:
+    """行データ（dictまたはPydanticモデル）からカラム値を取得"""
+    return getattr(row, column, "") if isinstance(row, BaseModel) else row.get(column, "")
+
+
+def format_table(data: list[dict[str, Any] | BaseModel], columns: list[str] | None = None) -> str:
     """データをMarkdownテーブルにフォーマット
 
     Args:
-        data: テーブルデータ
+        data: テーブルデータ（dictまたはPydanticモデルのリスト）
         columns: 表示するカラム名のリスト
 
     Returns:
@@ -38,12 +49,12 @@ def format_table(data: list[dict[str, Any]], columns: list[str] | None = None) -
     if not data:
         return "_データがありません_\n"
 
-    cols = columns or list(data[0].keys())
+    cols = columns or _row_keys(data[0])
     header = "| " + " | ".join(cols) + " |"
     separator = "|" + "|".join("---" for _ in cols) + "|"
     rows = []
     for row in data:
-        values = [str(row.get(c, ""))[:60] for c in cols]
+        values = [str(_row_value(row, c))[:60] for c in cols]
         rows.append("| " + " | ".join(values) + " |")
 
     return "\n".join([header, separator, *rows]) + "\n"

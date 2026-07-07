@@ -161,7 +161,12 @@ def analyze_health(
     if thresholds is None:
         thresholds = HealthThresholds()
 
-    service_latencies = {s["service"]: s.get("p95_ms", 0) for s in result.api_performance}
+    # 同一サービスに複数エンドポイントがありうるため、ヘルススコアには
+    # 最悪ケース（最大p95）を採用する。単純な内包表記だと後続行が
+    # 上書きし、api_performanceの並び順（p95降順）依存の値になってしまう。
+    service_latencies: dict[str, float] = {}
+    for s in result.api_performance:
+        service_latencies[s.service] = max(service_latencies.get(s.service, 0.0), s.p95_ms)
 
     # サービスごとの健全性を計算
     for stats in result.service_stats:
@@ -289,7 +294,7 @@ def _generate_warnings(result: AnalysisResult, thresholds: HealthThresholds) -> 
 def _generate_recommendations(result: AnalysisResult, thresholds: HealthThresholds) -> None:
     """分析結果から推奨事項を生成"""
     # 遅いAPI
-    slow_apis = [a for a in result.api_performance if a.get("p95_ms", 0) > thresholds.latency_warning_ms]
+    slow_apis = [a for a in result.api_performance if a.p95_ms > thresholds.latency_warning_ms]
     if slow_apis:
         result.recommendations.append(
             f"遅いエンドポイントの最適化: {len(slow_apis)}件のAPIがp95 > {thresholds.latency_warning_ms}ms。"
