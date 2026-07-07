@@ -1,7 +1,23 @@
 """Configuration settings for recap-evaluator service."""
 
+import os
+from pathlib import Path
+
 from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+def _read_secret_file(env_name: str) -> str | None:
+    """Read `{env_name}_FILE` (Docker secret path) if set, else `{env_name}`.
+
+    Mirrors the `_FILE` suffix convention used across the repo's compose
+    services (e.g. recap-worker's `env_var()` in config.rs) so a password can
+    be mounted as a Docker secret instead of a plaintext env var.
+    """
+    file_path = os.getenv(f"{env_name}_FILE")
+    if file_path:
+        return Path(file_path).read_text().strip()
+    return os.getenv(env_name)
 
 
 class EvaluatorWeights(BaseSettings):
@@ -89,8 +105,17 @@ class Settings(BaseSettings):
         extra="ignore",
     )
 
-    # Database — no default credentials
-    recap_db_dsn: str = Field(description="PostgreSQL connection string for recap-db")
+    # Database — either a pre-built DSN (tests/local dev) or discrete
+    # host/port/user/name plus RECAP_DB_PASSWORD_FILE (Docker secret,
+    # consistent with recap-worker/recap-db-migrator in compose/recap.yaml).
+    # No default credentials.
+    recap_db_dsn: str | None = Field(
+        default=None, description="PostgreSQL connection string for recap-db"
+    )
+    recap_db_host: str = Field(default="recap-db")
+    recap_db_port: int = Field(default=5432)
+    recap_db_user: str = Field(default="recap_user")
+    recap_db_name: str = Field(default="recap")
     db_pool_min_size: int = Field(default=5, ge=1, le=50)
     db_pool_max_size: int = Field(default=20, ge=1, le=100)
 
@@ -127,3 +152,24 @@ class Settings(BaseSettings):
     # Server
     host: str = Field(default="0.0.0.0")
     port: int = Field(default=8080)
+
+    @model_validator(mode="after")
+    def build_recap_db_dsn(self) -> "Settings":
+        """Build recap_db_dsn from discrete host/port/user/name + password
+        when RECAP_DB_DSN is not set directly. Fails fast (raises) if neither
+        a full DSN nor a password (via RECAP_DB_PASSWORD/_FILE) is available —
+        never falls back to a passwordless or default-credential DSN.
+        """
+        if self.recap_db_dsn:
+            return self
+
+        password = _read_secret_file("RECAP_DB_PASSWORD")
+        if not password:
+            raise ValueError(
+                "RECAP_DB_DSN or RECAP_DB_PASSWORD/RECAP_DB_PASSWORD_FILE must be set"
+            )
+        self.recap_db_dsn = (
+            f"postgres://{self.recap_db_user}:{password}"
+            f"@{self.recap_db_host}:{self.recap_db_port}/{self.recap_db_name}"
+        )
+        return self

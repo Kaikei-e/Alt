@@ -1,12 +1,16 @@
 """Tests for PostgresGateway."""
 
+import json
 from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock
 from uuid import UUID, uuid4
 
 import pytest
 
-from recap_evaluator.gateway.postgres_gateway import PostgresGateway
+from recap_evaluator.gateway.postgres_gateway import (
+    PostgresGateway,
+    register_jsonb_codec,
+)
 
 
 @pytest.fixture
@@ -131,3 +135,34 @@ class TestPostgresGateway:
         )
 
         conn.execute.assert_called_once()
+
+
+class TestRegisterJsonbCodec:
+    """Without this codec, asyncpg cannot encode a Python dict to a JSONB
+    column — every save_evaluation_run call raises `DataError`. This is
+    passed as `init=` to asyncpg.create_pool (see main.py)."""
+
+    async def test_registers_jsonb_and_json_codecs(self):
+        conn = AsyncMock()
+
+        await register_jsonb_codec(conn)
+
+        registered_types = {
+            call.args[0]: call.kwargs for call in conn.set_type_codec.call_args_list
+        }
+        assert set(registered_types) == {"jsonb", "json"}
+        for kwargs in registered_types.values():
+            assert kwargs["schema"] == "pg_catalog"
+            assert kwargs["encoder"] is json.dumps
+            assert kwargs["decoder"] is json.loads
+
+    async def test_codec_encoder_and_decoder_round_trip_a_dict(self):
+        conn = AsyncMock()
+        await register_jsonb_codec(conn)
+
+        _, jsonb_kwargs = conn.set_type_codec.call_args_list[0]
+        encoder = jsonb_kwargs["encoder"]
+        decoder = jsonb_kwargs["decoder"]
+
+        payload = {"fallback_rate": 0.12, "nested": {"ok": True}}
+        assert decoder(encoder(payload)) == payload

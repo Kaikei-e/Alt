@@ -95,7 +95,11 @@ class GenreEvaluationResult:
 class ClusterMetrics:
     """Clustering quality metrics."""
 
-    silhouette_score: float = 0.0
+    # None means "not computed" (e.g. the DB-only evaluate_job path has no
+    # embeddings to run sklearn's silhouette_score against) — this must stay
+    # distinct from a real low score of 0.0, or aggregates/alerts treat
+    # "never measured" as "measured and terrible".
+    silhouette_score: float | None = None
     davies_bouldin_index: float = 0.0
     calinski_harabasz_index: float = 0.0
     nmi: float | None = None

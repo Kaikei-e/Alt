@@ -16,7 +16,7 @@ from recap_evaluator.evaluator.genre_evaluator import GenreEvaluator
 from recap_evaluator.evaluator.pipeline_evaluator import PipelineEvaluator
 from recap_evaluator.evaluator.summary_evaluator import SummaryEvaluator
 from recap_evaluator.gateway.ollama_gateway import OllamaGateway
-from recap_evaluator.gateway.postgres_gateway import PostgresGateway
+from recap_evaluator.gateway.postgres_gateway import PostgresGateway, register_jsonb_codec
 from recap_evaluator.gateway.recap_worker_gateway import RecapWorkerGateway
 from recap_evaluator.handler.evaluation_handler import router as evaluation_router
 from recap_evaluator.handler.health_handler import router as health_router
@@ -50,6 +50,7 @@ async def lifespan(app: FastAPI):
         dsn=settings.recap_db_dsn,
         min_size=settings.db_pool_min_size,
         max_size=settings.db_pool_max_size,
+        init=register_jsonb_codec,
     )
     # mTLS outbound when MTLS_ENFORCE=true (ADR-000737). The SSLContext is
     # kept live (same object) and its leaf cert is re-loaded in-place by the

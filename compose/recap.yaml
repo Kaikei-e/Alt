@@ -330,8 +330,12 @@ services:
       dockerfile: Dockerfile
     mem_limit: 2g
     environment:
-      # Database connection
-      - RECAP_DB_DSN=postgres://${RECAP_DB_USER}:${RECAP_DB_PASSWORD}@recap-db:5432/${RECAP_DB_NAME}
+      # Database credentials - password read from secret file (app constructs DSN)
+      - RECAP_DB_HOST=recap-db
+      - RECAP_DB_PORT=${RECAP_DB_PORT}
+      - RECAP_DB_USER=${RECAP_DB_USER}
+      - RECAP_DB_PASSWORD_FILE=/run/secrets/recap_db_password
+      - RECAP_DB_NAME=${RECAP_DB_NAME}
       - OLLAMA_URL=http://news-creator:11434
       - OLLAMA_MODEL=gemma4-e4b-12k
       - RECAP_WORKER_URL=http://recap-worker:9005
@@ -341,6 +345,8 @@ services:
       # OpenTelemetry
       - OTEL_EXPORTER_OTLP_ENDPOINT=http://rask-log-aggregator:4318
       - OTEL_SERVICE_NAME=recap-evaluator
+    secrets:
+      - recap_db_password
     ports:
       - "8085:8080"
     depends_on:

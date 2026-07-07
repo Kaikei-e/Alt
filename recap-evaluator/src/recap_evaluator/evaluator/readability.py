@@ -6,6 +6,7 @@ it evaluates "朝刊として読みやすいか" rather than pure linguistic flu
 
 from typing import Protocol
 
+import httpx
 import structlog
 
 logger = structlog.get_logger()
@@ -24,7 +25,13 @@ class ReadabilityEvaluator:
             return 0.0
         try:
             return float(await self._ollama.score_readability(summary))
-        except Exception as exc:
+        except (httpx.HTTPError, ValueError, KeyError) as exc:
+            # Recoverable: the LLM call itself failed (network/timeout/HTTP
+            # error) or returned an unparseable response. Anything else
+            # (e.g. AttributeError from a missing/broken score_readability
+            # implementation) must propagate — silently defaulting to 0.0
+            # there would mask a wiring bug as "always low quality"
+            # (CLAUDE.md rule 8).
             logger.warning("readability evaluation failed", error=str(exc))
             return 0.0
 

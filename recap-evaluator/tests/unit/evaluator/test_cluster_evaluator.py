@@ -4,7 +4,6 @@ from uuid import uuid4
 
 import pytest
 
-from recap_evaluator.config import AlertThresholds
 from recap_evaluator.domain.models import AlertLevel, ClusterMetrics
 from recap_evaluator.evaluator.cluster_evaluator import ClusterEvaluator
 from tests.fixtures.job_data import SAMPLE_CLUSTER, SAMPLE_SUBWORKER_RUN
@@ -67,11 +66,15 @@ class TestClusterEvaluator:
 
         assert "technology" in result
 
-    async def test_evaluate_batch_sets_alert_level_from_thresholds(
+    async def test_evaluate_batch_excludes_uncomputed_silhouette_from_alert(
         self, mock_db, alert_thresholds
     ):
-        """evaluate_batch should apply silhouette thresholds to aggregated results."""
-        # silhouette_score=0.10 is below critical threshold (0.15)
+        """evaluate_job never computes a real silhouette on the DB-only path
+        (no embeddings available), so every per-job ClusterMetrics carries
+        silhouette_score=None. evaluate_batch must exclude that from the
+        threshold check instead of treating "not computed" as a 0.0 score —
+        otherwise the aggregate is always CRITICAL regardless of real quality.
+        """
         mock_db.fetch_subworker_runs.return_value = [SAMPLE_SUBWORKER_RUN]
         mock_db.fetch_clusters_for_run.return_value = [
             {**SAMPLE_CLUSTER, "cluster_id": i, "size": 10}
@@ -81,27 +84,31 @@ class TestClusterEvaluator:
         evaluator = ClusterEvaluator(mock_db, alert_thresholds)
         result = await evaluator.evaluate_batch([uuid4()])
 
-        # evaluate_job sets silhouette_score=0.0 (no embeddings), below critical
-        assert result["technology"].alert_level == AlertLevel.CRITICAL
+        assert result["technology"].silhouette_score is None
+        assert result["technology"].alert_level == AlertLevel.OK
 
-    async def test_evaluate_batch_sets_ok_when_above_thresholds(
-        self, mock_db
+    async def test_evaluate_batch_applies_thresholds_to_computed_silhouette(
+        self, mock_db, alert_thresholds, monkeypatch
     ):
-        """evaluate_batch should set OK when silhouette is above warn threshold."""
-        thresholds = AlertThresholds(
-            clustering_silhouette_warn=0.25,
-            clustering_silhouette_critical=0.15,
-        )
-        # Create a run that returns silhouette_score=0.0 from evaluate_job
-        # but we'll test with a custom evaluator that returns high scores
-        mock_db.fetch_subworker_runs.return_value = [SAMPLE_SUBWORKER_RUN]
-        mock_db.fetch_clusters_for_run.return_value = [
-            {**SAMPLE_CLUSTER, "cluster_id": i, "size": 10}
-            for i in range(5)
-        ]
+        """When a per-job silhouette score IS available (e.g. a future
+        embeddings-based evaluate_job), evaluate_batch must still alert on
+        it — the None-exclusion must not swallow real critical scores."""
+        evaluator = ClusterEvaluator(mock_db, alert_thresholds)
 
-        evaluator = ClusterEvaluator(mock_db, thresholds)
+        async def fake_evaluate_job(job_id):
+            return {
+                "technology": ClusterMetrics(
+                    num_clusters=5,
+                    avg_cluster_size=10.0,
+                    min_cluster_size=10,
+                    max_cluster_size=10,
+                    silhouette_score=0.10,  # below critical threshold (0.15)
+                )
+            }
+
+        monkeypatch.setattr(evaluator, "evaluate_job", fake_evaluate_job)
+
         result = await evaluator.evaluate_batch([uuid4()])
 
-        # silhouette_score=0.0 from evaluate_job, below critical
+        assert result["technology"].silhouette_score == pytest.approx(0.10)
         assert result["technology"].alert_level == AlertLevel.CRITICAL
