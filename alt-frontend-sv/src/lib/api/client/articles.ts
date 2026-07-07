@@ -1,4 +1,4 @@
-import { createClientTransport } from "$lib/connect/transport.client";
+import { createClientTransport } from "$lib/connect/transport-client";
 
 /**
  * Safe HTML string type (server-sanitized)

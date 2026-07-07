@@ -84,6 +84,34 @@ describe("ArticleSearchSection Alt-Paper compliance", () => {
 		await expect.element(page.getByText("ML")).toBeInTheDocument();
 	});
 
+	it("renders the snippet as plain escaped text instead of HTML (XSS regression guard)", async () => {
+		const maliciousSection: ArticleSectionData = {
+			hits: [
+				{
+					id: "a3",
+					title: "Malicious Feed Article",
+					snippet: '<img src=x onerror="window.__xss = true">',
+					link: "https://example.com/malicious",
+					tags: [],
+					matchedFields: ["content"],
+				},
+			],
+			estimatedTotal: 1,
+			hasMore: false,
+		};
+
+		render(ArticleSearchSection, {
+			props: { section: maliciousSection, query: "AI" },
+		});
+
+		// The snippet text must show up verbatim as text content...
+		await expect
+			.element(page.getByText(/<img src=x onerror=/))
+			.toBeInTheDocument();
+		// ...and must never be parsed into a real <img> element.
+		expect(document.querySelector(".ref-hit-snippet img")).toBeNull();
+	});
+
 	it("shows empty state with italic text", async () => {
 		const emptySection: ArticleSectionData = {
 			hits: [],
