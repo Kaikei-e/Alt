@@ -516,23 +516,61 @@ func TestIsWhitelistedPath_DoesNotMatchSubstrings(t *testing.T) {
 
 // M-006: rate limiter map must shrink as IPs go cold, otherwise an attacker
 // using many spoofed IPs can blow up memory.
-func TestCleanupExpiredLimiters_RemovesBlockedAndStaleEntries(t *testing.T) {
+//
+// Eviction must key on inactivity (lastSeen), not on "was ever blocked".
+// The previous implementation only evicted entries with a stale blockedAt,
+// so an IP that sends a handful of requests and never trips the rate limit
+// (the common case, not just the attack case) had blockedAt permanently
+// zero and was never reclaimed — unbounded growth under ordinary traffic.
+func TestCleanupExpiredLimiters_EvictsByInactivityRegardlessOfBlockedState(t *testing.T) {
 	limiters := map[string]*rateLimiter{
-		"hot": {
-			limiter:   nil, // unused in cleanup
-			blockedAt: time.Now(),
+		"active-never-blocked": {
+			limiter:  nil, // unused in cleanup
+			lastSeen: time.Now(),
 		},
-		"cold": {
+		"stale-never-blocked": {
+			limiter:  nil,
+			lastSeen: time.Now().Add(-2 * time.Hour),
+		},
+		"active-blocked": {
+			limiter:   nil,
+			blockedAt: time.Now(),
+			lastSeen:  time.Now(),
+		},
+		"stale-blocked": {
 			limiter:   nil,
 			blockedAt: time.Now().Add(-2 * time.Hour),
+			lastSeen:  time.Now().Add(-2 * time.Hour),
 		},
 	}
 	mu := sync.RWMutex{}
 
 	CleanupExpiredLimiters(limiters, &mu, time.Hour)
 
-	require.Contains(t, limiters, "hot", "recently blocked IP must remain")
-	require.NotContains(t, limiters, "cold", "stale blocked IP must be evicted")
+	require.Contains(t, limiters, "active-never-blocked", "recently active IP must remain even though it was never blocked")
+	require.NotContains(t, limiters, "stale-never-blocked", "an IP that never trips the rate limit must still be reclaimed once it goes cold (M-006 gap)")
+	require.Contains(t, limiters, "active-blocked", "recently active blocked IP must remain")
+	require.NotContains(t, limiters, "stale-blocked", "stale blocked IP must be evicted")
+}
+
+// TestCheckRateLimit_StampsLastSeen closes the loop between the request path
+// and CleanupExpiredLimiters: a limiter that is only ever created/touched via
+// checkRateLimit (the real production call path, never blocked in this test)
+// must still get a non-zero lastSeen, otherwise the inactivity-based eviction
+// above has nothing real to key on.
+func TestCheckRateLimit_StampsLastSeen(t *testing.T) {
+	limiters := make(map[string]*rateLimiter)
+	mu := sync.RWMutex{}
+	cfg := DOSProtectionConfig{RateLimit: 100, BurstLimit: 100, WindowSize: time.Minute, BlockDuration: time.Minute}
+
+	before := time.Now()
+	allowed := checkRateLimit("203.0.113.5", cfg, limiters, &mu)
+	require.True(t, allowed)
+
+	limiter, ok := limiters["203.0.113.5"]
+	require.True(t, ok, "checkRateLimit must register a limiter for the IP")
+	assert.True(t, limiter.blockedAt.IsZero(), "a well-behaved IP must never be marked blocked")
+	assert.False(t, limiter.lastSeen.Before(before), "lastSeen must be stamped on every request, not just on block")
 }
 
 // M-007: getClientIP must NOT trust X-Forwarded-For / X-Real-IP coming from

@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/google/uuid"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -75,4 +76,21 @@ func TestSelectLens_ClearSuccess(t *testing.T) {
 	err := uc.Execute(context.Background(), userID, uuid.Nil)
 
 	require.NoError(t, err)
+}
+
+// TestNewSelectLensUsecase_PanicsOnNilClearPort pins CLAUDE.md rule 8: all
+// four ports are required composition-root dependencies (knowledge_module.go
+// always wires the sovereign client for each), so a nil clearPort means DI
+// forgot to wire it. The previous `if u.clearPort == nil { return nil }`
+// inside Execute faked a successful lens clear instead of surfacing the
+// wiring bug — see .claude/rules/di-wiring.md.
+func TestNewSelectLensUsecase_PanicsOnNilClearPort(t *testing.T) {
+	assert.Panics(t, func() {
+		NewSelectLensUsecase(
+			&mockGetLensPort{},
+			&mockGetCurrentLensVersionPort{},
+			&mockSelectCurrentLensPort{},
+			nil,
+		)
+	})
 }

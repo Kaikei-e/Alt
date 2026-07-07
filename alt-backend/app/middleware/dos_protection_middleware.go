@@ -69,7 +69,8 @@ func (c *DOSProtectionConfig) Validate() error {
 type rateLimiter struct {
 	limiter   *rate.Limiter
 	blockedAt time.Time
-	mu        sync.Mutex // Protects blockedAt field
+	lastSeen  time.Time  // last request observed for this IP; drives inactivity eviction
+	mu        sync.Mutex // Protects blockedAt/lastSeen fields
 }
 
 // circuitBreaker implements circuit breaker pattern.
@@ -271,8 +272,13 @@ func checkRateLimit(clientIP string, config DOSProtectionConfig, limiters map[st
 		mu.Unlock()
 	}
 
-	// Check if IP is currently blocked (with proper synchronization)
+	// Check if IP is currently blocked (with proper synchronization). Also
+	// stamps lastSeen so CleanupExpiredLimiters can evict by inactivity
+	// instead of only evicting entries that were blocked at least once
+	// (M-006 follow-up: an IP that never trips the rate limit still needs
+	// its limiter reclaimed once it goes cold).
 	limiter.mu.Lock()
+	limiter.lastSeen = time.Now()
 	if !limiter.blockedAt.IsZero() {
 		if time.Since(limiter.blockedAt) < config.BlockDuration {
 			limiter.mu.Unlock()
@@ -366,7 +372,14 @@ func DefaultDOSProtectionConfig() DOSProtectionConfig {
 	}
 }
 
-// CleanupExpiredLimiters removes expired rate limiters to prevent memory leaks
+// CleanupExpiredLimiters removes rate limiters that have gone cold — no
+// request seen from that IP for at least maxAge. The previous implementation
+// only evicted entries that had been blocked at least once, so the (much
+// more common) case of an IP that sends a few requests and never trips the
+// rate limit was never reclaimed: those limiters accumulated forever under
+// normal traffic, not just under attack (M-006 did not actually bound
+// memory). Eviction is keyed on lastSeen instead, which every request path
+// through checkRateLimit stamps regardless of whether the IP gets blocked.
 func CleanupExpiredLimiters(limiters map[string]*rateLimiter, mu *sync.RWMutex, maxAge time.Duration) {
 	mu.Lock()
 	defer mu.Unlock()
@@ -374,7 +387,7 @@ func CleanupExpiredLimiters(limiters map[string]*rateLimiter, mu *sync.RWMutex, 
 	cutoff := time.Now().Add(-maxAge)
 	for ip, limiter := range limiters {
 		limiter.mu.Lock()
-		shouldDelete := !limiter.blockedAt.IsZero() && limiter.blockedAt.Before(cutoff)
+		shouldDelete := limiter.lastSeen.Before(cutoff)
 		limiter.mu.Unlock()
 
 		if shouldDelete {

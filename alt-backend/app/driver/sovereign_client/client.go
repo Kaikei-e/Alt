@@ -8,6 +8,7 @@ package sovereign_client
 import (
 	"alt/port/knowledge_sovereign_port"
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -19,6 +20,15 @@ import (
 	sovereignv1 "alt/gen/proto/services/sovereign/v1"
 	"alt/gen/proto/services/sovereign/v1/sovereignv1connect"
 )
+
+// ErrSovereignDisabled is returned by every mutator (ApplyProjectionMutation,
+// ApplyRecallMutation, ApplyCurationMutation, and the write_ports.go
+// pass-throughs) when the client is disabled (SOVEREIGN_URL unset). Silently
+// returning nil here made a deliberately-disabled client indistinguishable
+// from a DI wiring bug that forgot to set SOVEREIGN_URL — every knowledge
+// mutation looked like it succeeded while doing nothing (CLAUDE.md rule 8 /
+// .claude/rules/di-wiring.md).
+var ErrSovereignDisabled = errors.New("sovereign_client: disabled (SOVEREIGN_URL unset); mutation rejected instead of silently no-op'ing")
 
 // healthProbeTimeout caps the startup probe so a misrouted upstream cannot
 // block process startup. Connect-RPC content-type errors return well under a
@@ -112,7 +122,7 @@ func isContentTypeMismatch(err error) bool {
 // ApplyProjectionMutation implements knowledge_sovereign_port.ProjectionMutator.
 func (c *Client) ApplyProjectionMutation(ctx context.Context, mutation knowledge_sovereign_port.ProjectionMutation) error {
 	if !c.enabled {
-		return nil
+		return ErrSovereignDisabled
 	}
 
 	resp, err := c.client.ApplyProjectionMutation(ctx, connect.NewRequest(&sovereignv1.ApplyProjectionMutationRequest{
@@ -133,7 +143,7 @@ func (c *Client) ApplyProjectionMutation(ctx context.Context, mutation knowledge
 // ApplyRecallMutation implements knowledge_sovereign_port.RecallMutator.
 func (c *Client) ApplyRecallMutation(ctx context.Context, mutation knowledge_sovereign_port.RecallMutation) error {
 	if !c.enabled {
-		return nil
+		return ErrSovereignDisabled
 	}
 
 	resp, err := c.client.ApplyRecallMutation(ctx, connect.NewRequest(&sovereignv1.ApplyRecallMutationRequest{
@@ -154,7 +164,7 @@ func (c *Client) ApplyRecallMutation(ctx context.Context, mutation knowledge_sov
 // ApplyCurationMutation implements knowledge_sovereign_port.CurationMutator.
 func (c *Client) ApplyCurationMutation(ctx context.Context, mutation knowledge_sovereign_port.CurationMutation) error {
 	if !c.enabled {
-		return nil
+		return ErrSovereignDisabled
 	}
 
 	resp, err := c.client.ApplyCurationMutation(ctx, connect.NewRequest(&sovereignv1.ApplyCurationMutationRequest{

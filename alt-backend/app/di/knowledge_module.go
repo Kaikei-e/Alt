@@ -87,7 +87,7 @@ func newKnowledgeModule(infra *InfraModule, article *ArticleModule) *KnowledgeMo
 
 	// Knowledge Sovereign: all knowledge data access via Connect-RPC
 	sovereignURL := os.Getenv("SOVEREIGN_URL")
-	sovereignEnabled := sovereignURL != ""
+	sovereignEnabled := logSovereignWiringState(sovereignURL, os.Getenv("APP_ENV"))
 	sovereignCli := sovereign_client.NewClient(sovereignURL, sovereignEnabled)
 
 	// Knowledge Home gateways
@@ -211,4 +211,24 @@ func newKnowledgeModule(infra *InfraModule, article *ArticleModule) *KnowledgeMo
 
 		KnowledgeHomeMetrics: knowledgeHomeMetrics,
 	}
+}
+
+// logSovereignWiringState emits the loud enabled/disabled signal CLAUDE.md
+// rule 8 / .claude/rules/di-wiring.md require: without it, "SOVEREIGN_URL
+// forgotten" and "Knowledge Home deliberately disabled" were
+// indistinguishable at startup, even though a disabled client makes every
+// knowledge_home mutation a silent no-op (sovereign_client.Client.enabled).
+// In production (appEnv == "production") a missing SOVEREIGN_URL is a
+// startup failure rather than a limp-mode warning.
+func logSovereignWiringState(sovereignURL, appEnv string) bool {
+	enabled := sovereignURL != ""
+	if enabled {
+		slog.Info("sovereign_enabled", "base_url", sovereignURL)
+		return true
+	}
+	slog.Warn("sovereign_disabled", "reason", "SOVEREIGN_URL unset; all Knowledge Home mutations will no-op")
+	if appEnv == "production" {
+		panic("SOVEREIGN_URL is required when APP_ENV=production — refusing to start with Knowledge Home silently disabled")
+	}
+	return false
 }

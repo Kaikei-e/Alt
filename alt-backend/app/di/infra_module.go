@@ -70,6 +70,7 @@ func newInfraModule(pool *pgxpool.Pool) *InfraModule {
 
 	// MQ-Hub event publisher (optional, fail-open if disabled)
 	mqhubClient := mqhub_connect.NewClient(cfg.MQHub.ConnectURL, cfg.MQHub.Enabled)
+	logMQHubWiringState(cfg.MQHub.Enabled, cfg.MQHub.ConnectURL)
 	eventPublisherGw := event_publisher_gateway.NewEventPublisherGateway(mqhubClient, slog.Default())
 
 	// Auth-hub client for identity management (abstracts Kratos)
@@ -92,5 +93,18 @@ func newInfraModule(pool *pgxpool.Pool) *InfraModule {
 		SearchIndexerDriver: searchIndexerDriver,
 		RobotsTxtGateway:    robotsTxtGw,
 		Pool:                pool,
+	}
+}
+
+// logMQHubWiringState emits the loud enabled/disabled signal CLAUDE.md rule 8
+// / .claude/rules/di-wiring.md require: mqhub_connect.Client silently no-ops
+// every event publish when disabled, and without this log there was no way
+// to tell "MQHUB_ENABLED=false" (intentional) apart from a forgotten config
+// flag at startup.
+func logMQHubWiringState(enabled bool, connectURL string) {
+	if enabled {
+		slog.Info("mqhub_enabled", "connect_url", connectURL)
+	} else {
+		slog.Warn("mqhub_disabled", "reason", "MQHUB_ENABLED=false; event publishing will no-op")
 	}
 }

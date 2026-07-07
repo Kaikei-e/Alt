@@ -51,9 +51,10 @@ func TestEmitArticleCreatedEvent(t *testing.T) {
 		assert.Equal(t, "outbox-worker", ev.ActorID)
 	})
 
-	t.Run("skips when port is nil", func(t *testing.T) {
-		// Should not panic
-		emitArticleCreatedEvent(context.Background(), nil, []byte(`{"article_id":"x"}`))
+	t.Run("panics when port is nil (wiring bug must be loud, not silent)", func(t *testing.T) {
+		assert.Panics(t, func() {
+			emitArticleCreatedEvent(context.Background(), nil, []byte(`{"article_id":"x"}`))
+		})
 	})
 
 	t.Run("skips on invalid user_id", func(t *testing.T) {

@@ -1,6 +1,7 @@
 package di
 
 import (
+	"alt/driver/preprocessor_client"
 	"alt/gateway/archive_article_gateway"
 	"alt/gateway/article_content_cache_gateway"
 	"alt/gateway/article_gateway"
@@ -13,9 +14,11 @@ import (
 	"alt/gateway/fetch_tag_cloud_gateway"
 	"alt/gateway/internal_article_gateway"
 	"alt/gateway/latest_article_gateway"
+	"alt/gateway/preprocessor_summarize_gateway"
 	"alt/gateway/scraping_policy_gateway"
 	"alt/port/rag_integration_port"
 	"alt/usecase/archive_article_usecase"
+	"alt/usecase/fetch_article_summaries_usecase"
 	"alt/usecase/fetch_article_summary_usecase"
 	"alt/usecase/fetch_article_tags_usecase"
 	"alt/usecase/fetch_article_usecase"
@@ -27,6 +30,7 @@ import (
 	"alt/usecase/get_article_source_url_usecase"
 	"alt/usecase/search_article_usecase"
 	"alt/usecase/stream_article_tags_usecase"
+	"alt/usecase/summarize_article_usecase"
 	"alt/utils/batch_article_fetcher"
 	"time"
 )
@@ -47,6 +51,12 @@ type ArticleModule struct {
 	BatchArticleFetcher        *batch_article_fetcher.BatchArticleFetcher
 	FetchTagCloudUsecase       *fetch_tag_cloud_usecase.FetchTagCloudUsecase
 	GetArticleSourceURLUsecase *get_article_source_url_usecase.GetArticleSourceURLUsecase
+
+	// Legacy REST v1 summarize endpoints (POST /v1/feeds/summarize,
+	// /summarize/queue, GET /summarize/status/:job_id, POST /fetch/summary).
+	SummarizeArticleUsecase      *summarize_article_usecase.Usecase
+	FetchArticleSummariesUsecase *fetch_article_summaries_usecase.Usecase
+	PreProcessorSummarizeGateway *preprocessor_summarize_gateway.Gateway
 
 	// Gateways exposed for cross-module wiring
 	InternalArticleGateway  *internal_article_gateway.Gateway
@@ -122,6 +132,16 @@ func newArticleModule(infra *InfraModule, feed *FeedModule, ragAdapter rag_integ
 	articleURLLookupGw := article_gateway.NewArticleURLLookupGateway(infra.Pool)
 	getArticleSourceURLUC := get_article_source_url_usecase.NewGetArticleSourceURLUsecase(articleURLLookupGw)
 
+	// Legacy REST v1 summarize endpoints. Single driver-layer pre-processor
+	// HTTP client, wrapped by a gateway satisfying preprocessor_summarize_port,
+	// consolidating what was previously ~600 lines duplicated across
+	// rest/utils.go, rest/rest_feeds/utils.go, and
+	// rest/rest_feeds/summarization/helpers.go.
+	preprocessorClient := preprocessor_client.NewClient(infra.Config.PreProcessor.URL)
+	preprocessorSummarizeGw := preprocessor_summarize_gateway.NewGateway(preprocessorClient)
+	summarizeArticleUC := summarize_article_usecase.NewUsecase(altDB, preprocessorSummarizeGw, fetchArticleGw)
+	fetchArticleSummariesUC := fetch_article_summaries_usecase.NewUsecase(altDB, batchFetcher, summarizeArticleUC)
+
 	return &ArticleModule{
 		ArticleUsecase:             fetchArticleUC,
 		ArchiveArticleUsecase:      archiveArticleUC,
@@ -136,6 +156,10 @@ func newArticleModule(infra *InfraModule, feed *FeedModule, ragAdapter rag_integ
 		BatchArticleFetcher:        batchFetcher,
 		FetchTagCloudUsecase:       fetchTagCloudUC,
 		GetArticleSourceURLUsecase: getArticleSourceURLUC,
+
+		SummarizeArticleUsecase:      summarizeArticleUC,
+		FetchArticleSummariesUsecase: fetchArticleSummariesUC,
+		PreProcessorSummarizeGateway: preprocessorSummarizeGw,
 
 		InternalArticleGateway:  internalArticleGw,
 		FetchArticleTagsGateway: fetchArticleTagsGw,
