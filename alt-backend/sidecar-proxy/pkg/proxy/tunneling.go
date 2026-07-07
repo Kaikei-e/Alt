@@ -27,9 +27,11 @@ func (p *LightweightProxy) forwardToEnvoyConnect(w http.ResponseWriter, r *http.
 		}
 	}
 
-	// Set required headers for Envoy dynamic forward proxy
+	// Set required headers for Envoy dynamic forward proxy.
+	// net/http sends the Host line from proxyReq.Host, not from the Header
+	// map — Header.Set("Host", ...) was a silent no-op.
 	proxyReq.Header.Set("X-Target-Domain", targetHost)
-	proxyReq.Header.Set("Host", targetHost)
+	proxyReq.Host = targetHost
 	proxyReq.Header.Set("X-Forwarded-For", r.RemoteAddr)
 	proxyReq.Header.Set("X-Request-ID", traceID)
 

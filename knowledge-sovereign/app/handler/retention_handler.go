@@ -92,6 +92,12 @@ func (h *RetentionHandler) handleRunRetention(w http.ResponseWriter, r *http.Req
 	json.NewEncoder(w).Encode(result)
 }
 
+// retentionStatusResponse wraps the retention log list per altctl's
+// home_retention.go decode struct (ADR-000942).
+type retentionStatusResponse struct {
+	Logs []sovereign_db.RetentionLogEntry `json:"logs"`
+}
+
 func (h *RetentionHandler) handleRetentionStatus(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	logs, err := h.repo.ListRetentionLogs(ctx, 20)
@@ -99,20 +105,36 @@ func (h *RetentionHandler) handleRetentionStatus(w http.ResponseWriter, r *http.
 		http.Error(w, fmt.Sprintf(`{"error": %q}`, err.Error()), http.StatusInternalServerError)
 		return
 	}
+	if logs == nil {
+		logs = []sovereign_db.RetentionLogEntry{}
+	}
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(logs)
+	if err := json.NewEncoder(w).Encode(retentionStatusResponse{Logs: logs}); err != nil {
+		slog.WarnContext(ctx, "failed to write retention status response", "error", err)
+	}
+}
+
+// eligiblePartitionRow is a flat, table-tagged partition row. altctl's
+// home_retention.go decodes a single flat `partitions` array rather than
+// the previous per-table-grouped shape (ADR-000942).
+type eligiblePartitionRow struct {
+	TableName     string `json:"table_name"`
+	PartitionName string `json:"partition_name"`
+	RangeStart    string `json:"range_start"`
+	RangeEnd      string `json:"range_end"`
+	RowCount      int64  `json:"row_count"`
+	SizeBytes     int64  `json:"size_bytes"`
+}
+
+type eligiblePartitionsResponse struct {
+	Partitions []eligiblePartitionRow `json:"partitions"`
 }
 
 func (h *RetentionHandler) handleEligiblePartitions(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	now := time.Now()
 
-	type eligibleResult struct {
-		Table    string                       `json:"table"`
-		Eligible []sovereign_db.PartitionInfo `json:"eligible"`
-	}
-
-	var results []eligibleResult
+	rows := []eligiblePartitionRow{}
 	for _, tableName := range []string{"knowledge_events", "knowledge_user_events"} {
 		parts, err := h.repo.ListPartitions(ctx, tableName)
 		if err != nil {
@@ -120,11 +142,22 @@ func (h *RetentionHandler) handleEligiblePartitions(w http.ResponseWriter, r *ht
 			return
 		}
 		eligible := h.policy.PartitionsEligibleForArchive(tableName, parts, now)
-		results = append(results, eligibleResult{Table: tableName, Eligible: eligible})
+		for _, part := range eligible {
+			rows = append(rows, eligiblePartitionRow{
+				TableName:     tableName,
+				PartitionName: part.Name,
+				RangeStart:    part.RangeStart.Format(time.RFC3339),
+				RangeEnd:      part.RangeEnd.Format(time.RFC3339),
+				RowCount:      part.RowCount,
+				SizeBytes:     part.SizeBytes,
+			})
+		}
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(results)
+	if err := json.NewEncoder(w).Encode(eligiblePartitionsResponse{Partitions: rows}); err != nil {
+		slog.WarnContext(ctx, "failed to write eligible-partitions response", "error", err)
+	}
 }
 
 // RunRetention executes the retention cycle: export → verify → log.

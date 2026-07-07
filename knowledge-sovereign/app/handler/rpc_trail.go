@@ -16,7 +16,10 @@ func (h *SovereignHandler) GetTrailFootprints(
 	req *connect.Request[sovereignv1.GetTrailFootprintsRequest],
 ) (*connect.Response[sovereignv1.GetTrailFootprintsResponse], error) {
 	msg := req.Msg
-	userID := parseUUID(msg.UserId)
+	userID, err := parseUUIDField("user_id", msg.UserId)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInvalidArgument, err)
+	}
 
 	footprints, nextCursor, hasMore, err := h.readDB.GetTrailFootprints(ctx, userID, msg.Cursor, int(msg.Limit), msg.FilterTags)
 	if err != nil {

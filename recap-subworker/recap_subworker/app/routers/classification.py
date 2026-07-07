@@ -1,3 +1,4 @@
+import asyncio
 import time
 
 import structlog
@@ -89,7 +90,10 @@ async def classify_texts(
         except Exception as e:
             logger.warning("Failed to parse threshold overrides", error=str(e))
 
-    results = classifier.predict_batch(
+    # predict_batch() does embedding + inference (CPU-bound); offload to a
+    # worker thread so it doesn't block the event loop.
+    results = await asyncio.to_thread(
+        classifier.predict_batch,
         request.texts,
         multi_label=request.multi_label,
         top_k=request.top_k,

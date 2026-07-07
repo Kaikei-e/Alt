@@ -66,5 +66,14 @@ type SyncStateRepository interface {
 	CleanupStale(ctx context.Context, retentionDays int) (int, error)
 }
 
+// APIUsageRepository interface for daily Inoreader API usage tracking.
+// Mirrors service.APIUsageRepository (Go structural typing means no import is
+// needed in either direction).
+type APIUsageRepository interface {
+	GetTodaysUsage(ctx context.Context) (*models.APIUsageTracking, error)
+	CreateUsageRecord(ctx context.Context, usage *models.APIUsageTracking) error
+	UpdateUsageRecord(ctx context.Context, usage *models.APIUsageTracking) error
+}
+
 // Note: SubscriptionRepository interface is defined in subscription_repository.go
 // to avoid circular dependencies and interface conflicts

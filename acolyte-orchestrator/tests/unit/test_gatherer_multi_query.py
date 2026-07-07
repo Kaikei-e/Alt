@@ -314,6 +314,68 @@ async def test_gatherer_deduplicates_across_facets() -> None:
 
 
 @pytest.mark.asyncio
+async def test_gatherer_propagates_language_via_facets() -> None:
+    """Evidence gathered through the faceted (RRF) path must carry ArticleHit.language.
+
+    Without this, CuratorNode.rebalance_by_language and SourceMap always see
+    "und" and language-quota / cross-lingual features are functionally dead.
+    """
+    articles_by_query = {
+        "AI": [ArticleHit(article_id="art-1", title="AI Article", tags=["AI"], score=0.9, language="ja")],
+    }
+    evidence = FakeEvidence(articles_by_query)
+    content_store = MemoryContentStore()
+    node = GathererNode(evidence, content_store=content_store)
+
+    state = {
+        "brief": {"topic": "AI trends"},
+        "outline": [
+            {
+                "key": "analysis",
+                "title": "Analysis",
+                "query_facets": [
+                    {
+                        "intent": "investigate",
+                        "raw_query": "AI trends",
+                        "must_have_terms": ["AI", "trends"],
+                        "entities": [],
+                        "optional_terms": [],
+                        "time_range": None,
+                        "source_bias": "article",
+                    }
+                ],
+            },
+        ],
+    }
+    result = await node(state)
+
+    art1 = next(e for e in result["evidence"] if e["id"] == "art-1")
+    assert art1["language"] == "ja"
+
+
+@pytest.mark.asyncio
+async def test_gatherer_propagates_language_via_legacy_queries() -> None:
+    """Evidence gathered through the legacy search_queries path must also carry language."""
+    articles_by_query = {
+        "market": [ArticleHit(article_id="art-1", title="Market Report", tags=["market"], score=0.9, language="en")],
+    }
+    evidence = FakeEvidence(articles_by_query)
+    content_store = MemoryContentStore()
+    node = GathererNode(evidence, content_store=content_store)
+
+    state = {
+        "brief": {"topic": "AI semiconductor"},
+        "outline": [
+            {"key": "market", "title": "Market", "search_queries": ["market trends"]},
+        ],
+    }
+    result = await node(state)
+
+    art1 = next(e for e in result["evidence"] if e["id"] == "art-1")
+    assert art1["language"] == "en"
+
+
+@pytest.mark.asyncio
 async def test_gatherer_synthesis_only_sections_skip_search() -> None:
     """Sections with empty query_facets (synthesis_only) do not trigger search."""
     evidence = FakeEvidence()

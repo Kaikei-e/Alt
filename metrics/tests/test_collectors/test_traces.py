@@ -15,13 +15,14 @@ from alt_metrics.collectors.traces import (
     collect_span_type_stats,
 )
 from alt_metrics.exceptions import CollectorError
+from alt_metrics.models import ApiPerformanceStats
 
 
 class TestCollectApiPerformance:
     """collect_api_performance関数のテスト"""
 
-    def test_returns_list_of_dicts(self) -> None:
-        """結果を辞書のリストとして返す"""
+    def test_returns_list_of_api_performance_stats(self) -> None:
+        """結果を型付きApiPerformanceStatsのリストとして返す"""
         mock_client = MagicMock()
         mock_client.query.return_value.column_names = [
             "service",
@@ -42,9 +43,10 @@ class TestCollectApiPerformance:
         result = collect_api_performance(mock_client, "rask_logs", 24)
 
         assert len(result) == 2
-        assert result[0]["service"] == "alt-backend"
-        assert result[0]["p95_ms"] == 95.0
-        assert result[1]["endpoint"] == "GET /dashboard"
+        assert all(isinstance(row, ApiPerformanceStats) for row in result)
+        assert result[0].service == "alt-backend"
+        assert result[0].p95_ms == 95.0
+        assert result[1].endpoint == "GET /dashboard"
 
     def test_empty_result_returns_empty_list(self) -> None:
         """空の結果は空リストを返す"""

@@ -7,6 +7,7 @@ import type { AuthorizeUsecase } from "../usecase/authorize.ts";
 import type { SecretManager } from "../port/secret_manager.ts";
 import type { InoreaderCredentials } from "../domain/types.ts";
 import { logger } from "../infra/logger.ts";
+import { config } from "../infra/config.ts";
 
 interface PendingAuthState {
   state: string;
@@ -26,6 +27,12 @@ export class OAuthServer {
 
   start(signal?: AbortSignal): void {
     const redirectUrl = new URL(this.credentials.redirect_uri);
+
+    if (!config.getEnvOrFile("INTERNAL_AUTH_TOKEN")) {
+      logger.error(
+        "token_api_disabled: INTERNAL_AUTH_TOKEN is not set at startup, /api/token will reject all requests until it is configured",
+      );
+    }
 
     logger.info(
       `Starting persistent OAuth callback listener at 0.0.0.0:${
@@ -140,11 +147,28 @@ export class OAuthServer {
   }
 
   private async handleTokenApi(req: Request): Promise<Response> {
-    // Simple internal auth header check
-    const authHeader = req.headers.get("X-Internal-Auth");
-    const expectedToken = Deno.env.get("INTERNAL_AUTH_TOKEN");
+    const expectedToken = config.getEnvOrFile("INTERNAL_AUTH_TOKEN");
 
-    if (expectedToken && authHeader !== expectedToken) {
+    // Fail closed: without a configured secret there is no way to
+    // authenticate the caller, so refuse to serve tokens rather than
+    // silently skipping the auth check.
+    if (!expectedToken) {
+      logger.error(
+        "token_api_disabled: INTERNAL_AUTH_TOKEN is not configured, refusing /api/token request (fail-closed)",
+      );
+      return new Response(
+        JSON.stringify({
+          error: "Token API disabled: INTERNAL_AUTH_TOKEN is not configured",
+        }),
+        {
+          status: 503,
+          headers: { "Content-Type": "application/json" },
+        },
+      );
+    }
+
+    const authHeader = req.headers.get("X-Internal-Auth");
+    if (authHeader !== expectedToken) {
       return new Response(JSON.stringify({ error: "Unauthorized" }), {
         status: 401,
         headers: { "Content-Type": "application/json" },

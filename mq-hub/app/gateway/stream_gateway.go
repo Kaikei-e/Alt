@@ -91,3 +91,8 @@ func (g *StreamGateway) SubscribeWithTimeout(ctx context.Context, stream domain.
 func (g *StreamGateway) DeleteStream(ctx context.Context, stream domain.StreamKey) error {
 	return g.driver.DeleteStream(ctx, stream)
 }
+
+// Expire sets a TTL on a stream key.
+func (g *StreamGateway) Expire(ctx context.Context, stream domain.StreamKey, ttl time.Duration) error {
+	return g.driver.Expire(ctx, stream, ttl)
+}

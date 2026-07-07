@@ -10,7 +10,7 @@
  */
 
 import { onDestroy, untrack } from "svelte";
-import { createClientTransport } from "$lib/connect/transport.client";
+import { createClientTransport } from "$lib/connect/transport-client";
 import { streamFeedStats } from "$lib/connect/feeds";
 
 interface StreamingFeedStatsState {

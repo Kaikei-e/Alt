@@ -3,7 +3,6 @@ use super::pipeline::{ProcessingLoopParams, run_processing_loop};
 use super::protocol::SenderConfig;
 use super::shutdown::{ShutdownHandle, SignalHandler};
 use crate::{
-    buffer::{BatchConfig, BufferConfig, BufferManager, MemoryConfig},
     collector::{CollectorConfig, LogCollector},
     parser::UniversalParser,
     reliability::{HealthReport, ReliabilityManager},
@@ -13,7 +12,12 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 use thiserror::Error;
 use tokio::sync::{RwLock, mpsc};
+use tokio_util::sync::CancellationToken;
 use tracing::{info, warn};
+
+/// How often the disk-fallback replay task attempts to resend batches that
+/// were persisted to disk after transmission + retries failed.
+const DISK_REPLAY_INTERVAL: Duration = Duration::from_secs(60);
 
 #[derive(Error, Debug)]
 pub enum ServiceError {
@@ -43,7 +47,6 @@ pub struct ServiceManager {
     // Components
     collector: Option<LogCollector>,
     parser: Arc<UniversalParser>,
-    buffer_manager: Option<BufferManager>,
     sender: Option<LogSender>,
     reliability_manager: Option<ReliabilityManager>,
 
@@ -89,7 +92,6 @@ impl ServiceManager {
             start_time: Instant::now(),
             collector: None,
             parser,
-            buffer_manager: None,
             sender: None,
             reliability_manager: None,
             sender_config,
@@ -137,6 +139,18 @@ impl ServiceManager {
             }
         })?);
 
+        // Shared shutdown signal for background tasks that live alongside
+        // the main loop but aren't driven by its own `select!` (currently:
+        // the disk-fallback replay task). `run_processing_loop` cancels this
+        // token when it starts shutting down.
+        let cancel_token = CancellationToken::new();
+
+        // Periodically resend batches persisted to disk fallback - otherwise
+        // disk fallback is a write-only sink that never gets read back out.
+        reliability_manager
+            .clone()
+            .start_disk_replay_task(DISK_REPLAY_INTERVAL, cancel_token.clone());
+
         let params = ProcessingLoopParams {
             collector,
             parser,
@@ -148,6 +162,8 @@ impl ServiceManager {
             sender_config: self.sender_config.clone(),
             batch_size: self.config.batch_size,
             flush_interval: self.config.flush_interval,
+            channel_capacity: self.config.buffer_capacity,
+            cancel_token,
         };
 
         tokio::spawn(async move {
@@ -176,31 +192,6 @@ impl ServiceManager {
         };
 
         self.collector = Some(LogCollector::new(collector_config).await?);
-
-        // Initialize buffer manager
-        let buffer_config = BufferConfig {
-            capacity: self.config.buffer_capacity,
-            batch_size: self.config.batch_size,
-            batch_timeout: self.config.flush_interval,
-            enable_backpressure: true,
-            backpressure_threshold: 0.8,
-            backpressure_delay: Duration::from_micros(100),
-        };
-
-        let batch_config = BatchConfig {
-            max_size: self.config.batch_size,
-            max_wait_time: self.config.flush_interval,
-            max_memory_size: 10 * 1024 * 1024, // 10MB
-        };
-
-        let memory_config = MemoryConfig {
-            max_memory: 100 * 1024 * 1024, // 100MB
-            warning_threshold: 0.8,
-            critical_threshold: 0.95,
-        };
-
-        self.buffer_manager =
-            Some(BufferManager::new(buffer_config, batch_config, memory_config).await?);
 
         // Initialize sender
         let client_config = ClientConfig {
@@ -278,10 +269,7 @@ impl ServiceManager {
     }
 
     pub fn is_initialized(&self) -> bool {
-        self.collector.is_some()
-            && self.buffer_manager.is_some()
-            && self.sender.is_some()
-            && self.reliability_manager.is_some()
+        self.collector.is_some() && self.sender.is_some() && self.reliability_manager.is_some()
     }
 
     pub async fn is_running(&self) -> bool {

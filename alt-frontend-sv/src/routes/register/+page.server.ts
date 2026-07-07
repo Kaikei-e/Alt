@@ -1,6 +1,7 @@
 import { redirect } from "@sveltejs/kit";
 import { env } from "$env/dynamic/private";
 import { ory } from "$lib/ory";
+import { sanitizeReturnTo } from "$lib/server/return-to";
 import type { PageServerLoad } from "./$types";
 
 // KratosパブリックURL（ブラウザからのアクセス用）
@@ -9,41 +10,19 @@ const kratosPublicUrl = env.KRATOS_PUBLIC_URL || "http://localhost/ory";
 const appOrigin = env.ORIGIN || "http://localhost:4173";
 const basePath = "";
 
-// 絶対URLかどうかをチェックするヘルパー関数
-function isAbsoluteUrl(url: string): boolean {
-	return /^https?:\/\//i.test(url);
-}
-
-// return_toをサニタイズして、ループを防ぐ
-function sanitizeReturnTo(returnTo: string | null, origin: string): string {
-	if (!returnTo) {
-		return `${origin}/feeds`;
-	}
-
-	// 絶対URLの場合はそのまま使用、相対URLの場合はoriginを追加
-	let cleanUrl: string;
-	if (isAbsoluteUrl(returnTo)) {
-		cleanUrl = returnTo;
-	} else {
-		cleanUrl = `${origin}${returnTo.startsWith("/") ? returnTo : `/${returnTo}`}`;
-	}
-
-	// return_toからクエリパラメータを削除（ループを防ぐため）
-	cleanUrl = cleanUrl.split("?")[0];
-
-	// /register を /feeds に変換（ループ防止）
-	if (cleanUrl.endsWith("/register") || cleanUrl.includes("/register")) {
-		return `${origin}/feeds`;
-	}
-
-	return cleanUrl;
-}
+// /register への差し戻しループを防ぐための共通オプション
+const REGISTER_RETURN_TO_OPTIONS = { loopPaths: ["/register"] };
 
 export const load: PageServerLoad = async ({ url, locals, request }) => {
 	// If already logged in, redirect to home or return_to
 	if (locals.session) {
-		const returnTo = url.searchParams.get("return_to") || `${basePath}/`;
-		throw redirect(303, returnTo);
+		const returnTo = url.searchParams.get("return_to");
+		const sanitizedReturnTo = sanitizeReturnTo(
+			returnTo,
+			appOrigin,
+			REGISTER_RETURN_TO_OPTIONS,
+		);
+		throw redirect(303, sanitizedReturnTo);
 	}
 
 	const flow = url.searchParams.get("flow");
@@ -52,7 +31,11 @@ export const load: PageServerLoad = async ({ url, locals, request }) => {
 	// If no flow, initiate registration flow
 	if (!flow) {
 		// return_toをサニタイズしてループを防ぐ（/registerは/feedsに変換）
-		const returnUrl = sanitizeReturnTo(returnTo, appOrigin);
+		const returnUrl = sanitizeReturnTo(
+			returnTo,
+			appOrigin,
+			REGISTER_RETURN_TO_OPTIONS,
+		);
 		const initUrl = new URL(
 			`${kratosPublicUrl}/self-service/registration/browser`,
 		);

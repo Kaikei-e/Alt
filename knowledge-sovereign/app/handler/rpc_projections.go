@@ -17,7 +17,10 @@ func (h *SovereignHandler) GetKnowledgeHomeItems(
 	req *connect.Request[sovereignv1.GetKnowledgeHomeItemsRequest],
 ) (*connect.Response[sovereignv1.GetKnowledgeHomeItemsResponse], error) {
 	msg := req.Msg
-	userID := parseUUID(msg.UserId)
+	userID, err := parseUUIDField("user_id", msg.UserId)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInvalidArgument, err)
+	}
 
 	var filter *sovereign_db.LensFilter
 	if msg.Filter != nil {
@@ -53,7 +56,10 @@ func (h *SovereignHandler) GetTodayDigest(
 	ctx context.Context,
 	req *connect.Request[sovereignv1.GetTodayDigestRequest],
 ) (*connect.Response[sovereignv1.GetTodayDigestResponse], error) {
-	userID := parseUUID(req.Msg.UserId)
+	userID, err := parseUUIDField("user_id", req.Msg.UserId)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInvalidArgument, err)
+	}
 	date, _ := time.Parse("2006-01-02", req.Msg.Date)
 	if date.IsZero() {
 		date = time.Now()
@@ -86,7 +92,10 @@ func (h *SovereignHandler) GetRecallCandidates(
 	ctx context.Context,
 	req *connect.Request[sovereignv1.GetRecallCandidatesRequest],
 ) (*connect.Response[sovereignv1.GetRecallCandidatesResponse], error) {
-	userID := parseUUID(req.Msg.UserId)
+	userID, err := parseUUIDField("user_id", req.Msg.UserId)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInvalidArgument, err)
+	}
 	candidates, err := h.readDB.GetRecallCandidates(ctx, userID, int(req.Msg.Limit))
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("GetRecallCandidates: %w", err))
@@ -140,7 +149,10 @@ func (h *SovereignHandler) CountNeedToKnowItems(
 	ctx context.Context,
 	req *connect.Request[sovereignv1.CountNeedToKnowItemsRequest],
 ) (*connect.Response[sovereignv1.CountNeedToKnowItemsResponse], error) {
-	userID := parseUUID(req.Msg.UserId)
+	userID, err := parseUUIDField("user_id", req.Msg.UserId)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInvalidArgument, err)
+	}
 	date, _ := time.Parse("2006-01-02", req.Msg.Date)
 	if date.IsZero() {
 		date = time.Now()

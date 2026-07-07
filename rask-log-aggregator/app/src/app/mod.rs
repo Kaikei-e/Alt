@@ -34,12 +34,25 @@ pub async fn run() -> Result<(), AggregatorError> {
     let main_app = router::main_router(app_state.log_exporter);
     let otlp_app = router::otlp_router(app_state.otel_exporter);
 
-    server::serve(
+    let serve_result = server::serve(
         main_app,
         otlp_app,
         settings.http_port,
         settings.otlp_http_port,
-        shutdown_token,
+        shutdown_token.clone(),
     )
-    .await
+    .await;
+
+    // `serve` already cancels `shutdown_token` on SIGTERM/SIGINT before it
+    // returns, but if it returned early via an I/O error that path never
+    // ran — cancel unconditionally here as a safety net. Then hold and await
+    // the flush loop's JoinHandle so the runtime can't drop it mid-write:
+    // detached background tasks get silently aborted on shutdown, losing
+    // the final batch.
+    shutdown_token.cancel();
+    if let Err(e) = app_state.flush_handle.await {
+        ::tracing::error!("BatchWriter flush task panicked: {e}");
+    }
+
+    serve_result
 }

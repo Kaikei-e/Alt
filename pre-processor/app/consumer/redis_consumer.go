@@ -122,6 +122,7 @@ func (c *Consumer) Start(ctx context.Context) error {
 	)
 
 	go c.consumeLoop(ctx)
+	go c.reclaimLoop(ctx)
 	return nil
 }
 
@@ -188,30 +189,102 @@ func (c *Consumer) readAndProcess(ctx context.Context) error {
 	}
 
 	for _, stream := range streams {
-		for _, message := range stream.Messages {
-			event := c.parseEvent(message)
-
-			if err := c.handler.HandleEvent(ctx, event); err != nil {
-				c.logger.Error("failed to process event",
-					"message_id", message.ID,
-					"event_type", event.EventType,
-					"error", err,
-				)
-				// Don't ACK failed messages, they'll be retried
-				continue
-			}
-
-			// Acknowledge successful processing
-			if err := c.client.XAck(ctx, c.config.StreamKey, c.config.GroupName, message.ID).Err(); err != nil {
-				c.logger.Error("failed to acknowledge message",
-					"message_id", message.ID,
-					"error", err,
-				)
-			}
-		}
+		c.processMessages(ctx, stream.Messages)
 	}
 
 	return nil
+}
+
+// processMessages runs the handler over each message and ACKs it only once
+// the handler reports success (durable side effect). Failed messages are
+// left un-ACKed in the PEL so they are retried — either by this consumer on
+// the next XREADGROUP idle-claim, or, if this consumer crashes first, by
+// reclaimLoop's periodic XAUTOCLAIM sweep.
+func (c *Consumer) processMessages(ctx context.Context, messages []redis.XMessage) {
+	for _, message := range messages {
+		event := c.parseEvent(message)
+
+		if err := c.handler.HandleEvent(ctx, event); err != nil {
+			c.logger.Error("failed to process event",
+				"message_id", message.ID,
+				"event_type", event.EventType,
+				"error", err,
+			)
+			// Don't ACK failed messages, they'll be retried
+			continue
+		}
+
+		// Acknowledge successful processing
+		if err := c.client.XAck(ctx, c.config.StreamKey, c.config.GroupName, message.ID).Err(); err != nil {
+			c.logger.Error("failed to acknowledge message",
+				"message_id", message.ID,
+				"error", err,
+			)
+		}
+	}
+}
+
+// reclaimLoop periodically sweeps the stream's pending entries list (PEL) via
+// XAUTOCLAIM, reassigning to this consumer any message that has been idle
+// (unacknowledged) for longer than ClaimIdleTime. Without this loop, messages
+// left in the PEL by a crashed consumer are never redelivered — ClaimIdleTime
+// would be dead configuration. See .claude/rules/event-stream-consumer.md.
+func (c *Consumer) reclaimLoop(ctx context.Context) {
+	interval := c.config.ClaimIdleTime
+	if interval <= 0 {
+		interval = 30 * time.Second
+	}
+
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			c.logger.Info("reclaim loop context cancelled, stopping")
+			return
+		case <-c.shutdownChan:
+			c.logger.Info("reclaim loop shutdown requested, stopping")
+			return
+		case <-ticker.C:
+			if err := c.reclaimPending(ctx); err != nil {
+				c.logger.Error("error reclaiming pending messages", "error", err)
+			}
+		}
+	}
+}
+
+// reclaimPending runs a full XAUTOCLAIM cursor sweep — looping until Redis
+// returns the "0-0" cursor — claiming every pending entry idle for longer
+// than ClaimIdleTime and processing it exactly like a freshly-read message.
+func (c *Consumer) reclaimPending(ctx context.Context) error {
+	cursor := "0-0"
+	for {
+		messages, next, err := c.client.XAutoClaim(ctx, &redis.XAutoClaimArgs{
+			Stream:   c.config.StreamKey,
+			Group:    c.config.GroupName,
+			Consumer: c.config.ConsumerName,
+			MinIdle:  c.config.ClaimIdleTime,
+			Start:    cursor,
+			Count:    c.config.BatchSize,
+		}).Result()
+		if err != nil {
+			return err
+		}
+
+		if len(messages) > 0 {
+			c.logger.Info("reclaimed idle pending messages",
+				"count", len(messages),
+				"min_idle", c.config.ClaimIdleTime,
+			)
+			c.processMessages(ctx, messages)
+		}
+
+		if next == "0-0" {
+			return nil
+		}
+		cursor = next
+	}
 }
 
 // parseEvent converts a Redis Stream message to an Event.

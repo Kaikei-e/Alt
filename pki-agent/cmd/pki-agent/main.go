@@ -61,6 +61,10 @@ func main() {
 	certFile := &infrastructure.CertFile{
 		CertPath: cfg.CertPath, KeyPath: cfg.KeyPath,
 		OwnerUID: cfg.OwnerUID, OwnerGID: cfg.OwnerGID,
+		// config.Load always resolves OwnerUID/OwnerGID to a concrete,
+		// intentional pair (default 0:0, i.e. root) — never "unset" — so
+		// the composition root always requests the chown.
+		ChownRequested: true,
 	}
 	stepCA := &infrastructure.StepCACLI{
 		CAURL: cfg.CAURL, RootFile: cfg.RootFile,

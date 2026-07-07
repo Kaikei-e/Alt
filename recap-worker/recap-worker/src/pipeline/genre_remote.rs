@@ -86,6 +86,39 @@ impl RemoteGenreStage {
         candidates
     }
 
+    /// Zip articles with their classification results into genre assignments.
+    ///
+    /// `get_completed_results` concatenates chunk results in `chunk_idx`
+    /// order but skips failed chunks, so a naive `zip` silently shifts the
+    /// alignment for every article after a failed middle chunk (each article
+    /// ends up paired with the wrong chunk's result). Requiring an exact
+    /// count match turns that silent misalignment into a hard error.
+    fn zip_articles_with_results(
+        &self,
+        articles: Vec<DeduplicatedArticle>,
+        results: Vec<crate::clients::subworker::ClassificationResult>,
+    ) -> Result<(Vec<GenreAssignment>, HashMap<String, usize>)> {
+        if articles.len() != results.len() {
+            return Err(anyhow::anyhow!(
+                "classification result count ({}) does not match article count ({}); refusing to zip mismatched results to avoid misaligned genre assignments",
+                results.len(),
+                articles.len()
+            ));
+        }
+
+        let mut assignments = Vec::with_capacity(articles.len());
+        let mut genre_distribution: HashMap<String, usize> = HashMap::new();
+
+        for (article, result) in articles.into_iter().zip(results) {
+            let assignment = self.create_genre_assignment(article, result);
+            let top_genre = assignment.genres[0].clone();
+            *genre_distribution.entry(top_genre).or_insert(0) += 1;
+            assignments.push(assignment);
+        }
+
+        Ok((assignments, genre_distribution))
+    }
+
     /// Create a genre assignment from an article and classification result
     #[allow(clippy::unused_self)] // Reserved for future use
     fn create_genre_assignment(
@@ -157,15 +190,8 @@ impl GenreStage for RemoteGenreStage {
         }
 
         // Process results and create assignments
-        let mut assignments = Vec::with_capacity(total_articles);
-        let mut genre_distribution: HashMap<String, usize> = HashMap::new();
-
-        for (article, result) in corpus.articles.into_iter().zip(results) {
-            let assignment = self.create_genre_assignment(article, result);
-            let top_genre = assignment.genres[0].clone();
-            *genre_distribution.entry(top_genre).or_insert(0) += 1;
-            assignments.push(assignment);
-        }
+        let (assignments, genre_distribution) =
+            self.zip_articles_with_results(corpus.articles, results)?;
 
         info!(
             job_id = %job.job_id,
@@ -366,5 +392,86 @@ mod tests {
 
         // After removing the threshold gate, we always use the subworker's top_genre
         assert_eq!(assignment.genres, vec!["tech"]);
+    }
+
+    fn make_stage() -> RemoteGenreStage {
+        let pool = sqlx::PgPool::connect_lazy("postgres://test:test@localhost/test").unwrap();
+        RemoteGenreStage::new(
+            Arc::new(SubworkerClient::new("http://localhost:8002", 10).unwrap()),
+            Arc::new(crate::queue::ClassificationJobQueue::new(
+                crate::queue::QueueStore::new(pool),
+                SubworkerClient::new("http://localhost:8002", 10).unwrap(),
+                1,
+                200,
+                3,
+                5000,
+            )),
+        )
+    }
+
+    fn make_article(id: &str) -> DeduplicatedArticle {
+        DeduplicatedArticle {
+            id: id.to_string(),
+            title: Some(format!("Title {id}")),
+            sentences: vec!["Content".to_string()],
+            sentence_hashes: vec![],
+            language: "en".to_string(),
+            published_at: None,
+            source_url: None,
+            tags: vec![],
+            duplicates: vec![],
+        }
+    }
+
+    fn make_result(top_genre: &str) -> crate::clients::subworker::ClassificationResult {
+        let mut scores = HashMap::new();
+        scores.insert(top_genre.to_string(), 0.9);
+        crate::clients::subworker::ClassificationResult {
+            top_genre: top_genre.to_string(),
+            confidence: 0.9,
+            scores,
+        }
+    }
+
+    #[tokio::test]
+    async fn test_zip_articles_with_results_rejects_count_mismatch() {
+        // Simulates the scenario where a middle chunk failed and
+        // `get_completed_results` skipped it: the surviving results are one
+        // short of the article count. Zipping anyway would silently pair
+        // every subsequent article with the wrong chunk's result.
+        let stage = make_stage();
+        let articles = vec![
+            make_article("art-1"),
+            make_article("art-2"),
+            make_article("art-3"),
+        ];
+        let results = vec![make_result("tech"), make_result("science")];
+
+        let err = stage
+            .zip_articles_with_results(articles, results)
+            .expect_err("count mismatch must be a hard error, not a silent misalignment");
+
+        let message = err.to_string();
+        assert!(message.contains('3'), "error should mention article count: {message}");
+        assert!(message.contains('2'), "error should mention result count: {message}");
+    }
+
+    #[tokio::test]
+    async fn test_zip_articles_with_results_aligns_on_matching_counts() {
+        let stage = make_stage();
+        let articles = vec![make_article("art-1"), make_article("art-2")];
+        let results = vec![make_result("tech"), make_result("science")];
+
+        let (assignments, genre_distribution) = stage
+            .zip_articles_with_results(articles, results)
+            .expect("matching counts must succeed");
+
+        assert_eq!(assignments.len(), 2);
+        assert_eq!(assignments[0].article.id, "art-1");
+        assert_eq!(assignments[0].genres, vec!["tech"]);
+        assert_eq!(assignments[1].article.id, "art-2");
+        assert_eq!(assignments[1].genres, vec!["science"]);
+        assert_eq!(genre_distribution.get("tech"), Some(&1));
+        assert_eq!(genre_distribution.get("science"), Some(&1));
     }
 }

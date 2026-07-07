@@ -8,6 +8,8 @@ import (
 	"rag-orchestrator/internal/domain"
 	"sort"
 	"time"
+
+	"github.com/google/uuid"
 )
 
 // MorningLetterInput defines the input for morning letter extraction
@@ -302,22 +304,82 @@ func (u *morningLetterUsecase) parseTopicsResponse(text string, contexts []Conte
 
 	jsonStr := text[jsonStart:jsonEnd]
 
-	var response domain.MorningLetterResponse
-	if err := json.Unmarshal([]byte(jsonStr), &response); err != nil {
+	// The prompt (morning_letter_prompt_builder.go) instructs the LLM to
+	// return "article_refs": [1, 3, 5] — 1-based positional indices into the
+	// numbered context list shown in the user message ("[%d] title (...)").
+	// domain.TopicSummary.ArticleRefs is []ArticleRef (a UUID-bearing struct),
+	// which the LLM never emits, so we unmarshal into an intermediate DTO
+	// that matches the prompt's actual contract and then hydrate the real
+	// ArticleRef structs from boostedContexts.
+	var raw rawMorningLetterResponse
+	if err := json.Unmarshal([]byte(jsonStr), &raw); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal topics response: %w", err)
 	}
 
-	// Enrich article refs with actual article data from contexts
-	for i := range response.Topics {
-		enrichedRefs := make([]domain.ArticleRef, 0)
-		for _, refIdx := range response.Topics[i].ArticleRefs {
-			// refIdx is 1-based index
-			if refIdx.ID.String() != "" {
-				enrichedRefs = append(enrichedRefs, refIdx)
-			}
-		}
-		response.Topics[i].ArticleRefs = enrichedRefs
+	topics := make([]domain.TopicSummary, 0, len(raw.Topics))
+	for _, rt := range raw.Topics {
+		topics = append(topics, domain.TopicSummary{
+			Topic:       rt.Topic,
+			Headline:    rt.Headline,
+			Summary:     rt.Summary,
+			Importance:  rt.Importance,
+			Keywords:    rt.Keywords,
+			ArticleRefs: enrichArticleRefs(rt.ArticleRefs, contexts),
+		})
 	}
 
-	return response.Topics, nil
+	return topics, nil
+}
+
+// rawMorningLetterResponse mirrors the LLM's actual JSON contract (see
+// morning_letter_prompt_builder.go), where article_refs are 1-based
+// positional indices rather than domain.ArticleRef structs.
+type rawMorningLetterResponse struct {
+	Topics []rawTopicSummary `json:"topics"`
+	Meta   domain.TopicsMeta `json:"meta"`
+}
+
+type rawTopicSummary struct {
+	Topic       string   `json:"topic"`
+	Headline    string   `json:"headline"`
+	Summary     string   `json:"summary"`
+	Importance  float32  `json:"importance"`
+	ArticleRefs []int    `json:"article_refs"`
+	Keywords    []string `json:"keywords"`
+}
+
+// enrichArticleRefs maps the LLM's 1-based positional article_refs indices
+// back to the numbered context list the prompt showed it and hydrates them
+// into domain.ArticleRef with the real article UUID/title/URL. Out-of-range
+// indices, duplicates, and contexts without a parseable ArticleID are
+// dropped rather than surfaced as fake refs.
+func enrichArticleRefs(refs []int, contexts []ContextItem) []domain.ArticleRef {
+	enriched := make([]domain.ArticleRef, 0, len(refs))
+	seen := make(map[int]struct{}, len(refs))
+	for _, idx := range refs {
+		if _, dup := seen[idx]; dup {
+			continue
+		}
+		seen[idx] = struct{}{}
+
+		pos := idx - 1
+		if pos < 0 || pos >= len(contexts) {
+			continue
+		}
+		ctx := contexts[pos]
+
+		articleID, err := uuid.Parse(ctx.ArticleID)
+		if err != nil {
+			continue
+		}
+
+		publishedAt, _ := time.Parse(time.RFC3339, ctx.PublishedAt)
+		enriched = append(enriched, domain.ArticleRef{
+			ID:          articleID,
+			Title:       ctx.Title,
+			URL:         ctx.URL,
+			PublishedAt: publishedAt,
+		})
+	}
+	return enriched
 }

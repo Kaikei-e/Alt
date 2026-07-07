@@ -162,7 +162,7 @@ func (u *retrieveContextUsecase) Execute(ctx context.Context, input RetrieveCont
 		slog.Int64("duration_ms", stage1Duration.Milliseconds()))
 
 	// Stage 2: BM25 search + original vector search + expanded embedding (parallel)
-	if err := retrieval.EmbedAndSearch(ctx, sc, u.encoder, u.bm25Searcher, u.chunkRepo,
+	if err := retrieval.EmbedAndSearch(ctx, sc, u.encoder, u.bm25Searcher, u.hybridSearcher, u.chunkRepo,
 		u.config.HybridSearch.Enabled, u.config.HybridSearch.BM25Limit, u.logger); err != nil {
 		return nil, err
 	}

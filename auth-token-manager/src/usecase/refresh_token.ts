@@ -8,6 +8,7 @@ import type {
   AuthenticationResult,
   NetworkConfig,
   RetryConfig,
+  TokenResponse,
 } from "../domain/types.ts";
 import type { HttpClient } from "../port/http_client.ts";
 import { logger } from "../infra/logger.ts";
@@ -32,75 +33,57 @@ export class RefreshTokenUsecase {
         await this.checkNetworkConnectivity();
       }
 
-      return await retryWithBackoff(
-        async () => {
-          const existingTokenData = await this.secretManager.getTokenSecret();
-          if (!existingTokenData || !existingTokenData.refresh_token) {
-            throw new Error(
-              "No existing refresh token found. Manual OAuth setup required.",
-            );
-          }
-
-          if (existingTokenData.refresh_token.length < 10) {
-            throw new Error(
-              "Invalid refresh token format. Manual OAuth setup required.",
-            );
-          }
-
-          // Check if current token is still valid (within 5 minutes of expiry)
-          if (existingTokenData.expires_at) {
-            const expiresAt = new Date(existingTokenData.expires_at);
-            const timeUntilExpiry = expiresAt.getTime() - Date.now();
-            const fiveMinutes = 5 * 60 * 1000;
-
-            if (timeUntilExpiry > fiveMinutes) {
-              logger.info("Current access token is still valid", {
-                time_until_expiry_minutes: Math.round(
-                  timeUntilExpiry / 1000 / 60,
-                ),
-              });
-              return {
-                success: true,
-                tokens: {
-                  access_token: existingTokenData.access_token,
-                  refresh_token: existingTokenData.refresh_token,
-                  expires_at: expiresAt,
-                  token_type: "Bearer",
-                  scope: "read write",
-                },
-                metadata: {
-                  duration: Date.now() - startTime,
-                  method: "refresh_token",
-                  session_id: crypto.randomUUID(),
-                },
-              };
-            }
-          }
-
-          const tokens = await this.tokenClient.refreshToken(
-            existingTokenData.refresh_token,
-          );
-
-          await this.secretManager.updateTokenSecret(tokens);
-
-          const duration = Date.now() - startTime;
-          logger.info("Token refresh completed successfully", {
-            duration_ms: duration,
-          });
-
-          return {
-            success: true,
-            tokens,
-            metadata: {
-              duration,
-              method: "refresh_token",
-              session_id: crypto.randomUUID(),
-            },
-          };
-        },
+      // Retry boundary: only the read + precondition checks are retried
+      // here. They are pure reads, so retrying them is safe.
+      const readResult = await retryWithBackoff(
+        () => this.readExistingToken(),
         this.retryConfig,
-        "refresh token flow",
+        "read existing token",
       );
+
+      if (readResult.type === "still_valid") {
+        return {
+          success: true,
+          tokens: readResult.tokens,
+          metadata: {
+            duration: Date.now() - startTime,
+            method: "refresh_token",
+            session_id: crypto.randomUUID(),
+          },
+        };
+      }
+
+      // tokenClient.refreshToken() rotates the refresh_token server-side and
+      // is therefore non-idempotent. It must NOT sit inside retryWithBackoff:
+      // if the rotation succeeds but the subsequent write fails, a retry here
+      // would resend the already-consumed refresh_token and fail with
+      // invalid_grant, permanently losing the newly-rotated token.
+      const tokens = await this.tokenClient.refreshToken(
+        readResult.refreshToken,
+      );
+
+      // Only the (idempotent) persistence step is retried, using the
+      // already-rotated token held in memory.
+      await retryWithBackoff(
+        () => this.secretManager.updateTokenSecret(tokens),
+        this.retryConfig,
+        "persist refreshed token",
+      );
+
+      const duration = Date.now() - startTime;
+      logger.info("Token refresh completed successfully", {
+        duration_ms: duration,
+      });
+
+      return {
+        success: true,
+        tokens,
+        metadata: {
+          duration,
+          method: "refresh_token",
+          session_id: crypto.randomUUID(),
+        },
+      };
     } catch (error) {
       const duration = Date.now() - startTime;
       const errorMessage = error instanceof Error
@@ -122,6 +105,54 @@ export class RefreshTokenUsecase {
         },
       };
     }
+  }
+
+  private async readExistingToken(): Promise<
+    | { type: "still_valid"; tokens: TokenResponse }
+    | { type: "needs_refresh"; refreshToken: string }
+  > {
+    const existingTokenData = await this.secretManager.getTokenSecret();
+    if (!existingTokenData || !existingTokenData.refresh_token) {
+      throw new Error(
+        "No existing refresh token found. Manual OAuth setup required.",
+      );
+    }
+
+    if (existingTokenData.refresh_token.length < 10) {
+      throw new Error(
+        "Invalid refresh token format. Manual OAuth setup required.",
+      );
+    }
+
+    // Check if current token is still valid (within 5 minutes of expiry)
+    if (existingTokenData.expires_at) {
+      const expiresAt = new Date(existingTokenData.expires_at);
+      const timeUntilExpiry = expiresAt.getTime() - Date.now();
+      const fiveMinutes = 5 * 60 * 1000;
+
+      if (timeUntilExpiry > fiveMinutes) {
+        logger.info("Current access token is still valid", {
+          time_until_expiry_minutes: Math.round(
+            timeUntilExpiry / 1000 / 60,
+          ),
+        });
+        return {
+          type: "still_valid",
+          tokens: {
+            access_token: existingTokenData.access_token,
+            refresh_token: existingTokenData.refresh_token,
+            expires_at: expiresAt,
+            token_type: "Bearer",
+            scope: "read write",
+          },
+        };
+      }
+    }
+
+    return {
+      type: "needs_refresh",
+      refreshToken: existingTokenData.refresh_token,
+    };
   }
 
   private async checkNetworkConnectivity(): Promise<void> {

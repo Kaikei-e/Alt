@@ -28,6 +28,7 @@ from ..services.classification import CoarseClassifier
 from ..services.classification_runner import ClassificationRunner
 from ..services.classifier import GenreClassifierService
 from ..services.embedder import Embedder, EmbedderConfig
+from ..services.evaluation import EvaluationService
 from ..services.extraction import ContentExtractor
 from ..services.learning_client import LearningClient
 from ..services.learning_scheduler import LearningScheduler
@@ -72,6 +73,7 @@ class ServiceContainer:
         self._learning_scheduler: LearningScheduler | None = None
         self._content_extractor: ContentExtractor | None = None
         self._coarse_classifier: CoarseClassifier | None = None
+        self._evaluation_service: EvaluationService | None = None
         self._admin_job_service: AdminJobService | None = None
         self._submit_run_usecase: SubmitRunUsecase | None = None
         self._get_run_usecase: GetRunUsecase | None = None
@@ -277,6 +279,27 @@ class ServiceContainer:
         if self._coarse_classifier is None:
             self._coarse_classifier = CoarseClassifier(embedder=self.embedder)
         return self._coarse_classifier
+
+    @property
+    def evaluation_service(self) -> EvaluationService:
+        """Shared genre-evaluation service.
+
+        Constructing ``EvaluationService`` loads an Embedder plus JA/EN/default
+        classifiers; building a fresh instance per `/v1/evaluation/genres`
+        request reloaded all of that from disk on every call. Cached here so
+        the settings-derived (no per-request weights override) path is
+        loaded once per process.
+        """
+        if self._evaluation_service is None:
+            self._evaluation_service = EvaluationService(
+                weights_ja_path=self.settings.genre_classifier_model_path_ja,
+                weights_en_path=self.settings.genre_classifier_model_path_en,
+                vectorizer_ja_path=self.settings.tfidf_vectorizer_path_ja,
+                vectorizer_en_path=self.settings.tfidf_vectorizer_path_en,
+                thresholds_ja_path=self.settings.genre_thresholds_path_ja,
+                thresholds_en_path=self.settings.genre_thresholds_path_en,
+            )
+        return self._evaluation_service
 
     @property
     def admin_job_service(self) -> AdminJobService:

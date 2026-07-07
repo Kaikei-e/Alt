@@ -2,10 +2,12 @@ package usecase
 
 import (
 	"context"
+	"errors"
 	"maps"
 	"search-indexer/domain"
 	"search-indexer/port"
 	"search-indexer/tokenize"
+	"sync"
 	"time"
 
 	"github.com/ikawaha/kagome/v2/tokenizer"
@@ -22,6 +24,14 @@ type IndexArticlesUsecase struct {
 	articleRepo  port.ArticleRepository
 	searchEngine port.SearchEngine
 	tokenizer    *tokenizer.Tokenizer
+
+	// synonymsMu guards synonyms, the process-wide union of every synonym
+	// map registered so far. Meilisearch's synonyms PUT is a full replace,
+	// not a merge, so registerBatchSynonyms must always PUT the accumulated
+	// union rather than just the current batch's map — otherwise each
+	// batch's PUT erases every synonym registered by earlier batches.
+	synonymsMu sync.Mutex
+	synonyms   map[string][]string
 }
 
 type IndexResult struct {
@@ -138,14 +148,13 @@ func (u *IndexArticlesUsecase) GetIncrementalMark(ctx context.Context) (*time.Ti
 // ExecuteSingleArticle indexes a single article by its ID (for event-driven indexing).
 func (u *IndexArticlesUsecase) ExecuteSingleArticle(ctx context.Context, articleID string) (*IndexResult, error) {
 	article, err := u.articleRepo.GetArticleByID(ctx, articleID)
-	if err != nil {
-		return nil, err
-	}
-
-	if article == nil {
+	if errors.Is(err, domain.ErrArticleNotFound) {
 		return &IndexResult{
 			IndexedCount: 0,
 		}, nil
+	}
+	if err != nil {
+		return nil, err
 	}
 
 	doc := domain.NewSearchDocument(article)
@@ -185,12 +194,18 @@ func (u *IndexArticlesUsecase) ExecuteBatchArticles(ctx context.Context, article
 	var docs []domain.SearchDocument
 	for _, id := range articleIDs {
 		article, err := u.articleRepo.GetArticleByID(ctx, id)
+		if errors.Is(err, domain.ErrArticleNotFound) {
+			// The article was deleted (or the ID was never valid) between
+			// the event being published and this batch running. Skip just
+			// this ID instead of failing the whole batch — a hard error
+			// here would drop every other, already-durable article in the
+			// same batch.
+			continue
+		}
 		if err != nil {
 			return nil, err
 		}
-		if article != nil {
-			docs = append(docs, domain.NewSearchDocument(article))
-		}
+		docs = append(docs, domain.NewSearchDocument(article))
 	}
 
 	if len(docs) == 0 {
@@ -206,22 +221,33 @@ func (u *IndexArticlesUsecase) ExecuteBatchArticles(ctx context.Context, article
 	return &IndexResult{IndexedCount: len(docs)}, nil
 }
 
-// registerBatchSynonyms merges synonyms for every doc in the batch into one
-// map and emits at most one RegisterSynonyms call. Meilisearch serialises the
-// synonyms PUT against search reads in the articles index; per-doc PUTs
-// produced the 15-second PUT cadence that starved /indexes/articles/search
-// and forced the global search usecase into the 3s section-timeout degraded
-// path. Emitting a single union PUT collapses the task-queue pressure.
+// registerBatchSynonyms merges synonyms for every doc in the batch into the
+// process-wide union accumulated across all batches, and emits at most one
+// RegisterSynonyms call carrying that union. Meilisearch's synonyms PUT is a
+// full replace, not a merge: PUTing only the current batch's map erases every
+// synonym registered by earlier batches, so only the last batch processed
+// ever survived. Emitting the accumulated union PUT also keeps the "at most
+// one PUT per batch" property that collapses Meilisearch's synonyms-PUT task
+// queue pressure against concurrent search reads.
 func (u *IndexArticlesUsecase) registerBatchSynonyms(ctx context.Context, docs []domain.SearchDocument) {
 	if len(docs) == 0 {
 		return
 	}
-	merged := make(map[string][]string)
+	batch := make(map[string][]string)
 	for _, doc := range docs {
-		maps.Copy(merged, tokenize.ProcessTagToSynonyms(u.tokenizer, doc.Tags))
+		maps.Copy(batch, tokenize.ProcessTagToSynonyms(u.tokenizer, doc.Tags))
 	}
-	if len(merged) == 0 {
+	if len(batch) == 0 {
 		return
 	}
-	_ = u.searchEngine.RegisterSynonyms(ctx, merged)
+
+	u.synonymsMu.Lock()
+	if u.synonyms == nil {
+		u.synonyms = make(map[string][]string, len(batch))
+	}
+	maps.Copy(u.synonyms, batch)
+	union := maps.Clone(u.synonyms)
+	u.synonymsMu.Unlock()
+
+	_ = u.searchEngine.RegisterSynonyms(ctx, union)
 }

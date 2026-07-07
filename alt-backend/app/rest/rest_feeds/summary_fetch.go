@@ -156,138 +156,20 @@ func RestHandleFetchArticleSummary(container *di.ApplicationComponents, cfg *con
 
 		logger.Logger.InfoContext(ctx, "Fetching article summaries", "url_count", len(req.FeedURLs))
 
-		// Step 1: Check which articles exist in DB and collect URLs that need fetching
-		urlsToFetch := make([]string, 0)
-		articleMap := make(map[string]*ArticleInfo) // url -> article info
+		summaryResults := container.FetchArticleSummariesUsecase.Execute(ctx, userCtx.UserID.String(), req.FeedURLs)
 
-		for _, feedURL := range req.FeedURLs {
-			existingArticle, err := container.AltDBRepository.FetchArticleByURL(ctx, feedURL)
-			if err != nil {
-				logger.Logger.ErrorContext(ctx, "Failed to check for existing article", "error", err, "url", feedURL)
-				// Create placeholder for failed lookup
-				articleMap[feedURL] = &ArticleInfo{URL: feedURL, Error: err}
-				continue
-			}
-
-			if existingArticle != nil {
-				// Article exists in DB
-				logger.Logger.InfoContext(ctx, "Article found in database", "article_id", existingArticle.ID, "url", feedURL)
-				articleMap[feedURL] = &ArticleInfo{
-					URL:    feedURL,
-					ID:     existingArticle.ID,
-					Title:  existingArticle.Title,
-					Exists: true,
-				}
-			} else {
-				// Article does not exist, add to fetch list
-				urlsToFetch = append(urlsToFetch, feedURL)
-				articleMap[feedURL] = &ArticleInfo{URL: feedURL, Exists: false}
-			}
-		}
-
-		// Step 2: Batch fetch articles that don't exist in DB
-		if len(urlsToFetch) > 0 {
-			logger.Logger.InfoContext(ctx, "Fetching articles from Web", "url_count", len(urlsToFetch))
-			fetchResults := container.BatchArticleFetcher.FetchMultiple(ctx, urlsToFetch)
-
-			// Save fetched articles to DB
-			for urlStr, result := range fetchResults {
-				if result.Error != nil {
-					logger.Logger.ErrorContext(ctx, "Failed to fetch article content", "error", result.Error, "url", urlStr)
-					if info, ok := articleMap[urlStr]; ok {
-						info.Error = result.Error
-					}
-					continue
-				}
-
-				// Save to DB
-				articleID, saveErr := container.AltDBRepository.SaveArticle(ctx, urlStr, result.Title, result.Content)
-				if saveErr != nil {
-					logger.Logger.ErrorContext(ctx, "Failed to save article to database", "error", saveErr, "url", urlStr)
-					if info, ok := articleMap[urlStr]; ok {
-						info.Error = saveErr
-					}
-					continue
-				}
-
-				// Update article map with fetched data
-				if info, ok := articleMap[urlStr]; ok {
-					info.ID = articleID
-					info.Title = result.Title
-					info.Exists = true
-				}
-			}
-		}
-
-		// Step 3: Process each URL for summary generation
-		var matchedArticles []InoreaderSummaryResponse
-		for _, feedURL := range req.FeedURLs {
-			articleInfo, ok := articleMap[feedURL]
-			if !ok {
-				logger.Logger.ErrorContext(ctx, "Skipping URL: article info not found", "url", feedURL)
-				continue
-			}
-			if articleInfo.Error != nil {
-				logger.Logger.ErrorContext(ctx, "Skipping URL due to error", "url", feedURL, "error", articleInfo.Error)
-				continue
-			}
-
-			if !articleInfo.Exists || articleInfo.ID == "" {
-				logger.Logger.WarnContext(ctx, "Article not found or ID missing", "url", feedURL)
-				continue
-			}
-
-			articleID := articleInfo.ID
-			articleTitle := articleInfo.Title
-
-			// Try to fetch existing summary from database
-			var summary string
-			var fromCache bool
-			existingSummary, err := container.AltDBRepository.FetchArticleSummaryByArticleID(ctx, articleID)
-			if err == nil && existingSummary != nil && existingSummary.Summary != "" {
-				logger.Logger.InfoContext(ctx, "Found existing summary in database", "article_id", articleID, "feed_url", feedURL)
-				summary = existingSummary.Summary
-				fromCache = true
-			} else {
-				// Generate new summary if not found in database
-				logger.Logger.InfoContext(ctx, "No existing summary found, generating new summary", "article_id", articleID, "feed_url", feedURL)
-
-				// Small delay to ensure DB transaction is committed before pre-processor reads
-				time.Sleep(100 * time.Millisecond)
-
-				// Call pre-processor with empty content (it will fetch from DB)
-				summary, err = CallPreProcessorSummarize(ctx, "", articleID, articleTitle, cfg.PreProcessor.URL)
-				if err != nil {
-					logger.Logger.ErrorContext(ctx, "Failed to summarize article", "error", err, "url", feedURL, "article_id", articleID)
-					continue // Skip this URL and continue with others
-				}
-
-				// Save the generated summary to database
-				if err := container.AltDBRepository.SaveArticleSummary(ctx, articleID, userCtx.UserID.String(), articleTitle, summary); err != nil {
-					logger.Logger.ErrorContext(ctx, "Failed to save article summary to database", "error", err, "article_id", articleID, "feed_url", feedURL)
-					// Continue even if save fails - we still have the summary to return
-				} else {
-					logger.Logger.InfoContext(ctx, "Article summary saved to database", "article_id", articleID, "feed_url", feedURL)
-				}
-				fromCache = false
-			}
-
-			// Clean summary content before adding to response
-			cleanedSummary := CleanSummaryContent(summary)
-
-			// Build response item
+		matchedArticles := make([]InoreaderSummaryResponse, 0, len(summaryResults))
+		for _, result := range summaryResults {
 			matchedArticles = append(matchedArticles, InoreaderSummaryResponse{
-				ArticleURL:  feedURL,
-				Title:       articleTitle,
+				ArticleURL:  result.FeedURL,
+				Title:       result.Title,
 				Author:      "", // Author is not available from articles table
-				Content:     cleanedSummary,
+				Content:     result.Summary,
 				ContentType: "text/html",
 				PublishedAt: time.Now().Format(time.RFC3339), // Use current time as fallback
 				FetchedAt:   time.Now().Format(time.RFC3339),
-				InoreaderID: articleID, // Use article_id as source_id
+				InoreaderID: result.ArticleID, // Use article_id as source_id
 			})
-
-			logger.Logger.InfoContext(ctx, "Article summary processed", "feed_url", feedURL, "from_cache", fromCache)
 		}
 
 		// Build final response

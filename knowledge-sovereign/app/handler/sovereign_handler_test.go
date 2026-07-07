@@ -351,6 +351,69 @@ func TestGetKnowledgeHomeItems_ReturnsEmpty(t *testing.T) {
 	assert.False(t, resp.Msg.HasMore)
 }
 
+// TestGetKnowledgeHomeItems_InvalidUserID_ReturnsInvalidArgument pins the
+// fix for the silent-fallback UUID bug: a malformed user_id must be
+// rejected at the handler boundary with CodeInvalidArgument, not silently
+// coerced to uuid.Nil and forwarded to the repository.
+func TestGetKnowledgeHomeItems_InvalidUserID_ReturnsInvalidArgument(t *testing.T) {
+	repo := &mockRepo{}
+	client, cleanup := setupTestServer(repo)
+	defer cleanup()
+
+	_, err := client.GetKnowledgeHomeItems(context.Background(),
+		connect.NewRequest(&sovereignv1.GetKnowledgeHomeItemsRequest{
+			UserId: "not-a-uuid",
+			Limit:  10,
+		}))
+
+	require.Error(t, err, "malformed user_id must be rejected, not silently coerced to uuid.Nil")
+	assert.Equal(t, connect.CodeInvalidArgument, connect.CodeOf(err))
+}
+
+// TestAppendKnowledgeEvent_InvalidEventID_ReturnsInvalidArgument pins the
+// same fix for the write path: a malformed event_id must never reach
+// AppendKnowledgeEvent (which would otherwise write uuid.Nil into
+// knowledge_events).
+func TestAppendKnowledgeEvent_InvalidEventID_ReturnsInvalidArgument(t *testing.T) {
+	repo := &mockRepo{}
+	client, cleanup := setupTestServer(repo)
+	defer cleanup()
+
+	_, err := client.AppendKnowledgeEvent(context.Background(),
+		connect.NewRequest(&sovereignv1.AppendKnowledgeEventRequest{
+			Event: &sovereignv1.KnowledgeEvent{
+				EventId:   "not-a-uuid",
+				TenantId:  uuid.New().String(),
+				EventType: "ArticleCreated",
+			},
+		}))
+
+	require.Error(t, err, "malformed event_id must be rejected before it can be written to knowledge_events")
+	assert.Equal(t, connect.CodeInvalidArgument, connect.CodeOf(err))
+}
+
+// TestAppendKnowledgeEvent_InvalidCorrelationID_ReturnsInvalidArgument
+// covers the optional-UUID-pointer path (parseUUIDPtrField): a non-empty
+// but malformed correlation_id must also error, not silently become nil.
+func TestAppendKnowledgeEvent_InvalidCorrelationID_ReturnsInvalidArgument(t *testing.T) {
+	repo := &mockRepo{}
+	client, cleanup := setupTestServer(repo)
+	defer cleanup()
+
+	_, err := client.AppendKnowledgeEvent(context.Background(),
+		connect.NewRequest(&sovereignv1.AppendKnowledgeEventRequest{
+			Event: &sovereignv1.KnowledgeEvent{
+				EventId:       uuid.New().String(),
+				TenantId:      uuid.New().String(),
+				EventType:     "ArticleCreated",
+				CorrelationId: "not-a-uuid",
+			},
+		}))
+
+	require.Error(t, err, "malformed correlation_id must be rejected, not silently dropped to nil")
+	assert.Equal(t, connect.CodeInvalidArgument, connect.CodeOf(err))
+}
+
 func TestListDistinctUserIDs_ReturnsEmpty(t *testing.T) {
 	repo := &mockRepo{}
 	client, cleanup := setupTestServer(repo)

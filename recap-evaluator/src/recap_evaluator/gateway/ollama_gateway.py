@@ -165,6 +165,48 @@ JSON評価結果:"""
                 error=str(e),
             )
 
+    def _build_readability_prompt(self, summary: str) -> str:
+        return f"""以下の要約を「朝刊として読みやすいか」という観点で1-5点で評価してください。
+必ずJSON形式のみで回答してください。説明文は不要です。
+
+フォーマット:
+{{"score": X}}
+
+要約:
+{summary}
+
+JSON評価結果:"""
+
+    def _parse_readability_response(self, response_text: str) -> float:
+        json_match = re.search(r"\{[^{}]*\}", response_text, re.DOTALL)
+        if not json_match:
+            raise ValueError(
+                f"No JSON found in readability response: {response_text!r}"
+            )
+        data = json.loads(json_match.group())
+        return float(data["score"])
+
+    async def score_readability(self, summary: str) -> float:
+        """Score how readable `summary` is as a morning-briefing digest (1-5).
+
+        Raises httpx errors (network/HTTP failure) or ValueError/KeyError
+        (unparseable LLM response) — callers decide what is recoverable.
+        """
+        prompt = self._build_readability_prompt(summary)
+        async with self._semaphore:
+            response = await self._client.post(
+                f"{self._base_url}/api/generate",
+                json={
+                    "model": self._model,
+                    "prompt": prompt,
+                    "stream": False,
+                    "options": {"temperature": 0.1, "num_predict": 64},
+                },
+            )
+            response.raise_for_status()
+            result_data = response.json()
+        return self._parse_readability_response(result_data.get("response", ""))
+
     async def evaluate_batch(
         self, items: list[tuple[str, str]]
     ) -> BatchGEvalResult:

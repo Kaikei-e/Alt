@@ -58,8 +58,12 @@ func TestGenerateTagsUsecase_GenerateTagsForArticle(t *testing.T) {
 			return s.String() != "" // reply stream should be non-empty
 		}), 5*time.Second).Return(replyEvent, nil)
 
-		// Expect DeleteStream to be called to cleanup reply stream
-		mockPort.On("DeleteStream", ctx, mock.MatchedBy(func(s domain.StreamKey) bool {
+		// Expect cleanup (Expire safety net + DeleteStream) using a context
+		// detached from the request ctx.
+		mockPort.On("Expire", mock.Anything, mock.MatchedBy(func(s domain.StreamKey) bool {
+			return s.String() != ""
+		}), replyStreamTTL).Return(nil)
+		mockPort.On("DeleteStream", mock.Anything, mock.MatchedBy(func(s domain.StreamKey) bool {
 			return s.String() != ""
 		})).Return(nil)
 
@@ -92,7 +96,8 @@ func TestGenerateTagsUsecase_GenerateTagsForArticle(t *testing.T) {
 			Return("", errors.New("redis error"))
 
 		// Cleanup should still be attempted
-		mockPort.On("DeleteStream", ctx, mock.AnythingOfType("domain.StreamKey")).Return(nil).Maybe()
+		mockPort.On("Expire", mock.Anything, mock.AnythingOfType("domain.StreamKey"), replyStreamTTL).Return(nil).Maybe()
+		mockPort.On("DeleteStream", mock.Anything, mock.AnythingOfType("domain.StreamKey")).Return(nil).Maybe()
 
 		resp, err := uc.GenerateTagsForArticle(ctx, req)
 
@@ -121,7 +126,8 @@ func TestGenerateTagsUsecase_GenerateTagsForArticle(t *testing.T) {
 		mockPort.On("SubscribeWithTimeout", ctx, mock.AnythingOfType("domain.StreamKey"), 1*time.Second).
 			Return(nil, errors.New("timeout waiting for reply"))
 
-		mockPort.On("DeleteStream", ctx, mock.AnythingOfType("domain.StreamKey")).Return(nil)
+		mockPort.On("Expire", mock.Anything, mock.AnythingOfType("domain.StreamKey"), replyStreamTTL).Return(nil)
+		mockPort.On("DeleteStream", mock.Anything, mock.AnythingOfType("domain.StreamKey")).Return(nil)
 
 		resp, err := uc.GenerateTagsForArticle(ctx, req)
 
@@ -162,7 +168,8 @@ func TestGenerateTagsUsecase_GenerateTagsForArticle(t *testing.T) {
 		mockPort.On("SubscribeWithTimeout", ctx, mock.AnythingOfType("domain.StreamKey"), 60*time.Second).
 			Return(replyEvent, nil)
 
-		mockPort.On("DeleteStream", ctx, mock.AnythingOfType("domain.StreamKey")).Return(nil)
+		mockPort.On("Expire", mock.Anything, mock.AnythingOfType("domain.StreamKey"), replyStreamTTL).Return(nil)
+		mockPort.On("DeleteStream", mock.Anything, mock.AnythingOfType("domain.StreamKey")).Return(nil)
 
 		resp, err := uc.GenerateTagsForArticle(ctx, req)
 
@@ -201,7 +208,8 @@ func TestGenerateTagsUsecase_GenerateTagsForArticle(t *testing.T) {
 		mockPort.On("SubscribeWithTimeout", ctx, mock.AnythingOfType("domain.StreamKey"), 5*time.Second).
 			Return(replyEvent, nil)
 
-		mockPort.On("DeleteStream", ctx, mock.AnythingOfType("domain.StreamKey")).Return(nil)
+		mockPort.On("Expire", mock.Anything, mock.AnythingOfType("domain.StreamKey"), replyStreamTTL).Return(nil)
+		mockPort.On("DeleteStream", mock.Anything, mock.AnythingOfType("domain.StreamKey")).Return(nil)
 
 		resp, err := uc.GenerateTagsForArticle(ctx, req)
 
@@ -230,10 +238,60 @@ func TestGenerateTagsUsecase_GenerateTagsForArticle(t *testing.T) {
 		mockPort.On("SubscribeWithTimeout", ctx, mock.AnythingOfType("domain.StreamKey"), 1*time.Second).
 			Return(nil, errors.New("connection lost"))
 
-		// DeleteStream should still be called for cleanup
-		mockPort.On("DeleteStream", ctx, mock.AnythingOfType("domain.StreamKey")).Return(nil)
+		// Cleanup (Expire + DeleteStream) should still be called
+		mockPort.On("Expire", mock.Anything, mock.AnythingOfType("domain.StreamKey"), replyStreamTTL).Return(nil)
+		mockPort.On("DeleteStream", mock.Anything, mock.AnythingOfType("domain.StreamKey")).Return(nil)
 
 		_, err := uc.GenerateTagsForArticle(ctx, req)
+
+		require.Error(t, err)
+		mockPort.AssertExpectations(t)
+	})
+
+	t.Run("cleanup uses a context detached from a canceled request context", func(t *testing.T) {
+		mockPort := new(MockStreamPort)
+		uc := NewGenerateTagsUsecase(mockPort)
+
+		reqCtx, cancel := context.WithCancel(context.Background())
+
+		req := &GenerateTagsRequest{
+			ArticleID: "article-123",
+			Title:     "Test",
+			Content:   "Content",
+			FeedID:    "feed-456",
+			TimeoutMs: 1000,
+		}
+
+		mockPort.On("Publish", reqCtx, domain.StreamKeyTags, mock.AnythingOfType("*domain.Event")).
+			Return("123-0", nil)
+
+		// Simulate the request being canceled while waiting for a reply.
+		mockPort.On("SubscribeWithTimeout", reqCtx, mock.AnythingOfType("domain.StreamKey"), 1*time.Second).
+			Run(func(args mock.Arguments) {
+				cancel()
+			}).
+			Return(nil, context.Canceled)
+
+		// Checks must happen inside the Run callback: the cleanup context's own
+		// bounded timeout is canceled via defer as soon as cleanup finishes,
+		// so asserting on it after GenerateTagsForArticle returns would always
+		// observe context.Canceled regardless of whether the request ctx leaked in.
+		mockPort.On("Expire", mock.Anything, mock.AnythingOfType("domain.StreamKey"), replyStreamTTL).
+			Run(func(args mock.Arguments) {
+				if err := args.Get(0).(context.Context).Err(); err != nil {
+					t.Fatalf("Expire cleanup ctx must not be the canceled request ctx, got Err()=%v", err)
+				}
+			}).
+			Return(nil)
+		mockPort.On("DeleteStream", mock.Anything, mock.AnythingOfType("domain.StreamKey")).
+			Run(func(args mock.Arguments) {
+				if err := args.Get(0).(context.Context).Err(); err != nil {
+					t.Fatalf("DeleteStream cleanup ctx must not be the canceled request ctx, got Err()=%v", err)
+				}
+			}).
+			Return(nil)
+
+		_, err := uc.GenerateTagsForArticle(reqCtx, req)
 
 		require.Error(t, err)
 		mockPort.AssertExpectations(t)

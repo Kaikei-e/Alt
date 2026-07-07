@@ -1,10 +1,10 @@
 # GET /admin/snapshots/latest — returns the most recent valid snapshot.
-# Must match the one created in 14. Fields are PascalCase (no JSON tags
-# on sovereign_db.SnapshotMetadata).
+# Must match the one created in 14. Fields are explicit snake_case json
+# tags on sovereign_db.SnapshotMetadata (ADR-000942).
 GET {{metrics_url}}/admin/snapshots/latest
 HTTP 200
 [Asserts]
-jsonpath "$.Status" == "valid"
-jsonpath "$.SnapshotType" == "full"
-jsonpath "$.EventSeqBoundary" > 0
-jsonpath "$.SnapshotID" matches "^[0-9a-f-]{36}$"
+jsonpath "$.status" == "valid"
+jsonpath "$.snapshot_type" == "full"
+jsonpath "$.event_seq_boundary" > 0
+jsonpath "$.snapshot_id" matches "^[0-9a-f-]{36}$"

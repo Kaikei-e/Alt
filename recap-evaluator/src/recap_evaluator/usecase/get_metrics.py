@@ -59,16 +59,23 @@ class GetMetricsUsecase:
 
             cluster_results = await self._cluster.evaluate_batch(job_ids[:5])
             if cluster_results:
-                avg_silhouette = sum(
-                    m.silhouette_score for m in cluster_results.values()
-                ) / len(cluster_results)
-                result["cluster_avg_silhouette"] = avg_silhouette
-                if avg_silhouette < 0.15:
-                    result["cluster_alert_level"] = "critical"
-                elif avg_silhouette < 0.25:
-                    result["cluster_alert_level"] = "warn"
-                else:
-                    result["cluster_alert_level"] = "ok"
+                # silhouette_score is None when evaluate_job had no
+                # embeddings to compute it from — exclude those genres
+                # rather than averaging in a phantom 0.0 (always-critical).
+                sil_values = [
+                    m.silhouette_score
+                    for m in cluster_results.values()
+                    if m.silhouette_score is not None
+                ]
+                if sil_values:
+                    avg_silhouette = sum(sil_values) / len(sil_values)
+                    result["cluster_avg_silhouette"] = avg_silhouette
+                    if avg_silhouette < 0.15:
+                        result["cluster_alert_level"] = "critical"
+                    elif avg_silhouette < 0.25:
+                        result["cluster_alert_level"] = "warn"
+                    else:
+                        result["cluster_alert_level"] = "ok"
 
             pipeline_result = await self._pipeline.evaluate_batch(job_ids)
             result["pipeline_success_rate"] = pipeline_result.success_rate

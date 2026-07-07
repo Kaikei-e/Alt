@@ -1,6 +1,6 @@
 # Alt Frontend SV
 
-_Last reviewed: March 18, 2026_
+_Last reviewed: July 7, 2026_
 
 **Location:** `alt-frontend-sv`
 **Base Path:** `/sv`
@@ -90,7 +90,7 @@ The app uses SvelteKit file-system routing under the `/sv` base path. The `(app)
 | `/feeds/tag-verse` | 3D tag cloud visualization (Tag Verse) | `(app)` |
 | `/settings/feeds` | RSS feed management (add/remove/subscribe) | `(app)` |
 | `/augur` | AI chat interface (Ask Augur) | `(app)` |
-| `/recap` | 3-day / 7-day recap viewer | `(app)` |
+| `/recap` | 3-day recap viewer | `(app)` |
 | `/recap/morning-letter` | Morning letter recap | `(app)` |
 | `/recap/evening-pulse` | Evening pulse recap | `(app)` |
 | `/recap/job-status` | Recap generation job status | `(app)` |
@@ -122,7 +122,7 @@ The app uses SvelteKit file-system routing under the `/sv` base path. The `(app)
 - `src/routes`:
     - `(app)/feeds`: Unified feed views (responsive desktop/mobile).
     - `(app)/augur`: AI chat interface.
-    - `(app)/recap/*`: Recap views (7-day, morning letter, evening pulse, job status).
+    - `(app)/recap/*`: Recap views (3-day, morning letter, evening pulse, job status).
     - `(app)/settings/feeds`: Feed management.
     - `(app)/dashboard`: System administration (desktop-only).
     - `(app)/stats`: Analytics and trend charts.
@@ -151,7 +151,7 @@ Located in `src/lib/connect/`:
 |--------|-------------|
 | `feeds.ts` | Feed stats, unread/read/favorite feeds, search, streaming, mark-as-read |
 | `articles.ts` | Article operations (fetch, update, favorite, fetchTagCloud) |
-| `recap.ts` | 7-day recap generation and retrieval |
+| `recap.ts` | Recap generation and retrieval (3-day) |
 | `augur.ts` | AI chat streaming interface |
 | `rss.ts` | RSS feed management (add, remove, import OPML) |
 | `morning_letter.ts` | Morning letter generation and retrieval |
@@ -237,6 +237,19 @@ For cases where rich HTML must be rendered via Svelte's `{@html}` directive (e.g
 - **Data attributes disabled**: `ALLOW_DATA_ATTR: false` prevents `data:` URI injection.
 
 **Usage**: The `sanitizeHtml()` function is called in `RenderFeedDetails.svelte` (mobile) before passing article content to `{@html}`. Both layers are covered by unit tests (`sanitize.test.ts`, `sanitizeHtml.test.ts`).
+
+## Known failure patterns
+
+- Self-refiring `$effect` fetch loop (30 fetches/s) → `$effect` tracks every reactive read across the whole call stack, so a guard flag read inside a called function re-triggers the effect. Gate with `untrack()` / `$derived` value-equality; write guard conditions directly in the effect condition. → [[000320]] [[000441]] PM-2026-039
+- Fetch storm (`ERR_INSUFFICIENT_RESOURCES`, 50+ fetches in one ms) → unconditional `invalidateAll()` from a stream callback forms a positive feedback loop with `$effect` `data` tracking. Standard prescription: debounce (~600ms) + single-flight coalescer + scoped `invalidate(name)`; the backend also needs `singleflight.Group`. → [[000847]] [[000320]] PM-2026-039
+- Infinite scroll stalls with `each_key_duplicate` crash → duplicate keys in keyed `{#each}` break Svelte reconcile with no warning; Meilisearch hybrid offset pagination violated the implicit "pages are disjoint" contract. Dedupe app-side (`appendUniqueById`). → [[000228]] PM-2026-044
+- "Cannot Open Page" / broken app after deploy → stale HTML references old `_app/immutable/*` chunk hashes (404). Multi-layer self-healing: hooks.client chunk-error detection + `version.pollInterval` + `updated.current` monitoring, nginx 404→200 reload stub, capture-phase error listener in app.html, and `Cache-Control: no-cache` on SSR HTML. → [[000898]] [[000902]] [[000412]]
+- Streaming UI dead while every request returns 200 (4-week latency) → four independent defects composed: JWT TTL (5m) shorter than stream lifetime, missing dedicated nginx streaming location (buffering), reconnect race in catch handlers (check `signal.aborted` even there), and duplicate event firing. SLI on body size / stream count / reconnect interval; pre-flight with [[connect-rpc-streaming-checklist]]. → [[000929]] PM-2026-045
+- Previous article's summary shown on the new article → AbortController alone is insufficient for streamed `$state` updates; capture the request-time URL/ID and compare it inside every async callback (stale-response guard). → [[000552]] PM-2026-003
+- SSR-wide 429 from auth-hub → fetching `/session` per component tripped auth-hub rate limits; fetch once per request in `hooks.server.ts` and share via `locals`. → [[000305]]
+- Button does nothing, no trace anywhere → empty-condition early returns (e.g. Open with empty link) are silent no-ops invisible to server monitoring; every such path needs user feedback (toast) at minimum. → PM-2026-011
+- Infinite scroll never loads the next page → IntersectionObserver fires only on intersection *change*; if the trigger stays in the viewport it never refires. Pattern: unobserve → await callback → rAF → re-observe, reset loading flags in try/finally. → [[000226]]
+- Client-side failures invisible to ops → during the fetch storm the server answered healthily in 5-11ms, so no latency/5xx alert fired; browser console errors never reach server logs. FE error tracking and a fetch-rate SLI are required. → PM-2026-039 PM-2026-044
 
 ## Configuration
 - **Svelte Config** (`svelte.config.js`): Sets `kit.paths.base = '/sv'` and uses `adapter-node`.

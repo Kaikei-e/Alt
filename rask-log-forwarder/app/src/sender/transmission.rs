@@ -55,6 +55,15 @@ impl BatchTransmitter {
         self.send_batch_with_retry(batch, 0).await
     }
 
+    /// Makes a single transmission attempt; despite the name, this does not
+    /// itself retry - `retry_count` is only carried through into the
+    /// returned `TransmissionResult` for logging/metrics. Real retry-on-
+    /// failure lives one layer up in `reliability::ReliabilityManager`
+    /// (`attempt_transmission_with_retries`), which calls this in a loop
+    /// with backoff and falls back to disk storage once retries are
+    /// exhausted. Callers that need retries must go through
+    /// `ReliabilityManager::send_batch_with_reliability`, not this method
+    /// directly.
     pub async fn send_batch_with_retry(
         &self,
         batch: Batch,

@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+import logging
 import subprocess
 from typing import Any
+
+logger = logging.getLogger(__name__)
 
 
 def get_memory_info() -> dict[str, Any]:
@@ -25,7 +28,8 @@ def get_memory_info() -> dict[str, Any]:
             "available": available,
             "percent": round(percent, 1),
         }
-    except Exception:
+    except (subprocess.CalledProcessError, FileNotFoundError, IndexError, ValueError):
+        logger.exception("Failed to get memory info via 'free -g'")
         return {"total": 0, "used": 0, "available": 0, "percent": 0}
 
 
@@ -47,7 +51,8 @@ def get_cpu_info() -> dict[str, Any]:
                 idle = int(fields[4]) + (int(fields[5]) if len(fields) > 5 else 0)
                 usage = round((1 - idle / total) * 100, 1) if total > 0 else 0.0
                 return {"percent": usage}
-        except Exception:
+        except (OSError, IndexError, ValueError):
+            logger.exception("Failed to compute CPU usage from /proc/stat")
             # 最後の手段としてtopを使用
             try:
                 result = subprocess.run(
@@ -71,7 +76,12 @@ def get_cpu_info() -> dict[str, Any]:
                 else:
                     usage = 0.0
                 return {"percent": usage}
-            except Exception:
+            except (
+                subprocess.CalledProcessError,
+                FileNotFoundError,
+                subprocess.TimeoutExpired,
+            ):
+                logger.exception("Failed to compute CPU usage from 'top' fallback")
                 return {"percent": 0.0}
 
 
@@ -89,7 +99,8 @@ def get_hanging_processes() -> int:
             ]
         )
         return max(0, count - 1)  # grep自身を除外
-    except Exception:
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        logger.exception("Failed to count hanging processes via 'ps aux'")
         return 0
 
 
@@ -103,7 +114,8 @@ def get_recap_processes() -> int:
             [l for l in result.stdout.split("\n") if "recap" in l or "gunicorn" in l]
         )
         return max(0, count - 1)
-    except Exception:
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        logger.exception("Failed to count recap processes via 'ps aux'")
         return 0
 
 
@@ -149,7 +161,8 @@ def get_gpu_info() -> dict[str, Any]:
         return {"available": False, "gpus": [], "error": "nvidia-smi not found"}
     except subprocess.TimeoutExpired:
         return {"available": False, "gpus": [], "error": "timeout"}
-    except Exception as e:
+    except subprocess.CalledProcessError as e:
+        logger.exception("nvidia-smi returned a non-zero exit code")
         return {"available": False, "gpus": [], "error": str(e)}
 
 
@@ -192,7 +205,6 @@ def get_top_processes(limit: int = 5) -> list[dict[str, Any]]:
         return processes
     except subprocess.TimeoutExpired:
         return []
-    except Exception as e:
-        # エラーをログに記録（本番環境では適切なロガーを使用）
-        print(f"Error getting top processes: {e}", flush=True)
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        logger.exception("Failed to get top processes via 'ps aux --sort=-%mem'")
         return []

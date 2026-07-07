@@ -20,6 +20,7 @@ class _Article:
     title: str
     tags: list[str]
     score: float
+    language: str = "und"
 
 
 class _FakeEvidenceProvider:

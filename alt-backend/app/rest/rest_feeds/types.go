@@ -79,12 +79,3 @@ type FeedSummaryProvidedResponse struct {
 	TotalMatched    int                        `json:"total_matched"`
 	RequestedCount  int                        `json:"requested_count"`
 }
-
-// ArticleInfo holds information about an article during batch processing
-type ArticleInfo struct {
-	URL    string
-	ID     string
-	Title  string
-	Exists bool
-	Error  error
-}

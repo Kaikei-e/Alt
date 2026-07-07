@@ -90,7 +90,7 @@ class GenreEvaluationResponse(BaseModel):
 
 
 class ClusterMetricsResponse(BaseModel):
-    silhouette_score: float
+    silhouette_score: float | None = None
     davies_bouldin_index: float
     calinski_harabasz_index: float
     num_clusters: int
@@ -107,7 +107,9 @@ class ClusterMetricsResponse(BaseModel):
     @classmethod
     def from_domain(cls, m: ClusterMetrics) -> "ClusterMetricsResponse":
         return cls(
-            silhouette_score=round(m.silhouette_score, 4),
+            silhouette_score=(
+                round(m.silhouette_score, 4) if m.silhouette_score is not None else None
+            ),
             davies_bouldin_index=round(m.davies_bouldin_index, 4),
             calinski_harabasz_index=round(m.calinski_harabasz_index, 4),
             num_clusters=m.num_clusters,

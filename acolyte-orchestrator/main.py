@@ -20,9 +20,9 @@ from acolyte.config.settings import Settings
 from acolyte.domain.fusion import RRFFusion
 from acolyte.gateway.checkpoint_factory import create_checkpointer
 from acolyte.gateway.memory_content_store import MemoryContentStore
-from acolyte.gateway.memory_job_gw import MemoryJobGateway
 from acolyte.gateway.news_creator_hyde_gw import NewsCreatorHyDEGenerator
 from acolyte.gateway.ollama_gw import OllamaGateway
+from acolyte.gateway.postgres_job_gw import PostgresJobGateway
 from acolyte.gateway.postgres_report_gw import PostgresReportGateway
 from acolyte.gateway.search_indexer_gw import SearchIndexerGateway
 from acolyte.gateway.vllm_gw import VllmGateway
@@ -46,7 +46,10 @@ logger = structlog.get_logger(__name__)
 _dsn = settings.resolve_db_dsn()
 _pool = AsyncConnectionPool(_dsn, min_size=settings.db_pool_min_size, max_size=settings.db_pool_max_size, open=False)
 _report_repo = PostgresReportGateway(_pool)
-_job_queue = MemoryJobGateway()
+# Persistent job queue — must stay consistent with PostgresReportGateway.has_active_run
+# (which reads report_runs), or the delete_report in-progress guard is always False
+# after a restart. MemoryJobGateway is test-only (see tests/conftest.py).
+_job_queue = PostgresJobGateway(_pool)
 
 
 # HTTP client for Ollama and search-indexer (600s timeout for 26B model with 8192 num_predict).
@@ -82,8 +85,10 @@ if settings.llm_provider == "vllm":
 else:
     _llm_gw = OllamaGateway(_http_client, settings)
 
-# Run-scoped content store (article body cache for hydrator top-N fetch)
-_content_store = MemoryContentStore()
+# Process-global content store (article body cache for hydrator top-N fetch).
+# Bounded LRU — see MemoryContentStore docstring for why this cannot be a
+# plain unbounded dict.
+_content_store = MemoryContentStore(max_size=settings.content_store_max_size)
 
 # Evidence gateway (search-indexer / Meilisearch)
 _search_gw = SearchIndexerGateway(_http_client, settings, _content_store)

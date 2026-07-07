@@ -47,6 +47,18 @@ func main() {
 	log := logger.NewWithOTel(otelCfg.Enabled)
 	slog.SetDefault(log)
 
+	// rag-orchestrator only serves plaintext listeners today (REST on
+	// cfg.Server.Port, Connect-RPC h2c on cfg.Server.ConnectPort).
+	// middleware.PeerIdentityMiddleware exists but is not constructed or
+	// wired into any handler chain, and augur's Connect-RPC handlers trust
+	// X-Alt-User-Id / X-Alt-Tenant-Id without peer verification. Log this
+	// loudly so "no mTLS enforcement on inbound Connect-RPC" is an explicit,
+	// visible fact rather than something an auditor has to infer from the
+	// absence of a wiring call (CLAUDE.md rule 8 / .claude/rules/di-wiring.md).
+	log.Warn("peer_identity_disabled",
+		"reason", "no mTLS listener configured; PeerIdentityMiddleware is not applied to any handler",
+	)
+
 	// 4. Initialize DB
 	dbPool, err := infra.NewPostgresDB(ctx, cfg.DB.DSN(), infra.PoolConfig{
 		MaxConns: cfg.DB.MaxConns,
@@ -80,7 +92,7 @@ func main() {
 		app.IndexUsecase,
 		app.JobRepo,
 		app.MorningLetterUsecase,
-		rag_http.WithEmbedderOverride(app.EmbedderFactory, app.IndexUsecaseFactory, app.EmbeddingModel, app.EmbedderTimeout),
+		rag_http.WithEmbedderOverride(app.EmbedderFactory, app.IndexUsecaseFactory, app.EmbeddingModel, app.EmbedderTimeout, cfg.Embedder.AllowedOverrideOrigins),
 	)
 	openapi.RegisterHandlers(e, handler)
 	e.POST("/internal/rag/backfill", handler.Backfill)

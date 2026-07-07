@@ -423,6 +423,7 @@ impl StageExecutor<'_> {
                         summary_response_id: light_result.summary_response_id,
                         summary_response: None, // データベースから再取得される
                         error: light_result.error,
+                        error_kind: light_result.error_kind,
                     },
                 )
             })

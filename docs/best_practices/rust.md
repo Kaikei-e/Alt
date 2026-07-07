@@ -148,6 +148,77 @@ let data = some_fallible_call()?; // caller has no idea what failed
 
 > **Alt:** Prefer one crate-level domain error enum per service, then translate it into transport-specific errors only at HTTP or RPC boundaries.
 
+### Preserve Error Types Across Retry Boundaries
+
+`anyhow::bail!("request failed: {status}")` stringifies the failure, so a retry layer that classifies with `err.downcast_ref::<reqwest::Error>()` can no longer see the status code — a 429 becomes permanently non-retryable (ADR-000390). Propagate a typed `thiserror` error that carries the status across any boundary a retry policy inspects:
+
+```rust
+// ❌ stringified — downcast_ref::<reqwest::Error>() finds nothing, 429 is never retried
+if !resp.status().is_success() {
+    anyhow::bail!("upstream returned {}", resp.status());
+}
+
+// ✅ typed error keeps the status for the retry policy
+#[derive(Debug, Error)]
+pub enum UpstreamError {
+    #[error("upstream returned {status}")]
+    Status { status: reqwest::StatusCode },
+    #[error(transparent)]
+    Transport(#[from] reqwest::Error),
+}
+
+impl UpstreamError {
+    pub fn is_retryable(&self) -> bool {
+        match self {
+            Self::Status { status } => status.as_u16() == 429 || status.is_server_error(),
+            Self::Transport(e) => e.is_timeout() || e.is_connect(),
+        }
+    }
+}
+```
+
+### Never Swallow Wiring/Constructor Failures
+
+`.ok()`, `unwrap_or_default()`, or a fallback value on a **construction or wiring** `Result` converts "dependency failed to initialize" into a silent no-op — the CLAUDE.md Rule 8 failure mode. The same applies to data fallbacks that fake success (e.g. substituting a seeded random vector when embedding fails: downstream clustering then runs on noise while looking healthy).
+
+```rust
+// ❌ client silently absent; every downstream call becomes a no-op
+let tag_client = TagGeneratorClient::new(&cfg).ok();
+
+// ✅ wiring failure is a startup failure
+let tag_client = TagGeneratorClient::new(&cfg)
+    .map_err(|e| anyhow::anyhow!("tag-generator client init: {e}"))?;
+info!("tag_generator_client_enabled");
+
+// ✅ intentionally optional ⇒ explicit config + loud log + hard error if used while disabled
+let tag_client = match cfg.tag_generator {
+    Some(ref c) => { info!("tag_generator_enabled"); Some(TagGeneratorClient::new(c)?) }
+    None => { warn!("tag_generator_disabled (TAG_GENERATOR_URL unset)"); None }
+};
+```
+
+Per-item processing failures may be skipped **with an error log and a metric** — but never replaced by fabricated data.
+
+`Result::ok()` on infrastructure initialization is the same failure mode with worse observability: an `EmbeddingService::new().ok()` left only a one-line "unavailable" log and the resulting genre loss took three days to diagnose (ADR-000611, PM-2026-014). Log an `info!` on successful init too, and for components production cannot run without, add an explicit policy gate (e.g. `RECAP_WORKER_EMBEDDING_REQUIRED`, default `true` in prod) that bails at startup instead of degrading to `None` (PM-2026-038).
+
+### Never Turn Total Failure into Empty Success
+
+`Ok(_)` from a pipeline is not proof of success. When every item inside a job fails but errors are handled per-item, the pipeline returns `Ok` with an empty result, the job is marked Completed, and an empty artifact is persisted as if it were valid (ADR-000149, ADR-000547, PM-2026-001). Derive the job outcome from the result object's contents, not from the absence of an error:
+
+```rust
+// ❌ "no error returned" == success — a genres_stored=0 wipeout job goes Completed
+pipeline.run(&job).await?;
+mark_completed(&job).await?;
+
+// ✅ outcome derived from the result contents
+let result = pipeline.run(&job).await?;
+let outcome = if result.articles_processed > 0 && result.genres_stored == 0 {
+    JobOutcome::Failed
+} else {
+    JobOutcome::Completed
+};
+```
+
 ## 4. Async & Concurrency
 
 - Prefer native `async fn` in private/internal traits on Rust 1.75+
@@ -217,6 +288,32 @@ tokio::spawn(async move {
 // If task completion matters, keep the JoinHandle or use JoinSet.
 // On shutdown:
 cancel.cancel();
+```
+
+**Flush/writer tasks are never fire-and-forget.** A batch writer or final-flush task whose `JoinHandle` is dropped gets aborted at runtime teardown, silently losing the last batch. Retain the handle (or use `TaskTracker`) and await it during shutdown ([tokio: graceful shutdown](https://tokio.rs/tokio/topics/shutdown)):
+
+```rust
+// ❌ detached — final flush aborted on shutdown
+tokio::spawn(async move { writer.flush_loop(cancel).await });
+
+// ✅ tracked — shutdown waits for the final flush
+let flush_handle = tokio::spawn(async move { writer.flush_loop(cancel).await });
+// on shutdown, AFTER stopping intake and BEFORE dropping the runtime:
+flush_handle.await?;
+```
+
+### Batch Writer: Drain After Success
+
+Remove items from a buffer only **after** the downstream write is confirmed. `buf.drain(..)` before the insert means any failure loses the whole batch:
+
+```rust
+// ❌ rows are gone even if insert fails
+let batch: Vec<_> = buf.drain(..).collect();
+client.insert(batch).await?;
+
+// ✅ drain only on confirmed success
+client.insert(&buf[..n]).await?;
+buf.drain(..n);
 ```
 
 ### Graceful Shutdown (main.rs)
@@ -391,6 +488,27 @@ tx.commit().await.map_err(ScannerError::Database)?;
 
 > **Alt:** If a Rust service stores immutable events, keep those tables append-only and isolate mutable current-state projections behind explicit upsert paths.
 
+### ClickHouse RowBinary Type Strictness
+
+RowBinary encoding is byte-exact per column type: `FixedString(N)` requires `[u8; N]` (not a length-prefixed `String`), `Enum8` is the raw `i8` discriminant, and `DateTime64` is an `i64` tick count (ADR-000074). Passing a Rust `String` where `FixedString` is expected shifts every subsequent byte in the row and fails with misleading column errors far from the actual mismatch. Keep the Rust row struct's field types aligned with the table DDL and cover the mapping with a serialization test.
+
+### Redis Streams: Trim with MAXLEN ~, Keep noeviction
+
+Cap stream memory with approximate trimming at write time, and keep `maxmemory-policy noeviction`. `allkeys-lru` can evict the stream key itself, which destroys its consumer groups and surfaces later as `NOGROUP` errors (ADR-000326). `MAXLEN ~` is a Redis implementation detail — keep it inside the Driver layer, never in usecase code:
+
+```rust
+// ✅ Driver layer owns the trimming detail
+redis::cmd("XADD")
+    .arg(&self.stream_key)
+    .arg("MAXLEN")
+    .arg("~")
+    .arg(MAX_STREAM_LEN)
+    .arg("*")
+    .arg(&fields)
+    .query_async(&mut conn)
+    .await?;
+```
+
 ## 7. Serialization (serde)
 
 - Derive `Serialize` and `Deserialize` together — use `serde(rename_all = "camelCase")` or `snake_case` as needed
@@ -425,6 +543,24 @@ pub enum StreamEvent {
 pub struct Response {
     pub data: Vec<Item>,
     pub error: Option<String>, // Always sent as "error": null — noisy
+}
+```
+
+### Deserializing protojson Payloads
+
+protojson omits zero-valued fields from the wire (`false`, `0`, `""`, empty arrays), and encodes int64 as JSON strings (ADR-000761, ADR-000764). A struct that deserializes a protojson payload needs `#[serde(default)]` on every field, and 64-bit integers need a string-tolerant deserializer:
+
+```rust
+// ✅ tolerate omitted zero-values and string-encoded int64
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ListResponse {
+    #[serde(default)]
+    pub items: Vec<Item>,
+    #[serde(default)]
+    pub has_more: bool, // absent from JSON when false
+    #[serde(default, deserialize_with = "i64_from_string_or_number")]
+    pub total: i64, // arrives as "42", not 42
 }
 ```
 
@@ -700,6 +836,22 @@ impl ServiceConfig {
 fn start_server(db_url: &str, redis_url: &str, listen_addr: &str) { ... }
 ```
 
+### Model Artifact Compatibility Gates
+
+Major bumps of ML dependencies (transformers, sklearn, tokenizers) silently shift embedding distributions — the code still runs, the vectors are just wrong (ADR-000835, ADR-000838). Record training-time versions and the embedding model identity in a sidecar metadata file next to the artifact, and verify it at startup. Fail closed; any escape hatch must be an explicit default-false opt-in:
+
+```rust
+// ✅ startup gate: artifact metadata vs runtime environment
+let meta: ClassifierMeta = serde_json::from_str(&fs::read_to_string(&meta_path)?)?;
+if meta.embedding_model != cfg.embedding_model {
+    anyhow::bail!(
+        "classifier trained with {} but runtime embeds with {}",
+        meta.embedding_model,
+        cfg.embedding_model
+    );
+}
+```
+
 > **Alt:** Pick one primary configuration approach per service and document it clearly. Avoid mixing multiple partially overlapping config sources without a strong reason.
 
 ## 12. Security
@@ -777,12 +929,29 @@ let cve_ids: Vec<String> = rows.into_iter().map(|r| r.0).collect();
 ```
 
 ```toml
-# ✅ Release profile for maximum performance
+# ✅ Release profile for maximum performance — be explicit, don't rely on defaults
 [profile.release]
 lto = "fat"
 codegen-units = 1
-strip = true
+strip = "symbols"
+panic = "abort"
 overflow-checks = true
+```
+
+State `lto` / `codegen-units` / `strip` / `panic` explicitly rather than inheriting defaults — the settings document the intended binary characteristics and survive toolchain default changes (ADR-000824).
+
+### jemalloc for libtorch-Resident Services
+
+Long-running services that link libtorch fragment glibc malloc badly — RSS grows to 1.5-2x actual usage and the container gets OOM-killed (ADR-000547, PM-2026-001). Set jemalloc as the global allocator, with `unprefixed_malloc_on_supported_platforms` so libtorch's C++ side also allocates through jemalloc:
+
+```toml
+[dependencies]
+tikv-jemallocator = { version = "0.6", features = ["unprefixed_malloc_on_supported_platforms"] }
+```
+
+```rust
+#[global_allocator]
+static GLOBAL: tikv_jemallocator::Jemalloc = tikv_jemallocator::Jemalloc;
 ```
 
 ### Batch Processing
@@ -832,6 +1001,17 @@ EXPOSE 9000
 HEALTHCHECK --interval=10s --timeout=3s --retries=3 \
     CMD wget --no-verbose --tries=1 --spider http://localhost:9000/healthz || exit 1
 CMD ["my-service"]
+```
+
+### Copying Native Libraries (libtorch)
+
+When a service links native libraries such as libtorch, COPY only the shared objects the binary actually needs — `libtorch_python.so` alone is ~400 MB of dead weight for rust-bert — but copy them with wildcard patterns so SONAME symlink chains stay intact. Hand-picking exact SONAME files has caused SIGSEGV at startup (ADR-000824):
+
+```dockerfile
+# ✅ needed libs only, wildcards keep SONAME symlinks intact
+COPY --from=builder /opt/libtorch/lib/libtorch*.so* /usr/local/lib/
+COPY --from=builder /opt/libtorch/lib/libc10*.so* /usr/local/lib/
+COPY --from=builder /opt/libtorch/lib/libgomp*.so* /usr/local/lib/
 ```
 
 > **Alt:** Runtime images should install only the tools the service genuinely needs in production. Keep the runtime surface area smaller than the build image whenever possible.
@@ -892,6 +1072,41 @@ impl Default for OsvClient {
 // Enables both:
 let client = OsvClient::new();
 let client = OsvClient::default();
+```
+
+### LazyLock over once_cell
+
+`std::sync::LazyLock` (stable since 1.80) replaces `once_cell::sync::Lazy` — drop the dependency in new code (ADR-000192). For env-dependent tests, Edition 2024 marking `env::set_var` as `unsafe` is the signal to stop mutating process env directly: use `temp_env` for scoped overrides.
+
+```rust
+// ✅ std replacement for once_cell
+static CVE_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^CVE-\d{4}-\d+$").unwrap());
+
+// ✅ scoped env in tests instead of unsafe set_var
+#[test]
+fn reads_optional_url() {
+    temp_env::with_var("TAG_GENERATOR_URL", Some("http://mock"), || {
+        let cfg = ServiceConfig::from_env().unwrap();
+        assert!(cfg.tag_generator_url.is_some());
+    });
+}
+```
+
+### UTF-8-Safe Truncation
+
+Byte-index slicing (`&s[..n]`) **panics** on a non-char-boundary, and byte-based truncation splits multi-byte text (Japanese content is the common casualty in Alt):
+
+```rust
+// ❌ panics if byte 80 is mid-character
+let title = &s[..80];
+
+// ✅ walk back to a char boundary
+fn truncate_chars(s: &str, max: usize) -> &str {
+    match s.char_indices().nth(max) {
+        Some((idx, _)) => &s[..idx],
+        None => s,
+    }
+}
 ```
 
 ---

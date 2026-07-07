@@ -13,8 +13,9 @@ use std::future::Future;
 use std::pin::Pin;
 use std::time::Duration;
 use tokio::sync::mpsc;
+use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
-use tracing::{error, info};
+use tracing::{error, info, warn};
 
 /// Channel capacity for each row type.
 const CHANNEL_CAPACITY: usize = 1024;
@@ -24,6 +25,11 @@ const FLUSH_INTERVAL_SECS: u64 = 5;
 
 /// Maximum rows per batch flush.
 const MAX_BATCH_SIZE: usize = 5000;
+
+/// Maximum number of attempts (including the first) to flush a single batch
+/// to ClickHouse before giving up and dropping it. Bounds how long a
+/// transient ClickHouse outage can stall the flush loop.
+const MAX_FLUSH_ATTEMPTS: u32 = 3;
 
 /// ClickHouse inserter configuration
 const INSERTER_SEND_TIMEOUT: Duration = Duration::from_secs(10);
@@ -42,16 +48,20 @@ pub struct BatchWriter {
 }
 
 impl BatchWriter {
-    /// Spawn the background flush task and return the `BatchWriter` handle.
+    /// Spawn the background flush task and return the `BatchWriter` handle
+    /// together with the flush loop's `JoinHandle`.
     ///
-    /// The background task runs until `shutdown_token` is cancelled.
+    /// The background task runs until `shutdown_token` is cancelled. Callers
+    /// MUST hold onto the returned handle and `.await` it after cancelling
+    /// the token — otherwise the runtime can drop the flush task mid-write
+    /// on shutdown, silently losing the final batch.
     #[must_use]
-    pub fn spawn(client: Client, shutdown_token: CancellationToken) -> Self {
+    pub fn spawn(client: Client, shutdown_token: CancellationToken) -> (Self, JoinHandle<()>) {
         let (logs_tx, logs_rx) = mpsc::channel::<Vec<LogRow>>(CHANNEL_CAPACITY);
         let (otel_logs_tx, otel_logs_rx) = mpsc::channel::<Vec<OTelLogRow>>(CHANNEL_CAPACITY);
         let (otel_traces_tx, otel_traces_rx) = mpsc::channel::<Vec<OTelTraceRow>>(CHANNEL_CAPACITY);
 
-        tokio::spawn(flush_loop(
+        let handle = tokio::spawn(flush_loop(
             client,
             logs_rx,
             otel_logs_rx,
@@ -59,11 +69,14 @@ impl BatchWriter {
             shutdown_token,
         ));
 
-        Self {
-            logs: logs_tx,
-            otel_logs: otel_logs_tx,
-            otel_traces: otel_traces_tx,
-        }
+        (
+            Self {
+                logs: logs_tx,
+                otel_logs: otel_logs_tx,
+                otel_traces: otel_traces_tx,
+            },
+            handle,
+        )
     }
 }
 
@@ -172,7 +185,10 @@ async fn flush_loop(
 
             // Shutdown signal
             () = shutdown_token.cancelled() => {
-                info!("BatchWriter shutting down, flushing remaining rows");
+                info!("BatchWriter shutting down: draining channels before final flush");
+                drain_channel(&mut log_rx, &mut log_buf);
+                drain_channel(&mut otel_log_rx, &mut otel_log_buf);
+                drain_channel(&mut otel_trace_rx, &mut otel_trace_buf);
                 flush_all(&client, &mut log_buf, &mut otel_log_buf, &mut otel_trace_buf).await;
                 break;
             }
@@ -180,6 +196,19 @@ async fn flush_loop(
     }
 
     info!("BatchWriter flush loop stopped");
+}
+
+/// Close `rx` (rejecting any further sends) and drain every row already
+/// buffered in the channel into `buf`.
+///
+/// Called on shutdown, before the final flush: without this, rows sitting
+/// in-channel (senders raced the cancellation signal) are silently lost
+/// when the flush loop breaks out of `select!`.
+fn drain_channel<T>(rx: &mut mpsc::Receiver<Vec<T>>, buf: &mut Vec<T>) {
+    rx.close();
+    while let Ok(rows) = rx.try_recv() {
+        buf.extend(rows);
+    }
 }
 
 async fn flush_all(
@@ -204,13 +233,61 @@ async fn flush_rows<T: clickhouse::Row + serde::Serialize>(
     table: &str,
     buf: &mut Vec<T>,
 ) {
+    let sink = ClickHouseSink { client, table };
+    flush_with_retry(table, buf, &sink).await;
+}
+
+/// Destination for a batch flush. Exists so `flush_with_retry` can be
+/// exercised in tests without a real ClickHouse connection.
+trait FlushSink<T> {
+    async fn write(&self, rows: &[T]) -> Result<(), AggregatorError>;
+}
+
+struct ClickHouseSink<'a> {
+    client: &'a Client,
+    table: &'a str,
+}
+
+impl<T: clickhouse::Row + serde::Serialize> FlushSink<T> for ClickHouseSink<'_> {
+    async fn write(&self, rows: &[T]) -> Result<(), AggregatorError> {
+        write_batch(self.client, self.table, rows).await
+    }
+}
+
+/// Flush `buf` via `sink`, retrying up to `MAX_FLUSH_ATTEMPTS` times on
+/// failure.
+///
+/// The buffer is only cleared once a write succeeds, or once the retry
+/// budget is exhausted. A transient ClickHouse outage must not lose rows
+/// that were never durably written — draining the buffer before the write
+/// attempt (as the old code did) means a failed insert silently discards
+/// that whole period's logs.
+async fn flush_with_retry<T>(table: &str, buf: &mut Vec<T>, sink: &impl FlushSink<T>) {
+    if buf.is_empty() {
+        return;
+    }
     let count = buf.len();
-    match write_batch(client, table, buf.drain(..)).await {
-        Ok(()) => {
-            info!(table, count, "Flushed batch to ClickHouse");
-        }
-        Err(e) => {
-            error!(table, count, error = %e, "Failed to flush batch to ClickHouse");
+
+    for attempt in 1..=MAX_FLUSH_ATTEMPTS {
+        match sink.write(buf.as_slice()).await {
+            Ok(()) => {
+                info!(table, count, attempt, "Flushed batch to ClickHouse");
+                buf.clear();
+                return;
+            }
+            Err(e) if attempt < MAX_FLUSH_ATTEMPTS => {
+                warn!(
+                    table, count, attempt, error = %e,
+                    "Failed to flush batch to ClickHouse, retrying"
+                );
+            }
+            Err(e) => {
+                error!(
+                    table, count, attempts = attempt, error = %e,
+                    "Dropping batch after exhausting flush retry budget"
+                );
+                buf.clear();
+            }
         }
     }
 }
@@ -218,7 +295,7 @@ async fn flush_rows<T: clickhouse::Row + serde::Serialize>(
 async fn write_batch<T: clickhouse::Row + serde::Serialize>(
     client: &Client,
     table: &str,
-    rows: impl Iterator<Item = T>,
+    rows: &[T],
 ) -> Result<(), AggregatorError> {
     let mut inserter = client
         .inserter::<T>(table)?
@@ -227,7 +304,7 @@ async fn write_batch<T: clickhouse::Row + serde::Serialize>(
         .with_max_rows(INSERTER_MAX_ROWS);
 
     for row in rows {
-        if let Err(e) = inserter.write(&row) {
+        if let Err(e) = inserter.write(row) {
             error!("Failed to write row to ClickHouse inserter: {e}");
         }
     }
@@ -412,5 +489,156 @@ mod tests {
         let result = writer.export_otel_traces(vec![make_otel_trace()]).await;
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("channel closed"));
+    }
+
+    // =========================================================================
+    // Shutdown: JoinHandle is stored and awaited (finding #1)
+    // =========================================================================
+
+    #[tokio::test]
+    async fn spawn_returns_join_handle_that_completes_after_cancel() {
+        // No real ClickHouse needed: buffers are empty, so `flush_all` on the
+        // shutdown branch never attempts a network write.
+        let client = Client::default().with_url("http://127.0.0.1:1");
+        let token = CancellationToken::new();
+        let (_writer, handle) = BatchWriter::spawn(client, token.clone());
+
+        token.cancel();
+
+        let result = tokio::time::timeout(Duration::from_secs(5), handle).await;
+        assert!(
+            result.is_ok(),
+            "flush loop task should complete promptly once cancelled and awaited"
+        );
+    }
+
+    // =========================================================================
+    // Shutdown: in-channel rows are drained before the final flush (finding #2)
+    // =========================================================================
+
+    #[test]
+    fn drain_channel_collects_buffered_rows_and_closes_receiver() {
+        let (tx, mut rx) = mpsc::channel::<Vec<u32>>(4);
+        tx.try_send(vec![1, 2]).unwrap();
+        tx.try_send(vec![3]).unwrap();
+
+        let mut buf = Vec::new();
+        drain_channel(&mut rx, &mut buf);
+
+        assert_eq!(buf, vec![1, 2, 3]);
+        // Closed: senders can no longer enqueue further rows.
+        assert!(tx.try_send(vec![4]).is_err());
+    }
+
+    #[test]
+    fn drain_channel_on_empty_channel_leaves_buffer_untouched() {
+        let (_tx, mut rx) = mpsc::channel::<Vec<u32>>(4);
+
+        let mut buf = vec![9];
+        drain_channel(&mut rx, &mut buf);
+
+        assert_eq!(buf, vec![9]);
+    }
+
+    // =========================================================================
+    // flush_with_retry: failed writes must not lose the batch (finding #3)
+    // =========================================================================
+
+    /// Test double for `FlushSink`, driven by a plain synchronous closure so
+    /// tests can inject failures without a real ClickHouse connection.
+    struct MockSink<F> {
+        write_fn: F,
+    }
+
+    impl<F> FlushSink<i32> for MockSink<F>
+    where
+        F: Fn(&[i32]) -> Result<(), AggregatorError>,
+    {
+        async fn write(&self, rows: &[i32]) -> Result<(), AggregatorError> {
+            (self.write_fn)(rows)
+        }
+    }
+
+    #[tokio::test]
+    async fn flush_with_retry_clears_buffer_and_calls_once_on_success() {
+        let mut buf = vec![1_i32, 2, 3];
+        let calls = std::sync::atomic::AtomicU32::new(0);
+
+        let sink = MockSink {
+            write_fn: |rows: &[i32]| {
+                calls.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                assert_eq!(rows, [1, 2, 3]);
+                Ok(())
+            },
+        };
+        flush_with_retry("t", &mut buf, &sink).await;
+
+        assert!(buf.is_empty());
+        assert_eq!(calls.load(std::sync::atomic::Ordering::SeqCst), 1);
+    }
+
+    #[tokio::test]
+    async fn flush_with_retry_is_a_noop_on_empty_buffer() {
+        let mut buf: Vec<i32> = Vec::new();
+        let calls = std::sync::atomic::AtomicU32::new(0);
+
+        let sink = MockSink {
+            write_fn: |_rows: &[i32]| {
+                calls.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                Ok(())
+            },
+        };
+        flush_with_retry("t", &mut buf, &sink).await;
+
+        assert_eq!(calls.load(std::sync::atomic::Ordering::SeqCst), 0);
+    }
+
+    #[tokio::test]
+    async fn flush_with_retry_retains_rows_across_failed_attempt_then_succeeds() {
+        let mut buf = vec![1_i32, 2, 3];
+        let attempt = std::sync::atomic::AtomicU32::new(0);
+
+        let sink = MockSink {
+            write_fn: |rows: &[i32]| {
+                let n = attempt.fetch_add(1, std::sync::atomic::Ordering::SeqCst) + 1;
+                assert_eq!(
+                    rows,
+                    [1, 2, 3],
+                    "rows must still be present on retry {n} — a failed attempt must not have dropped them"
+                );
+                if n < 2 {
+                    Err(AggregatorError::ClickHouse("boom".to_string()))
+                } else {
+                    Ok(())
+                }
+            },
+        };
+        flush_with_retry("t", &mut buf, &sink).await;
+
+        assert!(buf.is_empty(), "buffer clears once the retry succeeds");
+        assert_eq!(attempt.load(std::sync::atomic::Ordering::SeqCst), 2);
+    }
+
+    #[tokio::test]
+    async fn flush_with_retry_drops_batch_after_retry_budget_exhausted() {
+        let mut buf = vec![1_i32, 2, 3];
+        let attempts = std::sync::atomic::AtomicU32::new(0);
+
+        let sink = MockSink {
+            write_fn: |_rows: &[i32]| {
+                attempts.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                Err(AggregatorError::ClickHouse("still down".to_string()))
+            },
+        };
+        flush_with_retry("t", &mut buf, &sink).await;
+
+        assert!(
+            buf.is_empty(),
+            "batch must be dropped (not retried forever) once the retry budget is exhausted"
+        );
+        assert_eq!(
+            attempts.load(std::sync::atomic::Ordering::SeqCst),
+            MAX_FLUSH_ATTEMPTS
+        );
     }
 }

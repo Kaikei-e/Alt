@@ -1,6 +1,6 @@
 # Alt Butterfly Facade
 
-_Last reviewed: March 18, 2026_
+_Last reviewed: July 7, 2026_
 
 **Location:** `alt-butterfly-facade`
 
@@ -226,6 +226,17 @@ go build -o alt-butterfly-facade .
 | P50 Latency (proxy overhead) | <5ms |
 | Memory Usage | <128MB |
 | Connection pooling | Via http.Client |
+
+## Known failure patterns
+
+Cross-cutting incident patterns are catalogued in [[crystallized-knowledge]].
+
+- Streaming stalled even after nginx/heartbeat fixes → BFF `io.ReadAll` buffered whole responses ("the final boss"); streaming RPCs must bypass cache, dedup, and circuit breaker, detected by `application/connect+` content-type prefix match → PM-2026-004, [[000295]] [[000554]].
+- Downstream JSON parse errors on proxied responses → forwarding the client's `Accept-Encoding` disables Go transport auto-decompression, so gzip bytes flow raw to the backend/frontend; never forward that header from a proxy → [[000084]].
+- Streams still died at a fixed timeout after nginx was extended → `http.Client.Timeout` caps the whole stream lifetime (body read included); streaming clients need `Timeout: 0` with context-deadline management, keep unary abuse-guard and streaming cap as separate timeouts, and flush explicitly via `http.Flusher` without a context timeout → [[000478]] [[000704]].
+- A newly added streaming RPC silently breaks (buffered or timed out) → the streaming-procedure list here and the nginx streaming `location` are both hardcoded per procedure; adding a streaming service requires updating both, guarded by config-verification tests → [[000555]], checklist: [[connect-rpc-streaming-checklist]].
+- Streams reconnect every ~5 minutes → JWT TTL shorter than intended stream lifetime; silent because HTTP stays 200 — track body size / stream count / reconnect interval as SLIs → PM-2026-045, [[000929]].
+- "Page opens but every API call is 403" → role claims must propagate through the whole pipeline (Kratos traits → auth-hub → JWT claim → BFF → FE layout); fixing only one side splits page and API authorization → [[000405]] [[000407]].
 
 ## LLM Notes
 - 透過的プロキシのため、proto 定義のインポートは不要

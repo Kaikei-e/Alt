@@ -39,20 +39,26 @@ def get_db_url() -> str:
         db_port = os.getenv("RECAP_DB_PORT", "5435")
         db_user = os.getenv("RECAP_DB_USER", "recap_user")
         db_name = os.getenv("RECAP_DB_NAME", "recap")
-        db_password = os.getenv("RECAP_DB_PASSWORD", "recap_db_pass_DO_NOT_USE_THIS")
+        db_password = os.getenv("RECAP_DB_PASSWORD")
 
         # Try to load password from secrets
         script_dir = Path(__file__).parent
         repo_root = script_dir.parent
         secret_path = repo_root / "secrets" / "recap_db_password.txt"
 
-        if secret_path.exists():
+        if not db_password and secret_path.exists():
             try:
                 with open(secret_path, "r") as f:
                     db_password = f.read().strip()
                 logger.info(f"Loaded password from {secret_path}")
             except Exception as e:
                 logger.warning(f"Failed to read password from {secret_path}: {e}")
+
+        if not db_password:
+            raise SystemExit(
+                "No database password found. Set RECAP_DB_URL / RECAP_SUBWORKER_DB_URL, "
+                "or RECAP_DB_PASSWORD, or provide secrets/recap_db_password.txt."
+            )
 
         db_url = f"postgresql+asyncpg://{db_user}:{db_password}@{db_host}:{db_port}/{db_name}"
     else:

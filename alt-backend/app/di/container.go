@@ -8,6 +8,7 @@ import (
 	"alt/gateway/fetch_article_gateway"
 	"alt/gateway/internal_article_gateway"
 	"alt/gateway/knowledge_backfill_gateway"
+	"alt/gateway/preprocessor_summarize_gateway"
 	"alt/gateway/rag_connect_gateway"
 	"alt/gateway/summary_version_gateway"
 	"alt/gateway/tag_set_version_gateway"
@@ -28,6 +29,7 @@ import (
 	"alt/usecase/csrf_token_usecase"
 	dashboard_usecase "alt/usecase/dashboard"
 	"alt/usecase/feed_link_usecase"
+	"alt/usecase/fetch_article_summaries_usecase"
 	"alt/usecase/fetch_article_summary_usecase"
 	"alt/usecase/fetch_article_tags_usecase"
 	"alt/usecase/fetch_article_usecase"
@@ -74,6 +76,7 @@ import (
 	"alt/usecase/select_lens_usecase"
 	"alt/usecase/stream_article_tags_usecase"
 	"alt/usecase/subscription_usecase"
+	"alt/usecase/summarize_article_usecase"
 	"alt/usecase/track_home_action_usecase"
 	"alt/usecase/track_home_seen_usecase"
 	"alt/usecase/update_lens_usecase"
@@ -174,6 +177,12 @@ type ApplicationComponents struct {
 	StreamArticleTagsUsecase   *stream_article_tags_usecase.StreamArticleTagsUsecase
 	FetchTagCloudUsecase       *fetch_tag_cloud_usecase.FetchTagCloudUsecase
 	GetArticleSourceURLUsecase *get_article_source_url_usecase.GetArticleSourceURLUsecase
+
+	// Legacy REST v1 summarize endpoints (POST /v1/feeds/summarize,
+	// /summarize/queue, GET /summarize/status/:job_id, POST /fetch/summary)
+	SummarizeArticleUsecase      *summarize_article_usecase.Usecase
+	FetchArticleSummariesUsecase *fetch_article_summaries_usecase.Usecase
+	PreProcessorSummarizeGateway *preprocessor_summarize_gateway.Gateway
 
 	// OPML
 	ExportOPMLUsecase *opml_usecase.ExportOPMLUsecase
@@ -341,6 +350,10 @@ func NewApplicationComponents(pool *pgxpool.Pool) *ApplicationComponents {
 		FetchTagCloudUsecase:       article.FetchTagCloudUsecase,
 		GetArticleSourceURLUsecase: article.GetArticleSourceURLUsecase,
 		InternalArticleGateway:     article.InternalArticleGateway,
+
+		SummarizeArticleUsecase:      article.SummarizeArticleUsecase,
+		FetchArticleSummariesUsecase: article.FetchArticleSummariesUsecase,
+		PreProcessorSummarizeGateway: article.PreProcessorSummarizeGateway,
 
 		// RAG usecases
 		RetrieveContextUsecase: rag.RetrieveContextUsecase,

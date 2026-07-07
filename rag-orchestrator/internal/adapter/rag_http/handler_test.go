@@ -289,3 +289,138 @@ func TestUpsertIndex_ContextHasServerSideTimeout(t *testing.T) {
 	assert.True(t, ok, "context passed to Upsert must have a server-side deadline")
 	assert.WithinDuration(t, time.Now().Add(90*time.Second), deadline, 5*time.Second)
 }
+
+// dummyVectorEncoder is a no-op domain.VectorEncoder for embedder-override tests.
+type dummyVectorEncoder struct{ url string }
+
+func (d *dummyVectorEncoder) Encode(_ context.Context, _ []string) ([][]float32, error) {
+	return nil, nil
+}
+
+func (d *dummyVectorEncoder) Version() string { return "dummy" }
+
+func newOverrideHandler(
+	defaultUsecase, overrideUsecase *dummyIndexUsecase,
+	factoryCalled *bool,
+	capturedFactoryURL *string,
+	allowedOrigins []string,
+) *rag_http.Handler {
+	embedderFactory := func(url string, _ string, _ int) domain.VectorEncoder {
+		if factoryCalled != nil {
+			*factoryCalled = true
+		}
+		if capturedFactoryURL != nil {
+			*capturedFactoryURL = url
+		}
+		return &dummyVectorEncoder{url: url}
+	}
+	indexUsecaseFactory := func(_ domain.VectorEncoder) usecase.IndexArticleUsecase {
+		return overrideUsecase
+	}
+	return rag_http.NewHandler(nil, nil, defaultUsecase, nil, nil,
+		rag_http.WithEmbedderOverride(embedderFactory, indexUsecaseFactory, "model", 30, allowedOrigins))
+}
+
+func upsertReqWithEmbedderOverride(t *testing.T, embedderURL string) (echo.Context, *httptest.ResponseRecorder) {
+	t.Helper()
+	e := echo.New()
+	reqBody := openapi.UpsertIndexRequest{
+		ArticleId: "test-article-123",
+		Title:     "Test Article",
+		Url:       "https://example.com/test-article",
+		Body:      "content",
+		UserId:    "user-456",
+	}
+	bodyBytes, err := json.Marshal(reqBody)
+	assert.NoError(t, err)
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/rag/index/upsert", bytes.NewReader(bodyBytes))
+	req.Header.Set("Content-Type", "application/json")
+	if embedderURL != "" {
+		req.Header.Set("X-Embedder-URL", embedderURL)
+	}
+	rec := httptest.NewRecorder()
+	return e.NewContext(req, rec), rec
+}
+
+// TestUpsertIndex_RejectsDisallowedEmbedderOverrideOrigin pins the review's
+// SSRF finding (rag_http/handler.go:125): X-Embedder-URL is caller-controlled
+// and must not be used as a raw connection target. An SSRF probe at a
+// non-allowlisted origin must reject the whole request rather than silently
+// using the default embedder.
+func TestUpsertIndex_RejectsDisallowedEmbedderOverrideOrigin(t *testing.T) {
+	defaultUsecase := &dummyIndexUsecase{}
+	overrideUsecase := &dummyIndexUsecase{}
+	var factoryCalled bool
+	handler := newOverrideHandler(defaultUsecase, overrideUsecase, &factoryCalled, nil,
+		[]string{"http://backfill-hyperboost:11434"})
+
+	c, rec := upsertReqWithEmbedderOverride(t, "http://169.254.169.254/latest/meta-data")
+
+	err := handler.UpsertIndex(c)
+
+	assert.NoError(t, err)
+	assert.Equal(t, http.StatusBadRequest, rec.Code, "an unallowlisted X-Embedder-URL must be rejected")
+	assert.False(t, factoryCalled, "embedderFactory must never see a disallowed origin")
+	assert.Empty(t, defaultUsecase.capturedURL, "the request must be rejected outright, not silently fall back")
+	assert.Empty(t, overrideUsecase.capturedURL)
+}
+
+// TestUpsertIndex_RejectsEmbedderOverrideOriginThatOnlyPartiallyMatches guards
+// the exact-match requirement in .claude/rules/security-boundaries.md: a
+// lookalike host must not pass a substring/prefix check against the
+// allowlisted origin.
+func TestUpsertIndex_RejectsEmbedderOverrideOriginThatOnlyPartiallyMatches(t *testing.T) {
+	defaultUsecase := &dummyIndexUsecase{}
+	overrideUsecase := &dummyIndexUsecase{}
+	var factoryCalled bool
+	handler := newOverrideHandler(defaultUsecase, overrideUsecase, &factoryCalled, nil,
+		[]string{"http://backfill-hyperboost:11434"})
+
+	c, rec := upsertReqWithEmbedderOverride(t, "http://backfill-hyperboost.evil.com:11434")
+
+	err := handler.UpsertIndex(c)
+
+	assert.NoError(t, err)
+	assert.Equal(t, http.StatusBadRequest, rec.Code, "a lookalike host must not pass the allowlist")
+	assert.False(t, factoryCalled)
+}
+
+// TestUpsertIndex_AllowsAllowlistedEmbedderOverrideOrigin is the GREEN
+// counterpart: a genuinely allowlisted hyper-boost origin must still work.
+func TestUpsertIndex_AllowsAllowlistedEmbedderOverrideOrigin(t *testing.T) {
+	defaultUsecase := &dummyIndexUsecase{}
+	overrideUsecase := &dummyIndexUsecase{}
+	var factoryCalled bool
+	var capturedFactoryURL string
+	handler := newOverrideHandler(defaultUsecase, overrideUsecase, &factoryCalled, &capturedFactoryURL,
+		[]string{"http://backfill-hyperboost:11434"})
+
+	c, rec := upsertReqWithEmbedderOverride(t, "http://backfill-hyperboost:11434")
+
+	err := handler.UpsertIndex(c)
+
+	assert.NoError(t, err)
+	assert.Equal(t, http.StatusOK, rec.Code)
+	assert.True(t, factoryCalled)
+	assert.Equal(t, "http://backfill-hyperboost:11434", capturedFactoryURL)
+	assert.Equal(t, "https://example.com/test-article", overrideUsecase.capturedURL, "the allowlisted override usecase must run")
+	assert.Empty(t, defaultUsecase.capturedURL, "default usecase must not run when override applies")
+}
+
+// TestUpsertIndex_IgnoresEmbedderOverride_WhenFeatureNotWired preserves the
+// pre-existing behavior for handlers built without WithEmbedderOverride
+// (e.g. cmd/backfill's non-hyper-boost path): the header is simply not
+// consulted, so the default usecase always runs.
+func TestUpsertIndex_IgnoresEmbedderOverride_WhenFeatureNotWired(t *testing.T) {
+	dummy := &dummyIndexUsecase{}
+	handler := rag_http.NewHandler(nil, nil, dummy, nil, nil)
+
+	c, rec := upsertReqWithEmbedderOverride(t, "http://backfill-hyperboost:11434")
+
+	err := handler.UpsertIndex(c)
+
+	assert.NoError(t, err)
+	assert.Equal(t, http.StatusOK, rec.Code)
+	assert.Equal(t, "https://example.com/test-article", dummy.capturedURL)
+}

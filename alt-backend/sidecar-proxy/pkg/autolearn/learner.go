@@ -58,6 +58,13 @@ func NewAutoLearner(config *Config, logger *log.Logger) (*AutoLearner, error) {
 	return al, nil
 }
 
+// IsLearningEnabled reports whether dynamic domain learning is active, so
+// callers (e.g. admin/metrics endpoints) can distinguish "disabled by
+// design" from "nothing learned yet".
+func (al *AutoLearner) IsLearningEnabled() bool {
+	return al.config.LearningEnabled
+}
+
 // IsAllowed checks if a domain is in the learned allowlist
 func (al *AutoLearner) IsAllowed(domain string) bool {
 	al.mutex.RLock()

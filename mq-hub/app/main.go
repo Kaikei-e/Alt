@@ -32,6 +32,14 @@ func main() {
 	// Load configuration
 	cfg := config.NewConfig()
 
+	// mq-hub only serves a plaintext listener today; middleware.PeerIdentityMiddleware
+	// exists but is not constructed or wired into any handler chain. Log this loudly
+	// so "no mTLS enforcement" is an explicit, visible fact rather than something an
+	// auditor has to infer from the absence of a wiring call.
+	slog.WarnContext(ctx, "peer_identity_disabled",
+		"reason", "no mTLS listener configured; PeerIdentityMiddleware is not applied to any handler",
+	)
+
 	// Initialize Redis driver with connection pool
 	redisDriver, err := driver.NewRedisDriverWithURLAndOptions(cfg.RedisURL, &driver.RedisDriverOptions{
 		PoolSize:     cfg.RedisPoolSize,

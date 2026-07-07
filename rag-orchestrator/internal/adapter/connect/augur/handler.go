@@ -14,6 +14,7 @@ import (
 	augurv2 "alt/gen/proto/alt/augur/v2"
 	"alt/gen/proto/alt/augur/v2/augurv2connect"
 
+	"rag-orchestrator/internal/adapter/sovereign_client"
 	"rag-orchestrator/internal/domain"
 	"rag-orchestrator/internal/usecase"
 
@@ -24,8 +25,36 @@ import (
 
 // userIDHeader carries the authenticated caller's UUID across the
 // alt-backend → rag-orchestrator hop. alt-backend validates the JWT and sets
-// this header; rag-orchestrator never accepts unauthenticated traffic.
+// this header before forwarding.
+//
+// KNOWN GAP (deferred, not fixed by this comment): rag-orchestrator's
+// Connect-RPC listener is plaintext h2c (cmd/server/main.go,
+// adapter/connect/server.go) with no mTLS peer verification in front of it —
+// middleware.PeerIdentityMiddleware exists but is not wired (see its doc
+// comment). extractUserID only validates that the header is UUID-shaped; it
+// does NOT prove the caller is really alt-backend. Any process that can
+// reach rag-orchestrator's Connect-RPC port on the internal network can
+// forge this header and impersonate any user. Closing this requires a real
+// mTLS listener + PeerIdentityMiddleware wiring, tracked as follow-up work
+// (see .claude/rules/security-boundaries.md "識別ヘッダの信頼"); until then,
+// treat this hop as trusted only because network policy limits who can
+// reach this port, not because the header itself is verified.
 const userIDHeader = "X-Alt-User-Id"
+
+// tenantIDHeader carries the caller's tenant uuid. alt-backend already sets
+// this on every augur RPC (Wave 4-A, ADR-000853/855) so
+// augur.conversation_linked.v1 can be stamped with a physical tenant_id
+// instead of trusting a session lookup. Unlike userIDHeader this is
+// best-effort: a missing/invalid header only skips the conversation-linked
+// emit for that turn (see emitConversationLinked) — chat persistence and
+// delivery are unaffected, so older callers that predate tenant propagation
+// keep working.
+const tenantIDHeader = "X-Alt-Tenant-Id"
+
+// augurConversationLinkedEventType is the canonical wire event_type
+// (canonical contract §6.4.1) used both as the AppendKnowledgeEvent
+// event_type and as the sovereign_client.IncEmitterFailure label.
+const augurConversationLinkedEventType = "augur.conversation_linked.v1"
 
 // sanitizeUTF8 removes invalid UTF-8 sequences from a string.
 // This is necessary because Ollama LLM may return chunks containing
@@ -87,6 +116,21 @@ func extractUserID(headers interface{ Get(string) string }) (uuid.UUID, error) {
 	return id, nil
 }
 
+// extractTenantID reads the caller's tenant id from tenantIDHeader.
+// Best-effort by design (see the header's doc comment): the zero value plus
+// ok=false means "skip the conversation-linked emit," not "reject the RPC."
+func extractTenantID(headers interface{ Get(string) string }) (id uuid.UUID, ok bool) {
+	raw := strings.TrimSpace(headers.Get(tenantIDHeader))
+	if raw == "" {
+		return uuid.Nil, false
+	}
+	parsed, err := uuid.Parse(raw)
+	if err != nil {
+		return uuid.Nil, false
+	}
+	return parsed, true
+}
+
 // firstUserMessage returns the first user-role message in the request.
 // Used to derive a conversation title when minting a new conversation.
 func firstUserMessage(msgs []*augurv2.ChatMessage) string {
@@ -109,6 +153,7 @@ func (h *Handler) StreamChat(
 		h.logger.Warn("augur stream chat rejected", slog.String("error", err.Error()))
 		return connect.NewError(connect.CodeUnauthenticated, err)
 	}
+	tenantID, hasTenantID := extractTenantID(req.Header())
 
 	// Extract last user message as query and build conversation history
 	var query string
@@ -281,6 +326,13 @@ loop:
 				if err := h.conversationUsecase.AppendAssistantTurn(flushCtx, conv.ID, donePayload.Answer, citations, related); err != nil {
 					h.logger.Error("failed to persist assistant turn", slog.String("error", err.Error()))
 				}
+				// Only the turn that mints a brand-new conversation can
+				// "link" it — a continuing conversation was already linked
+				// (or deliberately never was) on its first turn, and
+				// dedupe_key would just make repeat emits a no-op anyway.
+				if requestedConvID == uuid.Nil {
+					h.emitConversationLinked(flushCtx, tenantID, hasTenantID, userID, conv, citations)
+				}
 				flushCancel()
 				authoritativeSaved = true
 			}
@@ -293,6 +345,56 @@ loop:
 
 	h.logger.Info("augur stream chat completed")
 	return nil
+}
+
+// emitConversationLinked publishes augur.conversation_linked.v1 the moment a
+// brand-new Augur conversation resolves at least one ARTICLE citation.
+// Canonical contract §6.4.1: AugurConversationLinked fixes the
+// (conversation_id, article-derived entry_key, linked_at) tuple so Surface
+// Planner v2 can compute augur_link_id. Skips silently (no metric bump) when
+// preconditions for a *meaningful* event aren't met — tenant unknown or no
+// article in scope — since those aren't emit attempts, just turns this
+// event type doesn't apply to. Only an actual EmitAugurConversationLinked
+// call that fails bumps sovereign_client.IncEmitterFailure, per the port's
+// warn-and-continue contract.
+func (h *Handler) emitConversationLinked(
+	ctx context.Context,
+	tenantID uuid.UUID,
+	hasTenantID bool,
+	userID uuid.UUID,
+	conv *domain.AugurConversation,
+	citations []domain.AugurCitation,
+) {
+	if !hasTenantID {
+		h.logger.Warn("skipping augur.conversation_linked.v1 emit: missing/invalid "+tenantIDHeader,
+			slog.String("conversation_id", conv.ID.String()))
+		return
+	}
+	var articleID string
+	for _, c := range citations {
+		if c.Kind == domain.CitationKindArticle && c.RefID != "" {
+			articleID = c.RefID
+			break
+		}
+	}
+	if articleID == "" {
+		return
+	}
+
+	err := h.eventEmitter.EmitAugurConversationLinked(ctx, usecase.AugurConversationLinkedInput{
+		UserID:         userID,
+		TenantID:       tenantID,
+		EntryKey:       "article:" + articleID,
+		LensModeID:     "default",
+		ConversationID: conv.ID,
+		LinkedAt:       conv.CreatedAt.UnixMilli(),
+	})
+	if err != nil {
+		h.logger.Warn("failed to emit augur.conversation_linked.v1",
+			slog.String("error", err.Error()),
+			slog.String("conversation_id", conv.ID.String()))
+		sovereign_client.IncEmitterFailure(augurConversationLinkedEventType)
+	}
 }
 
 // convertStreamEvent converts usecase.StreamEvent to augurv2.StreamChatResponse.

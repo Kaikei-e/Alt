@@ -340,7 +340,14 @@ func projectArticleCreated(ctx context.Context, event domain.KnowledgeEvent, por
 		return err
 	}
 
-	// Update today digest: increment new_articles
+	// Update today digest: increment new_articles. todayDigestPort is
+	// intentionally nil-able here — KnowledgeReprojectJob replays events
+	// into a shadow projection_version for validation and hardcodes nil for
+	// this port (knowledge_reproject_job.go) because a reproject run must
+	// not mutate the live today_digest_view. This is a deliberate
+	// cross-job design choice, not an unwired dependency (contrast with
+	// summaryVersionPort/tagSetVersionPort/clearSupersedePort below, which
+	// both callers always wire for real).
 	if todayDigestPort != nil {
 		digest := domain.TodayDigest{
 			UserID:               userID,
@@ -402,6 +409,19 @@ func projectArticleUrlBackfilled(
 	return nil
 }
 
+// requirePort panics when a composition-root-supplied port is nil. These
+// ports (today_digest_port, summary_version_port, tag_set_version_port,
+// recall_candidate_port, knowledge_home_port.ClearSupersedeStatePort) are
+// always wired to a concrete non-nil client in main.go — a nil value here
+// means DI forgot to wire the dependency, not that the enrichment is
+// intentionally disabled. CLAUDE.md rule 8 / .claude/rules/di-wiring.md
+// forbid treating that as a silent no-op.
+func requirePort(isNil bool, portName string) {
+	if isNil {
+		panic(fmt.Sprintf("knowledge_projector: %s is nil — must be wired at composition root, not left unwired (see .claude/rules/di-wiring.md)", portName))
+	}
+}
+
 // isHTTPURL allowlist. Mirrors the FE-side safeArticleHref guard so a
 // dangerous scheme rejected on the FE never sneaks back via the corrective
 // event. Returns false for empty, malformed, or non-(http|https) URLs.
@@ -446,15 +466,14 @@ func projectSummaryVersionCreated(ctx context.Context, event domain.KnowledgeEve
 		return fmt.Errorf("parse summary_version_id: %w", err)
 	}
 
+	requirePort(summaryVersionPort == nil, "summary_version_port.GetSummaryVersionByIDPort")
 	var summaryExcerpt string
-	if summaryVersionPort != nil {
-		sv, err := summaryVersionPort.GetSummaryVersionByID(ctx, svID)
-		if err != nil {
-			return fmt.Errorf("get summary version %s for excerpt: %w", svID, err)
-		}
-		if sv.SummaryText != "" {
-			summaryExcerpt = textutil.TruncateValidUTF8(sv.SummaryText, maxExcerptLen)
-		}
+	sv, err := summaryVersionPort.GetSummaryVersionByID(ctx, svID)
+	if err != nil {
+		return fmt.Errorf("get summary version %s for excerpt: %w", svID, err)
+	}
+	if sv.SummaryText != "" {
+		summaryExcerpt = textutil.TruncateValidUTF8(sv.SummaryText, maxExcerptLen)
 	}
 
 	userID := event.TenantID
@@ -498,7 +517,9 @@ func projectSummaryVersionCreated(ctx context.Context, event domain.KnowledgeEve
 		return err
 	}
 
-	// Update today digest: increment summarized_articles
+	// Update today digest: increment summarized_articles. Intentionally
+	// nil-able (see the ArticleCreated comment above) — KnowledgeReprojectJob
+	// hardcodes nil for this port when replaying into a shadow version.
 	if todayDigestPort != nil {
 		summarizedArticles := 0
 		unsummarizedDelta := 0
@@ -581,7 +602,8 @@ func projectTagSetVersionCreated(ctx context.Context, event domain.KnowledgeEven
 	var tags []string
 	whyReasons := []domain.WhyReason{{Code: domain.WhyNewUnread}}
 
-	if tagSetVersionPort != nil && payload.TagSetVersionID != "" {
+	requirePort(tagSetVersionPort == nil, "tag_set_version_port.GetTagSetVersionByIDPort")
+	if payload.TagSetVersionID != "" {
 		tsvID, parseErr := uuid.Parse(payload.TagSetVersionID)
 		if parseErr == nil {
 			tsv, tsvErr := tagSetVersionPort.GetTagSetVersionByID(ctx, tsvID)
@@ -625,6 +647,8 @@ func projectTagSetVersionCreated(ctx context.Context, event domain.KnowledgeEven
 	// Surface tags into today_digest_view.top_tags_json. The projection table
 	// merges via COALESCE(NULLIF(EXCLUDED.top_tags_json, '[]'::jsonb), …) so
 	// sending an empty list preserves whatever was previously written.
+	// todayDigestPort is intentionally nil-able (see the ArticleCreated
+	// comment above) — KnowledgeReprojectJob hardcodes nil for this port.
 	if todayDigestPort != nil && len(tags) > 0 {
 		digest := domain.TodayDigest{
 			UserID:     userID,
@@ -678,14 +702,17 @@ func projectHomeItemOpened(ctx context.Context, event domain.KnowledgeEvent, por
 	}
 
 	// Clear supersede state on open (acknowledgement)
-	if clearSupersedePort != nil {
-		if err := clearSupersedePort.ClearSupersedeState(ctx, userID, payload.ItemKey, projectionVersion); err != nil {
-			logger.ErrorContext(ctx, "failed to clear supersede state on open", "error", err, "item_key", payload.ItemKey)
-			// Non-fatal
-		}
+	requirePort(clearSupersedePort == nil, "knowledge_home_port.ClearSupersedeStatePort")
+	if err := clearSupersedePort.ClearSupersedeState(ctx, userID, payload.ItemKey, projectionVersion); err != nil {
+		logger.ErrorContext(ctx, "failed to clear supersede state on open", "error", err, "item_key", payload.ItemKey)
+		// Non-fatal
 	}
 
-	// Create recall candidate: eligible after 1h (reproject-safe: based on event time)
+	// Create recall candidate: eligible after 1h (reproject-safe: based on
+	// event time). recallCandidatePort is intentionally nil-able — like
+	// todayDigestPort above, KnowledgeReprojectJob hardcodes nil for this
+	// port because a shadow-version replay must not create live recall
+	// candidates.
 	if recallCandidatePort != nil {
 		eligibleAt := eventTime.Add(1 * time.Hour)
 		candidate := domain.RecallCandidate{

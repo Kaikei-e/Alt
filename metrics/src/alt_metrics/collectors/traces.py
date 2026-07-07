@@ -11,11 +11,12 @@ import structlog
 from clickhouse_connect.driver.client import Client
 
 from alt_metrics.exceptions import CollectorError
+from alt_metrics.models import ApiPerformanceStats
 
 logger = structlog.get_logger()
 
 
-def collect_api_performance(client: Client, database: str, hours: int) -> list[dict[str, Any]]:
+def collect_api_performance(client: Client, database: str, hours: int) -> list[ApiPerformanceStats]:
     """トレースからAPIエンドポイントパフォーマンスを収集
 
     Args:
@@ -53,7 +54,7 @@ def collect_api_performance(client: Client, database: str, hours: int) -> list[d
 
     try:
         result = client.query(query)
-        data = [dict(zip(result.column_names, row)) for row in result.result_rows]
+        data = [ApiPerformanceStats(**dict(zip(result.column_names, row))) for row in result.result_rows]
         log.info("データ収集完了", count=len(data))
         return data
     except Exception as e:

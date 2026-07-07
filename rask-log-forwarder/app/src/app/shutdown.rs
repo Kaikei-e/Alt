@@ -5,6 +5,7 @@ use tokio::signal;
 #[cfg(unix)]
 use tokio::signal::unix::{signal as unix_signal, SignalKind};
 use tokio::sync::{RwLock, mpsc};
+use tokio_util::sync::CancellationToken;
 use tracing::{error, info, warn};
 
 #[derive(Debug)]
@@ -65,14 +66,17 @@ impl ShutdownHandle {
 #[derive(Debug)]
 pub struct SignalHandler {
     shutdown_tx: mpsc::UnboundedSender<()>,
-    active: Arc<RwLock<bool>>,
+    // Cancelled by `setup_handlers` once a shutdown signal (SIGTERM/SIGINT) is
+    // observed. `wait()` resolves as soon as this token is cancelled instead of
+    // polling a flag that nothing ever flips.
+    shutdown_token: CancellationToken,
 }
 
 impl SignalHandler {
     pub async fn new(shutdown_tx: mpsc::UnboundedSender<()>) -> Self {
         let handler = Self {
             shutdown_tx,
-            active: Arc::new(RwLock::new(true)),
+            shutdown_token: CancellationToken::new(),
         };
 
         handler.setup_handlers().await;
@@ -81,62 +85,117 @@ impl SignalHandler {
 
     async fn setup_handlers(&self) {
         let shutdown_tx = self.shutdown_tx.clone();
-        let active = self.active.clone();
+        let shutdown_token = self.shutdown_token.clone();
 
         tokio::spawn(async move {
-            if *active.read().await {
-                #[cfg(unix)]
-                {
-                    let mut sigterm = unix_signal(SignalKind::terminate())
-                        .expect("Failed to create SIGTERM handler");
+            #[cfg(unix)]
+            {
+                let mut sigterm =
+                    unix_signal(SignalKind::terminate()).expect("Failed to create SIGTERM handler");
 
-                    tokio::select! {
-                        result = signal::ctrl_c() => {
-                            match result {
-                                Ok(()) => {
-                                    info!("Received SIGINT (Ctrl+C), initiating graceful shutdown");
-                                }
-                                Err(err) => {
-                                    error!("Failed to listen for SIGINT: {}", err);
-                                    return;
-                                }
+                tokio::select! {
+                    result = signal::ctrl_c() => {
+                        match result {
+                            Ok(()) => {
+                                info!("Received SIGINT (Ctrl+C), initiating graceful shutdown");
+                            }
+                            Err(err) => {
+                                error!("Failed to listen for SIGINT: {}", err);
+                                shutdown_token.cancel();
+                                return;
                             }
                         }
-                        _ = sigterm.recv() => {
-                            info!("Received SIGTERM, initiating graceful shutdown");
-                        }
                     }
-
-                    if shutdown_tx.send(()).is_err() {
-                        error!("Failed to send shutdown signal");
+                    _ = sigterm.recv() => {
+                        info!("Received SIGTERM, initiating graceful shutdown");
                     }
                 }
 
-                #[cfg(not(unix))]
-                {
-                    match signal::ctrl_c().await {
-                        Ok(()) => {
-                            info!("Received SIGINT (Ctrl+C), initiating graceful shutdown");
-                            if shutdown_tx.send(()).is_err() {
-                                error!("Failed to send shutdown signal");
-                            }
-                        }
-                        Err(err) => {
-                            error!("Failed to listen for SIGINT: {}", err);
+                if shutdown_tx.send(()).is_err() {
+                    error!("Failed to send shutdown signal");
+                }
+                shutdown_token.cancel();
+            }
+
+            #[cfg(not(unix))]
+            {
+                match signal::ctrl_c().await {
+                    Ok(()) => {
+                        info!("Received SIGINT (Ctrl+C), initiating graceful shutdown");
+                        if shutdown_tx.send(()).is_err() {
+                            error!("Failed to send shutdown signal");
                         }
                     }
+                    Err(err) => {
+                        error!("Failed to listen for SIGINT: {}", err);
+                    }
                 }
+                shutdown_token.cancel();
             }
         });
     }
 
-    pub async fn is_active(&self) -> bool {
-        *self.active.read().await
+    pub fn is_active(&self) -> bool {
+        !self.shutdown_token.is_cancelled()
     }
 
+    /// Resolves as soon as a shutdown signal has been observed (or the handler
+    /// is otherwise cancelled), instead of hanging forever.
     pub async fn wait(&self) {
-        while *self.active.read().await {
-            tokio::time::sleep(Duration::from_millis(100)).await;
+        self.shutdown_token.cancelled().await;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tokio::time::{Duration as TokioDuration, timeout};
+
+    fn test_handler() -> SignalHandler {
+        let (tx, _rx) = mpsc::unbounded_channel();
+        SignalHandler {
+            shutdown_tx: tx,
+            shutdown_token: CancellationToken::new(),
         }
+    }
+
+    #[tokio::test]
+    async fn wait_returns_immediately_when_already_cancelled() {
+        let handler = test_handler();
+        handler.shutdown_token.cancel();
+
+        timeout(TokioDuration::from_millis(200), handler.wait())
+            .await
+            .expect("wait() must return once the shutdown token is cancelled");
+        assert!(!handler.is_active());
+    }
+
+    #[tokio::test]
+    async fn wait_resolves_once_signal_is_observed() {
+        let handler = test_handler();
+        assert!(handler.is_active());
+
+        let token = handler.shutdown_token.clone();
+        tokio::spawn(async move {
+            tokio::time::sleep(TokioDuration::from_millis(50)).await;
+            // Simulates what setup_handlers() does on SIGTERM/SIGINT receipt.
+            token.cancel();
+        });
+
+        timeout(TokioDuration::from_secs(2), handler.wait())
+            .await
+            .expect("wait() never returned after the signal was observed - it would hang until SIGKILL in production");
+        assert!(!handler.is_active());
+    }
+
+    #[tokio::test]
+    async fn wait_does_not_return_before_cancellation() {
+        let handler = test_handler();
+
+        let wait_result = timeout(TokioDuration::from_millis(150), handler.wait()).await;
+        assert!(
+            wait_result.is_err(),
+            "wait() returned before any signal was observed"
+        );
     }
 }

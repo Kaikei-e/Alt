@@ -50,7 +50,8 @@ func main() {
 - Always wrap errors with context using `fmt.Errorf("action: %w", err)`
 - Use `errors.Is` / `errors.As` for programmatic checks — never compare `.Error()` strings
 - Define sentinel errors for expected conditions; use custom error types for rich context
-- Never expose internal errors to API clients — log the real error, return a safe message
+- Never expose internal errors to API clients — log the real error, return a safe message plus an `error_id` for log correlation. Beware `connect.NewError(code, err)`: the wrapped `err.Error()` is sent to the client verbatim (ADR-000054, ADR-000055)
+- Let external-service failures cross layers as typed errors (`ExternalHTTPError{StatusCode}`, `ErrTokenUnavailable`), never as opaque `fmt.Errorf` strings — untyped errors collapse to a generic 500 and cannot be branched on in handlers, tests, or alerts (ADR-000313, ADR-000895, PM-2026-043)
 
 ```go
 // ✅ Wrap with context
@@ -97,6 +98,9 @@ func ErrInternal(message string, err error) *AppError { ... }
 - Use `errgroup.WithContext` when sibling goroutines should stop after the first failure
 - Guard shared state with `sync.Mutex` — prefer locking small critical sections over large ones
 - Use buffered channels for fan-out; unbuffered for synchronization
+- Collapse identical concurrent requests with `golang.org/x/sync/singleflight` — a frontend request storm otherwise multiplies straight into the backend (ADR-000320)
+- Never upgrade an `RWMutex` read lock to a write lock (`RLock` → check → `Lock`) — the gap between the two is a TOCTOU race the race detector cannot see; use a single `sync.Mutex` critical section instead (ADR-000718)
+- Batch loops must check `ctx.Err()` between items and break early — after SIGTERM, a loop that ignores cancellation churns through every remaining item, emitting a cascade of identical errors in the same second (ADR-000147)
 
 ### Graceful Shutdown Pattern
 
@@ -131,6 +135,30 @@ wg.Wait()
 ```
 
 > **Alt:** Services with background workers, schedulers, or stream consumers must ensure every long-lived goroutine exits on `ctx.Done()`.
+
+### Shutdown Ordering for Buffered Pipelines
+
+Services that buffer work (batch writers, stream consumers, event emitters) must shut down in this order — getting it wrong silently drops the final batch:
+
+1. **Stop intake first** (`srv.Shutdown`, stop the XREADGROUP loop)
+2. **Flush buffers BEFORE cancelling contexts** — a flush called after `cancel()` fails immediately with `context.Canceled`
+3. Ack/commit the flushed work
+4. `cancel()` background contexts, then `wg.Wait()` with a bounded deadline
+
+```go
+// ❌ cancel() first — final flush always fails with context.Canceled
+cancel()
+consumer.Stop() // flush inside Stop() gets a dead context
+
+// ✅ flush with a fresh bounded context, then cancel
+flushCtx, flushCancel := context.WithTimeout(context.Background(), 10*time.Second)
+defer flushCancel()
+consumer.Flush(flushCtx)
+cancel()
+wg.Wait()
+```
+
+Every component with a `Stop()`/`Flush()` method must actually be called from the shutdown path — a `Stop()` that exists but is never invoked from `main` is unwired (CLAUDE.md Rule 8).
 
 ## 4. Testing
 
@@ -288,14 +316,19 @@ func loggingMiddleware(next http.Handler) http.Handler {
 
 ```go
 srv := &http.Server{
-    Addr:           ":8400",
-    Handler:        handler,
-    ReadTimeout:    10 * time.Second,
-    WriteTimeout:   30 * time.Second,
-    IdleTimeout:    60 * time.Second,
-    MaxHeaderBytes: 1 << 20, // 1 MB
+    Addr:              ":8400",
+    Handler:           handler,
+    ReadHeaderTimeout: 5 * time.Second, // targeted Slowloris defense
+    ReadTimeout:       10 * time.Second,
+    WriteTimeout:      30 * time.Second,
+    IdleTimeout:       60 * time.Second,
+    MaxHeaderBytes:    1 << 20, // 1 MB
 }
 ```
+
+Timeout fields default to zero = **no timeout**: a bare `http.ListenAndServe` or an `http.Server` without these fields leaks connections to slow/vanished clients (Slowloris) until fd exhaustion. Every service must construct `http.Server` explicitly with all four timeouts ([Cloudflare guide](https://blog.cloudflare.com/the-complete-guide-to-golang-net-http-timeouts/)).
+
+Exception: streaming endpoints (SSE, Connect-RPC streams). `WriteTimeout` applies to the **entire response**, so a 30s value kills every stream after 30 seconds regardless of activity — serve streams from a server with `WriteTimeout: 0` and bound lifetime with per-request context deadlines instead (PM-2026-004).
 
 ### Response Helpers
 
@@ -318,6 +351,13 @@ func writeError(w http.ResponseWriter, status int, code, message string) {
 - Always use parameterized queries (`$1`, `$2`, ...) — never string-concatenate SQL
 - Use cursor-based (keyset) pagination, not `OFFSET`
 - Wrap multi-step mutations in transactions
+- Begin every transaction with an unconditional `defer tx.Rollback(ctx)` — rollback after a successful commit is a no-op (`pgx.ErrTxClosed`, ignorable via `errors.Is`); conditional defers break under `:=` variable shadowing and leak open transactions (ADR-000328)
+- Every UPDATE that assumes the row exists must check `rows_affected == 0` and return an error — a 0-row UPDATE is a silent success that leaves state inconsistent. Do not "fix" it by switching to an UPSERT that implicitly creates the row; that hides the upstream bug (ADR-000113, ADR-000538)
+
+### JSONB Parameters
+
+- The correct Go type for a JSONB parameter depends on the connection path: over **simple protocol through PgBouncer**, `[]byte` is encoded as `bytea` and fails with SQLSTATE 22P02 — pass `string(jsonBytes)`; over a **direct pgx connection**, pass `[]byte`. Follow the service's existing driver helper instead of deciding per call site (ADR-000417, ADR-000470, ADR-000577)
+- A nil `json.RawMessage` is sent as an **explicit SQL NULL** — column DEFAULTs only fire when the column is omitted, so `NOT NULL DEFAULT '{}'` still rejects it. Normalize nil/empty payloads to `[]byte("{}")` in a shared driver helper, not ad hoc at each call site (PM-2026-040)
 
 ### Connection Pool
 
@@ -373,25 +413,22 @@ func encodeCursor(score float32, id uuid.UUID) string {
 
 > **Alt:** If a service models immutable facts or events, keep append-only tables append-only and update only the derived projection tables designed for current state.
 
-## 8. Redis
+## 8. Redis Streams
 
 - Use `go-redis/v9` — parse URL with `redis.ParseURL()`
 - Always `Ping` after connecting to verify the connection
 - Use `XReadGroup` with consumer groups for stream consumption
-- ACK messages only after successful processing — failed messages get redelivered
+- **XACK only after the side effect is durable** (DB commit / index write confirmed) — never on receipt, never on "queued into an in-memory buffer". Acking a message that only reached a buffer makes the pipeline at-most-once: a failed flush silently loses acked events
+- **XAUTOCLAIM loop is mandatory**, not optional: without it, entries pending for a crashed consumer stay in the PEL forever and are never redelivered. Configuring `ClaimIdleTime` without running the reclaim loop does nothing
+- **Dead-letter via delivery count**: DLQ conditions like `RetryCount > 5` only ever fire if redelivery actually happens (i.e. the XAUTOCLAIM loop above runs). Route poison messages to a dead-letter stream, then XACK them
 - Name consumers with `hostname-pid` for traceability
 
 ### Stream Consumer Pattern
 
 ```go
-type Consumer struct {
-    rdb          *redis.Client
-    group        string
-    consumerName string
-    handler      Handler
-}
-
 func (c *Consumer) Run(ctx context.Context) {
+    go c.reclaimLoop(ctx) // mandatory companion to XReadGroup
+
     for {
         select {
         case <-ctx.Done():
@@ -409,21 +446,69 @@ func (c *Consumer) Run(ctx context.Context) {
         if err != nil {
             if err == redis.Nil || ctx.Err() != nil { continue }
             slog.Error("XREADGROUP failed", "error", err)
-            time.Sleep(1 * time.Second)
+            select {
+            case <-ctx.Done(): return
+            case <-time.After(1 * time.Second):
+            }
             continue
         }
 
         for _, msg := range results[0].Messages {
             if err := c.handler.Handle(ctx, msg); err != nil {
-                continue // don't ACK — will be redelivered
+                continue // don't ACK — will be reclaimed by reclaimLoop
             }
+            // Handle returned nil ⇒ the side effect is durable. Only now:
             c.rdb.XAck(ctx, "stream-name", c.group, msg.ID)
+        }
+    }
+}
+
+// reclaimLoop recovers PEL entries from crashed consumers and dead-letters poison messages.
+func (c *Consumer) reclaimLoop(ctx context.Context) {
+    ticker := time.NewTicker(30 * time.Second)
+    defer ticker.Stop()
+    for {
+        select {
+        case <-ctx.Done():
+            return
+        case <-ticker.C:
+        }
+        start := "0-0"
+        for {
+            msgs, next, err := c.rdb.XAutoClaim(ctx, &redis.XAutoClaimArgs{
+                Stream: "stream-name", Group: c.group, Consumer: c.consumerName,
+                MinIdle: c.claimIdleTime, // > worst-case processing time
+                Start:   start, Count: 50,
+            }).Result()
+            if err != nil {
+                slog.Error("XAUTOCLAIM failed", "error", err)
+                break
+            }
+            for _, msg := range msgs {
+                if c.deliveryCount(ctx, msg.ID) > maxDeliveries {
+                    c.deadLetter(ctx, msg) // XADD to DLQ stream, then XAck
+                    continue
+                }
+                if err := c.handler.Handle(ctx, msg); err == nil {
+                    c.rdb.XAck(ctx, "stream-name", c.group, msg.ID)
+                }
+            }
+            if next == "0-0" { break }
+            start = next
         }
     }
 }
 ```
 
+### At-Least-Once ⇒ Idempotent Handlers
+
+- Consumer groups are at-least-once: every handler WILL see redeliveries. Non-idempotent side effects need a dedupe key
+- Register the dedupe key **in the same DB transaction** as the business write — a separate transaction leaves a crash window where the event is lost or double-applied
+- Projection writes must be absolute upserts (`ON CONFLICT ... DO UPDATE SET col = excluded.col`), never additive merges (`col = col + delta`) which double-count on redelivery
+
 > **Alt:** Provision shared infrastructure such as Redis streams, topics, or consumer groups through setup scripts or infrastructure code, not ad hoc application startup side effects.
+>
+> Sources: [redis.io Streams](https://redis.io/docs/latest/develop/data-types/streams/), [XAUTOCLAIM](https://redis.io/docs/latest/commands/xautoclaim/), [Idempotent Consumer](https://microservices.io/patterns/communication-style/idempotent-consumer.html)
 
 ## 9. Configuration
 
@@ -431,6 +516,8 @@ func (c *Consumer) Run(ctx context.Context) {
 - Simple services often work best with env vars plus defaults; more complex services may justify structured config plus env/secret expansion
 - Use typed structs — never pass raw strings around
 - Validate required fields early; fail fast in `Load()`
+- **Missing required config = exit non-zero at startup.** Never warn-and-limp: a service that starts with an empty JWT secret (rejecting all requests) or an unset upstream URL (silently no-op'ing all mutations) makes misconfiguration indistinguishable from intentional disablement (ADR-000928)
+- **"Disabled" must be an explicit config value** (`FEATURE_X=disabled`), logged at startup as `feature_x_disabled` — never inferred from an unset variable
 
 ### Environment Variables (Simple)
 
@@ -485,6 +572,7 @@ func (d *Duration) UnmarshalYAML(value *yaml.Node) error {
 - Set `ReadTimeout`, `WriteTimeout`, `MaxHeaderBytes` on `http.Server`
 - Never log secrets or full request bodies
 - Return generic error messages to clients; log specifics server-side
+- Compare shared secrets with `crypto/subtle.ConstantTimeCompare` — never `==` or `bytes.Equal`. Fail closed when the configured secret is empty; accepting all requests on a missing secret turns a deployment mistake into an auth bypass (ADR-000717)
 
 ```go
 // ✅ Parameterized
@@ -572,9 +660,12 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 ## 15. HTTP Client & Retry
 
 - Set explicit `Timeout` on `http.Client`
-- Use exponential backoff for retryable errors (network errors, `unavailable`, `deadline_exceeded`)
+- `http.Client.Timeout` is a **hard ceiling** that covers reading the full response body and always wins over a longer context deadline — a comment saying "the real timeout is controlled by context" is a lie when a client Timeout is set. Streaming clients need `Timeout: 0` with lifetime bounded by the request context; keep unary abuse guards and streaming caps on separate clients (ADR-000146, ADR-000478, ADR-000553)
+- Never set `Accept-Encoding` manually — the Transport only transparently decompresses gzip when it added the header itself, so a manual value delivers raw gzip bytes to your parser/decoder. If you must set it, you own decompression; reject unexpected `Content-Encoding` values at the boundary and include magic bytes in decode-failure logs (ADR-000084, ADR-000702, PM-2026-022)
+- Use exponential backoff **with jitter** for retryable errors — un-jittered backoff synchronizes retry storms across instances ([AWS](https://aws.amazon.com/blogs/architecture/exponential-backoff-and-jitter/))
 - Classify errors before retrying — don't retry `400 Bad Request`
 - Always use `http.NewRequestWithContext` to propagate cancellation
+- **Never bare `time.Sleep` in a retry/wait loop** — it cannot be cancelled. Always `select` on the timer vs `ctx.Done()` as below
 
 ```go
 func (c *Client) callWithRetry(ctx context.Context, path string, req, resp any) error {
@@ -597,6 +688,30 @@ func (c *Client) callWithRetry(ctx context.Context, path string, req, resp any) 
     return lastErr
 }
 ```
+
+## 16. UTF-8-Safe Strings
+
+- A Go string is a byte slice: `s[:n]` slices **bytes** and can split a multi-byte UTF-8 sequence, producing invalid output (Japanese text is the common casualty in Alt)
+- Truncate at rune boundaries: `string([]rune(s)[:n])` for short strings, or walk with `utf8.DecodeRuneInString` for hot paths
+- protobuf3 `string` fields must be valid UTF-8 — serialization fails otherwise. Treat the point just before serialization as the trust boundary and sanitize **every** string field, including DB-sourced values; one missed metadata field made the terminal `done` event unsendable and hung the UI forever (ADR-000596, PM-2026-009)
+- Compare lengths in one unit: Go `len()` counts **bytes**, PostgreSQL `LENGTH()` counts **characters** — for Japanese text (3 bytes/char) a cross-system length guard silently never fires. Use `OCTET_LENGTH()` when comparing against Go `len()` (ADR-000548)
+
+```go
+// ❌ splits multi-byte characters
+title := s[:80]
+
+// ✅ rune-boundary truncation
+func truncateRunes(s string, n int) string {
+    if utf8.RuneCountInString(s) <= n { return s }
+    return string([]rune(s)[:n])
+}
+```
+
+## 17. Stdlib & Encoding Pitfalls
+
+- Passing an untyped int where `time.Duration` is expected compiles but means **nanoseconds**: `15 * 1000` is 15µs, not 15s — a millionfold error that still "works" while burning CPU, so it evades review and testing. Always multiply by a unit constant: `15 * time.Second` (ADR-000322)
+- A nil slice marshals to JSON `null`, not `[]` — `null` slips through `'[]'::jsonb` guards and can overwrite existing data. Normalize nil to an empty slice before marshaling at the boundary (ADR-000529)
+- `net/url` preserves trailing slashes — `Parse`/`String` never canonicalize them away. URL normalization needs an explicit trim applied at **every write path**, not just at read time; fixing one ingestion route and missing another reintroduces duplicates (ADR-000052)
 
 ---
 

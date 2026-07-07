@@ -28,7 +28,13 @@ func NewRecallDismissUsecase(
 }
 
 func (u *RecallDismissUsecase) Execute(ctx context.Context, userID uuid.UUID, tenantID uuid.UUID, itemKey string) error {
-	if err := u.candidatePort.DismissRecallCandidate(ctx, userID, itemKey); err != nil {
+	// occurredAt is the origination time of this command, minted once here and
+	// forwarded both to the direct recall_candidate_view mutation and the
+	// appended knowledge event, so the two writes agree on a single wall-clock
+	// moment instead of drifting across two separate time.Now() calls.
+	occurredAt := time.Now()
+
+	if err := u.candidatePort.DismissRecallCandidate(ctx, userID, itemKey, occurredAt); err != nil {
 		return fmt.Errorf("dismiss recall candidate: %w", err)
 	}
 
@@ -38,7 +44,7 @@ func (u *RecallDismissUsecase) Execute(ctx context.Context, userID uuid.UUID, te
 
 	event := domain.KnowledgeEvent{
 		EventID:       uuid.New(),
-		OccurredAt:    time.Now(),
+		OccurredAt:    occurredAt,
 		TenantID:      tenantID,
 		UserID:        &userID,
 		ActorType:     domain.ActorUser,
@@ -46,7 +52,7 @@ func (u *RecallDismissUsecase) Execute(ctx context.Context, userID uuid.UUID, te
 		EventType:     domain.EventRecallDismissed,
 		AggregateType: domain.AggregateHomeSession,
 		AggregateID:   itemKey,
-		DedupeKey:     fmt.Sprintf("recall_dismiss:%s:%s:%d", userID, itemKey, time.Now().Unix()),
+		DedupeKey:     fmt.Sprintf("recall_dismiss:%s:%s:%d", userID, itemKey, occurredAt.Unix()),
 		Payload:       payload,
 	}
 

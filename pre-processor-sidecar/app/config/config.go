@@ -41,6 +41,11 @@ type Config struct {
 	// OAuth2 Secret configuration (for auth-token-manager integration)
 	OAuth2SecretName string
 
+	// InternalAuthToken is sent as the X-Internal-Auth header on every call to
+	// auth-token-manager's /api/token. auth-token-manager fails closed (401/503)
+	// without a matching token, so this must be wired to the same secret.
+	InternalAuthToken string
+
 	// Token storage configuration
 	TokenStoragePath string
 	TokenStorageType string // "kubernetes_secret", "env_var", "file"
@@ -210,9 +215,10 @@ func LoadConfig() (*Config, error) {
 			BaseURL:      getEnvOrDefault("INOREADER_OAUTH2_BASE_URL", "https://www.inoreader.com"), // OAuth2 specific base URL
 		},
 
-		OAuth2SecretName: getEnvOrDefault("OAUTH2_TOKEN_SECRET_NAME", "pre-processor-sidecar-oauth2-token"),
-		TokenStoragePath: getEnvOrDefault("TOKEN_STORAGE_PATH", "/tmp/oauth2_token.env"),
-		TokenStorageType: getEnvOrDefault("TOKEN_STORAGE_TYPE", "kubernetes_secret"), // Default to Kubernetes Secret
+		OAuth2SecretName:  getEnvOrDefault("OAUTH2_TOKEN_SECRET_NAME", "pre-processor-sidecar-oauth2-token"),
+		InternalAuthToken: GetSecretOrEnv("INTERNAL_AUTH_TOKEN_FILE", "INTERNAL_AUTH_TOKEN"),
+		TokenStoragePath:  getEnvOrDefault("TOKEN_STORAGE_PATH", "/tmp/oauth2_token.env"),
+		TokenStorageType:  getEnvOrDefault("TOKEN_STORAGE_TYPE", "kubernetes_secret"), // Default to Kubernetes Secret
 
 		// TDD Phase 3 - REFACTOR: Enhanced Configuration Management
 		HTTPClient: HTTPClientConfig{
@@ -342,6 +348,12 @@ func (c *Config) Validate() error {
 	// if c.Inoreader.RefreshToken == "" {
 	//     return fmt.Errorf("INOREADER_REFRESH_TOKEN is required")
 	// }
+
+	// Without this, auth-token-manager's fail-closed /api/token check rejects every
+	// request (401), starving the token source silently instead of failing fast here.
+	if c.InternalAuthToken == "" {
+		return fmt.Errorf("INTERNAL_AUTH_TOKEN is required")
+	}
 
 	// Validate proxy configuration
 	if c.Proxy.HTTPSProxy == "" {

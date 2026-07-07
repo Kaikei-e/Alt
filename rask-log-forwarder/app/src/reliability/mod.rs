@@ -12,8 +12,9 @@ pub use retry::{RetryConfig, RetryError, RetryManager, RetryStrategy};
 use crate::buffer::Batch;
 use crate::sender::{LogSender, TransmissionError};
 use std::sync::Arc;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 use tokio::sync::Mutex;
+use tokio_util::sync::CancellationToken;
 
 pub struct ReliabilityManager {
     retry_manager: Arc<Mutex<RetryManager>>,
@@ -203,6 +204,84 @@ impl ReliabilityManager {
         retry_manager.get_attempt_count(batch_id)
     }
 
+    /// Attempts to resend every batch currently sitting in disk-fallback
+    /// storage. Batches that resend successfully are deleted from disk;
+    /// batches that still fail are left in place for the next replay pass
+    /// (and are eventually cleared by `cleanup_old_batches`'s retention
+    /// policy). Without this, disk fallback is a write-only sink: it
+    /// protects against data loss on the wire, but nothing ever reads the
+    /// data back out and forwards it on.
+    pub async fn replay_stored_batches(&self) -> Result<usize, DiskError> {
+        let batch_ids = {
+            let disk_fallback = self.disk_fallback.lock().await;
+            disk_fallback.list_stored_batches().await?
+        };
+
+        let mut replayed = 0;
+        for batch_id in batch_ids {
+            let batch = {
+                let disk_fallback = self.disk_fallback.lock().await;
+                match disk_fallback.retrieve_batch(&batch_id).await {
+                    Ok(batch) => batch,
+                    Err(e) => {
+                        tracing::warn!(
+                            "Disk fallback replay: failed to read stored batch {batch_id}: {e}"
+                        );
+                        continue;
+                    }
+                }
+            };
+
+            let sent = match self.log_sender.send_batch(batch).await {
+                Ok(result) => result.success,
+                Err(e) => {
+                    tracing::warn!(
+                        "Disk fallback replay: resend of batch {batch_id} failed: {e}; will retry next pass"
+                    );
+                    false
+                }
+            };
+
+            if sent {
+                let mut disk_fallback = self.disk_fallback.lock().await;
+                if let Err(e) = disk_fallback.delete_batch(&batch_id).await {
+                    tracing::error!(
+                        "Disk fallback replay: resent batch {batch_id} but failed to delete it from disk: {e}"
+                    );
+                } else {
+                    replayed += 1;
+                    tracing::info!("Disk fallback replay: successfully resent batch {batch_id}");
+                }
+            }
+        }
+
+        Ok(replayed)
+    }
+
+    /// Spawns a periodic task that replays disk-fallback batches, running one
+    /// pass immediately so batches persisted before a restart aren't stuck
+    /// until the first interval tick. Stops once `cancel_token` is cancelled.
+    pub fn start_disk_replay_task(
+        self: Arc<Self>,
+        interval: Duration,
+        cancel_token: CancellationToken,
+    ) -> tokio::task::JoinHandle<()> {
+        tokio::spawn(async move {
+            loop {
+                match self.replay_stored_batches().await {
+                    Ok(0) => {}
+                    Ok(n) => tracing::info!("Disk fallback replay: resent {n} batch(es)"),
+                    Err(e) => tracing::error!("Disk fallback replay pass failed: {e}"),
+                }
+
+                tokio::select! {
+                    _ = cancel_token.cancelled() => break,
+                    _ = tokio::time::sleep(interval) => {}
+                }
+            }
+        })
+    }
+
     pub async fn start_background_tasks(&self) {
         // Start metrics collection
         let metrics_collector = self.metrics_collector.clone();
@@ -258,5 +337,147 @@ impl ReliabilityManager {
         // In production, you'd use a proper memory profiling library
         // For now, return a fixed value for testing
         16 * 1024 * 1024 // 16MB
+    }
+}
+
+#[cfg(test)]
+mod replay_tests {
+    use super::*;
+    use crate::buffer::BatchType;
+    use crate::parser::{EnrichedLogEntry, LogLevel};
+    use crate::sender::ClientConfig;
+    use wiremock::matchers::method;
+    use wiremock::{Mock, MockServer, ResponseTemplate};
+
+    fn test_entry() -> EnrichedLogEntry {
+        EnrichedLogEntry {
+            service_type: "test".to_string(),
+            log_type: "plain".to_string(),
+            message: "disk fallback replay test".to_string(),
+            level: Some(LogLevel::Info),
+            timestamp: "2024-01-01T00:00:00Z".to_string(),
+            stream: "stdout".to_string(),
+            method: None,
+            path: None,
+            status_code: None,
+            response_size: None,
+            ip_address: None,
+            user_agent: None,
+            container_id: "container-1".to_string(),
+            service_name: "test-service".to_string(),
+            service_group: None,
+            trace_id: None,
+            span_id: None,
+            fields: std::collections::HashMap::new(),
+        }
+    }
+
+    async fn build_manager(endpoint: String, storage_path: std::path::PathBuf) -> ReliabilityManager {
+        let log_sender = LogSender::new(ClientConfig {
+            endpoint,
+            timeout: Duration::from_millis(500),
+            connection_timeout: Duration::from_millis(500),
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+
+        ReliabilityManager::new(
+            RetryConfig::default(),
+            DiskConfig {
+                storage_path,
+                ..Default::default()
+            },
+            MetricsConfig::default(),
+            HealthConfig::default(),
+            log_sender,
+        )
+        .await
+        .unwrap()
+    }
+
+    #[tokio::test]
+    async fn replay_resends_and_deletes_successfully_sent_batches() {
+        let mock_server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .respond_with(ResponseTemplate::new(200))
+            .mount(&mock_server)
+            .await;
+
+        let storage_dir = tempfile::tempdir().unwrap();
+        let manager = build_manager(mock_server.uri(), storage_dir.path().to_path_buf()).await;
+
+        // Seed disk fallback directly (bypassing the network path) to pin
+        // down replay behavior in isolation.
+        let batch = Batch::new(vec![test_entry()], BatchType::SizeBased);
+        {
+            let mut disk_fallback = manager.disk_fallback.lock().await;
+            disk_fallback.store_batch(batch).await.unwrap();
+        }
+        assert_eq!(storage_dir.path().read_dir().unwrap().count(), 1);
+
+        let replayed = manager.replay_stored_batches().await.unwrap();
+
+        assert_eq!(replayed, 1);
+        assert_eq!(
+            storage_dir.path().read_dir().unwrap().count(),
+            0,
+            "a successfully replayed batch must be removed from disk, not left behind forever"
+        );
+    }
+
+    #[tokio::test]
+    async fn replay_leaves_batch_on_disk_when_resend_still_fails() {
+        let mock_server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .respond_with(ResponseTemplate::new(500))
+            .mount(&mock_server)
+            .await;
+
+        let storage_dir = tempfile::tempdir().unwrap();
+        let manager = build_manager(mock_server.uri(), storage_dir.path().to_path_buf()).await;
+
+        let batch = Batch::new(vec![test_entry()], BatchType::SizeBased);
+        {
+            let mut disk_fallback = manager.disk_fallback.lock().await;
+            disk_fallback.store_batch(batch).await.unwrap();
+        }
+
+        let replayed = manager.replay_stored_batches().await.unwrap();
+
+        assert_eq!(replayed, 0);
+        assert_eq!(
+            storage_dir.path().read_dir().unwrap().count(),
+            1,
+            "a batch that still fails to send must stay on disk for the next replay pass"
+        );
+    }
+
+    #[tokio::test]
+    async fn start_disk_replay_task_stops_when_cancelled() {
+        let mock_server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .respond_with(ResponseTemplate::new(200))
+            .mount(&mock_server)
+            .await;
+
+        let storage_dir = tempfile::tempdir().unwrap();
+        let manager = Arc::new(build_manager(mock_server.uri(), storage_dir.path().to_path_buf()).await);
+
+        let cancel_token = CancellationToken::new();
+        let handle = manager
+            .clone()
+            .start_disk_replay_task(Duration::from_millis(20), cancel_token.clone());
+
+        // Let it run a couple of passes, then cancel and confirm the task
+        // actually terminates promptly instead of leaking a background loop
+        // that spins forever past shutdown.
+        tokio::time::sleep(Duration::from_millis(60)).await;
+        cancel_token.cancel();
+
+        tokio::time::timeout(Duration::from_millis(500), handle)
+            .await
+            .expect("disk replay task must stop once cancelled")
+            .expect("disk replay task must not panic");
     }
 }

@@ -3,12 +3,17 @@ use crate::config::Settings;
 use crate::port::{LogExporter, OTelExporter};
 use clickhouse::Client;
 use std::sync::Arc;
+use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
 
 /// Shared application state holding the exporters.
 pub struct AppState {
     pub log_exporter: Arc<dyn LogExporter>,
     pub otel_exporter: Arc<dyn OTelExporter>,
+    /// Handle to the `BatchWriter` flush loop. Must be `.await`ed after the
+    /// shutdown token is cancelled so the final flush completes before the
+    /// process exits (see `app::run`).
+    pub flush_handle: JoinHandle<()>,
 }
 
 impl AppState {
@@ -27,13 +32,15 @@ impl AppState {
             .with_password(&settings.clickhouse_password)
             .with_database(&settings.clickhouse_database);
 
-        let batch_writer = Arc::new(BatchWriter::spawn(client, shutdown_token));
+        let (batch_writer, flush_handle) = BatchWriter::spawn(client, shutdown_token);
+        let batch_writer = Arc::new(batch_writer);
         let log_exporter: Arc<dyn LogExporter> = batch_writer.clone();
         let otel_exporter: Arc<dyn OTelExporter> = batch_writer;
 
         Self {
             log_exporter,
             otel_exporter,
+            flush_handle,
         }
     }
 }

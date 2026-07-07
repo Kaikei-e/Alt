@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import asyncio
 from pathlib import Path
 from uuid import UUID
 
+import structlog
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
@@ -12,7 +14,10 @@ from ...db.dao import SubworkerDAO
 from ...infra.config import Settings
 from ...infra.path_validation import ALLOWED_BASE_DIRS, validate_path
 from ...services.evaluation import EvaluationService
-from ..deps import get_session, get_settings_dep
+from ..container import ServiceContainer
+from ..deps import get_container, get_session, get_settings_dep
+
+logger = structlog.get_logger(__name__)
 
 router = APIRouter(prefix="/v1/evaluation", tags=["evaluation"])
 
@@ -112,6 +117,7 @@ async def evaluate_genres(
     language: str | None = None,
     settings: Settings = Depends(get_settings_dep),
     session=Depends(get_session),
+    container: ServiceContainer = Depends(get_container),
 ) -> EvaluateResponse:
     """ジャンル分類の評価を実行。
 
@@ -125,13 +131,12 @@ async def evaluate_genres(
     else:
         # ユーザー入力のパスを検証
         try:
-            golden_data_path = validate_path(
-                request.golden_data_path, ALLOWED_BASE_DIRS
-            )
+            golden_data_path = validate_path(request.golden_data_path, ALLOWED_BASE_DIRS)
         except ValueError as e:
             raise HTTPException(status_code=400, detail=str(e)) from e
 
-    if not golden_data_path.exists():  # codeql[py/path-injection] -- validate_path + ALLOWED_BASE_DIRS enforces allow-list and symlink resolution
+    # codeql[py/path-injection] -- validate_path + ALLOWED_BASE_DIRS enforces allow-list and symlink resolution
+    if not golden_data_path.exists():
         raise HTTPException(
             status_code=404,
             detail=f"Golden dataset file not found: {golden_data_path}",
@@ -144,7 +149,8 @@ async def evaluate_genres(
         except ValueError as e:
             raise HTTPException(status_code=400, detail=str(e)) from e
 
-        if not weights_path.exists():  # codeql[py/path-injection] -- validate_path + ALLOWED_BASE_DIRS enforces allow-list and symlink resolution
+        # codeql[py/path-injection] -- validate_path + ALLOWED_BASE_DIRS enforces allow-list and symlink resolution
+        if not weights_path.exists():
             raise HTTPException(
                 status_code=404,
                 detail=f"Weights file not found: {request.weights_path}",
@@ -153,23 +159,36 @@ async def evaluate_genres(
         weights_path = None
 
     try:
-        # 評価サービスを初期化（JA/EN別モデルパスを設定から取得）
-        service = EvaluationService(
-            weights_path=str(weights_path) if weights_path else None,
-            weights_ja_path=settings.genre_classifier_model_path_ja,
-            weights_en_path=settings.genre_classifier_model_path_en,
-            vectorizer_ja_path=settings.tfidf_vectorizer_path_ja,
-            vectorizer_en_path=settings.tfidf_vectorizer_path_en,
-            thresholds_ja_path=settings.genre_thresholds_path_ja,
-            thresholds_en_path=settings.genre_thresholds_path_en,
+        if weights_path is not None:
+            # リクエストでカスタム重みパスが指定された場合のみ、専用インスタンスを
+            # その場で構築する（コンテナのシングルトンは設定由来のデフォルト重み
+            # 専用のため使い回せない）。
+            service = EvaluationService(
+                weights_path=str(weights_path),
+                weights_ja_path=settings.genre_classifier_model_path_ja,
+                weights_en_path=settings.genre_classifier_model_path_en,
+                vectorizer_ja_path=settings.tfidf_vectorizer_path_ja,
+                vectorizer_en_path=settings.tfidf_vectorizer_path_en,
+                thresholds_ja_path=settings.genre_thresholds_path_ja,
+                thresholds_en_path=settings.genre_thresholds_path_en,
+            )
+        else:
+            # デフォルト重み構成では、コンテナが所有するシングルトンを再利用する。
+            # EvaluationService の構築は Embedder + JA/EN/default 分類器のロードを
+            # 伴うため、リクエスト毎に新規生成すると同じモデルを何度も読み直す。
+            service = container.evaluation_service
+
+        # 評価を実行（検証済みPathをそのまま渡す）。predict/bootstrap/CV は
+        # CPU-heavy な同期処理のため、イベントループをブロックしないよう
+        # ワーカースレッドへオフロードする。
+        results = await asyncio.to_thread(
+            service.evaluate,
+            golden_data_path,
+            language=language,
             use_bootstrap=request.use_bootstrap,
-            n_bootstrap=request.n_bootstrap,
             use_cross_validation=request.use_cross_validation,
             n_folds=request.n_folds,
         )
-
-        # 評価を実行（検証済みPathをそのまま渡す）
-        results = service.evaluate(golden_data_path, language=language)
 
         # データベースに保存
         run_id: UUID | None = None
@@ -210,9 +229,6 @@ async def evaluate_genres(
                 )
             except Exception as e:
                 # データベース保存に失敗しても評価結果は返す
-                import structlog
-
-                logger = structlog.get_logger(__name__)
                 logger.warning("Failed to save evaluation results to database", error=str(e))
 
             # Additional logging to system_metrics for Dashboard
@@ -390,9 +406,6 @@ async def evaluate_summary(
                 job_id=job_id,
             )
         except Exception as e:
-            import structlog
-
-            logger = structlog.get_logger(__name__)
             logger.warning("Failed to save summary metrics", error=str(e))
 
     return EvaluateSummaryResponse(

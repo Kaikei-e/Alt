@@ -5,6 +5,7 @@ go 1.26.3
 require (
 	connectrpc.com/connect v1.19.2
 	connectrpc.com/otelconnect v0.9.0
+	github.com/alicebob/miniredis/v2 v2.38.0
 	github.com/cenkalti/backoff/v5 v5.0.3
 	github.com/hashicorp/golang-lru/v2 v2.0.7
 	github.com/ikawaha/kagome-dict/ipa v1.2.6
@@ -48,6 +49,7 @@ require (
 	github.com/spf13/afero v1.15.0 // indirect
 	github.com/spf13/cobra v1.10.2 // indirect
 	github.com/spf13/pflag v1.0.9 // indirect
+	github.com/yuin/gopher-lua v1.1.1 // indirect
 	go.opentelemetry.io/auto/sdk v1.2.1 // indirect
 	go.opentelemetry.io/otel/exporters/otlp/otlptrace v1.43.0 // indirect
 	go.opentelemetry.io/proto/otlp v1.10.0 // indirect

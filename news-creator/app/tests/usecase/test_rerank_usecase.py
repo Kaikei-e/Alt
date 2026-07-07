@@ -1,5 +1,8 @@
 """Tests for RerankUsecase."""
 
+import asyncio
+import time
+
 import pytest
 from unittest.mock import patch, MagicMock
 import numpy as np
@@ -125,3 +128,95 @@ class TestRerankUsecase:
         """Test custom model is accepted."""
         usecase = RerankUsecase(model_name="custom/model")
         assert usecase.model_name == "custom/model"
+
+    @pytest.mark.asyncio
+    async def test_rerank_does_not_block_event_loop(self, usecase):
+        """CrossEncoder.predict() is CPU-heavy and synchronous; it must run
+        off the event loop (asyncio.to_thread) so other coroutines (e.g. SSE
+        heartbeats) keep making progress while inference runs."""
+
+        def blocking_predict(pairs):
+            time.sleep(0.3)
+            return np.array([0.9, 0.5])
+
+        mock_encoder = MagicMock()
+        mock_encoder.predict.side_effect = blocking_predict
+
+        heartbeat_ticks = 0
+
+        async def heartbeat():
+            nonlocal heartbeat_ticks
+            while True:
+                await asyncio.sleep(0.02)
+                heartbeat_ticks += 1
+
+        with patch(
+            "news_creator.usecase.rerank_usecase._get_cross_encoder",
+            return_value=mock_encoder,
+        ):
+            heartbeat_task = asyncio.create_task(heartbeat())
+            try:
+                await usecase.rerank(query="q", candidates=["a", "b"])
+            finally:
+                heartbeat_task.cancel()
+
+        assert heartbeat_ticks >= 5, (
+            "event loop was blocked during predict(): only "
+            f"{heartbeat_ticks} heartbeat ticks observed during a 0.3s call"
+        )
+
+    @pytest.mark.asyncio
+    async def test_warmup_preloads_cross_encoder(self, usecase):
+        """warmup() eagerly triggers model loading so the first real request
+        doesn't pay the (possibly multi-second) load cost synchronously."""
+        mock_encoder = MagicMock()
+        with patch(
+            "news_creator.usecase.rerank_usecase._get_cross_encoder",
+            return_value=mock_encoder,
+        ) as mock_get:
+            await usecase.warmup()
+
+        mock_get.assert_called_once_with("test-model")
+
+    @pytest.mark.asyncio
+    async def test_warmup_does_not_block_event_loop(self, usecase):
+        """Model loading inside warmup() must also run off the event loop."""
+
+        def blocking_load(model_name):
+            time.sleep(0.3)
+            return MagicMock()
+
+        heartbeat_ticks = 0
+
+        async def heartbeat():
+            nonlocal heartbeat_ticks
+            while True:
+                await asyncio.sleep(0.02)
+                heartbeat_ticks += 1
+
+        with patch(
+            "news_creator.usecase.rerank_usecase._get_cross_encoder",
+            side_effect=blocking_load,
+        ):
+            heartbeat_task = asyncio.create_task(heartbeat())
+            try:
+                await usecase.warmup()
+            finally:
+                heartbeat_task.cancel()
+
+        assert heartbeat_ticks >= 5, (
+            "event loop was blocked during warmup(): only "
+            f"{heartbeat_ticks} heartbeat ticks observed during a 0.3s load"
+        )
+
+    @pytest.mark.asyncio
+    async def test_warmup_does_not_raise_on_model_load_failure(self, usecase):
+        """warmup() is a startup optimization, not a hard requirement -- a
+        network-isolated environment (no egress to the model hub) must not
+        crash the whole service at boot. The lazy-load fallback in rerank()
+        remains the real safety net."""
+        with patch(
+            "news_creator.usecase.rerank_usecase._get_cross_encoder",
+            side_effect=OSError("no route to host"),
+        ):
+            await usecase.warmup()  # must not raise

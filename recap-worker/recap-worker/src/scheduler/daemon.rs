@@ -2,6 +2,7 @@ use std::time::Duration;
 
 use chrono::{FixedOffset, Utc};
 use tokio::{task::JoinHandle, time::sleep};
+use tokio_util::sync::CancellationToken;
 use tracing::{error, info, warn};
 use uuid::Uuid;
 
@@ -48,11 +49,12 @@ pub fn spawn_jst_batch_daemon(
     genres: Vec<String>,
     window_days: u32,
     owner: Option<KnowledgeOwnerIds>,
+    shutdown: CancellationToken,
 ) -> JoinHandle<()> {
     log_topic_snapshot_emit_wiring(owner, "jst_batch");
     let tz = FixedOffset::east_opt(JST_OFFSET_HOURS * 3600).expect("valid JST offset");
     let cadence = DailyCadence::new(tz, BATCH_HOUR, BATCH_MINUTE);
-    BatchDaemon::new(scheduler, cadence, genres, tz, window_days, owner).spawn()
+    BatchDaemon::new(scheduler, cadence, genres, tz, window_days, owner, shutdown).spawn()
 }
 
 struct BatchDaemon {
@@ -62,6 +64,7 @@ struct BatchDaemon {
     tz: FixedOffset,
     window_days: u32,
     owner: Option<KnowledgeOwnerIds>,
+    shutdown: CancellationToken,
 }
 
 impl BatchDaemon {
@@ -72,6 +75,7 @@ impl BatchDaemon {
         tz: FixedOffset,
         window_days: u32,
         owner: Option<KnowledgeOwnerIds>,
+        shutdown: CancellationToken,
     ) -> Self {
         Self {
             scheduler,
@@ -80,6 +84,7 @@ impl BatchDaemon {
             tz,
             window_days,
             owner,
+            shutdown,
         }
     }
 
@@ -142,6 +147,11 @@ impl BatchDaemon {
         }
 
         loop {
+            if state.shutdown.is_cancelled() {
+                info!("shutdown requested, stopping jst batch daemon");
+                break;
+            }
+
             let now = Utc::now();
             let next = state.cadence.next_run_from(now);
             let wait = duration_until(next, now);
@@ -153,7 +163,13 @@ impl BatchDaemon {
                 window_days = state.window_days,
                 "scheduled automatic {}-day recap batch", state.window_days
             );
-            sleep(wait).await;
+            tokio::select! {
+                () = sleep(wait) => {}
+                () = state.shutdown.cancelled() => {
+                    info!("shutdown requested during wait, stopping jst batch daemon");
+                    break;
+                }
+            }
 
             // Start new job
             let job_id = Uuid::new_v4();
@@ -181,19 +197,29 @@ impl BatchDaemon {
 pub fn spawn_morning_update_daemon(
     scheduler: Scheduler,
     owner: Option<KnowledgeOwnerIds>,
+    shutdown: CancellationToken,
 ) -> JoinHandle<()> {
     log_topic_snapshot_emit_wiring(owner, "morning_update");
-    MorningUpdateDaemon::new(scheduler, owner).spawn()
+    MorningUpdateDaemon::new(scheduler, owner, shutdown).spawn()
 }
 
 struct MorningUpdateDaemon {
     scheduler: Scheduler,
     owner: Option<KnowledgeOwnerIds>,
+    shutdown: CancellationToken,
 }
 
 impl MorningUpdateDaemon {
-    fn new(scheduler: Scheduler, owner: Option<KnowledgeOwnerIds>) -> Self {
-        Self { scheduler, owner }
+    fn new(
+        scheduler: Scheduler,
+        owner: Option<KnowledgeOwnerIds>,
+        shutdown: CancellationToken,
+    ) -> Self {
+        Self {
+            scheduler,
+            owner,
+            shutdown,
+        }
     }
 
     fn spawn(self) -> JoinHandle<()> {
@@ -205,7 +231,13 @@ impl MorningUpdateDaemon {
     async fn run(self) {
         let interval = Duration::from_mins(30);
         loop {
-            sleep(interval).await;
+            tokio::select! {
+                () = sleep(interval) => {}
+                () = self.shutdown.cancelled() => {
+                    info!("shutdown requested, stopping morning update daemon");
+                    break;
+                }
+            }
             let job_id = Uuid::new_v4();
             // trigger_source="morning" is written into recap_jobs so boot-time
             // find_resumable_job never picks this up as a batch Recap.

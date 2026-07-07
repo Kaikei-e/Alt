@@ -13,12 +13,14 @@ from collections.abc import AsyncIterator
 from fastapi import Depends, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from ..gateway.hdbscan_clusterer import HdbscanClustererGateway
 from ..infra.config import Settings, get_settings
 from ..services.async_jobs import AdminJobService
 from ..services.classification import CoarseClassifier
 from ..services.classification_runner import ClassificationRunner
 from ..services.classifier import GenreClassifierService
 from ..services.embedder import Embedder
+from ..services.evaluation import EvaluationService
 from ..services.extraction import ContentExtractor
 from ..services.genre_learning import GenreLearningService
 from ..services.learning_client import LearningClient
@@ -189,3 +191,15 @@ def get_coarse_classifier_dep(
     container: ServiceContainer = Depends(get_container),
 ) -> CoarseClassifier:
     return container.coarse_classifier
+
+
+def get_clusterer_gateway_dep(
+    container: ServiceContainer = Depends(get_container),
+) -> HdbscanClustererGateway:
+    return container.clusterer_gateway
+
+
+def get_evaluation_service_dep(
+    container: ServiceContainer = Depends(get_container),
+) -> EvaluationService:
+    return container.evaluation_service

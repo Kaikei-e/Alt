@@ -1,6 +1,6 @@
 # Pre-processor
 
-_Last reviewed: March 18, 2026_
+_Last reviewed: July 7, 2026_
 
 **Location:** `pre-processor/app`
 
@@ -353,6 +353,19 @@ Short articles trigger a Japanese placeholder summary inside `ArticleSummarizerS
 - Unit and integration tests live under `handler/`, `service/`, `repository/`, and `quality-checker/`. Run `go test ./...` from `pre-processor/app`.
 - `make generate-mocks` refreshes GoMock fixtures when repository interfaces change.
 - Synthetic regression: queue a job via `curl`, then run `SELECT * FROM summarize_job_queue` to confirm `status` transitions and `summary` persistence.
+
+## Known failure patterns
+
+Cross-cutting incident patterns are catalogued in [[crystallized-knowledge]].
+
+- Infinite re-enqueue loop: 63 unsummarizable articles generated 1,349 jobs → skip paths (content too short/long) wrote no placeholder "proof of processing" to `article_summaries`, so the enqueue guard never fired; permanently-unprocessable items must be marked non-retryable and completed immediately → PM-2026-002, [[000551]].
+- Retry storm + false `dead_letter` while summaries actually exist → shared HTTP client's 20s `ResponseHeaderTimeout` was shorter than Map-Reduce summarization latency: disconnect → resend → duplicate in-flight runs; separate slowloris guards from long-RPC timeouts, add an in-flight enqueue guard, and recheck the source of truth before confirming `dead_letter` → PM-2026-027.
+- 51 articles stuck unsummarized after quality-check deletion → deleting from `article_summaries` left `completed` rows in `summarize_job_queue`, so the recent-success guard blocked re-enqueue (inverse of PM-2026-002); logically-coupled stores need a compensating transaction (`InvalidateCompletedJobSummary`) → PM-2026-017.
+- 610 COLD_STARTs after a model rename → the running binary was never rebuilt (`--build` omitted) and kept sending the old model name; model/env changes require rebuilding every container that references the name (Critical Rule 3) → PM-2026-014.
+- GetFeedID request burst against alt-backend persists after caching → the per-batch cache covered only the `UpsertArticles` route; `Create` / `CheckExists` routes still hit `GetFeedID` per article (post-deploy finding of [[000924]]).
+- Pipeline silently dead during API-mode migration → transitional stubs returning `return nil, nil` reported `processed: 0` while 82 articles waited; migration stubs must fail loudly, not silently (origin of Critical Rule 8) → [[000247]].
+- 4.1M-row job backlog → after the DB split, a CHECK-constraint migration was applied to the wrong database so the `dead_letter` transition failed forever; migrations must map strictly per database, enqueue must be idempotent (`INSERT ... WHERE NOT EXISTS`; one article was enqueued 895 times), and `running` jobs need stuck-recovery back to `pending` → [[000387]].
+- Duplicate processing grows with concurrency → `SELECT ... FOR UPDATE SKIP LOCKED` followed by a separate `UPDATE` opens a race window; dequeue must be a single atomic statement (`UPDATE ... WHERE id IN (SELECT ... FOR UPDATE SKIP LOCKED) RETURNING`), and `completed` must mean "side effect durably persisted" → [[000509]].
 
 ## Known constraints / TODOs
 

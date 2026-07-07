@@ -152,3 +152,41 @@ class TestOllamaGateway:
         mock_client.get.side_effect = Exception("connection refused")
 
         assert await gateway.health_check() is False
+
+
+class TestScoreReadability:
+    """OllamaGateway.score_readability — used by ReadabilityEvaluator.
+
+    Previously this method did not exist at all, so every call raised
+    AttributeError, silently caught and defaulted to 0.0 (CLAUDE.md rule 8).
+    """
+
+    async def test_score_readability_returns_real_score(self, gateway, mock_client):
+        mock_response = MagicMock()
+        mock_response.json.return_value = {"response": '{"score": 4.5}'}
+        mock_response.raise_for_status = MagicMock()
+        mock_client.post.return_value = mock_response
+
+        score = await gateway.score_readability("本日の主要な変化: AI導入で業務自動化。")
+
+        assert score == pytest.approx(4.5)
+        mock_client.post.assert_called_once()
+
+    async def test_score_readability_raises_on_unparseable_response(
+        self, gateway, mock_client
+    ):
+        mock_response = MagicMock()
+        mock_response.json.return_value = {"response": "not json at all"}
+        mock_response.raise_for_status = MagicMock()
+        mock_client.post.return_value = mock_response
+
+        with pytest.raises(ValueError, match="No JSON found"):
+            await gateway.score_readability("要約")
+
+    async def test_score_readability_propagates_http_errors(
+        self, gateway, mock_client
+    ):
+        mock_client.post.side_effect = httpx.TimeoutException("timeout")
+
+        with pytest.raises(httpx.TimeoutException):
+            await gateway.score_readability("要約")

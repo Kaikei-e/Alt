@@ -1,6 +1,6 @@
 # Knowledge Augur
 
-_Last reviewed: March 18, 2026_
+_Last reviewed: July 7, 2026_
 
 **Location:** `knowledge-augur/`
 **Port:** 11435 (external) → 11434 (internal Ollama)
@@ -257,6 +257,15 @@ logging:
 | Slow inference | Model not preloaded | Wait for startup sequence; check `OLLAMA_KEEP_ALIVE=-1` is set |
 | OOM errors | Insufficient VRAM | Reduce `num_ctx` or use CPU-only mode |
 | Connection refused | Service not ready | Wait for health check; verify port 11435 is exposed |
+
+## Known failure patterns
+
+- **`latest` image tag is pinned at container creation**: weeks of CPU fallback at 12 tok/s (87% throughput lost) → the Ollama image was stale despite `latest`, and the health check verified model presence but not inference speed → recreate the container on image updates; make health checks performance-aware → PM-2026-005.
+- **Stale model name from a consumer → immediate EOF**: Ask Augur down 67 min → rag-orchestrator was not rebuilt after a model migration and requested a nonexistent model → immediate EOF means "model not found"; rebuild all containers that reference `AUGUR_KNOWLEDGE_MODEL` via env → PM-2026-016.
+- **`.env` overrides silently defeat fix ADRs**: a stale `AUGUR_EXTERNAL` in `.env` overrode compose defaults and re-broke routing after a fix landed → audit `.env` vs compose defaults on every wiring change → [[000571]], PM-2026-013 (same class).
+- **Model migration needs a template/parameter checklist**: gpt-oss → qwen3 required `think:false` (else `<think>` blocks leak into output) and `num_predict` 4096→512 → verify chat-template token differences against primary sources before switching → [[000155]] [[000640]]. gpt-oss variants also emit literal `\n` (double-escaped), needing post-processing → [[000066]].
+- **iGPU render GID is unstable across hosts**: GPU not detected despite correct device mappings → the host render GID varies, so the entrypoint must stat-detect the GID dynamically and drop privileges via gosu → [[000025]].
+- **Model switch without profiling wastes effort**: identify the dominant bottleneck first — once retrieval is optimized, the model weight itself is next; keep quality requirements while moving to a lighter same-family variant → [[000428]].
 
 ## Development
 

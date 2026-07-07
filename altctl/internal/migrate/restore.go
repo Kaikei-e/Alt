@@ -3,6 +3,7 @@ package migrate
 import (
 	"context"
 	"fmt"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
@@ -70,6 +71,7 @@ func (m *Migrator) Restore(ctx context.Context, opts RestoreOptions) error {
 	)
 
 	// Restore selected volumes
+	var failedVolumes []string
 	for _, vb := range targetVolumes {
 		spec, ok := m.registry.Get(vb.Name)
 		if !ok {
@@ -84,9 +86,15 @@ func (m *Migrator) Restore(ctx context.Context, opts RestoreOptions) error {
 				"volume", vb.Name,
 				"error", err,
 			)
-			// Continue with other volumes
+			// Continue with other volumes, but the overall restore must not
+			// report success once any volume has failed.
+			failedVolumes = append(failedVolumes, vb.Name)
 			continue
 		}
+	}
+
+	if len(failedVolumes) > 0 {
+		return fmt.Errorf("restore failed for %d volume(s): %s", len(failedVolumes), strings.Join(failedVolumes, ", "))
 	}
 
 	m.logger.Info("restore complete")
@@ -189,21 +197,17 @@ func (m *Migrator) stopContainers(ctx context.Context) error {
 	return cmd.Run()
 }
 
-// buildComposeArgs builds docker compose command arguments
+// buildComposeArgs builds docker compose command arguments. The compose file
+// list comes from composeFileList (backed by the stack registry) so it can't
+// drift out of sync with getRunningContainers — a pre-restore "down" must
+// stop every stack, including sovereign.yaml, or its DB volume/dump can be
+// overwritten while the container is still running.
 func (m *Migrator) buildComposeArgs(args ...string) []string {
-	composeFiles := []string{
-		filepath.Join(m.composeDir, "base.yaml"),
-		filepath.Join(m.composeDir, "db.yaml"),
-		filepath.Join(m.composeDir, "auth.yaml"),
-		filepath.Join(m.composeDir, "core.yaml"),
-		filepath.Join(m.composeDir, "workers.yaml"),
-		filepath.Join(m.composeDir, "recap.yaml"),
-		filepath.Join(m.composeDir, "rag.yaml"),
-	}
-
 	result := []string{"compose"}
-	for _, f := range composeFiles {
-		result = append(result, "-f", f)
+	for _, f := range composeFileList(m.composeDir) {
+		if _, err := os.Stat(f); err == nil {
+			result = append(result, "-f", f)
+		}
 	}
 	result = append(result, args...)
 	return result

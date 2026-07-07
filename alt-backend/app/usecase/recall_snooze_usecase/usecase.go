@@ -31,9 +31,14 @@ func (u *RecallSnoozeUsecase) Execute(ctx context.Context, userID uuid.UUID, ten
 	if snoozeHours <= 0 {
 		snoozeHours = 24
 	}
-	until := time.Now().Add(time.Duration(snoozeHours) * time.Hour)
+	// occurredAt is the origination time of this command, minted once here
+	// and forwarded both to the direct recall_candidate_view mutation and the
+	// appended knowledge event, so the two writes agree on a single wall-clock
+	// moment instead of drifting across two separate time.Now() calls.
+	occurredAt := time.Now()
+	until := occurredAt.Add(time.Duration(snoozeHours) * time.Hour)
 
-	if err := u.candidatePort.SnoozeRecallCandidate(ctx, userID, itemKey, until); err != nil {
+	if err := u.candidatePort.SnoozeRecallCandidate(ctx, userID, itemKey, until, occurredAt); err != nil {
 		return fmt.Errorf("snooze recall candidate: %w", err)
 	}
 
@@ -45,7 +50,7 @@ func (u *RecallSnoozeUsecase) Execute(ctx context.Context, userID uuid.UUID, ten
 
 	event := domain.KnowledgeEvent{
 		EventID:       uuid.New(),
-		OccurredAt:    time.Now(),
+		OccurredAt:    occurredAt,
 		TenantID:      tenantID,
 		UserID:        &userID,
 		ActorType:     domain.ActorUser,
@@ -53,7 +58,7 @@ func (u *RecallSnoozeUsecase) Execute(ctx context.Context, userID uuid.UUID, ten
 		EventType:     domain.EventRecallSnoozed,
 		AggregateType: domain.AggregateHomeSession,
 		AggregateID:   itemKey,
-		DedupeKey:     fmt.Sprintf("recall_snooze:%s:%s:%d", userID, itemKey, time.Now().Unix()),
+		DedupeKey:     fmt.Sprintf("recall_snooze:%s:%s:%d", userID, itemKey, occurredAt.Unix()),
 		Payload:       payload,
 	}
 

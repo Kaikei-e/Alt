@@ -28,26 +28,26 @@ func DefaultRetentionPolicy() RetentionPolicy {
 
 // PartitionInfo describes a table partition.
 type PartitionInfo struct {
-	Name       string
-	RangeStart time.Time
-	RangeEnd   time.Time
-	RowCount   int64
-	SizeBytes  int64
+	Name       string    `json:"partition_name"`
+	RangeStart time.Time `json:"range_start"`
+	RangeEnd   time.Time `json:"range_end"`
+	RowCount   int64     `json:"row_count"`
+	SizeBytes  int64     `json:"size_bytes"`
 }
 
 // RetentionLogEntry records a retention operation.
 type RetentionLogEntry struct {
-	LogID           uuid.UUID
-	RunAt           time.Time
-	Action          string // export, verify, aggregate, detach, drop
-	TargetTable     string
-	TargetPartition string
-	RowsAffected    int64
-	ArchivePath     string
-	Checksum        string
-	DryRun          bool
-	Status          string // success, failed
-	ErrorMessage    string
+	LogID           uuid.UUID `json:"log_id"`
+	RunAt           time.Time `json:"run_at"`
+	Action          string    `json:"action"` // export, verify, aggregate, detach, drop
+	TargetTable     string    `json:"target_table"`
+	TargetPartition string    `json:"target_partition"`
+	RowsAffected    int64     `json:"rows_affected"`
+	ArchivePath     string    `json:"archive_path,omitempty"`
+	Checksum        string    `json:"checksum,omitempty"`
+	DryRun          bool      `json:"dry_run"`
+	Status          string    `json:"status"` // success, failed
+	ErrorMessage    string    `json:"error_message,omitempty"`
 }
 
 // PartitionsEligibleForArchive returns partitions whose data is entirely

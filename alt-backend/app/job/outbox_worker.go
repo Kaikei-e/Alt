@@ -23,12 +23,6 @@ func OutboxWorkerJob(repo *alt_db.AltDBRepository, ragIntegration rag_integratio
 	}
 }
 
-// OutboxWorkerRunner is kept for backward compatibility.
-// Deprecated: Use OutboxWorkerJob with JobScheduler instead.
-func OutboxWorkerRunner(ctx context.Context, repo *alt_db.AltDBRepository, ragIntegration rag_integration_port.RagIntegrationPort) {
-	processOutboxEvents(ctx, repo, ragIntegration, nil)
-}
-
 func processOutboxEvents(ctx context.Context, repo *alt_db.AltDBRepository, ragIntegration rag_integration_port.RagIntegrationPort, knowledgeEventPort knowledge_event_port.AppendKnowledgeEventPort) {
 	events, err := repo.FetchAndLockPendingOutboxEvents(ctx, 10)
 	if err != nil {
@@ -73,9 +67,15 @@ func processOutboxEvents(ctx context.Context, repo *alt_db.AltDBRepository, ragI
 
 // emitArticleCreatedEvent appends a Knowledge Home ArticleCreated event to sovereign-db.
 // Uses dedupe_key for idempotency — safe to call on every ARTICLE_UPSERT.
+//
+// port is a required composition-root dependency (job/registry.go always
+// wires container.SovereignClient here). A nil port means DI forgot to wire
+// the Knowledge Home event producer — panicking surfaces that immediately
+// instead of silently dropping every ArticleCreated event (CLAUDE.md rule 8 /
+// ADR-000928 root cause).
 func emitArticleCreatedEvent(ctx context.Context, port knowledge_event_port.AppendKnowledgeEventPort, payload []byte) {
 	if port == nil {
-		return
+		panic("outbox_worker: knowledge_event_port.AppendKnowledgeEventPort is nil — the Knowledge Home ArticleCreated producer must be wired at composition root (see .claude/rules/di-wiring.md)")
 	}
 
 	var p struct {

@@ -142,8 +142,29 @@ func (h *SovereignHandler) AppendKnowledgeEvent(
 		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("event is required"))
 	}
 
+	eventID, err := parseUUIDField("event_id", pe.EventId)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInvalidArgument, err)
+	}
+	tenantID, err := parseUUIDField("tenant_id", pe.TenantId)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInvalidArgument, err)
+	}
+	userID, err := parseUUIDPtrField("user_id", pe.UserId)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInvalidArgument, err)
+	}
+	correlationID, err := parseUUIDPtrField("correlation_id", pe.CorrelationId)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInvalidArgument, err)
+	}
+	causationID, err := parseUUIDPtrField("causation_id", pe.CausationId)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInvalidArgument, err)
+	}
+
 	event := sovereign_db.KnowledgeEvent{
-		EventID:       parseUUID(pe.EventId),
+		EventID:       eventID,
 		ActorType:     pe.ActorType,
 		ActorID:       pe.ActorId,
 		EventType:     pe.EventType,
@@ -151,10 +172,10 @@ func (h *SovereignHandler) AppendKnowledgeEvent(
 		AggregateID:   pe.AggregateId,
 		DedupeKey:     pe.DedupeKey,
 		Payload:       json.RawMessage(pe.Payload),
-		TenantID:      parseUUID(pe.TenantId),
-		UserID:        parseUUIDPtr(pe.UserId),
-		CorrelationID: parseUUIDPtr(pe.CorrelationId),
-		CausationID:   parseUUIDPtr(pe.CausationId),
+		TenantID:      tenantID,
+		UserID:        userID,
+		CorrelationID: correlationID,
+		CausationID:   causationID,
 	}
 	if pe.OccurredAt != nil {
 		event.OccurredAt = pe.OccurredAt.AsTime()
@@ -298,7 +319,10 @@ func (h *SovereignHandler) GetReprojectRun(
 	ctx context.Context,
 	req *connect.Request[sovereignv1.GetReprojectRunRequest],
 ) (*connect.Response[sovereignv1.GetReprojectRunResponse], error) {
-	runID := parseUUID(req.Msg.RunId)
+	runID, err := parseUUIDField("run_id", req.Msg.RunId)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInvalidArgument, err)
+	}
 	run, err := h.readDB.GetReprojectRun(ctx, runID)
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("GetReprojectRun: %w", err))
@@ -329,7 +353,10 @@ func (h *SovereignHandler) CreateReprojectRun(
 	ctx context.Context,
 	req *connect.Request[sovereignv1.CreateReprojectRunRequest],
 ) (*connect.Response[sovereignv1.CreateReprojectRunResponse], error) {
-	run := protoToReprojectRun(req.Msg.Run)
+	run, err := protoToReprojectRun(req.Msg.Run)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInvalidArgument, err)
+	}
 	if err := h.readDB.CreateReprojectRun(ctx, run); err != nil {
 		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("CreateReprojectRun: %w", err))
 	}
@@ -340,7 +367,10 @@ func (h *SovereignHandler) UpdateReprojectRun(
 	ctx context.Context,
 	req *connect.Request[sovereignv1.UpdateReprojectRunRequest],
 ) (*connect.Response[sovereignv1.UpdateReprojectRunResponse], error) {
-	run := protoToReprojectRun(req.Msg.Run)
+	run, err := protoToReprojectRun(req.Msg.Run)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInvalidArgument, err)
+	}
 	if err := h.readDB.UpdateReprojectRun(ctx, run); err != nil {
 		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("UpdateReprojectRun: %w", err))
 	}
@@ -398,8 +428,12 @@ func (h *SovereignHandler) CreateProjectionAudit(
 	if pa == nil {
 		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("audit is required"))
 	}
+	auditID, err := parseUUIDField("audit_id", pa.AuditId)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInvalidArgument, err)
+	}
 	audit := sovereign_db.ProjectionAudit{
-		AuditID:           parseUUID(pa.AuditId),
+		AuditID:           auditID,
 		ProjectionName:    pa.ProjectionName,
 		ProjectionVersion: pa.ProjectionVersion,
 		SampleSize:        int(pa.SampleSize),
@@ -421,7 +455,10 @@ func (h *SovereignHandler) GetBackfillJob(
 	ctx context.Context,
 	req *connect.Request[sovereignv1.GetBackfillJobRequest],
 ) (*connect.Response[sovereignv1.GetBackfillJobResponse], error) {
-	jobID := parseUUID(req.Msg.JobId)
+	jobID, err := parseUUIDField("job_id", req.Msg.JobId)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInvalidArgument, err)
+	}
 	job, err := h.readDB.GetBackfillJob(ctx, jobID)
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("GetBackfillJob: %w", err))
@@ -452,7 +489,10 @@ func (h *SovereignHandler) CreateBackfillJob(
 	ctx context.Context,
 	req *connect.Request[sovereignv1.CreateBackfillJobRequest],
 ) (*connect.Response[sovereignv1.CreateBackfillJobResponse], error) {
-	j := protoToBackfillJob(req.Msg.Job)
+	j, err := protoToBackfillJob(req.Msg.Job)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInvalidArgument, err)
+	}
 	if err := h.readDB.CreateBackfillJob(ctx, j); err != nil {
 		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("CreateBackfillJob: %w", err))
 	}
@@ -463,7 +503,10 @@ func (h *SovereignHandler) UpdateBackfillJob(
 	ctx context.Context,
 	req *connect.Request[sovereignv1.UpdateBackfillJobRequest],
 ) (*connect.Response[sovereignv1.UpdateBackfillJobResponse], error) {
-	j := protoToBackfillJob(req.Msg.Job)
+	j, err := protoToBackfillJob(req.Msg.Job)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInvalidArgument, err)
+	}
 	if err := h.readDB.UpdateBackfillJob(ctx, j); err != nil {
 		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("UpdateBackfillJob: %w", err))
 	}
@@ -476,7 +519,10 @@ func (h *SovereignHandler) ListRecallSignals(
 	ctx context.Context,
 	req *connect.Request[sovereignv1.ListRecallSignalsRequest],
 ) (*connect.Response[sovereignv1.ListRecallSignalsResponse], error) {
-	userID := parseUUID(req.Msg.UserId)
+	userID, err := parseUUIDField("user_id", req.Msg.UserId)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInvalidArgument, err)
+	}
 	signals, err := h.readDB.ListRecallSignalsByUser(ctx, userID, int(req.Msg.SinceDays))
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("ListRecallSignals: %w", err))
@@ -504,9 +550,17 @@ func (h *SovereignHandler) AppendRecallSignal(
 	if ps == nil {
 		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("signal is required"))
 	}
+	signalID, err := parseUUIDField("signal_id", ps.SignalId)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInvalidArgument, err)
+	}
+	signalUserID, err := parseUUIDField("user_id", ps.UserId)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInvalidArgument, err)
+	}
 	s := sovereign_db.RecallSignal{
-		SignalID:       parseUUID(ps.SignalId),
-		UserID:         parseUUID(ps.UserId),
+		SignalID:       signalID,
+		UserID:         signalUserID,
 		ItemKey:        ps.ItemKey,
 		SignalType:     ps.SignalType,
 		SignalStrength: ps.SignalStrength,
@@ -533,10 +587,22 @@ func (h *SovereignHandler) AppendKnowledgeUserEvent(
 	if pe == nil {
 		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("event is required"))
 	}
+	userEventID, err := parseUUIDField("user_event_id", pe.UserEventId)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInvalidArgument, err)
+	}
+	eventUserID, err := parseUUIDField("user_id", pe.UserId)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInvalidArgument, err)
+	}
+	eventTenantID, err := parseUUIDField("tenant_id", pe.TenantId)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInvalidArgument, err)
+	}
 	e := sovereign_db.KnowledgeUserEvent{
-		UserEventID: parseUUID(pe.UserEventId),
-		UserID:      parseUUID(pe.UserId),
-		TenantID:    parseUUID(pe.TenantId),
+		UserEventID: userEventID,
+		UserID:      eventUserID,
+		TenantID:    eventTenantID,
 		EventType:   pe.EventType,
 		ItemKey:     pe.ItemKey,
 		Payload:     pe.Payload,
@@ -625,16 +691,24 @@ func reprojectRunToProto(r sovereign_db.ReprojectRun) *sovereignv1.ReprojectRun 
 	return pb
 }
 
-func protoToReprojectRun(pb *sovereignv1.ReprojectRun) sovereign_db.ReprojectRun {
+func protoToReprojectRun(pb *sovereignv1.ReprojectRun) (sovereign_db.ReprojectRun, error) {
 	if pb == nil {
-		return sovereign_db.ReprojectRun{}
+		return sovereign_db.ReprojectRun{}, nil
+	}
+	reprojectRunID, err := parseUUIDField("reproject_run_id", pb.ReprojectRunId)
+	if err != nil {
+		return sovereign_db.ReprojectRun{}, err
+	}
+	initiatedBy, err := parseUUIDPtrField("initiated_by", pb.InitiatedBy)
+	if err != nil {
+		return sovereign_db.ReprojectRun{}, err
 	}
 	r := sovereign_db.ReprojectRun{
-		ReprojectRunID:    parseUUID(pb.ReprojectRunId),
+		ReprojectRunID:    reprojectRunID,
 		ProjectionName:    pb.ProjectionName,
 		FromVersion:       pb.FromVersion,
 		ToVersion:         pb.ToVersion,
-		InitiatedBy:       parseUUIDPtr(pb.InitiatedBy),
+		InitiatedBy:       initiatedBy,
 		Mode:              pb.Mode,
 		Status:            pb.Status,
 		CheckpointPayload: pb.CheckpointPayload,
@@ -660,7 +734,7 @@ func protoToReprojectRun(pb *sovereignv1.ReprojectRun) sovereign_db.ReprojectRun
 		t := pb.FinishedAt.AsTime()
 		r.FinishedAt = &t
 	}
-	return r
+	return r, nil
 }
 
 func backfillJobToProto(j sovereign_db.BackfillJob) *sovereignv1.BackfillJob {
@@ -693,23 +767,38 @@ func backfillJobToProto(j sovereign_db.BackfillJob) *sovereignv1.BackfillJob {
 	return pb
 }
 
-func protoToBackfillJob(pb *sovereignv1.BackfillJob) sovereign_db.BackfillJob {
+func protoToBackfillJob(pb *sovereignv1.BackfillJob) (sovereign_db.BackfillJob, error) {
 	if pb == nil {
-		return sovereign_db.BackfillJob{}
+		return sovereign_db.BackfillJob{}, nil
+	}
+	jobID, err := parseUUIDField("job_id", pb.JobId)
+	if err != nil {
+		return sovereign_db.BackfillJob{}, err
+	}
+	cursorUserID, err := parseUUIDPtrField("cursor_user_id", pb.CursorUserId)
+	if err != nil {
+		return sovereign_db.BackfillJob{}, err
+	}
+	cursorArticleID, err := parseUUIDPtrField("cursor_article_id", pb.CursorArticleId)
+	if err != nil {
+		return sovereign_db.BackfillJob{}, err
 	}
 	j := sovereign_db.BackfillJob{
-		JobID:             parseUUID(pb.JobId),
+		JobID:             jobID,
 		Status:            pb.Status,
 		Kind:              pb.Kind,
 		ProjectionVersion: int(pb.ProjectionVersion),
 		TotalEvents:       int(pb.TotalEvents),
 		ProcessedEvents:   int(pb.ProcessedEvents),
 		ErrorMessage:      pb.ErrorMessage,
-		CursorUserID:      parseUUIDPtr(pb.CursorUserId),
-		CursorArticleID:   parseUUIDPtr(pb.CursorArticleId),
+		CursorUserID:      cursorUserID,
+		CursorArticleID:   cursorArticleID,
 	}
 	if pb.CursorDate != "" {
-		t, _ := time.Parse("2006-01-02", pb.CursorDate)
+		t, err := time.Parse("2006-01-02", pb.CursorDate)
+		if err != nil {
+			return sovereign_db.BackfillJob{}, fmt.Errorf("invalid cursor_date %q: %w", pb.CursorDate, err)
+		}
 		j.CursorDate = &t
 	}
 	if pb.CreatedAt != nil {
@@ -726,5 +815,5 @@ func protoToBackfillJob(pb *sovereignv1.BackfillJob) sovereign_db.BackfillJob {
 	if pb.UpdatedAt != nil {
 		j.UpdatedAt = pb.UpdatedAt.AsTime()
 	}
-	return j
+	return j, nil
 }

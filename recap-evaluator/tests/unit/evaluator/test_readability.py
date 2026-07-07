@@ -2,6 +2,7 @@
 
 from unittest.mock import AsyncMock
 
+import httpx
 import pytest
 
 from recap_evaluator.evaluator.readability import ReadabilityEvaluator
@@ -38,10 +39,37 @@ class TestReadabilityEvaluator:
         assert avg == pytest.approx(4.0, abs=0.01)
 
     @pytest.mark.asyncio
-    async def test_llm_failure_propagates_zero(self):
+    async def test_llm_network_failure_returns_zero(self):
+        """A recoverable LLM-call failure (network/HTTP) defaults to 0.0."""
         mock_ollama = AsyncMock()
-        mock_ollama.score_readability.side_effect = RuntimeError("ollama down")
+        mock_ollama.score_readability.side_effect = httpx.ConnectError(
+            "ollama unreachable"
+        )
 
         evaluator = ReadabilityEvaluator(mock_ollama)
         score = await evaluator.evaluate("要約。")
         assert score == 0.0
+
+    @pytest.mark.asyncio
+    async def test_unparseable_llm_response_returns_zero(self):
+        """A malformed LLM response (ValueError/KeyError) also defaults to 0.0."""
+        mock_ollama = AsyncMock()
+        mock_ollama.score_readability.side_effect = ValueError("no JSON found")
+
+        evaluator = ReadabilityEvaluator(mock_ollama)
+        score = await evaluator.evaluate("要約。")
+        assert score == 0.0
+
+    @pytest.mark.asyncio
+    async def test_unexpected_error_propagates(self):
+        """A bug (e.g. AttributeError from a missing method) must NOT be
+        silently swallowed into a fake 0.0 score — that would hide a wiring
+        defect as "always low readability" (CLAUDE.md rule 8)."""
+        mock_ollama = AsyncMock()
+        mock_ollama.score_readability.side_effect = AttributeError(
+            "'OllamaGateway' object has no attribute 'score_readability'"
+        )
+
+        evaluator = ReadabilityEvaluator(mock_ollama)
+        with pytest.raises(AttributeError):
+            await evaluator.evaluate("要約。")

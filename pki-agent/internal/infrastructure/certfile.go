@@ -25,6 +25,19 @@ type CertFile struct {
 	KeyPath  string
 	OwnerUID int
 	OwnerGID int
+	// ChownRequested is the explicit signal that OwnerUID/OwnerGID were
+	// actually specified by the composition root and should be applied.
+	// It must NOT be derived from `OwnerUID > 0` — UID 0 (root) is a valid,
+	// intentional chown target (e.g. CERT_OWNER_UID=0 for the
+	// tag-generator sidecar in compose/pki.yaml) and must not collide with
+	// the zero-value "don't chown, inherit the runtime uid" case that bare
+	// struct literals (tests, ad-hoc callers) rely on.
+	ChownRequested bool
+
+	// chown is the seam used to change ownership; defaults to os.Chown.
+	// Tests inject a stub here so the chown *decision* is verifiable
+	// without requiring the CAP_CHOWN privilege the real syscall needs.
+	chown func(name string, uid, gid int) error
 }
 
 // Load reads the cert file and returns its parsed X.509. Returns
@@ -90,10 +103,16 @@ func (c *CertFile) atomicWrite(path string, data []byte, mode os.FileMode) error
 		cleanup()
 		return err
 	}
-	// Only chown if explicitly configured; otherwise inherit the runtime
-	// uid (lets the consumer's uid drive the perms via the sidecar container).
-	if c.OwnerUID > 0 && c.OwnerGID > 0 {
-		if err := os.Chown(tmpName, c.OwnerUID, c.OwnerGID); err != nil {
+	// Only chown if explicitly requested; otherwise inherit the runtime
+	// uid (lets the consumer's uid drive the perms via the sidecar
+	// container). The decision is ChownRequested, not OwnerUID/OwnerGID's
+	// value — 0 is a legitimate, explicitly configured owner (root).
+	if c.ChownRequested {
+		chown := c.chown
+		if chown == nil {
+			chown = os.Chown
+		}
+		if err := chown(tmpName, c.OwnerUID, c.OwnerGID); err != nil {
 			_ = tmp.Close()
 			cleanup()
 			return err

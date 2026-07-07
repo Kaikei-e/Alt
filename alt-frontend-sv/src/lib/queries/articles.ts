@@ -13,7 +13,7 @@ import {
 	createInfiniteQuery,
 	useQueryClient,
 } from "@tanstack/svelte-query";
-import { createClientTransport } from "$lib/connect/transport.client";
+import { createClientTransport } from "$lib/connect/transport-client";
 import {
 	fetchArticleContent,
 	archiveArticle,

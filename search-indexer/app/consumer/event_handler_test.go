@@ -3,10 +3,12 @@ package consumer
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"log/slog"
 	"search-indexer/domain"
 	"search-indexer/port"
 	"search-indexer/usecase"
+	"sync"
 	"testing"
 	"time"
 
@@ -284,5 +286,137 @@ func TestIndexEventHandler_Deduplication(t *testing.T) {
 	// After deduplication, only 1 document should be indexed
 	if len(se.indexedDocs) != 1 {
 		t.Errorf("expected 1 indexed doc after deduplication, got %d", len(se.indexedDocs))
+	}
+}
+
+// fakeAcker records every message ID passed to Ack for assertions. It
+// implements the Acknowledger interface consumed by IndexEventHandler.
+type fakeAcker struct {
+	mu    sync.Mutex
+	acked []string
+	err   error
+}
+
+func (f *fakeAcker) Ack(_ context.Context, messageIDs ...string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.err != nil {
+		return f.err
+	}
+	f.acked = append(f.acked, messageIDs...)
+	return nil
+}
+
+func (f *fakeAcker) ackedIDs() []string {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	out := make([]string, len(f.acked))
+	copy(out, f.acked)
+	return out
+}
+
+// TestIndexEventHandler_Flush_AcksMessageIDsOnlyAfterDurableWrite reproduces
+// the HIGH finding: HandleEvent used to return nil as soon as an event was
+// buffered, and the Redis consumer ACKed on that nil return -- long before
+// flush() actually wrote to Meilisearch. This test asserts the handler
+// itself withholds the ACK until IndexUsecase.ExecuteBatchArticles has
+// durably succeeded.
+func TestIndexEventHandler_Flush_AcksMessageIDsOnlyAfterDurableWrite(t *testing.T) {
+	now := time.Now()
+	article, _ := domain.NewArticle("art-ack-1", "Title", "Content", []string{}, now, "user")
+	repo := &mockArticleRepo{articles: map[string]*domain.Article{"art-ack-1": article}}
+	se := &mockSearchEngine{}
+	uc := usecase.NewIndexArticlesUsecase(repo, se, (*tokenizer.Tokenizer)(nil))
+	handler := NewIndexEventHandler(uc, slog.Default())
+	defer handler.Stop()
+
+	acker := &fakeAcker{}
+	handler.SetAcker(acker)
+
+	payload, _ := json.Marshal(ArticleCreatedPayload{ArticleID: "art-ack-1"})
+	err := handler.HandleEvent(context.Background(), Event{
+		EventType: "ArticleCreated",
+		EventID:   "evt-ack-1",
+		MessageID: "1-0",
+		Payload:   payload,
+	})
+	if err != nil {
+		t.Fatalf("HandleEvent() error = %v", err)
+	}
+
+	// Before the batch timer fires, the message must not be ACKed yet --
+	// the write hasn't happened.
+	if got := acker.ackedIDs(); len(got) != 0 {
+		t.Fatalf("message ACKed before flush ran: %v", got)
+	}
+
+	handler.Stop()
+
+	got := acker.ackedIDs()
+	if len(got) != 1 || got[0] != "1-0" {
+		t.Fatalf("acked IDs = %v, want [\"1-0\"] after a successful flush", got)
+	}
+	if len(se.indexedDocs) != 1 {
+		t.Fatalf("expected 1 indexed doc, got %d", len(se.indexedDocs))
+	}
+}
+
+// TestIndexEventHandler_Flush_DoesNotAckOnFailure ensures a flush failure
+// (e.g. Meilisearch unreachable) leaves the message un-ACKed so it remains
+// in the stream's pending entries list and is retried by the consumer's
+// XAUTOCLAIM reclaim loop instead of being silently lost.
+func TestIndexEventHandler_Flush_DoesNotAckOnFailure(t *testing.T) {
+	repo := &mockArticleRepo{articles: map[string]*domain.Article{}, err: errors.New("db unavailable")}
+	se := &mockSearchEngine{}
+	uc := usecase.NewIndexArticlesUsecase(repo, se, (*tokenizer.Tokenizer)(nil))
+	handler := NewIndexEventHandler(uc, slog.Default())
+	defer handler.Stop()
+
+	acker := &fakeAcker{}
+	handler.SetAcker(acker)
+
+	payload, _ := json.Marshal(ArticleCreatedPayload{ArticleID: "art-ack-2"})
+	err := handler.HandleEvent(context.Background(), Event{
+		EventType: "ArticleCreated",
+		EventID:   "evt-ack-2",
+		MessageID: "2-0",
+		Payload:   payload,
+	})
+	if err != nil {
+		t.Fatalf("HandleEvent() error = %v", err)
+	}
+
+	handler.Stop()
+
+	if got := acker.ackedIDs(); len(got) != 0 {
+		t.Fatalf("message ACKed despite flush failure: %v", got)
+	}
+}
+
+// TestIndexEventHandler_HandleEvent_UnknownType_AcksImmediately verifies an
+// unroutable event type is ACKed right away (nothing is buffered for it),
+// so it doesn't sit in the PEL forever and eventually get mistaken for a
+// poison message once a real Acknowledger is wired.
+func TestIndexEventHandler_HandleEvent_UnknownType_AcksImmediately(t *testing.T) {
+	se := &mockSearchEngine{}
+	repo := &mockArticleRepo{articles: map[string]*domain.Article{}}
+	uc := usecase.NewIndexArticlesUsecase(repo, se, (*tokenizer.Tokenizer)(nil))
+	handler := NewIndexEventHandler(uc, slog.Default())
+	defer handler.Stop()
+
+	acker := &fakeAcker{}
+	handler.SetAcker(acker)
+
+	err := handler.HandleEvent(context.Background(), Event{
+		EventType: "UnknownEvent",
+		EventID:   "evt-unknown",
+		MessageID: "3-0",
+	})
+	if err != nil {
+		t.Fatalf("HandleEvent() should return nil for unknown events, got %v", err)
+	}
+
+	if got := acker.ackedIDs(); len(got) != 1 || got[0] != "3-0" {
+		t.Fatalf("acked IDs = %v, want [\"3-0\"] immediately for an unknown event type", got)
 	}
 }

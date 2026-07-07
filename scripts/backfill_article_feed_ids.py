@@ -74,27 +74,46 @@ def backfill_feed_ids(conn, batch_size: int = 1000) -> dict:
 
             print(f"Found {stats['total_articles_with_null_feed_id']} articles with NULL feed_id")
 
-            # Process articles in batches
-            offset = 0
+            # Process articles in batches using keyset pagination.
+            #
+            # OFFSET-based pagination is unsafe here: each batch's UPDATE moves
+            # rows out of the `WHERE feed_id IS NULL` result set, so advancing
+            # OFFSET by the batch size skips rows that shifted into the
+            # already-scanned range. Tracking the last-seen id and querying
+            # `id > last_seen_id` avoids that, since it never depends on the
+            # position of rows within the (shrinking) matching set.
+            last_seen_id: Optional[str] = None
             while True:
                 # Fetch batch of articles with NULL feed_id
-                cursor.execute(
-                    """
-                    SELECT id, url
-                    FROM articles
-                    WHERE feed_id IS NULL
-                    ORDER BY created_at DESC, id DESC
-                    LIMIT %s OFFSET %s
-                    """,
-                    (batch_size, offset),
-                )
+                if last_seen_id is None:
+                    cursor.execute(
+                        """
+                        SELECT id, url
+                        FROM articles
+                        WHERE feed_id IS NULL
+                        ORDER BY id
+                        LIMIT %s
+                        """,
+                        (batch_size,),
+                    )
+                else:
+                    cursor.execute(
+                        """
+                        SELECT id, url
+                        FROM articles
+                        WHERE feed_id IS NULL AND id > %s
+                        ORDER BY id
+                        LIMIT %s
+                        """,
+                        (last_seen_id, batch_size),
+                    )
 
                 articles = cursor.fetchall()
 
                 if not articles:
                     break
 
-                print(f"Processing batch: {offset} to {offset + len(articles)} articles...")
+                print(f"Processing batch of {len(articles)} articles after id={last_seen_id}...")
 
                 updated_count = 0
                 for article in articles:
@@ -131,7 +150,7 @@ def backfill_feed_ids(conn, batch_size: int = 1000) -> dict:
                 conn.commit()
                 print(f"  Updated {updated_count} articles in this batch")
 
-                offset += len(articles)
+                last_seen_id = articles[-1]["id"]
 
                 # Break if we got fewer articles than batch_size (last batch)
                 if len(articles) < batch_size:

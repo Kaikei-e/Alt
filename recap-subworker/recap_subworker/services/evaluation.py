@@ -167,24 +167,49 @@ class EvaluationService:
         kept_labels = [list(lbl) for lbl in labels_series[mask].tolist()]
         return kept_texts, kept_labels
 
-    def evaluate(self, golden_data_path: str | Path, language: str | None = None) -> dict[str, Any]:
+    def evaluate(
+        self,
+        golden_data_path: str | Path,
+        language: str | None = None,
+        *,
+        use_bootstrap: bool | None = None,
+        use_cross_validation: bool | None = None,
+        n_folds: int | None = None,
+    ) -> dict[str, Any]:
         """
         Evaluate classifier against golden dataset.
 
         Args:
             golden_data_path: Path to golden classification JSON file
             language: Optional language filter ("ja" or "en"). If None, evaluates all languages.
+            use_bootstrap: Per-call override for whether to compute the Wilson
+                score CI (defaults to the value passed to the constructor).
+                Accepted as a call argument rather than mutating instance
+                state so a shared/cached EvaluationService instance stays
+                safe to reuse across concurrent requests with different
+                per-request evaluation options.
+            use_cross_validation: Per-call override for whether to run
+                Stratified K-Fold CV.
+            n_folds: Per-call override for the number of CV folds.
         """
+        use_bootstrap = self.use_bootstrap if use_bootstrap is None else use_bootstrap
+        use_cross_validation = (
+            self.use_cross_validation if use_cross_validation is None else use_cross_validation
+        )
+        n_folds = self.n_folds if n_folds is None else n_folds
+
         # Validate path to prevent path traversal attacks
         if isinstance(golden_data_path, Path):
             golden_path = golden_data_path  # 既にバリデーション済み
         else:
             golden_path = validate_path(golden_data_path)  # defense-in-depth
-        if not golden_path.exists():  # codeql[py/path-injection] -- validate_path applies realpath + allow-list; Path inputs are pre-validated by the router
+        # codeql[py/path-injection] -- validate_path applies realpath + allow-list; Path inputs are pre-validated by the router
+        if not golden_path.exists():
             raise FileNotFoundError(f"Golden data not found: {golden_path}")
 
         # Load Golden Data
-        with golden_path.open() as f:  # codeql[py/path-injection] -- path already validated above
+        # codeql[py/path-injection] -- path already validated above
+        with golden_path.open() as f:
             data = json.load(f)
 
         # Handle wrapper structure
@@ -321,7 +346,7 @@ class EvaluationService:
                 }
 
         # Bootstrap for CI (Simplistic version) -> SWITCHING to Wilson Score Interval for Accuracy
-        if self.use_bootstrap and proportion_confint:
+        if use_bootstrap and proportion_confint:
             # Calculate CI for accuracy using Wilson score interval
             count_correct = int(metrics.accuracy * len(X))
             n_obs = len(X)
@@ -376,10 +401,10 @@ class EvaluationService:
             results["confusion_matrix"] = {}
 
         # Cross-Validation
-        if self.use_cross_validation and self.n_folds > 1:
+        if use_cross_validation and n_folds > 1:
             try:
-                logger.info("Starting Cross-Validation", n_folds=self.n_folds)
-                cv_metrics = self._run_cross_validation(X, y_true_labels, classifier)
+                logger.info("Starting Cross-Validation", n_folds=n_folds)
+                cv_metrics = self._run_cross_validation(X, y_true_labels, classifier, n_folds=n_folds)
                 results.update(cv_metrics)
             except Exception as e:
                 logger.warning("Cross-validation failed", error=str(e))
@@ -493,12 +518,18 @@ class EvaluationService:
         return metrics
 
     def _run_cross_validation(
-        self, texts: list[str], y_true_labels: list[list[str]], classifier: GenreClassifierService
+        self,
+        texts: list[str],
+        y_true_labels: list[list[str]],
+        classifier: GenreClassifierService,
+        *,
+        n_folds: int | None = None,
     ) -> dict[str, Any]:
         """
         Run Stratified K-Fold CV by retraining the model on folds.
         Approximates the training pipeline: Embed + TF-IDF -> LogisticRegression.
         """
+        n_folds = self.n_folds if n_folds is None else n_folds
         # 1. Prepare Features (Once)
         logger.info("Generating features for CV...")
         input_texts = [f"passage: {t}" for t in texts]
@@ -515,7 +546,7 @@ class EvaluationService:
         y_single = np.array(y_single)
 
         # 3. Stratified K-Fold
-        skf = StratifiedKFold(n_splits=self.n_folds, shuffle=True, random_state=42)
+        skf = StratifiedKFold(n_splits=n_folds, shuffle=True, random_state=42)
 
         accuracies = []
         macro_f1s = []
@@ -583,5 +614,5 @@ class EvaluationService:
             "cv_accuracy": {"mean": float(np.mean(accuracies)), "std": float(np.std(accuracies))},
             "cv_macro_f1": {"mean": float(np.mean(macro_f1s)), "std": float(np.std(macro_f1s))},
             "cv_micro_f1": {"mean": float(np.mean(micro_f1s)), "std": float(np.std(micro_f1s))},
-            "n_folds": self.n_folds,
+            "n_folds": n_folds,
         }

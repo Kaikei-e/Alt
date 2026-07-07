@@ -498,6 +498,81 @@ func TestRetrieveContext_SearchQueries_BypassExpansion(t *testing.T) {
 	assert.Greater(t, output.BM25HitCount, 0)
 }
 
+// MockHybridSearcher is a test double for domain.HybridSearcher.
+type MockHybridSearcher struct {
+	mock.Mock
+}
+
+func (m *MockHybridSearcher) HybridSearch(ctx context.Context, queryVector []float32, queryText string, limit int) ([]domain.SearchResult, error) {
+	args := m.Called(ctx, queryVector, queryText, limit)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).([]domain.SearchResult), args.Error(1)
+}
+
+func (m *MockHybridSearcher) SearchNeighbors(ctx context.Context, queryVector []float32, queryText string, seedArticleIDs []string, limit int) ([]domain.SearchResult, error) {
+	args := m.Called(ctx, queryVector, queryText, seedArticleIDs, limit)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).([]domain.SearchResult), args.Error(1)
+}
+
+// TestRetrieveContext_WithHybridSearcher_UsesInDBHybridSearch guards against a
+// regression of the silent-unwired-DI bug where WithHybridSearcher's field was
+// never read: di/container.go logs "hybrid_search_enabled" for
+// bm25_source=postgres, so the retrieval pipeline must actually call
+// HybridSearcher.HybridSearch instead of silently falling back to
+// vector-only search.
+func TestRetrieveContext_WithHybridSearcher_UsesInDBHybridSearch(t *testing.T) {
+	mockChunkRepo := new(MockRagChunkRepository)
+	mockDocRepo := new(MockRagDocumentRepository)
+	mockEncoder := new(MockVectorEncoder)
+	mockLLM := new(mockLLMClient)
+	mockQueryExpander := new(MockQueryExpander)
+	mockHybrid := new(MockHybridSearcher)
+	testLogger := slog.New(slog.NewJSONHandler(io.Discard, nil))
+
+	config := usecase.DefaultRetrievalConfig()
+	config.HybridSearch.Enabled = true
+
+	uc := usecase.NewRetrieveContextUsecase(
+		mockChunkRepo, mockDocRepo, mockEncoder, mockLLM, nil, mockQueryExpander,
+		config, testLogger,
+		usecase.WithHybridSearcher(mockHybrid),
+	)
+
+	ctx := context.Background()
+	input := usecase.RetrieveContextInput{
+		Query: "search query",
+	}
+
+	mockQueryExpander.On("ExpandQuery", mock.Anything, "search query", 1, 3).Return([]string{}, nil)
+	mockLLM.On("Generate", mock.Anything, mock.Anything, 100).Return(&domain.LLMResponse{Text: ""}, nil).Maybe()
+
+	queryVec := []float32{0.1, 0.2, 0.3}
+	mockEncoder.On("Encode", mock.Anything, []string{"search query"}).Return([][]float32{queryVec}, nil)
+
+	mockHybrid.On("HybridSearch", mock.Anything, queryVec, "search query", 50).Return([]domain.SearchResult{
+		{
+			Chunk:     domain.RagChunk{ID: uuid.New(), Content: "Fused hybrid result"},
+			Score:     0.5,
+			ArticleID: "art-hybrid",
+		},
+	}, nil)
+
+	output, err := uc.Execute(ctx, input)
+
+	assert.NoError(t, err)
+	assert.NotNil(t, output)
+	assert.Len(t, output.Contexts, 1)
+	assert.Equal(t, "Fused hybrid result", output.Contexts[0].ChunkText)
+
+	mockHybrid.AssertCalled(t, "HybridSearch", mock.Anything, queryVec, "search query", 50)
+	mockChunkRepo.AssertNotCalled(t, "Search", mock.Anything, mock.Anything, mock.Anything)
+}
+
 // Test helper types
 type testSearchResult struct {
 	id      string

@@ -1,3 +1,13 @@
+---
+title: Sovereign Projector Notification — Troubleshooting & Design Record
+date: 2026-04-11
+tags:
+  - runbook
+  - knowledge-sovereign
+  - projector
+  - streaming
+---
+
 # Sovereign Projector Notification — Troubleshooting & Design Record
 
 ## Background

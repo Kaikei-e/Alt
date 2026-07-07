@@ -29,6 +29,7 @@ type App struct {
 	connectServer *http.Server
 	mtlsServer    *http.Server
 	redisConsumer *consumer.Consumer
+	eventHandler  *consumer.IndexEventHandler
 	otelShutdown  appOtel.ShutdownFunc
 }
 
@@ -52,9 +53,15 @@ func Run(ctx context.Context) error {
 	)
 
 	// ── Tokenizer ──
+	// Fail-fast: a nil tokenizer silently injected into the usecase used to
+	// panic on the first Japanese tag deep inside kagome, which
+	// runIndexLoop's recover caught and (before this fix) returned from --
+	// permanently halting indexing while health stayed green (CLAUDE.md
+	// rule 8). Treat init failure as a startup error instead.
 	tokenizer, err := tokenize.InitTokenizer()
 	if err != nil {
 		logger.Logger.Error("Failed to initialize tokenizer", "err", err)
+		return fmt.Errorf("tokenizer init: %w", err)
 	}
 
 	// ── Load config ──
@@ -127,9 +134,10 @@ func Run(ctx context.Context) error {
 
 	// ── Redis Streams Consumer ──
 	var redisConsumer *consumer.Consumer
+	var eventHandler *consumer.IndexEventHandler
 	consumerCfg := consumer.ConfigFromEnv()
 	if consumerCfg.Enabled {
-		eventHandler := consumer.NewIndexEventHandler(indexUsecase, logger.Logger)
+		eventHandler = consumer.NewIndexEventHandler(indexUsecase, logger.Logger)
 		redisConsumer, err = consumer.NewConsumer(consumerCfg, eventHandler, logger.Logger)
 		if err != nil {
 			logger.Logger.Error("Failed to create Redis Streams consumer", "err", err)
@@ -160,6 +168,7 @@ func Run(ctx context.Context) error {
 		httpServer:    newHTTPServer(searchByUserUsecase, searchArticlesUsecase, otelCfg, appCfg.RateLimit),
 		connectServer: newConnectServer(searchByUserUsecase, searchRecapsUsecase, appCfg.RateLimit),
 		redisConsumer: redisConsumer,
+		eventHandler:  eventHandler,
 		otelShutdown:  otelShutdown,
 	}
 
@@ -220,6 +229,13 @@ func Run(ctx context.Context) error {
 }
 
 // shutdown performs graceful shutdown of all components.
+//
+// The Redis consumer's intake (XREADGROUP/XAUTOCLAIM loops) is halted
+// before the event handler flushes, and the handler flushes (and ACKs)
+// before the consumer's Redis client is closed. Reversing this order was
+// the HIGH finding here: eventHandler.Stop() was never called at all, so up
+// to ~2s of buffered, already-ACKed events were silently dropped on every
+// restart. See .claude/rules/event-stream-consumer.md shutdown ordering.
 func (a *App) shutdown() {
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
@@ -235,8 +251,15 @@ func (a *App) shutdown() {
 			logger.Logger.Error("mtls shutdown error", "err", err)
 		}
 	}
+
 	if a.redisConsumer != nil {
-		a.redisConsumer.Stop()
+		a.redisConsumer.StopIntake()
+	}
+	if a.eventHandler != nil {
+		a.eventHandler.Stop()
+	}
+	if a.redisConsumer != nil {
+		a.redisConsumer.Close()
 	}
 
 	otelCtx, otelCancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -255,13 +278,60 @@ func newRetryBackoff() *backoff.ExponentialBackOff {
 	return bo
 }
 
+// indexLoopRestartDelay bounds how quickly runIndexLoop restarts after an
+// unrecovered panic, so a persistent bug doesn't spin the goroutine in a
+// tight crash loop.
+const indexLoopRestartDelay = 5 * time.Second
+
+// safeExecuteBackfill guards ExecuteBackfill against panics -- e.g. a nil
+// tokenizer reached through registerBatchSynonyms when a batch contains a
+// Japanese tag -- converting them into a plain error. This lets the
+// existing backoff-and-retry loop in runIndexLoop treat "panicked" exactly
+// like any other transient failure instead of the panic unwinding the
+// whole goroutine and permanently halting indexing while health stays
+// green (CLAUDE.md rule 8).
+func safeExecuteBackfill(ctx context.Context, uc *usecase.IndexArticlesUsecase, lastCreatedAt *time.Time, lastID string, batchSize int) (result *usecase.IndexResult, err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			logPanic(ctx, "backfill panic", r)
+			err = fmt.Errorf("recovered panic in backfill: %v", r)
+		}
+	}()
+	return uc.ExecuteBackfill(ctx, lastCreatedAt, lastID, batchSize)
+}
+
+// safeExecuteIncremental mirrors safeExecuteBackfill for Phase 2.
+func safeExecuteIncremental(ctx context.Context, uc *usecase.IndexArticlesUsecase, incrementalMark, lastCreatedAt *time.Time, lastID string, lastDeletedAt *time.Time, batchSize int) (result *usecase.IndexResult, err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			logPanic(ctx, "incremental panic", r)
+			err = fmt.Errorf("recovered panic in incremental indexing: %v", r)
+		}
+	}()
+	return uc.ExecuteIncremental(ctx, incrementalMark, lastCreatedAt, lastID, lastDeletedAt, batchSize)
+}
+
 // runIndexLoop runs the dual-phase indexing loop using clean architecture.
 // Phase 1 (Backfill): Index all existing articles from latest to oldest.
 // Phase 2 (Incremental): Poll for new articles and sync deletions.
+//
+// Per-batch panics inside either phase are recovered close to the source by
+// safeExecuteBackfill/safeExecuteIncremental and folded into the existing
+// backoff-and-retry path above, which keeps lastCreatedAt/lastID progress
+// intact. The recover below is a last-resort safety net for anything else:
+// it restarts the loop instead of letting the goroutine exit, because the
+// previous behavior -- log and return -- silently and permanently halted
+// indexing while the service kept reporting healthy.
 func runIndexLoop(ctx context.Context, indexUsecase *usecase.IndexArticlesUsecase) {
 	defer func() {
 		if r := recover(); r != nil {
-			logPanic(ctx, "index loop panic", r)
+			logPanic(ctx, "index loop panic, restarting", r)
+			select {
+			case <-ctx.Done():
+				return
+			case <-time.After(indexLoopRestartDelay):
+			}
+			go runIndexLoop(ctx, indexUsecase)
 		}
 	}()
 
@@ -296,7 +366,7 @@ func runIndexLoop(ctx context.Context, indexUsecase *usecase.IndexArticlesUsecas
 		}
 
 		start := time.Now()
-		result, err := indexUsecase.ExecuteBackfill(ctx, lastCreatedAt, lastID, config.IndexBatchSize)
+		result, err := safeExecuteBackfill(ctx, indexUsecase, lastCreatedAt, lastID, config.IndexBatchSize)
 		if err != nil {
 			recordError(ctx, "backfill")
 			delay := bo.NextBackOff()
@@ -337,7 +407,7 @@ func runIndexLoop(ctx context.Context, indexUsecase *usecase.IndexArticlesUsecas
 		}
 
 		start := time.Now()
-		result, err := indexUsecase.ExecuteIncremental(ctx, incrementalMark, lastCreatedAt, lastID, lastDeletedAt, config.IndexBatchSize)
+		result, err := safeExecuteIncremental(ctx, indexUsecase, incrementalMark, lastCreatedAt, lastID, lastDeletedAt, config.IndexBatchSize)
 		if err != nil {
 			recordError(ctx, "incremental")
 			delay := bo.NextBackOff()

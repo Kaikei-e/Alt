@@ -8,8 +8,10 @@ the `TTSEngine` Protocol.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import logging
 import re
+import threading
 from typing import TYPE_CHECKING, Any
 
 import numpy as np
@@ -118,22 +120,37 @@ class TTSPipeline:
         """Synthesize and yield one (audio_float32, sample_rate) per sentence."""
         loop = asyncio.get_event_loop()
         queue: asyncio.Queue[Any] = asyncio.Queue()
+        cancel_event = threading.Event()
 
         def producer() -> None:
             try:
                 for sentence in self._split_sentences(text):
+                    if cancel_event.is_set():
+                        return
                     chunk, sr = self._engine.synth_one(sentence=sentence, voice=voice, speed=speed)
+                    if cancel_event.is_set():
+                        return
                     loop.call_soon_threadsafe(queue.put_nowait, (chunk, sr))
                 loop.call_soon_threadsafe(queue.put_nowait, None)
             except Exception as exc:
                 loop.call_soon_threadsafe(queue.put_nowait, exc)
 
-        loop.run_in_executor(None, producer)
+        future = loop.run_in_executor(None, producer)
 
-        while True:
-            item = await queue.get()
-            if item is None:
-                break
-            if isinstance(item, Exception):
-                raise item
-            yield item
+        try:
+            while True:
+                item = await queue.get()
+                if item is None:
+                    break
+                if isinstance(item, Exception):
+                    raise item
+                yield item
+        finally:
+            # Consumer disconnected (GeneratorExit) or the loop raised early —
+            # tell the producer thread to stop between sentences instead of
+            # letting it synthesize the rest of the text into a dead queue,
+            # and wait for it to actually finish before we return.
+            cancel_event.set()
+            future.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await future

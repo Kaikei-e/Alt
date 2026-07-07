@@ -36,6 +36,37 @@ class TestServiceContainerForTesting:
         assert container.run_manager is fake_rm
 
 
+class TestServiceContainerEvaluationService:
+    """Regression: `/v1/evaluation/genres` used to construct a brand-new
+    `EvaluationService()` (which loads an Embedder + JA/EN/default
+    classifiers) on every request. The container must expose a memoized
+    singleton so the default (no per-request weights override) path loads
+    those models once per process."""
+
+    def test_evaluation_service_is_memoized(self):
+        settings = Settings(model_id="fake", allow_embedding_drift=True)
+        container = ServiceContainer(settings)
+
+        first = container.evaluation_service
+        second = container.evaluation_service
+
+        assert first is second
+
+    def test_evaluation_service_uses_settings_derived_weight_paths(self):
+        settings = Settings(
+            model_id="fake",
+            allow_embedding_drift=True,
+            genre_classifier_model_path_ja="/tmp/ja.joblib",
+            genre_classifier_model_path_en="/tmp/en.joblib",
+        )
+        container = ServiceContainer(settings)
+
+        service = container.evaluation_service
+
+        assert service.weights_ja == "/tmp/ja.joblib"
+        assert service.weights_en == "/tmp/en.joblib"
+
+
 class TestServiceContainerShutdown:
     @pytest.mark.asyncio
     async def test_shutdown_when_nothing_initialized(self):

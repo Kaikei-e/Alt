@@ -66,6 +66,11 @@ func (m *MockStreamPort) DeleteStream(ctx context.Context, stream domain.StreamK
 	return args.Error(0)
 }
 
+func (m *MockStreamPort) Expire(ctx context.Context, stream domain.StreamKey, ttl time.Duration) error {
+	args := m.Called(ctx, stream, ttl)
+	return args.Error(0)
+}
+
 func TestHandler_Publish(t *testing.T) {
 	t.Run("publishes event successfully", func(t *testing.T) {
 		mockPort := new(MockStreamPort)
@@ -418,7 +423,8 @@ func TestHandler_GenerateTagsForArticle(t *testing.T) {
 		mockPort.On("SubscribeWithTimeout", ctx, mock.AnythingOfType("domain.StreamKey"), 5*time.Second).
 			Return(replyEvent, nil)
 
-		mockPort.On("DeleteStream", ctx, mock.AnythingOfType("domain.StreamKey")).Return(nil)
+		mockPort.On("Expire", mock.Anything, mock.AnythingOfType("domain.StreamKey"), mock.AnythingOfType("time.Duration")).Return(nil)
+		mockPort.On("DeleteStream", mock.Anything, mock.AnythingOfType("domain.StreamKey")).Return(nil)
 
 		req := connect.NewRequest(&mqhubv1.GenerateTagsForArticleRequest{
 			ArticleId: "article-123",

@@ -8,7 +8,60 @@
 include:
   - base.yaml
 
+networks:
+  # Internal-only network shared by restic-backup and its docker-socket-proxy.
+  # Nothing else on alt-network can reach the proxy's scoped Docker API.
+  backup-docker-proxy:
+    internal: true
+
 services:
+  docker-socket-proxy:
+    # Scoped Docker API proxy: restic-backup no longer gets a raw RW bind mount
+    # of /var/run/docker.sock (which is host-root-equivalent access — `:ro` on
+    # a unix socket mount only stops deletion of the socket file, it does NOT
+    # restrict which API verbs are reachable through it). This proxy enforces
+    # the real scoping via env vars below, based on the exact operations
+    # scripts/backup/*.sh perform:
+    #   - `docker ps` (backup-all.sh container-existence checks)
+    #   - `docker exec` into alt-db/kratos-db/recap-db/rag-db/pact-db/clickhouse
+    #     (pg_dump, psql CHECKPOINT, clickhouse-client BACKUP DATABASE)
+    #   - `docker run` + `docker volume create/rm` + `docker exec` + `docker rm -f`
+    #     for restore-verify.sh's disposable postgres:17-alpine verification container
+    image: tecnativa/docker-socket-proxy:v0.4.2
+    container_name: alt-backup-docker-proxy
+    environment:
+      # Master switch: without POST=1 only GET/HEAD pass, regardless of the
+      # per-section switches below.
+      - POST=1
+      # docker ps / inspect / create / rm, and the `POST /containers/{id}/exec`
+      # half of `docker exec`.
+      - CONTAINERS=1
+      # the `POST /exec/{id}/start` half of `docker exec`.
+      - EXEC=1
+      # inspect + pull postgres:17-alpine for restore-verify.sh's temp container.
+      - IMAGES=1
+      # docker volume create/rm for restore-verify.sh's scratch volumes.
+      - VOLUMES=1
+      # explicit grant for `POST /containers/{id}/start`, used by `docker run -d`.
+      - ALLOW_START=1
+    volumes:
+      # Real socket, read-only: the proxy is the only thing that talks to it
+      # directly, and it enforces the actual scoping above (unlike the RW bind
+      # mount this replaces on restic-backup, the read-only direction here is
+      # legitimate because docker-socket-proxy is the trusted enforcement point).
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    networks:
+      - backup-docker-proxy
+    profiles:
+      - backup
+    labels:
+      rask.group: backup
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
   restic-backup:
     image: restic/restic:0.17.3
     container_name: alt-backup
@@ -32,6 +85,9 @@ services:
       - RESTIC_REPOSITORY=/backups/restic-repo
       - RESTIC_PASSWORD_FILE=/run/secrets/restic_password
       - CLICKHOUSE_USER=${CLICKHOUSE_USER:-rask_user}
+      # Docker CLI talks to the scoped docker-socket-proxy instead of a raw
+      # RW bind mount of the host socket.
+      - DOCKER_HOST=tcp://docker-socket-proxy:2375
       # Healthchecks.io integration (optional)
       - HEALTHCHECK_HOURLY_URL=${HEALTHCHECK_HOURLY_URL:-}
       - HEALTHCHECK_DAILY_URL=${HEALTHCHECK_DAILY_URL:-}
@@ -39,9 +95,10 @@ services:
       - HEALTHCHECK_URL=${HEALTHCHECK_URL:-}
     secrets:
       - restic_password
+    depends_on:
+      docker-socket-proxy:
+        condition: service_started
     volumes:
-      # Docker socket for pg_dump via docker exec
-      - /var/run/docker.sock:/var/run/docker.sock
       # Configured SSH keys for remote sync
       - ../secrets/ssh/id_ed25519_backup:/root/.ssh/id_ed25519:ro
       - ../secrets/ssh/known_hosts:/root/.ssh/known_hosts:ro
@@ -65,6 +122,7 @@ services:
       - ../scripts/backup:/scripts:ro
     networks:
       - alt-network
+      - backup-docker-proxy
     profiles:
       - backup
     labels:

@@ -214,3 +214,65 @@ class TestConfigureLoggingWithBusinessContext:
 
         # Cleanup
         root.removeHandler(handler)
+
+
+class TestDBLogHandlerNonBlocking:
+    """Regression: DBLogHandler.emit() does a synchronous DB INSERT per
+    ERROR record. Calling it directly on the root logger meant a slow or
+    unreachable DB blocked whatever thread logged the error — including the
+    asyncio event loop thread inside async request handlers, and would
+    amplify under a DB outage (error -> log -> DB write fails -> more
+    errors). Fixed by routing DB writes through a QueueHandler +
+    background QueueListener so the calling thread only does a fast
+    in-memory enqueue."""
+
+    def test_configure_logging_installs_queue_handler_for_db_writes(self) -> None:
+        from logging.handlers import QueueHandler
+
+        from recap_subworker.infra.logging import configure_logging
+
+        configure_logging("INFO")
+
+        root = logging.getLogger()
+        try:
+            queue_handlers = [h for h in root.handlers if isinstance(h, QueueHandler)]
+            assert queue_handlers, "expected a QueueHandler wrapping DB error logging"
+        finally:
+            for h in [h for h in root.handlers if isinstance(h, QueueHandler)]:
+                root.removeHandler(h)
+
+    def test_slow_db_write_does_not_block_caller(self, monkeypatch) -> None:
+        """A slow/hanging DB write must not block the thread that calls
+        logger.error() (simulates a DB outage under logging load)."""
+        import time as time_module
+
+        from recap_subworker.infra.logging import DBLogHandler, configure_logging
+
+        slow_seconds = 1.0
+
+        def slow_emit(self, record):
+            time_module.sleep(slow_seconds)
+
+        monkeypatch.setattr(DBLogHandler, "emit", slow_emit)
+
+        configure_logging("INFO")
+
+        logger = logging.getLogger("test-slow-db")
+        start = time_module.monotonic()
+        logger.error("boom")
+        elapsed = time_module.monotonic() - start
+
+        assert elapsed < slow_seconds, (
+            f"logger.error() blocked for {elapsed:.3f}s waiting on the DB write; "
+            "DBLogHandler must run off a background queue, not the caller's thread"
+        )
+
+        # Give the background listener a moment to drain the slow record
+        # before the next test tears down handlers underneath it.
+        time_module.sleep(slow_seconds)
+
+        root = logging.getLogger()
+        from logging.handlers import QueueHandler
+
+        for h in [h for h in root.handlers if isinstance(h, QueueHandler)]:
+            root.removeHandler(h)

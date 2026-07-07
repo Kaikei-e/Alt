@@ -1,6 +1,6 @@
 # RAG Database & Migrations
 
-_Last reviewed: March 18, 2026_
+_Last reviewed: July 7, 2026_
 
 **Location:** `rag-db`, `rag-migration-atlas`
 
@@ -513,3 +513,14 @@ h1:gwz5BQHngx5i5pPJMWYeOkhTxu6aoZE2caOHlFecrh0=
 20251225160000_initial_rag_schema.sql h1:LrMxzPQ9gbRyBCsHxkZau4KoFMtOIIBhnwV6pajshNE=
 20251225170000_add_title_url.sql h1:XWHJ8Funs35jRcBt8eq19AHTT24QfQHl4v2Lu3v4UYY=
 ```
+
+## Known failure patterns
+
+Distilled from the ADR / postmortem corpus (see `docs/runbooks/crystallized-knowledge.md`).
+
+- **HNSW indexes make INSERT ~5x slower** — bulk loads into `rag_chunks` should DROP INDEX → INSERT → REINDEX, with raised `maintenance_work_mem`, parallel workers, and an expanded container `shm_size` ([[000620]]).
+- **pgvector type registration is not automatic** — `pgxpool.New` does not register the `vector` type; connections must go through `infra.NewPostgresDB`, or vector params fail at runtime ([[000620]]).
+- **HNSW + post-filtering returns 0 rows when the candidate set is small** — time-bounded searches must pre-filter in a single-pass query; keep HNSW for the two-stage full-text path ([[000053]], [[000036]]).
+- **Missing `shm_size` kills PostgreSQL under load** — Docker's 64 MB default collides with work_mem dynamic shared memory (SQLSTATE 53100); set it explicitly ([[000521]]).
+- **Soft-deleted articles leak into RAG unless every upstream query filters them** — `deleted_at IS NULL` must be applied exhaustively when reading article sources ([[000282]]).
+- **The embedder is a SPOF unless a degraded mode exists** — embedding failure treated as fatal took retrieval fully down even though BM25 was healthy; design a BM25-only degraded mode (PM-2026-020, [[000693]]).

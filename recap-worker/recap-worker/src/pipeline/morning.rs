@@ -1,4 +1,5 @@
 use crate::clients::NewsCreatorClient;
+use crate::clients::SubworkerClient;
 use crate::clients::alt_backend::{AltBackendClient, AltBackendConfig};
 use crate::clients::mtls::{self, MtlsPaths};
 use crate::clients::news_creator::models::{
@@ -13,7 +14,7 @@ use crate::scheduler::JobContext;
 use crate::store::dao::{JobStatus, RecapDao};
 use crate::store::models::{GenreWithSummary, MorningLetter, MorningLetterSource};
 use crate::util::retry::RetryConfig;
-use anyhow::Result;
+use anyhow::{Context, Result};
 use std::collections::HashMap;
 use std::sync::Arc;
 use uuid::Uuid;
@@ -47,12 +48,24 @@ pub struct MorningPipeline {
 }
 
 impl MorningPipeline {
+    /// # Errors
+    /// Returns `Err` when mTLS is enforced but misconfigured, or when the
+    /// alt-backend client cannot be constructed — never panics, so a bad
+    /// env cannot abort the process under the release `panic = "abort"`
+    /// profile.
+    ///
+    /// `subworker_client` is the same mTLS-aware client `ComponentRegistry::build`
+    /// already constructed for the main pipeline; reusing it (instead of
+    /// building a second, independent plaintext one) is what keeps
+    /// `extract_content` calls under `MTLS_ENFORCE=true` consistent with the
+    /// orchestrator pipeline.
     pub(crate) fn new(
         config: Arc<Config>,
         recap_dao: Arc<dyn RecapDao>,
         news_creator_client: Arc<NewsCreatorClient>,
-    ) -> Self {
-        let mtls_paths = MtlsPaths::from_env().expect("mTLS env configuration (fail-closed)");
+        subworker_client: Arc<SubworkerClient>,
+    ) -> Result<Self> {
+        let mtls_paths = MtlsPaths::from_env().context("mTLS env configuration (fail-closed)")?;
         let alt_backend_url = if mtls_paths.is_some() {
             std::env::var("ALT_BACKEND_MTLS_URL")
                 .unwrap_or_else(|_| config.alt_backend_base_url().to_string())
@@ -71,12 +84,12 @@ impl MorningPipeline {
                     alt_backend_config.connect_timeout,
                     alt_backend_config.total_timeout,
                 )
-                .expect("failed to build alt-backend mTLS client (fail-closed)");
+                .context("failed to build alt-backend mTLS client (fail-closed)")?;
                 AltBackendClient::new_with_client(alt_backend_config, client)
             } else {
                 AltBackendClient::new(alt_backend_config)
             }
-            .expect("failed to create alt-backend client"),
+            .context("failed to create alt-backend client")?,
         );
 
         let retry_config = RetryConfig {
@@ -97,13 +110,6 @@ impl MorningPipeline {
             retry_config,
         ));
 
-        let subworker_client = Arc::new(
-            crate::clients::SubworkerClient::new(
-                config.subworker_base_url(),
-                config.min_documents_per_genre(),
-            )
-            .expect("failed to create subworker client"),
-        );
         let preprocess = Arc::new(TextPreprocessStage::new(
             max_concurrent.max(2),
             Arc::clone(&recap_dao),
@@ -112,14 +118,14 @@ impl MorningPipeline {
 
         let dedup = Arc::new(HashDedupStage::with_defaults());
 
-        Self {
+        Ok(Self {
             config,
             fetch,
             preprocess,
             dedup,
             recap_dao,
             news_creator_client,
-        }
+        })
     }
 
     pub(crate) async fn execute_update(&self, job: &JobContext) -> Result<()> {
@@ -748,6 +754,52 @@ fn extract_title_and_bullets(summary_ja: Option<&str>) -> (String, Vec<String>) 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::config::ENV_MUTEX;
+    use crate::store::dao::mock::MockRecapDao;
+
+    /// RED→GREEN regression for the HIGH panic finding: `MorningPipeline::new`
+    /// used to `.expect()` its way through mTLS/alt-backend construction, so
+    /// a misconfigured env would panic the whole process under the release
+    /// `panic = "abort"` profile. It must return `Err` instead.
+    #[test]
+    fn new_returns_err_instead_of_panicking_when_mtls_enforced_but_unconfigured() {
+        let _lock = ENV_MUTEX.lock().expect("env mutex");
+        let vars = [
+            (
+                "RECAP_DB_DSN",
+                Some("postgres://recap:recap@localhost:5555/recap_db"),
+            ),
+            ("NEWS_CREATOR_BASE_URL", Some("https://news-creator:9443")),
+            ("SUBWORKER_BASE_URL", Some("https://recap-subworker:9443")),
+            ("ALT_BACKEND_BASE_URL", Some("https://alt-backend:9443")),
+            ("MTLS_ENFORCE", Some("true")),
+            ("MTLS_CERT_FILE", None),
+            ("MTLS_KEY_FILE", None),
+            ("MTLS_CA_FILE", None),
+        ];
+
+        temp_env::with_vars(vars, || {
+            let config = Arc::new(Config::from_env().expect("config should load"));
+            let recap_dao: Arc<dyn RecapDao> = Arc::new(MockRecapDao::new());
+            let news_creator_client =
+                Arc::new(NewsCreatorClient::new_for_test("http://localhost:8001"));
+            let subworker_client = Arc::new(
+                SubworkerClient::new(
+                    config.subworker_base_url(),
+                    config.min_documents_per_genre(),
+                )
+                .expect("subworker client builds without network I/O"),
+            );
+
+            let result =
+                MorningPipeline::new(config, recap_dao, news_creator_client, subworker_client);
+
+            assert!(
+                result.is_err(),
+                "MTLS_ENFORCE=true with missing MTLS_CERT_FILE must return Err, not panic"
+            );
+        });
+    }
 
     #[test]
     fn extract_title_and_bullets_from_nested_summary() {

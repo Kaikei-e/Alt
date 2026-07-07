@@ -56,6 +56,7 @@ pub mod classification;
 pub mod classifier;
 pub(crate) mod clients;
 pub mod config;
+pub(crate) mod error;
 pub mod evaluation;
 pub mod language_detection;
 pub mod observability;

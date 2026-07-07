@@ -15,9 +15,10 @@ import (
 
 // RemoteTokenRepository fetches tokens from the auth-token-manager API
 type RemoteTokenRepository struct {
-	managerURL string
-	client     *http.Client
-	logger     *slog.Logger
+	managerURL        string
+	internalAuthToken string
+	client            *http.Client
+	logger            *slog.Logger
 }
 
 // TokenResponse represents the JSON response from auth-token-manager
@@ -29,10 +30,13 @@ type TokenResponse struct {
 	Scope        string    `json:"scope"`
 }
 
-// NewRemoteTokenRepository creates a new remote token repository
-func NewRemoteTokenRepository(managerURL string, logger *slog.Logger) *RemoteTokenRepository {
+// NewRemoteTokenRepository creates a new remote token repository. internalAuthToken is sent
+// as the X-Internal-Auth header on every request — auth-token-manager fails closed (401/503)
+// without a matching token, so an empty value here means the token source starves silently.
+func NewRemoteTokenRepository(managerURL string, internalAuthToken string, logger *slog.Logger) *RemoteTokenRepository {
 	return &RemoteTokenRepository{
-		managerURL: managerURL,
+		managerURL:        managerURL,
+		internalAuthToken: internalAuthToken,
 		client: &http.Client{
 			Timeout: 10 * time.Second,
 		},
@@ -46,6 +50,7 @@ func (r *RemoteTokenRepository) GetCurrentToken(ctx context.Context) (*models.OA
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
+	req.Header.Set("X-Internal-Auth", r.internalAuthToken)
 
 	resp, err := r.client.Do(req)
 	if err != nil {

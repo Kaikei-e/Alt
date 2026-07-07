@@ -37,10 +37,12 @@ services:
       - TOKEN_STORAGE_TYPE=file
       - TOKEN_STORAGE_PATH=/app/secrets/oauth2_token.env
       - INOREADER_REFRESH_TOKEN_FILE=/app/secrets/oauth2_token.env
+      - INTERNAL_AUTH_TOKEN_FILE=/run/secrets/internal_auth_token
     secrets:
       - pp_db_password
       - inoreader_client_id
       - inoreader_client_secret
+      - internal_auth_token
     volumes:
       - oauth_token_data:/app/secrets
     restart: always
@@ -217,6 +219,9 @@ services:
       - INOREADER_REDIRECT_URI=http://127.0.0.1:9201/callback
       - TOKEN_STORAGE_PATH=/app/secrets/oauth2_token.env
       - LOG_LEVEL=info
+      - INTERNAL_AUTH_TOKEN_FILE=/run/secrets/internal_auth_token
+    secrets:
+      - internal_auth_token
     restart: always
     ports:
       - "9201:9201"

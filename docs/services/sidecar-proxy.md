@@ -1,6 +1,6 @@
 # sidecar-proxy
 
-_Last reviewed: March 18, 2026_
+_Last reviewed: July 7, 2026_
 
 **Location:** `alt-backend/sidecar-proxy/`
 
@@ -29,6 +29,17 @@ Testing a proxy requires three components:
 - Upstream failure handling
 - Timeout behavior
 - Body streaming for large payloads
+
+## Known failure patterns
+
+Egress-policy lessons from Alt's outbound-HTTP incident history; this proxy is where they must be enforced.
+
+- Images 502 for weeks with `unknown format` → manually setting `Accept-Encoding: gzip, deflate` disables Go Transport's transparent decompression, so compressed bytes flowed straight to the decoder. If you set the header you own decompression; reject unknown `Content-Encoding` at the boundary and log magic bytes on decode failures. → PM-2026-022
+- Allowlist bypass / SSRF false positives → host allowlists must be exact-match or anchored regex (`^...$`) — substring match lets `zenn.dev.evil.com` through. Encoding checks belong to the path segment only (query `%3A` is legitimate), and decode-then-check is vulnerable to double encoding. → [[000077]] [[000310]]
+- Per-article 403 from upstream WAF → Cloudflare blocked POSTs whose bodies carried unused article-content fragments; keep egress bodies minimal and pin the policy with a regression-guard test. → [[000755]]
+- Rate-limit policy misapplied → the 5-second external-call interval is a crawling rule; user-triggered egress of a different nature (e.g. CDN image fetch) may justify a different, explicitly documented value. → [[000342]]
+- Streams silently killed in the middle tier → any proxy layer that buffers whole bodies (`io.ReadAll`) destroys streaming; streaming RPCs must bypass caching/buffering by content-type prefix match (`application/connect+`). → [[000295]]
+- Monitoring blind spot → sidecar-proxy runs inside alt-backend, not as an independent compose service, so per-service container monitoring and log labels do not see it separately. → [[000286]]
 
 ## Common Pitfalls
 

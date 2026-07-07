@@ -150,10 +150,23 @@ class ClusterEvaluator:
             if not metrics_list:
                 continue
 
-            sil = float(np.mean([m.silhouette_score for m in metrics_list]))
+            # evaluate_job never computes a real silhouette score (no
+            # embeddings available from the DB-only path), so every
+            # per-job ClusterMetrics.silhouette_score is None here today.
+            # Treat "not computed" as excluded from the average and the
+            # threshold check — averaging in a phantom 0.0 would make the
+            # aggregate always read as CRITICAL regardless of real quality.
+            sil_values = [
+                m.silhouette_score for m in metrics_list
+                if m.silhouette_score is not None
+            ]
+            sil = float(np.mean(sil_values)) if sil_values else None
+
             warn = self._thresholds.get_warn("clustering_silhouette")
             critical = self._thresholds.get_critical("clustering_silhouette")
-            if critical is not None and sil < critical:
+            if sil is None:
+                alert = AlertLevel.OK
+            elif critical is not None and sil < critical:
                 alert = AlertLevel.CRITICAL
             elif warn is not None and sil < warn:
                 alert = AlertLevel.WARN

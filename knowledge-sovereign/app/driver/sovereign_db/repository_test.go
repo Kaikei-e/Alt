@@ -213,3 +213,144 @@ func TestUpsertTodayDigest_UsesMergeSafeSQL(t *testing.T) {
 			"merge-safe rule requires canonical expression %q — actual SQL omits it", required)
 	}
 }
+
+// TestUpsertTodayDigest_ReplayGuardPreventsDoubleCounting is the structural
+// guard for the idempotent-upsert invariant (event-stream-consumer.md:
+// projection UPSERTs must overwrite absolute values, additive merges are
+// forbidden; immutable-design-guard's Merge-safe upsert principle).
+// new_articles/summarized_articles/unsummarized_articles are additive
+// deltas contributed per source event — an unconditional col = col + delta
+// double-counts on an at-least-once RPC resend or a full reprojection
+// replay of the same event. The fix guards the UPDATE with
+// EXCLUDED.updated_at > today_digest_view.updated_at: since updated_at is
+// always the source event's OccurredAt (never wall-clock), replaying the
+// identical event becomes a no-op.
+func TestUpsertTodayDigest_ReplayGuardPreventsDoubleCounting(t *testing.T) {
+	mock := &mockPgx{}
+	repo := &Repository{pool: mock}
+
+	payload := json.RawMessage(`{
+		"user_id": "11111111-1111-4111-8111-111111111111",
+		"digest_date": "2026-05-04",
+		"new_articles": 1,
+		"updated_at": "2026-05-04T03:00:00Z"
+	}`)
+	require.NoError(t, repo.UpsertTodayDigest(context.Background(), payload))
+	require.Len(t, mock.execCalls, 1)
+	sql := mock.execCalls[0].SQL
+
+	assert.Contains(t, sql, "WHERE EXCLUDED.updated_at > today_digest_view.updated_at",
+		"additive counters must be guarded by a strictly-newer-event check")
+}
+
+// TestDismissKnowledgeHomeItem_RequiresDismissedAtInPayload pins the fix for
+// the business-fact time.Now() bug: dismissed_at must come from the event
+// payload. Fabricating it with time.Now() would make replaying the same
+// DismissedHomeItem event produce a different dismissed_at each time,
+// breaking reproject-safety (immutable-design-guard: Event-time purity).
+func TestDismissKnowledgeHomeItem_RequiresDismissedAtInPayload(t *testing.T) {
+	mock := &mockPgx{}
+	repo := &Repository{pool: mock}
+
+	payload := json.RawMessage(`{
+		"user_id": "11111111-1111-4111-8111-111111111111",
+		"item_key": "article:test",
+		"projection_version": 1
+	}`)
+
+	err := repo.DismissKnowledgeHomeItem(context.Background(), payload)
+	require.Error(t, err, "missing dismissed_at must error loudly, not fabricate time.Now()")
+	assert.Empty(t, mock.execCalls, "no UPDATE should be issued when dismissed_at is missing")
+}
+
+// TestDismissKnowledgeHomeItem_ReplayIsDeterministic asserts that
+// reprojecting the same DismissedHomeItem event twice writes the identical
+// dismissed_at both times.
+func TestDismissKnowledgeHomeItem_ReplayIsDeterministic(t *testing.T) {
+	mock := &mockPgx{}
+	repo := &Repository{pool: mock}
+
+	payload := json.RawMessage(`{
+		"user_id": "11111111-1111-4111-8111-111111111111",
+		"item_key": "article:test",
+		"projection_version": 1,
+		"dismissed_at": "2026-05-04T03:00:00Z"
+	}`)
+
+	require.NoError(t, repo.DismissKnowledgeHomeItem(context.Background(), payload))
+	require.NoError(t, repo.DismissKnowledgeHomeItem(context.Background(), payload))
+	require.Len(t, mock.execCalls, 2)
+
+	first := mock.execCalls[0].Args[0]
+	second := mock.execCalls[1].Args[0]
+	assert.Equal(t, first, second,
+		"reprojecting the same event twice must write the identical dismissed_at — no wall-clock drift")
+}
+
+// TestSnoozeRecallCandidate_RequiresOccurredAtInPayload pins the fix that
+// replaces SQL now() with a required occurred_at payload field.
+func TestSnoozeRecallCandidate_RequiresOccurredAtInPayload(t *testing.T) {
+	mock := &mockPgx{}
+	repo := &Repository{pool: mock}
+
+	payload := json.RawMessage(`{
+		"user_id": "11111111-1111-4111-8111-111111111111",
+		"item_key": "article:test",
+		"until": "2026-05-05T00:00:00Z"
+	}`)
+
+	err := repo.SnoozeRecallCandidate(context.Background(), payload)
+	require.Error(t, err, "missing occurred_at must error loudly, not fall back to SQL now()")
+	assert.Empty(t, mock.execCalls)
+}
+
+// TestSnoozeRecallCandidate_WritesOccurredAtNotNow verifies the UPDATE no
+// longer calls SQL now() and instead binds the payload's occurred_at.
+func TestSnoozeRecallCandidate_WritesOccurredAtNotNow(t *testing.T) {
+	mock := &mockPgx{}
+	repo := &Repository{pool: mock}
+
+	payload := json.RawMessage(`{
+		"user_id": "11111111-1111-4111-8111-111111111111",
+		"item_key": "article:test",
+		"until": "2026-05-05T00:00:00Z",
+		"occurred_at": "2026-05-04T03:00:00Z"
+	}`)
+
+	require.NoError(t, repo.SnoozeRecallCandidate(context.Background(), payload))
+	require.Len(t, mock.execCalls, 1)
+	sql := mock.execCalls[0].SQL
+	assert.NotContains(t, sql, "now()", "updated_at must come from the occurred_at parameter, not SQL now()")
+}
+
+// TestDismissRecallCandidate_RequiresOccurredAtInPayload mirrors the Snooze
+// fix for DismissRecallCandidate.
+func TestDismissRecallCandidate_RequiresOccurredAtInPayload(t *testing.T) {
+	mock := &mockPgx{}
+	repo := &Repository{pool: mock}
+
+	payload := json.RawMessage(`{
+		"user_id": "11111111-1111-4111-8111-111111111111",
+		"item_key": "article:test"
+	}`)
+
+	err := repo.DismissRecallCandidate(context.Background(), payload)
+	require.Error(t, err, "missing occurred_at must error loudly, not fall back to SQL now()")
+	assert.Empty(t, mock.execCalls)
+}
+
+func TestDismissRecallCandidate_WritesOccurredAtNotNow(t *testing.T) {
+	mock := &mockPgx{}
+	repo := &Repository{pool: mock}
+
+	payload := json.RawMessage(`{
+		"user_id": "11111111-1111-4111-8111-111111111111",
+		"item_key": "article:test",
+		"occurred_at": "2026-05-04T03:00:00Z"
+	}`)
+
+	require.NoError(t, repo.DismissRecallCandidate(context.Background(), payload))
+	require.Len(t, mock.execCalls, 1)
+	sql := mock.execCalls[0].SQL
+	assert.NotContains(t, sql, "now()", "dismissed_at/updated_at must come from the occurred_at parameter, not SQL now()")
+}

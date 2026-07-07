@@ -1,5 +1,6 @@
 """PostgreSQL gateway — implements DatabasePort for recap-db."""
 
+import json
 from datetime import datetime
 from typing import Any
 from uuid import UUID
@@ -8,6 +9,21 @@ import asyncpg
 import structlog
 
 logger = structlog.get_logger()
+
+
+async def register_jsonb_codec(conn: asyncpg.Connection) -> None:
+    """Register JSON/JSONB codecs on a pool connection (asyncpg `init=`).
+
+    asyncpg has no built-in dict<->jsonb encoding. Without this, binding a
+    Python dict (e.g. `save_evaluation_run`'s `metrics` column) raises
+    `DataError: expected str, got dict` on every INSERT/UPDATE.
+    """
+    await conn.set_type_codec(
+        "jsonb", encoder=json.dumps, decoder=json.loads, schema="pg_catalog"
+    )
+    await conn.set_type_codec(
+        "json", encoder=json.dumps, decoder=json.loads, schema="pg_catalog"
+    )
 
 
 class PostgresGateway:

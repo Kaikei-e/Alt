@@ -2,11 +2,15 @@
  * Auth middleware - session validation and backend token retrieval
  * with short-term cache to avoid per-request Kratos round-trips.
  */
+import { createHash } from "node:crypto";
 import { ory } from "$lib/server/ory";
 import { env } from "$env/dynamic/private";
 import type { Identity, Session } from "@ory/client";
 
 const AUTH_HUB_URL = env.AUTH_HUB_INTERNAL_URL || "http://auth-hub:8888";
+
+// Name of the Kratos session cookie (see kratos/kratos.yml `session.cookie`).
+const SESSION_COOKIE_NAME = "ory_kratos_session";
 
 export interface SessionResult {
 	session: Session | null;
@@ -15,16 +19,37 @@ export interface SessionResult {
 }
 
 // Short-term session cache (30 seconds TTL)
-// Key: cookie hash, Value: { result, expiresAt }
+// Key: SHA-256 hash of the session cookie value, Value: { result, expiresAt }
 const SESSION_CACHE_TTL_MS = 30_000;
 const sessionCache = new Map<
 	string,
 	{ result: SessionResult; expiresAt: number }
 >();
 
-function getCacheKey(cookie: string): string {
-	// Use first 64 chars of cookie as cache key (session token portion)
-	return cookie.substring(0, 64);
+// Extracts the session cookie's value from a raw `Cookie` header by parsing
+// individual cookie pairs, not by taking a positional substring — another
+// cookie sorting before it must not shift or truncate the value we key on.
+function extractSessionCookieValue(cookieHeader: string): string | null {
+	for (const pair of cookieHeader.split(";")) {
+		const eqIndex = pair.indexOf("=");
+		if (eqIndex === -1) continue;
+		const name = pair.slice(0, eqIndex).trim();
+		if (name === SESSION_COOKIE_NAME) {
+			return pair.slice(eqIndex + 1).trim();
+		}
+	}
+	return null;
+}
+
+// Cache key is a hash of the actual session cookie value, never a raw header
+// substring: two different users' cookie headers must never collide just
+// because an unrelated cookie happens to sort first in the header.
+function getCacheKey(cookieHeader: string): string | null {
+	const sessionValue = extractSessionCookieValue(cookieHeader);
+	if (!sessionValue) {
+		return null;
+	}
+	return createHash("sha256").update(sessionValue).digest("hex");
 }
 
 function pruneExpiredEntries(): void {
@@ -43,13 +68,17 @@ export async function validateSession(
 		return { session: null, user: null, backendToken: null };
 	}
 
+	// Requests without an actual session cookie (e.g. only unrelated cookies)
+	// are never cached — there is nothing safe to key them on.
 	const cacheKey = getCacheKey(cookie);
 	const now = Date.now();
 
 	// Check cache
-	const cached = sessionCache.get(cacheKey);
-	if (cached && cached.expiresAt > now) {
-		return cached.result;
+	if (cacheKey) {
+		const cached = sessionCache.get(cacheKey);
+		if (cached && cached.expiresAt > now) {
+			return cached.result;
+		}
 	}
 
 	// Fetch session and backend token in parallel
@@ -65,14 +94,16 @@ export async function validateSession(
 	};
 
 	// Cache the result
-	sessionCache.set(cacheKey, {
-		result,
-		expiresAt: now + SESSION_CACHE_TTL_MS,
-	});
+	if (cacheKey) {
+		sessionCache.set(cacheKey, {
+			result,
+			expiresAt: now + SESSION_CACHE_TTL_MS,
+		});
 
-	// Periodically prune expired entries (keep cache size bounded)
-	if (sessionCache.size > 100) {
-		pruneExpiredEntries();
+		// Periodically prune expired entries (keep cache size bounded)
+		if (sessionCache.size > 100) {
+			pruneExpiredEntries();
+		}
 	}
 
 	return result;

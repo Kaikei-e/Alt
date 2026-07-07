@@ -1,6 +1,6 @@
 # Search Indexer
 
-_Last reviewed: March 18, 2026_
+_Last reviewed: July 7, 2026_
 
 **Location:** `search-indexer/app`
 
@@ -196,6 +196,16 @@ curl "http://localhost:9300/v1/search?q=test&user_id=tenant-1"
 ### OTel Logs
 - OTLP HTTP エクスポーター (`/v1/logs`) でログを送信
 - バッチプロセッサー (5s 間隔, 最大 512 件/バッチ)
+
+## Known failure patterns
+
+Cross-cutting incident patterns are catalogued in [[crystallized-knowledge]].
+
+- Container vanished and stayed down for 33 hours, Reference Desk silently degraded → no `restart: always` and no `depends_on` from alt-backend; graceful degradation shielded users but sent no operator signal. DNS `no such host` means "container absent" — a different category from `connection refused`. Degradation occurrence itself must be an observable metric → PM-2026-023, [[000703]].
+- Consumers received 401 and produced empty output after `X-Service-Token` enforcement → the provider strengthened requirements without enumerating consumers; consumers without a Pact are not protected by CDC. Provider-adds-requirement changes need consumer enumeration + Pact CDC RED first (Critical Rule 7) → PM-2026-025 / PM-2026-026, [[000735]].
+- Infinite scroll crashed / stalled at 20 items on `/feeds/search` → Meilisearch hybrid search offset pagination is not disjoint across pages (dynamic ranking re-returns ids at page boundaries); frontends consuming this API must dedupe by id, and keyed `{#each}` consumers depend on that contract → PM-2026-044.
+- Japanese queries could not find English articles → Meilisearch CJK locale restriction combined multiplicatively with two other services' gaps; cross-language search breaks as a product of layers, so layer-local tests are insufficient → PM-2026-021.
+- CI e2e legs failed with "network not found" → the e2e reclaim helper prefix-matched all `alt-staging-*` networks and deleted sibling jobs' created-but-not-yet-attached networks; `docker network rm` protection only applies after attach, and concurrent CI helpers must touch nothing outside their own project → PM-2026-046.
 
 ## LLM Notes
 - インデックスロジック変更時は `usecase`, `gateway`, `driver` のどこに属するか明示

@@ -3,6 +3,7 @@ use std::sync::Arc;
 use anyhow::{Context, Result};
 use async_trait::async_trait;
 use rand::{Rng, SeedableRng, rngs::StdRng};
+use rust_bert::RustBertError;
 use rust_bert::pipelines::sentence_embeddings::{
     SentenceEmbeddingsBuilder, SentenceEmbeddingsModel, SentenceEmbeddingsModelType,
 };
@@ -110,54 +111,65 @@ impl EmbeddingService {
     }
 
     /// Generate embeddings for a batch of texts.
+    ///
+    /// Model failure or a panicked/cancelled blocking task surfaces as `Err`
+    /// (PM-2026-038: this previously fell back to an MD5-seeded random
+    /// vector for every text in the batch and returned `Ok`, so downstream
+    /// clustering/subgenre-splitting silently ran on meaningless noise).
+    /// Callers already treat a failed `encode` as "embeddings unavailable"
+    /// and degrade gracefully (skip clustering, keep the coarse genre).
     pub async fn encode(&self, texts: &[String]) -> Result<Vec<Vec<f32>>> {
         let model = self.model.clone();
         let texts_clone = texts.to_vec();
 
         // Offload to blocking thread
-        let result = tokio::task::spawn_blocking(move || {
+        let batch_result = tokio::task::spawn_blocking(move || {
             let model = model.blocking_lock();
             model.encode(&texts_clone)
         })
         .await
-        .context("Failed to join embedding task");
+        .context("embedding task panicked or was cancelled")?;
 
-        match result {
-            Ok(Ok(embeddings)) => {
-                // Check for zero-norm vectors
-                let mut valid_embeddings = Vec::with_capacity(embeddings.len());
-                let mut fallback_count = 0;
+        Self::resolve_batch_result(batch_result, texts)
+    }
 
-                for (i, embedding) in embeddings.into_iter().enumerate() {
-                    let norm: f32 = embedding.iter().map(|x| x * x).sum();
-                    if norm.abs() < 1e-6 {
-                        // Zero vector detected, use fallback
-                        valid_embeddings.push(Self::fallback_embedding(&texts[i]));
-                        fallback_count += 1;
-                    } else {
-                        valid_embeddings.push(embedding);
-                    }
-                }
+    /// Turn a raw model-encode outcome into the batch's embeddings.
+    ///
+    /// Extracted from `encode` so the failure-propagation behaviour is
+    /// testable without spinning up the real rust-bert model. A per-text
+    /// zero-norm output still gets an individual deterministic repair (a
+    /// narrow numerical-stability guard on an otherwise-successful batch,
+    /// not a blanket "pretend the model worked" fallback for the whole
+    /// request).
+    fn resolve_batch_result(
+        batch_result: std::result::Result<Vec<Vec<f32>>, RustBertError>,
+        texts: &[String],
+    ) -> Result<Vec<Vec<f32>>> {
+        let embeddings = batch_result.context("embedding model failed to encode batch")?;
 
-                if fallback_count > 0 {
-                    warn!(
-                        fallback_count,
-                        total_count = texts.len(),
-                        "generated fallback embeddings due to zero-norm output"
-                    );
-                }
+        let mut valid_embeddings = Vec::with_capacity(embeddings.len());
+        let mut fallback_count = 0;
 
-                Ok(valid_embeddings)
-            }
-            Ok(Err(e)) => {
-                warn!(error = ?e, "embedding model failed, using fallback for all texts");
-                Ok(texts.iter().map(|t| Self::fallback_embedding(t)).collect())
-            }
-            Err(e) => {
-                warn!(error = ?e, "embedding task failed, using fallback for all texts");
-                Ok(texts.iter().map(|t| Self::fallback_embedding(t)).collect())
+        for (i, embedding) in embeddings.into_iter().enumerate() {
+            let norm: f32 = embedding.iter().map(|x| x * x).sum();
+            if norm.abs() < 1e-6 {
+                // Zero vector detected, use fallback
+                valid_embeddings.push(Self::fallback_embedding(&texts[i]));
+                fallback_count += 1;
+            } else {
+                valid_embeddings.push(embedding);
             }
         }
+
+        if fallback_count > 0 {
+            warn!(
+                fallback_count,
+                total_count = texts.len(),
+                "generated fallback embeddings due to zero-norm output"
+            );
+        }
+
+        Ok(valid_embeddings)
     }
 }
 
@@ -183,7 +195,56 @@ pub fn cosine_similarity(a: &[f32], b: &[f32]) -> f32 {
 
 #[cfg(test)]
 mod tests {
-    use super::{EmbeddingAvailability, require_or_degrade};
+    use super::{EmbeddingAvailability, EmbeddingService, require_or_degrade};
+    use rust_bert::RustBertError;
+
+    /// PM-2026-038 regression: a model failure must surface as `Err`, never
+    /// as a batch of fabricated MD5-seeded random vectors dressed up as
+    /// `Ok`. Downstream clustering must be able to tell "no embedding" from
+    /// "embedding is noise".
+    #[test]
+    fn resolve_batch_result_propagates_model_failure_as_err() {
+        let texts = vec!["a".to_string(), "b".to_string()];
+        let outcome: std::result::Result<Vec<Vec<f32>>, RustBertError> =
+            Err(RustBertError::ValueError("model unavailable".to_string()));
+
+        let result = EmbeddingService::resolve_batch_result(outcome, &texts);
+
+        assert!(
+            result.is_err(),
+            "model failure must propagate as Err, not a fabricated Ok(..) batch"
+        );
+    }
+
+    #[test]
+    fn resolve_batch_result_passes_through_healthy_embeddings() {
+        let texts = vec!["a".to_string()];
+        let outcome: std::result::Result<Vec<Vec<f32>>, RustBertError> = Ok(vec![vec![1.0, 0.0]]);
+
+        let result = EmbeddingService::resolve_batch_result(outcome, &texts).unwrap();
+
+        assert_eq!(result, vec![vec![1.0, 0.0]]);
+    }
+
+    #[test]
+    fn resolve_batch_result_repairs_only_zero_norm_rows() {
+        let texts = vec!["a".to_string(), "b".to_string()];
+        // First row is a legitimate embedding; second is the zero vector a
+        // model can emit for degenerate input. Only the zero row should be
+        // replaced — the healthy row must survive untouched.
+        let outcome: std::result::Result<Vec<Vec<f32>>, RustBertError> =
+            Ok(vec![vec![0.6, 0.8], vec![0.0, 0.0]]);
+
+        let result = EmbeddingService::resolve_batch_result(outcome, &texts).unwrap();
+
+        assert_eq!(result.len(), 2);
+        assert_eq!(result[0], vec![0.6, 0.8]);
+        let repaired_norm: f32 = result[1].iter().map(|x| x * x).sum::<f32>().sqrt();
+        assert!(
+            (repaired_norm - 1.0).abs() < 1e-3,
+            "repaired zero-norm row must be renormalized: {result:?}"
+        );
+    }
 
     #[test]
     fn required_surfaces_init_error() {

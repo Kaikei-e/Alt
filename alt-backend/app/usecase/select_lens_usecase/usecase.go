@@ -17,12 +17,22 @@ type SelectLensUsecase struct {
 	clearPort  knowledge_lens_port.ClearCurrentLensPort
 }
 
+// NewSelectLensUsecase wires the four Knowledge Lens ports. All four are
+// required — di/knowledge_module.go always passes the sovereign client for
+// each — so a nil argument here is a composition-root wiring bug, not an
+// intentionally-disabled feature. Rejecting nil at construction time (rather
+// than the previous `if u.clearPort == nil { return nil }` deep inside
+// Execute) surfaces that bug at startup instead of faking a successful lens
+// clear (CLAUDE.md rule 8 / .claude/rules/di-wiring.md).
 func NewSelectLensUsecase(
 	getLens knowledge_lens_port.GetLensPort,
 	getVersion knowledge_lens_port.GetCurrentLensVersionPort,
 	selectPort knowledge_lens_port.SelectCurrentLensPort,
 	clearPort knowledge_lens_port.ClearCurrentLensPort,
 ) *SelectLensUsecase {
+	if getLens == nil || getVersion == nil || selectPort == nil || clearPort == nil {
+		panic("select_lens_usecase: all four knowledge_lens_port dependencies are required and must be wired at composition root (see .claude/rules/di-wiring.md)")
+	}
 	return &SelectLensUsecase{
 		getLens:    getLens,
 		getVersion: getVersion,
@@ -33,9 +43,6 @@ func NewSelectLensUsecase(
 
 func (u *SelectLensUsecase) Execute(ctx context.Context, userID uuid.UUID, lensID uuid.UUID) error {
 	if lensID == uuid.Nil {
-		if u.clearPort == nil {
-			return nil
-		}
 		if err := u.clearPort.ClearCurrentLens(ctx, userID); err != nil {
 			return err
 		}

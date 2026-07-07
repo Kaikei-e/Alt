@@ -1,6 +1,6 @@
 # Tag Generator
 
-_Last reviewed: March 18, 2026_
+_Last reviewed: July 7, 2026_
 
 **Location:** `tag-generator/app`
 
@@ -397,6 +397,17 @@ uv run bandit -r . -x tests
 4. メモリ最適化: `TAG_USE_FP16=true` 設定
 
 5. カーソルポイズニング警告時は recovery クエリに切り替え
+
+## Known failure patterns
+
+- **KeyBERT lowercase default kills uppercase candidates**: tags like "GitHub"/"API" never extracted → CountVectorizer defaults to `lowercase=True` → pass a custom vectorizer with `lowercase=False` → [[000181]].
+- **`\b` word boundary does not work in Japanese**: regex candidate matching silently fails on unspaced CJK text → use a Fugashi-based `analyzer` instead of `token_pattern` → [[000183]].
+- **Special-character-frequency sanitizer blocks Japanese punctuation**: legitimate articles rejected because 、。「」 counted as suspicious → detect CJK ratio (10%+) and bypass the check → [[000172]].
+- **Legacy transaction residue stopped tagging for 7 days**: crash loop every 60s (12,000+ cycles) on `conn.autocommit` AttributeError, with no alert → `_NullDatabaseManager` yielded `None` after the DB-access migration → remove legacy code paths completely; crash loops need alerting → [[000266]].
+- **Request-Reply consumer wiring + Redis pool exhaustion**: tags consumer "deployed" but never ran (added to `main.py` while the real entrypoint was `auth_service.py`); 60s reply-waits × parallelism then exhausted the pool (10) → verify the actual container entrypoint; size pools as parallelism × hold time → [[000319]]. Same ADR: protobuf gencode 7.x vs runtime 6.x crashes at import — pin `protobuf>=6.x,<7.0`.
+- **Offset pagination on a shrinking result set**: untagged-article pages skip rows because tagging removes items from the set → keyset pagination on `(created_at, id)`; note a backward keyset cursor turns "new-article forward" semantics into backfill → [[000481]] [[000529]].
+- **Poison pill head-of-line blocking**: one permanently failing article stalls the whole batch → process-local failure counter to skip it + dig into the next page (bounded) instead of cross-service state → [[000525]] [[000529]].
+- **Do not re-fetch what the event already carries**: `feed_id` present in the `ArticleCreated` payload was discarded and re-fetched via RPC, producing NULLs → consume the event payload directly → [[000483]].
 
 ## Observability
 

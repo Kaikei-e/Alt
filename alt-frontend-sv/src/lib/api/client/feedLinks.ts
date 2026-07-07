@@ -1,5 +1,5 @@
 import type { FeedLink } from "$lib/schema/feedLink";
-import { createClientTransport } from "$lib/connect/transport.client";
+import { createClientTransport } from "$lib/connect/transport-client";
 
 /**
  * RSSフィードリンク一覧を取得（クライアントサイド）

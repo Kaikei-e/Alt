@@ -102,15 +102,9 @@ impl QueueWorker {
             "processing queued classification job"
         );
 
-        // Mark as running
-        if let Err(e) = store.mark_running(job_id).await {
-            error!(
-                job_id,
-                error = %e,
-                "failed to mark job as running"
-            );
-            return Err(e);
-        }
+        // `store.pick_next_job()` already transitioned this row to 'running'
+        // atomically as part of the pick itself (see queue/store.rs), so no
+        // separate mark-running step is needed here.
 
         // Send to subworker
         let result = client

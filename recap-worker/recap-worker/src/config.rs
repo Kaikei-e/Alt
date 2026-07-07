@@ -95,6 +95,7 @@ pub struct Config {
     tag_generator_base_url: String,
     tag_generator_connect_timeout: Duration,
     tag_generator_total_timeout: Duration,
+    tag_generator_enabled: FeatureToggle,
     min_documents_per_genre: usize,
     coherence_similarity_threshold: f32,
     subgenre_max_docs_per_genre: usize,
@@ -197,6 +198,7 @@ struct TagConfig {
     tag_generator_base_url: String,
     tag_generator_connect_timeout: Duration,
     tag_generator_total_timeout: Duration,
+    tag_generator_enabled: FeatureToggle,
 }
 
 struct SubworkerConfig {
@@ -370,6 +372,7 @@ impl Config {
             tag_generator_base_url: tag.tag_generator_base_url,
             tag_generator_connect_timeout: tag.tag_generator_connect_timeout,
             tag_generator_total_timeout: tag.tag_generator_total_timeout,
+            tag_generator_enabled: tag.tag_generator_enabled,
             min_documents_per_genre: subworker.min_documents_per_genre,
             coherence_similarity_threshold: subworker.coherence_similarity_threshold,
             subgenre_max_docs_per_genre: subworker.subgenre_max_docs_per_genre,
@@ -563,6 +566,16 @@ impl Config {
     #[must_use]
     pub fn tag_generator_total_timeout(&self) -> Duration {
         self.tag_generator_total_timeout
+    }
+
+    /// Whether the tag-generator client is intentionally enabled.
+    ///
+    /// Defaults to `true` (pre-existing behaviour). `TAG_GENERATOR_ENABLED=false`
+    /// is the only legitimate "intentionally disabled" path — distinguishing it
+    /// from a construction failure is the point of this flag (CLAUDE.md rule 8).
+    #[must_use]
+    pub fn tag_generator_enabled(&self) -> bool {
+        self.tag_generator_enabled.is_enabled()
     }
 
     #[must_use]
@@ -920,10 +933,21 @@ fn load_tag_config() -> Result<TagConfig, ConfigError> {
         .unwrap_or_else(|_| "http://tag-generator:9400".to_string());
     let connect_timeout = parse_duration_ms("TAG_GENERATOR_CONNECT_TIMEOUT_MS", 3000)?;
     let total_timeout = parse_duration_ms("TAG_GENERATOR_TOTAL_TIMEOUT_MS", 30000)?;
+    // Default true preserves pre-existing behaviour (tag-generator always
+    // attempted). Explicit `TAG_GENERATOR_ENABLED=false` is the only
+    // legitimate "intentionally disabled" path — a construction failure
+    // while enabled must propagate as a startup error, not degrade to
+    // `None` (CLAUDE.md rule 8 / PM-2026-045).
+    let tag_generator_enabled = if parse_bool("TAG_GENERATOR_ENABLED", true)? {
+        FeatureToggle::Enabled
+    } else {
+        FeatureToggle::Disabled
+    };
     Ok(TagConfig {
         tag_generator_base_url: base_url,
         tag_generator_connect_timeout: connect_timeout,
         tag_generator_total_timeout: total_timeout,
+        tag_generator_enabled,
     })
 }
 
@@ -1204,6 +1228,7 @@ mod tests {
             ("LLM_SUMMARY_TIMEOUT_SECS", None),
             ("MTLS_ENFORCE", None),
             ("RECAP_WORKER_EMBEDDING_REQUIRED", None),
+            ("TAG_GENERATOR_ENABLED", None),
             ("RECAP_KNOWLEDGE_OWNER_USER_ID", None),
             ("RECAP_KNOWLEDGE_OWNER_TENANT_ID", None),
         ]
@@ -1637,6 +1662,52 @@ mod tests {
             assert!(
                 config.embedding_required(),
                 "RECAP_WORKER_EMBEDDING_REQUIRED=true should fail-closed on init failure"
+            );
+        });
+    }
+
+    #[test]
+    fn from_env_defaults_tag_generator_enabled_to_true() {
+        let _lock = ENV_MUTEX.lock().expect("env mutex");
+        let mut vars = base_env_vars();
+        vars.extend([
+            (
+                "RECAP_DB_DSN",
+                Some("postgres://recap:recap@localhost:5555/recap_db"),
+            ),
+            ("NEWS_CREATOR_BASE_URL", Some("http://localhost:8001/")),
+            ("SUBWORKER_BASE_URL", Some("http://localhost:8002/")),
+            ("ALT_BACKEND_BASE_URL", Some("http://localhost:9000/")),
+        ]);
+        temp_env::with_vars(vars, || {
+            let config = Config::from_env().expect("config should load");
+            assert!(
+                config.tag_generator_enabled(),
+                "TAG_GENERATOR_ENABLED unset should default to enabled (true), preserving \
+                 pre-existing behaviour"
+            );
+        });
+    }
+
+    #[test]
+    fn from_env_parses_tag_generator_enabled_false() {
+        let _lock = ENV_MUTEX.lock().expect("env mutex");
+        let mut vars = base_env_vars();
+        vars.extend([
+            (
+                "RECAP_DB_DSN",
+                Some("postgres://recap:recap@localhost:5555/recap_db"),
+            ),
+            ("NEWS_CREATOR_BASE_URL", Some("http://localhost:8001/")),
+            ("SUBWORKER_BASE_URL", Some("http://localhost:8002/")),
+            ("ALT_BACKEND_BASE_URL", Some("http://localhost:9000/")),
+            ("TAG_GENERATOR_ENABLED", Some("false")),
+        ]);
+        temp_env::with_vars(vars, || {
+            let config = Config::from_env().expect("config should load");
+            assert!(
+                !config.tag_generator_enabled(),
+                "TAG_GENERATOR_ENABLED=false must be an explicit, distinguishable disable"
             );
         });
     }

@@ -237,6 +237,7 @@ class GathererNode:
                                 tags=a.tags,
                                 score=a.score,
                                 source=source_label,
+                                language=a.language,
                             )
                             for a in articles
                         ]
@@ -277,6 +278,7 @@ class GathererNode:
                             "id": hit.article_id,
                             "title": hit.title,
                             "score": hit.score,
+                            "language": hit.language,
                             "section_keys": [section_key],
                         }
 
@@ -330,6 +332,7 @@ class GathererNode:
                         "id": a.article_id,
                         "title": a.title,
                         "score": a.score,
+                        "language": a.language,
                         "section_keys": [section_key],
                     }
 

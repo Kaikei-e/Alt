@@ -100,8 +100,31 @@ func NewLightweightProxy(cfg *config.ProxyConfig) (*LightweightProxy, error) {
 	// Initialize metrics collector
 	metricsCollector := metrics.NewCollector("sidecar-proxy")
 
-	// Initialize auto-learner (simplified for now)
-	autoLearner := &autolearn.AutoLearner{}
+	// Initialize auto-learner via its constructor so domains/config/logger/
+	// validator/rateLimiter are never nil (a zero-value &autolearn.AutoLearner{}
+	// used to panic in LearnDomain and made admin/metrics endpoints
+	// indistinguishable from "disabled").
+	//
+	// LearningEnabled is intentionally false: SSRF allowlists must stay
+	// static/reviewed-only (see .claude/rules/security-boundaries.md) — no
+	// destination is ever added to the allowlist through auto-learning.
+	autoLearnConfig := &autolearn.Config{
+		MaxDomains:       100,
+		LearningEnabled:  false,
+		SecurityLevel:    "strict",
+		RateLimitPerHour: 10,
+		CooldownMinutes:  60,
+	}
+	autoLearner, err := autolearn.NewAutoLearner(autoLearnConfig, logger)
+	if err != nil {
+		return nil, fmt.Errorf("failed to initialize auto-learner: %w", err)
+	}
+	if autoLearnConfig.LearningEnabled {
+		logger.Printf("autolearn_enabled: dynamic domain learning is ACTIVE (max_domains=%d, rate_limit_per_hour=%d)",
+			autoLearnConfig.MaxDomains, autoLearnConfig.RateLimitPerHour)
+	} else {
+		logger.Printf("autolearn_disabled: dynamic domain learning is OFF by design; allowlist is static/reviewed-only")
+	}
 
 	// Initialize dynamic DNS resolver (オンメモリDNS管理)
 	dynamicDNS := dns.NewDynamicResolver(

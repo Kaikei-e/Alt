@@ -21,6 +21,7 @@ type mockSovereignHandler struct {
 	sovereignv1connect.UnimplementedKnowledgeSovereignServiceHandler
 	lastMutationType string
 	lastEntityID     string
+	lastPayload      []byte
 	returnErr        error
 }
 
@@ -30,6 +31,7 @@ func (m *mockSovereignHandler) ApplyProjectionMutation(
 ) (*connect.Response[sovereignv1.ApplyProjectionMutationResponse], error) {
 	m.lastMutationType = req.Msg.MutationType
 	m.lastEntityID = req.Msg.EntityId
+	m.lastPayload = req.Msg.Payload
 	if m.returnErr != nil {
 		return nil, connect.NewError(connect.CodeInternal, m.returnErr)
 	}
@@ -42,6 +44,7 @@ func (m *mockSovereignHandler) ApplyRecallMutation(
 ) (*connect.Response[sovereignv1.ApplyRecallMutationResponse], error) {
 	m.lastMutationType = req.Msg.MutationType
 	m.lastEntityID = req.Msg.EntityId
+	m.lastPayload = req.Msg.Payload
 	if m.returnErr != nil {
 		return nil, connect.NewError(connect.CodeInternal, m.returnErr)
 	}
@@ -120,23 +123,28 @@ func TestApplyCurationMutation_SendsCorrectRequest(t *testing.T) {
 	assert.Equal(t, "curation-1", handler.lastEntityID)
 }
 
-func TestClient_DisabledNoOps(t *testing.T) {
+// TestClient_DisabledReturnsErrSovereignDisabled pins CLAUDE.md rule 8: a
+// disabled client (SOVEREIGN_URL unset) must reject mutations with a sentinel
+// error, not fake success by returning nil. Returning nil made "deliberately
+// disabled" indistinguishable from "DI forgot to wire SOVEREIGN_URL" for
+// every caller in the projector/mutator path.
+func TestClient_DisabledReturnsErrSovereignDisabled(t *testing.T) {
 	client := NewClient("http://unused", false)
 
 	err := client.ApplyProjectionMutation(context.Background(), knowledge_sovereign_port.ProjectionMutation{
 		MutationType: "upsert_home_item",
 	})
-	assert.NoError(t, err)
+	assert.ErrorIs(t, err, ErrSovereignDisabled)
 
 	err = client.ApplyRecallMutation(context.Background(), knowledge_sovereign_port.RecallMutation{
 		MutationType: "snooze_candidate",
 	})
-	assert.NoError(t, err)
+	assert.ErrorIs(t, err, ErrSovereignDisabled)
 
 	err = client.ApplyCurationMutation(context.Background(), knowledge_sovereign_port.CurationMutation{
 		MutationType: "dismiss_curation",
 	})
-	assert.NoError(t, err)
+	assert.ErrorIs(t, err, ErrSovereignDisabled)
 }
 
 func TestNewClient_SkipsHealthProbeWhenDisabled(t *testing.T) {

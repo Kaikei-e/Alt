@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"pre-processor/repository"
+	"pre-processor/utils"
 )
 
 // LanguageBackfillConfig configures a single backfill run.
@@ -92,7 +93,7 @@ func (b *LanguageBackfiller) Run(ctx context.Context, resumeFromID string) (Lang
 			// which inflates the Latin letter count and produces false-positive
 			// 'en' classifications. Titles are plain text and match what
 			// pre-processor's ingestion path actually passes to the detector.
-			detected := DetectLanguage(a.Title)
+			detected := utils.DetectLanguage(a.Title)
 			summary.ByLanguage[detected]++
 			if detected == "und" {
 				summary.SkippedUnd++

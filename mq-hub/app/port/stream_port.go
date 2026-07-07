@@ -32,4 +32,9 @@ type StreamPort interface {
 
 	// DeleteStream removes a stream (used for cleanup of temporary reply streams).
 	DeleteStream(ctx context.Context, stream domain.StreamKey) error
+
+	// Expire sets a TTL on a stream key. Used as a safety net so temporary
+	// reply streams are bounded even if DeleteStream cleanup fails or a
+	// worker's late reply recreates the stream after cleanup already ran.
+	Expire(ctx context.Context, stream domain.StreamKey, ttl time.Duration) error
 }

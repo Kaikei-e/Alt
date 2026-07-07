@@ -20,6 +20,8 @@ from prometheus_client import make_asgi_app
 
 from news_creator.config.config import NewsCreatorConfig
 from news_creator.gateway.ollama_gateway import OllamaGateway
+from news_creator.gateway.redis_cache_gateway import NullCacheGateway, RedisCacheGateway
+from news_creator.port.cache_port import CachePort
 from news_creator.port.llm_provider_port import LLMProviderPort
 from news_creator.otel import (
     init_otel_provider,
@@ -128,6 +130,20 @@ class DependencyContainer:
             self.config, self.ollama_gateway.driver
         )
 
+        # Cache gateway (optional, config-gated). CACHE_ENABLED must produce
+        # a real, observable wiring state -- never a silently-ignored value
+        # (CLAUDE.md rule 8 / di-wiring.md).
+        self.cache_gateway: CachePort
+        if self.config.cache_enabled:
+            self.cache_gateway = RedisCacheGateway(self.config)
+            logger.info(
+                "cache_enabled",
+                extra={"cache_redis_url": self.config.cache_redis_url},
+            )
+        else:
+            self.cache_gateway = NullCacheGateway()
+            logger.info("cache_disabled")
+
         # Usecase layer
         # FE-triggered summarization must stay on the local GPU path.
         # Keep recap/expand on the shared provider so batch-oriented flows can
@@ -139,6 +155,7 @@ class DependencyContainer:
         self.recap_summary_usecase = RecapSummaryUsecase(
             config=self.config,
             llm_provider=self.llm_provider,
+            cache=self.cache_gateway,
         )
         self.expand_query_usecase = ExpandQueryUsecase(
             config=self.config,
@@ -159,13 +176,16 @@ class DependencyContainer:
     async def initialize(self) -> None:
         """Initialize all async resources."""
         await self.llm_provider.initialize()
+        await self.cache_gateway.initialize()
         # Warm up models if enabled
         await self.model_warmup_service.warmup_models()
+        await self.rerank_usecase.warmup()
         logger.info("All dependencies initialized")
 
     async def cleanup(self) -> None:
         """Cleanup all async resources."""
         await self.llm_provider.cleanup()
+        await self.cache_gateway.cleanup()
         logger.info("All dependencies cleaned up")
 
 

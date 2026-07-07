@@ -46,9 +46,17 @@ type AuthInterceptor struct {
 }
 
 // NewAuthInterceptor creates a new authentication interceptor.
+//
+// The JWT secret is mandatory: an empty secret is indistinguishable from a
+// missing wiring/config step (vs. "auth intentionally disabled"), so this
+// fails closed at startup instead of constructing an interceptor that would
+// silently reject every request with "JWT secret not configured".
 func NewAuthInterceptor(logger *slog.Logger, secret []byte, issuer, audience string) *AuthInterceptor {
-	if logger != nil && len(secret) == 0 {
-		logger.Warn("JWT secret is empty, auth will deny all requests")
+	if len(secret) == 0 {
+		if logger != nil {
+			logger.Error("JWT secret is empty; refusing to start (fail-closed)")
+		}
+		panic("alt-butterfly-facade: JWT backend token secret is empty; refusing to start auth interceptor (fail-closed)")
 	}
 	return &AuthInterceptor{
 		logger:   logger,

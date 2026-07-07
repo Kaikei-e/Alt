@@ -49,7 +49,7 @@ function seeAll() {
 				>
 					<h3 class="ref-hit-title">{hit.title}</h3>
 					{#if hit.snippet}
-						<p class="ref-hit-snippet">{@html hit.snippet}</p>
+						<p class="ref-hit-snippet">{hit.snippet}</p>
 					{/if}
 					<div class="ref-hit-meta">
 						{#each hit.matchedFields as field}

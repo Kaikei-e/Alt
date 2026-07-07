@@ -10,6 +10,7 @@ Requirements:
     pip install sentence-transformers fastapi uvicorn torch
 """
 
+import asyncio
 import os
 import time
 from contextlib import asynccontextmanager
@@ -35,6 +36,17 @@ DEFAULT_MODEL = "BAAI/bge-reranker-v2-m3"
 
 # Global model instance
 _model: Optional[CrossEncoder] = None
+
+# CrossEncoder is not safe for concurrent inference on a single instance, and
+# predict() is a blocking call — serialize access and run it off the event
+# loop so /health and other requests stay responsive during inference.
+_inference_semaphore = asyncio.Semaphore(1)
+
+
+def _predict_sync(pairs: list[tuple[str, str]]):
+    """Run blocking CrossEncoder inference. Called via asyncio.to_thread."""
+    with torch.inference_mode():
+        return _model.predict(pairs)
 
 
 class RerankRequest(BaseModel):
@@ -112,9 +124,11 @@ async def rerank(req: RerankRequest) -> RerankResponse:
     # Create query-candidate pairs for cross-encoder
     pairs = [(req.query, candidate) for candidate in req.candidates]
 
-    # Get relevance scores (inference_mode disables autograd for lower memory usage)
-    with torch.inference_mode():
-        scores = _model.predict(pairs)
+    # Offload the blocking inference call to a worker thread so the event loop
+    # (and endpoints like /health) stay responsive, and serialize access since
+    # CrossEncoder is not thread-safe for concurrent predict() calls.
+    async with _inference_semaphore:
+        scores = await asyncio.to_thread(_predict_sync, pairs)
 
     # Sort by score descending, keeping track of original indices
     indexed_scores = sorted(enumerate(scores), key=lambda x: x[1], reverse=True)

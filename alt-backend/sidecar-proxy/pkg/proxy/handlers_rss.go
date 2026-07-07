@@ -125,9 +125,13 @@ func (p *LightweightProxy) buildEnvoyRequest(originalReq *http.Request, targetUR
 	// instead of "upstream=10.96.32.212:8080"
 
 	// 1. Host header: Use hostname without default port (443 for HTTPS) to avoid 403 errors
-	// Many servers/CDNs reject explicit default ports in Host header
+	// Many servers/CDNs reject explicit default ports in Host header.
+	// net/http sends the Host line from req.Host, not from req.Header — setting
+	// Header.Set("Host", ...) is a silent no-op. req.Host also covers the
+	// HTTP/2 :authority pseudo-header (the http2 Transport derives it from
+	// req.Host), so no separate ":authority" header is needed either.
 	hostname := targetURL.Hostname()
-	req.Header.Set("Host", hostname)
+	req.Host = hostname
 
 	// 2. X-Target-Domain: Also use hostname without port for consistency
 	req.Header.Set("X-Target-Domain", hostname)
@@ -143,11 +147,6 @@ func (p *LightweightProxy) buildEnvoyRequest(originalReq *http.Request, targetUR
 
 	// 6. Timestamp for performance analysis
 	req.Header.Set("X-Proxy-Timestamp", time.Now().Format(time.RFC3339))
-
-	// 7. HTTP/2 :authority pseudo-header for HTTP/2 compatibility
-	if req.ProtoMajor >= 2 {
-		req.Header.Set(":authority", hostname)
-	}
 
 	if req.Header.Get("User-Agent") == "" {
 		req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36")

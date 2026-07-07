@@ -478,3 +478,110 @@ func TestMorningLetterUsecase_MaxTokensDefaultsWhenZero(t *testing.T) {
 	require.NoError(t, err)
 	mockLLM.AssertExpectations(t)
 }
+
+// TestMorningLetterUsecase_Execute_EnrichesArticleRefsFromPositionalIndices
+// guards against a contract mismatch: the prompt instructs the LLM to return
+// "article_refs": [1, 3, 5] (1-based positional indices into the numbered
+// context list), but domain.TopicSummary.ArticleRefs is []ArticleRef (a
+// UUID-bearing struct). Following the prompt's own documented format must
+// not fail json.Unmarshal and silently fall back to an empty topic list —
+// the indices must be resolved back to the real article UUID/title/URL.
+func TestMorningLetterUsecase_Execute_EnrichesArticleRefsFromPositionalIndices(t *testing.T) {
+	mockArticleClient := new(MockArticleClient)
+	mockRetrieveUC := new(mockRetrieveContextUsecase)
+	mockPromptBuilder := new(MockMorningLetterPromptBuilder)
+	mockLLM := new(mockLLMClient)
+	testLogger := slog.New(slog.NewJSONHandler(io.Discard, nil))
+
+	uc := usecase.NewMorningLetterUsecase(
+		mockArticleClient,
+		mockRetrieveUC,
+		mockPromptBuilder,
+		mockLLM,
+		4096,
+		6000,
+		usecase.DefaultTemporalBoostConfig(),
+		testLogger,
+	)
+
+	ctx := context.Background()
+	input := usecase.MorningLetterInput{
+		Query:       "What are the important news?",
+		WithinHours: 24,
+		TopicLimit:  5,
+		Locale:      "ja",
+	}
+
+	articleID1 := uuid.New()
+	articleID2 := uuid.New()
+	now := time.Now()
+	published1 := now.Add(-1 * time.Hour)
+	published2 := now.Add(-3 * time.Hour)
+
+	mockArticleClient.On("GetRecentArticles", ctx, 24, 0).Return([]domain.ArticleMetadata{
+		{ID: articleID1, Title: "First Article", URL: "https://example.com/1", PublishedAt: published1, FeedID: uuid.New()},
+		{ID: articleID2, Title: "Second Article", URL: "https://example.com/2", PublishedAt: published2, FeedID: uuid.New()},
+	}, nil)
+
+	// Context list order determines the 1-based indices the prompt shows the LLM.
+	mockRetrieveUC.On("Execute", ctx, mock.Anything).Return(&usecase.RetrieveContextOutput{
+		Contexts: []usecase.ContextItem{
+			{
+				ChunkText:   "First article content.",
+				URL:         "https://example.com/1",
+				Title:       "First Article",
+				PublishedAt: published1.Format(time.RFC3339),
+				Score:       0.95,
+				ArticleID:   articleID1.String(),
+			},
+			{
+				ChunkText:   "Second article content.",
+				URL:         "https://example.com/2",
+				Title:       "Second Article",
+				PublishedAt: published2.Format(time.RFC3339),
+				Score:       0.90,
+				ArticleID:   articleID2.String(),
+			},
+		},
+	}, nil)
+
+	mockPromptBuilder.On("Build", mock.AnythingOfType("usecase.MorningLetterPromptInput")).Return([]domain.Message{
+		{Role: "system", Content: "You are a news analyst..."},
+		{Role: "user", Content: "Analyze these articles..."},
+	}, nil)
+
+	// LLM output follows the prompt's own documented contract: integer indices.
+	mockLLM.On("Chat", ctx, mock.AnythingOfType("[]domain.Message"), 4096).Return(&domain.LLMResponse{
+		Text: `{
+			"topics": [
+				{
+					"topic": "Tech News",
+					"headline": "Major tech announcement",
+					"summary": "A significant tech development was announced today.",
+					"importance": 0.9,
+					"article_refs": [1, 2, 99],
+					"keywords": ["tech"]
+				}
+			],
+			"meta": {
+				"topics_found": 1,
+				"coverage_assessment": "comprehensive"
+			}
+		}`,
+		Done: true,
+	}, nil)
+
+	output, err := uc.Execute(ctx, input)
+	require.NoError(t, err)
+	require.NotNil(t, output)
+	require.Len(t, output.Topics, 1)
+	assert.False(t, output.GenerationInfo.Fallback)
+
+	refs := output.Topics[0].ArticleRefs
+	require.Len(t, refs, 2, "out-of-range index 99 should be dropped, in-range 1 and 2 resolved")
+	assert.Equal(t, articleID1, refs[0].ID)
+	assert.Equal(t, "First Article", refs[0].Title)
+	assert.Equal(t, "https://example.com/1", refs[0].URL)
+	assert.Equal(t, articleID2, refs[1].ID)
+	assert.Equal(t, "Second Article", refs[1].Title)
+}

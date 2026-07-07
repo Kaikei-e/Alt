@@ -21,6 +21,7 @@ class ScoredHit:
     tags: list[str] | None
     score: float
     source: str  # "primary", "broad", "narrow", etc.
+    language: str = "und"
 
 
 class FusionStrategy(Protocol):
@@ -77,6 +78,7 @@ class RRFFusion:
                 tags=best_hits[aid].tags,
                 score=scores[aid],
                 source=best_hits[aid].source,
+                language=best_hits[aid].language,
             )
             for aid in sorted_ids
         ]

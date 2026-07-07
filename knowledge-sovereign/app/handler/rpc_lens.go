@@ -16,7 +16,10 @@ func (h *SovereignHandler) ListLenses(
 	ctx context.Context,
 	req *connect.Request[sovereignv1.ListLensesRequest],
 ) (*connect.Response[sovereignv1.ListLensesResponse], error) {
-	userID := parseUUID(req.Msg.UserId)
+	userID, err := parseUUIDField("user_id", req.Msg.UserId)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInvalidArgument, err)
+	}
 	lenses, err := h.readDB.ListLenses(ctx, userID)
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("ListLenses: %w", err))
@@ -32,7 +35,10 @@ func (h *SovereignHandler) GetLens(
 	ctx context.Context,
 	req *connect.Request[sovereignv1.GetLensRequest],
 ) (*connect.Response[sovereignv1.GetLensResponse], error) {
-	lensID := parseUUID(req.Msg.LensId)
+	lensID, err := parseUUIDField("lens_id", req.Msg.LensId)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInvalidArgument, err)
+	}
 	lens, err := h.readDB.GetLens(ctx, lensID)
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("GetLens: %w", err))
@@ -53,7 +59,10 @@ func (h *SovereignHandler) GetCurrentLensSelection(
 	ctx context.Context,
 	req *connect.Request[sovereignv1.GetCurrentLensSelectionRequest],
 ) (*connect.Response[sovereignv1.GetCurrentLensSelectionResponse], error) {
-	userID := parseUUID(req.Msg.UserId)
+	userID, err := parseUUIDField("user_id", req.Msg.UserId)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInvalidArgument, err)
+	}
 	sel, err := h.readDB.GetCurrentLensSelection(ctx, userID)
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("GetCurrentLensSelection: %w", err))
@@ -74,8 +83,15 @@ func (h *SovereignHandler) ResolveLensFilter(
 	ctx context.Context,
 	req *connect.Request[sovereignv1.ResolveLensFilterRequest],
 ) (*connect.Response[sovereignv1.ResolveLensFilterResponse], error) {
-	userID := parseUUID(req.Msg.UserId)
-	filter, err := h.readDB.ResolveLensFilter(ctx, userID, parseUUIDPtr(req.Msg.LensId))
+	userID, err := parseUUIDField("user_id", req.Msg.UserId)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInvalidArgument, err)
+	}
+	lensID, err := parseUUIDPtrField("lens_id", req.Msg.LensId)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInvalidArgument, err)
+	}
+	filter, err := h.readDB.ResolveLensFilter(ctx, userID, lensID)
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("ResolveLensFilter: %w", err))
 	}
@@ -102,10 +118,22 @@ func (h *SovereignHandler) CreateLens(
 	if pl == nil {
 		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("lens is required"))
 	}
+	lensID, err := parseUUIDField("lens_id", pl.LensId)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInvalidArgument, err)
+	}
+	userID, err := parseUUIDField("user_id", pl.UserId)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInvalidArgument, err)
+	}
+	tenantID, err := parseUUIDField("tenant_id", pl.TenantId)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInvalidArgument, err)
+	}
 	l := sovereign_db.KnowledgeLens{
-		LensID:      parseUUID(pl.LensId),
-		UserID:      parseUUID(pl.UserId),
-		TenantID:    parseUUID(pl.TenantId),
+		LensID:      lensID,
+		UserID:      userID,
+		TenantID:    tenantID,
 		Name:        pl.Name,
 		Description: pl.Description,
 	}
@@ -129,9 +157,17 @@ func (h *SovereignHandler) CreateLensVersion(
 	if pv == nil {
 		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("version is required"))
 	}
+	lensVersionID, err := parseUUIDField("lens_version_id", pv.LensVersionId)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInvalidArgument, err)
+	}
+	lensID, err := parseUUIDField("lens_id", pv.LensId)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInvalidArgument, err)
+	}
 	v := sovereign_db.KnowledgeLensVersion{
-		LensVersionID: parseUUID(pv.LensVersionId),
-		LensID:        parseUUID(pv.LensId),
+		LensVersionID: lensVersionID,
+		LensID:        lensID,
 		QueryText:     pv.QueryText,
 		TagIDs:        pv.TagIds,
 		SourceIDs:     pv.SourceIds,
@@ -159,10 +195,22 @@ func (h *SovereignHandler) SelectCurrentLens(
 	if ps == nil {
 		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("selection is required"))
 	}
+	userID, err := parseUUIDField("user_id", ps.UserId)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInvalidArgument, err)
+	}
+	lensID, err := parseUUIDField("lens_id", ps.LensId)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInvalidArgument, err)
+	}
+	lensVersionID, err := parseUUIDField("lens_version_id", ps.LensVersionId)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInvalidArgument, err)
+	}
 	c := sovereign_db.KnowledgeCurrentLens{
-		UserID:        parseUUID(ps.UserId),
-		LensID:        parseUUID(ps.LensId),
-		LensVersionID: parseUUID(ps.LensVersionId),
+		UserID:        userID,
+		LensID:        lensID,
+		LensVersionID: lensVersionID,
 	}
 	if ps.SelectedAt != nil {
 		c.SelectedAt = ps.SelectedAt.AsTime()
@@ -179,7 +227,10 @@ func (h *SovereignHandler) ClearCurrentLens(
 	ctx context.Context,
 	req *connect.Request[sovereignv1.ClearCurrentLensRequest],
 ) (*connect.Response[sovereignv1.ClearCurrentLensResponse], error) {
-	userID := parseUUID(req.Msg.UserId)
+	userID, err := parseUUIDField("user_id", req.Msg.UserId)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInvalidArgument, err)
+	}
 	if err := h.readDB.ClearCurrentLens(ctx, userID); err != nil {
 		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("ClearCurrentLens: %w", err))
 	}
@@ -190,7 +241,10 @@ func (h *SovereignHandler) ArchiveLens(
 	ctx context.Context,
 	req *connect.Request[sovereignv1.ArchiveLensRequest],
 ) (*connect.Response[sovereignv1.ArchiveLensResponse], error) {
-	lensID := parseUUID(req.Msg.LensId)
+	lensID, err := parseUUIDField("lens_id", req.Msg.LensId)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInvalidArgument, err)
+	}
 	if err := h.readDB.ArchiveLens(ctx, lensID); err != nil {
 		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("ArchiveLens: %w", err))
 	}

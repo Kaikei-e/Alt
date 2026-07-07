@@ -864,8 +864,9 @@ func TestKnowledgeProjectorJob_HomeItemOpened_CreatesRecallCandidate(t *testing.
 	homeItemsPort := &mockHomeItemsPort{}
 	digestPort := &mockDigestPort{}
 	recallPort := &mockRecallCandidatePort{}
+	clearPort := &mockClearSupersedePort{}
 
-	fn := KnowledgeProjectorJob(eventsPort, checkpointPort, checkpointPort, homeItemsPort, digestPort, nil, nil, recallPort, nil)
+	fn := KnowledgeProjectorJob(eventsPort, checkpointPort, checkpointPort, homeItemsPort, digestPort, nil, nil, recallPort, nil, clearPort)
 	err := fn(context.Background())
 
 	require.NoError(t, err)
@@ -892,8 +893,9 @@ func TestKnowledgeProjectorJob_HomeItemOpened_ReprojectSafe(t *testing.T) {
 	homeItemsPort := &mockHomeItemsPort{}
 	digestPort := &mockDigestPort{}
 	recallPort := &mockRecallCandidatePort{}
+	clearPort := &mockClearSupersedePort{}
 
-	fn := KnowledgeProjectorJob(eventsPort, checkpointPort, checkpointPort, homeItemsPort, digestPort, nil, nil, recallPort, nil)
+	fn := KnowledgeProjectorJob(eventsPort, checkpointPort, checkpointPort, homeItemsPort, digestPort, nil, nil, recallPort, nil, clearPort)
 	err := fn(context.Background())
 
 	require.NoError(t, err)
@@ -1450,7 +1452,13 @@ func TestKnowledgeProjectorJob_TagSetVersionCreated_UsesEventVersionNotLatest(t 
 	assert.Equal(t, []string{"event-tag"}, homeItemsPort.upserted[0].Tags, "should use tags from the event's specific version")
 }
 
-func TestKnowledgeProjectorJob_TagSetVersionCreated_NilPort_FallsBackGracefully(t *testing.T) {
+// TestKnowledgeProjectorJob_TagSetVersionCreated_NilPort_Panics pins CLAUDE.md
+// rule 8 (no silent fallback for unwired dependencies): tagSetVersionPort is
+// always wired to a concrete non-nil client in main.go, so a nil value here
+// means DI forgot to wire it. Silently projecting without tags (the previous
+// "graceful fallback" behavior) made that wiring bug indistinguishable from
+// intentional operation — see .claude/rules/di-wiring.md.
+func TestKnowledgeProjectorJob_TagSetVersionCreated_NilPort_Panics(t *testing.T) {
 	logger.InitLogger()
 
 	tenantID := uuid.New()
@@ -1471,15 +1479,11 @@ func TestKnowledgeProjectorJob_TagSetVersionCreated_NilPort_FallsBackGracefully(
 	homeItemsPort := &mockHomeItemsPort{}
 	digestPort := &mockDigestPort{}
 
-	// Pass nil tagSetVersionPort - should still work without tags
+	// Pass nil tagSetVersionPort - must panic instead of silently no-op'ing.
 	fn := KnowledgeProjectorJob(eventsPort, checkpointPort, checkpointPort, homeItemsPort, digestPort, nil, nil, nil, nil)
-	err := fn(context.Background())
-
-	require.NoError(t, err)
-	require.Len(t, homeItemsPort.upserted, 1)
-	assert.Empty(t, homeItemsPort.upserted[0].Tags, "tags should be empty when port is nil")
-	assert.Len(t, homeItemsPort.upserted[0].WhyReasons, 1, "only new_unread, no tag_hotspot")
-	assert.Equal(t, domain.WhyNewUnread, homeItemsPort.upserted[0].WhyReasons[0].Code)
+	assert.Panics(t, func() {
+		_ = fn(context.Background())
+	}, "nil tagSetVersionPort must panic, not silently project without tags")
 }
 
 // ── Supersede projection tests ──

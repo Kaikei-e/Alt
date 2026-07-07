@@ -1,6 +1,6 @@
 # Dashboard
 
-_Last reviewed: March 18, 2026_
+_Last reviewed: July 7, 2026_
 
 **Location:** `dashboard/`
 **Python:** 3.12+
@@ -251,6 +251,14 @@ curl http://localhost:8502/health            # SSE server (host port 8502 -> con
 | System Monitor shows "Connecting..." | SSE server not started or port mismatch | Check `docker logs dashboard` for SSE startup errors |
 | GPU section shows "Not Available" | nvidia-smi not accessible in container | Verify GPU reservation in compose and NVIDIA runtime |
 | Log Analysis shows "log_errors table not found" | Table not yet created in recap-db | Run Atlas migrations: `docker compose -f compose/recap.yaml -p alt up recap-db-migrator` |
+
+## Known failure patterns
+
+- Dashboard figures misled the first diagnosis of a zombie recap job → treat the DB state tables (`recap_jobs`, `recap_job_status_history.reason`, `recap_failed_tasks`) as primary evidence and the dashboard as a pointer; the root cause of a 4-day outage was written verbatim in `recap_job_status_history.reason`. → PM-2026-024 PM-2026-031
+- Quality collapse invisible on every tab → quality-degradation incidents complete "successfully" and never reach `recap_failed_tasks`, and the G-Eval quality metrics feed was itself dead during one incident. A stale metrics feed looks identical to a healthy quiet one — monitor the monitor. → PM-2026-038
+- Log Analysis by message equality misleads → identical error strings do not imply the same root cause: `classification returned 0 results` matched four different root causes in four consecutive incidents. Aggregate `log_errors` with discriminating fields, not message text. → PM-2026-033 PM-2026-035 PM-2026-036 PM-2026-037, [[crystallized-knowledge]] §14
+- SSE stream dead behind the proxy → SSE requires a dedicated nginx location (`proxy_buffering off`, `proxy_request_buffering off`, `X-Accel-Buffering: no`); streaming locations hardcode service names, so routing `/sse/dashboard/stream` through a new path requires an nginx update. → [[000555]] [[000929]]
+- Nothing on the dashboard noticed 148GB of logs → log volume and disk usage are first-class health metrics; a retry storm nearly took down the shared host before manual `df` caught it. → PM-2026-042
 
 ## Observability
 

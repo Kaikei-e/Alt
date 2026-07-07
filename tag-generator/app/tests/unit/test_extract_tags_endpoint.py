@@ -4,7 +4,7 @@ Service-to-service endpoint for extracting semantic tags from arbitrary text.
 Used by recap-worker to tag recap genre outputs.
 """
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from fastapi.testclient import TestClient
@@ -109,6 +109,31 @@ class TestExtractTagsEndpoint:
             )
 
         assert resp.status_code == 503
+
+    def test_offloads_ml_inference_via_asyncio_to_thread(self, client, mock_tag_extractor):
+        """extract_tags_with_metrics is synchronous KeyBERT/SentenceTransformer
+        inference; calling it directly inside this async endpoint would block
+        the event loop. It must be dispatched via asyncio.to_thread instead of
+        being awaited/called in-line on the request-handling coroutine."""
+        with (
+            patch("auth_service._background_tag_service") as mock_service,
+            patch("auth_service.asyncio.to_thread", new_callable=AsyncMock) as mock_to_thread,
+        ):
+            mock_service.tag_extractor = mock_tag_extractor
+            mock_to_thread.return_value = mock_tag_extractor.extract_tags_with_metrics.return_value
+
+            resp = client.post(
+                "/api/v1/extract-tags",
+                json={"title": "Technology", "content": "AI and LLM are transforming computing."},
+            )
+
+        assert resp.status_code == 200
+        mock_to_thread.assert_called_once_with(
+            mock_tag_extractor.extract_tags_with_metrics,
+            "Technology",
+            "AI and LLM are transforming computing.",
+        )
+        mock_tag_extractor.extract_tags_with_metrics.assert_not_called()
 
     def test_extraction_error_returns_500(self, client):
         """When tag extraction fails, returns 500."""

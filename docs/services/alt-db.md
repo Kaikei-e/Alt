@@ -1,6 +1,6 @@
 # alt-db (Main PostgreSQL Database)
 
-_Last reviewed: March 18, 2026_
+_Last reviewed: July 7, 2026_
 
 PostgreSQL 17 database serving as the central data store for RSS feeds, articles, user status, and related data.
 
@@ -578,6 +578,20 @@ Key performance indexes (see individual migration files for complete list):
 - `idx_article_tags_feed_tag_id` - Tag usage lookup
 - `idx_read_status_user_feed_read` - User read status queries
 - `idx_inoreader_articles_processed` - Unprocessed article queue
+
+## Known failure patterns
+
+Distilled from the ADR / postmortem corpus (see `docs/runbooks/crystallized-knowledge.md`). Most services reach this database through PgBouncer (transaction pooling), which is the root of several patterns below.
+
+- **JSONB encoding inverts with the connection path** — via PgBouncer + pgx simple protocol, `[]byte` is encoded as bytea hex and fails with SQLSTATE 22P02: pass `string(json.Marshal(...))` ([[000417]], [[000470]]); direct pgx connections want `[]byte` instead ([[000577]]). Never hand-roll a new path — reuse the existing driver helpers and cover with an integration test.
+- **Empty/nil `json.RawMessage` breaks JSONB writes** — empty slice → 22P02, Go nil zero-value → explicit NULL that bypasses `NOT NULL DEFAULT`; use the shared driver helper (`len==0 → "{}"`) ([[000454]], PM-2026-040).
+- **`[]uuid.UUID` parameters fail under simple protocol** — pass `[]string` + `ANY($1::uuid[])` ([[000379]]).
+- **DDL and session-level locks must bypass PgBouncer** — Atlas and kratos-migrate connect directly to the database, never through the pooler ([[000327]]).
+- **Short `idle_in_transaction_session_timeout` cascades** — a 30s value caused FATAL disconnects that rippled across the shared pool and halted all queries; keep it long (5 min) as a last-resort guard only ([[000328]]).
+- **`FOR UPDATE SKIP LOCKED` in autocommit releases the lock immediately** — dequeue from `summarize_job_queue` / `outbox_events` must be a single atomic statement: `UPDATE ... WHERE id IN (SELECT ... FOR UPDATE SKIP LOCKED) RETURNING` ([[000282]], [[000509]]).
+- **Atlas cannot run `CREATE INDEX CONCURRENTLY`** (migrations run inside a transaction) — adding an index to a large table takes a lock; schedule off-peak ([[000282]], [[000422]]).
+- **Missing `shm_size` kills PostgreSQL under load** — Docker's 64 MB default collides with work_mem dynamic shared memory (SQLSTATE 53100); set it explicitly on every PostgreSQL container ([[000521]]).
+- **Cache-miss fan-out exhausts the shared pool** — a TTL expiry triggering N parallel queries degraded unrelated writes via PgBouncer; evaluate caches with miss-time fan-out cost × shared-pool side effects, and prefer existing optimized single-SQL paths (PM-2026-019, [[000624]]).
 
 ## Related Documentation
 

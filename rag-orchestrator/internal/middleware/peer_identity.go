@@ -1,8 +1,26 @@
 // Package middleware contains HTTP middleware for rag-orchestrator.
 //
 // PeerIdentityMiddleware reads the TLS client-cert CommonName from r.TLS and
-// enforces an allowlist. Wired by the :9443 mTLS listener; the existing
-// plaintext listeners keep serving during the dual-stack migration window.
+// enforces an allowlist.
+//
+// NOT CURRENTLY WIRED: cmd/server/main.go only starts plaintext listeners
+// (cfg.Server.Port for REST, cfg.Server.ConnectPort for Connect-RPC h2c);
+// there is no mTLS listener, and NewPeerIdentityMiddleware is not called
+// anywhere in the composition root. This control is dead code today and
+// provides no protection — do not assume peer identity is enforced on any
+// rag-orchestrator endpoint until a real mTLS listener is constructed in
+// main.go and Require() is added to its handler chain. Applying Require() to
+// either existing plaintext listener would reject every request (r.TLS is
+// always nil there), so it must only ever be attached to a real TLS listener
+// that terminates client certs. Standing that listener up needs net-new
+// server-side TLS plumbing (internal/infra/tlsutil currently only builds
+// outbound/client tls.Config — see LoadClientConfig; there is no
+// LoadServerConfig with ClientCAs/ClientAuth) plus a matching client-cert
+// change on every caller (e.g. alt-backend's Connect-RPC client to this
+// service), so it is tracked as separate follow-up work rather than folded
+// into this fix. In the meantime, augur/handler.go's extractUserID /
+// extractTenantID header trust is a known, deferred gap: see their doc
+// comments and .claude/rules/security-boundaries.md.
 package middleware
 
 import (

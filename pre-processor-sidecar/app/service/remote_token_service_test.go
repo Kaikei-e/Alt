@@ -43,7 +43,7 @@ func TestRemoteTokenService_GetValidToken_Returns_ErrTokenUnavailable_On_404(t *
 	}))
 	defer srv.Close()
 
-	repo := repository.NewRemoteTokenRepository(srv.URL, newTestLogger())
+	repo := repository.NewRemoteTokenRepository(srv.URL, "test-internal-token", newTestLogger())
 	clock := &fakeClock{now: time.Date(2026, 5, 9, 12, 0, 0, 0, time.UTC)}
 	svc := NewRemoteTokenServiceWithClock(repo, newTestLogger(), clock)
 
@@ -66,7 +66,7 @@ func TestRemoteTokenService_IsDegraded_AfterThreeFailuresWithin60s(t *testing.T)
 	}))
 	defer srv.Close()
 
-	repo := repository.NewRemoteTokenRepository(srv.URL, newTestLogger())
+	repo := repository.NewRemoteTokenRepository(srv.URL, "test-internal-token", newTestLogger())
 	clock := &fakeClock{now: time.Date(2026, 5, 9, 12, 0, 0, 0, time.UTC)}
 	svc := NewRemoteTokenServiceWithClock(repo, newTestLogger(), clock)
 
@@ -93,7 +93,7 @@ func TestRemoteTokenService_IsDegraded_FalseWhenFailuresOutsideWindow(t *testing
 	}))
 	defer srv.Close()
 
-	repo := repository.NewRemoteTokenRepository(srv.URL, newTestLogger())
+	repo := repository.NewRemoteTokenRepository(srv.URL, "test-internal-token", newTestLogger())
 	clock := &fakeClock{now: time.Date(2026, 5, 9, 12, 0, 0, 0, time.UTC)}
 	svc := NewRemoteTokenServiceWithClock(repo, newTestLogger(), clock)
 
@@ -124,7 +124,7 @@ func TestRemoteTokenService_IsDegraded_RecoversAfterSuccess(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	repo := repository.NewRemoteTokenRepository(srv.URL, newTestLogger())
+	repo := repository.NewRemoteTokenRepository(srv.URL, "test-internal-token", newTestLogger())
 	clock := &fakeClock{now: time.Date(2026, 5, 9, 12, 0, 0, 0, time.UTC)}
 	svc := NewRemoteTokenServiceWithClock(repo, newTestLogger(), clock)
 
@@ -160,7 +160,7 @@ func TestRemoteTokenService_GetValidToken_Returns_ErrTokenUnavailable_On_EmptyAc
 	}))
 	defer srv.Close()
 
-	repo := repository.NewRemoteTokenRepository(srv.URL, newTestLogger())
+	repo := repository.NewRemoteTokenRepository(srv.URL, "test-internal-token", newTestLogger())
 	clock := &fakeClock{now: time.Date(2026, 5, 9, 12, 0, 0, 0, time.UTC)}
 	svc := NewRemoteTokenServiceWithClock(repo, newTestLogger(), clock)
 

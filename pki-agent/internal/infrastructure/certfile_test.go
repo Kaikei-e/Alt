@@ -109,6 +109,65 @@ func TestCertFile_MarkRotated(t *testing.T) {
 	}
 }
 
+func TestCertFile_Write_ChownRequestedWithRootUID(t *testing.T) {
+	// UID/GID 0 is a valid, intentional chown target (e.g. the
+	// pki-agent-tag-generator sidecar in compose/pki.yaml sets
+	// CERT_OWNER_UID=0 explicitly). It must not be treated as "unset".
+	dir := t.TempDir()
+	type call struct {
+		uid, gid int
+	}
+	var calls []call
+	cf := &CertFile{
+		CertPath:       filepath.Join(dir, "svc-cert.pem"),
+		KeyPath:        filepath.Join(dir, "svc-key.pem"),
+		OwnerUID:       0,
+		OwnerGID:       0,
+		ChownRequested: true,
+		chown: func(_ string, uid, gid int) error {
+			calls = append(calls, call{uid, gid})
+			return nil
+		},
+	}
+	cert, key := newSelfSignedPEM(t)
+	if err := cf.Write(context.Background(), cert, key); err != nil {
+		t.Fatal(err)
+	}
+	if len(calls) != 2 {
+		t.Fatalf("want 2 chown calls (cert + key), got %d: %+v", len(calls), calls)
+	}
+	for _, c := range calls {
+		if c.uid != 0 || c.gid != 0 {
+			t.Fatalf("chown called with uid=%d gid=%d, want 0,0", c.uid, c.gid)
+		}
+	}
+}
+
+func TestCertFile_Write_ChownSkippedWhenNotRequested(t *testing.T) {
+	// Bare fixtures (as used by every other test in this file) don't set
+	// ChownRequested and must not attempt a chown syscall — that's what
+	// lets these tests run unprivileged.
+	dir := t.TempDir()
+	chownCalled := false
+	cf := &CertFile{
+		CertPath: filepath.Join(dir, "svc-cert.pem"),
+		KeyPath:  filepath.Join(dir, "svc-key.pem"),
+		OwnerUID: 0,
+		OwnerGID: 0,
+		chown: func(_ string, _, _ int) error {
+			chownCalled = true
+			return nil
+		},
+	}
+	cert, key := newSelfSignedPEM(t)
+	if err := cf.Write(context.Background(), cert, key); err != nil {
+		t.Fatal(err)
+	}
+	if chownCalled {
+		t.Fatal("chown must not be called when ChownRequested is false")
+	}
+}
+
 func TestCertFile_WriteAtomic_NoPartialOnError(t *testing.T) {
 	// If cert writes then key write fails (target path is a directory),
 	// we expect cert to still be present but key absent. Concurrency-wise

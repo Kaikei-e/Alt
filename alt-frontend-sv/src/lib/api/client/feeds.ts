@@ -6,7 +6,7 @@ import type {
 	FeedStatsSummary,
 	UnreadCountResponse,
 } from "$lib/schema/stats";
-import { createClientTransport } from "$lib/connect/transport.client";
+import { createClientTransport } from "$lib/connect/transport-client";
 import {
 	getUnreadFeeds,
 	getAllFeeds,

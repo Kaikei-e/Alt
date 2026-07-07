@@ -1,12 +1,11 @@
 # Alt Frontend
 
-_Last reviewed: March 18, 2026_
+_Last reviewed: July 7, 2026_
 
-**Location:** `alt-frontend`
+**Location:** `alt-frontend` (removed from the repository)
 
-> **DEPRECATED**: このサービスは `alt-frontend-sv` (SvelteKit) に置き換えられました。
-> 認証フローは `/sv/auth/login` にリダイレクトされ、新機能開発は alt-frontend-sv で行われます。
-> 詳細は [docs/alt-frontend-sv.md](./alt-frontend-sv.md) を参照してください。
+> **REMOVED**: このサービスは [[000395]] (2026-03-17) で完全廃止され、コードベース・compose 定義から削除済み。後継は `alt-frontend-sv` (SvelteKit) — [docs/alt-frontend-sv.md](./alt-frontend-sv.md) を参照。
+> 以下は履歴参照用のスナップショットであり、現行システムの記述ではない。
 
 ## Role
 - **Next.js 16 + React 19 App Router**: プラットフォーム UI をレンダリングする Web アプリケーション

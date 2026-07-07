@@ -5,11 +5,13 @@ from __future__ import annotations
 import pytest
 
 from alt_metrics.analysis import (
+    analyze_health,
     calculate_health_score,
     get_health_status,
     get_health_status_emoji,
 )
 from alt_metrics.config import HealthThresholds
+from alt_metrics.models import AnalysisResult, ApiPerformanceStats
 
 
 class TestCalculateHealthScore:
@@ -227,3 +229,92 @@ class TestGetHealthStatusEmoji:
     def test_unknown_status_returns_empty(self) -> None:
         """不明なステータスは空文字"""
         assert get_health_status_emoji("unknown") == ""
+
+
+class TestAnalyzeHealthServiceLatencyAggregation:
+    """analyze_health関数のservice_latencies集約テスト
+
+    api_performanceはサービス×エンドポイント単位・p95降順で格納されるため、
+    同一サービスに複数エンドポイントがある場合の集約方法を検証する。
+    """
+
+    def _make_result(self, api_performance: list[ApiPerformanceStats]) -> AnalysisResult:
+        return AnalysisResult(
+            hours_analyzed=24,
+            service_stats=[
+                {
+                    "service_name": "alt-backend",
+                    "total_logs": 100,
+                    "error_count": 0,
+                    "error_rate": 0.0,
+                    "minutes_since_last_log": 0,
+                },
+            ],
+            api_performance=api_performance,
+        )
+
+    def test_multi_endpoint_service_uses_worst_case_p95_not_last_row(self) -> None:
+        """同一サービスの複数エンドポイントがある場合、最後の行ではなく最大p95を採用する"""
+        # ClickHouseはp95降順で返すため、後続行ほどp95が小さい。
+        # 素朴なdict内包表記だと最後に処理された（=最小の）p95で上書きされてしまう。
+        result = self._make_result(
+            [
+                ApiPerformanceStats(
+                    service="alt-backend",
+                    endpoint="GET /slow",
+                    request_count=10,
+                    avg_ms=100.0,
+                    p50_ms=90.0,
+                    p95_ms=9000.0,
+                    p99_ms=9500.0,
+                    max_ms=9800.0,
+                    error_spans=0,
+                ),
+                ApiPerformanceStats(
+                    service="alt-backend",
+                    endpoint="GET /fast",
+                    request_count=1000,
+                    avg_ms=10.0,
+                    p50_ms=8.0,
+                    p95_ms=20.0,
+                    p99_ms=25.0,
+                    max_ms=30.0,
+                    error_spans=0,
+                ),
+            ]
+        )
+
+        analyze_health(result)
+
+        assert len(result.service_health) == 1
+        assert result.service_health[0].p95_latency_ms == 9000.0
+
+    def test_single_endpoint_service_uses_its_p95(self) -> None:
+        """エンドポイントが1つの場合はそのままp95を使う"""
+        result = self._make_result(
+            [
+                ApiPerformanceStats(
+                    service="alt-backend",
+                    endpoint="GET /api/health",
+                    request_count=100,
+                    avg_ms=50.0,
+                    p50_ms=40.0,
+                    p95_ms=200.0,
+                    p99_ms=500.0,
+                    max_ms=600.0,
+                    error_spans=0,
+                ),
+            ]
+        )
+
+        analyze_health(result)
+
+        assert result.service_health[0].p95_latency_ms == 200.0
+
+    def test_no_api_performance_data_defaults_to_zero(self) -> None:
+        """api_performanceが空の場合はp95レイテンシ0として扱う"""
+        result = self._make_result([])
+
+        analyze_health(result)
+
+        assert result.service_health[0].p95_latency_ms == 0
