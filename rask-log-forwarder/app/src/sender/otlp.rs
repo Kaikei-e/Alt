@@ -215,6 +215,7 @@ impl OtlpSerializer {
             value: Some(AnyValue {
                 value: Some(any_value::Value::StringValue(value.to_string())),
             }),
+            key_strindex: 0,
         }
     }
 
@@ -225,6 +226,7 @@ impl OtlpSerializer {
             value: Some(AnyValue {
                 value: Some(any_value::Value::IntValue(value)),
             }),
+            key_strindex: 0,
         }
     }
 

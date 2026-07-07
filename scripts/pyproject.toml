@@ -5,11 +5,11 @@ description = "Utility scripts for Alt project analytics and data processing"
 requires-python = ">=3.14"
 dependencies = [
   # Database connectivity
-  "psycopg2-binary>=2.9.0",
-  "clickhouse-connect>=0.8.0",
+  "psycopg2-binary>=2.9.12",
+  "clickhouse-connect>=1.4.2",
   # Data processing and Parquet output
-  "pandas>=2.0.0",
-  "pyarrow>=10.0.0",
+  "pandas>=3.0.3",
+  "pyarrow>=24.0.0",
 ]
 
 [build-system]

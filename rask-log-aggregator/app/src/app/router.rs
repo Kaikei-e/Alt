@@ -116,7 +116,7 @@ mod tests {
     async fn main_router_accepts_gzip_compressed_ndjson_body() {
         let exporter = Arc::new(MockLogExporter::new());
         let app = main_router(exporter.clone());
-        let server = TestServer::new(app).unwrap();
+        let server = TestServer::new(app);
 
         let line = serde_json::json!({
             "service_type": "http",
@@ -151,7 +151,7 @@ mod tests {
 
         let exporter: Arc<dyn OTelExporter> = Arc::new(NoopOTelExporter);
         let app = otlp_router(exporter);
-        let server = TestServer::new(app).unwrap();
+        let server = TestServer::new(app);
 
         let request = ExportLogsServiceRequest::default();
         let compressed = gzip(&request.encode_to_vec());
@@ -173,7 +173,7 @@ mod tests {
     async fn main_router_accepts_body_larger_than_axum_default_limit() {
         let exporter = Arc::new(MockLogExporter::new());
         let app = main_router(exporter);
-        let server = TestServer::new(app).unwrap();
+        let server = TestServer::new(app);
 
         let oversized_body = "x".repeat(3 * 1024 * 1024);
 

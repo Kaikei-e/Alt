@@ -32,7 +32,7 @@ impl KMeans {
         let mut rng = rng();
 
         // Initialize centroids randomly
-        let mut centroids: Vec<Vec<f32>> = data.choose_multiple(&mut rng, k).cloned().collect();
+        let mut centroids: Vec<Vec<f32>> = data.sample(&mut rng, k).cloned().collect();
 
         let mut assignments = vec![0; data.len()];
         let mut changes = true;
@@ -112,7 +112,7 @@ impl MiniBatchKMeans {
         let k = k.min(data.len());
         let dim = data[0].len();
         let mut rng = rng();
-        let mut centroids: Vec<Vec<f32>> = data.choose_multiple(&mut rng, k).cloned().collect();
+        let mut centroids: Vec<Vec<f32>> = data.sample(&mut rng, k).cloned().collect();
         let mut counts = vec![0usize; k];
         let mut indices: Vec<usize> = (0..data.len()).collect();
         let batch_size = batch_size.clamp(1, data.len());

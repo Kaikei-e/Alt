@@ -1,6 +1,7 @@
 /// 7日・10k記事の性能ベンチマーク。
-use criterion::{Criterion, black_box, criterion_group, criterion_main};
+use criterion::{Criterion, criterion_group, criterion_main};
 use recap_worker::analysis::{keyword_scores, preprocess_documents, synthetic_bodies};
+use std::hint::black_box;
 
 fn bench_preprocessing(c: &mut Criterion) {
     let bodies = synthetic_bodies(1024, 6);

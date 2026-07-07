@@ -4,20 +4,20 @@ version = "0.1.0"
 description = "Alt Platform Dashboard"
 requires-python = ">=3.14"
 dependencies = [
-    "streamlit==1.54.0",
-    "pandas==2.2.3",
-    "sqlalchemy==2.0.46",
-    "psycopg2-binary==2.9.11",
+    "streamlit==1.59.0",
+    "pandas==3.0.3",
+    "sqlalchemy==2.0.51",
+    "psycopg2-binary==2.9.12",
     "psutil>=5.9.0",
 ]
 
 [dependency-groups]
 dev = [
-    "pyrefly>=0.42.0",
+    "pyrefly>=1.1.1",
 ]
 
 [tool.uv]
-constraint-dependencies = ["Pillow>=12.2.0", "tornado>=6.5.5"]
+constraint-dependencies = ["Pillow>=12.3.0"]
 
 [tool.pyrefly]
 project-includes = ["."]

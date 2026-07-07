@@ -18,6 +18,17 @@ dev = [
 [tool.uv]
 constraint-dependencies = ["Pygments>=2.20.0"]
 
+# CPU-only index for torch: avoids pulling ~5GB of unused CUDA/nvidia/triton
+# packages into local `uv sync` on non-GPU Linux dev machines (this service
+# actually deploys to a Mac via rsync + pip, not via this lockfile).
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
+
+[tool.uv.sources]
+torch = [{ index = "pytorch-cpu" }]
+
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"

@@ -3,7 +3,7 @@
 /// AWS推奨のFull Jitter戦略を実装します。
 use std::time::Duration;
 
-use rand::Rng;
+use rand::RngExt;
 
 /// 再試行戦略の設定。
 #[derive(Debug, Clone, Copy)]

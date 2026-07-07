@@ -133,7 +133,7 @@ class TagGeneratorService:
         """
         logger.info("Starting tag generation processing cycle")
 
-        batch_stats = {
+        batch_stats: dict[str, Any] = {
             "success": False,
             "total_processed": 0,
             "successful": 0,

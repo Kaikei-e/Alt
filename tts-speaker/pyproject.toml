@@ -12,9 +12,16 @@ dependencies = [
     "pydantic-settings>=2.3.0",
     "qwen-tts>=0.1.0",
     "torchaudio>=2.6.0",
+    # Capped <5: qwen-tts 0.1.1 (latest on PyPI) hard-pins transformers==4.57.3,
+    # so raising this floor cannot move the resolved version until qwen-tts
+    # publishes a new release.
     "transformers>=4.57,<5",
     "soundfile>=0.13.0",
-    "numpy>=1.26.0",
+    # Capped <2.5: numba (pulled in transitively via qwen-tts -> librosa)
+    # requires numpy<2.5 even at its latest release (0.66.0); an uncapped
+    # floor lets uv pick numpy>=2.5 and fall back to numba 0.53.1, which
+    # ships an llvmlite too old to build on Python 3.12.
+    "numpy>=1.26.0,<2.5",
     "protobuf>=7.34.1",
     "starlette>=0.40.0",
     "connect-python>=0.9.0",
@@ -37,7 +44,10 @@ dev = [
 
 [tool.uv]
 package = true
-constraint-dependencies = ["Pygments>=2.20.0"]
+# gradio/msgpack are transitive-only (qwen-tts -> gradio, gradio-client ->
+# msgpack) and qwen-tts leaves them unpinned; constrain here to close known
+# CVEs (GHSA-7hp7-4p35-3cx2, GHSA-6v7p-g79w-8964).
+constraint-dependencies = ["Pygments>=2.20.0", "gradio>=6.15.0", "msgpack>=1.2.1"]
 
 [[tool.uv.index]]
 name = "pytorch-cpu"

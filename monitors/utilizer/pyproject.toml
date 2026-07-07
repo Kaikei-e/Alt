@@ -5,10 +5,10 @@ description = "Real-time resource monitoring for Recap Job"
 readme = "README.md"
 requires-python = ">=3.14"
 dependencies = [
-    "fastapi>=0.104.0",
-    "uvicorn[standard]>=0.24.0",
-    "websockets>=12.0",
-    "psutil>=5.9.0",
+    "fastapi>=0.139.0",
+    "uvicorn[standard]>=0.50.2",
+    "websockets>=16.0",
+    "psutil>=7.2.2",
 ]
 
 [project.scripts]

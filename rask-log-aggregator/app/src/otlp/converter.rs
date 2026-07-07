@@ -223,7 +223,8 @@ fn extract_string_value(value: &AnyValue) -> Option<String> {
                 .collect();
             Some(format!("{{{}}}", items.join(", ")))
         }
-        None => None,
+        // Profiling-only field; other signals must treat it as absent (OTLP spec).
+        Some(any_value::Value::StringValueStrindex(_)) | None => None,
     }
 }
 
@@ -298,18 +299,21 @@ mod tests {
                 value: Some(AnyValue {
                     value: Some(any_value::Value::StringValue("hello".to_string())),
                 }),
+                ..Default::default()
             },
             KeyValue {
                 key: "int_key".to_string(),
                 value: Some(AnyValue {
                     value: Some(any_value::Value::IntValue(42)),
                 }),
+                ..Default::default()
             },
             KeyValue {
                 key: "bool_key".to_string(),
                 value: Some(AnyValue {
                     value: Some(any_value::Value::BoolValue(true)),
                 }),
+                ..Default::default()
             },
         ];
 
@@ -333,6 +337,7 @@ mod tests {
                             "0102030405060708090a0b0c0d0e0f10".to_string(),
                         )),
                     }),
+                    ..Default::default()
                 },
                 KeyValue {
                     key: "span_id".to_string(),
@@ -341,6 +346,7 @@ mod tests {
                             "0102030405060708".to_string(),
                         )),
                     }),
+                    ..Default::default()
                 },
             ],
             ..Default::default()
@@ -366,6 +372,7 @@ mod tests {
                 value: Some(AnyValue {
                     value: Some(any_value::Value::StringValue("different_trace".to_string())),
                 }),
+                ..Default::default()
             }],
             ..Default::default()
         };
@@ -391,6 +398,7 @@ mod tests {
                             "abcdef0123456789abcdef0123456789".to_string(),
                         )),
                     }),
+                    ..Default::default()
                 },
                 KeyValue {
                     key: "span_id".to_string(),
@@ -399,6 +407,7 @@ mod tests {
                             "fedcba9876543210".to_string(),
                         )),
                     }),
+                    ..Default::default()
                 },
             ],
             ..Default::default()

@@ -179,8 +179,11 @@ class ModelManager:
 
             if self._embedder is None:
                 raise ModelLoadError("Embedder was not initialized")
+            if KeyBERT is None:
+                logger.error("KeyBERT dependency missing")
+                raise ImportError("KeyBERT is required. Install with: pip install keybert")
             logger.info("Loading KeyBERT model")
-            self._keybert = KeyBERT(self._embedder)  # pyright: ignore[reportArgumentType,reportOptionalCall]
+            self._keybert = KeyBERT(self._embedder)
             logger.info(
                 "KeyBERT loaded successfully",
                 embedder_backend=self._embedder_backend,

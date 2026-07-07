@@ -90,10 +90,10 @@ dev = [
 # torch is pinned to the CPU-only wheel index via [tool.uv.sources] below
 # so transitive installs stay CPU-only (ADR-000762 / ADR-000812 pattern).
 ml = [
-    "torch>=2.1.0,<3",
-    "sentence-transformers>=5.0.0,<6",
+    "torch>=2.1.0",
+    "sentence-transformers>=5.0.0",
     "keybert>=0.8.5",
-    "transformers>=5.8.1,<6",
+    "transformers>=5.8.1",
     "scikit-learn>=1.5.2",
     "numpy>=1.26.0",
     "onnxruntime>=1.21.0",
@@ -103,10 +103,10 @@ ml = [
 # Extended ML dependencies including GiNZA for improved Japanese NLP.
 # Install with: uv sync --group ml-extended
 ml-extended = [
-    "torch>=2.1.0,<3",
-    "sentence-transformers>=5.0.0,<6",
+    "torch>=2.1.0",
+    "sentence-transformers>=5.0.0",
     "keybert>=0.8.5",
-    "transformers>=5.8.1,<6",
+    "transformers>=5.8.1",
     "scikit-learn>=1.5.2",
     "numpy>=1.26.0",
     "onnxruntime>=1.21.0",
