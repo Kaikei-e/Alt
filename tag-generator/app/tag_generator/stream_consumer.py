@@ -160,7 +160,9 @@ class StreamConsumer:
             return
 
         for _stream_name, messages in streams:
+            # pyrefly: ignore [not-iterable]
             for message_id, data in messages:
+                # pyrefly: ignore [bad-argument-type]
                 event = self._parse_event(message_id, data)
 
                 try:
@@ -248,6 +250,7 @@ class StreamConsumer:
                 stream_key=stream_key,
                 message_id=message_id,
             )
+            # pyrefly: ignore [bad-return]
             return message_id
         except Exception as e:
             logger.error(

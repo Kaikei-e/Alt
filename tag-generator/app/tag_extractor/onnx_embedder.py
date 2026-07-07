@@ -91,6 +91,7 @@ class OnnxEmbeddingModel:
 
         for batch in self._batch(texts, batch_size):
             total_batches += 1
+            # pyrefly: ignore [not-callable]
             tokens = self._tokenizer(
                 list(batch),
                 padding=True,
@@ -104,8 +105,10 @@ class OnnxEmbeddingModel:
 
             hidden_states = self._session.run(None, ort_inputs)[0]
             if self._config.pooling == "mean":
+                # pyrefly: ignore [missing-attribute]
                 emb = hidden_states.mean(axis=1)
             else:
+                # pyrefly: ignore [bad-index]
                 emb = hidden_states[:, 0, :]
 
             embeddings.append(emb)

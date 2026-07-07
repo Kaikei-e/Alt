@@ -716,7 +716,7 @@ class GenreLearningService:
             """
         )
         result = await self.session.execute(query, {"days": days, "limit": limit})
-        rows = [dict(row) for row in result.mappings().all()]
+        rows: list[dict[str, Any]] = [dict(row) for row in result.mappings().all()]
         logger.info(
             "fetched snapshot rows",
             row_count=len(rows),

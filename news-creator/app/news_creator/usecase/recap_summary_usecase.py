@@ -1962,7 +1962,7 @@ class RecapSummaryUsecase:
                 trimmed = f"{trimmed} [{ref_id}]"
             final_bullets.append(trimmed)
 
-        sanitized = {
+        sanitized: Dict[str, Any] = {
             "title": title,
             "bullets": final_bullets,
             "language": language,
