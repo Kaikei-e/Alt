@@ -18,6 +18,11 @@ type DynamicResolver struct {
 	// Static domain patterns from configuration
 	staticDomains []*regexp.Regexp
 
+	// Literal domain names backing staticDomains (anchors/escaping stripped),
+	// used to scope auto-learning to genuine subdomains of an already
+	// statically-approved base domain.
+	staticDomainNames []string
+
 	// Dynamic learned domains (on-memory cache)
 	learnedDomains map[string]*LearnedDomain
 	learnedMutex   sync.RWMutex
@@ -53,6 +58,7 @@ type DNSEntry struct {
 func NewDynamicResolver(staticDomains []*regexp.Regexp, dnsServers []string, cacheTimeout time.Duration, maxCacheEntries int) *DynamicResolver {
 	return &DynamicResolver{
 		staticDomains:     staticDomains,
+		staticDomainNames: extractStaticDomainNames(staticDomains),
 		learnedDomains:    make(map[string]*LearnedDomain),
 		dnsCache:          make(map[string]*DNSEntry),
 		dnsServers:        dnsServers,
@@ -60,6 +66,24 @@ func NewDynamicResolver(staticDomains []*regexp.Regexp, dnsServers []string, cac
 		maxCacheEntries:   maxCacheEntries,
 		maxLearnedDomains: 100, // Reasonable limit for memory management
 	}
+}
+
+// extractStaticDomainNames recovers the literal domain (e.g. "zenn.dev")
+// backing each compiled `^zenn\.dev$`-style static allowlist pattern, so
+// shouldLearnDomain can test genuine subdomain relationships without
+// re-parsing config.
+func extractStaticDomainNames(staticDomains []*regexp.Regexp) []string {
+	names := make([]string, 0, len(staticDomains))
+	for _, pattern := range staticDomains {
+		src := pattern.String()
+		src = strings.TrimPrefix(src, "^")
+		src = strings.TrimSuffix(src, "$")
+		src = strings.ReplaceAll(src, "\\.", ".")
+		if src != "" {
+			names = append(names, src)
+		}
+	}
+	return names
 }
 
 // IsDomainAllowed checks if domain is allowed through static patterns or dynamic learning
@@ -94,6 +118,14 @@ func (dr *DynamicResolver) IsDomainAllowed(domain string) (allowed bool, learned
 
 // shouldLearnDomain implements domain learning heuristics
 // オンメモリDNS管理: ドメイン学習ヒューリスティクス
+//
+// Auto-learning must never widen the allowlist to arbitrary destinations:
+// generic TLD suffixes (.com/.org/.../.dev) and generic prefixes
+// (api./cdn./feeds.) match almost any domain and previously made the
+// CONNECT/persistent-tunnel allowlist a no-op (any domain would be
+// "learned" on first use). The only case learned here is a genuine
+// subdomain of a domain that is already statically allowed/reviewed
+// (e.g. "api.zenn.dev" when "zenn.dev" is in ALLOWED_DOMAINS).
 func (dr *DynamicResolver) shouldLearnDomain(domain string) bool {
 	// Basic domain validation
 	if len(domain) == 0 || len(domain) > 253 {
@@ -105,20 +137,11 @@ func (dr *DynamicResolver) shouldLearnDomain(domain string) bool {
 		return false
 	}
 
-	// Check for known safe TLDs and patterns
-	safeTLDs := []string{".com", ".org", ".net", ".ai", ".co", ".dev", ".io"}
-	for _, tld := range safeTLDs {
-		if strings.HasSuffix(domain, tld) {
-			return true
+	for _, base := range dr.staticDomainNames {
+		if base == "" {
+			continue
 		}
-	}
-
-	// Check for known safe patterns (RSS feeds, API endpoints)
-	safePatterns := []string{
-		"feeds.", "api.", "registry.", "cdn.", "static.", "assets.",
-	}
-	for _, pattern := range safePatterns {
-		if strings.HasPrefix(domain, pattern) {
+		if strings.HasSuffix(domain, "."+base) {
 			return true
 		}
 	}

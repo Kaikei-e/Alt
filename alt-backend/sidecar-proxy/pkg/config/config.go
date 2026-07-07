@@ -150,13 +150,18 @@ func (c *ProxyConfig) parseAllowedDomains() error {
 			continue
 		}
 
-		// Compile regex pattern for domain matching
-		// Support exact matches and simple wildcard patterns
+		// Compile regex pattern for domain matching (exact-match only).
+		// Escaping and anchoring are independent steps: the default
+		// ALLOWED_DOMAINS value ships pre-escaped (e.g. "zenn\.dev"), so a
+		// pattern already containing a backslash must still be anchored.
+		// Anchoring only the unescaped branch left pre-escaped patterns
+		// unanchored, letting "zenn.dev.evil.com" match "zenn\.dev" as a
+		// substring (SSRF allowlist bypass).
 		pattern := domain
 		if !strings.Contains(pattern, "\\") {
-			// If not already escaped, escape dots and add anchors
-			pattern = "^" + strings.ReplaceAll(pattern, ".", "\\.") + "$"
+			pattern = strings.ReplaceAll(pattern, ".", "\\.")
 		}
+		pattern = "^" + pattern + "$"
 
 		compiled, err := regexp.Compile(pattern)
 		if err != nil {

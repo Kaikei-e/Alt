@@ -66,17 +66,18 @@ func (p *LightweightProxy) HandleConfigDebug(w http.ResponseWriter, r *http.Requ
 
 	// Include auto-learning status in config debug
 	learnedCount := len(p.autoLearner.GetLearnedDomains())
+	autoLearnEnabled := p.autoLearner.IsLearningEnabled()
 
 	fmt.Fprintf(w, `{
-		"static_allowed_domains": %v, 
-		"dns_servers": %v, 
+		"static_allowed_domains": %v,
+		"dns_servers": %v,
 		"envoy_upstream": "%s",
 		"auto_learning": {
-			"enabled": true,
+			"enabled": %t,
 			"learned_domains_count": %d,
 			"csv_path": "/etc/sidecar-proxy/learned_domains.csv"
 		}
-	}`, p.config.AllowedDomainsRaw, p.config.DNSServers, p.config.EnvoyUpstream, learnedCount)
+	}`, p.config.AllowedDomainsRaw, p.config.DNSServers, p.config.EnvoyUpstream, autoLearnEnabled, learnedCount)
 }
 
 // HandleAutoLearnAdmin handles auto-learning administration API
@@ -181,7 +182,7 @@ func (p *LightweightProxy) HandleAutoLearnMetrics(w http.ResponseWriter, r *http
 		ActiveDomains:   activeCount,
 		BlockedDomains:  blockedCount,
 		TotalAccess:     totalAccess,
-		LearningEnabled: true,
+		LearningEnabled: p.autoLearner.IsLearningEnabled(),
 		StorageType:     "in-memory",
 		LastUpdate:      time.Now().Format(time.RFC3339),
 	}
