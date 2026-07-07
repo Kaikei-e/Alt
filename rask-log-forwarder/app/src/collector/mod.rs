@@ -1,11 +1,33 @@
 pub mod discovery;
 pub mod docker;
 
+use std::time::Duration;
 use thiserror::Error;
 use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
 // Ensure zero-copy processing by using Bytes throughout
 use bytes::Bytes;
+
+/// Initial delay before the first reconnect attempt after a Docker log
+/// stream error, EOF (container restart), or discovery failure.
+const INITIAL_RECONNECT_DELAY: Duration = Duration::from_millis(500);
+/// Upper bound on the reconnect backoff so a persistently-missing container
+/// doesn't grow the retry interval without limit.
+const MAX_RECONNECT_DELAY: Duration = Duration::from_secs(30);
+
+/// Doubles `current`, capped at `MAX_RECONNECT_DELAY`.
+fn next_reconnect_delay(current: Duration) -> Duration {
+    (current * 2).min(MAX_RECONNECT_DELAY)
+}
+
+/// Outcome of a single streaming attempt, distinguishing a deliberate
+/// shutdown from the stream simply ending (e.g. the container stopped),
+/// so the reconnect loop knows whether to give up or try again.
+#[derive(Debug, PartialEq, Eq)]
+enum StreamExit {
+    Cancelled,
+    StreamEnded,
+}
 
 pub type LogBytes = Bytes;
 pub use discovery::{ContainerInfo, DiscoveryError, ServiceDiscovery, ServiceDiscoveryTrait};
@@ -90,40 +112,119 @@ impl LogCollector {
 
     pub async fn start_collection(
         &mut self,
-        tx: mpsc::UnboundedSender<LogEntry>,
+        tx: mpsc::Sender<LogEntry>,
         cancel_token: CancellationToken,
     ) -> Result<(), CollectorError> {
-        // Discover container
-        let container_info = self
-            .discovery
-            .find_container_by_service(&self.target_service)
-            .await?;
+        let mut reconnect_delay = INITIAL_RECONNECT_DELAY;
 
-        tracing::info!(
-            "Starting log collection for service '{}' (container: {})",
-            self.target_service,
-            container_info.id
-        );
+        loop {
+            if cancel_token.is_cancelled() {
+                return Ok(());
+            }
 
-        // Use Docker API instead of file tailing
-        let docker_collector = DockerCollector::new()
-            .await
-            .map_err(CollectorError::DockerError)?;
+            // (Re)discover the container on every attempt: a restarted
+            // container commonly gets a new container ID, so re-resolving by
+            // service name (rather than reusing a stale ID) is required for
+            // reconnection to actually find it.
+            let container_info = match self
+                .discovery
+                .find_container_by_service(&self.target_service)
+                .await
+            {
+                Ok(info) => info,
+                Err(e) => {
+                    tracing::warn!(
+                        "Container discovery failed for service '{}': {e}; retrying in {:?}",
+                        self.target_service,
+                        reconnect_delay
+                    );
+                    if Self::sleep_or_cancelled(reconnect_delay, &cancel_token).await {
+                        return Ok(());
+                    }
+                    reconnect_delay = next_reconnect_delay(reconnect_delay);
+                    continue;
+                }
+            };
+            self.container_info = Some(container_info.clone());
 
-        self.container_info = Some(container_info.clone());
+            let docker_collector = match DockerCollector::new().await {
+                Ok(c) => c,
+                Err(e) => {
+                    tracing::warn!(
+                        "Failed to create Docker client for service '{}': {e}; retrying in {:?}",
+                        self.target_service,
+                        reconnect_delay
+                    );
+                    if Self::sleep_or_cancelled(reconnect_delay, &cancel_token).await {
+                        return Ok(());
+                    }
+                    reconnect_delay = next_reconnect_delay(reconnect_delay);
+                    continue;
+                }
+            };
 
-        // Start Docker API log streaming
-        self.start_docker_api_streaming(docker_collector, &container_info.id, tx, cancel_token)
-            .await
+            tracing::info!(
+                "Starting log collection for service '{}' (container: {})",
+                self.target_service,
+                container_info.id
+            );
+
+            match self
+                .start_docker_api_streaming(
+                    docker_collector,
+                    &container_info.id,
+                    tx.clone(),
+                    cancel_token.clone(),
+                )
+                .await
+            {
+                Ok(StreamExit::Cancelled) => return Ok(()),
+                Ok(StreamExit::StreamEnded) => {
+                    tracing::warn!(
+                        "Docker log stream for service '{}' (container: {}) ended - \
+                         reconnecting in {:?} (container likely restarted)",
+                        self.target_service,
+                        container_info.id,
+                        reconnect_delay
+                    );
+                }
+                Err(CollectorError::CollectionStopped) => {
+                    // The receiver was dropped (pipeline shut down); no point retrying.
+                    return Err(CollectorError::CollectionStopped);
+                }
+                Err(e) => {
+                    tracing::warn!(
+                        "Docker log stream error for service '{}' (container: {}): {e}; \
+                         reconnecting in {:?}",
+                        self.target_service,
+                        container_info.id,
+                        reconnect_delay
+                    );
+                }
+            }
+
+            if Self::sleep_or_cancelled(reconnect_delay, &cancel_token).await {
+                return Ok(());
+            }
+            reconnect_delay = next_reconnect_delay(reconnect_delay);
+        }
+    }
+
+    /// Sleeps for `delay`, returning early (with `true`) if cancelled first.
+    async fn sleep_or_cancelled(delay: Duration, cancel_token: &CancellationToken) -> bool {
+        tokio::select! {
+            _ = cancel_token.cancelled() => true,
+            _ = tokio::time::sleep(delay) => false,
+        }
     }
 
     async fn start_docker_api_streaming(
         &self,
         docker_collector: DockerCollector,
         container_id: &str,
-        tx: mpsc::UnboundedSender<LogEntry>,
+        tx: mpsc::Sender<LogEntry>,
         cancel_token: CancellationToken,
-    ) -> Result<(), CollectorError> {
+    ) -> Result<StreamExit, CollectorError> {
         use bollard::query_parameters::LogsOptions;
         use futures::StreamExt;
 
@@ -147,7 +248,7 @@ impl LogCollector {
                 // Check for cancellation signal first
                 _ = cancel_token.cancelled() => {
                     tracing::info!("Collector received cancellation signal, stopping log collection");
-                    break;
+                    return Ok(StreamExit::Cancelled);
                 }
                 // Process log stream
                 log_output = stream.next() => {
@@ -166,8 +267,19 @@ impl LogCollector {
                                 raw_bytes: log_bytes,
                             };
 
-                            if tx.send(entry).is_err() {
-                                return Err(CollectorError::CollectionStopped);
+                            // Bounded channel: block (apply backpressure) rather than
+                            // drop when the batching/send side can't keep up, while
+                            // staying responsive to cancellation in the meantime.
+                            tokio::select! {
+                                _ = cancel_token.cancelled() => {
+                                    tracing::info!("Collector received cancellation signal while backpressured, stopping log collection");
+                                    return Ok(StreamExit::Cancelled);
+                                }
+                                send_result = tx.send(entry) => {
+                                    if send_result.is_err() {
+                                        return Err(CollectorError::CollectionStopped);
+                                    }
+                                }
                             }
                         }
                         Some(Err(e)) => {
@@ -177,18 +289,67 @@ impl LogCollector {
                             ));
                         }
                         None => {
-                            // Stream ended
-                            break;
+                            // Stream ended (e.g. the container stopped/restarted).
+                            return Ok(StreamExit::StreamEnded);
                         }
                     }
                 }
             }
         }
-
-        Ok(())
     }
 
     pub fn get_container_info(&self) -> Option<&discovery::ContainerInfo> {
         self.container_info.as_ref()
+    }
+}
+
+#[cfg(test)]
+mod reconnect_tests {
+    use super::*;
+
+    #[test]
+    fn backoff_doubles_up_to_the_cap() {
+        let mut delay = INITIAL_RECONNECT_DELAY;
+        assert_eq!(delay, Duration::from_millis(500));
+
+        delay = next_reconnect_delay(delay);
+        assert_eq!(delay, Duration::from_millis(1000));
+
+        delay = next_reconnect_delay(delay);
+        assert_eq!(delay, Duration::from_millis(2000));
+
+        // Keep doubling well past the cap and confirm it never exceeds it.
+        for _ in 0..10 {
+            delay = next_reconnect_delay(delay);
+            assert!(
+                delay <= MAX_RECONNECT_DELAY,
+                "reconnect backoff must never exceed the cap, got {delay:?}"
+            );
+        }
+        assert_eq!(delay, MAX_RECONNECT_DELAY);
+    }
+
+    #[tokio::test]
+    async fn sleep_or_cancelled_returns_true_immediately_when_already_cancelled() {
+        let token = CancellationToken::new();
+        token.cancel();
+
+        let cancelled = tokio::time::timeout(
+            Duration::from_millis(200),
+            LogCollector::sleep_or_cancelled(Duration::from_secs(30), &token),
+        )
+        .await
+        .expect("sleep_or_cancelled must return promptly once cancelled, not wait out the full delay");
+
+        assert!(cancelled, "sleep_or_cancelled must report cancellation, not a timed-out sleep");
+    }
+
+    #[tokio::test]
+    async fn sleep_or_cancelled_returns_false_after_the_delay_elapses() {
+        let token = CancellationToken::new();
+
+        let cancelled = LogCollector::sleep_or_cancelled(Duration::from_millis(10), &token).await;
+
+        assert!(!cancelled, "an uncancelled sleep must report false once the delay elapses");
     }
 }
