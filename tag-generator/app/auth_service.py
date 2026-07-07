@@ -4,6 +4,7 @@ Implements user-specific tag generation with tenant isolation.
 Also runs background tag generation service for batch processing.
 """
 
+import asyncio
 import inspect
 import os
 import threading
@@ -13,6 +14,7 @@ from functools import wraps
 from typing import Any
 
 import structlog
+from fastapi import FastAPI, HTTPException, Request
 
 try:  # Prefer shared auth client when available
     from alt_auth.client import AuthClient, AuthConfig, UserContext, require_auth  # type: ignore
@@ -47,45 +49,64 @@ except ModuleNotFoundError:
         async def __aexit__(self, exc_type, exc, tb) -> bool:
             return False
 
-    def _default_user_context() -> UserContext:
-        roles_env = os.getenv("DEFAULT_USER_ROLES", "")
-        roles: tuple[str, ...] = tuple(role.strip() for role in roles_env.split(",") if role.strip())
-        return UserContext(
-            user_id=os.getenv("DEFAULT_USER_ID", "anonymous"),
-            tenant_id=os.getenv("DEFAULT_TENANT_ID", "public"),
-            roles=roles,
-        )
-
     def require_auth(_client: AuthClient | None = None):
-        """Fallback decorator that injects a default user context."""
+        """Fallback decorator used when alt_auth.client is not installed.
+
+        Fails closed: every call to a route wrapped with this decorator is
+        rejected instead of silently proceeding with a fabricated anonymous
+        UserContext. See .claude/rules/di-wiring.md (Python: an
+        `except ImportError` no-op/anonymous auth fallback is forbidden --
+        a missing auth module must fail closed, not disable authentication).
+        """
 
         def decorator(func):
             if inspect.iscoroutinefunction(func):
 
                 @wraps(func)
                 async def async_wrapper(*args, **kwargs):
-                    kwargs.setdefault("user_context", _default_user_context())
-                    return await func(*args, **kwargs)
+                    logger.error(
+                        "auth_route_rejected",
+                        reason="alt_auth.client is not installed; refusing to serve authenticated route",
+                        func=func.__name__,
+                    )
+                    raise HTTPException(
+                        status_code=503,
+                        detail="Authentication is unavailable (alt_auth.client not installed)",
+                    )
 
                 return async_wrapper
 
             @wraps(func)
             def sync_wrapper(*args, **kwargs):
-                kwargs.setdefault("user_context", _default_user_context())
-                return func(*args, **kwargs)
+                logger.error(
+                    "auth_route_rejected",
+                    reason="alt_auth.client is not installed; refusing to serve authenticated route",
+                    func=func.__name__,
+                )
+                raise HTTPException(
+                    status_code=503,
+                    detail="Authentication is unavailable (alt_auth.client not installed)",
+                )
 
             return sync_wrapper
 
         return decorator
 
 
-from fastapi import FastAPI, HTTPException, Request
 from pydantic import BaseModel
 
 logger = structlog.get_logger(__name__)
 
-if not _ALT_AUTH_AVAILABLE:
-    logger.info("alt_auth.client not found; using no-op authentication stubs")
+if _ALT_AUTH_AVAILABLE:
+    logger.info("auth_enabled", detail="alt_auth.client is installed; per-user authentication is enforced")
+else:
+    logger.error(
+        "auth_disabled",
+        detail=(
+            "alt_auth.client not found; /api/v1/generate-tags and /api/v1/user-preferences "
+            "will fail closed (503) instead of running unauthenticated"
+        ),
+    )
 
 
 @dataclass
@@ -478,7 +499,9 @@ async def extract_tags_endpoint(
         raise HTTPException(status_code=503, detail="Tag extraction service not ready")
 
     try:
-        outcome = _background_tag_service.tag_extractor.extract_tags_with_metrics(body.title, body.content)
+        outcome = await asyncio.to_thread(
+            _background_tag_service.tag_extractor.extract_tags_with_metrics, body.title, body.content
+        )
 
         return {
             "success": True,
