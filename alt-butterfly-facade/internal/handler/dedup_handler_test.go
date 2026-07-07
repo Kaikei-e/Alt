@@ -119,6 +119,56 @@ func TestRequestDeduplicator_Do_DeduplicatesConcurrent(t *testing.T) {
 	assert.Equal(t, int32(1), executionCount)
 }
 
+// TestRequestDeduplicator_Do_MoreThanTenConcurrentWaitersAllGetResult guards
+// against the old buffered-channel broadcast (capacity 10, select-default)
+// which silently dropped the result for the 11th+ concurrent waiter. With
+// singleflight, every waiter — regardless of count — must observe the exact
+// same, non-nil result.
+func TestRequestDeduplicator_Do_MoreThanTenConcurrentWaitersAllGetResult(t *testing.T) {
+	dedup := NewRequestDeduplicator(100 * time.Millisecond)
+	var executionCount int32
+
+	const waiterCount = 25
+	var wg sync.WaitGroup
+	results := make([]*DedupResult, waiterCount)
+	errs := make([]error, waiterCount)
+
+	// Gate all goroutines so they call Do concurrently rather than racing to
+	// start first (which would just serialize them one at a time).
+	start := make(chan struct{})
+
+	for i := 0; i < waiterCount; i++ {
+		wg.Add(1)
+		go func(idx int) {
+			defer wg.Done()
+			<-start
+			result, err := dedup.Do("same-key-many-waiters", func() (*DedupResult, error) {
+				atomic.AddInt32(&executionCount, 1)
+				time.Sleep(50 * time.Millisecond) // Simulate work so all waiters queue up.
+				return &DedupResult{
+					Body:       []byte("shared-response"),
+					StatusCode: http.StatusOK,
+					Headers:    make(http.Header),
+				}, nil
+			})
+			results[idx] = result
+			errs[idx] = err
+		}(i)
+	}
+
+	close(start)
+	wg.Wait()
+
+	assert.Equal(t, int32(1), executionCount, "fn must execute exactly once regardless of waiter count")
+
+	for i := 0; i < waiterCount; i++ {
+		require.NoError(t, errs[i], "waiter %d must not receive an error", i)
+		require.NotNil(t, results[i], "waiter %d must receive a non-nil result (11th+ waiter previously got nil)", i)
+		assert.Equal(t, []byte("shared-response"), results[i].Body, "waiter %d must receive the shared result body", i)
+		assert.Equal(t, http.StatusOK, results[i].StatusCode)
+	}
+}
+
 func TestRequestDeduplicator_Do_DifferentKeysExecuteSeparately(t *testing.T) {
 	dedup := NewRequestDeduplicator(100 * time.Millisecond)
 	var executionCount int32

@@ -9,6 +9,8 @@ import (
 	"net/http"
 	"sync"
 	"time"
+
+	"golang.org/x/sync/singleflight"
 )
 
 // DedupResult holds the result of a deduplicated request.
@@ -39,17 +41,16 @@ func (r *DedupResult) Clone() *DedupResult {
 	}
 }
 
-// pendingRequest represents an in-flight request.
-type pendingRequest struct {
-	result chan *DedupResult
-	err    chan error
-	done   chan struct{}
-}
-
 // RequestDeduplicator deduplicates identical concurrent requests.
+//
+// Broadcasting the single in-flight result to every waiter is delegated to
+// singleflight.Group, which has no cap on the number of waiters (unlike the
+// previous hand-rolled buffered-channel fan-out, which silently dropped the
+// result for the 11th+ concurrent waiter).
 type RequestDeduplicator struct {
 	mu       sync.Mutex
-	pending  map[string]*pendingRequest
+	group    singleflight.Group
+	pending  map[string]struct{}
 	window   time.Duration
 	lastUsed map[string]time.Time
 }
@@ -58,7 +59,7 @@ type RequestDeduplicator struct {
 // Requests within the window will be deduplicated.
 func NewRequestDeduplicator(window time.Duration) *RequestDeduplicator {
 	return &RequestDeduplicator{
-		pending:  make(map[string]*pendingRequest),
+		pending:  make(map[string]struct{}),
 		lastUsed: make(map[string]time.Time),
 		window:   window,
 	}
@@ -66,78 +67,33 @@ func NewRequestDeduplicator(window time.Duration) *RequestDeduplicator {
 
 // Do executes the function, deduplicating concurrent requests with the same key.
 // If another request with the same key is in progress, the caller waits for
-// that request to complete and receives the same result.
+// that request to complete and receives the same result via singleflight.
 func (d *RequestDeduplicator) Do(key string, fn func() (*DedupResult, error)) (*DedupResult, error) {
 	d.mu.Lock()
-
-	// Check if there's already a pending request
-	if pending, ok := d.pending[key]; ok {
-		d.mu.Unlock()
-
-		// Wait for the result
-		select {
-		case result := <-pending.result:
-			if result == nil {
-				return nil, nil
-			}
-			return result.Clone(), nil
-		case err := <-pending.err:
-			return nil, err
-		}
-	}
-
-	// Create a new pending request with buffered channels
-	pending := &pendingRequest{
-		result: make(chan *DedupResult, 10), // Buffer for multiple waiters
-		err:    make(chan error, 10),
-		done:   make(chan struct{}),
-	}
-	d.pending[key] = pending
+	d.pending[key] = struct{}{}
 	d.lastUsed[key] = time.Now()
 	d.mu.Unlock()
 
-	// Execute the function
-	result, err := fn()
+	v, err, _ := d.group.Do(key, func() (any, error) {
+		return fn()
+	})
 
-	// Remove from pending map
 	d.mu.Lock()
 	delete(d.pending, key)
 	d.mu.Unlock()
 
-	// Signal completion
-	close(pending.done)
-
 	if err != nil {
-		// Broadcast error to all waiters
-		for i := 0; i < 10; i++ {
-			select {
-			case pending.err <- err:
-			default:
-				break
-			}
-		}
-		close(pending.result)
-		close(pending.err)
 		return nil, err
 	}
 
-	// Broadcast result to all waiters
-	if result != nil {
-		for i := 0; i < 10; i++ {
-			select {
-			case pending.result <- result.Clone():
-			default:
-				break
-			}
-		}
+	result, _ := v.(*DedupResult)
+	if result == nil {
+		return nil, nil
 	}
-	close(pending.result)
-	close(pending.err)
-
-	return result, nil
+	return result.Clone(), nil
 }
 
-// Size returns the number of pending requests.
+// Size returns the number of requests currently in flight.
 func (d *RequestDeduplicator) Size() int {
 	d.mu.Lock()
 	defer d.mu.Unlock()

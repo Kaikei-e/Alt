@@ -25,6 +25,20 @@ func TestNewAuthInterceptor(t *testing.T) {
 	assert.NotNil(t, interceptor)
 }
 
+func TestNewAuthInterceptor_EmptySecret_FailsClosed(t *testing.T) {
+	logger := slog.New(slog.NewTextHandler(os.Stderr, nil))
+
+	assert.Panics(t, func() {
+		NewAuthInterceptor(logger, []byte{}, "auth-hub", "alt-backend")
+	}, "NewAuthInterceptor must fail closed (panic) when the JWT secret is empty")
+}
+
+func TestNewAuthInterceptor_NilSecret_FailsClosed(t *testing.T) {
+	assert.Panics(t, func() {
+		NewAuthInterceptor(nil, nil, "auth-hub", "alt-backend")
+	}, "NewAuthInterceptor must fail closed (panic) when the JWT secret is nil, even without a logger")
+}
+
 func TestAuthInterceptor_ValidateToken_Valid(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(os.Stderr, nil))
 	secret := []byte("test-secret")
