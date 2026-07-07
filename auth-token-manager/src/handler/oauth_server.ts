@@ -7,6 +7,7 @@ import type { AuthorizeUsecase } from "../usecase/authorize.ts";
 import type { SecretManager } from "../port/secret_manager.ts";
 import type { InoreaderCredentials } from "../domain/types.ts";
 import { logger } from "../infra/logger.ts";
+import { config } from "../infra/config.ts";
 
 interface PendingAuthState {
   state: string;
@@ -27,7 +28,7 @@ export class OAuthServer {
   start(signal?: AbortSignal): void {
     const redirectUrl = new URL(this.credentials.redirect_uri);
 
-    if (!Deno.env.get("INTERNAL_AUTH_TOKEN")) {
+    if (!config.getEnvOrFile("INTERNAL_AUTH_TOKEN")) {
       logger.error(
         "token_api_disabled: INTERNAL_AUTH_TOKEN is not set at startup, /api/token will reject all requests until it is configured",
       );
@@ -146,7 +147,7 @@ export class OAuthServer {
   }
 
   private async handleTokenApi(req: Request): Promise<Response> {
-    const expectedToken = Deno.env.get("INTERNAL_AUTH_TOKEN");
+    const expectedToken = config.getEnvOrFile("INTERNAL_AUTH_TOKEN");
 
     // Fail closed: without a configured secret there is no way to
     // authenticate the caller, so refuse to serve tokens rather than

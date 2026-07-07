@@ -22,6 +22,7 @@ SECRETS=(
     "csrf_secret.txt"
     "service_secret.txt"
     "hugging_face_token.txt"
+    "internal_auth_token.txt"
 )
 
 echo "Generating development secrets in $SECRETS_DIR..."

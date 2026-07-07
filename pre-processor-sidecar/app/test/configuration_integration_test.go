@@ -25,6 +25,7 @@ func TestConfigurationIntegration(t *testing.T) {
 		"INOREADER_CLIENT_ID":               "production_client_id",
 		"INOREADER_CLIENT_SECRET":           "production_client_secret",
 		"INOREADER_REFRESH_TOKEN":           "production_refresh_token",
+		"INTERNAL_AUTH_TOKEN":               "production_internal_auth_token",
 		"HTTP_CLIENT_TIMEOUT":               "90s",
 		"RETRY_MAX_RETRIES":                 "5",
 		"RETRY_INITIAL_DELAY":               "10s",
@@ -34,9 +35,9 @@ func TestConfigurationIntegration(t *testing.T) {
 		"MONITORING_ENABLE_TRACING":         "true",
 		"ENABLE_SCHEDULE_MODE":              "true",
 		"ENABLE_DEBUG_MODE":                 "false",
-		"DB_HOST":                          "postgres.alt-database.svc.cluster.local",
-		"DB_NAME":                          "alt",
-		"PRE_PROCESSOR_SIDECAR_DB_USER":    "pre_processor_sidecar_user",
+		"DB_HOST":                           "postgres.alt-database.svc.cluster.local",
+		"DB_NAME":                           "alt",
+		"PRE_PROCESSOR_SIDECAR_DB_USER":     "pre_processor_sidecar_user",
 	}
 
 	for key := range testEnvVars {
@@ -190,6 +191,7 @@ func TestConfigurationValidationEdgeCases(t *testing.T) {
 				Proxy: config.ProxyConfig{
 					HTTPSProxy: "http://proxy:8081",
 				},
+				InternalAuthToken: "test_internal_auth_token",
 			}
 
 			// Apply modification

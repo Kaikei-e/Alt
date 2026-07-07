@@ -137,7 +137,7 @@ func main() {
 		authTokenManagerURL = "http://auth-token-manager:9201"
 	}
 	logger.Info("Using remote token repository", "url", authTokenManagerURL)
-	tokenRepo = repository.NewRemoteTokenRepository(authTokenManagerURL, logger)
+	tokenRepo = repository.NewRemoteTokenRepository(authTokenManagerURL, cfg.InternalAuthToken, logger)
 
 	// Initialize RemoteTokenService
 	remoteRepo, ok := tokenRepo.(*repository.RemoteTokenRepository)

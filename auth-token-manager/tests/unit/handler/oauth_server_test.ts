@@ -154,4 +154,32 @@ describe("OAuthServer /api/token", {
     assertEquals(body.access_token, "secret-access-token");
     assertEquals(body.refresh_token, "secret-refresh-token");
   });
+
+  it("should accept the token when only INTERNAL_AUTH_TOKEN_FILE is set (compose secrets)", async () => {
+    const tmpFile = await Deno.makeTempFile();
+    await Deno.writeTextFile(tmpFile, "file-token\n");
+    Deno.env.delete("INTERNAL_AUTH_TOKEN");
+    Deno.env.set("INTERNAL_AUTH_TOKEN_FILE", tmpFile);
+
+    secretManager.setData({
+      access_token: "secret-access-token",
+      refresh_token: "secret-refresh-token",
+      expires_at: "2025-12-31T00:00:00.000Z",
+      updated_at: "2025-06-01T00:00:00.000Z",
+      token_type: "Bearer",
+    });
+
+    try {
+      const res = await fetch(`http://localhost:${TEST_PORT}/api/token`, {
+        headers: { "X-Internal-Auth": "file-token" },
+      });
+      assertEquals(res.status, 200);
+
+      const body = await res.json();
+      assertEquals(body.access_token, "secret-access-token");
+    } finally {
+      Deno.env.delete("INTERNAL_AUTH_TOKEN_FILE");
+      await Deno.remove(tmpFile);
+    }
+  });
 });

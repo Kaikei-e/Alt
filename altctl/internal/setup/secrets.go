@@ -45,6 +45,7 @@ func DefaultSecretSpecs() []SecretSpec {
 		{Filename: "backend_token_secret.txt", Description: "Backend JWT token secret", AutoGenerate: true, Length: 32},
 		{Filename: "pp_db_password.txt", Description: "Pre-processor dedicated DB password", AutoGenerate: true, Length: 32},
 		{Filename: "image_proxy_secret.txt", Description: "Image proxy HMAC secret", AutoGenerate: true, Length: 32},
+		{Filename: "internal_auth_token.txt", Description: "auth-token-manager internal auth token (X-Internal-Auth)", AutoGenerate: true, Length: 32},
 		// User-provided secrets (empty placeholders)
 		{Filename: "hugging_face_token.txt", Description: "Hugging Face API token (for AI features)", AutoGenerate: false},
 		{Filename: "inoreader_client_id.txt", Description: "Inoreader OAuth client ID", AutoGenerate: false},

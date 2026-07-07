@@ -51,6 +51,8 @@ secrets:
     file: ../secrets/step_ca_root_password.txt
   pact_broker_basic_auth_password:
     file: ../secrets/pact_broker_basic_auth_password.txt
+  internal_auth_token:
+    file: ../secrets/internal_auth_token.txt
 
 networks:
   alt-network:

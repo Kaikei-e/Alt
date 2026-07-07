@@ -29,6 +29,7 @@ func TestDefaultSecretSpecs_ContainsAllRequired(t *testing.T) {
 		"backend_token_secret.txt",
 		"pp_db_password.txt",
 		"image_proxy_secret.txt",
+		"internal_auth_token.txt",
 	}
 
 	specMap := make(map[string]SecretSpec)

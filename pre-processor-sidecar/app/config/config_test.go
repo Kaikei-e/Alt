@@ -26,6 +26,7 @@ func TestLoadConfig(t *testing.T) {
 				"INOREADER_CLIENT_ID":               "test_client_id",
 				"INOREADER_CLIENT_SECRET":           "test_client_secret",
 				"INOREADER_REFRESH_TOKEN":           "test_refresh_token",
+				"INTERNAL_AUTH_TOKEN":               "test_internal_auth_token",
 				"MAX_ARTICLES_PER_REQUEST":          "50",
 				"SYNC_INTERVAL":                     "15m",
 				"OAUTH2_TOKEN_REFRESH_BUFFER":       "300",
@@ -63,6 +64,7 @@ func TestLoadConfig(t *testing.T) {
 				"INOREADER_CLIENT_ID":               "test_client_id",
 				"INOREADER_CLIENT_SECRET":           "test_client_secret",
 				"INOREADER_REFRESH_TOKEN":           "test_refresh_token",
+				"INTERNAL_AUTH_TOKEN":               "test_internal_auth_token",
 				// Ensure global HTTPS_PROXY doesn't override default
 				"HTTPS_PROXY": "",
 			},
@@ -83,6 +85,7 @@ func TestLoadConfig(t *testing.T) {
 				"INOREADER_CLIENT_ID":               "test_client_id",
 				"INOREADER_CLIENT_SECRET":           "test_client_secret",
 				"INOREADER_REFRESH_TOKEN":           "test_refresh_token",
+				"INTERNAL_AUTH_TOKEN":               "test_internal_auth_token",
 				"MAX_ARTICLES_PER_REQUEST":          "invalid_number",
 				"OAUTH2_TOKEN_REFRESH_BUFFER":       "invalid_duration",
 			},
@@ -99,6 +102,7 @@ func TestLoadConfig(t *testing.T) {
 				"INOREADER_CLIENT_ID":               "test_client_id",
 				"INOREADER_CLIENT_SECRET":           "test_client_secret",
 				"INOREADER_REFRESH_TOKEN":           "test_refresh_token",
+				"INTERNAL_AUTH_TOKEN":               "test_internal_auth_token",
 				"SYNC_INTERVAL":                     "invalid_duration",
 			},
 			expectError: false,
@@ -214,6 +218,9 @@ func createValidConfig() *Config {
 			NoProxy:    "localhost,127.0.0.1",
 		},
 
+		// InternalAuthToken - required by validation
+		InternalAuthToken: "test_internal_auth_token",
+
 		// Rate limiting configuration
 		RateLimit: RateLimitConfig{
 			DailyLimit:   100,
@@ -301,6 +308,15 @@ func TestConfig_Validate(t *testing.T) {
 			expectError: true,
 			errorMsg:    "HTTPS_PROXY is required for Envoy integration",
 		},
+		"missing_internal_auth_token": {
+			config: func() *Config {
+				cfg := createValidConfig()
+				cfg.InternalAuthToken = ""
+				return cfg
+			}(),
+			expectError: true,
+			errorMsg:    "INTERNAL_AUTH_TOKEN is required",
+		},
 	}
 
 	for name, tc := range tests {
@@ -379,6 +395,7 @@ func TestEnhancedConfigurationManagement(t *testing.T) {
 				"INOREADER_CLIENT_ID":               "test_client_id",
 				"INOREADER_CLIENT_SECRET":           "test_client_secret",
 				"INOREADER_REFRESH_TOKEN":           "test_refresh_token",
+				"INTERNAL_AUTH_TOKEN":               "test_internal_auth_token",
 				"HTTP_CLIENT_TIMEOUT":               "90s",
 				"RETRY_MAX_RETRIES":                 "5",
 				"RETRY_INITIAL_DELAY":               "10s",
