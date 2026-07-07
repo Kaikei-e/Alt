@@ -29,6 +29,12 @@ func (h *StorageHandler) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /admin/storage/stats", h.handleStorageStats)
 }
 
+// storageStatsResponse wraps the table storage stats per altctl's
+// home_storage.go decode struct (ADR-000941).
+type storageStatsResponse struct {
+	Tables []sovereign_db.TableStorageInfo `json:"tables"`
+}
+
 func (h *StorageHandler) handleStorageStats(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	stats, err := h.repo.GetStorageStats(ctx)
@@ -36,6 +42,9 @@ func (h *StorageHandler) handleStorageStats(w http.ResponseWriter, r *http.Reque
 		http.Error(w, `{"error": "failed to get storage stats"}`, http.StatusInternalServerError)
 		return
 	}
+	if stats == nil {
+		stats = []sovereign_db.TableStorageInfo{}
+	}
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(stats)
+	json.NewEncoder(w).Encode(storageStatsResponse{Tables: stats})
 }

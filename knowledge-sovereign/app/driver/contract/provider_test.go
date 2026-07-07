@@ -158,6 +158,10 @@ func startStubServer(t *testing.T, reject *bool) int {
 	// Admin REST surface on the same listener: pact-go routes every
 	// consumer interaction through the single ProviderBaseURL, so we
 	// serve Connect-RPC and admin REST on the same port.
+	// ADR-000941: admin surface responses use explicit snake_case json
+	// tags and are wrapped in named envelopes, matching altctl's
+	// home_retention.go / home_storage.go / home_snapshot.go decode
+	// structs. This supersedes ADR-000765 §3's PascalCase-no-tags stance.
 	mux.HandleFunc("/admin/snapshots/create", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			w.WriteHeader(http.StatusMethodNotAllowed)
@@ -166,12 +170,20 @@ func startStubServer(t *testing.T, reject *bool) int {
 		_, _ = io.Copy(io.Discard, r.Body)
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]any{
-			"SnapshotID":       "11111111-2222-3333-4444-555555555555",
-			"EventSeqBoundary": 1,
-			"ItemsChecksum":    "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-			"VersionsChecksum": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
-			"DedupesChecksum":  "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
-			"CreatedAt":        "2026-04-23T00:00:00Z",
+			"snapshot_id":         "11111111-2222-3333-4444-555555555555",
+			"snapshot_type":       "full",
+			"projection_version":  1,
+			"projector_build_ref": "staging",
+			"schema_version":      "00009",
+			"event_seq_boundary":  1,
+			"items_row_count":     0,
+			"items_checksum":      "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+			"digest_row_count":    0,
+			"digest_checksum":     "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+			"recall_row_count":    0,
+			"recall_checksum":     "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+			"snapshot_at":         "2026-04-23T00:00:00Z",
+			"status":              "valid",
 		})
 	})
 	mux.HandleFunc("/admin/snapshots/latest", func(w http.ResponseWriter, r *http.Request) {
@@ -181,12 +193,20 @@ func startStubServer(t *testing.T, reject *bool) int {
 		}
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]any{
-			"SnapshotID":       "11111111-2222-3333-4444-555555555555",
-			"EventSeqBoundary": 1,
-			"ItemsChecksum":    "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-			"VersionsChecksum": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
-			"DedupesChecksum":  "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
-			"CreatedAt":        "2026-04-23T00:00:00Z",
+			"snapshot_id":         "11111111-2222-3333-4444-555555555555",
+			"snapshot_type":       "full",
+			"projection_version":  1,
+			"projector_build_ref": "staging",
+			"schema_version":      "00009",
+			"event_seq_boundary":  1,
+			"items_row_count":     0,
+			"items_checksum":      "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+			"digest_row_count":    0,
+			"digest_checksum":     "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+			"recall_row_count":    0,
+			"recall_checksum":     "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+			"snapshot_at":         "2026-04-23T00:00:00Z",
+			"status":              "valid",
 		})
 	})
 	mux.HandleFunc("/admin/snapshots/list", func(w http.ResponseWriter, r *http.Request) {
@@ -195,14 +215,18 @@ func startStubServer(t *testing.T, reject *bool) int {
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode([]map[string]any{{
-			"SnapshotID":       "11111111-2222-3333-4444-555555555555",
-			"EventSeqBoundary": 1,
-			"ItemsChecksum":    "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-			"VersionsChecksum": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
-			"DedupesChecksum":  "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
-			"CreatedAt":        "2026-04-23T00:00:00Z",
-		}})
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"snapshots": []map[string]any{
+				{
+					"snapshot_id":        "11111111-2222-3333-4444-555555555555",
+					"projection_version": 1,
+					"event_seq_boundary": 1,
+					"items_row_count":    0,
+					"snapshot_at":        "2026-04-23T00:00:00Z",
+					"status":             "valid",
+				},
+			},
+		})
 	})
 	mux.HandleFunc("/admin/retention/eligible", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {
@@ -210,9 +234,38 @@ func startStubServer(t *testing.T, reject *bool) int {
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode([]map[string]any{
-			{"Table": "knowledge_events", "PartitionName": "knowledge_events_y2025m01", "EventSeqMax": 1},
-			{"Table": "knowledge_user_events", "PartitionName": "knowledge_user_events_y2025m01", "EventSeqMax": 1},
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"partitions": []map[string]any{
+				{
+					"table_name":     "knowledge_events",
+					"partition_name": "knowledge_events_y2025m01",
+					"range_start":    "2025-01-01T00:00:00Z",
+					"range_end":      "2025-02-01T00:00:00Z",
+					"row_count":      1,
+					"size_bytes":     1,
+				},
+			},
+		})
+	})
+	mux.HandleFunc("/admin/retention/status", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			w.WriteHeader(http.StatusMethodNotAllowed)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"logs": []map[string]any{
+				{
+					"log_id":           "11111111-2222-3333-4444-555555555555",
+					"action":           "export",
+					"target_table":     "knowledge_events",
+					"target_partition": "knowledge_events_y2025m01",
+					"rows_affected":    1,
+					"dry_run":          false,
+					"status":           "success",
+					"run_at":           "2026-04-23T00:00:00Z",
+				},
+			},
 		})
 	})
 	mux.HandleFunc("/admin/retention/run", func(w http.ResponseWriter, r *http.Request) {
@@ -240,8 +293,14 @@ func startStubServer(t *testing.T, reject *bool) int {
 		}
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]any{
-			"Tables": []map[string]any{
-				{"Name": "knowledge_events", "Rows": 0, "SizeBytes": 0},
+			"tables": []map[string]any{
+				{
+					"name":       "knowledge_events",
+					"total_size": "128 kB",
+					"table_size": "96 kB",
+					"index_size": "32 kB",
+					"row_count":  0,
+				},
 			},
 		})
 	})
@@ -506,6 +565,9 @@ func TestVerifyAltctlConsumerContract(t *testing.T) {
 				return nil, nil
 			},
 			"retention policies are configured": func(setup bool, s models.ProviderState) (models.ProviderStateResponse, error) {
+				return nil, nil
+			},
+			"at least one retention log entry exists": func(setup bool, s models.ProviderState) (models.ProviderStateResponse, error) {
 				return nil, nil
 			},
 			"storage stats are available": func(setup bool, s models.ProviderState) (models.ProviderStateResponse, error) {

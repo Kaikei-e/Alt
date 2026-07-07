@@ -16,19 +16,21 @@
       },
       "response": {
         "body": {
-          "CreatedAt": "2026-04-23T00:00:00Z",
-          "DedupesChecksum": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
-          "EventSeqBoundary": 1,
-          "ItemsChecksum": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-          "SnapshotID": "11111111-2222-3333-4444-555555555555",
-          "VersionsChecksum": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+          "digest_row_count": 1,
+          "event_seq_boundary": 1,
+          "items_row_count": 1,
+          "projection_version": 1,
+          "recall_row_count": 1,
+          "snapshot_at": "2026-04-23T00:00:00Z",
+          "snapshot_id": "11111111-2222-3333-4444-555555555555",
+          "status": "valid"
         },
         "headers": {
           "Content-Type": "application/json"
         },
         "matchingRules": {
           "body": {
-            "$.CreatedAt": {
+            "$.digest_row_count": {
               "combine": "AND",
               "matchers": [
                 {
@@ -36,16 +38,7 @@
                 }
               ]
             },
-            "$.DedupesChecksum": {
-              "combine": "AND",
-              "matchers": [
-                {
-                  "match": "regex",
-                  "regex": "^sha256:[0-9a-f]{64}$"
-                }
-              ]
-            },
-            "$.EventSeqBoundary": {
+            "$.event_seq_boundary": {
               "combine": "AND",
               "matchers": [
                 {
@@ -53,16 +46,39 @@
                 }
               ]
             },
-            "$.ItemsChecksum": {
+            "$.items_row_count": {
               "combine": "AND",
               "matchers": [
                 {
-                  "match": "regex",
-                  "regex": "^sha256:[0-9a-f]{64}$"
+                  "match": "type"
                 }
               ]
             },
-            "$.SnapshotID": {
+            "$.projection_version": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.recall_row_count": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.snapshot_at": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.snapshot_id": {
               "combine": "AND",
               "matchers": [
                 {
@@ -71,12 +87,11 @@
                 }
               ]
             },
-            "$.VersionsChecksum": {
+            "$.status": {
               "combine": "AND",
               "matchers": [
                 {
-                  "match": "regex",
-                  "regex": "^sha256:[0-9a-f]{64}$"
+                  "match": "type"
                 }
               ]
             }
@@ -188,19 +203,24 @@
         "path": "/admin/retention/eligible"
       },
       "response": {
-        "body": [
-          {
-            "EventSeqMax": 1,
-            "PartitionName": "knowledge_events_y2025m01",
-            "Table": "knowledge_events"
-          }
-        ],
+        "body": {
+          "partitions": [
+            {
+              "partition_name": "knowledge_events_y2025m01",
+              "range_end": "2025-02-01T00:00:00Z",
+              "range_start": "2025-01-01T00:00:00Z",
+              "row_count": 1,
+              "size_bytes": 1,
+              "table_name": "knowledge_events"
+            }
+          ]
+        },
         "headers": {
           "Content-Type": "application/json"
         },
         "matchingRules": {
           "body": {
-            "$": {
+            "$.partitions": {
               "combine": "AND",
               "matchers": [
                 {
@@ -209,7 +229,7 @@
                 }
               ]
             },
-            "$[*].EventSeqMax": {
+            "$.partitions[*].partition_name": {
               "combine": "AND",
               "matchers": [
                 {
@@ -217,7 +237,7 @@
                 }
               ]
             },
-            "$[*].PartitionName": {
+            "$.partitions[*].range_end": {
               "combine": "AND",
               "matchers": [
                 {
@@ -225,7 +245,141 @@
                 }
               ]
             },
-            "$[*].Table": {
+            "$.partitions[*].range_start": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.partitions[*].row_count": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.partitions[*].size_bytes": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.partitions[*].table_name": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            }
+          }
+        },
+        "status": 200
+      }
+    },
+    {
+      "description": "a retention status query",
+      "providerStates": [
+        {
+          "name": "at least one retention log entry exists"
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "path": "/admin/retention/status"
+      },
+      "response": {
+        "body": {
+          "logs": [
+            {
+              "action": "export",
+              "dry_run": false,
+              "log_id": "11111111-2222-3333-4444-555555555555",
+              "rows_affected": 1,
+              "run_at": "2026-04-23T00:00:00Z",
+              "status": "success",
+              "target_partition": "knowledge_events_y2025m01",
+              "target_table": "knowledge_events"
+            }
+          ]
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "matchingRules": {
+          "body": {
+            "$.logs": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type",
+                  "min": 1
+                }
+              ]
+            },
+            "$.logs[*].action": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.logs[*].dry_run": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.logs[*].log_id": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "^[0-9a-f]{8}-([0-9a-f]{4}-){3}[0-9a-f]{12}$"
+                }
+              ]
+            },
+            "$.logs[*].rows_affected": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.logs[*].run_at": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.logs[*].status": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.logs[*].target_partition": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.logs[*].target_table": {
               "combine": "AND",
               "matchers": [
                 {
@@ -254,19 +408,17 @@
       },
       "response": {
         "body": {
-          "CreatedAt": "2026-04-23T00:00:00Z",
-          "DedupesChecksum": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
-          "EventSeqBoundary": 1,
-          "ItemsChecksum": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-          "SnapshotID": "11111111-2222-3333-4444-555555555555",
-          "VersionsChecksum": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+          "items_row_count": 1,
+          "snapshot_at": "2026-04-23T00:00:00Z",
+          "snapshot_id": "11111111-2222-3333-4444-555555555555",
+          "status": "valid"
         },
         "headers": {
           "Content-Type": "application/json"
         },
         "matchingRules": {
           "body": {
-            "$.CreatedAt": {
+            "$.items_row_count": {
               "combine": "AND",
               "matchers": [
                 {
@@ -274,16 +426,7 @@
                 }
               ]
             },
-            "$.DedupesChecksum": {
-              "combine": "AND",
-              "matchers": [
-                {
-                  "match": "regex",
-                  "regex": "^sha256:[0-9a-f]{64}$"
-                }
-              ]
-            },
-            "$.EventSeqBoundary": {
+            "$.snapshot_at": {
               "combine": "AND",
               "matchers": [
                 {
@@ -291,16 +434,7 @@
                 }
               ]
             },
-            "$.ItemsChecksum": {
-              "combine": "AND",
-              "matchers": [
-                {
-                  "match": "regex",
-                  "regex": "^sha256:[0-9a-f]{64}$"
-                }
-              ]
-            },
-            "$.SnapshotID": {
+            "$.snapshot_id": {
               "combine": "AND",
               "matchers": [
                 {
@@ -309,12 +443,11 @@
                 }
               ]
             },
-            "$.VersionsChecksum": {
+            "$.status": {
               "combine": "AND",
               "matchers": [
                 {
-                  "match": "regex",
-                  "regex": "^sha256:[0-9a-f]{64}$"
+                  "match": "type"
                 }
               ]
             }
@@ -335,20 +468,24 @@
         "path": "/admin/snapshots/list"
       },
       "response": {
-        "body": [
-          {
-            "CreatedAt": "2026-04-23T00:00:00Z",
-            "EventSeqBoundary": 1,
-            "ItemsChecksum": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-            "SnapshotID": "11111111-2222-3333-4444-555555555555"
-          }
-        ],
+        "body": {
+          "snapshots": [
+            {
+              "event_seq_boundary": 1,
+              "items_row_count": 1,
+              "projection_version": 1,
+              "snapshot_at": "2026-04-23T00:00:00Z",
+              "snapshot_id": "11111111-2222-3333-4444-555555555555",
+              "status": "valid"
+            }
+          ]
+        },
         "headers": {
           "Content-Type": "application/json"
         },
         "matchingRules": {
           "body": {
-            "$": {
+            "$.snapshots": {
               "combine": "AND",
               "matchers": [
                 {
@@ -357,7 +494,7 @@
                 }
               ]
             },
-            "$[*].CreatedAt": {
+            "$.snapshots[*].event_seq_boundary": {
               "combine": "AND",
               "matchers": [
                 {
@@ -365,7 +502,7 @@
                 }
               ]
             },
-            "$[*].EventSeqBoundary": {
+            "$.snapshots[*].items_row_count": {
               "combine": "AND",
               "matchers": [
                 {
@@ -373,21 +510,118 @@
                 }
               ]
             },
-            "$[*].ItemsChecksum": {
+            "$.snapshots[*].projection_version": {
               "combine": "AND",
               "matchers": [
                 {
-                  "match": "regex",
-                  "regex": "^sha256:[0-9a-f]{64}$"
+                  "match": "type"
                 }
               ]
             },
-            "$[*].SnapshotID": {
+            "$.snapshots[*].snapshot_at": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.snapshots[*].snapshot_id": {
               "combine": "AND",
               "matchers": [
                 {
                   "match": "regex",
                   "regex": "^[0-9a-f]{8}-([0-9a-f]{4}-){3}[0-9a-f]{12}$"
+                }
+              ]
+            },
+            "$.snapshots[*].status": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            }
+          }
+        },
+        "status": 200
+      }
+    },
+    {
+      "description": "a storage stats query",
+      "providerStates": [
+        {
+          "name": "storage stats are available"
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "path": "/admin/storage/stats"
+      },
+      "response": {
+        "body": {
+          "tables": [
+            {
+              "index_size": "32 kB",
+              "name": "knowledge_events",
+              "row_count": 1,
+              "table_size": "96 kB",
+              "total_size": "128 kB"
+            }
+          ]
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "matchingRules": {
+          "body": {
+            "$.tables": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type",
+                  "min": 1
+                }
+              ]
+            },
+            "$.tables[*].index_size": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.tables[*].name": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.tables[*].row_count": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.tables[*].table_size": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.tables[*].total_size": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
                 }
               ]
             }

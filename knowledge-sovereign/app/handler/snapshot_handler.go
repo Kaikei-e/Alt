@@ -26,6 +26,7 @@ type SnapshotRepository interface {
 	ExportTableToWriter(ctx context.Context, tableName string, w io.Writer) (int64, error)
 	GetMaxEventSeq(ctx context.Context) (int64, error)
 	GetTableRowCount(ctx context.Context, tableName string) (int, error)
+	GetActiveProjectionVersion(ctx context.Context) (*sovereign_db.ProjectionVersion, error)
 }
 
 // SnapshotHandler provides HTTP endpoints for snapshot operations.
@@ -67,6 +68,12 @@ func (h *SnapshotHandler) handleCreateSnapshot(w http.ResponseWriter, r *http.Re
 	json.NewEncoder(w).Encode(snapshot)
 }
 
+// snapshotListResponse wraps the snapshot list per altctl's
+// home_snapshot.go decode struct (ADR-000941).
+type snapshotListResponse struct {
+	Snapshots []sovereign_db.SnapshotMetadata `json:"snapshots"`
+}
+
 func (h *SnapshotHandler) handleListSnapshots(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	snapshots, err := h.repo.ListSnapshots(ctx, 20)
@@ -74,8 +81,11 @@ func (h *SnapshotHandler) handleListSnapshots(w http.ResponseWriter, r *http.Req
 		http.Error(w, fmt.Sprintf(`{"error": %q}`, err.Error()), http.StatusInternalServerError)
 		return
 	}
+	if snapshots == nil {
+		snapshots = []sovereign_db.SnapshotMetadata{}
+	}
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(snapshots)
+	json.NewEncoder(w).Encode(snapshotListResponse{Snapshots: snapshots})
 }
 
 func (h *SnapshotHandler) handleGetLatestSnapshot(w http.ResponseWriter, r *http.Request) {
@@ -142,7 +152,14 @@ func (h *SnapshotHandler) CreateSnapshot(ctx context.Context) (*sovereign_db.Sna
 	}
 
 	// 3. Get active projection version
-	projVersion := 1 // default
+	activeVersion, err := h.repo.GetActiveProjectionVersion(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("get active projection version: %w", err)
+	}
+	projVersion := 1 // default when no projection version has been activated yet
+	if activeVersion != nil {
+		projVersion = activeVersion.Version
+	}
 
 	// 4. Record snapshot metadata
 	meta := &sovereign_db.SnapshotMetadata{

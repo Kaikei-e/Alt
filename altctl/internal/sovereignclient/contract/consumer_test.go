@@ -4,16 +4,20 @@
 // altctl → knowledge-sovereign's admin REST API (port :9501).
 //
 // The admin surface is operator-critical (disaster recovery: snapshot
-// create / list / latest, retention eligible / run --dry-run, storage
-// stats). A silent wire-format drift would break `altctl home snapshot`
-// and `altctl home retention` in the middle of an incident response.
-// These interactions pin:
+// create / list / latest, retention status / eligible / run --dry-run,
+// storage stats). A silent wire-format drift would break `altctl home
+// snapshot`, `altctl home retention`, and `altctl home storage` in the
+// middle of an incident response. These interactions pin:
 //
-//   - Snapshot response fields are PascalCase (encoding/json default on
-//     sovereign's untagged struct). See ADR-000765 §3.
+//   - Every admin response field uses an explicit snake_case json tag —
+//     ADR-000941 resolves the PascalCase-vs-tag question ADR-000765 §3
+//     deferred, in favor of explicit tags matching altctl's decode
+//     structs (cmd/home_retention.go, home_storage.go, home_snapshot.go).
+//   - List-shaped responses are wrapped in a named envelope
+//     (`{"logs": [...]}`, `{"partitions": [...]}`, `{"tables": [...]}`,
+//     `{"snapshots": [...]}`), not bare top-level arrays.
 //   - EventSeqBoundary is a positive integer — append-first invariant.
 //   - SnapshotID is a UUIDv4.
-//   - Checksums are `sha256:<64 hex chars>` literals.
 //   - Retention dry-run echoes `dry_run: true` and omits `error`.
 package contract
 
@@ -50,17 +54,6 @@ func clientFor(config consumer.MockServerConfig) *sovereignclient.SovereignClien
 	return sovereignclient.NewClient(fmt.Sprintf("http://%s:%d", config.Host, config.Port))
 }
 
-// snapshotPayload captures the PascalCase fields altctl decodes from
-// sovereign's snapshot endpoints.
-type snapshotPayload struct {
-	SnapshotID       string `json:"SnapshotID"`
-	EventSeqBoundary int64  `json:"EventSeqBoundary"`
-	ItemsChecksum    string `json:"ItemsChecksum"`
-	VersionsChecksum string `json:"VersionsChecksum"`
-	DedupesChecksum  string `json:"DedupesChecksum"`
-	CreatedAt        string `json:"CreatedAt"`
-}
-
 func TestSnapshotCreate(t *testing.T) {
 	mp := newPact(t)
 
@@ -81,23 +74,26 @@ func TestSnapshotCreate(t *testing.T) {
 				"Content-Type": matchers.String("application/json"),
 			},
 			Body: matchers.MapMatcher{
-				"SnapshotID":       matchers.Regex("11111111-2222-3333-4444-555555555555", "^[0-9a-f]{8}-([0-9a-f]{4}-){3}[0-9a-f]{12}$"),
-				"EventSeqBoundary": matchers.Like(1),
-				"ItemsChecksum":    matchers.Regex("sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "^sha256:[0-9a-f]{64}$"),
-				"VersionsChecksum": matchers.Regex("sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", "^sha256:[0-9a-f]{64}$"),
-				"DedupesChecksum":  matchers.Regex("sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc", "^sha256:[0-9a-f]{64}$"),
-				"CreatedAt":        matchers.Like("2026-04-23T00:00:00Z"),
+				"snapshot_id":     matchers.Regex("11111111-2222-3333-4444-555555555555", "^[0-9a-f]{8}-([0-9a-f]{4}-){3}[0-9a-f]{12}$"),
+				"status":          matchers.Like("valid"),
+				"items_row_count": matchers.Like(1),
+				"snapshot_at":     matchers.Like("2026-04-23T00:00:00Z"),
 			},
 		}).
 		ExecuteTest(t, func(config consumer.MockServerConfig) error {
 			c := clientFor(config)
-			var resp snapshotPayload
+			var resp struct {
+				SnapshotID    string `json:"snapshot_id"`
+				Status        string `json:"status"`
+				ItemsRowCount int    `json:"items_row_count"`
+				SnapshotAt    string `json:"snapshot_at"`
+			}
 			if err := c.Post(context.Background(), "/admin/snapshots/create", map[string]any{}, &resp); err != nil {
 				return err
 			}
 			assert.NotEmpty(t, resp.SnapshotID)
-			assert.Greater(t, resp.EventSeqBoundary, int64(0), "EventSeqBoundary must be > 0 (append-first invariant)")
-			assert.Contains(t, resp.ItemsChecksum, "sha256:")
+			assert.Equal(t, "valid", resp.Status)
+			assert.NotEmpty(t, resp.SnapshotAt)
 			return nil
 		})
 	require.NoError(t, err)
@@ -120,18 +116,33 @@ func TestSnapshotLatest(t *testing.T) {
 				"Content-Type": matchers.String("application/json"),
 			},
 			Body: matchers.MapMatcher{
-				"SnapshotID":       matchers.Regex("11111111-2222-3333-4444-555555555555", "^[0-9a-f]{8}-([0-9a-f]{4}-){3}[0-9a-f]{12}$"),
-				"EventSeqBoundary": matchers.Like(1),
-				"ItemsChecksum":    matchers.Regex("sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "^sha256:[0-9a-f]{64}$"),
-				"VersionsChecksum": matchers.Regex("sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", "^sha256:[0-9a-f]{64}$"),
-				"DedupesChecksum":  matchers.Regex("sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc", "^sha256:[0-9a-f]{64}$"),
-				"CreatedAt":        matchers.Like("2026-04-23T00:00:00Z"),
+				"snapshot_id":        matchers.Regex("11111111-2222-3333-4444-555555555555", "^[0-9a-f]{8}-([0-9a-f]{4}-){3}[0-9a-f]{12}$"),
+				"status":             matchers.Like("valid"),
+				"projection_version": matchers.Like(1),
+				"event_seq_boundary": matchers.Like(1),
+				"items_row_count":    matchers.Like(1),
+				"digest_row_count":   matchers.Like(1),
+				"recall_row_count":   matchers.Like(1),
+				"snapshot_at":        matchers.Like("2026-04-23T00:00:00Z"),
 			},
 		}).
 		ExecuteTest(t, func(config consumer.MockServerConfig) error {
 			c := clientFor(config)
-			var resp snapshotPayload
-			return c.Get(context.Background(), "/admin/snapshots/latest", &resp)
+			var resp struct {
+				SnapshotID        string `json:"snapshot_id"`
+				Status            string `json:"status"`
+				ProjectionVersion int    `json:"projection_version"`
+				EventSeqBoundary  int64  `json:"event_seq_boundary"`
+				ItemsRowCount     int    `json:"items_row_count"`
+				DigestRowCount    int    `json:"digest_row_count"`
+				RecallRowCount    int    `json:"recall_row_count"`
+				SnapshotAt        string `json:"snapshot_at"`
+			}
+			if err := c.Get(context.Background(), "/admin/snapshots/latest", &resp); err != nil {
+				return err
+			}
+			assert.Greater(t, resp.EventSeqBoundary, int64(0), "EventSeqBoundary must be > 0 (append-first invariant)")
+			return nil
 		})
 	require.NoError(t, err)
 }
@@ -152,29 +163,96 @@ func TestSnapshotList(t *testing.T) {
 			Headers: matchers.MapMatcher{
 				"Content-Type": matchers.String("application/json"),
 			},
-			Body: matchers.EachLike(
-				matchers.MapMatcher{
-					"SnapshotID":       matchers.Regex("11111111-2222-3333-4444-555555555555", "^[0-9a-f]{8}-([0-9a-f]{4}-){3}[0-9a-f]{12}$"),
-					"EventSeqBoundary": matchers.Like(1),
-					"ItemsChecksum":    matchers.Regex("sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "^sha256:[0-9a-f]{64}$"),
-					"CreatedAt":        matchers.Like("2026-04-23T00:00:00Z"),
-				},
-				1,
-			),
+			Body: matchers.MapMatcher{
+				"snapshots": matchers.EachLike(
+					matchers.MapMatcher{
+						"snapshot_id":        matchers.Regex("11111111-2222-3333-4444-555555555555", "^[0-9a-f]{8}-([0-9a-f]{4}-){3}[0-9a-f]{12}$"),
+						"status":             matchers.Like("valid"),
+						"projection_version": matchers.Like(1),
+						"event_seq_boundary": matchers.Like(1),
+						"items_row_count":    matchers.Like(1),
+						"snapshot_at":        matchers.Like("2026-04-23T00:00:00Z"),
+					},
+					1,
+				),
+			},
 		}).
 		ExecuteTest(t, func(config consumer.MockServerConfig) error {
 			c := clientFor(config)
-			var resp []snapshotPayload
-			return c.Get(context.Background(), "/admin/snapshots/list", &resp)
+			var resp struct {
+				Snapshots []struct {
+					SnapshotID        string `json:"snapshot_id"`
+					Status            string `json:"status"`
+					ProjectionVersion int    `json:"projection_version"`
+					EventSeqBoundary  int64  `json:"event_seq_boundary"`
+					ItemsRowCount     int    `json:"items_row_count"`
+					SnapshotAt        string `json:"snapshot_at"`
+				} `json:"snapshots"`
+			}
+			if err := c.Get(context.Background(), "/admin/snapshots/list", &resp); err != nil {
+				return err
+			}
+			require.NotEmpty(t, resp.Snapshots)
+			assert.NotEmpty(t, resp.Snapshots[0].SnapshotID)
+			return nil
 		})
 	require.NoError(t, err)
 }
 
-// retentionEligibleRow matches the PascalCase row shape altctl decodes.
-type retentionEligibleRow struct {
-	Table         string `json:"Table"`
-	PartitionName string `json:"PartitionName"`
-	EventSeqMax   int64  `json:"EventSeqMax"`
+func TestRetentionStatus(t *testing.T) {
+	mp := newPact(t)
+
+	err := mp.
+		AddInteraction().
+		Given("at least one retention log entry exists").
+		UponReceiving("a retention status query").
+		WithCompleteRequest(consumer.Request{
+			Method: "GET",
+			Path:   matchers.String("/admin/retention/status"),
+		}).
+		WithCompleteResponse(consumer.Response{
+			Status: 200,
+			Headers: matchers.MapMatcher{
+				"Content-Type": matchers.String("application/json"),
+			},
+			Body: matchers.MapMatcher{
+				"logs": matchers.EachLike(
+					matchers.MapMatcher{
+						"log_id":           matchers.Regex("11111111-2222-3333-4444-555555555555", "^[0-9a-f]{8}-([0-9a-f]{4}-){3}[0-9a-f]{12}$"),
+						"action":           matchers.Like("export"),
+						"target_table":     matchers.Like("knowledge_events"),
+						"target_partition": matchers.Like("knowledge_events_y2025m01"),
+						"rows_affected":    matchers.Like(1),
+						"dry_run":          matchers.Like(false),
+						"status":           matchers.Like("success"),
+						"run_at":           matchers.Like("2026-04-23T00:00:00Z"),
+					},
+					1,
+				),
+			},
+		}).
+		ExecuteTest(t, func(config consumer.MockServerConfig) error {
+			c := clientFor(config)
+			var resp struct {
+				Logs []struct {
+					LogID           string `json:"log_id"`
+					Action          string `json:"action"`
+					TargetTable     string `json:"target_table"`
+					TargetPartition string `json:"target_partition"`
+					RowsAffected    int64  `json:"rows_affected"`
+					DryRun          bool   `json:"dry_run"`
+					Status          string `json:"status"`
+					RunAt           string `json:"run_at"`
+				} `json:"logs"`
+			}
+			if err := c.Get(context.Background(), "/admin/retention/status", &resp); err != nil {
+				return err
+			}
+			require.NotEmpty(t, resp.Logs)
+			assert.NotEmpty(t, resp.Logs[0].Action)
+			return nil
+		})
+	require.NoError(t, err)
 }
 
 func TestRetentionEligible(t *testing.T) {
@@ -193,19 +271,88 @@ func TestRetentionEligible(t *testing.T) {
 			Headers: matchers.MapMatcher{
 				"Content-Type": matchers.String("application/json"),
 			},
-			Body: matchers.EachLike(
-				matchers.MapMatcher{
-					"Table":         matchers.Like("knowledge_events"),
-					"PartitionName": matchers.Like("knowledge_events_y2025m01"),
-					"EventSeqMax":   matchers.Like(1),
-				},
-				1,
-			),
+			Body: matchers.MapMatcher{
+				"partitions": matchers.EachLike(
+					matchers.MapMatcher{
+						"table_name":     matchers.Like("knowledge_events"),
+						"partition_name": matchers.Like("knowledge_events_y2025m01"),
+						"range_start":    matchers.Like("2025-01-01T00:00:00Z"),
+						"range_end":      matchers.Like("2025-02-01T00:00:00Z"),
+						"row_count":      matchers.Like(1),
+						"size_bytes":     matchers.Like(1),
+					},
+					1,
+				),
+			},
 		}).
 		ExecuteTest(t, func(config consumer.MockServerConfig) error {
 			c := clientFor(config)
-			var resp []retentionEligibleRow
-			return c.Get(context.Background(), "/admin/retention/eligible", &resp)
+			var resp struct {
+				Partitions []struct {
+					TableName     string `json:"table_name"`
+					PartitionName string `json:"partition_name"`
+					RangeStart    string `json:"range_start"`
+					RangeEnd      string `json:"range_end"`
+					RowCount      int64  `json:"row_count"`
+					SizeBytes     int64  `json:"size_bytes"`
+				} `json:"partitions"`
+			}
+			if err := c.Get(context.Background(), "/admin/retention/eligible", &resp); err != nil {
+				return err
+			}
+			require.NotEmpty(t, resp.Partitions)
+			assert.NotEmpty(t, resp.Partitions[0].TableName)
+			return nil
+		})
+	require.NoError(t, err)
+}
+
+func TestStorageStats(t *testing.T) {
+	mp := newPact(t)
+
+	err := mp.
+		AddInteraction().
+		Given("storage stats are available").
+		UponReceiving("a storage stats query").
+		WithCompleteRequest(consumer.Request{
+			Method: "GET",
+			Path:   matchers.String("/admin/storage/stats"),
+		}).
+		WithCompleteResponse(consumer.Response{
+			Status: 200,
+			Headers: matchers.MapMatcher{
+				"Content-Type": matchers.String("application/json"),
+			},
+			Body: matchers.MapMatcher{
+				"tables": matchers.EachLike(
+					matchers.MapMatcher{
+						"name":       matchers.Like("knowledge_events"),
+						"total_size": matchers.Like("128 kB"),
+						"table_size": matchers.Like("96 kB"),
+						"index_size": matchers.Like("32 kB"),
+						"row_count":  matchers.Like(1),
+					},
+					1,
+				),
+			},
+		}).
+		ExecuteTest(t, func(config consumer.MockServerConfig) error {
+			c := clientFor(config)
+			var resp struct {
+				Tables []struct {
+					Name      string `json:"name"`
+					TotalSize string `json:"total_size"`
+					TableSize string `json:"table_size"`
+					IndexSize string `json:"index_size"`
+					RowCount  int64  `json:"row_count"`
+				} `json:"tables"`
+			}
+			if err := c.Get(context.Background(), "/admin/storage/stats", &resp); err != nil {
+				return err
+			}
+			require.NotEmpty(t, resp.Tables)
+			assert.NotEmpty(t, resp.Tables[0].Name)
+			return nil
 		})
 	require.NoError(t, err)
 }

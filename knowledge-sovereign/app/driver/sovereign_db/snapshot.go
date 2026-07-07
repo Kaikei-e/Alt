@@ -11,23 +11,27 @@ import (
 )
 
 // SnapshotMetadata represents a projection snapshot record.
+//
+// ADR-000941: json tags are explicit snake_case, matching altctl's
+// home_snapshot.go decode structs. This supersedes ADR-000765 §3, which
+// deferred the PascalCase-vs-tag decision to a future ADR.
 type SnapshotMetadata struct {
-	SnapshotID        uuid.UUID
-	SnapshotType      string // "full"
-	ProjectionVersion int
-	ProjectorBuildRef string
-	SchemaVersion     string
-	SnapshotAt        time.Time
-	EventSeqBoundary  int64
-	SnapshotDataPath  string
-	ItemsRowCount     int
-	ItemsChecksum     string
-	DigestRowCount    int
-	DigestChecksum    string
-	RecallRowCount    int
-	RecallChecksum    string
-	CreatedAt         time.Time
-	Status            string // pending, valid, invalidated, archived
+	SnapshotID        uuid.UUID `json:"snapshot_id"`
+	SnapshotType      string    `json:"snapshot_type"` // "full"
+	ProjectionVersion int       `json:"projection_version"`
+	ProjectorBuildRef string    `json:"projector_build_ref"`
+	SchemaVersion     string    `json:"schema_version"`
+	SnapshotAt        time.Time `json:"snapshot_at"`
+	EventSeqBoundary  int64     `json:"event_seq_boundary"`
+	SnapshotDataPath  string    `json:"snapshot_data_path"`
+	ItemsRowCount     int       `json:"items_row_count"`
+	ItemsChecksum     string    `json:"items_checksum"`
+	DigestRowCount    int       `json:"digest_row_count"`
+	DigestChecksum    string    `json:"digest_checksum"`
+	RecallRowCount    int       `json:"recall_row_count"`
+	RecallChecksum    string    `json:"recall_checksum"`
+	CreatedAt         time.Time `json:"created_at"`
+	Status            string    `json:"status"` // pending, valid, invalidated, archived
 }
 
 // Validate checks that all required fields are present.
@@ -199,10 +203,16 @@ func (r *Repository) ExportTableToWriter(ctx context.Context, tableName string, 
 }
 
 // TableStorageInfo represents storage statistics for a table.
+//
+// ADR-000941: `name` (not `table_name`) plus `table_size`/`index_size`
+// broken out from the combined `total_size`, matching altctl's
+// home_storage.go decode struct.
 type TableStorageInfo struct {
-	TableName     string `json:"table_name"`
+	TableName     string `json:"name"`
 	RowCount      int64  `json:"row_count"`
 	TotalSize     string `json:"total_size"`
+	TableSize     string `json:"table_size"`
+	IndexSize     string `json:"index_size"`
 	TotalBytes    int64  `json:"total_bytes"`
 	IsPartitioned bool   `json:"is_partitioned"`
 }
@@ -213,6 +223,8 @@ func (r *Repository) GetStorageStats(ctx context.Context) ([]TableStorageInfo, e
 		c.relname AS table_name,
 		COALESCE(s.n_live_tup, 0) AS row_count,
 		pg_size_pretty(pg_total_relation_size(c.oid)) AS total_size,
+		pg_size_pretty(pg_table_size(c.oid)) AS table_size,
+		pg_size_pretty(pg_indexes_size(c.oid)) AS index_size,
 		pg_total_relation_size(c.oid) AS total_bytes,
 		c.relkind = 'p' AS is_partitioned
 	FROM pg_class c
@@ -232,7 +244,7 @@ func (r *Repository) GetStorageStats(ctx context.Context) ([]TableStorageInfo, e
 	var stats []TableStorageInfo
 	for rows.Next() {
 		var s TableStorageInfo
-		if err := rows.Scan(&s.TableName, &s.RowCount, &s.TotalSize, &s.TotalBytes, &s.IsPartitioned); err != nil {
+		if err := rows.Scan(&s.TableName, &s.RowCount, &s.TotalSize, &s.TableSize, &s.IndexSize, &s.TotalBytes, &s.IsPartitioned); err != nil {
 			return nil, fmt.Errorf("GetStorageStats scan: %w", err)
 		}
 		stats = append(stats, s)
