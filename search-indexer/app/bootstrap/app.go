@@ -18,7 +18,7 @@ import (
 	"search-indexer/usecase"
 	appOtel "search-indexer/utils/otel"
 
-	"github.com/cenkalti/backoff/v5"
+	"github.com/cenkalti/backoff/v6"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
 )
