@@ -76,6 +76,10 @@ class Settings(BaseSettings):
     # Checkpointer
     checkpoint_enabled: bool = False
 
+    # Content store — bounded LRU cache for article bodies (process-global,
+    # shared across every run; see MemoryContentStore docstring).
+    content_store_max_size: int = 2000
+
     # Language quota applied by Curator after LLM ranking.
     # Format: {"<bcp47_short>": <min_share_0_to_1>}; 0.0 disables enforcement.
     language_quota_en: float = 0.2

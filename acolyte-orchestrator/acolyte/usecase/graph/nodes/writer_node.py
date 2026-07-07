@@ -488,7 +488,6 @@ class WriterNode:
         self._llm = llm
         self._settings = settings or Settings()
         self._es_renderer = ExecutiveSummaryRenderer()
-        self._source_map: SourceMap | None = None
 
     def _role_num_predict(self, section_role: str) -> int:
         """Resolve num_predict by section role."""
@@ -510,17 +509,23 @@ class WriterNode:
         delta_feedback: str = "",
         num_predict: int = 1000,
         prior_sections_context: str = "",
+        source_map: SourceMap | None = None,
     ) -> dict:
         """Generate a single paragraph from one claim via LLM.
 
         Returns a GeneratedParagraph-compatible dict.
+
+        ``source_map`` is passed explicitly (not read from instance state)
+        because a single WriterNode instance is shared across all runs via
+        the compiled LangGraph graph — stashing it on `self` would let
+        concurrent runs race and read each other's SourceMap.
         """
         prompt_template = _select_paragraph_prompt(section_role)
         raw_eids = claim.get("evidence_ids", [])
         # Convert UUIDs to short IDs if SourceMap is available
-        if self._source_map:
-            eids = [self._source_map.short_id_for(eid) or eid for eid in raw_eids]
-            languages = [(entry.language if (entry := self._source_map.resolve(sn)) else "und") for sn in eids]
+        if source_map:
+            eids = [source_map.short_id_for(eid) or eid for eid in raw_eids]
+            languages = [(entry.language if (entry := source_map.resolve(sn)) else "und") for sn in eids]
         else:
             eids = list(raw_eids)
             languages = []
@@ -587,6 +592,7 @@ class WriterNode:
         claim_feedbacks: list[dict] | None = None,
         num_predict: int = 1000,
         prior_sections_context: str = "",
+        source_map: SourceMap | None = None,
     ) -> list[dict]:
         """Generate paragraphs for all claims in a section.
 
@@ -627,6 +633,7 @@ class WriterNode:
                 delta_feedback=delta,
                 num_predict=num_predict,
                 prior_sections_context=prior_sections_context,
+                source_map=source_map,
             )
             paragraphs.append(para)
 
@@ -646,9 +653,13 @@ class WriterNode:
         current_best = dict(state.get("best_sections", {}))
         current_metrics = dict(state.get("best_section_metrics", {}))
 
-        # Load SourceMap for short ID conversion (Phase 4)
+        # Load SourceMap for short ID conversion (Phase 4). Kept as a local
+        # variable (not `self._source_map`) because this WriterNode instance
+        # is shared across all runs via the compiled LangGraph graph —
+        # storing it on `self` let concurrent runs race and read each
+        # other's SourceMap.
         source_map_data = state.get("source_map")
-        self._source_map = SourceMap.from_dict(source_map_data) if source_map_data else None
+        source_map = SourceMap.from_dict(source_map_data) if source_map_data else None
 
         sections: dict[str, str] = dict(existing_sections)
         section_citations: dict[str, list[dict]] = {}
@@ -776,6 +787,7 @@ class WriterNode:
                     claim_feedbacks=sect_feedbacks,
                     num_predict=self._role_num_predict(section_role),
                     prior_sections_context=prior_ctx,
+                    source_map=source_map,
                 )
 
                 section_paragraphs[key] = paragraphs

@@ -103,6 +103,23 @@ class TestRRFFusion:
         assert result[0].title == "Title v2"
         assert result[0].score > 0  # RRF score, not original score
 
+    def test_fused_hit_preserves_language(self) -> None:
+        """Fused hit must carry over the `language` of the best-scored source hit.
+
+        ArticleHit.language is populated by the search-indexer gateway but
+        was dropped when constructing ScoredHit, so language-quota
+        rebalancing and cross-lingual features always saw "und".
+        """
+        fusion = RRFFusion(k=60)
+        hit1 = ScoredHit(article_id="a", title="Title JA", tags=None, score=0.5, source="lexical", language="ja")
+        hit2 = ScoredHit(article_id="b", title="Title EN", tags=None, score=0.9, source="broad", language="en")
+
+        result = fusion.fuse([[hit1], [hit2]])
+
+        by_id = {hit.article_id: hit for hit in result}
+        assert by_id["a"].language == "ja"
+        assert by_id["b"].language == "en"
+
     def test_three_lists_fusion(self) -> None:
         """Three lists should be fused correctly."""
         fusion = RRFFusion(k=60)

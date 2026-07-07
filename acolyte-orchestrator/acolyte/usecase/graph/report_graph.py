@@ -73,7 +73,7 @@ def build_report_graph(
             hyde_generator=hyde_generator,  # type: ignore[arg-type]
         ),
     )
-    graph.add_node("curator", CuratorNode(llm))
+    graph.add_node("curator", CuratorNode(llm, settings=settings))
     if settings is not None:
         writer = WriterNode(llm, settings=settings)
     else:
