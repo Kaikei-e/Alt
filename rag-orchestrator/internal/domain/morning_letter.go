@@ -24,12 +24,6 @@ type ArticleRef struct {
 	PublishedAt time.Time `json:"published_at"`
 }
 
-// MorningLetterResponse represents the parsed LLM response for morning letter topics
-type MorningLetterResponse struct {
-	Topics []TopicSummary `json:"topics"`
-	Meta   TopicsMeta     `json:"meta"`
-}
-
 // TopicsMeta contains metadata about the topics analysis
 type TopicsMeta struct {
 	TopicsFound        int    `json:"topics_found"`

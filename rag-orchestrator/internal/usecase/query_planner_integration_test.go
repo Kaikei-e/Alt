@@ -13,6 +13,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
+	"github.com/stretchr/testify/require"
 )
 
 // mockQueryPlannerPort implements domain.QueryPlannerPort for testing.
@@ -231,6 +232,57 @@ func TestExecute_WithQueryPlanner_ClarificationSkipsRetrieval(t *testing.T) {
 
 	// Retrieve should NOT have been called
 	mockRetrieve.AssertNotCalled(t, "Execute", mock.Anything, mock.Anything)
+}
+
+// TestExecute_WithQueryPlanner_ClarificationSkipsRetrieval_NonStreaming
+// guards against a missing-branch bug: unlike Stream() (verified above),
+// the non-streaming Execute() did not check NeedsClarification before
+// calling llmClient.Chat, so a ShouldClarify plan (messages=nil) reached
+// the LLM client directly.
+func TestExecute_WithQueryPlanner_ClarificationSkipsRetrieval_NonStreaming(t *testing.T) {
+	mockRetrieve := new(mockRetrieveContextUsecase)
+	mockLLM := new(mockLLMClient)
+	mockQP := new(mockQueryPlannerPort)
+	testLogger := slog.New(slog.NewJSONHandler(io.Discard, nil))
+
+	mockQP.On("PlanQuery", mock.Anything, mock.Anything).Return(&domain.QueryPlan{
+		ResolvedQuery:    "",
+		SearchQueries:    nil,
+		Intent:           "general",
+		RetrievalPolicy:  "no_retrieval",
+		AnswerFormat:     "detail",
+		ShouldClarify:    true,
+		ClarificationMsg: "何を詳しく知りたいですか？",
+		TopicEntities:    nil,
+	}, nil)
+
+	uc := usecase.NewAnswerWithRAGUsecase(
+		mockRetrieve,
+		usecase.NewXMLPromptBuilder(),
+		mockLLM,
+		usecase.NewOutputValidator(100),
+		7, 512, 6000,
+		"v1", "ja",
+		testLogger,
+		usecase.WithQueryPlanner(mockQP),
+	)
+
+	output, err := uc.Execute(context.Background(), usecase.AnswerWithRAGInput{
+		Query: "もっと詳しく",
+		ConversationHistory: []domain.Message{
+			{Role: "user", Content: "AIの動向は？"},
+			{Role: "assistant", Content: "LLMが進化しています。"},
+		},
+	})
+
+	require.NoError(t, err)
+	require.NotNil(t, output)
+	assert.Equal(t, "何を詳しく知りたいですか？", output.Answer)
+	assert.True(t, output.Debug.NeedsClarification)
+
+	// Neither retrieval nor the LLM client should have been reached.
+	mockRetrieve.AssertNotCalled(t, "Execute", mock.Anything, mock.Anything)
+	mockLLM.AssertNotCalled(t, "Chat", mock.Anything, mock.Anything, mock.Anything)
 }
 
 func TestExecute_WithQueryPlanner_NilRetrievalReturnsFallbackInsteadOfPanic(t *testing.T) {

@@ -43,6 +43,27 @@ func (m *MockBM25Searcher) SearchBM25(ctx context.Context, query string, limit i
 	return args.Get(0).([]domain.BM25SearchResult), args.Error(1)
 }
 
+// MockHybridSearcher is a test double for domain.HybridSearcher.
+type MockHybridSearcher struct {
+	mock.Mock
+}
+
+func (m *MockHybridSearcher) HybridSearch(ctx context.Context, queryVector []float32, queryText string, limit int) ([]domain.SearchResult, error) {
+	args := m.Called(ctx, queryVector, queryText, limit)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).([]domain.SearchResult), args.Error(1)
+}
+
+func (m *MockHybridSearcher) SearchNeighbors(ctx context.Context, queryVector []float32, queryText string, seedArticleIDs []string, limit int) ([]domain.SearchResult, error) {
+	args := m.Called(ctx, queryVector, queryText, seedArticleIDs, limit)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).([]domain.SearchResult), args.Error(1)
+}
+
 func TestEmbedAndSearch_NilEmbedding_SkipsVectorSearch_RunsBM25(t *testing.T) {
 	logger := slog.New(slog.NewJSONHandler(io.Discard, nil))
 	mockEncoder := new(MockVectorEncoder)
@@ -64,7 +85,7 @@ func TestEmbedAndSearch_NilEmbedding_SkipsVectorSearch_RunsBM25(t *testing.T) {
 	// Vector search should NOT be called (embedding is nil)
 	// If it is called, the mock will panic with "unexpected call"
 
-	err := retrieval.EmbedAndSearch(context.Background(), sc, mockEncoder, mockBM25, mockChunkRepo, true, 50, logger)
+	err := retrieval.EmbedAndSearch(context.Background(), sc, mockEncoder, mockBM25, nil, mockChunkRepo, true, 50, logger)
 	require.NoError(t, err, "EmbedAndSearch should succeed in BM25-only degraded mode")
 
 	assert.Len(t, sc.BM25Results, 1, "BM25 results should be populated")
@@ -85,7 +106,7 @@ func TestEmbedAndSearch_NilEmbedding_NoBM25Searcher_NoError(t *testing.T) {
 	}
 
 	// No BM25 searcher, no vector search possible — should complete without error
-	err := retrieval.EmbedAndSearch(context.Background(), sc, mockEncoder, nil, mockChunkRepo, false, 50, logger)
+	err := retrieval.EmbedAndSearch(context.Background(), sc, mockEncoder, nil, nil, mockChunkRepo, false, 50, logger)
 	require.NoError(t, err, "EmbedAndSearch should not error even with no search available")
 
 	assert.Empty(t, sc.OriginalResults)
@@ -109,7 +130,7 @@ func TestEmbedAndSearch_WithEmbedding_RunsVectorSearch(t *testing.T) {
 		{Chunk: domain.RagChunk{Content: "result"}, Score: 0.9, Title: "Article"},
 	}, nil)
 
-	err := retrieval.EmbedAndSearch(context.Background(), sc, mockEncoder, nil, mockChunkRepo, false, 50, logger)
+	err := retrieval.EmbedAndSearch(context.Background(), sc, mockEncoder, nil, nil, mockChunkRepo, false, 50, logger)
 	require.NoError(t, err)
 
 	assert.Len(t, sc.OriginalResults, 1)
@@ -144,7 +165,7 @@ func TestEmbedAndSearch_BM25UsesExpandedQueries(t *testing.T) {
 	// Expanded embedding
 	mockEncoder.On("Encode", mock.Anything, mock.Anything).Return([][]float32{queryVec}, nil)
 
-	err := retrieval.EmbedAndSearch(context.Background(), sc, mockEncoder, mockBM25, mockChunkRepo, true, 50, logger)
+	err := retrieval.EmbedAndSearch(context.Background(), sc, mockEncoder, mockBM25, nil, mockChunkRepo, true, 50, logger)
 	require.NoError(t, err)
 
 	// Both original and expanded query should have been searched via BM25
@@ -179,7 +200,7 @@ func TestEmbedAndSearch_BM25ExpandedDeduplicatesResults(t *testing.T) {
 	mockChunkRepo.On("Search", mock.Anything, queryVec, 50).Return([]domain.SearchResult{}, nil)
 	mockEncoder.On("Encode", mock.Anything, mock.Anything).Return([][]float32{queryVec}, nil)
 
-	err := retrieval.EmbedAndSearch(context.Background(), sc, mockEncoder, mockBM25, mockChunkRepo, true, 50, logger)
+	err := retrieval.EmbedAndSearch(context.Background(), sc, mockEncoder, mockBM25, nil, mockChunkRepo, true, 50, logger)
 	require.NoError(t, err)
 
 	// Duplicate articles should be deduplicated
@@ -201,7 +222,65 @@ func TestEmbedAndSearch_VectorSearchFails_ReturnsError(t *testing.T) {
 
 	mockChunkRepo.On("Search", mock.Anything, queryVec, 50).Return(nil, fmt.Errorf("db connection lost"))
 
-	err := retrieval.EmbedAndSearch(context.Background(), sc, mockEncoder, nil, mockChunkRepo, false, 50, logger)
+	err := retrieval.EmbedAndSearch(context.Background(), sc, mockEncoder, nil, nil, mockChunkRepo, false, 50, logger)
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "failed to search original query")
+}
+
+func TestEmbedAndSearch_HybridSearcher_UsedInsteadOfBM25AndVector(t *testing.T) {
+	logger := slog.New(slog.NewJSONHandler(io.Discard, nil))
+	mockEncoder := new(MockVectorEncoder)
+	mockHybrid := new(MockHybridSearcher)
+	mockChunkRepo := new(MockRagChunkRepository)
+
+	queryVec := []float32{0.1, 0.2, 0.3}
+	sc := &retrieval.StageContext{
+		RetrievalID:       "test-hybrid-searcher",
+		Query:             "test query",
+		OriginalEmbedding: queryVec,
+		SearchLimit:       50,
+	}
+
+	mockHybrid.On("HybridSearch", mock.Anything, queryVec, "test query", 50).Return([]domain.SearchResult{
+		{Chunk: domain.RagChunk{Content: "fused result"}, Score: 0.5, ArticleID: "art-1"},
+	}, nil)
+
+	err := retrieval.EmbedAndSearch(context.Background(), sc, mockEncoder, nil, mockHybrid, mockChunkRepo, true, 50, logger)
+	require.NoError(t, err)
+
+	assert.Len(t, sc.OriginalResults, 1, "hybrid searcher results should populate OriginalResults")
+	assert.Equal(t, "fused result", sc.OriginalResults[0].Chunk.Content)
+	assert.Empty(t, sc.BM25Results, "hybrid searcher path should not run a separate BM25 arm")
+	mockChunkRepo.AssertNotCalled(t, "Search", mock.Anything, mock.Anything, mock.Anything)
+	mockChunkRepo.AssertNotCalled(t, "SearchWithinArticles", mock.Anything, mock.Anything, mock.Anything, mock.Anything)
+}
+
+func TestEmbedAndSearch_HybridSearcher_SkippedWhenCandidateArticlesScoped(t *testing.T) {
+	// HybridSearcher has no SearchWithinArticles-equivalent, so candidate-scoped
+	// retrieval (e.g. Morning Letter) must fall back to plain chunk-repo search
+	// rather than silently ignoring the requested article scope.
+	logger := slog.New(slog.NewJSONHandler(io.Discard, nil))
+	mockEncoder := new(MockVectorEncoder)
+	mockHybrid := new(MockHybridSearcher)
+	mockChunkRepo := new(MockRagChunkRepository)
+
+	queryVec := []float32{0.1, 0.2, 0.3}
+	sc := &retrieval.StageContext{
+		RetrievalID:         "test-hybrid-scoped",
+		Query:               "test query",
+		OriginalEmbedding:   queryVec,
+		CandidateArticleIDs: []string{"art-1"},
+		SearchLimit:         50,
+	}
+
+	mockChunkRepo.On("SearchWithinArticles", mock.Anything, queryVec, sc.CandidateArticleIDs, 50).Return([]domain.SearchResult{
+		{Chunk: domain.RagChunk{Content: "scoped result"}, Score: 0.7, ArticleID: "art-1"},
+	}, nil)
+
+	err := retrieval.EmbedAndSearch(context.Background(), sc, mockEncoder, nil, mockHybrid, mockChunkRepo, true, 50, logger)
+	require.NoError(t, err)
+
+	assert.Len(t, sc.OriginalResults, 1)
+	assert.Equal(t, "scoped result", sc.OriginalResults[0].Chunk.Content)
+	mockHybrid.AssertNotCalled(t, "HybridSearch", mock.Anything, mock.Anything, mock.Anything, mock.Anything)
 }

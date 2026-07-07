@@ -2,6 +2,7 @@ package augur_test
 
 import (
 	"context"
+	"errors"
 	"io"
 	"log/slog"
 	"net/http"
@@ -19,6 +20,7 @@ import (
 
 	"connectrpc.com/connect"
 	"github.com/google/uuid"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
@@ -361,4 +363,223 @@ func TestHandler_RetrieveContext_SanitizesInvalidUTF8(t *testing.T) {
 	assert.Equal(t, "記事タイトルテスト", c.Title, "Title should have invalid UTF-8 removed")
 	assert.Equal(t, "https://example.com/path", c.Url, "URL should have invalid UTF-8 removed")
 	assert.Equal(t, "2026-01-01", c.PublishedAt, "PublishedAt should have invalid UTF-8 removed")
+}
+
+// fakeEventEmitter records EmitAugurConversationLinked calls so tests can
+// assert wiring without a real knowledge-sovereign sovereign_client.
+type fakeEventEmitter struct {
+	mu    sync.Mutex
+	calls []usecase.AugurConversationLinkedInput
+	err   error
+}
+
+func (f *fakeEventEmitter) EmitAugurConversationLinked(_ context.Context, in usecase.AugurConversationLinkedInput) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.calls = append(f.calls, in)
+	return f.err
+}
+
+func (f *fakeEventEmitter) snapshot() []usecase.AugurConversationLinkedInput {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	out := make([]usecase.AugurConversationLinkedInput, len(f.calls))
+	copy(out, f.calls)
+	return out
+}
+
+// emitterFailureCount reads rag_orchestrator_knowledge_event_emitter_failure_total
+// straight from the default Prometheus registry. sovereign_client keeps the
+// collector unexported, so gathering the default registerer is the only way
+// to assert IncEmitterFailure fired without reaching into package internals.
+func emitterFailureCount(t *testing.T, eventType string) float64 {
+	t.Helper()
+	mfs, err := prometheus.DefaultGatherer.Gather()
+	require.NoError(t, err)
+	for _, mf := range mfs {
+		if mf.GetName() != "rag_orchestrator_knowledge_event_emitter_failure_total" {
+			continue
+		}
+		for _, m := range mf.GetMetric() {
+			for _, l := range m.GetLabel() {
+				if l.GetName() == "event_type" && l.GetValue() == eventType {
+					return m.GetCounter().GetValue()
+				}
+			}
+		}
+	}
+	return 0
+}
+
+// runStreamChatEmitScenario drives a single-turn StreamChat call through a
+// real Connect-RPC httptest server (same harness shape as
+// TestStreamChat_ClientAbortAfterDeltas_FlushesPartialAssistantTurn) and lets
+// the caller inspect the fake emitter afterwards. citations become the Done
+// event's citation list; tenantHeader is omitted entirely when empty so
+// tests can exercise the "header missing" path.
+func runStreamChatEmitScenario(
+	t *testing.T,
+	conv *domain.AugurConversation,
+	requestedConvID uuid.UUID,
+	tenantHeader string,
+	citations []usecase.Citation,
+	emitter *fakeEventEmitter,
+) {
+	t.Helper()
+
+	mockAnswer := new(MockAnswerWithRAGUsecase)
+	mockRetrieve := new(MockRetrieveContextUsecase)
+	mockConv := new(MockAugurConversationUsecase)
+	logger := slog.New(slog.NewJSONHandler(io.Discard, nil))
+
+	events := make(chan usecase.StreamEvent, 1)
+	mockConv.On("EnsureConversation", mock.Anything, conv.UserID, requestedConvID, mock.AnythingOfType("string")).
+		Return(conv, nil)
+	mockConv.On("AppendUserTurn", mock.Anything, conv.ID, "test query").Return(nil)
+	mockConv.On("AppendAssistantTurn", mock.Anything, conv.ID, mock.AnythingOfType("string"), mock.Anything, mock.Anything).
+		Return(nil)
+	mockAnswer.On("Stream", mock.Anything, mock.Anything).Return((<-chan usecase.StreamEvent)(events))
+
+	handler := augur.NewHandler(mockAnswer, mockRetrieve, mockConv, emitter, logger)
+
+	mux := http.NewServeMux()
+	path, connectHandler := augurv2connect.NewAugurServiceHandler(handler)
+	mux.Handle(path, connectHandler)
+	server := httptest.NewServer(mux)
+	defer server.Close()
+
+	client := augurv2connect.NewAugurServiceClient(server.Client(), server.URL)
+
+	ctx := context.Background()
+	convIDField := ""
+	if requestedConvID != uuid.Nil {
+		convIDField = requestedConvID.String()
+	}
+	req := connect.NewRequest(&augurv2.StreamChatRequest{
+		Messages:       []*augurv2.ChatMessage{{Role: "user", Content: "test query"}},
+		ConversationId: convIDField,
+	})
+	req.Header().Set("X-Alt-User-Id", conv.UserID.String())
+	if tenantHeader != "" {
+		req.Header().Set("X-Alt-Tenant-Id", tenantHeader)
+	}
+
+	stream, err := client.StreamChat(ctx, req)
+	require.NoError(t, err)
+
+	events <- usecase.StreamEvent{
+		Kind: usecase.StreamEventKindDone,
+		Payload: &usecase.AnswerWithRAGOutput{
+			Answer:    "the answer",
+			Citations: citations,
+		},
+	}
+	close(events)
+
+	for stream.Receive() {
+	}
+	require.NoError(t, stream.Err())
+}
+
+// TestStreamChat_EmitsConversationLinked_OnNewConversationWithArticleCitation
+// pins the canonical-contract §6.4.1 wiring: the first turn of a brand-new
+// Augur conversation that cites a real article must publish
+// augur.conversation_linked.v1 so Surface Planner v2 can compute
+// augur_link_id. Before this fix h.eventEmitter was stored on Handler but
+// never invoked anywhere (review HIGH finding, augur/handler.go:43).
+func TestStreamChat_EmitsConversationLinked_OnNewConversationWithArticleCitation(t *testing.T) {
+	emitter := &fakeEventEmitter{}
+	articleID := uuid.New()
+	tenantID := uuid.New()
+	conv := &domain.AugurConversation{
+		ID:        uuid.New(),
+		UserID:    uuid.New(),
+		Title:     "test",
+		CreatedAt: time.Date(2026, 5, 1, 12, 0, 0, 0, time.UTC),
+	}
+
+	runStreamChatEmitScenario(t, conv, uuid.Nil, tenantID.String(), []usecase.Citation{
+		{ArticleID: articleID.String(), Title: "an article"},
+	}, emitter)
+
+	calls := emitter.snapshot()
+	require.Len(t, calls, 1, "expected exactly one augur.conversation_linked.v1 emit")
+	got := calls[0]
+	assert.Equal(t, tenantID, got.TenantID)
+	assert.Equal(t, conv.UserID, got.UserID)
+	assert.Equal(t, conv.ID, got.ConversationID)
+	assert.Equal(t, "article:"+articleID.String(), got.EntryKey)
+	assert.Equal(t, "default", got.LensModeID)
+	assert.Equal(t, conv.CreatedAt.UnixMilli(), got.LinkedAt)
+}
+
+func TestStreamChat_SkipsEmit_WhenNoArticleCitation(t *testing.T) {
+	emitter := &fakeEventEmitter{}
+	conv := &domain.AugurConversation{
+		ID:        uuid.New(),
+		UserID:    uuid.New(),
+		Title:     "test",
+		CreatedAt: time.Now().UTC(),
+	}
+
+	runStreamChatEmitScenario(t, conv, uuid.Nil, uuid.New().String(), []usecase.Citation{
+		{URL: "https://example.com/x", Title: "a web source"},
+	}, emitter)
+
+	assert.Empty(t, emitter.snapshot(), "a WEB-only citation set must not trigger a conversation-linked emit")
+}
+
+func TestStreamChat_SkipsEmit_WhenTenantHeaderMissing(t *testing.T) {
+	emitter := &fakeEventEmitter{}
+	conv := &domain.AugurConversation{
+		ID:        uuid.New(),
+		UserID:    uuid.New(),
+		Title:     "test",
+		CreatedAt: time.Now().UTC(),
+	}
+
+	runStreamChatEmitScenario(t, conv, uuid.Nil, "", []usecase.Citation{
+		{ArticleID: uuid.New().String(), Title: "an article"},
+	}, emitter)
+
+	assert.Empty(t, emitter.snapshot(), "missing X-Alt-Tenant-Id must skip emit rather than fabricate a tenant")
+}
+
+func TestStreamChat_SkipsEmit_WhenContinuingExistingConversation(t *testing.T) {
+	emitter := &fakeEventEmitter{}
+	conv := &domain.AugurConversation{
+		ID:        uuid.New(),
+		UserID:    uuid.New(),
+		Title:     "test",
+		CreatedAt: time.Now().UTC(),
+	}
+
+	runStreamChatEmitScenario(t, conv, uuid.New(), uuid.New().String(), []usecase.Citation{
+		{ArticleID: uuid.New().String(), Title: "an article"},
+	}, emitter)
+
+	assert.Empty(t, emitter.snapshot(), "conversation-linked only fires for a newly minted conversation")
+}
+
+// TestStreamChat_IncrementsEmitterFailureMetric_OnEmitError pins the
+// review's item #4 fix: the warn-and-continue path around
+// EmitAugurConversationLinked must call sovereign_client.IncEmitterFailure so
+// the "emit failure" Prometheus counter is not permanently zero.
+func TestStreamChat_IncrementsEmitterFailureMetric_OnEmitError(t *testing.T) {
+	before := emitterFailureCount(t, "augur.conversation_linked.v1")
+	emitter := &fakeEventEmitter{err: errors.New("sovereign unreachable")}
+	conv := &domain.AugurConversation{
+		ID:        uuid.New(),
+		UserID:    uuid.New(),
+		Title:     "test",
+		CreatedAt: time.Now().UTC(),
+	}
+
+	runStreamChatEmitScenario(t, conv, uuid.Nil, uuid.New().String(), []usecase.Citation{
+		{ArticleID: uuid.New().String(), Title: "an article"},
+	}, emitter)
+
+	require.Len(t, emitter.snapshot(), 1, "emit must still be attempted even though it will fail")
+	after := emitterFailureCount(t, "augur.conversation_linked.v1")
+	assert.Equal(t, before+1, after, "IncEmitterFailure must fire on the warn-and-continue path")
 }

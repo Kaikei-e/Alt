@@ -125,7 +125,7 @@ func (g *RetrievalGraph) Execute(ctx context.Context, input GraphInput) (*GraphO
 		slog.Int64("duration_ms", stage1Duration.Milliseconds()))
 
 	// Stage 2: BM25 search + original vector search + expanded embedding (parallel)
-	if err := EmbedAndSearch(ctx, sc, g.encoder, g.bm25Searcher, g.chunkRepo,
+	if err := EmbedAndSearch(ctx, sc, g.encoder, g.bm25Searcher, nil, g.chunkRepo,
 		g.config.HybridSearchEnabled, g.config.BM25Limit, g.logger); err != nil {
 		return nil, fmt.Errorf("stage2 embed_and_search: %w", err)
 	}

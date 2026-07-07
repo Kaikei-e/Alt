@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"rag-orchestrator/internal/adapter/rag_http/openapi"
 	"rag-orchestrator/internal/domain"
 	"rag-orchestrator/internal/usecase"
@@ -34,6 +35,12 @@ type Handler struct {
 	indexUsecaseFactory IndexUsecaseFactory
 	embeddingModel      string
 	embedderTimeout     int
+
+	// allowedEmbedderOverrideOrigins is the static allowlist (normalized
+	// "scheme://host[:port]" strings) X-Embedder-URL is checked against.
+	// nil/empty means the override is effectively disabled even if the
+	// factories are set — see isAllowedEmbedderOverride.
+	allowedEmbedderOverrideOrigins map[string]struct{}
 }
 
 func mapAnswerRequestToInput(req openapi.AnswerRequest) usecase.AnswerWithRAGInput {
@@ -62,18 +69,65 @@ func mapAnswerRequestToInput(req openapi.AnswerRequest) usecase.AnswerWithRAGInp
 type HandlerOption func(*Handler)
 
 // WithEmbedderOverride enables X-Embedder-URL header support for hyper-boost.
+// allowedOrigins is the static allowlist (config.EmbedderConfig.AllowedOverrideOrigins)
+// of "scheme://host[:port]" origins the header may point at — anything else
+// is rejected outright rather than silently falling back to the default
+// embedder, since a silent fallback would hide that the SSRF guard fired.
 func WithEmbedderOverride(
 	embedderFactory EmbedderFactory,
 	indexUsecaseFactory IndexUsecaseFactory,
 	embeddingModel string,
 	embedderTimeout int,
+	allowedOrigins []string,
 ) HandlerOption {
 	return func(h *Handler) {
 		h.embedderFactory = embedderFactory
 		h.indexUsecaseFactory = indexUsecaseFactory
 		h.embeddingModel = embeddingModel
 		h.embedderTimeout = embedderTimeout
+		h.allowedEmbedderOverrideOrigins = normalizedOriginSet(allowedOrigins)
 	}
+}
+
+// normalizeOrigin parses raw and returns its lowercased "scheme://host[:port]"
+// origin. Only http/https with a non-empty host are accepted — anything else
+// (unparsable, missing scheme, javascript:, file:, etc.) is rejected. This is
+// the exact-match primitive .claude/rules/security-boundaries.md requires for
+// destination allowlists: no substring/prefix matching, so
+// "http://backfill-hyperboost.evil.com:11434" cannot pass as
+// "http://backfill-hyperboost:11434".
+func normalizeOrigin(raw string) (string, bool) {
+	u, err := url.Parse(strings.TrimSpace(raw))
+	if err != nil || u.Host == "" {
+		return "", false
+	}
+	scheme := strings.ToLower(u.Scheme)
+	if scheme != "http" && scheme != "https" {
+		return "", false
+	}
+	return scheme + "://" + strings.ToLower(u.Host), true
+}
+
+func normalizedOriginSet(origins []string) map[string]struct{} {
+	set := make(map[string]struct{}, len(origins))
+	for _, o := range origins {
+		if norm, ok := normalizeOrigin(o); ok {
+			set[norm] = struct{}{}
+		}
+	}
+	return set
+}
+
+// isAllowedEmbedderOverride reports whether raw's origin is in the static
+// allowlist. An empty allowlist (override feature configured with no
+// entries) rejects everything — there is no "allow all" escape hatch.
+func (h *Handler) isAllowedEmbedderOverride(raw string) bool {
+	origin, ok := normalizeOrigin(raw)
+	if !ok {
+		return false
+	}
+	_, allowed := h.allowedEmbedderOverrideOrigins[origin]
+	return allowed
 }
 
 func NewHandler(
@@ -120,9 +174,17 @@ func (h *Handler) UpsertIndex(ctx echo.Context) error {
 	timeoutCtx, cancel := context.WithTimeout(ctx.Request().Context(), upsertTimeout)
 	defer cancel()
 
-	// Check for embedder override (hyper-boost)
+	// Check for embedder override (hyper-boost). X-Embedder-URL is
+	// caller-controlled input, not a trusted internal detail — an
+	// unallowlisted value rejects the whole request instead of silently
+	// falling back to the default embedder (that fallback would look
+	// identical to a successful override to the caller, hiding the SSRF
+	// guard firing).
 	indexUsecase := h.indexUsecase
 	if embedderURL := ctx.Request().Header.Get("X-Embedder-URL"); embedderURL != "" && h.embedderFactory != nil && h.indexUsecaseFactory != nil {
+		if !h.isAllowedEmbedderOverride(embedderURL) {
+			return ctx.JSON(http.StatusBadRequest, map[string]string{"error": "X-Embedder-URL origin not allowed"})
+		}
 		encoder := h.embedderFactory(embedderURL, h.embeddingModel, h.embedderTimeout)
 		indexUsecase = h.indexUsecaseFactory(encoder)
 	}

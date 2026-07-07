@@ -14,6 +14,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
+	"github.com/stretchr/testify/require"
 )
 
 type mockRetrieveContextUsecase struct {
@@ -220,6 +221,15 @@ func TestAnswerWithRAG_Fallback(t *testing.T) {
 
 func contains(s, substr string) bool {
 	return strings.Contains(s, substr)
+}
+
+func anyMessageContains(msgs []domain.Message, substr string) bool {
+	for _, m := range msgs {
+		if strings.Contains(m.Content, substr) {
+			return true
+		}
+	}
+	return false
 }
 
 // TestStream_SendsThinkingEventFirst verifies that the Stream method sends an
@@ -1029,6 +1039,41 @@ func TestExecute_ArticleScopedMaxChunksMarksPromptAsTruncated(t *testing.T) {
 	assert.NoError(t, err)
 	assert.False(t, output.Fallback)
 	assert.Len(t, output.Contexts, 1)
+}
+
+// TestExecute_LegacyPath_NilRetrievalReturnsFallbackInsteadOfPanic guards
+// against a nil-deref panic: strategies (e.g. causalStrategy) can return
+// (nil, nil) when every subquery attempt fails or comes back empty. The
+// legacy (non-queryPlanner) path must not unconditionally dereference
+// retrieved.Contexts after only checking err != nil.
+func TestExecute_LegacyPath_NilRetrievalReturnsFallbackInsteadOfPanic(t *testing.T) {
+	ctx := context.Background()
+	mockRetrieve := new(mockRetrieveContextUsecase)
+	mockLLM := new(mockLLMClient)
+	builder := usecase.NewXMLPromptBuilder()
+	testLogger := slog.New(slog.NewJSONHandler(io.Discard, nil))
+	causalStrategy := &mockRetrievalStrategy{name: "causal"}
+
+	uc := usecase.NewAnswerWithRAGUsecase(
+		mockRetrieve, builder, mockLLM, usecase.NewOutputValidator(0), 10, 512, 6000, "alpha-v1", "ja", testLogger,
+		usecase.WithQueryClassifier(usecase.NewQueryClassifier(nil, 0)),
+		usecase.WithStrategy(usecase.IntentCausalExplanation, causalStrategy),
+	)
+
+	causalStrategy.
+		On("Retrieve", mock.Anything, mock.Anything, mock.Anything).
+		Return((*usecase.RetrieveContextOutput)(nil), nil)
+
+	require.NotPanics(t, func() {
+		output, err := uc.Execute(ctx, usecase.AnswerWithRAGInput{
+			Query: "なぜ物流危機が起きたのですか？",
+		})
+
+		assert.NoError(t, err)
+		assert.NotNil(t, output)
+		assert.True(t, output.Fallback)
+		assert.Contains(t, output.Reason, "no context returned")
+	})
 }
 
 func TestPromptBuilder_MultiTurnCoreferenceInstruction(t *testing.T) {
@@ -1989,4 +2034,98 @@ func TestExecute_ArticleScopedFollowUp_NoneSubIntent_KeepsGeneralReRetrieval(t *
 
 	// General strategy SHOULD be called for backward compatibility
 	mockRetrieve.AssertCalled(t, "Execute", mock.Anything, mock.Anything)
+}
+
+// TestExecute_CacheKey_DiffersByConversationHistory guards against a
+// cache-correctness bug: generateCacheKey used to omit ConversationHistory,
+// so two multi-turn follow-ups with the identical literal question ("tell me
+// more") but about different prior topics collided on the same cache key —
+// and since the key also omitted UserID, the collision was shared across
+// all users, not just within one conversation.
+func TestExecute_CacheKey_DiffersByConversationHistory(t *testing.T) {
+	ctx := context.Background()
+	mockRetrieve := new(mockRetrieveContextUsecase)
+	mockLLM := new(mockLLMClient)
+	builder := usecase.NewXMLPromptBuilder()
+	testLogger := slog.New(slog.NewJSONHandler(io.Discard, nil))
+
+	uc := usecase.NewAnswerWithRAGUsecase(mockRetrieve, builder, mockLLM, usecase.NewOutputValidator(0), 10, 512, 6000, "alpha-v1", "ja", testLogger)
+
+	chunkA := uuid.New()
+	chunkB := uuid.New()
+
+	historyA := []domain.Message{
+		{Role: "user", Content: "About Topic A"},
+		{Role: "assistant", Content: "Topic A summary"},
+	}
+	historyB := []domain.Message{
+		{Role: "user", Content: "About Topic B"},
+		{Role: "assistant", Content: "Topic B summary"},
+	}
+
+	mockRetrieve.On("Execute", mock.Anything, mock.MatchedBy(func(ri usecase.RetrieveContextInput) bool {
+		return len(ri.ConversationHistory) > 0 && ri.ConversationHistory[0].Content == "About Topic A"
+	})).Return(&usecase.RetrieveContextOutput{
+		Contexts: []usecase.ContextItem{{ChunkID: chunkA, ChunkText: "Topic A chunk content", Title: "A", Score: 0.9}},
+	}, nil)
+	mockRetrieve.On("Execute", mock.Anything, mock.MatchedBy(func(ri usecase.RetrieveContextInput) bool {
+		return len(ri.ConversationHistory) > 0 && ri.ConversationHistory[0].Content == "About Topic B"
+	})).Return(&usecase.RetrieveContextOutput{
+		Contexts: []usecase.ContextItem{{ChunkID: chunkB, ChunkText: "Topic B chunk content", Title: "B", Score: 0.9}},
+	}, nil)
+
+	mockLLM.On("Chat", mock.Anything, mock.MatchedBy(func(msgs []domain.Message) bool {
+		return anyMessageContains(msgs, "Topic A chunk content")
+	}), mock.Anything).Return(&domain.LLMResponse{
+		Text: `{"answer":"Discussing Topic A in detail [1]","citations":[{"chunk_id":"` + chunkA.String() + `","reason":"a"}],"fallback":false,"reason":""}`,
+		Done: true,
+	}, nil)
+	mockLLM.On("Chat", mock.Anything, mock.MatchedBy(func(msgs []domain.Message) bool {
+		return anyMessageContains(msgs, "Topic B chunk content")
+	}), mock.Anything).Return(&domain.LLMResponse{
+		Text: `{"answer":"Discussing Topic B in detail [1]","citations":[{"chunk_id":"` + chunkB.String() + `","reason":"b"}],"fallback":false,"reason":""}`,
+		Done: true,
+	}, nil)
+
+	out1, err := uc.Execute(ctx, usecase.AnswerWithRAGInput{Query: "tell me more", ConversationHistory: historyA})
+	require.NoError(t, err)
+	out2, err := uc.Execute(ctx, usecase.AnswerWithRAGInput{Query: "tell me more", ConversationHistory: historyB})
+	require.NoError(t, err)
+
+	assert.Contains(t, out1.Answer, "Topic A")
+	assert.Contains(t, out2.Answer, "Topic B",
+		"cache key must include conversation history so distinct multi-turn contexts don't collide")
+}
+
+// TestExecute_CacheKey_DiffersByUserID guards against the cache being shared
+// across users: two different users asking the identical query with no
+// conversation history must not receive each other's cached answer once
+// UserID is part of the tuning params (e.g. personalized retrieval).
+func TestExecute_CacheKey_DiffersByUserID(t *testing.T) {
+	ctx := context.Background()
+	mockRetrieve := new(mockRetrieveContextUsecase)
+	mockLLM := new(mockLLMClient)
+	builder := usecase.NewXMLPromptBuilder()
+	testLogger := slog.New(slog.NewJSONHandler(io.Discard, nil))
+
+	uc := usecase.NewAnswerWithRAGUsecase(mockRetrieve, builder, mockLLM, usecase.NewOutputValidator(0), 10, 512, 6000, "alpha-v1", "ja", testLogger)
+
+	chunkID := uuid.New()
+	mockRetrieve.On("Execute", mock.Anything, mock.Anything).Return(&usecase.RetrieveContextOutput{
+		Contexts: []usecase.ContextItem{{ChunkID: chunkID, ChunkText: "Shared chunk", Title: "Shared", Score: 0.9}},
+	}, nil)
+
+	llmResponse := `{"answer":"Personalized answer","citations":[{"chunk_id":"` + chunkID.String() + `","reason":"r"}],"fallback":false,"reason":""}`
+	mockLLM.On("Chat", mock.Anything, mock.Anything, mock.Anything).Return(&domain.LLMResponse{Text: llmResponse, Done: true}, nil)
+
+	_, err := uc.Execute(ctx, usecase.AnswerWithRAGInput{Query: "same question", UserID: "user-1"})
+	require.NoError(t, err)
+
+	// Second user, same query, no history — must not be a cache hit, so
+	// retrieve/LLM mocks must fire again rather than replaying user-1's cached answer.
+	_, err = uc.Execute(ctx, usecase.AnswerWithRAGInput{Query: "same question", UserID: "user-2"})
+	require.NoError(t, err, "different UserID must not collide with user-1's cache entry")
+
+	mockRetrieve.AssertNumberOfCalls(t, "Execute", 2)
+	mockLLM.AssertNumberOfCalls(t, "Chat", 2)
 }

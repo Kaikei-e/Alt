@@ -2,6 +2,8 @@ package usecase
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -265,6 +267,18 @@ func (u *answerWithRAGUsecase) Execute(ctx context.Context, input AnswerWithRAGI
 			promptData.strategyUsed,
 			promptData.expandedQueries,
 		)
+	}
+
+	// Clarification: short-circuit before generation. Mirrors the check
+	// Stream() already performs (rag_answer_stream.go) — without it,
+	// buildPromptWithQueryPlanner's ShouldClarify branch returns a
+	// promptData with messages=nil, and generateAnswerWithRetries would call
+	// llmClient.Chat(ctx, nil, ...) directly.
+	if promptData.plannerOutput != nil && promptData.plannerOutput.NeedsClarification {
+		u.logger.Info("clarification_requested",
+			slog.String("request_id", requestID),
+			slog.String("retrieval_set_id", promptData.retrievalSetID))
+		return u.prepareClarification(promptData)
 	}
 
 	u.logger.Info("context_retrieved",
@@ -786,6 +800,34 @@ func (u *answerWithRAGUsecase) prepareFallback(
 	}, nil
 }
 
+// prepareClarification builds the non-streaming counterpart to Stream()'s
+// StreamEventKindClarification event: when the query planner determined the
+// query is too ambiguous to retrieve against, return the clarification
+// question as the answer instead of calling the LLM with the nil messages
+// buildPromptWithQueryPlanner leaves on its ShouldClarify branch.
+func (u *answerWithRAGUsecase) prepareClarification(promptData *promptBuildResult) (*AnswerWithRAGOutput, error) {
+	msg := ""
+	debug := AnswerDebug{
+		RetrievalSetID: promptData.retrievalSetID,
+		PromptVersion:  u.promptVersion,
+		StrategyUsed:   promptData.strategyUsed,
+		IntentType:     string(promptData.intentType),
+	}
+	if promptData.plannerOutput != nil {
+		msg = promptData.plannerOutput.ClarificationMsg
+		debug.PlannerOperation = string(promptData.plannerOutput.Operation)
+		debug.PlannerConfidence = promptData.plannerOutput.Confidence
+		debug.NeedsClarification = true
+	}
+	return &AnswerWithRAGOutput{
+		Answer:   msg,
+		Contexts: promptData.contexts,
+		Fallback: false,
+		Reason:   "clarification requested",
+		Debug:    debug,
+	}, nil
+}
+
 // buildRelatedCitations returns an inline-projected snapshot of articles
 // semantically and lexically near the direct citations. The lookup runs once
 // per assistant turn after the LLM has committed to its grounded citations;
@@ -1052,6 +1094,12 @@ func (u *answerWithRAGUsecase) buildPrompt(ctx context.Context, input AnswerWith
 
 	if err != nil {
 		return result, fmt.Errorf("failed to retrieve context: %w", err)
+	}
+	if retrieved == nil {
+		// Strategies (e.g. causalStrategy) may return (nil, nil) when every
+		// subquery attempt failed or came back empty. Without this guard the
+		// unconditional retrieved.Contexts dereference below panics.
+		return result, errors.New("no context returned")
 	}
 
 	// Quality gate: assess retrieval quality with intent-aware strictness
@@ -1621,7 +1669,39 @@ func (u *answerWithRAGUsecase) generateCacheKey(input AnswerWithRAGInput) string
 	ids := make([]string, len(input.CandidateArticleIDs))
 	copy(ids, input.CandidateArticleIDs)
 	sort.Strings(ids)
-	return fmt.Sprintf("%s|%v|%s", input.Query, ids, input.Locale)
+
+	// Scope the key by UserID and conversation history so multi-turn
+	// follow-ups ("tell me more") never reuse an unrelated earlier
+	// conversation's cached answer, and so the cache isn't shared across
+	// users. MaxChunks/MaxTokens are included because they change the shape
+	// of the generated answer for an otherwise-identical query.
+	return fmt.Sprintf("%s|%v|%s|user=%s|hist=%s|chunks=%d|tokens=%d",
+		input.Query, ids, input.Locale, input.UserID,
+		hashConversationHistory(input.ConversationHistory),
+		input.MaxChunks, input.MaxTokens)
+}
+
+// hashConversationHistory returns a short deterministic hash of the most
+// recent conversation turns, bounding the cache key size regardless of how
+// long the conversation has grown. Empty for single-turn requests, leaving
+// their cache key unchanged.
+func hashConversationHistory(history []domain.Message) string {
+	if len(history) == 0 {
+		return ""
+	}
+	const maxTurns = 6
+	recent := history
+	if len(recent) > maxTurns {
+		recent = recent[len(recent)-maxTurns:]
+	}
+	h := sha256.New()
+	for _, msg := range recent {
+		h.Write([]byte(msg.Role))
+		h.Write([]byte{0})
+		h.Write([]byte(msg.Content))
+		h.Write([]byte{0})
+	}
+	return hex.EncodeToString(h.Sum(nil))[:16]
 }
 
 func truncate(s string, maxLen int) string {

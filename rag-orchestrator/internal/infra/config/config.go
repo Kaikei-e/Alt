@@ -99,6 +99,13 @@ type EmbedderConfig struct {
 	URL     string
 	Model   string
 	Timeout int // Seconds
+
+	// AllowedOverrideOrigins is the static allowlist of origins
+	// (scheme://host[:port]) the X-Embedder-URL request header may point
+	// at (hyper-boost backfill support). Anything not an exact match is
+	// rejected — see internal/adapter/rag_http/handler.go. Defaults to the
+	// hyper-boost container's fixed origin (internal/backfill/hyperboost.go).
+	AllowedOverrideOrigins []string
 }
 
 // AugurConfig holds Knowledge Augur (LLM generator) settings.
@@ -220,9 +227,10 @@ func Load() *Config {
 			MinConns: getEnvInt32("DB_MIN_CONNS", defaultDBMinConns),
 		},
 		Embedder: EmbedderConfig{
-			URL:     getEnvWithAlt("EMBEDDER_EXTERNAL", "EMBEDDER_EXTERNAL_URL", "http://embedder-external:11436"),
-			Model:   getEnv("EMBEDDING_MODEL", "embeddinggemma"),
-			Timeout: getEnvInt("EMBEDDER_TIMEOUT", 30),
+			URL:                    getEnvWithAlt("EMBEDDER_EXTERNAL", "EMBEDDER_EXTERNAL_URL", "http://embedder-external:11436"),
+			Model:                  getEnv("EMBEDDING_MODEL", "embeddinggemma"),
+			Timeout:                getEnvInt("EMBEDDER_TIMEOUT", 30),
+			AllowedOverrideOrigins: getEnvCSV("RAG_EMBEDDER_ALLOWED_OVERRIDE_URLS", []string{"http://backfill-hyperboost:11434"}),
 		},
 		Augur: AugurConfig{
 			URL:     getEnvWithAlt("AUGUR_EXTERNAL", "AUGUR_EXTERNAL_URL", "http://news-creator-backend:11435"),
@@ -320,6 +328,26 @@ func getEnvWithAlt(key, altKey, fallback string) string {
 		return value
 	}
 	return fallback
+}
+
+// getEnvCSV parses a comma-separated env var into a trimmed, non-empty
+// slice. Falls back to a static default when the env var is unset — the
+// fallback is never learned or widened automatically (security-boundaries.md:
+// allowlists must be static and reviewed).
+func getEnvCSV(key string, fallback []string) []string {
+	value, ok := os.LookupEnv(key)
+	if !ok {
+		return fallback
+	}
+	parts := strings.Split(value, ",")
+	out := make([]string, 0, len(parts))
+	for _, p := range parts {
+		p = strings.TrimSpace(p)
+		if p != "" {
+			out = append(out, p)
+		}
+	}
+	return out
 }
 
 func getEnvInt(key string, fallback int) int {

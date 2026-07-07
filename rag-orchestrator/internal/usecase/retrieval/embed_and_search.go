@@ -12,11 +12,21 @@ import (
 )
 
 // EmbedAndSearch runs BM25 search, original vector search, and expanded embedding in parallel (Stage 2).
+//
+// hybridSearcher, when non-nil and hybridEnabled, replaces both the BM25 arm
+// (bm25Searcher) and the plain vector arm for the *original* query with a
+// single in-database hybrid (vector + tsvector RRF) call — the fusion that
+// would otherwise happen in FuseResults' fuseHybridResults is already done
+// inside the SQL query. It only applies to the unscoped (no candidate
+// article IDs) case: HybridSearcher has no SearchWithinArticles-equivalent,
+// so candidate-scoped retrieval (e.g. Morning Letter) falls back to the
+// bm25Searcher/chunkRepo path below.
 func EmbedAndSearch(
 	ctx context.Context,
 	sc *StageContext,
 	encoder domain.VectorEncoder,
 	bm25Searcher domain.BM25Searcher,
+	hybridSearcher domain.HybridSearcher,
 	chunkRepo domain.RagChunkRepository,
 	hybridEnabled bool,
 	bm25Limit int,
@@ -26,6 +36,7 @@ func EmbedAndSearch(
 	sc.AdditionalQueries = buildAdditionalQueries(sc.ExpandedQueries, sc.TagQueries)
 
 	hasCandidateArticles := len(sc.CandidateArticleIDs) > 0
+	useHybridSearcher := hybridEnabled && hybridSearcher != nil && !hasCandidateArticles
 
 	g, gctx := errgroup.WithContext(ctx)
 
@@ -45,7 +56,9 @@ func EmbedAndSearch(
 	}
 
 	// goroutine E: BM25 Search (original + expanded queries for cross-language matching)
-	if hybridEnabled && bm25Searcher != nil {
+	// Skipped when useHybridSearcher: the in-DB hybrid search below already
+	// fuses lexical + vector signals, so a separate BM25 arm would be redundant.
+	if !useHybridSearcher && hybridEnabled && bm25Searcher != nil {
 		g.Go(func() error {
 			bm25Start := time.Now()
 
@@ -87,9 +100,19 @@ func EmbedAndSearch(
 		g.Go(func() error {
 			var results []domain.SearchResult
 			var err error
-			if hasCandidateArticles {
+			switch {
+			case useHybridSearcher:
+				hybridStart := time.Now()
+				results, err = hybridSearcher.HybridSearch(gctx, sc.OriginalEmbedding, sc.Query, sc.SearchLimit)
+				if err == nil {
+					logger.Info("hybrid_db_search_completed",
+						slog.String("retrieval_id", sc.RetrievalID),
+						slog.Int("hits", len(results)),
+						slog.Int64("duration_ms", time.Since(hybridStart).Milliseconds()))
+				}
+			case hasCandidateArticles:
 				results, err = chunkRepo.SearchWithinArticles(gctx, sc.OriginalEmbedding, sc.CandidateArticleIDs, sc.SearchLimit)
-			} else {
+			default:
 				results, err = chunkRepo.Search(gctx, sc.OriginalEmbedding, sc.SearchLimit)
 			}
 			if err != nil {
