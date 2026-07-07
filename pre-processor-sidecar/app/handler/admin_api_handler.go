@@ -308,6 +308,78 @@ func (h *AdminAPIHandler) HandleTokenStatus(w http.ResponseWriter, r *http.Reque
 	h.metricsCollector.IncrementAdminAPIRequest("GET", "/admin/oauth2/status", "success")
 }
 
+// RequireAdmin wraps an admin-only HTTP handler with the same HTTPS-enforcement,
+// rate-limiting, and Kubernetes ServiceAccount authentication checks used by the
+// other Admin API endpoints (HandleRefreshTokenUpdate et al). Use it for admin
+// routes registered outside of AdminAPIHandler itself (e.g. manual trigger
+// endpoints wired up in cmd/main.go) so they never bypass the security gate.
+func (h *AdminAPIHandler) RequireAdmin(endpoint string, next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		clientIP := getClientIP(r)
+
+		h.setSecurityHeaders(w)
+
+		// HTTPS強制確認
+		if r.TLS == nil && r.Header.Get("X-Forwarded-Proto") != "https" {
+			h.respondWithError(w, "HTTPS_REQUIRED", "HTTPS is required for this endpoint", http.StatusBadRequest)
+			h.metricsCollector.IncrementAdminAPIRequest(r.Method, endpoint, "https_required")
+			return
+		}
+
+		// レート制限確認
+		if !h.rateLimiter.IsAllowed(clientIP, endpoint) {
+			h.logger.Warn("Rate limit exceeded for admin API",
+				"client_ip", clientIP,
+				"endpoint", endpoint)
+
+			h.respondWithError(w, "RATE_LIMITED", "Rate limit exceeded", http.StatusTooManyRequests)
+			h.metricsCollector.IncrementAdminAPIRateLimitHit()
+			h.metricsCollector.IncrementAdminAPIRequest(r.Method, endpoint, "rate_limited")
+			return
+		}
+
+		// 認証確認
+		authToken := extractBearerToken(r)
+		if authToken == "" {
+			h.respondWithError(w, "MISSING_AUTHORIZATION", "Authorization header with Bearer token is required", http.StatusUnauthorized)
+			h.metricsCollector.IncrementAdminAPIAuthenticationError("missing_token")
+			h.metricsCollector.IncrementAdminAPIRequest(r.Method, endpoint, "unauthorized")
+			return
+		}
+
+		// ServiceAccountトークン検証
+		serviceAccountInfo, err := h.authenticator.ValidateKubernetesServiceAccountToken(authToken)
+		if err != nil {
+			h.logger.Error("ServiceAccount token validation failed",
+				"error", err,
+				"client_ip", clientIP)
+
+			h.respondWithError(w, "INVALID_TOKEN", "Invalid authentication token", http.StatusUnauthorized)
+			h.metricsCollector.IncrementAdminAPIAuthenticationError("invalid_token")
+			h.metricsCollector.IncrementAdminAPIRequest(r.Method, endpoint, "unauthorized")
+			return
+		}
+
+		// 管理者権限確認
+		if !h.authenticator.HasAdminPermissions(serviceAccountInfo) {
+			h.logger.Warn("Insufficient permissions for admin API",
+				"subject", serviceAccountInfo.Subject,
+				"namespace", serviceAccountInfo.Namespace,
+				"client_ip", clientIP)
+
+			h.respondWithError(w, "INSUFFICIENT_PERMISSIONS", "Insufficient permissions for this operation", http.StatusForbidden)
+			h.metricsCollector.IncrementAdminAPIAuthenticationError("insufficient_permissions")
+			h.metricsCollector.IncrementAdminAPIRequest(r.Method, endpoint, "forbidden")
+			return
+		}
+
+		// レート制限記録
+		h.rateLimiter.RecordRequest(clientIP, endpoint)
+
+		next(w, r)
+	}
+}
+
 // setSecurityHeaders はセキュリティヘッダーを設定
 func (h *AdminAPIHandler) setSecurityHeaders(w http.ResponseWriter) {
 	w.Header().Set("Strict-Transport-Security", "max-age=31536000; includeSubDomains")

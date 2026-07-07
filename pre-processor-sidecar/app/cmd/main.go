@@ -7,14 +7,15 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
+	"os/signal"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 
 	"pre-processor-sidecar/config"
 	"pre-processor-sidecar/driver"
 	"pre-processor-sidecar/handler"
-	"pre-processor-sidecar/mocks"
 	"pre-processor-sidecar/repository"
 	"pre-processor-sidecar/security"
 	"pre-processor-sidecar/service"
@@ -107,7 +108,11 @@ func main() {
 		return
 	}
 
-	ctx := context.Background()
+	// SIGTERM/SIGINT cancel ctx so <-ctx.Done() actually returns on shutdown and
+	// the deferred cleanups in runScheduleMode (admin server shutdown, scheduler
+	// stop, pool close, token rotation stop) run instead of being killed outright.
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
 
 	logger.Info("Pre-processor-sidecar Scheduler starting with Simple Token System",
 		"service", cfg.ServiceName,
@@ -362,10 +367,13 @@ func runScheduleMode(ctx context.Context, cfg *config.Config, logger *slog.Logge
 	// Enhanced Token Serviceを使用したInoreaderサービス
 	inoreaderClient := service.NewInoreaderClient(oauth2Client, logger, sanitizer)
 
-	// Create a mock APIUsageRepository since it's not needed
-	mockAPIUsageRepo := &mocks.MockAPIUsageRepository{}
+	// api_usage_tracking_enabled: real Postgres-backed usage counters for the
+	// 100-req/day Zone1 limit, replacing the test mock that used to be DI'd here
+	// (which silently no-op'd tracking and pulled a test-only package into prod).
+	logger.Info("api_usage_tracking_enabled", "table", "api_usage_tracking")
+	apiUsageRepo := repository.NewPostgreSQLAPIUsageRepository(pool, logger)
 	// Connect InoreaderService to RemoteTokenService (via TokenProvider interface)
-	inoreaderService := service.NewInoreaderService(inoreaderClient, mockAPIUsageRepo, tokenProvider, logger)
+	inoreaderService := service.NewInoreaderService(inoreaderClient, apiUsageRepo, tokenProvider, logger)
 
 	subscriptionSyncService := service.NewSubscriptionSyncService(inoreaderService, subscriptionRepo, syncStateRepo, logger)
 	rateLimitManager := service.NewRateLimitManager(nil, logger)
@@ -430,8 +438,11 @@ func runScheduleMode(ctx context.Context, cfg *config.Config, logger *slog.Logge
 	healthHandler := handler.NewHealthHandler(healthAdapter, healthRealClock{}, 1800, logger)
 	adminMux.HandleFunc("/admin/health", healthHandler.HandleHealth)
 
-	// Manual trigger endpoints for testing
-	adminMux.HandleFunc("/admin/trigger/article-fetch", func(w http.ResponseWriter, r *http.Request) {
+	// Manual trigger endpoints for testing - gated behind the same
+	// authenticator/rate-limiter/HTTPS-enforcement chain as the rest of the
+	// Admin API so an unauthenticated network peer can't exhaust the Inoreader
+	// API quota by hitting these directly.
+	adminMux.HandleFunc("/admin/trigger/article-fetch", adminAPIHandler.RequireAdmin("/admin/trigger/article-fetch", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 			return
@@ -452,9 +463,9 @@ func runScheduleMode(ctx context.Context, cfg *config.Config, logger *slog.Logge
 			"message":   "Article fetch (rotation) has been triggered manually",
 			"timestamp": time.Now().UTC().Format(time.RFC3339),
 		})
-	})
+	}))
 
-	adminMux.HandleFunc("/admin/trigger/subscription-sync", func(w http.ResponseWriter, r *http.Request) {
+	adminMux.HandleFunc("/admin/trigger/subscription-sync", adminAPIHandler.RequireAdmin("/admin/trigger/subscription-sync", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 			return
@@ -475,7 +486,7 @@ func runScheduleMode(ctx context.Context, cfg *config.Config, logger *slog.Logge
 			"message":   "Subscription sync has been triggered manually",
 			"timestamp": time.Now().UTC().Format(time.RFC3339),
 		})
-	})
+	}))
 
 	adminServer := &http.Server{
 		Addr:         ":8080",
