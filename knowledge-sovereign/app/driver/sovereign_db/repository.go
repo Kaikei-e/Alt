@@ -18,6 +18,11 @@ type PgxIface interface {
 	Query(ctx context.Context, sql string, args ...interface{}) (pgx.Rows, error)
 	QueryRow(ctx context.Context, sql string, args ...interface{}) pgx.Row
 	Exec(ctx context.Context, sql string, arguments ...interface{}) (pgconn.CommandTag, error)
+	// Begin starts a transaction. Required by any repository method that
+	// must make more than one INSERT/UPDATE atomic (e.g., dedupe-key +
+	// event append, or deactivate + activate a projection version) so a
+	// mid-sequence crash can never leave the two statements half-applied.
+	Begin(ctx context.Context) (pgx.Tx, error)
 }
 
 var _ PgxIface = (*pgxpool.Pool)(nil)
@@ -183,13 +188,17 @@ func (r *Repository) DismissKnowledgeHomeItem(ctx context.Context, payload json.
 	if err != nil {
 		return fmt.Errorf("DismissKnowledgeHomeItem: parse user_id: %w", err)
 	}
-	dismissedAt := time.Now()
-	if params.DismissedAt != "" {
-		parsed, err := time.Parse(time.RFC3339Nano, params.DismissedAt)
-		if err != nil {
-			return fmt.Errorf("DismissKnowledgeHomeItem: parse dismissed_at: %w", err)
-		}
-		dismissedAt = parsed
+	// dismissed_at is a business fact and must come from the event payload —
+	// reproject-safe means replaying the same DismissedHomeItem event twice
+	// produces the identical row. Falling back to wall-clock time here would
+	// make each replay non-deterministic (immutable-design-guard: Event-time
+	// purity). Loudly reject rather than fabricate a value.
+	if params.DismissedAt == "" {
+		return fmt.Errorf("DismissKnowledgeHomeItem: dismissed_at is required")
+	}
+	dismissedAt, err := time.Parse(time.RFC3339Nano, params.DismissedAt)
+	if err != nil {
+		return fmt.Errorf("DismissKnowledgeHomeItem: parse dismissed_at: %w", err)
 	}
 
 	var commandTag pgconn.CommandTag
@@ -240,7 +249,21 @@ func (r *Repository) ClearSupersedeState(ctx context.Context, payload json.RawMe
 	return nil
 }
 
-// UpsertTodayDigest inserts or updates a today digest entry.
+// UpsertTodayDigest inserts or updates a today digest entry. The counters
+// (new_articles / summarized_articles / unsummarized_articles) are additive
+// deltas contributed by the projector on each source event (see
+// event-stream-consumer.md: "projection の UPSERT は絶対値上書き... 加算
+// マージは禁止" and immutable-design-guard's Merge-safe upsert principle).
+// A naive unconditional `col = col + delta` double-counts on an at-least-once
+// resend or a full reprojection replay of the same event.
+//
+// Guard: `digest.UpdatedAt` is always the source event's OccurredAt (never
+// wall-clock — see projectArticleCreated et al.), which is stable and
+// (for a single user's own event stream) strictly increasing per distinct
+// event. The WHERE clause on the UPDATE only applies the delta when the
+// incoming event is strictly newer than the last one already folded in;
+// replaying the identical event (same OccurredAt) becomes a no-op instead
+// of a second addition.
 func (r *Repository) UpsertTodayDigest(ctx context.Context, payload json.RawMessage) error {
 	var digest struct {
 		UserID                uuid.UUID `json:"user_id"`
@@ -283,7 +306,8 @@ func (r *Repository) UpsertTodayDigest(ctx context.Context, payload json.RawMess
 		 pulse_refs_json = COALESCE(NULLIF(EXCLUDED.pulse_refs_json, '[]'::jsonb), today_digest_view.pulse_refs_json),
 		 updated_at = EXCLUDED.updated_at,
 		 weekly_recap_available = EXCLUDED.weekly_recap_available OR today_digest_view.weekly_recap_available,
-		 evening_pulse_available = EXCLUDED.evening_pulse_available OR today_digest_view.evening_pulse_available`
+		 evening_pulse_available = EXCLUDED.evening_pulse_available OR today_digest_view.evening_pulse_available
+		WHERE EXCLUDED.updated_at > today_digest_view.updated_at`
 
 	_, err := r.pool.Exec(ctx, query,
 		digest.UserID, digest.DigestDate,
@@ -337,11 +361,16 @@ func (r *Repository) UpsertRecallCandidate(ctx context.Context, payload json.Raw
 }
 
 // SnoozeRecallCandidate snoozes a recall candidate until the given time.
+// updated_at is written from the caller-supplied occurred_at rather than SQL
+// now() — recall_candidate_view is a disposable projection (immutable-design-
+// guard: Event-time purity), and now() would make ApplyRecallMutation's
+// resend/replay non-deterministic.
 func (r *Repository) SnoozeRecallCandidate(ctx context.Context, payload json.RawMessage) error {
 	var params struct {
-		UserID  string `json:"user_id"`
-		ItemKey string `json:"item_key"`
-		Until   string `json:"until"`
+		UserID     string `json:"user_id"`
+		ItemKey    string `json:"item_key"`
+		Until      string `json:"until"`
+		OccurredAt string `json:"occurred_at"`
 	}
 	if err := json.Unmarshal(payload, &params); err != nil {
 		return fmt.Errorf("SnoozeRecallCandidate: unmarshal: %w", err)
@@ -354,10 +383,17 @@ func (r *Repository) SnoozeRecallCandidate(ctx context.Context, payload json.Raw
 	if err != nil {
 		return fmt.Errorf("SnoozeRecallCandidate: parse until: %w", err)
 	}
+	if params.OccurredAt == "" {
+		return fmt.Errorf("SnoozeRecallCandidate: occurred_at is required")
+	}
+	occurredAt, err := time.Parse(time.RFC3339Nano, params.OccurredAt)
+	if err != nil {
+		return fmt.Errorf("SnoozeRecallCandidate: parse occurred_at: %w", err)
+	}
 
-	query := `UPDATE recall_candidate_view SET snoozed_until = $1, updated_at = now()
-		WHERE user_id = $2 AND item_key = $3`
-	_, err = r.pool.Exec(ctx, query, until, userID, params.ItemKey)
+	query := `UPDATE recall_candidate_view SET snoozed_until = $1, updated_at = $2
+		WHERE user_id = $3 AND item_key = $4`
+	_, err = r.pool.Exec(ctx, query, until, occurredAt, userID, params.ItemKey)
 	if err != nil {
 		return fmt.Errorf("SnoozeRecallCandidate: %w", err)
 	}
@@ -367,10 +403,14 @@ func (r *Repository) SnoozeRecallCandidate(ctx context.Context, payload json.Raw
 // DismissRecallCandidate soft-deletes a recall candidate by setting dismissed_at.
 // The candidate remains in the table so the projector's UPSERT preserves the dismissal.
 // After a 30-day cooldown, the projector may clear dismissed_at to allow re-surfacing.
+// dismissed_at/updated_at are written from the caller-supplied occurred_at
+// rather than SQL now() for the same reproject-determinism reason as
+// SnoozeRecallCandidate above.
 func (r *Repository) DismissRecallCandidate(ctx context.Context, payload json.RawMessage) error {
 	var params struct {
-		UserID  string `json:"user_id"`
-		ItemKey string `json:"item_key"`
+		UserID     string `json:"user_id"`
+		ItemKey    string `json:"item_key"`
+		OccurredAt string `json:"occurred_at"`
 	}
 	if err := json.Unmarshal(payload, &params); err != nil {
 		return fmt.Errorf("DismissRecallCandidate: unmarshal: %w", err)
@@ -379,10 +419,17 @@ func (r *Repository) DismissRecallCandidate(ctx context.Context, payload json.Ra
 	if err != nil {
 		return fmt.Errorf("DismissRecallCandidate: parse user_id: %w", err)
 	}
+	if params.OccurredAt == "" {
+		return fmt.Errorf("DismissRecallCandidate: occurred_at is required")
+	}
+	occurredAt, err := time.Parse(time.RFC3339Nano, params.OccurredAt)
+	if err != nil {
+		return fmt.Errorf("DismissRecallCandidate: parse occurred_at: %w", err)
+	}
 
-	query := `UPDATE recall_candidate_view SET dismissed_at = now(), updated_at = now()
-		WHERE user_id = $1 AND item_key = $2`
-	_, err = r.pool.Exec(ctx, query, userID, params.ItemKey)
+	query := `UPDATE recall_candidate_view SET dismissed_at = $1, updated_at = $1
+		WHERE user_id = $2 AND item_key = $3`
+	_, err = r.pool.Exec(ctx, query, occurredAt, userID, params.ItemKey)
 	if err != nil {
 		return fmt.Errorf("DismissRecallCandidate: %w", err)
 	}

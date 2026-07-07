@@ -71,22 +71,34 @@ func (r *Repository) GetLatestKnowledgeEventSeqForUser(ctx context.Context, tena
 // partitioned knowledge_events table directly (PostgreSQL requires partition
 // key in all UNIQUE constraints).
 //
+// Both INSERTs run inside a single transaction: a crash between the two
+// would otherwise leave the dedupe key registered with no corresponding
+// event row, permanently losing the event (any resend is then treated as
+// an already-applied duplicate and silently dropped).
+//
 // Flow:
 //  1. INSERT into knowledge_event_dedupes (ON CONFLICT DO NOTHING)
 //  2. If dedupe INSERT affected 0 rows → duplicate, return 0 (idempotent)
 //  3. Otherwise INSERT into knowledge_events and return event_seq
+//  4. Commit both together
 func (r *Repository) AppendKnowledgeEvent(ctx context.Context, event KnowledgeEvent) (int64, error) {
+	tx, err := r.pool.Begin(ctx)
+	if err != nil {
+		return 0, fmt.Errorf("AppendKnowledgeEvent begin: %w", err)
+	}
+	defer tx.Rollback(ctx) //nolint:errcheck // no-op once Commit has succeeded
+
 	// Step 1: Check dedupe registry
 	dedupeQuery := `INSERT INTO knowledge_event_dedupes (dedupe_key, event_id, occurred_at)
 		VALUES ($1, $2, $3)
 		ON CONFLICT (dedupe_key) DO NOTHING`
 
-	tag, err := r.pool.Exec(ctx, dedupeQuery, event.DedupeKey, event.EventID, event.OccurredAt)
+	tag, err := tx.Exec(ctx, dedupeQuery, event.DedupeKey, event.EventID, event.OccurredAt)
 	if err != nil {
 		return 0, fmt.Errorf("AppendKnowledgeEvent dedupe check: %w", err)
 	}
 	if tag.RowsAffected() == 0 {
-		return 0, nil // duplicate, idempotent
+		return 0, nil // duplicate, idempotent — nothing to commit
 	}
 
 	// Step 2: Insert event
@@ -98,7 +110,7 @@ func (r *Repository) AppendKnowledgeEvent(ctx context.Context, event KnowledgeEv
 		RETURNING event_seq`
 
 	var eventSeq int64
-	err = r.pool.QueryRow(ctx, eventQuery,
+	err = tx.QueryRow(ctx, eventQuery,
 		event.EventID, event.OccurredAt, event.TenantID, event.UserID,
 		event.ActorType, event.ActorID, event.EventType,
 		event.AggregateType, event.AggregateID,
@@ -107,6 +119,10 @@ func (r *Repository) AppendKnowledgeEvent(ctx context.Context, event KnowledgeEv
 	).Scan(&eventSeq)
 	if err != nil {
 		return 0, fmt.Errorf("AppendKnowledgeEvent insert: %w", err)
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return 0, fmt.Errorf("AppendKnowledgeEvent commit: %w", err)
 	}
 	return eventSeq, nil
 }

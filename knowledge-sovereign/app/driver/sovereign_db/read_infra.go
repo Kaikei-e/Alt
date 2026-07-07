@@ -3,6 +3,7 @@ package sovereign_db
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"time"
 
@@ -140,19 +141,46 @@ func (r *Repository) CreateProjectionVersion(ctx context.Context, v ProjectionVe
 	return nil
 }
 
-// ActivateProjectionVersion sets a version as active and deactivates all others.
+// ActivateProjectionVersion sets a version as active and deactivates all
+// others, atomically. A mid-failure (or an invalid version argument) must
+// never leave zero active versions — that would silently regress every
+// reader's COALESCE(...,1) fallback to projection v1. So this: (1) checks
+// the target version exists BEFORE touching anything, and (2) performs the
+// deactivate+activate pair inside a single transaction so a crash between
+// the two statements can never be observed as "no active version".
 func (r *Repository) ActivateProjectionVersion(ctx context.Context, version int) error {
-	query := `UPDATE knowledge_projection_versions SET status = 'inactive', activated_at = NULL WHERE status = 'active'`
-	if _, err := r.pool.Exec(ctx, query); err != nil {
+	tx, err := r.pool.Begin(ctx)
+	if err != nil {
+		return fmt.Errorf("ActivateProjectionVersion begin: %w", err)
+	}
+	defer tx.Rollback(ctx) //nolint:errcheck // no-op once Commit has succeeded
+
+	existsQuery := `SELECT 1 FROM knowledge_projection_versions WHERE version = $1`
+	var exists int
+	if err := tx.QueryRow(ctx, existsQuery, version).Scan(&exists); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return fmt.Errorf("ActivateProjectionVersion: version %d not found", version)
+		}
+		return fmt.Errorf("ActivateProjectionVersion exists check: %w", err)
+	}
+
+	deactivateQuery := `UPDATE knowledge_projection_versions SET status = 'inactive', activated_at = NULL
+		WHERE status = 'active' AND version != $1`
+	if _, err := tx.Exec(ctx, deactivateQuery, version); err != nil {
 		return fmt.Errorf("ActivateProjectionVersion deactivate: %w", err)
 	}
-	query = `UPDATE knowledge_projection_versions SET status = 'active', activated_at = now() WHERE version = $1`
-	commandTag, err := r.pool.Exec(ctx, query, version)
+
+	activateQuery := `UPDATE knowledge_projection_versions SET status = 'active', activated_at = now() WHERE version = $1`
+	commandTag, err := tx.Exec(ctx, activateQuery, version)
 	if err != nil {
 		return fmt.Errorf("ActivateProjectionVersion: %w", err)
 	}
 	if commandTag.RowsAffected() == 0 {
 		return fmt.Errorf("ActivateProjectionVersion: version %d not found", version)
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return fmt.Errorf("ActivateProjectionVersion commit: %w", err)
 	}
 	return nil
 }
@@ -417,7 +445,7 @@ func (r *Repository) GetBackfillJob(ctx context.Context, jobID uuid.UUID) (*Back
 
 	var j BackfillJob
 	err := r.pool.QueryRow(ctx, query, jobID).Scan(
-		&j.JobID, &j.Status, &j.ProjectionVersion, &j.CursorUserID, &j.CursorDate, &j.CursorArticleID,
+		&j.JobID, &j.Status, &j.Kind, &j.ProjectionVersion, &j.CursorUserID, &j.CursorDate, &j.CursorArticleID,
 		&j.TotalEvents, &j.ProcessedEvents, &j.ErrorMessage,
 		&j.CreatedAt, &j.StartedAt, &j.CompletedAt, &j.UpdatedAt,
 	)

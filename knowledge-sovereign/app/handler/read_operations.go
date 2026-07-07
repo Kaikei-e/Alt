@@ -2,6 +2,7 @@ package handler
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"github.com/google/uuid"
@@ -77,19 +78,29 @@ type ReadOperations interface {
 var _ ReadOperations = (*sovereign_db.Repository)(nil)
 var _ ReadDB = (*sovereign_db.Repository)(nil)
 
-// --- helper: parse UUID from string, return nil UUID on empty ---
-func parseUUID(s string) uuid.UUID {
-	id, _ := uuid.Parse(s)
-	return id
+// parseUUIDField parses s as a UUID for the named request field. Malformed
+// UUIDs must never be silently coerced to uuid.Nil — a Nil event_id/
+// tenant_id/user_id written to knowledge_events, or used as a query
+// predicate, corrupts data or silently scopes a read to the wrong user
+// instead of failing the request (Rule 8: no silent fallback).
+func parseUUIDField(field, s string) (uuid.UUID, error) {
+	id, err := uuid.Parse(s)
+	if err != nil {
+		return uuid.UUID{}, fmt.Errorf("invalid %s %q: %w", field, s, err)
+	}
+	return id, nil
 }
 
-func parseUUIDPtr(s string) *uuid.UUID {
+// parseUUIDPtrField parses s as an optional UUID for the named request
+// field. An empty string means "absent" (returns nil, nil); any other
+// unparseable value is a caller error, not a silently dropped nil.
+func parseUUIDPtrField(field, s string) (*uuid.UUID, error) {
 	if s == "" {
-		return nil
+		return nil, nil
 	}
 	id, err := uuid.Parse(s)
 	if err != nil {
-		return nil
+		return nil, fmt.Errorf("invalid %s %q: %w", field, s, err)
 	}
-	return &id
+	return &id, nil
 }

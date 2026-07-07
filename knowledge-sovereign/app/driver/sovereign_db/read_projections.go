@@ -288,7 +288,7 @@ func (r *Repository) GetRecallCandidates(ctx context.Context, userID uuid.UUID, 
 		  ), 1)
 		WHERE rcv.user_id = $1
 		  AND rcv.dismissed_at IS NULL
-		  AND rcv.snoozed_until IS NULL
+		  AND (rcv.snoozed_until IS NULL OR rcv.snoozed_until <= now())
 		  AND rcv.next_suggest_at IS NOT NULL
 		  AND rcv.next_suggest_at <= now()
 		ORDER BY rcv.recall_score DESC
