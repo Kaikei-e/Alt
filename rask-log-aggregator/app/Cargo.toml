@@ -28,6 +28,9 @@ hex = "0.4"
 bytes = "1.10"
 http-body-util = "0.1"
 
+# Request decompression (forwarder sends gzip-compressed NDJSON/OTLP bodies)
+tower-http = { version = "0.6", features = ["decompression-gzip"] }
+
 # Healthcheck HTTP client
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls"] }
 
@@ -41,6 +44,7 @@ tempfile = "3.20"
 axum-test = "17"
 proptest = "1.6"
 criterion = { version = "0.5", features = ["html_reports"] }
+flate2 = "1.1.2"
 
 [[bench]]
 name = "otlp_pipeline"
