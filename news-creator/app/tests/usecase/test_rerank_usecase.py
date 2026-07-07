@@ -208,3 +208,15 @@ class TestRerankUsecase:
             "event loop was blocked during warmup(): only "
             f"{heartbeat_ticks} heartbeat ticks observed during a 0.3s load"
         )
+
+    @pytest.mark.asyncio
+    async def test_warmup_does_not_raise_on_model_load_failure(self, usecase):
+        """warmup() is a startup optimization, not a hard requirement -- a
+        network-isolated environment (no egress to the model hub) must not
+        crash the whole service at boot. The lazy-load fallback in rerank()
+        remains the real safety net."""
+        with patch(
+            "news_creator.usecase.rerank_usecase._get_cross_encoder",
+            side_effect=OSError("no route to host"),
+        ):
+            await usecase.warmup()  # must not raise

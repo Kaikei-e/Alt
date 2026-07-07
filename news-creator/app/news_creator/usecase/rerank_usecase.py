@@ -69,11 +69,23 @@ class RerankUsecase:
 
         Called at service startup so the first real /rerank request doesn't
         pay the (potentially multi-second) model-load cost synchronously
-        inside a request-handling coroutine.
+        inside a request-handling coroutine. This is a startup optimization,
+        not a hard requirement -- a network-isolated deployment (no egress
+        to the model hub) must not crash the whole service at boot; rerank()
+        falls back to loading the model lazily on first real use.
         """
         logger.info("Warming up cross-encoder model", extra={"model": self.model_name})
-        await asyncio.to_thread(_get_cross_encoder, self.model_name)
-        logger.info("Cross-encoder warmup complete", extra={"model": self.model_name})
+        try:
+            await asyncio.to_thread(_get_cross_encoder, self.model_name)
+            logger.info(
+                "Cross-encoder warmup complete", extra={"model": self.model_name}
+            )
+        except Exception as e:
+            logger.warning(
+                f"Cross-encoder warmup failed, will load lazily on first use: {e}",
+                extra={"model": self.model_name},
+                exc_info=True,
+            )
 
     async def rerank(
         self,
