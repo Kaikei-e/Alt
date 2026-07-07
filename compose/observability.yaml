@@ -29,8 +29,13 @@ services:
     image: prom/prometheus:v3.1.0
     restart: unless-stopped
     mem_limit: 512m
+    # Loopback-only: --web.enable-lifecycle below exposes unauthenticated
+    # POST /-/quit and /-/reload. No script/runbook in this repo calls the
+    # host-published port (internal consumers use the `prometheus:9090`
+    # Docker network hostname) — 127.0.0.1 keeps host-side debug/reload
+    # access while closing it off to the LAN. Same pattern as pact.yaml.
     ports:
-      - "9090:9090"
+      - "127.0.0.1:9090:9090"
     volumes:
       - prometheus_data:/prometheus
       - ../observability/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro

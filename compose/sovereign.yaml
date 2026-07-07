@@ -61,8 +61,21 @@ services:
       dockerfile: Dockerfile.sovereign
     restart: unless-stopped
     mem_limit: 512m
+    # DATABASE_URL is assembled at runtime from the postgres_password secret
+    # (same entrypoint-wrapper pattern as knowledge-sovereign-db-migrator
+    # above) instead of being interpolated into `environment:`, where it
+    # would leak the plaintext password via `docker inspect`. The app's
+    # config.Load() (knowledge-sovereign/app/config/config.go) only reads
+    # os.Getenv("DATABASE_URL"), so no Go code changes are needed — the
+    # shell wrapper builds the same value the process would have received.
+    entrypoint:
+      - /bin/sh
+      - -c
+      - |
+        DB_PASS=$$(cat /run/secrets/postgres_password)
+        export DATABASE_URL="postgres://sovereign:$${DB_PASS}@knowledge-sovereign-db:5432/knowledge_sovereign?sslmode=disable"
+        exec /server
     environment:
-      - DATABASE_URL=postgres://sovereign:${POSTGRES_PASSWORD}@knowledge-sovereign-db:5432/knowledge_sovereign?sslmode=disable
       - LISTEN_ADDR=:9500
       - METRICS_ADDR=:9501
       - SNAPSHOT_DIR=/tmp/snapshots
@@ -80,6 +93,8 @@ services:
       - "9511:9501"
     volumes:
       - ../backups/sovereign-snapshots:/tmp/snapshots
+    secrets:
+      - postgres_password
     depends_on:
       knowledge-sovereign-db:
         condition: service_healthy

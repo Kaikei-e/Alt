@@ -12,7 +12,10 @@ include:
 
 services:
   nginx:
-    image: nginx:latest
+    # Pinned to the same patch line as compose/compose.staging.yaml
+    # (nginx:1.27-alpine) plus digest, so the edge/ingress image is
+    # reproducible and can't silently drift on a routine `pull`.
+    image: nginx:1.27-alpine@sha256:65645c7bb6a0661892a8b03b89d0743208a18dd2f3f17a54ef4b76fb8e2f2a10
     restart: always
     mem_limit: 512m
     healthcheck:
