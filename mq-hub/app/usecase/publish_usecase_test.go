@@ -59,6 +59,11 @@ func (m *MockStreamPort) DeleteStream(ctx context.Context, stream domain.StreamK
 	return args.Error(0)
 }
 
+func (m *MockStreamPort) Expire(ctx context.Context, stream domain.StreamKey, ttl time.Duration) error {
+	args := m.Called(ctx, stream, ttl)
+	return args.Error(0)
+}
+
 func TestPublishUsecase_Publish(t *testing.T) {
 	t.Run("publishes event successfully", func(t *testing.T) {
 		mockPort := new(MockStreamPort)

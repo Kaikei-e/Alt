@@ -1,9 +1,17 @@
 // Package middleware contains HTTP middleware for mq-hub.
 //
 // PeerIdentityMiddleware reads the TLS client-cert CommonName from r.TLS and
-// enforces an allowlist. Wired by the :9443 mTLS listener; the existing
-// :<MQ_HUB_PORT> plaintext listener keeps serving during the dual-stack
-// migration window.
+// enforces an allowlist.
+//
+// NOT CURRENTLY WIRED: main.go only starts a plaintext HTTP listener (see
+// cfg.ConnectPort); there is no mTLS listener, and NewPeerIdentityMiddleware
+// is not called anywhere in the composition root. This control is dead code
+// today and provides no protection — do not assume peer identity is enforced
+// on any mq-hub endpoint until an mTLS listener is actually constructed in
+// main.go and Require() is added to its handler chain. Applying Require()
+// to the existing plaintext listener would reject every request (r.TLS is
+// always nil there), so it must only ever be attached to a real TLS listener
+// that terminates client certs.
 package middleware
 
 import (

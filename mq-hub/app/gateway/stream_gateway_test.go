@@ -61,6 +61,11 @@ func (m *mockStreamDriver) DeleteStream(ctx context.Context, stream domain.Strea
 	return args.Error(0)
 }
 
+func (m *mockStreamDriver) Expire(ctx context.Context, stream domain.StreamKey, ttl time.Duration) error {
+	args := m.Called(ctx, stream, ttl)
+	return args.Error(0)
+}
+
 func TestStreamGatewayPublish_RejectsNilEvent(t *testing.T) {
 	driver := new(mockStreamDriver)
 	gateway := NewStreamGateway(driver)
@@ -127,5 +132,17 @@ func TestStreamGatewayPublish_DelegatesDriverError(t *testing.T) {
 
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "redis down")
+	driver.AssertExpectations(t)
+}
+
+func TestStreamGatewayExpire_DelegatesToDriver(t *testing.T) {
+	driver := new(mockStreamDriver)
+	gateway := NewStreamGateway(driver)
+
+	driver.On("Expire", mock.Anything, domain.StreamKeyArticles, 5*time.Minute).Return(nil)
+
+	err := gateway.Expire(context.Background(), domain.StreamKeyArticles, 5*time.Minute)
+
+	require.NoError(t, err)
 	driver.AssertExpectations(t)
 }

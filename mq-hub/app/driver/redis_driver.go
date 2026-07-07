@@ -260,6 +260,12 @@ func (d *RedisDriver) DeleteStream(ctx context.Context, stream domain.StreamKey)
 	return d.client.Del(ctx, stream.String()).Err()
 }
 
+// Expire sets a TTL on a stream key. It is a no-op (no error) if the key
+// does not exist yet.
+func (d *RedisDriver) Expire(ctx context.Context, stream domain.StreamKey, ttl time.Duration) error {
+	return d.client.Expire(ctx, stream.String(), ttl).Err()
+}
+
 // parseEventFromMessage converts a Redis stream message to a domain Event.
 func (d *RedisDriver) parseEventFromMessage(msg redis.XMessage) *domain.Event {
 	event := &domain.Event{

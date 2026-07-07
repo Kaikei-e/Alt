@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"time"
 
 	"github.com/google/uuid"
@@ -18,6 +19,16 @@ const (
 	DefaultTagGenerationTimeoutMs = 60000
 	// ReplyStreamPrefix is the prefix for reply streams.
 	ReplyStreamPrefix = "alt:replies:tags:"
+	// replyStreamCleanupTimeout bounds the reply-stream cleanup's own Redis
+	// calls. It is intentionally independent of the request context: on
+	// request timeout/cancellation the request ctx is already Done, so using
+	// it for cleanup would make the cleanup itself fail every time.
+	replyStreamCleanupTimeout = 5 * time.Second
+	// replyStreamTTL is a safety-net expiry applied to the reply stream during
+	// cleanup. It bounds the key's lifetime even if DeleteStream fails, or a
+	// worker replies late and recreates the stream (via XADD) after this
+	// cleanup has already run.
+	replyStreamTTL = 5 * time.Minute
 )
 
 // GenerateTagsRequest represents a request to generate tags for an article.
@@ -62,9 +73,21 @@ func (u *GenerateTagsUsecase) GenerateTagsForArticle(ctx context.Context, req *G
 	correlationID := uuid.New().String()
 	replyStream := domain.StreamKey(ReplyStreamPrefix + correlationID)
 
-	// Ensure cleanup of reply stream
+	// Ensure cleanup of reply stream. Use a context detached from the request
+	// ctx so cleanup still runs on timeout/cancellation instead of failing
+	// alongside the request (see replyStreamCleanupTimeout doc above).
 	defer func() {
-		_ = u.streamPort.DeleteStream(ctx, replyStream)
+		cleanupCtx, cancel := context.WithTimeout(context.Background(), replyStreamCleanupTimeout)
+		defer cancel()
+
+		if err := u.streamPort.Expire(cleanupCtx, replyStream, replyStreamTTL); err != nil {
+			slog.WarnContext(ctx, "failed to set reply stream TTL during cleanup",
+				"stream", replyStream.String(), "error", err)
+		}
+		if err := u.streamPort.DeleteStream(cleanupCtx, replyStream); err != nil {
+			slog.WarnContext(ctx, "failed to delete reply stream during cleanup",
+				"stream", replyStream.String(), "error", err)
+		}
 	}()
 
 	// Build request payload
