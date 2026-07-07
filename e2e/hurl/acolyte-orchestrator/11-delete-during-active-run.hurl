@@ -1,7 +1,10 @@
 # DeleteReport while a run is active must refuse with Connect
-# failed_precondition (HTTP 412). Source: connect_service.py:340-360
-# uses ReportRepository.has_active_run() which checks
-# WHERE run_status IN ('pending', 'running').
+# failed_precondition. The Connect protocol maps failed_precondition to
+# HTTP 400 (not 412 -- that's the gRPC-Gateway/REST convention, not
+# Connect's own unary-transport mapping; see
+# https://connectrpc.com/docs/protocol/#error-codes).
+# Source: connect_service.py:340-360 uses ReportRepository.has_active_run()
+# which checks WHERE run_status IN ('pending', 'running').
 #
 # Race risk: against the stub the pipeline finishes in <1s, so the
 # delete can land after the row already transitioned to "succeeded".
@@ -46,7 +49,8 @@ HTTP 200
 jsonpath "$.run.runStatus" matches "^(pending|running|succeeded)$"
 
 # Attempt delete. Either:
-#   - The run is still pending/running → DeleteReport refused (412).
+#   - The run is still pending/running → DeleteReport refused
+#     (failed_precondition, HTTP 400).
 #   - The run already succeeded         → DeleteReport accepted (200).
 # Both outcomes are valid responses given the race; what's NOT valid
 # is a 5xx, an UNKNOWN status, or a 200 while the run is still active.
@@ -63,7 +67,7 @@ Connect-Protocol-Version: 1
 }
 HTTP *
 [Asserts]
-status toString matches "^(200|412)$"
+status toString matches "^(200|400)$"
 
 # Drain to a terminal state. Either:
 #   - The earlier delete was rejected and the pipeline ran to
