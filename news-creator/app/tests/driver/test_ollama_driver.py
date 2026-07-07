@@ -70,9 +70,7 @@ async def test_generate_errors_instead_of_hanging_when_ollama_stalls():
     await server.start_server()
 
     try:
-        config = _make_config(
-            f"http://{server.host}:{server.port}", timeout_seconds=1
-        )
+        config = _make_config(f"http://{server.host}:{server.port}", timeout_seconds=1)
         driver = OllamaDriver(config)
 
         # Bounded by wait_for: with the fix, per-attempt sock_read timeout

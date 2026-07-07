@@ -132,7 +132,9 @@ async def test_cache_enabled_results_in_real_reads_and_writes(monkeypatch):
     config = _recap_config()
     cache_gateway = RedisCacheGateway(config)
     await cache_gateway.initialize()
-    assert cache_gateway._enabled is True, "cache silently disabled itself in initialize()"
+    assert cache_gateway._enabled is True, (
+        "cache silently disabled itself in initialize()"
+    )
 
     llm_provider = Mock()
     call_count = {"n": 0}
@@ -143,13 +145,19 @@ async def test_cache_enabled_results_in_real_reads_and_writes(monkeypatch):
 
     llm_provider.generate = counting_generate
 
-    usecase = RecapSummaryUsecase(config=config, llm_provider=llm_provider, cache=cache_gateway)
+    usecase = RecapSummaryUsecase(
+        config=config, llm_provider=llm_provider, cache=cache_gateway
+    )
     request = _recap_request()
 
     first = await usecase.generate_summary(request)
 
-    assert fake_client.get_calls, "RedisCacheGateway.get() was never called against redis"
-    assert fake_client.set_calls, "RedisCacheGateway.set() was never called against redis"
+    assert fake_client.get_calls, (
+        "RedisCacheGateway.get() was never called against redis"
+    )
+    assert fake_client.set_calls, (
+        "RedisCacheGateway.set() was never called against redis"
+    )
     assert call_count["n"] == 1
 
     second = await usecase.generate_summary(request)
@@ -185,7 +193,9 @@ async def test_cache_disabled_never_touches_redis(monkeypatch):
 
     llm_provider.generate = counting_generate
 
-    usecase = RecapSummaryUsecase(config=config, llm_provider=llm_provider, cache=cache_gateway)
+    usecase = RecapSummaryUsecase(
+        config=config, llm_provider=llm_provider, cache=cache_gateway
+    )
     request = _recap_request()
 
     await usecase.generate_summary(request)
