@@ -251,19 +251,34 @@ class DatabaseManager:
                 pass
             self.conn = None
 
-    def get_articles_batch(self, offset: int, limit: int) -> List[ArticleRecord]:
-        """記事をバッチで取得（HTMLを含むもののみ）"""
+    def get_articles_batch(self, last_id: Optional[str], limit: int) -> List[ArticleRecord]:
+        """記事をバッチで取得（HTMLを含むもののみ、keysetページネーション）
+
+        OFFSETベースのページネーションは、バッチ更新のたびに
+        `content LIKE '<%'` にマッチする行の集合が縮むため、
+        次バッチで未処理の行を読み飛ばしてしまう。id を起点にした
+        keysetページネーションであれば、常に「前回見た最後のidより後」
+        を問い合わせるため、集合が縮んでも取りこぼしが起きない。
+        """
         self.ensure_connection()
         cur = self.conn.cursor()
         try:
-            # パラメータをタプルで渡す（LIKEパターン、LIMIT, OFFSETの順序）
-            cur.execute("""
-                SELECT id, title, content, url
-                FROM articles
-                WHERE content LIKE %s
-                ORDER BY id
-                LIMIT %s OFFSET %s
-            """, ('<%', limit, offset))
+            if last_id is None:
+                cur.execute("""
+                    SELECT id, title, content, url
+                    FROM articles
+                    WHERE content LIKE %s
+                    ORDER BY id
+                    LIMIT %s
+                """, ('<%', limit))
+            else:
+                cur.execute("""
+                    SELECT id, title, content, url
+                    FROM articles
+                    WHERE content LIKE %s AND id > %s
+                    ORDER BY id
+                    LIMIT %s
+                """, ('<%', last_id, limit))
 
             rows = cur.fetchall()
             result = [
@@ -462,17 +477,18 @@ def main():
 
         # プログレスバー
         with tqdm(total=total_count, desc="処理中", unit="件") as pbar:
-            offset = 0
+            last_id: Optional[str] = None
+            fetched_count = 0
 
-            while offset < total_count:
+            while fetched_count < total_count:
                 # 定期的に接続を確認（30秒ごと）
                 current_time = time.time()
                 if current_time - last_connection_check > 30:
                     db.ensure_connection()
                     last_connection_check = current_time
 
-                # バッチ取得
-                articles = db.get_articles_batch(offset, args.batch_size)
+                # バッチ取得（keysetページネーション）
+                articles = db.get_articles_batch(last_id, args.batch_size)
                 if not articles:
                     break
 
@@ -506,9 +522,10 @@ def main():
                 if batch_updates and not args.dry_run:
                     db.update_article_batch(batch_updates)
 
-                offset += len(articles)
+                last_id = articles[-1].id
+                fetched_count += len(articles)
 
-                if args.limit and offset >= args.limit:
+                if args.limit and fetched_count >= args.limit:
                     break
 
         elapsed_time = time.time() - start_time
