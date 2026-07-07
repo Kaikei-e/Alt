@@ -8,7 +8,9 @@ injected engine.
 
 from __future__ import annotations
 
+import asyncio
 import re
+import time
 from unittest.mock import MagicMock
 
 import numpy as np
@@ -143,3 +145,63 @@ class TestSynthesizeOrchestration:
         for audio, sr in chunks:
             assert sr == 24000
             assert audio.dtype == np.float32
+
+
+class TestSynthesizeStreamCancellation:
+    """Client disconnect (async generator closed early) must stop the producer.
+
+    Regression guard for the orphaned-producer-thread leak: previously the
+    `run_in_executor(None, producer)` Future was discarded, so closing the
+    generator early left the background thread synthesizing the rest of the
+    text into a queue nobody was draining anymore.
+    """
+
+    @staticmethod
+    def _make_slow_pipeline(
+        *, sentence_count: int, delay: float
+    ) -> tuple[TTSPipeline, dict[str, int], str]:
+        mock_engine = MagicMock()
+        mock_audio = np.zeros(10, dtype=np.float32)
+        counters = {"calls": 0}
+
+        def slow_synth_one(*, sentence: str, voice: str, speed: float):
+            counters["calls"] += 1
+            time.sleep(delay)
+            return mock_audio, 24000
+
+        mock_engine.synth_one.side_effect = slow_synth_one
+        mock_engine.is_ready = True
+        mock_engine.device = "cpu"
+        mock_engine.gpu_name = None
+        text = "。".join(f"文{i}" for i in range(sentence_count)) + "。"
+        return TTSPipeline(engine=mock_engine), counters, text
+
+    @pytest.mark.asyncio
+    async def test_early_close_stops_producer_thread(self):
+        sentence_count = 20
+        delay = 0.05
+        pipeline, counters, text = self._make_slow_pipeline(
+            sentence_count=sentence_count, delay=delay
+        )
+
+        gen = pipeline.synthesize_stream(text=text, voice="qwen-ja-1", speed=1.0)
+        first_chunk = await gen.__anext__()
+        assert first_chunk is not None
+
+        # Simulate the client disconnecting: close the generator early. If
+        # the producer's Future is properly awaited/cancelled, aclose()
+        # doesn't return until the background thread has actually stopped.
+        await gen.aclose()
+        calls_at_close = counters["calls"]
+
+        # Give a slow/unfixed producer plenty of time to keep grinding
+        # through the remaining sentences if it weren't cancelled.
+        await asyncio.sleep(delay * 4)
+        calls_after_wait = counters["calls"]
+
+        assert calls_at_close < sentence_count, (
+            "producer ran to completion before the generator was even closed"
+        )
+        assert calls_after_wait == calls_at_close, (
+            "producer thread kept making progress after the consumer disconnected"
+        )
