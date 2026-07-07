@@ -10,6 +10,7 @@ use crate::clients::KnowledgeSovereignClient;
 use crate::clients::knowledge_sovereign::publish::{ConfirmedCluster, publish_topic_snapshots};
 use crate::clients::news_creator::Reference;
 use crate::clients::tag_generator::TagGeneratorClient;
+use crate::error::RecapError;
 use crate::scheduler::JobContext;
 use crate::store::dao::RecapDao;
 use crate::store::models::RecapOutput;
@@ -234,32 +235,37 @@ impl PersistStage for FinalSectionPersistStage {
         for (genre, genre_result) in &result.genre_results {
             // エラーがある場合は分類
             if let Some(error_msg) = &genre_result.error {
-                // エラーメッセージから分類
-                if error_msg.contains("no evidence") || error_msg.contains("no articles assigned") {
-                    // 記事が1件も割り当てられなかった
-                    genres_no_evidence += 1;
-                } else if error_msg.contains("insufficient documents")
-                    || error_msg.contains("expected >=")
-                {
-                    // 証拠不足でスキップ（記事数が閾値未満）
-                    genres_skipped += 1;
-                } else {
-                    // その他のエラー（クラスタリング失敗、サマリー生成失敗など）
-                    warn!(
-                        job_id = %job.job_id,
-                        genre = %genre,
-                        error = ?genre_result.error,
-                        "skipping genre with error"
-                    );
-                    record_failed_genre(
-                        self.dao.as_ref(),
-                        job.job_id,
-                        "dispatch_summary",
-                        genre,
-                        error_msg,
-                    )
-                    .await;
-                    genres_failed += 1;
+                // `error_kind` を見て分類する。文字列 (`error_msg`) は診断用に
+                // 保持するのみで、分類には使わない — 任意のエラーメッセージが
+                // 偶然 "no evidence" 等の部分文字列を含んでいても、本物の
+                // no-evidence/insufficient-documents 状態と誤分類されない。
+                match &genre_result.error_kind {
+                    Some(RecapError::NoEvidence) => {
+                        // 記事が1件も割り当てられなかった
+                        genres_no_evidence += 1;
+                    }
+                    Some(RecapError::InsufficientDocuments { .. }) => {
+                        // 証拠不足でスキップ（記事数が閾値未満）
+                        genres_skipped += 1;
+                    }
+                    _ => {
+                        // その他のエラー（クラスタリング失敗、サマリー生成失敗など）
+                        warn!(
+                            job_id = %job.job_id,
+                            genre = %genre,
+                            error = ?genre_result.error,
+                            "skipping genre with error"
+                        );
+                        record_failed_genre(
+                            self.dao.as_ref(),
+                            job.job_id,
+                            "dispatch_summary",
+                            genre,
+                            error_msg,
+                        )
+                        .await;
+                        genres_failed += 1;
+                    }
                 }
                 continue;
             }
@@ -774,6 +780,14 @@ mod tests {
     }
 
     fn dispatch_with_error(genre: &str, error: &str) -> DispatchResult {
+        dispatch_with_error_kind(genre, error, None)
+    }
+
+    fn dispatch_with_error_kind(
+        genre: &str,
+        error: &str,
+        error_kind: Option<RecapError>,
+    ) -> DispatchResult {
         let mut genre_results = HashMap::new();
         genre_results.insert(
             genre.to_string(),
@@ -783,6 +797,7 @@ mod tests {
                 summary_response_id: None,
                 summary_response: None,
                 error: Some(error.to_string()),
+                error_kind,
             },
         );
         DispatchResult {
@@ -835,11 +850,16 @@ mod tests {
     async fn persist_does_not_record_failed_task_for_no_evidence() {
         let dao = Arc::new(MockRecapDao::new());
         let stage = FinalSectionPersistStage::new(dao.clone(), None);
-        let dispatch = dispatch_with_error("consumer_tech", "no evidence for genre");
+        let dispatch = dispatch_with_error_kind(
+            "consumer_tech",
+            "no evidence for genre",
+            Some(RecapError::NoEvidence),
+        );
         let job = JobContext::new(dispatch.job_id, dispatch.all_genres.clone());
 
-        stage.persist(&job, dispatch).await.expect("persist ok");
+        let result = stage.persist(&job, dispatch).await.expect("persist ok");
 
+        assert_eq!(result.genres_no_evidence, 1);
         let recorded = dao.failed_tasks();
         assert!(
             recorded.is_empty(),
@@ -851,16 +871,77 @@ mod tests {
     async fn persist_does_not_record_failed_task_for_insufficient_documents() {
         let dao = Arc::new(MockRecapDao::new());
         let stage = FinalSectionPersistStage::new(dao.clone(), None);
-        let dispatch = dispatch_with_error("consumer_tech", "insufficient documents expected >= 3");
+        let dispatch = dispatch_with_error_kind(
+            "consumer_tech",
+            "insufficient documents expected >= 3",
+            Some(RecapError::InsufficientDocuments { min: 3, found: 1 }),
+        );
         let job = JobContext::new(dispatch.job_id, dispatch.all_genres.clone());
 
-        stage.persist(&job, dispatch).await.expect("persist ok");
+        let result = stage.persist(&job, dispatch).await.expect("persist ok");
 
+        assert_eq!(result.genres_skipped, 1);
         let recorded = dao.failed_tasks();
         assert!(
             recorded.is_empty(),
             "insufficient documents is an expected skip, must not pollute recap_failed_tasks"
         );
+    }
+
+    /// RED case for the stringly-typed anti-pattern this fix replaces: a
+    /// *real* failure whose message happens to contain the substring
+    /// "no evidence" (e.g. an LLM diagnostic quoted inside the error text)
+    /// must NOT be swallowed as the benign "no genre evidence" completion
+    /// state. Classification must be driven by `error_kind`, not by
+    /// `error.contains(...)` on arbitrary message text.
+    #[tokio::test]
+    async fn persist_records_failed_task_when_message_merely_mentions_no_evidence() {
+        let dao = Arc::new(MockRecapDao::new());
+        let stage = FinalSectionPersistStage::new(dao.clone(), None);
+        let dispatch = dispatch_with_error(
+            "consumer_tech",
+            "Summary generation failed: model returned no evidence for its citations",
+        );
+        let job = JobContext::new(dispatch.job_id, dispatch.all_genres.clone());
+
+        let result = stage.persist(&job, dispatch).await.expect("persist ok");
+
+        assert_eq!(
+            result.genres_no_evidence, 0,
+            "a real summary-generation failure must not be miscounted as no-evidence"
+        );
+        assert_eq!(result.genres_failed, 1);
+        let recorded = dao.failed_tasks();
+        assert_eq!(
+            recorded.len(),
+            1,
+            "a real failure whose text happens to contain 'no evidence' must still be recorded"
+        );
+    }
+
+    /// Same RED case for the "insufficient documents" bucket: a batch-API
+    /// failure message that happens to mention "insufficient documents" (e.g.
+    /// an unrelated cache eviction diagnostic) must not be misclassified as
+    /// the benign skip.
+    #[tokio::test]
+    async fn persist_records_failed_task_when_message_merely_mentions_insufficient_documents() {
+        let dao = Arc::new(MockRecapDao::new());
+        let stage = FinalSectionPersistStage::new(dao.clone(), None);
+        let dispatch = dispatch_with_error(
+            "consumer_tech",
+            "Batch API failed: insufficient documents in response cache, evicting",
+        );
+        let job = JobContext::new(dispatch.job_id, dispatch.all_genres.clone());
+
+        let result = stage.persist(&job, dispatch).await.expect("persist ok");
+
+        assert_eq!(
+            result.genres_skipped, 0,
+            "an unrelated failure must not be miscounted as the insufficient-documents skip"
+        );
+        assert_eq!(result.genres_failed, 1);
+        let recorded = dao.failed_tasks();
+        assert_eq!(recorded.len(), 1);
     }
 
     // === reconcile_bullet_citations: edge case pins (ADR-832 followup) ===
@@ -1161,6 +1242,7 @@ mod tests {
                 summary_response_id: Some(summary_id.clone()),
                 summary_response: Some(summary_response),
                 error: None,
+                error_kind: None,
             },
         );
         let dispatch = DispatchResult {
@@ -1229,6 +1311,7 @@ mod tests {
                 // confirmed cluster (error.is_none() + non-empty top_terms).
                 summary_response: None,
                 error: None,
+                error_kind: None,
             },
         );
         DispatchResult {

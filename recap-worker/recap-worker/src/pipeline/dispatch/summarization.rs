@@ -13,6 +13,7 @@ use crate::clients::news_creator::models::{
 };
 use crate::clients::subworker::ClusteringResponse;
 use crate::config::Config;
+use crate::error::RecapError;
 use crate::scheduler::JobContext;
 use crate::store::dao::RecapDao;
 
@@ -45,12 +46,23 @@ impl SummarizationOps<'_> {
             error = ?e,
             "clustering failed"
         );
+        // `ClusteringOps::cluster_genre` wraps the raw failure in
+        // `.with_context(...)` frames (timeout / "clustering failed: genre=...
+        // articles=..."), so a typed `RecapError` raised deeper in the chain
+        // (e.g. `RecapError::InsufficientDocuments`) is not the top-level
+        // `anyhow::Error` — walk the full cause chain instead of a bare
+        // `downcast_ref`.
+        let error_kind = e
+            .chain()
+            .find_map(|cause| cause.downcast_ref::<RecapError>())
+            .cloned();
         GenreResult {
             genre: genre.to_string(),
             clustering_response: None,
             summary_response_id: None,
             summary_response: None,
             error: Some(format!("Clustering failed: {}", e)),
+            error_kind,
         }
     }
 
@@ -76,6 +88,7 @@ impl SummarizationOps<'_> {
                     summary_response_id: Some(summary_id),
                     summary_response: Some(summary_response),
                     error: None,
+                    error_kind: None,
                 }
             }
             Err(e) => {
@@ -90,6 +103,7 @@ impl SummarizationOps<'_> {
                     summary_response_id: None,
                     summary_response: None,
                     error: Some(format!("Summary generation failed: {}", e)),
+                    error_kind: None,
                 }
             }
         }
@@ -471,6 +485,7 @@ impl SummarizationOps<'_> {
                                 error: Some(
                                     "All clusters had empty representative_sentences".to_string(),
                                 ),
+                                error_kind: None,
                             },
                         );
                         continue;
@@ -494,6 +509,7 @@ impl SummarizationOps<'_> {
                             summary_response_id: None,
                             summary_response: None,
                             error: Some(format!("Failed to build request: {}", e)),
+                            error_kind: None,
                         },
                     );
                 }
@@ -614,6 +630,7 @@ impl SummarizationOps<'_> {
                                 summary_response_id: Some(summary_id),
                                 summary_response: Some(summary_response),
                                 error: None,
+                                error_kind: None,
                             },
                         );
                     }
@@ -637,6 +654,7 @@ impl SummarizationOps<'_> {
                                 summary_response_id: None,
                                 summary_response: None,
                                 error: Some(error.error),
+                                error_kind: None,
                             },
                         );
                     }
@@ -657,6 +675,7 @@ impl SummarizationOps<'_> {
                             summary_response_id: None,
                             summary_response: None,
                             error: Some("Missing from batch response".to_string()),
+                            error_kind: None,
                         },
                     );
                 }
@@ -677,6 +696,7 @@ impl SummarizationOps<'_> {
                             summary_response_id: None,
                             summary_response: None,
                             error: Some(format!("Batch API failed: {}", e)),
+                            error_kind: None,
                         },
                     );
                 }

@@ -150,7 +150,8 @@ impl ComponentRegistry {
             Arc::clone(&config),
             Arc::clone(&recap_dao),
             Arc::clone(&news_creator_client),
-        ));
+            Arc::clone(&subworker_client),
+        )?);
         let scheduler = Scheduler::new(
             Arc::clone(&pipeline),
             morning_pipeline,
@@ -179,6 +180,11 @@ impl ComponentRegistry {
     pub fn config(&self) -> Arc<Config> {
         Arc::clone(&self.config)
     }
+
+    #[must_use]
+    pub fn telemetry(&self) -> &Telemetry {
+        &self.telemetry
+    }
 }
 
 pub fn build_router(registry: ComponentRegistry) -> Router {
@@ -193,29 +199,38 @@ mod tests {
 
     #[tokio::test]
     #[ignore = "loads ML model, slow"]
+    // See the identical justification in `api::generate::tests` — a
+    // single-threaded test, not a shared multi-task resource.
+    #[allow(clippy::await_holding_lock)]
     async fn component_registry_builds() {
-        let config = {
-            let _lock = ENV_MUTEX.lock().expect("env mutex");
-            temp_env::with_vars(
-                [
-                    (
-                        "RECAP_DB_DSN",
-                        Some("postgres://user:pass@localhost:5555/recap_db"),
-                    ),
-                    ("NEWS_CREATOR_BASE_URL", Some("http://localhost:8001/")),
-                    ("SUBWORKER_BASE_URL", Some("http://localhost:8002/")),
-                    ("ALT_BACKEND_BASE_URL", Some("http://localhost:9000/")),
-                    (
-                        "HUGGING_FACE_TOKEN_PATH",
-                        Some("/tmp/test-token-which-does-not-exist"),
-                    ),
-                ],
-                || Config::from_env().expect("config loads"),
-            )
-        };
-        let registry = ComponentRegistry::build(config)
-            .await
-            .expect("registry builds");
+        // Lock stays held across `ComponentRegistry::build` too — it
+        // re-reads `MTLS_ENFORCE` directly from the process env via
+        // `MtlsPaths::from_env()`, so releasing the lock right after
+        // `Config::from_env` would leave a window for a concurrent test's
+        // env mutation to leak in.
+        let _lock = ENV_MUTEX.lock().expect("env mutex");
+        let registry = temp_env::async_with_vars(
+            [
+                (
+                    "RECAP_DB_DSN",
+                    Some("postgres://user:pass@localhost:5555/recap_db"),
+                ),
+                ("NEWS_CREATOR_BASE_URL", Some("http://localhost:8001/")),
+                ("SUBWORKER_BASE_URL", Some("http://localhost:8002/")),
+                ("ALT_BACKEND_BASE_URL", Some("http://localhost:9000/")),
+                (
+                    "HUGGING_FACE_TOKEN_PATH",
+                    Some("/tmp/test-token-which-does-not-exist"),
+                ),
+            ],
+            async {
+                let config = Config::from_env().expect("config loads");
+                ComponentRegistry::build(config)
+                    .await
+                    .expect("registry builds")
+            },
+        )
+        .await;
         let state = AppState::new(registry);
 
         state.telemetry().record_ready_probe();

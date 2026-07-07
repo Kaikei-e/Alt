@@ -124,31 +124,43 @@ mod tests {
     }
 
     #[tokio::test]
+    // `ENV_MUTEX` is `std::sync::Mutex` and must stay held across the
+    // `ComponentRegistry::build` await point below (see comment): this is a
+    // single-threaded `#[tokio::test]`, never contended by another task
+    // within the same test, so there is no deadlock risk — only test-suite
+    // env-var serialization.
+    #[allow(clippy::await_holding_lock)]
     async fn trigger_returns_accepted_with_configured_defaults() {
-        let config = {
-            let _lock = ENV_MUTEX.lock().expect("env mutex");
-            temp_env::with_vars(
-                [
-                    (
-                        "RECAP_DB_DSN",
-                        Some("postgres://recap:recap@localhost:5432/recap"),
-                    ),
-                    ("NEWS_CREATOR_BASE_URL", Some("http://localhost:18001/")),
-                    ("SUBWORKER_BASE_URL", Some("http://localhost:18002/")),
-                    ("ALT_BACKEND_BASE_URL", Some("http://localhost:19000/")),
-                    ("RECAP_GENRES", Some("ai,space")),
-                    (
-                        "HUGGING_FACE_TOKEN_PATH",
-                        Some("/tmp/test-token-which-does-not-exist"),
-                    ),
-                ],
-                || Config::from_env().expect("config loads"),
-            )
-        };
-
-        let registry = ComponentRegistry::build(config)
-            .await
-            .expect("registry builds");
+        // The lock must stay held across `ComponentRegistry::build` too, not
+        // just `Config::from_env` — `build` re-reads `MTLS_ENFORCE` /
+        // `MTLS_CERT_FILE` etc. directly from the process env via
+        // `MtlsPaths::from_env()`. Releasing the lock right after
+        // `Config::from_env` left a window where a concurrent test's
+        // `MTLS_ENFORCE=true` could leak into this test's `build()` call.
+        let _lock = ENV_MUTEX.lock().expect("env mutex");
+        let registry = temp_env::async_with_vars(
+            [
+                (
+                    "RECAP_DB_DSN",
+                    Some("postgres://recap:recap@localhost:5432/recap"),
+                ),
+                ("NEWS_CREATOR_BASE_URL", Some("http://localhost:18001/")),
+                ("SUBWORKER_BASE_URL", Some("http://localhost:18002/")),
+                ("ALT_BACKEND_BASE_URL", Some("http://localhost:19000/")),
+                ("RECAP_GENRES", Some("ai,space")),
+                (
+                    "HUGGING_FACE_TOKEN_PATH",
+                    Some("/tmp/test-token-which-does-not-exist"),
+                ),
+            ],
+            async {
+                let config = Config::from_env().expect("config loads");
+                ComponentRegistry::build(config)
+                    .await
+                    .expect("registry builds")
+            },
+        )
+        .await;
 
         let app = build_router(registry);
 

@@ -140,6 +140,33 @@ impl ClassificationJobQueue {
                 .context("failed to check job completion")?;
 
             if all_completed {
+                // `all_jobs_completed` treats 'failed' as "no longer pending",
+                // so completion alone does not mean every chunk succeeded.
+                // Check for failed chunks explicitly and fail closed instead
+                // of silently returning a result set that is missing their
+                // articles.
+                let jobs = self
+                    .store
+                    .get_jobs_by_recap_job(recap_job_id)
+                    .await
+                    .context("failed to get jobs for completion check")?;
+
+                let failed_chunks: Vec<usize> = jobs
+                    .iter()
+                    .filter(|j| j.status == QueuedJobStatus::Failed)
+                    .map(|j| j.chunk_idx)
+                    .collect();
+
+                if !failed_chunks.is_empty() {
+                    return Err(anyhow::anyhow!(
+                        "classification job {} completed with {} failed chunk(s) out of {}: chunk_idx {:?}; articles in these chunks are missing from the result set",
+                        recap_job_id,
+                        failed_chunks.len(),
+                        jobs.len(),
+                        failed_chunks
+                    ));
+                }
+
                 // Get all results
                 let results = self
                     .store
@@ -227,5 +254,136 @@ impl ClassificationJobQueue {
         }
 
         info!("all classification queue workers stopped");
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    //! Integration tests requiring a DATABASE_URL environment variable.
+    //! They no-op (return Ok) when it is unset, matching the convention in
+    //! `src/store/dao/tests.rs`.
+
+    use super::*;
+    use sqlx::Executor;
+    use sqlx::postgres::PgPoolOptions;
+    use std::collections::HashMap;
+
+    async fn setup_classification_queue_table(pool: &sqlx::PgPool) -> Result<()> {
+        pool.execute(
+            r"
+            CREATE TABLE IF NOT EXISTS classification_job_queue (
+                id SERIAL PRIMARY KEY,
+                recap_job_id UUID NOT NULL,
+                chunk_idx INT NOT NULL,
+                status VARCHAR(20) NOT NULL DEFAULT 'pending'
+                    CHECK (status IN ('pending', 'running', 'completed', 'failed', 'retrying')),
+                texts JSONB NOT NULL,
+                result JSONB,
+                error_message TEXT,
+                retry_count INT DEFAULT 0,
+                max_retries INT DEFAULT 3,
+                created_at TIMESTAMPTZ DEFAULT NOW(),
+                started_at TIMESTAMPTZ,
+                completed_at TIMESTAMPTZ,
+                UNIQUE(recap_job_id, chunk_idx)
+            );
+            ",
+        )
+        .await?;
+        Ok(())
+    }
+
+    /// A failed chunk must surface as an error from `wait_for_completion`,
+    /// not be silently dropped from the result set. Before this fix,
+    /// `all_jobs_completed` (which treats 'failed' as "no longer pending")
+    /// made the loop return `Ok` with whatever completed-chunk results
+    /// existed, quietly losing the failed chunk's articles.
+    #[tokio::test]
+    async fn wait_for_completion_errors_when_a_chunk_failed() -> Result<()> {
+        let Ok(database_url) = std::env::var("DATABASE_URL") else {
+            return Ok(());
+        };
+        let pool = PgPoolOptions::new()
+            .max_connections(5)
+            .connect(&database_url)
+            .await?;
+        setup_classification_queue_table(&pool).await?;
+
+        let recap_job_id = Uuid::new_v4();
+        let store = QueueStore::new(pool.clone());
+
+        let id0 = store
+            .enqueue(NewQueuedJob {
+                recap_job_id,
+                chunk_idx: 0,
+                texts: vec!["a".to_string()],
+                max_retries: 3,
+            })
+            .await?;
+        store
+            .mark_completed(
+                id0,
+                vec![ClassificationResult {
+                    top_genre: "tech".to_string(),
+                    confidence: 0.9,
+                    scores: HashMap::new(),
+                }],
+            )
+            .await?;
+
+        let id1 = store
+            .enqueue(NewQueuedJob {
+                recap_job_id,
+                chunk_idx: 1,
+                texts: vec!["b".to_string()],
+                max_retries: 3,
+            })
+            .await?;
+        store.mark_failed(id1, "subworker unavailable").await?;
+
+        let id2 = store
+            .enqueue(NewQueuedJob {
+                recap_job_id,
+                chunk_idx: 2,
+                texts: vec!["c".to_string()],
+                max_retries: 3,
+            })
+            .await?;
+        store
+            .mark_completed(
+                id2,
+                vec![ClassificationResult {
+                    top_genre: "science".to_string(),
+                    confidence: 0.8,
+                    scores: HashMap::new(),
+                }],
+            )
+            .await?;
+
+        // concurrency=0: no background workers, so nothing else mutates
+        // these rows while we assert on wait_for_completion.
+        let client = SubworkerClient::new("http://localhost:8002", 10)?;
+        let queue = ClassificationJobQueue::new(store, client, 0, 200, 3, 5000);
+
+        let err = queue
+            .wait_for_completion(recap_job_id, Duration::from_secs(5))
+            .await
+            .expect_err("a failed chunk must surface as an error, not a silently-shrunk result");
+
+        let message = err.to_string();
+        assert!(
+            message.contains("failed"),
+            "error should mention the failed chunk(s): {message}"
+        );
+        assert!(
+            message.contains('1'),
+            "error should reference the failed chunk_idx (1): {message}"
+        );
+
+        let _ = sqlx::query("DELETE FROM classification_job_queue WHERE recap_job_id = $1")
+            .bind(recap_job_id)
+            .execute(&pool)
+            .await;
+        Ok(())
     }
 }

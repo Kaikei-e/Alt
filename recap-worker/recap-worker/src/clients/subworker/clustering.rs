@@ -125,11 +125,11 @@ impl SubworkerClient {
                 min_fallback = MIN_FALLBACK_DOCUMENTS,
                 "skipping clustering because document count is below minimum fallback threshold"
             );
-            return Err(anyhow!(
-                "insufficient documents for clustering: expected >= {}, found {}",
-                MIN_FALLBACK_DOCUMENTS,
-                document_count
-            ));
+            return Err(crate::error::RecapError::InsufficientDocuments {
+                min: MIN_FALLBACK_DOCUMENTS,
+                found: document_count,
+            }
+            .into());
         }
 
         let response = self

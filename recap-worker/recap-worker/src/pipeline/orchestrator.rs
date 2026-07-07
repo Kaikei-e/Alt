@@ -37,7 +37,6 @@ pub(crate) struct PipelineOrchestrator {
     pub(super) stages: PipelineStages,
     pub(super) recap_dao: Arc<dyn RecapDao>,
     pub(super) subworker_client: Arc<SubworkerClient>,
-    #[allow(dead_code)]
     pub(super) classification_queue: Arc<ClassificationJobQueue>,
     pub(super) pulse_stage: Arc<dyn PulseStage>,
     pub(super) pulse_rollout: PulseRollout,
@@ -50,6 +49,13 @@ impl PipelineOrchestrator {
 
     pub(crate) fn recap_dao(&self) -> &Arc<dyn RecapDao> {
         &self.recap_dao
+    }
+
+    /// The classification job queue's background workers, so callers
+    /// (`Scheduler::shutdown`) can drain them on graceful shutdown instead
+    /// of leaving them to be killed by process exit.
+    pub(crate) fn classification_queue(&self) -> &Arc<ClassificationJobQueue> {
+        &self.classification_queue
     }
 }
 
@@ -89,7 +95,7 @@ impl PipelineOrchestrator {
         classification_queue: Arc<ClassificationJobQueue>,
         metrics: Arc<Metrics>,
     ) -> Result<Self> {
-        let mtls_paths = MtlsPaths::from_env().expect("mTLS env configuration (fail-closed)");
+        let mtls_paths = MtlsPaths::from_env().context("mTLS env configuration (fail-closed)")?;
 
         let alt_backend_url = if mtls_paths.is_some() {
             std::env::var("ALT_BACKEND_MTLS_URL")
@@ -109,41 +115,56 @@ impl PipelineOrchestrator {
                     alt_backend_config.connect_timeout,
                     alt_backend_config.total_timeout,
                 )
-                .expect("failed to build alt-backend mTLS client (fail-closed)");
+                .context("failed to build alt-backend mTLS client (fail-closed)")?;
                 AltBackendClient::new_with_client(alt_backend_config, client)
             } else {
                 AltBackendClient::new(alt_backend_config)
             }
-            .expect("failed to create alt-backend client"),
+            .context("failed to create alt-backend client")?,
         );
 
-        let tag_generator_url = if mtls_paths.is_some() {
-            std::env::var("TAG_GENERATOR_MTLS_URL")
-                .unwrap_or_else(|_| config.tag_generator_base_url().to_string())
-        } else {
-            config.tag_generator_base_url().to_string()
-        };
-        let tag_generator_config = crate::clients::tag_generator::TagGeneratorConfig {
-            base_url: tag_generator_url,
-            connect_timeout: config.tag_generator_connect_timeout(),
-            total_timeout: config.tag_generator_total_timeout(),
-        };
-        let tag_generator_client = if let Some(paths) = mtls_paths.as_ref() {
-            mtls::build_mtls_client(
-                paths,
-                tag_generator_config.connect_timeout,
-                tag_generator_config.total_timeout,
-            )
-            .ok()
-            .and_then(|client| {
-                TagGeneratorClient::new_with_client(tag_generator_config, client).ok()
-            })
-            .map(Arc::new)
-        } else {
-            TagGeneratorClient::new(tag_generator_config)
-                .ok()
-                .map(Arc::new)
-        };
+        // Tag-generator wiring (CLAUDE.md rule 8 / .claude/rules/di-wiring.md):
+        // `tag_generator_enabled()` is the only legitimate "intentionally
+        // disabled" path. When enabled, a construction failure propagates as
+        // a startup error instead of degrading to `None` — silently
+        // swallowing it would make "DI forgot to wire" indistinguishable
+        // from "intentionally disabled" (this was the exact HIGH finding).
+        let tag_generator_client: Option<Arc<TagGeneratorClient>> =
+            if config.tag_generator_enabled() {
+                let tag_generator_url = if mtls_paths.is_some() {
+                    std::env::var("TAG_GENERATOR_MTLS_URL")
+                        .unwrap_or_else(|_| config.tag_generator_base_url().to_string())
+                } else {
+                    config.tag_generator_base_url().to_string()
+                };
+                let tag_generator_config = crate::clients::tag_generator::TagGeneratorConfig {
+                    base_url: tag_generator_url,
+                    connect_timeout: config.tag_generator_connect_timeout(),
+                    total_timeout: config.tag_generator_total_timeout(),
+                };
+                let client = if let Some(paths) = mtls_paths.as_ref() {
+                    let http_client = mtls::build_mtls_client(
+                        paths,
+                        tag_generator_config.connect_timeout,
+                        tag_generator_config.total_timeout,
+                    )
+                    .context("failed to build tag-generator mTLS client (fail-closed)")?;
+                    TagGeneratorClient::new_with_client(tag_generator_config, http_client)
+                } else {
+                    TagGeneratorClient::new(tag_generator_config)
+                }
+                .context("failed to create tag-generator client")?;
+                tracing::info!(
+                    "tag_generator_enabled: semantic tag extraction wired for persist stage"
+                );
+                Some(Arc::new(client))
+            } else {
+                tracing::warn!(
+                    "tag_generator_disabled: TAG_GENERATOR_ENABLED=false — semantic tag \
+                     extraction will not run for persisted summaries"
+                );
+                None
+            };
         let retry_config = RetryConfig {
             max_attempts: config.http_max_retries(),
             base_delay_ms: config.http_backoff_base_ms(),
@@ -572,5 +593,83 @@ impl PipelineBuilder {
             pulse_stage,
             pulse_rollout,
         }
+    }
+}
+
+#[cfg(test)]
+mod new_tests {
+    use super::*;
+    use crate::config::ENV_MUTEX;
+    use crate::queue::QueueStore;
+    use crate::store::dao::mock::MockRecapDao;
+    use sqlx::postgres::PgPoolOptions;
+
+    /// RED→GREEN regression for the HIGH panic finding: with
+    /// `panic = "abort"` in the release profile, an `.expect()` inside this
+    /// async constructor used to kill the whole process on a misconfigured
+    /// mTLS env. It must return `Err` instead. `MtlsPaths::from_env()` fails
+    /// fast (no I/O), so this test needs no real Postgres/HTTP backend —
+    /// `concurrency: 0` keeps `ClassificationJobQueue::new` from spawning any
+    /// worker tasks.
+    #[tokio::test]
+    // See the identical justification in `api::generate::tests` — a
+    // single-threaded test, not a shared multi-task resource.
+    #[allow(clippy::await_holding_lock)]
+    async fn new_returns_err_instead_of_panicking_when_mtls_enforced_but_unconfigured() {
+        let _lock = ENV_MUTEX.lock().expect("env mutex");
+        let vars = [
+            (
+                "RECAP_DB_DSN",
+                Some("postgres://recap:recap@localhost:5555/recap_db"),
+            ),
+            ("NEWS_CREATOR_BASE_URL", Some("https://news-creator:9443")),
+            ("SUBWORKER_BASE_URL", Some("https://recap-subworker:9443")),
+            ("ALT_BACKEND_BASE_URL", Some("https://alt-backend:9443")),
+            ("MTLS_ENFORCE", Some("true")),
+            ("MTLS_CERT_FILE", None),
+            ("MTLS_KEY_FILE", None),
+            ("MTLS_CA_FILE", None),
+        ];
+
+        temp_env::async_with_vars(vars, async {
+            let config = Arc::new(crate::config::Config::from_env().expect("config should load"));
+            let subworker = SubworkerClient::new(
+                config.subworker_base_url(),
+                config.min_documents_per_genre(),
+            )
+            .expect("subworker client builds without network I/O");
+            let news_creator = Arc::new(NewsCreatorClient::new_for_test("http://localhost:8001"));
+            let recap_dao: Arc<dyn RecapDao> = Arc::new(MockRecapDao::new());
+            let pool = PgPoolOptions::new()
+                .connect_lazy("postgres://recap:recap@localhost:5555/recap_db")
+                .expect("lazy pool never connects eagerly");
+            let queue_store = QueueStore::new(pool);
+            let classification_queue = Arc::new(ClassificationJobQueue::new(
+                queue_store,
+                subworker.clone(),
+                0, // no worker tasks spawned — irrelevant to this test
+                10,
+                3,
+                1000,
+            ));
+            let registry = Arc::new(prometheus::Registry::new());
+            let metrics = Arc::new(Metrics::new(registry).expect("metrics register cleanly"));
+
+            let result = PipelineOrchestrator::new(
+                config,
+                subworker,
+                news_creator,
+                recap_dao,
+                classification_queue,
+                metrics,
+            )
+            .await;
+
+            assert!(
+                result.is_err(),
+                "MTLS_ENFORCE=true with missing MTLS_CERT_FILE must return Err, not panic"
+            );
+        })
+        .await;
     }
 }

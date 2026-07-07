@@ -139,7 +139,15 @@ fn init_tracer(endpoint: &str) -> Result<SdkTracer> {
 /// OpenTelemetryのグローバルシャットダウンを実行し、未送信のスパンをフラッシュする。
 ///
 /// アプリケーション終了時に呼び出してください。
-#[allow(dead_code)]
+///
+/// # Note
+/// This is currently a documented no-op: `SdkTracerProvider` is not
+/// retained anywhere after `init_tracer` hands it to
+/// `global::set_tracer_provider`, so there is nothing to flush yet (see
+/// the 2026-07 review MED finding at this file). Wiring the call itself —
+/// so a future fix to actually retain the provider takes effect
+/// immediately — is this PR's scope; making the flush itself real is
+/// tracked separately.
 pub fn shutdown() {
     // OpenTelemetry 0.31.0では、グローバルトレーサープロバイダーから直接
     // SdkTracerProviderを取得できないため、shutdownは個別に管理する必要があります。

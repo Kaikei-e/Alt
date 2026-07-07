@@ -138,6 +138,7 @@ impl DispatchStage for MlLlmDispatchStage {
                         summary_response_id: None,
                         summary_response: None,
                         error: Some("no evidence (no articles assigned)".to_string()),
+                        error_kind: Some(crate::error::RecapError::NoEvidence),
                     },
                 );
             }
@@ -197,6 +198,7 @@ mod tests {
             summary_response_id: None,
             summary_response: None,
             error: None,
+            error_kind: None,
         };
 
         assert!(success.error.is_none());
@@ -207,6 +209,7 @@ mod tests {
             summary_response_id: None,
             summary_response: None,
             error: Some("Failed".to_string()),
+            error_kind: None,
         };
 
         assert!(failure.error.is_some());

@@ -150,6 +150,14 @@ impl Scheduler {
         }
     }
 
+    /// Gracefully stop the classification job queue's background worker
+    /// tasks. Called from `main.rs`'s SIGTERM/SIGINT path so in-flight
+    /// classification chunks are drained (or aborted) deliberately instead
+    /// of being killed by process exit.
+    pub async fn shutdown(&self) {
+        self.pipeline.classification_queue().shutdown().await;
+    }
+
     pub(crate) async fn run_job(&self, context: JobContext) -> Result<()> {
         tracing::info!(
             job_id = %context.job_id,

@@ -53,6 +53,14 @@ impl Telemetry {
         ::tracing::info!("manual generation invoked");
     }
 
+    /// アプリケーション終了時にOTLPトレースをフラッシュする。
+    ///
+    /// SIGTERM/SIGINT を受けたグレースフルシャットダウンの最終ステップとして
+    /// `main.rs` から一度だけ呼び出す。
+    pub fn shutdown(&self) {
+        tracing::shutdown();
+    }
+
     /// Prometheusメトリクスをレンダリングする。
     pub fn render_prometheus(&self) -> String {
         let encoder = TextEncoder::new();

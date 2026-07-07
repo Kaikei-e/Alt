@@ -6,6 +6,7 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::clients::subworker::ClusteringResponse;
+use crate::error::RecapError;
 
 /// ディスパッチ結果。
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -28,6 +29,11 @@ pub(crate) struct GenreResult {
     pub(crate) summary_response_id: Option<String>,
     pub(crate) summary_response: Option<crate::clients::news_creator::SummaryResponse>,
     pub(crate) error: Option<String>,
+    /// Typed classification of `error`, when the raising call site produced
+    /// one. `None` means either there was no error, or the error came from a
+    /// call site that hasn't been migrated off formatted `anyhow` messages
+    /// (see `pipeline::persist`'s "other/failed" bucket).
+    pub(crate) error_kind: Option<RecapError>,
 }
 
 /// ステージ状態保存用の軽量版ディスパッチ結果。
@@ -50,6 +56,7 @@ pub(crate) struct GenreResultLightweight {
     pub(crate) clustering_run_id: Option<i64>,
     pub(crate) summary_response_id: Option<String>,
     pub(crate) error: Option<String>,
+    pub(crate) error_kind: Option<RecapError>,
 }
 
 impl DispatchResult {
@@ -67,6 +74,7 @@ impl DispatchResult {
                         clustering_run_id,
                         summary_response_id: result.summary_response_id.clone(),
                         error: result.error.clone(),
+                        error_kind: result.error_kind.clone(),
                     },
                 )
             })
