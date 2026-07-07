@@ -117,6 +117,27 @@ class TestGEvalEvaluator:
         assert "1" in prompt and "5" in prompt  # Rating scale
 
     @pytest.mark.asyncio
+    async def test_call_llm_raises_loudly_when_unconfigured(self):
+        """Regression: `_call_llm` used to silently return a hardcoded mock
+        `"Score: 3"` response when no `llm_client` was configured (a silent
+        fallback for an unwired dependency — CLAUDE.md rule 8 / ADR-000928).
+        It must instead fail loudly so an unwired G-Eval judge cannot
+        masquerade as a real score."""
+        evaluator = GEvalEvaluator(llm_client=None)
+
+        with pytest.raises(RuntimeError, match="llm_client"):
+            await evaluator._call_llm("some prompt")
+
+    @pytest.mark.asyncio
+    async def test_call_llm_raises_not_implemented_when_configured(self):
+        """The 'configured' path is a dead API (not implemented yet); it
+        must still fail loudly rather than falling through to a mock."""
+        evaluator = GEvalEvaluator(llm_client=object())
+
+        with pytest.raises(NotImplementedError):
+            await evaluator._call_llm("some prompt")
+
+    @pytest.mark.asyncio
     async def test_evaluate_single_dimension(self):
         """Should evaluate a single dimension."""
         evaluator = GEvalEvaluator()

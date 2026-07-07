@@ -300,19 +300,27 @@ class GEvalEvaluator:
     async def _call_llm(self, prompt: str) -> str:
         """Call the LLM with the given prompt.
 
-        This is a placeholder that should be overridden or configured
-        with an actual LLM client.
-
         Args:
             prompt: The prompt to send to the LLM.
 
         Returns:
             LLM response text.
+
+        Raises:
+            RuntimeError: if no ``llm_client`` is configured. G-Eval must not
+                silently fabricate a plausible-looking score for an unwired
+                dependency (CLAUDE.md rule 8 / ADR-000928) — tests that need
+                a canned response should patch ``_call_llm`` or inject a
+                fake ``llm_client``, not rely on a production mock branch.
+            NotImplementedError: the real LLM client call is not implemented
+                yet.
         """
         if self.llm_client is None:
-            # Return a mock response for testing
-            logger.warning("No LLM client configured, returning mock response")
-            return "Score: 3\nExplanation: No LLM client configured."
+            raise RuntimeError(
+                "GEvalEvaluator has no llm_client configured; G-Eval cannot "
+                "score without a real LLM judge. Configure llm_client "
+                "explicitly, or patch _call_llm with a test double in tests."
+            )
 
         # Actual implementation would call the LLM here
         # This depends on the specific LLM client being used

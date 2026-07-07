@@ -374,6 +374,31 @@ class TestMiniBatchKMeansFallback:
 
         assert result is None
 
+    def test_run_with_timeout_does_not_block_caller_on_timeout(self, clusterer):
+        """Regression: `with ThreadPoolExecutor(...) as executor:` calls
+        `executor.shutdown(wait=True)` on exit regardless of what happened
+        inside, so on timeout the caller used to block until the runaway
+        thread actually finished — defeating the point of the timeout.
+        `_run_with_timeout` must return promptly instead."""
+        import time
+
+        runaway_seconds = 5
+
+        def runaway_func():
+            time.sleep(runaway_seconds)
+            return np.array([0]), np.array([1.0])
+
+        start = time.monotonic()
+        result = clusterer._run_with_timeout(runaway_func, timeout_seconds=1)
+        elapsed = time.monotonic() - start
+
+        assert result is None
+        assert elapsed < runaway_seconds / 2, (
+            f"_run_with_timeout blocked the caller for {elapsed:.3f}s "
+            f"(runaway thread sleeps {runaway_seconds}s); it should return "
+            "close to the 1s timeout instead of waiting for the thread"
+        )
+
     def test_cluster_uses_fallback_on_timeout(self, clusterer):
         """Test that cluster() uses MiniBatchKMeans when HDBSCAN times out."""
         # Set very short timeout

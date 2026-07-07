@@ -14,10 +14,13 @@ Uses contextvars for thread-safe context propagation in async environments.
 
 from __future__ import annotations
 
+import atexit
 import logging
+import queue
 import sys
 from collections.abc import Callable
 from contextvars import ContextVar
+from logging.handlers import QueueHandler, QueueListener
 
 import structlog
 from sqlalchemy import Engine, create_engine, text
@@ -207,11 +210,23 @@ def configure_logging(level: str) -> None:
 
     logging.basicConfig(level=getattr(logging, level.upper(), logging.INFO))
 
-    # Add DB Handler for ERROR+
+    # Add DB Handler for ERROR+. DBLogHandler.emit() does a synchronous DB
+    # INSERT per record, which would otherwise block whatever thread calls
+    # logger.error() (including the asyncio event loop thread inside async
+    # request handlers). A DB outage would then turn every error log call
+    # into a slow/hanging connection attempt on the calling thread. Route
+    # through a QueueHandler so the calling thread only does a fast in-memory
+    # enqueue; a background QueueListener thread owns the actual DB write.
     try:
         db_handler = DBLogHandler()
         db_handler.setLevel(logging.ERROR)
-        logging.getLogger().addHandler(db_handler)
+        db_log_queue: queue.Queue = queue.Queue(-1)
+        queue_handler = QueueHandler(db_log_queue)
+        queue_handler.setLevel(logging.ERROR)
+        listener = QueueListener(db_log_queue, db_handler, respect_handler_level=True)
+        listener.start()
+        logging.getLogger().addHandler(queue_handler)
+        atexit.register(listener.stop)
     except Exception as e:
         sys.stderr.write(f"Failed to add DBLogHandler: {e}\n")
 

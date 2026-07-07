@@ -93,18 +93,31 @@ class Clusterer:
 
         Returns:
             (labels, probabilities) or None if timeout occurred
+
+        Note:
+            On timeout this does NOT wait for the runaway HDBSCAN thread to
+            finish. A plain ``with ThreadPoolExecutor(...) as executor:``
+            block calls ``executor.shutdown(wait=True)`` on exit regardless
+            of what happened inside, which would block the caller until the
+            thread that just timed out actually completes — defeating the
+            purpose of the timeout. We shut down with ``wait=False`` instead;
+            the orphaned worker thread keeps running in the background until
+            it finishes naturally (or the process exits).
         """
-        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
-            future = executor.submit(func)
-            try:
-                return future.result(timeout=timeout_seconds)
-            except concurrent.futures.TimeoutError:
-                _LOGGER.warning(
-                    "hdbscan_timeout",
-                    timeout_seconds=timeout_seconds,
-                    message="HDBSCAN clustering timed out, will use MiniBatchKMeans fallback",
-                )
-                return None
+        executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
+        future = executor.submit(func)
+        try:
+            result = future.result(timeout=timeout_seconds)
+        except concurrent.futures.TimeoutError:
+            _LOGGER.warning(
+                "hdbscan_timeout",
+                timeout_seconds=timeout_seconds,
+                message="HDBSCAN clustering timed out, will use MiniBatchKMeans fallback",
+            )
+            executor.shutdown(wait=False, cancel_futures=True)
+            return None
+        executor.shutdown(wait=False)
+        return result
 
     def _fallback_minibatch_kmeans(
         self,
