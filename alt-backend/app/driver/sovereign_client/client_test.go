@@ -21,6 +21,7 @@ type mockSovereignHandler struct {
 	sovereignv1connect.UnimplementedKnowledgeSovereignServiceHandler
 	lastMutationType string
 	lastEntityID     string
+	lastPayload      []byte
 	returnErr        error
 }
 
@@ -30,6 +31,7 @@ func (m *mockSovereignHandler) ApplyProjectionMutation(
 ) (*connect.Response[sovereignv1.ApplyProjectionMutationResponse], error) {
 	m.lastMutationType = req.Msg.MutationType
 	m.lastEntityID = req.Msg.EntityId
+	m.lastPayload = req.Msg.Payload
 	if m.returnErr != nil {
 		return nil, connect.NewError(connect.CodeInternal, m.returnErr)
 	}
@@ -42,6 +44,7 @@ func (m *mockSovereignHandler) ApplyRecallMutation(
 ) (*connect.Response[sovereignv1.ApplyRecallMutationResponse], error) {
 	m.lastMutationType = req.Msg.MutationType
 	m.lastEntityID = req.Msg.EntityId
+	m.lastPayload = req.Msg.Payload
 	if m.returnErr != nil {
 		return nil, connect.NewError(connect.CodeInternal, m.returnErr)
 	}

@@ -111,11 +111,16 @@ func (c *Client) UpsertRecallCandidate(ctx context.Context, candidate domain.Rec
 }
 
 // SnoozeRecallCandidate implements recall_candidate_port.SnoozeRecallCandidatePort.
-func (c *Client) SnoozeRecallCandidate(ctx context.Context, userID uuid.UUID, itemKey string, until time.Time) error {
+// occurred_at is required by knowledge-sovereign's SnoozeRecallCandidate driver:
+// recall_candidate_view is a reproject-safe projection, so updated_at must come
+// from the event's own origination time rather than SQL now() (otherwise
+// replaying the same mutation twice produces different rows).
+func (c *Client) SnoozeRecallCandidate(ctx context.Context, userID uuid.UUID, itemKey string, until time.Time, occurredAt time.Time) error {
 	payload, err := json.Marshal(map[string]any{
-		"user_id":       userID.String(),
-		"item_key":      itemKey,
-		"snoozed_until": until.Format(time.RFC3339Nano),
+		"user_id":     userID.String(),
+		"item_key":    itemKey,
+		"until":       until.Format(time.RFC3339Nano),
+		"occurred_at": occurredAt.Format(time.RFC3339Nano),
 	})
 	if err != nil {
 		return fmt.Errorf("sovereign SnoozeRecallCandidate marshal: %w", err)
@@ -128,10 +133,13 @@ func (c *Client) SnoozeRecallCandidate(ctx context.Context, userID uuid.UUID, it
 }
 
 // DismissRecallCandidate implements recall_candidate_port.DismissRecallCandidatePort.
-func (c *Client) DismissRecallCandidate(ctx context.Context, userID uuid.UUID, itemKey string) error {
+// occurred_at is required for the same reproject-determinism reason as
+// SnoozeRecallCandidate above.
+func (c *Client) DismissRecallCandidate(ctx context.Context, userID uuid.UUID, itemKey string, occurredAt time.Time) error {
 	payload, err := json.Marshal(map[string]any{
-		"user_id":  userID.String(),
-		"item_key": itemKey,
+		"user_id":     userID.String(),
+		"item_key":    itemKey,
+		"occurred_at": occurredAt.Format(time.RFC3339Nano),
 	})
 	if err != nil {
 		return fmt.Errorf("sovereign DismissRecallCandidate marshal: %w", err)

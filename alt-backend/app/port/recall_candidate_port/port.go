@@ -18,14 +18,21 @@ type UpsertRecallCandidatePort interface {
 	UpsertRecallCandidate(ctx context.Context, candidate domain.RecallCandidate) error
 }
 
-// SnoozeRecallCandidatePort sets a snooze time on a candidate.
+// SnoozeRecallCandidatePort sets a snooze time on a candidate. occurredAt is
+// the wall-clock time at which the caller minted this mutation (the command's
+// origination time) and is forwarded to knowledge-sovereign so its
+// reproject-safe projection can stamp updated_at deterministically instead of
+// using SQL now().
 type SnoozeRecallCandidatePort interface {
-	SnoozeRecallCandidate(ctx context.Context, userID uuid.UUID, itemKey string, until time.Time) error
+	SnoozeRecallCandidate(ctx context.Context, userID uuid.UUID, itemKey string, until time.Time, occurredAt time.Time) error
 }
 
-// DismissRecallCandidatePort removes a candidate from the view.
+// DismissRecallCandidatePort removes a candidate from the view. occurredAt is
+// the wall-clock time at which the caller minted this mutation, forwarded to
+// knowledge-sovereign for the same reproject-determinism reason as
+// SnoozeRecallCandidatePort.
 type DismissRecallCandidatePort interface {
-	DismissRecallCandidate(ctx context.Context, userID uuid.UUID, itemKey string) error
+	DismissRecallCandidate(ctx context.Context, userID uuid.UUID, itemKey string, occurredAt time.Time) error
 }
 
 // ArticleFallbackPort retrieves minimal article info for recall display fallback.
