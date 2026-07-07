@@ -228,7 +228,7 @@ mod tests {
     fn create_test_server(exporter: Arc<dyn OTelExporter>) -> TestServer {
         let state = OTLPState { exporter };
         let app = otlp_routes(state);
-        TestServer::new(app).expect("Failed to create test server")
+        TestServer::new(app)
     }
 
     // =========================================================================
@@ -314,6 +314,7 @@ mod tests {
                         value: Some(AnyValue {
                             value: Some(any_value::Value::StringValue("test-service".to_string())),
                         }),
+                        ..Default::default()
                     }],
                     dropped_attributes_count: 0,
                     entity_refs: vec![],
@@ -476,6 +477,7 @@ mod tests {
                         value: Some(AnyValue {
                             value: Some(any_value::Value::StringValue("test-service".to_string())),
                         }),
+                        ..Default::default()
                     }],
                     dropped_attributes_count: 0,
                     entity_refs: vec![],

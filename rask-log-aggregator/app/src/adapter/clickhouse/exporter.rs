@@ -23,16 +23,12 @@ impl ClickHouseExporter {
     }
 
     /// Create a configured inserter for the given table
-    fn create_inserter<T: clickhouse::Row>(
-        &self,
-        table: &str,
-    ) -> Result<clickhouse::inserter::Inserter<T>, clickhouse::error::Error> {
-        Ok(self
-            .client
-            .inserter::<T>(table)?
+    fn create_inserter<T: clickhouse::Row>(&self, table: &str) -> clickhouse::inserter::Inserter<T> {
+        self.client
+            .inserter::<T>(table)
             .with_timeouts(Some(INSERTER_SEND_TIMEOUT), Some(INSERTER_END_TIMEOUT))
             .with_max_bytes(INSERTER_MAX_BYTES)
-            .with_max_rows(INSERTER_MAX_ROWS))
+            .with_max_rows(INSERTER_MAX_ROWS)
     }
 
     /// Export OpenTelemetry logs to ClickHouse
@@ -43,10 +39,10 @@ impl ClickHouseExporter {
 
         let rows: Vec<OTelLogRow> = logs.into_iter().map(OTelLogRow::from).collect();
 
-        let mut inserter = self.create_inserter::<OTelLogRow>("otel_logs")?;
+        let mut inserter = self.create_inserter::<OTelLogRow>("otel_logs");
 
         for row in &rows {
-            if let Err(e) = inserter.write(row) {
+            if let Err(e) = inserter.write(row).await {
                 error!("Failed to write OTel log row to ClickHouse: {e}");
             }
         }
@@ -63,10 +59,10 @@ impl ClickHouseExporter {
 
         let rows: Vec<OTelTraceRow> = traces.into_iter().map(OTelTraceRow::from).collect();
 
-        let mut inserter = self.create_inserter::<OTelTraceRow>("otel_traces")?;
+        let mut inserter = self.create_inserter::<OTelTraceRow>("otel_traces");
 
         for row in &rows {
-            if let Err(e) = inserter.write(row) {
+            if let Err(e) = inserter.write(row).await {
                 error!("Failed to write OTel trace row to ClickHouse: {e}");
             }
         }
@@ -85,10 +81,10 @@ impl crate::port::LogExporter for ClickHouseExporter {
         Box::pin(async move {
             let rows: Vec<LogRow> = logs.into_iter().map(LogRow::from).collect();
 
-            let mut inserter = self.create_inserter::<LogRow>("logs")?;
+            let mut inserter = self.create_inserter::<LogRow>("logs");
 
             for row in &rows {
-                if let Err(e) = inserter.write(row) {
+                if let Err(e) = inserter.write(row).await {
                     error!("Failed to write row to ClickHouse: {e}");
                 }
             }

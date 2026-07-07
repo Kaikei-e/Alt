@@ -1,5 +1,5 @@
 //! 計測・評価用のユーティリティ群。
-use rand::{Rng, SeedableRng, rngs::StdRng};
+use rand::{RngExt, SeedableRng, rngs::StdRng};
 use std::collections::HashMap;
 use std::sync::Arc;
 

@@ -8,7 +8,7 @@ use crate::adapter::clickhouse::otel_row::{OTelLogRow, OTelTraceRow};
 use crate::adapter::clickhouse::row::LogRow;
 use crate::domain::{EnrichedLogEntry, OTelLog, OTelTrace};
 use crate::error::AggregatorError;
-use clickhouse::Client;
+use clickhouse::{Client, RowOwned, RowWrite};
 use std::future::Future;
 use std::pin::Pin;
 use std::time::Duration;
@@ -228,7 +228,7 @@ async fn flush_all(
     }
 }
 
-async fn flush_rows<T: clickhouse::Row + serde::Serialize>(
+async fn flush_rows<T: clickhouse::Row + RowOwned + RowWrite + serde::Serialize>(
     client: &Client,
     table: &str,
     buf: &mut Vec<T>,
@@ -248,7 +248,7 @@ struct ClickHouseSink<'a> {
     table: &'a str,
 }
 
-impl<T: clickhouse::Row + serde::Serialize> FlushSink<T> for ClickHouseSink<'_> {
+impl<T: clickhouse::Row + RowOwned + RowWrite + serde::Serialize> FlushSink<T> for ClickHouseSink<'_> {
     async fn write(&self, rows: &[T]) -> Result<(), AggregatorError> {
         write_batch(self.client, self.table, rows).await
     }
@@ -292,19 +292,19 @@ async fn flush_with_retry<T>(table: &str, buf: &mut Vec<T>, sink: &impl FlushSin
     }
 }
 
-async fn write_batch<T: clickhouse::Row + serde::Serialize>(
+async fn write_batch<T: clickhouse::Row + RowOwned + RowWrite + serde::Serialize>(
     client: &Client,
     table: &str,
     rows: &[T],
 ) -> Result<(), AggregatorError> {
     let mut inserter = client
-        .inserter::<T>(table)?
+        .inserter::<T>(table)
         .with_timeouts(Some(INSERTER_SEND_TIMEOUT), Some(INSERTER_END_TIMEOUT))
         .with_max_bytes(INSERTER_MAX_BYTES)
         .with_max_rows(INSERTER_MAX_ROWS);
 
     for row in rows {
-        if let Err(e) = inserter.write(row) {
+        if let Err(e) = inserter.write(row).await {
             error!("Failed to write row to ClickHouse inserter: {e}");
         }
     }

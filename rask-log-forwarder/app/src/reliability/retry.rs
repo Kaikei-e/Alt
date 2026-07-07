@@ -1,6 +1,6 @@
 #![deny(warnings, rust_2018_idioms)]
 
-use rand::Rng;
+use rand::RngExt;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::time::{Duration, Instant};

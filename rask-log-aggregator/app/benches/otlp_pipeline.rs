@@ -1,4 +1,5 @@
-use criterion::{BenchmarkId, Criterion, black_box, criterion_group, criterion_main};
+use criterion::{BenchmarkId, Criterion, criterion_group, criterion_main};
+use std::hint::black_box;
 use opentelemetry_proto::tonic::{
     collector::{logs::v1::ExportLogsServiceRequest, trace::v1::ExportTraceServiceRequest},
     common::v1::{AnyValue, InstrumentationScope, KeyValue, any_value},
@@ -20,6 +21,7 @@ fn make_attributes(n: usize) -> Vec<KeyValue> {
             value: Some(AnyValue {
                 value: Some(any_value::Value::StringValue(format!("value_{i}"))),
             }),
+            ..Default::default()
         })
         .collect()
 }
@@ -52,6 +54,7 @@ fn make_log_request(n_logs: usize) -> ExportLogsServiceRequest {
                     value: Some(AnyValue {
                         value: Some(any_value::Value::StringValue("bench-service".to_string())),
                     }),
+                    ..Default::default()
                 }],
                 ..Default::default()
             }),
@@ -96,6 +99,7 @@ fn make_trace_request(n_spans: usize) -> ExportTraceServiceRequest {
                     value: Some(AnyValue {
                         value: Some(any_value::Value::StringValue("bench-service".to_string())),
                     }),
+                    ..Default::default()
                 }],
                 ..Default::default()
             }),

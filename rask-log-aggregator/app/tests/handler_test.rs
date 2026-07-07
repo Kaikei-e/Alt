@@ -57,7 +57,7 @@ fn create_test_app(exporter: Arc<dyn LogExporter>) -> Router {
 async fn test_health_endpoint_returns_healthy() {
     let exporter: Arc<dyn LogExporter> = Arc::new(MockExporter::new());
     let app = create_test_app(exporter);
-    let server = TestServer::new(app).unwrap();
+    let server = TestServer::new(app);
 
     let response = server.get("/v1/health").await;
 
@@ -70,7 +70,7 @@ async fn test_aggregate_endpoint_accepts_valid_log() {
     let mock_exporter = Arc::new(MockExporter::new());
     let exporter: Arc<dyn LogExporter> = mock_exporter.clone();
     let app = create_test_app(exporter);
-    let server = TestServer::new(app).unwrap();
+    let server = TestServer::new(app);
 
     let log_json = serde_json::json!({
         "service_type": "test",
@@ -104,7 +104,7 @@ async fn test_aggregate_endpoint_handles_multiple_logs() {
     let mock_exporter = Arc::new(MockExporter::new());
     let exporter: Arc<dyn LogExporter> = mock_exporter.clone();
     let app = create_test_app(exporter);
-    let server = TestServer::new(app).unwrap();
+    let server = TestServer::new(app);
 
     let logs = [
         serde_json::json!({
@@ -150,7 +150,7 @@ async fn test_aggregate_endpoint_skips_invalid_json() {
     let mock_exporter = Arc::new(MockExporter::new());
     let exporter: Arc<dyn LogExporter> = mock_exporter.clone();
     let app = create_test_app(exporter);
-    let server = TestServer::new(app).unwrap();
+    let server = TestServer::new(app);
 
     let body = r#"{"service_type": "valid", "log_type": "app", "message": "valid log", "timestamp": "2025-01-10T12:00:00Z", "stream": "stdout", "container_id": "abc", "service_name": "svc", "fields": {}}
 invalid json line
@@ -169,7 +169,7 @@ async fn test_aggregate_endpoint_handles_empty_body() {
     let mock_exporter = Arc::new(MockExporter::new());
     let exporter: Arc<dyn LogExporter> = mock_exporter.clone();
     let app = create_test_app(exporter);
-    let server = TestServer::new(app).unwrap();
+    let server = TestServer::new(app);
 
     let response = server.post("/v1/aggregate").text("").await;
 
