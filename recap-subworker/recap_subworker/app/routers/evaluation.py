@@ -131,7 +131,7 @@ async def evaluate_genres(
     else:
         # ユーザー入力のパスを検証
         try:
-            golden_data_path = validate_path(
+            golden_data_path = validate_path(  # codeql[py/path-injection] -- validate_path + ALLOWED_BASE_DIRS enforces allow-list and symlink resolution
                 request.golden_data_path, ALLOWED_BASE_DIRS
             )
         except ValueError as e:
@@ -146,7 +146,9 @@ async def evaluate_genres(
     if request.weights_path:
         # ユーザー入力のパスを検証
         try:
-            weights_path = validate_path(request.weights_path, ALLOWED_BASE_DIRS)
+            weights_path = validate_path(  # codeql[py/path-injection] -- validate_path + ALLOWED_BASE_DIRS enforces allow-list and symlink resolution
+                request.weights_path, ALLOWED_BASE_DIRS
+            )
         except ValueError as e:
             raise HTTPException(status_code=400, detail=str(e)) from e
 
