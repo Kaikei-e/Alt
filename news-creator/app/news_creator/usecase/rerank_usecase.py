@@ -8,6 +8,7 @@ Research basis:
   - cross-encoder/ms-marco-MiniLM-L-6-v2 (English, 100M params, ~60ms)
 """
 
+import asyncio
 import logging
 import time
 from typing import List, Tuple, Optional
@@ -63,6 +64,17 @@ class RerankUsecase:
         """
         self.model_name = model_name or self.DEFAULT_MODEL
 
+    async def warmup(self) -> None:
+        """Eagerly load the cross-encoder model off the event loop.
+
+        Called at service startup so the first real /rerank request doesn't
+        pay the (potentially multi-second) model-load cost synchronously
+        inside a request-handling coroutine.
+        """
+        logger.info("Warming up cross-encoder model", extra={"model": self.model_name})
+        await asyncio.to_thread(_get_cross_encoder, self.model_name)
+        logger.info("Cross-encoder warmup complete", extra={"model": self.model_name})
+
     async def rerank(
         self,
         query: str,
@@ -106,14 +118,17 @@ class RerankUsecase:
         )
 
         try:
-            # Load model (lazily)
-            cross_encoder = _get_cross_encoder(self.model_name)
+            # Load model (lazily) off the event loop -- first call also does
+            # the (CPU-heavy, multi-second) model load synchronously.
+            cross_encoder = await asyncio.to_thread(_get_cross_encoder, self.model_name)
 
             # Prepare query-candidate pairs
             pairs = [(query, candidate) for candidate in candidates]
 
-            # Score all pairs in batch
-            scores = cross_encoder.predict(pairs)
+            # Score all pairs in batch off the event loop -- CrossEncoder.predict()
+            # is a blocking CPU-bound call; running it inline would stall the
+            # event loop (and SSE heartbeats) for the duration of inference.
+            scores = await asyncio.to_thread(cross_encoder.predict, pairs)
 
             # Create (index, score) tuples and sort by score descending
             indexed_scores = list(enumerate(scores))

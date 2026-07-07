@@ -23,8 +23,8 @@ class OllamaDriver:
         """Initialize HTTP client session for non-streaming requests."""
         timeout = aiohttp.ClientTimeout(
             total=None,
-            connect=60,  # Connection timeout only
-            sock_read=None,  # No read timeout for generation
+            connect=60,  # Connection timeout
+            sock_read=self.config.llm_timeout_seconds,  # Bound per-attempt read stalls
         )
         self.session = aiohttp.ClientSession(timeout=timeout)
         logger.info(
