@@ -23,7 +23,10 @@ impl ClickHouseExporter {
     }
 
     /// Create a configured inserter for the given table
-    fn create_inserter<T: clickhouse::Row>(&self, table: &str) -> clickhouse::inserter::Inserter<T> {
+    fn create_inserter<T: clickhouse::Row>(
+        &self,
+        table: &str,
+    ) -> clickhouse::inserter::Inserter<T> {
         self.client
             .inserter::<T>(table)
             .with_timeouts(Some(INSERTER_SEND_TIMEOUT), Some(INSERTER_END_TIMEOUT))

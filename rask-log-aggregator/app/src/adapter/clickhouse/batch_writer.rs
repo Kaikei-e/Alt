@@ -248,7 +248,9 @@ struct ClickHouseSink<'a> {
     table: &'a str,
 }
 
-impl<T: clickhouse::Row + RowOwned + RowWrite + serde::Serialize> FlushSink<T> for ClickHouseSink<'_> {
+impl<T: clickhouse::Row + RowOwned + RowWrite + serde::Serialize> FlushSink<T>
+    for ClickHouseSink<'_>
+{
     async fn write(&self, rows: &[T]) -> Result<(), AggregatorError> {
         write_batch(self.client, self.table, rows).await
     }

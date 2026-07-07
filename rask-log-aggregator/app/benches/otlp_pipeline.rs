@@ -1,5 +1,4 @@
 use criterion::{BenchmarkId, Criterion, criterion_group, criterion_main};
-use std::hint::black_box;
 use opentelemetry_proto::tonic::{
     collector::{logs::v1::ExportLogsServiceRequest, trace::v1::ExportTraceServiceRequest},
     common::v1::{AnyValue, InstrumentationScope, KeyValue, any_value},
@@ -13,6 +12,7 @@ use rask::adapter::clickhouse::row::LogRow;
 use rask::domain::{EnrichedLogEntry, LogLevel};
 use rask::otlp::converter::{convert_log_records, convert_spans};
 use std::collections::HashMap;
+use std::hint::black_box;
 
 fn make_attributes(n: usize) -> Vec<KeyValue> {
     (0..n)
