@@ -4,10 +4,51 @@ import pandas as pd
 from sqlalchemy import create_engine, text
 import os
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
+
+
+def _read_secret(env_name: str) -> str | None:
+    """Read `{env_name}_FILE` (Docker secret path) if set, else `{env_name}`.
+
+    Mirrors the `_FILE` suffix convention used elsewhere in the repo (e.g.
+    recap-evaluator's config.py) so a password can be mounted as a Docker
+    secret instead of a plaintext env var.
+    """
+    file_path = os.getenv(f"{env_name}_FILE")
+    if file_path:
+        return Path(file_path).read_text().strip()
+    return os.getenv(env_name)
+
+
+def _build_db_uri() -> str:
+    """Build the recap-db connection URI.
+
+    Prefers a pre-built `RECAP_DB_DSN` (local dev/tests). Otherwise builds
+    it from discrete host/port/user/name plus a password read from
+    `RECAP_DB_PASSWORD` or `RECAP_DB_PASSWORD_FILE` (Docker secret). Fails
+    fast if neither is available rather than falling back to a guessable
+    default credential.
+    """
+    dsn = os.getenv("RECAP_DB_DSN")
+    if dsn:
+        return dsn
+
+    password = _read_secret("RECAP_DB_PASSWORD")
+    if not password:
+        raise RuntimeError(
+            "RECAP_DB_DSN or RECAP_DB_PASSWORD/RECAP_DB_PASSWORD_FILE must be "
+            "set; no default database credential is provided."
+        )
+
+    host = os.getenv("RECAP_DB_HOST", "recap-db")
+    port = os.getenv("RECAP_DB_PORT", "5432")
+    user = os.getenv("RECAP_DB_USER", "recap_user")
+    name = os.getenv("RECAP_DB_NAME", "recap")
+    return f"postgresql://{user}:{password}@{host}:{port}/{name}"
+
 
 # --- Configuration ---
-# Allow overriding data source via environment variable for local vs docker usage
-DB_URI = os.getenv("RECAP_DB_DSN", "postgresql://recap:recap@localhost:5435/recap_db")
+DB_URI = _build_db_uri()
 
 # --- Time window helpers ---
 TIME_WINDOWS = {

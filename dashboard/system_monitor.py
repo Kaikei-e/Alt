@@ -48,6 +48,14 @@ def get_memory_info() -> Dict[str, Any]:
         print(f"Error getting memory info: {e}")
         return {"total": 0, "used": 0, "available": 0, "percent": 0.0}
 
+def _read_proc_stat_cpu_fields() -> List[int]:
+    """Read the aggregate 'cpu' line from /proc/stat as a list of counters."""
+    with open("/proc/stat", "r") as f:
+        lines = f.readlines()
+    cpu_line = [l for l in lines if l.startswith("cpu ")][0]
+    return [int(f) for f in cpu_line.split()[1:]]
+
+
 def get_cpu_info() -> Dict[str, float]:
     """Get CPU usage statistics"""
     # 1. Try psutil (preferred if works)
@@ -60,25 +68,26 @@ def get_cpu_info() -> Dict[str, float]:
     except Exception:
         pass
 
-    # 2. Try /proc/stat
+    # 2. Try /proc/stat.
+    # A single read gives the cumulative average since boot, not current
+    # usage, so sample twice with a short interval and diff the counters.
     try:
-        with open("/proc/stat", "r") as f:
-            lines = f.readlines()
-            cpu_line = [l for l in lines if l.startswith("cpu ")][0]
-            fields = cpu_line.split()
-            # fields[0] is 'cpu'
-            # user, nice, system, idle, iowait, irq, softirq, steal, guest, guest_nice
-            values = [int(f) for f in fields[1:]]
-            total_time = sum(values)
-            idle_time = values[3]
-            # Handle Linux 2.6+ iowait as idle
-            if len(values) > 4:
-                idle_time += values[4]
+        before = _read_proc_stat_cpu_fields()
+        time.sleep(0.2)
+        after = _read_proc_stat_cpu_fields()
 
-            usage = 0.0
-            if total_time > 0:
-                usage = round((1 - idle_time / total_time) * 100, 1)
-            return {"percent": usage}
+        # user, nice, system, idle, iowait, irq, softirq, steal, guest, guest_nice
+        deltas = [a - b for a, b in zip(after, before)]
+        total_delta = sum(deltas)
+        idle_delta = deltas[3]
+        # Handle Linux 2.6+ iowait as idle
+        if len(deltas) > 4:
+            idle_delta += deltas[4]
+
+        usage = 0.0
+        if total_delta > 0:
+            usage = round((1 - idle_delta / total_delta) * 100, 1)
+        return {"percent": usage}
     except Exception:
         pass
 

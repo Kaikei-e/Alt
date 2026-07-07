@@ -10,17 +10,12 @@ def render_system_monitor(window_seconds: int | None = None):
     # Get SSE connection parameters
     # This works around the iframe limitation in Streamlit components.html
     # Default to port 80 (Nginx) and path /sse/dashboard/stream
-    try:
-        # Try to get from query params or use default
-        sse_host = st.query_params.get("sse_host", "localhost")
-        sse_port = st.query_params.get("sse_port", "80")
-        sse_protocol = st.query_params.get("sse_protocol", "http")
-        sse_path = st.query_params.get("sse_path", "/sse/dashboard/stream")
-    except:
-        sse_host = "localhost"
-        sse_port = "80"
-        sse_protocol = "http"
-        sse_path = "/sse/dashboard/stream"
+    # st.query_params.get(key, default) already returns the default when the
+    # query param is absent, so no exception handling is needed here.
+    sse_host = st.query_params.get("sse_host", "localhost")
+    sse_port = st.query_params.get("sse_port", "80")
+    sse_protocol = st.query_params.get("sse_protocol", "http")
+    sse_path = st.query_params.get("sse_path", "/sse/dashboard/stream")
 
     # Generate SSE client JavaScript code
     sse_client_js = generate_sse_client_js(
