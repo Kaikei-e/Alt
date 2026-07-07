@@ -93,7 +93,7 @@ func (h *RetentionHandler) handleRunRetention(w http.ResponseWriter, r *http.Req
 }
 
 // retentionStatusResponse wraps the retention log list per altctl's
-// home_retention.go decode struct (ADR-000941).
+// home_retention.go decode struct (ADR-000942).
 type retentionStatusResponse struct {
 	Logs []sovereign_db.RetentionLogEntry `json:"logs"`
 }
@@ -114,7 +114,7 @@ func (h *RetentionHandler) handleRetentionStatus(w http.ResponseWriter, r *http.
 
 // eligiblePartitionRow is a flat, table-tagged partition row. altctl's
 // home_retention.go decodes a single flat `partitions` array rather than
-// the previous per-table-grouped shape (ADR-000941).
+// the previous per-table-grouped shape (ADR-000942).
 type eligiblePartitionRow struct {
 	TableName     string `json:"table_name"`
 	PartitionName string `json:"partition_name"`

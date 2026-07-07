@@ -10,7 +10,7 @@
 // middle of an incident response. These interactions pin:
 //
 //   - Every admin response field uses an explicit snake_case json tag —
-//     ADR-000941 resolves the PascalCase-vs-tag question ADR-000765 §3
+//     ADR-000942 resolves the PascalCase-vs-tag question ADR-000765 §3
 //     deferred, in favor of explicit tags matching altctl's decode
 //     structs (cmd/home_retention.go, home_storage.go, home_snapshot.go).
 //   - List-shaped responses are wrapped in a named envelope

@@ -1,6 +1,6 @@
 # GET /admin/retention/status — retention log, wrapped in
 # `{"logs": [...]}` per altctl's home_retention.go decode struct
-# (ADR-000941). Before this fix the handler returned a bare top-level
+# (ADR-000942). Before this fix the handler returned a bare top-level
 # array (or JSON `null` when the log table is empty), which
 # `altctl home retention status` could never unmarshal into its
 # `{"logs": [...]}` expectation (hard unmarshal error whenever any log

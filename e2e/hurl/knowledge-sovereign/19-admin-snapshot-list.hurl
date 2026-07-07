@@ -1,6 +1,6 @@
 # GET /admin/snapshots/list — all snapshots, wrapped in
 # `{"snapshots": [...]}` per altctl's home_snapshot.go decode struct
-# (ADR-000941). Before this fix the handler returned a bare top-level
+# (ADR-000942). Before this fix the handler returned a bare top-level
 # JSON array of PascalCase-keyed objects, which `altctl home snapshot
 # list` could never unmarshal into its `{"snapshots": [...]}` +
 # snake_case expectation (hard failure, not silent). 14 guarantees at

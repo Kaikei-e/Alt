@@ -3,7 +3,7 @@
 # the immutable-design contract: event_seq_boundary + schema_version +
 # projector_build_ref are recorded alongside the artifacts.
 #
-# ADR-000941: the admin handler marshals `sovereign_db.SnapshotMetadata`
+# ADR-000942: the admin handler marshals `sovereign_db.SnapshotMetadata`
 # via explicit snake_case json tags (superseding ADR-000765 §3's
 # PascalCase-no-tags stance), matching altctl's home_snapshot.go decode
 # structs.

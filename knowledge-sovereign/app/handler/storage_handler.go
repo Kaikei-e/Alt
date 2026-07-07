@@ -30,7 +30,7 @@ func (h *StorageHandler) RegisterRoutes(mux *http.ServeMux) {
 }
 
 // storageStatsResponse wraps the table storage stats per altctl's
-// home_storage.go decode struct (ADR-000941).
+// home_storage.go decode struct (ADR-000942).
 type storageStatsResponse struct {
 	Tables []sovereign_db.TableStorageInfo `json:"tables"`
 }

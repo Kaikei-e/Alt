@@ -12,7 +12,7 @@ import (
 
 // SnapshotMetadata represents a projection snapshot record.
 //
-// ADR-000941: json tags are explicit snake_case, matching altctl's
+// ADR-000942: json tags are explicit snake_case, matching altctl's
 // home_snapshot.go decode structs. This supersedes ADR-000765 §3, which
 // deferred the PascalCase-vs-tag decision to a future ADR.
 type SnapshotMetadata struct {
@@ -204,7 +204,7 @@ func (r *Repository) ExportTableToWriter(ctx context.Context, tableName string, 
 
 // TableStorageInfo represents storage statistics for a table.
 //
-// ADR-000941: `name` (not `table_name`) plus `table_size`/`index_size`
+// ADR-000942: `name` (not `table_name`) plus `table_size`/`index_size`
 // broken out from the combined `total_size`, matching altctl's
 // home_storage.go decode struct.
 type TableStorageInfo struct {

@@ -69,7 +69,7 @@ func (h *SnapshotHandler) handleCreateSnapshot(w http.ResponseWriter, r *http.Re
 }
 
 // snapshotListResponse wraps the snapshot list per altctl's
-// home_snapshot.go decode struct (ADR-000941).
+// home_snapshot.go decode struct (ADR-000942).
 type snapshotListResponse struct {
 	Snapshots []sovereign_db.SnapshotMetadata `json:"snapshots"`
 }

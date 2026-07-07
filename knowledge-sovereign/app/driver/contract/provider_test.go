@@ -158,7 +158,7 @@ func startStubServer(t *testing.T, reject *bool) int {
 	// Admin REST surface on the same listener: pact-go routes every
 	// consumer interaction through the single ProviderBaseURL, so we
 	// serve Connect-RPC and admin REST on the same port.
-	// ADR-000941: admin surface responses use explicit snake_case json
+	// ADR-000942: admin surface responses use explicit snake_case json
 	// tags and are wrapped in named envelopes, matching altctl's
 	// home_retention.go / home_storage.go / home_snapshot.go decode
 	// structs. This supersedes ADR-000765 §3's PascalCase-no-tags stance.
