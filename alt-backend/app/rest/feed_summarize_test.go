@@ -5,6 +5,7 @@ import (
 	"alt/di"
 	"alt/domain"
 	summarization "alt/rest/rest_feeds/summarization"
+	"alt/usecase/summarize_article_usecase"
 	"alt/utils/logger"
 	"bytes"
 	"context"
@@ -71,9 +72,12 @@ func TestHandleSummarizeFeed(t *testing.T) {
 				},
 			}
 
-			// Create container with nil repository (will cause database error)
+			// Create container with a usecase wired against a nil repository
+			// (will cause a database-unavailable error, same as the legacy
+			// nil-AltDBRepository setup this test replaced).
 			container := &di.ApplicationComponents{
-				AltDBRepository: nil,
+				AltDBRepository:         nil,
+				SummarizeArticleUsecase: summarize_article_usecase.NewUsecase(nil, nil, nil),
 			}
 
 			// Create request
