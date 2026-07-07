@@ -23,6 +23,7 @@ func Run(ctx context.Context) error {
 		fmt.Printf("Failed to initialize OpenTelemetry: %v\n", err)
 		otelCfg.Enabled = false
 	}
+	otelShutdown = resolveOtelShutdown(otelShutdown)
 	defer func() {
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
@@ -70,6 +71,16 @@ func Run(ctx context.Context) error {
 	waitForShutdown(httpServer, deps, log)
 
 	return nil
+}
+
+// resolveOtelShutdown returns fn unchanged when it is non-nil. otel.InitProvider
+// returns (nil, err) on initialization failure — calling a nil ShutdownFunc from
+// the deferred shutdown in Run would panic, so callers must fall back to a no-op.
+func resolveOtelShutdown(fn otel.ShutdownFunc) otel.ShutdownFunc {
+	if fn != nil {
+		return fn
+	}
+	return func(context.Context) error { return nil }
 }
 
 func startJobs(ctx context.Context, deps *Dependencies, log *slog.Logger) error {

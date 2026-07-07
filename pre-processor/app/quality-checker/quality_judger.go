@@ -226,11 +226,14 @@ func scoreSummary(ctx context.Context, prompt string) (*Score, error) {
 			return fallbackScore, nil
 		}
 
-		// Final fallback: if the model is consistently failing, assign low score
-		finalFallbackScore := &Score{Overall: 1}
-		logger.Logger.WarnContext(ctx, "Using final fallback score due to parsing failure", "score", finalFallbackScore)
-
-		return finalFallbackScore, nil
+		// All parsing strategies exhausted. Return an error instead of a
+		// fabricated low score: Score{Overall: 1} falls below
+		// lowScoreThreshold and would get JudgeArticleQuality to delete a
+		// perfectly good summary purely because the model's output format
+		// broke, not because the summary is actually low quality — and a
+		// broken format tends to repeat, deleting summaries in a loop.
+		logger.Logger.ErrorContext(ctx, "Failed to parse score after all fallback strategies, skipping quality check", "response", responseText)
+		return nil, fmt.Errorf("could not parse score from model response: %w", err)
 	}
 
 	logger.Logger.InfoContext(ctx, "Successfully parsed score", "score", score)

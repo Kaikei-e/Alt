@@ -219,29 +219,11 @@ func (s *articleFetcherService) isPrivateHost(hostname string) bool {
 	return false
 }
 
+// isPrivateIPAddress reports whether ip must not be reached from the
+// fetcher (SSRF guard). It delegates to net.IP's own classifiers instead of
+// hand-rolled byte-prefix checks: those previously missed the IPv6 loopback
+// address (::1) and most of the fd00::/8 half of the ULA range (fc00::/7),
+// since only the fe80::/16 and fc00::/16 prefixes were checked explicitly.
 func (s *articleFetcherService) isPrivateIPAddress(ip net.IP) bool {
-	if ip4 := ip.To4(); ip4 != nil {
-		switch {
-		case ip4[0] == 10:
-			return true
-		case ip4[0] == 172 && ip4[1] >= 16 && ip4[1] <= 31:
-			return true
-		case ip4[0] == 192 && ip4[1] == 168:
-			return true
-		case ip4[0] == 127:
-			return true
-		}
-	}
-
-	if ip6 := ip.To16(); ip6 != nil {
-		if ip6[0] == 0xfe && ip6[1] == 0x80 {
-			return true
-		}
-
-		if ip6[0] == 0xfc && ip6[1] == 0x00 {
-			return true
-		}
-	}
-
-	return false
+	return ip.IsLoopback() || ip.IsPrivate() || ip.IsLinkLocalUnicast() || ip.IsUnspecified()
 }

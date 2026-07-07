@@ -1,10 +1,14 @@
-// Package service exposes article-processing services.
+// Package utils: language_detector.go classifies short text (titles, lead
+// paragraphs) into a BCP-47 short code. The pipeline only needs a coarse
+// JP/EN split to drive downstream language-balanced retrieval in Acolyte —
+// richer detection (model-based) can replace this later without changing
+// callers.
 //
-// DetectLanguage classifies short text (titles, lead paragraphs) into a BCP-47
-// short code. The pipeline only needs a coarse JP/EN split to drive downstream
-// language-balanced retrieval in Acolyte — richer detection (model-based) can
-// replace this later without changing callers.
-package service
+// This lives in utils (not service) so both the service layer and the
+// backend_api driver can depend on it without the driver importing the
+// service package — a Driver→Service dependency inversion that also risked
+// an import cycle.
+package utils
 
 import (
 	"strings"

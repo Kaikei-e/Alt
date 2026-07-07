@@ -15,7 +15,7 @@ import (
 	"pre-processor/domain"
 	"pre-processor/driver"
 	backendv1 "pre-processor/gen/proto/services/backend/v1"
-	"pre-processor/service"
+	"pre-processor/utils"
 )
 
 // ArticleRepository implements repository.ArticleRepository using the backend API.
@@ -54,7 +54,7 @@ func (r *ArticleRepository) Create(ctx context.Context, article *domain.Article)
 
 	language := article.Language
 	if language == "" {
-		language = service.DetectLanguage(article.Title + "\n" + article.Content)
+		language = utils.DetectLanguage(article.Title + "\n" + article.Content)
 	}
 
 	protoReq := &backendv1.CreateArticleRequest{

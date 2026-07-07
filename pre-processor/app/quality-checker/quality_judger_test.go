@@ -14,6 +14,7 @@ import (
 	"testing"
 	"time"
 
+	"pre-processor/domain"
 	"pre-processor/driver"
 
 	"github.com/stretchr/testify/assert"
@@ -274,7 +275,7 @@ func TestScoreSummary(t *testing.T) {
 			expectedError: false,
 			description:   "Should use fallback parsing when XML format not found",
 		},
-		"response_unparseable_uses_final_fallback": {
+		"response_unparseable_returns_error": {
 			serverResponse: func(w http.ResponseWriter, r *http.Request) {
 				response := ollamaResponse{
 					Response: "Cannot determine quality",
@@ -285,9 +286,9 @@ func TestScoreSummary(t *testing.T) {
 					http.Error(w, err.Error(), http.StatusInternalServerError)
 				}
 			},
-			expectedScore: intPtr(1),
-			expectedError: false,
-			description:   "Should use final fallback score (1) when parsing fails",
+			expectedScore: nil,
+			expectedError: true,
+			description:   "Should return an error (not a fabricated low score) when all parsing strategies fail",
 		},
 		"http_server_error": {
 			serverResponse: func(w http.ResponseWriter, r *http.Request) {
@@ -1024,6 +1025,63 @@ func TestJudgeArticleQualityLowScoreStillDeletes(t *testing.T) {
 	// The error should be about summary repository being nil, not connection
 	assert.Contains(t, err.Error(), "summary repository is nil", "Error should indicate summary repository is nil")
 	assert.NotContains(t, err.Error(), "failed to connect to news-creator service", "Error should not be about connection")
+}
+
+// deleteTrackingSummaryRepo is a minimal repository.SummaryRepository stub
+// that records whether Delete was invoked, without needing a real database.
+type deleteTrackingSummaryRepo struct {
+	deleteCalled bool
+}
+
+func (r *deleteTrackingSummaryRepo) Create(context.Context, *domain.ArticleSummary) error {
+	return nil
+}
+
+func (r *deleteTrackingSummaryRepo) FindArticlesWithSummaries(context.Context, *domain.Cursor, int) ([]*domain.ArticleWithSummary, *domain.Cursor, error) {
+	return nil, nil, nil
+}
+
+func (r *deleteTrackingSummaryRepo) Delete(context.Context, string) error {
+	r.deleteCalled = true
+	return nil
+}
+
+func (r *deleteTrackingSummaryRepo) Exists(context.Context, string) (bool, error) {
+	return false, nil
+}
+
+// TestJudgeArticleQualityParseFailureDoesNotDelete reproduces the HIGH
+// data-loss finding: when scoreSummary exhausts every parsing strategy, it
+// previously fabricated Score{Overall: 1} (nil error), which is below
+// lowScoreThreshold and caused JudgeArticleQuality to delete a summary purely
+// because the model's output format broke — not because it was actually low
+// quality. A broken output format must surface as an error and the summary
+// must be left untouched.
+func TestJudgeArticleQualityParseFailureDoesNotDelete(t *testing.T) {
+	withMockTransport(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		response := ollamaResponse{
+			Response: "I am unable to provide a quality assessment for this content.",
+			Done:     true,
+		}
+		w.WriteHeader(http.StatusOK)
+		_ = json.NewEncoder(w).Encode(response)
+	}))
+
+	originalURL := qualityCheckerAPIURL
+	qualityCheckerAPIURL = testQualityCheckerURL
+	t.Cleanup(func() { qualityCheckerAPIURL = originalURL })
+
+	article := &driver.ArticleWithSummary{
+		ArticleID:       "test-article-unparseable-score",
+		Content:         "Test content",
+		SummaryJapanese: "テスト要約",
+	}
+
+	repo := &deleteTrackingSummaryRepo{}
+
+	err := JudgeArticleQuality(context.Background(), repo, nil, article)
+	require.Error(t, err, "a completely unparseable score response must surface as an error")
+	assert.False(t, repo.deleteCalled, "a parse failure must not delete the summary")
 }
 
 // --- Gemma 4 chat template token tests ---

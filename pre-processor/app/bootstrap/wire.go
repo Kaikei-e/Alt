@@ -145,7 +145,11 @@ func BuildDependencies(ctx context.Context, log *slog.Logger, otelEnabled bool) 
 	summarizeHandler := handler.NewSummarizeHandler(apiRepo, summaryRepo, articleRepo, jobRepo, log)
 
 	// Initialize Redis Streams consumer
-	redisConsumer := buildRedisConsumer(ctx, jobRepo, articleRepo, summaryRepo, log)
+	redisConsumer, err := buildRedisConsumer(ctx, jobRepo, articleRepo, summaryRepo, log)
+	if err != nil {
+		ppDBPoolCleanup()
+		return nil, nil, fmt.Errorf("failed to build redis streams consumer: %w", err)
+	}
 
 	cleanup := func() {
 		ppDBPoolCleanup()
@@ -183,7 +187,14 @@ func getEnvOrDefault(key, defaultValue string) string {
 	return defaultValue
 }
 
-func buildRedisConsumer(ctx context.Context, jobRepo repository.SummarizeJobRepository, articleRepo repository.ArticleRepository, summaryRepo repository.SummaryRepository, log *slog.Logger) *consumer.Consumer {
+// buildRedisConsumer constructs and starts the Redis Streams consumer that
+// drives event-driven summarization. Construction or start failures are
+// returned to the caller (rather than logged-and-swallowed) so a broken
+// consumer fails pre-processor startup instead of leaving the event-driven
+// summarization path silently dead (CLAUDE.md rule 8). When CONSUMER_ENABLED
+// is unset/false, NewConsumer/Start succeed as a deliberate no-op and log
+// "consumer disabled, not starting" — that is the explicit, loud opt-out path.
+func buildRedisConsumer(ctx context.Context, jobRepo repository.SummarizeJobRepository, articleRepo repository.ArticleRepository, summaryRepo repository.SummaryRepository, log *slog.Logger) (*consumer.Consumer, error) {
 	consumerCfg := consumer.Config{
 		RedisURL:      getEnvOrDefault("REDIS_STREAMS_URL", "redis://redis-streams:6379"),
 		GroupName:     getEnvOrDefault("CONSUMER_GROUP", "pre-processor-group"),
@@ -199,18 +210,17 @@ func buildRedisConsumer(ctx context.Context, jobRepo repository.SummarizeJobRepo
 	eventHandler := consumer.NewPreProcessorEventHandler(summarizeServiceAdapter, log)
 	redisConsumer, err := consumer.NewConsumer(consumerCfg, eventHandler, log)
 	if err != nil {
-		log.Error("Failed to create Redis Streams consumer", "error", err)
-		return nil
+		return nil, fmt.Errorf("failed to create redis streams consumer: %w", err)
 	}
 
 	if err := redisConsumer.Start(ctx); err != nil {
-		log.Error("Failed to start Redis Streams consumer", "error", err)
-	} else {
-		log.Info("Redis Streams consumer started",
-			"stream", consumerCfg.StreamKey,
-			"group", consumerCfg.GroupName,
-			"enabled", consumerCfg.Enabled)
+		return nil, fmt.Errorf("failed to start redis streams consumer: %w", err)
 	}
 
-	return redisConsumer
+	log.Info("Redis Streams consumer started",
+		"stream", consumerCfg.StreamKey,
+		"group", consumerCfg.GroupName,
+		"enabled", consumerCfg.Enabled)
+
+	return redisConsumer, nil
 }
