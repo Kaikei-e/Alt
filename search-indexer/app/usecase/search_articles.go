@@ -8,6 +8,7 @@ import (
 	"search-indexer/domain"
 	"search-indexer/port"
 	"strings"
+	"time"
 	"unicode"
 
 	"golang.org/x/text/unicode/norm"
@@ -29,13 +30,6 @@ func NewSearchArticlesUsecase(searchEngine port.SearchEngine) *SearchArticlesUse
 	}
 }
 
-// Engine exposes the underlying search engine so the REST handler can
-// dispatch to extra methods (e.g. SearchWithDateFilter) without having
-// to carry a second usecase.
-func (u *SearchArticlesUsecase) Engine() port.SearchEngine {
-	return u.searchEngine
-}
-
 // Structural validation patterns. Meilisearch does not execute SQL, shell
 // commands, or render HTML, so SQLi/XSS/cmd denylists only generate false
 // positives against legitimate searches. We keep validation limited to
@@ -50,7 +44,7 @@ var (
 // validateQuerySecurity rejects queries whose raw bytes would confuse parsers
 // or log sinks downstream. Application-level injection concerns are handled
 // at the persistence boundary (Meilisearch filter escaping).
-func (u *SearchArticlesUsecase) validateQuerySecurity(query string) error {
+func validateQuerySecurity(query string) error {
 	if controlCharPattern.MatchString(query) {
 		return errors.New("query contains invalid control characters")
 	}
@@ -62,7 +56,7 @@ func (u *SearchArticlesUsecase) validateQuerySecurity(query string) error {
 
 // sanitizeQuery applies Unicode NFC normalization and whitespace folding so
 // equivalent Unicode representations produce the same Meilisearch query.
-func (u *SearchArticlesUsecase) sanitizeQuery(query string) string {
+func sanitizeQuery(query string) string {
 	query = norm.NFC.String(query)
 	query = zeroWidthPattern.ReplaceAllString(query, "")
 	query = strings.TrimSpace(query)
@@ -78,37 +72,74 @@ func (u *SearchArticlesUsecase) sanitizeQuery(query string) string {
 	return b.String()
 }
 
-func (u *SearchArticlesUsecase) Execute(ctx context.Context, query string, limit int) (*SearchResult, error) {
+// validateAndSanitizeQuery runs the length/control-character/zero-width
+// checks and NFC sanitization shared by every search entry point --
+// SearchArticlesUsecase and SearchByUserUsecase alike -- so which usecase a
+// request happens to go through never changes what input is accepted (see
+// the search_by_user.go MED finding on validation-inconsistency).
+func validateAndSanitizeQuery(query string, limit int) (string, error) {
 	if query == "" {
-		return nil, errors.New("query cannot be empty")
+		return "", errors.New("query cannot be empty")
 	}
 
 	if limit <= 0 {
-		return nil, errors.New("limit must be greater than 0")
+		return "", errors.New("limit must be greater than 0")
 	}
 
 	if len(query) > 1000 {
-		return nil, errors.New("query too long")
+		return "", errors.New("query too long")
 	}
 
 	if limit > 1000 {
-		return nil, errors.New("limit too large")
+		return "", errors.New("limit too large")
 	}
 
 	// Perform security validation
-	if err := u.validateQuerySecurity(query); err != nil {
-		return nil, fmt.Errorf("security validation failed: %w", err)
+	if err := validateQuerySecurity(query); err != nil {
+		return "", fmt.Errorf("security validation failed: %w", err)
 	}
 
 	// Sanitize the query
-	sanitizedQuery := u.sanitizeQuery(query)
+	sanitizedQuery := sanitizeQuery(query)
 
 	// Final check after sanitization
 	if sanitizedQuery == "" {
-		return nil, errors.New("query became empty after sanitization")
+		return "", errors.New("query became empty after sanitization")
+	}
+
+	return sanitizedQuery, nil
+}
+
+func (u *SearchArticlesUsecase) Execute(ctx context.Context, query string, limit int) (*SearchResult, error) {
+	sanitizedQuery, err := validateAndSanitizeQuery(query, limit)
+	if err != nil {
+		return nil, err
 	}
 
 	documents, err := u.searchEngine.Search(ctx, sanitizedQuery, limit)
+	if err != nil {
+		return nil, err
+	}
+
+	return &SearchResult{
+		Query:     sanitizedQuery,
+		Documents: documents,
+		Total:     len(documents),
+	}, nil
+}
+
+// ExecuteWithDateFilter mirrors Execute but restricts results to the given
+// publishedAfter/publishedBefore window. It exists so the REST handler's
+// date-filter path goes through the same length/control-character/sanitize
+// validation as plain search, instead of reaching past the usecase to
+// port.SearchEngine directly and skipping it.
+func (u *SearchArticlesUsecase) ExecuteWithDateFilter(ctx context.Context, query string, publishedAfter, publishedBefore *time.Time, limit int) (*SearchResult, error) {
+	sanitizedQuery, err := validateAndSanitizeQuery(query, limit)
+	if err != nil {
+		return nil, err
+	}
+
+	documents, err := u.searchEngine.SearchWithDateFilter(ctx, sanitizedQuery, publishedAfter, publishedBefore, limit)
 	if err != nil {
 		return nil, err
 	}

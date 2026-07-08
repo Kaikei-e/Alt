@@ -26,7 +26,7 @@ func NewRecapSearchEngineGateway(driver RecapSearchDriver) *RecapSearchEngineGat
 // EnsureRecapIndex ensures the recaps index exists and is configured.
 func (g *RecapSearchEngineGateway) EnsureRecapIndex(ctx context.Context) error {
 	if err := g.driver.EnsureIndex(ctx); err != nil {
-		return &domain.SearchEngineError{Op: "EnsureRecapIndex", Err: err.Error()}
+		return &domain.SearchEngineError{Op: "EnsureRecapIndex", Err: err}
 	}
 	return nil
 }
@@ -53,7 +53,7 @@ func (g *RecapSearchEngineGateway) IndexRecapDocuments(ctx context.Context, docs
 	}
 
 	if err := g.driver.IndexDocuments(ctx, driverDocs); err != nil {
-		return &domain.SearchEngineError{Op: "IndexRecapDocuments", Err: err.Error()}
+		return &domain.SearchEngineError{Op: "IndexRecapDocuments", Err: err}
 	}
 	return nil
 }
@@ -62,7 +62,7 @@ func (g *RecapSearchEngineGateway) IndexRecapDocuments(ctx context.Context, docs
 func (g *RecapSearchEngineGateway) SearchRecaps(ctx context.Context, query string, limit int) ([]domain.RecapDocument, int64, error) {
 	driverDocs, total, err := g.driver.Search(ctx, query, limit)
 	if err != nil {
-		return nil, 0, &domain.SearchEngineError{Op: "SearchRecaps", Err: err.Error()}
+		return nil, 0, &domain.SearchEngineError{Op: "SearchRecaps", Err: err}
 	}
 
 	docs := make([]domain.RecapDocument, len(driverDocs))

@@ -13,6 +13,8 @@
 package driver
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"strings"
 	"time"
@@ -35,13 +37,17 @@ type cacheKey struct {
 	SemanticRatio float64
 }
 
-// String produces a stable identifier for singleflight grouping. The
-// pipe-delimited form is fine because none of the constituent fields can
-// contain a pipe in normal operation (user IDs are UUIDs, embedder is a
-// short identifier).
+// String produces a stable identifier for singleflight grouping. Query and
+// Filter are attacker/user-controlled and may contain any byte including a
+// pipe, so a plain delimited join could collide two different requests
+// (e.g. one user's query bleeding a pipe-separated UserID into another's)
+// onto the same singleflight key and leak cross-tenant results. Hashing the
+// whole key removes that structurally instead of relying on the inputs
+// never containing the delimiter.
 func (k cacheKey) String() string {
-	return fmt.Sprintf("%s|%s|%s|%d|%d|%s|%g",
-		k.Query, k.UserID, k.Filter, k.Offset, k.Limit, k.Embedder, k.SemanticRatio)
+	h := sha256.Sum256(fmt.Appendf(nil, "%s|%s|%s|%d|%d|%s|%g",
+		k.Query, k.UserID, k.Filter, k.Offset, k.Limit, k.Embedder, k.SemanticRatio))
+	return hex.EncodeToString(h[:])
 }
 
 // cacheEntry stores both the result and the engine-reported processingMs so

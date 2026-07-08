@@ -141,16 +141,20 @@ func Run(ctx context.Context) error {
 		redisConsumer, err = consumer.NewConsumer(consumerCfg, eventHandler, logger.Logger)
 		if err != nil {
 			logger.Logger.Error("Failed to create Redis Streams consumer", "err", err)
-		} else {
-			if err := redisConsumer.Start(ctx); err != nil {
-				logger.Logger.Error("Failed to start Redis Streams consumer", "err", err)
-			} else {
-				logger.Logger.Info("Redis Streams consumer started",
-					"stream", consumerCfg.StreamKey,
-					"group", consumerCfg.GroupName,
-				)
-			}
+			return fmt.Errorf("create redis streams consumer: %w", err)
 		}
+		// CONSUMER_ENABLED=true is an explicit request for event-driven
+		// indexing; if it can't start, fail startup instead of silently
+		// falling back to the 5-minute polling loop (a quiet search-latency
+		// regression that healthchecks would not catch, CLAUDE.md rule 8).
+		if err := redisConsumer.Start(ctx); err != nil {
+			logger.Logger.Error("Failed to start Redis Streams consumer", "err", err)
+			return fmt.Errorf("start redis streams consumer: %w", err)
+		}
+		logger.Logger.Info("Redis Streams consumer started",
+			"stream", consumerCfg.StreamKey,
+			"group", consumerCfg.GroupName,
+		)
 	} else {
 		logger.Logger.Info("Redis Streams consumer disabled")
 	}

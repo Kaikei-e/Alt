@@ -2,6 +2,7 @@ package usecase
 
 import (
 	"context"
+	"errors"
 	"search-indexer/domain"
 	"search-indexer/tokenize"
 	"testing"
@@ -185,7 +186,7 @@ func TestIndexArticlesUsecase_Execute(t *testing.T) {
 		{
 			name:         "repository error",
 			mockArticles: nil,
-			repoErr:      &domain.RepositoryError{Op: "GetArticlesWithTags", Err: "db error"},
+			repoErr:      &domain.RepositoryError{Op: "GetArticlesWithTags", Err: errors.New("db error")},
 			searchErr:    nil,
 			batchSize:    10,
 			wantIndexed:  0,
@@ -195,7 +196,7 @@ func TestIndexArticlesUsecase_Execute(t *testing.T) {
 			name:         "search engine error",
 			mockArticles: []*domain.Article{article1},
 			repoErr:      nil,
-			searchErr:    &domain.SearchEngineError{Op: "IndexDocuments", Err: "index error"},
+			searchErr:    &domain.SearchEngineError{Op: "IndexDocuments", Err: errors.New("index error")},
 			batchSize:    10,
 			wantIndexed:  0,
 			wantErr:      true,
@@ -389,7 +390,7 @@ func TestExecuteBatchArticles_SkipsNotFoundArticle(t *testing.T) {
 // repository failure still fails the batch instead of being swallowed
 // alongside the not-found skip path.
 func TestExecuteBatchArticles_PropagatesNonNotFoundError(t *testing.T) {
-	repo := &mockArticleRepo{err: &domain.RepositoryError{Op: "GetArticleByID", Err: "db unavailable"}}
+	repo := &mockArticleRepo{err: &domain.RepositoryError{Op: "GetArticleByID", Err: errors.New("db unavailable")}}
 	engine := &mockSearchEngineForIndexing{}
 	u := NewIndexArticlesUsecase(repo, engine, nil)
 

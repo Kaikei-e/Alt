@@ -9,32 +9,46 @@ import "errors"
 // paired with a nil error.
 var ErrArticleNotFound = errors.New("article not found")
 
-// RepositoryError represents an error from the repository layer.
+// RepositoryError represents an error from the repository layer. Err is a
+// real error (not a stringified copy) so callers can use errors.Is/As to
+// classify the cause instead of matching on Error() text.
 type RepositoryError struct {
 	Op  string
-	Err string
+	Err error
 }
 
 func (e *RepositoryError) Error() string {
-	return e.Op + ": " + e.Err
+	return e.Op + ": " + e.Err.Error()
+}
+
+func (e *RepositoryError) Unwrap() error {
+	return e.Err
 }
 
 // SearchEngineError represents an error from the search engine layer.
 type SearchEngineError struct {
 	Op  string
-	Err string
+	Err error
 }
 
 func (e *SearchEngineError) Error() string {
-	return e.Op + ": " + e.Err
+	return e.Op + ": " + e.Err.Error()
+}
+
+func (e *SearchEngineError) Unwrap() error {
+	return e.Err
 }
 
 // DriverError represents an error from the driver layer.
 type DriverError struct {
 	Op  string
-	Err string
+	Err error
 }
 
 func (e *DriverError) Error() string {
-	return e.Op + ": " + e.Err
+	return e.Op + ": " + e.Err.Error()
+}
+
+func (e *DriverError) Unwrap() error {
+	return e.Err
 }

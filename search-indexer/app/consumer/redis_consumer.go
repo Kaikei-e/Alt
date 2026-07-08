@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"log/slog"
+	"sync"
 	"time"
 
 	"github.com/redis/go-redis/v9"
@@ -57,6 +58,8 @@ type Consumer struct {
 	handler      EventHandler
 	logger       *slog.Logger
 	shutdownChan chan struct{}
+	shutdownOnce sync.Once
+	wg           sync.WaitGroup
 }
 
 // NewConsumer creates a new Redis Streams consumer.
@@ -120,8 +123,15 @@ func (c *Consumer) Start(ctx context.Context) error {
 		"max_deliveries", c.config.MaxDeliveries,
 	)
 
-	go c.consumeLoop(ctx)
-	go c.reclaimLoop(ctx)
+	c.wg.Add(2)
+	go func() {
+		defer c.wg.Done()
+		c.consumeLoop(ctx)
+	}()
+	go func() {
+		defer c.wg.Done()
+		c.reclaimLoop(ctx)
+	}()
 	return nil
 }
 
@@ -131,15 +141,25 @@ func (c *Consumer) Start(ctx context.Context) error {
 // that need the full shutdown sequence should call StopIntake, let any
 // handler flush, then call Close -- see
 // .claude/rules/event-stream-consumer.md shutdown ordering.
+//
+// Safe to call more than once (e.g. from both StopIntake and Stop): the
+// shutdown signal is only closed once via sync.Once, so a second call
+// cannot panic on a double close(shutdownChan).
 func (c *Consumer) StopIntake() {
-	if c.shutdownChan != nil {
-		close(c.shutdownChan)
+	if c.shutdownChan == nil {
+		return
 	}
+	c.shutdownOnce.Do(func() {
+		close(c.shutdownChan)
+	})
 }
 
-// Close closes the underlying Redis client. Call after StopIntake (and
+// Close waits for the consume and reclaim loops to actually exit before
+// closing the underlying Redis client, so client.Close() cannot race with
+// their in-flight XReadGroup/XAutoClaim calls. Call after StopIntake (and
 // after any handler has finished flushing/acking pending work).
 func (c *Consumer) Close() {
+	c.wg.Wait()
 	if c.client != nil {
 		c.client.Close()
 	}

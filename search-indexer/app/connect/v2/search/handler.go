@@ -15,8 +15,8 @@ import (
 
 // Handler implements the SearchService Connect-RPC handler.
 type Handler struct {
-	searchByUserUsecase  *usecase.SearchByUserUsecase
-	searchRecapsUsecase  *usecase.SearchRecapsUsecase
+	searchByUserUsecase *usecase.SearchByUserUsecase
+	searchRecapsUsecase *usecase.SearchRecapsUsecase
 }
 
 // NewHandler creates a new search handler.

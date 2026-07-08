@@ -2,6 +2,7 @@ package usecase
 
 import (
 	"context"
+	"errors"
 	"search-indexer/domain"
 	"testing"
 	"time"
@@ -117,7 +118,7 @@ func TestSearchArticlesUsecase_Execute(t *testing.T) {
 			query:       "test",
 			limit:       10,
 			mockResults: nil,
-			mockErr:     &domain.SearchEngineError{Op: "Search", Err: "search failed"},
+			mockErr:     &domain.SearchEngineError{Op: "Search", Err: errors.New("search failed")},
 			wantCount:   0,
 			wantErr:     true,
 		},

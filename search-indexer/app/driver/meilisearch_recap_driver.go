@@ -3,6 +3,7 @@ package driver
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"time"
 
 	"github.com/meilisearch/meilisearch-go"
@@ -42,11 +43,11 @@ func (d *MeilisearchRecapDriver) EnsureIndex(ctx context.Context) error {
 	if err != nil {
 		dummyDoc := []map[string]interface{}{
 			{
-				"id":         "init",
-				"job_id":     "",
-				"genre":      "",
-				"top_terms":  []string{},
-				"summary":    "",
+				"id":          "init",
+				"job_id":      "",
+				"genre":       "",
+				"top_terms":   []string{},
+				"summary":     "",
 				"executed_at": "",
 			},
 		}
@@ -54,10 +55,10 @@ func (d *MeilisearchRecapDriver) EnsureIndex(ctx context.Context) error {
 		pk := "id"
 		task, err := d.index.AddDocuments(dummyDoc, &meilisearch.DocumentOptions{PrimaryKey: &pk})
 		if err != nil {
-			return &DriverError{Op: "EnsureRecapIndex", Err: "failed to create index: " + err.Error()}
+			return &DriverError{Op: "EnsureRecapIndex", Err: fmt.Errorf("failed to create index: %w", err)}
 		}
 		if _, err = d.index.WaitForTask(task.TaskUID, 15*time.Second); err != nil {
-			return &DriverError{Op: "EnsureRecapIndex", Err: "failed to wait for index creation: " + err.Error()}
+			return &DriverError{Op: "EnsureRecapIndex", Err: fmt.Errorf("failed to wait for index creation: %w", err)}
 		}
 
 		deleteTask, err := d.index.DeleteDocument("init", nil)
@@ -69,19 +70,19 @@ func (d *MeilisearchRecapDriver) EnsureIndex(ctx context.Context) error {
 	// Searchable attributes: tags first (semantic), then top_terms (statistical), summary, genre
 	searchableAttrs := []string{"tags", "top_terms", "summary", "genre"}
 	if _, err := d.index.UpdateSearchableAttributes(&searchableAttrs); err != nil {
-		return &DriverError{Op: "EnsureRecapIndex", Err: "failed to set searchable attributes: " + err.Error()}
+		return &DriverError{Op: "EnsureRecapIndex", Err: fmt.Errorf("failed to set searchable attributes: %w", err)}
 	}
 
 	// Filterable attributes for faceting
 	filterableAttrs := []interface{}{"genre", "window_days"}
 	if _, err := d.index.UpdateFilterableAttributes(&filterableAttrs); err != nil {
-		return &DriverError{Op: "EnsureRecapIndex", Err: "failed to set filterable attributes: " + err.Error()}
+		return &DriverError{Op: "EnsureRecapIndex", Err: fmt.Errorf("failed to set filterable attributes: %w", err)}
 	}
 
 	// Sortable attributes
 	sortableAttrs := []string{"executed_at"}
 	if _, err := d.index.UpdateSortableAttributes(&sortableAttrs); err != nil {
-		return &DriverError{Op: "EnsureRecapIndex", Err: "failed to set sortable attributes: " + err.Error()}
+		return &DriverError{Op: "EnsureRecapIndex", Err: fmt.Errorf("failed to set sortable attributes: %w", err)}
 	}
 
 	return nil
@@ -96,11 +97,11 @@ func (d *MeilisearchRecapDriver) IndexDocuments(ctx context.Context, docs []Reca
 	pk := "id"
 	task, err := d.index.AddDocuments(docs, &meilisearch.DocumentOptions{PrimaryKey: &pk})
 	if err != nil {
-		return &DriverError{Op: "IndexRecapDocuments", Err: err.Error()}
+		return &DriverError{Op: "IndexRecapDocuments", Err: err}
 	}
 
 	if _, err = d.index.WaitForTask(task.TaskUID, 15*time.Second); err != nil {
-		return &DriverError{Op: "IndexRecapDocuments", Err: "failed to wait for indexing: " + err.Error()}
+		return &DriverError{Op: "IndexRecapDocuments", Err: fmt.Errorf("failed to wait for indexing: %w", err)}
 	}
 
 	return nil
@@ -113,7 +114,7 @@ func (d *MeilisearchRecapDriver) Search(ctx context.Context, query string, limit
 		Sort:  []string{"executed_at:desc"},
 	})
 	if err != nil {
-		return nil, 0, &DriverError{Op: "SearchRecaps", Err: err.Error()}
+		return nil, 0, &DriverError{Op: "SearchRecaps", Err: err}
 	}
 
 	docs := make([]RecapDocumentDriver, 0, len(result.Hits))

@@ -2,6 +2,7 @@ package gateway
 
 import (
 	"context"
+	"errors"
 	"search-indexer/domain"
 	"search-indexer/driver"
 	"testing"
@@ -123,7 +124,7 @@ func TestSearchEngineGateway_IndexDocuments(t *testing.T) {
 		{
 			name:    "driver indexing error",
 			docs:    []domain.SearchDocument{domainDoc},
-			mockErr: &driver.DriverError{Op: "IndexDocuments", Err: "index creation failed"},
+			mockErr: &driver.DriverError{Op: "IndexDocuments", Err: errors.New("index creation failed")},
 			wantErr: true,
 		},
 		{
@@ -210,7 +211,7 @@ func TestSearchEngineGateway_Search(t *testing.T) {
 			query:       "test",
 			limit:       10,
 			mockResults: nil,
-			mockErr:     &driver.DriverError{Op: "Search", Err: "search failed"},
+			mockErr:     &driver.DriverError{Op: "Search", Err: errors.New("search failed")},
 			wantErr:     true,
 			wantCount:   0,
 		},
@@ -305,7 +306,7 @@ func TestSearchEngineGateway_SearchWithFilters(t *testing.T) {
 			filters:     []string{"tag1"},
 			limit:       10,
 			mockResults: nil,
-			mockErr:     &driver.DriverError{Op: "SearchWithFilters", Err: "search failed"},
+			mockErr:     &driver.DriverError{Op: "SearchWithFilters", Err: errors.New("search failed")},
 			wantErr:     true,
 			wantCount:   0,
 		},
@@ -371,7 +372,7 @@ func TestSearchEngineGateway_EnsureIndex(t *testing.T) {
 		},
 		{
 			name:    "driver error",
-			mockErr: &driver.DriverError{Op: "EnsureIndex", Err: "index creation failed"},
+			mockErr: &driver.DriverError{Op: "EnsureIndex", Err: errors.New("index creation failed")},
 			wantErr: true,
 		},
 	}

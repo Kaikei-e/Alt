@@ -3,6 +3,7 @@ package usecase
 import (
 	"context"
 	"errors"
+	"log/slog"
 	"maps"
 	"search-indexer/domain"
 	"search-indexer/port"
@@ -249,5 +250,11 @@ func (u *IndexArticlesUsecase) registerBatchSynonyms(ctx context.Context, docs [
 	union := maps.Clone(u.synonyms)
 	u.synonymsMu.Unlock()
 
-	_ = u.searchEngine.RegisterSynonyms(ctx, union)
+	if err := u.searchEngine.RegisterSynonyms(ctx, union); err != nil {
+		// Non-fatal: search still works without synonyms, just with reduced
+		// recall for the affected tags. But this used to be silently
+		// swallowed entirely, so a persistent Meilisearch problem here was
+		// invisible until someone noticed synonym search wasn't working.
+		slog.WarnContext(ctx, "failed to register synonyms", "error", err, "synonym_count", len(union))
+	}
 }

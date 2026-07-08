@@ -8,7 +8,6 @@ import (
 
 	"search-indexer/domain"
 	"search-indexer/logger"
-	"search-indexer/port"
 	"search-indexer/usecase"
 	appOtel "search-indexer/utils/otel"
 
@@ -17,21 +16,16 @@ import (
 )
 
 // Handler contains all HTTP handlers for the search indexer.
-// ``engine`` is retained so the date-bounded search path can call
-// SearchWithDateFilter directly without introducing another usecase.
 type Handler struct {
 	searchByUserUsecase   *usecase.SearchByUserUsecase
 	searchArticlesUsecase *usecase.SearchArticlesUsecase
-	engine                port.SearchEngine
 }
 
-// NewHandler creates a new Handler. ``engine`` is derived from the same
-// port.SearchEngine that backs the two usecases.
+// NewHandler creates a new Handler.
 func NewHandler(searchByUserUsecase *usecase.SearchByUserUsecase, searchArticlesUsecase *usecase.SearchArticlesUsecase) *Handler {
 	return &Handler{
 		searchByUserUsecase:   searchByUserUsecase,
 		searchArticlesUsecase: searchArticlesUsecase,
-		engine:                searchArticlesUsecase.Engine(),
 	}
 }
 
@@ -54,8 +48,8 @@ type SearchArticlesResponse struct {
 // SearchArticles handles GET /v1/search requests.
 // When user_id is provided, results are filtered to that user's articles.
 // When user_id is omitted, all articles are searched (used by RAG/BM25 internal callers).
-// Optional ``published_after`` / ``published_before`` RFC3339 parameters
-// restrict results to a date window. Both bounds apply to the ``published_at``
+// Optional “published_after“ / “published_before“ RFC3339 parameters
+// restrict results to a date window. Both bounds apply to the “published_at“
 // attribute on indexed documents.
 func (h *Handler) SearchArticles(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
@@ -93,12 +87,12 @@ func (h *Handler) SearchArticles(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		if publishedAfter != nil || publishedBefore != nil {
-			dateDocs, dfErr := h.engine.SearchWithDateFilter(ctx, query, publishedAfter, publishedBefore, limit)
+			result, dfErr := h.searchArticlesUsecase.ExecuteWithDateFilter(ctx, query, publishedAfter, publishedBefore, limit)
 			if dfErr != nil {
 				err = dfErr
 			} else {
-				docs = dateDocs
-				searchQuery = query
+				docs = result.Documents
+				searchQuery = result.Query
 			}
 		} else {
 			result, execErr := h.searchArticlesUsecase.Execute(ctx, query, limit)
@@ -110,8 +104,22 @@ func (h *Handler) SearchArticles(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	} else {
-		// User-scoped search
-		result, execErr := h.searchByUserUsecase.Execute(ctx, query, userID)
+		// User-scoped search. published_after/published_before have no
+		// user-scoped engine path yet, so reject them explicitly instead of
+		// silently ignoring them (see rest/handler.go MED finding on
+		// api-inconsistency).
+		if publishedAfter != nil || publishedBefore != nil {
+			http.Error(w, "published_after/published_before are not supported with user_id", http.StatusBadRequest)
+			return
+		}
+
+		limit := int64(20)
+		if limitStr != "" {
+			if l, parseErr := strconv.ParseInt(limitStr, 10, 64); parseErr == nil && l > 0 && l <= 1000 {
+				limit = l
+			}
+		}
+		result, execErr := h.searchByUserUsecase.ExecuteWithPagination(ctx, query, userID, 0, limit)
 		if execErr != nil {
 			err = execErr
 		} else {
@@ -180,4 +188,3 @@ func parseOptionalRFC3339(raw string) (*time.Time, error) {
 	}
 	return &t, nil
 }
-

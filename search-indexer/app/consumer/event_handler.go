@@ -180,6 +180,17 @@ func (h *IndexEventHandler) handleArticleCreated(ctx context.Context, event Even
 			Tags:    payload.Tags,
 			UserID:  payload.UserID,
 		}
+		if payload.PublishedAt != "" {
+			if publishedAt, err := time.Parse(time.RFC3339, payload.PublishedAt); err == nil {
+				doc.PublishedAt = publishedAt
+			} else {
+				h.logger.Warn("failed to parse published_at, indexing without it",
+					"article_id", payload.ArticleID,
+					"published_at", payload.PublishedAt,
+					"error", err,
+				)
+			}
+		}
 		h.enqueueFatEvent(doc, event.MessageID)
 		return nil
 	}

@@ -33,7 +33,7 @@ func (g *ConfigGateway) LoadSearchIndexerConfig() (*domain.SearchIndexerConfig, 
 	if err != nil {
 		return nil, &domain.RepositoryError{
 			Op:  "LoadSearchIndexerConfig",
-			Err: err.Error(),
+			Err: err,
 		}
 	}
 

@@ -9,8 +9,8 @@ import (
 
 	"golang.org/x/time/rate"
 
-	connectv2 "search-indexer/connect/v2"
 	"search-indexer/config"
+	connectv2 "search-indexer/connect/v2"
 	"search-indexer/middleware"
 	"search-indexer/rest"
 	"search-indexer/usecase"
@@ -48,6 +48,10 @@ func newHTTPServer(searchByUserUsecase *usecase.SearchByUserUsecase, searchArtic
 		Addr:              config.HTTPAddr,
 		Handler:           mux,
 		ReadHeaderTimeout: 5 * time.Second,
+		ReadTimeout:       30 * time.Second,
+		WriteTimeout:      30 * time.Second,
+		IdleTimeout:       120 * time.Second,
+		MaxHeaderBytes:    1 << 20,
 	}
 }
 
@@ -59,6 +63,10 @@ func newConnectServer(searchByUserUsecase *usecase.SearchByUserUsecase, searchRe
 		Addr:              config.ConnectAddr,
 		Handler:           handler,
 		ReadHeaderTimeout: 5 * time.Second,
+		ReadTimeout:       30 * time.Second,
+		WriteTimeout:      30 * time.Second,
+		IdleTimeout:       120 * time.Second,
+		MaxHeaderBytes:    1 << 20,
 	}
 }
 

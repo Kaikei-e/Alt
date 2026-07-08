@@ -2,6 +2,7 @@ package search
 
 import (
 	"context"
+	"errors"
 	"search-indexer/domain"
 	"search-indexer/logger"
 	"search-indexer/port"
@@ -21,9 +22,9 @@ func TestMain(m *testing.M) {
 
 // mockSearchEngine implements port.SearchEngine for testing.
 type mockSearchEngine struct {
-	docs            []domain.SearchDocument
-	estimatedTotal  int64
-	err             error
+	docs           []domain.SearchDocument
+	estimatedTotal int64
+	err            error
 }
 
 func (m *mockSearchEngine) IndexDocuments(ctx context.Context, docs []domain.SearchDocument) error {
@@ -162,7 +163,7 @@ func TestHandler_SearchArticles_EmptyUserID(t *testing.T) {
 
 func TestHandler_SearchArticles_SearchError(t *testing.T) {
 	se := &mockSearchEngine{
-		err: &domain.SearchEngineError{Op: "Search", Err: "search failed"},
+		err: &domain.SearchEngineError{Op: "Search", Err: errors.New("search failed")},
 	}
 	uc := usecase.NewSearchByUserUsecase(se)
 	handler := NewHandler(uc, nil)
