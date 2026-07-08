@@ -81,8 +81,11 @@ func NewHTTPServer(deps *Dependencies, otelEnabled bool, otelServiceName string)
 	return e
 }
 
-// StartHTTPServer starts the HTTP server in a goroutine.
-func StartHTTPServer(e *echo.Echo, log *slog.Logger) {
+// StartHTTPServer starts the HTTP server in a goroutine. A ListenAndServe
+// failure other than a graceful Shutdown (e.g. port already in use) is sent
+// on errCh so the caller can fail the whole process instead of running on
+// with a dead HTTP listener.
+func StartHTTPServer(e *echo.Echo, log *slog.Logger, errCh chan<- error) {
 	go func() {
 		port := os.Getenv("HTTP_PORT")
 		if port == "" {
@@ -92,38 +95,52 @@ func StartHTTPServer(e *echo.Echo, log *slog.Logger) {
 		log.Info("Starting HTTP server", "port", port)
 		if err := e.Start(addr); err != nil && err != http.ErrServerClosed {
 			log.Error("HTTP server error", "error", err)
+			errCh <- fmt.Errorf("HTTP server: %w", err)
 		}
 	}()
 }
 
+// ConnectServers holds the servers started by StartConnectServer so the
+// caller can Shutdown them alongside the Echo server during graceful
+// shutdown. MTLSServer is nil when MTLS_LISTEN is not enabled.
+type ConnectServers struct {
+	Server     *http.Server
+	MTLSServer *http.Server
+}
+
 // StartConnectServer starts the Connect-RPC server in a goroutine. When
 // MTLS_LISTEN=true, an additional HTTPS listener on MTLS_PORT (default 9443)
-// is started alongside the plaintext listener.
-func StartConnectServer(deps *Dependencies) {
+// is started alongside the plaintext listener. Any ListenAndServe failure is
+// sent on errCh so the caller can fail the whole process.
+func StartConnectServer(deps *Dependencies, errCh chan<- error) *ConnectServers {
 	connectHandler := connectv2.CreateConnectServer(deps.APIRepo, deps.SummaryRepo, deps.ArticleRepo, deps.JobRepo, deps.Logger)
+
+	port := os.Getenv("CONNECT_PORT")
+	if port == "" {
+		port = connectPort
+	}
+	addr := fmt.Sprintf(":%s", port)
+	server := &http.Server{
+		Addr:        addr,
+		Handler:     connectHandler,
+		ReadTimeout: 30 * time.Second,
+		// WriteTimeout is intentionally 0 (disabled) for server streaming RPCs.
+		// Go's http.Server WriteTimeout applies to the ENTIRE stream duration,
+		// not per-message. LLM inference can take 30-90+ seconds before the first
+		// token, so any fixed timeout would kill streaming connections.
+		// Per-RPC deadlines are handled via context.WithTimeout instead.
+		WriteTimeout: 0,
+		IdleTimeout:  120 * time.Second,
+	}
 	go func() {
-		port := os.Getenv("CONNECT_PORT")
-		if port == "" {
-			port = connectPort
-		}
-		addr := fmt.Sprintf(":%s", port)
 		deps.Logger.Info("Starting Connect-RPC server", "port", port)
-		server := &http.Server{
-			Addr:        addr,
-			Handler:     connectHandler,
-			ReadTimeout: 30 * time.Second,
-			// WriteTimeout is intentionally 0 (disabled) for server streaming RPCs.
-			// Go's http.Server WriteTimeout applies to the ENTIRE stream duration,
-			// not per-message. LLM inference can take 30-90+ seconds before the first
-			// token, so any fixed timeout would kill streaming connections.
-			// Per-RPC deadlines are handled via context.WithTimeout instead.
-			WriteTimeout: 0,
-			IdleTimeout:  120 * time.Second,
-		}
 		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			deps.Logger.Error("Connect-RPC server error", "error", err)
+			errCh <- fmt.Errorf("Connect-RPC server: %w", err)
 		}
 	}()
+
+	servers := &ConnectServers{Server: server}
 
 	if os.Getenv("MTLS_LISTEN") == "true" {
 		mtlsPort := os.Getenv("MTLS_PORT")
@@ -141,11 +158,15 @@ func StartConnectServer(deps *Dependencies) {
 			os.Exit(1)
 		}
 		mtlsServer := tlsutil.NewMTLSHTTPServer(":"+mtlsPort, tlsCfg, connectHandler)
+		servers.MTLSServer = mtlsServer
 		go func() {
 			deps.Logger.Info("Starting mTLS HTTPS listener", "port", mtlsPort)
 			if err := mtlsServer.ListenAndServeTLS("", ""); err != nil && err != http.ErrServerClosed {
 				deps.Logger.Error("mTLS HTTPS listener error", "error", err)
+				errCh <- fmt.Errorf("mTLS HTTPS listener: %w", err)
 			}
 		}()
 	}
+
+	return servers
 }

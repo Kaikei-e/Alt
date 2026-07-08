@@ -24,41 +24,51 @@ func ShouldQueueSummarizeJob(
 	jobRepo repository.SummarizeJobRepository,
 	logger *slog.Logger,
 ) (bool, string, error) {
-	if summaryRepo != nil {
-		exists, err := summaryRepo.Exists(ctx, articleID)
-		if err != nil {
-			return false, "", err
-		}
-		if exists {
-			if logger != nil {
-				logger.InfoContext(ctx, "skipping summarize job creation: summary already exists", "article_id", articleID)
-			}
-			return false, "summary_exists", nil
-		}
+	// summaryRepo/jobRepo are required dependencies — every production call
+	// site (handler, connect handler, consumer adapter, queue worker) wires
+	// them from constructor fields set at startup. A nil here means DI
+	// wiring was forgotten, not "idempotency checks intentionally disabled";
+	// silently skipping the checks would let duplicate summarize jobs and
+	// LLM calls through indistinguishably from a deliberate config choice
+	// (CLAUDE.md rule 8). Fail loudly instead.
+	if summaryRepo == nil {
+		panic("ShouldQueueSummarizeJob: summaryRepo is nil (idempotency guard unwired)")
+	}
+	if jobRepo == nil {
+		panic("ShouldQueueSummarizeJob: jobRepo is nil (idempotency guard unwired)")
 	}
 
-	if jobRepo != nil {
-		hasRecentSuccess, err := jobRepo.HasRecentSuccessfulJob(ctx, articleID, time.Now().Add(-recentSuccessfulJobWindow))
-		if err != nil {
-			return false, "", err
+	exists, err := summaryRepo.Exists(ctx, articleID)
+	if err != nil {
+		return false, "", err
+	}
+	if exists {
+		if logger != nil {
+			logger.InfoContext(ctx, "skipping summarize job creation: summary already exists", "article_id", articleID)
 		}
-		if hasRecentSuccess {
-			if logger != nil {
-				logger.InfoContext(ctx, "skipping summarize job creation: recent successful job exists", "article_id", articleID)
-			}
-			return false, "recent_success", nil
-		}
+		return false, "summary_exists", nil
+	}
 
-		hasInFlight, err := jobRepo.HasInFlightJob(ctx, articleID, time.Now().Add(-inFlightJobWindow))
-		if err != nil {
-			return false, "", err
+	hasRecentSuccess, err := jobRepo.HasRecentSuccessfulJob(ctx, articleID, time.Now().Add(-recentSuccessfulJobWindow))
+	if err != nil {
+		return false, "", err
+	}
+	if hasRecentSuccess {
+		if logger != nil {
+			logger.InfoContext(ctx, "skipping summarize job creation: recent successful job exists", "article_id", articleID)
 		}
-		if hasInFlight {
-			if logger != nil {
-				logger.InfoContext(ctx, "skipping summarize job creation: in-flight job exists", "article_id", articleID, "reason", "in_flight")
-			}
-			return false, "in_flight", nil
+		return false, "recent_success", nil
+	}
+
+	hasInFlight, err := jobRepo.HasInFlightJob(ctx, articleID, time.Now().Add(-inFlightJobWindow))
+	if err != nil {
+		return false, "", err
+	}
+	if hasInFlight {
+		if logger != nil {
+			logger.InfoContext(ctx, "skipping summarize job creation: in-flight job exists", "article_id", articleID, "reason", "in_flight")
 		}
+		return false, "in_flight", nil
 	}
 
 	return true, "", nil

@@ -63,15 +63,42 @@ func (r *summarizeJobRepository) CreateJob(ctx context.Context, articleID string
 		RETURNING job_id
 	`
 
+	// WHERE NOT EXISTS alone doesn't prevent duplicate jobs under concurrent
+	// execution: two transactions can both evaluate the subquery as empty
+	// before either commits its INSERT. Serialize CreateJob calls for the
+	// same article_id with a transaction-scoped advisory lock — no schema
+	// change (partial unique index) required.
+	tx, err := r.db.BeginTx(ctx, pgx.TxOptions{})
+	if err != nil {
+		r.logger.ErrorContext(ctx, "failed to begin transaction", "error", err)
+		return "", fmt.Errorf("failed to begin transaction: %w", err)
+	}
+	defer func() {
+		_ = tx.Rollback(ctx)
+	}()
+
+	if _, err := tx.Exec(ctx, "SELECT pg_advisory_xact_lock(hashtext($1)::bigint)", articleID); err != nil {
+		r.logger.ErrorContext(ctx, "failed to acquire job creation lock", "error", err, "article_id", articleID)
+		return "", fmt.Errorf("failed to acquire job creation lock: %w", err)
+	}
+
 	var jobID uuid.UUID
-	err := r.db.QueryRow(ctx, query, articleID).Scan(&jobID)
+	err = tx.QueryRow(ctx, query, articleID).Scan(&jobID)
 	if err != nil {
 		if err == pgx.ErrNoRows {
 			r.logger.InfoContext(ctx, "skipping duplicate job, pending/running job already exists", "article_id", articleID)
+			if commitErr := tx.Commit(ctx); commitErr != nil {
+				return "", fmt.Errorf("failed to commit transaction: %w", commitErr)
+			}
 			return "", nil
 		}
 		r.logger.ErrorContext(ctx, "failed to create summarization job", "error", err, "article_id", articleID)
 		return "", fmt.Errorf("failed to create summarization job: %w", err)
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		r.logger.ErrorContext(ctx, "failed to commit transaction", "error", err)
+		return "", fmt.Errorf("failed to commit transaction: %w", err)
 	}
 
 	r.logger.InfoContext(ctx, "summarization job created successfully", "job_id", jobID, "article_id", articleID)

@@ -24,7 +24,7 @@ const (
 
 // HTTPClient interface for dependency injection.
 type HTTPClient interface {
-	Get(url string) (*http.Response, error)
+	Get(ctx context.Context, url string) (*http.Response, error)
 }
 
 // articleFetcherService implementation.
@@ -105,8 +105,8 @@ type HTTPClientWrapper struct {
 }
 
 // Get implements HTTPClient interface with proper User-Agent setting.
-func (w *HTTPClientWrapper) Get(url string) (*http.Response, error) {
-	req, err := http.NewRequest("GET", url, nil)
+func (w *HTTPClientWrapper) Get(ctx context.Context, url string) (*http.Response, error) {
+	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
 	if err != nil {
 		return nil, err
 	}

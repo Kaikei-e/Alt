@@ -379,7 +379,7 @@ func TestEnvoyIntegration_DNSResolution(t *testing.T) {
 	client := factory.CreateClient()
 
 	// Test DNS resolution with well-known domain
-	_, err := client.Get("https://example.com")
+	_, err := client.Get(context.Background(), "https://example.com")
 
 	if err != nil {
 		t.Errorf("DNS resolution test failed: %v", err)

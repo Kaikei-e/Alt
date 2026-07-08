@@ -5,6 +5,7 @@
 package service
 
 import (
+	"context"
 	"fmt"
 	"net"
 	"net/http"
@@ -152,7 +153,7 @@ func TestEnvoyHTTPClient_Get(t *testing.T) {
 			}
 
 			// Execute test
-			resp, err := client.Get(tc.targetURL)
+			resp, err := client.Get(context.Background(), tc.targetURL)
 
 			// Verify results
 			if tc.expectError {
@@ -305,7 +306,7 @@ func TestEnvoyHTTPClient_TimeoutHandling(t *testing.T) {
 			}, 2*time.Second)
 
 			start := time.Now()
-			resp, err := client.Get("https://example.com")
+			resp, err := client.Get(context.Background(), "https://example.com")
 
 			duration := time.Since(start)
 
@@ -376,7 +377,7 @@ func TestEnvoyHTTPClient_ErrorHandling(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			client := NewEnvoyHTTPClient(tc.config, logger)
 
-			resp, err := client.Get(tc.targetURL)
+			resp, err := client.Get(context.Background(), tc.targetURL)
 
 			if tc.expectError {
 				if err == nil {

@@ -166,7 +166,7 @@ func TestArticleFetcher_HTTPClientManagerIntegration(t *testing.T) {
 // MockHTTPClient implements HTTPClient for testing
 type MockHTTPClient struct{}
 
-func (m *MockHTTPClient) Get(url string) (*http.Response, error) {
+func (m *MockHTTPClient) Get(ctx context.Context, url string) (*http.Response, error) {
 	return &http.Response{}, nil
 }
 

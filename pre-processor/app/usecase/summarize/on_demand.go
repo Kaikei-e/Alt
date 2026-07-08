@@ -5,11 +5,56 @@ import (
 	"fmt"
 	"log/slog"
 	"strings"
+	"sync"
+	"time"
 
 	"pre-processor/domain"
 	"pre-processor/repository"
 	"pre-processor/utils/html_parser"
 )
+
+// processingLock holds lock metadata for timeout-based duplicate-request
+// dedup, shared by every transport (REST and Connect-RPC) that calls into
+// this usecase — previously each transport had (or lacked) its own lock,
+// letting a Connect-RPC and a REST request for the same article race.
+type processingLock struct {
+	startTime time.Time
+}
+
+// processingArticles tracks article IDs currently being summarized to
+// prevent duplicate concurrent requests for the same article.
+var processingArticles sync.Map
+
+// processingLockTimeout bounds how long a lock can be held before it's
+// considered stale (e.g. the original request's client disconnected without
+// the handler's context ever completing).
+const processingLockTimeout = 5 * time.Minute
+
+// TryAcquireLock attempts to acquire the dedup lock for articleID. Returns
+// true if acquired, false if another request for the same article is
+// already in flight. Stale locks (older than processingLockTimeout) are
+// automatically replaced.
+func TryAcquireLock(articleID string) bool {
+	now := time.Now()
+	newLock := &processingLock{startTime: now}
+
+	if actual, loaded := processingArticles.LoadOrStore(articleID, newLock); loaded {
+		existingLock := actual.(*processingLock)
+		if time.Since(existingLock.startTime) > processingLockTimeout {
+			if processingArticles.CompareAndSwap(articleID, existingLock, newLock) {
+				return true
+			}
+			return TryAcquireLock(articleID)
+		}
+		return false
+	}
+	return true
+}
+
+// ReleaseLock releases the dedup lock for articleID.
+func ReleaseLock(articleID string) {
+	processingArticles.Delete(articleID)
+}
 
 // OnDemandService handles on-demand article summarization.
 // It consolidates the common flow shared by REST, ConnectRPC, and queue worker:
@@ -137,13 +182,16 @@ func (s *OnDemandService) Summarize(ctx context.Context, req SummarizeRequest) (
 		SummaryJapanese: summarized.SummaryJapanese,
 	}
 
+	// A save failure must fail the request — matching the queue-worker path
+	// (service/summarize_queue_worker.go processJob) — instead of reporting
+	// success for a summary that was never persisted: the caller would then
+	// never retry, leaving the article permanently unsummarized while the
+	// LLM cost has already been spent.
 	if err := s.summaryRepo.Create(ctx, articleSummary); err != nil {
 		s.logger.ErrorContext(ctx, "failed to save summary to database", "error", err, "article_id", resolved.ArticleID)
-		// Don't fail - return the summary even if DB save fails
-		s.logger.WarnContext(ctx, "continuing despite DB save failure", "article_id", resolved.ArticleID)
-	} else {
-		s.logger.InfoContext(ctx, "summary saved to database successfully", "article_id", resolved.ArticleID)
+		return nil, fmt.Errorf("failed to save summary: %w", err)
 	}
+	s.logger.InfoContext(ctx, "summary saved to database successfully", "article_id", resolved.ArticleID)
 
 	return &SummarizeResult{
 		Summary:   summarized.SummaryJapanese,

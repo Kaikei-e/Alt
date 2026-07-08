@@ -5,9 +5,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 
 	"connectrpc.com/connect"
+	"github.com/jackc/pgx/v5"
 
 	"pre-processor/domain"
 	preprocessorv2 "pre-processor/gen/proto/services/preprocessor/v2"
@@ -60,6 +62,17 @@ func (h *Handler) Summarize(
 		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("article_id is required"))
 	}
 
+	// Check if this article is already being processed to prevent duplicate
+	// requests. The lock is shared with the REST handler (usecase/summarize)
+	// so a concurrent request via either transport for the same article is
+	// rejected consistently instead of only the REST path enforcing it.
+	if !summarizeuc.TryAcquireLock(articleID) {
+		h.logger.WarnContext(ctx, "article is already being processed, rejecting duplicate request",
+			"article_id", articleID)
+		return nil, connect.NewError(connect.CodeAlreadyExists, fmt.Errorf("article is already being processed"))
+	}
+	defer summarizeuc.ReleaseLock(articleID)
+
 	// Delegate to shared on-demand summarization usecase
 	result, err := h.onDemand.Summarize(ctx, summarizeuc.SummarizeRequest{
 		ArticleID: articleID,
@@ -90,6 +103,15 @@ func (h *Handler) StreamSummarize(
 	if articleID == "" {
 		return connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("article_id is required"))
 	}
+
+	// Check if this article is already being processed to prevent duplicate
+	// requests, shared with the REST streaming handler via usecase/summarize.
+	if !summarizeuc.TryAcquireLock(articleID) {
+		h.logger.WarnContext(ctx, "article is already being processed (stream), rejecting duplicate request",
+			"article_id", articleID)
+		return connect.NewError(connect.CodeAlreadyExists, fmt.Errorf("article is already being processed"))
+	}
+	defer summarizeuc.ReleaseLock(articleID)
 
 	// Resolve article content using shared usecase
 	resolved, err := h.onDemand.ResolveArticle(ctx, summarizeuc.SummarizeRequest{
@@ -130,7 +152,7 @@ func (h *Handler) StreamSummarize(
 			}
 		}
 		if err != nil {
-			if err.Error() == "EOF" {
+			if errors.Is(err, io.EOF) {
 				// Send final chunk
 				if sendErr := stream.Send(&preprocessorv2.StreamSummarizeResponse{
 					Chunk:   "",
@@ -223,10 +245,15 @@ func (h *Handler) GetSummarizeStatus(
 
 	h.logger.DebugContext(ctx, "checking summarization job status", "job_id", jobID)
 
-	// Get job from queue
+	// Get job from queue. Only a genuine "no rows" maps to NotFound — a DB
+	// connection failure or other repository error must surface as Internal,
+	// not be reported as "job not found".
 	job, err := h.jobRepo.GetJob(ctx, jobID)
 	if err != nil {
-		return nil, connect.NewError(connect.CodeNotFound, fmt.Errorf("job not found"))
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, connect.NewError(connect.CodeNotFound, fmt.Errorf("job not found"))
+		}
+		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("failed to get summarization job: %w", err))
 	}
 
 	response := &preprocessorv2.GetSummarizeStatusResponse{

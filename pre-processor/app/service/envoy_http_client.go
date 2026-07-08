@@ -5,6 +5,7 @@
 package service
 
 import (
+	"context"
 	"fmt"
 	"net"
 	"net/http"
@@ -79,7 +80,7 @@ func NewEnvoyHTTPClient(cfg *config.HTTPConfig, logger *slog.Logger) HTTPClient 
 }
 
 // Get implements HTTPClient.Get through Envoy proxy
-func (c *EnvoyHTTPClient) Get(targetURL string) (*http.Response, error) {
+func (c *EnvoyHTTPClient) Get(ctx context.Context, targetURL string) (*http.Response, error) {
 	start := time.Now()
 
 	c.logger.Info("EnvoyHTTPClient: starting request",
@@ -145,7 +146,7 @@ func (c *EnvoyHTTPClient) Get(targetURL string) (*http.Response, error) {
 	proxyURL.Path = proxyPath
 
 	// Create HTTP request
-	req, err := http.NewRequest("GET", proxyURL.String(), nil)
+	req, err := http.NewRequestWithContext(ctx, "GET", proxyURL.String(), nil)
 	if err != nil {
 		metrics.RecordError(ProxyErrorConfig)
 		c.logger.Error("EnvoyHTTPClient: failed to create request",
@@ -300,6 +301,6 @@ type errorHTTPClient struct {
 	err error
 }
 
-func (c *errorHTTPClient) Get(url string) (*http.Response, error) {
+func (c *errorHTTPClient) Get(ctx context.Context, url string) (*http.Response, error) {
 	return nil, c.err
 }

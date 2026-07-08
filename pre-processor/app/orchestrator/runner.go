@@ -3,6 +3,7 @@ package orchestrator
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"sync"
 	"time"
@@ -56,17 +57,14 @@ func (r *JobRunner) Stop() {
 	r.wg.Wait()
 }
 
-// run is the main loop of the job runner.
+// run is the main loop of the job runner. Each iteration recovers its own
+// panic via invoke — a top-level recover here would only catch the first
+// panic and then return, killing the ticker loop and silently stopping the
+// periodic job for good.
 func (r *JobRunner) run(ctx context.Context) {
-	defer func() {
-		if rec := recover(); rec != nil {
-			r.logger.ErrorContext(ctx, "panic in job runner", "job", r.config.Name, "panic", rec)
-		}
-	}()
-
 	// Run immediately if configured
 	if r.config.RunImmediately {
-		if err := r.fn(ctx); err != nil {
+		if err := r.invoke(ctx); err != nil {
 			r.logger.ErrorContext(ctx, "initial job run failed", "job", r.config.Name, "error", err)
 		}
 	}
@@ -82,7 +80,7 @@ func (r *JobRunner) run(ctx context.Context) {
 			r.logger.InfoContext(ctx, "job stopped", "job", r.config.Name)
 			return
 		case <-ticker.C:
-			if err := r.fn(ctx); err != nil {
+			if err := r.invoke(ctx); err != nil {
 				if r.shouldBackoff(err) {
 					backoff = r.nextBackoff(backoff)
 					r.logger.WarnContext(ctx, "job backing off",
@@ -102,6 +100,18 @@ func (r *JobRunner) run(ctx context.Context) {
 			}
 		}
 	}
+}
+
+// invoke calls r.fn, recovering any panic so a single bad iteration reports
+// as a failed run instead of unwinding the whole job loop.
+func (r *JobRunner) invoke(ctx context.Context) (err error) {
+	defer func() {
+		if rec := recover(); rec != nil {
+			r.logger.ErrorContext(ctx, "panic in job runner", "job", r.config.Name, "panic", rec)
+			err = fmt.Errorf("panic recovered: %v", rec)
+		}
+	}()
+	return r.fn(ctx)
 }
 
 // shouldBackoff checks if the error should trigger a backoff.
@@ -135,8 +145,11 @@ func (r *JobRunner) nextBackoff(current time.Duration) time.Duration {
 	return next
 }
 
-// JobGroup manages a collection of job runners.
+// JobGroup manages a collection of job runners. Add may be called
+// concurrently — e.g. once a health-gated job's background wait completes —
+// so runners and mu guard against a concurrent StopAll or another Add.
 type JobGroup struct {
+	mu      sync.Mutex
 	runners []*JobRunner
 	ctx     context.Context
 	logger  *slog.Logger
@@ -150,14 +163,20 @@ func NewJobGroup(ctx context.Context, logger *slog.Logger) *JobGroup {
 
 // Add adds a job runner to the group and starts it immediately.
 func (g *JobGroup) Add(runner *JobRunner) {
+	g.mu.Lock()
 	g.runners = append(g.runners, runner)
+	g.mu.Unlock()
 	g.logger.InfoContext(g.ctx, "starting job", "job", runner.config.Name)
 	runner.Start(g.ctx)
 }
 
 // StopAll stops all jobs in the group and waits for them to finish.
 func (g *JobGroup) StopAll() {
-	for _, r := range g.runners {
+	g.mu.Lock()
+	runners := make([]*JobRunner, len(g.runners))
+	copy(runners, g.runners)
+	g.mu.Unlock()
+	for _, r := range runners {
 		r.Stop()
 	}
 }

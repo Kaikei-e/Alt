@@ -19,14 +19,14 @@ type stubHTTPClient struct {
 	err     error
 }
 
-func (s *stubHTTPClient) Get(url string) (*http.Response, error) {
+func (s *stubHTTPClient) Get(ctx context.Context, url string) (*http.Response, error) {
 	if s.err != nil {
 		return nil, s.err
 	}
 	if s.handler == nil {
 		return nil, errors.New("handler not set")
 	}
-	req, err := http.NewRequest(http.MethodGet, url, http.NoBody)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, http.NoBody)
 	if err != nil {
 		return nil, err
 	}

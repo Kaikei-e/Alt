@@ -57,9 +57,14 @@ func NewFileDLQManager(config FileDLQConfig, logger *slog.Logger) *FileDLQManage
 func (dlq *FileDLQManager) PublishFailedArticle(ctx context.Context, url string, attempts int, lastError error) error {
 	start := time.Now()
 
+	// The counter alone resets to 0 on every process restart, so a restart
+	// within the same day would silently collide with (and os.Rename over)
+	// an existing DLQ file from before the restart. The nanosecond timestamp
+	// makes the ID unique across restarts without needing persisted counter
+	// state.
 	dlq.mu.Lock()
 	dlq.counter++
-	messageID := fmt.Sprintf("dlq_%s_%03d", time.Now().Format("20060102"), dlq.counter)
+	messageID := fmt.Sprintf("dlq_%s_%d_%03d", time.Now().Format("20060102"), time.Now().UnixNano(), dlq.counter)
 	dlq.mu.Unlock()
 
 	domain := extractDomain(url)

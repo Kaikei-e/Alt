@@ -2,7 +2,6 @@ package handler
 
 import (
 	"context"
-	"fmt"
 	"log/slog"
 	"time"
 
@@ -80,22 +79,47 @@ func (h *jobHandler) StartBackfillJob(ctx context.Context) error {
 	return nil
 }
 
+// healthWaitPerAttemptTimeout bounds a single WaitForHealthy call so a stuck
+// health probe can't wedge startHealthGatedJob's retry loop forever; the loop
+// itself keeps retrying until ctx (the process lifetime context) is done.
+const healthWaitPerAttemptTimeout = 5 * time.Minute
+
+// startHealthGatedJob waits for the news creator to become healthy in its
+// own goroutine and only then registers the job with the job group. Running
+// the wait out-of-line — instead of blocking the synchronous startJobs()
+// call chain — keeps the HTTP/Connect-RPC servers and the shutdown signal
+// handler coming up even while news-creator is still unavailable.
+func (h *jobHandler) startHealthGatedJob(ctx context.Context, name string, register func()) {
+	go func() {
+		for {
+			waitCtx, cancel := context.WithTimeout(ctx, healthWaitPerAttemptTimeout)
+			err := h.healthChecker.WaitForHealthy(waitCtx)
+			cancel()
+			if err == nil {
+				register()
+				return
+			}
+			if ctx.Err() != nil {
+				h.logger.WarnContext(ctx, "giving up waiting for news creator health: shutting down", "job", name)
+				return
+			}
+			h.logger.ErrorContext(ctx, "still waiting for news creator health, retrying", "job", name, "error", err)
+		}
+	}()
+}
+
 // StartSummarizationJob starts the article summarization job.
 func (h *jobHandler) StartSummarizationJob(ctx context.Context) error {
 	h.logger.InfoContext(ctx, "starting summarization job")
 
-	// Wait for news creator to be healthy
-	if err := h.healthChecker.WaitForHealthy(ctx); err != nil {
-		h.logger.ErrorContext(ctx, "failed to wait for news creator health", "error", err)
-		return fmt.Errorf("failed to wait for news creator health: %w", err)
-	}
-
-	h.jobGroup.Add(orchestrator.NewJobRunner(orchestrator.JobConfig{
-		Name:     "summarization",
-		Interval: 5 * time.Minute, // Fallback safety net; primary path is event-driven via ArticleCreated events
-	}, func(ctx context.Context) error {
-		return h.processSummarizationBatch(ctx)
-	}, h.logger))
+	h.startHealthGatedJob(ctx, "summarization", func() {
+		h.jobGroup.Add(orchestrator.NewJobRunner(orchestrator.JobConfig{
+			Name:     "summarization",
+			Interval: 5 * time.Minute, // Fallback safety net; primary path is event-driven via ArticleCreated events
+		}, func(ctx context.Context) error {
+			return h.processSummarizationBatch(ctx)
+		}, h.logger))
+	})
 
 	return nil
 }
@@ -104,18 +128,14 @@ func (h *jobHandler) StartSummarizationJob(ctx context.Context) error {
 func (h *jobHandler) StartQualityCheckJob(ctx context.Context) error {
 	h.logger.InfoContext(ctx, "starting quality check job")
 
-	// Wait for news creator to be healthy
-	if err := h.healthChecker.WaitForHealthy(ctx); err != nil {
-		h.logger.ErrorContext(ctx, "failed to wait for news creator health", "error", err)
-		return fmt.Errorf("failed to wait for news creator health: %w", err)
-	}
-
-	h.jobGroup.Add(orchestrator.NewJobRunner(orchestrator.JobConfig{
-		Name:     "quality-check",
-		Interval: 5 * time.Minute,
-	}, func(ctx context.Context) error {
-		return h.processQualityCheckBatch(ctx)
-	}, h.logger))
+	h.startHealthGatedJob(ctx, "quality-check", func() {
+		h.jobGroup.Add(orchestrator.NewJobRunner(orchestrator.JobConfig{
+			Name:     "quality-check",
+			Interval: 5 * time.Minute,
+		}, func(ctx context.Context) error {
+			return h.processQualityCheckBatch(ctx)
+		}, h.logger))
+	})
 
 	return nil
 }
@@ -129,21 +149,17 @@ func (h *jobHandler) StartSummarizeQueueWorker(ctx context.Context) error {
 
 	h.logger.InfoContext(ctx, "starting summarize queue worker")
 
-	// Wait for news creator to be healthy
-	if err := h.healthChecker.WaitForHealthy(ctx); err != nil {
-		h.logger.ErrorContext(ctx, "failed to wait for news creator health", "error", err)
-		return fmt.Errorf("failed to wait for news creator health: %w", err)
-	}
-
-	h.jobGroup.Add(orchestrator.NewJobRunner(orchestrator.JobConfig{
-		Name:            "queue-worker",
-		Interval:        10 * time.Second,
-		InitialBackoff:  15 * time.Second,
-		MaxBackoff:      5 * time.Minute,
-		BackoffOnErrors: []error{domain.ErrServiceOverloaded, domain.ErrUpstreamBusy},
-	}, func(ctx context.Context) error {
-		return h.queueWorker.ProcessQueue(ctx)
-	}, h.logger))
+	h.startHealthGatedJob(ctx, "queue-worker", func() {
+		h.jobGroup.Add(orchestrator.NewJobRunner(orchestrator.JobConfig{
+			Name:            "queue-worker",
+			Interval:        10 * time.Second,
+			InitialBackoff:  15 * time.Second,
+			MaxBackoff:      5 * time.Minute,
+			BackoffOnErrors: []error{domain.ErrServiceOverloaded, domain.ErrUpstreamBusy},
+		}, func(ctx context.Context) error {
+			return h.queueWorker.ProcessQueue(ctx)
+		}, h.logger))
+	})
 
 	return nil
 }

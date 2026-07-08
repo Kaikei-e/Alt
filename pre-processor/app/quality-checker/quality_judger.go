@@ -13,8 +13,10 @@ import (
 	"strings"
 	"time"
 
+	"pre-processor/config"
 	"pre-processor/driver"
 	"pre-processor/repository"
+	"pre-processor/utils"
 	logger "pre-processor/utils/logger"
 )
 
@@ -27,6 +29,16 @@ var (
 	// 記事 + サマリー + プロンプトテンプレート(~1500文字) < 8k トークン
 	// 日本語は約2文字/トークン（実測値）なので、記事+サマリーは約20,000文字まで
 	maxQualityCheckContentLength = 20_000
+	qualityCheckerHTTPTimeout    = 300 * time.Second
+
+	// rateLimitHost/rateLimitInterval feed utils.DefaultHostRateLimiter, the
+	// same process-wide limiter the summarizer driver uses — sharing it
+	// ensures scoreSummary's calls to news-creator also honour the
+	// CLAUDE.md 5-second floor between external calls, instead of only the
+	// summarizer path enforcing it. interval defaults to 0 (no-op) so unit
+	// tests that never call Configure aren't serialized behind a real wait.
+	rateLimitHost     = "http://news-creator:11434"
+	rateLimitInterval = time.Duration(0)
 
 	// knownPlaceholders are placeholder summaries saved when content is too short/long.
 	// These must NOT be quality-checked: deleting them causes an infinite summarize→delete loop.
@@ -35,6 +47,39 @@ var (
 		"本文が長すぎるため要約できませんでした。",
 	}
 )
+
+// Configure overrides the quality checker's news-creator endpoint, model,
+// threshold, content-length cap, and rate limit from application config.
+// Call once at startup (bootstrap/wire.go); the hardcoded package defaults
+// above stay in effect for callers (and tests) that never call it.
+func Configure(cfg *config.Config) {
+	if cfg == nil {
+		return
+	}
+	if cfg.NewsCreator.Host != "" {
+		rateLimitHost = cfg.NewsCreator.Host
+		apiPath := cfg.QualityChecker.APIPath
+		if apiPath == "" {
+			apiPath = "/api/generate"
+		}
+		qualityCheckerAPIURL = cfg.NewsCreator.Host + apiPath
+	}
+	if cfg.QualityChecker.Model != "" {
+		modelName = cfg.QualityChecker.Model
+	}
+	if cfg.QualityChecker.LowScoreThreshold > 0 {
+		lowScoreThreshold = cfg.QualityChecker.LowScoreThreshold
+	}
+	if cfg.QualityChecker.MaxContentLength > 0 {
+		maxQualityCheckContentLength = cfg.QualityChecker.MaxContentLength
+	}
+	if cfg.QualityChecker.Timeout > 0 {
+		qualityCheckerHTTPTimeout = cfg.QualityChecker.Timeout
+	}
+	if cfg.RateLimit.DefaultInterval > 0 {
+		rateLimitInterval = cfg.RateLimit.DefaultInterval
+	}
+}
 
 // isPlaceholderSummary returns true if the summary is a known placeholder message.
 // Placeholder summaries are generated when article content is too short or too long
@@ -170,8 +215,16 @@ func scoreSummary(ctx context.Context, prompt string) (*Score, error) {
 		return nil, err
 	}
 
+	// CLAUDE.md critical rule: enforce the configured minimum interval between
+	// outbound calls to the news-creator host — shared with the summarizer
+	// driver's limiter so both paths serialize against the same host.
+	if err := utils.DefaultHostRateLimiter(rateLimitInterval).Wait(ctx, rateLimitHost); err != nil {
+		logger.Logger.ErrorContext(ctx, "rate limiter wait failed", "error", err)
+		return nil, fmt.Errorf("rate limiter: %w", err)
+	}
+
 	client := &http.Client{
-		Timeout: 300 * time.Second, // セマフォ待ち(160s) + 生成(60s) + マージン
+		Timeout: qualityCheckerHTTPTimeout, // セマフォ待ち(160s) + 生成(60s) + マージン
 	}
 
 	req, err := http.NewRequestWithContext(ctx, "POST", qualityCheckerAPIURL, strings.NewReader(string(jsonPayload)))
@@ -391,6 +444,9 @@ func isConnectionError(err error) bool {
 }
 
 // scoreSummaryWithRetry attempts to score a summary with retries and exponential backoff.
+// It stops immediately on context cancellation instead of continuing to retry
+// (and sleeping via a non-ctx-aware timer) against a caller that has already
+// given up.
 func scoreSummaryWithRetry(ctx context.Context, prompt string, maxRetries int) (*Score, error) {
 	var lastErr error
 	for attempt := 0; attempt < maxRetries; attempt++ {
@@ -399,8 +455,18 @@ func scoreSummaryWithRetry(ctx context.Context, prompt string, maxRetries int) (
 			return score, nil
 		}
 		lastErr = err
+		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+			return nil, err
+		}
+		if attempt == maxRetries-1 {
+			break
+		}
 		logger.Logger.WarnContext(ctx, "Failed to score summary, retrying...", "attempt", attempt+1, "max_retries", maxRetries, "error", err)
-		time.Sleep(time.Duration(attempt+1) * 500 * time.Millisecond) // Simple exponential backoff
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case <-time.After(time.Duration(attempt+1) * 500 * time.Millisecond): // Simple exponential backoff
+		}
 	}
 	return nil, lastErr
 }

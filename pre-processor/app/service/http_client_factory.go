@@ -4,6 +4,7 @@
 package service
 
 import (
+	"context"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -162,7 +163,7 @@ type OptimizedHTTPClientWrapper struct {
 }
 
 // Get implements HTTPClient.Get with enhanced logging
-func (w *OptimizedHTTPClientWrapper) Get(url string) (*http.Response, error) {
+func (w *OptimizedHTTPClientWrapper) Get(ctx context.Context, url string) (*http.Response, error) {
 	start := time.Now()
 
 	// Get User-Agent (rotated if available, otherwise use default)
@@ -179,7 +180,7 @@ func (w *OptimizedHTTPClientWrapper) Get(url string) (*http.Response, error) {
 	// Get global metrics instance for tracking
 	metrics := GetGlobalProxyMetrics(w.Logger)
 
-	req, err := http.NewRequest("GET", url, nil)
+	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
 	if err != nil {
 		w.Logger.Error("OptimizedHTTPClient: failed to create request",
 			"url", url,

@@ -69,24 +69,38 @@ var ErrContentTooShort = domain.ErrContentTooShort
 // Deprecated: Use domain.ErrContentTooLong directly
 var ErrContentTooLong = domain.ErrContentTooLong
 
-func ArticleSummarizerAPIClient(ctx context.Context, article *domain.Article, cfg *config.Config, logger *slog.Logger, priority string) (*SummarizedContent, error) {
-	// Zero Trust: Always extract text from content before sending to news-creator
-	// This ensures we never send raw HTML, even if it was already extracted upstream
+// minContentRunes / maxContentRunes bound the extracted article content sent
+// to news-creator. Both bounds use rune (character) counts — not byte counts
+// — for consistency with Python's len() on the receiving side, since a
+// Japanese character is 3 bytes in UTF-8 and a byte-based max would reject
+// real Japanese articles at roughly a third of the intended budget.
+const (
+	minContentRunes = 100
+	// 100K runes = ~25K tokens (Japanese) = fits within 32K context with margin.
+	// RTX 4060 (8GB VRAM) can process this stably without timeouts.
+	maxContentRunes = 100_000
+)
+
+// prepareSummarizeContent extracts plain text from raw article HTML (Zero
+// Trust: news-creator must never receive raw HTML, even if it was already
+// extracted upstream) and validates its length. logContext names the calling
+// path ("sending to news-creator" / "streaming summary") for log messages.
+// Shared by the blocking and streaming summarizer clients below.
+func prepareSummarizeContent(article *domain.Article, cfg *config.Config, logger *slog.Logger, logContext string) (string, error) {
 	originalLength := len(article.Content)
-	logger.Info("extracting text from content before sending to news-creator (Zero Trust validation)",
+	logger.Info("extracting text from content before "+logContext+" (Zero Trust validation)",
 		"article_id", article.ID,
 		"original_length", originalLength)
 
 	extractedContent := html_parser.ExtractArticleText(article.Content)
-	extractedLength := len(extractedContent)
 
 	if extractedContent == "" {
 		logger.Warn("text extraction returned empty, using original content",
 			"article_id", article.ID,
 			"original_length", originalLength)
 		extractedContent = article.Content
-		extractedLength = originalLength
 	} else {
+		extractedLength := len(extractedContent)
 		reductionRatio := (1.0 - float64(extractedLength)/float64(originalLength)) * 100.0
 		if reductionRatio < 0 {
 			logger.Info("text extraction did not reduce content (content may already be plain text)",
@@ -95,7 +109,7 @@ func ArticleSummarizerAPIClient(ctx context.Context, article *domain.Article, cf
 				"extracted_length", extractedLength,
 				"size_increase_ratio", fmt.Sprintf("%.2f%%", -reductionRatio))
 		} else {
-			logger.Info("text extraction completed before API call",
+			logger.Info("text extraction completed before "+logContext,
 				"article_id", article.ID,
 				"original_length", originalLength,
 				"extracted_length", extractedLength,
@@ -103,45 +117,71 @@ func ArticleSummarizerAPIClient(ctx context.Context, article *domain.Article, cf
 		}
 	}
 
-	// Check content length after extraction
-	// Use rune count (character count) instead of byte count for validation
-	// This ensures consistency with Python's len() which counts characters, not bytes
-	// Japanese: 1 char = 3 bytes in UTF-8, so byte count would be misleading
-	const minContentLength = 100
-	// 100KB = ~25K tokens (Japanese) = fits within 32K context with margin
-	// RTX 4060 (8GB VRAM) can process this stably without timeouts
-	const maxContentLength = 100_000
-	extractedRuneCount := utf8.RuneCountInString(extractedContent)
-	if extractedRuneCount < minContentLength {
+	runeCount := utf8.RuneCountInString(extractedContent)
+	if runeCount < minContentRunes {
 		// Fallback: if content is too short but title is long enough, use title as content
 		titleRuneCount := utf8.RuneCountInString(article.Title)
-		if titleRuneCount >= minContentLength {
+		if titleRuneCount >= minContentRunes {
 			logger.Info("Content too short, falling back to title-based summarization",
 				"article_id", article.ID,
-				"content_rune_count", extractedRuneCount,
+				"content_rune_count", runeCount,
 				"title_rune_count", titleRuneCount)
-			extractedContent = article.Title
-			extractedRuneCount = titleRuneCount
-			extractedLength = len(article.Title)
-		} else {
-			logger.Info("Skipping summarization: content too short after extraction",
-				"article_id", article.ID,
-				"original_length", originalLength,
-				"extracted_length_bytes", extractedLength,
-				"extracted_length_chars", extractedRuneCount,
-				"min_required", minContentLength)
-			return nil, ErrContentTooShort
+			return article.Title, nil
 		}
+		logger.Info("Skipping summarization: content too short after extraction",
+			"article_id", article.ID,
+			"original_length", originalLength,
+			"extracted_length_chars", runeCount,
+			"min_required", minContentRunes)
+		return "", ErrContentTooShort
 	}
-	if extractedLength > maxContentLength {
+	if runeCount > maxContentRunes {
 		logger.Info("Skipping summarization: content too long after extraction",
 			"article_id", article.ID,
 			"original_length", originalLength,
-			"extracted_length_bytes", extractedLength,
-			"extracted_length_chars", extractedRuneCount,
-			"max_allowed", maxContentLength)
-		return nil, ErrContentTooLong
+			"extracted_length_chars", runeCount,
+			"max_allowed", maxContentRunes)
+		return "", ErrContentTooLong
 	}
+
+	return extractedContent, nil
+}
+
+// classifyBusyOrErrorStatus maps a non-200 news-creator response to a
+// sentinel domain error for the codes that mean "upstream busy, retry
+// later" (429/422/502/503/504), or nil when the caller must classify the
+// status itself (e.g. 400, or the final fallback error). Shared by the
+// blocking and streaming summarizer clients below.
+func classifyBusyOrErrorStatus(resp *http.Response, body string, article *domain.Article, logger *slog.Logger, streaming bool) error {
+	suffix := ""
+	if streaming {
+		suffix = " (streaming)"
+	}
+	switch resp.StatusCode {
+	case http.StatusTooManyRequests:
+		retryAfter := resp.Header.Get("Retry-After")
+		logger.Warn("news-creator queue full"+suffix+", backing off",
+			"article_id", article.ID, "retry_after", retryAfter)
+		return domain.ErrServiceOverloaded
+	case http.StatusUnprocessableEntity:
+		logger.Warn("news-creator returned 422"+suffix+": content not processable by model",
+			"article_id", article.ID, "body", body)
+		return domain.ErrContentNotProcessable
+	case http.StatusBadGateway, http.StatusServiceUnavailable, http.StatusGatewayTimeout:
+		logger.Warn("news-creator returned busy status"+suffix+", treating as upstream busy",
+			"article_id", article.ID, "status_code", resp.StatusCode)
+		return fmt.Errorf("upstream busy (status %d): %w", resp.StatusCode, domain.ErrUpstreamBusy)
+	default:
+		return nil
+	}
+}
+
+func ArticleSummarizerAPIClient(ctx context.Context, article *domain.Article, cfg *config.Config, logger *slog.Logger, priority string) (*SummarizedContent, error) {
+	extractedContent, err := prepareSummarizeContent(article, cfg, logger, "sending to news-creator")
+	if err != nil {
+		return nil, err
+	}
+	extractedLength := len(extractedContent)
 
 	// Construct API URL from config
 	apiURL := cfg.NewsCreator.Host + cfg.NewsCreator.APIPath
@@ -209,19 +249,8 @@ func ArticleSummarizerAPIClient(ctx context.Context, article *domain.Article, cf
 		bodyStr := string(bodyBytes)
 		logger.Error("API returned non-200 status", "status", resp.Status, "code", resp.StatusCode, "body", bodyStr)
 
-		// Handle 429 Too Many Requests (queue full / backpressure)
-		if resp.StatusCode == http.StatusTooManyRequests {
-			retryAfter := resp.Header.Get("Retry-After")
-			logger.Warn("news-creator queue full, backing off",
-				"article_id", article.ID, "retry_after", retryAfter)
-			return nil, domain.ErrServiceOverloaded
-		}
-
-		// Handle 422 Unprocessable Entity as non-retryable (model degeneration)
-		if resp.StatusCode == http.StatusUnprocessableEntity {
-			logger.Warn("news-creator returned 422: content not processable by model",
-				"article_id", article.ID, "body", bodyStr)
-			return nil, domain.ErrContentNotProcessable
+		if err := classifyBusyOrErrorStatus(resp, bodyStr, article, logger, false); err != nil {
+			return nil, err
 		}
 
 		// Handle 400 Bad Request as ErrContentTooShort if likely
@@ -230,17 +259,6 @@ func ArticleSummarizerAPIClient(ctx context.Context, article *domain.Article, cf
 			// This allows the service to handle it gracefully (save placeholder summary)
 			logger.Info("Mapping 400 Bad Request to ErrContentTooShort", "article_id", article.ID)
 			return nil, ErrContentTooShort
-		}
-
-		// 502/503/504 typically mean news-creator is still digesting a concurrent
-		// request for the same article (Map-Reduce in flight); back off and
-		// recheck rather than escalate to dead_letter.
-		if resp.StatusCode == http.StatusBadGateway ||
-			resp.StatusCode == http.StatusServiceUnavailable ||
-			resp.StatusCode == http.StatusGatewayTimeout {
-			logger.Warn("news-creator returned busy status, treating as upstream busy",
-				"article_id", article.ID, "status_code", resp.StatusCode)
-			return nil, fmt.Errorf("upstream busy (status %d): %w", resp.StatusCode, domain.ErrUpstreamBusy)
 		}
 
 		return nil, fmt.Errorf("API request failed with status: %s", resp.Status)
@@ -286,75 +304,11 @@ func ArticleSummarizerAPIClient(ctx context.Context, article *domain.Article, cf
 
 // StreamArticleSummarizerAPIClient streams the summary generation from news-creator
 func StreamArticleSummarizerAPIClient(ctx context.Context, article *domain.Article, cfg *config.Config, logger *slog.Logger, priority string) (io.ReadCloser, error) {
-	// Zero Trust: Always extract text from content before sending to news-creator
-	originalLength := len(article.Content)
-	logger.Info("extracting text from content before streaming summary (Zero Trust validation)",
-		"article_id", article.ID,
-		"original_length", originalLength)
-
-	extractedContent := html_parser.ExtractArticleText(article.Content)
+	extractedContent, err := prepareSummarizeContent(article, cfg, logger, "streaming summary")
+	if err != nil {
+		return nil, err
+	}
 	extractedLength := len(extractedContent)
-
-	if extractedContent == "" {
-		logger.Warn("text extraction returned empty, using original content",
-			"article_id", article.ID)
-		extractedContent = article.Content
-		extractedLength = originalLength
-	} else {
-		reductionRatio := (1.0 - float64(extractedLength)/float64(originalLength)) * 100.0
-		if reductionRatio < 0 {
-			logger.Info("text extraction did not reduce content (content may already be plain text)",
-				"article_id", article.ID,
-				"original_length", originalLength,
-				"extracted_length", extractedLength,
-				"size_increase_ratio", fmt.Sprintf("%.2f%%", -reductionRatio))
-		} else {
-			logger.Info("text extraction completed before streaming API call",
-				"article_id", article.ID,
-				"original_length", originalLength,
-				"extracted_length", extractedLength,
-				"reduction_ratio", fmt.Sprintf("%.2f%%", reductionRatio))
-		}
-	}
-
-	// Use rune count (character count) instead of byte count for validation
-	// This ensures consistency with Python's len() which counts characters, not bytes
-	// Japanese: 1 char = 3 bytes in UTF-8, so byte count would be misleading
-	const minContentLength = 100
-	// 100KB = ~25K tokens (Japanese) = fits within 32K context with margin
-	// RTX 4060 (8GB VRAM) can process this stably without timeouts
-	const maxContentLength = 100_000
-	extractedRuneCount := utf8.RuneCountInString(extractedContent)
-	if extractedRuneCount < minContentLength {
-		// Fallback: if content is too short but title is long enough, use title as content
-		titleRuneCount := utf8.RuneCountInString(article.Title)
-		if titleRuneCount >= minContentLength {
-			logger.Info("Content too short, falling back to title-based summarization (streaming)",
-				"article_id", article.ID,
-				"content_rune_count", extractedRuneCount,
-				"title_rune_count", titleRuneCount)
-			extractedContent = article.Title
-			extractedRuneCount = titleRuneCount
-			extractedLength = len(article.Title)
-		} else {
-			logger.Info("Skipping summarization: content too short after extraction",
-				"article_id", article.ID,
-				"original_length", originalLength,
-				"extracted_length_bytes", extractedLength,
-				"extracted_length_chars", extractedRuneCount,
-				"min_required", minContentLength)
-			return nil, ErrContentTooShort
-		}
-	}
-	if extractedLength > maxContentLength {
-		logger.Info("Skipping summarization: content too long after extraction",
-			"article_id", article.ID,
-			"original_length", originalLength,
-			"extracted_length_bytes", extractedLength,
-			"extracted_length_chars", extractedRuneCount,
-			"max_allowed", maxContentLength)
-		return nil, ErrContentTooLong
-	}
 
 	apiURL := cfg.NewsCreator.Host + cfg.NewsCreator.APIPath
 
@@ -416,29 +370,8 @@ func StreamArticleSummarizerAPIClient(ctx context.Context, article *domain.Artic
 			errorBody = fmt.Sprintf("(failed to read error body: %v)", readErr)
 		}
 
-		// Handle 429 Too Many Requests (queue full / backpressure)
-		if resp.StatusCode == http.StatusTooManyRequests {
-			retryAfter := resp.Header.Get("Retry-After")
-			logger.Warn("news-creator queue full (streaming), backing off",
-				"article_id", article.ID, "retry_after", retryAfter)
-			return nil, domain.ErrServiceOverloaded
-		}
-
-		// Handle 422 Unprocessable Entity as non-retryable (model degeneration)
-		if resp.StatusCode == http.StatusUnprocessableEntity {
-			logger.Warn("news-creator returned 422 (streaming): content not processable by model",
-				"article_id", article.ID, "body", errorBody)
-			return nil, domain.ErrContentNotProcessable
-		}
-
-		// 502/503/504 on streaming path: upstream still digesting an earlier
-		// request. Same treatment as the blocking path.
-		if resp.StatusCode == http.StatusBadGateway ||
-			resp.StatusCode == http.StatusServiceUnavailable ||
-			resp.StatusCode == http.StatusGatewayTimeout {
-			logger.Warn("news-creator returned busy status (streaming), treating as upstream busy",
-				"article_id", article.ID, "status_code", resp.StatusCode)
-			return nil, fmt.Errorf("upstream busy (status %d): %w", resp.StatusCode, domain.ErrUpstreamBusy)
+		if err := classifyBusyOrErrorStatus(resp, errorBody, article, logger, true); err != nil {
+			return nil, err
 		}
 
 		logger.Error("API returned non-200 status for streaming request",
