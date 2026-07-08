@@ -29,12 +29,14 @@ class RerunSectionUsecase:
         """Rerun a single section. Returns new report version number."""
         report = await self._repo.get_report(report_id)
         if report is None:
-            raise ValueError(f"Report {report_id} not found")
+            msg = f"Report {report_id} not found"
+            raise ValueError(msg)
 
         sections = await self._repo.get_sections(report_id)
         target = next((s for s in sections if s.section_key == section_key), None)
         if target is None:
-            raise ValueError(f"Section {section_key} not found in report {report_id}")
+            msg = f"Section {section_key} not found in report {report_id}"
+            raise ValueError(msg)
 
         brief = await self._repo.get_brief(report_id)
         topic = brief.topic if brief else report.title
