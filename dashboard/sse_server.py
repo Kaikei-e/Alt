@@ -1,7 +1,7 @@
 
+import dataclasses
 import json
 import time
-import threading
 import logging
 import os
 import traceback
@@ -19,6 +19,10 @@ logger = logging.getLogger(__name__)
 # Get port from environment variable or use default
 PORT = int(os.getenv('SSE_PORT', 8000))
 
+# CORS: restrict to the dashboard's own origin by default. Set SSE_ALLOWED_ORIGIN
+# to override (e.g. a different nginx-fronted host), or "*" to explicitly allow any origin.
+ALLOWED_ORIGIN = os.getenv('SSE_ALLOWED_ORIGIN', f'http://localhost:{PORT}')
+
 class ThreadingHTTPServer(ThreadingMixIn, HTTPServer):
     pass
 
@@ -31,7 +35,7 @@ class SSEHandler(BaseHTTPRequestHandler):
         """Handle CORS preflight requests"""
         logger.info(f"Received OPTIONS request for path: {self.path}")
         self.send_response(200)
-        self.send_header('Access-Control-Allow-Origin', '*')
+        self.send_header('Access-Control-Allow-Origin', ALLOWED_ORIGIN)
         self.send_header('Access-Control-Allow-Methods', 'GET, OPTIONS')
         self.send_header('Access-Control-Allow-Headers', 'Cache-Control, Content-Type')
         self.send_header('Access-Control-Max-Age', '3600')
@@ -49,7 +53,7 @@ class SSEHandler(BaseHTTPRequestHandler):
                 self.send_header('Content-Type', 'text/event-stream')
                 self.send_header('Cache-Control', 'no-cache')
                 self.send_header('Connection', 'keep-alive')
-                self.send_header('Access-Control-Allow-Origin', '*')
+                self.send_header('Access-Control-Allow-Origin', ALLOWED_ORIGIN)
                 self.send_header('Access-Control-Allow-Methods', 'GET, OPTIONS')
                 self.send_header('Access-Control-Allow-Headers', 'Cache-Control, Content-Type')
                 self.send_header('X-Accel-Buffering', 'no')  # Disable buffering for nginx if used
@@ -63,7 +67,7 @@ class SSEHandler(BaseHTTPRequestHandler):
                         # Gather data
                         data_start = time.time()
                         data = {
-                            "memory": system_monitor.get_memory_info(),
+                            "memory": dataclasses.asdict(system_monitor.get_memory_info()),
                             "cpu": system_monitor.get_cpu_info(),
                             "gpu": system_monitor.get_gpu_info(),
                             "hanging_count": system_monitor.count_hanging_processes(),
@@ -114,13 +118,13 @@ class SSEHandler(BaseHTTPRequestHandler):
                     "service": "sse-server",
                     "port": PORT,
                     "system_monitor": {
-                        "memory_available": test_memory.get("total", 0) > 0,
+                        "memory_available": test_memory.total > 0,
                         "cpu_available": "percent" in test_cpu
                     }
                 }
                 self.send_response(200)
                 self.send_header('Content-Type', 'application/json')
-                self.send_header('Access-Control-Allow-Origin', '*')
+                self.send_header('Access-Control-Allow-Origin', ALLOWED_ORIGIN)
                 self.end_headers()
                 self.wfile.write(json.dumps(health_status).encode('utf-8'))
                 logger.debug(f"Health check response sent to {self.client_address}")
@@ -133,7 +137,7 @@ class SSEHandler(BaseHTTPRequestHandler):
                 }
                 self.send_response(500)
                 self.send_header('Content-Type', 'application/json')
-                self.send_header('Access-Control-Allow-Origin', '*')
+                self.send_header('Access-Control-Allow-Origin', ALLOWED_ORIGIN)
                 self.end_headers()
                 self.wfile.write(json.dumps(health_status).encode('utf-8'))
         else:
@@ -162,29 +166,6 @@ def start_server():
         logger.error(f"Exception type: {type(e).__name__}")
         logger.error(traceback.format_exc())
         raise
-
-def run_background():
-    try:
-        logger.info("Creating SSE server background thread...")
-        thread = threading.Thread(target=start_server, daemon=True, name="SSE-Server-Thread")
-        thread.start()
-        logger.info(f"SSE server thread started (thread ID: {thread.ident}, name: {thread.name})")
-
-        # Give the server a moment to start
-        logger.info("Waiting for SSE server to initialize...")
-        time.sleep(0.5)
-
-        if thread.is_alive():
-            logger.info(f"SSE server thread is running (alive: {thread.is_alive()})")
-            logger.info(f"SSE server should be accessible at http://0.0.0.0:{PORT}/stream")
-            logger.info(f"SSE server health check at http://0.0.0.0:{PORT}/health")
-        else:
-            logger.error("SSE server thread failed to start - thread is not alive")
-            logger.error("This may indicate a port binding issue or initialization error")
-    except Exception as e:
-        logger.error(f"Failed to start SSE server thread: {e}")
-        logger.error(f"Exception type: {type(e).__name__}")
-        logger.error(traceback.format_exc())
 
 if __name__ == "__main__":
     """Entry point for running SSE server as a standalone process."""

@@ -1,9 +1,14 @@
 
+import logging
+
 import streamlit as st
 import pandas as pd
 from sqlalchemy import text, inspect
+from sqlalchemy.exc import SQLAlchemyError
 
 from utils import get_engine, filter_frame_by_window, _interval_params
+
+logger = logging.getLogger(__name__)
 
 
 def _fetch_log_errors(window_seconds: int, limit: int = 2000) -> pd.DataFrame:
@@ -40,7 +45,8 @@ def render_log_analysis(window_seconds: int):
 
     try:
         df_log = _fetch_log_errors(window_seconds)
-    except Exception as e:
+    except SQLAlchemyError as e:
+        logger.exception("Failed to fetch log_errors")
         st.warning("log_errors 取得中にエラーが発生しました。")
         with st.expander("詳細"):
             st.error(str(e))

@@ -14,6 +14,7 @@ dependencies = [
 [dependency-groups]
 dev = [
     "pyrefly>=1.1.1",
+    "pytest>=9.1.1",
 ]
 
 [tool.uv]
@@ -23,3 +24,7 @@ constraint-dependencies = ["Pillow>=12.3.0"]
 project-includes = ["."]
 project-excludes = ["**/__pycache__", "**/.venv", "**/build", "**/dist"]
 python-version = "3.14"
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]

@@ -1,7 +1,7 @@
 # ==============================================================================
 # ビルドステージ
 # ==============================================================================
-FROM python:3.14-slim AS builder
+FROM python:3.14-slim@sha256:b877e50bd90de10af8d82c57a022fc2e0dc731c5320d762a27986facfc3355c1 AS builder
 
 WORKDIR /app
 
@@ -24,7 +24,7 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 # ==============================================================================
 # ランタイムステージ
 # ==============================================================================
-FROM python:3.14-slim
+FROM python:3.14-slim@sha256:b877e50bd90de10af8d82c57a022fc2e0dc731c5320d762a27986facfc3355c1
 
 WORKDIR /app
 
@@ -41,8 +41,10 @@ RUN groupadd -r dashboard && useradd -r -g dashboard dashboard
 COPY --from=builder /app/.venv /app/.venv
 ENV PATH="/app/.venv/bin:$PATH"
 
-# アプリケーションコードをコピー
-COPY --chown=dashboard:dashboard . .
+# アプリケーションコードを明示コピー (COPY . . はビルドコンテキスト全体
+# (.venv, __pycache__, tests 等) を取り込みキャッシュを壊すため避ける)
+COPY --chown=dashboard:dashboard app.py sse_server.py system_monitor.py utils.py entrypoint.sh ./
+COPY --chown=dashboard:dashboard tabs ./tabs
 
 # エントリーポイントスクリプトの権限設定
 RUN chmod +x /app/entrypoint.sh

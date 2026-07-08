@@ -5,13 +5,33 @@ for better reliability in containerized environments.
 Adapted from: monitors/utilizer/utilizer/monitors.py
 """
 
-import subprocess
-import shutil
-import time
+import logging
 import re
-from typing import Dict, List, Any
+import subprocess
+import time
+from dataclasses import dataclass
+from typing import Any
 
-def get_memory_info() -> Dict[str, Any]:
+logger = logging.getLogger(__name__)
+
+
+@dataclass(frozen=True, slots=True)
+class MemoryInfo:
+    """Memory usage snapshot.
+
+    `error` is set (and the numeric fields are zeroed) when the underlying
+    `free` command could not be read, so callers can distinguish a genuine
+    0%% reading from a collection failure.
+    """
+
+    total: int
+    used: int
+    available: int
+    percent: float
+    error: str | None = None
+
+
+def get_memory_info() -> MemoryInfo:
     """
     Get memory usage statistics using 'free -b'.
     Returns bytes to ensure compatibility with dashboard/app.py.
@@ -38,17 +58,12 @@ def get_memory_info() -> Dict[str, Any]:
         # Calculate percent
         percent = (used / total * 100) if total > 0 else 0.0
 
-        return {
-            "total": total,
-            "used": used,
-            "available": available,
-            "percent": round(percent, 1)
-        }
-    except Exception as e:
-        print(f"Error getting memory info: {e}")
-        return {"total": 0, "used": 0, "available": 0, "percent": 0.0}
+        return MemoryInfo(total=total, used=used, available=available, percent=round(percent, 1))
+    except (subprocess.SubprocessError, OSError, IndexError, ValueError) as e:
+        logger.error("Error getting memory info", exc_info=e)
+        return MemoryInfo(total=0, used=0, available=0, percent=0.0, error=str(e))
 
-def _read_proc_stat_cpu_fields() -> List[int]:
+def _read_proc_stat_cpu_fields() -> list[int]:
     """Read the aggregate 'cpu' line from /proc/stat as a list of counters."""
     with open("/proc/stat", "r") as f:
         lines = f.readlines()
@@ -56,7 +71,7 @@ def _read_proc_stat_cpu_fields() -> List[int]:
     return [int(f) for f in cpu_line.split()[1:]]
 
 
-def get_cpu_info() -> Dict[str, float]:
+def get_cpu_info() -> dict[str, float]:
     """Get CPU usage statistics"""
     # 1. Try psutil (preferred if works)
     try:
@@ -65,8 +80,8 @@ def get_cpu_info() -> Dict[str, float]:
         return {"percent": round(percent, 1)}
     except ImportError:
         pass
-    except Exception:
-        pass
+    except (OSError, RuntimeError, ValueError) as e:
+        logger.debug("psutil.cpu_percent failed, falling back to /proc/stat", exc_info=e)
 
     # 2. Try /proc/stat.
     # A single read gives the cumulative average since boot, not current
@@ -88,8 +103,8 @@ def get_cpu_info() -> Dict[str, float]:
         if total_delta > 0:
             usage = round((1 - idle_delta / total_delta) * 100, 1)
         return {"percent": usage}
-    except Exception:
-        pass
+    except (OSError, IndexError, ValueError) as e:
+        logger.debug("Reading /proc/stat failed, falling back to top", exc_info=e)
 
     # 3. Try top
     try:
@@ -108,12 +123,13 @@ def get_cpu_info() -> Dict[str, float]:
                 idle = float(match.group(1))
                 usage = round(100 - idle, 1)
                 return {"percent": usage}
-    except Exception:
-        pass
+    except (subprocess.SubprocessError, OSError) as e:
+        logger.debug("top command failed", exc_info=e)
 
+    logger.warning("All CPU usage detection methods failed, reporting 0.0%%")
     return {"percent": 0.0}
 
-def get_gpu_info() -> Dict[str, Any]:
+def get_gpu_info() -> dict[str, Any]:
     """Get GPU info using nvidia-smi"""
     try:
         # Added 'index' to query to match previous system_monitor.py interface
@@ -163,14 +179,14 @@ def get_gpu_info() -> Dict[str, Any]:
         return {"available": False, "gpus": [], "error": "timeout", "message": "nvidia-smi command timed out."}
     except subprocess.CalledProcessError as e:
         return {"available": False, "gpus": [], "error": f"nvidia-smi failed: {e}", "message": f"nvidia-smi command failed (exit code {e.returncode}). GPU may not be accessible."}
-    except Exception as e:
+    except OSError as e:
         return {"available": False, "gpus": [], "error": str(e), "message": f"Error getting GPU info: {str(e)}"}
 
 def count_hanging_processes() -> int:
     """Count potential hanging processes"""
     try:
         result = subprocess.run(
-            ["ps", "aux"], capture_output=True, text=True, check=True
+            ["ps", "aux"], capture_output=True, text=True, check=True, timeout=5
         )
         count = 0
         for l in result.stdout.split("\n"):
@@ -181,10 +197,11 @@ def count_hanging_processes() -> int:
         # But safest is to just count.
         # Adjusted logic: 'ps aux' shows all processes.
         return max(0, count)
-    except Exception:
+    except (subprocess.SubprocessError, OSError) as e:
+        logger.error("Error counting hanging processes", exc_info=e)
         return 0
 
-def get_top_processes(limit: int = 15) -> List[Dict[str, Any]]:
+def get_top_processes(limit: int = 15) -> list[dict[str, Any]]:
     """Get top N processes by CPU usage"""
     try:
         result = subprocess.run(
@@ -222,11 +239,11 @@ def get_top_processes(limit: int = 15) -> List[Dict[str, Any]]:
                     continue
         return processes
     except subprocess.TimeoutExpired:
-        print(f"Error getting top processes: ps command timed out after 5 seconds")
+        logger.error("Error getting top processes: ps command timed out after 5 seconds")
         return []
     except subprocess.CalledProcessError as e:
-        print(f"Error getting top processes: ps command failed with exit code {e.returncode}")
+        logger.error("Error getting top processes: ps command failed with exit code %s", e.returncode)
         return []
-    except Exception as e:
-        print(f"Error getting top processes: {e}")
+    except OSError as e:
+        logger.error("Error getting top processes", exc_info=e)
         return []
