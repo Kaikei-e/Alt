@@ -23,7 +23,6 @@ import os
 import re
 from collections import Counter
 from pathlib import Path
-from typing import Optional
 
 import psycopg2
 import psycopg2.extras
@@ -236,8 +235,10 @@ def fetch_learning_results(recap_dsn: str, days: int = 30) -> list[dict]:
         conn.close()
 
 
-def fetch_article_content(alt_dsn: str, article_id: str) -> Optional[dict]:
-    """alt-dbのarticlesテーブルから記事のタイトルと本文を取得"""
+def fetch_article_contents(alt_dsn: str, article_ids: list[str]) -> dict[str, dict]:
+    """alt-dbのarticlesテーブルから複数記事のタイトルと本文を一括取得"""
+    if not article_ids:
+        return {}
     conn = psycopg2.connect(alt_dsn)
     try:
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
@@ -245,14 +246,11 @@ def fetch_article_content(alt_dsn: str, article_id: str) -> Optional[dict]:
                 """
                 SELECT id, title, content, url
                 FROM articles
-                WHERE id::text = %s
+                WHERE id::text = ANY(%s)
                 """,
-                (article_id,),
+                (article_ids,),
             )
-            row = cur.fetchone()
-            if row:
-                return dict(row)
-            return None
+            return {str(row["id"]): dict(row) for row in cur.fetchall()}
     finally:
         conn.close()
 
@@ -269,12 +267,17 @@ def build_feature_counts(samples: list[dict]) -> tuple[dict[str, Counter], Count
 
         tokens = sample.get("tokens", [])
         expanded_tokens = expand_tokens(tokens)
+        token_set = frozenset(expanded_tokens)
+        text = sample.get("text", "")
 
         genre_totals[genre] += 1
-        for token in expanded_tokens:
-            # 特徴量語彙に含まれるトークンのみカウント
-            if token in FEATURE_VOCAB:
-                feature_counts[genre][token] += 1
+        for term in FEATURE_VOCAB:
+            if " " in term:
+                # 複数語エントリはトークン単位では一致しないため部分一致で判定
+                if term in text:
+                    feature_counts[genre][term] += 1
+            elif term in token_set:
+                feature_counts[genre][term] += 1
 
     return feature_counts, genre_totals
 
@@ -415,14 +418,18 @@ def main() -> None:
     if len(learning_results) > max_samples:
         print(f"  サンプル数が多いため、最初の{max_samples}件のみ処理します")
 
-    for i, result in enumerate(learning_results[:max_samples]):
+    limited_results = learning_results[:max_samples]
+    article_ids = [str(result["article_id"]) for result in limited_results]
+    articles_by_id = fetch_article_contents(args.alt_dsn, article_ids)
+
+    for i, result in enumerate(limited_results):
         if args.verbose and (i + 1) % 100 == 0:
             print(f"  処理中: {i + 1}/{min(max_samples, len(learning_results))}")
         elif (i + 1) % 1000 == 0:
             print(f"  処理中: {i + 1}/{min(max_samples, len(learning_results))}")
 
-        article_id = result["article_id"]
-        article = fetch_article_content(args.alt_dsn, article_id)
+        article_id = str(result["article_id"])
+        article = articles_by_id.get(article_id)
 
         if article:
             title = article.get("title", "")
@@ -434,6 +441,7 @@ def main() -> None:
                 "genre": result["genre"],
                 "confidence": float(result.get("confidence", 0.0)),
                 "tokens": tokens,
+                "text": combined_text.lower(),
                 "title": title,
             })
 
@@ -444,10 +452,10 @@ def main() -> None:
     print("\nジャンル別サンプル数:")
     for genre in GENRES:
         count = genre_counts.get(genre, 0)
-        if count > 0:
-            print(f"  {genre:20s}: {count:4d}件")
-        elif count < args.min_samples:
+        if count < args.min_samples:
             print(f"  {genre:20s}: {count:4d}件 (警告: 最小サンプル数未満)")
+        else:
+            print(f"  {genre:20s}: {count:4d}件")
 
     # 特徴量カウントを構築
     print("\n特徴量を計算中...")

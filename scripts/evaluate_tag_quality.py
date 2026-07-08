@@ -336,9 +336,6 @@ def create_dataset_from_db(
 
     print(f"Connecting to database...")
 
-    conn = psycopg2.connect(db_url)
-    cur = conn.cursor()
-
     # Query to get high-quality tagged articles
     query = """
         SELECT
@@ -357,8 +354,13 @@ def create_dataset_from_db(
         LIMIT %s;
     """
 
-    cur.execute(query, (min_confidence, language, min_tags, limit))
-    rows = cur.fetchall()
+    conn = psycopg2.connect(db_url, connect_timeout=10)
+    try:
+        with conn.cursor() as cur:
+            cur.execute(query, (min_confidence, language, min_tags, limit))
+            rows = cur.fetchall()
+    finally:
+        conn.close()
 
     samples = []
     for row in rows:
@@ -374,9 +376,6 @@ def create_dataset_from_db(
                     source="database",
                 )
             )
-
-    cur.close()
-    conn.close()
 
     print(f"Extracted {len(samples)} samples from database")
     save_golden_dataset(samples, output_path)

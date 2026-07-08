@@ -206,6 +206,10 @@ def main():
     urls = fetch_feed_urls(args.dsn)
     print(f"Found {len(urls)} URLs")
 
+    if not urls:
+        print("Error: No URLs found in feed_links")
+        return 1
+
     classified = []
     genre_counts = Counter()
     unknown_count = 0

@@ -1,0 +1,29 @@
+[Unit]
+Description=Alt Platform Backup Service
+Documentation=file:///home/koko/Documents/dev/Alt/docs/runbooks/backup-restore.md
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+User=root
+Group=root
+
+# Environment (override via /etc/alt-backup.env)
+EnvironmentFile=-/etc/alt-backup.env
+Environment=ALT_PROJECT_ROOT=/home/koko/Documents/dev/Alt
+WorkingDirectory=/home/koko/Documents/dev/Alt
+
+# Run the backup
+ExecStart=/home/koko/Documents/dev/Alt/scripts/backup/backup-all.sh --prune
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=alt-backup
+
+# Timeout (allow up to 2 hours for large backups)
+TimeoutStartSec=7200
+
+[Install]
+WantedBy=multi-user.target

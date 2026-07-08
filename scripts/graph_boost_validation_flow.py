@@ -193,11 +193,11 @@ def _run_replay(
         "--",
         "--dataset",
         str(dataset),
-        "--dsn",
-        dsn,
         "--dry-run",
     ]
-    _run_subprocess(command, env, recap_worker_dir)
+    replay_env = dict(env)
+    replay_env["RECAP_DB_DSN"] = dsn
+    _run_subprocess(command, replay_env, recap_worker_dir)
 
 
 def main() -> None:

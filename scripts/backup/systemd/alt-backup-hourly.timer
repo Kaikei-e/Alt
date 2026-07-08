@@ -1,0 +1,16 @@
+[Unit]
+Description=Alt Platform Hourly PostgreSQL Backup Timer
+Documentation=file:///home/koko/Documents/dev/Alt/docs/runbooks/backup-restore.md
+
+[Timer]
+# Run every hour at minute 0
+OnCalendar=*-*-* *:00:00
+# Randomize start within 5 minutes to avoid thundering herd
+RandomizedDelaySec=300
+# Persist timer across reboots
+Persistent=true
+# Accuracy within 1 minute
+AccuracySec=1min
+
+[Install]
+WantedBy=timers.target
