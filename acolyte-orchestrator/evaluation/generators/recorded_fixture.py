@@ -48,9 +48,10 @@ class RecordedFixtureGenerator:
     def __call__(self, case: EvalCase) -> tuple[str, dict[str, dict], dict[str, dict], dict[str, str]]:
         fixture_path = self._dir / f"{slugify(case.topic)}.json"
         if not fixture_path.exists():
-            raise FileNotFoundError(
-                f"no fixture for topic {case.topic!r} at {fixture_path}",
-            )
+            # Intentionally the stdlib FileNotFoundError (see module docstring)
+            # rather than a custom exception class, so callers can catch the
+            # standard "missing file" type.
+            raise FileNotFoundError(f"no fixture for topic {case.topic!r} at {fixture_path}")  # noqa: TRY003
         data: dict[str, Any] = json.loads(fixture_path.read_text(encoding="utf-8"))
         return (
             str(data.get("body", "")),

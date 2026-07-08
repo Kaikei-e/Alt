@@ -27,6 +27,8 @@ if TYPE_CHECKING:
 
 logger = structlog.get_logger(__name__)
 
+_MAX_FALLBACK_BODY_CHARS = 2000
+
 _QUOTE_PROMPT = """Select 1-3 verbatim quotes from this article relevant to the section topic.
 Each quote must be an exact substring of the article text.
 
@@ -82,8 +84,8 @@ def _resolve_prompt_body(
             return "\n".join(s["text"] for s in spans)
 
     body = hydrated.get(item_id, "")
-    if len(body) > 2000:
-        body = body[:2000]
+    if len(body) > _MAX_FALLBACK_BODY_CHARS:
+        body = body[:_MAX_FALLBACK_BODY_CHARS]
     return body
 
 
@@ -245,7 +247,7 @@ class QuoteSelectorNode:
                 )
         return work_items
 
-    async def _select_quotes(
+    async def _select_quotes(  # noqa: PLR0913 — each param is a distinct data source for the heuristic→LLM→fallback chain, not a cohesive group
         self,
         source_id: str,
         source_title: str,
@@ -273,7 +275,7 @@ class QuoteSelectorNode:
                     quote_count=len(quotes),
                 )
                 return quotes
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 — heuristic can fail in heterogeneous ways; degradation chain must catch all of them
             logger.warning(
                 "QuoteSelector heuristic failed, trying LLM",
                 article_id=source_id,
@@ -319,7 +321,7 @@ class QuoteSelectorNode:
                 "QuoteSelector LLM returned empty",
                 article_id=source_id,
             )
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 — LLM call can fail in heterogeneous ways (network/timeout/parse/validation); degradation chain must catch all of them
             logger.warning(
                 "QuoteSelector LLM failed, using sentence fallback",
                 article_id=source_id,

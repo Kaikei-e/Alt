@@ -82,9 +82,7 @@ class RerunSectionUsecase:
         )
         return new_report_v
 
-    async def _evidence_from_citations(
-        self, report_id: UUID, section_key: str, current_version: int
-    ) -> list[dict]:
+    async def _evidence_from_citations(self, report_id: UUID, section_key: str, current_version: int) -> list[dict]:
         """Rebuild evidence entries from the section's persisted citations."""
         section_version = await self._repo.get_section_version(report_id, section_key, current_version)
         if section_version is None or not section_version.citations:

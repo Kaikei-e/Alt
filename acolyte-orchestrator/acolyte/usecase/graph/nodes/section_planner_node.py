@@ -12,13 +12,19 @@ import structlog
 
 from acolyte.domain.claim import ClaimPlannerOutput
 from acolyte.port.llm_provider import LLMMode
-from acolyte.usecase.graph.xml_parse import generate_xml_validated, normalize_section_plan_output
+from acolyte.usecase.graph.xml_parse import (
+    confidence_to_score,
+    generate_xml_validated,
+    normalize_section_plan_output,
+)
 
 if TYPE_CHECKING:
     from acolyte.port.llm_provider import LLMProviderPort
     from acolyte.usecase.graph.state import ReportGenerationState
 
 logger = structlog.get_logger(__name__)
+
+_MAX_SAME_SOURCE_SYNTHESIS_CLAIMS = 2
 
 SECTION_PLANNER_PROMPT = """You are a claim planner for report section "{title}".
 Topic: {topic}
@@ -184,8 +190,6 @@ def _collect_all_accepted_claims(
 
 def _rank_facts_for_synthesis(facts: list[dict]) -> list[dict]:
     """Rank facts by: numeric_facts presence → source diversity → confidence."""
-    from acolyte.usecase.graph.xml_parse import confidence_to_score
-
     seen_sources: set[str] = set()
     scored: list[tuple[float, dict]] = []
 
@@ -251,7 +255,7 @@ def _claims_to_synthesis(claims: list[dict], *, max_claims: int = 5, prefix: str
         eids = set(claim.get("evidence_ids", []))
         # Prefer diverse sources
         is_diverse = bool(eids - seen_sources)
-        if not is_diverse and len(result) >= 2:
+        if not is_diverse and len(result) >= _MAX_SAME_SOURCE_SYNTHESIS_CLAIMS:
             continue
         seen_sources.update(eids)
         result.append(
@@ -359,7 +363,7 @@ class SectionPlannerNode:
     def __init__(self, llm: LLMProviderPort) -> None:
         self._llm = llm
 
-    async def __call__(self, state: ReportGenerationState) -> dict:
+    async def __call__(self, state: ReportGenerationState) -> dict:  # noqa: PLR0912, PLR0915 — LangGraph node orchestration, splitting would obscure the single control-flow narrative
         outline = state.get("outline", [])
         curated_by_section = state.get("curated_by_section", {})
         extracted_facts = state.get("extracted_facts", [])

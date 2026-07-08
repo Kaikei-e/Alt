@@ -33,19 +33,19 @@ def _case() -> EvalCase:
     )
 
 
-def test_run_scores_each_case_with_precision_and_lang_mix():
+def test_run_scores_each_case_with_precision_and_lang_mix() -> None:
     results = run([_case()], _fake_gen)
     assert len(results) == 1
     assert results[0]["citation_precision"] == 1.0
     assert results[0]["lang_mix_ratio"] == {"en": 1.0}
 
 
-def test_run_leaves_faithfulness_none_when_judge_omitted():
+def test_run_leaves_faithfulness_none_when_judge_omitted() -> None:
     results = run([_case()], _fake_gen)
     assert results[0]["faithfulness"] is None
 
 
-def test_run_invokes_judge_when_supplied():
+def test_run_invokes_judge_when_supplied() -> None:
     judge_calls: list[str] = []
 
     def judge(prompt: str) -> float:
@@ -57,7 +57,7 @@ def test_run_invokes_judge_when_supplied():
     assert judge_calls, "judge should have been called"
 
 
-def test_aggregate_handles_empty_dataset():
+def test_aggregate_handles_empty_dataset() -> None:
     summary = _aggregate([])
     assert summary == {
         "cases": 0,
@@ -67,7 +67,7 @@ def test_aggregate_handles_empty_dataset():
     }
 
 
-def test_aggregate_computes_means_only_over_non_null():
+def test_aggregate_computes_means_only_over_non_null() -> None:
     summary = _aggregate(
         [
             {"citation_precision": 1.0, "faithfulness": None, "lang_mix_ratio": {"en": 0.5}},
@@ -80,7 +80,7 @@ def test_aggregate_computes_means_only_over_non_null():
     assert summary["lang_en_share_mean"] == pytest.approx(0.375)
 
 
-def test_dataset_digest_is_deterministic(tmp_path: Path):
+def test_dataset_digest_is_deterministic(tmp_path: Path) -> None:
     path = tmp_path / "a.jsonl"
     path.write_text("line\n")
     digest = _dataset_digest(path)
@@ -88,7 +88,7 @@ def test_dataset_digest_is_deterministic(tmp_path: Path):
     assert len(digest) == 64
 
 
-def test_build_generator_scaffold_raises_on_call():
+def test_build_generator_scaffold_raises_on_call() -> None:
     args = mock.Mock(generator="scaffold", fixtures="", section_key="analysis")
     with contextlib.ExitStack() as stack:
         gen = _build_generator(args, stack)
@@ -96,20 +96,20 @@ def test_build_generator_scaffold_raises_on_call():
             gen(_case())
 
 
-def test_build_generator_fixture_requires_dir():
+def test_build_generator_fixture_requires_dir() -> None:
     args = mock.Mock(generator="fixture", fixtures="", section_key="analysis")
     with contextlib.ExitStack() as stack, pytest.raises(SystemExit):
         _build_generator(args, stack)
 
 
-def test_build_generator_fixture_returns_recorded_generator(tmp_path: Path):
+def test_build_generator_fixture_returns_recorded_generator(tmp_path: Path) -> None:
     args = mock.Mock(generator="fixture", fixtures=str(tmp_path), section_key="analysis")
     with contextlib.ExitStack() as stack:
         gen = _build_generator(args, stack)
         assert isinstance(gen, RecordedFixtureGenerator)
 
 
-def test_main_writes_json_with_metadata(tmp_path: Path):
+def test_main_writes_json_with_metadata(tmp_path: Path) -> None:
     dataset = tmp_path / "ds.jsonl"
     dataset.write_text(
         json.dumps(

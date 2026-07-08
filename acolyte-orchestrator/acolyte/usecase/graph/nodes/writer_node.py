@@ -12,7 +12,7 @@ backward compatibility.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 import structlog
 
@@ -20,7 +20,12 @@ from acolyte.port.llm_provider import LLMMode
 
 if TYPE_CHECKING:
     from acolyte.port.llm_provider import LLMProviderPort
-    from acolyte.usecase.graph.state import ReportGenerationState
+    from acolyte.usecase.graph.state import (
+        PlannedClaimDict,
+        ReportGenerationState,
+        SectionCitationDict,
+        SectionParagraphDict,
+    )
 
 from acolyte.config.settings import Settings
 from acolyte.domain.citation_format import validate_citation_format
@@ -29,6 +34,10 @@ from acolyte.domain.source_map import SourceMap
 from acolyte.domain.writer_prompt import WRITER_PROMPT, format_evidence
 
 logger = structlog.get_logger(__name__)
+
+# Max chars of a supporting_quote used to search for its position in the
+# rendered body when computing citation offsets.
+_QUOTE_SEARCH_FRAGMENT_MAX_CHARS = 50
 
 # Shared citation rule snippet (forbids inline titles / URLs).
 _CITATION_RULE = (
@@ -198,7 +207,9 @@ def _assemble_citations(
                 "offset_end": -1,
             }
             for q in quotes:
-                search_fragment = q[:50] if len(q) > 50 else q
+                search_fragment = (
+                    q[:_QUOTE_SEARCH_FRAGMENT_MAX_CHARS] if len(q) > _QUOTE_SEARCH_FRAGMENT_MAX_CHARS else q
+                )
                 idx = section_body.find(search_fragment)
                 if idx >= 0:
                     citation["quote"] = q
@@ -211,15 +222,15 @@ def _assemble_citations(
     return citations
 
 
-def _assemble_paragraph_citations(claim: dict, paragraph_body: str) -> list[dict]:
+def _assemble_paragraph_citations(claim: PlannedClaimDict, paragraph_body: str) -> list[SectionCitationDict]:
     """Build citations for a single paragraph from its claim."""
     evidence_ids = claim.get("evidence_ids", [])
     quotes = claim.get("supporting_quotes", [])
     claim_id = claim.get("claim_id", "")
-    citations: list[dict] = []
+    citations: list[SectionCitationDict] = []
 
     for eid in evidence_ids:
-        citation: dict = {
+        citation: SectionCitationDict = {
             "claim_id": claim_id,
             "source_id": eid,
             "source_type": "article",
@@ -228,7 +239,7 @@ def _assemble_paragraph_citations(claim: dict, paragraph_body: str) -> list[dict
             "offset_end": -1,
         }
         for q in quotes:
-            search_fragment = q[:50] if len(q) > 50 else q
+            search_fragment = q[:_QUOTE_SEARCH_FRAGMENT_MAX_CHARS] if len(q) > _QUOTE_SEARCH_FRAGMENT_MAX_CHARS else q
             idx = paragraph_body.find(search_fragment)
             if idx >= 0:
                 citation["quote"] = q
@@ -270,13 +281,13 @@ def _format_supporting_quotes(
 
 
 def _synthesis_claims_from_accepted(
-    claims: list[dict],
+    claims: list[PlannedClaimDict],
     *,
     section_key: str,
     max_claims: int,
-) -> list[dict]:
+) -> list[PlannedClaimDict]:
     """Convert accepted upstream claims into synthesis claims for ES/Conclusion."""
-    result: list[dict] = []
+    result: list[PlannedClaimDict] = []
     seen_sources: set[str] = set()
     with_numeric = [c for c in claims if c.get("numeric_facts")]
     without_numeric = [c for c in claims if not c.get("numeric_facts")]
@@ -304,15 +315,15 @@ def _synthesis_claims_from_accepted(
 
 
 def _collect_accepted_claims(
-    section_paragraphs: dict[str, list[dict]],
-    claim_plans: dict[str, list[dict]],
+    section_paragraphs: dict[str, list[SectionParagraphDict]],
+    claim_plans: dict[str, list[PlannedClaimDict]],
     outline: list[dict],
     *,
     include_roles: set[str] | None = None,
     exclude_roles: set[str] | None = None,
-) -> dict[str, list[dict]]:
+) -> dict[str, list[PlannedClaimDict]]:
     """Collect claims whose paragraphs are accepted in already-written sections."""
-    accepted_by_section: dict[str, list[dict]] = {}
+    accepted_by_section: dict[str, list[PlannedClaimDict]] = {}
 
     for section in outline:
         key = section.get("key", "")
@@ -365,13 +376,10 @@ def _update_best_sections(
         prev_len = existing["char_len"]
         is_better = False
 
-        if blocking_count < prev_blocking:
+        if blocking_count < prev_blocking or (
+            blocking_count == prev_blocking and char_len > 0 and (prev_len == 0 or char_len > prev_len)
+        ):
             is_better = True
-        elif blocking_count == prev_blocking and char_len > 0:
-            if prev_len == 0:
-                is_better = True
-            elif char_len > prev_len:
-                is_better = True
 
         if is_better:
             new_best[section_key] = body
@@ -456,9 +464,9 @@ class WriterNode:
             return self._settings.paragraph_num_predict_es
         return self._settings.paragraph_num_predict
 
-    async def _generate_paragraph(
+    async def _generate_paragraph(  # noqa: PLR0913 — keyword-only params are independent optional overrides, not a cohesive group worth a dataclass
         self,
-        claim: dict,
+        claim: PlannedClaimDict,
         section_title: str,
         section_role: str,
         topic: str,
@@ -467,7 +475,7 @@ class WriterNode:
         num_predict: int = 1000,
         prior_sections_context: str = "",
         source_map: SourceMap | None = None,
-    ) -> dict:
+    ) -> SectionParagraphDict:
         """Generate a single paragraph from one claim via LLM.
 
         Returns a GeneratedParagraph-compatible dict.
@@ -538,25 +546,25 @@ class WriterNode:
             "revision_feedback": feedback,
         }
 
-    async def _generate_section_paragraphs(
+    async def _generate_section_paragraphs(  # noqa: PLR0913 — keyword-only params are independent optional overrides, not a cohesive group worth a dataclass
         self,
-        claims: list[dict],
+        claims: list[PlannedClaimDict],
         section_title: str,
         section_role: str,
         topic: str,
         *,
-        existing_paragraphs: list[dict] | None = None,
+        existing_paragraphs: list[SectionParagraphDict] | None = None,
         claim_feedbacks: list[dict] | None = None,
         num_predict: int = 1000,
         prior_sections_context: str = "",
         source_map: SourceMap | None = None,
-    ) -> list[dict]:
+    ) -> list[SectionParagraphDict]:
         """Generate paragraphs for all claims in a section.
 
         On revision, only regenerates rejected/targeted paragraphs.
         """
         # Build lookup for existing paragraphs and feedbacks
-        existing_by_id: dict[str, dict] = {}
+        existing_by_id: dict[str, SectionParagraphDict] = {}
         if existing_paragraphs:
             for p in existing_paragraphs:
                 existing_by_id[p["claim_id"]] = p
@@ -566,7 +574,7 @@ class WriterNode:
             for fb in claim_feedbacks:
                 feedback_by_id[fb["claim_id"]] = fb
 
-        paragraphs: list[dict] = []
+        paragraphs: list[SectionParagraphDict] = []
         for claim in claims:
             claim_id = claim.get("claim_id", "")
             existing = existing_by_id.get(claim_id)
@@ -596,7 +604,7 @@ class WriterNode:
 
         return paragraphs
 
-    async def __call__(self, state: ReportGenerationState) -> dict:
+    async def __call__(self, state: ReportGenerationState) -> dict:  # noqa: PLR0912, PLR0915 — LangGraph node orchestration, splitting would obscure the single control-flow narrative
         outline = state.get("outline", [])
         curated = state.get("curated", [])
         curated_by_section = state.get("curated_by_section")
@@ -606,7 +614,7 @@ class WriterNode:
         existing_sections = state.get("sections", {})
         raw_claim_plans = state.get("claim_plans")
         claim_plans = dict(raw_claim_plans) if raw_claim_plans is not None else None
-        existing_paragraphs = state.get("section_paragraphs", {})
+        existing_paragraphs: dict[str, list[SectionParagraphDict]] = state.get("section_paragraphs", {})
         current_best = dict(state.get("best_sections", {}))
         current_metrics = dict(state.get("best_section_metrics", {}))
 
@@ -619,11 +627,11 @@ class WriterNode:
         source_map = SourceMap.from_dict(source_map_data) if source_map_data else None
 
         sections: dict[str, str] = dict(existing_sections)
-        section_citations: dict[str, list[dict]] = {}
-        section_paragraphs: dict[str, list[dict]] = dict(existing_paragraphs)
+        section_citations: dict[str, list[SectionCitationDict]] = {}
+        section_paragraphs: dict[str, list[SectionParagraphDict]] = dict(existing_paragraphs)
         use_claims = claim_plans is not None
         topic = brief.get("topic", "")
-        accepted_claims_by_section: dict[str, list[dict]] = {}
+        accepted_claims_by_section: dict[str, list[PlannedClaimDict]] = {}
 
         # Extract claim_feedbacks from critique
         all_claim_feedbacks: dict[str, list[dict]] = {}
@@ -641,7 +649,7 @@ class WriterNode:
 
             if use_claims and claim_plans is not None:
                 # Paragraph-based generation path
-                claims: list[dict] = list(claim_plans.get(key, []))
+                claims: list[PlannedClaimDict] = list(claim_plans.get(key, []))
                 if section_role == "conclusion":
                     accepted_analysis = _collect_accepted_claims(
                         section_paragraphs,
@@ -708,8 +716,11 @@ class WriterNode:
 
                 # ES: deterministic renderer (no LLM) for guaranteed completion
                 if section_role == "executive_summary":
-                    es_body = self._es_renderer.render(claims, topic=topic)
-                    es_cites = self._es_renderer.build_citations(claims)
+                    es_body = self._es_renderer.render(cast("list[dict]", claims), topic=topic)
+                    es_cites = cast(
+                        "list[SectionCitationDict]",
+                        self._es_renderer.build_citations(cast("list[dict]", claims)),
+                    )
                     sections[key] = es_body
                     section_citations[key] = es_cites
                     section_paragraphs[key] = [
@@ -755,7 +766,7 @@ class WriterNode:
                 sections[key] = section_body
 
                 # Assemble all citations from paragraphs
-                all_cites: list[dict] = []
+                all_cites: list[SectionCitationDict] = []
                 for p in paragraphs:
                     all_cites.extend(p.get("citations", []))
                 section_citations[key] = all_cites

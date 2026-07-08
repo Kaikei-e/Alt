@@ -41,7 +41,7 @@ class FakeVersionableRepo:
     ) -> int:
         report = self.reports.get(report_id)
         if report is None:
-            raise ValueError(f"Report {report_id} not found")
+            raise ValueError(f"Report {report_id} not found")  # noqa: TRY003 — fake repo, no custom exception needed
         if report.current_version != expected_version:
             raise StaleVersionError(report_id, expected_version)
 

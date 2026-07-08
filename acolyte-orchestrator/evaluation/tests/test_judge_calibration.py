@@ -19,6 +19,8 @@ from pathlib import Path
 
 import pytest
 
+from evaluation.judges.mock import MockRubricJudge
+
 _ALLOWED = {0.0, 0.25, 0.5, 0.75, 1.0}
 
 
@@ -75,8 +77,6 @@ def test_mock_judge_disagrees_with_rubric(calibration_path: Path) -> None:
     stops being true, someone has replaced the mock with something it
     shouldn't be.
     """
-    from evaluation.judges.mock import MockRubricJudge
-
     judge = MockRubricJudge(mock_score=0.5)
     agreements = 0
     total = 0

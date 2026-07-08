@@ -27,7 +27,7 @@ class _FakeEvidenceProvider:
     def __init__(self) -> None:
         self.search_calls: list[str] = []
 
-    async def search_articles(self, query: str, limit: int = 10) -> list[_Article]:  # noqa: ARG002
+    async def search_articles(self, query: str, limit: int = 10) -> list[_Article]:
         self.search_calls.append(query)
         return [
             _Article(
@@ -38,7 +38,7 @@ class _FakeEvidenceProvider:
             )
         ]
 
-    async def search_recaps(self, query: str, limit: int = 10) -> list[Any]:  # noqa: ARG002
+    async def search_recaps(self, query: str, limit: int = 10) -> list[Any]:
         _ = (query, limit)
         return []
 

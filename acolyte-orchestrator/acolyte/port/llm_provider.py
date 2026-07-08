@@ -23,7 +23,7 @@ class LLMResponse:
 
 
 class LLMProviderPort(Protocol):
-    async def generate(
+    async def generate(  # noqa: PLR0913 — keyword-only LLM generation knobs, each independently optional
         self,
         prompt: str,
         *,

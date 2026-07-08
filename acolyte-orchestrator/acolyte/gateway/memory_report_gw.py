@@ -49,7 +49,7 @@ class MemoryReportGateway:
         all_reports = sorted(self._reports.values(), key=lambda r: r.created_at, reverse=True)
         return all_reports[:limit], None
 
-    async def bump_version(
+    async def bump_version(  # noqa: PLR0913 — implements ReportRepositoryPort's bump_version() signature
         self,
         report_id: UUID,
         expected_version: int,

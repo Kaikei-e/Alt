@@ -34,7 +34,7 @@ class ReportBrief:
         """
         topic = scope.get("topic", "").strip()
         if not topic:
-            raise ValueError("scope must contain a non-empty 'topic' field")
+            raise ValueError("scope must contain a non-empty 'topic' field")  # noqa: TRY003 — caught generically as ValueError at the connect_service Handler boundary
 
         entities_raw = scope.get("entities", "")
         entities = [e.strip() for e in entities_raw.split(",") if e.strip()] if entities_raw else []

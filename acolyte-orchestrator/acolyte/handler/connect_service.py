@@ -11,8 +11,14 @@ import structlog
 from connectrpc.code import Code
 from connectrpc.errors import ConnectError
 
-import acolyte.gen  # noqa: F401, I001 — must precede generated imports
+import acolyte.gen  # noqa: F401 — must precede generated imports
+from acolyte.domain.brief import ReportBrief
 from acolyte.gen.proto.alt.acolyte.v1 import acolyte_pb2
+from acolyte.usecase.create_report_uc import CreateReportUsecase
+from acolyte.usecase.get_report_uc import GetReportUsecase
+from acolyte.usecase.list_reports_uc import ListReportsUsecase
+from acolyte.usecase.rerun_section_uc import RerunSectionUsecase
+from acolyte.usecase.start_run_uc import StartRunUsecase
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator
@@ -72,9 +78,6 @@ class AcolyteConnectService:
     async def create_report(
         self, request: acolyte_pb2.CreateReportRequest, ctx: RequestContext
     ) -> acolyte_pb2.CreateReportResponse:
-        from acolyte.domain.brief import ReportBrief
-        from acolyte.usecase.create_report_uc import CreateReportUsecase
-
         report = await CreateReportUsecase(self._repo).execute(request.title, request.report_type)
         scope = dict(request.scope) if request.scope else {}
         if scope.get("topic"):
@@ -85,8 +88,6 @@ class AcolyteConnectService:
     async def get_report(
         self, request: acolyte_pb2.GetReportRequest, ctx: RequestContext
     ) -> acolyte_pb2.GetReportResponse:
-        from acolyte.usecase.get_report_uc import GetReportUsecase
-
         report, sections = await GetReportUsecase(self._repo).execute(UUID(request.report_id))
         if report is None:
             raise ConnectError(Code.NOT_FOUND, f"Report {request.report_id} not found")
@@ -144,8 +145,6 @@ class AcolyteConnectService:
     async def list_reports(
         self, request: acolyte_pb2.ListReportsRequest, ctx: RequestContext
     ) -> acolyte_pb2.ListReportsResponse:
-        from acolyte.usecase.list_reports_uc import ListReportsUsecase
-
         cursor = request.cursor if request.cursor else None
         limit = request.limit if request.limit > 0 else 20
         reports, next_cursor = await ListReportsUsecase(self._repo).execute(cursor, limit)
@@ -216,8 +215,6 @@ class AcolyteConnectService:
         if self._jobs is None:
             raise ConnectError(Code.UNIMPLEMENTED, "Job queue not configured")
 
-        from acolyte.usecase.start_run_uc import StartRunUsecase
-
         report_id = UUID(request.report_id)
         try:
             run = await StartRunUsecase(self._repo, self._jobs).execute(report_id)
@@ -249,9 +246,9 @@ class AcolyteConnectService:
         async with self._run_semaphore:
             await self._run_pipeline_locked(report_id, run_id, brief_dict)
 
-    async def _run_pipeline_locked(self, report_id: str, run_id: str, brief_dict: dict) -> None:
+    async def _run_pipeline_locked(self, report_id: str, run_id: str, brief_dict: dict) -> None:  # noqa: PLR0912 — run-lifecycle state machine (checkpoint resume/DLQ/status transitions), splitting would obscure the single narrative
         if self._graph is None:
-            raise RuntimeError("Pipeline graph not configured")
+            raise RuntimeError("Pipeline graph not configured")  # noqa: TRY003 — internal wiring invariant, not a domain error to catch
 
         config = self._graph_config(run_id)
         initial_state = {
@@ -374,8 +371,6 @@ class AcolyteConnectService:
             raise ConnectError(Code.UNIMPLEMENTED, "LLM provider not configured")
         if not request.section_key:
             raise ConnectError(Code.INVALID_ARGUMENT, "section_key is required")
-
-        from acolyte.usecase.rerun_section_uc import RerunSectionUsecase
 
         uc = RerunSectionUsecase(self._repo, self._llm)
         try:

@@ -67,14 +67,24 @@ class FakeRepo:
         return None
 
     async def bump_section_version(
-        self, report_id: UUID, section_key: str, expected_version: int, body: str, citations=None
+        self,
+        report_id: UUID,
+        section_key: str,
+        expected_version: int,
+        body: str,
+        citations: list[dict] | None = None,
     ) -> int:
         new_v = expected_version + 1
         self.bumped_sections.append((report_id, section_key, new_v, body))
         return new_v
 
     async def bump_version(
-        self, report_id: UUID, expected_version: int, change_reason: str, change_items: list[ChangeItem], **kwargs
+        self,
+        report_id: UUID,
+        expected_version: int,
+        change_reason: str,
+        change_items: list[ChangeItem],
+        **kwargs: object,
     ) -> int:
         new_v = expected_version + 1
         self.bumped_versions.append((report_id, new_v, change_reason))

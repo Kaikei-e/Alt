@@ -39,7 +39,7 @@ async def generate_validated[T: "BaseModel"](
     *,
     retries: int = 1,
     fallback: T | None = None,
-    **llm_kwargs: Any,
+    **llm_kwargs: Any,  # noqa: ANN401 — opaque forwarding boundary to LLMProviderPort.generate's heterogeneous keyword args
 ) -> T:
     """Generate LLM output and validate with Pydantic.
 
@@ -105,4 +105,6 @@ async def generate_validated[T: "BaseModel"](
         logger.info("Using fallback after validation failures", model=model_cls.__name__)
         return fallback
 
-    raise ValueError(f"LLM output validation failed after {1 + retries} attempts: {last_error}") from last_error
+    raise ValueError(  # noqa: TRY003 — single call site, no fallback provided; caller treats exhaustion as fatal
+        f"LLM output validation failed after {1 + retries} attempts: {last_error}"
+    ) from last_error

@@ -4,12 +4,15 @@ from __future__ import annotations
 
 import json
 from datetime import UTC, datetime
+from unittest.mock import MagicMock
 from uuid import UUID, uuid4
 
 import pytest
 
 from acolyte.domain.brief import ReportBrief
 from acolyte.domain.report import ChangeItem, Report, ReportSection, ReportVersion, SectionVersion
+from acolyte.gen.proto.alt.acolyte.v1 import acolyte_pb2
+from acolyte.handler.connect_service import AcolyteConnectService
 from acolyte.usecase.get_report_uc import GetReportUsecase
 
 
@@ -127,11 +130,6 @@ async def test_get_nonexistent_report() -> None:
 @pytest.mark.asyncio
 async def test_handler_returns_stored_citations() -> None:
     """GetReport handler should serialize SectionVersion.citations, not hardcoded '[]'."""
-    from unittest.mock import MagicMock
-
-    from acolyte.gen.proto.alt.acolyte.v1 import acolyte_pb2
-    from acolyte.handler.connect_service import AcolyteConnectService
-
     repo = FakeReportRepo()
     rid = uuid4()
     report = Report(
@@ -174,11 +172,6 @@ async def test_handler_returns_stored_citations() -> None:
 @pytest.mark.asyncio
 async def test_handler_returns_brief_scope() -> None:
     """GetReport handler should expose the persisted ReportBrief as Report.scope."""
-    from unittest.mock import MagicMock
-
-    from acolyte.gen.proto.alt.acolyte.v1 import acolyte_pb2
-    from acolyte.handler.connect_service import AcolyteConnectService
-
     repo = FakeReportRepo()
     rid = uuid4()
     report = Report(
@@ -215,11 +208,6 @@ async def test_handler_returns_brief_scope() -> None:
 @pytest.mark.asyncio
 async def test_handler_returns_empty_scope_when_no_brief() -> None:
     """When no brief is persisted, Report.scope must be present and empty (not crash)."""
-    from unittest.mock import MagicMock
-
-    from acolyte.gen.proto.alt.acolyte.v1 import acolyte_pb2
-    from acolyte.handler.connect_service import AcolyteConnectService
-
     repo = FakeReportRepo()
     rid = uuid4()
     repo.reports[rid] = Report(

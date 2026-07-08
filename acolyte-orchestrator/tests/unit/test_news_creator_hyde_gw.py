@@ -27,7 +27,7 @@ class _FakeLLM:
 
 
 @pytest.mark.asyncio
-async def test_generator_returns_sanitised_output_for_en():
+async def test_generator_returns_sanitised_output_for_en() -> None:
     passage = (
         "The 2026 AI chip market continues to expand with several new "
         "entrants pushing aggressive pricing across GPU and NPU segments. "
@@ -41,7 +41,7 @@ async def test_generator_returns_sanitised_output_for_en():
 
 
 @pytest.mark.asyncio
-async def test_generator_pins_think_false_to_avoid_cjk_empty_response():
+async def test_generator_pins_think_false_to_avoid_cjk_empty_response() -> None:
     """Gemma 4's thinking capability silently consumes num_predict on CJK
     input and returns an empty ``response`` field. The HyDE gateway must
     forward ``think=False`` so the model skips reasoning and emits text.
@@ -59,7 +59,7 @@ async def test_generator_pins_think_false_to_avoid_cjk_empty_response():
 
 
 @pytest.mark.asyncio
-async def test_generator_forwards_gemma4_official_sampler():
+async def test_generator_forwards_gemma4_official_sampler() -> None:
     """Gemma instruct checkpoints ship with an official sampler: T=1.0,
     top_p=0.95, top_k=64 (Google DeepMind model card). HyDE uses those
     values to (a) match Google's recommended distribution and (b) keep
@@ -86,7 +86,7 @@ async def test_generator_forwards_gemma4_official_sampler():
 
 
 @pytest.mark.asyncio
-async def test_generator_uses_system_user_split_for_injection_defence():
+async def test_generator_uses_system_user_split_for_injection_defence() -> None:
     """HyDE must deliver the task framing as a system message and the topic
     as the user message, so that prompt injection in the topic (e.g.
     "ignore previous instructions") cannot override the task. The generator
@@ -118,7 +118,7 @@ async def test_generator_uses_system_user_split_for_injection_defence():
 
 
 @pytest.mark.asyncio
-async def test_empty_topic_returns_none_without_llm_call():
+async def test_empty_topic_returns_none_without_llm_call() -> None:
     llm = _FakeLLM(text="ignored")
     gen = NewsCreatorHyDEGenerator(llm)
     assert await gen.generate_hypothetical_doc("   ", "en") is None
@@ -126,7 +126,7 @@ async def test_empty_topic_returns_none_without_llm_call():
 
 
 @pytest.mark.asyncio
-async def test_unsupported_target_lang_returns_none_without_llm_call():
+async def test_unsupported_target_lang_returns_none_without_llm_call() -> None:
     llm = _FakeLLM(text="ignored")
     gen = NewsCreatorHyDEGenerator(llm)
     assert await gen.generate_hypothetical_doc("topic", "fr") is None
@@ -134,21 +134,21 @@ async def test_unsupported_target_lang_returns_none_without_llm_call():
 
 
 @pytest.mark.asyncio
-async def test_timeout_returns_none():
+async def test_timeout_returns_none() -> None:
     gen = NewsCreatorHyDEGenerator(_FakeLLM(delay=0.5), timeout_s=0.05)
     out = await gen.generate_hypothetical_doc("AIチップ市場 2026", "en")
     assert out is None
 
 
 @pytest.mark.asyncio
-async def test_llm_exception_returns_none():
+async def test_llm_exception_returns_none() -> None:
     gen = NewsCreatorHyDEGenerator(_FakeLLM(raise_exc=RuntimeError("boom")))
     out = await gen.generate_hypothetical_doc("AIチップ市場 2026", "en")
     assert out is None
 
 
 @pytest.mark.asyncio
-async def test_sanitiser_reject_returns_none():
+async def test_sanitiser_reject_returns_none() -> None:
     # Japanese-heavy output for en target -> sanitiser rejects.
     gen = NewsCreatorHyDEGenerator(_FakeLLM(text="本文は日本語で書かれています。これは拒否されます。"))
     out = await gen.generate_hypothetical_doc("AIチップ市場 2026", "en")

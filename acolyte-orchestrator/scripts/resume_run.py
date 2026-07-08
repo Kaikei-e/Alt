@@ -22,6 +22,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import sys
+from uuid import UUID
 
 import structlog
 
@@ -30,21 +31,21 @@ logger = structlog.get_logger(__name__)
 
 async def _resume(run_id: str) -> None:
     """Resume a pipeline run from its checkpoint."""
-    # Late imports to avoid loading the full app at import time
-    import httpx
-    from psycopg_pool import AsyncConnectionPool
+    # Late imports to avoid loading the full app at import time (keeps --help fast)
+    import httpx  # noqa: PLC0415
+    from psycopg_pool import AsyncConnectionPool  # noqa: PLC0415
 
-    from acolyte.config.settings import Settings
-    from acolyte.domain.fusion import RRFFusion
-    from acolyte.gateway.checkpoint_factory import create_checkpointer
-    from acolyte.gateway.memory_content_store import MemoryContentStore
-    from acolyte.gateway.ollama_gw import OllamaGateway
-    from acolyte.gateway.postgres_job_gw import PostgresJobGateway
-    from acolyte.gateway.postgres_report_gw import PostgresReportGateway
-    from acolyte.gateway.search_indexer_gw import SearchIndexerGateway
-    from acolyte.handler.connect_service import AcolyteConnectService
-    from acolyte.infra.logging import configure_logging
-    from acolyte.usecase.graph.report_graph import build_report_graph
+    from acolyte.config.settings import Settings  # noqa: PLC0415
+    from acolyte.domain.fusion import RRFFusion  # noqa: PLC0415
+    from acolyte.gateway.checkpoint_factory import create_checkpointer  # noqa: PLC0415
+    from acolyte.gateway.memory_content_store import MemoryContentStore  # noqa: PLC0415
+    from acolyte.gateway.ollama_gw import OllamaGateway  # noqa: PLC0415
+    from acolyte.gateway.postgres_job_gw import PostgresJobGateway  # noqa: PLC0415
+    from acolyte.gateway.postgres_report_gw import PostgresReportGateway  # noqa: PLC0415
+    from acolyte.gateway.search_indexer_gw import SearchIndexerGateway  # noqa: PLC0415
+    from acolyte.handler.connect_service import AcolyteConnectService  # noqa: PLC0415
+    from acolyte.infra.logging import configure_logging  # noqa: PLC0415
+    from acolyte.usecase.graph.report_graph import build_report_graph  # noqa: PLC0415
 
     settings = Settings()
     if not settings.checkpoint_enabled:
@@ -59,8 +60,6 @@ async def _resume(run_id: str) -> None:
         job_gw = PostgresJobGateway(pool)
 
         # Resolve run -> report -> brief
-        from uuid import UUID
-
         run = await job_gw.get_run(UUID(run_id))
         if run is None:
             logger.error("Run not found", run_id=run_id)

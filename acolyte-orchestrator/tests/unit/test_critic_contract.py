@@ -7,6 +7,7 @@ from acolyte.usecase.graph.nodes.critic_node import (
     detect_insufficient_citations,
     detect_novelty_violation,
 )
+from acolyte.usecase.graph.state import SectionCitationDict
 
 # --- FM9: Insufficient citations ---
 
@@ -14,7 +15,7 @@ from acolyte.usecase.graph.nodes.critic_node import (
 def test_detect_insufficient_citations_below_minimum() -> None:
     """Section with min_citations=3 but only 1 citation → FM9 detection."""
     outline = [{"key": "analysis", "section_role": "analysis", "min_citations": 3}]
-    section_citations = {"analysis": [{"claim_id": "a-1", "source_id": "art-1"}]}
+    section_citations: dict[str, list[SectionCitationDict]] = {"analysis": [{"claim_id": "a-1", "source_id": "art-1"}]}
 
     detections = detect_insufficient_citations(outline, section_citations)
     assert len(detections) == 1
@@ -26,7 +27,7 @@ def test_detect_insufficient_citations_below_minimum() -> None:
 def test_detect_insufficient_citations_meets_minimum() -> None:
     """Section with min_citations=2 and 2 citations → no detection."""
     outline = [{"key": "analysis", "section_role": "analysis", "min_citations": 2}]
-    section_citations = {
+    section_citations: dict[str, list[SectionCitationDict]] = {
         "analysis": [
             {"claim_id": "a-1", "source_id": "art-1"},
             {"claim_id": "a-2", "source_id": "art-2"},

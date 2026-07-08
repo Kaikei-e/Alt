@@ -23,6 +23,12 @@ META_PATTERNS = [
 
 MIN_SECTION_LENGTH = 200
 
+_MIN_SIGNIFICANT_WORD_LENGTH = 2
+_TOPIC_WORD_MATCH_RATIO_THRESHOLD = 0.5
+_MIN_SECTIONS_FOR_DUPLICATION_CHECK = 2
+_SECTION_DUPLICATION_OVERLAP_THRESHOLD = 0.3
+_MIN_BIGRAM_CHARS = 2
+
 
 @dataclass(frozen=True)
 class ChecklistItem:
@@ -56,14 +62,14 @@ class ChecklistEvaluator:
 
         # Check if topic keywords appear in generated content
         all_text = " ".join(sections.values()).lower()
-        topic_words = [w.strip().lower() for w in topic.split() if len(w.strip()) > 2]
+        topic_words = [w.strip().lower() for w in topic.split() if len(w.strip()) > _MIN_SIGNIFICANT_WORD_LENGTH]
         if topic_words:
             matched = sum(1 for w in topic_words if w in all_text)
             ratio = matched / len(topic_words)
             items.append(
                 ChecklistItem(
                     name="topic_in_content",
-                    passed=ratio >= 0.5,
+                    passed=ratio >= _TOPIC_WORD_MATCH_RATIO_THRESHOLD,
                     detail=f"{matched}/{len(topic_words)} topic words found",
                 )
             )
@@ -134,7 +140,7 @@ class ChecklistEvaluator:
 
         # Check for section duplication (bigram overlap between sections)
         section_bodies = list(sections.values())
-        if len(section_bodies) >= 2:
+        if len(section_bodies) >= _MIN_SECTIONS_FOR_DUPLICATION_CHECK:
             max_overlap = 0.0
             for i in range(len(section_bodies)):
                 for j in range(i + 1, len(section_bodies)):
@@ -143,7 +149,7 @@ class ChecklistEvaluator:
             items.append(
                 ChecklistItem(
                     name="low_section_duplication",
-                    passed=max_overlap < 0.3,
+                    passed=max_overlap < _SECTION_DUPLICATION_OVERLAP_THRESHOLD,
                     detail=f"max_bigram_overlap={max_overlap:.2f}",
                 )
             )
@@ -165,7 +171,7 @@ class ChecklistEvaluator:
 
 def _bigram_overlap(text_a: str, text_b: str) -> float:
     """Jaccard similarity of character bigrams between two texts."""
-    if len(text_a) < 2 or len(text_b) < 2:
+    if len(text_a) < _MIN_BIGRAM_CHARS or len(text_b) < _MIN_BIGRAM_CHARS:
         return 0.0
     bigrams_a = {text_a[i : i + 2] for i in range(len(text_a) - 1)}
     bigrams_b = {text_b[i : i + 2] for i in range(len(text_b) - 1)}

@@ -115,7 +115,7 @@ async def test_variant_failure_degrades_to_primary() -> None:
         call_count += 1
         if call_count == 1:
             return [_article_hit("a1", score=0.9)]
-        raise httpx.ConnectError("Variant search failed")
+        raise httpx.ConnectError("Variant search failed")  # noqa: TRY003 — simulating a real httpx exception
 
     evidence.search_articles = AsyncMock(side_effect=mock_search)
 

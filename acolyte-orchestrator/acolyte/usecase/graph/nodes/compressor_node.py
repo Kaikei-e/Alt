@@ -22,13 +22,8 @@ if TYPE_CHECKING:
 logger = structlog.get_logger(__name__)
 
 
-def _collect_queries_for_articles(
-    curated_by_section: dict[str, list[dict]],
-    outline: list[dict],
-    brief: dict,
-) -> dict[str, list[str]]:
-    """Build per-article query context. Prioritises query_facets over search_queries."""
-    # Build section_key → queries lookup from outline
+def _section_queries_from_outline(outline: list[dict]) -> dict[str, list[str]]:
+    """Build section_key → queries lookup. Prioritises query_facets over search_queries."""
     section_queries: dict[str, list[str]] = {}
     for section in outline:
         key = section.get("key", "")
@@ -44,6 +39,25 @@ def _collect_queries_for_articles(
         if not queries:
             queries = list(section.get("search_queries", []))
         section_queries[key] = queries
+    return section_queries
+
+
+def _add_topic_fallback(article_queries: dict[str, list[str]], topic: str) -> None:
+    """Always include topic as fallback context for every article."""
+    if not topic:
+        return
+    for queries in article_queries.values():
+        if topic not in queries:
+            queries.append(topic)
+
+
+def _collect_queries_for_articles(
+    curated_by_section: dict[str, list[dict]],
+    outline: list[dict],
+    brief: dict,
+) -> dict[str, list[str]]:
+    """Build per-article query context. Prioritises query_facets over search_queries."""
+    section_queries = _section_queries_from_outline(outline)
 
     # Map article_id → union of queries from all sections that curated it
     article_queries: dict[str, list[str]] = {}
@@ -57,12 +71,7 @@ def _collect_queries_for_articles(
                     if q not in existing:
                         existing.append(q)
 
-    # Always include topic as fallback context
-    topic = brief.get("topic", "")
-    if topic:
-        for aid in article_queries:
-            if topic not in article_queries[aid]:
-                article_queries[aid].append(topic)
+    _add_topic_fallback(article_queries, brief.get("topic", ""))
 
     return article_queries
 

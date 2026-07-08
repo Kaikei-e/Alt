@@ -11,21 +11,21 @@ from evaluation.dataset import EvalCase
 from evaluation.generators.recorded_fixture import RecordedFixtureGenerator, slugify
 
 
-def test_slugify_ascii_topic_returns_dashed_lowercase():
+def test_slugify_ascii_topic_returns_dashed_lowercase() -> None:
     assert slugify("2026 Q1 AI chip market outlook") == "2026-q1-ai-chip-market-outlook"
 
 
-def test_slugify_japanese_topic_returns_sha_prefixed_slug():
+def test_slugify_japanese_topic_returns_sha_prefixed_slug() -> None:
     slug = slugify("電気自動車バッテリー技術")
     assert slug.startswith("topic-")
     assert len(slug) == len("topic-") + 12
 
 
-def test_slugify_strips_leading_trailing_dashes():
+def test_slugify_strips_leading_trailing_dashes() -> None:
     assert slugify("-- abc !! ") == "abc"
 
 
-def test_recorded_fixture_reads_json(tmp_path: Path):
+def test_recorded_fixture_reads_json(tmp_path: Path) -> None:
     fixtures = tmp_path / "fix"
     fixtures.mkdir()
     path = fixtures / "topic.json"
@@ -47,7 +47,7 @@ def test_recorded_fixture_reads_json(tmp_path: Path):
     assert ev == {"S1": "quote"}
 
 
-def test_recorded_fixture_missing_file_raises(tmp_path: Path):
+def test_recorded_fixture_missing_file_raises(tmp_path: Path) -> None:
     gen = RecordedFixtureGenerator(tmp_path)
     with pytest.raises(FileNotFoundError):
         gen(EvalCase(topic="not-there", query_lang="en", gold_source_ids=frozenset()))

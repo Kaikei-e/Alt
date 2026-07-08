@@ -17,8 +17,8 @@ class MockRubricJudge:
 
     def __init__(self, mock_score: float = 0.5) -> None:
         if not 0.0 <= mock_score <= 1.0:
-            raise ValueError(f"mock_score must be in [0.0, 1.0], got {mock_score}")
+            raise ValueError(f"mock_score must be in [0.0, 1.0], got {mock_score}")  # noqa: TRY003 — mock-only ctor guard
         self._score = mock_score
 
-    def __call__(self, prompt: str) -> float:  # noqa: ARG002 - accepts prompt to satisfy judge signature
+    def __call__(self, prompt: str) -> float:
         return self._score

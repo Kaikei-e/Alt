@@ -135,7 +135,7 @@ class PostgresReportGateway:
         next_cursor = reports[-1].created_at.isoformat() if len(rows) > limit else None
         return reports, next_cursor
 
-    async def bump_version(
+    async def bump_version(  # noqa: PLR0913 — implements ReportRepositoryPort's bump_version() signature
         self,
         report_id: UUID,
         expected_version: int,
@@ -148,51 +148,50 @@ class PostgresReportGateway:
         summary_snapshot: str | None = None,
     ) -> int:
         """Bump report version with optimistic locking."""
-        async with self._pool.connection() as conn:
-            async with conn.transaction():
-                cur = await conn.execute(
-                    "UPDATE reports SET current_version = current_version + 1 "
-                    "WHERE report_id = %s AND current_version = %s "
-                    "RETURNING current_version",
-                    [report_id, expected_version],
-                )
-                row = await cur.fetchone()
-                if row is None:
-                    raise StaleVersionError(report_id, expected_version)
-                new_version = row[0]
+        async with self._pool.connection() as conn, conn.transaction():
+            cur = await conn.execute(
+                "UPDATE reports SET current_version = current_version + 1 "
+                "WHERE report_id = %s AND current_version = %s "
+                "RETURNING current_version",
+                [report_id, expected_version],
+            )
+            row = await cur.fetchone()
+            if row is None:
+                raise StaleVersionError(report_id, expected_version)
+            new_version = row[0]
 
+            await conn.execute(
+                "INSERT INTO report_versions "
+                "(report_id, version_no, change_reason, prompt_template_version, "
+                "scope_snapshot, outline_snapshot, summary_snapshot) "
+                "VALUES (%s, %s, %s, %s, %s, %s, %s)",
+                [
+                    report_id,
+                    new_version,
+                    change_reason,
+                    prompt_template_version,
+                    json.dumps(scope_snapshot) if scope_snapshot else None,
+                    json.dumps(outline_snapshot) if outline_snapshot else None,
+                    summary_snapshot,
+                ],
+            )
+
+            for item in change_items:
                 await conn.execute(
-                    "INSERT INTO report_versions "
-                    "(report_id, version_no, change_reason, prompt_template_version, "
-                    "scope_snapshot, outline_snapshot, summary_snapshot) "
-                    "VALUES (%s, %s, %s, %s, %s, %s, %s)",
+                    "INSERT INTO report_change_items "
+                    "(report_id, version_no, field_name, change_kind, old_fingerprint, new_fingerprint) "
+                    "VALUES (%s, %s, %s, %s, %s, %s)",
                     [
                         report_id,
                         new_version,
-                        change_reason,
-                        prompt_template_version,
-                        json.dumps(scope_snapshot) if scope_snapshot else None,
-                        json.dumps(outline_snapshot) if outline_snapshot else None,
-                        summary_snapshot,
+                        item.field_name,
+                        item.change_kind,
+                        item.old_fingerprint,
+                        item.new_fingerprint,
                     ],
                 )
 
-                for item in change_items:
-                    await conn.execute(
-                        "INSERT INTO report_change_items "
-                        "(report_id, version_no, field_name, change_kind, old_fingerprint, new_fingerprint) "
-                        "VALUES (%s, %s, %s, %s, %s, %s)",
-                        [
-                            report_id,
-                            new_version,
-                            item.field_name,
-                            item.change_kind,
-                            item.old_fingerprint,
-                            item.new_fingerprint,
-                        ],
-                    )
-
-                return new_version
+            return new_version
 
     async def get_report_version(self, report_id: UUID, version_no: int) -> ReportVersion | None:
         async with self._pool.connection() as conn:
@@ -304,27 +303,26 @@ class PostgresReportGateway:
         body: str,
         citations: list[dict] | None = None,
     ) -> int:
-        async with self._pool.connection() as conn:
-            async with conn.transaction():
-                cur = await conn.execute(
-                    "UPDATE report_sections SET current_version = current_version + 1 "
-                    "WHERE report_id = %s AND section_key = %s AND current_version = %s "
-                    "RETURNING current_version",
-                    [report_id, section_key, expected_version],
-                )
-                row = await cur.fetchone()
-                if row is None:
-                    raise StaleVersionError(report_id, expected_version)
-                new_version = row[0]
+        async with self._pool.connection() as conn, conn.transaction():
+            cur = await conn.execute(
+                "UPDATE report_sections SET current_version = current_version + 1 "
+                "WHERE report_id = %s AND section_key = %s AND current_version = %s "
+                "RETURNING current_version",
+                [report_id, section_key, expected_version],
+            )
+            row = await cur.fetchone()
+            if row is None:
+                raise StaleVersionError(report_id, expected_version)
+            new_version = row[0]
 
-                await conn.execute(
-                    "INSERT INTO report_section_versions "
-                    "(report_id, section_key, version_no, body, citations_jsonb) "
-                    "VALUES (%s, %s, %s, %s, %s)",
-                    [report_id, section_key, new_version, body, json.dumps(citations or [])],
-                )
+            await conn.execute(
+                "INSERT INTO report_section_versions "
+                "(report_id, section_key, version_no, body, citations_jsonb) "
+                "VALUES (%s, %s, %s, %s, %s)",
+                [report_id, section_key, new_version, body, json.dumps(citations or [])],
+            )
 
-                return new_version
+            return new_version
 
     async def has_active_run(self, report_id: UUID) -> bool:
         async with self._pool.connection() as conn:

@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
+from urllib.parse import urlparse, urlunparse
 
 from pydantic_settings import BaseSettings
 
@@ -142,15 +144,13 @@ class Settings(BaseSettings):
         """Resolve DB DSN, replacing password from file if configured."""
         if self.acolyte_db_password_file:
             try:
-                with open(self.acolyte_db_password_file) as f:
+                with Path(self.acolyte_db_password_file).open() as f:
                     password = f.read().strip()
             except OSError as exc:
-                raise RuntimeError(
+                raise RuntimeError(  # noqa: TRY003 — fail-fast startup config error, single call site
                     f"Failed to read acolyte_db_password_file={self.acolyte_db_password_file!r}: {exc}"
                 ) from exc
             # Replace password placeholder in DSN
-            from urllib.parse import urlparse, urlunparse
-
             parsed = urlparse(self.acolyte_db_dsn)
             replaced = parsed._replace(netloc=f"{parsed.username}:{password}@{parsed.hostname}:{parsed.port}")
             return str(urlunparse(replaced))

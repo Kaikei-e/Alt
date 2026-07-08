@@ -20,6 +20,9 @@ from dataclasses import dataclass
 # Minimum relevance score to consider a sentence relevant (selective augmentation).
 _RELEVANCE_THRESHOLD = 0.01
 
+# Minimum character count to form a bigram (or a meaningful CJK query chunk).
+_MIN_BIGRAM_CHARS = 2
+
 
 @dataclass(frozen=True)
 class CompressedSpan:
@@ -70,7 +73,7 @@ def split_sentences(text: str) -> list[tuple[str, int]]:
 def _cjk_bigrams(text: str) -> set[tuple[str, str]]:
     """Extract character bigrams from CJK portions of text."""
     cjk_chars = "".join(_CJK_CHAR_RE.findall(text))
-    if len(cjk_chars) < 2:
+    if len(cjk_chars) < _MIN_BIGRAM_CHARS:
         return set()
     return {(cjk_chars[i], cjk_chars[i + 1]) for i in range(len(cjk_chars) - 1)}
 
@@ -221,6 +224,6 @@ def _extract_query_terms(queries: list[str]) -> set[str]:
         # Extract CJK chunks (contiguous CJK characters, excluding punctuation)
         cjk_chunks = re.findall(r"[\u3040-\u309f\u30a0-\u30ff\u4e00-\u9fff]+", q)
         for chunk in cjk_chunks:
-            if len(chunk) >= 2:
+            if len(chunk) >= _MIN_BIGRAM_CHARS:
                 terms.add(chunk)
     return terms

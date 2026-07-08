@@ -20,6 +20,14 @@ from evaluation.dataset import EvalCase
 class DBReplayError(RuntimeError):
     """Raised when a case cannot be materialised from database state."""
 
+    @classmethod
+    def report_not_found(cls, topic: str) -> DBReplayError:
+        return cls(f"no report titled {topic!r}")
+
+    @classmethod
+    def section_not_found(cls, section_key: str, report_id: str) -> DBReplayError:
+        return cls(f"no section {section_key!r} for report {report_id}")
+
 
 class DBReplayGenerator:
     """Generator that rebuilds the four run_eval arguments from DB rows.
@@ -29,7 +37,13 @@ class DBReplayGenerator:
     depend on psycopg at import time.
     """
 
-    def __init__(self, acolyte_db: Any, alt_db: Any, *, section_key: str = "analysis") -> None:
+    def __init__(
+        self,
+        acolyte_db: Any,  # noqa: ANN401 — psycopg connection, kept as Any to avoid a psycopg import-time dep
+        alt_db: Any,  # noqa: ANN401 — same as acolyte_db
+        *,
+        section_key: str = "analysis",
+    ) -> None:
         self._acolyte = acolyte_db
         self._alt = alt_db
         self._section = section_key
@@ -50,7 +64,7 @@ class DBReplayGenerator:
             )
             row = cur.fetchone()
         if not row:
-            raise DBReplayError(f"no report titled {topic!r}")
+            raise DBReplayError.report_not_found(topic)
         return str(row[0])
 
     def _latest_section(self, report_id: str, section_key: str) -> tuple[str, list[dict]]:
@@ -66,9 +80,7 @@ class DBReplayGenerator:
             )
             row = cur.fetchone()
         if not row:
-            raise DBReplayError(
-                f"no section '{section_key}' for report {report_id}",
-            )
+            raise DBReplayError.section_not_found(section_key, report_id)
         body = str(row[0] or "")
         raw = row[1]
         if isinstance(raw, str):

@@ -7,6 +7,7 @@ from acolyte.usecase.graph.nodes.critic_node import (
     _claim_synthesis_ratio,
     detect_conclusion_analysis_duplication,
 )
+from acolyte.usecase.graph.state import SectionParagraphDict
 
 
 def test_detect_conclusion_analysis_duplication_high_overlap() -> None:
@@ -90,7 +91,7 @@ def test_fm8_high_overlap_low_synthesis_is_blocking() -> None:
         {"key": "conclusion", "section_role": "conclusion"},
     ]
     # Paragraphs that reference only a single shared source (no synthesis)
-    section_paragraphs = {
+    section_paragraphs: dict[str, list[SectionParagraphDict]] = {
         "analysis": [{"claim_id": "a-1", "body": "text", "citations": [{"source_id": "src1"}]}],
         "conclusion": [{"claim_id": "c-1", "body": "text", "citations": [{"source_id": "src1"}]}],
     }
@@ -115,7 +116,7 @@ def test_fm8_high_overlap_high_synthesis_is_warning() -> None:
         {"key": "conclusion", "section_role": "conclusion"},
     ]
     # Paragraphs that reference multiple analysis-cited sources (cross-source synthesis)
-    section_paragraphs = {
+    section_paragraphs: dict[str, list[SectionParagraphDict]] = {
         "analysis": [
             {"claim_id": "a-1", "body": "text", "citations": [{"source_id": "src1"}]},
             {"claim_id": "a-2", "body": "text", "citations": [{"source_id": "src2"}]},
@@ -133,7 +134,7 @@ def test_fm8_high_overlap_high_synthesis_is_warning() -> None:
 
 def test_claim_synthesis_ratio_single_claim_is_zero() -> None:
     """Paragraphs referencing a single analysis-cited source → synthesis ratio 0."""
-    section_paragraphs = {
+    section_paragraphs: dict[str, list[SectionParagraphDict]] = {
         "conclusion": [
             {"claim_id": "c-1", "body": "text", "citations": [{"source_id": "a-1"}]},
             {"claim_id": "c-2", "body": "text", "citations": [{"source_id": "a-2"}]},
@@ -146,7 +147,7 @@ def test_claim_synthesis_ratio_single_claim_is_zero() -> None:
 
 def test_claim_synthesis_ratio_cross_claim_is_high() -> None:
     """Paragraphs referencing multiple analysis-cited sources → high synthesis ratio."""
-    section_paragraphs = {
+    section_paragraphs: dict[str, list[SectionParagraphDict]] = {
         "conclusion": [
             {"claim_id": "c-1", "body": "text", "citations": [{"source_id": "a-1"}, {"source_id": "a-2"}]},
             {"claim_id": "c-2", "body": "text", "citations": [{"source_id": "a-2"}, {"source_id": "a-3"}]},

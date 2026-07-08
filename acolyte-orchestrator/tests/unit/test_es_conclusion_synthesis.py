@@ -10,6 +10,8 @@ Acceptance criteria (exec3.md):
 
 from __future__ import annotations
 
+from typing import cast
+
 import pytest
 
 from acolyte.port.llm_provider import LLMResponse
@@ -18,6 +20,7 @@ from acolyte.usecase.graph.nodes.section_planner_node import (
     _deterministic_es_claims,
 )
 from acolyte.usecase.graph.nodes.writer_node import WriterNode
+from acolyte.usecase.graph.state import PlannedClaimDict, ReportGenerationState
 
 
 class FakeLLM:
@@ -75,14 +78,14 @@ async def test_writer_conclusion_nonempty_when_claims_empty() -> None:
     llm = FakeLLM("Fallback content.")
     node = WriterNode(llm)
 
-    state = {
+    state: ReportGenerationState = {
         "outline": [
             {"key": "analysis", "title": "Analysis", "section_role": "analysis"},
             {"key": "conclusion", "title": "Conclusion", "section_role": "conclusion"},
         ],
         "curated": [],
         "curated_by_section": {},
-        "claim_plans": {"analysis": _make_analysis_claims(2), "conclusion": []},
+        "claim_plans": {"analysis": cast(list[PlannedClaimDict], _make_analysis_claims(2)), "conclusion": []},
         "brief": {"topic": "AI semiconductor market"},
         "sections": {},
     }
@@ -100,7 +103,7 @@ async def test_writer_es_nonempty_when_claims_empty() -> None:
     llm = FakeLLM("Generated paragraph.")
     node = WriterNode(llm)
 
-    state = {
+    state: ReportGenerationState = {
         "outline": [
             {"key": "executive_summary", "title": "Executive Summary", "section_role": "executive_summary"},
             {"key": "analysis", "title": "Analysis", "section_role": "analysis"},
@@ -109,7 +112,7 @@ async def test_writer_es_nonempty_when_claims_empty() -> None:
         "curated": [],
         "curated_by_section": {},
         "claim_plans": {
-            "analysis": _make_analysis_claims(2),
+            "analysis": cast(list[PlannedClaimDict], _make_analysis_claims(2)),
             "conclusion": [
                 {
                     "claim_id": "conclusion-1",
@@ -182,7 +185,7 @@ async def test_writer_conclusion_prompt_includes_analysis_context() -> None:
     llm = FakeLLM("Conclusion content.")
     node = WriterNode(llm)
 
-    state = {
+    state: ReportGenerationState = {
         "outline": [
             {"key": "analysis", "title": "Analysis", "section_role": "analysis"},
             {"key": "conclusion", "title": "Conclusion", "section_role": "conclusion"},
@@ -190,7 +193,7 @@ async def test_writer_conclusion_prompt_includes_analysis_context() -> None:
         "curated": [],
         "curated_by_section": {},
         "claim_plans": {
-            "analysis": _make_analysis_claims(1),
+            "analysis": cast(list[PlannedClaimDict], _make_analysis_claims(1)),
             "conclusion": [
                 {
                     "claim_id": "conclusion-1",
@@ -223,7 +226,7 @@ async def test_writer_conclusion_prefers_accepted_analysis_claims_over_planner_c
     llm = FakeLLM("Conclusion content.")
     node = WriterNode(llm)
 
-    state = {
+    state: ReportGenerationState = {
         "outline": [
             {"key": "analysis", "title": "Analysis", "section_role": "analysis"},
             {"key": "conclusion", "title": "Conclusion", "section_role": "conclusion"},
@@ -231,7 +234,7 @@ async def test_writer_conclusion_prefers_accepted_analysis_claims_over_planner_c
         "curated": [],
         "curated_by_section": {},
         "claim_plans": {
-            "analysis": _make_analysis_claims(1),
+            "analysis": cast(list[PlannedClaimDict], _make_analysis_claims(1)),
             "conclusion": [
                 {
                     "claim_id": "conclusion-planner-1",
@@ -264,7 +267,7 @@ async def test_writer_es_renders_deterministically_no_llm() -> None:
     llm = FakeLLM("ES content.")
     node = WriterNode(llm)
 
-    state = {
+    state: ReportGenerationState = {
         "outline": [
             {"key": "executive_summary", "title": "Executive Summary", "section_role": "executive_summary"},
             {"key": "analysis", "title": "Analysis", "section_role": "analysis"},
@@ -272,7 +275,7 @@ async def test_writer_es_renders_deterministically_no_llm() -> None:
         "curated": [],
         "curated_by_section": {},
         "claim_plans": {
-            "analysis": _make_analysis_claims(1),
+            "analysis": cast(list[PlannedClaimDict], _make_analysis_claims(1)),
             "executive_summary": [
                 {
                     "claim_id": "es-1",
@@ -305,7 +308,7 @@ async def test_writer_es_uses_accepted_claims_for_rendering() -> None:
     llm = FakeLLM("ES content.")
     node = WriterNode(llm)
 
-    state = {
+    state: ReportGenerationState = {
         "outline": [
             {"key": "analysis", "title": "Analysis", "section_role": "analysis"},
             {"key": "executive_summary", "title": "Executive Summary", "section_role": "executive_summary"},
@@ -313,7 +316,7 @@ async def test_writer_es_uses_accepted_claims_for_rendering() -> None:
         "curated": [],
         "curated_by_section": {},
         "claim_plans": {
-            "analysis": _make_analysis_claims(1),
+            "analysis": cast(list[PlannedClaimDict], _make_analysis_claims(1)),
             "executive_summary": [
                 {
                     "claim_id": "es-planner-1",
@@ -347,7 +350,7 @@ async def test_writer_conclusion_context_is_truncated() -> None:
     llm = FakeLLM("Conclusion.")
     node = WriterNode(llm)
 
-    state = {
+    state: ReportGenerationState = {
         "outline": [
             {"key": "analysis", "title": "Analysis", "section_role": "analysis"},
             {"key": "conclusion", "title": "Conclusion", "section_role": "conclusion"},
@@ -355,7 +358,7 @@ async def test_writer_conclusion_context_is_truncated() -> None:
         "curated": [],
         "curated_by_section": {},
         "claim_plans": {
-            "analysis": _make_analysis_claims(1),
+            "analysis": cast(list[PlannedClaimDict], _make_analysis_claims(1)),
             "conclusion": [
                 {
                     "claim_id": "conclusion-1",

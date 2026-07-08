@@ -10,7 +10,7 @@ import pytest
 
 from acolyte.port.llm_provider import LLMResponse
 from acolyte.usecase.graph.nodes.writer_node import WriterNode
-from acolyte.usecase.graph.state import ReportGenerationState
+from acolyte.usecase.graph.state import PlannedClaimDict, ReportGenerationState
 
 
 class FakeLLM:
@@ -25,7 +25,7 @@ class FakeLLM:
         return LLMResponse(text=text, model="fake")
 
 
-def _make_claims(n: int = 2) -> list[dict]:
+def _make_claims(n: int = 2) -> list[PlannedClaimDict]:
     return [
         {
             "claim_id": f"analysis-{i}",

@@ -7,7 +7,7 @@ and can resume from the last successful super-step after failure.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TypedDict
+from typing import Any, TypedDict
 from uuid import uuid4
 
 import pytest
@@ -44,7 +44,7 @@ async def node_b_fail_once(state: ResumeState) -> dict:
     """Simulates a node that fails on first call, succeeds on retry."""
     _fail_once_tracker["node_b"] += 1
     if _fail_once_tracker["node_b"] == 1:
-        raise RuntimeError("Simulated mid-pipeline failure")
+        raise RuntimeError("Simulated mid-pipeline failure")  # noqa: TRY003 — test fixture, no custom exception needed
     return {"sections": {"analysis": "Generated content."}}
 
 
@@ -160,7 +160,11 @@ async def test_incremental_quote_selector_resume_preserves_processed_articles() 
             self.failed = False
             self.calls: list[str] = []
 
-        async def _select_quotes(self, *args, **kwargs):  # type: ignore[override]
+        async def _select_quotes(  # type: ignore[override]
+            self,
+            *args: Any,  # noqa: ANN401 — forwards untyped to the real override signature
+            **kwargs: Any,  # noqa: ANN401
+        ) -> list[dict]:
             source_id = args[0]
             self.calls.append(source_id)
             if source_id == "art-2" and not self.failed:
@@ -182,7 +186,7 @@ async def test_incremental_quote_selector_resume_preserves_processed_articles() 
     )
     compiled = graph.compile(checkpointer=MemorySaver())
 
-    config = {"configurable": {"thread_id": f"acolyte-run:{uuid4()}"}}  # noqa: DTZ005
+    config = {"configurable": {"thread_id": f"acolyte-run:{uuid4()}"}}
     initial_state = {
         "curated_by_section": {"analysis": [{"id": "art-1", "title": "A1"}, {"id": "art-2", "title": "A2"}]},
         "hydrated_evidence": {
@@ -245,7 +249,7 @@ async def test_incremental_fact_normalizer_resume_preserves_processed_quotes() -
     )
     compiled = graph.compile(checkpointer=MemorySaver())
 
-    config = {"configurable": {"thread_id": f"acolyte-run:{uuid4()}"}}  # noqa: DTZ005
+    config = {"configurable": {"thread_id": f"acolyte-run:{uuid4()}"}}
     initial_state = {
         "selected_quotes": [
             {"text": "AI market grew 20%", "source_id": "art-1", "section_key": "analysis"},

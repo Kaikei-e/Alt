@@ -6,7 +6,7 @@ from acolyte.domain.executive_summary import ExecutiveSummaryRenderer
 
 
 class TestExecutiveSummaryRenderer:
-    def test_produces_nonempty_body(self):
+    def test_produces_nonempty_body(self) -> None:
         """Claims → non-empty Japanese summary string."""
         claims = [
             {
@@ -33,7 +33,7 @@ class TestExecutiveSummaryRenderer:
         assert body
         assert len(body) > 0
 
-    def test_includes_numeric_facts(self):
+    def test_includes_numeric_facts(self) -> None:
         """Body must contain numeric data from claims."""
         claims = [
             {
@@ -48,7 +48,7 @@ class TestExecutiveSummaryRenderer:
         body = renderer.render(claims, topic="市場動向")
         assert "50億ドル" in body
 
-    def test_respects_max_claims(self):
+    def test_respects_max_claims(self) -> None:
         """Should not produce more sentences than claims provided."""
         claims = [
             {
@@ -66,13 +66,13 @@ class TestExecutiveSummaryRenderer:
         sentence_count = body.count("。")
         assert sentence_count <= 5
 
-    def test_empty_claims_returns_empty(self):
+    def test_empty_claims_returns_empty(self) -> None:
         """No claims → empty string."""
         renderer = ExecutiveSummaryRenderer()
         body = renderer.render([], topic="テスト")
         assert body == ""
 
-    def test_citations_from_evidence_ids(self):
+    def test_citations_from_evidence_ids(self) -> None:
         """Renderer must produce citations from claims' evidence_ids."""
         claims = [
             {

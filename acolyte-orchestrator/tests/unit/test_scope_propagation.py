@@ -3,14 +3,15 @@
 from __future__ import annotations
 
 import json
-from datetime import datetime
-from uuid import uuid4
+from datetime import UTC, datetime
+from typing import cast
+from uuid import UUID, uuid4
 
 import pytest
 
 from acolyte.domain.brief import ReportBrief
-from acolyte.domain.report import Report
-from acolyte.port.evidence_provider import ArticleHit, RecapHit
+from acolyte.domain.report import ChangeItem, Report, ReportSection, ReportVersion, SectionVersion
+from acolyte.port.evidence_provider import ArticleHit, ArticleMetadata, RecapHit
 from acolyte.port.llm_provider import LLMResponse
 from acolyte.usecase.graph.report_graph import build_report_graph
 
@@ -53,7 +54,7 @@ class FakeEvidence:
     ) -> list[ArticleHit]:
         return [ArticleHit(article_id="art-1", title="Test", tags=["AI"], score=0.9)]
 
-    async def fetch_article_metadata(self, article_ids: list[str]) -> list:
+    async def fetch_article_metadata(self, article_ids: list[str]) -> list[ArticleMetadata]:
         return []
 
     async def fetch_article_body(self, article_id: str) -> str:
@@ -65,14 +66,12 @@ class FakeEvidence:
 
 class FakeReportRepo:
     def __init__(self) -> None:
-        self.reports = {}
-        self.briefs = {}
-        self.sections = {}
-        self.last_scope_snapshot = None
+        self.reports: dict[UUID, Report] = {}
+        self.briefs: dict[UUID, ReportBrief] = {}
+        self.sections: dict[UUID, list[ReportSection]] = {}
+        self.last_scope_snapshot: dict | None = None
 
     async def create_report(self, title: str, report_type: str) -> Report:
-        from datetime import UTC, datetime
-
         rid = uuid4()
         report = Report(
             report_id=rid,
@@ -86,22 +85,27 @@ class FakeReportRepo:
         self.sections[rid] = []
         return report
 
-    async def create_brief(self, report_id, brief: ReportBrief) -> None:
+    async def create_brief(self, report_id: UUID, brief: ReportBrief) -> None:
         self.briefs[report_id] = brief
 
-    async def get_brief(self, report_id) -> ReportBrief | None:
+    async def get_brief(self, report_id: UUID) -> ReportBrief | None:
         return self.briefs.get(report_id)
 
-    async def get_report(self, report_id):
+    async def get_report(self, report_id: UUID) -> Report | None:
         return self.reports.get(report_id)
 
-    async def get_sections(self, report_id):
+    async def get_sections(self, report_id: UUID) -> list[ReportSection]:
         return self.sections.get(report_id, [])
 
-    async def bump_version(self, report_id, expected_version, change_reason, change_items, **kwargs):
-        self.last_scope_snapshot = kwargs.get("scope_snapshot")
-        from acolyte.domain.report import Report
-
+    async def bump_version(
+        self,
+        report_id: UUID,
+        expected_version: int,
+        change_reason: str,
+        change_items: list[ChangeItem],
+        **kwargs: object,
+    ) -> int:
+        self.last_scope_snapshot = cast("dict | None", kwargs.get("scope_snapshot"))
         report = self.reports[report_id]
         new_v = expected_version + 1
         self.reports[report_id] = Report(
@@ -114,19 +118,22 @@ class FakeReportRepo:
         )
         return new_v
 
-    async def create_section(self, report_id, section_key, display_order):
-        from acolyte.domain.report import ReportSection
-
+    async def create_section(self, report_id: UUID, section_key: str, display_order: int) -> ReportSection:
         sec = ReportSection(
             report_id=report_id, section_key=section_key, current_version=0, display_order=display_order
         )
         self.sections.setdefault(report_id, []).append(sec)
         return sec
 
-    async def bump_section_version(self, report_id, section_key, expected_version, body, citations=None):
+    async def bump_section_version(
+        self,
+        report_id: UUID,
+        section_key: str,
+        expected_version: int,
+        body: str,
+        citations: list[dict] | None = None,
+    ) -> int:
         sections = self.sections.get(report_id, [])
-        from acolyte.domain.report import ReportSection
-
         for i, s in enumerate(sections):
             if s.section_key == section_key:
                 sections[i] = ReportSection(
@@ -138,25 +145,27 @@ class FakeReportRepo:
                 break
         return expected_version + 1
 
-    async def list_reports(self, cursor, limit):
+    async def list_reports(self, cursor: str | None, limit: int) -> tuple[list[Report], str | None]:
         return list(self.reports.values()), None
 
-    async def get_report_version(self, report_id, version_no):
+    async def get_report_version(self, report_id: UUID, version_no: int) -> ReportVersion | None:
         return None
 
-    async def list_report_versions(self, report_id, cursor, limit):
+    async def list_report_versions(
+        self, report_id: UUID, cursor: str | None, limit: int
+    ) -> tuple[list[ReportVersion], str | None]:
         return [], None
 
-    async def get_change_items(self, report_id, version_no):
+    async def get_change_items(self, report_id: UUID, version_no: int) -> list[ChangeItem]:
         return []
 
-    async def get_section_version(self, report_id, section_key, version_no):
+    async def get_section_version(self, report_id: UUID, section_key: str, version_no: int) -> SectionVersion | None:
         return None
 
-    async def has_active_run(self, report_id):
+    async def has_active_run(self, report_id: UUID) -> bool:
         return False
 
-    async def delete_report(self, report_id):
+    async def delete_report(self, report_id: UUID) -> None:
         self.reports.pop(report_id, None)
         self.briefs.pop(report_id, None)
         self.sections.pop(report_id, None)

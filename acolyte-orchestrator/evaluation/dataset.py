@@ -42,9 +42,9 @@ def load_cases(path: str | Path) -> list[EvalCase]:
     path = Path(path)
     cases: list[EvalCase] = []
     with path.open("r", encoding="utf-8") as fh:
-        for line in fh:
-            line = line.strip()
-            if not line or line.startswith("#"):
+        for raw_line in fh:
+            stripped = raw_line.strip()
+            if not stripped or stripped.startswith("#"):
                 continue
-            cases.append(EvalCase.from_dict(json.loads(line)))
+            cases.append(EvalCase.from_dict(json.loads(stripped)))
     return cases

@@ -50,7 +50,7 @@ def _news_creator_response(summary: str) -> dict:
     }
 
 
-def test_generate_text():
+def test_generate_text() -> None:
     """Verify contract for POST /api/v1/summarize (text generation)."""
     pact = _new_pact()
     request_body = {
@@ -82,7 +82,7 @@ def test_generate_text():
     pact.write_file(str(PACT_DIR), overwrite=True)
 
 
-def test_generate_text_with_streaming_disabled():
+def test_generate_text_with_streaming_disabled() -> None:
     """Verify contract for non-streaming summarization."""
     pact = _new_pact()
     request_body = {

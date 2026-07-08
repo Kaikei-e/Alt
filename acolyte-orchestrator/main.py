@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import os
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, suppress
 from typing import TYPE_CHECKING
 
 import httpx
@@ -15,7 +15,7 @@ from starlette.middleware import Middleware
 from starlette.responses import JSONResponse
 from starlette.routing import Mount, Route
 
-import acolyte.gen  # noqa: F401, I001 — must precede generated imports
+import acolyte.gen  # noqa: F401 — must precede generated imports
 from acolyte.config.settings import Settings
 from acolyte.domain.fusion import RRFFusion
 from acolyte.gateway.checkpoint_factory import create_checkpointer
@@ -35,6 +35,7 @@ from acolyte.usecase.graph.report_graph import build_report_graph
 if TYPE_CHECKING:
     from collections.abc import AsyncGenerator
 
+    from langgraph.graph.state import CompiledStateGraph
     from starlette.requests import Request
 
 
@@ -110,7 +111,7 @@ _hyde_generator = (
 )
 
 
-def _compile_graph(*, checkpointer: object | None = None):
+def _compile_graph(*, checkpointer: object | None = None) -> CompiledStateGraph:
     """Compile the LangGraph report pipeline with optional checkpointing."""
     return build_report_graph(
         _llm_gw,
@@ -163,10 +164,8 @@ def create_app() -> Starlette:
         finally:
             if cert_watch_task is not None:
                 cert_watch_task.cancel()
-                try:
+                with suppress(asyncio.CancelledError):
                     await cert_watch_task
-                except asyncio.CancelledError:
-                    pass
             await _http_client.aclose()
             await _pool.close()
             logger.info("Shutting down acolyte-orchestrator")

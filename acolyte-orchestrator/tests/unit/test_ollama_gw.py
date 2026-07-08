@@ -3,16 +3,19 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Callable, Coroutine
+from typing import Any
 
 import httpx
 import pytest
 
 from acolyte.config.settings import Settings
 from acolyte.gateway.ollama_gw import OllamaGateway
+from acolyte.port.llm_provider import LLMMode
 
 
-def _make_settings(**overrides) -> Settings:
-    defaults = {
+def _make_settings(**overrides: Any) -> Settings:  # noqa: ANN401 — heterogeneous Settings field overrides
+    defaults: dict[str, Any] = {
         "news_creator_url": "http://test-ollama:11434",
         "default_model": "gemma4:26b",
         "default_num_predict": 2000,
@@ -21,7 +24,7 @@ def _make_settings(**overrides) -> Settings:
     return Settings(**defaults)
 
 
-def _mock_transport(handler):
+def _mock_transport(handler: Callable[[httpx.Request], Coroutine[None, None, httpx.Response]]) -> httpx.AsyncClient:
     """Create an httpx.AsyncClient with a mock transport."""
     return httpx.AsyncClient(transport=httpx.MockTransport(handler))
 
@@ -30,7 +33,7 @@ def _mock_transport(handler):
 
 
 @pytest.mark.asyncio
-async def test_uses_chat_endpoint_for_structured_output():
+async def test_uses_chat_endpoint_for_structured_output() -> None:
     """When format is provided, gateway must use /api/chat."""
     captured_requests: list[httpx.Request] = []
 
@@ -63,7 +66,7 @@ async def test_uses_chat_endpoint_for_structured_output():
 
 
 @pytest.mark.asyncio
-async def test_uses_generate_endpoint_for_freetext():
+async def test_uses_generate_endpoint_for_freetext() -> None:
     """When format is NOT provided, gateway must use /api/generate."""
     captured_requests: list[httpx.Request] = []
 
@@ -93,7 +96,7 @@ async def test_uses_generate_endpoint_for_freetext():
 
 
 @pytest.mark.asyncio
-async def test_chat_response_extracts_eval_count():
+async def test_chat_response_extracts_eval_count() -> None:
     """completion_tokens must be populated from eval_count in /api/chat response."""
 
     async def handler(request: httpx.Request) -> httpx.Response:
@@ -117,7 +120,7 @@ async def test_chat_response_extracts_eval_count():
 
 
 @pytest.mark.asyncio
-async def test_chat_does_not_send_think_parameter():
+async def test_chat_does_not_send_think_parameter() -> None:
     """Structured output calls must NOT send think parameter (Gemma4 #15260)."""
     captured_requests: list[httpx.Request] = []
 
@@ -146,10 +149,8 @@ async def test_chat_does_not_send_think_parameter():
 
 
 @pytest.mark.asyncio
-async def test_structured_mode_uses_chat_endpoint():
+async def test_structured_mode_uses_chat_endpoint() -> None:
     """mode=STRUCTURED routes to /api/chat with temperature=0."""
-    from acolyte.port.llm_provider import LLMMode
-
     captured_requests: list[httpx.Request] = []
 
     async def handler(request: httpx.Request) -> httpx.Response:
@@ -175,14 +176,12 @@ async def test_structured_mode_uses_chat_endpoint():
 
 
 @pytest.mark.asyncio
-async def test_longform_mode_uses_chat_endpoint():
+async def test_longform_mode_uses_chat_endpoint() -> None:
     """mode=LONGFORM routes to /api/chat with think=false (top-level) to suppress thinking exhaustion.
 
     Ollama /api/generate ignores think=false for Qwen3.5 (#14793).
     /api/chat with top-level think=false works correctly for all models.
     """
-    from acolyte.port.llm_provider import LLMMode
-
     captured_requests: list[httpx.Request] = []
 
     async def handler(request: httpx.Request) -> httpx.Response:
@@ -217,10 +216,8 @@ async def test_longform_mode_uses_chat_endpoint():
 
 
 @pytest.mark.asyncio
-async def test_longform_think_setting_controls_think_param():
+async def test_longform_think_setting_controls_think_param() -> None:
     """longform_think=True sends think=true for freetext generation."""
-    from acolyte.port.llm_provider import LLMMode
-
     captured_requests: list[httpx.Request] = []
 
     async def handler(request: httpx.Request) -> httpx.Response:
@@ -244,14 +241,12 @@ async def test_longform_think_setting_controls_think_param():
 
 
 @pytest.mark.asyncio
-async def test_structured_no_format_uses_chat_freetext():
+async def test_structured_no_format_uses_chat_freetext() -> None:
     """mode=STRUCTURED without format routes to /api/chat with think=false.
 
     XML DSL nodes use STRUCTURED mode without format parameter.
     Must use /api/chat for Qwen3.5 think=false compatibility.
     """
-    from acolyte.port.llm_provider import LLMMode
-
     captured_requests: list[httpx.Request] = []
 
     async def handler(request: httpx.Request) -> httpx.Response:
@@ -279,10 +274,8 @@ async def test_structured_no_format_uses_chat_freetext():
 
 
 @pytest.mark.asyncio
-async def test_mode_defaults_overridden_by_explicit_kwargs():
+async def test_mode_defaults_overridden_by_explicit_kwargs() -> None:
     """Explicit temperature overrides mode defaults."""
-    from acolyte.port.llm_provider import LLMMode
-
     captured_requests: list[httpx.Request] = []
 
     async def handler(request: httpx.Request) -> httpx.Response:
@@ -306,7 +299,7 @@ async def test_mode_defaults_overridden_by_explicit_kwargs():
 
 
 @pytest.mark.asyncio
-async def test_mode_none_falls_back_to_format_routing():
+async def test_mode_none_falls_back_to_format_routing() -> None:
     """mode=None with format present uses existing /api/chat routing."""
     captured_requests: list[httpx.Request] = []
 
@@ -330,10 +323,8 @@ async def test_mode_none_falls_back_to_format_routing():
 
 
 @pytest.mark.asyncio
-async def test_structured_mode_num_predict_from_settings():
+async def test_structured_mode_num_predict_from_settings() -> None:
     """mode=STRUCTURED uses structured_num_predict from settings when not explicit."""
-    from acolyte.port.llm_provider import LLMMode
-
     captured_requests: list[httpx.Request] = []
 
     async def handler(request: httpx.Request) -> httpx.Response:
@@ -357,7 +348,7 @@ async def test_structured_mode_num_predict_from_settings():
 
 
 @pytest.mark.asyncio
-async def test_system_prompt_routes_to_chat_with_system_message():
+async def test_system_prompt_routes_to_chat_with_system_message() -> None:
     """When system_prompt is provided, gateway must route to /api/chat and
     emit a [system, user] messages array. This lets HyDE-style callers
     keep task framing in the system role so injection in the topic cannot
@@ -396,7 +387,7 @@ async def test_system_prompt_routes_to_chat_with_system_message():
 
 
 @pytest.mark.asyncio
-async def test_freetext_forwards_top_p_and_top_k_into_options():
+async def test_freetext_forwards_top_p_and_top_k_into_options() -> None:
     """top_p / top_k kwargs must reach Ollama options. Gemma 4's official
     sampler (temperature=1.0, top_p=0.95, top_k=64) prevents CJK-induced
     empty responses when combined with think=False.
@@ -426,10 +417,8 @@ async def test_freetext_forwards_top_p_and_top_k_into_options():
 
 
 @pytest.mark.asyncio
-async def test_chat_freetext_forwards_top_p_and_top_k_into_options():
+async def test_chat_freetext_forwards_top_p_and_top_k_into_options() -> None:
     """Same forwarding contract for /api/chat freetext (LONGFORM / STRUCTURED-no-format)."""
-    from acolyte.port.llm_provider import LLMMode
-
     captured_requests: list[httpx.Request] = []
 
     async def handler(request: httpx.Request) -> httpx.Response:
@@ -454,7 +443,7 @@ async def test_chat_freetext_forwards_top_p_and_top_k_into_options():
 
 
 @pytest.mark.asyncio
-async def test_top_p_and_top_k_omitted_when_not_provided():
+async def test_top_p_and_top_k_omitted_when_not_provided() -> None:
     """Defaults: without caller-supplied top_p/top_k, keys must be absent
     from options so existing Ollama defaults apply (no silent regression).
     """
@@ -482,10 +471,8 @@ async def test_top_p_and_top_k_omitted_when_not_provided():
 
 
 @pytest.mark.asyncio
-async def test_longform_mode_num_predict_from_settings():
+async def test_longform_mode_num_predict_from_settings() -> None:
     """mode=LONGFORM uses longform_num_predict from settings when not explicit."""
-    from acolyte.port.llm_provider import LLMMode
-
     captured_requests: list[httpx.Request] = []
 
     async def handler(request: httpx.Request) -> httpx.Response:

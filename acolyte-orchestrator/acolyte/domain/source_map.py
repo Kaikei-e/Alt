@@ -30,7 +30,7 @@ class SourceMap:
         self._id_to_short: dict[str, str] = {}  # source_id → short_id
         self._counter = 0
 
-    def register(
+    def register(  # noqa: PLR0913 — source metadata fields, each independently optional with a sensible default
         self,
         source_id: str,
         title: str,

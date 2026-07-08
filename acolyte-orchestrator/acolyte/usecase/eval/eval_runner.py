@@ -27,7 +27,7 @@ class EvalRunner:
         self._checklist = checklist or ChecklistEvaluator()
         self._rubric = rubric
 
-    async def evaluate(
+    async def evaluate(  # noqa: PLR0913 — evaluator needs every pipeline artifact independently, not a cohesive group
         self,
         report_id: str,
         run_id: str,

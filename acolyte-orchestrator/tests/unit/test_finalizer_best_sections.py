@@ -3,12 +3,16 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
-from uuid import uuid4
+from typing import TYPE_CHECKING
+from uuid import UUID, uuid4
 
 import pytest
 
-from acolyte.domain.report import Report, ReportSection
+from acolyte.domain.report import ChangeItem, Report, ReportSection, ReportVersion, SectionVersion
 from acolyte.usecase.graph.nodes.finalizer_node import FinalizerNode
+
+if TYPE_CHECKING:
+    from acolyte.domain.brief import ReportBrief
 
 
 class FakeRepo:
@@ -27,52 +31,68 @@ class FakeRepo:
         ]
         self.saved_bodies: dict[str, str] = {}
 
-    async def create_report(self, title, report_type):
+    async def create_report(self, title: str, report_type: str) -> Report:
         return self.report
 
-    async def create_brief(self, report_id, brief):
+    async def create_brief(self, report_id: UUID, brief: ReportBrief) -> None:
         pass
 
-    async def get_brief(self, report_id):
+    async def get_brief(self, report_id: UUID) -> ReportBrief | None:
         return None
 
-    async def get_report(self, report_id):
+    async def get_report(self, report_id: UUID) -> Report | None:
         return self.report
 
-    async def list_reports(self, cursor, limit):
+    async def list_reports(self, cursor: str | None, limit: int) -> tuple[list[Report], str | None]:
         return [], None
 
-    async def bump_version(self, report_id, expected_version, change_reason, change_items, **kwargs):
+    async def bump_version(
+        self,
+        report_id: UUID,
+        expected_version: int,
+        change_reason: str,
+        change_items: list[ChangeItem],
+        **kwargs: object,
+    ) -> int:
         return expected_version + 1
 
-    async def get_report_version(self, report_id, version_no):
+    async def get_report_version(self, report_id: UUID, version_no: int) -> ReportVersion | None:
         return None
 
-    async def list_report_versions(self, report_id, cursor, limit):
+    async def list_report_versions(
+        self, report_id: UUID, cursor: str | None, limit: int
+    ) -> tuple[list[ReportVersion], str | None]:
         return [], None
 
-    async def get_change_items(self, report_id, version_no):
+    async def get_change_items(self, report_id: UUID, version_no: int) -> list[ChangeItem]:
         return []
 
-    async def get_sections(self, report_id):
+    async def get_sections(self, report_id: UUID) -> list[ReportSection]:
         return self.sections
 
-    async def create_section(self, report_id, section_key, display_order):
+    async def create_section(self, report_id: UUID, section_key: str, display_order: int) -> ReportSection:
         return ReportSection(
             report_id=report_id, section_key=section_key, current_version=0, display_order=display_order
         )
 
-    async def bump_section_version(self, report_id, section_key, expected_version, body, citations=None):
+    async def bump_section_version(
+        self,
+        report_id: UUID,
+        section_key: str,
+        expected_version: int,
+        body: str,
+        citations: list[dict] | None = None,
+    ) -> int:
         self.saved_bodies[section_key] = body
         return expected_version + 1
 
-    async def get_section_version(self, report_id, section_key, version_no):
+    async def get_section_version(self, report_id: UUID, section_key: str, version_no: int) -> SectionVersion | None:
         return None
 
-    async def has_active_run(self, report_id):
+    async def has_active_run(self, report_id: UUID) -> bool:
         return False
 
-    async def delete_report(self, report_id):
+    async def delete_report(self, report_id: UUID) -> None:
         return None
 
 
