@@ -444,9 +444,9 @@ func (b *XMLPromptBuilder) writeContextChunks(sb *strings.Builder, input PromptI
 	sb.WriteString("### Context\n")
 	for i, ctx := range input.Contexts {
 		index := i + 1
-		sb.WriteString(fmt.Sprintf("<context index=\"%d\" title=%q", index, ctx.Title))
+		fmt.Fprintf(sb, "<context index=\"%d\" title=%q", index, ctx.Title)
 		if ctx.PublishedAt != "" {
-			sb.WriteString(fmt.Sprintf(" published=%q", ctx.PublishedAt))
+			fmt.Fprintf(sb, " published=%q", ctx.PublishedAt)
 		}
 		sb.WriteString(">\n")
 		sb.WriteString(escapeContextTags(ctx.ChunkText))

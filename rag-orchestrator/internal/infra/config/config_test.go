@@ -8,7 +8,9 @@ import (
 )
 
 func TestMain(m *testing.M) {
-	os.Setenv("DB_PASSWORD", "test-password")
+	if err := os.Setenv("DB_PASSWORD", "test-password"); err != nil {
+		panic(err)
+	}
 	os.Exit(m.Run())
 }
 
