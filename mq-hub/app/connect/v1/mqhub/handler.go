@@ -3,6 +3,8 @@ package mqhub
 
 import (
 	"context"
+	"errors"
+	"log/slog"
 	"time"
 
 	"connectrpc.com/connect"
@@ -47,7 +49,7 @@ func (h *Handler) Publish(ctx context.Context, req *connect.Request[mqhubv1.Publ
 	if err != nil {
 		return connect.NewResponse(&mqhubv1.PublishResponse{
 			Success: false,
-		}), err
+		}), mapPublishErr(err)
 	}
 
 	return connect.NewResponse(&mqhubv1.PublishResponse{
@@ -64,11 +66,12 @@ func (h *Handler) PublishBatch(ctx context.Context, req *connect.Request[mqhubv1
 	}
 
 	result, err := h.publishUsecase.PublishBatch(ctx, domain.StreamKey(req.Msg.Stream), events)
-	if err != nil {
+	var partialErr *domain.PartialPublishError
+	if err != nil && !errors.As(err, &partialErr) {
 		return connect.NewResponse(&mqhubv1.PublishBatchResponse{
 			SuccessCount: 0,
 			FailureCount: int32(len(events)),
-		}), err
+		}), mapPublishErr(err)
 	}
 
 	protoErrors := make([]*mqhubv1.PublishError, len(result.Errors))
@@ -79,12 +82,32 @@ func (h *Handler) PublishBatch(ctx context.Context, req *connect.Request[mqhubv1
 		}
 	}
 
-	return connect.NewResponse(&mqhubv1.PublishBatchResponse{
+	response := connect.NewResponse(&mqhubv1.PublishBatchResponse{
 		MessageIds:   result.MessageIDs,
 		SuccessCount: result.SuccessCount,
 		FailureCount: result.FailureCount,
 		Errors:       protoErrors,
-	}), nil
+	})
+	if partialErr != nil {
+		// Some events in the batch failed; report the partial result but
+		// still surface a non-OK status so at-least-once clients retry.
+		return response, mapPublishErr(err)
+	}
+	return response, nil
+}
+
+// mapPublishErr classifies usecase/domain errors into Connect RPC codes so
+// validation failures (bad input) are distinguishable from upstream
+// (Redis) unavailability by callers, instead of collapsing everything to
+// CodeUnknown.
+func mapPublishErr(err error) error {
+	if err == nil {
+		return nil
+	}
+	if errors.Is(err, domain.ErrInvalidEvent) || errors.Is(err, usecase.ErrBatchTooLarge) {
+		return connect.NewError(connect.CodeInvalidArgument, err)
+	}
+	return connect.NewError(connect.CodeUnavailable, err)
 }
 
 // CreateConsumerGroup creates a consumer group for a stream.
@@ -96,10 +119,12 @@ func (h *Handler) CreateConsumerGroup(ctx context.Context, req *connect.Request[
 		req.Msg.StartId,
 	)
 	if err != nil {
+		slog.ErrorContext(ctx, "create consumer group failed",
+			"stream", req.Msg.Stream, "group", req.Msg.Group, "error", err)
 		return connect.NewResponse(&mqhubv1.CreateConsumerGroupResponse{
 			Success: false,
-			Message: err.Error(),
-		}), err
+			Message: "failed to create consumer group",
+		}), connect.NewError(connect.CodeUnavailable, nil)
 	}
 
 	return connect.NewResponse(&mqhubv1.CreateConsumerGroupResponse{
@@ -183,11 +208,13 @@ func (h *Handler) GenerateTagsForArticle(ctx context.Context, req *connect.Reque
 
 	result, err := h.generateTagsUsecase.GenerateTagsForArticle(ctx, ucReq)
 	if err != nil {
+		slog.ErrorContext(ctx, "generate tags for article failed",
+			"article_id", req.Msg.ArticleId, "error", err)
 		return connect.NewResponse(&mqhubv1.GenerateTagsForArticleResponse{
 			Success:      false,
 			ArticleId:    req.Msg.ArticleId,
-			ErrorMessage: err.Error(),
-		}), err
+			ErrorMessage: "tag generation failed",
+		}), connect.NewError(connect.CodeUnavailable, nil)
 	}
 
 	// Convert tags to proto format

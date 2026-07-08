@@ -2,6 +2,7 @@
 package config
 
 import (
+	"fmt"
 	"os"
 	"strconv"
 )
@@ -23,12 +24,26 @@ type Config struct {
 	StreamMaxLen int64
 }
 
-// NewConfig creates a new Config from environment variables.
-func NewConfig() *Config {
-	port, _ := strconv.Atoi(getEnvOrDefault("CONNECT_PORT", "9500"))
-	poolSize, _ := strconv.Atoi(getEnvOrDefault("REDIS_POOL_SIZE", "10"))
-	maxBatchSize, _ := strconv.Atoi(getEnvOrDefault("MAX_BATCH_SIZE", "1000"))
-	streamMaxLen, _ := strconv.ParseInt(getEnvOrDefault("STREAM_MAX_LEN", "10000"), 10, 64)
+// NewConfig creates a new Config from environment variables. It fails fast
+// (returns an error) if any numeric env var is set but not parseable,
+// instead of silently treating it as 0.
+func NewConfig() (*Config, error) {
+	port, err := strconv.Atoi(getEnvOrDefault("CONNECT_PORT", "9500"))
+	if err != nil {
+		return nil, fmt.Errorf("parse CONNECT_PORT: %w", err)
+	}
+	poolSize, err := strconv.Atoi(getEnvOrDefault("REDIS_POOL_SIZE", "10"))
+	if err != nil {
+		return nil, fmt.Errorf("parse REDIS_POOL_SIZE: %w", err)
+	}
+	maxBatchSize, err := strconv.Atoi(getEnvOrDefault("MAX_BATCH_SIZE", "1000"))
+	if err != nil {
+		return nil, fmt.Errorf("parse MAX_BATCH_SIZE: %w", err)
+	}
+	streamMaxLen, err := strconv.ParseInt(getEnvOrDefault("STREAM_MAX_LEN", "10000"), 10, 64)
+	if err != nil {
+		return nil, fmt.Errorf("parse STREAM_MAX_LEN: %w", err)
+	}
 
 	return &Config{
 		RedisURL:      getEnvOrDefault("REDIS_URL", "redis://localhost:6379"),
@@ -37,7 +52,7 @@ func NewConfig() *Config {
 		RedisPoolSize: poolSize,
 		MaxBatchSize:  maxBatchSize,
 		StreamMaxLen:  streamMaxLen,
-	}
+	}, nil
 }
 
 // getEnvOrDefault returns the value of an environment variable or a default value.

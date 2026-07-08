@@ -114,6 +114,25 @@ func (u *PublishUsecase) PublishBatch(ctx context.Context, stream domain.StreamK
 	messageIDs, err := u.streamPort.PublishBatch(ctx, stream, events)
 	duration := time.Since(start).Seconds()
 
+	var partialErr *domain.PartialPublishError
+	if errors.As(err, &partialErr) {
+		// Some events published successfully; report exactly which ones
+		// failed instead of forcing the caller to retry (and duplicate)
+		// the entire batch.
+		metrics.RecordBatchPublish(stream.String(), "partial_error", batchSize, duration)
+		metrics.RecordError("publish_batch", "redis_error")
+		publishErrors := make([]PublishError, 0, len(partialErr.Failures))
+		for _, f := range partialErr.Failures {
+			publishErrors = append(publishErrors, PublishError{Index: f.Index, ErrorMessage: f.Err.Error()})
+		}
+		return &PublishBatchResult{
+			MessageIDs:   messageIDs,
+			SuccessCount: int32(batchSize - len(partialErr.Failures)),
+			FailureCount: int32(len(partialErr.Failures)),
+			Errors:       publishErrors,
+		}, partialErr
+	}
+
 	if err != nil {
 		metrics.RecordBatchPublish(stream.String(), "error", batchSize, duration)
 		metrics.RecordError("publish_batch", "redis_error")

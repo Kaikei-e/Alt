@@ -3,6 +3,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -30,7 +31,11 @@ func main() {
 	logger.Init()
 
 	// Load configuration
-	cfg := config.NewConfig()
+	cfg, err := config.NewConfig()
+	if err != nil {
+		slog.ErrorContext(ctx, "failed to load configuration", "error", err)
+		os.Exit(1)
+	}
 
 	// mq-hub only serves a plaintext listener today; middleware.PeerIdentityMiddleware
 	// exists but is not constructed or wired into any handler chain. Log this loudly
@@ -50,6 +55,14 @@ func main() {
 		os.Exit(1)
 	}
 	defer redisDriver.Close()
+
+	// go-redis connects lazily, so a successful constructor call above does
+	// not mean Redis is actually reachable. Ping now so a dead Redis fails
+	// startup instead of the service reporting healthy with no working backend.
+	if err := redisDriver.Ping(ctx); err != nil {
+		slog.ErrorContext(ctx, "failed to ping Redis", "error", err)
+		os.Exit(1)
+	}
 
 	// Initialize gateway
 	streamGateway := gateway.NewStreamGateway(redisDriver)
@@ -75,12 +88,34 @@ func main() {
 	// Health check endpoint for non-RPC clients
 	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
 		health := publishUsecase.HealthCheck(r.Context())
+
+		// RedisStatus carries err.Error() when unhealthy (see HealthCheck),
+		// so it must go through a JSON encoder rather than string
+		// concatenation — a quote in the error text would otherwise break
+		// the response body and leak internal error detail to the client.
+		body := struct {
+			Healthy       bool   `json:"healthy"`
+			RedisStatus   string `json:"redis_status"`
+			UptimeSeconds int64  `json:"uptime_seconds"`
+		}{
+			Healthy:       health.Healthy,
+			UptimeSeconds: health.UptimeSeconds,
+		}
+		if health.Healthy {
+			body.RedisStatus = "connected"
+		} else {
+			body.RedisStatus = "disconnected"
+			slog.WarnContext(r.Context(), "health check failed", "redis_error", health.RedisStatus)
+		}
+
+		w.Header().Set("Content-Type", "application/json")
 		if health.Healthy {
 			w.WriteHeader(http.StatusOK)
-			fmt.Fprintf(w, `{"healthy":true,"redis_status":"%s","uptime_seconds":%d}`, health.RedisStatus, health.UptimeSeconds)
 		} else {
 			w.WriteHeader(http.StatusServiceUnavailable)
-			fmt.Fprintf(w, `{"healthy":false,"redis_status":"%s","uptime_seconds":%d}`, health.RedisStatus, health.UptimeSeconds)
+		}
+		if err := json.NewEncoder(w).Encode(body); err != nil {
+			slog.ErrorContext(r.Context(), "failed to encode health response", "error", err)
 		}
 	})
 
@@ -90,8 +125,13 @@ func main() {
 	// Start server with graceful shutdown
 	addr := fmt.Sprintf(":%d", cfg.ConnectPort)
 	srv := &http.Server{
-		Addr:    addr,
-		Handler: mux,
+		Addr:              addr,
+		Handler:           mux,
+		ReadHeaderTimeout: 10 * time.Second,
+		ReadTimeout:       30 * time.Second,
+		WriteTimeout:      30 * time.Second,
+		IdleTimeout:       120 * time.Second,
+		MaxHeaderBytes:    1 << 20,
 	}
 
 	// Channel to signal server startup errors
