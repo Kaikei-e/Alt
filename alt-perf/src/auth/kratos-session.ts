@@ -62,6 +62,7 @@ export class KratosSessionManager {
         headers: {
           Accept: "application/json",
         },
+        signal: AbortSignal.timeout(10_000),
       });
 
       if (!flowResp.ok) {
@@ -92,7 +93,13 @@ export class KratosSessionManager {
           password: credentials.password,
           csrf_token: csrfToken,
         }),
+        signal: AbortSignal.timeout(10_000),
       });
+
+      // Read the body once as text; parse as JSON below as needed. A second
+      // body read (e.g. .json() then .text()) throws "Body already
+      // consumed" and masks the real login failure reason.
+      const loginBodyText = await loginResp.text();
 
       // Check for session cookie in response
       const setCookieHeader = loginResp.headers.get("set-cookie");
@@ -107,7 +114,10 @@ export class KratosSessionManager {
 
       // If no cookie, check for session in response body
       if (loginResp.ok) {
-        const session = await loginResp.json() as { session?: KratosSession; session_token?: string };
+        const session = JSON.parse(loginBodyText) as {
+          session?: KratosSession;
+          session_token?: string;
+        };
 
         if (session.session_token) {
           // API-based session, create a cookie representation
@@ -125,8 +135,7 @@ export class KratosSessionManager {
       }
 
       // Handle error response
-      const errorBody = await loginResp.text();
-      throw new Error(`Login failed: ${loginResp.status} - ${errorBody}`);
+      throw new Error(`Login failed: ${loginResp.status} - ${loginBodyText}`);
     } catch (err) {
       error("Authentication failed", {
         error: String(err),
@@ -150,6 +159,7 @@ export class KratosSessionManager {
         headers: {
           Cookie: `${this.sessionCookie.name}=${this.sessionCookie.value}`,
         },
+        signal: AbortSignal.timeout(10_000),
       });
 
       const isValid = resp.ok;
@@ -189,7 +199,7 @@ export class KratosSessionManager {
   private parseSessionCookie(setCookieHeader: string): SessionCookie | null {
     // Look for ory_kratos_session cookie
     const match = setCookieHeader.match(/ory_kratos_session=([^;]+)/);
-    if (!match) {
+    if (!match || match[1] === undefined) {
       return null;
     }
 

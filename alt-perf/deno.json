@@ -18,10 +18,10 @@
     "@opentelemetry/semantic-conventions": "npm:@opentelemetry/semantic-conventions@1.39.0"
   },
   "tasks": {
-    "perf": "deno run --allow-all --env main.ts",
-    "perf:scan": "deno run --allow-all --env main.ts scan",
-    "perf:flow": "deno run --allow-all --env main.ts flow",
-    "perf:load": "deno run --allow-all --env main.ts load",
+    "perf": "deno run --allow-net --allow-read --allow-write --allow-run --allow-env=PERF_BASE_URL,PERF_TEST_EMAIL,PERF_TEST_PASSWORD,TEST_EMAIL,TEST_PASSWORD,TEST_USER,CHROME_BIN,PUPPETEER_EXECUTABLE_PATH,NO_COLOR,FORCE_COLOR,OTEL_ENABLED,OTEL_EXPORTER_OTLP_ENDPOINT,OTEL_SERVICE_NAME,SERVICE_VERSION,DEPLOYMENT_ENV --env main.ts",
+    "perf:scan": "deno run --allow-net --allow-read --allow-write --allow-run --allow-env=PERF_BASE_URL,PERF_TEST_EMAIL,PERF_TEST_PASSWORD,TEST_EMAIL,TEST_PASSWORD,TEST_USER,CHROME_BIN,PUPPETEER_EXECUTABLE_PATH,NO_COLOR,FORCE_COLOR,OTEL_ENABLED,OTEL_EXPORTER_OTLP_ENDPOINT,OTEL_SERVICE_NAME,SERVICE_VERSION,DEPLOYMENT_ENV --env main.ts scan",
+    "perf:flow": "deno run --allow-net --allow-read --allow-write --allow-run --allow-env=PERF_BASE_URL,PERF_TEST_EMAIL,PERF_TEST_PASSWORD,TEST_EMAIL,TEST_PASSWORD,TEST_USER,CHROME_BIN,PUPPETEER_EXECUTABLE_PATH,NO_COLOR,FORCE_COLOR,OTEL_ENABLED,OTEL_EXPORTER_OTLP_ENDPOINT,OTEL_SERVICE_NAME,SERVICE_VERSION,DEPLOYMENT_ENV --env main.ts flow",
+    "perf:load": "deno run --allow-net --allow-read --allow-write --allow-run --allow-env=PERF_BASE_URL,PERF_TEST_EMAIL,PERF_TEST_PASSWORD,TEST_EMAIL,TEST_PASSWORD,TEST_USER,CHROME_BIN,PUPPETEER_EXECUTABLE_PATH,NO_COLOR,FORCE_COLOR,OTEL_ENABLED,OTEL_EXPORTER_OTLP_ENDPOINT,OTEL_SERVICE_NAME,SERVICE_VERSION,DEPLOYMENT_ENV --env main.ts load",
     "test": "deno test --allow-all tests/",
     "test:unit": "deno test --allow-all tests/unit/",
     "test:integration": "deno test --allow-all tests/integration/",
@@ -32,6 +32,7 @@
   "compilerOptions": {
     "strict": true,
     "noImplicitAny": true,
+    "noUncheckedIndexedAccess": true,
     "lib": [
       "deno.window",
       "deno.ns",

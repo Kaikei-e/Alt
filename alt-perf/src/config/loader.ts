@@ -42,6 +42,16 @@ function expandEnvVarsInObject<T>(obj: T): T {
   return obj;
 }
 
+// Thrown only when the config file itself is missing, so callers can fall
+// back to defaults for that case while still surfacing YAML syntax errors,
+// permission errors, etc. instead of silently masking a misconfiguration.
+class ConfigFileNotFoundError extends Error {
+  constructor(filePath: string) {
+    super(`Configuration file not found: ${filePath}`);
+    this.name = "ConfigFileNotFoundError";
+  }
+}
+
 // Load YAML file
 async function loadYamlFile<T>(filePath: string): Promise<T> {
   try {
@@ -50,7 +60,7 @@ async function loadYamlFile<T>(filePath: string): Promise<T> {
     return expandEnvVarsInObject(parsed);
   } catch (error) {
     if (error instanceof Deno.errors.NotFound) {
-      throw new Error(`Configuration file not found: ${filePath}`);
+      throw new ConfigFileNotFoundError(filePath);
     }
     throw error;
   }
@@ -154,7 +164,10 @@ export async function loadRoutesConfig(configDir: string): Promise<RoutesConfig>
   try {
     const config = await loadYamlFile<{ routes: RoutesConfig }>(routesPath);
     return config.routes || getDefaultRoutes();
-  } catch {
+  } catch (error) {
+    if (!(error instanceof ConfigFileNotFoundError)) {
+      throw error;
+    }
     console.log("Using default routes configuration");
     return getDefaultRoutes();
   }
@@ -167,7 +180,10 @@ export async function loadThresholdsConfig(
   const thresholdsPath = path.join(configDir, "thresholds.yaml");
   try {
     return await loadYamlFile<ThresholdsConfig>(thresholdsPath);
-  } catch {
+  } catch (error) {
+    if (!(error instanceof ConfigFileNotFoundError)) {
+      throw error;
+    }
     console.log("Using default thresholds configuration");
     return DEFAULT_THRESHOLDS;
   }
@@ -178,7 +194,10 @@ export async function loadFlowsConfig(configDir: string): Promise<FlowsConfig> {
   const flowsPath = path.join(configDir, "flows.yaml");
   try {
     return await loadYamlFile<FlowsConfig>(flowsPath);
-  } catch {
+  } catch (error) {
+    if (!(error instanceof ConfigFileNotFoundError)) {
+      throw error;
+    }
     console.log("No flows configuration found");
     return { flows: [] };
   }

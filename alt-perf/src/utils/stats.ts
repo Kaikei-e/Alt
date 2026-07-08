@@ -2,6 +2,18 @@
  * Statistical utility functions for performance measurement
  */
 
+// Bounds-checked array read; the callers below only ever pass indices that
+// are mathematically within range, but noUncheckedIndexedAccess can't prove
+// that statically, so this makes the invariant explicit instead of using a
+// non-null assertion.
+function at(values: number[], index: number): number {
+  const value = values[index];
+  if (value === undefined) {
+    throw new Error(`Index ${index} out of bounds (length ${values.length})`);
+  }
+  return value;
+}
+
 /**
  * Calculate median of an array of numbers
  */
@@ -12,9 +24,9 @@ export function calculateMedian(values: number[]): number {
   const mid = Math.floor(sorted.length / 2);
 
   if (sorted.length % 2 === 0) {
-    return (sorted[mid - 1] + sorted[mid]) / 2;
+    return (at(sorted, mid - 1) + at(sorted, mid)) / 2;
   }
-  return sorted[mid];
+  return at(sorted, mid);
 }
 
 /**
@@ -32,11 +44,11 @@ export function calculatePercentile(values: number[], percentile: number): numbe
   const upper = Math.ceil(index);
 
   if (lower === upper) {
-    return sorted[lower];
+    return at(sorted, lower);
   }
 
   const weight = index - lower;
-  return sorted[lower] * (1 - weight) + sorted[upper] * weight;
+  return at(sorted, lower) * (1 - weight) + at(sorted, upper) * weight;
 }
 
 /**

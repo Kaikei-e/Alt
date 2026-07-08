@@ -19,7 +19,7 @@ import { saveJsonReport, printJsonReport } from "../report/json-reporter.ts";
 import { printMarkdownReport, saveMarkdownReport } from "../report/markdown-reporter.ts";
 import { info, error, warn, progress, section, debug } from "../utils/logger.ts";
 import { DEFAULT_THRESHOLDS } from "../config/schema.ts";
-import { calculateMedian, discardOutliers, calculateStats } from "../utils/stats.ts";
+import { calculateStatistics, excludeOutliers } from "../measurement/statistics.ts";
 
 export type ReportFormat = "cli" | "json" | "md" | "markdown";
 
@@ -277,18 +277,23 @@ export async function runScan(config: PerfConfig, options: ScanOptions): Promise
           // Aggregate results using median (more robust than mean for performance data)
           const aggregateVitals = (metric: "lcp" | "inp" | "cls" | "fcp" | "ttfb") => {
             const values = runVitals.map((v) => v[metric].value);
-            const cleanValues = measurementRuns >= 3 ? discardOutliers(values) : values;
-            return calculateMedian(cleanValues);
+            const cleanValues = measurementRuns >= 3 ? excludeOutliers(values) : values;
+            return calculateStatistics(cleanValues).median;
           };
 
           const aggregateTiming = (key: keyof typeof runTimings[0]) => {
             const values = runTimings.map((t) => t[key] as number);
-            const cleanValues = measurementRuns >= 3 ? discardOutliers(values) : values;
-            return calculateMedian(cleanValues);
+            const cleanValues = measurementRuns >= 3 ? excludeOutliers(values) : values;
+            return calculateStatistics(cleanValues).median;
           };
 
           // Use median values for final vitals
           const lastVitals = runVitals[runVitals.length - 1];
+          if (!lastVitals) {
+            throw new Error(
+              `No measurement runs recorded for ${route.path} (${device})`,
+            );
+          }
           const vitals = {
             lcp: { value: aggregateVitals("lcp"), rating: lastVitals.lcp.rating },
             inp: { value: aggregateVitals("inp"), rating: lastVitals.inp.rating },
@@ -406,8 +411,9 @@ export async function runScan(config: PerfConfig, options: ScanOptions): Promise
     recommendations: generateRecommendations(measurements),
   };
 
-  // Determine output format (--format takes precedence over --json)
-  const format = options.format || (options.json ? "json" : "cli");
+  // main.ts normalizes --json into format="json" when --format wasn't
+  // explicitly passed, so options.json is not consulted here.
+  const format = options.format || "cli";
 
   // Output report
   switch (format) {
