@@ -15,9 +15,7 @@ def app():
     app.include_router(router)
 
     mock_db = MagicMock()
-    mock_pool = AsyncMock()
-    mock_pool.fetchval.return_value = 1
-    mock_db._pool = mock_pool
+    mock_db.health_check = AsyncMock(return_value=True)
     app.state.db = mock_db
 
     return app
@@ -39,7 +37,7 @@ class TestHealthCheck:
         assert data["checks"]["db"] == "ok"
 
     def test_degraded_when_db_unavailable(self, client, app):
-        app.state.db._pool.fetchval.side_effect = Exception("connection refused")
+        app.state.db.health_check.side_effect = Exception("connection refused")
 
         resp = client.get("/health")
 

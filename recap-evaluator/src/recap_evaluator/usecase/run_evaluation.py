@@ -84,7 +84,9 @@ class RunEvaluationUsecase:
                 alert_levels.append(run.summary_metrics.alert_level)
 
         if include_pipeline and job_ids:
-            run.pipeline_metrics = await self._pipeline.evaluate_batch(job_ids)
+            run.pipeline_metrics = await self._pipeline.evaluate_batch(
+                job_ids, window_days=window_days
+            )
             if run.pipeline_metrics:
                 alert_levels.append(run.pipeline_metrics.alert_level)
 

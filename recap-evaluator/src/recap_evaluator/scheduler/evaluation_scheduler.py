@@ -33,8 +33,8 @@ class EvaluationScheduler:
                 evaluation_id=str(run.evaluation_id),
                 overall_alert_level=run.overall_alert_level.value,
             )
-        except Exception as e:
-            logger.error("Scheduled evaluation failed", error=str(e))
+        except Exception:
+            logger.exception("Scheduled evaluation failed")
 
     def start(self) -> None:
         if not self._settings.enable_scheduler:

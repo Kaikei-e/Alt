@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass, field
+from threading import Lock
 from typing import TYPE_CHECKING, Any
 
 import structlog
@@ -112,6 +113,7 @@ class FaithfulnessEvaluator:
     """
 
     DEFAULT_MODEL = "tasksource/ModernBERT-base-nli"
+    _NLI_BATCH_SIZE = 16
 
     # Label mapping for different NLI models
     LABEL_MAPS = {
@@ -142,6 +144,7 @@ class FaithfulnessEvaluator:
         self.device = device
         self._nli = None
         self._initialized = False
+        self._init_lock = Lock()
 
         if not TRANSFORMERS_AVAILABLE:
             logger.warning(
@@ -159,18 +162,22 @@ class FaithfulnessEvaluator:
         if self._initialized:
             return
 
-        if not TRANSFORMERS_AVAILABLE:
-            raise RuntimeError("transformers not available")
+        with self._init_lock:
+            if self._initialized:
+                return
 
-        logger.info("Initializing NLI pipeline", model=self._model_name)
-        assert pipeline is not None, "pipeline should be available (checked above)"
-        self._nli = pipeline(
-            "text-classification",
-            model=self._model_name,
-            top_k=None,  # Return all labels with scores
-            device=self.device,
-        )
-        self._initialized = True
+            if not TRANSFORMERS_AVAILABLE:
+                raise RuntimeError("transformers not available")
+
+            logger.info("Initializing NLI pipeline", model=self._model_name)
+            assert pipeline is not None, "pipeline should be available (checked above)"
+            self._nli = pipeline(
+                "text-classification",
+                model=self._model_name,
+                top_k=None,  # Return all labels with scores
+                device=self.device,
+            )
+            self._initialized = True
 
     @property
     def model_name(self) -> str:
@@ -187,35 +194,38 @@ class FaithfulnessEvaluator:
         sentences = re.split(pattern, text.strip())
         return [s.strip() for s in sentences if s.strip()]
 
-    def _get_nli_scores(self, premise: str, hypothesis: str) -> dict[str, float]:
-        """Get NLI scores for a premise-hypothesis pair.
+    def _get_nli_scores_batch(
+        self, pairs: list[tuple[str, str]]
+    ) -> list[dict[str, float]]:
+        """Get NLI scores for many premise-hypothesis pairs in one pipeline call.
 
-        Args:
-            premise: The source/premise text.
-            hypothesis: The claim/hypothesis to verify.
-
-        Returns:
-            Dictionary with entailment, contradiction, neutral scores.
+        Batches the model forward pass instead of invoking the pipeline once
+        per pair, which for `detect()`'s summary-sentence x source-sentence
+        cross product is an O(N*M) sequence of single-example calls.
         """
         self._ensure_initialized()
         if self._nli is None:
             raise RuntimeError("NLI pipeline not available")
 
-        # Format input for NLI
-        nli_input = f"{premise}</s></s>{hypothesis}"
-        results = self._nli(nli_input)
+        if not pairs:
+            return []
 
-        # Extract scores by label
-        scores = {"entailment": 0.0, "contradiction": 0.0, "neutral": 0.0}
-        result_list = results[0] if isinstance(results[0], list) else results
-        for item in result_list:
-            label = item["label"].lower()
-            for key, mapped_label in self._label_map.items():
-                if label == mapped_label.lower():
-                    scores[key] = item["score"]
-                    break
+        nli_inputs = [f"{premise}</s></s>{hypothesis}" for premise, hypothesis in pairs]
+        batch_results = self._nli(nli_inputs, batch_size=self._NLI_BATCH_SIZE)
 
-        return scores
+        all_scores: list[dict[str, float]] = []
+        for results in batch_results:
+            scores = {"entailment": 0.0, "contradiction": 0.0, "neutral": 0.0}
+            result_list = results[0] if isinstance(results[0], list) else results
+            for item in result_list:
+                label = item["label"].lower()
+                for key, mapped_label in self._label_map.items():
+                    if label == mapped_label.lower():
+                        scores[key] = item["score"]
+                        break
+            all_scores.append(scores)
+
+        return all_scores
 
     def detect(
         self,
@@ -254,12 +264,22 @@ class FaithfulnessEvaluator:
         total_neutral = 0.0
         num_hallucinated = 0
 
-        for sent in summary_sentences:
+        # Score the full summary_sentence x source_sentence cross product in
+        # one batched pipeline call instead of one call per pair.
+        pairs = [
+            (source, sent) for sent in summary_sentences for source in source_sentences
+        ]
+        all_scores = self._get_nli_scores_batch(pairs)
+        scores_per_sentence = [
+            all_scores[i : i + len(source_sentences)]
+            for i in range(0, len(all_scores), len(source_sentences))
+        ]
+
+        for sent, source_scores in zip(summary_sentences, scores_per_sentence, strict=True):
             # Get max entailment score across all source sentences
             best_scores = {"entailment": 0.0, "contradiction": 1.0, "neutral": 0.0}
 
-            for source in source_sentences:
-                scores = self._get_nli_scores(premise=source, hypothesis=sent)
+            for scores in source_scores:
                 # Max-pooling: take highest entailment across sources
                 if scores["entailment"] > best_scores["entailment"]:
                     best_scores = scores
@@ -347,7 +367,3 @@ class FaithfulnessEvaluator:
             results.append(result)
 
         return results
-
-
-# Singleton instance
-faithfulness_evaluator = FaithfulnessEvaluator()

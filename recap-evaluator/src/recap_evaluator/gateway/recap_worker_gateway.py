@@ -30,8 +30,8 @@ class RecapWorkerGateway:
                 status_code=e.response.status_code,
             )
             return None
-        except Exception as e:
-            logger.error("Genre evaluation request failed", error=str(e))
+        except (httpx.RequestError, ValueError):
+            logger.exception("Genre evaluation request failed")
             return None
 
     async def fetch_latest_genre_evaluation(self) -> dict[str, Any] | None:
@@ -47,8 +47,8 @@ class RecapWorkerGateway:
                 status_code=e.response.status_code,
             )
             return None
-        except Exception as e:
-            logger.error("Genre evaluation fetch failed", error=str(e))
+        except (httpx.RequestError, ValueError):
+            logger.exception("Genre evaluation fetch failed")
             return None
 
     async def fetch_genre_evaluation_by_id(
@@ -67,8 +67,6 @@ class RecapWorkerGateway:
                 status_code=e.response.status_code,
             )
             return None
-        except Exception as e:
-            logger.error(
-                "Genre evaluation fetch failed", run_id=run_id, error=str(e)
-            )
+        except (httpx.RequestError, ValueError):
+            logger.exception("Genre evaluation fetch failed", run_id=run_id)
             return None

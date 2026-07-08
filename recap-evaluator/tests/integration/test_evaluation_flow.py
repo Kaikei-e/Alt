@@ -113,7 +113,7 @@ def integration_app():
         genre_eval, cluster_eval, summary_eval, pipeline_eval, mock_db
     )
     get_metrics_uc = GetMetricsUsecase(
-        genre_eval, cluster_eval, pipeline_eval, mock_db
+        genre_eval, cluster_eval, pipeline_eval, mock_db, thresholds
     )
 
     app = FastAPI()

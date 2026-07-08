@@ -265,7 +265,3 @@ class ROUGEEvaluator:
         )
 
         return avg_result
-
-
-# Singleton instance
-rouge_evaluator = ROUGEEvaluator()

@@ -59,15 +59,15 @@ class PipelineEvaluator:
             stage_success_rates=stage_success_rates,
         )
 
-    async def evaluate_batch(self, job_ids: list[UUID]) -> PipelineMetrics:
+    async def evaluate_batch(self, job_ids: list[UUID], window_days: int = 14) -> PipelineMetrics:
         if not job_ids:
             return PipelineMetrics()
 
-        all_jobs = await self._db.fetch_recent_jobs(days=14, status="completed")
+        all_jobs = await self._db.fetch_recent_jobs(days=window_days, status="completed")
         job_id_set = set(job_ids)
         relevant_jobs = [j for j in all_jobs if j["job_id"] in job_id_set]
 
-        failed_jobs = await self._db.fetch_recent_jobs(days=14, status="failed")
+        failed_jobs = await self._db.fetch_recent_jobs(days=window_days, status="failed")
         relevant_failed = [j for j in failed_jobs if j["job_id"] in job_id_set]
 
         total = len(relevant_jobs) + len(relevant_failed)

@@ -6,6 +6,7 @@ from uuid import uuid4
 
 import pytest
 
+from recap_evaluator.config import AlertThresholds
 from recap_evaluator.domain.models import (
     AlertLevel,
     ClusterMetrics,
@@ -50,6 +51,7 @@ def get_metrics_uc(mock_genre_eval, mock_cluster_eval, mock_pipeline_eval, mock_
         cluster_evaluator=mock_cluster_eval,
         pipeline_evaluator=mock_pipeline_eval,
         db=mock_db,
+        thresholds=AlertThresholds(),
     )
 
 

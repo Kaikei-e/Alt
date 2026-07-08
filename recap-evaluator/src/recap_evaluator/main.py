@@ -99,7 +99,7 @@ async def lifespan(app: FastAPI):
         genre_eval, cluster_eval, summary_eval, pipeline_eval, db_gateway
     )
     get_metrics_uc = GetMetricsUsecase(
-        genre_eval, cluster_eval, pipeline_eval, db_gateway
+        genre_eval, cluster_eval, pipeline_eval, db_gateway, alert_thresholds
     )
 
     # --- Expose to handlers via app.state ---
@@ -130,6 +130,7 @@ async def lifespan(app: FastAPI):
     # --- Shutdown ---
     logger.info("Shutting down recap-evaluator")
     scheduler.stop()
+    summary_eval.shutdown()
     if cert_watch_task is not None:
         cert_watch_task.cancel()
         try:

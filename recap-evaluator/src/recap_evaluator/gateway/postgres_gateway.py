@@ -216,3 +216,8 @@ class PostgresGateway:
             await conn.execute(
                 query, evaluation_id, evaluation_type, job_ids, metrics, created_at
             )
+
+    async def health_check(self) -> bool:
+        """Verify the pool can reach the database."""
+        await self._pool.fetchval("SELECT 1")
+        return True
