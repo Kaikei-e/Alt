@@ -9,6 +9,7 @@ from typing import Any
 
 import structlog
 from clickhouse_connect.driver.client import Client
+from clickhouse_connect.driver.exceptions import ClickHouseError
 
 from alt_metrics.exceptions import CollectorError
 
@@ -29,14 +30,14 @@ def collect_sli_trends(client: Client, database: str, hours: int) -> list[dict[s
     Raises:
         CollectorError: クエリ実行に失敗した場合
     """
-    query = f"""
+    query = """
     SELECT
         toStartOfFiveMinutes(Timestamp) as time_bucket,
         ServiceName as service,
         Metric as metric,
         round(avg(Value), 4) as value
-    FROM {database}.sli_metrics
-    WHERE Timestamp >= now() - INTERVAL {hours} HOUR
+    FROM {database:Identifier}.sli_metrics
+    WHERE Timestamp >= now() - INTERVAL {hours:UInt32} HOUR
       AND Metric IN ('error_rate', 'log_throughput')
     GROUP BY time_bucket, ServiceName, Metric
     ORDER BY time_bucket DESC, ServiceName, Metric
@@ -46,11 +47,11 @@ def collect_sli_trends(client: Client, database: str, hours: int) -> list[dict[s
     log.debug("クエリ実行開始")
 
     try:
-        result = client.query(query)
+        result = client.query(query, parameters={"database": database, "hours": hours})
         data = [dict(zip(result.column_names, row)) for row in result.result_rows]
         log.info("データ収集完了", count=len(data))
         return data
-    except Exception as e:
+    except ClickHouseError as e:
         log.error("クエリ実行エラー", error=str(e), query=query[:200])
         raise CollectorError("sli_trends", str(e)) from e
 
@@ -72,17 +73,17 @@ def collect_slo_violations(
     Raises:
         CollectorError: クエリ実行に失敗した場合
     """
-    query = f"""
+    query = """
     SELECT
         ServiceName as service,
         toStartOfFiveMinutes(Timestamp) as time_bucket,
         round(avg(Value) * 100, 2) as error_rate_pct,
         count() as sample_count
-    FROM {database}.sli_metrics
-    WHERE Timestamp >= now() - INTERVAL {hours} HOUR
+    FROM {database:Identifier}.sli_metrics
+    WHERE Timestamp >= now() - INTERVAL {hours:UInt32} HOUR
       AND Metric = 'error_rate'
     GROUP BY ServiceName, time_bucket
-    HAVING avg(Value) > {error_rate_threshold / 100}
+    HAVING avg(Value) > {error_rate_threshold:Float64}
     ORDER BY time_bucket DESC, error_rate_pct DESC
     LIMIT 50
     """
@@ -95,10 +96,17 @@ def collect_slo_violations(
     log.debug("クエリ実行開始")
 
     try:
-        result = client.query(query)
+        result = client.query(
+            query,
+            parameters={
+                "database": database,
+                "hours": hours,
+                "error_rate_threshold": error_rate_threshold / 100,
+            },
+        )
         data = [dict(zip(result.column_names, row)) for row in result.result_rows]
         log.info("データ収集完了", count=len(data))
         return data
-    except Exception as e:
+    except ClickHouseError as e:
         log.error("クエリ実行エラー", error=str(e), query=query[:200])
         raise CollectorError("slo_violations", str(e)) from e

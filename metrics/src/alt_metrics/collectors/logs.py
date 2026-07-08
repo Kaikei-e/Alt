@@ -9,6 +9,7 @@ from typing import Any
 
 import structlog
 from clickhouse_connect.driver.client import Client
+from clickhouse_connect.driver.exceptions import ClickHouseError
 
 from alt_metrics.exceptions import CollectorError
 
@@ -29,14 +30,14 @@ def collect_error_types(client: Client, database: str, hours: int) -> list[dict[
     Raises:
         CollectorError: クエリ実行に失敗した場合
     """
-    query = f"""
+    query = """
     SELECT
         ServiceName as service,
         if(ExceptionType = '', 'Unknown', ExceptionType) as error_type,
         count() as error_count,
         any(substring(Body, 1, 150)) as sample_message
-    FROM {database}.otel_error_logs
-    WHERE Timestamp >= now() - INTERVAL {hours} HOUR
+    FROM {database:Identifier}.otel_error_logs
+    WHERE Timestamp >= now() - INTERVAL {hours:UInt32} HOUR
     GROUP BY ServiceName, ExceptionType
     ORDER BY error_count DESC
     LIMIT 20
@@ -45,11 +46,11 @@ def collect_error_types(client: Client, database: str, hours: int) -> list[dict[
     log.debug("クエリ実行開始")
 
     try:
-        result = client.query(query)
+        result = client.query(query, parameters={"database": database, "hours": hours})
         data = [dict(zip(result.column_names, row)) for row in result.result_rows]
         log.info("データ収集完了", count=len(data))
         return data
-    except Exception as e:
+    except ClickHouseError as e:
         log.error("クエリ実行エラー", error=str(e), query=query[:200])
         raise CollectorError("error_types", str(e)) from e
 
@@ -68,15 +69,15 @@ def collect_recent_errors(client: Client, database: str, hours: int) -> list[dic
     Raises:
         CollectorError: クエリ実行に失敗した場合
     """
-    query = f"""
+    query = """
     SELECT
         ServiceName as service,
         SeverityText as level,
         substring(Body, 1, 200) as message,
         if(ExceptionType = '', '-', ExceptionType) as error_type,
         formatDateTime(Timestamp, '%Y-%m-%d %H:%M:%S') as timestamp
-    FROM {database}.otel_error_logs
-    WHERE Timestamp >= now() - INTERVAL {hours} HOUR
+    FROM {database:Identifier}.otel_error_logs
+    WHERE Timestamp >= now() - INTERVAL {hours:UInt32} HOUR
     ORDER BY Timestamp DESC
     LIMIT 25
     """
@@ -84,11 +85,11 @@ def collect_recent_errors(client: Client, database: str, hours: int) -> list[dic
     log.debug("クエリ実行開始")
 
     try:
-        result = client.query(query)
+        result = client.query(query, parameters={"database": database, "hours": hours})
         data = [dict(zip(result.column_names, row)) for row in result.result_rows]
         log.info("データ収集完了", count=len(data))
         return data
-    except Exception as e:
+    except ClickHouseError as e:
         log.error("クエリ実行エラー", error=str(e), query=query[:200])
         raise CollectorError("recent_errors", str(e)) from e
 
@@ -107,7 +108,7 @@ def collect_log_severity_distribution(client: Client, database: str, hours: int)
     Raises:
         CollectorError: クエリ実行に失敗した場合
     """
-    query = f"""
+    query = """
     SELECT
         ServiceName as service,
         count() as total_logs,
@@ -117,8 +118,8 @@ def collect_log_severity_distribution(client: Client, database: str, hours: int)
         countIf(SeverityText = 'ERROR' OR (SeverityNumber > 12 AND SeverityNumber <= 16)) as error_count,
         countIf(SeverityText IN ('FATAL', 'CRITICAL') OR SeverityNumber > 20) as fatal_count,
         round(countIf(SeverityNumber >= 17) / count() * 100, 2) as error_rate
-    FROM {database}.otel_logs
-    WHERE Timestamp >= now() - INTERVAL {hours} HOUR
+    FROM {database:Identifier}.otel_logs
+    WHERE Timestamp >= now() - INTERVAL {hours:UInt32} HOUR
     GROUP BY ServiceName
     ORDER BY total_logs DESC
     """
@@ -126,11 +127,11 @@ def collect_log_severity_distribution(client: Client, database: str, hours: int)
     log.debug("クエリ実行開始")
 
     try:
-        result = client.query(query)
+        result = client.query(query, parameters={"database": database, "hours": hours})
         data = [dict(zip(result.column_names, row)) for row in result.result_rows]
         log.info("データ収集完了", count=len(data))
         return data
-    except Exception as e:
+    except ClickHouseError as e:
         log.error("クエリ実行エラー", error=str(e), query=query[:200])
         raise CollectorError("log_severity_distribution", str(e)) from e
 
@@ -149,15 +150,15 @@ def collect_log_volume_trends(client: Client, database: str, hours: int) -> list
     Raises:
         CollectorError: クエリ実行に失敗した場合
     """
-    query = f"""
+    query = """
     SELECT
         toStartOfHour(Timestamp) as hour,
         ServiceName as service,
         count() as log_count,
         countIf(SeverityNumber >= 17) as error_count,
         round(countIf(SeverityNumber >= 17) / count() * 100, 2) as error_rate
-    FROM {database}.otel_logs
-    WHERE Timestamp >= now() - INTERVAL {hours} HOUR
+    FROM {database:Identifier}.otel_logs
+    WHERE Timestamp >= now() - INTERVAL {hours:UInt32} HOUR
     GROUP BY hour, ServiceName
     ORDER BY hour DESC, log_count DESC
     """
@@ -165,10 +166,10 @@ def collect_log_volume_trends(client: Client, database: str, hours: int) -> list
     log.debug("クエリ実行開始")
 
     try:
-        result = client.query(query)
+        result = client.query(query, parameters={"database": database, "hours": hours})
         data = [dict(zip(result.column_names, row)) for row in result.result_rows]
         log.info("データ収集完了", count=len(data))
         return data
-    except Exception as e:
+    except ClickHouseError as e:
         log.error("クエリ実行エラー", error=str(e), query=query[:200])
         raise CollectorError("log_volume_trends", str(e)) from e

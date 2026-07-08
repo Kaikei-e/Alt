@@ -28,7 +28,6 @@ from alt_metrics.collectors.traces import (
     collect_bottlenecks,
     collect_error_spans,
     collect_service_dependencies,
-    collect_service_latency,
     collect_span_type_stats,
 )
 
@@ -39,7 +38,6 @@ __all__ = [
     # Trace collectors
     "collect_api_performance",
     "collect_bottlenecks",
-    "collect_service_latency",
     "collect_span_type_stats",
     "collect_error_spans",
     "collect_service_dependencies",

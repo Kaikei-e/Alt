@@ -9,6 +9,7 @@ from typing import Any
 
 import structlog
 from clickhouse_connect.driver.client import Client
+from clickhouse_connect.driver.exceptions import ClickHouseError
 
 from alt_metrics.exceptions import CollectorError
 from alt_metrics.models import ApiPerformanceStats
@@ -30,7 +31,7 @@ def collect_api_performance(client: Client, database: str, hours: int) -> list[A
     Raises:
         CollectorError: クエリ実行に失敗した場合
     """
-    query = f"""
+    query = """
     SELECT
         ServiceName as service,
         SpanName as endpoint,
@@ -41,8 +42,8 @@ def collect_api_performance(client: Client, database: str, hours: int) -> list[A
         round(quantile(0.99)(DurationMs), 2) as p99_ms,
         round(max(DurationMs), 2) as max_ms,
         countIf(StatusCode = 'ERROR') as error_spans
-    FROM {database}.otel_traces
-    WHERE Timestamp >= now() - INTERVAL {hours} HOUR
+    FROM {database:Identifier}.otel_traces
+    WHERE Timestamp >= now() - INTERVAL {hours:UInt32} HOUR
       AND SpanName != ''
     GROUP BY ServiceName, SpanName
     HAVING request_count >= 5
@@ -53,11 +54,11 @@ def collect_api_performance(client: Client, database: str, hours: int) -> list[A
     log.debug("クエリ実行開始")
 
     try:
-        result = client.query(query)
+        result = client.query(query, parameters={"database": database, "hours": hours})
         data = [ApiPerformanceStats(**dict(zip(result.column_names, row))) for row in result.result_rows]
         log.info("データ収集完了", count=len(data))
         return data
-    except Exception as e:
+    except ClickHouseError as e:
         log.error("クエリ実行エラー", error=str(e), query=query[:200])
         raise CollectorError("api_performance", str(e)) from e
 
@@ -76,7 +77,7 @@ def collect_bottlenecks(client: Client, database: str, hours: int) -> list[dict[
     Raises:
         CollectorError: クエリ実行に失敗した場合
     """
-    query = f"""
+    query = """
     SELECT
         ServiceName as service,
         SpanName as operation,
@@ -84,8 +85,8 @@ def collect_bottlenecks(client: Client, database: str, hours: int) -> list[dict[
         round(avg(DurationMs), 2) as avg_ms,
         round(quantile(0.95)(DurationMs), 2) as p95_ms,
         round(sum(DurationMs) / 1000, 2) as total_time_sec
-    FROM {database}.otel_traces
-    WHERE Timestamp >= now() - INTERVAL {hours} HOUR
+    FROM {database:Identifier}.otel_traces
+    WHERE Timestamp >= now() - INTERVAL {hours:UInt32} HOUR
       AND DurationMs > 1000
     GROUP BY ServiceName, SpanName
     HAVING occurrences >= 3
@@ -96,48 +97,13 @@ def collect_bottlenecks(client: Client, database: str, hours: int) -> list[dict[
     log.debug("クエリ実行開始")
 
     try:
-        result = client.query(query)
+        result = client.query(query, parameters={"database": database, "hours": hours})
         data = [dict(zip(result.column_names, row)) for row in result.result_rows]
         log.info("データ収集完了", count=len(data))
         return data
-    except Exception as e:
+    except ClickHouseError as e:
         log.error("クエリ実行エラー", error=str(e), query=query[:200])
         raise CollectorError("bottlenecks", str(e)) from e
-
-
-def collect_service_latency(client: Client, database: str, hours: int) -> dict[str, float]:
-    """サービスごとのp95レイテンシを収集
-
-    Args:
-        client: ClickHouseクライアント
-        database: データベース名
-        hours: 分析対象期間（時間）
-
-    Returns:
-        サービス名をキーとしたp95レイテンシの辞書
-
-    Raises:
-        CollectorError: クエリ実行に失敗した場合
-    """
-    query = f"""
-    SELECT
-        ServiceName,
-        round(quantile(0.95)(DurationMs), 2) as p95_ms
-    FROM {database}.otel_traces
-    WHERE Timestamp >= now() - INTERVAL {hours} HOUR
-    GROUP BY ServiceName
-    """
-    log = logger.bind(collector="service_latency", database=database, hours=hours)
-    log.debug("クエリ実行開始")
-
-    try:
-        result = client.query(query)
-        data = {row[0]: row[1] for row in result.result_rows}
-        log.info("データ収集完了", service_count=len(data))
-        return data
-    except Exception as e:
-        log.error("クエリ実行エラー", error=str(e), query=query[:200])
-        raise CollectorError("service_latency", str(e)) from e
 
 
 def collect_span_type_stats(client: Client, database: str, hours: int) -> list[dict[str, Any]]:
@@ -154,7 +120,7 @@ def collect_span_type_stats(client: Client, database: str, hours: int) -> list[d
     Raises:
         CollectorError: クエリ実行に失敗した場合
     """
-    query = f"""
+    query = """
     SELECT
         ServiceName as service,
         SpanKind as span_kind,
@@ -162,8 +128,8 @@ def collect_span_type_stats(client: Client, database: str, hours: int) -> list[d
         round(avg(DurationMs), 2) as avg_duration_ms,
         round(quantile(0.95)(DurationMs), 2) as p95_duration_ms,
         countIf(StatusCode = 'ERROR') as error_count
-    FROM {database}.otel_traces
-    WHERE Timestamp >= now() - INTERVAL {hours} HOUR
+    FROM {database:Identifier}.otel_traces
+    WHERE Timestamp >= now() - INTERVAL {hours:UInt32} HOUR
     GROUP BY ServiceName, SpanKind
     ORDER BY span_count DESC
     """
@@ -171,11 +137,11 @@ def collect_span_type_stats(client: Client, database: str, hours: int) -> list[d
     log.debug("クエリ実行開始")
 
     try:
-        result = client.query(query)
+        result = client.query(query, parameters={"database": database, "hours": hours})
         data = [dict(zip(result.column_names, row)) for row in result.result_rows]
         log.info("データ収集完了", count=len(data))
         return data
-    except Exception as e:
+    except ClickHouseError as e:
         log.error("クエリ実行エラー", error=str(e), query=query[:200])
         raise CollectorError("span_type_stats", str(e)) from e
 
@@ -194,7 +160,7 @@ def collect_error_spans(client: Client, database: str, hours: int) -> list[dict[
     Raises:
         CollectorError: クエリ実行に失敗した場合
     """
-    query = f"""
+    query = """
     SELECT
         ServiceName as service,
         SpanName as operation,
@@ -202,8 +168,8 @@ def collect_error_spans(client: Client, database: str, hours: int) -> list[dict[
         count() as error_count,
         round(avg(DurationMs), 2) as avg_duration_ms,
         formatDateTime(max(Timestamp), '%Y-%m-%d %H:%M:%S') as last_occurrence
-    FROM {database}.otel_traces
-    WHERE Timestamp >= now() - INTERVAL {hours} HOUR
+    FROM {database:Identifier}.otel_traces
+    WHERE Timestamp >= now() - INTERVAL {hours:UInt32} HOUR
       AND StatusCode = 'ERROR'
     GROUP BY ServiceName, SpanName, StatusMessage
     ORDER BY error_count DESC
@@ -213,11 +179,11 @@ def collect_error_spans(client: Client, database: str, hours: int) -> list[dict[
     log.debug("クエリ実行開始")
 
     try:
-        result = client.query(query)
+        result = client.query(query, parameters={"database": database, "hours": hours})
         data = [dict(zip(result.column_names, row)) for row in result.result_rows]
         log.info("データ収集完了", count=len(data))
         return data
-    except Exception as e:
+    except ClickHouseError as e:
         log.error("クエリ実行エラー", error=str(e), query=query[:200])
         raise CollectorError("error_spans", str(e)) from e
 
@@ -236,7 +202,7 @@ def collect_service_dependencies(client: Client, database: str, hours: int) -> l
     Raises:
         CollectorError: クエリ実行に失敗した場合
     """
-    query = f"""
+    query = """
     SELECT
         s1.ServiceName as caller,
         s2.ServiceName as callee,
@@ -244,10 +210,10 @@ def collect_service_dependencies(client: Client, database: str, hours: int) -> l
         round(avg(s1.DurationMs), 2) as avg_duration_ms,
         round(quantile(0.95)(s1.DurationMs), 2) as p95_duration_ms,
         countIf(s1.StatusCode = 'ERROR') as error_count
-    FROM {database}.otel_traces s1
-    JOIN {database}.otel_traces s2
+    FROM {database:Identifier}.otel_traces s1
+    JOIN {database:Identifier}.otel_traces s2
         ON s1.TraceId = s2.TraceId AND s1.SpanId = s2.ParentSpanId
-    WHERE s1.Timestamp >= now() - INTERVAL {hours} HOUR
+    WHERE s1.Timestamp >= now() - INTERVAL {hours:UInt32} HOUR
       AND s1.ServiceName != s2.ServiceName
     GROUP BY s1.ServiceName, s2.ServiceName
     ORDER BY call_count DESC
@@ -257,10 +223,10 @@ def collect_service_dependencies(client: Client, database: str, hours: int) -> l
     log.debug("クエリ実行開始")
 
     try:
-        result = client.query(query)
+        result = client.query(query, parameters={"database": database, "hours": hours})
         data = [dict(zip(result.column_names, row)) for row in result.result_rows]
         log.info("データ収集完了", count=len(data))
         return data
-    except Exception as e:
+    except ClickHouseError as e:
         log.error("クエリ実行エラー", error=str(e), query=query[:200])
         raise CollectorError("service_dependencies", str(e)) from e

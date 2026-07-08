@@ -9,6 +9,7 @@ from typing import Any
 
 import structlog
 from clickhouse_connect.driver.client import Client
+from clickhouse_connect.driver.exceptions import ClickHouseError
 
 from alt_metrics.exceptions import CollectorError
 
@@ -29,7 +30,7 @@ def collect_http_endpoint_stats(client: Client, database: str, hours: int) -> li
     Raises:
         CollectorError: クエリ実行に失敗した場合
     """
-    query = f"""
+    query = """
     SELECT
         ServiceName as service,
         HttpRoute as route,
@@ -41,8 +42,8 @@ def collect_http_endpoint_stats(client: Client, database: str, hours: int) -> li
         countIf(HttpStatusCode >= 200 AND HttpStatusCode < 300) as status_2xx,
         countIf(HttpStatusCode >= 400 AND HttpStatusCode < 500) as status_4xx,
         countIf(HttpStatusCode >= 500) as status_5xx
-    FROM {database}.otel_http_requests
-    WHERE Timestamp >= now() - INTERVAL {hours} HOUR
+    FROM {database:Identifier}.otel_http_requests
+    WHERE Timestamp >= now() - INTERVAL {hours:UInt32} HOUR
       AND HttpRoute != ''
     GROUP BY ServiceName, HttpRoute
     ORDER BY request_count DESC
@@ -52,11 +53,11 @@ def collect_http_endpoint_stats(client: Client, database: str, hours: int) -> li
     log.debug("クエリ実行開始")
 
     try:
-        result = client.query(query)
+        result = client.query(query, parameters={"database": database, "hours": hours})
         data = [dict(zip(result.column_names, row)) for row in result.result_rows]
         log.info("データ収集完了", count=len(data))
         return data
-    except Exception as e:
+    except ClickHouseError as e:
         log.error("クエリ実行エラー", error=str(e), query=query[:200])
         raise CollectorError("http_endpoint_stats", str(e)) from e
 
@@ -75,7 +76,7 @@ def collect_http_status_distribution(client: Client, database: str, hours: int) 
     Raises:
         CollectorError: クエリ実行に失敗した場合
     """
-    query = f"""
+    query = """
     SELECT
         ServiceName as service,
         count() as total_requests,
@@ -84,8 +85,8 @@ def collect_http_status_distribution(client: Client, database: str, hours: int) 
         countIf(HttpStatusCode >= 400 AND HttpStatusCode < 500) as status_4xx,
         countIf(HttpStatusCode >= 500) as status_5xx,
         round(countIf(HttpStatusCode >= 500) / count() * 100, 2) as error_5xx_rate
-    FROM {database}.otel_http_requests
-    WHERE Timestamp >= now() - INTERVAL {hours} HOUR
+    FROM {database:Identifier}.otel_http_requests
+    WHERE Timestamp >= now() - INTERVAL {hours:UInt32} HOUR
     GROUP BY ServiceName
     ORDER BY total_requests DESC
     """
@@ -93,10 +94,10 @@ def collect_http_status_distribution(client: Client, database: str, hours: int) 
     log.debug("クエリ実行開始")
 
     try:
-        result = client.query(query)
+        result = client.query(query, parameters={"database": database, "hours": hours})
         data = [dict(zip(result.column_names, row)) for row in result.result_rows]
         log.info("データ収集完了", count=len(data))
         return data
-    except Exception as e:
+    except ClickHouseError as e:
         log.error("クエリ実行エラー", error=str(e), query=query[:200])
         raise CollectorError("http_status_distribution", str(e)) from e

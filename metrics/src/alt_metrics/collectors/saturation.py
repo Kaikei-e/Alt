@@ -35,16 +35,16 @@ def collect_resource_utilization(client: Client, database: str, hours: int) -> l
     """
     # OTelメトリクスがある場合のクエリ
     # 存在しない場合はトレースデータから推定
-    query = f"""
+    query = """
     SELECT
         ServiceName as service,
-        'cpu' as resource_type,
+        'trace_duration_sec' as resource_type,
         round(avg(DurationMs) / 1000, 2) as avg_utilization,
         round(max(DurationMs) / 1000, 2) as max_utilization,
         round(quantile(0.95)(DurationMs) / 1000, 2) as p95_utilization,
         count() as sample_count
-    FROM {database}.otel_traces
-    WHERE Timestamp >= now() - INTERVAL {hours} HOUR
+    FROM {database:Identifier}.otel_traces
+    WHERE Timestamp >= now() - INTERVAL {hours:UInt32} HOUR
       AND ServiceName != ''
     GROUP BY ServiceName
     HAVING sample_count >= 10
@@ -54,12 +54,12 @@ def collect_resource_utilization(client: Client, database: str, hours: int) -> l
     SELECT
         ServiceName as service,
         'throughput' as resource_type,
-        round(count() / {hours}, 2) as avg_utilization,
+        round(count() / {hours:UInt32}, 2) as avg_utilization,
         0 as max_utilization,
         0 as p95_utilization,
         count() as sample_count
-    FROM {database}.otel_traces
-    WHERE Timestamp >= now() - INTERVAL {hours} HOUR
+    FROM {database:Identifier}.otel_traces
+    WHERE Timestamp >= now() - INTERVAL {hours:UInt32} HOUR
       AND ServiceName != ''
     GROUP BY ServiceName
     HAVING sample_count >= 10
@@ -69,7 +69,7 @@ def collect_resource_utilization(client: Client, database: str, hours: int) -> l
     log.debug("クエリ実行開始")
 
     try:
-        result = client.query(query)
+        result = client.query(query, parameters={"database": database, "hours": hours})
         data = [dict(zip(result.column_names, row)) for row in result.result_rows]
         log.info("データ収集完了", count=len(data))
         return data
@@ -96,7 +96,7 @@ def collect_queue_saturation(client: Client, database: str, hours: int) -> list[
         CollectorError: クエリ実行に失敗した場合
     """
     # キューメトリクスをトレースデータから推定
-    query = f"""
+    query = """
     SELECT
         ServiceName as service,
         SpanName as queue_name,
@@ -104,8 +104,8 @@ def collect_queue_saturation(client: Client, database: str, hours: int) -> list[
         max(toInt64(DurationMs)) as max_depth,
         round(avg(DurationMs), 2) as avg_wait_time_ms,
         round(quantile(0.95)(DurationMs), 2) as p95_wait_time_ms
-    FROM {database}.otel_traces
-    WHERE Timestamp >= now() - INTERVAL {hours} HOUR
+    FROM {database:Identifier}.otel_traces
+    WHERE Timestamp >= now() - INTERVAL {hours:UInt32} HOUR
       AND (SpanName LIKE '%queue%' OR SpanName LIKE '%worker%' OR SpanName LIKE '%process%')
       AND ServiceName != ''
     GROUP BY ServiceName, SpanName
@@ -117,7 +117,7 @@ def collect_queue_saturation(client: Client, database: str, hours: int) -> list[
     log.debug("クエリ実行開始")
 
     try:
-        result = client.query(query)
+        result = client.query(query, parameters={"database": database, "hours": hours})
         data = [dict(zip(result.column_names, row)) for row in result.result_rows]
         log.info("データ収集完了", count=len(data))
         return data

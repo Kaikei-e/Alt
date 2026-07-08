@@ -9,6 +9,7 @@ from typing import Any
 
 import structlog
 from clickhouse_connect.driver.client import Client
+from clickhouse_connect.driver.exceptions import ClickHouseError
 
 from alt_metrics.exceptions import CollectorError
 
@@ -29,7 +30,7 @@ def collect_service_stats(client: Client, database: str, hours: int) -> list[dic
     Raises:
         CollectorError: クエリ実行に失敗した場合
     """
-    query = f"""
+    query = """
     SELECT
         service_name,
         count() as total_logs,
@@ -38,8 +39,8 @@ def collect_service_stats(client: Client, database: str, hours: int) -> list[dic
         round(countIf(level IN ('Error', 'Fatal')) / count() * 100, 3) as error_rate,
         max(timestamp) as last_seen,
         dateDiff('minute', max(timestamp), now()) as minutes_since_last_log
-    FROM {database}.logs
-    WHERE timestamp >= now() - INTERVAL {hours} HOUR
+    FROM {database:Identifier}.logs
+    WHERE timestamp >= now() - INTERVAL {hours:UInt32} HOUR
     GROUP BY service_name
     ORDER BY error_rate DESC, total_logs DESC
     """
@@ -47,11 +48,11 @@ def collect_service_stats(client: Client, database: str, hours: int) -> list[dic
     log.debug("クエリ実行開始")
 
     try:
-        result = client.query(query)
+        result = client.query(query, parameters={"database": database, "hours": hours})
         data = [dict(zip(result.column_names, row)) for row in result.result_rows]
         log.info("データ収集完了", count=len(data))
         return data
-    except Exception as e:
+    except ClickHouseError as e:
         log.error("クエリ実行エラー", error=str(e), query=query[:200])
         raise CollectorError("service_stats", str(e)) from e
 
@@ -70,15 +71,15 @@ def collect_error_trends(client: Client, database: str, hours: int) -> list[dict
     Raises:
         CollectorError: クエリ実行に失敗した場合
     """
-    query = f"""
+    query = """
     SELECT
         toStartOfHour(timestamp) as hour,
         service_name,
         countIf(level IN ('Error', 'Fatal')) as error_count,
         count() as total_count,
         round(countIf(level IN ('Error', 'Fatal')) / count() * 100, 2) as error_rate
-    FROM {database}.logs
-    WHERE timestamp >= now() - INTERVAL {hours} HOUR
+    FROM {database:Identifier}.logs
+    WHERE timestamp >= now() - INTERVAL {hours:UInt32} HOUR
     GROUP BY hour, service_name
     HAVING total_count > 0
     ORDER BY hour DESC, error_count DESC
@@ -87,10 +88,10 @@ def collect_error_trends(client: Client, database: str, hours: int) -> list[dict
     log.debug("クエリ実行開始")
 
     try:
-        result = client.query(query)
+        result = client.query(query, parameters={"database": database, "hours": hours})
         data = [dict(zip(result.column_names, row)) for row in result.result_rows]
         log.info("データ収集完了", count=len(data))
         return data
-    except Exception as e:
+    except ClickHouseError as e:
         log.error("クエリ実行エラー", error=str(e), query=query[:200])
         raise CollectorError("error_trends", str(e)) from e

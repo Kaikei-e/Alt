@@ -69,9 +69,8 @@ class TestCollectResourceUtilization:
 
         collect_resource_utilization(mock_client, "custom_db", 48)
 
-        call_args = mock_client.query.call_args[0][0]
-        assert "custom_db" in call_args
-        assert "INTERVAL 48 HOUR" in call_args
+        call_kwargs = mock_client.query.call_args.kwargs
+        assert call_kwargs["parameters"] == {"database": "custom_db", "hours": 48}
 
 
 class TestCollectQueueSaturation:

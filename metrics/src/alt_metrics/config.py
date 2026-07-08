@@ -10,6 +10,12 @@ import os
 from dataclasses import dataclass, field
 from pathlib import Path
 
+import structlog
+
+logger = structlog.get_logger()
+
+DEFAULT_OUTPUT_DIR = Path("./scripts/reports")
+
 
 @dataclass(frozen=True)
 class HealthThresholds:
@@ -44,12 +50,18 @@ class HealthThresholds:
         """環境変数から閾値を読み込む"""
 
         def get_float(key: str, default: float) -> float:
-            value = os.getenv(f"METRICS_THRESHOLD_{key}")
+            env_key = f"METRICS_THRESHOLD_{key}"
+            value = os.getenv(env_key)
             if value:
                 try:
                     return float(value)
                 except ValueError:
-                    pass
+                    logger.warning(
+                        "不正な閾値環境変数、デフォルト値を使用",
+                        env_key=env_key,
+                        value=value,
+                        default=default,
+                    )
             return default
 
         return cls(
@@ -106,7 +118,7 @@ class ReportConfig:
     """レポート設定"""
 
     language: str = "ja"
-    output_dir: Path = field(default_factory=lambda: Path("./reports"))
+    output_dir: Path = field(default_factory=lambda: DEFAULT_OUTPUT_DIR)
     include_raw_data: bool = False
 
     @classmethod
@@ -114,7 +126,7 @@ class ReportConfig:
         """環境変数から設定を読み込む"""
         return cls(
             language=os.getenv("METRICS_REPORT_LANGUAGE", "ja"),
-            output_dir=Path(os.getenv("METRICS_OUTPUT_DIR", "./scripts/reports")),
+            output_dir=Path(os.getenv("METRICS_OUTPUT_DIR", str(DEFAULT_OUTPUT_DIR))),
             include_raw_data=os.getenv("METRICS_INCLUDE_RAW_DATA", "").lower() == "true",
         )
 

@@ -5,6 +5,7 @@ from __future__ import annotations
 from unittest.mock import MagicMock
 
 import pytest
+from clickhouse_connect.driver.exceptions import OperationalError
 
 from alt_metrics.collectors.sli import (
     collect_sli_trends,
@@ -51,7 +52,7 @@ class TestCollectSliTrends:
     def test_raises_collector_error_on_exception(self) -> None:
         """例外発生時はCollectorErrorを投げる"""
         mock_client = MagicMock()
-        mock_client.query.side_effect = Exception("Connection failed")
+        mock_client.query.side_effect = OperationalError("Connection failed")
 
         with pytest.raises(CollectorError) as exc_info:
             collect_sli_trends(mock_client, "rask_logs", 24)
@@ -59,16 +60,15 @@ class TestCollectSliTrends:
         assert "sli_trends" in str(exc_info.value)
 
     def test_query_uses_correct_parameters(self) -> None:
-        """クエリが正しいパラメータを使用"""
+        """クエリが正しいパラメータをバインドパラメータとして使用"""
         mock_client = MagicMock()
         mock_client.query.return_value.column_names = []
         mock_client.query.return_value.result_rows = []
 
         collect_sli_trends(mock_client, "custom_db", 48)
 
-        call_args = mock_client.query.call_args[0][0]
-        assert "custom_db.sli_metrics" in call_args
-        assert "INTERVAL 48 HOUR" in call_args
+        call_kwargs = mock_client.query.call_args.kwargs
+        assert call_kwargs["parameters"] == {"database": "custom_db", "hours": 48}
 
 
 class TestCollectSloViolations:
@@ -108,7 +108,7 @@ class TestCollectSloViolations:
     def test_raises_collector_error_on_exception(self) -> None:
         """例外発生時はCollectorErrorを投げる"""
         mock_client = MagicMock()
-        mock_client.query.side_effect = Exception("Query timeout")
+        mock_client.query.side_effect = OperationalError("Query timeout")
 
         with pytest.raises(CollectorError) as exc_info:
             collect_slo_violations(mock_client, "rask_logs", 24, 1.0)
@@ -123,9 +123,9 @@ class TestCollectSloViolations:
 
         collect_slo_violations(mock_client, "rask_logs", 24, 5.0)
 
-        call_args = mock_client.query.call_args[0][0]
-        # 5.0% threshold = 0.05 in the query
-        assert "0.05" in call_args
+        call_kwargs = mock_client.query.call_args.kwargs
+        # 5.0% threshold = 0.05 bound parameter
+        assert call_kwargs["parameters"]["error_rate_threshold"] == 0.05
 
     def test_default_threshold_is_1_percent(self) -> None:
         """デフォルト閾値は1%"""
@@ -135,6 +135,6 @@ class TestCollectSloViolations:
 
         collect_slo_violations(mock_client, "rask_logs", 24)
 
-        call_args = mock_client.query.call_args[0][0]
-        # 1.0% threshold = 0.01 in the query
-        assert "0.01" in call_args
+        call_kwargs = mock_client.query.call_args.kwargs
+        # 1.0% threshold = 0.01 bound parameter
+        assert call_kwargs["parameters"]["error_rate_threshold"] == 0.01
