@@ -25,6 +25,8 @@ class ConsumerConfig:
     block_timeout_ms: int = 5000
     claim_idle_time_ms: int = 30000
     enabled: bool = False
+    max_delivery_count: int = 5
+    reclaim_interval_seconds: float = 30.0
 
     @classmethod
     def from_env(cls) -> ConsumerConfig:
@@ -38,6 +40,8 @@ class ConsumerConfig:
             block_timeout_ms=int(os.getenv("CONSUMER_BLOCK_TIMEOUT_MS", "5000")),
             claim_idle_time_ms=int(os.getenv("CONSUMER_CLAIM_IDLE_TIME_MS", "30000")),
             enabled=os.getenv("CONSUMER_ENABLED", "false").lower() == "true",
+            max_delivery_count=int(os.getenv("CONSUMER_MAX_DELIVERY_COUNT", "5")),
+            reclaim_interval_seconds=float(os.getenv("CONSUMER_RECLAIM_INTERVAL_SECONDS", "30")),
         )
 
     @classmethod
@@ -55,6 +59,8 @@ class ConsumerConfig:
             block_timeout_ms=1000,
             claim_idle_time_ms=int(os.getenv("CONSUMER_CLAIM_IDLE_TIME_MS", "30000")),
             enabled=os.getenv("CONSUMER_ENABLED", "false").lower() == "true",
+            max_delivery_count=int(os.getenv("CONSUMER_MAX_DELIVERY_COUNT", "5")),
+            reclaim_interval_seconds=float(os.getenv("CONSUMER_RECLAIM_INTERVAL_SECONDS", "30")),
         )
 
 
@@ -111,13 +117,32 @@ class StreamConsumer:
             consumer=self.config.consumer_name,
         )
 
-        await self._consume_loop()
-
-    async def stop(self) -> None:
-        """Stop the consumer gracefully."""
-        self._shutdown = True
-        if self.client:
+        try:
+            async with asyncio.TaskGroup() as tg:
+                tg.create_task(self._consume_loop())
+                tg.create_task(self._reclaim_loop())
+        finally:
+            # Close the client on the same event loop that created it. stop()
+            # only flips self._shutdown from whatever thread calls it; the
+            # actual teardown always happens here, inside this consumer's own
+            # asyncio.run() loop.
             await self.client.close()
+
+    def stop(self) -> None:
+        """Signal the consumer to stop.
+
+        Thread-safe: this only flips a flag that the consumer's own loops
+        (running in their own asyncio.run() loop, possibly on another thread)
+        observe and react to. It must never touch self.client directly --
+        closing an asyncio Redis client from a different event loop than the
+        one that created it is undefined behaviour.
+        """
+        self._shutdown = True
+
+    @property
+    def is_stopped(self) -> bool:
+        """Whether stop() has been called (or the consumer was never enabled)."""
+        return self._shutdown or not self.config.enabled
 
     async def _ensure_consumer_group(self) -> None:
         """Create consumer group if it doesn't exist."""
@@ -142,12 +167,96 @@ class StreamConsumer:
                 logger.error("consume_error", error=str(e))
                 await asyncio.sleep(1)  # Back off on error
 
+    async def _reclaim_loop(self) -> None:
+        """Periodically reclaim pending entries idle longer than claim_idle_time_ms.
+
+        Without this, messages left in the PEL by a crashed consumer (read via
+        XREADGROUP but never XACK'd) are never redelivered to anyone.
+        """
+        while not self._shutdown:
+            try:
+                await self._reclaim_idle_messages()
+            except Exception as e:
+                logger.error("reclaim_error", error=str(e))
+            await asyncio.sleep(self.config.reclaim_interval_seconds)
+
+    async def _reclaim_idle_messages(self) -> None:
+        """Walk the PEL via XAUTOCLAIM, reprocessing or dead-lettering entries."""
+        assert self.client is not None
+        cursor = "0-0"
+        while not self._shutdown:
+            next_cursor, messages, _deleted = await self.client.xautoclaim(
+                name=self.config.stream_key,
+                groupname=self.config.group_name,
+                consumername=self.config.consumer_name,
+                min_idle_time=self.config.claim_idle_time_ms,
+                start_id=cursor,
+                count=self.config.batch_size,
+            )
+            if messages:
+                await self._process_claimed_messages(messages)
+            if next_cursor == "0-0":
+                break
+            cursor = next_cursor
+
+    async def _process_claimed_messages(self, messages: list[Any]) -> None:
+        """Reprocess reclaimed messages, dead-lettering ones over the retry limit."""
+        assert self.client is not None
+        for message_id, data in messages:
+            delivery_count = await self._get_delivery_count(message_id)
+            if delivery_count > self.config.max_delivery_count:
+                await self._move_to_dlq(message_id, data, delivery_count)
+                continue
+
+            event = self._parse_event(message_id, data)
+            try:
+                await self.handler.handle_event(event)
+                await self.client.xack(self.config.stream_key, self.config.group_name, message_id)
+            except Exception as e:
+                logger.error(
+                    "reclaimed_event_processing_failed",
+                    message_id=message_id,
+                    event_type=event.event_type,
+                    delivery_count=delivery_count,
+                    error=str(e),
+                )
+                # Don't ACK -- stays in the PEL for the next reclaim pass.
+
+    async def _get_delivery_count(self, message_id: str) -> int:
+        """Look up how many times this message has been delivered."""
+        assert self.client is not None
+        entries = await self.client.xpending_range(
+            self.config.stream_key,
+            self.config.group_name,
+            min=message_id,
+            max=message_id,
+            count=1,
+        )
+        if entries:
+            return int(entries[0]["times_delivered"])
+        return 0
+
+    async def _move_to_dlq(self, message_id: str, data: dict[str, Any], delivery_count: int) -> None:
+        """Dead-letter a message that exceeded max_delivery_count and ACK it
+        so it stops occupying the PEL."""
+        assert self.client is not None
+        dlq_stream = f"{self.config.stream_key}:dlq"
+        dlq_fields = {**data, "original_message_id": message_id, "delivery_count": str(delivery_count)}
+        await self.client.xadd(dlq_stream, cast(dict[Any, Any], dlq_fields))
+        await self.client.xack(self.config.stream_key, self.config.group_name, message_id)
+        logger.error(
+            "message_moved_to_dlq",
+            message_id=message_id,
+            delivery_count=delivery_count,
+            dlq_stream=dlq_stream,
+        )
+
     async def _read_and_process(self) -> None:
         """Read events from stream and process them."""
         assert self.client is not None
 
-        # Read new messages using XREADGROUP
-        # Note: Redis 8.4 CLAIM option can be used here for idle pending messages
+        # New messages only (">"). Redelivery of unacked pending entries is
+        # handled by _reclaim_loop via XAUTOCLAIM, not here.
         streams = await self.client.xreadgroup(
             groupname=self.config.group_name,
             consumername=self.config.consumer_name,
@@ -242,9 +351,12 @@ class StreamConsumer:
             if "metadata" in event_data:
                 fields["metadata"] = json.dumps(event_data["metadata"])
 
-            # Publish to stream with maxlen to avoid unbounded growth
+            # Publish to stream with maxlen to avoid unbounded growth while
+            # keeping enough backlog that concurrent in-flight replies aren't
+            # trimmed before a consumer reads them (maxlen=1 caused replies to
+            # be evicted by the very next publish under concurrent requests).
             # Cast to satisfy Pyrefly's generic type inference for redis xadd
-            message_id = await self.client.xadd(stream_key, cast(dict[Any, Any], fields), maxlen=1)
+            message_id = await self.client.xadd(stream_key, cast(dict[Any, Any], fields), maxlen=1000, approximate=True)
             logger.info(
                 "reply_published",
                 stream_key=stream_key,

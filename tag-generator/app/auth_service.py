@@ -218,9 +218,14 @@ class AuthenticatedTagGeneratorService:
     async def _generate_tags_with_preferences(
         self, request: TagGenerationRequest, user_preferences: dict[str, Any]
     ) -> list[TagResult]:
-        """Generate tags using ML model with user preferences."""
-        # TODO: Integrate with actual ML model
-        # This is a simplified implementation for demonstration
+        """Generate tags from a fixed keyword table with user preferences.
+
+        NOT ML-backed: this is a keyword-lookup stub, not the KeyBERT/
+        sentence-transformers pipeline used elsewhere in this service
+        (tag_generator.tag_extractor.extract). TagResult.source reflects
+        that so callers can distinguish stub output from real ML results.
+        TODO: Integrate with the actual ML tag extraction pipeline.
+        """
 
         content_text = f"{request.title} {request.content}".lower()
 
@@ -251,7 +256,7 @@ class AuthenticatedTagGeneratorService:
                                 tag=keyword,
                                 confidence=confidence,
                                 category=category,
-                                source="ml_model_personalized",
+                                source="keyword_stub_personalized",
                             )
                         )
 
@@ -282,10 +287,17 @@ tag_service = AuthenticatedTagGeneratorService()
 _background_tag_service = None
 _background_thread = None
 
+# Liveness flags surfaced via /health. Set to False when the background
+# batch-processing service or a stream consumer thread dies unexpectedly, so
+# the container healthcheck can detect it instead of reporting healthy while
+# tag generation is silently dead.
+_background_service_healthy = True
+_consumers_healthy = True
+
 
 def _run_background_tag_generation():
     """Run tag generation service in background thread."""
-    global _background_tag_service
+    global _background_tag_service, _background_service_healthy
     try:
         import asyncio
 
@@ -315,10 +327,12 @@ def _run_background_tag_generation():
 
             # Run consumer in separate thread
             def run_consumer() -> None:
+                global _consumers_healthy
                 try:
                     asyncio.run(consumer.start())
                 except Exception as e:
                     logger.error("Consumer thread error", error=str(e))
+                    _consumers_healthy = False
 
             consumer_thread = threading.Thread(
                 target=run_consumer,
@@ -344,10 +358,12 @@ def _run_background_tag_generation():
             tags_event_handler.stream_consumer = tags_consumer
 
             def run_tags_consumer() -> None:
+                global _consumers_healthy
                 try:
                     asyncio.run(tags_consumer.start())
                 except Exception as e:
                     logger.error("Tags consumer thread error", error=str(e))
+                    _consumers_healthy = False
 
             tags_consumer_thread = threading.Thread(
                 target=run_tags_consumer,
@@ -363,7 +379,9 @@ def _run_background_tag_generation():
         _background_tag_service.run_service()
     except Exception as e:
         logger.error("Background tag generation service failed", error=str(e), exc_info=True)
-        # Don't raise - allow API server to continue running
+        # Don't raise - allow API server to continue running, but stop
+        # reporting healthy: batch tag generation is dead.
+        _background_service_healthy = False
 
 
 @asynccontextmanager
@@ -444,12 +462,22 @@ async def generate_tags_endpoint(request: TagGenerationRequest, user_context: Us
             article_id=request.article_id,
             error=str(e),
         )
-        raise HTTPException(status_code=500, detail=f"Tag generation failed: {str(e)}") from e
+        raise HTTPException(status_code=500, detail="Tag generation failed") from e
 
 
 @app.get("/health")
 async def health_check():
-    """Health check endpoint."""
+    """Health check endpoint.
+
+    Reports unhealthy if the background batch tag-generation service or a
+    stream consumer thread has died, instead of always claiming healthy
+    while those threads are silently dead.
+    """
+    if not _background_service_healthy or not _consumers_healthy:
+        raise HTTPException(
+            status_code=503,
+            detail="Background tag generation is unhealthy: batch service or a stream consumer thread has died",
+        )
     return {"status": "healthy", "service": "tag-generator"}
 
 
@@ -513,7 +541,7 @@ async def extract_tags_endpoint(
 
     except Exception as e:
         logger.error("Tag extraction failed", error=str(e), title=body.title[:50])
-        raise HTTPException(status_code=500, detail=f"Tag extraction failed: {str(e)}") from e
+        raise HTTPException(status_code=500, detail="Tag extraction failed") from e
 
 
 if __name__ == "__main__":

@@ -16,6 +16,8 @@ from tag_extractor.onnx_embedder import (
 )
 from tag_generator.exceptions import ModelLoadError
 
+logger = structlog.get_logger(__name__)
+
 if TYPE_CHECKING:
     from keybert import KeyBERT  # type: ignore
     from sentence_transformers import SentenceTransformer  # type: ignore
@@ -24,13 +26,20 @@ try:
     from fugashi import Tagger  # pyright: ignore
     from keybert import KeyBERT  # type: ignore
     from sentence_transformers import SentenceTransformer  # type: ignore
-except ImportError:
-    # Fallback for environments without ML dependencies (e.g., production builds)
+
+    logger.info("ml_dependencies_enabled", detail="fugashi/keybert/sentence-transformers importable")
+except ImportError as exc:
+    # No local fallback model exists: get_models() raises ModelLoadError the
+    # moment code tries to actually use these (see below), so this is loud
+    # rather than a silent no-op.
+    logger.warning(
+        "ml_dependencies_disabled",
+        detail="fugashi/keybert/sentence-transformers not installed; model loading will raise ModelLoadError",
+        error=str(exc),
+    )
     SentenceTransformer = None  # type: ignore
     KeyBERT = None  # type: ignore
     Tagger = None  # type: ignore
-
-logger = structlog.get_logger(__name__)
 
 
 class ModelManager:

@@ -29,9 +29,18 @@ try:
     SentenceTransformer = _SentenceTransformer  # noqa: N816 (keep original casing for patching)
     KeyBERT = _KeyBERT  # noqa: N816
     Tagger = _Tagger  # noqa: N816
-except ImportError:
-    # Fallback for environments without ML dependencies (e.g., production builds)
-    # These will be mocked in tests
+    structlog.get_logger(__name__).info(
+        "ml_dependencies_enabled", detail="fugashi/keybert/sentence-transformers importable"
+    )
+except ImportError as exc:
+    # No local fallback model exists: ModelManager.get_models() raises
+    # ModelLoadError the moment code tries to actually use these, so this is
+    # loud rather than a silent no-op. These will be mocked in tests.
+    structlog.get_logger(__name__).warning(
+        "ml_dependencies_disabled",
+        detail="fugashi/keybert/sentence-transformers not installed; model loading will raise ModelLoadError",
+        error=str(exc),
+    )
     SentenceTransformer = None  # type: ignore
     KeyBERT = None  # type: ignore
     Tagger = None  # type: ignore

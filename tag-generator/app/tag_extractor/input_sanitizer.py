@@ -270,7 +270,7 @@ class InputSanitizer:
                 warnings=warnings,
             )
 
-        except Exception as e:
+        except (ValueError, TypeError) as e:
             logger.error("Sanitization failed", error=str(e))
             violations.append(f"Sanitization error: {str(e)}")
             return SanitizationResult(

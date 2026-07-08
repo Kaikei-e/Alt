@@ -12,9 +12,8 @@ from tag_generator.cascade import CascadeController
 from tag_generator.config import TagGeneratorConfig
 from tag_generator.cursor_manager import CursorManager
 from tag_generator.domain.models import TagExtractionResult
-from tag_generator.driver.connect_client_factory import create_backend_client
-from tag_generator.exceptions import TagExtractionError
 from tag_generator.health_monitor import HealthMonitor
+from tag_generator.ports import ArticleFetcherPort, TagInserterPort
 from tag_generator.scheduler import ProcessingScheduler
 
 logger = structlog.get_logger(__name__)
@@ -23,30 +22,31 @@ logger = structlog.get_logger(__name__)
 class TagGeneratorService:
     """Main service class for tag generation operations."""
 
-    def __init__(self, config: TagGeneratorConfig | None = None):
-        """Initialize tag generator service with configuration."""
+    def __init__(
+        self,
+        config: TagGeneratorConfig | None = None,
+        article_fetcher: ArticleFetcherPort | None = None,
+        tag_inserter: TagInserterPort | None = None,
+    ):
+        """Initialize tag generator service with configuration.
+
+        ``article_fetcher``/``tag_inserter`` are injected by the composition
+        root (main.py / auth_service.py) via
+        ``connect_client_factory.create_article_fetcher_and_inserter()``.
+        Left as optional constructor params only so existing call sites keep
+        working; the service itself no longer imports the Connect-RPC driver.
+        """
         self.config = config or TagGeneratorConfig()
 
-        # Pluggable drivers — always use Connect-RPC client.
-        self.article_fetcher: Any
-        self.tag_inserter: Any
-
-        result = create_backend_client()
-
-        if result is not None:
-            client, auth_headers = result
-            from tag_generator.driver.connect_article_fetcher import ConnectArticleFetcher
-            from tag_generator.driver.connect_tag_inserter import ConnectTagInserter
-
-            logger.info("Using backend API mode for article/tag operations")
-            self.article_fetcher = ConnectArticleFetcher(client, auth_headers)
-            self.tag_inserter = ConnectTagInserter(client, auth_headers)
-        else:
-            raise RuntimeError(
-                "Backend API client could not be created. "
-                "Ensure BACKEND_API_URL is set and the mTLS cert sidecar is "
-                "running. Legacy database mode has been removed."
+        if article_fetcher is None or tag_inserter is None:
+            from tag_generator.driver.connect_client_factory import (
+                create_article_fetcher_and_inserter,
             )
+
+            article_fetcher, tag_inserter = create_article_fetcher_and_inserter()
+
+        self.article_fetcher: ArticleFetcherPort = article_fetcher
+        self.tag_inserter: TagInserterPort = tag_inserter
 
         # Initialize dependencies (shared across modes)
         self.tag_extractor = TagExtractor()
@@ -87,7 +87,7 @@ class TagGeneratorService:
 
         try:
             outcome: TagExtractionOutcome = self.tag_extractor.extract_tags_with_metrics(title, content)
-        except (TagExtractionError, Exception) as exc:  # pragma: no cover - failure path tested via mocks
+        except Exception as exc:  # noqa: BLE001 - single-article failure must not abort the batch (see test_should_handle_article_processing_errors)
             logger.error("Tag extraction failed for article", article_id=article_id, error=str(exc))
             return False
 

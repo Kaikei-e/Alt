@@ -103,11 +103,14 @@ class ConnectTagInserter:
                 headers=self.auth_headers,
                 timeout_ms=_TIMEOUT_MS,
             )
+            processed = resp.total_upserted
+            failed = len(article_tags) - processed
+            errors = [] if failed == 0 else [f"{failed} article(s) not upserted"]
             return BatchResult(
                 success=resp.success,
-                processed_articles=len(article_tags),
-                failed_articles=0,
-                errors=[],
+                processed_articles=processed,
+                failed_articles=failed,
+                errors=errors,
                 message=None,
             )
         except ConnectError as e:

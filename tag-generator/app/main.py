@@ -2,6 +2,7 @@
 
 import asyncio
 import threading
+import time
 
 import structlog
 
@@ -21,11 +22,21 @@ logger = structlog.get_logger(__name__)
 
 
 def run_consumer(consumer: StreamConsumer) -> None:
-    """Run the consumer in a background thread."""
-    try:
-        asyncio.run(consumer.start())
-    except Exception as e:
-        logger.error("Consumer thread error", error=str(e))
+    """Run the consumer in a background thread, restarting with backoff on
+    crash instead of dying silently. A clean return from consumer.start()
+    (stop() was called) ends the loop without restarting."""
+    backoff_seconds = 1.0
+    while not consumer.is_stopped:
+        try:
+            asyncio.run(consumer.start())
+        except Exception as e:
+            logger.error("consumer_thread_crashed", error=str(e), retry_in_seconds=backoff_seconds)
+            if consumer.is_stopped:
+                break
+            time.sleep(backoff_seconds)
+            backoff_seconds = min(backoff_seconds * 2, 30.0)
+        else:
+            break
 
 
 def main() -> int:
@@ -98,11 +109,14 @@ def main() -> int:
         logger.error("Failed to start service", error=e)
         return 1
     finally:
-        # Stop consumers if running
+        # Stop consumers if running. stop() only signals the consumer's own
+        # loop (running in its background thread's asyncio.run()) to shut
+        # down and close its client -- it must not be run through a second,
+        # unrelated event loop here.
         if consumer is not None:
-            asyncio.run(consumer.stop())
+            consumer.stop()
         if tags_consumer is not None:
-            asyncio.run(tags_consumer.stop())
+            tags_consumer.stop()
 
         # Shutdown OTel providers
         otel_shutdown()
