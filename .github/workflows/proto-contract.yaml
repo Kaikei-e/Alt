@@ -88,6 +88,7 @@ jobs:
   buf-lint-breaking:
     name: Buf Lint & Breaking Change Detection
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v5
 
@@ -109,6 +110,7 @@ jobs:
   contract-conformance:
     name: Contract Conformance Tests (FE)
     runs-on: ubuntu-latest
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v5
 
@@ -133,6 +135,7 @@ jobs:
   pact-cdc-go:
     name: Pact CDC Consumer Tests (Go)
     runs-on: ubuntu-latest
+    timeout-minutes: 25
     strategy:
       matrix:
         include:
@@ -199,6 +202,7 @@ jobs:
   pact-verify-go:
     name: Pact Provider Verify (Go)
     runs-on: ubuntu-latest
+    timeout-minutes: 25
     needs: [pact-cdc-go, pact-cdc-rust, pact-cdc-python-consumer]
     services:
       pact-db:
@@ -350,6 +354,7 @@ jobs:
   pact-verify-python:
     name: Pact Provider Verify (Python)
     runs-on: ubuntu-latest
+    timeout-minutes: 25
     needs: [pact-cdc-go, pact-cdc-rust, pact-cdc-python-consumer]
     strategy:
       fail-fast: false
@@ -481,6 +486,7 @@ jobs:
     # persistent deploy-host broker, not the ephemeral CI broker.
     name: Pact Publish & Provider Verification
     runs-on: ubuntu-latest
+    timeout-minutes: 25
     needs: [pact-verify-go, pact-verify-python]
     steps:
       - name: All provider verifications passed
@@ -489,6 +495,7 @@ jobs:
   pact-cdc-rust:
     name: Pact CDC Consumer Tests (Rust)
     runs-on: ubuntu-latest
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v5
         with:
@@ -520,6 +527,7 @@ jobs:
   pact-cdc-python-consumer:
     name: Pact CDC Consumer Tests (Python)
     runs-on: ubuntu-latest
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v5
 

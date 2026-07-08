@@ -41,7 +41,7 @@ services:
         max-file: "3"
 
   pact-broker:
-    image: pactfoundation/pact-broker:latest
+    image: pactfoundation/pact-broker:2.139.0-pactbroker2.119.0
     depends_on:
       pact-db:
         condition: service_healthy

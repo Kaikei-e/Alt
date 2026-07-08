@@ -20,7 +20,7 @@ WORKDIR /home/ollama-user
 
 # ---- Environment configuration -------------------------------------------
 ENV OLLAMA_HOST=0.0.0.0:11434
-ENV OLLAMA_ORIGINS=*
+ENV OLLAMA_ORIGINS=http://localhost,http://127.0.0.1
 ENV OLLAMA_KEEP_ALIVE=24h
 ENV OLLAMA_NUM_PARALLEL=8
 ENV OLLAMA_MAX_LOADED_MODELS=8

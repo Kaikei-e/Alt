@@ -7,5 +7,6 @@ jobs:
   info:
     permissions: {}
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - run: echo "This workflow is deprecated. Use .github/workflows/alt-frontend-sv-unit-test.yaml (vitest) and .github/workflows/alt-frontend-sv.yml (playwright) — both run on bun."

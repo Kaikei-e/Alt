@@ -1,3 +1,5 @@
+-- atlas:txmode none
+--
 -- Add covering partial index for the correlated subquery that finds the latest
 -- article per feed. This pattern appears in FetchFeedsByFeedLinkID,
 -- FetchUnreadFeedsListCursor, FetchAllFeedsListCursor, and
@@ -10,7 +12,10 @@
 --
 -- INCLUDE (id) enables index-only scan since the subquery only selects a.id.
 -- WHERE deleted_at IS NULL excludes soft-deleted rows (partial index).
-CREATE INDEX IF NOT EXISTS idx_articles_feed_active_created_desc
+-- articles is the largest table in the schema; CONCURRENTLY (+ atlas:txmode
+-- none, since Postgres forbids it inside a transaction) avoids blocking
+-- writes from pre-processor/ingestion for the duration of the build.
+CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_articles_feed_active_created_desc
   ON articles (feed_id, created_at DESC)
   INCLUDE (id)
   WHERE deleted_at IS NULL;

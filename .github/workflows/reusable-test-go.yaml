@@ -59,7 +59,7 @@ jobs:
 
       - name: Pre-checkout cleanup
         if: runner.environment == 'self-hosted'
-        uses: docker://alpine:latest
+        uses: docker://alpine:3.21@sha256:48b0309ca019d89d40f670aa1bc06e426dc0931948452e8491e3d65087abc07d
         env:
           RUNNERS_GID: ${{ steps.get-gid.outputs.gid }}
         with:
