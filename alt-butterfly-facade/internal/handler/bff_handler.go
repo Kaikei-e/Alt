@@ -10,6 +10,8 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/google/uuid"
+
 	"alt-butterfly-facade/internal/cache"
 	"alt-butterfly-facade/internal/client"
 	"alt-butterfly-facade/internal/middleware"
@@ -149,20 +151,25 @@ func (h *BFFHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Read request body once, for cache key, dedup key, and forwarding.
+	var body []byte
+	if r.Body != nil {
+		var err error
+		body, err = io.ReadAll(r.Body)
+		r.Body.Close()
+		if err != nil {
+			h.handleError(w, http.StatusBadRequest, "Failed to read request body", requestID)
+			return
+		}
+		r.Body = io.NopCloser(bytes.NewReader(body))
+	}
+
 	// Check cache for cacheable endpoints
 	if h.shouldUseCache(r.Method, endpoint) {
-		if cached := h.checkCache(userID, endpoint, r); cached != nil {
+		if cached := h.checkCache(userID, endpoint, body); cached != nil {
 			h.writeCachedResponse(w, cached)
 			return
 		}
-	}
-
-	// Read request body for dedup key and caching
-	var body []byte
-	if r.Body != nil {
-		body, _ = io.ReadAll(r.Body)
-		r.Body.Close()
-		r.Body = io.NopCloser(bytes.NewReader(body))
 	}
 
 	// Handle request with deduplication if enabled
@@ -264,17 +271,9 @@ func (h *BFFHandler) shouldUseCache(method, endpoint string) bool {
 }
 
 // checkCache checks if a response is cached.
-func (h *BFFHandler) checkCache(userID, endpoint string, r *http.Request) *cache.CacheEntry {
+func (h *BFFHandler) checkCache(userID, endpoint string, body []byte) *cache.CacheEntry {
 	if h.responseCache == nil {
 		return nil
-	}
-
-	// Read body for cache key
-	var body []byte
-	if r.Body != nil {
-		body, _ = io.ReadAll(r.Body)
-		r.Body.Close()
-		r.Body = io.NopCloser(bytes.NewReader(body))
 	}
 
 	key := cache.BuildCacheKey(userID, endpoint, body)
@@ -420,7 +419,7 @@ func (h *BFFHandler) logError(msg string, err error) {
 
 // generateRequestID generates a unique request ID.
 func generateRequestID() string {
-	return time.Now().Format("20060102150405.000000")
+	return uuid.New().String()
 }
 
 // GetCacheStats returns cache statistics.

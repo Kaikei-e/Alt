@@ -100,7 +100,17 @@ func main() {
 		if v := os.Getenv("TTS_CONNECT_MTLS_URL"); v != "" {
 			ttsURL = v
 		}
-		slog.InfoContext(ctx, "BFF outbound clients: mTLS enforce enabled",
+		slog.InfoContext(ctx, "BFF outbound clients: mtls_enforce_enabled",
+			"backend", backendURL, "acolyte", acolyteURL, "tts", ttsURL)
+	} else {
+		// Admin proxy routes (KnowledgeHomeAdminService, AdminMonitorService)
+		// authenticate the caller via JWT role check at the BFF boundary but
+		// rely entirely on this transport for backend-facing auth
+		// (ForwardServiceRequest's serviceToken is presently a no-op stub).
+		// With enforcement off, those RPCs travel to alt-backend in plaintext
+		// with no service-level auth at all — surface that loudly instead of
+		// letting it default silently.
+		slog.WarnContext(ctx, "BFF outbound clients: mtls_enforce_disabled — admin RPCs to alt-backend run over plaintext h2c with no service-level auth",
 			"backend", backendURL, "acolyte", acolyteURL, "tts", ttsURL)
 	}
 

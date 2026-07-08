@@ -58,10 +58,24 @@ type RequestDeduplicator struct {
 // NewRequestDeduplicator creates a new deduplicator with the given window.
 // Requests within the window will be deduplicated.
 func NewRequestDeduplicator(window time.Duration) *RequestDeduplicator {
-	return &RequestDeduplicator{
+	d := &RequestDeduplicator{
 		pending:  make(map[string]struct{}),
 		lastUsed: make(map[string]time.Time),
 		window:   window,
+	}
+	go d.cleanupLoop()
+	return d
+}
+
+// cleanupLoop periodically evicts stale lastUsed entries so the map doesn't
+// grow unboundedly over the process lifetime (mirrors auth-hub's
+// middleware.RateLimiter.cleanupLoop).
+func (d *RequestDeduplicator) cleanupLoop() {
+	ticker := time.NewTicker(3 * time.Minute)
+	defer ticker.Stop()
+
+	for range ticker.C {
+		d.Cleanup()
 	}
 }
 

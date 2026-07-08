@@ -14,8 +14,10 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+var testAggSecret = []byte("test-secret")
+
 func TestNewAggregationHandler(t *testing.T) {
-	handler := NewAggregationHandler(nil, nil)
+	handler := NewAggregationHandler(nil, testAggSecret, "auth-hub", "alt-backend", nil)
 	assert.NotNil(t, handler)
 }
 
@@ -104,12 +106,12 @@ func TestAggregationHandler_ServeHTTP_Success(t *testing.T) {
 			}
 			return nil, nil
 		},
-		nil,
+		testAggSecret, "auth-hub", "alt-backend", nil,
 	)
 
 	reqBody := `{"queries": ["feed_stats", "unread_count"]}`
 	req := httptest.NewRequest("POST", "/v1/aggregate", bytes.NewReader([]byte(reqBody)))
-	req.Header.Set("X-Alt-Backend-Token", "valid-token")
+	req.Header.Set("X-Alt-Backend-Token", createValidToken(t, testAggSecret))
 	rec := httptest.NewRecorder()
 
 	handler.ServeHTTP(rec, req)
@@ -125,7 +127,7 @@ func TestAggregationHandler_ServeHTTP_Success(t *testing.T) {
 }
 
 func TestAggregationHandler_ServeHTTP_InvalidMethod(t *testing.T) {
-	handler := NewAggregationHandler(nil, nil)
+	handler := NewAggregationHandler(nil, testAggSecret, "auth-hub", "alt-backend", nil)
 
 	req := httptest.NewRequest("GET", "/v1/aggregate", nil)
 	rec := httptest.NewRecorder()
@@ -136,9 +138,10 @@ func TestAggregationHandler_ServeHTTP_InvalidMethod(t *testing.T) {
 }
 
 func TestAggregationHandler_ServeHTTP_InvalidBody(t *testing.T) {
-	handler := NewAggregationHandler(nil, nil)
+	handler := NewAggregationHandler(nil, testAggSecret, "auth-hub", "alt-backend", nil)
 
 	req := httptest.NewRequest("POST", "/v1/aggregate", bytes.NewReader([]byte(`{invalid`)))
+	req.Header.Set("X-Alt-Backend-Token", createValidToken(t, testAggSecret))
 	rec := httptest.NewRecorder()
 
 	handler.ServeHTTP(rec, req)
@@ -151,11 +154,12 @@ func TestAggregationHandler_ServeHTTP_UnknownQuery(t *testing.T) {
 		func(path string, token string, body []byte) (*AggregatedResult, error) {
 			return nil, nil
 		},
-		nil,
+		testAggSecret, "auth-hub", "alt-backend", nil,
 	)
 
 	reqBody := `{"queries": ["unknown_query"]}`
 	req := httptest.NewRequest("POST", "/v1/aggregate", bytes.NewReader([]byte(reqBody)))
+	req.Header.Set("X-Alt-Backend-Token", createValidToken(t, testAggSecret))
 	rec := httptest.NewRecorder()
 
 	handler.ServeHTTP(rec, req)
@@ -198,11 +202,12 @@ func TestAggregationHandler_ParallelFetch(t *testing.T) {
 				StatusCode: http.StatusOK,
 			}, nil
 		},
-		nil,
+		testAggSecret, "auth-hub", "alt-backend", nil,
 	)
 
 	reqBody := `{"queries": ["feed_stats", "unread_count", "trends"]}`
 	req := httptest.NewRequest("POST", "/v1/aggregate", bytes.NewReader([]byte(reqBody)))
+	req.Header.Set("X-Alt-Backend-Token", createValidToken(t, testAggSecret))
 	rec := httptest.NewRecorder()
 
 	handler.ServeHTTP(rec, req)
@@ -290,11 +295,12 @@ func TestAggregationHandler_PartialFailure(t *testing.T) {
 			}
 			return nil, nil
 		},
-		nil,
+		testAggSecret, "auth-hub", "alt-backend", nil,
 	)
 
 	reqBody := `{"queries": ["feed_stats", "unread_count"]}`
 	req := httptest.NewRequest("POST", "/v1/aggregate", bytes.NewReader([]byte(reqBody)))
+	req.Header.Set("X-Alt-Backend-Token", createValidToken(t, testAggSecret))
 	rec := httptest.NewRecorder()
 
 	handler.ServeHTTP(rec, req)
@@ -327,11 +333,12 @@ func TestAggregationHandler_ReadBody(t *testing.T) {
 				StatusCode: http.StatusOK,
 			}, nil
 		},
-		nil,
+		testAggSecret, "auth-hub", "alt-backend", nil,
 	)
 
 	reqBody := `{"queries": ["feed_stats"]}`
 	req := httptest.NewRequest("POST", "/v1/aggregate", bytes.NewReader([]byte(reqBody)))
+	req.Header.Set("X-Alt-Backend-Token", createValidToken(t, testAggSecret))
 	rec := httptest.NewRecorder()
 
 	handler.ServeHTTP(rec, req)
@@ -351,17 +358,18 @@ func TestAggregationHandler_TokenForwarding(t *testing.T) {
 				StatusCode: http.StatusOK,
 			}, nil
 		},
-		nil,
+		testAggSecret, "auth-hub", "alt-backend", nil,
 	)
 
 	reqBody := `{"queries": ["feed_stats"]}`
 	req := httptest.NewRequest("POST", "/v1/aggregate", bytes.NewReader([]byte(reqBody)))
-	req.Header.Set("X-Alt-Backend-Token", "test-token-123")
+	token := createValidToken(t, testAggSecret)
+	req.Header.Set("X-Alt-Backend-Token", token)
 	rec := httptest.NewRecorder()
 
 	handler.ServeHTTP(rec, req)
 
-	assert.Equal(t, "test-token-123", receivedToken)
+	assert.Equal(t, token, receivedToken)
 }
 
 func TestMaxQueries(t *testing.T) {
@@ -372,7 +380,7 @@ func TestMaxQueries(t *testing.T) {
 				StatusCode: http.StatusOK,
 			}, nil
 		},
-		nil,
+		testAggSecret, "auth-hub", "alt-backend", nil,
 	)
 
 	// Request with too many queries
@@ -383,6 +391,7 @@ func TestMaxQueries(t *testing.T) {
 
 	reqBody, _ := json.Marshal(AggregationRequest{Queries: queries})
 	req := httptest.NewRequest("POST", "/v1/aggregate", bytes.NewReader(reqBody))
+	req.Header.Set("X-Alt-Backend-Token", createValidToken(t, testAggSecret))
 	rec := httptest.NewRecorder()
 
 	handler.ServeHTTP(rec, req)

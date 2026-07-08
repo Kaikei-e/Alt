@@ -100,6 +100,11 @@ func NewConfig() *Config {
 	}
 }
 
+// minBackendTokenSecretLen mirrors auth-hub's BACKEND_TOKEN_SECRET validation
+// (auth-hub/config/config.go): both services sign/verify the same JWT, so
+// their minimum key strength must match.
+const minBackendTokenSecretLen = 32
+
 // LoadBackendTokenSecret loads the backend token secret from file or environment.
 func (c *Config) LoadBackendTokenSecret() ([]byte, error) {
 	// Try to load from file first
@@ -108,11 +113,18 @@ func (c *Config) LoadBackendTokenSecret() ([]byte, error) {
 		if err != nil {
 			return nil, err
 		}
-		return []byte(strings.TrimSpace(string(data))), nil
+		secret := strings.TrimSpace(string(data))
+		if len(secret) < minBackendTokenSecretLen {
+			return nil, errors.New("backend token secret from BACKEND_TOKEN_SECRET_FILE must be at least 32 characters")
+		}
+		return []byte(secret), nil
 	}
 
 	// Fall back to environment variable
 	if c.BackendTokenSecret != "" {
+		if len(c.BackendTokenSecret) < minBackendTokenSecretLen {
+			return nil, errors.New("BACKEND_TOKEN_SECRET must be at least 32 characters")
+		}
 		return []byte(c.BackendTokenSecret), nil
 	}
 
