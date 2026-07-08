@@ -8,7 +8,6 @@ use super::{
     },
 };
 use crate::collector::ContainerInfo;
-use bytes::Bytes;
 use std::collections::HashMap;
 
 // Re-export EnrichedLogEntry from the domain layer (canonical definition)
@@ -175,13 +174,14 @@ impl UniversalParser {
         Ok(())
     }
 
-    /// Validate UTF-8 and handle invalid sequences gracefully
-    fn validate_utf8(&self, log_bytes: &[u8]) -> Result<String, ParseError> {
+    /// Validate UTF-8 and handle invalid sequences gracefully. Returns a
+    /// borrowed `Cow` so the (common) valid-UTF-8 case costs no allocation -
+    /// only genuinely invalid input pays for the lossy-replacement copy.
+    fn validate_utf8<'a>(&self, log_bytes: &'a [u8]) -> Result<std::borrow::Cow<'a, str>, ParseError> {
         if log_bytes.is_empty() {
             return Err(ParseError::InvalidFormat("Empty log line".to_string()));
         }
 
-        // Use lossy conversion to handle invalid UTF-8 gracefully
         let raw_str = String::from_utf8_lossy(log_bytes);
 
         // Check for null bytes or control characters that might indicate malformed input
@@ -191,7 +191,7 @@ impl UniversalParser {
             ));
         }
 
-        Ok(raw_str.into_owned())
+        Ok(raw_str)
     }
 
     /// Validate field size to prevent excessive memory usage
@@ -207,7 +207,10 @@ impl UniversalParser {
         Ok(())
     }
 
-    pub async fn parse_docker_log(
+    /// Pure CPU-bound parsing - no `.await` points, so this is a plain
+    /// (non-async) fn rather than paying for a per-line `Future` for no
+    /// reason.
+    pub fn parse_docker_log(
         &self,
         log_bytes: &[u8],
         container_info: &ContainerInfo,
@@ -223,9 +226,11 @@ impl UniversalParser {
 
         // Check if this is already a Docker JSON format or raw application log
         let (log_content, stream, timestamp) = if raw_str.trim_start().starts_with("{\"log\":") {
-            // This is Docker JSON format
-            let bytes = Bytes::from(raw_str);
-            let docker_entry = self.docker_parser.parse(bytes)?;
+            // This is Docker JSON format. Parse directly from the validated
+            // borrow instead of round-tripping through an owned `String` and
+            // then `Bytes` first - `parse_slice` still needs its own mutable
+            // copy for simd-json, but this skips the extra one in between.
+            let docker_entry = self.docker_parser.parse_slice(raw_str.as_bytes())?;
 
             // Remove trailing newline from log content
             let log = docker_entry.log.trim_end_matches('\n').to_string();
@@ -342,7 +347,7 @@ impl UniversalParser {
         let mut results = Vec::with_capacity(log_lines.len());
 
         for log_line in log_lines {
-            results.push(self.parse_docker_log(log_line, container_info).await);
+            results.push(self.parse_docker_log(log_line, container_info));
         }
 
         results
@@ -448,7 +453,6 @@ mod tests {
 
         let entry = parser
             .parse_docker_log(docker_log.as_bytes(), &container_info)
-            .await
             .expect("Failed to parse nginx docker log");
 
         assert_eq!(entry.service_type, "nginx");
@@ -467,7 +471,6 @@ mod tests {
 
         let entry = parser
             .parse_docker_log(docker_log.as_bytes(), &container_info)
-            .await
             .expect("Failed to parse go backend docker log");
 
         assert_eq!(entry.service_type, "alt-backend");
@@ -491,7 +494,6 @@ mod tests {
 
         let entry = parser
             .parse_docker_log(docker_log.as_bytes(), &container_info)
-            .await
             .expect("Failed to parse unknown service docker log");
 
         assert_eq!(entry.service_type, "unknown-service");
@@ -509,7 +511,6 @@ mod tests {
 
         let entry = parser
             .parse_docker_log(docker_log.as_bytes(), &container_info)
-            .await
             .expect("Failed to parse docker log with native timestamp");
 
         assert_eq!(entry.service_type, "alt-backend");
@@ -655,7 +656,6 @@ mod tests {
 
         let entry = parser
             .parse_docker_log(docker_log.as_bytes(), &container_info)
-            .await
             .expect("Failed to parse Rust tracing docker log");
 
         assert_eq!(entry.service_type, "recap-worker");
@@ -682,7 +682,6 @@ mod tests {
 
         let entry = parser
             .parse_docker_log(docker_log.as_bytes(), &container_info)
-            .await
             .expect("Failed to parse docker log with trace context");
 
         // Verify trace context is extracted to dedicated fields
@@ -716,7 +715,6 @@ mod tests {
 
         let entry = parser
             .parse_docker_log(docker_log.as_bytes(), &container_info)
-            .await
             .expect("Failed to parse Python structlog docker log");
 
         assert_eq!(entry.service_type, "recap-evaluator");
@@ -751,7 +749,6 @@ mod tests {
 
         let entry = parser
             .parse_docker_log(docker_log.as_bytes(), &container_info)
-            .await
             .expect("Failed to parse Python structlog docker log");
 
         assert_eq!(entry.service_type, "recap-subworker");

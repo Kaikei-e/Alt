@@ -195,12 +195,17 @@ pub fn setup_logging_safe(config_level: ConfigLogLevel) -> Result<(), Initializa
         })();
 
         if result.is_ok() {
-            *INIT_SUCCESS.lock().unwrap() = true;
+            *INIT_SUCCESS
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner) = true;
         }
     });
 
     // Return the initialization result
-    if *INIT_SUCCESS.lock().unwrap() {
+    if *INIT_SUCCESS
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+    {
         Ok(())
     } else {
         Err(InitializationError::LoggingInitFailed {

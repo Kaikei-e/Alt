@@ -18,7 +18,6 @@ pub use service::{ServiceError, ServiceManager};
 pub use shutdown::ShutdownHandle;
 
 use clap::Parser;
-use std::process;
 use tracing::{error, info};
 
 pub struct App {
@@ -43,6 +42,9 @@ impl App {
 
         // Load config file if specified
         let final_config = if let Some(config_file) = &config.config_file {
+            // tracing isn't initialized yet at this point (that happens
+            // inside `initializer.initialize()` below), so `eprintln!` is
+            // the correct bootstrap logger here, not a violation.
             eprintln!("Loading configuration from file: {}", config_file.display());
             Config::from_file(config_file)?
         } else {
@@ -118,18 +120,16 @@ pub async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         return Ok(());
     }
 
-    match App::from_args(args).await {
-        Ok(app) => {
-            if let Err(e) = app.run().await {
-                error!("Application error: {}", e);
-                process::exit(1);
-            }
-        }
-        Err(e) => {
-            error!("Configuration error: {}", e);
-            process::exit(1);
-        }
-    }
+    // Return the error instead of `process::exit(1)`: exiting directly would
+    // terminate the process before the tracing subscriber gets a chance to
+    // flush pending log records. Propagating up to `main()` in main.rs lets
+    // the runtime unwind normally - the non-zero exit code is still produced
+    // via `Result`'s `Termination` impl.
+    let app = App::from_args(args).await.inspect_err(|e| {
+        error!("Configuration error: {}", e);
+    })?;
 
-    Ok(())
+    app.run().await.inspect_err(|e| {
+        error!("Application error: {}", e);
+    })
 }

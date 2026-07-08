@@ -166,7 +166,7 @@ impl ServiceManager {
             cancel_token,
         };
 
-        tokio::spawn(async move {
+        let processing_loop = tokio::spawn(async move {
             run_processing_loop(params).await;
         });
 
@@ -178,7 +178,7 @@ impl ServiceManager {
         Ok(ShutdownHandle::new(
             shutdown_tx,
             signal_handler,
-            self.running.clone(),
+            processing_loop,
         ))
     }
 

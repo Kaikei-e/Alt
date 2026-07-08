@@ -215,54 +215,14 @@ impl HttpClient {
 
 impl HttpClientTrait for HttpClient {
     async fn health_check(&self) -> Result<(), ClientError> {
-        let mut health_url = self.endpoint_url.clone();
-        health_url.set_path("/v1/health");
-
-        let start = std::time::Instant::now();
-
-        let response = timeout(self.config.timeout, self.client.get(health_url).send())
-            .await
-            .map_err(|_| ClientError::RequestTimeout("Health check timeout".to_string()))?
-            .map_err(ClientError::NetworkError)?;
-
-        let response_time = start.elapsed();
-        let success = response.status().is_success();
-
-        self.stats.record_request(success, response_time);
-
-        if success {
-            Ok(())
-        } else {
-            Err(ClientError::HttpError {
-                status: response.status().as_u16(),
-                message: format!("Health check failed: {}", response.status()),
-            })
-        }
+        HttpClient::health_check(self).await
     }
 
     fn connection_stats(&self) -> ConnectionStats {
-        let total_requests = self.stats.total_requests.load(Ordering::Relaxed);
-        let successful_requests = self.stats.successful_requests.load(Ordering::Relaxed);
-        let failed_requests = self.stats.failed_requests.load(Ordering::Relaxed);
-        let total_response_time = self.stats.total_response_time.load(Ordering::Relaxed);
-
-        let average_response_time = if total_requests > 0 {
-            Duration::from_millis(total_response_time / total_requests)
-        } else {
-            Duration::ZERO
-        };
-
-        ConnectionStats {
-            max_connections: self.config.max_connections,
-            active_connections: self.stats.active_connections.load(Ordering::Relaxed),
-            total_requests,
-            successful_requests,
-            failed_requests,
-            average_response_time,
-        }
+        HttpClient::connection_stats(self)
     }
 
     fn endpoint(&self) -> &str {
-        &self.config.endpoint
+        HttpClient::endpoint(self)
     }
 }

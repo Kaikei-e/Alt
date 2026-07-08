@@ -36,6 +36,15 @@ impl DockerJsonParser {
     }
 
     pub fn parse(&self, bytes: Bytes) -> Result<DockerLogEntry, ParseError> {
+        self.parse_slice(&bytes)
+    }
+
+    /// Same as `parse`, but takes a borrowed slice directly instead of an
+    /// owned `Bytes` - lets callers that already hold a `&[u8]` (e.g.
+    /// `UniversalParser::parse_docker_log`) skip an extra owned-buffer hop
+    /// before this method's own (unavoidable, simd-json requires `&mut`)
+    /// copy into `data`.
+    pub fn parse_slice(&self, bytes: &[u8]) -> Result<DockerLogEntry, ParseError> {
         // Use SIMD-JSON for fast parsing
         let mut data = bytes.to_vec();
         let json: OwnedValue = simd_json::from_slice(&mut data)?;

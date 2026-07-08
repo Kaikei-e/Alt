@@ -126,10 +126,15 @@ impl RetryManager {
 
     pub fn calculate_delay(&self, attempt: u32) -> Duration {
         let base_delay = match self.config.strategy {
-            RetryStrategy::ExponentialBackoff => {
-                let multiplier = 2_u64.pow(attempt);
-                Duration::from_millis(self.config.base_delay.as_millis() as u64 * multiplier)
-            }
+            RetryStrategy::ExponentialBackoff => match 2_u64.checked_pow(attempt) {
+                Some(multiplier) => {
+                    let base_ms = self.config.base_delay.as_millis() as u64;
+                    Duration::from_millis(base_ms.saturating_mul(multiplier))
+                }
+                // `attempt` is large enough that 2^attempt overflows u64;
+                // the delay would be capped to `max_delay` below anyway.
+                None => self.config.max_delay,
+            },
             RetryStrategy::LinearBackoff => Duration::from_millis(
                 self.config.base_delay.as_millis() as u64 * (attempt as u64 + 1),
             ),

@@ -2207,7 +2207,6 @@ dependencies = [
 name = "rask-log-forwarder"
 version = "0.1.0"
 dependencies = [
- "anyhow",
  "bincode",
  "bollard",
  "bumpalo",

@@ -80,9 +80,17 @@ impl BatchTransmitter {
             retry_count + 1
         );
 
-        // Prepare payload
+        // Prepare payload off the async executor: gzip compression is
+        // CPU-bound and would otherwise stall the runtime thread (and every
+        // other task scheduled on it) for the duration of a large batch.
         let use_compression = self.client.config.enable_compression && batch.size() > 100;
-        let payload = self.prepare_payload(&batch, use_compression)?;
+        let this = self.clone();
+        let (payload, batch) = tokio::task::spawn_blocking(move || {
+            let payload = this.prepare_payload(&batch, use_compression);
+            payload.map(|p| (p, batch))
+        })
+        .await
+        .map_err(|e| TransmissionError::InvalidResponse(format!("serialization task panicked: {e}")))??;
         let bytes_sent = payload.len();
 
         // Build headers
@@ -204,14 +212,6 @@ impl BatchTransmitter {
         Ok(headers)
     }
 
-    pub async fn send_batch_streaming(
-        &self,
-        _batch: Batch,
-    ) -> Result<TransmissionResult, TransmissionError> {
-        // For very large batches, implement streaming transmission
-        // This would serialize and send data in chunks
-        todo!("Implement streaming transmission for very large batches")
-    }
 }
 
 /// OTLP-specific batch transmitter.
@@ -244,6 +244,19 @@ impl OtlpBatchTransmitter {
         })
     }
 
+    fn gzip(data: &[u8]) -> Result<Vec<u8>, TransmissionError> {
+        use flate2::{Compression, write::GzEncoder};
+        use std::io::Write;
+
+        let mut encoder = GzEncoder::new(Vec::new(), Compression::fast());
+        encoder
+            .write_all(data)
+            .map_err(|e| TransmissionError::InvalidResponse(format!("Compression failed: {e}")))?;
+        encoder
+            .finish()
+            .map_err(|e| TransmissionError::InvalidResponse(format!("Compression finish failed: {e}")))
+    }
+
     /// Sends a batch of logs to the OTLP endpoint.
     pub async fn send_batch(&self, batch: Batch) -> Result<TransmissionResult, TransmissionError> {
         self.send_batch_with_retry(batch, 0).await
@@ -266,27 +279,24 @@ impl OtlpBatchTransmitter {
             retry_count + 1
         );
 
-        // Serialize to OTLP protobuf format
-        let payload = self.serializer.serialize_batch(&batch)?;
-        let bytes_sent = payload.len();
-
-        // Determine if we should compress
-        let use_compression = self.client.config.enable_compression && bytes_sent > 1024;
-        let (final_payload, compressed) = if use_compression {
-            use flate2::{Compression, write::GzEncoder};
-            use std::io::Write;
-
-            let mut encoder = GzEncoder::new(Vec::new(), Compression::fast());
-            encoder
-                .write_all(&payload)
-                .map_err(|e| TransmissionError::InvalidResponse(format!("Compression failed: {e}")))?;
-            let compressed_data = encoder
-                .finish()
-                .map_err(|e| TransmissionError::InvalidResponse(format!("Compression finish failed: {e}")))?;
-            (compressed_data, true)
-        } else {
-            (payload, false)
-        };
+        // Serialize + optionally gzip-compress off the async executor: both
+        // are CPU-bound and would otherwise stall the runtime thread (and
+        // every other task scheduled on it) for the duration of a large
+        // batch.
+        let this = self.clone();
+        let (batch, final_payload, bytes_sent, compressed) = tokio::task::spawn_blocking(move || {
+            let payload = this.serializer.serialize_batch(&batch)?;
+            let bytes_sent = payload.len();
+            let use_compression = this.client.config.enable_compression && bytes_sent > 1024;
+            let (final_payload, compressed) = if use_compression {
+                (Self::gzip(&payload)?, true)
+            } else {
+                (payload, false)
+            };
+            Ok::<_, TransmissionError>((batch, final_payload, bytes_sent, compressed))
+        })
+        .await
+        .map_err(|e| TransmissionError::InvalidResponse(format!("serialization task panicked: {e}")))??;
 
         // Build headers
         let headers = self.build_otlp_headers(&batch, compressed)?;

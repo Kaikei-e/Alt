@@ -42,9 +42,8 @@ async fn test_concurrent_parsing_thread_safety() {
 
             for iteration in 0..iterations_per_thread {
                 for (log_idx, log_data) in test_logs_clone.iter().enumerate() {
-                    let result = parser_clone
-                        .parse_docker_log(log_data.as_bytes(), &container_info_clone)
-                        .await;
+                    let result =
+                        parser_clone.parse_docker_log(log_data.as_bytes(), &container_info_clone);
 
                     // Verify parsing works correctly under concurrency
                     assert!(

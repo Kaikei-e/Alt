@@ -118,16 +118,12 @@ async fn test_reliability_manager_metrics_collection() {
     .await
     .unwrap();
 
-    // Start background tasks
-    reliability_manager.start_background_tasks().await;
-
     // Send multiple batches
     for i in 0..3 {
         let batch = create_test_batch(10 + i);
         let _ = reliability_manager.send_batch_with_reliability(batch).await;
     }
 
-    // Wait a bit for background tasks to process
     tokio::time::sleep(Duration::from_millis(100)).await;
 
     let metrics = reliability_manager.get_metrics_snapshot().await;

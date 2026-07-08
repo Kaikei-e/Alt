@@ -1,4 +1,4 @@
-use rask_log_forwarder::sender::{ClientError, NewConnectionStats as ConnectionStats};
+use rask_log_forwarder::sender::{ClientError, ConnectionStats};
 use std::time::Duration;
 
 // 簡単なモック構造体を手動で作成

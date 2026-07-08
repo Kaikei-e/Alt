@@ -1,10 +1,9 @@
 use super::service::ServiceError;
-use std::sync::Arc;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 use tokio::signal;
 #[cfg(unix)]
 use tokio::signal::unix::{signal as unix_signal, SignalKind};
-use tokio::sync::{RwLock, mpsc};
+use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
 use tracing::{error, info, warn};
 
@@ -12,19 +11,19 @@ use tracing::{error, info, warn};
 pub struct ShutdownHandle {
     shutdown_tx: mpsc::UnboundedSender<()>,
     signal_handler: SignalHandler,
-    running: Arc<RwLock<bool>>,
+    processing_loop: tokio::task::JoinHandle<()>,
 }
 
 impl ShutdownHandle {
     pub fn new(
         shutdown_tx: mpsc::UnboundedSender<()>,
         signal_handler: SignalHandler,
-        running: Arc<RwLock<bool>>,
+        processing_loop: tokio::task::JoinHandle<()>,
     ) -> Self {
         Self {
             shutdown_tx,
             signal_handler,
-            running,
+            processing_loop,
         }
     }
 
@@ -36,23 +35,28 @@ impl ShutdownHandle {
             warn!("Shutdown channel already closed");
         }
 
-        // Wait for service to stop
+        // Wait for the processing loop task to actually finish rather than
+        // polling a flag it sets - this resolves the instant the task exits
+        // instead of up to 100ms late, and doesn't spin a wakeup every tick
+        // while shutdown is in progress.
         // Note: 4 seconds is chosen to fit within Docker's stop_grace_period (12s)
         // while leaving buffer time for cleanup operations
         let timeout_duration = Duration::from_secs(4);
-        let start = Instant::now();
 
-        while *self.running.read().await && start.elapsed() < timeout_duration {
-            tokio::time::sleep(Duration::from_millis(100)).await;
+        match tokio::time::timeout(timeout_duration, self.processing_loop).await {
+            Ok(Ok(())) => {
+                info!("Graceful shutdown completed");
+                Ok(())
+            }
+            Ok(Err(e)) => {
+                error!("Processing loop task panicked during shutdown: {e}");
+                Err(ServiceError::ShutdownTimeout)
+            }
+            Err(_) => {
+                error!("Shutdown timeout exceeded");
+                Err(ServiceError::ShutdownTimeout)
+            }
         }
-
-        if *self.running.read().await {
-            error!("Shutdown timeout exceeded");
-            return Err(ServiceError::ShutdownTimeout);
-        }
-
-        info!("Graceful shutdown completed");
-        Ok(())
     }
 
     pub async fn wait_for_shutdown(self) {
@@ -90,12 +94,33 @@ impl SignalHandler {
         tokio::spawn(async move {
             #[cfg(unix)]
             {
-                let mut sigterm =
-                    unix_signal(SignalKind::terminate()).expect("Failed to create SIGTERM handler");
-
-                tokio::select! {
-                    result = signal::ctrl_c() => {
-                        match result {
+                match unix_signal(SignalKind::terminate()) {
+                    Ok(mut sigterm) => {
+                        tokio::select! {
+                            result = signal::ctrl_c() => {
+                                match result {
+                                    Ok(()) => {
+                                        info!("Received SIGINT (Ctrl+C), initiating graceful shutdown");
+                                    }
+                                    Err(err) => {
+                                        error!("Failed to listen for SIGINT: {}", err);
+                                        shutdown_token.cancel();
+                                        return;
+                                    }
+                                }
+                            }
+                            _ = sigterm.recv() => {
+                                info!("Received SIGTERM, initiating graceful shutdown");
+                            }
+                        }
+                    }
+                    Err(err) => {
+                        // Fall back to SIGINT-only handling instead of
+                        // panicking the signal-handling task in production.
+                        error!(
+                            "Failed to create SIGTERM handler: {err}; falling back to SIGINT (Ctrl+C) only"
+                        );
+                        match signal::ctrl_c().await {
                             Ok(()) => {
                                 info!("Received SIGINT (Ctrl+C), initiating graceful shutdown");
                             }
@@ -105,9 +130,6 @@ impl SignalHandler {
                                 return;
                             }
                         }
-                    }
-                    _ = sigterm.recv() => {
-                        info!("Received SIGTERM, initiating graceful shutdown");
                     }
                 }
 

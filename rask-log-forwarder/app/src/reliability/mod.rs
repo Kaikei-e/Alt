@@ -139,26 +139,36 @@ impl ReliabilityManager {
                 }
             }
 
-            // Increment retry attempt
-            {
+            // Increment retry attempt and compute the backoff delay (if any)
+            // while holding the locks, then drop them before sleeping -
+            // holding `retry_manager`/`metrics` across the (up to 60s) sleep
+            // would block every other batch's retry bookkeeping in the
+            // meantime.
+            let delay_to_wait = {
                 let mut retry_manager = self.retry_manager.lock().await;
                 retry_manager.increment_attempt(&batch_id);
-
-                let mut metrics = self.metrics_collector.lock().await;
                 let attempt_count = retry_manager.get_attempt_count(&batch_id);
-                metrics.record_retry_attempt(&batch_id, attempt_count).await;
 
-                // Wait for next retry
-                if !retry_manager.should_give_up(&batch_id) {
-                    let delay = retry_manager.calculate_delay(attempt_count);
-                    tracing::info!(
-                        "Retrying batch {} in {:?} (attempt {})",
-                        batch_id,
-                        delay,
-                        attempt_count + 1
-                    );
-                    tokio::time::sleep(delay).await;
+                {
+                    let mut metrics = self.metrics_collector.lock().await;
+                    metrics.record_retry_attempt(&batch_id, attempt_count).await;
                 }
+
+                if retry_manager.should_give_up(&batch_id) {
+                    None
+                } else {
+                    Some((retry_manager.calculate_delay(attempt_count), attempt_count))
+                }
+            };
+
+            if let Some((delay, attempt_count)) = delay_to_wait {
+                tracing::info!(
+                    "Retrying batch {} in {:?} (attempt {})",
+                    batch_id,
+                    delay,
+                    attempt_count + 1
+                );
+                tokio::time::sleep(delay).await;
             }
         }
     }
@@ -282,47 +292,6 @@ impl ReliabilityManager {
         })
     }
 
-    pub async fn start_background_tasks(&self) {
-        // Start metrics collection
-        let metrics_collector = self.metrics_collector.clone();
-        tokio::spawn(async move {
-            let mut interval = tokio::time::interval(std::time::Duration::from_secs(60));
-            loop {
-                interval.tick().await;
-                // Update system metrics
-                let memory_usage = Self::get_memory_usage();
-                let metrics = metrics_collector.lock().await;
-                metrics.update_memory_usage(memory_usage);
-            }
-        });
-
-        // Start disk cleanup
-        let disk_fallback = self.disk_fallback.clone();
-        tokio::spawn(async move {
-            let mut interval = tokio::time::interval(std::time::Duration::from_secs(3600)); // Every hour
-            loop {
-                interval.tick().await;
-                if let Ok(mut disk) = disk_fallback.try_lock()
-                    && let Err(e) = disk.cleanup_old_batches().await
-                {
-                    tracing::error!("Disk cleanup failed: {}", e);
-                }
-            }
-        });
-
-        // Start health monitoring
-        let health_monitor = self.health_monitor.clone();
-        tokio::spawn(async move {
-            let mut interval = tokio::time::interval(std::time::Duration::from_secs(300)); // Every 5 minutes
-            loop {
-                interval.tick().await;
-                health_monitor
-                    .cleanup_stale_components(std::time::Duration::from_secs(1800))
-                    .await; // 30 minutes
-            }
-        });
-    }
-
     pub async fn get_health_report(&self) -> HealthReport {
         HealthReport::generate(&self.health_monitor, self.start_time).await
     }
@@ -330,13 +299,6 @@ impl ReliabilityManager {
     pub async fn get_metrics_snapshot(&self) -> MetricsSnapshot {
         let metrics = self.metrics_collector.lock().await;
         metrics.snapshot().await
-    }
-
-    fn get_memory_usage() -> u64 {
-        // Simple memory usage estimation
-        // In production, you'd use a proper memory profiling library
-        // For now, return a fixed value for testing
-        16 * 1024 * 1024 // 16MB
     }
 }
 

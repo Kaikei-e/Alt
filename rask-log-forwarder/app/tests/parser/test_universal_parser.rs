@@ -20,7 +20,6 @@ async fn test_universal_parser_with_nginx() {
 
     let entry = parser
         .parse_docker_log(docker_log.as_bytes(), &container_info)
-        .await
         .unwrap();
 
     assert_eq!(entry.service_type, "nginx");
@@ -48,7 +47,6 @@ async fn test_universal_parser_with_go_backend() {
 
     let entry = parser
         .parse_docker_log(docker_log.as_bytes(), &container_info)
-        .await
         .unwrap();
 
     assert_eq!(entry.service_type, "alt-backend");
@@ -73,7 +71,6 @@ async fn test_universal_parser_with_unknown_service() {
 
     let entry = parser
         .parse_docker_log(docker_log.as_bytes(), &container_info)
-        .await
         .unwrap();
 
     assert_eq!(entry.service_type, "unknown-service");
