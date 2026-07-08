@@ -45,15 +45,26 @@ func (r *PostgreSQLArticleRepository) Create(ctx context.Context, article *model
 // CreateWithResult creates an article and returns whether it was inserted or updated.
 // If an existing article has longer content, only metadata is updated (content preserved).
 func (r *PostgreSQLArticleRepository) CreateWithResult(ctx context.Context, article *models.Article) (*UpsertResult, error) {
-	// 1. Check existing content length
+	// 1. Check existing content length. Only "no existing row" falls through
+	// to a full upsert below — any other repository error (DB connection
+	// failure, etc.) must abort instead of silently treating it the same as
+	// "article doesn't exist yet", which could overwrite a longer existing
+	// article's content with a shorter RSS summary.
 	existingLength, err := r.getExistingContentLength(ctx, article.InoreaderID)
-	if err == nil && existingLength > article.ContentLength {
-		// 2. Existing content is longer → metadata-only update
-		r.logger.Info("Kept longer existing content",
-			"inoreader_id", article.InoreaderID,
-			"existing_length", existingLength,
-			"incoming_length", article.ContentLength)
-		return r.updateMetadataOnly(ctx, article)
+	switch {
+	case err == nil:
+		if existingLength > article.ContentLength {
+			// 2. Existing content is longer → metadata-only update
+			r.logger.Info("Kept longer existing content",
+				"inoreader_id", article.InoreaderID,
+				"existing_length", existingLength,
+				"incoming_length", article.ContentLength)
+			return r.updateMetadataOnly(ctx, article)
+		}
+	case errors.Is(err, pgx.ErrNoRows):
+		// No existing article — proceed to full upsert below.
+	default:
+		return nil, fmt.Errorf("failed to check existing content length: %w", err)
 	}
 
 	// 3. New article or longer/equal content → full upsert

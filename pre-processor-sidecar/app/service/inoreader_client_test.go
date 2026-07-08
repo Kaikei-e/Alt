@@ -4,12 +4,14 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"net/http"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/assert"
 	"go.uber.org/mock/gomock"
 
+	"pre-processor-sidecar/driver"
 	"pre-processor-sidecar/mocks"
 	"pre-processor-sidecar/utils"
 )
@@ -22,10 +24,24 @@ func TestInoreaderClient_RetryOnTransientFailures(t *testing.T) {
 		shouldSucceed bool
 	}{
 		{
-			name: "403 forbidden - リトライして成功",
+			// 403 is permanent for the current token — retrying burns the
+			// scarce daily quota without changing the outcome, so it must
+			// fail immediately instead of retrying.
+			name: "403 forbidden - リトライせず即座に失敗",
 			mockResponses: []func() (map[string]interface{}, error){
 				func() (map[string]interface{}, error) {
-					return nil, fmt.Errorf("API request failed with status 403")
+					return nil, &driver.HTTPStatusError{StatusCode: http.StatusForbidden, Message: "API request failed with status 403"}
+				},
+			},
+			shouldSucceed: false,
+		},
+		{
+			// 429 (rate limited) is the API's own backpressure signal and
+			// must be retried.
+			name: "429 rate limited - リトライして成功",
+			mockResponses: []func() (map[string]interface{}, error){
+				func() (map[string]interface{}, error) {
+					return nil, &driver.HTTPStatusError{StatusCode: http.StatusTooManyRequests, Message: "API rate limit exceeded"}
 				},
 				func() (map[string]interface{}, error) {
 					return map[string]interface{}{"subscriptions": []interface{}{}}, nil
@@ -37,7 +53,7 @@ func TestInoreaderClient_RetryOnTransientFailures(t *testing.T) {
 			name: "非リトライ対象エラー - 即座に失敗",
 			mockResponses: []func() (map[string]interface{}, error){
 				func() (map[string]interface{}, error) {
-					return nil, fmt.Errorf("API request failed with status 400")
+					return nil, &driver.HTTPStatusError{StatusCode: http.StatusBadRequest, Message: "API request failed with status 400"}
 				},
 			},
 			shouldSucceed: false,
@@ -128,8 +144,20 @@ func TestInoreaderClient_ErrorClassification(t *testing.T) {
 		expectRetryable bool
 	}{
 		{
-			name:            "403 Forbidden - リトライ可能",
-			err:             fmt.Errorf("API request failed with status 403"),
+			// 403 is permanent for the current token — retrying wastes quota.
+			name:            "403 Forbidden - リトライ不可",
+			err:             &driver.HTTPStatusError{StatusCode: http.StatusForbidden, Message: "API request failed with status 403"},
+			expectRetryable: false,
+		},
+		{
+			// 429 is the API's own backpressure signal and must be retried.
+			name:            "429 Too Many Requests - リトライ可能",
+			err:             &driver.HTTPStatusError{StatusCode: http.StatusTooManyRequests, Message: "API rate limit exceeded"},
+			expectRetryable: true,
+		},
+		{
+			name:            "503 Service Unavailable - リトライ可能",
+			err:             &driver.HTTPStatusError{StatusCode: http.StatusServiceUnavailable, Message: "API request failed with status 503"},
 			expectRetryable: true,
 		},
 		{
@@ -144,7 +172,7 @@ func TestInoreaderClient_ErrorClassification(t *testing.T) {
 		},
 		{
 			name:            "400 Bad Request - リトライ不可",
-			err:             fmt.Errorf("API request failed with status 400"),
+			err:             &driver.HTTPStatusError{StatusCode: http.StatusBadRequest, Message: "API request failed with status 400"},
 			expectRetryable: false,
 		},
 		{

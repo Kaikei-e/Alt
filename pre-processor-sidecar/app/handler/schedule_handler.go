@@ -141,6 +141,17 @@ type ScheduleHandler struct {
 	// Intelligent schedulers with rate limit awareness
 	subscriptionScheduler *RateLimitAwareScheduler
 	articleFetchScheduler *RateLimitAwareScheduler
+
+	// tokenManager is optional: wired via SetTokenManager. When nil,
+	// LogTokenHealthCheck logs that health checks are unavailable instead of
+	// a misleading "degraded" warning on every schedule cycle.
+	tokenManager *service.TokenManagementService
+}
+
+// SetTokenManager wires the token management service used by
+// LogTokenHealthCheck to report real refresh metrics.
+func (h *ScheduleHandler) SetTokenManager(tm *service.TokenManagementService) {
+	h.tokenManager = tm
 }
 
 // NewScheduleHandler creates a new schedule handler with rotation support
@@ -299,7 +310,10 @@ func (h *ScheduleHandler) runSubscriptionSyncScheduler() {
 			h.logger.Info("Subscription sync scheduler stopped")
 			return
 		case <-h.subscriptionTicker.C:
-			if h.config.EnableSubscriptionSync && !h.status.SubscriptionSyncRunning {
+			h.mu.RLock()
+			shouldRun := h.config.EnableSubscriptionSync && !h.status.SubscriptionSyncRunning
+			h.mu.RUnlock()
+			if shouldRun {
 				go h.executeSubscriptionSync()
 			}
 		}
@@ -321,7 +335,10 @@ func (h *ScheduleHandler) runArticleFetchScheduler() {
 			h.logger.Info("Article fetch scheduler stopped")
 			return
 		case <-timer.C:
-			if h.config.EnableArticleFetch && !h.status.ArticleFetchRunning {
+			h.mu.RLock()
+			shouldRun := h.config.EnableArticleFetch && !h.status.ArticleFetchRunning
+			h.mu.RUnlock()
+			if shouldRun {
 				go func() {
 					h.executeArticleFetch()
 
@@ -609,9 +626,13 @@ func (h *ScheduleHandler) processNextSubscriptionRotation(ctx context.Context, r
 				"position", i+1)
 		}
 
-		// Small delay between subscriptions to be API-friendly
+		// Delay between subscriptions to respect the Inoreader API rate floor
+		// (shared with service.ArticleFetchService.ProcessSubscriptionBatch).
 		if i < len(batch)-1 {
-			time.Sleep(100 * time.Millisecond)
+			if err := service.WaitBetweenSubscriptions(ctx); err != nil {
+				h.logger.Warn("batch rotation interrupted during inter-subscription wait", "error", err)
+				break
+			}
 		}
 	}
 
@@ -780,21 +801,19 @@ func (h *ScheduleHandler) IsRunning() bool {
 	return h.ctx != nil && h.ctx.Err() == nil
 }
 
-// getTokenManager returns the token manager from article fetch service if available
-func (h *ScheduleHandler) getTokenManager() interface{} {
-	// This would need to be implemented based on the actual ArticleFetchService structure
-	// For now, return nil - this is a placeholder for token manager integration
-	return nil
-}
-
-// LogTokenHealthCheck logs current token health status
+// LogTokenHealthCheck logs current token refresh health using the wired
+// TokenManagementService's real metrics (see SetTokenManager).
 func (h *ScheduleHandler) LogTokenHealthCheck() {
-	if tokenManager := h.getTokenManager(); tokenManager != nil {
-		// This would call the actual token manager's health check
-		h.logger.Info("Token health check - manager available")
-	} else {
-		h.logger.Warn("Token health check - no token manager available",
-			"service_health", "degraded",
-			"impact", "api_calls_may_fail")
+	if h.tokenManager == nil {
+		h.logger.Debug("Token health check skipped: token manager not wired")
+		return
 	}
+
+	metrics := h.tokenManager.GetMetrics()
+	h.logger.Info("Token health check",
+		"total_refresh_attempts", metrics.TotalRefreshAttempts,
+		"successful_refreshes", metrics.SuccessfulRefreshes,
+		"failed_refreshes", metrics.FailedRefreshes,
+		"non_retryable_failures", metrics.NonRetryableFailures,
+		"last_refresh_time", metrics.LastRefreshTime)
 }

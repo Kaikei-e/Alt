@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"sync"
 	"time"
 
 	"pre-processor-sidecar/driver"
@@ -31,8 +32,12 @@ type TokenManagementService struct {
 	// Single-flight group prevents concurrent refresh operations
 	refreshGroup *singleflight.Group
 
-	// Monitoring and metrics
-	metrics *TokenManagementMetrics
+	// Monitoring and metrics. metricsMu guards every field of metrics: the
+	// singleflight leader's closure and every waiter that shares its result
+	// (plus a subsequent, non-overlapping refresh call) can update/read
+	// these counters concurrently.
+	metricsMu sync.Mutex
+	metrics   *TokenManagementMetrics
 }
 
 // TokenManagementMetrics tracks token management operations
@@ -307,7 +312,9 @@ func (s *TokenManagementService) refreshTokenWithRetry(ctx context.Context, toke
 	refreshKey := "token_refresh"
 
 	startTime := time.Now()
+	s.metricsMu.Lock()
 	s.metrics.TotalRefreshAttempts++
+	s.metricsMu.Unlock()
 
 	result, err, shared := s.refreshGroup.Do(refreshKey, func() (interface{}, error) {
 		s.logger.Info("Executing token refresh (single-flight protected)")
@@ -338,18 +345,26 @@ func (s *TokenManagementService) refreshTokenWithRetry(ctx context.Context, toke
 					errors.Is(err, driver.ErrTokenRevoked) ||
 					errors.Is(err, driver.ErrInvalidGrant) {
 					s.logger.Error("Token refresh failed with non-retryable error", "error", err)
+					s.metricsMu.Lock()
 					s.metrics.NonRetryableFailures++
 					s.metrics.FailedRefreshes++
+					s.metricsMu.Unlock()
 					return nil, fmt.Errorf("non-retryable token refresh error: %w", err)
 				}
 
 				// For rate limiting, wait longer
 				if errors.Is(err, driver.ErrRateLimited) {
+					s.metricsMu.Lock()
 					s.metrics.RateLimitFailures++
+					s.metricsMu.Unlock()
 					if attempt < s.maxRetryAttempts {
 						backoffDuration := time.Duration(attempt) * 30 * time.Second // Longer backoff for rate limiting
 						s.logger.Warn("Rate limited, waiting longer before retry", "backoff", backoffDuration)
-						time.Sleep(backoffDuration)
+						select {
+						case <-ctx.Done():
+							return nil, ctx.Err()
+						case <-time.After(backoffDuration):
+						}
 						continue
 					}
 				}
@@ -361,22 +376,31 @@ func (s *TokenManagementService) refreshTokenWithRetry(ctx context.Context, toke
 						backoffDuration = time.Duration(attempt) * 10 * time.Second // Longer backoff for server failures
 					}
 					s.logger.Info("Retrying token refresh after backoff", "backoff", backoffDuration)
-					time.Sleep(backoffDuration)
+					select {
+					case <-ctx.Done():
+						return nil, ctx.Err()
+					case <-time.After(backoffDuration):
+					}
 					continue
 				}
 			} else {
 				s.logger.Info("Token refresh successful", "attempt", attempt)
+				s.metricsMu.Lock()
 				s.metrics.SuccessfulRefreshes++
+				s.metricsMu.Unlock()
 				return refreshedToken, nil
 			}
 		}
 
+		s.metricsMu.Lock()
 		s.metrics.FailedRefreshes++
+		s.metricsMu.Unlock()
 		return nil, fmt.Errorf("token refresh failed after %d attempts: %w", s.maxRetryAttempts, lastErr)
 	})
 
 	// Update metrics
 	duration := time.Since(startTime)
+	s.metricsMu.Lock()
 	s.metrics.LastRefreshTime = startTime
 	s.metrics.LastRefreshDuration = duration
 
@@ -386,29 +410,35 @@ func (s *TokenManagementService) refreshTokenWithRetry(ctx context.Context, toke
 	} else {
 		s.metrics.AverageRefreshDuration = (s.metrics.AverageRefreshDuration + duration) / 2
 	}
+	if shared {
+		s.metrics.SingleFlightHits++
+		s.metrics.ConcurrentRefreshBlocked++
+	}
+	totalAttempts := s.metrics.TotalRefreshAttempts
+	successfulRefreshes := s.metrics.SuccessfulRefreshes
+	singleFlightHits := s.metrics.SingleFlightHits
+	s.metricsMu.Unlock()
 
 	if err != nil {
 		s.logger.Error("Token refresh failed",
 			"error", err,
 			"duration", duration,
-			"total_attempts", s.metrics.TotalRefreshAttempts,
-			"success_rate", float64(s.metrics.SuccessfulRefreshes)/float64(s.metrics.TotalRefreshAttempts))
+			"total_attempts", totalAttempts,
+			"success_rate", float64(successfulRefreshes)/float64(totalAttempts))
 		return nil, err
 	}
 
 	if shared {
-		s.metrics.SingleFlightHits++
-		s.metrics.ConcurrentRefreshBlocked++
 		s.logger.Info("Token refresh result shared from concurrent operation",
 			"duration", duration,
-			"singleflight_hits", s.metrics.SingleFlightHits)
+			"singleflight_hits", singleFlightHits)
 	}
 
 	s.logger.Info("Token refresh completed successfully",
 		"duration", duration,
 		"shared_result", shared,
-		"total_refreshes", s.metrics.SuccessfulRefreshes,
-		"success_rate", float64(s.metrics.SuccessfulRefreshes)/float64(s.metrics.TotalRefreshAttempts))
+		"total_refreshes", successfulRefreshes,
+		"success_rate", float64(successfulRefreshes)/float64(totalAttempts))
 
 	return result.(*models.OAuth2Token), nil
 }
@@ -417,8 +447,9 @@ func (s *TokenManagementService) refreshTokenWithRetry(ctx context.Context, toke
 func (s *TokenManagementService) performTokenRefresh(ctx context.Context, token *models.OAuth2Token) (*models.OAuth2Token, error) {
 	oldRefreshToken := token.RefreshToken
 
+	// Never log any part of the refresh token — length only.
 	s.logger.Info("Performing token refresh",
-		"old_refresh_token_prefix", oldRefreshToken[:min(8, len(oldRefreshToken))],
+		"old_refresh_token_length", len(oldRefreshToken),
 		"expires_at", token.ExpiresAt)
 
 	// Call OAuth2 client to refresh token
@@ -437,8 +468,8 @@ func (s *TokenManagementService) performTokenRefresh(ctx context.Context, token 
 		refreshedToken.RefreshToken = refreshResponse.RefreshToken
 
 		s.logger.Warn("Refresh token rotation detected",
-			"old_refresh_token_prefix", oldRefreshToken[:min(8, len(oldRefreshToken))],
-			"new_refresh_token_prefix", refreshResponse.RefreshToken[:min(8, len(refreshResponse.RefreshToken))],
+			"old_refresh_token_length", len(oldRefreshToken),
+			"new_refresh_token_length", len(refreshResponse.RefreshToken),
 			"rotation_required", true)
 	}
 
@@ -483,14 +514,6 @@ func (s *TokenManagementService) updateTokenWithRotation(
 	return s.tokenRepo.UpdateToken(ctx, token)
 }
 
-// Helper function for min
-func min(a, b int) int {
-	if a < b {
-		return a
-	}
-	return b
-}
-
 // GetTokenStatus returns current token status for monitoring
 func (s *TokenManagementService) GetTokenStatus(ctx context.Context) (*OldTokenStatus, error) {
 	token, err := s.loadTokenFromStorage(ctx)
@@ -529,13 +552,20 @@ type OldTokenStatus struct {
 	ErrorMessage string        `json:"error_message,omitempty"`
 }
 
-// GetMetrics returns the current metrics for token management operations
+// GetMetrics returns a snapshot copy of the current metrics for token
+// management operations. A copy — not the live pointer — is returned so
+// callers can't observe a struct mid-update from a concurrent refresh.
 func (s *TokenManagementService) GetMetrics() *TokenManagementMetrics {
-	return s.metrics
+	s.metricsMu.Lock()
+	defer s.metricsMu.Unlock()
+	snapshot := *s.metrics
+	return &snapshot
 }
 
 // ResetMetrics resets all metrics counters (useful for testing)
 func (s *TokenManagementService) ResetMetrics() {
+	s.metricsMu.Lock()
+	defer s.metricsMu.Unlock()
 	s.metrics = &TokenManagementMetrics{}
 }
 
@@ -544,21 +574,23 @@ func (s *TokenManagementService) GetHealthMetrics(ctx context.Context) map[strin
 	// Get current token status
 	tokenStatus, _ := s.GetTokenStatus(ctx)
 
+	metrics := s.GetMetrics()
+
 	// Calculate success rate
 	var successRate float64
-	if s.metrics.TotalRefreshAttempts > 0 {
-		successRate = float64(s.metrics.SuccessfulRefreshes) / float64(s.metrics.TotalRefreshAttempts)
+	if metrics.TotalRefreshAttempts > 0 {
+		successRate = float64(metrics.SuccessfulRefreshes) / float64(metrics.TotalRefreshAttempts)
 	}
 
 	return map[string]interface{}{
 		"token_status": tokenStatus,
-		"metrics":      s.metrics,
+		"metrics":      metrics,
 		"calculated_metrics": map[string]interface{}{
 			"success_rate_percentage":  successRate * 100,
 			"failure_rate_percentage":  (1 - successRate) * 100,
-			"single_flight_efficiency": float64(s.metrics.ConcurrentRefreshBlocked) / float64(s.metrics.TotalRefreshAttempts+s.metrics.ConcurrentRefreshBlocked) * 100,
-			"average_refresh_time_ms":  s.metrics.AverageRefreshDuration.Milliseconds(),
-			"last_refresh_time_ms":     s.metrics.LastRefreshDuration.Milliseconds(),
+			"single_flight_efficiency": float64(metrics.ConcurrentRefreshBlocked) / float64(metrics.TotalRefreshAttempts+metrics.ConcurrentRefreshBlocked) * 100,
+			"average_refresh_time_ms":  metrics.AverageRefreshDuration.Milliseconds(),
+			"last_refresh_time_ms":     metrics.LastRefreshDuration.Milliseconds(),
 		},
 		"timestamp": time.Now().UTC().Format(time.RFC3339),
 	}

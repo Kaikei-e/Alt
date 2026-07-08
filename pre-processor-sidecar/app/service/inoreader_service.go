@@ -55,8 +55,31 @@ type InoreaderService struct {
 	circuitBreaker        *utils.CircuitBreaker // TDD Phase 3 - REFACTOR: Circuit Breaker
 	monitor               *utils.Monitor        // TDD Phase 3 - REFACTOR: Structured Logging & Monitoring
 
+	// rateLimitMu guards every field of rateLimitInfo. The scheduler's
+	// periodic fetch and an admin-triggered fetch can run concurrently
+	// (handler.ScheduleHandler's admin trigger vs the background scheduler),
+	// both reading/incrementing Zone1Usage without previously being
+	// synchronized.
+	rateLimitMu sync.RWMutex
+
 	fetchMu             sync.Mutex
 	lastSuccessfulFetch time.Time
+}
+
+// zone1Snapshot returns a consistent (usage, limit) pair under rateLimitMu.
+func (s *InoreaderService) zone1Snapshot() (usage, limit int) {
+	s.rateLimitMu.RLock()
+	defer s.rateLimitMu.RUnlock()
+	return s.rateLimitInfo.Zone1Usage, s.rateLimitInfo.Zone1Limit
+}
+
+// incrementZone1UsageLocally bumps the local fallback counter used when
+// UpdateAPIUsageFromHeaders fails, returning the new value for logging.
+func (s *InoreaderService) incrementZone1UsageLocally() int {
+	s.rateLimitMu.Lock()
+	defer s.rateLimitMu.Unlock()
+	s.rateLimitInfo.Zone1Usage++
+	return s.rateLimitInfo.Zone1Usage
 }
 
 // TokenProvider interface for token operations
@@ -148,12 +171,12 @@ func (s *InoreaderService) FetchSubscriptions(ctx context.Context) ([]*models.Su
 
 		// Check rate limits
 		if allowed, remaining := s.CheckAPIRateLimit(); !allowed {
+			usage, limit := s.zone1Snapshot()
 			s.logger.Warn("API rate limit exceeded",
-				"zone1_usage", s.rateLimitInfo.Zone1Usage,
-				"zone1_limit", s.rateLimitInfo.Zone1Limit,
+				"zone1_usage", usage,
+				"zone1_limit", limit,
 				"remaining_safe", remaining)
-			return fmt.Errorf("API rate limit exceeded (Zone 1: %d/%d)",
-				s.rateLimitInfo.Zone1Usage, s.rateLimitInfo.Zone1Limit)
+			return fmt.Errorf("API rate limit exceeded (Zone 1: %d/%d)", usage, limit)
 		}
 
 		s.logger.Info("Fetching subscription list from Inoreader API")
@@ -178,13 +201,14 @@ func (s *InoreaderService) FetchSubscriptions(ctx context.Context) ([]*models.Su
 		if updateErr := s.UpdateAPIUsageFromHeaders(ctx, "/subscription/list"); updateErr != nil {
 			s.logger.Warn("Failed to update API usage from headers", "error", updateErr)
 			// Increment local counter as fallback
-			s.rateLimitInfo.Zone1Usage++
-			s.logger.Debug("Incremented local API usage counter", "zone1_usage", s.rateLimitInfo.Zone1Usage)
+			newUsage := s.incrementZone1UsageLocally()
+			s.logger.Debug("Incremented local API usage counter", "zone1_usage", newUsage)
 		}
 
+		usage, _ := s.zone1Snapshot()
 		s.logger.Info("Successfully fetched subscriptions",
 			"count", len(subscriptions),
-			"api_usage", s.rateLimitInfo.Zone1Usage)
+			"api_usage", usage)
 
 		// TDD Phase 3 - REFACTOR: Log successful API request
 		s.monitor.LogAPIRequest(ctx, "GET", "/subscription/list", 200, time.Since(startTime), nil)
@@ -221,12 +245,12 @@ func (s *InoreaderService) FetchStreamContents(ctx context.Context, streamID, co
 
 		// Check rate limits
 		if allowed, remaining := s.CheckAPIRateLimit(); !allowed {
+			usage, limit := s.zone1Snapshot()
 			s.logger.Warn("API rate limit exceeded for stream contents",
 				"stream_id", streamID,
-				"zone1_usage", s.rateLimitInfo.Zone1Usage,
+				"zone1_usage", usage,
 				"remaining_safe", remaining)
-			return fmt.Errorf("API rate limit exceeded (Zone 1: %d/%d)",
-				s.rateLimitInfo.Zone1Usage, s.rateLimitInfo.Zone1Limit)
+			return fmt.Errorf("API rate limit exceeded (Zone 1: %d/%d)", usage, limit)
 		}
 
 		s.logger.Info("Fetching stream contents from Inoreader API",
@@ -263,15 +287,16 @@ func (s *InoreaderService) FetchStreamContents(ctx context.Context, streamID, co
 		if updateErr := s.UpdateAPIUsageFromHeaders(ctx, endpoint); updateErr != nil {
 			s.logger.Warn("Failed to update API usage from headers", "error", updateErr, "stream_id", streamID)
 			// Increment local counter as fallback
-			s.rateLimitInfo.Zone1Usage++
-			s.logger.Debug("Incremented local API usage counter", "zone1_usage", s.rateLimitInfo.Zone1Usage)
+			newUsage := s.incrementZone1UsageLocally()
+			s.logger.Debug("Incremented local API usage counter", "zone1_usage", newUsage)
 		}
 
+		usage, _ := s.zone1Snapshot()
 		s.logger.Info("Successfully fetched stream contents",
 			"stream_id", streamID,
 			"articles_count", len(articles),
 			"has_next_page", nextContinuation != "",
-			"api_usage", s.rateLimitInfo.Zone1Usage)
+			"api_usage", usage)
 
 		s.recordSuccessfulFetch()
 		return nil
@@ -300,12 +325,12 @@ func (s *InoreaderService) FetchUnreadStreamContents(ctx context.Context, stream
 
 	// Check rate limits
 	if allowed, remaining := s.CheckAPIRateLimit(); !allowed {
+		usage, limit := s.zone1Snapshot()
 		s.logger.Warn("API rate limit exceeded for unread stream contents",
 			"stream_id", streamID,
-			"zone1_usage", s.rateLimitInfo.Zone1Usage,
+			"zone1_usage", usage,
 			"remaining_safe", remaining)
-		return nil, "", fmt.Errorf("API rate limit exceeded (Zone 1: %d/%d)",
-			s.rateLimitInfo.Zone1Usage, s.rateLimitInfo.Zone1Limit)
+		return nil, "", fmt.Errorf("API rate limit exceeded (Zone 1: %d/%d)", usage, limit)
 	}
 
 	s.logger.Info("Fetching unread stream contents from Inoreader API",
@@ -341,28 +366,31 @@ func (s *InoreaderService) FetchUnreadStreamContents(ctx context.Context, stream
 	if err := s.UpdateAPIUsageFromHeaders(ctx, endpoint); err != nil {
 		s.logger.Warn("Failed to update API usage from headers", "error", err, "stream_id", streamID)
 		// Increment local counter as fallback
-		s.rateLimitInfo.Zone1Usage++
-		s.logger.Debug("Incremented local API usage counter", "zone1_usage", s.rateLimitInfo.Zone1Usage)
+		newUsage := s.incrementZone1UsageLocally()
+		s.logger.Debug("Incremented local API usage counter", "zone1_usage", newUsage)
 	}
 
+	usage, _ := s.zone1Snapshot()
 	s.logger.Info("Successfully fetched unread stream contents",
 		"stream_id", streamID,
 		"articles_count", len(articles),
 		"has_next_page", nextContinuation != "",
-		"api_usage", s.rateLimitInfo.Zone1Usage)
+		"api_usage", usage)
 
 	return articles, nextContinuation, nil
 }
 
 // CheckAPIRateLimit checks if API requests are within safe limits
 func (s *InoreaderService) CheckAPIRateLimit() (allowed bool, remaining int) {
+	usage, limit := s.zone1Snapshot()
+
 	// Calculate remaining requests with safety buffer
-	remainingWithBuffer := s.rateLimitInfo.Zone1Limit - s.rateLimitInfo.Zone1Usage - s.safetyBuffer
+	remainingWithBuffer := limit - usage - s.safetyBuffer
 	if remainingWithBuffer < 0 {
 		remainingWithBuffer = 0
 	}
 
-	allowed = s.rateLimitInfo.Zone1Usage < (s.rateLimitInfo.Zone1Limit - s.safetyBuffer)
+	allowed = usage < (limit - s.safetyBuffer)
 
 	return allowed, remainingWithBuffer
 }
@@ -459,6 +487,9 @@ func (s *InoreaderService) processAPIUsageHeaders(ctx context.Context, headers m
 
 // updateRateLimitInfoFromHeaders updates internal rate limit info from API response headers
 func (s *InoreaderService) updateRateLimitInfoFromHeaders(headers map[string]string, usage *models.APIUsageTracking) {
+	s.rateLimitMu.Lock()
+	defer s.rateLimitMu.Unlock()
+
 	// Parse Inoreader-specific rate limit headers
 	if zone1Usage, ok := headers["X-Reader-Zone1-Usage"]; ok {
 		if parsed, err := strconv.ParseInt(zone1Usage, 10, 32); err == nil {
@@ -514,6 +545,8 @@ func (s *InoreaderService) isReadOnlyEndpoint(endpoint string) bool {
 // GetCurrentAPIUsageInfo returns current API usage information for monitoring
 func (s *InoreaderService) GetCurrentAPIUsageInfo(ctx context.Context) (*models.APIUsageInfo, error) {
 	if s.apiUsageRepo == nil {
+		s.rateLimitMu.RLock()
+		defer s.rateLimitMu.RUnlock()
 		return &models.APIUsageInfo{
 			Zone1Requests: s.rateLimitInfo.Zone1Usage,
 			DailyLimit:    s.rateLimitInfo.Zone1Limit,

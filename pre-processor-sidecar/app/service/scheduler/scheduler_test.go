@@ -71,3 +71,32 @@ func TestScheduler_StartStop(t *testing.T) {
 		t.Error("Scheduler should be stopped")
 	}
 }
+
+func TestScheduler_RestartAfterStop(t *testing.T) {
+	// A closed stopChan can never be reopened; Start must hand runLoop a
+	// freshly created channel each time or the loop spawned by the second
+	// Start would return immediately, silently making the scheduler inert.
+	logger := slog.Default()
+	s := NewScheduler(nil, nil, nil, logger)
+
+	cfg := Config{
+		FetchInterval:   time.Hour,
+		RefreshInterval: time.Hour,
+	}
+
+	s.Start(cfg)
+	s.Stop()
+
+	s.Start(cfg)
+	if !s.isRunning {
+		t.Error("Scheduler should be running after restart")
+	}
+
+	select {
+	case <-s.stopChan:
+		t.Error("stopChan should be open after restart, not already closed")
+	default:
+	}
+
+	s.Stop()
+}
