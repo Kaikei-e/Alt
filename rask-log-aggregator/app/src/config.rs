@@ -43,37 +43,53 @@ fn validate_port(port: u16) -> Result<(), AggregatorError> {
     Ok(())
 }
 
+/// Read a required environment variable, naming it in the error so a
+/// missing-config failure is diagnosable instead of a bare "not found".
+fn require_env(env_name: &str) -> Result<String, AggregatorError> {
+    env::var(env_name)
+        .map_err(|_| AggregatorError::Config(format!("Missing required environment variable: {env_name}")))
+}
+
+/// Read a required `u16` environment variable, with a default fallback.
+fn env_port_or(env_name: &str, default: u16) -> Result<u16, AggregatorError> {
+    match env::var(env_name) {
+        Ok(value) => value.parse::<u16>().map_err(|e| {
+            AggregatorError::Config(format!("Invalid {env_name} (must be a valid port): {e}"))
+        }),
+        Err(_) => Ok(default),
+    }
+}
+
 /// Read a value from environment variable, with support for _FILE suffix (Docker Secrets)
-fn get_env_or_file(env_name: &str) -> Result<String, Box<dyn std::error::Error>> {
+fn get_env_or_file(env_name: &str) -> Result<String, AggregatorError> {
     // First check for _FILE suffix (Docker Secrets support)
     let file_env = format!("{env_name}_FILE");
     if let Ok(file_path) = env::var(&file_env) {
-        match fs::read_to_string(&file_path) {
-            Ok(content) => return Ok(content.trim().to_string()),
-            Err(e) => return Err(format!("Failed to read {file_env}: {e}").into()),
-        }
+        return fs::read_to_string(&file_path)
+            .map(|content| content.trim().to_string())
+            .map_err(|e| AggregatorError::Config(format!("Failed to read {file_env}: {e}")));
     }
 
     // Fallback to standard environment variable
-    env::var(env_name).map_err(|_| {
-        format!("Missing required environment variable: {env_name} or {file_env}").into()
+    require_env(env_name).map_err(|_| {
+        AggregatorError::Config(format!(
+            "Missing required environment variable: {env_name} or {file_env}"
+        ))
     })
 }
 
-pub fn get_configuration() -> Result<Settings, Box<dyn std::error::Error>> {
-    let clickhouse_host = env::var("APP_CLICKHOUSE_HOST")?;
-    let clickhouse_port = env::var("APP_CLICKHOUSE_PORT")?.parse::<u16>()?;
-    let clickhouse_user = env::var("APP_CLICKHOUSE_USER")?;
+pub fn get_configuration() -> Result<Settings, AggregatorError> {
+    let clickhouse_host = require_env("APP_CLICKHOUSE_HOST")?;
+    let clickhouse_port = require_env("APP_CLICKHOUSE_PORT")?.parse::<u16>().map_err(|e| {
+        AggregatorError::Config(format!("Invalid APP_CLICKHOUSE_PORT (must be a valid port): {e}"))
+    })?;
+    let clickhouse_user = require_env("APP_CLICKHOUSE_USER")?;
     let clickhouse_password = get_env_or_file("APP_CLICKHOUSE_PASSWORD")?;
-    let clickhouse_database = env::var("APP_CLICKHOUSE_DATABASE")?;
+    let clickhouse_database = require_env("APP_CLICKHOUSE_DATABASE")?;
 
     // Server ports with defaults
-    let http_port = env::var("HTTP_PORT")
-        .unwrap_or_else(|_| "9600".to_string())
-        .parse::<u16>()?;
-    let otlp_http_port = env::var("OTLP_HTTP_PORT")
-        .unwrap_or_else(|_| "4318".to_string())
-        .parse::<u16>()?;
+    let http_port = env_port_or("HTTP_PORT", 9600)?;
+    let otlp_http_port = env_port_or("OTLP_HTTP_PORT", 4318)?;
 
     let settings = Settings {
         clickhouse_host,

@@ -305,10 +305,23 @@ async fn write_batch<T: clickhouse::Row + RowOwned + RowWrite + serde::Serialize
         .with_max_bytes(INSERTER_MAX_BYTES)
         .with_max_rows(INSERTER_MAX_ROWS);
 
+    // Individual row failures here are per-row (de)serialization problems,
+    // not transient network errors - retrying the batch wouldn't help them.
+    // Count and report them as a single aggregated error (rather than one
+    // `error!` per row, and rather than swallowing them with no signal at
+    // all) so a persistently non-zero drop count is visible.
+    let mut dropped = 0usize;
     for row in rows {
         if let Err(e) = inserter.write(row).await {
-            error!("Failed to write row to ClickHouse inserter: {e}");
+            warn!(table, error = %e, "Failed to write row to ClickHouse inserter, dropping row");
+            dropped += 1;
         }
+    }
+    if dropped > 0 {
+        error!(
+            table, dropped, total = rows.len(),
+            "Dropped rows while writing batch to ClickHouse inserter"
+        );
     }
 
     inserter.end().await?;
@@ -356,11 +369,11 @@ mod tests {
             severity_number: 9,
             body: "test".to_string(),
             resource_schema_url: String::new(),
-            resource_attributes: HashMap::new(),
+            resource_attributes: std::sync::Arc::new(HashMap::new()),
             scope_schema_url: String::new(),
             scope_name: String::new(),
             scope_version: String::new(),
-            scope_attributes: HashMap::new(),
+            scope_attributes: std::sync::Arc::new(HashMap::new()),
             log_attributes: HashMap::new(),
             service_name: "test-svc".to_string(),
         }
@@ -609,7 +622,7 @@ mod tests {
                     "rows must still be present on retry {n} — a failed attempt must not have dropped them"
                 );
                 if n < 2 {
-                    Err(AggregatorError::ClickHouse("boom".to_string()))
+                    Err(AggregatorError::ClickHouse(clickhouse::error::Error::Custom("boom".to_string())))
                 } else {
                     Ok(())
                 }
@@ -629,7 +642,7 @@ mod tests {
         let sink = MockSink {
             write_fn: |_rows: &[i32]| {
                 attempts.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-                Err(AggregatorError::ClickHouse("still down".to_string()))
+                Err(AggregatorError::ClickHouse(clickhouse::error::Error::Custom("still down".to_string())))
             },
         };
         flush_with_retry("t", &mut buf, &sink).await;

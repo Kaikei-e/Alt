@@ -16,26 +16,14 @@ pub enum AggregatorError {
     Server(#[from] std::io::Error),
 
     #[error("ClickHouse error: {0}")]
-    ClickHouse(String),
+    ClickHouse(#[from] clickhouse::error::Error),
 
     #[error("Failed to decode protobuf message: {0}")]
-    ProtoDecode(String),
+    ProtoDecode(#[from] prost::DecodeError),
 
     #[error("Export error: {0}")]
     #[allow(dead_code)]
     Export(String),
-}
-
-impl From<clickhouse::error::Error> for AggregatorError {
-    fn from(e: clickhouse::error::Error) -> Self {
-        Self::ClickHouse(e.to_string())
-    }
-}
-
-impl From<prost::DecodeError> for AggregatorError {
-    fn from(e: prost::DecodeError) -> Self {
-        Self::ProtoDecode(e.to_string())
-    }
 }
 
 #[cfg(test)]
@@ -51,14 +39,18 @@ mod tests {
 
     #[test]
     fn test_clickhouse_error_display() {
-        let err = AggregatorError::ClickHouse("connection failed".into());
+        let err = AggregatorError::ClickHouse(clickhouse::error::Error::Custom(
+            "connection failed".to_string(),
+        ));
         assert!(err.to_string().contains("ClickHouse"));
         assert!(err.to_string().contains("connection failed"));
     }
 
     #[test]
     fn test_proto_decode_error_display() {
-        let err = AggregatorError::ProtoDecode("invalid wire type".into());
+        #[allow(deprecated)]
+        let decode_err = prost::DecodeError::new("invalid wire type");
+        let err = AggregatorError::ProtoDecode(decode_err);
         assert!(err.to_string().contains("protobuf"));
         assert!(err.to_string().contains("invalid wire type"));
     }
@@ -79,7 +71,9 @@ mod tests {
     #[test]
     fn test_proto_decode_error_from_string() {
         // Test that ProtoDecode variant works correctly
-        let err = AggregatorError::ProtoDecode("test decode error".into());
+        #[allow(deprecated)]
+        let decode_err = prost::DecodeError::new("test decode error");
+        let err = AggregatorError::ProtoDecode(decode_err);
         assert!(matches!(err, AggregatorError::ProtoDecode(_)));
         assert!(err.to_string().contains("decode"));
     }

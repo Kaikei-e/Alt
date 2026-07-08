@@ -51,6 +51,20 @@ impl From<EnrichedLogEntry> for LogRow {
         let trace_id = string_to_fixed_bytes::<32>(log.trace_id.as_deref().unwrap_or(""));
         let span_id = string_to_fixed_bytes::<16>(log.span_id.as_deref().unwrap_or(""));
 
+        let timestamp = log.timestamp.parse::<DateTime<Utc>>().unwrap_or_else(|e| {
+            // The timestamp is a business fact from the source log line, not
+            // a wall-clock event - silently substituting `Utc::now()` would
+            // misrepresent when the log actually occurred with no trace it
+            // happened. Warn and preserve the original string instead.
+            tracing::warn!(
+                error = %e,
+                original = %log.timestamp,
+                "Failed to parse log timestamp, falling back to ingestion time"
+            );
+            fields.push(("invalid_timestamp".to_string(), log.timestamp.clone()));
+            Utc::now()
+        });
+
         Self {
             service_type: log.service_type,
             log_type: log.log_type,
@@ -62,10 +76,7 @@ impl From<EnrichedLogEntry> for LogRow {
                 Some(LogLevel::Error) => 3,
                 Some(LogLevel::Fatal) => 4,
             },
-            timestamp: log
-                .timestamp
-                .parse::<DateTime<Utc>>()
-                .unwrap_or_else(|_| Utc::now()),
+            timestamp,
             stream: log.stream,
             container_id: log.container_id,
             service_name: log.service_name,
