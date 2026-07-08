@@ -1,5 +1,3 @@
--- atlas:txmode none
---
 -- Add functional B-tree on lower(tag_name) so the case-insensitive prefix
 -- predicate `WHERE lower(tag_name) LIKE lower($1) || '%'` runs as an index
 -- range scan instead of a parallel seq scan over the 240k-row feed_tags
@@ -15,10 +13,15 @@
 --
 -- IF NOT EXISTS guards the migration when re-applied against a database that
 -- already carries the index (e.g. when restoring from an environment that
--- ran the index out-of-band). CONCURRENTLY (+ atlas:txmode none, since
--- Postgres forbids it inside a transaction) avoids blocking writes to the
--- 240k-row feed_tags table for the duration of the build.
-CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_feed_tags_tag_name_lower
+-- ran the index out-of-band).
+--
+-- Not CONCURRENTLY: this project's migrate.sh runs `atlas migrate apply`
+-- with the default --tx-mode=file (one transaction per migration file), and
+-- Atlas 1.2.0 has no per-file transaction-mode directive (only a global
+-- --tx-mode CLI flag) — CONCURRENTLY cannot run inside that transaction.
+-- Matches atlas.hcl's existing `diff.concurrent_index { create = false }`
+-- policy of using regular CREATE INDEX for transaction safety.
+CREATE INDEX IF NOT EXISTS idx_feed_tags_tag_name_lower
     ON feed_tags (lower(tag_name) text_pattern_ops);
 
 ANALYZE feed_tags;
