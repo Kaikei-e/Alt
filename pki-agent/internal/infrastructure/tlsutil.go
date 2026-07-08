@@ -146,6 +146,9 @@ func LoadServerConfig(certPath, keyPath, caPath string, opts ...ServerOption) (*
 	for _, opt := range opts {
 		opt(o)
 	}
+	if len(o.allowedPeers) > 0 && o.clientAuth != tls.RequireAndVerifyClientCert {
+		return nil, fmt.Errorf("tlsutil: allowed peers configured but ClientAuth is not RequireAndVerifyClientCert (peer allowlist cannot be enforced without a verified client cert)")
+	}
 	cfg := &tls.Config{
 		MinVersion: tls.VersionTLS13,
 		ClientAuth: o.clientAuth,
