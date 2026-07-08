@@ -75,7 +75,7 @@ def lang_mix_ratio(
 def faithfulness(
     body: str,
     evidence_by_short_id: dict[str, str],
-    judge: Callable[[str], float],
+    judge: Callable[[str], float | None],
 ) -> float | None:
     """Delegate to a caller-supplied judge.
 

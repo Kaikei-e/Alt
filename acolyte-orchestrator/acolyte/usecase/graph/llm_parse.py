@@ -15,8 +15,9 @@ from __future__ import annotations
 import json
 from typing import TYPE_CHECKING, Any
 
+import httpx
 import structlog
-from pydantic import TypeAdapter
+from pydantic import TypeAdapter, ValidationError
 
 if TYPE_CHECKING:
     from pydantic import BaseModel
@@ -91,7 +92,7 @@ async def generate_validated[T: "BaseModel"](
                     max_attempts=1 + retries,
                     error=str(exc),
                 )
-        except Exception as exc:
+        except (ValidationError, TimeoutError, httpx.HTTPError) as exc:
             last_error = exc
             logger.warning(
                 "LLM output validation failed",
@@ -104,4 +105,4 @@ async def generate_validated[T: "BaseModel"](
         logger.info("Using fallback after validation failures", model=model_cls.__name__)
         return fallback
 
-    raise ValueError(f"LLM output validation failed after {1 + retries} attempts: {last_error}")
+    raise ValueError(f"LLM output validation failed after {1 + retries} attempts: {last_error}") from last_error

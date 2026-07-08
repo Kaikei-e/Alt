@@ -5,6 +5,60 @@ from __future__ import annotations
 from typing import TypedDict
 
 
+class SectionCitationDict(TypedDict, total=False):
+    """Citation linking a claim/paragraph to its evidence source (see SectionCitation)."""
+
+    claim_id: str
+    source_id: str
+    source_type: str
+    quote: str
+    offset_start: int
+    offset_end: int
+
+
+class PlannedClaimDict(TypedDict, total=False):
+    """Section claim plan entry (see domain.claim.PlannedClaim)."""
+
+    claim_id: str
+    claim: str
+    claim_type: str
+    evidence_ids: list[str]
+    supporting_quotes: list[str]
+    numeric_facts: list[str]
+    novelty_against: list[str]
+    must_cite: bool
+
+
+class SectionParagraphDict(TypedDict, total=False):
+    """One generated paragraph, keyed by claim_id (see WriterNode)."""
+
+    claim_id: str
+    claim_text: str
+    body: str
+    status: str
+    citations: list[SectionCitationDict]
+    revision_feedback: str
+
+
+class FailureModeDict(TypedDict, total=False):
+    """GroUSE failure mode detection, flattened for state persistence."""
+
+    mode: str
+    section: str
+    description: str
+
+
+class WeakFacetDict(TypedDict, total=False):
+    """Facet with hit_count below WEAK_FACET_THRESHOLD (see GathererNode)."""
+
+    section_key: str
+    facet_index: int
+    intent: str
+    raw_query: str
+    hit_count: int
+    threshold: int
+
+
 class ReportGenerationState(TypedDict, total=False):
     """State passed between graph nodes."""
 
@@ -25,16 +79,16 @@ class ReportGenerationState(TypedDict, total=False):
     fact_normalizer_work_quotes: list[dict]  # checkpoint-safe per-quote queue
     fact_normalizer_cursor: int  # current position in fact_normalizer_work_quotes
     extracted_facts: list[dict]  # ExtractedFact dicts from FactNormalizerNode
-    claim_plans: dict[str, list[dict]]  # section_key → PlannedClaim dicts
-    section_citations: dict[str, list[dict]]  # section_key → citation objects
+    claim_plans: dict[str, list[PlannedClaimDict]]  # section_key → PlannedClaim dicts
+    section_citations: dict[str, list[SectionCitationDict]]  # section_key → citation objects
     sections: dict[str, str]  # section_key → body
     critique: dict | None
     critic_revision_no: int  # monotonic marker to keep revision loops progressing
-    failure_modes: list[dict]  # GroUSE failure mode detections
-    weak_facets: list[dict]  # Facets with hit_count < threshold, for future query rewrite
+    failure_modes: list[FailureModeDict]  # GroUSE failure mode detections
+    weak_facets: list[WeakFacetDict]  # Facets with hit_count < threshold, for future query rewrite
     retrieval_debug: dict  # Per-facet variant hit counts for debugging (Issue 7)
     revision_count: int
-    section_paragraphs: dict[str, list[dict]]  # section_key → GeneratedParagraph dicts
+    section_paragraphs: dict[str, list[SectionParagraphDict]]  # section_key → GeneratedParagraph dicts
     best_sections: dict[str, str]  # section_key → best non-empty, non-blocking body
     best_section_metrics: dict[str, dict]  # section_key → {"blocking_count": int, "char_len": int}
     claim_feedbacks: dict[str, list[dict]]  # section_key → [{"claim_id", "action", "reason"}]

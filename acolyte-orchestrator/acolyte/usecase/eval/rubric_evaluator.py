@@ -55,13 +55,9 @@ class RubricEvaluator:
             logger.warning("Claim extraction failed", raw_len=len(response.text))
             return []
 
-    async def evaluate_factual_consistency(
-        self,
-        sections: dict[str, str],
-        evidence: list[dict],
-    ) -> EvalDimension:
+    @staticmethod
+    def _factual_consistency_dimension(claims: list[dict]) -> EvalDimension:
         """FActScore-inspired: ratio of supported claims."""
-        claims = await self._extract_claims(sections, evidence)
         if not claims:
             return EvalDimension(name="factual_consistency", score=0.0, protocol="rubric")
 
@@ -74,13 +70,9 @@ class RubricEvaluator:
             details={"total_claims": len(claims), "supported": supported},
         )
 
-    async def evaluate_citation_association(
-        self,
-        sections: dict[str, str],
-        evidence: list[dict],
-    ) -> EvalDimension:
+    @staticmethod
+    def _citation_association_dimension(claims: list[dict]) -> EvalDimension:
         """Ratio of claims with a source_id."""
-        claims = await self._extract_claims(sections, evidence)
         if not claims:
             return EvalDimension(name="citation_association", score=0.0, protocol="rubric")
 
@@ -93,13 +85,30 @@ class RubricEvaluator:
             details={"total_claims": len(claims), "cited": cited},
         )
 
+    async def evaluate_factual_consistency(
+        self,
+        sections: dict[str, str],
+        evidence: list[dict],
+    ) -> EvalDimension:
+        claims = await self._extract_claims(sections, evidence)
+        return self._factual_consistency_dimension(claims)
+
+    async def evaluate_citation_association(
+        self,
+        sections: dict[str, str],
+        evidence: list[dict],
+    ) -> EvalDimension:
+        claims = await self._extract_claims(sections, evidence)
+        return self._citation_association_dimension(claims)
+
     async def evaluate(
         self,
         sections: dict[str, str],
         evidence: list[dict],
     ) -> list[EvalDimension]:
-        """Run all rubric evaluations."""
+        """Run all rubric evaluations, extracting claims only once."""
+        claims = await self._extract_claims(sections, evidence)
         return [
-            await self.evaluate_factual_consistency(sections, evidence),
-            await self.evaluate_citation_association(sections, evidence),
+            self._factual_consistency_dimension(claims),
+            self._citation_association_dimension(claims),
         ]

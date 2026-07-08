@@ -18,7 +18,7 @@ import xml.etree.ElementTree as ET
 from typing import TYPE_CHECKING, Any
 
 import structlog
-from pydantic import TypeAdapter
+from pydantic import TypeAdapter, ValidationError
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -301,7 +301,7 @@ async def generate_xml_validated[T: "BaseModel"](
                     max_attempts=1 + retries,
                     error=str(exc),
                 )
-        except Exception as exc:
+        except ValidationError as exc:
             last_error = exc
             logger.warning(
                 "XML validation failed",
@@ -319,4 +319,4 @@ async def generate_xml_validated[T: "BaseModel"](
         )
         return fallback
 
-    raise ValueError(f"XML parse/validation failed after {1 + retries} attempts: {last_error}")
+    raise ValueError(f"XML parse/validation failed after {1 + retries} attempts: {last_error}") from last_error

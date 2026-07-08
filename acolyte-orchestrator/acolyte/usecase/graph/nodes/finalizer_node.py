@@ -77,7 +77,7 @@ class FinalizerNode:
 
     async def __call__(self, state: ReportGenerationState) -> dict:
         report_id = UUID(state["report_id"])
-        sections = state.get("sections", {})
+        sections = dict(state.get("sections", {}))
         outline = state.get("outline", [])
         brief = state.get("brief") or state.get("scope") or {}
         section_citations = state.get("section_citations", {})

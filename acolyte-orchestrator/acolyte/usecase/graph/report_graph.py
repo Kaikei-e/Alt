@@ -56,7 +56,11 @@ def build_report_graph(
 
     Pipeline:
       Without content_store: planner → gatherer → curator → writer → critic → finalizer
-      With content_store:    planner → gatherer → curator → hydrator → compressor → extractor → section_planner → writer → critic → finalizer
+      With content_store:    planner → gatherer → curator → hydrator → compressor → quote_selector → fact_normalizer → section_planner → writer → critic → finalizer
+
+    Note: ExtractorNode (usecase/graph/nodes/extractor_node.py) implements an
+    older single-pass extraction strategy and is not wired into this graph —
+    quote_selector + fact_normalizer replaced it with a two-phase approach.
 
     Revision loop: critic → writer (section_planner is NOT re-run on revision;
     claim_plans persist in state and writer re-uses them with revision feedback).

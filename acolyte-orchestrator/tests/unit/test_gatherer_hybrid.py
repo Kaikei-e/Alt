@@ -7,6 +7,7 @@ from __future__ import annotations
 
 from unittest.mock import AsyncMock
 
+import httpx
 import pytest
 
 from acolyte.domain.fusion import RRFFusion, ScoredHit
@@ -114,7 +115,7 @@ async def test_variant_failure_degrades_to_primary() -> None:
         call_count += 1
         if call_count == 1:
             return [_article_hit("a1", score=0.9)]
-        raise ConnectionError("Variant search failed")
+        raise httpx.ConnectError("Variant search failed")
 
     evidence.search_articles = AsyncMock(side_effect=mock_search)
 

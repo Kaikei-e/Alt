@@ -31,7 +31,7 @@ class Settings(BaseSettings):
     log_level: str = "info"
 
     # Database
-    acolyte_db_dsn: str = "postgresql://postgres:password@localhost:5432/alt_db"
+    acolyte_db_dsn: str
     acolyte_db_password_file: str = ""
 
     # External services
@@ -144,12 +144,14 @@ class Settings(BaseSettings):
             try:
                 with open(self.acolyte_db_password_file) as f:
                     password = f.read().strip()
-                # Replace password placeholder in DSN
-                from urllib.parse import urlparse, urlunparse
+            except OSError as exc:
+                raise RuntimeError(
+                    f"Failed to read acolyte_db_password_file={self.acolyte_db_password_file!r}: {exc}"
+                ) from exc
+            # Replace password placeholder in DSN
+            from urllib.parse import urlparse, urlunparse
 
-                parsed = urlparse(self.acolyte_db_dsn)
-                replaced = parsed._replace(netloc=f"{parsed.username}:{password}@{parsed.hostname}:{parsed.port}")
-                return str(urlunparse(replaced))
-            except OSError:
-                pass
+            parsed = urlparse(self.acolyte_db_dsn)
+            replaced = parsed._replace(netloc=f"{parsed.username}:{password}@{parsed.hostname}:{parsed.port}")
+            return str(urlunparse(replaced))
         return self.acolyte_db_dsn

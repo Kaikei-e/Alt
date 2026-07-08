@@ -26,8 +26,10 @@ Supported modes:
 from __future__ import annotations
 
 import argparse
+import contextlib
 import hashlib
 import json
+import math
 import os
 import sys
 from collections.abc import Callable
@@ -39,7 +41,7 @@ from evaluation.dataset import EvalCase, load_cases
 from evaluation.metrics import citation_precision, faithfulness, lang_mix_ratio
 
 GenerateFn = Callable[[EvalCase], tuple[str, dict[str, dict], dict[str, dict], dict[str, str]]]
-JudgeFn = Callable[[str], float]
+JudgeFn = Callable[[str], float | None]
 
 
 def run(
@@ -70,7 +72,11 @@ def run(
 def _aggregate(results: list[dict[str, Any]]) -> dict[str, Any]:
     """Collapse per-case results into simple aggregates for gating."""
     precisions = [r["citation_precision"] for r in results if r["citation_precision"] is not None]
-    faiths = [r["faithfulness"] for r in results if r["faithfulness"] is not None]
+    faiths = [
+        r["faithfulness"]
+        for r in results
+        if r["faithfulness"] is not None and not math.isnan(r["faithfulness"])
+    ]
     en_share = [r["lang_mix_ratio"].get("en", 0.0) for r in results if r["lang_mix_ratio"]]
     return {
         "cases": len(results),
@@ -85,7 +91,7 @@ def _dataset_digest(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
-def _build_generator(args: argparse.Namespace) -> GenerateFn:
+def _build_generator(args: argparse.Namespace, stack: contextlib.ExitStack) -> GenerateFn:
     if args.generator == "fixture":
         if not args.fixtures:
             raise SystemExit("--generator fixture requires --fixtures <dir>")
@@ -104,8 +110,8 @@ def _build_generator(args: argparse.Namespace) -> GenerateFn:
             )
         from evaluation.generators.db_replay import DBReplayGenerator
 
-        acolyte_conn = psycopg.connect(acolyte_dsn)
-        alt_conn = psycopg.connect(alt_dsn)
+        acolyte_conn = stack.enter_context(psycopg.connect(acolyte_dsn))
+        alt_conn = stack.enter_context(psycopg.connect(alt_dsn))
         return DBReplayGenerator(acolyte_conn, alt_conn, section_key=args.section_key)
 
     def _scaffold(_case: EvalCase) -> tuple[str, dict, dict, dict]:
@@ -114,6 +120,35 @@ def _build_generator(args: argparse.Namespace) -> GenerateFn:
         )
 
     return _scaffold
+
+
+def _build_judge(args: argparse.Namespace) -> JudgeFn | None:
+    """Wire the faithfulness judge selected via --judge. None disables scoring."""
+    if args.judge == "none":
+        return None
+
+    from evaluation.judge import StrictFaithfulnessJudge
+
+    if args.judge == "mock":
+        return StrictFaithfulnessJudge()
+
+    if args.judge == "gemma4":
+        import httpx
+
+        from acolyte.config.settings import Settings
+        from acolyte.gateway.ollama_gw import OllamaGateway
+        from acolyte.gateway.vllm_gw import VllmGateway
+        from evaluation.judges.gemma4 import Gemma4FaithfulnessJudge
+
+        settings = Settings()
+        # Short-lived CLI process: the client is released on exit rather than
+        # via an explicit aclose(), since Gemma4FaithfulnessJudge owns a sync
+        # event loop separate from this function's scope.
+        http_client = httpx.AsyncClient(timeout=httpx.Timeout(connect=10, read=60, write=10, pool=10))
+        llm = VllmGateway(http_client, settings) if settings.llm_provider == "vllm" else OllamaGateway(http_client, settings)
+        return StrictFaithfulnessJudge(inner=Gemma4FaithfulnessJudge(llm))
+
+    raise SystemExit(f"unknown --judge {args.judge!r}")
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -136,19 +171,30 @@ def main(argv: list[str] | None = None) -> int:
         default="-",
         help="Write JSON output to this path (default: stdout)",
     )
+    parser.add_argument(
+        "--judge",
+        choices=["none", "mock", "gemma4"],
+        default="none",
+        help="Faithfulness judge to score generated bodies with (default: none/disabled)",
+    )
     args = parser.parse_args(argv)
 
     dataset_path = Path(args.dataset)
     cases = load_cases(dataset_path)
-    generator = _build_generator(args)
 
-    results = run(cases, generator)
+    with contextlib.ExitStack() as stack:
+        generator = _build_generator(args, stack)
+        judge = _build_judge(args)
+
+        results = run(cases, generator, judge)
+
     payload = {
         "metadata": {
             "dataset": str(dataset_path),
             "dataset_sha256": _dataset_digest(dataset_path),
             "generator": args.generator,
             "section_key": args.section_key,
+            "judge": args.judge,
             "generated_at": datetime.now(UTC).isoformat(),
         },
         "results": results,

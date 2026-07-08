@@ -72,10 +72,11 @@ class PeerIdentityMiddleware(BaseHTTPMiddleware):
 
         # Defensive: strip any client-supplied value if the nginx sidecar did
         # not overwrite it (i.e. VERIFY_CLIENT=off). `PEER_IDENTITY_TRUSTED`
-        # is set to `on` by compose only when the perimeter sidecar enforces
-        # client certs. When it's off, we MUST NOT trust the header even if
-        # something set it — the attacker could be bypassing the sidecar.
-        mtls_on = os.getenv("PEER_IDENTITY_TRUSTED", "on") == "on"
+        # must be explicitly set to `on` by compose when the perimeter
+        # sidecar enforces client certs — an unset env var means the trust
+        # boundary was never configured, so fail closed (untrusted) rather
+        # than fail open. The attacker could be bypassing the sidecar.
+        mtls_on = os.getenv("PEER_IDENTITY_TRUSTED", "off") == "on"
         if not mtls_on:
             peer = ""
 

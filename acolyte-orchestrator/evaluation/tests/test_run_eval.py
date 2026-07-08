@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import json
 from pathlib import Path
 from unittest import mock
@@ -89,21 +90,23 @@ def test_dataset_digest_is_deterministic(tmp_path: Path):
 
 def test_build_generator_scaffold_raises_on_call():
     args = mock.Mock(generator="scaffold", fixtures="", section_key="analysis")
-    gen = _build_generator(args)
-    with pytest.raises(RuntimeError, match="no generator wired"):
-        gen(_case())
+    with contextlib.ExitStack() as stack:
+        gen = _build_generator(args, stack)
+        with pytest.raises(RuntimeError, match="no generator wired"):
+            gen(_case())
 
 
 def test_build_generator_fixture_requires_dir():
     args = mock.Mock(generator="fixture", fixtures="", section_key="analysis")
-    with pytest.raises(SystemExit):
-        _build_generator(args)
+    with contextlib.ExitStack() as stack, pytest.raises(SystemExit):
+        _build_generator(args, stack)
 
 
 def test_build_generator_fixture_returns_recorded_generator(tmp_path: Path):
     args = mock.Mock(generator="fixture", fixtures=str(tmp_path), section_key="analysis")
-    gen = _build_generator(args)
-    assert isinstance(gen, RecordedFixtureGenerator)
+    with contextlib.ExitStack() as stack:
+        gen = _build_generator(args, stack)
+        assert isinstance(gen, RecordedFixtureGenerator)
 
 
 def test_main_writes_json_with_metadata(tmp_path: Path):

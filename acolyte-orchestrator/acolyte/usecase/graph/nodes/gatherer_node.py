@@ -16,6 +16,7 @@ import re
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING
 
+import httpx
 import structlog
 
 from acolyte.domain.fusion import RRFFusion, ScoredHit
@@ -119,18 +120,18 @@ class GathererNode:
         has_facets = any(section.get("query_facets") for section in outline)
 
         if has_facets:
-            evidence_map, weak_facets = await self._search_by_facets(
+            evidence_map, weak_facets, search_failed = await self._search_by_facets(
                 outline, topic, brief, hyde_variant, published_after
             )
         else:
-            evidence_map = await self._search_by_queries(outline, topic, hyde_variant, published_after)
+            evidence_map, search_failed = await self._search_by_queries(outline, topic, hyde_variant, published_after)
             weak_facets = []
 
         # Also search recaps with the main topic
         recap_map: dict[str, dict] = {}
         try:
             recaps = await self._evidence.search_recaps(topic, limit=10)
-        except Exception as exc:
+        except httpx.HTTPError as exc:
             logger.warning("Gatherer: recap search failed", error=str(exc))
             recaps = []
 
@@ -147,7 +148,10 @@ class GathererNode:
         evidence = list(evidence_map.values()) + list(recap_map.values())
 
         logger.info("Gatherer completed", evidence_count=len(evidence), faceted=has_facets)
-        return {"evidence": evidence, "weak_facets": weak_facets}
+        result: dict = {"evidence": evidence, "weak_facets": weak_facets}
+        if search_failed and not evidence:
+            result["error"] = "All evidence searches failed — see logs for upstream errors"
+        return result
 
     async def _search_articles_bounded(
         self,
@@ -203,10 +207,12 @@ class GathererNode:
         brief: dict,
         hyde_variant: tuple[str, str] | None,
         published_after: datetime | None,
-    ) -> tuple[dict[str, dict], list[dict]]:
+    ) -> tuple[dict[str, dict], list[dict], bool]:
         """Search using structured QueryFacet objects from outline with multi-query RRF fusion."""
         evidence_map: dict[str, dict] = {}
         weak_facets: list[dict] = []
+        attempted = 0
+        failed = 0
 
         for section in outline:
             section_key = section.get("key", "")
@@ -228,6 +234,7 @@ class GathererNode:
                     if not query:
                         query = topic
 
+                    attempted += 1
                     try:
                         articles = await self._search_articles_bounded(query, limit=10, published_after=published_after)
                         scored = [
@@ -243,7 +250,8 @@ class GathererNode:
                         ]
                         ranked_lists.append(scored)
                         total_hits += len(articles)
-                    except Exception as exc:
+                    except httpx.HTTPError as exc:
+                        failed += 1
                         logger.warning(
                             "Gatherer: variant search failed",
                             query=query,
@@ -282,7 +290,7 @@ class GathererNode:
                             "section_keys": [section_key],
                         }
 
-        return evidence_map, weak_facets
+        return evidence_map, weak_facets, attempted > 0 and failed == attempted
 
     async def _search_by_queries(
         self,
@@ -290,9 +298,11 @@ class GathererNode:
         topic: str,
         hyde_variant: tuple[str, str] | None,
         published_after: datetime | None,
-    ) -> dict[str, dict]:
+    ) -> tuple[dict[str, dict], bool]:
         """Legacy search using plain search_queries strings."""
         evidence_map: dict[str, dict] = {}
+        attempted = 0
+        failed = 0
 
         # Build list of (section_key, query) pairs
         query_pairs: list[tuple[str, str]] = []
@@ -315,9 +325,11 @@ class GathererNode:
             query_pairs.append(("_hyde", hyde_doc))
 
         for section_key, query in query_pairs:
+            attempted += 1
             try:
                 articles = await self._search_articles_bounded(query, limit=5, published_after=published_after)
-            except Exception as exc:
+            except httpx.HTTPError as exc:
+                failed += 1
                 logger.warning("Gatherer: article search failed", query=query, error=str(exc))
                 articles = []
 
@@ -336,4 +348,4 @@ class GathererNode:
                         "section_keys": [section_key],
                     }
 
-        return evidence_map
+        return evidence_map, attempted > 0 and failed == attempted
