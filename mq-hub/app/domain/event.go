@@ -72,6 +72,11 @@ func NewEvent(eventType EventType, source string, payload []byte, metadata map[s
 // instead of matching on the error message.
 var ErrInvalidEvent = errors.New("invalid event")
 
+// ErrReplyTimeout is the sentinel wrapped when a request-reply wait
+// (SubscribeWithTimeout) expires with no reply, so callers can classify a
+// timeout via errors.Is instead of matching on the error message.
+var ErrReplyTimeout = errors.New("timeout waiting for reply")
+
 // Validate checks if the event has all required fields.
 func (e *Event) Validate() error {
 	if e.EventID == "" {

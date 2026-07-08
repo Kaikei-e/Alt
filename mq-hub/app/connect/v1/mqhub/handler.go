@@ -40,7 +40,7 @@ func (h *Handler) Publish(ctx context.Context, req *connect.Request[mqhubv1.Publ
 	if protoEvent == nil {
 		return connect.NewResponse(&mqhubv1.PublishResponse{
 			Success: false,
-		}), connect.NewError(connect.CodeInvalidArgument, nil)
+		}), connect.NewError(connect.CodeInvalidArgument, errors.New("event is required"))
 	}
 
 	event := protoEventToDomain(protoEvent)
@@ -124,7 +124,7 @@ func (h *Handler) CreateConsumerGroup(ctx context.Context, req *connect.Request[
 		return connect.NewResponse(&mqhubv1.CreateConsumerGroupResponse{
 			Success: false,
 			Message: "failed to create consumer group",
-		}), connect.NewError(connect.CodeUnavailable, nil)
+		}), connect.NewError(connect.CodeUnavailable, errors.New("failed to create consumer group"))
 	}
 
 	return connect.NewResponse(&mqhubv1.CreateConsumerGroupResponse{
@@ -195,7 +195,7 @@ func protoEventToDomain(protoEvent *mqhubv1.Event) *domain.Event {
 // GenerateTagsForArticle synchronously generates tags for an article.
 func (h *Handler) GenerateTagsForArticle(ctx context.Context, req *connect.Request[mqhubv1.GenerateTagsForArticleRequest]) (*connect.Response[mqhubv1.GenerateTagsForArticleResponse], error) {
 	if h.generateTagsUsecase == nil {
-		return nil, connect.NewError(connect.CodeUnimplemented, nil)
+		return nil, connect.NewError(connect.CodeUnimplemented, errors.New("tag generation not configured"))
 	}
 
 	ucReq := &usecase.GenerateTagsRequest{
@@ -210,11 +210,18 @@ func (h *Handler) GenerateTagsForArticle(ctx context.Context, req *connect.Reque
 	if err != nil {
 		slog.ErrorContext(ctx, "generate tags for article failed",
 			"article_id", req.Msg.ArticleId, "error", err)
+		if errors.Is(err, domain.ErrReplyTimeout) {
+			return connect.NewResponse(&mqhubv1.GenerateTagsForArticleResponse{
+				Success:      false,
+				ArticleId:    req.Msg.ArticleId,
+				ErrorMessage: "tag generation timeout",
+			}), connect.NewError(connect.CodeDeadlineExceeded, errors.New("tag generation timeout"))
+		}
 		return connect.NewResponse(&mqhubv1.GenerateTagsForArticleResponse{
 			Success:      false,
 			ArticleId:    req.Msg.ArticleId,
 			ErrorMessage: "tag generation failed",
-		}), connect.NewError(connect.CodeUnavailable, nil)
+		}), connect.NewError(connect.CodeUnavailable, errors.New("tag generation failed"))
 	}
 
 	// Convert tags to proto format

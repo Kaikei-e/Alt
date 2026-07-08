@@ -260,7 +260,7 @@ func (d *RedisDriver) SubscribeWithTimeout(ctx context.Context, stream domain.St
 
 	if err != nil {
 		if errors.Is(err, redis.Nil) {
-			return nil, errors.New("timeout waiting for reply")
+			return nil, domain.ErrReplyTimeout
 		}
 		return nil, err
 	}
