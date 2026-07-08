@@ -3,6 +3,7 @@
 import asyncio
 import logging
 import uuid
+import weakref
 from contextlib import asynccontextmanager
 from typing import Dict, Any, Optional, Union, AsyncIterator
 
@@ -324,20 +325,35 @@ class OllamaGateway(LLMProviderPort):
                     raise
                 finally:
                     # Release semaphore when generator completes (normal, abort, or GC)
-                    self._semaphore.release(
-                        slot_id=acquired_slot_id, was_high_priority=is_high_priority
-                    )
-                    logger.info(
-                        "Released semaphore after streaming",
-                        extra={
-                            "model": payload["model"],
-                            "is_high_priority": is_high_priority,
-                            "slot_id": acquired_slot_id,
-                        },
-                    )
+                    _release_slot()
 
-            # Return the generator (semaphore already acquired)
-            return response_generator()
+            released = False
+
+            def _release_slot() -> None:
+                nonlocal released
+                if released:
+                    return
+                released = True
+                self._semaphore.release(
+                    slot_id=acquired_slot_id, was_high_priority=is_high_priority
+                )
+                logger.info(
+                    "Released semaphore after streaming",
+                    extra={
+                        "model": payload["model"],
+                        "is_high_priority": is_high_priority,
+                        "slot_id": acquired_slot_id,
+                    },
+                )
+
+            gen = response_generator()
+            # An async generator's own `try/finally` never runs if the caller
+            # discards it without ever calling __anext__() -- the function
+            # body is never entered, so nothing is there to clean up. Guard
+            # against that leaking this slot for the full leak-check window
+            # by also releasing when `gen` itself is garbage collected.
+            weakref.finalize(gen, _release_slot)
+            return gen
 
         # Handle non-streaming requests
         # For BE requests, create a cancel event for preemption support
@@ -851,6 +867,10 @@ class OllamaGateway(LLMProviderPort):
             pass
         return generate_task.result()
 
+    def queue_status(self) -> Dict[str, Any]:
+        """Current semaphore queue depth/availability for monitoring."""
+        return self._semaphore.queue_status()
+
     async def list_models(self) -> list[Dict[str, Any]]:
         """
         List available Ollama models.
@@ -914,23 +934,41 @@ class OllamaGateway(LLMProviderPort):
                 logger.error("Chat stream error", exc_info=True)
                 raise
             finally:
-                self._semaphore.release(
-                    slot_id=acquired_slot_id, was_high_priority=True
-                )
-                logger.info("Released semaphore after chat stream")
+                _release_slot()
 
-        return _stream()
+        released = False
+
+        def _release_slot() -> None:
+            nonlocal released
+            if released:
+                return
+            released = True
+            self._semaphore.release(slot_id=acquired_slot_id, was_high_priority=True)
+            logger.info("Released semaphore after chat stream")
+
+        gen = _stream()
+        # See generate()'s response_generator for why this is needed: an
+        # async generator's own finally never runs if it's discarded before
+        # ever being iterated.
+        weakref.finalize(gen, _release_slot)
+        return gen
 
     async def chat_generate(
         self,
         payload: Dict[str, Any],
+        *,
+        priority: str = "high",
     ) -> Dict[str, Any]:
-        """Non-streaming Ollama /api/chat through semaphore with HIGH priority.
+        """Non-streaming Ollama /api/chat through the priority semaphore.
 
-        Used by morning letter and other non-streaming chat requests.
+        Used by morning letter, plan-query and other non-streaming chat
+        requests. Defaults to HIGH priority (interactive callers); batch
+        callers (e.g. recap) must pass priority="low" so they don't consume
+        RT bandwidth reserved for Ask Augur chat.
 
         Args:
             payload: Ollama chat request payload (messages, model, options, etc.)
+            priority: "high" (default) or "low"
 
         Returns:
             Response dict in /api/chat format
@@ -939,14 +977,18 @@ class OllamaGateway(LLMProviderPort):
             QueueFullError: If semaphore queue is at capacity
             RuntimeError: If Ollama returns an error
         """
-        wait_time, acquired_slot_id = await self._semaphore.acquire(high_priority=True)
+        is_high_priority = priority == "high"
+        wait_time, acquired_slot_id = await self._semaphore.acquire(
+            high_priority=is_high_priority
+        )
         logger.info(
-            "Acquired semaphore (HIGH PRIORITY) for chat generate proxy",
+            f"Acquired semaphore ({'HIGH' if is_high_priority else 'LOW'} PRIORITY) for chat generate proxy",
             extra={
                 "model": payload.get("model", "unknown"),
                 "message_count": len(payload.get("messages", [])),
                 "queue_wait_time_seconds": round(wait_time, 4),
                 "slot_id": acquired_slot_id,
+                "priority": priority,
             },
         )
 
@@ -956,5 +998,7 @@ class OllamaGateway(LLMProviderPort):
             logger.error("Chat generate error", exc_info=True)
             raise
         finally:
-            self._semaphore.release(slot_id=acquired_slot_id, was_high_priority=True)
+            self._semaphore.release(
+                slot_id=acquired_slot_id, was_high_priority=is_high_priority
+            )
             logger.info("Released semaphore after chat generate")

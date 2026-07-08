@@ -13,11 +13,20 @@ RUN apt-get update \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
-# Install gosu for proper user switching (Docker best practice)
+# Install gosu for proper user switching (Docker best practice).
+# Checksums pinned from the official SHA256SUMS release asset
+# (github.com/tianon/gosu/releases/download/1.17/SHA256SUMS) so a
+# compromised download is rejected instead of silently installed.
 RUN set -eux; \
     GOSU_VERSION="1.17"; \
     ARCH="$(dpkg --print-architecture)"; \
+    case "${ARCH}" in \
+    amd64) GOSU_SHA256="bbc4136d03ab138b1ad66fa4fc051bafc6cc7ffae632b069a53657279a450de3" ;; \
+    arm64) GOSU_SHA256="c3805a85d17f4454c23d7059bcb97e1ec1af272b90126e79ed002342de08389b" ;; \
+    *) echo "unsupported architecture: ${ARCH}" >&2; exit 1 ;; \
+    esac; \
     curl -o /usr/local/bin/gosu -fsSL "https://github.com/tianon/gosu/releases/download/${GOSU_VERSION}/gosu-${ARCH}"; \
+    echo "${GOSU_SHA256}  /usr/local/bin/gosu" | sha256sum -c -; \
     chmod +x /usr/local/bin/gosu; \
     gosu --version || exit 1
 
@@ -32,7 +41,7 @@ COPY --chown=ollama-user:ollama-user Modelfile.gemma4-e4b-q4km Modelfile.gemma4-
 
 # Environment configuration
 ENV OLLAMA_HOST=0.0.0.0:11435
-ENV OLLAMA_ORIGINS=*
+ENV OLLAMA_ORIGINS=http://localhost,http://127.0.0.1
 ENV OLLAMA_KEEP_ALIVE=24h
 ENV OLLAMA_MAX_LOADED_MODELS=1
 ENV OLLAMA_LOAD_TIMEOUT=10m

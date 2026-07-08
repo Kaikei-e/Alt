@@ -49,16 +49,18 @@ def _make_local_gateway():
         )
     )
 
-    # Expose _semaphore for health handler compatibility
-    gw._semaphore = MagicMock()
-    gw._semaphore.queue_status.return_value = {
-        "rt_queue": 0,
-        "be_queue": 0,
-        "total_slots": 2,
-        "available_slots": 2,
-        "accepting": True,
-        "max_queue_depth": 10,
-    }
+    # queue_status() is part of the LLMProviderPort contract now, not a
+    # private _semaphore attribute reached into by callers.
+    gw.queue_status = MagicMock(
+        return_value={
+            "rt_queue": 0,
+            "be_queue": 0,
+            "total_slots": 2,
+            "available_slots": 2,
+            "accepting": True,
+            "max_queue_depth": 10,
+        }
+    )
 
     return gw
 

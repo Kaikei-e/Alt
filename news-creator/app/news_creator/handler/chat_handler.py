@@ -8,7 +8,7 @@ by batch summarization jobs.
 
 import json
 import logging
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Union
 
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import JSONResponse, StreamingResponse
@@ -34,9 +34,13 @@ class ChatRequest(BaseModel):
     model: Optional[str] = None
     messages: List[ChatMessage] = Field(min_length=1)
     stream: bool = True
-    keep_alive: Optional[Any] = None
-    format: Optional[Any] = None
-    think: Optional[Any] = None
+    # Ollama accepts a duration string ("5m"), seconds as int, or False (unload now).
+    keep_alive: Optional[Union[int, str, bool]] = None
+    # Ollama's `format` is either the literal "json" or a JSON Schema object.
+    format: Optional[Union[str, Dict[str, Any]]] = None
+    # Thinking mode: bool on/off, or a level string ("low"/"medium"/"high") on
+    # models that support graded thinking effort.
+    think: Optional[Union[bool, str]] = None
     options: Optional[Dict[str, Any]] = None
 
 
@@ -49,6 +53,15 @@ def create_chat_router(gateway: OllamaGateway) -> APIRouter:
         """Proxy Ollama /api/chat through HybridPrioritySemaphore with HIGH priority."""
         set_ai_pipeline("chat-proxy")
         set_processing_stage("handler")
+
+        if request.model and not (
+            gateway.config.is_base_model_name(request.model)
+            or gateway.config.is_bucket_model_name(request.model)
+        ):
+            logger.warning(
+                "Chat proxy: rejected unknown model", extra={"model": request.model}
+            )
+            raise HTTPException(status_code=400, detail="Unknown model")
 
         try:
             if not request.stream:

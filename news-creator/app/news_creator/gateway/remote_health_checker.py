@@ -199,7 +199,7 @@ class RemoteHealthChecker:
                         extra={"remote_url": url, "models": model_names},
                     )
 
-        except (aiohttp.ClientError, json.JSONDecodeError, Exception) as err:
+        except (aiohttp.ClientError, asyncio.TimeoutError, json.JSONDecodeError) as err:
             state["healthy"] = False
             state["consecutive_failures"] += 1
             logger.warning(

@@ -27,6 +27,19 @@ class SummarizeResponse(BaseModel):
     total_duration_ms: Optional[float] = None
 
 
+@dataclass(frozen=True, slots=True)
+class SummaryMetadata:
+    """Metadata about how a summary was generated (SummarizeUsecase internal
+    result), replacing an untyped ``Dict[str, Any]`` passed across the
+    usecase/handler boundary."""
+
+    model: str
+    prompt_tokens: Optional[int] = None
+    completion_tokens: Optional[int] = None
+    total_duration_ms: Optional[float] = None
+    strategy: Optional[str] = None
+
+
 class GenerateRequest(BaseModel):
     """Request model for generic LLM generation."""
 

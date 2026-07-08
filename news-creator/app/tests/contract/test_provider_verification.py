@@ -28,6 +28,8 @@ import uvicorn
 from fastapi import FastAPI
 from pact import Verifier
 
+from news_creator.domain.models import SummaryMetadata
+
 from ._pact_state import StateRegistry, dispatch
 
 logger = logging.getLogger(__name__)
@@ -97,12 +99,12 @@ def _create_provider_app() -> FastAPI:
             raise QueueFullError("Queue depth 20 >= max 20")
         return (
             "これはテスト記事の要約です。",
-            {
-                "model": "gemma4-e4b-q4km",
-                "prompt_tokens": 150,
-                "completion_tokens": 80,
-                "total_duration_ms": 2500.0,
-            },
+            SummaryMetadata(
+                model="gemma4-e4b-q4km",
+                prompt_tokens=150,
+                completion_tokens=80,
+                total_duration_ms=2500.0,
+            ),
         )
 
     mock_summarize_usecase.generate_summary = AsyncMock(

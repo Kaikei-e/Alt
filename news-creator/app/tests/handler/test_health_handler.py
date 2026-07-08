@@ -10,12 +10,10 @@ from news_creator.handler.health_handler import create_health_router
 
 @pytest.fixture
 def mock_ollama_gateway():
-    """Create a mock Ollama gateway."""
+    """Create a mock Ollama gateway (LLMProviderPort)."""
     mock = Mock()
     mock.list_models = AsyncMock()
-    # Add semaphore mock with queue_status
-    mock._semaphore = Mock()
-    mock._semaphore.queue_status.return_value = {
+    mock.queue_status.return_value = {
         "rt_queue": 0,
         "be_queue": 0,
         "total_slots": 2,
@@ -110,7 +108,7 @@ def test_queue_status_returns_correct_state(client, mock_ollama_gateway):
 
 def test_queue_status_with_saturated_queue(client, mock_ollama_gateway):
     """Test queue status when queue is saturated."""
-    mock_ollama_gateway._semaphore.queue_status.return_value = {
+    mock_ollama_gateway.queue_status.return_value = {
         "rt_queue": 10,
         "be_queue": 10,
         "total_slots": 2,

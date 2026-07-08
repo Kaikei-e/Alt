@@ -70,8 +70,10 @@ class DistributingGateway(LLMProviderPort):
     # chat_generate() — always local (used for plan-query, morning letter)
     # ------------------------------------------------------------------
 
-    async def chat_generate(self, payload: Dict[str, Any]) -> Dict[str, Any]:
-        return await self._local.chat_generate(payload)
+    async def chat_generate(
+        self, payload: Dict[str, Any], *, priority: str = "high"
+    ) -> Dict[str, Any]:
+        return await self._local.chat_generate(payload, priority=priority)
 
     # ------------------------------------------------------------------
     # generate() — always local (handles streaming, model routing, etc.)
@@ -274,9 +276,7 @@ class DistributingGateway(LLMProviderPort):
 
     def queue_status(self) -> Dict[str, Any]:
         """Return queue status including remote health state."""
-        local_status = {}
-        if hasattr(self._local, "_semaphore"):
-            local_status = self._local._semaphore.queue_status()
+        local_status = self._local.queue_status()
         local_status["remotes"] = self._health_checker.status()
         local_status["distributed_be_enabled"] = self._enabled
         return local_status
