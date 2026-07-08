@@ -94,10 +94,7 @@ class CuratorNode:
 
         # If no outline-based curation happened, fall back to global curation
         if not curated_by_section and evidence:
-            if len(evidence) <= self._max_evidence:
-                curated_flat = evidence
-            else:
-                curated_flat = evidence[: self._max_evidence]
+            curated_flat = evidence if len(evidence) <= self._max_evidence else evidence[: self._max_evidence]
 
         # Build source map from all curated evidence
         source_map = SourceMap()

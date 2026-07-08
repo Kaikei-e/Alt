@@ -19,5 +19,5 @@ class StartRunUsecase:
     async def execute(self, report_id: UUID) -> ReportRun:
         report = await self._report_repo.get_report(report_id)
         if report is None:
-            raise ValueError(f"Report {report_id} not found")
+            raise ValueError(f"Report {report_id} not found")  # noqa: TRY003 — caught generically as ValueError at the connect_service Handler boundary
         return await self._job_queue.create_run(report_id, report.current_version + 1)

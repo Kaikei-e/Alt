@@ -22,7 +22,7 @@ class ReportRepositoryPort(Protocol):
 
     async def list_reports(self, cursor: str | None, limit: int) -> tuple[list[Report], str | None]: ...
 
-    async def bump_version(
+    async def bump_version(  # noqa: PLR0913 — keyword-only snapshot fields, each independently optional
         self,
         report_id: UUID,
         expected_version: int,

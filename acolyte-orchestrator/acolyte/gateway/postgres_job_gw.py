@@ -22,38 +22,37 @@ class PostgresJobGateway:
         self._pool = pool
 
     async def create_run(self, report_id: UUID, target_version_no: int) -> ReportRun:
-        async with self._pool.connection() as conn:
-            async with conn.transaction():
-                cur = await conn.execute(
-                    "INSERT INTO report_runs (report_id, target_version_no) "
-                    "VALUES (%s, %s) "
-                    "RETURNING run_id, report_id, target_version_no, run_status, "
-                    "planner_model, writer_model, critic_model, "
-                    "started_at, finished_at, failure_code, failure_message",
-                    [report_id, target_version_no],
-                )
-                r = await cur.fetchone()
-                assert r is not None
-                run = ReportRun(
-                    run_id=r[0],
-                    report_id=r[1],
-                    target_version_no=r[2],
-                    run_status=r[3],
-                    planner_model=r[4],
-                    writer_model=r[5],
-                    critic_model=r[6],
-                    started_at=r[7],
-                    finished_at=r[8],
-                    failure_code=r[9],
-                    failure_message=r[10],
-                )
+        async with self._pool.connection() as conn, conn.transaction():
+            cur = await conn.execute(
+                "INSERT INTO report_runs (report_id, target_version_no) "
+                "VALUES (%s, %s) "
+                "RETURNING run_id, report_id, target_version_no, run_status, "
+                "planner_model, writer_model, critic_model, "
+                "started_at, finished_at, failure_code, failure_message",
+                [report_id, target_version_no],
+            )
+            r = await cur.fetchone()
+            assert r is not None
+            run = ReportRun(
+                run_id=r[0],
+                report_id=r[1],
+                target_version_no=r[2],
+                run_status=r[3],
+                planner_model=r[4],
+                writer_model=r[5],
+                critic_model=r[6],
+                started_at=r[7],
+                finished_at=r[8],
+                failure_code=r[9],
+                failure_message=r[10],
+            )
 
-                await conn.execute(
-                    "INSERT INTO report_jobs (run_id) VALUES (%s)",
-                    [run.run_id],
-                )
+            await conn.execute(
+                "INSERT INTO report_jobs (run_id) VALUES (%s)",
+                [run.run_id],
+            )
 
-                return run
+            return run
 
     async def get_run(self, run_id: UUID) -> ReportRun | None:
         async with self._pool.connection() as conn:
@@ -120,43 +119,42 @@ class PostgresJobGateway:
 
     async def claim_job(self, worker_id: str) -> ReportJob | None:
         """Claim a pending job using SELECT ... FOR UPDATE SKIP LOCKED."""
-        async with self._pool.connection() as conn:
-            async with conn.transaction():
-                cur = await conn.execute(
-                    "SELECT job_id, run_id, job_status, attempt_no, claimed_by, claimed_at, "
-                    "available_at, created_at "
-                    "FROM report_jobs "
-                    "WHERE job_status = 'pending' AND available_at <= NOW() "
-                    "ORDER BY created_at "
-                    "LIMIT 1 "
-                    "FOR UPDATE SKIP LOCKED",
-                )
-                r = await cur.fetchone()
-                if r is None:
-                    return None
+        async with self._pool.connection() as conn, conn.transaction():
+            cur = await conn.execute(
+                "SELECT job_id, run_id, job_status, attempt_no, claimed_by, claimed_at, "
+                "available_at, created_at "
+                "FROM report_jobs "
+                "WHERE job_status = 'pending' AND available_at <= NOW() "
+                "ORDER BY created_at "
+                "LIMIT 1 "
+                "FOR UPDATE SKIP LOCKED",
+            )
+            r = await cur.fetchone()
+            if r is None:
+                return None
 
-                job_id = r[0]
-                claim_cur = await conn.execute(
-                    "UPDATE report_jobs SET job_status = 'claimed', claimed_by = %s, "
-                    "claimed_at = NOW(), attempt_no = attempt_no + 1 "
-                    "WHERE job_id = %s "
-                    "RETURNING claimed_at",
-                    [worker_id, job_id],
-                )
-                claim_row = await claim_cur.fetchone()
-                assert claim_row is not None
-                claimed_at = claim_row[0]
+            job_id = r[0]
+            claim_cur = await conn.execute(
+                "UPDATE report_jobs SET job_status = 'claimed', claimed_by = %s, "
+                "claimed_at = NOW(), attempt_no = attempt_no + 1 "
+                "WHERE job_id = %s "
+                "RETURNING claimed_at",
+                [worker_id, job_id],
+            )
+            claim_row = await claim_cur.fetchone()
+            assert claim_row is not None
+            claimed_at = claim_row[0]
 
-                return ReportJob(
-                    job_id=r[0],
-                    run_id=r[1],
-                    job_status="claimed",
-                    attempt_no=r[3] + 1,
-                    claimed_by=worker_id,
-                    claimed_at=claimed_at,
-                    available_at=r[6],
-                    created_at=r[7],
-                )
+            return ReportJob(
+                job_id=r[0],
+                run_id=r[1],
+                job_status="claimed",
+                attempt_no=r[3] + 1,
+                claimed_by=worker_id,
+                claimed_at=claimed_at,
+                available_at=r[6],
+                created_at=r[7],
+            )
 
     async def update_job_status(self, job_id: UUID, status: str) -> None:
         async with self._pool.connection() as conn:

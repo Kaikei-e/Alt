@@ -9,13 +9,20 @@ Parse failure → revise (never silent accept).
 """
 
 import re
+import xml.etree.ElementTree as ET
 from typing import TYPE_CHECKING
 
 import structlog
 
 from acolyte.domain.critic_taxonomy import FailureMode, FailureModeDetection
 from acolyte.port.llm_provider import LLMMode
-from acolyte.usecase.graph.state import ReportGenerationState
+from acolyte.usecase.graph.state import (
+    PlannedClaimDict,
+    ReportGenerationState,
+    SectionCitationDict,
+    SectionParagraphDict,
+)
+from acolyte.usecase.graph.xml_parse import XmlParseError, normalize_critic_output, parse_xmlish_block
 
 if TYPE_CHECKING:
     from acolyte.port.llm_provider import LLMProviderPort
@@ -143,7 +150,7 @@ def detect_empty_body(
 
 
 def detect_zero_claims(
-    claim_plans: dict[str, list[dict]],
+    claim_plans: dict[str, list[PlannedClaimDict]],
     outline: list[dict],
     extracted_facts: list[dict] | None = None,
 ) -> list[FailureModeDetection]:
@@ -168,7 +175,7 @@ def detect_zero_claims(
 
 
 def detect_es_numeric_absence(
-    claim_plans: dict[str, list[dict]],
+    claim_plans: dict[str, list[PlannedClaimDict]],
     outline: list[dict],
 ) -> list[FailureModeDetection]:
     """FM11: Detect ES without numeric facts → warning."""
@@ -192,9 +199,9 @@ def detect_es_numeric_absence(
     return detections
 
 
-def _build_claim_feedbacks(
+def _build_claim_feedbacks(  # noqa: PLR0912 — feedback-reason dispatch per failure mode, splitting would obscure the mapping
     detections: list[FailureModeDetection],
-    section_paragraphs: dict[str, list[dict]],
+    section_paragraphs: dict[str, list[SectionParagraphDict]],
 ) -> dict[str, list[dict]]:
     """Build paragraph-level claim_feedbacks from heuristic detections.
 
@@ -206,9 +213,7 @@ def _build_claim_feedbacks(
     para_detections: dict[str, list[FailureModeDetection]] = {}
     section_detections: dict[str, list[FailureModeDetection]] = {}
     for d in detections:
-        if d.mode == FailureMode.FM12_PARAGRAPH_DUPLICATION:
-            para_detections.setdefault(d.section_key, []).append(d)
-        elif d.mode == FailureMode.FM13_PARAGRAPH_MISSING_CITATION:
+        if d.mode in (FailureMode.FM12_PARAGRAPH_DUPLICATION, FailureMode.FM13_PARAGRAPH_MISSING_CITATION):
             para_detections.setdefault(d.section_key, []).append(d)
         else:
             section_detections.setdefault(d.section_key, []).append(d)
@@ -282,21 +287,23 @@ WARNING_ACCUMULATION_THRESHOLD = 3
 
 CONCLUSION_DUPLICATION_THRESHOLD = 0.20  # Jaccard bigram overlap
 SYNTHESIS_RATIO_THRESHOLD = 0.5  # Minimum cross-claim synthesis ratio
+_MIN_BIGRAM_CHARS = 2
+_MIN_CROSS_CLAIM_SOURCE_REFS = 2
 
 
 def _bigrams(text: str) -> set[tuple[str, str]]:
     """Extract character bigrams from text, ignoring whitespace."""
     chars = text.replace(" ", "").replace("\n", "")
-    return {(chars[i], chars[i + 1]) for i in range(len(chars) - 1)} if len(chars) >= 2 else set()
+    return {(chars[i], chars[i + 1]) for i in range(len(chars) - 1)} if len(chars) >= _MIN_BIGRAM_CHARS else set()
 
 
-def _paragraph_source_ids(para: dict) -> set[str]:
+def _paragraph_source_ids(para: SectionParagraphDict) -> set[str]:
     """Return the evidence source IDs a paragraph's citations point to."""
     return {c.get("source_id", "") for c in para.get("citations", []) if c.get("source_id")}
 
 
 def _claim_synthesis_ratio(
-    section_paragraphs: dict[str, list[dict]],
+    section_paragraphs: dict[str, list[SectionParagraphDict]],
     conclusion_keys: set[str],
     analysis_source_ids: set[str],
 ) -> float:
@@ -307,7 +314,7 @@ def _claim_synthesis_ratio(
     A paragraph that restates a single source scores 0; one that integrates
     multiple sources also cited by the analysis section scores 1.
     """
-    conclusion_paras: list[dict] = []
+    conclusion_paras: list[SectionParagraphDict] = []
     for key in conclusion_keys:
         conclusion_paras.extend(section_paragraphs.get(key, []))
 
@@ -318,7 +325,7 @@ def _claim_synthesis_ratio(
     for para in conclusion_paras:
         # Check how many analysis-cited sources this paragraph references
         source_refs = _paragraph_source_ids(para) & analysis_source_ids
-        if len(source_refs) >= 2:
+        if len(source_refs) >= _MIN_CROSS_CLAIM_SOURCE_REFS:
             cross_claim_count += 1
 
     return cross_claim_count / len(conclusion_paras)
@@ -328,7 +335,7 @@ def detect_conclusion_analysis_duplication(
     sections: dict[str, str],
     outline: list[dict],
     *,
-    section_paragraphs: dict[str, list[dict]] | None = None,
+    section_paragraphs: dict[str, list[SectionParagraphDict]] | None = None,
 ) -> list[FailureModeDetection]:
     """FM8: Detect conclusion-analysis duplication via compound judgment.
 
@@ -404,7 +411,7 @@ NOVELTY_VIOLATION_THRESHOLD = 0.20  # Same Jaccard threshold as FM8
 
 def detect_insufficient_citations(
     outline: list[dict],
-    section_citations: dict[str, list[dict]],
+    section_citations: dict[str, list[SectionCitationDict]],
 ) -> list[FailureModeDetection]:
     """FM9: Detect sections with fewer citations than min_citations contract."""
     detections: list[FailureModeDetection] = []
@@ -477,8 +484,8 @@ def detect_novelty_violation(
 PARAGRAPH_DUPLICATION_THRESHOLD = 0.30
 
 
-def detect_paragraph_duplication(
-    section_paragraphs: dict[str, list[dict]],
+def detect_paragraph_duplication(  # noqa: PLR0912 — intra-section + cross-section duplicate scan, splitting would obscure the single Jaccard-comparison narrative
+    section_paragraphs: dict[str, list[SectionParagraphDict]],
     outline: list[dict],
 ) -> list[FailureModeDetection]:
     """FM12: Detect paragraph-level duplication within and across sections."""
@@ -560,8 +567,8 @@ def detect_paragraph_duplication(
 
 
 def detect_paragraph_missing_citation(
-    section_paragraphs: dict[str, list[dict]],
-    claim_plans: dict[str, list[dict]],
+    section_paragraphs: dict[str, list[SectionParagraphDict]],
+    claim_plans: dict[str, list[PlannedClaimDict]],
 ) -> list[FailureModeDetection]:
     """FM13: Detect paragraphs missing citations when claim has must_cite=True."""
     detections: list[FailureModeDetection] = []
@@ -700,14 +707,6 @@ class CriticNode:
             )
 
             try:
-                import xml.etree.ElementTree as ET
-
-                from acolyte.usecase.graph.xml_parse import (
-                    XmlParseError,
-                    normalize_critic_output,
-                    parse_xmlish_block,
-                )
-
                 element = parse_xmlish_block(response.text, "critic")
                 critique = normalize_critic_output(element)
             except (XmlParseError, ET.ParseError) as exc:

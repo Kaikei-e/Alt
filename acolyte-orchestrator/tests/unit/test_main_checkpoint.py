@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from unittest.mock import AsyncMock
 
@@ -11,7 +12,7 @@ import main as main_module
 
 
 @pytest.mark.asyncio
-async def test_create_app_compiles_graph_with_checkpointer_on_startup(monkeypatch) -> None:
+async def test_create_app_compiles_graph_with_checkpointer_on_startup(monkeypatch: pytest.MonkeyPatch) -> None:
     """When checkpointing is enabled, startup should compile the graph with a checkpointer."""
     sentinel_checkpointer = object()
     sentinel_graph = object()
@@ -22,7 +23,7 @@ async def test_create_app_compiles_graph_with_checkpointer_on_startup(monkeypatc
         return sentinel_graph
 
     @asynccontextmanager
-    async def fake_create_checkpointer(db_dsn: str):
+    async def fake_create_checkpointer(db_dsn: str) -> AsyncIterator[object]:
         assert db_dsn == main_module._dsn
         yield sentinel_checkpointer
 

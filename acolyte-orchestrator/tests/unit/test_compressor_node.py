@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import json
+from typing import Never
+
 import pytest
 
 from acolyte.domain.compressed_evidence import (
@@ -12,11 +15,14 @@ from acolyte.domain.compressed_evidence import (
     select_top_sentences,
     split_sentences,
 )
+from acolyte.port.llm_provider import LLMResponse
+from acolyte.usecase.graph.nodes.compressor_node import CompressorNode
+from acolyte.usecase.graph.nodes.extractor_node import ExtractorNode
 
 # --- CompressedSpan ---
 
 
-def test_compressed_span_is_frozen_dataclass():
+def test_compressed_span_is_frozen_dataclass() -> None:
     span = CompressedSpan(text="AI is growing", char_offset=0, relevance_score=0.9)
     assert span.text == "AI is growing"
     assert span.char_offset == 0
@@ -28,47 +34,47 @@ def test_compressed_span_is_frozen_dataclass():
 # --- split_sentences ---
 
 
-def test_split_sentences_english():
+def test_split_sentences_english() -> None:
     sents = split_sentences("First sentence. Second one. Third!")
     assert len(sents) == 3
     assert sents[0][0] == "First sentence."
     assert sents[0][1] == 0
 
 
-def test_split_sentences_japanese():
+def test_split_sentences_japanese() -> None:
     sents = split_sentences("最初の文。次の文。")
     assert len(sents) == 2
     assert sents[0][0] == "最初の文。"
 
 
-def test_split_sentences_mixed():
+def test_split_sentences_mixed() -> None:
     sents = split_sentences("English first. 日本語の文。More English.")
     assert len(sents) == 3
 
 
-def test_split_sentences_conservative_on_abbreviation_and_decimal():
+def test_split_sentences_conservative_on_abbreviation_and_decimal() -> None:
     """U.S. and 3.14% must NOT be split mid-token."""
     sents = split_sentences("U.S. chip exports rose 3.14%. 次の文。")
     assert len(sents) == 2
 
 
-def test_split_sentences_empty():
+def test_split_sentences_empty() -> None:
     assert split_sentences("") == []
 
 
-def test_split_sentences_single_no_delimiter():
+def test_split_sentences_single_no_delimiter() -> None:
     sents = split_sentences("No delimiter here")
     assert len(sents) == 1
     assert sents[0][0] == "No delimiter here"
 
 
-def test_split_sentences_newline_separated():
+def test_split_sentences_newline_separated() -> None:
     """Single \\n should split lines (for RSS bullet points, headlines)."""
     sents = split_sentences("Key Findings\nAI chip market grows 45%\nNVIDIA leads")
     assert len(sents) == 3
 
 
-def test_split_sentences_bullet_points():
+def test_split_sentences_bullet_points() -> None:
     sents = split_sentences("• Item one\n• Item two\n• Item three")
     assert len(sents) == 3
 
@@ -76,29 +82,29 @@ def test_split_sentences_bullet_points():
 # --- score_sentence ---
 
 
-def test_score_sentence_keyword_overlap():
+def test_score_sentence_keyword_overlap() -> None:
     score = score_sentence("AI trends are accelerating in 2026", {"ai", "trends"})
     assert score > 0.0
 
 
-def test_score_sentence_no_match():
+def test_score_sentence_no_match() -> None:
     score = score_sentence("Weather is sunny today", {"ai", "trends"})
     assert score == 0.0
 
 
-def test_score_sentence_case_insensitive():
+def test_score_sentence_case_insensitive() -> None:
     s1 = score_sentence("AI trends rising", {"ai", "trends"})
     s2 = score_sentence("ai trends rising", {"ai", "trends"})
     assert s1 == s2
 
 
-def test_score_sentence_more_terms_higher():
+def test_score_sentence_more_terms_higher() -> None:
     s1 = score_sentence("AI trends", {"ai", "trends"})
     s2 = score_sentence("AI only", {"ai", "trends"})
     assert s1 > s2
 
 
-def test_score_sentence_japanese_content():
+def test_score_sentence_japanese_content() -> None:
     """Japanese sentences must score > 0 when matching Japanese query terms."""
     score = score_sentence(
         "NVIDIAは2026年第1四半期にBlackwell Ultra GPUの量産を開始した。",
@@ -107,7 +113,7 @@ def test_score_sentence_japanese_content():
     assert score > 0.0
 
 
-def test_score_sentence_cjk_bigram_fuzzy():
+def test_score_sentence_cjk_bigram_fuzzy() -> None:
     """CJK bi-gram overlap should match partial Japanese terms."""
     score = score_sentence(
         "AIチップ市場は急成長している。",
@@ -119,7 +125,7 @@ def test_score_sentence_cjk_bigram_fuzzy():
 # --- _extract_query_terms ---
 
 
-def test_extract_query_terms_japanese_splits_on_punctuation():
+def test_extract_query_terms_japanese_splits_on_punctuation() -> None:
     """Japanese punctuation (。、) must be token separators, not part of tokens."""
     terms = _extract_query_terms(["AIやLLMのチップに関して、各種メーカーの動向を分析して。"])
     # Should NOT have a single 50-char token
@@ -128,7 +134,7 @@ def test_extract_query_terms_japanese_splits_on_punctuation():
     assert "ai" in terms or any("チップ" in t for t in terms)
 
 
-def test_extract_query_terms_mixed_language():
+def test_extract_query_terms_mixed_language() -> None:
     terms = _extract_query_terms(["AI chip market 2026", "半導体トレンド"])
     assert "ai" in terms
     assert "chip" in terms
@@ -139,7 +145,7 @@ def test_extract_query_terms_mixed_language():
 # --- compress_article ---
 
 
-def test_compress_article_selects_relevant_sentences():
+def test_compress_article_selects_relevant_sentences() -> None:
     body = "AI adoption is growing rapidly. The weather is nice. AI spending hit $100B."
     spans = compress_article(body, ["AI trends"], char_budget=80)
     texts = [s.text for s in spans]
@@ -147,7 +153,7 @@ def test_compress_article_selects_relevant_sentences():
     assert not any("weather" in t.lower() for t in texts)
 
 
-def test_compress_article_japanese_content_not_empty():
+def test_compress_article_japanese_content_not_empty() -> None:
     """Japanese article with Japanese queries must NOT return empty (the original bug)."""
     body = (
         "NVIDIAは2026年第1四半期にBlackwell Ultra GPUの量産を開始した。\n"
@@ -161,7 +167,7 @@ def test_compress_article_japanese_content_not_empty():
     assert len(spans) > 0, "Japanese article must produce spans, got empty"
 
 
-def test_compress_article_preserves_score_descending_order():
+def test_compress_article_preserves_score_descending_order() -> None:
     """Packing order: strongest evidence first (Lost-in-the-Middle mitigation)."""
     body = "Weak filler sentence here. Strong AI trend data point. AI spending hit $100B in 2026."
     spans = compress_article(body, ["AI spending trends"], char_budget=200)
@@ -170,26 +176,26 @@ def test_compress_article_preserves_score_descending_order():
         assert scores == sorted(scores, reverse=True)
 
 
-def test_compress_article_passthrough_short_body():
+def test_compress_article_passthrough_short_body() -> None:
     body = "Short article about AI."
     spans = compress_article(body, ["AI"], char_budget=1000)
     assert len(spans) == 1
     assert spans[0].text == body
 
 
-def test_compress_article_can_return_empty_when_nothing_is_relevant():
+def test_compress_article_can_return_empty_when_nothing_is_relevant() -> None:
     """Selective augmentation: no relevant span → empty list."""
     body = "Weather is sunny today. Markets are calm."
     spans = compress_article(body, ["AI chips"], char_budget=80)
     assert spans == []
 
 
-def test_compress_article_empty_body():
+def test_compress_article_empty_body() -> None:
     spans = compress_article("", ["AI"], char_budget=1000)
     assert spans == []
 
 
-def test_compress_article_respects_char_budget():
+def test_compress_article_respects_char_budget() -> None:
     body = "AI trend one. " * 100  # ~1400 chars
     spans = compress_article(body, ["AI"], char_budget=200)
     total = sum(len(s.text) for s in spans)
@@ -199,7 +205,7 @@ def test_compress_article_respects_char_budget():
 # --- select_top_sentences ---
 
 
-def test_select_top_sentences_returns_scored_spans():
+def test_select_top_sentences_returns_scored_spans() -> None:
     """select_top_sentences returns CompressedSpan list with relevance_score."""
     body = "AI chip market grew 20%. Weather is nice. NVIDIA leads the GPU race."
     spans = select_top_sentences(body, ["AI chip market"])
@@ -208,21 +214,21 @@ def test_select_top_sentences_returns_scored_spans():
     assert spans[0].relevance_score > 0
 
 
-def test_select_top_sentences_respects_max_sentences():
+def test_select_top_sentences_respects_max_sentences() -> None:
     """Never returns more than max_sentences."""
     body = "Sent one about AI. Sent two about AI. Sent three about AI. Sent four about AI."
     spans = select_top_sentences(body, ["AI"], max_sentences=2)
     assert len(spans) <= 2
 
 
-def test_select_top_sentences_respects_max_len():
+def test_select_top_sentences_respects_max_len() -> None:
     """Each returned span text is capped at max_len characters."""
     body = "A" * 300 + " about AI chips. Short AI fact."
     spans = select_top_sentences(body, ["AI"], max_len=200)
     assert all(len(s.text) <= 200 for s in spans)
 
 
-def test_select_top_sentences_japanese_article():
+def test_select_top_sentences_japanese_article() -> None:
     """Japanese article with JP queries produces scored spans."""
     body = (
         "NVIDIAは2026年第1四半期にBlackwell Ultra GPUの量産を開始した。\n"
@@ -234,26 +240,26 @@ def test_select_top_sentences_japanese_article():
     assert spans[0].relevance_score > 0
 
 
-def test_select_top_sentences_empty_body():
+def test_select_top_sentences_empty_body() -> None:
     """Empty body returns empty list."""
     assert select_top_sentences("", ["AI"]) == []
 
 
-def test_select_top_sentences_returns_empty_without_position_fallback():
+def test_select_top_sentences_returns_empty_without_position_fallback() -> None:
     """score=0 and position_fallback=False returns [] (for 3-tier degradation)."""
     body = "Completely unrelated sentence one. Another unrelated sentence."
     spans = select_top_sentences(body, ["quantum computing blockchain"], position_fallback=False)
     assert spans == []
 
 
-def test_select_top_sentences_position_fallback_returns_head_sentences():
+def test_select_top_sentences_position_fallback_returns_head_sentences() -> None:
     """score=0 and position_fallback=True returns first N sentences."""
     body = "Completely unrelated sentence one. Another unrelated sentence."
     spans = select_top_sentences(body, ["quantum computing blockchain"], position_fallback=True)
     assert len(spans) >= 1
 
 
-def test_select_top_sentences_offset_correct_against_raw_body():
+def test_select_top_sentences_offset_correct_against_raw_body() -> None:
     """Returned char_offset matches actual position of text in body."""
     body = "First sentence here. Second about AI chips. Third sentence."
     spans = select_top_sentences(body, ["AI chips"], max_sentences=1)
@@ -265,9 +271,7 @@ def test_select_top_sentences_offset_correct_against_raw_body():
 
 
 @pytest.mark.asyncio
-async def test_compressor_node_produces_compressed_evidence():
-    from acolyte.usecase.graph.nodes.compressor_node import CompressorNode
-
+async def test_compressor_node_produces_compressed_evidence() -> None:
     node = CompressorNode(char_budget=80)
     state = {
         "hydrated_evidence": {"art-1": "Important AI fact about trends. Irrelevant filler here. Another AI trend."},
@@ -283,10 +287,8 @@ async def test_compressor_node_produces_compressed_evidence():
 
 
 @pytest.mark.asyncio
-async def test_compressor_node_uses_query_facets_over_search_queries():
+async def test_compressor_node_uses_query_facets_over_search_queries() -> None:
     """query_facets (ADR-667/669) should be preferred over legacy search_queries."""
-    from acolyte.usecase.graph.nodes.compressor_node import CompressorNode
-
     node = CompressorNode(char_budget=200)
     state = {
         "hydrated_evidence": {
@@ -312,9 +314,7 @@ async def test_compressor_node_uses_query_facets_over_search_queries():
 
 
 @pytest.mark.asyncio
-async def test_compressor_node_merges_queries_from_multiple_sections():
-    from acolyte.usecase.graph.nodes.compressor_node import CompressorNode
-
+async def test_compressor_node_merges_queries_from_multiple_sections() -> None:
     node = CompressorNode()
     state = {
         "hydrated_evidence": {"art-1": "Text about markets and technology trends."},
@@ -333,9 +333,7 @@ async def test_compressor_node_merges_queries_from_multiple_sections():
 
 
 @pytest.mark.asyncio
-async def test_compressor_node_empty_hydrated():
-    from acolyte.usecase.graph.nodes.compressor_node import CompressorNode
-
+async def test_compressor_node_empty_hydrated() -> None:
     node = CompressorNode()
     state = {
         "hydrated_evidence": {},
@@ -351,18 +349,14 @@ async def test_compressor_node_empty_hydrated():
 
 
 @pytest.mark.asyncio
-async def test_extractor_uses_compressed_evidence_when_available():
+async def test_extractor_uses_compressed_evidence_when_available() -> None:
     """Extractor should use compressed spans instead of raw body."""
-    import json
-
-    from acolyte.port.llm_provider import LLMResponse
-    from acolyte.usecase.graph.nodes.extractor_node import ExtractorNode
 
     class CaptureLLM:
-        def __init__(self):
+        def __init__(self) -> None:
             self._calls: list[dict] = []
 
-        async def generate(self, prompt, **kwargs):
+        async def generate(self, prompt: str, **kwargs: object) -> LLMResponse:
             self._calls.append({"prompt": prompt})
             return LLMResponse(
                 text=json.dumps(
@@ -400,18 +394,14 @@ async def test_extractor_uses_compressed_evidence_when_available():
 
 
 @pytest.mark.asyncio
-async def test_extractor_falls_back_to_hydrated_without_compressed():
+async def test_extractor_falls_back_to_hydrated_without_compressed() -> None:
     """Without compressed_evidence, extractor uses hydrated_evidence (backward compat)."""
-    import json
-
-    from acolyte.port.llm_provider import LLMResponse
-    from acolyte.usecase.graph.nodes.extractor_node import ExtractorNode
 
     class CaptureLLM:
-        def __init__(self):
+        def __init__(self) -> None:
             self._calls: list[dict] = []
 
-        async def generate(self, prompt, **kwargs):
+        async def generate(self, prompt: str, **kwargs: object) -> LLMResponse:
             self._calls.append({"prompt": prompt})
             return LLMResponse(
                 text=json.dumps(
@@ -435,18 +425,14 @@ async def test_extractor_falls_back_to_hydrated_without_compressed():
 
 
 @pytest.mark.asyncio
-async def test_extractor_falls_back_to_hydrated_when_compressed_empty():
+async def test_extractor_falls_back_to_hydrated_when_compressed_empty() -> None:
     """compressed[id] == [] triggers tiered fallback to hydrated body."""
-    import json
-
-    from acolyte.port.llm_provider import LLMResponse
-    from acolyte.usecase.graph.nodes.extractor_node import ExtractorNode
 
     class CaptureLLM:
-        def __init__(self):
+        def __init__(self) -> None:
             self._calls: list[dict] = []
 
-        async def generate(self, prompt, **kwargs):
+        async def generate(self, prompt: str, **kwargs: object) -> LLMResponse:
             self._calls.append({"prompt": prompt})
             return LLMResponse(text=json.dumps({"reasoning": "t", "facts": []}), model="fake")
 
@@ -464,18 +450,14 @@ async def test_extractor_falls_back_to_hydrated_when_compressed_empty():
 
 
 @pytest.mark.asyncio
-async def test_extractor_degrades_to_quote_only_on_all_failures():
+async def test_extractor_degrades_to_quote_only_on_all_failures() -> None:
     """When LLM returns empty facts on all passes, quote-only fallback produces output."""
-    import json
-
-    from acolyte.port.llm_provider import LLMResponse
-    from acolyte.usecase.graph.nodes.extractor_node import ExtractorNode
 
     class AlwaysEmptyLLM:
-        def __init__(self):
+        def __init__(self) -> None:
             self._calls: list[dict] = []
 
-        async def generate(self, prompt, **kwargs):
+        async def generate(self, prompt: str, **kwargs: object) -> LLMResponse:
             self._calls.append({"prompt": prompt})
             return LLMResponse(text=json.dumps({"reasoning": "t", "facts": []}), model="fake")
 
@@ -492,13 +474,12 @@ async def test_extractor_degrades_to_quote_only_on_all_failures():
 
 
 @pytest.mark.asyncio
-async def test_extractor_always_produces_some_output():
+async def test_extractor_always_produces_some_output() -> None:
     """Extractor must never return empty facts for an article with body text."""
-    from acolyte.usecase.graph.nodes.extractor_node import ExtractorNode
 
     class FailingLLM:
-        async def generate(self, prompt, **kwargs):
-            raise TimeoutError("ReadTimeout on every call")
+        async def generate(self, prompt: str, **kwargs: object) -> Never:
+            raise TimeoutError("ReadTimeout on every call")  # noqa: TRY003 — test double, no custom exception needed
 
     llm = FailingLLM()
     node = ExtractorNode(llm)

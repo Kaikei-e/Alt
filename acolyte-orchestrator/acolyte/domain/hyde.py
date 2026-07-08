@@ -78,6 +78,11 @@ _ASCII_LETTER_RE = re.compile(r"[A-Za-z]")
 _CONTROL_CHARS_RE = re.compile(r"[\x00-\x1f\x7f]")
 _WHITESPACE_RUN_RE = re.compile(r"\s+")
 
+# Language-fitness thresholds: minimum signal required in the target
+# language before the passage is trusted as a retrieval query variant.
+_MIN_ASCII_LETTERS_EN = 40
+_MIN_CJK_CHARS_JA = 20
+
 
 def build_hyde_prompt(topic: str, target_lang: str) -> str:
     """Return the single-string prompt for a target language. Raises on invalid lang.
@@ -90,7 +95,7 @@ def build_hyde_prompt(topic: str, target_lang: str) -> str:
         return _PROMPT_TEMPLATE_EN.format(topic=topic.strip())
     if target_lang == "ja":
         return _PROMPT_TEMPLATE_JA.format(topic=topic.strip())
-    raise ValueError(f"unsupported target_lang: {target_lang!r}")
+    raise ValueError(f"unsupported target_lang: {target_lang!r}")  # noqa: TRY003 — defensive contract guard, target_lang is validated upstream
 
 
 def build_hyde_messages(topic: str, target_lang: str) -> tuple[str, str]:
@@ -106,7 +111,7 @@ def build_hyde_messages(topic: str, target_lang: str) -> tuple[str, str]:
         return _SYSTEM_PROMPT_EN, cleaned
     if target_lang == "ja":
         return _SYSTEM_PROMPT_JA, cleaned
-    raise ValueError(f"unsupported target_lang: {target_lang!r}")
+    raise ValueError(f"unsupported target_lang: {target_lang!r}")  # noqa: TRY003 — defensive contract guard, target_lang is validated upstream
 
 
 def sanitize_hyde_output(raw: str, target_lang: str, *, max_chars: int = 600) -> str | None:
@@ -154,11 +159,11 @@ def sanitize_hyde_output(raw: str, target_lang: str, *, max_chars: int = 600) ->
     if target_lang == "en":
         ascii_letters = len(_ASCII_LETTER_RE.findall(cleaned))
         cjk = len(_CJK_RE.findall(cleaned))
-        if ascii_letters < 40 or cjk * 2 > ascii_letters:
+        if ascii_letters < _MIN_ASCII_LETTERS_EN or cjk * 2 > ascii_letters:
             return None
     else:  # target_lang == "ja"
         cjk = len(_CJK_RE.findall(cleaned))
-        if cjk < 20:
+        if cjk < _MIN_CJK_CHARS_JA:
             return None
 
     return cleaned

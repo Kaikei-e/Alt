@@ -43,6 +43,26 @@ _VALID_CLAIM_TYPES = {"factual", "statistical", "comparative", "synthesis"}
 class XmlParseError(ValueError):
     """Raised when XML parsing fails after repair attempts."""
 
+    @classmethod
+    def no_block_found(cls, root_tag: str) -> XmlParseError:
+        return cls(f"No <{root_tag}>...</{root_tag}> block found in output")
+
+    @classmethod
+    def parse_failed_after_repair(cls, exc: Exception) -> XmlParseError:
+        return cls(f"XML parse failed after repair: {exc}")
+
+    @classmethod
+    def missing_fact_element(cls) -> XmlParseError:
+        return cls("No <fact> element in <facts> block")
+
+    @classmethod
+    def empty_claim(cls) -> XmlParseError:
+        return cls("Empty <claim> in <fact>")
+
+    @classmethod
+    def exhausted(cls, attempts: int, last_error: Exception | None) -> XmlParseError:
+        return cls(f"XML parse/validation failed after {attempts} attempts: {last_error}")
+
 
 # ---------------------------------------------------------------------------
 # Layer 1: Pre-cleaner
@@ -97,7 +117,7 @@ def parse_xmlish_block(text: str, root_tag: str) -> ET.Element:
     cleaned = strip_gemma_thought_block(text)
     block = extract_tag_block(cleaned, root_tag)
     if block is None:
-        raise XmlParseError(f"No <{root_tag}>...</{root_tag}> block found in output")
+        raise XmlParseError.no_block_found(root_tag)
 
     # Try strict parse first
     try:
@@ -109,10 +129,11 @@ def parse_xmlish_block(text: str, root_tag: str) -> ET.Element:
     repaired = _repair_xml(block)
     try:
         element = ET.fromstring(repaired)  # noqa: S314
+    except ET.ParseError as exc:
+        raise XmlParseError.parse_failed_after_repair(exc) from exc
+    else:
         logger.info("xml_parse_repaired", root_tag=root_tag)
         return element
-    except ET.ParseError as exc:
-        raise XmlParseError(f"XML parse failed after repair: {exc}") from exc
 
 
 # ---------------------------------------------------------------------------
@@ -222,11 +243,11 @@ def normalize_fact_output(root: ET.Element) -> dict:
     """Convert <facts> XML to FactNormalizerOutput-shaped dict."""
     fact = root.find("fact")
     if fact is None:
-        raise XmlParseError("No <fact> element in <facts> block")
+        raise XmlParseError.missing_fact_element()
 
     claim = _text(fact.find("claim"))
     if not claim:
-        raise XmlParseError("Empty <claim> in <fact>")
+        raise XmlParseError.empty_claim()
 
     confidence_text = _text(fact.find("confidence"), "medium")
     if confidence_text not in _VALID_CONFIDENCE_BANDS:
@@ -244,7 +265,7 @@ def normalize_fact_output(root: ET.Element) -> dict:
 # ---------------------------------------------------------------------------
 
 
-async def generate_xml_validated[T: "BaseModel"](
+async def generate_xml_validated[T: "BaseModel"](  # noqa: PLR0913 — public utility, each param independently optional; restructuring would ripple across all call sites
     llm: LLMProviderPort,
     prompt: str,
     model_cls: type[T],
@@ -253,7 +274,7 @@ async def generate_xml_validated[T: "BaseModel"](
     *,
     retries: int = 1,
     fallback: T | None = None,
-    **llm_kwargs: Any,
+    **llm_kwargs: Any,  # noqa: ANN401 — opaque forwarding boundary to LLMProviderPort.generate's heterogeneous keyword args
 ) -> T:
     """Generate LLM output, parse as XML DSL, validate with Pydantic.
 
@@ -272,8 +293,6 @@ async def generate_xml_validated[T: "BaseModel"](
             element = parse_xmlish_block(response.text, root_tag)
             parsed = normalizer(element)
             result = adapter.validate_python(parsed)
-            logger.info("xml_parse_success", root_tag=root_tag, attempt=attempt + 1)
-            return result
         except (XmlParseError, ET.ParseError) as exc:
             last_error = exc
             # Truncation detection: closing tag missing + near budget limit
@@ -309,6 +328,9 @@ async def generate_xml_validated[T: "BaseModel"](
                 max_attempts=1 + retries,
                 error=str(exc),
             )
+        else:
+            logger.info("xml_parse_success", root_tag=root_tag, attempt=attempt + 1)
+            return result
 
     if fallback is not None:
         logger.warning(
@@ -319,4 +341,4 @@ async def generate_xml_validated[T: "BaseModel"](
         )
         return fallback
 
-    raise ValueError(f"XML parse/validation failed after {1 + retries} attempts: {last_error}") from last_error
+    raise XmlParseError.exhausted(1 + retries, last_error) from last_error

@@ -25,11 +25,11 @@ class _FakeEvidenceProvider:
     def __init__(self) -> None:
         self.search_calls: list[str] = []
 
-    async def search_articles(self, query: str, limit: int = 10) -> list[_Article]:  # noqa: ARG002
+    async def search_articles(self, query: str, limit: int = 10) -> list[_Article]:
         self.search_calls.append(query)
         return [_Article(article_id=f"a-{len(self.search_calls)}", title=f"hit for {query[:20]}", tags=[], score=1.0)]
 
-    async def search_recaps(self, query: str, limit: int = 10) -> list[Any]:  # noqa: ARG002
+    async def search_recaps(self, query: str, limit: int = 10) -> list[Any]:
         return []
 
 
@@ -77,7 +77,7 @@ def _minimal_outline() -> list[dict]:
 
 
 @pytest.mark.asyncio
-async def test_gatherer_requests_hyde_en_for_japanese_topic():
+async def test_gatherer_requests_hyde_en_for_japanese_topic() -> None:
     evidence = _FakeEvidenceProvider()
     hyde = _FakeHyDE()
     node = GathererNode(evidence, hyde_generator=hyde)  # type: ignore[arg-type]
@@ -91,7 +91,7 @@ async def test_gatherer_requests_hyde_en_for_japanese_topic():
 
 
 @pytest.mark.asyncio
-async def test_gatherer_requests_hyde_ja_for_english_topic():
+async def test_gatherer_requests_hyde_ja_for_english_topic() -> None:
     evidence = _FakeEvidenceProvider()
     hyde = _FakeHyDE(doc="日本語のHyDEパッセージです。" * 5)
     node = GathererNode(evidence, hyde_generator=hyde)  # type: ignore[arg-type]
@@ -105,7 +105,7 @@ async def test_gatherer_requests_hyde_ja_for_english_topic():
 
 
 @pytest.mark.asyncio
-async def test_gatherer_skips_hyde_when_generator_absent():
+async def test_gatherer_skips_hyde_when_generator_absent() -> None:
     evidence = _FakeEvidenceProvider()
     node = GathererNode(evidence)  # type: ignore[arg-type]  # no hyde_generator
     state = {
@@ -120,7 +120,7 @@ async def test_gatherer_skips_hyde_when_generator_absent():
 
 
 @pytest.mark.asyncio
-async def test_gatherer_adds_hyde_variant_to_search_calls():
+async def test_gatherer_adds_hyde_variant_to_search_calls() -> None:
     evidence = _FakeEvidenceProvider()
     hyde_doc = "English HyDE passage " * 10
     hyde = _FakeHyDE(doc=hyde_doc)
@@ -135,7 +135,7 @@ async def test_gatherer_adds_hyde_variant_to_search_calls():
 
 
 @pytest.mark.asyncio
-async def test_gatherer_continues_when_hyde_returns_none():
+async def test_gatherer_continues_when_hyde_returns_none() -> None:
     evidence = _FakeEvidenceProvider()
     hyde = _FakeHyDE(doc=None)
     node = GathererNode(evidence, hyde_generator=hyde)  # type: ignore[arg-type]
@@ -150,7 +150,7 @@ async def test_gatherer_continues_when_hyde_returns_none():
 
 
 @pytest.mark.asyncio
-async def test_gatherer_does_not_request_hyde_for_und_topic():
+async def test_gatherer_does_not_request_hyde_for_und_topic() -> None:
     evidence = _FakeEvidenceProvider()
     hyde = _FakeHyDE()
     node = GathererNode(evidence, hyde_generator=hyde)  # type: ignore[arg-type]

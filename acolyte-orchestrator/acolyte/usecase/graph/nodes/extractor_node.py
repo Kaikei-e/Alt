@@ -21,6 +21,8 @@ if TYPE_CHECKING:
 
 logger = structlog.get_logger(__name__)
 
+_MAX_FALLBACK_BODY_CHARS = 2000
+
 _FULL_PROMPT = """Extract up to {max_facts} atomic factual claims from this article.
 For each claim, include the exact quote from the source that supports it.
 
@@ -119,8 +121,8 @@ class ExtractorNode:
             logger.warning("Compression returned empty, falling back to hydrated", article_id=item_id)
 
         body = hydrated.get(item_id, "")
-        if len(body) > 2000:
-            body = body[:2000]
+        if len(body) > _MAX_FALLBACK_BODY_CHARS:
+            body = body[:_MAX_FALLBACK_BODY_CHARS]
         return body
 
     async def _extract_with_degradation(
@@ -160,7 +162,7 @@ class ExtractorNode:
                     article_id=source_id,
                     pass_idx=pass_idx,
                 )
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001 — LLM call can fail in heterogeneous ways (network/timeout/parse/validation); tiered degradation must catch all of them
                 logger.warning(
                     "Extraction failed, degrading",
                     article_id=source_id,

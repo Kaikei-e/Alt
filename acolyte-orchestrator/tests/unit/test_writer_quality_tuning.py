@@ -10,7 +10,7 @@ import pytest
 from acolyte.config.settings import Settings
 from acolyte.port.llm_provider import LLMResponse
 from acolyte.usecase.graph.nodes.writer_node import WriterNode
-from acolyte.usecase.graph.state import ReportGenerationState
+from acolyte.usecase.graph.state import PlannedClaimDict, ReportGenerationState, SectionParagraphDict
 
 
 class FakeLLM:
@@ -27,7 +27,7 @@ class FakeLLM:
         return LLMResponse(text=text, model="fake")
 
 
-def _make_claim(claim_id: str = "s-1", claim: str = "Market grew 20%") -> dict:
+def _make_claim(claim_id: str = "s-1", claim: str = "Market grew 20%") -> PlannedClaimDict:
     return {
         "claim_id": claim_id,
         "claim": claim,
@@ -45,7 +45,7 @@ def _make_state(
     section_key: str = "analysis",
     section_role: str = "analysis",
     topic: str = "AI trends",
-    claims: list[dict] | None = None,
+    claims: list[PlannedClaimDict] | None = None,
 ) -> ReportGenerationState:
     if claims is None:
         claims = [_make_claim(claim_id=f"{section_key}-1")]
@@ -148,7 +148,7 @@ async def test_paragraph_prompt_numbered_quote_mapping() -> None:
 async def test_accepted_paragraphs_immutable_after_quality_tuning() -> None:
     """Accepted paragraphs must survive revision even with new settings."""
     claims = [_make_claim("analysis-1", "Claim A"), _make_claim("analysis-2", "Claim B")]
-    existing_paragraphs = {
+    existing_paragraphs: dict[str, list[SectionParagraphDict]] = {
         "analysis": [
             {
                 "claim_id": "analysis-1",

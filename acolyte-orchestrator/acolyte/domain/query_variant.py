@@ -11,6 +11,8 @@ from __future__ import annotations
 
 from acolyte.domain.query_facet import render_query_string
 
+_MIN_NARROW_VARIANT_TERMS = 2
+
 
 def generate_query_variants(
     facet: dict,
@@ -38,7 +40,7 @@ def generate_query_variants(
 
     # 3. Narrow: must_have_terms only (precision match)
     must_have = facet.get("must_have_terms", [])
-    if len(must_have) >= 2:
+    if len(must_have) >= _MIN_NARROW_VARIANT_TERMS:
         narrow_query = " ".join(must_have)
         if narrow_query != primary_query:
             variants.append((narrow_query, "narrow"))

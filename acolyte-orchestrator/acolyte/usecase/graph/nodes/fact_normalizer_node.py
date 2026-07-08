@@ -220,7 +220,7 @@ class FactNormalizerNode:
                 "data_type": result.data_type,
                 "is_fallback": is_fallback,
             }
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 — LLM call can fail in heterogeneous ways (network/timeout/parse/validation); must always degrade to fallback
             logger.warning(
                 "FactNormalizer failed, using fallback",
                 source_id=quote.get("source_id"),

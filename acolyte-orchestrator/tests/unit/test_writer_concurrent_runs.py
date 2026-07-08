@@ -18,7 +18,7 @@ import pytest
 from acolyte.domain.source_map import SourceMap
 from acolyte.port.llm_provider import LLMResponse
 from acolyte.usecase.graph.nodes.writer_node import WriterNode
-from acolyte.usecase.graph.state import ReportGenerationState
+from acolyte.usecase.graph.state import PlannedClaimDict, ReportGenerationState
 
 
 class SteppingLLM:
@@ -49,7 +49,7 @@ class SteppingLLM:
         self._release.setdefault(call_id, asyncio.Event()).set()
 
 
-def _claim(claim_id: str, evidence_id: str) -> dict:
+def _claim(claim_id: str, evidence_id: str) -> PlannedClaimDict:
     return {
         "claim_id": claim_id,
         "claim": f"Claim {claim_id}",
@@ -62,7 +62,7 @@ def _claim(claim_id: str, evidence_id: str) -> dict:
     }
 
 
-def _state(claims: list[dict], source_map: SourceMap) -> ReportGenerationState:
+def _state(claims: list[PlannedClaimDict], source_map: SourceMap) -> ReportGenerationState:
     outline = [{"key": "analysis", "title": "Analysis", "section_role": "analysis"}]
     return {
         "outline": outline,

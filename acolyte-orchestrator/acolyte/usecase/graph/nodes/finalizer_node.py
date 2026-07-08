@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import re
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 from uuid import UUID
 
 import structlog
@@ -12,8 +12,9 @@ from acolyte.domain.report import ChangeItem
 from acolyte.domain.source_map import SourceMap
 
 if TYPE_CHECKING:
+    from acolyte.domain.source_map import SourceEntry
     from acolyte.port.report_repository import ReportRepositoryPort
-    from acolyte.usecase.graph.state import ReportGenerationState
+    from acolyte.usecase.graph.state import ReportGenerationState, SectionCitationDict
 
 logger = structlog.get_logger(__name__)
 
@@ -33,7 +34,7 @@ def _extract_referenced_short_ids(body: str) -> list[str]:
     return ordered
 
 
-def _format_source_entry(short_id: str, entry) -> str:
+def _format_source_entry(short_id: str, entry: SourceEntry) -> str:
     """Render one footer line: '- [S1] Title — Publisher (URL)'."""
     line = f"- [{short_id}] {entry.title}"
     publisher = (entry.publisher or "").strip()
@@ -80,7 +81,7 @@ class FinalizerNode:
         sections = dict(state.get("sections", {}))
         outline = state.get("outline", [])
         brief = state.get("brief") or state.get("scope") or {}
-        section_citations = state.get("section_citations", {})
+        section_citations: dict[str, list[SectionCitationDict]] = state.get("section_citations", {})
 
         report = await self._report_repo.get_report(report_id)
         if report is None:
@@ -101,7 +102,7 @@ class FinalizerNode:
         best = state.get("best_sections")
         if best:
             for key in list(sections.keys()):
-                if key in best and best[key]:
+                if best.get(key):
                     sections[key] = best[key]
                     logger.info("Finalizer using best_sections", section_key=key, body_len=len(best[key]))
 
@@ -130,7 +131,9 @@ class FinalizerNode:
                 expected_v = sec.current_version if sec else 0
 
             citations = section_citations.get(key)
-            await self._report_repo.bump_section_version(report_id, key, expected_v, body, citations=citations)
+            await self._report_repo.bump_section_version(
+                report_id, key, expected_v, body, citations=cast(list[dict] | None, citations)
+            )
 
         logger.info("Finalizer completed", report_id=str(report_id), new_version=new_version)
         return {"final_version_no": new_version}

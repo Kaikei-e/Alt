@@ -29,7 +29,7 @@ def _new_pact() -> Pact:
     return Pact("acolyte-orchestrator", "search-indexer")
 
 
-def test_search_articles():
+def test_search_articles() -> None:
     """GET /v1/search returns hits with id/title/content/tags/score/language."""
     pact = _new_pact()
     (
@@ -89,7 +89,7 @@ def test_search_articles():
     pact.write_file(str(PACT_DIR), overwrite=True)
 
 
-def test_search_articles_with_date_window():
+def test_search_articles_with_date_window() -> None:
     """GET /v1/search honours published_after / published_before so weekly_briefing
     callers cannot surface stale articles from outside the window."""
     pact = _new_pact()
@@ -146,7 +146,7 @@ def test_search_articles_with_date_window():
     pact.write_file(str(PACT_DIR), overwrite=True)
 
 
-def test_search_articles_empty_results():
+def test_search_articles_empty_results() -> None:
     """GET /v1/search returns empty hits array when no matches."""
     pact = _new_pact()
     (

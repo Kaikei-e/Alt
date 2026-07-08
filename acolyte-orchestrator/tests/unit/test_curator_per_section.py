@@ -18,10 +18,7 @@ class FakeLLM:
         self._call_idx = 0
 
     async def generate(self, prompt: str, **kwargs: object) -> LLMResponse:
-        if self._call_idx < len(self._selections):
-            ids = self._selections[self._call_idx]
-        else:
-            ids = []
+        ids = self._selections[self._call_idx] if self._call_idx < len(self._selections) else []
         self._call_idx += 1
         return LLMResponse(text=json.dumps(ids), model="fake")
 

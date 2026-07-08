@@ -16,7 +16,7 @@ from acolyte.usecase.graph.nodes.critic_node import (
     detect_es_numeric_absence,
     detect_zero_claims,
 )
-from acolyte.usecase.graph.state import ReportGenerationState
+from acolyte.usecase.graph.state import PlannedClaimDict, ReportGenerationState
 
 
 class FakeLLM:
@@ -70,7 +70,7 @@ def test_zero_claims_is_blocking() -> None:
 
 def test_zero_claims_not_triggered_when_claims_exist() -> None:
     """claims exist → no FM5 detection."""
-    claim_plans = {"analysis": [{"claim_id": "a-1", "claim": "Something"}]}
+    claim_plans: dict[str, list[PlannedClaimDict]] = {"analysis": [{"claim_id": "a-1", "claim": "Something"}]}
     outline = [{"key": "analysis", "title": "Analysis"}]
     detections = detect_zero_claims(claim_plans, outline, [])
     assert len(detections) == 0
@@ -89,7 +89,7 @@ def test_zero_claims_not_triggered_when_no_evidence() -> None:
 
 def test_es_numeric_absence_detected() -> None:
     """ES claims with no numeric_facts → FM11 warning."""
-    claim_plans = {
+    claim_plans: dict[str, list[PlannedClaimDict]] = {
         "executive_summary": [
             {"claim_id": "es-1", "claim": "Summary", "numeric_facts": [], "must_cite": True},
         ],
@@ -103,7 +103,7 @@ def test_es_numeric_absence_detected() -> None:
 
 def test_es_numeric_absence_not_triggered_with_numeric() -> None:
     """ES claims with numeric_facts → no FM11 detection."""
-    claim_plans = {
+    claim_plans: dict[str, list[PlannedClaimDict]] = {
         "executive_summary": [
             {"claim_id": "es-1", "claim": "Summary", "numeric_facts": ["42%"], "must_cite": True},
         ],
@@ -122,7 +122,7 @@ async def test_claim_feedbacks_format() -> None:
     llm = FakeLLM()
     node = CriticNode(llm)
 
-    state = {
+    state: ReportGenerationState = {
         "sections": {"analysis": ""},  # empty body → blocking
         "brief": {"topic": "AI trends"},
         "outline": [{"key": "analysis", "title": "Analysis", "section_role": "analysis"}],

@@ -79,7 +79,8 @@ async def test_passes_format_and_kwargs() -> None:
     valid = json.dumps({"reasoning": "ok", "sections": []})
 
     class CaptureLLM:
-        captured_kwargs: dict = {}
+        def __init__(self) -> None:
+            self.captured_kwargs: dict = {}
 
         async def generate(self, prompt: str, **kwargs: object) -> LLMResponse:
             self.captured_kwargs = dict(kwargs)

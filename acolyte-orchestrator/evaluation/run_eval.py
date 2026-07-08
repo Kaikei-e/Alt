@@ -72,11 +72,7 @@ def run(
 def _aggregate(results: list[dict[str, Any]]) -> dict[str, Any]:
     """Collapse per-case results into simple aggregates for gating."""
     precisions = [r["citation_precision"] for r in results if r["citation_precision"] is not None]
-    faiths = [
-        r["faithfulness"]
-        for r in results
-        if r["faithfulness"] is not None and not math.isnan(r["faithfulness"])
-    ]
+    faiths = [r["faithfulness"] for r in results if r["faithfulness"] is not None and not math.isnan(r["faithfulness"])]
     en_share = [r["lang_mix_ratio"].get("en", 0.0) for r in results if r["lang_mix_ratio"]]
     return {
         "cases": len(results),
@@ -94,28 +90,28 @@ def _dataset_digest(path: Path) -> str:
 def _build_generator(args: argparse.Namespace, stack: contextlib.ExitStack) -> GenerateFn:
     if args.generator == "fixture":
         if not args.fixtures:
-            raise SystemExit("--generator fixture requires --fixtures <dir>")
-        from evaluation.generators.recorded_fixture import RecordedFixtureGenerator
+            raise SystemExit("--generator fixture requires --fixtures <dir>")  # noqa: TRY003 — CLI usage error
+        from evaluation.generators.recorded_fixture import RecordedFixtureGenerator  # noqa: PLC0415 — mode-gated import
 
         return RecordedFixtureGenerator(Path(args.fixtures))
 
     if args.generator == "db-replay":
-        import psycopg
+        import psycopg  # noqa: PLC0415 — avoid a psycopg dep unless this mode is selected
 
         acolyte_dsn = os.environ.get("ACOLYTE_DB_DSN", "")
         alt_dsn = os.environ.get("ARTICLES_DB_DSN", "")
         if not acolyte_dsn or not alt_dsn:
-            raise SystemExit(
+            raise SystemExit(  # noqa: TRY003 — CLI usage error
                 "db-replay requires ACOLYTE_DB_DSN and ARTICLES_DB_DSN env vars",
             )
-        from evaluation.generators.db_replay import DBReplayGenerator
+        from evaluation.generators.db_replay import DBReplayGenerator  # noqa: PLC0415 — mode-gated import
 
         acolyte_conn = stack.enter_context(psycopg.connect(acolyte_dsn))
         alt_conn = stack.enter_context(psycopg.connect(alt_dsn))
         return DBReplayGenerator(acolyte_conn, alt_conn, section_key=args.section_key)
 
     def _scaffold(_case: EvalCase) -> tuple[str, dict, dict, dict]:
-        raise RuntimeError(
+        raise RuntimeError(  # noqa: TRY003 — explicit "generator not wired" signal, see module docstring
             "run_eval CLI: no generator wired. Pass --generator fixture|db-replay or plug in a live generator.",
         )
 
@@ -127,28 +123,32 @@ def _build_judge(args: argparse.Namespace) -> JudgeFn | None:
     if args.judge == "none":
         return None
 
-    from evaluation.judge import StrictFaithfulnessJudge
+    from evaluation.judge import StrictFaithfulnessJudge  # noqa: PLC0415 — skipped entirely when --judge none
 
     if args.judge == "mock":
         return StrictFaithfulnessJudge()
 
     if args.judge == "gemma4":
-        import httpx
+        import httpx  # noqa: PLC0415 — avoid an httpx/vllm dep unless this judge is selected
 
-        from acolyte.config.settings import Settings
-        from acolyte.gateway.ollama_gw import OllamaGateway
-        from acolyte.gateway.vllm_gw import VllmGateway
-        from evaluation.judges.gemma4 import Gemma4FaithfulnessJudge
+        from acolyte.config.settings import Settings  # noqa: PLC0415
+        from acolyte.gateway.ollama_gw import OllamaGateway  # noqa: PLC0415
+        from acolyte.gateway.vllm_gw import VllmGateway  # noqa: PLC0415
+        from evaluation.judges.gemma4 import Gemma4FaithfulnessJudge  # noqa: PLC0415
 
         settings = Settings()
         # Short-lived CLI process: the client is released on exit rather than
         # via an explicit aclose(), since Gemma4FaithfulnessJudge owns a sync
         # event loop separate from this function's scope.
         http_client = httpx.AsyncClient(timeout=httpx.Timeout(connect=10, read=60, write=10, pool=10))
-        llm = VllmGateway(http_client, settings) if settings.llm_provider == "vllm" else OllamaGateway(http_client, settings)
+        llm = (
+            VllmGateway(http_client, settings)
+            if settings.llm_provider == "vllm"
+            else OllamaGateway(http_client, settings)
+        )
         return StrictFaithfulnessJudge(inner=Gemma4FaithfulnessJudge(llm))
 
-    raise SystemExit(f"unknown --judge {args.judge!r}")
+    raise SystemExit(f"unknown --judge {args.judge!r}")  # noqa: TRY003 — CLI usage error
 
 
 def main(argv: list[str] | None = None) -> int:

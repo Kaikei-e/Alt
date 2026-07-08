@@ -19,7 +19,7 @@ async def test_create_checkpointer_calls_setup() -> None:
     mock_ctx.__aenter__ = AsyncMock(return_value=mock_saver)
     mock_ctx.__aexit__ = AsyncMock(return_value=False)
 
-    with patch("langgraph.checkpoint.postgres.aio.AsyncPostgresSaver") as mock_cls:
+    with patch("acolyte.gateway.checkpoint_factory.AsyncPostgresSaver") as mock_cls:
         mock_cls.from_conn_string.return_value = mock_ctx
 
         async with create_checkpointer("postgresql://test") as _saver:
@@ -38,7 +38,7 @@ async def test_create_checkpointer_yields_saver() -> None:
     mock_ctx.__aenter__ = AsyncMock(return_value=mock_saver)
     mock_ctx.__aexit__ = AsyncMock(return_value=False)
 
-    with patch("langgraph.checkpoint.postgres.aio.AsyncPostgresSaver") as mock_cls:
+    with patch("acolyte.gateway.checkpoint_factory.AsyncPostgresSaver") as mock_cls:
         mock_cls.from_conn_string.return_value = mock_ctx
 
         async with create_checkpointer("postgresql://test") as saver:

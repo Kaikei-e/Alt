@@ -9,6 +9,7 @@ from uuid import UUID, uuid4
 import pytest
 
 from acolyte.domain.brief import ReportBrief
+from acolyte.domain.quote_selection import FactNormalizerOutput, QuoteSelectorOutput
 from acolyte.domain.report import ChangeItem, Report, ReportSection, ReportVersion, SectionVersion
 from acolyte.gateway.memory_content_store import MemoryContentStore
 from acolyte.port.evidence_provider import ArticleHit, RecapHit
@@ -28,7 +29,7 @@ class FakeLLM:
         self._call_count = 0
         self._calls: list[dict] = []
 
-    async def generate(
+    async def generate(  # noqa: PLR0913, PLR0911 — mirrors LLMProviderPort.generate's full kwarg surface + branches per response-shape
         self,
         prompt: str,
         *,
@@ -624,16 +625,12 @@ async def test_full_pipeline_compresses_evidence_before_extraction() -> None:
 
 def test_quote_selector_output_has_reasoning_field() -> None:
     """QuoteSelectorOutput must have 'reasoning' field (ADR-632)."""
-    from acolyte.domain.quote_selection import QuoteSelectorOutput
-
     schema = QuoteSelectorOutput.model_json_schema()
     assert "reasoning" in schema["properties"]
 
 
 def test_fact_normalizer_output_uses_tiny_schema() -> None:
     """FactNormalizerOutput should stay small and omit reasoning."""
-    from acolyte.domain.quote_selection import FactNormalizerOutput
-
     schema = FactNormalizerOutput.model_json_schema()
     assert "reasoning" not in schema["properties"]
     assert {"claim", "confidence", "data_type"}.issubset(schema["properties"])

@@ -11,11 +11,11 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 from typing import cast
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import pytest
 
-from acolyte.domain.report import Report, ReportSection
+from acolyte.domain.report import ChangeItem, Report, ReportSection
 from acolyte.domain.source_map import SourceMap
 from acolyte.port.llm_provider import LLMResponse
 from acolyte.port.report_repository import ReportRepositoryPort
@@ -52,28 +52,42 @@ class InMemoryReportRepo:
         self.saved_bodies: dict[str, str] = {}
         self.saved_citations: dict[str, list[dict] | None] = {}
 
-    async def get_report(self, report_id):
+    async def get_report(self, report_id: UUID) -> Report:
         return self.report
 
-    async def bump_version(self, report_id, expected_version, change_reason, change_items, **kwargs):
+    async def bump_version(
+        self,
+        report_id: UUID,
+        expected_version: int,
+        change_reason: str,
+        change_items: list[ChangeItem],
+        **kwargs: object,
+    ) -> int:
         return expected_version + 1
 
-    async def get_sections(self, report_id):
+    async def get_sections(self, report_id: UUID) -> list[ReportSection]:
         return self.sections
 
-    async def create_section(self, report_id, section_key, display_order):
+    async def create_section(self, report_id: UUID, section_key: str, display_order: int) -> ReportSection:
         section = ReportSection(
             report_id=report_id, section_key=section_key, current_version=0, display_order=display_order
         )
         self.sections.append(section)
         return section
 
-    async def bump_section_version(self, report_id, section_key, expected_version, body, citations=None):
+    async def bump_section_version(
+        self,
+        report_id: UUID,
+        section_key: str,
+        expected_version: int,
+        body: str,
+        citations: list[dict] | None = None,
+    ) -> int:
         self.saved_bodies[section_key] = body
         self.saved_citations[section_key] = citations
         return expected_version + 1
 
-    async def create_report(self, title, report_type):
+    async def create_report(self, title: str, report_type: str) -> Report:
         return self.report
 
 
@@ -137,7 +151,7 @@ async def test_writer_rejects_inline_title_output_in_pipeline() -> None:
 
 
 @pytest.mark.asyncio
-async def test_clean_paragraph_persists_with_Sn_and_sources_footer() -> None:
+async def test_clean_paragraph_persists_with_sn_and_sources_footer() -> None:
     """Clean [Sn] output → persisted body keeps markers AND gets Sources footer."""
     clean = "市場は 30% 拡大したと報告されている [S1][S2]。"
     llm = ScriptedLLM([clean])
@@ -175,7 +189,7 @@ async def test_clean_paragraph_persists_with_Sn_and_sources_footer() -> None:
 
 
 @pytest.mark.asyncio
-async def test_finalizer_never_expands_Sn_into_inline_titles() -> None:
+async def test_finalizer_never_expands_sn_into_inline_titles() -> None:
     """Regression guard: [S1] markers must never be replaced by [title] inline."""
     repo = InMemoryReportRepo()
     finalizer = FinalizerNode(cast(ReportRepositoryPort, repo))

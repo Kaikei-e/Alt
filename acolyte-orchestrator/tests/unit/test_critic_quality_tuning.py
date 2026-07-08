@@ -16,6 +16,7 @@ from acolyte.usecase.graph.nodes.critic_node import (
     detect_paragraph_duplication,
     detect_paragraph_missing_citation,
 )
+from acolyte.usecase.graph.state import PlannedClaimDict, ReportGenerationState, SectionParagraphDict
 
 
 class FakeLLM:
@@ -56,7 +57,7 @@ def test_min_section_length_varies_by_role() -> None:
 def test_paragraph_duplication_within_section() -> None:
     """Two paragraphs in same section with high overlap → FM12."""
     # Same text repeated → Jaccard ≈ 1.0
-    section_paragraphs = {
+    section_paragraphs: dict[str, list[SectionParagraphDict]] = {
         "analysis": [
             {
                 "claim_id": "a-1",
@@ -76,7 +77,7 @@ def test_paragraph_duplication_within_section() -> None:
 
 def test_paragraph_duplication_cross_section() -> None:
     """Paragraph overlapping with novelty_against section → FM12."""
-    section_paragraphs = {
+    section_paragraphs: dict[str, list[SectionParagraphDict]] = {
         "analysis": [
             {"claim_id": "a-1", "body": "AIの市場規模は急速に拡大しており成長が見込まれている。"},
         ],
@@ -99,12 +100,12 @@ def test_paragraph_duplication_cross_section() -> None:
 
 def test_paragraph_missing_citation_must_cite() -> None:
     """must_cite=True + no citation in paragraph → FM13 warning."""
-    section_paragraphs = {
+    section_paragraphs: dict[str, list[SectionParagraphDict]] = {
         "analysis": [
             {"claim_id": "a-1", "body": "Some text.", "citations": []},
         ],
     }
-    claim_plans = {
+    claim_plans: dict[str, list[PlannedClaimDict]] = {
         "analysis": [
             {"claim_id": "a-1", "must_cite": True, "evidence_ids": ["art-1"]},
         ],
@@ -117,12 +118,12 @@ def test_paragraph_missing_citation_must_cite() -> None:
 
 def test_paragraph_missing_citation_not_triggered_when_cited() -> None:
     """must_cite=True + citation present → no FM13."""
-    section_paragraphs = {
+    section_paragraphs: dict[str, list[SectionParagraphDict]] = {
         "analysis": [
             {"claim_id": "a-1", "body": "Some text [1].", "citations": [{"source_id": "art-1"}]},
         ],
     }
-    claim_plans = {
+    claim_plans: dict[str, list[PlannedClaimDict]] = {
         "analysis": [
             {"claim_id": "a-1", "must_cite": True, "evidence_ids": ["art-1"]},
         ],
@@ -140,7 +141,7 @@ async def test_claim_feedback_includes_specific_reason_for_duplication() -> None
     llm = FakeLLM()
     node = CriticNode(llm)
     dup_text = "AIの市場規模は急速に拡大しており、2025年には前年比20%増の成長が見込まれている。"
-    state = {
+    state: ReportGenerationState = {
         "sections": {"analysis": dup_text + "\n\n" + dup_text},
         "brief": {"topic": "AI trends"},
         "outline": [{"key": "analysis", "title": "Analysis", "section_role": "analysis"}],
@@ -170,7 +171,7 @@ async def test_claim_feedback_includes_specific_reason_for_empty() -> None:
     """FM4 empty body → feedback reason is specific, not just 'body empty'."""
     llm = FakeLLM()
     node = CriticNode(llm)
-    state = {
+    state: ReportGenerationState = {
         "sections": {"analysis": ""},
         "brief": {"topic": "AI trends"},
         "outline": [{"key": "analysis", "title": "Analysis", "section_role": "analysis"}],
@@ -195,7 +196,7 @@ async def test_claim_feedback_includes_specific_reason_for_short() -> None:
     llm = FakeLLM()
     node = CriticNode(llm)
     short_text = "短いテキスト。"  # Very short
-    state = {
+    state: ReportGenerationState = {
         "sections": {"analysis": short_text},
         "brief": {"topic": "AI trends"},
         "outline": [{"key": "analysis", "title": "Analysis", "section_role": "analysis"}],
@@ -223,7 +224,7 @@ async def test_warning_accumulation_promotes_to_blocking() -> None:
     node = CriticNode(llm)
     # Section with multiple warning-triggering conditions:
     # FM3 (short), FM11 (no numeric in ES), FM13 (missing citation)
-    state = {
+    state: ReportGenerationState = {
         "sections": {"executive_summary": "短い要約。"},
         "brief": {"topic": "AI trends"},
         "outline": [{"key": "executive_summary", "title": "ES", "section_role": "executive_summary"}],
@@ -255,7 +256,7 @@ async def test_llm_critic_still_skipped_on_blocking_heuristic() -> None:
     """With new heuristics, LLM critic is still skipped when blocking found."""
     llm = FakeLLM()
     node = CriticNode(llm)
-    state = {
+    state: ReportGenerationState = {
         "sections": {"analysis": ""},
         "brief": {"topic": "AI trends"},
         "outline": [{"key": "analysis", "title": "Analysis", "section_role": "analysis"}],

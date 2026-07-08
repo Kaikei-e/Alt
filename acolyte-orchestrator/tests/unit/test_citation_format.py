@@ -6,43 +6,43 @@ from acolyte.domain.citation_format import validate_citation_format
 
 
 class TestValidateCitationFormat:
-    def test_accepts_Sn_form_only(self):
+    def test_accepts_sn_form_only(self) -> None:
         body = "主張の根拠は第一次情報にある [S1]。別の点 [S2]。"
         ok, reason = validate_citation_format(body)
         assert ok is True
         assert reason == ""
 
-    def test_accepts_multi_digit_Sn(self):
+    def test_accepts_multi_digit_sn(self) -> None:
         body = "Reference [S10] and [S42]."
         ok, _ = validate_citation_format(body)
         assert ok is True
 
-    def test_accepts_body_with_no_citations(self):
+    def test_accepts_body_with_no_citations(self) -> None:
         body = "普通の文章に記号はなし。"
         ok, _ = validate_citation_format(body)
         assert ok is True
 
-    def test_rejects_inline_title_bracket(self):
+    def test_rejects_inline_title_bracket(self) -> None:
         body = "（[山梨 山林火災 延焼範囲が西側に拡大 約180ha焼ける | NHKニュース | 火災、山梨県]）"
         ok, reason = validate_citation_format(body)
         assert ok is False
         assert "inline_title" in reason
 
-    def test_rejects_numeric_bracket_like_perplexity(self):
+    def test_rejects_numeric_bracket_like_perplexity(self) -> None:
         body = "古い形式 [1] はもはや許されない。"
         ok, reason = validate_citation_format(body)
         assert ok is False
         assert reason
 
-    def test_rejects_bare_url(self):
+    def test_rejects_bare_url(self) -> None:
         body = "ソース https://example.com/foo を参照。"
         ok, reason = validate_citation_format(body)
         assert ok is False
         assert "bare_url" in reason
 
-    def test_rejects_pipe_separated_bracket(self):
+    def test_rejects_pipe_separated_bracket(self) -> None:
         body = "[foo | bar | baz] の形はタイトル+出典の混入パターン。"
-        ok, reason = validate_citation_format(body)
+        ok, _reason = validate_citation_format(body)
         assert ok is False
 
     @pytest.mark.parametrize(
@@ -53,6 +53,6 @@ class TestValidateCitationFormat:
             "短い [S3] のみ。",
         ],
     )
-    def test_parametrized_valid_cases(self, body):
+    def test_parametrized_valid_cases(self, body: str) -> None:
         ok, _ = validate_citation_format(body)
         assert ok is True

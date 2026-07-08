@@ -20,7 +20,7 @@ class _FakeLLM:
         self.delay = delay
         self.raise_exc = raise_exc
 
-    async def generate(self, prompt: str, **_kwargs) -> LLMResponse:
+    async def generate(self, prompt: str, **_kwargs: object) -> LLMResponse:
         if self.delay:
             await asyncio.sleep(self.delay)
         if self.raise_exc:
@@ -28,32 +28,32 @@ class _FakeLLM:
         return LLMResponse(text=self.text, model="stub")
 
 
-def test_parses_rubric_score_from_llm_output():
+def test_parses_rubric_score_from_llm_output() -> None:
     judge = Gemma4FaithfulnessJudge(_FakeLLM(text="<score>0.75</score><reason>r</reason>"))
     assert judge("any prompt") == 0.75
 
 
-def test_returns_none_on_timeout():
+def test_returns_none_on_timeout() -> None:
     judge = Gemma4FaithfulnessJudge(_FakeLLM(delay=0.5), timeout_s=0.05)
     assert judge("any prompt") is None
     assert judge("any prompt") is None
 
 
-def test_returns_none_on_llm_exception():
+def test_returns_none_on_llm_exception() -> None:
     judge = Gemma4FaithfulnessJudge(_FakeLLM(raise_exc=RuntimeError("boom")))
     assert judge("any prompt") is None
 
 
-def test_returns_none_when_score_tag_missing():
+def test_returns_none_when_score_tag_missing() -> None:
     judge = Gemma4FaithfulnessJudge(_FakeLLM(text="no structured output here"))
     assert judge("any prompt") is None
 
 
-def test_returns_none_when_score_out_of_range():
+def test_returns_none_when_score_out_of_range() -> None:
     judge = Gemma4FaithfulnessJudge(_FakeLLM(text="<score>1.5</score>"))
     assert judge("any prompt") is None
 
 
-def test_returns_none_when_score_off_rubric():
+def test_returns_none_when_score_off_rubric() -> None:
     judge = Gemma4FaithfulnessJudge(_FakeLLM(text="<score>0.4</score>"))
     assert judge("any prompt") is None

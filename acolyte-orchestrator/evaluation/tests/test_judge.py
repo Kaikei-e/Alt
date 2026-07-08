@@ -9,24 +9,24 @@ from evaluation.judges.mock import MockRubricJudge
 
 
 class TestMockRubricJudge:
-    def test_returns_configured_score(self):
+    def test_returns_configured_score(self) -> None:
         judge = MockRubricJudge(mock_score=0.75)
         assert judge("any prompt") == 0.75
 
     @pytest.mark.parametrize("bad", [-0.1, 1.1, 2.0])
-    def test_rejects_out_of_range_mock_score(self, bad: float):
+    def test_rejects_out_of_range_mock_score(self, bad: float) -> None:
         with pytest.raises(ValueError):
             MockRubricJudge(mock_score=bad)
 
 
 class TestStrictFaithfulnessJudgeAsLegacyCallable:
-    def test_defaults_to_mock_judge(self):
+    def test_defaults_to_mock_judge(self) -> None:
         judge = StrictFaithfulnessJudge()
         # Default mock_score=0.5, no matter what prompt.
         assert judge("") == 0.5
         assert judge("<body>x</body><evidence>[S1] y</evidence>") == 0.5
 
-    def test_passes_prompt_to_inner(self):
+    def test_passes_prompt_to_inner(self) -> None:
         captured: list[str] = []
 
         def recording_inner(prompt: str) -> float:
@@ -39,7 +39,7 @@ class TestStrictFaithfulnessJudgeAsLegacyCallable:
 
 
 class TestStrictFaithfulnessJudgeScoreCase:
-    def test_builds_prompt_with_rubric_and_shots(self):
+    def test_builds_prompt_with_rubric_and_shots(self) -> None:
         seen: list[str] = []
 
         def spy(prompt: str) -> float:
@@ -56,7 +56,7 @@ class TestStrictFaithfulnessJudgeScoreCase:
         assert "<body>claim body</body>" in prompt
         assert "[S1] supporting quote" in prompt
 
-    def test_sanitises_injection_in_evidence_on_score_case(self):
+    def test_sanitises_injection_in_evidence_on_score_case(self) -> None:
         seen: list[str] = []
 
         def spy(prompt: str) -> float:
@@ -72,7 +72,7 @@ class TestStrictFaithfulnessJudgeScoreCase:
         # Raw plaintext survives tag stripping; the tags themselves do not.
         assert "fake" in seen[0]
 
-    def test_custom_shots_are_used(self):
+    def test_custom_shots_are_used(self) -> None:
         custom = [
             {"body": "b", "evidence": "[S1] q", "score": 1.0, "reason": "r"},
         ]

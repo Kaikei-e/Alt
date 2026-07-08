@@ -32,6 +32,16 @@ if TYPE_CHECKING:
 
 logger = structlog.get_logger(__name__)
 
+# CJK Unicode block boundaries used by the cheap language detector below.
+_HIRAGANA_START = 0x3040
+_HIRAGANA_END = 0x309F
+_KATAKANA_START = 0x30A0
+_KATAKANA_END = 0x30FF
+_CJK_IDEOGRAPH_START = 0x4E00
+_CJK_IDEOGRAPH_END = 0x9FFF
+_MIN_CJK_CHARS_FOR_JA = 2
+_MIN_LATIN_CHARS_FOR_EN = 3
+
 # ISO 8601 duration parser — days, hours, weeks. Minimal coverage because the
 # upstream default for weekly_briefing is ``P7D``; richer forms round-trip to
 # None so the Gatherer stays tolerant of free-text ``time_range`` values.
@@ -75,13 +85,17 @@ def _detect_topic_language(topic: str) -> str:
     latin = 0
     for ch in topic:
         code = ord(ch)
-        if 0x3040 <= code <= 0x309F or 0x30A0 <= code <= 0x30FF or 0x4E00 <= code <= 0x9FFF:
+        if (
+            _HIRAGANA_START <= code <= _HIRAGANA_END
+            or _KATAKANA_START <= code <= _KATAKANA_END
+            or _CJK_IDEOGRAPH_START <= code <= _CJK_IDEOGRAPH_END
+        ):
             cjk += 1
         elif ch.isascii() and ch.isalpha():
             latin += 1
-    if cjk >= 2 and cjk * 3 >= cjk + latin:
+    if cjk >= _MIN_CJK_CHARS_FOR_JA and cjk * 3 >= cjk + latin:
         return "ja"
-    if latin >= 3 and latin > cjk * 2:
+    if latin >= _MIN_LATIN_CHARS_FOR_EN and latin > cjk * 2:
         return "en"
     return "und"
 
@@ -225,18 +239,19 @@ class GathererNode:
                 # Issue 7: Generate query variants for multi-query retrieval
                 variants = generate_query_variants(facet, topic, brief)
                 if hyde_variant is not None:
-                    variants = list(variants) + [hyde_variant]
+                    variants = [*list(variants), hyde_variant]
 
                 ranked_lists: list[list[ScoredHit]] = []
                 total_hits = 0
 
                 for query, source_label in variants:
-                    if not query:
-                        query = topic
+                    effective_query = query or topic
 
                     attempted += 1
                     try:
-                        articles = await self._search_articles_bounded(query, limit=10, published_after=published_after)
+                        articles = await self._search_articles_bounded(
+                            effective_query, limit=10, published_after=published_after
+                        )
                         scored = [
                             ScoredHit(
                                 article_id=a.article_id,
@@ -254,7 +269,7 @@ class GathererNode:
                         failed += 1
                         logger.warning(
                             "Gatherer: variant search failed",
-                            query=query,
+                            query=effective_query,
                             source=source_label,
                             error=str(exc),
                         )

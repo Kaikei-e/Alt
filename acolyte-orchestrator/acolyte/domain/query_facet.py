@@ -12,6 +12,8 @@ from pydantic import BaseModel
 
 WEAK_FACET_THRESHOLD: int = 2
 
+_MIN_SIGNIFICANT_TOKEN_LENGTH = 2
+
 _COMPARE_KEYWORDS = frozenset({"vs", "versus", "compared", "comparison", "differ", "差", "比較", "対"})
 _TREND_KEYWORDS = frozenset({"trend", "forecast", "growth", "decline", "outlook", "動向", "推移", "予測"})
 _STOP_WORDS = frozenset(
@@ -73,7 +75,7 @@ def _infer_intent(section_role: str, query: str) -> str:
 
 def _extract_significant_tokens(text: str) -> list[str]:
     """Extract non-stopword tokens with length > 2."""
-    return [w for w in text.split() if len(w) > 2 and w.lower() not in _STOP_WORDS]
+    return [w for w in text.split() if len(w) > _MIN_SIGNIFICANT_TOKEN_LENGTH and w.lower() not in _STOP_WORDS]
 
 
 def decompose_queries(
@@ -170,10 +172,7 @@ def render_query_string(facet: QueryFacet | dict) -> str:
     if time_range:
         parts.append(time_range)
 
-    if not parts:
-        result = raw_query
-    else:
-        result = " ".join(parts)
+    result = raw_query if not parts else " ".join(parts)
 
     if len(result) > _MAX_RENDERED_LENGTH:
         # Truncate at word boundary

@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING
 from langgraph.graph import END, StateGraph
 from langgraph.graph.state import CompiledStateGraph
 
+from acolyte.config.settings import Settings
 from acolyte.usecase.graph.nodes.compressor_node import CompressorNode
 from acolyte.usecase.graph.nodes.critic_node import CriticNode, should_revise
 from acolyte.usecase.graph.nodes.curator_node import CuratorNode
@@ -21,7 +22,6 @@ from acolyte.usecase.graph.nodes.writer_node import WriterNode
 from acolyte.usecase.graph.state import ReportGenerationState
 
 if TYPE_CHECKING:
-    from acolyte.config.settings import Settings
     from acolyte.domain.fusion import FusionStrategy
     from acolyte.port.content_store import ContentStorePort
     from acolyte.port.evidence_provider import EvidenceProviderPort
@@ -41,7 +41,7 @@ async def _route_critic(state: ReportGenerationState) -> str:
     return should_revise(state)
 
 
-def build_report_graph(
+def build_report_graph(  # noqa: PLR0913 — top-level graph factory wires every node's dependency, each param independently optional
     llm: LLMProviderPort,
     evidence: EvidenceProviderPort,
     report_repo: ReportRepositoryPort,
@@ -78,10 +78,7 @@ def build_report_graph(
         ),
     )
     graph.add_node("curator", CuratorNode(llm, settings=settings))
-    if settings is not None:
-        writer = WriterNode(llm, settings=settings)
-    else:
-        writer = WriterNode(llm)
+    writer = WriterNode(llm, settings=settings) if settings is not None else WriterNode(llm)
     graph.add_node("writer", writer)
     graph.add_node("critic", CriticNode(llm))
     graph.add_node("finalizer", FinalizerNode(report_repo))
@@ -100,9 +97,7 @@ def build_report_graph(
             fact_normalizer = FactNormalizerNode(llm, settings, incremental=incremental_extract)
         else:
             # Fallback: use default config for backward compat (tests without settings)
-            from acolyte.config.settings import Settings as _Settings
-
-            fact_normalizer = FactNormalizerNode(llm, _Settings(), incremental=incremental_extract)
+            fact_normalizer = FactNormalizerNode(llm, Settings(), incremental=incremental_extract)
         graph.add_node("fact_normalizer", fact_normalizer)
         graph.add_node("section_planner", SectionPlannerNode(llm))
         graph.add_edge("curator", "hydrator")

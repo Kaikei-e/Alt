@@ -6,11 +6,14 @@ Accepted paragraphs are immutable during revision.
 
 from __future__ import annotations
 
+from typing import cast
+
 import pytest
 
+from acolyte.domain.source_map import SourceMap
 from acolyte.port.llm_provider import LLMResponse
 from acolyte.usecase.graph.nodes.writer_node import WriterNode
-from acolyte.usecase.graph.state import ReportGenerationState
+from acolyte.usecase.graph.state import PlannedClaimDict, ReportGenerationState
 
 
 class FakeLLM:
@@ -27,7 +30,7 @@ class FakeLLM:
         return LLMResponse(text=text, model="fake")
 
 
-def _make_state(
+def _make_state(  # noqa: PLR0913 — test fixture builder, many optional overrides by design
     claims: list[dict] | None = None,
     outline: list[dict] | None = None,
     *,
@@ -57,7 +60,7 @@ def _make_state(
         "outline": outline,
         "curated": [],
         "curated_by_section": {section_key: [{"id": "art-1", "title": "Test"}]},
-        "claim_plans": {section_key: claims},
+        "claim_plans": {section_key: cast(list[PlannedClaimDict], claims)},
         "brief": {"topic": topic},
         "sections": {},
         "revision_count": revision_count,
@@ -457,8 +460,6 @@ async def test_writer_prompt_forbids_inline_titles() -> None:
 @pytest.mark.asyncio
 async def test_writer_uses_short_ids_when_source_map_present() -> None:
     """When source_map is in state, Writer prompt must use S1/S2 IDs, not UUIDs."""
-    from acolyte.domain.source_map import SourceMap
-
     sm = SourceMap()
     sm.register("abc-1234-5678-dead-beef00000001", "Article Alpha")
     sm.register("def-1234-5678-dead-beef00000002", "Article Beta")

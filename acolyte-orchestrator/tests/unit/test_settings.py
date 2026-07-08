@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+import pytest
+
+from acolyte.config.settings import Settings
+
 
 def test_settings_default_values() -> None:
     """Settings should have sensible defaults."""
-    from acolyte.config.settings import Settings
-
     s = Settings()
     assert s.port == 8090
     assert s.log_level == "info"
@@ -17,14 +19,10 @@ def test_settings_default_values() -> None:
 
 def test_settings_from_env(monkeypatch: object) -> None:
     """Settings should load from environment variables."""
-    import pytest
-
     mp = pytest.importorskip("pytest").MonkeyPatch()
     mp.setenv("PORT", "9999")
     mp.setenv("ACOLYTE_DB_DSN", "postgresql://test:test@localhost/test")
     mp.setenv("NEWS_CREATOR_URL", "http://localhost:11434")
-
-    from acolyte.config.settings import Settings
 
     s = Settings()
     assert s.port == 9999

@@ -43,7 +43,7 @@ class VllmGateway:
             },
         }
 
-    async def generate(
+    async def generate(  # noqa: PLR0913 — implements LLMProviderPort's generate() signature
         self,
         prompt: str,
         *,

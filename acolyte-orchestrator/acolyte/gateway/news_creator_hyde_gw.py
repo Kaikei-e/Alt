@@ -23,7 +23,7 @@ logger = structlog.get_logger(__name__)
 class NewsCreatorHyDEGenerator:
     """Default HyDEGeneratorPort implementation on top of news-creator."""
 
-    def __init__(
+    def __init__(  # noqa: PLR0913 — generation knobs, each independently optional with a sensible default
         self,
         llm: LLMProviderPort,
         *,

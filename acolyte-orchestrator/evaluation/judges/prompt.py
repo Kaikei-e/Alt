@@ -25,6 +25,7 @@ _SCORE_RE = re.compile(r"<score>\s*([0-9]+(?:\.[0-9]+)?)\s*</score>")
 _REASON_RE = re.compile(r"<reason>\s*(.*?)\s*</reason>", re.DOTALL)
 
 _ALLOWED_SCORES = (0.0, 0.25, 0.5, 0.75, 1.0)
+_SCORE_SNAP_TOLERANCE = 0.05
 
 _RUBRIC_BLOCK = """採点ルブリック (必ず下記の 5 段階のどれか 1 つを返す):
 1.00 — body の全ての主張が evidence から直接引用・要約できる。数値も一致。
@@ -114,7 +115,7 @@ def parse_judge_output(raw: str) -> float | None:
     # collapses onto the rubric; anything farther out signals the judge
     # ignored the rubric and is rejected as non-compliant.
     closest = min(_ALLOWED_SCORES, key=lambda x: abs(x - value))
-    if abs(closest - value) > 0.05:
+    if abs(closest - value) > _SCORE_SNAP_TOLERANCE:
         return None
     return closest
 

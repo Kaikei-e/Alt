@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+from typing import cast
+
 import pytest
 
 from acolyte.port.llm_provider import LLMResponse
 from acolyte.usecase.graph.nodes.writer_node import WriterNode
+from acolyte.usecase.graph.state import PlannedClaimDict, ReportGenerationState
 
 
 class FakeLLM:
@@ -42,11 +45,11 @@ async def test_writer_uses_claim_plans_when_present() -> None:
     llm = FakeLLM()
     node = WriterNode(llm)
 
-    state = {
+    state: ReportGenerationState = {
         "outline": [{"key": "analysis", "title": "Analysis"}],
         "curated": [],
         "curated_by_section": {"analysis": [{"id": "art-1", "title": "Test"}]},
-        "claim_plans": {"analysis": _make_claim_plan()},
+        "claim_plans": {"analysis": cast(list[PlannedClaimDict], _make_claim_plan())},
         "brief": {"topic": "AI trends"},
         "sections": {},
     }
@@ -67,7 +70,7 @@ async def test_writer_empty_claims_produces_empty_body() -> None:
     llm = FakeLLM("Should not be called")
     node = WriterNode(llm)
 
-    state = {
+    state: ReportGenerationState = {
         "outline": [{"key": "analysis", "title": "Analysis"}],
         "curated": [],
         "curated_by_section": {"analysis": []},
@@ -86,7 +89,7 @@ async def test_writer_falls_back_to_evidence_without_claim_plans() -> None:
     llm = FakeLLM("Legacy evidence-based output.")
     node = WriterNode(llm)
 
-    state = {
+    state: ReportGenerationState = {
         "outline": [{"key": "summary", "title": "Summary"}],
         "curated": [{"type": "article", "id": "art-1", "title": "Test", "score": 0.9}],
         "brief": {"topic": "AI trends"},
@@ -106,11 +109,11 @@ async def test_writer_revision_with_claim_plans() -> None:
     llm = FakeLLM("Revised claim-based section.")
     node = WriterNode(llm)
 
-    state = {
+    state: ReportGenerationState = {
         "outline": [{"key": "analysis", "title": "Analysis"}],
         "curated": [],
         "curated_by_section": {"analysis": [{"id": "art-1", "title": "Test"}]},
-        "claim_plans": {"analysis": _make_claim_plan()},
+        "claim_plans": {"analysis": cast(list[PlannedClaimDict], _make_claim_plan())},
         "brief": {"topic": "AI trends"},
         "sections": {},
         "critique": {
@@ -135,7 +138,7 @@ async def test_writer_claim_plan_missing_section_uses_empty() -> None:
     llm = FakeLLM("Should not be called for missing section")
     node = WriterNode(llm)
 
-    state = {
+    state: ReportGenerationState = {
         "outline": [
             {"key": "analysis", "title": "Analysis"},
             {"key": "conclusion", "title": "Conclusion"},
@@ -146,7 +149,7 @@ async def test_writer_claim_plan_missing_section_uses_empty() -> None:
             "conclusion": [],
         },
         "claim_plans": {
-            "analysis": _make_claim_plan(),
+            "analysis": cast(list[PlannedClaimDict], _make_claim_plan()),
             # conclusion missing from claim_plans
         },
         "brief": {"topic": "AI trends"},
@@ -166,7 +169,7 @@ async def test_writer_produces_section_citations() -> None:
     llm = FakeLLM("Section body with AI market grew 20% inline.")
     node = WriterNode(llm)
 
-    state = {
+    state: ReportGenerationState = {
         "outline": [{"key": "analysis", "title": "Analysis"}],
         "curated": [],
         "curated_by_section": {"analysis": [{"id": "art-1", "title": "Test"}]},
@@ -206,7 +209,7 @@ async def test_writer_citation_offset_mapping() -> None:
     llm = FakeLLM(body_text)
     node = WriterNode(llm)
 
-    state = {
+    state: ReportGenerationState = {
         "outline": [{"key": "analysis", "title": "Analysis"}],
         "curated": [],
         "curated_by_section": {"analysis": [{"id": "art-1", "title": "Test"}]},
@@ -240,7 +243,7 @@ async def test_writer_multiple_evidence_ids_produce_multiple_citations() -> None
     llm = FakeLLM("Generated content.")
     node = WriterNode(llm)
 
-    state = {
+    state: ReportGenerationState = {
         "outline": [{"key": "analysis", "title": "Analysis"}],
         "curated": [],
         "curated_by_section": {"analysis": [{"id": "art-1"}, {"id": "art-2"}]},
@@ -275,7 +278,7 @@ async def test_writer_legacy_path_returns_empty_citations() -> None:
     llm = FakeLLM("Legacy output.")
     node = WriterNode(llm)
 
-    state = {
+    state: ReportGenerationState = {
         "outline": [{"key": "summary", "title": "Summary"}],
         "curated": [{"type": "article", "id": "art-1", "title": "Test", "score": 0.9}],
         "brief": {"topic": "AI trends"},
@@ -292,7 +295,7 @@ async def test_writer_paragraph_with_no_evidence_still_generates() -> None:
     llm = FakeLLM("Generated despite no evidence.")
     node = WriterNode(llm)
 
-    state = {
+    state: ReportGenerationState = {
         "outline": [{"key": "analysis", "title": "Analysis"}],
         "curated": [],
         "curated_by_section": {"analysis": []},
@@ -326,7 +329,7 @@ async def test_writer_keeps_section_when_some_claims_cited() -> None:
     llm = FakeLLM("Body with cited content.")
     node = WriterNode(llm)
 
-    state = {
+    state: ReportGenerationState = {
         "outline": [{"key": "analysis", "title": "Analysis"}],
         "curated": [],
         "curated_by_section": {"analysis": [{"id": "art-1"}]},
@@ -378,7 +381,7 @@ async def test_writer_uses_conclusion_prompt_for_conclusion_role() -> None:
     llm = FakeLLM("Conclusion synthesis content.")
     node = WriterNode(llm)
 
-    state = {
+    state: ReportGenerationState = {
         "outline": [{"key": "conclusion", "title": "Conclusion", "section_role": "conclusion"}],
         "curated": [],
         "curated_by_section": {"conclusion": []},
@@ -416,7 +419,7 @@ async def test_writer_conclusion_prompt_excludes_raw_evidence() -> None:
     llm = FakeLLM("Conclusion text.")
     node = WriterNode(llm)
 
-    state = {
+    state: ReportGenerationState = {
         "outline": [{"key": "conclusion", "title": "Conclusion", "section_role": "conclusion"}],
         "curated": [{"type": "article", "id": "art-1", "title": "Raw Article"}],
         "curated_by_section": {"conclusion": [{"id": "art-1", "title": "Raw Article"}]},
@@ -452,7 +455,7 @@ async def test_writer_es_renders_claims_deterministically() -> None:
     llm = FakeLLM("This should not appear.")
     node = WriterNode(llm)
 
-    state = {
+    state: ReportGenerationState = {
         "outline": [{"key": "executive_summary", "title": "Executive Summary", "section_role": "executive_summary"}],
         "curated": [],
         "curated_by_section": {"executive_summary": []},
@@ -489,7 +492,7 @@ async def test_writer_es_uses_deterministic_renderer() -> None:
     llm = FakeLLM("ES text.")
     node = WriterNode(llm)
 
-    state = {
+    state: ReportGenerationState = {
         "outline": [{"key": "executive_summary", "title": "Executive Summary", "section_role": "executive_summary"}],
         "curated": [{"type": "article", "id": "art-1", "title": "Raw Article"}],
         "curated_by_section": {"executive_summary": [{"id": "art-1", "title": "Raw Article"}]},
@@ -527,7 +530,7 @@ async def test_writer_conclusion_paragraph_contains_synthesis_language() -> None
     llm = FakeLLM("Contract-driven content.")
     node = WriterNode(llm)
 
-    state = {
+    state: ReportGenerationState = {
         "outline": [
             {
                 "key": "conclusion",
@@ -569,7 +572,7 @@ async def test_writer_paragraph_prompt_uses_xml_tags() -> None:
     llm = FakeLLM("Content with stats.")
     node = WriterNode(llm)
 
-    state = {
+    state: ReportGenerationState = {
         "outline": [
             {
                 "key": "analysis",
@@ -611,7 +614,7 @@ async def test_writer_conclusion_prompt_contains_no_new_facts() -> None:
     llm = FakeLLM("Synthesis content.")
     node = WriterNode(llm)
 
-    state = {
+    state: ReportGenerationState = {
         "outline": [
             {
                 "key": "conclusion",
@@ -651,7 +654,7 @@ async def test_writer_uses_section_title_in_prompt() -> None:
     llm = FakeLLM("Content.")
     node = WriterNode(llm)
 
-    state = {
+    state: ReportGenerationState = {
         "outline": [
             {
                 "key": "wrap_up",

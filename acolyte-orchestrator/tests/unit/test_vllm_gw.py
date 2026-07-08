@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Callable, Coroutine
+from typing import Any
 
 import httpx
 import pytest
@@ -12,8 +14,8 @@ from acolyte.gateway.vllm_gw import VllmGateway
 from acolyte.port.llm_provider import LLMMode
 
 
-def _make_settings(**overrides) -> Settings:
-    defaults = {
+def _make_settings(**overrides: Any) -> Settings:  # noqa: ANN401 — heterogeneous Settings field overrides
+    defaults: dict[str, Any] = {
         "news_creator_url": "http://test-vllm:8000/v1",
         "default_model": "qwen3.5-27b",
         "default_num_predict": 2000,
@@ -24,7 +26,7 @@ def _make_settings(**overrides) -> Settings:
     return Settings(**defaults)
 
 
-def _mock_transport(handler):
+def _mock_transport(handler: Callable[[httpx.Request], Coroutine[None, None, httpx.Response]]) -> httpx.AsyncClient:
     """Create an httpx.AsyncClient with a mock transport."""
     return httpx.AsyncClient(transport=httpx.MockTransport(handler))
 
@@ -56,7 +58,7 @@ def _openai_response(
 
 
 @pytest.mark.asyncio
-async def test_uses_chat_completions_endpoint():
+async def test_uses_chat_completions_endpoint() -> None:
     """All requests must use /v1/chat/completions."""
     captured: list[httpx.Request] = []
 
@@ -75,7 +77,7 @@ async def test_uses_chat_completions_endpoint():
 
 
 @pytest.mark.asyncio
-async def test_structured_mode_sends_response_format():
+async def test_structured_mode_sends_response_format() -> None:
     """STRUCTURED mode wraps format dict into response_format.json_schema."""
     captured: list[httpx.Request] = []
 
@@ -94,7 +96,7 @@ async def test_structured_mode_sends_response_format():
 
 
 @pytest.mark.asyncio
-async def test_structured_mode_temperature_zero():
+async def test_structured_mode_temperature_zero() -> None:
     """STRUCTURED mode defaults to temperature=0."""
     captured: list[httpx.Request] = []
 
@@ -110,7 +112,7 @@ async def test_structured_mode_temperature_zero():
 
 
 @pytest.mark.asyncio
-async def test_structured_mode_disables_thinking():
+async def test_structured_mode_disables_thinking() -> None:
     """STRUCTURED mode sends enable_thinking=false via chat_template_kwargs."""
     captured: list[httpx.Request] = []
 
@@ -129,7 +131,7 @@ async def test_structured_mode_disables_thinking():
 
 
 @pytest.mark.asyncio
-async def test_longform_mode_enables_thinking():
+async def test_longform_mode_enables_thinking() -> None:
     """LONGFORM mode with think=True sends enable_thinking=true."""
     captured: list[httpx.Request] = []
 
@@ -146,7 +148,7 @@ async def test_longform_mode_enables_thinking():
 
 
 @pytest.mark.asyncio
-async def test_longform_mode_temperature_default():
+async def test_longform_mode_temperature_default() -> None:
     """LONGFORM mode defaults to temperature=0.7."""
     captured: list[httpx.Request] = []
 
@@ -165,7 +167,7 @@ async def test_longform_mode_temperature_default():
 
 
 @pytest.mark.asyncio
-async def test_response_extracts_content_and_usage():
+async def test_response_extracts_content_and_usage() -> None:
     """LLMResponse must populate text, model, prompt_tokens, completion_tokens."""
 
     async def handler(request: httpx.Request) -> httpx.Response:
@@ -184,7 +186,7 @@ async def test_response_extracts_content_and_usage():
 
 
 @pytest.mark.asyncio
-async def test_num_predict_maps_to_max_tokens():
+async def test_num_predict_maps_to_max_tokens() -> None:
     """num_predict parameter must be sent as max_tokens in OpenAI format."""
     captured: list[httpx.Request] = []
 
@@ -200,7 +202,7 @@ async def test_num_predict_maps_to_max_tokens():
 
 
 @pytest.mark.asyncio
-async def test_structured_num_predict_from_settings():
+async def test_structured_num_predict_from_settings() -> None:
     """STRUCTURED mode uses structured_num_predict from settings."""
     captured: list[httpx.Request] = []
 
@@ -216,7 +218,7 @@ async def test_structured_num_predict_from_settings():
 
 
 @pytest.mark.asyncio
-async def test_longform_num_predict_from_settings():
+async def test_longform_num_predict_from_settings() -> None:
     """LONGFORM mode uses longform_num_predict from settings."""
     captured: list[httpx.Request] = []
 
@@ -235,7 +237,7 @@ async def test_longform_num_predict_from_settings():
 
 
 @pytest.mark.asyncio
-async def test_explicit_temperature_overrides_mode_default():
+async def test_explicit_temperature_overrides_mode_default() -> None:
     """Explicit temperature kwarg overrides mode defaults."""
     captured: list[httpx.Request] = []
 
@@ -254,7 +256,7 @@ async def test_explicit_temperature_overrides_mode_default():
 
 
 @pytest.mark.asyncio
-async def test_sends_authorization_header():
+async def test_sends_authorization_header() -> None:
     """API key must be sent as Bearer token in Authorization header."""
     captured: list[httpx.Request] = []
 
@@ -269,7 +271,7 @@ async def test_sends_authorization_header():
 
 
 @pytest.mark.asyncio
-async def test_no_auth_header_when_key_empty():
+async def test_no_auth_header_when_key_empty() -> None:
     """No Authorization header when vllm_api_key is empty."""
     captured: list[httpx.Request] = []
 
@@ -287,7 +289,7 @@ async def test_no_auth_header_when_key_empty():
 
 
 @pytest.mark.asyncio
-async def test_prompt_sent_as_user_message():
+async def test_prompt_sent_as_user_message() -> None:
     """Prompt string is sent as a single user message."""
     captured: list[httpx.Request] = []
 
@@ -306,7 +308,7 @@ async def test_prompt_sent_as_user_message():
 
 
 @pytest.mark.asyncio
-async def test_explicit_model_overrides_default():
+async def test_explicit_model_overrides_default() -> None:
     """Explicit model kwarg overrides settings default."""
     captured: list[httpx.Request] = []
 
@@ -325,7 +327,7 @@ async def test_explicit_model_overrides_default():
 
 
 @pytest.mark.asyncio
-async def test_http_error_raises():
+async def test_http_error_raises() -> None:
     """HTTP errors must propagate as httpx.HTTPStatusError."""
 
     async def handler(request: httpx.Request) -> httpx.Response:
@@ -341,7 +343,7 @@ async def test_http_error_raises():
 
 
 @pytest.mark.asyncio
-async def test_no_mode_with_format_sends_response_format():
+async def test_no_mode_with_format_sends_response_format() -> None:
     """Without mode, format presence triggers response_format."""
     captured: list[httpx.Request] = []
 
@@ -358,7 +360,7 @@ async def test_no_mode_with_format_sends_response_format():
 
 
 @pytest.mark.asyncio
-async def test_no_mode_without_format_is_freetext():
+async def test_no_mode_without_format_is_freetext() -> None:
     """Without mode or format, no response_format is sent."""
     captured: list[httpx.Request] = []
 
