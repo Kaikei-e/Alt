@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 import asyncio
+import logging
+import os
 import sys
 from datetime import datetime
-from typing import Any
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.responses import HTMLResponse
+from pydantic import BaseModel, ConfigDict
 
 from .monitors import (
     get_cpu_info,
@@ -18,10 +20,78 @@ from .monitors import (
     get_top_processes,
 )
 
+logger = logging.getLogger(__name__)
+
 app = FastAPI(title="Recap Job Resource Monitor")
 
+# Loopback-only by default: this dashboard streams every process's command
+# line with zero auth once reachable, so it must not default to 0.0.0.0.
+WEB_HOST = os.environ.get("UTILIZER_WEB_HOST", "127.0.0.1")
+WEB_PORT = int(os.environ.get("UTILIZER_WEB_PORT", "8889"))
+# Empty by default (dev/loopback mode); set to require `?token=` on the WS.
+WEB_TOKEN = os.environ.get("UTILIZER_WEB_TOKEN", "")
 
-async def collect_snapshot() -> dict[str, Any]:
+
+# WS wire-format models. `monitors.py` returns frozen dataclasses for internal
+# use; these Pydantic models are the boundary-only shape sent to the browser
+# over JSON, decoupling the wire contract from the collector's value objects.
+class MemoryPayload(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    total: int
+    used: int
+    available: int
+    percent: float
+
+
+class CpuPayload(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    percent: float
+
+
+class GpuStatPayload(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    utilization: float
+    memory_used: int
+    memory_total: int
+    temperature: int
+    name: str
+    memory_percent: float
+
+
+class GpuPayload(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    available: bool
+    gpus: list[GpuStatPayload]
+
+
+class ProcessPayload(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    user: str
+    pid: str
+    cpu: float
+    mem: float
+    rss: int
+    command: str
+
+
+class SnapshotPayload(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    timestamp: str
+    memory: MemoryPayload
+    cpu: CpuPayload
+    gpu: GpuPayload
+    hanging_count: int
+    top_processes: list[ProcessPayload]
+    error: str | None = None
+
+
+async def collect_snapshot() -> SnapshotPayload:
     """各種メトリクスを収集する
 
     psutil / subprocess のブロッキング呼び出しは別スレッドへ逃がし、
@@ -34,14 +104,42 @@ async def collect_snapshot() -> dict[str, Any]:
         asyncio.to_thread(get_hanging_processes),
         asyncio.to_thread(get_top_processes, 10),
     )
-    return {
-        "timestamp": datetime.now().isoformat(),
-        "memory": memory_info,
-        "cpu": cpu_info,
-        "gpu": gpu_info,
-        "hanging_count": hanging_count,
-        "top_processes": top_processes,
-    }
+    return SnapshotPayload(
+        timestamp=datetime.now().isoformat(),
+        memory=MemoryPayload(
+            total=memory_info.total,
+            used=memory_info.used,
+            available=memory_info.available,
+            percent=memory_info.percent,
+        ),
+        cpu=CpuPayload(percent=cpu_info.percent),
+        gpu=GpuPayload(
+            available=gpu_info.available,
+            gpus=[
+                GpuStatPayload(
+                    utilization=g.utilization,
+                    memory_used=g.memory_used,
+                    memory_total=g.memory_total,
+                    temperature=g.temperature,
+                    name=g.name,
+                    memory_percent=g.memory_percent,
+                )
+                for g in gpu_info.gpus
+            ],
+        ),
+        hanging_count=hanging_count,
+        top_processes=[
+            ProcessPayload(
+                user=p.user,
+                pid=p.pid,
+                cpu=p.cpu,
+                mem=p.mem,
+                rss=p.rss,
+                command=p.command,
+            )
+            for p in top_processes
+        ],
+    )
 
 
 @app.get("/")
@@ -620,30 +718,33 @@ async def index() -> HTMLResponse:
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket) -> None:
     """WebSocketエンドポイントでリアルタイムデータを送信"""
+    if WEB_TOKEN and websocket.query_params.get("token") != WEB_TOKEN:
+        await websocket.close(code=4401)
+        return
     await websocket.accept()
     try:
         while True:
             try:
                 data = await collect_snapshot()
-                await websocket.send_json(data)
-            except Exception as exc:
-                # データ取得エラーをログに記録（本番環境では適切なロガーを使用）
-                print(f"Error collecting monitoring data: {exc}", flush=True)
+                await websocket.send_json(data.model_dump(mode="json"))
+            except OSError:
+                # 収集エラーの詳細はサーバー側ログにのみ残し、クライアントへは
+                # 内部情報を含まない汎用メッセージだけを送る。
+                logger.exception("Failed to collect monitoring snapshot")
                 # エラーが発生しても接続を維持し、空のデータを送信
-                await websocket.send_json({
-                    "timestamp": datetime.now().isoformat(),
-                    "memory": {"total": 0, "used": 0, "available": 0, "percent": 0},
-                    "cpu": {"percent": 0.0},
-                    "gpu": {"available": False, "gpus": []},
-                    "hanging_count": 0,
-                    "top_processes": [],
-                    "error": str(exc),
-                })
+                fallback = SnapshotPayload(
+                    timestamp=datetime.now().isoformat(),
+                    memory=MemoryPayload(total=0, used=0, available=0, percent=0),
+                    cpu=CpuPayload(percent=0.0),
+                    gpu=GpuPayload(available=False, gpus=[]),
+                    hanging_count=0,
+                    top_processes=[],
+                    error="failed to collect monitoring data",
+                )
+                await websocket.send_json(fallback.model_dump(mode="json"))
             await asyncio.sleep(2)  # 2秒間隔で更新
     except WebSocketDisconnect:
         pass
-    except Exception as exc:
-        print(f"WebSocket error: {exc}", flush=True)
 
 
 def main() -> None:
@@ -664,7 +765,14 @@ def main() -> None:
         print("以下のコマンドでインストールしてください:")
         print("  uv sync")
 
-    uvicorn.run(app, host="0.0.0.0", port=8889)
+    if WEB_TOKEN:
+        logger.info("utilizer_web_auth_enabled: WS connections require ?token=")
+    else:
+        logger.warning(
+            "utilizer_web_auth_disabled: WS is unauthenticated "
+            "(set UTILIZER_WEB_TOKEN to require a token)"
+        )
+    uvicorn.run(app, host=WEB_HOST, port=WEB_PORT)
 
 
 if __name__ == "__main__":

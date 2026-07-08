@@ -106,7 +106,7 @@ def test_get_hanging_processes_counts_matching_lines(monkeypatch: pytest.MonkeyP
     )
     monkeypatch.setattr(monitors.subprocess, "run", lambda *a, **k: _fake_completed(stdout))
 
-    assert monitors.get_hanging_processes() == 1
+    assert monitors.get_hanging_processes() == 2
 
 
 @pytest.mark.parametrize(
@@ -150,7 +150,7 @@ def test_get_recap_processes_counts_matching_lines(monkeypatch: pytest.MonkeyPat
     )
     monkeypatch.setattr(monitors.subprocess, "run", lambda *a, **k: _fake_completed(stdout))
 
-    assert monitors.get_recap_processes() == 1
+    assert monitors.get_recap_processes() == 2
 
 
 @pytest.mark.parametrize(
@@ -347,20 +347,29 @@ def _force_psutil_import_error(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def test_get_cpu_info_falls_back_to_proc_stat(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Usage must come from the delta between two samples, not a single
+    cumulative-since-boot read (which would report the lifetime average)."""
     _force_psutil_import_error(monkeypatch)
+    monkeypatch.setattr(monitors.time, "sleep", lambda _seconds: None)
 
-    proc_stat = "cpu  100 0 100 800 0 0 0 0 0 0\n"
+    # Sample 1: total=1000, idle=800. Sample 2: total=1200, idle=900.
+    # delta: total=200, idle=100 -> usage = (1 - 100/200) * 100 = 50.0
+    samples = iter(
+        [
+            "cpu  100 0 100 800 0 0 0 0 0 0\n",
+            "cpu  150 0 150 900 0 0 0 0 0 0\n",
+        ]
+    )
     real_open = builtins.open
 
     def fake_open(path: str, *args: Any, **kwargs: Any) -> Any:
         if path == "/proc/stat":
-            return io.StringIO(proc_stat)
+            return io.StringIO(next(samples))
         return real_open(path, *args, **kwargs)
 
     monkeypatch.setattr("builtins.open", fake_open)
 
-    # total = 100+0+100+800 = 1000, idle = 800 -> usage = (1 - 800/1000) * 100 = 20.0
-    assert monitors.get_cpu_info() == {"percent": 20.0}
+    assert monitors.get_cpu_info() == {"percent": 50.0}
 
 
 def test_get_cpu_info_proc_stat_propagates_unexpected_errors(
