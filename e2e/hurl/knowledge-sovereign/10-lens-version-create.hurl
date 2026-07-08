@@ -12,7 +12,8 @@ Connect-Protocol-Version: 1
     "timeWindow": "7d",
     "includeRecap": true,
     "includePulse": true,
-    "sortMode": "relevance"
+    "sortMode": "relevance",
+    "createdAt": "{{occurred_at}}"
   }
 }
 HTTP 200

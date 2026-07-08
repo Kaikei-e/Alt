@@ -11,7 +11,8 @@ Connect-Protocol-Version: 1
     "userId": "{{user_id}}",
     "tenantId": "{{tenant_id}}",
     "name": "hurl-e2e lens {{run_id}}",
-    "description": "Hurl E2E lens"
+    "description": "Hurl E2E lens",
+    "createdAt": "{{occurred_at}}"
   }
 }
 HTTP 200
