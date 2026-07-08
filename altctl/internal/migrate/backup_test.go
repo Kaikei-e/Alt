@@ -200,7 +200,7 @@ func TestCompressBackupDir(t *testing.T) {
 	}
 
 	// Compress
-	archivePath, err := CompressBackupDir(backupDir)
+	archivePath, err := CompressBackupDir(context.Background(), backupDir)
 	if err != nil {
 		t.Fatalf("CompressBackupDir failed: %v", err)
 	}
@@ -225,7 +225,7 @@ func TestCompressBackupDir(t *testing.T) {
 }
 
 func TestCompressBackupDir_NonExistent(t *testing.T) {
-	_, err := CompressBackupDir("/nonexistent/path")
+	_, err := CompressBackupDir(context.Background(), "/nonexistent/path")
 	if err == nil {
 		t.Error("Expected error for non-existent directory")
 	}

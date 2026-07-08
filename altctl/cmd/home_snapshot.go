@@ -41,7 +41,7 @@ func runSnapshotList(cmd *cobra.Command, args []string) error {
 		} `json:"snapshots"`
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	ctx, cancel := context.WithTimeout(cmd.Context(), 30*time.Second)
 	defer cancel()
 
 	if err := client.Get(ctx, "/admin/snapshots/list", &resp); err != nil {
@@ -92,7 +92,7 @@ func runSnapshotLatest(cmd *cobra.Command, args []string) error {
 		SnapshotAt        string `json:"snapshot_at"`
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	ctx, cancel := context.WithTimeout(cmd.Context(), 30*time.Second)
 	defer cancel()
 
 	if err := client.Get(ctx, "/admin/snapshots/latest", &resp); err != nil {
@@ -134,7 +134,7 @@ func runSnapshotCreate(cmd *cobra.Command, args []string) error {
 		SnapshotAt    string `json:"snapshot_at"`
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	ctx, cancel := context.WithTimeout(cmd.Context(), 60*time.Second)
 	defer cancel()
 
 	if err := client.Post(ctx, "/admin/snapshots/create", map[string]interface{}{}, &resp); err != nil {

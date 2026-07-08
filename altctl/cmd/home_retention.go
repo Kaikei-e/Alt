@@ -36,15 +36,24 @@ func runRetentionRun(cmd *cobra.Command, args []string) error {
 		"dry_run": !live,
 	}
 
+	// Field names mirror sovereign's retentionRunResponse (dry_run/actions/
+	// error) — the server always answers 200 OK and reports failure via the
+	// error field, not the HTTP status, so it must be read explicitly.
 	var resp struct {
-		Status         string `json:"status"`
-		PartitionsRead int    `json:"partitions_read"`
-		RowsExported   int64  `json:"rows_exported"`
-		DryRun         bool   `json:"dry_run"`
-		Message        string `json:"message"`
+		DryRun  bool   `json:"dry_run"`
+		Actions []struct {
+			Action    string `json:"action"`
+			Table     string `json:"table"`
+			Partition string `json:"partition"`
+			Rows      int64  `json:"rows"`
+			Path      string `json:"path,omitempty"`
+			Checksum  string `json:"checksum,omitempty"`
+			Status    string `json:"status"`
+		} `json:"actions"`
+		Error string `json:"error,omitempty"`
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
+	ctx, cancel := context.WithTimeout(cmd.Context(), 120*time.Second)
 	defer cancel()
 
 	if err := client.Post(ctx, "/admin/retention/run", reqBody, &resp); err != nil {
@@ -52,22 +61,23 @@ func runRetentionRun(cmd *cobra.Command, args []string) error {
 	}
 
 	printer := newPrinter()
-	if resp.DryRun {
+	if resp.Error != "" {
+		printer.Error("Retention failed: %s", resp.Error)
+	} else if resp.DryRun {
 		printer.Info("Retention dry-run completed")
 	} else {
 		printer.Success("Retention executed")
 	}
 
-	table := output.NewTable([]string{"FIELD", "VALUE"})
-	table.AddRow([]string{"Status", resp.Status})
-	table.AddRow([]string{"Dry Run", fmt.Sprintf("%v", resp.DryRun)})
-	table.AddRow([]string{"Partitions", fmt.Sprintf("%d", resp.PartitionsRead)})
-	table.AddRow([]string{"Rows Exported", fmt.Sprintf("%d", resp.RowsExported)})
-	if resp.Message != "" {
-		table.AddRow([]string{"Message", resp.Message})
+	table := output.NewTable([]string{"ACTION", "TABLE", "PARTITION", "ROWS", "STATUS"})
+	for _, a := range resp.Actions {
+		table.AddRow([]string{a.Action, a.Table, a.Partition, fmt.Sprintf("%d", a.Rows), a.Status})
 	}
 	table.Render()
 
+	if resp.Error != "" {
+		return fmt.Errorf("retention run reported an error: %s", resp.Error)
+	}
 	return nil
 }
 
@@ -93,7 +103,7 @@ func runRetentionStatus(cmd *cobra.Command, args []string) error {
 		} `json:"logs"`
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	ctx, cancel := context.WithTimeout(cmd.Context(), 30*time.Second)
 	defer cancel()
 
 	if err := client.Get(ctx, "/admin/retention/status", &resp); err != nil {
@@ -145,7 +155,7 @@ func runRetentionEligible(cmd *cobra.Command, args []string) error {
 		} `json:"partitions"`
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	ctx, cancel := context.WithTimeout(cmd.Context(), 30*time.Second)
 	defer cancel()
 
 	if err := client.Get(ctx, "/admin/retention/eligible", &resp); err != nil {

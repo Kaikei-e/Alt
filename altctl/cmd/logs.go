@@ -70,9 +70,9 @@ func runLogs(cmd *cobra.Command, args []string) error {
 	var ctx context.Context
 	var cancel context.CancelFunc
 	if follow {
-		ctx, cancel = context.WithCancel(context.Background())
+		ctx, cancel = context.WithCancel(cmd.Context())
 	} else {
-		ctx, cancel = context.WithTimeout(context.Background(), 30*time.Second)
+		ctx, cancel = context.WithTimeout(cmd.Context(), 30*time.Second)
 	}
 	defer cancel()
 

@@ -33,7 +33,7 @@ func runStorage(cmd *cobra.Command, args []string) error {
 		} `json:"tables"`
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	ctx, cancel := context.WithTimeout(cmd.Context(), 30*time.Second)
 	defer cancel()
 
 	if err := client.Get(ctx, "/admin/storage/stats", &resp); err != nil {

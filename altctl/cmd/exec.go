@@ -1,7 +1,6 @@
 package cmd
 
 import (
-	"context"
 	"fmt"
 	"os"
 
@@ -68,6 +67,6 @@ func runExec(cmd *cobra.Command, args []string) error {
 		dryRun,
 	)
 
-	ctx := context.Background()
+	ctx := cmd.Context()
 	return client.Exec(ctx, service, execArgs, os.Stdout, os.Stderr)
 }

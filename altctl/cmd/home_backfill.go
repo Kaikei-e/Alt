@@ -49,7 +49,7 @@ func runBackfillTrigger(cmd *cobra.Command, args []string) error {
 		} `json:"job"`
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	ctx, cancel := context.WithTimeout(cmd.Context(), 30*time.Second)
 	defer cancel()
 
 	if err := client.Call(ctx, "TriggerBackfill", reqBody, &resp); err != nil {
@@ -101,7 +101,7 @@ func runBackfillStatus(cmd *cobra.Command, args []string) error {
 		} `json:"job"`
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	ctx, cancel := context.WithTimeout(cmd.Context(), 30*time.Second)
 	defer cancel()
 
 	if err := client.Call(ctx, "GetBackfillStatus", reqBody, &resp); err != nil {
@@ -152,7 +152,7 @@ func runBackfillPause(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("required flag \"job-id\" not set")
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	ctx, cancel := context.WithTimeout(cmd.Context(), 30*time.Second)
 	defer cancel()
 
 	if err := client.Call(ctx, "PauseBackfill", map[string]string{"jobId": jobID}, nil); err != nil {
@@ -181,7 +181,7 @@ func runBackfillResume(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("required flag \"job-id\" not set")
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	ctx, cancel := context.WithTimeout(cmd.Context(), 30*time.Second)
 	defer cancel()
 
 	if err := client.Call(ctx, "ResumeBackfill", map[string]string{"jobId": jobID}, nil); err != nil {

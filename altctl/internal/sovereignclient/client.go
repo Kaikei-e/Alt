@@ -28,13 +28,17 @@ func (e *APIError) Error() string {
 // SovereignClient is an HTTP client for the knowledge-sovereign admin API.
 type SovereignClient struct {
 	BaseURL    string
+	AdminToken string
 	HTTPClient *http.Client
 }
 
-// NewClient creates a new SovereignClient.
-func NewClient(baseURL string) *SovereignClient {
+// NewClient creates a new SovereignClient. adminToken is sent as a Bearer
+// token on every request; pass "" if the target knowledge-sovereign
+// instance has ADMIN_TOKEN unset (admin auth disabled).
+func NewClient(baseURL, adminToken string) *SovereignClient {
 	return &SovereignClient{
-		BaseURL: baseURL,
+		BaseURL:    baseURL,
+		AdminToken: adminToken,
 		HTTPClient: &http.Client{
 			Timeout: 30 * time.Second,
 		},
@@ -68,6 +72,9 @@ func (c *SovereignClient) Post(ctx context.Context, path string, reqBody, respBo
 }
 
 func (c *SovereignClient) do(req *http.Request, respBody interface{}) error {
+	if c.AdminToken != "" {
+		req.Header.Set("Authorization", "Bearer "+c.AdminToken)
+	}
 	resp, err := c.HTTPClient.Do(req)
 	if err != nil {
 		return fmt.Errorf("request %s %s: %w", req.Method, req.URL.Path, err)

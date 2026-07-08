@@ -173,7 +173,7 @@ func runUp(cmd *cobra.Command, args []string) error {
 	if progress != "auto" || (build && cmd.Flags().Changed("progress")) {
 		printer.Header("Building Stacks")
 
-		buildCtx, buildCancel := context.WithTimeout(context.Background(), 30*time.Minute)
+		buildCtx, buildCancel := context.WithTimeout(cmd.Context(), 30*time.Minute)
 		defer buildCancel()
 
 		err = client.Build(buildCtx, compose.BuildOptions{
@@ -190,7 +190,7 @@ func runUp(cmd *cobra.Command, args []string) error {
 	}
 
 	// Start services
-	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	ctx, cancel := context.WithTimeout(cmd.Context(), timeout)
 	defer cancel()
 
 	err = client.Up(ctx, compose.UpOptions{
@@ -206,7 +206,7 @@ func runUp(cmd *cobra.Command, args []string) error {
 		printer.Error("Failed to start stacks: %v", err)
 
 		// Diagnose partial startup
-		psCtx, psCancel := context.WithTimeout(context.Background(), 15*time.Second)
+		psCtx, psCancel := context.WithTimeout(cmd.Context(), 15*time.Second)
 		defer psCancel()
 		statuses, psErr := client.PS(psCtx, files)
 		if psErr == nil {

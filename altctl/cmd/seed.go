@@ -1,7 +1,6 @@
 package cmd
 
 import (
-	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -89,7 +88,7 @@ func runSeed(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
-	ctx := context.Background()
+	ctx := cmd.Context()
 	err = client.Exec(ctx, "db", []string{
 		"psql", "-U", os.Getenv("POSTGRES_USER"), "-d", os.Getenv("POSTGRES_DB"),
 		"-c", string(seedSQL),

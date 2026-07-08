@@ -118,7 +118,7 @@ func runBuild(cmd *cobra.Command, args []string) error {
 	)
 
 	// Build services
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
+	ctx, cancel := context.WithTimeout(cmd.Context(), 30*time.Minute)
 	defer cancel()
 
 	err = client.Build(ctx, compose.BuildOptions{

@@ -20,6 +20,7 @@ func NewDependencyResolver(registry *Registry) *DependencyResolver {
 // Uses topological sort to ensure proper ordering.
 func (r *DependencyResolver) Resolve(stackNames []string) ([]*Stack, error) {
 	visited := make(map[string]bool)
+	visiting := make(map[string]bool) // in-progress (gray) — cycle if revisited
 	var result []*Stack
 
 	var visit func(name string) error
@@ -27,11 +28,16 @@ func (r *DependencyResolver) Resolve(stackNames []string) ([]*Stack, error) {
 		if visited[name] {
 			return nil
 		}
+		if visiting[name] {
+			return fmt.Errorf("circular dependency detected involving stack: %s", name)
+		}
 
 		stack, ok := r.registry.Get(name)
 		if !ok {
 			return fmt.Errorf("unknown stack: %s", name)
 		}
+
+		visiting[name] = true
 
 		// Visit dependencies first (depth-first)
 		for _, dep := range stack.DependsOn {
@@ -40,6 +46,7 @@ func (r *DependencyResolver) Resolve(stackNames []string) ([]*Stack, error) {
 			}
 		}
 
+		visiting[name] = false
 		visited[name] = true
 		result = append(result, stack)
 		return nil

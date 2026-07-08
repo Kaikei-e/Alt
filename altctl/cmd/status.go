@@ -41,13 +41,13 @@ func runStatus(cmd *cobra.Command, args []string) error {
 	interval, _ := cmd.Flags().GetDuration("interval")
 
 	if watch {
-		return watchStatus(interval, jsonOutput)
+		return watchStatus(cmd.Context(), interval, jsonOutput)
 	}
 
-	return showStatus(jsonOutput)
+	return showStatus(cmd.Context(), jsonOutput)
 }
 
-func showStatus(jsonOutput bool) error {
+func showStatus(ctx context.Context, jsonOutput bool) error {
 	printer := newPrinter()
 	registry := stack.NewRegistry()
 
@@ -68,7 +68,7 @@ func showStatus(jsonOutput bool) error {
 	}
 
 	// Get service status
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
 
 	statuses, err := client.PS(ctx, files)
@@ -170,22 +170,25 @@ func outputStatusTable(printer *output.Printer, registry *stack.Registry, status
 	return nil
 }
 
-func watchStatus(interval time.Duration, jsonOutput bool) error {
+func watchStatus(ctx context.Context, interval time.Duration, jsonOutput bool) error {
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 
 	// Initial display
-	if err := showStatus(jsonOutput); err != nil {
+	if err := showStatus(ctx, jsonOutput); err != nil {
 		return err
 	}
 
-	for range ticker.C {
-		// Clear screen (ANSI escape)
-		fmt.Print("\033[H\033[2J")
-		if err := showStatus(jsonOutput); err != nil {
-			return err
+	for {
+		select {
+		case <-ctx.Done():
+			return nil
+		case <-ticker.C:
+			// Clear screen (ANSI escape)
+			fmt.Print("\033[H\033[2J")
+			if err := showStatus(ctx, jsonOutput); err != nil {
+				return err
+			}
 		}
 	}
-
-	return nil
 }

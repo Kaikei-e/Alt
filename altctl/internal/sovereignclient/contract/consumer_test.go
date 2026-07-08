@@ -51,7 +51,7 @@ func newPact(t *testing.T) *consumer.V3HTTPMockProvider {
 }
 
 func clientFor(config consumer.MockServerConfig) *sovereignclient.SovereignClient {
-	return sovereignclient.NewClient(fmt.Sprintf("http://%s:%d", config.Host, config.Port))
+	return sovereignclient.NewClient(fmt.Sprintf("http://%s:%d", config.Host, config.Port), "")
 }
 
 func TestSnapshotCreate(t *testing.T) {
