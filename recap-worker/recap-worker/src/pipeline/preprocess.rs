@@ -10,7 +10,7 @@ use regex::Regex;
 use serde_json::json;
 use std::sync::LazyLock;
 use tokio::sync::Semaphore;
-use tracing::{debug, info};
+use tracing::{debug, info, warn};
 use unicode_normalization::UnicodeNormalization;
 use unicode_segmentation::UnicodeSegmentation;
 use uuid::Uuid;
@@ -210,9 +210,21 @@ pub(crate) async fn preprocess_article(
     // 1. Subworkerによる抽出
     let (cleaned_body, is_html_cleaned) = match subworker.extract_content(&article.body).await {
         Ok(text) if !text.trim().is_empty() => (text, true),
-        _ => {
-            // Fallback to local cleaning if subworker fails or returns empty
-            // Use spawn_blocking for CPU bound local cleaning
+        Ok(_) => {
+            // Extraction succeeded but returned nothing usable — fall back
+            // to local cleaning (use spawn_blocking for CPU-bound work).
+            let body = article.body.clone();
+            let (text, cleaned) = tokio::task::spawn_blocking(move || clean_html(&body)).await??;
+            (text, cleaned)
+        }
+        Err(e) => {
+            // Surface subworker extraction failures — silently falling back
+            // here made a total subworker outage invisible.
+            warn!(
+                article_id = %article.id,
+                error = %e,
+                "subworker content extraction failed, falling back to local cleaning"
+            );
             let body = article.body.clone();
             let (text, cleaned) = tokio::task::spawn_blocking(move || clean_html(&body)).await??;
             (text, cleaned)

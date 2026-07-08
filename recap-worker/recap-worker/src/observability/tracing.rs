@@ -5,13 +5,20 @@ use opentelemetry_sdk::{
     Resource,
     trace::{RandomIdGenerator, Sampler, SdkTracer, SdkTracerProvider},
 };
-use std::sync::Once;
+use std::sync::{Once, OnceLock};
 use tracing::info;
 use tracing_subscriber::{EnvFilter, layer::SubscriberExt, util::SubscriberInitExt};
 
-use super::structured_log::StructuredLogLayer;
+use super::structured_log::Adr98JsonFormat;
 
 static TRACING_INIT: Once = Once::new();
+
+/// Retains the `SdkTracerProvider` built by `init_tracer` so `shutdown()` can
+/// flush its batch exporter. `global::set_tracer_provider` only stores a
+/// type-erased `dyn TracerProvider`, which has no `shutdown` in its trait
+/// object surface — without this, in-flight spans in the batch exporter were
+/// silently dropped on every process exit.
+static TRACER_PROVIDER: OnceLock<SdkTracerProvider> = OnceLock::new();
 
 /// Tracing サブスクライバを一度だけ初期化する。
 ///
@@ -37,7 +44,12 @@ pub fn init() -> Result<()> {
 fn do_init() -> Result<()> {
     let env_filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info"));
 
-    let fmt_layer = tracing_subscriber::fmt::layer().with_target(false).json();
+    // `Adr98JsonFormat` is the sole JSON formatter: it *is* the fmt layer's
+    // event formatter (not a second, separately-registered layer), so every
+    // event is written exactly once, in ADR 98's alt.*-prefixed shape.
+    let fmt_layer = tracing_subscriber::fmt::layer()
+        .with_target(false)
+        .event_format(Adr98JsonFormat);
 
     // Check if OTel is enabled via environment variable
     let otel_endpoint = std::env::var("OTEL_EXPORTER_OTLP_ENDPOINT").ok();
@@ -64,12 +76,11 @@ fn do_init() -> Result<()> {
                 );
             }
             Err(e) => {
-                // Fall back to standard tracing with StructuredLogLayer
-                let structured_layer = StructuredLogLayer;
+                // Fall back to standard tracing; `fmt_layer` already applies
+                // the ADR 98 formatting via `Adr98JsonFormat`.
                 tracing_subscriber::registry()
                     .with(env_filter)
                     .with(fmt_layer)
-                    .with(structured_layer)
                     .try_init()
                     .map_err(|e: tracing_subscriber::util::TryInitError| {
                         Error::msg(e.to_string())
@@ -82,12 +93,11 @@ fn do_init() -> Result<()> {
             }
         }
     } else {
-        // Standard tracing with StructuredLogLayer for ADR 98 compliance
-        let structured_layer = StructuredLogLayer;
+        // Standard tracing; `fmt_layer` already applies the ADR 98
+        // alt.*-prefixed formatting via `Adr98JsonFormat`.
         tracing_subscriber::registry()
             .with(env_filter)
             .with(fmt_layer)
-            .with(structured_layer)
             .try_init()
             .map_err(|e: tracing_subscriber::util::TryInitError| Error::msg(e.to_string()))?;
         info!(otel_enabled = false, "Standard tracing initialized");
@@ -131,7 +141,10 @@ fn init_tracer(endpoint: &str) -> Result<SdkTracer> {
     let tracer = tracer_provider.tracer("recap-worker");
 
     // グローバルトレーサープロバイダーを設定
-    global::set_tracer_provider(tracer_provider);
+    global::set_tracer_provider(tracer_provider.clone());
+    // Retain our own typed handle too — `global::set_tracer_provider` only
+    // stores it behind `dyn TracerProvider`, which can't be shut down.
+    let _ = TRACER_PROVIDER.set(tracer_provider);
 
     Ok(tracer)
 }
@@ -139,18 +152,10 @@ fn init_tracer(endpoint: &str) -> Result<SdkTracer> {
 /// OpenTelemetryのグローバルシャットダウンを実行し、未送信のスパンをフラッシュする。
 ///
 /// アプリケーション終了時に呼び出してください。
-///
-/// # Note
-/// This is currently a documented no-op: `SdkTracerProvider` is not
-/// retained anywhere after `init_tracer` hands it to
-/// `global::set_tracer_provider`, so there is nothing to flush yet (see
-/// the 2026-07 review MED finding at this file). Wiring the call itself —
-/// so a future fix to actually retain the provider takes effect
-/// immediately — is this PR's scope; making the flush itself real is
-/// tracked separately.
 pub fn shutdown() {
-    // OpenTelemetry 0.31.0では、グローバルトレーサープロバイダーから直接
-    // SdkTracerProviderを取得できないため、shutdownは個別に管理する必要があります。
-    // 実際の使用時は、init_tracerで返されたSdkTracerProviderを保持し、
-    // アプリケーション終了時に直接shutdown()を呼び出してください。
+    if let Some(provider) = TRACER_PROVIDER.get() {
+        if let Err(e) = provider.shutdown() {
+            tracing::warn!(error = ?e, "failed to shut down OTel tracer provider cleanly");
+        }
+    }
 }

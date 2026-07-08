@@ -11,6 +11,7 @@ use crate::{
     scheduler::JobContext,
     store::{dao::RecapDao, models::RawArticle},
     util::retry::{RetryConfig, is_retryable_error},
+    util::text::hash_text,
 };
 
 use super::tag_signal::TagSignal;
@@ -278,8 +279,7 @@ fn convert_to_raw_articles(articles: &[AltBackendArticle]) -> Vec<RawArticle> {
     articles
         .iter()
         .map(|article| {
-            // 正規化ハッシュを計算（現時点では単純なハッシュ、後でXXH3に置き換え）
-            let normalized_hash = format!("{:x}", md5::compute(&article.fulltext));
+            let normalized_hash = format!("{:016x}", hash_text(&article.fulltext));
 
             RawArticle::new(
                 article.article_id.clone(),

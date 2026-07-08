@@ -69,6 +69,7 @@ impl QueueStore {
                 SELECT id
                 FROM classification_job_queue
                 WHERE status IN ('pending', 'retrying')
+                  AND (next_retry_at IS NULL OR next_retry_at <= NOW())
                 ORDER BY created_at ASC
                 FOR UPDATE SKIP LOCKED
                 LIMIT 1
@@ -145,20 +146,32 @@ impl QueueStore {
         Ok(())
     }
 
-    /// Mark a job as retrying (increment retry_count)
-    pub(crate) async fn mark_retrying(&self, job_id: QueuedJobId, error: &str) -> Result<()> {
+    /// Mark a job as retrying (increment retry_count) and defer its next
+    /// pick until `retry_delay_ms` from now. The delay lives in
+    /// `next_retry_at` rather than in the worker holding its semaphore
+    /// permit through a `sleep()`, so a retrying row isn't immediately
+    /// re-pickable by another worker and the permit is freed right away.
+    pub(crate) async fn mark_retrying(
+        &self,
+        job_id: QueuedJobId,
+        error: &str,
+        retry_delay_ms: u64,
+    ) -> Result<()> {
+        let retry_delay_ms = i64::try_from(retry_delay_ms).unwrap_or(i64::MAX);
         sqlx::query(
             r"
             UPDATE classification_job_queue
             SET status = 'retrying',
                 error_message = $2,
                 retry_count = retry_count + 1,
-                started_at = NULL
+                started_at = NULL,
+                next_retry_at = NOW() + make_interval(secs => $3::double precision / 1000)
             WHERE id = $1
             ",
         )
         .bind(job_id)
         .bind(error)
+        .bind(retry_delay_ms)
         .execute(&self.pool)
         .await
         .context("failed to mark job as retrying")?;
@@ -229,7 +242,9 @@ impl QueueStore {
         .await
         .context("failed to check job completion")?;
 
-        let pending_count: i64 = row.try_get("pending_count").unwrap_or(0);
+        let pending_count: i64 = row
+            .try_get("pending_count")
+            .context("failed to decode pending_count")?;
         Ok(pending_count == 0)
     }
 

@@ -278,6 +278,13 @@ pub trait RecapDao: Send + Sync {
         run_id: i64,
     ) -> anyhow::Result<HashMap<String, Vec<i64>>>;
 
+    /// `recap_outputs` と `recap_sections` を単一トランザクションで書き込む。
+    async fn persist_genre_output(
+        &self,
+        output: &RecapOutput,
+        genre: &PersistedGenre,
+    ) -> anyhow::Result<()>;
+
     // === SubworkerDao methods ===
     async fn insert_subworker_run(&self, run: &NewSubworkerRun) -> anyhow::Result<i64>;
 
@@ -725,6 +732,14 @@ where
         run_id: i64,
     ) -> anyhow::Result<HashMap<String, Vec<i64>>> {
         OutputDao::get_sentence_ids_by_run(self, run_id).await
+    }
+
+    async fn persist_genre_output(
+        &self,
+        output: &RecapOutput,
+        genre: &PersistedGenre,
+    ) -> anyhow::Result<()> {
+        OutputDao::persist_genre_output(self, output, genre).await
     }
 
     async fn insert_subworker_run(&self, run: &NewSubworkerRun) -> anyhow::Result<i64> {

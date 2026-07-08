@@ -264,8 +264,14 @@ impl RecapDao {
         Ok(())
     }
 
+    /// `executor` は `&PgPool` と `&mut Transaction<'_, Postgres>` の両方を
+    /// 受け付ける — `persist_genre_output` が `upsert_recap_output` と
+    /// 同一トランザクションで実行するため。
     #[allow(dead_code)]
-    pub(crate) async fn upsert_genre(pool: &PgPool, genre: &PersistedGenre) -> Result<()> {
+    pub(crate) async fn upsert_genre<'e, E>(executor: E, genre: &PersistedGenre) -> Result<()>
+    where
+        E: sqlx::postgres::PgExecutor<'e>,
+    {
         ensure!(
             !genre.genre.trim().is_empty(),
             "genre payload must include a non-empty genre name"
@@ -282,7 +288,7 @@ impl RecapDao {
         .bind(genre.job_id)
         .bind(&genre.genre)
         .bind(&genre.response_id)
-        .execute(pool)
+        .execute(executor)
         .await
         .context("failed to upsert recap section")?;
 

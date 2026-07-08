@@ -58,7 +58,11 @@ pub(crate) mod clients;
 pub mod config;
 pub(crate) mod error;
 pub mod evaluation;
-pub mod language_detection;
+// Not part of any bench/replay-bin/integration-test surface (unlike its
+// sibling `pub` modules below) — only consumed internally via
+// `classification::tokenizer`, so it doesn't need to be reachable
+// crate-externally.
+pub(crate) mod language_detection;
 pub mod observability;
 pub mod pipeline;
 pub(crate) mod queue;

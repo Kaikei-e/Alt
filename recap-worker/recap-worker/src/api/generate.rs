@@ -64,7 +64,7 @@ fn trigger_recap(
     let job_id = Uuid::new_v4();
     let response_genres = genres.clone();
     let scheduled_genre_count = response_genres.len();
-    let job = JobContext::new_with_window(job_id, genres, window_days);
+    let job = JobContext::new_manual(job_id, genres, window_days);
     let scheduler = state.scheduler().clone();
 
     tokio::spawn(async move {
@@ -152,6 +152,11 @@ mod tests {
                     "HUGGING_FACE_TOKEN_PATH",
                     Some("/tmp/test-token-which-does-not-exist"),
                 ),
+                // This test only exercises the HTTP handler shape, not token
+                // accuracy, so opt into the degraded tokenizer instead of
+                // failing `ComponentRegistry::build` closed (no real HF
+                // token is available in the test environment).
+                ("TOKEN_COUNTER_ALLOW_DUMMY_FALLBACK", Some("true")),
             ],
             async {
                 let config = Config::from_env().expect("config loads");

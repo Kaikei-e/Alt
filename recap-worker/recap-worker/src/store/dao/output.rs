@@ -48,11 +48,18 @@ impl RecapDao {
     }
 
     /// 生成済みリキャップ出力を保存する。
+    ///
+    /// `executor` は `&PgPool` と `&mut Transaction<'_, Postgres>` の両方を
+    /// 受け付ける (`sqlx::postgres::PgExecutor`) — `persist_genre_output` が
+    /// これと `upsert_genre` を同一トランザクションで実行するため。
     #[allow(dead_code)]
-    pub async fn upsert_recap_output(
-        pool: &PgPool,
+    pub async fn upsert_recap_output<'e, E>(
+        executor: E,
         output: &crate::store::models::RecapOutput,
-    ) -> Result<()> {
+    ) -> Result<()>
+    where
+        E: sqlx::postgres::PgExecutor<'e>,
+    {
         let tags_json = serde_json::to_value(&output.tags).unwrap_or_default();
         sqlx::query(
             r"
@@ -77,7 +84,7 @@ impl RecapDao {
         .bind(Json(output.bullets_ja.clone()))
         .bind(Json(output.body_json.clone()))
         .bind(Json(tags_json))
-        .execute(pool)
+        .execute(executor)
         .await
         .context("failed to upsert recap_outputs record")?;
 

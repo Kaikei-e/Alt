@@ -11,6 +11,7 @@ use super::types::{
     DEFAULT_MAX_SENTENCES_TOTAL, DEFAULT_MMR_LAMBDA, DEFAULT_UMAP_N_COMPONENTS,
     INITIAL_POLL_INTERVAL_MS, MAX_POLL_ATTEMPTS, MAX_POLL_INTERVAL_MS, MIN_FALLBACK_DOCUMENTS,
     MIN_PARAGRAPH_LEN, POLL_REQUEST_RETRIES, POLL_REQUEST_RETRY_DELAY_MS,
+    POLL_REQUEST_TIMEOUT_SECS,
 };
 use super::utils::{summarize_validation_errors, truncate_error_message};
 use crate::clients::subworker::SubworkerClient;
@@ -18,6 +19,7 @@ use crate::pipeline::evidence::EvidenceCorpus;
 use crate::schema::{subworker::CLUSTERING_RESPONSE_SCHEMA, validate_json};
 use crate::util::retry::{RetryConfig, is_retryable_error};
 use serde_json::Value;
+use xxhash_rust::xxh3::xxh3_64;
 
 impl SubworkerClient {
     /// フォールバック用の単一クラスタレスポンスを生成する。
@@ -399,7 +401,13 @@ impl SubworkerClient {
         let mut last_error = None;
 
         for retry in 0..POLL_REQUEST_RETRIES {
-            match self.client.get(url.clone()).send().await {
+            match self
+                .client
+                .get(url.clone())
+                .timeout(Duration::from_secs(POLL_REQUEST_TIMEOUT_SECS))
+                .send()
+                .await
+            {
                 Ok(response) => return Ok(response),
                 Err(e) => {
                     if is_retryable_error(&e) {
@@ -640,7 +648,7 @@ fn compute_corpus_digest(request: &ClusterJobRequest<'_>) -> String {
         digest_input.push_str(&params_json);
     }
 
-    format!("{:x}", md5::compute(digest_input))
+    format!("{:016x}", xxh3_64(digest_input.as_bytes()))
 }
 
 #[cfg(test)]

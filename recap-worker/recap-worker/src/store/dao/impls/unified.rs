@@ -3,7 +3,7 @@
 //! This module provides a single implementation that combines all DAO traits.
 //! It maintains backward compatibility while supporting the new focused trait system.
 
-use anyhow::Result;
+use anyhow::{Context, Result};
 use chrono::{DateTime, NaiveDate, Utc};
 use serde_json::Value;
 use sqlx::PgPool;
@@ -367,6 +367,27 @@ impl OutputDao for UnifiedDao {
 
     async fn get_sentence_ids_by_run(&self, run_id: i64) -> Result<HashMap<String, Vec<i64>>> {
         crate::store::dao::output::RecapDao::get_sentence_ids_by_run(&self.pool, run_id).await
+    }
+
+    async fn persist_genre_output(
+        &self,
+        output: &RecapOutput,
+        genre: &PersistedGenre,
+    ) -> Result<()> {
+        let mut tx = self
+            .pool
+            .begin()
+            .await
+            .context("failed to begin persist_genre_output transaction")?;
+
+        crate::store::dao::output::RecapDao::upsert_recap_output(&mut *tx, output).await?;
+        crate::store::dao::subworker::RecapDao::upsert_genre(&mut *tx, genre).await?;
+
+        tx.commit()
+            .await
+            .context("failed to commit persist_genre_output transaction")?;
+
+        Ok(())
     }
 }
 

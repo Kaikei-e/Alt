@@ -46,16 +46,7 @@ impl<'a> StageExecutor<'a> {
             let res = self.orchestrator.stages().fetch.fetch(job).await?;
             // 軽量版を保存（記事IDのみ）
             let lightweight = res.to_lightweight();
-            if let Err(e) = self.save_state(job.job_id, "fetch", &lightweight).await {
-                // 詳細なエラーメッセージを記録
-                let error_msg = format!("{:#}", e);
-                let _ = self
-                    .orchestrator
-                    .recap_dao()
-                    .insert_failed_task(job.job_id, "fetch", None, Some(&error_msg))
-                    .await;
-                return Err(e).context("failed to save fetch stage state");
-            }
+            self.save_state(job.job_id, "fetch", &lightweight).await?;
             Ok(res)
         }
     }
@@ -278,7 +269,33 @@ impl StageExecutor<'_> {
         serde_json::from_value(state_json).context("failed to deserialize stage state")
     }
 
+    /// Save this stage's checkpoint state. On failure, records the failure
+    /// against `stage` via `insert_failed_task` before propagating the
+    /// error — previously only `execute_fetch_stage` did this explicitly,
+    /// so a `save_state` failure in every other stage (preprocess/dedup/
+    /// genre/select/dispatch) surfaced with the wrong stage label at the
+    /// `Scheduler::run_job` catch-all (`context.current_stage` is never
+    /// updated mid-pipeline, so it falls back to the generic
+    /// `"pipeline_execution"` label there).
     async fn save_state<T: serde::Serialize>(
+        &self,
+        job_id: Uuid,
+        stage: &str,
+        state_data: &T,
+    ) -> Result<()> {
+        if let Err(e) = self.save_state_inner(job_id, stage, state_data).await {
+            let error_msg = format!("{e:#}");
+            let _ = self
+                .orchestrator
+                .recap_dao()
+                .insert_failed_task(job_id, stage, None, Some(&error_msg))
+                .await;
+            return Err(e).with_context(|| format!("failed to save {stage} stage state"));
+        }
+        Ok(())
+    }
+
+    async fn save_state_inner<T: serde::Serialize>(
         &self,
         job_id: Uuid,
         stage: &str,

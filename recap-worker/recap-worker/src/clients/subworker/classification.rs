@@ -9,7 +9,7 @@ use super::types::{
     CLASSIFY_POST_BACKOFF_MS, CLASSIFY_POST_RETRIES, ClassificationJobResponse,
     ClassificationRequest, ClassificationResult, INITIAL_POLL_INTERVAL_MS, MAX_POLL_ATTEMPTS,
     MAX_POLL_INTERVAL_MS, POLL_REQUEST_RETRIES, POLL_REQUEST_RETRY_DELAY_MS,
-    SUBWORKER_TIMEOUT_SECS,
+    POLL_REQUEST_TIMEOUT_SECS, SUBWORKER_TIMEOUT_SECS,
 };
 use super::utils::truncate_error_message;
 use crate::clients::subworker::SubworkerClient;
@@ -418,7 +418,13 @@ impl SubworkerClient {
         let mut last_error = None;
 
         for retry in 0..POLL_REQUEST_RETRIES {
-            match self.client.get(url.clone()).send().await {
+            match self
+                .client
+                .get(url.clone())
+                .timeout(Duration::from_secs(POLL_REQUEST_TIMEOUT_SECS))
+                .send()
+                .await
+            {
                 Ok(response) => return Ok(response),
                 Err(e) => {
                     if e.is_timeout() || e.is_connect() {

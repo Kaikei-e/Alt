@@ -27,31 +27,56 @@ pub(crate) struct NewsCreatorClient {
 }
 
 impl NewsCreatorClient {
-    pub(crate) fn new(base_url: impl Into<String>, summary_timeout: Duration) -> Result<Self> {
+    pub(crate) async fn new(
+        base_url: impl Into<String>,
+        summary_timeout: Duration,
+    ) -> Result<Self> {
         let client = Client::builder()
             .timeout(Duration::from_secs(5))
             .build()
             .context("failed to build news-creator client")?;
-        Self::new_with_client(base_url, summary_timeout, client)
+        Self::new_with_client(base_url, summary_timeout, client).await
     }
 
     /// Construct with an externally-built `reqwest::Client`. Used by the
     /// mTLS wiring in `app.rs` to inject an identity-presenting client.
-    pub(crate) fn new_with_client(
+    pub(crate) async fn new_with_client(
         base_url: impl Into<String>,
         summary_timeout: Duration,
         client: Client,
     ) -> Result<Self> {
         let base_url = Url::parse(&base_url.into()).context("invalid news-creator base URL")?;
 
-        // Try to initialize TokenCounter, fallback to dummy if it fails (e.g., in test environments)
-        let token_counter = TokenCounter::new().unwrap_or_else(|e| {
-            tracing::warn!(
-                "Failed to initialize TokenCounter: {}. Using dummy tokenizer (character count only).",
-                e
-            );
-            TokenCounter::dummy()
-        });
+        // `TokenCounter::new` does a blocking HF Hub download; run it off the
+        // async runtime's worker threads so building the component registry
+        // doesn't stall the whole executor during startup.
+        let token_counter = match tokio::task::spawn_blocking(TokenCounter::new)
+            .await
+            .context("TokenCounter::new panicked")?
+        {
+            Ok(counter) => counter,
+            Err(e) => {
+                // Silently degrading to a character-count dummy here would
+                // let the token budget run on wrong numbers for every LLM
+                // call with no visibility (rule 8). Fail closed unless an
+                // operator explicitly opts into the degraded mode.
+                let allow_dummy_fallback = std::env::var("TOKEN_COUNTER_ALLOW_DUMMY_FALLBACK")
+                    .is_ok_and(|v| v.eq_ignore_ascii_case("true") || v == "1");
+                if !allow_dummy_fallback {
+                    return Err(e).context(
+                        "failed to initialize TokenCounter (set \
+                         TOKEN_COUNTER_ALLOW_DUMMY_FALLBACK=true to start anyway with a \
+                         degraded character-count tokenizer)",
+                    );
+                }
+                tracing::warn!(
+                    error = %e,
+                    "TOKEN_COUNTER_ALLOW_DUMMY_FALLBACK=true: starting with a degraded \
+                     character-count tokenizer instead of failing closed"
+                );
+                TokenCounter::dummy()
+            }
+        };
 
         Ok(Self {
             client,

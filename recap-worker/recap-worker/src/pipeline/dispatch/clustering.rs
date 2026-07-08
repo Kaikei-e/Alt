@@ -175,7 +175,6 @@ impl ClusteringOps<'_> {
                 let genre_clone = genre.clone();
                 let semaphore = Arc::clone(self.concurrency_semaphore);
 
-                let genre_timeout = self.config.clustering_genre_timeout();
                 let task = tokio::spawn(async move {
                     // Acquire permission to run (throttling)
                     let _permit = semaphore
@@ -198,23 +197,15 @@ impl ClusteringOps<'_> {
                         concurrency_semaphore: &semaphore,
                     };
 
-                    // timeoutで包んで、stuckしても他のジャンルに影響しないようにする
-                    let result = timeout(
-                        genre_timeout,
-                        ops.cluster_genre(job_id, &genre_clone, corpus),
-                    )
-                    .await
-                    .unwrap_or_else(|_| {
-                        Err(anyhow::anyhow!(
-                            "clustering genre {} timed out after {}s",
-                            genre_clone,
-                            genre_timeout.as_secs()
-                        ))
-                    });
-                    (genre_clone, result)
+                    // `cluster_genre` already deadline-manages itself (it wraps the
+                    // subworker call in its own `timeout(genre_timeout, ..)`), so
+                    // wrapping it in a second identical timeout here added no
+                    // additional protection — just a redundant layer with the
+                    // deadline duplicated in two places.
+                    ops.cluster_genre(job_id, &genre_clone, corpus).await
                 });
 
-                tasks.push(task);
+                tasks.push((genre.clone(), task));
             } else {
                 warn!(
                     job_id = %job.job_id,
@@ -225,39 +216,49 @@ impl ClusteringOps<'_> {
         }
 
         // すべてのクラスタリングタスクを待機
-        let results = futures::future::join_all(tasks).await;
         let mut clustering_results: HashMap<String, Result<ClusteringResponse>> = HashMap::new();
 
-        for result in results {
-            match result {
-                Ok((genre, clustering_result)) => {
+        for (genre, task) in tasks {
+            match task.await {
+                Ok(clustering_result) => {
                     clustering_results.insert(genre, clustering_result);
                 }
-                Err(join_error) => match join_error.try_into_panic() {
-                    Ok(panic_payload) => {
-                        let panic_message = panic_payload
-                            .downcast_ref::<&str>()
-                            .map(|s| (*s).to_string())
-                            .or_else(|| {
-                                panic_payload
-                                    .downcast_ref::<String>()
-                                    .map(std::string::ToString::to_string)
-                            })
-                            .unwrap_or_else(|| "unknown panic payload".to_string());
-                        error!(
-                            job_id = %job.job_id,
-                            panic_message,
-                            "clustering task panicked"
-                        );
-                    }
-                    Err(join_error) => {
-                        warn!(
-                            job_id = %job.job_id,
-                            error = ?join_error,
-                            "clustering task failed"
-                        );
-                    }
-                },
+                Err(join_error) => {
+                    // A panicked/cancelled task must still surface as a failure
+                    // for this genre — leaving it out of `clustering_results`
+                    // makes dispatch.rs misclassify it as "no evidence (no
+                    // articles assigned)" instead of a real clustering failure.
+                    let message = match join_error.try_into_panic() {
+                        Ok(panic_payload) => {
+                            let panic_message = panic_payload
+                                .downcast_ref::<&str>()
+                                .map(|s| (*s).to_string())
+                                .or_else(|| {
+                                    panic_payload
+                                        .downcast_ref::<String>()
+                                        .map(std::string::ToString::to_string)
+                                })
+                                .unwrap_or_else(|| "unknown panic payload".to_string());
+                            error!(
+                                job_id = %job.job_id,
+                                genre = %genre,
+                                panic_message,
+                                "clustering task panicked"
+                            );
+                            format!("clustering task panicked: {panic_message}")
+                        }
+                        Err(join_error) => {
+                            warn!(
+                                job_id = %job.job_id,
+                                genre = %genre,
+                                error = ?join_error,
+                                "clustering task failed"
+                            );
+                            format!("clustering task failed: {join_error}")
+                        }
+                    };
+                    clustering_results.insert(genre, Err(anyhow::anyhow!(message)));
+                }
             }
         }
 

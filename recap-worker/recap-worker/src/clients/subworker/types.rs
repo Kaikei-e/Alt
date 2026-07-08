@@ -32,6 +32,12 @@ pub(crate) const CLASSIFY_POST_BACKOFF_MS: u64 = 5_000;
 pub(crate) const CLASSIFY_CHUNK_SIZE: usize = 200;
 pub(crate) const POLL_REQUEST_RETRIES: usize = 3;
 pub(crate) const POLL_REQUEST_RETRY_DELAY_MS: u64 = 1_000;
+/// Per-request timeout override for status-polling GETs. These GETs are
+/// short round-trips issued every couple of seconds; without this override
+/// they'd inherit the client's blanket `SUBWORKER_TIMEOUT_SECS` (1h),
+/// letting a single hung poll block the whole classification/clustering
+/// loop for up to an hour instead of failing fast and retrying.
+pub(crate) const POLL_REQUEST_TIMEOUT_SECS: u64 = 30;
 
 // Clustering types
 #[allow(dead_code)]

@@ -452,8 +452,14 @@ mod tests {
             .expect_err("count mismatch must be a hard error, not a silent misalignment");
 
         let message = err.to_string();
-        assert!(message.contains('3'), "error should mention article count: {message}");
-        assert!(message.contains('2'), "error should mention result count: {message}");
+        assert!(
+            message.contains('3'),
+            "error should mention article count: {message}"
+        );
+        assert!(
+            message.contains('2'),
+            "error should mention result count: {message}"
+        );
     }
 
     #[tokio::test]

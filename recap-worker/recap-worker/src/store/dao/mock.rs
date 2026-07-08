@@ -452,6 +452,18 @@ impl RecapDao for MockRecapDao {
     }
 
     #[allow(dead_code)]
+    async fn persist_genre_output(
+        &self,
+        output: &crate::store::models::RecapOutput,
+        genre: &PersistedGenre,
+    ) -> Result<()> {
+        // In-memory recorder with no real transactions to span, so the two
+        // writes are simply sequenced.
+        RecapDao::upsert_recap_output(self, output).await?;
+        RecapDao::upsert_genre(self, genre).await
+    }
+
+    #[allow(dead_code)]
     async fn get_sentence_ids_by_run(
         &self,
         run_id: i64,
