@@ -32,14 +32,21 @@ interface LoadTestConfig {
 async function runLoadTest(config: LoadTestConfig): Promise<LoadTestResult> {
   const results: number[] = [];
   const errors = new Map<number, number>();
-  let running = true;
 
   const startTime = performance.now();
   const endTime = startTime + config.duration * 1000;
 
+  // Aborts all in-flight requests once the test duration elapses, so a
+  // hung request can't block Promise.all past endTime.
+  const durationController = new AbortController();
+  const durationTimer = setTimeout(
+    () => durationController.abort(),
+    config.duration * 1000,
+  );
+
   // Create worker function
   const worker = async (): Promise<void> => {
-    while (running && performance.now() < endTime) {
+    while (!durationController.signal.aborted && performance.now() < endTime) {
       const requestStart = performance.now();
 
       try {
@@ -55,9 +62,18 @@ async function runLoadTest(config: LoadTestConfig): Promise<LoadTestResult> {
         const response = await fetch(config.url, {
           method: config.method,
           headers,
+          signal: AbortSignal.any([
+            durationController.signal,
+            AbortSignal.timeout(10_000),
+          ]),
         });
 
         const responseTime = performance.now() - requestStart;
+
+        // Drain the body so the connection is released back to the
+        // keep-alive pool; otherwise throughput is skewed by connection
+        // exhaustion under load.
+        await response.body?.cancel();
 
         if (response.ok) {
           results.push(responseTime);
@@ -80,7 +96,7 @@ async function runLoadTest(config: LoadTestConfig): Promise<LoadTestResult> {
 
   // Wait for completion
   await Promise.all(workers);
-  running = false;
+  clearTimeout(durationTimer);
 
   const totalDuration = performance.now() - startTime;
 

@@ -5,12 +5,20 @@ package repository
 
 import (
 	"context"
+	"errors"
 	"time"
 
 	"pre-processor-sidecar/models"
 
 	"github.com/google/uuid"
 )
+
+// ErrSyncStateNotFound is returned by SyncStateRepository lookups when no row
+// matches — a sentinel so callers can distinguish "no sync state yet" (safe
+// to start a fresh fetch from the beginning) from a real repository error
+// (DB connection failure, etc.), which must abort instead of silently
+// discarding the continuation token and re-fetching from scratch.
+var ErrSyncStateNotFound = errors.New("sync state not found")
 
 // ArticleRepository interface for article database operations
 type ArticleRepository interface {

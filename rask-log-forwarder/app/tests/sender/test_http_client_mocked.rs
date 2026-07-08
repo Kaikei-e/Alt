@@ -1,4 +1,4 @@
-use rask_log_forwarder::sender::{ClientError, NewConnectionStats as ConnectionStats};
+use rask_log_forwarder::sender::{ClientError, ConnectionStats};
 use std::time::Duration;
 
 // 簡単なモック構造体を手動で作成
@@ -44,7 +44,9 @@ impl MockHttpClient {
     }
 
     pub async fn health_check(&self) -> Result<(), ClientError> {
-        if self.should_fail && let Some(ref error) = self.error_type {
+        if self.should_fail
+            && let Some(ref error) = self.error_type
+        {
             match error {
                 ClientError::HttpError { status, message } => {
                     return Err(ClientError::HttpError {

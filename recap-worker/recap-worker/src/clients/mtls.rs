@@ -11,7 +11,7 @@
 
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
-use std::time::{Duration, SystemTime};
+use std::time::{Duration, Instant, SystemTime};
 
 use anyhow::{Context, Result, anyhow};
 use reqwest::Client;
@@ -61,6 +61,7 @@ pub(crate) struct ReloadingCertResolver {
     cert_path: PathBuf,
     key_path: PathBuf,
     state: Mutex<Option<ResolverState>>,
+    check_interval: Duration,
 }
 
 #[derive(Debug)]
@@ -68,7 +69,16 @@ struct ResolverState {
     certified: Arc<CertifiedKey>,
     cert_mtime: SystemTime,
     key_mtime: SystemTime,
+    checked_at: Instant,
 }
+
+/// Minimum interval between `fs::metadata` mtime checks. TLS handshakes can
+/// arrive far more often than a cert ever rotates; re-`stat`-ing both files
+/// under the lock on every single handshake serializes otherwise-independent
+/// handshakes on a tokio worker thread for no benefit. A few seconds of
+/// rotation latency is an acceptable tradeoff for a cert that only rotates
+/// on a multi-day cadence.
+const RELOAD_CHECK_INTERVAL: Duration = Duration::from_secs(5);
 
 impl ReloadingCertResolver {
     /// Load the cert/key pair for the first time; return an error if the
@@ -77,10 +87,22 @@ impl ReloadingCertResolver {
         cert_path: impl Into<PathBuf>,
         key_path: impl Into<PathBuf>,
     ) -> Result<Arc<Self>> {
+        Self::new_with_check_interval(cert_path, key_path, RELOAD_CHECK_INTERVAL)
+    }
+
+    /// Same as `new`, but with an explicit mtime-recheck interval. Split out
+    /// so tests can use a zero interval and observe reloads immediately
+    /// instead of waiting out the production `RELOAD_CHECK_INTERVAL`.
+    fn new_with_check_interval(
+        cert_path: impl Into<PathBuf>,
+        key_path: impl Into<PathBuf>,
+        check_interval: Duration,
+    ) -> Result<Arc<Self>> {
         let resolver = Arc::new(Self {
             cert_path: cert_path.into(),
             key_path: key_path.into(),
             state: Mutex::new(None),
+            check_interval,
         });
         if resolver.current().is_none() {
             return Err(anyhow!(
@@ -100,7 +122,15 @@ impl ReloadingCertResolver {
         let mut guard = self
             .state
             .lock()
-            .expect("ReloadingCertResolver state mutex poisoned");
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+
+        // Skip the `stat()` round-trip entirely if we checked recently — the
+        // common case on a busy handshake path.
+        if let Some(state) = guard.as_ref() {
+            if state.checked_at.elapsed() < self.check_interval {
+                return Some(Arc::clone(&state.certified));
+            }
+        }
 
         let cert_mtime = mtime_of(&self.cert_path);
         let key_mtime = mtime_of(&self.key_path);
@@ -113,24 +143,30 @@ impl ReloadingCertResolver {
         };
 
         if needs_reload {
-            match load_certified_key(&self.cert_path, &self.key_path) {
-                Ok(certified) => {
-                    let cm = cert_mtime.unwrap_or(SystemTime::UNIX_EPOCH);
-                    let km = key_mtime.unwrap_or(SystemTime::UNIX_EPOCH);
-                    *guard = Some(ResolverState {
-                        certified: Arc::clone(&certified),
-                        cert_mtime: cm,
-                        key_mtime: km,
-                    });
-                    return Some(certified);
-                }
-                Err(_) => {
-                    // Fall back to the last good value if we have one.
-                    return guard.as_ref().map(|s| Arc::clone(&s.certified));
-                }
+            if let Ok(certified) = load_certified_key(&self.cert_path, &self.key_path) {
+                let cm = cert_mtime.unwrap_or(SystemTime::UNIX_EPOCH);
+                let km = key_mtime.unwrap_or(SystemTime::UNIX_EPOCH);
+                *guard = Some(ResolverState {
+                    certified: Arc::clone(&certified),
+                    cert_mtime: cm,
+                    key_mtime: km,
+                    checked_at: Instant::now(),
+                });
+                return Some(certified);
             }
+            // Fall back to the last good value if we have one, but still
+            // bump `checked_at` so a persistently broken file doesn't force
+            // a `stat`+read on every handshake.
+            if let Some(state) = guard.as_mut() {
+                state.checked_at = Instant::now();
+                return Some(Arc::clone(&state.certified));
+            }
+            return None;
         }
 
+        if let Some(state) = guard.as_mut() {
+            state.checked_at = Instant::now();
+        }
         guard.as_ref().map(|s| Arc::clone(&s.certified))
     }
 }
@@ -287,7 +323,10 @@ mod tests {
         let dir = TempDir::new().unwrap();
         let (cert, key) = write_test_identity(&dir, "initial");
 
-        let resolver = ReloadingCertResolver::new(&cert, &key).expect("initial load");
+        // Zero check interval: assert the mtime-driven reload path itself,
+        // independent of the production `RELOAD_CHECK_INTERVAL` cadence.
+        let resolver = ReloadingCertResolver::new_with_check_interval(&cert, &key, Duration::ZERO)
+            .expect("initial load");
         let first = resolver.current().expect("first resolve");
         let first_der = leaf_der(&first);
 
@@ -324,7 +363,8 @@ mod tests {
         let dir = TempDir::new().unwrap();
         let (cert, key) = write_test_identity(&dir, "fallback");
 
-        let resolver = ReloadingCertResolver::new(&cert, &key).expect("initial load");
+        let resolver = ReloadingCertResolver::new_with_check_interval(&cert, &key, Duration::ZERO)
+            .expect("initial load");
         let before = resolver.current().expect("first resolve");
 
         // Truncate the cert to simulate the mid-rotation window (file exists

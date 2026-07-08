@@ -51,7 +51,8 @@ pub(crate) async fn receive_genre_learning(
             config_payload.insert(
                 "graph_margin".to_string(),
                 serde_json::Value::Number(
-                    serde_json::Number::from_f64(f64::from(graph_margin)).unwrap(),
+                    serde_json::Number::from_f64(f64::from(graph_margin))
+                        .unwrap_or_else(|| 0.into()),
                 ),
             );
         }
@@ -59,7 +60,8 @@ pub(crate) async fn receive_genre_learning(
             config_payload.insert(
                 "weighted_tie_break_margin".to_string(),
                 serde_json::Value::Number(
-                    serde_json::Number::from_f64(f64::from(weighted_tie_break_margin)).unwrap(),
+                    serde_json::Number::from_f64(f64::from(weighted_tie_break_margin))
+                        .unwrap_or_else(|| 0.into()),
                 ),
             );
         }
@@ -67,7 +69,8 @@ pub(crate) async fn receive_genre_learning(
             config_payload.insert(
                 "tag_confidence_gate".to_string(),
                 serde_json::Value::Number(
-                    serde_json::Number::from_f64(f64::from(tag_confidence_gate)).unwrap(),
+                    serde_json::Number::from_f64(f64::from(tag_confidence_gate))
+                        .unwrap_or_else(|| 0.into()),
                 ),
             );
         }
@@ -75,7 +78,8 @@ pub(crate) async fn receive_genre_learning(
             config_payload.insert(
                 "boost_threshold".to_string(),
                 serde_json::Value::Number(
-                    serde_json::Number::from_f64(f64::from(boost_threshold)).unwrap(),
+                    serde_json::Number::from_f64(f64::from(boost_threshold))
+                        .unwrap_or_else(|| 0.into()),
                 ),
             );
         }
@@ -93,7 +97,8 @@ pub(crate) async fn receive_genre_learning(
             config_payload.insert(
                 "graph_margin".to_string(),
                 serde_json::Value::Number(
-                    serde_json::Number::from_f64(f64::from(graph_margin)).unwrap(),
+                    serde_json::Number::from_f64(f64::from(graph_margin))
+                        .unwrap_or_else(|| 0.into()),
                 ),
             );
         }
@@ -101,7 +106,8 @@ pub(crate) async fn receive_genre_learning(
             config_payload.insert(
                 "boost_threshold".to_string(),
                 serde_json::Value::Number(
-                    serde_json::Number::from_f64(f64::from(boost_threshold)).unwrap(),
+                    serde_json::Number::from_f64(f64::from(boost_threshold))
+                        .unwrap_or_else(|| 0.into()),
                 ),
             );
         }

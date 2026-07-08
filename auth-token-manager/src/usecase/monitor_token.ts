@@ -32,12 +32,32 @@ export class MonitorTokenUsecase {
     }
 
     const now = new Date();
-    const updatedAt = tokenData.updated_at
+    const alerts: string[] = [];
+    let alertLevel: AlertLevel = "info";
+
+    const rawUpdatedAt = tokenData.updated_at
       ? new Date(tokenData.updated_at)
       : null;
-    const expiresAt = tokenData.expires_at
+    const updatedAt = rawUpdatedAt && !isNaN(rawUpdatedAt.getTime())
+      ? rawUpdatedAt
+      : null;
+    if (rawUpdatedAt && !updatedAt) {
+      alerts.push("Token updated_at is corrupted - cannot verify freshness");
+      alertLevel = "critical";
+    }
+
+    const rawExpiresAt = tokenData.expires_at
       ? new Date(tokenData.expires_at)
       : null;
+    const expiresAt = rawExpiresAt && !isNaN(rawExpiresAt.getTime())
+      ? rawExpiresAt
+      : null;
+    if (rawExpiresAt && !expiresAt) {
+      alerts.push(
+        "Token expires_at is corrupted - treating as immediate refresh required",
+      );
+      alertLevel = "critical";
+    }
 
     let timeUntilExpiry = 0;
     let timeSinceUpdate = 0;
@@ -48,9 +68,6 @@ export class MonitorTokenUsecase {
     if (updatedAt) {
       timeSinceUpdate = now.getTime() - updatedAt.getTime();
     }
-
-    const alerts: string[] = [];
-    let alertLevel: AlertLevel = "info";
 
     const fiveMinutes = 5 * 60 * 1000;
     const thirtyMinutes = 30 * 60 * 1000;

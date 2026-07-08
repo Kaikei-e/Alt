@@ -72,7 +72,7 @@ func TestUpdateFeedStatus_WithUTMParameters(t *testing.T) {
 	require.NoError(t, err)
 
 	// Execute
-	err = repo.UpdateFeedStatus(ctx, *parsedURL)
+	err = repo.UpdateFeedStatus(ctx, *parsedURL, userUUID)
 
 	// Assert
 	assert.NoError(t, err)
@@ -122,7 +122,7 @@ func TestUpdateFeedStatus_WithTrailingSlash(t *testing.T) {
 	require.NoError(t, err)
 
 	// Execute
-	err = repo.UpdateFeedStatus(ctx, *parsedURL)
+	err = repo.UpdateFeedStatus(ctx, *parsedURL, userUUID)
 
 	// Assert
 	assert.NoError(t, err)
@@ -171,7 +171,7 @@ func TestUpdateFeedStatus_RealWorldExample(t *testing.T) {
 	require.NoError(t, err)
 
 	// Execute
-	err = repo.UpdateFeedStatus(ctx, *parsedURL)
+	err = repo.UpdateFeedStatus(ctx, *parsedURL, userUUID)
 
 	// Assert
 	assert.NoError(t, err)
@@ -191,7 +191,7 @@ func TestUpdateFeedStatus_FeedNotFound(t *testing.T) {
 	inputFeedURL := "https://example.com/nonexistent"
 
 	// Create context with user
-	ctx, _ := createTestUserContext(testUserID)
+	ctx, userUUID := createTestUserContext(testUserID)
 
 	// Mock the SELECT query with WHERE clause that returns no rows
 	mock.ExpectQuery("SELECT id FROM feeds WHERE website_url").
@@ -203,35 +203,12 @@ func TestUpdateFeedStatus_FeedNotFound(t *testing.T) {
 	require.NoError(t, err)
 
 	// Execute
-	err = repo.UpdateFeedStatus(ctx, *parsedURL)
+	err = repo.UpdateFeedStatus(ctx, *parsedURL, userUUID)
 
 	// Assert - should return domain.ErrFeedNotFound (not pgx.ErrNoRows)
 	assert.ErrorIs(t, err, domain.ErrFeedNotFound, "Expected domain.ErrFeedNotFound")
 	assert.NotErrorIs(t, err, pgx.ErrNoRows, "Should NOT expose database error pgx.ErrNoRows")
 	assert.NoError(t, mock.ExpectationsWereMet())
-}
-
-func TestUpdateFeedStatus_NoUserInContext(t *testing.T) {
-	// Create mock database
-	mock, err := pgxmock.NewPool()
-	require.NoError(t, err)
-	defer mock.Close()
-
-	repo := &FeedRepository{pool: mock}
-
-	// Create context WITHOUT user
-	ctx := context.Background()
-
-	// Parse input URL
-	parsedURL, err := url.Parse("https://example.com/article")
-	require.NoError(t, err)
-
-	// Execute
-	err = repo.UpdateFeedStatus(ctx, *parsedURL)
-
-	// Assert - should return authentication error
-	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "authentication required")
 }
 
 func TestUpdateFeedStatus_MultipleFeeds(t *testing.T) {
@@ -277,7 +254,7 @@ func TestUpdateFeedStatus_MultipleFeeds(t *testing.T) {
 	require.NoError(t, err)
 
 	// Execute
-	err = repo.UpdateFeedStatus(ctx, *parsedURL)
+	err = repo.UpdateFeedStatus(ctx, *parsedURL, userUUID)
 
 	// Assert
 	assert.NoError(t, err)
@@ -298,7 +275,7 @@ func TestUpdateFeedStatus_ReturnsErrFeedNotFound(t *testing.T) {
 	inputFeedURL := "https://example.com/nonexistent"
 
 	// Create context with user
-	ctx, _ := createTestUserContext(testUserID)
+	ctx, userUUID := createTestUserContext(testUserID)
 
 	// Mock the SELECT query with WHERE clause that returns no rows
 	mock.ExpectQuery("SELECT id FROM feeds WHERE").
@@ -310,7 +287,7 @@ func TestUpdateFeedStatus_ReturnsErrFeedNotFound(t *testing.T) {
 	require.NoError(t, err)
 
 	// Execute
-	err = repo.UpdateFeedStatus(ctx, *parsedURL)
+	err = repo.UpdateFeedStatus(ctx, *parsedURL, userUUID)
 
 	// Assert - should return domain.ErrFeedNotFound instead of pgx.ErrNoRows
 	assert.ErrorIs(t, err, domain.ErrFeedNotFound, "Expected domain.ErrFeedNotFound")
@@ -359,7 +336,7 @@ func TestUpdateFeedStatus_OptimizedDatabaseQuery(t *testing.T) {
 	require.NoError(t, err)
 
 	// Execute
-	err = repo.UpdateFeedStatus(ctx, *parsedURL)
+	err = repo.UpdateFeedStatus(ctx, *parsedURL, userUUID)
 
 	// Assert - test will fail if query doesn't match expected pattern
 	assert.NoError(t, err)

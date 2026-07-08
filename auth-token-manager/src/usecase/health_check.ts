@@ -31,8 +31,8 @@ export class HealthCheckUsecase {
     checks.config_valid = config.validateConfig();
 
     checks.environment_ready = Boolean(
-      Deno.env.get("INOREADER_CLIENT_ID") &&
-        Deno.env.get("INOREADER_CLIENT_SECRET"),
+      config.getEnvOrFile("INOREADER_CLIENT_ID") &&
+        config.getEnvOrFile("INOREADER_CLIENT_SECRET"),
     );
 
     try {

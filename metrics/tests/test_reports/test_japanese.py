@@ -47,6 +47,25 @@ class TestFormatTable:
         assert "a" * 60 in result
         assert "a" * 61 not in result
 
+    def test_escapes_pipe_characters_in_values(self) -> None:
+        """値に含まれる`|`はテーブル崩壊を防ぐためエスケープされる"""
+        data = [{"message": "error | injected | row"}]
+        result = format_table(data)
+
+        rows = result.strip().split("\n")
+        # ヘッダー・セパレーター行を除いたデータ行は1行のみ（注入されていない）
+        assert len(rows) == 3
+        assert "error \\| injected \\| row" in result
+
+    def test_escapes_newlines_in_values(self) -> None:
+        """値に含まれる改行はエスケープされ行注入を防ぐ"""
+        data = [{"message": "line1\nline2\r\nline3"}]
+        result = format_table(data)
+
+        rows = result.strip().split("\n")
+        assert len(rows) == 3
+        assert "line1 line2 line3" in result
+
 
 class TestGenerateJapaneseReport:
     """generate_japanese_report関数のテスト"""

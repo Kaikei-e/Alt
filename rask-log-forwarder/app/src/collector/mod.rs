@@ -46,11 +46,12 @@ pub enum CollectorError {
     CollectionStopped,
 }
 
+/// Raw collected log line. `log`/`stream`/`time` are deliberately absent:
+/// they get re-derived from `raw_bytes` by the downstream Docker JSON parser,
+/// so allocating placeholder values for them here would be pure waste on the
+/// per-line hot path.
 #[derive(Debug, Clone)]
 pub struct LogEntry {
-    pub log: String,
-    pub stream: String,
-    pub time: String,
     pub id: String,
     pub container_id: String,
     pub raw_bytes: Bytes,
@@ -237,7 +238,9 @@ impl LogCollector {
             stdout: true,
             stderr: true,
             timestamps: false, // Changed from true to false
-            tail: "all".to_string(),
+            // "0": stream new lines only. "all" would re-send the container's
+            // entire log history on every forwarder restart/reconnect.
+            tail: "0".to_string(),
             ..Default::default()
         };
 
@@ -259,9 +262,6 @@ impl LogCollector {
 
                             // Create LogEntry with raw bytes - let the parser handle the actual parsing
                             let entry = LogEntry {
-                                log: String::new(),                    // Will be filled by the parser
-                                stream: "stdout".to_string(), // Default, will be overridden by parser
-                                time: chrono::Utc::now().to_rfc3339(), // Default timestamp
                                 id: container_id.to_string(),
                                 container_id: container_id.to_string(),
                                 raw_bytes: log_bytes,
@@ -339,9 +339,14 @@ mod reconnect_tests {
             LogCollector::sleep_or_cancelled(Duration::from_secs(30), &token),
         )
         .await
-        .expect("sleep_or_cancelled must return promptly once cancelled, not wait out the full delay");
+        .expect(
+            "sleep_or_cancelled must return promptly once cancelled, not wait out the full delay",
+        );
 
-        assert!(cancelled, "sleep_or_cancelled must report cancellation, not a timed-out sleep");
+        assert!(
+            cancelled,
+            "sleep_or_cancelled must report cancellation, not a timed-out sleep"
+        );
     }
 
     #[tokio::test]
@@ -350,6 +355,9 @@ mod reconnect_tests {
 
         let cancelled = LogCollector::sleep_or_cancelled(Duration::from_millis(10), &token).await;
 
-        assert!(!cancelled, "an uncancelled sleep must report false once the delay elapses");
+        assert!(
+            !cancelled,
+            "an uncancelled sleep must report false once the delay elapses"
+        );
     }
 }

@@ -104,7 +104,7 @@ func (r *ExternalDNSResolver) performExternalQuery(ctx context.Context, domain s
 			return nil, ctx.Err()
 		default:
 			// Attempt resolution with current server
-			if ips, err := r.queryServer(domain, server); err == nil && len(ips) > 0 {
+			if ips, err := r.queryServer(ctx, domain, server); err == nil && len(ips) > 0 {
 				return ips, nil
 			} else if err != nil {
 				lastErr = err
@@ -116,14 +116,15 @@ func (r *ExternalDNSResolver) performExternalQuery(ctx context.Context, domain s
 }
 
 // queryServer performs a DNS query against a specific server
-func (r *ExternalDNSResolver) queryServer(domain, server string) ([]net.IP, error) {
+func (r *ExternalDNSResolver) queryServer(ctx context.Context, domain, server string) ([]net.IP, error) {
 	// Create DNS query message
 	msg := new(dns.Msg)
 	msg.SetQuestion(dns.Fqdn(domain), dns.TypeA)
 	msg.RecursionDesired = true
 
-	// Execute query with timeout
-	response, _, err := r.client.Exchange(msg, server)
+	// Execute query with timeout, honoring ctx cancellation instead of only
+	// checking it between servers in the outer failover loop.
+	response, _, err := r.client.ExchangeContext(ctx, msg, server)
 	if err != nil {
 		return nil, fmt.Errorf("DNS query to %s failed: %w", server, err)
 	}
@@ -262,45 +263,3 @@ func ValidateDomain(domain string) error {
 	return nil
 }
 
-// ResolveBatch resolves multiple domains concurrently for efficiency
-func (r *ExternalDNSResolver) ResolveBatch(ctx context.Context, domains []string) (map[string][]net.IP, error) {
-	if len(domains) == 0 {
-		return make(map[string][]net.IP), nil
-	}
-
-	results := make(map[string][]net.IP)
-	errors := make(map[string]error)
-
-	var wg sync.WaitGroup
-	var mu sync.Mutex
-
-	// Resolve each domain concurrently
-	for _, domain := range domains {
-		wg.Add(1)
-		go func(d string) {
-			defer wg.Done()
-
-			ips, err := r.ResolveExternal(ctx, d)
-
-			mu.Lock()
-			if err != nil {
-				errors[d] = err
-			} else {
-				results[d] = ips
-			}
-			mu.Unlock()
-		}(domain)
-	}
-
-	wg.Wait()
-
-	// Return partial results even if some domains failed
-	if len(errors) > 0 && len(results) == 0 {
-		// All failed, return first error
-		for _, err := range errors {
-			return nil, err
-		}
-	}
-
-	return results, nil
-}

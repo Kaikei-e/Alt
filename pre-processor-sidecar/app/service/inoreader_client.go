@@ -6,9 +6,11 @@ package service
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"math"
+	"net/http"
 	"net/url"
 	"strconv"
 	"strings"
@@ -466,7 +468,7 @@ func (c *InoreaderClient) parseArticleData(itemMap map[string]interface{}) (*mod
 			// Apply content length limit (50KB for storage optimization)
 			const maxContentLength = 50000
 			if len(sanitizedContent) > maxContentLength {
-				content = sanitizedContent[:maxContentLength] + "\n<!-- Content truncated for storage optimization -->"
+				content = truncateUTF8Safe(sanitizedContent, maxContentLength) + "\n<!-- Content truncated for storage optimization -->"
 				contentLength = len(content)
 			} else {
 				content = sanitizedContent
@@ -540,7 +542,7 @@ func (c *InoreaderClient) parseArticleDataFromStruct(item driver.InoreaderArticl
 		// Apply content length limit (50KB for storage optimization)
 		const maxContentLength = 50000
 		if len(sanitizedContent) > maxContentLength {
-			content = sanitizedContent[:maxContentLength] + "\n<!-- Content truncated for storage optimization -->"
+			content = truncateUTF8Safe(sanitizedContent, maxContentLength) + "\n<!-- Content truncated for storage optimization -->"
 			contentLength = len(content)
 			c.logger.Info("Content truncated due to size limit",
 				"article_id", item.ID,
@@ -627,7 +629,11 @@ func (c *InoreaderClient) FetchSubscriptionListWithRetry(ctx context.Context, ac
 				"attempt", attempt,
 				"delay_seconds", delay.Seconds())
 
-			time.Sleep(delay)
+			select {
+			case <-ctx.Done():
+				return nil, ctx.Err()
+			case <-time.After(delay):
+			}
 		}
 
 		result, err := c.FetchSubscriptionList(ctx, accessToken)
@@ -657,15 +663,36 @@ func (c *InoreaderClient) GetRetryConfig() *RetryConfig {
 	return c.retryConfig
 }
 
-// isRetryableError determines if an error should trigger a retry
+// truncateUTF8Safe truncates s to at most maxBytes bytes without splitting a
+// multi-byte UTF-8 rune in half. A byte-position slice can land mid-rune,
+// producing invalid UTF-8 that Postgres TEXT columns reject on insert;
+// strings.ToValidUTF8 drops the trailing partial rune instead.
+func truncateUTF8Safe(s string, maxBytes int) string {
+	if len(s) <= maxBytes {
+		return s
+	}
+	return strings.ToValidUTF8(s[:maxBytes], "")
+}
+
+// isRetryableError determines if an error should trigger a retry.
+//
+// Only 429 (rate limited) and 5xx (upstream trouble) status codes, plus
+// transport-level timeouts/connection failures, are worth retrying. 403/401
+// are permanent for the current token and retrying them just burns the
+// scarce daily Inoreader API quota (100 req/day) without changing the
+// outcome — and blindly retrying 403 while never retrying 429 was exactly
+// backwards from what the API's own backpressure signal (429) calls for.
 func isRetryableError(err error) bool {
 	if err == nil {
 		return false
 	}
 
+	var statusErr *driver.HTTPStatusError
+	if errors.As(err, &statusErr) {
+		return statusErr.StatusCode == http.StatusTooManyRequests || statusErr.StatusCode >= http.StatusInternalServerError
+	}
+
+	// Transport-level failures without a structured status code.
 	errStr := err.Error()
-	return strings.Contains(errStr, "403") ||
-		strings.Contains(errStr, "408") ||
-		strings.Contains(errStr, "timeout") ||
-		strings.Contains(errStr, "connection refused")
+	return strings.Contains(errStr, "timeout") || strings.Contains(errStr, "connection refused")
 }

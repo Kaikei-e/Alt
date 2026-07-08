@@ -128,6 +128,8 @@ func (p *Projector) RunBatch(ctx context.Context) error {
 // are skipped without failing the batch (the event stays in the log).
 func (p *Projector) foldBranch(ctx context.Context, evt sovereign_db.KnowledgeEvent) error {
 	if evt.UserID == nil {
+		p.logger.WarnContext(ctx, "trail projector: rejecting branch_proposed with no user_id",
+			slog.String("event_id", evt.EventID.String()))
 		return nil
 	}
 	var payload trail_planner.BranchProposedPayload
@@ -162,6 +164,8 @@ func (p *Projector) foldBranch(ctx context.Context, evt sovereign_db.KnowledgeEv
 // An invalid resolution is rejected loudly (never silently mis-folded).
 func (p *Projector) foldBranchResolved(ctx context.Context, evt sovereign_db.KnowledgeEvent) error {
 	if evt.UserID == nil {
+		p.logger.WarnContext(ctx, "trail projector: rejecting branch_resolved with no user_id",
+			slog.String("event_id", evt.EventID.String()))
 		return nil
 	}
 	var payload trail_planner.BranchResolvedPayload

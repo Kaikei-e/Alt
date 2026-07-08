@@ -120,8 +120,12 @@ class MemoryReportGateway:
     async def bump_section_version(
         self, report_id: UUID, section_key: str, expected_version: int, body: str, citations: list[dict] | None = None
     ) -> int:
-        new_v = expected_version + 1
         sections = self._sections.get(report_id, [])
+        target = next((s for s in sections if s.section_key == section_key), None)
+        if target is None or target.current_version != expected_version:
+            raise StaleVersionError(report_id, expected_version)
+
+        new_v = expected_version + 1
         for i, s in enumerate(sections):
             if s.section_key == section_key:
                 sections[i] = ReportSection(

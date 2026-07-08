@@ -102,7 +102,7 @@ func runRestart(cmd *cobra.Command, args []string) error {
 	}
 	fmt.Println()
 
-	downCtx, downCancel := context.WithTimeout(context.Background(), 60*time.Second)
+	downCtx, downCancel := context.WithTimeout(cmd.Context(), 60*time.Second)
 	defer downCancel()
 
 	err = client.Down(downCtx, compose.DownOptions{
@@ -121,7 +121,7 @@ func runRestart(cmd *cobra.Command, args []string) error {
 	}
 	fmt.Println()
 
-	upCtx, upCancel := context.WithTimeout(context.Background(), timeout)
+	upCtx, upCancel := context.WithTimeout(cmd.Context(), timeout)
 	defer upCancel()
 
 	err = client.Up(upCtx, compose.UpOptions{

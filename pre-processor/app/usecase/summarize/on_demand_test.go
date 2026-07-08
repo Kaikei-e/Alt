@@ -192,7 +192,11 @@ func TestOnDemandService_Summarize(t *testing.T) {
 		assert.True(t, apiRepo.summarizeCalled)
 	})
 
-	t.Run("should return summary even when DB save fails", func(t *testing.T) {
+	t.Run("should fail the request when DB save fails", func(t *testing.T) {
+		// A save failure must not be reported as success: the caller would
+		// never retry, permanently losing the summary despite having already
+		// paid the LLM cost. Matches the queue-worker path's behavior
+		// (service/summarize_queue_worker.go processJob).
 		articleRepo := &stubArticleRepo{
 			findByIDResult: &domain.Article{
 				ID:      "art-1",
@@ -210,13 +214,13 @@ func TestOnDemandService_Summarize(t *testing.T) {
 		}
 		svc := NewOnDemandService(articleRepo, summaryRepo, apiRepo, testLogger())
 
-		result, err := svc.Summarize(context.Background(), SummarizeRequest{
+		_, err := svc.Summarize(context.Background(), SummarizeRequest{
 			ArticleID: "art-1",
 			Priority:  "high",
 		})
 
-		require.NoError(t, err)
-		assert.Equal(t, "要約テスト", result.Summary)
+		require.Error(t, err)
+		assert.True(t, summaryRepo.createCalled)
 	})
 
 	t.Run("should return error when API fails", func(t *testing.T) {

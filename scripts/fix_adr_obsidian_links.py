@@ -439,11 +439,11 @@ def add_backlinks(text: str, _self_num: int, backlinks: set[int], title_index: d
     # Find last bullet or content line in related section
     last_content = related_section_idx
     for i in range(related_section_idx + 1, end):
-        if lines[i].strip() and not lines[i].startswith('##'):
-            last_content = i
         # Skip comment lines
         if lines[i].strip().startswith('<!--'):
             continue
+        if lines[i].strip() and not lines[i].startswith('##'):
+            last_content = i
 
     # Check if "- なし" (with or without explanation) remains — replace it with backlinks
     nashi_idx = None

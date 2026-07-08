@@ -21,7 +21,7 @@ export const load = async () => {
 		// This allows the page to render immediately while article content loads in background
 		let articleContentPromise: Promise<string | null> = Promise.resolve(null);
 		if (feeds.length > 0) {
-			const feedUrl = feeds[0].link;
+			const feedUrl = feeds[0]!.link;
 
 			articleContentPromise = (async (): Promise<string | null> => {
 				try {

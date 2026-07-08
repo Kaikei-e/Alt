@@ -19,6 +19,18 @@ import (
 	"pre-processor-sidecar/models"
 )
 
+// HTTPStatusError wraps a non-2xx Inoreader API response so callers can
+// classify retryability from the structured status code (e.g. only 429/5xx
+// are worth retrying) instead of parsing the error message string.
+type HTTPStatusError struct {
+	StatusCode int
+	Message    string
+}
+
+func (e *HTTPStatusError) Error() string {
+	return e.Message
+}
+
 // OAuth2TokenResponse represents the response from OAuth2 token endpoint
 type OAuth2TokenResponse struct {
 	AccessToken  string    `json:"access_token"`
@@ -306,17 +318,14 @@ func (c *OAuth2Client) attemptRefreshToken(ctx context.Context, refreshToken str
 		Scope:        "",                         // Will be populated if available in response
 	}
 
-	// Log the refresh response details for debugging
+	// Log the refresh response details for debugging. Never log any part of
+	// the refresh token itself — length is enough to confirm rotation
+	// without exposing secret material in logs.
 	c.logger.Info("OAuth2 refresh successful",
 		"access_token_length", len(tokenResponse.AccessToken),
 		"expires_in_seconds", tokenResponse.ExpiresIn,
 		"has_new_refresh_token", hasNewRefreshToken,
-		"new_refresh_token_prefix", func() string {
-			if hasNewRefreshToken {
-				return tokenResponse.RefreshToken[:min(8, len(tokenResponse.RefreshToken))]
-			}
-			return "none"
-		}())
+		"new_refresh_token_length", len(tokenResponse.RefreshToken))
 
 	return inoreaderResponse, nil
 }
@@ -380,16 +389,19 @@ func (c *OAuth2Client) MakeAuthenticatedRequest(ctx context.Context, accessToken
 
 	// Check for rate limit or authentication errors
 	if resp.StatusCode == http.StatusTooManyRequests {
-		return nil, fmt.Errorf("API rate limit exceeded (Zone 1: %s/%s)",
-			resp.Header.Get("X-Reader-Zone1-Usage"), resp.Header.Get("X-Reader-Zone1-Limit"))
+		return nil, &HTTPStatusError{
+			StatusCode: resp.StatusCode,
+			Message: fmt.Sprintf("API rate limit exceeded (Zone 1: %s/%s)",
+				resp.Header.Get("X-Reader-Zone1-Usage"), resp.Header.Get("X-Reader-Zone1-Limit")),
+		}
 	}
 
 	if resp.StatusCode == http.StatusUnauthorized {
-		return nil, fmt.Errorf("authentication failed: token may be expired or invalid")
+		return nil, &HTTPStatusError{StatusCode: resp.StatusCode, Message: "authentication failed: token may be expired or invalid"}
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("API request failed with status %d", resp.StatusCode)
+		return nil, &HTTPStatusError{StatusCode: resp.StatusCode, Message: fmt.Sprintf("API request failed with status %d", resp.StatusCode)}
 	}
 
 	// Parse JSON response
@@ -477,16 +489,19 @@ func (c *OAuth2Client) MakeAuthenticatedRequestWithHeaders(ctx context.Context, 
 
 	// Check for rate limit or authentication errors
 	if resp.StatusCode == http.StatusTooManyRequests {
-		return nil, headers, fmt.Errorf("API rate limit exceeded (Zone 1: %s/%s)",
-			resp.Header.Get("X-Reader-Zone1-Usage"), resp.Header.Get("X-Reader-Zone1-Limit"))
+		return nil, headers, &HTTPStatusError{
+			StatusCode: resp.StatusCode,
+			Message: fmt.Sprintf("API rate limit exceeded (Zone 1: %s/%s)",
+				resp.Header.Get("X-Reader-Zone1-Usage"), resp.Header.Get("X-Reader-Zone1-Limit")),
+		}
 	}
 
 	if resp.StatusCode == http.StatusUnauthorized {
-		return nil, headers, fmt.Errorf("authentication failed: token may be expired or invalid")
+		return nil, headers, &HTTPStatusError{StatusCode: resp.StatusCode, Message: "authentication failed: token may be expired or invalid"}
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, headers, fmt.Errorf("API request failed with status %d", resp.StatusCode)
+		return nil, headers, &HTTPStatusError{StatusCode: resp.StatusCode, Message: fmt.Sprintf("API request failed with status %d", resp.StatusCode)}
 	}
 
 	// Parse JSON response
@@ -507,14 +522,6 @@ func (c *OAuth2Client) GetRateLimitInfo() map[string]interface{} {
 		"zone1_limit":     100,
 		"zone1_remaining": 100,
 	}
-}
-
-// Helper function for min
-func min(a, b int) int {
-	if a < b {
-		return a
-	}
-	return b
 }
 
 // DebugDirectRequest makes a direct API call without proxy for debugging

@@ -26,7 +26,7 @@ func (r *SubscriptionRepository) MarkArticleAsRead(ctx context.Context, articleU
 	normalizedURL, err := utils.NormalizeURL(originalURL)
 	if err != nil {
 		logger.SafeErrorContext(ctx, "Error normalizing feed URL", "error", err, "feedURL", originalURL)
-		return err
+		return fmt.Errorf("normalize feed url: %w", err)
 	}
 
 	// Single-query upsert: resolve feed by URL and insert/update read_status atomically.

@@ -129,8 +129,8 @@ const publishedDate = $derived(
 					</button>
 				{/if}
 			{:else if summary?.matched_articles && summary.matched_articles.length > 0}
-				<h4 class="result-summary-title">{summary.matched_articles[0].title}</h4>
-				<p class="result-summary-prose">{summary.matched_articles[0].content}</p>
+				<h4 class="result-summary-title">{summary.matched_articles[0]!.title}</h4>
+				<p class="result-summary-prose">{summary.matched_articles[0]!.content}</p>
 			{:else}
 				<p class="result-summary-empty">No summary available</p>
 				<button type="button" onclick={handleSummarizeNow} class="result-action-btn">

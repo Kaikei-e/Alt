@@ -18,8 +18,8 @@ class ClusterResult:
     probabilities: np.ndarray
     used_umap: bool
     params: HDBSCANSettings
-    dbcv_score: float = 0.0
-    silhouette_score: float = 0.0
+    dbcv_score: float | None = None
+    silhouette_score: float | None = None
     used_fallback: bool = False
 
 

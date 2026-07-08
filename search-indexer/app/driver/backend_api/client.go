@@ -189,6 +189,10 @@ func (c *Client) GetArticleByID(ctx context.Context, articleID string) (*driver.
 		return nil, fmt.Errorf("GetArticleByID: %w", err)
 	}
 
+	if resp.Msg.Article == nil {
+		return nil, nil
+	}
+
 	return toDriverArticle(resp.Msg.Article), nil
 }
 

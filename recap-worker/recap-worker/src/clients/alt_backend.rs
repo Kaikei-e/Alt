@@ -8,7 +8,7 @@ use anyhow::{Context, Result};
 use chrono::{DateTime, Utc};
 use reqwest::{Client, Url};
 use serde::{Deserialize, Serialize};
-use tracing::debug;
+use tracing::{debug, warn};
 
 use crate::pipeline::tag_signal::TagSignal;
 
@@ -89,6 +89,11 @@ const BATCH_GET_TAGS_BY_ARTICLE_IDS_PATH: &str =
 /// Server-side invariant mirrored here so the chunked loop below never
 /// sends more than what the provider enforces.
 const BATCH_GET_TAGS_MAX_BATCH_SIZE: usize = 1000;
+
+/// Hard ceiling on `fetch_articles` pagination (500/page, so 100k articles).
+/// Without this, a server bug that keeps returning `has_more=true` turns
+/// the paging loop and `all_articles` unbounded.
+const MAX_ARTICLE_FETCH_PAGES: i32 = 200;
 
 /// Request shape for BatchGetTagsByArticleIDs. protojson uses camelCase.
 #[derive(Debug, Serialize)]
@@ -201,6 +206,15 @@ impl AltBackendClient {
             );
 
             if !response.has_more {
+                break;
+            }
+
+            if current_page >= MAX_ARTICLE_FETCH_PAGES {
+                warn!(
+                    pages_fetched = current_page,
+                    articles_so_far = all_articles.len(),
+                    "reached max page limit for fetch_articles; stopping early instead of paging forever"
+                );
                 break;
             }
 

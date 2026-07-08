@@ -133,11 +133,14 @@ impl ServiceManager {
                 component: "reliability_manager".to_string(),
             }
         })?);
-        let sender = Arc::new(self.sender.take().ok_or_else(|| {
-            ServiceError::ComponentNotInitialized {
-                component: "sender".to_string(),
-            }
-        })?);
+        let sender =
+            Arc::new(
+                self.sender
+                    .take()
+                    .ok_or_else(|| ServiceError::ComponentNotInitialized {
+                        component: "sender".to_string(),
+                    })?,
+            );
 
         // Shared shutdown signal for background tasks that live alongside
         // the main loop but aren't driven by its own `select!` (currently:
@@ -166,7 +169,7 @@ impl ServiceManager {
             cancel_token,
         };
 
-        tokio::spawn(async move {
+        let processing_loop = tokio::spawn(async move {
             run_processing_loop(params).await;
         });
 
@@ -178,7 +181,7 @@ impl ServiceManager {
         Ok(ShutdownHandle::new(
             shutdown_tx,
             signal_handler,
-            self.running.clone(),
+            processing_loop,
         ))
     }
 

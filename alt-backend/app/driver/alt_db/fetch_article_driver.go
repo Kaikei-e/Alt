@@ -73,6 +73,60 @@ func (r *ArticleRepository) FetchArticleByURL(ctx context.Context, articleURL st
 	return &article, nil
 }
 
+const fetchArticlesByURLsQuery = `
+	SELECT id, title, content, url, COALESCE(feed_id::text, '') AS feed_id
+	FROM articles
+	WHERE url = ANY($1) AND deleted_at IS NULL
+`
+
+const fetchArticlesByURLsWithUserQuery = `
+	SELECT id, title, content, url, COALESCE(feed_id::text, '') AS feed_id
+	FROM articles
+	WHERE url = ANY($1) AND user_id = $2 AND deleted_at IS NULL
+`
+
+// FetchArticlesByURLs retrieves article content for a batch of URLs in a
+// single query (replacing the N+1 pattern of calling FetchArticleByURL once
+// per URL). Missing URLs are simply absent from the returned map. Scopes to
+// the authenticated user when user context is available, mirroring
+// FetchArticleByURL.
+func (r *ArticleRepository) FetchArticlesByURLs(ctx context.Context, urls []string) (map[string]*domain.ArticleContent, error) {
+	if r == nil || r.pool == nil {
+		return nil, errors.New("database connection not available")
+	}
+	if len(urls) == 0 {
+		return map[string]*domain.ArticleContent{}, nil
+	}
+
+	user, userErr := domain.GetUserFromContext(ctx)
+
+	var rows pgx.Rows
+	var err error
+	if userErr == nil {
+		rows, err = r.pool.Query(ctx, fetchArticlesByURLsWithUserQuery, urls, user.UserID)
+	} else {
+		rows, err = r.pool.Query(ctx, fetchArticlesByURLsQuery, urls)
+	}
+	if err != nil {
+		return nil, fmt.Errorf("fetch articles by urls: %w", err)
+	}
+	defer rows.Close()
+
+	result := make(map[string]*domain.ArticleContent, len(urls))
+	for rows.Next() {
+		var article domain.ArticleContent
+		if err := rows.Scan(&article.ID, &article.Title, &article.Content, &article.URL, &article.FeedID); err != nil {
+			return nil, fmt.Errorf("scan article row: %w", err)
+		}
+		result[article.URL] = &article
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate article rows: %w", err)
+	}
+
+	return result, nil
+}
+
 const fetchArticleByIDQuery = `
 	SELECT id, title, content, url, COALESCE(feed_id::text, '') AS feed_id
 	FROM articles

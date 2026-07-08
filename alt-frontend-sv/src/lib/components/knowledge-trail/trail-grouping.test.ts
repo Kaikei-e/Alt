@@ -35,8 +35,8 @@ describe("groupFootprintsByDay", () => {
 			now,
 		);
 		expect(groups).toHaveLength(2);
-		expect(groups[0].label).toBe("Today");
-		expect(groups[1].label).toBe("Yesterday");
+		expect(groups[0]!.label).toBe("Today");
+		expect(groups[1]!.label).toBe("Yesterday");
 	});
 
 	it("keeps reverse-chronological footprints in the same day bucket in order", () => {
@@ -48,11 +48,11 @@ describe("groupFootprintsByDay", () => {
 			now,
 		);
 		expect(groups).toHaveLength(1);
-		expect(groups[0].footprints.map((f) => f.footprintKey)).toEqual(["a", "b"]);
+		expect(groups[0]!.footprints.map((f) => f.footprintKey)).toEqual(["a", "b"]);
 	});
 
 	it("buckets unparseable timestamps under Earlier", () => {
 		const groups = groupFootprintsByDay([fp("x", "not-a-date")], now);
-		expect(groups[0].label).toBe("Earlier");
+		expect(groups[0]!.label).toBe("Earlier");
 	});
 });

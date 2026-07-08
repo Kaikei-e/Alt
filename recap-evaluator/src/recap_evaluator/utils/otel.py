@@ -3,6 +3,7 @@
 import os
 from collections.abc import Callable
 
+import structlog
 from opentelemetry import trace
 from opentelemetry._logs import set_logger_provider
 from opentelemetry.exporter.otlp.proto.http._log_exporter import OTLPLogExporter
@@ -12,6 +13,8 @@ from opentelemetry.sdk._logs.export import BatchLogRecordProcessor
 from opentelemetry.sdk.resources import Resource
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
+
+logger = structlog.get_logger()
 
 
 class OTelConfig:
@@ -90,4 +93,4 @@ def instrument_fastapi(app) -> None:
 
         FastAPIInstrumentor.instrument_app(app)
     except Exception:
-        pass  # Silently fail if instrumentation fails
+        logger.warning("FastAPI OpenTelemetry instrumentation failed", exc_info=True)

@@ -1,6 +1,7 @@
 //! Converter from OpenTelemetry protocol to internal domain models
 
 use std::collections::HashMap;
+use std::sync::Arc;
 
 use opentelemetry_proto::tonic::{
     collector::{logs::v1::ExportLogsServiceRequest, trace::v1::ExportTraceServiceRequest},
@@ -17,18 +18,25 @@ pub fn convert_log_records(request: &ExportLogsServiceRequest) -> Vec<OTelLog> {
 
     for resource_logs in &request.resource_logs {
         let resource = resource_logs.resource.as_ref();
-        let resource_attrs = resource
-            .map(|r| convert_attributes(&r.attributes))
-            .unwrap_or_default();
+        // Shared across every log record under this resource/scope - `Arc`
+        // so `convert_single_log` clones a refcount, not the whole map, per
+        // record (a resource commonly fans out into thousands of records).
+        let resource_attrs: Arc<HashMap<String, String>> = Arc::new(
+            resource
+                .map(|r| convert_attributes(&r.attributes))
+                .unwrap_or_default(),
+        );
         let resource_schema_url = resource_logs.schema_url.clone();
 
         for scope_logs in &resource_logs.scope_logs {
             let scope = scope_logs.scope.as_ref();
             let scope_name = scope.map(|s| s.name.clone()).unwrap_or_default();
             let scope_version = scope.map(|s| s.version.clone()).unwrap_or_default();
-            let scope_attrs = scope
-                .map(|s| convert_attributes(&s.attributes))
-                .unwrap_or_default();
+            let scope_attrs: Arc<HashMap<String, String>> = Arc::new(
+                scope
+                    .map(|s| convert_attributes(&s.attributes))
+                    .unwrap_or_default(),
+            );
             let scope_schema_url = scope_logs.schema_url.clone();
 
             for log_record in &scope_logs.log_records {
@@ -51,11 +59,11 @@ pub fn convert_log_records(request: &ExportLogsServiceRequest) -> Vec<OTelLog> {
 
 fn convert_single_log(
     record: &LogRecord,
-    resource_attrs: &HashMap<String, String>,
+    resource_attrs: &Arc<HashMap<String, String>>,
     resource_schema_url: &str,
     scope_name: &str,
     scope_version: &str,
-    scope_attrs: &HashMap<String, String>,
+    scope_attrs: &Arc<HashMap<String, String>>,
     scope_schema_url: &str,
 ) -> OTelLog {
     let log_attrs = convert_attributes(&record.attributes);
@@ -352,7 +360,15 @@ mod tests {
             ..Default::default()
         };
 
-        let log = convert_single_log(&record, &HashMap::new(), "", "", "", &HashMap::new(), "");
+        let log = convert_single_log(
+            &record,
+            &Arc::new(HashMap::new()),
+            "",
+            "",
+            "",
+            &Arc::new(HashMap::new()),
+            "",
+        );
 
         assert_eq!(log.trace_id, "0102030405060708090a0b0c0d0e0f10");
         assert_eq!(log.span_id, "0102030405060708");
@@ -377,7 +393,15 @@ mod tests {
             ..Default::default()
         };
 
-        let log = convert_single_log(&record, &HashMap::new(), "", "", "", &HashMap::new(), "");
+        let log = convert_single_log(
+            &record,
+            &Arc::new(HashMap::new()),
+            "",
+            "",
+            "",
+            &Arc::new(HashMap::new()),
+            "",
+        );
 
         // Should use protocol fields, not attributes
         assert_eq!(log.trace_id, "0102030405060708090a0b0c0d0e0f10");
@@ -413,7 +437,15 @@ mod tests {
             ..Default::default()
         };
 
-        let log = convert_single_log(&record, &HashMap::new(), "", "", "", &HashMap::new(), "");
+        let log = convert_single_log(
+            &record,
+            &Arc::new(HashMap::new()),
+            "",
+            "",
+            "",
+            &Arc::new(HashMap::new()),
+            "",
+        );
 
         assert_eq!(log.trace_id, "abcdef0123456789abcdef0123456789");
         assert_eq!(log.span_id, "fedcba9876543210");
@@ -429,7 +461,15 @@ mod tests {
             ..Default::default()
         };
 
-        let log = convert_single_log(&record, &HashMap::new(), "", "", "", &HashMap::new(), "");
+        let log = convert_single_log(
+            &record,
+            &Arc::new(HashMap::new()),
+            "",
+            "",
+            "",
+            &Arc::new(HashMap::new()),
+            "",
+        );
 
         assert_eq!(log.trace_id, "00000000000000000000000000000000");
         assert_eq!(log.span_id, "0000000000000000");

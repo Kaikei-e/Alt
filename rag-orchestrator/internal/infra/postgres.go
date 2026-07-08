@@ -49,6 +49,7 @@ func NewPostgresDB(ctx context.Context, dsn string, opts ...PoolConfig) (*pgxpoo
 	}
 
 	if err := pool.Ping(ctx); err != nil {
+		pool.Close()
 		return nil, fmt.Errorf("failed to ping db: %w", err)
 	}
 

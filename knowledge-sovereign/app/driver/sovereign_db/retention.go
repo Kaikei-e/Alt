@@ -3,6 +3,7 @@ package sovereign_db
 import (
 	"context"
 	"fmt"
+	"regexp"
 	"time"
 
 	"github.com/google/uuid"
@@ -106,6 +107,9 @@ func (r *Repository) ListPartitions(ctx context.Context, tableName string) ([]Pa
 		p.RangeStart, p.RangeEnd = parseBoundExpr(boundExpr)
 		partitions = append(partitions, p)
 	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("ListPartitions rows: %w", err)
+	}
 	return partitions, nil
 }
 
@@ -151,58 +155,34 @@ func (r *Repository) ListRetentionLogs(ctx context.Context, limit int) ([]Retent
 		}
 		entries = append(entries, e)
 	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("ListRetentionLogs rows: %w", err)
+	}
 	return entries, nil
 }
+
+// boundExprPattern matches a PostgreSQL partition bound expression, e.g.
+// "FOR VALUES FROM ('2026-03-01 00:00:00+00') TO ('2026-04-01 00:00:00+00')".
+// The FROM/TO operands may also be the bare keywords MINVALUE/MAXVALUE for
+// unbounded partitions, which is why each side is matched as either a quoted
+// string or a bare word rather than assuming a fixed-width quoted date.
+var boundExprPattern = regexp.MustCompile(`FROM \((?:'([^']*)'|(\w+))\) TO \((?:'([^']*)'|(\w+))\)`)
 
 // parseBoundExpr extracts start/end timestamps from a PostgreSQL partition bound expression.
 // Format: "FOR VALUES FROM ('2026-03-01 00:00:00+00') TO ('2026-04-01 00:00:00+00')"
 func parseBoundExpr(expr string) (time.Time, time.Time) {
-	var start, end time.Time
-	// Simple parsing: extract the two timestamp strings
-	// PostgreSQL format: FOR VALUES FROM ('YYYY-MM-DD HH:MM:SS+00') TO ('...')
-	fmt.Sscanf(expr, "FOR VALUES FROM ('%d-%d-%d", &start)
-
-	// More robust: use time.Parse on extracted portions
 	const layout = "2006-01-02"
-	startStr := extractQuotedDate(expr, "FROM")
-	endStr := extractQuotedDate(expr, "TO")
+	var start, end time.Time
 
-	if startStr != "" {
-		start, _ = time.Parse(layout, startStr[:10])
+	m := boundExprPattern.FindStringSubmatch(expr)
+	if m == nil {
+		return start, end
 	}
-	if endStr != "" {
-		end, _ = time.Parse(layout, endStr[:10])
+	if startStr := m[1]; len(startStr) >= len(layout) {
+		start, _ = time.Parse(layout, startStr[:len(layout)])
+	}
+	if endStr := m[3]; len(endStr) >= len(layout) {
+		end, _ = time.Parse(layout, endStr[:len(layout)])
 	}
 	return start, end
-}
-
-// extractQuotedDate extracts the date from a bound expression after the given keyword.
-func extractQuotedDate(expr, keyword string) string {
-	idx := 0
-	for i := 0; i <= len(expr)-len(keyword); i++ {
-		if expr[i:i+len(keyword)] == keyword {
-			idx = i + len(keyword)
-			break
-		}
-	}
-	if idx == 0 {
-		return ""
-	}
-	// Find the opening quote
-	for idx < len(expr) && expr[idx] != '\'' {
-		idx++
-	}
-	if idx >= len(expr) {
-		return ""
-	}
-	idx++ // skip opening quote
-	// Find the closing quote
-	end := idx
-	for end < len(expr) && expr[end] != '\'' {
-		end++
-	}
-	if end > idx {
-		return expr[idx:end]
-	}
-	return ""
 }

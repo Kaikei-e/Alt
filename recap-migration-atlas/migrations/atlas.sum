@@ -1,4 +1,4 @@
-h1:zMkCB+lu+W9KKlQf01IqDUOCa4Q2NMBAXTupOD58LT8=
+h1:5yEywGei+ENTF6Wu/I3iKSaFu6WjeSQQr4gkglVL+Mw=
 20240101000000_create_recap_subworker_tables.sql h1:+6xgDONWHNmxnO9fpHkciX6pKuvzuwGYlp68GIO+rxw=
 20240101000100_create_recap_job_tables.sql h1:hGr/YECmSltZD0SmwSXcfoRJWQoUTIvpx7DygDCpZMA=
 20240101000200_create_recap_final_sections.sql h1:Rk51k37W+Txj8k5Ux8ZynZNOpPyNXFDhOiXMV+f52xQ=
@@ -28,3 +28,4 @@ h1:zMkCB+lu+W9KKlQf01IqDUOCa4Q2NMBAXTupOD58LT8=
 20260311000000_add_tags_to_recap_outputs.sql h1:nVr3WqpSAgS+lrHAM8MCBPuwjPNqL5hgZohttArHuPU=
 20260407000000_create_morning_letter_tables.sql h1:wgRMsbSzv5cLp2jA3W3Gv1uwvQec5mNQgIV3GAZp3Yg=
 20260512000000_add_morning_completed_status.sql h1:HIZosZUzN44AvWJ+iHLFKANqlofVat6FbQKrjCnzGPw=
+20260708000000_add_next_retry_at_to_classification_queue.sql h1:PyoBZj78JdqElf8+IzI/2yOKiEmKxuMrR/aruqFhAO0=

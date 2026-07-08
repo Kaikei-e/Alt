@@ -96,8 +96,8 @@ const canRetry = $derived.by(() => {
 function handleRetry() {
 	// Find last user message and resend
 	for (let i = pane.messages.length - 1; i >= 0; i--) {
-		if (pane.messages[i].role === "user") {
-			pane.sendMessage(pane.messages[i].message);
+		if (pane.messages[i]!.role === "user") {
+			pane.sendMessage(pane.messages[i]!.message);
 			return;
 		}
 	}

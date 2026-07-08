@@ -152,7 +152,7 @@ scripts/pgbouncer_stats.sh
 scripts/benchmark_augur.sh
 scripts/bench-bonsai.*
 scripts/bench-prompts.*
-scripts/backup/
+scripts/backup/alt-backup.env
 setup.sh
 rerank-server/deploy.sh
 

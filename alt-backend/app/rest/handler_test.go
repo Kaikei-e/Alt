@@ -5,6 +5,7 @@ import (
 	"alt/di"
 	"alt/utils/logger"
 	"bytes"
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -27,7 +28,7 @@ func TestCSPReportEndpoint(t *testing.T) {
 	cfg := &config.Config{}
 
 	// Register routes
-	RegisterRoutes(e, container, cfg)
+	RegisterRoutes(context.Background(), e, container, cfg)
 
 	tests := []struct {
 		name           string

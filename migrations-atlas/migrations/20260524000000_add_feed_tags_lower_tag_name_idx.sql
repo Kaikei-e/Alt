@@ -14,6 +14,13 @@
 -- IF NOT EXISTS guards the migration when re-applied against a database that
 -- already carries the index (e.g. when restoring from an environment that
 -- ran the index out-of-band).
+--
+-- Not CONCURRENTLY: this project's migrate.sh runs `atlas migrate apply`
+-- with the default --tx-mode=file (one transaction per migration file), and
+-- Atlas 1.2.0 has no per-file transaction-mode directive (only a global
+-- --tx-mode CLI flag) — CONCURRENTLY cannot run inside that transaction.
+-- Matches atlas.hcl's existing `diff.concurrent_index { create = false }`
+-- policy of using regular CREATE INDEX for transaction safety.
 CREATE INDEX IF NOT EXISTS idx_feed_tags_tag_name_lower
     ON feed_tags (lower(tag_name) text_pattern_ops);
 

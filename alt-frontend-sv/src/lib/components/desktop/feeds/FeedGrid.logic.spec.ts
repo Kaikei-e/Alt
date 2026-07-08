@@ -40,7 +40,7 @@ function calculateNextFeedUrl(
 
 	// Otherwise, return the item at the same index (which was the next item)
 	return {
-		nextFeedUrl: remainingFeeds[currentIndex].normalizedUrl,
+		nextFeedUrl: remainingFeeds[currentIndex]!.normalizedUrl,
 		totalCount,
 	};
 }

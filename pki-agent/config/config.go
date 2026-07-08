@@ -115,6 +115,9 @@ func (c *Config) validate() error {
 	if len(c.SANs) == 0 {
 		c.SANs = []string{c.Subject}
 	}
+	if len(c.ProxyAllowedPeers) > 0 && !c.ProxyVerifyClient {
+		return errors.New("PROXY_ALLOWED_PEERS requires PROXY_VERIFY_CLIENT=on: an allowlist without mTLS client verification cannot be enforced")
+	}
 	return nil
 }
 

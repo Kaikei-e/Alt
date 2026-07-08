@@ -19,8 +19,6 @@ from news_creator.utils.context_logger import (
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter()
-
 
 def create_summarize_router(summarize_usecase: SummarizeUsecase) -> APIRouter:
     """
@@ -32,6 +30,7 @@ def create_summarize_router(summarize_usecase: SummarizeUsecase) -> APIRouter:
     Returns:
         Configured APIRouter
     """
+    router = APIRouter()
 
     @router.post("/api/v1/summarize", response_model=SummarizeResponse)
     async def summarize_endpoint(
@@ -195,6 +194,10 @@ def create_summarize_router(summarize_usecase: SummarizeUsecase) -> APIRouter:
                                     },
                                     exc_info=True,
                                 )
+                                # Surface the failure to the client instead of
+                                # letting the stream end silently and look
+                                # like a normal (if short) completed summary.
+                                await data_queue.put(("error", str(e)))
                             finally:
                                 stopped.set()
                                 await data_queue.put(None)  # Sentinel to stop
@@ -238,6 +241,15 @@ def create_summarize_router(summarize_usecase: SummarizeUsecase) -> APIRouter:
                                         )
                                         # Standard SSE format: data: <json_encoded_data>\n\n
                                         yield f"data: {json.dumps(content)}\n\n"
+                                    elif item_type == "error":
+                                        logger.debug(
+                                            "Yielding SSE error event",
+                                            extra={
+                                                "article_id": request.article_id,
+                                                "error": content,
+                                            },
+                                        )
+                                        yield f"event: error\ndata: {json.dumps({'error': content})}\n\n"
 
                                     if await http_request.is_disconnected():
                                         stopped.set()
@@ -326,10 +338,10 @@ def create_summarize_router(summarize_usecase: SummarizeUsecase) -> APIRouter:
                 success=True,
                 article_id=request.article_id,
                 summary=summary,
-                model=metadata.get("model", "unknown"),
-                prompt_tokens=metadata.get("prompt_tokens"),
-                completion_tokens=metadata.get("completion_tokens"),
-                total_duration_ms=metadata.get("total_duration_ms"),
+                model=metadata.model,
+                prompt_tokens=metadata.prompt_tokens,
+                completion_tokens=metadata.completion_tokens,
+                total_duration_ms=metadata.total_duration_ms,
             )
 
         except QueueFullError as exc:

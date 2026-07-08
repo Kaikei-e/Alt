@@ -1,6 +1,8 @@
 package cmd
 
 import (
+	"os"
+
 	"github.com/spf13/cobra"
 
 	"github.com/alt-project/altctl/internal/adminclient"
@@ -35,10 +37,13 @@ func newAdminClient(cmd *cobra.Command) (*adminclient.AdminClient, error) {
 	return adminclient.NewClient(backendURL, ""), nil
 }
 
-// newSovereignClient creates a SovereignClient from command flags.
+// newSovereignClient creates a SovereignClient from command flags. The admin
+// token is read from the operator's environment (matching the ADMIN_TOKEN
+// the target knowledge-sovereign instance was started with); it is empty,
+// and simply omitted, when that instance has admin auth disabled.
 func newSovereignClient(cmd *cobra.Command) *sovereignclient.SovereignClient {
 	sovereignURL, _ := cmd.Flags().GetString("sovereign-url")
-	return sovereignclient.NewClient(sovereignURL)
+	return sovereignclient.NewClient(sovereignURL, os.Getenv("ADMIN_TOKEN"))
 }
 
 // addAdminFlags adds the backend-url flag to a command. Authentication is

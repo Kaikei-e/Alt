@@ -253,8 +253,8 @@ impl MockLogEnricher {
             service_name: container_info.name.clone(),
             service_group: container_info.service_group.clone(),
             trace_id: None,
-        span_id: None,
-        fields: entry.fields,
+            span_id: None,
+            fields: entry.fields,
         }
     }
 

@@ -22,7 +22,7 @@ let {
 	paused?: boolean;
 } = $props();
 
-const indicator = $derived(() => {
+const indicator = $derived.by(() => {
 	if (paused) return { glyph: "▮▮", text: "paused" };
 	switch (streamState) {
 		case "live":
@@ -38,7 +38,7 @@ const indicator = $derived(() => {
 	}
 });
 
-const snapshotLabel = $derived(() => {
+const snapshotLabel = $derived.by(() => {
 	if (!snapshotTime) return "—";
 	try {
 		return new Date(snapshotTime).toLocaleTimeString();
@@ -59,11 +59,11 @@ const snapshotLabel = $derived(() => {
 
 	<div class="controls">
 		<TimeRangePicker bind:window bind:step />
-		<div class="status" data-state={indicator().text} aria-live="polite">
-			<span class="glyph" aria-hidden="true">{indicator().glyph}</span>
-			<span class="state-text">{indicator().text}</span>
+		<div class="status" data-state={indicator.text} aria-live="polite">
+			<span class="glyph" aria-hidden="true">{indicator.glyph}</span>
+			<span class="state-text">{indicator.text}</span>
 			<span class="snapshot" title="last snapshot timestamp"
-				>{snapshotLabel()}</span
+				>{snapshotLabel}</span
 			>
 		</div>
 		{#if onTogglePause}

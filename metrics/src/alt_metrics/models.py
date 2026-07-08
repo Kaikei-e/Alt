@@ -56,42 +56,6 @@ class ApiPerformanceStats(BaseModel):
     error_spans: int = 0
 
 
-class HttpEndpointStats(BaseModel):
-    """HTTPエンドポイントパフォーマンス統計"""
-
-    service: str
-    route: str
-    request_count: int
-    avg_duration_ms: float
-    p95_duration_ms: float
-    avg_response_size: int
-    error_rate: float
-    status_2xx: int
-    status_4xx: int
-    status_5xx: int
-
-
-class SLITrend(BaseModel):
-    """SLIメトリクストレンドデータ"""
-
-    timestamp: datetime
-    service: str
-    metric: str
-    value: float
-
-
-class LogVolumeStats(BaseModel):
-    """ログ量統計（重要度別）"""
-
-    service: str
-    total_logs: int
-    debug_count: int
-    info_count: int
-    warn_count: int
-    error_count: int
-    fatal_count: int
-
-
 class AnalysisResult(BaseModel):
     """分析結果コンテナ
 

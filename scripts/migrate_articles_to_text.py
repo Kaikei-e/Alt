@@ -125,8 +125,8 @@ class ArticleTextExtractor:
                     del tag.attrs[attr]
 
             # 3. readability-lxmlで記事抽出（利用可能な場合）
+            cleaned_html = str(soup)
             if READABILITY_AVAILABLE:
-                cleaned_html = str(soup)
                 try:
                     doc = ReadabilityDocument(cleaned_html)
                     summary_html = doc.summary()

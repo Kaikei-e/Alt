@@ -23,6 +23,9 @@ type AgenticSynthesisStrategy struct {
 }
 
 // NewAgenticSynthesisStrategy creates a synthesis strategy with native tool calling.
+// toolCaller and dispatcher are required: agentic synthesis has no supported
+// degraded mode, so a missing dependency here means DI wiring is broken, not
+// that tool-calling is intentionally disabled (see IntentSynthesis routing).
 func NewAgenticSynthesisStrategy(
 	planner *ToolPlanner,
 	dispatcher *ToolDispatcher,
@@ -30,6 +33,12 @@ func NewAgenticSynthesisStrategy(
 	toolCaller domain.ToolCallingLLMClient,
 	logger *slog.Logger,
 ) RetrievalStrategy {
+	if toolCaller == nil {
+		panic("agentic_synthesis_strategy: toolCaller must not be nil")
+	}
+	if dispatcher == nil {
+		panic("agentic_synthesis_strategy: dispatcher must not be nil")
+	}
 	return &AgenticSynthesisStrategy{
 		base:         NewSynthesisStrategy(planner, dispatcher, retrieve, logger),
 		toolCaller:   toolCaller,
@@ -45,9 +54,6 @@ func (s *AgenticSynthesisStrategy) Retrieve(ctx context.Context, input RetrieveC
 	baseOutput, err := s.base.Retrieve(ctx, input, intent)
 	if err != nil || baseOutput == nil {
 		return baseOutput, err
-	}
-	if s.toolCaller == nil || s.dispatcher == nil {
-		return baseOutput, nil
 	}
 
 	toolDefs := s.dispatcher.ToolDefinitions()
@@ -198,7 +204,7 @@ func (s *AgenticSynthesisStrategy) buildAgentMessages(
 		}
 		for i := 0; i < limit; i++ {
 			ctx := baseOutput.Contexts[i]
-			fmt.Fprintf(&sb, "- %s: %s\n", ctx.Title, truncateToolText(ctx.ChunkText, 180))
+			fmt.Fprintf(&sb, "- %s: %s\n", ctx.Title, runeTruncate(ctx.ChunkText, 180))
 		}
 	}
 	if len(baseOutput.SupplementaryInfo) > 0 {
@@ -208,7 +214,7 @@ func (s *AgenticSynthesisStrategy) buildAgentMessages(
 			limit = 5
 		}
 		for i := 0; i < limit; i++ {
-			fmt.Fprintf(&sb, "- %s\n", truncateToolText(baseOutput.SupplementaryInfo[i], 180))
+			fmt.Fprintf(&sb, "- %s\n", runeTruncate(baseOutput.SupplementaryInfo[i], 180))
 		}
 	}
 
@@ -246,13 +252,6 @@ func toolCallKey(name string, params map[string]string) string {
 		sb.WriteString(";")
 	}
 	return sb.String()
-}
-
-func truncateToolText(s string, n int) string {
-	if len(s) <= n {
-		return s
-	}
-	return s[:n] + "..."
 }
 
 func (s *AgenticSynthesisStrategy) log(msg string, attrs ...slog.Attr) {

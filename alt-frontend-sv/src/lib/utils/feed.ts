@@ -23,13 +23,16 @@ export function formatPublishedDate(
 			return "";
 		}
 
-		// Format as "Nov 23, 2025, 2:30 PM"
+		// Format as "Nov 23, 2025, 2:30 PM". `timeZone` is pinned explicitly so
+		// SSR (server TZ) and hydration (browser TZ) always agree — otherwise
+		// this runs once per environment and produces two different strings.
 		return date.toLocaleString("en-US", {
 			year: "numeric",
 			month: "short",
 			day: "numeric",
 			hour: "numeric",
 			minute: "2-digit",
+			timeZone: "UTC",
 		});
 	} catch {
 		return "";

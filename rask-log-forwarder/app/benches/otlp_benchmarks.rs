@@ -5,17 +5,20 @@
 #![cfg(feature = "otlp")]
 
 use criterion::{BenchmarkId, Criterion, Throughput, criterion_group, criterion_main};
-use std::hint::black_box;
 use rask_log_forwarder::buffer::{Batch, BatchType};
 use rask_log_forwarder::parser::{EnrichedLogEntry, LogLevel};
 use rask_log_forwarder::sender::{BatchSerializer, OtlpSerializer, SerializationFormat};
 use std::collections::HashMap;
+use std::hint::black_box;
 
 fn create_test_entry(id: usize) -> EnrichedLogEntry {
     EnrichedLogEntry {
         service_type: "benchmark-service".to_string(),
         log_type: "structured".to_string(),
-        message: format!("Benchmark log message with some content and details for entry {}", id),
+        message: format!(
+            "Benchmark log message with some content and details for entry {}",
+            id
+        ),
         level: Some(LogLevel::Info),
         timestamp: "2024-01-01T00:00:00.000Z".to_string(),
         stream: "stdout".to_string(),
@@ -56,24 +59,14 @@ fn bench_serialization_throughput(c: &mut Criterion) {
         group.bench_with_input(
             BenchmarkId::new("ndjson", batch_size),
             &batch,
-            |b, batch| {
-                b.iter(|| {
-                    black_box(json_serializer.serialize_ndjson(batch).unwrap())
-                })
-            },
+            |b, batch| b.iter(|| black_box(json_serializer.serialize_ndjson(batch).unwrap())),
         );
 
         // OTLP serialization
         let otlp_serializer = OtlpSerializer::new();
-        group.bench_with_input(
-            BenchmarkId::new("otlp", batch_size),
-            &batch,
-            |b, batch| {
-                b.iter(|| {
-                    black_box(otlp_serializer.serialize_batch(batch).unwrap())
-                })
-            },
-        );
+        group.bench_with_input(BenchmarkId::new("otlp", batch_size), &batch, |b, batch| {
+            b.iter(|| black_box(otlp_serializer.serialize_batch(batch).unwrap()))
+        });
     }
 
     group.finish();

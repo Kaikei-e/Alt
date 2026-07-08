@@ -21,6 +21,6 @@ describe("GlobalSearchEntry logic", () => {
 		const query = "AI & ML: what's next?";
 		const url = `/search?q=${encodeURIComponent(query)}`;
 		expect(url).toContain("search?q=");
-		expect(decodeURIComponent(url.split("q=")[1])).toBe(query);
+		expect(decodeURIComponent(url.split("q=")[1]!)).toBe(query);
 	});
 });

@@ -175,11 +175,11 @@ class OllamaDriver:
                         )
                         raise RuntimeError(error_msg) from err
 
-            except aiohttp.ClientError as err:
+            except (aiohttp.ClientError, asyncio.TimeoutError) as err:
                 # タイムアウトエラーの詳細な情報を取得
                 error_type = type(err).__name__
                 is_timeout = isinstance(
-                    err, (aiohttp.ServerTimeoutError, aiohttp.ClientTimeout)
+                    err, (aiohttp.ServerTimeoutError, asyncio.TimeoutError)
                 )
                 error_msg = f"Ollama API request failed: {err}"
 

@@ -45,11 +45,11 @@ let otelLogger: ReturnType<typeof logs.getLogger> | null = null;
 /**
  * Initialize OpenTelemetry logger provider
  */
-export function initOTelProvider(config?: OTelConfig): () => void {
+export function initOTelProvider(config?: OTelConfig): () => Promise<void> {
   const cfg = config || getOTelConfig();
 
   if (!cfg.enabled) {
-    return () => {};
+    return () => Promise.resolve();
   }
 
   // Create resource with service information
@@ -77,11 +77,13 @@ export function initOTelProvider(config?: OTelConfig): () => void {
   otelLogger = logs.getLogger("alt-perf");
 
   return () => {
-    if (loggerProvider) {
-      loggerProvider.shutdown();
-      loggerProvider = null;
-      otelLogger = null;
+    if (!loggerProvider) {
+      return Promise.resolve();
     }
+    const provider = loggerProvider;
+    loggerProvider = null;
+    otelLogger = null;
+    return provider.shutdown();
   };
 }
 

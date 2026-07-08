@@ -226,7 +226,7 @@ func (h *Handler) StreamChat(
 
 	// Derive thread ID for the in-memory ConversationStore (separate from
 	// persisted conversation id — it feeds RAG context continuity, not history).
-	threadID := deriveThreadID(req.Msg.Messages)
+	threadID := deriveThreadID(userID, req.Msg.Messages)
 
 	// Build input for AnswerWithRAGUsecase
 	locale := detectLocale(query)
@@ -678,6 +678,11 @@ func (h *Handler) RetrieveContext(
 	ctx context.Context,
 	req *connect.Request[augurv2.RetrieveContextRequest],
 ) (*connect.Response[augurv2.RetrieveContextResponse], error) {
+	if _, err := extractUserID(req.Header()); err != nil {
+		h.logger.Warn("retrieve context rejected", slog.String("error", err.Error()))
+		return nil, connect.NewError(connect.CodeUnauthenticated, err)
+	}
+
 	query := req.Msg.Query
 	if query == "" {
 		return nil, connect.NewError(connect.CodeInvalidArgument, nil)
@@ -858,16 +863,18 @@ func parseInt64(s string) (int64, error) {
 // detectLocale determines the response language based on query content.
 // Uses Unicode range heuristics: if Japanese characters (Hiragana, Katakana, CJK)
 // make up a significant portion, the locale is "ja"; otherwise "en".
-// deriveThreadID generates a deterministic thread ID from the first user message
-// in the conversation. Same conversation always maps to the same thread ID.
-func deriveThreadID(messages []*augurv2.ChatMessage) string {
+// deriveThreadID generates a deterministic thread ID from the caller's
+// userID and the first user message in the conversation. userID is mixed
+// into the hash so two different users asking the same first question never
+// collide on the same ConversationStore thread (data isolation).
+func deriveThreadID(userID uuid.UUID, messages []*augurv2.ChatMessage) string {
 	for _, msg := range messages {
 		if msg.Role == "user" && msg.Content != "" {
-			hash := sha256.Sum256([]byte(msg.Content))
+			hash := sha256.Sum256([]byte(userID.String() + msg.Content))
 			return fmt.Sprintf("thread-%x", hash[:8])
 		}
 	}
-	hash := sha256.Sum256(nil)
+	hash := sha256.Sum256([]byte(userID.String()))
 	return fmt.Sprintf("thread-%x", hash[:8])
 }
 

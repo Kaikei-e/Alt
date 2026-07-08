@@ -244,7 +244,3 @@ class BERTScoreEvaluator:
             "num_samples": len(summaries),
             "individual_scores": result.individual_scores,
         }
-
-
-# Singleton instance
-bertscore_evaluator = BERTScoreEvaluator()

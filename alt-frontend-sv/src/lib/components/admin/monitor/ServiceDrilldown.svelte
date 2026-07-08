@@ -40,13 +40,13 @@ function seriesForName(key: string): { container: string; values: number[] }[] {
 	return out;
 }
 
-const p50 = $derived(() => seriesForJob("http_latency_p50"));
-const p95 = $derived(() => seriesForJob("http_latency_p95"));
-const p99 = $derived(() => seriesForJob("http_latency_p99"));
-const rps = $derived(() => seriesForJob("http_rps"));
-const err = $derived(() => seriesForJob("http_error_ratio"));
-const cpu = $derived(() => seriesForName("cpu_saturation"));
-const mem = $derived(() => seriesForName("memory_rss"));
+const p50 = $derived(seriesForJob("http_latency_p50"));
+const p95 = $derived(seriesForJob("http_latency_p95"));
+const p99 = $derived(seriesForJob("http_latency_p99"));
+const rps = $derived(seriesForJob("http_rps"));
+const err = $derived(seriesForJob("http_error_ratio"));
+const cpu = $derived(seriesForName("cpu_saturation"));
+const mem = $derived(seriesForName("memory_rss"));
 </script>
 
 <div class="drill">
@@ -55,21 +55,21 @@ const mem = $derived(() => seriesForName("memory_rss"));
 			<h3>Latency band</h3>
 			<dl>
 				<dt>p99 latest</dt>
-				<dd>{formatValue(p99().at(-1) ?? null, "seconds")}</dd>
+				<dd>{formatValue(p99.at(-1) ?? null, "seconds")}</dd>
 				<dt>p95 latest</dt>
-				<dd>{formatValue(p95().at(-1) ?? null, "seconds")}</dd>
+				<dd>{formatValue(p95.at(-1) ?? null, "seconds")}</dd>
 				<dt>p50 latest</dt>
-				<dd>{formatValue(p50().at(-1) ?? null, "seconds")}</dd>
+				<dd>{formatValue(p50.at(-1) ?? null, "seconds")}</dd>
 			</dl>
 			<div class="overlay" aria-hidden="true">
-				{#if p99().length >= 2}
-					<SLISparkline values={p99()} width={260} height={32} threshold={1.0} />
+				{#if p99.length >= 2}
+					<SLISparkline values={p99} width={260} height={32} threshold={1.0} />
 				{/if}
-				{#if p95().length >= 2}
-					<SLISparkline values={p95()} width={260} height={32} />
+				{#if p95.length >= 2}
+					<SLISparkline values={p95} width={260} height={32} />
 				{/if}
-				{#if p50().length >= 2}
-					<SLISparkline values={p50()} width={260} height={32} />
+				{#if p50.length >= 2}
+					<SLISparkline values={p50} width={260} height={32} />
 				{/if}
 			</div>
 		</div>
@@ -78,29 +78,29 @@ const mem = $derived(() => seriesForName("memory_rss"));
 			<h3>Traffic + errors</h3>
 			<dl>
 				<dt>rps latest</dt>
-				<dd>{formatValue(rps().at(-1) ?? null, "req/s")}</dd>
+				<dd>{formatValue(rps.at(-1) ?? null, "req/s")}</dd>
 				<dt>err latest</dt>
-				<dd>{formatValue(err().at(-1) ?? null, "ratio")}</dd>
+				<dd>{formatValue(err.at(-1) ?? null, "ratio")}</dd>
 			</dl>
 			<div class="overlay" aria-hidden="true">
-				{#if rps().length >= 2}
-					<SLISparkline values={rps()} width={260} height={32} />
+				{#if rps.length >= 2}
+					<SLISparkline values={rps} width={260} height={32} />
 				{/if}
-				{#if err().length >= 2}
-					<SLISparkline values={err()} width={260} height={32} threshold={0.01} />
+				{#if err.length >= 2}
+					<SLISparkline values={err} width={260} height={32} threshold={0.01} />
 				{/if}
 			</div>
 		</div>
 
 		<div class="panel">
 			<h3>Container resource</h3>
-			{#if cpu().length === 0 && mem().length === 0}
+			{#if cpu.length === 0 && mem.length === 0}
 				<p class="dim">No cAdvisor series match this service.</p>
 			{:else}
 				<dl>
 					<dt>cpu (cores)</dt>
 					<dd>
-						{cpu()
+						{cpu
 							.map(
 								(c) =>
 									`${c.container} · ${formatValue(c.values.at(-1) ?? null, "cores")}`,
@@ -109,7 +109,7 @@ const mem = $derived(() => seriesForName("memory_rss"));
 					</dd>
 					<dt>mem</dt>
 					<dd>
-						{mem()
+						{mem
 							.map(
 								(c) =>
 									`${c.container} · ${formatValue(c.values.at(-1) ?? null, "bytes")}`,

@@ -125,7 +125,7 @@ async function processQueue() {
 	isQueueProcessing = true;
 
 	while (listenQueue.length > 0) {
-		const current = listenQueue[0];
+		const current = listenQueue[0]!;
 		try {
 			await tts.play(current.text);
 		} catch {
@@ -381,7 +381,7 @@ onMount(async () => {
 
 		<div class="section-reveal" style="--delay: 2;">
 			<UnifiedIntentBox
-				query={searchQuery}
+				bind:query={searchQuery}
 				onSearchSubmit={handleSearchSubmit}
 				onSearchClear={handleSearchClear}
 				onAsk={handleAskFromHome}

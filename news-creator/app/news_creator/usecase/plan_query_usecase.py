@@ -17,6 +17,8 @@ import logging
 import time
 from datetime import datetime, timezone
 
+from pydantic import ValidationError
+
 from news_creator.config.config import NewsCreatorConfig
 from news_creator.domain.models import (
     PlanQueryRequest,
@@ -135,7 +137,7 @@ class PlanQueryUsecase:
             json_str = self._extract_json(content)
             parsed = json.loads(json_str)
             return QueryPlan(**parsed)
-        except (json.JSONDecodeError, KeyError, Exception) as e:
+        except (json.JSONDecodeError, ValidationError, TypeError, KeyError) as e:
             logger.warning(
                 "plan_query_parse_failed",
                 extra={

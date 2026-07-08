@@ -36,6 +36,16 @@ def _row_value(row: dict[str, Any] | BaseModel, column: str) -> Any:
     return getattr(row, column, "") if isinstance(row, BaseModel) else row.get(column, "")
 
 
+def _escape_cell(value: Any) -> str:
+    """Markdownテーブルセルの値をエスケープ
+
+    `|` と改行はログ本文由来の値に含まれうるため、テーブル崩壊や
+    行注入を防ぐためエスケープする。
+    """
+    text = str(value)[:60]
+    return text.replace("|", "\\|").replace("\r\n", " ").replace("\n", " ").replace("\r", " ")
+
+
 def format_table(data: list[dict[str, Any] | BaseModel], columns: list[str] | None = None) -> str:
     """データをMarkdownテーブルにフォーマット
 
@@ -54,7 +64,7 @@ def format_table(data: list[dict[str, Any] | BaseModel], columns: list[str] | No
     separator = "|" + "|".join("---" for _ in cols) + "|"
     rows = []
     for row in data:
-        values = [str(_row_value(row, c))[:60] for c in cols]
+        values = [_escape_cell(_row_value(row, c)) for c in cols]
         rows.append("| " + " | ".join(values) + " |")
 
     return "\n".join([header, separator, *rows]) + "\n"

@@ -9,7 +9,7 @@ import (
 )
 
 func TestPostgresBackuper_BackupRejectsTarType(t *testing.T) {
-	pg := NewPostgresBackuper("alt", slog.Default(), true)
+	pg := NewPostgresBackuper("alt", "", slog.Default(), true)
 	spec := VolumeSpec{
 		Name:       "meili_data",
 		BackupType: BackupTypeTar,
@@ -22,7 +22,7 @@ func TestPostgresBackuper_BackupRejectsTarType(t *testing.T) {
 }
 
 func TestPostgresBackuper_RestoreRejectsTarType(t *testing.T) {
-	pg := NewPostgresBackuper("alt", slog.Default(), true)
+	pg := NewPostgresBackuper("alt", "", slog.Default(), true)
 	spec := VolumeSpec{
 		Name:       "meili_data",
 		BackupType: BackupTypeTar,
@@ -35,7 +35,7 @@ func TestPostgresBackuper_RestoreRejectsTarType(t *testing.T) {
 }
 
 func TestPostgresBackuper_BackupDryRun(t *testing.T) {
-	pg := NewPostgresBackuper("alt", slog.Default(), true)
+	pg := NewPostgresBackuper("alt", "", slog.Default(), true)
 	spec := VolumeSpec{
 		Name:       "db_data_17",
 		Service:     "db",
@@ -58,7 +58,7 @@ func TestPostgresBackuper_BackupDryRun(t *testing.T) {
 }
 
 func TestPostgresBackuper_RestoreDryRun(t *testing.T) {
-	pg := NewPostgresBackuper("alt", slog.Default(), true)
+	pg := NewPostgresBackuper("alt", "", slog.Default(), true)
 	spec := VolumeSpec{
 		Name:       "db_data_17",
 		Service:     "db",
@@ -81,7 +81,7 @@ func TestPostgresBackuper_RestoreDryRun(t *testing.T) {
 }
 
 func TestPostgresBackuper_RestoreFileNotFound(t *testing.T) {
-	pg := NewPostgresBackuper("alt", slog.Default(), false)
+	pg := NewPostgresBackuper("alt", "", slog.Default(), false)
 	spec := VolumeSpec{
 		Name:       "db_data_17",
 		Service:     "db",
@@ -98,7 +98,7 @@ func TestPostgresBackuper_RestoreFileNotFound(t *testing.T) {
 }
 
 func TestPostgresBackuper_ContainerName(t *testing.T) {
-	pg := NewPostgresBackuper("alt", slog.Default(), true)
+	pg := NewPostgresBackuper("alt", "", slog.Default(), true)
 
 	tests := []struct {
 		spec VolumeSpec
@@ -141,7 +141,7 @@ func TestPostgresBackuper_ContainerName(t *testing.T) {
 }
 
 func TestPostgresBackuper_DumpFilename(t *testing.T) {
-	pg := NewPostgresBackuper("alt", slog.Default(), true)
+	pg := NewPostgresBackuper("alt", "", slog.Default(), true)
 	spec := VolumeSpec{Name: "db_data_17", DBName: "alt"}
 
 	got := pg.dumpFilename(spec)

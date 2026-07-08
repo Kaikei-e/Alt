@@ -4,6 +4,7 @@ import { getBackendToken } from "$lib/api";
 
 const RECAP_WORKER_URL =
 	env.RECAP_WORKER_BASE_URL || "http://recap-worker:9005";
+const FETCH_TIMEOUT_MS = 10_000;
 
 export const POST: RequestHandler = async ({ request }) => {
 	try {
@@ -29,6 +30,7 @@ export const POST: RequestHandler = async ({ request }) => {
 				method: "POST",
 				headers,
 				body: JSON.stringify(body),
+				signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
 			},
 		);
 

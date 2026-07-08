@@ -457,12 +457,20 @@ class NewsCreatorConfig:
         return urls
 
     def _get_int(self, name: str, default: int) -> int:
-        """Get integer value from environment variable with fallback."""
-        try:
-            return int(os.getenv(name, default))
-        except ValueError:
-            logger.warning("Invalid int for %s. Using default %s", name, default)
+        """Get integer value from environment variable.
+
+        Uses `default` when the variable is unset. A variable that IS set
+        but isn't a valid integer is a misconfiguration, not an absence --
+        fail fast at startup instead of silently limping on with `default`
+        (CLAUDE.md rule 9: fail-fast startup config).
+        """
+        raw = os.getenv(name)
+        if raw is None:
             return default
+        try:
+            return int(raw)
+        except ValueError as exc:
+            raise ValueError(f"Invalid integer value for {name}: {raw!r}") from exc
 
     def _get_float(self, name: str, default: float) -> float:
         """Get float value from environment variable with fallback."""

@@ -5,6 +5,7 @@ from __future__ import annotations
 from unittest.mock import MagicMock
 
 import pytest
+from clickhouse_connect.driver.exceptions import OperationalError
 
 from alt_metrics.collectors.logs import (
     collect_error_types,
@@ -52,7 +53,7 @@ class TestCollectErrorTypes:
     def test_raises_collector_error_on_exception(self) -> None:
         """例外発生時はCollectorErrorを投げる"""
         mock_client = MagicMock()
-        mock_client.query.side_effect = Exception("Connection failed")
+        mock_client.query.side_effect = OperationalError("Connection failed")
 
         with pytest.raises(CollectorError) as exc_info:
             collect_error_types(mock_client, "rask_logs", 24)
@@ -88,7 +89,7 @@ class TestCollectRecentErrors:
     def test_raises_collector_error_on_exception(self) -> None:
         """例外発生時はCollectorErrorを投げる"""
         mock_client = MagicMock()
-        mock_client.query.side_effect = Exception("Query failed")
+        mock_client.query.side_effect = OperationalError("Query failed")
 
         with pytest.raises(CollectorError) as exc_info:
             collect_recent_errors(mock_client, "rask_logs", 24)
@@ -127,7 +128,7 @@ class TestCollectLogSeverityDistribution:
     def test_raises_collector_error_on_exception(self) -> None:
         """例外発生時はCollectorErrorを投げる"""
         mock_client = MagicMock()
-        mock_client.query.side_effect = Exception("Query timeout")
+        mock_client.query.side_effect = OperationalError("Query timeout")
 
         with pytest.raises(CollectorError) as exc_info:
             collect_log_severity_distribution(mock_client, "rask_logs", 24)
@@ -162,7 +163,7 @@ class TestCollectLogVolumeTrends:
     def test_raises_collector_error_on_exception(self) -> None:
         """例外発生時はCollectorErrorを投げる"""
         mock_client = MagicMock()
-        mock_client.query.side_effect = Exception("Connection failed")
+        mock_client.query.side_effect = OperationalError("Connection failed")
 
         with pytest.raises(CollectorError) as exc_info:
             collect_log_volume_trends(mock_client, "rask_logs", 24)

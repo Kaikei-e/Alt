@@ -24,7 +24,7 @@ class AlertLevel(str, Enum):
     CRITICAL = "critical"
 
 
-@dataclass
+@dataclass(slots=True)
 class MetricValue:
     """A single metric value with optional alert status."""
 
@@ -35,7 +35,7 @@ class MetricValue:
     threshold_critical: float | None = None
 
 
-@dataclass
+@dataclass(slots=True)
 class GenreMetrics:
     """Per-genre classification metrics."""
 
@@ -61,7 +61,7 @@ class GenreMetrics:
         }
 
 
-@dataclass
+@dataclass(slots=True)
 class GenreEvaluationResult:
     """Genre classification evaluation result."""
 
@@ -91,7 +91,7 @@ class GenreEvaluationResult:
         }
 
 
-@dataclass
+@dataclass(slots=True)
 class ClusterMetrics:
     """Clustering quality metrics."""
 
@@ -137,7 +137,7 @@ class ClusterMetrics:
         return d
 
 
-@dataclass
+@dataclass(slots=True)
 class SummaryMetrics:
     """Summary quality metrics from multi-dimensional evaluation."""
 
@@ -204,7 +204,7 @@ class SummaryMetrics:
         }
 
 
-@dataclass
+@dataclass(slots=True)
 class PipelineMetrics:
     """Pipeline health metrics."""
 
@@ -230,7 +230,7 @@ class PipelineMetrics:
         }
 
 
-@dataclass
+@dataclass(slots=True)
 class EvaluationRun:
     """Complete evaluation run result."""
 
@@ -248,6 +248,7 @@ class EvaluationRun:
     def to_metrics_dict(self) -> dict:
         """Serialize evaluation metrics to a JSON-compatible dict."""
         metrics: dict = {
+            "window_days": self.window_days,
             "overall_alert_level": self.overall_alert_level.value,
         }
         if self.genre_metrics is not None:

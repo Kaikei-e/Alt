@@ -67,7 +67,7 @@ export function simulateTypewriterEffect(
 				try {
 					for (let i = 0; i < newText.length; i++) {
 						if (isCancelled) break;
-						onChar(newText[i]);
+						onChar(newText[i]!);
 
 						// Wait for delay
 						if (i < newText.length - 1 && delay > 0) {

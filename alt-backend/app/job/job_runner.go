@@ -2,6 +2,7 @@ package job
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"alt/driver/alt_db"
@@ -20,14 +21,14 @@ func CollectFeedsJob(r *alt_db.AltDBRepository) func(ctx context.Context) error 
 	return func(ctx context.Context) error {
 		feedLinks, err := r.FetchRSSFeedURLs(ctx)
 		if err != nil {
-			return err
+			return fmt.Errorf("fetch rss feed urls: %w", err)
 		}
 
 		logger.Logger.InfoContext(ctx, "Found RSS feed URLs", "count", len(feedLinks))
 
 		feedItems, err := CollectMultipleFeeds(ctx, feedLinks, rateLimiter, r)
 		if err != nil {
-			return err
+			return fmt.Errorf("collect multiple feeds: %w", err)
 		}
 
 		logger.Logger.InfoContext(ctx, "Feed collection completed", "feed_count", len(feedItems))
@@ -58,7 +59,7 @@ func CollectFeedsJob(r *alt_db.AltDBRepository) func(ctx context.Context) error 
 		}
 
 		if _, err := r.RegisterMultipleFeeds(ctx, feedModels); err != nil {
-			return err
+			return fmt.Errorf("register multiple feeds: %w", err)
 		}
 
 		return nil

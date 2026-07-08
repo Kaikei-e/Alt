@@ -50,7 +50,6 @@ tracing-subscriber = { version = "0.3.23", features = ["env-filter", "json"] }
 
 # Error handling
 thiserror = "2.0.18"
-anyhow = "1.0.103"
 
 # Time handling
 chrono = { version = "0.4.45", features = ["serde"] }
@@ -137,3 +136,11 @@ required-features = ["otlp"]
 lto = "fat"
 codegen-units = 1
 opt-level = 3
+overflow-checks = true
+
+[lints.clippy]
+# `pedantic` is deliberately not blanket-enabled here: lib.rs already denies a
+# hand-picked subset of pedantic lints and allows the noisy rest with reasons.
+# Enabling the full group here would additionally promote every unreviewed
+# pedantic lint to a hard error via `#![deny(warnings)]` in lib.rs.
+all = "warn"

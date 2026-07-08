@@ -4,6 +4,18 @@
  * and determining measurement stability.
  */
 
+// Bounds-checked array read; callers only ever pass indices that are
+// mathematically within range, but noUncheckedIndexedAccess can't prove
+// that statically, so this makes the invariant explicit instead of using a
+// non-null assertion.
+function at(values: number[], index: number): number {
+  const value = values[index];
+  if (value === undefined) {
+    throw new Error(`Index ${index} out of bounds (length ${values.length})`);
+  }
+  return value;
+}
+
 /**
  * Confidence interval result
  */
@@ -76,10 +88,16 @@ function getTCriticalValue(df: number, level: number): number {
     }
   }
 
-  const values = T_CRITICAL_VALUES[closestDf];
+  const values = closestDf !== undefined
+    ? T_CRITICAL_VALUES[closestDf]
+    : undefined;
+  if (!values) {
+    return 1.96; // Fallback z-critical value for ~95% confidence
+  }
   // Find closest confidence level
-  if (level in values) {
-    return values[level];
+  const exact = values[level];
+  if (exact !== undefined) {
+    return exact;
   }
   // Default to 0.95 if not found
   return values[0.95] ?? 1.96;
@@ -90,18 +108,19 @@ function getTCriticalValue(df: number, level: number): number {
  */
 function percentile(sortedValues: number[], p: number): number {
   if (sortedValues.length === 0) return 0;
-  if (sortedValues.length === 1) return sortedValues[0];
+  if (sortedValues.length === 1) return at(sortedValues, 0);
 
   const index = (p / 100) * (sortedValues.length - 1);
   const lower = Math.floor(index);
   const upper = Math.ceil(index);
 
   if (lower === upper) {
-    return sortedValues[lower];
+    return at(sortedValues, lower);
   }
 
   const fraction = index - lower;
-  return sortedValues[lower] + fraction * (sortedValues[upper] - sortedValues[lower]);
+  return at(sortedValues, lower) +
+    fraction * (at(sortedValues, upper) - at(sortedValues, lower));
 }
 
 /**
@@ -129,7 +148,7 @@ export function calculateStatistics(values: number[]): StatisticalSummary {
   }
 
   if (values.length === 1) {
-    const value = values[0];
+    const value = at(values, 0);
     return {
       count: 1,
       mean: value,
@@ -155,7 +174,7 @@ export function calculateStatistics(values: number[]): StatisticalSummary {
   let max = -Infinity;
 
   for (let i = 0; i < values.length; i++) {
-    const value = values[i];
+    const value = at(values, i);
     const delta = value - mean;
     mean += delta / (i + 1);
     const delta2 = value - mean;
@@ -174,8 +193,9 @@ export function calculateStatistics(values: number[]): StatisticalSummary {
 
   // Median
   const mid = Math.floor(sorted.length / 2);
-  const median =
-    sorted.length % 2 === 0 ? (sorted[mid - 1] + sorted[mid]) / 2 : sorted[mid];
+  const median = sorted.length % 2 === 0
+    ? (at(sorted, mid - 1) + at(sorted, mid)) / 2
+    : at(sorted, mid);
 
   // Percentiles
   const p75 = percentile(sorted, 75);
@@ -259,6 +279,20 @@ export function detectOutliers(values: number[]): number[] {
 }
 
 /**
+ * Remove outliers (IQR method) from a dataset, keeping the inlier values.
+ * The complement of detectOutliers: used when aggregating measurement runs
+ * where outliers should be discarded rather than reported.
+ */
+export function excludeOutliers(values: number[]): number[] {
+  if (values.length < 4) {
+    return values;
+  }
+
+  const outliers = new Set(detectOutliers(values));
+  return values.filter((v) => !outliers.has(v));
+}
+
+/**
  * Check if measurements are stable based on coefficient of variation
  * CV = stdDev / mean
  * Measurements are considered stable if CV is below the threshold
@@ -288,16 +322,17 @@ function calculateStatisticsBasic(values: number[]): { mean: number; stdDev: num
   }
 
   if (values.length === 1) {
-    return { mean: values[0], stdDev: 0 };
+    return { mean: at(values, 0), stdDev: 0 };
   }
 
   let mean = 0;
   let m2 = 0;
 
   for (let i = 0; i < values.length; i++) {
-    const delta = values[i] - mean;
+    const value = at(values, i);
+    const delta = value - mean;
     mean += delta / (i + 1);
-    const delta2 = values[i] - mean;
+    const delta2 = value - mean;
     m2 += delta * delta2;
   }
 

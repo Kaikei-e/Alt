@@ -10,14 +10,19 @@ Research basis:
 
 import asyncio
 import logging
+import threading
 import time
 from typing import List, Tuple, Optional
 
 logger = logging.getLogger(__name__)
 
-# Lazy import to avoid loading model at startup
+# Lazy import to avoid loading model at startup. _get_cross_encoder runs
+# inside a worker thread (called via asyncio.to_thread), so concurrent first
+# requests race across real OS threads, not just coroutines -- guarded with a
+# threading.Lock, not asyncio.Lock.
 _cross_encoder = None
 _loaded_model_name = None
+_load_lock = threading.Lock()
 
 
 def _get_cross_encoder(model_name: str):
@@ -31,18 +36,24 @@ def _get_cross_encoder(model_name: str):
     """
     global _cross_encoder, _loaded_model_name
 
-    if _cross_encoder is None or _loaded_model_name != model_name:
-        from sentence_transformers import CrossEncoder
+    if _cross_encoder is not None and _loaded_model_name == model_name:
+        return _cross_encoder
 
-        logger.info("Loading cross-encoder model", extra={"model_name": model_name})
-        load_start = time.time()
-        _cross_encoder = CrossEncoder(model_name, device="cpu")
-        _loaded_model_name = model_name
-        load_elapsed = time.time() - load_start
-        logger.info(
-            "Cross-encoder model loaded",
-            extra={"model_name": model_name, "load_time_s": round(load_elapsed, 2)},
-        )
+    with _load_lock:
+        # Re-check inside the lock: another thread may have finished loading
+        # while this one was waiting.
+        if _cross_encoder is None or _loaded_model_name != model_name:
+            from sentence_transformers import CrossEncoder
+
+            logger.info("Loading cross-encoder model", extra={"model_name": model_name})
+            load_start = time.time()
+            _cross_encoder = CrossEncoder(model_name, device="cpu")
+            _loaded_model_name = model_name
+            load_elapsed = time.time() - load_start
+            logger.info(
+                "Cross-encoder model loaded",
+                extra={"model_name": model_name, "load_time_s": round(load_elapsed, 2)},
+            )
 
     return _cross_encoder
 

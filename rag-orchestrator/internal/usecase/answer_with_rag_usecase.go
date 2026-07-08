@@ -1003,7 +1003,7 @@ func (u *answerWithRAGUsecase) buildPrompt(ctx context.Context, input AnswerWith
 	// When queryPlanner is configured, it replaces the legacy
 	// ResolveQueryIntent + QueryClassifier + ConversationPlanner pipeline.
 	if u.queryPlanner != nil {
-		return u.buildPromptWithQueryPlanner(ctx, input, result)
+		return u.buildPromptWithQueryPlanner(ctx, input, result, maxChunks)
 	}
 
 	// --- Legacy path (will be removed in P1-3) ---
@@ -1051,7 +1051,7 @@ func (u *answerWithRAGUsecase) buildPrompt(ctx context.Context, input AnswerWith
 	if u.planner != nil {
 		var convState *domain.ConversationState
 		if u.conversationStore != nil {
-			convState = u.conversationStore.Get(input.UserID)
+			convState = u.conversationStore.Get(conversationThreadKey(input))
 		}
 		plan = u.planner.Plan(intent.UserQuestion, intent, convState, input.ConversationHistory)
 		result.plannerOutput = plan
@@ -1461,6 +1461,7 @@ func (u *answerWithRAGUsecase) buildPromptWithQueryPlanner(
 	ctx context.Context,
 	input AnswerWithRAGInput,
 	result *promptBuildResult,
+	maxChunks int,
 ) (*promptBuildResult, error) {
 	// Call the query planner
 	qpInput := domain.QueryPlannerInput{
@@ -1566,8 +1567,8 @@ func (u *answerWithRAGUsecase) buildPromptWithQueryPlanner(
 	}
 
 	contexts := retrieved.Contexts
-	if len(contexts) > u.maxChunks {
-		contexts = contexts[:u.maxChunks]
+	if len(contexts) > maxChunks {
+		contexts = contexts[:maxChunks]
 	}
 
 	// Token-based limiting

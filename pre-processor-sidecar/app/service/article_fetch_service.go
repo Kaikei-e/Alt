@@ -4,6 +4,7 @@ package service
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"sync"
@@ -33,6 +34,25 @@ type SyncStateRepository interface {
 	FindByStreamID(ctx context.Context, streamID string) (*models.SyncState, error)
 	Create(ctx context.Context, syncState *models.SyncState) error
 	Update(ctx context.Context, syncState *models.SyncState) error
+}
+
+// interSubscriptionDelay bounds how often the batch subscription loops
+// (here and in handler.ScheduleHandler's batch rotation) issue back-to-back
+// Inoreader API calls. CLAUDE.md rule 2 requires a 5-second floor between
+// external API calls; the previous 100ms delay in both call sites violated
+// it identically, so the wait lives here once and both callers share it.
+const interSubscriptionDelay = 5 * time.Second
+
+// WaitBetweenSubscriptions blocks for interSubscriptionDelay or until ctx is
+// done, whichever comes first, so a shutdown/cancellation interrupts the
+// wait instead of a bare time.Sleep blocking regardless of ctx state.
+func WaitBetweenSubscriptions(ctx context.Context) error {
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-time.After(interSubscriptionDelay):
+		return nil
+	}
 }
 
 // ArticleFetchResult represents the result of an article fetch operation
@@ -143,9 +163,16 @@ func (s *ArticleFetchService) FetchArticles(ctx context.Context, streamID string
 
 	// DEPRECATED: Old subscription mapping approach - now handled by Clean Architecture use case
 
-	// Step 2: Get existing sync state for continuation token
+	// Step 2: Get existing sync state for continuation token. Only a genuine
+	// "no row yet" falls back to a fresh fetch — any other repository error
+	// (DB connection failure, etc.) must abort instead of silently discarding
+	// the continuation token and re-fetching the stream from the beginning.
 	syncState, err := s.syncStateRepo.FindByStreamID(ctx, streamID)
 	if err != nil {
+		if !errors.Is(err, repository.ErrSyncStateNotFound) {
+			s.logger.Error("Failed to load sync state", "error", err, "stream_id", streamID)
+			return nil, fmt.Errorf("failed to load sync state for stream %s: %w", streamID, err)
+		}
 		s.logger.Debug("No existing sync state found, starting fresh fetch", "stream_id", streamID)
 		syncState = nil
 	}
@@ -591,9 +618,12 @@ func (s *ArticleFetchService) ProcessSubscriptionBatch(ctx context.Context, subs
 				"total_processed", result.TotalProcessed)
 		}
 
-		// Small delay between subscriptions to be API-friendly
+		// Delay between subscriptions to respect the Inoreader API rate floor.
 		if i < len(subscriptionIDs)-1 {
-			time.Sleep(100 * time.Millisecond)
+			if err := WaitBetweenSubscriptions(ctx); err != nil {
+				s.logger.Warn("batch subscription processing interrupted during inter-subscription wait", "error", err)
+				break
+			}
 		}
 	}
 

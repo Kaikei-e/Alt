@@ -2,6 +2,7 @@ package handler
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"strconv"
@@ -55,6 +56,9 @@ func (h *SovereignHandler) WatchProjectorEvents(
 		}
 
 		if err != nil {
+			if !errors.Is(err, context.DeadlineExceeded) {
+				return fmt.Errorf("WaitForNotification: %w", err)
+			}
 			// Timeout — send heartbeat
 			if err := stream.Send(&sovereignv1.WatchProjectorEventsResponse{
 				LatestEventSeq: 0,

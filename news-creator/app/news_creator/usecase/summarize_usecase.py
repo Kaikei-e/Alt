@@ -1,11 +1,11 @@
 """Summarize usecase - business logic for article summarization."""
 
 import logging
-from typing import Tuple, Dict, Any, List, Optional, AsyncGenerator, AsyncIterator
+from typing import Tuple, List, Optional, AsyncGenerator, AsyncIterator
 from datetime import datetime, timedelta, timezone
 import aiohttp
 
-from news_creator.domain.models import LLMGenerateResponse
+from news_creator.domain.models import LLMGenerateResponse, SummaryMetadata
 from news_creator.config.config import NewsCreatorConfig
 from news_creator.domain.prompts import (
     SUMMARY_PROMPT_TEMPLATE,
@@ -28,7 +28,7 @@ class SummarizeUsecase:
 
     async def generate_summary(
         self, article_id: str, content: str, priority: str = "low"
-    ) -> Tuple[str, Dict[str, Any]]:
+    ) -> Tuple[str, SummaryMetadata]:
         """
         Generate a Japanese summary for an article.
 
@@ -375,15 +375,14 @@ class SummarizeUsecase:
                             f"Model may be in a bad state."
                         )
                     if attempt < max_retries:
-                        f"LLM returned insufficient content (length: {len(raw_text_stripped)})"
-                        last_metadata = {
-                            "model": llm_response.model,
-                            "prompt_tokens": llm_response.prompt_eval_count,
-                            "completion_tokens": llm_response.eval_count,
-                            "total_duration_ms": self._nanoseconds_to_milliseconds(
+                        last_metadata = SummaryMetadata(
+                            model=llm_response.model,
+                            prompt_tokens=llm_response.prompt_eval_count,
+                            completion_tokens=llm_response.eval_count,
+                            total_duration_ms=self._nanoseconds_to_milliseconds(
                                 llm_response.total_duration
                             ),
-                        }
+                        )
                         continue  # Retry with adjusted temperature
                 else:
                     consecutive_empty_count = 0  # Reset on non-empty response
@@ -404,14 +403,14 @@ class SummarizeUsecase:
                             "raw_summary_preview": raw_summary[:200],
                         },
                     )
-                    last_metadata = {
-                        "model": llm_response.model,
-                        "prompt_tokens": llm_response.prompt_eval_count,
-                        "completion_tokens": llm_response.eval_count,
-                        "total_duration_ms": self._nanoseconds_to_milliseconds(
+                    last_metadata = SummaryMetadata(
+                        model=llm_response.model,
+                        prompt_tokens=llm_response.prompt_eval_count,
+                        completion_tokens=llm_response.eval_count,
+                        total_duration_ms=self._nanoseconds_to_milliseconds(
                             llm_response.total_duration
                         ),
-                    }
+                    )
                     continue  # Retry
 
                 # No repetition detected or max retries reached, proceed with cleaning
@@ -537,31 +536,26 @@ class SummarizeUsecase:
 
         # Build metadata
         if llm_response:
-            metadata = {
-                "model": llm_response.model,
-                "prompt_tokens": llm_response.prompt_eval_count,
-                "completion_tokens": llm_response.eval_count,
-                "total_duration_ms": self._nanoseconds_to_milliseconds(
+            metadata = SummaryMetadata(
+                model=llm_response.model,
+                prompt_tokens=llm_response.prompt_eval_count,
+                completion_tokens=llm_response.eval_count,
+                total_duration_ms=self._nanoseconds_to_milliseconds(
                     llm_response.total_duration
                 ),
-            }
+            )
         elif last_metadata:
             metadata = last_metadata
         else:
             # Fallback metadata if something went wrong
-            metadata = {
-                "model": "unknown",
-                "prompt_tokens": None,
-                "completion_tokens": None,
-                "total_duration_ms": None,
-            }
+            metadata = SummaryMetadata(model="unknown")
 
         logger.info(
             f"Summary generated successfully for article: {article_id}",
             extra={
                 "article_id": article_id,
                 "summary_length": len(truncated_summary),
-                "model": metadata["model"],
+                "model": metadata.model,
             },
         )
 
@@ -569,7 +563,7 @@ class SummarizeUsecase:
 
     async def _generate_hierarchical_summary(
         self, article_id: str, content: str
-    ) -> Tuple[str, Dict[str, Any]]:
+    ) -> Tuple[str, SummaryMetadata]:
         """
         Generate a summary for a large article using Hierarchical (Map-Reduce) strategy.
 
@@ -712,13 +706,13 @@ class SummarizeUsecase:
         total_prompt_tokens += final_resp.prompt_eval_count or 0
         total_completion_tokens += final_resp.eval_count or 0
 
-        metadata = {
-            "model": final_resp.model,
-            "prompt_tokens": total_prompt_tokens,
-            "completion_tokens": total_completion_tokens,
-            "total_duration_ms": elapsed_ms,
-            "strategy": "hierarchical",
-        }
+        metadata = SummaryMetadata(
+            model=final_resp.model,
+            prompt_tokens=total_prompt_tokens,
+            completion_tokens=total_completion_tokens,
+            total_duration_ms=elapsed_ms,
+            strategy="hierarchical",
+        )
 
         return truncated_summary, metadata
 
@@ -875,10 +869,13 @@ class SummarizeUsecase:
             }
 
             has_data = False
+            received_done = False
 
             try:
                 async for chunk in stream_gen:
                     chunks_received += 1
+                    if chunk.done:
+                        received_done = True
                     token = chunk.response
                     if token and token not in ignored_tokens:
                         has_data = True
@@ -924,6 +921,26 @@ class SummarizeUsecase:
                             "tokens_yielded": tokens_yielded,
                         },
                     )
+                elif not received_done:
+                    # Tokens were already yielded to the client above, but the
+                    # stream ended without Ollama's done=true chunk -- this
+                    # summary is truncated. Raising here (instead of ending
+                    # the generator normally) lets the SSE handler surface an
+                    # `event: error` instead of the truncated text looking
+                    # like a complete summary.
+                    logger.error(
+                        "Stream ended without a done=true chunk; summary is truncated",
+                        extra={
+                            "article_id": article_id,
+                            "tokens_yielded": tokens_yielded,
+                            "bytes_yielded": bytes_yielded,
+                            "chunks_received": chunks_received,
+                        },
+                    )
+                    raise RuntimeError(
+                        f"Streaming summary for article {article_id} ended before a "
+                        f"done=true chunk was received; response is truncated"
+                    )
                 else:
                     logger.info(
                         "Stream completed successfully",
@@ -945,8 +962,12 @@ class SummarizeUsecase:
         except aiohttp.ClientConnectionError as conn_err:
             # Connection error during streaming - check if we have partial data
             if tokens_yielded > 0:
-                logger.warning(
-                    "Connection error during streaming, but partial summary was generated",
+                # Tokens were already yielded to the client, but a connection
+                # drop mid-stream means no done=true chunk was ever received --
+                # this is truncated, not a completed summary. Raise instead of
+                # returning silently so the SSE handler can surface an error.
+                logger.error(
+                    "Connection error during streaming after partial summary was generated; response is truncated",
                     extra={
                         "article_id": article_id,
                         "error": str(conn_err),
@@ -955,9 +976,12 @@ class SummarizeUsecase:
                         "bytes_yielded": bytes_yielded,
                         "chunks_received": chunks_received,
                     },
+                    exc_info=True,
                 )
-                # Don't raise - the partial data has already been yielded
-                return
+                raise RuntimeError(
+                    f"Streaming summary generation for article {article_id} failed: "
+                    f"connection closed after partial data was received; response is truncated"
+                ) from conn_err
             else:
                 logger.error(
                     "Connection error during streaming with no data received",

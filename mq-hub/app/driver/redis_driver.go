@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"strings"
 	"time"
 
@@ -59,7 +60,7 @@ func NewRedisDriverWithURL(url string) (*RedisDriver, error) {
 func NewRedisDriverWithURLAndOptions(url string, driverOpts *RedisDriverOptions) (*RedisDriver, error) {
 	opts, err := redis.ParseURL(url)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("parse redis url: %w", err)
 	}
 
 	if driverOpts != nil && driverOpts.PoolSize > 0 {
@@ -100,27 +101,33 @@ func (d *RedisDriver) Publish(ctx context.Context, stream domain.StreamKey, even
 
 	result, err := d.client.XAdd(ctx, args).Result()
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("xadd %s: %w", stream.String(), err)
 	}
 
 	return result, nil
 }
 
 // PublishBatch publishes multiple events to a stream and returns message IDs.
+// The returned slice always has one entry per input event so callers can
+// correlate messageIDs[i] with events[i]; entries for events that failed to
+// publish are left as "". If any event failed, the returned error is a
+// *domain.PartialPublishError identifying exactly which indices failed, so
+// callers can retry only those instead of re-publishing the whole batch
+// (which would duplicate the events that already succeeded).
 func (d *RedisDriver) PublishBatch(ctx context.Context, stream domain.StreamKey, events []*domain.Event) ([]string, error) {
 	if len(events) == 0 {
 		return []string{}, nil
 	}
 
-	messageIDs := make([]string, 0, len(events))
+	messageIDs := make([]string, len(events))
+	cmds := make([]*redis.StringCmd, len(events))
 
 	// Use pipeline for efficient batch publishing
 	pipe := d.client.Pipeline()
-	cmds := make([]*redis.StringCmd, len(events))
 
 	for i, event := range events {
 		if event == nil {
-			continue
+			return nil, fmt.Errorf("publish batch to %s: event at index %d is nil", stream.String(), i)
 		}
 		values := d.eventToValues(event)
 		args := &redis.XAddArgs{
@@ -134,15 +141,26 @@ func (d *RedisDriver) PublishBatch(ctx context.Context, stream domain.StreamKey,
 		cmds[i] = pipe.XAdd(ctx, args)
 	}
 
-	_, err := pipe.Exec(ctx)
-	if err != nil {
-		return nil, err
+	// Exec only reports whether the pipeline as a whole had an error; it does
+	// not tell us which individual XADD commands failed. Redis still runs
+	// every queued command even when one fails, so we must inspect each
+	// cmd.Err() to know which events actually landed.
+	_, execErr := pipe.Exec(ctx)
+
+	var failures []domain.PublishFailure
+	for i, cmd := range cmds {
+		if err := cmd.Err(); err != nil {
+			failures = append(failures, domain.PublishFailure{Index: i, Err: err})
+			continue
+		}
+		messageIDs[i] = cmd.Val()
 	}
 
-	for _, cmd := range cmds {
-		if cmd != nil {
-			messageIDs = append(messageIDs, cmd.Val())
-		}
+	if len(failures) > 0 {
+		return messageIDs, &domain.PartialPublishError{TotalEvents: len(events), Failures: failures}
+	}
+	if execErr != nil {
+		return messageIDs, fmt.Errorf("publish batch to %s: %w", stream.String(), execErr)
 	}
 
 	return messageIDs, nil
@@ -156,7 +174,7 @@ func (d *RedisDriver) CreateConsumerGroup(ctx context.Context, stream domain.Str
 		if strings.Contains(err.Error(), "BUSYGROUP") {
 			return nil
 		}
-		return err
+		return fmt.Errorf("create consumer group %s on %s: %w", group.String(), stream.String(), err)
 	}
 	return nil
 }
@@ -165,13 +183,13 @@ func (d *RedisDriver) CreateConsumerGroup(ctx context.Context, stream domain.Str
 func (d *RedisDriver) GetStreamInfo(ctx context.Context, stream domain.StreamKey) (*domain.StreamInfo, error) {
 	info, err := d.client.XInfoStream(ctx, stream.String()).Result()
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("xinfo stream %s: %w", stream.String(), err)
 	}
 
 	// Get consumer group info
 	groups, err := d.client.XInfoGroups(ctx, stream.String()).Result()
 	if err != nil && !strings.Contains(err.Error(), "no such key") {
-		return nil, err
+		return nil, fmt.Errorf("xinfo groups %s: %w", stream.String(), err)
 	}
 
 	groupInfos := make([]domain.ConsumerGroupInfo, 0, len(groups))
@@ -242,7 +260,7 @@ func (d *RedisDriver) SubscribeWithTimeout(ctx context.Context, stream domain.St
 
 	if err != nil {
 		if errors.Is(err, redis.Nil) {
-			return nil, errors.New("timeout waiting for reply")
+			return nil, domain.ErrReplyTimeout
 		}
 		return nil, err
 	}

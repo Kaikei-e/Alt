@@ -51,7 +51,7 @@ func (g *SearchEngineGateway) IndexDocuments(ctx context.Context, docs []domain.
 	if err != nil {
 		return &domain.SearchEngineError{
 			Op:  "IndexDocuments",
-			Err: err.Error(),
+			Err: err,
 		}
 	}
 
@@ -67,7 +67,7 @@ func (g *SearchEngineGateway) DeleteDocuments(ctx context.Context, ids []string)
 	if err != nil {
 		return &domain.SearchEngineError{
 			Op:  "DeleteDocuments",
-			Err: err.Error(),
+			Err: err,
 		}
 	}
 
@@ -79,7 +79,7 @@ func (g *SearchEngineGateway) Search(ctx context.Context, query string, limit in
 	if err != nil {
 		return nil, &domain.SearchEngineError{
 			Op:  "Search",
-			Err: err.Error(),
+			Err: err,
 		}
 	}
 
@@ -91,7 +91,7 @@ func (g *SearchEngineGateway) SearchWithDateFilter(ctx context.Context, query st
 	if err != nil {
 		return nil, &domain.SearchEngineError{
 			Op:  "SearchWithDateFilter",
-			Err: err.Error(),
+			Err: err,
 		}
 	}
 	return g.convertDocs(driverResults), nil
@@ -102,7 +102,7 @@ func (g *SearchEngineGateway) SearchWithFilters(ctx context.Context, query strin
 	if err != nil {
 		return nil, &domain.SearchEngineError{
 			Op:  "SearchWithFilters",
-			Err: err.Error(),
+			Err: err,
 		}
 	}
 
@@ -112,7 +112,7 @@ func (g *SearchEngineGateway) SearchWithFilters(ctx context.Context, query strin
 func (g *SearchEngineGateway) SearchByUserID(ctx context.Context, query string, userID string, limit int) ([]domain.SearchDocument, error) {
 	driverResults, err := g.driver.SearchByUserID(ctx, query, userID, limit)
 	if err != nil {
-		return nil, &domain.SearchEngineError{Op: "SearchByUserID", Err: err.Error()}
+		return nil, &domain.SearchEngineError{Op: "SearchByUserID", Err: err}
 	}
 	return g.convertDocs(driverResults), nil
 }
@@ -120,7 +120,7 @@ func (g *SearchEngineGateway) SearchByUserID(ctx context.Context, query string, 
 func (g *SearchEngineGateway) SearchByUserIDWithPagination(ctx context.Context, query string, userID string, offset, limit int64) ([]domain.SearchDocument, int64, error) {
 	driverResults, total, err := g.driver.SearchByUserIDWithPagination(ctx, query, userID, offset, limit)
 	if err != nil {
-		return nil, 0, &domain.SearchEngineError{Op: "SearchByUserIDWithPagination", Err: err.Error()}
+		return nil, 0, &domain.SearchEngineError{Op: "SearchByUserIDWithPagination", Err: err}
 	}
 	return g.convertDocs(driverResults), total, nil
 }
@@ -165,7 +165,7 @@ func (g *SearchEngineGateway) EnsureIndex(ctx context.Context) error {
 	if err != nil {
 		return &domain.SearchEngineError{
 			Op:  "EnsureIndex",
-			Err: err.Error(),
+			Err: err,
 		}
 	}
 	return nil
@@ -176,7 +176,7 @@ func (g *SearchEngineGateway) RegisterSynonyms(ctx context.Context, synonyms map
 	if err != nil {
 		return &domain.SearchEngineError{
 			Op:  "RegisterSynonyms",
-			Err: err.Error(),
+			Err: err,
 		}
 	}
 	return nil

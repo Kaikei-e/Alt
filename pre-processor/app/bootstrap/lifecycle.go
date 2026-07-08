@@ -56,10 +56,12 @@ func Run(ctx context.Context) error {
 		}
 	}()
 
-	// Start servers
+	// Start servers. errCh is buffered so a failing listener never blocks on
+	// send even if multiple servers fail before waitForShutdown starts reading.
+	errCh := make(chan error, 3)
 	httpServer := NewHTTPServer(deps, otelCfg.Enabled, otelCfg.ServiceName)
-	StartHTTPServer(httpServer, log)
-	StartConnectServer(deps)
+	StartHTTPServer(httpServer, log, errCh)
+	connectServers := StartConnectServer(deps, errCh)
 
 	// Start background jobs
 	if err := startJobs(ctx, deps, log); err != nil {
@@ -68,9 +70,7 @@ func Run(ctx context.Context) error {
 
 	// Wait for shutdown signal
 	log.Info("Pre-processor service started successfully")
-	waitForShutdown(httpServer, deps, log)
-
-	return nil
+	return waitForShutdown(httpServer, connectServers, deps, log, errCh)
 }
 
 // resolveOtelShutdown returns fn unchanged when it is non-nil. otel.InitProvider
@@ -110,12 +110,24 @@ func startJobs(ctx context.Context, deps *Dependencies, log *slog.Logger) error 
 	return nil
 }
 
-func waitForShutdown(httpServer interface{ Shutdown(context.Context) error }, deps *Dependencies, log *slog.Logger) {
+// waitForShutdown blocks until either a termination signal arrives or one of
+// the servers reports a fatal ListenAndServe failure on errCh, then shuts
+// down every listener (HTTP, Connect-RPC, and the mTLS listener when
+// enabled) and the background job handler. It returns a non-nil error when
+// the shutdown was triggered by a server failure so main() exits non-zero
+// instead of limping along with a dead listener.
+func waitForShutdown(httpServer interface{ Shutdown(context.Context) error }, connectServers *ConnectServers, deps *Dependencies, log *slog.Logger, errCh <-chan error) error {
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
-	<-quit
 
-	log.Info("Shutting down pre-processor service")
+	var shutdownErr error
+	select {
+	case sig := <-quit:
+		log.Info("Shutting down pre-processor service", "signal", sig.String())
+	case err := <-errCh:
+		log.Error("Shutting down pre-processor service due to server failure", "error", err)
+		shutdownErr = err
+	}
 
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
@@ -124,9 +136,23 @@ func waitForShutdown(httpServer interface{ Shutdown(context.Context) error }, de
 		log.Error("Error shutting down HTTP server", "error", err)
 	}
 
+	if connectServers != nil {
+		if connectServers.Server != nil {
+			if err := connectServers.Server.Shutdown(shutdownCtx); err != nil {
+				log.Error("Error shutting down Connect-RPC server", "error", err)
+			}
+		}
+		if connectServers.MTLSServer != nil {
+			if err := connectServers.MTLSServer.Shutdown(shutdownCtx); err != nil {
+				log.Error("Error shutting down mTLS listener", "error", err)
+			}
+		}
+	}
+
 	if err := deps.JobHandler.Stop(); err != nil {
 		log.Error("Error stopping job handler", "error", err)
 	}
 
 	log.Info("Pre-processor service stopped")
+	return shutdownErr
 }

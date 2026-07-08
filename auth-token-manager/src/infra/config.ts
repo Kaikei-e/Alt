@@ -3,6 +3,37 @@
  */
 
 import type { ConfigOptions, InoreaderCredentials } from "../domain/types.ts";
+import { logger } from "./logger.ts";
+
+function parseIntEnv(envVar: string, fallback: number, min = 0): number {
+  const raw = Deno.env.get(envVar);
+  if (raw === undefined) return fallback;
+
+  const parsed = parseInt(raw, 10);
+  if (!Number.isFinite(parsed) || parsed < min) {
+    logger.warn(`Invalid ${envVar} value, falling back to default`, {
+      value: raw,
+      default: fallback,
+    });
+    return fallback;
+  }
+  return parsed;
+}
+
+function parseFloatEnv(envVar: string, fallback: number, min = 0): number {
+  const raw = Deno.env.get(envVar);
+  if (raw === undefined) return fallback;
+
+  const parsed = parseFloat(raw);
+  if (!Number.isFinite(parsed) || parsed < min) {
+    logger.warn(`Invalid ${envVar} value, falling back to default`, {
+      value: raw,
+      default: fallback,
+    });
+    return fallback;
+  }
+  return parsed;
+}
 
 class ConfigManager {
   private static instance: ConfigManager;
@@ -29,19 +60,15 @@ class ConfigManager {
       token_storage_path: Deno.env.get("TOKEN_STORAGE_PATH") ||
         "/app/secrets/oauth2_token.env",
       retry: {
-        max_attempts: parseInt(Deno.env.get("RETRY_MAX_ATTEMPTS") || "3"),
-        base_delay: parseInt(Deno.env.get("RETRY_BASE_DELAY") || "1000"),
-        max_delay: parseInt(Deno.env.get("RETRY_MAX_DELAY") || "30000"),
-        backoff_factor: parseFloat(
-          Deno.env.get("RETRY_BACKOFF_FACTOR") || "2",
-        ),
+        max_attempts: parseIntEnv("RETRY_MAX_ATTEMPTS", 3, 1),
+        base_delay: parseIntEnv("RETRY_BASE_DELAY", 1000, 0),
+        max_delay: parseIntEnv("RETRY_MAX_DELAY", 30000, 0),
+        backoff_factor: parseFloatEnv("RETRY_BACKOFF_FACTOR", 2, 0),
       },
       network: {
-        http_timeout: parseInt(Deno.env.get("HTTP_TIMEOUT") || "30000"),
+        http_timeout: parseIntEnv("HTTP_TIMEOUT", 30000, 0),
         connectivity_check: Deno.env.get("CONNECTIVITY_CHECK") !== "false",
-        connectivity_timeout: parseInt(
-          Deno.env.get("CONNECTIVITY_TIMEOUT") || "10000",
-        ),
+        connectivity_timeout: parseIntEnv("CONNECTIVITY_TIMEOUT", 10000, 0),
       },
       logger: {
         level: (Deno.env.get("LOG_LEVEL") || "INFO").toUpperCase(),
@@ -80,9 +107,23 @@ class ConfigManager {
   }
 
   getInoreaderCredentials(): InoreaderCredentials {
+    const client_id = this.getEnvOrFile("INOREADER_CLIENT_ID");
+    if (!client_id) {
+      throw new Error(
+        "INOREADER_CLIENT_ID (or INOREADER_CLIENT_ID_FILE) is not configured",
+      );
+    }
+
+    const client_secret = this.getEnvOrFile("INOREADER_CLIENT_SECRET");
+    if (!client_secret) {
+      throw new Error(
+        "INOREADER_CLIENT_SECRET (or INOREADER_CLIENT_SECRET_FILE) is not configured",
+      );
+    }
+
     return {
-      client_id: this.getEnvOrFile("INOREADER_CLIENT_ID")!,
-      client_secret: this.getEnvOrFile("INOREADER_CLIENT_SECRET")!,
+      client_id,
+      client_secret,
       redirect_uri: Deno.env.get("INOREADER_REDIRECT_URI") ||
         "http://localhost:8080/callback",
     };

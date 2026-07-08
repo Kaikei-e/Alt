@@ -4,6 +4,8 @@ import { base } from "$app/paths";
 let cachedCSRFToken: string | null = null;
 let csrfTokenExpiry = 0;
 
+const FETCH_TIMEOUT_MS = 15_000;
+
 async function fetchCSRFToken(): Promise<string | null> {
 	if (cachedCSRFToken && Date.now() < csrfTokenExpiry) {
 		return cachedCSRFToken;
@@ -50,6 +52,7 @@ export async function callClientAPI<T>(
 			...options,
 			headers,
 			credentials: "include",
+			signal: options?.signal ?? AbortSignal.timeout(FETCH_TIMEOUT_MS),
 		});
 
 		// Check Content-Type before parsing

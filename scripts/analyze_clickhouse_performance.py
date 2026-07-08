@@ -13,7 +13,10 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import contextlib
+import logging
 import os
+import re
 import sys
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -22,11 +25,14 @@ from typing import Any
 
 import clickhouse_connect
 from clickhouse_connect.driver.client import Client
+from clickhouse_connect.driver.exceptions import ClickHouseError
 
 
 # =============================================================================
 # Configuration
 # =============================================================================
+
+_IDENTIFIER_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 
 
 @dataclass
@@ -49,12 +55,16 @@ class ClickHouseConfig:
                 return Path(file_path).read_text().strip()
             return os.getenv(name, default)
 
+        database = os.getenv("APP_CLICKHOUSE_DATABASE", "rask_logs")
+        if not _IDENTIFIER_RE.match(database):
+            raise ValueError(f"Invalid APP_CLICKHOUSE_DATABASE identifier: {database!r}")
+
         return cls(
             host=os.getenv("APP_CLICKHOUSE_HOST", "localhost"),
             port=int(os.getenv("APP_CLICKHOUSE_PORT", "8123")),
             user=os.getenv("APP_CLICKHOUSE_USER", "default"),
             password=get_env_or_file("APP_CLICKHOUSE_PASSWORD", ""),
-            database=os.getenv("APP_CLICKHOUSE_DATABASE", "rask_logs"),
+            database=database,
         )
 
 
@@ -227,14 +237,15 @@ def collect_service_stats(
         max(timestamp) as last_seen,
         dateDiff('minute', max(timestamp), now()) as minutes_since_last_log
     FROM {database}.logs
-    WHERE timestamp >= now() - INTERVAL {hours} HOUR
+    WHERE timestamp >= now() - INTERVAL %(hours)s HOUR
     GROUP BY service_name
     ORDER BY error_rate DESC, total_logs DESC
     """
     try:
-        result = client.query(query)
+        result = client.query(query, parameters={"hours": hours})
         return [dict(zip(result.column_names, row)) for row in result.result_rows]
-    except Exception:
+    except ClickHouseError as exc:
+        logging.warning("%s query failed: %s", "collect_service_stats", exc)
         return []
 
 
@@ -250,15 +261,16 @@ def collect_error_trends(
         count() as total_count,
         round(countIf(level IN ('Error', 'Fatal')) / count() * 100, 2) as error_rate
     FROM {database}.logs
-    WHERE timestamp >= now() - INTERVAL {hours} HOUR
+    WHERE timestamp >= now() - INTERVAL %(hours)s HOUR
     GROUP BY hour, service_name
     HAVING total_count > 0
     ORDER BY hour DESC, error_count DESC
     """
     try:
-        result = client.query(query)
+        result = client.query(query, parameters={"hours": hours})
         return [dict(zip(result.column_names, row)) for row in result.result_rows]
-    except Exception:
+    except ClickHouseError as exc:
+        logging.warning("%s query failed: %s", "collect_error_trends", exc)
         return []
 
 
@@ -278,7 +290,7 @@ def collect_api_performance(
         round(max(DurationMs), 2) as max_ms,
         countIf(StatusCode = 'ERROR') as error_spans
     FROM {database}.otel_traces
-    WHERE Timestamp >= now() - INTERVAL {hours} HOUR
+    WHERE Timestamp >= now() - INTERVAL %(hours)s HOUR
       AND SpanName != ''
     GROUP BY ServiceName, SpanName
     HAVING request_count >= 5
@@ -286,9 +298,10 @@ def collect_api_performance(
     LIMIT 30
     """
     try:
-        result = client.query(query)
+        result = client.query(query, parameters={"hours": hours})
         return [dict(zip(result.column_names, row)) for row in result.result_rows]
-    except Exception:
+    except ClickHouseError as exc:
+        logging.warning("%s query failed: %s", "collect_api_performance", exc)
         return []
 
 
@@ -305,7 +318,7 @@ def collect_bottlenecks(
         round(quantile(0.95)(DurationMs), 2) as p95_ms,
         round(sum(DurationMs) / 1000, 2) as total_time_sec
     FROM {database}.otel_traces
-    WHERE Timestamp >= now() - INTERVAL {hours} HOUR
+    WHERE Timestamp >= now() - INTERVAL %(hours)s HOUR
       AND DurationMs > 1000
     GROUP BY ServiceName, SpanName
     HAVING occurrences >= 3
@@ -313,9 +326,10 @@ def collect_bottlenecks(
     LIMIT 15
     """
     try:
-        result = client.query(query)
+        result = client.query(query, parameters={"hours": hours})
         return [dict(zip(result.column_names, row)) for row in result.result_rows]
-    except Exception:
+    except ClickHouseError as exc:
+        logging.warning("%s query failed: %s", "collect_bottlenecks", exc)
         return []
 
 
@@ -330,15 +344,16 @@ def collect_error_types(
         count() as error_count,
         any(substring(Body, 1, 150)) as sample_message
     FROM {database}.otel_error_logs
-    WHERE Timestamp >= now() - INTERVAL {hours} HOUR
+    WHERE Timestamp >= now() - INTERVAL %(hours)s HOUR
     GROUP BY ServiceName, ExceptionType
     ORDER BY error_count DESC
     LIMIT 20
     """
     try:
-        result = client.query(query)
+        result = client.query(query, parameters={"hours": hours})
         return [dict(zip(result.column_names, row)) for row in result.result_rows]
-    except Exception:
+    except ClickHouseError as exc:
+        logging.warning("%s query failed: %s", "collect_error_types", exc)
         return []
 
 
@@ -352,16 +367,17 @@ def collect_recent_errors(
         SeverityText as level,
         substring(Body, 1, 200) as message,
         if(ExceptionType = '', '-', ExceptionType) as error_type,
-        formatDateTime(Timestamp, '%Y-%m-%d %H:%M:%S') as timestamp
+        formatDateTime(Timestamp, '%%Y-%%m-%%d %%H:%%M:%%S') as timestamp
     FROM {database}.otel_error_logs
-    WHERE Timestamp >= now() - INTERVAL {hours} HOUR
+    WHERE Timestamp >= now() - INTERVAL %(hours)s HOUR
     ORDER BY Timestamp DESC
     LIMIT 25
     """
     try:
-        result = client.query(query)
+        result = client.query(query, parameters={"hours": hours})
         return [dict(zip(result.column_names, row)) for row in result.result_rows]
-    except Exception:
+    except ClickHouseError as exc:
+        logging.warning("%s query failed: %s", "collect_recent_errors", exc)
         return []
 
 
@@ -374,13 +390,14 @@ def collect_service_latency(
         ServiceName,
         round(quantile(0.95)(DurationMs), 2) as p95_ms
     FROM {database}.otel_traces
-    WHERE Timestamp >= now() - INTERVAL {hours} HOUR
+    WHERE Timestamp >= now() - INTERVAL %(hours)s HOUR
     GROUP BY ServiceName
     """
     try:
-        result = client.query(query)
+        result = client.query(query, parameters={"hours": hours})
         return {row[0]: row[1] for row in result.result_rows}
-    except Exception:
+    except ClickHouseError as exc:
+        logging.warning("%s query failed: %s", "collect_service_latency", exc)
         return {}
 
 
@@ -406,16 +423,17 @@ def collect_http_endpoint_stats(
         countIf(HttpStatusCode >= 400 AND HttpStatusCode < 500) as status_4xx,
         countIf(HttpStatusCode >= 500) as status_5xx
     FROM {database}.otel_http_requests
-    WHERE Timestamp >= now() - INTERVAL {hours} HOUR
+    WHERE Timestamp >= now() - INTERVAL %(hours)s HOUR
       AND HttpRoute != ''
     GROUP BY ServiceName, HttpRoute
     ORDER BY request_count DESC
     LIMIT 30
     """
     try:
-        result = client.query(query)
+        result = client.query(query, parameters={"hours": hours})
         return [dict(zip(result.column_names, row)) for row in result.result_rows]
-    except Exception:
+    except ClickHouseError as exc:
+        logging.warning("%s query failed: %s", "collect_http_endpoint_stats", exc)
         return []
 
 
@@ -433,14 +451,15 @@ def collect_http_status_distribution(
         countIf(HttpStatusCode >= 500) as status_5xx,
         round(countIf(HttpStatusCode >= 500) / count() * 100, 2) as error_5xx_rate
     FROM {database}.otel_http_requests
-    WHERE Timestamp >= now() - INTERVAL {hours} HOUR
+    WHERE Timestamp >= now() - INTERVAL %(hours)s HOUR
     GROUP BY ServiceName
     ORDER BY total_requests DESC
     """
     try:
-        result = client.query(query)
+        result = client.query(query, parameters={"hours": hours})
         return [dict(zip(result.column_names, row)) for row in result.result_rows]
-    except Exception:
+    except ClickHouseError as exc:
+        logging.warning("%s query failed: %s", "collect_http_status_distribution", exc)
         return []
 
 
@@ -457,14 +476,15 @@ def collect_span_type_stats(
         round(quantile(0.95)(DurationMs), 2) as p95_duration_ms,
         countIf(StatusCode = 'ERROR') as error_count
     FROM {database}.otel_traces
-    WHERE Timestamp >= now() - INTERVAL {hours} HOUR
+    WHERE Timestamp >= now() - INTERVAL %(hours)s HOUR
     GROUP BY ServiceName, SpanKind
     ORDER BY span_count DESC
     """
     try:
-        result = client.query(query)
+        result = client.query(query, parameters={"hours": hours})
         return [dict(zip(result.column_names, row)) for row in result.result_rows]
-    except Exception:
+    except ClickHouseError as exc:
+        logging.warning("%s query failed: %s", "collect_span_type_stats", exc)
         return []
 
 
@@ -479,18 +499,19 @@ def collect_error_spans(
         StatusMessage as error_message,
         count() as error_count,
         round(avg(DurationMs), 2) as avg_duration_ms,
-        formatDateTime(max(Timestamp), '%Y-%m-%d %H:%M:%S') as last_occurrence
+        formatDateTime(max(Timestamp), '%%Y-%%m-%%d %%H:%%M:%%S') as last_occurrence
     FROM {database}.otel_traces
-    WHERE Timestamp >= now() - INTERVAL {hours} HOUR
+    WHERE Timestamp >= now() - INTERVAL %(hours)s HOUR
       AND StatusCode = 'ERROR'
     GROUP BY ServiceName, SpanName, StatusMessage
     ORDER BY error_count DESC
     LIMIT 20
     """
     try:
-        result = client.query(query)
+        result = client.query(query, parameters={"hours": hours})
         return [dict(zip(result.column_names, row)) for row in result.result_rows]
-    except Exception:
+    except ClickHouseError as exc:
+        logging.warning("%s query failed: %s", "collect_error_spans", exc)
         return []
 
 
@@ -509,16 +530,17 @@ def collect_service_dependencies(
     FROM {database}.otel_traces s1
     JOIN {database}.otel_traces s2
         ON s1.TraceId = s2.TraceId AND s1.SpanId = s2.ParentSpanId
-    WHERE s1.Timestamp >= now() - INTERVAL {hours} HOUR
+    WHERE s1.Timestamp >= now() - INTERVAL %(hours)s HOUR
       AND s1.ServiceName != s2.ServiceName
     GROUP BY s1.ServiceName, s2.ServiceName
     ORDER BY call_count DESC
     LIMIT 20
     """
     try:
-        result = client.query(query)
+        result = client.query(query, parameters={"hours": hours})
         return [dict(zip(result.column_names, row)) for row in result.result_rows]
-    except Exception:
+    except ClickHouseError as exc:
+        logging.warning("%s query failed: %s", "collect_service_dependencies", exc)
         return []
 
 
@@ -537,14 +559,15 @@ def collect_log_severity_distribution(
         countIf(SeverityText = 'FATAL' OR SeverityText = 'CRITICAL' OR SeverityNumber > 20) as fatal_count,
         round(countIf(SeverityNumber >= 17) / count() * 100, 2) as error_rate
     FROM {database}.otel_logs
-    WHERE Timestamp >= now() - INTERVAL {hours} HOUR
+    WHERE Timestamp >= now() - INTERVAL %(hours)s HOUR
     GROUP BY ServiceName
     ORDER BY total_logs DESC
     """
     try:
-        result = client.query(query)
+        result = client.query(query, parameters={"hours": hours})
         return [dict(zip(result.column_names, row)) for row in result.result_rows]
-    except Exception:
+    except ClickHouseError as exc:
+        logging.warning("%s query failed: %s", "collect_log_severity_distribution", exc)
         return []
 
 
@@ -560,14 +583,15 @@ def collect_log_volume_trends(
         countIf(SeverityNumber >= 17) as error_count,
         round(countIf(SeverityNumber >= 17) / count() * 100, 2) as error_rate
     FROM {database}.otel_logs
-    WHERE Timestamp >= now() - INTERVAL {hours} HOUR
+    WHERE Timestamp >= now() - INTERVAL %(hours)s HOUR
     GROUP BY hour, ServiceName
     ORDER BY hour DESC, log_count DESC
     """
     try:
-        result = client.query(query)
+        result = client.query(query, parameters={"hours": hours})
         return [dict(zip(result.column_names, row)) for row in result.result_rows]
-    except Exception:
+    except ClickHouseError as exc:
+        logging.warning("%s query failed: %s", "collect_log_volume_trends", exc)
         return []
 
 
@@ -582,16 +606,17 @@ def collect_sli_trends(
         Metric as metric,
         round(avg(Value), 4) as value
     FROM {database}.sli_metrics
-    WHERE Timestamp >= now() - INTERVAL {hours} HOUR
+    WHERE Timestamp >= now() - INTERVAL %(hours)s HOUR
       AND Metric IN ('error_rate', 'log_throughput')
     GROUP BY time_bucket, ServiceName, Metric
     ORDER BY time_bucket DESC, ServiceName, Metric
     LIMIT 500
     """
     try:
-        result = client.query(query)
+        result = client.query(query, parameters={"hours": hours})
         return [dict(zip(result.column_names, row)) for row in result.result_rows]
-    except Exception:
+    except ClickHouseError as exc:
+        logging.warning("%s query failed: %s", "collect_sli_trends", exc)
         return []
 
 
@@ -606,17 +631,20 @@ def collect_slo_violations(
         round(avg(Value) * 100, 2) as error_rate_pct,
         count() as sample_count
     FROM {database}.sli_metrics
-    WHERE Timestamp >= now() - INTERVAL {hours} HOUR
+    WHERE Timestamp >= now() - INTERVAL %(hours)s HOUR
       AND Metric = 'error_rate'
     GROUP BY ServiceName, time_bucket
-    HAVING avg(Value) > {error_rate_threshold / 100}
+    HAVING avg(Value) > %(error_rate_threshold)s
     ORDER BY time_bucket DESC, error_rate_pct DESC
     LIMIT 50
     """
     try:
-        result = client.query(query)
+        result = client.query(
+            query, parameters={"hours": hours, "error_rate_threshold": error_rate_threshold / 100}
+        )
         return [dict(zip(result.column_names, row)) for row in result.result_rows]
-    except Exception:
+    except ClickHouseError as exc:
+        logging.warning("%s query failed: %s", "collect_slo_violations", exc)
         return []
 
 
@@ -1048,76 +1076,79 @@ def run_analysis(config: ClickHouseConfig, hours: int, verbose: bool = False) ->
         port=config.port,
         username=config.user,
         password=config.password,
+        connect_timeout=10,
+        send_receive_timeout=60,
     )
 
-    result = AnalysisResult(hours_analyzed=hours)
+    with contextlib.closing(client):
+        result = AnalysisResult(hours_analyzed=hours)
 
-    if verbose:
-        print("Collecting service statistics...")
-    result.service_stats = collect_service_stats(client, config.database, hours)
+        if verbose:
+            print("Collecting service statistics...")
+        result.service_stats = collect_service_stats(client, config.database, hours)
 
-    if verbose:
-        print("Collecting error trends...")
-    result.error_trends = collect_error_trends(client, config.database, hours)
+        if verbose:
+            print("Collecting error trends...")
+        result.error_trends = collect_error_trends(client, config.database, hours)
 
-    if verbose:
-        print("Collecting API performance...")
-    result.api_performance = collect_api_performance(client, config.database, hours)
+        if verbose:
+            print("Collecting API performance...")
+        result.api_performance = collect_api_performance(client, config.database, hours)
 
-    if verbose:
-        print("Identifying bottlenecks...")
-    result.bottlenecks = collect_bottlenecks(client, config.database, hours)
+        if verbose:
+            print("Identifying bottlenecks...")
+        result.bottlenecks = collect_bottlenecks(client, config.database, hours)
 
-    if verbose:
-        print("Collecting error types...")
-    result.error_types = collect_error_types(client, config.database, hours)
+        if verbose:
+            print("Collecting error types...")
+        result.error_types = collect_error_types(client, config.database, hours)
 
-    if verbose:
-        print("Collecting recent errors...")
-    result.recent_errors = collect_recent_errors(client, config.database, hours)
+        if verbose:
+            print("Collecting recent errors...")
+        result.recent_errors = collect_recent_errors(client, config.database, hours)
 
-    # Enhanced metrics collection
-    if verbose:
-        print("Collecting HTTP endpoint statistics...")
-    result.http_endpoint_stats = collect_http_endpoint_stats(client, config.database, hours)
+        # Enhanced metrics collection
+        if verbose:
+            print("Collecting HTTP endpoint statistics...")
+        result.http_endpoint_stats = collect_http_endpoint_stats(client, config.database, hours)
 
-    if verbose:
-        print("Collecting HTTP status distribution...")
-    result.http_status_distribution = collect_http_status_distribution(client, config.database, hours)
+        if verbose:
+            print("Collecting HTTP status distribution...")
+        result.http_status_distribution = collect_http_status_distribution(client, config.database, hours)
 
-    if verbose:
-        print("Collecting trace span statistics...")
-    result.span_type_stats = collect_span_type_stats(client, config.database, hours)
+        if verbose:
+            print("Collecting trace span statistics...")
+        result.span_type_stats = collect_span_type_stats(client, config.database, hours)
 
-    if verbose:
-        print("Collecting error spans...")
-    result.error_spans = collect_error_spans(client, config.database, hours)
+        if verbose:
+            print("Collecting error spans...")
+        result.error_spans = collect_error_spans(client, config.database, hours)
 
-    if verbose:
-        print("Collecting service dependencies...")
-    result.service_dependencies = collect_service_dependencies(client, config.database, hours)
+        if verbose:
+            print("Collecting service dependencies...")
+        result.service_dependencies = collect_service_dependencies(client, config.database, hours)
 
-    if verbose:
-        print("Collecting log severity distribution...")
-    result.log_severity_distribution = collect_log_severity_distribution(client, config.database, hours)
+        if verbose:
+            print("Collecting log severity distribution...")
+        result.log_severity_distribution = collect_log_severity_distribution(client, config.database, hours)
 
-    if verbose:
-        print("Collecting log volume trends...")
-    result.log_volume_trends = collect_log_volume_trends(client, config.database, hours)
+        if verbose:
+            print("Collecting log volume trends...")
+        result.log_volume_trends = collect_log_volume_trends(client, config.database, hours)
 
-    if verbose:
-        print("Collecting SLI trends...")
-    result.sli_trends = collect_sli_trends(client, config.database, hours)
+        if verbose:
+            print("Collecting SLI trends...")
+        result.sli_trends = collect_sli_trends(client, config.database, hours)
 
-    if verbose:
-        print("Detecting SLO violations...")
-    result.slo_violations = collect_slo_violations(client, config.database, hours)
+        if verbose:
+            print("Detecting SLO violations...")
+        result.slo_violations = collect_slo_violations(client, config.database, hours)
 
-    if verbose:
-        print("Analyzing health and generating recommendations...")
-    analyze_health(result)
+        if verbose:
+            print("Analyzing health and generating recommendations...")
+        analyze_health(result)
 
-    return result
+        return result
 
 
 def main() -> int:

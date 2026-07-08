@@ -2,8 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import asdict
-from datetime import UTC, datetime
+from datetime import datetime
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -12,15 +11,11 @@ from pydantic import BaseModel
 from ...domain.models import WarmupResponse
 from ...infra.config import Settings
 from ...services.async_jobs import AdminJobService, ConcurrentAdminJobError
-from ...services.genre_learning import GenreLearningResult, GenreLearningService
-from ...services.learning_client import LearningClient
 from ...services.tag_label_graph_builder import TagLabelGraphBuilder
 from ..container import ServiceContainer
 from ..deps import (
     get_admin_job_service_dep,
     get_container,
-    get_learning_client,
-    get_learning_service,
     get_pipeline_dep,
     get_pipeline_runner_dep,
     get_settings_dep,
@@ -110,112 +105,30 @@ async def build_tag_label_graph(
 
 @router.post("/learning", status_code=status.HTTP_202_ACCEPTED)
 async def trigger_genre_learning(
-    service: GenreLearningService = Depends(get_learning_service),
-    client: LearningClient = Depends(get_learning_client),
-    settings: Settings = Depends(get_settings_dep),
-    container: ServiceContainer = Depends(get_container),
+    service: AdminJobService = Depends(get_admin_job_service_dep),
 ) -> dict[str, object]:
+    """Enqueue a genre learning run and return immediately.
+
+    Delegates to the same background job mechanism as `/learning-jobs`
+    instead of running graph rebuild + learning + recap-worker delivery
+    synchronously before responding, which contradicted the declared 202.
+    """
     import structlog
 
     logger = structlog.get_logger(__name__)
-    logger.info("triggering genre learning task")
-
-    if settings.graph_build_enabled:
-        try:
-            logger.debug("rebuilding tag_label_graph before learning")
-            async with container.db.session_factory() as session:
-                builder = TagLabelGraphBuilder(
-                    session=session,
-                    max_tags=settings.graph_build_max_tags,
-                    min_confidence=settings.graph_build_min_confidence,
-                    min_support=settings.graph_build_min_support,
-                )
-                windows = [
-                    int(w.strip())
-                    for w in settings.graph_build_windows.split(",")
-                    if w.strip()
-                ]
-                for window_days in windows:
-                    edge_count = await builder.build_graph(window_days)
-                    logger.info(
-                        "tag_label_graph rebuilt before learning",
-                        window_days=window_days,
-                        edge_count=edge_count,
-                    )
-        except Exception as exc:
-            logger.error(
-                "failed to rebuild tag_label_graph before learning",
-                error=str(exc),
-                error_type=type(exc).__name__,
-                exc_info=True,
-            )
-            # Continue with learning even if graph rebuild fails
-
     try:
-        logger.debug("generating learning result")
-        learning_result = await service.generate_learning_result(
-            days=settings.learning_snapshot_days
-        )
-        logger.info(
-            "learning result generated",
-            total_records=learning_result.summary.total_records,
-            graph_boost_count=learning_result.summary.graph_boost_count,
-        )
-        payload = _build_learning_payload(learning_result)
-        logger.debug("sending learning payload to recap-worker")
-        response = await client.send_learning_payload(payload)
-        logger.info(
-            "learning payload sent successfully",
-            recap_worker_status=response.status_code,
-        )
-    except Exception as exc:  # pragma: no cover - HTTP interactions
-        logger.error(
-            "failed to send learning payload",
-            error=str(exc),
-            error_type=type(exc).__name__,
-            exc_info=True,
-        )
+        job_id = await service.enqueue_learning_job()
+        logger.info("genre learning job enqueued", job_id=str(job_id))
+    except ConcurrentAdminJobError as exc:
+        logger.warning("learning job already running", error=str(exc))
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+    except Exception as exc:
+        logger.error("failed to enqueue learning job", error=str(exc), exc_info=True)
         raise HTTPException(
-            status_code=status.HTTP_502_BAD_GATEWAY,
-            detail="failed to send learning payload",
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="failed to enqueue learning job",
         ) from exc
-    data: dict[str, object] = {
-        "status": "sent",
-        "recap_worker_status": response.status_code,
-    }
-    if response.headers.get("content-type", "").startswith("application/json"):
-        data["recap_worker_response"] = response.json()
-    return data
-
-
-def _build_learning_payload(result: GenreLearningResult) -> dict[str, object]:
-    summary = asdict(result.summary)
-    graph_override: dict[str, object] = {
-        "graph_margin": result.summary.graph_margin_reference,
-    }
-    # Add optimized thresholds if available (always include if set, even if 0.0/0)
-    if result.summary.boost_threshold_reference is not None:
-        graph_override["boost_threshold"] = result.summary.boost_threshold_reference
-    if result.summary.tag_count_threshold_reference is not None:
-        graph_override["tag_count_threshold"] = result.summary.tag_count_threshold_reference
-
-    metadata: dict[str, object] = {
-        "captured_at": datetime.now(UTC).isoformat(),
-        "entries_observed": result.summary.total_records,
-    }
-    if result.summary.accuracy_estimate is not None:
-        metadata["accuracy_estimate"] = result.summary.accuracy_estimate
-    if result.summary.test_accuracy is not None:
-        metadata["test_accuracy"] = result.summary.test_accuracy
-
-    payload: dict[str, object] = {
-        "summary": summary,
-        "graph_override": graph_override,
-        "metadata": metadata,
-    }
-    if result.cluster_draft:
-        payload["cluster_draft"] = result.cluster_draft
-    return payload
+    return {"job_id": job_id}
 
 
 def _job_to_response(record) -> AdminJobResponse:

@@ -55,14 +55,14 @@ describe("FeedSourceExcludeFilter logic", () => {
 		it("filters by URL substring case-insensitively", () => {
 			const result = filterSources(mockSources, "guardian");
 			expect(result).toHaveLength(2);
-			expect(result[0].id).toBe("uuid-1");
-			expect(result[1].id).toBe("uuid-4");
+			expect(result[0]!.id).toBe("uuid-1");
+			expect(result[1]!.id).toBe("uuid-4");
 		});
 
 		it("matches partial URL", () => {
 			const result = filterSources(mockSources, "ycombinator");
 			expect(result).toHaveLength(1);
-			expect(result[0].id).toBe("uuid-2");
+			expect(result[0]!.id).toBe("uuid-2");
 		});
 
 		it("returns no results for non-matching query", () => {

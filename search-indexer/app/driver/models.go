@@ -21,7 +21,7 @@ type TagModel struct {
 
 // SearchDocumentDriver represents a search document in the search engine.
 // PublishedAt is encoded as Unix seconds so Meilisearch can treat it as a
-// numeric filterable attribute (``published_at >= X AND published_at <= Y``).
+// numeric filterable attribute (“published_at >= X AND published_at <= Y“).
 type SearchDocumentDriver struct {
 	ID          string   `json:"id"`
 	Title       string   `json:"title"`
@@ -39,12 +39,18 @@ type DeletedArticle struct {
 	DeletedAt time.Time
 }
 
-// DriverError represents an error from the driver layer
+// DriverError represents an error from the driver layer. Err is a real
+// error (not a stringified copy) so callers can use errors.Is/As to
+// classify the cause instead of matching on Error() text.
 type DriverError struct {
 	Op  string
-	Err string
+	Err error
 }
 
 func (e *DriverError) Error() string {
-	return e.Op + ": " + e.Err
+	return e.Op + ": " + e.Err.Error()
+}
+
+func (e *DriverError) Unwrap() error {
+	return e.Err
 }

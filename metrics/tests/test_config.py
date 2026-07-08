@@ -135,7 +135,7 @@ class TestReportConfig:
         """デフォルト値が正しく設定される"""
         r = ReportConfig()
         assert r.language == "ja"
-        assert r.output_dir == Path("./reports")
+        assert r.output_dir == Path("./scripts/reports")
         assert r.include_raw_data is False
 
     def test_from_env_with_custom_values(self, monkeypatch: pytest.MonkeyPatch) -> None:

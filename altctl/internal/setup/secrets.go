@@ -88,7 +88,7 @@ func GenerateSecrets(dir string, specs []SecretSpec, force bool) (*SecretsResult
 			}
 		}
 
-		if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+		if err := os.WriteFile(path, []byte(content), 0600); err != nil {
 			return nil, fmt.Errorf("writing secret %s: %w", spec.Filename, err)
 		}
 		result.Created = append(result.Created, spec.Filename)

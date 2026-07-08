@@ -3,6 +3,7 @@ package domain
 
 import (
 	"errors"
+	"fmt"
 	"time"
 
 	"github.com/google/uuid"
@@ -66,19 +67,29 @@ func NewEvent(eventType EventType, source string, payload []byte, metadata map[s
 	return event, nil
 }
 
+// ErrInvalidEvent is the sentinel wrapped by every Validate failure so
+// callers (e.g. RPC handlers) can classify validation errors via errors.Is
+// instead of matching on the error message.
+var ErrInvalidEvent = errors.New("invalid event")
+
+// ErrReplyTimeout is the sentinel wrapped when a request-reply wait
+// (SubscribeWithTimeout) expires with no reply, so callers can classify a
+// timeout via errors.Is instead of matching on the error message.
+var ErrReplyTimeout = errors.New("timeout waiting for reply")
+
 // Validate checks if the event has all required fields.
 func (e *Event) Validate() error {
 	if e.EventID == "" {
-		return errors.New("event_id is required")
+		return fmt.Errorf("event_id is required: %w", ErrInvalidEvent)
 	}
 	if e.EventType == "" {
-		return errors.New("event_type is required")
+		return fmt.Errorf("event_type is required: %w", ErrInvalidEvent)
 	}
 	if e.Source == "" {
-		return errors.New("source is required")
+		return fmt.Errorf("source is required: %w", ErrInvalidEvent)
 	}
 	if e.CreatedAt.IsZero() {
-		return errors.New("created_at is required")
+		return fmt.Errorf("created_at is required: %w", ErrInvalidEvent)
 	}
 	return nil
 }

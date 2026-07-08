@@ -15,6 +15,7 @@ import (
 	"pre-processor/driver"
 	backend_api "pre-processor/driver/backend_api"
 	"pre-processor/handler"
+	qualitychecker "pre-processor/quality-checker"
 	"pre-processor/repository"
 	"pre-processor/service"
 	"pre-processor/tlsutil"
@@ -27,7 +28,13 @@ import (
 // cert on every handshake; otherwise http.DefaultClient is returned.
 func buildBackendHTTPClient(log *slog.Logger) (*http.Client, error) {
 	if os.Getenv("MTLS_ENFORCE") != "true" {
-		return http.DefaultClient, nil
+		return &http.Client{
+			Timeout: 30 * time.Second,
+			Transport: &http.Transport{
+				IdleConnTimeout:     30 * time.Second,
+				MaxIdleConnsPerHost: 4,
+			},
+		}, nil
 	}
 	tlsCfg, err := tlsutil.LoadClientConfig(
 		os.Getenv("MTLS_CERT_FILE"),
@@ -95,6 +102,7 @@ func BuildDependencies(ctx context.Context, log *slog.Logger, otelEnabled bool) 
 		ppDBPoolCleanup()
 		return nil, nil, err
 	}
+	qualitychecker.Configure(cfg)
 
 	// Initialize repositories — API mode via Connect-RPC to alt-backend.
 	// Authentication is established at the TLS transport layer (mTLS).

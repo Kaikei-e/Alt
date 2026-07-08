@@ -26,10 +26,10 @@ services:
       start_period: 10s
     ports:
       - "80:80"
-      - "8080:8080"  # Metrics endpoint for nginx-exporter
+      - "127.0.0.1:8080:8080"  # Metrics endpoint for nginx-exporter
     volumes:
       - ../nginx/nginx.conf:/etc/nginx/nginx.conf:ro
-      - ../nginx/conf.d:/etc/nginx/conf.d:rw
+      - ../nginx/conf.d:/etc/nginx/conf.d:ro
       - ../nginx/docker-entrypoint.d:/docker-entrypoint.d:ro
       - ../alt-frontend-sv/static/favicon.svg:/usr/share/nginx/html/favicon.svg:ro
       - nginx-image-cache:/var/cache/nginx/image_proxy
@@ -122,7 +122,6 @@ services:
     networks:
       - alt-network
     volumes:
-      - ../.env:/app/.env
       - alt_backend_certs:/certs:ro
       - pki_trust_bundle:/trust:ro
     depends_on:

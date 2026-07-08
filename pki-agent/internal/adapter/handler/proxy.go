@@ -2,9 +2,12 @@ package handler
 
 import (
 	"crypto/tls"
+	"log/slog"
+	"net"
 	"net/http"
 	"net/http/httputil"
 	"net/url"
+	"time"
 
 	"pki-agent/internal/infrastructure"
 )
@@ -45,8 +48,25 @@ func NewTLSProxy(cfg ProxyConfig) (*http.Server, error) {
 		return nil, err
 	}
 	proxy := httputil.NewSingleHostReverseProxy(target)
+	proxy.Transport = &http.Transport{
+		DialContext: (&net.Dialer{
+			Timeout: 5 * time.Second,
+		}).DialContext,
+		TLSHandshakeTimeout:   5 * time.Second,
+		ResponseHeaderTimeout: 15 * time.Second,
+		IdleConnTimeout:       90 * time.Second,
+	}
+	proxy.ErrorHandler = func(w http.ResponseWriter, r *http.Request, err error) {
+		slog.Error("proxy upstream request failed", "upstream", cfg.Upstream, "error", err)
+		w.WriteHeader(http.StatusBadGateway)
+	}
 
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Always strip caller-supplied identity header first: only a
+		// verified client certificate may set it, otherwise an
+		// unauthenticated caller could forge X-Alt-Peer-Identity and have
+		// it forwarded to upstream as-is.
+		r.Header.Del("X-Alt-Peer-Identity")
 		if r.TLS != nil && len(r.TLS.PeerCertificates) > 0 {
 			r.Header.Set("X-Alt-Peer-Identity", r.TLS.PeerCertificates[0].Subject.CommonName)
 		}

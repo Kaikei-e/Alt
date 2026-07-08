@@ -159,9 +159,8 @@ func (h *SovereignHandler) ApplyCurationMutation(
 	case MutationDismissCuration:
 		err = h.repo.DismissKnowledgeHomeItem(ctx, payload)
 	default:
-		// Lens mutations are fire-and-forget logging; ack without DB op for now.
-		slog.InfoContext(ctx, "curation mutation received",
-			"type", msg.MutationType, "entity_id", msg.EntityId)
+		return nil, connect.NewError(connect.CodeInvalidArgument,
+			fmt.Errorf("unknown curation mutation type: %s", msg.MutationType))
 	}
 
 	if err != nil {

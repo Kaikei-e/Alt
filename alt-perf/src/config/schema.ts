@@ -11,16 +11,20 @@ export interface DeviceProfile {
   deviceScaleFactor: number;
 }
 
+// Default profile kept as its own binding (not a DEVICE_PROFILES lookup) so
+// it has a guaranteed DeviceProfile type under noUncheckedIndexedAccess.
+export const DEFAULT_DEVICE_PROFILE: DeviceProfile = {
+  name: "Desktop Chrome",
+  viewport: { width: 1920, height: 1080 },
+  userAgent:
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+  isMobile: false,
+  deviceScaleFactor: 1,
+};
+
 // Predefined device profiles
 export const DEVICE_PROFILES: Record<string, DeviceProfile> = {
-  "desktop-chrome": {
-    name: "Desktop Chrome",
-    viewport: { width: 1920, height: 1080 },
-    userAgent:
-      "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-    isMobile: false,
-    deviceScaleFactor: 1,
-  },
+  "desktop-chrome": DEFAULT_DEVICE_PROFILE,
   "mobile-chrome": {
     name: "Mobile Chrome (Pixel 5)",
     viewport: { width: 393, height: 851 },

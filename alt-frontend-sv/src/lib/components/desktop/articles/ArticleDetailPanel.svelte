@@ -29,6 +29,7 @@ const { article, onClose }: Props = $props();
 let isFetchingContent = $state(false);
 let fetchedResponse = $state<FeedContentOnTheFlyResponse | null>(null);
 let contentError = $state<string | null>(null);
+let fetchAbortController: AbortController | null = null;
 
 const summarizer = useSummarize();
 const tts = useTtsPlayback();
@@ -46,6 +47,7 @@ const fetchButtonState = $derived.by(() => {
 onDestroy(() => {
 	summarizer.abort();
 	tts.stop();
+	fetchAbortController?.abort();
 });
 
 let prevArticleId = $state("");
@@ -62,17 +64,27 @@ $effect(() => {
 
 async function fetchContent(forceRefresh = false) {
 	if (!article.link) return;
+	const requestedId = article.id;
+	fetchAbortController?.abort();
+	const controller = new AbortController();
+	fetchAbortController = controller;
 	isFetchingContent = true;
 	contentError = null;
 	try {
-		fetchedResponse = await getFeedContentOnTheFlyClient(article.link, {
+		const response = await getFeedContentOnTheFlyClient(article.link, {
 			forceRefresh,
+			signal: controller.signal,
 		});
+		if (article.id !== requestedId) return;
+		fetchedResponse = response;
 	} catch (err) {
+		if (article.id !== requestedId || controller.signal.aborted) return;
 		contentError =
 			err instanceof Error ? err.message : "Failed to fetch article";
 	} finally {
-		isFetchingContent = false;
+		if (article.id === requestedId) {
+			isFetchingContent = false;
+		}
 	}
 }
 

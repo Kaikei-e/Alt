@@ -1,5 +1,4 @@
 pub mod client;
-pub mod http;
 pub mod metrics;
 #[cfg(feature = "otlp")]
 pub mod otlp;
@@ -7,16 +6,15 @@ pub mod serialization;
 pub mod stats;
 pub mod transmission;
 
-pub use http::{BatchSender, ConnectionStats, SenderConfig, SenderError};
-pub use stats::{AtomicConnectionStats, ConnectionStatsSnapshot};
-pub use client::{ClientConfig, ClientError, ConnectionStats as NewConnectionStats, HttpClient};
+pub use client::{ClientConfig, ClientError, ConnectionStats, HttpClient};
 pub use metrics::{MetricsCollector, PerformanceMetrics};
 #[cfg(feature = "otlp")]
 pub use otlp::OtlpSerializer;
 pub use serialization::{BatchSerializer, SerializationError, SerializationFormat};
-pub use transmission::{BatchTransmitter, TransmissionError, TransmissionResult};
+pub use stats::{AtomicConnectionStats, ConnectionStatsSnapshot};
 #[cfg(feature = "otlp")]
 pub use transmission::OtlpBatchTransmitter;
+pub use transmission::{BatchTransmitter, TransmissionError, TransmissionResult};
 
 // High-level sender that combines all components
 #[derive(Clone)]
@@ -48,19 +46,17 @@ impl LogSender {
 
         match &result {
             Ok(transmission_result) => {
+                // `TransmissionResult` doesn't carry the pre-compression
+                // size, so there's no real compressed/uncompressed pair to
+                // report here - passing a fabricated `bytes_sent * 2`
+                // "estimate" would just make `compression_ratio` a made-up
+                // number. Leave it unrecorded rather than lie about it.
                 self.metrics.record_transmission(
                     transmission_result.success,
                     entries_count,
                     transmission_result.bytes_sent,
                     transmission_result.latency,
-                    if transmission_result.compressed {
-                        Some((
-                            transmission_result.bytes_sent,
-                            transmission_result.bytes_sent * 2,
-                        )) // Estimate
-                    } else {
-                        None
-                    },
+                    None,
                 );
             }
             Err(_) => {

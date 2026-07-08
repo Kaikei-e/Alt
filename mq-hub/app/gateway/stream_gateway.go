@@ -3,7 +3,7 @@ package gateway
 
 import (
 	"context"
-	"errors"
+	"fmt"
 	"log/slog"
 	"time"
 
@@ -11,8 +11,10 @@ import (
 	"mq-hub/port"
 )
 
-// ErrNilEvent is returned when attempting to publish a nil event.
-var ErrNilEvent = errors.New("nil event")
+// ErrNilEvent is returned when attempting to publish a nil event. It wraps
+// domain.ErrInvalidEvent so callers can classify it the same way as other
+// event validation failures via errors.Is.
+var ErrNilEvent = fmt.Errorf("nil event: %w", domain.ErrInvalidEvent)
 
 // StreamGateway implements StreamPort using a driver.
 type StreamGateway struct {

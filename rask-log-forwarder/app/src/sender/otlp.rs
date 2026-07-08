@@ -8,7 +8,7 @@ use crate::parser::{EnrichedLogEntry, LogLevel};
 use crate::sender::SerializationError;
 
 use opentelemetry_proto::tonic::collector::logs::v1::ExportLogsServiceRequest;
-use opentelemetry_proto::tonic::common::v1::{any_value, AnyValue, KeyValue};
+use opentelemetry_proto::tonic::common::v1::{AnyValue, KeyValue, any_value};
 use opentelemetry_proto::tonic::logs::v1::{LogRecord, ResourceLogs, ScopeLogs};
 use opentelemetry_proto::tonic::resource::v1::Resource;
 
@@ -78,7 +78,11 @@ impl OtlpSerializer {
     }
 
     /// Creates a ResourceLogs message for a group of entries from the same service.
-    fn create_resource_logs(&self, service_name: &str, entries: Vec<&EnrichedLogEntry>) -> ResourceLogs {
+    fn create_resource_logs(
+        &self,
+        service_name: &str,
+        entries: Vec<&EnrichedLogEntry>,
+    ) -> ResourceLogs {
         // Get container_id and service_group from first entry (all entries in group have same service)
         let first_entry = entries.first().expect("entries should not be empty");
 
@@ -108,12 +112,14 @@ impl OtlpSerializer {
 
         // Create scope logs
         let scope_logs = vec![ScopeLogs {
-            scope: Some(opentelemetry_proto::tonic::common::v1::InstrumentationScope {
-                name: SCOPE_NAME.to_string(),
-                version: self.forwarder_version.clone(),
-                attributes: vec![],
-                dropped_attributes_count: 0,
-            }),
+            scope: Some(
+                opentelemetry_proto::tonic::common::v1::InstrumentationScope {
+                    name: SCOPE_NAME.to_string(),
+                    version: self.forwarder_version.clone(),
+                    attributes: vec![],
+                    dropped_attributes_count: 0,
+                },
+            ),
             log_records,
             schema_url: String::new(),
         }];
@@ -301,12 +307,30 @@ mod tests {
     fn test_log_level_mapping() {
         let serializer = OtlpSerializer::new();
 
-        assert_eq!(serializer.map_log_level(Some(LogLevel::Debug)), (5, "DEBUG".to_string()));
-        assert_eq!(serializer.map_log_level(Some(LogLevel::Info)), (9, "INFO".to_string()));
-        assert_eq!(serializer.map_log_level(Some(LogLevel::Warn)), (13, "WARN".to_string()));
-        assert_eq!(serializer.map_log_level(Some(LogLevel::Error)), (17, "ERROR".to_string()));
-        assert_eq!(serializer.map_log_level(Some(LogLevel::Fatal)), (21, "FATAL".to_string()));
-        assert_eq!(serializer.map_log_level(None), (0, "UNSPECIFIED".to_string()));
+        assert_eq!(
+            serializer.map_log_level(Some(LogLevel::Debug)),
+            (5, "DEBUG".to_string())
+        );
+        assert_eq!(
+            serializer.map_log_level(Some(LogLevel::Info)),
+            (9, "INFO".to_string())
+        );
+        assert_eq!(
+            serializer.map_log_level(Some(LogLevel::Warn)),
+            (13, "WARN".to_string())
+        );
+        assert_eq!(
+            serializer.map_log_level(Some(LogLevel::Error)),
+            (17, "ERROR".to_string())
+        );
+        assert_eq!(
+            serializer.map_log_level(Some(LogLevel::Fatal)),
+            (21, "FATAL".to_string())
+        );
+        assert_eq!(
+            serializer.map_log_level(None),
+            (0, "UNSPECIFIED".to_string())
+        );
     }
 
     #[test]

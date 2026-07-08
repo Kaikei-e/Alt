@@ -66,7 +66,7 @@ func TestConfig_LoadBackendTokenSecret_FromFile(t *testing.T) {
 	require.NoError(t, err)
 	defer os.Remove(tmpFile.Name())
 
-	_, err = tmpFile.WriteString("my-secret-key")
+	_, err = tmpFile.WriteString("this-is-a-valid-backend-token-secret-32-chars-long")
 	require.NoError(t, err)
 	tmpFile.Close()
 
@@ -77,18 +77,28 @@ func TestConfig_LoadBackendTokenSecret_FromFile(t *testing.T) {
 	secret, err := cfg.LoadBackendTokenSecret()
 
 	require.NoError(t, err)
-	assert.Equal(t, []byte("my-secret-key"), secret)
+	assert.Equal(t, []byte("this-is-a-valid-backend-token-secret-32-chars-long"), secret)
 }
 
 func TestConfig_LoadBackendTokenSecret_FromEnv(t *testing.T) {
-	os.Setenv("BACKEND_TOKEN_SECRET", "env-secret-key")
+	os.Setenv("BACKEND_TOKEN_SECRET", "this-is-a-valid-backend-token-secret-32-chars-long")
 	defer os.Clearenv()
 
 	cfg := NewConfig()
 	secret, err := cfg.LoadBackendTokenSecret()
 
 	require.NoError(t, err)
-	assert.Equal(t, []byte("env-secret-key"), secret)
+	assert.Equal(t, []byte("this-is-a-valid-backend-token-secret-32-chars-long"), secret)
+}
+
+func TestConfig_LoadBackendTokenSecret_TooShort(t *testing.T) {
+	os.Setenv("BACKEND_TOKEN_SECRET", "too-short")
+	defer os.Clearenv()
+
+	cfg := NewConfig()
+	_, err := cfg.LoadBackendTokenSecret()
+
+	assert.Error(t, err)
 }
 
 func TestConfig_LoadBackendTokenSecret_FileNotFound(t *testing.T) {

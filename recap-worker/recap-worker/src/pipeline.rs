@@ -111,7 +111,8 @@ mod tests {
             .with_select_stage(Arc::new(RecordingSelect::new(Arc::clone(&order))))
             .with_dispatch_stage(Arc::new(RecordingDispatch::new(Arc::clone(&order))))
             .with_persist_stage(Arc::new(RecordingPersist::new(Arc::clone(&order))))
-            .build(recap_dao, subworker_client, classification_queue, None);
+            .build(recap_dao, subworker_client, classification_queue, None)
+            .expect("all stages configured, build should succeed");
 
         let job = JobContext::new(Uuid::new_v4(), vec!["ai".to_string()]);
 

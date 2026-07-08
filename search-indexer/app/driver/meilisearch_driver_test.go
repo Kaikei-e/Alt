@@ -141,8 +141,8 @@ func TestContainsCJK_Japanese(t *testing.T) {
 		{"hello world", false},
 		{"", false},
 		{"AI関連ニュース", true},
-		{"GPT-4o と Claude", true},              // と is Hiragana → CJK
-		{"GPT-4oとClaude 3.5の違いは？", true},    // contains と, の, は (Hiragana)
+		{"GPT-4o と Claude", true},        // と is Hiragana → CJK
+		{"GPT-4oとClaude 3.5の違いは？", true}, // contains と, の, は (Hiragana)
 	}
 	for _, tt := range tests {
 		t.Run(tt.input, func(t *testing.T) {

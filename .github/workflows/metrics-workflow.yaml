@@ -55,6 +55,7 @@ jobs:
   quality-gate:
     name: Quality Gate
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     needs: [test, lint, typecheck]
     if: always()
     steps:

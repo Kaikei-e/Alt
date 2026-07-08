@@ -5,7 +5,7 @@
 # Target image size: < 2500 MiB (see .github/workflows/docker-build.yaml gate).
 # ==============================================================================
 
-FROM python:3.14-slim AS builder
+FROM python:3.14-slim@sha256:b877e50bd90de10af8d82c57a022fc2e0dc731c5320d762a27986facfc3355c1 AS builder
 
 WORKDIR /app
 
@@ -43,7 +43,7 @@ RUN set -eux; \
     rm -rf "$SITE/torch/include" 2>/dev/null || true; \
     find "$SITE" -name "*.pyi" -delete 2>/dev/null || true
 
-FROM python:3.14-slim AS runtime
+FROM python:3.14-slim@sha256:b877e50bd90de10af8d82c57a022fc2e0dc731c5320d762a27986facfc3355c1 AS runtime
 
 WORKDIR /app
 

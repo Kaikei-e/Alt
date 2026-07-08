@@ -91,9 +91,18 @@ func (r *ArticleRepository) CheckExists(ctx context.Context, urls []string) (boo
 			continue
 		}
 
-		// Try to get feed ID from the URL
+		// Try to get feed ID from the URL. A not-found feed means the
+		// article can't exist under it — skip. Any other error (network,
+		// auth, backend outage) must propagate so callers don't treat a
+		// transient failure as "article doesn't exist" and create a duplicate.
 		feedID, err := r.getFeedID(ctx, parsedURL.String())
-		if err != nil || feedID == "" {
+		if err != nil {
+			if isNotFoundError(err) {
+				continue
+			}
+			return false, fmt.Errorf("getFeedID for %s: %w", u, err)
+		}
+		if feedID == "" {
 			continue
 		}
 
@@ -106,7 +115,7 @@ func (r *ArticleRepository) CheckExists(ctx context.Context, urls []string) (boo
 
 		resp, err := r.client.client.CheckArticleExists(ctx, req)
 		if err != nil {
-			continue
+			return false, fmt.Errorf("CheckArticleExists for %s: %w", u, err)
 		}
 		if resp.Msg.Exists {
 			return true, nil
@@ -280,6 +289,12 @@ func (r *ArticleRepository) UpsertArticles(ctx context.Context, articles []*doma
 			if !hit {
 				id, err := r.getFeedID(ctx, article.FeedURL)
 				if err != nil {
+					if !isNotFoundError(err) {
+						// Real errors (network, auth, backend outage) abort the
+						// batch immediately instead of being silently treated as
+						// a missing feed — see doc comment above.
+						return fmt.Errorf("getFeedID for %s: %w", article.FeedURL, err)
+					}
 					// Feed not found in backend — log once per feed, cache the miss,
 					// and skip the rest of the batch's articles for the same URL.
 					slog.WarnContext(ctx, "feed not found, skipping articles for feed",
@@ -375,4 +390,11 @@ func (r *ArticleRepository) getFeedID(ctx context.Context, feedURL string) (stri
 		return "", err
 	}
 	return resp.Msg.FeedId, nil
+}
+
+// isNotFoundError reports whether err is a Connect-RPC error carrying
+// CodeNotFound, as opposed to a transport/auth/backend failure that must be
+// treated as a real error rather than a missing-feed sentinel.
+func isNotFoundError(err error) bool {
+	return connect.CodeOf(err) == connect.CodeNotFound
 }

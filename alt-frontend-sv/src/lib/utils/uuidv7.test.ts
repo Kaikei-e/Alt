@@ -21,7 +21,7 @@ describe("uuidv7", () => {
 	it("has variant nibble 8/9/a/b at position 19 (RFC 4122 variant bits)", () => {
 		for (let i = 0; i < 20; i++) {
 			const id = uuidv7();
-			expect(["8", "9", "a", "b"]).toContain(id[19].toLowerCase());
+			expect(["8", "9", "a", "b"]).toContain(id[19]!.toLowerCase());
 		}
 	});
 
@@ -41,7 +41,7 @@ describe("uuidv7", () => {
 	it("returns monotonically non-decreasing values under rapid-fire calls", () => {
 		const ids = Array.from({ length: 50 }, () => uuidv7());
 		for (let i = 1; i < ids.length; i++) {
-			expect(ids[i] >= ids[i - 1]).toBe(true);
+			expect(ids[i]! >= ids[i - 1]!).toBe(true);
 		}
 	});
 

@@ -117,7 +117,7 @@ func runDown(cmd *cobra.Command, args []string) error {
 	)
 
 	// Stop services
-	ctx, cancel := context.WithTimeout(context.Background(), timeout+30*time.Second)
+	ctx, cancel := context.WithTimeout(cmd.Context(), timeout+30*time.Second)
 	defer cancel()
 
 	err = client.Down(ctx, compose.DownOptions{

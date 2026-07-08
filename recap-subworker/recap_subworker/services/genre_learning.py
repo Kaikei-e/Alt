@@ -6,7 +6,7 @@ import asyncio
 import statistics
 from collections import Counter
 from collections.abc import Sequence
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
 from functools import partial
 from typing import Any
@@ -462,6 +462,41 @@ class GenreLearningResult:
     summary: GenreLearningSummary
     entries: list[dict[str, Any]]
     cluster_draft: dict[str, Any] | None
+
+
+def build_learning_payload(result: GenreLearningResult, *, now: datetime) -> dict[str, Any]:
+    """Build the recap-worker learning payload from a GenreLearningResult.
+
+    Shared by the learning scheduler and the async admin job runner so the
+    payload shape (including which summary fields end up in metadata) can't
+    drift between the two callers.
+    """
+    summary = asdict(result.summary)
+    graph_override: dict[str, Any] = {
+        "graph_margin": result.summary.graph_margin_reference,
+    }
+    if result.summary.boost_threshold_reference is not None:
+        graph_override["boost_threshold"] = result.summary.boost_threshold_reference
+    if result.summary.tag_count_threshold_reference is not None:
+        graph_override["tag_count_threshold"] = result.summary.tag_count_threshold_reference
+
+    metadata: dict[str, Any] = {
+        "captured_at": now.isoformat(),
+        "entries_observed": result.summary.total_records,
+    }
+    if result.summary.accuracy_estimate is not None:
+        metadata["accuracy_estimate"] = result.summary.accuracy_estimate
+    if result.summary.test_accuracy is not None:
+        metadata["test_accuracy"] = result.summary.test_accuracy
+
+    payload: dict[str, Any] = {
+        "summary": summary,
+        "graph_override": graph_override,
+        "metadata": metadata,
+    }
+    if result.cluster_draft:
+        payload["cluster_draft"] = result.cluster_draft
+    return payload
 
 
 class GenreLearningService:

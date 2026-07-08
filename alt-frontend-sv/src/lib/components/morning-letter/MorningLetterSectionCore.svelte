@@ -51,7 +51,7 @@ const whyByBullet = $derived<WhyReasonData[] | null>(
 				</div>
 				{#if whyByBullet}
 					<div class="section-bullet-why">
-						<WhySurfacedBadge reason={whyByBullet[bulletIdx]} />
+						<WhySurfacedBadge reason={whyByBullet[bulletIdx]!} />
 					</div>
 				{/if}
 			</li>

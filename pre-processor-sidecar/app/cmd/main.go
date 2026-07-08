@@ -398,6 +398,21 @@ func runScheduleMode(ctx context.Context, cfg *config.Config, logger *slog.Logge
 	)
 
 	scheduleHandler := handler.NewScheduleHandler(articleFetchHandler, articleFetchService, logger)
+	scheduleHandler.SetTokenManager(tokenManagementService)
+
+	// The scheduler that actually drives ticker-based fetch/refresh (started
+	// below). Constructed here — ahead of the Admin API trigger endpoints —
+	// so those endpoints can call into it directly (TriggerFetchNow /
+	// TriggerRefreshNow) instead of ScheduleHandler's own trigger methods.
+	// The two used to have no shared guard: an admin-triggered fetch could
+	// run concurrently with the ticker-driven fetch and double-consume the
+	// 100 req/day Inoreader quota.
+	inoreaderScheduler := scheduler.NewScheduler(
+		syncStateRepo,
+		subscriptionSyncService,
+		articleFetchService,
+		logger,
+	)
 
 	// Add job result callback for monitoring
 	scheduleHandler.AddJobResultCallback(func(result *handler.JobResult) {
@@ -449,7 +464,7 @@ func runScheduleMode(ctx context.Context, cfg *config.Config, logger *slog.Logge
 		}
 
 		logger.Info("Manual article fetch triggered via Admin API")
-		err := scheduleHandler.TriggerArticleFetch()
+		err := inoreaderScheduler.TriggerFetchNow()
 		if err != nil {
 			logger.Error("Failed to trigger article fetch", "error", err)
 			http.Error(w, err.Error(), http.StatusConflict)
@@ -472,7 +487,7 @@ func runScheduleMode(ctx context.Context, cfg *config.Config, logger *slog.Logge
 		}
 
 		logger.Info("Manual subscription sync triggered via Admin API")
-		err := scheduleHandler.TriggerSubscriptionSync()
+		err := inoreaderScheduler.TriggerRefreshNow()
 		if err != nil {
 			logger.Error("Failed to trigger subscription sync", "error", err)
 			http.Error(w, err.Error(), http.StatusConflict)
@@ -523,15 +538,6 @@ func runScheduleMode(ctx context.Context, cfg *config.Config, logger *slog.Logge
 		"article_fetch_interval", "30m",
 		"admin_api_address", ":8080")
 
-	// START NEW SCHEDULER IMPLEMENTATION
-	// Replacing legacy ScheduleHandler with strict 100 req/day Scheduler
-	inoreaderScheduler := scheduler.NewScheduler(
-		syncStateRepo,
-		subscriptionSyncService,
-		articleFetchService,
-		logger,
-	)
-
 	// Use Default Config (16m fetch, 24h refresh)
 	schedulerConfig := scheduler.DefaultConfig()
 	inoreaderScheduler.Start(schedulerConfig)
@@ -539,19 +545,11 @@ func runScheduleMode(ctx context.Context, cfg *config.Config, logger *slog.Logge
 	// Register shutdown hook for scheduler
 	defer inoreaderScheduler.Stop()
 
-	// Legacy handler kept for Admin API references but not started automatically
-	/*
-		if err := scheduleHandler.Start(ctx); err != nil {
-			return fmt.Errorf("failed to start schedule handler: %w", err)
-		}
-	*/
-	// Legacy handler kept for Admin API references but not started automatically
-	/*
-		if err := scheduleHandler.Start(ctx); err != nil {
-			return fmt.Errorf("failed to start schedule handler: %w", err)
-		}
-	*/
-	// END NEW SCHEDULER IMPLEMENTATION
+	// scheduleHandler's own ticker-based scheduling (Start) stays unused —
+	// inoreaderScheduler above is the sole driver of ticker-based fetch and
+	// refresh, and Admin API triggers now go through inoreaderScheduler's
+	// TriggerFetchNow/TriggerRefreshNow too, so there is exactly one
+	// scheduling authority instead of two independently racing ones.
 
 	// サービス状態の定期ログ（頻度を30分に削減してAPI呼び出しを減らす）
 	statusTicker := time.NewTicker(30 * time.Minute)

@@ -90,9 +90,9 @@ describe("createSeamlessTtsPlayer", () => {
 
 		expect(mockCtx.decodeAudioData).toHaveBeenCalledTimes(1);
 		expect(sources).toHaveLength(1);
-		expect(sources[0].connect).toHaveBeenCalledWith(mockCtx.destination);
+		expect(sources[0]!.connect).toHaveBeenCalledWith(mockCtx.destination);
 		// First chunk starts at currentTime + FIRST_CHUNK_PRIMER_SECONDS (0.05)
-		expect(sources[0].start).toHaveBeenCalledWith(1.05);
+		expect(sources[0]!.start).toHaveBeenCalledWith(1.05);
 	});
 
 	it("schedules the second chunk at end-of-first to keep playback gapless", async () => {
@@ -103,10 +103,10 @@ describe("createSeamlessTtsPlayer", () => {
 		await player.append(new Uint8Array([5, 6, 7, 8, 9, 10]));
 
 		expect(sources).toHaveLength(2);
-		expect(sources[0].start).toHaveBeenCalledWith(0.05);
+		expect(sources[0]!.start).toHaveBeenCalledWith(0.05);
 		// Second source starts at 0.05 (primed start) + 0.004 (first buffer dur).
 		// Use closeTo to tolerate float arithmetic in nextStartTime accumulation.
-		const secondStart = sources[1].start.mock.calls[0][0] as number;
+		const secondStart = sources[1]!.start.mock.calls[0]![0] as number;
 		expect(secondStart).toBeCloseTo(0.054, 6);
 	});
 
@@ -114,7 +114,7 @@ describe("createSeamlessTtsPlayer", () => {
 		const player = createSeamlessTtsPlayer();
 		await player.append(new Uint8Array([1, 2, 3, 4]));
 		player.stop();
-		expect(sources[0].stop).toHaveBeenCalled();
+		expect(sources[0]!.stop).toHaveBeenCalled();
 
 		await player.append(new Uint8Array([5, 6, 7, 8]));
 		// Still just the one source from the pre-stop append.
@@ -126,7 +126,7 @@ describe("createSeamlessTtsPlayer", () => {
 		await player.append(new Uint8Array([1, 2, 3, 4]));
 		await player.append(new Uint8Array([5, 6, 7, 8]));
 
-		const tail = sources[sources.length - 1];
+		const tail = sources[sources.length - 1]!;
 		const donePromise = player.done();
 		// Simulate the engine firing the end-of-source event.
 		tail.onended?.();
@@ -188,8 +188,8 @@ describe("splitTextForTts", () => {
 	it("hard-cuts when no sentence boundary found within limit", () => {
 		const result = splitTextForTts("あ".repeat(35000));
 		expect(result.length).toBe(2);
-		expect(result[0].length).toBe(30000);
-		expect(result[1].length).toBe(5000);
+		expect(result[0]!.length).toBe(30000);
+		expect(result[1]!.length).toBe(5000);
 	});
 
 	it("does not produce empty chunks", () => {

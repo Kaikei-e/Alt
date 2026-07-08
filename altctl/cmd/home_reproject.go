@@ -108,7 +108,7 @@ func runReprojectStart(cmd *cobra.Command, args []string) error {
 		CreatedAt string `json:"createdAt"`
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	ctx, cancel := context.WithTimeout(cmd.Context(), 30*time.Second)
 	defer cancel()
 
 	if err := client.Call(ctx, "StartReproject", reqBody, &resp); err != nil {
@@ -174,7 +174,7 @@ func runReprojectStatus(cmd *cobra.Command, args []string) error {
 		Error       string  `json:"error"`
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	ctx, cancel := context.WithTimeout(cmd.Context(), 30*time.Second)
 	defer cancel()
 
 	if err := client.Call(ctx, "GetReprojectStatus", reqBody, &resp); err != nil {
@@ -242,7 +242,7 @@ func runReprojectCompare(cmd *cobra.Command, args []string) error {
 		Summary      string `json:"summary"`
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	ctx, cancel := context.WithTimeout(cmd.Context(), 60*time.Second)
 	defer cancel()
 
 	if err := client.Call(ctx, "CompareReproject", reqBody, &resp); err != nil {
@@ -304,7 +304,7 @@ func runReprojectSwap(cmd *cobra.Command, args []string) error {
 		SwappedAt string `json:"swappedAt"`
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	ctx, cancel := context.WithTimeout(cmd.Context(), 30*time.Second)
 	defer cancel()
 
 	if err := client.Call(ctx, "SwapReproject", reqBody, &resp); err != nil {
@@ -362,7 +362,7 @@ func runReprojectRollback(cmd *cobra.Command, args []string) error {
 		RolledBackAt string `json:"rolledBackAt"`
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	ctx, cancel := context.WithTimeout(cmd.Context(), 30*time.Second)
 	defer cancel()
 
 	if err := client.Call(ctx, "RollbackReproject", reqBody, &resp); err != nil {

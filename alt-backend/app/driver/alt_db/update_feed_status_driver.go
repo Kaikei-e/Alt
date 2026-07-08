@@ -9,21 +9,16 @@ import (
 	"fmt"
 	"net/url"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 )
 
-func (r *FeedRepository) UpdateFeedStatus(ctx context.Context, feedURL url.URL) error {
-	user, err := domain.GetUserFromContext(ctx)
-	if err != nil {
-		logger.SafeErrorContext(ctx, "user context not found", "error", err)
-		return errors.New("authentication required")
-	}
-
+func (r *FeedRepository) UpdateFeedStatus(ctx context.Context, feedURL url.URL, userID uuid.UUID) error {
 	// Normalize the input URL
 	normalizedInputURL, err := utils.NormalizeURL(feedURL.String())
 	if err != nil {
 		logger.SafeErrorContext(ctx, "Error normalizing input URL", "error", err, "feedURL", feedURL.String())
-		return err
+		return fmt.Errorf("normalize feed url: %w", err)
 	}
 
 	// OPTIMIZATION: Query feed directly by normalized URL instead of loading all feeds
@@ -39,7 +34,7 @@ func (r *FeedRepository) UpdateFeedStatus(ctx context.Context, feedURL url.URL) 
 			logger.SafeErrorContext(ctx, "Feed not found",
 				"normalizedURL", normalizedInputURL,
 				"originalURL", feedURL.String(),
-				"user_id", user.UserID)
+				"user_id", userID)
 			return domain.ErrFeedNotFound
 		}
 		logger.SafeErrorContext(ctx, "Error querying feed", "error", err, "normalizedURL", normalizedInputURL)
@@ -58,7 +53,7 @@ func (r *FeedRepository) UpdateFeedStatus(ctx context.Context, feedURL url.URL) 
 	}
 
 	defer func() {
-		if err := tx.Rollback(context.Background()); err != nil && err.Error() != "tx is closed" {
+		if err := tx.Rollback(context.Background()); err != nil && !errors.Is(err, pgx.ErrTxClosed) {
 			logger.SafeWarnContext(ctx, "Error rolling back transaction", "error", err)
 		}
 	}()
@@ -71,10 +66,10 @@ func (r *FeedRepository) UpdateFeedStatus(ctx context.Context, feedURL url.URL) 
         SET is_read = TRUE, read_at = CURRENT_TIMESTAMP
     `
 
-	if _, err = tx.Exec(ctx, updateFeedStatusQuery, feedID, user.UserID); err != nil {
+	if _, err = tx.Exec(ctx, updateFeedStatusQuery, feedID, userID); err != nil {
 		logger.SafeErrorContext(ctx, "Error updating feed status",
 			"error", err,
-			"user_id", user.UserID,
+			"user_id", userID,
 			"feed_id", feedID)
 		return fmt.Errorf("failed to update feed status: %w", err)
 	}
@@ -85,7 +80,7 @@ func (r *FeedRepository) UpdateFeedStatus(ctx context.Context, feedURL url.URL) 
 	}
 
 	logger.SafeInfoContext(ctx, "feed status updated successfully",
-		"user_id", user.UserID,
+		"user_id", userID,
 		"feed_id", feedID,
 		"is_read", true)
 

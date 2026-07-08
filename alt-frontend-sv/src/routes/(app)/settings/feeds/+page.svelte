@@ -1,4 +1,5 @@
 <script lang="ts">
+import { onMount, untrack } from "svelte";
 import { Plus, RefreshCw, Trash2, ArrowLeft, Home } from "@lucide/svelte";
 import * as v from "valibot";
 import { goto } from "$app/navigation";
@@ -36,9 +37,9 @@ type ActionMessage = {
 	text: string;
 };
 
-let feedLinks = $state<FeedLink[]>([]);
+let feedLinks = $state<FeedLink[]>(untrack(() => data.feedLinks ?? []));
 let isLoadingLinks = $state(false);
-let loadingError = $state<string | null>(null);
+let loadingError = $state<string | null>(untrack(() => data.error ?? null));
 let feedUrl = $state("");
 let validationError = $state<string | null>(null);
 let isSubmitting = $state(false);
@@ -54,9 +55,7 @@ let togglingIds = $state<Set<string>>(new Set());
 // Mobile-only state
 let showAddForm = $state(false);
 
-$effect(() => {
-	feedLinks = data.feedLinks ?? [];
-	loadingError = data.error ?? null;
+onMount(() => {
 	loadSubscriptions();
 });
 

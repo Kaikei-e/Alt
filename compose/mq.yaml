@@ -27,7 +27,7 @@ services:
       retries: 3
     restart: unless-stopped
     ports:
-      - "6380:6379"
+      - "127.0.0.1:6380:6379"
     labels:
       - rask.group=redis-streams
     logging:

@@ -2,6 +2,7 @@
 package server
 
 import (
+	"bytes"
 	"encoding/json"
 	"io"
 	"log/slog"
@@ -14,6 +15,7 @@ import (
 
 	"alt-butterfly-facade/internal/client"
 	"alt-butterfly-facade/internal/handler"
+	"alt-butterfly-facade/internal/middleware"
 )
 
 // HealthResponse represents the health check response.
@@ -106,8 +108,15 @@ func NewServerWithTransports(
 	// Create aggregation handler
 	aggregationHandler := handler.NewAggregationHandler(
 		createQueryFetcher(backendClient),
+		cfg.Secret,
+		cfg.Issuer,
+		cfg.Audience,
 		logger,
 	)
+
+	// Auth for internal-info endpoints (e.g. /v1/bff/stats) that are not
+	// backend proxies and so don't go through a *ProxyHandler's authInterceptor.
+	statsAuth := middleware.NewAuthInterceptor(logger, cfg.Secret, cfg.Issuer, cfg.Audience)
 
 	// Register health endpoint
 	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
@@ -119,8 +128,16 @@ func NewServerWithTransports(
 		})
 	})
 
-	// Register stats endpoint for monitoring BFF features
+	// Register stats endpoint for monitoring BFF features. Exposes cache /
+	// circuit-breaker internals, so it requires an authenticated admin token
+	// like the other admin-only routes below.
 	mux.HandleFunc("/v1/bff/stats", func(w http.ResponseWriter, r *http.Request) {
+		token := r.Header.Get(middleware.BackendTokenHeader)
+		userCtx, err := statsAuth.ValidateToken(token)
+		if err != nil || userCtx.Role != "admin" {
+			http.Error(w, "Forbidden", http.StatusForbidden)
+			return
+		}
 		stats := BFFStats{}
 		if bffHandler != nil {
 			if cacheStats := bffHandler.GetCacheStats(); cacheStats != nil {
@@ -298,7 +315,7 @@ type CircuitBreakerStatsResponse struct {
 func createQueryFetcher(backendClient *client.BackendClient) handler.QueryFetcher {
 	return func(path string, token string, body []byte) (*handler.AggregatedResult, error) {
 		// Create a mock request to forward
-		req, err := http.NewRequest(http.MethodPost, path, io.NopCloser(nil))
+		req, err := http.NewRequest(http.MethodPost, path, bytes.NewReader(body))
 		if err != nil {
 			return &handler.AggregatedResult{
 				Error:      err.Error(),
@@ -306,6 +323,7 @@ func createQueryFetcher(backendClient *client.BackendClient) handler.QueryFetche
 			}, nil
 		}
 		req.URL.Path = path
+		req.Header.Set("Content-Type", "application/json")
 
 		resp, err := backendClient.ForwardRequest(req, token)
 		if err != nil {

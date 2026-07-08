@@ -14,6 +14,7 @@ import (
 	url "net/url"
 	reflect "reflect"
 
+	uuid "github.com/google/uuid"
 	gomock "go.uber.org/mock/gomock"
 )
 
@@ -42,15 +43,15 @@ func (m *MockUpdateFeedStatusPort) EXPECT() *MockUpdateFeedStatusPortMockRecorde
 }
 
 // UpdateFeedStatus mocks base method.
-func (m *MockUpdateFeedStatusPort) UpdateFeedStatus(ctx context.Context, feedURL url.URL) error {
+func (m *MockUpdateFeedStatusPort) UpdateFeedStatus(ctx context.Context, feedURL url.URL, userID uuid.UUID) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "UpdateFeedStatus", ctx, feedURL)
+	ret := m.ctrl.Call(m, "UpdateFeedStatus", ctx, feedURL, userID)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // UpdateFeedStatus indicates an expected call of UpdateFeedStatus.
-func (mr *MockUpdateFeedStatusPortMockRecorder) UpdateFeedStatus(ctx, feedURL any) *gomock.Call {
+func (mr *MockUpdateFeedStatusPortMockRecorder) UpdateFeedStatus(ctx, feedURL, userID any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateFeedStatus", reflect.TypeOf((*MockUpdateFeedStatusPort)(nil).UpdateFeedStatus), ctx, feedURL)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateFeedStatus", reflect.TypeOf((*MockUpdateFeedStatusPort)(nil).UpdateFeedStatus), ctx, feedURL, userID)
 }

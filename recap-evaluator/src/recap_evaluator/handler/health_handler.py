@@ -15,8 +15,7 @@ async def health_check(request: Request) -> dict:
 
     try:
         db = request.app.state.db
-        pool = db._pool
-        await pool.fetchval("SELECT 1")
+        await db.health_check()
     except Exception:
         checks["db"] = "unavailable"
         status = "degraded"

@@ -13,11 +13,15 @@ const TWO_HOURS_MS = 2 * 60 * 60 * 1000;
 
 function delay(ms: number, signal?: AbortSignal): Promise<void> {
   return new Promise((resolve, reject) => {
-    const timer = setTimeout(resolve, ms);
-    signal?.addEventListener("abort", () => {
+    const onAbort = () => {
       clearTimeout(timer);
       reject(new DOMException("Aborted", "AbortError"));
-    }, { once: true });
+    };
+    const timer = setTimeout(() => {
+      signal?.removeEventListener("abort", onAbort);
+      resolve();
+    }, ms);
+    signal?.addEventListener("abort", onAbort, { once: true });
   });
 }
 
@@ -87,9 +91,10 @@ export class DaemonLoop {
         ? new Date(tokenData.expires_at)
         : null;
 
-      if (!expiresAt) {
+      if (!expiresAt || isNaN(expiresAt.getTime())) {
         logger.warn(
-          "Token exists but has no expiry date - refreshing",
+          "Token exists but has no valid expiry date - refreshing",
+          { expires_at: tokenData.expires_at },
         );
         await this.refreshUsecase.execute();
         return;

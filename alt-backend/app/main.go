@@ -19,6 +19,7 @@ import (
 	"os/signal"
 	"runtime"
 	"strconv"
+	"sync"
 	"syscall"
 	"time"
 
@@ -95,7 +96,7 @@ func main() {
 	}
 	defer pool.Close()
 
-	container := di.NewApplicationComponents(pool)
+	container := di.NewApplicationComponents(pool, cfg)
 
 	// Start background jobs via scheduler (context-aware with graceful shutdown)
 	scheduler := job.NewJobScheduler()
@@ -129,7 +130,10 @@ func main() {
 			"knowledge-home-projector",
 		),
 	})
+	var projectorWG sync.WaitGroup
+	projectorWG.Add(1)
 	go func() {
+		defer projectorWG.Done()
 		if err := projectorRunner.Run(ctx); err != nil && ctx.Err() == nil {
 			logger.Logger.ErrorContext(ctx, "knowledge projector runner stopped unexpectedly", "error", err)
 		}
@@ -184,7 +188,7 @@ func main() {
 		e.GET("/metrics", echo.WrapHandler(otelResult.MetricsHandler))
 	}
 
-	rest.RegisterRoutes(e, container, cfg)
+	rest.RegisterRoutes(ctx, e, container, cfg)
 
 	serverExitCh := make(chan serverExit, 3)
 
@@ -328,6 +332,7 @@ func main() {
 	// Wait for background jobs to finish
 	schedulerShutdownStarted := time.Now()
 	scheduler.Shutdown()
+	projectorWG.Wait()
 	logger.Logger.Info("Background jobs stopped",
 		"duration_ms", time.Since(schedulerShutdownStarted).Milliseconds(),
 	)

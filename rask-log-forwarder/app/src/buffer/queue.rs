@@ -11,7 +11,7 @@ use tokio::sync::broadcast::{Receiver as BroadcastReceiver, Sender as BroadcastS
 use tokio::time::sleep;
 
 #[derive(Error, Debug)]
-pub enum BufferError {
+pub enum LegacyBufferError {
     #[error("Invalid buffer capacity")]
     InvalidCapacity,
     #[error("Buffer is full")]
@@ -38,14 +38,14 @@ pub struct LogBuffer {
 }
 
 impl LogBuffer {
-    pub fn new(capacity: usize) -> Result<Self, BufferError> {
+    pub fn new(capacity: usize) -> Result<Self, LegacyBufferError> {
         if capacity == 0 {
-            return Err(BufferError::InvalidCapacity);
+            return Err(LegacyBufferError::InvalidCapacity);
         }
 
         // Prevent excessive memory allocation
         if capacity > 100_000_000 {
-            return Err(BufferError::InvalidCapacity);
+            return Err(LegacyBufferError::InvalidCapacity);
         }
 
         let (sender, receiver) = tokio::sync::broadcast::channel(capacity);
@@ -94,12 +94,12 @@ impl LogBuffer {
     }
 
     #[inline(always)]
-    pub fn push(&self, log_entry: Arc<NginxLogEntry>) -> Result<(), BufferError> {
+    pub fn push(&self, log_entry: Arc<NginxLogEntry>) -> Result<(), LegacyBufferError> {
         loop {
             let current_len = self.current_len.load(Ordering::Acquire);
             if current_len >= self.capacity {
                 self.dropped.fetch_add(1, Ordering::Relaxed);
-                return Err(BufferError::Full);
+                return Err(LegacyBufferError::Full);
             }
 
             // Try to atomically increment if under capacity
@@ -122,7 +122,7 @@ impl LogBuffer {
                             // Failed to send, release the reserved space
                             self.current_len.fetch_sub(1, Ordering::Relaxed);
                             self.dropped.fetch_add(1, Ordering::Relaxed);
-                            return Err(BufferError::Full);
+                            return Err(LegacyBufferError::Full);
                         }
                     }
                 }
@@ -135,14 +135,38 @@ impl LogBuffer {
     }
 
     #[inline(always)]
-    pub fn pop(&mut self) -> Result<Arc<NginxLogEntry>, BufferError> {
+    pub fn pop(&mut self) -> Result<Arc<NginxLogEntry>, LegacyBufferError> {
+        use tokio::sync::broadcast::error::TryRecvError;
+
         match self.receiver.try_recv() {
             Ok(log_entry) => {
                 self.popped.fetch_add(1, Ordering::Relaxed);
                 self.current_len.fetch_sub(1, Ordering::Release);
                 Ok(log_entry)
             }
-            Err(_) => Err(BufferError::Empty),
+            Err(TryRecvError::Empty) => Err(LegacyBufferError::Empty),
+            Err(TryRecvError::Closed) => Err(LegacyBufferError::ReceiveFailed(
+                "broadcast channel closed".to_string(),
+            )),
+            Err(TryRecvError::Lagged(n)) => {
+                // Lagged entries were already counted into `current_len`
+                // when pushed but will never be `pop`'d, so this must be
+                // reconciled here - otherwise it's indistinguishable from an
+                // ordinary empty queue and current_len drifts upward forever.
+                tracing::warn!(
+                    "LogBuffer receiver lagged by {n} entries; counting them as dropped"
+                );
+                self.dropped.fetch_add(n, Ordering::Relaxed);
+                let skipped = usize::try_from(n).unwrap_or(usize::MAX);
+                self.current_len
+                    .fetch_update(Ordering::AcqRel, Ordering::Acquire, |current| {
+                        Some(current.saturating_sub(skipped))
+                    })
+                    .ok();
+                Err(LegacyBufferError::ReceiveFailed(format!(
+                    "lagged by {n} entries"
+                )))
+            }
         }
     }
 
@@ -159,7 +183,7 @@ impl LogBuffer {
     }
 
     // Batch operations for better performance
-    pub fn push_batch(&self, entries: Vec<Arc<NginxLogEntry>>) -> Result<usize, BufferError> {
+    pub fn push_batch(&self, entries: Vec<Arc<NginxLogEntry>>) -> Result<usize, LegacyBufferError> {
         let mut pushed_count = 0;
 
         for entry in entries {
@@ -249,7 +273,7 @@ impl LogBuffer {
     pub async fn push_with_backpressure(
         &self,
         log_entry: Arc<NginxLogEntry>,
-    ) -> Result<(), BufferError> {
+    ) -> Result<(), LegacyBufferError> {
         self.push_with_strategy(log_entry, BackpressureStrategy::default())
             .await
     }
@@ -258,17 +282,17 @@ impl LogBuffer {
         &self,
         log_entry: Arc<NginxLogEntry>,
         strategy: BackpressureStrategy,
-    ) -> Result<(), BufferError> {
+    ) -> Result<(), LegacyBufferError> {
         let mut attempts = 0;
         const MAX_ATTEMPTS: usize = 100; // Prevent infinite loops
 
         loop {
             match self.push(log_entry.clone()) {
                 Ok(()) => return Ok(()),
-                Err(BufferError::Full) => {
+                Err(LegacyBufferError::Full) => {
                     attempts += 1;
                     if attempts >= MAX_ATTEMPTS {
-                        return Err(BufferError::Full);
+                        return Err(LegacyBufferError::Full);
                     }
 
                     match strategy {
@@ -279,7 +303,7 @@ impl LogBuffer {
                             tokio::task::yield_now().await;
                         }
                         BackpressureStrategy::Drop => {
-                            return Err(BufferError::Full);
+                            return Err(LegacyBufferError::Full);
                         }
                         BackpressureStrategy::Block => {
                             // Block until space is available with timeout
@@ -289,7 +313,7 @@ impl LogBuffer {
                                 retries += 1;
                             }
                             if retries >= 100 {
-                                return Err(BufferError::Full);
+                                return Err(LegacyBufferError::Full);
                             }
                         }
                     }

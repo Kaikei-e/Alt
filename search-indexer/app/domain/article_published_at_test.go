@@ -29,7 +29,7 @@ func TestArticle_PublishedAt_Propagates(t *testing.T) {
 
 // TestSearchDocument_CarriesPublishedAt makes sure the SearchDocument shape
 // used by the gateway / driver boundary exposes the publication date
-// rather than dropping it, mirroring the earlier ``language`` regression.
+// rather than dropping it, mirroring the earlier “language“ regression.
 func TestSearchDocument_CarriesPublishedAt(t *testing.T) {
 	published := time.Date(2026, 4, 10, 0, 0, 0, 0, time.UTC)
 	article, _ := NewArticleWithPublishedAt(

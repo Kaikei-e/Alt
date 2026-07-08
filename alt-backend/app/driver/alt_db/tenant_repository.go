@@ -4,6 +4,7 @@ import (
 	"alt/domain"
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -208,8 +209,27 @@ func (r *TenantAwareRepository) CreateFeed(ctx context.Context, feed *domain.Fee
 	return tx.Commit(tenantCtx)
 }
 
-// UpdateFeed はフィードを更新（テナント分離）
-func (r *TenantAwareRepository) UpdateFeed(ctx context.Context, feedID uuid.UUID, updates map[string]interface{}) error {
+// updatableFeedColumns whitelists the feeds columns UpdateFeed is allowed to
+// set from the caller-supplied updates map, so column names never come from
+// untrusted input (only whitelisted keys reach the SQL text; values are
+// always bound as parameters).
+var updatableFeedColumns = map[string]bool{
+	"title":          true,
+	"description":    true,
+	"url":            true,
+	"website_url":    true,
+	"language":       true,
+	"category":       true,
+	"is_active":      true,
+	"fetch_interval": true,
+}
+
+// UpdateFeed はフィードを更新（テナント分離）。named return (err) is required
+// so the deferred rollback-error wrapping below actually reaches the caller;
+// with a bare `error` return, assigning to `err` inside the defer was
+// discarded because it wrote to a different variable than the already
+// computed return value.
+func (r *TenantAwareRepository) UpdateFeed(ctx context.Context, feedID uuid.UUID, updates map[string]interface{}) (err error) {
 	tenant, err := r.getTenantFromContext(ctx)
 	if err != nil {
 		return err
@@ -229,10 +249,18 @@ func (r *TenantAwareRepository) UpdateFeed(ctx context.Context, feedID uuid.UUID
 		}
 	}()
 
-	// RLSによりテナント分離されたUPDATE
-	// 動的クエリ生成（簡略化のため基本実装）
-	query := `UPDATE feeds SET updated_at = NOW() WHERE id = $1`
-	_, err = tx.Exec(tenantCtx, query, feedID)
+	setClauses := []string{"updated_at = NOW()"}
+	args := []interface{}{feedID}
+	for col, val := range updates {
+		if !updatableFeedColumns[col] {
+			return fmt.Errorf("update feed: column %q is not updatable", col)
+		}
+		args = append(args, val)
+		setClauses = append(setClauses, fmt.Sprintf("%s = $%d", col, len(args)))
+	}
+
+	query := fmt.Sprintf("UPDATE feeds SET %s WHERE id = $1", strings.Join(setClauses, ", "))
+	_, err = tx.Exec(tenantCtx, query, args...)
 	if err != nil {
 		return fmt.Errorf("failed to update feed: %w", err)
 	}

@@ -70,7 +70,12 @@ impl BatchSerializer {
             buffer.write_all(b"\n")?;
         }
 
-        Ok(String::from_utf8_lossy(&buffer).into_owned())
+        // serde_json output is always valid UTF-8, so this takes ownership of
+        // `buffer`'s allocation directly instead of the copy that
+        // `from_utf8_lossy(..).into_owned()` would perform.
+        String::from_utf8(buffer).map_err(|e| {
+            SerializationError::IoError(std::io::Error::new(std::io::ErrorKind::InvalidData, e))
+        })
     }
 
     pub fn serialize_json_array(&self, batch: &Batch) -> Result<String, SerializationError> {
@@ -117,7 +122,9 @@ impl BatchSerializer {
             buffer.write_all(b"\n")?;
         }
 
-        Ok(String::from_utf8_lossy(&buffer).into_owned())
+        String::from_utf8(buffer).map_err(|e| {
+            SerializationError::IoError(std::io::Error::new(std::io::ErrorKind::InvalidData, e))
+        })
     }
 
     pub fn serialize_compressed(

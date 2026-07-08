@@ -4,15 +4,18 @@ import logging
 from fastapi import APIRouter
 from typing import Dict, Any, Optional
 
+from news_creator.port.llm_provider_port import LLMProviderPort
+
 logger = logging.getLogger(__name__)
 
 
-def create_health_router(ollama_gateway: Optional[Any] = None) -> APIRouter:
+def create_health_router(ollama_gateway: Optional[LLMProviderPort] = None) -> APIRouter:
     """
     Create health check router with optional Ollama gateway dependency.
 
     Args:
-        ollama_gateway: Optional OllamaGateway instance for checking model availability
+        ollama_gateway: Optional LLM provider (OllamaGateway or
+            DistributingGateway) for checking model availability and queue status
 
     Returns:
         Configured APIRouter
@@ -28,12 +31,7 @@ def create_health_router(ollama_gateway: Optional[Any] = None) -> APIRouter:
             Dict with queue depths, available slots, and accepting state
         """
         if ollama_gateway is not None:
-            # OllamaGateway: read from _semaphore
-            if hasattr(ollama_gateway, "_semaphore"):
-                return ollama_gateway._semaphore.queue_status()
-            # DistributingGateway exposes queue_status() directly
-            if callable(getattr(ollama_gateway, "queue_status", None)):
-                return ollama_gateway.queue_status()
+            return ollama_gateway.queue_status()
         return {
             "rt_queue": 0,
             "be_queue": 0,
@@ -71,7 +69,3 @@ def create_health_router(ollama_gateway: Optional[Any] = None) -> APIRouter:
         return response
 
     return router
-
-
-# Backward compatibility: create a default router without Ollama gateway
-router = create_health_router()

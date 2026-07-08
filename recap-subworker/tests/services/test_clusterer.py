@@ -119,7 +119,7 @@ def test_calculate_dbcv_noise_only(clusterer):
     embeddings = np.random.rand(10, 5)
     labels = np.full(10, -1, dtype=int)
     dbcv = clusterer._calculate_dbcv(embeddings, labels)
-    assert dbcv == 0.0
+    assert dbcv is None
 
 
 def test_calculate_dbcv_insufficient_points(clusterer):
@@ -127,7 +127,7 @@ def test_calculate_dbcv_insufficient_points(clusterer):
     embeddings = np.random.rand(10, 5)
     labels = np.array([-1, -1, -1, -1, -1, -1, -1, -1, -1, 0], dtype=int)
     dbcv = clusterer._calculate_dbcv(embeddings, labels)
-    assert dbcv == 0.0
+    assert dbcv is None
 
 
 def test_calculate_dbcv_single_cluster(clusterer):
@@ -135,7 +135,7 @@ def test_calculate_dbcv_single_cluster(clusterer):
     embeddings = np.random.rand(10, 5)
     labels = np.full(10, 0, dtype=int)
     dbcv = clusterer._calculate_dbcv(embeddings, labels)
-    assert dbcv == 0.0
+    assert dbcv is None
 
 
 def test_calculate_dbcv_valid_clusters(clusterer):

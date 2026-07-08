@@ -1,5 +1,5 @@
 # Atlas Migration Container for Pre-Processor DB
-FROM arigaio/atlas:0.31.0-alpine
+FROM arigaio/atlas:1.2.0-alpine
 
 # Connectivity check uses busybox `nc` (already in arigaio/atlas:*-alpine).
 # The previous apk install was the sole network dependency at build time

@@ -8,7 +8,6 @@ import {
 	batchPrefetchImages,
 	fetchArticleContent,
 } from "$lib/connect/articles";
-import type { BackendFeedItem } from "$lib/schema/feed";
 import { sanitizeFeed, toRenderFeed } from "$lib/schema/feed";
 
 // Cap the inline article fetch on SSR. The backend now caps the origin fetch
@@ -33,7 +32,7 @@ export const load: ServerLoad = async ({ request, locals }) => {
 			3,
 			backendToken,
 		);
-		const feeds = (feedsData.data as BackendFeedItem[]).map((item) => ({
+		const feeds = feedsData.data.map((item) => ({
 			...toRenderFeed(sanitizeFeed(item), item.tags),
 			ogImageProxyUrl: item.og_image_proxy_url,
 		}));
@@ -47,7 +46,7 @@ export const load: ServerLoad = async ({ request, locals }) => {
 		// still caps the wait; we just no longer stream the resolution.
 		const articleData =
 			feeds.length > 0
-				? await loadFirstArticle(feeds[0], cookie, backendToken)
+				? await loadFirstArticle(feeds[0]!, cookie, backendToken)
 				: emptyArticleData;
 
 		return {
@@ -104,8 +103,8 @@ async function loadFirstArticle(
 				const images = await batchPrefetchImages(transport, [
 					article.articleId,
 				]);
-				if (images.length > 0 && images[0].proxyUrl) {
-					firstArticleImageUrl = images[0].proxyUrl;
+				if (images.length > 0 && images[0]!.proxyUrl) {
+					firstArticleImageUrl = images[0]!.proxyUrl;
 				}
 			} catch {
 				// Fall back to raw og_image_url

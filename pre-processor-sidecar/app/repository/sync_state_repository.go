@@ -76,7 +76,7 @@ func (r *PostgreSQLSyncStateRepository) FindByStreamID(ctx context.Context, stre
 
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			return nil, fmt.Errorf("sync state not found for stream_id: %s", streamID)
+			return nil, fmt.Errorf("stream_id %s: %w", streamID, ErrSyncStateNotFound)
 		}
 		return nil, fmt.Errorf("failed to find sync state by stream_id: %w", err)
 	}
@@ -101,7 +101,7 @@ func (r *PostgreSQLSyncStateRepository) FindByID(ctx context.Context, id uuid.UU
 
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			return nil, fmt.Errorf("sync state not found with id: %s", id.String())
+			return nil, fmt.Errorf("id %s: %w", id.String(), ErrSyncStateNotFound)
 		}
 		return nil, fmt.Errorf("failed to find sync state by id: %w", err)
 	}

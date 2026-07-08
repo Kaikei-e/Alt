@@ -10,28 +10,27 @@ let {
 	streamState: StreamState;
 } = $props();
 
-const anyDegraded = $derived(() => metrics.some((m) => m.degraded));
+const anyDegraded = $derived(metrics.some((m) => m.degraded));
 
-const reasons = $derived(() => [
+const reasons = $derived([
 	...new Set(
 		metrics.filter((m) => m.degraded && m.reason).map((m) => m.reason),
 	),
 ]);
 
 const visible = $derived(
-	() =>
-		anyDegraded() || streamState === "degraded" || streamState === "connecting",
+	anyDegraded || streamState === "degraded" || streamState === "connecting",
 );
 
-const headline = $derived(() => {
+const headline = $derived.by(() => {
 	if (streamState === "connecting") return "Connecting to observability stream";
 	if (streamState === "degraded") return "Stream degraded, reconnecting";
-	if (anyDegraded()) return "One or more metric sources are degraded";
+	if (anyDegraded) return "One or more metric sources are degraded";
 	return "";
 });
 </script>
 
-{#if visible()}
+{#if visible}
 	<aside
 		class="banner"
 		role="status"
@@ -43,11 +42,11 @@ const headline = $derived(() => {
 			<div class="head">
 				<span class="glyph" aria-hidden="true">●</span>
 				<span class="state-text">degraded</span>
-				<span class="msg">{headline()}</span>
+				<span class="msg">{headline}</span>
 			</div>
-			{#if reasons().length > 0}
+			{#if reasons.length > 0}
 				<ul class="reasons">
-					{#each reasons() as r (r)}
+					{#each reasons as r (r)}
 						<li>{r}</li>
 					{/each}
 				</ul>

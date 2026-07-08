@@ -7,19 +7,25 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 )
 
 // PostgresBackuper handles pg_dump/pg_restore based backup operations
 type PostgresBackuper struct {
 	projectName string
+	composeDir  string
 	logger      *slog.Logger
 	dryRun      bool
 }
 
-// NewPostgresBackuper creates a new PostgreSQL backuper
-func NewPostgresBackuper(projectName string, logger *slog.Logger, dryRun bool) *PostgresBackuper {
+// NewPostgresBackuper creates a new PostgreSQL backuper. composeDir locates
+// the compose files used to resolve the live container name for a service
+// via "docker compose ps -q"; pass "" to always use the static fallback
+// naming (e.g. in unit tests with no compose project running).
+func NewPostgresBackuper(projectName, composeDir string, logger *slog.Logger, dryRun bool) *PostgresBackuper {
 	return &PostgresBackuper{
 		projectName: projectName,
+		composeDir:  composeDir,
 		logger:      logger,
 		dryRun:      dryRun,
 	}
@@ -31,7 +37,7 @@ func (p *PostgresBackuper) Backup(ctx context.Context, spec VolumeSpec, outputPa
 		return fmt.Errorf("volume %s is not a PostgreSQL volume", spec.Name)
 	}
 
-	container := p.containerName(spec)
+	container := p.resolveContainer(ctx, spec)
 
 	p.logger.Info("backing up PostgreSQL database",
 		"volume", spec.Name,
@@ -104,7 +110,7 @@ func (p *PostgresBackuper) Restore(ctx context.Context, spec VolumeSpec, inputPa
 		return fmt.Errorf("volume %s is not a PostgreSQL volume", spec.Name)
 	}
 
-	container := p.containerName(spec)
+	container := p.resolveContainer(ctx, spec)
 
 	p.logger.Info("restoring PostgreSQL database",
 		"volume", spec.Name,
@@ -131,7 +137,10 @@ func (p *PostgresBackuper) Restore(ctx context.Context, spec VolumeSpec, inputPa
 	}
 
 	// Run pg_restore inside the container
-	// pg_restore -U <user> -d <dbname> --clean --if-exists
+	// pg_restore -U <user> -d <dbname> --clean --if-exists --single-transaction
+	// --single-transaction wraps the whole restore in one transaction so a
+	// mid-restore failure rolls back cleanly instead of leaving the database
+	// half-dropped/half-restored.
 	args := []string{
 		"exec", "-i", container,
 		"pg_restore",
@@ -139,6 +148,7 @@ func (p *PostgresBackuper) Restore(ctx context.Context, spec VolumeSpec, inputPa
 		"-d", spec.DBName,
 		"--clean",
 		"--if-exists",
+		"--single-transaction",
 	}
 
 	cmd := exec.CommandContext(ctx, "docker", args...)
@@ -163,7 +173,36 @@ func (p *PostgresBackuper) Restore(ctx context.Context, spec VolumeSpec, inputPa
 	return nil
 }
 
-// containerName resolves the Docker container name for a PostgreSQL service
+// resolveContainer resolves the live container ID for spec.Service via
+// "docker compose ps -q", so a custom project name or a scaled/renamed
+// service doesn't silently target the wrong (or a nonexistent) container.
+// Falls back to the static name map when compose files aren't configured,
+// docker is unreachable, or nothing is running for that service — e.g. in
+// unit tests, or when Backup/Restore is used outside the compose project.
+func (p *PostgresBackuper) resolveContainer(ctx context.Context, spec VolumeSpec) string {
+	files := composeFileList(p.composeDir)
+	if len(files) == 0 {
+		return p.containerName(spec)
+	}
+
+	args := []string{"compose"}
+	for _, f := range files {
+		if _, err := os.Stat(f); err == nil {
+			args = append(args, "-f", f)
+		}
+	}
+	args = append(args, "ps", "-q", spec.Service)
+
+	out, err := exec.CommandContext(ctx, "docker", args...).Output()
+	id := strings.TrimSpace(string(out))
+	if err != nil || id == "" {
+		return p.containerName(spec)
+	}
+	return id
+}
+
+// containerName is the static fallback container name for a PostgreSQL
+// service, used when the live container ID cannot be resolved.
 func (p *PostgresBackuper) containerName(spec VolumeSpec) string {
 	// Known container name mappings
 	switch spec.Service {

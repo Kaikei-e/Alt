@@ -296,7 +296,7 @@ impl PipelineOrchestrator {
                 _ => None,
             }
         };
-        Ok(PipelineBuilder::new(config)
+        PipelineBuilder::new(config)
             .with_fetch_stage(Arc::new(AltBackendFetchStage::new(
                 alt_backend_client,
                 Arc::clone(&recap_dao),
@@ -342,7 +342,7 @@ impl PipelineOrchestrator {
                 subworker_client,
                 Arc::clone(&classification_queue),
                 embedding_service,
-            ))
+            )
     }
 
     #[cfg(test)]
@@ -537,17 +537,17 @@ impl PipelineBuilder {
         subworker_client: Arc<SubworkerClient>,
         classification_queue: Arc<ClassificationJobQueue>,
         embedding_service: Option<Arc<dyn crate::pipeline::embedding::Embedder>>,
-    ) -> PipelineOrchestrator {
+    ) -> Result<PipelineOrchestrator> {
         let stages = PipelineStages {
             fetch: self
                 .fetch
-                .unwrap_or_else(|| panic!("fetch stage must be configured before build")),
+                .context("fetch stage must be configured before build")?,
             preprocess: self
                 .preprocess
-                .unwrap_or_else(|| panic!("preprocess stage must be configured before build")),
+                .context("preprocess stage must be configured before build")?,
             dedup: self
                 .dedup
-                .unwrap_or_else(|| panic!("dedup stage must be configured before build")),
+                .context("dedup stage must be configured before build")?,
             genre: self.genre.unwrap_or_else(|| {
                 Arc::new(CoarseGenreStage::with_defaults(Arc::clone(
                     &subworker_client,
@@ -569,10 +569,10 @@ impl PipelineBuilder {
             }),
             dispatch: self
                 .dispatch
-                .expect("dispatch stage must be configured before build"),
+                .context("dispatch stage must be configured before build")?,
             persist: self
                 .persist
-                .unwrap_or_else(|| panic!("persist stage must be configured before build")),
+                .context("persist stage must be configured before build")?,
         };
 
         // Initialize pulse stage and rollout with defaults if not provided
@@ -584,7 +584,7 @@ impl PipelineBuilder {
             ))
         });
 
-        PipelineOrchestrator {
+        Ok(PipelineOrchestrator {
             config: self.config,
             stages,
             recap_dao,
@@ -592,7 +592,7 @@ impl PipelineBuilder {
             classification_queue,
             pulse_stage,
             pulse_rollout,
-        }
+        })
     }
 }
 

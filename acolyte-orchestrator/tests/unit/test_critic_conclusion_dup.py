@@ -89,10 +89,10 @@ def test_fm8_high_overlap_low_synthesis_is_blocking() -> None:
         {"key": "analysis", "section_role": "analysis"},
         {"key": "conclusion", "section_role": "conclusion"},
     ]
-    # Paragraphs that reference only single claims (no synthesis)
+    # Paragraphs that reference only a single shared source (no synthesis)
     section_paragraphs = {
-        "analysis": [{"claim_id": "a-1", "body": "text", "evidence_ids": ["src1"]}],
-        "conclusion": [{"claim_id": "c-1", "body": "text", "evidence_ids": ["src1"]}],
+        "analysis": [{"claim_id": "a-1", "body": "text", "citations": [{"source_id": "src1"}]}],
+        "conclusion": [{"claim_id": "c-1", "body": "text", "citations": [{"source_id": "src1"}]}],
     }
 
     detections = detect_conclusion_analysis_duplication(sections, outline, section_paragraphs=section_paragraphs)
@@ -114,14 +114,15 @@ def test_fm8_high_overlap_high_synthesis_is_warning() -> None:
         {"key": "analysis", "section_role": "analysis"},
         {"key": "conclusion", "section_role": "conclusion"},
     ]
-    # Paragraphs that reference multiple analysis claims (cross-claim synthesis)
+    # Paragraphs that reference multiple analysis-cited sources (cross-source synthesis)
     section_paragraphs = {
         "analysis": [
-            {"claim_id": "a-1", "body": "text", "evidence_ids": ["src1"]},
-            {"claim_id": "a-2", "body": "text", "evidence_ids": ["src2"]},
+            {"claim_id": "a-1", "body": "text", "citations": [{"source_id": "src1"}]},
+            {"claim_id": "a-2", "body": "text", "citations": [{"source_id": "src2"}]},
         ],
         "conclusion": [
-            {"claim_id": "c-1", "body": "text", "evidence_ids": ["a-1", "a-2"]},  # references 2 analysis claims
+            # references both analysis-cited sources
+            {"claim_id": "c-1", "body": "text", "citations": [{"source_id": "src1"}, {"source_id": "src2"}]},
         ],
     }
 
@@ -131,26 +132,26 @@ def test_fm8_high_overlap_high_synthesis_is_warning() -> None:
 
 
 def test_claim_synthesis_ratio_single_claim_is_zero() -> None:
-    """Paragraphs referencing single claims → synthesis ratio 0."""
+    """Paragraphs referencing a single analysis-cited source → synthesis ratio 0."""
     section_paragraphs = {
         "conclusion": [
-            {"claim_id": "c-1", "body": "text", "evidence_ids": ["a-1"]},
-            {"claim_id": "c-2", "body": "text", "evidence_ids": ["a-2"]},
+            {"claim_id": "c-1", "body": "text", "citations": [{"source_id": "a-1"}]},
+            {"claim_id": "c-2", "body": "text", "citations": [{"source_id": "a-2"}]},
         ],
     }
-    analysis_claim_ids = {"a-1", "a-2", "a-3"}
-    ratio = _claim_synthesis_ratio(section_paragraphs, {"conclusion"}, analysis_claim_ids)
+    analysis_source_ids = {"a-1", "a-2", "a-3"}
+    ratio = _claim_synthesis_ratio(section_paragraphs, {"conclusion"}, analysis_source_ids)
     assert ratio == 0.0
 
 
 def test_claim_synthesis_ratio_cross_claim_is_high() -> None:
-    """Paragraphs referencing multiple claims → high synthesis ratio."""
+    """Paragraphs referencing multiple analysis-cited sources → high synthesis ratio."""
     section_paragraphs = {
         "conclusion": [
-            {"claim_id": "c-1", "body": "text", "evidence_ids": ["a-1", "a-2"]},
-            {"claim_id": "c-2", "body": "text", "evidence_ids": ["a-2", "a-3"]},
+            {"claim_id": "c-1", "body": "text", "citations": [{"source_id": "a-1"}, {"source_id": "a-2"}]},
+            {"claim_id": "c-2", "body": "text", "citations": [{"source_id": "a-2"}, {"source_id": "a-3"}]},
         ],
     }
-    analysis_claim_ids = {"a-1", "a-2", "a-3"}
-    ratio = _claim_synthesis_ratio(section_paragraphs, {"conclusion"}, analysis_claim_ids)
+    analysis_source_ids = {"a-1", "a-2", "a-3"}
+    ratio = _claim_synthesis_ratio(section_paragraphs, {"conclusion"}, analysis_source_ids)
     assert ratio == 1.0

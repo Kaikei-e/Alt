@@ -80,6 +80,7 @@ async def test_scheduler_execute_learning_success(mock_settings):
             return False
 
     mock_session_factory = lambda: _Ctx()
+    scheduler._db_resources = MagicMock(session_factory=mock_session_factory)
 
     # Mock database query result
     mock_result = MagicMock()
@@ -94,9 +95,6 @@ async def test_scheduler_execute_learning_success(mock_settings):
     mock_client.close = AsyncMock()
 
     with patch(
-        "recap_subworker.services.learning_scheduler.get_session_factory",
-        return_value=mock_session_factory,
-    ), patch(
         "recap_subworker.services.learning_scheduler.LearningClient.create",
         return_value=mock_client,
     ):
@@ -115,13 +113,10 @@ async def test_scheduler_execute_learning_handles_errors(mock_settings):
     # Mock session factory that raises an error
     mock_session_factory = AsyncMock()
     mock_session_factory.side_effect = Exception("Database error")
+    scheduler._db_resources = MagicMock(session_factory=mock_session_factory)
 
-    with patch(
-        "recap_subworker.services.learning_scheduler.get_session_factory",
-        return_value=mock_session_factory,
-    ):
-        # Should not raise, but log the error
-        await scheduler._execute_learning()
+    # Should not raise, but log the error
+    await scheduler._execute_learning()
 
 
 @pytest.mark.asyncio

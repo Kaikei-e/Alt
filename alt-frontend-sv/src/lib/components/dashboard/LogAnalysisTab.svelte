@@ -12,21 +12,28 @@ let logs = $state<LogError[]>([]);
 let loading = $state(true);
 let error = $state<string | null>(null);
 let selectedErrorType = $state<string>("All");
+let requestId = 0;
 
 $effect(() => {
 	loadData();
 });
 
 async function loadData() {
+	const currentRequest = ++requestId;
 	loading = true;
 	error = null;
 	try {
-		logs = await getLogs(windowSeconds, 2000);
+		const result = await getLogs(windowSeconds, 2000);
+		if (currentRequest !== requestId) return;
+		logs = result;
 	} catch (e) {
+		if (currentRequest !== requestId) return;
 		error = e instanceof Error ? e.message : String(e);
 		console.error("Failed to load logs:", e);
 	} finally {
-		loading = false;
+		if (currentRequest === requestId) {
+			loading = false;
+		}
 	}
 }
 

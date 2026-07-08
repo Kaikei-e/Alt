@@ -11,8 +11,6 @@ from news_creator.port.llm_provider_port import LLMProviderPort
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter()
-
 
 def create_generate_router(llm_provider: LLMProviderPort) -> APIRouter:
     """
@@ -24,6 +22,7 @@ def create_generate_router(llm_provider: LLMProviderPort) -> APIRouter:
     Returns:
         Configured APIRouter
     """
+    router = APIRouter()
 
     @router.post("/api/generate")
     async def generate_endpoint(request: GenerateRequest) -> Dict[str, Any]:
@@ -112,7 +111,11 @@ def create_generate_router(llm_provider: LLMProviderPort) -> APIRouter:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 
         except (aiohttp.ClientError, asyncio.TimeoutError) as exc:
-            # Convert network/timeout errors to RuntimeError for consistent handling
+            # Network/timeout errors are surfaced directly as 502 here -- a
+            # `raise RuntimeError(...)` in this block would NOT be caught by
+            # the `except RuntimeError` below (a raise inside an except
+            # clause of the same try is not re-matched against sibling
+            # except clauses), so it would escape as an unhandled 500.
             error_msg = (
                 f"Network error during LLM request: {type(exc).__name__} - {str(exc)}"
             )
@@ -127,8 +130,7 @@ def create_generate_router(llm_provider: LLMProviderPort) -> APIRouter:
                 },
                 exc_info=True,
             )
-            # Convert to RuntimeError so it's handled as a 502 (Bad Gateway)
-            raise RuntimeError(error_msg) from exc
+            raise HTTPException(status_code=502, detail=error_msg) from exc
 
         except RuntimeError as exc:
             error_detail = str(exc)

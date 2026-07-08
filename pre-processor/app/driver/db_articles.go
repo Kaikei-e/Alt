@@ -65,6 +65,9 @@ func GetInoreaderArticles(ctx context.Context, db *pgxpool.Pool, since time.Time
 
 		articles = append(articles, &a)
 	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("failed iterating inoreader_articles: %w", err)
+	}
 
 	return articles, nil
 }
@@ -127,6 +130,9 @@ func GetInoreaderArticlesForBackfill(ctx context.Context, db *pgxpool.Pool, fetc
 		a.FeedURL = feedURL
 
 		articles = append(articles, &a)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("failed iterating inoreader articles for backfill: %w", err)
 	}
 
 	return articles, nil

@@ -46,6 +46,13 @@ type AggregationResponse struct {
 // QueryFetcher is a function that fetches data for a query.
 type QueryFetcher func(path string, token string, body []byte) (*AggregatedResult, error)
 
+// emptyRequestBody is the request body sent for each aggregated query. Every
+// query in queryEndpointMapping is a no-argument Connect-RPC unary call, so
+// each gets its own empty request rather than the client's raw
+// AggregationRequest envelope (which is not the payload any backend RPC
+// expects).
+var emptyRequestBody = []byte("{}")
+
 // queryEndpointMapping maps query names to backend endpoints.
 var queryEndpointMapping = map[string]string{
 	"feed_stats":          "/alt.feeds.v2.FeedService/GetFeedStats",
@@ -62,15 +69,17 @@ func QueryToEndpoint(query string) (string, bool) {
 
 // AggregationHandler handles aggregation requests.
 type AggregationHandler struct {
-	fetcher QueryFetcher
-	logger  *slog.Logger
+	fetcher         QueryFetcher
+	authInterceptor *middleware.AuthInterceptor
+	logger          *slog.Logger
 }
 
 // NewAggregationHandler creates a new aggregation handler.
-func NewAggregationHandler(fetcher QueryFetcher, logger *slog.Logger) *AggregationHandler {
+func NewAggregationHandler(fetcher QueryFetcher, secret []byte, issuer, audience string, logger *slog.Logger) *AggregationHandler {
 	return &AggregationHandler{
-		fetcher: fetcher,
-		logger:  logger,
+		fetcher:         fetcher,
+		authInterceptor: middleware.NewAuthInterceptor(logger, secret, issuer, audience),
+		logger:          logger,
 	}
 }
 
@@ -79,6 +88,19 @@ func (h *AggregationHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// Only accept POST requests
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	// Extract and validate token before doing any work: other proxies in
+	// this service reject unauthenticated requests before touching the
+	// backend, and aggregation must not be the one path that lets an
+	// invalid/expired token through.
+	token := r.Header.Get(middleware.BackendTokenHeader)
+	if _, err := h.authInterceptor.ValidateToken(token); err != nil {
+		if h.logger != nil {
+			h.logger.Error("aggregation auth failed", "error", err)
+		}
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
 		return
 	}
 
@@ -100,11 +122,8 @@ func (h *AggregationHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Extract token
-	token := r.Header.Get(middleware.BackendTokenHeader)
-
 	// Fetch all queries in parallel
-	results := h.fetchAll(req.Queries, token, body)
+	results := h.fetchAll(req.Queries, token, emptyRequestBody)
 
 	// Build response
 	resp := AggregationResponse{

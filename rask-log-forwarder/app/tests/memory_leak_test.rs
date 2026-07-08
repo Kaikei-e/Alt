@@ -27,9 +27,7 @@ async fn test_memory_leak_prevention_with_repeated_parsing() {
     // Parse each log many times to check for memory leaks
     for iteration in 0..1000 {
         for (log_idx, log_data) in test_logs.iter().enumerate() {
-            let result = parser
-                .parse_docker_log(log_data.as_bytes(), &container_info)
-                .await;
+            let result = parser.parse_docker_log(log_data.as_bytes(), &container_info);
 
             // Verify parsing still works correctly
             assert!(
@@ -99,9 +97,7 @@ async fn test_memory_safety_with_malformed_regex_fallback() {
     // Parse malformed logs many times to ensure fallback paths are memory-safe
     for iteration in 0..500 {
         for (log_idx, log_data) in malformed_logs.iter().enumerate() {
-            let result = parser
-                .parse_docker_log(log_data.as_bytes(), &container_info)
-                .await;
+            let result = parser.parse_docker_log(log_data.as_bytes(), &container_info);
 
             // Should still succeed (with fallback parsing)
             assert!(

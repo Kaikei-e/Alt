@@ -13,21 +13,28 @@ let { windowSeconds }: Props = $props();
 let activities = $state<RecentActivity[]>([]);
 let loading = $state(true);
 let error = $state<string | null>(null);
+let requestId = 0;
 
 $effect(() => {
 	loadData();
 });
 
 async function loadData() {
+	const currentRequest = ++requestId;
 	loading = true;
 	error = null;
 	try {
-		activities = await getOverview(windowSeconds, 200);
+		const result = await getOverview(windowSeconds, 200);
+		if (currentRequest !== requestId) return;
+		activities = result;
 	} catch (e) {
+		if (currentRequest !== requestId) return;
 		error = e instanceof Error ? e.message : String(e);
 		console.error("Failed to load overview:", e);
 	} finally {
-		loading = false;
+		if (currentRequest === requestId) {
+			loading = false;
+		}
 	}
 }
 </script>

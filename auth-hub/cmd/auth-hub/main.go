@@ -49,6 +49,7 @@ func main() {
 	if err != nil {
 		slog.Warn("failed to initialize OpenTelemetry, continuing without tracing", "error", err)
 		otelCfg.Enabled = false
+		otelShutdown = func(context.Context) error { return nil }
 	}
 
 	// Initialize structured logger
@@ -94,6 +95,11 @@ func main() {
 	e := echo.New()
 	e.HideBanner = true
 	e.HidePort = true
+
+	// Only trust X-Forwarded-For from the internal nginx reverse proxy (private/
+	// link-local ranges); RateLimiter keys on c.RealIP(), so an untrusted XFF
+	// would let a client spoof its own rate-limit bucket.
+	e.IPExtractor = echo.ExtractIPFromXFFHeader()
 
 	// Security middleware
 	e.Use(appmiddleware.SecurityHeaders())

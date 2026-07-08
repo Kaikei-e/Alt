@@ -33,7 +33,7 @@ export const GET: RequestHandler = async ({ request, url }) => {
 
 		return json(
 			{
-				error: errorMessage,
+				error: "Failed to fetch articles by tag",
 				articles: [],
 				has_more: false,
 			},

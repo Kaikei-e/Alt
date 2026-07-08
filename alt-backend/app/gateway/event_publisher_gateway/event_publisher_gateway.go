@@ -29,6 +29,7 @@ func NewEventPublisherGateway(client *mqhub_connect.Client, logger *slog.Logger)
 // PublishArticleCreated publishes an ArticleCreated event.
 func (g *EventPublisherGateway) PublishArticleCreated(ctx context.Context, event event_publisher_port.ArticleCreatedEvent) error {
 	if !g.client.IsEnabled() {
+		g.logger.Debug("mqhub disabled, skipping PublishArticleCreated", "article_id", event.ArticleID)
 		return nil
 	}
 
@@ -62,6 +63,7 @@ func (g *EventPublisherGateway) PublishArticleCreated(ctx context.Context, event
 // PublishArticleUpdated publishes an ArticleUpdated event.
 func (g *EventPublisherGateway) PublishArticleUpdated(ctx context.Context, event event_publisher_port.ArticleUpdatedEvent) error {
 	if !g.client.IsEnabled() {
+		g.logger.Debug("mqhub disabled, skipping PublishArticleUpdated", "article_id", event.ArticleID)
 		return nil
 	}
 
@@ -95,6 +97,7 @@ func (g *EventPublisherGateway) PublishArticleUpdated(ctx context.Context, event
 // PublishSummarizeRequested publishes a SummarizeRequested event.
 func (g *EventPublisherGateway) PublishSummarizeRequested(ctx context.Context, event event_publisher_port.SummarizeRequestedEvent) error {
 	if !g.client.IsEnabled() {
+		g.logger.Debug("mqhub disabled, skipping PublishSummarizeRequested", "article_id", event.ArticleID)
 		return nil
 	}
 
@@ -124,6 +127,7 @@ func (g *EventPublisherGateway) PublishSummarizeRequested(ctx context.Context, e
 // PublishIndexArticle publishes an IndexArticle event.
 func (g *EventPublisherGateway) PublishIndexArticle(ctx context.Context, event event_publisher_port.IndexArticleEvent) error {
 	if !g.client.IsEnabled() {
+		g.logger.Debug("mqhub disabled, skipping PublishIndexArticle", "article_id", event.ArticleID)
 		return nil
 	}
 

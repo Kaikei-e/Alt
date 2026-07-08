@@ -163,13 +163,13 @@ class MorningLetterUsecase:
         """Parse LLM response into MorningLetterContent, filtering invalid section keys."""
         try:
             data = json.loads(raw_response)
-        except json.JSONDecodeError:
+        except json.JSONDecodeError as exc:
             if json_repair is not None:
                 data = json_repair.loads(raw_response)
             else:
                 raise RuntimeError(
                     f"Failed to parse Morning Letter JSON: {raw_response[:200]}"
-                )
+                ) from exc
 
         # Ensure data is a dict
         if not isinstance(data, dict):

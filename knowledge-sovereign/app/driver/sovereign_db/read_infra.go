@@ -100,7 +100,7 @@ func (r *Repository) GetActiveProjectionVersion(ctx context.Context) (*Projectio
 	var v ProjectionVersion
 	err := r.pool.QueryRow(ctx, query).Scan(&v.Version, &v.Description, &v.Status, &v.CreatedAt, &v.ActivatedAt)
 	if err != nil {
-		if err == pgx.ErrNoRows {
+		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, nil
 		}
 		return nil, fmt.Errorf("GetActiveProjectionVersion: %w", err)
@@ -126,6 +126,9 @@ func (r *Repository) ListProjectionVersions(ctx context.Context) ([]ProjectionVe
 			return nil, fmt.Errorf("ListProjectionVersions scan: %w", err)
 		}
 		versions = append(versions, v)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("ListProjectionVersions rows: %w", err)
 	}
 	return versions, nil
 }
@@ -193,7 +196,7 @@ func (r *Repository) GetProjectionCheckpoint(ctx context.Context, projectorName 
 	var seq int64
 	err := r.pool.QueryRow(ctx, query, projectorName).Scan(&seq)
 	if err != nil {
-		if err == pgx.ErrNoRows {
+		if errors.Is(err, pgx.ErrNoRows) {
 			return 0, nil
 		}
 		return 0, fmt.Errorf("GetProjectionCheckpoint: %w", err)
@@ -250,7 +253,7 @@ func (r *Repository) GetReprojectRun(ctx context.Context, runID uuid.UUID) (*Rep
 		&run.CreatedAt, &run.StartedAt, &run.FinishedAt,
 	)
 	if err != nil {
-		if err == pgx.ErrNoRows {
+		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, nil
 		}
 		return nil, fmt.Errorf("GetReprojectRun: %w", err)
@@ -295,6 +298,9 @@ func (r *Repository) ListReprojectRuns(ctx context.Context, statusFilter string,
 			return nil, fmt.Errorf("ListReprojectRuns scan: %w", err)
 		}
 		runs = append(runs, run)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("ListReprojectRuns rows: %w", err)
 	}
 	return runs, nil
 }
@@ -412,6 +418,9 @@ func (r *Repository) ListProjectionAudits(ctx context.Context, projectionName st
 		}
 		audits = append(audits, a)
 	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("ListProjectionAudits rows: %w", err)
+	}
 	return audits, nil
 }
 
@@ -450,7 +459,7 @@ func (r *Repository) GetBackfillJob(ctx context.Context, jobID uuid.UUID) (*Back
 		&j.CreatedAt, &j.StartedAt, &j.CompletedAt, &j.UpdatedAt,
 	)
 	if err != nil {
-		if err == pgx.ErrNoRows {
+		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, nil
 		}
 		return nil, fmt.Errorf("GetBackfillJob: %w", err)
@@ -481,6 +490,9 @@ func (r *Repository) ListBackfillJobs(ctx context.Context) ([]BackfillJob, error
 			return nil, fmt.Errorf("ListBackfillJobs scan: %w", err)
 		}
 		jobs = append(jobs, j)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("ListBackfillJobs rows: %w", err)
 	}
 	return jobs, nil
 }
@@ -547,6 +559,9 @@ func (r *Repository) ListRecallSignalsByUser(ctx context.Context, userID uuid.UU
 			return nil, fmt.Errorf("ListRecallSignalsByUser scan: %w", err)
 		}
 		signals = append(signals, s)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("ListRecallSignalsByUser rows: %w", err)
 	}
 	return signals, nil
 }

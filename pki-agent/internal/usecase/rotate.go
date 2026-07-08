@@ -65,7 +65,11 @@ func (r *Rotator) issue(ctx context.Context, reason string) (domain.CertState, e
 	}
 	if err := r.Writer.MarkRotated(ctx, time.Now()); err != nil {
 		r.Observer.OnRenewed(false)
-		return domain.StateFresh, nil
+		// The cert/key themselves were written successfully, so the on-disk
+		// state is fresh — but the rotation marker external reload watchers
+		// key off of is missing. Surface this as an error so it isn't
+		// mistaken for a fully successful rotation.
+		return domain.StateFresh, fmt.Errorf("mark rotated: %w", err)
 	}
 	r.Observer.OnRenewed(true)
 	// Re-load the cert we just wrote so the observer's classified state

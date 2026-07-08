@@ -2,7 +2,7 @@
 
 use super::{LogLevel, ParsedLogEntry, ServiceParser};
 use crate::parser::docker::ParseError;
-use crate::parser::generated::{pattern_index, VALIDATED_PATTERNS};
+use crate::parser::generated::{VALIDATED_PATTERNS, pattern_index};
 
 /// Parser for PostgreSQL logs.
 pub struct PostgresParser;

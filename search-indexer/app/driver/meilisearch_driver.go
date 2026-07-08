@@ -3,6 +3,7 @@ package driver
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"strconv"
 	"strings"
 	"time"
@@ -176,7 +177,7 @@ func (d *MeilisearchDriver) IndexDocuments(ctx context.Context, docs []SearchDoc
 	if err != nil {
 		return &DriverError{
 			Op:  "IndexDocuments",
-			Err: err.Error(),
+			Err: err,
 		}
 	}
 
@@ -184,7 +185,7 @@ func (d *MeilisearchDriver) IndexDocuments(ctx context.Context, docs []SearchDoc
 	if _, err := d.waitForTask(ctx, task.TaskUID); err != nil {
 		return &DriverError{
 			Op:  "IndexDocuments",
-			Err: "failed to wait for indexing task: " + err.Error(),
+			Err: fmt.Errorf("failed to wait for indexing task: %w", err),
 		}
 	}
 
@@ -200,7 +201,7 @@ func (d *MeilisearchDriver) DeleteDocuments(ctx context.Context, ids []string) e
 	if err != nil {
 		return &DriverError{
 			Op:  "DeleteDocuments",
-			Err: err.Error(),
+			Err: err,
 		}
 	}
 
@@ -208,7 +209,7 @@ func (d *MeilisearchDriver) DeleteDocuments(ctx context.Context, ids []string) e
 	if _, err := d.waitForTask(ctx, task.TaskUID); err != nil {
 		return &DriverError{
 			Op:  "DeleteDocuments",
-			Err: "failed to wait for deletion task: " + err.Error(),
+			Err: fmt.Errorf("failed to wait for deletion task: %w", err),
 		}
 	}
 
@@ -245,7 +246,7 @@ func (d *MeilisearchDriver) Search(ctx context.Context, query string, limit int)
 		return e, nil
 	})
 	if err != nil {
-		return nil, &DriverError{Op: "Search", Err: err.Error()}
+		return nil, &DriverError{Op: "Search", Err: err}
 	}
 	return entry.Docs, nil
 }
@@ -282,12 +283,12 @@ func (d *MeilisearchDriver) SearchWithFilters(ctx context.Context, query string,
 		return e, nil
 	})
 	if err != nil {
-		return nil, &DriverError{Op: "SearchWithFilters", Err: err.Error()}
+		return nil, &DriverError{Op: "SearchWithFilters", Err: err}
 	}
 	return entry.Docs, nil
 }
 
-// SearchWithDateFilter restricts results to documents whose ``published_at``
+// SearchWithDateFilter restricts results to documents whose “published_at“
 // (Unix seconds) is inside the requested window. Either bound may be nil.
 // When both are nil this degrades to a plain Search.
 func (d *MeilisearchDriver) SearchWithDateFilter(ctx context.Context, query string, publishedAfter, publishedBefore *time.Time, limit int) ([]SearchDocumentDriver, error) {
@@ -307,7 +308,7 @@ func (d *MeilisearchDriver) SearchWithDateFilter(ctx context.Context, query stri
 
 	result, err := d.searchIndex.SearchWithContext(ctx, query, searchRequest)
 	if err != nil {
-		return nil, &DriverError{Op: "SearchWithDateFilter", Err: err.Error()}
+		return nil, &DriverError{Op: "SearchWithDateFilter", Err: err}
 	}
 	d.recordProcessing(ctx, "SearchWithDateFilter", result)
 	return d.hitsToDocs(result.Hits), nil
@@ -353,7 +354,7 @@ func (d *MeilisearchDriver) EnsureIndex(ctx context.Context) error {
 		if err != nil {
 			return &DriverError{
 				Op:  "EnsureIndex",
-				Err: "failed to create index: " + err.Error(),
+				Err: fmt.Errorf("failed to create index: %w", err),
 			}
 		}
 
@@ -361,7 +362,7 @@ func (d *MeilisearchDriver) EnsureIndex(ctx context.Context) error {
 		if _, err := d.waitForTask(ctx, task.TaskUID); err != nil {
 			return &DriverError{
 				Op:  "EnsureIndex",
-				Err: "failed to wait for index creation: " + err.Error(),
+				Err: fmt.Errorf("failed to wait for index creation: %w", err),
 			}
 		}
 
@@ -379,7 +380,7 @@ func (d *MeilisearchDriver) EnsureIndex(ctx context.Context) error {
 	if _, err := d.index.UpdateSearchableAttributesWithContext(ctx, &searchableAttrs); err != nil {
 		return &DriverError{
 			Op:  "EnsureIndex",
-			Err: "failed to set searchable attributes: " + err.Error(),
+			Err: fmt.Errorf("failed to set searchable attributes: %w", err),
 		}
 	}
 
@@ -392,7 +393,7 @@ func (d *MeilisearchDriver) EnsureIndex(ctx context.Context) error {
 	if _, err := d.index.UpdateFilterableAttributesWithContext(ctx, &filterableAttrs); err != nil {
 		return &DriverError{
 			Op:  "EnsureIndex",
-			Err: "failed to set filterable attributes: " + err.Error(),
+			Err: fmt.Errorf("failed to set filterable attributes: %w", err),
 		}
 	}
 
@@ -408,7 +409,7 @@ func (d *MeilisearchDriver) EnsureIndex(ctx context.Context) error {
 	if _, err := d.index.UpdateRankingRulesWithContext(ctx, &rankingRules); err != nil {
 		return &DriverError{
 			Op:  "EnsureIndex",
-			Err: "failed to set ranking rules: " + err.Error(),
+			Err: fmt.Errorf("failed to set ranking rules: %w", err),
 		}
 	}
 
@@ -431,13 +432,13 @@ func (d *MeilisearchDriver) EnsureIndex(ctx context.Context) error {
 	if localErr != nil {
 		return &DriverError{
 			Op:  "EnsureIndex",
-			Err: "failed to set localized attributes: " + localErr.Error(),
+			Err: fmt.Errorf("failed to set localized attributes: %w", localErr),
 		}
 	}
 	if _, err := d.waitForTask(ctx, task.TaskUID); err != nil {
 		return &DriverError{
 			Op:  "EnsureIndex",
-			Err: "failed to wait for localized attributes update: " + err.Error(),
+			Err: fmt.Errorf("failed to wait for localized attributes update: %w", err),
 		}
 	}
 
@@ -450,13 +451,13 @@ func (d *MeilisearchDriver) EnsureIndex(ctx context.Context) error {
 		if cutoffErr != nil {
 			return &DriverError{
 				Op:  "EnsureIndex",
-				Err: "failed to set search cutoff ms: " + cutoffErr.Error(),
+				Err: fmt.Errorf("failed to set search cutoff ms: %w", cutoffErr),
 			}
 		}
 		if _, err := d.waitForTask(ctx, cutoffTask.TaskUID); err != nil {
 			return &DriverError{
 				Op:  "EnsureIndex",
-				Err: "failed to wait for search cutoff update: " + err.Error(),
+				Err: fmt.Errorf("failed to wait for search cutoff update: %w", err),
 			}
 		}
 	}
@@ -550,13 +551,13 @@ func (d *MeilisearchDriver) SearchByUserID(ctx context.Context, query string, us
 			return cacheEntry{}, err
 		}
 		d.recordProcessing(ctx, "SearchByUserID", result)
-		docs := d.extractDocs(result.Hits)
+		docs := d.hitsToDocs(result.Hits)
 		e := cacheEntry{Docs: docs, ProcessingMs: result.ProcessingTimeMs}
 		d.cache.put(key, e)
 		return e, nil
 	})
 	if err != nil {
-		return nil, &DriverError{Op: "SearchByUserID", Err: err.Error()}
+		return nil, &DriverError{Op: "SearchByUserID", Err: err}
 	}
 	return entry.Docs, nil
 }
@@ -598,7 +599,7 @@ func (d *MeilisearchDriver) SearchByUserIDWithPagination(ctx context.Context, qu
 			return cacheEntry{}, err
 		}
 		d.recordProcessing(ctx, "SearchByUserIDWithPagination", result)
-		docs := d.extractDocs(result.Hits)
+		docs := d.hitsToDocs(result.Hits)
 		e := cacheEntry{
 			Docs:           docs,
 			EstimatedTotal: result.EstimatedTotalHits,
@@ -608,23 +609,9 @@ func (d *MeilisearchDriver) SearchByUserIDWithPagination(ctx context.Context, qu
 		return e, nil
 	})
 	if err != nil {
-		return nil, 0, &DriverError{Op: "SearchByUserIDWithPagination", Err: err.Error()}
+		return nil, 0, &DriverError{Op: "SearchByUserIDWithPagination", Err: err}
 	}
 	return entry.Docs, entry.EstimatedTotal, nil
-}
-
-func (d *MeilisearchDriver) extractDocs(hits []meilisearch.Hit) []SearchDocumentDriver {
-	docs := make([]SearchDocumentDriver, 0, len(hits))
-	for _, hit := range hits {
-		docs = append(docs, SearchDocumentDriver{
-			ID:      d.getString(hit, "id"),
-			Title:   d.getString(hit, "title"),
-			Content: d.getCropped(hit, "content"),
-			Tags:    d.getStringSlice(hit, "tags"),
-			Score:   d.getFloat64(hit, "_rankingScore"),
-		})
-	}
-	return docs
 }
 
 func (d *MeilisearchDriver) RegisterSynonyms(ctx context.Context, synonyms map[string][]string) error {
@@ -632,14 +619,14 @@ func (d *MeilisearchDriver) RegisterSynonyms(ctx context.Context, synonyms map[s
 	if err != nil {
 		return &DriverError{
 			Op:  "RegisterSynonyms",
-			Err: "failed to register synonyms: " + err.Error(),
+			Err: fmt.Errorf("failed to register synonyms: %w", err),
 		}
 	}
 
 	if _, err := d.waitForTask(ctx, task.TaskUID); err != nil {
 		return &DriverError{
 			Op:  "RegisterSynonyms",
-			Err: "failed to wait for synonyms update: " + err.Error(),
+			Err: fmt.Errorf("failed to wait for synonyms update: %w", err),
 		}
 	}
 

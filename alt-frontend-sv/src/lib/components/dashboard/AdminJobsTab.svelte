@@ -11,21 +11,28 @@ let { windowSeconds }: Props = $props();
 let jobs = $state<AdminJob[]>([]);
 let loading = $state(true);
 let error = $state<string | null>(null);
+let requestId = 0;
 
 $effect(() => {
 	loadData();
 });
 
 async function loadData() {
+	const currentRequest = ++requestId;
 	loading = true;
 	error = null;
 	try {
-		jobs = await getJobs(windowSeconds, 200);
+		const result = await getJobs(windowSeconds, 200);
+		if (currentRequest !== requestId) return;
+		jobs = result;
 	} catch (e) {
+		if (currentRequest !== requestId) return;
 		error = e instanceof Error ? e.message : String(e);
 		console.error("Failed to load admin jobs:", e);
 	} finally {
-		loading = false;
+		if (currentRequest === requestId) {
+			loading = false;
+		}
 	}
 }
 

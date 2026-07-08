@@ -7,6 +7,11 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
+func TestMain(m *testing.M) {
+	os.Setenv("DB_PASSWORD", "test-password")
+	os.Exit(m.Run())
+}
+
 func TestLoad_RAGRetrievalParameters_Defaults(t *testing.T) {
 	envVars := []string{
 		"RAG_SEARCH_LIMIT",
@@ -164,6 +169,7 @@ func TestDBConfig_DSN(t *testing.T) {
 		User:     "testuser",
 		Password: "testpass",
 		Name:     "testdb",
+		SSLMode:  "disable",
 	}
 
 	expected := "postgres://testuser:testpass@localhost:5432/testdb?sslmode=disable"

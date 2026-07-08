@@ -16,7 +16,7 @@ export const GET: RequestHandler = async ({ request }) => {
 
 		return json(
 			{
-				error: errorMessage,
+				error: "Failed to fetch random feed",
 				feed: null,
 			},
 			{ status: 500 },

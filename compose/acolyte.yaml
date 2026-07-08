@@ -20,7 +20,7 @@ services:
     container_name: acolyte-db
     mem_limit: 192m
     ports:
-      - "5439:5432"
+      - "127.0.0.1:5439:5432"
     environment:
       POSTGRES_DB: ${ACOLYTE_DB_NAME:-acolyte}
       POSTGRES_USER: ${ACOLYTE_DB_USER:-acolyte_user}

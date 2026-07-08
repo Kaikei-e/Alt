@@ -27,17 +27,15 @@ interface Props {
 	showButton?: boolean;
 }
 
-const {
+let {
 	feedURL,
 	feedTitle,
 	initialData,
-	open: openProp,
+	open = $bindable(false),
 	onOpenChange,
 	showButton = true,
 }: Props = $props();
 
-// Initialize with default, sync with prop in $effect
-let isOpen = $state(false);
 let isLoading = $state(false);
 let isFavoriting = $state(false);
 let error = $state<string | null>(null);
@@ -76,26 +74,21 @@ const summaryButtonState = $derived.by(() => {
 	return "idle" as const;
 });
 
-// Create unique test ID based on feedURL (capture initial value)
-const uniqueId = $derived(feedURL ? btoa(feedURL).slice(0, 8) : "default");
-
-// Sync with external open prop - use $effect to track prop changes
-$effect(() => {
-	// Access openProp inside $effect to track changes
-	if (openProp !== undefined && openProp !== isOpen) {
-		isOpen = openProp;
-	}
-});
+// Create unique test ID based on feedURL. encodeURIComponent first: btoa only
+// accepts Latin1 and throws InvalidCharacterError on non-ASCII URLs (e.g. Japanese).
+const uniqueId = $derived(
+	feedURL ? btoa(encodeURIComponent(feedURL)).slice(0, 8) : "default",
+);
 
 // Auto-fetch data when opened externally (e.g., from ViewedFeedCard)
 $effect(() => {
 	// Only trigger when:
-	// 1. Modal is opening (isOpen becomes true)
+	// 1. Modal is opening (open becomes true)
 	// 2. No initial data provided
 	// 3. Data not already loaded
 	// 4. Not currently loading
 	if (
-		isOpen &&
+		open &&
 		!initialData &&
 		!articleSummary &&
 		!feedDetails &&
@@ -107,19 +100,18 @@ $effect(() => {
 	}
 });
 
-// Sync internal state to external
+// Notify the optional callback prop whenever `open` changes, whether the
+// change came from the parent (via bind:open) or from internal handlers.
 $effect(() => {
-	if (onOpenChange && isOpen !== (openProp ?? false)) {
-		onOpenChange(isOpen);
-	}
+	onOpenChange?.(open);
 });
 
 // Handle escape key to close modal
 $effect(() => {
-	if (!browser || !isOpen) return;
+	if (!browser || !open) return;
 
 	const handleEscape = (event: KeyboardEvent) => {
-		if (event.key === "Escape" && isOpen) {
+		if (event.key === "Escape" && open) {
 			handleHideDetails();
 		}
 	};
@@ -166,10 +158,7 @@ $effect(() => {
 });
 
 const handleHideDetails = () => {
-	isOpen = false;
-	if (onOpenChange) {
-		onOpenChange(false);
-	}
+	open = false;
 	if (abortController) {
 		abortController.abort();
 		abortController = null;
@@ -234,15 +223,12 @@ const fetchData = async () => {
 const handleShowDetails = async () => {
 	// If we already have initial data, just open the modal
 	if (initialData) {
-		isOpen = true;
+		open = true;
 		return;
 	}
 
 	await fetchData();
-	isOpen = true;
-	if (onOpenChange) {
-		onOpenChange(true);
-	}
+	open = true;
 };
 
 async function handleSummarize(forceRefresh = false) {
@@ -375,7 +361,7 @@ async function handleSummarize(forceRefresh = false) {
 }
 </script>
 
-{#if showButton && !isOpen}
+{#if showButton && !open}
 	<button
 		class="show-details-btn"
 		onclick={handleShowDetails}
@@ -387,9 +373,9 @@ async function handleSummarize(forceRefresh = false) {
 {/if}
 
 <Sheet.Root
-	bind:open={isOpen}
-	onOpenChange={(open: boolean) => {
-		if (!open) handleHideDetails();
+	bind:open
+	onOpenChange={(next: boolean) => {
+		if (!next) handleHideDetails();
 	}}
 >
 	<Sheet.Content

@@ -5,6 +5,7 @@ from uuid import UUID
 
 import structlog
 
+from recap_evaluator.config import AlertThresholds
 from recap_evaluator.evaluator.cluster_evaluator import ClusterEvaluator
 from recap_evaluator.evaluator.genre_evaluator import GenreEvaluator
 from recap_evaluator.evaluator.pipeline_evaluator import PipelineEvaluator
@@ -38,11 +39,13 @@ class GetMetricsUsecase:
         cluster_evaluator: ClusterEvaluator,
         pipeline_evaluator: PipelineEvaluator,
         db: DatabasePort,
+        thresholds: AlertThresholds,
     ) -> None:
         self._genre = genre_evaluator
         self._cluster = cluster_evaluator
         self._pipeline = pipeline_evaluator
         self._db = db
+        self._thresholds = thresholds
 
     async def get_latest(self) -> dict:
         """Get latest metrics summary across all dimensions."""
@@ -53,7 +56,8 @@ class GetMetricsUsecase:
             result["genre_macro_f1"] = genre_result.macro_f1
             result["genre_alert_level"] = genre_result.alert_level.value
 
-        jobs = await self._db.fetch_recent_jobs(days=7)
+        window_days = 7
+        jobs = await self._db.fetch_recent_jobs(days=window_days)
         if jobs:
             job_ids = [job["job_id"] for job in jobs]
 
@@ -70,14 +74,18 @@ class GetMetricsUsecase:
                 if sil_values:
                     avg_silhouette = sum(sil_values) / len(sil_values)
                     result["cluster_avg_silhouette"] = avg_silhouette
-                    if avg_silhouette < 0.15:
+                    warn = self._thresholds.get_warn("clustering_silhouette")
+                    critical = self._thresholds.get_critical("clustering_silhouette")
+                    if critical is not None and avg_silhouette < critical:
                         result["cluster_alert_level"] = "critical"
-                    elif avg_silhouette < 0.25:
+                    elif warn is not None and avg_silhouette < warn:
                         result["cluster_alert_level"] = "warn"
                     else:
                         result["cluster_alert_level"] = "ok"
 
-            pipeline_result = await self._pipeline.evaluate_batch(job_ids)
+            pipeline_result = await self._pipeline.evaluate_batch(
+                job_ids, window_days=window_days
+            )
             result["pipeline_success_rate"] = pipeline_result.success_rate
             result["pipeline_alert_level"] = pipeline_result.alert_level.value
 

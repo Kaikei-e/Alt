@@ -15,6 +15,8 @@ secrets:
     file: ../secrets/pre_processor_sidecar_db_password.txt
   recap_db_password:
     file: ../secrets/recap_db_password.txt
+  sovereign_db_password:
+    file: ../secrets/sovereign_db_password.txt
   rag_db_password:
     file: ../secrets/rag_db_password.txt
   kratos_db_password:

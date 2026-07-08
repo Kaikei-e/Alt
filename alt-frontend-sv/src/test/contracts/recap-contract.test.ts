@@ -38,7 +38,7 @@ describe("Recap API Contract", () => {
 		});
 
 		expect(response.genres).toHaveLength(2);
-		expect(response.genres[0].genre).toBe("Technology");
+		expect(response.genres[0]!.genre).toBe("Technology");
 		expect(response.totalArticles).toBe(3);
 	});
 
@@ -74,7 +74,7 @@ describe("Recap API Contract", () => {
 		const deserialized = fromBinary(GetSevenDayRecapResponseSchema, binary);
 
 		expect(deserialized.genres).toHaveLength(1);
-		expect(deserialized.genres[0].genre).toBe("Tech");
+		expect(deserialized.genres[0]!.genre).toBe("Tech");
 		expect(deserialized.totalArticles).toBe(1);
 	});
 
@@ -84,7 +84,7 @@ describe("Recap API Contract", () => {
 		expect(genre.genre).toBe("Science");
 		expect(genre.articleCount).toBe(3);
 		expect(genre.evidenceLinks).toHaveLength(3);
-		expect(genre.evidenceLinks[0].articleId).toContain("science");
+		expect(genre.evidenceLinks[0]!.articleId).toContain("science");
 		expect(genre.bullets).toHaveLength(1);
 	});
 });

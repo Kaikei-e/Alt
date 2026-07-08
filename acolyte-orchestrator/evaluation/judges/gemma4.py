@@ -24,11 +24,13 @@ logger = structlog.get_logger(__name__)
 class Gemma4FaithfulnessJudge:
     """Synchronous callable wrapping an async LLM generate call.
 
-    ``__call__`` runs the coroutine on an event loop via ``asyncio.run`` —
-    the evaluation harness is sync by design, so the judge is the only
-    place that has to bridge. Timeouts surface as ``None`` rather than
-    exceptions because ``evaluation.metrics.faithfulness`` treats a
-    non-numeric return as "missing score" rather than pipeline failure.
+    ``__call__`` runs the coroutine on a single event loop kept alive for
+    the judge's lifetime (not a fresh ``asyncio.run`` loop per call) — the
+    wrapped ``LLMProviderPort`` typically owns a shared ``httpx.AsyncClient``
+    bound to whichever loop first used it, so a new loop per call would
+    break that client on the second invocation. Timeouts surface as ``None``
+    rather than exceptions because ``evaluation.metrics.faithfulness`` treats
+    a non-numeric return as "missing score" rather than pipeline failure.
     """
 
     def __init__(
@@ -43,16 +45,14 @@ class Gemma4FaithfulnessJudge:
         self._timeout_s = timeout_s
         self._num_predict = num_predict
         self._temperature = temperature
+        self._loop = asyncio.new_event_loop()
 
-    def __call__(self, prompt: str) -> float:
+    def __call__(self, prompt: str) -> float | None:
         try:
-            score = asyncio.run(self._ask(prompt))
+            return self._loop.run_until_complete(self._ask(prompt))
         except Exception as exc:  # noqa: BLE001 - never let judge break run_eval
             logger.warning("judge: llm call failed", error=str(exc))
-            return float("nan")
-        if score is None:
-            return float("nan")
-        return score
+            return None
 
     async def _ask(self, prompt: str) -> float | None:
         response = await asyncio.wait_for(

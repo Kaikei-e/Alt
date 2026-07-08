@@ -10,7 +10,7 @@ import (
 )
 
 func TestNewClient(t *testing.T) {
-	c := NewClient("http://localhost:9511")
+	c := NewClient("http://localhost:9511", "")
 	if c.BaseURL != "http://localhost:9511" {
 		t.Errorf("expected BaseURL http://localhost:9511, got %s", c.BaseURL)
 	}
@@ -37,7 +37,7 @@ func TestGet_Success(t *testing.T) {
 	}))
 	defer server.Close()
 
-	c := NewClient(server.URL)
+	c := NewClient(server.URL, "")
 
 	var resp struct {
 		Snapshots []struct {
@@ -84,7 +84,7 @@ func TestPost_Success(t *testing.T) {
 	}))
 	defer server.Close()
 
-	c := NewClient(server.URL)
+	c := NewClient(server.URL, "")
 
 	reqBody := map[string]interface{}{"dry_run": true}
 	var resp map[string]string
@@ -104,7 +104,7 @@ func TestGet_Error(t *testing.T) {
 	}))
 	defer server.Close()
 
-	c := NewClient(server.URL)
+	c := NewClient(server.URL, "")
 
 	var resp map[string]interface{}
 	err := c.Get(context.Background(), "/admin/storage/stats", &resp)
@@ -121,7 +121,7 @@ func TestGet_Error(t *testing.T) {
 }
 
 func TestGet_ConnectionError(t *testing.T) {
-	c := NewClient("http://127.0.0.1:1")
+	c := NewClient("http://127.0.0.1:1", "")
 	c.HTTPClient.Timeout = 1 * time.Second
 
 	var resp map[string]interface{}

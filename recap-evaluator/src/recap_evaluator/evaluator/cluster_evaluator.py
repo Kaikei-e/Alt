@@ -79,17 +79,20 @@ class ClusterEvaluator:
 
         try:
             sil = silhouette_score(embeddings, cluster_labels)
-        except Exception:
+        except ValueError as exc:
+            logger.warning("Silhouette score calculation failed", error=str(exc))
             sil = 0.0
 
         try:
             db_score = davies_bouldin_score(embeddings, cluster_labels)
-        except Exception:
+        except ValueError as exc:
+            logger.warning("Davies-Bouldin index calculation failed", error=str(exc))
             db_score = 0.0
 
         try:
             ch_score = calinski_harabasz_score(embeddings, cluster_labels)
-        except Exception:
+        except ValueError as exc:
+            logger.warning("Calinski-Harabasz index calculation failed", error=str(exc))
             ch_score = 0.0
 
         unique_labels = np.unique(cluster_labels)

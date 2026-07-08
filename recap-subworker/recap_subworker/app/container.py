@@ -298,6 +298,7 @@ class ServiceContainer:
                 vectorizer_en_path=self.settings.tfidf_vectorizer_path_en,
                 thresholds_ja_path=self.settings.genre_thresholds_path_ja,
                 thresholds_en_path=self.settings.genre_thresholds_path_en,
+                embedder=self.embedder,
             )
         return self._evaluation_service
 

@@ -6,8 +6,39 @@ import type { TokenClient } from "../port/token_client.ts";
 import type { HttpClient } from "../port/http_client.ts";
 import type { InoreaderCredentials, TokenResponse } from "../domain/types.ts";
 import { logger } from "../infra/logger.ts";
+import { PermanentError } from "../infra/retry.ts";
 
 const INOREADER_TOKEN_URL = "https://www.inoreader.com/oauth2/token";
+
+// Trust-boundary narrowing for the token endpoint's JSON body: only proves
+// it's an indexable object, not that the expected fields are present or
+// well-typed — the field-level checks below report which specific field is
+// missing/invalid rather than a single generic rejection.
+interface TokenApiResponse {
+  access_token?: unknown;
+  refresh_token?: unknown;
+  expires_in?: unknown;
+  token_type?: unknown;
+  scope?: unknown;
+}
+
+function isTokenApiResponse(data: unknown): data is TokenApiResponse {
+  return typeof data === "object" && data !== null;
+}
+
+/** Reads the response body once as text, then parses it as JSON, converting
+ * non-JSON bodies (e.g. a proxy's HTML error page) into a descriptive error
+ * instead of letting SyntaxError leak out. */
+async function parseJsonResponse(response: Response): Promise<unknown> {
+  const text = await response.text();
+  try {
+    return JSON.parse(text);
+  } catch {
+    throw new Error(
+      `Invalid token endpoint response (not JSON): ${text.slice(0, 200)}`,
+    );
+  }
+}
 
 export class InoreaderTokenClient implements TokenClient {
   constructor(
@@ -46,19 +77,19 @@ export class InoreaderTokenClient implements TokenClient {
 
       switch (errorCode) {
         case "invalid_grant":
-          throw new Error(
+          throw new PermanentError(
             `Invalid or expired refresh token. Manual OAuth setup required. Details: ${errorDescription}`,
           );
         case "invalid_client":
-          throw new Error(
+          throw new PermanentError(
             `Invalid client credentials. Check CLIENT_ID and CLIENT_SECRET. Details: ${errorDescription}`,
           );
         case "unsupported_grant_type":
-          throw new Error(
+          throw new PermanentError(
             `Unsupported grant type. OAuth configuration error. Details: ${errorDescription}`,
           );
         case "invalid_request":
-          throw new Error(
+          throw new PermanentError(
             `Invalid OAuth request format. Details: ${errorDescription}`,
           );
         default:
@@ -68,7 +99,7 @@ export class InoreaderTokenClient implements TokenClient {
       }
     }
 
-    const data = await response.json();
+    const data = await parseJsonResponse(response);
     return this.validateAndBuildTokenResponse(data);
   }
 
@@ -92,19 +123,25 @@ export class InoreaderTokenClient implements TokenClient {
       throw new Error(`Token exchange failed: ${errText}`);
     }
 
-    const data = await response.json();
+    const data = await parseJsonResponse(response);
     return this.validateAndBuildTokenResponse(data);
   }
 
-  // deno-lint-ignore no-explicit-any
-  private validateAndBuildTokenResponse(data: any): TokenResponse {
-    if (!data.access_token) {
+  private validateAndBuildTokenResponse(data: unknown): TokenResponse {
+    if (!isTokenApiResponse(data)) {
+      throw new Error("OAuth response is not a valid JSON object");
+    }
+    if (typeof data.access_token !== "string" || !data.access_token) {
       throw new Error("OAuth response missing access_token");
     }
-    if (!data.refresh_token) {
+    if (typeof data.refresh_token !== "string" || !data.refresh_token) {
       throw new Error("OAuth response missing refresh_token");
     }
-    if (!data.expires_in || isNaN(Number(data.expires_in))) {
+    if (
+      (typeof data.expires_in !== "number" &&
+        typeof data.expires_in !== "string") ||
+      !data.expires_in || isNaN(Number(data.expires_in))
+    ) {
       throw new Error("OAuth response missing or invalid expires_in value");
     }
 
@@ -122,8 +159,10 @@ export class InoreaderTokenClient implements TokenClient {
       access_token: data.access_token,
       refresh_token: data.refresh_token,
       expires_at: expiresAt,
-      token_type: data.token_type || "Bearer",
-      scope: data.scope || "read write",
+      token_type: typeof data.token_type === "string"
+        ? data.token_type
+        : "Bearer",
+      scope: typeof data.scope === "string" ? data.scope : "read write",
     };
   }
 }

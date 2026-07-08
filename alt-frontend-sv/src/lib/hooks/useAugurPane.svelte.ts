@@ -165,7 +165,7 @@ export function useAugurPane(options: UseAugurPaneOptions = {}) {
 		streamTimeout = setTimeout(() => {
 			if (isLoading) {
 				messages[assistantIndex] = {
-					...messages[assistantIndex],
+					...messages[assistantIndex]!,
 					message: bufferedContent || "Response timed out. Please try again.",
 				};
 				finalize();
@@ -181,7 +181,7 @@ export function useAugurPane(options: UseAugurPaneOptions = {}) {
 				bufferedContent += delta;
 				isProvisional = true;
 				messages[assistantIndex] = {
-					...messages[assistantIndex],
+					...messages[assistantIndex]!,
 					message: bufferedContent,
 				};
 			},
@@ -192,19 +192,19 @@ export function useAugurPane(options: UseAugurPaneOptions = {}) {
 			// onMeta
 			(citations) => {
 				messages[assistantIndex] = {
-					...messages[assistantIndex],
+					...messages[assistantIndex]!,
 					citations: convertCitations(citations),
 				};
 			},
 			// onComplete — authoritative final answer replaces all provisional text
 			(result) => {
 				messages[assistantIndex] = {
-					...messages[assistantIndex],
+					...messages[assistantIndex]!,
 					message: result.answer || bufferedContent,
 					citations:
 						result.citations.length > 0
 							? convertCitations(result.citations)
-							: messages[assistantIndex].citations,
+							: messages[assistantIndex]!.citations,
 					relatedCitations: convertCitations(result.relatedCitations),
 				};
 				finalize();
@@ -213,7 +213,7 @@ export function useAugurPane(options: UseAugurPaneOptions = {}) {
 			(code) => {
 				isProvisional = false;
 				messages[assistantIndex] = {
-					...messages[assistantIndex],
+					...messages[assistantIndex]!,
 					message: formatAugurFallbackMessage(code),
 				};
 				finalize();
@@ -222,7 +222,7 @@ export function useAugurPane(options: UseAugurPaneOptions = {}) {
 			(error) => {
 				isProvisional = false;
 				messages[assistantIndex] = {
-					...messages[assistantIndex],
+					...messages[assistantIndex]!,
 					message: `Error: ${error.message}. Please try again.`,
 				};
 				finalize();

@@ -78,16 +78,22 @@ async function main() {
 }
 
 // Error boundary
-globalThis.addEventListener("error", () => {
-  logger.error("Unhandled error");
-  shutdownOTel();
-  Deno.exit(1);
+globalThis.addEventListener("error", (event) => {
+  logger.error("Unhandled error", {
+    message: event.message,
+    filename: event.filename,
+    lineno: event.lineno,
+  });
+  shutdownOTel().finally(() => Deno.exit(1));
 });
 
-globalThis.addEventListener("unhandledrejection", () => {
-  logger.error("Unhandled promise rejection");
-  shutdownOTel();
-  Deno.exit(1);
+globalThis.addEventListener("unhandledrejection", (event) => {
+  logger.error("Unhandled promise rejection", {
+    reason: event.reason instanceof Error
+      ? event.reason.message
+      : String(event.reason),
+  });
+  shutdownOTel().finally(() => Deno.exit(1));
 });
 
 if (import.meta.main) {

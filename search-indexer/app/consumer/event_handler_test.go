@@ -44,7 +44,7 @@ func (m *mockArticleRepo) GetArticleByID(ctx context.Context, articleID string) 
 	if a, ok := m.articles[articleID]; ok {
 		return a, nil
 	}
-	return nil, &domain.RepositoryError{Op: "GetArticleByID", Err: "not found"}
+	return nil, &domain.RepositoryError{Op: "GetArticleByID", Err: errors.New("not found")}
 }
 
 // mockSearchEngine implements port.SearchEngine for testing.

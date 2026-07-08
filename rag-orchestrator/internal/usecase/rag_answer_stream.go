@@ -10,6 +10,10 @@ import (
 	"rag-orchestrator/internal/domain"
 )
 
+// doneSendTimeout bounds how long the deferred terminal Done event waits for
+// a full events channel to drain before giving up and logging the drop.
+const doneSendTimeout = 5 * time.Second
+
 // Stream streams a RAG answer using Server-Sent Events.
 //
 // Invariant: every invocation emits exactly one terminal StreamEventKindDone
@@ -29,12 +33,15 @@ func (u *answerWithRAGUsecase) Stream(ctx context.Context, input AnswerWithRAGIn
 		// reaches the handler.
 		finalOutput := &AnswerWithRAGOutput{}
 		defer func() {
-			// Use a background context so a cancelled request context can never
-			// silently drop the terminal event. The select keeps it non-blocking
-			// in the unlikely case the buffered channel is already full.
+			// Blocking send (not gated on the request ctx, which may already be
+			// cancelled) so the "always exactly one Done" invariant holds even
+			// when the buffered channel is momentarily full. A timeout bounds
+			// the wait in case the handler has stopped draining the channel.
 			select {
 			case events <- StreamEvent{Kind: StreamEventKindDone, Payload: finalOutput}:
-			default:
+			case <-time.After(doneSendTimeout):
+				u.logger.Error("stream_done_event_dropped",
+					slog.String("reason", "events channel not drained within timeout"))
 			}
 		}()
 
@@ -242,10 +249,7 @@ func (u *answerWithRAGUsecase) Stream(ctx context.Context, input AnswerWithRAGIn
 
 		var builder strings.Builder // Full response for final validation
 		var answerBuilder strings.Builder
-		var pending strings.Builder
-		inAnswer := false
-		isEscaped := false
-		answerCompletelyStreamed := false
+		answerParser := &incrementalAnswerParser{}
 		hasData := false
 		chunkStream := chunkCh
 		errStream := errCh
@@ -258,6 +262,7 @@ func (u *answerWithRAGUsecase) Stream(ctx context.Context, input AnswerWithRAGIn
 					Kind:    StreamEventKindError,
 					Payload: "client disconnected",
 				})
+				drainLLMStream(chunkStream, errStream)
 				return
 			case chunk, ok := <-chunkStream:
 				if !ok {
@@ -279,97 +284,8 @@ func (u *answerWithRAGUsecase) Stream(ctx context.Context, input AnswerWithRAGIn
 
 					// Incremental parsing keeps the answer boundary intact even when
 					// Ollama emits unescaped quotes inside structured output.
-					if !answerCompletelyStreamed {
-						pending.WriteString(chunk.Response)
-						pendingStr := pending.String()
-						processed := 0
-
-						if !inAnswer {
-							idx := strings.Index(pendingStr, "\"answer\"")
-							if idx != -1 {
-								// Find the opening quote of the value
-								remainder := pendingStr[idx+8:]
-								startOffset := -1
-								for i, r := range remainder {
-									if r == ' ' || r == '\n' || r == '\t' || r == '\r' || r == ':' {
-										continue
-									}
-									if r == '"' {
-										startOffset = idx + 8 + i + len(string(r))
-										break
-									}
-									break
-								}
-								if startOffset != -1 {
-									inAnswer = true
-									processed = startOffset
-								} else if len(pendingStr) > 20 {
-									processed = len(pendingStr) - 20
-								}
-							} else if len(pendingStr) > 20 {
-								processed = len(pendingStr) - 20
-							}
-						}
-
-						if inAnswer {
-							strToScan := pendingStr[processed:]
-							var contentBuilder strings.Builder
-							advanceBytes := 0
-							for i, char := range strToScan {
-								charLen := len(string(char))
-								if isEscaped {
-									isEscaped = false
-									switch char {
-									case 'n':
-										contentBuilder.WriteRune('\n')
-									case 'r':
-										contentBuilder.WriteRune('\r')
-									case 't':
-										contentBuilder.WriteRune('\t')
-									case '"':
-										contentBuilder.WriteRune('"')
-									case '\\':
-										contentBuilder.WriteRune('\\')
-									default:
-										contentBuilder.WriteRune('\\')
-										contentBuilder.WriteRune(char)
-									}
-									advanceBytes = i + charLen
-									continue
-								}
-								if char == '\\' {
-									isEscaped = true
-									advanceBytes = i + charLen
-									continue
-								}
-								if char == '"' {
-									tail := strToScan[i+charLen:]
-									if isAnswerFieldEnd(tail) {
-										inAnswer = false
-										answerCompletelyStreamed = true
-										advanceBytes = i + charLen
-										break
-									}
-									contentBuilder.WriteRune('"')
-									advanceBytes = i + charLen
-									continue
-								}
-								contentBuilder.WriteRune(char)
-								advanceBytes = i + charLen
-							}
-							if !answerCompletelyStreamed && isEscaped {
-								advanceBytes -= 1
-							}
-							strToStream := contentBuilder.String()
-							if strToStream != "" {
-								answerBuilder.WriteString(strToStream)
-							}
-							processed += advanceBytes
-						}
-
-						remaining := pendingStr[processed:]
-						pending.Reset()
-						pending.WriteString(remaining)
+					if strToStream := answerParser.Feed(chunk.Response); strToStream != "" {
+						answerBuilder.WriteString(strToStream)
 					}
 				}
 				if chunk.Done {
@@ -557,10 +473,10 @@ func (u *answerWithRAGUsecase) Stream(ctx context.Context, input AnswerWithRAGIn
 		}
 
 		// Persist conversation state for follow-up reference resolution.
-		if u.conversationStore != nil && input.UserID != "" {
+		if threadKey := conversationThreadKey(input); u.conversationStore != nil && threadKey != "" {
 			newState := DeriveStateUpdate(
-				u.conversationStore.Get(input.UserID),
-				input.UserID,
+				u.conversationStore.Get(threadKey),
+				threadKey,
 				promptData.parsedIntent,
 				promptData.plannerOutput,
 				output,
@@ -627,6 +543,145 @@ func isAnswerFieldEnd(tail string) bool {
 		}
 	}
 	return false // only whitespace — need more data
+}
+
+// incrementalAnswerParser extracts the streamed JSON "answer" field's text
+// content as chunks arrive from the LLM. It tolerates unescaped quotes inside
+// the field value (a known Ollama structured-output quirk) by only treating a
+// quote as the field's end when isAnswerFieldEnd confirms the JSON structure
+// that follows it. Shared by Stream (rag_answer_stream.go) and
+// streamHybridLongForm (stream_hybrid_longform.go), which differ only in what
+// they do with the extracted text (plain accumulation vs. paragraph flushing).
+type incrementalAnswerParser struct {
+	pending   strings.Builder
+	inAnswer  bool
+	isEscaped bool
+	completed bool
+}
+
+// Feed processes a newly arrived chunk of raw LLM output and returns any
+// answer-field text extracted from it (may be empty). Once the field's
+// closing quote is found, Done() reports true and subsequent Feed calls are
+// no-ops.
+func (p *incrementalAnswerParser) Feed(chunk string) string {
+	if p.completed {
+		return ""
+	}
+	p.pending.WriteString(chunk)
+	pendingStr := p.pending.String()
+	processed := 0
+
+	if !p.inAnswer {
+		idx := strings.Index(pendingStr, "\"answer\"")
+		if idx != -1 {
+			remainder := pendingStr[idx+8:]
+			startOffset := -1
+			for i, r := range remainder {
+				if r == ' ' || r == '\n' || r == '\t' || r == '\r' || r == ':' {
+					continue
+				}
+				if r == '"' {
+					startOffset = idx + 8 + i + len(string(r))
+					break
+				}
+				break
+			}
+			if startOffset != -1 {
+				p.inAnswer = true
+				processed = startOffset
+			} else if len(pendingStr) > 20 {
+				processed = len(pendingStr) - 20
+			}
+		} else if len(pendingStr) > 20 {
+			processed = len(pendingStr) - 20
+		}
+	}
+
+	var extracted string
+	if p.inAnswer {
+		strToScan := pendingStr[processed:]
+		var contentBuilder strings.Builder
+		advanceBytes := 0
+		for i, char := range strToScan {
+			charLen := len(string(char))
+			if p.isEscaped {
+				p.isEscaped = false
+				switch char {
+				case 'n':
+					contentBuilder.WriteRune('\n')
+				case 'r':
+					contentBuilder.WriteRune('\r')
+				case 't':
+					contentBuilder.WriteRune('\t')
+				case '"':
+					contentBuilder.WriteRune('"')
+				case '\\':
+					contentBuilder.WriteRune('\\')
+				default:
+					contentBuilder.WriteRune('\\')
+					contentBuilder.WriteRune(char)
+				}
+				advanceBytes = i + charLen
+				continue
+			}
+			if char == '\\' {
+				p.isEscaped = true
+				advanceBytes = i + charLen
+				continue
+			}
+			if char == '"' {
+				tail := strToScan[i+charLen:]
+				if isAnswerFieldEnd(tail) {
+					p.inAnswer = false
+					p.completed = true
+					advanceBytes = i + charLen
+					break
+				}
+				contentBuilder.WriteRune('"')
+				advanceBytes = i + charLen
+				continue
+			}
+			contentBuilder.WriteRune(char)
+			advanceBytes = i + charLen
+		}
+		if !p.completed && p.isEscaped {
+			advanceBytes -= 1
+		}
+		extracted = contentBuilder.String()
+		processed += advanceBytes
+	}
+
+	remaining := pendingStr[processed:]
+	p.pending.Reset()
+	p.pending.WriteString(remaining)
+
+	return extracted
+}
+
+// Done reports whether the answer field's closing quote has been found.
+func (p *incrementalAnswerParser) Done() bool {
+	return p.completed
+}
+
+// drainLLMStream best-effort drains an in-flight ChatStream's channels after
+// the consumer has stopped reading them (e.g. on ctx cancellation). If the
+// LLMClient implementation doesn't observe ctx and keeps sending, an
+// unattended producer goroutine would otherwise block forever on that send.
+func drainLLMStream(chunkCh <-chan domain.LLMStreamChunk, errCh <-chan error) {
+	go func() {
+		for chunkCh != nil || errCh != nil {
+			select {
+			case _, ok := <-chunkCh:
+				if !ok {
+					chunkCh = nil
+				}
+			case _, ok := <-errCh:
+				if !ok {
+					errCh = nil
+				}
+			}
+		}
+	}()
 }
 
 func (u *answerWithRAGUsecase) sendStreamEvent(ctx context.Context, events chan<- StreamEvent, event StreamEvent) bool {

@@ -13,6 +13,13 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
+// staleProcessingLease bounds how long a job may sit in 'processing' before
+// AcquireNextJob treats it as abandoned (worker crashed / status update
+// failed) and reclaims it. Comfortably above the worker's per-job timeout
+// (60s) so healthy in-flight jobs are never reclaimed out from under a
+// live worker.
+const staleProcessingLease = 5 * time.Minute
+
 type RagJobRepository struct {
 	db *pgxpool.Pool
 }
@@ -60,6 +67,7 @@ func (r *RagJobRepository) AcquireNextJob(ctx context.Context) (*domain.RagJob, 
 			SELECT id
 			FROM rag_jobs
 			WHERE status = 'new'
+				OR (status = 'processing' AND updated_at < $2)
 			ORDER BY created_at ASC
 			LIMIT 1
 			FOR UPDATE SKIP LOCKED
@@ -74,7 +82,8 @@ func (r *RagJobRepository) AcquireNextJob(ctx context.Context) (*domain.RagJob, 
 	var job domain.RagJob
 	var payloadBytes []byte
 
-	err := r.db.QueryRow(ctx, cteQuery, time.Now()).Scan(
+	now := time.Now()
+	err := r.db.QueryRow(ctx, cteQuery, now, now.Add(-staleProcessingLease)).Scan(
 		&job.ID,
 		&job.JobType,
 		&payloadBytes,

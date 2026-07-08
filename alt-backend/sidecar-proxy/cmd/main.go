@@ -6,7 +6,9 @@ package main
 import (
 	"fmt"
 	"log"
+	"net"
 	"os"
+	"strconv"
 
 	"github.com/alt-rss/alt-backend/sidecar-proxy/pkg/config"
 	"github.com/alt-rss/alt-backend/sidecar-proxy/pkg/proxy"
@@ -138,16 +140,14 @@ func validateCriticalSettings(cfg *config.ProxyConfig) error {
 	return nil
 }
 
-// isValidDNSServer checks if a DNS server string is in the correct format
+// isValidDNSServer checks if a DNS server string is a valid host:port pair.
 func isValidDNSServer(server string) bool {
-	// Simple check for host:port format
-	if server == "" {
+	host, portStr, err := net.SplitHostPort(server)
+	if err != nil || host == "" {
 		return false
 	}
-
-	// Should contain a colon for port separation
-	return len(server) > 0 && server != "" && (server[len(server)-3:] == ":53" ||
-		server[len(server)-4:] == ":853" || server[len(server)-5:] == ":5053")
+	port, err := strconv.Atoi(portStr)
+	return err == nil && port > 0 && port <= 65535
 }
 
 // init performs any necessary initialization before main()

@@ -206,8 +206,11 @@ func fuseHybridResults(
 		if existing, exists := fusedMap[articleID]; exists {
 			existing.rrfScore += 1.0 / (rrfK + float64(br.Rank))
 		} else {
+			// BM25-only hit (no vector match): resolve it into a SearchResult
+			// from the BM25 payload itself instead of dropping the contribution.
+			bm25AsResult := bm25ResultToSearchResult(br)
 			fusedMap[articleID] = &fusedResult{
-				vectorResult: nil,
+				vectorResult: &bm25AsResult,
 				rrfScore:     1.0 / (rrfK + float64(br.Rank)),
 			}
 		}
@@ -215,11 +218,9 @@ func fuseHybridResults(
 
 	results := make([]domain.SearchResult, 0, len(fusedMap))
 	for _, fr := range fusedMap {
-		if fr.vectorResult != nil {
-			result := *fr.vectorResult
-			result.Score = float32(fr.rrfScore)
-			results = append(results, result)
-		}
+		result := *fr.vectorResult
+		result.Score = float32(fr.rrfScore)
+		results = append(results, result)
 	}
 
 	sort.Slice(results, func(i, j int) bool {
@@ -244,27 +245,31 @@ func promoteBM25ToSearchResults(bm25Results []domain.BM25SearchResult) []domain.
 	}
 	results := make([]domain.SearchResult, len(bm25Results))
 	for i, br := range bm25Results {
-		var chunkID uuid.UUID
-		if br.ChunkID != "" {
-			parsed, err := uuid.Parse(br.ChunkID)
-			if err == nil {
-				chunkID = parsed
-			} else {
-				chunkID = uuid.New()
-			}
-		} else {
-			chunkID = uuid.New()
-		}
-		results[i] = domain.SearchResult{
-			Chunk: domain.RagChunk{
-				ID:      chunkID,
-				Content: br.Content,
-			},
-			Score:     br.Score,
-			ArticleID: br.ArticleID,
-			Title:     br.Title,
-			URL:       br.URL,
-		}
+		results[i] = bm25ResultToSearchResult(br)
 	}
 	return results
+}
+
+// bm25ResultToSearchResult converts a single BM25 hit into a domain.SearchResult.
+// ChunkID is left as uuid.Nil when the BM25 payload doesn't carry one — callers
+// must treat uuid.Nil as "no chunk id" rather than a real identifier; fabricating
+// a random UUID here would let downstream citations reference a chunk that
+// never existed.
+func bm25ResultToSearchResult(br domain.BM25SearchResult) domain.SearchResult {
+	var chunkID uuid.UUID
+	if br.ChunkID != "" {
+		if parsed, err := uuid.Parse(br.ChunkID); err == nil {
+			chunkID = parsed
+		}
+	}
+	return domain.SearchResult{
+		Chunk: domain.RagChunk{
+			ID:      chunkID,
+			Content: br.Content,
+		},
+		Score:     br.Score,
+		ArticleID: br.ArticleID,
+		Title:     br.Title,
+		URL:       br.URL,
+	}
 }

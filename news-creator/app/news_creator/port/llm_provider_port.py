@@ -94,17 +94,38 @@ class LLMProviderPort(ABC):
         """List available models. Optional — not all providers support this."""
         return []  # pragma: no cover
 
+    def queue_status(self) -> Dict[str, Any]:
+        """Queue depth/availability status for monitoring.
+
+        Optional — not all providers expose semaphore internals. Default
+        implementation reports an always-accepting, slot-less queue.
+        """
+        return {
+            "rt_queue": 0,
+            "be_queue": 0,
+            "total_slots": 0,
+            "available_slots": 0,
+            "accepting": True,
+            "max_queue_depth": 0,
+        }  # pragma: no cover
+
     async def chat_generate(
         self,
         payload: Dict[str, Any],
+        *,
+        priority: str = "high",
     ) -> Dict[str, Any]:
-        """Non-streaming /api/chat call through semaphore with HIGH priority.
+        """Non-streaming /api/chat call through the priority semaphore.
 
-        Used for structured output with thinking mode (plan-query, etc.).
-        The payload follows Ollama /api/chat format: messages, model, format, options.
+        Used for structured output with thinking mode (plan-query, morning
+        letter, etc.) as well as batch-oriented callers (recap). The payload
+        follows Ollama /api/chat format: messages, model, format, options.
 
         Args:
             payload: Ollama chat request payload
+            priority: "high" (default) reserves an RT slot for interactive
+                callers (Ask Augur chat proxy); batch callers must pass
+                "low" so they don't compete with RT chat for bandwidth.
 
         Returns:
             Response dict in /api/chat format

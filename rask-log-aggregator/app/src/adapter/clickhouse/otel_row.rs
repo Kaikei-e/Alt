@@ -5,6 +5,7 @@
 use crate::adapter::clickhouse::convert::{hashmap_to_vec, string_to_fixed_bytes};
 use crate::domain::{OTelLog, OTelTrace};
 use serde::{Deserialize, Serialize};
+use std::sync::Arc;
 
 /// ClickHouse row structure for otel_logs table
 /// Uses FixedString-compatible byte arrays for TraceId/SpanId
@@ -54,11 +55,15 @@ impl From<OTelLog> for OTelLogRow {
             severity_number: log.severity_number,
             body: log.body,
             resource_schema_url: log.resource_schema_url,
-            resource_attributes: hashmap_to_vec(log.resource_attributes),
+            resource_attributes: hashmap_to_vec(
+                Arc::try_unwrap(log.resource_attributes).unwrap_or_else(|arc| (*arc).clone()),
+            ),
             scope_schema_url: log.scope_schema_url,
             scope_name: log.scope_name,
             scope_version: log.scope_version,
-            scope_attributes: hashmap_to_vec(log.scope_attributes),
+            scope_attributes: hashmap_to_vec(
+                Arc::try_unwrap(log.scope_attributes).unwrap_or_else(|arc| (*arc).clone()),
+            ),
             log_attributes: hashmap_to_vec(log.log_attributes),
         }
     }
@@ -190,15 +195,15 @@ mod tests {
             severity_number: 9,
             body: "Test log message".to_string(),
             resource_schema_url: "https://opentelemetry.io/schemas/1.0.0".to_string(),
-            resource_attributes: {
+            resource_attributes: Arc::new({
                 let mut m = HashMap::new();
                 m.insert("service.name".to_string(), "test-service".to_string());
                 m
-            },
+            }),
             scope_schema_url: "https://opentelemetry.io/schemas/1.0.0".to_string(),
             scope_name: "test-scope".to_string(),
             scope_version: "1.0.0".to_string(),
-            scope_attributes: HashMap::new(),
+            scope_attributes: Arc::new(HashMap::new()),
             log_attributes: {
                 let mut m = HashMap::new();
                 m.insert("custom.key".to_string(), "custom.value".to_string());
@@ -235,11 +240,10 @@ mod tests {
     #[test]
     fn test_otel_log_row_attributes_vec_conversion() {
         let mut log = create_test_otel_log();
-        log.resource_attributes.clear();
-        log.resource_attributes
-            .insert("key1".to_string(), "val1".to_string());
-        log.resource_attributes
-            .insert("key2".to_string(), "val2".to_string());
+        let attrs = Arc::make_mut(&mut log.resource_attributes);
+        attrs.clear();
+        attrs.insert("key1".to_string(), "val1".to_string());
+        attrs.insert("key2".to_string(), "val2".to_string());
 
         let row = OTelLogRow::from(log);
         assert_eq!(row.resource_attributes.len(), 2);
@@ -477,15 +481,15 @@ mod tests {
             severity_number: 13,
             body: "Connection timeout".to_string(),
             resource_schema_url: "https://opentelemetry.io/schemas/1.0.0".to_string(),
-            resource_attributes: {
+            resource_attributes: Arc::new({
                 let mut m = HashMap::new();
                 m.insert("service.name".to_string(), "alt-backend".to_string());
                 m
-            },
+            }),
             scope_schema_url: String::new(),
             scope_name: "my-scope".to_string(),
             scope_version: "1.2.3".to_string(),
-            scope_attributes: HashMap::new(),
+            scope_attributes: Arc::new(HashMap::new()),
             log_attributes: {
                 let mut m = HashMap::new();
                 m.insert("error.type".to_string(), "timeout".to_string());

@@ -4,6 +4,7 @@ import (
 	"alt/domain"
 	"alt/utils/logger"
 	"context"
+	"fmt"
 	"time"
 
 	"github.com/google/uuid"
@@ -33,7 +34,7 @@ func (r *FeedRepository) IncrementFeedLinkFailures(ctx context.Context, feedURL,
 	)
 	if err != nil {
 		logger.SafeErrorContext(ctx, "Failed to increment feed failures", "url", feedURL, "error", err)
-		return nil, err
+		return nil, fmt.Errorf("increment feed link failures: %w", err)
 	}
 
 	return &domain.FeedLinkAvailability{
@@ -58,7 +59,10 @@ func (r *FeedRepository) ResetFeedLinkFailures(ctx context.Context, feedURL stri
 			last_failure_at = NULL,
 			last_failure_reason = NULL`
 	_, err := r.pool.Exec(ctx, query, feedURL)
-	return err
+	if err != nil {
+		return fmt.Errorf("reset feed link failures: %w", err)
+	}
+	return nil
 }
 
 // DisableFeedLink marks a feed as inactive.
@@ -69,6 +73,7 @@ func (r *FeedRepository) DisableFeedLink(ctx context.Context, feedURL string) er
 	_, err := r.pool.Exec(ctx, query, feedURL)
 	if err != nil {
 		logger.SafeErrorContext(ctx, "Failed to disable feed link", "url", feedURL, "error", err)
+		return fmt.Errorf("disable feed link: %w", err)
 	}
-	return err
+	return nil
 }

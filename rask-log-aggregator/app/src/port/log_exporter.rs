@@ -1,7 +1,6 @@
+use super::BoxFuture;
 use crate::domain::EnrichedLogEntry;
 use crate::error::AggregatorError;
-use std::future::Future;
-use std::pin::Pin;
 
 /// Log exporter trait for various backends (ClickHouse, JSON file, etc.)
 ///
@@ -10,5 +9,5 @@ pub trait LogExporter: Send + Sync {
     fn export_batch(
         &self,
         logs: Vec<EnrichedLogEntry>,
-    ) -> Pin<Box<dyn Future<Output = Result<(), AggregatorError>> + Send + '_>>;
+    ) -> BoxFuture<'_, Result<(), AggregatorError>>;
 }

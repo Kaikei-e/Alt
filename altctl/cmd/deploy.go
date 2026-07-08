@@ -112,7 +112,7 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 	noPull, _ := cmd.Flags().GetBool("no-pull")
 	if !noPull {
 		printer.Header("Pulling Latest Code")
-		updated, pullErr := gitPull(printer)
+		updated, pullErr := gitPull(cmd.Context(), printer)
 		if pullErr != nil {
 			return &output.CLIError{
 				Summary:    "git pull failed",
@@ -145,7 +145,7 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 		dryRun,
 	)
 
-	buildCtx, buildCancel := context.WithTimeout(context.Background(), buildTimeout)
+	buildCtx, buildCancel := context.WithTimeout(cmd.Context(), buildTimeout)
 	defer buildCancel()
 
 	err = client.Build(buildCtx, compose.BuildOptions{
@@ -171,7 +171,7 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 	printer.Header("Starting Services")
 	startupTimeout, _ := cmd.Flags().GetDuration("startup-timeout")
 
-	startCtx, startCancel := context.WithTimeout(context.Background(), startupTimeout)
+	startCtx, startCancel := context.WithTimeout(cmd.Context(), startupTimeout)
 	defer startCancel()
 
 	err = client.Up(startCtx, compose.UpOptions{
@@ -184,7 +184,7 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		printer.Error("Failed to start services: %v", err)
 
-		psCtx, psCancel := context.WithTimeout(context.Background(), 15*time.Second)
+		psCtx, psCancel := context.WithTimeout(cmd.Context(), 15*time.Second)
 		defer psCancel()
 		statuses, psErr := client.PS(psCtx, files)
 		if psErr == nil {
@@ -204,7 +204,7 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 	noSmoke, _ := cmd.Flags().GetBool("no-smoke")
 	if !noSmoke {
 		printer.Header("Running Smoke Tests")
-		smokeErr := runSmokeTests(printer)
+		smokeErr := runSmokeTests(cmd.Context(), printer)
 		if smokeErr != nil {
 			printer.Warning("Smoke tests failed: %v", smokeErr)
 			printer.Info("Services are running but may not be fully healthy")
@@ -220,7 +220,7 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 }
 
 // gitPull fetches and pulls the latest code. Returns true if changes were pulled.
-func gitPull(printer *output.Printer) (bool, error) {
+func gitPull(ctx context.Context, printer *output.Printer) (bool, error) {
 	root := getProjectRoot()
 
 	if dryRun {
@@ -229,22 +229,25 @@ func gitPull(printer *output.Printer) (bool, error) {
 		return true, nil
 	}
 
+	ctx, cancel := context.WithTimeout(ctx, 2*time.Minute)
+	defer cancel()
+
 	// Fetch
-	fetchCmd := exec.Command("git", "fetch", "origin", "main", "--quiet")
+	fetchCmd := exec.CommandContext(ctx, "git", "fetch", "origin", "main", "--quiet")
 	fetchCmd.Dir = root
 	if err := fetchCmd.Run(); err != nil {
 		return false, fmt.Errorf("git fetch failed: %w", err)
 	}
 
 	// Compare
-	localCmd := exec.Command("git", "rev-parse", "HEAD")
+	localCmd := exec.CommandContext(ctx, "git", "rev-parse", "HEAD")
 	localCmd.Dir = root
 	localOut, err := localCmd.Output()
 	if err != nil {
 		return false, fmt.Errorf("git rev-parse HEAD failed: %w", err)
 	}
 
-	remoteCmd := exec.Command("git", "rev-parse", "origin/main")
+	remoteCmd := exec.CommandContext(ctx, "git", "rev-parse", "origin/main")
 	remoteCmd.Dir = root
 	remoteOut, err := remoteCmd.Output()
 	if err != nil {
@@ -258,10 +261,13 @@ func gitPull(printer *output.Printer) (bool, error) {
 		return false, nil
 	}
 
+	if len(local) < 8 || len(remote) < 8 {
+		return false, fmt.Errorf("unexpected git rev-parse output: local=%q remote=%q", local, remote)
+	}
 	printer.Info("  %s → %s", local[:8], remote[:8])
 
 	// Pull
-	pullCmd := exec.Command("git", "pull", "--ff-only", "origin", "main")
+	pullCmd := exec.CommandContext(ctx, "git", "pull", "--ff-only", "origin", "main")
 	pullCmd.Dir = root
 	pullCmd.Stdout = os.Stdout
 	pullCmd.Stderr = os.Stderr
@@ -273,7 +279,7 @@ func gitPull(printer *output.Printer) (bool, error) {
 }
 
 // runSmokeTests executes the smoke test script if it exists.
-func runSmokeTests(printer *output.Printer) error {
+func runSmokeTests(ctx context.Context, printer *output.Printer) error {
 	root := getProjectRoot()
 	smokeScript := filepath.Join(root, "deploy-system", "smoke-test.sh")
 
@@ -287,7 +293,10 @@ func runSmokeTests(printer *output.Printer) error {
 		return nil
 	}
 
-	cmd := exec.Command("bash", smokeScript)
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Minute)
+	defer cancel()
+
+	cmd := exec.CommandContext(ctx, "bash", smokeScript)
 	cmd.Dir = root
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr

@@ -3,6 +3,7 @@ package sovereign_db
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"time"
 
@@ -122,6 +123,9 @@ func (r *Repository) ListLenses(ctx context.Context, userID uuid.UUID) ([]Knowle
 
 		lenses = append(lenses, l)
 	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("ListLenses rows: %w", err)
+	}
 	return lenses, nil
 }
 
@@ -134,7 +138,7 @@ func (r *Repository) GetLens(ctx context.Context, lensID uuid.UUID) (*KnowledgeL
 		&l.LensID, &l.UserID, &l.TenantID, &l.Name, &l.Description, &l.CreatedAt, &l.UpdatedAt, &l.ArchivedAt,
 	)
 	if err != nil {
-		if err == pgx.ErrNoRows {
+		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, nil
 		}
 		return nil, fmt.Errorf("GetLens: %w", err)
@@ -158,7 +162,7 @@ func (r *Repository) GetCurrentLensVersion(ctx context.Context, lensID uuid.UUID
 		&v.IncludeRecap, &v.IncludePulse, &v.SortMode, &v.SupersededBy,
 	)
 	if err != nil {
-		if err == pgx.ErrNoRows {
+		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, nil
 		}
 		return nil, fmt.Errorf("GetCurrentLensVersion: %w", err)
@@ -178,7 +182,7 @@ func (r *Repository) GetCurrentLensSelection(ctx context.Context, userID uuid.UU
 	var c KnowledgeCurrentLens
 	err := r.pool.QueryRow(ctx, query, userID).Scan(&c.UserID, &c.LensID, &c.LensVersionID, &c.SelectedAt)
 	if err != nil {
-		if err == pgx.ErrNoRows {
+		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, nil
 		}
 		return nil, fmt.Errorf("GetCurrentLensSelection: %w", err)
@@ -210,16 +214,23 @@ func (r *Repository) ClearCurrentLens(ctx context.Context, userID uuid.UUID) err
 
 // ArchiveLens marks a lens as archived and clears its selection.
 func (r *Repository) ArchiveLens(ctx context.Context, lensID uuid.UUID) error {
-	query := `UPDATE knowledge_lenses SET archived_at = now(), updated_at = now() WHERE lens_id = $1`
-	_, err := r.pool.Exec(ctx, query, lensID)
+	tx, err := r.pool.Begin(ctx)
 	if err != nil {
+		return fmt.Errorf("ArchiveLens begin: %w", err)
+	}
+	defer tx.Rollback(ctx) //nolint:errcheck // no-op once Commit has succeeded
+
+	query := `UPDATE knowledge_lenses SET archived_at = now(), updated_at = now() WHERE lens_id = $1`
+	if _, err := tx.Exec(ctx, query, lensID); err != nil {
 		return fmt.Errorf("ArchiveLens: %w", err)
 	}
 	// Clear selection if this lens was selected
 	clearQuery := `DELETE FROM knowledge_current_lens WHERE lens_id = $1`
-	_, err = r.pool.Exec(ctx, clearQuery, lensID)
-	if err != nil {
+	if _, err := tx.Exec(ctx, clearQuery, lensID); err != nil {
 		return fmt.Errorf("ArchiveLens clear selection: %w", err)
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return fmt.Errorf("ArchiveLens commit: %w", err)
 	}
 	return nil
 }

@@ -316,7 +316,13 @@ func TestApplyCurationMutation_DismissCuration(t *testing.T) {
 	assert.Equal(t, "DismissKnowledgeHomeItem", repo.lastMethod)
 }
 
-func TestApplyCurationMutation_LensMutationAcksWithoutDB(t *testing.T) {
+func TestApplyCurationMutation_UnknownTypeRejected(t *testing.T) {
+	// Lens mutations (create_lens, select_lens, ...) are dispatched through
+	// their own dedicated RPCs (CreateLens, SelectCurrentLens, ...) in
+	// rpc_lens.go, never through ApplyCurationMutation. A mutation_type this
+	// handler does not recognize — whether a stale lens-mutation label, a
+	// producer typo, or an unimplemented type — must be rejected loudly
+	// (Rule 8), not silently ACKed as success.
 	repo := &mockRepo{}
 	client, cleanup := setupTestServer(repo)
 	defer cleanup()
@@ -328,8 +334,9 @@ func TestApplyCurationMutation_LensMutationAcksWithoutDB(t *testing.T) {
 			Payload:      []byte(`{"name":"test"}`),
 		}))
 
-	require.NoError(t, err)
-	assert.True(t, resp.Msg.Success)
+	require.Error(t, err)
+	assert.Equal(t, connect.CodeInvalidArgument, connect.CodeOf(err))
+	assert.Nil(t, resp)
 	assert.Equal(t, "", repo.lastMethod)
 }
 

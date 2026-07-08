@@ -35,7 +35,6 @@ import (
 	"alt/usecase/update_lens_usecase"
 	altotel "alt/utils/otel"
 	"log/slog"
-	"os"
 	"time"
 )
 
@@ -86,8 +85,8 @@ func newKnowledgeModule(infra *InfraModule, article *ArticleModule) *KnowledgeMo
 	cfg := infra.Config
 
 	// Knowledge Sovereign: all knowledge data access via Connect-RPC
-	sovereignURL := os.Getenv("SOVEREIGN_URL")
-	sovereignEnabled := logSovereignWiringState(sovereignURL, os.Getenv("APP_ENV"))
+	sovereignURL := cfg.Sovereign.URL
+	sovereignEnabled := logSovereignWiringState(sovereignURL, cfg.AppEnv)
 	sovereignCli := sovereign_client.NewClient(sovereignURL, sovereignEnabled)
 
 	// Knowledge Home gateways
@@ -135,15 +134,9 @@ func newKnowledgeModule(infra *InfraModule, article *ArticleModule) *KnowledgeMo
 	sloUC := knowledge_slo_usecase.NewUsecase(sovereignCli)
 	auditUC := knowledge_audit_usecase.NewUsecase(sovereignCli, sovereignCli)
 
-	// System metrics: health check endpoints with sensible defaults
-	sovereignMetricsURL := os.Getenv("SOVEREIGN_METRICS_URL")
-	if sovereignMetricsURL == "" {
-		sovereignMetricsURL = "http://knowledge-sovereign:9501"
-	}
-	meiliURL := os.Getenv("MEILISEARCH_HOST")
-	if meiliURL == "" {
-		meiliURL = "http://meilisearch:7700"
-	}
+	// System metrics: health check endpoints (config already applies defaults)
+	sovereignMetricsURL := cfg.Sovereign.MetricsURL
+	meiliURL := cfg.Meilisearch.Host
 	healthEndpoints := []health_checker.ServiceEndpoint{
 		{Name: "knowledge-sovereign", Endpoint: sovereignMetricsURL + "/health"},
 		{Name: "meilisearch", Endpoint: meiliURL + "/health"},

@@ -117,6 +117,14 @@ class SummaryEvaluator:
 
         return metrics
 
+    def shutdown(self) -> None:
+        """Release the thread pool used for sync G-Eval/faithfulness calls.
+
+        Must be called from the app lifespan's shutdown phase — the executor
+        is otherwise never released for the life of the process.
+        """
+        self._executor.shutdown(wait=True, cancel_futures=True)
+
     async def _run_multi_evaluation(
         self, eval_items: list[tuple[str, str]]
     ) -> SummaryMetrics:
@@ -126,7 +134,7 @@ class SummaryEvaluator:
         metrics = SummaryMetrics(sample_count=len(eval_items), success_count=0)
 
         tasks: list[tuple[str, asyncio.Future[Any]]] = []
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
 
         # G-Eval (async)
         tasks.append(("geval", asyncio.ensure_future(self._run_geval(eval_items))))
@@ -182,35 +190,34 @@ class SummaryEvaluator:
         return metrics
 
     async def _run_geval(self, eval_items: list[tuple[str, str]]) -> dict:
-        try:
-            batch_result = await self._ollama.evaluate_batch(eval_items)
-            return {
-                "coherence": batch_result.avg_coherence,
-                "consistency": batch_result.avg_consistency,
-                "fluency": batch_result.avg_fluency,
-                "relevance": batch_result.avg_relevance,
-                "overall": batch_result.avg_overall,
-                "success_count": batch_result.success_count,
-            }
-        except Exception as e:
-            logger.error("G-Eval failed", error=str(e))
-            return {}
+        # self._ollama.evaluate_batch() already absorbs per-item failures via
+        # gather(return_exceptions=True); anything it still raises is
+        # unexpected and must surface to _run_multi_evaluation's outer
+        # gather, which logs it and skips this axis — a local silent {}
+        # fallback here would just mask the same failure with no traceback.
+        batch_result = await self._ollama.evaluate_batch(eval_items)
+        return {
+            "coherence": batch_result.avg_coherence,
+            "consistency": batch_result.avg_consistency,
+            "fluency": batch_result.avg_fluency,
+            "relevance": batch_result.avg_relevance,
+            "overall": batch_result.avg_overall,
+            "success_count": batch_result.success_count,
+        }
 
     def _run_faithfulness_sync(
         self, summaries: list[str], source_sentences: list[list[str]]
     ) -> dict:
-        try:
-            results = self._faithfulness.detect_batch(summaries, source_sentences)
-            total_faith = sum(r.faithfulness_score for r in results)
-            total_halluc = sum(r.hallucination_score for r in results)
-            n = len(results)
-            return {
-                "faithfulness_score": total_faith / n if n > 0 else 0.0,
-                "hallucination_rate": total_halluc / n if n > 0 else 0.0,
-            }
-        except Exception as e:
-            logger.error("Faithfulness evaluation failed", error=str(e))
-            return {}
+        # See _run_geval: failures propagate to the outer gather in
+        # _run_multi_evaluation instead of being swallowed here.
+        results = self._faithfulness.detect_batch(summaries, source_sentences)
+        total_faith = sum(r.faithfulness_score for r in results)
+        total_halluc = sum(r.hallucination_score for r in results)
+        n = len(results)
+        return {
+            "faithfulness_score": total_faith / n if n > 0 else 0.0,
+            "hallucination_rate": total_halluc / n if n > 0 else 0.0,
+        }
 
     async def _apply_morning_letter_axes(
         self, metrics: SummaryMetrics, outputs: list[dict[str, Any]]
@@ -239,13 +246,14 @@ class SummaryEvaluator:
             if output.get("summary_ja")
         ]
         if summaries:
-            try:
-                metrics.readability_score = await self._readability.evaluate_batch(
-                    summaries[: self._sample_size]
-                )
-            except Exception as exc:
-                logger.warning("readability batch evaluation failed", error=str(exc))
-                metrics.readability_score = 0.0
+            # ReadabilityEvaluator.evaluate_batch already absorbs recoverable
+            # per-item failures (network/HTTP/unparseable LLM response) and
+            # logs them; anything it still raises is a wiring bug (e.g. a
+            # broken score_readability implementation) that must propagate
+            # per CLAUDE.md rule 8, not be masked as a silent 0.0 here.
+            metrics.readability_score = await self._readability.evaluate_batch(
+                summaries[: self._sample_size]
+            )
 
     @staticmethod
     def _extract_bullet_texts(output: dict[str, Any]) -> list[str]:

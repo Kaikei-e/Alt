@@ -9,6 +9,9 @@ on:
     paths: ['alt-frontend-sv/**']
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 jobs:
   unit-test:
     runs-on: ubuntu-latest
@@ -24,7 +27,7 @@ jobs:
 
       - name: Pre-checkout cleanup
         if: runner.environment == 'self-hosted'
-        uses: docker://alpine:latest
+        uses: docker://alpine:3.21@sha256:48b0309ca019d89d40f670aa1bc06e426dc0931948452e8491e3d65087abc07d
         env:
           RUNNERS_GID: ${{ steps.get-gid.outputs.gid }}
         with:
@@ -59,10 +62,6 @@ jobs:
       - name: Install dependencies
         working-directory: alt-frontend-sv
         run: bun install
-
-      - name: Log tsgo version
-        working-directory: alt-frontend-sv
-        run: bunx tsgo --version
 
       - name: Type check
         working-directory: alt-frontend-sv

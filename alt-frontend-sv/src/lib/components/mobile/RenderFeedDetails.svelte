@@ -46,7 +46,7 @@ const safeOnTheFlyContent = $derived(
 	</p>
 {:else if "matched_articles" in feedDetails && feedDetails.matched_articles?.length > 0}
 	<!-- FetchArticleSummaryResponse - Rich article display -->
-	{@const article = feedDetails.matched_articles[0]}
+	{@const article = feedDetails.matched_articles[0]!}
 	<div class="px-4 py-4">
 		<!-- Article Metadata -->
 		<div class="mb-4 p-4 rounded-lg border-2 border-surface-border bg-white shadow-sm">

@@ -104,7 +104,14 @@ func (w *JobWorker) processNextJob() {
 		w.logger.Info("Job completed", "job_id", job.ID)
 	}
 
-	if err := w.jobRepo.UpdateStatus(ctx, job.ID, status, errMsg); err != nil {
+	// UpdateStatus uses a fresh, short-lived context detached from the job's
+	// processing ctx: if the job runs close to jobTimeout, the shared ctx is
+	// already near-expired here and the status write itself would fail,
+	// leaving the job stuck at 'processing' forever (AcquireNextJob's stale
+	// reclaim below is the other half of this fix).
+	updateCtx, updateCancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer updateCancel()
+	if err := w.jobRepo.UpdateStatus(updateCtx, job.ID, status, errMsg); err != nil {
 		w.logger.Error("Failed to update job status", "job_id", job.ID, "error", err)
 	}
 }

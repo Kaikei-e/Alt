@@ -18,11 +18,17 @@ type fakeRepo struct {
 	saveErr  error
 }
 
-func (f *fakeRepo) FetchArticleByURL(_ context.Context, url string) (*domain.ArticleContent, error) {
-	if err, ok := f.byURLErr[url]; ok {
-		return nil, err
+func (f *fakeRepo) FetchArticlesByURLs(_ context.Context, urls []string) (map[string]*domain.ArticleContent, error) {
+	result := make(map[string]*domain.ArticleContent, len(urls))
+	for _, url := range urls {
+		if err, ok := f.byURLErr[url]; ok {
+			return nil, err
+		}
+		if a, ok := f.byURL[url]; ok && a != nil {
+			result[url] = a
+		}
 	}
-	return f.byURL[url], nil
+	return result, nil
 }
 
 func (f *fakeRepo) SaveArticle(_ context.Context, url, title, _ string) (string, error) {

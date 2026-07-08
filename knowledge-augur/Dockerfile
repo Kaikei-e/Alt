@@ -26,7 +26,7 @@ COPY --chown=ollama-user:ollama-user Modelfile.gemma3-4b-rag /home/ollama-user/
 
 # ---- Environment configuration -------------------------------------------
 ENV OLLAMA_HOST=0.0.0.0:11434
-ENV OLLAMA_ORIGINS=*
+ENV OLLAMA_ORIGINS=http://localhost,http://127.0.0.1
 ENV OLLAMA_KEEP_ALIVE=-1
 ENV OLLAMA_MAX_LOADED_MODELS=1
 ENV OLLAMA_NUM_PARALLEL=1

@@ -33,7 +33,7 @@ describe("filterGenreProgress", () => {
 		const result = filterGenreProgress(input);
 
 		expect(result.length).toBe(1);
-		expect(result[0][0]).toBe("classification");
+		expect(result[0]![0]).toBe("classification");
 	});
 
 	it("returns sorted genres alphabetically", () => {
@@ -65,7 +65,7 @@ describe("filterGenreProgress", () => {
 		const result = filterGenreProgress(input);
 
 		expect(result.length).toBe(1);
-		expect(result[0][1]).toEqual({
+		expect(result[0]![1]).toEqual({
 			status: "succeeded",
 			cluster_count: 5,
 			article_count: 20,

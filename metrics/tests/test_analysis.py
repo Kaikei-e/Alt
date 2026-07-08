@@ -318,3 +318,140 @@ class TestAnalyzeHealthServiceLatencyAggregation:
         analyze_health(result)
 
         assert result.service_health[0].p95_latency_ms == 0
+
+
+class TestAnalyzeHealthIssuesWarningsRecommendations:
+    """analyze_health関数の critical_issues / warnings / recommendations 生成テスト"""
+
+    def test_low_health_score_generates_critical_issue(self) -> None:
+        """健全性スコアが50未満のサービスはcritical_issuesに追加される"""
+        result = AnalysisResult(
+            hours_analyzed=24,
+            service_stats=[
+                {
+                    "service_name": "auth-hub",
+                    "total_logs": 1000,
+                    "error_count": 300,
+                    "error_rate": 30.0,
+                    "minutes_since_last_log": 20,
+                },
+            ],
+        )
+
+        analyze_health(result)
+
+        assert result.service_health[0].health_score < 50
+        assert any("auth-hub" in issue for issue in result.critical_issues)
+
+    def test_high_error_rate_generates_warning(self) -> None:
+        """エラー率が閾値超のサービスはwarningsに追加される"""
+        result = AnalysisResult(
+            hours_analyzed=24,
+            service_stats=[
+                {
+                    "service_name": "alt-backend",
+                    "total_logs": 1000,
+                    "error_count": 20,
+                    "error_rate": 2.0,
+                    "minutes_since_last_log": 0,
+                },
+            ],
+        )
+
+        analyze_health(result)
+
+        assert any("alt-backend" in w for w in result.warnings)
+
+    def test_slo_violations_generate_critical_issue(self) -> None:
+        """SLO違反はcritical_issuesに追加される"""
+        result = AnalysisResult(
+            hours_analyzed=24,
+            service_stats=[],
+            slo_violations=[
+                {"service": "alt-backend", "time_bucket": "2026-01-19 12:00:00", "error_rate_pct": 5.0},
+            ],
+        )
+
+        analyze_health(result)
+
+        assert any("SLO違反" in issue for issue in result.critical_issues)
+
+    def test_bottlenecks_generate_warning(self) -> None:
+        """ボトルネックはwarningsに追加される"""
+        result = AnalysisResult(
+            hours_analyzed=24,
+            service_stats=[],
+            bottlenecks=[
+                {"service": "auth-hub", "operation": "authenticate", "p95_ms": 3500.0, "total_time_sec": 100.0},
+            ],
+        )
+
+        analyze_health(result)
+
+        assert any("auth-hub" in w and "authenticate" in w for w in result.warnings)
+
+    def test_slow_apis_generate_recommendation(self) -> None:
+        """p95が閾値超のAPIは最適化推奨に追加される"""
+        thresholds = HealthThresholds()
+        result = AnalysisResult(
+            hours_analyzed=24,
+            service_stats=[],
+            api_performance=[
+                ApiPerformanceStats(
+                    service="alt-backend",
+                    endpoint="GET /slow",
+                    request_count=10,
+                    avg_ms=1500.0,
+                    p50_ms=1400.0,
+                    p95_ms=thresholds.latency_warning_ms + 1,
+                    p99_ms=2000.0,
+                    max_ms=2500.0,
+                    error_spans=0,
+                ),
+            ],
+        )
+
+        analyze_health(result, thresholds)
+
+        assert any("遅いエンドポイント" in rec for rec in result.recommendations)
+
+    def test_stale_services_generate_recommendation(self) -> None:
+        """ログ停止サービスは確認推奨に追加される"""
+        thresholds = HealthThresholds()
+        result = AnalysisResult(
+            hours_analyzed=24,
+            service_stats=[
+                {
+                    "service_name": "search-indexer",
+                    "total_logs": 100,
+                    "error_count": 0,
+                    "error_rate": 0.0,
+                    "minutes_since_last_log": thresholds.log_gap_warning_min + 1,
+                },
+            ],
+        )
+
+        analyze_health(result, thresholds)
+
+        assert any("search-indexer" in rec for rec in result.recommendations)
+
+    def test_no_issues_when_all_healthy(self) -> None:
+        """全サービスが健全な場合はcritical_issuesもwarningsも空"""
+        result = AnalysisResult(
+            hours_analyzed=24,
+            service_stats=[
+                {
+                    "service_name": "alt-backend",
+                    "total_logs": 1000,
+                    "error_count": 0,
+                    "error_rate": 0.0,
+                    "minutes_since_last_log": 0,
+                },
+            ],
+        )
+
+        analyze_health(result)
+
+        assert result.critical_issues == []
+        assert result.warnings == []
+        assert result.overall_health_score == 100

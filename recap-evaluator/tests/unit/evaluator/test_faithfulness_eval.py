@@ -88,17 +88,30 @@ class TestFaithfulnessEvaluator:
 
     @pytest.fixture
     def mock_nli_pipeline(self):
-        """Mock the transformers NLI pipeline."""
+        """Mock the transformers NLI pipeline.
+
+        detect() now scores the full pair cross product in one batched
+        call, so the mock must return one label-group per input (matching
+        real transformers pipeline batch behavior) rather than a single
+        fixed result regardless of batch size.
+        """
         with patch(
             "recap_evaluator.evaluator.faithfulness_eval.pipeline"
         ) as mock_pipeline:
             # Create mock NLI that returns high entailment scores
             mock_nli = MagicMock()
-            mock_nli.return_value = [[
-                {"label": "entailment", "score": 0.85},
-                {"label": "neutral", "score": 0.10},
-                {"label": "contradiction", "score": 0.05},
-            ]]
+
+            def _batch_result(inputs, **kwargs):
+                return [
+                    [
+                        {"label": "entailment", "score": 0.85},
+                        {"label": "neutral", "score": 0.10},
+                        {"label": "contradiction", "score": 0.05},
+                    ]
+                    for _ in inputs
+                ]
+
+            mock_nli.side_effect = _batch_result
             mock_pipeline.return_value = mock_nli
             yield mock_pipeline
 
@@ -137,6 +150,7 @@ class TestFaithfulnessEvaluator:
         """Low entailment should result in is_hallucinated=True."""
         # Reconfigure mock for low entailment
         mock_nli = mock_nli_pipeline.return_value
+        mock_nli.side_effect = None
         mock_nli.return_value = [[
             {"label": "entailment", "score": 0.2},
             {"label": "neutral", "score": 0.3},
@@ -231,11 +245,13 @@ class TestFaithfulnessEvaluator:
 
     def test_max_pooling_across_sources(self, mock_nli_pipeline):
         """detect() should use max-pooling for entailment across sources."""
-        # Configure mock to return different scores on different calls
+        # Both source pairs are scored in a single batched call — one
+        # result-group per input, in input order.
         mock_nli = mock_nli_pipeline.return_value
-        mock_nli.side_effect = [
-            [[{"label": "entailment", "score": 0.3}, {"label": "neutral", "score": 0.4}, {"label": "contradiction", "score": 0.3}]],
-            [[{"label": "entailment", "score": 0.9}, {"label": "neutral", "score": 0.05}, {"label": "contradiction", "score": 0.05}]],
+        mock_nli.side_effect = None
+        mock_nli.return_value = [
+            [{"label": "entailment", "score": 0.3}, {"label": "neutral", "score": 0.4}, {"label": "contradiction", "score": 0.3}],
+            [{"label": "entailment", "score": 0.9}, {"label": "neutral", "score": 0.05}, {"label": "contradiction", "score": 0.05}],
         ]
 
         evaluator = FaithfulnessEvaluator()

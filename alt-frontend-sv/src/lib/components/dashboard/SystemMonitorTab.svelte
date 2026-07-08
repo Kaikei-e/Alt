@@ -29,6 +29,19 @@ interface SystemStats {
 	}>;
 }
 
+function isSystemStats(data: unknown): data is SystemStats {
+	if (typeof data !== "object" || data === null) return false;
+	const candidate = data as Record<string, unknown>;
+	return (
+		typeof candidate.memory === "object" &&
+		candidate.memory !== null &&
+		typeof candidate.cpu === "object" &&
+		candidate.cpu !== null &&
+		typeof candidate.hanging_count === "number" &&
+		Array.isArray(candidate.top_processes)
+	);
+}
+
 let stats = $state<SystemStats | null>(null);
 let isConnected = $state(false);
 let retryCount = $state(0);
@@ -48,8 +61,12 @@ onMount(() => {
 
 	evtSource.onmessage = (event) => {
 		try {
-			const data = JSON.parse(event.data);
-			stats = data;
+			const data: unknown = JSON.parse(event.data);
+			if (isSystemStats(data)) {
+				stats = data;
+			} else {
+				console.error("Received malformed SSE stats payload:", data);
+			}
 		} catch (e) {
 			console.error("Failed to parse SSE data:", e);
 		}

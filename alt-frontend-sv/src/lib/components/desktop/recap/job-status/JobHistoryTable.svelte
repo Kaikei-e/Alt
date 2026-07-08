@@ -53,7 +53,7 @@ function formatRelativeTime(isoString: string): string {
 		<p class="empty">No jobs in this window.</p>
 	{:else}
 		<ul class="job-list">
-			{#each jobs as job}
+			{#each jobs as job (job.job_id)}
 				{@const stageCount = getStageCompletionCount(job)}
 				{@const isOpen = expandedJobId === job.job_id}
 				<li class="job-row" data-role="job-row" data-status={job.status}>

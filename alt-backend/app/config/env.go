@@ -53,9 +53,10 @@ func loadStruct(v reflect.Value) error {
 			// Path comes from a trusted env var (Docker Secrets pattern:
 			// *_FILE injects operator-controlled paths, never user input).
 			content, err := os.ReadFile(filepath.Clean(fileValue)) //#nosec G304,G703 -- path is operator-supplied via *_FILE env var (Docker Secrets)
-			if err == nil {
-				value = strings.TrimSpace(string(content))
+			if err != nil {
+				return fmt.Errorf("read secret file %s for %s: %w", fileValue, envFileTag, err)
 			}
+			value = strings.TrimSpace(string(content))
 		}
 
 		// If no file value found, check standard env var

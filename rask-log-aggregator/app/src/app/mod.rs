@@ -22,8 +22,7 @@ pub async fn run() -> Result<(), AggregatorError> {
 
     tracing::init_tracing();
 
-    let settings =
-        config::get_configuration().map_err(|e| AggregatorError::Config(e.to_string()))?;
+    let settings = config::get_configuration()?;
     ::tracing::info!("Loaded settings");
 
     // Shared shutdown token: used by BatchWriter and both servers

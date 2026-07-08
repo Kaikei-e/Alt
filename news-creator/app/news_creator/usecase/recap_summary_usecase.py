@@ -955,7 +955,11 @@ class RecapSummaryUsecase:
                 "format": json_schema,
                 "options": llm_options,
             }
-            raw_response = await self.llm_provider.chat_generate(chat_payload)
+            # Recap is a batch job: it must not consume the RT slots reserved
+            # for interactive Ask Augur chat (see ADR 140 / HybridPrioritySemaphore).
+            raw_response = await self.llm_provider.chat_generate(
+                chat_payload, priority="low"
+            )
             # Validate that response is a proper dict with message.content
             if not isinstance(raw_response, dict):
                 raise TypeError("chat_generate returned non-dict response")
@@ -1779,9 +1783,11 @@ class RecapSummaryUsecase:
                     # but let's assume Structured Outputs generally work.
                     # We could re-introduce heuristics if strictly necessary,
                     # but usually this means the model completely refused or broke.
-                    raise RuntimeError(f"Failed to parse structured output: {exc}")
+                    raise RuntimeError(
+                        f"Failed to parse structured output: {exc}"
+                    ) from exc
             else:
-                raise RuntimeError(f"Failed to parse structured output: {exc}")
+                raise RuntimeError(f"Failed to parse structured output: {exc}") from exc
 
         if not isinstance(parsed, dict):
             raise RuntimeError("LLM response must be a JSON object")
@@ -2037,7 +2043,11 @@ class RecapSummaryUsecase:
                 }
                 for c in request.clusters
             ],
+            "genre_highlights": [s.text for s in request.genre_highlights]
+            if request.genre_highlights
+            else None,
             "max_bullets": request.options.max_bullets if request.options else None,
+            "temperature": request.options.temperature if request.options else None,
         }
         content_hash = hashlib.sha256(
             json.dumps(key_data, sort_keys=True, ensure_ascii=False).encode()

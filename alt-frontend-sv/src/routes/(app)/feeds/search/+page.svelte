@@ -169,19 +169,19 @@ function handleSelectFeed(feed: RenderFeed, index: number) {
 
 function handlePrevious() {
 	if (currentIndex > 0) {
-		selectedFeed = feeds[currentIndex - 1];
+		selectedFeed = feeds[currentIndex - 1] ?? null;
 		currentIndex = currentIndex - 1;
 	}
 }
 
 async function handleNext() {
 	if (currentIndex >= 0 && currentIndex < feeds.length - 1) {
-		selectedFeed = feeds[currentIndex + 1];
+		selectedFeed = feeds[currentIndex + 1] ?? null;
 		currentIndex = currentIndex + 1;
 	} else if (hasMore && !isLoadingMore) {
 		await loadMore();
 		if (currentIndex < feeds.length - 1) {
-			selectedFeed = feeds[currentIndex + 1];
+			selectedFeed = feeds[currentIndex + 1] ?? null;
 			currentIndex = currentIndex + 1;
 		}
 	}

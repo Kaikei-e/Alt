@@ -84,25 +84,36 @@ func (a *ChatModelAdapter) ChatStream(ctx context.Context, messages []domain.Mes
 	go func() {
 		defer close(chunkCh)
 		defer close(errCh)
+		defer streamReader.Close()
 
 		for {
 			msg, readErr := streamReader.Recv()
 			if readErr != nil {
 				if errors.Is(readErr, io.EOF) || strings.Contains(readErr.Error(), "EOF") {
-					chunkCh <- domain.LLMStreamChunk{Done: true}
+					select {
+					case <-ctx.Done():
+					case chunkCh <- domain.LLMStreamChunk{Done: true}:
+					}
 					return
 				}
-				errCh <- readErr
+				select {
+				case <-ctx.Done():
+				case errCh <- readErr:
+				}
 				return
 			}
 			if msg == nil {
-				chunkCh <- domain.LLMStreamChunk{Done: true}
+				select {
+				case <-ctx.Done():
+				case chunkCh <- domain.LLMStreamChunk{Done: true}:
+				}
 				return
 			}
 
-			chunkCh <- domain.LLMStreamChunk{
-				Response: msg.Content,
-				Done:     false,
+			select {
+			case <-ctx.Done():
+				return
+			case chunkCh <- domain.LLMStreamChunk{Response: msg.Content, Done: false}:
 			}
 		}
 	}()

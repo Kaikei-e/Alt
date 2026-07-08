@@ -149,7 +149,7 @@ class TestOllamaGateway:
         assert await gateway.health_check() is True
 
     async def test_health_check_failure(self, gateway, mock_client):
-        mock_client.get.side_effect = Exception("connection refused")
+        mock_client.get.side_effect = httpx.ConnectError("connection refused")
 
         assert await gateway.health_check() is False
 

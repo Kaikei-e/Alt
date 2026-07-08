@@ -46,16 +46,16 @@ func TestSearchRecapsUsecase_ExecuteByQuery(t *testing.T) {
 	}
 
 	tests := []struct {
-		name           string
-		query          string
-		limit          int
-		mockDocs       []domain.RecapDocument
-		mockTotal      int64
-		mockErr        error
-		wantCount      int
-		wantTotal      int64
-		wantErr        bool
-		wantUsedLimit  int
+		name          string
+		query         string
+		limit         int
+		mockDocs      []domain.RecapDocument
+		mockTotal     int64
+		mockErr       error
+		wantCount     int
+		wantTotal     int64
+		wantErr       bool
+		wantUsedLimit int
 	}{
 		{
 			name:          "basic free-text search",

@@ -4,6 +4,7 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from unittest.mock import AsyncMock, Mock
 
+from news_creator.domain.models import SummaryMetadata
 from news_creator.gateway.hybrid_priority_semaphore import QueueFullError
 
 
@@ -33,12 +34,12 @@ def _make_mock_usecase(return_value=None, side_effect=None):
             return_value=return_value
             or (
                 "テスト要約",
-                {
-                    "model": "test-model",
-                    "prompt_tokens": 100,
-                    "completion_tokens": 50,
-                    "total_duration_ms": 1000.0,
-                },
+                SummaryMetadata(
+                    model="test-model",
+                    prompt_tokens=100,
+                    completion_tokens=50,
+                    total_duration_ms=1000.0,
+                ),
             )
         )
     return mock

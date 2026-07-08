@@ -67,7 +67,7 @@ let hasMessages = $derived(messages.length > 0);
 // answers' citations stay reachable through inline chips inside ThreadEntry.
 let railCitations = $derived.by<Citation[]>(() => {
 	for (let i = messages.length - 1; i >= 0; i--) {
-		const m = messages[i];
+		const m = messages[i]!;
 		if (m.role === "assistant") {
 			return m.citations ?? [];
 		}
@@ -80,7 +80,7 @@ let railCitations = $derived.by<Citation[]>(() => {
 // projection) render exactly as before.
 let railRelatedCitations = $derived.by<Citation[]>(() => {
 	for (let i = messages.length - 1; i >= 0; i--) {
-		const m = messages[i];
+		const m = messages[i]!;
 		if (m.role === "assistant") {
 			return m.relatedCitations ?? [];
 		}
@@ -220,7 +220,7 @@ async function handleSend(messageText: string) {
 				const now = Date.now();
 				if (now - lastUpdateTime > THROTTLE_MS) {
 					messages[currentAssistantMessageIndex] = {
-						...messages[currentAssistantMessageIndex],
+						...messages[currentAssistantMessageIndex]!,
 						message: bufferedContent,
 					};
 					lastUpdateTime = now;
@@ -234,7 +234,7 @@ async function handleSend(messageText: string) {
 			// onMeta: citations received
 			(citations) => {
 				messages[currentAssistantMessageIndex] = {
-					...messages[currentAssistantMessageIndex],
+					...messages[currentAssistantMessageIndex]!,
 					citations: convertCitations(citations),
 				};
 			},
@@ -242,12 +242,12 @@ async function handleSend(messageText: string) {
 			(result) => {
 				// Ensure final content is rendered
 				messages[currentAssistantMessageIndex] = {
-					...messages[currentAssistantMessageIndex],
+					...messages[currentAssistantMessageIndex]!,
 					message: result.answer || bufferedContent,
 					citations:
 						result.citations.length > 0
 							? convertCitations(result.citations)
-							: messages[currentAssistantMessageIndex].citations,
+							: messages[currentAssistantMessageIndex]!.citations,
 					relatedCitations: convertCitations(result.relatedCitations),
 				};
 				isLoading = false;
@@ -260,7 +260,7 @@ async function handleSend(messageText: string) {
 			// onFallback: insufficient context
 			(code) => {
 				messages[currentAssistantMessageIndex] = {
-					...messages[currentAssistantMessageIndex],
+					...messages[currentAssistantMessageIndex]!,
 					message: formatAugurFallbackMessage(code),
 				};
 				isLoading = false;
@@ -274,7 +274,7 @@ async function handleSend(messageText: string) {
 			(error) => {
 				console.error("Chat error:", error);
 				messages[currentAssistantMessageIndex] = {
-					...messages[currentAssistantMessageIndex],
+					...messages[currentAssistantMessageIndex]!,
 					message: `Error: ${error.message}. Please try again.`,
 				};
 				isLoading = false;
@@ -302,7 +302,7 @@ async function handleSend(messageText: string) {
 	} catch (error) {
 		console.error("Chat error:", error);
 		messages[currentAssistantMessageIndex] = {
-			...messages[currentAssistantMessageIndex],
+			...messages[currentAssistantMessageIndex]!,
 			message: `Error: ${error instanceof Error ? error.message : "Unknown error"}. Please try again.`,
 		};
 		isLoading = false;

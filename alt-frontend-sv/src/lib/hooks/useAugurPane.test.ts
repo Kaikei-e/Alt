@@ -104,10 +104,10 @@ describe("useAugurPane", () => {
 			pane.sendMessage("What is RSS?");
 
 			expect(pane.messages).toHaveLength(2);
-			expect(pane.messages[0].role).toBe("user");
-			expect(pane.messages[0].message).toBe("What is RSS?");
-			expect(pane.messages[1].role).toBe("assistant");
-			expect(pane.messages[1].message).toBe("");
+			expect(pane.messages[0]!.role).toBe("user");
+			expect(pane.messages[0]!.message).toBe("What is RSS?");
+			expect(pane.messages[1]!.role).toBe("assistant");
+			expect(pane.messages[1]!.message).toBe("");
 		});
 
 		it("sets isLoading to true", () => {
@@ -168,7 +168,7 @@ describe("useAugurPane", () => {
 			pane.sendMessage("Tell me more");
 
 			// The second call should include full history (excluding the empty placeholder)
-			const secondCall = mockStreamAugurChat.mock.calls[1];
+			const secondCall = mockStreamAugurChat.mock.calls[1]!;
 			const options = secondCall[1] as {
 				messages: Array<{ role: string; content: string }>;
 				conversationId: string;
@@ -217,7 +217,7 @@ describe("useAugurPane", () => {
 			capturedCallbacks.onDelta?.("is ");
 			capturedCallbacks.onDelta?.("great.");
 
-			expect(pane.messages[1].message).toBe("RSS is great.");
+			expect(pane.messages[1]!.message).toBe("RSS is great.");
 		});
 
 		it("onComplete finalizes assistant message and clears isLoading", () => {
@@ -236,8 +236,8 @@ describe("useAugurPane", () => {
 				],
 			});
 
-			expect(pane.messages[1].message).toBe("Final answer text");
-			expect(pane.messages[1].citations).toEqual([
+			expect(pane.messages[1]!.message).toBe("Final answer text");
+			expect(pane.messages[1]!.citations).toEqual([
 				{
 					URL: "https://example.com",
 					Title: "Example",
@@ -256,7 +256,7 @@ describe("useAugurPane", () => {
 				{ url: "https://a.com", title: "A", publishedAt: "2026-01-01" },
 			]);
 
-			expect(pane.messages[1].citations).toEqual([
+			expect(pane.messages[1]!.citations).toEqual([
 				{ URL: "https://a.com", Title: "A", PublishedAt: "2026-01-01" },
 			]);
 		});
@@ -267,7 +267,7 @@ describe("useAugurPane", () => {
 
 			capturedCallbacks.onError?.(new Error("Network failure"));
 
-			expect(pane.messages[1].message).toContain("Network failure");
+			expect(pane.messages[1]!.message).toContain("Network failure");
 			expect(pane.isLoading).toBe(false);
 		});
 
@@ -277,7 +277,7 @@ describe("useAugurPane", () => {
 
 			capturedCallbacks.onFallback?.("insufficient_context");
 
-			expect(pane.messages[1].message).toContain("Not enough indexed evidence");
+			expect(pane.messages[1]!.message).toContain("Not enough indexed evidence");
 			expect(pane.isLoading).toBe(false);
 		});
 
@@ -307,7 +307,7 @@ describe("useAugurPane", () => {
 			vi.advanceTimersByTime(180_000);
 
 			expect(pane.isLoading).toBe(false);
-			expect(pane.messages[1].message).toContain("Partial text");
+			expect(pane.messages[1]!.message).toContain("Partial text");
 
 			vi.useRealTimers();
 		});
@@ -322,7 +322,7 @@ describe("useAugurPane", () => {
 
 			// Advance past timeout — should NOT change anything
 			vi.advanceTimersByTime(180_000);
-			expect(pane.messages[1].message).toBe("Done");
+			expect(pane.messages[1]!.message).toBe("Done");
 
 			vi.useRealTimers();
 		});
@@ -490,7 +490,7 @@ describe("useAugurPane", () => {
 				"retrieval quality insufficient: context relevance too low",
 			);
 
-			expect(pane.messages[1].message).toContain("Not enough indexed evidence");
+			expect(pane.messages[1]!.message).toContain("Not enough indexed evidence");
 		});
 
 		it("shows generic message for technical fallback codes", () => {
@@ -499,7 +499,7 @@ describe("useAugurPane", () => {
 
 			capturedCallbacks.onFallback?.("validation failed");
 
-			expect(pane.messages[1].message).toContain(
+			expect(pane.messages[1]!.message).toContain(
 				"I couldn't find enough information",
 			);
 		});
@@ -512,7 +512,7 @@ describe("useAugurPane", () => {
 				"十分に一貫した根拠が取れなかったため、因果関係を断定できません。より具体的な質問をお試しください。",
 			);
 
-			expect(pane.messages[1].message).toContain(
+			expect(pane.messages[1]!.message).toContain(
 				"I couldn't establish a consistent enough evidence trail",
 			);
 		});

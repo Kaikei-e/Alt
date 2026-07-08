@@ -25,7 +25,7 @@ interface Row {
 	up: number | null;
 }
 
-const rows = $derived(() => {
+const rows = $derived.by(() => {
 	const byJob: Record<string, Row> = {};
 	const ensure = (job: string): Row => {
 		if (!byJob[job]) {
@@ -99,7 +99,7 @@ function toggle(job: string) {
 
 <section class="red" aria-label="Service RED">
 	<h2 class="section-head">Service RED — rate / errors / duration</h2>
-	{#if rows().length === 0}
+	{#if rows.length === 0}
 		<p class="empty">No scraped services yet. Waiting for first stream tick.</p>
 	{:else}
 		<table>
@@ -115,7 +115,7 @@ function toggle(job: string) {
 				</tr>
 			</thead>
 			<tbody>
-				{#each rows() as r (r.job)}
+				{#each rows as r (r.job)}
 					{@const state = rowState(r)}
 					<tr
 						class="row"

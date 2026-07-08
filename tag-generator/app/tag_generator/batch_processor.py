@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING, Any, cast
 
 import structlog
 
-from tag_generator.exceptions import BatchProcessingError, TagExtractionError
+from tag_generator.exceptions import BatchProcessingError
 
 logger = structlog.get_logger(__name__)
 
@@ -189,7 +189,7 @@ class BatchProcessor:
                 if (i + 1) % self.config.memory_cleanup_interval == 0:
                     self._cleanup_memory()
 
-            except (TagExtractionError, Exception) as e:
+            except Exception as e:  # noqa: BLE001 - one poisoned article must not abort the whole batch
                 logger.error("Error extracting tags for article", article_id=article.get("id", "unknown"), error=str(e))
                 batch_stats["failed"] += 1
                 continue

@@ -19,7 +19,7 @@ use opentelemetry_proto::tonic::collector::{
     trace::v1::{ExportTraceServiceRequest, ExportTraceServiceResponse},
 };
 use prost::Message;
-use tracing::{error, info, instrument};
+use tracing::{debug, error, instrument};
 
 use crate::otlp::converter::{convert_log_records, convert_spans};
 use crate::port::OTelExporter;
@@ -82,7 +82,7 @@ async fn receive_logs_http(State(state): State<OTLPState>, body: Bytes) -> impl 
         );
     }
 
-    info!(count = log_count, "Exported OTLP logs");
+    debug!(count = log_count, "Exported OTLP logs");
 
     // Return success response
     let response = ExportLogsServiceResponse::default();
@@ -134,7 +134,7 @@ async fn receive_traces_http(State(state): State<OTLPState>, body: Bytes) -> imp
         );
     }
 
-    info!(count = span_count, "Exported OTLP traces");
+    debug!(count = span_count, "Exported OTLP traces");
 
     let response = ExportTraceServiceResponse::default();
     let mut buf = Vec::with_capacity(response.encoded_len());

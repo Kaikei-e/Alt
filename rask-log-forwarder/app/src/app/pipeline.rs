@@ -13,6 +13,14 @@ use tokio::sync::{RwLock, mpsc};
 use tokio_util::sync::CancellationToken;
 use tracing::{error, info};
 
+/// Handle to a lazily-built, reused OTLP transmitter. Building one parses the
+/// endpoint URL and constructs a serializer, so this is built once per
+/// pipeline run (see `run_processing_loop`) rather than on every batch flush.
+#[cfg(feature = "otlp")]
+type OtlpTransmitterHandle = Option<Arc<crate::sender::OtlpBatchTransmitter>>;
+#[cfg(not(feature = "otlp"))]
+type OtlpTransmitterHandle = ();
+
 /// Bundled parameters for the main processing loop.
 pub struct ProcessingLoopParams {
     pub collector: Arc<tokio::sync::Mutex<LogCollector>>,
@@ -79,29 +87,56 @@ pub async fn run_processing_loop(params: ProcessingLoopParams) {
     // Buffer for batching logs - directly collect EnrichedLogEntry (no double conversion)
     let mut log_batch: Vec<EnrichedLogEntry> = Vec::with_capacity(batch_size);
 
+    // Cache of the current container's info, rebuilt only when the
+    // collector reports a different container id (e.g. after a reconnect).
+    // Avoids a fresh `ContainerInfo` allocation on every single log entry.
+    let mut container_info_cache: Option<crate::collector::ContainerInfo> = None;
+
     // Fire flush ticks on a fixed cadence, created once outside the loop so a
     // steady stream of incoming logs (faster than flush_interval) can never
     // starve the periodic-flush branch of `select!`.
     let mut flush_ticker = tokio::time::interval(flush_interval);
     flush_ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
 
+    #[cfg(feature = "otlp")]
+    let otlp_transmitter: OtlpTransmitterHandle = {
+        use super::config::Protocol;
+        if matches!(sender_config.protocol, Protocol::Otlp) {
+            match crate::sender::OtlpBatchTransmitter::new(
+                sender.transmitter_client().clone(),
+                &sender_config.otlp_endpoint,
+            ) {
+                Ok(t) => Some(Arc::new(t)),
+                Err(e) => {
+                    error!("Failed to create OTLP transmitter: {e}");
+                    None
+                }
+            }
+        } else {
+            None
+        }
+    };
+    #[cfg(not(feature = "otlp"))]
+    let otlp_transmitter: OtlpTransmitterHandle = ();
+
     // Main processing loop
     loop {
         tokio::select! {
             // Process incoming log entries
             Some(log_entry) = log_rx.recv() => {
-                log_batch.push(enrich_log_entry(&parser, log_entry, &target_service).await);
+                let container_info = container_info_for(&mut container_info_cache, &log_entry.id, &target_service);
+                log_batch.push(enrich_log_entry(&parser, log_entry, container_info).await);
 
                 // Send batch when it reaches the configured size
                 if log_batch.len() >= batch_size {
-                    flush_batch(&mut log_batch, &reliability_manager, &sender, &sender_config).await;
+                    flush_batch(&mut log_batch, &reliability_manager, &sender, &sender_config, &otlp_transmitter).await;
                 }
             }
 
             // Periodic flush for any remaining logs
             _ = flush_ticker.tick() => {
                 if !log_batch.is_empty() {
-                    flush_batch(&mut log_batch, &reliability_manager, &sender, &sender_config).await;
+                    flush_batch(&mut log_batch, &reliability_manager, &sender, &sender_config, &otlp_transmitter).await;
                 }
             }
 
@@ -115,12 +150,13 @@ pub async fn run_processing_loop(params: ProcessingLoopParams) {
                 // final flush - otherwise logs in flight at shutdown are lost.
                 log_rx.close();
                 while let Ok(log_entry) = log_rx.try_recv() {
-                    log_batch.push(enrich_log_entry(&parser, log_entry, &target_service).await);
+                    let container_info = container_info_for(&mut container_info_cache, &log_entry.id, &target_service);
+                    log_batch.push(enrich_log_entry(&parser, log_entry, container_info).await);
                 }
 
                 // Flush any remaining logs before shutting down
                 if !log_batch.is_empty() {
-                    flush_batch(&mut log_batch, &reliability_manager, &sender, &sender_config).await;
+                    flush_batch(&mut log_batch, &reliability_manager, &sender, &sender_config, &otlp_transmitter).await;
                 }
                 break;
             }
@@ -131,31 +167,41 @@ pub async fn run_processing_loop(params: ProcessingLoopParams) {
     info!("Main processing loop stopped");
 }
 
+/// Returns a `ContainerInfo` for `id`, reusing the cached one when it still
+/// matches instead of allocating a fresh one for every single log entry.
+/// Only a container reconnect (id change) rebuilds it.
+fn container_info_for<'a>(
+    cache: &'a mut Option<crate::collector::ContainerInfo>,
+    id: &str,
+    target_service: &str,
+) -> &'a crate::collector::ContainerInfo {
+    let needs_rebuild = !matches!(cache, Some(info) if info.id == id);
+    if needs_rebuild {
+        *cache = Some(crate::collector::ContainerInfo {
+            id: id.to_string(),
+            service_name: target_service.to_string(),
+            group: None,
+            labels: std::collections::HashMap::new(),
+        });
+    }
+    cache.as_ref().expect("just initialized above")
+}
+
 /// Parse a raw collected log entry into an `EnrichedLogEntry`, falling back to
 /// a plain-text entry if parsing fails. Shared by the main select loop and the
 /// shutdown drain path so both apply identical enrichment.
 async fn enrich_log_entry(
     parser: &UniversalParser,
     log_entry: crate::collector::LogEntry,
-    target_service: &str,
+    container_info: &crate::collector::ContainerInfo,
 ) -> EnrichedLogEntry {
-    let container_info = crate::collector::ContainerInfo {
-        id: log_entry.id.clone(),
-        service_name: target_service.to_string(),
-        group: None,
-        labels: std::collections::HashMap::new(),
-    };
-
-    match parser
-        .parse_docker_log(log_entry.raw_bytes.as_ref(), &container_info)
-        .await
-    {
+    match parser.parse_docker_log(log_entry.raw_bytes.as_ref(), container_info) {
         Ok(enriched_entry) => enriched_entry,
         Err(e) => {
             error!("Failed to parse log entry: {}", e);
             // Fallback: create a plain text EnrichedLogEntry directly
             EnrichedLogEntry {
-                service_type: target_service.to_string(),
+                service_type: container_info.service_name.clone(),
                 log_type: "plain".to_string(),
                 message: String::from_utf8_lossy(&log_entry.raw_bytes).to_string(),
                 level: Some(crate::domain::LogLevel::Info),
@@ -168,7 +214,7 @@ async fn enrich_log_entry(
                 ip_address: None,
                 user_agent: None,
                 container_id: log_entry.container_id.clone(),
-                service_name: target_service.to_string(),
+                service_name: container_info.service_name.clone(),
                 service_group: None,
                 trace_id: None,
                 span_id: None,
@@ -187,6 +233,7 @@ async fn flush_batch(
     reliability_manager: &Arc<ReliabilityManager>,
     _sender: &Arc<LogSender>,
     _sender_config: &SenderConfig,
+    _otlp_transmitter: &OtlpTransmitterHandle,
 ) {
     if log_batch.is_empty() {
         return;
@@ -202,7 +249,7 @@ async fn flush_batch(
     {
         use super::config::Protocol;
         if matches!(_sender_config.protocol, Protocol::Otlp) {
-            flush_otlp_batch(entries, _sender, _sender_config).await;
+            flush_otlp_batch(entries, _otlp_transmitter).await;
             return;
         }
     }
@@ -227,28 +274,21 @@ async fn flush_batch(
     }
 }
 
-/// Send batch using OTLP protobuf format via the initialized sender's HTTP client.
+/// Send batch using OTLP protobuf format via the transmitter built once at
+/// the start of `run_processing_loop` (see `otlp_transmitter`).
 #[cfg(feature = "otlp")]
 async fn flush_otlp_batch(
     entries: Vec<EnrichedLogEntry>,
-    sender: &Arc<LogSender>,
-    sender_config: &SenderConfig,
+    otlp_transmitter: &OtlpTransmitterHandle,
 ) {
-    use crate::sender::OtlpBatchTransmitter;
-
     let batch = Batch::new(entries, BatchType::SizeBased);
     let entry_count = batch.size();
 
-    // Create OtlpBatchTransmitter reusing the sender's HTTP client
-    let otlp_transmitter = match OtlpBatchTransmitter::new(
-        sender.transmitter_client().clone(),
-        &sender_config.otlp_endpoint,
-    ) {
-        Ok(t) => t,
-        Err(e) => {
-            error!("Failed to create OTLP transmitter: {e}");
-            return;
-        }
+    let Some(otlp_transmitter) = otlp_transmitter else {
+        error!(
+            "OTLP transmitter unavailable (failed to initialize at startup); dropping batch of {entry_count} logs"
+        );
+        return;
     };
 
     match otlp_transmitter.send_batch(batch).await {
@@ -312,7 +352,10 @@ mod tests {
         }
     }
 
-    async fn build_reliability_manager(endpoint: String, storage_path: std::path::PathBuf) -> ReliabilityManager {
+    async fn build_reliability_manager(
+        endpoint: String,
+        storage_path: std::path::PathBuf,
+    ) -> ReliabilityManager {
         let client_config = ClientConfig {
             endpoint,
             timeout: Duration::from_millis(500),
@@ -376,10 +419,14 @@ mod tests {
             &reliability_manager,
             &sender,
             &test_sender_config(),
+            &OtlpTransmitterHandle::default(),
         )
         .await;
 
-        assert!(log_batch.is_empty(), "flush_batch should always drain the batch it was given");
+        assert!(
+            log_batch.is_empty(),
+            "flush_batch should always drain the batch it was given"
+        );
 
         let snapshot = reliability_manager.get_metrics_snapshot().await;
         assert_eq!(
@@ -423,6 +470,7 @@ mod tests {
             &reliability_manager,
             &sender,
             &test_sender_config(),
+            &OtlpTransmitterHandle::default(),
         )
         .await;
 

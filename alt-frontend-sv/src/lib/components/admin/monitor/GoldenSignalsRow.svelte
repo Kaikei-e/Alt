@@ -12,10 +12,10 @@ function find(key: string): MetricResult | undefined {
 	return metrics.find((m) => m.key === key);
 }
 
-const latency = $derived(() => find("http_latency_p95"));
-const traffic = $derived(() => find("http_rps"));
-const errorRatio = $derived(() => find("http_error_ratio"));
-const cpu = $derived(() => find("cpu_saturation"));
+const latency = $derived(find("http_latency_p95"));
+const traffic = $derived(find("http_rps"));
+const errorRatio = $derived(find("http_error_ratio"));
+const cpu = $derived(find("cpu_saturation"));
 
 // Thresholds — conservative first pass aligned with the existing ObservabilityPanel.
 const latencyWarn = (v: number) => v > 1.0; // p95 > 1s
@@ -28,26 +28,26 @@ const cpuWarn = (v: number) => v > 1.5; // > 1.5 cores summed across containers
 	<div class="grid">
 		<MetricCard
 			label="HTTP latency p95"
-			metric={latency()}
+			metric={latency}
 			warn={latencyWarn}
 			thresholdValue={1.0}
 			aggregate="max"
 		/>
 		<MetricCard
 			label="HTTP traffic"
-			metric={traffic()}
+			metric={traffic}
 			aggregate="sum"
 		/>
 		<MetricCard
 			label="HTTP 5xx ratio"
-			metric={errorRatio()}
+			metric={errorRatio}
 			warn={errorWarn}
 			thresholdValue={0.01}
 			aggregate="max"
 		/>
 		<MetricCard
 			label="CPU saturation"
-			metric={cpu()}
+			metric={cpu}
 			warn={cpuWarn}
 			thresholdValue={1.5}
 			aggregate="sum"

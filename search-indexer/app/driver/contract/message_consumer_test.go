@@ -7,8 +7,8 @@ import (
 	"testing"
 	"time"
 
-	message "github.com/pact-foundation/pact-go/v2/message/v4"
 	"github.com/pact-foundation/pact-go/v2/matchers"
+	message "github.com/pact-foundation/pact-go/v2/message/v4"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )

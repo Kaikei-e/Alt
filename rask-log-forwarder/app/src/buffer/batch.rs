@@ -32,10 +32,14 @@ impl Default for BatchConfig {
     }
 }
 
+// `entries` is `Arc<[EnrichedLogEntry]>` rather than `Vec<EnrichedLogEntry>`
+// so that `Batch::clone()` (used e.g. per retry attempt in
+// `ReliabilityManager::attempt_transmission_with_retries`) is an O(1)
+// refcount bump instead of a deep copy of every entry.
 #[derive(Debug, Clone)]
 pub struct Batch {
     id: String,
-    entries: Vec<EnrichedLogEntry>,
+    entries: Arc<[EnrichedLogEntry]>,
     batch_type: BatchType,
     created_at: Instant,
     estimated_size: usize,
@@ -47,7 +51,7 @@ impl Batch {
 
         Self {
             id: Uuid::new_v4().to_string(),
-            entries,
+            entries: entries.into(),
             batch_type,
             created_at: Instant::now(),
             estimated_size,
@@ -62,7 +66,7 @@ impl Batch {
     ) -> Self {
         Self {
             id,
-            entries,
+            entries: entries.into(),
             batch_type,
             created_at: Instant::now(),
             estimated_size,
@@ -82,7 +86,7 @@ impl Batch {
     }
 
     pub fn into_entries(self) -> Vec<EnrichedLogEntry> {
-        self.entries
+        self.entries.to_vec()
     }
 
     pub fn batch_type(&self) -> BatchType {
@@ -109,11 +113,20 @@ pub struct BatchFormer {
     notify: Arc<Notify>,
 }
 
+/// Upper bound on `ready_batches`: caps memory if the consumer side
+/// (`next_batch`) falls behind batch production instead of growing forever.
+const MAX_READY_BATCHES: usize = 1024;
+
 struct BatchFormerInner {
     pending_entries: VecDeque<EnrichedLogEntry>,
     current_memory_size: usize,
     batch_start_time: Option<TokioInstant>,
     ready_batches: VecDeque<Batch>,
+    /// True while a `maybe_start_timeout_timer` task is already sleeping
+    /// until the current batch's deadline. Without this, every single
+    /// `add_entry` call before the batch fills up would spawn its own
+    /// (redundant, identically-timed) timeout task.
+    timer_running: bool,
 }
 
 impl BatchFormer {
@@ -123,6 +136,7 @@ impl BatchFormer {
             current_memory_size: 0,
             batch_start_time: None,
             ready_batches: VecDeque::new(),
+            timer_running: false,
         };
 
         Self {
@@ -211,6 +225,7 @@ impl BatchFormer {
                 entries = inner.pending_entries.drain(..).collect();
                 inner.current_memory_size = 0;
                 inner.batch_start_time = None;
+                inner.timer_running = false;
             } else {
                 tracing::error!("Failed to acquire write lock for creating batch");
                 return;
@@ -222,6 +237,12 @@ impl BatchFormer {
 
             {
                 if let Ok(mut inner) = self.inner.write_safe().await {
+                    if inner.ready_batches.len() >= MAX_READY_BATCHES {
+                        inner.ready_batches.pop_front();
+                        tracing::warn!(
+                            "BatchFormer ready_batches queue full ({MAX_READY_BATCHES}); dropping oldest unconsumed batch"
+                        );
+                    }
                     inner.ready_batches.push_back(batch);
                     self.notify.notify_one();
                 } else {
@@ -236,13 +257,17 @@ impl BatchFormer {
         let deadline;
 
         {
-            if let Ok(inner) = self.inner.read_safe().await {
-                should_start_timer =
-                    inner.batch_start_time.is_some() && !inner.pending_entries.is_empty();
+            if let Ok(mut inner) = self.inner.write_safe().await {
+                should_start_timer = !inner.timer_running
+                    && inner.batch_start_time.is_some()
+                    && !inner.pending_entries.is_empty();
                 deadline = inner.batch_start_time.unwrap_or_else(TokioInstant::now)
                     + self.config.max_wait_time;
+                if should_start_timer {
+                    inner.timer_running = true;
+                }
             } else {
-                tracing::error!("Failed to acquire read lock for timeout timer check");
+                tracing::error!("Failed to acquire write lock for timeout timer check");
                 return;
             }
         }

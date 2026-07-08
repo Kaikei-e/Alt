@@ -33,16 +33,8 @@ interface Props {
 
 const { initialFeed }: Props = $props();
 
-// State - using $derived for initial prop to satisfy Svelte 5 reactivity
-const initialFeedValue = $derived(initialFeed);
-let currentFeed = $state<FeedData | null>(null);
-
-// Initialize currentFeed from props on mount
-$effect(() => {
-	if (currentFeed === null && initialFeedValue) {
-		currentFeed = initialFeedValue;
-	}
-});
+// Props are read once at creation; the component owns currentFeed afterward.
+let currentFeed = $state<FeedData | null>(untrack(() => initialFeed ?? null));
 let feedTags = $state<TagTrailTag[]>([]);
 let isLoadingFeedTags = $state(false);
 let isLoadingFeed = $state(false);
@@ -287,7 +279,7 @@ function handleHopClick(index: number) {
 		loadingArticleTags = new Set();
 	} else if (index < hops.length - 1) {
 		// Go back to a previous hop
-		const targetHop = hops[index];
+		const targetHop = hops[index]!;
 		hops = hops.slice(0, index + 1);
 
 		if (targetHop.type === "feed") {

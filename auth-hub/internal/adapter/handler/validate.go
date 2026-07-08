@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"fmt"
 	"log/slog"
 	"net/http"
 
@@ -17,7 +18,13 @@ type ValidateHandler struct {
 }
 
 // NewValidateHandler creates a new validate handler.
+// token must be non-nil: /validate is the sole source of the backend JWT that
+// nginx forwards downstream, so an unwired TokenIssuer is a startup bug, not a
+// degraded mode.
 func NewValidateHandler(uc *usecase.ValidateSession, token domain.TokenIssuer) *ValidateHandler {
+	if token == nil {
+		panic("handler: NewValidateHandler requires a non-nil TokenIssuer")
+	}
 	return &ValidateHandler{uc: uc, token: token}
 }
 
@@ -33,15 +40,15 @@ func (h *ValidateHandler) Handle(c echo.Context) error {
 		return mapDomainError(err)
 	}
 
-	// Issue JWT backend token for nginx to forward to backend
-	if h.token != nil {
-		backendToken, tokenErr := h.token.IssueBackendToken(identity, identity.SessionID)
-		if tokenErr != nil {
-			slog.ErrorContext(c.Request().Context(), "failed to issue backend token in validate", "error", tokenErr)
-		} else {
-			c.Response().Header().Set("X-Alt-Backend-Token", backendToken)
-		}
+	// Issue JWT backend token for nginx to forward to backend. A failure here
+	// must fail closed: without this header the backend receives no proof of
+	// authentication, so returning 200 would let an unauthenticated request through.
+	backendToken, tokenErr := h.token.IssueBackendToken(identity, identity.SessionID)
+	if tokenErr != nil {
+		slog.ErrorContext(c.Request().Context(), "failed to issue backend token in validate", "error", tokenErr)
+		return mapDomainError(fmt.Errorf("%w: %w", domain.ErrTokenGeneration, tokenErr))
 	}
+	c.Response().Header().Set("X-Alt-Backend-Token", backendToken)
 
 	c.Response().Header().Set("X-Alt-User-Id", identity.UserID)
 	c.Response().Header().Set("X-Alt-Tenant-Id", identity.UserID) // Single-tenant

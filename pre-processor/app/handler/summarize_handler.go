@@ -5,8 +5,6 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
-	"sync"
-	"time"
 
 	"pre-processor/domain"
 	"pre-processor/repository"
@@ -14,51 +12,9 @@ import (
 	summarizeuc "pre-processor/usecase/summarize"
 	apperrors "pre-processor/utils/errors"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/labstack/echo/v4"
 )
-
-// processingLock holds lock metadata for timeout-based lock management.
-type processingLock struct {
-	startTime time.Time
-}
-
-// processingArticles tracks article IDs currently being processed to prevent duplicate requests.
-// This prevents the retry loop issue where timeout causes immediate retry which fills the queue.
-var processingArticles sync.Map
-
-// processingTimeout defines how long a lock can be held before it's considered stale.
-// This prevents "zombie locks" when the original request hangs or client disconnects
-// with context.Background() being used upstream.
-const processingTimeout = 5 * time.Minute
-
-// tryAcquireLock attempts to acquire a processing lock for the given article ID.
-// Returns true if lock was acquired, false if article is already being processed.
-// Stale locks (older than processingTimeout) are automatically released.
-func tryAcquireLock(articleID string) bool {
-	now := time.Now()
-	newLock := &processingLock{startTime: now}
-
-	// Try to store the lock
-	if actual, loaded := processingArticles.LoadOrStore(articleID, newLock); loaded {
-		// Lock exists - check if it's stale
-		existingLock := actual.(*processingLock)
-		if time.Since(existingLock.startTime) > processingTimeout {
-			// Stale lock - try to replace it with CompareAndSwap
-			if processingArticles.CompareAndSwap(articleID, existingLock, newLock) {
-				return true // Successfully replaced stale lock
-			}
-			// Another goroutine beat us - retry the whole operation
-			return tryAcquireLock(articleID)
-		}
-		return false // Lock is still valid
-	}
-	return true // Successfully acquired new lock
-}
-
-// releaseLock releases the processing lock for the given article ID.
-func releaseLock(articleID string) {
-	processingArticles.Delete(articleID)
-}
 
 // SummarizeRequest represents the request body for article summarization
 type SummarizeRequest struct {
@@ -120,7 +76,7 @@ func (h *SummarizeHandler) HandleSummarize(c echo.Context) error {
 	}
 
 	// Check if this article is already being processed to prevent duplicate requests.
-	if !tryAcquireLock(req.ArticleID) {
+	if !summarizeuc.TryAcquireLock(req.ArticleID) {
 		h.logger.WarnContext(ctx, "article is already being processed, rejecting duplicate request",
 			"article_id", req.ArticleID)
 		return apperrors.NewConflictContextError(
@@ -129,7 +85,7 @@ func (h *SummarizeHandler) HandleSummarize(c echo.Context) error {
 			map[string]interface{}{"article_id": req.ArticleID},
 		)
 	}
-	defer releaseLock(req.ArticleID)
+	defer summarizeuc.ReleaseLock(req.ArticleID)
 
 	// Delegate to shared on-demand summarization usecase
 	result, err := h.onDemand.Summarize(ctx, summarizeuc.SummarizeRequest{
@@ -223,7 +179,7 @@ func (h *SummarizeHandler) HandleStreamSummarize(c echo.Context) error {
 	}
 
 	// Check if this article is already being processed to prevent duplicate requests.
-	if !tryAcquireLock(req.ArticleID) {
+	if !summarizeuc.TryAcquireLock(req.ArticleID) {
 		h.logger.WarnContext(ctx, "article is already being processed (stream), rejecting duplicate request",
 			"article_id", req.ArticleID)
 		return apperrors.NewConflictContextError(
@@ -232,7 +188,7 @@ func (h *SummarizeHandler) HandleStreamSummarize(c echo.Context) error {
 			map[string]interface{}{"article_id": req.ArticleID},
 		)
 	}
-	defer releaseLock(req.ArticleID)
+	defer summarizeuc.ReleaseLock(req.ArticleID)
 
 	// Resolve article content using shared usecase
 	resolved, err := h.onDemand.ResolveArticle(ctx, summarizeuc.SummarizeRequest{
@@ -401,12 +357,23 @@ func (h *SummarizeHandler) HandleSummarizeStatus(c echo.Context) error {
 
 	h.logger.DebugContext(ctx, "checking summarization job status", "job_id", jobID)
 
-	// Get job from queue
+	// Get job from queue. Only a genuine "no rows" maps to 404 — a DB
+	// connection failure or other repository error must not be reported as
+	// "job not found", which would tell a polling client to give up instead
+	// of retrying.
 	job, err := h.jobRepo.GetJob(ctx, jobID)
 	if err != nil {
-		return apperrors.NewNotFoundContextError(
-			domain.ErrJobNotFound.Error(),
+		if errors.Is(err, pgx.ErrNoRows) {
+			return apperrors.NewNotFoundContextError(
+				domain.ErrJobNotFound.Error(),
+				"handler", "SummarizeHandler", "HandleSummarizeStatus",
+				map[string]interface{}{"job_id": jobID},
+			)
+		}
+		return apperrors.NewDatabaseContextError(
+			"failed to get summarization job",
 			"handler", "SummarizeHandler", "HandleSummarizeStatus",
+			err,
 			map[string]interface{}{"job_id": jobID},
 		)
 	}

@@ -214,5 +214,8 @@ func (r *Repository) scanEvents(ctx context.Context, query string, args ...inter
 		}
 		events = append(events, e)
 	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("scanEvents rows: %w", err)
+	}
 	return events, nil
 }

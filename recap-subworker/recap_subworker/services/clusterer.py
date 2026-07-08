@@ -68,8 +68,8 @@ class ClusterResult:
     probabilities: np.ndarray
     used_umap: bool
     params: HDBSCANSettings
-    dbcv_score: float = 0.0
-    silhouette_score: float = 0.0
+    dbcv_score: float | None = None
+    silhouette_score: float | None = None
     used_fallback: bool = False  # True if MiniBatchKMeans fallback was used
 
 
@@ -339,7 +339,12 @@ class Clusterer:
                                 if sil > best_sil:
                                     best_sil = sil
                                     best_k = k
-                        except Exception:
+                        except (ValueError, RuntimeError) as exc:
+                            _LOGGER.debug(
+                                "noise_recluster.kmeans_k_search_failed",
+                                k=k,
+                                error=str(exc),
+                            )
                             continue
 
                     # Apply best k clustering
@@ -357,8 +362,13 @@ class Clusterer:
                             # Update labels and probabilities
                             labels[noise_mask] = new_noise_labels
                             probs[noise_mask] = 1.0  # Hard clustering
-                        except Exception:
-                            pass  # If reclustering fails, keep noise as -1
+                        except (ValueError, RuntimeError) as exc:
+                            # If reclustering fails, keep noise as -1
+                            _LOGGER.warning(
+                                "noise_recluster.kmeans_apply_failed",
+                                best_k=best_k,
+                                error=str(exc),
+                            )
 
         # Calculate DBCV score using the reduced space (or embeddings if UMAP not used)
         # This ensures consistency with the space HDBSCAN actually operated on
@@ -380,7 +390,7 @@ class Clusterer:
             used_fallback=used_fallback,
         )
 
-    def _calculate_dbcv(self, X: np.ndarray, labels: np.ndarray) -> float:
+    def _calculate_dbcv(self, X: np.ndarray, labels: np.ndarray) -> float | None:
         """
         Calculate DBCV (Density-Based Clustering Validation) score using hdbscan.validity.validity_index.
 
@@ -389,39 +399,48 @@ class Clusterer:
             labels: Cluster labels from HDBSCAN (-1 indicates noise)
 
         Returns:
-            DBCV score (typically in [-1, 1] range), or 0.0 if calculation fails
+            DBCV score (typically in [-1, 1] range), or None if the score could
+            not be measured (too few clusters/points, or calculation failed) —
+            callers must not treat this as a measured 0.0.
         """
         try:
             from hdbscan.validity import validity_index
         except ImportError:
-            # Fallback if hdbscan is not available (e.g., build issues)
-            return 0.0
+            # hdbscan is not available (e.g., build issues) — not measured.
+            return None
 
         try:
             # Filter out noise points (-1) for DBCV calculation
             mask = labels != -1
             if mask.sum() < 2:
-                return 0.0
+                return None
 
             filtered_X = X[mask]
             filtered_labels = labels[mask]
 
             # DBCV requires at least 2 distinct clusters
             if len(set(filtered_labels)) < 2:
-                return 0.0
+                return None
 
             dbcv = float(validity_index(filtered_X, filtered_labels, metric='euclidean'))
 
             # Ensure result is finite (handle NaN/Inf)
             if not np.isfinite(dbcv):
-                return 0.0
+                return None
 
             return dbcv
-        except Exception:
-            # Any exception during calculation returns 0.0
-            return 0.0
+        except (ValueError, ArithmeticError) as exc:
+            _LOGGER.warning(
+                "clusterer.dbcv_calculation_failed",
+                error=str(exc),
+                error_type=type(exc).__name__,
+            )
+            return None
 
-    def _calculate_silhouette(self, embeddings: np.ndarray, labels: np.ndarray) -> float:
+    def _calculate_silhouette(
+        self, embeddings: np.ndarray, labels: np.ndarray
+    ) -> float | None:
+        """Returns None (not a measured 0.0) when the score can't be computed."""
         try:
             # Silhouette score requires at least 2 distinct labels
             # Filter out noise points (-1) for silhouette calculation
@@ -432,11 +451,16 @@ class Clusterer:
             filtered_labels = labels[non_noise_indices]
 
             if len(set(filtered_labels)) < 2 or len(filtered_labels) < 2:
-                return 0.0
+                return None
 
             return float(silhouette_score(filtered_embeddings, filtered_labels))
-        except Exception:
-            return 0.0
+        except (ValueError, ArithmeticError) as exc:
+            _LOGGER.warning(
+                "clusterer.silhouette_calculation_failed",
+                error=str(exc),
+                error_type=type(exc).__name__,
+            )
+            return None
 
     def optimize_clustering(
         self,
@@ -554,7 +578,7 @@ class Clusterer:
 
                         # Optimization metric: composite score (0.6 * silhouette + 0.4 * DBCV)
                         # Both scores are typically in [-1, 1] range, so weighted sum is reasonable
-                        score = 0.6 * result.silhouette_score + 0.4 * result.dbcv_score
+                        score = 0.6 * (result.silhouette_score or 0.0) + 0.4 * (result.dbcv_score or 0.0)
 
                         # Tie-breaking logic:
                         # 1. Higher composite score (better cluster separation and density validity)
@@ -841,7 +865,7 @@ class Clusterer:
                 )
 
                 # Return composite score (to maximize)
-                return 0.6 * result.silhouette_score + 0.4 * result.dbcv_score
+                return 0.6 * (result.silhouette_score or 0.0) + 0.4 * (result.dbcv_score or 0.0)
 
             except (IndexError, ValueError, RuntimeError, TypeError) as e:
                 _LOGGER.warning(
@@ -952,7 +976,7 @@ class Clusterer:
                             hdbscan_allow_single_cluster=hdbscan_allow_single_cluster,
                         )
 
-                        score = 0.6 * result.silhouette_score + 0.4 * result.dbcv_score
+                        score = 0.6 * (result.silhouette_score or 0.0) + 0.4 * (result.dbcv_score or 0.0)
 
                         if score > best_score:
                             best_score = score

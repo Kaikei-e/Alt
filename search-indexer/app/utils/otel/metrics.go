@@ -10,11 +10,11 @@ var Metrics *SearchIndexerMetrics
 
 // SearchIndexerMetrics contains all metric instruments.
 type SearchIndexerMetrics struct {
-	IndexedTotal      metric.Int64Counter
-	DeletedTotal      metric.Int64Counter
-	ErrorsTotal       metric.Int64Counter
-	BatchDuration     metric.Float64Histogram
-	SearchDuration    metric.Float64Histogram
+	IndexedTotal   metric.Int64Counter
+	DeletedTotal   metric.Int64Counter
+	ErrorsTotal    metric.Int64Counter
+	BatchDuration  metric.Float64Histogram
+	SearchDuration metric.Float64Histogram
 }
 
 // InitMetrics initializes all metric instruments.

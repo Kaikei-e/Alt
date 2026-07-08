@@ -1,5 +1,5 @@
 <script lang="ts">
-import { tick, untrack } from "svelte";
+import { onDestroy, tick, untrack } from "svelte";
 import augurAvatar from "$lib/assets/augur-chat.webp";
 import {
 	type AugurCitation,
@@ -17,6 +17,7 @@ type Citation = {
 };
 
 type Message = {
+	id?: string;
 	role: "user" | "assistant";
 	content: string;
 	citations?: Citation[];
@@ -37,7 +38,11 @@ const {
 }: Props = $props();
 
 // State
-let messages: Message[] = $state(untrack(() => [...initialMessages]));
+let messages: Message[] = $state(
+	untrack(() =>
+		initialMessages.map((m, i) => ({ ...m, id: m.id ?? `${m.role}-${i}` })),
+	),
+);
 let conversationId = $state<string>(untrack(() => initialConversationId));
 let inputValue = $state("");
 let isLoading = $state(false);
@@ -47,6 +52,11 @@ let isProvisional = $state(false);
 let messagesEndRef = $state<HTMLDivElement | undefined>(undefined);
 let messagesContainer = $state<HTMLDivElement | undefined>(undefined);
 let lastAutoSentQuestion = $state("");
+let currentAbortController: AbortController | null = null;
+
+onDestroy(() => {
+	currentAbortController?.abort();
+});
 
 // Auto-scroll: throttled, suppressed when user scrolls up
 let lastScrollTime = 0;
@@ -113,7 +123,10 @@ const handleSubmit = async (messageOverride?: string) => {
 	}
 
 	// Add user message
-	messages = [...messages, { role: "user", content: userMessage }];
+	messages = [
+		...messages,
+		{ id: crypto.randomUUID(), role: "user", content: userMessage },
+	];
 	await scrollToBottom();
 
 	isLoading = true;
@@ -121,7 +134,10 @@ const handleSubmit = async (messageOverride?: string) => {
 	isProvisional = false;
 
 	// Add placeholder for assistant message
-	messages = [...messages, { role: "assistant", content: "" }];
+	messages = [
+		...messages,
+		{ id: crypto.randomUUID(), role: "assistant", content: "" },
+	];
 	const currentAssistantMessageIndex = messages.length - 1;
 
 	let bufferedContent = "";
@@ -132,7 +148,7 @@ const handleSubmit = async (messageOverride?: string) => {
 	const typewriter = simulateTypewriterEffect(
 		(char) => {
 			bufferedContent += char;
-			const currentMsg = messages[currentAssistantMessageIndex];
+			const currentMsg = messages[currentAssistantMessageIndex]!;
 			messages[currentAssistantMessageIndex] = {
 				...currentMsg,
 				content: bufferedContent,
@@ -151,7 +167,7 @@ const handleSubmit = async (messageOverride?: string) => {
 			content: m.content,
 		}));
 
-		streamAugurChat(
+		currentAbortController = streamAugurChat(
 			transport,
 			{ messages: chatMessages, conversationId },
 			// onDelta: feed chunks to typewriter
@@ -172,7 +188,7 @@ const handleSubmit = async (messageOverride?: string) => {
 					publishedAt: c.publishedAt,
 				}));
 
-				const currentMsg = messages[currentAssistantMessageIndex];
+				const currentMsg = messages[currentAssistantMessageIndex]!;
 				messages[currentAssistantMessageIndex] = {
 					...currentMsg,
 					citations: cleanCitations,
@@ -181,7 +197,7 @@ const handleSubmit = async (messageOverride?: string) => {
 			// onComplete: cancel typewriter, set final content
 			(result) => {
 				typewriter.cancel();
-				const currentMsg = messages[currentAssistantMessageIndex];
+				const currentMsg = messages[currentAssistantMessageIndex]!;
 				messages[currentAssistantMessageIndex] = {
 					...currentMsg,
 					content: result.answer,
@@ -200,7 +216,7 @@ const handleSubmit = async (messageOverride?: string) => {
 			// onFallback: cancel typewriter, show fallback
 			(code) => {
 				typewriter.cancel();
-				const currentMsg = messages[currentAssistantMessageIndex];
+				const currentMsg = messages[currentAssistantMessageIndex]!;
 				messages[currentAssistantMessageIndex] = {
 					...currentMsg,
 					content: formatAugurFallbackMessage(code),
@@ -215,7 +231,7 @@ const handleSubmit = async (messageOverride?: string) => {
 			(error) => {
 				typewriter.cancel();
 				console.error("Chat error:", error);
-				const currentMsg = messages[currentAssistantMessageIndex];
+				const currentMsg = messages[currentAssistantMessageIndex]!;
 				messages[currentAssistantMessageIndex] = {
 					...currentMsg,
 					content: "Sorry, something went wrong. Please try again.",
@@ -235,7 +251,7 @@ const handleSubmit = async (messageOverride?: string) => {
 	} catch (error) {
 		typewriter.cancel();
 		console.error("Chat error:", error);
-		const currentMsg = messages[currentAssistantMessageIndex];
+		const currentMsg = messages[currentAssistantMessageIndex]!;
 		messages[currentAssistantMessageIndex] = {
 			...currentMsg,
 			content: "Sorry, something went wrong. Please try again.",
@@ -273,7 +289,7 @@ $effect(() => {
 			</div>
 		{/if}
 
-		{#each messages as message, idx}
+		{#each messages as message, idx (message.id)}
 			<article class="thread-entry" data-role={message.role} style="--stagger: {idx}">
 				{#if message.role === "user"}
 					<h3 class="entry-question">{message.content}</h3>

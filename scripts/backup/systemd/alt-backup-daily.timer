@@ -1,0 +1,16 @@
+[Unit]
+Description=Alt Platform Daily Full Backup Timer
+Documentation=file:///home/koko/Documents/dev/Alt/docs/runbooks/backup-restore.md
+
+[Timer]
+# Run daily at 3:00 AM
+OnCalendar=*-*-* 03:00:00
+# Randomize start within 30 minutes
+RandomizedDelaySec=1800
+# Persist timer across reboots
+Persistent=true
+# Accuracy within 1 minute
+AccuracySec=1min
+
+[Install]
+WantedBy=timers.target

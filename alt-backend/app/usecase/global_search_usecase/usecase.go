@@ -9,12 +9,14 @@ import (
 	"sync"
 	"time"
 
-	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 )
 
-const tracerName = "alt-backend/global_search"
+// TracerName identifies the tracer the composition root must create and
+// inject via NewGlobalSearchUsecase (usecase layer depends on the trace.Tracer
+// port only, never on the global otel registry).
+const TracerName = "alt-backend/global_search"
 
 const (
 	defaultArticleLimit = 5
@@ -61,13 +63,14 @@ func NewGlobalSearchUsecase(
 	articleSearch global_search_port.SearchArticlesPort,
 	recapSearch global_search_port.SearchRecapsPort,
 	tagSearch global_search_port.SearchTagsPort,
+	tracer trace.Tracer,
 ) *GlobalSearchUsecase {
 	return &GlobalSearchUsecase{
 		articleSearch: articleSearch,
 		recapSearch:   recapSearch,
 		tagSearch:     tagSearch,
 		logger:        slog.Default(),
-		tracer:        otel.Tracer(tracerName),
+		tracer:        tracer,
 	}
 }
 

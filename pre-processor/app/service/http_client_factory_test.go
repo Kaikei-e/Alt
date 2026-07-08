@@ -5,6 +5,7 @@
 package service
 
 import (
+	"context"
 	"strings"
 	"testing"
 	"time"
@@ -313,7 +314,7 @@ func TestHTTPClientFactory_ConfigValidation(t *testing.T) {
 
 			// Test if client works by attempting a request to invalid URL
 			// This is just to verify the client interface works
-			_, err := client.Get("invalid-url")
+			_, err := client.Get(context.Background(), "invalid-url")
 
 			if tc.expectError && err == nil {
 				t.Errorf("%s: expected error but got none", tc.description)

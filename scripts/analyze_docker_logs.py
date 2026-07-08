@@ -31,16 +31,16 @@ def parse_log_line(line: str) -> Tuple[Optional[str], Optional[datetime], Option
     try:
         # Try ISO format
         timestamp = datetime.fromisoformat(timestamp_str.replace('Z', '+00:00'))
-    except:
+    except ValueError:
         try:
             # Try other formats
             for fmt in ["%Y-%m-%dT%H:%M:%S.%f", "%Y-%m-%d %H:%M:%S"]:
                 try:
                     timestamp = datetime.strptime(timestamp_str, fmt)
                     break
-                except:
+                except ValueError:
                     continue
-        except:
+        except ValueError:
             pass
 
     return service_name, timestamp, message

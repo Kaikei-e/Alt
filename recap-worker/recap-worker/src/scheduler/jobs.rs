@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
 use anyhow::{Context, Result, anyhow};
+use tokio::sync::Semaphore;
 use tracing::warn;
 use uuid::Uuid;
 
@@ -69,6 +70,22 @@ impl JobContext {
         }
     }
 
+    /// 手動 `/v1/generate/recaps/*` 由来の Job 用 constructor。
+    /// `trigger_source = "user"` がセットされるため、クラッシュ後の boot で
+    /// `find_resumable_job`（`trigger_source='system'` フィルタ）に
+    /// バッチ Recap として誤 resume されない。
+    pub(crate) fn new_manual(job_id: Uuid, genres: Vec<String>, window_days: u32) -> Self {
+        Self {
+            job_id,
+            genres,
+            current_stage: None,
+            window_days,
+            trigger_source: "user",
+            user_id: None,
+            tenant_id: None,
+        }
+    }
+
     /// Morning-update 由来の Job 用 constructor。`trigger_source = "morning"`
     /// がセットされるため、プロセスクラッシュで残った行が boot 時に
     /// `find_resumable_job` から拾われず batch Recap として誤 resume されない。
@@ -131,6 +148,12 @@ pub struct Scheduler {
     config: Arc<Config>,
     recap_dao: Arc<dyn RecapDao>,
     subworker_client: Arc<SubworkerClient>,
+    /// Caps concurrent `run_job` executions at 1. `run_job` is the single
+    /// choke point for the nightly batch daemon, the admin trigger, and the
+    /// manual `/v1/generate/recaps/*` endpoints — without this, a manual
+    /// re-trigger racing the nightly batch (or repeated manual triggers)
+    /// could run the full LLM/clustering pipeline multiple times at once.
+    run_lock: Arc<Semaphore>,
 }
 
 impl Scheduler {
@@ -147,6 +170,7 @@ impl Scheduler {
             config,
             recap_dao,
             subworker_client,
+            run_lock: Arc::new(Semaphore::new(1)),
         }
     }
 
@@ -158,7 +182,20 @@ impl Scheduler {
         self.pipeline.classification_queue().shutdown().await;
     }
 
+    #[allow(clippy::too_many_lines)]
     pub(crate) async fn run_job(&self, context: JobContext) -> Result<()> {
+        // Non-blocking: a concurrent trigger must fail loudly and
+        // immediately rather than queue up behind an in-flight pipeline run
+        // (or worse, run alongside it).
+        let _run_permit = Arc::clone(&self.run_lock)
+            .try_acquire_owned()
+            .map_err(|_| {
+                anyhow!(
+                    "job {} rejected: another recap pipeline run is already in progress",
+                    context.job_id
+                )
+            })?;
+
         tracing::info!(
             job_id = %context.job_id,
             prompt_version = %self.config.llm_prompt_version(),

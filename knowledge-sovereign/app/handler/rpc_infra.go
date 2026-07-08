@@ -163,6 +163,10 @@ func (h *SovereignHandler) AppendKnowledgeEvent(
 		return nil, connect.NewError(connect.CodeInvalidArgument, err)
 	}
 
+	if pe.OccurredAt == nil {
+		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("occurred_at is required"))
+	}
+
 	event := sovereign_db.KnowledgeEvent{
 		EventID:       eventID,
 		ActorType:     pe.ActorType,
@@ -176,11 +180,7 @@ func (h *SovereignHandler) AppendKnowledgeEvent(
 		UserID:        userID,
 		CorrelationID: correlationID,
 		CausationID:   causationID,
-	}
-	if pe.OccurredAt != nil {
-		event.OccurredAt = pe.OccurredAt.AsTime()
-	} else {
-		event.OccurredAt = time.Now()
+		OccurredAt:    pe.OccurredAt.AsTime(),
 	}
 
 	seq, err := h.readDB.AppendKnowledgeEvent(ctx, event)
@@ -558,6 +558,9 @@ func (h *SovereignHandler) AppendRecallSignal(
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInvalidArgument, err)
 	}
+	if ps.OccurredAt == nil {
+		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("occurred_at is required"))
+	}
 	s := sovereign_db.RecallSignal{
 		SignalID:       signalID,
 		UserID:         signalUserID,
@@ -565,11 +568,7 @@ func (h *SovereignHandler) AppendRecallSignal(
 		SignalType:     ps.SignalType,
 		SignalStrength: ps.SignalStrength,
 		Payload:        ps.Payload,
-	}
-	if ps.OccurredAt != nil {
-		s.OccurredAt = ps.OccurredAt.AsTime()
-	} else {
-		s.OccurredAt = time.Now()
+		OccurredAt:     ps.OccurredAt.AsTime(),
 	}
 	if err := h.readDB.AppendRecallSignal(ctx, s); err != nil {
 		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("AppendRecallSignal: %w", err))
@@ -599,6 +598,9 @@ func (h *SovereignHandler) AppendKnowledgeUserEvent(
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInvalidArgument, err)
 	}
+	if pe.OccurredAt == nil {
+		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("occurred_at is required"))
+	}
 	e := sovereign_db.KnowledgeUserEvent{
 		UserEventID: userEventID,
 		UserID:      eventUserID,
@@ -607,11 +609,7 @@ func (h *SovereignHandler) AppendKnowledgeUserEvent(
 		ItemKey:     pe.ItemKey,
 		Payload:     pe.Payload,
 		DedupeKey:   pe.DedupeKey,
-	}
-	if pe.OccurredAt != nil {
-		e.OccurredAt = pe.OccurredAt.AsTime()
-	} else {
-		e.OccurredAt = time.Now()
+		OccurredAt:  pe.OccurredAt.AsTime(),
 	}
 	if err := h.readDB.AppendKnowledgeUserEvent(ctx, e); err != nil {
 		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("AppendKnowledgeUserEvent: %w", err))

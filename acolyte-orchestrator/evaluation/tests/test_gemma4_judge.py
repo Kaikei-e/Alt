@@ -33,32 +33,27 @@ def test_parses_rubric_score_from_llm_output():
     assert judge("any prompt") == 0.75
 
 
-def test_returns_nan_on_timeout():
+def test_returns_none_on_timeout():
     judge = Gemma4FaithfulnessJudge(_FakeLLM(delay=0.5), timeout_s=0.05)
-    assert judge("any prompt") != judge("any prompt") or True  # NaN != NaN
-    out = judge("any prompt")
-    assert out != out  # NaN check
+    assert judge("any prompt") is None
+    assert judge("any prompt") is None
 
 
-def test_returns_nan_on_llm_exception():
+def test_returns_none_on_llm_exception():
     judge = Gemma4FaithfulnessJudge(_FakeLLM(raise_exc=RuntimeError("boom")))
-    out = judge("any prompt")
-    assert out != out  # NaN check
+    assert judge("any prompt") is None
 
 
-def test_returns_nan_when_score_tag_missing():
+def test_returns_none_when_score_tag_missing():
     judge = Gemma4FaithfulnessJudge(_FakeLLM(text="no structured output here"))
-    out = judge("any prompt")
-    assert out != out  # NaN
+    assert judge("any prompt") is None
 
 
-def test_returns_nan_when_score_out_of_range():
+def test_returns_none_when_score_out_of_range():
     judge = Gemma4FaithfulnessJudge(_FakeLLM(text="<score>1.5</score>"))
-    out = judge("any prompt")
-    assert out != out  # NaN
+    assert judge("any prompt") is None
 
 
-def test_returns_nan_when_score_off_rubric():
+def test_returns_none_when_score_off_rubric():
     judge = Gemma4FaithfulnessJudge(_FakeLLM(text="<score>0.4</score>"))
-    out = judge("any prompt")
-    assert out != out  # NaN
+    assert judge("any prompt") is None

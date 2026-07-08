@@ -37,7 +37,7 @@ const performanceTone = $derived(
 				: "muted",
 );
 
-const performanceGlyph = $derived(() => {
+const performanceGlyph = $derived.by(() => {
 	if (!metrics.performanceRatio) return "●";
 	if (metrics.performanceRatio <= 0.8) return "▲";
 	if (metrics.performanceRatio > 1.2) return "▼";
@@ -65,7 +65,7 @@ const stagesCompleted = $derived(
 		<div class="summary-cell">
 			<dt>Performance</dt>
 			<dd class="performance" data-tone={performanceTone}>
-				<span class="glyph" aria-hidden="true">{performanceGlyph()}</span>
+				<span class="glyph" aria-hidden="true">{performanceGlyph}</span>
 				<span>{performance.label}</span>
 			</dd>
 		</div>

@@ -158,8 +158,8 @@ JSON評価結果:"""
                 coherence=0, consistency=0, fluency=0, relevance=0,
                 error="Request timeout",
             )
-        except Exception as e:
-            logger.error("Ollama request failed", error=str(e))
+        except (httpx.RequestError, json.JSONDecodeError) as e:
+            logger.exception("Ollama request failed")
             return GEvalResult(
                 coherence=0, consistency=0, fluency=0, relevance=0,
                 error=str(e),
@@ -251,6 +251,6 @@ JSON評価結果:"""
                     available_models=models,
                 )
             return True
-        except Exception as e:
-            logger.error("Ollama health check failed", error=str(e))
+        except (httpx.HTTPError, json.JSONDecodeError, ValueError):
+            logger.exception("Ollama health check failed")
             return False

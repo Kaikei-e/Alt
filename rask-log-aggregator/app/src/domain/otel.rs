@@ -5,6 +5,7 @@
 
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::sync::Arc;
 
 /// OpenTelemetry Log Record
 ///
@@ -39,8 +40,10 @@ pub struct OTelLog {
     /// Resource schema URL
     pub resource_schema_url: String,
 
-    /// Resource attributes (service.name, service.version, etc.)
-    pub resource_attributes: HashMap<String, String>,
+    /// Resource attributes (service.name, service.version, etc.).
+    /// `Arc`-shared: one resource commonly fans out into thousands of log
+    /// records, and this avoids a full `HashMap` clone per record.
+    pub resource_attributes: Arc<HashMap<String, String>>,
 
     /// Scope schema URL
     pub scope_schema_url: String,
@@ -51,8 +54,8 @@ pub struct OTelLog {
     /// Instrumentation scope version
     pub scope_version: String,
 
-    /// Scope attributes
-    pub scope_attributes: HashMap<String, String>,
+    /// Scope attributes (`Arc`-shared, see `resource_attributes`)
+    pub scope_attributes: Arc<HashMap<String, String>>,
 
     /// Log attributes (event-specific key-value pairs)
     pub log_attributes: HashMap<String, String>,

@@ -401,7 +401,7 @@ func TestHandler_GenerateTagsForArticle(t *testing.T) {
 		ctx := context.Background()
 
 		// Mock the publish
-		mockPort.On("Publish", ctx, domain.StreamKeyArticles, mock.AnythingOfType("*domain.Event")).
+		mockPort.On("Publish", ctx, domain.StreamKeyTags, mock.AnythingOfType("*domain.Event")).
 			Return("123-0", nil)
 
 		// Create reply event with tags

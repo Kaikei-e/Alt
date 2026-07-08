@@ -3,7 +3,8 @@ use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::Semaphore;
 use tokio::time::sleep;
-use tracing::{debug, error, info, warn};
+use tokio_util::sync::CancellationToken;
+use tracing::{error, info, warn};
 
 use super::store::QueueStore;
 use super::types::QueuedJob;
@@ -32,8 +33,11 @@ impl QueueWorker {
         }
     }
 
-    /// Run the worker loop
-    pub(crate) async fn run(&self) -> Result<()> {
+    /// Run the worker loop until `cancel` fires. Cancellation is checked
+    /// before each pick and raced against the idle/backoff sleeps, so a
+    /// shutdown signal stops the loop from picking up new jobs promptly
+    /// instead of relying on the caller aborting the task mid-flight.
+    pub(crate) async fn run(&self, cancel: CancellationToken) -> Result<()> {
         info!(
             concurrency = self.semaphore.available_permits(),
             retry_delay_ms = self.retry_delay_ms,
@@ -41,13 +45,23 @@ impl QueueWorker {
         );
 
         loop {
-            // Acquire semaphore permit (limits to 8 concurrent jobs)
-            let permit = Arc::clone(&self.semaphore).acquire_owned().await;
-            if permit.is_err() {
-                // Semaphore was closed
+            if cancel.is_cancelled() {
+                info!("shutdown requested, stopping classification queue worker");
                 break;
             }
-            let permit = permit.unwrap();
+
+            // Acquire semaphore permit (limits to 8 concurrent jobs)
+            let permit = tokio::select! {
+                permit = Arc::clone(&self.semaphore).acquire_owned() => permit,
+                () = cancel.cancelled() => {
+                    info!("shutdown requested, stopping classification queue worker");
+                    break;
+                }
+            };
+            let Ok(permit) = permit else {
+                // Semaphore was closed
+                break;
+            };
 
             // Pick next job from queue (SELECT FOR UPDATE SKIP LOCKED)
             let job = match self.store.pick_next_job().await {
@@ -55,13 +69,25 @@ impl QueueWorker {
                 Ok(None) => {
                     // No jobs available, wait a bit before retrying
                     drop(permit);
-                    sleep(Duration::from_millis(100)).await;
+                    tokio::select! {
+                        () = sleep(Duration::from_millis(100)) => {}
+                        () = cancel.cancelled() => {
+                            info!("shutdown requested, stopping classification queue worker");
+                            break;
+                        }
+                    }
                     continue;
                 }
                 Err(e) => {
                     error!(error = %e, "failed to pick next job");
                     drop(permit);
-                    sleep(Duration::from_secs(1)).await;
+                    tokio::select! {
+                        () = sleep(Duration::from_secs(1)) => {}
+                        () = cancel.cancelled() => {
+                            info!("shutdown requested, stopping classification queue worker");
+                            break;
+                        }
+                    }
                     continue;
                 }
             };
@@ -146,18 +172,26 @@ impl QueueWorker {
                 let should_retry = job.retry_count < job.max_retries;
 
                 if should_retry {
-                    // Mark as retrying
+                    // Exponential backoff, enforced by `next_retry_at` in the
+                    // store rather than a `sleep()` here: sleeping in this
+                    // task would hold the semaphore permit idle for the
+                    // whole backoff window while the row is already
+                    // re-pickable, wasting concurrency without actually
+                    // delaying the retry.
+                    let delay_ms = retry_delay_ms * (1_u64 << job.retry_count.min(3));
                     warn!(
                         job_id,
                         recap_job_id = %recap_job_id,
                         chunk_idx,
                         retry_count = job.retry_count + 1,
                         max_retries = job.max_retries,
+                        delay_ms,
                         error = %error_str,
                         "classification job failed, will retry"
                     );
 
-                    if let Err(store_err) = store.mark_retrying(job_id, &error_str).await {
+                    if let Err(store_err) = store.mark_retrying(job_id, &error_str, delay_ms).await
+                    {
                         error!(
                             job_id,
                             error = %store_err,
@@ -165,11 +199,6 @@ impl QueueWorker {
                         );
                         return Err(store_err);
                     }
-
-                    // Wait before retry (exponential backoff)
-                    let delay_ms = retry_delay_ms * (1_u64 << job.retry_count.min(3));
-                    debug!(job_id, delay_ms, "waiting before retry");
-                    sleep(Duration::from_millis(delay_ms)).await;
                 } else {
                     // Mark as failed (max retries exceeded)
                     error!(

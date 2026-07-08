@@ -34,24 +34,16 @@ type Props = {
 
 let { withinHours = 24, targetDate }: Props = $props();
 
-const welcomeMessage = $derived(
-	`Ask follow-up questions about today's edition.`,
-);
+const welcomeMessage = `Ask follow-up questions about today's edition.`;
 
-let messages = $state<Message[]>([]);
-
-$effect(() => {
-	if (messages.length === 0) {
-		messages = [
-			{
-				id: "welcome",
-				message: welcomeMessage,
-				role: "assistant",
-				timestamp: new Date().toLocaleTimeString(),
-			},
-		];
-	}
-});
+let messages = $state<Message[]>([
+	{
+		id: "welcome",
+		message: welcomeMessage,
+		role: "assistant",
+		timestamp: new Date().toLocaleTimeString(),
+	},
+]);
 
 let isLoading = $state(false);
 let inputValue = $state("");
@@ -129,7 +121,7 @@ async function handleSend() {
 				const now = Date.now();
 				if (now - lastUpdateTime > THROTTLE_MS) {
 					messages[currentAssistantMessageIndex] = {
-						...messages[currentAssistantMessageIndex],
+						...messages[currentAssistantMessageIndex]!,
 						message: bufferedContent,
 					};
 					lastUpdateTime = now;
@@ -137,7 +129,7 @@ async function handleSend() {
 			},
 			(meta: MorningLetterMeta) => {
 				messages[currentAssistantMessageIndex] = {
-					...messages[currentAssistantMessageIndex],
+					...messages[currentAssistantMessageIndex]!,
 					citations: convertCitations(meta.citations),
 					meta: {
 						timeWindow: meta.timeWindow,
@@ -147,12 +139,12 @@ async function handleSend() {
 			},
 			(result) => {
 				messages[currentAssistantMessageIndex] = {
-					...messages[currentAssistantMessageIndex],
+					...messages[currentAssistantMessageIndex]!,
 					message: result.answer || bufferedContent,
 					citations:
 						result.citations.length > 0
 							? convertCitations(result.citations)
-							: messages[currentAssistantMessageIndex].citations,
+							: messages[currentAssistantMessageIndex]!.citations,
 				};
 				isLoading = false;
 				currentAbortController = null;
@@ -160,7 +152,7 @@ async function handleSend() {
 			},
 			(_code) => {
 				messages[currentAssistantMessageIndex] = {
-					...messages[currentAssistantMessageIndex],
+					...messages[currentAssistantMessageIndex]!,
 					message:
 						"I couldn't find enough recent news to answer that. Try asking about a different topic from today's news.",
 				};
@@ -171,7 +163,7 @@ async function handleSend() {
 			(error) => {
 				console.error("Chat error:", error);
 				messages[currentAssistantMessageIndex] = {
-					...messages[currentAssistantMessageIndex],
+					...messages[currentAssistantMessageIndex]!,
 					message: `Error: ${error.message}. Please try again.`,
 				};
 				isLoading = false;
@@ -182,7 +174,7 @@ async function handleSend() {
 	} catch (error) {
 		console.error("Chat error:", error);
 		messages[currentAssistantMessageIndex] = {
-			...messages[currentAssistantMessageIndex],
+			...messages[currentAssistantMessageIndex]!,
 			message: `Error: ${error instanceof Error ? error.message : "Unknown error"}. Please try again.`,
 		};
 		isLoading = false;

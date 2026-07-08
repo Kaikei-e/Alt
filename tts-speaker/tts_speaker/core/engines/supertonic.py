@@ -16,6 +16,8 @@ from typing import TYPE_CHECKING, Any
 
 import numpy as np
 
+from ..engine import Voice
+
 if TYPE_CHECKING:
     from ..infra.config import Settings  # noqa: TC004
 
@@ -53,9 +55,9 @@ VOICES_CONFIG: tuple[SupVoiceConfig, ...] = (
 # DEFAULT_VOICE is renamed to "sup-F4".
 LEGACY_ALIASES: tuple[str, ...] = ("qwen-ja-1", "qwen-ja-2", "qwen-ja-3")
 
-VOICES: list[dict[str, str]] = [
-    {"id": v.id, "name": v.name, "gender": v.gender} for v in VOICES_CONFIG
-]
+VOICES: tuple[Voice, ...] = tuple(
+    Voice(id=v.id, name=v.name, gender=v.gender) for v in VOICES_CONFIG
+)
 VOICE_IDS: set[str] = {v.id for v in VOICES_CONFIG} | set(LEGACY_ALIASES)
 _VOICE_BY_ID: dict[str, SupVoiceConfig] = {
     **{v.id: v for v in VOICES_CONFIG},
@@ -81,7 +83,7 @@ class SupertonicEngine:
         return self._ready
 
     @property
-    def voices(self) -> list[dict[str, str]]:
+    def voices(self) -> tuple[Voice, ...]:
         return VOICES
 
     @property
@@ -97,7 +99,7 @@ class SupertonicEngine:
         return None
 
     async def load(self) -> None:
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         await loop.run_in_executor(None, self._load_sync)
 
     def _load_sync(self) -> None:

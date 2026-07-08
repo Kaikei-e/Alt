@@ -60,16 +60,43 @@ func (h *RESTProxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	defer resp.Body.Close()
 
-	// Copy all response headers
-	for key, values := range resp.Header {
-		for _, v := range values {
-			w.Header().Add(key, v)
-		}
-	}
+	// Copy all response headers except hop-by-hop ones (mirrors
+	// copyRESTHeaders in client.BackendClient, which excludes the same set
+	// on the request side).
+	copyRESTResponseHeaders(resp.Header, w.Header())
 
 	// Write status code
 	w.WriteHeader(resp.StatusCode)
 
 	// Stream response body
-	io.Copy(w, resp.Body)
+	if _, err := io.Copy(w, resp.Body); err != nil {
+		if h.logger != nil {
+			h.logger.Error("REST proxy response copy failed", "error", err, "path", r.URL.Path)
+		}
+	}
+}
+
+// restHopByHopHeaders are excluded when relaying the backend response,
+// matching client.copyRESTHeaders' request-side exclusion set.
+var restHopByHopHeaders = map[string]bool{
+	"Connection":          true,
+	"Keep-Alive":          true,
+	"Proxy-Authenticate":  true,
+	"Proxy-Authorization": true,
+	"Te":                  true,
+	"Trailer":             true,
+	"Transfer-Encoding":   true,
+	"Upgrade":             true,
+}
+
+// copyRESTResponseHeaders copies all headers except hop-by-hop headers.
+func copyRESTResponseHeaders(src, dst http.Header) {
+	for key, values := range src {
+		if restHopByHopHeaders[http.CanonicalHeaderKey(key)] {
+			continue
+		}
+		for _, v := range values {
+			dst.Add(key, v)
+		}
+	}
 }

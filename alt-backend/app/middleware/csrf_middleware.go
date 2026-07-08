@@ -85,10 +85,8 @@ func isCSRFProtectedEndpoint(method, path string) bool {
 		"/security/csp-report",
 	}
 
-	for _, exempt := range exemptEndpoints {
-		if strings.Contains(path, exempt) {
-			return false
-		}
+	if matchesEndpoint(path, exemptEndpoints) {
+		return false
 	}
 
 	// Protect all other state-changing endpoints
@@ -101,12 +99,30 @@ func isCSRFProtectedEndpoint(method, path string) bool {
 		"/v1/feeds/register/favorite",
 	}
 
-	for _, protected := range protectedEndpoints {
-		if strings.Contains(path, protected) {
-			return true
-		}
+	if matchesEndpoint(path, protectedEndpoints) {
+		return true
 	}
 
 	// Default to protecting all POST/PUT/PATCH/DELETE endpoints not explicitly exempted
 	return true
+}
+
+// matchesEndpoint reports whether path matches one of endpoints. An entry
+// ending with `/` is treated as a prefix; everything else must match exactly.
+// Substring matching (strings.Contains) is not used here because it lets a
+// future route accidentally match an unrelated exempt/protected entry (the
+// same M-005 class of bug fixed for the DoS-protection whitelist).
+func matchesEndpoint(path string, endpoints []string) bool {
+	for _, endpoint := range endpoints {
+		if strings.HasSuffix(endpoint, "/") {
+			if strings.HasPrefix(path, endpoint) {
+				return true
+			}
+			continue
+		}
+		if path == endpoint {
+			return true
+		}
+	}
+	return false
 }

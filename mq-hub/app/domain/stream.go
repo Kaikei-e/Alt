@@ -1,5 +1,10 @@
 package domain
 
+import (
+	"fmt"
+	"strings"
+)
+
 // StreamKey represents a Redis Stream key.
 type StreamKey string
 
@@ -89,4 +94,31 @@ type ConsumerGroupInfo struct {
 	Pending int64
 	// LastDeliveredID is the ID of the last delivered message.
 	LastDeliveredID string
+}
+
+// PublishFailure records that a single event within a batch failed to publish.
+type PublishFailure struct {
+	// Index is the position of the failed event in the original batch.
+	Index int
+	// Err is the underlying error for this event.
+	Err error
+}
+
+// PartialPublishError is returned by PublishBatch when the pipeline executed
+// but one or more individual XADD commands failed. Callers can inspect
+// Failures to know exactly which indices did not land, instead of treating
+// the whole batch as lost (and retrying already-published events).
+type PartialPublishError struct {
+	// TotalEvents is the size of the batch that was attempted.
+	TotalEvents int
+	Failures    []PublishFailure
+}
+
+func (e *PartialPublishError) Error() string {
+	msgs := make([]string, 0, len(e.Failures))
+	for _, f := range e.Failures {
+		msgs = append(msgs, fmt.Sprintf("index %d: %v", f.Index, f.Err))
+	}
+	return fmt.Sprintf("partial publish failure (%d/%d events failed): %s",
+		len(e.Failures), e.TotalEvents, strings.Join(msgs, "; "))
 }

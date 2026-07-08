@@ -149,6 +149,7 @@ def load_genres(path: Path) -> list[str]:
 
 def load_jsonl(path: Path, label2id: dict) -> list[dict]:
     data = []
+    skipped = 0
     if not path.exists():
         return []
     with open(path, encoding="utf-8") as f:
@@ -174,8 +175,11 @@ def load_jsonl(path: Path, label2id: dict) -> list[dict]:
                             "logits": logits,
                             "lang": obj.get("lang")  # Preserve language field for filtering
                         })
-                except:
-                    pass
+                except (KeyError, ValueError, json.JSONDecodeError) as exc:
+                    skipped += 1
+                    logger.debug("skipping malformed training record: %s", exc)
+    if skipped:
+        logger.warning("skipped %d malformed training records", skipped)
     return data
 
 def main():

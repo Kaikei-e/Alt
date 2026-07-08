@@ -91,6 +91,9 @@ func (h *Handler) StreamChat(
 		var doc *domain.MorningLetterDoc
 		var fetchErr error
 		if td := req.Msg.TargetDate; td != nil && *td != "" {
+			if _, parseErr := time.Parse("2006-01-02", *td); parseErr != nil {
+				return connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("invalid target_date: %w", parseErr))
+			}
 			doc, fetchErr = h.letterFetcher.FetchByDate(ctx, *td)
 		} else {
 			doc, fetchErr = h.letterFetcher.FetchLatest(ctx)

@@ -164,9 +164,14 @@ impl DockerCollector {
                             let bytes = chunk.into_bytes();
 
                             if tx.send(bytes).is_err() {
-                                // Queue full, apply backpressure
+                                // A broadcast send only errs when there are no
+                                // active receivers - it never blocks or fails
+                                // on a "full" queue (lagging receivers instead
+                                // silently miss old values). This is not
+                                // backpressure; retry after a short wait in
+                                // case a receiver (re)subscribes.
                                 tracing::warn!(
-                                    "Log queue full for container {}, applying backpressure",
+                                    "No active receivers for container {} logs, retrying",
                                     container_name
                                 );
                                 tokio::time::sleep(Duration::from_micros(100)).await;

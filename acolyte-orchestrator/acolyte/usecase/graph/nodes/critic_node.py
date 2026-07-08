@@ -290,17 +290,22 @@ def _bigrams(text: str) -> set[tuple[str, str]]:
     return {(chars[i], chars[i + 1]) for i in range(len(chars) - 1)} if len(chars) >= 2 else set()
 
 
+def _paragraph_source_ids(para: dict) -> set[str]:
+    """Return the evidence source IDs a paragraph's citations point to."""
+    return {c.get("source_id", "") for c in para.get("citations", []) if c.get("source_id")}
+
+
 def _claim_synthesis_ratio(
     section_paragraphs: dict[str, list[dict]],
     conclusion_keys: set[str],
-    analysis_claim_ids: set[str],
+    analysis_source_ids: set[str],
 ) -> float:
     """Calculate cross-claim synthesis ratio for conclusion paragraphs.
 
-    Returns 0.0-1.0: fraction of conclusion paragraphs that reference
-    claims from multiple analysis sources (cross-claim synthesis).
-    A paragraph that restates a single claim scores 0; one that integrates
-    multiple claims scores 1.
+    Returns 0.0-1.0: fraction of conclusion paragraphs that cite evidence
+    sources from multiple analysis-section sources (cross-source synthesis).
+    A paragraph that restates a single source scores 0; one that integrates
+    multiple sources also cited by the analysis section scores 1.
     """
     conclusion_paras: list[dict] = []
     for key in conclusion_keys:
@@ -311,10 +316,9 @@ def _claim_synthesis_ratio(
 
     cross_claim_count = 0
     for para in conclusion_paras:
-        # Check how many analysis claims this paragraph references
-        evidence_ids = set(para.get("evidence_ids", []))
-        claim_refs = evidence_ids & analysis_claim_ids
-        if len(claim_refs) >= 2:
+        # Check how many analysis-cited sources this paragraph references
+        source_refs = _paragraph_source_ids(para) & analysis_source_ids
+        if len(source_refs) >= 2:
             cross_claim_count += 1
 
     return cross_claim_count / len(conclusion_paras)
@@ -363,13 +367,11 @@ def detect_conclusion_analysis_duplication(
     # Axis 2: synthesis ratio (if paragraph data available)
     synthesis_ratio = 0.0
     if section_paragraphs:
-        analysis_claim_ids: set[str] = set()
+        analysis_source_ids: set[str] = set()
         for key in analysis_keys:
             for para in section_paragraphs.get(key, []):
-                cid = para.get("claim_id", "")
-                if cid:
-                    analysis_claim_ids.add(cid)
-        synthesis_ratio = _claim_synthesis_ratio(section_paragraphs, conclusion_keys, analysis_claim_ids)
+                analysis_source_ids |= _paragraph_source_ids(para)
+        synthesis_ratio = _claim_synthesis_ratio(section_paragraphs, conclusion_keys, analysis_source_ids)
 
     # Compound judgment
     if synthesis_ratio >= SYNTHESIS_RATIO_THRESHOLD:
@@ -698,12 +700,19 @@ class CriticNode:
             )
 
             try:
-                from acolyte.usecase.graph.xml_parse import normalize_critic_output, parse_xmlish_block
+                import xml.etree.ElementTree as ET
+
+                from acolyte.usecase.graph.xml_parse import (
+                    XmlParseError,
+                    normalize_critic_output,
+                    parse_xmlish_block,
+                )
 
                 element = parse_xmlish_block(response.text, "critic")
                 critique = normalize_critic_output(element)
-            except Exception:
+            except (XmlParseError, ET.ParseError) as exc:
                 # Parse failure → revise, never silent accept
+                logger.warning("Critic output parse failed, requesting revision", error=str(exc), exc_info=True)
                 critique = {
                     "reasoning": "Critic output malformed, requesting revision",
                     "verdict": "revise",

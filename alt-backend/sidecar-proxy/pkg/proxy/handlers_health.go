@@ -1,7 +1,6 @@
 package proxy
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -13,7 +12,7 @@ import (
 // Health check endpoints
 
 func (p *LightweightProxy) HandleHealthCheck(w http.ResponseWriter, r *http.Request) {
-	if p.ready {
+	if p.ready.Load() {
 		w.WriteHeader(http.StatusOK)
 		fmt.Fprintf(w, "Lightweight Proxy Sidecar OK\nVersion: 1.0.0\nUpstream Resolution: ACTIVE\nEnvoy Target: %s\n", p.config.EnvoyUpstream)
 	} else {
@@ -22,15 +21,15 @@ func (p *LightweightProxy) HandleHealthCheck(w http.ResponseWriter, r *http.Requ
 	}
 }
 
+// HandleReadinessCheck reports readiness from local state only (server
+// started, dependencies constructed) rather than exercising a real DNS
+// query against a third-party domain — a third party's outage or the
+// 5-second external-API rate-limit rule should never flap this service's
+// own readiness.
 func (p *LightweightProxy) HandleReadinessCheck(w http.ResponseWriter, r *http.Request) {
-	// Test DNS resolution capability
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-	defer cancel()
-
-	_, err := p.dnsResolver.ResolveExternal(ctx, "httpbin.org")
-	if err != nil {
+	if !p.ready.Load() || p.dnsResolver == nil || p.server == nil {
 		w.WriteHeader(http.StatusServiceUnavailable)
-		fmt.Fprintf(w, "DNS resolution test failed: %v", err)
+		fmt.Fprint(w, "Not Ready")
 		return
 	}
 

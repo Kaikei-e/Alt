@@ -14,6 +14,8 @@ from typing import TYPE_CHECKING, Any
 
 import numpy as np
 
+from ..engine import Voice
+
 if TYPE_CHECKING:
     from ..infra.config import Settings  # noqa: TC004
 
@@ -57,9 +59,9 @@ VOICES_CONFIG: tuple[VoiceConfig, ...] = (
     ),
 )
 
-VOICES: list[dict[str, str]] = [
-    {"id": v.id, "name": v.name, "gender": v.gender} for v in VOICES_CONFIG
-]
+VOICES: tuple[Voice, ...] = tuple(
+    Voice(id=v.id, name=v.name, gender=v.gender) for v in VOICES_CONFIG
+)
 VOICE_IDS: set[str] = {v.id for v in VOICES_CONFIG}
 _VOICE_BY_ID: dict[str, VoiceConfig] = {v.id: v for v in VOICES_CONFIG}
 
@@ -82,7 +84,7 @@ class QwenEngine:
         return self._ready
 
     @property
-    def voices(self) -> list[dict[str, str]]:
+    def voices(self) -> tuple[Voice, ...]:
         return VOICES
 
     @property
@@ -127,12 +129,12 @@ class QwenEngine:
                 result = (t * t).sum().item()
                 assert result == 5.0  # noqa: S101
                 logger.info("GPU compute verification passed")
-            except Exception:
+            except (RuntimeError, AssertionError) as err:
                 logger.exception("GPU compute verification failed")
                 if os.environ.get("TTS_ALLOW_CPU_FALLBACK") == "1":
                     logger.warning("Falling back to CPU (TTS_ALLOW_CPU_FALLBACK=1)")
                     return "cpu", None
-                raise RuntimeError("GPU detected but compute verification failed")
+                raise RuntimeError("GPU detected but compute verification failed") from err
             return "cuda", gpu_name
 
         logger.warning("No GPU detected (torch.cuda.is_available() = False)")
@@ -142,7 +144,7 @@ class QwenEngine:
         raise RuntimeError("No GPU detected. Set TTS_ALLOW_CPU_FALLBACK=1 to allow CPU fallback.")
 
     async def load(self) -> None:
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         await loop.run_in_executor(None, self._load_sync)
 
     def _load_sync(self) -> None:
@@ -216,7 +218,7 @@ class QwenEngine:
         """Run a no-op matmul on the model device to defeat AMD DPM idle downclock."""
         if self._device != "cuda" or self._model is None:
             return
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         await loop.run_in_executor(None, self._keepalive_sync)
 
     def _keepalive_sync(self) -> None:

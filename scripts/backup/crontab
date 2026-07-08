@@ -1,0 +1,20 @@
+# Alt Platform Backup Schedule (supercronic)
+# Runs inside the restic-backup container
+
+# Hourly: PostgreSQL logical backups only
+0 * * * *   /scripts/backup-all.sh --pg-only
+
+# Daily at 03:00: Full backup with prune and verify
+0 3 * * *   /scripts/backup-all.sh --prune --verify
+
+# Daily at 05:00: Offsite sync with remote prune
+0 5 * * *   /scripts/sync-offsite.sh --prune-remote
+
+# Every 30 min: Update Prometheus metrics
+30 * * * *  /scripts/backup-metrics.sh
+
+# Weekly Sunday at 06:00: Automated restore verification
+0 6 * * 0   /scripts/restore-verify.sh
+
+# Daily at 04:00: Rotate old logs
+0 4 * * *   find /backups/logs/ -name "*.log" -mtime +30 -delete

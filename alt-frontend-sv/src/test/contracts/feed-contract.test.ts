@@ -37,7 +37,7 @@ describe("Feed API Contract", () => {
 		});
 
 		expect(response.data).toHaveLength(2);
-		expect(response.data[0].title).toBe("AI Trends");
+		expect(response.data[0]!.title).toBe("AI Trends");
 		expect(response.hasMore).toBe(false);
 	});
 
@@ -61,7 +61,7 @@ describe("Feed API Contract", () => {
 		const deserialized = fromBinary(GetAllFeedsResponseSchema, binary);
 
 		expect(deserialized.data).toHaveLength(original.data.length);
-		expect(deserialized.data[0].title).toBe("Test Feed");
+		expect(deserialized.data[0]!.title).toBe("Test Feed");
 		expect(deserialized.hasMore).toBe(false);
 	});
 

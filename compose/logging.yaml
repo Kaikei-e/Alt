@@ -12,10 +12,6 @@ services:
       dockerfile: Dockerfile.rask-log-aggregator
     restart: unless-stopped
     mem_limit: 128m
-    ports:
-      - "9600:9600"   # HTTP API (既存)
-      - "4317:4317"   # OTLP gRPC
-      - "4318:4318"   # OTLP HTTP
     networks:
       - alt-network
     tty: true

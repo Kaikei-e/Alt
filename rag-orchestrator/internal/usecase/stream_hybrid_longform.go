@@ -92,10 +92,7 @@ waitHybridChatStream:
 	// Stream with incremental answer parsing + paragraph flushing
 	var builder strings.Builder
 	var answerBuilder strings.Builder
-	var pending strings.Builder
-	inAnswer := false
-	isEscaped := false
-	answerCompletelyStreamed := false
+	answerParser := &incrementalAnswerParser{}
 	hasData := false
 	done := false
 
@@ -110,6 +107,7 @@ waitHybridChatStream:
 	for chunkStream != nil || errStream != nil {
 		select {
 		case <-ctx.Done():
+			drainLLMStream(chunkStream, errStream)
 			return out
 		case chunk, ok := <-chunkStream:
 			if !ok {
@@ -126,103 +124,15 @@ waitHybridChatStream:
 				hasData = true
 				builder.WriteString(chunk.Response)
 
-				if !answerCompletelyStreamed {
-					pending.WriteString(chunk.Response)
-					pendingStr := pending.String()
-					processed := 0
-
-					if !inAnswer {
-						idx := strings.Index(pendingStr, "\"answer\"")
-						if idx != -1 {
-							remainder := pendingStr[idx+8:]
-							startOffset := -1
-							for i, r := range remainder {
-								if r == ' ' || r == '\n' || r == '\t' || r == '\r' || r == ':' {
-									continue
-								}
-								if r == '"' {
-									startOffset = idx + 8 + i + len(string(r))
-									break
-								}
-								break
-							}
-							if startOffset != -1 {
-								inAnswer = true
-								processed = startOffset
-							} else if len(pendingStr) > 20 {
-								processed = len(pendingStr) - 20
-							}
-						} else if len(pendingStr) > 20 {
-							processed = len(pendingStr) - 20
-						}
+				if strToStream := answerParser.Feed(chunk.Response); strToStream != "" {
+					answerBuilder.WriteString(strToStream)
+					// Feed to flusher for paragraph-level preview
+					if flush, ok := flusher.Feed(strToStream); ok {
+						u.sendStreamEvent(ctx, events, StreamEvent{
+							Kind:    StreamEventKindDelta,
+							Payload: flush,
+						})
 					}
-
-					if inAnswer {
-						strToScan := pendingStr[processed:]
-						var contentBuilder strings.Builder
-						advanceBytes := 0
-						for i, char := range strToScan {
-							charLen := len(string(char))
-							if isEscaped {
-								isEscaped = false
-								switch char {
-								case 'n':
-									contentBuilder.WriteRune('\n')
-								case 'r':
-									contentBuilder.WriteRune('\r')
-								case 't':
-									contentBuilder.WriteRune('\t')
-								case '"':
-									contentBuilder.WriteRune('"')
-								case '\\':
-									contentBuilder.WriteRune('\\')
-								default:
-									contentBuilder.WriteRune('\\')
-									contentBuilder.WriteRune(char)
-								}
-								advanceBytes = i + charLen
-								continue
-							}
-							if char == '\\' {
-								isEscaped = true
-								advanceBytes = i + charLen
-								continue
-							}
-							if char == '"' {
-								tail := strToScan[i+charLen:]
-								if isAnswerFieldEnd(tail) {
-									inAnswer = false
-									answerCompletelyStreamed = true
-									advanceBytes = i + charLen
-									break
-								}
-								contentBuilder.WriteRune('"')
-								advanceBytes = i + charLen
-								continue
-							}
-							contentBuilder.WriteRune(char)
-							advanceBytes = i + charLen
-						}
-						if !answerCompletelyStreamed && isEscaped {
-							advanceBytes -= 1
-						}
-						strToStream := contentBuilder.String()
-						if strToStream != "" {
-							answerBuilder.WriteString(strToStream)
-							// Feed to flusher for paragraph-level preview
-							if flush, ok := flusher.Feed(strToStream); ok {
-								u.sendStreamEvent(ctx, events, StreamEvent{
-									Kind:    StreamEventKindDelta,
-									Payload: flush,
-								})
-							}
-						}
-						processed += advanceBytes
-					}
-
-					remaining := pendingStr[processed:]
-					pending.Reset()
-					pending.WriteString(remaining)
 				}
 			}
 			if chunk.Done {
@@ -407,10 +317,10 @@ waitHybridChatStream:
 	}
 
 	// Persist conversation state
-	if u.conversationStore != nil && input.UserID != "" {
+	if threadKey := conversationThreadKey(input); u.conversationStore != nil && threadKey != "" {
 		newState := DeriveStateUpdate(
-			u.conversationStore.Get(input.UserID),
-			input.UserID,
+			u.conversationStore.Get(threadKey),
+			threadKey,
 			promptData.parsedIntent,
 			promptData.plannerOutput,
 			output,

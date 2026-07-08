@@ -3,17 +3,75 @@
 from __future__ import annotations
 
 import logging
+import re
 import subprocess
-from typing import Any
+import time
+from dataclasses import dataclass
 
 logger = logging.getLogger(__name__)
 
+# Gap between the two /proc/stat samples used to compute instantaneous CPU
+# usage (see `_read_proc_stat_times` / `get_cpu_info`).
+PROC_STAT_SAMPLE_INTERVAL_SEC = 0.1
 
-def get_memory_info() -> dict[str, Any]:
+
+@dataclass(frozen=True, slots=True)
+class MemoryInfo:
+    total: int
+    used: int
+    available: int
+    percent: float
+
+
+@dataclass(frozen=True, slots=True)
+class CpuInfo:
+    percent: float
+
+
+@dataclass(frozen=True, slots=True)
+class GpuStat:
+    utilization: float
+    memory_used: int
+    memory_total: int
+    temperature: int
+    name: str
+    memory_percent: float
+
+
+@dataclass(frozen=True, slots=True)
+class GpuInfo:
+    available: bool
+    gpus: tuple[GpuStat, ...]
+    total_gpus: int = 0
+    error: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class ProcessInfo:
+    user: str
+    pid: str
+    cpu: float
+    mem: float
+    rss: int
+    command: str
+
+
+def _read_proc_stat_times() -> tuple[int, int]:
+    """Read the aggregate `cpu` line from /proc/stat. Returns (total, idle) jiffies."""
+    with open("/proc/stat", "r") as f:
+        lines = f.readlines()
+    cpu_line = [l for l in lines if l.startswith("cpu ")][0]
+    fields = cpu_line.split()
+    total = sum(int(fields[i]) for i in range(1, len(fields)))
+    idle = int(fields[4]) + (int(fields[5]) if len(fields) > 5 else 0)
+    return total, idle
+
+
+def get_memory_info() -> MemoryInfo:
     """メモリ使用状況を取得"""
     try:
         result = subprocess.run(
-            ["free", "-g"], capture_output=True, text=True, check=True
+            ["free", "-g"], capture_output=True, text=True, check=True, timeout=5
         )
         lines = result.stdout.strip().split("\n")
         mem_line = [l for l in lines if l.startswith("Mem:")][0]
@@ -22,35 +80,42 @@ def get_memory_info() -> dict[str, Any]:
         used = int(parts[2])
         available = int(parts[6])
         percent = (used / total * 100) if total > 0 else 0
-        return {
-            "total": total,
-            "used": used,
-            "available": available,
-            "percent": round(percent, 1),
-        }
-    except (subprocess.CalledProcessError, FileNotFoundError, IndexError, ValueError):
+        return MemoryInfo(
+            total=total,
+            used=used,
+            available=available,
+            percent=round(percent, 1),
+        )
+    except (
+        subprocess.CalledProcessError,
+        subprocess.TimeoutExpired,
+        FileNotFoundError,
+        IndexError,
+        ValueError,
+    ):
         logger.exception("Failed to get memory info via 'free -g'")
-        return {"total": 0, "used": 0, "available": 0, "percent": 0}
+        return MemoryInfo(total=0, used=0, available=0, percent=0)
 
 
-def get_cpu_info() -> dict[str, Any]:
+def get_cpu_info() -> CpuInfo:
     """CPU使用率を取得"""
     try:
         import psutil
 
         percent = psutil.cpu_percent(interval=1)
-        return {"percent": round(percent, 1)}
+        return CpuInfo(percent=round(percent, 1))
     except ImportError:
-        # psutilがインストールされていない場合、/proc/statを使用
+        # psutilがインストールされていない場合、/proc/statを使用。
+        # 単発読みは起動からの累積カウンタなので瞬間使用率にならない
+        # ため、2回サンプリングした差分から使用率を求める。
         try:
-            with open("/proc/stat", "r") as f:
-                lines = f.readlines()
-                cpu_line = [l for l in lines if l.startswith("cpu ")][0]
-                fields = cpu_line.split()
-                total = sum(int(fields[i]) for i in range(1, len(fields)))
-                idle = int(fields[4]) + (int(fields[5]) if len(fields) > 5 else 0)
-                usage = round((1 - idle / total) * 100, 1) if total > 0 else 0.0
-                return {"percent": usage}
+            total_1, idle_1 = _read_proc_stat_times()
+            time.sleep(PROC_STAT_SAMPLE_INTERVAL_SEC)
+            total_2, idle_2 = _read_proc_stat_times()
+            total_delta = total_2 - total_1
+            idle_delta = idle_2 - idle_1
+            usage = round((1 - idle_delta / total_delta) * 100, 1) if total_delta > 0 else 0.0
+            return CpuInfo(percent=usage)
         except (OSError, IndexError, ValueError):
             logger.exception("Failed to compute CPU usage from /proc/stat")
             # 最後の手段としてtopを使用
@@ -65,8 +130,6 @@ def get_cpu_info() -> dict[str, Any]:
                 cpu_lines = [l for l in result.stdout.split("\n") if "Cpu(s)" in l]
                 if cpu_lines:
                     cpu_line = cpu_lines[-1]
-                    import re
-
                     match = re.search(r"(\d+\.\d+)%id", cpu_line)
                     if match:
                         idle = float(match.group(1))
@@ -75,31 +138,30 @@ def get_cpu_info() -> dict[str, Any]:
                         usage = 0.0
                 else:
                     usage = 0.0
-                return {"percent": usage}
+                return CpuInfo(percent=usage)
             except (
                 subprocess.CalledProcessError,
                 FileNotFoundError,
                 subprocess.TimeoutExpired,
             ):
                 logger.exception("Failed to compute CPU usage from 'top' fallback")
-                return {"percent": 0.0}
+                return CpuInfo(percent=0.0)
 
 
 def get_hanging_processes() -> int:
     """ハングプロセス数を取得"""
     try:
         result = subprocess.run(
-            ["ps", "aux"], capture_output=True, text=True, check=True
+            ["ps", "aux"], capture_output=True, text=True, check=True, timeout=5
         )
-        count = len(
+        return len(
             [
                 l
                 for l in result.stdout.split("\n")
                 if "spawn_main" in l or "multiprocessing-fork" in l
             ]
         )
-        return max(0, count - 1)  # grep自身を除外
-    except (subprocess.CalledProcessError, FileNotFoundError):
+    except (subprocess.CalledProcessError, subprocess.TimeoutExpired, FileNotFoundError):
         logger.exception("Failed to count hanging processes via 'ps aux'")
         return 0
 
@@ -108,18 +170,17 @@ def get_recap_processes() -> int:
     """Recap関連プロセス数を取得"""
     try:
         result = subprocess.run(
-            ["ps", "aux"], capture_output=True, text=True, check=True
+            ["ps", "aux"], capture_output=True, text=True, check=True, timeout=5
         )
-        count = len(
+        return len(
             [l for l in result.stdout.split("\n") if "recap" in l or "gunicorn" in l]
         )
-        return max(0, count - 1)
-    except (subprocess.CalledProcessError, FileNotFoundError):
+    except (subprocess.CalledProcessError, subprocess.TimeoutExpired, FileNotFoundError):
         logger.exception("Failed to count recap processes via 'ps aux'")
         return 0
 
 
-def get_gpu_info() -> dict[str, Any]:
+def get_gpu_info() -> GpuInfo:
     """GPU使用状況を取得（nvidia-smiを使用）"""
     try:
         result = subprocess.run(
@@ -131,7 +192,7 @@ def get_gpu_info() -> dict[str, Any]:
         )
         lines = result.stdout.strip().split("\n")
         if not lines or not lines[0]:
-            return {"available": False, "gpus": []}
+            return GpuInfo(available=False, gpus=())
 
         gpus = []
         for line in lines:
@@ -140,33 +201,35 @@ def get_gpu_info() -> dict[str, Any]:
             parts = [p.strip() for p in line.split(",")]
             if len(parts) >= 5:
                 try:
-                    gpus.append({
-                        "utilization": float(parts[0]),
-                        "memory_used": int(parts[1]),
-                        "memory_total": int(parts[2]),
-                        "temperature": int(parts[3]),
-                        "name": parts[4],
-                        "memory_percent": round((int(parts[1]) / int(parts[2]) * 100) if int(parts[2]) > 0 else 0, 1),
-                    })
+                    memory_total = int(parts[2])
+                    gpus.append(
+                        GpuStat(
+                            utilization=float(parts[0]),
+                            memory_used=int(parts[1]),
+                            memory_total=memory_total,
+                            temperature=int(parts[3]),
+                            name=parts[4],
+                            memory_percent=round(
+                                (int(parts[1]) / memory_total * 100) if memory_total > 0 else 0,
+                                1,
+                            ),
+                        )
+                    )
                 except (ValueError, IndexError):
                     continue
 
-        return {
-            "available": True,
-            "gpus": gpus,
-            "total_gpus": len(gpus),
-        }
+        return GpuInfo(available=True, gpus=tuple(gpus), total_gpus=len(gpus))
     except FileNotFoundError:
         # nvidia-smiがインストールされていない
-        return {"available": False, "gpus": [], "error": "nvidia-smi not found"}
+        return GpuInfo(available=False, gpus=(), error="nvidia-smi not found")
     except subprocess.TimeoutExpired:
-        return {"available": False, "gpus": [], "error": "timeout"}
+        return GpuInfo(available=False, gpus=(), error="timeout")
     except subprocess.CalledProcessError as e:
         logger.exception("nvidia-smi returned a non-zero exit code")
-        return {"available": False, "gpus": [], "error": str(e)}
+        return GpuInfo(available=False, gpus=(), error=str(e))
 
 
-def get_top_processes(limit: int = 5) -> list[dict[str, Any]]:
+def get_top_processes(limit: int = 5) -> list[ProcessInfo]:
     """メモリ使用量の多いプロセスを取得"""
     try:
         result = subprocess.run(
@@ -190,16 +253,16 @@ def get_top_processes(limit: int = 5) -> list[dict[str, Any]]:
             if len(parts) >= 11:
                 try:
                     processes.append(
-                        {
-                            "user": parts[0],
-                            "pid": parts[1],
-                            "cpu": float(parts[2]),
-                            "mem": float(parts[3]),
-                            "rss": int(parts[5]) // 1024,  # KBをMBに変換
-                            "command": parts[10] if len(parts) > 10 else "",
-                        }
+                        ProcessInfo(
+                            user=parts[0],
+                            pid=parts[1],
+                            cpu=float(parts[2]),
+                            mem=float(parts[3]),
+                            rss=int(parts[5]) // 1024,  # KBをMBに変換
+                            command=parts[10] if len(parts) > 10 else "",
+                        )
                     )
-                except (ValueError, IndexError) as e:
+                except (ValueError, IndexError):
                     # 個別のプロセス行のパースエラーは無視して続行
                     continue
         return processes

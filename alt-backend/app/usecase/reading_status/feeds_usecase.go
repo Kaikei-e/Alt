@@ -1,8 +1,10 @@
 package reading_status
 
 import (
+	"alt/domain"
 	"alt/port/feed_status_port"
 	"context"
+	"fmt"
 	"net/url"
 )
 
@@ -15,5 +17,9 @@ func NewFeedsReadingStatusUsecase(updateFeedStatusGateway feed_status_port.Updat
 }
 
 func (u *FeedsReadingStatusUsecase) Execute(ctx context.Context, feedURL url.URL) error {
-	return u.updateFeedStatusGateway.UpdateFeedStatus(ctx, feedURL)
+	user, err := domain.GetUserFromContext(ctx)
+	if err != nil {
+		return fmt.Errorf("authentication required: %w", err)
+	}
+	return u.updateFeedStatusGateway.UpdateFeedStatus(ctx, feedURL, user.UserID)
 }

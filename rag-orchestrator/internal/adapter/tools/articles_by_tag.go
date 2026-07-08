@@ -54,11 +54,11 @@ func (t *ArticlesByTagTool) Execute(ctx context.Context, params map[string]strin
 	var sb strings.Builder
 	fmt.Fprintf(&sb, "Articles tagged '%s':\n", tagName)
 	for _, a := range articles {
-		content := a.Content
-		if len(content) > 200 {
-			content = content[:200] + "..."
-		}
-		fmt.Fprintf(&sb, "- [%s](%s): %s\n", a.Title, a.URL, content)
+		// BackendInternalService's FetchArticlesByTag RPC returns only
+		// id/title/url/published_at (ArticleByTagItem has no content field),
+		// so a.Content is always empty here — rendering it silently
+		// degraded every result to "title: " with no visible signal why.
+		fmt.Fprintf(&sb, "- [%s](%s)\n", a.Title, a.URL)
 	}
 
 	return &domain.ToolResult{

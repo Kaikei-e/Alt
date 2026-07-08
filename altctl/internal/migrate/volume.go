@@ -143,6 +143,12 @@ func (v *VolumeBackuper) Restore(ctx context.Context, spec VolumeSpec, inputPath
 		return err
 	}
 
+	// Clear any pre-existing contents first so files from a previous volume
+	// state don't linger alongside (or shadow) what this restore extracts.
+	if err := v.ClearVolume(ctx, spec.Name); err != nil {
+		return fmt.Errorf("clearing volume before restore: %w", err)
+	}
+
 	// Use busybox to extract tar archive
 	// docker run --rm -v <volume>:/data -v <input_dir>:/backup busybox tar xzvf /backup/<filename> -C /data
 	args := []string{

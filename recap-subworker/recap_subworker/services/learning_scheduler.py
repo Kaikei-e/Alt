@@ -8,9 +8,9 @@ from datetime import UTC, datetime
 
 import structlog
 
-from ..db.session import get_session_factory
 from ..infra.config import Settings
-from .genre_learning import GenreLearningService
+from ..infra.db.session import DatabaseResources, create_database_resources
+from .genre_learning import GenreLearningService, build_learning_payload
 from .learning_client import LearningClient
 from .tag_label_graph_builder import TagLabelGraphBuilder
 
@@ -29,6 +29,16 @@ class LearningScheduler:
         self.interval_seconds = interval_hours * 3600.0
         self._task: asyncio.Task | None = None
         self._running = False
+        # Created lazily on first run, then reused for the scheduler's
+        # lifetime (not per-run) so the connection pool is disposed exactly
+        # once on stop(), instead of leaking a new AsyncEngine every
+        # scheduled run.
+        self._db_resources: DatabaseResources | None = None
+
+    def _get_db_resources(self) -> DatabaseResources:
+        if self._db_resources is None:
+            self._db_resources = create_database_resources(self.settings)
+        return self._db_resources
 
     async def start(self) -> None:
         """Start the background scheduler."""
@@ -51,6 +61,8 @@ class LearningScheduler:
             self._task.cancel()
             with contextlib.suppress(asyncio.CancelledError):
                 await self._task
+        if self._db_resources is not None:
+            await self._db_resources.aclose()
         logger.info("learning scheduler stopped")
 
     async def _run_loop(self) -> None:
@@ -84,8 +96,7 @@ class LearningScheduler:
         )
 
         try:
-            logger.debug("creating database session factory")
-            session_factory = get_session_factory(self.settings)
+            session_factory = self._get_db_resources().session_factory
 
             # Phase 1: Rebuild tag_label_graph BEFORE learning
             if self.settings.graph_build_enabled:
@@ -222,32 +233,10 @@ class LearningScheduler:
             )
 
     def _build_learning_payload(self, result) -> dict[str, object]:
-        """Build the learning payload for recap-worker."""
-        from dataclasses import asdict
+        """Build the learning payload for recap-worker.
 
-        summary = asdict(result.summary)
-        graph_override: dict[str, object] = {
-            "graph_margin": result.summary.graph_margin_reference,
-        }
-        # Add optimized thresholds if available
-        if result.summary.boost_threshold_reference is not None:
-            graph_override["boost_threshold"] = result.summary.boost_threshold_reference
-        if result.summary.tag_count_threshold_reference is not None:
-            graph_override["tag_count_threshold"] = result.summary.tag_count_threshold_reference
-
-        metadata: dict[str, object] = {
-            "captured_at": datetime.now(UTC).isoformat(),
-            "entries_observed": result.summary.total_records,
-        }
-        if result.summary.accuracy_estimate is not None:
-            metadata["accuracy_estimate"] = result.summary.accuracy_estimate
-
-        payload: dict[str, object] = {
-            "summary": summary,
-            "graph_override": graph_override,
-            "metadata": metadata,
-        }
-        if result.cluster_draft:
-            payload["cluster_draft"] = result.cluster_draft
-        return payload
+        Delegates to the shared builder used by AdminJobService so the
+        payload shape can't drift between the scheduler and admin-job paths.
+        """
+        return build_learning_payload(result, now=datetime.now(UTC))
 

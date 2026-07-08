@@ -5,6 +5,7 @@ from __future__ import annotations
 from unittest.mock import MagicMock
 
 import pytest
+from clickhouse_connect.driver.exceptions import OperationalError
 
 from alt_metrics.collectors.http import (
     collect_http_endpoint_stats,
@@ -57,7 +58,7 @@ class TestCollectHttpEndpointStats:
     def test_raises_collector_error_on_exception(self) -> None:
         """例外発生時はCollectorErrorを投げる"""
         mock_client = MagicMock()
-        mock_client.query.side_effect = Exception("Connection failed")
+        mock_client.query.side_effect = OperationalError("Connection failed")
 
         with pytest.raises(CollectorError) as exc_info:
             collect_http_endpoint_stats(mock_client, "rask_logs", 24)
@@ -72,9 +73,8 @@ class TestCollectHttpEndpointStats:
 
         collect_http_endpoint_stats(mock_client, "custom_db", 48)
 
-        call_args = mock_client.query.call_args[0][0]
-        assert "custom_db.otel_http_requests" in call_args
-        assert "INTERVAL 48 HOUR" in call_args
+        call_kwargs = mock_client.query.call_args.kwargs
+        assert call_kwargs["parameters"] == {"database": "custom_db", "hours": 48}
 
 
 class TestCollectHttpStatusDistribution:
@@ -118,7 +118,7 @@ class TestCollectHttpStatusDistribution:
     def test_raises_collector_error_on_exception(self) -> None:
         """例外発生時はCollectorErrorを投げる"""
         mock_client = MagicMock()
-        mock_client.query.side_effect = Exception("Query timeout")
+        mock_client.query.side_effect = OperationalError("Query timeout")
 
         with pytest.raises(CollectorError) as exc_info:
             collect_http_status_distribution(mock_client, "rask_logs", 24)

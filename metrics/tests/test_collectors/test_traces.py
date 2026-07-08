@@ -5,13 +5,13 @@ from __future__ import annotations
 from unittest.mock import MagicMock
 
 import pytest
+from clickhouse_connect.driver.exceptions import OperationalError
 
 from alt_metrics.collectors.traces import (
     collect_api_performance,
     collect_bottlenecks,
     collect_error_spans,
     collect_service_dependencies,
-    collect_service_latency,
     collect_span_type_stats,
 )
 from alt_metrics.exceptions import CollectorError
@@ -61,7 +61,7 @@ class TestCollectApiPerformance:
     def test_raises_collector_error_on_exception(self) -> None:
         """例外発生時はCollectorErrorを投げる"""
         mock_client = MagicMock()
-        mock_client.query.side_effect = Exception("Connection failed")
+        mock_client.query.side_effect = OperationalError("Connection failed")
 
         with pytest.raises(CollectorError) as exc_info:
             collect_api_performance(mock_client, "rask_logs", 24)
@@ -97,40 +97,12 @@ class TestCollectBottlenecks:
     def test_raises_collector_error_on_exception(self) -> None:
         """例外発生時はCollectorErrorを投げる"""
         mock_client = MagicMock()
-        mock_client.query.side_effect = Exception("Query timeout")
+        mock_client.query.side_effect = OperationalError("Query timeout")
 
         with pytest.raises(CollectorError) as exc_info:
             collect_bottlenecks(mock_client, "rask_logs", 24)
 
         assert "bottlenecks" in str(exc_info.value)
-
-
-class TestCollectServiceLatency:
-    """collect_service_latency関数のテスト"""
-
-    def test_returns_dict_of_latencies(self) -> None:
-        """サービスごとのp95レイテンシ辞書を返す"""
-        mock_client = MagicMock()
-        mock_client.query.return_value.result_rows = [
-            ("alt-backend", 95.0),
-            ("auth-hub", 500.0),
-        ]
-
-        result = collect_service_latency(mock_client, "rask_logs", 24)
-
-        assert isinstance(result, dict)
-        assert result["alt-backend"] == 95.0
-        assert result["auth-hub"] == 500.0
-
-    def test_raises_collector_error_on_exception(self) -> None:
-        """例外発生時はCollectorErrorを投げる"""
-        mock_client = MagicMock()
-        mock_client.query.side_effect = Exception("Connection failed")
-
-        with pytest.raises(CollectorError) as exc_info:
-            collect_service_latency(mock_client, "rask_logs", 24)
-
-        assert "service_latency" in str(exc_info.value)
 
 
 class TestCollectSpanTypeStats:
@@ -161,7 +133,7 @@ class TestCollectSpanTypeStats:
     def test_raises_collector_error_on_exception(self) -> None:
         """例外発生時はCollectorErrorを投げる"""
         mock_client = MagicMock()
-        mock_client.query.side_effect = Exception("Query failed")
+        mock_client.query.side_effect = OperationalError("Query failed")
 
         with pytest.raises(CollectorError) as exc_info:
             collect_span_type_stats(mock_client, "rask_logs", 24)
@@ -196,7 +168,7 @@ class TestCollectErrorSpans:
     def test_raises_collector_error_on_exception(self) -> None:
         """例外発生時はCollectorErrorを投げる"""
         mock_client = MagicMock()
-        mock_client.query.side_effect = Exception("Connection failed")
+        mock_client.query.side_effect = OperationalError("Connection failed")
 
         with pytest.raises(CollectorError) as exc_info:
             collect_error_spans(mock_client, "rask_logs", 24)
@@ -233,7 +205,7 @@ class TestCollectServiceDependencies:
     def test_raises_collector_error_on_exception(self) -> None:
         """例外発生時はCollectorErrorを投げる"""
         mock_client = MagicMock()
-        mock_client.query.side_effect = Exception("Query timeout")
+        mock_client.query.side_effect = OperationalError("Query timeout")
 
         with pytest.raises(CollectorError) as exc_info:
             collect_service_dependencies(mock_client, "rask_logs", 24)

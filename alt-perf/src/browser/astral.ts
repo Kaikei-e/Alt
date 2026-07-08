@@ -2,7 +2,11 @@
  * Browser automation wrapper using Astral (Deno-native Puppeteer)
  */
 import { launch, type Browser, type Page } from "@astral/astral";
-import { DEVICE_PROFILES, type DeviceProfile } from "../config/schema.ts";
+import {
+  DEFAULT_DEVICE_PROFILE,
+  DEVICE_PROFILES,
+  type DeviceProfile,
+} from "../config/schema.ts";
 import { debug, info } from "../utils/logger.ts";
 
 export interface BrowserOptions {
@@ -86,7 +90,7 @@ export class BrowserManager {
       await this.launch();
     }
 
-    const device = DEVICE_PROFILES[deviceName] || DEVICE_PROFILES["desktop-chrome"];
+    const device = DEVICE_PROFILES[deviceName] ?? DEFAULT_DEVICE_PROFILE;
     debug("Creating page", { device: device.name });
 
     const page = await this.browser!.newPage();
@@ -136,29 +140,45 @@ export class BrowserManager {
 
     debug("Navigating to", { url, timeout });
 
-    // Create a timeout promise
+    // Race between navigation and timeout. If the timeout wins, the loser
+    // promise is left pending and must not be allowed to reject unhandled
+    // later, and its timer must be cleared so it doesn't outlive the race.
+    const gotoPromise = page.goto(url, { waitUntil: "networkidle2" });
+    gotoPromise.catch(() => {});
+
+    let navigationTimer: number | undefined;
     const timeoutPromise = new Promise<never>((_, reject) => {
-      setTimeout(() => {
+      navigationTimer = setTimeout(() => {
         reject(new Error(`Navigation timeout after ${timeout}ms: ${url}`));
       }, timeout);
     });
 
-    // Race between navigation and timeout
-    await Promise.race([
-      page.goto(url, {
-        waitUntil: "networkidle2",
-      }),
-      timeoutPromise,
-    ]);
+    try {
+      await Promise.race([gotoPromise, timeoutPromise]);
+    } finally {
+      clearTimeout(navigationTimer);
+    }
 
     // Wait for specific element if specified
     if (options.waitFor) {
-      await Promise.race([
-        page.waitForSelector(options.waitFor, { timeout: 10000 }),
-        new Promise<never>((_, reject) => {
-          setTimeout(() => reject(new Error(`Selector timeout: ${options.waitFor}`)), 10000);
-        }),
-      ]);
+      const selectorPromise = page.waitForSelector(options.waitFor, {
+        timeout: 10000,
+      });
+      selectorPromise.catch(() => {});
+
+      let selectorTimer: number | undefined;
+      const selectorTimeoutPromise = new Promise<never>((_, reject) => {
+        selectorTimer = setTimeout(
+          () => reject(new Error(`Selector timeout: ${options.waitFor}`)),
+          10000,
+        );
+      });
+
+      try {
+        await Promise.race([selectorPromise, selectorTimeoutPromise]);
+      } finally {
+        clearTimeout(selectorTimer);
+      }
     }
 
     const loadTime = performance.now() - startTime;
@@ -183,7 +203,7 @@ export class BrowserManager {
    * Get device profile by name
    */
   getDeviceProfile(name: string): DeviceProfile {
-    return DEVICE_PROFILES[name] || DEVICE_PROFILES["desktop-chrome"];
+    return DEVICE_PROFILES[name] ?? DEFAULT_DEVICE_PROFILE;
   }
 
   /**

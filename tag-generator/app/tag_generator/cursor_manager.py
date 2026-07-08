@@ -13,7 +13,10 @@ class CursorManager:
 
     def __init__(self) -> None:
         """Initialize cursor manager."""
-        # Persistent cursor position for pagination between cycles
+        # Process-local cursor position for pagination between cycles.
+        # Not persisted: a process restart loses this and resumes from
+        # _get_fallback_cursor_position() (current time), which can skip
+        # articles that arrived while the process was down.
         self.last_processed_created_at: str | None = None
         self.last_processed_id: str | None = None
         self.forward_cursor_created_at: str | None = None

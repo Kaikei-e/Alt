@@ -8,6 +8,7 @@ import { env } from "$env/dynamic/private";
 import type { Identity, Session } from "@ory/client";
 
 const AUTH_HUB_URL = env.AUTH_HUB_INTERNAL_URL || "http://auth-hub:8888";
+const AUTH_HUB_TIMEOUT_MS = 3000;
 
 // Name of the Kratos session cookie (see kratos/kratos.yml `session.cookie`).
 const SESSION_COOKIE_NAME = "ory_kratos_session";
@@ -113,6 +114,7 @@ async function fetchBackendToken(cookie: string): Promise<string | null> {
 	try {
 		const response = await fetch(`${AUTH_HUB_URL}/session`, {
 			headers: { cookie },
+			signal: AbortSignal.timeout(AUTH_HUB_TIMEOUT_MS),
 		});
 		if (!response.ok) {
 			return null;

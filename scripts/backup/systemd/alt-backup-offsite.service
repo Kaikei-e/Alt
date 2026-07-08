@@ -1,0 +1,30 @@
+[Unit]
+Description=Alt Platform Offsite Backup Sync
+Documentation=file:///home/koko/Documents/dev/Alt/docs/runbooks/backup-restore.md
+After=docker.service tailscaled.service
+Requires=docker.service
+Wants=tailscaled.service
+
+[Service]
+Type=oneshot
+User=root
+Group=root
+
+# Environment (override via /etc/alt-backup.env)
+EnvironmentFile=-/etc/alt-backup.env
+Environment=ALT_PROJECT_ROOT=/home/koko/Documents/dev/Alt
+WorkingDirectory=/home/koko/Documents/dev/Alt
+
+# Run offsite sync with prune
+ExecStart=/home/koko/Documents/dev/Alt/scripts/backup/sync-offsite.sh --prune-remote
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=alt-backup-offsite
+
+# Timeout (allow up to 4 hours for large syncs)
+TimeoutStartSec=14400
+
+[Install]
+WantedBy=multi-user.target

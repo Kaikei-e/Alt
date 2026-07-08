@@ -5,6 +5,7 @@ import (
 	"net/url"
 	"testing"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -59,7 +60,7 @@ func TestUpdateFeedStatusGateway_UpdateFeedStatus(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			err := gateway.UpdateFeedStatus(tt.args.ctx, tt.args.feedURL)
+			err := gateway.UpdateFeedStatus(tt.args.ctx, tt.args.feedURL, uuid.Nil)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("UpdateFeedStatusGateway.UpdateFeedStatus() error = %v, wantErr %v", err, tt.wantErr)
 			}
@@ -132,7 +133,7 @@ func TestUpdateFeedStatusGateway_URLHandling(t *testing.T) {
 				t.Fatalf("Failed to parse test URL: %v", parseErr)
 			}
 
-			err := gateway.UpdateFeedStatus(context.Background(), *parsedURL)
+			err := gateway.UpdateFeedStatus(context.Background(), *parsedURL, uuid.Nil)
 			if (err != nil) != testURL.wantErr {
 				t.Errorf("UpdateFeedStatusGateway.UpdateFeedStatus() with URL %s error = %v, wantErr %v",
 					testURL.urlString, err, testURL.wantErr)
@@ -149,7 +150,7 @@ func TestUpdateFeedStatusGateway_ErrorPropagation(t *testing.T) {
 	testURL, _ := url.Parse("https://example.com/feed.xml")
 
 	// Test that errors from the database layer are properly propagated
-	err := gateway.UpdateFeedStatus(context.Background(), *testURL)
+	err := gateway.UpdateFeedStatus(context.Background(), *testURL, uuid.Nil)
 	if err == nil {
 		t.Error("UpdateFeedStatusGateway.UpdateFeedStatus() should propagate database errors")
 	}
@@ -166,7 +167,7 @@ func TestUpdateFeedStatusGateway_ContextHandling(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 
-	err := gateway.UpdateFeedStatus(ctx, *testURL)
+	err := gateway.UpdateFeedStatus(ctx, *testURL, uuid.Nil)
 	if err == nil {
 		t.Error("UpdateFeedStatusGateway.UpdateFeedStatus() expected error with cancelled context, got nil")
 	}
@@ -180,7 +181,7 @@ func TestUpdateFeedStatusGateway_EmptyURL(t *testing.T) {
 	// Test with empty URL
 	emptyURL := url.URL{}
 
-	err := gateway.UpdateFeedStatus(context.Background(), emptyURL)
+	err := gateway.UpdateFeedStatus(context.Background(), emptyURL, uuid.Nil)
 	if err == nil {
 		t.Error("UpdateFeedStatusGateway.UpdateFeedStatus() expected error with empty URL, got nil")
 	}

@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile:1.7
-FROM python:3.14-slim AS builder
+FROM python:3.14-slim@sha256:b877e50bd90de10af8d82c57a022fc2e0dc731c5320d762a27986facfc3355c1 AS builder
 
 WORKDIR /app
 
@@ -40,7 +40,7 @@ RUN set -eux; \
     find "$SITE" -name "__pycache__" -type d -prune -exec rm -rf {} +; \
     find "$SITE" -name "*.pyc" -delete
 
-FROM python:3.14-slim AS runtime
+FROM python:3.14-slim@sha256:b877e50bd90de10af8d82c57a022fc2e0dc731c5320d762a27986facfc3355c1 AS runtime
 
 WORKDIR /app
 

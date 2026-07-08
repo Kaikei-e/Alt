@@ -11,21 +11,28 @@ let { windowSeconds }: Props = $props();
 let metrics = $state<SystemMetric[]>([]);
 let loading = $state(true);
 let error = $state<string | null>(null);
+let requestId = 0;
 
 $effect(() => {
 	loadData();
 });
 
 async function loadData() {
+	const currentRequest = ++requestId;
 	loading = true;
 	error = null;
 	try {
-		metrics = await getMetrics("summarization", windowSeconds, 500);
+		const result = await getMetrics("summarization", windowSeconds, 500);
+		if (currentRequest !== requestId) return;
+		metrics = result;
 	} catch (e) {
+		if (currentRequest !== requestId) return;
 		error = e instanceof Error ? e.message : String(e);
 		console.error("Failed to load summarization metrics:", e);
 	} finally {
-		loading = false;
+		if (currentRequest === requestId) {
+			loading = false;
+		}
 	}
 }
 

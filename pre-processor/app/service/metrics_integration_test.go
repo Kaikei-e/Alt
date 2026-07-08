@@ -111,7 +111,7 @@ func TestMetricsIntegration_EnvoyVsDirect(t *testing.T) {
 	t.Run("direct_request_metrics", func(t *testing.T) {
 		// Use the mock server URL for direct request (without proxy path)
 		directURL := mockServer.URL + "/direct-test"
-		resp, err := directClient.Get(directURL)
+		resp, err := directClient.Get(context.Background(), directURL)
 		if err != nil {
 			t.Errorf("Direct request failed: %v", err)
 			return

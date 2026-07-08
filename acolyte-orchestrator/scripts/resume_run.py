@@ -94,9 +94,9 @@ async def _resume(run_id: str) -> None:
                     settings=settings,
                 )
 
-                service = AcolyteConnectService(settings, repo, graph=graph)
+                service = AcolyteConnectService(settings, repo, job_gw, graph=graph)
                 logger.info("Resuming pipeline", run_id=run_id, report_id=report_id)
-                await service._run_pipeline(report_id, run_id, brief_dict)
+                await service.resume_pipeline(report_id, run_id, brief_dict)
 
         logger.info("Resume complete", run_id=run_id)
 

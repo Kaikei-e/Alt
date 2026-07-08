@@ -32,7 +32,7 @@ services:
         max-file: "3"
 
   knowledge-augur-volume-init:
-    image: ollama/ollama:latest
+    image: ollama/ollama:0.22.1
     entrypoint: ["/bin/sh", "-c"]
     command: ["mkdir -p /home/ollama-user/.ollama && chown -R 2000:2000 /home/ollama-user/.ollama"]
     user: "0:0"
@@ -77,7 +77,7 @@ services:
         max-file: "3"
 
   knowledge-embedder-volume-init:
-    image: ollama/ollama:latest
+    image: ollama/ollama:0.22.1
     entrypoint: ["/bin/sh", "-c"]
     command: ["mkdir -p /home/ollama-user/.ollama && chown -R 2000:2000 /home/ollama-user/.ollama"]
     user: "0:0"

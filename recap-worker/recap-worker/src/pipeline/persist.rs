@@ -15,7 +15,7 @@ use crate::scheduler::JobContext;
 use crate::store::dao::RecapDao;
 use crate::store::models::RecapOutput;
 
-use super::dispatch::DispatchResult;
+use super::dispatch::{DispatchResult, GenreResult};
 use crate::store::models::PersistedGenre;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
@@ -216,8 +216,512 @@ impl FinalSectionPersistStage {
     }
 }
 
+/// Outcome of persisting a single genre, folded into `PersistResult`'s
+/// aggregate counters by the caller.
+enum GenreOutcome {
+    Stored,
+    Failed,
+    Skipped,
+    NoEvidence,
+}
+
+impl FinalSectionPersistStage {
+    /// Resolve `(summary_id, SummaryResponse)` for a genre, either from the
+    /// dispatch result directly or (on resume) by refetching the persisted
+    /// `body_json` from the database. On any failure this already records
+    /// the per-genre failure via `record_failed_genre` — the caller only
+    /// needs to fold the `Err` into `GenreOutcome::Failed`.
+    async fn resolve_summary_response(
+        &self,
+        job: &JobContext,
+        genre: &str,
+        genre_result: &GenreResult,
+    ) -> Result<(String, crate::clients::news_creator::SummaryResponse), ()> {
+        match (
+            &genre_result.summary_response_id,
+            &genre_result.summary_response,
+        ) {
+            (Some(summary_id), Some(response)) => Ok((summary_id.clone(), response.clone())),
+            (Some(summary_id), None) => {
+                // リジューム時: データベースから再取得
+                match self.dao.get_recap_output_body_json(job.job_id, genre).await {
+                    Ok(Some(body_json)) => {
+                        match serde_json::from_value::<crate::clients::news_creator::SummaryResponse>(
+                            body_json,
+                        ) {
+                            Ok(response) => {
+                                info!(
+                                    job_id = %job.job_id,
+                                    genre = %genre,
+                                    "recovered summary_response from database"
+                                );
+                                Ok((summary_id.clone(), response))
+                            }
+                            Err(e) => {
+                                warn!(
+                                    job_id = %job.job_id,
+                                    genre = %genre,
+                                    error = ?e,
+                                    "failed to deserialize summary_response from database"
+                                );
+                                record_failed_genre(
+                                    self.dao.as_ref(),
+                                    job.job_id,
+                                    "persist_lookup",
+                                    genre,
+                                    &format!("deserialize summary_response failed: {e}"),
+                                )
+                                .await;
+                                Err(())
+                            }
+                        }
+                    }
+                    Ok(None) => {
+                        warn!(
+                            job_id = %job.job_id,
+                            genre = %genre,
+                            summary_id = %summary_id,
+                            "summary_response not found in database"
+                        );
+                        record_failed_genre(
+                            self.dao.as_ref(),
+                            job.job_id,
+                            "persist_lookup",
+                            genre,
+                            &format!("summary_response not found in database for id {summary_id}"),
+                        )
+                        .await;
+                        Err(())
+                    }
+                    Err(e) => {
+                        warn!(
+                            job_id = %job.job_id,
+                            genre = %genre,
+                            error = ?e,
+                            "failed to fetch summary_response from database"
+                        );
+                        record_failed_genre(
+                            self.dao.as_ref(),
+                            job.job_id,
+                            "persist_lookup",
+                            genre,
+                            &format!("fetch summary_response failed: {e}"),
+                        )
+                        .await;
+                        Err(())
+                    }
+                }
+            }
+            (None, _) => {
+                warn!(
+                    job_id = %job.job_id,
+                    genre = %genre,
+                    "genre missing summary response id"
+                );
+                record_failed_genre(
+                    self.dao.as_ref(),
+                    job.job_id,
+                    "persist_lookup",
+                    genre,
+                    "genre missing summary_response_id",
+                )
+                .await;
+                Err(())
+            }
+        }
+    }
+
+    /// Live path for `build_sources`: article IDs come straight from the
+    /// dispatch result's `clustering_response`, so representative titles are
+    /// available without a extra lookup.
+    async fn build_sources_from_clustering(
+        &self,
+        job: &JobContext,
+        genre: &str,
+        clustering: &crate::clients::subworker::ClusteringResponse,
+    ) -> Vec<serde_json::Value> {
+        let mut sources_metadata: Vec<serde_json::Value> = Vec::new();
+
+        // Collect all article IDs from representatives
+        let article_ids: Vec<String> = clustering
+            .clusters
+            .iter()
+            .flat_map(|c| c.representatives.iter().map(|r| r.article_id.clone()))
+            .collect::<std::collections::HashSet<_>>()
+            .into_iter()
+            .collect();
+
+        // Pre-compute article ID to title mapping
+        let article_titles: std::collections::HashMap<String, String> = clustering
+            .clusters
+            .iter()
+            .flat_map(|c| &c.representatives)
+            .map(|r| (r.article_id.clone(), r.text.clone()))
+            .collect();
+
+        match self
+            .dao
+            .get_article_metadata(job.job_id, &article_ids)
+            .await
+        {
+            Ok(metadata) => {
+                // Convert to source objects
+                for (article_id, (published_at, source_url)) in metadata {
+                    let title = article_titles
+                        .get(&article_id)
+                        .cloned()
+                        .unwrap_or_else(|| "Source Article".to_string());
+
+                    sources_metadata.push(json!({
+                        "title": title,
+                        "url": source_url,
+                        "published_at": published_at,
+                        "article_id": article_id
+                    }));
+                }
+            }
+            Err(e) => {
+                warn!(
+                    job_id = %job.job_id,
+                    genre = %genre,
+                    error = ?e,
+                    "failed to fetch article metadata for sources"
+                );
+            }
+        }
+
+        sources_metadata
+    }
+
+    /// Resume path for `build_sources`: `clustering_response` is `None`
+    /// (the in-memory dispatch result didn't survive a crash/restart), so
+    /// cluster/article IDs are recovered from the persisted `body_json`
+    /// instead.
+    async fn build_sources_from_resume(
+        &self,
+        job: &JobContext,
+        genre: &str,
+    ) -> Vec<serde_json::Value> {
+        let mut sources_metadata: Vec<serde_json::Value> = Vec::new();
+
+        // リジューム時: clustering_responseがNoneの場合
+        // body_jsonからクラスタ情報を取得するか、データベースから直接取得
+        // ここでは簡易的にbody_jsonから取得を試みる
+        let Ok(Some(body_json)) = self.dao.get_recap_output_body_json(job.job_id, genre).await
+        else {
+            return sources_metadata;
+        };
+
+        // body_jsonからクラスタ情報を抽出（構造に依存）
+        let Some(clusters) = body_json.get("clusters").and_then(|c| c.as_array()) else {
+            return sources_metadata;
+        };
+
+        let article_ids: Vec<String> = clusters
+            .iter()
+            .flat_map(|cluster| {
+                cluster
+                    .get("representatives")
+                    .and_then(|r| r.as_array())
+                    .map_or(&[] as &[serde_json::Value], |arr| arr.as_slice())
+                    .iter()
+                    .filter_map(|rep| {
+                        rep.get("article_id")
+                            .and_then(|id| id.as_str())
+                            .map(str::to_string)
+                    })
+            })
+            .collect::<std::collections::HashSet<_>>()
+            .into_iter()
+            .collect();
+
+        match self
+            .dao
+            .get_article_metadata(job.job_id, &article_ids)
+            .await
+        {
+            Ok(metadata) => {
+                for (article_id, (published_at, source_url)) in metadata {
+                    sources_metadata.push(json!({
+                        "title": "Source Article",
+                        "url": source_url,
+                        "published_at": published_at,
+                        "article_id": article_id
+                    }));
+                }
+            }
+            Err(e) => {
+                warn!(
+                    job_id = %job.job_id,
+                    genre = %genre,
+                    error = ?e,
+                    "failed to fetch article metadata for sources (resume)"
+                );
+            }
+        }
+
+        sources_metadata
+    }
+
+    /// Collect and rank the top-5 source articles for a genre's bullets,
+    /// either from the live `clustering_response` or (on resume) from the
+    /// persisted `body_json`. Sorted by `published_at` desc, parsed to an
+    /// actual instant (rather than compared as RFC3339 strings) so entries
+    /// differing in offset or fractional-second precision still order
+    /// correctly.
+    async fn build_sources(
+        &self,
+        job: &JobContext,
+        genre: &str,
+        genre_result: &GenreResult,
+    ) -> Vec<serde_json::Value> {
+        let mut sources_metadata = if let Some(clustering) = &genre_result.clustering_response {
+            self.build_sources_from_clustering(job, genre, clustering)
+                .await
+        } else {
+            self.build_sources_from_resume(job, genre).await
+        };
+
+        // Sort sources by published_at desc. Parsing to an actual instant
+        // (rather than comparing the RFC3339 strings lexicographically)
+        // avoids mis-ordering when entries differ in offset or in
+        // fractional-second precision.
+        let parse_published_at = |v: &serde_json::Value| {
+            v.as_object()
+                .and_then(|m| m.get("published_at"))
+                .and_then(|v| v.as_str())
+                .and_then(|s| chrono::DateTime::parse_from_rfc3339(s).ok())
+                .map(|dt| dt.with_timezone(&chrono::Utc))
+        };
+        sources_metadata.sort_by_key(|a| std::cmp::Reverse(parse_published_at(a)));
+
+        // Limit sources to top 5
+        sources_metadata.into_iter().take(5).collect()
+    }
+
+    /// Build the per-bullet JSON array (text + sources + reconciled
+    /// citation sentence IDs) for a genre's summary response.
+    async fn build_bullets_json(
+        &self,
+        job: &JobContext,
+        genre: &str,
+        genre_result: &GenreResult,
+        summary_response: &crate::clients::news_creator::SummaryResponse,
+        top_sources: &[serde_json::Value],
+    ) -> serde_json::Value {
+        // Build (url -> article_id) for URL-fallback in citation reconciliation.
+        // top_sources は [{title, url, published_at, article_id}, ...] 形式。
+        let url_to_article: HashMap<String, String> = top_sources
+            .iter()
+            .filter_map(|s| {
+                let aid = s.get("article_id")?.as_str()?.to_string();
+                let url = s.get("url")?.as_str()?.to_string();
+                Some((url, aid))
+            })
+            .collect();
+
+        // Fetch (article_id -> Vec<sentence DB id>) for this genre's run.
+        // 失敗・resume パス・run_id 0 は空 map で degrade (fail-open)。
+        let article_to_sentence_ids: HashMap<String, Vec<i64>> =
+            match genre_result.clustering_response.as_ref().map(|c| c.run_id) {
+                Some(run_id) if run_id > 0 => self
+                    .dao
+                    .get_sentence_ids_by_run(run_id)
+                    .await
+                    .unwrap_or_else(|e| {
+                        warn!(
+                            job_id = %job.job_id,
+                            genre = %genre,
+                            error = ?e,
+                            "failed to fetch sentence ids for citation reconciliation"
+                        );
+                        HashMap::new()
+                    }),
+                // TODO(ADR-followup): resume path needs run_id from recap_subworker_runs lookup.
+                _ => HashMap::new(),
+            };
+
+        let refs: &[Reference] = summary_response
+            .summary
+            .references
+            .as_deref()
+            .unwrap_or(&[]);
+
+        let bullet_values = summary_response
+            .summary
+            .bullets
+            .iter()
+            .map(|bullet| {
+                let sentence_ids = reconcile_bullet_citations(
+                    bullet,
+                    refs,
+                    &url_to_article,
+                    &article_to_sentence_ids,
+                );
+                json!({
+                    "text": bullet,
+                    "sources": top_sources,
+                    "source_sentence_ids": sentence_ids,
+                })
+            })
+            .collect::<Vec<_>>();
+        serde_json::Value::Array(bullet_values)
+    }
+
+    /// Write a genre's resolved output through `persist_genre_output`
+    /// (single transaction covering `recap_outputs` + the genre pointer),
+    /// recording a failed-genre entry and returning `GenreOutcome::Failed`
+    /// on error rather than propagating it.
+    async fn write_genre_output(
+        &self,
+        job: &JobContext,
+        genre: &str,
+        output: &RecapOutput,
+        persisted_genre: &PersistedGenre,
+    ) -> Result<GenreOutcome> {
+        // Written in a single transaction (`persist_genre_output`) so a
+        // failure on one write can't leave the other stranded — e.g. a
+        // recap_outputs row with no matching recap_sections pointer.
+        if let Err(err) = self.dao.persist_genre_output(output, persisted_genre).await {
+            warn!(
+                job_id = %job.job_id,
+                genre = %genre,
+                error = ?err,
+                "failed to persist recap output and section pointer"
+            );
+            record_failed_genre(
+                self.dao.as_ref(),
+                job.job_id,
+                "persist_write",
+                genre,
+                &format!("persist_genre_output failed: {err}"),
+            )
+            .await;
+            return Ok(GenreOutcome::Failed);
+        }
+
+        debug!(
+            job_id = %job.job_id,
+            genre = %genre,
+            "genre processed successfully"
+        );
+        Ok(GenreOutcome::Stored)
+    }
+
+    /// Persist a single genre's final section: classify a pre-existing
+    /// dispatch error, resolve the summary response, build sources and
+    /// citations, extract tags, and write the output row. Returns the
+    /// outcome bucket the caller folds into `PersistResult`'s counters.
+    async fn persist_genre(
+        &self,
+        job: &JobContext,
+        genre: &str,
+        genre_result: &GenreResult,
+    ) -> Result<GenreOutcome> {
+        // エラーがある場合は分類
+        if let Some(error_msg) = &genre_result.error {
+            // `error_kind` を見て分類する。文字列 (`error_msg`) は診断用に
+            // 保持するのみで、分類には使わない — 任意のエラーメッセージが
+            // 偶然 "no evidence" 等の部分文字列を含んでいても、本物の
+            // no-evidence/insufficient-documents 状態と誤分類されない。
+            return Ok(match &genre_result.error_kind {
+                Some(RecapError::NoEvidence) => GenreOutcome::NoEvidence,
+                Some(RecapError::InsufficientDocuments { .. }) => GenreOutcome::Skipped,
+                _ => {
+                    // その他のエラー（クラスタリング失敗、サマリー生成失敗など）
+                    warn!(
+                        job_id = %job.job_id,
+                        genre = %genre,
+                        error = ?genre_result.error,
+                        "skipping genre with error"
+                    );
+                    record_failed_genre(
+                        self.dao.as_ref(),
+                        job.job_id,
+                        "dispatch_summary",
+                        genre,
+                        error_msg,
+                    )
+                    .await;
+                    GenreOutcome::Failed
+                }
+            });
+        }
+
+        // summary_responseがNoneの場合、データベースから再取得を試みる
+        let Ok((summary_id, summary_response)) = self
+            .resolve_summary_response(job, genre, genre_result)
+            .await
+        else {
+            return Ok(GenreOutcome::Failed);
+        };
+
+        // Collect source articles for bullets
+        let top_sources = self.build_sources(job, genre, genre_result).await;
+
+        let bullets_json = self
+            .build_bullets_json(job, genre, genre_result, &summary_response, &top_sources)
+            .await;
+
+        // 先に必要な値を取得してからsummary_responseを移動
+        let summary_title = summary_response.summary.title.clone();
+        let summary_bullets = summary_response.summary.bullets.clone();
+        let summary_text = summary_bullets.join("\n");
+        let body_json = serde_json::to_value(&summary_response)
+            .context("failed to convert summary response to JSON")?;
+
+        // Sanitize title to remove markdown code blocks
+        let sanitized_title = sanitize_title(&summary_title);
+        let sanitized_summary = sanitize_title(&summary_text);
+
+        // tag-generatorでセマンティックタグを抽出
+        let tags = if let Some(ref tg) = self.tag_generator {
+            // `sanitized_summary` is already `summary_bullets.join("\n")`
+            // run through `sanitize_title`; appending the unsanitized
+            // bullets again here just sent the same content twice.
+            match tg.extract_tags(genre, &sanitized_summary).await {
+                Ok(tags) => {
+                    debug!(
+                        job_id = %job.job_id,
+                        genre = %genre,
+                        tag_count = tags.len(),
+                        "extracted semantic tags for genre"
+                    );
+                    tags
+                }
+                Err(e) => {
+                    warn!(
+                        job_id = %job.job_id,
+                        genre = %genre,
+                        error = ?e,
+                        "failed to extract semantic tags, continuing without tags"
+                    );
+                    Vec::new()
+                }
+            }
+        } else {
+            Vec::new()
+        };
+
+        let output = RecapOutput::new(
+            job.job_id,
+            genre,
+            summary_id.clone(),
+            sanitized_title,
+            sanitized_summary,
+            bullets_json,
+            body_json,
+        )
+        .with_tags(tags);
+        let persisted_genre =
+            PersistedGenre::new(job.job_id, genre).with_response_id(Some(summary_id));
+
+        self.write_genre_output(job, genre, &output, &persisted_genre)
+            .await
+    }
+}
+
 #[async_trait]
-#[allow(clippy::too_many_lines)]
 impl PersistStage for FinalSectionPersistStage {
     async fn persist(&self, job: &JobContext, result: DispatchResult) -> Result<PersistResult> {
         info!(
@@ -233,423 +737,11 @@ impl PersistStage for FinalSectionPersistStage {
         let total_genres = result.all_genres.len();
 
         for (genre, genre_result) in &result.genre_results {
-            // エラーがある場合は分類
-            if let Some(error_msg) = &genre_result.error {
-                // `error_kind` を見て分類する。文字列 (`error_msg`) は診断用に
-                // 保持するのみで、分類には使わない — 任意のエラーメッセージが
-                // 偶然 "no evidence" 等の部分文字列を含んでいても、本物の
-                // no-evidence/insufficient-documents 状態と誤分類されない。
-                match &genre_result.error_kind {
-                    Some(RecapError::NoEvidence) => {
-                        // 記事が1件も割り当てられなかった
-                        genres_no_evidence += 1;
-                    }
-                    Some(RecapError::InsufficientDocuments { .. }) => {
-                        // 証拠不足でスキップ（記事数が閾値未満）
-                        genres_skipped += 1;
-                    }
-                    _ => {
-                        // その他のエラー（クラスタリング失敗、サマリー生成失敗など）
-                        warn!(
-                            job_id = %job.job_id,
-                            genre = %genre,
-                            error = ?genre_result.error,
-                            "skipping genre with error"
-                        );
-                        record_failed_genre(
-                            self.dao.as_ref(),
-                            job.job_id,
-                            "dispatch_summary",
-                            genre,
-                            error_msg,
-                        )
-                        .await;
-                        genres_failed += 1;
-                    }
-                }
-                continue;
-            }
-
-            // summary_responseがNoneの場合、データベースから再取得を試みる
-            let summary_response = match (
-                &genre_result.summary_response_id,
-                &genre_result.summary_response,
-            ) {
-                (Some(_), Some(response)) => response.clone(),
-                (Some(summary_id), None) => {
-                    // リジューム時: データベースから再取得
-                    match self.dao.get_recap_output_body_json(job.job_id, genre).await {
-                        Ok(Some(body_json)) => {
-                            match serde_json::from_value::<
-                                crate::clients::news_creator::SummaryResponse,
-                            >(body_json)
-                            {
-                                Ok(response) => {
-                                    info!(
-                                        job_id = %job.job_id,
-                                        genre = %genre,
-                                        "recovered summary_response from database"
-                                    );
-                                    response
-                                }
-                                Err(e) => {
-                                    warn!(
-                                        job_id = %job.job_id,
-                                        genre = %genre,
-                                        error = ?e,
-                                        "failed to deserialize summary_response from database"
-                                    );
-                                    record_failed_genre(
-                                        self.dao.as_ref(),
-                                        job.job_id,
-                                        "persist_lookup",
-                                        genre,
-                                        &format!("deserialize summary_response failed: {e}"),
-                                    )
-                                    .await;
-                                    genres_failed += 1;
-                                    continue;
-                                }
-                            }
-                        }
-                        Ok(None) => {
-                            warn!(
-                                job_id = %job.job_id,
-                                genre = %genre,
-                                summary_id = %summary_id,
-                                "summary_response not found in database"
-                            );
-                            record_failed_genre(
-                                self.dao.as_ref(),
-                                job.job_id,
-                                "persist_lookup",
-                                genre,
-                                &format!(
-                                    "summary_response not found in database for id {summary_id}"
-                                ),
-                            )
-                            .await;
-                            genres_failed += 1;
-                            continue;
-                        }
-                        Err(e) => {
-                            warn!(
-                                job_id = %job.job_id,
-                                genre = %genre,
-                                error = ?e,
-                                "failed to fetch summary_response from database"
-                            );
-                            record_failed_genre(
-                                self.dao.as_ref(),
-                                job.job_id,
-                                "persist_lookup",
-                                genre,
-                                &format!("fetch summary_response failed: {e}"),
-                            )
-                            .await;
-                            genres_failed += 1;
-                            continue;
-                        }
-                    }
-                }
-                (None, _) => {
-                    warn!(
-                        job_id = %job.job_id,
-                        genre = %genre,
-                        "genre missing summary response id"
-                    );
-                    record_failed_genre(
-                        self.dao.as_ref(),
-                        job.job_id,
-                        "persist_lookup",
-                        genre,
-                        "genre missing summary_response_id",
-                    )
-                    .await;
-                    genres_failed += 1;
-                    continue;
-                }
-            };
-
-            // Collect source articles for bullets
-            let mut sources_metadata: Vec<serde_json::Value> = Vec::new();
-            if let Some(clustering) = &genre_result.clustering_response {
-                // Collect all article IDs from representatives
-                let article_ids: Vec<String> = clustering
-                    .clusters
-                    .iter()
-                    .flat_map(|c| c.representatives.iter().map(|r| r.article_id.clone()))
-                    .collect::<std::collections::HashSet<_>>()
-                    .into_iter()
-                    .collect();
-
-                // Pre-compute article ID to title mapping
-                let article_titles: std::collections::HashMap<String, String> = clustering
-                    .clusters
-                    .iter()
-                    .flat_map(|c| &c.representatives)
-                    .map(|r| (r.article_id.clone(), r.text.clone()))
-                    .collect();
-
-                match self
-                    .dao
-                    .get_article_metadata(job.job_id, &article_ids)
-                    .await
-                {
-                    Ok(metadata) => {
-                        // Convert to source objects
-                        for (article_id, (published_at, source_url)) in metadata {
-                            let title = article_titles
-                                .get(&article_id)
-                                .cloned()
-                                .unwrap_or_else(|| "Source Article".to_string());
-
-                            sources_metadata.push(json!({
-                                "title": title,
-                                "url": source_url,
-                                "published_at": published_at,
-                                "article_id": article_id
-                            }));
-                        }
-                    }
-                    Err(e) => {
-                        warn!(
-                            job_id = %job.job_id,
-                            genre = %genre,
-                            error = ?e,
-                            "failed to fetch article metadata for sources"
-                        );
-                    }
-                }
-            } else {
-                // リジューム時: clustering_responseがNoneの場合
-                // body_jsonからクラスタ情報を取得するか、データベースから直接取得
-                // ここでは簡易的にbody_jsonから取得を試みる
-                if let Ok(Some(body_json)) =
-                    self.dao.get_recap_output_body_json(job.job_id, genre).await
-                {
-                    // body_jsonからクラスタ情報を抽出（構造に依存）
-                    if let Some(clusters) = body_json.get("clusters").and_then(|c| c.as_array()) {
-                        let article_ids: Vec<String> = clusters
-                            .iter()
-                            .flat_map(|cluster| {
-                                cluster
-                                    .get("representatives")
-                                    .and_then(|r| r.as_array())
-                                    .map_or(&[] as &[serde_json::Value], |arr| arr.as_slice())
-                                    .iter()
-                                    .filter_map(|rep| {
-                                        rep.get("article_id")
-                                            .and_then(|id| id.as_str())
-                                            .map(str::to_string)
-                                    })
-                            })
-                            .collect::<std::collections::HashSet<_>>()
-                            .into_iter()
-                            .collect();
-
-                        match self
-                            .dao
-                            .get_article_metadata(job.job_id, &article_ids)
-                            .await
-                        {
-                            Ok(metadata) => {
-                                for (article_id, (published_at, source_url)) in metadata {
-                                    sources_metadata.push(json!({
-                                        "title": "Source Article",
-                                        "url": source_url,
-                                        "published_at": published_at,
-                                        "article_id": article_id
-                                    }));
-                                }
-                            }
-                            Err(e) => {
-                                warn!(
-                                    job_id = %job.job_id,
-                                    genre = %genre,
-                                    error = ?e,
-                                    "failed to fetch article metadata for sources (resume)"
-                                );
-                            }
-                        }
-                    }
-                }
-            }
-
-            // Sort sources by published_at desc
-            sources_metadata.sort_by(|a, b| {
-                let a_time = a
-                    .as_object()
-                    .and_then(|m| m.get("published_at"))
-                    .and_then(|v| v.as_str());
-                let b_time = b
-                    .as_object()
-                    .and_then(|m| m.get("published_at"))
-                    .and_then(|v| v.as_str());
-                b_time.cmp(&a_time)
-            });
-
-            // Limit sources to top 5
-            let top_sources: Vec<serde_json::Value> =
-                sources_metadata.into_iter().take(5).collect();
-
-            let summary_id = genre_result
-                .summary_response_id
-                .as_ref()
-                .expect("checked above")
-                .clone();
-
-            // Build (url -> article_id) for URL-fallback in citation reconciliation.
-            // top_sources は [{title, url, published_at, article_id}, ...] 形式。
-            let url_to_article: HashMap<String, String> = top_sources
-                .iter()
-                .filter_map(|s| {
-                    let aid = s.get("article_id")?.as_str()?.to_string();
-                    let url = s.get("url")?.as_str()?.to_string();
-                    Some((url, aid))
-                })
-                .collect();
-
-            // Fetch (article_id -> Vec<sentence DB id>) for this genre's run.
-            // 失敗・resume パス・run_id 0 は空 map で degrade (fail-open)。
-            let article_to_sentence_ids: HashMap<String, Vec<i64>> =
-                match genre_result.clustering_response.as_ref().map(|c| c.run_id) {
-                    Some(run_id) if run_id > 0 => self
-                        .dao
-                        .get_sentence_ids_by_run(run_id)
-                        .await
-                        .unwrap_or_else(|e| {
-                            warn!(
-                                job_id = %job.job_id,
-                                genre = %genre,
-                                error = ?e,
-                                "failed to fetch sentence ids for citation reconciliation"
-                            );
-                            HashMap::new()
-                        }),
-                    // TODO(ADR-followup): resume path needs run_id from recap_subworker_runs lookup.
-                    _ => HashMap::new(),
-                };
-
-            let refs: &[Reference] = summary_response
-                .summary
-                .references
-                .as_deref()
-                .unwrap_or(&[]);
-
-            let bullet_values = summary_response
-                .summary
-                .bullets
-                .iter()
-                .map(|bullet| {
-                    let sentence_ids = reconcile_bullet_citations(
-                        bullet,
-                        refs,
-                        &url_to_article,
-                        &article_to_sentence_ids,
-                    );
-                    json!({
-                        "text": bullet,
-                        "sources": top_sources,
-                        "source_sentence_ids": sentence_ids,
-                    })
-                })
-                .collect::<Vec<_>>();
-            let bullets_json = serde_json::Value::Array(bullet_values);
-
-            // 先に必要な値を取得してからsummary_responseを移動
-            let summary_title = summary_response.summary.title.clone();
-            let summary_bullets = summary_response.summary.bullets.clone();
-            let summary_text = summary_bullets.join("\n");
-            let body_json = serde_json::to_value(&summary_response)
-                .context("failed to convert summary response to JSON")?;
-
-            // Sanitize title to remove markdown code blocks
-            let sanitized_title = sanitize_title(&summary_title);
-            let sanitized_summary = sanitize_title(&summary_text);
-
-            // tag-generatorでセマンティックタグを抽出
-            let tags = if let Some(ref tg) = self.tag_generator {
-                let tag_content = format!("{}\n{}", sanitized_summary, summary_bullets.join("\n"));
-                match tg.extract_tags(genre.as_str(), &tag_content).await {
-                    Ok(tags) => {
-                        debug!(
-                            job_id = %job.job_id,
-                            genre = %genre,
-                            tag_count = tags.len(),
-                            "extracted semantic tags for genre"
-                        );
-                        tags
-                    }
-                    Err(e) => {
-                        warn!(
-                            job_id = %job.job_id,
-                            genre = %genre,
-                            error = ?e,
-                            "failed to extract semantic tags, continuing without tags"
-                        );
-                        Vec::new()
-                    }
-                }
-            } else {
-                Vec::new()
-            };
-
-            let output = RecapOutput::new(
-                job.job_id,
-                genre.as_str(),
-                summary_id.clone(),
-                sanitized_title,
-                sanitized_summary,
-                bullets_json,
-                body_json,
-            )
-            .with_tags(tags);
-
-            let mut persisted_successfully = true;
-            let mut write_errors: Vec<String> = Vec::new();
-
-            if let Err(err) = self.dao.upsert_recap_output(&output).await {
-                warn!(
-                    job_id = %job.job_id,
-                    genre = %genre,
-                    error = ?err,
-                    "failed to persist recap output"
-                );
-                write_errors.push(format!("upsert_recap_output failed: {err}"));
-                persisted_successfully = false;
-            }
-
-            let persisted_genre =
-                PersistedGenre::new(job.job_id, genre.as_str()).with_response_id(Some(summary_id));
-            if let Err(err) = self.dao.upsert_genre(&persisted_genre).await {
-                warn!(
-                    job_id = %job.job_id,
-                    genre = %genre,
-                    error = ?err,
-                    "failed to persist recap section pointer"
-                );
-                write_errors.push(format!("upsert_genre failed: {err}"));
-                persisted_successfully = false;
-            }
-
-            if persisted_successfully {
-                debug!(
-                    job_id = %job.job_id,
-                    genre = %genre,
-                    "genre processed successfully"
-                );
-                genres_stored += 1;
-            } else {
-                record_failed_genre(
-                    self.dao.as_ref(),
-                    job.job_id,
-                    "persist_write",
-                    genre,
-                    &write_errors.join("; "),
-                )
-                .await;
-                genres_failed += 1;
+            match self.persist_genre(job, genre, genre_result).await? {
+                GenreOutcome::Stored => genres_stored += 1,
+                GenreOutcome::Failed => genres_failed += 1,
+                GenreOutcome::Skipped => genres_skipped += 1,
+                GenreOutcome::NoEvidence => genres_no_evidence += 1,
             }
         }
 

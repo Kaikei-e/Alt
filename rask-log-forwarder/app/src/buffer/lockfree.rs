@@ -177,6 +177,19 @@ impl LogBufferReceiver {
                 }
                 Err(broadcast::error::RecvError::Lagged(n)) => {
                     tracing::warn!("Buffer receiver lagged by {} messages", n);
+                    // The `n` skipped messages were already counted into
+                    // `queue_depth` when sent but will never be `recv`'d (and
+                    // so never decremented above), so account for them here.
+                    // Without this, queue_depth drifts upward forever after
+                    // any lag, eventually reporting a permanently-false
+                    // `BufferFull`.
+                    let skipped = usize::try_from(n).unwrap_or(usize::MAX);
+                    self.metrics
+                        .queue_depth
+                        .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |current| {
+                            Some(current.saturating_sub(skipped))
+                        })
+                        .ok();
                     // Continue to try receiving the next available message
                 }
             }
@@ -451,12 +464,21 @@ impl LogBuffer {
                 }
             }
             BackpressureStrategy::Block => {
-                // Keep trying until success or permanent error
+                // Keep trying until success or permanent error, backing off
+                // with a bounded sleep between attempts instead of hot-
+                // spinning on `yield_now` (which pins a CPU core at 100%
+                // while backpressured).
+                let mut delay = self
+                    .config
+                    .backpressure_delay
+                    .max(Duration::from_micros(50));
+                const MAX_BLOCK_DELAY: Duration = Duration::from_millis(10);
                 loop {
                     match self.push(entry.clone()) {
                         Ok(()) => return Ok(()),
                         Err(BufferError::BufferFull) => {
-                            tokio::task::yield_now().await;
+                            tokio::time::sleep(delay).await;
+                            delay = (delay * 2).min(MAX_BLOCK_DELAY);
                             continue;
                         }
                         Err(e) => return Err(e),

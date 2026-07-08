@@ -2,7 +2,7 @@
 
 ## Overview
 
-Primary frontend. **SvelteKit 2.x**, **Svelte 5 Runes**, **TailwindCSS v4**, **TypeScript 7 (tsgo)**. Serves at root path (`/`).
+Primary frontend. **SvelteKit 2.x**, **Svelte 5 Runes**, **TailwindCSS v4**, **TypeScript**. Serves at root path (`/`).
 
 > Details: `docs/services/alt-frontend-sv.md`
 
@@ -18,7 +18,7 @@ bun dev
 
 # Lint & Type Check & Build
 bun run lint && bun run format
-bun run check && bun run build   # tsgo (TypeScript 7 Beta), 10x faster than tsc
+bun run check && bun run build   # svelte-check (tsc). --tsgo (native preview) hangs indefinitely on this codebase — do not re-enable
 ```
 
 ## TDD Workflow

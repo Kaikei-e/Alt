@@ -79,8 +79,12 @@ func (p *LightweightProxy) copyResponse(w http.ResponseWriter, resp *http.Respon
 	// Set status code
 	w.WriteHeader(resp.StatusCode)
 
-	// Copy response body
-	_, err := io.Copy(w, resp.Body)
+	// Copy response body using the configured buffer size.
+	bufSize := p.config.BufferSize
+	if bufSize <= 0 {
+		bufSize = 32 * 1024
+	}
+	_, err := io.CopyBuffer(w, resp.Body, make([]byte, bufSize))
 	if err != nil {
 		p.logger.Printf("[%s] Error copying response body: %v", traceID, err)
 	}

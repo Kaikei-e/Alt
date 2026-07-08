@@ -64,7 +64,12 @@ func Rerank(
 
 	// Limit candidates to prevent reranker timeout on cross-encoder inference.
 	// MPS benchmark: 30 candidates = 16.7s, 15 candidates ≈ 8s (fits within 12s timeout).
-	const maxRerankCandidates = 15
+	// cfg.TopK drives the actual cap; this is only the fallback when TopK is unset.
+	const defaultMaxRerankCandidates = 15
+	maxRerankCandidates := cfg.TopK
+	if maxRerankCandidates <= 0 {
+		maxRerankCandidates = defaultMaxRerankCandidates
+	}
 	if len(candidates) > maxRerankCandidates {
 		sort.Slice(candidates, func(i, j int) bool {
 			return candidates[i].Score > candidates[j].Score

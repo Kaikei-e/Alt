@@ -5,6 +5,7 @@ import (
 	"alt/utils/logger"
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 
 	"github.com/jackc/pgx/v5"
@@ -27,11 +28,11 @@ func (r *FeedRepository) RegisterFavoriteFeed(ctx context.Context, url string) (
 	tx, err := r.pool.Begin(ctx)
 	if err != nil {
 		logger.SafeErrorContext(ctx, "Error starting transaction", "error", err)
-		return pgx.ErrTxClosed
+		return fmt.Errorf("begin tx: %w", err)
 	}
 	defer func() {
 		if err != nil {
-			if rbErr := tx.Rollback(ctx); rbErr != nil && rbErr.Error() != "tx is closed" {
+			if rbErr := tx.Rollback(ctx); rbErr != nil && !errors.Is(rbErr, pgx.ErrTxClosed) {
 				logger.SafeWarnContext(ctx, "Error rolling back transaction", "error", rbErr)
 			}
 		}
@@ -41,7 +42,10 @@ func (r *FeedRepository) RegisterFavoriteFeed(ctx context.Context, url string) (
 	err = tx.QueryRow(ctx, "SELECT id FROM feeds WHERE website_url = $1", cleanURL).Scan(&feedID)
 	if err != nil {
 		logger.SafeErrorContext(ctx, "feed not found for URL", "error", err, "url", cleanURL)
-		return pgx.ErrNoRows
+		if errors.Is(err, pgx.ErrNoRows) {
+			return pgx.ErrNoRows
+		}
+		return fmt.Errorf("query feed by url: %w", err)
 	}
 
 	// Insert with user_id for multi-tenant support
@@ -51,12 +55,12 @@ func (r *FeedRepository) RegisterFavoriteFeed(ctx context.Context, url string) (
 		user.UserID, feedID)
 	if err != nil {
 		logger.SafeErrorContext(ctx, "Error inserting favorite feed", "error", err, "user_id", user.UserID)
-		return err
+		return fmt.Errorf("insert favorite feed: %w", err)
 	}
 
 	if err = tx.Commit(ctx); err != nil {
 		logger.SafeErrorContext(ctx, "Error committing transaction", "error", err)
-		return err
+		return fmt.Errorf("commit tx: %w", err)
 	}
 
 	return nil
@@ -78,11 +82,11 @@ func (r *FeedRepository) RemoveFavoriteFeed(ctx context.Context, url string) (er
 	tx, err := r.pool.Begin(ctx)
 	if err != nil {
 		logger.SafeErrorContext(ctx, "Error starting transaction", "error", err)
-		return pgx.ErrTxClosed
+		return fmt.Errorf("begin tx: %w", err)
 	}
 	defer func() {
 		if err != nil {
-			if rbErr := tx.Rollback(ctx); rbErr != nil && rbErr.Error() != "tx is closed" {
+			if rbErr := tx.Rollback(ctx); rbErr != nil && !errors.Is(rbErr, pgx.ErrTxClosed) {
 				logger.SafeWarnContext(ctx, "Error rolling back transaction", "error", rbErr)
 			}
 		}
@@ -92,7 +96,10 @@ func (r *FeedRepository) RemoveFavoriteFeed(ctx context.Context, url string) (er
 	err = tx.QueryRow(ctx, "SELECT id FROM feeds WHERE website_url = $1", cleanURL).Scan(&feedID)
 	if err != nil {
 		logger.SafeErrorContext(ctx, "feed not found for URL", "error", err, "url", cleanURL)
-		return pgx.ErrNoRows
+		if errors.Is(err, pgx.ErrNoRows) {
+			return pgx.ErrNoRows
+		}
+		return fmt.Errorf("query feed by url: %w", err)
 	}
 
 	result, err := tx.Exec(ctx,
@@ -100,7 +107,7 @@ func (r *FeedRepository) RemoveFavoriteFeed(ctx context.Context, url string) (er
 		user.UserID, feedID)
 	if err != nil {
 		logger.SafeErrorContext(ctx, "Error deleting favorite feed", "error", err, "user_id", user.UserID)
-		return err
+		return fmt.Errorf("delete favorite feed: %w", err)
 	}
 
 	if result.RowsAffected() == 0 {
@@ -109,7 +116,7 @@ func (r *FeedRepository) RemoveFavoriteFeed(ctx context.Context, url string) (er
 
 	if err = tx.Commit(ctx); err != nil {
 		logger.SafeErrorContext(ctx, "Error committing transaction", "error", err)
-		return err
+		return fmt.Errorf("commit tx: %w", err)
 	}
 
 	return nil

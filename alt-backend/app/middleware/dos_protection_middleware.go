@@ -6,6 +6,7 @@ package middleware
 import (
 	"alt/config"
 	"alt/utils/logger"
+	"context"
 	"fmt"
 	"net"
 	"net/http"
@@ -97,16 +98,18 @@ const (
 
 // DOSProtectionMiddleware returns a middleware that provides DoS protection.
 // Backward-compatible default: trusts X-Real-IP / X-Forwarded-For. New call
-// sites should prefer DOSProtectionMiddlewareWithTrust(config, false) when
+// sites should prefer DOSProtectionMiddlewareWithTrust(ctx, config, false) when
 // not behind a controlled reverse proxy (M-007).
-func DOSProtectionMiddleware(config DOSProtectionConfig) echo.MiddlewareFunc {
-	return DOSProtectionMiddlewareWithTrust(config, true)
+func DOSProtectionMiddleware(ctx context.Context, config DOSProtectionConfig) echo.MiddlewareFunc {
+	return DOSProtectionMiddlewareWithTrust(ctx, config, true)
 }
 
 // DOSProtectionMiddlewareWithTrust is the trust-aware variant. Use this from
 // route registration when the deployment terminates TLS / sanitises XFF on a
-// trusted hop.
-func DOSProtectionMiddlewareWithTrust(config DOSProtectionConfig, trustForwardedHeaders bool) echo.MiddlewareFunc {
+// trusted hop. ctx bounds the lifetime of the background limiter-cleanup
+// goroutine: it must be the process/server lifetime context, not a per-request
+// one, or the goroutine stops as soon as the first request context is done.
+func DOSProtectionMiddlewareWithTrust(ctx context.Context, config DOSProtectionConfig, trustForwardedHeaders bool) echo.MiddlewareFunc {
 	if err := config.Validate(); err != nil {
 		panic(fmt.Sprintf("invalid DoS protection config: %v", err))
 	}
@@ -122,11 +125,18 @@ func DOSProtectionMiddlewareWithTrust(config DOSProtectionConfig, trustForwarded
 
 	// M-006: evict stale rate-limiter entries periodically. Without this the
 	// map grows without bound under attack from many spoofed source addresses.
+	// Bound to ctx so shutdown actually stops the goroutine instead of leaking
+	// one per middleware construction.
 	go func() {
 		ticker := time.NewTicker(5 * time.Minute)
 		defer ticker.Stop()
-		for range ticker.C {
-			CleanupExpiredLimiters(limiters, &limiterMu, 30*time.Minute)
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				CleanupExpiredLimiters(limiters, &limiterMu, 30*time.Minute)
+			}
 		}
 	}()
 

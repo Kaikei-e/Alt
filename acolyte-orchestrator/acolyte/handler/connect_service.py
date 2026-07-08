@@ -27,6 +27,11 @@ if TYPE_CHECKING:
 
 logger = structlog.get_logger(__name__)
 
+# Cap on concurrently running background pipelines per process. Not
+# settings-driven — this bounds in-process resource usage (LLM/DB
+# connections), not a business-tunable knob.
+_MAX_CONCURRENT_RUNS = 4
+
 
 class AcolyteConnectService:
     """Connect-RPC implementation of alt.acolyte.v1.AcolyteService."""
@@ -44,6 +49,8 @@ class AcolyteConnectService:
         self._jobs = job_queue
         self._graph = graph
         self._llm = llm
+        self._background_tasks: set[asyncio.Task[None]] = set()
+        self._run_semaphore = asyncio.Semaphore(_MAX_CONCURRENT_RUNS)
 
     def set_graph(self, graph: CompiledStateGraph) -> None:
         """Inject the compiled LangGraph at startup time."""
@@ -66,8 +73,9 @@ class AcolyteConnectService:
         self, request: acolyte_pb2.CreateReportRequest, ctx: RequestContext
     ) -> acolyte_pb2.CreateReportResponse:
         from acolyte.domain.brief import ReportBrief
+        from acolyte.usecase.create_report_uc import CreateReportUsecase
 
-        report = await self._repo.create_report(request.title, request.report_type)
+        report = await CreateReportUsecase(self._repo).execute(request.title, request.report_type)
         scope = dict(request.scope) if request.scope else {}
         if scope.get("topic"):
             brief = ReportBrief.from_scope(scope, request.report_type)
@@ -77,11 +85,12 @@ class AcolyteConnectService:
     async def get_report(
         self, request: acolyte_pb2.GetReportRequest, ctx: RequestContext
     ) -> acolyte_pb2.GetReportResponse:
-        report = await self._repo.get_report(UUID(request.report_id))
+        from acolyte.usecase.get_report_uc import GetReportUsecase
+
+        report, sections = await GetReportUsecase(self._repo).execute(UUID(request.report_id))
         if report is None:
             raise ConnectError(Code.NOT_FOUND, f"Report {request.report_id} not found")
 
-        sections = await self._repo.get_sections(report.report_id)
         brief = await self._repo.get_brief(report.report_id)
 
         proto_sections = []
@@ -135,9 +144,11 @@ class AcolyteConnectService:
     async def list_reports(
         self, request: acolyte_pb2.ListReportsRequest, ctx: RequestContext
     ) -> acolyte_pb2.ListReportsResponse:
+        from acolyte.usecase.list_reports_uc import ListReportsUsecase
+
         cursor = request.cursor if request.cursor else None
         limit = request.limit if request.limit > 0 else 20
-        reports, next_cursor = await self._repo.list_reports(cursor, limit)
+        reports, next_cursor = await ListReportsUsecase(self._repo).execute(cursor, limit)
 
         return acolyte_pb2.ListReportsResponse(
             reports=[
@@ -204,24 +215,41 @@ class AcolyteConnectService:
     ) -> acolyte_pb2.StartReportRunResponse:
         if self._jobs is None:
             raise ConnectError(Code.UNIMPLEMENTED, "Job queue not configured")
-        report = await self._repo.get_report(UUID(request.report_id))
-        if report is None:
-            raise ConnectError(Code.NOT_FOUND, f"Report {request.report_id} not found")
-        run = await self._jobs.create_run(report.report_id, report.current_version + 1)
+
+        from acolyte.usecase.start_run_uc import StartRunUsecase
+
+        report_id = UUID(request.report_id)
+        try:
+            run = await StartRunUsecase(self._repo, self._jobs).execute(report_id)
+        except ValueError as e:
+            raise ConnectError(Code.NOT_FOUND, str(e)) from e
+        report = await self._repo.get_report(report_id)
 
         # Launch pipeline in background if graph is wired
-        if self._graph is not None:
+        if self._graph is not None and report is not None:
             brief = await self._repo.get_brief(report.report_id)
             brief_dict = brief.to_dict() if brief else {"topic": report.title}
-            asyncio.create_task(
+            task = asyncio.create_task(
                 self._run_pipeline(str(report.report_id), str(run.run_id), brief_dict),
                 name=f"acolyte-run-{run.run_id}",
             )
+            self._background_tasks.add(task)
+            task.add_done_callback(self._background_tasks.discard)
 
         return acolyte_pb2.StartReportRunResponse(run_id=str(run.run_id))
 
+    async def resume_pipeline(self, report_id: str, run_id: str, brief_dict: dict) -> None:
+        """Public entry point for operator tooling (e.g. scripts/resume_run.py)
+        to resume a checkpointed run outside of start_report_run's background task.
+        """
+        await self._run_pipeline(report_id, run_id, brief_dict)
+
     async def _run_pipeline(self, report_id: str, run_id: str, brief_dict: dict) -> None:
-        """Execute LangGraph pipeline in background."""
+        """Execute LangGraph pipeline in background, bounded by max_concurrent_runs."""
+        async with self._run_semaphore:
+            await self._run_pipeline_locked(report_id, run_id, brief_dict)
+
+    async def _run_pipeline_locked(self, report_id: str, run_id: str, brief_dict: dict) -> None:
         if self._graph is None:
             raise RuntimeError("Pipeline graph not configured")
 
@@ -305,15 +333,12 @@ class AcolyteConnectService:
                     await self._jobs.complete_run(UUID(run_id))
 
         except Exception as exc:
-            import traceback
-
-            tb = traceback.format_exc()
-            logger.error("Pipeline crashed", report_id=report_id, run_id=run_id, error=str(exc), traceback=tb)
+            logger.exception("Pipeline crashed", report_id=report_id, run_id=run_id, error=str(exc))
             if self._jobs is not None:
                 try:
                     await self._jobs.fail_run(UUID(run_id), "pipeline_crashed", str(exc))
                 except Exception as mark_exc:
-                    logger.error(
+                    logger.exception(
                         "Failed to mark run failed after crash",
                         report_id=report_id,
                         run_id=run_id,

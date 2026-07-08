@@ -19,6 +19,10 @@ import (
 	"rag-orchestrator/eval"
 )
 
+// evalUserID is the synthetic caller identity for eval runs against
+// StreamChat, which requires an authenticated X-Alt-User-Id header.
+const evalUserID = "00000000-0000-0000-0000-000000000001"
+
 func main() {
 	goldenPath := "eval/testdata/golden_cases.json"
 	reportPath := "eval/testdata/baseline_report.json"
@@ -240,9 +244,15 @@ func runCase(client augurv2connect.AugurServiceClient, gc eval.GoldenCase) eval.
 		Content: query,
 	})
 
-	stream, err := client.StreamChat(ctx, connect.NewRequest(&augurv2.StreamChatRequest{
+	req := connect.NewRequest(&augurv2.StreamChatRequest{
 		Messages: msgs,
-	}))
+	})
+	// The handler rejects unauthenticated StreamChat calls (extractUserID).
+	// A fixed eval user id keeps every golden-case run attributable to the
+	// same synthetic account without minting one per case.
+	req.Header().Set("X-Alt-User-Id", evalUserID)
+
+	stream, err := client.StreamChat(ctx, req)
 	if err != nil {
 		result.IsFallback = true
 		result.FallbackReason = fmt.Sprintf("stream error: %v", err)

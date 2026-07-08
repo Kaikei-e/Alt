@@ -143,9 +143,9 @@ async function fetchRecap(window: RecapWindow) {
 				const matchingGenre = recapData.genres.find(
 					(g) => g.genre === genreParam,
 				);
-				selectedGenre = matchingGenre ?? recapData.genres[0];
+				selectedGenre = matchingGenre ?? recapData.genres[0] ?? null;
 			} else {
-				selectedGenre = recapData.genres[0];
+				selectedGenre = recapData.genres[0] ?? null;
 			}
 		}
 	} catch (err) {

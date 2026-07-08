@@ -43,15 +43,16 @@ type GraphConfig struct {
 
 // GraphDeps collects all dependencies needed by the 5-stage retrieval pipeline.
 type GraphDeps struct {
-	QueryExpander domain.QueryExpander
-	LLMClient     domain.LLMClient
-	SearchClient  domain.SearchClient
-	Encoder       domain.VectorEncoder
-	Reranker      domain.Reranker     // Optional: cross-encoder reranking
-	BM25Searcher  domain.BM25Searcher // Optional: BM25 search for hybrid fusion
-	ChunkRepo     domain.RagChunkRepository
-	Config        GraphConfig
-	Logger        *slog.Logger
+	QueryExpander  domain.QueryExpander
+	LLMClient      domain.LLMClient
+	SearchClient   domain.SearchClient
+	Encoder        domain.VectorEncoder
+	Reranker       domain.Reranker       // Optional: cross-encoder reranking
+	BM25Searcher   domain.BM25Searcher   // Optional: BM25 search for hybrid fusion
+	HybridSearcher domain.HybridSearcher // Optional: in-DB hybrid search (replaces BM25Searcher)
+	ChunkRepo      domain.RagChunkRepository
+	Config         GraphConfig
+	Logger         *slog.Logger
 }
 
 // RetrievalGraph wraps the 5-stage retrieval pipeline as a single callable unit.
@@ -61,29 +62,31 @@ type GraphDeps struct {
 // This is the first step toward Eino compose.Graph integration (Phase 4).
 // The graph can later be registered as a tool with the Eino ChatModelAgent.
 type RetrievalGraph struct {
-	queryExpander domain.QueryExpander
-	llmClient     domain.LLMClient
-	searchClient  domain.SearchClient
-	encoder       domain.VectorEncoder
-	reranker      domain.Reranker
-	bm25Searcher  domain.BM25Searcher
-	chunkRepo     domain.RagChunkRepository
-	config        GraphConfig
-	logger        *slog.Logger
+	queryExpander  domain.QueryExpander
+	llmClient      domain.LLMClient
+	searchClient   domain.SearchClient
+	encoder        domain.VectorEncoder
+	reranker       domain.Reranker
+	bm25Searcher   domain.BM25Searcher
+	hybridSearcher domain.HybridSearcher
+	chunkRepo      domain.RagChunkRepository
+	config         GraphConfig
+	logger         *slog.Logger
 }
 
 // NewRetrievalGraph creates a new RetrievalGraph with the given dependencies.
 func NewRetrievalGraph(deps GraphDeps) *RetrievalGraph {
 	return &RetrievalGraph{
-		queryExpander: deps.QueryExpander,
-		llmClient:     deps.LLMClient,
-		searchClient:  deps.SearchClient,
-		encoder:       deps.Encoder,
-		reranker:      deps.Reranker,
-		bm25Searcher:  deps.BM25Searcher,
-		chunkRepo:     deps.ChunkRepo,
-		config:        deps.Config,
-		logger:        deps.Logger,
+		queryExpander:  deps.QueryExpander,
+		llmClient:      deps.LLMClient,
+		searchClient:   deps.SearchClient,
+		encoder:        deps.Encoder,
+		reranker:       deps.Reranker,
+		bm25Searcher:   deps.BM25Searcher,
+		hybridSearcher: deps.HybridSearcher,
+		chunkRepo:      deps.ChunkRepo,
+		config:         deps.Config,
+		logger:         deps.Logger,
 	}
 }
 
@@ -125,7 +128,7 @@ func (g *RetrievalGraph) Execute(ctx context.Context, input GraphInput) (*GraphO
 		slog.Int64("duration_ms", stage1Duration.Milliseconds()))
 
 	// Stage 2: BM25 search + original vector search + expanded embedding (parallel)
-	if err := EmbedAndSearch(ctx, sc, g.encoder, g.bm25Searcher, nil, g.chunkRepo,
+	if err := EmbedAndSearch(ctx, sc, g.encoder, g.bm25Searcher, g.hybridSearcher, g.chunkRepo,
 		g.config.HybridSearchEnabled, g.config.BM25Limit, g.logger); err != nil {
 		return nil, fmt.Errorf("stage2 embed_and_search: %w", err)
 	}

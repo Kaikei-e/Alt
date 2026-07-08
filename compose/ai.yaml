@@ -86,7 +86,7 @@ services:
       - news_creator_models:/home/ollama-user/.ollama
     restart: unless-stopped
     ports:
-      - "11435:11435"
+      - "127.0.0.1:11435:11435"
     networks:
       - alt-network
     depends_on:
@@ -159,7 +159,7 @@ services:
       - "tts-external:${TTS_EXTERNAL_HOST:-127.0.0.1}"
     restart: unless-stopped
     ports:
-      - "11434:11434"
+      - "127.0.0.1:11434:11434"
     networks:
       - alt-network
     depends_on:

@@ -38,11 +38,11 @@ export function getOTelConfig(): OTelConfig {
 let loggerProvider: LoggerProvider | null = null;
 let otelLogger: ReturnType<typeof logs.getLogger> | null = null;
 
-export function initOTelProvider(config?: OTelConfig): () => void {
+export function initOTelProvider(config?: OTelConfig): () => Promise<void> {
   const cfg = config || getOTelConfig();
 
   if (!cfg.enabled) {
-    return () => {};
+    return () => Promise.resolve();
   }
 
   const resource = resourceFromAttributes({
@@ -64,11 +64,13 @@ export function initOTelProvider(config?: OTelConfig): () => void {
   otelLogger = logs.getLogger("auth-token-manager");
 
   return () => {
-    if (loggerProvider) {
-      loggerProvider.shutdown();
-      loggerProvider = null;
-      otelLogger = null;
+    if (!loggerProvider) {
+      return Promise.resolve();
     }
+    const provider = loggerProvider;
+    loggerProvider = null;
+    otelLogger = null;
+    return provider.shutdown();
   };
 }
 

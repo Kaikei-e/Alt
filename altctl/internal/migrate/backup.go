@@ -2,6 +2,7 @@ package migrate
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"os"
@@ -71,7 +72,7 @@ func NewMigrator(composeDir, projectName string, logger *slog.Logger, dryRun boo
 	return &Migrator{
 		registry:     NewVolumeRegistry(),
 		volumeBackup: NewVolumeBackuper(projectName, logger, dryRun),
-		pgBackup:     NewPostgresBackuper(projectName, logger, dryRun),
+		pgBackup:     NewPostgresBackuper(projectName, composeDir, logger, dryRun),
 		composeDir:   composeDir,
 		projectName:  projectName,
 		logger:       logger,
@@ -228,9 +229,19 @@ func (m *Migrator) Backup(ctx context.Context, opts BackupOptions) (*BackupResul
 		if !m.dryRun {
 			outputPath := filepath.Join(volumesDir, filename)
 			checksum, err := FileChecksum(outputPath)
-			if err == nil {
-				vb.Checksum = checksum
+			if err != nil {
+				// Fail at backup time rather than shipping a manifest entry
+				// with an empty checksum — Verify would otherwise report a
+				// misleading "checksum mismatch" for what was actually a
+				// checksum computation failure.
+				m.logger.Error("checksum computation failed",
+					"volume", timing.Name,
+					"error", err,
+				)
+				failedVolumes = append(failedVolumes, timing.Name)
+				continue
 			}
+			vb.Checksum = checksum
 		} else {
 			vb.Checksum = "sha256:dry-run"
 		}
@@ -264,7 +275,7 @@ func (m *Migrator) Backup(ctx context.Context, opts BackupOptions) (*BackupResul
 				"archive", result.ArchivePath,
 			)
 		} else {
-			archivePath, err := CompressBackupDir(backupDir)
+			archivePath, err := CompressBackupDir(ctx, backupDir)
 			if err != nil {
 				return nil, fmt.Errorf("compressing backup: %w", err)
 			}
@@ -355,9 +366,11 @@ func (m *Migrator) getRunningContainers(ctx context.Context) ([]string, error) {
 	// Build compose file arguments
 	args := []string{"compose"}
 
+	var composeFilesFound int
 	for _, f := range composeFileList(m.composeDir) {
 		if _, err := os.Stat(f); err == nil {
 			args = append(args, "-f", f)
+			composeFilesFound++
 		}
 	}
 
@@ -366,8 +379,23 @@ func (m *Migrator) getRunningContainers(ctx context.Context) ([]string, error) {
 	cmd := exec.CommandContext(ctx, "docker", args...)
 	output, err := cmd.Output()
 	if err != nil {
-		// No containers running is not an error
-		return nil, nil
+		if composeFilesFound == 0 {
+			// No compose files exist at m.composeDir at all (e.g. it doesn't
+			// point at a real project) — docker compose has nothing to
+			// inspect either way, so this isn't a "check failed" condition
+			// distinct from "nothing running".
+			return nil, nil
+		}
+		// At least one compose file was found but the command still failed:
+		// a non-zero exit here means the command itself failed (docker
+		// daemon down, permission denied, ...) and must propagate, not be
+		// treated as "no running containers" — silently swallowing it here
+		// would bypass the --force safety gate above.
+		var exitErr *exec.ExitError
+		if errors.As(err, &exitErr) {
+			return nil, fmt.Errorf("docker compose ps: %w: %s", err, string(exitErr.Stderr))
+		}
+		return nil, fmt.Errorf("docker compose ps: %w", err)
 	}
 
 	var running []string
@@ -441,7 +469,7 @@ type BackupInfo struct {
 
 // CompressBackupDir compresses a backup directory into a .tar.gz archive,
 // then removes the original directory. Returns the archive path.
-func CompressBackupDir(backupDir string) (string, error) {
+func CompressBackupDir(ctx context.Context, backupDir string) (string, error) {
 	// Verify directory exists
 	info, err := os.Stat(backupDir)
 	if err != nil {
@@ -456,7 +484,7 @@ func CompressBackupDir(backupDir string) (string, error) {
 	parentDir := filepath.Dir(backupDir)
 
 	// Create tar.gz using OS tar command for efficiency
-	cmd := exec.CommandContext(context.Background(),
+	cmd := exec.CommandContext(ctx,
 		"tar", "czf", archivePath,
 		"-C", parentDir,
 		dirName,

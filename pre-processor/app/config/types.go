@@ -14,6 +14,7 @@ type Config struct {
 	DLQ            DLQConfig            `json:"dlq"`
 	Metrics        MetricsConfig        `json:"metrics"`
 	NewsCreator    NewsCreatorConfig    `json:"news_creator"`
+	QualityChecker QualityCheckerConfig `json:"quality_checker"`
 	SummarizeQueue SummarizeQueueConfig `json:"summarize_queue"`
 	AltService     AltServiceConfig     `json:"alt_service"`
 }
@@ -90,6 +91,18 @@ type NewsCreatorConfig struct {
 	Timeout time.Duration `json:"timeout" env:"NEWS_CREATOR_TIMEOUT" default:"600s"`
 }
 
+// QualityCheckerConfig configures the LLM-based quality judge that scores
+// generated summaries against their source article. It shares the same
+// news-creator host as NewsCreatorConfig (same physical Ollama instance) so
+// the two paths use one rate-limit bucket.
+type QualityCheckerConfig struct {
+	APIPath           string        `json:"api_path" env:"QUALITY_CHECKER_API_PATH" default:"/api/generate"`
+	Model             string        `json:"model" env:"QUALITY_CHECKER_MODEL" default:"gemma4-e4b-12k"`
+	LowScoreThreshold int           `json:"low_score_threshold" env:"QUALITY_CHECKER_LOW_SCORE_THRESHOLD" default:"7"`
+	MaxContentLength  int           `json:"max_content_length" env:"QUALITY_CHECKER_MAX_CONTENT_LENGTH" default:"20000"`
+	Timeout           time.Duration `json:"timeout" env:"QUALITY_CHECKER_TIMEOUT" default:"300s"`
+}
+
 type SummarizeQueueConfig struct {
 	WorkerInterval  time.Duration `json:"worker_interval" env:"SUMMARIZE_QUEUE_WORKER_INTERVAL" default:"10s"`
 	MaxRetries      int           `json:"max_retries" env:"SUMMARIZE_QUEUE_MAX_RETRIES" default:"3"`
@@ -157,6 +170,13 @@ func defaultConfig() *Config {
 			APIPath: "/api/v1/summarize",
 			Model:   "gemma4-e4b-q4km",
 			Timeout: 600 * time.Second,
+		},
+		QualityChecker: QualityCheckerConfig{
+			APIPath:           "/api/generate",
+			Model:             "gemma4-e4b-12k",
+			LowScoreThreshold: 7,
+			MaxContentLength:  20_000,
+			Timeout:           300 * time.Second,
 		},
 		SummarizeQueue: SummarizeQueueConfig{
 			WorkerInterval:  10 * time.Second,

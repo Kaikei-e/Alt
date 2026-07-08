@@ -122,16 +122,16 @@ describe("useGlobalSearch", () => {
 
 		// Verify article section
 		expect(search.result?.articleSection?.hits).toHaveLength(1);
-		expect(search.result?.articleSection?.hits[0].title).toBe("Test Article");
+		expect(search.result?.articleSection?.hits[0]!.title).toBe("Test Article");
 		expect(search.result?.articleSection?.hasMore).toBe(true);
 
 		// Verify recap section
 		expect(search.result?.recapSection?.hits).toHaveLength(1);
-		expect(search.result?.recapSection?.hits[0].genre).toBe("Technology");
+		expect(search.result?.recapSection?.hits[0]!.genre).toBe("Technology");
 
 		// Verify tag section
 		expect(search.result?.tagSection?.hits).toHaveLength(2);
-		expect(search.result?.tagSection?.hits[0].tagName).toBe("tech");
+		expect(search.result?.tagSection?.hits[0]!.tagName).toBe("tech");
 
 		cleanup();
 	});
@@ -282,10 +282,10 @@ describe("useGlobalSearch", () => {
 		const { search, cleanup } = createHook();
 
 		await search.search("first");
-		expect(search.result?.articleSection?.hits[0].title).toBe("First");
+		expect(search.result?.articleSection?.hits[0]!.title).toBe("First");
 
 		await search.search("second");
-		expect(search.result?.articleSection?.hits[0].title).toBe("Second");
+		expect(search.result?.articleSection?.hits[0]!.title).toBe("Second");
 		expect(search.query).toBe("second");
 
 		cleanup();

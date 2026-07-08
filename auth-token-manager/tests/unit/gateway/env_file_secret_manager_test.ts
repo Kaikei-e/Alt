@@ -213,7 +213,7 @@ describe("EnvFileSecretManager", {
     assertEquals(matches.length, 1);
   });
 
-  it("should set file permissions to 0o644 after writing", async () => {
+  it("should set file permissions to 0o640 after writing", async () => {
     await Deno.mkdir(TEST_DIR, { recursive: true });
     const filePath = `${TEST_DIR}/tokens.env`;
     const manager = new EnvFileSecretManager(filePath);
@@ -227,7 +227,7 @@ describe("EnvFileSecretManager", {
     await manager.updateTokenSecret(tokens);
 
     const stat = await Deno.stat(filePath);
-    // 0o644 = 420 in decimal; mask off file type bits
-    assertEquals(stat.mode! & 0o777, 0o644);
+    // 0o640 = owner rw, group r, others none; mask off file type bits
+    assertEquals(stat.mode! & 0o777, 0o640);
   });
 });

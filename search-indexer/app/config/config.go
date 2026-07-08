@@ -36,8 +36,6 @@ func parseIntEnv(key string, defaultValue int) int {
 
 type Config struct {
 	Meilisearch MeilisearchConfig
-	Indexer     IndexerConfig
-	HTTP        HTTPConfig
 	BackendAPI  BackendAPIConfig
 	RateLimit   RateLimitConfig
 }
@@ -64,19 +62,6 @@ type MeilisearchConfig struct {
 	Timeout time.Duration
 }
 
-type IndexerConfig struct {
-	Interval     time.Duration
-	BatchSize    int
-	RetryDelay   time.Duration
-	MaxRetries   int
-	RetryTimeout time.Duration
-}
-
-type HTTPConfig struct {
-	Addr              string
-	ReadHeaderTimeout time.Duration
-}
-
 func Load() (*Config, error) {
 	ctx := context.Background()
 
@@ -93,17 +78,6 @@ func Load() (*Config, error) {
 			Host:    getEnvOrDefault("MEILISEARCH_HOST", ""),
 			APIKey:  getEnvOrDefault("MEILISEARCH_API_KEY", ""),
 			Timeout: 15 * time.Second,
-		},
-		Indexer: IndexerConfig{
-			Interval:     1 * time.Minute,
-			BatchSize:    200,
-			RetryDelay:   1 * time.Minute,
-			MaxRetries:   5,
-			RetryTimeout: 1 * time.Minute,
-		},
-		HTTP: HTTPConfig{
-			Addr:              ":9300",
-			ReadHeaderTimeout: 5 * time.Second,
 		},
 		RateLimit: RateLimitConfig{
 			RequestsPerSecond: parseFloatEnv("SEARCH_RATE_LIMIT_RPS", 100),

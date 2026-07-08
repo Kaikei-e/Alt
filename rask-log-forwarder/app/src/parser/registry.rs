@@ -52,14 +52,8 @@ impl ServiceParserRegistry {
         // Update detection order based on priority
         self.detection_order.push(parser_type.to_string());
         self.detection_order.sort_by(|a, b| {
-            let priority_a = self
-                .parsers
-                .get(a)
-                .map_or(0, |p| p.detection_priority());
-            let priority_b = self
-                .parsers
-                .get(b)
-                .map_or(0, |p| p.detection_priority());
+            let priority_a = self.parsers.get(a).map_or(0, |p| p.detection_priority());
+            let priority_b = self.parsers.get(b).map_or(0, |p| p.detection_priority());
             priority_b.cmp(&priority_a) // Higher priority first
         });
 
@@ -107,10 +101,7 @@ impl ServiceParserRegistry {
             if let Some(parser) = self.parsers.get(parser_type)
                 && parser.can_parse(log)
             {
-                tracing::trace!(
-                    parser_type = parser_type,
-                    "Auto-detected parser for log"
-                );
+                tracing::trace!(parser_type = parser_type, "Auto-detected parser for log");
                 return Some(parser.clone());
             }
         }
@@ -121,11 +112,7 @@ impl ServiceParserRegistry {
     ///
     /// If the service is mapped to a parser, uses that parser.
     /// Otherwise, tries auto-detection.
-    pub fn parse_log(
-        &self,
-        log: &str,
-        service_name: &str,
-    ) -> Result<ParsedLogEntry, ParseError> {
+    pub fn parse_log(&self, log: &str, service_name: &str) -> Result<ParsedLogEntry, ParseError> {
         // Try mapped parser first
         if let Some(parser) = self.get_parser_for_service(service_name) {
             return parser.parse_log(log);

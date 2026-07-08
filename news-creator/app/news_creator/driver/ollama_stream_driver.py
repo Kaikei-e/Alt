@@ -257,6 +257,7 @@ class OllamaStreamDriver:
             lines_read = 0
             chunks_yielded = 0
             has_data = False
+            received_done = False
             connection_closed_gracefully = False
 
             try:
@@ -281,6 +282,8 @@ class OllamaStreamDriver:
                         try:
                             parsed = json.loads(line)
                             chunks_yielded += 1
+                            if parsed.get("done"):
+                                received_done = True
                             if chunks_yielded <= 3 or chunks_yielded % 50 == 0:
                                 logger.info(
                                     "Yielding chunk from Ollama stream",
@@ -346,6 +349,26 @@ class OllamaStreamDriver:
                             "model": model,
                             "connection_closed_gracefully": connection_closed_gracefully,
                         },
+                    )
+                elif not received_done:
+                    # The stream ended (EOF or a mid-stream connection drop
+                    # that was previously treated as a graceful close) without
+                    # ever yielding a done=true chunk. Without this check the
+                    # partial response looked identical to a complete one to
+                    # every downstream consumer.
+                    logger.error(
+                        "Stream ended without a done=true chunk; response is truncated",
+                        extra={
+                            "chunks_yielded": chunks_yielded,
+                            "lines_read": lines_read,
+                            "url": url,
+                            "model": model,
+                            "connection_closed_gracefully": connection_closed_gracefully,
+                        },
+                    )
+                    raise RuntimeError(
+                        f"Ollama stream for model={model} ended before a done=true chunk was "
+                        f"received (chunks_yielded={chunks_yielded}); response is truncated"
                     )
                 else:
                     logger.info(

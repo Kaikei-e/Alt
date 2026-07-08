@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
-from typing import Any, cast
+from typing import TYPE_CHECKING, Any, cast
 
 import structlog
 from pyqwest import SyncClient, SyncHTTPTransport
@@ -12,6 +12,9 @@ from pyqwest import SyncClient, SyncHTTPTransport
 from tag_generator.gen.proto.services.backend.v1.internal_connect import (
     BackendInternalServiceClientSync,
 )
+
+if TYPE_CHECKING:
+    from tag_generator.ports import ArticleFetcherPort, TagInserterPort
 
 logger = structlog.get_logger(__name__)
 
@@ -169,3 +172,26 @@ def create_backend_client() -> tuple[BackendInternalServiceClientSync, dict[str,
         mtls_enforce=mtls_enforce,
     )
     return client, auth_headers
+
+
+def create_article_fetcher_and_inserter() -> tuple[ArticleFetcherPort, TagInserterPort]:
+    """Build the Connect-RPC article fetcher/tag inserter pair from env.
+
+    Composition-root helper: callers (main.py, auth_service.py) inject the
+    returned port implementations into ``TagGeneratorService`` instead of
+    the service constructing its own drivers.
+    """
+    result = create_backend_client()
+    if result is None:
+        raise RuntimeError(
+            "Backend API client could not be created. "
+            "Ensure BACKEND_API_URL is set and the mTLS cert sidecar is "
+            "running. Legacy database mode has been removed."
+        )
+    client, auth_headers = result
+
+    from tag_generator.driver.connect_article_fetcher import ConnectArticleFetcher
+    from tag_generator.driver.connect_tag_inserter import ConnectTagInserter
+
+    logger.info("Using backend API mode for article/tag operations")
+    return ConnectArticleFetcher(client, auth_headers), ConnectTagInserter(client, auth_headers)

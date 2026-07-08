@@ -5,13 +5,21 @@
  */
 import { parseArgs } from "@std/cli/parse-args";
 import { bold, cyan, dim, green, red, yellow } from "./src/utils/colors.ts";
-import { configureLogger, error, info, section } from "./src/utils/logger.ts";
+import { configureLogger, error, info, section, shutdownLogger } from "./src/utils/logger.ts";
 import { loadConfig } from "./src/config/loader.ts";
 import { runScan } from "./src/commands/scan.ts";
 import { runFlow } from "./src/commands/flow.ts";
 import { runLoad } from "./src/commands/load.ts";
 
 const VERSION = "1.0.0";
+
+/** `Number(x) || fallback` turns a valid `0` into fallback; this keeps 0 as
+ * a legitimate value (e.g. `--warmup 0`) while still falling back on
+ * missing/non-numeric input. */
+function parseNumberOption(value: unknown, fallback: number): number {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : fallback;
+}
 
 interface CliOptions {
   help: boolean;
@@ -45,7 +53,6 @@ function parseCliArgs(): { command: string; options: CliOptions } {
       runs: 1,
       duration: 30,
       concurrency: 10,
-      format: "cli",
     },
     alias: {
       h: "help",
@@ -70,13 +77,16 @@ function parseCliArgs(): { command: string; options: CliOptions } {
     device: args.device as string,
     route: args.route as string,
     json: args.json as boolean,
-    format: args.format as string,
+    // --format takes precedence when explicitly passed; --json is a
+    // shorthand for --format json rather than being silently overridden by
+    // the "cli" default.
+    format: (args.format as string | undefined) ?? (args.json ? "json" : "cli"),
     verbose: args.verbose as boolean,
     headless: args.headless as boolean,
-    warmup: Number(args.warmup) || 1,
-    runs: Number(args.runs) || 1,
-    duration: Number(args.duration) || 30,
-    concurrency: Number(args.concurrency) || 10,
+    warmup: parseNumberOption(args.warmup, 1),
+    runs: parseNumberOption(args.runs, 1),
+    duration: parseNumberOption(args.duration, 30),
+    concurrency: parseNumberOption(args.concurrency, 10),
   };
 
   return { command, options };
@@ -150,9 +160,15 @@ ${bold("ENVIRONMENT VARIABLES:")}
   ${yellow("PERF_BASE_URL")}         Base URL (default: http://localhost)
 
 ${bold("CORE WEB VITALS THRESHOLDS:")}
-  LCP  < 2.5s   ${green("Good")}  |  2.5s - 4.0s  ${yellow("Needs Improvement")}  |  > 4.0s  ${red("Poor")}
-  INP  < 200ms  ${green("Good")}  |  200ms - 500ms  ${yellow("Needs Improvement")}  |  > 500ms  ${red("Poor")}
-  CLS  < 0.1    ${green("Good")}  |  0.1 - 0.25  ${yellow("Needs Improvement")}  |  > 0.25  ${red("Poor")}
+  LCP  < 2.5s   ${green("Good")}  |  2.5s - 4.0s  ${yellow("Needs Improvement")}  |  > 4.0s  ${
+    red("Poor")
+  }
+  INP  < 200ms  ${green("Good")}  |  200ms - 500ms  ${yellow("Needs Improvement")}  |  > 500ms  ${
+    red("Poor")
+  }
+  CLS  < 0.1    ${green("Good")}  |  0.1 - 0.25  ${yellow("Needs Improvement")}  |  > 0.25  ${
+    red("Poor")
+  }
 `);
 }
 
@@ -192,10 +208,12 @@ async function main(): Promise<void> {
     }
   } catch (err) {
     error("Failed to load configuration", { error: String(err) });
+    await shutdownLogger();
     Deno.exit(1);
   }
 
   // Execute command
+  let exitCode = 0;
   try {
     switch (command) {
       case "scan":
@@ -217,16 +235,25 @@ async function main(): Promise<void> {
       default:
         error(`Unknown command: ${command}`);
         showHelp();
-        Deno.exit(1);
+        exitCode = 1;
     }
   } catch (err) {
     error("Command failed", { error: String(err) });
     if (options.verbose && err instanceof Error) {
       console.error(err.stack);
     }
-    Deno.exit(1);
+    exitCode = 1;
+  } finally {
+    // Flush any buffered OTel logs before the process exits.
+    await shutdownLogger();
+  }
+
+  if (exitCode !== 0) {
+    Deno.exit(exitCode);
   }
 }
 
 // Run main
-main();
+if (import.meta.main) {
+  await main();
+}

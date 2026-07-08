@@ -61,6 +61,18 @@ const config = {
 			// and falling into "Cannot Open the Page" on iOS Safari.
 			pollInterval: 5 * 60 * 1000,
 		},
+		// This app renders RSS/upstream-API HTML via {@html} in ~13 places
+		// (always through sanitizeHtml/parseMarkdown, but that's the only
+		// defense layer if a sanitizer bug ever lets a script through).
+		// `script-src: 'self'` blocks that from executing. SvelteKit hashes
+		// its own inline scripts/styles (and app.html's) automatically in
+		// 'auto' mode, so this doesn't require manual nonce wiring.
+		csp: {
+			mode: "auto",
+			directives: {
+				"script-src": ["self"],
+			},
+		},
 	},
 };
 

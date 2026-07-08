@@ -105,6 +105,7 @@ jobs:
   alt-backend:
     name: alt-backend Hurl suite
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - name: Checkout
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
@@ -162,6 +163,7 @@ jobs:
   mq-hub:
     name: mq-hub Hurl suite
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - name: Checkout
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
@@ -209,6 +211,7 @@ jobs:
   recap-worker:
     name: recap-worker Hurl suite
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - name: Checkout
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
@@ -283,6 +286,7 @@ jobs:
   news-creator:
     name: news-creator Hurl suite
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - name: Checkout
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
@@ -328,6 +332,7 @@ jobs:
   acolyte-orchestrator:
     name: acolyte-orchestrator Hurl suite
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - name: Checkout
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
@@ -375,6 +380,7 @@ jobs:
   tag-generator:
     name: tag-generator Hurl suite
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - name: Checkout
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
@@ -437,6 +443,7 @@ jobs:
   auth-hub:
     name: auth-hub Hurl suite
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - name: Checkout
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
@@ -489,6 +496,7 @@ jobs:
   rag-orchestrator:
     name: rag-orchestrator Hurl suite
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - name: Checkout
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
@@ -541,6 +549,7 @@ jobs:
   knowledge-sovereign:
     name: knowledge-sovereign Hurl suite
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - name: Checkout
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2

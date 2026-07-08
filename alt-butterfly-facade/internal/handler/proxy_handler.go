@@ -140,8 +140,8 @@ func (h *ProxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// Copy response body
 	if isStreaming {
 		h.streamResponse(w, resp)
-	} else {
-		io.Copy(w, resp.Body)
+	} else if _, copyErr := io.Copy(w, resp.Body); copyErr != nil {
+		h.logError("response body copy failed", copyErr)
 	}
 
 	if h.logger != nil {
@@ -162,7 +162,10 @@ func (h *ProxyHandler) streamResponse(w http.ResponseWriter, resp *http.Response
 	for {
 		n, err := resp.Body.Read(buf)
 		if n > 0 {
-			w.Write(buf[:n])
+			if _, writeErr := w.Write(buf[:n]); writeErr != nil {
+				h.logError("stream response write failed", writeErr)
+				return
+			}
 			if canFlush {
 				flusher.Flush()
 			}

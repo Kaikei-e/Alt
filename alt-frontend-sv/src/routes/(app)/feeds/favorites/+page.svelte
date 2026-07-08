@@ -57,7 +57,7 @@ function handlePrevious() {
 	if (!feedGridApi || currentIndex <= 0) return;
 	const feeds = feedGridApi.getVisibleFeeds();
 	if (feeds[currentIndex - 1]) {
-		selectedFeedUrl = feeds[currentIndex - 1].normalizedUrl;
+		selectedFeedUrl = feeds[currentIndex - 1]!.normalizedUrl;
 	}
 }
 
@@ -65,7 +65,7 @@ function handleNext() {
 	if (!feedGridApi || currentIndex >= totalCount - 1) return;
 	const feeds = feedGridApi.getVisibleFeeds();
 	if (feeds[currentIndex + 1]) {
-		selectedFeedUrl = feeds[currentIndex + 1].normalizedUrl;
+		selectedFeedUrl = feeds[currentIndex + 1]!.normalizedUrl;
 	}
 }
 

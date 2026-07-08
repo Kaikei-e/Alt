@@ -61,7 +61,7 @@ func (s *healthCheckerService) CheckNewsCreatorHealth(ctx context.Context) error
 		return fmt.Errorf("failed to parse news creator health URL: %w", err)
 	}
 
-	resp, err := s.client.Get(healthURL.String())
+	resp, err := s.client.Get(ctx, healthURL.String())
 	if err != nil {
 		s.logger.ErrorContext(ctx, "failed to check news creator health", "error", err)
 		return fmt.Errorf("health check failed: %w", err)

@@ -2,6 +2,7 @@ use anyhow::{Context, Result};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use tokio::task::JoinHandle;
+use tokio_util::sync::CancellationToken;
 use tracing::{debug, info};
 use uuid::Uuid;
 
@@ -23,6 +24,7 @@ pub(crate) struct ClassificationJobQueue {
     workers: Arc<Mutex<Vec<JoinHandle<Result<()>>>>>,
     chunk_size: usize,
     max_retries: i32,
+    shutdown: CancellationToken,
 }
 
 impl ClassificationJobQueue {
@@ -37,16 +39,18 @@ impl ClassificationJobQueue {
     ) -> Self {
         let store = Arc::new(store);
         let client = Arc::new(client);
+        let shutdown = CancellationToken::new();
 
         // Start worker tasks (one per concurrency slot)
         let mut workers = Vec::new();
         for i in 0..concurrency {
             let store_clone = store.clone();
             let client_clone = client.clone();
+            let worker_shutdown = shutdown.clone();
             let worker = QueueWorker::new(store_clone, client_clone, 1, retry_delay_ms);
             let handle = tokio::spawn(async move {
                 info!(worker_id = i, "starting queue worker");
-                worker.run().await
+                worker.run(worker_shutdown).await
             });
             workers.push(handle);
         }
@@ -62,6 +66,7 @@ impl ClassificationJobQueue {
             workers: Arc::new(Mutex::new(workers)),
             chunk_size,
             max_retries,
+            shutdown,
         }
     }
 
@@ -233,20 +238,19 @@ impl ClassificationJobQueue {
         Ok(job.map(|j| j.status))
     }
 
-    /// Shutdown all workers
-    #[allow(dead_code)]
+    /// Shutdown all workers. Cancels the shared `CancellationToken` so each
+    /// worker stops picking up new jobs at its next loop checkpoint and lets
+    /// any job already in flight finish (rather than aborting the task
+    /// mid-write, which would leave the row stuck in 'running').
     pub(crate) async fn shutdown(&self) {
         info!("shutting down classification job queue");
+        self.shutdown.cancel();
+
         // Take ownership of workers to await them
         let workers = {
             let mut workers_guard = self.workers.lock().unwrap();
             std::mem::take(&mut *workers_guard)
         };
-
-        // Abort all worker tasks
-        for worker in &workers {
-            worker.abort();
-        }
 
         // Wait for all workers to finish
         for worker in workers {

@@ -8,7 +8,8 @@ use serde_json::Value;
 use uuid::Uuid;
 
 use crate::store::models::{
-    ClusterWithEvidence, GenreWithSummary, RecapFinalSection, RecapJob, RecapOutput, RecapSearchHit,
+    ClusterWithEvidence, GenreWithSummary, PersistedGenre, RecapFinalSection, RecapJob,
+    RecapOutput, RecapSearchHit,
 };
 
 /// OutputDao - リキャップ出力のためのデータアクセス層
@@ -61,4 +62,12 @@ pub trait OutputDao: Send + Sync {
         &self,
         run_id: i64,
     ) -> impl Future<Output = Result<HashMap<String, Vec<i64>>>> + Send;
+
+    /// `recap_outputs` と `recap_sections` (genre pointer) を単一トランザクションで
+    /// 書き込む。別々の auto-commit にすると片方の失敗でもう片方だけ残り得るため。
+    fn persist_genre_output(
+        &self,
+        output: &RecapOutput,
+        genre: &PersistedGenre,
+    ) -> impl Future<Output = Result<()>> + Send;
 }

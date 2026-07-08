@@ -2,6 +2,7 @@ package gateway
 
 import (
 	"context"
+	"fmt"
 	"search-indexer/domain"
 	"search-indexer/driver"
 	"time"
@@ -30,7 +31,7 @@ func (g *ArticleRepositoryGateway) GetArticlesWithTags(ctx context.Context, last
 	if err != nil {
 		return nil, nil, "", &domain.RepositoryError{
 			Op:  "GetArticlesWithTags",
-			Err: err.Error(),
+			Err: err,
 		}
 	}
 
@@ -44,7 +45,7 @@ func (g *ArticleRepositoryGateway) GetArticlesWithTags(ctx context.Context, last
 		if err != nil {
 			return nil, nil, "", &domain.RepositoryError{
 				Op:  "GetArticlesWithTags",
-				Err: "failed to convert article to domain: id=" + driverArticle.ID + ", " + err.Error(),
+				Err: fmt.Errorf("failed to convert article to domain: id=%s: %w", driverArticle.ID, err),
 			}
 		}
 		domainArticles = append(domainArticles, domainArticle)
@@ -80,7 +81,7 @@ func (g *ArticleRepositoryGateway) GetArticlesWithTagsForward(ctx context.Contex
 	if err != nil {
 		return nil, nil, "", &domain.RepositoryError{
 			Op:  "GetArticlesWithTagsForward",
-			Err: err.Error(),
+			Err: err,
 		}
 	}
 
@@ -94,7 +95,7 @@ func (g *ArticleRepositoryGateway) GetArticlesWithTagsForward(ctx context.Contex
 		if err != nil {
 			return nil, nil, "", &domain.RepositoryError{
 				Op:  "GetArticlesWithTagsForward",
-				Err: "failed to convert article to domain: id=" + driverArticle.ID + ", " + err.Error(),
+				Err: fmt.Errorf("failed to convert article to domain: id=%s: %w", driverArticle.ID, err),
 			}
 		}
 		domainArticles = append(domainArticles, domainArticle)
@@ -108,7 +109,7 @@ func (g *ArticleRepositoryGateway) GetDeletedArticles(ctx context.Context, lastD
 	if err != nil {
 		return nil, nil, &domain.RepositoryError{
 			Op:  "GetDeletedArticles",
-			Err: err.Error(),
+			Err: err,
 		}
 	}
 
@@ -129,7 +130,7 @@ func (g *ArticleRepositoryGateway) GetLatestCreatedAt(ctx context.Context) (*tim
 	if err != nil {
 		return nil, &domain.RepositoryError{
 			Op:  "GetLatestCreatedAt",
-			Err: err.Error(),
+			Err: err,
 		}
 	}
 
@@ -142,7 +143,7 @@ func (g *ArticleRepositoryGateway) GetArticleByID(ctx context.Context, articleID
 	if err != nil {
 		return nil, &domain.RepositoryError{
 			Op:  "GetArticleByID",
-			Err: err.Error(),
+			Err: err,
 		}
 	}
 

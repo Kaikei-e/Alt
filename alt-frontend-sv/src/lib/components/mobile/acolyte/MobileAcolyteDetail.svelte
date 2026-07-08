@@ -103,7 +103,7 @@ const scopeEntries = $derived.by<Array<[string, string]>>(() => {
 // Set first section as active when sections load
 $effect(() => {
 	if (sections.length > 0 && !activeSection) {
-		activeSection = sections[0].sectionKey;
+		activeSection = sections[0]!.sectionKey;
 	}
 });
 
@@ -359,7 +359,7 @@ const formattedDate = $derived(
 									Sources
 								</h4>
 								<ol class="list-none p-0 m-0 flex flex-col gap-2 source-list">
-									{#each currentCitations as cite}
+									{#each currentCitations as cite (`${cite.claim_id}-${cite.source_id}`)}
 										<li class="source-item font-[var(--font-body)] text-[0.75rem] leading-relaxed text-[var(--alt-slate,#666)]">
 											<div class="flex flex-wrap items-baseline gap-x-1.5 gap-y-0.5 source-ref-row">
 												<span class="source-claim-id font-[var(--font-mono)] text-[0.65rem] font-semibold text-[var(--alt-charcoal,#1a1a1a)]">[{cite.claim_id}]</span>

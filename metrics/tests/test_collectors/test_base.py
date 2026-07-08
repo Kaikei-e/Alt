@@ -5,6 +5,7 @@ from __future__ import annotations
 from unittest.mock import MagicMock
 
 import pytest
+from clickhouse_connect.driver.exceptions import OperationalError
 
 from alt_metrics.collectors.base import collect_error_trends, collect_service_stats
 from alt_metrics.exceptions import CollectorError
@@ -51,7 +52,7 @@ class TestCollectServiceStats:
     def test_raises_collector_error_on_exception(self) -> None:
         """例外発生時はCollectorErrorを投げる"""
         mock_client = MagicMock()
-        mock_client.query.side_effect = Exception("Connection failed")
+        mock_client.query.side_effect = OperationalError("Connection failed")
 
         with pytest.raises(CollectorError) as exc_info:
             collect_service_stats(mock_client, "rask_logs", 24)
@@ -60,16 +61,15 @@ class TestCollectServiceStats:
         assert "Connection failed" in str(exc_info.value)
 
     def test_query_uses_correct_database_and_hours(self) -> None:
-        """クエリが正しいデータベースと時間を使用"""
+        """クエリが正しいデータベースと時間をバインドパラメータとして使用"""
         mock_client = MagicMock()
         mock_client.query.return_value.column_names = []
         mock_client.query.return_value.result_rows = []
 
         collect_service_stats(mock_client, "custom_db", 48)
 
-        call_args = mock_client.query.call_args[0][0]
-        assert "custom_db.logs" in call_args
-        assert "INTERVAL 48 HOUR" in call_args
+        call_kwargs = mock_client.query.call_args.kwargs
+        assert call_kwargs["parameters"] == {"database": "custom_db", "hours": 48}
 
 
 class TestCollectErrorTrends:
@@ -99,7 +99,7 @@ class TestCollectErrorTrends:
     def test_raises_collector_error_on_exception(self) -> None:
         """例外発生時はCollectorErrorを投げる"""
         mock_client = MagicMock()
-        mock_client.query.side_effect = Exception("Query timeout")
+        mock_client.query.side_effect = OperationalError("Query timeout")
 
         with pytest.raises(CollectorError) as exc_info:
             collect_error_trends(mock_client, "rask_logs", 6)

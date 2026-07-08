@@ -10,8 +10,8 @@ import (
 	"search-indexer/domain"
 	"search-indexer/logger"
 	"search-indexer/usecase"
-	"time"
 	"testing"
+	"time"
 )
 
 func TestMain(m *testing.M) {

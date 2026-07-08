@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -51,7 +52,10 @@ func (h *RetentionHandler) RegisterRoutes(mux *http.ServeMux) {
 }
 
 type retentionRunRequest struct {
-	DryRun bool `json:"dry_run"`
+	// Pointer so a missing dry_run field is distinguishable from an explicit
+	// false — an empty/absent body must default to the safe dry-run path,
+	// not to "run for real".
+	DryRun *bool `json:"dry_run"`
 }
 
 type retentionRunResponse struct {
@@ -74,15 +78,18 @@ func (h *RetentionHandler) handleRunRetention(w http.ResponseWriter, r *http.Req
 	ctx := r.Context()
 
 	var req retentionRunRequest
-	if r.Body != nil {
-		json.NewDecoder(r.Body).Decode(&req)
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil && !errors.Is(err, io.EOF) {
+		http.Error(w, fmt.Sprintf("invalid request body: %v", err), http.StatusBadRequest)
+		return
 	}
-	// Default to dry-run for safety
-	if r.Method == http.MethodPost && r.Body == nil {
-		req.DryRun = true
+	// Default to dry-run for safety when the field is absent (including an
+	// empty body).
+	dryRun := true
+	if req.DryRun != nil {
+		dryRun = *req.DryRun
 	}
 
-	result, err := h.RunRetention(ctx, req.DryRun)
+	result, err := h.RunRetention(ctx, dryRun)
 	if err != nil {
 		slog.ErrorContext(ctx, "retention run failed", "error", err)
 		result.Error = err.Error()

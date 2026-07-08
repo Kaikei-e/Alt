@@ -35,7 +35,8 @@ def run_sql_query(query: str, container: str = "recap-db", user: str = "recap_us
             cwd=os.path.dirname(os.path.dirname(__file__)),
             capture_output=True,
             text=True,
-            check=True
+            check=True,
+            timeout=60,
         )
 
         # JSON形式の結果をパース
@@ -80,6 +81,9 @@ def run_sql_query(query: str, container: str = "recap-db", user: str = "recap_us
             print(f"JSONパースエラー: {e}")
             print(f"出力: {full_output[:200]}...")
             return []
+    except subprocess.TimeoutExpired as e:
+        print(f"SQLクエリがタイムアウトしました: {e}")
+        return []
     except subprocess.CalledProcessError as e:
         print(f"SQLクエリ実行エラー: {e}")
         print(f"stderr: {e.stderr}")
@@ -104,9 +108,13 @@ def run_sql_query_simple(query: str, container: str = "recap-db", user: str = "r
             cwd=os.path.dirname(os.path.dirname(__file__)),
             capture_output=True,
             text=True,
-            check=True
+            check=True,
+            timeout=60,
         )
         return result.stdout.strip()
+    except subprocess.TimeoutExpired as e:
+        print(f"SQLクエリがタイムアウトしました: {e}")
+        return ""
     except subprocess.CalledProcessError as e:
         print(f"SQLクエリ実行エラー: {e}")
         print(f"stderr: {e.stderr}")
@@ -136,12 +144,12 @@ def fetch_strategy_breakdown(hours: int = 1) -> list[dict[str, Any]]:
                SELECT COUNT(*)
                FROM recap_genre_learning_results
                WHERE refine_decision IS NOT NULL
-                 AND created_at > NOW() - INTERVAL '{hours} hours'
+                 AND created_at > NOW() - INTERVAL '{int(hours)} hours'
            ), 2)::float as percentage,
            AVG((refine_decision->>'confidence')::float)::float as avg_confidence
     FROM recap_genre_learning_results
     WHERE refine_decision IS NOT NULL
-      AND created_at > NOW() - INTERVAL '{hours} hours'
+      AND created_at > NOW() - INTERVAL '{int(hours)} hours'
     GROUP BY refine_decision->>'strategy'
     ORDER BY count DESC
     """
@@ -182,7 +190,7 @@ def fetch_tag_coverage(hours: int = 1) -> dict[str, Any]:
                                           AND jsonb_array_length(tag_profile->'top_tags') > 0
                                           THEN 1 END) / COUNT(*), 2)::float as tag_coverage_pct
     FROM recap_genre_learning_results
-    WHERE created_at > NOW() - INTERVAL '{hours} hours'
+    WHERE created_at > NOW() - INTERVAL '{int(hours)} hours'
     """
 
     query_json = f"""
@@ -222,10 +230,10 @@ def fetch_hourly_analysis(hours: int = 24) -> list[dict[str, Any]]:
            ROUND(100.0 * COUNT(CASE WHEN refine_decision->>'strategy' = 'graph_boost'
                                           THEN 1 END) / COUNT(*), 2)::float as graph_boost_pct
     FROM recap_genre_learning_results
-    WHERE created_at > NOW() - INTERVAL '{hours} hours'
+    WHERE created_at > NOW() - INTERVAL '{int(hours)} hours'
     GROUP BY DATE_TRUNC('hour', created_at)
     ORDER BY hour DESC
-    LIMIT {hours}
+    LIMIT {int(hours)}
     """
 
     query_json = f"""
@@ -264,7 +272,7 @@ def fetch_graph_boost_analysis(hours: int = 1) -> dict[str, Any]:
            MAX((refine_decision->>'confidence')::float)::float as max_confidence
     FROM recap_genre_learning_results
     WHERE refine_decision->>'strategy' = 'graph_boost'
-      AND created_at > NOW() - INTERVAL '{hours} hours'
+      AND created_at > NOW() - INTERVAL '{int(hours)} hours'
     """
 
     query_json = f"""
@@ -342,11 +350,11 @@ def fetch_genre_distribution(hours: int = 1, limit: int = 20) -> list[dict[str, 
                SELECT COUNT(*)
                FROM recap_genre_learning_results
                WHERE refine_decision IS NOT NULL
-                 AND created_at > NOW() - INTERVAL '{hours} hours'
+                 AND created_at > NOW() - INTERVAL '{int(hours)} hours'
            ), 2)::float as percentage
     FROM recap_genre_learning_results
     WHERE refine_decision IS NOT NULL
-      AND created_at > NOW() - INTERVAL '{hours} hours'
+      AND created_at > NOW() - INTERVAL '{int(hours)} hours'
     GROUP BY COALESCE(refine_decision->>'final_genre', refine_decision->>'genre')
     ORDER BY count DESC
     LIMIT {limit}
@@ -386,7 +394,7 @@ def fetch_overall_confidence(hours: int = 1) -> dict[str, Any]:
     FROM recap_genre_learning_results
     WHERE refine_decision IS NOT NULL
       AND (refine_decision->>'confidence')::float IS NOT NULL
-      AND created_at > NOW() - INTERVAL '{hours} hours'
+      AND created_at > NOW() - INTERVAL '{int(hours)} hours'
     """
 
     query_json = f"""

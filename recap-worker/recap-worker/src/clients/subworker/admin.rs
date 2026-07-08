@@ -5,7 +5,7 @@ use uuid::Uuid;
 
 use super::types::{
     ADMIN_JOB_INITIAL_BACKOFF_MS, ADMIN_JOB_MAX_BACKOFF_MS, ADMIN_JOB_TIMEOUT_SECS,
-    AdminJobKickResponse, AdminJobStatusResponse,
+    AdminJobKickResponse, AdminJobStatusResponse, POLL_REQUEST_TIMEOUT_SECS,
 };
 use super::utils::truncate_error_message;
 use crate::clients::subworker::SubworkerClient;
@@ -176,12 +176,18 @@ impl SubworkerClient {
                 ));
             }
 
-            let response = self.client.get(url.clone()).send().await.with_context(|| {
-                format!(
-                    "admin job polling request failed for job_id {} at {}",
-                    job_id, endpoint
-                )
-            })?;
+            let response = self
+                .client
+                .get(url.clone())
+                .timeout(Duration::from_secs(POLL_REQUEST_TIMEOUT_SECS))
+                .send()
+                .await
+                .with_context(|| {
+                    format!(
+                        "admin job polling request failed for job_id {} at {}",
+                        job_id, endpoint
+                    )
+                })?;
 
             let status = response.status();
             if !status.is_success() {

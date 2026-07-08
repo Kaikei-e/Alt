@@ -5,7 +5,7 @@ import { bold, cyan, dim, red, yellow } from "./colors.ts";
 import { emitOTelLog, initOTelProvider, isOTelEnabled } from "./otel.ts";
 
 // Initialize OTel provider (opt-in via OTEL_ENABLED=true)
-let otelShutdown: (() => void) | null = null;
+let otelShutdown: (() => Promise<void>) | null = null;
 
 export type LogLevel = "debug" | "info" | "warn" | "error";
 
@@ -55,9 +55,9 @@ export function configureLogger(options: Partial<LoggerConfig>): void {
 }
 
 // Shutdown OTel provider - call during graceful shutdown
-export function shutdownLogger(): void {
+export async function shutdownLogger(): Promise<void> {
   if (otelShutdown) {
-    otelShutdown();
+    await otelShutdown();
     otelShutdown = null;
   }
 }

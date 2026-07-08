@@ -46,16 +46,7 @@ export class DataSanitizer {
   private static sanitizeString(str: string): string {
     let sanitized = str;
     for (const pattern of OAUTH_TOKEN_PATTERNS) {
-      sanitized = sanitized.replace(pattern, (match) => {
-        if (match.length <= 8) {
-          return "[REDACTED]";
-        }
-        return (
-          match.substring(0, 4) +
-          "[REDACTED]" +
-          match.substring(match.length - 4)
-        );
-      });
+      sanitized = sanitized.replace(pattern, "[REDACTED]");
     }
     return sanitized;
   }
@@ -74,10 +65,6 @@ export class DataSanitizer {
     }
     return sanitized;
   }
-}
-
-interface EnhancedLogRecord extends LogRecord {
-  component?: string;
 }
 
 interface BusinessContext {
@@ -121,7 +108,11 @@ class JsonFormatter {
     this.deploymentEnv = Deno.env.get("DEPLOYMENT_ENV") || "development";
   }
 
-  format(logRecord: EnhancedLogRecord): string {
+  format(logRecord: LogRecord): string {
+    // The active component is passed as a leading arg on every call (see
+    // StructuredLogger methods below) rather than mutated onto the shared
+    // LogRecord, since the handler/formatter is registered once for all
+    // components.
     const sanitizedArgs = logRecord.args.map((arg) =>
       DataSanitizer.sanitize(arg)
     );
@@ -145,7 +136,7 @@ class JsonFormatter {
       ...(businessContext.aiPipeline && {
         "alt.ai.pipeline": businessContext.aiPipeline,
       }),
-      component: logRecord.component || "auth-token-manager",
+      component: "auth-token-manager",
       ...sanitizedArgs.reduce((acc, arg) => {
         if (typeof arg === "object" && arg !== null) {
           return { ...acc, ...arg };
@@ -158,11 +149,35 @@ class JsonFormatter {
   }
 }
 
-let otelShutdown: (() => void) | null = null;
+let otelShutdown: (() => Promise<void>) | null = null;
+
+const LOGGER_NAME = "app";
+let loggerSetupDone = false;
+
+function ensureLoggerSetup(): void {
+  if (loggerSetupDone) return;
+  loggerSetupDone = true;
+
+  const logConfig: LoggerConfig = {
+    handlers: ["console"],
+    level: ((Deno.env.get("LOG_LEVEL")?.toUpperCase()) as LevelName) ||
+      "INFO",
+  };
+
+  setupLogger({
+    handlers: {
+      console: new ConsoleHandler("DEBUG", {
+        formatter: (logRecord) => new JsonFormatter().format(logRecord),
+      }),
+    },
+    loggers: {
+      [LOGGER_NAME]: logConfig,
+    },
+  });
+}
 
 export class StructuredLogger {
-  // deno-lint-ignore no-explicit-any
-  private logger: any;
+  private logger: ReturnType<typeof getLogger>;
   private component: string;
 
   constructor(component: string) {
@@ -178,28 +193,8 @@ export class StructuredLogger {
       // Ignore - logs directory creation is best-effort
     }
 
-    const logConfig: LoggerConfig = {
-      handlers: ["console"],
-      level: ((Deno.env.get("LOG_LEVEL")?.toUpperCase()) as LevelName) ||
-        "INFO",
-    };
-
-    setupLogger({
-      handlers: {
-        console: new ConsoleHandler("DEBUG", {
-          formatter: (logRecord) => {
-            const enhanced = logRecord as EnhancedLogRecord;
-            enhanced.component = this.component;
-            return new JsonFormatter().format(enhanced);
-          },
-        }),
-      },
-      loggers: {
-        [component]: logConfig,
-      },
-    });
-
-    this.logger = getLogger(component);
+    ensureLoggerSetup();
+    this.logger = getLogger(LOGGER_NAME);
   }
 
   // deno-lint-ignore no-explicit-any
@@ -247,34 +242,34 @@ export class StructuredLogger {
 
   // deno-lint-ignore no-explicit-any
   info(message: string, ...args: any[]) {
-    this.logger.info(message, ...args);
+    this.logger.info(message, { component: this.component }, ...args);
     this.emitToOTel("info", message, args);
   }
 
   // deno-lint-ignore no-explicit-any
   warn(message: string, ...args: any[]) {
-    this.logger.warn(message, ...args);
+    this.logger.warn(message, { component: this.component }, ...args);
     this.emitToOTel("warn", message, args);
   }
 
   // deno-lint-ignore no-explicit-any
   error(message: string, ...args: any[]) {
-    this.logger.error(message, ...args);
+    this.logger.error(message, { component: this.component }, ...args);
     this.emitToOTel("error", message, args);
   }
 
   // deno-lint-ignore no-explicit-any
   debug(message: string, ...args: any[]) {
-    if (Deno.env.get("NODE_ENV") === "development") {
-      this.logger.debug(message, ...args);
-      this.emitToOTel("debug", message, args);
-    }
+    // Gated by the "app" logger's configured level (LOG_LEVEL), not NODE_ENV,
+    // so LOG_LEVEL=DEBUG works in production without a development flag.
+    this.logger.debug(message, { component: this.component }, ...args);
+    this.emitToOTel("debug", message, args);
   }
 }
 
-export function shutdownOTel(): void {
+export async function shutdownOTel(): Promise<void> {
   if (otelShutdown) {
-    otelShutdown();
+    await otelShutdown();
     otelShutdown = null;
   }
 }

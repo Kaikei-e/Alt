@@ -14,10 +14,43 @@ from typing import Any, Dict, List, Optional, Tuple
 
 try:
     import psycopg2
+    from psycopg2 import sql
     from psycopg2.extras import RealDictCursor
 except ImportError:
     print("psycopg2が必要です。インストールしてください: pip install psycopg2-binary")
     sys.exit(1)
+
+
+ALLOWED_EXPORT_TABLES = frozenset({
+    "recap_jobs",
+    "recap_job_articles",
+    "recap_preprocess_metrics",
+    "recap_subworker_runs",
+    "recap_subworker_clusters",
+    "recap_subworker_sentences",
+    "recap_subworker_diagnostics",
+    "recap_sections",
+    "recap_final_sections",
+    "recap_outputs",
+})
+
+
+def _build_order_by(order_by: str) -> sql.Composable:
+    """ORDER BY句をカラム名検証つきで安全に組み立てる"""
+    parts = []
+    for raw in order_by.split(","):
+        tokens = raw.strip().split()
+        if not tokens or len(tokens) > 2:
+            raise ValueError(f"Invalid ORDER BY clause: {order_by!r}")
+        column = sql.Identifier(tokens[0])
+        if len(tokens) == 2:
+            direction = tokens[1].upper()
+            if direction not in ("ASC", "DESC"):
+                raise ValueError(f"Invalid ORDER BY direction: {tokens[1]!r}")
+            parts.append(sql.SQL("{} {}").format(column, sql.SQL(direction)))
+        else:
+            parts.append(sql.SQL("{}").format(column))
+    return sql.SQL(", ").join(parts)
 
 
 def load_env_vars() -> Dict[str, str]:
@@ -88,9 +121,12 @@ def export_table_to_md(
     order_by: Optional[str] = None
 ) -> int:
     """テーブルのデータをMarkdown形式でエクスポート"""
-    query = f"SELECT * FROM {table_name}"
+    if table_name not in ALLOWED_EXPORT_TABLES:
+        raise ValueError(f"Table not in export allowlist: {table_name!r}")
+
+    query = sql.SQL("SELECT * FROM {}").format(sql.Identifier(table_name))
     if order_by:
-        query += f" ORDER BY {order_by}"
+        query = sql.SQL("{} ORDER BY {}").format(query, _build_order_by(order_by))
 
     cursor.execute(query)
     rows = cursor.fetchall()

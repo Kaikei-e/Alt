@@ -55,6 +55,10 @@ func loadFromEnv(config *Config) error {
 		return fmt.Errorf("failed to load news creator config: %w", err)
 	}
 
+	if err := loadQualityCheckerConfig(&config.QualityChecker); err != nil {
+		return fmt.Errorf("failed to load quality checker config: %w", err)
+	}
+
 	if err := loadAltServiceConfig(&config.AltService); err != nil {
 		return fmt.Errorf("failed to load alt service config: %w", err)
 	}
@@ -289,6 +293,32 @@ func loadNewsCreatorConfig(cfg *NewsCreatorConfig) error {
 	}
 
 	if cfg.Timeout, err = parseDurationEnv("NEWS_CREATOR_TIMEOUT", cfg.Timeout); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func loadQualityCheckerConfig(cfg *QualityCheckerConfig) error {
+	var err error
+
+	if apiPath := os.Getenv("QUALITY_CHECKER_API_PATH"); apiPath != "" {
+		cfg.APIPath = apiPath
+	}
+
+	if model := os.Getenv("QUALITY_CHECKER_MODEL"); model != "" {
+		cfg.Model = model
+	}
+
+	if cfg.LowScoreThreshold, err = parseIntEnv("QUALITY_CHECKER_LOW_SCORE_THRESHOLD", cfg.LowScoreThreshold); err != nil {
+		return err
+	}
+
+	if cfg.MaxContentLength, err = parseIntEnv("QUALITY_CHECKER_MAX_CONTENT_LENGTH", cfg.MaxContentLength); err != nil {
+		return err
+	}
+
+	if cfg.Timeout, err = parseDurationEnv("QUALITY_CHECKER_TIMEOUT", cfg.Timeout); err != nil {
 		return err
 	}
 

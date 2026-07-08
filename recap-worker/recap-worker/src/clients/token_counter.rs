@@ -30,16 +30,6 @@ impl TokenCounter {
                 .trim()
                 .to_string();
 
-            // 環境変数にも設定しておく（他のライブラリが使用する可能性があるため）
-            // SAFETY: This function is called during TokenCounter initialization, which typically
-            // occurs once at application startup. While theoretically multiple threads could call
-            // this concurrently, in practice this is initialized by the ComponentRegistry during
-            // single-threaded startup. The environment variable is set to a read-only value and
-            // not modified afterwards. If concurrent initialization becomes a concern, consider
-            // using std::sync::Once or an initialization lock.
-            unsafe {
-                std::env::set_var("HF_TOKEN", &token);
-            }
             info!("Loaded Hugging Face token from {}", token_path);
             token
         };
@@ -55,19 +45,14 @@ impl TokenCounter {
         };
         info!("Using token: {}", token_preview);
 
+        // `FromPretrainedParameters.token` is threaded straight into hf-hub's
+        // `ApiBuilder::with_token`, so there's no need to also mutate the
+        // process-wide `HF_TOKEN` env var at runtime (unsound alongside
+        // concurrent env reads, and forbidden outside tests per DECREE §1).
         let params = tokenizers::FromPretrainedParameters {
             token: Some(token.clone()),
             ..Default::default()
         };
-
-        // 環境変数も設定（hf-hubが環境変数を読み取る可能性があるため）
-        // SAFETY: Setting HF_TOKEN environment variable for use by hf-hub and related libraries.
-        // This is safe because: (1) it's called during initialization before concurrent access,
-        // (2) the token value is immutable after being set, and (3) this duplicates the setting
-        // from above (line 35) to ensure the variable is available for FromPretrainedParameters.
-        unsafe {
-            std::env::set_var("HF_TOKEN", &token);
-        }
 
         let tokenizer = Tokenizer::from_pretrained("google/gemma-3-4b-it", Some(params))
             .map_err(|e| anyhow::anyhow!("Failed to load tokenizer: {}. Note: Gemma 3 models require accepting the terms of use on Hugging Face.", e))?;

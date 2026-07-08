@@ -34,13 +34,19 @@ type EnqueueResult struct {
 
 // SummarizeQueueWorker handles processing of queued summarization jobs
 type SummarizeQueueWorker struct {
-	jobRepo         repository.SummarizeJobRepository
-	articleRepo     repository.ArticleRepository
-	apiRepo         repository.ExternalAPIRepository
-	summaryRepo     repository.SummaryRepository
-	logger          *slog.Logger
-	batchSize       int
-	concurrency     int
+	jobRepo     repository.SummarizeJobRepository
+	articleRepo repository.ArticleRepository
+	apiRepo     repository.ExternalAPIRepository
+	summaryRepo repository.SummaryRepository
+	logger      *slog.Logger
+	batchSize   int
+	concurrency int
+
+	// mu guards lastRecoveryRun and enqueueCursor: ProcessQueue (queue-worker
+	// job, 10s ticker) and EnqueueUnsummarizedBatch/ResetEnqueueCursor
+	// (summarization job, 5m ticker) run as independent goroutines against
+	// the same worker instance.
+	mu              sync.Mutex
 	lastRecoveryRun time.Time
 	enqueueCursor   *domain.Cursor
 }
@@ -85,10 +91,13 @@ func (w *SummarizeQueueWorker) HasPendingJobs(ctx context.Context) (bool, error)
 
 // RecoverStuckJobs recovers jobs stuck in 'running' state, throttled to once per 5 minutes.
 func (w *SummarizeQueueWorker) RecoverStuckJobs(ctx context.Context) {
+	w.mu.Lock()
 	if time.Since(w.lastRecoveryRun) < 5*time.Minute {
+		w.mu.Unlock()
 		return
 	}
 	w.lastRecoveryRun = time.Now()
+	w.mu.Unlock()
 
 	recovered, err := w.jobRepo.RecoverStuckJobs(ctx)
 	if err != nil {
@@ -425,7 +434,11 @@ func (w *SummarizeQueueWorker) savePlaceholderSummary(ctx context.Context, artic
 // enqueues them into the job queue via the standard guard + CreateJob path.
 // This replaces the old batch safety-net that called the LLM directly.
 func (w *SummarizeQueueWorker) EnqueueUnsummarizedBatch(ctx context.Context, batchSize int) (*EnqueueResult, error) {
-	articles, newCursor, err := w.articleRepo.FindForSummarization(ctx, w.enqueueCursor, batchSize)
+	w.mu.Lock()
+	cursor := w.enqueueCursor
+	w.mu.Unlock()
+
+	articles, newCursor, err := w.articleRepo.FindForSummarization(ctx, cursor, batchSize)
 	if err != nil {
 		return nil, fmt.Errorf("failed to find unsummarized articles: %w", err)
 	}
@@ -469,7 +482,9 @@ func (w *SummarizeQueueWorker) EnqueueUnsummarizedBatch(ctx context.Context, bat
 	}
 
 	if newCursor != nil {
+		w.mu.Lock()
 		w.enqueueCursor = newCursor
+		w.mu.Unlock()
 	}
 
 	w.logger.InfoContext(ctx, "batch enqueue completed",
@@ -484,5 +499,7 @@ func (w *SummarizeQueueWorker) EnqueueUnsummarizedBatch(ctx context.Context, bat
 
 // ResetEnqueueCursor resets the pagination cursor for unsummarized article scanning.
 func (w *SummarizeQueueWorker) ResetEnqueueCursor() {
+	w.mu.Lock()
 	w.enqueueCursor = nil
+	w.mu.Unlock()
 }

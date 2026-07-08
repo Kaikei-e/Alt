@@ -69,6 +69,7 @@ func TestHandler_RetrieveContext_Success(t *testing.T) {
 		Query: "AIについて",
 		Limit: 5,
 	})
+	req.Header().Set("X-Alt-User-Id", uuid.New().String())
 
 	mockRetrieve.On("Execute", ctx, mock.MatchedBy(func(input usecase.RetrieveContextInput) bool {
 		return input.Query == "AIについて"
@@ -98,6 +99,25 @@ func TestHandler_RetrieveContext_Success(t *testing.T) {
 	assert.Equal(t, float32(0.95), resp.Msg.Contexts[0].Score)
 }
 
+func TestHandler_RetrieveContext_Unauthenticated(t *testing.T) {
+	mockAnswer := new(MockAnswerWithRAGUsecase)
+	mockRetrieve := new(MockRetrieveContextUsecase)
+	logger := slog.New(slog.NewJSONHandler(io.Discard, nil))
+
+	handler := augur.NewHandler(mockAnswer, mockRetrieve, nil, nil, logger)
+
+	ctx := context.Background()
+	req := connect.NewRequest(&augurv2.RetrieveContextRequest{
+		Query: "AIについて",
+	})
+
+	_, err := handler.RetrieveContext(ctx, req)
+
+	require.Error(t, err)
+	connectErr := err.(*connect.Error)
+	assert.Equal(t, connect.CodeUnauthenticated, connectErr.Code())
+}
+
 func TestHandler_RetrieveContext_EmptyQuery(t *testing.T) {
 	mockAnswer := new(MockAnswerWithRAGUsecase)
 	mockRetrieve := new(MockRetrieveContextUsecase)
@@ -109,6 +129,7 @@ func TestHandler_RetrieveContext_EmptyQuery(t *testing.T) {
 	req := connect.NewRequest(&augurv2.RetrieveContextRequest{
 		Query: "",
 	})
+	req.Header().Set("X-Alt-User-Id", uuid.New().String())
 
 	_, err := handler.RetrieveContext(ctx, req)
 
@@ -129,6 +150,7 @@ func TestHandler_RetrieveContext_WithLimit(t *testing.T) {
 		Query: "AIについて",
 		Limit: 1, // Limit to 1 result
 	})
+	req.Header().Set("X-Alt-User-Id", uuid.New().String())
 
 	mockRetrieve.On("Execute", ctx, mock.MatchedBy(func(input usecase.RetrieveContextInput) bool {
 		return input.Query == "AIについて"
@@ -339,6 +361,7 @@ func TestHandler_RetrieveContext_SanitizesInvalidUTF8(t *testing.T) {
 		Query: "テスト",
 		Limit: 10,
 	})
+	req.Header().Set("X-Alt-User-Id", uuid.New().String())
 
 	mockRetrieve.On("Execute", ctx, mock.MatchedBy(func(input usecase.RetrieveContextInput) bool {
 		return input.Query == "テスト"

@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from datetime import datetime
 from typing import TYPE_CHECKING
 from uuid import UUID
 
@@ -137,12 +136,16 @@ class PostgresJobGateway:
                     return None
 
                 job_id = r[0]
-                await conn.execute(
+                claim_cur = await conn.execute(
                     "UPDATE report_jobs SET job_status = 'claimed', claimed_by = %s, "
                     "claimed_at = NOW(), attempt_no = attempt_no + 1 "
-                    "WHERE job_id = %s",
+                    "WHERE job_id = %s "
+                    "RETURNING claimed_at",
                     [worker_id, job_id],
                 )
+                claim_row = await claim_cur.fetchone()
+                assert claim_row is not None
+                claimed_at = claim_row[0]
 
                 return ReportJob(
                     job_id=r[0],
@@ -150,7 +153,7 @@ class PostgresJobGateway:
                     job_status="claimed",
                     attempt_no=r[3] + 1,
                     claimed_by=worker_id,
-                    claimed_at=datetime.now(),
+                    claimed_at=claimed_at,
                     available_at=r[6],
                     created_at=r[7],
                 )
@@ -166,6 +169,9 @@ class PostgresJobGateway:
         await self.update_job_status(job_id, "succeeded")
 
     async def fail_job(self, job_id: UUID, failure_message: str) -> None:
+        # report_jobs has no failure-reason column yet (see report_runs.failure_message
+        # for the run-level equivalent) — log loudly instead of discarding the message.
+        logger.warning("Job failed", job_id=str(job_id), failure_message=failure_message)
         await self.update_job_status(job_id, "failed")
 
     async def complete_run(self, run_id: UUID) -> None:

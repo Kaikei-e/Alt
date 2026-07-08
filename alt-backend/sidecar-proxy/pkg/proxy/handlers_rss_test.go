@@ -29,7 +29,7 @@ func TestBuildEnvoyRequest_SetsHostField(t *testing.T) {
 		t.Fatalf("url.Parse() error = %v", err)
 	}
 
-	envoyReq, err := p.buildEnvoyRequest(originalReq, targetURL, net.ParseIP("93.184.216.34"), "trace-1")
+	envoyReq, err := p.buildEnvoyRequest(originalReq, targetURL, net.ParseIP("93.184.216.34"), "trace-1", nil)
 	if err != nil {
 		t.Fatalf("buildEnvoyRequest() error = %v", err)
 	}

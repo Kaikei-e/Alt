@@ -88,9 +88,12 @@ impl LoggingSystem {
             .unwrap_or(true); // Default to JSON for production
 
         if use_json {
-            let subscriber = tracing_subscriber::registry()
-                .with(env_filter)
-                .with(fmt::layer().json().flatten_event(true).with_current_span(true));
+            let subscriber = tracing_subscriber::registry().with(env_filter).with(
+                fmt::layer()
+                    .json()
+                    .flatten_event(true)
+                    .with_current_span(true),
+            );
 
             tracing::subscriber::set_global_default(subscriber).map_err(|e| {
                 InitializationError::LoggingInitFailed {
@@ -195,12 +198,17 @@ pub fn setup_logging_safe(config_level: ConfigLogLevel) -> Result<(), Initializa
         })();
 
         if result.is_ok() {
-            *INIT_SUCCESS.lock().unwrap() = true;
+            *INIT_SUCCESS
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner) = true;
         }
     });
 
     // Return the initialization result
-    if *INIT_SUCCESS.lock().unwrap() {
+    if *INIT_SUCCESS
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+    {
         Ok(())
     } else {
         Err(InitializationError::LoggingInitFailed {
