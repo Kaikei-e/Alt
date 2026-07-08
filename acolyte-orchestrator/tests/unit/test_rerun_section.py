@@ -9,7 +9,7 @@ import pytest
 
 from acolyte.domain.brief import ReportBrief
 from acolyte.domain.report import ChangeItem, Report, ReportSection, ReportVersion, SectionVersion
-from acolyte.port.llm_provider import LLMResponse
+from acolyte.port.llm_provider import LLMMode, LLMResponse
 from acolyte.usecase.rerun_section_uc import RerunSectionUsecase
 
 
@@ -202,6 +202,23 @@ async def test_rerun_section_pins_think_false_for_cjk_safety() -> None:
     await uc.execute(rid, "summary")
 
     assert llm.last_kwargs.get("think") is False
+
+
+@pytest.mark.asyncio
+async def test_rerun_section_uses_longform_mode() -> None:
+    """Without an explicit mode, OllamaGateway.generate() routes to
+    /api/generate instead of /api/chat, which ignores think=false for some
+    models (see ollama_gw.py). Every other section-body generation call
+    site (writer_node.py) pins mode=LLMMode.LONGFORM; rerun must match so
+    it hits the same, correctly-behaving endpoint.
+    """
+    repo, rid = _make_repo_with_report()
+    llm = FakeLLM()
+    uc = RerunSectionUsecase(repo, llm)
+
+    await uc.execute(rid, "summary")
+
+    assert llm.last_kwargs.get("mode") is LLMMode.LONGFORM
 
 
 @pytest.mark.asyncio

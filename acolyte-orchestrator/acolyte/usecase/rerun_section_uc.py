@@ -9,6 +9,7 @@ import structlog
 
 from acolyte.domain.report import ChangeItem
 from acolyte.domain.writer_prompt import WRITER_PROMPT, format_evidence
+from acolyte.port.llm_provider import LLMMode
 
 if TYPE_CHECKING:
     from acolyte.port.llm_provider import LLMProviderPort
@@ -59,7 +60,7 @@ class RerunSectionUsecase:
             evidence_block=format_evidence(evidence_items),
             revision_note="",
         )
-        response = await self._llm.generate(prompt, num_predict=2000, think=False)
+        response = await self._llm.generate(prompt, num_predict=2000, think=False, mode=LLMMode.LONGFORM)
 
         # Bump section version
         await self._repo.bump_section_version(
