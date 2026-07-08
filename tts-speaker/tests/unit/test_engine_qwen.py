@@ -33,7 +33,9 @@ class TestQwenVoiceCatalogue:
     def test_voices_shape(self):
         assert len(VOICES) == 3
         for v in VOICES:
-            assert set(v) == {"id", "name", "gender"}
+            assert isinstance(v.id, str)
+            assert isinstance(v.name, str)
+            assert isinstance(v.gender, str)
 
     def test_voice_ids_match(self):
         assert VOICE_IDS == {"qwen-ja-1", "qwen-ja-2", "qwen-ja-3"}

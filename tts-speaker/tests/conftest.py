@@ -10,6 +10,7 @@ import pytest
 from httpx import ASGITransport, AsyncClient
 
 from tts_speaker.app.main import create_app
+from tts_speaker.core.engine import Voice
 from tts_speaker.core.pipeline import TTSPipeline
 from tts_speaker.infra.config import get_settings
 
@@ -30,11 +31,11 @@ def mock_pipeline() -> MagicMock:
     pipeline.synthesize = AsyncMock(
         return_value=(np.zeros(24000, dtype=np.float32), 24000),
     )
-    pipeline.voices = [
-        {"id": "qwen-ja-1", "name": "JA Voice 1", "gender": "female"},
-        {"id": "qwen-ja-2", "name": "JA Voice 2", "gender": "female"},
-        {"id": "qwen-ja-3", "name": "JA Voice 3", "gender": "female"},
-    ]
+    pipeline.voices = (
+        Voice(id="qwen-ja-1", name="JA Voice 1", gender="female"),
+        Voice(id="qwen-ja-2", name="JA Voice 2", gender="female"),
+        Voice(id="qwen-ja-3", name="JA Voice 3", gender="female"),
+    )
     pipeline.voice_ids = {"qwen-ja-1", "qwen-ja-2", "qwen-ja-3"}
     pipeline.device = "cpu"
     pipeline.gpu_name = None

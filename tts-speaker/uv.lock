@@ -1575,7 +1575,6 @@ source = { editable = "." }
 dependencies = [
     { name = "alkana" },
     { name = "connect-python" },
-    { name = "fastapi" },
     { name = "huggingface-hub" },
     { name = "numpy" },
     { name = "protobuf" },
@@ -1608,7 +1607,6 @@ dev = [
 requires-dist = [
     { name = "alkana", specifier = ">=0.0.2" },
     { name = "connect-python", specifier = ">=0.9.0" },
-    { name = "fastapi", specifier = ">=0.115.0" },
     { name = "huggingface-hub", specifier = ">=0.24" },
     { name = "numpy", specifier = ">=1.26.0,<2.5" },
     { name = "protobuf", specifier = ">=7.34.1" },

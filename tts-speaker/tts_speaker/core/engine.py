@@ -8,10 +8,22 @@ concerns.
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, Protocol
 
 if TYPE_CHECKING:
     import numpy as np
+
+
+@dataclass(frozen=True, slots=True)
+class Voice:
+    """Alt-facing voice identity. Engine-specific mapping (e.g. Qwen speaker
+    preset) stays in the driver's own config type — this is only the shape
+    exposed across the engine/pipeline/service boundary."""
+
+    id: str
+    name: str
+    gender: str
 
 
 class TTSEngine(Protocol):
@@ -24,7 +36,7 @@ class TTSEngine(Protocol):
     def is_ready(self) -> bool: ...
 
     @property
-    def voices(self) -> list[dict[str, str]]: ...
+    def voices(self) -> tuple[Voice, ...]: ...
 
     @property
     def voice_ids(self) -> set[str]: ...

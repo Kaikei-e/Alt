@@ -34,12 +34,14 @@ class TestSupertonicVoiceCatalogue:
     def test_voices_shape(self):
         assert len(VOICES) == 1
         for v in VOICES:
-            assert set(v) == {"id", "name", "gender"}
+            assert isinstance(v.id, str)
+            assert isinstance(v.name, str)
+            assert isinstance(v.gender, str)
 
     def test_list_voices_advertises_only_sup_f4(self):
         # Legacy Qwen aliases are accepted by synth_one but not surfaced
         # through ListVoices — see LEGACY_ALIASES.
-        assert [v["id"] for v in VOICES] == ["sup-F4"]
+        assert [v.id for v in VOICES] == ["sup-F4"]
 
     def test_voice_ids_include_legacy_aliases(self):
         assert VOICE_IDS == {"sup-F4", "qwen-ja-1", "qwen-ja-2", "qwen-ja-3"}

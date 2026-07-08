@@ -15,6 +15,8 @@ from ..core.preprocess import preprocess_for_tts
 from ..gen.proto.alt.tts.v1 import tts_pb2
 
 if TYPE_CHECKING:
+    from collections.abc import AsyncGenerator
+
     from connectrpc.request import RequestContext
 
     from ..infra.config import Settings
@@ -74,9 +76,11 @@ class TTSConnectService:
             audio, sample_rate = await self._pipeline.synthesize(
                 text=text, voice=voice, speed=speed
             )
-        except Exception:
+        except ValueError as err:
+            raise ConnectError(Code.INVALID_ARGUMENT, str(err)) from err
+        except Exception as err:
             logger.exception("TTS synthesis failed")
-            raise ConnectError(Code.INTERNAL, "Synthesis failed")
+            raise ConnectError(Code.INTERNAL, "Synthesis failed") from err
 
         buf = io.BytesIO()
         sf.write(buf, audio, samplerate=sample_rate, format="WAV", subtype="FLOAT")
@@ -98,7 +102,7 @@ class TTSConnectService:
         self._verify_token(ctx)
 
         voices = [
-            tts_pb2.Voice(id=v["id"], name=v["name"], gender=v["gender"])
+            tts_pb2.Voice(id=v.id, name=v.name, gender=v.gender)
             for v in self._pipeline.voices
         ]
         return tts_pb2.ListVoicesResponse(voices=voices)
@@ -107,7 +111,7 @@ class TTSConnectService:
         self,
         request: tts_pb2.SynthesizeStreamRequest,
         ctx: RequestContext,
-    ):  # -> AsyncGenerator[tts_pb2.SynthesizeStreamResponse, None]
+    ) -> AsyncGenerator[tts_pb2.SynthesizeStreamResponse, None]:
         """Synthesize text to WAV audio stream."""
         self._verify_token(ctx)
 
@@ -155,6 +159,8 @@ class TTSConnectService:
                     duration_seconds=duration,
                 )
 
-        except Exception:
+        except ValueError as err:
+            raise ConnectError(Code.INVALID_ARGUMENT, str(err)) from err
+        except Exception as err:
             logger.exception("TTS streaming failed")
-            raise ConnectError(Code.INTERNAL, "Streaming synthesis failed")
+            raise ConnectError(Code.INTERNAL, "Streaming synthesis failed") from err
