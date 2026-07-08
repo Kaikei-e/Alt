@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"time"
 
@@ -78,15 +79,32 @@ func (g *KratosGateway) ValidateSession(ctx context.Context, cookie string) (*do
 
 	email := ""
 	role := "user"
-	if traits, ok := session.Identity.Traits.(map[string]interface{}); ok {
+	traits, ok := session.Identity.Traits.(map[string]interface{})
+	if !ok {
+		slog.WarnContext(ctx, "kratos identity traits are not a map, defaulting role to user",
+			"identity_id", session.Identity.Id)
+	} else {
 		if emailVal, ok := traits["email"]; ok {
 			if emailStr, ok := emailVal.(string); ok {
 				email = emailStr
 			}
 		}
-		if roleVal, ok := traits["role"]; ok {
-			if roleStr, ok := roleVal.(string); ok && roleStr == "admin" {
+		roleVal, hasRole := traits["role"]
+		switch {
+		case !hasRole:
+			slog.WarnContext(ctx, "kratos identity traits missing role, defaulting to user",
+				"identity_id", session.Identity.Id)
+		default:
+			roleStr, isString := roleVal.(string)
+			switch {
+			case !isString:
+				slog.WarnContext(ctx, "kratos identity role trait is not a string, defaulting to user",
+					"identity_id", session.Identity.Id)
+			case roleStr == "admin":
 				role = "admin"
+			case roleStr != "user":
+				slog.WarnContext(ctx, "kratos identity has unexpected role trait, defaulting to user",
+					"identity_id", session.Identity.Id, "role", roleStr)
 			}
 		}
 	}
