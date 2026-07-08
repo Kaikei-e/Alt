@@ -134,7 +134,7 @@ describe("OAuthServer /api/token", {
     assertEquals(res.status, 401);
   });
 
-  it("should return full token data when INTERNAL_AUTH_TOKEN is set and correct header is sent", async () => {
+  it("should return token data without refresh_token when INTERNAL_AUTH_TOKEN is set and correct header is sent", async () => {
     Deno.env.set("INTERNAL_AUTH_TOKEN", "correct-token");
 
     secretManager.setData({
@@ -152,7 +152,7 @@ describe("OAuthServer /api/token", {
 
     const body = await res.json();
     assertEquals(body.access_token, "secret-access-token");
-    assertEquals(body.refresh_token, "secret-refresh-token");
+    assertEquals(body.refresh_token, undefined);
   });
 
   it("should accept the token when only INTERNAL_AUTH_TOKEN_FILE is set (compose secrets)", async () => {

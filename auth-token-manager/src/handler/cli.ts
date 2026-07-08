@@ -160,6 +160,10 @@ export class CliHandler {
   private async handleValidate(): Promise<void> {
     logger.info("Running configuration validation");
     await config.loadConfig();
+    if (!config.validateConfig()) {
+      logger.error("Configuration validation failed");
+      Deno.exit(1);
+    }
     logger.info("Configuration validation completed successfully");
   }
 

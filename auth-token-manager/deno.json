@@ -1,10 +1,14 @@
 {
   "tasks": {
-    "start": "deno run --allow-net --allow-read=/app,/run/secrets --allow-write=/app/secrets --allow-env main.ts daemon",
+    "start": "deno run --allow-net=www.inoreader.com:443,rask-log-aggregator:4318,localhost:4318,0.0.0.0:9201 --allow-read=/app,/run/secrets --allow-write=/app/secrets --allow-env=CONNECTIVITY_CHECK,CONNECTIVITY_TIMEOUT,DENO_ENV,DEPLOYMENT_ENV,HTTP_PROXY,HTTPS_PROXY,HTTP_TIMEOUT,INOREADER_CLIENT_ID,INOREADER_CLIENT_ID_FILE,INOREADER_CLIENT_SECRET,INOREADER_CLIENT_SECRET_FILE,INOREADER_REDIRECT_URI,INTERNAL_AUTH_TOKEN,INTERNAL_AUTH_TOKEN_FILE,LOG_INCLUDE_STACK_TRACE,LOG_INCLUDE_TIMESTAMP,LOG_LEVEL,NETWORK_FALLBACK_TO_DIRECT,NODE_ENV,OTEL_ENABLED,OTEL_EXPORTER_OTLP_ENDPOINT,OTEL_SERVICE_NAME,RETRY_BACKOFF_FACTOR,RETRY_BASE_DELAY,RETRY_MAX_ATTEMPTS,RETRY_MAX_DELAY,SERVICE_VERSION,TOKEN_STORAGE_PATH main.ts daemon",
     "test": "deno test --allow-all",
     "lint": "deno lint",
     "check": "deno check main.ts",
     "fmt": "deno fmt"
+  },
+  "compilerOptions": {
+    "strict": true,
+    "noUncheckedIndexedAccess": true
   },
   "imports": {
     "@std/encoding/base64": "jsr:@std/encoding@^1.0.10/base64",

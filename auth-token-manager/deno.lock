@@ -10,6 +10,7 @@
     "jsr:@std/log@~0.224.14": "0.224.14",
     "jsr:@std/testing@^1.0.17": "1.0.17",
     "npm:@opentelemetry/api-logs@0.212.0": "0.212.0",
+    "npm:@opentelemetry/api@1.9.0": "1.9.0",
     "npm:@opentelemetry/exporter-logs-otlp-http@0.212.0": "0.212.0_@opentelemetry+api@1.9.0",
     "npm:@opentelemetry/resources@2.5.1": "2.5.1_@opentelemetry+api@1.9.0",
     "npm:@opentelemetry/sdk-logs@0.212.0": "0.212.0_@opentelemetry+api@1.9.0",

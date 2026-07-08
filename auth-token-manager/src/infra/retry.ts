@@ -5,6 +5,18 @@
 import type { RetryConfig } from "../domain/types.ts";
 import { logger } from "./logger.ts";
 
+/**
+ * Thrown for errors that will never succeed on retry (e.g. invalid_grant,
+ * invalid_client). retryWithBackoff fails fast on these instead of burning
+ * through max_attempts against an external API.
+ */
+export class PermanentError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "PermanentError";
+  }
+}
+
 export async function retryWithBackoff<T>(
   operation: () => Promise<T>,
   config: RetryConfig,
@@ -20,6 +32,14 @@ export async function retryWithBackoff<T>(
       return await operation();
     } catch (error) {
       lastError = error instanceof Error ? error : new Error(String(error));
+
+      if (error instanceof PermanentError) {
+        logger.error(`Permanent error, not retrying`, {
+          operation: operationName,
+          error: lastError.message,
+        });
+        throw lastError;
+      }
 
       if (attempt === config.max_attempts) {
         logger.error(`All ${config.max_attempts} attempts failed`, {

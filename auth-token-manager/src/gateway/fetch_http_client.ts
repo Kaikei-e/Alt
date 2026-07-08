@@ -15,41 +15,34 @@ export class FetchHttpClient implements HttpClient {
       this.networkConfig.http_timeout,
     );
 
+    // Deno's fetch honors HTTP_PROXY/HTTPS_PROXY automatically, so a
+    // configured proxy needs no extra handling here. Sending the request
+    // exactly once matters: OAuth token-exchange/refresh calls are
+    // non-idempotent (refresh_token rotates), so a duplicate send would
+    // resend an already-rotated token and lose it.
+    const fallbackToDirect = Deno.env.get("NETWORK_FALLBACK_TO_DIRECT") ===
+      "true";
+    const hasProxyConfigured = Boolean(
+      Deno.env.get("HTTP_PROXY") || Deno.env.get("HTTPS_PROXY"),
+    );
+
+    // Deno reads HTTP_PROXY/HTTPS_PROXY once at process start for the
+    // default fetch client, so deleting the env vars at request time has no
+    // effect and mutating global env would race concurrent requests.
+    // A per-request client with no proxy configured bypasses the proxy
+    // without touching global state.
+    const directClient = fallbackToDirect && hasProxyConfigured
+      ? Deno.createHttpClient({})
+      : undefined;
+
+    const fetchOptions: RequestInit = {
+      ...options,
+      signal: controller.signal,
+      ...(directClient ? { client: directClient } : {}),
+    };
+
     try {
-      const fallbackToDirect = Deno.env.get("NETWORK_FALLBACK_TO_DIRECT") ===
-        "true";
-
-      const fetchOptions: RequestInit = {
-        ...options,
-        signal: controller.signal,
-      };
-
-      // Deno's fetch honors HTTP_PROXY/HTTPS_PROXY automatically, so a
-      // configured proxy needs no extra handling here. Sending the request
-      // exactly once matters: OAuth token-exchange/refresh calls are
-      // non-idempotent (refresh_token rotates), so a duplicate send would
-      // resend an already-rotated token and lose it.
-      const originalHttpProxy = Deno.env.get("HTTP_PROXY");
-      const originalHttpsProxy = Deno.env.get("HTTPS_PROXY");
-
-      if (
-        fallbackToDirect && (originalHttpProxy || originalHttpsProxy)
-      ) {
-        if (originalHttpProxy) Deno.env.delete("HTTP_PROXY");
-        if (originalHttpsProxy) Deno.env.delete("HTTPS_PROXY");
-      }
-
-      try {
-        const response = await globalThis.fetch(url, fetchOptions);
-        return response;
-      } finally {
-        if (fallbackToDirect) {
-          if (originalHttpProxy) Deno.env.set("HTTP_PROXY", originalHttpProxy);
-          if (originalHttpsProxy) {
-            Deno.env.set("HTTPS_PROXY", originalHttpsProxy);
-          }
-        }
-      }
+      return await globalThis.fetch(url, fetchOptions);
     } catch (error) {
       if (error instanceof Error && error.name === "AbortError") {
         throw new Error(
@@ -59,6 +52,7 @@ export class FetchHttpClient implements HttpClient {
       throw error;
     } finally {
       clearTimeout(timeoutId);
+      directClient?.close();
     }
   }
 }

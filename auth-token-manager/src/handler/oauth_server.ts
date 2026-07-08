@@ -67,9 +67,11 @@ export class OAuthServer {
       });
     }
 
-    // Auth redirect
+    // Auth redirect - protected, otherwise a third party visiting this
+    // public port can complete the OAuth flow with their own account and
+    // overwrite the stored tokens.
     if (reqUrl.pathname === "/" || reqUrl.pathname === "/auth") {
-      return this.handleAuthRedirect();
+      return this.handleAuthRedirect(reqUrl);
     }
 
     // Callback
@@ -88,7 +90,26 @@ export class OAuthServer {
     return new Response("Not Found", { status: 404 });
   }
 
-  private handleAuthRedirect(): Response {
+  private handleAuthRedirect(reqUrl: URL): Response {
+    const expectedToken = config.getEnvOrFile("INTERNAL_AUTH_TOKEN");
+
+    // Fail closed: without a configured secret there is no way to
+    // authenticate the caller, so refuse to start an auth flow rather than
+    // silently skipping the auth check.
+    if (!expectedToken) {
+      logger.error(
+        "auth_redirect_disabled: INTERNAL_AUTH_TOKEN is not configured, refusing /auth request (fail-closed)",
+      );
+      return new Response(
+        "Auth flow disabled: INTERNAL_AUTH_TOKEN is not configured",
+        { status: 503 },
+      );
+    }
+
+    if (reqUrl.searchParams.get("token") !== expectedToken) {
+      return new Response("Unauthorized", { status: 401 });
+    }
+
     // Clean expired states
     this.cleanExpiredStates();
 
@@ -188,7 +209,10 @@ export class OAuthServer {
         );
       }
 
-      return new Response(JSON.stringify(tokenData), {
+      // Only access_token/expires_at are needed by consumers; refresh_token
+      // never needs to leave this service over the network.
+      const { refresh_token: _refresh_token, ...publicTokenData } = tokenData;
+      return new Response(JSON.stringify(publicTokenData), {
         status: 200,
         headers: { "Content-Type": "application/json" },
       });
