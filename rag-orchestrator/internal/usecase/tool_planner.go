@@ -115,17 +115,16 @@ func (p *ToolPlanner) defaultPlan(query string) *domain.ToolPlan {
 		{ToolName: "tag_cloud_explore", Params: map[string]string{"topic": query}},
 		{ToolName: "keyword_search", Params: map[string]string{"query": query}},
 	}
-	// Only include tools that are actually available
+	// Only include tools that are actually available. If none of the default
+	// tools are registered, return an empty plan rather than fabricating a
+	// step for an unregistered tool (e.g. "keyword_search", which isn't wired
+	// into any tool map) — that would guarantee a "tool not found" failure.
+	// The caller (SynthesisStrategy) still runs standard retrieval when the
+	// plan has no steps.
 	var valid []domain.ToolStep
 	for _, s := range steps {
 		if p.validToolNames[s.ToolName] {
 			valid = append(valid, s)
-		}
-	}
-	// Always include at least the query itself as a keyword search fallback
-	if len(valid) == 0 {
-		valid = []domain.ToolStep{
-			{ToolName: "keyword_search", Params: map[string]string{"query": query}},
 		}
 	}
 	return &domain.ToolPlan{Steps: valid}

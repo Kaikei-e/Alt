@@ -223,22 +223,47 @@ func (d *ToolDispatcher) ExecutePlan(ctx context.Context, plan *domain.ToolPlan)
 	// Build a level-order execution: steps with no unmet dependencies run first.
 	for {
 		// Find runnable steps: not done, all dependencies done.
+		// A depends_on index outside [0, n) can never be satisfied — fail that
+		// step outright instead of silently treating the out-of-range
+		// dependency as met.
 		var runnable []int
+		var outOfRange []int
 		mu.Lock()
 		for i := 0; i < n; i++ {
 			if done[i] {
 				continue
 			}
 			ready := true
+			invalidDep := false
 			for _, dep := range plan.Steps[i].DependsOn {
-				if dep >= 0 && dep < n && !done[dep] {
+				if dep < 0 || dep >= n {
+					invalidDep = true
+					break
+				}
+				if !done[dep] {
 					ready = false
 					break
 				}
 			}
-			if ready {
+			switch {
+			case invalidDep:
+				outOfRange = append(outOfRange, i)
+			case ready:
 				runnable = append(runnable, i)
 			}
+		}
+		for _, i := range outOfRange {
+			step := plan.Steps[i]
+			d.logger.Warn("plan_step_invalid_dependency",
+				slog.String("tool", step.ToolName),
+				slog.Int("step", i),
+				slog.Any("depends_on", step.DependsOn))
+			results[i] = domain.ToolResult{
+				ToolName: step.ToolName,
+				Success:  false,
+				Error:    "depends_on references an out-of-range step",
+			}
+			done[i] = true
 		}
 		mu.Unlock()
 
@@ -261,6 +286,25 @@ func (d *ToolDispatcher) ExecutePlan(ctx context.Context, plan *domain.ToolPlan)
 			}(idx)
 		}
 		wg.Wait()
+	}
+
+	// Any step still not done at this point is stuck behind an unmet
+	// dependency (e.g. a dependency cycle) — surface that instead of
+	// returning a silent zero-value ToolResult.
+	for i := 0; i < n; i++ {
+		if done[i] {
+			continue
+		}
+		step := plan.Steps[i]
+		d.logger.Warn("plan_step_never_ran",
+			slog.String("tool", step.ToolName),
+			slog.Int("step", i),
+			slog.Any("depends_on", step.DependsOn))
+		results[i] = domain.ToolResult{
+			ToolName: step.ToolName,
+			Success:  false,
+			Error:    "step never ran: unmet or cyclic dependency",
+		}
 	}
 
 	return results

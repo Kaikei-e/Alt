@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"rag-orchestrator/internal/adapter/rag_http/openapi"
@@ -29,6 +30,7 @@ type Handler struct {
 	indexUsecase         usecase.IndexArticleUsecase
 	jobRepo              domain.RagJobRepository
 	morningLetterUsecase usecase.MorningLetterUsecase
+	logger               *slog.Logger
 
 	// For hyper-boost support
 	embedderFactory     EmbedderFactory
@@ -136,14 +138,19 @@ func NewHandler(
 	indexUsecase usecase.IndexArticleUsecase,
 	jobRepo domain.RagJobRepository,
 	morningLetterUsecase usecase.MorningLetterUsecase,
+	logger *slog.Logger,
 	opts ...HandlerOption,
 ) *Handler {
+	if logger == nil {
+		logger = slog.Default()
+	}
 	h := &Handler{
 		retrieveUsecase:      retrieveUsecase,
 		answerUsecase:        answerUsecase,
 		indexUsecase:         indexUsecase,
 		jobRepo:              jobRepo,
 		morningLetterUsecase: morningLetterUsecase,
+		logger:               logger,
 	}
 	for _, opt := range opts {
 		opt(h)
@@ -197,7 +204,8 @@ func (h *Handler) UpsertIndex(ctx echo.Context) error {
 		req.Url, // URL is a required field per OpenAPI spec
 		req.Body,
 	); err != nil {
-		return ctx.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		h.logger.Error("failed to upsert index", "error", err)
+		return ctx.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to index article"})
 	}
 
 	return ctx.JSON(http.StatusOK, map[string]string{"status": "indexed"})
@@ -232,7 +240,8 @@ func (h *Handler) AnswerWithRAG(ctx echo.Context) error {
 
 	output, err := h.answerUsecase.Execute(ctx.Request().Context(), input)
 	if err != nil {
-		return ctx.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		h.logger.Error("failed to answer with RAG", "error", err)
+		return ctx.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to generate answer"})
 	}
 
 	contexts := make([]openapi.Context, 0, len(output.Contexts))
@@ -367,36 +376,60 @@ func (h *Handler) AnswerWithRAGStream(ctx echo.Context) error {
 	}
 }
 
+// backfillRequest is the typed shape of a POST /internal/rag/backfill body.
+// article_id must be a valid UUID — it flows unvalidated into the job
+// payload otherwise, and downstream processBackfillArticle only checks it
+// type-asserts to string, not that it is a real article id.
+type backfillRequest struct {
+	ArticleID string `json:"article_id"`
+	Title     string `json:"title"`
+	Body      string `json:"body"`
+	URL       string `json:"url"`
+}
+
 // Backfill enqueues an article for indexing
 // (POST /internal/rag/backfill)
 func (h *Handler) Backfill(ctx echo.Context) error {
-	var body map[string]interface{}
-	if err := ctx.Bind(&body); err != nil {
+	var req backfillRequest
+	if err := ctx.Bind(&req); err != nil {
 		return ctx.JSON(http.StatusBadRequest, map[string]string{"error": "invalid request"})
 	}
 
 	// Validate required fields
-	if _, ok := body["article_id"]; !ok {
+	if req.ArticleID == "" {
 		return ctx.JSON(http.StatusBadRequest, map[string]string{"error": "missing article_id"})
 	}
-	if _, ok := body["title"]; !ok {
+	if _, err := uuid.Parse(req.ArticleID); err != nil {
+		return ctx.JSON(http.StatusBadRequest, map[string]string{"error": "invalid article_id"})
+	}
+	if req.Title == "" {
 		return ctx.JSON(http.StatusBadRequest, map[string]string{"error": "missing title"})
 	}
-	if _, ok := body["body"]; !ok {
+	if req.Body == "" {
 		return ctx.JSON(http.StatusBadRequest, map[string]string{"error": "missing body"})
+	}
+
+	payload := map[string]interface{}{
+		"article_id": req.ArticleID,
+		"title":      req.Title,
+		"body":       req.Body,
+	}
+	if req.URL != "" {
+		payload["url"] = req.URL
 	}
 
 	job := &domain.RagJob{
 		ID:        uuid.New(),
 		JobType:   "backfill_article",
-		Payload:   body,
+		Payload:   payload,
 		Status:    "new",
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
 	}
 
 	if err := h.jobRepo.Enqueue(ctx.Request().Context(), job); err != nil {
-		return ctx.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		h.logger.Error("failed to enqueue backfill job", "error", err)
+		return ctx.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to enqueue job"})
 	}
 
 	return ctx.JSON(http.StatusAccepted, map[string]string{"job_id": job.ID.String(), "status": "queued"})
@@ -419,8 +452,8 @@ func (h *Handler) RetrieveContext(ctx echo.Context) error {
 
 	output, err := h.retrieveUsecase.Execute(ctx.Request().Context(), input)
 	if err != nil {
-		// Differentiate errors ideally
-		return ctx.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		h.logger.Error("failed to retrieve context", "error", err)
+		return ctx.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to retrieve context"})
 	}
 
 	contexts := make([]openapi.Context, 0, len(output.Contexts))
@@ -555,7 +588,8 @@ func (h *Handler) MorningLetter(ctx echo.Context) error {
 
 	output, err := h.morningLetterUsecase.Execute(ctx.Request().Context(), input)
 	if err != nil {
-		return ctx.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		h.logger.Error("failed to generate morning letter", "error", err)
+		return ctx.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to generate morning letter"})
 	}
 
 	// Map domain types to response types

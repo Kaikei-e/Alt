@@ -109,7 +109,7 @@ func TestHandler_AnswerWithRAG_TPU(t *testing.T) {
 		testLogger,
 	)
 
-	handler := rag_http.NewHandler(retrieve, answerUC, nil, nil, nil)
+	handler := rag_http.NewHandler(retrieve, answerUC, nil, nil, nil, testLogger)
 
 	body := bytes.NewBufferString(`{"query":"TPU"}`)
 	req := httptest.NewRequest(http.MethodPost, "/v1/rag/answer", body)
@@ -162,7 +162,7 @@ func TestHandler_AnswerWithRAGStream(t *testing.T) {
 	}
 	close(events)
 
-	handler := rag_http.NewHandler(nil, &stubStreamUsecase{events: events}, nil, nil, nil)
+	handler := rag_http.NewHandler(nil, &stubStreamUsecase{events: events}, nil, nil, nil, slog.New(slog.NewJSONHandler(io.Discard, nil)))
 
 	body := bytes.NewBufferString(`{"query":"streaming"}`)
 	req := httptest.NewRequest(http.MethodPost, "/v1/rag/answer/stream", body)
@@ -202,7 +202,7 @@ func (d *dummyIndexUsecase) Delete(ctx context.Context, articleID string) error 
 func TestUpsertIndex_PassesUrlToUsecase(t *testing.T) {
 	e := echo.New()
 	dummy := &dummyIndexUsecase{}
-	handler := rag_http.NewHandler(nil, nil, dummy, nil, nil)
+	handler := rag_http.NewHandler(nil, nil, dummy, nil, nil, slog.New(slog.NewJSONHandler(io.Discard, nil)))
 
 	// Prepare request with URL field populated
 	reqBody := openapi.UpsertIndexRequest{
@@ -236,7 +236,7 @@ func TestUpsertIndex_ReturnsErrorWhenUsecaseFails(t *testing.T) {
 	dummy := &dummyIndexUsecase{
 		returnError: errors.New("indexing failed"),
 	}
-	handler := rag_http.NewHandler(nil, nil, dummy, nil, nil)
+	handler := rag_http.NewHandler(nil, nil, dummy, nil, nil, slog.New(slog.NewJSONHandler(io.Discard, nil)))
 
 	reqBody := openapi.UpsertIndexRequest{
 		ArticleId: "test-article-123",
@@ -263,7 +263,7 @@ func TestUpsertIndex_ReturnsErrorWhenUsecaseFails(t *testing.T) {
 func TestUpsertIndex_ContextHasServerSideTimeout(t *testing.T) {
 	e := echo.New()
 	dummy := &dummyIndexUsecase{}
-	handler := rag_http.NewHandler(nil, nil, dummy, nil, nil)
+	handler := rag_http.NewHandler(nil, nil, dummy, nil, nil, slog.New(slog.NewJSONHandler(io.Discard, nil)))
 
 	reqBody := openapi.UpsertIndexRequest{
 		ArticleId: "art-timeout",
@@ -317,7 +317,7 @@ func newOverrideHandler(
 	indexUsecaseFactory := func(_ domain.VectorEncoder) usecase.IndexArticleUsecase {
 		return overrideUsecase
 	}
-	return rag_http.NewHandler(nil, nil, defaultUsecase, nil, nil,
+	return rag_http.NewHandler(nil, nil, defaultUsecase, nil, nil, slog.New(slog.NewJSONHandler(io.Discard, nil)),
 		rag_http.WithEmbedderOverride(embedderFactory, indexUsecaseFactory, "model", 30, allowedOrigins))
 }
 
@@ -414,7 +414,7 @@ func TestUpsertIndex_AllowsAllowlistedEmbedderOverrideOrigin(t *testing.T) {
 // consulted, so the default usecase always runs.
 func TestUpsertIndex_IgnoresEmbedderOverride_WhenFeatureNotWired(t *testing.T) {
 	dummy := &dummyIndexUsecase{}
-	handler := rag_http.NewHandler(nil, nil, dummy, nil, nil)
+	handler := rag_http.NewHandler(nil, nil, dummy, nil, nil, slog.New(slog.NewJSONHandler(io.Discard, nil)))
 
 	c, rec := upsertReqWithEmbedderOverride(t, "http://backfill-hyperboost:11434")
 

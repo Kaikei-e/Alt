@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"rag-orchestrator/internal/domain"
+	"rag-orchestrator/internal/infra/httpclient"
 )
 
 type SearchIndexerClient struct {
@@ -22,9 +23,7 @@ type SearchIndexerClient struct {
 func NewSearchIndexerClient(baseURL string, timeout int, _ string) *SearchIndexerClient {
 	return &SearchIndexerClient{
 		BaseURL: baseURL,
-		Client: &http.Client{
-			Timeout: time.Duration(timeout) * time.Second,
-		},
+		Client:  httpclient.NewPooledClient(time.Duration(timeout) * time.Second),
 	}
 }
 

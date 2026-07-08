@@ -29,12 +29,7 @@ func RewriteQueryWithHistory(ctx context.Context, query string, history []domain
 	}
 	var historyLines strings.Builder
 	for _, msg := range history[start:] {
-		// Truncate long messages
-		content := msg.Content
-		if len(content) > 200 {
-			content = content[:200] + "..."
-		}
-		historyLines.WriteString(fmt.Sprintf("%s: %s\n", msg.Role, content))
+		historyLines.WriteString(fmt.Sprintf("%s: %s\n", msg.Role, runeTruncate(msg.Content, 200)))
 	}
 
 	prompt := fmt.Sprintf(`Rewrite the latest user query as a self-contained search query using the conversation context.
@@ -448,11 +443,7 @@ func expandQueryLegacy(ctx context.Context, query string, history []domain.Messa
 		}
 		var historyLines strings.Builder
 		for _, msg := range history[start:] {
-			content := msg.Content
-			if len(content) > 200 {
-				content = content[:200] + "..."
-			}
-			fmt.Fprintf(&historyLines, "%s: %s\n", msg.Role, content)
+			fmt.Fprintf(&historyLines, "%s: %s\n", msg.Role, runeTruncate(msg.Content, 200))
 		}
 		prompt = fmt.Sprintf(`You are a search query generator. Current Date: %s
 
@@ -491,4 +482,15 @@ User Input: %s`, currentDate, query)
 		}
 	}
 	return expansions, nil
+}
+
+// runeTruncate truncates s to at most n runes, appending "...". Byte-slicing
+// (s[:n]) can split a multi-byte rune (e.g. Japanese text) and corrupt the
+// prompt with invalid UTF-8; this always cuts on a rune boundary.
+func runeTruncate(s string, n int) string {
+	runes := []rune(s)
+	if len(runes) <= n {
+		return s
+	}
+	return string(runes[:n]) + "..."
 }

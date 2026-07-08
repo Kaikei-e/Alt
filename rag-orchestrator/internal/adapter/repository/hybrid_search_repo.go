@@ -5,12 +5,34 @@ import (
 	"database/sql"
 	"fmt"
 	"strings"
+	"unicode"
 
 	"rag-orchestrator/internal/domain"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/pgvector/pgvector-go"
 )
+
+// tsqueryConfig picks the Postgres text-search config to match queryText's
+// language. rag_chunks.tsv stores both an 'english' and a 'simple' tsvector
+// (migration 20260408120000, CJK passthrough via 'simple'); plainto_tsquery
+// must be built against the matching side or Japanese queries never hit any
+// row of the stored tsvector at all.
+func tsqueryConfig(queryText string) string {
+	total, ja := 0, 0
+	for _, r := range queryText {
+		if unicode.IsLetter(r) || unicode.IsDigit(r) {
+			total++
+			if unicode.In(r, unicode.Hiragana, unicode.Katakana, unicode.Han) {
+				ja++
+			}
+		}
+	}
+	if total > 0 && ja*2 >= total {
+		return "simple"
+	}
+	return "english"
+}
 
 // hybridSearchRepository performs in-database hybrid search (dense + sparse) with RRF.
 type hybridSearchRepository struct {
@@ -44,6 +66,7 @@ func (r *hybridSearchRepository) HybridSearch(ctx context.Context, queryVector [
 		candidateLimit = 100
 	}
 
+	tsConfig := tsqueryConfig(queryText)
 	query := fmt.Sprintf(`
 		WITH vector_matches AS (
 			SELECT id, rank() OVER (ORDER BY embedding <=> $1) AS rank
@@ -52,9 +75,9 @@ func (r *hybridSearchRepository) HybridSearch(ctx context.Context, queryVector [
 			LIMIT $3
 		),
 		text_matches AS (
-			SELECT id, rank() OVER (ORDER BY ts_rank_cd(tsv, plainto_tsquery('english', $2)) DESC) AS rank
+			SELECT id, rank() OVER (ORDER BY ts_rank_cd(tsv, plainto_tsquery('%s', $2)) DESC) AS rank
 			FROM rag_chunks
-			WHERE tsv @@ plainto_tsquery('english', $2)
+			WHERE tsv @@ plainto_tsquery('%s', $2)
 			ORDER BY rank
 			LIMIT $3
 		),
@@ -82,7 +105,7 @@ func (r *hybridSearchRepository) HybridSearch(ctx context.Context, queryVector [
 		JOIN rag_documents d ON v.document_id = d.id
 		WHERE d.current_version_id = v.id
 		ORDER BY r.score DESC
-	`, r.rrfK)
+	`, tsConfig, tsConfig, r.rrfK)
 
 	rows, err := r.pool.Query(ctx, query,
 		pgvector.NewVector(queryVector),
@@ -191,12 +214,13 @@ func (r *hybridSearchRepository) SearchNeighbors(
 				SELECT id, rank FROM text_matches`
 	}
 
+	tsConfig := tsqueryConfig(queryText)
 	query := fmt.Sprintf(`
 		WITH %s
 		text_matches AS (
-			SELECT id, rank() OVER (ORDER BY ts_rank_cd(tsv, plainto_tsquery('english', $1)) DESC) AS rank
+			SELECT id, rank() OVER (ORDER BY ts_rank_cd(tsv, plainto_tsquery('%s', $1)) DESC) AS rank
 			FROM rag_chunks
-			WHERE tsv @@ plainto_tsquery('english', $1)
+			WHERE tsv @@ plainto_tsquery('%s', $1)
 			ORDER BY rank
 			LIMIT $2
 		),
@@ -222,7 +246,7 @@ func (r *hybridSearchRepository) SearchNeighbors(
 		JOIN rag_documents d ON v.document_id = d.id
 		WHERE d.current_version_id = v.id
 		ORDER BY r.score DESC
-	`, vectorArm, r.rrfK, combinedSource)
+	`, vectorArm, tsConfig, tsConfig, r.rrfK, combinedSource)
 
 	rows, err := r.pool.Query(ctx, query, args...)
 	if err != nil {

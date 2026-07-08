@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"net/http"
 	"rag-orchestrator/internal/domain"
+	"rag-orchestrator/internal/infra/httpclient"
 	"time"
 
 	"github.com/google/uuid"
@@ -23,11 +24,9 @@ type HTTPArticleClient struct {
 // NewHTTPArticleClient creates a new HTTP-based article client.
 func NewHTTPArticleClient(baseURL string, timeout time.Duration, _ string, logger *slog.Logger) *HTTPArticleClient {
 	return &HTTPArticleClient{
-		baseURL: baseURL,
-		httpClient: &http.Client{
-			Timeout: timeout,
-		},
-		logger: logger,
+		baseURL:    baseURL,
+		httpClient: httpclient.NewPooledClient(timeout),
+		logger:     logger,
 	}
 }
 
@@ -84,8 +83,8 @@ func (c *HTTPArticleClient) GetRecentArticles(ctx context.Context, withinHours i
 		slog.Int("count", response.Count))
 
 	// Convert DTOs to domain entities
-	articles := make([]domain.ArticleMetadata, len(response.Articles))
-	for i, dto := range response.Articles {
+	articles := make([]domain.ArticleMetadata, 0, len(response.Articles))
+	for _, dto := range response.Articles {
 		articleID, err := uuid.Parse(dto.ID)
 		if err != nil {
 			c.logger.Warn("invalid article ID, skipping", slog.String("id", dto.ID), slog.String("error", err.Error()))
@@ -98,20 +97,25 @@ func (c *HTTPArticleClient) GetRecentArticles(ctx context.Context, withinHours i
 			feedID = uuid.Nil
 		}
 
+		// published_at is a business fact (drives temporal boost scoring
+		// downstream); a parse failure must not be papered over with the
+		// wall-clock time. Keep the zero value so downstream temporal
+		// scoring can detect and deprioritize it instead of scoring it as
+		// "just published".
 		publishedAt, err := time.Parse(time.RFC3339, dto.PublishedAt)
 		if err != nil {
-			c.logger.Warn("invalid published_at, using current time", slog.String("published_at", dto.PublishedAt))
-			publishedAt = time.Now()
+			c.logger.Warn("invalid published_at, keeping zero value", slog.String("published_at", dto.PublishedAt))
+			publishedAt = time.Time{}
 		}
 
-		articles[i] = domain.ArticleMetadata{
+		articles = append(articles, domain.ArticleMetadata{
 			ID:          articleID,
 			Title:       dto.Title,
 			URL:         dto.URL,
 			PublishedAt: publishedAt,
 			FeedID:      feedID,
 			Tags:        dto.Tags,
-		}
+		})
 	}
 
 	return articles, nil

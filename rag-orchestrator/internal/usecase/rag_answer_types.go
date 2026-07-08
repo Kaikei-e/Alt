@@ -13,9 +13,25 @@ type AnswerWithRAGInput struct {
 	MaxChunks           int
 	MaxTokens           int
 	UserID              string
+	// ConversationID scopes ConversationStore state to a single conversation
+	// thread. A user with several concurrent conversations shares one UserID,
+	// so callers should populate this to avoid cross-thread state collisions;
+	// when empty, UserID is used as the store key for backward compatibility.
+	ConversationID      string
 	Locale              string
 	ConversationHistory []domain.Message // Recent chat turns for multi-turn context
 	LetterContext       string           // Morning Letter body for document-grounded follow-up
+}
+
+// conversationThreadKey resolves the ConversationStore key for a request.
+// Prefers the dedicated ConversationID (thread-scoped); falls back to UserID
+// so callers that haven't been updated to populate ConversationID keep
+// working, at the cost of sharing state across a user's concurrent threads.
+func conversationThreadKey(input AnswerWithRAGInput) string {
+	if input.ConversationID != "" {
+		return input.ConversationID
+	}
+	return input.UserID
 }
 
 // AnswerWithRAGOutput represents the normalized answer response returned to API clients.

@@ -147,15 +147,26 @@ func intToStr(n int) string {
 func countRelevant(retrievedTitles []string, keywords []string) int {
 	count := 0
 	for _, title := range retrievedTitles {
-		lower := strings.ToLower(title)
-		for _, kw := range keywords {
-			if strings.Contains(lower, strings.ToLower(kw)) {
-				count++
-				break
-			}
+		if titleMatchesAnyKeyword(title, keywords) {
+			count++
 		}
 	}
 	return count
+}
+
+// titleMatchesAnyKeyword reports whether title contains (case-insensitively)
+// any of the given keywords. Callers pass topic keywords as the "relevant"
+// set to RecallAtK/Top1Precision/CitationCorrectness, not full titles, so an
+// exact-match set lookup would almost never fire — this is the same
+// substring rule countRelevant already uses.
+func titleMatchesAnyKeyword(title string, keywords []string) bool {
+	lower := strings.ToLower(title)
+	for _, kw := range keywords {
+		if strings.Contains(lower, strings.ToLower(kw)) {
+			return true
+		}
+	}
+	return false
 }
 
 // RecallAtK computes recall@K: fraction of expected relevant items found in top-K retrieved.
@@ -167,10 +178,9 @@ func RecallAtK(relevantTitles []string, retrievedTitles []string, k int) float64
 	if k < len(topK) {
 		topK = topK[:k]
 	}
-	relevantSet := toSet(relevantTitles)
 	found := 0
 	for _, t := range topK {
-		if relevantSet[t] {
+		if titleMatchesAnyKeyword(t, relevantTitles) {
 			found++
 		}
 	}
@@ -232,8 +242,7 @@ func Top1Precision(relevantTitles []string, retrievedTitles []string) float64 {
 	if len(retrievedTitles) == 0 {
 		return 0.0
 	}
-	relevantSet := toSet(relevantTitles)
-	if relevantSet[retrievedTitles[0]] {
+	if titleMatchesAnyKeyword(retrievedTitles[0], relevantTitles) {
 		return 1.0
 	}
 	return 0.0
@@ -263,10 +272,9 @@ func CitationCorrectness(citedTitles []string, relevantTitles []string) float64 
 	if len(citedTitles) == 0 {
 		return 0.0
 	}
-	relevantSet := toSet(relevantTitles)
 	correct := 0
 	for _, t := range citedTitles {
-		if relevantSet[t] {
+		if titleMatchesAnyKeyword(t, relevantTitles) {
 			correct++
 		}
 	}

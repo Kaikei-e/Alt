@@ -102,18 +102,19 @@ func (u *indexArticleUsecase) Upsert(ctx context.Context, articleID, title, url,
 		}
 
 		// Embed
-		if u.encoder != nil {
+		if u.encoder != nil && len(contentsToEmbed) > 0 {
 			embeddings, err := u.encoder.Encode(ctx, contentsToEmbed)
-			// If encoder fails (and is not nil), we fail.
-			if err == nil && embeddings != nil {
-				if len(embeddings) != len(contentsToEmbed) {
-					return fmt.Errorf("embeddings count mismatch")
-				}
-				for i, idx := range chunkIndicesToEmbed {
-					ragChunks[idx].Embedding = pgvector.NewVector(embeddings[i])
-				}
-			} else if err != nil {
+			if err != nil {
 				return fmt.Errorf("failed to encode chunks: %w", err)
+			}
+			// A nil/short embeddings slice with no error is indistinguishable from
+			// silent encoder failure; treat it as an explicit error rather than
+			// storing chunks without embeddings.
+			if len(embeddings) != len(contentsToEmbed) {
+				return fmt.Errorf("embeddings count mismatch: got %d, want %d", len(embeddings), len(contentsToEmbed))
+			}
+			for i, idx := range chunkIndicesToEmbed {
+				ragChunks[idx].Embedding = pgvector.NewVector(embeddings[i])
 			}
 		}
 
@@ -132,21 +133,20 @@ func (u *indexArticleUsecase) Upsert(ctx context.Context, articleID, title, url,
 
 		// Insert Version
 		newVer := &domain.RagDocumentVersion{
-			ID:              newVersionID,
-			DocumentID:      doc.ID,
-			VersionNumber:   1,
-			Title:           title,
-			URL:             url,
-			SourceHash:      sourceHash,
-			ChunkerVersion:  string(u.chunker.Version()),
-			EmbedderVersion: "v1", // Placeholder
-			CreatedAt:       now,
+			ID:             newVersionID,
+			DocumentID:     doc.ID,
+			VersionNumber:  1,
+			Title:          title,
+			URL:            url,
+			SourceHash:     sourceHash,
+			ChunkerVersion: string(u.chunker.Version()),
+			CreatedAt:      now,
+		}
+		if u.encoder != nil {
+			newVer.EmbedderVersion = u.encoder.Version()
 		}
 		if latestVer != nil {
 			newVer.VersionNumber = latestVer.VersionNumber + 1
-			if u.encoder != nil {
-				newVer.EmbedderVersion = u.encoder.Version()
-			}
 		}
 		if err := u.docRepo.CreateVersion(ctx, newVer); err != nil {
 			return fmt.Errorf("failed to create version: %w", err)

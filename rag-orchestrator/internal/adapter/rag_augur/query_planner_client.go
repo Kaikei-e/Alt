@@ -51,10 +51,17 @@ type QueryPlannerClient struct {
 }
 
 // NewQueryPlannerClient constructs a new QueryPlannerClient.
-func NewQueryPlannerClient(baseURL string, timeoutSec int, logger *slog.Logger) *QueryPlannerClient {
+// If client is nil, a default http.Client is created with the given timeout.
+func NewQueryPlannerClient(baseURL string, timeoutSec int, logger *slog.Logger, client ...*http.Client) *QueryPlannerClient {
+	var c *http.Client
+	if len(client) > 0 && client[0] != nil {
+		c = client[0]
+	} else {
+		c = &http.Client{Timeout: time.Duration(timeoutSec) * time.Second}
+	}
 	return &QueryPlannerClient{
 		BaseURL: strings.TrimRight(baseURL, "/"),
-		Client:  &http.Client{Timeout: time.Duration(timeoutSec) * time.Second},
+		Client:  c,
 		logger:  logger,
 	}
 }

@@ -84,14 +84,15 @@ type DBConfig struct {
 	User     string
 	Password string
 	Name     string
+	SSLMode  string
 	MaxConns int32
 	MinConns int32
 }
 
 // DSN returns the PostgreSQL connection string.
 func (c DBConfig) DSN() string {
-	return fmt.Sprintf("postgres://%s:%s@%s:%s/%s?sslmode=disable",
-		c.User, c.Password, c.Host, c.Port, c.Name)
+	return fmt.Sprintf("postgres://%s:%s@%s:%s/%s?sslmode=%s",
+		c.User, c.Password, c.Host, c.Port, c.Name, c.SSLMode)
 }
 
 // EmbedderConfig holds embedder (Ollama) settings.
@@ -221,8 +222,9 @@ func Load() *Config {
 			Host:     getEnv("DB_HOST", "rag-db"),
 			Port:     getEnv("DB_PORT", "5432"),
 			User:     getEnv("DB_USER", "rag_user"),
-			Password: getSecret("DB_PASSWORD", "DB_PASSWORD_FILE", "rag_password"),
+			Password: requireSecret("DB_PASSWORD", "DB_PASSWORD_FILE"),
 			Name:     getEnv("DB_NAME", "rag_db"),
+			SSLMode:  getEnv("DB_SSL_MODE", "disable"),
 			MaxConns: getEnvInt32("DB_MAX_CONNS", defaultDBMaxConns),
 			MinConns: getEnvInt32("DB_MIN_CONNS", defaultDBMinConns),
 		},
@@ -303,13 +305,14 @@ func getEnv(key, fallback string) string {
 	return fallback
 }
 
-func getSecret(envKey, fileEnvKey, fallback string) string {
-	// 1. Try direct environment variable
+// requireSecret loads a required secret from envKey or the file referenced by
+// fileEnvKey. There is no fallback value: a missing secret is a fail-fast
+// startup error, never a known-weak default (CLAUDE.md rule 4).
+func requireSecret(envKey, fileEnvKey string) string {
 	if value, ok := os.LookupEnv(envKey); ok {
 		return value
 	}
 
-	// 2. Try reading from file specified by fileEnvKey
 	if filePath, ok := os.LookupEnv(fileEnvKey); ok {
 		content, err := os.ReadFile(filePath) //nolint:gosec // G304: path from trusted env var
 		if err == nil {
@@ -317,7 +320,7 @@ func getSecret(envKey, fileEnvKey, fallback string) string {
 		}
 	}
 
-	return fallback
+	panic(fmt.Sprintf("config: %s or %s must be set (no fallback permitted)", envKey, fileEnvKey))
 }
 
 func getEnvWithAlt(key, altKey, fallback string) string {

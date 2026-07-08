@@ -92,6 +92,7 @@ func main() {
 		app.IndexUsecase,
 		app.JobRepo,
 		app.MorningLetterUsecase,
+		log,
 		rag_http.WithEmbedderOverride(app.EmbedderFactory, app.IndexUsecaseFactory, app.EmbeddingModel, app.EmbedderTimeout, cfg.Embedder.AllowedOverrideOrigins),
 	)
 	openapi.RegisterHandlers(e, handler)
@@ -117,10 +118,18 @@ func main() {
 	e.GET("/metrics", echo.WrapHandler(promhttp.Handler()))
 
 	// 10. Start Echo Server
+	// ReadHeaderTimeout/ReadTimeout/IdleTimeout/MaxHeaderBytes are set
+	// explicitly to avoid the bare http.Server defaults (unlimited = open
+	// to Slowloris). WriteTimeout stays 0 (unlimited) because the SSE
+	// streaming endpoints (handler.go writeSSE) hold the response open.
+	e.Server.Addr = fmt.Sprintf(":%s", cfg.Server.Port)
+	e.Server.ReadHeaderTimeout = 10 * time.Second
+	e.Server.ReadTimeout = 30 * time.Second
+	e.Server.IdleTimeout = 120 * time.Second
+	e.Server.MaxHeaderBytes = 1 << 20 // 1 MiB
 	go func() {
-		addr := fmt.Sprintf(":%s", cfg.Server.Port)
-		log.Info("Starting Echo server", "addr", addr)
-		if err := e.Start(addr); err != nil && err != http.ErrServerClosed {
+		log.Info("Starting Echo server", "addr", e.Server.Addr)
+		if err := e.StartServer(e.Server); err != nil && err != http.ErrServerClosed {
 			e.Logger.Fatal("shutting down the server")
 		}
 	}()

@@ -2,9 +2,7 @@ package usecase
 
 import (
 	"context"
-	"fmt"
 	"log/slog"
-	"time"
 
 	"rag-orchestrator/internal/domain"
 	"rag-orchestrator/internal/usecase/retrieval"
@@ -51,8 +49,8 @@ type RetrieveContextUsecase interface {
 }
 
 type retrieveContextUsecase struct {
-	chunkRepo      domain.RagChunkRepository
 	docRepo        domain.RagDocumentRepository
+	chunkRepo      domain.RagChunkRepository
 	encoder        domain.VectorEncoder
 	llmClient      domain.LLMClient
 	searchClient   domain.SearchClient
@@ -62,6 +60,7 @@ type retrieveContextUsecase struct {
 	hybridSearcher domain.HybridSearcher // Optional: in-DB hybrid search (replaces bm25Searcher)
 	config         RetrievalConfig
 	logger         *slog.Logger
+	graph          *retrieval.RetrievalGraph
 }
 
 // RetrieveContextOption is a functional option for configuring the usecase.
@@ -121,101 +120,50 @@ func NewRetrieveContextUsecase(
 	for _, opt := range opts {
 		opt(u)
 	}
+
+	// Delegate the 5-stage pipeline to RetrievalGraph instead of duplicating it here.
+	u.graph = retrieval.NewRetrievalGraph(retrieval.GraphDeps{
+		QueryExpander:  u.queryExpander,
+		LLMClient:      u.llmClient,
+		SearchClient:   u.searchClient,
+		Encoder:        u.encoder,
+		Reranker:       u.reranker,
+		BM25Searcher:   u.bm25Searcher,
+		HybridSearcher: u.hybridSearcher,
+		ChunkRepo:      u.chunkRepo,
+		Config: retrieval.GraphConfig{
+			SearchLimit:                      u.config.SearchLimit,
+			RRFK:                             u.config.RRFK,
+			QuotaOriginal:                    u.config.QuotaOriginal,
+			QuotaExpanded:                    u.config.QuotaExpanded,
+			RerankEnabled:                    u.config.Reranking.Enabled,
+			RerankTopK:                       u.config.Reranking.TopK,
+			RerankTimeout:                    u.config.Reranking.Timeout,
+			HybridSearchEnabled:              u.config.HybridSearch.Enabled,
+			BM25Limit:                        u.config.HybridSearch.BM25Limit,
+			DynamicLanguageAllocationEnabled: u.config.LanguageAllocation.Enabled,
+		},
+		Logger: u.logger,
+	})
+
 	return u
 }
 
 func (u *retrieveContextUsecase) Execute(ctx context.Context, input RetrieveContextInput) (*RetrieveContextOutput, error) {
-	if input.Query == "" {
-		return nil, fmt.Errorf("query is empty")
-	}
-
-	retrievalStart := time.Now()
-	retrievalID := uuid.NewString()
-	u.logger.Info("retrieval_started",
-		slog.String("retrieval_id", retrievalID),
-		slog.String("query", input.Query),
-		slog.Int("candidate_articles", len(input.CandidateArticleIDs)))
-
-	// Initialize StageContext
-	sc := &retrieval.StageContext{
-		RetrievalID:         retrievalID,
+	out, err := u.graph.Execute(ctx, retrieval.GraphInput{
 		Query:               input.Query,
 		CandidateArticleIDs: input.CandidateArticleIDs,
 		ConversationHistory: input.ConversationHistory,
-		PlannerQueries:      input.SearchQueries,
-		SearchLimit:         u.config.SearchLimit,
-		RRFK:                u.config.RRFK,
-		QuotaOriginal:       u.config.QuotaOriginal,
-		QuotaExpanded:       u.config.QuotaExpanded,
-	}
-
-	// Stage 1: Query expansion + tag search + embedding (parallel)
-	if err := retrieval.ExpandQueries(ctx, sc, u.queryExpander, u.llmClient, u.searchClient, u.encoder, u.logger); err != nil {
+		SearchQueries:       input.SearchQueries,
+	})
+	if err != nil {
 		return nil, err
-	}
-
-	stage1Duration := time.Since(retrievalStart)
-	u.logger.Info("retrieval_stage1_completed",
-		slog.String("retrieval_id", retrievalID),
-		slog.Int("expanded_queries", len(sc.ExpandedQueries)),
-		slog.Int("tag_queries", len(sc.TagQueries)),
-		slog.Int64("duration_ms", stage1Duration.Milliseconds()))
-
-	// Stage 2: BM25 search + original vector search + expanded embedding (parallel)
-	if err := retrieval.EmbedAndSearch(ctx, sc, u.encoder, u.bm25Searcher, u.hybridSearcher, u.chunkRepo,
-		u.config.HybridSearch.Enabled, u.config.HybridSearch.BM25Limit, u.logger); err != nil {
-		return nil, err
-	}
-
-	stage2Duration := time.Since(retrievalStart) - stage1Duration
-	u.logger.Info("retrieval_stage2_completed",
-		slog.String("retrieval_id", retrievalID),
-		slog.Int("original_results", len(sc.OriginalResults)),
-		slog.Int("additional_embeddings", len(sc.AdditionalEmbeddings)),
-		slog.Int("bm25_results", len(sc.BM25Results)),
-		slog.Int64("duration_ms", stage2Duration.Milliseconds()))
-
-	// Stage 3: Parallel vector search for expanded queries + RRF fusion
-	if err := retrieval.FuseResults(ctx, sc, u.chunkRepo, u.logger); err != nil {
-		return nil, err
-	}
-
-	// Stage 4: Cross-encoder reranking
-	retrieval.Rerank(ctx, sc, u.reranker, retrieval.RerankConfig{
-		Enabled: u.config.Reranking.Enabled,
-		TopK:    u.config.Reranking.TopK,
-		Timeout: u.config.Reranking.Timeout,
-	}, u.logger)
-
-	// Stage 5: Language allocation + quota selection
-	allocatedCtxs := retrieval.Allocate(sc, retrieval.AllocateConfig{
-		DynamicLanguageAllocationEnabled: u.config.LanguageAllocation.Enabled,
-	}, u.logger)
-
-	// Convert retrieval.ContextItem to usecase.ContextItem
-	contexts := convertContextItems(allocatedCtxs)
-
-	u.logger.Info("vector_search_completed",
-		slog.String("retrieval_id", retrievalID),
-		slog.Int("original_hits", len(sc.HitsOriginal)),
-		slog.Int("expanded_hits_unique", len(sc.HitsExpanded)),
-		slog.Int("final_contexts", len(contexts)))
-
-	retrievalDuration := time.Since(retrievalStart)
-	u.logger.Info("retrieval_completed",
-		slog.String("retrieval_id", retrievalID),
-		slog.Int("contexts_returned", len(contexts)),
-		slog.Int64("duration_ms", retrievalDuration.Milliseconds()))
-
-	var expandedQueriesRet []string
-	if len(sc.ExpandedQueries) > 0 {
-		expandedQueriesRet = sc.ExpandedQueries
 	}
 
 	return &RetrieveContextOutput{
-		Contexts:        contexts,
-		ExpandedQueries: expandedQueriesRet,
-		BM25HitCount:    len(sc.BM25Results),
+		Contexts:        convertContextItems(out.Contexts),
+		ExpandedQueries: out.ExpandedQueries,
+		BM25HitCount:    out.BM25HitCount,
 	}, nil
 }
 

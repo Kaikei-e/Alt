@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
-	"net/http"
 	"os"
 	"time"
 
@@ -99,14 +98,14 @@ func NewApplicationComponents(cfg *config.Config, pool *pgxpool.Pool, log *slog.
 	case "eino":
 		einoGenerator, err := eino.NewChatModelAdapter(context.Background(), cfg.Augur.URL, cfg.Augur.Model, log)
 		if err != nil {
-			log.Warn("eino_generator_init_failed",
-				slog.String("error", err.Error()),
-				slog.String("fallback", "ollama"))
-			generator = rag_augur.NewOllamaGenerator(cfg.Augur.URL, cfg.Augur.Model, cfg.Augur.Timeout, log, augurHTTP)
-		} else {
-			generator = einoGenerator
-			log.Info("llm_backend_selected", slog.String("backend", "eino"))
+			// LLM_BACKEND=eino was explicitly requested; silently degrading to
+			// ollama would hide a real init failure behind seemingly-normal
+			// operation. Fail fast instead (CLAUDE.md rule 8).
+			log.Error("eino_generator_init_failed", slog.String("error", err.Error()))
+			panic(fmt.Errorf("LLM_BACKEND=eino explicitly configured but init failed: %w", err))
 		}
+		generator = einoGenerator
+		log.Info("llm_backend_selected", slog.String("backend", "eino"))
 	default:
 		generator = rag_augur.NewOllamaGenerator(cfg.Augur.URL, cfg.Augur.Model, cfg.Augur.Timeout, log, augurHTTP)
 		log.Info("llm_backend_selected", slog.String("backend", "ollama"))
@@ -206,7 +205,7 @@ func NewApplicationComponents(cfg *config.Config, pool *pgxpool.Pool, log *slog.
 	// is established at the TLS transport layer (mTLS); no application-layer
 	// interceptor is needed.
 	backendInternalClient := backendv1connect.NewBackendInternalServiceClient(
-		http.DefaultClient, cfg.Backend.ConnectURL,
+		httpclient.NewPooledClient(time.Duration(cfg.Backend.Timeout)*time.Second), cfg.Backend.ConnectURL,
 	)
 	tagCloudClient := altdb.NewInternalTagCloudClient(backendInternalClient, log)
 	articlesByTagClient := altdb.NewInternalArticlesByTagClient(backendInternalClient, log)
@@ -263,6 +262,7 @@ func NewApplicationComponents(cfg *config.Config, pool *pgxpool.Pool, log *slog.
 	// Uses dedicated PlannerTimeout (default 60s) for thinking mode.
 	queryPlannerClient := rag_augur.NewQueryPlannerClient(
 		cfg.QueryExpansion.URL, cfg.QueryExpansion.PlannerTimeout, log,
+		httpclient.NewPooledClient(time.Duration(cfg.QueryExpansion.PlannerTimeout)*time.Second),
 	)
 	answerOpts = append(answerOpts, usecase.WithQueryPlanner(queryPlannerClient))
 	log.Info("query_planner_enabled", slog.String("url", cfg.QueryExpansion.URL))
@@ -324,25 +324,27 @@ func NewApplicationComponents(cfg *config.Config, pool *pgxpool.Pool, log *slog.
 	// Worker
 	jobWorker := worker.NewJobWorker(jobRepo, indexUsecase, log)
 
-	// EventEmitter — wire the real sovereign client when both
-	// RAG_ORCHESTRATOR_KNOWLEDGE_EVENT_EMIT=true and
-	// RAG_ORCHESTRATOR_KNOWLEDGE_SOVEREIGN_URL are set. Otherwise
-	// fall back to a no-op so the live behaviour is unchanged until
-	// alt-deploy registers rag-orchestrator as a knowledge-sovereign
-	// pacticipant.
+	// EventEmitter — wire the real sovereign client when
+	// RAG_ORCHESTRATOR_KNOWLEDGE_EVENT_EMIT=true, which also requires
+	// RAG_ORCHESTRATOR_KNOWLEDGE_SOVEREIGN_URL. Emit left unset (false)
+	// stays a no-op; emit explicitly requested without a URL is a
+	// misconfiguration, not "disabled", so it must fail startup rather
+	// than silently degrade to no-op (CLAUDE.md rule 8).
 	var eventEmitter usecase.KnowledgeEventEmitter = usecase.NoopKnowledgeEventEmitter{}
 	if os.Getenv("RAG_ORCHESTRATOR_KNOWLEDGE_EVENT_EMIT") == "true" {
 		sovereignURL := os.Getenv("RAG_ORCHESTRATOR_KNOWLEDGE_SOVEREIGN_URL")
-		if sovereignURL != "" {
-			eventEmitter = sovereign_client.NewAppendEventClient(
-				sovereignURL,
-				httpclient.NewPooledClient(10*time.Second),
-			)
-			log.Info("knowledge-sovereign event emitter enabled",
-				"url", sovereignURL)
-		} else {
-			log.Warn("RAG_ORCHESTRATOR_KNOWLEDGE_EVENT_EMIT=true but RAG_ORCHESTRATOR_KNOWLEDGE_SOVEREIGN_URL is empty; falling back to no-op emitter")
+		if sovereignURL == "" {
+			panic("RAG_ORCHESTRATOR_KNOWLEDGE_EVENT_EMIT=true but RAG_ORCHESTRATOR_KNOWLEDGE_SOVEREIGN_URL is empty")
 		}
+		eventEmitter = sovereign_client.NewAppendEventClient(
+			sovereignURL,
+			httpclient.NewPooledClient(10*time.Second),
+		)
+		log.Info("knowledge-sovereign event emitter enabled",
+			"url", sovereignURL)
+	} else {
+		log.Info("knowledge-sovereign event emitter disabled",
+			"reason", "RAG_ORCHESTRATOR_KNOWLEDGE_EVENT_EMIT is not true")
 	}
 
 	return &ApplicationComponents{
