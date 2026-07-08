@@ -227,6 +227,21 @@ func (p *LightweightProxy) validateHostSecurity(host string) error {
 	return nil
 }
 
+// validateResolvedIPs rejects DNS answers that point at loopback/private/
+// link-local addresses. validateHostSecurity only inspects the hostname
+// literal in the request URL — an attacker-controlled domain can still pass
+// that check and then have its DNS record rebound (or simply configured) to
+// resolve to an internal address, so the resolver's actual answer must be
+// checked too, not just the string the client sent.
+func (p *LightweightProxy) validateResolvedIPs(hostname string, ips []net.IP) error {
+	for _, ip := range ips {
+		if ip.IsLoopback() || ip.IsPrivate() || ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() || ip.IsUnspecified() {
+			return fmt.Errorf("DNS rebinding protection: %s resolved to disallowed address %s", hostname, ip.String())
+		}
+	}
+	return nil
+}
+
 // validatePathSecurity performs enhanced path validation (2024 security practices)
 func (p *LightweightProxy) validatePathSecurity(path string) error {
 	// Directory traversal prevention with multiple encoding forms
@@ -251,7 +266,12 @@ func (p *LightweightProxy) validatePathSecurity(path string) error {
 	return nil
 }
 
-// validateQuerySecurity validates query parameters for security threats
+// validateQuerySecurity validates query parameters. This proxy forwards
+// bytes to Envoy/upstream RSS servers; it never builds a SQL statement from
+// them, so a keyword/character blocklist (union, select, ', ;, ...) has no
+// security value here and only false-positives on legitimate RSS query
+// strings (e.g. "?category=select" or "?q=O'Reilly"). Length and charset are
+// the checks that actually matter at this boundary.
 func (p *LightweightProxy) validateQuerySecurity(rawQuery string) error {
 	if rawQuery == "" {
 		return nil // Empty queries are safe
@@ -262,16 +282,12 @@ func (p *LightweightProxy) validateQuerySecurity(rawQuery string) error {
 		return fmt.Errorf("query string too long: %d characters (max 1024)", len(rawQuery))
 	}
 
-	// Check for SQL injection patterns
-	sqlPatterns := []string{
-		"union", "select", "insert", "delete", "update", "drop", "exec", "script",
-		"'", "\"", ";", "--", "/*", "*/", "xp_", "sp_",
-	}
-
-	queryLower := strings.ToLower(rawQuery)
-	for _, pattern := range sqlPatterns {
-		if strings.Contains(queryLower, pattern) {
-			return fmt.Errorf("potentially dangerous query pattern detected: %s", pattern)
+	// Reject raw control characters; everything else is valid query-string
+	// content once URL-decoded (RSS query params legitimately contain
+	// letters, digits, and most punctuation).
+	for _, r := range rawQuery {
+		if r < 32 || r == 127 {
+			return fmt.Errorf("control character in query string")
 		}
 	}
 

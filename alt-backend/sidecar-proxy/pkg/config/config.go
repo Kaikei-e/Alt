@@ -25,10 +25,9 @@ type ProxyConfig struct {
 	MaxRetries     int           `json:"max_retries"`
 
 	// Envoy Integration
-	EnvoyUpstream     string        `json:"envoy_upstream"`
-	EnvoyTimeout      time.Duration `json:"envoy_timeout"`
-	EnvoyMaxConns     int           `json:"envoy_max_conns"`
-	EnvoyMaxIdleConns int           `json:"envoy_max_idle_conns"`
+	EnvoyUpstream     string `json:"envoy_upstream"`
+	EnvoyMaxConns     int    `json:"envoy_max_conns"`
+	EnvoyMaxIdleConns int    `json:"envoy_max_idle_conns"`
 
 	// DNS Configuration
 	DNSServers         []string      `json:"dns_servers"`
@@ -49,9 +48,6 @@ type ProxyConfig struct {
 	LogLevel       string `json:"log_level"`
 	LogFormat      string `json:"log_format"`
 	StructuredLogs bool   `json:"structured_logs"`
-
-	// Performance Configuration
-	WorkerPoolSize int `json:"worker_pool_size"`
 
 	// CONNECT Tunneling Configuration
 	CONNECTTimeout     time.Duration `json:"connect_timeout"`
@@ -82,7 +78,6 @@ func LoadConfig() (*ProxyConfig, error) {
 
 		// Envoy integration defaults (localhost communication within Pod)
 		EnvoyUpstream:     getEnvOrDefault("ENVOY_UPSTREAM", "localhost:10000"),
-		EnvoyTimeout:      getDurationOrDefault("ENVOY_TIMEOUT", 60*time.Second),
 		EnvoyMaxConns:     getIntOrDefault("ENVOY_MAX_CONNS", 20),
 		EnvoyMaxIdleConns: getIntOrDefault("ENVOY_MAX_IDLE_CONNS", 10),
 
@@ -105,7 +100,6 @@ func LoadConfig() (*ProxyConfig, error) {
 		StructuredLogs: getBoolOrDefault("STRUCTURED_LOGS", true),
 
 		// Performance defaults (lightweight sidecar optimization)
-		WorkerPoolSize:    getIntOrDefault("WORKER_POOL_SIZE", 10),
 		BufferSize:        getIntOrDefault("BUFFER_SIZE", 4096),
 		MaxConcurrentReqs: getIntOrDefault("MAX_CONCURRENT_REQS", 100),
 
@@ -212,10 +206,6 @@ func (c *ProxyConfig) Validate() error {
 	// Performance limits validation
 	if c.MaxConcurrentReqs <= 0 {
 		return fmt.Errorf("max concurrent requests must be positive: %d", c.MaxConcurrentReqs)
-	}
-
-	if c.WorkerPoolSize <= 0 {
-		return fmt.Errorf("worker pool size must be positive: %d", c.WorkerPoolSize)
 	}
 
 	return nil

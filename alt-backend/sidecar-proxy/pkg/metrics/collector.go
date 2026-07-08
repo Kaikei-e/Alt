@@ -178,63 +178,6 @@ func (c *Collector) GetMetrics() string {
 	return string(data)
 }
 
-// GetPrometheusMetrics returns metrics in Prometheus format
-func (c *Collector) GetPrometheusMetrics() string {
-	metrics := c.buildMetricsSnapshot()
-
-	var output string
-
-	// Basic request metrics
-	output += fmt.Sprintf("# HELP proxy_sidecar_requests_total Total number of proxy requests\n")
-	output += fmt.Sprintf("# TYPE proxy_sidecar_requests_total counter\n")
-	output += fmt.Sprintf("proxy_sidecar_requests_total{status=\"success\"} %d\n", metrics.SuccessfulRequests)
-	output += fmt.Sprintf("proxy_sidecar_requests_total{status=\"failed\"} %d\n", metrics.FailedRequests)
-
-	// DNS metrics
-	output += fmt.Sprintf("# HELP proxy_sidecar_dns_requests_total Total DNS requests\n")
-	output += fmt.Sprintf("# TYPE proxy_sidecar_dns_requests_total counter\n")
-	output += fmt.Sprintf("proxy_sidecar_dns_requests_total %d\n", metrics.DNSRequests)
-
-	output += fmt.Sprintf("# HELP proxy_sidecar_dns_cache_operations_total DNS cache operations\n")
-	output += fmt.Sprintf("# TYPE proxy_sidecar_dns_cache_operations_total counter\n")
-	output += fmt.Sprintf("proxy_sidecar_dns_cache_operations_total{operation=\"hit\"} %d\n", metrics.DNSCacheHits)
-	output += fmt.Sprintf("proxy_sidecar_dns_cache_operations_total{operation=\"miss\"} %d\n", metrics.DNSCacheMisses)
-
-	// Upstream resolution metrics (KEY METRICS for tracking the solution)
-	output += fmt.Sprintf("# HELP proxy_sidecar_upstream_resolutions_total Successful upstream resolutions\n")
-	output += fmt.Sprintf("# TYPE proxy_sidecar_upstream_resolutions_total counter\n")
-	output += fmt.Sprintf("proxy_sidecar_upstream_resolutions_total %d\n", metrics.UpstreamResolutions)
-
-	output += fmt.Sprintf("# HELP proxy_sidecar_upstream_failures_total Failed upstream resolutions\n")
-	output += fmt.Sprintf("# TYPE proxy_sidecar_upstream_failures_total counter\n")
-	output += fmt.Sprintf("proxy_sidecar_upstream_failures_total %d\n", metrics.UpstreamFailures)
-
-	output += fmt.Sprintf("# HELP proxy_sidecar_upstream_success_rate Success rate of upstream resolution\n")
-	output += fmt.Sprintf("# TYPE proxy_sidecar_upstream_success_rate gauge\n")
-	output += fmt.Sprintf("proxy_sidecar_upstream_success_rate %.6f\n", metrics.UpstreamSuccessRate)
-
-	// Response time metrics
-	output += fmt.Sprintf("# HELP proxy_sidecar_response_time_seconds Response time percentiles\n")
-	output += fmt.Sprintf("# TYPE proxy_sidecar_response_time_seconds gauge\n")
-	output += fmt.Sprintf("proxy_sidecar_response_time_seconds{quantile=\"0.50\"} %.6f\n", metrics.P50ResponseTime.Seconds())
-	output += fmt.Sprintf("proxy_sidecar_response_time_seconds{quantile=\"0.95\"} %.6f\n", metrics.P95ResponseTime.Seconds())
-	output += fmt.Sprintf("proxy_sidecar_response_time_seconds{quantile=\"0.99\"} %.6f\n", metrics.P99ResponseTime.Seconds())
-
-	// Error metrics by type
-	output += fmt.Sprintf("# HELP proxy_sidecar_errors_total Errors by type\n")
-	output += fmt.Sprintf("# TYPE proxy_sidecar_errors_total counter\n")
-	for errorType, count := range metrics.ErrorsByType {
-		output += fmt.Sprintf("proxy_sidecar_errors_total{type=\"%s\"} %d\n", errorType, count)
-	}
-
-	// System metrics
-	output += fmt.Sprintf("# HELP proxy_sidecar_uptime_seconds Service uptime\n")
-	output += fmt.Sprintf("# TYPE proxy_sidecar_uptime_seconds gauge\n")
-	output += fmt.Sprintf("proxy_sidecar_uptime_seconds %.0f\n", metrics.Uptime.Seconds())
-
-	return output
-}
-
 // GetDomainMetrics returns metrics for a specific domain
 func (c *Collector) GetDomainMetrics(domain string) *DomainMetrics {
 	c.domainMutex.RLock()

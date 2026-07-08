@@ -3,7 +3,6 @@ package proxy
 import (
 	"fmt"
 	"io"
-	"net"
 	"net/http"
 	"time"
 )
@@ -35,22 +34,13 @@ func (p *LightweightProxy) forwardToEnvoyConnect(w http.ResponseWriter, r *http.
 	proxyReq.Header.Set("X-Forwarded-For", r.RemoteAddr)
 	proxyReq.Header.Set("X-Request-ID", traceID)
 
-	// Use HTTP client with extended timeout for persistent connections
-	client := &http.Client{
-		Timeout: 10 * time.Minute, // Extended timeout for model downloads
-		Transport: &http.Transport{
-			DisableKeepAlives:     false, // Enable keep-alives for persistent connections
-			MaxIdleConns:          10,
-			IdleConnTimeout:       90 * time.Second,
-			TLSHandshakeTimeout:   30 * time.Second,
-			ExpectContinueTimeout: 10 * time.Second,
-		},
-	}
-
 	p.logger.Printf("[%s] Forwarding to Envoy: %s with target %s", traceID, envoyURL, targetHost)
 
-	// Execute request
-	resp, err := client.Do(proxyReq)
+	// Execute request using the shared, long-lived tunnel client (built once
+	// in NewLightweightProxy) so keep-alive connections to Envoy are
+	// actually reused across CONNECT/persistent-tunnel requests instead of
+	// being torn down and rebuilt every call.
+	resp, err := p.connectHTTPClient.Do(proxyReq)
 	if err != nil {
 		return fmt.Errorf("envoy request failed: %w", err)
 	}
@@ -79,48 +69,3 @@ func (p *LightweightProxy) forwardToEnvoyConnect(w http.ResponseWriter, r *http.
 	return nil
 }
 
-// hijackConnection hijacks HTTP connection for raw TCP tunneling
-func (p *LightweightProxy) hijackConnection(w http.ResponseWriter) (net.Conn, error) {
-	hijacker, ok := w.(http.Hijacker)
-	if !ok {
-		return nil, fmt.Errorf("connection hijacking not supported")
-	}
-
-	clientConn, _, err := hijacker.Hijack()
-	if err != nil {
-		return nil, fmt.Errorf("hijack failed: %w", err)
-	}
-
-	return clientConn, nil
-}
-
-// startTCPTunnel handles bidirectional TCP data transfer
-func (p *LightweightProxy) startTCPTunnel(clientConn, upstreamConn net.Conn, traceID string, startTime time.Time) {
-	p.logger.Printf("[%s] Starting TCP tunnel", traceID)
-
-	// Set connection timeouts
-	deadline := time.Now().Add(p.config.CONNECTIdleTimeout)
-	clientConn.SetDeadline(deadline)
-	upstreamConn.SetDeadline(deadline)
-
-	// Bidirectional copy
-	done := make(chan error, 2)
-
-	// Client -> Upstream
-	go func() {
-		_, err := io.Copy(upstreamConn, clientConn)
-		done <- err
-	}()
-
-	// Upstream -> Client
-	go func() {
-		_, err := io.Copy(clientConn, upstreamConn)
-		done <- err
-	}()
-
-	// Wait for one direction to close
-	<-done
-
-	duration := time.Since(startTime)
-	p.logger.Printf("[%s] TCP tunnel closed, duration: %v", traceID, duration)
-}

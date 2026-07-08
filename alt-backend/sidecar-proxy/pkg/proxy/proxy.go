@@ -13,6 +13,7 @@ import (
 	"net/url"
 	"os"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/alt-rss/alt-backend/sidecar-proxy/pkg/autolearn"
@@ -26,7 +27,12 @@ import (
 type LightweightProxy struct {
 	config      *config.ProxyConfig
 	httpClient  *http.Client
-	dnsResolver *dns.ExternalDNSResolver
+	// connectHTTPClient is a separate, long-lived client for CONNECT /
+	// persistent-tunnel forwarding (forwardToEnvoyConnect): it needs a much
+	// longer timeout (model downloads can run for minutes) than httpClient's
+	// cfg.RequestTimeout, so it cannot share that client's Transport.
+	connectHTTPClient *http.Client
+	dnsResolver       *dns.ExternalDNSResolver
 	logger      *log.Logger
 	server      *http.Server
 	metrics     *metrics.Collector
@@ -39,7 +45,12 @@ type LightweightProxy struct {
 
 	// Request processing state
 	shutdownChan chan struct{}
-	ready        bool
+	// ready is read from the /ready health handler and written from
+	// Start/Stop on different goroutines, so it must be accessed atomically.
+	ready atomic.Bool
+	// reqSlots bounds in-flight requests to cfg.MaxConcurrentReqs: a slot is
+	// acquired at request entry and released when the handler returns.
+	reqSlots chan struct{}
 }
 
 // RequestContext holds context information for each proxy request
@@ -85,6 +96,20 @@ func NewLightweightProxy(cfg *config.ProxyConfig) (*LightweightProxy, error) {
 	httpClient := &http.Client{
 		Transport: transport,
 		Timeout:   cfg.RequestTimeout,
+	}
+
+	// Long-lived client for CONNECT/persistent-tunnel forwarding, built once
+	// and reused across requests so its Transport actually keeps connections
+	// alive instead of being discarded per-request.
+	connectHTTPClient := &http.Client{
+		Timeout: 10 * time.Minute, // Extended timeout for model downloads
+		Transport: &http.Transport{
+			DisableKeepAlives:     false,
+			MaxIdleConns:          10,
+			IdleConnTimeout:       90 * time.Second,
+			TLSHandshakeTimeout:   30 * time.Second,
+			ExpectContinueTimeout: 10 * time.Second,
+		},
 	}
 
 	// Initialize logger
@@ -135,15 +160,16 @@ func NewLightweightProxy(cfg *config.ProxyConfig) (*LightweightProxy, error) {
 	)
 
 	return &LightweightProxy{
-		config:       cfg,
-		httpClient:   httpClient,
-		dnsResolver:  dnsResolver,
-		logger:       logger,
-		metrics:      metricsCollector,
-		autoLearner:  autoLearner,
-		dynamicDNS:   dynamicDNS,
-		shutdownChan: make(chan struct{}),
-		ready:        false,
+		config:            cfg,
+		httpClient:        httpClient,
+		connectHTTPClient: connectHTTPClient,
+		dnsResolver:       dnsResolver,
+		logger:            logger,
+		metrics:           metricsCollector,
+		autoLearner:       autoLearner,
+		dynamicDNS:        dynamicDNS,
+		shutdownChan:      make(chan struct{}),
+		reqSlots:          make(chan struct{}, cfg.MaxConcurrentReqs),
 	}, nil
 }
 
@@ -160,12 +186,12 @@ func (p *LightweightProxy) Start() error {
 	p.server = &http.Server{
 		Addr:         fmt.Sprintf(":%s", p.config.ListenPort),
 		Handler:      mux,
-		ReadTimeout:  60 * time.Second,
-		WriteTimeout: 60 * time.Second,
-		IdleTimeout:  120 * time.Second,
+		ReadTimeout:  p.config.ReadTimeout,
+		WriteTimeout: p.config.WriteTimeout,
+		IdleTimeout:  p.config.IdleTimeout,
 	}
 
-	p.ready = true
+	p.ready.Store(true)
 	p.logger.Printf("🚀 Lightweight Proxy Sidecar started on port %s", p.config.ListenPort)
 	p.logger.Printf("   Envoy upstream: %s", p.config.EnvoyUpstream)
 	p.logger.Printf("   DNS servers: %v", p.config.DNSServers)
@@ -183,7 +209,7 @@ func (p *LightweightProxy) Start() error {
 
 // Stop gracefully shuts down the proxy server
 func (p *LightweightProxy) Stop() error {
-	p.ready = false
+	p.ready.Store(false)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
@@ -194,6 +220,18 @@ func (p *LightweightProxy) Stop() error {
 // handleRawRequest is the main routing handler - this is the core of the proxy
 // All requests flow through this function for proper routing to specialized handlers
 func (p *LightweightProxy) handleRawRequest(w http.ResponseWriter, r *http.Request) {
+	if r.Body != nil && p.config.MaxRequestSize > 0 {
+		r.Body = http.MaxBytesReader(w, r.Body, p.config.MaxRequestSize)
+	}
+
+	select {
+	case p.reqSlots <- struct{}{}:
+		defer func() { <-p.reqSlots }()
+	default:
+		http.Error(w, "Too Many Requests", http.StatusServiceUnavailable)
+		return
+	}
+
 	// Route based on method and path
 	switch r.Method {
 	case http.MethodConnect:

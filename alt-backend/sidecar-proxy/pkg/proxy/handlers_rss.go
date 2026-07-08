@@ -1,8 +1,10 @@
 package proxy
 
 import (
+	"bytes"
 	"context"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"net/url"
@@ -55,20 +57,36 @@ func (p *LightweightProxy) HandleProxyRequest(w http.ResponseWriter, r *http.Req
 		return
 	}
 
+	if err := p.validateResolvedIPs(hostname, resolvedIPs); err != nil {
+		p.logger.Printf("[%s] %v", traceID, err)
+		p.writeErrorResponse(w, http.StatusForbidden, err.Error(), traceID)
+		return
+	}
+
 	p.logger.Printf("[%s] DNS resolved: %s -> %v (took %v)", traceID, hostname, resolvedIPs, dnsTime)
 
 	// 🔧 CRITICAL: Build Envoy request with proper headers for upstream resolution
 	// This is where we set the headers that will make Envoy show "upstream=zenn.dev:443"
+	// The body is buffered up front so proxyToEnvoy can rebuild a fresh request
+	// (with an unconsumed body) on every retry attempt.
+	var bodyBytes []byte
+	if r.Body != nil {
+		bodyBytes, err = io.ReadAll(r.Body)
+		if err != nil {
+			p.logger.Printf("[%s] Failed to read request body: %v", traceID, err)
+			p.writeErrorResponse(w, http.StatusBadRequest, fmt.Sprintf("Failed to read request body: %v", err), traceID)
+			return
+		}
+		r.Body.Close()
+	}
+
 	proxyStartTime := time.Now()
-	envoyReq, err := p.buildEnvoyRequest(r, targetURL, resolvedIPs[0], traceID)
-	if err != nil {
-		p.logger.Printf("[%s] Failed to build Envoy request: %v", traceID, err)
-		p.writeErrorResponse(w, http.StatusInternalServerError, fmt.Sprintf("Request building failed: %v", err), traceID)
-		return
+	buildReq := func() (*http.Request, error) {
+		return p.buildEnvoyRequest(r, targetURL, resolvedIPs[0], traceID, bodyBytes)
 	}
 
 	// 📡 Execute proxy request to Envoy
-	resp, err := p.proxyToEnvoy(r.Context(), envoyReq, traceID)
+	resp, err := p.proxyToEnvoy(r.Context(), buildReq, traceID)
 	proxyTime := time.Since(proxyStartTime)
 
 	if err != nil {
@@ -98,7 +116,7 @@ func (p *LightweightProxy) HandleProxyRequest(w http.ResponseWriter, r *http.Req
 
 // buildEnvoyRequest constructs the HTTP request that will be sent to Envoy
 // 🎯 This is THE MOST CRITICAL function - it sets the headers that solve the upstream problem
-func (p *LightweightProxy) buildEnvoyRequest(originalReq *http.Request, targetURL *url.URL, resolvedIP net.IP, traceID string) (*http.Request, error) {
+func (p *LightweightProxy) buildEnvoyRequest(originalReq *http.Request, targetURL *url.URL, resolvedIP net.IP, traceID string, bodyBytes []byte) (*http.Request, error) {
 	// 🚑 REPORT.md オプションB: 正統派Forward Proxy実装
 	// 絶対URL + 正しい:authority で DFP自己ループ問題を根本解決
 
@@ -108,8 +126,10 @@ func (p *LightweightProxy) buildEnvoyRequest(originalReq *http.Request, targetUR
 		envoyProxyURL += "?" + originalReq.URL.RawQuery
 	}
 
-	// Create new request with absolute target URL as the request URL
-	req, err := http.NewRequestWithContext(originalReq.Context(), originalReq.Method, envoyProxyURL, originalReq.Body)
+	// Create new request with absolute target URL as the request URL. The
+	// body is a fresh reader over the buffered bytes each call, so retries
+	// (which call this function again) never see an already-consumed body.
+	req, err := http.NewRequestWithContext(originalReq.Context(), originalReq.Method, envoyProxyURL, bytes.NewReader(bodyBytes))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
@@ -181,17 +201,28 @@ func (p *LightweightProxy) buildEnvoyRequest(originalReq *http.Request, targetUR
 	return req, nil
 }
 
-// proxyToEnvoy executes the request to Envoy with retry logic
-func (p *LightweightProxy) proxyToEnvoy(ctx context.Context, req *http.Request, traceID string) (*http.Response, error) {
+// proxyToEnvoy executes the request to Envoy with retry logic. buildReq is
+// called fresh on every attempt (including the first) so each retry gets an
+// unconsumed body instead of resending the drained one from a prior attempt.
+func (p *LightweightProxy) proxyToEnvoy(ctx context.Context, buildReq func() (*http.Request, error), traceID string) (*http.Response, error) {
 	var lastErr error
 
 	for attempt := 0; attempt <= p.config.MaxRetries; attempt++ {
 		if attempt > 0 {
 			p.logger.Printf("[%s] Retrying request to Envoy (attempt %d/%d)", traceID, attempt+1, p.config.MaxRetries+1)
 
-			// Exponential backoff
+			// Exponential backoff, cancellable via ctx.
 			backoff := time.Duration(attempt*attempt) * 100 * time.Millisecond
-			time.Sleep(backoff)
+			select {
+			case <-ctx.Done():
+				return nil, ctx.Err()
+			case <-time.After(backoff):
+			}
+		}
+
+		req, err := buildReq()
+		if err != nil {
+			return nil, fmt.Errorf("build request (attempt %d): %w", attempt+1, err)
 		}
 
 		resp, err := p.httpClient.Do(req)

@@ -30,7 +30,8 @@ func TestForwardToEnvoyConnect_SetsHostToTargetDomain(t *testing.T) {
 			EnvoyUpstream:      strings.TrimPrefix(upstream.URL, "http://"),
 			CONNECTIdleTimeout: time.Minute,
 		},
-		logger: log.New(io.Discard, "", 0),
+		logger:            log.New(io.Discard, "", 0),
+		connectHTTPClient: &http.Client{},
 	}
 
 	req := httptest.NewRequest(http.MethodGet, "/connect/model-hub.example.com/api", nil)
