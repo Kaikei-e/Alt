@@ -368,13 +368,16 @@ async def evaluate_summary(
     request: EvaluateSummaryRequest,
     settings: Settings = Depends(get_settings_dep),
     session=Depends(get_session),
+    container: ServiceContainer = Depends(get_container),
 ) -> EvaluateSummaryResponse:
     """要約の品質を評価。
 
     DeepEvalなどを使用して要約のFaithfulness, Relevanceなどを評価し、
     結果をrecap_system_metricsに保存します。
     """
-    service = EvaluationService()  # No args needed for summary?
+    # コンテナ管理の Embedder/分類器を再利用する。EvaluationService の
+    # 構築は都度モデルロードを伴うため、リクエスト毎の生成は二重ロードになる。
+    service = container.evaluation_service
 
     results = await service.evaluate_summary(
         source_text=request.source_text,

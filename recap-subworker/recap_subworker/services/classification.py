@@ -1,3 +1,4 @@
+from threading import Lock
 
 import numpy as np
 import structlog
@@ -48,27 +49,35 @@ class CoarseClassifier:
         self.embedder = embedder
         self.prototypes: dict[str, np.ndarray] = {}
         self.initialized = False
+        self._lock = Lock()
 
     def initialize_prototypes(self):
         """
         Initialize genre prototypes by embedding descriptions.
         This is a 'zero-shot' initialization. ideally we would load centroids from a dataset.
         """
-        logger.info("Initializing coarse classifier prototypes")
+        if self.initialized:
+            return
 
-        genres = list(GENRE_DESCRIPTIONS.keys())
-        # Add "query: " prefix for E5 asymmetric tasks (though prototypes are kinda symmetric to documents)
-        # Docs say: "for symmetric tasks... query: prefix is generally recommended"
-        # We will use "query: " for both prototypes and input text to be safe/consistent.
-        texts = [f"query: {GENRE_DESCRIPTIONS[g]}" for g in genres]
+        with self._lock:
+            if self.initialized:
+                return
 
-        embeddings = self.embedder.encode(texts)
+            logger.info("Initializing coarse classifier prototypes")
 
-        for genre, embedding in zip(genres, embeddings, strict=False):
-            self.prototypes[genre] = embedding
+            genres = list(GENRE_DESCRIPTIONS.keys())
+            # Add "query: " prefix for E5 asymmetric tasks (though prototypes are kinda symmetric to documents)
+            # Docs say: "for symmetric tasks... query: prefix is generally recommended"
+            # We will use "query: " for both prototypes and input text to be safe/consistent.
+            texts = [f"query: {GENRE_DESCRIPTIONS[g]}" for g in genres]
 
-        self.initialized = True
-        logger.info("Prototypes initialized", count=len(self.prototypes))
+            embeddings = self.embedder.encode(texts)
+
+            for genre, embedding in zip(genres, embeddings, strict=False):
+                self.prototypes[genre] = embedding
+
+            self.initialized = True
+            logger.info("Prototypes initialized", count=len(self.prototypes))
 
     def predict_coarse(self, text: str, threshold: float = 0.0) -> dict[str, float]:
         """

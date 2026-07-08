@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import inspect
 from collections.abc import Iterable
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -278,8 +277,6 @@ class SubworkerDAO:
         )
         result = await self.session.execute(stmt)
         row = result.first()
-        if inspect.isawaitable(row):  # Handle AsyncMock in tests
-            row = await row
         if not row:
             return None
         return RunRecord(
@@ -294,6 +291,18 @@ class SubworkerDAO:
         )
 
     async def has_running_run(self, job_id: UUID, genre: str) -> bool:
+        """Check whether a running run exists for (job_id, genre).
+
+        Callers always follow this with `insert_run` in the same
+        transaction, so this acquires a transaction-scoped advisory lock
+        first (auto-released on commit/rollback) to close the
+        check-then-act race between concurrent submissions of the same
+        job/genre pair.
+        """
+        await self.session.execute(
+            text("SELECT pg_advisory_xact_lock(hashtext(:job_id), hashtext(:genre))"),
+            {"job_id": str(job_id), "genre": genre},
+        )
         stmt = (
             select(runs_table.c.id)
             .where(runs_table.c.job_id == job_id)
@@ -574,7 +583,6 @@ class SubworkerDAO:
                 await self.session.execute(metrics_stmt)
 
         # 明示的にコミット（他のDAOメソッドと同様に）
-        await self.session.commit()
         await self.session.commit()
         return run_id
 

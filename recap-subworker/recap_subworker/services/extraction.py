@@ -1,9 +1,13 @@
 import logging
 
+import structlog
 import trafilatura
 
 # Suppress noisy trafilatura logs
 logging.getLogger("trafilatura").setLevel(logging.CRITICAL)
+
+_LOGGER = structlog.get_logger(__name__)
+
 
 class ContentExtractor:
     """Service for extracting main content from HTML using trafilatura."""
@@ -32,6 +36,12 @@ class ContentExtractor:
                 no_fallback=False
             )
             return text if text else ""
-        except Exception:
-            # Squelch all errors to avoid log spam, return empty as fallback logic exists in worker
+        except (ValueError, TypeError, RuntimeError) as exc:
+            # Fallback logic exists in the worker; log at debug so extraction
+            # failure rate stays observable without spamming at higher levels.
+            _LOGGER.debug(
+                "content_extraction_failed",
+                error=str(exc),
+                error_type=type(exc).__name__,
+            )
             return ""

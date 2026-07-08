@@ -376,7 +376,11 @@ class Settings(BaseSettings):
         return self.db_url_str.replace("postgresql+asyncpg://", "postgresql://")
 
     db_url: SecretStr = Field(
-        default=SecretStr("postgresql+asyncpg://recap_user:recap@recap-db:5432/recap"),
+        # No password in the default: the real credential is injected at startup
+        # by inject_db_password() from RECAP_SUBWORKER_DB_PASSWORD_FILE / secrets_dir.
+        # Without either, the DB connection fails fast instead of silently using
+        # a shipped default credential.
+        default=SecretStr("postgresql+asyncpg://recap_user@recap-db:5432/recap"),
         description="Async SQLAlchemy connection string (SecretStr to prevent log leakage)",
         validation_alias=AliasChoices("RECAP_DB_URL", "RECAP_SUBWORKER_DB_URL"),
     )

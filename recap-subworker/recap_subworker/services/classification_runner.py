@@ -240,9 +240,14 @@ class ClassificationRunner:
         try:
             # Use apply_async for non-blocking execution, then wrap the AsyncResult in asyncio
             async_result = pool.apply_async(classification_worker.predict_batch, (texts,))
-            # Wait for the result in an executor to avoid blocking the event loop
-            loop = asyncio.get_event_loop()
-            result = await loop.run_in_executor(None, async_result.get)
+            # Wait for the result in an executor to avoid blocking the event loop.
+            # A timeout on .get() itself (not just on the awaiting future) is required
+            # so the executor thread is released instead of blocking forever if the
+            # worker hangs.
+            loop = asyncio.get_running_loop()
+            result = await loop.run_in_executor(
+                None, async_result.get, self._settings.run_execution_timeout_seconds
+            )
             return result
         finally:
             # Decrement active task counter

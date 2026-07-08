@@ -75,6 +75,7 @@ class EvaluationService:
         n_bootstrap: int = 1000,
         use_cross_validation: bool = False,
         n_folds: int = 5,
+        embedder: Embedder | None = None,
     ):
         self.settings = get_settings()
         # Fallback to default from settings if generic pointer is used,
@@ -98,22 +99,27 @@ class EvaluationService:
         self.classifier_default = None
 
         # Initialize components for evaluation
-        self._init_classifiers()
+        self._init_classifiers(embedder)
 
-    def _init_classifiers(self):
-        # Configure Embedder
-        config = EmbedderConfig(
-            model_id=self.settings.model_id,
-            distill_model_id=self.settings.distill_model_id,
-            backend=self.settings.model_backend,
-            device=self.settings.device,
-            batch_size=self.settings.batch_size,
-            cache_size=self.settings.embed_cache_size,
-            ollama_embed_url=self.settings.ollama_embed_url,
-            ollama_embed_model=self.settings.ollama_embed_model,
-            ollama_embed_timeout=self.settings.ollama_embed_timeout,
-        )
-        self.embedder = Embedder(config)
+    def _init_classifiers(self, embedder: Embedder | None = None):
+        # Reuse an injected (container-managed) Embedder when available to avoid
+        # loading the embedding model a second time; only construct a fresh one
+        # when the caller has no container to inject from.
+        if embedder is not None:
+            self.embedder = embedder
+        else:
+            config = EmbedderConfig(
+                model_id=self.settings.model_id,
+                distill_model_id=self.settings.distill_model_id,
+                backend=self.settings.model_backend,
+                device=self.settings.device,
+                batch_size=self.settings.batch_size,
+                cache_size=self.settings.embed_cache_size,
+                ollama_embed_url=self.settings.ollama_embed_url,
+                ollama_embed_model=self.settings.ollama_embed_model,
+                ollama_embed_timeout=self.settings.ollama_embed_timeout,
+            )
+            self.embedder = Embedder(config)
 
         # Initialize JA Classifier if config provided
         if self.weights_ja:
@@ -406,11 +412,8 @@ class EvaluationService:
                 logger.info("Starting Cross-Validation", n_folds=n_folds)
                 cv_metrics = self._run_cross_validation(X, y_true_labels, classifier, n_folds=n_folds)
                 results.update(cv_metrics)
-            except Exception as e:
-                logger.warning("Cross-validation failed", error=str(e))
-                import traceback
-
-                traceback.print_exc()
+            except Exception:
+                logger.exception("Cross-validation failed")
 
         # Add language metadata if filtered
         if language:

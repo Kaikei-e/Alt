@@ -5,7 +5,6 @@ from __future__ import annotations
 import asyncio
 import time
 from collections.abc import Callable, Coroutine
-from dataclasses import asdict
 from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID, uuid4
@@ -15,7 +14,7 @@ import structlog
 from ..db.dao import AdminJobRecord, SubworkerDAO
 from ..infra.config import Settings
 from ..infra.telemetry import ADMIN_JOB_DURATION_SECONDS, ADMIN_JOB_STATUS_TOTAL
-from ..services.genre_learning import GenreLearningService
+from ..services.genre_learning import GenreLearningService, build_learning_payload
 from ..services.learning_client import LearningClient
 from ..services.tag_label_graph_builder import TagLabelGraphBuilder
 
@@ -235,34 +234,9 @@ class AdminJobService:
         )
 
     def _build_learning_payload(self, result) -> dict[str, Any]:
-        summary = asdict(result.summary)
-        graph_override: dict[str, Any] = {
-            "graph_margin": result.summary.graph_margin_reference,
-        }
-        if result.summary.boost_threshold_reference is not None:
-            graph_override["boost_threshold"] = result.summary.boost_threshold_reference
-        if result.summary.tag_count_threshold_reference is not None:
-            graph_override["tag_count_threshold"] = (
-                result.summary.tag_count_threshold_reference
-            )
-
-        metadata: dict[str, Any] = {
-            "captured_at": _utcnow().isoformat(),
-            "entries_observed": result.summary.total_records,
-        }
-        if result.summary.accuracy_estimate is not None:
-            metadata["accuracy_estimate"] = result.summary.accuracy_estimate
-        if result.summary.test_accuracy is not None:
-            metadata["test_accuracy"] = result.summary.test_accuracy
-
-        payload: dict[str, Any] = {
-            "summary": summary,
-            "graph_override": graph_override,
-            "metadata": metadata,
-        }
-        if result.cluster_draft:
-            payload["cluster_draft"] = result.cluster_draft
-        return payload
+        """Delegates to the shared builder used by LearningScheduler so the
+        payload shape can't drift between the two callers."""
+        return build_learning_payload(result, now=_utcnow())
 
     async def _mark_success(self, job_id: UUID, kind: str, result: dict[str, Any]) -> None:
         async with self._session_factory() as session:

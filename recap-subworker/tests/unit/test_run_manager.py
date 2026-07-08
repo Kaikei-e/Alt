@@ -114,6 +114,15 @@ class PipelineRunnerStub:
         return None
 
 
+class ClassificationRunnerStub:
+    """Minimal ClassificationRunnerPort stand-in for tests that only need a
+    non-None sentinel (e.g. idempotency short-circuit paths that never
+    actually invoke predict_batch)."""
+
+    async def predict_batch(self, texts):  # pragma: no cover - not expected to run
+        raise AssertionError("predict_batch should not be called in this test")
+
+
 @pytest.fixture
 def payload() -> ClusterJobPayload:
     params = ClusterJobParams(max_sentences_total=2000, umap_n_components=25, hdbscan_min_cluster_size=5, mmr_lambda=0.35)
@@ -271,7 +280,7 @@ async def test_create_classification_run_retries_failed_idempotent():
     )
     dao.idempotent_record = existing
     manager = make_manager(dao, session)
-    manager._classification_runner = object()
+    manager._classification_runner = ClassificationRunnerStub()
 
     submission = ClassificationRunSubmission(
         job_id=existing.job_id,

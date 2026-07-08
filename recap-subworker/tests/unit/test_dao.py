@@ -35,16 +35,23 @@ async def test_insert_run_returns_generated_id():
 async def test_find_run_by_idempotency_returns_record():
     job_id = uuid4()
     session = AsyncMock()
-    session.execute.return_value.first.return_value = SimpleNamespace(
-        id=1,
-        job_id=job_id,
-        genre="ai",
-        status="running",
-        cluster_count=0,
-        request_payload={"idempotency_key": "abc"},
-        response_payload=None,
-        error_message=None,
+    # `.first` must be a plain (non-async) MagicMock: AsyncMock cascades
+    # "async" to every auto-created child attribute, so leaving `.first`
+    # unset here would make `result.first()` return an unawaited coroutine.
+    result = MagicMock()
+    result.first = MagicMock(
+        return_value=SimpleNamespace(
+            id=1,
+            job_id=job_id,
+            genre="ai",
+            status="running",
+            cluster_count=0,
+            request_payload={"idempotency_key": "abc"},
+            response_payload=None,
+            error_message=None,
+        )
     )
+    session.execute.return_value = result
     dao = SubworkerDAO(session)
 
     record = await dao.find_run_by_idempotency(job_id, "ai", "abc")

@@ -3,14 +3,17 @@
 from __future__ import annotations
 
 import asyncio
+import functools
 import hashlib
 from collections.abc import Callable
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from typing import Any
 from uuid import UUID
 
 import orjson
 import structlog
+from sqlalchemy.exc import InterfaceError, OperationalError
 
 from ..db.dao import (
     DiagnosticEntry,
@@ -35,6 +38,8 @@ from ..domain.models import (
 )
 from ..domain.value_objects import ClusterDiagnostics
 from ..infra.config import Settings
+from ..port.classification_runner import ClassificationRunnerPort
+from ..port.classifier import ClassifierPort
 from .pipeline import EvidencePipeline
 from .pipeline_runner import PipelineTaskRunner
 
@@ -63,6 +68,20 @@ def _should_reuse_idempotent_run(status: str) -> bool:
     return status != "failed"
 
 
+def _is_connection_closed_error(exc: Exception) -> bool:
+    """Detect an asyncpg "connection is closed" disconnect.
+
+    Mirrors SQLAlchemy's own asyncpg dialect ``is_disconnect`` heuristic
+    (there is no typed exception for this asyncpg condition), but scopes
+    the check to InterfaceError/OperationalError so unrelated exceptions
+    whose message happens to contain the substring are not misclassified.
+    """
+    if not isinstance(exc, InterfaceError | OperationalError):
+        return False
+    error_str = str(exc)
+    return "connection is closed" in error_str or "underlying connection is closed" in error_str
+
+
 @dataclass(slots=True)
 class RunSubmission:
     job_id: UUID
@@ -88,8 +107,8 @@ class RunManager:
         dao_factory: DaoFactory = SubworkerDAO,
         pipeline: EvidencePipeline | None = None,
         pipeline_runner: PipelineTaskRunner | None = None,
-        classifier: Any | None = None,  # GenreClassifierService (deprecated, use classification_runner)
-        classification_runner: Any | None = None,  # ClassificationRunner
+        classifier: ClassifierPort | None = None,  # GenreClassifierService (deprecated, use classification_runner)
+        classification_runner: ClassificationRunnerPort | None = None,
     ) -> None:
         self.settings = settings
         self._session_factory = session_factory
@@ -102,6 +121,11 @@ class RunManager:
         self._background_slots = asyncio.Semaphore(settings.max_background_runs)
         self._run_timeout: float = settings.run_execution_timeout_seconds
         self._queue_warning_threshold = settings.queue_warning_threshold
+        # Dedicated pool for CPU-bound inprocess pipeline runs (pipeline_mode="inprocess")
+        # so they don't monopolize asyncio's shared default executor.
+        self._pipeline_executor = ThreadPoolExecutor(
+            max_workers=settings.max_background_runs, thread_name_prefix="pipeline-inprocess"
+        )
 
     async def create_run(self, submission: RunSubmission) -> RunRecord:
         """Insert a new run or reuse an existing idempotent run."""
@@ -224,7 +248,7 @@ class RunManager:
             error_type = type(exc).__name__
 
             # Check if this is a connection closed error during rollback
-            if "connection is closed" in error_str or "underlying connection is closed" in error_str:
+            if _is_connection_closed_error(exc):
                 LOGGER.warning(
                     "run.process.connection_closed",
                     run_id=run_id,
@@ -328,7 +352,7 @@ class RunManager:
             error_type = type(exc).__name__
 
             # Check if this is a connection closed error during rollback
-            if "connection is closed" in error_str or "underlying connection is closed" in error_str:
+            if _is_connection_closed_error(exc):
                 LOGGER.warning(
                     "run.process.connection_closed",
                     run_id=run_id,
@@ -512,7 +536,7 @@ class RunManager:
             error_type = type(exc).__name__
 
             # Check if this is a connection closed error during rollback
-            if "connection is closed" in error_str or "underlying connection is closed" in error_str:
+            if _is_connection_closed_error(exc):
                 LOGGER.warning(
                     "classification.run.connection_closed",
                     run_id=run_id,
@@ -536,9 +560,10 @@ class RunManager:
             else:
                 # Fallback to direct classifier (for backward compatibility)
                 assert self._classifier is not None, "Either classification_runner or classifier must be set"
+                classifier = self._classifier
                 loop = asyncio.get_running_loop()
                 results = await loop.run_in_executor(
-                    None, self._classifier.predict_batch, classification_payload.texts
+                    None, functools.partial(classifier.predict_batch, classification_payload.texts)
                 )
             LOGGER.info("classification.run.completed_inference", run_id=run_id)
 
@@ -594,7 +619,7 @@ class RunManager:
             error_type = type(exc).__name__
 
             # Check if this is a connection closed error during rollback
-            if "connection is closed" in error_str or "underlying connection is closed" in error_str:
+            if _is_connection_closed_error(exc):
                 LOGGER.warning(
                     "classification.run.connection_closed",
                     run_id=run_id,
@@ -620,7 +645,7 @@ class RunManager:
             return await self._pipeline_runner.run(request)
         loop = asyncio.get_running_loop()
         assert self._pipeline is not None
-        return await loop.run_in_executor(None, self._pipeline.run, request)
+        return await loop.run_in_executor(self._pipeline_executor, self._pipeline.run, request)
 
     def _build_pipeline_request(
         self, record: RunRecord, payload: ClusterJobPayload
@@ -850,6 +875,7 @@ class RunManager:
         This prevents memory leaks from orphaned asyncio tasks.
         """
         if not self._tasks:
+            self._pipeline_executor.shutdown(wait=False, cancel_futures=True)
             return
 
         LOGGER.info("shutting down RunManager", pending_tasks=len(self._tasks))
@@ -873,6 +899,7 @@ class RunManager:
                 )
 
         self._tasks.clear()
+        self._pipeline_executor.shutdown(wait=False, cancel_futures=True)
         LOGGER.info("RunManager shutdown complete")
 
 

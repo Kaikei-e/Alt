@@ -28,7 +28,8 @@ def test_optimize_clustering_finds_best_params(settings):
     )
 
     assert result.labels.size == 30
-    assert result.dbcv_score >= -1.0 and result.dbcv_score <= 1.0
+    assert result.dbcv_score is not None
+    assert -1.0 <= result.dbcv_score <= 1.0
     # We expect it to find 3 clusters (labels 0, 1, 2) plus maybe noise (-1)
     unique_labels = set(result.labels)
     unique_labels.discard(-1)

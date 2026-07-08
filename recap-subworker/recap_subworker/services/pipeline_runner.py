@@ -83,9 +83,14 @@ class PipelineTaskRunner:
         payload = request.model_dump(mode="json")
         # Use apply_async for non-blocking execution, then wrap the AsyncResult in asyncio
         async_result = self._pool.apply_async(pipeline_worker.run_pipeline, (payload,))
-        # Wait for the result in an executor to avoid blocking the event loop
-        loop = asyncio.get_event_loop()
-        result = await loop.run_in_executor(None, async_result.get)
+        # Wait for the result in an executor to avoid blocking the event loop.
+        # A timeout on .get() itself (not just on the awaiting future) is required
+        # so the executor thread is released instead of blocking forever if the
+        # worker hangs.
+        loop = asyncio.get_running_loop()
+        result = await loop.run_in_executor(
+            None, async_result.get, self._settings.run_execution_timeout_seconds
+        )
         return EvidenceResponse.model_validate(result)
 
     async def warmup(self, samples: Sequence[str] | None = None) -> WarmupResponse:
@@ -93,9 +98,11 @@ class PipelineTaskRunner:
         assert self._pool is not None, "Pool is not initialized"
         # Use apply_async for non-blocking execution, then wrap the AsyncResult in asyncio
         async_result = self._pool.apply_async(pipeline_worker.warmup, (list(samples or []),))
-        # Wait for the result in an executor to avoid blocking the event loop
-        loop = asyncio.get_event_loop()
-        result = await loop.run_in_executor(None, async_result.get)
+        # Wait for the result in an executor to avoid blocking the event loop.
+        loop = asyncio.get_running_loop()
+        result = await loop.run_in_executor(
+            None, async_result.get, self._settings.pipeline_worker_init_timeout_seconds
+        )
         return WarmupResponse.model_validate(result)
 
     def shutdown(self) -> None:

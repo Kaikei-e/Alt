@@ -321,7 +321,7 @@ class Embedder:
                         # 4xx/5xx はリクエスト/モデル由来。retry しても直らない。
                         raise RuntimeError(
                             f"Ollama API error: {exc.response.status_code} - {exc.response.text[:200]}"
-                        ) from None
+                        ) from exc
                     except httpx.RequestError as exc:
                         last_exc = exc
                         if attempt + 1 >= self._RETRY_ATTEMPTS:
@@ -335,7 +335,7 @@ class Embedder:
                             error=str(exc),
                         )
                         time.sleep(backoff)
-                raise RuntimeError(f"Ollama API request failed: {last_exc}") from None
+                raise RuntimeError(f"Ollama API request failed: {last_exc}") from last_exc
 
             def _embed_single_text(self, text: str) -> list[float]:
                 """Embed a single text, chunking if necessary."""
