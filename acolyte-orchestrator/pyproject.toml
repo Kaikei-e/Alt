@@ -97,8 +97,6 @@ ignore = [
     "S101",    # assert in tests
     "S104",    # bind all interfaces (intentional for containers)
     "E501",    # line too long (formatter handles)
-    "ANN101",  # self annotation not required
-    "ANN102",  # cls annotation not required
     "RUF001",  # ambiguous unicode chars — intentional full-width JP punctuation in prompts/comments
     "RUF002",
     "RUF003",
