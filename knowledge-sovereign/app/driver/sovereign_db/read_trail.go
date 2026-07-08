@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -281,7 +282,7 @@ func (r *Repository) GetLatestFootprintAnchor(ctx context.Context, userID uuid.U
 		WHERE user_id = $1 ORDER BY occurred_at DESC, footprint_key DESC LIMIT 1`
 	row := r.pool.QueryRow(ctx, q, userID)
 	if scanErr := row.Scan(&itemKey, &tenantID); scanErr != nil {
-		if scanErr == pgx.ErrNoRows {
+		if errors.Is(scanErr, pgx.ErrNoRows) {
 			return "", uuid.Nil, false, nil
 		}
 		return "", uuid.Nil, false, fmt.Errorf("GetLatestFootprintAnchor: %w", scanErr)

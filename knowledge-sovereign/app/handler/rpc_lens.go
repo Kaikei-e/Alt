@@ -3,7 +3,6 @@ package handler
 import (
 	"context"
 	"fmt"
-	"time"
 
 	"connectrpc.com/connect"
 	"google.golang.org/protobuf/types/known/timestamppb"
@@ -130,17 +129,16 @@ func (h *SovereignHandler) CreateLens(
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInvalidArgument, err)
 	}
+	if pl.CreatedAt == nil {
+		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("created_at is required"))
+	}
 	l := sovereign_db.KnowledgeLens{
 		LensID:      lensID,
 		UserID:      userID,
 		TenantID:    tenantID,
 		Name:        pl.Name,
 		Description: pl.Description,
-	}
-	if pl.CreatedAt != nil {
-		l.CreatedAt = pl.CreatedAt.AsTime()
-	} else {
-		l.CreatedAt = time.Now()
+		CreatedAt:   pl.CreatedAt.AsTime(),
 	}
 	l.UpdatedAt = l.CreatedAt
 	if err := h.readDB.CreateLens(ctx, l); err != nil {
@@ -165,6 +163,9 @@ func (h *SovereignHandler) CreateLensVersion(
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInvalidArgument, err)
 	}
+	if pv.CreatedAt == nil {
+		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("created_at is required"))
+	}
 	v := sovereign_db.KnowledgeLensVersion{
 		LensVersionID: lensVersionID,
 		LensID:        lensID,
@@ -175,11 +176,7 @@ func (h *SovereignHandler) CreateLensVersion(
 		IncludeRecap:  pv.IncludeRecap,
 		IncludePulse:  pv.IncludePulse,
 		SortMode:      pv.SortMode,
-	}
-	if pv.CreatedAt != nil {
-		v.CreatedAt = pv.CreatedAt.AsTime()
-	} else {
-		v.CreatedAt = time.Now()
+		CreatedAt:     pv.CreatedAt.AsTime(),
 	}
 	if err := h.readDB.CreateLensVersion(ctx, v); err != nil {
 		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("CreateLensVersion: %w", err))
@@ -207,15 +204,14 @@ func (h *SovereignHandler) SelectCurrentLens(
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInvalidArgument, err)
 	}
+	if ps.SelectedAt == nil {
+		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("selected_at is required"))
+	}
 	c := sovereign_db.KnowledgeCurrentLens{
 		UserID:        userID,
 		LensID:        lensID,
 		LensVersionID: lensVersionID,
-	}
-	if ps.SelectedAt != nil {
-		c.SelectedAt = ps.SelectedAt.AsTime()
-	} else {
-		c.SelectedAt = time.Now()
+		SelectedAt:    ps.SelectedAt.AsTime(),
 	}
 	if err := h.readDB.SelectCurrentLens(ctx, c); err != nil {
 		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("SelectCurrentLens: %w", err))

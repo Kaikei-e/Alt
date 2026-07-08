@@ -85,5 +85,8 @@ func (r *Repository) AreArticlesVisibleInLens(ctx context.Context, tenantID, use
 		}
 		visible[id] = true
 	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("AreArticlesVisibleInLens rows: %w", err)
+	}
 	return visible, nil
 }

@@ -4,11 +4,28 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"regexp"
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
+
+// safeIdentifierPattern restricts table/partition names accepted by
+// GetTableRowCount and ExportTableToWriter to plain Postgres identifiers
+// (letters, digits, underscores). Callers pass either a fixed literal table
+// name or a pg_inherits-derived partition name (retention.go ListPartitions);
+// neither should ever need quoting or schema-qualification, so anything else
+// is rejected rather than string-concatenated into SQL (DECREE §10).
+var safeIdentifierPattern = regexp.MustCompile(`^[a-zA-Z_][a-zA-Z0-9_]*$`)
+
+func sanitizedTableIdentifier(tableName string) (string, error) {
+	if !safeIdentifierPattern.MatchString(tableName) {
+		return "", fmt.Errorf("invalid table identifier: %q", tableName)
+	}
+	return pgx.Identifier{tableName}.Sanitize(), nil
+}
 
 // SnapshotMetadata represents a projection snapshot record.
 //
@@ -154,6 +171,9 @@ func (r *Repository) ListSnapshots(ctx context.Context, limit int) ([]SnapshotMe
 		}
 		snapshots = append(snapshots, s)
 	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("ListSnapshots rows: %w", err)
+	}
 	return snapshots, nil
 }
 
@@ -169,11 +189,14 @@ func (r *Repository) GetMaxEventSeq(ctx context.Context) (int64, error) {
 
 // GetTableRowCount returns the row count of the given table.
 func (r *Repository) GetTableRowCount(ctx context.Context, tableName string) (int, error) {
+	ident, err := sanitizedTableIdentifier(tableName)
+	if err != nil {
+		return 0, fmt.Errorf("GetTableRowCount: %w", err)
+	}
 	// Use reltuples for fast approximate count on large tables
 	var count int
-	query := fmt.Sprintf("SELECT COUNT(*) FROM %s", tableName)
-	err := r.pool.QueryRow(ctx, query).Scan(&count)
-	if err != nil {
+	query := fmt.Sprintf("SELECT COUNT(*) FROM %s", ident)
+	if err := r.pool.QueryRow(ctx, query).Scan(&count); err != nil {
 		return 0, fmt.Errorf("GetTableRowCount(%s): %w", tableName, err)
 	}
 	return count, nil
@@ -188,7 +211,11 @@ func (r *Repository) ExportTableToWriter(ctx context.Context, tableName string, 
 		return 0, fmt.Errorf("ExportTableToWriter: pool must be *pgxpool.Pool for COPY support")
 	}
 
-	query := fmt.Sprintf("COPY (SELECT row_to_json(t) FROM %s t) TO STDOUT", tableName)
+	ident, err := sanitizedTableIdentifier(tableName)
+	if err != nil {
+		return 0, fmt.Errorf("ExportTableToWriter: %w", err)
+	}
+	query := fmt.Sprintf("COPY (SELECT row_to_json(t) FROM %s t) TO STDOUT", ident)
 	conn, err := pool.Acquire(ctx)
 	if err != nil {
 		return 0, fmt.Errorf("ExportTableToWriter acquire conn: %w", err)
@@ -248,6 +275,9 @@ func (r *Repository) GetStorageStats(ctx context.Context) ([]TableStorageInfo, e
 			return nil, fmt.Errorf("GetStorageStats scan: %w", err)
 		}
 		stats = append(stats, s)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("GetStorageStats rows: %w", err)
 	}
 	return stats, nil
 }

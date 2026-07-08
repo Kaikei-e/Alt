@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"crypto/subtle"
 	"knowledge-sovereign/config"
 	"knowledge-sovereign/driver/sovereign_db"
 	"knowledge-sovereign/gen/proto/services/sovereign/v1/sovereignv1connect"
@@ -14,6 +15,8 @@ import (
 	"os"
 	"os/signal"
 	"strconv"
+	"strings"
+	"sync"
 	"syscall"
 	"time"
 
@@ -80,7 +83,22 @@ func main() {
 	snapshotHandler.RegisterRoutes(metricsMux)
 	retentionHandler.RegisterRoutes(metricsMux)
 	storageHandler.RegisterRoutes(metricsMux)
-	metricsServer := &http.Server{Addr: cfg.MetricsAddr, Handler: metricsMux}
+
+	if cfg.AdminToken == "" {
+		slog.Warn("admin_auth_disabled: /admin/* endpoints on the metrics port accept unauthenticated requests; set ADMIN_TOKEN to require a Bearer token")
+	} else {
+		slog.Info("admin_auth_enabled")
+	}
+
+	metricsServer := &http.Server{
+		Addr:              cfg.MetricsAddr,
+		Handler:           requireAdminToken(cfg.AdminToken, metricsMux),
+		ReadHeaderTimeout: 10 * time.Second,
+		ReadTimeout:       30 * time.Second,
+		WriteTimeout:      30 * time.Second,
+		IdleTimeout:       120 * time.Second,
+		MaxHeaderBytes:    1 << 20,
+	}
 
 	go func() {
 		slog.Info("metrics server starting", "addr", cfg.MetricsAddr)
@@ -97,7 +115,18 @@ func main() {
 	path, rpcHandler := sovereignv1connect.NewKnowledgeSovereignServiceHandler(sovereignHandler)
 	mainMux.Handle(path, rpcHandler)
 
-	mainServer := &http.Server{Addr: cfg.ListenAddr, Handler: mainMux}
+	// WriteTimeout is intentionally unset: WatchProjectorEvents is a
+	// long-lived server-streaming RPC on this mux, and a finite write
+	// deadline would sever it mid-stream. ReadHeaderTimeout/ReadTimeout/
+	// IdleTimeout still guard against slowloris-style connection abuse.
+	mainServer := &http.Server{
+		Addr:              cfg.ListenAddr,
+		Handler:           mainMux,
+		ReadHeaderTimeout: 10 * time.Second,
+		ReadTimeout:       30 * time.Second,
+		IdleTimeout:       120 * time.Second,
+		MaxHeaderBytes:    1 << 20,
+	}
 
 	go func() {
 		slog.Info("rpc server starting", "addr", cfg.ListenAddr)
@@ -106,6 +135,8 @@ func main() {
 			os.Exit(1)
 		}
 	}()
+
+	var wg sync.WaitGroup
 
 	// Knowledge Trail spine projector. Folds the append-only event log into
 	// knowledge_trail_footprints in-process. Reproject-safe and idempotent, so a
@@ -116,7 +147,9 @@ func main() {
 			MaxBatchesPerTick: parseIntEnv("KNOWLEDGE_SOVEREIGN_TRAIL_PROJECTOR_MAX_BATCHES_PER_TICK", 4),
 		})
 	trailTick := time.NewTicker(parseDurationEnv("KNOWLEDGE_SOVEREIGN_PROJECTOR_TICK_INTERVAL", 5*time.Second))
+	wg.Add(1)
 	go func() {
+		defer wg.Done()
 		defer trailTick.Stop()
 		for {
 			select {
@@ -139,7 +172,9 @@ func main() {
 	})
 	slog.Info("trail.branch_producer.wiring", "enabled", branchPlanner != nil)
 	branchTick := time.NewTicker(parseDurationEnv("KNOWLEDGE_SOVEREIGN_BRANCH_PLANNER_TICK_INTERVAL", 30*time.Second))
+	wg.Add(1)
 	go func() {
+		defer wg.Done()
 		defer branchTick.Stop()
 		for {
 			select {
@@ -156,7 +191,9 @@ func main() {
 	// Producer-liveness gauges sampled on a slow tick.
 	healthExporter := projection_health.New(repo, slog.Default())
 	healthTick := time.NewTicker(parseDurationEnv("KNOWLEDGE_SOVEREIGN_PROJECTION_HEALTH_TICK_INTERVAL", 60*time.Second))
+	wg.Add(1)
 	go func() {
+		defer wg.Done()
 		defer healthTick.Stop()
 		for {
 			select {
@@ -188,7 +225,34 @@ func main() {
 
 	metricsServer.Shutdown(shutdownCtx)
 	mainServer.Shutdown(shutdownCtx)
+
+	cancel()
+	wg.Wait()
 	slog.Info("shutdown complete")
+}
+
+// requireAdminToken wraps next so that /admin/* requests must carry
+// "Authorization: Bearer <token>" matching the configured admin token.
+// If token is empty, admin auth is disabled and every request passes
+// through unchanged (see the admin_auth_disabled startup log).
+func requireAdminToken(token string, next http.Handler) http.Handler {
+	if token == "" {
+		return next
+	}
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !strings.HasPrefix(r.URL.Path, "/admin/") {
+			next.ServeHTTP(w, r)
+			return
+		}
+		const prefix = "Bearer "
+		auth := r.Header.Get("Authorization")
+		if !strings.HasPrefix(auth, prefix) ||
+			subtle.ConstantTimeCompare([]byte(strings.TrimPrefix(auth, prefix)), []byte(token)) != 1 {
+			http.Error(w, "unauthorized", http.StatusUnauthorized)
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
 }
 
 // parseDurationEnv reads a duration from env, falling back to the supplied

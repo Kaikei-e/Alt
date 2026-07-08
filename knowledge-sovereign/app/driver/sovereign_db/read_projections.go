@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -152,13 +153,15 @@ func (r *Repository) GetKnowledgeHomeItems(ctx context.Context, userID uuid.UUID
 		if err != nil {
 			return nil, "", false, fmt.Errorf("GetKnowledgeHomeItems: invalid cursor: %w", err)
 		}
-		query.WriteString(fmt.Sprintf(` AND (khi.score, khi.published_at, khi.item_key) < ($%d, $%d, $%d)`,
+		query.WriteString(fmt.Sprintf(
+			` AND (khi.score, COALESCE(khi.published_at, '-infinity'), khi.item_key) < ($%d, COALESCE($%d::timestamptz, '-infinity'), $%d)`,
 			argPos, argPos+1, argPos+2))
 		args = append(args, cursorScore, cursorPublishedAt, cursorItemKey)
 		argPos += 3
 	}
 
-	query.WriteString(fmt.Sprintf(` ORDER BY khi.score DESC, khi.published_at DESC, khi.item_key DESC LIMIT $%d`, argPos))
+	query.WriteString(fmt.Sprintf(
+		` ORDER BY khi.score DESC, COALESCE(khi.published_at, '-infinity') DESC, khi.item_key DESC LIMIT $%d`, argPos))
 	args = append(args, fetchLimit)
 
 	rows, err := r.pool.Query(ctx, query.String(), args...)
@@ -191,6 +194,9 @@ func (r *Repository) GetKnowledgeHomeItems(ctx context.Context, userID uuid.UUID
 		}
 		items = append(items, item)
 	}
+	if err := rows.Err(); err != nil {
+		return nil, "", false, fmt.Errorf("GetKnowledgeHomeItems rows: %w", err)
+	}
 
 	hasMore := len(items) > limit
 	if hasMore {
@@ -222,6 +228,9 @@ func (r *Repository) ListDistinctUserIDs(ctx context.Context) ([]uuid.UUID, erro
 			return nil, fmt.Errorf("ListDistinctUserIDs scan: %w", err)
 		}
 		ids = append(ids, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("ListDistinctUserIDs rows: %w", err)
 	}
 	return ids, nil
 }
@@ -264,7 +273,7 @@ func (r *Repository) GetTodayDigest(ctx context.Context, userID uuid.UUID, date 
 		&topTagsJSON, &d.UpdatedAt, &d.WeeklyRecapAvailable, &d.EveningPulseAvailable,
 	)
 	if err != nil {
-		if err == pgx.ErrNoRows {
+		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, nil
 		}
 		return nil, fmt.Errorf("GetTodayDigest: %w", err)
@@ -353,6 +362,9 @@ func (r *Repository) GetRecallCandidates(ctx context.Context, userID uuid.UUID, 
 
 		candidates = append(candidates, c)
 	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("GetRecallCandidates rows: %w", err)
+	}
 
 	return candidates, nil
 }
@@ -363,7 +375,7 @@ func (r *Repository) GetProjectionFreshness(ctx context.Context, projectorName s
 	var updatedAt time.Time
 	err := r.pool.QueryRow(ctx, query, projectorName).Scan(&updatedAt)
 	if err != nil {
-		if err == pgx.ErrNoRows {
+		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, nil
 		}
 		return nil, fmt.Errorf("GetProjectionFreshness: %w", err)
