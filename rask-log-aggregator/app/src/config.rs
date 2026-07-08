@@ -46,8 +46,9 @@ fn validate_port(port: u16) -> Result<(), AggregatorError> {
 /// Read a required environment variable, naming it in the error so a
 /// missing-config failure is diagnosable instead of a bare "not found".
 fn require_env(env_name: &str) -> Result<String, AggregatorError> {
-    env::var(env_name)
-        .map_err(|_| AggregatorError::Config(format!("Missing required environment variable: {env_name}")))
+    env::var(env_name).map_err(|_| {
+        AggregatorError::Config(format!("Missing required environment variable: {env_name}"))
+    })
 }
 
 /// Read a required `u16` environment variable, with a default fallback.
@@ -80,9 +81,13 @@ fn get_env_or_file(env_name: &str) -> Result<String, AggregatorError> {
 
 pub fn get_configuration() -> Result<Settings, AggregatorError> {
     let clickhouse_host = require_env("APP_CLICKHOUSE_HOST")?;
-    let clickhouse_port = require_env("APP_CLICKHOUSE_PORT")?.parse::<u16>().map_err(|e| {
-        AggregatorError::Config(format!("Invalid APP_CLICKHOUSE_PORT (must be a valid port): {e}"))
-    })?;
+    let clickhouse_port = require_env("APP_CLICKHOUSE_PORT")?
+        .parse::<u16>()
+        .map_err(|e| {
+            AggregatorError::Config(format!(
+                "Invalid APP_CLICKHOUSE_PORT (must be a valid port): {e}"
+            ))
+        })?;
     let clickhouse_user = require_env("APP_CLICKHOUSE_USER")?;
     let clickhouse_password = get_env_or_file("APP_CLICKHOUSE_PASSWORD")?;
     let clickhouse_database = require_env("APP_CLICKHOUSE_DATABASE")?;

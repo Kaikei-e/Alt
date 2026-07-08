@@ -319,7 +319,9 @@ async fn write_batch<T: clickhouse::Row + RowOwned + RowWrite + serde::Serialize
     }
     if dropped > 0 {
         error!(
-            table, dropped, total = rows.len(),
+            table,
+            dropped,
+            total = rows.len(),
             "Dropped rows while writing batch to ClickHouse inserter"
         );
     }
@@ -622,7 +624,9 @@ mod tests {
                     "rows must still be present on retry {n} — a failed attempt must not have dropped them"
                 );
                 if n < 2 {
-                    Err(AggregatorError::ClickHouse(clickhouse::error::Error::Custom("boom".to_string())))
+                    Err(AggregatorError::ClickHouse(
+                        clickhouse::error::Error::Custom("boom".to_string()),
+                    ))
                 } else {
                     Ok(())
                 }
@@ -642,7 +646,9 @@ mod tests {
         let sink = MockSink {
             write_fn: |_rows: &[i32]| {
                 attempts.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-                Err(AggregatorError::ClickHouse(clickhouse::error::Error::Custom("still down".to_string())))
+                Err(AggregatorError::ClickHouse(
+                    clickhouse::error::Error::Custom("still down".to_string()),
+                ))
             },
         };
         flush_with_retry("t", &mut buf, &sink).await;
