@@ -63,10 +63,6 @@ jobs:
         working-directory: alt-frontend-sv
         run: bun install
 
-      - name: Log tsgo version
-        working-directory: alt-frontend-sv
-        run: bunx tsgo --version
-
       - name: Type check
         working-directory: alt-frontend-sv
         run: bun run check
