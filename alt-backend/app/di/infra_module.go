@@ -44,14 +44,13 @@ type InfraModule struct {
 	Pool *pgxpool.Pool
 }
 
-func newInfraModule(pool *pgxpool.Pool) *InfraModule {
+// newInfraModule wires infrastructure components from the single Config
+// instance the composition root (main.go) already loaded and validated.
+// It must not call config.NewConfig() itself — doing so created a second,
+// independently-loaded Config that could silently diverge from the one main
+// already validated and logged.
+func newInfraModule(pool *pgxpool.Pool, cfg *config.Config) *InfraModule {
 	altDBRepository := alt_db.NewAltDBRepository(pool)
-
-	// Load configuration
-	cfg, err := config.NewConfig()
-	if err != nil {
-		panic("Failed to load configuration: " + err.Error())
-	}
 
 	// Create port implementations
 	configPort := config_gateway.NewConfigGateway(cfg)

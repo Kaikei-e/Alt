@@ -3,6 +3,7 @@ package integration_tests
 import (
 	"alt/config"
 	"alt/middleware"
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -123,7 +124,7 @@ func TestDOSProtectionIntegration(t *testing.T) {
 			e := echo.New()
 
 			// Add the DOS protection middleware
-			e.Use(middleware.DOSProtectionMiddleware(tt.config))
+			e.Use(middleware.DOSProtectionMiddleware(context.Background(), tt.config))
 
 			// Create test handlers
 			e.GET("/v1/feeds", func(c echo.Context) error {
@@ -302,7 +303,7 @@ func TestDOSProtectionPerformance(t *testing.T) {
 	}
 
 	e := echo.New()
-	e.Use(middleware.DOSProtectionMiddleware(config))
+	e.Use(middleware.DOSProtectionMiddleware(context.Background(), config))
 	e.GET("/v1/test", func(c echo.Context) error {
 		return c.String(http.StatusOK, "OK")
 	})

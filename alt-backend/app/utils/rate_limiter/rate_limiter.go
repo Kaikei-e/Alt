@@ -17,9 +17,14 @@ import (
 // external API rate limits.
 type HostRateLimiter struct {
 	limiters map[string]*rate.Limiter
-	mu       sync.RWMutex
-	interval time.Duration
-	burst    int
+	// currentIntervals tracks each host's post-backoff interval so repeated
+	// 429s double from the host's own current interval (true exponential
+	// backoff) instead of always doubling the configured base interval.
+	// A host absent from this map is still at the base interval.
+	currentIntervals map[string]time.Duration
+	mu               sync.RWMutex
+	interval         time.Duration
+	burst            int
 }
 
 // NewHostRateLimiter creates a new HostRateLimiter with the specified interval
@@ -32,9 +37,10 @@ func NewHostRateLimiter(interval time.Duration, burst ...int) *HostRateLimiter {
 		b = burst[0]
 	}
 	return &HostRateLimiter{
-		limiters: make(map[string]*rate.Limiter),
-		interval: interval,
-		burst:    b,
+		limiters:         make(map[string]*rate.Limiter),
+		currentIntervals: make(map[string]time.Duration),
+		interval:         interval,
+		burst:            b,
 	}
 }
 
@@ -80,16 +86,24 @@ func (h *HostRateLimiter) getLimiterForHost(host string) *rate.Limiter {
 }
 
 // RecordRateLimitHit increases backoff for a host after a 429 response.
-// It respects the Retry-After duration if provided, otherwise doubles the current interval.
-// The backoff is capped at 1 hour maximum.
+// It respects the Retry-After duration if provided, otherwise doubles the
+// host's current interval (the base interval on the first hit, then whatever
+// the previous backoff left it at). The backoff is capped at 1 hour maximum.
+// Call RecordSuccess once the host responds normally again to decay the
+// backoff back to the base interval.
 func (h *HostRateLimiter) RecordRateLimitHit(host string, retryAfter time.Duration) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 
-	// Use Retry-After header if provided, otherwise double current interval
+	// Use Retry-After header if provided, otherwise double the host's
+	// current interval (falls back to the base interval if not yet backed off).
 	backoff := retryAfter
 	if backoff == 0 {
-		backoff = h.interval * 2
+		current, backedOff := h.currentIntervals[host]
+		if !backedOff {
+			current = h.interval
+		}
+		backoff = current * 2
 	}
 
 	// Cap at 1 hour max
@@ -97,5 +111,22 @@ func (h *HostRateLimiter) RecordRateLimitHit(host string, retryAfter time.Durati
 		backoff = time.Hour
 	}
 
+	h.currentIntervals[host] = backoff
 	h.limiters[host] = rate.NewLimiter(rate.Every(backoff), h.burst)
+}
+
+// RecordSuccess decays a host's rate limiter back to the configured base
+// interval. Call this after a successful (non-429) response so a host that
+// was previously backed off recovers instead of staying throttled forever.
+// It is a no-op if the host was never backed off.
+func (h *HostRateLimiter) RecordSuccess(host string) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+
+	if _, backedOff := h.currentIntervals[host]; !backedOff {
+		return
+	}
+
+	delete(h.currentIntervals, host)
+	h.limiters[host] = rate.NewLimiter(rate.Every(h.interval), h.burst)
 }

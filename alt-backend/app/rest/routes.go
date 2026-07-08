@@ -6,13 +6,17 @@ import (
 	middleware_custom "alt/middleware"
 	"alt/rest/rest_feeds"
 	"alt/utils/logger"
+	"context"
 	"strings"
 
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
 )
 
-func RegisterRoutes(e *echo.Echo, container *di.ApplicationComponents, cfg *config.Config) {
+// ctx bounds the lifetime of any background goroutines route registration
+// starts (e.g. the DoS-protection limiter-cleanup ticker); pass the server's
+// process lifetime context here, not a per-request one.
+func RegisterRoutes(ctx context.Context, e *echo.Echo, container *di.ApplicationComponents, cfg *config.Config) {
 	// 1. Request ID middleware first - すべてのリクエストにIDを付与
 	e.Use(middleware_custom.RequestIDMiddleware())
 
@@ -72,6 +76,7 @@ func RegisterRoutes(e *echo.Echo, container *di.ApplicationComponents, cfg *conf
 	dosConfig := cfg.RateLimit.DOSProtection
 	dosConfig.WhitelistedPaths = []string{"/v1/health", "/v1/feeds/summarize/stream", "/security/csp-report", "/v1/images/proxy/"}
 	e.Use(middleware_custom.DOSProtectionMiddlewareWithTrust(
+		ctx,
 		middleware_custom.ConvertConfigDOSProtection(dosConfig),
 		true,
 	))

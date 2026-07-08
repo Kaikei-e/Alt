@@ -5,6 +5,7 @@ import (
 	"alt/utils/errors"
 	"alt/utils/logger"
 	"alt/utils/url_validator"
+	stderrors "errors"
 	"net/http"
 	"net/url"
 	"strings"
@@ -20,7 +21,9 @@ func HandleError(c echo.Context, err error, operation string) error {
 	var enrichedErr *errors.AppContextError
 
 	// Check if it's already an AppContextError and enrich it with REST context
-	if appContextErr, ok := err.(*errors.AppContextError); ok {
+	var appContextErr *errors.AppContextError
+	var appErr *errors.AppError
+	if stderrors.As(err, &appContextErr) {
 		enrichedErr = errors.EnrichWithContext(
 			appContextErr,
 			"rest",
@@ -34,7 +37,7 @@ func HandleError(c echo.Context, err error, operation string) error {
 				"request_id":  c.Response().Header().Get("X-Request-ID"),
 			},
 		)
-	} else if appErr, ok := err.(*errors.AppError); ok {
+	} else if stderrors.As(err, &appErr) {
 		// Handle legacy AppError by converting to AppContextError
 		enrichedErr = errors.NewAppContextError(
 			string(appErr.Code),

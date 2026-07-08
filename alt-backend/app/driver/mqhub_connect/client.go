@@ -96,11 +96,10 @@ type IndexArticlePayload struct {
 }
 
 // PublishArticleCreated publishes an ArticleCreated event.
+// Callers must check IsEnabled before invoking this; the enabled/disabled
+// decision is made once at the gateway boundary (event_publisher_gateway),
+// not duplicated here.
 func (c *Client) PublishArticleCreated(ctx context.Context, payload ArticleCreatedPayload) (string, error) {
-	if !c.enabled {
-		return "", nil
-	}
-
 	payloadBytes, err := json.Marshal(payload)
 	if err != nil {
 		return "", err
@@ -127,11 +126,8 @@ func (c *Client) PublishArticleCreated(ctx context.Context, payload ArticleCreat
 }
 
 // PublishArticleUpdated publishes an ArticleUpdated event.
+// Callers must check IsEnabled before invoking this; see PublishArticleCreated.
 func (c *Client) PublishArticleUpdated(ctx context.Context, payload ArticleCreatedPayload) (string, error) {
-	if !c.enabled {
-		return "", nil
-	}
-
 	payloadBytes, err := json.Marshal(payload)
 	if err != nil {
 		return "", err
@@ -158,11 +154,8 @@ func (c *Client) PublishArticleUpdated(ctx context.Context, payload ArticleCreat
 }
 
 // PublishSummarizeRequested publishes a SummarizeRequested event.
+// Callers must check IsEnabled before invoking this; see PublishArticleCreated.
 func (c *Client) PublishSummarizeRequested(ctx context.Context, payload SummarizeRequestedPayload) (string, error) {
-	if !c.enabled {
-		return "", nil
-	}
-
 	payloadBytes, err := json.Marshal(payload)
 	if err != nil {
 		return "", err
@@ -189,11 +182,8 @@ func (c *Client) PublishSummarizeRequested(ctx context.Context, payload Summariz
 }
 
 // PublishIndexArticle publishes an IndexArticle event.
+// Callers must check IsEnabled before invoking this; see PublishArticleCreated.
 func (c *Client) PublishIndexArticle(ctx context.Context, payload IndexArticlePayload) (string, error) {
-	if !c.enabled {
-		return "", nil
-	}
-
 	payloadBytes, err := json.Marshal(payload)
 	if err != nil {
 		return "", err

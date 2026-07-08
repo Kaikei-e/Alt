@@ -7,7 +7,6 @@ import (
 	"sort"
 	"testing"
 
-	"go.opentelemetry.io/otel"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	"go.opentelemetry.io/otel/sdk/trace/tracetest"
 )
@@ -22,14 +21,12 @@ func TestGlobalSearchUsecase_EmitsPerSectionSpans(t *testing.T) {
 
 	recorder := tracetest.NewSpanRecorder()
 	tp := sdktrace.NewTracerProvider(sdktrace.WithSpanProcessor(recorder))
-	original := otel.GetTracerProvider()
-	otel.SetTracerProvider(tp)
-	defer otel.SetTracerProvider(original)
 
 	uc := NewGlobalSearchUsecase(
 		&mockArticleSearch{result: &domain.ArticleSearchSection{Hits: []domain.GlobalArticleHit{{ID: "a"}}}},
 		&mockRecapSearch{err: errors.New("recap down")},
 		&mockTagSearch{result: &domain.TagSearchSection{Hits: []domain.GlobalTagHit{{TagName: "x"}}}},
+		tp.Tracer(TracerName),
 	)
 
 	if _, err := uc.Execute(userCtx(), "probe", 5, 3, 10); err != nil {

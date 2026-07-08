@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
 	"time"
 
@@ -46,18 +47,20 @@ type MorningArticleGroupResponse struct {
 
 func (g *MorningGateway) GetMorningArticleGroups(ctx context.Context, since time.Time) ([]*domain.MorningArticleGroup, error) {
 	// 1. Fetch groups from recap-worker
-	url := fmt.Sprintf("%s/v1/morning/updates?since=%s", g.recapWorkerURL, since.Format(time.RFC3339))
-	logger.Logger.InfoContext(ctx, "Fetching morning updates from recap-worker", "url", url, "since", since)
+	query := url.Values{}
+	query.Set("since", since.Format(time.RFC3339))
+	requestURL := fmt.Sprintf("%s/v1/morning/updates?%s", g.recapWorkerURL, query.Encode())
+	logger.Logger.InfoContext(ctx, "Fetching morning updates from recap-worker", "url", requestURL, "since", since)
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, requestURL, nil)
 	if err != nil {
-		logger.Logger.ErrorContext(ctx, "Failed to create request to recap-worker", "error", err, "url", url)
+		logger.Logger.ErrorContext(ctx, "Failed to create request to recap-worker", "error", err, "url", requestURL)
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
 
 	resp, err := g.httpClient.Do(req)
 	if err != nil {
-		logger.Logger.ErrorContext(ctx, "Failed to fetch morning updates from recap-worker", "error", err, "url", url)
+		logger.Logger.ErrorContext(ctx, "Failed to fetch morning updates from recap-worker", "error", err, "url", requestURL)
 		return nil, fmt.Errorf("failed to fetch morning updates: %w", err)
 	}
 	defer func() {
@@ -70,14 +73,14 @@ func (g *MorningGateway) GetMorningArticleGroups(ctx context.Context, since time
 		bodyBytes, _ := io.ReadAll(resp.Body)
 		logger.Logger.ErrorContext(ctx, "recap-worker returned non-OK status",
 			"status", resp.StatusCode,
-			"url", url,
+			"url", requestURL,
 			"response_body", string(bodyBytes))
 		return nil, fmt.Errorf("recap-worker returned status %d: %s", resp.StatusCode, string(bodyBytes))
 	}
 
 	var groupResps []MorningArticleGroupResponse
 	if err := json.NewDecoder(resp.Body).Decode(&groupResps); err != nil {
-		logger.Logger.ErrorContext(ctx, "Failed to decode recap-worker response", "error", err, "url", url)
+		logger.Logger.ErrorContext(ctx, "Failed to decode recap-worker response", "error", err, "url", requestURL)
 		return nil, fmt.Errorf("failed to decode response: %w", err)
 	}
 

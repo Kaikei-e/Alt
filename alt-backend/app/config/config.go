@@ -25,6 +25,13 @@ type Config struct {
 	ImageProxy    ImageProxyConfig    `json:"image_proxy"`
 	KnowledgeHome KnowledgeHomeConfig `json:"knowledge_home"`
 	AdminMonitor  AdminMonitorConfig  `json:"admin_monitor"`
+	Sovereign     SovereignConfig     `json:"sovereign"`
+	Meilisearch   MeilisearchConfig   `json:"meilisearch"`
+
+	// AppEnv drives fail-fast-in-production checks (e.g. Knowledge Sovereign
+	// wiring). "production" is the only value that turns missing-required-config
+	// warnings into startup panics.
+	AppEnv string `json:"app_env" env:"APP_ENV" default:"development"`
 
 	// Legacy fields for backward compatibility
 	Port               int           `json:"port"`
@@ -33,6 +40,19 @@ type Config struct {
 	MeilisearchURL     string        `json:"meilisearch_url"`
 	RateLimitInterval  time.Duration `json:"rate_limit_interval"`
 	MaxPaginationLimit int           `json:"max_pagination_limit"`
+}
+
+// SovereignConfig holds configuration for the Knowledge Sovereign Connect-RPC
+// service. URL has no default: an empty value means the client stays
+// disabled (see di/knowledge_module.go logSovereignWiringState).
+type SovereignConfig struct {
+	URL        string `json:"url" env:"SOVEREIGN_URL" default:""`
+	MetricsURL string `json:"metrics_url" env:"SOVEREIGN_METRICS_URL" default:"http://knowledge-sovereign:9501"`
+}
+
+// MeilisearchConfig holds configuration for the Meilisearch health-check target.
+type MeilisearchConfig struct {
+	Host string `json:"host" env:"MEILISEARCH_HOST" default:"http://meilisearch:7700"`
 }
 
 type PreProcessorConfig struct {

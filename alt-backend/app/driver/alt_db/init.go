@@ -46,7 +46,10 @@ func InitDBConnectionPool(ctx context.Context) (*pgxpool.Pool, error) {
 	// 拡張プロトコルのprepared statementキャッシュがtransaction poolingで問題になるのを回避
 	config.ConnConfig.DefaultQueryExecMode = pgx.QueryExecModeSimpleProtocol
 
-	maxConnLifetime, _ := time.ParseDuration(getEnvOrDefault("DB_MAX_CONN_LIFE", "1h"))
+	maxConnLifetime, err := time.ParseDuration(getEnvOrDefault("DB_MAX_CONN_LIFE", "1h"))
+	if err != nil {
+		return nil, fmt.Errorf("invalid DB_MAX_CONN_LIFE: %w", err)
+	}
 	config.MaxConnLifetime = maxConnLifetime
 	config.MaxConnIdleTime = 30 * time.Minute
 	config.HealthCheckPeriod = time.Minute
@@ -61,7 +64,9 @@ func InitDBConnectionPool(ctx context.Context) (*pgxpool.Pool, error) {
 			logger.Logger.WarnContext(ctx, "Database connection pool creation failed",
 				"attempt", i+1, "error", err, "connection_string_valid", true)
 			if i < maxRetries-1 {
-				time.Sleep(retryDelay * time.Duration(i+1))
+				if waitErr := waitOrCancel(ctx, retryDelay*time.Duration(i+1)); waitErr != nil {
+					return nil, waitErr
+				}
 				continue
 			}
 			return nil, fmt.Errorf("failed to create connection pool after %d attempts: %w", maxRetries, err)
@@ -75,7 +80,9 @@ func InitDBConnectionPool(ctx context.Context) (*pgxpool.Pool, error) {
 			logger.Logger.WarnContext(ctx, "Database ping failed",
 				"attempt", i+1, "error", err)
 			if i < maxRetries-1 {
-				time.Sleep(retryDelay * time.Duration(i+1))
+				if waitErr := waitOrCancel(ctx, retryDelay*time.Duration(i+1)); waitErr != nil {
+					return nil, waitErr
+				}
 				continue
 			}
 			return nil, fmt.Errorf("failed to ping database after %d attempts: %w", maxRetries, err)
@@ -94,6 +101,18 @@ func InitDBConnectionPool(ctx context.Context) (*pgxpool.Pool, error) {
 	}
 
 	return nil, fmt.Errorf("exhausted all connection attempts")
+}
+
+// waitOrCancel blocks for delay unless ctx is done first, in which case it
+// returns ctx.Err() immediately instead of letting a bare time.Sleep hold up
+// shutdown for the full backoff window.
+func waitOrCancel(ctx context.Context, delay time.Duration) error {
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-time.After(delay):
+		return nil
+	}
 }
 
 func getDBConnectionString() (string, error) {

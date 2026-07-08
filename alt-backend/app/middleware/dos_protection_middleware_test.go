@@ -1,6 +1,7 @@
 package middleware
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"sync"
@@ -130,7 +131,7 @@ func TestDOSProtectionMiddleware(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			middleware := DOSProtectionMiddleware(tt.config)
+			middleware := DOSProtectionMiddleware(context.Background(), tt.config)
 
 			handler := middleware(func(c echo.Context) error {
 				return c.String(http.StatusOK, "OK")
@@ -180,7 +181,7 @@ func TestDOSProtectionMiddleware_CircuitBreaker(t *testing.T) {
 		},
 	}
 
-	middleware := DOSProtectionMiddleware(config)
+	middleware := DOSProtectionMiddleware(context.Background(), config)
 
 	// Handler that simulates failures
 	failureCount := 0
@@ -232,7 +233,7 @@ func TestDOSProtectionMiddleware_CircuitBreaker_IgnoresClientErrors(t *testing.T
 		},
 	}
 
-	middleware := DOSProtectionMiddleware(config)
+	middleware := DOSProtectionMiddleware(context.Background(), config)
 
 	// Handler that returns 4xx client errors (should NOT trip circuit breaker)
 	requestCount := 0
@@ -290,7 +291,7 @@ func TestDOSProtectionMiddleware_ConcurrentRequests(t *testing.T) {
 		BlockDuration: 5 * time.Minute,
 	}
 
-	middleware := DOSProtectionMiddleware(config)
+	middleware := DOSProtectionMiddleware(context.Background(), config)
 	handler := middleware(func(c echo.Context) error {
 		return c.String(http.StatusOK, "OK")
 	})
@@ -401,7 +402,7 @@ func TestDOSProtectionMiddleware_EdgeCases(t *testing.T) {
 		BlockDuration: 5 * time.Minute,
 	}
 
-	middleware := DOSProtectionMiddleware(config)
+	middleware := DOSProtectionMiddleware(context.Background(), config)
 	handler := middleware(func(c echo.Context) error {
 		return c.String(http.StatusOK, "OK")
 	})

@@ -83,6 +83,13 @@ func emitArticleCreatedEvent(ctx context.Context, port knowledge_event_port.Appe
 		URL       string `json:"url"`
 		Title     string `json:"title"`
 		UserID    string `json:"user_id"`
+		// UpdatedAt is stamped once at outbox-enqueue time (save_article_driver.go),
+		// i.e. when the article-upsert fact actually occurred. Reused below as
+		// PublishedAt instead of re-stamping wall-clock time here: this handler
+		// can run at an arbitrary, possibly much later time (worker poll delay,
+		// crash-and-reprocess), so reading time.Now() here would make the same
+		// event replay to a different PublishedAt each time it's processed.
+		UpdatedAt string `json:"updated_at"`
 	}
 	if err := json.Unmarshal(payload, &p); err != nil {
 		logger.Logger.ErrorContext(ctx, "failed to unmarshal outbox payload for knowledge event", "error", err)
@@ -95,6 +102,14 @@ func emitArticleCreatedEvent(ctx context.Context, port knowledge_event_port.Appe
 		return
 	}
 
+	publishedAt := p.UpdatedAt
+	if publishedAt == "" {
+		// Only reachable for outbox rows enqueued before this field existed.
+		logger.Logger.WarnContext(ctx, "outbox payload missing updated_at, falling back to processing-time wall clock",
+			"article_id", p.ArticleID)
+		publishedAt = time.Now().Format(time.RFC3339)
+	}
+
 	// Marshal through the canonical domain.ArticleCreatedPayload struct so
 	// the wire key for the article URL is locked to "url" — using a raw
 	// map[string]any literal here historically wrote the legacy "link" key
@@ -103,7 +118,7 @@ func emitArticleCreatedEvent(ctx context.Context, port knowledge_event_port.Appe
 	eventPayload, _ := json.Marshal(domain.ArticleCreatedPayload{
 		ArticleID:   p.ArticleID,
 		Title:       p.Title,
-		PublishedAt: time.Now().Format(time.RFC3339),
+		PublishedAt: publishedAt,
 		TenantID:    p.UserID,
 		URL:         p.URL,
 	})

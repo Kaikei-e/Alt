@@ -5,6 +5,8 @@ import (
 	"alt/gateway/feed_url_link_gateway"
 	"alt/gateway/global_search_gateway"
 	"alt/usecase/global_search_usecase"
+
+	"go.opentelemetry.io/otel"
 )
 
 // SearchModule holds all global-search-domain components.
@@ -22,7 +24,9 @@ func newSearchModule(infra *InfraModule) *SearchModule {
 	recapGW := global_search_gateway.NewRecapSearchGateway(infra.SearchIndexerDriver)
 	tagGW := global_search_gateway.NewTagSearchGateway(tagRepo)
 
+	tracer := otel.Tracer(global_search_usecase.TracerName)
+
 	return &SearchModule{
-		GlobalSearchUsecase: global_search_usecase.NewGlobalSearchUsecase(articleGW, recapGW, tagGW),
+		GlobalSearchUsecase: global_search_usecase.NewGlobalSearchUsecase(articleGW, recapGW, tagGW, tracer),
 	}
 }

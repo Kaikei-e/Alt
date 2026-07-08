@@ -1,6 +1,7 @@
 package di
 
 import (
+	"alt/config"
 	"alt/driver/kratos_client"
 	"alt/driver/preprocessor_connect"
 	"alt/driver/sovereign_client"
@@ -242,9 +243,9 @@ type ApplicationComponents struct {
 	AdminMonitor *AdminMonitorModule
 }
 
-func NewApplicationComponents(pool *pgxpool.Pool) *ApplicationComponents {
+func NewApplicationComponents(pool *pgxpool.Pool, cfg *config.Config) *ApplicationComponents {
 	// 1. Infrastructure (shared deps)
-	infra := newInfraModule(pool)
+	infra := newInfraModule(pool, cfg)
 
 	// 2. Subscription module (needed by feed module for auto-subscribe)
 	sub := newSubscriptionModule(infra)

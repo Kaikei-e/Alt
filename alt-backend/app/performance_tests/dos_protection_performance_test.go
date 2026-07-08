@@ -3,6 +3,7 @@ package performance_tests
 import (
 	"alt/config"
 	"alt/middleware"
+	"context"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -63,7 +64,7 @@ func BenchmarkDOSProtectionMiddleware(b *testing.B) {
 		b.Run(bm.name, func(b *testing.B) {
 			// Create Echo instance with DOS protection middleware
 			e := echo.New()
-			e.Use(middleware.DOSProtectionMiddleware(middleware.ConvertConfigDOSProtection(bm.config)))
+			e.Use(middleware.DOSProtectionMiddleware(context.Background(), middleware.ConvertConfigDOSProtection(bm.config)))
 			e.GET("/v1/test", func(c echo.Context) error {
 				return c.String(http.StatusOK, "OK")
 			})
@@ -95,7 +96,7 @@ func TestDOSProtectionConcurrency(t *testing.T) {
 	}
 
 	e := echo.New()
-	e.Use(middleware.DOSProtectionMiddleware(middleware.ConvertConfigDOSProtection(config)))
+	e.Use(middleware.DOSProtectionMiddleware(context.Background(), middleware.ConvertConfigDOSProtection(config)))
 	e.GET("/v1/test", func(c echo.Context) error {
 		return c.String(http.StatusOK, "OK")
 	})
@@ -152,7 +153,7 @@ func TestDOSProtectionMemoryUsage(t *testing.T) {
 	}
 
 	e := echo.New()
-	e.Use(middleware.DOSProtectionMiddleware(middleware.ConvertConfigDOSProtection(config)))
+	e.Use(middleware.DOSProtectionMiddleware(context.Background(), middleware.ConvertConfigDOSProtection(config)))
 	e.GET("/v1/test", func(c echo.Context) error {
 		return c.String(http.StatusOK, "OK")
 	})
@@ -194,7 +195,7 @@ func TestDOSProtectionCircuitBreakerPerformance(t *testing.T) {
 	}
 
 	e := echo.New()
-	e.Use(middleware.DOSProtectionMiddleware(middleware.ConvertConfigDOSProtection(config)))
+	e.Use(middleware.DOSProtectionMiddleware(context.Background(), middleware.ConvertConfigDOSProtection(config)))
 
 	// Handler that fails initially then succeeds
 	requestCount := 0
@@ -276,7 +277,7 @@ func TestDOSProtectionScalability(t *testing.T) {
 			}
 
 			e := echo.New()
-			e.Use(middleware.DOSProtectionMiddleware(middleware.ConvertConfigDOSProtection(config)))
+			e.Use(middleware.DOSProtectionMiddleware(context.Background(), middleware.ConvertConfigDOSProtection(config)))
 			e.GET("/v1/test", func(c echo.Context) error {
 				return c.String(http.StatusOK, "OK")
 			})
@@ -320,7 +321,7 @@ func TestDOSProtectionMemoryLeakPrevention(t *testing.T) {
 	}
 
 	e := echo.New()
-	e.Use(middleware.DOSProtectionMiddleware(middleware.ConvertConfigDOSProtection(config)))
+	e.Use(middleware.DOSProtectionMiddleware(context.Background(), middleware.ConvertConfigDOSProtection(config)))
 	e.GET("/v1/test", func(c echo.Context) error {
 		return c.String(http.StatusOK, "OK")
 	})

@@ -9,7 +9,10 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"go.opentelemetry.io/otel/trace/noop"
 )
+
+var testTracer = noop.NewTracerProvider().Tracer(TracerName)
 
 // --- Mock implementations ---
 
@@ -65,6 +68,7 @@ func TestGlobalSearchUsecase_AllSucceed(t *testing.T) {
 			Hits:  []domain.GlobalTagHit{{TagName: "AI", ArticleCount: 50}},
 			Total: 1,
 		}},
+		testTracer,
 	)
 
 	result, err := uc.Execute(userCtx(), "AI", 5, 3, 10)
@@ -100,6 +104,7 @@ func TestGlobalSearchUsecase_ArticlesFail_OtherSucceed(t *testing.T) {
 		&mockTagSearch{result: &domain.TagSearchSection{
 			Hits: []domain.GlobalTagHit{{TagName: "AI"}},
 		}},
+		testTracer,
 	)
 
 	result, err := uc.Execute(userCtx(), "AI", 5, 3, 10)
@@ -128,6 +133,7 @@ func TestGlobalSearchUsecase_AllFail(t *testing.T) {
 		&mockArticleSearch{err: errors.New("articles down")},
 		&mockRecapSearch{err: errors.New("recaps down")},
 		&mockTagSearch{err: errors.New("tags down")},
+		testTracer,
 	)
 
 	_, err := uc.Execute(userCtx(), "AI", 5, 3, 10)
@@ -143,6 +149,7 @@ func TestGlobalSearchUsecase_EmptyQuery(t *testing.T) {
 		&mockArticleSearch{},
 		&mockRecapSearch{},
 		&mockTagSearch{},
+		testTracer,
 	)
 
 	_, err := uc.Execute(userCtx(), "", 5, 3, 10)
@@ -158,6 +165,7 @@ func TestGlobalSearchUsecase_DefaultLimits(t *testing.T) {
 		&mockArticleSearch{result: &domain.ArticleSearchSection{Hits: []domain.GlobalArticleHit{}}},
 		&mockRecapSearch{result: &domain.RecapSearchSection{Hits: []domain.GlobalRecapHit{}}},
 		&mockTagSearch{result: &domain.TagSearchSection{Hits: []domain.GlobalTagHit{}}},
+		testTracer,
 	)
 
 	result, err := uc.Execute(userCtx(), "test", 0, 0, 0)
@@ -177,6 +185,7 @@ func TestGlobalSearchUsecase_NoUserContext(t *testing.T) {
 		&mockArticleSearch{},
 		&mockRecapSearch{},
 		&mockTagSearch{},
+		testTracer,
 	)
 
 	_, err := uc.Execute(context.Background(), "AI", 5, 3, 10)
@@ -229,6 +238,7 @@ func TestSectionTimeout_SlowPortWithinWindow_NotDegraded(t *testing.T) {
 		&slowArticleSearch{delay: 100 * time.Millisecond},
 		&mockRecapSearch{result: &domain.RecapSearchSection{Hits: []domain.GlobalRecapHit{{ID: "r1"}}}},
 		&mockTagSearch{result: &domain.TagSearchSection{Hits: []domain.GlobalTagHit{{TagName: "x"}}}},
+		testTracer,
 	)
 
 	result, err := uc.Execute(userCtx(), "q", 5, 3, 10)
@@ -254,6 +264,7 @@ func TestSectionTimeout_SlowPortBeyondWindow_Degrades(t *testing.T) {
 		&slowArticleSearch{delay: 300 * time.Millisecond},
 		&mockRecapSearch{result: &domain.RecapSearchSection{Hits: []domain.GlobalRecapHit{{ID: "r1"}}}},
 		&mockTagSearch{result: &domain.TagSearchSection{Hits: []domain.GlobalTagHit{{TagName: "x"}}}},
+		testTracer,
 	)
 
 	result, err := uc.Execute(userCtx(), "q", 5, 3, 10)
@@ -286,6 +297,7 @@ func TestSectionTimeout_PerSectionIndependence(t *testing.T) {
 		&mockArticleSearch{result: &domain.ArticleSearchSection{Hits: []domain.GlobalArticleHit{{ID: "a1"}}}},
 		&mockRecapSearch{result: &domain.RecapSearchSection{Hits: []domain.GlobalRecapHit{{ID: "r1"}}}},
 		&slowTagSearch{delay: 200 * time.Millisecond},
+		testTracer,
 	)
 
 	result, err := uc.Execute(userCtx(), "q", 5, 3, 10)

@@ -17,7 +17,7 @@ import (
 // ArticleRepository is the narrow slice of the article table this usecase
 // needs. It is satisfied structurally by *alt_db.AltDBRepository.
 type ArticleRepository interface {
-	FetchArticleByURL(ctx context.Context, articleURL string) (*domain.ArticleContent, error)
+	FetchArticlesByURLs(ctx context.Context, urls []string) (map[string]*domain.ArticleContent, error)
 	SaveArticle(ctx context.Context, url, title, content string) (string, error)
 }
 
@@ -99,20 +99,24 @@ func (u *Usecase) Execute(ctx context.Context, userID string, feedURLs []string)
 	return results
 }
 
-// resolveArticles checks the database for each feedURL and batch-fetches
-// (then saves) the ones that are missing.
+// resolveArticles checks the database for feedURLs in a single batch query
+// (avoiding an N+1 round-trip per URL) and batch-fetches (then saves) the
+// ones that are missing.
 func (u *Usecase) resolveArticles(ctx context.Context, feedURLs []string) map[string]*articleInfo {
 	articles := make(map[string]*articleInfo, len(feedURLs))
-	urlsToFetch := make([]string, 0)
 
-	for _, feedURL := range feedURLs {
-		existing, err := u.repo.FetchArticleByURL(ctx, feedURL)
-		if err != nil {
+	existing, err := u.repo.FetchArticlesByURLs(ctx, feedURLs)
+	if err != nil {
+		for _, feedURL := range feedURLs {
 			articles[feedURL] = &articleInfo{err: err}
-			continue
 		}
-		if existing != nil {
-			articles[feedURL] = &articleInfo{id: existing.ID, title: existing.Title, exists: true}
+		return articles
+	}
+
+	urlsToFetch := make([]string, 0)
+	for _, feedURL := range feedURLs {
+		if a, ok := existing[feedURL]; ok && a != nil {
+			articles[feedURL] = &articleInfo{id: a.ID, title: a.Title, exists: true}
 			continue
 		}
 		urlsToFetch = append(urlsToFetch, feedURL)

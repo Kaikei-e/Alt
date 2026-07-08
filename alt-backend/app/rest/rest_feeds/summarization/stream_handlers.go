@@ -132,7 +132,9 @@ func RestHandleSummarizeFeedStream(container *di.ApplicationComponents, cfg *con
 
 		duration := time.Since(startTime)
 		if summary != "" && req.ArticleID != "" {
-			if err := container.AltDBRepository.SaveArticleSummary(context.Background(), req.ArticleID, userCtx.UserID.String(), req.Title, summary); err != nil {
+			saveCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 10*time.Second)
+			defer cancel()
+			if err := container.AltDBRepository.SaveArticleSummary(saveCtx, req.ArticleID, userCtx.UserID.String(), req.Title, summary); err != nil {
 				logger.Logger.ErrorContext(ctx, "Failed to save streamed summary to database", "error", err, "article_id", req.ArticleID)
 			} else {
 				logger.Logger.InfoContext(ctx, "Streamed summary saved to database", "article_id", req.ArticleID, "summary_length", len(summary))

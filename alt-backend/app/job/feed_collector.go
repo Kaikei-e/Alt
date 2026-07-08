@@ -105,6 +105,11 @@ func CollectMultipleFeeds(ctx context.Context, feedLinks []domain.FeedLink, rate
 
 		logger.Logger.InfoContext(ctx, "Successfully parsed feed", "url", feedURL.String(), "title", feed.Title)
 
+		// Decay any prior rate-limit backoff for this host now that it responded normally.
+		if rateLimiter != nil {
+			rateLimiter.RecordSuccess(feedURL.Host)
+		}
+
 		// Convert feed items and set feed_link_id
 		items := ConvertFeedToFeedItem([]*rssFeed.Feed{feed})
 		feedLinkIDStr := feedLink.ID.String()

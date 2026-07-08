@@ -3,6 +3,7 @@ package alt_db
 import (
 	"context"
 	"errors"
+	"fmt"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -30,7 +31,7 @@ func (r *ArticleRepository) CreateArticleInternal(ctx context.Context, params Cr
 
 	tx, err := r.pool.Begin(ctx)
 	if err != nil {
-		return "", false, err
+		return "", false, fmt.Errorf("begin tx: %w", err)
 	}
 	defer tx.Rollback(ctx)
 
@@ -88,11 +89,11 @@ func (r *ArticleRepository) CreateArticleInternal(ctx context.Context, params Cr
 		language,
 	).Scan(&articleID, &created)
 	if err != nil {
-		return "", false, err
+		return "", false, fmt.Errorf("upsert article: %w", err)
 	}
 
 	if err := tx.Commit(ctx); err != nil {
-		return "", false, err
+		return "", false, fmt.Errorf("commit tx: %w", err)
 	}
 
 	return articleID, created, nil
