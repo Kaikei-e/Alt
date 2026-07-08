@@ -54,9 +54,13 @@ def create_chat_router(gateway: OllamaGateway) -> APIRouter:
         set_ai_pipeline("chat-proxy")
         set_processing_stage("handler")
 
-        if request.model and not (
-            gateway.config.is_base_model_name(request.model)
-            or gateway.config.is_bucket_model_name(request.model)
+        if (
+            gateway.config.model_routing_enabled
+            and request.model
+            and not (
+                gateway.config.is_base_model_name(request.model)
+                or gateway.config.is_bucket_model_name(request.model)
+            )
         ):
             logger.warning(
                 "Chat proxy: rejected unknown model", extra={"model": request.model}
