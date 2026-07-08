@@ -90,7 +90,9 @@ impl BatchTransmitter {
             payload.map(|p| (p, batch))
         })
         .await
-        .map_err(|e| TransmissionError::InvalidResponse(format!("serialization task panicked: {e}")))??;
+        .map_err(|e| {
+            TransmissionError::InvalidResponse(format!("serialization task panicked: {e}"))
+        })??;
         let bytes_sent = payload.len();
 
         // Build headers
@@ -211,7 +213,6 @@ impl BatchTransmitter {
 
         Ok(headers)
     }
-
 }
 
 /// OTLP-specific batch transmitter.
@@ -252,9 +253,9 @@ impl OtlpBatchTransmitter {
         encoder
             .write_all(data)
             .map_err(|e| TransmissionError::InvalidResponse(format!("Compression failed: {e}")))?;
-        encoder
-            .finish()
-            .map_err(|e| TransmissionError::InvalidResponse(format!("Compression finish failed: {e}")))
+        encoder.finish().map_err(|e| {
+            TransmissionError::InvalidResponse(format!("Compression finish failed: {e}"))
+        })
     }
 
     /// Sends a batch of logs to the OTLP endpoint.
@@ -284,19 +285,22 @@ impl OtlpBatchTransmitter {
         // every other task scheduled on it) for the duration of a large
         // batch.
         let this = self.clone();
-        let (batch, final_payload, bytes_sent, compressed) = tokio::task::spawn_blocking(move || {
-            let payload = this.serializer.serialize_batch(&batch)?;
-            let bytes_sent = payload.len();
-            let use_compression = this.client.config.enable_compression && bytes_sent > 1024;
-            let (final_payload, compressed) = if use_compression {
-                (Self::gzip(&payload)?, true)
-            } else {
-                (payload, false)
-            };
-            Ok::<_, TransmissionError>((batch, final_payload, bytes_sent, compressed))
-        })
-        .await
-        .map_err(|e| TransmissionError::InvalidResponse(format!("serialization task panicked: {e}")))??;
+        let (batch, final_payload, bytes_sent, compressed) =
+            tokio::task::spawn_blocking(move || {
+                let payload = this.serializer.serialize_batch(&batch)?;
+                let bytes_sent = payload.len();
+                let use_compression = this.client.config.enable_compression && bytes_sent > 1024;
+                let (final_payload, compressed) = if use_compression {
+                    (Self::gzip(&payload)?, true)
+                } else {
+                    (payload, false)
+                };
+                Ok::<_, TransmissionError>((batch, final_payload, bytes_sent, compressed))
+            })
+            .await
+            .map_err(|e| {
+                TransmissionError::InvalidResponse(format!("serialization task panicked: {e}"))
+            })??;
 
         // Build headers
         let headers = self.build_otlp_headers(&batch, compressed)?;

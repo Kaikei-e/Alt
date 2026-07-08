@@ -177,7 +177,10 @@ impl UniversalParser {
     /// Validate UTF-8 and handle invalid sequences gracefully. Returns a
     /// borrowed `Cow` so the (common) valid-UTF-8 case costs no allocation -
     /// only genuinely invalid input pays for the lossy-replacement copy.
-    fn validate_utf8<'a>(&self, log_bytes: &'a [u8]) -> Result<std::borrow::Cow<'a, str>, ParseError> {
+    fn validate_utf8<'a>(
+        &self,
+        log_bytes: &'a [u8],
+    ) -> Result<std::borrow::Cow<'a, str>, ParseError> {
         if log_bytes.is_empty() {
             return Err(ParseError::InvalidFormat("Empty log line".to_string()));
         }
@@ -662,10 +665,7 @@ mod tests {
         assert_eq!(entry.log_type, "structured");
         assert_eq!(entry.level, Some(LogLevel::Info));
         assert_eq!(entry.message, "Processing recap job");
-        assert_eq!(
-            entry.fields.get("alt.job.id"),
-            Some(&"abc-123".to_string())
-        );
+        assert_eq!(entry.fields.get("alt.job.id"), Some(&"abc-123".to_string()));
         assert_eq!(
             entry.fields.get("alt.processing.stage"),
             Some(&"clustering".to_string())

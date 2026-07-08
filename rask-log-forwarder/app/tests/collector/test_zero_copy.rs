@@ -103,7 +103,9 @@ async fn test_zero_copy_bytes_from_docker_logs() -> Result<(), Box<dyn std::erro
 
                             let mut found_logs = false;
                             while start.elapsed() < timeout_duration {
-                                if let Ok(bytes) = rx.try_recv() && !bytes.is_empty() {
+                                if let Ok(bytes) = rx.try_recv()
+                                    && !bytes.is_empty()
+                                {
                                     let log_str =
                                         std::str::from_utf8(&bytes).unwrap_or("Invalid UTF-8");
                                     println!("Received log data: {log_str}");

@@ -468,7 +468,10 @@ impl LogBuffer {
                 // with a bounded sleep between attempts instead of hot-
                 // spinning on `yield_now` (which pins a CPU core at 100%
                 // while backpressured).
-                let mut delay = self.config.backpressure_delay.max(Duration::from_micros(50));
+                let mut delay = self
+                    .config
+                    .backpressure_delay
+                    .max(Duration::from_micros(50));
                 const MAX_BLOCK_DELAY: Duration = Duration::from_millis(10);
                 loop {
                     match self.push(entry.clone()) {

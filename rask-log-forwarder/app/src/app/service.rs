@@ -133,11 +133,14 @@ impl ServiceManager {
                 component: "reliability_manager".to_string(),
             }
         })?);
-        let sender = Arc::new(self.sender.take().ok_or_else(|| {
-            ServiceError::ComponentNotInitialized {
-                component: "sender".to_string(),
-            }
-        })?);
+        let sender =
+            Arc::new(
+                self.sender
+                    .take()
+                    .ok_or_else(|| ServiceError::ComponentNotInitialized {
+                        component: "sender".to_string(),
+                    })?,
+            );
 
         // Shared shutdown signal for background tasks that live alongside
         // the main loop but aren't driven by its own `select!` (currently:

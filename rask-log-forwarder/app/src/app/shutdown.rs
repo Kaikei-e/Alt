@@ -2,7 +2,7 @@ use super::service::ServiceError;
 use std::time::Duration;
 use tokio::signal;
 #[cfg(unix)]
-use tokio::signal::unix::{signal as unix_signal, SignalKind};
+use tokio::signal::unix::{SignalKind, signal as unix_signal};
 use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
 use tracing::{error, info, warn};

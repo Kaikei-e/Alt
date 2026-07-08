@@ -339,9 +339,14 @@ mod reconnect_tests {
             LogCollector::sleep_or_cancelled(Duration::from_secs(30), &token),
         )
         .await
-        .expect("sleep_or_cancelled must return promptly once cancelled, not wait out the full delay");
+        .expect(
+            "sleep_or_cancelled must return promptly once cancelled, not wait out the full delay",
+        );
 
-        assert!(cancelled, "sleep_or_cancelled must report cancellation, not a timed-out sleep");
+        assert!(
+            cancelled,
+            "sleep_or_cancelled must report cancellation, not a timed-out sleep"
+        );
     }
 
     #[tokio::test]
@@ -350,6 +355,9 @@ mod reconnect_tests {
 
         let cancelled = LogCollector::sleep_or_cancelled(Duration::from_millis(10), &token).await;
 
-        assert!(!cancelled, "an uncancelled sleep must report false once the delay elapses");
+        assert!(
+            !cancelled,
+            "an uncancelled sleep must report false once the delay elapses"
+        );
     }
 }

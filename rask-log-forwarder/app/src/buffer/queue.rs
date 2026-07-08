@@ -153,7 +153,9 @@ impl LogBuffer {
                 // when pushed but will never be `pop`'d, so this must be
                 // reconciled here - otherwise it's indistinguishable from an
                 // ordinary empty queue and current_len drifts upward forever.
-                tracing::warn!("LogBuffer receiver lagged by {n} entries; counting them as dropped");
+                tracing::warn!(
+                    "LogBuffer receiver lagged by {n} entries; counting them as dropped"
+                );
                 self.dropped.fetch_add(n, Ordering::Relaxed);
                 let skipped = usize::try_from(n).unwrap_or(usize::MAX);
                 self.current_len
@@ -161,7 +163,9 @@ impl LogBuffer {
                         Some(current.saturating_sub(skipped))
                     })
                     .ok();
-                Err(LegacyBufferError::ReceiveFailed(format!("lagged by {n} entries")))
+                Err(LegacyBufferError::ReceiveFailed(format!(
+                    "lagged by {n} entries"
+                )))
             }
         }
     }

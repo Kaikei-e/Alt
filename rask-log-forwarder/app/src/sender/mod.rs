@@ -6,15 +6,15 @@ pub mod serialization;
 pub mod stats;
 pub mod transmission;
 
-pub use stats::{AtomicConnectionStats, ConnectionStatsSnapshot};
 pub use client::{ClientConfig, ClientError, ConnectionStats, HttpClient};
 pub use metrics::{MetricsCollector, PerformanceMetrics};
 #[cfg(feature = "otlp")]
 pub use otlp::OtlpSerializer;
 pub use serialization::{BatchSerializer, SerializationError, SerializationFormat};
-pub use transmission::{BatchTransmitter, TransmissionError, TransmissionResult};
+pub use stats::{AtomicConnectionStats, ConnectionStatsSnapshot};
 #[cfg(feature = "otlp")]
 pub use transmission::OtlpBatchTransmitter;
+pub use transmission::{BatchTransmitter, TransmissionError, TransmissionResult};
 
 // High-level sender that combines all components
 #[derive(Clone)]

@@ -193,7 +193,10 @@ impl Config {
         load_env_var("ENABLE_DISK_FALLBACK", &mut config.enable_disk_fallback)?;
         load_env_path("DISK_FALLBACK_PATH", &mut config.disk_fallback_path);
         load_env_var("MAX_DISK_USAGE_MB", &mut config.max_disk_usage_mb)?;
-        load_env_var("CONNECTION_TIMEOUT_SECS", &mut config.connection_timeout_secs)?;
+        load_env_var(
+            "CONNECTION_TIMEOUT_SECS",
+            &mut config.connection_timeout_secs,
+        )?;
         load_env_var("MAX_CONNECTIONS", &mut config.max_connections)?;
         load_env_path_opt("CONFIG_FILE", &mut config.config_file);
         load_env_var("ENABLE_COMPRESSION", &mut config.enable_compression)?;

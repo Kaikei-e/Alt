@@ -44,7 +44,9 @@ impl MockHttpClient {
     }
 
     pub async fn health_check(&self) -> Result<(), ClientError> {
-        if self.should_fail && let Some(ref error) = self.error_type {
+        if self.should_fail
+            && let Some(ref error) = self.error_type
+        {
             match error {
                 ClientError::HttpError { status, message } => {
                     return Err(ClientError::HttpError {

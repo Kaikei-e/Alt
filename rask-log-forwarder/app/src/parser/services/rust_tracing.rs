@@ -73,8 +73,7 @@ impl ServiceParser for RustTracingParser {
                 Ok(json) => {
                     if let Some(obj) = json.as_object() {
                         // Extract level from top-level "level" field
-                        let level_str =
-                            obj.get("level").and_then(|v| v.as_str()).unwrap_or("INFO");
+                        let level_str = obj.get("level").and_then(|v| v.as_str()).unwrap_or("INFO");
 
                         let level = match level_str {
                             "DEBUG" | "debug" => LogLevel::Debug,
@@ -174,10 +173,7 @@ mod tests {
         assert_eq!(entry.level, Some(LogLevel::Info));
 
         // Business context fields should be flattened from fields object
-        assert_eq!(
-            entry.fields.get("alt.job.id"),
-            Some(&"abc-123".to_string())
-        );
+        assert_eq!(entry.fields.get("alt.job.id"), Some(&"abc-123".to_string()));
         assert_eq!(
             entry.fields.get("alt.processing.stage"),
             Some(&"clustering".to_string())
@@ -230,14 +226,14 @@ mod tests {
 
         // Rust tracing fmt().json() — should match
         let rust_log = r#"{"timestamp":"2026-03-04T10:00:00Z","level":"INFO","fields":{"message":"Processing recap job","alt.job.id":"abc-123"}}"#;
-        assert!(parser.can_parse(rust_log), "Should detect Rust tracing format");
+        assert!(
+            parser.can_parse(rust_log),
+            "Should detect Rust tracing format"
+        );
 
         // Go slog JSON — should NOT match (has top-level "msg")
         let go_log = r#"{"level":"info","msg":"Processing request","service":"alt-backend"}"#;
-        assert!(
-            !parser.can_parse(go_log),
-            "Should not match Go slog format"
-        );
+        assert!(!parser.can_parse(go_log), "Should not match Go slog format");
 
         // Go slog JSON with "message" — should NOT match
         let go_log2 = r#"{"level":"info","message":"Processing request","service":"alt-backend"}"#;
@@ -271,10 +267,7 @@ mod tests {
 
         assert_eq!(entry.log_type, "structured");
         assert_eq!(entry.message, "Processing recap job");
-        assert_eq!(
-            entry.fields.get("alt.job.id"),
-            Some(&"abc-123".to_string())
-        );
+        assert_eq!(entry.fields.get("alt.job.id"), Some(&"abc-123".to_string()));
     }
 
     #[test]
@@ -287,10 +280,7 @@ mod tests {
         let entry = parser.parse_log(log).unwrap();
 
         assert_eq!(entry.message, "Job started");
-        assert_eq!(
-            entry.fields.get("alt.job.id"),
-            Some(&"job-789".to_string())
-        );
+        assert_eq!(entry.fields.get("alt.job.id"), Some(&"job-789".to_string()));
         // target, span, spans should NOT be in fields
         assert!(!entry.fields.contains_key("target"));
         assert!(!entry.fields.contains_key("span"));

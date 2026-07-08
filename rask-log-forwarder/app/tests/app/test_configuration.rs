@@ -427,7 +427,10 @@ fn test_protocol_configuration() {
     // Test default protocol (NDJSON)
     let config = Config::from_env().unwrap();
     assert!(
-        matches!(config.protocol, rask_log_forwarder::app::config::Protocol::Ndjson),
+        matches!(
+            config.protocol,
+            rask_log_forwarder::app::config::Protocol::Ndjson
+        ),
         "Default protocol should be NDJSON"
     );
 
@@ -437,7 +440,10 @@ fn test_protocol_configuration() {
     }
     let config = Config::from_env().unwrap();
     assert!(
-        matches!(config.protocol, rask_log_forwarder::app::config::Protocol::Otlp),
+        matches!(
+            config.protocol,
+            rask_log_forwarder::app::config::Protocol::Otlp
+        ),
         "Protocol should be OTLP"
     );
 
@@ -463,14 +469,23 @@ fn test_otlp_endpoint_validation() {
     };
 
     // Valid OTLP endpoint should pass
-    assert!(config.validate().is_ok(), "Valid OTLP endpoint should pass validation");
+    assert!(
+        config.validate().is_ok(),
+        "Valid OTLP endpoint should pass validation"
+    );
 
     // Invalid OTLP endpoint should fail when protocol is OTLP
     config.otlp_endpoint = "not-a-valid-url".to_string();
-    assert!(config.validate().is_err(), "Invalid OTLP endpoint should fail validation");
+    assert!(
+        config.validate().is_err(),
+        "Invalid OTLP endpoint should fail validation"
+    );
 
     // Invalid OTLP endpoint should NOT fail when protocol is NDJSON
     config.protocol = Protocol::Ndjson;
     config.otlp_endpoint = "not-a-valid-url".to_string();
-    assert!(config.validate().is_ok(), "OTLP endpoint validation should be skipped for NDJSON protocol");
+    assert!(
+        config.validate().is_ok(),
+        "OTLP endpoint validation should be skipped for NDJSON protocol"
+    );
 }

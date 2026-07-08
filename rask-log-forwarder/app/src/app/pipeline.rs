@@ -277,7 +277,10 @@ async fn flush_batch(
 /// Send batch using OTLP protobuf format via the transmitter built once at
 /// the start of `run_processing_loop` (see `otlp_transmitter`).
 #[cfg(feature = "otlp")]
-async fn flush_otlp_batch(entries: Vec<EnrichedLogEntry>, otlp_transmitter: &OtlpTransmitterHandle) {
+async fn flush_otlp_batch(
+    entries: Vec<EnrichedLogEntry>,
+    otlp_transmitter: &OtlpTransmitterHandle,
+) {
     let batch = Batch::new(entries, BatchType::SizeBased);
     let entry_count = batch.size();
 
@@ -349,7 +352,10 @@ mod tests {
         }
     }
 
-    async fn build_reliability_manager(endpoint: String, storage_path: std::path::PathBuf) -> ReliabilityManager {
+    async fn build_reliability_manager(
+        endpoint: String,
+        storage_path: std::path::PathBuf,
+    ) -> ReliabilityManager {
         let client_config = ClientConfig {
             endpoint,
             timeout: Duration::from_millis(500),
@@ -417,7 +423,10 @@ mod tests {
         )
         .await;
 
-        assert!(log_batch.is_empty(), "flush_batch should always drain the batch it was given");
+        assert!(
+            log_batch.is_empty(),
+            "flush_batch should always drain the batch it was given"
+        );
 
         let snapshot = reliability_manager.get_metrics_snapshot().await;
         assert_eq!(

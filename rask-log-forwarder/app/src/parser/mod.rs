@@ -9,18 +9,18 @@ pub mod simd;
 pub mod universal;
 pub mod zero_alloc_parser;
 
-pub use schema::{LogEntry, NginxLogEntry};
-pub use simd::SimdParser;
 pub use docker::{DockerJsonParser, DockerLogEntry, ParseError};
+pub use regex_error::{FallbackStrategy, RegexError};
+pub use regex_patterns::{NginxAccessMatch, SimplePatternParser, StaticRegexSet};
+pub use registry::ServiceParserRegistry;
+pub use schema::{LogEntry, NginxLogEntry};
 pub use services::{
     GoStructuredParser, LogLevel, MeilisearchParser, NginxParser, ParsedLogEntry, PostgresParser,
     ServiceParser,
 };
+pub use simd::SimdParser;
 pub use universal::{EnrichedLogEntry, UniversalParser};
-pub use regex_error::{FallbackStrategy, RegexError};
-pub use regex_patterns::{NginxAccessMatch, SimplePatternParser, StaticRegexSet};
 pub use zero_alloc_parser::{ImprovedNginxParser, ZeroAllocParser};
-pub use registry::ServiceParserRegistry;
 
 #[cfg(test)]
 mod tests {

@@ -183,7 +183,8 @@ mod tests {
     fn test_postgres_log_parsing() {
         let parser = PostgresParser::new();
 
-        let pg_log = r"2024-01-01 12:00:00.123 UTC [123] LOG:  statement: SELECT * FROM users WHERE id = $1";
+        let pg_log =
+            r"2024-01-01 12:00:00.123 UTC [123] LOG:  statement: SELECT * FROM users WHERE id = $1";
 
         let entry = parser.parse_log(pg_log).unwrap();
 

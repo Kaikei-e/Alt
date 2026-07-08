@@ -81,8 +81,7 @@ impl ServiceParser for PythonStructlogParser {
                             .to_string();
 
                         // Extract level
-                        let level_str =
-                            obj.get("level").and_then(|v| v.as_str()).unwrap_or("info");
+                        let level_str = obj.get("level").and_then(|v| v.as_str()).unwrap_or("info");
 
                         let level = match level_str {
                             "DEBUG" | "debug" => LogLevel::Debug,
@@ -213,11 +212,7 @@ mod tests {
                 level_str
             );
             let entry = parser.parse_log(&log).unwrap();
-            assert_eq!(
-                entry.level,
-                Some(expected),
-                "Failed for level {level_str}"
-            );
+            assert_eq!(entry.level, Some(expected), "Failed for level {level_str}");
         }
     }
 
@@ -234,10 +229,7 @@ mod tests {
 
         // Go slog JSON — should NOT match (has "msg")
         let go_log = r#"{"level":"info","msg":"Processing request","service":"alt-backend"}"#;
-        assert!(
-            !parser.can_parse(go_log),
-            "Should not match Go slog format"
-        );
+        assert!(!parser.can_parse(go_log), "Should not match Go slog format");
     }
 
     #[test]

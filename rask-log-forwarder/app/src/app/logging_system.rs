@@ -88,9 +88,12 @@ impl LoggingSystem {
             .unwrap_or(true); // Default to JSON for production
 
         if use_json {
-            let subscriber = tracing_subscriber::registry()
-                .with(env_filter)
-                .with(fmt::layer().json().flatten_event(true).with_current_span(true));
+            let subscriber = tracing_subscriber::registry().with(env_filter).with(
+                fmt::layer()
+                    .json()
+                    .flatten_event(true)
+                    .with_current_span(true),
+            );
 
             tracing::subscriber::set_global_default(subscriber).map_err(|e| {
                 InitializationError::LoggingInitFailed {

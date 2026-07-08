@@ -67,10 +67,7 @@ impl ServiceParser for GoStructuredParser {
                             .get("method")
                             .and_then(|v| v.as_str())
                             .map(str::to_string);
-                        let path = obj
-                            .get("path")
-                            .and_then(|v| v.as_str())
-                            .map(str::to_string);
+                        let path = obj.get("path").and_then(|v| v.as_str()).map(str::to_string);
                         #[allow(clippy::cast_possible_truncation)]
                         let status_code =
                             obj.get("status").and_then(|v| v.as_u64()).map(|n| n as u16);

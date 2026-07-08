@@ -2,7 +2,7 @@
 
 use super::{LogLevel, ParsedLogEntry, ServiceParser};
 use crate::parser::docker::ParseError;
-use crate::parser::generated::{pattern_index, VALIDATED_PATTERNS};
+use crate::parser::generated::{VALIDATED_PATTERNS, pattern_index};
 use crate::parser::regex_patterns::SimplePatternParser;
 
 /// Parser for Nginx access and error logs.

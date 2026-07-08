@@ -115,10 +115,11 @@ fn build_disabled_metrics_template() -> Result<DisabledMetricsTemplate, MetricsE
     .map_err(|e| MetricsError::InitializationFailed {
         reason: format!("Failed to create disabled batches_sent counter: {e}"),
     })?;
-    let entries_sent =
-        Counter::new("disabled_entries", "Disabled").map_err(|e| MetricsError::InitializationFailed {
+    let entries_sent = Counter::new("disabled_entries", "Disabled").map_err(|e| {
+        MetricsError::InitializationFailed {
             reason: format!("Failed to create disabled entries_sent counter: {e}"),
-        })?;
+        }
+    })?;
     let transmission_latency = HistogramVec::new(
         prometheus::HistogramOpts::new("disabled_latency", "Disabled"),
         &["range"],
@@ -126,10 +127,11 @@ fn build_disabled_metrics_template() -> Result<DisabledMetricsTemplate, MetricsE
     .map_err(|e| MetricsError::InitializationFailed {
         reason: format!("Failed to create disabled transmission_latency histogram: {e}"),
     })?;
-    let disk_fallback_counter =
-        Counter::new("disabled_disk", "Disabled").map_err(|e| MetricsError::InitializationFailed {
+    let disk_fallback_counter = Counter::new("disabled_disk", "Disabled").map_err(|e| {
+        MetricsError::InitializationFailed {
             reason: format!("Failed to create disabled disk_fallback_counter: {e}"),
-        })?;
+        }
+    })?;
     let retry_attempts = CounterVec::new(
         prometheus::Opts::new("disabled_retry", "Disabled"),
         &["attempt"],
@@ -144,10 +146,11 @@ fn build_disabled_metrics_template() -> Result<DisabledMetricsTemplate, MetricsE
     .map_err(|e| MetricsError::InitializationFailed {
         reason: format!("Failed to create disabled health_checks counter: {e}"),
     })?;
-    let memory_usage =
-        Gauge::new("disabled_memory", "Disabled").map_err(|e| MetricsError::InitializationFailed {
+    let memory_usage = Gauge::new("disabled_memory", "Disabled").map_err(|e| {
+        MetricsError::InitializationFailed {
             reason: format!("Failed to create disabled memory_usage gauge: {e}"),
-        })?;
+        }
+    })?;
     let active_connections = Gauge::new("disabled_connections", "Disabled").map_err(|e| {
         MetricsError::InitializationFailed {
             reason: format!("Failed to create disabled active_connections gauge: {e}"),

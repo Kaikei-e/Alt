@@ -334,7 +334,10 @@ mod replay_tests {
         }
     }
 
-    async fn build_manager(endpoint: String, storage_path: std::path::PathBuf) -> ReliabilityManager {
+    async fn build_manager(
+        endpoint: String,
+        storage_path: std::path::PathBuf,
+    ) -> ReliabilityManager {
         let log_sender = LogSender::new(ClientConfig {
             endpoint,
             timeout: Duration::from_millis(500),
@@ -424,7 +427,8 @@ mod replay_tests {
             .await;
 
         let storage_dir = tempfile::tempdir().unwrap();
-        let manager = Arc::new(build_manager(mock_server.uri(), storage_dir.path().to_path_buf()).await);
+        let manager =
+            Arc::new(build_manager(mock_server.uri(), storage_dir.path().to_path_buf()).await);
 
         let cancel_token = CancellationToken::new();
         let handle = manager
