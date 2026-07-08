@@ -109,7 +109,7 @@ onMount(() => {
 		</div>
 	{:else}
 		<div class="aco-grid">
-			{#each reports as report, i}
+			{#each reports as report, i (report.reportId)}
 				<div
 					class="report-card"
 					style="--stagger: {i}"

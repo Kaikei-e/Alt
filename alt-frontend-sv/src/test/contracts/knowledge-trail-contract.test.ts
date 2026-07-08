@@ -31,9 +31,9 @@ describe("Knowledge Trail API Contract", () => {
 			});
 
 			expect(response.footprints).toHaveLength(1);
-			expect(response.footprints[0].verb).toBe("read");
-			expect(response.footprints[0].tags).toEqual(["rust", "async"]);
-			expect(response.footprints[0].wear).toBe("deep");
+			expect(response.footprints[0]!.verb).toBe("read");
+			expect(response.footprints[0]!.tags).toEqual(["rust", "async"]);
+			expect(response.footprints[0]!.wear).toBe("deep");
 			expect(response.hasMore).toBe(true);
 		});
 
@@ -54,7 +54,7 @@ describe("Knowledge Trail API Contract", () => {
 			const deserialized = fromBinary(GetTrailResponseSchema, binary);
 
 			expect(deserialized.footprints).toHaveLength(1);
-			expect(deserialized.footprints[0].verb).toBe("asked");
+			expect(deserialized.footprints[0]!.verb).toBe("asked");
 			expect(deserialized.hasMore).toBe(false);
 		});
 	});

@@ -26,6 +26,9 @@ export const POST: RequestHandler = async ({ request }) => {
 	} catch (error) {
 		const errorMessage = error instanceof Error ? error.message : String(error);
 		console.error("Error in /api/v1/feeds/read:", errorMessage);
-		return json({ error: errorMessage }, { status: 500 });
+		return json(
+			{ error: "Failed to update feed read status" },
+			{ status: 500 },
+		);
 	}
 };

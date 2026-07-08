@@ -81,7 +81,7 @@ const dateStr = new Date().toLocaleDateString("en-US", {
 		</div>
 	{:else}
 		<div class="max-w-[720px] mx-auto mt-3">
-			{#each reports as report, i}
+			{#each reports as report, i (report.reportId)}
 				<div class="card-enter" style="--stagger: {i};">
 					<MobileAcolyteReportCard
 						{report}

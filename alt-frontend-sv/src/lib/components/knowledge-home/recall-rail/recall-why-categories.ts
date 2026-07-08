@@ -62,7 +62,7 @@ export function categorizeRecallReasons(
 	for (const key of CATEGORY_ORDER) {
 		const items = bucket.get(key);
 		if (items) {
-			groups.push({ key, label: CATEGORY_LABELS[key], items });
+			groups.push({ key, label: CATEGORY_LABELS[key]!, items });
 		}
 	}
 

@@ -13,9 +13,9 @@ function find(key: string): MetricResult | undefined {
 	return metrics.find((m) => m.key === key);
 }
 
-const burn1h = $derived(() => find("availability_burn_1h"));
-const burn6h = $derived(() => find("availability_burn_6h"));
-const errorRatio = $derived(() => find("http_error_ratio"));
+const burn1h = $derived(find("availability_burn_1h"));
+const burn6h = $derived(find("availability_burn_6h"));
+const errorRatio = $derived(find("http_error_ratio"));
 
 function latest(m: MetricResult | undefined): number | null {
 	const last = m?.series[0]?.points.at(-1)?.value;
@@ -33,8 +33,8 @@ function pointsOf(m: MetricResult | undefined): number[] {
 // 30-day SLO compliance — approximate as 1 - (max recent error ratio over the
 // visible window). Operators can read the full SLO from Grafana when the
 // number looks ambiguous; this is the "is this getting worse" view.
-const sloEstimate = $derived(() => {
-	const v = latest(errorRatio());
+const sloEstimate = $derived.by(() => {
+	const v = latest(errorRatio);
 	if (v == null) return null;
 	return Math.max(0, 1 - v);
 });
@@ -58,20 +58,20 @@ function tierLabel(value: number | null): string {
 	<h2 class="section-head">SLO burn rate — 99.9% availability</h2>
 
 	<div class="grid">
-		<article class="cell" data-tier={burnSeverity(latest(burn1h()))}>
+		<article class="cell" data-tier={burnSeverity(latest(burn1h))}>
 			<header>
 				<span class="label">Burn rate · 1h</span>
-				<span class="tier">{tierLabel(latest(burn1h()))}</span>
+				<span class="tier">{tierLabel(latest(burn1h))}</span>
 			</header>
 			<div class="value">
 				<span class="num">
-					{latest(burn1h()) != null ? latest(burn1h())!.toFixed(2) + "×" : "—"}
+					{latest(burn1h) != null ? latest(burn1h)!.toFixed(2) + "×" : "—"}
 				</span>
 			</div>
 			<div class="spark" aria-hidden="true">
-				{#if pointsOf(burn1h()).length >= 2}
+				{#if pointsOf(burn1h).length >= 2}
 					<SLISparkline
-						values={pointsOf(burn1h())}
+						values={pointsOf(burn1h)}
 						threshold={14.4}
 						width={240}
 						height={36}
@@ -87,20 +87,20 @@ function tierLabel(value: number | null): string {
 			</ul>
 		</article>
 
-		<article class="cell" data-tier={burnSeverity(latest(burn6h()))}>
+		<article class="cell" data-tier={burnSeverity(latest(burn6h))}>
 			<header>
 				<span class="label">Burn rate · 6h</span>
-				<span class="tier">{tierLabel(latest(burn6h()))}</span>
+				<span class="tier">{tierLabel(latest(burn6h))}</span>
 			</header>
 			<div class="value">
 				<span class="num">
-					{latest(burn6h()) != null ? latest(burn6h())!.toFixed(2) + "×" : "—"}
+					{latest(burn6h) != null ? latest(burn6h)!.toFixed(2) + "×" : "—"}
 				</span>
 			</div>
 			<div class="spark" aria-hidden="true">
-				{#if pointsOf(burn6h()).length >= 2}
+				{#if pointsOf(burn6h).length >= 2}
 					<SLISparkline
-						values={pointsOf(burn6h())}
+						values={pointsOf(burn6h)}
 						threshold={6}
 						width={240}
 						height={36}
@@ -122,8 +122,8 @@ function tierLabel(value: number | null): string {
 			</header>
 			<div class="value">
 				<span class="num">
-					{sloEstimate() != null
-						? `${(sloEstimate()! * 100).toFixed(3)}%`
+					{sloEstimate != null
+						? `${(sloEstimate! * 100).toFixed(3)}%`
 						: "—"}
 				</span>
 			</div>

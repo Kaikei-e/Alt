@@ -10,6 +10,6 @@ export const GET: RequestHandler = async ({ request }) => {
 	} catch (error) {
 		const errorMessage = error instanceof Error ? error.message : String(error);
 		console.error("Error in /api/v1/rss-feed-link/list:", errorMessage);
-		return json({ error: errorMessage }, { status: 500 });
+		return json({ error: "Failed to fetch feed links" }, { status: 500 });
 	}
 };

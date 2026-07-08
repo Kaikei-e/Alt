@@ -95,8 +95,8 @@ describe("Sovereign Admin REST Contract", () => {
 				},
 			];
 			expect(raw).toHaveLength(2);
-			expect(raw[0].is_partitioned).toBe(true);
-			expect(raw[1].is_partitioned).toBe(false);
+			expect(raw[0]!.is_partitioned).toBe(true);
+			expect(raw[1]!.is_partitioned).toBe(false);
 		});
 	});
 
@@ -163,8 +163,8 @@ describe("Sovereign Admin REST Contract", () => {
 			const normalized = normalizeEligiblePartitionsResult(raw);
 			expect(normalized.table).toBe("knowledge_events");
 			expect(normalized.eligible).toHaveLength(1);
-			expect(normalized.eligible[0].name).toBe("knowledge_events_y2025m11");
-			expect(normalized.eligible[0].sizeBytes).toBe(52428800);
+			expect(normalized.eligible[0]!.name).toBe("knowledge_events_y2025m11");
+			expect(normalized.eligible[0]!.sizeBytes).toBe(52428800);
 		});
 	});
 
@@ -184,7 +184,7 @@ describe("Sovereign Admin REST Contract", () => {
 			};
 			expect(raw.dry_run).toBe(true);
 			expect(raw.actions).toHaveLength(1);
-			expect(raw.actions[0].status).toBe("dry_run");
+			expect(raw.actions[0]!.status).toBe("dry_run");
 		});
 
 		it("validates live run response with path and checksum", () => {
@@ -203,8 +203,8 @@ describe("Sovereign Admin REST Contract", () => {
 				],
 			};
 			expect(raw.dry_run).toBe(false);
-			expect(raw.actions[0].rows).toBe(42000);
-			expect(raw.actions[0].path).toBeDefined();
+			expect(raw.actions[0]!.rows).toBe(42000);
+			expect(raw.actions[0]!.path).toBeDefined();
 		});
 	});
 

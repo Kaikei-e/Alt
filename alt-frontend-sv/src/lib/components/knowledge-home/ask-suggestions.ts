@@ -103,7 +103,7 @@ export function pickSuggestions(
 	const rng = createSeededRng(seed);
 	const preferred = resolvePreferredCategories(tags);
 	const selected = selectCategories(preferred, 3, rng);
-	return selected.map((cat) => pickWithRng(suggestionPool[cat], rng));
+	return selected.map((cat) => pickWithRng(suggestionPool[cat]!, rng));
 }
 
 function resolvePreferredCategories(tags: string[] | undefined): string[] {
@@ -159,12 +159,12 @@ function selectCategories(
 }
 
 function pickWithRng<T>(arr: T[], rng: () => number): T {
-	return arr[Math.floor(rng() * arr.length)];
+	return arr[Math.floor(rng() * arr.length)]!;
 }
 
 function shuffleWithRng<T>(arr: T[], rng: () => number): void {
 	for (let i = arr.length - 1; i > 0; i--) {
 		const j = Math.floor(rng() * (i + 1));
-		[arr[i], arr[j]] = [arr[j], arr[i]];
+		[arr[i], arr[j]] = [arr[j]!, arr[i]!];
 	}
 }

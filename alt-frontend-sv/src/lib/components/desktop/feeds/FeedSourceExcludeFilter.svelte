@@ -36,7 +36,7 @@ const domainEntries = $derived.by(() => {
 	return [...grouped.entries()]
 		.map(([domain, items]) => ({
 			domain,
-			displayUrl: items[0].url,
+			displayUrl: items[0]!.url,
 			count: items.length,
 		}))
 		.sort((a, b) => a.domain.localeCompare(b.domain));
@@ -77,7 +77,7 @@ function handleKeydown(e: KeyboardEvent) {
 		highlightedIndex = Math.max(highlightedIndex - 1, 0);
 	} else if (e.key === "Enter" && highlightedIndex >= 0) {
 		e.preventDefault();
-		handleSelect(filteredDomains[highlightedIndex].domain);
+		handleSelect(filteredDomains[highlightedIndex]!.domain);
 	} else if (e.key === "Escape") {
 		isOpen = false;
 		highlightedIndex = -1;

@@ -10,6 +10,7 @@
  */
 
 import { onDestroy, untrack } from "svelte";
+import { browser } from "$app/environment";
 import { createClientTransport } from "$lib/connect/transport-client";
 import { streamFeedStats } from "$lib/connect/feeds";
 
@@ -43,6 +44,12 @@ let visibilityListenersAttached = false;
 let suspendedForHidden = false;
 
 function connect(): void {
+	// This module holds shared, request-independent singleton state (see file
+	// header). It must never mutate on the server: a Node process serves many
+	// concurrent SSR requests through the same module instance, so writing
+	// stream data here would leak one user's feed stats into another user's
+	// response.
+	if (!browser) return;
 	// Only connect when at least one subscriber is active.
 	if (subscriberCount === 0) return;
 	if (abortController) return;

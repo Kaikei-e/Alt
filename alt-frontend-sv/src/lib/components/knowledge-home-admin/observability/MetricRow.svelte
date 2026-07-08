@@ -36,7 +36,7 @@ const primaryPoints = $derived(() =>
 );
 const leadValue = $derived(() => {
 	const pts = primary()?.points ?? [];
-	return pts.length ? pts[pts.length - 1].value : null;
+	return pts.length ? pts[pts.length - 1]!.value : null;
 });
 const delta = $derived(() => {
 	const pts = primary()?.points ?? [];

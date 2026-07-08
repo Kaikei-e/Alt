@@ -52,7 +52,7 @@ const lastPoint = $derived(() => {
 	const y =
 		height -
 		padding -
-		((values[lastIdx] - d.min) / d.range) * (height - padding * 2);
+		((values[lastIdx]! - d.min) / d.range) * (height - padding * 2);
 	return { x, y };
 });
 

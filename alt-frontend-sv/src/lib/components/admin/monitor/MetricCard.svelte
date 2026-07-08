@@ -17,7 +17,7 @@ let {
 	aggregate?: "last" | "sum" | "max";
 } = $props();
 
-const primaryPoints = $derived(() => {
+const primaryPoints = $derived.by(() => {
 	const pts: number[] = [];
 	for (const s of metric?.series ?? []) {
 		for (const p of s.points ?? []) pts.push(p.value);
@@ -25,7 +25,7 @@ const primaryPoints = $derived(() => {
 	return pts;
 });
 
-const leadValue = $derived(() => {
+const leadValue = $derived.by(() => {
 	const series = metric?.series ?? [];
 	if (series.length === 0) return null;
 	if (aggregate === "sum") {
@@ -53,36 +53,36 @@ const leadValue = $derived(() => {
 	return series[0]?.points.at(-1)?.value ?? null;
 });
 
-const valueText = $derived(() => formatValue(leadValue(), metric?.unit));
-const badge = $derived(() => stateBadge(leadValue(), metric?.unit, warn));
-const degraded = $derived(() => metric?.degraded ?? false);
+const valueText = $derived(formatValue(leadValue, metric?.unit));
+const badge = $derived(stateBadge(leadValue, metric?.unit, warn));
+const degraded = $derived(metric?.degraded ?? false);
 </script>
 
-<article class="card" class:degraded={degraded()} data-state={badge().text} data-testid="metric-card">
+<article class="card" class:degraded={degraded} data-state={badge.text} data-testid="metric-card">
 	<header>
 		<span class="label">{label}</span>
-		<span class="badge" aria-label="state {badge().text}">
-			<span class="glyph" aria-hidden="true">{badge().glyph}</span>
-			<span class="state-text">{badge().text}</span>
+		<span class="badge" aria-label="state {badge.text}">
+			<span class="glyph" aria-hidden="true">{badge.glyph}</span>
+			<span class="state-text">{badge.text}</span>
 		</span>
 	</header>
 
 	<div class="value">
-		<span class="num">{valueText()}</span>
+		<span class="num">{valueText}</span>
 		{#if metric?.unit && metric.unit !== "bool" && metric.unit !== "ratio"}
 			<span class="unit">{metric.unit}</span>
 		{/if}
 	</div>
 
 	<div class="spark" aria-hidden="true">
-		{#if primaryPoints().length >= 2}
-			<SLISparkline values={primaryPoints()} threshold={thresholdValue} width={220} height={36} />
+		{#if primaryPoints.length >= 2}
+			<SLISparkline values={primaryPoints} threshold={thresholdValue} width={220} height={36} />
 		{:else}
 			<span class="dim">no series</span>
 		{/if}
 	</div>
 
-	{#if degraded()}
+	{#if degraded}
 		<div class="reason">{metric?.reason || "source degraded"}</div>
 	{/if}
 </article>

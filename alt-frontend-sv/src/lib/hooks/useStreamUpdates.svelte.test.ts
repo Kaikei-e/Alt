@@ -52,7 +52,7 @@ function createHangingMockStream(events: Array<Record<string, unknown>>) {
 			return {
 				next(): Promise<IteratorResult<Record<string, unknown>>> {
 					if (index < events.length) {
-						return Promise.resolve({ value: events[index++], done: false });
+						return Promise.resolve({ value: events[index++]!, done: false });
 					}
 					// Hang forever — stream stays open
 					return new Promise(() => {});
@@ -274,7 +274,7 @@ describe("useStreamUpdates (Browser / $effect)", () => {
 		await waitForEffect(() => {
 			expect(stream.pendingCount).toBe(1);
 		});
-		expect(stream.pendingUpdates[0].eventType).toBe("item_added");
+		expect(stream.pendingUpdates[0]!.eventType).toBe("item_added");
 
 		cleanup();
 		restore();
@@ -324,9 +324,9 @@ describe("useStreamUpdates (Browser / $effect)", () => {
 		await waitForEffect(() => {
 			expect(stream.pendingCount).toBe(1);
 		});
-		expect(stream.pendingUpdates[0].eventType).toBe("recall_changed");
-		expect(stream.pendingUpdates[0].recallChange?.itemKey).toBe("article:1");
-		expect(stream.pendingUpdates[0].recallChange?.item?.title).toBe(
+		expect(stream.pendingUpdates[0]!.eventType).toBe("recall_changed");
+		expect(stream.pendingUpdates[0]!.recallChange?.itemKey).toBe("article:1");
+		expect(stream.pendingUpdates[0]!.recallChange?.item?.title).toBe(
 			"Recovered title",
 		);
 
@@ -452,7 +452,7 @@ describe("useStreamUpdates (Browser / $effect)", () => {
 		await waitForEffect(() => {
 			expect(stream.pendingCount).toBe(1);
 		});
-		expect(stream.pendingUpdates[0].item?.itemKey).toBe("article:abc-123");
+		expect(stream.pendingUpdates[0]!.item?.itemKey).toBe("article:abc-123");
 
 		cleanup();
 		restore();
@@ -487,7 +487,7 @@ describe("useStreamUpdates (Browser / $effect)", () => {
 		});
 		const applied = stream.applyUpdates();
 		expect(applied).toHaveLength(1);
-		expect(applied[0].eventType).toBe("item_added");
+		expect(applied[0]!.eventType).toBe("item_added");
 		expect(stream.pendingCount).toBe(0);
 		expect(onRefresh).toHaveBeenCalled();
 

@@ -100,11 +100,11 @@ describe("knowledge_home client", () => {
 				limit: 20,
 			});
 			expect(result.items).toHaveLength(1);
-			expect(result.items[0].itemKey).toBe("article:abc-123");
-			expect(result.items[0].why).toHaveLength(2);
-			expect(result.items[0].why[0].code).toBe("new_unread");
-			expect(result.items[0].why[1].tag).toBe("AI");
-			expect(result.items[0].summaryState).toBe("ready");
+			expect(result.items[0]!.itemKey).toBe("article:abc-123");
+			expect(result.items[0]!.why).toHaveLength(2);
+			expect(result.items[0]!.why[0]!.code).toBe("new_unread");
+			expect(result.items[0]!.why[1]!.tag).toBe("AI");
+			expect(result.items[0]!.summaryState).toBe("ready");
 			expect(result.digest).not.toBeNull();
 			expect(result.digest?.newArticles).toBe(42);
 			expect(result.digest?.topTags).toEqual(["AI", "Go"]);
@@ -261,8 +261,8 @@ describe("knowledge_home client", () => {
 			const result = await listLenses(mockTransport);
 
 			expect(result.activeLensId).toBe("lens-123");
-			expect(result.lenses[0].currentVersion?.sourceIds).toEqual(["feed-1"]);
-			expect(result.lenses[0].currentVersion?.queryText).toBe("agents");
+			expect(result.lenses[0]!.currentVersion?.sourceIds).toEqual(["feed-1"]);
+			expect(result.lenses[0]!.currentVersion?.queryText).toBe("agents");
 		});
 
 		it("clears selected lens when null is passed", async () => {
@@ -319,7 +319,7 @@ describe("knowledge_home client", () => {
 
 			const result = await getKnowledgeHome(mockTransport, "default");
 			expect(result.recallCandidates).toHaveLength(1);
-			const r = result.recallCandidates[0];
+			const r = result.recallCandidates[0]!;
 			expect(r.weightSetVersion).toBe("v2_heavy_ranker");
 			expect(r.scoreBreakdown).toEqual([
 				{
@@ -361,8 +361,8 @@ describe("knowledge_home client", () => {
 			});
 
 			const result = await getKnowledgeHome(mockTransport, "default");
-			expect(result.recallCandidates[0].weightSetVersion).toBeUndefined();
-			expect(result.recallCandidates[0].scoreBreakdown).toBeUndefined();
+			expect(result.recallCandidates[0]!.weightSetVersion).toBeUndefined();
+			expect(result.recallCandidates[0]!.scoreBreakdown).toBeUndefined();
 		});
 	});
 });

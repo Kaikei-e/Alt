@@ -57,8 +57,7 @@ let isDetailsOpen = $state(false);
 <FeedDetails
 	feedURL={feed.link}
 	feedTitle={feed.title}
-	open={isDetailsOpen}
-	onOpenChange={(open) => { isDetailsOpen = open; }}
+	bind:open={isDetailsOpen}
 	showButton={false}
 />
 

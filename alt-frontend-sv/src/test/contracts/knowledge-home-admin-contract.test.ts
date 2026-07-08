@@ -113,8 +113,8 @@ describe("Knowledge Home Admin API Contract - Phase 5", () => {
 			});
 
 			expect(response.runs).toHaveLength(2);
-			expect(response.runs[0].status).toBe("swappable");
-			expect(response.runs[1].mode).toBe("dry_run");
+			expect(response.runs[0]!.status).toBe("swappable");
+			expect(response.runs[1]!.mode).toBe("dry_run");
 		});
 	});
 

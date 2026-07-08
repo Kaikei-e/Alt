@@ -1,8 +1,11 @@
 import { env } from "$env/dynamic/private";
 import { getBackendToken } from "./auth";
 
-const BACKEND_URL =
-	env.BACKEND_CONNECT_URL || "http://alt-butterfly-facade:9250";
+// Independent from $lib/connect/transport-server.ts's BACKEND_CONNECT_URL
+// (Connect-RPC endpoint) so the REST facade and the Connect-RPC backend can
+// be configured separately instead of racing over one shared env var.
+const BACKEND_URL = env.BACKEND_REST_URL || "http://alt-butterfly-facade:9250";
+const FETCH_TIMEOUT_MS = 10_000;
 
 /**
  * バックエンドAPIを呼び出す (GET, JSON レスポンス)
@@ -27,6 +30,7 @@ export async function callBackendAPI<T>(
 		const response = await fetch(url, {
 			headers,
 			cache: "no-store",
+			signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
 		});
 
 		if (!response.ok) {
@@ -130,6 +134,7 @@ export async function callBackendAPIWithBody(
 			headers,
 			...(body !== undefined ? { body: JSON.stringify(body) } : {}),
 			cache: "no-store",
+			signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
 		});
 
 		if (!response.ok) {

@@ -15,8 +15,8 @@ describe("categorizeRecallReasons", () => {
 		expect(revisit).toBeDefined();
 		expect(revisit?.label).toBe("Revisit");
 		expect(revisit?.items).toHaveLength(1);
-		expect(revisit?.items[0].displayLabel).toBe("Not revisited");
-		expect(revisit?.items[0].reason.description).toBe(
+		expect(revisit?.items[0]!.displayLabel).toBe("Not revisited");
+		expect(revisit?.items[0]!.reason.description).toBe(
 			"Opened 3 days ago, not revisited since",
 		);
 	});
@@ -45,7 +45,7 @@ describe("categorizeRecallReasons", () => {
 		const connection = groups.find((g) => g.key === "connection");
 		expect(connection).toBeDefined();
 		expect(connection?.items).toHaveLength(1);
-		expect(connection?.items[0].displayLabel).toBe("Tag explored");
+		expect(connection?.items[0]!.displayLabel).toBe("Tag explored");
 	});
 
 	it("categorizes recap/pulse under 'Completion'", () => {
@@ -72,7 +72,7 @@ describe("categorizeRecallReasons", () => {
 		const groups = categorizeRecallReasons(reasons);
 		const other = groups.find((g) => g.key === "other");
 		expect(other).toBeDefined();
-		expect(other?.items[0].displayLabel).toBe("Some custom reason");
+		expect(other?.items[0]!.displayLabel).toBe("Some custom reason");
 	});
 
 	it("handles mixed categories and preserves order", () => {

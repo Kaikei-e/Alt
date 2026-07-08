@@ -5,10 +5,10 @@ import MobileAcolyteReportCard from "./MobileAcolyteReportCard.svelte";
 import { MOCK_REPORT_SUMMARIES } from "./acolyte-fixtures";
 
 describe("MobileAcolyteReportCard", () => {
-	const succeededReport = MOCK_REPORT_SUMMARIES[0]; // succeeded
-	const runningReport = MOCK_REPORT_SUMMARIES[1]; // running
-	const failedReport = MOCK_REPORT_SUMMARIES[2]; // failed
-	const draftReport = MOCK_REPORT_SUMMARIES[3]; // draft
+	const succeededReport = MOCK_REPORT_SUMMARIES[0]!; // succeeded
+	const runningReport = MOCK_REPORT_SUMMARIES[1]!; // running
+	const failedReport = MOCK_REPORT_SUMMARIES[2]!; // failed
+	const draftReport = MOCK_REPORT_SUMMARIES[3]!; // draft
 
 	it("renders report title", async () => {
 		render(MobileAcolyteReportCard, {

@@ -29,7 +29,7 @@ onMount(() => {
 	if (data.initialFeeds.length === 0 || !resolvedArticleData.firstArticleId) {
 		return;
 	}
-	const feedUrl = data.initialFeeds[0].normalizedUrl;
+	const feedUrl = data.initialFeeds[0]!.normalizedUrl;
 	articlePrefetcher.seedCache(
 		feedUrl,
 		resolvedArticleData.firstArticleContent || "",

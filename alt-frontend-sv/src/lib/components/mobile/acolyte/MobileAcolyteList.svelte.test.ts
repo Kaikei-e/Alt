@@ -109,7 +109,7 @@ describe("MobileAcolyteList", () => {
 	it("renders singular report count for 1 report", async () => {
 		render(MobileAcolyteList, {
 			props: {
-				reports: [MOCK_REPORT_SUMMARIES[0]],
+				reports: [MOCK_REPORT_SUMMARIES[0]!],
 				loading: false,
 				error: null,
 			},

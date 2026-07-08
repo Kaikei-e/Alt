@@ -8,6 +8,7 @@ import {
 	type ConnectFeedItem,
 } from "$lib/connect/feeds";
 import { callBackendAPI, callBackendAPIWithBody } from "./backend-rest-client";
+import type { BackendFeedItem } from "$lib/domain/feed/types";
 
 export interface DetailedFeedStats {
 	feed_amount: { amount: number };
@@ -28,7 +29,7 @@ export interface CursorResponse<T> {
 /**
  * ConnectFeedItem を BackendFeedItem 互換形式に変換
  */
-function connectFeedToBackendFormat(item: ConnectFeedItem): unknown {
+function connectFeedToBackendFormat(item: ConnectFeedItem): BackendFeedItem {
 	return {
 		title: item.title,
 		description: item.description,
@@ -77,7 +78,7 @@ export async function getFeedsWithCursor(
 	cursor?: string,
 	limit: number = 20,
 	backendToken?: string | null,
-): Promise<CursorResponse<unknown>> {
+): Promise<CursorResponse<BackendFeedItem>> {
 	const transport = backendToken
 		? createServerTransportWithToken(backendToken)
 		: await createServerTransport(cookie);
@@ -98,7 +99,7 @@ export async function getReadFeedsWithCursor(
 	cookie: string | null,
 	cursor?: string,
 	limit: number = 32,
-): Promise<CursorResponse<unknown>> {
+): Promise<CursorResponse<BackendFeedItem>> {
 	const transport = await createServerTransport(cookie);
 	const response = await getReadFeedsConnect(transport, cursor, limit);
 

@@ -208,7 +208,7 @@ async function loadMore() {
 			isInitialLoading = false;
 
 			if (filtered.length > 0) {
-				const firstFeed = filtered[0];
+				const firstFeed = filtered[0]!;
 				const cacheKey = firstFeed.normalizedUrl;
 
 				if (!articlePrefetcher.getCachedContent(cacheKey)) {

@@ -19,7 +19,7 @@ import { useSummarize } from "./useSummarize.svelte";
 /** Helper: capture the callbacks passed to streamSummarizeWithAbortAdapter */
 function captureAdapterCallbacks() {
 	const calls = vi.mocked(streamSummarizeWithAbortAdapter).mock.calls;
-	const lastCall = calls[calls.length - 1];
+	const lastCall = calls[calls.length - 1]!;
 	return {
 		transport: lastCall[0],
 		options: lastCall[1],

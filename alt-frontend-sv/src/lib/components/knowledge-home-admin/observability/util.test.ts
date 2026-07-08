@@ -75,7 +75,7 @@ describe("topSeries", () => {
 			points: pts([1]),
 		};
 		const r = topSeries([s], "job", 3);
-		expect(r.head[0].labelValue).toContain("pool=read");
+		expect(r.head[0]!.labelValue).toContain("pool=read");
 	});
 
 	it("returns empty head + 0 overflow for empty input", () => {

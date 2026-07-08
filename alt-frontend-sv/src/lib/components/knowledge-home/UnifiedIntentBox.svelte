@@ -10,19 +10,14 @@ interface Props {
 	onAsk?: (query: string) => void;
 }
 
-const {
-	query: initialQuery = "",
+let {
+	query = $bindable(""),
 	onSearchSubmit,
 	onSearchClear,
 	onAsk,
 }: Props = $props();
 
-let query = $state("");
 let recentQueries = $state<string[]>([]);
-
-$effect(() => {
-	query = initialQuery;
-});
 
 if (browser) {
 	const stored = window.localStorage.getItem("knowledge-home-recent-queries");

@@ -72,8 +72,8 @@ export function formatLetterDate(
 	if (parts.length !== 3) return targetDate;
 
 	const year = parts[0];
-	const month = parseInt(parts[1], 10);
-	const day = parseInt(parts[2], 10);
+	const month = parseInt(parts[1]!, 10);
+	const day = parseInt(parts[2]!, 10);
 
 	return `${year}-${month}-${day}`;
 }
@@ -137,9 +137,9 @@ export function deriveWithinHours(targetDate: string | undefined): number {
 	const parts = targetDate.split("-");
 	if (parts.length !== 3) return 24;
 
-	const year = parseInt(parts[0], 10);
-	const month = parseInt(parts[1], 10) - 1; // JS months are 0-based
-	const day = parseInt(parts[2], 10);
+	const year = parseInt(parts[0]!, 10);
+	const month = parseInt(parts[1]!, 10) - 1; // JS months are 0-based
+	const day = parseInt(parts[2]!, 10);
 
 	// Create date at start of day in local timezone
 	const targetStart = new Date(year, month, day, 6, 0, 0); // 6 AM

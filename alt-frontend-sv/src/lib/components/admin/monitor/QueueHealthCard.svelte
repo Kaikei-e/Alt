@@ -40,14 +40,14 @@ function sumLatestByLabel(m: MetricResult | undefined): {
 	return out.sort((a, b) => b.value - a.value);
 }
 
-const redis = $derived(() => find("mqhub_redis"));
-const publish = $derived(() => find("mqhub_publish_rate"));
+const redis = $derived(find("mqhub_redis"));
+const publish = $derived(find("mqhub_publish_rate"));
 
-const redisBadge = $derived(() => stateBadge(latest(redis()), "bool"));
-const totalPublishRate = $derived(() => {
+const redisBadge = $derived(stateBadge(latest(redis), "bool"));
+const totalPublishRate = $derived.by(() => {
 	let total = 0;
 	let any = false;
-	for (const s of publish()?.series ?? []) {
+	for (const s of publish?.series ?? []) {
 		const last = s.points.at(-1)?.value;
 		if (last != null && Number.isFinite(last)) {
 			total += last;
@@ -65,13 +65,13 @@ const totalPublishRate = $derived(() => {
 		<article class="cell">
 			<header>
 				<span class="label">Redis connection</span>
-				<span class="badge" data-state={redisBadge().text}>
-					<span class="glyph" aria-hidden="true">{redisBadge().glyph}</span>
-					<span class="state-text">{redisBadge().text}</span>
+				<span class="badge" data-state={redisBadge.text}>
+					<span class="glyph" aria-hidden="true">{redisBadge.glyph}</span>
+					<span class="state-text">{redisBadge.text}</span>
 				</span>
 			</header>
 			<div class="value">
-				<span class="num">{formatValue(latest(redis()), "bool")}</span>
+				<span class="num">{formatValue(latest(redis), "bool")}</span>
 			</div>
 		</article>
 
@@ -80,12 +80,12 @@ const totalPublishRate = $derived(() => {
 				<span class="label">Publish rate (total)</span>
 			</header>
 			<div class="value">
-				<span class="num">{formatValue(totalPublishRate(), "msg/s")}</span>
+				<span class="num">{formatValue(totalPublishRate, "msg/s")}</span>
 				<span class="unit">msg/s</span>
 			</div>
 			<div class="spark" aria-hidden="true">
-				{#if points(publish()).length >= 2}
-					<SLISparkline values={points(publish())} width={240} height={28} />
+				{#if points(publish).length >= 2}
+					<SLISparkline values={points(publish)} width={240} height={28} />
 				{/if}
 			</div>
 		</article>
@@ -95,7 +95,7 @@ const totalPublishRate = $derived(() => {
 				<span class="label">Publish rate by topic</span>
 			</header>
 			<ul class="by-topic">
-				{#each sumLatestByLabel(publish()) as t (t.label)}
+				{#each sumLatestByLabel(publish) as t (t.label)}
 					<li>
 						<span class="topic">{t.label}</span>
 						<span class="t-value">{formatValue(t.value, "msg/s")} msg/s</span>

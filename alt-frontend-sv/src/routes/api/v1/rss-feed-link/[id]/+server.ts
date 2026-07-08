@@ -26,6 +26,6 @@ export const DELETE: RequestHandler = async ({ request, params }) => {
 			id,
 			error: errorMessage,
 		});
-		return json({ error: errorMessage }, { status: 500 });
+		return json({ error: "Failed to delete feed link" }, { status: 500 });
 	}
 };

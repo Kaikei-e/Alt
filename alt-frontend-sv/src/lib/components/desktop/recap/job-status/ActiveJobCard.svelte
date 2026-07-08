@@ -20,7 +20,7 @@ const startedAt = $derived(
 	}),
 );
 
-const elapsedTime = $derived(() => {
+const elapsedTime = $derived.by(() => {
 	const start = new Date(job.kicked_at).getTime();
 	const now = Date.now();
 	const secs = Math.max(0, Math.floor((now - start) / 1000));
@@ -56,7 +56,7 @@ const sourceLabel = $derived(job.trigger_source === "user" ? "User" : "System");
 		</div>
 		<div class="meta-cell">
 			<dt>Elapsed</dt>
-			<dd class="tabular-nums">{elapsedTime()}</dd>
+			<dd class="tabular-nums">{elapsedTime}</dd>
 		</div>
 		<div class="meta-cell">
 			<dt>Source</dt>

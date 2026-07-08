@@ -109,7 +109,7 @@ describe("swipe action", () => {
 		);
 
 		expect(swipeHandler).toHaveBeenCalled();
-		const detail = (swipeHandler.mock.calls[0][0] as CustomEvent).detail;
+		const detail = (swipeHandler.mock.calls[0]![0] as CustomEvent).detail;
 		expect(detail.direction).toBe("right");
 		expect(detail.deltaX).toBe(100);
 	});
@@ -131,7 +131,7 @@ describe("swipe action", () => {
 		);
 
 		expect(swipeHandler).toHaveBeenCalled();
-		const detail = (swipeHandler.mock.calls[0][0] as CustomEvent).detail;
+		const detail = (swipeHandler.mock.calls[0]![0] as CustomEvent).detail;
 		expect(detail.direction).toBe("left");
 		expect(detail.deltaX).toBe(-100);
 	});
@@ -153,7 +153,7 @@ describe("swipe action", () => {
 		);
 
 		expect(swipeHandler).toHaveBeenCalled();
-		const detail = (swipeHandler.mock.calls[0][0] as CustomEvent).detail;
+		const detail = (swipeHandler.mock.calls[0]![0] as CustomEvent).detail;
 		expect(detail.direction).toBe("down");
 		expect(detail.deltaY).toBe(100);
 	});
@@ -175,7 +175,7 @@ describe("swipe action", () => {
 		);
 
 		expect(swipeHandler).toHaveBeenCalled();
-		const detail = (swipeHandler.mock.calls[0][0] as CustomEvent).detail;
+		const detail = (swipeHandler.mock.calls[0]![0] as CustomEvent).detail;
 		expect(detail.direction).toBe("up");
 		expect(detail.deltaY).toBe(-100);
 	});

@@ -26,7 +26,7 @@ const { feeds, isLoading, error }: Props = $props();
 		<p class="empty-state">No dispatches</p>
 	{:else}
 		<ul class="dispatch-list">
-			{#each feeds as feed, i}
+			{#each feeds as feed, i (feed.id)}
 				<li
 					class="dispatch-item"
 					style="--stagger: {i};"

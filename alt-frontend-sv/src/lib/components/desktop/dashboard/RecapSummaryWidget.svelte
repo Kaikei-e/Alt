@@ -34,7 +34,7 @@ let formattedTimestamp = $derived.by(() => {
 		<p class="empty-state">No briefing available</p>
 	{:else}
 		<div class="genre-list">
-			{#each topGenres as genre, i}
+			{#each topGenres as genre, i (genre.genre)}
 				{#if i > 0}
 					<div class="genre-separator" aria-hidden="true"></div>
 				{/if}

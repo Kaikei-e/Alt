@@ -300,7 +300,7 @@ function handleHopClick(index: number) {
 		articleTagsCache = new Map();
 		loadingArticleTags = new Set();
 	} else if (index < hops.length - 1) {
-		const targetHop = hops[index];
+		const targetHop = hops[index]!;
 		hops = hops.slice(0, index + 1);
 
 		if (targetHop.type === "feed") {
@@ -431,7 +431,7 @@ const formatDate = (dateStr: string) => {
 							</div>
 						{:else if feedTags.length > 0}
 							<div class="flex flex-wrap gap-2">
-								{#each feedTags as tag, i}
+								{#each feedTags as tag, i (tag.id)}
 									<button
 										type="button"
 										onclick={() => handleTagClick(tag)}
@@ -477,7 +477,7 @@ const formatDate = (dateStr: string) => {
 								Start
 							</button>
 
-							{#each hops as hop, index}
+							{#each hops as hop, index (`${index}-${hop.id}`)}
 								<ChevronRight size={12} class="flex-shrink-0" style="color: var(--surface-border, #c8c8c8);" />
 								<button
 									type="button"

@@ -1,6 +1,7 @@
 import { env } from "$env/dynamic/private";
 
 const AUTH_HUB_URL = env.AUTH_HUB_INTERNAL_URL || "http://auth-hub:8888";
+const AUTH_HUB_TIMEOUT_MS = 3000;
 
 /**
  * Get CSRF token from auth-hub session
@@ -15,6 +16,7 @@ export async function getCSRFToken(
 		const response = await fetch(`${AUTH_HUB_URL}/session`, {
 			headers: { Cookie: cookieHeader },
 			cache: "no-store",
+			signal: AbortSignal.timeout(AUTH_HUB_TIMEOUT_MS),
 		});
 
 		if (!response.ok) return null;
@@ -43,6 +45,7 @@ export async function getBackendToken(
 				cookie: cookie,
 			},
 			cache: "no-store",
+			signal: AbortSignal.timeout(AUTH_HUB_TIMEOUT_MS),
 		});
 
 		if (!response.ok) {

@@ -4,6 +4,7 @@ import { getBackendToken } from "$lib/api";
 
 const BACKEND_URL =
 	env.BACKEND_CONNECT_URL || "http://alt-butterfly-facade:9250";
+const FETCH_TIMEOUT_MS = 10_000;
 
 export const GET: RequestHandler = async ({ request, url }) => {
 	const cookieHeader = request.headers.get("cookie") || "";
@@ -34,6 +35,7 @@ export const GET: RequestHandler = async ({ request, url }) => {
 		const response = await fetch(backendEndpoint, {
 			headers,
 			cache: "no-store",
+			signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
 		});
 
 		if (!response.ok) {

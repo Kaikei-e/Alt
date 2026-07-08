@@ -118,7 +118,7 @@ export type { RemoveFeedResult, FeedGridApi } from "./feed-grid-types";
 		}
 
 		return {
-			nextFeedUrl: newVisibleFeeds[currentIndex].normalizedUrl,
+			nextFeedUrl: newVisibleFeeds[currentIndex]!.normalizedUrl,
 			totalCount,
 		};
 	}

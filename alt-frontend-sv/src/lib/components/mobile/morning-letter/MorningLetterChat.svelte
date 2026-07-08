@@ -122,7 +122,7 @@ async function handleSend() {
 				const now = Date.now();
 				if (now - lastUpdateTime > THROTTLE_MS) {
 					messages[currentAssistantMessageIndex] = {
-						...messages[currentAssistantMessageIndex],
+						...messages[currentAssistantMessageIndex]!,
 						message: bufferedContent,
 					};
 					lastUpdateTime = now;
@@ -130,7 +130,7 @@ async function handleSend() {
 			},
 			(meta: MorningLetterMeta) => {
 				messages[currentAssistantMessageIndex] = {
-					...messages[currentAssistantMessageIndex],
+					...messages[currentAssistantMessageIndex]!,
 					citations: convertCitations(meta.citations),
 					meta: {
 						timeWindow: meta.timeWindow,
@@ -140,12 +140,12 @@ async function handleSend() {
 			},
 			(result) => {
 				messages[currentAssistantMessageIndex] = {
-					...messages[currentAssistantMessageIndex],
+					...messages[currentAssistantMessageIndex]!,
 					message: result.answer || bufferedContent,
 					citations:
 						result.citations.length > 0
 							? convertCitations(result.citations)
-							: messages[currentAssistantMessageIndex].citations,
+							: messages[currentAssistantMessageIndex]!.citations,
 				};
 				isLoading = false;
 				currentAbortController = null;
@@ -153,7 +153,7 @@ async function handleSend() {
 			},
 			(_code) => {
 				messages[currentAssistantMessageIndex] = {
-					...messages[currentAssistantMessageIndex],
+					...messages[currentAssistantMessageIndex]!,
 					message: "I couldn't find enough recent news to answer that.",
 				};
 				isLoading = false;
@@ -163,7 +163,7 @@ async function handleSend() {
 			(error) => {
 				console.error("Chat error:", error);
 				messages[currentAssistantMessageIndex] = {
-					...messages[currentAssistantMessageIndex],
+					...messages[currentAssistantMessageIndex]!,
 					message: `Error: ${error.message}`,
 				};
 				isLoading = false;
@@ -174,7 +174,7 @@ async function handleSend() {
 	} catch (error) {
 		console.error("Chat error:", error);
 		messages[currentAssistantMessageIndex] = {
-			...messages[currentAssistantMessageIndex],
+			...messages[currentAssistantMessageIndex]!,
 			message: `Error: ${error instanceof Error ? error.message : "Unknown error"}`,
 		};
 		isLoading = false;

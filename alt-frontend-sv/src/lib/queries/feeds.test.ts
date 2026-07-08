@@ -58,8 +58,8 @@ describe("flattenFeedPages", () => {
 
 		const result = flattenFeedPages(data);
 		expect(result).toHaveLength(2);
-		expect(result[0].id).toBe("1");
-		expect(result[1].id).toBe("2");
+		expect(result[0]!.id).toBe("1");
+		expect(result[1]!.id).toBe("2");
 	});
 
 	it("should flatten multiple pages correctly", () => {
@@ -108,7 +108,7 @@ describe("flattenFeedPages", () => {
 
 		const result = flattenFeedPages(data);
 		expect(result).toHaveLength(1);
-		expect(result[0].id).toBe("1");
+		expect(result[0]!.id).toBe("1");
 	});
 });
 
@@ -147,8 +147,8 @@ describe("flattenSearchPages", () => {
 
 		const result = flattenSearchPages(data);
 		expect(result).toHaveLength(2);
-		expect(result[0].id).toBe("1");
-		expect(result[1].id).toBe("2");
+		expect(result[0]!.id).toBe("1");
+		expect(result[1]!.id).toBe("2");
 	});
 
 	it("should flatten multiple search pages correctly", () => {

@@ -21,7 +21,7 @@ function find(key: string): MetricResult | undefined {
 	return metrics.find((m) => m.key === key);
 }
 
-const rows = $derived(() => {
+const rows = $derived.by(() => {
 	const byName: Record<string, ContainerRow> = {};
 	const ensure = (name: string): ContainerRow => {
 		if (!byName[name]) {
@@ -80,11 +80,11 @@ function shortName(name: string): string {
 
 <section class="sat" aria-label="Container saturation">
 	<h2 class="section-head">Container saturation · USE</h2>
-	{#if rows().length === 0}
+	{#if rows.length === 0}
 		<p class="dim">No cAdvisor series yet.</p>
 	{:else}
 		<div class="grid">
-			{#each rows() as r (r.name)}
+			{#each rows as r (r.name)}
 				<article class="cell">
 					<header>
 						<span class="name" title={r.name}>{shortName(r.name)}</span>

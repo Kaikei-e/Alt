@@ -160,7 +160,7 @@ describe("BOOTSTRAP_SCRIPT_BODY in app.html (drift test)", () => {
 		);
 		expect(block).not.toBeNull();
 		const scriptInner =
-			block?.[1].match(/<script>([\s\S]*?)<\/script>/)?.[1] ?? "";
+			block?.[1]?.match(/<script>([\s\S]*?)<\/script>/)?.[1] ?? "";
 		// Whitespace-normalized comparison — biome / prettier can reformat
 		// either copy without breaking the test, but any semantic change
 		// (different identifier names, dropped guards, changed limit, …)

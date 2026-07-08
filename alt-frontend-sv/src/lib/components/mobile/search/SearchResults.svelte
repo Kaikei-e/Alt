@@ -1,5 +1,4 @@
 <script lang="ts">
-import { browser } from "$app/environment";
 import { infiniteScroll } from "$lib/actions/infinite-scroll";
 import { searchFeedsClient } from "$lib/api/client";
 import type { SearchFeedItem } from "$lib/schema/search";
@@ -31,8 +30,6 @@ const {
 	setHasMore,
 	setIsLoading,
 }: Props = $props();
-
-const getScrollRoot = $derived(browser ? null : null);
 
 // Track initial load so infinite scroll additions render instantly
 let initialLoadDone = $state(false);
@@ -162,7 +159,6 @@ const loadMore = async () => {
 			<div
 				use:infiniteScroll={{
 					callback: loadMore,
-					root: getScrollRoot,
 					disabled: isLoading,
 					rootMargin: "0px 0px 200px 0px",
 					threshold: 0.1,

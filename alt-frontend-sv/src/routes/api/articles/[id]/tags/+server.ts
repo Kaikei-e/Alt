@@ -22,7 +22,7 @@ export const GET: RequestHandler = async ({ request, params }) => {
 
 		return json(
 			{
-				error: errorMessage,
+				error: "Failed to fetch article tags",
 				article_id: articleId,
 				tags: [],
 			},
