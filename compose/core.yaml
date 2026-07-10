@@ -14,12 +14,11 @@ services:
   plecto-proxy:
     # PlectoProxy (https://github.com/Kaikei-e/PlectoProxy) replacing nginx as the
     # edge/ingress reverse proxy — trial cutover, see
-    # docs/review/plecto-proxy-trial-2026-07-10.md. Built manually from
-    # ~/Documents/dev/Plecto (source lives outside this repo, matching the
-    # alt-deploy sibling-directory precedent), NOT via `docker compose build`:
-    #   cd ~/Documents/dev/Plecto && docker build -t plecto-proxy:local .
-    # Rebuild after any change to that clone or to plecto/manifest.toml's filter.
-    image: plecto-proxy:local
+    # docs/review/plecto-proxy-trial-2026-07-10.md. Pulled from the published,
+    # cosign-signed multi-arch release image on GHCR — pin to an explicit
+    # version (not `:latest`) and bump deliberately alongside plecto/manifest.toml
+    # and plecto/wit/world.wit's `plecto:filter@` version.
+    image: ghcr.io/kaikei-e/plecto:0.2.6
     command: ["/etc/plecto/manifest.toml"]
     restart: always
     mem_limit: 512m
