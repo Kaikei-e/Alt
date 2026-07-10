@@ -123,10 +123,12 @@ SKIP=0
 # Return 0 if the step label should execute under the current --services and
 # --role filters. Label convention (parsed here):
 #
-#   "<Lang>: <service> <role>[ <extras>]"
+#   "<Lang>: <service> [<qualifier>] <role>[ <extras>]"
 #
 # e.g. "Go: alt-backend consumer", "Rust: recap-worker provider",
-# "Go: mq-hub provider (search-indexer message pact)".
+# "Go: mq-hub provider (search-indexer message pact)",
+# "Go: altctl sovereign consumer" (qualifier disambiguates a service with
+# more than one consumer/provider contract).
 #
 # Semantics:
 #   - Empty --services + empty --role → run everything (legacy default).
@@ -146,9 +148,9 @@ should_run_service_filter() {
   fi
 
   local label_svc="" label_role=""
-  if [[ "$label" =~ ^[A-Za-z]+:\ ([a-z0-9][a-z0-9-]*)\ (consumer|provider)(\ .*)?$ ]]; then
+  if [[ "$label" =~ ^[A-Za-z]+:\ ([a-z0-9][a-z0-9-]*)\ ([a-z0-9-]+\ )?(consumer|provider)(\ .*)?$ ]]; then
     label_svc="${BASH_REMATCH[1]}"
-    label_role="${BASH_REMATCH[2]}"
+    label_role="${BASH_REMATCH[3]}"
   fi
 
   if [[ -n "$ROLE_FILTER" ]]; then
