@@ -21,6 +21,7 @@ FROM gcr.io/distroless/static-debian12:nonroot@sha256:d093aa3e30dbadd3efe1310db0
 
 COPY --from=busybox /bin/wget /usr/bin/wget
 COPY --from=busybox /bin/sh /bin/sh
+COPY --from=busybox /bin/cat /bin/cat
 
 COPY --from=builder /app/server /server
 COPY --from=busybox /bin/mkdir /bin/mkdir
