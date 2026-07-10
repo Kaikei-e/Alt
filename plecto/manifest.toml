@@ -1,0 +1,161 @@
+# Plecto edge/ingress manifest for Alt (nginx cutover trial).
+# Built against ghcr.io/kaikei-e/plecto:latest (v0.2.5, plecto:filter@0.2.0).
+# [state] is omitted (defaults to "memory" — zero-config; rate-limit counters/KV don't
+# survive a restart, acceptable for this trial).
+
+[trust]
+keys = [".plecto/dev-key.pub"]
+
+[[filter]]
+id = "security-headers"
+source = "artifacts/security-headers"
+digest = "sha256:c21884af336b4dd48d3bd06ed179bf0a3e34c76d0c31677bfabb79bf98df2670"
+isolation = "trusted"        # first-party, Alt-authored filter
+
+[observability]
+admin_addr = "0.0.0.0:8080"   # /metrics /healthz /readyz — replaces nginx stub_status
+access_log = true
+
+[listen]
+addr = "0.0.0.0:8443"          # published as host 80 -> container 8443 (nonroot: no <1024 bind)
+
+[[upstream]]
+name = "alt-backend"
+addresses = ["alt-backend:9000"]
+[upstream.health]
+path = "/v1/health"
+
+[[upstream]]
+name = "alt-frontend-sv"
+addresses = ["alt-frontend-sv:4173"]
+[upstream.health]
+path = "/health"
+
+[[upstream]]
+name = "kratos"
+addresses = ["kratos:4433"]
+[upstream.health]
+path = "/health/alive"
+
+[[upstream]]
+name = "dashboard"
+addresses = ["dashboard:8000"]
+[upstream.health]
+path = "/health"
+
+# 1. Browser-direct SSE
+[[route]]
+filters = ["security-headers"]
+upstream = "alt-backend"
+strip_prefix = "/api"
+[route.match]
+path_prefix = "/api/v1/sse/"
+
+# 2. Dashboard SSE
+[[route]]
+filters = ["security-headers"]
+upstream = "dashboard"
+[route.match]
+path_prefix = "/sse/dashboard/"
+
+# 3. Kratos. nginx's own CORS preflight handling is dropped here deliberately: Kratos's
+# own kratos.yml already declares cors: enabled: true with the identical origin list
+# (localhost / curionoah.com) and allow_credentials: true — nginx's handling was
+# redundant, not load-bearing.
+[[route]]
+filters = ["security-headers"]
+upstream = "kratos"
+strip_prefix = "/ory"
+[route.match]
+path_prefix = "/ory/"
+[route.rate_limit]
+rate = 20
+burst = 40
+key = "client-ip"
+[route.upgrade]
+protocols = ["websocket"]
+
+# 4. `/auth-validate` is NOT ported — confirmed dead: no `auth_request` directive
+# anywhere in the repo references it; auth enforcement happens in-service.
+
+# 5. OGP image proxy. No Plecto equivalent to nginx's disk-backed proxy_cache — every
+# request now round-trips to alt-backend (accepted regression, see review doc).
+[[route]]
+filters = ["security-headers"]
+upstream = "alt-backend"
+[route.match]
+path_prefix = "/v1/images/proxy/"
+[route.rate_limit]
+rate = 20
+burst = 40
+key = "client-ip"
+
+# 6. nginx's generic `~* ^/api/.*(stream|sse)` regex catch-all has no Plecto equivalent
+# (path_prefix/host/method/header/query only, no regex). Any NEW streaming RPC added in
+# future needs an explicit route below — no more silent fallback.
+
+# 7. Immutable static assets (merges nginx's prefix + regex/JS variant into one route).
+# ACCEPTED REGRESSION: nginx's regex variant also did `error_page 404 =
+# @stale_chunk_reload`, synthesizing a 200 JS body on a 404 to self-heal the iOS Safari
+# "Cannot Open the Page" bug (Layer 1 of 4). Plecto's response-edit has no body field —
+# a filter cannot rewrite an upstream's response body. Layers 2-4 (client-side) remain.
+[[route]]
+filters = ["security-headers"]
+upstream = "alt-frontend-sv"
+[route.match]
+path_prefix = "/_app/immutable/"
+
+# 8. Enumerated Connect-RPC streaming routes (regex -> explicit path_prefix).
+[[route]]
+filters = ["security-headers"]
+upstream = "alt-frontend-sv"
+[route.match]
+path_prefix = "/api/v2/alt.augur.v2."
+
+[[route]]
+filters = ["security-headers"]
+upstream = "alt-frontend-sv"
+[route.match]
+path_prefix = "/api/v2/alt.morning_letter.v2."
+
+[[route]]
+filters = ["security-headers"]
+upstream = "alt-frontend-sv"
+[route.match]
+path_prefix = "/api/v2/alt.feeds.v2."
+
+[[route]]
+filters = ["security-headers"]
+upstream = "alt-frontend-sv"
+[route.match]
+path_prefix = "/api/v2/alt.knowledge.loop.v1."
+
+[[route]]
+filters = ["security-headers"]
+upstream = "alt-frontend-sv"
+[route.match]
+path_prefix = "/api/v2/alt.knowledge_home.v1."
+
+[[route]]
+filters = ["security-headers"]
+upstream = "alt-frontend-sv"
+[route.match]
+path_prefix = "/api/v2/alt.admin_monitor.v1."
+
+# 9. SvelteKit API catch-all (non-streaming Connect-RPC / REST).
+[[route]]
+filters = ["security-headers"]
+upstream = "alt-frontend-sv"
+[route.match]
+path_prefix = "/api/"
+[route.upgrade]
+protocols = ["websocket"]
+
+# 10. SSR catch-all (favicon.svg is covered by prefix "/" too).
+[[route]]
+filters = ["security-headers"]
+upstream = "alt-frontend-sv"
+[route.match]
+path_prefix = "/"
+[route.upgrade]
+protocols = ["websocket"]

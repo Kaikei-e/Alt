@@ -19,12 +19,13 @@ scrape_configs:
         labels:
           service: 'prometheus'
 
-  # Nginx metrics via nginx-exporter
-  - job_name: 'nginx'
+  # Plecto edge/ingress metrics — native /metrics on the admin port (replaces
+  # nginx + nginx-exporter). See compose/core.yaml plecto-proxy service.
+  - job_name: 'plecto-proxy'
     static_configs:
-      - targets: ['nginx-exporter:9113']
+      - targets: ['plecto-proxy:8080']
         labels:
-          service: 'nginx'
+          service: 'plecto-proxy'
     scrape_interval: 10s
     metrics_path: /metrics
 

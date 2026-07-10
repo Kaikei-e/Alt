@@ -73,7 +73,6 @@ volumes:
   grafana_data:
   pre_processor_db_data:
   redis-streams-data:
-  nginx-image-cache:
   step_ca_data:
   pki_trust_bundle:
   alt_backend_certs:

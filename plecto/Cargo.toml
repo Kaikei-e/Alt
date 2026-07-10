@@ -1,0 +1,18 @@
+[package]
+name = "alt-security-headers-filter"
+version = "0.1.0"
+edition = "2024"
+license = "Apache-2.0"
+
+# A WASM Component Model guest implementing the plecto:filter contract. Built for
+# wasm32-unknown-unknown and turned into a component with wit-component (via `plecto dev`).
+# The WIT contract is vendored under wit/ (not referenced by a relative path into the
+# PlectoProxy clone), so this crate is self-contained and builds anywhere it's copied.
+# Declares its own [workspace] so it never gets absorbed by a parent Cargo workspace.
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+wit-bindgen = "0.59"
+
+[workspace]

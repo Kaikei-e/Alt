@@ -5,25 +5,6 @@ include:
   - base.yaml
 
 services:
-  # Nginx Prometheus Exporter
-  nginx-exporter:
-    image: nginx/nginx-prometheus-exporter:1.4
-    command:
-      - --nginx.scrape-uri=http://nginx:8080/nginx_status
-    restart: unless-stopped
-    networks:
-      - alt-network
-    depends_on:
-      nginx:
-        condition: service_healthy
-    labels:
-      - rask.group=observability
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "10m"
-        max-file: "3"
-
   # Prometheus metrics collection
   prometheus:
     image: prom/prometheus:v3.1.0
@@ -55,8 +36,6 @@ services:
       - '--query.max-concurrency=8'
     networks:
       - alt-network
-    depends_on:
-      - nginx-exporter
     healthcheck:
       test: ["CMD", "wget", "-q", "--spider", "http://localhost:9090/-/healthy"]
       interval: 10s

@@ -1,0 +1,196 @@
+// plecto:filter — the typed contract between the native fast path (host) and
+// WASM filters (extension plane). See ADR 000001 / 000002.
+//
+// v0.1.0 scope (ADR 000010): sync, header-only, Plecto's OWN http types.
+// stream<u8> bodies, async funcs, and wasi:http type reuse arrive in a later
+// increment. wasmtime 46 (shipped 2026-06-22) brings Component Model async +
+// WASI 0.3 by default (ADR 000003 / 000005); the committed direction is to
+// CONVERGE these types onto wasi:http (proxy / middleware) in M3 (ADR 000020).
+// Until that migration this world stays buildable+runnable on the stable
+// toolchain with no experimental flags.
+package plecto:filter@0.2.0;
+
+interface types {
+    // A single HTTP header field.
+    record header {
+        name: string,
+        value: list<u8>,
+    }
+
+    // The request as seen by a filter. Header-only in v0.1.0 (no body).
+    record http-request {
+        method: string,
+        // path including query, e.g. "/api?x=1"
+        path: string,
+        authority: string,
+        scheme: string,
+        headers: list<header>,
+    }
+
+    // A response a filter synthesises when it short-circuits the chain.
+    record http-response {
+        status: u16,
+        headers: list<header>,
+        body: list<u8>,
+    }
+
+    // A rewrite a filter asks the host to apply to the request before continuing.
+    record request-edit {
+        set-headers: list<header>,
+        remove-headers: list<string>,
+    }
+
+    // A rewrite a filter asks the host to apply to the response before continuing.
+    record response-edit {
+        set-status: option<u16>,
+        set-headers: list<header>,
+        remove-headers: list<string>,
+    }
+
+    // The typed outcome of a request-side filter (Tenet 3). Never a bare flag.
+    variant request-decision {
+        // pass unchanged to the next filter
+        %continue,
+        // apply the edit, then continue
+        modified(request-edit),
+        // stop the chain and synthesise this response now (don't reach upstream)
+        short-circuit(http-response),
+    }
+
+    // The typed outcome of a response-side filter.
+    variant response-decision {
+        %continue,
+        modified(response-edit),
+    }
+
+    // The typed outcome of a request-side BODY filter (buffer-then-decide, ADR 000025). v1 carries
+    // the buffered body as `list<u8>`; the deferred true-streaming increment swaps it to `stream<u8>`
+    // (the contract keeps room for a `body` resource then). Never a bare flag (Tenet 3).
+    variant request-body-decision {
+        // continue with the (possibly transformed) body
+        %continue(list<u8>),
+        // stop the chain and synthesise this response now (don't reach upstream)
+        short-circuit(http-response),
+    }
+}
+
+// --- host-API: deny-by-default capabilities (ADR 000006). One capability per
+// --- interface; a filter touches only what the host explicitly lends it.
+
+interface host-log {
+    enum level { trace, debug, info, warn, error }
+    log: func(level: level, message: string);
+}
+
+interface host-clock {
+    // Wall-clock milliseconds since the Unix epoch, captured once at request
+    // start: a stable per-request snapshot. Repeated calls within one request
+    // return the same value (deterministic TTL / rate-limit logic).
+    now-ms: func() -> u64;
+}
+
+interface host-kv {
+    // host-held mutable business state (ADR 000004 / 000011): the place a stateless
+    // filter keeps session / cache bytes. Backed by a pluggable `KvBackend` — an
+    // in-memory map by default, redb when a durable store is configured (ADR 000004).
+    // Keys are host-namespaced per filter identity (ADR 000011); a filter cannot
+    // reach another filter's keyspace.
+    get: func(key: string) -> option<list<u8>>;
+    set: func(key: string, value: list<u8>);
+    delete: func(key: string);
+}
+
+// --- host-counter: atomic named counters (ADR 000004). Shape mirrors
+// --- wasi:keyvalue/atomics so polyglot filters meet a familiar contract.
+interface host-counter {
+    // Atomically add `delta` to the counter at `key` (host-namespaced per filter,
+    // ADR 000011) and return the NEW value. `delta` is signed, so decrement and
+    // reset-toward-zero are expressible in one call. An unset counter reads as 0.
+    increment: func(key: string, delta: s64) -> s64;
+
+    // Read the current value without mutating it (0 when unset).
+    get: func(key: string) -> s64;
+}
+
+// --- host-ratelimit: the token bucket stays HOST-NATIVE (ADR 000005). The hot-path
+// --- refill + counting never cross the WASM boundary; the filter only DECIDES to
+// --- consult the limiter and on what key. This is the fast-path/extension-plane
+// --- split applied to rate limiting.
+interface host-ratelimit {
+    // The outcome of a token-bucket acquire.
+    record acquire {
+        // whether `cost` tokens were granted
+        allowed: bool,
+        // tokens left in the bucket after this call
+        remaining: u64,
+        // when denied, ms until enough tokens refill to satisfy `cost` (0 when allowed)
+        retry-after-ms: u64,
+    }
+
+    // Try to take `cost` tokens from THIS filter's bucket at `key` (host-namespaced per
+    // filter). The bucket spec (capacity / refill) is configured HOST-SIDE in the manifest
+    // (`[filter.ratelimit]`, ADR 000026), NOT supplied by the filter — so an untrusted filter
+    // cannot neuter its own limiter by claiming a huge capacity. A filter with no host-
+    // configured bucket is denied (fail-closed). Refill uses the per-request clock snapshot
+    // (host-clock), deterministic within a request; a backend error also denies.
+    try-acquire: func(key: string, cost: u64) -> acquire;
+}
+
+// --- host-config: read-only, manifest-declared business config (ADR 000066). A generic
+// --- string passthrough — the host does not interpret keys or values, only the filter does.
+// --- Operator-owned (the filter cannot write it), same ownership model as host-ratelimit's
+// --- bucket spec. Absence of a key just means it was not declared in `[filter.config]`; a
+// --- filter that requires a key validates it itself (typically in `init`, trapping on a
+// --- missing/invalid value — combined with `isolation = "trusted"` this surfaces as a load
+// --- failure rather than a per-request one, ADR 000066 §Decision 4).
+interface host-config {
+    get: func(key: string) -> option<string>;
+}
+
+// The base contract: header-only filters (auth, rate-limit, header rewrite) implement exactly this.
+// It deliberately does NOT export `on-request-body`, so the host can tell — by the ABSENCE of that
+// export (ADR 000005 mechanism 2 / ADR 000038) — that this filter never reads the request body, and
+// skip buffering it entirely (zero-copy streaming passthrough). `request-body-decision` is `use`d so
+// its type is available to the host for the optional body call, even though the base world itself
+// declares no body export.
+world filter {
+    use types.{http-request, http-response, request-decision, response-decision, request-body-decision};
+
+    // granted capabilities (deny-by-default: only these are importable, ADR 000006)
+    import host-log;
+    import host-clock;
+    import host-kv;
+    import host-counter;
+    import host-ratelimit;
+    import host-config;
+
+    // heavy, once-per-instance initialisation (Tenet 4)
+    export init: func();
+
+    // hot path — one call per request / response
+    export on-request: func(req: http-request) -> request-decision;
+    export on-response: func(resp: http-response) -> response-decision;
+}
+
+// The body-reading contract: identical to `filter` PLUS the `on-request-body` export. A filter that
+// inspects or transforms the request body targets this world; the PRESENCE of `on-request-body` is
+// the signal that makes the host buffer the body and run this hook (buffer-then-decide, ADR 000025).
+// Absence (the base `filter` world) means the body streams straight through. The deferred
+// true-streaming increment swaps the `list<u8>` for `stream<u8>`. (Spelled out rather than
+// `include filter` — WIT does not propagate an included world's type `use` into a new export's
+// scope, so the shared shape is duplicated here deliberately.)
+world filter-body {
+    use types.{http-request, http-response, request-decision, response-decision, request-body-decision};
+
+    import host-log;
+    import host-clock;
+    import host-kv;
+    import host-counter;
+    import host-ratelimit;
+    import host-config;
+
+    export init: func();
+    export on-request: func(req: http-request) -> request-decision;
+    export on-request-body: func(body: list<u8>) -> request-body-decision;
+    export on-response: func(resp: http-response) -> response-decision;
+}

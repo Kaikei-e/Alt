@@ -16,7 +16,7 @@ services:
     env_file:
       - ../.env
     environment:
-      - PERF_BASE_URL=http://nginx
+      - PERF_BASE_URL=http://plecto-proxy
       # Use Google Chrome Stable (installed via Puppeteer Docker guide)
       - DISPLAY=:99
       - CHROME_BIN=/usr/bin/google-chrome-stable

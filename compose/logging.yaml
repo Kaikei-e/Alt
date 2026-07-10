@@ -61,7 +61,7 @@ services:
       BATCH_SIZE: "1000"
       FLUSH_INTERVAL_MS: "500"
       BUFFER_CAPACITY: "100000"
-      TARGET_SERVICE: "${NGINX_TARGET:-nginx}"
+      TARGET_SERVICE: "${NGINX_TARGET:-plecto-proxy}"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - /var/lib/docker/containers:/var/lib/docker/containers:ro

@@ -11,34 +11,32 @@ include:
 # pki-agent cutover (see docs/ADR/000747.md).
 
 services:
-  nginx:
-    # Pinned to the same patch line as compose/compose.staging.yaml
-    # (nginx:1.27-alpine) plus digest, so the edge/ingress image is
-    # reproducible and can't silently drift on a routine `pull`.
-    image: nginx:1.27-alpine@sha256:65645c7bb6a0661892a8b03b89d0743208a18dd2f3f17a54ef4b76fb8e2f2a10
+  plecto-proxy:
+    # PlectoProxy (https://github.com/Kaikei-e/PlectoProxy) replacing nginx as the
+    # edge/ingress reverse proxy — trial cutover, see
+    # docs/review/plecto-proxy-trial-2026-07-10.md. Built manually from
+    # ~/Documents/dev/Plecto (source lives outside this repo, matching the
+    # alt-deploy sibling-directory precedent), NOT via `docker compose build`:
+    #   cd ~/Documents/dev/Plecto && docker build -t plecto-proxy:local .
+    # Rebuild after any change to that clone or to plecto/manifest.toml's filter.
+    image: plecto-proxy:local
+    command: ["/etc/plecto/manifest.toml"]
     restart: always
     mem_limit: 512m
-    healthcheck:
-      test: ["CMD-SHELL", "pidof nginx || exit 1"]
-      interval: 10s
-      timeout: 5s
-      retries: 3
-      start_period: 10s
     ports:
-      - "80:80"
-      - "127.0.0.1:8080:8080"  # Metrics endpoint for nginx-exporter
+      - "80:8443"
+      - "127.0.0.1:8080:8080"  # admin: /metrics /healthz /readyz (replaces nginx-exporter's job)
     volumes:
-      - ../nginx/nginx.conf:/etc/nginx/nginx.conf:ro
-      - ../nginx/conf.d:/etc/nginx/conf.d:ro
-      - ../nginx/docker-entrypoint.d:/docker-entrypoint.d:ro
-      - ../alt-frontend-sv/static/favicon.svg:/usr/share/nginx/html/favicon.svg:ro
-      - nginx-image-cache:/var/cache/nginx/image_proxy
+      # The whole deploy directory, not a single file — SIGHUP reload survives
+      # editor inode swaps. [state] is left at the default "memory" backend for
+      # this trial, so :ro is fine (no on-disk write needed at runtime).
+      - ../plecto:/etc/plecto:ro
     depends_on:
       alt-frontend-sv:
         condition: service_healthy
       alt-backend:
         condition: service_healthy
-      auth-hub:
+      kratos:
         condition: service_healthy
     networks:
       - alt-network
@@ -46,10 +44,6 @@ services:
       resources:
         reservations:
           memory: 256M
-    ulimits:
-      nofile:
-        soft: 65536
-        hard: 65536
     tty: true
     labels:
       - rask.group=alt-frontend
@@ -58,6 +52,12 @@ services:
       options:
         max-size: "10m"
         max-file: "3"
+    # No `healthcheck:` block: the distroless/cc-debian12:nonroot runtime has no
+    # shell/wget/curl and the plecto binary has no healthcheck subcommand, so a
+    # CMD-SHELL probe isn't possible. Nothing else in compose/*.yaml depends on
+    # nginx's healthcheck besides nginx-exporter (removed in this same change),
+    # so dropping it does not affect startup ordering. Verify externally instead:
+    # curl the admin /healthz from the host.
 
   alt-frontend-sv:
     env_file:
