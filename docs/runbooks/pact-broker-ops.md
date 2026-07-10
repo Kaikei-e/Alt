@@ -177,7 +177,8 @@ export GH_TOKEN=...
 for provider in alt-backend alt-butterfly-facade auth-hub pre-processor \
                 search-indexer mq-hub rag-orchestrator \
                 recap-worker recap-subworker recap-evaluator \
-                news-creator tag-generator acolyte-orchestrator; do
+                news-creator tag-generator acolyte-orchestrator \
+                knowledge-sovereign tts-speaker; do
   pact-broker-cli create-webhook \
     --request POST \
     --url "https://api.github.com/repos/Kaikei-e/alt-deploy/dispatches" \

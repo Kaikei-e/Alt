@@ -195,15 +195,15 @@
           "event": {
             "actorId": "knowledge-url-backfill",
             "actorType": "service",
-            "aggregateId": "a4bc3936-9ad1-489c-b68d-828ff574f7df",
+            "aggregateId": "77c0545f-d372-4d7f-b434-ee6113701249",
             "aggregateType": "article",
-            "dedupeKey": "article-url-backfill-v2:a4bc3936-9ad1-489c-b68d-828ff574f7df",
-            "eventId": "a52c209c-918f-4a96-b34a-5e5727b78081",
+            "dedupeKey": "article-url-backfill-v2:77c0545f-d372-4d7f-b434-ee6113701249",
+            "eventId": "948d6709-7f4c-41ab-80cb-44ec687ec25a",
             "eventType": "ArticleUrlBackfilled",
             "occurredAt": "2026-04-28T12:00:00Z",
             "payload": "eyJhcnRpY2xlX2lkIjoiMDAwMDAwMDAtMDAwMC0wMDAwLTAwMDAtMDAwMDAwMDAwMDAwIiwidXJsIjoiaHR0cHM6Ly9leGFtcGxlLmNvbSJ9",
-            "tenantId": "3963f23d-3fb2-4045-8920-8848cbebe001",
-            "userId": "dc23caff-2246-436f-837e-1a14fa91d911"
+            "tenantId": "617a7ca8-1ef2-44a1-92b5-8c5fe3b6fe69",
+            "userId": "62838151-dbf1-43cb-82cb-112ab7aa41b1"
           }
         },
         "headers": {
@@ -267,15 +267,15 @@
           "event": {
             "actorId": "tag-generator",
             "actorType": "service",
-            "aggregateId": "fc58425d-5f39-4adc-8fa8-fce3a7bd306f",
+            "aggregateId": "c513254f-45bb-4f90-8120-081300316304",
             "aggregateType": "article",
-            "dedupeKey": "TagSetVersionCreated:a08c86f4-9f9e-403d-8ccb-9cffbe54d384",
-            "eventId": "f4996521-4798-42c3-8ae8-f52872780e60",
+            "dedupeKey": "TagSetVersionCreated:e9e892e9-0d5d-4199-b055-b4462f911983",
+            "eventId": "f92705e9-2362-4272-ab4f-d818868163ac",
             "eventType": "TagSetVersionCreated",
             "occurredAt": "2026-06-10T10:00:00Z",
-            "payload": "eyJhcnRpY2xlX2lkIjoiZmM1ODQyNWQtNWYzOS00YWRjLThmYTgtZmNlM2E3YmQzMDZmIiwiZ2VuZXJhdG9yIjoidGFnLWdlbmVyYXRvciIsInRhZ19zZXRfdmVyc2lvbl9pZCI6ImEwOGM4NmY0LTlmOWUtNDAzZC04Y2NiLTljZmZiZTU0ZDM4NCIsInRhZ3MiOlsiZ28iLCJydXN0Il19",
-            "tenantId": "2ddb8d4d-727c-4b20-b4da-dafedc6d5aa5",
-            "userId": "6f3823e0-1ec4-47a6-ab3d-788092e3a710"
+            "payload": "eyJhcnRpY2xlX2lkIjoiYzUxMzI1NGYtNDViYi00ZjkwLTgxMjAtMDgxMzAwMzE2MzA0IiwiZ2VuZXJhdG9yIjoidGFnLWdlbmVyYXRvciIsInRhZ19zZXRfdmVyc2lvbl9pZCI6ImU5ZTg5MmU5LTBkNWQtNDE5OS1iMDU1LWI0NDYyZjkxMTk4MyIsInRhZ3MiOlsiZ28iLCJydXN0Il19",
+            "tenantId": "6ab71b4e-0896-47cf-9f40-b019c6c1347d",
+            "userId": "9a37c8e4-ce8c-40a9-beed-71d3086be70c"
           }
         },
         "headers": {
@@ -610,7 +610,7 @@
   ],
   "metadata": {
     "pact-go": {
-      "version": "2.4.3"
+      "version": "2.5.1"
     },
     "pactRust": {
       "ffi": "0.4.28",
