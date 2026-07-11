@@ -1,5 +1,5 @@
 # Plecto edge/ingress manifest for Alt (nginx cutover trial).
-# Built against ghcr.io/kaikei-e/plecto:0.2.6 (plecto:filter@0.2.0).
+# Built against ghcr.io/kaikei-e/plecto:0.3.0 (plecto:filter@0.3.0).
 # [state] is omitted (defaults to "memory" — zero-config; rate-limit counters/KV don't
 # survive a restart, acceptable for this trial).
 
@@ -9,7 +9,7 @@ keys = [".plecto/dev-key.pub"]
 [[filter]]
 id = "security-headers"
 source = "artifacts/security-headers"
-digest = "sha256:c21884af336b4dd48d3bd06ed179bf0a3e34c76d0c31677bfabb79bf98df2670"
+digest = "sha256:a86d20922ac413e5db7e2df5e2e2ed9b5e2dc20dc1dd0ef0a83e0c662e512539"
 isolation = "trusted"        # first-party, Alt-authored filter
 
 [observability]
@@ -74,6 +74,11 @@ burst = 40
 key = "client-ip"
 [route.upgrade]
 protocols = ["websocket"]
+# nginx never set `gzip off` here, so this location inherited the global `gzip on` —
+# Kratos JSON flow responses (incl. CSRF tokens) were already compressed pre-cutover.
+# This restores that parity. NOTE: ADR 000075 flags reflected-secret routes as a BREACH
+# risk; see docs/review/plecto-proxy-v0.3.0-gzip-2026-07-11.md for the write-up.
+[route.compression]
 
 # 4. `/auth-validate` is NOT ported — confirmed dead: no `auth_request` directive
 # anywhere in the repo references it; auth enforcement happens in-service.
@@ -104,6 +109,11 @@ filters = ["security-headers"]
 upstream = "alt-frontend-sv"
 [route.match]
 path_prefix = "/_app/immutable/"
+# Mirrors nginx's `gzip on; gzip_types text/javascript application/javascript text/css;
+# gzip_min_length 256;` for this location. algorithms left at the v0.3.0 default
+# (zstd -> br -> gzip server preference) — a strict upgrade over nginx's gzip-only.
+[route.compression]
+min_length = 256
 
 # 8. Enumerated Connect-RPC streaming routes (regex -> explicit path_prefix).
 [[route]]
@@ -159,3 +169,8 @@ upstream = "alt-frontend-sv"
 path_prefix = "/"
 [route.upgrade]
 protocols = ["websocket"]
+# Mirrors nginx's `gzip on; gzip_types text/css application/javascript application/json
+# text/javascript; gzip_min_length 256;` (text/html was always implicitly covered by
+# nginx). algorithms left at the v0.3.0 default (zstd -> br -> gzip).
+[route.compression]
+min_length = 256

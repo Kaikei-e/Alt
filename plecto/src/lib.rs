@@ -25,7 +25,7 @@ impl Guest for AltSecurityHeadersFilter {
         RequestDecision::Continue
     }
 
-    fn on_response(_resp: HttpResponse) -> ResponseDecision {
+    fn on_response(_req: HttpRequest, _resp: HttpResponse) -> ResponseDecision {
         ResponseDecision::Modified(ResponseEdit {
             set_status: None,
             set_headers: vec![

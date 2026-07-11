@@ -1,14 +1,16 @@
 // plecto:filter — the typed contract between the native fast path (host) and
 // WASM filters (extension plane). See ADR 000001 / 000002.
 //
-// v0.1.0 scope (ADR 000010): sync, header-only, Plecto's OWN http types.
+// v0.3.0 (ADR 000073): `on-response` carries the as-forwarded request snapshot and
+// `response-decision` gains `replace`. Base scope (ADR 000010): sync, header-only,
+// Plecto's OWN http types.
 // stream<u8> bodies, async funcs, and wasi:http type reuse arrive in a later
 // increment. wasmtime 46 (shipped 2026-06-22) brings Component Model async +
 // WASI 0.3 by default (ADR 000003 / 000005); the committed direction is to
 // CONVERGE these types onto wasi:http (proxy / middleware) in M3 (ADR 000020).
 // Until that migration this world stays buildable+runnable on the stable
 // toolchain with no experimental flags.
-package plecto:filter@0.2.0;
+package plecto:filter@0.3.0;
 
 interface types {
     // A single HTTP header field.
@@ -57,10 +59,17 @@ interface types {
         short-circuit(http-response),
     }
 
-    // The typed outcome of a response-side filter.
+    // The typed outcome of a response-side filter (ADR 000073).
     variant response-decision {
         %continue,
         modified(response-edit),
+        // Stop the chain and send this SYNTHESISED response instead of the upstream one
+        // (the upstream body stream is dropped, never read — ADR 000038 stays intact).
+        // Distinct from the request side's `short-circuit`: nothing is short-circuited
+        // here — a response that already arrived is being replaced (P12). The host
+        // validates the returned headers fail-closed, exactly like a `short-circuit`
+        // output (ADR 000071 rules).
+        replace(http-response),
     }
 
     // The typed outcome of a request-side BODY filter (buffer-then-decide, ADR 000025). v1 carries
@@ -167,9 +176,18 @@ world filter {
     // heavy, once-per-instance initialisation (Tenet 4)
     export init: func();
 
-    // hot path — one call per request / response
+    // hot path — one call per request / response.
+    //
+    // `req` on `on-response` is the AS-FORWARDED request snapshot (Declared Semantics,
+    // ADR 000073): the header-only request as it left the request-side chain — filter
+    // edits applied (e.g. an auth filter's `x-authenticated-user` stamp), before the
+    // host's egress transforms (hop-by-hop strip, upstream path rewrite, traceparent
+    // injection). Untouched inbound headers such as `Origin` are still present. It is a
+    // value-passed view: editing it does nothing — respond with a `response-decision`.
+    // `resp.body` is always empty (header-only): the upstream body streams zero-copy
+    // past the chain (ADR 000038); `replace` SYNTHESISES a body, it never reads one.
     export on-request: func(req: http-request) -> request-decision;
-    export on-response: func(resp: http-response) -> response-decision;
+    export on-response: func(req: http-request, resp: http-response) -> response-decision;
 }
 
 // The body-reading contract: identical to `filter` PLUS the `on-request-body` export. A filter that
@@ -192,5 +210,7 @@ world filter-body {
     export init: func();
     export on-request: func(req: http-request) -> request-decision;
     export on-request-body: func(body: list<u8>) -> request-body-decision;
-    export on-response: func(resp: http-response) -> response-decision;
+    // Same as-forwarded / replace Declared Semantics as `filter` (ADR 000073): `req` is the
+    // chain-output snapshot before egress transforms; `replace` is terminal and synthesises.
+    export on-response: func(req: http-request, resp: http-response) -> response-decision;
 }
