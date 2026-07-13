@@ -14,6 +14,9 @@ Alt は 20+ microservices の monorepo。各 bounded context の正準語 (ubiqu
   変えずに、ログと実測値からランタイムのリソース消費を right-size する **運用境界**。全サービス横断。
 - [Visual Preview](./contexts/visual-preview.md) — _(定義中, 2026-06-22 grill)_ feed 記事を OG 画像カードグリッドで
   閲覧する surface。画像の取得・表示・欠落の語彙 (transient fallback vs absent image) を固定。alt-frontend-sv / alt-backend image proxy にまたがる。
+- [Inference Topology](./contexts/inference-topology.md) — _(定義中, 2026-07-13 grill)_ GPU 推論の配置境界。
+  Primary Host / Enhancement Tier / 劣化契約 (Degraded・Deferred・Feature-off) の語彙を固定。
+  news-creator / rag-orchestrator / recap-subworker / acolyte-orchestrator / TTS 消費側にまたがる。
 
 ## Relationships
 
@@ -23,3 +26,7 @@ Alt は 20+ microservices の monorepo。各 bounded context の正準語 (ubiqu
 - **Knowledge Trail は旧 Knowledge Loop を置換** (2026-06-10)。イベント基盤・relation 語彙・evidence 供給機構を継承。
 - **Resource Efficiency → Visual Preview**: image proxy の per-host レート制限 (上流ホスト保護) と OG 画像 age-gate は
   Resource Efficiency の保持・cadence 規律に従う。Visual Preview はその制約下で transient fallback を retry で吸収する。
+- **Inference Topology ↔ Resource Efficiency**: Degraded 契約の発動はローカル GPU/RAM の resident footprint を増やす。
+  ローカル代替を常駐させるか on-demand 起動にするかは Resource Efficiency の measurement-first に従う。
+- **Inference Topology → 全 context**: 劣化契約の Loud degradation は CLAUDE.md Rule 8 (サイレントフォールバック禁止) の
+  トポロジ版であり、リモート依存を持つ全サービスに適用される。
