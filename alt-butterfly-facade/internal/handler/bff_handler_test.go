@@ -381,6 +381,80 @@ func TestBFFHandler_ServeHTTP_UnaryStillUsesBFFFeatures(t *testing.T) {
 	assert.Equal(t, "MISS", rec.Header().Get("X-Cache"))
 }
 
+// TestBFFHandler_StreamingProcedure_CircuitBreaker_RecordsFailureOnConnectionError
+// locks down the second half of the streaming/BFF-features contract: even
+// though streaming procedures bypass cache/dedup (see
+// TestBFFHandler_ServeHTTP_StreamingDelegatesToProxyHandler above) and are
+// forwarded via ProxyHandler for true chunk-level streaming, the circuit
+// breaker must still observe connection failures for those requests.
+// ServeHTTP's isStreamingProcedure branch currently returns via
+// h.proxyHandler.ServeHTTP(w, r) without ever touching h.circuitBreaker, so
+// this failure is invisible to the breaker today and TotalFailures stays 0.
+func TestBFFHandler_StreamingProcedure_CircuitBreaker_RecordsFailureOnConnectionError(t *testing.T) {
+	// Server that is closed immediately so the streaming forward fails to
+	// connect (connection refused), simulating a backend outage.
+	deadBackend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}))
+	deadBackend.Close()
+
+	secret := []byte("test-secret-key")
+	config := BFFConfig{
+		EnableCircuitBreaker: true,
+		CBFailureThreshold:   5,
+		CBSuccessThreshold:   2,
+		CBOpenTimeout:        30 * time.Second,
+	}
+	handler := createTestBFFHandlerWithBackend(t, deadBackend.URL, secret, config)
+	token := createTestToken(t, secret)
+
+	req := httptest.NewRequest("POST", "/alt.augur.v2.AugurService/StreamChat", bytes.NewReader([]byte(`{}`)))
+	req.Header.Set("X-Alt-Backend-Token", token)
+	rec := httptest.NewRecorder()
+
+	handler.ServeHTTP(rec, req)
+
+	stats := handler.GetCircuitBreakerStats()
+	require.NotNil(t, stats)
+	assert.Equal(t, int64(1), stats.TotalFailures, "streaming connection failure must be recorded by the circuit breaker")
+}
+
+// TestBFFHandler_StreamingProcedure_CircuitBreaker_RecordsSuccessOnHealthyStream
+// verifies the complementary case: a streaming request that connects and
+// gets a successful initial response must record a circuit breaker success,
+// so a breaker previously opened by streaming failures can also recover
+// via streaming traffic instead of only via unary traffic.
+func TestBFFHandler_StreamingProcedure_CircuitBreaker_RecordsSuccessOnHealthyStream(t *testing.T) {
+	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/connect+proto")
+		w.WriteHeader(http.StatusOK)
+		flusher, ok := w.(http.Flusher)
+		require.True(t, ok)
+		w.Write([]byte("chunk"))
+		flusher.Flush()
+	}))
+	defer backend.Close()
+
+	secret := []byte("test-secret-key")
+	config := BFFConfig{
+		EnableCircuitBreaker: true,
+		CBFailureThreshold:   5,
+		CBSuccessThreshold:   2,
+		CBOpenTimeout:        30 * time.Second,
+	}
+	handler := createTestBFFHandlerWithBackend(t, backend.URL, secret, config)
+	token := createTestToken(t, secret)
+
+	req := httptest.NewRequest("POST", "/alt.augur.v2.AugurService/StreamChat", bytes.NewReader([]byte(`{}`)))
+	req.Header.Set("X-Alt-Backend-Token", token)
+	rec := httptest.NewRecorder()
+
+	handler.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	stats := handler.GetCircuitBreakerStats()
+	require.NotNil(t, stats)
+	assert.Equal(t, int64(1), stats.TotalSuccesses, "streaming initial-response success must be recorded by the circuit breaker")
+}
+
 func TestBFFHandler_ApplyConnectTimeout_CappedAt5Minutes(t *testing.T) {
 	handler := createTestBFFHandler(t, BFFConfig{})
 
