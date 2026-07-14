@@ -312,8 +312,8 @@ need_tool() {
 # removes the six language-gate `if/else` blocks the pre-refactor version
 # had (one per lang × role combination).
 STEPS_CONSUMER=(
-  "Go: alt-backend consumer|go|alt-backend/app|CGO_ENABLED=1 go test -tags=contract ./driver/preprocessor_connect/contract/ -v"
-  "Go: alt-backend sovereign consumer|go|alt-backend/app|CGO_ENABLED=1 go test -tags=contract ./driver/sovereign_client/contract/ -v"
+  "Go: alt-backend consumer|go|alt-backend/app|CGO_ENABLED=1 go test -tags=contract ./orchestrator/driver/preprocessor_connect/contract/ -v"
+  "Go: alt-backend sovereign consumer|go|alt-backend/app|CGO_ENABLED=1 go test -tags=contract ./shared/driver/sovereign_client/contract/ -v"
   "Go: pre-processor consumer|go|pre-processor/app|CGO_ENABLED=1 go test -tags=contract ./driver/contract/ -v"
   "Go: rag-orchestrator consumer|go|rag-orchestrator|CGO_ENABLED=1 go test -tags=contract ./internal/adapter/contract/ -v"
   "Go: search-indexer consumer|go|search-indexer/app|CGO_ENABLED=1 go test -tags=contract ./driver/contract/ -v"
@@ -330,7 +330,7 @@ STEPS_PROVIDER=(
   "Python: recap-subworker provider|uv|recap-subworker|uv run pytest tests/contract/ -v"
   "Python: tag-generator provider|uv|tag-generator/app|uv run pytest tests/contract/ -v"
   "Python: tts-speaker provider|uv|tts-speaker|uv run pytest tests/contract/ -v"
-  "Go: alt-backend provider|go|alt-backend/app|CGO_ENABLED=1 go test -tags=contract ./driver/contract/ -v"
+  "Go: alt-backend provider|go|alt-backend/app|CGO_ENABLED=1 go test -tags=contract ./dataplane/driver/contract/ -v"
   "Go: search-indexer provider|go|search-indexer/app|CGO_ENABLED=1 go test -tags=contract -run TestVerifySearchIndexerProviderContracts ./driver/contract/ -v"
   "Go: pre-processor provider|go|pre-processor/app|CGO_ENABLED=1 go test -tags=contract -run TestVerifyAltBackendContract ./driver/contract/ -v"
   "Go: mq-hub provider (search-indexer message pact)|go|mq-hub/app|CGO_ENABLED=1 go test -tags=contract -run TestVerifySearchIndexerMqHubMessagePact ./driver/contract/ -v"

@@ -9,6 +9,8 @@ affected_services:
 aliases:
   - ADR-NNNN
   - ADR-000NNN
+supersedes:
+  -
 ---
 # ADR-000NNN: タイトル（動詞始まりの行動指向で記述）
 
@@ -17,6 +19,9 @@ aliases:
 ## Status
 
 <!-- Proposed | Accepted | Deprecated | Superseded by ADR-NNNN -->
+<!-- 本ADRが既存ADRを置き換える場合は、frontmatterの supersedes に旧ADR番号を追記する。
+     逆方向（旧ADR側への "Superseded by" 追記）はツール側では扱わないので、
+     引き続きここに自然文で明記すること。 -->
 
 Proposed
 

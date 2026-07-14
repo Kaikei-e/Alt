@@ -14,6 +14,7 @@
 - タグ: #alt #performance #zenn #idea
 - ADRへのリンク追加（Related ADRsのwikilink化）は可。内容改変は不可。
 - ADR参照は必ず `[[000NNN]]` wikilink形式を使う
+- ADRが既存ADRを置き換える場合、新ADR側のfrontmatterに `supersedes: ["000NNN"]` を書く（旧ADR側への逆方向記入は不要、`scripts/adr_graph.py` が算出する）。循環・存在しないADR番号参照は `python3 scripts/adr_graph.py check` で検出する
 
 ## 検索ガイドライン
 - **まず `wiki/HOME.md` を見る** — 結晶化された navigation layer。ADR / runbook / plan の入口
