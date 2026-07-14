@@ -195,15 +195,15 @@
           "event": {
             "actorId": "knowledge-url-backfill",
             "actorType": "service",
-            "aggregateId": "77c0545f-d372-4d7f-b434-ee6113701249",
+            "aggregateId": "795f71c4-5f3b-40b3-be4e-24b65ee98864",
             "aggregateType": "article",
-            "dedupeKey": "article-url-backfill-v2:77c0545f-d372-4d7f-b434-ee6113701249",
-            "eventId": "948d6709-7f4c-41ab-80cb-44ec687ec25a",
+            "dedupeKey": "article-url-backfill-v2:795f71c4-5f3b-40b3-be4e-24b65ee98864",
+            "eventId": "0850d043-a7c4-4a6f-954d-3a0231eb2837",
             "eventType": "ArticleUrlBackfilled",
             "occurredAt": "2026-04-28T12:00:00Z",
             "payload": "eyJhcnRpY2xlX2lkIjoiMDAwMDAwMDAtMDAwMC0wMDAwLTAwMDAtMDAwMDAwMDAwMDAwIiwidXJsIjoiaHR0cHM6Ly9leGFtcGxlLmNvbSJ9",
-            "tenantId": "617a7ca8-1ef2-44a1-92b5-8c5fe3b6fe69",
-            "userId": "62838151-dbf1-43cb-82cb-112ab7aa41b1"
+            "tenantId": "ebca11f6-56c5-4f86-bc21-03e58b429250",
+            "userId": "8f6e6f6f-841c-493d-a073-c90c8f88c958"
           }
         },
         "headers": {
@@ -256,6 +256,69 @@
       }
     },
     {
+      "description": "an AppendKnowledgeEvent request for SummaryVersionCreated with summary_text and quality_score",
+      "providerStates": [
+        {
+          "name": "sovereign accepts SummaryVersionCreated events carrying the summary text and quality score"
+        }
+      ],
+      "request": {
+        "body": {
+          "event": {
+            "actorId": "news-creator",
+            "actorType": "service",
+            "aggregateId": "83930bbc-5fa1-4780-b23f-598868932a79",
+            "aggregateType": "article",
+            "dedupeKey": "SummaryVersionCreated:51972ce3-e4d5-4f56-8ee9-4d885433b134",
+            "eventId": "dc75e6a6-3f77-47e1-a044-181f0a1e30c7",
+            "eventType": "SummaryVersionCreated",
+            "occurredAt": "2026-06-10T10:00:00Z",
+            "payload": "eyJhcnRpY2xlX2lkIjoiODM5MzBiYmMtNWZhMS00NzgwLWIyM2YtNTk4ODY4OTMyYTc5IiwiYXJ0aWNsZV90aXRsZSI6IkdvIDEuMjYgUmVsZWFzZSBOb3RlcyIsIm1vZGVsIjoibmV3cy1jcmVhdG9yLXN1bW1hcml6ZXItdjEiLCJwcm9tcHRfdmVyc2lvbiI6IjIwMjYtMDYtMDEiLCJxdWFsaXR5X3Njb3JlIjowLjg3LCJzdW1tYXJ5X3RleHQiOiJHbyAxLjI2IHNoaXBzIHJhbmdlLW92ZXItZnVuYyBpdGVyYXRvcnMgYW5kIGEgZmFzdGVyIEdDLiIsInN1bW1hcnlfdmVyc2lvbl9pZCI6IjUxOTcyY2UzLWU0ZDUtNGY1Ni04ZWU5LTRkODg1NDMzYjEzNCJ9",
+            "tenantId": "7a6963fd-b72c-47c2-ab5c-4d9c7a3fecee",
+            "userId": "cfcbc4d0-b22b-4f89-afdd-ca14c135d88a"
+          }
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "matchingRules": {
+          "body": {
+            "$.event": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            }
+          }
+        },
+        "method": "POST",
+        "path": "/services.sovereign.v1.KnowledgeSovereignService/AppendKnowledgeEvent"
+      },
+      "response": {
+        "body": {
+          "success": true
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "matchingRules": {
+          "body": {
+            "$.success": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            }
+          }
+        },
+        "status": 200
+      }
+    },
+    {
       "description": "an AppendKnowledgeEvent request for TagSetVersionCreated with a tags array",
       "providerStates": [
         {
@@ -267,15 +330,15 @@
           "event": {
             "actorId": "tag-generator",
             "actorType": "service",
-            "aggregateId": "c513254f-45bb-4f90-8120-081300316304",
+            "aggregateId": "a8cdcb4d-9f7d-430f-a3c1-104f10deadb5",
             "aggregateType": "article",
-            "dedupeKey": "TagSetVersionCreated:e9e892e9-0d5d-4199-b055-b4462f911983",
-            "eventId": "f92705e9-2362-4272-ab4f-d818868163ac",
+            "dedupeKey": "TagSetVersionCreated:ef856651-5e3f-4131-8004-831775636e5b",
+            "eventId": "229a060c-eee0-4972-a5b7-f3e5aa8ea873",
             "eventType": "TagSetVersionCreated",
             "occurredAt": "2026-06-10T10:00:00Z",
-            "payload": "eyJhcnRpY2xlX2lkIjoiYzUxMzI1NGYtNDViYi00ZjkwLTgxMjAtMDgxMzAwMzE2MzA0IiwiZ2VuZXJhdG9yIjoidGFnLWdlbmVyYXRvciIsInRhZ19zZXRfdmVyc2lvbl9pZCI6ImU5ZTg5MmU5LTBkNWQtNDE5OS1iMDU1LWI0NDYyZjkxMTk4MyIsInRhZ3MiOlsiZ28iLCJydXN0Il19",
-            "tenantId": "6ab71b4e-0896-47cf-9f40-b019c6c1347d",
-            "userId": "9a37c8e4-ce8c-40a9-beed-71d3086be70c"
+            "payload": "eyJhcnRpY2xlX2lkIjoiYThjZGNiNGQtOWY3ZC00MzBmLWEzYzEtMTA0ZjEwZGVhZGI1IiwiZ2VuZXJhdG9yIjoidGFnLWdlbmVyYXRvciIsInRhZ19zZXRfdmVyc2lvbl9pZCI6ImVmODU2NjUxLTVlM2YtNDEzMS04MDA0LTgzMTc3NTYzNmU1YiIsInRhZ3MiOlsiZ28iLCJydXN0Il19",
+            "tenantId": "ba25bc67-d428-4357-a6e7-183d317dd86a",
+            "userId": "07cd9cc6-24eb-4c06-bf2e-68999796d00d"
           }
         },
         "headers": {
