@@ -10,7 +10,7 @@
 package mocks
 
 import (
-	internal_article_port "alt/port/internal_article_port"
+	internal_article_port "alt/dataplane/port/internal_article_port"
 	context "context"
 	reflect "reflect"
 	time "time"

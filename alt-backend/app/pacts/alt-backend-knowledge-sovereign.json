@@ -1,0 +1,690 @@
+{
+  "consumer": {
+    "name": "alt-backend"
+  },
+  "interactions": [
+    {
+      "description": "a GetTrailFootprints request for the user",
+      "providerStates": [
+        {
+          "name": "a user with at least one footprint exists"
+        }
+      ],
+      "request": {
+        "body": {
+          "limit": 20,
+          "userId": "22222222-2222-2222-2222-222222222222"
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "matchingRules": {
+          "body": {
+            "$.limit": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.userId": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            }
+          }
+        },
+        "method": "POST",
+        "path": "/services.sovereign.v1.KnowledgeSovereignService/GetTrailFootprints"
+      },
+      "response": {
+        "body": {
+          "branches": [
+            {
+              "branchKey": "cluster:u:article:z",
+              "confidence": "plausible",
+              "evidenceRefs": [
+                {
+                  "kind": "tag",
+                  "refId": "rust"
+                }
+              ],
+              "relationKind": "cluster",
+              "why": "Joins a topic you follow."
+            }
+          ],
+          "footprints": [
+            {
+              "footprintKey": "open:article:1",
+              "itemKey": "article:1",
+              "occurredAt": "2026-06-10T09:12:00Z",
+              "verb": "read"
+            }
+          ]
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "matchingRules": {
+          "body": {
+            "$.branches": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type",
+                  "min": 1
+                }
+              ]
+            },
+            "$.branches[*].branchKey": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.branches[*].confidence": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.branches[*].evidenceRefs": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type",
+                  "min": 1
+                }
+              ]
+            },
+            "$.branches[*].evidenceRefs[*].kind": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.branches[*].evidenceRefs[*].refId": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.branches[*].relationKind": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.branches[*].why": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.footprints": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type",
+                  "min": 1
+                }
+              ]
+            },
+            "$.footprints[*].footprintKey": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.footprints[*].itemKey": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.footprints[*].occurredAt": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.footprints[*].verb": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            }
+          }
+        },
+        "status": 200
+      }
+    },
+    {
+      "description": "an AppendKnowledgeEvent request for ArticleUrlBackfilled",
+      "providerStates": [
+        {
+          "name": "sovereign accepts ArticleUrlBackfilled corrective events"
+        }
+      ],
+      "request": {
+        "body": {
+          "event": {
+            "actorId": "knowledge-url-backfill",
+            "actorType": "service",
+            "aggregateId": "8ec87804-5d34-43c0-9e67-582772763d03",
+            "aggregateType": "article",
+            "dedupeKey": "article-url-backfill-v2:8ec87804-5d34-43c0-9e67-582772763d03",
+            "eventId": "24523739-59f4-4f71-a114-d69965eb3816",
+            "eventType": "ArticleUrlBackfilled",
+            "occurredAt": "2026-04-28T12:00:00Z",
+            "payload": "eyJhcnRpY2xlX2lkIjoiMDAwMDAwMDAtMDAwMC0wMDAwLTAwMDAtMDAwMDAwMDAwMDAwIiwidXJsIjoiaHR0cHM6Ly9leGFtcGxlLmNvbSJ9",
+            "tenantId": "1fbdaa74-a60b-42ea-aa73-badd60505020",
+            "userId": "70073bbc-fcdf-4660-be06-72b935df46f9"
+          }
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "matchingRules": {
+          "body": {
+            "$.event": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            }
+          }
+        },
+        "method": "POST",
+        "path": "/services.sovereign.v1.KnowledgeSovereignService/AppendKnowledgeEvent"
+      },
+      "response": {
+        "body": {
+          "eventSeq": 123,
+          "success": true
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "matchingRules": {
+          "body": {
+            "$.eventSeq": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.success": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            }
+          }
+        },
+        "status": 200
+      }
+    },
+    {
+      "description": "an AppendKnowledgeEvent request for SummaryVersionCreated with summary_text and quality_score",
+      "providerStates": [
+        {
+          "name": "sovereign accepts SummaryVersionCreated events carrying the summary text and quality score"
+        }
+      ],
+      "request": {
+        "body": {
+          "event": {
+            "actorId": "news-creator",
+            "actorType": "service",
+            "aggregateId": "8c057823-2fbb-4063-a45f-f2a33e89664c",
+            "aggregateType": "article",
+            "dedupeKey": "SummaryVersionCreated:f3a7981b-0667-407d-b159-b89f413a9fbc",
+            "eventId": "2adb169a-bffd-4bcd-b55b-c73b7ef284d1",
+            "eventType": "SummaryVersionCreated",
+            "occurredAt": "2026-06-10T10:00:00Z",
+            "payload": "eyJhcnRpY2xlX2lkIjoiOGMwNTc4MjMtMmZiYi00MDYzLWE0NWYtZjJhMzNlODk2NjRjIiwiYXJ0aWNsZV90aXRsZSI6IkdvIDEuMjYgUmVsZWFzZSBOb3RlcyIsIm1vZGVsIjoibmV3cy1jcmVhdG9yLXN1bW1hcml6ZXItdjEiLCJwcm9tcHRfdmVyc2lvbiI6IjIwMjYtMDYtMDEiLCJxdWFsaXR5X3Njb3JlIjowLjg3LCJzdW1tYXJ5X3RleHQiOiJHbyAxLjI2IHNoaXBzIHJhbmdlLW92ZXItZnVuYyBpdGVyYXRvcnMgYW5kIGEgZmFzdGVyIEdDLiIsInN1bW1hcnlfdmVyc2lvbl9pZCI6ImYzYTc5ODFiLTA2NjctNDA3ZC1iMTU5LWI4OWY0MTNhOWZiYyJ9",
+            "tenantId": "9edcef50-aca3-472a-b388-017a017a7d35",
+            "userId": "1808e46a-8433-4ffe-a2b5-eb0fa8254464"
+          }
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "matchingRules": {
+          "body": {
+            "$.event": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            }
+          }
+        },
+        "method": "POST",
+        "path": "/services.sovereign.v1.KnowledgeSovereignService/AppendKnowledgeEvent"
+      },
+      "response": {
+        "body": {
+          "success": true
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "matchingRules": {
+          "body": {
+            "$.success": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            }
+          }
+        },
+        "status": 200
+      }
+    },
+    {
+      "description": "an AppendKnowledgeEvent request for TagSetVersionCreated with a tags array",
+      "providerStates": [
+        {
+          "name": "sovereign accepts TagSetVersionCreated events carrying the version's tag names"
+        }
+      ],
+      "request": {
+        "body": {
+          "event": {
+            "actorId": "tag-generator",
+            "actorType": "service",
+            "aggregateId": "8b5ae502-f494-441c-b71e-c12656bd68fc",
+            "aggregateType": "article",
+            "dedupeKey": "TagSetVersionCreated:d2098604-4b9f-4adf-9913-46d668a8cddb",
+            "eventId": "2a26abf0-d8ab-42a8-bec9-30c3a9308cdd",
+            "eventType": "TagSetVersionCreated",
+            "occurredAt": "2026-06-10T10:00:00Z",
+            "payload": "eyJhcnRpY2xlX2lkIjoiOGI1YWU1MDItZjQ5NC00NDFjLWI3MWUtYzEyNjU2YmQ2OGZjIiwiZ2VuZXJhdG9yIjoidGFnLWdlbmVyYXRvciIsInRhZ19zZXRfdmVyc2lvbl9pZCI6ImQyMDk4NjA0LTRiOWYtNGFkZi05OTEzLTQ2ZDY2OGE4Y2RkYiIsInRhZ3MiOlsiZ28iLCJydXN0Il19",
+            "tenantId": "9be0b04d-2906-467e-8c7b-69885ee72e67",
+            "userId": "d09b9d7f-51f2-4886-aae5-060d6e33fe22"
+          }
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "matchingRules": {
+          "body": {
+            "$.event": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            }
+          }
+        },
+        "method": "POST",
+        "path": "/services.sovereign.v1.KnowledgeSovereignService/AppendKnowledgeEvent"
+      },
+      "response": {
+        "body": {
+          "success": true
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "matchingRules": {
+          "body": {
+            "$.success": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            }
+          }
+        },
+        "status": 200
+      }
+    },
+    {
+      "description": "an ApplyCurationMutation request of kind create_lens",
+      "providerStates": [
+        {
+          "name": "the curation mutation create_lens is accepted"
+        }
+      ],
+      "request": {
+        "body": {
+          "entityId": "lens-1",
+          "idempotencyKey": "create_lens:lens-1",
+          "mutationType": "create_lens",
+          "payload": "eyJsZW5zX2lkIjoibGVucy0xIn0="
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "matchingRules": {
+          "body": {
+            "$.entityId": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.idempotencyKey": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.payload": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            }
+          }
+        },
+        "method": "POST",
+        "path": "/services.sovereign.v1.KnowledgeSovereignService/ApplyCurationMutation"
+      },
+      "response": {
+        "body": {
+          "success": true
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "matchingRules": {
+          "body": {
+            "$.success": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            }
+          }
+        },
+        "status": 200
+      }
+    },
+    {
+      "description": "an ApplyProjectionMutation request of kind upsert_home_item",
+      "providerStates": [
+        {
+          "name": "the projection mutation upsert_home_item is accepted"
+        }
+      ],
+      "request": {
+        "body": {
+          "entityId": "user-1:article-1",
+          "idempotencyKey": "upsert_home_item:user-1:article-1",
+          "mutationType": "upsert_home_item",
+          "payload": "eyJ1c2VyX2lkIjoidXNlci0xIn0="
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "matchingRules": {
+          "body": {
+            "$.entityId": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.idempotencyKey": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.payload": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            }
+          }
+        },
+        "method": "POST",
+        "path": "/services.sovereign.v1.KnowledgeSovereignService/ApplyProjectionMutation"
+      },
+      "response": {
+        "body": {
+          "success": true
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "matchingRules": {
+          "body": {
+            "$.success": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            }
+          }
+        },
+        "status": 200
+      }
+    },
+    {
+      "description": "an ApplyProjectionMutation request that the provider refuses to apply",
+      "providerStates": [
+        {
+          "name": "the projection mutation is rejected with an error"
+        }
+      ],
+      "request": {
+        "body": {
+          "entityId": "user-1:article-2",
+          "idempotencyKey": "dismiss_home_item:user-1:article-2",
+          "mutationType": "dismiss_home_item",
+          "payload": "eyJ1c2VyX2lkIjoidXNlci0xIn0="
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "matchingRules": {
+          "body": {
+            "$.entityId": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.idempotencyKey": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.payload": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            }
+          }
+        },
+        "method": "POST",
+        "path": "/services.sovereign.v1.KnowledgeSovereignService/ApplyProjectionMutation"
+      },
+      "response": {
+        "body": {
+          "errorMessage": "projection version mismatch",
+          "success": false
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "matchingRules": {
+          "body": {
+            "$.errorMessage": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.success": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            }
+          }
+        },
+        "status": 200
+      }
+    },
+    {
+      "description": "an ApplyRecallMutation request of kind snooze_candidate",
+      "providerStates": [
+        {
+          "name": "the recall mutation snooze_candidate is accepted"
+        }
+      ],
+      "request": {
+        "body": {
+          "entityId": "user-1:article-3",
+          "idempotencyKey": "snooze_candidate:user-1:article-3",
+          "mutationType": "snooze_candidate",
+          "payload": "eyJ1c2VyX2lkIjoidXNlci0xIn0="
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "matchingRules": {
+          "body": {
+            "$.entityId": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.idempotencyKey": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.payload": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            }
+          }
+        },
+        "method": "POST",
+        "path": "/services.sovereign.v1.KnowledgeSovereignService/ApplyRecallMutation"
+      },
+      "response": {
+        "body": {
+          "success": true
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "matchingRules": {
+          "body": {
+            "$.success": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            }
+          }
+        },
+        "status": 200
+      }
+    }
+  ],
+  "metadata": {
+    "pact-go": {
+      "version": "2.5.1"
+    },
+    "pactRust": {
+      "ffi": "0.4.28",
+      "mockserver": "1.2.16",
+      "models": "1.3.5"
+    },
+    "pactSpecification": {
+      "version": "3.0.0"
+    }
+  },
+  "provider": {
+    "name": "knowledge-sovereign"
+  }
+}

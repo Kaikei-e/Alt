@@ -11,7 +11,7 @@ package mocks
 
 import (
 	domain "alt/domain"
-	register_feed_port "alt/port/register_feed_port"
+	register_feed_port "alt/orchestrator/port/register_feed_port"
 	context "context"
 	reflect "reflect"
 

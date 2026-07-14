@@ -10,7 +10,7 @@
 package mocks
 
 import (
-	error_handler_port "alt/port/error_handler_port"
+	error_handler_port "alt/orchestrator/port/error_handler_port"
 	context "context"
 	slog "log/slog"
 	reflect "reflect"

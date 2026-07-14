@@ -11,7 +11,7 @@ package mocks
 
 import (
 	domain "alt/domain"
-	knowledge_home_port "alt/port/knowledge_home_port"
+	knowledge_home_port "alt/orchestrator/port/knowledge_home_port"
 	context "context"
 	reflect "reflect"
 	time "time"

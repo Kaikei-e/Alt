@@ -2,16 +2,16 @@ package di
 
 import (
 	"alt/adapter/augur_adapter"
-	"alt/gateway/morning_gateway"
-	"alt/gateway/morning_letter_connect_gateway"
-	"alt/gateway/rag_connect_gateway"
-	"alt/gateway/rag_gateway"
-	"alt/gateway/user_feed_gateway"
-	"alt/port/morning_letter_port"
-	"alt/port/rag_integration_port"
-	"alt/usecase/answer_chat_usecase"
-	"alt/usecase/morning_usecase"
-	"alt/usecase/retrieve_context_usecase"
+	"alt/orchestrator/gateway/morning_gateway"
+	"alt/orchestrator/gateway/morning_letter_connect_gateway"
+	"alt/orchestrator/gateway/rag_connect_gateway"
+	"alt/orchestrator/gateway/rag_gateway"
+	"alt/orchestrator/gateway/user_feed_gateway"
+	"alt/orchestrator/port/morning_letter_port"
+	"alt/orchestrator/port/rag_integration_port"
+	"alt/orchestrator/usecase/answer_chat_usecase"
+	"alt/orchestrator/usecase/morning_usecase"
+	"alt/orchestrator/usecase/retrieve_context_usecase"
 	"log/slog"
 )
 

@@ -1,13 +1,13 @@
 package di
 
 import (
-	"alt/driver/recap_job_driver"
-	"alt/gateway/dashboard_gateway"
-	"alt/gateway/recap_articles_gateway"
-	"alt/gateway/recap_gateway"
-	dashboard_usecase "alt/usecase/dashboard"
-	"alt/usecase/recap_articles_usecase"
-	"alt/usecase/recap_usecase"
+	"alt/dataplane/gateway/recap_articles_gateway"
+	"alt/dataplane/usecase/recap_articles_usecase"
+	"alt/orchestrator/driver/recap_job_driver"
+	"alt/orchestrator/gateway/dashboard_gateway"
+	"alt/orchestrator/gateway/recap_gateway"
+	dashboard_usecase "alt/orchestrator/usecase/dashboard"
+	"alt/orchestrator/usecase/recap_usecase"
 )
 
 // RecapModule holds all recap-domain components.

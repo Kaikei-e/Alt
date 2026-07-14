@@ -10,7 +10,7 @@
 package mocks
 
 import (
-	trend_stats_port "alt/port/trend_stats_port"
+	trend_stats_port "alt/orchestrator/port/trend_stats_port"
 	context "context"
 	reflect "reflect"
 

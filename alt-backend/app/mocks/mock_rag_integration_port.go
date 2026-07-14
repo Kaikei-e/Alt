@@ -10,7 +10,7 @@
 package mocks
 
 import (
-	rag_integration_port "alt/port/rag_integration_port"
+	rag_integration_port "alt/orchestrator/port/rag_integration_port"
 	context "context"
 	reflect "reflect"
 

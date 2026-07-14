@@ -1,8 +1,8 @@
 package augur_adapter
 
 import (
-	"alt/gateway/rag_gateway"
-	"alt/port/rag_integration_port"
+	"alt/orchestrator/gateway/rag_gateway"
+	"alt/orchestrator/port/rag_integration_port"
 	"alt/utils/logger"
 	"context"
 	"fmt"

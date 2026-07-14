@@ -1,14 +1,14 @@
 package di
 
 import (
-	"alt/driver/csrf_token_driver"
-	"alt/gateway/csrf_token_gateway"
-	"alt/gateway/opml_gateway"
-	"alt/gateway/subscription_gateway"
-	"alt/usecase/csrf_token_usecase"
-	"alt/usecase/feed_link_usecase"
-	"alt/usecase/opml_usecase"
-	"alt/usecase/subscription_usecase"
+	"alt/orchestrator/driver/csrf_token_driver"
+	"alt/orchestrator/gateway/csrf_token_gateway"
+	"alt/orchestrator/gateway/opml_gateway"
+	"alt/orchestrator/gateway/subscription_gateway"
+	"alt/orchestrator/usecase/csrf_token_usecase"
+	"alt/orchestrator/usecase/feed_link_usecase"
+	"alt/orchestrator/usecase/opml_usecase"
+	"alt/orchestrator/usecase/subscription_usecase"
 )
 
 // SubscriptionModule holds subscription, OPML, and CSRF components.

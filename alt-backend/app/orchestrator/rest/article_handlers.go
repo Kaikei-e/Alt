@@ -1,0 +1,375 @@
+package rest
+
+import (
+	"alt/config"
+	"alt/di"
+	"alt/domain"
+	middleware_custom "alt/middleware"
+	"alt/orchestrator/usecase/archive_article_usecase"
+	"alt/utils/html_parser"
+	"alt/utils/logger"
+	"context"
+	"errors"
+	"fmt"
+	"net/http"
+	"net/url"
+	"strconv"
+	"strings"
+	"time"
+
+	"github.com/labstack/echo/v4"
+)
+
+func fetchArticleRoutes(v1 *echo.Group, container *di.ApplicationComponents, cfg *config.Config) {
+	authMiddleware := middleware_custom.NewAuthMiddleware(logger.Logger, cfg)
+	articles := v1.Group("/articles", authMiddleware.RequireAuth())
+	articles.GET("/fetch/content", handleFetchArticle(container))
+	articles.GET("/fetch/cursor", handleFetchArticlesCursor(container))
+	articles.GET("/by-tag", handleFetchArticlesByTag(container))
+	articles.GET("/:id/tags", handleFetchArticleTags(container))
+	articles.POST("/archive", handleArchiveArticle(container))
+}
+
+func handleArchiveArticle(container *di.ApplicationComponents) echo.HandlerFunc {
+	return func(c echo.Context) error {
+		var payload ArchiveArticleRequest
+		if err := c.Bind(&payload); err != nil {
+			return HandleValidationError(c, "Invalid request format", "body", "malformed JSON")
+		}
+
+		if strings.TrimSpace(payload.FeedURL) == "" {
+			return HandleValidationError(c, "Article URL is required", "feed_url", payload.FeedURL)
+		}
+
+		articleURL, err := url.Parse(payload.FeedURL)
+		if err != nil {
+			return HandleValidationError(c, "Invalid article URL", "feed_url", payload.FeedURL)
+		}
+
+		if err := IsAllowedURL(articleURL); err != nil {
+			return HandleValidationError(c, "Article URL not allowed", "feed_url", payload.FeedURL)
+		}
+
+		input := archive_article_usecase.ArchiveArticleInput{
+			URL:   articleURL.String(),
+			Title: payload.Title,
+		}
+
+		if err := container.ArchiveArticleUsecase.Execute(c.Request().Context(), input); err != nil {
+			return HandleError(c, fmt.Errorf("archive article failed for %q: %w", articleURL.String(), err), "archive_article")
+		}
+
+		c.Response().Header().Set("Cache-Control", "no-cache")
+		return c.JSON(http.StatusOK, map[string]string{"message": "article archived"})
+	}
+}
+
+func handleFetchArticle(container *di.ApplicationComponents) echo.HandlerFunc {
+	return func(c echo.Context) error {
+		ctx := c.Request().Context()
+		targetURL := c.QueryParam("url")
+		parsedURL, err := validateFetchRequest(c, targetURL)
+		if err != nil {
+			return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
+		}
+
+		user, err := domain.GetUserFromContext(ctx)
+		if err != nil {
+			logger.Logger.WarnContext(ctx, "No user context for fetch article, proceeding as anonymous", "error", err)
+			return c.JSON(http.StatusUnauthorized, map[string]string{"error": "Unauthorized"})
+		}
+
+		// Call the usecase
+		content, articleID, _, err := container.ArticleUsecase.FetchCompliantArticle(ctx, parsedURL, *user)
+		if err != nil {
+			var complianceErr *domain.ComplianceError
+			if errors.As(err, &complianceErr) {
+				return c.JSON(complianceErr.Code, map[string]string{"error": complianceErr.Message})
+			}
+
+			if errors.Is(err, context.DeadlineExceeded) {
+				return c.JSON(http.StatusGatewayTimeout, map[string]string{"error": "Request timeout"})
+			}
+			logger.Logger.ErrorContext(ctx, "Failed to fetch compliant article", "error", err, "url", targetURL)
+			return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to fetch article"})
+		}
+
+		return returnArticleResponse(c, parsedURL, content, articleID)
+	}
+}
+
+func validateFetchRequest(c echo.Context, targetURL string) (*url.URL, error) {
+	if targetURL == "" {
+		return nil, fmt.Errorf("url parameter is required")
+	}
+
+	parsedURL, err := url.Parse(targetURL)
+	if err != nil {
+		return nil, fmt.Errorf("invalid URL")
+	}
+
+	if err := IsAllowedURL(parsedURL); err != nil {
+		return nil, fmt.Errorf("invalid URL scheme or private IP blocked")
+	}
+
+	return parsedURL, nil
+}
+
+func returnArticleResponse(c echo.Context, articleURL *url.URL, content string, articleID string) error {
+	escapedContent := html_parser.StripTags(content)
+	return c.JSON(http.StatusOK, map[string]string{
+		"url":        articleURL.String(),
+		"content":    escapedContent,
+		"article_id": articleID,
+	})
+}
+
+func registerArticleRoutes(v1 *echo.Group, container *di.ApplicationComponents, cfg *config.Config) {
+	authMiddleware := middleware_custom.NewAuthMiddleware(logger.Logger, cfg)
+	articles := v1.Group("/articles", authMiddleware.RequireAuth())
+	articles.GET("/search", handleSearchArticles(container))
+}
+
+func handleSearchArticles(container *di.ApplicationComponents) echo.HandlerFunc {
+	return func(c echo.Context) error {
+		ctx := c.Request().Context()
+		_, err := domain.GetUserFromContext(ctx)
+		if err != nil {
+			logger.Logger.ErrorContext(ctx, "user context not found", "error", err)
+			return c.JSON(http.StatusUnauthorized, map[string]string{"error": "authentication required"})
+		}
+
+		query := c.QueryParam("q")
+		if query == "" {
+			return c.JSON(http.StatusBadRequest, map[string]string{"error": "search query must not be empty"})
+		}
+
+		results, err := container.ArticleSearchUsecase.Execute(ctx, query)
+		if err != nil {
+			return HandleError(c, err, "search_articles")
+		}
+
+		return c.JSON(http.StatusOK, results)
+	}
+}
+
+func handleFetchArticlesCursor(container *di.ApplicationComponents) echo.HandlerFunc {
+	return func(c echo.Context) error {
+		ctx := c.Request().Context()
+		_, err := domain.GetUserFromContext(ctx)
+		if err != nil {
+			logger.Logger.ErrorContext(ctx, "user context not found", "error", err)
+			return c.JSON(http.StatusUnauthorized, map[string]string{"error": "authentication required"})
+		}
+
+		limit := 20
+		if limitStr := c.QueryParam("limit"); limitStr != "" {
+			parsedLimit, err := strconv.Atoi(limitStr)
+			if err != nil || parsedLimit <= 0 {
+				return HandleValidationError(c, "Invalid limit parameter", "limit", limitStr)
+			}
+			limit = parsedLimit
+			if limit > 100 {
+				limit = 100
+			}
+		}
+
+		var cursor *time.Time
+		if cursorStr := c.QueryParam("cursor"); cursorStr != "" {
+			parsedCursor, err := time.Parse(time.RFC3339, cursorStr)
+			if err != nil {
+				return HandleValidationError(c, "Invalid cursor format (expected RFC3339)", "cursor", cursorStr)
+			}
+			cursor = &parsedCursor
+		}
+
+		articles, err := container.FetchArticlesCursorUsecase.Execute(ctx, cursor, limit+1)
+		if err != nil {
+			return HandleError(c, err, "fetch_articles_cursor")
+		}
+
+		hasMore := len(articles) > limit
+		if hasMore {
+			articles = articles[:limit]
+		}
+
+		articleResponses := make([]ArticleResponse, len(articles))
+		for i, article := range articles {
+			articleResponses[i] = ArticleResponse{
+				ID:          article.ID.String(),
+				Title:       article.Title,
+				URL:         article.URL,
+				Content:     article.Content,
+				PublishedAt: article.PublishedAt.Format(time.RFC3339),
+				Tags:        article.Tags,
+			}
+		}
+
+		var nextCursor *string
+		if hasMore && len(articles) > 0 {
+			lastArticle := articles[len(articles)-1]
+			cursorStr := lastArticle.PublishedAt.Format(time.RFC3339)
+			nextCursor = &cursorStr
+		}
+
+		response := ArticlesWithCursorResponse{
+			Data:       articleResponses,
+			NextCursor: nextCursor,
+			HasMore:    hasMore,
+		}
+
+		c.Response().Header().Set("Cache-Control", "private, max-age=60")
+		return c.JSON(http.StatusOK, response)
+	}
+}
+
+// TagTrailArticleResponse represents an article in the Tag Trail feature response.
+type TagTrailArticleResponse struct {
+	ID          string `json:"id"`
+	Title       string `json:"title"`
+	Link        string `json:"link"`
+	PublishedAt string `json:"published_at"`
+	FeedTitle   string `json:"feed_title,omitempty"`
+}
+
+// ArticlesByTagResponse represents the paginated response for articles by tag.
+type ArticlesByTagResponse struct {
+	Articles   []TagTrailArticleResponse `json:"articles"`
+	NextCursor *string                   `json:"next_cursor,omitempty"`
+	HasMore    bool                      `json:"has_more"`
+}
+
+func handleFetchArticlesByTag(container *di.ApplicationComponents) echo.HandlerFunc {
+	return func(c echo.Context) error {
+		ctx := c.Request().Context()
+		_, err := domain.GetUserFromContext(ctx)
+		if err != nil {
+			logger.Logger.ErrorContext(ctx, "user context not found", "error", err)
+			return c.JSON(http.StatusUnauthorized, map[string]string{"error": "authentication required"})
+		}
+
+		tagName := c.QueryParam("tag_name")
+		tagID := c.QueryParam("tag_id")
+
+		// Require at least one of tag_name or tag_id
+		if strings.TrimSpace(tagName) == "" && strings.TrimSpace(tagID) == "" {
+			return HandleValidationError(c, "tag_name or tag_id is required", "tag_name", tagName)
+		}
+
+		limit := 20
+		if limitStr := c.QueryParam("limit"); limitStr != "" {
+			parsedLimit, err := strconv.Atoi(limitStr)
+			if err != nil || parsedLimit <= 0 {
+				return HandleValidationError(c, "Invalid limit parameter", "limit", limitStr)
+			}
+			limit = parsedLimit
+			if limit > 100 {
+				limit = 100
+			}
+		}
+
+		var cursor *time.Time
+		if cursorStr := c.QueryParam("cursor"); cursorStr != "" {
+			parsedCursor, err := time.Parse(time.RFC3339, cursorStr)
+			if err != nil {
+				return HandleValidationError(c, "Invalid cursor format (expected RFC3339)", "cursor", cursorStr)
+			}
+			cursor = &parsedCursor
+		}
+
+		// Fetch limit+1 to determine if there are more results
+		// Prioritize tag_name over tag_id for cross-feed discovery
+		var articles []*domain.TagTrailArticle
+		if strings.TrimSpace(tagName) != "" {
+			articles, err = container.FetchArticlesByTagUsecase.ExecuteByTagName(ctx, tagName, cursor, limit+1)
+		} else {
+			articles, err = container.FetchArticlesByTagUsecase.Execute(ctx, tagID, cursor, limit+1)
+		}
+		if err != nil {
+			return HandleError(c, err, "fetch_articles_by_tag")
+		}
+
+		hasMore := len(articles) > limit
+		if hasMore {
+			articles = articles[:limit]
+		}
+
+		articleResponses := make([]TagTrailArticleResponse, len(articles))
+		for i, article := range articles {
+			articleResponses[i] = TagTrailArticleResponse{
+				ID:          article.ID,
+				Title:       article.Title,
+				Link:        article.Link,
+				PublishedAt: article.PublishedAt.Format(time.RFC3339),
+				FeedTitle:   article.FeedTitle,
+			}
+		}
+
+		var nextCursor *string
+		if hasMore && len(articles) > 0 {
+			lastArticle := articles[len(articles)-1]
+			cursorStr := lastArticle.PublishedAt.Format(time.RFC3339)
+			nextCursor = &cursorStr
+		}
+
+		response := ArticlesByTagResponse{
+			Articles:   articleResponses,
+			NextCursor: nextCursor,
+			HasMore:    hasMore,
+		}
+
+		c.Response().Header().Set("Cache-Control", "private, max-age=60")
+		return c.JSON(http.StatusOK, response)
+	}
+}
+
+// ArticleTagResponse represents a tag in the article tags response.
+type ArticleTagResponse struct {
+	ID        string `json:"id"`
+	Name      string `json:"name"`
+	CreatedAt string `json:"created_at"`
+}
+
+// ArticleTagsResponse represents the response for fetching article tags.
+type ArticleTagsResponse struct {
+	ArticleID string               `json:"article_id"`
+	Tags      []ArticleTagResponse `json:"tags"`
+}
+
+func handleFetchArticleTags(container *di.ApplicationComponents) echo.HandlerFunc {
+	return func(c echo.Context) error {
+		ctx := c.Request().Context()
+		_, err := domain.GetUserFromContext(ctx)
+		if err != nil {
+			logger.Logger.ErrorContext(ctx, "user context not found", "error", err)
+			return c.JSON(http.StatusUnauthorized, map[string]string{"error": "authentication required"})
+		}
+
+		articleID := c.Param("id")
+		if strings.TrimSpace(articleID) == "" {
+			return HandleValidationError(c, "article id is required", "id", articleID)
+		}
+
+		tags, err := container.FetchArticleTagsUsecase.Execute(ctx, articleID)
+		if err != nil {
+			return HandleError(c, err, "fetch_article_tags")
+		}
+
+		tagResponses := make([]ArticleTagResponse, len(tags))
+		for i, tag := range tags {
+			tagResponses[i] = ArticleTagResponse{
+				ID:        tag.ID,
+				Name:      tag.TagName,
+				CreatedAt: tag.CreatedAt.Format(time.RFC3339),
+			}
+		}
+
+		response := ArticleTagsResponse{
+			ArticleID: articleID,
+			Tags:      tagResponses,
+		}
+
+		c.Response().Header().Set("Cache-Control", "private, max-age=60")
+		return c.JSON(http.StatusOK, response)
+	}
+}

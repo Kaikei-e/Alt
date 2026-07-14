@@ -2,10 +2,10 @@ package di
 
 import (
 	"alt/config"
-	"alt/driver/prometheus_client"
-	"alt/gateway/admin_metrics_gateway"
-	"alt/port/admin_metrics_port"
-	"alt/usecase/admin_metrics_usecase"
+	"alt/orchestrator/driver/prometheus_client"
+	"alt/orchestrator/gateway/admin_metrics_gateway"
+	"alt/orchestrator/port/admin_metrics_port"
+	"alt/orchestrator/usecase/admin_metrics_usecase"
 	"log/slog"
 )
 

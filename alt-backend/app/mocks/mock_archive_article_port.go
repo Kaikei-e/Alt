@@ -10,7 +10,7 @@
 package mocks
 
 import (
-	archive_article_port "alt/port/archive_article_port"
+	archive_article_port "alt/orchestrator/port/archive_article_port"
 	context "context"
 	reflect "reflect"
 

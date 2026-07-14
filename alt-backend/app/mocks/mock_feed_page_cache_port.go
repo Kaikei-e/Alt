@@ -10,7 +10,7 @@
 package mocks
 
 import (
-	feed_page_cache_port "alt/port/feed_page_cache_port"
+	feed_page_cache_port "alt/orchestrator/port/feed_page_cache_port"
 	context "context"
 	reflect "reflect"
 

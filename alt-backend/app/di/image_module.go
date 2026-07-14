@@ -1,10 +1,10 @@
 package di
 
 import (
-	"alt/gateway/image_fetch_gateway"
-	"alt/gateway/image_proxy_gateway"
-	"alt/usecase/image_fetch_usecase"
-	"alt/usecase/image_proxy_usecase"
+	"alt/orchestrator/gateway/image_fetch_gateway"
+	"alt/orchestrator/gateway/image_proxy_gateway"
+	"alt/orchestrator/usecase/image_fetch_usecase"
+	"alt/orchestrator/usecase/image_proxy_usecase"
 	"alt/utils/image_proxy"
 	"alt/utils/rate_limiter"
 	"net/http"

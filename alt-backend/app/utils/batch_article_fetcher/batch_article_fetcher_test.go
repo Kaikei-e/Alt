@@ -1,7 +1,7 @@
 package batch_article_fetcher
 
 import (
-	"alt/gateway/fetch_article_gateway"
+	"alt/orchestrator/gateway/fetch_article_gateway"
 	"alt/utils/rate_limiter"
 	"alt/utils/security"
 	"context"

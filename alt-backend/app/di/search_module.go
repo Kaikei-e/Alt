@@ -1,10 +1,10 @@
 package di
 
 import (
-	"alt/driver/alt_db"
-	"alt/gateway/feed_url_link_gateway"
-	"alt/gateway/global_search_gateway"
-	"alt/usecase/global_search_usecase"
+	"alt/orchestrator/gateway/feed_url_link_gateway"
+	"alt/orchestrator/gateway/global_search_gateway"
+	"alt/orchestrator/usecase/global_search_usecase"
+	"alt/shared/driver/alt_db"
 
 	"go.opentelemetry.io/otel"
 )

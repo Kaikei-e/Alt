@@ -10,7 +10,7 @@
 package mocks
 
 import (
-	knowledge_sovereign_port "alt/port/knowledge_sovereign_port"
+	knowledge_sovereign_port "alt/orchestrator/port/knowledge_sovereign_port"
 	context "context"
 	reflect "reflect"
 

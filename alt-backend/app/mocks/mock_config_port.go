@@ -10,7 +10,7 @@
 package mocks
 
 import (
-	config_port "alt/port/config_port"
+	config_port "alt/orchestrator/port/config_port"
 	reflect "reflect"
 
 	gomock "go.uber.org/mock/gomock"

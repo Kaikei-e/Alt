@@ -10,7 +10,7 @@
 package mocks
 
 import (
-	internal_feed_port "alt/port/internal_feed_port"
+	internal_feed_port "alt/dataplane/port/internal_feed_port"
 	context "context"
 	reflect "reflect"
 

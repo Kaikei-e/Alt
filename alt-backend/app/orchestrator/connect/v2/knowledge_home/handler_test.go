@@ -1,0 +1,1022 @@
+package knowledge_home
+
+import (
+	"alt/domain"
+	"alt/orchestrator/port/recall_candidate_port"
+	"alt/orchestrator/usecase/get_knowledge_home_usecase"
+	"alt/orchestrator/usecase/recall_rail_usecase"
+	"alt/orchestrator/usecase/track_home_action_usecase"
+	"alt/orchestrator/usecase/track_home_seen_usecase"
+	"alt/utils/logger"
+	altotel "alt/utils/otel"
+	"context"
+	"errors"
+	"log/slog"
+	"net/http"
+	"net/http/httptest"
+	"testing"
+	"time"
+
+	"connectrpc.com/connect"
+	"github.com/google/uuid"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
+	knowledgehomev1 "alt/gen/proto/alt/knowledge_home/v1"
+	"alt/gen/proto/alt/knowledge_home/v1/knowledgehomev1connect"
+)
+
+type mockRecallCandidatesPort struct {
+	candidates []domain.RecallCandidate
+	err        error
+}
+
+var _ recall_candidate_port.GetRecallCandidatesPort = (*mockRecallCandidatesPort)(nil)
+
+func (m *mockRecallCandidatesPort) GetRecallCandidates(_ context.Context, _ uuid.UUID, _ int) ([]domain.RecallCandidate, error) {
+	return m.candidates, m.err
+}
+
+// mockHomeItemsPort implements knowledge_home_port.GetKnowledgeHomeItemsPort.
+type mockHomeItemsPort struct {
+	items      []domain.KnowledgeHomeItem
+	nextCursor string
+	hasMore    bool
+	err        error
+}
+
+func (m *mockHomeItemsPort) GetKnowledgeHomeItems(_ context.Context, _ uuid.UUID, _ string, _ int, _ *domain.KnowledgeHomeLensFilter) ([]domain.KnowledgeHomeItem, string, bool, error) {
+	return m.items, m.nextCursor, m.hasMore, m.err
+}
+
+// mockTodayDigestPort implements today_digest_port.GetTodayDigestPort.
+type mockTodayDigestPort struct {
+	digest domain.TodayDigest
+	err    error
+}
+
+func (m *mockTodayDigestPort) GetTodayDigest(_ context.Context, _ uuid.UUID, _ time.Time) (domain.TodayDigest, error) {
+	return m.digest, m.err
+}
+
+// mockUserEventPort implements knowledge_user_event_port.AppendKnowledgeUserEventPort.
+type mockUserEventPort struct {
+	err error
+}
+
+func (m *mockUserEventPort) AppendKnowledgeUserEvent(_ context.Context, _ domain.KnowledgeUserEvent) error {
+	return m.err
+}
+
+// mockKnowledgeEventPort implements knowledge_event_port.AppendKnowledgeEventPort.
+type mockKnowledgeEventPort struct {
+	err error
+}
+
+func (m *mockKnowledgeEventPort) AppendKnowledgeEvent(_ context.Context, _ domain.KnowledgeEvent) (int64, error) {
+	if m.err != nil {
+		return 0, m.err
+	}
+	return 1, nil
+}
+
+// mockFeatureFlagPort implements feature_flag_port.FeatureFlagPort.
+type mockFeatureFlagPort struct {
+	enabledFlags map[string]bool
+}
+
+func (m *mockFeatureFlagPort) IsEnabled(flagName string, _ uuid.UUID) bool {
+	if m == nil || m.enabledFlags == nil {
+		return true
+	}
+	return m.enabledFlags[flagName]
+}
+
+type mockLatestSeqPort struct {
+	seq int64
+	err error
+}
+
+func (m *mockLatestSeqPort) GetLatestKnowledgeEventSeqForUser(_ context.Context, _, _ uuid.UUID) (int64, error) {
+	return m.seq, m.err
+}
+
+// testUserContext creates a context with an authenticated user for testing.
+func testUserContext() context.Context {
+	user := &domain.UserContext{
+		UserID:    uuid.New(),
+		Email:     "test@example.com",
+		Role:      domain.UserRoleUser,
+		TenantID:  uuid.New(),
+		SessionID: "test-session",
+		LoginAt:   time.Now(),
+		ExpiresAt: time.Now().Add(1 * time.Hour),
+	}
+	return domain.SetUserContext(context.Background(), user)
+}
+
+func setupHandler() (*Handler, *mockHomeItemsPort, *mockTodayDigestPort) {
+	return setupHandlerWithFlags(nil)
+}
+
+func setupHandlerWithFlags(flagPort *mockFeatureFlagPort) (*Handler, *mockHomeItemsPort, *mockTodayDigestPort) {
+	homePort := &mockHomeItemsPort{
+		items: []domain.KnowledgeHomeItem{
+			{
+				ItemKey:  "article:test-1",
+				ItemType: "article",
+				Title:    "Test Article",
+				Score:    1.0,
+				WhyReasons: []domain.WhyReason{
+					{Code: "new_unread"},
+				},
+			},
+		},
+		nextCursor: "cursor-abc",
+		hasMore:    true,
+	}
+	digestPort := &mockTodayDigestPort{
+		digest: domain.TodayDigest{
+			NewArticles: 5,
+		},
+	}
+	userEventPort := &mockUserEventPort{}
+	knowledgeEventPort := &mockKnowledgeEventPort{}
+
+	getHomeUsecase := get_knowledge_home_usecase.NewGetKnowledgeHomeUsecase(homePort, digestPort, nil, nil, nil, nil)
+	trackSeenUsecase := track_home_seen_usecase.NewTrackHomeSeenUsecase(userEventPort, flagPort)
+	trackActionUsecase := track_home_action_usecase.NewTrackHomeActionUsecase(userEventPort, knowledgeEventPort, flagPort, nil, nil, nil, nil)
+
+	handler := NewHandler(
+		getHomeUsecase, trackSeenUsecase, trackActionUsecase,
+		nil, nil, nil, // recall: rail, snooze, dismiss
+		nil, nil, nil, nil, nil, // lens: create, update, list, select, archive
+		nil, // eventsPort
+		nil, // eventsForUserPort
+		nil, // lensVisibilityPort
+		nil, // resolveLensPort
+		flagPort,
+		nil, // metrics
+		slog.Default(),
+	)
+	return handler, homePort, digestPort
+}
+
+func TestHandler_GetKnowledgeHome_Unauthenticated(t *testing.T) {
+	logger.InitLogger()
+	handler, _, _ := setupHandler()
+
+	// No user context → unauthenticated
+	req := connect.NewRequest(&knowledgehomev1.GetKnowledgeHomeRequest{
+		Limit: 20,
+	})
+
+	_, err := handler.GetKnowledgeHome(context.Background(), req)
+	require.Error(t, err)
+
+	connectErr, ok := err.(*connect.Error)
+	require.True(t, ok)
+	assert.Equal(t, connect.CodeUnauthenticated, connectErr.Code())
+}
+
+func TestHandler_GetKnowledgeHome_FlagDisabled(t *testing.T) {
+	logger.InitLogger()
+	flagPort := &mockFeatureFlagPort{
+		enabledFlags: map[string]bool{
+			domain.FlagKnowledgeHomePage: false,
+		},
+	}
+	handler, _, _ := setupHandlerWithFlags(flagPort)
+
+	ctx := testUserContext()
+	req := connect.NewRequest(&knowledgehomev1.GetKnowledgeHomeRequest{
+		Limit: 20,
+	})
+
+	_, err := handler.GetKnowledgeHome(ctx, req)
+	require.Error(t, err)
+
+	connectErr, ok := err.(*connect.Error)
+	require.True(t, ok)
+	assert.Equal(t, connect.CodePermissionDenied, connectErr.Code())
+}
+
+func TestHandler_GetKnowledgeHome_FlagEnabled(t *testing.T) {
+	logger.InitLogger()
+	flagPort := &mockFeatureFlagPort{
+		enabledFlags: map[string]bool{
+			domain.FlagKnowledgeHomePage: true,
+		},
+	}
+	handler, _, _ := setupHandlerWithFlags(flagPort)
+
+	ctx := testUserContext()
+	req := connect.NewRequest(&knowledgehomev1.GetKnowledgeHomeRequest{
+		Limit: 20,
+	})
+
+	resp, err := handler.GetKnowledgeHome(ctx, req)
+	require.NoError(t, err)
+	assert.Len(t, resp.Msg.Items, 1)
+	assert.True(t, resp.Msg.HasMore)
+	require.NotNil(t, resp.Msg.ServiceQuality)
+	assert.Equal(t, "full", *resp.Msg.ServiceQuality)
+}
+
+func TestHandler_GetKnowledgeHome_NilFlagPort(t *testing.T) {
+	logger.InitLogger()
+	// nil flag port means no flag guard — should work as before
+	handler, _, _ := setupHandler()
+
+	ctx := testUserContext()
+	req := connect.NewRequest(&knowledgehomev1.GetKnowledgeHomeRequest{
+		Limit: 20,
+	})
+
+	resp, err := handler.GetKnowledgeHome(ctx, req)
+	require.NoError(t, err)
+	assert.Len(t, resp.Msg.Items, 1)
+}
+
+func TestHandler_GetKnowledgeHome_SummaryStateMapping(t *testing.T) {
+	logger.InitLogger()
+	handler, homePort, _ := setupHandler()
+
+	homePort.items = []domain.KnowledgeHomeItem{
+		{
+			ItemKey:      "article:ready-1",
+			ItemType:     "article",
+			Title:        "Ready Article",
+			Score:        1.0,
+			SummaryState: domain.SummaryStateReady,
+			WhyReasons:   []domain.WhyReason{{Code: "new_unread"}},
+		},
+		{
+			ItemKey:      "article:pending-1",
+			ItemType:     "article",
+			Title:        "Pending Article",
+			Score:        0.9,
+			SummaryState: domain.SummaryStatePending,
+			WhyReasons:   []domain.WhyReason{{Code: "new_unread"}},
+		},
+		{
+			ItemKey:      "article:missing-1",
+			ItemType:     "article",
+			Title:        "Missing Article",
+			Score:        0.8,
+			SummaryState: domain.SummaryStateMissing,
+			WhyReasons:   []domain.WhyReason{{Code: "new_unread"}},
+		},
+	}
+
+	ctx := testUserContext()
+	req := connect.NewRequest(&knowledgehomev1.GetKnowledgeHomeRequest{Limit: 20})
+
+	resp, err := handler.GetKnowledgeHome(ctx, req)
+	require.NoError(t, err)
+	require.Len(t, resp.Msg.Items, 3)
+
+	assert.Equal(t, "ready", resp.Msg.Items[0].SummaryState)
+	assert.Equal(t, "pending", resp.Msg.Items[1].SummaryState)
+	assert.Equal(t, "missing", resp.Msg.Items[2].SummaryState)
+}
+
+func TestHandler_GetKnowledgeHome_NeedToKnowCountFromDigest(t *testing.T) {
+	logger.InitLogger()
+	handler, homePort, digestPort := setupHandler()
+
+	// Items have pulse_need_to_know but handler should NOT count them
+	homePort.items = []domain.KnowledgeHomeItem{
+		{
+			ItemKey:    "article:1",
+			ItemType:   "article",
+			Title:      "Important Article",
+			Score:      1.0,
+			WhyReasons: []domain.WhyReason{{Code: domain.WhyPulseNeedToKnow}},
+		},
+	}
+
+	// Backend-authoritative count set on digest (e.g. via usecase enrichment)
+	digestPort.digest = domain.TodayDigest{
+		NewArticles:     5,
+		NeedToKnowCount: 7,
+	}
+
+	ctx := testUserContext()
+	req := connect.NewRequest(&knowledgehomev1.GetKnowledgeHomeRequest{Limit: 20})
+
+	resp, err := handler.GetKnowledgeHome(ctx, req)
+	require.NoError(t, err)
+
+	// Should use digest value (7), NOT page-scan count (1)
+	assert.Equal(t, int32(7), resp.Msg.TodayDigest.NeedToKnowCount,
+		"Should use backend-authoritative count from digest, not page scan")
+}
+
+func TestHandler_GetKnowledgeHome_FreshnessMapping(t *testing.T) {
+	logger.InitLogger()
+	handler, _, digestPort := setupHandler()
+
+	projectedAt := time.Now().Add(-2 * time.Minute)
+	digestPort.digest = domain.TodayDigest{
+		NewArticles:     3,
+		DigestFreshness: domain.FreshnessStale,
+		LastProjectedAt: &projectedAt,
+	}
+
+	ctx := testUserContext()
+	req := connect.NewRequest(&knowledgehomev1.GetKnowledgeHomeRequest{Limit: 20})
+
+	resp, err := handler.GetKnowledgeHome(ctx, req)
+	require.NoError(t, err)
+
+	assert.Equal(t, "stale", resp.Msg.TodayDigest.DigestFreshness)
+	assert.NotEmpty(t, resp.Msg.TodayDigest.LastProjectedAt)
+}
+
+func TestHandler_GetKnowledgeHome_ServiceQualityDegraded(t *testing.T) {
+	logger.InitLogger()
+	handler, _, digestPort := setupHandler()
+	digestPort.err = errors.New("digest unavailable")
+
+	ctx := testUserContext()
+	req := connect.NewRequest(&knowledgehomev1.GetKnowledgeHomeRequest{Limit: 20})
+
+	resp, err := handler.GetKnowledgeHome(ctx, req)
+	require.NoError(t, err)
+	require.NotNil(t, resp.Msg.ServiceQuality)
+	assert.True(t, resp.Msg.DegradedMode)
+	assert.Equal(t, "degraded", *resp.Msg.ServiceQuality)
+}
+
+func TestHandler_GetKnowledgeHome_WithMetrics_DoesNotPanic(t *testing.T) {
+	logger.InitLogger()
+	metrics, err := altotel.NewKnowledgeHomeMetrics()
+	require.NoError(t, err)
+
+	homePort := &mockHomeItemsPort{
+		items: []domain.KnowledgeHomeItem{
+			{ItemKey: "article:1", ItemType: "article", Title: "Test", Score: 1.0, WhyReasons: []domain.WhyReason{{Code: "new_unread"}}},
+		},
+	}
+	digestPort := &mockTodayDigestPort{digest: domain.TodayDigest{NewArticles: 5}}
+	userEventPort := &mockUserEventPort{}
+	knowledgeEventPort := &mockKnowledgeEventPort{}
+
+	getHomeUsecase := get_knowledge_home_usecase.NewGetKnowledgeHomeUsecase(homePort, digestPort, nil, nil, nil, nil)
+	trackSeenUsecase := track_home_seen_usecase.NewTrackHomeSeenUsecase(userEventPort, nil)
+	trackActionUsecase := track_home_action_usecase.NewTrackHomeActionUsecase(userEventPort, knowledgeEventPort, nil, nil, nil, nil, nil)
+
+	handler := NewHandler(
+		getHomeUsecase, trackSeenUsecase, trackActionUsecase,
+		nil, nil, nil, nil, nil, nil, nil, nil,
+		nil, nil, nil, nil, nil,
+		metrics,
+		slog.Default(),
+	)
+
+	ctx := testUserContext()
+	resp, err := handler.GetKnowledgeHome(ctx, connect.NewRequest(&knowledgehomev1.GetKnowledgeHomeRequest{Limit: 20}))
+	require.NoError(t, err)
+	assert.Len(t, resp.Msg.Items, 1)
+	require.NotNil(t, resp.Msg.ServiceQuality)
+	assert.Equal(t, "full", *resp.Msg.ServiceQuality)
+}
+
+func TestHandler_GetKnowledgeHome_ServiceQualityFallback(t *testing.T) {
+	logger.InitLogger()
+	handler, homePort, _ := setupHandler()
+	homePort.items = nil
+	homePort.err = errors.New("items unavailable")
+
+	ctx := testUserContext()
+	req := connect.NewRequest(&knowledgehomev1.GetKnowledgeHomeRequest{Limit: 20})
+
+	resp, err := handler.GetKnowledgeHome(ctx, req)
+	require.NoError(t, err)
+	require.NotNil(t, resp.Msg.ServiceQuality)
+	assert.Equal(t, "fallback", *resp.Msg.ServiceQuality)
+}
+
+func TestHandler_GetKnowledgeHome_BothReadModelsFail_ReturnsInternalError(t *testing.T) {
+	logger.InitLogger()
+	handler, homePort, digestPort := setupHandler()
+	homePort.items = nil
+	homePort.err = errors.New("items unavailable")
+	digestPort.err = errors.New("digest unavailable")
+
+	ctx := testUserContext()
+	req := connect.NewRequest(&knowledgehomev1.GetKnowledgeHomeRequest{Limit: 20})
+
+	_, err := handler.GetKnowledgeHome(ctx, req)
+	require.Error(t, err)
+
+	connectErr, ok := err.(*connect.Error)
+	require.True(t, ok)
+	assert.Equal(t, connect.CodeInternal, connectErr.Code())
+}
+
+func TestConvertHomeItemToProto_LinkMapping(t *testing.T) {
+	t.Run("article with link", func(t *testing.T) {
+		refID := uuid.New()
+		item := domain.KnowledgeHomeItem{
+			ItemKey:      "article:" + refID.String(),
+			ItemType:     "article",
+			PrimaryRefID: &refID,
+			Title:        "Article with Link",
+			Score:        0.9,
+			URL:          "https://example.com/article",
+			WhyReasons:   []domain.WhyReason{{Code: "new_unread"}},
+		}
+		proto := convertHomeItemToProto(item)
+		assert.Equal(t, "https://example.com/article", proto.Url)
+		require.NotNil(t, proto.ArticleId)
+		assert.Equal(t, refID.String(), *proto.ArticleId)
+	})
+
+	t.Run("article without link", func(t *testing.T) {
+		refID := uuid.New()
+		item := domain.KnowledgeHomeItem{
+			ItemKey:      "article:" + refID.String(),
+			ItemType:     "article",
+			PrimaryRefID: &refID,
+			Title:        "Article without Link",
+			Score:        0.8,
+			URL:          "",
+			WhyReasons:   []domain.WhyReason{{Code: "new_unread"}},
+		}
+		proto := convertHomeItemToProto(item)
+		assert.Empty(t, proto.Url)
+	})
+
+	t.Run("recap anchor has no link", func(t *testing.T) {
+		refID := uuid.New()
+		item := domain.KnowledgeHomeItem{
+			ItemKey:      "recap:" + refID.String(),
+			ItemType:     "recap_anchor",
+			PrimaryRefID: &refID,
+			Title:        "Weekly Recap",
+			Score:        0.7,
+			WhyReasons:   []domain.WhyReason{{Code: "in_weekly_recap"}},
+		}
+		proto := convertHomeItemToProto(item)
+		assert.Empty(t, proto.Url)
+		require.NotNil(t, proto.RecapId)
+	})
+}
+
+func TestConvertHomeItemToProto_SupersedeInfo(t *testing.T) {
+	t.Run("summary_updated with previous excerpt", func(t *testing.T) {
+		now := time.Now()
+		item := domain.KnowledgeHomeItem{
+			ItemKey:         "article:test-1",
+			ItemType:        "article",
+			Title:           "Test",
+			Score:           0.9,
+			SupersedeState:  domain.SupersedeSummaryUpdated,
+			SupersededAt:    &now,
+			PreviousRefJSON: `{"previous_summary_excerpt":"Old summary text"}`,
+			WhyReasons:      []domain.WhyReason{{Code: "new_unread"}},
+		}
+		proto := convertHomeItemToProto(item)
+		require.NotNil(t, proto.SupersedeInfo)
+		assert.Equal(t, "summary_updated", proto.SupersedeInfo.State)
+		require.NotNil(t, proto.SupersedeInfo.PreviousSummaryExcerpt)
+		assert.Equal(t, "Old summary text", *proto.SupersedeInfo.PreviousSummaryExcerpt)
+		assert.Empty(t, proto.SupersedeInfo.PreviousTags)
+		assert.Empty(t, proto.SupersedeInfo.PreviousWhyCodes)
+	})
+
+	t.Run("tags_updated with previous tags", func(t *testing.T) {
+		now := time.Now()
+		item := domain.KnowledgeHomeItem{
+			ItemKey:         "article:test-1",
+			ItemType:        "article",
+			Title:           "Test",
+			Score:           0.9,
+			SupersedeState:  domain.SupersedeTagsUpdated,
+			SupersededAt:    &now,
+			PreviousRefJSON: `{"previous_tags":["go","rust"]}`,
+			WhyReasons:      []domain.WhyReason{{Code: "new_unread"}},
+		}
+		proto := convertHomeItemToProto(item)
+		require.NotNil(t, proto.SupersedeInfo)
+		assert.Equal(t, "tags_updated", proto.SupersedeInfo.State)
+		assert.Equal(t, []string{"go", "rust"}, proto.SupersedeInfo.PreviousTags)
+	})
+
+	t.Run("reason_updated with previous why codes", func(t *testing.T) {
+		now := time.Now()
+		item := domain.KnowledgeHomeItem{
+			ItemKey:         "article:test-1",
+			ItemType:        "article",
+			Title:           "Test",
+			Score:           0.9,
+			SupersedeState:  domain.SupersedeReasonUpdated,
+			SupersededAt:    &now,
+			PreviousRefJSON: `{"previous_why_codes":["new_unread","tag_hotspot"]}`,
+			WhyReasons:      []domain.WhyReason{{Code: "new_unread"}},
+		}
+		proto := convertHomeItemToProto(item)
+		require.NotNil(t, proto.SupersedeInfo)
+		assert.Equal(t, "reason_updated", proto.SupersedeInfo.State)
+		assert.Equal(t, []string{"new_unread", "tag_hotspot"}, proto.SupersedeInfo.PreviousWhyCodes)
+	})
+
+	t.Run("no supersede state", func(t *testing.T) {
+		item := domain.KnowledgeHomeItem{
+			ItemKey:    "article:test-1",
+			ItemType:   "article",
+			Title:      "Test",
+			Score:      0.9,
+			WhyReasons: []domain.WhyReason{{Code: "new_unread"}},
+		}
+		proto := convertHomeItemToProto(item)
+		assert.Nil(t, proto.SupersedeInfo)
+	})
+}
+
+// mockListEventsPort implements knowledge_event_port.ListKnowledgeEventsPort.
+type mockListEventsPort struct {
+	events []domain.KnowledgeEvent
+	err    error
+}
+
+func (m *mockListEventsPort) ListKnowledgeEventsSince(_ context.Context, _ int64, _ int) ([]domain.KnowledgeEvent, error) {
+	return m.events, m.err
+}
+
+func TestMapToCanonicalStreamType(t *testing.T) {
+	tests := []struct {
+		domainEvent   string
+		canonicalType string
+	}{
+		{domain.EventArticleCreated, "item_added"},
+		{domain.EventSummaryVersionCreated, "item_updated"},
+		{domain.EventTagSetVersionCreated, "item_updated"},
+		{domain.EventSummarySuperseded, "item_updated"},
+		{domain.EventTagSetSuperseded, "item_updated"},
+		{domain.EventHomeItemSuperseded, "item_updated"},
+		{domain.EventHomeItemsSeen, "digest_changed"},
+		{domain.EventHomeItemOpened, "digest_changed"},
+		{domain.EventHomeItemDismissed, "digest_changed"},
+		{domain.EventHomeItemAsked, "digest_changed"},
+		{domain.EventHomeItemListened, "digest_changed"},
+		{domain.EventRecallSnoozed, "recall_changed"},
+		{domain.EventReasonMerged, "item_updated"},
+		{domain.EventRecallDismissed, "recall_changed"},
+		{"UnknownEventType", "digest_changed"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.domainEvent, func(t *testing.T) {
+			result := mapToCanonicalStreamType(tt.domainEvent)
+			assert.Equal(t, tt.canonicalType, result, "event %s should map to %s", tt.domainEvent, tt.canonicalType)
+		})
+	}
+}
+
+func TestStreamPayload_ItemAdded_ContainsItemKey(t *testing.T) {
+	aggID := uuid.New().String()
+	event := domain.KnowledgeEvent{
+		EventType:     domain.EventArticleCreated,
+		AggregateType: domain.AggregateArticle,
+		AggregateID:   aggID,
+		OccurredAt:    time.Now(),
+	}
+
+	canonicalType := mapToCanonicalStreamType(event.EventType)
+	assert.Equal(t, "item_added", canonicalType)
+
+	update := buildStreamResponse(event)
+	assert.Equal(t, "item_added", update.EventType)
+	require.NotNil(t, update.Item, "item_added should include Item")
+	assert.Equal(t, "article:"+aggID, update.Item.ItemKey)
+}
+
+func TestStreamPayload_ItemUpdated_ContainsItemKey(t *testing.T) {
+	aggID := uuid.New().String()
+	event := domain.KnowledgeEvent{
+		EventType:     domain.EventSummaryVersionCreated,
+		AggregateType: domain.AggregateArticle,
+		AggregateID:   aggID,
+		OccurredAt:    time.Now(),
+	}
+
+	update := buildStreamResponse(event)
+	assert.Equal(t, "item_updated", update.EventType)
+	require.NotNil(t, update.Item, "item_updated should include Item")
+	assert.Equal(t, "article:"+aggID, update.Item.ItemKey)
+}
+
+func TestStreamPayload_DigestChanged_NoItem(t *testing.T) {
+	event := domain.KnowledgeEvent{
+		EventType:     domain.EventHomeItemOpened,
+		AggregateType: domain.AggregateHomeSession,
+		AggregateID:   uuid.New().String(),
+		OccurredAt:    time.Now(),
+	}
+
+	update := buildStreamResponse(event)
+	assert.Equal(t, "digest_changed", update.EventType)
+	assert.Nil(t, update.Item, "digest_changed should NOT include Item")
+	assert.Nil(t, update.DigestChange, "digest_changed should NOT include DigestChange")
+}
+
+func TestStreamPayload_RecallChanged_ContainsMinimalRecallChange(t *testing.T) {
+	aggID := uuid.New().String()
+	event := domain.KnowledgeEvent{
+		EventType:     domain.EventRecallDismissed,
+		AggregateType: domain.AggregateArticle,
+		AggregateID:   aggID,
+		OccurredAt:    time.Now(),
+	}
+
+	update := buildStreamResponse(event)
+	assert.Equal(t, "recall_changed", update.EventType)
+	require.NotNil(t, update.RecallChange)
+	assert.Equal(t, "article:"+aggID, update.RecallChange.ItemKey)
+	assert.Nil(t, update.Item)
+}
+
+func TestEnrichRecallChangedUpdate_ReplacesMinimalPayloadWhenCandidateResolved(t *testing.T) {
+	userID := uuid.New()
+	articleID := uuid.New()
+	publishedAt := time.Date(2026, 3, 19, 12, 0, 0, 0, time.UTC)
+	handler := &Handler{
+		recallRailUsecase: recall_rail_usecase.NewRecallRailUsecase(&mockRecallCandidatesPort{
+			candidates: []domain.RecallCandidate{
+				{
+					ItemKey:     "article:" + articleID.String(),
+					RecallScore: 0.91,
+					Reasons: []domain.RecallReason{
+						{Type: domain.ReasonOpenedNotRevisited, Description: "Opened before"},
+					},
+					Item: &domain.KnowledgeHomeItem{
+						ItemKey:      "article:" + articleID.String(),
+						ItemType:     domain.ItemArticle,
+						Title:        "Recovered title",
+						SummaryState: domain.SummaryStateMissing,
+						PublishedAt:  &publishedAt,
+					},
+				},
+			},
+		}, nil, nil),
+		logger: slog.Default(),
+	}
+
+	update := buildStreamResponse(domain.KnowledgeEvent{
+		EventType:     domain.EventRecallSnoozed,
+		AggregateType: domain.AggregateArticle,
+		AggregateID:   articleID.String(),
+		OccurredAt:    time.Now(),
+	})
+
+	handler.enrichRecallChangedUpdate(context.Background(), userID, update)
+
+	require.NotNil(t, update.RecallChange)
+	assert.Equal(t, "article:"+articleID.String(), update.RecallChange.ItemKey)
+	assert.Equal(t, 0.91, update.RecallChange.RecallScore)
+	require.NotNil(t, update.RecallChange.Item)
+	assert.Equal(t, "Recovered title", update.RecallChange.Item.Title)
+}
+
+func TestCoalesceStreamEvents_EmptyInput(t *testing.T) {
+	result := coalesceStreamEvents(nil)
+	assert.Nil(t, result)
+
+	result = coalesceStreamEvents([]domain.KnowledgeEvent{})
+	assert.Empty(t, result)
+}
+
+func TestCoalesceStreamEvents_SingleEvent(t *testing.T) {
+	events := []domain.KnowledgeEvent{
+		{EventType: domain.EventArticleCreated, AggregateType: "article", AggregateID: "1", EventSeq: 1},
+	}
+	result := coalesceStreamEvents(events)
+	assert.Len(t, result, 1)
+	assert.Equal(t, "1", result[0].AggregateID)
+}
+
+func TestCoalesceStreamEvents_DeduplicatesByAggregate(t *testing.T) {
+	events := []domain.KnowledgeEvent{
+		{EventType: domain.EventArticleCreated, AggregateType: "article", AggregateID: "1", EventSeq: 1},
+		{EventType: domain.EventSummaryVersionCreated, AggregateType: "article", AggregateID: "1", EventSeq: 2},
+		{EventType: domain.EventTagSetVersionCreated, AggregateType: "article", AggregateID: "1", EventSeq: 3},
+	}
+	result := coalesceStreamEvents(events)
+	assert.Len(t, result, 1, "same aggregate should be deduplicated to one event")
+	assert.Equal(t, int64(3), result[0].EventSeq, "should keep the latest event")
+}
+
+func TestCoalesceStreamEvents_MultipleAggregates(t *testing.T) {
+	events := []domain.KnowledgeEvent{
+		{AggregateType: "article", AggregateID: "1", EventSeq: 1},
+		{AggregateType: "article", AggregateID: "2", EventSeq: 2},
+		{AggregateType: "recap", AggregateID: "3", EventSeq: 3},
+	}
+	result := coalesceStreamEvents(events)
+	assert.Len(t, result, 3, "different aggregates should all remain")
+}
+
+func TestStreamKnowledgeHomeUpdates_FeatureFlagDisabled(t *testing.T) {
+	logger.InitLogger()
+	flagPort := &mockFeatureFlagPort{
+		enabledFlags: map[string]bool{
+			domain.FlagStreamUpdates: false,
+		},
+	}
+	eventsPort := &mockListEventsPort{}
+	handler := newStreamTestHandler(flagPort, eventsPort)
+
+	ctx := testUserContext()
+	// StreamKnowledgeHomeUpdates receives *connect.ServerStream which is a concrete type.
+	// We test the feature flag guard by checking the error return before streaming starts.
+	// The handler returns connect.CodePermissionDenied before touching the stream.
+	err := handler.streamFlagGuard(ctx)
+	require.Error(t, err)
+
+	connectErr, ok := err.(*connect.Error)
+	require.True(t, ok)
+	assert.Equal(t, connect.CodePermissionDenied, connectErr.Code())
+}
+
+func TestStreamKnowledgeHomeUpdates_Unauthenticated(t *testing.T) {
+	logger.InitLogger()
+	handler := newStreamTestHandler(nil, nil)
+
+	err := handler.streamFlagGuard(context.Background())
+	require.Error(t, err)
+
+	connectErr, ok := err.(*connect.Error)
+	require.True(t, ok)
+	assert.Equal(t, connect.CodeUnauthenticated, connectErr.Code())
+}
+
+// newStreamTestHandler creates a handler with eventsPort and featureFlags for stream tests.
+func newStreamTestHandler(flagPort *mockFeatureFlagPort, eventsPort *mockListEventsPort) *Handler {
+	handler := NewHandler(
+		nil, nil, nil, // home, seen, action
+		nil, nil, nil, // recall: rail, snooze, dismiss
+		nil, nil, nil, nil, nil, // lens: create, update, list, select, archive
+		eventsPort,
+		nil, // eventsForUserPort
+		nil, // lensVisibilityPort
+		nil, // resolveLensPort
+		flagPort,
+		nil, // metrics
+		slog.Default(),
+	)
+	return handler
+}
+
+func TestHandler_StreamKnowledgeHomeUpdates_InvalidLensID(t *testing.T) {
+	logger.InitLogger()
+	handler := newStreamTestHandler(nil, nil)
+
+	req := connect.NewRequest(&knowledgehomev1.StreamKnowledgeHomeUpdatesRequest{
+		LensId: func() *string {
+			value := "not-a-uuid"
+			return &value
+		}(),
+	})
+
+	err := handler.StreamKnowledgeHomeUpdates(testUserContext(), req, nil)
+	require.Error(t, err)
+
+	connectErr, ok := err.(*connect.Error)
+	require.True(t, ok)
+	assert.Equal(t, connect.CodeInvalidArgument, connectErr.Code())
+}
+
+func TestHandler_InitialStreamSeq_UsesLatestKnownSeq(t *testing.T) {
+	logger.InitLogger()
+	handler := &Handler{
+		latestSeqPort: &mockLatestSeqPort{seq: 42},
+		logger:        slog.Default(),
+	}
+
+	seq, err := handler.initialStreamSeq(context.Background(), uuid.New(), uuid.New())
+
+	require.NoError(t, err)
+	assert.Equal(t, int64(42), seq)
+}
+
+// mockEventsForUserPort implements knowledge_event_port.ListKnowledgeEventsForUserPort.
+type mockEventsForUserPort struct {
+	events []domain.KnowledgeEvent
+	err    error
+}
+
+func (m *mockEventsForUserPort) ListKnowledgeEventsSinceForUser(_ context.Context, _, _ uuid.UUID, _ int64, _ int) ([]domain.KnowledgeEvent, error) {
+	return m.events, m.err
+}
+
+func TestHighWaterMark_ExceedsThreshold_SendsDigestChanged(t *testing.T) {
+	// When coalesced events exceed streamHighWaterMark (10), the handler
+	// should send a single digest_changed instead of individual events.
+
+	// Generate 15 unique aggregate events (all survive coalescing)
+	events := make([]domain.KnowledgeEvent, 15)
+	for i := range events {
+		events[i] = domain.KnowledgeEvent{
+			EventType:     domain.EventArticleCreated,
+			AggregateType: "article",
+			AggregateID:   uuid.New().String(),
+			EventSeq:      int64(i + 1),
+			OccurredAt:    time.Now(),
+		}
+	}
+
+	coalesced := coalesceStreamEvents(events)
+	assert.Len(t, coalesced, 15, "15 unique aggregates should all survive coalescing")
+	assert.Greater(t, len(coalesced), streamHighWaterMark,
+		"coalesced count should exceed streamHighWaterMark threshold")
+}
+
+func TestHighWaterMark_BelowThreshold_IndividualEvents(t *testing.T) {
+	// When coalesced events are within streamHighWaterMark, individual events are sent.
+	events := make([]domain.KnowledgeEvent, 5)
+	for i := range events {
+		events[i] = domain.KnowledgeEvent{
+			EventType:     domain.EventArticleCreated,
+			AggregateType: "article",
+			AggregateID:   uuid.New().String(),
+			EventSeq:      int64(i + 1),
+			OccurredAt:    time.Now(),
+		}
+	}
+
+	coalesced := coalesceStreamEvents(events)
+	assert.Len(t, coalesced, 5)
+	assert.LessOrEqual(t, len(coalesced), streamHighWaterMark,
+		"coalesced count should be within streamHighWaterMark threshold")
+
+	// Each event should produce its own response
+	for _, e := range coalesced {
+		resp := buildStreamResponse(e)
+		assert.Equal(t, "item_added", resp.EventType)
+		assert.NotNil(t, resp.Item)
+	}
+}
+
+func TestHighWaterMark_CoalescingReducesBelowThreshold(t *testing.T) {
+	// 20 events for the same aggregate coalesce to 1 → below threshold
+	events := make([]domain.KnowledgeEvent, 20)
+	aggID := uuid.New().String()
+	for i := range events {
+		events[i] = domain.KnowledgeEvent{
+			EventType:     domain.EventSummaryVersionCreated,
+			AggregateType: "article",
+			AggregateID:   aggID,
+			EventSeq:      int64(i + 1),
+			OccurredAt:    time.Now(),
+		}
+	}
+
+	coalesced := coalesceStreamEvents(events)
+	assert.Len(t, coalesced, 1, "same aggregate deduplicates to 1")
+	assert.LessOrEqual(t, len(coalesced), streamHighWaterMark,
+		"after coalescing, should be within threshold → send individual events")
+}
+
+// testAuthInterceptor injects a user context for httptest-based streaming tests.
+type testAuthInterceptor struct{}
+
+func (i *testAuthInterceptor) WrapUnary(next connect.UnaryFunc) connect.UnaryFunc {
+	return func(ctx context.Context, req connect.AnyRequest) (connect.AnyResponse, error) {
+		user := &domain.UserContext{
+			UserID:    uuid.MustParse("93852825-3755-4c9b-af19-ac92002ebf82"),
+			Email:     "test@example.com",
+			Role:      domain.UserRoleUser,
+			TenantID:  uuid.New(),
+			SessionID: "test-session",
+			LoginAt:   time.Now(),
+			ExpiresAt: time.Now().Add(1 * time.Hour),
+		}
+		return next(domain.SetUserContext(ctx, user), req)
+	}
+}
+
+func (i *testAuthInterceptor) WrapStreamingClient(next connect.StreamingClientFunc) connect.StreamingClientFunc {
+	return next
+}
+
+func (i *testAuthInterceptor) WrapStreamingHandler(next connect.StreamingHandlerFunc) connect.StreamingHandlerFunc {
+	return func(ctx context.Context, conn connect.StreamingHandlerConn) error {
+		user := &domain.UserContext{
+			UserID:    uuid.MustParse("93852825-3755-4c9b-af19-ac92002ebf82"),
+			Email:     "test@example.com",
+			Role:      domain.UserRoleUser,
+			TenantID:  uuid.New(),
+			SessionID: "test-session",
+			LoginAt:   time.Now(),
+			ExpiresAt: time.Now().Add(1 * time.Hour),
+		}
+		return next(domain.SetUserContext(ctx, user), conn)
+	}
+}
+
+func TestStreamKnowledgeHomeUpdates_SendsImmediateHeartbeat(t *testing.T) {
+	logger.InitLogger()
+
+	flagPort := &mockFeatureFlagPort{
+		enabledFlags: map[string]bool{
+			domain.FlagStreamUpdates: true,
+		},
+	}
+	eventsForUser := &mockEventsForUserPort{events: nil, err: nil}
+	handler := NewHandler(
+		nil, nil, nil, // home, seen, action
+		nil, nil, nil, // recall: rail, snooze, dismiss
+		nil, nil, nil, nil, nil, // lens
+		nil,           // eventsPort
+		eventsForUser, // eventsForUserPort
+		nil,           // lensVisibilityPort
+		nil,           // resolveLensPort
+		flagPort,      // featureFlagPort
+		nil,           // metrics
+		slog.Default(),
+	)
+
+	// Register handler with test auth interceptor
+	path, h := knowledgehomev1connect.NewKnowledgeHomeServiceHandler(
+		handler,
+		connect.WithInterceptors(&testAuthInterceptor{}),
+	)
+	mux := http.NewServeMux()
+	mux.Handle(path, h)
+
+	server := httptest.NewUnstartedServer(mux)
+	server.EnableHTTP2 = true
+	server.StartTLS()
+	defer server.Close()
+
+	client := knowledgehomev1connect.NewKnowledgeHomeServiceClient(
+		server.Client(),
+		server.URL,
+	)
+
+	// Context with short timeout — we only need the first message
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+
+	stream, err := client.StreamKnowledgeHomeUpdates(
+		ctx,
+		connect.NewRequest(&knowledgehomev1.StreamKnowledgeHomeUpdatesRequest{}),
+	)
+	require.NoError(t, err)
+	defer stream.Close()
+
+	// First message must be an immediate heartbeat (not delayed by 5-10s tickers)
+	started := time.Now()
+	require.True(t, stream.Receive(), "expected first message from stream")
+	elapsed := time.Since(started)
+
+	msg := stream.Msg()
+	assert.Equal(t, "heartbeat", msg.EventType, "first message should be a heartbeat")
+	assert.NotEmpty(t, msg.OccurredAt, "heartbeat should have occurred_at timestamp")
+	assert.Less(t, elapsed, 2*time.Second, "first message should arrive within 2s, not after 5-10s ticker delay")
+}
+
+func TestHandler_TrackHomeAction_Validation(t *testing.T) {
+	logger.InitLogger()
+	handler, _, _ := setupHandler()
+
+	tests := []struct {
+		name       string
+		actionType string
+		itemKey    string
+		wantCode   connect.Code
+	}{
+		{
+			name:       "missing action_type",
+			actionType: "",
+			itemKey:    "article:1",
+			wantCode:   connect.CodeInvalidArgument,
+		},
+		{
+			name:       "missing item_key",
+			actionType: "open",
+			itemKey:    "",
+			wantCode:   connect.CodeInvalidArgument,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			req := connect.NewRequest(&knowledgehomev1.TrackHomeActionRequest{
+				ActionType: tt.actionType,
+				ItemKey:    tt.itemKey,
+			})
+
+			_, err := handler.TrackHomeAction(context.Background(), req)
+			require.Error(t, err)
+
+			connectErr, ok := err.(*connect.Error)
+			require.True(t, ok)
+			// Without user context, it's unauthenticated first
+			assert.Equal(t, connect.CodeUnauthenticated, connectErr.Code())
+		})
+	}
+}

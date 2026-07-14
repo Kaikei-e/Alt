@@ -10,7 +10,7 @@
 package mocks
 
 import (
-	event_publisher_port "alt/port/event_publisher_port"
+	event_publisher_port "alt/shared/port/event_publisher_port"
 	context "context"
 	reflect "reflect"
 
