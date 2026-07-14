@@ -18,7 +18,7 @@ services:
     # cosign-signed multi-arch release image on GHCR — pin to an explicit
     # version (not `:latest`) and bump deliberately alongside plecto/manifest.toml
     # and plecto/wit/world.wit's `plecto:filter@` version.
-    image: ghcr.io/kaikei-e/plecto:0.3.0
+    image: ghcr.io/kaikei-e/plecto:0.3.6
     command: ["/etc/plecto/manifest.toml"]
     restart: always
     mem_limit: 512m
