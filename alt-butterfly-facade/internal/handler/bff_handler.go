@@ -7,7 +7,6 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
-	"strconv"
 	"time"
 
 	"github.com/google/uuid"
@@ -41,18 +40,18 @@ type BFFConfig struct {
 
 // BFFHandler wraps the proxy handler with BFF features.
 type BFFHandler struct {
-	proxyHandler    *ProxyHandler
-	backendClient   *client.BackendClient
-	authInterceptor *middleware.AuthInterceptor
-	logger          *slog.Logger
-	config          BFFConfig
-	defaultTimeout  time.Duration
+	backendClient    *client.BackendClient
+	authInterceptor  *middleware.AuthInterceptor
+	logger           *slog.Logger
+	config           BFFConfig
+	defaultTimeout   time.Duration
+	streamingTimeout time.Duration
 
 	// BFF components
-	responseCache   *cache.ResponseCache
-	cacheConfig     *cache.CacheConfig
-	circuitBreaker  *resilience.CircuitBreaker
-	deduplicator    *RequestDeduplicator
+	responseCache  *cache.ResponseCache
+	cacheConfig    *cache.CacheConfig
+	circuitBreaker *resilience.CircuitBreaker
+	deduplicator   *RequestDeduplicator
 }
 
 // NewBFFHandler creates a new BFF handler with all features.
@@ -63,15 +62,13 @@ func NewBFFHandler(
 	logger *slog.Logger,
 	config BFFConfig,
 ) *BFFHandler {
-	defaultTimeout := backendClient.DefaultTimeout()
-	streamingTimeout := backendClient.StreamingTimeout()
 	h := &BFFHandler{
-		proxyHandler:    NewProxyHandler(backendClient, secret, issuer, audience, logger, defaultTimeout, streamingTimeout),
-		backendClient:   backendClient,
-		authInterceptor: middleware.NewAuthInterceptor(logger, secret, issuer, audience),
-		logger:          logger,
-		config:          config,
-		defaultTimeout:  defaultTimeout,
+		backendClient:    backendClient,
+		authInterceptor:  middleware.NewAuthInterceptor(logger, secret, issuer, audience),
+		logger:           logger,
+		config:           config,
+		defaultTimeout:   backendClient.DefaultTimeout(),
+		streamingTimeout: backendClient.StreamingTimeout(),
 	}
 
 	// Initialize cache if enabled
@@ -101,28 +98,25 @@ func NewBFFHandler(
 // deadline on the request. If the header is absent or invalid, defaultTimeout
 // is used. The timeout is capped at maxConnectTimeout (5 min).
 func (h *BFFHandler) applyConnectTimeout(r *http.Request) (*http.Request, context.CancelFunc) {
-	timeout := h.defaultTimeout
+	return resolveTimeout(r, h.defaultTimeout, maxConnectTimeout)
+}
 
-	if ms := r.Header.Get("Connect-Timeout-Ms"); ms != "" {
-		if parsed, err := strconv.ParseInt(ms, 10, 64); err == nil && parsed > 0 {
-			timeout = time.Duration(parsed) * time.Millisecond
-		}
-	}
-
-	if timeout > maxConnectTimeout {
-		timeout = maxConnectTimeout
-	}
-
-	ctx, cancel := context.WithTimeout(r.Context(), timeout)
-	return r.WithContext(ctx), cancel
+// applyStreamingConnectTimeout is applyConnectTimeout's streaming
+// counterpart: base is streamingTimeout instead of defaultTimeout, capped at
+// maxStreamingTimeout (40 min) instead of the unary 5 min cap. Mirrors
+// ProxyHandler.applyConnectTimeout's streaming branch.
+func (h *BFFHandler) applyStreamingConnectTimeout(r *http.Request) (*http.Request, context.CancelFunc) {
+	return resolveTimeout(r, h.streamingTimeout, maxStreamingTimeout)
 }
 
 // ServeHTTP implements http.Handler.
 func (h *BFFHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	// Streaming requests bypass BFF features (cache, dedup, circuit breaker)
-	// and use ProxyHandler which properly streams response chunks with flushing.
+	// Streaming procedures bypass cache/dedup (streamed bodies aren't
+	// cacheable/dedupable units) and stream response chunks directly with
+	// Flusher.Flush instead of buffering the full body, but circuit breaker
+	// gating/recording still applies — see serveStreaming.
 	if isStreamingProcedure(r.URL.Path) {
-		h.proxyHandler.ServeHTTP(w, r)
+		h.serveStreaming(w, r)
 		return
 	}
 
@@ -180,6 +174,61 @@ func (h *BFFHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	// Forward request directly
 	h.forwardRequest(w, r, userID, endpoint, body, token, requestID)
+}
+
+// serveStreaming forwards a server-streaming Connect-RPC request straight to
+// the backend and copies the response body chunk-by-chunk with
+// Flusher.Flush via streamCopy (proxy_handler.go), so the client observes
+// true streaming instead of the full body being buffered first. Cache and
+// dedup are never consulted here — a streamed body is not a single
+// cacheable/dedupable unit. The circuit breaker is still gated (Allow())
+// and recorded (success/failure), judged solely by connection establishment
+// and the initial response status; chunk content never influences it.
+func (h *BFFHandler) serveStreaming(w http.ResponseWriter, r *http.Request) {
+	r, cancel := h.applyStreamingConnectTimeout(r)
+	defer cancel()
+
+	requestID := generateRequestID()
+
+	token := r.Header.Get(middleware.BackendTokenHeader)
+	if _, err := h.authInterceptor.ValidateToken(token); err != nil {
+		h.handleError(w, http.StatusUnauthorized, "Unauthorized", requestID)
+		return
+	}
+
+	if h.circuitBreaker != nil && !h.circuitBreaker.Allow() {
+		h.handleCircuitOpen(w, requestID)
+		return
+	}
+
+	resp, err := h.backendClient.ForwardStreamingRequest(r, token)
+	if err != nil {
+		h.recordFailure()
+		h.handleBackendError(w, err, requestID)
+		return
+	}
+	defer resp.Body.Close()
+
+	if IsErrorResponse(resp.StatusCode) {
+		h.recordFailure()
+	} else {
+		h.recordSuccess()
+	}
+
+	// Error-normalization only ever rewrites the initial status; once we
+	// decide to stream (below), the body is copied verbatim and untouched.
+	if h.config.EnableErrorNormalization && IsErrorResponse(resp.StatusCode) {
+		normalized := NormalizeError(resp, requestID)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(resp.StatusCode)
+		jsonBytes, _ := normalized.ToJSON()
+		w.Write(jsonBytes)
+		return
+	}
+
+	copyResponseHeaders(resp.Header, w.Header())
+	w.WriteHeader(resp.StatusCode)
+	streamCopy(w, resp.Body, h.logger)
 }
 
 // handleWithDedup handles a request with deduplication.

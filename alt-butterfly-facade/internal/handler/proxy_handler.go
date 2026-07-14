@@ -65,12 +65,18 @@ func NewProxyHandler(
 // Unary requests are capped at maxConnectTimeout (5 min).
 // Streaming requests are capped at maxStreamingTimeout (40 min).
 func (h *ProxyHandler) applyConnectTimeout(r *http.Request) (*http.Request, context.CancelFunc) {
-	timeout := h.defaultTimeout
-
-	// Use streaming timeout for streaming procedures
 	if isStreamingProcedure(r.URL.Path) {
-		timeout = h.streamingTimeout
+		return resolveTimeout(r, h.streamingTimeout, maxStreamingTimeout)
 	}
+	return resolveTimeout(r, h.defaultTimeout, maxConnectTimeout)
+}
+
+// resolveTimeout computes a context deadline for a Connect-RPC request: base
+// unless overridden by the Connect-Timeout-Ms header, capped at maxTimeout.
+// Shared by ProxyHandler.applyConnectTimeout (unary and streaming
+// procedures) and BFFHandler's applyConnectTimeout / applyStreamingConnectTimeout.
+func resolveTimeout(r *http.Request, base, maxTimeout time.Duration) (*http.Request, context.CancelFunc) {
+	timeout := base
 
 	if ms := r.Header.Get("Connect-Timeout-Ms"); ms != "" {
 		if parsed, err := strconv.ParseInt(ms, 10, 64); err == nil && parsed > 0 {
@@ -78,12 +84,8 @@ func (h *ProxyHandler) applyConnectTimeout(r *http.Request) (*http.Request, cont
 		}
 	}
 
-	if isStreamingProcedure(r.URL.Path) {
-		if timeout > maxStreamingTimeout {
-			timeout = maxStreamingTimeout
-		}
-	} else if timeout > maxConnectTimeout {
-		timeout = maxConnectTimeout
+	if timeout > maxTimeout {
+		timeout = maxTimeout
 	}
 
 	ctx, cancel := context.WithTimeout(r.Context(), timeout)
@@ -156,14 +158,24 @@ func (h *ProxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 // streamResponse handles streaming response copying with flushing.
 func (h *ProxyHandler) streamResponse(w http.ResponseWriter, resp *http.Response) {
+	streamCopy(w, resp.Body, h.logger)
+}
+
+// streamCopy copies body to w in 4KB chunks, flushing after every write, so
+// server-streaming responses reach the client incrementally instead of being
+// buffered until the backend closes the connection. Shared by ProxyHandler
+// and BFFHandler so both streaming code paths present true chunk delivery.
+func streamCopy(w http.ResponseWriter, body io.Reader, logger *slog.Logger) {
 	flusher, canFlush := w.(http.Flusher)
 
 	buf := make([]byte, 4096)
 	for {
-		n, err := resp.Body.Read(buf)
+		n, err := body.Read(buf)
 		if n > 0 {
 			if _, writeErr := w.Write(buf[:n]); writeErr != nil {
-				h.logError("stream response write failed", writeErr)
+				if logger != nil {
+					logger.Error("stream response write failed", "error", writeErr)
+				}
 				return
 			}
 			if canFlush {

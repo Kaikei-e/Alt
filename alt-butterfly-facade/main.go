@@ -114,18 +114,13 @@ func main() {
 			"backend", backendURL, "acolyte", acolyteURL, "tts", ttsURL)
 	}
 
+	// Loud wiring log per BFF feature (cache / circuit breaker / dedup /
+	// error normalization) so a forgotten wire is never mistaken for an
+	// intentional disable (CLAUDE.md Rule 8).
+	logBFFFeatureWiring(ctx, cfg)
+
 	// Create server configuration
-	serverCfg := server.Config{
-		BackendURL:        backendURL,
-		BackendRESTURL:    cfg.BackendRESTURL,
-		Secret:            secret,
-		Issuer:            cfg.BackendTokenIssuer,
-		Audience:          cfg.BackendTokenAudience,
-		RequestTimeout:    cfg.RequestTimeout,
-		StreamingTimeout:  cfg.StreamingTimeout,
-		TTSConnectURL:     ttsURL,
-		AcolyteConnectURL: acolyteURL,
-	}
+	serverCfg := buildServerConfig(cfg, backendURL, ttsURL, acolyteURL, secret)
 
 	// Connect-RPC uses the mTLS transport when enforcement is on; REST
 	// proxies always stay on the default plaintext transport so that
