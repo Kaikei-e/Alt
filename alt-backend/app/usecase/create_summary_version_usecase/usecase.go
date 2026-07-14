@@ -61,20 +61,25 @@ func (u *CreateSummaryVersionUsecase) Execute(ctx context.Context, sv domain.Sum
 		return fmt.Errorf("create summary version: %w", err)
 	}
 
-	// Emit SummaryVersionCreated event. article_title is captured into the
-	// payload so the Knowledge Loop projector's reproject-safe enricher
+	// Emit SummaryVersionCreated event. article_title, summary_text, and
+	// quality_score are captured into the payload so the Knowledge Loop
+	// projector's reproject-safe enricher
 	// (knowledge-sovereign/usecase/knowledge_loop_projector/enricher.go) can
 	// render a substantive narrative without a latest-state lookup. Empty
-	// title falls back to the generic fallback narrative — both branches stay
-	// pure on the projector side.
-	payloadFields := map[string]string{
+	// title / absent quality score fall back to the generic fallback
+	// narrative — both branches stay pure on the projector side.
+	payloadFields := map[string]any{
 		"summary_version_id": sv.SummaryVersionID.String(),
 		"article_id":         sv.ArticleID.String(),
 		"model":              sv.Model,
 		"prompt_version":     sv.PromptVersion,
+		"summary_text":       sv.SummaryText,
 	}
 	if sv.ArticleTitle != "" {
 		payloadFields["article_title"] = sv.ArticleTitle
+	}
+	if sv.QualityScore != nil {
+		payloadFields["quality_score"] = *sv.QualityScore
 	}
 	payload, _ := json.Marshal(payloadFields)
 

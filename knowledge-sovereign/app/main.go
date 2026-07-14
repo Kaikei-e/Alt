@@ -7,6 +7,7 @@ import (
 	"knowledge-sovereign/driver/sovereign_db"
 	"knowledge-sovereign/gen/proto/services/sovereign/v1/sovereignv1connect"
 	"knowledge-sovereign/handler"
+	"knowledge-sovereign/usecase/knowledge_home_projector"
 	"knowledge-sovereign/usecase/knowledge_trail_projector"
 	"knowledge-sovereign/usecase/projection_health"
 	"knowledge-sovereign/usecase/trail_planner"
@@ -158,6 +159,37 @@ func main() {
 			case <-trailTick.C:
 				if err := trailProjector.RunBatch(ctx); err != nil {
 					slog.Error("knowledge_trail_projector batch failed", "error", err)
+				}
+			}
+		}
+	}()
+
+	// Knowledge Home projector. Folds the same append-only event log into the
+	// Knowledge Home read models (knowledge_home_items, today_digest_view,
+	// recall_candidate_view) in-process. Reproject-safe and idempotent, same
+	// shape as knowledge_trail_projector above; shares its tick interval since
+	// both drain the same event log on the same cadence. Rule 8: surface the
+	// wiring state loudly at startup so a missing projector is not
+	// indistinguishable from an intentionally-disabled one (PM-2026-045 /
+	// ADR-000928).
+	homeProjector := knowledge_home_projector.NewProjector(repo, slog.Default(),
+		knowledge_home_projector.Config{
+			BatchSize:         parseIntEnv("KNOWLEDGE_SOVEREIGN_HOME_PROJECTOR_BATCH_SIZE", 500),
+			MaxBatchesPerTick: parseIntEnv("KNOWLEDGE_SOVEREIGN_HOME_PROJECTOR_MAX_BATCHES_PER_TICK", 4),
+		})
+	slog.Info("home.projector.wiring", "enabled", homeProjector != nil)
+	homeTick := time.NewTicker(parseDurationEnv("KNOWLEDGE_SOVEREIGN_PROJECTOR_TICK_INTERVAL", 5*time.Second))
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		defer homeTick.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-homeTick.C:
+				if err := homeProjector.RunBatch(ctx); err != nil {
+					slog.Error("knowledge_home_projector batch failed", "error", err)
 				}
 			}
 		}
