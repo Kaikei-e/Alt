@@ -68,10 +68,7 @@ type KnowledgeModule struct {
 	ArchiveLensUsecase   *archive_lens_usecase.ArchiveLensUsecase
 
 	// Gateways
-	FeatureFlagGateway               *feature_flag_gateway.Gateway
-	KnowledgeBackfillArticlesGateway *knowledge_backfill_gateway.Gateway
-	SummaryVersionGateway            *summary_version_gateway.Gateway
-	TagSetVersionGateway             *tag_set_version_gateway.Gateway
+	FeatureFlagGateway *feature_flag_gateway.Gateway
 
 	// Sovereign client
 	SovereignClient *sovereign_client.Client
@@ -195,10 +192,7 @@ func newKnowledgeModule(infra *InfraModule, article *ArticleModule) *KnowledgeMo
 		SelectLensUsecase:    selectLensUC,
 		ArchiveLensUsecase:   archiveLensUC,
 
-		FeatureFlagGateway:               featureFlagGw,
-		KnowledgeBackfillArticlesGateway: knowledgeBackfillGw,
-		SummaryVersionGateway:            summaryVersionGw,
-		TagSetVersionGateway:             tagSetVersionGw,
+		FeatureFlagGateway: featureFlagGw,
 
 		SovereignClient: sovereignCli,
 

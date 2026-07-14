@@ -19,7 +19,6 @@ import (
 	"os/signal"
 	"runtime"
 	"strconv"
-	"sync"
 	"syscall"
 	"time"
 
@@ -103,46 +102,10 @@ func main() {
 	job.RegisterAllJobs(scheduler, container, cfg)
 	scheduler.Start(ctx)
 
-	projectorProcess := job.KnowledgeProjectorJobWithConfig(
-		container.SovereignClient,
-		container.SovereignClient,
-		container.SovereignClient,
-		container.SovereignClient,
-		container.SovereignClient,
-		container.SovereignClient,
-		container.SummaryVersionGateway,
-		container.SovereignClient,
-		container.TagSetVersionGateway,
-		job.KnowledgeProjectorConfig{
-			BatchSize: cfg.KnowledgeHome.ProjectorBatchSize,
-			Metrics:   container.KnowledgeHomeMetrics,
-		},
-		container.SovereignClient,
-	)
-	projectorRunner := job.NewKnowledgeProjectorRunner(job.KnowledgeProjectorRunnerConfig{
-		PollInterval: cfg.KnowledgeHome.ProjectorPollInterval,
-		Timeout:      cfg.KnowledgeHome.ProjectorTimeout,
-		Process:      projectorProcess,
-		ListenerFactory: job.NewSovereignProjectorListenerFactory(
-			func(ctx context.Context, name string) (job.KnowledgeProjectorListener, error) {
-				return container.SovereignClient.ConnectProjectorWatch(ctx, name)
-			},
-			"knowledge-home-projector",
-		),
-	})
-	var projectorWG sync.WaitGroup
-	projectorWG.Add(1)
-	go func() {
-		defer projectorWG.Done()
-		if err := projectorRunner.Run(ctx); err != nil && ctx.Err() == nil {
-			logger.Logger.ErrorContext(ctx, "knowledge projector runner stopped unexpectedly", "error", err)
-		}
-	}()
-
-	// Knowledge Loop projector now runs inside knowledge-sovereign as part of
-	// the projection ownership consolidation (ADR-000844 follow-up). alt-backend
-	// keeps the Connect-RPC handler that proxies reads, but no longer schedules
-	// the projector job here.
+	// Knowledge Home / Knowledge Loop projectors now run inside knowledge-sovereign
+	// as part of the projection ownership consolidation (ADR-000844 follow-up).
+	// alt-backend keeps the Connect-RPC handler that proxies reads, but no longer
+	// schedules any projector job here.
 
 	e := echo.New()
 
@@ -332,7 +295,6 @@ func main() {
 	// Wait for background jobs to finish
 	schedulerShutdownStarted := time.Now()
 	scheduler.Shutdown()
-	projectorWG.Wait()
 	logger.Logger.Info("Background jobs stopped",
 		"duration_ms", time.Since(schedulerShutdownStarted).Milliseconds(),
 	)

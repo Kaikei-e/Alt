@@ -8,11 +8,8 @@ import (
 	"alt/gateway/feature_flag_gateway"
 	"alt/gateway/fetch_article_gateway"
 	"alt/gateway/internal_article_gateway"
-	"alt/gateway/knowledge_backfill_gateway"
 	"alt/gateway/preprocessor_summarize_gateway"
 	"alt/gateway/rag_connect_gateway"
-	"alt/gateway/summary_version_gateway"
-	"alt/gateway/tag_set_version_gateway"
 	"alt/port/config_port"
 	"alt/port/error_handler_port"
 	"alt/port/event_publisher_port"
@@ -208,7 +205,6 @@ type ApplicationComponents struct {
 	CreateSummaryVersionUsecase      *create_summary_version_usecase.CreateSummaryVersionUsecase
 	CreateTagSetVersionUsecase       *create_tag_set_version_usecase.CreateTagSetVersionUsecase
 	FeatureFlagGateway               *feature_flag_gateway.Gateway
-	KnowledgeBackfillArticlesGateway *knowledge_backfill_gateway.Gateway
 	KnowledgeBackfillUsecase         *knowledge_backfill_usecase.Usecase
 	KnowledgeURLBackfillUsecase      *knowledge_url_backfill_usecase.Usecase
 	KnowledgeProjectionHealthUsecase *knowledge_projection_health_usecase.Usecase
@@ -218,16 +214,14 @@ type ApplicationComponents struct {
 	MetricsUsecase                   *knowledge_metrics_usecase.Usecase
 
 	// Phase 4: RecallRail, Lens, Stream, Supersede
-	RecallRailUsecase     *recall_rail_usecase.RecallRailUsecase
-	RecallSnoozeUsecase   *recall_snooze_usecase.RecallSnoozeUsecase
-	RecallDismissUsecase  *recall_dismiss_usecase.RecallDismissUsecase
-	CreateLensUsecase     *create_lens_usecase.CreateLensUsecase
-	UpdateLensUsecase     *update_lens_usecase.UpdateLensUsecase
-	ListLensesUsecase     *list_lenses_usecase.ListLensesUsecase
-	SelectLensUsecase     *select_lens_usecase.SelectLensUsecase
-	ArchiveLensUsecase    *archive_lens_usecase.ArchiveLensUsecase
-	SummaryVersionGateway *summary_version_gateway.Gateway
-	TagSetVersionGateway  *tag_set_version_gateway.Gateway
+	RecallRailUsecase    *recall_rail_usecase.RecallRailUsecase
+	RecallSnoozeUsecase  *recall_snooze_usecase.RecallSnoozeUsecase
+	RecallDismissUsecase *recall_dismiss_usecase.RecallDismissUsecase
+	CreateLensUsecase    *create_lens_usecase.CreateLensUsecase
+	UpdateLensUsecase    *update_lens_usecase.UpdateLensUsecase
+	ListLensesUsecase    *list_lenses_usecase.ListLensesUsecase
+	SelectLensUsecase    *select_lens_usecase.SelectLensUsecase
+	ArchiveLensUsecase   *archive_lens_usecase.ArchiveLensUsecase
 
 	// Knowledge Sovereign (remote Connect-RPC service — all knowledge data access)
 	SovereignClient *sovereign_client.Client
@@ -393,7 +387,6 @@ func NewApplicationComponents(pool *pgxpool.Pool, cfg *config.Config) *Applicati
 		CreateSummaryVersionUsecase:      knowledge.CreateSummaryVersionUsecase,
 		CreateTagSetVersionUsecase:       knowledge.CreateTagSetVersionUsecase,
 		FeatureFlagGateway:               knowledge.FeatureFlagGateway,
-		KnowledgeBackfillArticlesGateway: knowledge.KnowledgeBackfillArticlesGateway,
 		KnowledgeBackfillUsecase:         knowledge.KnowledgeBackfillUsecase,
 		KnowledgeURLBackfillUsecase:      knowledge.KnowledgeURLBackfillUsecase,
 		KnowledgeProjectionHealthUsecase: knowledge.KnowledgeProjectionHealthUsecase,
@@ -403,16 +396,14 @@ func NewApplicationComponents(pool *pgxpool.Pool, cfg *config.Config) *Applicati
 		MetricsUsecase:                   knowledge.MetricsUsecase,
 
 		// RecallRail, Lens
-		RecallRailUsecase:     knowledge.RecallRailUsecase,
-		RecallSnoozeUsecase:   knowledge.RecallSnoozeUsecase,
-		RecallDismissUsecase:  knowledge.RecallDismissUsecase,
-		CreateLensUsecase:     knowledge.CreateLensUsecase,
-		UpdateLensUsecase:     knowledge.UpdateLensUsecase,
-		ListLensesUsecase:     knowledge.ListLensesUsecase,
-		SelectLensUsecase:     knowledge.SelectLensUsecase,
-		ArchiveLensUsecase:    knowledge.ArchiveLensUsecase,
-		SummaryVersionGateway: knowledge.SummaryVersionGateway,
-		TagSetVersionGateway:  knowledge.TagSetVersionGateway,
+		RecallRailUsecase:    knowledge.RecallRailUsecase,
+		RecallSnoozeUsecase:  knowledge.RecallSnoozeUsecase,
+		RecallDismissUsecase: knowledge.RecallDismissUsecase,
+		CreateLensUsecase:    knowledge.CreateLensUsecase,
+		UpdateLensUsecase:    knowledge.UpdateLensUsecase,
+		ListLensesUsecase:    knowledge.ListLensesUsecase,
+		SelectLensUsecase:    knowledge.SelectLensUsecase,
+		ArchiveLensUsecase:   knowledge.ArchiveLensUsecase,
 
 		// Knowledge Sovereign (all knowledge data access)
 		SovereignClient: knowledge.SovereignClient,
