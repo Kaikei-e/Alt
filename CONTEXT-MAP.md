@@ -8,6 +8,9 @@ Alt は 20+ microservices の monorepo。各 bounded context の正準語 (ubiqu
 
 ## Contexts
 
+- [Knowledge Home](./contexts/knowledge-home.md) — today digest + recall を束ねるダッシュボード型サーフェス。
+  `/home` ルート。knowledge_events を disposable read model へ投影する append-first 構造。
+  knowledge-sovereign / alt-backend / alt-frontend-sv にまたがる。
 - [Knowledge Trail](./contexts/knowledge-trail.md) — Alt の primary surface。footprint の連なりを背骨に、
   型付き branch を提案する認知フィードバック循環。knowledge-sovereign / alt-backend / alt-frontend-sv にまたがる。
 - [Resource Efficiency](./contexts/resource-efficiency.md) — _(定義中, 2026-06-17 grill)_ 構成・アーキテクチャを
@@ -24,6 +27,10 @@ Alt は 20+ microservices の monorepo。各 bounded context の正準語 (ubiqu
   (OTEL ログ・Prometheus metrics・nginx access log・`docker stats`) を消費し、それらのランタイム footprint を
   制約する。ドメイン語彙は共有しない (Knowledge Trail の footprint と Resource Efficiency の measurement は別物)。
 - **Knowledge Trail は旧 Knowledge Loop を置換** (2026-06-10)。イベント基盤・relation 語彙・evidence 供給機構を継承。
+- **Knowledge Home と Knowledge Trail は別系統**: Home は Loop 以前から続く独立のダッシュボード型サーフェスで、
+  Loop→Trail の置換とは無関係に現役継続する。両者は `knowledge_events` という同一イベント基盤を共有するが、
+  概念語彙・read model・projector は独立 (Home: `knowledge_home_items`/`today_digest_view`/`recall_candidate_view`、
+  Trail: `trail_footprints` 等)。
 - **Resource Efficiency → Visual Preview**: image proxy の per-host レート制限 (上流ホスト保護) と OG 画像 age-gate は
   Resource Efficiency の保持・cadence 規律に従う。Visual Preview はその制約下で transient fallback を retry で吸収する。
 - **Inference Topology ↔ Resource Efficiency**: Degraded 契約の発動はローカル GPU/RAM の resident footprint を増やす。
