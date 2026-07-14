@@ -13,7 +13,6 @@ import (
 	"time"
 
 	"connectrpc.com/connect"
-	"github.com/google/uuid"
 	"github.com/pact-foundation/pact-go/v2/consumer"
 	"github.com/pact-foundation/pact-go/v2/matchers"
 	"github.com/stretchr/testify/assert"
@@ -48,16 +47,23 @@ func TestAppendKnowledgeEvent_SummaryVersionCreatedCarriesSummaryText(t *testing
 	})
 	require.NoError(t, err)
 
-	eventID := uuid.New()
-	summaryVersionID := uuid.New()
-	articleID := uuid.New()
-	tenantID := uuid.New()
-	userID := uuid.New()
+	// Fixed literal values, not uuid.New(): matchers.Like records the given
+	// example verbatim in the generated pact, so random IDs would make the
+	// pact content non-deterministic across CI runs for the same commit —
+	// the Pact Broker rejects republishing different content under the same
+	// consumer version (see https://docs.pact.io/go/versioning).
+	const (
+		eventID          = "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"
+		summaryVersionID = "cccccccc-cccc-cccc-cccc-cccccccccccc"
+		articleID        = "dddddddd-dddd-dddd-dddd-dddddddddddd"
+		tenantID         = "eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee"
+		userID           = "ffffffff-ffff-ffff-ffff-ffffffffffff"
+	)
 	occurredAt := time.Date(2026, 6, 10, 10, 0, 0, 0, time.UTC)
 
 	payload, _ := json.Marshal(map[string]any{
-		"summary_version_id": summaryVersionID.String(),
-		"article_id":         articleID.String(),
+		"summary_version_id": summaryVersionID,
+		"article_id":         articleID,
 		"model":              "news-creator-summarizer-v1",
 		"prompt_version":     "2026-06-01",
 		"article_title":      "Go 1.26 Release Notes",
@@ -78,16 +84,16 @@ func TestAppendKnowledgeEvent_SummaryVersionCreatedCarriesSummaryText(t *testing
 			},
 			Body: matchers.MapMatcher{
 				"event": matchers.Like(map[string]any{
-					"eventId":       eventID.String(),
+					"eventId":       eventID,
 					"occurredAt":    "2026-06-10T10:00:00Z",
-					"tenantId":      tenantID.String(),
-					"userId":        userID.String(),
+					"tenantId":      tenantID,
+					"userId":        userID,
 					"actorType":     "service",
 					"actorId":       "news-creator",
 					"eventType":     "SummaryVersionCreated",
 					"aggregateType": "article",
-					"aggregateId":   articleID.String(),
-					"dedupeKey":     "SummaryVersionCreated:" + summaryVersionID.String(),
+					"aggregateId":   articleID,
+					"dedupeKey":     "SummaryVersionCreated:" + summaryVersionID,
 					// payload ships as base64 on the wire (bytes field). The pinned
 					// blob decodes to {"...","summary_text":"...","quality_score":0.87}.
 					"payload": encoded,
@@ -111,16 +117,16 @@ func TestAppendKnowledgeEvent_SummaryVersionCreatedCarriesSummaryText(t *testing
 			)
 			_, err := client.AppendKnowledgeEvent(context.Background(), connect.NewRequest(&sovereignv1.AppendKnowledgeEventRequest{
 				Event: &sovereignv1.KnowledgeEvent{
-					EventId:       eventID.String(),
+					EventId:       eventID,
 					OccurredAt:    timestamppb.New(occurredAt),
-					TenantId:      tenantID.String(),
-					UserId:        userID.String(),
+					TenantId:      tenantID,
+					UserId:        userID,
 					ActorType:     "service",
 					ActorId:       "news-creator",
 					EventType:     "SummaryVersionCreated",
 					AggregateType: "article",
-					AggregateId:   articleID.String(),
-					DedupeKey:     "SummaryVersionCreated:" + summaryVersionID.String(),
+					AggregateId:   articleID,
+					DedupeKey:     "SummaryVersionCreated:" + summaryVersionID,
 					Payload:       payload,
 				},
 			}))

@@ -24,7 +24,7 @@ import (
 	"alt/gen/proto/services/preprocessor/v2/preprocessorv2connect"
 )
 
-const pactDir = "../../../../pacts"
+const pactDir = "../../../../../pacts"
 
 func newPreProcessorPact(t *testing.T) *consumer.V3HTTPMockProvider {
 	t.Helper()

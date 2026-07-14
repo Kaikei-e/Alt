@@ -36,9 +36,9 @@ on:
       - 'proto/**'
       - 'alt-frontend-sv/src/lib/gen/**'
       - 'alt-frontend-sv/src/test/contracts/**'
-      - 'alt-backend/app/driver/preprocessor_connect/contract/**'
-      - 'alt-backend/app/driver/contract/**'
-      - 'alt-backend/app/driver/sovereign_client/contract/**'
+      - 'alt-backend/app/orchestrator/driver/preprocessor_connect/contract/**'
+      - 'alt-backend/app/dataplane/driver/contract/**'
+      - 'alt-backend/app/shared/driver/sovereign_client/contract/**'
       - 'pre-processor/app/driver/contract/**'
       - 'rag-orchestrator/internal/adapter/contract/**'
       - 'search-indexer/app/driver/contract/**'
@@ -60,9 +60,9 @@ on:
       - 'proto/**'
       - 'alt-frontend-sv/src/lib/gen/**'
       - 'alt-frontend-sv/src/test/contracts/**'
-      - 'alt-backend/app/driver/preprocessor_connect/contract/**'
-      - 'alt-backend/app/driver/contract/**'
-      - 'alt-backend/app/driver/sovereign_client/contract/**'
+      - 'alt-backend/app/orchestrator/driver/preprocessor_connect/contract/**'
+      - 'alt-backend/app/dataplane/driver/contract/**'
+      - 'alt-backend/app/shared/driver/sovereign_client/contract/**'
       - 'pre-processor/app/driver/contract/**'
       - 'rag-orchestrator/internal/adapter/contract/**'
       - 'search-indexer/app/driver/contract/**'
@@ -140,7 +140,7 @@ jobs:
       matrix:
         include:
           - service: alt-backend/app
-            test-path: ./driver/preprocessor_connect/contract/
+            test-path: ./orchestrator/driver/preprocessor_connect/contract/
             sparse-checkout: alt-backend
             pact-dir: alt-backend/pacts
           - service: pre-processor/app
@@ -306,7 +306,7 @@ jobs:
           PACT_BROKER_PASSWORD: pact
           PACT_PROVIDER_VERSION: ${{ github.sha }}
           PACT_PROVIDER_BRANCH: ${{ github.head_ref || github.ref_name }}
-        run: go test -tags=contract ./driver/contract/ -v
+        run: go test -tags=contract ./dataplane/driver/contract/ -v
 
       - name: Run knowledge-sovereign provider verification
         # Added per ADR-000834 (knowledge-sovereign pacticipant promotion)

@@ -35,7 +35,7 @@ import (
 	"alt/gen/proto/services/sovereign/v1/sovereignv1connect"
 )
 
-const pactDir = "../../../../pacts"
+const pactDir = "../../../../../pacts"
 
 func newSovereignPact(t *testing.T) *consumer.V3HTTPMockProvider {
 	t.Helper()

@@ -12,7 +12,6 @@ import (
 	"time"
 
 	"connectrpc.com/connect"
-	"github.com/google/uuid"
 	"github.com/pact-foundation/pact-go/v2/consumer"
 	"github.com/pact-foundation/pact-go/v2/matchers"
 	"github.com/stretchr/testify/assert"
@@ -77,20 +76,27 @@ func TestAppendKnowledgeEvent_ArticleUrlBackfilled(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	eventID := uuid.New()
-	tenantID := uuid.New()
-	userID := uuid.New()
-	articleID := uuid.New()
+	// Fixed literal values, not uuid.New(): matchers.Like records the given
+	// example verbatim in the generated pact, so random IDs would make the
+	// pact content non-deterministic across CI runs for the same commit —
+	// the Pact Broker rejects republishing different content under the same
+	// consumer version (see https://docs.pact.io/go/versioning).
+	const (
+		eventID   = "11111111-1111-1111-1111-111111111111"
+		tenantID  = "33333333-3333-3333-3333-333333333333"
+		userID    = "44444444-4444-4444-4444-444444444444"
+		articleID = "55555555-5555-5555-5555-555555555555"
+	)
 	occurredAt := time.Date(2026, 4, 28, 12, 0, 0, 0, time.UTC)
 	// Build the dedupe key via the producer-side const so the contract
 	// example follows future namespace bumps (v1 → v2 → …) without drift.
 	// matchers.Like below treats the value as a string-shape match, so
 	// provider verification stays compatible regardless of the exact
 	// namespace prefix the consumer emits.
-	dedupeKey := fmt.Sprintf(domain.DedupeKeyArticleUrlBackfill, articleID.String())
+	dedupeKey := fmt.Sprintf(domain.DedupeKeyArticleUrlBackfill, articleID)
 
 	payload, err := json.Marshal(map[string]any{
-		"article_id":           articleID.String(),
+		"article_id":           articleID,
 		"url":                  "https://example.com/articles/42",
 		"original_occurred_at": "2026-01-15T08:30:00Z",
 	})
@@ -108,15 +114,15 @@ func TestAppendKnowledgeEvent_ArticleUrlBackfilled(t *testing.T) {
 			},
 			Body: matchers.MapMatcher{
 				"event": matchers.Like(map[string]any{
-					"eventId":       eventID.String(),
+					"eventId":       eventID,
 					"occurredAt":    "2026-04-28T12:00:00Z",
-					"tenantId":      tenantID.String(),
-					"userId":        userID.String(),
+					"tenantId":      tenantID,
+					"userId":        userID,
 					"actorType":     "service",
 					"actorId":       "knowledge-url-backfill",
 					"eventType":     "ArticleUrlBackfilled",
 					"aggregateType": "article",
-					"aggregateId":   articleID.String(),
+					"aggregateId":   articleID,
 					"dedupeKey":     dedupeKey,
 					// payload is bytes on the wire (proto3 → base64 in JSON).
 					// The literal value isn't asserted here — Pact matchers.Like
@@ -148,15 +154,15 @@ func TestAppendKnowledgeEvent_ArticleUrlBackfilled(t *testing.T) {
 			)
 			_, err := client.AppendKnowledgeEvent(context.Background(), connect.NewRequest(&sovereignv1.AppendKnowledgeEventRequest{
 				Event: &sovereignv1.KnowledgeEvent{
-					EventId:       eventID.String(),
+					EventId:       eventID,
 					OccurredAt:    timestamppb.New(occurredAt),
-					TenantId:      tenantID.String(),
-					UserId:        userID.String(),
+					TenantId:      tenantID,
+					UserId:        userID,
 					ActorType:     "service",
 					ActorId:       "knowledge-url-backfill",
 					EventType:     "ArticleUrlBackfilled",
 					AggregateType: "article",
-					AggregateId:   articleID.String(),
+					AggregateId:   articleID,
 					DedupeKey:     dedupeKey,
 					Payload:       payload,
 				},

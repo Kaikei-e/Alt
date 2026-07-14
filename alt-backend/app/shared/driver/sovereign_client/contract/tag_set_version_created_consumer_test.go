@@ -13,7 +13,6 @@ import (
 	"time"
 
 	"connectrpc.com/connect"
-	"github.com/google/uuid"
 	"github.com/pact-foundation/pact-go/v2/consumer"
 	"github.com/pact-foundation/pact-go/v2/matchers"
 	"github.com/stretchr/testify/assert"
@@ -42,16 +41,23 @@ func TestAppendKnowledgeEvent_TagSetVersionCreatedCarriesTags(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	eventID := uuid.New()
-	tagSetVersionID := uuid.New()
-	articleID := uuid.New()
-	tenantID := uuid.New()
-	userID := uuid.New()
+	// Fixed literal values, not uuid.New(): matchers.Like records the given
+	// example verbatim in the generated pact, so random IDs would make the
+	// pact content non-deterministic across CI runs for the same commit —
+	// the Pact Broker rejects republishing different content under the same
+	// consumer version (see https://docs.pact.io/go/versioning).
+	const (
+		eventID         = "66666666-6666-6666-6666-666666666666"
+		tagSetVersionID = "77777777-7777-7777-7777-777777777777"
+		articleID       = "88888888-8888-8888-8888-888888888888"
+		tenantID        = "99999999-9999-9999-9999-999999999999"
+		userID          = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
+	)
 	occurredAt := time.Date(2026, 6, 10, 10, 0, 0, 0, time.UTC)
 
 	payload, _ := json.Marshal(map[string]any{
-		"tag_set_version_id": tagSetVersionID.String(),
-		"article_id":         articleID.String(),
+		"tag_set_version_id": tagSetVersionID,
+		"article_id":         articleID,
 		"generator":          "tag-generator",
 		"tags":               []string{"go", "rust"},
 	})
@@ -69,16 +75,16 @@ func TestAppendKnowledgeEvent_TagSetVersionCreatedCarriesTags(t *testing.T) {
 			},
 			Body: matchers.MapMatcher{
 				"event": matchers.Like(map[string]any{
-					"eventId":       eventID.String(),
+					"eventId":       eventID,
 					"occurredAt":    "2026-06-10T10:00:00Z",
-					"tenantId":      tenantID.String(),
-					"userId":        userID.String(),
+					"tenantId":      tenantID,
+					"userId":        userID,
 					"actorType":     "service",
 					"actorId":       "tag-generator",
 					"eventType":     "TagSetVersionCreated",
 					"aggregateType": "article",
-					"aggregateId":   articleID.String(),
-					"dedupeKey":     "TagSetVersionCreated:" + tagSetVersionID.String(),
+					"aggregateId":   articleID,
+					"dedupeKey":     "TagSetVersionCreated:" + tagSetVersionID,
 					// payload ships as base64 on the wire (bytes field). The pinned
 					// blob decodes to {"...","tags":["go","rust"]}.
 					"payload": encoded,
@@ -102,16 +108,16 @@ func TestAppendKnowledgeEvent_TagSetVersionCreatedCarriesTags(t *testing.T) {
 			)
 			_, err := client.AppendKnowledgeEvent(context.Background(), connect.NewRequest(&sovereignv1.AppendKnowledgeEventRequest{
 				Event: &sovereignv1.KnowledgeEvent{
-					EventId:       eventID.String(),
+					EventId:       eventID,
 					OccurredAt:    timestamppb.New(occurredAt),
-					TenantId:      tenantID.String(),
-					UserId:        userID.String(),
+					TenantId:      tenantID,
+					UserId:        userID,
 					ActorType:     "service",
 					ActorId:       "tag-generator",
 					EventType:     "TagSetVersionCreated",
 					AggregateType: "article",
-					AggregateId:   articleID.String(),
-					DedupeKey:     "TagSetVersionCreated:" + tagSetVersionID.String(),
+					AggregateId:   articleID,
+					DedupeKey:     "TagSetVersionCreated:" + tagSetVersionID,
 					Payload:       payload,
 				},
 			}))

@@ -24,7 +24,7 @@ import (
 	"alt/orchestrator/driver/search_indexer_connect"
 )
 
-const pactDir = "../../../../pacts"
+const pactDir = "../../../../../pacts"
 
 func newSearchIndexerPact(t *testing.T) *consumer.V3HTTPMockProvider {
 	t.Helper()
