@@ -356,9 +356,9 @@ func runReprojectRollback(cmd *cobra.Command, args []string) error {
 
 	reqBody := map[string]string{"runId": runID}
 	var resp struct {
-		RunID       string `json:"runId"`
-		Status      string `json:"status"`
-		Message     string `json:"message"`
+		RunID        string `json:"runId"`
+		Status       string `json:"status"`
+		Message      string `json:"message"`
 		RolledBackAt string `json:"rolledBackAt"`
 	}
 

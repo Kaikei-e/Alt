@@ -24,11 +24,11 @@ const testRESTAudience = "alt-backend"
 func createTestJWT(t *testing.T) string {
 	t.Helper()
 	claims := jwt.MapClaims{
-		"sub": "00000000-0000-0000-0000-000000000001",
-		"iss": testRESTIssuer,
-		"aud": []string{testRESTAudience},
-		"exp": time.Now().Add(time.Hour).Unix(),
-		"iat": time.Now().Unix(),
+		"sub":   "00000000-0000-0000-0000-000000000001",
+		"iss":   testRESTIssuer,
+		"aud":   []string{testRESTAudience},
+		"exp":   time.Now().Add(time.Hour).Unix(),
+		"iat":   time.Now().Unix(),
 		"email": "test@example.com",
 		"role":  "user",
 		"sid":   "test-session",

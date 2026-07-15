@@ -34,12 +34,12 @@ type CacheStats struct {
 
 // ResponseCache is a thread-safe in-memory cache for HTTP responses.
 type ResponseCache struct {
-	mu       sync.RWMutex
-	entries  map[string]*CacheEntry
-	order    []string // For LRU eviction
-	maxSize  int
-	hits     int64
-	misses   int64
+	mu      sync.RWMutex
+	entries map[string]*CacheEntry
+	order   []string // For LRU eviction
+	maxSize int
+	hits    int64
+	misses  int64
 }
 
 // NewResponseCache creates a new response cache with the given maximum size.

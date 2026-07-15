@@ -63,8 +63,8 @@ func TestSnapshotCreateCommand(t *testing.T) {
 		}
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]interface{}{
-			"snapshot_id":    "snap-new",
-			"status":         "valid",
+			"snapshot_id":     "snap-new",
+			"status":          "valid",
 			"items_row_count": 122300,
 		})
 	}))

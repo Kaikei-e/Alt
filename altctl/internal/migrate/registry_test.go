@@ -63,12 +63,12 @@ func TestVolumeRegistry_BackupTypes(t *testing.T) {
 	r := NewVolumeRegistry()
 
 	pgNames := map[string]bool{
-		"db_data_17":                   true,
-		"kratos_db_data":               true,
-		"recap_db_data":                true,
-		"rag_db_data":                  true,
-		"knowledge-sovereign-db-data":  true,
-		"pre_processor_db_data":        true,
+		"db_data_17":                  true,
+		"kratos_db_data":              true,
+		"recap_db_data":               true,
+		"rag_db_data":                 true,
+		"knowledge-sovereign-db-data": true,
+		"pre_processor_db_data":       true,
 	}
 
 	for _, v := range r.All() {

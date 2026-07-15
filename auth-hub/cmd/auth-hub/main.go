@@ -11,8 +11,8 @@ import (
 	"syscall"
 	"time"
 
-	adapterhandler "auth-hub/internal/adapter/handler"
 	"auth-hub/internal/adapter/gateway"
+	adapterhandler "auth-hub/internal/adapter/handler"
 	infracache "auth-hub/internal/infrastructure/cache"
 	infratoken "auth-hub/internal/infrastructure/token"
 	"auth-hub/internal/usecase"
@@ -159,7 +159,7 @@ func main() {
 		csrfBurst = 10
 	}
 	csrfRL := appmiddleware.NewRateLimiter(rate.Limit(cfg.CSRFRateLimit), csrfBurst)
-	internalRL := appmiddleware.NewRateLimiter(10.0/60.0, 3)   // 10 req/min
+	internalRL := appmiddleware.NewRateLimiter(10.0/60.0, 3) // 10 req/min
 
 	// Public routes
 	e.GET("/validate", validateHandler.Handle, validateRL.Middleware())

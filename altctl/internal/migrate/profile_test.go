@@ -144,8 +144,8 @@ func TestResolveVolumes_IncludeOutsideProfile(t *testing.T) {
 
 func TestProfileCategories(t *testing.T) {
 	tests := []struct {
-		profile    BackupProfile
-		wantCount  int
+		profile   BackupProfile
+		wantCount int
 	}{
 		{ProfileDB, 1},        // [critical]
 		{ProfileEssential, 3}, // [critical, data, search]

@@ -16,13 +16,13 @@ import (
 type PromObserver struct {
 	subject string
 
-	notAfter       prometheus.Gauge
-	remaining      prometheus.Gauge
-	lastRotation   prometheus.Gauge
-	renewalTotal   *prometheus.CounterVec
-	reissueTotal   *prometheus.CounterVec
-	up             prometheus.Gauge
-	healthy        prometheus.Gauge
+	notAfter     prometheus.Gauge
+	remaining    prometheus.Gauge
+	lastRotation prometheus.Gauge
+	renewalTotal *prometheus.CounterVec
+	reissueTotal *prometheus.CounterVec
+	up           prometheus.Gauge
+	healthy      prometheus.Gauge
 
 	mu     sync.RWMutex
 	state  domain.CertState

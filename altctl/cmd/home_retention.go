@@ -40,7 +40,7 @@ func runRetentionRun(cmd *cobra.Command, args []string) error {
 	// error) — the server always answers 200 OK and reports failure via the
 	// error field, not the HTTP status, so it must be read explicitly.
 	var resp struct {
-		DryRun  bool   `json:"dry_run"`
+		DryRun  bool `json:"dry_run"`
 		Actions []struct {
 			Action    string `json:"action"`
 			Table     string `json:"table"`
@@ -92,14 +92,14 @@ func runRetentionStatus(cmd *cobra.Command, args []string) error {
 
 	var resp struct {
 		Logs []struct {
-			LogID          string `json:"log_id"`
-			Action         string `json:"action"`
-			TargetTable    string `json:"target_table"`
+			LogID           string `json:"log_id"`
+			Action          string `json:"action"`
+			TargetTable     string `json:"target_table"`
 			TargetPartition string `json:"target_partition"`
-			RowsAffected   int64  `json:"rows_affected"`
-			DryRun         bool   `json:"dry_run"`
-			Status         string `json:"status"`
-			RunAt          string `json:"run_at"`
+			RowsAffected    int64  `json:"rows_affected"`
+			DryRun          bool   `json:"dry_run"`
+			Status          string `json:"status"`
+			RunAt           string `json:"run_at"`
 		} `json:"logs"`
 	}
 

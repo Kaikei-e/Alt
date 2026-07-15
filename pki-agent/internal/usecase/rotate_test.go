@@ -67,9 +67,11 @@ type fakeObs struct {
 	renewed    []bool
 }
 
-func (f *fakeObs) OnClassified(s domain.CertState, _ time.Duration) { f.classified = append(f.classified, s) }
-func (f *fakeObs) OnReissued(r string)                              { f.reissued = append(f.reissued, r) }
-func (f *fakeObs) OnRenewed(ok bool)                                { f.renewed = append(f.renewed, ok) }
+func (f *fakeObs) OnClassified(s domain.CertState, _ time.Duration) {
+	f.classified = append(f.classified, s)
+}
+func (f *fakeObs) OnReissued(r string) { f.reissued = append(f.reissued, r) }
+func (f *fakeObs) OnRenewed(ok bool)   { f.renewed = append(f.renewed, ok) }
 
 func newRotator(l domain.CertLoader, i domain.CAIssuer, w domain.CertWriter, o domain.Observer) *Rotator {
 	return &Rotator{

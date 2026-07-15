@@ -50,14 +50,14 @@ type Config struct {
 // a validated Config. Returns an error if any required field is absent.
 func Load() (*Config, error) {
 	c := &Config{
-		CAURL:           getEnv("STEP_CA_URL", "https://step-ca:9000"),
-		RootFile:        getEnv("STEP_CA_ROOT_FILE", "/trust/ca-bundle.pem"),
-		Provisioner:     getEnv("STEP_CA_PROVISIONER", "pki-agent"),
-		PasswordFile:    getEnv("STEP_CA_PROVISIONER_PASSWORD_FILE", "/run/secrets/step_ca_root_password"),
-		Subject:         getEnv("CERT_SUBJECT", ""),
-		CertPath:        getEnv("CERT_PATH", "/certs/svc-cert.pem"),
-		KeyPath:         getEnv("KEY_PATH", "/certs/svc-key.pem"),
-		MetricsAddr:     getEnv("METRICS_ADDR", ":9510"),
+		CAURL:        getEnv("STEP_CA_URL", "https://step-ca:9000"),
+		RootFile:     getEnv("STEP_CA_ROOT_FILE", "/trust/ca-bundle.pem"),
+		Provisioner:  getEnv("STEP_CA_PROVISIONER", "pki-agent"),
+		PasswordFile: getEnv("STEP_CA_PROVISIONER_PASSWORD_FILE", "/run/secrets/step_ca_root_password"),
+		Subject:      getEnv("CERT_SUBJECT", ""),
+		CertPath:     getEnv("CERT_PATH", "/certs/svc-cert.pem"),
+		KeyPath:      getEnv("KEY_PATH", "/certs/svc-key.pem"),
+		MetricsAddr:  getEnv("METRICS_ADDR", ":9510"),
 	}
 	if s := getEnv("CERT_SANS", ""); s != "" {
 		for _, part := range strings.Split(s, ",") {

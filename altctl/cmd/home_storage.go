@@ -25,11 +25,11 @@ func runStorage(cmd *cobra.Command, args []string) error {
 
 	var resp struct {
 		Tables []struct {
-			Name       string `json:"name"`
-			TotalSize  string `json:"total_size"`
-			TableSize  string `json:"table_size"`
-			IndexSize  string `json:"index_size"`
-			RowCount   int64  `json:"row_count"`
+			Name      string `json:"name"`
+			TotalSize string `json:"total_size"`
+			TableSize string `json:"table_size"`
+			IndexSize string `json:"index_size"`
+			RowCount  int64  `json:"row_count"`
 		} `json:"tables"`
 	}
 

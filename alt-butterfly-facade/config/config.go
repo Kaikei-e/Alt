@@ -78,7 +78,7 @@ func NewConfig() *Config {
 		RequestTimeout:         getDurationEnv("BFF_REQUEST_TIMEOUT", 30*time.Second),
 		StreamingTimeout:       getDurationEnv("BFF_STREAMING_TIMEOUT", 40*time.Minute),
 		TTSConnectURL:          getEnv("TTS_CONNECT_URL", ""),
-		AcolyteConnectURL:     getEnv("ACOLYTE_CONNECT_URL", ""),
+		AcolyteConnectURL:      getEnv("ACOLYTE_CONNECT_URL", ""),
 
 		// BFF Feature Flags (all enabled by default)
 		EnableCache:              true,

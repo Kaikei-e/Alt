@@ -14,14 +14,14 @@ func TestHomeFlagsCommand(t *testing.T) {
 		}
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]interface{}{
-			"enableHomePage":     true,
-			"enableTracking":     true,
-			"enableProjectionV2": false,
-			"rolloutPercentage":  100,
-			"enableRecallRail":   true,
-			"enableLens":         true,
+			"enableHomePage":      true,
+			"enableTracking":      true,
+			"enableProjectionV2":  false,
+			"rolloutPercentage":   100,
+			"enableRecallRail":    true,
+			"enableLens":          true,
 			"enableStreamUpdates": true,
-			"enableSupersedeUx":  false,
+			"enableSupersedeUx":   false,
 		})
 	}))
 	defer server.Close()

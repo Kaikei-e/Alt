@@ -38,7 +38,7 @@ func TestPostgresBackuper_BackupDryRun(t *testing.T) {
 	pg := NewPostgresBackuper("alt", "", slog.Default(), true)
 	spec := VolumeSpec{
 		Name:       "db_data_17",
-		Service:     "db",
+		Service:    "db",
 		BackupType: BackupTypePostgreSQL,
 		DBName:     "alt",
 		DBUser:     "alt_db_user",
@@ -61,7 +61,7 @@ func TestPostgresBackuper_RestoreDryRun(t *testing.T) {
 	pg := NewPostgresBackuper("alt", "", slog.Default(), true)
 	spec := VolumeSpec{
 		Name:       "db_data_17",
-		Service:     "db",
+		Service:    "db",
 		BackupType: BackupTypePostgreSQL,
 		DBName:     "alt",
 		DBUser:     "alt_db_user",
@@ -84,7 +84,7 @@ func TestPostgresBackuper_RestoreFileNotFound(t *testing.T) {
 	pg := NewPostgresBackuper("alt", "", slog.Default(), false)
 	spec := VolumeSpec{
 		Name:       "db_data_17",
-		Service:     "db",
+		Service:    "db",
 		BackupType: BackupTypePostgreSQL,
 		DBName:     "alt",
 		DBUser:     "alt_db_user",

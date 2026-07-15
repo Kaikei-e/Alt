@@ -25,17 +25,17 @@ import (
 // LightweightProxy represents the main proxy sidecar implementation
 // This struct contains all necessary components for the upstream resolution solution
 type LightweightProxy struct {
-	config      *config.ProxyConfig
-	httpClient  *http.Client
+	config     *config.ProxyConfig
+	httpClient *http.Client
 	// connectHTTPClient is a separate, long-lived client for CONNECT /
 	// persistent-tunnel forwarding (forwardToEnvoyConnect): it needs a much
 	// longer timeout (model downloads can run for minutes) than httpClient's
 	// cfg.RequestTimeout, so it cannot share that client's Transport.
 	connectHTTPClient *http.Client
 	dnsResolver       *dns.ExternalDNSResolver
-	logger      *log.Logger
-	server      *http.Server
-	metrics     *metrics.Collector
+	logger            *log.Logger
+	server            *http.Server
+	metrics           *metrics.Collector
 
 	// 自動学習機能
 	autoLearner *autolearn.AutoLearner

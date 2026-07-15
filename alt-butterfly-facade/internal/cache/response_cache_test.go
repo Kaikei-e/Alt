@@ -210,11 +210,11 @@ func TestCacheConfig_IsCacheable(t *testing.T) {
 		{"/alt.feeds.v2.FeedService/GetFeedStats", true},
 		{"/alt.feeds.v2.FeedService/GetUnreadFeeds", true},
 		{"/alt.feeds.v2.FeedService/GetAllFeeds", true},
-		{"/alt.feeds.v2.FeedService/StreamFeedStats", false},  // Streaming
-		{"/alt.augur.v2.AugurService/StreamChat", false},      // Streaming
-		{"/alt.feeds.v2.FeedService/CreateFeed", false},       // Mutation
-		{"/alt.feeds.v2.FeedService/UpdateFeed", false},       // Mutation
-		{"/some/random/endpoint", false},                      // Unknown
+		{"/alt.feeds.v2.FeedService/StreamFeedStats", false}, // Streaming
+		{"/alt.augur.v2.AugurService/StreamChat", false},     // Streaming
+		{"/alt.feeds.v2.FeedService/CreateFeed", false},      // Mutation
+		{"/alt.feeds.v2.FeedService/UpdateFeed", false},      // Mutation
+		{"/some/random/endpoint", false},                     // Unknown
 	}
 
 	for _, tt := range tests {

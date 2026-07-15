@@ -32,12 +32,12 @@ func runSnapshotList(cmd *cobra.Command, args []string) error {
 
 	var resp struct {
 		Snapshots []struct {
-			SnapshotID       string `json:"snapshot_id"`
-			Status           string `json:"status"`
-			ProjectionVersion int   `json:"projection_version"`
-			EventSeqBoundary int64  `json:"event_seq_boundary"`
-			ItemsRowCount    int    `json:"items_row_count"`
-			SnapshotAt       string `json:"snapshot_at"`
+			SnapshotID        string `json:"snapshot_id"`
+			Status            string `json:"status"`
+			ProjectionVersion int    `json:"projection_version"`
+			EventSeqBoundary  int64  `json:"event_seq_boundary"`
+			ItemsRowCount     int    `json:"items_row_count"`
+			SnapshotAt        string `json:"snapshot_at"`
 		} `json:"snapshots"`
 	}
 

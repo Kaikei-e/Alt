@@ -26,15 +26,15 @@ type HealthResponse struct {
 
 // Config holds server configuration.
 type Config struct {
-	BackendURL       string
-	BackendRESTURL   string
-	Secret           []byte
-	Issuer           string
-	Audience         string
-	RequestTimeout   time.Duration
-	StreamingTimeout time.Duration
-	TTSConnectURL      string
-	AcolyteConnectURL  string
+	BackendURL        string
+	BackendRESTURL    string
+	Secret            []byte
+	Issuer            string
+	Audience          string
+	RequestTimeout    time.Duration
+	StreamingTimeout  time.Duration
+	TTSConnectURL     string
+	AcolyteConnectURL string
 
 	// BFF Feature Configuration
 	BFFConfig handler.BFFConfig

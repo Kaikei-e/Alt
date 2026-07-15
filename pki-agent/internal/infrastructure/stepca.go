@@ -20,14 +20,14 @@ import (
 // letting us replace the brittle compose-embedded shell with a typed,
 // tested, observable binary.
 type StepCACLI struct {
-	CAURL            string
-	RootFile         string
-	Provisioner      string
-	PasswordFile     string
-	StepBinary       string // defaults to "step"
-	TokenExtraArgs   []string
-	CertExtraArgs    []string
-	TempDir          string // override for tests; defaults to os.TempDir()
+	CAURL          string
+	RootFile       string
+	Provisioner    string
+	PasswordFile   string
+	StepBinary     string // defaults to "step"
+	TokenExtraArgs []string
+	CertExtraArgs  []string
+	TempDir        string // override for tests; defaults to os.TempDir()
 }
 
 // Issue mints an OTT for `subject`, asks the CA to sign a fresh CSR, and

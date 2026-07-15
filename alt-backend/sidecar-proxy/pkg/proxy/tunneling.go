@@ -68,4 +68,3 @@ func (p *LightweightProxy) forwardToEnvoyConnect(w http.ResponseWriter, r *http.
 
 	return nil
 }
-
