@@ -2,7 +2,7 @@
 # `1.26-alpine` のような floating tag はビルド毎に異なる成果物を生み再現性を
 # 損なうため、明示的に digest を指定して reproducible build を担保する。
 # digest 更新は依存 CVE 監査 (M-001 govulncheck) の結果と合わせて定期的に行う。
-FROM golang:1.26-alpine@sha256:91eda9776261207ea25fd06b5b7fed8d397dd2c0a283e77f2ab6e91bfa71079d AS builder
+FROM golang:1.26-alpine@sha256:0178a641fbb4858c5f1b48e34bdaabe0350a330a1b1149aabd498d0699ff5fb2 AS builder
 
 WORKDIR /app
 
