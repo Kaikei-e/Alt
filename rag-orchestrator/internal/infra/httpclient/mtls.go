@@ -7,12 +7,9 @@
 package httpclient
 
 import (
-	"errors"
 	"net/http"
 	"os"
 	"time"
-
-	"rag-orchestrator/internal/infra/tlsutil"
 )
 
 // MTLSEnforced reports whether MTLS_ENFORCE=true is set.
@@ -25,30 +22,19 @@ func MTLSEnforced() bool {
 // returned client has no TLS config (matches existing plaintext behaviour).
 //
 // Env vars: MTLS_CERT_FILE, MTLS_KEY_FILE, MTLS_CA_FILE. All three must be
-// set when MTLSEnforced() is true; missing envs fail-closed. The leaf cert
-// is re-read from disk on every handshake via GetClientCertificate, so the
-// pki-agent sidecar can rotate it without a process restart.
+// set when MTLSEnforced() is true; missing envs fail-closed. Cert loading is
+// delegated to [loadMTLSTransport] so NewMTLSClient and NewPooledClient share
+// one code path (and the same connection-pooled transport when enforced).
 func NewMTLSClient(timeout time.Duration) (*http.Client, error) {
 	if !MTLSEnforced() {
 		return &http.Client{Timeout: timeout}, nil
 	}
-	certFile := os.Getenv("MTLS_CERT_FILE")
-	keyFile := os.Getenv("MTLS_KEY_FILE")
-	caFile := os.Getenv("MTLS_CA_FILE")
-	if certFile == "" || keyFile == "" || caFile == "" {
-		return nil, errors.New("MTLS_ENFORCE=true but MTLS_CERT_FILE/KEY_FILE/CA_FILE not fully set")
-	}
-	tlsCfg, err := tlsutil.LoadClientConfig(certFile, keyFile, caFile)
+	t, err := loadMTLSTransport()
 	if err != nil {
 		return nil, err
 	}
 	return &http.Client{
-		Timeout: timeout,
-		Transport: &http.Transport{
-			TLSClientConfig:     tlsCfg,
-			MaxIdleConns:        100,
-			MaxIdleConnsPerHost: 10,
-			IdleConnTimeout:     90 * time.Second,
-		},
+		Timeout:   timeout,
+		Transport: t,
 	}, nil
 }

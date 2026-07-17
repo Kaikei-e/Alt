@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"strconv"
 	"time"
 
 	"go.opentelemetry.io/otel"
@@ -107,8 +108,38 @@ func initTracerProvider(ctx context.Context, cfg Config, res *resource.Resource)
 			sdktrace.WithMaxExportBatchSize(512),
 		),
 		sdktrace.WithResource(res),
-		sdktrace.WithSampler(sdktrace.AlwaysSample()),
+		sdktrace.WithSampler(samplerFromEnv()),
 	), nil
+}
+
+// samplerFromEnv honours the standard OTEL_TRACES_SAMPLER /
+// OTEL_TRACES_SAMPLER_ARG env vars so production can dial down volume.
+// Unset / unknown values keep the historical AlwaysSample default.
+func samplerFromEnv() sdktrace.Sampler {
+	name := os.Getenv("OTEL_TRACES_SAMPLER")
+	arg := os.Getenv("OTEL_TRACES_SAMPLER_ARG")
+	ratio := 1.0
+	if arg != "" {
+		if parsed, err := strconv.ParseFloat(arg, 64); err == nil {
+			ratio = parsed
+		}
+	}
+	switch name {
+	case "always_off":
+		return sdktrace.NeverSample()
+	case "traceidratio":
+		return sdktrace.TraceIDRatioBased(ratio)
+	case "parentbased_always_off":
+		return sdktrace.ParentBased(sdktrace.NeverSample())
+	case "parentbased_traceidratio":
+		return sdktrace.ParentBased(sdktrace.TraceIDRatioBased(ratio))
+	case "parentbased_always_on":
+		return sdktrace.ParentBased(sdktrace.AlwaysSample())
+	case "always_on", "":
+		return sdktrace.AlwaysSample()
+	default:
+		return sdktrace.AlwaysSample()
+	}
 }
 
 func initLoggerProvider(ctx context.Context, cfg Config, res *resource.Resource) (*sdklog.LoggerProvider, error) {

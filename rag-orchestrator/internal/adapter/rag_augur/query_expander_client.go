@@ -98,12 +98,13 @@ func (c *QueryExpanderClient) ExpandQuery(ctx context.Context, query string, jap
 	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
+		bodyStr := truncateString(string(body), 500)
 		c.logger.Warn("query_expansion_failed",
 			slog.Int("status_code", resp.StatusCode),
-			slog.String("body", truncateString(string(body), 500)),
+			slog.String("body", bodyStr),
 			slog.Int64("elapsed_ms", time.Since(startTime).Milliseconds()))
-		return nil, fmt.Errorf("expand query endpoint returned %d: %s", resp.StatusCode, string(body))
+		return nil, fmt.Errorf("expand query endpoint returned %d: %s", resp.StatusCode, bodyStr)
 	}
 
 	var expandResp ExpandQueryResponse
@@ -135,13 +136,9 @@ func (c *QueryExpanderClient) ExpandQueryWithHistory(ctx context.Context, query 
 	// Convert domain messages to API format
 	convHistory := make([]ConversationMessage, len(history))
 	for i, msg := range history {
-		content := msg.Content
-		if len(content) > 200 {
-			content = content[:200] + "..."
-		}
 		convHistory[i] = ConversationMessage{
 			Role:    msg.Role,
-			Content: content,
+			Content: truncateString(msg.Content, 200),
 		}
 	}
 
@@ -175,12 +172,13 @@ func (c *QueryExpanderClient) ExpandQueryWithHistory(ctx context.Context, query 
 	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
+		bodyStr := truncateString(string(body), 500)
 		c.logger.Warn("query_expansion_with_history_failed",
 			slog.Int("status_code", resp.StatusCode),
-			slog.String("body", truncateString(string(body), 500)),
+			slog.String("body", bodyStr),
 			slog.Int64("elapsed_ms", time.Since(startTime).Milliseconds()))
-		return nil, fmt.Errorf("expand query endpoint returned %d: %s", resp.StatusCode, string(body))
+		return nil, fmt.Errorf("expand query endpoint returned %d: %s", resp.StatusCode, bodyStr)
 	}
 
 	var expandResp ExpandQueryResponse
@@ -198,8 +196,12 @@ func (c *QueryExpanderClient) ExpandQueryWithHistory(ctx context.Context, query 
 }
 
 func truncateString(s string, maxLen int) string {
-	if len(s) <= maxLen {
+	if maxLen <= 0 {
+		return ""
+	}
+	runes := []rune(s)
+	if len(runes) <= maxLen {
 		return s
 	}
-	return s[:maxLen] + "..."
+	return string(runes[:maxLen]) + "..."
 }

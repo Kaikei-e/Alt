@@ -2,6 +2,7 @@ package logger
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 	"os"
 
@@ -9,14 +10,13 @@ import (
 	"go.opentelemetry.io/otel/log/global"
 )
 
-var Logger *slog.Logger
-
 // New creates a basic JSON logger (legacy mode - stdout only)
 func New() *slog.Logger {
 	return NewWithOTel(false)
 }
 
-// NewWithOTel creates a logger with optional OTel support
+// NewWithOTel creates a logger with optional OTel support and installs it as
+// the process default via slog.SetDefault (no package-global mutable Logger).
 func NewWithOTel(enableOTel bool) *slog.Logger {
 	level := parseLevel(os.Getenv("LOG_LEVEL"))
 
@@ -30,9 +30,10 @@ func NewWithOTel(enableOTel bool) *slog.Logger {
 		handler = NewTraceContextHandler(jsonHandler)
 	}
 
-	Logger = slog.New(handler)
-	Logger.Info("Logger initialized", "otel_enabled", enableOTel)
-	return Logger
+	log := slog.New(handler)
+	slog.SetDefault(log)
+	log.Info("Logger initialized", "otel_enabled", enableOTel)
+	return log
 }
 
 // MultiHandler sends logs to multiple handlers
@@ -72,12 +73,15 @@ func (h *MultiHandler) Enabled(ctx context.Context, level slog.Level) bool {
 }
 
 func (h *MultiHandler) Handle(ctx context.Context, r slog.Record) error {
+	var errs []error
 	for _, handler := range h.handlers {
 		if handler.Enabled(ctx, r.Level) {
-			_ = handler.Handle(ctx, r)
+			if err := handler.Handle(ctx, r); err != nil {
+				errs = append(errs, err)
+			}
 		}
 	}
-	return nil
+	return errors.Join(errs...)
 }
 
 func (h *MultiHandler) WithAttrs(attrs []slog.Attr) slog.Handler {

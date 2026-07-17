@@ -32,7 +32,7 @@ func TestOllamaEmbedder_Encode_Success(t *testing.T) {
 	}))
 	defer server.Close()
 
-	embedder := NewOllamaEmbedder(server.URL, "test-model", 10)
+	embedder := NewOllamaEmbedder(server.URL, "test-model", 10, nil)
 
 	vecs, err := embedder.Encode(context.Background(), []string{"hello world"})
 	require.NoError(t, err)
@@ -46,7 +46,7 @@ func TestOllamaEmbedder_Encode_BadStatus(t *testing.T) {
 	}))
 	defer server.Close()
 
-	embedder := NewOllamaEmbedder(server.URL, "test-model", 10)
+	embedder := NewOllamaEmbedder(server.URL, "test-model", 10, nil)
 
 	_, err := embedder.Encode(context.Background(), []string{"hello"})
 	require.Error(t, err)
@@ -62,7 +62,7 @@ func TestOllamaEmbedder_Encode_Timeout(t *testing.T) {
 
 	// Very short timeout to trigger timeout error
 	client := &http.Client{Timeout: 50 * time.Millisecond}
-	embedder := NewOllamaEmbedder(server.URL, "test-model", 0, client)
+	embedder := NewOllamaEmbedder(server.URL, "test-model", 0, nil, client)
 
 	_, err := embedder.Encode(context.Background(), []string{"hello"})
 	require.Error(t, err)
@@ -76,7 +76,7 @@ func TestOllamaEmbedder_Encode_ContextDeadlineExceeded(t *testing.T) {
 	}))
 	defer server.Close()
 
-	embedder := NewOllamaEmbedder(server.URL, "test-model", 10)
+	embedder := NewOllamaEmbedder(server.URL, "test-model", 10, nil)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
 	defer cancel()
@@ -93,7 +93,7 @@ func TestOllamaEmbedder_Encode_ContextCancelled(t *testing.T) {
 	}))
 	defer server.Close()
 
-	embedder := NewOllamaEmbedder(server.URL, "test-model", 10)
+	embedder := NewOllamaEmbedder(server.URL, "test-model", 10, nil)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel() // Cancel immediately
@@ -110,7 +110,7 @@ func TestOllamaEmbedder_Encode_DecodeFailure(t *testing.T) {
 	}))
 	defer server.Close()
 
-	embedder := NewOllamaEmbedder(server.URL, "test-model", 10)
+	embedder := NewOllamaEmbedder(server.URL, "test-model", 10, nil)
 
 	_, err := embedder.Encode(context.Background(), []string{"hello"})
 	require.Error(t, err)
@@ -118,7 +118,7 @@ func TestOllamaEmbedder_Encode_DecodeFailure(t *testing.T) {
 }
 
 func TestOllamaEmbedder_Version(t *testing.T) {
-	embedder := NewOllamaEmbedder("http://localhost", "my-model", 10)
+	embedder := NewOllamaEmbedder("http://localhost", "my-model", 10, nil)
 	assert.Equal(t, "my-model", embedder.Version())
 }
 

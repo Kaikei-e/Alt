@@ -78,7 +78,7 @@ func (h *HyperBoost) Start(ctx context.Context) error {
 
 	h.containerID = strings.TrimSpace(stdout.String())
 	h.logger.Info("hyper-boost container started",
-		slog.String("container_id", h.containerID[:12]),
+		slog.String("container_id", shortContainerID(h.containerID)),
 	)
 
 	return nil
@@ -98,7 +98,11 @@ func (h *HyperBoost) WaitReady(ctx context.Context) error {
 		default:
 		}
 
-		resp, err := client.Get(url)
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+		if err != nil {
+			return fmt.Errorf("create health request: %w", err)
+		}
+		resp, err := client.Do(req)
 		if err == nil {
 			_ = resp.Body.Close()
 			if resp.StatusCode == http.StatusOK {
@@ -121,7 +125,12 @@ func (h *HyperBoost) PullModel(ctx context.Context) error {
 	url := fmt.Sprintf("http://localhost:%d/api/pull", hyperBoostHostPort)
 
 	reqBody := fmt.Sprintf(`{"name": "%s"}`, h.model)
-	resp, err := client.Post(url, "application/json", strings.NewReader(reqBody))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, strings.NewReader(reqBody))
+	if err != nil {
+		return fmt.Errorf("create pull request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := client.Do(req)
 	if err != nil {
 		return fmt.Errorf("pull model request: %w", err)
 	}
@@ -166,4 +175,11 @@ func (h *HyperBoost) EmbedderURL() string {
 // Close releases resources.
 func (h *HyperBoost) Close() error {
 	return nil
+}
+
+func shortContainerID(id string) string {
+	if len(id) <= 12 {
+		return id
+	}
+	return id[:12]
 }

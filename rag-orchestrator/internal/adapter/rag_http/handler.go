@@ -205,10 +205,18 @@ func (h *Handler) UpsertIndex(ctx echo.Context) error {
 		req.Body,
 	); err != nil {
 		h.logger.Error("failed to upsert index", "error", err)
+		if isDuplicateKeyError(err) {
+			return ctx.JSON(http.StatusConflict, map[string]string{"error": "duplicate key"})
+		}
 		return ctx.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to index article"})
 	}
 
 	return ctx.JSON(http.StatusOK, map[string]string{"status": "indexed"})
+}
+
+func isDuplicateKeyError(err error) bool {
+	msg := err.Error()
+	return strings.Contains(msg, "duplicate key") || strings.Contains(msg, "Unique constraint")
 }
 
 // Answer a query using RAG (with LLM generation)
@@ -219,24 +227,11 @@ func (h *Handler) AnswerWithRAG(ctx echo.Context) error {
 		return ctx.JSON(http.StatusBadRequest, map[string]string{"error": "invalid request"})
 	}
 
-	input := usecase.AnswerWithRAGInput{
-		Query: req.Query,
+	if req.Query == "" {
+		return ctx.JSON(http.StatusBadRequest, map[string]string{"error": "query is required"})
 	}
-	if req.CandidateArticleIds != nil {
-		input.CandidateArticleIDs = *req.CandidateArticleIds
-	}
-	if req.Locale != nil {
-		input.Locale = *req.Locale
-	}
-	if req.UserId != nil {
-		input.UserID = *req.UserId
-	}
-	if req.MaxChunks != nil {
-		input.MaxChunks = int(*req.MaxChunks)
-	}
-	if req.MaxTokens != nil {
-		input.MaxTokens = int(*req.MaxTokens)
-	}
+
+	input := mapAnswerRequestToInput(req)
 
 	output, err := h.answerUsecase.Execute(ctx.Request().Context(), input)
 	if err != nil {
@@ -333,6 +328,10 @@ func (h *Handler) AnswerWithRAGStream(ctx echo.Context) error {
 	var req openapi.AnswerRequest
 	if err := ctx.Bind(&req); err != nil {
 		return ctx.JSON(http.StatusBadRequest, map[string]string{"error": "invalid request"})
+	}
+
+	if req.Query == "" {
+		return ctx.JSON(http.StatusBadRequest, map[string]string{"error": "query is required"})
 	}
 
 	input := mapAnswerRequestToInput(req)
