@@ -54,23 +54,31 @@ class CursorManager:
                     reason = f"cursor {abs(time_diff.total_seconds()) / 86400:.1f} days old"
 
                 if cursor_is_poisoned:
-                    logger.warning(f"Detected cursor poisoning: {reason}")
-                    logger.warning("Switching to newest article start mode")
+                    logger.warning("cursor_poisoning_detected", reason=reason)
+                    logger.warning("switching_to_newest_article_start_mode")
                     return self._get_fallback_cursor_position()
                 else:
                     # Continue from where we left off
                     last_created_at = self.last_processed_created_at
                     last_id = self.last_processed_id
-                    logger.info(f"Continuing article processing from cursor: {last_created_at}, ID: {last_id}")
+                    logger.info(
+                        "continuing_from_cursor",
+                        last_created_at=last_created_at,
+                        last_id=last_id,
+                    )
                     return last_created_at, last_id
 
             except (ValueError, TypeError) as e:
-                logger.warning(f"Invalid cursor timestamp format: {self.last_processed_created_at}, error: {e}")
-                logger.warning("Switching to newest article start mode due to invalid format")
+                logger.warning(
+                    "invalid_cursor_timestamp",
+                    cursor=self.last_processed_created_at,
+                    error=str(e),
+                )
+                logger.warning("switching_to_newest_article_start_mode", reason="invalid_format")
                 return self._get_fallback_cursor_position()
         else:
             # First run - start from current time (API mode)
-            logger.info("First run - starting from current time")
+            logger.info("first_run_starting_from_current_time")
             return self._get_fallback_cursor_position()
 
     def _get_fallback_cursor_position(self) -> tuple[str, str]:

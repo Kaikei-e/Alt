@@ -22,14 +22,12 @@ from news_creator.domain.prompts import (
 
 logger = logging.getLogger(__name__)
 
-
 class PromptBuilderProtocol(Protocol):
     """Protocol for prompt builders."""
 
     def build(self, **kwargs) -> str:
         """Build a prompt string."""
         ...
-
 
 class SummaryPromptBuilder:
     """Builds prompts for article summarization.
@@ -63,7 +61,6 @@ class SummaryPromptBuilder:
             content=content,
         )
 
-
 class ChunkPromptBuilder:
     """Builds prompts for chunk summarization in hierarchical processing.
 
@@ -83,7 +80,6 @@ class ChunkPromptBuilder:
             Formatted prompt string
         """
         return CHUNK_SUMMARY_PROMPT_TEMPLATE.format(content=content)
-
 
 class RecapPromptBuilder:
     """Builds prompts for recap summary generation.
@@ -118,7 +114,6 @@ class RecapPromptBuilder:
             cluster_section=cluster_section,
             max_bullets=max_bullets,
         )
-
 
 class PromptBuilderFactory:
     """Factory for creating prompt builders.

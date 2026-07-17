@@ -8,7 +8,7 @@ multiple remotes.
 import asyncio
 import json
 import logging
-from typing import Any, Dict, Optional
+from typing import Any
 
 import aiohttp
 
@@ -16,13 +16,12 @@ from news_creator.domain.models import LLMGenerateResponse
 
 logger = logging.getLogger(__name__)
 
-
 class RemoteOllamaDriver:
     """HTTP client for remote Ollama instances."""
 
     def __init__(self, timeout_seconds: int = 300):
         self._timeout_seconds = timeout_seconds
-        self._session: Optional[aiohttp.ClientSession] = None
+        self._session: aiohttp.ClientSession | None = None
 
     async def initialize(self) -> None:
         timeout = aiohttp.ClientTimeout(
@@ -41,7 +40,7 @@ class RemoteOllamaDriver:
             logger.info("Remote Ollama driver cleaned up")
 
     async def generate(
-        self, base_url: str, payload: Dict[str, Any]
+        self, base_url: str, payload: dict[str, Any]
     ) -> LLMGenerateResponse:
         """Send a generate request to a remote Ollama instance.
 
@@ -72,9 +71,8 @@ class RemoteOllamaDriver:
         )
 
         try:
-            assert self._session is not None, (
-                "Session not initialized. Call initialize() first."
-            )
+            if not (self._session is not None):
+                raise AssertionError("Session not initialized. Call initialize() first.")
             async with self._session.post(url, json=payload) as response:
                 text_body = await response.text()
 

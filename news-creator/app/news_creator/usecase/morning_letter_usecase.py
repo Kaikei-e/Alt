@@ -6,15 +6,23 @@ import logging
 import re
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from jinja2 import Template
 from pydantic import ValidationError
 
+logger = logging.getLogger(__name__)
+
 try:
     import json_repair
+
+    logger.info("json_repair_enabled", extra={"status": "enabled"})
 except ImportError:
     json_repair = None  # type: ignore
+    logger.warning(
+        "json_repair_disabled",
+        extra={"status": "disabled", "reason": "ImportError"},
+    )
 
 from news_creator.config.config import NewsCreatorConfig
 from news_creator.domain.models import (
@@ -27,11 +35,8 @@ from news_creator.domain.models import (
 )
 from news_creator.port.llm_provider_port import LLMProviderPort
 
-logger = logging.getLogger(__name__)
-
 # Allowed section key pattern
 SECTION_KEY_PATTERN = re.compile(r"^(lead|top3|what_changed|by_genre:[a-z0-9_\-]+)$")
-
 
 class MorningLetterUsecase:
     """Generate a document-first morning briefing from recap + overnight data."""
@@ -142,8 +147,8 @@ class MorningLetterUsecase:
             format=json_schema,
             options=llm_options,
         )
-        assert isinstance(result, LLMGenerateResponse)
-
+        if not isinstance(result, LLMGenerateResponse):
+            raise TypeError("Expected specific type")
         # Parse and validate
         content = self._parse_content(result.response)
 
@@ -194,7 +199,7 @@ class MorningLetterUsecase:
         if self.template is None:
             return self._build_inline_prompt(request, is_degraded)
 
-        render_kwargs: Dict[str, Any] = {
+        render_kwargs: dict[str, Any] = {
             "target_date": request.target_date,
             "is_degraded": is_degraded,
             "recap_summaries": request.recap_summaries,
@@ -261,7 +266,7 @@ class MorningLetterUsecase:
         self, request: MorningLetterRequest
     ) -> MorningLetterContent:
         """Deterministic, LLM-independent fallback from input data."""
-        sections: List[MorningLetterSection] = []
+        sections: list[MorningLetterSection] = []
 
         # Build top3 from recap summaries if available
         if request.recap_summaries:
@@ -335,7 +340,7 @@ class MorningLetterUsecase:
         request: MorningLetterRequest,
         error_type: str,
         error_detail: str,
-        response_head: Optional[str],
+        response_head: str | None,
     ) -> tuple:
         """Return (extractive_content, metadata) and emit a structured log
         that identifies the actual failure mode — so ops can see whether
@@ -343,7 +348,7 @@ class MorningLetterUsecase:
         validation, or hit something unexpected, instead of the blanket
         'LLM generation failed' we used to emit.
         """
-        log_extra: Dict[str, Any] = {
+        log_extra: dict[str, Any] = {
             "target_date": request.target_date,
             "edition_timezone": request.edition_timezone,
             "error_type": error_type,
@@ -368,7 +373,7 @@ class MorningLetterUsecase:
         return content, metadata
 
     @staticmethod
-    def _ns_to_ms(ns: Optional[int]) -> Optional[int]:
+    def _ns_to_ms(ns: int | None) -> int | None:
         if ns is None:
             return None
         return ns // 1_000_000

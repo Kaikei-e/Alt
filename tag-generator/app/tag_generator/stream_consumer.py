@@ -4,45 +4,49 @@ import asyncio
 import json
 import os
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any, cast
 
 import redis.asyncio as redis
 import structlog
+from pydantic import Field, field_validator
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 logger = structlog.get_logger(__name__)
 
 
-@dataclass
-class ConsumerConfig:
-    """Configuration for Redis Streams consumer."""
+class ConsumerConfig(BaseSettings):
+    """Configuration for Redis Streams consumer (pydantic-settings)."""
 
-    redis_url: str = "redis://localhost:6379"
-    group_name: str = "tag-generator-group"
-    consumer_name: str = "tag-generator-1"
-    stream_key: str = "alt:events:articles"
-    batch_size: int = 10
-    block_timeout_ms: int = 5000
-    claim_idle_time_ms: int = 30000
-    enabled: bool = False
-    max_delivery_count: int = 5
-    reclaim_interval_seconds: float = 30.0
+    model_config = SettingsConfigDict(extra="ignore", populate_by_name=True)
+
+    redis_url: str = Field(default="redis://localhost:6379", validation_alias="REDIS_STREAMS_URL")
+    group_name: str = Field(default="tag-generator-group", validation_alias="CONSUMER_GROUP")
+    consumer_name: str = Field(
+        default_factory=lambda: f"tag-generator-{os.getpid()}",
+        validation_alias="CONSUMER_NAME",
+    )
+    stream_key: str = Field(default="alt:events:articles", validation_alias="STREAM_KEY")
+    batch_size: int = Field(default=10, validation_alias="CONSUMER_BATCH_SIZE")
+    block_timeout_ms: int = Field(default=5000, validation_alias="CONSUMER_BLOCK_TIMEOUT_MS")
+    claim_idle_time_ms: int = Field(default=30000, validation_alias="CONSUMER_CLAIM_IDLE_TIME_MS")
+    enabled: bool = Field(default=False, validation_alias="CONSUMER_ENABLED")
+    max_delivery_count: int = Field(default=5, validation_alias="CONSUMER_MAX_DELIVERY_COUNT")
+    reclaim_interval_seconds: float = Field(default=30.0, validation_alias="CONSUMER_RECLAIM_INTERVAL_SECONDS")
+
+    @field_validator("enabled", mode="before")
+    @classmethod
+    def _parse_enabled(cls, v: Any) -> bool:
+        if isinstance(v, bool):
+            return v
+        if v is None:
+            return False
+        return str(v).lower() in {"1", "true", "yes", "on"}
 
     @classmethod
     def from_env(cls) -> ConsumerConfig:
         """Create config from environment variables."""
-        return cls(
-            redis_url=os.getenv("REDIS_STREAMS_URL", "redis://localhost:6379"),
-            group_name=os.getenv("CONSUMER_GROUP", "tag-generator-group"),
-            consumer_name=os.getenv("CONSUMER_NAME", f"tag-generator-{os.getpid()}"),
-            stream_key=os.getenv("STREAM_KEY", "alt:events:articles"),
-            batch_size=int(os.getenv("CONSUMER_BATCH_SIZE", "10")),
-            block_timeout_ms=int(os.getenv("CONSUMER_BLOCK_TIMEOUT_MS", "5000")),
-            claim_idle_time_ms=int(os.getenv("CONSUMER_CLAIM_IDLE_TIME_MS", "30000")),
-            enabled=os.getenv("CONSUMER_ENABLED", "false").lower() == "true",
-            max_delivery_count=int(os.getenv("CONSUMER_MAX_DELIVERY_COUNT", "5")),
-            reclaim_interval_seconds=float(os.getenv("CONSUMER_RECLAIM_INTERVAL_SECONDS", "30")),
-        )
+        return cls()
 
     @classmethod
     def tags_stream_from_env(cls) -> ConsumerConfig:
@@ -57,10 +61,10 @@ class ConsumerConfig:
             stream_key="alt:events:tags",
             batch_size=1,
             block_timeout_ms=1000,
-            claim_idle_time_ms=int(os.getenv("CONSUMER_CLAIM_IDLE_TIME_MS", "30000")),
-            enabled=os.getenv("CONSUMER_ENABLED", "false").lower() == "true",
-            max_delivery_count=int(os.getenv("CONSUMER_MAX_DELIVERY_COUNT", "5")),
-            reclaim_interval_seconds=float(os.getenv("CONSUMER_RECLAIM_INTERVAL_SECONDS", "30")),
+            claim_idle_time_ms=os.getenv("CONSUMER_CLAIM_IDLE_TIME_MS", "30000"),
+            enabled=os.getenv("CONSUMER_ENABLED", "false"),
+            max_delivery_count=os.getenv("CONSUMER_MAX_DELIVERY_COUNT", "5"),
+            reclaim_interval_seconds=os.getenv("CONSUMER_RECLAIM_INTERVAL_SECONDS", "30"),
         )
 
 
@@ -146,7 +150,8 @@ class StreamConsumer:
 
     async def _ensure_consumer_group(self) -> None:
         """Create consumer group if it doesn't exist."""
-        assert self.client is not None
+        if self.client is None:
+            raise RuntimeError("Redis client is not initialized")
         try:
             await self.client.xgroup_create(
                 self.config.stream_key,
@@ -182,7 +187,8 @@ class StreamConsumer:
 
     async def _reclaim_idle_messages(self) -> None:
         """Walk the PEL via XAUTOCLAIM, reprocessing or dead-lettering entries."""
-        assert self.client is not None
+        if self.client is None:
+            raise RuntimeError("Redis client is not initialized")
         cursor = "0-0"
         while not self._shutdown:
             next_cursor, messages, _deleted = await self.client.xautoclaim(
@@ -201,7 +207,8 @@ class StreamConsumer:
 
     async def _process_claimed_messages(self, messages: list[Any]) -> None:
         """Reprocess reclaimed messages, dead-lettering ones over the retry limit."""
-        assert self.client is not None
+        if self.client is None:
+            raise RuntimeError("Redis client is not initialized")
         for message_id, data in messages:
             delivery_count = await self._get_delivery_count(message_id)
             if delivery_count > self.config.max_delivery_count:
@@ -224,7 +231,8 @@ class StreamConsumer:
 
     async def _get_delivery_count(self, message_id: str) -> int:
         """Look up how many times this message has been delivered."""
-        assert self.client is not None
+        if self.client is None:
+            raise RuntimeError("Redis client is not initialized")
         entries = await self.client.xpending_range(
             self.config.stream_key,
             self.config.group_name,
@@ -239,7 +247,8 @@ class StreamConsumer:
     async def _move_to_dlq(self, message_id: str, data: dict[str, Any], delivery_count: int) -> None:
         """Dead-letter a message that exceeded max_delivery_count and ACK it
         so it stops occupying the PEL."""
-        assert self.client is not None
+        if self.client is None:
+            raise RuntimeError("Redis client is not initialized")
         dlq_stream = f"{self.config.stream_key}:dlq"
         dlq_fields = {**data, "original_message_id": message_id, "delivery_count": str(delivery_count)}
         await self.client.xadd(dlq_stream, cast(dict[Any, Any], dlq_fields))
@@ -253,7 +262,8 @@ class StreamConsumer:
 
     async def _read_and_process(self) -> None:
         """Read events from stream and process them."""
-        assert self.client is not None
+        if self.client is None:
+            raise RuntimeError("Redis client is not initialized")
 
         # New messages only (">"). Redelivery of unacked pending entries is
         # handled by _reclaim_loop via XAUTOCLAIM, not here.
@@ -345,7 +355,7 @@ class StreamConsumer:
                 "event_id": event_data.get("event_id", ""),
                 "event_type": event_data.get("event_type", "TagGenerationCompleted"),
                 "source": "tag-generator",
-                "created_at": datetime.now().isoformat(),
+                "created_at": datetime.now(UTC).isoformat(),
                 "payload": json.dumps(event_data.get("payload", {})),
             }
             if "metadata" in event_data:

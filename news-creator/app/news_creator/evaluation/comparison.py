@@ -1,11 +1,9 @@
 """Comparison report for before/after evaluation runs."""
 
 from dataclasses import dataclass
-from typing import List, Optional
 
 from news_creator.evaluation.recap_quality import LOWER_IS_BETTER_AXES
 from news_creator.evaluation.trace_recorder import TraceRecord
-
 
 @dataclass
 class AxisDelta:
@@ -17,36 +15,32 @@ class AxisDelta:
     delta: float
     improved: bool
 
-
 @dataclass
 class ComparisonReport:
     """Comparison between two sets of evaluation traces."""
 
-    axis_deltas: List[AxisDelta]
+    axis_deltas: list[AxisDelta]
     fallback_rate_before: float
     fallback_rate_after: float
     fallback_rate_delta: float
     case_count_before: int
     case_count_after: int
 
-
-def _mean_scores(traces: List[TraceRecord], axis: str) -> float:
+def _mean_scores(traces: list[TraceRecord], axis: str) -> float:
     """Compute mean score for an axis across traces."""
     values = [t.scores[axis] for t in traces if axis in t.scores]
     return sum(values) / len(values) if values else 0.0
 
-
-def _fallback_rate(traces: List[TraceRecord]) -> float:
+def _fallback_rate(traces: list[TraceRecord]) -> float:
     """Compute fraction of traces that are degraded."""
     if not traces:
         return 0.0
     return sum(1 for t in traces if t.is_degraded) / len(traces)
 
-
 def compare_runs(
-    before: List[TraceRecord],
-    after: List[TraceRecord],
-    axes: Optional[List[str]] = None,
+    before: list[TraceRecord],
+    after: list[TraceRecord],
+    axes: list[str] | None = None,
 ) -> ComparisonReport:
     """Compare two evaluation runs and produce a delta report.
 
@@ -66,7 +60,7 @@ def compare_runs(
             all_axes.update(t.scores.keys())
         axes = sorted(all_axes)
 
-    axis_deltas: List[AxisDelta] = []
+    axis_deltas: list[AxisDelta] = []
     for axis in axes:
         before_mean = _mean_scores(before, axis)
         after_mean = _mean_scores(after, axis)

@@ -4,7 +4,6 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-
 def count_tokens(text: str) -> int:
     """
     Count tokens in text using character-based estimation.
@@ -32,7 +31,6 @@ def count_tokens(text: str) -> int:
     estimated_tokens = max(1, (len(text) * 3) // 4)
 
     return estimated_tokens
-
 
 def count_tokens_with_template(prompt_template: str, **kwargs) -> int:
     """

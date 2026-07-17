@@ -11,7 +11,6 @@ import time
 
 logger = logging.getLogger(__name__)
 
-
 class FIFOSemaphore:
     """
     A semaphore implementation that guarantees FIFO ordering of waiting tasks.
@@ -90,7 +89,7 @@ class FIFOSemaphore:
                 return 0.0
 
             # No slot available, create future and add to queue
-            future = asyncio.get_event_loop().create_future()
+            future = asyncio.get_running_loop().create_future()
             # Put future in queue (this is synchronous, queue is thread-safe)
             self._waiters.put_nowait(future)
 
@@ -120,7 +119,7 @@ class FIFOSemaphore:
                 if not future.done() and not future.cancelled():
                     # Wake up the first waiter (FIFO)
                     # Schedule the result setting in the event loop to avoid blocking
-                    loop = asyncio.get_event_loop()
+                    loop = asyncio.get_running_loop()
                     if loop.is_running():
                         loop.call_soon_threadsafe(future.set_result, True)
                     else:

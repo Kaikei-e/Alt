@@ -21,7 +21,6 @@ from news_creator.utils.context_logger import (
 
 logger = logging.getLogger(__name__)
 
-
 def create_rerank_router(rerank_usecase: RerankUsecase) -> APIRouter:
     """
     Create rerank router with dependency injection.

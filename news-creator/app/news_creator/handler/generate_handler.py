@@ -11,7 +11,6 @@ from news_creator.port.llm_provider_port import LLMProviderPort
 
 logger = logging.getLogger(__name__)
 
-
 def create_generate_router(llm_provider: LLMProviderPort) -> APIRouter:
     """
     Create generate router with dependency injection.
@@ -25,7 +24,7 @@ def create_generate_router(llm_provider: LLMProviderPort) -> APIRouter:
     router = APIRouter()
 
     @router.post("/api/generate")
-    async def generate_endpoint(request: GenerateRequest) -> Dict[str, Any]:
+    async def generate_endpoint(request: GenerateRequest) -> dict[str, Any]:
         """
         Forward Ollama-compatible generate requests.
 
@@ -83,13 +82,12 @@ def create_generate_router(llm_provider: LLMProviderPort) -> APIRouter:
             )
 
             # Narrow the union type: non-streaming returns LLMGenerateResponse
-            assert isinstance(result, LLMGenerateResponse), (
-                "Expected non-streaming LLMGenerateResponse"
-            )
+            if not (isinstance(result, LLMGenerateResponse)):
+                raise AssertionError("Expected non-streaming LLMGenerateResponse")
             llm_response: LLMGenerateResponse = result
 
             # Format response in Ollama format
-            response_dict: Dict[str, Any] = {
+            response_dict: dict[str, Any] = {
                 "model": llm_response.model,
                 "response": llm_response.response,
                 "done": llm_response.done if llm_response.done is not None else True,

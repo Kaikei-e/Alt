@@ -205,7 +205,7 @@ uv run pytest tests/unit/test_input_sanitizer.py -v
 uv run pytest tests/integration/test_sanitized_tag_extraction.py -v
 
 # Run demo script
-python demo_sanitization.py
+python scripts/demo_sanitization.py
 ```
 
 ## Performance Considerations

@@ -13,7 +13,6 @@ from news_creator.utils.context_logger import (
 
 logger = logging.getLogger(__name__)
 
-
 def create_expand_query_router(expand_query_usecase: ExpandQueryUsecase) -> APIRouter:
     """
     Create expand query router with dependency injection.

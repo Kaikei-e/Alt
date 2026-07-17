@@ -225,17 +225,22 @@ class TestTagExtractor:
             assert "is" not in result
 
     def test_should_use_fallback_extraction_for_japanese(self):
-        """Should use fallback extraction for Japanese text."""
+        """Should use frequency-only fallback for Japanese (not primary KeyBERT path)."""
         extractor = TagExtractor()
 
-        with patch.object(
-            extractor,
-            "_extract_keywords_japanese",
-            return_value=(["東京", "日本"], {"東京": 1.0, "日本": 1.0}),
+        with (
+            patch.object(extractor, "_lazy_load_models"),
+            patch.object(extractor, "_load_stopwords"),
+            patch("tag_extractor.extract.fallback_japanese", return_value=["東京", "日本"]) as mock_fb,
+            patch.object(extractor, "_extract_keywords_japanese") as mock_primary,
         ):
+            extractor._ja_tagger = object()
+            extractor._ja_stopwords = set()
             result = extractor._fallback_extraction("東京は日本の首都です", "ja")
 
             assert result == ["東京", "日本"]
+            mock_fb.assert_called_once()
+            mock_primary.assert_not_called()
 
     def test_should_use_fallback_extraction_for_english(self):
         """Should use fallback extraction for English text."""
@@ -277,10 +282,13 @@ class TestTagExtractor:
 
         extractor = TagExtractor()
 
-        with patch.object(
-            extractor,
-            "_extract_keywords_japanese",
-            return_value=(["東京", "日本"], {"東京": 1.0, "日本": 0.9}),
+        with (
+            patch.object(
+                extractor,
+                "_extract_keywords_japanese",
+                return_value=(["東京", "日本"], {"東京": 1.0, "日本": 0.9}),
+            ),
+            patch.object(extractor, "_fallback_extraction", return_value=[]),
         ):
             outcome = extractor.extract_tags_with_metrics("東京について", "東京は日本の首都です")
 

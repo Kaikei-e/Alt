@@ -291,3 +291,19 @@ class TestForwardHeadOfLineBlocking:
         assert stats.get("successful", 0) >= 1
         # fetch_articles must have been called to get past the poison page
         h.article_fetcher.fetch_articles.assert_called_once()
+
+
+class TestEmptyExtractionLRU:
+    """Bounded LRU for _empty_extraction_counts."""
+
+    def test_empty_extraction_counts_evict_oldest_when_over_cap(self):
+        h = _Harness(max_retries=3)
+        h.processor._empty_extraction_counts_max = 3
+
+        for i in range(4):
+            h.processor._record_empty_extraction(f"art-{i}")
+
+        assert len(h.processor._empty_extraction_counts) == 3
+        assert "art-0" not in h.processor._empty_extraction_counts
+        assert "art-1" in h.processor._empty_extraction_counts
+        assert "art-3" in h.processor._empty_extraction_counts

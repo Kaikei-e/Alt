@@ -58,6 +58,7 @@ from .japanese_extractor import (
     extract_compound_japanese_words,
     extract_compound_nouns_fugashi,
     extract_keywords_japanese,
+    fallback_japanese,
     make_japanese_analyzer,
     score_candidates_by_frequency,
     score_japanese_candidates_with_keybert,
@@ -246,7 +247,11 @@ class TagExtractor:
                 fallback_keywords = self._fallback_extraction(raw_text, lang)
                 fallback_confidences = {tag: max(0.3, 0.7 - (i * 0.1)) for i, tag in enumerate(fallback_keywords)}
             except Exception as fallback_error:
-                logger.error("Fallback extraction failed", error=fallback_error)
+                logger.error(
+                    "Fallback extraction failed",
+                    error=str(fallback_error),
+                    exc_info=True,
+                )
                 return keywords, confidences  # Return whatever primary gave us
 
             if fallback_keywords:
@@ -262,14 +267,22 @@ class TagExtractor:
                 logger.debug("Fallback augmentation succeeded", total_tags=len(merged))
                 return merged, merged_confidences
 
+            # Fallback produced nothing — keep primary tags even if below threshold
+            if keywords:
+                return keywords, confidences
+
         except Exception as e:
-            logger.error("Extraction error", error=e)
+            logger.error("Extraction error", error=str(e), exc_info=True)
             try:
                 fallback_keywords = self._fallback_extraction(raw_text, lang)
                 # For fallback, assign default confidence based on position
                 fallback_confidences = {tag: max(0.3, 0.7 - (i * 0.1)) for i, tag in enumerate(fallback_keywords)}
             except Exception as fallback_error:
-                logger.error("Fallback extraction failed after exception", error=fallback_error)
+                logger.error(
+                    "Fallback extraction failed after exception",
+                    error=str(fallback_error),
+                    exc_info=True,
+                )
                 return [], {}
 
             if fallback_keywords:
@@ -417,9 +430,10 @@ class TagExtractor:
     def _fallback_extraction(self, text: str, lang: str) -> list[str]:
         """Fallback extraction method when primary method fails."""
         if lang == "ja":
-            # For Japanese, use the frequency-based approach
-            keywords, _ = self._extract_keywords_japanese(text)
-            return keywords
+            # Frequency-only path — must not re-run primary (KeyBERT) extraction
+            self._lazy_load_models()
+            self._load_stopwords()
+            return fallback_japanese(text, self._ja_tagger, self._ja_stopwords, self.config)
         else:
             # For English, try tokenization and frequency
             self._load_stopwords()

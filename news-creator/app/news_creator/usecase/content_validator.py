@@ -26,7 +26,6 @@ DEFAULT_MIN_LENGTH = 100  # CDC contract minimum content length
 DEFAULT_MAX_LENGTH = 60_000  # ~15K tokens for 16K context window
 DEFAULT_ABNORMAL_THRESHOLD = 100_000  # Warning threshold for very large content
 
-
 @dataclass(frozen=True)
 class ValidationResult:
     """Immutable result of content validation.
@@ -44,7 +43,6 @@ class ValidationResult:
     was_truncated: bool
     original_length: int
     warnings: list[str] = field(default_factory=list)
-
 
 class ContentValidator:
     """Validates and cleans content for summarization.

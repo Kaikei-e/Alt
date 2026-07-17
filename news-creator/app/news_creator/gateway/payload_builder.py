@@ -16,7 +16,6 @@ from typing import Any, Protocol, Union
 
 logger = logging.getLogger(__name__)
 
-
 @dataclass(frozen=True)
 class GeneratePayload:
     """Immutable representation of Ollama generate API payload.
@@ -28,10 +27,10 @@ class GeneratePayload:
     model: str
     prompt: str
     options: dict[str, Any]
-    keep_alive: Union[int, str]
+    keep_alive: int | str
     stream: bool = False
     raw: bool = True  # Default True for Gemma 4 compatibility
-    format: Union[str, dict[str, Any], None] = None
+    format: str | dict[str, Any] | None = None
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for Ollama API call.
@@ -57,7 +56,6 @@ class GeneratePayload:
 
         return result
 
-
 class PayloadBuilderProtocol(Protocol):
     """Protocol for payload building strategies."""
 
@@ -66,14 +64,13 @@ class PayloadBuilderProtocol(Protocol):
         prompt: str,
         model: str,
         options: dict[str, Any],
-        keep_alive: Union[int, str],
+        keep_alive: int | str,
         stream: bool = False,
         raw: bool = True,
-        format: Union[str, dict[str, Any], None] = None,
+        format: str | dict[str, Any] | None = None,
     ) -> GeneratePayload:
         """Build a generate payload."""
         ...
-
 
 class PayloadBuilder:
     """Builds Ollama generate API payloads.
@@ -91,10 +88,10 @@ class PayloadBuilder:
         prompt: str,
         model: str,
         options: dict[str, Any],
-        keep_alive: Union[int, str],
+        keep_alive: int | str,
         stream: bool = False,
         raw: bool = True,
-        format: Union[str, dict[str, Any], None] = None,
+        format: str | dict[str, Any] | None = None,
     ) -> GeneratePayload:
         """Build a generate payload for Ollama API.
 

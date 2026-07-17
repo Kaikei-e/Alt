@@ -4,7 +4,6 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-
 class OOMDetector:
     """Detects OOM errors from Ollama API responses and manages fallback mode."""
 

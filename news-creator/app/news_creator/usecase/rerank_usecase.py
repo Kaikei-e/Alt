@@ -24,7 +24,6 @@ _cross_encoder = None
 _loaded_model_name = None
 _load_lock = threading.Lock()
 
-
 def _get_cross_encoder(model_name: str):
     """Lazily load cross-encoder model.
 
@@ -57,7 +56,6 @@ def _get_cross_encoder(model_name: str):
 
     return _cross_encoder
 
-
 class RerankUsecase:
     """Usecase for cross-encoder re-ranking of RAG retrieval candidates.
 
@@ -67,7 +65,7 @@ class RerankUsecase:
     # Default model - multilingual, good balance of accuracy and speed
     DEFAULT_MODEL = "BAAI/bge-reranker-v2-m3"
 
-    def __init__(self, model_name: Optional[str] = None):
+    def __init__(self, model_name: str | None = None):
         """Initialize rerank usecase.
 
         Args:
@@ -101,9 +99,9 @@ class RerankUsecase:
     async def rerank(
         self,
         query: str,
-        candidates: List[str],
-        top_k: Optional[int] = None,
-    ) -> Tuple[List[Tuple[int, float]], str, Optional[float]]:
+        candidates: list[str],
+        top_k: int | None = None,
+    ) -> tuple[list[tuple[int, float]], str, float | None]:
         """
         Re-rank candidates using cross-encoder scoring.
 

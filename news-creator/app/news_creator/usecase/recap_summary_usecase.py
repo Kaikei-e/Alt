@@ -7,16 +7,24 @@ import logging
 import re
 import textwrap
 from pathlib import Path
-from typing import Dict, Any, List, Optional, Tuple, Union
+from typing import Any, List, Optional
 from urllib.parse import urlparse
 
 from jinja2 import Template
 from pydantic import ValidationError
 
+logger = logging.getLogger(__name__)
+
 try:
     import json_repair
+
+    logger.info("json_repair_enabled", extra={"status": "enabled"})
 except ImportError:
     json_repair = None  # type: ignore
+    logger.warning(
+        "json_repair_disabled",
+        extra={"status": "disabled", "reason": "ImportError"},
+    )
 
 from news_creator.config.config import NewsCreatorConfig
 from news_creator.domain.models import (
@@ -37,8 +45,6 @@ from news_creator.gateway.hybrid_priority_semaphore import PreemptedException
 from news_creator.port.cache_port import CachePort
 from news_creator.port.llm_provider_port import LLMProviderPort
 from news_creator.utils.repetition_detector import detect_repetition
-
-logger = logging.getLogger(__name__)
 
 # Number of attempts for hold_slot+generate_raw when a BE map/reduce request
 # is preempted by an RT request. The retry loop applies exponential backoff
@@ -65,7 +71,7 @@ GEMMA_RECAP_SYSTEM_PROMPT = (
     "Follow the JSON contract exactly and respond with only the requested JSON object."
 )
 
-GENRE_JA_MAP: Dict[str, str] = {
+GENRE_JA_MAP: dict[str, str] = {
     "ai_data": "AI・データ",
     "climate_environment": "気候・環境",
     "consumer_tech": "家電・テクノロジー",
@@ -98,7 +104,6 @@ GENRE_JA_MAP: Dict[str, str] = {
 
 _MIN_FALLBACK_SENTENCE_LEN = 20
 
-
 class RecapSummaryUsecase:
     """Generate recap summaries from evidence clusters via LLM."""
 
@@ -106,7 +111,7 @@ class RecapSummaryUsecase:
         self,
         config: NewsCreatorConfig,
         llm_provider: LLMProviderPort,
-        cache: Optional[CachePort] = None,
+        cache: CachePort | None = None,
     ):
         self.config = config
         self.llm_provider = llm_provider
@@ -142,7 +147,7 @@ class RecapSummaryUsecase:
     )
 
     @staticmethod
-    def _source_domain(url: Optional[str]) -> Optional[str]:
+    def _source_domain(url: str | None) -> str | None:
         if not url:
             return None
         try:
@@ -154,7 +159,7 @@ class RecapSummaryUsecase:
     def _score_sentence_for_packing(
         self,
         sentence: RepresentativeSentence,
-        cluster_sentences: List[RepresentativeSentence],
+        cluster_sentences: list[RepresentativeSentence],
     ) -> float:
         score = 1.0
         if getattr(sentence, "is_centroid", False):
@@ -289,12 +294,15 @@ class RecapSummaryUsecase:
 
         tasks = [throttled_request(req) for req in batch_request.requests]
 
-        # Execute with concurrency limited by semaphore
-        results = await asyncio.gather(*tasks, return_exceptions=False)
+        # TaskGroup: fail-fast on unexpected exceptions; per-request errors are
+        # returned as BatchRecapSummaryError from _generate_summary_with_error_handling.
+        async with asyncio.TaskGroup() as tg:
+            task_handles = [tg.create_task(t) for t in tasks]
+        results = [t.result() for t in task_handles]
 
         # Separate successful responses from errors
-        responses: List[RecapSummaryResponse] = []
-        errors: List[BatchRecapSummaryError] = []
+        responses: list[RecapSummaryResponse] = []
+        errors: list[BatchRecapSummaryError] = []
 
         for req, result in zip(batch_request.requests, results):
             if isinstance(result, BatchRecapSummaryError):
@@ -315,7 +323,7 @@ class RecapSummaryUsecase:
 
     async def _generate_summary_with_error_handling(
         self, request: RecapSummaryRequest
-    ) -> Union[RecapSummaryResponse, BatchRecapSummaryError]:
+    ) -> RecapSummaryResponse | BatchRecapSummaryError:
         """Generate a summary with error handling for batch processing.
 
         Args:
@@ -359,7 +367,7 @@ class RecapSummaryUsecase:
             return True
         return False
 
-    def _count_request_evidence(self, request: RecapSummaryRequest) -> Tuple[int, int]:
+    def _count_request_evidence(self, request: RecapSummaryRequest) -> tuple[int, int]:
         source_keys = set()
         representative_sentence_count = 0
 
@@ -403,10 +411,10 @@ class RecapSummaryUsecase:
         request: RecapSummaryRequest,
         chunk_idx: int,
         chunk_clusters: List,
-        json_schema: Dict[str, Any],
-        llm_options: Dict[str, Any],
+        json_schema: dict[str, Any],
+        llm_options: dict[str, Any],
         total_chunks: int,
-    ) -> Optional[IntermediateSummary]:
+    ) -> IntermediateSummary | None:
         """Generate an intermediate summary for a single chunk.
 
         Uses hold_slot() + generate_raw() (BE path) instead of generate() (local-only)
@@ -485,7 +493,7 @@ class RecapSummaryUsecase:
         self,
         request: RecapSummaryRequest,
         max_bullets: int,
-        temperature_override: Optional[float],
+        temperature_override: float | None,
     ) -> RecapSummaryResponse:
         """Generate summary using hierarchical (map-reduce) approach with recursive reduce."""
         # Map phase: Split clusters into chunks and summarize each in parallel
@@ -528,11 +536,12 @@ class RecapSummaryUsecase:
             for chunk_idx, chunk_clusters in enumerate(chunks)
         ]
 
-        # Execute map tasks with concurrency limited by semaphore
-        map_results = await asyncio.gather(*map_tasks, return_exceptions=False)
+        async with asyncio.TaskGroup() as tg:
+            map_handles = [tg.create_task(t) for t in map_tasks]
+        map_results = [t.result() for t in map_handles]
 
         # Collect successful intermediate summaries
-        intermediate_summaries: List[IntermediateSummary] = [
+        intermediate_summaries: list[IntermediateSummary] = [
             result for result in map_results if result is not None
         ]
 
@@ -551,11 +560,11 @@ class RecapSummaryUsecase:
 
     async def _recursive_reduce_phase(
         self,
-        summaries: List[IntermediateSummary],
+        summaries: list[IntermediateSummary],
         request: RecapSummaryRequest,
         max_bullets: int,
-        temperature_override: Optional[float],
-        llm_options: Dict[str, Any],
+        temperature_override: float | None,
+        llm_options: dict[str, Any],
         depth: int = 0,
     ) -> RecapSummaryResponse:
         """Recursively reduce summaries until they fit in 12K context.
@@ -625,10 +634,12 @@ class RecapSummaryUsecase:
             for group in summary_groups
         ]
 
-        reduced_results = await asyncio.gather(*reduce_tasks, return_exceptions=False)
+        async with asyncio.TaskGroup() as tg:
+            reduce_handles = [tg.create_task(t) for t in reduce_tasks]
+        reduced_results = [t.result() for t in reduce_handles]
 
         # Collect successful reduced summaries
-        reduced_summaries: List[IntermediateSummary] = [
+        reduced_summaries: list[IntermediateSummary] = [
             result
             for result in reduced_results
             if result is not None and isinstance(result, IntermediateSummary)
@@ -656,11 +667,11 @@ class RecapSummaryUsecase:
 
     async def _reduce_group(
         self,
-        group: List[IntermediateSummary],
+        group: list[IntermediateSummary],
         request: RecapSummaryRequest,
-        llm_options: Dict[str, Any],
-        json_schema: Dict[str, Any],
-    ) -> Optional[IntermediateSummary]:
+        llm_options: dict[str, Any],
+        json_schema: dict[str, Any],
+    ) -> IntermediateSummary | None:
         """Reduce a group of intermediate summaries into one.
 
         Uses hold_slot() + generate_raw() (BE path) instead of generate() (local-only)
@@ -706,8 +717,8 @@ class RecapSummaryUsecase:
         prompt: str,
         *,
         num_predict: int,
-        format: Dict[str, Any],
-        options: Dict[str, Any],
+        format: dict[str, Any],
+        options: dict[str, Any],
     ) -> LLMGenerateResponse:
         """Acquire a BE slot and run generate_raw, retrying when an RT request preempts.
 
@@ -717,7 +728,7 @@ class RecapSummaryUsecase:
         attempts are made with exponential backoff (1s, 2s) before the
         exception propagates to the caller's graceful-degradation path.
         """
-        last_exc: Optional[BaseException] = None
+        last_exc: BaseException | None = None
         for attempt in range(_PREEMPT_RETRY_ATTEMPTS):
             try:
                 async with self.llm_provider.hold_slot(is_high_priority=False) as (
@@ -753,7 +764,7 @@ class RecapSummaryUsecase:
     def _build_reduce_group_prompt(
         self,
         request: RecapSummaryRequest,
-        combined_bullets: List[str],
+        combined_bullets: list[str],
     ) -> str:
         bullet_target = "2〜3" if self._is_3days_request(request) else "3〜4"
         bullets_text = "\n".join(f"- {bullet}" for bullet in combined_bullets)
@@ -796,10 +807,10 @@ class RecapSummaryUsecase:
 
     async def _final_reduce(
         self,
-        summaries: List[IntermediateSummary],
+        summaries: list[IntermediateSummary],
         request: RecapSummaryRequest,
         max_bullets: int,
-        temperature_override: Optional[float],
+        temperature_override: float | None,
     ) -> RecapSummaryResponse:
         """Perform final reduce to create the summary response.
 
@@ -863,7 +874,7 @@ class RecapSummaryUsecase:
             reduce_request, max_bullets, temperature_override
         )
 
-    def _split_clusters_into_chunks(self, clusters: List) -> List[List]:
+    def _split_clusters_into_chunks(self, clusters: List) -> list[List]:
         """Split clusters into chunks that fit within max_chunk_chars with overlap.
 
         Uses overlap to preserve context between chunks, preventing information
@@ -884,7 +895,7 @@ class RecapSummaryUsecase:
             )  # Overhead
             cluster_lengths.append(length)
 
-        chunks: List[List] = []
+        chunks: list[List] = []
         current_chunk: List = []
         current_length = 0
         chunk_start_idx = 0
@@ -926,7 +937,7 @@ class RecapSummaryUsecase:
 
     def _build_chat_messages(
         self, request: RecapSummaryRequest, max_bullets: int, intermediate: bool = False
-    ) -> List[Dict[str, str]]:
+    ) -> list[dict[str, str]]:
         """Build chat messages for /api/chat (no manual turn tokens)."""
         prompt_body, _ = self._render_prompt_body(
             request, max_bullets, intermediate=intermediate
@@ -938,9 +949,9 @@ class RecapSummaryUsecase:
 
     async def _call_llm_for_recap(
         self,
-        messages: List[Dict[str, str]],
-        json_schema: Dict[str, Any],
-        llm_options: Dict[str, Any],
+        messages: list[dict[str, str]],
+        json_schema: dict[str, Any],
+        llm_options: dict[str, Any],
     ) -> LLMGenerateResponse:
         """Call LLM via /api/chat (think enabled) with generate() fallback.
 
@@ -949,7 +960,7 @@ class RecapSummaryUsecase:
         Falls back to generate() for backward compatibility.
         """
         try:
-            chat_payload: Dict[str, Any] = {
+            chat_payload: dict[str, Any] = {
                 "model": self.config.model_name,
                 "messages": messages,
                 "format": json_schema,
@@ -984,14 +995,15 @@ class RecapSummaryUsecase:
                 format=json_schema,
                 options=opts,
             )
-            assert isinstance(result, LLMGenerateResponse)
+            if not isinstance(result, LLMGenerateResponse):
+                raise TypeError("Expected specific type")
             return result
 
     async def _generate_single_shot_summary(
         self,
         request: RecapSummaryRequest,
         max_bullets: int,
-        temperature_override: Optional[float],
+        temperature_override: float | None,
     ) -> RecapSummaryResponse:
         """Generate summary using single-shot approach via /api/chat with thinking."""
         messages = self._build_chat_messages(request, max_bullets)
@@ -1003,7 +1015,7 @@ class RecapSummaryUsecase:
             if temperature_override is not None
             else self._resolve_generation_temperature(request)
         )
-        llm_options: Optional[Dict[str, Any]] = {"temperature": base_temperature}
+        llm_options: dict[str, Any] | None = {"temperature": base_temperature}
 
         max_retries = max(2, self.config.max_repetition_retries)
         remaining_repair_attempts = max(
@@ -1237,9 +1249,17 @@ class RecapSummaryUsecase:
     ) -> RecapSummaryResponse:
         """Create a degraded response when 3days evidence is too thin for reliable generation."""
         response = self._create_fallback_from_clusters(request)
-        response.metadata.model = "low-evidence-extractive"
-        response.metadata.json_validation_errors = 0
-        response.metadata.degradation_reason = "low_evidence_extractive"
+        response = response.model_copy(
+            update={
+                "metadata": response.metadata.model_copy(
+                    update={
+                        "model": "low-evidence-extractive",
+                        "json_validation_errors": 0,
+                        "degradation_reason": "low_evidence_extractive",
+                    }
+                )
+            }
+        )
         return response
 
     def _create_fallback_from_clusters(
@@ -1258,7 +1278,7 @@ class RecapSummaryUsecase:
     def _collect_fallback_candidates_from_clusters(
         self,
         request: RecapSummaryRequest,
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         max_fallback_bullets = 4 if self._is_3days_request(request) else 7
         sorted_clusters = sorted(
             request.clusters,
@@ -1266,12 +1286,12 @@ class RecapSummaryUsecase:
             reverse=True,
         )
 
-        candidates: List[Dict[str, Any]] = []
+        candidates: list[dict[str, Any]] = []
         seen_texts: set[str] = set()
 
         # Collect all valid sentences, preferring Japanese
-        ja_candidates: List[Dict[str, Any]] = []
-        other_candidates: List[Dict[str, Any]] = []
+        ja_candidates: list[dict[str, Any]] = []
+        other_candidates: list[dict[str, Any]] = []
 
         for cluster in sorted_clusters:
             ordered_sentences = sorted(
@@ -1307,14 +1327,14 @@ class RecapSummaryUsecase:
     def _create_degraded_response(
         self,
         request: RecapSummaryRequest,
-        candidates: List[Dict[str, Any]],
+        candidates: list[dict[str, Any]],
         *,
         model_name: str,
         degradation_reason: str,
         json_validation_errors: int,
     ) -> RecapSummaryResponse:
-        references: List[Reference] = []
-        bullets: List[str] = []
+        references: list[Reference] = []
+        bullets: list[str] = []
         ref_id = 1
 
         for candidate in candidates:
@@ -1323,7 +1343,7 @@ class RecapSummaryUsecase:
             topic_label = str(
                 candidate.get("topic_label") or request.genre.replace("_", " ")
             ).strip()
-            reference_id: Optional[int] = None
+            reference_id: int | None = None
             if source_url:
                 reference_id = ref_id
                 references.append(
@@ -1383,7 +1403,7 @@ class RecapSummaryUsecase:
         *,
         text: str,
         topic_label: str,
-        reference_id: Optional[int],
+        reference_id: int | None,
     ) -> str:
         reference_suffix = f" [{reference_id}]" if reference_id is not None else ""
         if self._looks_japanese(text):
@@ -1423,19 +1443,19 @@ class RecapSummaryUsecase:
         request: RecapSummaryRequest,
         max_bullets: int,
         intermediate: bool = False,
-    ) -> Tuple[str, str]:
+    ) -> tuple[str, str]:
         MAX_CLUSTER_SECTION_LENGTH = self._max_cluster_section_length(request)
 
         max_clusters = max(3, min(len(request.clusters), max_bullets + 2))
-        cluster_lines: List[str] = []
+        cluster_lines: list[str] = []
         cluster_section_length = 0
 
         for cluster in request.clusters[:max_clusters]:
             top_terms = ", ".join(cluster.top_terms or []) or "未提示"
-            sentence_lines: List[str] = []
+            sentence_lines: list[str] = []
             for sentence in cluster.representative_sentences:
                 prefix = "- [Main Point] " if sentence.is_centroid else "- "
-                parts: List[str] = [f"{prefix}{sentence.text}"]
+                parts: list[str] = [f"{prefix}{sentence.text}"]
                 if sentence.published_at:
                     parts.append(f"  (公開日: {sentence.published_at})")
                 if sentence.source_url:
@@ -1510,7 +1530,7 @@ class RecapSummaryUsecase:
         # Actually, @refine_plan4.md says: "Genre Merge Logic: ... collected into mini-summary... input to LLM".
         # So yes, if highlights exist, we use them.
 
-        render_kwargs: Dict[str, Any] = {
+        render_kwargs: dict[str, Any] = {
             "job_id": str(request.job_id),
             "genre": request.genre,
             "max_bullets": max_bullets,
@@ -1609,7 +1629,7 @@ class RecapSummaryUsecase:
         request: RecapSummaryRequest,
         max_bullets: int,
         invalid_response: str,
-        issues: List[str],
+        issues: list[str],
     ) -> str:
         """Build repair prompt body (without turn tokens, for /api/chat)."""
         issue_lines = "\n".join(f"- {issue}" for issue in issues)
@@ -1628,13 +1648,13 @@ class RecapSummaryUsecase:
     def _validate_summary_quality(
         self,
         request: RecapSummaryRequest,
-        payload: Dict[str, Any],
-    ) -> List[str]:
+        payload: dict[str, Any],
+    ) -> list[str]:
         is_3days = request.window_days is not None and request.window_days <= 3
         if not is_3days:
             return []
 
-        issues: List[str] = []
+        issues: list[str] = []
         title = str(payload.get("title", "")).strip()
         bullets = payload.get("bullets") or []
         language = payload.get("language")
@@ -1691,12 +1711,12 @@ class RecapSummaryUsecase:
     def _validate_intermediate_summary_quality(
         self,
         request: RecapSummaryRequest,
-        payload: Dict[str, Any],
-    ) -> List[str]:
+        payload: dict[str, Any],
+    ) -> list[str]:
         if not self._is_3days_request(request):
             return []
 
-        issues: List[str] = []
+        issues: list[str] = []
         bullets = payload.get("bullets") or []
         language = payload.get("language")
 
@@ -1731,7 +1751,7 @@ class RecapSummaryUsecase:
             return 1.0
         return japanese_chars / relevant_chars
 
-    def _extract_cited_reference_ids(self, bullets: List[str]) -> set[int]:
+    def _extract_cited_reference_ids(self, bullets: list[str]) -> set[int]:
         cited_ids: set[int] = set()
         for bullet in bullets:
             for match in REFERENCE_MARKER_RE.findall(bullet):
@@ -1754,7 +1774,7 @@ class RecapSummaryUsecase:
         max_bullets: int,
         *,
         strict_contract: bool = False,
-    ) -> Tuple[Dict[str, Any], int]:
+    ) -> tuple[dict[str, Any], int]:
         if not content:
             raise RuntimeError("LLM returned empty response for recap summary")
 
@@ -1838,11 +1858,11 @@ class RecapSummaryUsecase:
 
     def _sanitize_summary_payload(
         self,
-        payload: Dict[str, Any],
+        payload: dict[str, Any],
         max_bullets: int,
         *,
         strict_contract: bool = False,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         summary_section = payload.get("summary")
         if isinstance(summary_section, dict):
             payload = summary_section
@@ -1968,7 +1988,7 @@ class RecapSummaryUsecase:
                 trimmed = f"{trimmed} [{ref_id}]"
             final_bullets.append(trimmed)
 
-        sanitized: Dict[str, Any] = {
+        sanitized: dict[str, Any] = {
             "title": title,
             "bullets": final_bullets,
             "language": language,
@@ -1978,7 +1998,7 @@ class RecapSummaryUsecase:
 
         return sanitized
 
-    def _sanitize_intermediate_payload(self, payload: Dict[str, Any]) -> Dict[str, Any]:
+    def _sanitize_intermediate_payload(self, payload: dict[str, Any]) -> dict[str, Any]:
         summary_section = payload.get("summary")
         if isinstance(summary_section, dict):
             payload = summary_section
@@ -2013,7 +2033,7 @@ class RecapSummaryUsecase:
         return bullet[:45] if len(bullet) > 45 else bullet
 
     @staticmethod
-    def _nanoseconds_to_milliseconds(value: Optional[int]) -> Optional[int]:
+    def _nanoseconds_to_milliseconds(value: int | None) -> int | None:
         if value is None:
             return None
         try:
@@ -2057,7 +2077,7 @@ class RecapSummaryUsecase:
 
     async def _get_cached_response(
         self, cache_key: str
-    ) -> Optional[RecapSummaryResponse]:
+    ) -> RecapSummaryResponse | None:
         """Try to retrieve a cached response.
 
         Args:

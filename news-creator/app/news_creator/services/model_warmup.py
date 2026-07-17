@@ -8,7 +8,6 @@ from news_creator.driver.ollama_driver import OllamaDriver
 
 logger = logging.getLogger(__name__)
 
-
 class ModelWarmupService:
     """Service for warming up Ollama models with keep_alive."""
 
@@ -66,6 +65,8 @@ class ModelWarmupService:
                 self._warmup_single_model(model, keep_alive_str)
                 for model in models_to_warmup
             ]
+            # Partial-failure allowed: individual model warmup failures are logged
+            # and must not abort warming remaining models.
             results = await asyncio.gather(*warmup_tasks, return_exceptions=True)
 
             # Log results (errors only)

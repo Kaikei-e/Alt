@@ -15,6 +15,7 @@ Key design decisions based on research (Ollama structured output best practices)
 import json
 import logging
 import time
+import traceback
 from datetime import datetime, timezone
 
 from pydantic import ValidationError
@@ -72,15 +73,18 @@ Query: それについてもっと詳しく教えて
 {context_section}Query: {query}
 """
 
-
 class PlanQueryUsecase:
     """Plans retrieval strategy for a user query using LLM structured output."""
-
-    PLANNING_MODEL = "gemma4-e4b-12k"
 
     def __init__(self, config: NewsCreatorConfig, llm_provider: LLMProviderPort):
         self.config = config
         self.llm_provider = llm_provider
+
+    @property
+    def PLANNING_MODEL(self) -> str:
+        """Model for query planning (from config)."""
+        configured = getattr(self.config, "rag_query_model", "gemma4-e4b-12k")
+        return configured if isinstance(configured, str) else "gemma4-e4b-12k"
 
     async def plan_query(self, request: PlanQueryRequest) -> PlanQueryResponse:
         start = time.monotonic()
@@ -88,8 +92,6 @@ class PlanQueryUsecase:
         try:
             plan = await self._plan_with_llm(request)
         except Exception as e:
-            import traceback
-
             logger.warning(
                 "plan_query_llm_failed",
                 extra={

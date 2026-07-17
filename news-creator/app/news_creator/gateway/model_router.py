@@ -9,7 +9,6 @@ from news_creator.utils.token_counter import count_tokens
 
 logger = logging.getLogger(__name__)
 
-
 class ModelRouter:
     """Routes requests to appropriate model bucket (8K, 60K) based on token count."""
 
@@ -20,7 +19,7 @@ class ModelRouter:
     def __init__(
         self,
         config: NewsCreatorConfig,
-        oom_detector: Optional[OOMDetector] = None,
+        oom_detector: OOMDetector | None = None,
     ):
         """
         Initialize model router.
@@ -33,16 +32,16 @@ class ModelRouter:
         self.oom_detector = oom_detector or OOMDetector(
             enabled=config.oom_detection_enabled
         )
-        self._current_bucket: Optional[int] = None
+        self._current_bucket: int | None = None
 
     @property
-    def current_bucket(self) -> Optional[int]:
+    def current_bucket(self) -> int | None:
         """Get current bucket size."""
         return self._current_bucket
 
     def select_model(
-        self, prompt: str, max_new_tokens: Optional[int] = None
-    ) -> Tuple[str, int]:
+        self, prompt: str, max_new_tokens: int | None = None
+    ) -> tuple[str, int]:
         """
         Select appropriate model based on token count.
 
@@ -65,8 +64,8 @@ class ModelRouter:
         return self._select_model_3mode(prompt, max_new_tokens)
 
     def _select_model_3mode(
-        self, prompt: str, max_new_tokens: Optional[int] = None
-    ) -> Tuple[str, int]:
+        self, prompt: str, max_new_tokens: int | None = None
+    ) -> tuple[str, int]:
         """Select model in 2-model mode (8K, 60K) or 8K-only mode."""
         # Calculate token count
         prompt_tokens = count_tokens(prompt)

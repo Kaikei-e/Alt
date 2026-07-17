@@ -4,8 +4,7 @@ import json
 from dataclasses import dataclass, asdict
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, List, Optional
-
+from typing import Any
 
 @dataclass
 class TraceRecord:
@@ -13,19 +12,18 @@ class TraceRecord:
 
     job_id: str
     genre: str
-    window_days: Optional[int]
+    window_days: int | None
     template_name: str
     prompt_hash: str
     schema_hash: str
     input_clusters_json: str
     rendered_prompt: str
     raw_llm_response: str
-    parsed_summary_json: Optional[str]
-    scores: Dict[str, float]
-    metadata: Dict[str, Any]
+    parsed_summary_json: str | None
+    scores: dict[str, float]
+    metadata: dict[str, Any]
     is_degraded: bool = False
-    degradation_reason: Optional[str] = None
-
+    degradation_reason: str | None = None
 
 class TraceRecorder:
     """Records evaluation traces to JSONL files.
@@ -45,9 +43,9 @@ class TraceRecorder:
         with open(self._file_path, "a", encoding="utf-8") as f:
             f.write(json.dumps(asdict(trace), ensure_ascii=False) + "\n")
 
-    def load_traces(self, path: Path) -> List[TraceRecord]:
+    def load_traces(self, path: Path) -> list[TraceRecord]:
         """Load trace records from a JSONL file."""
-        records: List[TraceRecord] = []
+        records: list[TraceRecord] = []
         with open(path, "r", encoding="utf-8") as f:
             for line in f:
                 line = line.strip()

@@ -3,13 +3,12 @@
 import asyncio
 import json
 import logging
-from typing import Dict, Any, Optional
+from typing import Any
 import aiohttp
 
 from news_creator.config.config import NewsCreatorConfig
 
 logger = logging.getLogger(__name__)
-
 
 class OllamaDriver:
     """HTTP client for Ollama API (non-streaming requests only)."""
@@ -17,7 +16,7 @@ class OllamaDriver:
     def __init__(self, config: NewsCreatorConfig):
         """Initialize Ollama driver with configuration."""
         self.config = config
-        self.session: Optional[aiohttp.ClientSession] = None
+        self.session: aiohttp.ClientSession | None = None
 
     async def initialize(self) -> None:
         """Initialize HTTP client session for non-streaming requests."""
@@ -41,7 +40,7 @@ class OllamaDriver:
             await self.session.close()
             logger.info("Ollama driver cleaned up")
 
-    async def generate(self, payload: Dict[str, Any]) -> Dict[str, Any]:
+    async def generate(self, payload: dict[str, Any]) -> dict[str, Any]:
         """
         Call Ollama generate API with retry logic.
 
@@ -133,9 +132,8 @@ class OllamaDriver:
                         "OllamaDriver does not support streaming. Use OllamaStreamDriver instead."
                     )
 
-                assert self.session is not None, (
-                    "Session not initialized. Call initialize() first."
-                )
+                if not (self.session is not None):
+                    raise AssertionError("Session not initialized. Call initialize() first.")
                 async with self.session.post(url, json=payload) as response:
                     if response.status != 200:
                         text_body = await response.text()
@@ -262,7 +260,7 @@ class OllamaDriver:
             f"Timeout setting: {self.config.llm_timeout_seconds}s"
         )
 
-    async def list_tags(self) -> Dict[str, Any]:
+    async def list_tags(self) -> dict[str, Any]:
         """
         Call Ollama tags API to list available models.
 
@@ -279,9 +277,8 @@ class OllamaDriver:
         logger.debug("Calling Ollama tags API", extra={"url": url})
 
         try:
-            assert self.session is not None, (
-                "Session not initialized. Call initialize() first."
-            )
+            if not (self.session is not None):
+                raise AssertionError("Session not initialized. Call initialize() first.")
             async with self.session.get(url) as response:
                 text_body = await response.text()
 

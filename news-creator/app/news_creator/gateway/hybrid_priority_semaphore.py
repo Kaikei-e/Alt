@@ -20,22 +20,19 @@ import heapq
 import logging
 import time
 from dataclasses import dataclass, field
-from typing import Dict, Optional
+from typing import Optional
 
 logger = logging.getLogger(__name__)
-
 
 class PreemptedException(Exception):
     """Raised when a BE request is preempted for RT priority."""
 
     pass
 
-
 class QueueFullError(Exception):
     """Raised when the queue depth limit is exceeded."""
 
     pass
-
 
 @dataclass
 class AcquiredSlot:
@@ -47,7 +44,6 @@ class AcquiredSlot:
     home_pool: str = ""  # "rt" or "be" — which pool this slot was taken from
     context: str = ""  # optional description for debugging
 
-
 @dataclass
 class CancellableRequest:
     """Tracks an active request that can be preempted."""
@@ -56,7 +52,6 @@ class CancellableRequest:
     cancel_event: asyncio.Event
     start_time: float
     is_high_priority: bool
-
 
 @dataclass(order=True)
 class QueuedRequest:
@@ -73,7 +68,6 @@ class QueuedRequest:
     enqueue_time: float  # FIFO: start_time, LIFO: -start_time
     future: asyncio.Future = field(compare=False)
     is_high_priority: bool = field(compare=False)
-
 
 class HybridPrioritySemaphore:
     """
@@ -142,14 +136,14 @@ class HybridPrioritySemaphore:
         # Preemption configuration
         self._preemption_enabled = preemption_enabled
         self._preemption_threshold = preemption_wait_threshold
-        self._active_requests: Dict[str, CancellableRequest] = {}
+        self._active_requests: dict[str, CancellableRequest] = {}
 
         self._lock = asyncio.Lock()
         self._last_wait_time: float = 0.0
 
         # Leak detection: track acquired slots
         self._slot_counter: int = 0
-        self._acquired_slots: Dict[int, AcquiredSlot] = {}
+        self._acquired_slots: dict[int, AcquiredSlot] = {}
         self._leak_threshold_seconds: float = 300.0  # 5 minutes default
 
         logger.info(
@@ -415,7 +409,7 @@ class HybridPrioritySemaphore:
                     return 0.0, sid
 
             # No slot available, queue the request
-            future = asyncio.get_event_loop().create_future()
+            future = asyncio.get_running_loop().create_future()
             priority_score = self._compute_priority_score(high_priority, start_time)
             # LIFO mode for RT: negate enqueue_time so newest (largest timestamp)
             # becomes smallest value and pops first from the min-heap
@@ -500,7 +494,7 @@ class HybridPrioritySemaphore:
             raise
 
     def release(
-        self, was_high_priority: bool = False, slot_id: Optional[int] = None
+        self, was_high_priority: bool = False, slot_id: int | None = None
     ) -> None:
         """
         Release a slot and wake up next waiter.

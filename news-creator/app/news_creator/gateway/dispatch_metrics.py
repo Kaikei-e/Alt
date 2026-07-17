@@ -9,17 +9,15 @@ from __future__ import annotations
 
 import time
 from contextlib import asynccontextmanager
-from typing import AsyncIterator, Optional
+from typing import AsyncIterator
 
 from opentelemetry import metrics
-
 
 _DISPATCH_COUNTER_NAME = "newscreator.distributed_be.dispatches"
 _INFLIGHT_NAME = "newscreator.distributed_be.inflight"
 _DURATION_NAME = "newscreator.distributed_be.request.duration"
 _FALLBACK_COUNTER_NAME = "newscreator.distributed_be.fallbacks"
 _COOLDOWN_COUNTER_NAME = "newscreator.distributed_be.cooldowns"
-
 
 class _Metrics:
     def __init__(self, meter: metrics.Meter) -> None:
@@ -49,9 +47,7 @@ class _Metrics:
             description="Times a remote entered the cooldown/unhealthy state.",
         )
 
-
-_metrics: Optional[_Metrics] = None
-
+_metrics: _Metrics | None = None
 
 def _get() -> _Metrics:
     global _metrics
@@ -60,12 +56,10 @@ def _get() -> _Metrics:
         _metrics = _Metrics(meter)
     return _metrics
 
-
-def reset_metrics_for_tests(meter: Optional[metrics.Meter]) -> None:
+def reset_metrics_for_tests(meter: metrics.Meter | None) -> None:
     """Re-bind instruments to a test meter (or clear to defer re-init)."""
     global _metrics
     _metrics = _Metrics(meter) if meter is not None else None
-
 
 class DispatchObservation:
     """Mutable outcome holder yielded from dispatch_context()."""
@@ -73,15 +67,14 @@ class DispatchObservation:
     __slots__ = ("_outcome",)
 
     def __init__(self) -> None:
-        self._outcome: Optional[str] = None
+        self._outcome: str | None = None
 
     def set_outcome(self, outcome: str) -> None:
         self._outcome = outcome
 
     @property
-    def outcome(self) -> Optional[str]:
+    def outcome(self) -> str | None:
         return self._outcome
-
 
 @asynccontextmanager
 async def dispatch_context(
@@ -118,14 +111,12 @@ async def dispatch_context(
             {"remote_url": remote_url, "outcome": outcome},
         )
 
-
 def record_fallback(*, from_remote_url: str, to: str, reason: str) -> None:
     """Record that a dispatch fell back to another remote or to local."""
     _get().fallbacks.add(
         1,
         {"from_remote_url": from_remote_url, "to": to, "reason": reason},
     )
-
 
 def record_cooldown(*, remote_url: str, reason: str) -> None:
     """Record that a remote was moved into the cooldown/unhealthy state."""

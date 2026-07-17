@@ -19,7 +19,6 @@ from news_creator.utils.context_logger import (
 
 logger = logging.getLogger(__name__)
 
-
 def create_summarize_router(summarize_usecase: SummarizeUsecase) -> APIRouter:
     """
     Create summarize router with dependency injection.
@@ -122,7 +121,7 @@ def create_summarize_router(summarize_usecase: SummarizeUsecase) -> APIRouter:
                             asyncio.Queue()
                         )
                         stopped = asyncio.Event()
-                        last_data_time = asyncio.get_event_loop().time()
+                        last_data_time = asyncio.get_running_loop().time()
 
                         async def heartbeat_task():
                             """Send heartbeat comments periodically, but only when no data is flowing."""
@@ -134,7 +133,7 @@ def create_summarize_router(summarize_usecase: SummarizeUsecase) -> APIRouter:
                                         break
 
                                     # Only send heartbeat if no data was received recently (within last 5 seconds)
-                                    current_time = asyncio.get_event_loop().time()
+                                    current_time = asyncio.get_running_loop().time()
                                     time_since_data = current_time - last_data_time
 
                                     # Send heartbeat only if no data for at least 5 seconds
@@ -183,7 +182,7 @@ def create_summarize_router(summarize_usecase: SummarizeUsecase) -> APIRouter:
                                                 },
                                             )
                                         # Update last data time to prevent unnecessary heartbeats
-                                        last_data_time = asyncio.get_event_loop().time()
+                                        last_data_time = asyncio.get_running_loop().time()
                                         await data_queue.put(("data", chunk))
                             except Exception as e:
                                 logger.error(
@@ -291,6 +290,7 @@ def create_summarize_router(summarize_usecase: SummarizeUsecase) -> APIRouter:
                             heartbeat.cancel()
                             stream.cancel()
                             try:
+                                # Partial-failure allowed: cancelled tasks during SSE cleanup.
                                 await asyncio.gather(
                                     heartbeat, stream, return_exceptions=True
                                 )

@@ -1,12 +1,31 @@
 """Domain models for News Creator service."""
 
 from dataclasses import dataclass
-from typing import Dict, Any, List, Optional, Union
+from typing import Annotated, Any
 from uuid import UUID
-from pydantic import BaseModel, Field, field_validator
+
+from pydantic import BaseModel, BeforeValidator, ConfigDict, Field, field_validator
 
 
-class SummarizeRequest(BaseModel):
+def _parse_uuid(value: Any) -> UUID:
+    """Accept UUID instances or RFC-4122 strings at the JSON API boundary."""
+    if isinstance(value, UUID):
+        return value
+    if isinstance(value, str):
+        return UUID(value)
+    raise TypeError("UUID input should be a UUID instance or string")
+
+
+ApiUUID = Annotated[UUID, BeforeValidator(_parse_uuid)]
+
+
+class StrictFrozenModel(BaseModel):
+    """API-boundary BaseModel: strict + frozen (DECREE §5)."""
+
+    model_config = ConfigDict(strict=True, frozen=True)
+
+
+class SummarizeRequest(StrictFrozenModel):
     """Request model for article summarization."""
 
     article_id: str = Field(min_length=1)
@@ -14,41 +33,37 @@ class SummarizeRequest(BaseModel):
     stream: bool = False
     priority: str = Field(default="low", pattern="^(high|low)$")
 
-
-class SummarizeResponse(BaseModel):
+class SummarizeResponse(StrictFrozenModel):
     """Response model for article summarization."""
 
     success: bool
     article_id: str
     summary: str
     model: str
-    prompt_tokens: Optional[int] = None
-    completion_tokens: Optional[int] = None
-    total_duration_ms: Optional[float] = None
-
+    prompt_tokens: int | None = None
+    completion_tokens: int | None = None
+    total_duration_ms: float | None = None
 
 @dataclass(frozen=True, slots=True)
 class SummaryMetadata:
     """Metadata about how a summary was generated (SummarizeUsecase internal
-    result), replacing an untyped ``Dict[str, Any]`` passed across the
+    result), replacing an untyped ``dict[str, Any]`` passed across the
     usecase/handler boundary."""
 
     model: str
-    prompt_tokens: Optional[int] = None
-    completion_tokens: Optional[int] = None
-    total_duration_ms: Optional[float] = None
-    strategy: Optional[str] = None
+    prompt_tokens: int | None = None
+    completion_tokens: int | None = None
+    total_duration_ms: float | None = None
+    strategy: str | None = None
 
-
-class GenerateRequest(BaseModel):
+class GenerateRequest(StrictFrozenModel):
     """Request model for generic LLM generation."""
 
     prompt: str = Field(min_length=1)
-    model: Optional[str] = None
+    model: str | None = None
     stream: bool = False
-    keep_alive: Optional[Union[int, str]] = None
-    options: Dict[str, Any] = Field(default_factory=dict)
-
+    keep_alive: int | str | None = None
+    options: dict[str, Any] = Field(default_factory=dict)
 
 @dataclass
 class NewsGenerationRequest:
@@ -58,8 +73,7 @@ class NewsGenerationRequest:
     style: str = "news"  # news, blog, summary
     max_length: int = 500
     language: str = "en"
-    metadata: Optional[Dict[str, Any]] = None
-
+    metadata: dict[str, Any] | None = None
 
 @dataclass
 class GeneratedContent:
@@ -71,8 +85,7 @@ class GeneratedContent:
     confidence: float
     word_count: int
     language: str
-    metadata: Dict[str, Any]
-
+    metadata: dict[str, Any]
 
 @dataclass
 class LLMGenerateResponse:
@@ -80,47 +93,45 @@ class LLMGenerateResponse:
 
     response: str
     model: str
-    done: Optional[bool] = None
-    done_reason: Optional[str] = None
-    prompt_eval_count: Optional[int] = None
-    eval_count: Optional[int] = None
-    total_duration: Optional[int] = None  # in nanoseconds
-    load_duration: Optional[int] = None  # in nanoseconds (model reload time)
-    prompt_eval_duration: Optional[int] = None  # in nanoseconds (prefill time)
-    eval_duration: Optional[int] = None  # in nanoseconds (decode time)
+    done: bool | None = None
+    done_reason: str | None = None
+    prompt_eval_count: int | None = None
+    eval_count: int | None = None
+    total_duration: int | None = None  # in nanoseconds
+    load_duration: int | None = None  # in nanoseconds (model reload time)
+    prompt_eval_duration: int | None = None  # in nanoseconds (prefill time)
+    eval_duration: int | None = None  # in nanoseconds (decode time)
 
-
-class RepresentativeSentence(BaseModel):
+class RepresentativeSentence(StrictFrozenModel):
     """Representative sentence with metadata."""
 
     text: str = Field(min_length=1, description="Sentence text")
-    published_at: Optional[str] = Field(
+    published_at: str | None = Field(
         default=None, description="Publication date in RFC3339 format"
     )
-    source_url: Optional[str] = Field(default=None, description="Source article URL")
-    article_id: Optional[str] = Field(default=None, description="Source article ID")
+    source_url: str | None = Field(default=None, description="Source article URL")
+    article_id: str | None = Field(default=None, description="Source article ID")
     is_centroid: bool = Field(
         default=False, description="Whether this is the centroid sentence"
     )
 
-
-class RecapClusterInput(BaseModel):
+class RecapClusterInput(StrictFrozenModel):
     """Cluster information passed from recap-worker."""
 
     cluster_id: int = Field(ge=0)
-    representative_sentences: List[RepresentativeSentence] = Field(
+    representative_sentences: list[RepresentativeSentence] = Field(
         min_length=1,
         max_length=20,
         description="Representative sentences extracted by the subworker",
     )
-    top_terms: Optional[List[str]] = Field(default=None)
+    top_terms: list[str] | None = Field(default=None)
 
     @field_validator("representative_sentences", mode="after")
     @classmethod
     def strip_sentences(
-        cls, sentences: List[RepresentativeSentence]
-    ) -> List[RepresentativeSentence]:
-        cleaned: List[RepresentativeSentence] = []
+        cls, sentences: list[RepresentativeSentence]
+    ) -> list[RepresentativeSentence]:
+        cleaned: list[RepresentativeSentence] = []
         for sentence in sentences:
             stripped_text = sentence.text.strip()
             if stripped_text:
@@ -139,35 +150,32 @@ class RecapClusterInput(BaseModel):
             )
         return cleaned
 
-
-class RecapSummaryOptions(BaseModel):
+class RecapSummaryOptions(StrictFrozenModel):
     """Optional parameters to steer recap summary generation."""
 
-    max_bullets: Optional[int] = Field(default=5, ge=1, le=15)
-    temperature: Optional[float] = Field(default=None, ge=0.0, le=2.0)
+    max_bullets: int | None = Field(default=5, ge=1, le=15)
+    temperature: float | None = Field(default=None, ge=0.0, le=2.0)
 
-
-class RecapSummaryRequest(BaseModel):
+class RecapSummaryRequest(StrictFrozenModel):
     """Request payload posted by recap-worker."""
 
-    job_id: UUID
+    job_id: ApiUUID
     genre: str = Field(min_length=1)
-    clusters: List[RecapClusterInput] = Field(min_length=1, max_length=300)
-    genre_highlights: Optional[List[RepresentativeSentence]] = None
-    options: Optional[RecapSummaryOptions] = None
-    window_days: Optional[int] = Field(default=None, ge=1, le=30)
+    clusters: list[RecapClusterInput] = Field(min_length=1, max_length=300)
+    genre_highlights: list[RepresentativeSentence] | None = None
+    options: RecapSummaryOptions | None = None
+    window_days: int | None = Field(default=None, ge=1, le=30)
 
-
-class IntermediateSummary(BaseModel):
+class IntermediateSummary(StrictFrozenModel):
     """Lightweight intermediate summary for map phase (hierarchical summarization)."""
 
-    bullets: List[str] = Field(min_length=1, max_length=10)
+    bullets: list[str] = Field(min_length=1, max_length=10)
     language: str = Field(pattern="^ja$", default="ja")
 
     @field_validator("bullets", mode="after")
     @classmethod
-    def validate_bullets(cls, bullets: List[str]) -> List[str]:
-        cleaned: List[str] = []
+    def validate_bullets(cls, bullets: list[str]) -> list[str]:
+        cleaned: list[str] = []
         for bullet in bullets:
             stripped = bullet.strip()
             if stripped:
@@ -176,8 +184,7 @@ class IntermediateSummary(BaseModel):
             raise ValueError("bullets must contain at least one non-empty item")
         return cleaned
 
-
-class Reference(BaseModel):
+class Reference(StrictFrozenModel):
     """Reference to a source article."""
 
     id: int = Field(
@@ -185,18 +192,17 @@ class Reference(BaseModel):
     )
     url: str = Field(min_length=1, description="Source article URL")
     domain: str = Field(min_length=1, description="Source domain")
-    article_id: Optional[str] = Field(
+    article_id: str | None = Field(
         default=None, description="Source article ID if available"
     )
 
-
-class RecapSummary(BaseModel):
+class RecapSummary(StrictFrozenModel):
     """Structured summary expected by recap-worker."""
 
     title: str = Field(min_length=1, max_length=200)
-    bullets: List[str] = Field(min_length=1, max_length=15)
+    bullets: list[str] = Field(min_length=1, max_length=15)
     language: str = Field(pattern="^ja$")
-    references: Optional[List[Reference]] = Field(
+    references: list[Reference] | None = Field(
         default=None,
         max_length=50,
         description="List of references cited in bullets (e.g., [1], [2])",
@@ -204,8 +210,8 @@ class RecapSummary(BaseModel):
 
     @field_validator("bullets", mode="after")
     @classmethod
-    def validate_bullets(cls, bullets: List[str]) -> List[str]:
-        cleaned: List[str] = []
+    def validate_bullets(cls, bullets: list[str]) -> list[str]:
+        cleaned: list[str] = []
         for bullet in bullets:
             stripped = bullet.strip()
             if stripped:
@@ -214,45 +220,40 @@ class RecapSummary(BaseModel):
             raise ValueError("bullets must contain at least one non-empty item")
         return cleaned
 
-
-class RecapSummaryMetadata(BaseModel):
+class RecapSummaryMetadata(StrictFrozenModel):
     """Metadata describing the generation."""
 
     model: str = Field(min_length=1)
-    temperature: Optional[float] = None
-    prompt_tokens: Optional[int] = Field(default=None, ge=0)
-    completion_tokens: Optional[int] = Field(default=None, ge=0)
-    processing_time_ms: Optional[int] = Field(default=None, ge=0)
+    temperature: float | None = None
+    prompt_tokens: int | None = Field(default=None, ge=0)
+    completion_tokens: int | None = Field(default=None, ge=0)
+    processing_time_ms: int | None = Field(default=None, ge=0)
     json_validation_errors: int = Field(default=0, ge=0)
     summary_length_bullets: int = Field(default=0, ge=0)
-    reduce_depth: Optional[int] = Field(default=0, ge=0)
-    reduce_info_retention: Optional[float] = Field(default=None, ge=0.0, le=1.0)
+    reduce_depth: int | None = Field(default=0, ge=0)
+    reduce_info_retention: float | None = Field(default=None, ge=0.0, le=1.0)
     is_degraded: bool = Field(default=False)
-    degradation_reason: Optional[str] = Field(default=None, max_length=500)
+    degradation_reason: str | None = Field(default=None, max_length=500)
 
-
-class RecapSummaryResponse(BaseModel):
+class RecapSummaryResponse(StrictFrozenModel):
     """Response returned to recap-worker."""
 
-    job_id: UUID
+    job_id: ApiUUID
     genre: str
     summary: RecapSummary
     metadata: RecapSummaryMetadata
-
 
 # ============================================================================
 # Query Expansion Models (for RAG-Orchestrator)
 # ============================================================================
 
-
-class ConversationMessage(BaseModel):
+class ConversationMessage(StrictFrozenModel):
     """A single message in a conversation history."""
 
     role: str = Field(description="Message role: 'user' or 'assistant'")
     content: str = Field(description="Message content")
 
-
-class ExpandQueryRequest(BaseModel):
+class ExpandQueryRequest(StrictFrozenModel):
     """Request model for query expansion."""
 
     query: str = Field(min_length=1, description="Original user query to expand")
@@ -262,7 +263,7 @@ class ExpandQueryRequest(BaseModel):
     english_count: int = Field(
         default=3, ge=0, le=10, description="Number of English query variations"
     )
-    conversation_history: Optional[List[ConversationMessage]] = Field(
+    conversation_history: list[ConversationMessage] | None = Field(
         default=None, description="Recent conversation turns for coreference resolution"
     )
     priority: str = Field(
@@ -271,24 +272,21 @@ class ExpandQueryRequest(BaseModel):
         description="Request priority. Defaults to high so query expansion bypasses summarization queue.",
     )
 
-
-class ExpandQueryResponse(BaseModel):
+class ExpandQueryResponse(StrictFrozenModel):
     """Response model for query expansion."""
 
-    expanded_queries: List[str] = Field(description="List of expanded query variations")
+    expanded_queries: list[str] = Field(description="List of expanded query variations")
     original_query: str = Field(description="Original input query")
     model: str = Field(description="Model used for generation")
-    processing_time_ms: Optional[float] = Field(
+    processing_time_ms: float | None = Field(
         default=None, description="Processing time in milliseconds"
     )
-
 
 # ============================================================================
 # Re-ranking Models (for RAG-Orchestrator Cross-Encoder Re-ranking)
 # ============================================================================
 
-
-class RerankRequest(BaseModel):
+class RerankRequest(StrictFrozenModel):
     """Request model for cross-encoder re-ranking.
 
     Research basis:
@@ -298,93 +296,85 @@ class RerankRequest(BaseModel):
     """
 
     query: str = Field(min_length=1, description="Query to score candidates against")
-    candidates: List[str] = Field(
+    candidates: list[str] = Field(
         min_length=1, max_length=100, description="List of candidate texts to re-rank"
     )
-    model: Optional[str] = Field(
+    model: str | None = Field(
         default=None,
         description="Cross-encoder model name (default: bge-reranker-v2-m3)",
     )
-    top_k: Optional[int] = Field(
+    top_k: int | None = Field(
         default=None,
         ge=1,
         le=100,
         description="Return only top-k results (default: return all)",
     )
 
-
-class RerankResultItem(BaseModel):
+class RerankResultItem(StrictFrozenModel):
     """Single re-ranking result with index and score."""
 
     index: int = Field(ge=0, description="Original index of the candidate")
     score: float = Field(description="Cross-encoder relevance score (0.0 to 1.0)")
 
-
-class RerankResponse(BaseModel):
+class RerankResponse(StrictFrozenModel):
     """Response model for cross-encoder re-ranking."""
 
-    results: List[RerankResultItem] = Field(
+    results: list[RerankResultItem] = Field(
         description="Re-ranked results sorted by score descending"
     )
     model: str = Field(description="Model used for re-ranking")
-    processing_time_ms: Optional[float] = Field(
+    processing_time_ms: float | None = Field(
         default=None, description="Processing time in milliseconds"
     )
-
 
 # ============================================================================
 # Batch Processing Models (for chatty microservice anti-pattern fix)
 # ============================================================================
 
-
-class BatchRecapSummaryRequest(BaseModel):
+class BatchRecapSummaryRequest(StrictFrozenModel):
     """Batch request for multiple recap summaries."""
 
-    requests: List[RecapSummaryRequest] = Field(
+    requests: list[RecapSummaryRequest] = Field(
         min_length=1,
         max_length=50,
         description="List of individual recap summary requests",
     )
 
-
-class BatchRecapSummaryError(BaseModel):
+class BatchRecapSummaryError(StrictFrozenModel):
     """Error details for a failed request in a batch."""
 
-    job_id: UUID
+    job_id: ApiUUID
     genre: str
     error: str = Field(description="Error message describing the failure")
 
-
-class BatchRecapSummaryResponse(BaseModel):
+class BatchRecapSummaryResponse(StrictFrozenModel):
     """Response for batch recap summary processing."""
 
-    responses: List[RecapSummaryResponse] = Field(
+    responses: list[RecapSummaryResponse] = Field(
         default_factory=list, description="List of successful recap summary responses"
     )
-    errors: List[BatchRecapSummaryError] = Field(
+    errors: list[BatchRecapSummaryError] = Field(
         default_factory=list, description="List of errors for failed requests"
     )
-
 
 # ============================================================================
 # Query Planning Models (for Augur Conversational RAG)
 # ============================================================================
 
-
-class PlanQueryRequest(BaseModel):
+class PlanQueryRequest(StrictFrozenModel):
     """Request model for structured query planning."""
 
     query: str = Field(min_length=1, description="User query to plan retrieval for")
-    conversation_history: Optional[List[ConversationMessage]] = Field(
+    conversation_history: list[ConversationMessage] | None = Field(
         default=None, description="Recent conversation turns for coreference resolution"
     )
-    article_id: Optional[str] = Field(
+    article_id: str | None = Field(
         default=None, description="Article ID if query is article-scoped"
     )
-    article_title: Optional[str] = Field(
+    article_title: str | None = Field(
         default=None, description="Article title if query is article-scoped"
     )
-    last_answer_scope: Optional[str] = Field(
+    last_answer_scope: str | None = Field(
         default=None,
         description="Scope of the last answer: summary, detail, evidence, etc.",
     )
@@ -394,8 +384,7 @@ class PlanQueryRequest(BaseModel):
         description="Request priority. Defaults to high for real-time Augur queries.",
     )
 
-
-class QueryPlan(BaseModel):
+class QueryPlan(StrictFrozenModel):
     """Structured output from query planning. Tells the retrieval layer what to do.
 
     Field ordering matters for small model accuracy (DSdev 2025):
@@ -408,7 +397,7 @@ class QueryPlan(BaseModel):
     resolved_query: str = Field(
         description="Self-contained search query with all pronouns and references resolved into explicit terms. Must contain the actual topic words."
     )
-    search_queries: List[str] = Field(
+    search_queries: list[str] = Field(
         description="3-5 diverse search queries covering Japanese AND English variations, synonyms, and related terms"
     )
     intent: str = Field(
@@ -423,77 +412,69 @@ class QueryPlan(BaseModel):
     should_clarify: bool = Field(
         description="ALMOST ALWAYS false. Set true ONLY for bare ambiguous phrases like just 'もっと詳しく' with NO conversation history to resolve from."
     )
-    topic_entities: List[str] = Field(
+    topic_entities: list[str] = Field(
         default_factory=list, description="Key named entities extracted from the query"
     )
 
-
-class PlanQueryResponse(BaseModel):
+class PlanQueryResponse(StrictFrozenModel):
     """Response model for query planning."""
 
     plan: QueryPlan
     original_query: str = Field(description="Original input query")
     model: str = Field(description="Model used for planning")
-    processing_time_ms: Optional[float] = Field(
+    processing_time_ms: float | None = Field(
         default=None, description="Processing time in milliseconds"
     )
-
 
 # ============================================================================
 # Morning Letter Models
 # ============================================================================
 
-
-class MorningLetterRecapInput(BaseModel):
+class MorningLetterRecapInput(StrictFrozenModel):
     """Recap summary data used as input for Morning Letter generation."""
 
     genre: str = Field(min_length=1)
     title: str = Field(min_length=1)
-    bullets: List[str] = Field(min_length=1)
+    bullets: list[str] = Field(min_length=1)
     window_days: int = Field(default=3, ge=1, le=30)
 
-
-class MorningLetterGroupInput(BaseModel):
+class MorningLetterGroupInput(StrictFrozenModel):
     """Overnight article group for Morning Letter."""
 
-    group_id: UUID
-    articles: List[RepresentativeSentence] = Field(min_length=1)
+    group_id: ApiUUID
+    articles: list[RepresentativeSentence] = Field(min_length=1)
 
-
-class MorningLetterRequest(BaseModel):
+class MorningLetterRequest(StrictFrozenModel):
     """Request for Morning Letter generation."""
 
     target_date: str = Field(min_length=1)
     edition_timezone: str = Field(default="Asia/Tokyo")
-    recap_summaries: Optional[List[MorningLetterRecapInput]] = None
-    overnight_groups: List[MorningLetterGroupInput]
+    recap_summaries: list[MorningLetterRecapInput] | None = None
+    overnight_groups: list[MorningLetterGroupInput]
 
-
-class MorningLetterSection(BaseModel):
+class MorningLetterSection(StrictFrozenModel):
     """A section in the Morning Letter."""
 
     key: str = Field(
         min_length=1, pattern=r"^(lead|top3|what_changed|by_genre:[a-z0-9_-]+)$"
     )
     title: str = Field(min_length=1)
-    bullets: List[str] = Field(min_length=1)
-    genre: Optional[str] = None
+    bullets: list[str] = Field(min_length=1)
+    genre: str | None = None
     # Optional short prose paragraph written by the LLM. Empty when not
     # produced; the projector's bullets remain renderable without it.
-    narrative: Optional[str] = None
+    narrative: str | None = None
 
-
-class MorningLetterContent(BaseModel):
+class MorningLetterContent(StrictFrozenModel):
     """Generated Morning Letter content."""
 
     schema_version: int = Field(default=1, ge=1)
     lead: str = Field(min_length=1)
-    sections: List[MorningLetterSection] = Field(min_length=1)
+    sections: list[MorningLetterSection] = Field(min_length=1)
     generated_at: str = Field(min_length=1)
-    source_recap_window_days: Optional[int] = None
+    source_recap_window_days: int | None = None
 
-
-class MorningLetterResponse(BaseModel):
+class MorningLetterResponse(StrictFrozenModel):
     """Response for Morning Letter generation."""
 
     target_date: str

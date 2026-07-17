@@ -9,7 +9,7 @@ import asyncio
 import json
 import logging
 import time
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 import aiohttp
 
@@ -17,18 +17,17 @@ from news_creator.gateway import dispatch_metrics
 
 logger = logging.getLogger(__name__)
 
-
 class RemoteHealthChecker:
     """Periodic health checker for remote Ollama instances."""
 
     def __init__(
         self,
-        remotes: List[str],
+        remotes: list[str],
         required_model: str,
         interval_seconds: int = 30,
         cooldown_seconds: int = 60,
         timeout_seconds: int = 10,
-        model_overrides: Optional[Dict[str, str]] = None,
+        model_overrides: dict[str, str | None] = None,
     ):
         self._remotes = remotes
         self._required_model = required_model
@@ -36,11 +35,11 @@ class RemoteHealthChecker:
         self._interval_seconds = interval_seconds
         self._cooldown_seconds = cooldown_seconds
         self._timeout_seconds = timeout_seconds
-        self._session: Optional[aiohttp.ClientSession] = None
-        self._task: Optional[asyncio.Task] = None
+        self._session: aiohttp.ClientSession | None = None
+        self._task: asyncio.Task | None = None
 
         # Per-remote state
-        self._states: Dict[str, Dict[str, Any]] = {}
+        self._states: dict[str, dict[str, Any]] = {}
         for url in remotes:
             self._states[url] = {
                 "healthy": False,
@@ -53,7 +52,7 @@ class RemoteHealthChecker:
                 "consecutive_failures": 0,
             }
 
-    def acquire_idle_remote(self) -> Optional[str]:
+    def acquire_idle_remote(self) -> str | None:
         """Reserve the next idle healthy remote, or None if all are busy/unhealthy."""
         idle_healthy = [
             url
@@ -94,7 +93,7 @@ class RemoteHealthChecker:
         self.release_remote(url)
         self._states[url]["last_completed"] = time.monotonic()
 
-    def get_healthy_remotes(self, exclude: Optional[set[str]] = None) -> List[str]:
+    def get_healthy_remotes(self, exclude: set[str | None] = None) -> list[str]:
         """Return healthy idle remotes in priority order, excluding any specified URLs."""
         excluded = exclude or set()
         return [
@@ -118,7 +117,7 @@ class RemoteHealthChecker:
         state["last_checked"] = time.monotonic()
         dispatch_metrics.record_cooldown(remote_url=url, reason="error")
 
-    def status(self) -> List[Dict[str, Any]]:
+    def status(self) -> list[dict[str, Any]]:
         """Return state of all remotes for health endpoint."""
         result = []
         for url in self._remotes:
@@ -156,7 +155,8 @@ class RemoteHealthChecker:
 
         try:
             tags_url = f"{url.rstrip('/')}/api/tags"
-            assert self._session is not None, "Session not initialized"
+            if not (self._session is not None):
+                raise RuntimeError("Session not initialized")
             async with self._session.get(tags_url) as response:
                 if response.status != 200:
                     state["healthy"] = False
