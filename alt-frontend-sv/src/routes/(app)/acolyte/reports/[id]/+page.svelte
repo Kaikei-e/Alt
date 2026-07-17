@@ -410,7 +410,7 @@ onDestroy(stopPolling);
 				{:else}
 					<!-- Section tabs -->
 					<nav class="section-tabs">
-						{#each sections as sec}
+						{#each sections as sec (sec.sectionKey)}
 							<button
 								class="tab" class:active={activeSection === sec.sectionKey}
 								onclick={() => activeSection = sec.sectionKey}
@@ -422,7 +422,7 @@ onDestroy(stopPolling);
 					</nav>
 
 					<!-- Active section body -->
-					{#each sections as sec}
+					{#each sections as sec (sec.sectionKey)}
 						{#if sec.sectionKey === activeSection}
 							{@const citations = parseCitations(sec.citationsJson)}
 							<article class="section-article" style="--delay: 0">
@@ -443,7 +443,7 @@ onDestroy(stopPolling);
 									<footer class="section-sources">
 										<h4 class="sources-heading">Sources</h4>
 										<ol class="sources-list">
-											{#each citations as cite}
+											{#each citations as cite (`${cite.claim_id}:${cite.source_id}:${cite.offset_start}`)}
 												<li class="source-item">
 													<div class="source-ref-row">
 														<span class="source-id">[{cite.claim_id}]</span>
@@ -485,7 +485,7 @@ onDestroy(stopPolling);
 						<p class="side-empty">No versions recorded.</p>
 					{:else}
 						<ol class="version-list">
-							{#each versions as ver, i}
+							{#each versions as ver, i (ver.versionNo)}
 								<li class="version-item" style="--stagger: {i}">
 									<div class="ver-row">
 										<span class="ver-no">Ed. {ver.versionNo}</span>
@@ -498,7 +498,7 @@ onDestroy(stopPolling);
 									{/if}
 									{#if ver.changeItems?.length > 0}
 										<div class="ver-changes">
-											{#each ver.changeItems as ci}
+											{#each ver.changeItems as ci (`${ci.fieldName}:${ci.changeKind}:${ci.newFingerprint}`)}
 												<span class="change-tag change-tag--{ci.changeKind}">
 													<span class="change-icon">{changeKindIcon(ci.changeKind)}</span>
 													{ci.fieldName}

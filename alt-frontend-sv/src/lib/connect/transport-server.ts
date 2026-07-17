@@ -17,20 +17,25 @@ import { getBackendToken } from "$lib/server/auth";
 const BACKEND_CONNECT_URL =
 	env.BACKEND_CONNECT_URL || "http://alt-backend:9101";
 
+type FetchFn = typeof globalThis.fetch;
+
 /**
  * Creates a server-side transport for Connect-RPC calls.
  * This transport is used in server routes (+server.ts) to call the backend directly.
  *
  * @param cookie - The cookie header from the incoming request
+ * @param fetchFn - Optional SvelteKit load fetch (cookies / SSR-aware)
  * @returns A configured Connect transport
  */
 export async function createServerTransport(
 	cookie: string | null,
+	fetchFn?: FetchFn,
 ): Promise<Transport> {
 	const backendToken = await getBackendToken(cookie);
 
 	return createConnectTransport({
 		baseUrl: BACKEND_CONNECT_URL,
+		...(fetchFn ? { fetch: fetchFn } : {}),
 		interceptors: [
 			(next) => async (req) => {
 				if (backendToken) {
@@ -48,13 +53,16 @@ export async function createServerTransport(
  * available (e.g. from hooks.server.ts locals.backendToken).
  *
  * @param backendToken - The backend token from locals.backendToken
+ * @param fetchFn - Optional SvelteKit load fetch (cookies / SSR-aware)
  * @returns A configured Connect transport
  */
 export function createServerTransportWithToken(
 	backendToken: string,
+	fetchFn?: FetchFn,
 ): Transport {
 	return createConnectTransport({
 		baseUrl: BACKEND_CONNECT_URL,
+		...(fetchFn ? { fetch: fetchFn } : {}),
 		interceptors: [
 			(next) => async (req) => {
 				req.header.set("X-Alt-Backend-Token", backendToken);

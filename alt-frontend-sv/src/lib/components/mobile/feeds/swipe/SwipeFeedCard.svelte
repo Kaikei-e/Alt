@@ -59,6 +59,9 @@ let isLoadingContent = $state(false);
 let contentError = $state<string | null>(null);
 
 let summaryAbortController = $state<AbortController | null>(null);
+let contentAbortController: AbortController | null = null;
+let favoriteErrorTimer: ReturnType<typeof setTimeout> | null = null;
+let summaryRetryTimer: ReturnType<typeof setTimeout> | null = null;
 
 let isFavoriting = $state(false);
 let isFavorited = $state(false);
@@ -67,6 +70,8 @@ let favoriteError = $state<string | null>(null);
 // Retry counters
 let contentRetryCount = $state(0);
 let summaryRetryCount = $state(0);
+
+const debug = import.meta.env.DEV;
 
 // Swipe state with Spring
 const SWIPE_THRESHOLD = 60;
@@ -140,8 +145,11 @@ onMount(() => {
 		}
 	} else if (!fullContent) {
 		// Background fetch using normalizedUrl
-		getFeedContentOnTheFlyClient(feed.normalizedUrl)
+		contentAbortController = new AbortController();
+		const signal = contentAbortController.signal;
+		getFeedContentOnTheFlyClient(feed.normalizedUrl, { signal })
 			.then((res) => {
+				if (signal.aborted) return;
 				if (res.content) {
 					fullContent = res.content;
 				}
@@ -151,9 +159,18 @@ onMount(() => {
 				}
 			})
 			.catch((err) => {
+				if (signal.aborted) return;
 				console.error("[SwipeFeedCard] Error auto-fetching content:", err);
 			});
 	}
+
+	return () => {
+		contentAbortController?.abort();
+		contentAbortController = null;
+		if (favoriteErrorTimer) clearTimeout(favoriteErrorTimer);
+		if (summaryRetryTimer) clearTimeout(summaryRetryTimer);
+		summaryAbortController?.abort();
+	};
 });
 
 // Set up swipe event listeners reactively
@@ -315,7 +332,7 @@ function handleGenerateAISummary(forceRefresh = false) {
 				if (chunkCount === 1) {
 					isSummarizing = false;
 				}
-				if (chunkCount <= 5) {
+				if (debug && chunkCount <= 5) {
 					console.log("[StreamSummarize] Chunk received and rendered", {
 						chunkCount,
 						chunkSize,
@@ -326,10 +343,12 @@ function handleGenerateAISummary(forceRefresh = false) {
 				}
 			},
 			onComplete: (totalLength, chunkCount) => {
-				console.log("[StreamSummarize] Final chunk decoded", {
-					chunkCount: chunkCount + 1,
-					totalLength,
-				});
+				if (debug) {
+					console.log("[StreamSummarize] Final chunk decoded", {
+						chunkCount: chunkCount + 1,
+						totalLength,
+					});
+				}
 			},
 		},
 		(_result) => {
@@ -375,14 +394,16 @@ function handleGenerateAISummary(forceRefresh = false) {
 
 			if (isTransientError(err) && summaryRetryCount < 1) {
 				summaryRetryCount++;
-				setTimeout(() => {
+				if (summaryRetryTimer) clearTimeout(summaryRetryTimer);
+				summaryRetryTimer = setTimeout(() => {
+					summaryRetryTimer = null;
 					isSummarizing = false;
 					handleGenerateAISummary();
 				}, 500);
 				return;
 			}
 
-			console.log("[StreamSummarize] Falling back to legacy endpoint");
+			if (debug) console.log("[StreamSummarize] Falling back to legacy endpoint");
 			try {
 				const res = await summarizeArticleClient(feed.link);
 				if (res.success && res.summary) {
@@ -420,7 +441,9 @@ async function handleFavorite() {
 	} catch (err) {
 		console.error("[SwipeFeedCard] Failed to favorite feed:", err);
 		favoriteError = "Failed";
-		setTimeout(() => {
+		if (favoriteErrorTimer) clearTimeout(favoriteErrorTimer);
+		favoriteErrorTimer = setTimeout(() => {
+			favoriteErrorTimer = null;
 			favoriteError = null;
 		}, 3000);
 	} finally {

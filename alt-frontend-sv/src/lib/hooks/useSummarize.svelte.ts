@@ -47,6 +47,7 @@ export function useSummarize(): UseSummarize {
 		articleId?: string,
 		title?: string,
 		forceRefresh = false,
+		isRetry = false,
 	) {
 		// Cancel previous request
 		if (abortController) {
@@ -56,6 +57,9 @@ export function useSummarize(): UseSummarize {
 		isSummarizing = true;
 		summaryError = null;
 		summary = "";
+		if (!isRetry) {
+			retryCount = 0;
+		}
 
 		try {
 			const transport = createClientTransport();
@@ -97,7 +101,7 @@ export function useSummarize(): UseSummarize {
 						abortController = null;
 						setTimeout(() => {
 							isSummarizing = false;
-							summarize(feedUrl, articleId, title, forceRefresh);
+							summarize(feedUrl, articleId, title, forceRefresh, true);
 						}, 500);
 						return;
 					}

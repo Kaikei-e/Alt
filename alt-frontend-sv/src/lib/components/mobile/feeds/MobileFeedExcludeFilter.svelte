@@ -1,5 +1,6 @@
 <script lang="ts">
 import { Ban, X } from "@lucide/svelte";
+import { onDestroy } from "svelte";
 import * as Sheet from "$lib/components/ui/sheet";
 import type { ConnectFeedSource } from "$lib/connect/feeds";
 import { useKeyboardOffset } from "$lib/hooks/useKeyboardOffset.svelte";
@@ -21,6 +22,11 @@ let { sources, excludedFeedLinkIds, onExclude, onClearExclusion }: Props =
 
 let isSheetOpen = $state(false);
 let query = $state("");
+let closeTimer: ReturnType<typeof setTimeout> | null = null;
+
+onDestroy(() => {
+	if (closeTimer) clearTimeout(closeTimer);
+});
 
 const kb = useKeyboardOffset(() => isSheetOpen);
 
@@ -65,7 +71,9 @@ function handleSelect(domain: string) {
 	query = "";
 
 	// Phase 2: Close sheet AFTER keyboard dismiss animation (~350ms)
-	setTimeout(() => {
+	if (closeTimer) clearTimeout(closeTimer);
+	closeTimer = setTimeout(() => {
+		closeTimer = null;
 		isSheetOpen = false;
 	}, 350);
 }

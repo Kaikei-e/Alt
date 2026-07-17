@@ -56,13 +56,6 @@ async function handleDelete(event: MouseEvent, id: string) {
 		/* surfaced via errorMessage */
 	}
 }
-
-function handleKeydown(event: KeyboardEvent, id: string) {
-	if (event.key === "Enter" || event.key === " ") {
-		event.preventDefault();
-		onOpen(id);
-	}
-}
 </script>
 
 <section class="conversation-list">
@@ -102,14 +95,12 @@ function handleKeydown(event: KeyboardEvent, id: string) {
     <ul class="items">
       {#each conversations as conv (conv.id)}
         <li class="item-wrap">
-          <div
-            class="item"
-            role="button"
-            tabindex="0"
-            onclick={() => onOpen(conv.id)}
-            onkeydown={(e) => handleKeydown(e, conv.id)}
-          >
-            <div class="item-main">
+          <div class="item">
+            <button
+              type="button"
+              class="item-main"
+              onclick={() => onOpen(conv.id)}
+            >
               <p class="item-title">{conv.title || "Untitled chat"}</p>
               {#if conv.lastMessagePreview}
                 <p class="item-preview">{conv.lastMessagePreview}</p>
@@ -125,7 +116,7 @@ function handleKeydown(event: KeyboardEvent, id: string) {
                   {conv.messageCount === 1 ? "turn" : "turns"}
                 </span>
               </p>
-            </div>
+            </button>
             <button
               type="button"
               class="delete-button"
@@ -286,16 +277,14 @@ function handleKeydown(event: KeyboardEvent, id: string) {
     justify-content: space-between;
     gap: 0.75rem;
     padding: 1rem 0.6rem 1rem 1rem;
-    cursor: pointer;
     border-left: 2px solid transparent;
     transition: background 120ms ease, border-color 120ms ease;
   }
 
-  .item:hover,
-  .item:focus-visible {
+  .item:has(.item-main:hover),
+  .item:has(.item-main:focus-visible) {
     background: var(--surface-hover);
     border-left-color: var(--accent-primary);
-    outline: none;
   }
 
   .item-main {
@@ -304,6 +293,18 @@ function handleKeydown(event: KeyboardEvent, id: string) {
     gap: 0.2rem;
     flex: 1;
     min-width: 0;
+    text-align: left;
+    background: transparent;
+    border: none;
+    padding: 0;
+    cursor: pointer;
+    color: inherit;
+    font: inherit;
+  }
+
+  .item-main:focus-visible {
+    outline: 2px solid var(--accent-primary);
+    outline-offset: 2px;
   }
 
   .item-title {

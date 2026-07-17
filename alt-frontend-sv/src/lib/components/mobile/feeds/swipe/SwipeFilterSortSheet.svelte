@@ -1,5 +1,6 @@
 <script lang="ts">
 import { ArrowUpDown, Ban, Check, Search, X } from "@lucide/svelte";
+import { onDestroy } from "svelte";
 import * as Sheet from "$lib/components/ui/sheet";
 import type { ConnectFeedSource } from "$lib/connect/feeds";
 import { useKeyboardOffset } from "$lib/hooks/useKeyboardOffset.svelte";
@@ -30,6 +31,11 @@ let {
 }: Props = $props();
 
 let query = $state("");
+let closeTimer: ReturnType<typeof setTimeout> | null = null;
+
+onDestroy(() => {
+	if (closeTimer) clearTimeout(closeTimer);
+});
 
 const kb = useKeyboardOffset(() => isOpen);
 
@@ -70,7 +76,9 @@ function handleSelect(domain: string) {
 	onExclude(ids);
 	query = "";
 
-	setTimeout(() => {
+	if (closeTimer) clearTimeout(closeTimer);
+	closeTimer = setTimeout(() => {
+		closeTimer = null;
 		isOpen = false;
 	}, 350);
 }

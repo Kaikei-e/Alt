@@ -47,6 +47,7 @@ let isConnected = $state(false);
 let retryCount = $state(0);
 let error = $state<string | null>(null);
 let evtSource: EventSource | null = null;
+const MAX_RECONNECT_DISPLAY = 5;
 
 onMount(() => {
 	// Connect to SSE endpoint
@@ -74,8 +75,11 @@ onMount(() => {
 
 	evtSource.onerror = () => {
 		isConnected = false;
-		retryCount++;
-		error = "Connection error";
+		retryCount = Math.min(retryCount + 1, MAX_RECONNECT_DISPLAY);
+		error =
+			retryCount >= MAX_RECONNECT_DISPLAY
+				? "Connection lost"
+				: "Connection error";
 	};
 
 	return () => {
@@ -106,7 +110,7 @@ onMount(() => {
 				style="
 					background-color: {isConnected
 						? 'var(--alt-success)'
-						: retryCount > 0
+						: retryCount > 0 && retryCount < MAX_RECONNECT_DISPLAY
 							? 'var(--alt-warning)'
 							: 'var(--alt-error)'};
 				"
@@ -114,9 +118,11 @@ onMount(() => {
 			<p class="text-sm" style="color: var(--text-primary);">
 				{isConnected
 					? "Connected"
-					: retryCount > 0
-						? `Reconnecting (${retryCount}/5)`
-						: "Disconnected"}
+					: retryCount >= MAX_RECONNECT_DISPLAY
+						? "Disconnected"
+						: retryCount > 0
+							? `Reconnecting (${retryCount}/${MAX_RECONNECT_DISPLAY})`
+							: "Disconnected"}
 			</p>
 		</div>
 	</div>
@@ -274,7 +280,7 @@ onMount(() => {
 					GPU Information
 				</h3>
 				<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-					{#each stats.gpu.gpus as gpu}
+					{#each stats.gpu.gpus as gpu (gpu.name)}
 						<div
 							class="p-6 border"
 							style="
@@ -403,7 +409,7 @@ onMount(() => {
 						</tr>
 					</thead>
 					<tbody style="border-top: 1px solid var(--surface-border);">
-						{#each stats.top_processes.slice(0, 10) as process}
+						{#each stats.top_processes.slice(0, 10) as process (process.pid)}
 							<tr
 								style="
 									border-bottom: 1px solid var(--surface-border);

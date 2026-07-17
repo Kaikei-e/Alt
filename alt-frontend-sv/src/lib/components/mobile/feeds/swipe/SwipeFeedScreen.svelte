@@ -113,12 +113,14 @@ onMount(() => {
 });
 
 // Load feed sources for filter
-onMount(async () => {
-	try {
-		feedSources = await listSubscriptionsClient();
-	} catch (e) {
-		console.warn("Failed to load feed sources:", e);
-	}
+onMount(() => {
+	void (async () => {
+		try {
+			feedSources = await listSubscriptionsClient();
+		} catch (e) {
+			console.warn("Failed to load feed sources:", e);
+		}
+	})();
 });
 
 // Wire OGP image callback for reactivity
@@ -469,7 +471,7 @@ function handleArticleIdResolved(feedLink: string, articleId: string) {
       <button
         type="button"
         class="action-btn"
-        onclick={() => window.location.reload()}
+        onclick={() => resetAndReload()}
       >
         Refresh
       </button>

@@ -135,24 +135,39 @@ function attachVisibilityListenersOnce(): void {
 	if (visibilityListenersAttached) return;
 	if (typeof document === "undefined") return;
 	visibilityListenersAttached = true;
-	document.addEventListener("visibilitychange", () => {
-		if (document.visibilityState === "hidden") {
-			suspend();
-		} else {
-			resume();
-		}
-	});
+	document.addEventListener("visibilitychange", onVisibilityChange);
 	// pagehide fires when the page enters BFCache / before unload; pause to
 	// avoid stranded streams on the server.
-	window.addEventListener("pagehide", () => {
+	window.addEventListener("pagehide", onPageHide);
+	window.addEventListener("pageshow", onPageShow);
+}
+
+function onVisibilityChange(): void {
+	if (document.visibilityState === "hidden") {
 		suspend();
-	});
-	window.addEventListener("pageshow", (e) => {
-		// pageshow with persisted=true means BFCache restore.
-		if ((e as PageTransitionEvent).persisted) {
-			resume();
-		}
-	});
+	} else {
+		resume();
+	}
+}
+
+function onPageHide(): void {
+	suspend();
+}
+
+function onPageShow(e: Event): void {
+	// pageshow with persisted=true means BFCache restore.
+	if ((e as PageTransitionEvent).persisted) {
+		resume();
+	}
+}
+
+function detachVisibilityListeners(): void {
+	if (!visibilityListenersAttached) return;
+	if (typeof document === "undefined") return;
+	document.removeEventListener("visibilitychange", onVisibilityChange);
+	window.removeEventListener("pagehide", onPageHide);
+	window.removeEventListener("pageshow", onPageShow);
+	visibilityListenersAttached = false;
 }
 
 // =============================================================================
@@ -178,6 +193,7 @@ export function useStreamingFeedStats(): StreamingFeedStatsState {
 		subscriberCount = Math.max(0, subscriberCount - 1);
 		if (subscriberCount === 0) {
 			disconnect();
+			detachVisibilityListeners();
 		}
 	});
 

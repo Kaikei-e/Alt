@@ -177,9 +177,17 @@ export function useStreamUpdates(opts: StreamUpdateOptions) {
 			if (!suspended) {
 				scheduleReconnect();
 			}
-		} catch {
+		} catch (error) {
 			isConnected = false;
 			if (suspended) return;
+			const classified =
+				error instanceof Error
+					? error
+					: new Error(typeof error === "string" ? error : "stream update failed");
+			console.error("[useStreamUpdates] stream error", {
+				name: classified.name,
+				message: classified.message,
+			});
 			scheduleReconnect();
 		}
 	}

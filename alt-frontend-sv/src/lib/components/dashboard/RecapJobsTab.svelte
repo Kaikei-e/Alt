@@ -7,7 +7,7 @@ interface Props {
 	windowSeconds: number;
 }
 
-let { windowSeconds } = $props();
+let { windowSeconds }: Props = $props();
 
 let jobs = $state<RecapJob[]>([]);
 let loading = $state(true);

@@ -84,13 +84,7 @@ const canRetry = $derived.by(() => {
 	if (pane.isLoading || pane.messages.length < 2) return false;
 	const last = pane.messages.at(-1);
 	if (!last || last.role !== "assistant") return false;
-	const msg = last.message;
-	return (
-		msg.startsWith("Error:") ||
-		msg.includes("Not enough indexed content") ||
-		msg.includes("couldn't find enough information") ||
-		msg.includes("timed out")
-	);
+	return last.retryable === true;
 });
 
 function handleRetry() {

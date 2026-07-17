@@ -70,13 +70,6 @@ function handleSelect(i: number) {
 	onSelect?.(i);
 }
 
-function handleKey(event: KeyboardEvent, i: number) {
-	if (event.key === "Enter" || event.key === " ") {
-		event.preventDefault();
-		handleSelect(i);
-	}
-}
-
 // hrefFor returns the click target for a citation, branching on Kind so a
 // bare UUID never lands in `href` (where the browser would resolve it
 // relative to /augur/<conversation_id>). Legacy / unknown kinds render
@@ -128,19 +121,22 @@ function displayTitle(c: Citation): string {
 		<p class="rail-empty">No citations yet</p>
 	{:else}
 		<ol class="rail-list" aria-labelledby="rail-citations-heading">
-			{#each citations as cite, i (i + (cite.RefID ?? cite.URL))}
+			{#each citations as cite, i (cite.RefID ?? cite.URL ?? `cite-${i}`)}
 				{@const href = hrefFor(cite)}
 				{@const external = isExternal(cite)}
 				<li class="rail-item-wrap">
 					<div
 						class="rail-item"
 						class:is-active={i === activeIndex}
-						role="button"
-						tabindex="0"
-						onclick={() => handleSelect(i)}
-						onkeydown={(e) => handleKey(e, i)}
 					>
-						<span class="item-num">{pad2(i + 1)}</span>
+						<button
+							type="button"
+							class="item-select"
+							aria-label="Select citation {i + 1}"
+							onclick={() => handleSelect(i)}
+						>
+							<span class="item-num">{pad2(i + 1)}</span>
+						</button>
 						<div class="item-body">
 							{#if href}
 								<a
@@ -148,14 +144,17 @@ function displayTitle(c: Citation): string {
 									class="item-title"
 									target={external ? "_blank" : undefined}
 									rel={external ? "noopener noreferrer" : undefined}
-									onclick={(e) => e.stopPropagation()}
 								>
 									{displayTitle(cite)}
 								</a>
 							{:else}
-								<span class="item-title item-title-disabled">
+								<button
+									type="button"
+									class="item-title item-title-disabled"
+									onclick={() => handleSelect(i)}
+								>
 									{displayTitle(cite)}
-								</span>
+								</button>
 							{/if}
 							{#if cite.PublishedAt}
 								<p class="item-dateline">{formatDateline(cite.PublishedAt)}</p>
@@ -166,7 +165,6 @@ function displayTitle(c: Citation): string {
 									class="item-domain"
 									target="_blank"
 									rel="noopener noreferrer"
-									onclick={(e) => e.stopPropagation()}
 								>
 									<span>{formatDomain(cite.URL)}</span>
 									<ArrowUpRight size={11} strokeWidth={2} />
@@ -190,7 +188,7 @@ function displayTitle(c: Citation): string {
 			class="rail-list rail-list-related"
 			aria-labelledby="rail-related-heading"
 		>
-			{#each relatedCitations as cite, i (`related-${i}-${cite.RefID ?? cite.URL}`)}
+			{#each relatedCitations as cite, i (cite.RefID ?? cite.URL ?? `related-${i}`)}
 				{@const href = hrefFor(cite)}
 				{@const external = isExternal(cite)}
 				<li class="rail-item-wrap">
@@ -287,18 +285,29 @@ function displayTitle(c: Citation): string {
 		display: flex;
 		gap: 0.7rem;
 		padding: 0.7rem 0.5rem 0.7rem 0;
-		cursor: pointer;
 		border-left: 2px solid transparent;
 		padding-left: 0.6rem;
 		transition: background 120ms ease, border-color 120ms ease;
 	}
 
 	.rail-item:hover,
-	.rail-item:focus-visible,
 	.rail-item.is-active {
 		background: var(--surface-hover, rgba(0, 0, 0, 0.04));
 		border-left-color: var(--accent-primary, #2f4f4f);
-		outline: none;
+	}
+
+	.item-select {
+		background: transparent;
+		border: none;
+		padding: 0;
+		cursor: pointer;
+		color: inherit;
+		flex-shrink: 0;
+	}
+
+	.item-select:focus-visible {
+		outline: 2px solid var(--accent-primary, #2f4f4f);
+		outline-offset: 2px;
 	}
 
 	.item-num {
@@ -308,6 +317,7 @@ function displayTitle(c: Citation): string {
 		color: var(--text-muted, #999);
 		min-width: 1.8rem;
 		padding-top: 0.05rem;
+		display: block;
 	}
 
 	.item-body {
@@ -331,6 +341,12 @@ function displayTitle(c: Citation): string {
 		line-clamp: 2;
 		-webkit-box-orient: vertical;
 		overflow: hidden;
+		background: transparent;
+		border: none;
+		padding: 0;
+		text-align: left;
+		cursor: pointer;
+		font: inherit;
 	}
 
 	.item-title:hover {

@@ -72,16 +72,18 @@ export async function getTodayUnreadCount(
  *
  * @param backendToken - Optional pre-fetched backend token from locals.backendToken.
  *   When provided, skips the auth-hub /session call (avoids rate limit issues).
+ * @param fetchFn - Optional SvelteKit load fetch to thread through the transport.
  */
 export async function getFeedsWithCursor(
 	cookie: string | null,
 	cursor?: string,
 	limit: number = 20,
 	backendToken?: string | null,
+	fetchFn?: typeof fetch,
 ): Promise<CursorResponse<BackendFeedItem>> {
 	const transport = backendToken
-		? createServerTransportWithToken(backendToken)
-		: await createServerTransport(cookie);
+		? createServerTransportWithToken(backendToken, fetchFn)
+		: await createServerTransport(cookie, fetchFn);
 	const response = await getUnreadFeedsConnect(transport, cursor, limit);
 
 	return {
@@ -127,6 +129,7 @@ export async function updateFeedReadStatus(
  */
 export async function getFeedLinks(
 	cookie: string | null,
+	fetchFn?: typeof fetch,
 ): Promise<import("$lib/schema/feedLink").FeedLink[]> {
 	interface RawFeedLink {
 		id: string;
@@ -139,6 +142,7 @@ export async function getFeedLinks(
 	const raw = await callBackendAPI<RawFeedLink[]>(
 		"/v1/rss-feed-link/list",
 		cookie,
+		{ fetch: fetchFn },
 	);
 	return raw.map((r) => ({
 		id: r.id,

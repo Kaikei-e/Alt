@@ -279,7 +279,9 @@ async function handleSummarize(forceRefresh = false) {
 			async (error) => {
 				// onError
 				if (error.name === "AbortError") {
-					console.log("[StreamSummarize] Stream aborted by user");
+					if (import.meta.env.DEV) {
+						console.log("[StreamSummarize] Stream aborted by user");
+					}
 					return;
 				}
 
@@ -329,7 +331,9 @@ async function handleSummarize(forceRefresh = false) {
 				}
 
 				// Fallback to legacy endpoint only if no data was received
-				console.log("[StreamSummarize] Falling back to legacy endpoint");
+				if (import.meta.env.DEV) {
+					console.log("[StreamSummarize] Falling back to legacy endpoint");
+				}
 				try {
 					const result = await summarizeArticleClient(feedURL);
 					const trimmedSummary = result.summary?.trim();
