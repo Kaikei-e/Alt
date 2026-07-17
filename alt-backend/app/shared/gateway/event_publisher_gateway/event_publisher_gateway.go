@@ -3,6 +3,7 @@ package event_publisher_gateway
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 
 	"alt/shared/driver/mqhub_connect"
@@ -46,11 +47,11 @@ func (g *EventPublisherGateway) PublishArticleCreated(ctx context.Context, event
 
 	messageID, err := g.client.PublishArticleCreated(ctx, payload)
 	if err != nil {
-		g.logger.Error("failed to publish ArticleCreated event",
+		g.logger.ErrorContext(ctx, "failed to publish ArticleCreated event",
 			"article_id", event.ArticleID,
 			"error", err,
 		)
-		return err
+		return fmt.Errorf("publish ArticleCreated: %w", err)
 	}
 
 	g.logger.Info("published ArticleCreated event",
@@ -80,11 +81,11 @@ func (g *EventPublisherGateway) PublishArticleUpdated(ctx context.Context, event
 
 	messageID, err := g.client.PublishArticleUpdated(ctx, payload)
 	if err != nil {
-		g.logger.Error("failed to publish ArticleUpdated event",
+		g.logger.ErrorContext(ctx, "failed to publish ArticleUpdated event",
 			"article_id", event.ArticleID,
 			"error", err,
 		)
-		return err
+		return fmt.Errorf("publish ArticleUpdated: %w", err)
 	}
 
 	g.logger.Info("published ArticleUpdated event",
@@ -110,11 +111,11 @@ func (g *EventPublisherGateway) PublishSummarizeRequested(ctx context.Context, e
 
 	messageID, err := g.client.PublishSummarizeRequested(ctx, payload)
 	if err != nil {
-		g.logger.Error("failed to publish SummarizeRequested event",
+		g.logger.ErrorContext(ctx, "failed to publish SummarizeRequested event",
 			"article_id", event.ArticleID,
 			"error", err,
 		)
-		return err
+		return fmt.Errorf("publish SummarizeRequested: %w", err)
 	}
 
 	g.logger.Info("published SummarizeRequested event",
@@ -139,11 +140,11 @@ func (g *EventPublisherGateway) PublishIndexArticle(ctx context.Context, event e
 
 	messageID, err := g.client.PublishIndexArticle(ctx, payload)
 	if err != nil {
-		g.logger.Error("failed to publish IndexArticle event",
+		g.logger.ErrorContext(ctx, "failed to publish IndexArticle event",
 			"article_id", event.ArticleID,
 			"error", err,
 		)
-		return err
+		return fmt.Errorf("publish IndexArticle: %w", err)
 	}
 
 	g.logger.Info("published IndexArticle event",

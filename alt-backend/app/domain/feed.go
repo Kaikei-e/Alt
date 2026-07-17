@@ -47,6 +47,7 @@ type Article struct {
 	Author      string    `json:"author" db:"author"`
 	Language    string    `json:"language" db:"language"`
 	Tags        []string  `json:"tags" db:"tags"`
+	IsRead      bool      `json:"is_read,omitempty" db:"is_read"`
 	PublishedAt time.Time `json:"published_at" db:"published_at"`
 	CreatedAt   time.Time `json:"created_at" db:"created_at"`
 	UpdatedAt   time.Time `json:"updated_at" db:"updated_at"`

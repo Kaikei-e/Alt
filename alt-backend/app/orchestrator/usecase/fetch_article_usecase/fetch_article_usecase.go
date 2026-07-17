@@ -250,25 +250,8 @@ func (u *ArticleUsecaseImpl) FetchCompliantArticleWithRefresh(ctx context.Contex
 				}
 			}
 
-			// 8. Upsert to RAG (async, fire-and-forget)
-			now := time.Now()
-			upsertInput := rag_integration_port.UpsertArticleInput{
-				ArticleID:   newID,
-				Title:       fetchedTitle,
-				Body:        contentStr,
-				URL:         urlStr,
-				PublishedAt: &now,
-				UserID:      userContext.UserID.String(),
-			}
-			go func() {
-				ragCtx, ragCancel := context.WithTimeout(context.Background(), 30*time.Second)
-				defer ragCancel()
-				if ragErr := u.ragIntegration.UpsertArticle(ragCtx, upsertInput); ragErr != nil {
-					logger.Logger.Error("Failed to upsert article to RAG (async)", "error", ragErr, "article_id", newID)
-				} else {
-					logger.Logger.Info("Article upserted to RAG (async)", "article_id", newID)
-				}
-			}()
+			// 8. RAG upsert is handled by the outbox worker via ARTICLE_UPSERT
+			// enqueued inside SaveArticle — no fire-and-forget goroutine here.
 		}
 
 		return &fetchResult{content: contentStr, articleID: newID, ogImageURL: extractedOgImage}, nil

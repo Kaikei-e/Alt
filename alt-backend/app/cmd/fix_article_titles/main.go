@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"log"
+	"log/slog"
 	"net/http"
 	"os"
 	"strings"
@@ -48,12 +48,17 @@ func ExtractTitle(raw string) string {
 }
 
 // FetchHTMLFromURL fetches HTML content from a URL
-func FetchHTMLFromURL(url string) (string, error) {
+func FetchHTMLFromURL(ctx context.Context, url string) (string, error) {
 	client := &http.Client{
 		Timeout: 30 * time.Second,
 	}
 
-	resp, err := client.Get(url)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return "", fmt.Errorf("failed to create request: %w", err)
+	}
+
+	resp, err := client.Do(req)
 	if err != nil {
 		return "", fmt.Errorf("failed to fetch URL: %w", err)
 	}
@@ -83,6 +88,8 @@ type Article struct {
 }
 
 func main() {
+	log := slog.New(slog.NewJSONHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelInfo}))
+
 	// Get database connection string from environment
 	dbHost := getEnv("DB_HOST", "localhost")
 	dbPort := getEnv("DB_PORT", "5432")
@@ -98,17 +105,19 @@ func main() {
 	// Connect to database
 	pool, err := pgxpool.New(ctx, connString)
 	if err != nil {
-		log.Fatalf("Unable to connect to database: %v", err)
+		log.Error("Unable to connect to database", "error", err)
+		os.Exit(1)
 	}
 	defer pool.Close()
 
-	log.Println("Connected to database successfully")
+	log.Info("Connected to database successfully")
 
 	// Find articles with URL as title
 	query := `SELECT id, title, url FROM articles WHERE title LIKE 'http%' ORDER BY id`
 	rows, err := pool.Query(ctx, query)
 	if err != nil {
-		log.Fatalf("Failed to query articles: %v", err)
+		log.Error("Failed to query articles", "error", err)
+		os.Exit(1)
 	}
 	defer rows.Close()
 
@@ -116,17 +125,18 @@ func main() {
 	for rows.Next() {
 		var article Article
 		if err := rows.Scan(&article.ID, &article.Title, &article.URL); err != nil {
-			log.Printf("Failed to scan row: %v", err)
+			log.Error("Failed to scan row", "error", err)
 			continue
 		}
 		articles = append(articles, article)
 	}
 
 	if err := rows.Err(); err != nil {
-		log.Fatalf("Error iterating rows: %v", err)
+		log.Error("Error iterating rows", "error", err)
+		os.Exit(1)
 	}
 
-	log.Printf("Found %d articles with URL as title\n", len(articles))
+	log.Info("Found articles with URL as title", "count", len(articles))
 
 	// Process each article
 	successCount := 0
@@ -134,24 +144,30 @@ func main() {
 	unchangedCount := 0
 
 	for i, article := range articles {
-		log.Printf("[%d/%d] Processing article %s...", i+1, len(articles), article.ID)
+		log.Info("Processing article", "index", i+1, "total", len(articles), "article_id", article.ID)
 
 		// Fetch HTML from URL
-		html, err := FetchHTMLFromURL(article.URL)
+		html, err := FetchHTMLFromURL(ctx, article.URL)
 		if err != nil {
-			log.Printf("  ✗ Failed to fetch HTML: %v", err)
+			log.Error("Failed to fetch HTML", "article_id", article.ID, "error", err)
 			failureCount++
 			// Add delay to avoid rate limiting
-			time.Sleep(2 * time.Second)
+			if err := sleepWithContext(ctx, 2*time.Second); err != nil {
+				log.Error("Interrupted during backoff", "error", err)
+				os.Exit(1)
+			}
 			continue
 		}
 
 		// Extract title from HTML
 		extractedTitle := ExtractTitle(html)
 		if extractedTitle == "" || strings.HasPrefix(extractedTitle, "http://") || strings.HasPrefix(extractedTitle, "https://") {
-			log.Printf("  ⚠ Could not extract valid title, keeping URL as title")
+			log.Warn("Could not extract valid title, keeping URL as title", "article_id", article.ID)
 			unchangedCount++
-			time.Sleep(2 * time.Second)
+			if err := sleepWithContext(ctx, 2*time.Second); err != nil {
+				log.Error("Interrupted during backoff", "error", err)
+				os.Exit(1)
+			}
 			continue
 		}
 
@@ -159,24 +175,42 @@ func main() {
 		updateQuery := `UPDATE articles SET title = $1 WHERE id = $2`
 		_, err = pool.Exec(ctx, updateQuery, extractedTitle, article.ID)
 		if err != nil {
-			log.Printf("  ✗ Failed to update database: %v", err)
+			log.Error("Failed to update database", "article_id", article.ID, "error", err)
 			failureCount++
-			time.Sleep(2 * time.Second)
+			if err := sleepWithContext(ctx, 2*time.Second); err != nil {
+				log.Error("Interrupted during backoff", "error", err)
+				os.Exit(1)
+			}
 			continue
 		}
 
-		log.Printf("  ✓ Updated: %s", extractedTitle)
+		log.Info("Updated article title", "article_id", article.ID, "title", extractedTitle)
 		successCount++
 
 		// Add delay to avoid rate limiting (5 seconds between requests)
-		time.Sleep(5 * time.Second)
+		if err := sleepWithContext(ctx, 5*time.Second); err != nil {
+			log.Error("Interrupted during backoff", "error", err)
+			os.Exit(1)
+		}
 	}
 
-	log.Println("\n=== Summary ===")
-	log.Printf("Total articles processed: %d", len(articles))
-	log.Printf("Successfully updated: %d", successCount)
-	log.Printf("Failed to update: %d", failureCount)
-	log.Printf("Unchanged (no valid title): %d", unchangedCount)
+	log.Info("Summary",
+		"total", len(articles),
+		"updated", successCount,
+		"failed", failureCount,
+		"unchanged", unchangedCount,
+	)
+}
+
+func sleepWithContext(ctx context.Context, d time.Duration) error {
+	timer := time.NewTimer(d)
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-timer.C:
+		return nil
+	}
 }
 
 func getEnv(key, defaultValue string) string {

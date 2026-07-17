@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
-	"strings"
 	"sync"
 )
 
@@ -111,7 +110,6 @@ func (b *BatchArticleFetcher) processDomainGroup(ctx context.Context, domain str
 		// Extract title and text from HTML (matching fetchArticleContent behavior)
 		var title string
 		var extractedText string
-		var articleID string
 		if err == nil && htmlContent != nil {
 			htmlContentStr := *htmlContent
 			// Extract title from HTML using html_parser
@@ -123,8 +121,8 @@ func (b *BatchArticleFetcher) processDomainGroup(ctx context.Context, domain str
 				// If extraction fails, set error
 				err = fmt.Errorf("failed to extract article text from HTML")
 			}
-
-			articleID = b.generateArticleID(urlStr)
+			// Article IDs are assigned only via DB SaveArticle (canonical UUID).
+			// Do not synthesize pseudo IDs here — callers that need an ID must persist first.
 		}
 
 		// Store result
@@ -132,15 +130,9 @@ func (b *BatchArticleFetcher) processDomainGroup(ctx context.Context, domain str
 		results[urlStr] = &FetchResult{
 			Content: extractedText,
 			Title:   title,
-			ID:      articleID,
+			ID:      "",
 			Error:   err,
 		}
 		mu.Unlock()
 	}
-}
-
-// generateArticleID generates a simple article ID from URL
-// This matches the behavior of generateArticleID in rest/utils.go
-func (b *BatchArticleFetcher) generateArticleID(urlStr string) string {
-	return fmt.Sprintf("article_%s", strings.ReplaceAll(urlStr, "/", "_"))
 }

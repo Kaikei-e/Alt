@@ -111,3 +111,20 @@ func TestAppendKnowledgeEventUsecase_Execute(t *testing.T) {
 		})
 	}
 }
+
+func TestAppendKnowledgeEventUsecase_WrapsPortError(t *testing.T) {
+	logger.InitLogger()
+	portErr := assert.AnError
+	uc := NewAppendKnowledgeEventUsecase(&mockEventPort{err: portErr})
+	err := uc.Execute(context.Background(), domain.KnowledgeEvent{
+		TenantID:      uuid.New(),
+		ActorType:     domain.ActorSystem,
+		EventType:     domain.EventArticleCreated,
+		AggregateType: domain.AggregateArticle,
+		AggregateID:   "article-123",
+		Payload:       []byte(`{}`),
+	})
+	require.Error(t, err)
+	assert.ErrorIs(t, err, portErr)
+	assert.Contains(t, err.Error(), "append knowledge event")
+}

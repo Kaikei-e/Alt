@@ -3,6 +3,7 @@ package cache
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -123,7 +124,14 @@ func (c *SharedCache[K, V]) refreshInBackground(key K) {
 
 	go func() {
 		defer atomic.StoreInt32(&entry.refreshing, 0)
-		_, _ = c.loadAndStore(context.Background(), key)
+		refreshCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		if _, err := c.loadAndStore(refreshCtx, key); err != nil {
+			slog.Default().Error("shared cache background refresh failed",
+				"key", fmt.Sprintf("%v", key),
+				"error", err,
+			)
+		}
 	}()
 }
 
