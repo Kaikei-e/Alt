@@ -89,25 +89,64 @@ if ! curl -fs "http://localhost:11435/api/tags" >/dev/null 2>&1; then
 fi
 
 # --- ensure base model (GGUF import from ggml-org) ----------------------------------------
-# Gemma4:E4B text-only Q4_K_M (5.34GB) — fits RTX 4060 8GB
-# Ollama's gemma4-e4b-q4km tag is 9.6GB (includes multimodal projector) — too large
+# Gemma4:E4B text-only Q4_0 (~4.59GB) — fits ~8GB-class local VRAM.
+# After the 2026-07-15 stealth weight refresh, ggml-org dropped Q4_K_M and
+# ships Q4_0 / Q8_0 / BF16 only (repo lastModified 2026-07-16).
+# Ollama registry gemma4:e4b (~9.6GB, multimodal projector) still does not fit.
 # See: https://huggingface.co/ggml-org/gemma-4-E4B-it-GGUF
 BASE_MODEL="${OLLAMA_BASE_MODEL:-gemma4-e4b-q4km}"
-GGUF_URL="https://huggingface.co/ggml-org/gemma-4-E4B-it-GGUF/resolve/main/gemma-4-e4b-it-Q4_K_M.gguf"
+VARIANT_MODELS=("gemma4-e4b-8k" "gemma4-e4b-12k")
+GGUF_URL="https://huggingface.co/ggml-org/gemma-4-E4B-it-GGUF/resolve/main/gemma-4-E4B-it-Q4_0.gguf"
 GGUF_DIR="/tmp/gguf"
-GGUF_FILE="${GGUF_DIR}/gemma-4-e4b-it-Q4_K_M.gguf"
+GGUF_FILE="${GGUF_DIR}/gemma-4-E4B-it-Q4_0.gguf"
+FORCE_MODEL_REFRESH="${FORCE_MODEL_REFRESH:-0}"
+# Optional integrity pin: when set, downloaded GGUF must match or startup fails.
+# Captured from the 2026-07-16 ggml-org Q4_0 refresh used in ADR-000947.
+GGUF_SHA256_EXPECTED="${GGUF_SHA256_EXPECTED:-}"
 
 MODELFILE_DIR="$(dirname "$0")"
 if [ ! -f "$MODELFILE_DIR/Modelfile.gemma4-e4b-q4km" ]; then
   MODELFILE_DIR="/home/ollama-user"
 fi
 
+if [ "$FORCE_MODEL_REFRESH" = "1" ]; then
+  echo "gemma4.refresh.forced=true"
+  echo "WARNING: FORCE_MODEL_REFRESH=1 will DELETE local Gemma4 tags and re-download ~4.6GB."
+  echo "WARNING: Use as a one-shot only; set FORCE_MODEL_REFRESH=0 after success to avoid wipe-on-restart."
+  for model_name in "$BASE_MODEL" "${VARIANT_MODELS[@]}"; do
+    if ollama list 2>/dev/null | grep -q "^${model_name}"; then
+      echo "  Removing ${model_name} for forced refresh..."
+      if ! ollama rm "$model_name"; then
+        echo "Error: failed to remove ${model_name} during forced refresh"
+        exit 1
+      fi
+    fi
+  done
+else
+  echo "gemma4.refresh.forced=false"
+fi
+
 echo "Ensuring ${BASE_MODEL} model exists..."
 if ! ollama list 2>/dev/null | grep -q "^${BASE_MODEL}"; then
-  echo "  Model not found. Downloading GGUF from ggml-org (5.34GB)..."
+  echo "  Model not found. Downloading GGUF from ggml-org (Q4_0, ~4.59GB)..."
   mkdir -p "$GGUF_DIR"
   if curl -fSL --progress-bar -o "$GGUF_FILE" "$GGUF_URL"; then
     echo "  GGUF downloaded successfully"
+    if ! command -v sha256sum >/dev/null 2>&1; then
+      echo "Error: sha256sum required to verify GGUF integrity"
+      rm -f "$GGUF_FILE"
+      exit 1
+    fi
+    GGUF_SHA256="$(sha256sum "$GGUF_FILE" | awk '{print $1}')"
+    echo "  GGUF SHA256=${GGUF_SHA256}"
+    if [ -n "$GGUF_SHA256_EXPECTED" ]; then
+      if [ "$GGUF_SHA256" != "$GGUF_SHA256_EXPECTED" ]; then
+        echo "Error: GGUF SHA256 mismatch (expected ${GGUF_SHA256_EXPECTED}, got ${GGUF_SHA256})"
+        rm -f "$GGUF_FILE"
+        exit 1
+      fi
+      echo "  GGUF SHA256 matches GGUF_SHA256_EXPECTED"
+    fi
     echo "  Importing GGUF via ollama create ${BASE_MODEL}..."
     if ollama create "$BASE_MODEL" -f "$MODELFILE_DIR/Modelfile.gemma4-e4b-q4km"; then
       echo "  Model ${BASE_MODEL} created successfully"
@@ -125,6 +164,7 @@ if ! ollama list 2>/dev/null | grep -q "^${BASE_MODEL}"; then
   fi
 else
   echo "  Model ${BASE_MODEL} already exists"
+  echo "gemma4.refresh.skipped=${BASE_MODEL}"
 fi
 
 # --- create model variants with fixed num_ctx ----------------------------------------
@@ -134,8 +174,9 @@ create_model() {
   local model_name=$1
   local modelfile=$2
   echo "Creating model $model_name from $modelfile..."
-  if ollama list 2>/dev/null | grep -q "^$model_name"; then
+  if [ "$FORCE_MODEL_REFRESH" != "1" ] && ollama list 2>/dev/null | grep -q "^$model_name"; then
     echo "  Model $model_name already exists, skipping creation"
+    echo "gemma4.refresh.skipped=${model_name}"
   else
     if [ -f "$modelfile" ]; then
       if ollama create "$model_name" -f "$modelfile"; then
@@ -179,15 +220,19 @@ echo "Verifying GPU usage..."
 sleep 3
 OLLAMA_LOG_FILE="${OLLAMA_LOG_DIR}/ollama.log"
 if [ -f "$OLLAMA_LOG_FILE" ]; then
-  RECENT_LOG=$(tail -n 100 "$OLLAMA_LOG_FILE" 2>/dev/null)
+  # Ollama 0.32.x emits verbose load_tensors lines; keep a wider window.
+  RECENT_LOG=$(tail -n 500 "$OLLAMA_LOG_FILE" 2>/dev/null)
 
-  if echo "$RECENT_LOG" | grep -q "offloaded [1-9]" 2>/dev/null || \
-     echo "$RECENT_LOG" | grep -q "offloaded [0-9][0-9]" 2>/dev/null; then
-    OFFLOAD_LINE=$(echo "$RECENT_LOG" | grep -o "offloaded [0-9]*/[0-9]*" | tail -1)
+  if echo "$RECENT_LOG" | grep -Eq "offloaded [1-9][0-9]*/[0-9]+" 2>/dev/null || \
+     echo "$RECENT_LOG" | grep -q "layers to GPU" 2>/dev/null; then
+    OFFLOAD_LINE=$(echo "$RECENT_LOG" | grep -Eo "offloaded [0-9]+/[0-9]+" | tail -1)
     if [ -n "$OFFLOAD_LINE" ]; then
       echo "  GPU usage confirmed: $OFFLOAD_LINE layers to GPU"
+    else
+      echo "  GPU usage confirmed: layers offloaded to GPU"
     fi
   elif echo "$RECENT_LOG" | grep -q "inference compute id=gpu" 2>/dev/null || \
+       echo "$RECENT_LOG" | grep -q "library=CUDA" 2>/dev/null || \
        echo "$RECENT_LOG" | grep -q "load_backend: loaded.*CUDA" 2>/dev/null; then
     echo "  GPU usage confirmed: CUDA backend loaded"
   else

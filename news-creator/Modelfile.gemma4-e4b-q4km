@@ -1,4 +1,7 @@
-FROM /tmp/gguf/gemma-4-e4b-it-Q4_K_M.gguf
+# ggml-org dropped Q4_K_M after the 2026-07-15 weight refresh; Q4_0 is the
+# official 4-bit text GGUF (~4.59GB). Ollama tag gemma4-e4b-q4km is kept for
+# consumer env compatibility (PM-2026-016).
+FROM /tmp/gguf/gemma-4-E4B-it-Q4_0.gguf
 
 TEMPLATE """{{- $system := "" }}
 {{- range .Messages }}

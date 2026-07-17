@@ -60,9 +60,14 @@ services:
       - OLLAMA_HOME=/home/ollama-user/.ollama
       - OLLAMA_MODELS=/home/ollama-user/.ollama
       - OLLAMA_HOST=0.0.0.0:11435
-      # Gemma4:E4B — 4.5B effective, Q4_K_M (5.34GB), 128K context
+      # Gemma4:E4B — 4.5B effective, ggml-org Q4_0 (~4.59GB), 128K context
       # Set OLLAMA_BASE_MODEL=gemma3:4b-it-qat for rollback to Gemma3
+      # FORCE_MODEL_REFRESH=1 is a destructive one-shot (ollama rm + re-download).
+      # Always return to 0 after a successful refresh — leaving it at 1 wipes models on every restart.
       - OLLAMA_BASE_MODEL=${OLLAMA_BASE_MODEL:-gemma4-e4b-q4km}
+      - FORCE_MODEL_REFRESH=${FORCE_MODEL_REFRESH:-0}
+      # Optional: pin expected GGUF digest (2026-07-16 ggml-org Q4_0). Empty = log-only verify.
+      - GGUF_SHA256_EXPECTED=${GGUF_SHA256_EXPECTED:-a555b900214b477d8880e7832e0b8925e139b0159640036b09fe472b6f2097f2}
       # KV cache quantization: q8_0 halves KV cache memory vs f16 (resolve recommendation)
       - OLLAMA_KV_CACHE_TYPE=${OLLAMA_KV_CACHE_TYPE:-q8_0}
       # RAG-dedicated mode: favor a single larger context slot over dual-slot concurrency
