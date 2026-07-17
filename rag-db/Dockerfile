@@ -3,6 +3,7 @@ FROM postgres:18
 # Build tools + pgvector compile + purge must share one RUN so the
 # removed packages never land in a persisted layer (image-size).
 RUN apt-get update && apt-get install -y --no-install-recommends \
+  ca-certificates \
   git \
   make \
   gcc \
