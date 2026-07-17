@@ -3,7 +3,6 @@
 構造化ログを使用したエラーハンドリングを実装しています。
 """
 
-from __future__ import annotations
 
 from typing import Any
 
@@ -53,7 +52,7 @@ def collect_service_stats(client: Client, database: str, hours: int) -> list[dic
         log.info("データ収集完了", count=len(data))
         return data
     except ClickHouseError as e:
-        log.error("クエリ実行エラー", error=str(e), query=query[:200])
+        log.exception("クエリ実行エラー", query=query[:200])
         raise CollectorError("service_stats", str(e)) from e
 
 
@@ -93,5 +92,5 @@ def collect_error_trends(client: Client, database: str, hours: int) -> list[dict
         log.info("データ収集完了", count=len(data))
         return data
     except ClickHouseError as e:
-        log.error("クエリ実行エラー", error=str(e), query=query[:200])
+        log.exception("クエリ実行エラー", query=query[:200])
         raise CollectorError("error_trends", str(e)) from e

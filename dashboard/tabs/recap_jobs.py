@@ -1,27 +1,23 @@
-import pandas as pd
 import streamlit as st
-from sqlalchemy import text
 
-from utils import get_engine, _interval_params
+from utils import _interval_params, fetch_table_or_warn
 
 
-def render_recap_jobs(window_seconds: int):
+def render_recap_jobs(window_seconds: int) -> None:
     st.header("Recap Jobs (7-Day Recap)")
-    engine = get_engine()
-    with engine.connect() as conn:
-        df = pd.read_sql(
-            text(
-                """
-                SELECT job_id, status, last_stage, kicked_at, updated_at
-                FROM recap_jobs
-                WHERE kicked_at > NOW() - (:window_seconds || ' seconds')::interval
-                ORDER BY kicked_at DESC
-                LIMIT 200
-                """
-            ),
-            conn,
-            params=_interval_params(window_seconds),
-        )
+    df = fetch_table_or_warn(
+        "recap_jobs",
+        """
+        SELECT job_id, status, last_stage, kicked_at, updated_at
+        FROM recap_jobs
+        WHERE kicked_at > NOW() - (:window_seconds || ' seconds')::interval
+        ORDER BY kicked_at DESC
+        LIMIT 200
+        """,
+        _interval_params(window_seconds),
+    )
+    if df is None:
+        return
 
     if df.empty:
         st.info("No recap jobs found.")

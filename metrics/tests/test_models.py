@@ -1,6 +1,5 @@
 """models.py の型安全性テスト"""
 
-from __future__ import annotations
 
 import pytest
 from pydantic import ValidationError
@@ -67,7 +66,7 @@ class TestAnalysisResultApiPerformanceTyping:
         assert result.api_performance[0].service == "alt-backend"
 
     def test_coerces_dict_input_into_typed_model(self) -> None:
-        """dictを渡してもApiPerformanceStatsへ変換される（既存呼び出し側の後方互換）"""
+        """ネストモデルは dict から構築できる（strict でもモデル入力として許容）"""
         result = AnalysisResult(
             api_performance=[
                 {
@@ -85,7 +84,24 @@ class TestAnalysisResultApiPerformanceTyping:
         assert isinstance(result.api_performance[0], ApiPerformanceStats)
         assert result.api_performance[0].p95_ms == 95.0
 
+    def test_rejects_type_coercion_under_strict(self) -> None:
+        """strict=True のため文字列→数値などの暗黙変換は拒否される"""
+        with pytest.raises(ValidationError):
+            AnalysisResult(hours_analyzed="24")  # type: ignore[arg-type]
+
     def test_rejects_dict_missing_required_field(self) -> None:
         """必須フィールドが欠けたdictはAnalysisResult構築時に拒否される"""
         with pytest.raises(ValidationError):
             AnalysisResult(api_performance=[{"service": "alt-backend"}])
+
+    def test_is_frozen(self) -> None:
+        """AnalysisResult は frozen でフィールド再代入不可"""
+        result = AnalysisResult(hours_analyzed=24)
+        with pytest.raises(ValidationError):
+            result.hours_analyzed = 48  # type: ignore[misc]
+
+    def test_generated_at_is_timezone_aware(self) -> None:
+        """generated_at のデフォルトは UTC aware"""
+        result = AnalysisResult()
+        assert result.generated_at.tzinfo is not None
+        assert result.generated_at.utcoffset() is not None

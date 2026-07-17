@@ -1,27 +1,24 @@
-import pandas as pd
 import streamlit as st
-from sqlalchemy import text
+import pandas as pd
 
-from utils import get_engine, _interval_params
+from utils import _interval_params, fetch_table_or_warn
 
 
-def render_admin_jobs(window_seconds: int):
+def render_admin_jobs(window_seconds: int) -> None:
     st.header("Admin Jobs (Graph / Learning)")
-    engine = get_engine()
-    with engine.connect() as conn:
-        df = pd.read_sql(
-            text(
-                """
-                SELECT job_id, kind, status, started_at, finished_at, error, result
-                FROM admin_jobs
-                WHERE started_at > NOW() - (:window_seconds || ' seconds')::interval
-                ORDER BY started_at DESC
-                LIMIT 200
-                """
-            ),
-            conn,
-            params=_interval_params(window_seconds),
-        )
+    df = fetch_table_or_warn(
+        "admin_jobs",
+        """
+        SELECT job_id, kind, status, started_at, finished_at, error, result
+        FROM admin_jobs
+        WHERE started_at > NOW() - (:window_seconds || ' seconds')::interval
+        ORDER BY started_at DESC
+        LIMIT 200
+        """,
+        _interval_params(window_seconds),
+    )
+    if df is None:
+        return
 
     if df.empty:
         st.info("No admin jobs found.")
@@ -44,4 +41,3 @@ def render_admin_jobs(window_seconds: int):
 
     st.subheader("Latest Jobs")
     st.dataframe(df)
-

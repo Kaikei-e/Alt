@@ -50,17 +50,7 @@ class TestGetCpuInfo:
     def test_falls_back_to_proc_stat_when_psutil_unavailable(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        # Simulate psutil raising on import by making the import itself fail.
-        import builtins
-
-        real_import = builtins.__import__
-
-        def _fake_import(name, *args, **kwargs):
-            if name == "psutil":
-                raise ImportError("no psutil")
-            return real_import(name, *args, **kwargs)
-
-        monkeypatch.setattr(builtins, "__import__", _fake_import)
+        monkeypatch.setattr(system_monitor, "_psutil", None)
 
         calls = iter([[100, 0, 50, 800, 10, 0, 0, 0, 0, 0], [110, 0, 60, 830, 10, 0, 0, 0, 0, 0]])
         monkeypatch.setattr(
@@ -73,17 +63,23 @@ class TestGetCpuInfo:
         assert "percent" in result
         assert 0.0 <= result["percent"] <= 100.0
 
+    def test_uses_nonblocking_psutil_when_available(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        class _FakePsutil:
+            @staticmethod
+            def cpu_percent(interval=None):
+                assert interval is None
+                return 42.5
+
+        monkeypatch.setattr(system_monitor, "_psutil", _FakePsutil())
+
+        result = system_monitor.get_cpu_info()
+
+        assert result == {"percent": 42.5}
+
     def test_returns_zero_when_all_methods_fail(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        import builtins
-
-        real_import = builtins.__import__
-
-        def _fake_import(name, *args, **kwargs):
-            if name == "psutil":
-                raise ImportError("no psutil")
-            return real_import(name, *args, **kwargs)
-
-        monkeypatch.setattr(builtins, "__import__", _fake_import)
+        monkeypatch.setattr(system_monitor, "_psutil", None)
 
         def _raise_oserror():
             raise OSError("no /proc/stat")

@@ -1,6 +1,5 @@
 """collectors/saturation.py のテスト"""
 
-from __future__ import annotations
 
 from unittest.mock import MagicMock
 
@@ -82,23 +81,24 @@ class TestCollectQueueSaturation:
         mock_client.query.return_value.column_names = [
             "service",
             "queue_name",
-            "avg_depth",
-            "max_depth",
             "avg_wait_time_ms",
+            "max_wait_time_ms",
             "p95_wait_time_ms",
         ]
         mock_client.query.return_value.result_rows = [
-            ("pre-processor", "feed_queue", 100.0, 500, 50.0, 200.0),
-            ("tag-generator", "tag_queue", 50.0, 200, 30.0, 100.0),
+            ("pre-processor", "feed_queue", 50.0, 500, 200.0),
+            ("tag-generator", "tag_queue", 30.0, 200, 100.0),
         ]
 
         result = collect_queue_saturation(mock_client, "rask_logs", 24)
 
         assert len(result) == 2
         assert result[0]["queue_name"] == "feed_queue"
-        assert result[0]["avg_depth"] == 100.0
+        assert result[0]["avg_wait_time_ms"] == 50.0
+        assert result[0]["max_wait_time_ms"] == 500
         assert result[1]["p95_wait_time_ms"] == 100.0
-
+        assert "avg_depth" not in result[0]
+        assert "max_depth" not in result[0]
     def test_empty_result_returns_empty_list(self) -> None:
         """空の結果は空リストを返す"""
         mock_client = MagicMock()

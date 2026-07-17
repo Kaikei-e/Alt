@@ -3,7 +3,6 @@
 otel_logsおよびotel_error_logsテーブルからログデータを収集します。
 """
 
-from __future__ import annotations
 
 from typing import Any
 
@@ -51,7 +50,7 @@ def collect_error_types(client: Client, database: str, hours: int) -> list[dict[
         log.info("データ収集完了", count=len(data))
         return data
     except ClickHouseError as e:
-        log.error("クエリ実行エラー", error=str(e), query=query[:200])
+        log.exception("クエリ実行エラー", query=query[:200])
         raise CollectorError("error_types", str(e)) from e
 
 
@@ -90,7 +89,7 @@ def collect_recent_errors(client: Client, database: str, hours: int) -> list[dic
         log.info("データ収集完了", count=len(data))
         return data
     except ClickHouseError as e:
-        log.error("クエリ実行エラー", error=str(e), query=query[:200])
+        log.exception("クエリ実行エラー", query=query[:200])
         raise CollectorError("recent_errors", str(e)) from e
 
 
@@ -132,7 +131,7 @@ def collect_log_severity_distribution(client: Client, database: str, hours: int)
         log.info("データ収集完了", count=len(data))
         return data
     except ClickHouseError as e:
-        log.error("クエリ実行エラー", error=str(e), query=query[:200])
+        log.exception("クエリ実行エラー", query=query[:200])
         raise CollectorError("log_severity_distribution", str(e)) from e
 
 
@@ -171,5 +170,5 @@ def collect_log_volume_trends(client: Client, database: str, hours: int) -> list
         log.info("データ収集完了", count=len(data))
         return data
     except ClickHouseError as e:
-        log.error("クエリ実行エラー", error=str(e), query=query[:200])
+        log.exception("クエリ実行エラー", query=query[:200])
         raise CollectorError("log_volume_trends", str(e)) from e

@@ -207,7 +207,7 @@ _リソース使用率データがありません_
 ## キュー飽和度
 
 {% if result.queue_saturation %}
-{{ format_table(result.queue_saturation, ["service", "queue_name", "avg_depth", "max_depth", "avg_wait_time_ms", "p95_wait_time_ms"]) }}
+{{ format_table(result.queue_saturation, ["service", "queue_name", "avg_wait_time_ms", "max_wait_time_ms", "p95_wait_time_ms"]) }}
 {% else %}
 _キュー飽和度データがありません_
 

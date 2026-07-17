@@ -7,10 +7,8 @@ connections in Streamlit components.html.
 """
 
 import json
-import os
 import re
 from pathlib import Path
-from typing import Optional
 
 
 def generate_sse_client_js(
@@ -43,11 +41,11 @@ def generate_sse_client_js(
     try:
         with open(js_file_path, "r", encoding="utf-8") as f:
             js_code = f.read()
-    except FileNotFoundError:
+    except FileNotFoundError as e:
         raise FileNotFoundError(
             f"JavaScript file not found: {js_file_path}. "
             "Please ensure sse_client.js exists in the static directory."
-        )
+        ) from e
 
     # Escape values for JavaScript string literals
     sse_host_js = json.dumps(sse_host)
@@ -62,8 +60,7 @@ def generate_sse_client_js(
     js_code = re.sub(r"'\{\{SSE_PORT\}\}'", sse_port_js, js_code)
     js_code = re.sub(r"'\{\{SSE_PROTOCOL\}\}'", sse_protocol_js, js_code)
     js_code = re.sub(r"'\{\{SSE_PATH\}\}'", sse_path_js, js_code)
-    js_code = re.sub(r'\{\{\s*TIMEOUT_MS\s*\}\}', str(timeout_ms), js_code)
-    js_code = re.sub(r'\{\{\s*MAX_RECONNECT_ATTEMPTS\s*\}\}', str(max_reconnect_attempts), js_code)
+    js_code = re.sub(r"\{\{\s*TIMEOUT_MS\s*\}\}", str(timeout_ms), js_code)
+    js_code = re.sub(r"\{\{\s*MAX_RECONNECT_ATTEMPTS\s*\}\}", str(max_reconnect_attempts), js_code)
 
     return js_code
-

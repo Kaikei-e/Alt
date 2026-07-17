@@ -1,10 +1,15 @@
-
 import streamlit as st
 import streamlit.components.v1 as components
 from .system_monitor_sse_client import generate_sse_client_js
 
 
-def render_system_monitor(window_seconds: int | None = None):
+def render_system_monitor(window_seconds: int | None = None) -> None:
+    """Render the real-time system monitor tab.
+
+    ``window_seconds`` is accepted for API parity with other tabs but unused:
+    SSE streaming is live and not time-window filtered.
+    """
+    del window_seconds  # API parity only; SSE is live.
     st.header("System Monitor (Real-time)")
 
     # Get SSE connection parameters
@@ -86,4 +91,3 @@ def render_system_monitor(window_seconds: int | None = None):
 
     # Height argument allows scrolling if content gets long
     components.html(html_code, height=800, scrolling=True)
-

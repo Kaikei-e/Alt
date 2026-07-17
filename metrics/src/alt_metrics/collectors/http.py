@@ -3,7 +3,6 @@
 otel_http_requestsテーブルからHTTPパフォーマンスデータを収集します。
 """
 
-from __future__ import annotations
 
 from typing import Any
 
@@ -58,7 +57,7 @@ def collect_http_endpoint_stats(client: Client, database: str, hours: int) -> li
         log.info("データ収集完了", count=len(data))
         return data
     except ClickHouseError as e:
-        log.error("クエリ実行エラー", error=str(e), query=query[:200])
+        log.exception("クエリ実行エラー", query=query[:200])
         raise CollectorError("http_endpoint_stats", str(e)) from e
 
 
@@ -99,5 +98,5 @@ def collect_http_status_distribution(client: Client, database: str, hours: int) 
         log.info("データ収集完了", count=len(data))
         return data
     except ClickHouseError as e:
-        log.error("クエリ実行エラー", error=str(e), query=query[:200])
+        log.exception("クエリ実行エラー", query=query[:200])
         raise CollectorError("http_status_distribution", str(e)) from e

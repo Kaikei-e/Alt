@@ -3,12 +3,14 @@
 Pydanticを使用した型安全なデータモデルを定義します。
 """
 
-from __future__ import annotations
-
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
+
+
+def _utc_now() -> datetime:
+    return datetime.now(timezone.utc)
 
 
 class ErrorBudgetResult(BaseModel):
@@ -17,6 +19,8 @@ class ErrorBudgetResult(BaseModel):
     SLO目標に基づくエラーバジェットの状態を表します。
     Google SREのエラーバジェット概念に基づいています。
     """
+
+    model_config = ConfigDict(strict=True, frozen=True)
 
     slo_target: float  # SLO目標 (例: 99.9%)
     budget_total: float  # 合計バジェット (100 - SLO)
@@ -31,6 +35,8 @@ class ErrorBudgetResult(BaseModel):
 class ServiceHealth(BaseModel):
     """サービス単位の健全性データ"""
 
+    model_config = ConfigDict(strict=True, frozen=True)
+
     name: str
     total_logs: int = 0
     error_count: int = 0
@@ -43,7 +49,7 @@ class ServiceHealth(BaseModel):
 class ApiPerformanceStats(BaseModel):
     """APIエンドポイント単位のパフォーマンス統計（`collect_api_performance`の結果）"""
 
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(strict=True, frozen=True)
 
     service: str
     endpoint: str
@@ -62,7 +68,9 @@ class AnalysisResult(BaseModel):
     すべての収集データと分析結果を保持します。
     """
 
-    generated_at: datetime = Field(default_factory=datetime.now)
+    model_config = ConfigDict(strict=True, frozen=True)
+
+    generated_at: datetime = Field(default_factory=_utc_now)
     hours_analyzed: int = 24
 
     # システム健全性
@@ -109,5 +117,3 @@ class AnalysisResult(BaseModel):
     critical_issues: list[str] = Field(default_factory=list)
     warnings: list[str] = Field(default_factory=list)
     recommendations: list[str] = Field(default_factory=list)
-
-    model_config = {"arbitrary_types_allowed": True}

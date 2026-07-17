@@ -4,8 +4,6 @@ ClickHouse接続設定とヘルススコア閾値を管理します。
 環境変数とDocker Secretsに対応しています。
 """
 
-from __future__ import annotations
-
 import os
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -17,7 +15,7 @@ logger = structlog.get_logger()
 DEFAULT_OUTPUT_DIR = Path("./scripts/reports")
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, slots=True)
 class HealthThresholds:
     """ヘルススコア閾値設定
 
@@ -80,7 +78,7 @@ class HealthThresholds:
         )
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, slots=True)
 class ClickHouseConfig:
     """ClickHouse接続設定
 
@@ -113,7 +111,7 @@ class ClickHouseConfig:
         )
 
 
-@dataclass
+@dataclass(frozen=True, slots=True)
 class ReportConfig:
     """レポート設定"""
 
@@ -131,7 +129,7 @@ class ReportConfig:
         )
 
 
-@dataclass
+@dataclass(frozen=True, slots=True)
 class AppConfig:
     """アプリケーション全体の設定"""
 

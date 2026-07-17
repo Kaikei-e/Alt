@@ -7,7 +7,6 @@ Usage:
     uv run python -m alt_metrics validate
 """
 
-from __future__ import annotations
 
 import sys
 
