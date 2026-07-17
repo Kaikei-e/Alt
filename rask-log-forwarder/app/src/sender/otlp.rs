@@ -86,9 +86,7 @@ impl OtlpSerializer {
         entries: Vec<&EnrichedLogEntry>,
     ) -> Option<ResourceLogs> {
         // Get container_id and service_group from first entry (all entries in group have same service)
-        let Some(first_entry) = entries.first() else {
-            return None;
-        };
+        let first_entry = entries.first()?;
 
         // Create resource attributes
         let mut resource_attributes = vec![
