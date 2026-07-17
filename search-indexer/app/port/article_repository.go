@@ -14,7 +14,3 @@ type ArticleRepository interface {
 	// GetArticleByID retrieves a single article with tags by its ID.
 	GetArticleByID(ctx context.Context, articleID string) (*domain.Article, error)
 }
-
-type ConfigRepository interface {
-	LoadSearchIndexerConfig() (*domain.SearchIndexerConfig, error)
-}

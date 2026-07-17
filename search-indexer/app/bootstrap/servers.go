@@ -82,7 +82,6 @@ func newConnectServer(searchByUserUsecase *usecase.SearchByUserUsecase, searchRe
 func newMTLSMuxHandler(
 	searchByUserUsecase *usecase.SearchByUserUsecase,
 	searchArticlesUsecase *usecase.SearchArticlesUsecase,
-	searchRecapsUsecase *usecase.SearchRecapsUsecase,
 	connectServerHandler http.Handler,
 	otelCfg appOtel.Config,
 	rlCfg config.RateLimitConfig,
@@ -119,7 +118,6 @@ func newMTLSMuxHandler(
 	// Fallback for any other Connect-RPC-style prefix.
 	mux.Handle("/", connect)
 
-	_ = searchRecapsUsecase // kept in signature so callers can pass both usecases; recap search is served via Connect-RPC inside `connect`.
 	return mux
 }
 

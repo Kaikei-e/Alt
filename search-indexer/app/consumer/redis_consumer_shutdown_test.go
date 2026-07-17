@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/alicebob/miniredis/v2"
+	"github.com/redis/go-redis/v9"
 )
 
 // TestConsumer_StopIntake_IsIdempotent reproduces the MED finding: StopIntake
@@ -55,6 +56,12 @@ func TestConsumer_Close_WaitsForLoopsBeforeClosingClient(t *testing.T) {
 		BlockTimeout:   20 * time.Millisecond,
 		ReaperInterval: 20 * time.Millisecond,
 		Enabled:        true,
+	}
+
+	rdb := redis.NewClient(&redis.Options{Addr: srv.Addr()})
+	t.Cleanup(func() { _ = rdb.Close() })
+	if err := rdb.XGroupCreateMkStream(context.Background(), reclaimTestStream, reclaimTestGroup, "0").Err(); err != nil {
+		t.Fatalf("seed XGroupCreateMkStream: %v", err)
 	}
 
 	handler := &recordingHandler{}

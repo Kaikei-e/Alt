@@ -1,6 +1,7 @@
 package bootstrap
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"os"
@@ -66,7 +67,14 @@ func initArticleDriver(cfg *config.Config) (gateway.ArticleDriver, error) {
 // by key+"_FILE" if set (Docker Secrets convention).
 func readSecretEnv(key string) string {
 	if fileEnv := os.Getenv(key + "_FILE"); fileEnv != "" {
-		if content, err := os.ReadFile(fileEnv); err == nil {
+		content, err := os.ReadFile(fileEnv)
+		if err != nil {
+			logger.Logger.Warn("failed to read secret file; falling back to env",
+				"key", key,
+				"file", fileEnv,
+				"error", err,
+			)
+		} else {
 			return strings.TrimSpace(string(content))
 		}
 	}
@@ -77,7 +85,7 @@ func readSecretEnv(key string) string {
 // if configured, a separate search-only client for read operations (L-001).
 // Operators can provision the search key via MEILISEARCH_SEARCH_API_KEY or
 // MEILISEARCH_SEARCH_API_KEY_FILE. When unset, the admin client is reused.
-func initMeilisearchClients() (admin meilisearch.ServiceManager, search meilisearch.ServiceManager, err error) {
+func initMeilisearchClients(ctx context.Context) (admin meilisearch.ServiceManager, search meilisearch.ServiceManager, err error) {
 	const maxRetries = 5
 	const retryDelay = 5 * time.Second
 
@@ -100,7 +108,9 @@ func initMeilisearchClients() (admin meilisearch.ServiceManager, search meilisea
 		if _, healthErr := admin.Health(); healthErr != nil {
 			logger.Logger.Warn("Meilisearch not ready, retrying", "attempt", i+1, "max", maxRetries, "err", healthErr)
 			if i < maxRetries-1 {
-				time.Sleep(retryDelay)
+				if err := sleepOrDone(ctx, retryDelay); err != nil {
+					return nil, nil, fmt.Errorf("meilisearch connect cancelled: %w", err)
+				}
 				continue
 			}
 			return nil, nil, fmt.Errorf("failed to connect to Meilisearch after %d attempts: %w", maxRetries, healthErr)
@@ -117,9 +127,22 @@ func initMeilisearchClients() (admin meilisearch.ServiceManager, search meilisea
 	return admin, search, nil
 }
 
+// sleepOrDone waits for d or returns ctx.Err() if the context is cancelled
+// first, so Meilisearch retry loops do not block SIGTERM for up to 25s.
+func sleepOrDone(ctx context.Context, d time.Duration) error {
+	timer := time.NewTimer(d)
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-timer.C:
+		return nil
+	}
+}
+
 // initMeilisearchClient preserves the single-client API for existing callers
 // (recap indexer today). New code should prefer initMeilisearchClients.
-func initMeilisearchClient() (meilisearch.ServiceManager, error) {
-	admin, _, err := initMeilisearchClients()
+func initMeilisearchClient(ctx context.Context) (meilisearch.ServiceManager, error) {
+	admin, _, err := initMeilisearchClients(ctx)
 	return admin, err
 }

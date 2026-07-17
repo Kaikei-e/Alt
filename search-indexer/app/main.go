@@ -8,14 +8,21 @@ import (
 	"os/signal"
 	"time"
 
+	"github.com/redis/go-redis/v9"
+
 	"search-indexer/bootstrap"
 	"search-indexer/config"
+	"search-indexer/consumer"
 )
 
 func main() {
-	// Healthcheck subcommand
-	if len(os.Args) > 1 && os.Args[1] == "healthcheck" {
-		os.Exit(runHealthcheck())
+	if len(os.Args) > 1 {
+		switch os.Args[1] {
+		case "healthcheck":
+			os.Exit(runHealthcheck())
+		case "provision-consumer-group":
+			os.Exit(runProvisionConsumerGroup())
+		}
 	}
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
@@ -42,4 +49,29 @@ func runHealthcheck() int {
 	}
 	fmt.Fprintf(os.Stderr, "healthcheck failed: status %d\n", resp.StatusCode)
 	return 1
+}
+
+// runProvisionConsumerGroup creates the Redis Streams consumer group that
+// search-indexer expects. Groups are provisioned here (or via mq-hub
+// CreateConsumerGroup / scripts/provision-consumer-group.sh), not ad hoc
+// inside Consumer.Start (DECREE §8).
+func runProvisionConsumerGroup() int {
+	cfg := consumer.ConfigFromEnv()
+	opts, err := redis.ParseURL(cfg.RedisURL)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "provision-consumer-group: parse redis url: %v\n", err)
+		return 1
+	}
+	client := redis.NewClient(opts)
+	defer client.Close()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+
+	if err := consumer.ProvisionConsumerGroup(ctx, client, cfg.StreamKey, cfg.GroupName); err != nil {
+		fmt.Fprintf(os.Stderr, "provision-consumer-group: %v\n", err)
+		return 1
+	}
+	fmt.Printf("ok: stream=%s group=%s\n", cfg.StreamKey, cfg.GroupName)
+	return 0
 }

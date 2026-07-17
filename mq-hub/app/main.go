@@ -25,6 +25,13 @@ import (
 )
 
 func main() {
+	if err := run(); err != nil {
+		slog.Error("mq-hub exited with error", "error", err)
+		os.Exit(1)
+	}
+}
+
+func run() error {
 	ctx := context.Background()
 
 	// Initialize logger with TraceContextHandler for trace_id/span_id propagation
@@ -33,8 +40,7 @@ func main() {
 	// Load configuration
 	cfg, err := config.NewConfig()
 	if err != nil {
-		slog.ErrorContext(ctx, "failed to load configuration", "error", err)
-		os.Exit(1)
+		return fmt.Errorf("load configuration: %w", err)
 	}
 
 	// mq-hub only serves a plaintext listener today; middleware.PeerIdentityMiddleware
@@ -51,8 +57,7 @@ func main() {
 		StreamMaxLen: cfg.StreamMaxLen,
 	})
 	if err != nil {
-		slog.ErrorContext(ctx, "failed to connect to Redis", "error", err)
-		os.Exit(1)
+		return fmt.Errorf("connect to Redis: %w", err)
 	}
 	defer redisDriver.Close()
 
@@ -60,8 +65,7 @@ func main() {
 	// not mean Redis is actually reachable. Ping now so a dead Redis fails
 	// startup instead of the service reporting healthy with no working backend.
 	if err := redisDriver.Ping(ctx); err != nil {
-		slog.ErrorContext(ctx, "failed to ping Redis", "error", err)
-		os.Exit(1)
+		return fmt.Errorf("ping Redis: %w", err)
 	}
 
 	// Initialize gateway
@@ -152,8 +156,7 @@ func main() {
 	case sig := <-sigCh:
 		slog.InfoContext(ctx, "received shutdown signal", "signal", sig.String())
 	case err := <-serverErr:
-		slog.ErrorContext(ctx, "server failed to start", "error", err)
-		os.Exit(1)
+		return fmt.Errorf("server failed to start: %w", err)
 	}
 
 	// Create shutdown context with timeout
@@ -162,11 +165,11 @@ func main() {
 
 	slog.InfoContext(ctx, "shutting down server gracefully")
 	if err := srv.Shutdown(shutdownCtx); err != nil {
-		slog.ErrorContext(ctx, "server shutdown failed", "error", err)
-		os.Exit(1)
+		return fmt.Errorf("server shutdown failed: %w", err)
 	}
 
 	slog.InfoContext(ctx, "server shutdown complete")
+	return nil
 }
 
 // loggingInterceptor creates a Connect interceptor for logging.

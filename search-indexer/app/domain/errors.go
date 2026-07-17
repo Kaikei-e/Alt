@@ -38,17 +38,3 @@ func (e *SearchEngineError) Error() string {
 func (e *SearchEngineError) Unwrap() error {
 	return e.Err
 }
-
-// DriverError represents an error from the driver layer.
-type DriverError struct {
-	Op  string
-	Err error
-}
-
-func (e *DriverError) Error() string {
-	return e.Op + ": " + e.Err.Error()
-}
-
-func (e *DriverError) Unwrap() error {
-	return e.Err
-}
