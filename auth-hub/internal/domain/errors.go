@@ -15,6 +15,8 @@ var (
 var (
 	ErrTokenGeneration   = errors.New("token generation failed")
 	ErrCSRFSecretMissing = errors.New("CSRF secret not configured")
+	ErrCSRFTokenInvalid  = errors.New("CSRF token invalid")
+	ErrCSRFTokenExpired  = errors.New("CSRF token expired")
 	ErrBackendSecretWeak = errors.New("backend token secret too weak")
 )
 

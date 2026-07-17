@@ -165,11 +165,13 @@ func DedupMiddleware(dedup *RequestDeduplicator, userIDExtractor UserIDExtractor
 				// Create a new request with the body
 				newReq := CreateDedupRequest(r, body)
 
-				// Capture the response
+				// Capture the response into a buffer only — do not write to the
+				// real ResponseWriter here. DedupMiddleware writes once below
+				// for every waiter (including the leader).
 				rec := &responseRecorder{
-					ResponseWriter: w,
-					body:           &bytes.Buffer{},
-					statusCode:     http.StatusOK,
+					header:     make(http.Header),
+					body:       &bytes.Buffer{},
+					statusCode: http.StatusOK,
 				}
 
 				next.ServeHTTP(rec, newReq)
@@ -208,26 +210,33 @@ func CreateDedupRequest(original *http.Request, body []byte) *http.Request {
 	return newReq
 }
 
-// responseRecorder captures the response for deduplication.
+// responseRecorder captures the response for deduplication without writing
+// through to the client ResponseWriter (avoids double-write when the
+// middleware later replays DedupResult).
 type responseRecorder struct {
-	http.ResponseWriter
+	header     http.Header
 	body       *bytes.Buffer
 	statusCode int
 	written    bool
 }
 
+func (r *responseRecorder) Header() http.Header {
+	if r.header == nil {
+		r.header = make(http.Header)
+	}
+	return r.header
+}
+
 func (r *responseRecorder) WriteHeader(statusCode int) {
 	if !r.written {
 		r.statusCode = statusCode
-		r.ResponseWriter.WriteHeader(statusCode)
 		r.written = true
 	}
 }
 
 func (r *responseRecorder) Write(b []byte) (int, error) {
-	r.body.Write(b)
-	// ResponseWriter.Write passthrough on a recording middleware. The bytes
-	// come from the upstream alt-backend response; escaping, if needed, is
-	// the responsibility of the handler that originally produced them.
-	return r.ResponseWriter.Write(b) //nolint:gosec // codeql[go/reflected-xss]
+	if !r.written {
+		r.WriteHeader(http.StatusOK)
+	}
+	return r.body.Write(b)
 }

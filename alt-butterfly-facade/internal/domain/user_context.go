@@ -40,10 +40,3 @@ func GetUserContext(ctx context.Context) (*UserContext, error) {
 	}
 	return uc, nil
 }
-
-// IsValid checks if the user context is valid and not expired.
-func (uc *UserContext) IsValid() bool {
-	return uc.UserID != uuid.Nil &&
-		uc.Email != "" &&
-		uc.ExpiresAt.After(time.Now())
-}

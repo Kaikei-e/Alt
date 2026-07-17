@@ -40,37 +40,37 @@ func NewContextLogger(logger *slog.Logger) *ContextLogger {
 func (cl *ContextLogger) WithContext(ctx context.Context) *slog.Logger {
 	args := make([]any, 0)
 
-	if requestID := ctx.Value(RequestIDKey); requestID != nil {
-		args = append(args, "request_id", requestID.(string))
+	if v, ok := ctx.Value(RequestIDKey).(string); ok {
+		args = append(args, "request_id", v)
 	}
 
-	if userID := ctx.Value(UserIDKey); userID != nil {
-		args = append(args, "user_id", userID.(string))
+	if v, ok := ctx.Value(UserIDKey).(string); ok {
+		args = append(args, "user_id", v)
 	}
 
-	if operation := ctx.Value(OperationKey); operation != nil {
-		args = append(args, "operation", operation.(string))
+	if v, ok := ctx.Value(OperationKey).(string); ok {
+		args = append(args, "operation", v)
 	}
 
 	// Business context fields for Alt-specific observability (ADR 98/99)
-	if feedID := ctx.Value(FeedIDKey); feedID != nil {
-		args = append(args, string(FeedIDKey), feedID.(string))
+	if v, ok := ctx.Value(FeedIDKey).(string); ok {
+		args = append(args, string(FeedIDKey), v)
 	}
 
-	if articleID := ctx.Value(ArticleIDKey); articleID != nil {
-		args = append(args, string(ArticleIDKey), articleID.(string))
+	if v, ok := ctx.Value(ArticleIDKey).(string); ok {
+		args = append(args, string(ArticleIDKey), v)
 	}
 
-	if jobID := ctx.Value(JobIDKey); jobID != nil {
-		args = append(args, string(JobIDKey), jobID.(string))
+	if v, ok := ctx.Value(JobIDKey).(string); ok {
+		args = append(args, string(JobIDKey), v)
 	}
 
-	if stage := ctx.Value(ProcessingStageKey); stage != nil {
-		args = append(args, string(ProcessingStageKey), stage.(string))
+	if v, ok := ctx.Value(ProcessingStageKey).(string); ok {
+		args = append(args, string(ProcessingStageKey), v)
 	}
 
-	if pipeline := ctx.Value(AIPipelineKey); pipeline != nil {
-		args = append(args, string(AIPipelineKey), pipeline.(string))
+	if v, ok := ctx.Value(AIPipelineKey).(string); ok {
+		args = append(args, string(AIPipelineKey), v)
 	}
 
 	return cl.logger.With(args...)

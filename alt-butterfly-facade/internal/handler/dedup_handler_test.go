@@ -319,21 +319,48 @@ func TestDedupMiddleware_Integration(t *testing.T) {
 
 	// Concurrent requests
 	var wg sync.WaitGroup
+	bodies := make([]string, 5)
 	for i := 0; i < 5; i++ {
 		wg.Add(1)
-		go func() {
+		go func(i int) {
 			defer wg.Done()
 			req := httptest.NewRequest("POST", "/api/test", bytes.NewReader([]byte(`{}`)))
 			rec := httptest.NewRecorder()
 			handler.ServeHTTP(rec, req)
 			assert.Equal(t, http.StatusOK, rec.Code)
-		}()
+			bodies[i] = rec.Body.String()
+		}(i)
 	}
 
 	wg.Wait()
 
 	// Backend should only be called once
 	assert.Equal(t, int32(1), callCount)
+	for _, body := range bodies {
+		assert.Equal(t, "response", body)
+	}
+}
+
+func TestDedupMiddleware_NoDoubleWrite(t *testing.T) {
+	dedup := NewRequestDeduplicator(100 * time.Millisecond)
+
+	backend := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("X-Test", "1")
+		w.WriteHeader(http.StatusCreated)
+		w.Write([]byte("once"))
+	})
+
+	handler := DedupMiddleware(dedup, func(r *http.Request) string {
+		return "user-1"
+	})(backend)
+
+	req := httptest.NewRequest("POST", "/api/test", bytes.NewReader([]byte(`{}`)))
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	assert.Equal(t, http.StatusCreated, rec.Code)
+	assert.Equal(t, "once", rec.Body.String())
+	assert.Equal(t, "1", rec.Header().Get("X-Test"))
 }
 
 func TestDedupMiddleware_PassesThroughNonDedupable(t *testing.T) {

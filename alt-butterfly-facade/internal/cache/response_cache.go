@@ -2,6 +2,7 @@
 package cache
 
 import (
+	"container/list"
 	"crypto/sha256"
 	"encoding/hex"
 	"net/http"
@@ -32,11 +33,16 @@ type CacheStats struct {
 	Size   int
 }
 
-// ResponseCache is a thread-safe in-memory cache for HTTP responses.
+type lruItem struct {
+	key   string
+	entry *CacheEntry
+}
+
+// ResponseCache is a thread-safe in-memory LRU cache for HTTP responses.
 type ResponseCache struct {
-	mu      sync.RWMutex
-	entries map[string]*CacheEntry
-	order   []string // For LRU eviction
+	mu      sync.Mutex
+	entries map[string]*list.Element
+	order   *list.List // front = most recently used
 	maxSize int
 	hits    int64
 	misses  int64
@@ -45,8 +51,8 @@ type ResponseCache struct {
 // NewResponseCache creates a new response cache with the given maximum size.
 func NewResponseCache(maxSize int) *ResponseCache {
 	return &ResponseCache{
-		entries: make(map[string]*CacheEntry),
-		order:   make([]string, 0),
+		entries: make(map[string]*list.Element),
+		order:   list.New(),
 		maxSize: maxSize,
 	}
 }
@@ -54,46 +60,45 @@ func NewResponseCache(maxSize int) *ResponseCache {
 // Get retrieves a cache entry by key.
 // Returns the entry and true if found and not expired, nil and false otherwise.
 func (c *ResponseCache) Get(key string) (*CacheEntry, bool) {
-	c.mu.RLock()
-	entry, found := c.entries[key]
-	c.mu.RUnlock()
+	c.mu.Lock()
+	defer c.mu.Unlock()
 
+	el, found := c.entries[key]
 	if !found {
 		atomic.AddInt64(&c.misses, 1)
 		return nil, false
 	}
 
-	if entry.IsExpired() {
-		c.Delete(key)
+	item := el.Value.(*lruItem)
+	if item.entry.IsExpired() {
+		c.removeElement(el)
 		atomic.AddInt64(&c.misses, 1)
 		return nil, false
 	}
 
+	c.order.MoveToFront(el)
 	atomic.AddInt64(&c.hits, 1)
-	return entry, true
+	return item.entry, true
 }
 
 // Set stores a cache entry.
-// If the cache is at capacity, it evicts the oldest entry.
+// If the cache is at capacity, it evicts the least recently used entry.
 func (c *ResponseCache) Set(key string, entry *CacheEntry) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	// Check if key already exists
-	if _, exists := c.entries[key]; exists {
-		c.entries[key] = entry
+	if el, exists := c.entries[key]; exists {
+		el.Value.(*lruItem).entry = entry
+		c.order.MoveToFront(el)
 		return
 	}
 
-	// Evict if at capacity
-	for len(c.entries) >= c.maxSize && len(c.order) > 0 {
-		oldestKey := c.order[0]
-		c.order = c.order[1:]
-		delete(c.entries, oldestKey)
+	for len(c.entries) >= c.maxSize && c.order.Len() > 0 {
+		c.removeElement(c.order.Back())
 	}
 
-	c.entries[key] = entry
-	c.order = append(c.order, key)
+	el := c.order.PushFront(&lruItem{key: key, entry: entry})
+	c.entries[key] = el
 }
 
 // Delete removes a cache entry by key.
@@ -101,15 +106,15 @@ func (c *ResponseCache) Delete(key string) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	delete(c.entries, key)
-
-	// Remove from order slice
-	for i, k := range c.order {
-		if k == key {
-			c.order = append(c.order[:i], c.order[i+1:]...)
-			break
-		}
+	if el, found := c.entries[key]; found {
+		c.removeElement(el)
 	}
+}
+
+func (c *ResponseCache) removeElement(el *list.Element) {
+	item := el.Value.(*lruItem)
+	delete(c.entries, item.key)
+	c.order.Remove(el)
 }
 
 // Clear removes all entries from the cache.
@@ -117,14 +122,14 @@ func (c *ResponseCache) Clear() {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	c.entries = make(map[string]*CacheEntry)
-	c.order = make([]string, 0)
+	c.entries = make(map[string]*list.Element)
+	c.order = list.New()
 }
 
 // Size returns the current number of entries in the cache.
 func (c *ResponseCache) Size() int {
-	c.mu.RLock()
-	defer c.mu.RUnlock()
+	c.mu.Lock()
+	defer c.mu.Unlock()
 	return len(c.entries)
 }
 

@@ -52,7 +52,7 @@ func (uc *GetSession) Execute(ctx context.Context, cookieValue string) (*Session
 		}
 		tenantID = cached.TenantID
 		role = cached.Role
-		createdAt = time.Now().Add(-24 * time.Hour) // Approximate from cache
+		createdAt = cached.CreatedAt
 	} else {
 		// Cache miss – validate with Kratos
 		fullCookie := fmt.Sprintf("ory_kratos_session=%s", cookieValue)
@@ -70,10 +70,11 @@ func (uc *GetSession) Execute(ctx context.Context, cookieValue string) (*Session
 
 		// Populate cache
 		uc.cache.Set(cookieValue, domain.CachedSession{
-			UserID:   identity.UserID,
-			TenantID: tenantID,
-			Email:    identity.Email,
-			Role:     identity.Role,
+			UserID:    identity.UserID,
+			TenantID:  tenantID,
+			Email:     identity.Email,
+			Role:      identity.Role,
+			CreatedAt: identity.CreatedAt,
 		})
 	}
 

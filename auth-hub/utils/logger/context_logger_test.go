@@ -53,6 +53,30 @@ func TestContextLogger_WithContext_BusinessKeys(t *testing.T) {
 	}
 }
 
+func TestContextLogger_WithContext_WrongTypeIgnored(t *testing.T) {
+	var buf bytes.Buffer
+	handler := slog.NewJSONHandler(&buf, nil)
+	logger := slog.New(handler)
+	cl := NewContextLogger(logger)
+
+	// Non-string values must not panic; they are skipped.
+	ctx := context.WithValue(context.Background(), RequestIDKey, 12345)
+	ctx = context.WithValue(ctx, UserIDKey, struct{ id string }{id: "x"})
+
+	cl.WithContext(ctx).Info("test message")
+
+	var logEntry map[string]any
+	if err := json.Unmarshal(buf.Bytes(), &logEntry); err != nil {
+		t.Fatalf("failed to parse log output: %v", err)
+	}
+	if _, ok := logEntry["request_id"]; ok {
+		t.Error("expected non-string request_id to be skipped")
+	}
+	if _, ok := logEntry["user_id"]; ok {
+		t.Error("expected non-string user_id to be skipped")
+	}
+}
+
 func TestContextLogger_WithContext_PartialKeys(t *testing.T) {
 	var buf bytes.Buffer
 	handler := slog.NewJSONHandler(&buf, nil)

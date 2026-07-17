@@ -18,8 +18,9 @@ type Identity struct {
 
 // CachedSession holds session data stored in the cache.
 type CachedSession struct {
-	UserID   string
-	TenantID string
-	Email    string
-	Role     string
+	UserID    string
+	TenantID  string
+	Email     string
+	Role      string
+	CreatedAt time.Time
 }

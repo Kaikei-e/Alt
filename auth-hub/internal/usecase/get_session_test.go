@@ -5,6 +5,7 @@ import (
 	"errors"
 	"log/slog"
 	"testing"
+	"time"
 
 	"auth-hub/internal/domain"
 
@@ -22,11 +23,13 @@ func (m *mockTokenIssuer) IssueBackendToken(_ *domain.Identity, _ string) (strin
 }
 
 func TestGetSession_CacheHit(t *testing.T) {
+	createdAt := time.Date(2024, 6, 15, 12, 0, 0, 0, time.UTC)
 	cache := newMockCache()
 	cache.Set("session-abc", domain.CachedSession{
-		UserID:   "user-123",
-		TenantID: "tenant-123",
-		Email:    "test@example.com",
+		UserID:    "user-123",
+		TenantID:  "tenant-123",
+		Email:     "test@example.com",
+		CreatedAt: createdAt,
 	})
 	validator := &mockValidator{}
 	tokenIssuer := &mockTokenIssuer{token: "jwt-token-123"}
@@ -42,15 +45,18 @@ func TestGetSession_CacheHit(t *testing.T) {
 	assert.Equal(t, "user", result.Role)
 	assert.Equal(t, "session-abc", result.SessionID)
 	assert.Equal(t, "jwt-token-123", result.BackendToken)
+	assert.Equal(t, createdAt, result.CreatedAt)
 	assert.False(t, validator.called)
 }
 
 func TestGetSession_CacheMiss(t *testing.T) {
+	createdAt := time.Date(2025, 1, 10, 8, 30, 0, 0, time.UTC)
 	cache := newMockCache()
 	validator := &mockValidator{
 		identity: &domain.Identity{
-			UserID: "user-456",
-			Email:  "new@example.com",
+			UserID:    "user-456",
+			Email:     "new@example.com",
+			CreatedAt: createdAt,
 		},
 	}
 	tokenIssuer := &mockTokenIssuer{token: "jwt-new-token"}
@@ -63,12 +69,14 @@ func TestGetSession_CacheMiss(t *testing.T) {
 	assert.Equal(t, "user-456", result.UserID)
 	assert.Equal(t, "user-456", result.TenantID) // Single-tenant
 	assert.Equal(t, "jwt-new-token", result.BackendToken)
+	assert.Equal(t, createdAt, result.CreatedAt)
 	assert.True(t, validator.called)
 
-	// Verify cache was populated
+	// Verify cache was populated with CreatedAt for accurate cache-hit returns
 	cached, found := cache.Get("session-xyz")
 	assert.True(t, found)
 	assert.Equal(t, "user-456", cached.UserID)
+	assert.Equal(t, createdAt, cached.CreatedAt)
 }
 
 func TestGetSession_KratosError(t *testing.T) {
