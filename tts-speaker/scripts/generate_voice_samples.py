@@ -50,6 +50,21 @@ TEST_TEXT = (
 )
 
 
+def _resolve_torch_dtype(name: str) -> object:
+    """Map a validated dtype name to a torch.dtype (no getattr on free strings)."""
+    mapping = {
+        "bfloat16": torch.bfloat16,
+        "float16": torch.float16,
+        "float32": torch.float32,
+    }
+    try:
+        return mapping[name]
+    except KeyError as err:
+        raise ValueError(
+            f"unsupported TTS_QWEN_DTYPE {name!r}; expected one of {sorted(mapping)}"
+        ) from err
+
+
 def _device_map() -> str:
     if os.environ.get("TTS_FORCE_CPU") == "1":
         return "cpu"
@@ -87,7 +102,7 @@ def main() -> int:
     LOG.info("Output directory: %s", OUT_DIR)
 
     device_map = _device_map()
-    dtype = getattr(torch, DTYPE_NAME)
+    dtype = _resolve_torch_dtype(DTYPE_NAME)
     LOG.info(
         "Loading %s (device_map=%s, dtype=%s, attn=%s)...",
         MODEL_ID,
@@ -114,12 +129,23 @@ def main() -> int:
         out_file = OUT_DIR / f"qwen-{speaker}.wav"
         LOG.info("→ speaker=%s", speaker)
         t_speaker = time.monotonic()
-        wavs, sr = model.generate_custom_voice(  # type: ignore[attr-defined]
-            text=TEST_TEXT,
-            language=LANGUAGE,
-            speaker=speaker,
-            instruct=INSTRUCT,
-        )
+        try:
+            wavs, sr = model.generate_custom_voice(  # type: ignore[attr-defined]
+                text=TEST_TEXT,
+                language=LANGUAGE,
+                speaker=speaker,
+                instruct=INSTRUCT,
+            )
+        except Exception:  # noqa: BLE001 — per-speaker skip so the matrix still finishes
+            LOG.exception("speaker=%s failed; skipping", speaker)
+            summary.append(
+                {
+                    "speaker": speaker,
+                    "file": None,
+                    "error": "synthesis failed",
+                }
+            )
+            continue
         audio = wavs[0]
         sf.write(out_file, audio, sr, format="WAV", subtype="FLOAT")
         duration = float(len(audio)) / float(sr)

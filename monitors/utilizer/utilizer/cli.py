@@ -101,7 +101,7 @@ def main() -> None:
                     alerts.append(f"{RED}⚠ CPU使用率が高いです！{NC}")
 
                 # 画面クリア（最初の3行を保持）
-                print(f"\033[4H\033[J", end="")
+                print("\033[4H\033[J", end="")
 
                 # 情報表示
                 print(f"{BLUE}時刻: {NC}{timestamp}")

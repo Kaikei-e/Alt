@@ -12,16 +12,22 @@ fallback).
 
 from __future__ import annotations
 
-import builtins
-import io
 import subprocess
 import sys
+from pathlib import Path
 from typing import Any
 from unittest.mock import Mock
 
 import pytest
 
 from utilizer import monitors
+from utilizer.monitors import (
+    CpuInfo,
+    GpuInfo,
+    GpuStat,
+    MemoryInfo,
+    ProcessInfo,
+)
 
 
 class _UnexpectedError(Exception):
@@ -37,6 +43,30 @@ def _fake_completed(stdout: str) -> Mock:
     return Mock(stdout=stdout)
 
 
+def _patch_proc_stat(monkeypatch: pytest.MonkeyPatch, texts: list[str]) -> None:
+    """Stub Path('/proc/stat').read_text for the Path-based reader."""
+    samples = iter(texts)
+    real_read_text = Path.read_text
+
+    def fake_read_text(self: Path, *args: Any, **kwargs: Any) -> str:
+        if str(self) == "/proc/stat":
+            return next(samples)
+        return real_read_text(self, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "read_text", fake_read_text)
+
+
+def _patch_proc_stat_error(monkeypatch: pytest.MonkeyPatch, exc: Exception) -> None:
+    real_read_text = Path.read_text
+
+    def fake_read_text(self: Path, *args: Any, **kwargs: Any) -> str:
+        if str(self) == "/proc/stat":
+            raise exc
+        return real_read_text(self, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "read_text", fake_read_text)
+
+
 # ---------------------------------------------------------------------------
 # get_memory_info
 # ---------------------------------------------------------------------------
@@ -49,12 +79,12 @@ def test_get_memory_info_parses_free_output(monkeypatch: pytest.MonkeyPatch) -> 
     )
     monkeypatch.setattr(monitors.subprocess, "run", lambda *a, **k: _fake_completed(stdout))
 
-    assert monitors.get_memory_info() == {
-        "total": 31,
-        "used": 10,
-        "available": 20,
-        "percent": 32.3,
-    }
+    assert monitors.get_memory_info() == MemoryInfo(
+        total=31,
+        used=10,
+        available=20,
+        percent=32.3,
+    )
 
 
 @pytest.mark.parametrize(
@@ -72,12 +102,7 @@ def test_get_memory_info_returns_zero_default_on_expected_failures(
 
     monkeypatch.setattr(monitors.subprocess, "run", fake_run)
 
-    assert monitors.get_memory_info() == {
-        "total": 0,
-        "used": 0,
-        "available": 0,
-        "percent": 0,
-    }
+    assert monitors.get_memory_info() == MemoryInfo(total=0, used=0, available=0, percent=0)
 
 
 def test_get_memory_info_propagates_unexpected_errors(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -198,20 +223,20 @@ def test_get_gpu_info_parses_nvidia_smi_csv(monkeypatch: pytest.MonkeyPatch) -> 
 
     result = monitors.get_gpu_info()
 
-    assert result == {
-        "available": True,
-        "gpus": [
-            {
-                "utilization": 45.0,
-                "memory_used": 1024,
-                "memory_total": 8192,
-                "temperature": 60,
-                "name": "NVIDIA GeForce RTX 3080",
-                "memory_percent": 12.5,
-            }
-        ],
-        "total_gpus": 1,
-    }
+    assert result == GpuInfo(
+        available=True,
+        gpus=(
+            GpuStat(
+                utilization=45.0,
+                memory_used=1024,
+                memory_total=8192,
+                temperature=60,
+                name="NVIDIA GeForce RTX 3080",
+                memory_percent=12.5,
+            ),
+        ),
+        total_gpus=1,
+    )
 
 
 def test_get_gpu_info_reports_missing_binary(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -220,11 +245,11 @@ def test_get_gpu_info_reports_missing_binary(monkeypatch: pytest.MonkeyPatch) ->
 
     monkeypatch.setattr(monitors.subprocess, "run", fake_run)
 
-    assert monitors.get_gpu_info() == {
-        "available": False,
-        "gpus": [],
-        "error": "nvidia-smi not found",
-    }
+    assert monitors.get_gpu_info() == GpuInfo(
+        available=False,
+        gpus=(),
+        error="nvidia-smi not found",
+    )
 
 
 def test_get_gpu_info_reports_timeout(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -233,11 +258,11 @@ def test_get_gpu_info_reports_timeout(monkeypatch: pytest.MonkeyPatch) -> None:
 
     monkeypatch.setattr(monitors.subprocess, "run", fake_run)
 
-    assert monitors.get_gpu_info() == {
-        "available": False,
-        "gpus": [],
-        "error": "timeout",
-    }
+    assert monitors.get_gpu_info() == GpuInfo(
+        available=False,
+        gpus=(),
+        error="timeout",
+    )
 
 
 def test_get_gpu_info_reports_non_zero_exit(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -248,9 +273,9 @@ def test_get_gpu_info_reports_non_zero_exit(monkeypatch: pytest.MonkeyPatch) -> 
 
     result = monitors.get_gpu_info()
 
-    assert result["available"] is False
-    assert result["gpus"] == []
-    assert "error" in result
+    assert result.available is False
+    assert result.gpus == ()
+    assert result.error is not None
 
 
 def test_get_gpu_info_propagates_unexpected_errors(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -278,14 +303,14 @@ def test_get_top_processes_parses_ps_aux_output(monkeypatch: pytest.MonkeyPatch)
     monkeypatch.setattr(monitors.subprocess, "run", lambda *a, **k: _fake_completed(stdout))
 
     assert monitors.get_top_processes(limit=5) == [
-        {
-            "user": "alice",
-            "pid": "1234",
-            "cpu": 12.3,
-            "mem": 45.6,
-            "rss": 200,
-            "command": "python3 my_script.py --flag",
-        }
+        ProcessInfo(
+            user="alice",
+            pid="1234",
+            cpu=12.3,
+            mem=45.6,
+            rss=200,
+            command="python3 my_script.py --flag",
+        )
     ]
 
 
@@ -339,7 +364,7 @@ def test_get_cpu_info_uses_psutil_when_available(monkeypatch: pytest.MonkeyPatch
 
     monkeypatch.setattr(psutil, "cpu_percent", lambda interval: 37.0)
 
-    assert monitors.get_cpu_info() == {"percent": 37.0}
+    assert monitors.get_cpu_info() == CpuInfo(percent=37.0)
 
 
 def _force_psutil_import_error(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -354,36 +379,22 @@ def test_get_cpu_info_falls_back_to_proc_stat(monkeypatch: pytest.MonkeyPatch) -
 
     # Sample 1: total=1000, idle=800. Sample 2: total=1200, idle=900.
     # delta: total=200, idle=100 -> usage = (1 - 100/200) * 100 = 50.0
-    samples = iter(
+    _patch_proc_stat(
+        monkeypatch,
         [
             "cpu  100 0 100 800 0 0 0 0 0 0\n",
             "cpu  150 0 150 900 0 0 0 0 0 0\n",
-        ]
+        ],
     )
-    real_open = builtins.open
 
-    def fake_open(path: str, *args: Any, **kwargs: Any) -> Any:
-        if path == "/proc/stat":
-            return io.StringIO(next(samples))
-        return real_open(path, *args, **kwargs)
-
-    monkeypatch.setattr("builtins.open", fake_open)
-
-    assert monitors.get_cpu_info() == {"percent": 50.0}
+    assert monitors.get_cpu_info() == CpuInfo(percent=50.0)
 
 
 def test_get_cpu_info_proc_stat_propagates_unexpected_errors(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     _force_psutil_import_error(monkeypatch)
-    real_open = builtins.open
-
-    def fake_open(path: str, *args: Any, **kwargs: Any) -> Any:
-        if path == "/proc/stat":
-            raise _UnexpectedError("procfs corrupted")
-        return real_open(path, *args, **kwargs)
-
-    monkeypatch.setattr("builtins.open", fake_open)
+    _patch_proc_stat_error(monkeypatch, _UnexpectedError("procfs corrupted"))
 
     with pytest.raises(_UnexpectedError):
         monitors.get_cpu_info()
@@ -393,58 +404,39 @@ def test_get_cpu_info_falls_back_to_top_when_proc_stat_unavailable(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     _force_psutil_import_error(monkeypatch)
-    real_open = builtins.open
-
-    def fake_open(path: str, *args: Any, **kwargs: Any) -> Any:
-        if path == "/proc/stat":
-            raise OSError("/proc is not mounted")
-        return real_open(path, *args, **kwargs)
-
-    monkeypatch.setattr("builtins.open", fake_open)
+    _patch_proc_stat_error(monkeypatch, OSError("/proc is not mounted"))
     monkeypatch.setattr(
         monitors.subprocess,
         "run",
         lambda *a, **k: _fake_completed("Cpu(s): 75.0%id 25.0%us\n"),
     )
 
-    assert monitors.get_cpu_info() == {"percent": 25.0}
+    assert monitors.get_cpu_info() == CpuInfo(percent=25.0)
 
 
 def test_get_cpu_info_top_fallback_recovers_from_timeout(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     _force_psutil_import_error(monkeypatch)
-    real_open = builtins.open
-
-    def fake_open(path: str, *args: Any, **kwargs: Any) -> Any:
-        if path == "/proc/stat":
-            raise OSError("/proc is not mounted")
-        return real_open(path, *args, **kwargs)
+    _patch_proc_stat_error(monkeypatch, OSError("/proc is not mounted"))
 
     def fake_run(*_a: Any, **_k: Any) -> Mock:
         raise subprocess.TimeoutExpired(cmd=["top"], timeout=2)
 
-    monkeypatch.setattr("builtins.open", fake_open)
     monkeypatch.setattr(monitors.subprocess, "run", fake_run)
 
-    assert monitors.get_cpu_info() == {"percent": 0.0}
+    assert monitors.get_cpu_info() == CpuInfo(percent=0.0)
 
 
 def test_get_cpu_info_top_fallback_propagates_unexpected_errors(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     _force_psutil_import_error(monkeypatch)
-    real_open = builtins.open
-
-    def fake_open(path: str, *args: Any, **kwargs: Any) -> Any:
-        if path == "/proc/stat":
-            raise OSError("/proc is not mounted")
-        return real_open(path, *args, **kwargs)
+    _patch_proc_stat_error(monkeypatch, OSError("/proc is not mounted"))
 
     def fake_run(*_a: Any, **_k: Any) -> Mock:
         raise _UnexpectedError("top blew up")
 
-    monkeypatch.setattr("builtins.open", fake_open)
     monkeypatch.setattr(monitors.subprocess, "run", fake_run)
 
     with pytest.raises(_UnexpectedError):

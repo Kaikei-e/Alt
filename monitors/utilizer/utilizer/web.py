@@ -22,8 +22,6 @@ from .monitors import (
 
 logger = logging.getLogger(__name__)
 
-app = FastAPI(title="Recap Job Resource Monitor")
-
 # Loopback-only by default: this dashboard streams every process's command
 # line with zero auth once reachable, so it must not default to 0.0.0.0.
 WEB_HOST = os.environ.get("UTILIZER_WEB_HOST", "127.0.0.1")
@@ -142,7 +140,6 @@ async def collect_snapshot() -> SnapshotPayload:
     )
 
 
-@app.get("/")
 async def index() -> HTMLResponse:
     """メインダッシュボード"""
     html = """
@@ -506,7 +503,8 @@ async def index() -> HTMLResponse:
     </div>
 
     <script>
-        const ws = new WebSocket(`ws://${window.location.host}/ws`);
+        const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+        const ws = new WebSocket(`${wsProtocol}//${window.location.host}/ws`);
         const statusIndicator = document.getElementById('status-indicator');
         const statusText = document.getElementById('status-text');
         const lastUpdate = document.getElementById('last-update');
@@ -715,7 +713,6 @@ async def index() -> HTMLResponse:
     return HTMLResponse(content=html)
 
 
-@app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket) -> None:
     """WebSocketエンドポイントでリアルタイムデータを送信"""
     if WEB_TOKEN and websocket.query_params.get("token") != WEB_TOKEN:
@@ -747,6 +744,18 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
         pass
 
 
+def create_app() -> FastAPI:
+    """Application factory for the utilizer dashboard."""
+    application = FastAPI(title="Recap Job Resource Monitor")
+    application.add_api_route("/", index, methods=["GET"])
+    application.add_api_websocket_route("/ws", websocket_endpoint)
+    return application
+
+
+# Module-level app for `uvicorn utilizer.web:app` / CLI entrypoints.
+app = create_app()
+
+
 def main() -> None:
     """Webサーバーを起動"""
     try:
@@ -756,14 +765,6 @@ def main() -> None:
         print("以下のコマンドでインストールしてください:")
         print("  uv sync")
         sys.exit(1)
-
-    try:
-        import websockets
-    except ImportError:
-        print("警告: websocketsがインストールされていません")
-        print("WebSocket機能が動作しない可能性があります")
-        print("以下のコマンドでインストールしてください:")
-        print("  uv sync")
 
     if WEB_TOKEN:
         logger.info("utilizer_web_auth_enabled: WS connections require ?token=")

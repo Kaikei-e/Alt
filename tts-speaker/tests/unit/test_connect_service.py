@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import numpy as np
 import pytest
@@ -157,12 +157,11 @@ async def test_list_voices_ids(client: AsyncClient):
 @pytest.mark.asyncio
 async def test_health_no_auth_required(mock_pipeline: MagicMock):
     """Health endpoint does not require authentication."""
-    with patch.dict("os.environ", {"SERVICE_SECRET": "test-secret"}, clear=False):
-        app = create_app(pipeline_override=mock_pipeline)
-        transport = ASGITransport(app=app)
-        async with AsyncClient(transport=transport, base_url="http://test") as ac:
-            resp = await ac.get("/health")
-            assert resp.status_code == 200
+    app = create_app(pipeline_override=mock_pipeline)
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as ac:
+        resp = await ac.get("/health")
+        assert resp.status_code == 200
 
 
 @pytest.mark.asyncio

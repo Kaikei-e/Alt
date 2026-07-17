@@ -12,6 +12,7 @@ from __future__ import annotations
 import asyncio
 import logging
 from dataclasses import dataclass
+from types import MappingProxyType
 from typing import TYPE_CHECKING, Any
 
 import numpy as np
@@ -58,11 +59,13 @@ LEGACY_ALIASES: tuple[str, ...] = ("qwen-ja-1", "qwen-ja-2", "qwen-ja-3")
 VOICES: tuple[Voice, ...] = tuple(
     Voice(id=v.id, name=v.name, gender=v.gender) for v in VOICES_CONFIG
 )
-VOICE_IDS: set[str] = {v.id for v in VOICES_CONFIG} | set(LEGACY_ALIASES)
-_VOICE_BY_ID: dict[str, SupVoiceConfig] = {
-    **{v.id: v for v in VOICES_CONFIG},
-    **{alias: VOICES_CONFIG[0] for alias in LEGACY_ALIASES},
-}
+VOICE_IDS: frozenset[str] = frozenset(v.id for v in VOICES_CONFIG) | frozenset(LEGACY_ALIASES)
+_VOICE_BY_ID: MappingProxyType[str, SupVoiceConfig] = MappingProxyType(
+    {
+        **{v.id: v for v in VOICES_CONFIG},
+        **{alias: VOICES_CONFIG[0] for alias in LEGACY_ALIASES},
+    }
+)
 
 
 class SupertonicEngine:
@@ -87,7 +90,7 @@ class SupertonicEngine:
         return VOICES
 
     @property
-    def voice_ids(self) -> set[str]:
+    def voice_ids(self) -> frozenset[str]:
         return VOICE_IDS
 
     @property
@@ -101,6 +104,12 @@ class SupertonicEngine:
     async def load(self) -> None:
         loop = asyncio.get_running_loop()
         await loop.run_in_executor(None, self._load_sync)
+
+    def attach_runtime(self, *, tts: Any, styles: dict[str, Any]) -> None:
+        """Wire a pre-built TTS runtime (tests / alternate loaders)."""
+        self._tts = tts
+        self._styles = styles
+        self._ready = True
 
     def _load_sync(self) -> None:
         from supertonic import TTS  # type: ignore[import-not-found]
@@ -125,7 +134,7 @@ class SupertonicEngine:
             logger.info("Warming up Supertonic v3 on %s ...", cfg.id)
             self._tts.synthesize("は", voice_style=style)
             logger.info("Supertonic v3 warmup complete")
-        except Exception:
+        except Exception:  # noqa: BLE001 — ONNX/runtime errors are opaque on warmup
             logger.exception("Supertonic v3 warmup failed (continuing)")
 
     def unload(self) -> None:

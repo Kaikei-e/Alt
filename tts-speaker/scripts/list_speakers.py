@@ -18,11 +18,25 @@ MODEL_ID = os.environ.get(
 )
 
 
+def _resolve_torch_dtype(name: str) -> object:
+    mapping = {
+        "bfloat16": torch.bfloat16,
+        "float16": torch.float16,
+        "float32": torch.float32,
+    }
+    try:
+        return mapping[name]
+    except KeyError as err:
+        raise ValueError(
+            f"unsupported TTS_QWEN_DTYPE {name!r}; expected one of {sorted(mapping)}"
+        ) from err
+
+
 def main() -> int:
     device_map = "cpu" if os.environ.get("TTS_FORCE_CPU") == "1" else (
         "cuda:0" if torch.cuda.is_available() else "cpu"
     )
-    dtype = getattr(torch, os.environ.get("TTS_QWEN_DTYPE", "bfloat16"))
+    dtype = _resolve_torch_dtype(os.environ.get("TTS_QWEN_DTYPE", "bfloat16"))
     print(f"loading {MODEL_ID} (device={device_map}, dtype={dtype})...", file=sys.stderr)
     model = Qwen3TTSModel.from_pretrained(
         MODEL_ID, device_map=device_map, dtype=dtype, attn_implementation="sdpa",

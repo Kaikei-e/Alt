@@ -13,7 +13,6 @@ from __future__ import annotations
 
 import asyncio
 import time
-from typing import Any
 
 import pytest
 
@@ -40,6 +39,8 @@ async def test_dashboard_html_builds_process_rows_via_dom_api_not_innerhtml() ->
     assert "createElement('tr')" in script
     assert "createElement('td')" in script
     assert script.count("textContent") >= 2
+    # HTTPS pages must use wss://; plain http keeps ws://.
+    assert "window.location.protocol === 'https:' ? 'wss:' : 'ws:'" in script
 
 
 async def test_dashboard_html_process_cell_values_use_text_content() -> None:
@@ -75,15 +76,21 @@ async def test_collect_snapshot_offloads_blocking_calls_to_worker_threads(
 ) -> None:
     blocking_seconds = 0.3
 
-    def blocking_cpu_info() -> dict[str, Any]:
+    def blocking_cpu_info() -> web.CpuPayload:
         time.sleep(blocking_seconds)
-        return {"percent": 42.0}
+        return web.CpuPayload(percent=42.0)
 
     monkeypatch.setattr(
-        web, "get_memory_info", lambda: {"total": 1, "used": 1, "available": 1, "percent": 1}
+        web,
+        "get_memory_info",
+        lambda: web.MemoryPayload(total=1, used=1, available=1, percent=1),
     )
     monkeypatch.setattr(web, "get_cpu_info", blocking_cpu_info)
-    monkeypatch.setattr(web, "get_gpu_info", lambda: {"available": False, "gpus": []})
+    monkeypatch.setattr(
+        web,
+        "get_gpu_info",
+        lambda: web.GpuPayload(available=False, gpus=[]),
+    )
     monkeypatch.setattr(web, "get_hanging_processes", lambda: 0)
     monkeypatch.setattr(web, "get_top_processes", lambda limit=10: [])
 
@@ -99,7 +106,7 @@ async def test_collect_snapshot_offloads_blocking_calls_to_worker_threads(
     _, snapshot = await asyncio.gather(ticker(), web.collect_snapshot())
     elapsed = time.monotonic() - start
 
-    assert snapshot["cpu"]["percent"] == 42.0
+    assert snapshot.cpu.percent == 42.0
     assert tick_count == 20
     # The ticker's 20 x 10ms sleeps (~0.2s) must interleave with the 0.3s
     # blocking call instead of running after it: if `get_cpu_info` were

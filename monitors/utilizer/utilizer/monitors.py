@@ -7,6 +7,7 @@ import re
 import subprocess
 import time
 from dataclasses import dataclass
+from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
@@ -58,9 +59,10 @@ class ProcessInfo:
 
 def _read_proc_stat_times() -> tuple[int, int]:
     """Read the aggregate `cpu` line from /proc/stat. Returns (total, idle) jiffies."""
-    with open("/proc/stat", "r") as f:
-        lines = f.readlines()
-    cpu_line = [l for l in lines if l.startswith("cpu ")][0]
+    text = Path("/proc/stat").read_text(encoding="utf-8")
+    cpu_line = next((line for line in text.splitlines() if line.startswith("cpu ")), None)
+    if cpu_line is None:
+        raise ValueError("no aggregate cpu line in /proc/stat")
     fields = cpu_line.split()
     total = sum(int(fields[i]) for i in range(1, len(fields)))
     idle = int(fields[4]) + (int(fields[5]) if len(fields) > 5 else 0)
@@ -74,7 +76,9 @@ def get_memory_info() -> MemoryInfo:
             ["free", "-g"], capture_output=True, text=True, check=True, timeout=5
         )
         lines = result.stdout.strip().split("\n")
-        mem_line = [l for l in lines if l.startswith("Mem:")][0]
+        mem_line = next((line for line in lines if line.startswith("Mem:")), None)
+        if mem_line is None:
+            raise ValueError("no Mem: line in free output")
         parts = mem_line.split()
         total = int(parts[1])
         used = int(parts[2])
@@ -127,7 +131,9 @@ def get_cpu_info() -> CpuInfo:
                     check=True,
                     timeout=2,
                 )
-                cpu_lines = [l for l in result.stdout.split("\n") if "Cpu(s)" in l]
+                cpu_lines = [
+                    line for line in result.stdout.split("\n") if "Cpu(s)" in line
+                ]
                 if cpu_lines:
                     cpu_line = cpu_lines[-1]
                     match = re.search(r"(\d+\.\d+)%id", cpu_line)
@@ -156,9 +162,9 @@ def get_hanging_processes() -> int:
         )
         return len(
             [
-                l
-                for l in result.stdout.split("\n")
-                if "spawn_main" in l or "multiprocessing-fork" in l
+                line
+                for line in result.stdout.split("\n")
+                if "spawn_main" in line or "multiprocessing-fork" in line
             ]
         )
     except (subprocess.CalledProcessError, subprocess.TimeoutExpired, FileNotFoundError):
@@ -173,7 +179,11 @@ def get_recap_processes() -> int:
             ["ps", "aux"], capture_output=True, text=True, check=True, timeout=5
         )
         return len(
-            [l for l in result.stdout.split("\n") if "recap" in l or "gunicorn" in l]
+            [
+                line
+                for line in result.stdout.split("\n")
+                if "recap" in line or "gunicorn" in line
+            ]
         )
     except (subprocess.CalledProcessError, subprocess.TimeoutExpired, FileNotFoundError):
         logger.exception("Failed to count recap processes via 'ps aux'")
@@ -224,9 +234,9 @@ def get_gpu_info() -> GpuInfo:
         return GpuInfo(available=False, gpus=(), error="nvidia-smi not found")
     except subprocess.TimeoutExpired:
         return GpuInfo(available=False, gpus=(), error="timeout")
-    except subprocess.CalledProcessError as e:
+    except subprocess.CalledProcessError as err:
         logger.exception("nvidia-smi returned a non-zero exit code")
-        return GpuInfo(available=False, gpus=(), error=str(e))
+        return GpuInfo(available=False, gpus=(), error=str(err))
 
 
 def get_top_processes(limit: int = 5) -> list[ProcessInfo]:

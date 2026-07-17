@@ -8,16 +8,22 @@ from typing import Literal
 from pydantic import Field
 from pydantic_settings import BaseSettings
 
+LogLevel = Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"]
+QwenDtype = Literal["bfloat16", "float16", "float32"]
+
 
 class Settings(BaseSettings):
     """Runtime configuration derived from environment variables."""
 
+    # Default 0.0.0.0 is intentional for container bind-all; override with
+    # HOST=127.0.0.1 for loopback-only local runs. Uvicorn CLI --host wins
+    # when the process is started via the factory entrypoint.
     host: str = Field(default="0.0.0.0", validation_alias="HOST")
     port: int = Field(default=9700, validation_alias="PORT")
     engine: Literal["qwen", "supertonic"] = Field(default="qwen", validation_alias="TTS_ENGINE")
     default_voice: str = Field(default="qwen-ja-1", validation_alias="TTS_DEFAULT_VOICE")
     default_speed: float = Field(default=1.0, ge=0.5, le=2.0, validation_alias="TTS_DEFAULT_SPEED")
-    log_level: str = Field(default="INFO", validation_alias="LOG_LEVEL")
+    log_level: LogLevel = Field(default="INFO", validation_alias="LOG_LEVEL")
     tts_max_stream_text_length: int = Field(
         default=30_000, validation_alias="TTS_MAX_STREAM_TEXT_LENGTH"
     )
@@ -25,7 +31,7 @@ class Settings(BaseSettings):
         default="Qwen/Qwen3-TTS-12Hz-0.6B-CustomVoice",
         validation_alias="TTS_QWEN_MODEL_ID",
     )
-    qwen_dtype: str = Field(default="bfloat16", validation_alias="TTS_QWEN_DTYPE")
+    qwen_dtype: QwenDtype = Field(default="bfloat16", validation_alias="TTS_QWEN_DTYPE")
     qwen_attn_implementation: str = Field(default="sdpa", validation_alias="TTS_QWEN_ATTN")
     qwen_keepalive_interval_sec: float = Field(
         default=15.0, ge=0.0, validation_alias="TTS_QWEN_KEEPALIVE_INTERVAL_SEC"
