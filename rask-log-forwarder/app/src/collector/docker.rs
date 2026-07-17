@@ -17,7 +17,7 @@ pub enum CollectorError {
 }
 
 #[derive(Debug, Clone)]
-pub struct ContainerInfo {
+pub struct DockerContainerInfo {
     pub id: String,
     pub name: String,
     pub image: String,
@@ -74,7 +74,7 @@ impl DockerCollector {
     pub async fn find_labeled_containers(
         &self,
         label_filter: &str,
-    ) -> Result<Vec<ContainerInfo>, CollectorError> {
+    ) -> Result<Vec<DockerContainerInfo>, CollectorError> {
         let filters = HashMap::from([("label".to_string(), vec![label_filter.to_string()])]);
 
         let options = Some(bollard::query_parameters::ListContainersOptions {
@@ -97,8 +97,8 @@ impl DockerCollector {
         Ok(container_infos)
     }
 
-    fn container_to_info(&self, container: ContainerSummary) -> Option<ContainerInfo> {
-        Some(ContainerInfo {
+    fn container_to_info(&self, container: ContainerSummary) -> Option<DockerContainerInfo> {
+        Some(DockerContainerInfo {
             id: container.id?,
             name: container
                 .names?

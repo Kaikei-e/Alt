@@ -225,40 +225,81 @@ impl Config {
         I: IntoIterator<Item = T>,
         T: Into<std::ffi::OsString> + Clone,
     {
-        // Start with RASK_CONFIG if available, then override with CLI args
-        let base_config = if let Ok(rask_config) = std::env::var("RASK_CONFIG") {
-            Self::from_rask_config_env(&rask_config)?
-        } else {
-            Config::default()
+        use clap::{CommandFactory, FromArgMatches, parser::ValueSource};
+
+        let matches = Config::command()
+            .try_get_matches_from(args)
+            .map_err(|e| ConfigError::InvalidConfig(e.to_string()))?;
+        let cli = Config::from_arg_matches(&matches)
+            .map_err(|e| ConfigError::InvalidConfig(e.to_string()))?;
+
+        let explicitly_set = |id: &str| -> bool {
+            matches!(
+                matches.value_source(id),
+                Some(ValueSource::CommandLine | ValueSource::EnvVariable)
+            )
         };
 
-        // Parse CLI args (which automatically includes env vars due to clap's env feature)
-        let mut config = Config::parse_from(args);
-
-        // Merge base_config values for fields that weren't explicitly set via CLI
-        if config.target_service.is_none() && base_config.target_service.is_some() {
-            config.target_service = base_config.target_service;
-        }
-        if config.endpoint == Config::default().endpoint
-            && base_config.endpoint != Config::default().endpoint
-        {
-            config.endpoint = base_config.endpoint;
-        }
-        if config.batch_size == Config::default().batch_size
-            && base_config.batch_size != Config::default().batch_size
-        {
-            config.batch_size = base_config.batch_size;
-        }
-        if config.flush_interval_ms == Config::default().flush_interval_ms
-            && base_config.flush_interval_ms != Config::default().flush_interval_ms
-        {
-            config.flush_interval_ms = base_config.flush_interval_ms;
-        }
-        if config.buffer_capacity == Config::default().buffer_capacity
-            && base_config.buffer_capacity != Config::default().buffer_capacity
-        {
-            config.buffer_capacity = base_config.buffer_capacity;
-        }
+        // When RASK_CONFIG is set, start from it and overlay only values the user
+        // (or process env) explicitly provided — never treat "equals clap default"
+        // as unset (that made `--batch-size 10000` lose to RASK_CONFIG).
+        let mut config = if let Ok(rask_config) = std::env::var("RASK_CONFIG") {
+            let mut config = Self::from_rask_config_env(&rask_config)?;
+            if explicitly_set("target_service") {
+                config.target_service = cli.target_service;
+            }
+            if explicitly_set("endpoint") {
+                config.endpoint = cli.endpoint;
+            }
+            if explicitly_set("batch_size") {
+                config.batch_size = cli.batch_size;
+            }
+            if explicitly_set("flush_interval_ms") {
+                config.flush_interval_ms = cli.flush_interval_ms;
+            }
+            if explicitly_set("buffer_capacity") {
+                config.buffer_capacity = cli.buffer_capacity;
+            }
+            if explicitly_set("log_level") {
+                config.log_level = cli.log_level;
+            }
+            if explicitly_set("enable_metrics") {
+                config.enable_metrics = cli.enable_metrics;
+            }
+            if explicitly_set("metrics_port") {
+                config.metrics_port = cli.metrics_port;
+            }
+            if explicitly_set("enable_disk_fallback") {
+                config.enable_disk_fallback = cli.enable_disk_fallback;
+            }
+            if explicitly_set("disk_fallback_path") {
+                config.disk_fallback_path = cli.disk_fallback_path;
+            }
+            if explicitly_set("max_disk_usage_mb") {
+                config.max_disk_usage_mb = cli.max_disk_usage_mb;
+            }
+            if explicitly_set("connection_timeout_secs") {
+                config.connection_timeout_secs = cli.connection_timeout_secs;
+            }
+            if explicitly_set("max_connections") {
+                config.max_connections = cli.max_connections;
+            }
+            if explicitly_set("config_file") {
+                config.config_file = cli.config_file;
+            }
+            if explicitly_set("enable_compression") {
+                config.enable_compression = cli.enable_compression;
+            }
+            if explicitly_set("protocol") {
+                config.protocol = cli.protocol;
+            }
+            if explicitly_set("otlp_endpoint") {
+                config.otlp_endpoint = cli.otlp_endpoint;
+            }
+            config
+        } else {
+            cli
+        };
 
         config.post_process()?;
         config.validate()?;
@@ -344,5 +385,72 @@ impl Config {
         config.post_process()?;
         config.validate()?;
         Ok(config)
+    }
+}
+
+#[cfg(test)]
+mod merge_tests {
+    use super::*;
+    use serial_test::serial;
+
+    fn full_rask_toml(log_level: &str, batch_size: u64) -> String {
+        format!(
+            r#"
+endpoint = "http://from-rask:9600/v1/aggregate"
+batch_size = {batch_size}
+flush_interval_ms = 500
+buffer_capacity = 100000
+log_level = "{log_level}"
+enable_metrics = false
+metrics_port = 9090
+enable_disk_fallback = false
+disk_fallback_path = "/tmp/rask-log-forwarder/fallback"
+max_disk_usage_mb = 1000
+connection_timeout_secs = 30
+max_connections = 10
+enable_compression = false
+protocol = "ndjson"
+otlp_endpoint = "http://rask-log-aggregator:4318/v1/logs"
+"#
+        )
+    }
+
+    #[test]
+    #[serial]
+    fn explicit_cli_default_batch_size_not_overwritten_by_rask_config() {
+        // SAFETY: serial_test ensures exclusive access to this env var for the test.
+        unsafe {
+            std::env::set_var("RASK_CONFIG", full_rask_toml("info", 42));
+        }
+
+        let config = Config::from_args_and_env([
+            "rask-log-forwarder",
+            "--batch-size",
+            "10000", // clap default — must still win when explicitly passed
+        ])
+        .expect("config should parse");
+
+        unsafe {
+            std::env::remove_var("RASK_CONFIG");
+        }
+
+        assert_eq!(config.batch_size, 10000);
+        assert_eq!(config.endpoint, "http://from-rask:9600/v1/aggregate");
+    }
+
+    #[test]
+    #[serial]
+    fn rask_config_log_level_preserved_when_cli_omits_it() {
+        unsafe {
+            std::env::set_var("RASK_CONFIG", full_rask_toml("debug", 42));
+        }
+
+        let config = Config::from_args_and_env(["rask-log-forwarder"]).expect("config should parse");
+
+        unsafe {
+            std::env::remove_var("RASK_CONFIG");
+        }
+
+        assert_eq!(config.log_level, LogLevel::Debug);
     }
 }

@@ -36,7 +36,20 @@ pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 
 // Health check endpoint for Docker
 pub async fn health_check() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    // Basic health check - verify we can create a minimal config
-    let _config = Config::default();
+    // Validate that the default configuration is well-formed (URLs, sizes, timeouts).
+    // Creating Config::default() alone is not a health signal — run post_process + validate.
+    let mut config = Config::default();
+    config.post_process()?;
+    config.validate()?;
     Ok(())
+}
+
+#[cfg(test)]
+mod health_check_tests {
+    #[tokio::test]
+    async fn health_check_validates_default_config() {
+        super::health_check()
+            .await
+            .expect("default config must pass validation");
+    }
 }

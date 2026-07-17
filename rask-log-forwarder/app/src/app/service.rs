@@ -13,7 +13,7 @@ use std::time::{Duration, Instant};
 use thiserror::Error;
 use tokio::sync::{RwLock, mpsc};
 use tokio_util::sync::CancellationToken;
-use tracing::{info, warn};
+use tracing::info;
 
 /// How often the disk-fallback replay task attempts to resend batches that
 /// were persisted to disk after transmission + retries failed.
@@ -293,12 +293,6 @@ impl ServiceManager {
                 timestamp: chrono::Utc::now().to_rfc3339(),
                 uptime: self.start_time.elapsed(),
             }
-        }
-    }
-
-    pub async fn simulate_component_failure(&mut self, component: &str) {
-        if let Some(_reliability_manager) = &self.reliability_manager {
-            warn!("Simulating failure for component: {}", component);
         }
     }
 }

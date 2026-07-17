@@ -46,7 +46,9 @@ impl OtlpSerializer {
         // Convert to OTLP format
         let resource_logs: Vec<ResourceLogs> = grouped
             .into_iter()
-            .map(|(service_name, entries)| self.create_resource_logs(&service_name, entries))
+            .filter_map(|(service_name, entries)| {
+                self.create_resource_logs(&service_name, entries)
+            })
             .collect();
 
         let request = ExportLogsServiceRequest { resource_logs };
@@ -82,9 +84,11 @@ impl OtlpSerializer {
         &self,
         service_name: &str,
         entries: Vec<&EnrichedLogEntry>,
-    ) -> ResourceLogs {
+    ) -> Option<ResourceLogs> {
         // Get container_id and service_group from first entry (all entries in group have same service)
-        let first_entry = entries.first().expect("entries should not be empty");
+        let Some(first_entry) = entries.first() else {
+            return None;
+        };
 
         // Create resource attributes
         let mut resource_attributes = vec![
@@ -124,11 +128,11 @@ impl OtlpSerializer {
             schema_url: String::new(),
         }];
 
-        ResourceLogs {
+        Some(ResourceLogs {
             resource: Some(resource),
             scope_logs,
             schema_url: String::new(),
-        }
+        })
     }
 
     /// Creates an OTLP LogRecord from an EnrichedLogEntry.

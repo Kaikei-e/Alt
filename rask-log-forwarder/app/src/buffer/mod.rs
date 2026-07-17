@@ -5,7 +5,6 @@ pub mod error;
 pub mod lockfree;
 pub mod memory;
 pub mod metrics;
-pub mod queue;
 
 pub use batch::{Batch, BatchConfig, BatchFormer, BatchType};
 pub use concurrency::{ConcurrencyError, RecoveryStrategy, RobustMutex, RobustRwLock};
@@ -43,11 +42,6 @@ impl BufferManager {
         self.buffer.split()
     }
 
-    /// Legacy split method for backward compatibility
-    pub fn split_legacy(&self) -> (LogBufferSender, LogBufferReceiver) {
-        self.buffer.split_legacy()
-    }
-
     pub fn batch_former(&self) -> &BatchFormer {
         &self.batch_former
     }
@@ -57,7 +51,5 @@ impl BufferManager {
     }
 }
 
-// Legacy exports (keep for compatibility)
 pub use backpressure::{BackpressureLevel, BackpressureStrategy};
-pub use metrics::{BufferMetrics as LegacyBufferMetrics, DetailedMetrics};
-pub use queue::LogBuffer as LegacyLogBuffer;
+pub use metrics::DetailedMetrics;

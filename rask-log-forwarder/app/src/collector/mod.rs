@@ -32,8 +32,7 @@ enum StreamExit {
 pub type LogBytes = Bytes;
 pub use discovery::{ContainerInfo, DiscoveryError, ServiceDiscovery, ServiceDiscoveryTrait};
 pub use docker::{
-    CollectorError as DockerError, ContainerInfo as DockerContainerInfo, DockerCollector,
-    LogStreamOptions,
+    CollectorError as DockerError, DockerCollector, DockerContainerInfo, LogStreamOptions,
 };
 
 #[derive(Error, Debug)]
@@ -285,7 +284,7 @@ impl LogCollector {
                         Some(Err(e)) => {
                             tracing::error!("Docker log stream error: {e}");
                             return Err(CollectorError::DiscoveryError(
-                                discovery::DiscoveryError::DockerError(e),
+                                discovery::DiscoveryError::DockerError(e.into()),
                             ));
                         }
                         None => {

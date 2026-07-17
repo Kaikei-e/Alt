@@ -9,12 +9,18 @@ use tokio_util::sync::CancellationToken;
 
 /// Application entry point. Initializes tracing, configuration, and starts servers.
 pub async fn run() -> Result<(), AggregatorError> {
-    // Handle healthcheck subcommand (for Docker healthcheck in distroless image)
+    // Handle healthcheck subcommand (for Docker healthcheck in distroless image).
+    // Tracing is not fully configured yet; install a minimal stderr subscriber so
+    // failures still go through the tracing facade instead of bare `eprintln!`.
     if std::env::args().nth(1).as_deref() == Some("healthcheck") {
+        let _ = tracing_subscriber::fmt()
+            .with_writer(std::io::stderr)
+            .with_max_level(::tracing::Level::ERROR)
+            .try_init();
         match crate::healthcheck().await {
             Ok(()) => std::process::exit(0),
             Err(e) => {
-                eprintln!("Healthcheck failed: {e}");
+                ::tracing::error!(error = %e, "Healthcheck failed");
                 std::process::exit(1)
             }
         }

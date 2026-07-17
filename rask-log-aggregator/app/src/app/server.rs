@@ -8,6 +8,9 @@ use tracing::{error, info};
 ///
 /// The `shutdown_token` is shared with `BatchWriter` so that the flush loop
 /// drains remaining rows before the process exits.
+///
+/// Both server tasks are watched via `select!`: if either exits with an error,
+/// the other is cancelled so the process does not limp on a half-dead listener.
 pub async fn serve(
     main_app: Router,
     otlp_app: Router,
@@ -42,30 +45,74 @@ pub async fn serve(
     info!("  - POST /v1/logs       (OTLP logs)");
     info!("  - POST /v1/traces     (OTLP traces)");
 
-    // Spawn OTLP server task
+    // Signal handler cancels the shared token for both servers.
+    let signal_token = shutdown_token.clone();
+    tokio::spawn(async move {
+        shutdown_signal().await;
+        signal_token.cancel();
+    });
+
+    let main_shutdown = shutdown_token.child_token();
+    let mut main_handle = tokio::spawn(async move {
+        axum::serve(main_listener, main_app)
+            .with_graceful_shutdown(main_shutdown.cancelled_owned())
+            .await
+    });
+
     let otlp_shutdown = shutdown_token.child_token();
-    let otlp_handle = tokio::spawn(async move {
+    let mut otlp_handle = tokio::spawn(async move {
         axum::serve(otlp_listener, otlp_app)
             .with_graceful_shutdown(otlp_shutdown.cancelled_owned())
             .await
     });
 
-    // Run main server
-    let main_shutdown = shutdown_token.clone();
-    axum::serve(main_listener, main_app)
-        .with_graceful_shutdown(async move {
-            shutdown_signal().await;
-            main_shutdown.cancel();
-        })
-        .await?;
+    // Watch both tasks; if either fails, cancel the other so we don't keep serving
+    // on a single listener while the peer is dead.
+    let serve_result = tokio::select! {
+        result = &mut main_handle => {
+            shutdown_token.cancel();
+            flatten_server_result("main", result)
+        }
+        result = &mut otlp_handle => {
+            shutdown_token.cancel();
+            flatten_server_result("otlp", result)
+        }
+    };
 
-    // Wait for OTLP server to finish
-    if let Err(e) = otlp_handle.await {
-        error!("OTLP server task failed: {}", e);
+    // Ensure the peer task finishes after cancel (JoinHandle kept alive via &mut select).
+    if !main_handle.is_finished()
+        && let Err(e) = main_handle.await
+    {
+        error!("Main server task join failed during shutdown: {e}");
+    }
+    if !otlp_handle.is_finished()
+        && let Err(e) = otlp_handle.await
+    {
+        error!("OTLP server task join failed during shutdown: {e}");
     }
 
+    serve_result?;
     info!("Server shutdown complete");
     Ok(())
+}
+
+fn flatten_server_result(
+    name: &str,
+    result: Result<Result<(), std::io::Error>, tokio::task::JoinError>,
+) -> Result<(), AggregatorError> {
+    match result {
+        Ok(Ok(())) => Ok(()),
+        Ok(Err(e)) => {
+            error!("{name} server exited with error: {e}");
+            Err(e.into())
+        }
+        Err(e) => {
+            error!("{name} server task panicked: {e}");
+            Err(AggregatorError::Export(format!(
+                "{name} server task panicked: {e}"
+            )))
+        }
+    }
 }
 
 /// Wait for SIGTERM or SIGINT (Ctrl+C) for graceful shutdown.
