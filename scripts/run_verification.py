@@ -10,6 +10,6 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from compute_recap_coverage import main
 
 if __name__ == '__main__':
-    # --verifyフラグを追加
-    sys.argv = [sys.argv[0], '--verify']
+    # Prepend --verify while preserving any user-supplied args.
+    sys.argv = [sys.argv[0], '--verify', *sys.argv[1:]]
     main()

@@ -9,13 +9,10 @@ import asyncio
 import json
 import logging
 import os
-import sys
-from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any
 from urllib.parse import urlparse, urlunparse
 
-import pandas as pd
 from sqlalchemy import text, inspect
 from sqlalchemy.ext.asyncio import create_async_engine
 
@@ -64,7 +61,14 @@ def get_db_url() -> str:
     else:
         # Local execution: replace container name with localhost and adjust port
         if "recap-db" in db_url:
-            db_url = db_url.replace("recap-db", "localhost").replace("5432", "5435")
+            u = urlparse(db_url)
+            host = (u.hostname or "").replace("recap-db", "localhost")
+            port = u.port if u.port and u.port != 5432 else int(os.getenv("RECAP_DB_PORT", "5435"))
+            userinfo = u.username or ""
+            if u.password:
+                userinfo = f"{userinfo}:{u.password}"
+            netloc = f"{userinfo}@{host}:{port}" if userinfo else f"{host}:{port}"
+            db_url = urlunparse((u.scheme, netloc, u.path, u.params, u.query, u.fragment))
 
         # Try to load password from secrets if not in URL
         if "@" not in db_url or ":" not in db_url.split("@")[0]:
@@ -95,7 +99,7 @@ def get_db_url() -> str:
     return db_url
 
 
-async def fetch_latest_job(conn) -> Optional[Dict[str, Any]]:
+async def fetch_latest_job(conn: Any) -> dict[str, Any] | None:
     """最新1件のJobを取得"""
     query = text("""
         SELECT
@@ -120,7 +124,7 @@ async def fetch_latest_job(conn) -> Optional[Dict[str, Any]]:
     }
 
 
-async def fetch_preprocess_metrics(conn, job_id: str) -> Optional[Dict[str, Any]]:
+async def fetch_preprocess_metrics(conn: Any, job_id: str) -> dict[str, Any] | None:
     """前処理メトリクスを取得"""
     query = text("""
         SELECT
@@ -152,7 +156,7 @@ async def fetch_preprocess_metrics(conn, job_id: str) -> Optional[Dict[str, Any]
     }
 
 
-async def fetch_subworker_runs(conn, job_id: str) -> List[Dict[str, Any]]:
+async def fetch_subworker_runs(conn: Any, job_id: str) -> list[dict[str, Any]]:
     """サブワーカーの実行結果を取得"""
     query = text("""
         SELECT
@@ -189,7 +193,7 @@ async def fetch_subworker_runs(conn, job_id: str) -> List[Dict[str, Any]]:
     return runs
 
 
-async def fetch_clusters(conn, run_ids: List[int]) -> List[Dict[str, Any]]:
+async def fetch_clusters(conn: Any, run_ids: list[int]) -> list[dict[str, Any]]:
     """クラスタ情報を取得"""
     if not run_ids:
         return []
@@ -225,7 +229,7 @@ async def fetch_clusters(conn, run_ids: List[int]) -> List[Dict[str, Any]]:
     return clusters
 
 
-async def fetch_sentences(conn, cluster_row_ids: List[int]) -> List[Dict[str, Any]]:
+async def fetch_sentences(conn: Any, cluster_row_ids: list[int]) -> list[dict[str, Any]]:
     """文情報を取得"""
     if not cluster_row_ids:
         return []
@@ -257,7 +261,7 @@ async def fetch_sentences(conn, cluster_row_ids: List[int]) -> List[Dict[str, An
     return sentences
 
 
-async def fetch_diagnostics(conn, run_ids: List[int]) -> List[Dict[str, Any]]:
+async def fetch_diagnostics(conn: Any, run_ids: list[int]) -> list[dict[str, Any]]:
     """診断メトリクスを取得"""
     if not run_ids:
         return []
@@ -285,7 +289,7 @@ async def fetch_diagnostics(conn, run_ids: List[int]) -> List[Dict[str, Any]]:
     return diagnostics
 
 
-async def fetch_job_articles(conn, job_id: str) -> Dict[str, Any]:
+async def fetch_job_articles(conn: Any, job_id: str) -> dict[str, Any]:
     """記事レベルの詳細情報を取得"""
     query = text("""
         SELECT
@@ -313,7 +317,7 @@ async def fetch_job_articles(conn, job_id: str) -> Dict[str, Any]:
     }
 
 
-async def fetch_genre_evaluation(conn) -> Optional[Dict[str, Any]]:
+async def fetch_genre_evaluation(conn: Any) -> dict[str, Any] | None:
     """最新のジャンル評価結果を取得"""
     query = text("""
         SELECT
@@ -405,7 +409,7 @@ def _safe_dsn_for_log(dsn: str) -> str:
     return urlunparse(redacted)
 
 
-async def main():
+async def main() -> None:
     """メイン処理"""
     db_url = get_db_url()
     logger.info("Connecting to DB: %s", _safe_dsn_for_log(db_url))

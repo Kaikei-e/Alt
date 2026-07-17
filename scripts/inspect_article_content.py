@@ -6,7 +6,6 @@
 import os
 import sys
 from pathlib import Path
-from typing import Dict, List, Optional
 
 try:
     import psycopg2
@@ -16,7 +15,7 @@ except ImportError:
     sys.exit(1)
 
 
-def load_env_vars() -> Dict[str, str]:
+def load_env_vars() -> dict[str, str]:
     """環境変数または.envファイルからデータベース接続情報を読み込む"""
     env_file = Path(__file__).parent.parent / ".env"
     env_vars = {}
@@ -65,31 +64,7 @@ def get_db_connection() -> psycopg2.extensions.connection:
         sys.exit(1)
 
 
-def inspect_article_content(cursor: RealDictCursor, article_id: str) -> Optional[Dict]:
-    """指定された記事IDの内容を取得"""
-    query = """
-        SELECT
-            a.id,
-            a.title,
-            a.content,
-            a.url,
-            a.created_at,
-            LENGTH(a.content) as content_length,
-            -- HTMLタグの数をカウント
-            (LENGTH(a.content) - LENGTH(REGEXP_REPLACE(a.content, '<[^>]+>', '', 'g'))) / 10 as estimated_html_tags
-        FROM articles a
-        WHERE a.id = %s
-    """
-
-    cursor.execute(query, (article_id,))
-    row = cursor.fetchone()
-
-    if row:
-        return dict(row)
-    return None
-
-
-def inspect_problematic_summaries(cursor: RealDictCursor) -> List[Dict]:
+def inspect_problematic_summaries(cursor: RealDictCursor) -> list[dict]:
     """問題のあるサマリーとその元記事を取得"""
     query = """
         SELECT
@@ -118,7 +93,7 @@ def inspect_problematic_summaries(cursor: RealDictCursor) -> List[Dict]:
     return [dict(row) for row in rows]
 
 
-def analyze_content(content: str) -> Dict:
+def analyze_content(content: str) -> dict:
     """記事の内容を分析"""
     if not content:
         return {
@@ -157,7 +132,7 @@ def analyze_content(content: str) -> Dict:
     }
 
 
-def main():
+def main() -> None:
     """メイン処理"""
     print("=" * 80)
     print("問題のあるサマリーの元記事の内容を確認します")

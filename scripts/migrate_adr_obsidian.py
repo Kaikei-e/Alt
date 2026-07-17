@@ -6,6 +6,7 @@ Operations:
 2. Convert Related ADRs references to wikilink format
 """
 
+import argparse
 import re
 import sys
 from pathlib import Path
@@ -46,35 +47,6 @@ PATTERN_D = re.compile(
 PATTERN_E = re.compile(
     r"ADR[- ]0*(\d+)$"
 )
-
-
-def parse_frontmatter(content: str) -> tuple[dict[str, str], int, int]:
-    """Parse YAML frontmatter, return (fields_dict, start_pos, end_pos).
-
-    Returns simple key->raw_value mapping. Only handles flat YAML fields
-    and list fields on the same line (e.g., `tags: [a, b]`).
-    """
-    lines = content.split("\n")
-    if not lines or lines[0].strip() != "---":
-        return {}, 0, 0
-
-    end_idx = None
-    for i in range(1, len(lines)):
-        if lines[i].strip() == "---":
-            end_idx = i
-            break
-
-    if end_idx is None:
-        return {}, 0, 0
-
-    fields = {}
-    for i in range(1, end_idx):
-        line = lines[i]
-        if ":" in line and not line.startswith(" ") and not line.startswith("\t"):
-            key, _, val = line.partition(":")
-            fields[key.strip()] = val.strip()
-
-    return fields, 0, end_idx
 
 
 def add_aliases(content: str, adr_num: int) -> str | None:
@@ -245,7 +217,7 @@ def process_files(dry_run: bool = False, aliases_only: bool = False, links_only:
 
         try:
             content = path.read_text(encoding="utf-8")
-        except Exception as e:
+        except (OSError, UnicodeDecodeError) as e:
             errors.append(f"ERROR reading {filename}: {e}")
             continue
 
@@ -292,27 +264,25 @@ def process_files(dry_run: bool = False, aliases_only: bool = False, links_only:
             print(f"    {e}")
 
 
-def main():
-    args = sys.argv[1:]
-    dry_run = "--dry-run" in args
-    aliases_only = "--aliases-only" in args
-    links_only = "--links-only" in args
-
-    if aliases_only and links_only:
-        print("Cannot use --aliases-only and --links-only together")
-        sys.exit(1)
+def main() -> None:
+    parser = argparse.ArgumentParser(description="Migrate ADR files for Obsidian compatibility")
+    parser.add_argument("--dry-run", action="store_true", help="Preview changes without writing")
+    group = parser.add_mutually_exclusive_group()
+    group.add_argument("--aliases-only", action="store_true", help="Only add aliases")
+    group.add_argument("--links-only", action="store_true", help="Only convert related links")
+    args = parser.parse_args()
 
     print(f"ADR directory: {ADR_DIR}")
-    print(f"Mode: {'dry-run' if dry_run else 'live'}")
-    if aliases_only:
+    print(f"Mode: {'dry-run' if args.dry_run else 'live'}")
+    if args.aliases_only:
         print("Operation: aliases only")
-    elif links_only:
+    elif args.links_only:
         print("Operation: links only")
     else:
         print("Operation: aliases + links")
     print()
 
-    process_files(dry_run=dry_run, aliases_only=aliases_only, links_only=links_only)
+    process_files(dry_run=args.dry_run, aliases_only=args.aliases_only, links_only=args.links_only)
 
 
 if __name__ == "__main__":

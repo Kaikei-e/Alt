@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import NamedTuple, Sequence, Tuple
-
+from typing import NamedTuple
 import pathlib
 
 import pandas as pd
@@ -22,7 +22,7 @@ class GraphBoostParams:
     tag_count_threshold: int
 
 
-HistoryEntry = Tuple[float, GraphBoostParams]
+HistoryEntry = tuple[float, GraphBoostParams]
 
 
 class OptimizationSummary(NamedTuple):
@@ -30,7 +30,7 @@ class OptimizationSummary(NamedTuple):
 
     best_params: GraphBoostParams
     best_accuracy: float
-    history: Tuple[HistoryEntry, ...]
+    history: tuple[HistoryEntry, ...]
 
 
 def find_latest_snapshot(directory: pathlib.Path) -> pathlib.Path:
@@ -38,10 +38,13 @@ def find_latest_snapshot(directory: pathlib.Path) -> pathlib.Path:
 
     if not directory.exists():
         raise FileNotFoundError(f"{directory} does not exist")
-    candidates = sorted(directory.glob("*"), reverse=True)
+    candidates = sorted(
+        (c for c in directory.glob("*") if c.suffix.lower() in {".parquet", ".pq", ".csv"}),
+        key=lambda p: p.stat().st_mtime,
+        reverse=True,
+    )
     for candidate in candidates:
-        if candidate.suffix.lower() in {".parquet", ".pq", ".csv"}:
-            return candidate
+        return candidate
     raise FileNotFoundError(f"snapshot not found in {directory}")
 
 

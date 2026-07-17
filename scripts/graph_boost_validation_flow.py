@@ -9,7 +9,7 @@ import pathlib
 import subprocess
 import textwrap
 from collections import OrderedDict
-from typing import Mapping, Sequence
+from collections.abc import Mapping, Sequence
 
 import yaml
 

@@ -164,29 +164,24 @@ def evaluate_summary_quality(
         "score": round(score, 1),
         "issues": issues,
         "length": summary_length,
-        "word_count": len(words) if 'words' in locals() else 0,
+        "word_count": len(words),
     }
 
 
 def search_web_for_verification(title: Optional[str], url: Optional[str]) -> Optional[Dict[str, Any]]:
-    """Web検索で情報を確認（必要時）"""
+    """Web検索で情報を確認（必要時）。
+
+    TODO: 実際の Web 検索 API は未配線。現状は検索クエリを返すスタブ。
+    """
     if not title:
         return None
 
-    try:
-        # タイトルからキーワードを抽出（最初の50文字）
-        search_query = title[:50] if len(title) > 50 else title
-
-        # 実際のWeb検索は外部ツールを使用するため、ここでは検索クエリを返す
-        # 実際の実装では、web_searchツールを使用して検索結果を取得
-        return {
-            "search_query": search_query,
-            "note": "Web検索は手動で実行してください",
-            "suggested_url": url
-        }
-    except Exception as e:
-        print(f"Web検索エラー: {e}")
-        return None
+    search_query = title[:50] if len(title) > 50 else title
+    return {
+        "search_query": search_query,
+        "note": "Web検索は手動で実行してください",
+        "suggested_url": url,
+    }
 
 
 def generate_report(
@@ -285,7 +280,7 @@ def generate_report(
     return report_text
 
 
-def main():
+def main() -> None:
     """メイン処理"""
     print("日本語サマリー品質確認を開始します...")
 

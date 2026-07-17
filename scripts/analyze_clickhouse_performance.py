@@ -82,45 +82,6 @@ class ServiceHealth:
 
 
 @dataclass
-class HttpEndpointStats:
-    """HTTP endpoint performance statistics."""
-
-    service: str
-    route: str
-    request_count: int
-    avg_duration_ms: float
-    p95_duration_ms: float
-    avg_response_size: int
-    error_rate: float
-    status_2xx: int
-    status_4xx: int
-    status_5xx: int
-
-
-@dataclass
-class SLITrend:
-    """SLI metric trend data point."""
-
-    timestamp: datetime
-    service: str
-    metric: str
-    value: float
-
-
-@dataclass
-class LogVolumeStats:
-    """Log volume statistics by severity."""
-
-    service: str
-    total_logs: int
-    debug_count: int
-    info_count: int
-    warn_count: int
-    error_count: int
-    fatal_count: int
-
-
-@dataclass
 class AnalysisResult:
     """Container for all analysis results."""
 
@@ -379,26 +340,6 @@ def collect_recent_errors(
     except ClickHouseError as exc:
         logging.warning("%s query failed: %s", "collect_recent_errors", exc)
         return []
-
-
-def collect_service_latency(
-    client: Client, database: str, hours: int
-) -> dict[str, float]:
-    """Collect p95 latency per service."""
-    query = f"""
-    SELECT
-        ServiceName,
-        round(quantile(0.95)(DurationMs), 2) as p95_ms
-    FROM {database}.otel_traces
-    WHERE Timestamp >= now() - INTERVAL %(hours)s HOUR
-    GROUP BY ServiceName
-    """
-    try:
-        result = client.query(query, parameters={"hours": hours})
-        return {row[0]: row[1] for row in result.result_rows}
-    except ClickHouseError as exc:
-        logging.warning("%s query failed: %s", "collect_service_latency", exc)
-        return {}
 
 
 # =============================================================================

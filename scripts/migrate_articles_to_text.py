@@ -13,7 +13,6 @@ import sys
 import time
 import argparse
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from typing import List, Tuple, Optional, Dict
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -133,14 +132,14 @@ class ArticleTextExtractor:
                     if summary_html and len(summary_html.strip()) > 0:
                         # readabilityが成功した場合、そのHTMLからパラグラフ抽出
                         return ArticleTextExtractor._extract_paragraphs(summary_html)
-                except Exception:
-                    pass
+                except (ValueError, TypeError, AttributeError) as e:
+                    print(f"readability failed, falling back: {e}", file=sys.stderr)
 
             # 4. フォールバック: パラグラフ抽出
             return ArticleTextExtractor._extract_paragraphs(cleaned_html)
 
-        except Exception as e:
-            # エラー時はシンプルなタグ除去
+        except (ValueError, TypeError, AttributeError) as e:
+            print(f"HTML extraction fallback: {e}", file=sys.stderr)
             return ArticleTextExtractor._simple_strip_tags(html_content)
 
     @staticmethod
@@ -186,7 +185,8 @@ class ArticleTextExtractor:
             else:
                 return ArticleTextExtractor._simple_strip_tags(html)
 
-        except Exception:
+        except (ValueError, TypeError, AttributeError) as e:
+            print(f"paragraph extraction fallback: {e}", file=sys.stderr)
             return ArticleTextExtractor._simple_strip_tags(html)
 
     @staticmethod
@@ -208,7 +208,7 @@ class DatabaseManager:
 
     def __init__(self, dsn: str):
         self.dsn = dsn
-        self.conn: Optional[Connection] = None
+        self.conn: Connection | None = None
 
     def connect(self):
         """データベースに接続"""
@@ -238,8 +238,8 @@ class DatabaseManager:
             # 接続が切れている場合は再接続
             try:
                 self.conn.close()
-            except Exception:
-                pass
+            except (psycopg2.Error, OSError) as e:
+                print(f"close before reconnect: {e}", file=sys.stderr)
             self.connect()
 
     def close(self):
@@ -247,11 +247,11 @@ class DatabaseManager:
         if self.conn:
             try:
                 self.conn.close()
-            except Exception:
-                pass
+            except (psycopg2.Error, OSError) as e:
+                print(f"close error: {e}", file=sys.stderr)
             self.conn = None
 
-    def get_articles_batch(self, last_id: Optional[str], limit: int) -> List[ArticleRecord]:
+    def get_articles_batch(self, last_id: str | None, limit: int) -> list[ArticleRecord]:
         """記事をバッチで取得（HTMLを含むもののみ、keysetページネーション）
 
         OFFSETベースのページネーションは、バッチ更新のたびに
@@ -304,7 +304,7 @@ class DatabaseManager:
         finally:
             cur.close()
 
-    def update_article_batch(self, updates: List[Tuple[str, str]], max_retries: int = 3):
+    def update_article_batch(self, updates: list[tuple[str, str]], max_retries: int = 3):
         """記事をバッチで更新（再接続機能付き）"""
         for attempt in range(max_retries):
             try:
@@ -323,11 +323,16 @@ class DatabaseManager:
                     # 接続エラーの場合はロールバックして再接続を試みる
                     try:
                         self.conn.rollback()
-                    except Exception:
-                        pass
+                    except (psycopg2.Error, OSError) as e:
+                        print(f"rollback failed: {e}", file=sys.stderr)
                     if attempt < max_retries - 1:
                         print(f"接続エラーが発生しました。再接続を試みます... (試行 {attempt + 1}/{max_retries})", file=sys.stderr)
                         time.sleep(1)  # 少し待ってから再接続
+                        try:
+                            if self.conn is not None:
+                                self.conn.close()
+                        except (psycopg2.Error, OSError):
+                            pass
                         self.conn = None  # 接続を無効化して次回再接続させる
                         continue
                     else:
@@ -341,7 +346,7 @@ class DatabaseManager:
                 time.sleep(1)
 
 
-def process_article(article: ArticleRecord) -> Tuple[str, str, bool]:
+def process_article(article: ArticleRecord) -> tuple[str, str, bool]:
     """
     記事を処理してテキスト抽出
 
@@ -358,7 +363,7 @@ def process_article(article: ArticleRecord) -> Tuple[str, str, bool]:
         return (article.id, article.content, False)
 
 
-def load_env_vars() -> Dict[str, str]:
+def load_env_vars() -> dict[str, str]:
     """環境変数または.envファイルからデータベース接続情報を読み込む"""
     env_file = Path(__file__).parent.parent / ".env"
     env_vars = {}
@@ -428,7 +433,7 @@ def get_database_dsn() -> str:
     return f"postgresql://{db_user}:{db_password}@{db_host}:{db_port}/{db_name}?sslmode=prefer"
 
 
-def main():
+def main() -> None:
     parser = argparse.ArgumentParser(description='記事HTML→テキスト移行スクリプト')
     parser.add_argument('--batch-size', type=int, default=1000, help='バッチサイズ（デフォルト: 1000）')
     parser.add_argument('--workers', type=int, default=8, help='並列処理数（デフォルト: 8）')
@@ -477,7 +482,7 @@ def main():
 
         # プログレスバー
         with tqdm(total=total_count, desc="処理中", unit="件") as pbar:
-            last_id: Optional[str] = None
+            last_id: str | None = None
             fetched_count = 0
 
             while fetched_count < total_count:
@@ -499,7 +504,7 @@ def main():
 
                     for future in as_completed(futures):
                         article_id, extracted_text, success = future.result()
-                        article = next(a for f, a in futures.items() if f == future)
+                        article = futures[future]
 
                         processed += 1
                         total_original_size += len(article.content)
