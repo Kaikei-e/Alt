@@ -2,7 +2,7 @@
 
 import pytest
 
-from recap_subworker.infra.path_validation import validate_path
+from recap_subworker.infra.path_validation import require_existing_path, validate_path
 
 
 class TestValidatePath:
@@ -103,3 +103,31 @@ class TestValidatePath:
         """Using default base_dirs rejects paths outside ALLOWED_BASE_DIRS."""
         with pytest.raises(ValueError, match="not within allowed directories"):
             validate_path("/etc/passwd")
+
+
+class TestRequireExistingPath:
+    """require_existing_path: allow-list + exists in one CodeQL-visible guard."""
+
+    def test_returns_path_when_file_exists(self, tmp_path):
+        base = tmp_path / "data"
+        base.mkdir()
+        target = base / "file.json"
+        target.touch()
+
+        result = require_existing_path(str(target), base_dirs=[base])
+        assert result == target.resolve()
+
+    def test_raises_file_not_found_when_missing(self, tmp_path):
+        base = tmp_path / "data"
+        base.mkdir()
+        missing = base / "missing.json"
+
+        with pytest.raises(FileNotFoundError):
+            require_existing_path(str(missing), base_dirs=[base])
+
+    def test_rejects_path_outside_allowlist(self, tmp_path):
+        base = tmp_path / "data"
+        base.mkdir()
+
+        with pytest.raises(ValueError, match="not within allowed directories"):
+            require_existing_path("/etc/passwd", base_dirs=[base])

@@ -39,6 +39,9 @@ const ALLOWED_REDIRECT_ORIGINS = [
  * - プロトコル相対URL (//evil.com) → ブラウザが http://evil.com にリダイレクト
  * - javascript:/data: スキーム
  * - 認証情報付きURL (http://legit@evil.com)
+ *
+ * Location には常に allow-list 由来の origin 定数 + 正規化した path を組み立てた
+ * 文字列を返す（ユーザー入力文字列をそのまま Location に載せない）。
  */
 function validateRedirectUrl(
 	returnTo: string | null,
@@ -46,17 +49,29 @@ function validateRedirectUrl(
 ): string {
 	if (!returnTo) return defaultUrl;
 	try {
-		const url = new URL(returnTo);
-		if (ALLOWED_REDIRECT_ORIGINS.includes(url.origin)) {
-			return returnTo;
+		const parsed = new URL(returnTo);
+		const trustedOrigin = ALLOWED_REDIRECT_ORIGINS.find(
+			(origin) => origin === parsed.origin,
+		);
+		if (trustedOrigin) {
+			const safePath = parsed.pathname.replace(/\\/g, "");
+			if (!safePath.startsWith("/")) {
+				return defaultUrl;
+			}
+			return `${trustedOrigin}${safePath}${parsed.search}${parsed.hash}`;
 		}
-		log(`Blocked redirect to disallowed origin: ${url.origin}`);
+		log(`Blocked redirect to disallowed origin: ${parsed.origin}`);
 		return defaultUrl;
 	} catch {
 		// 相対パスは "/" で始まり "//" で始まらないもののみ許可
 		// "//" はプロトコル相対URL（//evil.com → http://evil.com）なので拒否
-		if (returnTo.startsWith("/") && !returnTo.startsWith("//")) {
-			return returnTo;
+		if (
+			returnTo.startsWith("/") &&
+			!returnTo.startsWith("//") &&
+			!returnTo.includes("\\")
+		) {
+			const fallback = new URL(defaultUrl);
+			return `${fallback.origin}${returnTo}`;
 		}
 		log(`Blocked invalid redirect URL: ${returnTo}`);
 		return defaultUrl;
@@ -120,7 +135,6 @@ export function createKratosServer(): http.Server {
 			);
 
 			res.writeHead(303, {
-				// codeql[js/server-side-unvalidated-url-redirection] -- validateRedirectUrl enforces origin allow-list
 				Location: returnTo,
 				"Set-Cookie": `${KRATOS_SESSION_COOKIE_NAME}=${KRATOS_SESSION_COOKIE_VALUE}; Path=/; HttpOnly`,
 			});
@@ -140,7 +154,6 @@ export function createKratosServer(): http.Server {
 			);
 
 			res.writeHead(303, {
-				// codeql[js/server-side-unvalidated-url-redirection] -- validateRedirectUrl enforces origin allow-list
 				Location: returnTo,
 				"Set-Cookie": `${KRATOS_SESSION_COOKIE_NAME}=${KRATOS_SESSION_COOKIE_VALUE}; Path=/; HttpOnly`,
 			});

@@ -46,12 +46,8 @@ func (h *CSRFHandler) Handle(c echo.Context) error {
 		return mapDomainError(err)
 	}
 
-	// Log only the first 8 characters of session ID for security
-	prefix := sessionID
-	if len(prefix) > 8 {
-		prefix = prefix[:8]
-	}
-	slog.InfoContext(ctx, "csrf token generated", "session_prefix", prefix)
+	// Do not log Cookie-derived session material (even truncated) — clear-text logging.
+	slog.InfoContext(ctx, "csrf token generated", "session_present", sessionID != "")
 
 	resp := csrfResponse{}
 	resp.Data.CSRFToken = token

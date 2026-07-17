@@ -77,9 +77,19 @@ def fake_settings():
     return Settings(model_id="fake", allow_embedding_drift=True)
 
 
+@pytest.fixture
+def stub_existing_paths(monkeypatch):
+    """Bypass filesystem checks: require_existing_path returns a Path as-is."""
+
+    def _stub(user_path: str, base_dirs=None):
+        return Path(user_path)
+
+    monkeypatch.setattr(evaluation_router, "require_existing_path", _stub)
+
+
 @pytest.mark.asyncio
 async def test_evaluate_genres_does_not_mask_db_failure_with_nameerror(
-    monkeypatch, fake_container, fake_settings
+    monkeypatch, fake_container, fake_settings, stub_existing_paths
 ) -> None:
     """insert_system_metrics failing *after* a successful
     save_genre_evaluation must not raise NameError/UnboundLocalError for
@@ -87,7 +97,6 @@ async def test_evaluate_genres_does_not_mask_db_failure_with_nameerror(
     returned (matching the code's own stated intent: DB保存に失敗しても
     評価結果は返す)."""
     monkeypatch.setattr(evaluation_router, "SubworkerDAO", _SucceedThenFailDAO)
-    monkeypatch.setattr(evaluation_router.Path, "exists", lambda self: True)
 
     request = evaluation_router.EvaluateRequest(golden_data_path=None, save_to_db=True)
 
@@ -104,15 +113,13 @@ async def test_evaluate_genres_does_not_mask_db_failure_with_nameerror(
 
 @pytest.mark.asyncio
 async def test_evaluate_genres_reuses_container_singleton_and_offloads(
-    monkeypatch, fake_container, fake_settings
+    monkeypatch, fake_container, fake_settings, stub_existing_paths
 ) -> None:
     """`/v1/evaluation/genres` must reuse container.evaluation_service (no
     per-request EvaluationService() construction for the default weights
     path) and must call service.evaluate() via asyncio.to_thread rather than
     synchronously inline, so a CPU-heavy evaluate() run does not block the
     event loop."""
-    monkeypatch.setattr(evaluation_router.Path, "exists", lambda self: True)
-
     calls = []
 
     async def fake_to_thread(func, *args, **kwargs):
@@ -138,12 +145,10 @@ async def test_evaluate_genres_reuses_container_singleton_and_offloads(
 
 @pytest.mark.asyncio
 async def test_evaluate_genres_builds_adhoc_service_for_custom_weights_path(
-    monkeypatch, fake_container, fake_settings
+    monkeypatch, fake_container, fake_settings, stub_existing_paths
 ) -> None:
     """A request-supplied weights_path override must not silently reuse the
     settings-derived singleton (it needs different weights loaded)."""
-    monkeypatch.setattr(evaluation_router.Path, "exists", lambda self: True)
-
     created_kwargs = {}
 
     class _FakeCustomService:
