@@ -42,6 +42,7 @@ curl -u pact:$(cat secrets/pact_broker_basic_auth_password.txt) \
 
 - `compose/pact.yaml` に basic-auth password secret mount + entrypoint 注入が入っている。
 - secret file: `secrets/pact_broker_basic_auth_password.txt` (0644 で ruby UID 100 が読める必要あり)。
+- DB password: `secrets/pact_db_password.txt`（Broker basic-auth とは分離。初回は `openssl rand -hex 32 > secrets/pact_db_password.txt`。既存 `pact_db_data` volume がある場合は init 時のパスワードと一致させるか `docker volume rm alt_pact_db_data` で再作成）。
 - 未認証アクセスは **401** (public read disabled)。これは意図的 — orphan reader で pact を盗み見るシナリオを閉じるため。
 
 ### 運用上の落とし穴

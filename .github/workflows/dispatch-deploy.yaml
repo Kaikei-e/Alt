@@ -13,9 +13,9 @@
 # and exits successfully instead of failing — the deploy pipeline isn't
 # production-gating the mainline build, it's an additive notifier.
 #
-# All third-party actions should migrate to commit-SHA pins once Renovate is
-# configured with `pinDigests: true` (tracked under the deploy-strategy
-# security-hardening checklist). Tag pins are kept as a bootstrapping step.
+# Third-party actions migrate to commit-SHA pins via Renovate
+# (`pinDigests: true` in renovate.json). Tag pins remain until Renovate
+# opens the first digest-pin PRs.
 
 name: dispatch-deploy
 

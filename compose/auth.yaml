@@ -24,7 +24,7 @@ services:
       - kratos_db_password
     volumes:
       - kratos_db_data:/var/lib/postgresql/data
-      - ../kratos-db/init:/docker-entrypoint-initdb.d:rw
+      - ../kratos-db/init:/docker-entrypoint-initdb.d:ro
       - ../docker/postgres/postgresql.conf:/etc/postgresql/postgresql.conf:ro
       - ../docker/postgres/pg_hba.conf:/etc/postgresql/pg_hba.conf:ro
     ports:

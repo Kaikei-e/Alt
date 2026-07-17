@@ -211,6 +211,8 @@ services:
       context: ../migrations-atlas
       dockerfile: docker/Dockerfile
     container_name: db_migrator
+    # Short-lived Atlas apply job.
+    mem_limit: 256m
     entrypoint:
       - /bin/sh
       - -c

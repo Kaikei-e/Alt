@@ -5,6 +5,9 @@
 # `pact_broker_basic_auth_password` Docker secret. Public read is disabled —
 # the Broker only accepts authenticated requests on the alt-network.
 #
+# DB password is a separate secret (`pact_db_password`) so rotating broker
+# HTTP credentials does not require recreating the Postgres role/volume.
+#
 # promoted from `profiles: [pact]` (opt-in) to always-on so
 # `scripts/pact-check.sh` and the release-gate workflow can rely on its
 # presence without a side-profile toggle.
@@ -17,12 +20,14 @@ include:
 services:
   pact-db:
     image: postgres:16-alpine
+    # One-shot DB for the Broker; keep footprint small vs app DBs.
+    mem_limit: 256m
     environment:
       POSTGRES_USER: pact
-      POSTGRES_PASSWORD_FILE: /run/secrets/pact_broker_basic_auth_password
+      POSTGRES_PASSWORD_FILE: /run/secrets/pact_db_password
       POSTGRES_DB: pact
     secrets:
-      - pact_broker_basic_auth_password
+      - pact_db_password
     volumes:
       - pact_db_data:/var/lib/postgresql/data
     networks:
@@ -42,6 +47,8 @@ services:
 
   pact-broker:
     image: pactfoundation/pact-broker:2.139.0-pactbroker2.119.0
+    # Broker is mostly idle between can-i-deploy calls.
+    mem_limit: 256m
     depends_on:
       pact-db:
         condition: service_healthy
@@ -57,21 +64,27 @@ services:
     ports:
       - "${PROD_TAILNET_IP:-127.0.0.2}:9292:9292"
       - "127.0.0.1:9292:9292"
-    # pact-broker expects the DB URL inline; we render it from the secret
-    # via an entrypoint wrapper that reads the password from /run/secrets.
+    # pact-broker expects the DB URL inline; we render it from secrets
+    # via an entrypoint wrapper that reads DB + basic-auth passwords separately.
     entrypoint:
       - /bin/sh
       - -c
       - |
         set -eu
-        PWD_FILE=/run/secrets/pact_broker_basic_auth_password
-        if [ ! -r "$$PWD_FILE" ]; then
+        DB_PWD_FILE=/run/secrets/pact_db_password
+        AUTH_PWD_FILE=/run/secrets/pact_broker_basic_auth_password
+        if [ ! -r "$$DB_PWD_FILE" ]; then
+          echo "pact_db_password secret not mounted or not readable" >&2
+          exit 1
+        fi
+        if [ ! -r "$$AUTH_PWD_FILE" ]; then
           echo "pact_broker_basic_auth_password secret not mounted or not readable" >&2
           exit 1
         fi
-        PASSWORD=$$(cat "$$PWD_FILE")
-        export PACT_BROKER_DATABASE_URL="postgres://pact:$${PASSWORD}@pact-db/pact"
-        export PACT_BROKER_BASIC_AUTH_PASSWORD="$${PASSWORD}"
+        DB_PASSWORD=$$(cat "$$DB_PWD_FILE")
+        AUTH_PASSWORD=$$(cat "$$AUTH_PWD_FILE")
+        export PACT_BROKER_DATABASE_URL="postgres://pact:$${DB_PASSWORD}@pact-db/pact"
+        export PACT_BROKER_BASIC_AUTH_PASSWORD="$${AUTH_PASSWORD}"
         cd /pact_broker && exec sh ./entrypoint.sh
     environment:
       PACT_BROKER_BASIC_AUTH_USERNAME: pact
@@ -90,6 +103,7 @@ services:
       # Webhook scheme allowlist — refuse any non-HTTPS callback.
       PACT_BROKER_WEBHOOK_SCHEME_WHITELIST: "https"
     secrets:
+      - pact_db_password
       - pact_broker_basic_auth_password
     networks:
       - alt-network

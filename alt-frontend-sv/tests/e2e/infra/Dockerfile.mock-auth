@@ -1,19 +1,13 @@
 # Dockerfile for mock-auth server in development environment
 # This runs the E2E mock server with JWT generation capabilities
 
-FROM node:20-alpine
+FROM oven/bun:1.2-alpine
 
 WORKDIR /app
 
-# Install tsx for running TypeScript directly
-RUN npm install -g tsx
-
-# Copy package files for dependency installation
+# Install deps from bun.lock (reproducible; npm ci equivalent for this tree)
 COPY package.json bun.lock ./
-
-# Install only the dependencies needed for mock server
-# Using npm since this is a lightweight container
-RUN npm install --production=false
+RUN bun install --frozen-lockfile
 
 # Copy mock server and its dependencies
 COPY tests/e2e/infra/mock-server.ts ./
@@ -33,5 +27,8 @@ ENV NODE_ENV=development
 # 4003: Mock Backend (optional, for full mock mode)
 EXPOSE 4001 4002 4003
 
+# Non-root (bun image ships uid 1000)
+USER bun
+
 # Run the mock server
-CMD ["tsx", "mock-server.ts"]
+CMD ["bun", "x", "tsx", "mock-server.ts"]

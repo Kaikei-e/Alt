@@ -1,21 +1,13 @@
 #!/bin/bash
 
 # Enhanced startup script with dynamic service detection
-set -e
+set -euo pipefail
 
 echo "=== Rask-Log-Forwarder Dynamic Startup ==="
 
-# Get Docker group ID dynamically
-DOCKER_GROUP_ID=$(getent group docker | cut -d: -f3)
-
-if [ -z "$DOCKER_GROUP_ID" ]; then
-    echo "Warning: Could not detect Docker group ID. Using default value 999."
-    DOCKER_GROUP_ID=999
-fi
-
+# Get Docker group ID dynamically (fail-fast; compose has no fallback GID)
+DOCKER_GROUP_ID="$(./scripts/get-docker-gid.sh)"
 echo "✅ Using Docker group ID: $DOCKER_GROUP_ID"
-
-# Export the Docker group environment variable
 export DOCKER_GROUP_ID
 
 # Function to detect actual container name for a service

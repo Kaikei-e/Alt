@@ -3,7 +3,7 @@
 # RSS Feed Registration Script
 # Usage: ./register_rss_feed.sh <rss_feed_url> [base_url]
 
-set -e
+set -euo pipefail
 
 # Default configuration
 DEFAULT_BASE_URL="http://localhost:9000"

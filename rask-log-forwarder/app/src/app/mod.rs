@@ -108,6 +108,15 @@ pub fn get_version() -> String {
 pub async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let args: Vec<String> = std::env::args().collect();
 
+    // Docker healthcheck subcommand (distroless image has no shell/curl).
+    // Mirrors rask-log-aggregator: `/rask-log-forwarder healthcheck`.
+    if args.get(1).map(String::as_str) == Some("healthcheck") {
+        return crate::health_check().await.map_err(|e| {
+            eprintln!("Healthcheck failed: {e}");
+            e
+        });
+    }
+
     // Handle version flag specially
     if args.len() > 1 && (args[1] == "--version" || args[1] == "-V") {
         println!("rask-log-forwarder {}", get_version());

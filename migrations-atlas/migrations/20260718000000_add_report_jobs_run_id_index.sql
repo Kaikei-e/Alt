@@ -1,0 +1,13 @@
+-- Cross-ref (LOW review 20260706 #28): the one-shot UPDATE backfill in
+-- 20260321000000_add_summary_state_to_knowledge_home_items.sql
+-- (summary_excerpt != '' → summary_state='ready') mirrors the reproject-safe
+-- fold in knowledge-sovereign/app/usecase/knowledge_home_projector/projector.go
+-- (foldSummaryVersionCreated: non-empty SummaryText → ready, else pending).
+-- That migration is already applied — do not edit it (atlas.sum). This note
+-- lives here so the projector↔migration parity stays discoverable.
+--
+-- Add FK-supporting index for report_jobs.run_id.
+-- The table was created in 20260409000000_create_acolyte_tables.sql without
+-- an index on the FK column; lookups by run and ON DELETE cascades otherwise
+-- seq-scan report_jobs.
+CREATE INDEX IF NOT EXISTS idx_report_jobs_run_id ON report_jobs (run_id);

@@ -33,7 +33,7 @@ services:
       - pp_db_password
     volumes:
       - db_data_17:/var/lib/postgresql/data
-      - ../db/init:/docker-entrypoint-initdb.d:rw
+      - ../db/init:/docker-entrypoint-initdb.d:ro
       - ../docker/postgres/postgresql.conf:/etc/postgresql/postgresql.conf:ro
       - ../docker/postgres/pg_hba.conf:/etc/postgresql/pg_hba.conf:ro
     ports:
@@ -168,6 +168,8 @@ services:
     build:
       context: ../pre-processor-migration-atlas
       dockerfile: docker/Dockerfile
+    # Short-lived Atlas apply job.
+    mem_limit: 256m
     command: ["apply"]
     environment:
       - PP_DB_HOST=pre-processor-db

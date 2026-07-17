@@ -1,0 +1,12 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": ["config:recommended"],
+  "pinDigests": true,
+  "packageRules": [
+    {
+      "description": "Pin GitHub Actions to full commit SHAs (dispatch-deploy.yaml TODO).",
+      "matchManagers": ["github-actions"],
+      "pinDigests": true
+    }
+  ]
+}

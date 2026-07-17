@@ -108,8 +108,10 @@ services:
       - /sys:/sys:ro
       - /var/lib/docker/:/var/lib/docker:ro
       - /dev/disk/:/dev/disk:ro
+    # privileged + host FS mounts — bind UI/metrics to loopback only
+    # (same pattern as prometheus / pact-broker).
     ports:
-      - "8181:8080"
+      - "127.0.0.1:8181:8080"
     networks:
       - alt-network
     healthcheck:

@@ -28,6 +28,8 @@ services:
     build:
       context: ../knowledge-sovereign
       dockerfile: docker/Dockerfile.migrator
+    # Short-lived Atlas apply job.
+    mem_limit: 256m
     command: ["apply"]
     entrypoint:
       - /bin/sh

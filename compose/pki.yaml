@@ -40,7 +40,8 @@ x-pki-agent: &pki-agent
 
 services:
   step-ca:
-    image: smallstep/step-ca:0.27.5
+    # Keep in lockstep with pki-agent/Dockerfile base (smallstep/step-ca:0.30.2).
+    image: smallstep/step-ca:0.30.2
     restart: unless-stopped
     mem_limit: 128m
     environment:
@@ -79,7 +80,7 @@ services:
         max-file: "3"
 
   step-ca-bootstrap:
-    image: smallstep/step-ca:0.27.5
+    image: smallstep/step-ca:0.30.2
     restart: "no"
     user: "0:0"
     entrypoint:
