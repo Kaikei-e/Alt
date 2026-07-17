@@ -8,12 +8,13 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"strings"
 	"time"
+
+	"pre-processor-sidecar/models"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
-	"pre-processor-sidecar/models"
+	"github.com/jackc/pgx/v5/pgconn"
 )
 
 // PostgreSQLArticleRepository implements ArticleRepository using PostgreSQL
@@ -289,24 +290,14 @@ func (r *PostgreSQLArticleRepository) createArticleWithValidationAndResult(ctx c
 // isDuplicateError is deprecated - no longer needed with UPSERT implementation
 // Left for compatibility with existing code that might call it
 func (r *PostgreSQLArticleRepository) isDuplicateError(err error) bool {
-	if err == nil {
-		return false
-	}
-	errStr := fmt.Sprintf("%v", err)
-	// Check for PostgreSQL unique constraint violation (error code 23505)
-	return strings.Contains(errStr, "duplicate key value violates unique constraint") ||
-		strings.Contains(errStr, "inoreader_articles_inoreader_id_key")
+	var pgErr *pgconn.PgError
+	return errors.As(err, &pgErr) && pgErr.Code == "23505"
 }
 
 // isForeignKeyError checks if error is due to foreign key constraint violation
 func (r *PostgreSQLArticleRepository) isForeignKeyError(err error) bool {
-	if err == nil {
-		return false
-	}
-	errStr := fmt.Sprintf("%v", err)
-	// Check for PostgreSQL foreign key constraint violation (error code 23503)
-	return strings.Contains(errStr, "violates foreign key constraint") ||
-		strings.Contains(errStr, "inoreader_articles_subscription_id_fkey")
+	var pgErr *pgconn.PgError
+	return errors.As(err, &pgErr) && pgErr.Code == "23503"
 }
 
 // FindByInoreaderID finds an article by its Inoreader ID
@@ -470,36 +461,15 @@ func (r *PostgreSQLArticleRepository) MarkBatchAsProcessed(ctx context.Context, 
 		return nil
 	}
 
-	tx, err := r.pool.BeginTx(ctx, pgx.TxOptions{})
+	query := `UPDATE inoreader_articles SET processed = true WHERE inoreader_id = ANY($1)`
+	tag, err := r.pool.Exec(ctx, query, inoreaderIDs)
 	if err != nil {
-		return fmt.Errorf("failed to begin transaction: %w", err)
-	}
-	defer tx.Rollback(ctx)
-
-	query := `UPDATE inoreader_articles SET processed = true WHERE inoreader_id = $1`
-
-	processed := 0
-	for _, inoreaderID := range inoreaderIDs {
-		tag, err := tx.Exec(ctx, query, inoreaderID)
-		if err != nil {
-			r.logger.Warn("Failed to mark article as processed in batch",
-				"inoreader_id", inoreaderID,
-				"error", err)
-			continue
-		}
-
-		if tag.RowsAffected() > 0 {
-			processed++
-		}
-	}
-
-	if err := tx.Commit(ctx); err != nil {
-		return fmt.Errorf("failed to commit transaction: %w", err)
+		return fmt.Errorf("failed to mark articles as processed: %w", err)
 	}
 
 	r.logger.Info("Batch processed articles updated",
 		"total_ids", len(inoreaderIDs),
-		"processed", processed)
+		"processed", tag.RowsAffected())
 
 	return nil
 }
@@ -619,7 +589,7 @@ func (r *PostgreSQLArticleRepository) queryArticles(ctx context.Context, query s
 		)
 		if err != nil {
 			r.logger.Error("Failed to scan article row", "error", err)
-			continue
+			return nil, fmt.Errorf("failed to scan article row: %w", err)
 		}
 
 		articles = append(articles, article)

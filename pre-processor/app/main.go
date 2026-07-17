@@ -33,6 +33,7 @@ func performHealthCheck() {
 
 	resp, err := client.Get(urlParsed.String())
 	if err != nil {
+		fmt.Fprintf(os.Stderr, "health check failed: %v\n", err)
 		os.Exit(1)
 	}
 	defer func() {
@@ -42,6 +43,7 @@ func performHealthCheck() {
 	}()
 
 	if resp.StatusCode != http.StatusOK {
+		fmt.Fprintf(os.Stderr, "health check failed: unexpected status %d\n", resp.StatusCode)
 		os.Exit(1)
 	}
 	os.Exit(0)

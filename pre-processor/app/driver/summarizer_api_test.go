@@ -159,6 +159,56 @@ func TestTitleFallback(t *testing.T) {
 	})
 }
 
+func TestArticleSummarizerAPIClient_BadRequestMapping(t *testing.T) {
+	tests := []struct {
+		name       string
+		body       string
+		wantSentinel error
+	}{
+		{
+			name:         "content too short detail maps to ErrContentTooShort",
+			body:         `{"detail":"Content is too short for summarization. Content length: 10, minimum: 100"}`,
+			wantSentinel: domain.ErrContentTooShort,
+		},
+		{
+			name:         "generic 400 does not map to ErrContentTooShort",
+			body:         `{"detail":"invalid payload: missing article_id"}`,
+			wantSentinel: domain.ErrInvalidRequest,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				w.WriteHeader(http.StatusBadRequest)
+				_, _ = w.Write([]byte(tt.body))
+			}))
+			defer server.Close()
+
+			logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelWarn}))
+			cfg := &config.Config{
+				NewsCreator: config.NewsCreatorConfig{
+					Host:    server.URL,
+					APIPath: "/api/v1/summarize",
+					Timeout: 5 * 1_000_000_000,
+				},
+			}
+			article := &domain.Article{
+				ID:      "test-article-400",
+				Content: strings.Repeat("Test content for summarization. ", 10),
+			}
+
+			_, err := ArticleSummarizerAPIClient(context.Background(), article, cfg, logger, "low")
+			if err == nil {
+				t.Fatal("expected error, got nil")
+			}
+			if !errors.Is(err, tt.wantSentinel) {
+				t.Errorf("expected %v, got: %v", tt.wantSentinel, err)
+			}
+		})
+	}
+}
+
 func TestContentLengthMeasurement(t *testing.T) {
 	// Generate test strings with exact lengths
 	englishShort := strings.Repeat("a", 77)              // 77 chars, 77 bytes

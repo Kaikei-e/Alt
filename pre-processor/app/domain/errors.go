@@ -22,6 +22,9 @@ var (
 	// ErrContentNotProcessable indicates the content cannot be summarized by the model
 	// (e.g., model degeneration producing empty/whitespace output). Non-retryable.
 	ErrContentNotProcessable = errors.New("content not processable by model")
+
+	// ErrFetchDisabled indicates outbound article body fetching is intentionally disabled.
+	ErrFetchDisabled = errors.New("article fetching disabled for ethical compliance")
 )
 
 // Job-related errors

@@ -62,7 +62,7 @@ func NewArticleFetcherServiceWithFactory(cfg *config.Config, logger *slog.Logger
 // FetchArticle is disabled for ethical compliance.
 func (s *articleFetcherService) FetchArticle(ctx context.Context, urlStr string) (*domain.Article, error) {
 	s.logger.InfoContext(ctx, "Article fetching disabled for ethical compliance", "url", urlStr)
-	return nil, nil
+	return nil, domain.ErrFetchDisabled
 }
 
 // ValidateURL validates a URL for security and format.
@@ -138,13 +138,7 @@ func (w *HTTPClientWrapper) Get(ctx context.Context, url string) (*http.Response
 	metrics := GetGlobalProxyMetrics(nil)
 
 	if err != nil {
-		var errorType ProxyErrorType
-		if strings.Contains(err.Error(), "timeout") || strings.Contains(err.Error(), "deadline exceeded") {
-			errorType = ProxyErrorTimeout
-		} else {
-			errorType = ProxyErrorConnection
-		}
-
+		errorType := classifyProxyError(err)
 		metrics.RecordDomainRequest(url, duration, false, errorType)
 		return nil, err
 	}

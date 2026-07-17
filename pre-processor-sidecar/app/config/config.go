@@ -5,6 +5,8 @@ package config
 
 import (
 	"fmt"
+	"net"
+	"net/url"
 	"os"
 	"strconv"
 	"strings"
@@ -68,6 +70,10 @@ type Config struct {
 	EnableDebugMode    bool
 	EnableHealthCheck  bool
 
+	// ProxyInitWait is how long to sleep before first outbound/DB use so a
+	// Linkerd (or similar) sidecar proxy can finish initializing.
+	ProxyInitWait time.Duration
+
 	// Phase 5: Rotation processing configuration
 	Rotation RotationConfig
 
@@ -83,6 +89,23 @@ type DatabaseConfig struct {
 	User     string
 	Password string
 	SSLMode  string
+}
+
+// PostgresURL builds a postgres:// URL with properly escaped credentials so
+// passwords containing spaces or special characters do not break ParseConfig.
+func (d DatabaseConfig) PostgresURL() string {
+	u := url.URL{
+		Scheme: "postgres",
+		User:   url.UserPassword(d.User, d.Password),
+		Host:   net.JoinHostPort(d.Host, d.Port),
+		Path:   "/" + d.Name,
+	}
+	q := url.Values{}
+	if d.SSLMode != "" {
+		q.Set("sslmode", d.SSLMode)
+	}
+	u.RawQuery = q.Encode()
+	return u.String()
 }
 
 // InoreaderConfig holds Inoreader API settings
@@ -256,6 +279,8 @@ func LoadConfig() (*Config, error) {
 		EnableScheduleMode: getEnvOrDefaultBool("ENABLE_SCHEDULE_MODE", false),
 		EnableDebugMode:    getEnvOrDefaultBool("ENABLE_DEBUG_MODE", false),
 		EnableHealthCheck:  getEnvOrDefaultBool("ENABLE_HEALTH_CHECK", true),
+
+		ProxyInitWait: getEnvOrDefaultDuration("LINKERD_PROXY_INIT_WAIT", 10*time.Second),
 	}
 
 	// Parse integer configurations

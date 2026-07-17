@@ -236,14 +236,10 @@ func performOAuth2Initialization(cfg *config.Config, logger *slog.Logger) {
 	logger.Info("OAuth2 initialization starting", "service", "oauth2-init")
 
 	// Wait for Linkerd proxy initialization
-	logger.Info("Waiting for Linkerd proxy initialization...")
-	time.Sleep(10 * time.Second)
+	logger.Info("Waiting for Linkerd proxy initialization...", "wait", cfg.ProxyInitWait)
+	time.Sleep(cfg.ProxyInitWait)
 
-	// Initialize database connection (Clean Architecture - use config values)
-	dbConnectionString := fmt.Sprintf("host=%s port=%s user=%s password=%s dbname=%s sslmode=%s",
-		cfg.Database.Host, cfg.Database.Port,
-		cfg.Database.User, cfg.Database.Password,
-		cfg.Database.Name, cfg.Database.SSLMode)
+	dbConnectionString := cfg.Database.PostgresURL()
 
 	// Create database connection
 	logger.Info("Attempting database connection",
@@ -287,14 +283,10 @@ func runScheduleMode(ctx context.Context, cfg *config.Config, logger *slog.Logge
 	logger.Info("Initializing dual schedule processing system")
 
 	// Wait for Linkerd proxy initialization
-	logger.Info("Waiting for Linkerd proxy initialization...")
-	time.Sleep(10 * time.Second)
+	logger.Info("Waiting for Linkerd proxy initialization...", "wait", cfg.ProxyInitWait)
+	time.Sleep(cfg.ProxyInitWait)
 
-	// Initialize database connection
-	dbConnectionString := fmt.Sprintf("host=%s port=%s user=%s password=%s dbname=%s sslmode=%s",
-		cfg.Database.Host, cfg.Database.Port,
-		cfg.Database.User, cfg.Database.Password,
-		cfg.Database.Name, cfg.Database.SSLMode)
+	dbConnectionString := cfg.Database.PostgresURL()
 
 	logger.Info("Attempting database connection",
 		"host", cfg.Database.Host,
@@ -473,11 +465,13 @@ func runScheduleMode(ctx context.Context, cfg *config.Config, logger *slog.Logge
 
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		json.NewEncoder(w).Encode(map[string]interface{}{
+		if err := json.NewEncoder(w).Encode(map[string]interface{}{
 			"status":    "triggered",
 			"message":   "Article fetch (rotation) has been triggered manually",
 			"timestamp": time.Now().UTC().Format(time.RFC3339),
-		})
+		}); err != nil {
+			logger.Error("Failed to encode article-fetch trigger response", "error", err)
+		}
 	}))
 
 	adminMux.HandleFunc("/admin/trigger/subscription-sync", adminAPIHandler.RequireAdmin("/admin/trigger/subscription-sync", func(w http.ResponseWriter, r *http.Request) {
@@ -496,11 +490,13 @@ func runScheduleMode(ctx context.Context, cfg *config.Config, logger *slog.Logge
 
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		json.NewEncoder(w).Encode(map[string]interface{}{
+		if err := json.NewEncoder(w).Encode(map[string]interface{}{
 			"status":    "triggered",
 			"message":   "Subscription sync has been triggered manually",
 			"timestamp": time.Now().UTC().Format(time.RFC3339),
-		})
+		}); err != nil {
+			logger.Error("Failed to encode subscription-sync trigger response", "error", err)
+		}
 	}))
 
 	adminServer := &http.Server{

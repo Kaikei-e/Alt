@@ -404,9 +404,10 @@ func (c *OAuth2Client) MakeAuthenticatedRequest(ctx context.Context, accessToken
 		return nil, &HTTPStatusError{StatusCode: resp.StatusCode, Message: fmt.Sprintf("API request failed with status %d", resp.StatusCode)}
 	}
 
-	// Parse JSON response
+	// Parse JSON response (bound body size to avoid unbounded memory use)
+	const maxAPIResponseBytes = 10 << 20 // 10 MiB
 	var responseData map[string]interface{}
-	if err := json.NewDecoder(resp.Body).Decode(&responseData); err != nil {
+	if err := json.NewDecoder(io.LimitReader(resp.Body, maxAPIResponseBytes)).Decode(&responseData); err != nil {
 		return nil, fmt.Errorf("failed to decode API response: %w", err)
 	}
 
@@ -588,13 +589,10 @@ func isNetworkError(err error) bool {
 		return true
 	}
 
-	// Check for specific network error types
+	// Check for specific network error types (Timeout only; Temporary is deprecated)
 	var netErr net.Error
-	if errors.As(err, &netErr) {
-		// Timeout or temporary network errors
-		if netErr.Timeout() || netErr.Temporary() {
-			return true
-		}
+	if errors.As(err, &netErr) && netErr.Timeout() {
+		return true
 	}
 
 	// Check for syscall errors

@@ -91,6 +91,53 @@ func TestJobRunner_Backoff(t *testing.T) {
 	})
 }
 
+func TestJobRunner_NonBackoffErrorResetsInterval(t *testing.T) {
+	errOverloaded := errors.New("overloaded")
+	errOther := errors.New("other")
+	var callCount atomic.Int32
+	var phase atomic.Int32
+
+	runner := NewJobRunner(JobConfig{
+		Name:            "reset-interval-job",
+		Interval:        15 * time.Millisecond,
+		InitialBackoff:  200 * time.Millisecond,
+		MaxBackoff:      200 * time.Millisecond,
+		BackoffOnErrors: []error{errOverloaded},
+		RunImmediately:  true,
+	}, func(ctx context.Context) error {
+		n := callCount.Add(1)
+		switch {
+		case n == 1:
+			phase.Store(1)
+			return errOverloaded // enter backoff (200ms)
+		case n == 2:
+			phase.Store(2)
+			return errOther // non-backoff: must restore Interval
+		default:
+			phase.Store(3)
+			return nil
+		}
+	}, testLogger())
+
+	ctx := context.Background()
+	runner.Start(ctx)
+
+	// After immediate overloaded + one backoff tick (~200ms) returning other,
+	// subsequent ticks should use Interval (15ms), not stay at 200ms.
+	deadline := time.Now().Add(500 * time.Millisecond)
+	for time.Now().Before(deadline) {
+		if callCount.Load() >= 5 {
+			break
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	runner.Stop()
+
+	require.GreaterOrEqual(t, callCount.Load(), int32(5),
+		"after non-backoff error, ticker must resume normal interval; phase=%d calls=%d",
+		phase.Load(), callCount.Load())
+}
+
 func TestJobRunner_PanicRecovery(t *testing.T) {
 	t.Run("should recover from panics", func(t *testing.T) {
 		runner := NewJobRunner(JobConfig{

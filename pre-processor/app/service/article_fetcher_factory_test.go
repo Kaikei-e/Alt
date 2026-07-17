@@ -2,12 +2,14 @@ package service
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
 	"log/slog"
 
 	"pre-processor/config"
+	"pre-processor/domain"
 )
 
 // TestNewArticleFetcherServiceWithFactory tests factory-based constructor
@@ -129,8 +131,8 @@ func TestArticleFetcherFactory_Integration(t *testing.T) {
 			ctx := context.Background()
 			article, err := service.FetchArticle(ctx, tc.targetURL)
 
-			if err != nil {
-				t.Errorf("%s: unexpected error (article fetching disabled): %v", tc.description, err)
+			if !errors.Is(err, domain.ErrFetchDisabled) {
+				t.Errorf("%s: expected ErrFetchDisabled, got: %v", tc.description, err)
 				return
 			}
 
@@ -139,7 +141,7 @@ func TestArticleFetcherFactory_Integration(t *testing.T) {
 				return
 			}
 
-			t.Logf("%s: article fetching disabled, returned nil as expected", tc.description)
+			t.Logf("%s: article fetching disabled, returned ErrFetchDisabled as expected", tc.description)
 		})
 	}
 }
