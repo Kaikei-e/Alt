@@ -64,7 +64,7 @@ def _run_scheduler_process() -> None:
 
             # Monitor loop to keep process alive until scheduler stops
             async def monitor_scheduler():
-                while scheduler._running:
+                while scheduler.is_running:
                     await asyncio.sleep(1.0)
                 loop.stop()
 
@@ -80,7 +80,7 @@ def _run_scheduler_process() -> None:
             )
         finally:
             # Cleanup
-            if scheduler._running:
+            if scheduler.is_running:
                 try:
                     loop.run_until_complete(scheduler.stop())
                 except Exception as exc:

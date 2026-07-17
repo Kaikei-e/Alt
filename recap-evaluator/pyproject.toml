@@ -83,26 +83,40 @@ exclude = [".git", "__pycache__", ".venv", "build", "dist", "*.egg-info"]
 
 [tool.ruff.lint]
 select = [
-    "E",   # pycodestyle errors
-    "W",   # pycodestyle warnings
-    "F",   # pyflakes
-    "I",   # isort
-    "N",   # pep8-naming
-    "UP",  # pyupgrade
-    "B",   # flake8-bugbear
-    "A",   # flake8-builtins
-    "C4",  # flake8-comprehensions
-    "PT",  # flake8-pytest-style
-    "RUF", # Ruff-specific rules
+    "E", "W", "F", "I", "N", "UP", "B", "A", "C4", "PT", "RUF",
+    "ANN",    # annotations
+    "S",      # bandit
+    "BLE",    # blind-except
+    "SIM",    # simplify
+    "ASYNC",  # async best practices
+    "TRY",    # tryceratops
+    "PTH",    # pathlib
+    "PL",     # pylint
 ]
 ignore = [
     "E501",   # Line too long (handled by formatter)
+    "S101",   # assert OK in some paths / tests
+    "S104",   # bind all interfaces (containers)
     "RUF001", # Ambiguous unicode chars (intentional in Japanese prompts)
+    "RUF003",
+    "RUF100",
+    # DECREE §10 select enabled; existing-debt suppressions until cleanup PRs.
+    "ANN001", "ANN201", "ANN202", "ANN204", "ANN401",
+    "BLE001",
+    "TRY003", "TRY300", "TRY400",
+    "PLR0913", "PLR0915", "PLR2004",
+    "PLC0415",
+    "PLW0108", "PLW0602", "PLW0603",
+    "N806",
+    "UP037", "UP042",
+    "SIM105",
+    "B905",
+    "E402",
 ]
 
 [tool.ruff.lint.per-file-ignores]
 "test_*.py" = ["S101"]
-"tests/**" = ["S101"]
+"tests/**" = ["S101", "ANN", "PLR2004"]
 
 [tool.ruff.format]
 quote-style = "double"

@@ -13,8 +13,12 @@ import ssl
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+import structlog
+
 if TYPE_CHECKING:
     pass
+
+logger = structlog.get_logger(__name__)
 
 
 def mtls_enforced() -> bool:
@@ -111,4 +115,5 @@ async def watch_cert_rotation(
             raise
         except Exception:
             # Never let a transient error take the task down.
+            logger.debug("mtls_cert_rotation_watch_error", exc_info=True)
             continue

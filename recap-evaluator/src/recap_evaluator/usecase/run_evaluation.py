@@ -62,6 +62,15 @@ class RunEvaluationUsecase:
             window_days=window_days,
         )
 
+        # Empty-window check before any evaluator work (handler returns 404).
+        if not job_ids:
+            logger.info(
+                "No jobs found in evaluation window",
+                evaluation_id=str(evaluation_id),
+                window_days=window_days,
+            )
+            return run
+
         alert_levels: list[AlertLevel] = []
 
         if include_genre:
@@ -70,20 +79,20 @@ class RunEvaluationUsecase:
                 run.genre_metrics = genre_result
                 alert_levels.append(genre_result.alert_level)
 
-        if include_cluster and job_ids:
+        if include_cluster:
             run.cluster_metrics = await self._cluster.evaluate_batch(job_ids)
             if run.cluster_metrics:
                 cluster_alerts = [m.alert_level for m in run.cluster_metrics.values()]
                 alert_levels.append(AlertResolver.resolve(cluster_alerts))
 
-        if include_summary and job_ids:
+        if include_summary:
             run.summary_metrics = await self._summary.evaluate_batch(
                 job_ids, sample_per_job=sample_per_job
             )
             if run.summary_metrics:
                 alert_levels.append(run.summary_metrics.alert_level)
 
-        if include_pipeline and job_ids:
+        if include_pipeline:
             run.pipeline_metrics = await self._pipeline.evaluate_batch(
                 job_ids, window_days=window_days
             )
@@ -92,15 +101,14 @@ class RunEvaluationUsecase:
 
         run.overall_alert_level = AlertResolver.resolve(alert_levels)
 
-        if job_ids:
-            metrics = run.to_metrics_dict()
-            await self._db.save_evaluation_run(
-                evaluation_id=run.evaluation_id,
-                evaluation_type=run.evaluation_type.value,
-                job_ids=run.job_ids,
-                metrics=metrics,
-                created_at=run.created_at,
-            )
+        metrics = run.to_metrics_dict()
+        await self._db.save_evaluation_run(
+            evaluation_id=run.evaluation_id,
+            evaluation_type=run.evaluation_type.value,
+            job_ids=run.job_ids,
+            metrics=metrics,
+            created_at=run.created_at,
+        )
 
         logger.info(
             "Full evaluation completed",

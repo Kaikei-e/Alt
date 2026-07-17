@@ -459,16 +459,16 @@ class SubworkerDAO:
         try:
             await self.session.execute(on_conflict)
         except ProgrammingError as e:
-            # Check if the error is due to missing table
-            error_str = str(e.orig) if hasattr(e, "orig") else str(e)
-            if "recap_run_diagnostics" in error_str and ("does not exist" in error_str or "relation" in error_str.lower()):
-                orig = e.orig if e.orig is not None else Exception(str(e))
+            # 42P01 = undefined_table (PostgreSQL). Prefer sqlstate over message matching.
+            orig = e.orig if e.orig is not None else None
+            sqlstate = getattr(orig, "sqlstate", None) if orig is not None else None
+            if sqlstate == "42P01":
                 raise ProgrammingError(
                     "Table 'recap_run_diagnostics' does not exist. "
                     "Please run database migrations: 'make recap-migrate' or "
                     "'docker compose --profile recap run --rm recap-db-migrator'",
                     e.params,
-                    orig,
+                    orig if orig is not None else Exception(str(e)),
                 ) from e
             raise
 

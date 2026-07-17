@@ -1,5 +1,4 @@
-"""
-Genre Classification Training Script.
+"""Genre Classification Training Script.
 
 Trains a genre classifier with configurable hyperparameters.
 Can load optimal parameters from a JSON file (output of optimize_hyperparams.py).
@@ -20,6 +19,7 @@ import asyncio
 import hashlib
 import importlib.metadata
 import json
+import logging
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Literal
@@ -38,6 +38,8 @@ from sklearn.preprocessing import StandardScaler
 
 from recap_subworker.infra.config import get_settings
 from recap_subworker.services.embedder import Embedder
+
+logger = logging.getLogger(__name__)
 
 
 def _installed_version(pkg: str) -> str:
@@ -67,7 +69,7 @@ def load_hyperparams(params_path: Path | None) -> dict:
         Dictionary of hyperparameters
     """
     if params_path is None or not params_path.exists():
-        print("Using default hyperparameters")
+        logger.info("Using default hyperparameters")
         return DEFAULT_HYPERPARAMS.copy()
 
     with open(params_path) as f:
@@ -76,9 +78,9 @@ def load_hyperparams(params_path: Path | None) -> dict:
     # Extract best_params if it's the output of optimize_hyperparams.py
     if "best_params" in data:
         params = data["best_params"]
-        print(f"Loaded optimal hyperparameters from {params_path}")
-        print(f"  CV F1: {data.get('best_cv_f1', 'N/A')}")
-        print(f"  Train/Test gap: {data.get('train_test_gap', 'N/A')}")
+        logger.info(f"Loaded optimal hyperparameters from {params_path}")
+        logger.info(f"  CV F1: {data.get('best_cv_f1', 'N/A')}")
+        logger.info(f"  Train/Test gap: {data.get('train_test_gap', 'N/A')}")
     else:
         params = data
 
@@ -136,21 +138,19 @@ async def main(
         data_path = Path("data/training_data.csv")
 
     if not data_path.exists():
-        print(f"Data not found: {data_path}")
+        logger.info(f"Data not found: {data_path}")
         return
 
     # Load hyperparameters
     hyperparams = load_hyperparams(params_path)
-    print("\nHyperparameters:")
+    logger.info("\nHyperparameters:")
     for k, v in hyperparams.items():
-        print(f"  {k}: {v}")
-    print()
-
-    print(f"Loading data from {data_path}...")
+        logger.info(f"  {k}: {v}")
+    logger.info("")
+    logger.info(f"Loading data from {data_path}...")
     df = pd.read_csv(data_path)
     df = df.dropna(subset=["content", "genre"])
-    print(f"  Loaded {len(df)} samples")
-
+    logger.info(f"  Loaded {len(df)} samples")
     # Load and merge augmented data if provided
     if augmented_paths:
         aug_dfs = []
@@ -159,18 +159,16 @@ async def main(
                 aug_df = pd.read_csv(aug_path)
                 aug_df = aug_df.dropna(subset=["content", "genre"])
                 aug_dfs.append(aug_df)
-                print(f"  Loaded {len(aug_df)} augmented samples from {aug_path}")
+                logger.info(f"  Loaded {len(aug_df)} augmented samples from {aug_path}")
             else:
-                print(f"  WARNING: Augmented file not found: {aug_path}")
-
+                logger.info(f"  WARNING: Augmented file not found: {aug_path}")
         if aug_dfs:
             # Combine all dataframes
             all_dfs = [df, *aug_dfs]
             df = pd.concat(all_dfs, ignore_index=True)
             # Keep only essential columns
             df = df[["content", "genre"]]
-            print(f"  Total samples after merge: {len(df)}")
-
+            logger.info(f"  Total samples after merge: {len(df)}")
     # Filter out rare classes if any (less than 10 samples?)
     # genre distribution earlier showed many with 4 samples.
     # We should probably group them into 'other' or drop them?
@@ -178,7 +176,7 @@ async def main(
     # Or maybe drop classes with < 50 samples?
     counts = df["genre"].value_counts()
     valid_genres = counts[counts >= 20].index
-    print(f"Filtering genres with >= 20 samples. Kept: {len(valid_genres)}")
+    logger.info(f"Filtering genres with >= 20 samples. Kept: {len(valid_genres)}")
     df = df[df["genre"].isin(valid_genres)]
 
     # Verification limit removed
@@ -186,14 +184,14 @@ async def main(
     X = df["content"]
     y = df["genre"]
 
-    print("Splitting data...")
+    logger.info("Splitting data...")
     X_train, X_test, y_train, y_test = train_test_split(
         X, y, test_size=0.2, random_state=42, stratify=y
     )
 
-    print("Initializing Embedder...")
+    logger.info("Initializing Embedder...")
     # Initialize embedder (this might be heavy)
-    print("Initializing Embedder...")
+    logger.info("Initializing Embedder...")
     from recap_subworker.services.embedder import EmbedderConfig
 
     # Construct config from settings
@@ -209,12 +207,12 @@ async def main(
 
     # Transform embeddings first to separate them (optional, but cleaner for pipeline if mixed)
     # Actually, let's just compute embeddings once for Train and Test to save time during tuning.
-    print("Generating embeddings for training set...")
+    logger.info("Generating embeddings for training set...")
     emb_transformer = EmbeddingTransformer(embedder)
     X_train_emb = emb_transformer.transform(X_train)
     X_test_emb = emb_transformer.transform(X_test)
 
-    print("Generating TF-IDF features...")
+    logger.info("Generating TF-IDF features...")
     tfidf = TfidfVectorizer(
         max_features=hyperparams["max_features"],
         sublinear_tf=True,
@@ -226,26 +224,24 @@ async def main(
     X_test_tfidf = tfidf.transform(X_test)
 
     # Apply TruncatedSVD to reduce TF-IDF dimensionality
-    print("Applying TruncatedSVD to TF-IDF features...")
+    logger.info("Applying TruncatedSVD to TF-IDF features...")
     svd = TruncatedSVD(n_components=hyperparams["svd_components"], random_state=42)
     X_train_tfidf_svd = svd.fit_transform(X_train_tfidf)
     X_test_tfidf_svd = svd.transform(X_test_tfidf)
-    print(f"SVD explained variance ratio: {svd.explained_variance_ratio_.sum():.4f}")
-
+    logger.info(f"SVD explained variance ratio: {svd.explained_variance_ratio_.sum():.4f}")
     # Concatenate embeddings with SVD-reduced TF-IDF
     X_train_combined_raw = np.hstack((X_train_emb, X_train_tfidf_svd))
     X_test_combined_raw = np.hstack((X_test_emb, X_test_tfidf_svd))
 
     # Apply StandardScaler to normalize combined features
-    print("Normalizing combined features...")
+    logger.info("Normalizing combined features...")
     scaler = StandardScaler()
     X_train_combined = scaler.fit_transform(X_train_combined_raw)
     X_test_combined = scaler.transform(X_test_combined_raw)
 
-    print(f"Features shape: {X_train_combined.shape}")
-
+    logger.info(f"Features shape: {X_train_combined.shape}")
     # --- Cleanlab Integration ---
-    print("Running Cleanlab to identify label issues...")
+    logger.info("Running Cleanlab to identify label issues...")
     from cleanlab.filter import find_label_issues
     from sklearn.model_selection import cross_val_predict
 
@@ -266,8 +262,7 @@ async def main(
             labels=y_train, pred_probs=pred_probs, return_indices_ranked_by="self_confidence"
         )
 
-        print(f"Cleanlab identified {len(issue_indices)} label issues.")
-
+        logger.info(f"Cleanlab identified {len(issue_indices)} label issues.")
         if len(issue_indices) > 0:
             # Create a mask to keep non-issues
             # X_train is a Series, X_train_combined is ndarray
@@ -281,7 +276,7 @@ async def main(
             X_train_cleaned = X_train_combined[keep_mask]
             y_train_cleaned = y_train.iloc[keep_mask]
 
-            print(
+            logger.info(
                 f"Removed {len(issue_indices)} samples. Training size: {len(y_train)} -> {len(y_train_cleaned)}"
             )
 
@@ -293,13 +288,13 @@ async def main(
             y_train_final = y_train
 
     except Exception as e:
-        print(f"Cleanlab failed: {e}")
-        print("Falling back to original training data.")
+        logger.info(f"Cleanlab failed: {e}")
+        logger.info("Falling back to original training data.")
         X_train_final = X_train_combined
         y_train_final = y_train
 
     # Train Model with Probability Calibration (Platt Scaling)
-    print("Training Logistic Regression with Platt Scaling calibration...")
+    logger.info("Training Logistic Regression with Platt Scaling calibration...")
     # Note: multi_class parameter was removed in sklearn 1.8
     base_clf = LogisticRegression(
         max_iter=1000,
@@ -317,29 +312,27 @@ async def main(
 
     # Evaluate on test set
     y_pred = clf.predict(X_test_combined)
-    print("Test Set Classification Report:")
-    print(classification_report(y_test, y_pred))
-
+    logger.info("Test Set Classification Report:")
+    logger.info(classification_report(y_test, y_pred))
     # Calculate Train/Test gap (overfitting indicator)
     y_train_pred = clf.predict(X_train_final)
     train_f1 = f1_score(y_train_final, y_train_pred, average="macro")
     test_f1 = f1_score(y_test, y_pred, average="macro")
     train_test_gap = train_f1 - test_f1
 
-    print("\n" + "=" * 50)
-    print("OVERFITTING ANALYSIS")
-    print("=" * 50)
-    print(f"Train Macro F1: {train_f1:.4f}")
-    print(f"Test Macro F1:  {test_f1:.4f}")
-    print(f"Train/Test Gap: {train_test_gap:.4f}")
+    logger.info("\n" + "=" * 50)
+    logger.info("OVERFITTING ANALYSIS")
+    logger.info("=" * 50)
+    logger.info(f"Train Macro F1: {train_f1:.4f}")
+    logger.info(f"Test Macro F1:  {test_f1:.4f}")
+    logger.info(f"Train/Test Gap: {train_test_gap:.4f}")
     if train_test_gap < 0.10:
-        print("Status: OK (gap < 0.10)")
+        logger.info("Status: OK (gap < 0.10)")
     else:
-        print("Status: WARNING - potential overfitting (gap >= 0.10)")
-    print("=" * 50 + "\n")
-
+        logger.info("Status: WARNING - potential overfitting (gap >= 0.10)")
+    logger.info("=" * 50 + "\n")
     # Validate/Optimize Thresholds
-    print("Optimizing thresholds...")
+    logger.info("Optimizing thresholds...")
     probs = clf.predict_proba(X_test_combined)
     classes = clf.classes_
 
@@ -368,11 +361,10 @@ async def main(
 
         thresholds[cls] = float(best_t)
         best_f1s[cls] = best_f1
-        print(f"Class {cls}: Best Threshold={best_t:.2f}, F1={best_f1:.2f}")
-
+        logger.info(f"Class {cls}: Best Threshold={best_t:.2f}, F1={best_f1:.2f}")
     # Save artifacts with language-specific naming so the runtime picks the
     # right JA/EN pair (see config.py genre_classifier_model_path_ja/_en).
-    print("Saving model and artifacts...")
+    logger.info("Saving model and artifacts...")
     out_dir = output_dir if output_dir is not None else Path("data")
     out_dir.mkdir(parents=True, exist_ok=True)
 
@@ -408,16 +400,14 @@ async def main(
     with open(meta_path, "w") as f:
         json.dump(metadata, f, indent=2)
 
-    print("Saved artifacts:")
-    print(f"  - {vectorizer_path}")
-    print(f"  - {svd_path}")
-    print(f"  - {scaler_path}")
-    print(f"  - {model_path}")
-    print(f"  - {thresholds_path}")
-    print(f"  - {meta_path}")
-    print("Done!")
-
-
+    logger.info("Saved artifacts:")
+    logger.info(f"  - {vectorizer_path}")
+    logger.info(f"  - {svd_path}")
+    logger.info(f"  - {scaler_path}")
+    logger.info(f"  - {model_path}")
+    logger.info(f"  - {thresholds_path}")
+    logger.info(f"  - {meta_path}")
+    logger.info("Done!")
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
         description="Train genre classification model with configurable hyperparameters"

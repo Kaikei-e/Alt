@@ -99,7 +99,7 @@ async def build_tag_label_graph(
         )
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"failed to build tag_label_graph: {exc}",
+            detail="failed to build tag_label_graph",
         ) from exc
 
 

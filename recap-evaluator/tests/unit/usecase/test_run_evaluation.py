@@ -89,7 +89,9 @@ class TestRunEvaluationUsecase:
         assert "summary" in metrics
         assert "pipeline" in metrics
 
-    async def test_execute_no_jobs_found(self, run_evaluation_uc, mock_db):
+    async def test_execute_no_jobs_found(
+        self, run_evaluation_uc, mock_db, mock_genre_eval, mock_summary_eval
+    ):
         mock_db.fetch_recent_jobs.return_value = []
 
         run = await run_evaluation_uc.execute()
@@ -97,6 +99,8 @@ class TestRunEvaluationUsecase:
         assert run.job_ids == []
         assert run.cluster_metrics == {}
         mock_db.save_evaluation_run.assert_not_called()
+        mock_genre_eval.fetch_latest_evaluation.assert_not_called()
+        mock_summary_eval.evaluate_batch.assert_not_called()
 
     async def test_execute_propagates_critical_alert(
         self, mock_genre_eval, mock_cluster_eval, mock_summary_eval,

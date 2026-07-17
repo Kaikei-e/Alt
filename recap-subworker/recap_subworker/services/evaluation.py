@@ -76,7 +76,7 @@ class EvaluationService:
         use_cross_validation: bool = False,
         n_folds: int = 5,
         embedder: Embedder | None = None,
-    ):
+    ) -> None:
         self.settings = get_settings()
         # Fallback to default from settings if generic pointer is used,
         # but favor explicit JA/EN paths if provided
@@ -94,14 +94,15 @@ class EvaluationService:
         self.use_cross_validation = use_cross_validation
         self.n_folds = n_folds
 
-        self.classifier_ja = None
-        self.classifier_en = None
-        self.classifier_default = None
+        self.classifier_ja: GenreClassifierService | None = None
+        self.classifier_en: GenreClassifierService | None = None
+        self.classifier_default: GenreClassifierService | None = None
+        self.embedder: Embedder
 
         # Initialize components for evaluation
         self._init_classifiers(embedder)
 
-    def _init_classifiers(self, embedder: Embedder | None = None):
+    def _init_classifiers(self, embedder: Embedder | None = None) -> None:
         # Reuse an injected (container-managed) Embedder when available to avoid
         # loading the embedding model a second time; only construct a fresh one
         # when the caller has no container to inject from.
@@ -235,7 +236,11 @@ class EvaluationService:
                     if content and isinstance(content, str) and content.strip():
                         filtered_items.append(item)
             items = filtered_items
-            logger.info(f"Filtered to {len(items)} items for language: {language}")
+            logger.info(
+                "Filtered golden items by language",
+                item_count=len(items),
+                language=language,
+            )
 
         # Expecting data format: list of {"text": "...", "labels": ["genre1", "genre2"]}
         # Or {"text": ..., "genres": ...}
@@ -434,7 +439,11 @@ class EvaluationService:
                 lang_results = self.evaluate(golden_data_path, language=lang)
                 results[lang] = lang_results
             except Exception as e:
-                logger.warning(f"Failed to evaluate for language {lang}: {e}")
+                logger.warning(
+                    "Failed to evaluate for language",
+                    lang=lang,
+                    error=str(e),
+                )
                 results[lang] = {"error": str(e)}
 
         return results

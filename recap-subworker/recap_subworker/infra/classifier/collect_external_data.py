@@ -1,4 +1,4 @@
-
+import logging
 import os
 import tarfile
 import urllib.request
@@ -7,6 +7,7 @@ from pathlib import Path
 import pandas as pd
 from datasets import load_dataset
 
+logger = logging.getLogger(__name__)
 DATA_DIR = Path("data")
 LIVEDOOR_URL = "https://www.rondhuit.com/download/ldcc-20140209.tar.gz"
 LIVEDOOR_DIR = DATA_DIR / "text"
@@ -39,16 +40,15 @@ AG_NEWS_MAP = {
 
 def download_livedoor():
     if not LIVEDOOR_DIR.exists():
-        print("Downloading Livedoor News Corpus...")
+        logger.info("Downloading Livedoor News Corpus...")
         tar_path = DATA_DIR / "ldcc.tar.gz"
         urllib.request.urlretrieve(LIVEDOOR_URL, tar_path)
-        print("Extracting...")
+        logger.info("Extracting...")
         with tarfile.open(tar_path, "r:gz") as tar:
             tar.extractall(path=DATA_DIR)
         os.remove(tar_path)
     else:
-        print("Livedoor data already exists.")
-
+        logger.info("Livedoor data already exists.")
 def process_livedoor():
     rows = []
     if not LIVEDOOR_DIR.exists():
@@ -74,13 +74,12 @@ def process_livedoor():
                         if content:
                             rows.append({'content': content, 'genre': genre})
             except Exception as e:
-                print(f"Error reading {file_path}: {e}")
-
-    print(f"Processed {len(rows)} Livedoor articles.")
+                logger.info(f"Error reading {file_path}: {e}")
+    logger.info(f"Processed {len(rows)} Livedoor articles.")
     return rows
 
 def process_ag_news():
-    print("Loading AG News...")
+    logger.info("Loading AG News...")
     try:
         dataset = load_dataset("ag_news", split="train") # 120k samples
         rows = []
@@ -105,10 +104,10 @@ def process_ag_news():
             if all(c >= limit for c in counts.values()):
                 break
 
-        print(f"Processed {len(rows)} AG News articles.")
+        logger.info(f"Processed {len(rows)} AG News articles.")
         return rows
     except Exception as e:
-        print(f"Error processing AG News: {e}")
+        logger.info(f"Error processing AG News: {e}")
         return []
 
 def main():
@@ -126,11 +125,10 @@ def main():
     df = pd.DataFrame(all_rows)
 
     if not df.empty:
-        print(f"Saving {len(df)} external samples to {EXTERNAL_OUTPUT_PATH}")
+        logger.info(f"Saving {len(df)} external samples to {EXTERNAL_OUTPUT_PATH}")
         df.to_csv(EXTERNAL_OUTPUT_PATH, index=False)
-        print(df['genre'].value_counts())
+        logger.info(df['genre'].value_counts())
     else:
-        print("No data collected.")
-
+        logger.info("No data collected.")
 if __name__ == "__main__":
     main()

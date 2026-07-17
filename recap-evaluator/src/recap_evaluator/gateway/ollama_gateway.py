@@ -13,7 +13,7 @@ from recap_evaluator.config import Settings
 logger = structlog.get_logger()
 
 
-@dataclass
+@dataclass(frozen=True)
 class GEvalResult:
     """G-Eval evaluation result for a single summary."""
 
@@ -30,7 +30,7 @@ class GEvalResult:
         return (self.coherence + self.consistency + self.fluency + self.relevance) / 4
 
 
-@dataclass
+@dataclass(frozen=True)
 class BatchGEvalResult:
     """Aggregated G-Eval results for multiple summaries."""
 
@@ -214,8 +214,11 @@ JSON評価結果:"""
             return await self.evaluate_summary(item[0], item[1])
 
         results = await asyncio.gather(
-            *[_eval_one(item) for item in items], return_exceptions=True
+            *[_eval_one(item) for item in items],
+            return_exceptions=True,
         )
+        # Partial results are required: one bad summary must not cancel the batch.
+        # TaskGroup would abort siblings on the first exception (DECREE §6).
 
         batch = BatchGEvalResult()
         for r in results:

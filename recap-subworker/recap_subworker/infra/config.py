@@ -37,8 +37,16 @@ class Settings(BaseSettings):
             try:
                 with Path(password_file).open() as f:
                     self.recap_db_password = SecretStr(f.read().strip())
-            except OSError:
-                pass  # Fall back to secrets_dir or default
+            except OSError as exc:
+                # Fall back to secrets_dir or default, but surface misconfiguration.
+                import structlog
+
+                structlog.get_logger(__name__).warning(
+                    "db_password_file_read_failed",
+                    path=password_file,
+                    error=str(exc),
+                    error_type=type(exc).__name__,
+                )
 
         if self.recap_db_password:
             db_url_str = (
@@ -68,8 +76,26 @@ class Settings(BaseSettings):
         # Classification runs are throttled by RunManager. A larger worker pool
         # than the number of background slots only pre-loads duplicate models and
         # increases RSS without improving throughput.
-        if self.classification_worker_processes > self.max_background_runs:
-            self.classification_worker_processes = self.max_background_runs
+        self.classification_worker_processes = min(self.classification_worker_processes, self.max_background_runs)
+
+        # Parse genre threshold overrides once at startup (fail-fast on bad JSON).
+        raw_overrides = self.genre_subworker_threshold_overrides or "{}"
+        try:
+            parsed = json.loads(raw_overrides)
+        except json.JSONDecodeError as exc:
+            raise ValueError(
+                f"genre_subworker_threshold_overrides must be valid JSON: {exc}"
+            ) from exc
+        if not isinstance(parsed, dict):
+            raise ValueError("genre_subworker_threshold_overrides must be a JSON object")
+        try:
+            self.genre_threshold_overrides_parsed = {
+                str(k): float(v) for k, v in parsed.items()
+            }
+        except (TypeError, ValueError) as exc:
+            raise ValueError(
+                f"genre_subworker_threshold_overrides values must be numeric: {exc}"
+            ) from exc
 
         return self
 
@@ -911,6 +937,11 @@ class Settings(BaseSettings):
         "{}",
         description="JSON string mapping genres to custom threshold values (overrides defaults and model-specific thresholds)",
         validation_alias=AliasChoices("RECAP_GENRE_THRESHOLDS", "RECAP_SUBWORKER_GENRE_THRESHOLDS"),
+    )
+    genre_threshold_overrides_parsed: dict[str, float] = Field(
+        default_factory=dict,
+        description="Parsed genre threshold overrides (populated at startup)",
+        exclude=True,
     )
     enable_sudachi_preprocessing: bool = Field(
         False,

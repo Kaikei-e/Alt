@@ -10,19 +10,22 @@ Requirements:
     pip install sentence-transformers fastapi uvicorn torch
 """
 
+from __future__ import annotations
+
 import asyncio
 import logging
 import os
 import time
+from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
-from typing import List, Optional
+from typing import Any
 
 # Limit MPS memory cache to reduce memory pressure on shared Apple Silicon GPU memory
 os.environ.setdefault("PYTORCH_MPS_HIGH_WATERMARK_RATIO", "0.0")
 
 import torch
 from fastapi import FastAPI, HTTPException, Request, Response
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 from sentence_transformers import CrossEncoder
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
@@ -43,6 +46,7 @@ DEFAULT_MODEL = "BAAI/bge-reranker-v2-m3"
 MAX_CANDIDATES = int(os.environ.get("RERANK_MAX_CANDIDATES", "200"))
 MAX_CANDIDATE_LENGTH = int(os.environ.get("RERANK_MAX_CANDIDATE_LENGTH", "4000"))
 INFERENCE_TIMEOUT_SECONDS = float(os.environ.get("RERANK_INFERENCE_TIMEOUT_SECONDS", "30"))
+MAX_TOP_K = MAX_CANDIDATES
 
 # CrossEncoder is not safe for concurrent inference on a single instance, and
 # predict() is a blocking call — serialize access and run it off the event
@@ -50,7 +54,7 @@ INFERENCE_TIMEOUT_SECONDS = float(os.environ.get("RERANK_INFERENCE_TIMEOUT_SECON
 _inference_semaphore = asyncio.Semaphore(1)
 
 
-def _predict_sync(model: CrossEncoder, pairs: list[tuple[str, str]]):
+def _predict_sync(model: CrossEncoder, pairs: list[tuple[str, str]]) -> Any:
     """Run blocking CrossEncoder inference. Called via asyncio.to_thread."""
     with torch.inference_mode():
         return model.predict(pairs)
@@ -59,18 +63,25 @@ def _predict_sync(model: CrossEncoder, pairs: list[tuple[str, str]]):
 class RerankRequest(BaseModel):
     """Request body for rerank endpoint."""
 
+    model_config = ConfigDict(strict=True, frozen=True)
+
     query: str = Field(..., description="The query to rank candidates against")
-    candidates: List[str] = Field(
+    candidates: list[str] = Field(
         ...,
         max_length=MAX_CANDIDATES,
         description="List of candidate texts to rank",
     )
-    model: str = Field(DEFAULT_MODEL, description="Model name (currently ignored)")
-    top_k: Optional[int] = Field(None, description="Return only top K results")
+    model: str = Field(DEFAULT_MODEL, description="Model name (must match loaded model)")
+    top_k: int | None = Field(
+        None,
+        ge=1,
+        le=MAX_TOP_K,
+        description="Return only top K results",
+    )
 
     @field_validator("candidates")
     @classmethod
-    def _validate_candidate_lengths(cls, candidates: List[str]) -> List[str]:
+    def _validate_candidate_lengths(cls, candidates: list[str]) -> list[str]:
         for candidate in candidates:
             if len(candidate) > MAX_CANDIDATE_LENGTH:
                 raise ValueError(
@@ -78,9 +89,20 @@ class RerankRequest(BaseModel):
                 )
         return candidates
 
+    @field_validator("model")
+    @classmethod
+    def _validate_model(cls, model: str) -> str:
+        if model != DEFAULT_MODEL:
+            raise ValueError(
+                f"unsupported model {model!r}; only {DEFAULT_MODEL!r} is available"
+            )
+        return model
+
 
 class RerankResult(BaseModel):
     """A single rerank result with index and score."""
+
+    model_config = ConfigDict(strict=True, frozen=True)
 
     index: int = Field(..., description="Original index of the candidate")
     score: float = Field(..., description="Relevance score")
@@ -89,21 +111,36 @@ class RerankResult(BaseModel):
 class RerankResponse(BaseModel):
     """Response body for rerank endpoint."""
 
-    results: List[RerankResult] = Field(..., description="Ranked results")
+    model_config = ConfigDict(strict=True, frozen=True)
+
+    results: list[RerankResult] = Field(..., description="Ranked results")
     model: str = Field(..., description="Model used for reranking")
-    processing_time_ms: Optional[float] = Field(None, description="Processing time in milliseconds")
+    processing_time_ms: float | None = Field(None, description="Processing time in milliseconds")
 
 
 class HealthResponse(BaseModel):
     """Response body for health endpoint."""
+
+    model_config = ConfigDict(strict=True, frozen=True)
 
     status: str
     device: str
     model: str
 
 
+class RootResponse(BaseModel):
+    """Root endpoint service info."""
+
+    model_config = ConfigDict(strict=True, frozen=True)
+
+    service: str
+    version: str
+    device: str
+    model: str
+
+
 @asynccontextmanager
-async def lifespan(app: FastAPI):
+async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     """Load model on startup."""
     app.state.model = None
     logger.info("Loading model %s on device: %s", DEFAULT_MODEL, DEVICE)
@@ -135,7 +172,7 @@ async def rerank(req: RerankRequest, request: Request) -> RerankResponse:
 
     Returns candidates sorted by relevance score in descending order.
     """
-    model: Optional[CrossEncoder] = request.app.state.model
+    model: CrossEncoder | None = request.app.state.model
     if model is None:
         raise HTTPException(status_code=503, detail="Model not loaded")
 
@@ -189,15 +226,15 @@ async def health(request: Request, response: Response) -> HealthResponse:
     )
 
 
-@app.get("/")
-async def root():
+@app.get("/", response_model=RootResponse)
+async def root() -> RootResponse:
     """Root endpoint with service info."""
-    return {
-        "service": "rerank-server",
-        "version": "1.0.0",
-        "device": DEVICE,
-        "model": DEFAULT_MODEL,
-    }
+    return RootResponse(
+        service="rerank-server",
+        version="1.0.0",
+        device=DEVICE,
+        model=DEFAULT_MODEL,
+    )
 
 
 if __name__ == "__main__":

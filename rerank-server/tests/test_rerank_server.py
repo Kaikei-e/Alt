@@ -125,3 +125,21 @@ def test_health_returns_200_when_model_loaded(
     body = resp.json()
     assert body["status"] == "ok"
     assert body["model"] == DEFAULT_MODEL
+
+
+def test_rerank_rejects_unsupported_model(
+    client: TestClient, fake_model: MagicMock
+) -> None:
+    app.state.model = fake_model
+
+    resp = client.post(
+        "/v1/rerank",
+        json={
+            "query": "q",
+            "candidates": ["a"],
+            "model": "some-other-model",
+        },
+    )
+
+    assert resp.status_code == 422
+    fake_model.predict.assert_not_called()

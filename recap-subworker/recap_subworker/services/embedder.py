@@ -11,7 +11,7 @@ from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from threading import Lock
-from typing import Literal
+from typing import Any, Literal
 
 import numpy as np
 import structlog
@@ -72,12 +72,12 @@ class Embedder:
 
     def __init__(self, config: EmbedderConfig) -> None:
         self.config = config
-        self._model = None
+        self._model: Any | None = None
         self._cache = LRUCache[str, np.ndarray](config.cache_size)
         self._hash_dimension = 256
         self._lock = Lock()
 
-    def _load_sentence_transformer(self):
+    def _load_sentence_transformer(self) -> Any:
         from sentence_transformers import SentenceTransformer  # lazy import
 
         logger.info(
@@ -87,7 +87,7 @@ class Embedder:
         )
 
         if self.config.model_id != "intfloat/multilingual-e5-large":
-            logger.warn(
+            logger.warning(
                 "Model ID mismatch recommendation",
                 current=self.config.model_id,
                 recommended="intfloat/multilingual-e5-large",
@@ -115,7 +115,7 @@ class Embedder:
         logger.info("SentenceTransformer model initialized", device=self.config.device)
         return model
 
-    def _load_onnx_model(self):
+    def _load_onnx_model(self) -> Any:
         """Load ONNX model for inference."""
         if not ONNX_AVAILABLE:
             raise ImportError(
@@ -211,7 +211,13 @@ class Embedder:
 
         # Return a simple object that exposes .encode() method
         class OnnxModelAdapter:
-            def __init__(self, session, tokenizer, pooling, max_length):
+            def __init__(
+                self,
+                session: Any,
+                tokenizer: Any,
+                pooling: Literal["cls", "mean"],
+                max_length: int,
+            ) -> None:
                 self.session = session
                 self.tokenizer = tokenizer
                 self.pooling = pooling
@@ -266,7 +272,7 @@ class Embedder:
             session, tokenizer, self.config.onnx_pooling, self.config.onnx_max_length
         )
 
-    def _load_ollama_remote_model(self):
+    def _load_ollama_remote_model(self) -> Any:
         """Load Ollama remote embedding client."""
         import httpx
 
@@ -292,7 +298,7 @@ class Embedder:
             # Using conservative 400 chars to ensure texts fit (512 / 1.3 ≈ 400)
             MAX_CHUNK_CHARS = 400
 
-            def __init__(self, url: str, model: str, timeout: float):
+            def __init__(self, url: str, model: str, timeout: float) -> None:
                 self.url = url.rstrip("/")
                 self.model = model
                 self.timeout = timeout
@@ -371,12 +377,28 @@ class Embedder:
                 return avg_embedding
 
             def _get_embeddings(self, texts: list[str]) -> list[list[float]]:
-                """Get embeddings for multiple texts with chunking support."""
-                results = []
-                for text in texts:
-                    emb = self._embed_single_text(text)
-                    results.append(emb)
-                return results
+                """Get embeddings for multiple texts with chunking support.
+
+                Short texts (<= MAX_CHUNK_CHARS) are batched into a single
+                /api/embed call; long texts still go through per-text chunking.
+                """
+                results: list[list[float] | None] = [None] * len(texts)
+                short_indices: list[int] = []
+                short_texts: list[str] = []
+
+                for i, text in enumerate(texts):
+                    if len(text) <= self.MAX_CHUNK_CHARS:
+                        short_indices.append(i)
+                        short_texts.append(text)
+                    else:
+                        results[i] = self._embed_single_text(text)
+
+                if short_texts:
+                    embeddings = self._call_embed_api(short_texts)
+                    for idx, emb in zip(short_indices, embeddings, strict=True):
+                        results[idx] = emb
+
+                return [emb for emb in results if emb is not None]
 
             def encode(
                 self,
@@ -419,7 +441,7 @@ class Embedder:
             self.config.ollama_embed_timeout,
         )
 
-    def _ensure_model(self):
+    def _ensure_model(self) -> None:
         if self._model is not None:
             return
 
@@ -526,7 +548,7 @@ class Embedder:
                         normalize_embeddings=True,
                     )
 
-                for sentence, vector in zip(pending, embeddings, strict=False):
+                for sentence, vector in zip(pending, embeddings, strict=True):
                     stored = np.asarray(vector, dtype=np.float32)
                     fresh[sentence] = stored
                     self._cache.set(sentence, stored)
