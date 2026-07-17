@@ -27,7 +27,6 @@ func TestHomeHealthCommand(t *testing.T) {
 	rootCmd.SetArgs([]string{
 		"home", "health",
 		"--backend-url", server.URL,
-		"--service-token", "test-token",
 	})
 	if err := rootCmd.Execute(); err != nil {
 		t.Fatalf("home health failed: %v", err)

@@ -18,10 +18,11 @@ const (
 )
 
 // AdminClient is an HTTP client for the Knowledge Home admin API.
+// Authentication is expected at the network/gateway layer (not via a
+// service-token header on this client). Default BaseURL is plain HTTP.
 type AdminClient struct {
-	BaseURL      string
-	ServiceToken string
-	HTTPClient   *http.Client
+	BaseURL    string
+	HTTPClient *http.Client
 }
 
 // APIError represents a non-2xx response from the admin API.
@@ -39,10 +40,9 @@ func (e *APIError) Error() string {
 }
 
 // NewClient creates a new AdminClient with sensible defaults.
-func NewClient(baseURL, serviceToken string) *AdminClient {
+func NewClient(baseURL string) *AdminClient {
 	return &AdminClient{
-		BaseURL:      baseURL,
-		ServiceToken: serviceToken,
+		BaseURL: baseURL,
 		HTTPClient: &http.Client{
 			Timeout: 30 * time.Second,
 		},
@@ -65,7 +65,6 @@ func (c *AdminClient) Call(ctx context.Context, method string, reqBody, respBody
 	}
 
 	req.Header.Set("Content-Type", "application/json")
-	// Authentication is established at the TLS transport layer (mTLS).
 
 	resp, err := c.HTTPClient.Do(req)
 	if err != nil {

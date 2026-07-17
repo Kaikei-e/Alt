@@ -64,104 +64,71 @@ if ! curl -fs "http://127.0.0.1:11434/api/tags" >/dev/null 2>&1; then
   exit 1
 fi
 
-# Ensure base model exists
-echo "Ensuring gpt-oss:20b model is available..."
-if ! ollama list 2>/dev/null | grep -q "gpt-oss:20b"; then
-  echo "Pulling gpt-oss:20b model (this will take a while)..."
-  if ollama pull gpt-oss:20b; then
-      echo "  Model gpt-oss:20b pulled successfully"
-  else
-      echo "  Error: Failed to pull gpt-oss:20b"
-      # Don't exit here, maybe the custom model exists or we are offline
-  fi
-else
-  echo "  Model gpt-oss:20b already exists"
-fi
+# ---- Base models to pull -------------------------------------------------
+BASE_MODELS=(
+  "gpt-oss:20b"
+  "qwen3:8b"
+  "gemma3:4b-it-qat"
+)
 
-# Ensure qwen3:8b base model exists
-echo "Ensuring qwen3:8b model is available..."
-if ! ollama list 2>/dev/null | grep -q "qwen3:8b"; then
-  echo "Pulling qwen3:8b model (this will take a while)..."
-  if ollama pull qwen3:8b; then
-      echo "  Model qwen3:8b pulled successfully"
-  else
-      echo "  Error: Failed to pull qwen3:8b"
+ensure_pulled() {
+  local model="$1"
+  echo "Ensuring ${model} model is available..."
+  if ollama list 2>/dev/null | grep -q "${model}"; then
+    echo "  Model ${model} already exists"
+    return 0
   fi
-else
-  echo "  Model qwen3:8b already exists"
-fi
-
-# Ensure gemma3:4b-it-qat base model exists
-echo "Ensuring gemma3:4b-it-qat model is available..."
-if ! ollama list 2>/dev/null | grep -q "gemma3:4b-it-qat"; then
-  echo "Pulling gemma3:4b-it-qat model (this will take a while)..."
-  if ollama pull gemma3:4b-it-qat; then
-      echo "  Model gemma3:4b-it-qat pulled successfully"
+  echo "Pulling ${model} model (this will take a while)..."
+  if ollama pull "${model}"; then
+    echo "  Model ${model} pulled successfully"
   else
-      echo "  Error: Failed to pull gemma3:4b-it-qat"
+    echo "  Error: Failed to pull ${model}"
   fi
-else
-  echo "  Model gemma3:4b-it-qat already exists"
-fi
+}
 
-# Create custom models
-# Always try to create/update to capture Modelfile changes
+for model in "${BASE_MODELS[@]}"; do
+  ensure_pulled "$model"
+done
 
-# CPU model (legacy, for CPU-only deployments)
-echo "Creating/Updating custom model gpt-oss20b-cpu..."
-if [ -f "/home/ollama-user/Modelfile.gpt-oss20b-cpu" ]; then
-  if ollama create gpt-oss20b-cpu -f /home/ollama-user/Modelfile.gpt-oss20b-cpu; then
-    echo "  Model gpt-oss20b-cpu created/updated successfully"
+# ---- Custom models from Modelfiles ---------------------------------------
+# name:modelfile pairs (relative to /home/ollama-user)
+CUSTOM_MODELS=(
+  "gpt-oss20b-cpu:Modelfile.gpt-oss20b-cpu"
+  "gpt-oss20b-igpu:Modelfile.gpt-oss20b-igpu"
+  "qwen3-8b-rag:Modelfile.qwen3-8b-rag"
+  "gemma3-4b-rag:Modelfile.gemma3-4b-rag"
+)
+
+ensure_created() {
+  local name="$1"
+  local file="$2"
+  local path="/home/ollama-user/${file}"
+  echo "Creating/Updating custom model ${name}..."
+  if [ ! -f "${path}" ]; then
+    echo "  Warning: ${file} not found, skipping"
+    return 0
+  fi
+  if ollama create "${name}" -f "${path}"; then
+    echo "  Model ${name} created/updated successfully"
   else
-    echo "  Error: Failed to create gpt-oss20b-cpu"
+    echo "  Error: Failed to create ${name}"
   fi
-else
-  echo "  Warning: Modelfile.gpt-oss20b-cpu not found, skipping"
-fi
+}
 
-# iGPU model (optimized for AMD iGPU with Vulkan)
-# - num_predict=512 prevents excessive token generation on short queries
-# - stop tokens for proper termination
-echo "Creating/Updating custom model gpt-oss20b-igpu..."
-if [ -f "/home/ollama-user/Modelfile.gpt-oss20b-igpu" ]; then
-  if ollama create gpt-oss20b-igpu -f /home/ollama-user/Modelfile.gpt-oss20b-igpu; then
-    echo "  Model gpt-oss20b-igpu created/updated successfully"
-  else
-    echo "  Error: Failed to create gpt-oss20b-igpu"
-  fi
-else
-  echo "  Warning: Modelfile.gpt-oss20b-igpu not found, skipping"
-fi
-
-# qwen3 RAG model
-echo "Creating/Updating custom model qwen3-8b-rag..."
-if [ -f "/home/ollama-user/Modelfile.qwen3-8b-rag" ]; then
-  if ollama create qwen3-8b-rag -f /home/ollama-user/Modelfile.qwen3-8b-rag; then
-    echo "  Model qwen3-8b-rag created/updated successfully"
-  else
-    echo "  Error: Failed to create qwen3-8b-rag"
-  fi
-else
-  echo "  Warning: Modelfile.qwen3-8b-rag not found, skipping"
-fi
-
-# gemma3 4B RAG model
-echo "Creating/Updating custom model gemma3-4b-rag..."
-if [ -f "/home/ollama-user/Modelfile.gemma3-4b-rag" ]; then
-  if ollama create gemma3-4b-rag -f /home/ollama-user/Modelfile.gemma3-4b-rag; then
-    echo "  Model gemma3-4b-rag created/updated successfully"
-  else
-    echo "  Error: Failed to create gemma3-4b-rag"
-  fi
-else
-  echo "  Warning: Modelfile.gemma3-4b-rag not found, skipping"
-fi
+for entry in "${CUSTOM_MODELS[@]}"; do
+  ensure_created "${entry%%:*}" "${entry#*:}"
+done
 
 # Preload model based on environment variable (default: gemma3-4b-rag)
 PRELOAD_MODEL="${AUGUR_KNOWLEDGE_MODEL:-gemma3-4b-rag}"
 echo "Preloading model ${PRELOAD_MODEL}..."
-curl -s http://127.0.0.1:11434/api/chat \
-  -d "{\"model\":\"${PRELOAD_MODEL}\",\"keep_alive\":-1}" >/dev/null
+if ! curl -fs --retry 3 --retry-delay 2 \
+  http://127.0.0.1:11434/api/chat \
+  -d "{\"model\":\"${PRELOAD_MODEL}\",\"keep_alive\":-1}" >/dev/null; then
+  echo "  Warning: Failed to preload model ${PRELOAD_MODEL} (server will continue)"
+else
+  echo "  Model ${PRELOAD_MODEL} preloaded"
+fi
 
 # Wait for server process
 wait "$SERVER_PID"

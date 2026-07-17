@@ -15,7 +15,6 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
-	"strconv"
 	"strings"
 	"sync"
 	"syscall"
@@ -56,30 +55,16 @@ func main() {
 	repo := sovereign_db.NewRepository(pool)
 	sovereignHandler := handler.NewSovereignHandler(repo, handler.WithDatabaseURL(cfg.DatabaseURL))
 
-	// Snapshot handler
-	snapshotDir := os.Getenv("SNAPSHOT_DIR")
-	if snapshotDir == "" {
-		snapshotDir = "/data/snapshots"
-	}
-	buildRef := os.Getenv("BUILD_REF")
-	if buildRef == "" {
-		buildRef = "dev"
-	}
-	snapshotHandler := handler.NewSnapshotHandler(repo, snapshotDir, buildRef, "00009")
-	archiveDir := os.Getenv("ARCHIVE_DIR")
-	if archiveDir == "" {
-		archiveDir = "/tmp/archives"
-	}
-	retentionHandler := handler.NewRetentionHandler(repo, archiveDir)
+	snapshotHandler := handler.NewSnapshotHandler(repo, cfg.SnapshotDir, cfg.BuildRef, cfg.SchemaVersion)
+	retentionHandler := handler.NewRetentionHandler(repo, cfg.ArchiveDir)
 	storageHandler := handler.NewStorageHandler(repo)
 
 	// Metrics / health server
 	metricsMux := http.NewServeMux()
 	metricsMux.HandleFunc("/health", handler.HealthHandler)
 	// Prometheus scrape endpoint. Default registry collectors include
-	// process / Go runtime metrics out of the box; the Knowledge Loop
-	// projector counters in usecase/knowledge_loop_projector/metrics.go
-	// register with the same default registry via promauto.
+	// process / Go runtime metrics out of the box; projection_health gauges
+	// and projector counters register with the same default registry via promauto.
 	metricsMux.Handle("/metrics", promhttp.Handler())
 	snapshotHandler.RegisterRoutes(metricsMux)
 	retentionHandler.RegisterRoutes(metricsMux)
@@ -144,10 +129,10 @@ func main() {
 	// short tick over a quiet log is cheap.
 	trailProjector := knowledge_trail_projector.NewProjector(repo, slog.Default(),
 		knowledge_trail_projector.Config{
-			BatchSize:         parseIntEnv("KNOWLEDGE_SOVEREIGN_TRAIL_PROJECTOR_BATCH_SIZE", 500),
-			MaxBatchesPerTick: parseIntEnv("KNOWLEDGE_SOVEREIGN_TRAIL_PROJECTOR_MAX_BATCHES_PER_TICK", 4),
+			BatchSize:         cfg.TrailProjectorBatchSize,
+			MaxBatchesPerTick: cfg.TrailProjectorMaxBatches,
 		})
-	trailTick := time.NewTicker(parseDurationEnv("KNOWLEDGE_SOVEREIGN_PROJECTOR_TICK_INTERVAL", 5*time.Second))
+	trailTick := time.NewTicker(cfg.ProjectorTickInterval)
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
@@ -174,11 +159,11 @@ func main() {
 	// ADR-000928).
 	homeProjector := knowledge_home_projector.NewProjector(repo, slog.Default(),
 		knowledge_home_projector.Config{
-			BatchSize:         parseIntEnv("KNOWLEDGE_SOVEREIGN_HOME_PROJECTOR_BATCH_SIZE", 500),
-			MaxBatchesPerTick: parseIntEnv("KNOWLEDGE_SOVEREIGN_HOME_PROJECTOR_MAX_BATCHES_PER_TICK", 4),
+			BatchSize:         cfg.HomeProjectorBatchSize,
+			MaxBatchesPerTick: cfg.HomeProjectorMaxBatches,
 		})
-	slog.Info("home.projector.wiring", "enabled", homeProjector != nil)
-	homeTick := time.NewTicker(parseDurationEnv("KNOWLEDGE_SOVEREIGN_PROJECTOR_TICK_INTERVAL", 5*time.Second))
+	slog.Info("home.projector.wiring", "enabled", true, "repository_wired", repo != nil)
+	homeTick := time.NewTicker(cfg.ProjectorTickInterval)
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
@@ -198,12 +183,14 @@ func main() {
 	// Knowledge Trail branch producer (trail_planner). Rule 8: surface the wiring
 	// state loudly at startup so a missing producer is visible immediately, not
 	// as a silent absence of branches weeks later (PM-2026-045 / ADR-000928).
+	// NewPlanner always returns non-nil; the real wiring signal is whether the
+	// repository dependency was supplied.
 	branchPlanner := trail_planner.NewPlanner(repo, slog.Default(), trail_planner.Config{
-		MaxBranchesPerUser: parseIntEnv("KNOWLEDGE_SOVEREIGN_TRAIL_MAX_BRANCHES_PER_USER", 5),
+		MaxBranchesPerUser: cfg.TrailMaxBranchesPerUser,
 		Clock:              time.Now,
 	})
-	slog.Info("trail.branch_producer.wiring", "enabled", branchPlanner != nil)
-	branchTick := time.NewTicker(parseDurationEnv("KNOWLEDGE_SOVEREIGN_BRANCH_PLANNER_TICK_INTERVAL", 30*time.Second))
+	slog.Info("trail.branch_producer.wiring", "enabled", true, "repository_wired", repo != nil)
+	branchTick := time.NewTicker(cfg.BranchPlannerTickInterval)
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
@@ -222,7 +209,7 @@ func main() {
 
 	// Producer-liveness gauges sampled on a slow tick.
 	healthExporter := projection_health.New(repo, slog.Default())
-	healthTick := time.NewTicker(parseDurationEnv("KNOWLEDGE_SOVEREIGN_PROJECTION_HEALTH_TICK_INTERVAL", 60*time.Second))
+	healthTick := time.NewTicker(cfg.ProjectionHealthTickInterval)
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
@@ -255,8 +242,12 @@ func main() {
 	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer shutdownCancel()
 
-	metricsServer.Shutdown(shutdownCtx)
-	mainServer.Shutdown(shutdownCtx)
+	if err := metricsServer.Shutdown(shutdownCtx); err != nil {
+		slog.Error("metrics server shutdown failed", "error", err)
+	}
+	if err := mainServer.Shutdown(shutdownCtx); err != nil {
+		slog.Error("rpc server shutdown failed", "error", err)
+	}
 
 	cancel()
 	wg.Wait()
@@ -285,33 +276,4 @@ func requireAdminToken(token string, next http.Handler) http.Handler {
 		}
 		next.ServeHTTP(w, r)
 	})
-}
-
-// parseDurationEnv reads a duration from env, falling back to the supplied
-// default. Negative or unparseable values fall back without error so a
-// misconfigured operator override does not crash the service.
-func parseDurationEnv(name string, fallback time.Duration) time.Duration {
-	v := os.Getenv(name)
-	if v == "" {
-		return fallback
-	}
-	d, err := time.ParseDuration(v)
-	if err != nil || d <= 0 {
-		slog.Warn("invalid duration env, using fallback", "env", name, "value", v, "fallback", fallback.String())
-		return fallback
-	}
-	return d
-}
-
-func parseIntEnv(name string, fallback int) int {
-	v := os.Getenv(name)
-	if v == "" {
-		return fallback
-	}
-	i, err := strconv.Atoi(v)
-	if err != nil || i <= 0 {
-		slog.Warn("invalid int env, using fallback", "env", name, "value", v, "fallback", fallback)
-		return fallback
-	}
-	return i
 }

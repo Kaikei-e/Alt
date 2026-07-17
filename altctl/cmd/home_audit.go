@@ -23,11 +23,6 @@ Examples:
 }
 
 func runAudit(cmd *cobra.Command, args []string) error {
-	client, err := newAdminClient(cmd)
-	if err != nil {
-		return err
-	}
-
 	projName, _ := cmd.Flags().GetString("projection-name")
 	projVersion, _ := cmd.Flags().GetString("projection-version")
 	sampleSize, _ := cmd.Flags().GetInt32("sample-size")
@@ -50,9 +45,13 @@ func runAudit(cmd *cobra.Command, args []string) error {
 		} `json:"audit"`
 	}
 
+	// Audit can take longer than the default 30s RPC helper.
+	client, err := newAdminClient(cmd)
+	if err != nil {
+		return err
+	}
 	ctx, cancel := context.WithTimeout(cmd.Context(), 60*time.Second)
 	defer cancel()
-
 	if err := client.Call(ctx, "RunProjectionAudit", reqBody, &resp); err != nil {
 		return fmt.Errorf("run audit: %w", err)
 	}

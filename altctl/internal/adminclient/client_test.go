@@ -10,12 +10,9 @@ import (
 )
 
 func TestNewClient(t *testing.T) {
-	c := NewClient("http://localhost:9001", "test-token")
+	c := NewClient("http://localhost:9001")
 	if c.BaseURL != "http://localhost:9001" {
 		t.Errorf("expected BaseURL http://localhost:9001, got %s", c.BaseURL)
-	}
-	if c.ServiceToken != "test-token" {
-		t.Errorf("expected ServiceToken test-token, got %s", c.ServiceToken)
 	}
 	if c.HTTPClient == nil {
 		t.Fatal("expected HTTPClient to be non-nil")
@@ -32,7 +29,7 @@ func TestCall_Success(t *testing.T) {
 			t.Errorf("expected Content-Type application/json, got %s", ct)
 		}
 		if st := r.Header.Get("X-Service-Token"); st != "" {
-			t.Errorf("X-Service-Token must not be sent; auth is transport-layer, got %q", st)
+			t.Errorf("X-Service-Token must not be sent; auth is network-layer, got %q", st)
 		}
 		if r.URL.Path != "/alt.knowledge_home.v1.KnowledgeHomeAdminService/StartReproject" {
 			t.Errorf("unexpected path: %s", r.URL.Path)
@@ -56,7 +53,7 @@ func TestCall_Success(t *testing.T) {
 	}))
 	defer server.Close()
 
-	c := NewClient(server.URL, "my-secret")
+	c := NewClient(server.URL)
 
 	req := map[string]string{"mode": "dry_run"}
 	var resp map[string]string
@@ -83,7 +80,7 @@ func TestCall_ServiceError(t *testing.T) {
 	}))
 	defer server.Close()
 
-	c := NewClient(server.URL, "token")
+	c := NewClient(server.URL)
 
 	req := map[string]string{}
 	var resp map[string]string
@@ -101,7 +98,7 @@ func TestCall_ServiceError(t *testing.T) {
 }
 
 func TestCall_ConnectionError(t *testing.T) {
-	c := NewClient("http://127.0.0.1:1", "token")
+	c := NewClient("http://127.0.0.1:1")
 	c.HTTPClient.Timeout = 1 * time.Second
 
 	req := map[string]string{}
@@ -118,7 +115,7 @@ func TestCall_ContextCanceled(t *testing.T) {
 	}))
 	defer server.Close()
 
-	c := NewClient(server.URL, "token")
+	c := NewClient(server.URL)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel() // cancel immediately
@@ -146,7 +143,7 @@ func TestCall_EmptyBody(t *testing.T) {
 	}))
 	defer server.Close()
 
-	c := NewClient(server.URL, "token")
+	c := NewClient(server.URL)
 
 	req := map[string]interface{}{}
 	var resp map[string]string

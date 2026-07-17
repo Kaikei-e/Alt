@@ -119,54 +119,70 @@ func (p *Planner) RunBatch(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("trail_planner list users: %w", err)
 	}
+	var userErrs int
 	for _, userID := range users {
-		anchor, tenantID, ok, err := p.repo.GetLatestFootprintAnchor(ctx, userID)
+		if err := p.planUser(ctx, userID); err != nil {
+			userErrs++
+			p.logger.ErrorContext(ctx, "trail_planner: user batch failed; continuing",
+				slog.String("user_id", userID.String()),
+				slog.String("error", err.Error()))
+		}
+	}
+	if userErrs > 0 {
+		p.logger.WarnContext(ctx, "trail_planner: batch completed with user errors",
+			slog.Int("failed_users", userErrs),
+			slog.Int("total_users", len(users)))
+	}
+	return nil
+}
+
+func (p *Planner) planUser(ctx context.Context, userID uuid.UUID) error {
+	anchor, tenantID, ok, err := p.repo.GetLatestFootprintAnchor(ctx, userID)
+	if err != nil {
+		return fmt.Errorf("trail_planner anchor: %w", err)
+	}
+	if !ok {
+		return nil // no footprints yet → nothing to anchor a branch on
+	}
+	candidates, err := p.repo.DeriveTrailClusterCandidates(ctx, userID, p.cfg.MaxBranchesPerUser)
+	if err != nil {
+		return fmt.Errorf("trail_planner candidates: %w", err)
+	}
+	for _, c := range candidates {
+		// A target the user cannot even read the name of is not a useful
+		// proposal — surfacing it would render as a bare item key. Title-less
+		// targets (upstream knowledge_home_items.title gaps) are skipped, not
+		// proposed. The read path still applies a display fallback for any
+		// title-less branches already in the log.
+		if strings.TrimSpace(c.TargetTitle) == "" {
+			continue
+		}
+		payload := buildClusterBranch(userID, anchor, c)
+		if !payload.Valid() {
+			p.logger.WarnContext(ctx, "trail_planner: dropping incomplete branch",
+				slog.String("branch_key", payload.BranchKey))
+			continue
+		}
+		body, err := json.Marshal(payload)
 		if err != nil {
-			return fmt.Errorf("trail_planner anchor: %w", err)
+			return fmt.Errorf("trail_planner marshal: %w", err)
 		}
-		if !ok {
-			continue // no footprints yet → nothing to anchor a branch on
+		uid := userID
+		evt := sovereign_db.KnowledgeEvent{
+			EventID:       uuid.New(),
+			OccurredAt:    p.cfg.Clock(),
+			TenantID:      tenantID,
+			UserID:        &uid,
+			ActorType:     "system",
+			ActorID:       "trail-planner",
+			EventType:     EventTrailBranchProposed,
+			AggregateType: "trail_branch",
+			AggregateID:   payload.BranchKey,
+			DedupeKey:     EventTrailBranchProposed + ":" + payload.BranchKey,
+			Payload:       body,
 		}
-		candidates, err := p.repo.DeriveTrailClusterCandidates(ctx, userID, p.cfg.MaxBranchesPerUser)
-		if err != nil {
-			return fmt.Errorf("trail_planner candidates: %w", err)
-		}
-		for _, c := range candidates {
-			// A target the user cannot even read the name of is not a useful
-			// proposal — surfacing it would render as a bare item key. Title-less
-			// targets (upstream knowledge_home_items.title gaps) are skipped, not
-			// proposed. The read path still applies a display fallback for any
-			// title-less branches already in the log.
-			if strings.TrimSpace(c.TargetTitle) == "" {
-				continue
-			}
-			payload := buildClusterBranch(userID, anchor, c)
-			if !payload.Valid() {
-				p.logger.WarnContext(ctx, "trail_planner: dropping incomplete branch",
-					slog.String("branch_key", payload.BranchKey))
-				continue
-			}
-			body, err := json.Marshal(payload)
-			if err != nil {
-				return fmt.Errorf("trail_planner marshal: %w", err)
-			}
-			uid := userID
-			evt := sovereign_db.KnowledgeEvent{
-				EventID:       uuid.New(),
-				OccurredAt:    p.cfg.Clock(),
-				TenantID:      tenantID,
-				UserID:        &uid,
-				ActorType:     "system",
-				ActorID:       "trail-planner",
-				EventType:     EventTrailBranchProposed,
-				AggregateType: "trail_branch",
-				AggregateID:   payload.BranchKey,
-				DedupeKey:     EventTrailBranchProposed + ":" + payload.BranchKey,
-				Payload:       body,
-			}
-			if _, err := p.repo.AppendKnowledgeEvent(ctx, evt); err != nil {
-				return fmt.Errorf("trail_planner emit: %w", err)
-			}
+		if _, err := p.repo.AppendKnowledgeEvent(ctx, evt); err != nil {
+			return fmt.Errorf("trail_planner emit: %w", err)
 		}
 	}
 	return nil

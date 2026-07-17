@@ -2,6 +2,7 @@ package sovereign_db
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"regexp"
@@ -137,6 +138,9 @@ func (r *Repository) GetLatestValidSnapshot(ctx context.Context) (*SnapshotMetad
 		&s.RecallRowCount, &s.RecallChecksum, &s.CreatedAt, &s.Status,
 	)
 	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, nil
+		}
 		return nil, fmt.Errorf("GetLatestValidSnapshot: %w", err)
 	}
 	return &s, nil

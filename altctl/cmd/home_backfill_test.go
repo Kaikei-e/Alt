@@ -24,7 +24,6 @@ func TestBackfillTriggerCommand(t *testing.T) {
 	rootCmd.SetArgs([]string{
 		"home", "backfill", "trigger",
 		"--backend-url", server.URL,
-		"--service-token", "test-token",
 		"--projection-version", "2",
 	})
 	if err := rootCmd.Execute(); err != nil {
@@ -49,7 +48,6 @@ func TestBackfillStatusCommand(t *testing.T) {
 	rootCmd.SetArgs([]string{
 		"home", "backfill", "status",
 		"--backend-url", server.URL,
-		"--service-token", "test-token",
 		"--job-id", "job-1",
 	})
 	if err := rootCmd.Execute(); err != nil {

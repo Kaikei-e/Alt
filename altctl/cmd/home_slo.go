@@ -1,9 +1,7 @@
 package cmd
 
 import (
-	"context"
 	"fmt"
-	"time"
 
 	"github.com/spf13/cobra"
 
@@ -32,22 +30,14 @@ type sloIndicator struct {
 }
 
 func runHomeSLO(cmd *cobra.Command, args []string) error {
-	client, err := newAdminClient(cmd)
-	if err != nil {
-		return err
-	}
-
 	reqBody := map[string]interface{}{}
 	var resp struct {
 		Indicators []sloIndicator `json:"indicators"`
 		UpdatedAt  string         `json:"updatedAt"`
 	}
 
-	ctx, cancel := context.WithTimeout(cmd.Context(), 30*time.Second)
-	defer cancel()
-
-	if err := client.Call(ctx, "GetSLOStatus", reqBody, &resp); err != nil {
-		return fmt.Errorf("get SLO status: %w", err)
+	if err := callAdminRPC(cmd, "GetSLOStatus", reqBody, &resp); err != nil {
+		return err
 	}
 
 	printer := newPrinter()
@@ -55,14 +45,12 @@ func runHomeSLO(cmd *cobra.Command, args []string) error {
 
 	table := output.NewTable([]string{"SLI NAME", "CURRENT", "TARGET", "STATUS", "BUDGET USED"})
 	for _, ind := range resp.Indicators {
-		status := ind.Status
-		budgetUsed := fmt.Sprintf("%.1f%%", ind.BudgetUsed*100)
 		table.AddRow([]string{
 			ind.Name,
 			fmt.Sprintf("%.2f%%", ind.Current*100),
 			fmt.Sprintf("%.2f%%", ind.Target*100),
-			status,
-			budgetUsed,
+			ind.Status,
+			fmt.Sprintf("%.1f%%", ind.BudgetUsed*100),
 		})
 	}
 	table.Render()

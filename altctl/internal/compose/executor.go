@@ -53,7 +53,8 @@ func (e *DefaultExecutor) Run(ctx context.Context, cmd string, args []string) er
 	)
 
 	if e.dryRun {
-		fmt.Printf("[dry-run] %s %s\n", cmd, strings.Join(args, " "))
+		msg := fmt.Sprintf("[dry-run] %s %s", cmd, strings.Join(args, " "))
+		e.logger.Info(msg)
 		return nil
 	}
 
@@ -76,7 +77,8 @@ func (e *DefaultExecutor) RunWithOutput(ctx context.Context, cmd string, args []
 	)
 
 	if e.dryRun {
-		fmt.Printf("[dry-run] %s %s\n", cmd, strings.Join(args, " "))
+		msg := fmt.Sprintf("[dry-run] %s %s", cmd, strings.Join(args, " "))
+		e.logger.Info(msg)
 		return nil, nil
 	}
 
@@ -105,7 +107,11 @@ func (e *DefaultExecutor) RunWithPipes(ctx context.Context, cmd string, args []s
 	)
 
 	if e.dryRun {
-		fmt.Fprintf(stdout, "[dry-run] %s %s\n", cmd, strings.Join(args, " "))
+		msg := fmt.Sprintf("[dry-run] %s %s", cmd, strings.Join(args, " "))
+		e.logger.Info(msg)
+		if stdout != nil {
+			fmt.Fprintln(stdout, msg)
+		}
 		return nil
 	}
 

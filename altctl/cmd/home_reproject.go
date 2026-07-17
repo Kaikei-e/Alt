@@ -11,7 +11,7 @@ import (
 	"github.com/alt-project/altctl/internal/output"
 )
 
-var uuidRegexp = regexp.MustCompile(`^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$`)
+var uuidRegexp = regexp.MustCompile(`(?i)^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$`)
 
 // validateReprojectMode checks that mode is one of the allowed values.
 func validateReprojectMode(mode string) error {

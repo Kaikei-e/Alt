@@ -60,7 +60,10 @@ func (h *SovereignHandler) GetTodayDigest(
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInvalidArgument, err)
 	}
-	date, _ := time.Parse("2006-01-02", req.Msg.Date)
+	date, err := parseDateField("date", req.Msg.Date)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInvalidArgument, err)
+	}
 	if date.IsZero() {
 		date = time.Now()
 	}
@@ -153,7 +156,10 @@ func (h *SovereignHandler) CountNeedToKnowItems(
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInvalidArgument, err)
 	}
-	date, _ := time.Parse("2006-01-02", req.Msg.Date)
+	date, err := parseDateField("date", req.Msg.Date)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInvalidArgument, err)
+	}
 	if date.IsZero() {
 		date = time.Now()
 	}

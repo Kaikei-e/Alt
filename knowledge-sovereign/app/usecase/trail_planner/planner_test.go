@@ -19,12 +19,18 @@ type fakePlannerRepo struct {
 	anchorOK   bool
 	candidates []sovereign_db.TrailClusterCandidate
 	emitted    []sovereign_db.KnowledgeEvent
+	anchorErr  map[uuid.UUID]error // per-user anchor failures
 }
 
 func (f *fakePlannerRepo) ListDistinctUserIDs(context.Context) ([]uuid.UUID, error) {
 	return f.users, nil
 }
-func (f *fakePlannerRepo) GetLatestFootprintAnchor(context.Context, uuid.UUID) (string, uuid.UUID, bool, error) {
+func (f *fakePlannerRepo) GetLatestFootprintAnchor(_ context.Context, userID uuid.UUID) (string, uuid.UUID, bool, error) {
+	if f.anchorErr != nil {
+		if err, ok := f.anchorErr[userID]; ok {
+			return "", uuid.Nil, false, err
+		}
+	}
 	return f.anchor, uuid.New(), f.anchorOK, nil
 }
 func (f *fakePlannerRepo) DeriveTrailClusterCandidates(context.Context, uuid.UUID, int) ([]sovereign_db.TrailClusterCandidate, error) {
@@ -103,4 +109,24 @@ func TestPlanner_PanicsWhenUnwired(t *testing.T) {
 	p := &Planner{} // repo nil — a wiring bug
 	assert.Panics(t, func() { _ = p.RunBatch(context.Background()) },
 		"Rule 8: an unwired producer must fail loud, not silently no-op")
+}
+
+func TestPlanner_ContinuesAfterUserError(t *testing.T) {
+	failUser := uuid.New()
+	okUser := uuid.New()
+	repo := &fakePlannerRepo{
+		users:    []uuid.UUID{failUser, okUser},
+		anchor:   "article:a",
+		anchorOK: true,
+		anchorErr: map[uuid.UUID]error{
+			failUser: assert.AnError,
+		},
+		candidates: []sovereign_db.TrailClusterCandidate{
+			{TargetItemKey: "article:z", TargetTitle: "Async Rust", SharedTags: []string{"rust"}},
+		},
+	}
+	p := NewPlanner(repo, nil, Config{Clock: func() time.Time { return time.Unix(0, 0) }})
+	require.NoError(t, p.RunBatch(context.Background()), "user errors must not abort the whole batch")
+	require.Len(t, repo.emitted, 1, "second user should still get a branch")
+	assert.Equal(t, okUser, *repo.emitted[0].UserID)
 }

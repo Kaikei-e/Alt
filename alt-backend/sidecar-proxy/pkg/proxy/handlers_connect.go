@@ -2,6 +2,7 @@ package proxy
 
 import (
 	"fmt"
+	"net"
 	"net/http"
 	"strconv"
 	"strings"
@@ -139,16 +140,15 @@ func (p *LightweightProxy) HandlePersistentTunnelRequest(w http.ResponseWriter, 
 	}
 }
 
-// parseCONNECTTarget parses CONNECT request format "host:port"
+// parseCONNECTTarget parses CONNECT request format "host:port" (IPv6-safe).
 func (p *LightweightProxy) parseCONNECTTarget(hostPort string) (host, port string, err error) {
-	// Parse "registry.ollama.ai:443" format
-	parts := strings.Split(hostPort, ":")
-	if len(parts) != 2 {
+	host, port, err = net.SplitHostPort(hostPort)
+	if err != nil {
 		return "", "", fmt.Errorf("invalid host:port format: %s", hostPort)
 	}
 
-	host = strings.TrimSpace(parts[0])
-	port = strings.TrimSpace(parts[1])
+	host = strings.TrimSpace(host)
+	port = strings.TrimSpace(port)
 
 	// Validate host
 	if host == "" || strings.Contains(host, "/") {

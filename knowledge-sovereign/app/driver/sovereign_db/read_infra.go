@@ -216,9 +216,14 @@ func (r *Repository) UpdateProjectionCheckpoint(ctx context.Context, projectorNa
 	return nil
 }
 
-// GetProjectionLag returns the lag in seconds since the last checkpoint update.
+// GetProjectionLag returns how many events the farthest-behind projector
+// checkpoint trails the knowledge_events tip (max(event_seq) - min(checkpoint)).
 func (r *Repository) GetProjectionLag(ctx context.Context) (float64, error) {
-	query := `SELECT EXTRACT(EPOCH FROM (now() - COALESCE(MAX(updated_at), now()))) FROM knowledge_projection_checkpoints`
+	query := `SELECT GREATEST(
+		(SELECT COALESCE(MAX(event_seq), 0) FROM knowledge_events) -
+		(SELECT COALESCE(MIN(last_event_seq), 0) FROM knowledge_projection_checkpoints),
+		0
+	)::float8`
 	var lag float64
 	if err := r.pool.QueryRow(ctx, query).Scan(&lag); err != nil {
 		return 0, fmt.Errorf("GetProjectionLag: %w", err)
