@@ -9,7 +9,7 @@ const OAUTH_TOKEN_PATTERNS = [
   /[A-Za-z0-9\-_]{30,}/g,
 ];
 
-const SENSITIVE_FIELDS = new Set([
+const SENSITIVE_FIELDS = [
   "access_token",
   "refresh_token",
   "id_token",
@@ -22,12 +22,24 @@ const SENSITIVE_FIELDS = new Set([
   "appid",
   "appkey",
   "client_secret",
+  "clientsecret",
   "authorization",
-]);
+];
+
+/** Normalize field names for matching: strip separators, lowercase. */
+function normalizeFieldName(key: string): string {
+  return key.toLowerCase().replace(/[-_\s]/g, "");
+}
+
+function isSensitiveField(key: string): boolean {
+  const normalized = normalizeFieldName(key);
+  return SENSITIVE_FIELDS.some((field) =>
+    normalized.includes(normalizeFieldName(field))
+  );
+}
 
 export class DataSanitizer {
-  // deno-lint-ignore no-explicit-any
-  static sanitize(data: any): any {
+  static sanitize(data: unknown): unknown {
     if (data === null || data === undefined) {
       return data;
     }
@@ -38,7 +50,7 @@ export class DataSanitizer {
       return data.map((item) => this.sanitize(item));
     }
     if (typeof data === "object") {
-      return this.sanitizeObject(data);
+      return this.sanitizeObject(data as Record<string, unknown>);
     }
     return data;
   }
@@ -51,13 +63,12 @@ export class DataSanitizer {
     return sanitized;
   }
 
-  // deno-lint-ignore no-explicit-any
-  private static sanitizeObject(obj: Record<string, any>): Record<string, any> {
-    // deno-lint-ignore no-explicit-any
-    const sanitized: Record<string, any> = {};
+  private static sanitizeObject(
+    obj: Record<string, unknown>,
+  ): Record<string, unknown> {
+    const sanitized: Record<string, unknown> = {};
     for (const [key, value] of Object.entries(obj)) {
-      const lowerKey = key.toLowerCase();
-      if (SENSITIVE_FIELDS.has(lowerKey)) {
+      if (isSensitiveField(key)) {
         sanitized[key] = "[REDACTED]";
       } else {
         sanitized[key] = this.sanitize(value);
@@ -137,9 +148,9 @@ class JsonFormatter {
         "alt.ai.pipeline": businessContext.aiPipeline,
       }),
       component: "auth-token-manager",
-      ...sanitizedArgs.reduce((acc, arg) => {
+      ...sanitizedArgs.reduce((acc: Record<string, unknown>, arg) => {
         if (typeof arg === "object" && arg !== null) {
-          return { ...acc, ...arg };
+          return { ...acc, ...(arg as Record<string, unknown>) };
         }
         return acc;
       }, {}),
@@ -187,18 +198,11 @@ export class StructuredLogger {
       otelShutdown = initOTelProvider();
     }
 
-    try {
-      Deno.mkdirSync("./logs", { recursive: true });
-    } catch {
-      // Ignore - logs directory creation is best-effort
-    }
-
     ensureLoggerSetup();
     this.logger = getLogger(LOGGER_NAME);
   }
 
-  // deno-lint-ignore no-explicit-any
-  private emitToOTel(level: string, message: string, args: any[]) {
+  private emitToOTel(level: string, message: string, args: unknown[]) {
     if (!isOTelEnabled()) return;
 
     const attributes: Record<string, string | number | boolean> = {
@@ -226,40 +230,43 @@ export class StructuredLogger {
     for (const arg of args) {
       if (typeof arg === "object" && arg !== null) {
         const sanitized = DataSanitizer.sanitize(arg);
-        for (const [key, value] of Object.entries(sanitized)) {
-          if (
-            typeof value === "string" || typeof value === "number" ||
-            typeof value === "boolean"
-          ) {
-            attributes[key] = value;
+        if (typeof sanitized === "object" && sanitized !== null) {
+          for (const [key, value] of Object.entries(sanitized)) {
+            if (
+              typeof value === "string" || typeof value === "number" ||
+              typeof value === "boolean"
+            ) {
+              attributes[key] = value;
+            }
           }
         }
       }
     }
 
-    emitOTelLog(level, DataSanitizer.sanitize(message) as string, attributes);
+    const sanitizedMessage = DataSanitizer.sanitize(message);
+    emitOTelLog(
+      level,
+      typeof sanitizedMessage === "string" ? sanitizedMessage : message,
+      attributes,
+    );
   }
 
-  // deno-lint-ignore no-explicit-any
-  info(message: string, ...args: any[]) {
+  info(message: string, ...args: unknown[]) {
     this.logger.info(message, { component: this.component }, ...args);
     this.emitToOTel("info", message, args);
   }
 
-  // deno-lint-ignore no-explicit-any
-  warn(message: string, ...args: any[]) {
+  warn(message: string, ...args: unknown[]) {
     this.logger.warn(message, { component: this.component }, ...args);
     this.emitToOTel("warn", message, args);
   }
 
-  // deno-lint-ignore no-explicit-any
-  error(message: string, ...args: any[]) {
+  error(message: string, ...args: unknown[]) {
     this.logger.error(message, { component: this.component }, ...args);
     this.emitToOTel("error", message, args);
   }
 
-  // deno-lint-ignore no-explicit-any
-  debug(message: string, ...args: any[]) {
+  debug(message: string, ...args: unknown[]) {
     // Gated by the "app" logger's configured level (LOG_LEVEL), not NODE_ENV,
     // so LOG_LEVEL=DEBUG works in production without a development flag.
     this.logger.debug(message, { component: this.component }, ...args);

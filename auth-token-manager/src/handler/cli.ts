@@ -57,7 +57,6 @@ export class CliHandler {
     logger.info("Starting initial OAuth2 authorization flow");
     const { url, state } = this.authorizeUsecase.buildAuthorizationUrl();
     const credentials = config.getInoreaderCredentials();
-    const redirectUrl = new URL(credentials.redirect_uri);
 
     logger.info("Open the following URL in your browser:");
     console.log(url);
@@ -65,80 +64,8 @@ export class CliHandler {
       `Listening for OAuth callback at ${credentials.redirect_uri}`,
     );
 
-    const ac = new AbortController();
-    const server = Deno.serve(
-      {
-        port: Number(redirectUrl.port || 80),
-        hostname: "0.0.0.0",
-        signal: ac.signal,
-        onListen() {},
-      },
-      (req) => {
-        const reqUrl = new URL(req.url);
-
-        if (reqUrl.searchParams.has("error")) {
-          const error = reqUrl.searchParams.get("error");
-          const description = reqUrl.searchParams.get("error_description");
-          logger.error("Authorization failed", { error, description });
-          setTimeout(() => {
-            ac.abort();
-            Deno.exit(1);
-          }, 100);
-          return new Response(
-            `Authorization failed: ${error} - ${description}`,
-            { status: 400 },
-          );
-        }
-
-        if (
-          reqUrl.pathname === redirectUrl.pathname &&
-          reqUrl.searchParams.has("code")
-        ) {
-          const returnedState = reqUrl.searchParams.get("state");
-          if (returnedState !== state) {
-            logger.error(
-              "State parameter mismatch - possible CSRF attack",
-            );
-            setTimeout(() => {
-              ac.abort();
-              Deno.exit(1);
-            }, 100);
-            return new Response(
-              "Security Error: State parameter mismatch",
-              { status: 400 },
-            );
-          }
-
-          const code = reqUrl.searchParams.get("code")!;
-
-          (async () => {
-            try {
-              await this.authorizeUsecase.exchangeCodeAndStore(code);
-              logger.info("OAuth2 flow completed and secret updated");
-              setTimeout(() => {
-                ac.abort();
-                Deno.exit(0);
-              }, 500);
-            } catch (err) {
-              logger.error("Error during token exchange", {
-                error: err instanceof Error ? err.message : String(err),
-              });
-              Deno.exit(1);
-            }
-          })();
-
-          return new Response(
-            "Authorization successful! You may close this tab.",
-            { status: 200 },
-          );
-        }
-
-        return new Response("Invalid OAuth callback request", {
-          status: 400,
-        });
-      },
-    );
-    await server.finished;
+    await this.oauthServer.startOneShot(state);
+    logger.info("OAuth2 flow completed and secret updated");
   }
 
   private async handleRefresh(): Promise<void> {

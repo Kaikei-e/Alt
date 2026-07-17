@@ -4,7 +4,10 @@
 
 import type { TokenClient } from "../port/token_client.ts";
 import type { SecretManager } from "../port/secret_manager.ts";
-import type { InoreaderCredentials } from "../domain/types.ts";
+import {
+  INOREADER_OAUTH_SCOPE,
+  type InoreaderCredentials,
+} from "../domain/types.ts";
 import { logger } from "../infra/logger.ts";
 
 export class AuthorizeUsecase {
@@ -19,7 +22,7 @@ export class AuthorizeUsecase {
     authUrl.searchParams.set("client_id", this.credentials.client_id);
     authUrl.searchParams.set("redirect_uri", this.credentials.redirect_uri);
     authUrl.searchParams.set("response_type", "code");
-    authUrl.searchParams.set("scope", "read");
+    authUrl.searchParams.set("scope", INOREADER_OAUTH_SCOPE);
 
     const state = crypto.randomUUID();
     authUrl.searchParams.set("state", state);

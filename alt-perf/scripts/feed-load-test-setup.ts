@@ -19,11 +19,19 @@ const USER_COUNT = Number(args.count);
 const KRATOS_ADMIN = Deno.env.get("KRATOS_ADMIN_URL") || "http://localhost:4434";
 const BATCH_SIZE = 50;
 const OUTPUT_DIR = new URL("../k6/data/", import.meta.url).pathname;
+const FETCH_TIMEOUT_MS = 15_000;
 
 interface TestUser {
   email: string;
   password: string;
   userId: string;
+}
+
+function fetchOpts(init: RequestInit = {}): RequestInit {
+  return {
+    ...init,
+    signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+  };
 }
 
 async function createUser(
@@ -46,11 +54,14 @@ async function createUser(
 
   for (let attempt = 0; attempt <= retries; attempt++) {
     try {
-      const res = await fetch(`${KRATOS_ADMIN}/admin/identities`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-      });
+      const res = await fetch(
+        `${KRATOS_ADMIN}/admin/identities`,
+        fetchOpts({
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        }),
+      );
 
       if (res.status === 201 || res.status === 200) {
         const data = await res.json();
@@ -62,21 +73,26 @@ async function createUser(
         console.warn(`User ${email} already exists, recreating...`);
         const listRes = await fetch(
           `${KRATOS_ADMIN}/admin/identities?credentials_identifier=${email}`,
+          fetchOpts(),
         );
         if (listRes.ok) {
-          const identities = await listRes.json();
-          if (identities.length > 0) {
+          const identities = await listRes.json() as Array<{ id?: string }>;
+          const existingId = identities.length > 0 ? identities[0]?.id : undefined;
+          if (existingId) {
             // Delete existing identity
             await fetch(
-              `${KRATOS_ADMIN}/admin/identities/${identities[0].id}`,
-              { method: "DELETE" },
+              `${KRATOS_ADMIN}/admin/identities/${existingId}`,
+              fetchOpts({ method: "DELETE" }),
             );
             // Retry creation (will use the password generated above)
-            const retryRes = await fetch(`${KRATOS_ADMIN}/admin/identities`, {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify(body),
-            });
+            const retryRes = await fetch(
+              `${KRATOS_ADMIN}/admin/identities`,
+              fetchOpts({
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(body),
+              }),
+            );
             if (retryRes.status === 201 || retryRes.status === 200) {
               const data = await retryRes.json();
               return { email, password, userId: data.id };
@@ -146,6 +162,11 @@ async function main() {
   // Write JSON (for K6 SharedArray)
   const jsonPath = `${OUTPUT_DIR}/load-test-users.json`;
   await Deno.writeTextFile(jsonPath, JSON.stringify(users, null, 2));
+  try {
+    await Deno.chmod(jsonPath, 0o600);
+  } catch {
+    // chmod may not be supported on all platforms
+  }
   console.log(`Written ${jsonPath}`);
 
   // Write CSV (for reference / teardown)
@@ -155,6 +176,11 @@ async function main() {
     csvLines.push(`${u.email},${u.password},${u.userId}`);
   }
   await Deno.writeTextFile(csvPath, csvLines.join("\n") + "\n");
+  try {
+    await Deno.chmod(csvPath, 0o600);
+  } catch {
+    // chmod may not be supported on all platforms
+  }
   console.log(`Written ${csvPath}`);
 
   console.log(

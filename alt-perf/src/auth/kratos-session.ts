@@ -27,6 +27,64 @@ interface KratosSession {
   };
 }
 
+interface KratosLoginSuccess {
+  session?: KratosSession;
+  session_token?: string;
+}
+
+function maskEmail(email: string): string {
+  const at = email.indexOf("@");
+  if (at <= 1) return "***";
+  return `${email[0]}***${email.slice(at)}`;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+function isKratosLoginFlow(value: unknown): value is KratosLoginFlow {
+  if (!isRecord(value) || typeof value.id !== "string") return false;
+  if (!isRecord(value.ui) || !Array.isArray(value.ui.nodes)) return false;
+  return value.ui.nodes.every((node) => {
+    if (!isRecord(node) || !isRecord(node.attributes)) return false;
+    return typeof node.attributes.name === "string";
+  });
+}
+
+function isKratosLoginSuccess(value: unknown): value is KratosLoginSuccess {
+  if (!isRecord(value)) return false;
+  if (
+    value.session_token !== undefined &&
+    typeof value.session_token !== "string"
+  ) {
+    return false;
+  }
+  if (value.session !== undefined) {
+    if (!isRecord(value.session) || typeof value.session.id !== "string") {
+      return false;
+    }
+  }
+  return true;
+}
+
+function summarizeKratosError(status: number, bodyText: string): string {
+  try {
+    const parsed = JSON.parse(bodyText) as unknown;
+    if (isRecord(parsed)) {
+      const err = parsed.error;
+      if (isRecord(err) && typeof err.id === "string") {
+        return `status=${status} error.id=${err.id}`;
+      }
+      if (typeof parsed.id === "string") {
+        return `status=${status} id=${parsed.id}`;
+      }
+    }
+  } catch {
+    // not JSON
+  }
+  return `status=${status}`;
+}
+
 /**
  * Kratos session manager for authenticated testing
  */
@@ -52,7 +110,7 @@ export class KratosSessionManager {
       throw new Error("Missing authentication credentials (PERF_TEST_EMAIL or PERF_TEST_PASSWORD)");
     }
 
-    info("Authenticating with Kratos", { email: credentials.email });
+    info("Authenticating with Kratos", { email: maskEmail(credentials.email) });
 
     try {
       // Step 1: Create login flow
@@ -69,7 +127,11 @@ export class KratosSessionManager {
         throw new Error(`Failed to create login flow: ${flowResp.status}`);
       }
 
-      const flow = await flowResp.json() as KratosLoginFlow;
+      const flowJson: unknown = await flowResp.json();
+      if (!isKratosLoginFlow(flowJson)) {
+        throw new Error("Invalid Kratos login flow response shape");
+      }
+      const flow = flowJson;
       debug("Login flow created", { flowId: flow.id });
 
       // Extract CSRF token
@@ -114,16 +176,23 @@ export class KratosSessionManager {
 
       // If no cookie, check for session in response body
       if (loginResp.ok) {
-        const session = JSON.parse(loginBodyText) as {
-          session?: KratosSession;
-          session_token?: string;
-        };
+        let parsed: unknown;
+        try {
+          parsed = JSON.parse(loginBodyText);
+        } catch {
+          throw new Error(
+            `Login failed: ${summarizeKratosError(loginResp.status, loginBodyText)}`,
+          );
+        }
+        if (!isKratosLoginSuccess(parsed)) {
+          throw new Error("Invalid Kratos login success response shape");
+        }
 
-        if (session.session_token) {
+        if (parsed.session_token) {
           // API-based session, create a cookie representation
           this.sessionCookie = {
             name: "ory_kratos_session",
-            value: session.session_token,
+            value: parsed.session_token,
             domain: new URL(kratosUrl).hostname,
             path: "/",
             httpOnly: true,
@@ -134,13 +203,15 @@ export class KratosSessionManager {
         }
       }
 
-      // Handle error response
-      throw new Error(`Login failed: ${loginResp.status} - ${loginBodyText}`);
+      // Handle error response — never log full body (may echo credentials).
+      throw new Error(
+        `Login failed: ${summarizeKratosError(loginResp.status, loginBodyText)}`,
+      );
     } catch (err) {
       error("Authentication failed", {
         error: String(err),
         kratosUrl,
-        email: credentials.email,
+        email: maskEmail(credentials.email),
       });
       throw err;
     }

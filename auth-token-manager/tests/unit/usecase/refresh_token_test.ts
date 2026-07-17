@@ -113,8 +113,8 @@ describe("RefreshTokenUsecase", {
       refresh_token: "valid-refresh-token-1234567890",
       expires_at: new Date(Date.now() + 3600 * 1000).toISOString(), // 1 hour left
       updated_at: new Date().toISOString(),
-      token_type: "Bearer",
-      scope: "read write",
+      token_type: "Custom",
+      scope: "read",
     };
 
     const secretManager = createMockSecretManager(validTokenData);
@@ -136,6 +136,8 @@ describe("RefreshTokenUsecase", {
       result.tokens?.access_token,
       "still-valid-access-token-1234567890",
     );
+    assertEquals(result.tokens?.token_type, "Custom");
+    assertEquals(result.tokens?.scope, "read");
   });
 
   it("should fail gracefully when no refresh token exists", async () => {

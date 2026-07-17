@@ -7,6 +7,7 @@ import type {
   AuthConfig,
   FlowsConfig,
   PerfConfig,
+  RouteConfig,
   RoutesConfig,
   ThresholdsConfig,
 } from "./schema.ts";
@@ -52,12 +53,67 @@ class ConfigFileNotFoundError extends Error {
   }
 }
 
-// Load YAML file
-async function loadYamlFile<T>(filePath: string): Promise<T> {
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function isRouteConfig(value: unknown): value is RouteConfig {
+  if (!isRecord(value)) return false;
+  return typeof value.path === "string" && typeof value.name === "string";
+}
+
+function isRouteConfigArray(value: unknown): value is RouteConfig[] {
+  return Array.isArray(value) && value.every(isRouteConfig);
+}
+
+function isRoutesConfig(value: unknown): value is RoutesConfig {
+  if (!isRecord(value)) return false;
+  const groups = ["public", "desktop", "mobile", "sveltekit", "api"] as const;
+  for (const key of groups) {
+    if (value[key] !== undefined && !isRouteConfigArray(value[key])) {
+      return false;
+    }
+  }
+  return true;
+}
+
+function isThresholdConfig(value: unknown): value is { good: number; poor: number } {
+  return (
+    isRecord(value) &&
+    typeof value.good === "number" &&
+    typeof value.poor === "number"
+  );
+}
+
+function isThresholdsConfig(value: unknown): value is ThresholdsConfig {
+  if (!isRecord(value) || !isRecord(value.vitals) || !isRecord(value.scoring)) {
+    return false;
+  }
+  const vitals = value.vitals;
+  for (const key of ["lcp", "inp", "cls", "fcp", "ttfb"] as const) {
+    if (!isThresholdConfig(vitals[key])) return false;
+  }
+  return typeof value.scoring.passThreshold === "number";
+}
+
+function isFlowsConfig(value: unknown): value is FlowsConfig {
+  if (!isRecord(value)) return false;
+  if (value.flows === undefined) return true;
+  return Array.isArray(value.flows);
+}
+
+// Load YAML file with optional schema predicate
+async function loadYamlFile<T>(
+  filePath: string,
+  guard?: (value: unknown) => value is T,
+): Promise<T> {
   try {
     const content = await Deno.readTextFile(filePath);
-    const parsed = parseYaml(content) as T;
-    return expandEnvVarsInObject(parsed);
+    const parsed: unknown = parseYaml(content);
+    if (guard && !guard(parsed)) {
+      throw new Error(`Invalid configuration schema in ${filePath}`);
+    }
+    return expandEnvVarsInObject(parsed as T);
   } catch (error) {
     if (error instanceof Deno.errors.NotFound) {
       throw new ConfigFileNotFoundError(filePath);
@@ -162,7 +218,12 @@ function getDefaultAuth(): AuthConfig {
 export async function loadRoutesConfig(configDir: string): Promise<RoutesConfig> {
   const routesPath = path.join(configDir, "routes.yaml");
   try {
-    const config = await loadYamlFile<{ routes: RoutesConfig }>(routesPath);
+    const config = await loadYamlFile<{ routes: RoutesConfig }>(
+      routesPath,
+      (value): value is { routes: RoutesConfig } =>
+        isRecord(value) &&
+        (value.routes === undefined || isRoutesConfig(value.routes)),
+    );
     return config.routes || getDefaultRoutes();
   } catch (error) {
     if (!(error instanceof ConfigFileNotFoundError)) {
@@ -179,7 +240,7 @@ export async function loadThresholdsConfig(
 ): Promise<ThresholdsConfig> {
   const thresholdsPath = path.join(configDir, "thresholds.yaml");
   try {
-    return await loadYamlFile<ThresholdsConfig>(thresholdsPath);
+    return await loadYamlFile<ThresholdsConfig>(thresholdsPath, isThresholdsConfig);
   } catch (error) {
     if (!(error instanceof ConfigFileNotFoundError)) {
       throw error;
@@ -193,7 +254,7 @@ export async function loadThresholdsConfig(
 export async function loadFlowsConfig(configDir: string): Promise<FlowsConfig> {
   const flowsPath = path.join(configDir, "flows.yaml");
   try {
-    return await loadYamlFile<FlowsConfig>(flowsPath);
+    return await loadYamlFile<FlowsConfig>(flowsPath, isFlowsConfig);
   } catch (error) {
     if (!(error instanceof ConfigFileNotFoundError)) {
       throw error;

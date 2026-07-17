@@ -7,6 +7,7 @@ import type { PerformanceReport, LoadTestResult } from "../report/types.ts";
 import { printCliReport } from "../report/cli-reporter.ts";
 import { saveJsonReport, printJsonReport } from "../report/json-reporter.ts";
 import { info, error, progress, section } from "../utils/logger.ts";
+import { calculatePercentile, calculateMean } from "../utils/stats.ts";
 
 interface LoadOptions {
   route?: string;
@@ -112,12 +113,12 @@ async function runLoadTest(config: LoadTestConfig): Promise<LoadTestResult> {
     failedRequests: totalErrors,
     errorRate: totalRequests > 0 ? totalErrors / totalRequests : 0,
     responseTimes: {
-      min: sorted[0] || 0,
-      max: sorted[sorted.length - 1] || 0,
-      mean: sorted.length > 0 ? sorted.reduce((a, b) => a + b, 0) / sorted.length : 0,
-      median: sorted[Math.floor(sorted.length / 2)] || 0,
-      p95: sorted[Math.floor(sorted.length * 0.95)] || 0,
-      p99: sorted[Math.floor(sorted.length * 0.99)] || 0,
+      min: sorted.length > 0 ? sorted[0]! : 0,
+      max: sorted.length > 0 ? sorted[sorted.length - 1]! : 0,
+      mean: calculateMean(sorted),
+      median: calculatePercentile(sorted, 50),
+      p95: calculatePercentile(sorted, 95),
+      p99: calculatePercentile(sorted, 99),
     },
     throughput: totalRequests / (totalDuration / 1000),
     duration: totalDuration,
@@ -226,7 +227,7 @@ export async function runLoad(config: PerfConfig, options: LoadOptions): Promise
         results.every((r) => r.errorRate < 0.01) ? "good" : "needs-improvement",
     },
     routes: [],
-    loadTest: results[0], // First result as primary (or aggregate in future)
+    loadTests: results,
     recommendations: [],
   };
 

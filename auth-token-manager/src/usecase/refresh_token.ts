@@ -4,11 +4,12 @@
 
 import type { TokenClient } from "../port/token_client.ts";
 import type { SecretManager } from "../port/secret_manager.ts";
-import type {
-  AuthenticationResult,
-  NetworkConfig,
-  RetryConfig,
-  TokenResponse,
+import {
+  INOREADER_OAUTH_SCOPE,
+  type AuthenticationResult,
+  type NetworkConfig,
+  type RetryConfig,
+  type TokenResponse,
 } from "../domain/types.ts";
 import type { HttpClient } from "../port/http_client.ts";
 import { logger } from "../infra/logger.ts";
@@ -142,8 +143,8 @@ export class RefreshTokenUsecase {
             access_token: existingTokenData.access_token,
             refresh_token: existingTokenData.refresh_token,
             expires_at: expiresAt,
-            token_type: "Bearer",
-            scope: "read write",
+            token_type: existingTokenData.token_type || "Bearer",
+            scope: existingTokenData.scope || INOREADER_OAUTH_SCOPE,
           },
         };
       }
@@ -162,8 +163,13 @@ export class RefreshTokenUsecase {
         { method: "HEAD" },
       );
 
-      if (!response.ok && response.status >= 500) {
-        throw new Error(`Inoreader server error: ${response.status}`);
+      try {
+        if (!response.ok && response.status >= 500) {
+          throw new Error(`Inoreader server error: ${response.status}`);
+        }
+      } finally {
+        // Release the connection; HEAD bodies are empty but cancel is still required.
+        await response.body?.cancel();
       }
     } catch (error) {
       const errorMessage = error instanceof Error

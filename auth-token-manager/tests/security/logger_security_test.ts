@@ -40,11 +40,32 @@ Deno.test("DataSanitizer - Object Field Sanitization", () => {
     username: TEST_DATA.username,
   };
 
-  const sanitized = DataSanitizer.sanitize(testObject);
+  const sanitized = DataSanitizer.sanitize(testObject) as Record<
+    string,
+    unknown
+  >;
   assertEquals(sanitized.access_token, "[REDACTED]");
   assertEquals(sanitized.refresh_token, "[REDACTED]");
   assertEquals(sanitized.safe_data, "This is safe information");
   assertEquals(sanitized.username, "testuser");
+});
+
+Deno.test("DataSanitizer - Normalized sensitive field names", () => {
+  const testObject = {
+    clientSecret: "super-secret-value",
+    "access-token": "tok-abc",
+    Access_Token: "tok-def",
+    safe_data: "ok",
+  };
+
+  const sanitized = DataSanitizer.sanitize(testObject) as Record<
+    string,
+    unknown
+  >;
+  assertEquals(sanitized.clientSecret, "[REDACTED]");
+  assertEquals(sanitized["access-token"], "[REDACTED]");
+  assertEquals(sanitized.Access_Token, "[REDACTED]");
+  assertEquals(sanitized.safe_data, "ok");
 });
 
 Deno.test("DataSanitizer - Inoreader API Credentials", () => {
@@ -54,7 +75,10 @@ Deno.test("DataSanitizer - Inoreader API Credentials", () => {
     user_info: "safe user info",
   };
 
-  const sanitized = DataSanitizer.sanitize(inoreaderData);
+  const sanitized = DataSanitizer.sanitize(inoreaderData) as Record<
+    string,
+    unknown
+  >;
   assertEquals(sanitized.AppId, "[REDACTED]");
   assertEquals(sanitized.AppKey, "[REDACTED]");
   assertEquals(sanitized.user_info, "safe user info");

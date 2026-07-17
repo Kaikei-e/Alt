@@ -48,6 +48,7 @@ describe("EnvFileSecretManager", {
     assertEquals(result?.access_token, "test-access-token-1234567890");
     assertEquals(result?.refresh_token, "test-refresh-token-1234567890");
     assertEquals(result?.token_type, "Bearer");
+    assertEquals(result?.scope, "read write");
   });
 
   it("should preserve non-token env vars", async () => {

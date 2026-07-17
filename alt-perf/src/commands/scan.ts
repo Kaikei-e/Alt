@@ -137,6 +137,7 @@ export async function runScan(config: PerfConfig, options: ScanOptions): Promise
   // Create browser manager
   const browser = createBrowserManager({
     headless: options.headless ?? true,
+    baseUrl: config.baseUrl,
   });
 
   const vitalsCollector = createWebVitalsCollector();
@@ -156,19 +157,21 @@ export async function runScan(config: PerfConfig, options: ScanOptions): Promise
     await browser.launch();
 
     // Warmup phase - visit routes to warm up server/browser caches
-    if (warmupRuns > 0 && authCookies.length > 0) {
+    // Independent of auth: public-only scans must still honor --warmup.
+    if (warmupRuns > 0) {
       section("Warmup Phase");
       info(`Running ${warmupRuns} warmup run(s) to stabilize measurements...`);
 
-      // Select a subset of routes for warmup (first authenticated route from each type)
-      const warmupRoutes = routes.filter((r) => r.requiresAuth).slice(0, 3);
+      // Warm a small subset of the routes actually under test (any auth status).
+      const warmupRoutes = routes.slice(0, 3);
 
       for (let run = 0; run < warmupRuns; run++) {
         for (const device of devices) {
           for (const route of warmupRoutes) {
             let page = null;
             try {
-              page = await browser.createPage(device, authCookies);
+              const cookies = route.requiresAuth ? authCookies : [];
+              page = await browser.createPage(device, cookies);
               const url = `${config.baseUrl}${route.path}`;
               await browser.navigateTo(page, url, { waitFor: route.waitFor, timeout: 30000 });
               debug(`Warmup: ${device} ${route.path}`);
@@ -304,7 +307,13 @@ export async function runScan(config: PerfConfig, options: ScanOptions): Promise
           };
 
           // Re-calculate ratings based on aggregated values
-          const getRating = (value: number, good: number, poor: number): "good" | "needs-improvement" | "poor" => {
+          const getRating = (
+            value: number,
+            good: number,
+            poor: number,
+            zeroIsValid = false,
+          ): "good" | "needs-improvement" | "poor" | "not-measured" => {
+            if (value === 0 && !zeroIsValid) return "not-measured";
             if (value <= good) return "good";
             if (value <= poor) return "needs-improvement";
             return "poor";
@@ -312,7 +321,7 @@ export async function runScan(config: PerfConfig, options: ScanOptions): Promise
 
           vitals.lcp.rating = getRating(vitals.lcp.value, DEFAULT_THRESHOLDS.vitals.lcp.good, DEFAULT_THRESHOLDS.vitals.lcp.poor);
           vitals.inp.rating = getRating(vitals.inp.value, DEFAULT_THRESHOLDS.vitals.inp.good, DEFAULT_THRESHOLDS.vitals.inp.poor);
-          vitals.cls.rating = getRating(vitals.cls.value, DEFAULT_THRESHOLDS.vitals.cls.good, DEFAULT_THRESHOLDS.vitals.cls.poor);
+          vitals.cls.rating = getRating(vitals.cls.value, DEFAULT_THRESHOLDS.vitals.cls.good, DEFAULT_THRESHOLDS.vitals.cls.poor, true);
           vitals.fcp.rating = getRating(vitals.fcp.value, DEFAULT_THRESHOLDS.vitals.fcp.good, DEFAULT_THRESHOLDS.vitals.fcp.poor);
           vitals.ttfb.rating = getRating(vitals.ttfb.value, DEFAULT_THRESHOLDS.vitals.ttfb.good, DEFAULT_THRESHOLDS.vitals.ttfb.poor);
 

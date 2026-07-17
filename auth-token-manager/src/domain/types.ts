@@ -2,6 +2,9 @@
  * Domain type definitions for auth-token-manager
  */
 
+/** Canonical Inoreader OAuth scope — single source of truth for authorize + defaults. */
+export const INOREADER_OAUTH_SCOPE = "read";
+
 export interface TokenResponse {
   access_token: string;
   refresh_token: string;
