@@ -14,12 +14,12 @@ import type { RenderFeed, SanitizedFeed } from "$lib/schema/feed";
 import { toRenderFeed } from "$lib/schema/feed";
 import { articlePrefetcher } from "$lib/utils/articlePrefetcher";
 import { canonicalize } from "$lib/utils/feed";
-import { createDispatchSession } from "./dispatch-session.svelte";
 import DispatchHeader from "./DispatchHeader.svelte";
+import { createDispatchSession } from "./dispatch-session.svelte";
 import SwipeFeedCard from "./SwipeFeedCard.svelte";
-import VisualPreviewCard from "./VisualPreviewCard.svelte";
 import SwipeFilterSortSheet from "./SwipeFilterSortSheet.svelte";
 import SwipeLoadingOverlay from "./SwipeLoadingOverlay.svelte";
+import VisualPreviewCard from "./VisualPreviewCard.svelte";
 
 interface Props {
 	initialFeeds?: RenderFeed[];
@@ -347,6 +347,12 @@ async function handleDismiss(_direction: number) {
 
 	activeIndex++;
 	session.dismiss(currentLink);
+
+	// With no next card on screen there may be no next dismissal — commit
+	// now rather than gambling on the pagehide flush surviving unload.
+	if (!feeds[activeIndex]) {
+		session.flush();
+	}
 }
 
 function handleUndo() {
