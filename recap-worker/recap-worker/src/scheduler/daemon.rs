@@ -53,7 +53,8 @@ pub fn spawn_jst_batch_daemon(
 ) -> JoinHandle<()> {
     log_topic_snapshot_emit_wiring(owner, "jst_batch");
     let tz = FixedOffset::east_opt(JST_OFFSET_HOURS * 3600).expect("valid JST offset");
-    let cadence = DailyCadence::new(tz, BATCH_HOUR, BATCH_MINUTE);
+    let cadence = DailyCadence::new(tz, BATCH_HOUR, BATCH_MINUTE)
+        .unwrap_or_else(|e| panic!("batch cadence: {e}"));
     BatchDaemon::new(scheduler, cadence, genres, tz, window_days, owner, shutdown).spawn()
 }
 

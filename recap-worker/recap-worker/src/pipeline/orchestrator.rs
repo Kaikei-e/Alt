@@ -379,7 +379,7 @@ impl PipelineOrchestrator {
             .execute_select_stage(job, resume_stage_idx, genre_bundle)
             .await?;
         let evidence_bundle =
-            executor::StageExecutor::build_evidence_bundle(job, resume_stage_idx, selected);
+            executor::StageExecutor::build_evidence_bundle(job, resume_stage_idx, selected)?;
         // evidence ステージの状態遷移を記録（実際の状態保存は不要だが、Status History への記録が必要）
         if resume_stage_idx <= 5 {
             executor

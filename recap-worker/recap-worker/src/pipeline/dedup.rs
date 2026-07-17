@@ -8,7 +8,7 @@ use rayon::prelude::*;
 use rustc_hash::{FxHashMap, FxHashSet};
 use smallvec::SmallVec;
 use tokio::sync::Semaphore;
-use tracing::{debug, info};
+use tracing::{debug, info, warn};
 use uuid::Uuid;
 
 use crate::scheduler::JobContext;
@@ -211,9 +211,10 @@ impl HashDedupStage {
                     .await
                     .expect("semaphore should not be closed");
 
-                tokio::task::spawn_blocking(move || deduplicate_sentences(article))
-                    .await
-                    .expect("sentence dedup should not panic")
+                match tokio::task::spawn_blocking(move || deduplicate_sentences(article)).await {
+                    Ok(result) => Ok(result),
+                    Err(e) => Err(anyhow::anyhow!("sentence dedup join failed: {e}")),
+                }
             });
 
             tasks.push(task);
@@ -225,14 +226,19 @@ impl HashDedupStage {
 
         for result in results {
             match result {
-                Ok((article, sentence_stats)) => {
+                Ok(Ok((article, sentence_stats))) => {
                     stats.total_sentences += sentence_stats.0;
                     stats.unique_sentences += sentence_stats.1;
                     stats.duplicate_sentences += sentence_stats.2;
                     deduped_articles.push(article);
                 }
+                Ok(Err(e)) => {
+                    warn!(error = %e, "sentence dedup failed, dropping article");
+                    stats.unique_articles = stats.unique_articles.saturating_sub(1);
+                }
                 Err(e) => {
-                    debug!(error = ?e, "sentence dedup task failed");
+                    warn!(error = ?e, "sentence dedup task join failed, dropping article");
+                    stats.unique_articles = stats.unique_articles.saturating_sub(1);
                 }
             }
         }
@@ -261,8 +267,11 @@ impl DedupStage for HashDedupStage {
         };
 
         let mut articles = corpus.articles;
-        // Timestamp prioritized: Sort by published_at descending (newest first)
-        articles.sort_by_key(|b| std::cmp::Reverse(b.published_at));
+        // Timestamp prioritized: Sort by published_at descending (newest first).
+        // None sorts as oldest so dated articles win representative selection.
+        articles.sort_by_key(|b| {
+            std::cmp::Reverse(b.published_at.unwrap_or(DateTime::<Utc>::MIN_UTC))
+        });
 
         let signatures = build_signatures(&articles, self.window_size);
 
@@ -503,6 +512,34 @@ mod tests {
         let article = &result.articles[0];
         assert_eq!(article.sentences.len(), 3);
         assert_eq!(article.sentence_hashes.len(), 3);
+    }
+
+    #[tokio::test]
+    async fn deduplicate_prefers_dated_article_over_none_published_at() {
+        let stage = HashDedupStage::with_defaults();
+        let job = JobContext::new(Uuid::new_v4(), vec![]);
+        let newer = Utc::now();
+        let mut undated = article("art-none", "Same body text for both", Some("Undated"));
+        undated.published_at = None;
+        let mut dated = article("art-dated", "Same body text for both", Some("Dated"));
+        dated.published_at = Some(newer);
+
+        let corpus = PreprocessedCorpus {
+            job_id: job.job_id,
+            // Undated first in input so a None-as-max sort bug would keep it.
+            articles: vec![undated, dated],
+        };
+
+        let result = stage
+            .deduplicate(&job, corpus)
+            .await
+            .expect("dedup succeeds");
+
+        assert_eq!(result.articles.len(), 1);
+        assert_eq!(
+            result.articles[0].id, "art-dated",
+            "dated article must win over published_at=None"
+        );
     }
 
     #[tokio::test]

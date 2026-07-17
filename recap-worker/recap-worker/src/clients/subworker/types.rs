@@ -239,17 +239,3 @@ pub(crate) struct CoarseClassifyRequest<'a> {
 pub(crate) struct CoarseClassifyResponse {
     pub(crate) scores: HashMap<String, f32>,
 }
-
-#[derive(Debug, serde::Serialize)]
-#[allow(dead_code)]
-pub(crate) struct SubClusterOtherRequest {
-    pub(crate) sentences: Vec<String>,
-}
-
-#[derive(Debug, serde::Deserialize)]
-#[allow(dead_code)]
-pub(crate) struct SubClusterOtherResponse {
-    pub(crate) cluster_ids: Vec<i32>,
-    pub(crate) labels: Option<Vec<i32>>,
-    pub(crate) centers: Option<Vec<Vec<f32>>>,
-}

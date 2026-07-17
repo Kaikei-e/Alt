@@ -134,3 +134,14 @@ codegen-units = 1
 strip = "symbols"
 panic = "abort"
 overflow-checks = true
+
+# Lint policy lives in Cargo.toml (DECREE §13). Promote warnings to errors in
+# CI via `RUSTFLAGS=-D warnings` rather than `#![deny(warnings)]` in lib.rs,
+# so toolchain upgrades that introduce new lints do not silently break local
+# builds until CI catches them.
+[lints.rust]
+unexpected_cfgs = "warn"
+
+[lints.clippy]
+all = "warn"
+pedantic = "warn"

@@ -280,99 +280,6 @@ impl SummarizationOps<'_> {
         }
     }
 
-    /// Phase 2: サマリー生成を完全直列（キュー方式）で実行
-    /// 後方互換性のため保持（バッチ API への移行後は未使用）。
-    #[allow(dead_code)]
-    pub(crate) async fn generate_summaries_sequentially(
-        &self,
-        job: &JobContext,
-        clustering_results: HashMap<String, Result<ClusteringResponse>>,
-    ) -> HashMap<String, GenreResult> {
-        info!(
-            job_id = %job.job_id,
-            genre_count = clustering_results.len(),
-            "starting sequential summary generation (queue mode)"
-        );
-
-        let mut genre_results: HashMap<String, GenreResult> = HashMap::new();
-
-        // クラスタリング成功したジャンルを順番に処理（完全直列）
-        for (genre, clustering_result) in clustering_results {
-            match clustering_result {
-                Ok(clustering_response) => {
-                    info!(
-                        job_id = %job.job_id,
-                        genre = %genre,
-                        "processing summary generation (queue position)"
-                    );
-
-                    let summary_result = self
-                        .generate_summary_with_metadata(
-                            job.job_id,
-                            job.window_days(),
-                            &genre,
-                            &clustering_response,
-                        )
-                        .await;
-
-                    // システムメトリクス（要約）を保存
-                    if let Ok(ref response) = summary_result {
-                        match serde_json::to_value(&response.metadata) {
-                            Ok(metadata_value) => {
-                                if let Err(e) = self
-                                    .dao
-                                    .save_system_metrics(
-                                        job.job_id,
-                                        "summarization",
-                                        &metadata_value,
-                                    )
-                                    .await
-                                {
-                                    warn!(
-                                        job_id = %job.job_id,
-                                        genre = %genre,
-                                        error = ?e,
-                                        "failed to save summarization metrics"
-                                    );
-                                }
-                            }
-                            Err(e) => {
-                                warn!(
-                                    job_id = %job.job_id,
-                                    genre = %genre,
-                                    error = ?e,
-                                    "failed to serialize summary metadata for metrics"
-                                );
-                            }
-                        }
-                    }
-
-                    let genre_result =
-                        Self::build_genre_result(&genre, clustering_response, summary_result);
-                    genre_results.insert(genre, genre_result);
-                }
-                Err(e) => {
-                    warn!(
-                        job_id = %job.job_id,
-                        genre = %genre,
-                        error = ?e,
-                        "skipping summary generation due to clustering failure"
-                    );
-                    let genre_clone = genre.clone();
-                    genre_results.insert(genre, Self::clustering_error_result(&genre_clone, e));
-                }
-            }
-        }
-
-        info!(
-            job_id = %job.job_id,
-            completed_count = genre_results.len(),
-            "completed sequential summary generation phase"
-        );
-
-        genre_results
-    }
-
     /// Phase 2: サマリー生成をバッチ API で実行（1回の HTTP 呼び出しで全ジャンル処理）
     #[allow(clippy::too_many_lines)]
     pub(crate) async fn generate_summaries_with_batch(
@@ -537,7 +444,12 @@ impl SummarizationOps<'_> {
         let mut all_responses: Vec<SummaryResponse> = Vec::new();
         let mut all_errors: Vec<BatchSummaryError> = Vec::new();
 
-        for (chunk_idx, chunk) in valid_requests.chunks(batch_summary_chunk_size).enumerate() {
+        let mut remaining = valid_requests;
+        let mut chunk_idx = 0usize;
+        while !remaining.is_empty() {
+            let split_at = batch_summary_chunk_size.min(remaining.len());
+            let chunk: Vec<SummaryRequest> = remaining.drain(..split_at).collect();
+
             info!(
                 job_id = %job.job_id,
                 chunk_idx = chunk_idx,
@@ -545,10 +457,9 @@ impl SummarizationOps<'_> {
                 "processing batch summary chunk"
             );
 
-            let chunk_vec: Vec<SummaryRequest> = chunk.to_vec();
             match self
                 .news_creator_client
-                .generate_batch_summary(chunk_vec)
+                .generate_batch_summary(chunk)
                 .await
             {
                 Ok(response) => {
@@ -566,6 +477,7 @@ impl SummarizationOps<'_> {
                     );
                 }
             }
+            chunk_idx += 1;
         }
 
         let batch_response = BatchSummaryResponse {

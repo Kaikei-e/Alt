@@ -1,4 +1,3 @@
-#![deny(warnings, clippy::all, clippy::pedantic)]
 #![allow(
     // Acceptable for trait naming consistency (e.g., RecapDao, RecapDaoImpl)
     clippy::module_name_repetitions,

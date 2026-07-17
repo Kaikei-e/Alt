@@ -145,8 +145,18 @@ pub enum ConfigError {
     Invalid {
         name: &'static str,
         #[source]
-        source: anyhow::Error,
+        source: Box<dyn std::error::Error + Send + Sync>,
     },
+}
+
+fn invalid_config(
+    name: &'static str,
+    source: impl Into<Box<dyn std::error::Error + Send + Sync>>,
+) -> ConfigError {
+    ConfigError::Invalid {
+        name,
+        source: source.into(),
+    }
 }
 
 struct BasicConfig {
@@ -793,10 +803,10 @@ fn validate_mtls_url_schemes(external: &ExternalServiceConfig) -> Result<(), Con
         ),
     ] {
         if !url.starts_with("https://") {
-            return Err(ConfigError::Invalid {
+            return Err(invalid_config(
                 name,
-                source: anyhow::anyhow!("MTLS_ENFORCE=true requires https:// scheme, got: {}", url),
-            });
+                format!("MTLS_ENFORCE=true requires https:// scheme, got: {url}"),
+            ));
         }
     }
     Ok(())
@@ -1083,7 +1093,7 @@ fn parse_socket_addr(name: &'static str, default: &str) -> Result<SocketAddr, Co
 
     raw.parse().map_err(|error| ConfigError::Invalid {
         name,
-        source: anyhow::Error::new(error),
+        source: Box::new(error),
     })
 }
 
@@ -1091,11 +1101,11 @@ fn parse_non_zero_usize(name: &'static str, default: usize) -> Result<NonZeroUsi
     let raw = env::var(name).unwrap_or_else(|_| default.to_string());
     let parsed = raw.parse::<usize>().map_err(|error| ConfigError::Invalid {
         name,
-        source: anyhow::Error::new(error),
+        source: Box::new(error),
     })?;
     NonZeroUsize::new(parsed).ok_or_else(|| ConfigError::Invalid {
         name,
-        source: anyhow::anyhow!("must be greater than zero"),
+        source: "must be greater than zero".into(),
     })
 }
 
@@ -1108,7 +1118,7 @@ fn parse_duration_ms(name: &'static str, default_ms: u64) -> Result<Duration, Co
     let raw = env::var(name).unwrap_or_else(|_| default_ms.to_string());
     let ms = raw.parse::<u64>().map_err(|error| ConfigError::Invalid {
         name,
-        source: anyhow::Error::new(error),
+        source: Box::new(error),
     })?;
     Ok(Duration::from_millis(ms))
 }
@@ -1117,7 +1127,7 @@ fn parse_usize(name: &'static str, default: usize) -> Result<usize, ConfigError>
     let raw = env::var(name).unwrap_or_else(|_| default.to_string());
     raw.parse::<usize>().map_err(|error| ConfigError::Invalid {
         name,
-        source: anyhow::Error::new(error),
+        source: Box::new(error),
     })
 }
 
@@ -1125,7 +1135,7 @@ fn parse_u32(name: &'static str, default: u32) -> Result<u32, ConfigError> {
     let raw = env::var(name).unwrap_or_else(|_| default.to_string());
     raw.parse::<u32>().map_err(|error| ConfigError::Invalid {
         name,
-        source: anyhow::Error::new(error),
+        source: Box::new(error),
     })
 }
 
@@ -1133,7 +1143,7 @@ fn parse_u64(name: &'static str, default: u64) -> Result<u64, ConfigError> {
     let raw = env::var(name).unwrap_or_else(|_| default.to_string());
     raw.parse::<u64>().map_err(|error| ConfigError::Invalid {
         name,
-        source: anyhow::Error::new(error),
+        source: Box::new(error),
     })
 }
 
@@ -1141,7 +1151,7 @@ fn parse_i32(name: &'static str, default: i32) -> Result<i32, ConfigError> {
     let raw = env::var(name).unwrap_or_else(|_| default.to_string());
     raw.parse::<i32>().map_err(|error| ConfigError::Invalid {
         name,
-        source: anyhow::Error::new(error),
+        source: Box::new(error),
     })
 }
 
@@ -1149,7 +1159,7 @@ fn parse_i64(name: &'static str, default: i64) -> Result<i64, ConfigError> {
     let raw = env::var(name).unwrap_or_else(|_| default.to_string());
     raw.parse::<i64>().map_err(|error| ConfigError::Invalid {
         name,
-        source: anyhow::Error::new(error),
+        source: Box::new(error),
     })
 }
 
@@ -1157,12 +1167,12 @@ fn parse_percentage(name: &'static str, default: u8) -> Result<u8, ConfigError> 
     let raw = env::var(name).unwrap_or_else(|_| default.to_string());
     let parsed = raw.parse::<u8>().map_err(|error| ConfigError::Invalid {
         name,
-        source: anyhow::Error::new(error),
+        source: Box::new(error),
     })?;
     if parsed > 100 {
         return Err(ConfigError::Invalid {
             name,
-            source: anyhow::anyhow!("value must be between 0 and 100"),
+            source: "value must be between 0 and 100".into(),
         });
     }
     Ok(parsed)
@@ -1172,7 +1182,7 @@ fn parse_f64(name: &'static str, default: f64) -> Result<f64, ConfigError> {
     let raw = env::var(name).unwrap_or_else(|_| default.to_string());
     raw.parse::<f64>().map_err(|error| ConfigError::Invalid {
         name,
-        source: anyhow::Error::new(error),
+        source: Box::new(error),
     })
 }
 
@@ -1181,10 +1191,10 @@ fn parse_bool(name: &'static str, default: bool) -> Result<bool, ConfigError> {
     match raw.to_lowercase().as_str() {
         "true" | "1" | "yes" | "on" => Ok(true),
         "false" | "0" | "no" | "off" => Ok(false),
-        _ => Err(ConfigError::Invalid {
+        _ => Err(invalid_config(
             name,
-            source: anyhow::anyhow!("invalid boolean value: {raw}"),
-        }),
+            format!("invalid boolean value: {raw}"),
+        )),
     }
 }
 
