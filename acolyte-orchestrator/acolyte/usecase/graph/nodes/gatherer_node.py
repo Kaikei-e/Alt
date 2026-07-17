@@ -22,6 +22,7 @@ import structlog
 from acolyte.domain.fusion import RRFFusion, ScoredHit
 from acolyte.domain.query_facet import WEAK_FACET_THRESHOLD
 from acolyte.domain.query_variant import generate_query_variants
+from acolyte.port.evidence_provider import ArticleHit
 
 if TYPE_CHECKING:
     from acolyte.domain.fusion import FusionStrategy
@@ -173,7 +174,7 @@ class GathererNode:
         *,
         limit: int,
         published_after: datetime | None,
-    ) -> list:
+    ) -> list[ArticleHit]:
         """Call EvidenceProviderPort.search_articles, forwarding the date
         bound only when set so older providers without the keyword argument
         continue to work."""

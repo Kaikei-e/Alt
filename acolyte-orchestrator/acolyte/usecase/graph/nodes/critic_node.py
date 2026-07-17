@@ -15,6 +15,7 @@ from typing import TYPE_CHECKING
 import structlog
 
 from acolyte.domain.critic_taxonomy import FailureMode, FailureModeDetection
+from acolyte.domain.meta_patterns import META_PATTERNS
 from acolyte.port.llm_provider import LLMMode
 from acolyte.usecase.graph.state import (
     PlannedClaimDict,
@@ -30,18 +31,6 @@ if TYPE_CHECKING:
 logger = structlog.get_logger(__name__)
 
 MAX_REVISIONS = 3
-
-META_PATTERNS = [
-    "情報が不足",
-    "トピックが明示されて",
-    "一般的な知識",
-    "データを提供してください",
-    "具体的な情報がありません",
-    "I don't have",
-    "As an AI",
-    "I cannot provide",
-    "As a language model",
-]
 
 MIN_SECTION_LENGTH = 100  # legacy default
 

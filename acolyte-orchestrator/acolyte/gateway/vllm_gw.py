@@ -9,7 +9,7 @@ Design notes:
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import structlog
 
@@ -52,7 +52,7 @@ class VllmGateway:
         temperature: float | None = None,
         top_p: float | None = None,
         top_k: int | None = None,
-        format: dict | None = None,
+        output_schema: dict[str, Any] | None = None,
         think: bool | None = None,
         mode: LLMMode | None = None,
         system_prompt: str | None = None,
@@ -67,7 +67,7 @@ class VllmGateway:
             resolved_predict = num_predict or self._default_num_predict
 
         resolved_model = model or self._default_model
-        use_structured = mode == LLMMode.STRUCTURED or (mode is None and format is not None)
+        use_structured = mode == LLMMode.STRUCTURED or (mode is None and output_schema is not None)
 
         messages: list[dict] = []
         if system_prompt is not None:
@@ -86,11 +86,11 @@ class VllmGateway:
         if top_k is not None:
             payload["top_k"] = top_k
 
-        # Structured output: wrap format into response_format
-        if use_structured and format is not None:
+        # Structured output: wrap schema into response_format
+        if use_structured and output_schema is not None:
             payload["response_format"] = {
                 "type": "json_schema",
-                "json_schema": {"name": "output", "schema": format},
+                "json_schema": {"name": "output", "schema": output_schema},
             }
 
         # Thinking control via chat_template_kwargs
@@ -123,7 +123,7 @@ class VllmGateway:
         resp.raise_for_status()
         data = resp.json()
 
-        text = data["choices"][0]["message"]["content"]
+        text = _extract_message_content(data)
         usage = data.get("usage", {})
 
         logger.info(
@@ -140,3 +140,22 @@ class VllmGateway:
             prompt_tokens=usage.get("prompt_tokens", 0),
             completion_tokens=usage.get("completion_tokens", 0),
         )
+
+
+def _extract_message_content(data: dict) -> str:
+    """Pull assistant content from an OpenAI-compatible chat response.
+
+    Tool-call / filtered responses may set ``content`` to null, and empty
+    ``choices`` arrays must not raise IndexError/TypeError.
+    """
+    choices = data.get("choices")
+    if not isinstance(choices, list) or not choices:
+        return ""
+    first = choices[0]
+    if not isinstance(first, dict):
+        return ""
+    message = first.get("message")
+    if not isinstance(message, dict):
+        return ""
+    content = message.get("content")
+    return content if isinstance(content, str) else ""

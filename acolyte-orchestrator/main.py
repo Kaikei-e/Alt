@@ -174,12 +174,12 @@ def create_app() -> Starlette:
 
     # capture the peer CN injected by the nginx mTLS sidecar
     # (VERIFY_CLIENT=on) and propagate into request.state + log context.
-    # strict=False during rollout so callers that haven't migrated to mTLS
-    # client certs still work; flip to True at cutover.
+    # peer_identity_strict defaults False during rollout; set
+    # PEER_IDENTITY_STRICT=true at cutover (no rebuild required).
     peer_identity_middleware = Middleware(
         PeerIdentityMiddleware,
         allowed=allowed_peers_from_env(),
-        strict=False,
+        strict=settings.peer_identity_strict,
     )
 
     app = Starlette(

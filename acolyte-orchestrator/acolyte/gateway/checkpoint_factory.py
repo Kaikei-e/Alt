@@ -16,7 +16,7 @@ logger = structlog.get_logger(__name__)
 
 
 @asynccontextmanager
-async def create_checkpointer(db_dsn: str) -> AsyncIterator:
+async def create_checkpointer(db_dsn: str) -> AsyncIterator[AsyncPostgresSaver]:
     """Create and initialize a Postgres checkpointer for LangGraph.
 
     Usage:

@@ -111,5 +111,5 @@ async def watch_cert_rotation(
         except asyncio.CancelledError:
             raise
         except Exception:  # noqa: BLE001 — background watcher must survive any transient filesystem hiccup (see docstring)
-            _logger.debug("cert_rotation_iteration_failed", exc_info=True)
+            _logger.warning("cert_rotation_iteration_failed", exc_info=True)
             continue

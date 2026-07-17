@@ -33,6 +33,17 @@ logger = structlog.get_logger(__name__)
 # pipelines. Full query is still sent to the search-indexer over mTLS.
 _LOG_QUERY_MAX_CHARS = 120
 
+# Stub methods that return [] — warn once so "0 hits" is distinguishable from
+# "not implemented via REST" without spamming every gatherer call.
+_stub_warned: set[str] = set()
+
+
+def _warn_stub_once(method: str, detail: str) -> None:
+    if method in _stub_warned:
+        return
+    _stub_warned.add(method)
+    logger.warning("search_indexer_stub_empty", method=method, detail=detail)
+
 
 class SearchIndexerGateway:
     """Evidence retrieval via search-indexer REST API."""
@@ -101,6 +112,10 @@ class SearchIndexerGateway:
 
     async def fetch_article_metadata(self, article_ids: list[str]) -> list[ArticleMetadata]:
         """Fetch metadata — not available via search-indexer REST API."""
+        _warn_stub_once(
+            "fetch_article_metadata",
+            "not available via search-indexer REST; returning empty list",
+        )
         return []
 
     async def fetch_article_body(self, article_id: str) -> str:
@@ -110,4 +125,8 @@ class SearchIndexerGateway:
 
     async def search_recaps(self, query: str, *, limit: int = 10) -> list[RecapHit]:
         """Recap search — not available via REST. Use Connect v2 SearchRecaps for recap evidence."""
+        _warn_stub_once(
+            "search_recaps",
+            "not available via REST; use Connect v2 SearchRecaps; returning empty list",
+        )
         return []

@@ -38,14 +38,14 @@ class FakeLLM:
         temperature: float | None = None,
         top_p: float | None = None,
         top_k: int | None = None,
-        format: dict | None = None,
+        output_schema: dict | None = None,
         think: bool | None = None,
         mode: object = None,
         system_prompt: str | None = None,
     ) -> LLMResponse:
         self._call_count += 1
         self._calls.append(
-            {"prompt": prompt, "num_predict": num_predict, "temperature": temperature, "format": format, "mode": mode}
+            {"prompt": prompt, "num_predict": num_predict, "temperature": temperature, "output_schema": output_schema, "mode": mode}
         )
 
         # Check for keyword matches in prompt

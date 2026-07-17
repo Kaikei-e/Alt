@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import os
 import sys
 from uuid import UUID
 
@@ -43,8 +44,10 @@ async def _resume(run_id: str) -> None:
     from acolyte.gateway.postgres_job_gw import PostgresJobGateway  # noqa: PLC0415
     from acolyte.gateway.postgres_report_gw import PostgresReportGateway  # noqa: PLC0415
     from acolyte.gateway.search_indexer_gw import SearchIndexerGateway  # noqa: PLC0415
+    from acolyte.gateway.vllm_gw import VllmGateway  # noqa: PLC0415
     from acolyte.handler.connect_service import AcolyteConnectService  # noqa: PLC0415
     from acolyte.infra.logging import configure_logging  # noqa: PLC0415
+    from acolyte.infra.mtls_client import build_ssl_context  # noqa: PLC0415
     from acolyte.usecase.graph.report_graph import build_report_graph  # noqa: PLC0415
 
     settings = Settings()
@@ -73,11 +76,20 @@ async def _resume(run_id: str) -> None:
 
         brief_dict = brief.to_dict()
 
+        # Mirror main.py: mTLS context + LLM provider selection
+        mtls_ctx = build_ssl_context()
+        if mtls_ctx is not None:
+            logger.info("resume_run outbound: mTLS enforce enabled")
+
         async with httpx.AsyncClient(
             timeout=httpx.Timeout(connect=10, read=600, write=10, pool=10),
             limits=httpx.Limits(max_connections=5, max_keepalive_connections=2),
+            verify=mtls_ctx if mtls_ctx is not None else True,
         ) as http_client:
-            llm = OllamaGateway(http_client, settings)
+            if settings.llm_provider == "vllm":
+                llm = VllmGateway(http_client, settings)
+            else:
+                llm = OllamaGateway(http_client, settings)
             content_store = MemoryContentStore()
             evidence = SearchIndexerGateway(http_client, settings, content_store)
             fusion = RRFFusion(k=60)
@@ -94,7 +106,14 @@ async def _resume(run_id: str) -> None:
                 )
 
                 service = AcolyteConnectService(settings, repo, job_gw, graph=graph)
-                logger.info("Resuming pipeline", run_id=run_id, report_id=report_id)
+                logger.info(
+                    "Resuming pipeline",
+                    run_id=run_id,
+                    report_id=report_id,
+                    llm_provider=settings.llm_provider,
+                    mtls=mtls_ctx is not None,
+                    cert_file=os.environ.get("MTLS_CERT_FILE"),
+                )
                 await service.resume_pipeline(report_id, run_id, brief_dict)
 
         logger.info("Resume complete", run_id=run_id)

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import json
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 from uuid import UUID
 
 import structlog
@@ -70,10 +70,6 @@ class AcolyteConnectService:
     def _graph_config(self, run_id: str) -> dict[str, dict[str, str]]:
         """Build graph invocation config with stable thread_id."""
         return {"configurable": {"thread_id": self._thread_id_for_run(run_id)}}
-
-    def _verify_token(self, ctx: RequestContext) -> None:
-        """No-op: authentication is established at the TLS transport layer."""
-        _ = ctx
 
     async def create_report(
         self, request: acolyte_pb2.CreateReportRequest, ctx: RequestContext
@@ -235,18 +231,18 @@ class AcolyteConnectService:
 
         return acolyte_pb2.StartReportRunResponse(run_id=str(run.run_id))
 
-    async def resume_pipeline(self, report_id: str, run_id: str, brief_dict: dict) -> None:
+    async def resume_pipeline(self, report_id: str, run_id: str, brief_dict: dict[str, Any]) -> None:
         """Public entry point for operator tooling (e.g. scripts/resume_run.py)
         to resume a checkpointed run outside of start_report_run's background task.
         """
         await self._run_pipeline(report_id, run_id, brief_dict)
 
-    async def _run_pipeline(self, report_id: str, run_id: str, brief_dict: dict) -> None:
+    async def _run_pipeline(self, report_id: str, run_id: str, brief_dict: dict[str, Any]) -> None:
         """Execute LangGraph pipeline in background, bounded by max_concurrent_runs."""
         async with self._run_semaphore:
             await self._run_pipeline_locked(report_id, run_id, brief_dict)
 
-    async def _run_pipeline_locked(self, report_id: str, run_id: str, brief_dict: dict) -> None:  # noqa: PLR0912 — run-lifecycle state machine (checkpoint resume/DLQ/status transitions), splitting would obscure the single narrative
+    async def _run_pipeline_locked(self, report_id: str, run_id: str, brief_dict: dict[str, Any]) -> None:  # noqa: PLR0912 — run-lifecycle state machine (checkpoint resume/DLQ/status transitions), splitting would obscure the single narrative
         if self._graph is None:
             raise RuntimeError("Pipeline graph not configured")  # noqa: TRY003 — internal wiring invariant, not a domain error to catch
 

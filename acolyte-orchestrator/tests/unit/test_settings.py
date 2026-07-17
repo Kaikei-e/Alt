@@ -15,6 +15,24 @@ def test_settings_default_values() -> None:
     assert s.db_pool_min_size == 2
     assert s.db_pool_max_size == 10
     assert s.worker_id == "acolyte-1"
+    assert s.peer_identity_strict is False
+
+
+def test_peer_identity_strict_from_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("PEER_IDENTITY_STRICT", "true")
+    monkeypatch.setenv("ACOLYTE_DB_DSN", "postgresql://test:test@localhost/test")
+    s = Settings()
+    assert s.peer_identity_strict is True
+
+
+def test_resolve_db_dsn_reads_password_via_path(tmp_path, monkeypatch: pytest.MonkeyPatch) -> None:  # noqa: ANN001
+    pw_file = tmp_path / "db_password"
+    pw_file.write_text("s3cret\n")
+    monkeypatch.setenv("ACOLYTE_DB_DSN", "postgresql://user:PLACEHOLDER@localhost:5432/acolyte")
+    s = Settings(acolyte_db_password_file=str(pw_file))
+    dsn = s.resolve_db_dsn()
+    assert "s3cret" in dsn
+    assert "PLACEHOLDER" not in dsn
 
 
 def test_settings_from_env(monkeypatch: object) -> None:
