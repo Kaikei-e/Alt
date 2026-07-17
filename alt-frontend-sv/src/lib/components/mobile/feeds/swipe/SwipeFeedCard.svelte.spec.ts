@@ -5,8 +5,8 @@
  * Tests interaction patterns, accessibility, and state management.
  */
 import { page } from "@vitest/browser/context";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { render } from "vitest-browser-svelte";
-import { describe, expect, it, vi, beforeEach } from "vitest";
 
 import type { RenderFeed } from "$lib/schema/feed";
 import SwipeFeedCard from "./SwipeFeedCard.svelte";
@@ -129,6 +129,18 @@ describe("SwipeFeedCard", () => {
 			await expect
 				.element(page.getByRole("button", { name: /summary/i }))
 				.toBeInTheDocument();
+		});
+
+		it("renders the keep stamp outside the footer, leaving 2 reading actions", async () => {
+			render(SwipeFeedCard, {
+				props: defaultProps,
+			});
+
+			await expect.element(page.getByTestId("keep-stamp")).toBeInTheDocument();
+
+			const footer = document.querySelector('[data-testid="action-footer"]');
+			expect(footer?.querySelector('[data-testid="keep-stamp"]')).toBeNull();
+			expect(footer?.querySelectorAll("button")).toHaveLength(2);
 		});
 	});
 
@@ -489,7 +501,9 @@ describe("SwipeFeedCard", () => {
 			});
 
 			const favoriteButton = page.getByRole("button", { name: /favorite/i });
-			await favoriteButton.click();
+			// Native click: the swipe action's setPointerCapture retargets
+			// CDP pointer sequences to the card in this environment.
+			(favoriteButton.element() as HTMLElement).click();
 
 			// Wait for async handler
 			await new Promise((resolve) => setTimeout(resolve, 50));
@@ -503,7 +517,9 @@ describe("SwipeFeedCard", () => {
 			});
 
 			const favoriteButton = page.getByRole("button", { name: /favorite/i });
-			await favoriteButton.click();
+			// Native click: the swipe action's setPointerCapture retargets
+			// CDP pointer sequences to the card in this environment.
+			(favoriteButton.element() as HTMLElement).click();
 
 			// Wait for async handler to complete
 			await new Promise((resolve) => setTimeout(resolve, 100));
@@ -524,7 +540,9 @@ describe("SwipeFeedCard", () => {
 			});
 
 			const favoriteButton = page.getByRole("button", { name: /favorite/i });
-			await favoriteButton.click();
+			// Native click: the swipe action's setPointerCapture retargets
+			// CDP pointer sequences to the card in this environment.
+			(favoriteButton.element() as HTMLElement).click();
 
 			// Wait for async handler to complete
 			await new Promise((resolve) => setTimeout(resolve, 100));
@@ -550,14 +568,16 @@ describe("SwipeFeedCard", () => {
 			});
 
 			const favoriteButton = page.getByRole("button", { name: /favorite/i });
-			await favoriteButton.click();
+			// Native click: the swipe action's setPointerCapture retargets
+			// CDP pointer sequences to the card in this environment.
+			(favoriteButton.element() as HTMLElement).click();
 
 			// Wait for error state
 			await new Promise((resolve) => setTimeout(resolve, 100));
 
 			// Click again (retry)
 			const retryButton = page.getByRole("button", { name: /failed/i });
-			await retryButton.click();
+			(retryButton.element() as HTMLElement).click();
 
 			// Wait for success
 			await new Promise((resolve) => setTimeout(resolve, 100));

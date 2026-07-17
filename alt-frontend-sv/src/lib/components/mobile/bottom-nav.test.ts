@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { NAV_TABS, getActiveTabIndex } from "./bottom-nav";
+import { NAV_TABS, getActiveTabIndex, isImmersiveRoute } from "./bottom-nav";
 
 describe("NAV_TABS (re-export)", () => {
 	it("has exactly 5 tabs", () => {
@@ -60,5 +60,24 @@ describe("getActiveTabIndex", () => {
 		expect(getActiveTabIndex("/settings/feeds")).toBe(4);
 		expect(getActiveTabIndex("/stats")).toBe(4);
 		expect(getActiveTabIndex("/admin/scraping-domains")).toBe(4);
+	});
+});
+
+describe("isImmersiveRoute", () => {
+	it("returns true for swipe dispatch surfaces", () => {
+		expect(isImmersiveRoute("/feeds/swipe")).toBe(true);
+		expect(isImmersiveRoute("/feeds/swipe/visual-preview")).toBe(true);
+	});
+
+	it("returns false for every other surface", () => {
+		expect(isImmersiveRoute("/home")).toBe(false);
+		expect(isImmersiveRoute("/feeds")).toBe(false);
+		expect(isImmersiveRoute("/feeds/favorites")).toBe(false);
+		expect(isImmersiveRoute("/menu")).toBe(false);
+		expect(isImmersiveRoute("/knowledge/trail")).toBe(false);
+	});
+
+	it("does not treat swipe-prefixed sibling paths as immersive", () => {
+		expect(isImmersiveRoute("/feeds/swipeX")).toBe(false);
 	});
 });

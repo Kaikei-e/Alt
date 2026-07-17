@@ -5,13 +5,12 @@
  * Uses vitest-browser-svelte for component testing.
  */
 import { page } from "@vitest/browser/context";
+import { flushSync, tick } from "svelte";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { render } from "vitest-browser-svelte";
-import { describe, expect, it, vi, beforeEach } from "vitest";
-import { tick, flushSync } from "svelte";
-
+import { getFeedContentOnTheFlyClient } from "$lib/api/client";
 import type { RenderFeed } from "$lib/schema/feed";
 import VisualPreviewCard from "./VisualPreviewCard.svelte";
-import { getFeedContentOnTheFlyClient } from "$lib/api/client";
 
 const mockFeed: RenderFeed = {
 	id: "feed-test-1",
@@ -132,6 +131,36 @@ describe("VisualPreviewCard", () => {
 			await expect
 				.element(page.getByRole("button", { name: /summary/i }))
 				.toBeInTheDocument();
+		});
+	});
+
+	describe("keep stamp", () => {
+		it("renders the keep stamp on the thumbnail, not in the footer", async () => {
+			render(VisualPreviewCard, {
+				props: defaultProps,
+			});
+
+			await expect.element(page.getByTestId("keep-stamp")).toBeInTheDocument();
+
+			const footer = document.querySelector('[data-testid="action-footer"]');
+			expect(footer?.querySelector('[data-testid="keep-stamp"]')).toBeNull();
+			expect(footer?.querySelectorAll("button")).toHaveLength(2);
+		});
+
+		it("marks the feed as favorite when stamped", async () => {
+			const { registerFavoriteFeedClient } = await import("$lib/api/client");
+			render(VisualPreviewCard, {
+				props: defaultProps,
+			});
+
+			// Native click: the swipe action's setPointerCapture retargets
+			// CDP pointer sequences to the card in this environment.
+			(page.getByTestId("keep-stamp").element() as HTMLElement).click();
+
+			expect(registerFavoriteFeedClient).toHaveBeenCalledWith(mockFeed.link);
+			await expect
+				.element(page.getByTestId("keep-stamp"))
+				.toHaveAttribute("aria-pressed", "true");
 		});
 	});
 
