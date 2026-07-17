@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"rag-orchestrator/internal/domain"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -120,7 +121,8 @@ func (u *morningLetterUsecase) Execute(ctx context.Context, input MorningLetterI
 	since := now.Add(-time.Duration(withinHours) * time.Hour)
 
 	u.logger.Info("morning_letter_started",
-		slog.String("query", input.Query),
+		slog.String("query_preview", queryLogPreview(input.Query)),
+		slog.Int("query_len", len(input.Query)),
 		slog.Int("within_hours", withinHours),
 		slog.Int("topic_limit", topicLimit),
 		slog.String("locale", locale))
@@ -180,7 +182,7 @@ func (u *morningLetterUsecase) Execute(ctx context.Context, input MorningLetterI
 	estimatedTokens := 600 // morning letter system prompt overhead (larger than augur)
 	var limitedContexts []ContextItem
 	for _, ctx := range boostedContexts {
-		chunkTokens := len(ctx.ChunkText) / 3
+		chunkTokens := estimateTokens(ctx.ChunkText)
 		if estimatedTokens+chunkTokens > maxMorningLetterPromptTokens && len(limitedContexts) > 0 {
 			break
 		}
@@ -271,14 +273,8 @@ func (u *morningLetterUsecase) applyTemporalBoost(contexts []ContextItem, now ti
 // parseTopicsResponse parses the LLM JSON response into TopicSummary slice
 func (u *morningLetterUsecase) parseTopicsResponse(text string, contexts []ContextItem) ([]domain.TopicSummary, error) {
 	// Try to extract JSON from the response
-	jsonStart := -1
+	jsonStart := strings.IndexByte(text, '{')
 	jsonEnd := -1
-
-	for i := 0; i < len(text); i++ {
-		if text[i] == '{' && jsonStart == -1 {
-			jsonStart = i
-		}
-	}
 
 	if jsonStart == -1 {
 		return nil, fmt.Errorf("no JSON object found in response")

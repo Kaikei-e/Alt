@@ -5,12 +5,12 @@ import (
 	"fmt"
 	"log/slog"
 	"sort"
-	"sync"
 	"time"
 
 	"rag-orchestrator/internal/domain"
 
 	"github.com/google/uuid"
+	"golang.org/x/sync/errgroup"
 )
 
 // FuseResults runs parallel vector search for expanded queries and applies RRF fusion (Stage 3).
@@ -48,49 +48,31 @@ func FuseResults(
 	hasCandidateArticles := len(sc.CandidateArticleIDs) > 0
 
 	// Parallel vector search for expanded query embeddings (skip index 0, already done)
-	type searchResult struct {
-		index   int
-		results []domain.SearchResult
-		err     error
-	}
-
 	searchStart := time.Now()
-	resultsChan := make(chan searchResult, len(allEmbeddings))
-	var wg sync.WaitGroup
-
+	allResults := make([][]domain.SearchResult, len(allEmbeddings))
 	// Index 0 = original (already searched), reuse results
-	resultsChan <- searchResult{index: 0, results: sc.OriginalResults, err: nil}
+	allResults[0] = sc.OriginalResults
 
+	g, gctx := errgroup.WithContext(ctx)
 	for i := 1; i < len(allEmbeddings); i++ {
-		wg.Add(1)
-		go func(idx int, qv []float32) {
-			defer wg.Done()
+		idx, qv := i, allEmbeddings[i]
+		g.Go(func() error {
 			var results []domain.SearchResult
 			var err error
 			if hasCandidateArticles {
-				results, err = chunkRepo.SearchWithinArticles(ctx, qv, sc.CandidateArticleIDs, sc.SearchLimit)
+				results, err = chunkRepo.SearchWithinArticles(gctx, qv, sc.CandidateArticleIDs, sc.SearchLimit)
 			} else {
-				results, err = chunkRepo.Search(ctx, qv, sc.SearchLimit)
+				results, err = chunkRepo.Search(gctx, qv, sc.SearchLimit)
 			}
-			resultsChan <- searchResult{index: idx, results: results, err: err}
-		}(i, allEmbeddings[i])
+			if err != nil {
+				return err
+			}
+			allResults[idx] = results
+			return nil
+		})
 	}
-
-	go func() {
-		wg.Wait()
-		close(resultsChan)
-	}()
-
-	allResults := make([][]domain.SearchResult, len(allEmbeddings))
-	var searchErr error
-	for sr := range resultsChan {
-		if sr.err != nil && searchErr == nil {
-			searchErr = sr.err
-		}
-		allResults[sr.index] = sr.results
-	}
-	if searchErr != nil {
-		return fmt.Errorf("failed to search chunks: %w", searchErr)
+	if err := g.Wait(); err != nil {
+		return fmt.Errorf("failed to search chunks: %w", err)
 	}
 
 	searchDuration := time.Since(searchStart)

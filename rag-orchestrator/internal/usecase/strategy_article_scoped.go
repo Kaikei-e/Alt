@@ -7,6 +7,7 @@ import (
 	"math"
 	"sort"
 	"strings"
+	"time"
 	"unicode"
 
 	"rag-orchestrator/internal/domain"
@@ -79,7 +80,7 @@ func (s *articleScopedStrategy) Retrieve(ctx context.Context, input RetrieveCont
 			ChunkText:       chunk.Content,
 			URL:             version.URL,
 			Title:           version.Title,
-			PublishedAt:     version.CreatedAt.Format("2006-01-02T15:04:05Z"),
+			PublishedAt:     version.CreatedAt.UTC().Format(time.RFC3339),
 			Score:           1.0,
 			DocumentVersion: version.VersionNumber,
 		}
@@ -92,7 +93,7 @@ func (s *articleScopedStrategy) Retrieve(ctx context.Context, input RetrieveCont
 		bm25RerankContexts(contexts, rerankQuery)
 		s.logger.Info("article_scoped_reranked",
 			slog.String("article_id", intent.ArticleID),
-			slog.String("query", intent.UserQuestion),
+			slog.String("query_preview", queryLogPreview(intent.UserQuestion)),
 			slog.String("rerank_query", rerankQuery),
 			slog.Int("chunks", len(contexts)))
 	}
@@ -119,7 +120,7 @@ func (s *articleScopedStrategy) translateQueryForBM25(ctx context.Context, query
 	expanded, err := s.queryExpander.ExpandQueryWithHistory(ctx, query, history, 0, 1)
 	if err != nil {
 		s.logger.Warn("article_scoped_query_translation_failed",
-			slog.String("query", query),
+			slog.String("query_preview", queryLogPreview(query)),
 			slog.String("error", err.Error()))
 		return query // fallback to original
 	}

@@ -104,7 +104,14 @@ func Rerank(
 	// Apply reranked scores
 	rerankScores := make(map[uuid.UUID]float32)
 	for _, r := range reranked {
-		id, _ := uuid.Parse(r.ID)
+		id, err := uuid.Parse(r.ID)
+		if err != nil {
+			logger.Warn("rerank_invalid_chunk_id",
+				slog.String("retrieval_id", sc.RetrievalID),
+				slog.String("id", r.ID),
+				slog.String("error", err.Error()))
+			continue
+		}
 		rerankScores[id] = r.Score
 	}
 
@@ -123,6 +130,7 @@ func Rerank(
 		if score, ok := rerankScores[sc.HitsExpanded[i].ChunkID]; ok {
 			sc.HitsExpanded[i].Score = score
 			sc.HitsExpanded[i].RerankScore = score
+			sc.HitsExpanded[i].RerankApplied = true
 		}
 	}
 	sort.Slice(sc.HitsExpanded, func(i, j int) bool {

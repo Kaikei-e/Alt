@@ -32,7 +32,7 @@ func NewRetrievalQualityAssessor(goodThreshold, marginalThreshold float32, minCo
 }
 
 // Assess evaluates the quality of retrieved contexts.
-// Uses RerankScore when available (> 0), otherwise falls back to Score.
+// Uses RerankScore when RerankApplied is set; otherwise falls back to Score.
 // Checks: (1) average of top-3 scores, (2) topic coherence across titles,
 // (3) score variance to detect "one hit + noise" pattern.
 func (a *RetrievalQualityAssessor) Assess(contexts []ContextItem) QualityVerdict {
@@ -47,8 +47,9 @@ func (a *RetrievalQualityAssessor) Assess(contexts []ContextItem) QualityVerdict
 
 	scores := make([]float32, topN)
 	for i := 0; i < topN; i++ {
-		scores[i] = contexts[i].RerankScore
-		if scores[i] == 0 {
+		if contexts[i].RerankApplied {
+			scores[i] = contexts[i].RerankScore
+		} else {
 			scores[i] = contexts[i].Score
 		}
 	}
@@ -113,8 +114,9 @@ func (a *RetrievalQualityAssessor) AssessWithIntent(contexts []ContextItem, inte
 
 	scores := make([]float32, topN)
 	for i := 0; i < topN; i++ {
-		scores[i] = contexts[i].RerankScore
-		if scores[i] == 0 {
+		if contexts[i].RerankApplied {
+			scores[i] = contexts[i].RerankScore
+		} else {
 			scores[i] = contexts[i].Score
 		}
 	}

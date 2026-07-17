@@ -19,16 +19,16 @@ func NewRelevanceGate(goodThreshold, marginalThreshold float32) *RelevanceGate {
 }
 
 // Evaluate checks the top-1 reranker score against calibrated thresholds.
-// Uses RerankScore when available (> 0), otherwise falls back to Score.
+// Uses RerankScore when RerankApplied is set; otherwise falls back to Score.
 func (g *RelevanceGate) Evaluate(contexts []ContextItem) QualityVerdict {
 	if len(contexts) == 0 {
 		return QualityInsufficient
 	}
 
 	top := contexts[0]
-	score := top.RerankScore
-	if score == 0 {
-		score = top.Score
+	score := top.Score
+	if top.RerankApplied {
+		score = top.RerankScore
 	}
 
 	if score >= g.goodThreshold {

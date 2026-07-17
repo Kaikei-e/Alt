@@ -5,6 +5,8 @@ import (
 	"strings"
 
 	"rag-orchestrator/internal/domain"
+
+	"github.com/google/uuid"
 )
 
 // IntentType classifies the type of user query.
@@ -84,7 +86,12 @@ func ParseQueryIntent(rawQuery string) QueryIntent {
 	if artEnd < 0 {
 		return intent
 	}
-	intent.ArticleID = strings.TrimSpace(headerPart[artStart+len(artPrefix) : artStart+artEnd])
+	articleID := strings.TrimSpace(headerPart[artStart+len(artPrefix) : artStart+artEnd])
+	if _, err := uuid.Parse(articleID); err != nil {
+		// Invalid article IDs must not be treated as article-scoped.
+		return intent
+	}
+	intent.ArticleID = articleID
 	intent.ArticleTitle = strings.TrimSpace(headerPart[:artStart])
 	intent.IntentType = IntentArticleScoped
 	return intent

@@ -8,36 +8,25 @@ import (
 	"rag-orchestrator/internal/domain"
 )
 
-// QueryClassifier classifies user queries into intent types.
-// Uses a hybrid approach: rule-based first, optional LLM fallback for ambiguous cases.
-type QueryClassifier struct {
-	llmClient  domain.LLMClient
-	llmTimeout time.Duration
+// QueryClassifier classifies user queries into intent types via rule-based matching.
+type QueryClassifier struct{}
+
+// NewQueryClassifier creates a rule-based classifier.
+// The llmClient/llmTimeout parameters are retained for call-site compatibility
+// but are unused — LLM fallback was never enabled.
+func NewQueryClassifier(_ domain.LLMClient, _ time.Duration) *QueryClassifier {
+	return &QueryClassifier{}
 }
 
-// NewQueryClassifier creates a new classifier.
-// llmClient can be nil to disable LLM fallback.
-// llmTimeout is the timeout for LLM classification (0 = no LLM fallback).
-func NewQueryClassifier(llmClient domain.LLMClient, llmTimeout time.Duration) *QueryClassifier {
-	return &QueryClassifier{
-		llmClient:  llmClient,
-		llmTimeout: llmTimeout,
-	}
-}
-
-// Classify determines the intent type of a query.
-// Step 1: Rule-based keyword matching (0ms).
-// Step 2: LLM fallback for ambiguous queries (if enabled).
+// Classify determines the intent type of a query via rule-based keyword matching.
 func (c *QueryClassifier) Classify(ctx context.Context, query string) IntentType {
-	// Step 0: Check article-scoped (reuse existing parser)
+	// Check article-scoped (reuse existing parser)
 	parsed := ParseQueryIntent(query)
 	if parsed.IntentType == IntentArticleScoped {
 		return IntentArticleScoped
 	}
 
 	lower := strings.ToLower(query)
-
-	// Step 1: Rule-based classification
 
 	// Comparison patterns
 	if matchesComparison(query, lower) {
@@ -68,9 +57,6 @@ func (c *QueryClassifier) Classify(ctx context.Context, query string) IntentType
 	if matchesDeepDive(query, lower) {
 		return IntentTopicDeepDive
 	}
-
-	// Step 2: LLM fallback (TODO: Phase 2 feature flag)
-	// Currently disabled — always falls through to General
 
 	return IntentGeneral
 }

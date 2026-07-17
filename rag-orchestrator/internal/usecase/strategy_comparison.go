@@ -23,7 +23,7 @@ func (s *comparisonStrategy) Name() string { return "comparison" }
 
 func (s *comparisonStrategy) Retrieve(ctx context.Context, input RetrieveContextInput, intent QueryIntent) (*RetrieveContextOutput, error) {
 	s.logger.Info("comparison_strategy_execute",
-		slog.String("query", input.Query))
+		slog.String("query_preview", queryLogPreview(input.Query)))
 
 	// Use general retrieval with the full comparison query.
 	// The query expansion step will naturally generate variants

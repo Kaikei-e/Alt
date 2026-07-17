@@ -75,15 +75,16 @@ var droppedElements = map[atom.Atom]bool{
 //   - Decodes HTML entities (&amp; → &)
 //   - Normalizes consecutive blank lines
 //
-// If the input contains no HTML tags, it is returned unchanged.
+// If the input contains no HTML tags, entities are still decoded for consistency
+// with the parse-failure path.
 func SanitizeHTML(body string) string {
 	if body == "" {
 		return ""
 	}
 
-	// Fast path: if no HTML tags detected, return as-is.
+	// Fast path: if no HTML tags detected, still unescape entities (&amp; → &).
 	if !strings.Contains(body, "<") {
-		return body
+		return htmlstd.UnescapeString(body)
 	}
 
 	nodes, err := htmlpkg.ParseFragment(strings.NewReader(body), &htmlpkg.Node{
@@ -125,9 +126,12 @@ func extractText(sb *strings.Builder, n *htmlpkg.Node, skipRemaining bool) bool 
 			return true
 		}
 		text := n.Data
-		// Check boilerplate substrings
+		// Drop short boilerplate-like nodes only (CTA / footer fragments).
+		// Longer nodes that merely mention the substring are kept so article
+		// body sentences are not discarded.
+		const boilerplateMaxRunes = 40
 		for _, bp := range boilerplateSubstrings {
-			if strings.Contains(text, bp) {
+			if strings.Contains(text, bp) && len([]rune(strings.TrimSpace(text))) <= boilerplateMaxRunes {
 				return skipRemaining
 			}
 		}

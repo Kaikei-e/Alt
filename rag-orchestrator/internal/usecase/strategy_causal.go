@@ -33,7 +33,7 @@ func (s *causalStrategy) Retrieve(ctx context.Context, input RetrieveContextInpu
 	requireGoodVerdict := queryRequestsDetailedAnswer(baseQuery) || intent.SubIntentType == SubIntentDetail
 
 	s.log("causal_strategy_execute",
-		slog.String("query", baseQuery),
+		slog.String("query_preview", queryLogPreview(baseQuery)),
 		slog.String("intent", string(intent.IntentType)),
 		slog.Bool("require_good_verdict", requireGoodVerdict))
 
@@ -45,18 +45,21 @@ func (s *causalStrategy) Retrieve(ctx context.Context, input RetrieveContextInpu
 	)
 
 	for i, query := range queries {
+		if ctx.Err() != nil {
+			break
+		}
 		retryInput := input
 		retryInput.Query = query
 
 		s.log("causal_strategy_attempt",
 			slog.Int("attempt", i+1),
-			slog.String("query", query))
+			slog.String("query_preview", queryLogPreview(query)))
 
 		output, err := s.retrieve.Execute(ctx, retryInput)
 		if err != nil {
 			s.log("causal_strategy_attempt_failed",
 				slog.Int("attempt", i+1),
-				slog.String("query", query),
+				slog.String("query_preview", queryLogPreview(query)),
 				slog.String("error", err.Error()))
 			continue
 		}
@@ -78,7 +81,7 @@ func (s *causalStrategy) Retrieve(ctx context.Context, input RetrieveContextInpu
 		if verdict == QualityGood {
 			s.log("causal_strategy_early_exit",
 				slog.Int("attempt", i+1),
-				slog.String("query", query),
+				slog.String("query_preview", queryLogPreview(query)),
 				slog.Int("contexts", len(output.Contexts)))
 			return output, nil
 		}
@@ -89,12 +92,12 @@ func (s *causalStrategy) Retrieve(ctx context.Context, input RetrieveContextInpu
 			// Graceful degradation: return best available result instead of nil.
 			// The answer usecase will mark it as lowConfidence and add a disclaimer.
 			s.log("causal_strategy_low_confidence",
-				slog.String("query", bestQuery),
+				slog.String("query_preview", queryLogPreview(bestQuery)),
 				slog.String("verdict", string(bestVerdict)),
 				slog.Int("contexts", len(bestOutput.Contexts)))
 		} else {
 			s.log("causal_strategy_selected",
-				slog.String("query", bestQuery),
+				slog.String("query_preview", queryLogPreview(bestQuery)),
 				slog.String("verdict", string(bestVerdict)),
 				slog.Int("contexts", len(bestOutput.Contexts)))
 		}
@@ -102,7 +105,7 @@ func (s *causalStrategy) Retrieve(ctx context.Context, input RetrieveContextInpu
 	}
 
 	s.log("causal_strategy_empty",
-		slog.String("query", baseQuery))
+		slog.String("query_preview", queryLogPreview(baseQuery)))
 	return nil, nil
 }
 

@@ -143,6 +143,34 @@ func DefaultRetrievalConfig() RetrievalConfig {
 	}
 }
 
+// applyRetrievalConfigDefaults fills zero-valued fields from DefaultRetrievalConfig
+// without replacing fields the caller already set.
+func applyRetrievalConfigDefaults(cfg RetrievalConfig) RetrievalConfig {
+	def := DefaultRetrievalConfig()
+	if cfg.SearchLimit == 0 {
+		cfg.SearchLimit = def.SearchLimit
+	}
+	if cfg.QuotaOriginal == 0 {
+		cfg.QuotaOriginal = def.QuotaOriginal
+	}
+	if cfg.QuotaExpanded == 0 {
+		cfg.QuotaExpanded = def.QuotaExpanded
+	}
+	if cfg.RRFK == 0 {
+		cfg.RRFK = def.RRFK
+	}
+	if cfg.Reranking.TopK == 0 {
+		cfg.Reranking.TopK = def.Reranking.TopK
+	}
+	if cfg.Reranking.Timeout == 0 {
+		cfg.Reranking.Timeout = def.Reranking.Timeout
+	}
+	if cfg.HybridSearch.BM25Limit == 0 {
+		cfg.HybridSearch.BM25Limit = def.HybridSearch.BM25Limit
+	}
+	return cfg
+}
+
 // TotalQuota returns the total number of chunks to pass to LLM.
 func (c RetrievalConfig) TotalQuota() int {
 	return c.QuotaOriginal + c.QuotaExpanded

@@ -53,7 +53,7 @@ type Chunker interface {
 
 type paragraphChunker struct{}
 
-// NewChunker creates a new instance of the default Chunker (Version 1).
+// NewChunker creates a new instance of the default Chunker (currently ChunkerVersionV9).
 func NewChunker() Chunker {
 	return &paragraphChunker{}
 }

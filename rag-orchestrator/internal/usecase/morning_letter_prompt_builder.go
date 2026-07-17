@@ -50,9 +50,10 @@ func (b *xmlMorningLetterPromptBuilder) Build(input MorningLetterPromptInput) ([
 
 	sysSb.WriteString("### タスク\n")
 	sysSb.WriteString(fmt.Sprintf("過去%d時間のニュースを分析し、最も重要なトピックを特定してください。\n", hoursWindow))
+	jst := time.FixedZone("JST", 9*3600)
 	sysSb.WriteString(fmt.Sprintf("分析期間: %s 〜 %s\n\n",
-		input.Since.Format("2006-01-02 15:04 JST"),
-		input.Until.Format("2006-01-02 15:04 JST")))
+		input.Since.In(jst).Format("2006-01-02 15:04 MST"),
+		input.Until.In(jst).Format("2006-01-02 15:04 MST")))
 
 	sysSb.WriteString("### 指示\n")
 	sysSb.WriteString(fmt.Sprintf("1. コンテキストから最大%d個の重要トピックを特定する\n", topicLimit))

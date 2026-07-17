@@ -13,50 +13,10 @@ import (
 	"golang.org/x/sync/errgroup"
 )
 
-// RewriteQueryWithHistory rewrites a user query using conversation history
-// so it becomes self-contained for retrieval. E.g., "Tell me more about that"
-// becomes "Tell me more about Russia oil sanctions" based on prior context.
-func RewriteQueryWithHistory(ctx context.Context, query string, history []domain.Message, llmClient domain.LLMClient, logger *slog.Logger) string {
-	if len(history) == 0 {
-		return query
-	}
-
-	// Build a compact conversation summary (last 3 turns max)
-	maxTurns := 6 // 3 user + 3 assistant
-	start := 0
-	if len(history) > maxTurns {
-		start = len(history) - maxTurns
-	}
-	var historyLines strings.Builder
-	for _, msg := range history[start:] {
-		historyLines.WriteString(fmt.Sprintf("%s: %s\n", msg.Role, runeTruncate(msg.Content, 200)))
-	}
-
-	prompt := fmt.Sprintf(`Rewrite the latest user query as a self-contained search query using the conversation context.
-Output ONLY the rewritten query on a single line. No explanation.
-
-Conversation:
-%s
-Latest query: %s
-
-Rewritten query:`, historyLines.String(), query)
-
-	resp, err := llmClient.Generate(ctx, prompt, 60)
-	if err != nil {
-		logger.Warn("query_rewrite_failed", slog.String("error", err.Error()))
-		return query // Fallback to original
-	}
-
-	rewritten := strings.TrimSpace(resp.Text)
-	if rewritten == "" {
-		return query
-	}
-
-	logger.Info("query_rewritten",
-		slog.String("original", query),
-		slog.String("rewritten", rewritten))
-	return rewritten
-}
+// LLM token budgets for short generation calls inside the retrieval package.
+const (
+	llmTokensQueryExpand = 100
+)
 
 // ExpandQueries runs query expansion, tag search, and original embedding in parallel (Stage 1).
 func ExpandQueries(
@@ -70,8 +30,7 @@ func ExpandQueries(
 ) error {
 	// Multi-turn: conversation history is passed to the expansion step directly,
 	// so the fast 4B model handles both coreference resolution and query expansion
-	// in a single call. This replaces the separate RewriteQueryWithHistory (12B model, 27s)
-	// with an integrated approach (~3s via news-creator).
+	// in a single call (~3s via news-creator).
 
 	g, gctx := errgroup.WithContext(ctx)
 
@@ -91,7 +50,7 @@ func ExpandQueries(
 		if err != nil {
 			logger.Warn("expansion_failed",
 				slog.String("retrieval_id", sc.RetrievalID),
-				slog.String("query", sc.Query),
+				slog.String("query_preview", queryLogPreview(sc.Query)),
 				slog.String("error", err.Error()))
 			return nil // non-fatal
 		}
@@ -108,7 +67,7 @@ func ExpandQueries(
 			if len(expanded) == 0 {
 				logger.Warn("expansion_all_filtered",
 					slog.String("retrieval_id", sc.RetrievalID),
-					slog.String("query", sc.Query),
+					slog.String("query_preview", queryLogPreview(sc.Query)),
 					slog.Int("pre_filter_count", preFilterCount),
 					slog.String("reason", "all_queries_rejected_by_filter"))
 			}
@@ -468,7 +427,7 @@ Output ONLY queries, one per line. No numbering, bullets, or explanations.
 User Input: %s`, currentDate, query)
 	}
 
-	resp, err := llmClient.Generate(ctx, prompt, 100)
+	resp, err := llmClient.Generate(ctx, prompt, llmTokensQueryExpand)
 	if err != nil {
 		return nil, err
 	}

@@ -21,7 +21,7 @@ func (s *factCheckStrategy) Name() string { return "fact_check" }
 
 func (s *factCheckStrategy) Retrieve(ctx context.Context, input RetrieveContextInput, intent QueryIntent) (*RetrieveContextOutput, error) {
 	s.logger.Info("fact_check_strategy_execute",
-		slog.String("query", input.Query))
+		slog.String("query_preview", queryLogPreview(input.Query)))
 
 	return s.retrieve.Execute(ctx, input)
 }
