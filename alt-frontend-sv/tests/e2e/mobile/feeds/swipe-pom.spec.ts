@@ -5,14 +5,14 @@
  * This demonstrates best practices for maintainable E2E tests.
  */
 import { expect, test } from "@playwright/test";
-import { MobileSwipePage } from "../../pages/mobile/MobileSwipePage";
-import { fulfillJson, fulfillError } from "../../utils/mockHelpers";
 import {
-	CONNECT_RPC_PATHS,
 	CONNECT_ARTICLE_CONTENT_RESPONSE,
-	CONNECT_READ_FEEDS_EMPTY_RESPONSE,
 	CONNECT_MARK_AS_READ_RESPONSE,
+	CONNECT_READ_FEEDS_EMPTY_RESPONSE,
+	CONNECT_RPC_PATHS,
 } from "../../fixtures/mockData";
+import { MobileSwipePage } from "../../pages/mobile/MobileSwipePage";
+import { fulfillError, fulfillJson } from "../../utils/mockHelpers";
 
 // Test data
 const MOCK_FEEDS = {
@@ -114,6 +114,9 @@ test.describe("Mobile Swipe Feed - Page Object Model Tests", () => {
 	});
 
 	test.describe("swipe interactions", () => {
+		// Mark-as-read is deferred by one card so the header undo can cancel
+		// it (dispatch session). The commit fires on the NEXT dismissal, or
+		// immediately when the pile is exhausted.
 		test("swipe left marks article as read", async ({ page }) => {
 			let markAsReadCalled = false;
 			await page.route(CONNECT_RPC_PATHS.markAsRead, (route) => {
@@ -124,6 +127,12 @@ test.describe("Mobile Swipe Feed - Page Object Model Tests", () => {
 			await swipePage.goto();
 			await swipePage.waitForPageReady();
 
+			await swipePage.swipeLeft();
+			// First dismissal is held in the undo window, not committed yet
+			await page.waitForTimeout(500);
+			expect(markAsReadCalled).toBe(false);
+
+			// Second dismissal commits the held card
 			await swipePage.swipeLeft();
 
 			await expect.poll(() => markAsReadCalled, { timeout: 5000 }).toBe(true);
@@ -138,6 +147,12 @@ test.describe("Mobile Swipe Feed - Page Object Model Tests", () => {
 
 			await swipePage.goto();
 			await swipePage.waitForPageReady();
+
+			await swipePage.swipeRight();
+			// Let the dismiss animation finish and the next card mount;
+			// the first dismissal is held in the undo window, not committed.
+			await page.waitForTimeout(500);
+			expect(markAsReadCalled).toBe(false);
 
 			await swipePage.swipeRight();
 
