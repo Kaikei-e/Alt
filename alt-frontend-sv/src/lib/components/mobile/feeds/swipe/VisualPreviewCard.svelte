@@ -400,6 +400,23 @@ function handleImgError() {
         </div>
       {/if}
       <div class="thumbnail-overlay"></div>
+      <button
+        type="button"
+        class="keep-stamp"
+        class:keep-stamp--stamped={isFavorited}
+        class:keep-stamp--error={favoriteError}
+        onclick={handleFavorite}
+        disabled={isFavoriting || isFavorited}
+        aria-pressed={isFavorited}
+        aria-label={isFavorited ? "Favorited" : isFavoriting ? "Saving favorite" : favoriteError ? "Favorite failed, tap to retry" : "Favorite"}
+        data-testid="keep-stamp"
+      >
+        {#if isFavoriting}
+          <div class="loading-dot-sm" aria-hidden="true"></div>
+        {:else}
+          <Star size={18} fill={isFavorited ? "currentColor" : "none"} />
+        {/if}
+      </button>
     </div>
 
     <!-- Content Area -->
@@ -504,9 +521,9 @@ function handleImgError() {
       </div>
     </div>
 
-    <!-- Footer -->
+    <!-- Footer: reading actions only (keep judgment lives on the stamp) -->
     <footer class="card-footer" data-testid="action-footer">
-      <div class="flex gap-2 w-full">
+      <div class="flex gap-3 w-full">
         <button
           type="button"
           onclick={handleToggleContent}
@@ -519,19 +536,6 @@ function handleImgError() {
             : isContentExpanded
               ? "Hide"
               : "Article"}
-        </button>
-        <button
-          type="button"
-          onclick={handleFavorite}
-          class="action-btn action-btn--icon {isFavorited ? 'action-btn--active' : ''} {favoriteError ? 'action-btn--error' : ''}"
-          disabled={isFavoriting || isFavorited}
-          aria-label={isFavorited ? "Favorited" : isFavoriting ? "Saving favorite" : favoriteError ? "Favorite failed, tap to retry" : "Favorite"}
-        >
-          {#if isFavoriting}
-            <div class="loading-dot-sm" aria-hidden="true"></div>
-          {:else}
-            <Star size={16} fill={isFavorited ? "currentColor" : "none"} stroke={favoriteError ? "var(--alt-terracotta)" : "currentColor"} />
-          {/if}
         </button>
         <button
           type="button"
@@ -555,7 +559,7 @@ function handleImgError() {
   .swipe-card {
     position: absolute;
     width: 100%;
-    height: 95dvh;
+    height: 100%;
     max-width: calc(100% - 1rem);
     background: var(--surface-bg);
     border: 1px solid var(--surface-border);
@@ -621,6 +625,55 @@ function handleImgError() {
     inset: 0;
     pointer-events: none;
     background: linear-gradient(to top, var(--surface-bg) 0%, transparent 50%);
+  }
+
+  /* ── Keep stamp ──
+     Press-mark chip flush to the photo's top-right corner: opaque paper
+     ground, sharp edges. Stamped = inked (inverted). 48px, not the 44px
+     floor: edge-flush targets double miss rates (Henze 2011). */
+  .keep-stamp {
+    position: absolute;
+    top: 0;
+    right: 0;
+    z-index: 2;
+    width: 48px;
+    height: 48px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--surface-bg);
+    border: none;
+    border-left: 1.5px solid var(--alt-charcoal);
+    border-bottom: 1.5px solid var(--alt-charcoal);
+    color: var(--alt-charcoal);
+    cursor: pointer;
+    touch-action: manipulation;
+    transition: background 0.15s, color 0.15s;
+  }
+
+  .keep-stamp:active:not(:disabled) {
+    background: var(--alt-charcoal);
+    color: var(--surface-bg);
+  }
+
+  .keep-stamp--stamped {
+    background: var(--alt-charcoal);
+    color: var(--surface-bg);
+  }
+
+  .keep-stamp--stamped:disabled {
+    opacity: 1;
+    cursor: default;
+  }
+
+  .keep-stamp--error {
+    border-color: var(--alt-terracotta);
+    color: var(--alt-terracotta);
+  }
+
+  .keep-stamp:disabled:not(.keep-stamp--stamped) {
+    opacity: 0.4;
+    cursor: not-allowed;
   }
 
   /* ── Content area ── */
@@ -850,7 +903,7 @@ function handleImgError() {
     background: transparent;
     border: 1.5px solid var(--alt-charcoal);
     padding: 0.5rem 0.75rem;
-    min-height: 44px;
+    min-height: 48px;
     flex: 1;
     display: inline-flex;
     align-items: center;
@@ -868,17 +921,6 @@ function handleImgError() {
   .action-btn:disabled {
     opacity: 0.4;
     cursor: not-allowed;
-  }
-
-  .action-btn--icon {
-    flex: 0 0 auto;
-    padding: 0.5rem;
-    width: 44px;
-  }
-
-  .action-btn--error {
-    border-color: var(--alt-terracotta);
-    color: var(--alt-terracotta);
   }
 
   .action-btn--active {

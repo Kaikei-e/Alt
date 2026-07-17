@@ -3,6 +3,7 @@ import type { Snippet } from "svelte";
 import { afterNavigate } from "$app/navigation";
 import { page } from "$app/state";
 import Sidebar from "$lib/components/desktop/layout/Sidebar.svelte";
+import { isImmersiveRoute } from "$lib/components/mobile/bottom-nav";
 import MobileBottomNav from "$lib/components/mobile/MobileBottomNav.svelte";
 import TtsMiniPlayer from "$lib/components/mobile/tts/TtsMiniPlayer.svelte";
 import { getTtsPlaybackStore } from "$lib/stores/ttsPlayback.svelte";
@@ -18,6 +19,7 @@ const ttsPlayback = getTtsPlaybackStore();
 const FULL_BLEED_PATHS = ["/feeds/tag-verse"];
 
 const isFullBleed = $derived(FULL_BLEED_PATHS.includes(page.url.pathname));
+const isImmersive = $derived(isImmersiveRoute(page.url.pathname));
 
 let mainEl = $state<HTMLElement | undefined>(undefined);
 
@@ -52,14 +54,17 @@ afterNavigate(() => {
 			tabindex="-1"
 			bind:this={mainEl}
 			class={cn(
-				"outline-none pb-[calc(2.75rem+env(safe-area-inset-bottom,0px))]",
+				"outline-none",
+				!isImmersive && "pb-[calc(2.75rem+env(safe-area-inset-bottom,0px))]",
 				className,
 			)}
 		>
 			{@render children()}
 		</main>
 		<TtsMiniPlayer store={ttsPlayback} />
-		<MobileBottomNav pathname={page.url.pathname} />
+		{#if !isImmersive}
+			<MobileBottomNav pathname={page.url.pathname} />
+		{/if}
 	</div>
 {/if}
 

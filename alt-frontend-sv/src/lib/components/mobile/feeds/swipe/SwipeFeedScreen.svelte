@@ -14,6 +14,8 @@ import type { RenderFeed, SanitizedFeed } from "$lib/schema/feed";
 import { toRenderFeed } from "$lib/schema/feed";
 import { articlePrefetcher } from "$lib/utils/articlePrefetcher";
 import { canonicalize } from "$lib/utils/feed";
+import { createDispatchSession } from "./dispatch-session.svelte";
+import DispatchHeader from "./DispatchHeader.svelte";
 import SwipeFeedCard from "./SwipeFeedCard.svelte";
 import VisualPreviewCard from "./VisualPreviewCard.svelte";
 import SwipeFilterSortSheet from "./SwipeFilterSortSheet.svelte";
@@ -61,6 +63,12 @@ let liveRegionMessage = $state("");
 let excludedFeedLinkIds = $state<string[]>([]);
 let feedSources = $state<ConnectFeedSource[]>([]);
 let sortOrder = $state<"newest" | "oldest">("newest");
+let isFilterSheetOpen = $state(false);
+
+// Session bookkeeping: deferred read flush + one-card undo window
+const session = createDispatchSession((link) =>
+	updateFeedReadStatusClient(link),
+);
 
 // Reactive OGP image update version counter
 let ogImageVersion = $state(0);
@@ -119,6 +127,16 @@ onMount(() => {
 		ogImageVersion++;
 	});
 	return () => articlePrefetcher.setOnOgImageFetched(null);
+});
+
+// Commit the pending read when the surface is left or backgrounded
+onMount(() => {
+	const flush = () => session.flush();
+	window.addEventListener("pagehide", flush);
+	return () => {
+		window.removeEventListener("pagehide", flush);
+		session.flush();
+	};
 });
 
 // Wire articleId callback to trigger batch image prefetch in visual-preview mode
@@ -328,12 +346,21 @@ async function handleDismiss(_direction: number) {
 	articlePrefetcher.markAsDismissed(currentLink);
 
 	activeIndex++;
+	session.dismiss(currentLink);
+}
 
-	try {
-		await updateFeedReadStatusClient(currentLink);
-	} catch (err) {
-		console.warn("Failed to mark as read:", currentLink, err);
-	}
+function handleUndo() {
+	const restoredLink = session.undo();
+	if (!restoredLink) return;
+
+	readFeeds.delete(restoredLink);
+	readFeeds = new Set(readFeeds);
+	activeIndex = Math.max(0, activeIndex - 1);
+
+	liveRegionMessage = "Returned card to the pile";
+	setTimeout(() => {
+		liveRegionMessage = "";
+	}, 1000);
 }
 
 function getCachedContent(url: string) {
@@ -358,6 +385,17 @@ function handleArticleIdResolved(feedLink: string, articleId: string) {
   >
     {liveRegionMessage}
   </div>
+
+  <DispatchHeader
+    {mode}
+    readCount={session.readCount}
+    canUndo={session.canUndo}
+    onUndo={handleUndo}
+    onOpenFilter={() => {
+      isFilterSheetOpen = true;
+    }}
+    filterActive={excludedFeedLinkIds.length > 0}
+  />
 
   {#if isInitialLoading}
     <div class="initial-loading">
@@ -434,6 +472,7 @@ function handleArticleIdResolved(feedLink: string, articleId: string) {
 
   <SwipeLoadingOverlay isVisible={isLoading} />
   <SwipeFilterSortSheet
+    bind:open={isFilterSheetOpen}
     sources={feedSources}
     {excludedFeedLinkIds}
     {sortOrder}
@@ -445,12 +484,11 @@ function handleArticleIdResolved(feedLink: string, articleId: string) {
 
 <style>
   .swipe-screen {
-    min-height: 100dvh;
+    height: 100dvh;
     position: relative;
     display: flex;
     flex-direction: column;
     align-items: center;
-    justify-content: center;
     overflow: hidden;
     background: var(--surface-bg);
   }
@@ -467,7 +505,8 @@ function handleArticleIdResolved(feedLink: string, articleId: string) {
     position: relative;
     width: 100%;
     max-width: 30rem;
-    height: 95dvh;
+    flex: 1;
+    min-height: 0;
     padding: 0 0.5rem;
     overflow: hidden;
   }
@@ -475,7 +514,7 @@ function handleArticleIdResolved(feedLink: string, articleId: string) {
   .background-card {
     position: absolute;
     width: 100%;
-    height: 95dvh;
+    height: 100%;
     max-width: calc(100% - 1rem);
     background: var(--surface-bg);
     border: 1px solid var(--surface-border);
@@ -490,6 +529,7 @@ function handleArticleIdResolved(feedLink: string, articleId: string) {
     align-items: center;
     justify-content: center;
     gap: 0.75rem;
+    margin: auto 0;
   }
 
   .loading-dot {
@@ -517,6 +557,7 @@ function handleArticleIdResolved(feedLink: string, articleId: string) {
     padding: 1.5rem;
     text-align: center;
     gap: 0.5rem;
+    margin: auto 0;
   }
 
   .empty-text {

@@ -1,12 +1,5 @@
 <script lang="ts">
-import {
-	ArrowUpDown,
-	Ban,
-	Check,
-	Search,
-	SlidersHorizontal,
-	X,
-} from "@lucide/svelte";
+import { ArrowUpDown, Ban, Check, Search, X } from "@lucide/svelte";
 import * as Sheet from "$lib/components/ui/sheet";
 import type { ConnectFeedSource } from "$lib/connect/feeds";
 import { useKeyboardOffset } from "$lib/hooks/useKeyboardOffset.svelte";
@@ -17,6 +10,7 @@ import {
 } from "$lib/utils/feed-source-filter";
 
 interface Props {
+	open?: boolean;
 	sources: ConnectFeedSource[];
 	excludedFeedLinkIds: string[];
 	sortOrder: "newest" | "oldest";
@@ -26,6 +20,7 @@ interface Props {
 }
 
 let {
+	open: isOpen = $bindable(false),
 	sources,
 	excludedFeedLinkIds,
 	sortOrder,
@@ -34,7 +29,6 @@ let {
 	onSortChange,
 }: Props = $props();
 
-let isOpen = $state(false);
 let query = $state("");
 
 const kb = useKeyboardOffset(() => isOpen);
@@ -86,24 +80,7 @@ function handleClear() {
 }
 </script>
 
-<!-- Trigger Button -->
-<button
-	type="button"
-	class="filter-trigger"
-	onclick={() => { isOpen = true; }}
-	aria-label="Filter and sort"
-	data-testid="swipe-filter-trigger"
->
-	<SlidersHorizontal size={18} />
-	{#if excludedFeedLinkIds.length > 0}
-		<span
-			class="filter-badge"
-			data-testid="filter-active-badge"
-		></span>
-	{/if}
-</button>
-
-<!-- Bottom Sheet -->
+<!-- Bottom Sheet (opened from the Dispatch header trigger) -->
 <Sheet.Root bind:open={isOpen}>
 	<Sheet.Content
 		side="bottom"
@@ -227,40 +204,6 @@ function handleClear() {
 </Sheet.Root>
 
 <style>
-	/* ── Trigger ── */
-	.filter-trigger {
-		position: fixed;
-		bottom: 1.5rem;
-		left: 1.5rem;
-		z-index: 1000;
-		width: 44px;
-		height: 44px;
-		display: inline-flex;
-		align-items: center;
-		justify-content: center;
-		background: var(--surface-bg);
-		border: 1.5px solid var(--alt-charcoal);
-		color: var(--alt-charcoal);
-		cursor: pointer;
-		transition: background 0.15s, color 0.15s;
-	}
-
-	.filter-trigger:active {
-		background: var(--alt-charcoal);
-		color: var(--surface-bg);
-	}
-
-	.filter-badge {
-		position: absolute;
-		top: -2px;
-		right: -2px;
-		width: 8px;
-		height: 8px;
-		border-radius: 50%;
-		background: var(--alt-primary);
-		border: 2px solid var(--surface-bg);
-	}
-
 	/* ── Sheet ── */
 	:global(.sheet-header) {
 		border-bottom: 1px solid var(--surface-border);
