@@ -128,7 +128,7 @@ impl DiskFallback {
     pub async fn retrieve_batch(&self, batch_id: &str) -> Result<Batch, DiskError> {
         let file_path = self.get_batch_file_path(batch_id);
 
-        if !file_path.exists() {
+        if !fs::try_exists(&file_path).await.unwrap_or(false) {
             return Err(DiskError::BatchNotFound(batch_id.to_string()));
         }
 
@@ -161,13 +161,15 @@ impl DiskFallback {
     }
 
     pub async fn has_batch(&self, batch_id: &str) -> bool {
-        self.get_batch_file_path(batch_id).exists()
+        fs::try_exists(self.get_batch_file_path(batch_id))
+            .await
+            .unwrap_or(false)
     }
 
     pub async fn delete_batch(&mut self, batch_id: &str) -> Result<(), DiskError> {
         let file_path = self.get_batch_file_path(batch_id);
 
-        if !file_path.exists() {
+        if !fs::try_exists(&file_path).await.unwrap_or(false) {
             return Err(DiskError::BatchNotFound(batch_id.to_string()));
         }
 

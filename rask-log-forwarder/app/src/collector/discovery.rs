@@ -1,34 +1,71 @@
 use bollard::Docker;
 use std::collections::HashMap;
 use std::env;
+use std::sync::Arc;
 use thiserror::Error;
 
-#[derive(Error, Debug)]
+#[derive(Error, Debug, Clone)]
 pub enum DiscoveryError {
     #[error("Container not found for service: {0}")]
     ContainerNotFound(String),
     #[error("No target service specified")]
     NoTargetService,
     #[error("Docker API error: {0}")]
-    DockerError(#[from] bollard::errors::Error),
+    DockerError(Arc<bollard::errors::Error>),
     #[error("Invalid hostname format: {0}")]
     InvalidHostname(String),
 }
 
-impl Clone for DiscoveryError {
-    fn clone(&self) -> Self {
-        match self {
-            DiscoveryError::ContainerNotFound(s) => DiscoveryError::ContainerNotFound(s.clone()),
-            DiscoveryError::NoTargetService => DiscoveryError::NoTargetService,
-            DiscoveryError::DockerError(e) => {
-                DiscoveryError::DockerError(bollard::errors::Error::DockerResponseServerError {
-                    status_code: 500,
-                    message: format!("Cloned error: {e}"),
-                })
-            }
-            DiscoveryError::InvalidHostname(s) => DiscoveryError::InvalidHostname(s.clone()),
-        }
+impl From<bollard::errors::Error> for DiscoveryError {
+    fn from(error: bollard::errors::Error) -> Self {
+        Self::DockerError(Arc::new(error))
     }
+}
+
+/// Returns true when `clean_name` refers to Compose service `service_name`.
+///
+/// Matches:
+/// - exact name / `{service}-{replica}`
+/// - `{project}-{service}[-{replica}]` only when `service_name` itself contains
+///   a hyphen (multi-segment services like `alt-backend`), so a short name like
+///   `"db"` cannot falsely match `"kratos-db-1"` via a fake project prefix.
+///
+/// Loose token `contains` matching is intentionally not used. Single-segment
+/// services under a Compose project should match via `com.docker.compose.service`.
+pub(crate) fn container_name_matches_service(clean_name: &str, service_name: &str) -> bool {
+    if clean_name == service_name {
+        return true;
+    }
+
+    let name_tokens: Vec<&str> = clean_name.split('-').collect();
+    let service_tokens: Vec<&str> = service_name.split('-').collect();
+    if service_tokens.is_empty() || name_tokens.is_empty() {
+        return false;
+    }
+
+    // Strip trailing numeric replica (e.g. "...-1")
+    let core = match name_tokens.split_last() {
+        Some((last, rest))
+            if !rest.is_empty() && !last.is_empty() && last.chars().all(|c| c.is_ascii_digit()) =>
+        {
+            rest
+        }
+        _ => name_tokens.as_slice(),
+    };
+
+    if core == service_tokens.as_slice() {
+        return true;
+    }
+
+    // `{project}-{service}` for multi-segment services only (unambiguous).
+    if service_tokens.len() > 1
+        && core.len() == service_tokens.len() + 1
+        && core[1..] == service_tokens[..]
+    {
+        return true;
+    }
+
+    false
 }
 
 #[derive(Debug, Clone)]
@@ -127,47 +164,28 @@ impl ServiceDiscoveryTrait for ServiceDiscovery {
         let mut best_match: Option<bollard::service::ContainerSummary> = None;
 
         for container in filtered_containers {
+            // Prefer the Compose service label when present (unambiguous).
+            if let Some(labels) = &container.labels
+                && labels
+                    .get("com.docker.compose.service")
+                    .is_some_and(|s| s == &service_name)
+            {
+                best_match = Some(container);
+                break;
+            }
+
             if let Some(names) = &container.names {
                 for name in names {
                     let clean_name = name.trim_start_matches('/');
-
-                    // Exact match is the best
-                    if clean_name == service_name {
-                        best_match = Some(container);
-                        break;
-                    }
-
-                    // Docker Compose pattern: project-service-replica (e.g., alt-alt-backend-1)
-                    // Check if the name ends with "-service-1" or "-service"
-                    if clean_name.ends_with(&format!("-{service_name}-1"))
-                        || clean_name.ends_with(&format!("-{service_name}"))
-                    {
+                    if container_name_matches_service(clean_name, &service_name) {
                         best_match = Some(container.clone());
                         break;
-                    }
-
-                    // Also check if any part of the name matches the service exactly
-                    let parts: Vec<&str> = clean_name.split('-').collect();
-                    if parts.contains(&service_name.as_str()) {
-                        // Make sure it's not a logs container (double check)
-                        if !clean_name.contains("-logs") {
-                            best_match = Some(container.clone());
-                        }
                     }
                 }
             }
 
-            // If we found any match, check if it's an exact service name match
-            if let Some(ref matched_container) = best_match
-                && let Some(names) = &matched_container.names
-                && names.iter().any(|n| {
-                    let clean = n.trim_start_matches('/');
-                    clean == service_name
-                        || clean.ends_with(&format!("-{service_name}-1"))
-                        || clean.ends_with(&format!("-{service_name}"))
-                })
-            {
-                break; // Found a good match, stop searching
+            if best_match.is_some() {
+                break;
             }
         }
 
@@ -198,5 +216,33 @@ impl std::fmt::Debug for ServiceDiscovery {
         f.debug_struct("ServiceDiscovery")
             .field("docker", &"Docker { ... }")
             .finish()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::container_name_matches_service;
+
+    #[test]
+    fn exact_and_replica_names_match() {
+        assert!(container_name_matches_service("db", "db"));
+        assert!(container_name_matches_service("db-1", "db"));
+        assert!(container_name_matches_service("alt-backend", "alt-backend"));
+        assert!(container_name_matches_service("alt-backend-1", "alt-backend"));
+    }
+
+    #[test]
+    fn compose_project_prefix_matches_multi_segment_service() {
+        assert!(container_name_matches_service("alt-alt-backend", "alt-backend"));
+        assert!(container_name_matches_service("alt-alt-backend-1", "alt-backend"));
+        assert!(container_name_matches_service("alt-kratos-db-1", "kratos-db"));
+    }
+
+    #[test]
+    fn short_service_name_does_not_match_longer_hyphenated_name() {
+        // Regression: parts.contains("db") previously matched "kratos-db-1".
+        assert!(!container_name_matches_service("kratos-db", "db"));
+        assert!(!container_name_matches_service("kratos-db-1", "db"));
+        assert!(!container_name_matches_service("alt-kratos-db-1", "db"));
     }
 }

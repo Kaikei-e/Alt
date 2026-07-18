@@ -6,6 +6,13 @@ use std::collections::HashMap;
 pub fn string_to_fixed_bytes<const N: usize>(s: &str) -> [u8; N] {
     let mut result = [0u8; N];
     let bytes = s.as_bytes();
+    if bytes.len() > N {
+        tracing::debug!(
+            len = bytes.len(),
+            max = N,
+            "truncating string for FixedString({N}) column"
+        );
+    }
     let len = bytes.len().min(N);
     result[..len].copy_from_slice(&bytes[..len]);
     result

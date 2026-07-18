@@ -271,29 +271,6 @@ impl LogBuffer {
         })
     }
 
-    /// Legacy split method for backward compatibility - logs errors instead of panicking
-    pub fn split_legacy(&self) -> (LogBufferSender, LogBufferReceiver) {
-        match self.split() {
-            Ok((sender, receiver)) => (sender, receiver),
-            Err(e) => {
-                tracing::error!("Buffer split failed: {}, creating empty buffers", e);
-                // Return empty/closed buffers instead of panicking
-                let (empty_sender, empty_receiver) = broadcast::channel(1);
-                (
-                    LogBufferSender {
-                        sender: empty_sender,
-                        config: self.config.clone(),
-                        metrics: self.metrics.clone(),
-                    },
-                    LogBufferReceiver {
-                        receiver: empty_receiver,
-                        metrics: self.metrics.clone(),
-                    },
-                )
-            }
-        }
-    }
-
     pub fn push(&self, entry: impl Into<EnrichedLogEntry>) -> Result<(), BufferError> {
         if let Some(sender) = &self.sender {
             // Check if buffer is full

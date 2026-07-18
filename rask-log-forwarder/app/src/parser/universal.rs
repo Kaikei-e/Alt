@@ -69,7 +69,11 @@ impl From<std::sync::Arc<dyn std::any::Any + Send + Sync>> for EnrichedLogEntry 
         } else if let Some(enriched_entry) = any_entry.downcast_ref::<EnrichedLogEntry>() {
             enriched_entry.clone()
         } else {
-            // Fallback to a dummy entry for unknown types
+            let type_id = std::any::Any::type_id(any_entry.as_ref());
+            tracing::warn!(
+                ?type_id,
+                "Arc<dyn Any> downcast failed for EnrichedLogEntry; emitting unknown placeholder"
+            );
             Self {
                 service_type: "unknown".to_string(),
                 log_type: "unknown".to_string(),

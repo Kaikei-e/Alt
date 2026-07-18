@@ -1913,7 +1913,6 @@ dependencies = [
 name = "rask"
 version = "0.1.0"
 dependencies = [
- "anyhow",
  "axum",
  "axum-test",
  "bytes",
