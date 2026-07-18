@@ -35,8 +35,19 @@ export async function processAugurStreamingText(
 			} else if (event.event === "meta" || event.event === "done") {
 				if (options.onMetadata && event.data) {
 					try {
-						const parsed = JSON.parse(event.data);
-						options.onMetadata(parsed);
+						const parsed: unknown = JSON.parse(event.data);
+						if (
+							parsed !== null &&
+							typeof parsed === "object" &&
+							!Array.isArray(parsed)
+						) {
+							options.onMetadata(parsed as Record<string, unknown>);
+						} else {
+							console.warn(
+								"[AugurStream] Metadata is not a JSON object",
+								parsed,
+							);
+						}
 					} catch (e) {
 						console.warn("[AugurStream] Failed to parse metadata", e);
 					}

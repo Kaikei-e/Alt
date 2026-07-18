@@ -7,11 +7,11 @@ interface PageData {
 	error?: string;
 }
 
-export const load: ServerLoad = async ({ request }) => {
+export const load: ServerLoad = async ({ request, fetch }) => {
 	const cookieHeader = request.headers.get("cookie") || "";
 
 	try {
-		const feedLinks = await getFeedLinks(cookieHeader);
+		const feedLinks = await getFeedLinks(cookieHeader, fetch);
 
 		return {
 			feedLinks,

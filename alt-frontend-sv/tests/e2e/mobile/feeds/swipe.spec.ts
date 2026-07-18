@@ -58,7 +58,9 @@ test.describe("mobile feeds routes - swipe", () => {
 	test("swipe marks feed as read even without articleId (404 article)", async ({
 		page,
 	}) => {
-		// Use mock data without articleId (simulates 404 article)
+		// Use mock data without articleId (simulates 404 article).
+		// Single-card pile: dismiss is held in the undo window, then
+		// flush-on-empty commits the pending read (no second dismissal).
 		await page.route(CONNECT_RPC_PATHS.getUnreadFeeds, (route) =>
 			fulfillJson(route, CONNECT_FEEDS_WITHOUT_ARTICLE_ID),
 		);
@@ -90,7 +92,10 @@ test.describe("mobile feeds routes - swipe", () => {
 		await page.mouse.move(box.x - 200, box.y + box.height / 2, { steps: 10 });
 		await page.mouse.up();
 
-		// Verify markAsRead was called even though articleId is empty
+		// Wait for pile-empty UI so the dismiss + flush path has settled
+		await expect(page.getByText("No more feeds")).toBeVisible({
+			timeout: 5000,
+		});
 		await expect.poll(() => markAsReadCalled, { timeout: 5000 }).toBe(true);
 	});
 });

@@ -21,21 +21,36 @@ const selectedTagData = $derived(
 	selectedTag ? tags.find((t) => t.tagName === selectedTag) : null,
 );
 
-onMount(async () => {
+onMount(() => {
 	if (!browser) return;
 	if (detectGPUBackend() === "none") {
 		gpuUnsupported = true;
 		isLoading = false;
 		return;
 	}
-	try {
-		const transport = createClientTransport();
-		tags = await fetchTagCloud(transport, 300);
-	} catch (e) {
-		error = e instanceof Error ? e.message : "Failed to load tags";
-	} finally {
-		isLoading = false;
-	}
+
+	let cancelled = false;
+	(async () => {
+		try {
+			const transport = createClientTransport();
+			const result = await fetchTagCloud(transport, 300);
+			if (!cancelled) {
+				tags = result;
+			}
+		} catch (e) {
+			if (!cancelled) {
+				error = e instanceof Error ? e.message : "Failed to load tags";
+			}
+		} finally {
+			if (!cancelled) {
+				isLoading = false;
+			}
+		}
+	})();
+
+	return () => {
+		cancelled = true;
+	};
 });
 </script>
 

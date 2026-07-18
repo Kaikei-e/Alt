@@ -6,7 +6,6 @@
 import { ConnectError, Code } from "@connectrpc/connect";
 import type { Transport } from "@connectrpc/connect";
 import type {
-	StreamFeedStatsResponse,
 	StreamSummarizeResponse,
 } from "$lib/gen/alt/feeds/v2/feeds_pb";
 import { createFeedClient } from "./client";
@@ -39,27 +38,29 @@ export async function streamFeedStats(
 	onData: (stats: StreamingFeedStats) => void,
 	onError?: (error: Error) => void,
 ): Promise<AbortController> {
-	console.log("[streamFeedStats] Starting stream...");
+	const debug = import.meta.env.DEV;
+	if (debug) console.log("[streamFeedStats] Starting stream...");
 	const client = createFeedClient(transport);
 	const abortController = new AbortController();
 
 	// Start streaming in background
 	(async () => {
 		try {
-			console.log("[streamFeedStats] Calling client.streamFeedStats()...");
+			if (debug) console.log("[streamFeedStats] Calling client.streamFeedStats()...");
 			const stream = client.streamFeedStats(
 				{},
 				{ signal: abortController.signal },
 			);
 
-			console.log("[streamFeedStats] Stream created, waiting for data...");
-			for await (const rawResponse of stream) {
-				const response = rawResponse as StreamFeedStatsResponse;
+			if (debug) console.log("[streamFeedStats] Stream created, waiting for data...");
+			for await (const response of stream) {
 				const isHeartbeat = response.metadata?.isHeartbeat ?? false;
-				console.log("[streamFeedStats] Received response:", {
-					isHeartbeat,
-					feedAmount: response.feedAmount,
-				});
+				if (debug) {
+					console.log("[streamFeedStats] Received response:", {
+						isHeartbeat,
+						feedAmount: response.feedAmount,
+					});
+				}
 
 				// Always call onData, even for heartbeats
 				// Components can decide whether to ignore heartbeats
@@ -71,11 +72,11 @@ export async function streamFeedStats(
 					timestamp: Number(response.metadata?.timestamp ?? Date.now() / 1000),
 				});
 			}
-			console.log("[streamFeedStats] Stream ended normally");
+			if (debug) console.log("[streamFeedStats] Stream ended normally");
 		} catch (error) {
 			// Check abort BEFORE logging to suppress navigation-related errors
 			if (abortController.signal.aborted) {
-				console.log("[streamFeedStats] Stream closed due to navigation");
+				if (debug) console.log("[streamFeedStats] Stream closed due to navigation");
 				return;
 			}
 			console.error("[streamFeedStats] Stream error:", error);
@@ -92,8 +93,8 @@ export async function streamFeedStats(
 // Streaming Summarize
 // =============================================================================
 
-/** Default delay before retrying on 409 Conflict error (in milliseconds). */
-const CONFLICT_RETRY_DELAY_MS = 3000;
+/** Base delay before retrying on 409 Conflict error (in milliseconds). */
+const CONFLICT_RETRY_BASE_DELAY_MS = 1000;
 
 /** Maximum number of retries for 409 Conflict errors. */
 const CONFLICT_MAX_RETRIES = 3;
@@ -104,6 +105,13 @@ function isConflictError(error: unknown): boolean {
 		return error.code === Code.AlreadyExists;
 	}
 	return false;
+}
+
+/** Exponential backoff with jitter for conflict retries. */
+function conflictRetryDelay(retryCount: number): number {
+	const exp = CONFLICT_RETRY_BASE_DELAY_MS * 2 ** (retryCount - 1);
+	const jitter = Math.random() * CONFLICT_RETRY_BASE_DELAY_MS;
+	return Math.min(exp + jitter, 15_000);
 }
 
 /** Delays execution for the specified number of milliseconds. */
@@ -258,8 +266,7 @@ export async function streamSummarize(
 				forceRefresh: options.forceRefresh,
 			});
 
-			for await (const rawResponse of stream) {
-				const response = rawResponse as StreamSummarizeResponse;
+			for await (const response of stream) {
 				processStreamResponse(response, acc);
 
 				if (onChunk) {
@@ -283,7 +290,7 @@ export async function streamSummarize(
 				if (options.onConflictRetry) {
 					options.onConflictRetry(retryCount, CONFLICT_MAX_RETRIES);
 				}
-				await delay(CONFLICT_RETRY_DELAY_MS);
+				await delay(conflictRetryDelay(retryCount));
 				continue;
 			}
 
@@ -354,8 +361,7 @@ export function streamSummarizeWithAbort(
 				{ signal: abortController.signal },
 			);
 
-			for await (const rawResponse of stream) {
-				const response = rawResponse as StreamSummarizeResponse;
+			for await (const response of stream) {
 				processStreamResponse(response, acc);
 				onChunk(toSummarizeChunk(response));
 			}
@@ -380,7 +386,7 @@ export function streamSummarizeWithAbort(
 				if (options.onConflictRetry) {
 					options.onConflictRetry(nextRetry, CONFLICT_MAX_RETRIES);
 				}
-				await delay(CONFLICT_RETRY_DELAY_MS);
+				await delay(conflictRetryDelay(nextRetry));
 				if (!abortController.signal.aborted) {
 					await performStream(nextRetry);
 				}

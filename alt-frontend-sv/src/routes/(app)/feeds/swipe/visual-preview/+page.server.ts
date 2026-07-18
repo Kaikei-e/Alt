@@ -15,7 +15,7 @@ import { sanitizeFeed, toRenderFeed } from "$lib/schema/feed";
 // the article cache misses.
 const ARTICLE_FETCH_TIMEOUT_MS = 6000;
 
-export const load: ServerLoad = async ({ request, locals }) => {
+export const load: ServerLoad = async ({ request, locals, fetch }) => {
 	const backendToken = locals.backendToken;
 	const cookie = request.headers.get("cookie") || "";
 
@@ -31,6 +31,7 @@ export const load: ServerLoad = async ({ request, locals }) => {
 			undefined,
 			3,
 			backendToken,
+			fetch,
 		);
 		const feeds = feedsData.data.map((item) => ({
 			...toRenderFeed(sanitizeFeed(item), item.tags),
@@ -46,7 +47,7 @@ export const load: ServerLoad = async ({ request, locals }) => {
 		// still caps the wait; we just no longer stream the resolution.
 		const articleData =
 			feeds.length > 0
-				? await loadFirstArticle(feeds[0]!, cookie, backendToken)
+				? await loadFirstArticle(feeds[0]!, cookie, backendToken, fetch)
 				: emptyArticleData;
 
 		return {
@@ -68,6 +69,7 @@ async function loadFirstArticle(
 	firstFeed: { link: string; ogImageProxyUrl?: string | null },
 	cookie: string,
 	backendToken: string | null,
+	fetchFn?: typeof fetch,
 ): Promise<{
 	firstArticleImageUrl: string | null;
 	firstArticleContent: string | null;
@@ -83,8 +85,8 @@ async function loadFirstArticle(
 
 	try {
 		const transport = backendToken
-			? createServerTransportWithToken(backendToken)
-			: await createServerTransport(cookie);
+			? createServerTransportWithToken(backendToken, fetchFn)
+			: await createServerTransport(cookie, fetchFn);
 
 		const article = await fetchArticleContent(
 			transport,

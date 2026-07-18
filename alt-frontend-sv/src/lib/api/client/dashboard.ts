@@ -110,7 +110,11 @@ export async function getRecapJobs(
 	if (!res.ok) {
 		throw new Error("Failed to fetch recap jobs");
 	}
-	return res.json();
+	const data: unknown = await res.json();
+	if (!Array.isArray(data)) {
+		throw new Error("Invalid recap jobs response");
+	}
+	return data as RecapJob[];
 }
 
 // ============================================================================
@@ -140,7 +144,11 @@ export async function getJobProgress(
 	if (!res.ok) {
 		throw new Error("Failed to fetch job progress");
 	}
-	return res.json();
+	const data: unknown = await res.json();
+	if (data === null || typeof data !== "object") {
+		throw new Error("Invalid job progress response");
+	}
+	return data as JobProgressEvent;
 }
 
 export async function getJobStats(
@@ -150,7 +158,11 @@ export async function getJobStats(
 	if (!res.ok) {
 		throw new Error("Failed to fetch job stats");
 	}
-	return res.json();
+	const data: unknown = await res.json();
+	if (data === null || typeof data !== "object") {
+		throw new Error("Invalid job stats response");
+	}
+	return data as JobStats;
 }
 
 // ============================================================================

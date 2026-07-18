@@ -1,4 +1,5 @@
 import { env } from "$env/dynamic/private";
+import { parseCsrfToken } from "$lib/schema/csrf";
 
 const AUTH_HUB_URL = env.AUTH_HUB_INTERNAL_URL || "http://auth-hub:8888";
 const AUTH_HUB_TIMEOUT_MS = 3000;
@@ -21,8 +22,8 @@ export async function getCSRFToken(
 
 		if (!response.ok) return null;
 
-		const data = await response.json();
-		return data.csrf_token ?? null;
+		const data: unknown = await response.json();
+		return parseCsrfToken(data);
 	} catch {
 		return null;
 	}

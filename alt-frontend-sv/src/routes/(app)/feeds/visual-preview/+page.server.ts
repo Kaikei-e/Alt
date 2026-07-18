@@ -4,7 +4,7 @@ import { sanitizeFeed, toRenderFeed } from "$lib/schema/feed";
 
 const INITIAL_FEEDS_LIMIT = 20;
 
-export const load: ServerLoad = async ({ request, locals }) => {
+export const load: ServerLoad = async ({ request, locals, fetch }) => {
 	const backendToken = locals.backendToken;
 	const cookie = request.headers.get("cookie") || "";
 
@@ -14,6 +14,7 @@ export const load: ServerLoad = async ({ request, locals }) => {
 			undefined,
 			INITIAL_FEEDS_LIMIT,
 			backendToken,
+			fetch,
 		);
 
 		if (

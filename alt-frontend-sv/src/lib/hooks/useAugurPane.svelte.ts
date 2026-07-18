@@ -30,6 +30,8 @@ export type AugurPaneMessage = {
 	timestamp: string;
 	citations?: Citation[];
 	relatedCitations?: Citation[];
+	/** When true, AskSheet (and peers) may offer a retry action. */
+	retryable?: boolean;
 };
 
 const STREAM_TIMEOUT_MS = 180_000;
@@ -167,6 +169,7 @@ export function useAugurPane(options: UseAugurPaneOptions = {}) {
 				messages[assistantIndex] = {
 					...messages[assistantIndex]!,
 					message: bufferedContent || "Response timed out. Please try again.",
+					retryable: true,
 				};
 				finalize();
 			}
@@ -215,6 +218,7 @@ export function useAugurPane(options: UseAugurPaneOptions = {}) {
 				messages[assistantIndex] = {
 					...messages[assistantIndex]!,
 					message: formatAugurFallbackMessage(code),
+					retryable: true,
 				};
 				finalize();
 			},
@@ -224,6 +228,7 @@ export function useAugurPane(options: UseAugurPaneOptions = {}) {
 				messages[assistantIndex] = {
 					...messages[assistantIndex]!,
 					message: `Error: ${error.message}. Please try again.`,
+					retryable: true,
 				};
 				finalize();
 			},

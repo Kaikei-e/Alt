@@ -116,7 +116,12 @@ onMount(() => {
 					role="button"
 					tabindex="0"
 					onclick={() => goto(`/acolyte/reports/${report.reportId}`)}
-					onkeydown={(e) => { if (e.key === "Enter") goto(`/acolyte/reports/${report.reportId}`); }}
+					onkeydown={(e) => {
+						if (e.key === "Enter" || e.key === " ") {
+							e.preventDefault();
+							goto(`/acolyte/reports/${report.reportId}`);
+						}
+					}}
 				>
 					<div class="card-stripe card-stripe--{report.latestRunStatus || 'draft'}"></div>
 					<div class="card-body">

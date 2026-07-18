@@ -1,5 +1,5 @@
 <script lang="ts">
-import { onMount } from "svelte";
+import { onMount, onDestroy } from "svelte";
 import { useViewport } from "$lib/stores/viewport.svelte";
 import { useJobProgress } from "$lib/hooks/useJobProgress.svelte";
 import { triggerRecapJob } from "$lib/api/client/dashboard";
@@ -44,6 +44,22 @@ let justStartedJobId = $state<string | null>(null);
 let selectedJob = $state<RecentJobSummary | null>(null);
 let detailSheetOpen = $state(false);
 
+const triggerTimers: ReturnType<typeof setTimeout>[] = [];
+
+function scheduleTriggerTimer(fn: () => void, ms: number) {
+	const id = setTimeout(() => {
+		const idx = triggerTimers.indexOf(id);
+		if (idx >= 0) triggerTimers.splice(idx, 1);
+		fn();
+	}, ms);
+	triggerTimers.push(id);
+}
+
+onDestroy(() => {
+	for (const id of triggerTimers) clearTimeout(id);
+	triggerTimers.length = 0;
+});
+
 onMount(async () => {
 	loadingStore.startLoading();
 	await jobProgress.fetchData();
@@ -81,18 +97,18 @@ async function handleTriggerJob() {
 			? `Job ${result.job_id.slice(0, 8)}... started with ${result.genres.length} genres`
 			: `Job ${result.job_id.slice(0, 8)}... started`;
 
-		setTimeout(async () => {
+		scheduleTriggerTimer(async () => {
 			await jobProgress.refresh();
 			if (jobProgress.data?.active_job) {
 				justStartedJobId = null;
 			}
 		}, 1000);
 
-		setTimeout(() => {
+		scheduleTriggerTimer(() => {
 			justStartedJobId = null;
 		}, 10000);
 
-		setTimeout(() => {
+		scheduleTriggerTimer(() => {
 			triggerSuccess = null;
 		}, 5000);
 	} catch (e) {

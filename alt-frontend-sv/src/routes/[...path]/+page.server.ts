@@ -1,12 +1,6 @@
-import { redirect } from "@sveltejs/kit";
+import { error } from "@sveltejs/kit";
 import type { PageServerLoad } from "./$types";
 
-const FALLBACK_REDIRECT = "/feeds";
-
-export function _getNotFoundRedirectTarget(_pathname: string): string {
-	return FALLBACK_REDIRECT;
-}
-
-export const load: PageServerLoad = async ({ url }) => {
-	throw redirect(302, _getNotFoundRedirectTarget(url.pathname));
+export const load: PageServerLoad = async () => {
+	throw error(404, "Not Found");
 };

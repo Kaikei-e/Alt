@@ -1,3 +1,8 @@
+import {
+	assertOkResponse,
+	parseJsonBody,
+} from "$lib/api/handle-api-response";
+import { parseCsrfToken } from "$lib/schema/csrf";
 import { browser } from "$app/environment";
 import { base } from "$app/paths";
 
@@ -16,8 +21,8 @@ async function fetchCSRFToken(): Promise<string | null> {
 			credentials: "include",
 		});
 		if (!response.ok) return null;
-		const data = await response.json();
-		cachedCSRFToken = data.csrf_token;
+		const data: unknown = await response.json();
+		cachedCSRFToken = parseCsrfToken(data);
 		csrfTokenExpiry = Date.now() + 5 * 60 * 1000;
 		return cachedCSRFToken;
 	} catch {
@@ -27,7 +32,9 @@ async function fetchCSRFToken(): Promise<string | null> {
 
 export async function callClientAPI<T>(
 	endpoint: string,
-	options?: RequestInit,
+	options?: RequestInit & {
+		guard?: (data: unknown) => data is T;
+	},
 ): Promise<T> {
 	if (!browser) {
 		throw new Error("This function can only be called from the client");
@@ -38,7 +45,10 @@ export async function callClientAPI<T>(
 	// V-004: Include CSRF token for state-changing methods
 	const method = options?.method?.toUpperCase() || "GET";
 	const needsCSRF = ["POST", "PUT", "DELETE", "PATCH"].includes(method);
-	const headers = { ...((options?.headers as Record<string, string>) || {}) };
+	const { guard, ...fetchOptions } = options ?? {};
+	const headers = {
+		...((fetchOptions.headers as Record<string, string>) || {}),
+	};
 
 	if (needsCSRF) {
 		const csrfToken = await fetchCSRFToken();
@@ -49,50 +59,24 @@ export async function callClientAPI<T>(
 
 	try {
 		const response = await fetch(url, {
-			...options,
+			...fetchOptions,
 			headers,
 			credentials: "include",
-			signal: options?.signal ?? AbortSignal.timeout(FETCH_TIMEOUT_MS),
+			signal: fetchOptions.signal ?? AbortSignal.timeout(FETCH_TIMEOUT_MS),
 		});
 
-		// Check Content-Type before parsing
-		const contentType = response.headers.get("content-type") || "";
-		const isJson = contentType.includes("application/json");
-
-		// 202 Accepted is a valid response for async operations
-		if (!response.ok && response.status !== 202) {
-			const errorText = await response.text().catch(() => "");
-			console.error(
-				`API call failed: ${response.status} ${response.statusText}`,
-				{
-					url,
-					status: response.status,
-					statusText: response.statusText,
-					contentType,
-					errorBody: errorText.substring(0, 200),
-				},
-			);
-			throw new Error(
-				`API call failed: ${response.status} ${response.statusText}`,
-			);
-		}
-
-		// If response is not JSON, throw a more descriptive error
-		if (!isJson) {
-			const text = await response.text().catch(() => "");
-			console.error("API returned non-JSON response:", {
-				url,
-				contentType,
-				bodyPreview: text.substring(0, 200),
-			});
-			throw new Error(
-				`API returned non-JSON response (${contentType}). This may indicate a routing error or server-side error page.`,
-			);
-		}
-
-		return response.json();
+		await assertOkResponse(response, { allowAccepted: true, url });
+		return parseJsonBody<T>(response, { url }, guard);
 	} catch (error) {
 		if (error instanceof Error && error.message.includes("API call failed")) {
+			throw error;
+		}
+		if (
+			error instanceof Error &&
+			(error.message.includes("non-JSON response") ||
+				error.message.includes("Failed to parse JSON") ||
+				error.message.includes("schema/type validation"))
+		) {
 			throw error;
 		}
 		const errorMessage = error instanceof Error ? error.message : String(error);

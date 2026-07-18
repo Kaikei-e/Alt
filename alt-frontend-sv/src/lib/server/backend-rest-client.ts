@@ -1,5 +1,6 @@
 import { env } from "$env/dynamic/private";
 import { getBackendToken } from "./auth";
+import { assertOkResponse, parseJsonBody } from "$lib/api/handle-api-response";
 
 // Independent from $lib/connect/transport-server.ts's BACKEND_CONNECT_URL
 // (Connect-RPC endpoint) so the REST facade and the Connect-RPC backend can
@@ -7,14 +8,21 @@ import { getBackendToken } from "./auth";
 const BACKEND_URL = env.BACKEND_REST_URL || "http://alt-butterfly-facade:9250";
 const FETCH_TIMEOUT_MS = 10_000;
 
+type FetchFn = typeof fetch;
+
 /**
  * バックエンドAPIを呼び出す (GET, JSON レスポンス)
  */
 export async function callBackendAPI<T>(
 	endpoint: string,
 	cookie: string | null,
+	options?: {
+		fetch?: FetchFn;
+		guard?: (data: unknown) => data is T;
+	},
 ): Promise<T> {
 	const token = await getBackendToken(cookie);
+	const fetchFn = options?.fetch ?? fetch;
 
 	const headers: HeadersInit = {
 		"Content-Type": "application/json",
@@ -27,62 +35,14 @@ export async function callBackendAPI<T>(
 
 	const url = `${BACKEND_URL}${endpoint}`;
 	try {
-		const response = await fetch(url, {
+		const response = await fetchFn(url, {
 			headers,
 			cache: "no-store",
 			signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
 		});
 
-		if (!response.ok) {
-			const contentType = response.headers.get("content-type") || "";
-			const errorText = await response.text().catch(() => "");
-			console.error(
-				`API call failed: ${response.status} ${response.statusText}`,
-				{
-					url,
-					status: response.status,
-					statusText: response.statusText,
-					contentType,
-					errorBody: errorText.substring(0, 200),
-					hasToken: !!token,
-				},
-			);
-			throw new Error(
-				`API call failed: ${response.status} ${response.statusText}`,
-			);
-		}
-
-		// Check Content-Type before parsing JSON
-		const contentType = response.headers.get("content-type") || "";
-		const isJson = contentType.includes("application/json");
-
-		if (!isJson) {
-			const text = await response.text().catch(() => "");
-			console.error("Backend API returned non-JSON response:", {
-				url,
-				contentType,
-				status: response.status,
-				bodyPreview: text.substring(0, 200),
-			});
-			throw new Error(
-				`Backend API returned non-JSON response (${contentType}). Expected application/json.`,
-			);
-		}
-
-		try {
-			return await response.json();
-		} catch (jsonError) {
-			const errorMessage =
-				jsonError instanceof Error ? jsonError.message : String(jsonError);
-			console.error("Failed to parse JSON response from backend API:", {
-				url,
-				contentType,
-				error: errorMessage,
-			});
-			throw new Error(
-				`Failed to parse JSON response from backend: ${errorMessage}`,
-			);
-		}
+		await assertOkResponse(response, { url });
+		return parseJsonBody<T>(response, { url }, options?.guard);
 	} catch (error) {
 		if (error instanceof Error && error.message.includes("API call failed")) {
 			throw error;
@@ -90,7 +50,8 @@ export async function callBackendAPI<T>(
 		if (
 			error instanceof Error &&
 			(error.message.includes("non-JSON response") ||
-				error.message.includes("Failed to parse JSON"))
+				error.message.includes("Failed to parse JSON") ||
+				error.message.includes("schema/type validation"))
 		) {
 			throw error;
 		}
@@ -115,8 +76,10 @@ export async function callBackendAPIWithBody(
 	cookie: string | null,
 	method: string,
 	body?: unknown,
+	options?: { fetch?: FetchFn },
 ): Promise<void> {
 	const token = await getBackendToken(cookie);
+	const fetchFn = options?.fetch ?? fetch;
 
 	const headers: HeadersInit = {
 		"Content-Type": "application/json",
@@ -129,7 +92,7 @@ export async function callBackendAPIWithBody(
 	const url = `${BACKEND_URL}${endpoint}`;
 
 	try {
-		const response = await fetch(url, {
+		const response = await fetchFn(url, {
 			method,
 			headers,
 			...(body !== undefined ? { body: JSON.stringify(body) } : {}),
@@ -137,21 +100,7 @@ export async function callBackendAPIWithBody(
 			signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
 		});
 
-		if (!response.ok) {
-			const errorText = await response.text().catch(() => "");
-			console.error(
-				`API call failed: ${response.status} ${response.statusText}`,
-				{
-					url,
-					status: response.status,
-					statusText: response.statusText,
-					errorBody: errorText.substring(0, 200),
-				},
-			);
-			throw new Error(
-				`API call failed: ${response.status} ${response.statusText}`,
-			);
-		}
+		await assertOkResponse(response, { url });
 	} catch (error) {
 		if (error instanceof Error && error.message.includes("API call failed")) {
 			throw error;

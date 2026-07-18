@@ -4,6 +4,7 @@ import { searchFeedsClient } from "$lib/api/client";
 import type { SearchFeedItem } from "$lib/schema/search";
 import { transformFeedSearchResult } from "$lib/utils/transformFeedSearchResult";
 import SearchResultItem from "./SearchResultItem.svelte";
+import { onDestroy } from "svelte";
 
 interface Props {
 	results: SearchFeedItem[];
@@ -34,13 +35,20 @@ const {
 // Track initial load so infinite scroll additions render instantly
 let initialLoadDone = $state(false);
 let prevResultsLen = $state(0);
+let initialLoadTimer: ReturnType<typeof setTimeout> | null = null;
+
+onDestroy(() => {
+	if (initialLoadTimer) clearTimeout(initialLoadTimer);
+});
 
 $effect(() => {
 	const len = results.length;
 	// Initial search result arrived — animate, then mark done
 	if (len > 0 && prevResultsLen === 0) {
 		initialLoadDone = false;
-		setTimeout(() => {
+		if (initialLoadTimer) clearTimeout(initialLoadTimer);
+		initialLoadTimer = setTimeout(() => {
+			initialLoadTimer = null;
 			initialLoadDone = true;
 		}, 600);
 	}

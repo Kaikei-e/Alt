@@ -1,13 +1,21 @@
 import { redirect } from "@sveltejs/kit";
+import { dev } from "$app/environment";
 import { env } from "$env/dynamic/private";
 import { ory } from "$lib/ory";
 import { sanitizeReturnTo } from "$lib/server/return-to";
 import type { PageServerLoad } from "./$types";
 
+function requireEnv(name: string, fallbackDev: string): string {
+	const value = env[name];
+	if (value) return value;
+	if (dev) return fallbackDev;
+	throw new Error(`${name} must be set in production`);
+}
+
 // KratosパブリックURL（ブラウザからのアクセス用）
-const kratosPublicUrl = env.KRATOS_PUBLIC_URL || "http://localhost/ory";
+const kratosPublicUrl = requireEnv("KRATOS_PUBLIC_URL", "http://localhost/ory");
 // アプリケーションのベースURL
-const appOrigin = env.ORIGIN || "http://localhost:4173";
+const appOrigin = requireEnv("ORIGIN", "http://localhost:4173");
 const basePath = "";
 
 // /register への差し戻しループを防ぐための共通オプション

@@ -45,7 +45,12 @@ const formattedDate = $derived(
 	role="button"
 	tabindex="0"
 	onclick={() => onClick(report.reportId)}
-	onkeydown={(e) => { if (e.key === "Enter") onClick(report.reportId); }}
+	onkeydown={(e) => {
+		if (e.key === "Enter" || e.key === " ") {
+			e.preventDefault();
+			onClick(report.reportId);
+		}
+	}}
 >
 	<!-- Status stripe -->
 	<div

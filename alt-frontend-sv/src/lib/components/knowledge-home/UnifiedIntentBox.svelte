@@ -36,10 +36,14 @@ function saveRecent(trimmed: string) {
 		trimmed,
 		...recentQueries.filter((item) => item !== trimmed),
 	].slice(0, 5);
-	window.localStorage.setItem(
-		"knowledge-home-recent-queries",
-		JSON.stringify(recentQueries),
-	);
+	try {
+		window.localStorage.setItem(
+			"knowledge-home-recent-queries",
+			JSON.stringify(recentQueries),
+		);
+	} catch {
+		// Safari private mode / quota exceeded — keep in-memory recentQueries
+	}
 }
 
 function handleSearch() {

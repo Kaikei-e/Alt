@@ -1,5 +1,5 @@
 <script lang="ts">
-import { onMount, onDestroy } from "svelte";
+import { onDestroy } from "svelte";
 import {
 	Chart,
 	LineController,
@@ -156,21 +156,24 @@ function createChart() {
 	});
 }
 
-onMount(() => {
-	createChart();
-});
-
 onDestroy(() => {
 	if (chart) {
 		chart.destroy();
 	}
 });
 
-// Reactively update chart when dataPoints change
+// Reactively update chart when dataPoints or dataKey change
 $effect(() => {
+	const _key = dataKey;
 	if (dataPoints && canvas) {
 		createChart();
 	}
+	return () => {
+		if (chart) {
+			chart.destroy();
+			chart = null;
+		}
+	};
 });
 </script>
 
