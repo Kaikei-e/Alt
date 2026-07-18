@@ -58,7 +58,6 @@ Write 3-5 paragraphs in Japanese with specific facts, numbers, dates, and proper
 <|turn>model
 """
 
-
 CHUNK_SUMMARY_PROMPT_TEMPLATE = """<|turn>user
 You are an expert editor extracting key information for a later summarization task.
 
@@ -83,7 +82,6 @@ Extract key facts:
 <turn|>
 <|turn>model
 """
-
 
 RECAP_CLUSTER_SUMMARY_PROMPT = r"""<|turn>system
 You are an expert Japanese news editor. Generate structured Japanese recap bullets strictly following the contract below.

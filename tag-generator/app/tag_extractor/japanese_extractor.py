@@ -336,6 +336,53 @@ def score_candidates_by_frequency(
     return result, tag_confidences
 
 
+def fallback_japanese(
+    text: str,
+    ja_tagger: Any,
+    ja_stopwords: set[str],
+    config: TagExtractionConfig,
+) -> list[str]:
+    """Frequency-only Japanese fallback (no KeyBERT).
+
+    Distinct from ``extract_keywords_japanese`` so a primary KeyBERT/semantic
+    failure does not re-run the same failing path.
+    """
+    if ja_tagger is None:
+        return []
+
+    compounds = extract_compound_japanese_words(text, ja_tagger, config)
+    term_freq = Counter(compounds)
+
+    single_nouns: list[str] = []
+    for word in ja_tagger(text):
+        if (
+            word.feature.pos1 in config.japanese_pos_tags
+            and 2 <= len(word.surface) <= 10
+            and word.surface not in ja_stopwords
+        ):
+            single_nouns.append(word.surface)
+    single_freq = Counter(single_nouns)
+
+    combined_freq: Counter[str] = Counter()
+    for term, freq in term_freq.items():
+        combined_freq[term] = freq * 2
+    for term, freq in single_freq.items():
+        if term not in combined_freq:
+            combined_freq[term] = freq
+
+    candidates = [
+        term
+        for term, freq in combined_freq.most_common(config.top_keywords * 5)
+        if (freq >= 2 or len(term) >= 4) and _shared_is_valid_japanese_tag(term, max_length=config.max_tag_length)
+    ][: config.top_keywords * 3]
+
+    if not candidates:
+        return []
+
+    keywords, _ = score_candidates_by_frequency(candidates, combined_freq, config.top_keywords)
+    return keywords
+
+
 def extract_keywords_japanese(
     text: str,
     ja_tagger: Any,

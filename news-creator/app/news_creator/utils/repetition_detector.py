@@ -2,14 +2,13 @@
 
 import re
 import logging
-from typing import Tuple, List
 
 logger = logging.getLogger(__name__)
 
 
 def detect_repetition(
     text: str, threshold: float = 0.3
-) -> Tuple[bool, float, List[str]]:
+) -> tuple[bool, float, list[str]]:
     """
     Detect repetitive patterns in text.
 
@@ -18,7 +17,7 @@ def detect_repetition(
         threshold: Repetition score threshold (0.0-1.0). If score >= threshold, repetition is detected.
 
     Returns:
-        Tuple of (has_repetition: bool, score: float, patterns: List[str])
+        Tuple of (has_repetition: bool, score: float, patterns: list[str])
         - has_repetition: True if repetition is detected
         - score: Repetition score (0.0-1.0), higher means more repetition
         - patterns: List of detected repetitive patterns
@@ -26,8 +25,8 @@ def detect_repetition(
     if not text or len(text.strip()) < 10:
         return False, 0.0, []
 
-    patterns: List[str] = []
-    scores: List[float] = []
+    patterns: list[str] = []
+    scores: list[float] = []
 
     # 1. Word-level repetition: same word repeated 3+ times consecutively
     word_pattern = r"\b(\w+)(?:\s+\1){2,}\b"

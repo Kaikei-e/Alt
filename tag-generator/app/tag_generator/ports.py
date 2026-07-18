@@ -23,7 +23,6 @@ class ArticleFetcherPort(Protocol):
         last_created_at: str,
         last_id: str,
         custom_batch_size: int | None = None,
-        untagged_only: bool = True,
     ) -> list[dict[str, Any]]: ...
 
     def fetch_new_articles(

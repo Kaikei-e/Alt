@@ -8,7 +8,6 @@ from __future__ import annotations
 
 import os
 import logging
-from typing import Union
 
 from news_creator.config.llm_config import LLMConfig
 from news_creator.config.scheduling_config import SchedulingConfig
@@ -357,6 +356,11 @@ class NewsCreatorConfig:
         return self.model_routing.model_8k_name
 
     @property
+    def rag_query_model(self) -> str:
+        """Model used for RAG query expand/plan."""
+        return self.model_routing.rag_query_model
+
+    @property
     def model_60k_name(self) -> str:
         """Backward compatible access to 60K model name."""
         return self.model_routing.model_60k_name
@@ -408,7 +412,7 @@ class NewsCreatorConfig:
         """Check if the given model name is a bucket model name."""
         return self.model_routing.is_bucket_model_name(model_name)
 
-    def get_keep_alive_for_model(self, model_name: str) -> Union[int, str]:
+    def get_keep_alive_for_model(self, model_name: str) -> int | str:
         """Get keep_alive value for a specific model."""
         return self.llm.get_keep_alive_for_model(
             model_name,

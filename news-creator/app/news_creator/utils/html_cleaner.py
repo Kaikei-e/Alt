@@ -2,14 +2,13 @@
 
 import logging
 import re
-from typing import Tuple
 
 import bleach
 
 logger = logging.getLogger(__name__)
 
 
-def clean_html_content(content: str, article_id: str = "") -> Tuple[str, bool]:
+def clean_html_content(content: str, article_id: str = "") -> tuple[str, bool]:
     """
     Remove HTML tags and extract text content from HTML using bleach.
 

@@ -1,14 +1,12 @@
 """Port interface for authentication service."""
 
 from abc import ABC, abstractmethod
-from typing import Tuple
-
 
 try:
     from alt_auth.client import UserContext  # type: ignore
 except ModuleNotFoundError:
     from dataclasses import dataclass
-    from typing import Dict, Any
+    from typing import Any
 
     @dataclass
     class UserContext:
@@ -16,8 +14,8 @@ except ModuleNotFoundError:
 
         user_id: str = "anonymous"
         tenant_id: str = "public"
-        roles: Tuple[str, ...] = ()
-        metadata: Dict[str, Any] | None = None
+        roles: tuple[str, ...] = ()
+        metadata: dict[str, Any] | None = None
 
 
 class AuthPort(ABC):

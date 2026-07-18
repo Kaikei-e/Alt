@@ -1,6 +1,7 @@
 """Batch processing logic for tag generation."""
 
 import gc
+from collections import OrderedDict
 from typing import TYPE_CHECKING, Any, cast
 
 import structlog
@@ -8,6 +9,9 @@ import structlog
 from tag_generator.exceptions import BatchProcessingError
 
 logger = structlog.get_logger(__name__)
+
+# Cap process-local poison-pill tracking to avoid unbounded growth.
+_EMPTY_EXTRACTION_COUNTS_MAX = 10_000
 
 if TYPE_CHECKING:
     from tag_generator.cascade import CascadeController
@@ -43,8 +47,19 @@ class BatchProcessor:
 
         # Process-local empty-extraction tracking (poison pill defence).
         # article_id -> consecutive empty-extraction count.
-        # Cleared on successful extraction; reset on process restart.
-        self._empty_extraction_counts: dict[str, int] = {}
+        # Bounded LRU: oldest entries evicted when over capacity.
+        self._empty_extraction_counts: OrderedDict[str, int] = OrderedDict()
+        self._empty_extraction_counts_max = _EMPTY_EXTRACTION_COUNTS_MAX
+
+    def _record_empty_extraction(self, article_id: str) -> int:
+        """Increment empty-extraction count for article_id; enforce LRU cap."""
+        count = self._empty_extraction_counts.get(article_id, 0) + 1
+        if article_id in self._empty_extraction_counts:
+            self._empty_extraction_counts.move_to_end(article_id)
+        self._empty_extraction_counts[article_id] = count
+        while len(self._empty_extraction_counts) > self._empty_extraction_counts_max:
+            self._empty_extraction_counts.popitem(last=False)
+        return count
 
     def _cleanup_memory(self) -> None:
         """Explicit memory cleanup to prevent accumulation."""
@@ -147,8 +162,7 @@ class BatchProcessor:
                 outcome = self.tag_extractor.extract_tags_with_metrics(title, content)
 
                 if not outcome.tags:
-                    count = self._empty_extraction_counts.get(article_id, 0) + 1
-                    self._empty_extraction_counts[article_id] = count
+                    count = self._record_empty_extraction(article_id)
                     if count == max_retries:
                         logger.warning(
                             "Article reached empty-extraction skip threshold",

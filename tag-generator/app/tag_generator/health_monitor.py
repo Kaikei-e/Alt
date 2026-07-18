@@ -39,30 +39,36 @@ class HealthMonitor:
 
     def perform_health_check(self) -> None:
         """Perform health check and log service status."""
-        logger.debug("=== HEALTH CHECK ===")
-        logger.debug(f"Total cycles completed: {self.total_cycles}")
-        logger.debug(f"Total articles processed: {self.total_articles_processed}")
-        logger.debug(f"Consecutive empty cycles: {self.consecutive_empty_cycles}")
+        avg_divisor = max(1, self.total_cycles - self.consecutive_empty_cycles)
+        avg_articles = self.total_articles_processed / avg_divisor
         logger.debug(
-            f"Average articles per cycle: {self.total_articles_processed / max(1, self.total_cycles - self.consecutive_empty_cycles):.1f}"
+            "health_check",
+            total_cycles=self.total_cycles,
+            total_articles_processed=self.total_articles_processed,
+            consecutive_empty_cycles=self.consecutive_empty_cycles,
+            average_articles_per_cycle=round(avg_articles, 1),
         )
 
         # Warning for too many empty cycles
         if self.consecutive_empty_cycles >= self.config.max_consecutive_empty_cycles:
             logger.warning(
-                f"SERVICE HEALTH WARNING: {self.consecutive_empty_cycles} consecutive empty cycles detected!"
+                "service_health_warning",
+                consecutive_empty_cycles=self.consecutive_empty_cycles,
+                hint="cursor poisoning, API issues, or no untagged articles",
             )
-            logger.warning("This may indicate cursor poisoning, API issues, or no untagged articles available")
-            logger.warning("Consider investigating service state or restarting if issues persist")
 
             # Try to get untagged article count for diagnosis via API
             try:
                 untagged_count = self.article_fetcher.count_untagged_articles(None)
-                logger.info(f"Diagnostic: {untagged_count} untagged articles found via API")
+                logger.info("health_diagnostic", untagged_count=untagged_count)
             except Exception as e:
-                logger.error(f"Failed to get untagged article count for diagnostics: {e}")
+                logger.error(
+                    "health_diagnostic_failed",
+                    error=str(e),
+                    exc_info=True,
+                )
 
-        logger.debug("Health check finished")
+        logger.debug("health_check_finished")
 
     def should_perform_health_check(self) -> bool:
         """Check if health check should be performed."""

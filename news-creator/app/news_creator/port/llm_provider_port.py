@@ -3,7 +3,7 @@
 from abc import ABC, abstractmethod
 from asyncio import Event
 from contextlib import asynccontextmanager
-from typing import AsyncGenerator, AsyncIterator, Dict, Any, Optional, Tuple, Union
+from typing import AsyncGenerator, AsyncIterator, Any
 
 from news_creator.domain.models import LLMGenerateResponse
 
@@ -16,14 +16,14 @@ class LLMProviderPort(ABC):
         self,
         prompt: str,
         *,
-        model: Optional[str] = None,
-        num_predict: Optional[int] = None,
+        model: str | None = None,
+        num_predict: int | None = None,
         stream: bool = False,
-        keep_alive: Optional[Union[int, str]] = None,
-        format: Optional[Union[str, Dict[str, Any]]] = None,
-        options: Optional[Dict[str, Any]] = None,
+        keep_alive: int | str | None = None,
+        format: str | dict[str, Any] | None = None,
+        options: dict[str, Any] | None = None,
         priority: str = "low",
-    ) -> Union[LLMGenerateResponse, AsyncIterator[LLMGenerateResponse]]:
+    ) -> LLMGenerateResponse | AsyncIterator[LLMGenerateResponse]:
         """
         Generate text using the LLM.
 
@@ -52,13 +52,13 @@ class LLMProviderPort(ABC):
         self,
         prompt: str,
         *,
-        cancel_event: Optional[Any] = None,
-        task_id: Optional[str] = None,
-        model: Optional[str] = None,
-        num_predict: Optional[int] = None,
-        keep_alive: Optional[Union[int, str]] = None,
-        format: Optional[Union[str, Dict[str, Any]]] = None,
-        options: Optional[Dict[str, Any]] = None,
+        cancel_event: Any | None = None,
+        task_id: str | None = None,
+        model: str | None = None,
+        num_predict: int | None = None,
+        keep_alive: int | str | None = None,
+        format: str | dict[str, Any] | None = None,
+        options: dict[str, Any] | None = None,
     ) -> LLMGenerateResponse:
         """
         Generate text without acquiring semaphore (for use inside hold_slot).
@@ -81,7 +81,7 @@ class LLMProviderPort(ABC):
     @asynccontextmanager
     async def hold_slot(
         self, is_high_priority: bool = False
-    ) -> AsyncGenerator[Tuple[float, Optional[Event], Optional[str]], None]:
+    ) -> AsyncGenerator[tuple[float, Event | None, str | None], None]:
         """Hold a semaphore slot for the duration of the context.
 
         Yields:
@@ -90,11 +90,11 @@ class LLMProviderPort(ABC):
         # Default implementation for backward compat - subclasses override
         yield (0.0, None, None)  # pragma: no cover
 
-    async def list_models(self) -> list[Dict[str, Any]]:
+    async def list_models(self) -> list[dict[str, Any]]:
         """List available models. Optional — not all providers support this."""
         return []  # pragma: no cover
 
-    def queue_status(self) -> Dict[str, Any]:
+    def queue_status(self) -> dict[str, Any]:
         """Queue depth/availability status for monitoring.
 
         Optional — not all providers expose semaphore internals. Default
@@ -111,10 +111,10 @@ class LLMProviderPort(ABC):
 
     async def chat_generate(
         self,
-        payload: Dict[str, Any],
+        payload: dict[str, Any],
         *,
         priority: str = "high",
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Non-streaming /api/chat call through the priority semaphore.
 
         Used for structured output with thinking mode (plan-query, morning

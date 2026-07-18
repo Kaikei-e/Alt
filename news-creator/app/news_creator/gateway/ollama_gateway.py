@@ -5,7 +5,7 @@ import logging
 import uuid
 import weakref
 from contextlib import asynccontextmanager
-from typing import Dict, Any, Optional, Union, AsyncIterator
+from typing import Any, AsyncIterator
 
 from news_creator.config.config import NewsCreatorConfig
 from news_creator.domain.models import LLMGenerateResponse
@@ -68,14 +68,14 @@ class OllamaGateway(LLMProviderPort):
         self,
         prompt: str,
         *,
-        model: Optional[str] = None,
-        num_predict: Optional[int] = None,
+        model: str | None = None,
+        num_predict: int | None = None,
         stream: bool = False,
-        keep_alive: Optional[Union[int, str]] = None,
-        format: Optional[Union[str, Dict[str, Any]]] = None,
-        options: Optional[Dict[str, Any]] = None,
+        keep_alive: int | str | None = None,
+        format: str | dict[str, Any] | None = None,
+        options: dict[str, Any] | None = None,
         priority: str = "low",
-    ) -> Union[LLMGenerateResponse, AsyncIterator[LLMGenerateResponse]]:
+    ) -> LLMGenerateResponse | AsyncIterator[LLMGenerateResponse]:
         """
         Generate text using Ollama.
 
@@ -200,7 +200,7 @@ class OllamaGateway(LLMProviderPort):
         # Build payload for Ollama API
         # raw=True: prompts already contain <|turn>/<turn|> (Gemma 4) chat template.
         # This bypasses Ollama's built-in RENDERER/PARSER which enables Gemma4 thinking by default.
-        payload: Dict[str, Any] = {
+        payload: dict[str, Any] = {
             "model": model,
             "prompt": prompt.strip(),
             "stream": stream,
@@ -699,11 +699,11 @@ class OllamaGateway(LLMProviderPort):
         *,
         cancel_event=None,
         task_id=None,
-        model: Optional[str] = None,
-        num_predict: Optional[int] = None,
-        keep_alive: Optional[Union[int, str]] = None,
-        format: Optional[Union[str, Dict[str, Any]]] = None,
-        options: Optional[Dict[str, Any]] = None,
+        model: str | None = None,
+        num_predict: int | None = None,
+        keep_alive: int | str | None = None,
+        format: str | dict[str, Any] | None = None,
+        options: dict[str, Any] | None = None,
     ) -> LLMGenerateResponse:
         """Generate text without acquiring semaphore (for use inside hold_slot).
 
@@ -755,7 +755,7 @@ class OllamaGateway(LLMProviderPort):
         else:
             final_keep_alive = self.config.get_keep_alive_for_model(model)
 
-        payload: Dict[str, Any] = {
+        payload: dict[str, Any] = {
             "model": model,
             "prompt": prompt.strip(),
             "stream": False,
@@ -800,10 +800,10 @@ class OllamaGateway(LLMProviderPort):
 
     async def _generate_with_cancellation(
         self,
-        payload: Dict[str, Any],
-        cancel_event: Optional[asyncio.Event],
-        task_id: Optional[str],
-    ) -> Dict[str, Any]:
+        payload: dict[str, Any],
+        cancel_event: asyncio.Event | None,
+        task_id: str | None,
+    ) -> dict[str, Any]:
         """
         Generate with cancellation support for preemption.
 
@@ -867,11 +867,11 @@ class OllamaGateway(LLMProviderPort):
             pass
         return generate_task.result()
 
-    def queue_status(self) -> Dict[str, Any]:
+    def queue_status(self) -> dict[str, Any]:
         """Current semaphore queue depth/availability for monitoring."""
         return self._semaphore.queue_status()
 
-    async def list_models(self) -> list[Dict[str, Any]]:
+    async def list_models(self) -> list[dict[str, Any]]:
         """
         List available Ollama models.
 
@@ -894,8 +894,8 @@ class OllamaGateway(LLMProviderPort):
 
     async def chat_stream(
         self,
-        payload: Dict[str, Any],
-    ) -> AsyncIterator[Dict[str, Any]]:
+        payload: dict[str, Any],
+    ) -> AsyncIterator[dict[str, Any]]:
         """Stream Ollama /api/chat through semaphore with HIGH priority.
 
         This is a transparent proxy for Ask Augur chat requests. It acquires
@@ -955,10 +955,10 @@ class OllamaGateway(LLMProviderPort):
 
     async def chat_generate(
         self,
-        payload: Dict[str, Any],
+        payload: dict[str, Any],
         *,
         priority: str = "high",
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Non-streaming Ollama /api/chat through the priority semaphore.
 
         Used by morning letter, plan-query and other non-streaming chat

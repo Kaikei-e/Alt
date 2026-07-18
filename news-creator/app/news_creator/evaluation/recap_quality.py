@@ -2,10 +2,8 @@
 
 import re
 from collections import Counter
-from typing import Dict, List, Set, Tuple
 
 from news_creator.domain.models import RecapSummary
-
 
 # Axes where lower is better (inverted for "improved" check)
 LOWER_IS_BETTER_AXES = frozenset({"redundancy"})
@@ -24,7 +22,7 @@ _NUMERIC_RE = re.compile(
 )
 
 # Heuristic patterns for 4-element structure detection
-_STRUCTURE_PATTERNS: List[Tuple[str, re.Pattern]] = [
+_STRUCTURE_PATTERNS: list[tuple[str, re.Pattern]] = [
     # who/what: proper nouns (katakana sequences, ASCII names, 社/氏)
     ("who_what", re.compile(r"[ァ-ヶー]{3,}|[A-Z][a-zA-Z]+|.{1,10}[社氏]")),
     # action: verb-like endings
@@ -65,13 +63,13 @@ class RecapQualityEvaluator:
         Returns 0.0 (no grounding) to 1.0 (perfect alignment).
         """
         # Extract all [n] markers from bullets
-        cited_ids: Set[int] = set()
+        cited_ids: set[int] = set()
         for bullet in summary.bullets:
             for m in _REF_MARKER_RE.finditer(bullet):
                 cited_ids.add(int(m.group(1)))
 
         refs = summary.references or []
-        ref_ids: Set[int] = {r.id for r in refs}
+        ref_ids: set[int] = {r.id for r in refs}
 
         # No markers and no refs → grounding absent
         if not cited_ids and not ref_ids:
@@ -105,7 +103,7 @@ class RecapQualityEvaluator:
             return 0.0
 
         # Extract bigrams for each bullet
-        bullet_bigrams: List[Counter] = []
+        bullet_bigrams: list[Counter] = []
         for bullet in bullets:
             # Tokenize by character bigrams (effective for Japanese)
             chars = re.sub(r"\s+", "", bullet)  # remove whitespace
@@ -135,7 +133,7 @@ class RecapQualityEvaluator:
         if not summary.bullets:
             return 0.0
 
-        scores: List[float] = []
+        scores: list[float] = []
         for bullet in summary.bullets:
             bullet_len = len(bullet)
             # Length score: 0.0 outside range, 1.0 in sweet spot
@@ -168,7 +166,7 @@ class RecapQualityEvaluator:
         if not summary.bullets:
             return 0.0
 
-        scores: List[float] = []
+        scores: list[float] = []
         for bullet in summary.bullets:
             elements_found = 0
             for _name, pattern in _STRUCTURE_PATTERNS:
@@ -187,7 +185,7 @@ class RecapQualityEvaluator:
         if not summary.bullets:
             return 0.0
 
-        scores: List[float] = []
+        scores: list[float] = []
         for bullet in summary.bullets:
             entity_count = 0
 
@@ -205,7 +203,7 @@ class RecapQualityEvaluator:
 
         return sum(scores) / len(scores)
 
-    def evaluate_all(self, summary: RecapSummary) -> Dict[str, float]:
+    def evaluate_all(self, summary: RecapSummary) -> dict[str, float]:
         """Run all evaluators and return per-axis scores."""
         return {
             "source_grounding": self.evaluate_source_grounding(summary),

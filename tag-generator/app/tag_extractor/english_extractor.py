@@ -105,7 +105,11 @@ def extract_keywords_english(
         return result, tag_confidences
 
     except Exception as e:
-        logger.error("KeyBERT extraction failed for English", error=e)
+        logger.error(
+            "KeyBERT extraction failed for English",
+            error=str(e),
+            exc_info=True,
+        )
         return [], {}
 
 

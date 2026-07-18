@@ -2,7 +2,7 @@
 
 import json
 import logging
-from typing import Dict, Any, Optional, AsyncIterator
+from typing import Any, AsyncIterator
 import aiohttp
 
 from news_creator.config.config import NewsCreatorConfig
@@ -16,7 +16,7 @@ class OllamaStreamDriver:
     def __init__(self, config: NewsCreatorConfig):
         """Initialize Ollama stream driver with configuration."""
         self.config = config
-        self.session: Optional[aiohttp.ClientSession] = None
+        self.session: aiohttp.ClientSession | None = None
 
     async def initialize(self) -> None:
         """Initialize HTTP client session for streaming requests."""
@@ -40,9 +40,7 @@ class OllamaStreamDriver:
             await self.session.close()
             logger.info("Ollama stream driver cleaned up")
 
-    def _merge_options(
-        self, caller_options: Optional[Dict[str, Any]]
-    ) -> Dict[str, Any]:
+    def _merge_options(self, caller_options: dict[str, Any] | None) -> dict[str, Any]:
         """Merge config base options with caller options.
 
         Config base options (num_batch, num_keep, stop, etc.) are used as
@@ -56,8 +54,8 @@ class OllamaStreamDriver:
         return base
 
     async def chat_stream(
-        self, payload: Dict[str, Any]
-    ) -> AsyncIterator[Dict[str, Any]]:
+        self, payload: dict[str, Any]
+    ) -> AsyncIterator[dict[str, Any]]:
         """Proxy chat requests through Ollama /api/chat with think=false.
 
         Forwards messages directly to Ollama's /api/chat endpoint, letting
@@ -80,7 +78,7 @@ class OllamaStreamDriver:
             await self.initialize()
 
         model = payload.get("model", "unknown")
-        chat_payload: Dict[str, Any] = {
+        chat_payload: dict[str, Any] = {
             "model": model,
             "messages": payload["messages"],
             "stream": True,
@@ -103,7 +101,8 @@ class OllamaStreamDriver:
             },
         )
 
-        assert self.session is not None
+        if self.session is None:
+            raise RuntimeError("HTTP session is not initialized")
         async with self.session.post(url, json=chat_payload) as response:
             if response.status != 200:
                 text_body = await response.text()
@@ -123,7 +122,7 @@ class OllamaStreamDriver:
                         "Failed to decode chat stream line", extra={"line": line[:200]}
                     )
 
-    async def chat_generate(self, payload: Dict[str, Any]) -> Dict[str, Any]:
+    async def chat_generate(self, payload: dict[str, Any]) -> dict[str, Any]:
         """Non-streaming chat via Ollama /api/chat with think=false.
 
         Forwards messages directly to Ollama's /api/chat endpoint.
@@ -147,7 +146,7 @@ class OllamaStreamDriver:
 
         model = payload.get("model", "unknown")
 
-        chat_payload: Dict[str, Any] = {
+        chat_payload: dict[str, Any] = {
             "model": model,
             "messages": payload["messages"],
             "stream": False,
@@ -174,7 +173,8 @@ class OllamaStreamDriver:
             },
         )
 
-        assert self.session is not None
+        if self.session is None:
+            raise RuntimeError("HTTP session is not initialized")
         async with self.session.post(url, json=chat_payload) as response:
             if response.status != 200:
                 text_body = await response.text()
@@ -185,8 +185,8 @@ class OllamaStreamDriver:
             return await response.json()
 
     async def generate_stream(
-        self, payload: Dict[str, Any]
-    ) -> AsyncIterator[Dict[str, Any]]:
+        self, payload: dict[str, Any]
+    ) -> AsyncIterator[dict[str, Any]]:
         """
         Call Ollama generate API with streaming support.
 
@@ -223,9 +223,8 @@ class OllamaStreamDriver:
             f"estimated_tokens={estimated_tokens}, model={model}, payload_size={payload_size_estimate} bytes"
         )
 
-        assert self.session is not None, (
-            "Session not initialized. Call initialize() first."
-        )
+        if not (self.session is not None):
+            raise AssertionError("Session not initialized. Call initialize() first.")
         async with self.session.post(url, json=payload) as response:
             if response.status != 200:
                 text_body = await response.text()

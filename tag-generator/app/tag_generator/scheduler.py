@@ -25,7 +25,8 @@ class ProcessingScheduler:
           アクティブ間隔 ``active_processing_interval`` を使う。
         - 何も処理されておらず、未処理記事も無い場合は待機間隔 ``processing_interval`` を使う。
         """
-        assert self.service.config is not None
+        if self.service.config is None:
+            raise RuntimeError("Service config is not initialized")
 
         # まだ処理すべき記事がある、または今回のサイクルで1件以上処理していれば
         # アクティブ運転用の短いインターバルで次のサイクルを実行
@@ -38,7 +39,8 @@ class ProcessingScheduler:
     def run_cycle(self) -> int:
         """Run a single processing cycle and return the sleep interval."""
         service = self.service
-        assert service.config is not None
+        if service.config is None:
+            raise RuntimeError("Service config is not initialized")
 
         result = service._run_processing_cycle_with_monitoring()
 
@@ -56,18 +58,23 @@ class ProcessingScheduler:
 
             sleep_interval = self.calculate_next_sleep(result)
             logger.info(
-                f"Cycle {service.health_monitor.total_cycles} completed successfully. "
-                f"Processed: {articles_processed}/{total_in_batch} articles. "
-                f"Empty cycles: {service.health_monitor.consecutive_empty_cycles}. "
-                f"Sleeping for {sleep_interval} seconds..."
+                "cycle_completed",
+                cycle=service.health_monitor.total_cycles,
+                processed=articles_processed,
+                total_in_batch=total_in_batch,
+                empty_cycles=service.health_monitor.consecutive_empty_cycles,
+                sleep_seconds=sleep_interval,
             )
             return sleep_interval
 
         service.health_monitor.record_cycle(0)
         logger.error(
-            f"Cycle {service.health_monitor.total_cycles} failed: {result.get('error', 'Unknown error')}. "
-            f"Failed: {result.get('failed', 0)}/{result.get('total_processed', 0)} articles. "
-            f"Retrying in {service.config.error_retry_interval} seconds..."
+            "cycle_failed",
+            cycle=service.health_monitor.total_cycles,
+            error=result.get("error", "Unknown error"),
+            failed=result.get("failed", 0),
+            total_processed=result.get("total_processed", 0),
+            retry_seconds=service.config.error_retry_interval,
         )
         return service.config.error_retry_interval
 
@@ -78,9 +85,9 @@ class ProcessingScheduler:
                 sleep_interval = self.run_cycle()
                 self._sleep(sleep_interval)
         except KeyboardInterrupt:
-            logger.info("Service stopped by user")
+            logger.info("service_stopped_by_user")
         except Exception as e:
-            logger.error(f"Service crashed: {e}")
+            logger.error("service_crashed", error=str(e), exc_info=True)
             raise
         finally:
             self.service._cleanup()

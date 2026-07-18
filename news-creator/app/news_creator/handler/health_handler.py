@@ -2,14 +2,14 @@
 
 import logging
 from fastapi import APIRouter
-from typing import Dict, Any, Optional
+from typing import Any
 
 from news_creator.port.llm_provider_port import LLMProviderPort
 
 logger = logging.getLogger(__name__)
 
 
-def create_health_router(ollama_gateway: Optional[LLMProviderPort] = None) -> APIRouter:
+def create_health_router(ollama_gateway: LLMProviderPort | None = None) -> APIRouter:
     """
     Create health check router with optional Ollama gateway dependency.
 
@@ -23,7 +23,7 @@ def create_health_router(ollama_gateway: Optional[LLMProviderPort] = None) -> AP
     router = APIRouter()
 
     @router.get("/queue/status")
-    async def queue_status() -> Dict[str, Any]:
+    async def queue_status() -> dict[str, Any]:
         """
         Queue status endpoint for backpressure monitoring.
 
@@ -42,14 +42,14 @@ def create_health_router(ollama_gateway: Optional[LLMProviderPort] = None) -> AP
         }
 
     @router.get("/health")
-    async def health_check() -> Dict[str, Any]:
+    async def health_check() -> dict[str, Any]:
         """
         Health check endpoint that includes Ollama model status.
 
         Returns:
             Dict with status, service name, models list, and optional error
         """
-        response: Dict[str, Any] = {
+        response: dict[str, Any] = {
             "status": "healthy",
             "service": "news-creator",
             "models": [],

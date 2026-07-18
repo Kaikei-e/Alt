@@ -42,7 +42,6 @@ class ConnectArticleFetcher:
         last_created_at: str,
         last_id: str,
         custom_batch_size: int | None = None,
-        untagged_only: bool = True,
     ) -> list[dict[str, Any]]:
         """Fetch articles using ListUntaggedArticles RPC with keyset pagination."""
         limit = custom_batch_size or 75
@@ -95,7 +94,7 @@ class ConnectArticleFetcher:
         not articles older than the cursor. With backward keyset pagination,
         the first page (no cursor) returns the newest results.
         """
-        return self.fetch_articles(conn, self._FIRST_PAGE_SENTINEL, "", custom_batch_size, untagged_only=False)
+        return self.fetch_articles(conn, self._FIRST_PAGE_SENTINEL, "", custom_batch_size)
 
     def count_untagged_articles(self, conn: Any) -> int:
         """Count untagged articles via ListUntaggedArticles RPC."""

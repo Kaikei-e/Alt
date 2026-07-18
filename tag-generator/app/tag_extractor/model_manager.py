@@ -4,8 +4,10 @@ Implements singleton pattern for ML models to improve performance.
 """
 
 import threading
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+import nltk
 import structlog
 
 from tag_extractor.config import ModelConfig
@@ -78,9 +80,8 @@ class ModelManager:
                 self._load_models(config)
                 self._config = config
 
-            assert self._embedder is not None
-            assert self._keybert is not None
-            assert self._ja_tagger is not None
+            if self._embedder is None or self._keybert is None or self._ja_tagger is None:
+                raise RuntimeError("Models failed to load")
             return self._embedder, self._keybert, self._ja_tagger
 
     def get_stopwords(self) -> tuple[set[str], set[str]]:
@@ -94,8 +95,8 @@ class ModelManager:
             if self._ja_stopwords is None or self._en_stopwords is None:
                 self._load_stopwords()
 
-            assert self._ja_stopwords is not None
-            assert self._en_stopwords is not None
+            if self._ja_stopwords is None or self._en_stopwords is None:
+                raise RuntimeError("Stopwords failed to load")
             return self._ja_stopwords, self._en_stopwords
 
     def _load_models(self, config: ModelConfig) -> None:
@@ -239,29 +240,25 @@ class ModelManager:
 
     def _load_stopwords(self) -> None:
         """Load stopwords files (called within lock)."""
-        import os
-
-        import nltk
-
-        current_dir = os.path.dirname(os.path.dirname(__file__))
-        ja_stopwords_path = os.path.join(current_dir, "tag_extractor", "stopwords_ja.txt")
-        en_stopwords_path = os.path.join(current_dir, "tag_extractor", "stopwords_en.txt")
+        current_dir = Path(__file__).resolve().parent.parent
+        ja_stopwords_path = current_dir / "tag_extractor" / "stopwords_ja.txt"
+        en_stopwords_path = current_dir / "tag_extractor" / "stopwords_en.txt"
 
         # Load Japanese stopwords
         try:
-            with open(ja_stopwords_path, encoding="utf-8") as f:
+            with ja_stopwords_path.open(encoding="utf-8") as f:
                 self._ja_stopwords = {line.strip() for line in f if line.strip()}
             logger.info("Loaded Japanese stopwords", count=len(self._ja_stopwords))
         except FileNotFoundError:
-            logger.warning("Japanese stopwords file not found", path=ja_stopwords_path)
+            logger.warning("Japanese stopwords file not found", path=str(ja_stopwords_path))
             self._ja_stopwords = set()
 
         # Load English stopwords
         try:
-            with open(en_stopwords_path, encoding="utf-8") as f:
+            with en_stopwords_path.open(encoding="utf-8") as f:
                 self._en_stopwords = {line.strip().lower() for line in f if line.strip()}
         except FileNotFoundError:
-            logger.warning("English stopwords file not found", path=en_stopwords_path)
+            logger.warning("English stopwords file not found", path=str(en_stopwords_path))
             self._en_stopwords = set()
 
         # Add NLTK English stopwords
@@ -271,7 +268,7 @@ class ModelManager:
             self._en_stopwords.update(set(nltk.corpus.stopwords.words("english")))
             logger.info("Loaded English stopwords", count=len(self._en_stopwords))
         except Exception as e:
-            logger.warning("Could not load NLTK English stopwords", error=e)
+            logger.warning("Could not load NLTK English stopwords", error=str(e), exc_info=True)
 
     def _load_ginza(self, model_name: str) -> None:
         """Load GiNZA spaCy model for Japanese NLP."""

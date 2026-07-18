@@ -11,7 +11,7 @@ using the local OllamaGateway directly.
 import contextvars
 import logging
 from contextlib import asynccontextmanager
-from typing import Any, AsyncIterator, Dict, List, Optional, Union
+from typing import Any, AsyncIterator
 
 from news_creator.domain.models import LLMGenerateResponse
 from news_creator.gateway import dispatch_metrics
@@ -22,7 +22,7 @@ from news_creator.port.llm_provider_port import LLMProviderPort
 logger = logging.getLogger(__name__)
 
 # Per-coroutine tracking of the remote reservation selected during hold_slot()
-_dispatch_state_var: contextvars.ContextVar[Optional[Dict[str, Any]]] = (
+_dispatch_state_var: contextvars.ContextVar[dict[str, Any] | None] = (
     contextvars.ContextVar("_dispatch_state_var", default=None)
 )
 
@@ -36,8 +36,8 @@ class DistributingGateway(LLMProviderPort):
         health_checker: RemoteHealthChecker,
         remote_driver: RemoteOllamaDriver,
         enabled: bool = True,
-        remote_model: Optional[str] = None,
-        model_overrides: Optional[Dict[str, str]] = None,
+        remote_model: str | None = None,
+        model_overrides: dict[str, str] | None = None,
     ):
         self._local = local_gateway
         self._health_checker = health_checker
@@ -71,8 +71,8 @@ class DistributingGateway(LLMProviderPort):
     # ------------------------------------------------------------------
 
     async def chat_generate(
-        self, payload: Dict[str, Any], *, priority: str = "high"
-    ) -> Dict[str, Any]:
+        self, payload: dict[str, Any], *, priority: str = "high"
+    ) -> dict[str, Any]:
         return await self._local.chat_generate(payload, priority=priority)
 
     # ------------------------------------------------------------------
@@ -83,14 +83,14 @@ class DistributingGateway(LLMProviderPort):
         self,
         prompt: str,
         *,
-        model: Optional[str] = None,
-        num_predict: Optional[int] = None,
+        model: str | None = None,
+        num_predict: int | None = None,
         stream: bool = False,
-        keep_alive: Optional[Union[int, str]] = None,
-        format: Optional[Union[str, Dict[str, Any]]] = None,
-        options: Optional[Dict[str, Any]] = None,
+        keep_alive: int | str | None = None,
+        format: str | dict[str, Any] | None = None,
+        options: dict[str, Any] | None = None,
         priority: str = "low",
-    ) -> Union[LLMGenerateResponse, AsyncIterator[LLMGenerateResponse]]:
+    ) -> LLMGenerateResponse | AsyncIterator[LLMGenerateResponse]:
         return await self._local.generate(
             prompt,
             model=model,
@@ -159,13 +159,13 @@ class DistributingGateway(LLMProviderPort):
         self,
         prompt: str,
         *,
-        cancel_event: Optional[Any] = None,
-        task_id: Optional[str] = None,
-        model: Optional[str] = None,
-        num_predict: Optional[int] = None,
-        keep_alive: Optional[Union[int, str]] = None,
-        format: Optional[Union[str, Dict[str, Any]]] = None,
-        options: Optional[Dict[str, Any]] = None,
+        cancel_event: Any | None = None,
+        task_id: str | None = None,
+        model: str | None = None,
+        num_predict: int | None = None,
+        keep_alive: int | str | None = None,
+        format: str | dict[str, Any] | None = None,
+        options: dict[str, Any] | None = None,
     ) -> LLMGenerateResponse:
         dispatch_state = _dispatch_state_var.get(None)
         remote_url = (
@@ -174,7 +174,7 @@ class DistributingGateway(LLMProviderPort):
 
         if remote_url is not None:
             tried: set[str] = set()
-            candidate_url: Optional[str] = remote_url
+            candidate_url: str | None = remote_url
 
             while candidate_url is not None:
                 payload = self._build_payload(
@@ -274,14 +274,14 @@ class DistributingGateway(LLMProviderPort):
     # Status / observability
     # ------------------------------------------------------------------
 
-    def queue_status(self) -> Dict[str, Any]:
+    def queue_status(self) -> dict[str, Any]:
         """Return queue status including remote health state."""
         local_status = self._local.queue_status()
         local_status["remotes"] = self._health_checker.status()
         local_status["distributed_be_enabled"] = self._enabled
         return local_status
 
-    async def list_models(self) -> List[Dict[str, Any]]:
+    async def list_models(self) -> list[dict[str, Any]]:
         """Delegate to local gateway."""
         return await self._local.list_models()
 
@@ -293,21 +293,21 @@ class DistributingGateway(LLMProviderPort):
         self,
         prompt: str,
         *,
-        target_url: Optional[str] = None,
-        model: Optional[str] = None,
-        num_predict: Optional[int] = None,
-        keep_alive: Optional[Union[int, str]] = None,
-        format: Optional[Union[str, Dict[str, Any]]] = None,
-        options: Optional[Dict[str, Any]] = None,
-    ) -> Dict[str, Any]:
+        target_url: str | None = None,
+        model: str | None = None,
+        num_predict: int | None = None,
+        keep_alive: int | str | None = None,
+        format: str | dict[str, Any] | None = None,
+        options: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
         """Build an Ollama-compatible payload for the remote driver."""
-        # Per-remote model override takes priority
+        # Per-remote model override takes priority over caller model
         override_model = self._model_overrides.get(target_url) if target_url else None
         # Reuse local gateway's config for model name and options
         config = getattr(self._local, "config", None)
         if config is not None:
             effective_model = (
-                model or override_model or self._remote_model or config.model_name
+                override_model or model or self._remote_model or config.model_name
             )
             llm_options = config.get_llm_options()
             if options:
@@ -322,14 +322,14 @@ class DistributingGateway(LLMProviderPort):
             )
         else:
             effective_model = (
-                model or override_model or self._remote_model or "gemma4-e4b-q4km"
+                override_model or model or self._remote_model or "gemma4-e4b-q4km"
             )
-            llm_options = options or {}
+            llm_options = dict(options or {})
             if num_predict is not None:
                 llm_options["num_predict"] = num_predict
             final_keep_alive = keep_alive or -1
 
-        payload: Dict[str, Any] = {
+        payload: dict[str, Any] = {
             "model": effective_model,
             "prompt": prompt.strip(),
             "stream": False,

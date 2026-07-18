@@ -8,11 +8,11 @@ by batch summarization jobs.
 
 import json
 import logging
-from typing import Any, Dict, List, Optional, Union
+from typing import Any
 
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import JSONResponse, StreamingResponse
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from news_creator.gateway.hybrid_priority_semaphore import QueueFullError
 from news_creator.gateway.ollama_gateway import OllamaGateway
@@ -26,22 +26,26 @@ logger = logging.getLogger(__name__)
 
 
 class ChatMessage(BaseModel):
+    model_config = ConfigDict(strict=True, frozen=True)
+
     role: str
     content: str
 
 
 class ChatRequest(BaseModel):
-    model: Optional[str] = None
-    messages: List[ChatMessage] = Field(min_length=1)
+    model_config = ConfigDict(strict=True, frozen=True)
+
+    model: str | None = None
+    messages: list[ChatMessage] = Field(min_length=1)
     stream: bool = True
     # Ollama accepts a duration string ("5m"), seconds as int, or False (unload now).
-    keep_alive: Optional[Union[int, str, bool]] = None
+    keep_alive: int | str | bool | None = None
     # Ollama's `format` is either the literal "json" or a JSON Schema object.
-    format: Optional[Union[str, Dict[str, Any]]] = None
+    format: str | dict[str, Any] | None = None
     # Thinking mode: bool on/off, or a level string ("low"/"medium"/"high") on
     # models that support graded thinking effort.
-    think: Optional[Union[bool, str]] = None
-    options: Optional[Dict[str, Any]] = None
+    think: bool | str | None = None
+    options: dict[str, Any] | None = None
 
 
 def create_chat_router(gateway: OllamaGateway) -> APIRouter:
@@ -70,7 +74,7 @@ def create_chat_router(gateway: OllamaGateway) -> APIRouter:
         try:
             if not request.stream:
                 # Non-streaming chat (used by morning letter)
-                payload: Dict[str, Any] = {
+                payload: dict[str, Any] = {
                     "messages": [
                         {"role": m.role, "content": m.content} for m in request.messages
                     ],
@@ -90,7 +94,7 @@ def create_chat_router(gateway: OllamaGateway) -> APIRouter:
                 return JSONResponse(content=result)
 
             # Build payload preserving all Ollama fields
-            payload: Dict[str, Any] = {
+            payload: dict[str, Any] = {
                 "messages": [
                     {"role": m.role, "content": m.content} for m in request.messages
                 ],

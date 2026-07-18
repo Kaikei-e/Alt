@@ -118,7 +118,7 @@ class PrioritySemaphore:
                 return 0.0
 
             # No slot available, create future and add to appropriate queue
-            future = asyncio.get_event_loop().create_future()
+            future = asyncio.get_running_loop().create_future()
             if high_priority:
                 self._high_priority_waiters.put_nowait(future)
                 logger.debug(
@@ -155,7 +155,7 @@ class PrioritySemaphore:
             try:
                 future = self._high_priority_waiters.get_nowait()
                 if not future.done() and not future.cancelled():
-                    loop = asyncio.get_event_loop()
+                    loop = asyncio.get_running_loop()
                     if loop.is_running():
                         loop.call_soon_threadsafe(future.set_result, True)
                     else:
@@ -170,7 +170,7 @@ class PrioritySemaphore:
             try:
                 future = self._low_priority_waiters.get_nowait()
                 if not future.done() and not future.cancelled():
-                    loop = asyncio.get_event_loop()
+                    loop = asyncio.get_running_loop()
                     if loop.is_running():
                         loop.call_soon_threadsafe(future.set_result, True)
                     else:

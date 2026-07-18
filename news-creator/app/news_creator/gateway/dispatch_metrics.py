@@ -9,10 +9,9 @@ from __future__ import annotations
 
 import time
 from contextlib import asynccontextmanager
-from typing import AsyncIterator, Optional
+from typing import AsyncIterator
 
 from opentelemetry import metrics
-
 
 _DISPATCH_COUNTER_NAME = "newscreator.distributed_be.dispatches"
 _INFLIGHT_NAME = "newscreator.distributed_be.inflight"
@@ -50,7 +49,7 @@ class _Metrics:
         )
 
 
-_metrics: Optional[_Metrics] = None
+_metrics: _Metrics | None = None
 
 
 def _get() -> _Metrics:
@@ -61,7 +60,7 @@ def _get() -> _Metrics:
     return _metrics
 
 
-def reset_metrics_for_tests(meter: Optional[metrics.Meter]) -> None:
+def reset_metrics_for_tests(meter: metrics.Meter | None) -> None:
     """Re-bind instruments to a test meter (or clear to defer re-init)."""
     global _metrics
     _metrics = _Metrics(meter) if meter is not None else None
@@ -73,13 +72,13 @@ class DispatchObservation:
     __slots__ = ("_outcome",)
 
     def __init__(self) -> None:
-        self._outcome: Optional[str] = None
+        self._outcome: str | None = None
 
     def set_outcome(self, outcome: str) -> None:
         self._outcome = outcome
 
     @property
-    def outcome(self) -> Optional[str]:
+    def outcome(self) -> str | None:
         return self._outcome
 
 

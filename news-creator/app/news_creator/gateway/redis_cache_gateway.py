@@ -1,7 +1,7 @@
 """Redis Cache Gateway - implements CachePort."""
 
 import logging
-from typing import Any, Optional
+from typing import Any
 
 try:
     import redis.asyncio as redis
@@ -24,7 +24,7 @@ class RedisCacheGateway(CachePort):
             config: NewsCreator configuration containing Redis settings
         """
         self.config = config
-        self._client: Optional[Any] = None
+        self._client: Any | None = None
         self._enabled = config.cache_enabled
 
         if not self._enabled:
@@ -40,7 +40,8 @@ class RedisCacheGateway(CachePort):
             return
 
         try:
-            assert redis is not None, "redis package not installed"
+            if redis is None:
+                raise RuntimeError("redis package not installed")
             self._client = redis.Redis.from_url(
                 self.config.cache_redis_url,
                 decode_responses=True,
@@ -65,7 +66,7 @@ class RedisCacheGateway(CachePort):
             await self._client.close()
             logger.info("Redis cache gateway cleaned up")
 
-    async def get(self, key: str) -> Optional[str]:
+    async def get(self, key: str) -> str | None:
         """
         Retrieve a cached value by key.
 
@@ -92,9 +93,7 @@ class RedisCacheGateway(CachePort):
             )
             return None
 
-    async def set(
-        self, key: str, value: str, ttl_seconds: Optional[int] = None
-    ) -> bool:
+    async def set(self, key: str, value: str, ttl_seconds: int | None = None) -> bool:
         """
         Store a value in the cache.
 
@@ -174,13 +173,11 @@ class NullCacheGateway(CachePort):
         """No-op cleanup."""
         pass
 
-    async def get(self, key: str) -> Optional[str]:
+    async def get(self, key: str) -> str | None:
         """Always returns None (cache disabled)."""
         return None
 
-    async def set(
-        self, key: str, value: str, ttl_seconds: Optional[int] = None
-    ) -> bool:
+    async def set(self, key: str, value: str, ttl_seconds: int | None = None) -> bool:
         """Always returns False (cache disabled)."""
         return False
 

@@ -10,7 +10,6 @@ from __future__ import annotations
 import os
 import logging
 from dataclasses import dataclass, field
-from typing import FrozenSet
 
 logger = logging.getLogger(__name__)
 
@@ -23,6 +22,7 @@ class ModelRoutingConfig:
     base_name: str = "gemma4-e4b-q4km"
     model_8k_name: str = "gemma4-e4b-q4km"
     model_60k_name: str = "gemma4-e4b-60k"
+    rag_query_model: str = "gemma4-e4b-12k"
     model_60k_enabled: bool = False
     token_safety_margin_percent: int = 10
     token_safety_margin_fixed: int = 512
@@ -30,7 +30,7 @@ class ModelRoutingConfig:
     warmup_enabled: bool = True
     warmup_keep_alive_minutes: int = 30
     # Derived field for quick lookup
-    _bucket_model_names: FrozenSet[str] = field(default_factory=frozenset, repr=False)
+    _bucket_model_names: frozenset[str] = field(default_factory=frozenset, repr=False)
 
     def __post_init__(self):
         """Initialize derived fields after dataclass construction."""
@@ -57,6 +57,7 @@ class ModelRoutingConfig:
             base_name=os.getenv("MODEL_BASE_NAME", "gemma4-e4b-q4km"),
             model_8k_name=os.getenv("MODEL_8K_NAME", "gemma4-e4b-q4km"),
             model_60k_name=os.getenv("MODEL_60K_NAME", "gemma4-e4b-60k"),
+            rag_query_model=os.getenv("MODEL_RAG_QUERY_NAME", "gemma4-e4b-12k"),
             model_60k_enabled=os.getenv("MODEL_60K_ENABLED", "false").lower() == "true",
             token_safety_margin_percent=_get_int("TOKEN_SAFETY_MARGIN_PERCENT", 10),
             token_safety_margin_fixed=_get_int("TOKEN_SAFETY_MARGIN_FIXED", 512),

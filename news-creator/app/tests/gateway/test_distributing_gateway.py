@@ -423,19 +423,36 @@ async def test_reserved_remote_is_released_if_context_exits_without_generate():
 
 
 @pytest.mark.asyncio
-async def test_model_override_uses_per_remote_model():
-    """Per-remote model override is applied in the payload."""
-    gw, local, hc, driver = _make_gateway(
+async def test_model_override_takes_priority_over_caller_model():
+    """Per-remote override wins over the caller-supplied model name."""
+    gw, _local, _hc, driver = _make_gateway(
         enabled=True,
         healthy_url="http://remote-rag:11434",
         model_overrides={"http://remote-rag:11434": "gemma4-e4b-rag"},
     )
 
-    async with gw.hold_slot(is_high_priority=False):
-        await gw.generate_raw("prompt")
-
-    payload = driver.generate.await_args.kwargs["payload"]
+    payload = gw._build_payload(
+        "prompt",
+        target_url="http://remote-rag:11434",
+        model="gemma4-e4b-12k",
+    )
     assert payload["model"] == "gemma4-e4b-rag"
+
+
+def test_build_payload_without_config_does_not_mutate_caller_options():
+    """Config-absent path must copy options before writing num_predict."""
+    local = MagicMock()
+    local.config = None  # force config-absent branch
+    gw = DistributingGateway(
+        local_gateway=local,
+        health_checker=_make_health_checker(),
+        remote_driver=_make_remote_driver(),
+        enabled=False,
+    )
+    options = {"temperature": 0.1}
+    payload = gw._build_payload("prompt", options=options, num_predict=42)
+    assert payload["options"]["num_predict"] == 42
+    assert "num_predict" not in options
 
 
 @pytest.mark.asyncio

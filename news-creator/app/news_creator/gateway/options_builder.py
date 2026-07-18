@@ -11,7 +11,7 @@ Following Python 3.14 best practices:
 from __future__ import annotations
 
 import logging
-from typing import Any, Protocol, Union
+from typing import Any, Protocol
 
 from news_creator.config.llm_config import LLMConfig
 from news_creator.config.model_routing_config import ModelRoutingConfig
@@ -111,8 +111,8 @@ class KeepAliveResolver:
     def resolve(
         self,
         model: str,
-        explicit_keep_alive: Union[int, str] | None = None,
-    ) -> Union[int, str]:
+        explicit_keep_alive: int | str | None = None,
+    ) -> int | str:
         """Resolve keep_alive value for a model.
 
         Args:

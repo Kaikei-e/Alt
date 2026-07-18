@@ -1,7 +1,9 @@
 """Summarize usecase - business logic for article summarization."""
 
 import logging
-from typing import Tuple, List, Optional, AsyncGenerator, AsyncIterator
+import re
+import time
+from typing import AsyncGenerator, AsyncIterator
 from datetime import datetime, timedelta, timezone
 import aiohttp
 
@@ -14,6 +16,7 @@ from news_creator.domain.prompts import (
 from news_creator.port.llm_provider_port import LLMProviderPort
 from news_creator.utils.repetition_detector import detect_repetition
 from news_creator.utils.html_cleaner import clean_html_content
+from news_creator.usecase.control_token_filter import ControlTokenFilter
 
 logger = logging.getLogger(__name__)
 
@@ -28,7 +31,7 @@ class SummarizeUsecase:
 
     async def generate_summary(
         self, article_id: str, content: str, priority: str = "low"
-    ) -> Tuple[str, SummaryMetadata]:
+    ) -> tuple[str, SummaryMetadata]:
         """
         Generate a Japanese summary for an article.
 
@@ -277,15 +280,13 @@ class SummarizeUsecase:
         last_metadata = None
         has_repetition = False
         rep_score = 0.0
-        rep_patterns: List[str] = []
+        rep_patterns: list[str] = []
         attempt = 0
         raw_summary = ""
         llm_response = None
         consecutive_empty_count = 0
 
         is_high_priority = priority == "high"
-
-        import time
 
         async with self.llm_provider.hold_slot(is_high_priority=is_high_priority) as (
             wait_time,
@@ -563,7 +564,7 @@ class SummarizeUsecase:
 
     async def _generate_hierarchical_summary(
         self, article_id: str, content: str
-    ) -> Tuple[str, SummaryMetadata]:
+    ) -> tuple[str, SummaryMetadata]:
         """
         Generate a summary for a large article using Hierarchical (Map-Reduce) strategy.
 
@@ -578,8 +579,6 @@ class SummarizeUsecase:
         Returns:
             Tuple of (summary text, metadata dict)
         """
-        import time
-
         start_time = time.time()
 
         chunk_size = self.config.hierarchical_single_article_chunk_size
@@ -774,10 +773,13 @@ class SummarizeUsecase:
         truncated_content = content.strip()[:MAX_CONTENT_LENGTH]
 
         # DEBUG: Log exact lengths to diagnose 1M char prompt issue
-        logger.warning(
-            f"DEBUG: Truncation check - Original: {len(content)}, Truncated: {len(truncated_content)}, Limit: {MAX_CONTENT_LENGTH}",
+        logger.debug(
+            "Truncation check",
             extra={
                 "article_id": article_id,
+                "original_length": len(content),
+                "truncated_length": len(truncated_content),
+                "limit": MAX_CONTENT_LENGTH,
                 "original_type": str(type(content)),
                 "truncated_type": str(type(truncated_content)),
             },
@@ -840,9 +842,8 @@ class SummarizeUsecase:
             )
 
             # Narrow union type: streaming returns AsyncIterator
-            assert not isinstance(result, LLMGenerateResponse), (
-                "Expected AsyncIterator for streaming"
-            )
+            if isinstance(result, LLMGenerateResponse):
+                raise TypeError("Expected AsyncIterator for streaming")
             stream_gen: AsyncIterator[LLMGenerateResponse] = result
 
             logger.info(
@@ -852,21 +853,8 @@ class SummarizeUsecase:
                 },
             )
 
-            # Control tokens to filter
-            # Note: A real robust filter would buffer to handle split tokens,
-            # but for now we assume tokens come in reasonable chunks or at least not split control tokens often.
-            # We'll just filter valid exact matches or basic substring checks if it's a single token.
-            ignored_tokens = {
-                "<start_of_turn>",
-                "<end_of_turn>",
-                "<|turn>",
-                "<turn|>",
-                "<|channel>thought",
-                "<channel|>",
-                "<|system|>",
-                "<|user|>",
-                "<|assistant|>",
-            }
+            # Control tokens may be split across chunks — buffer at boundaries.
+            token_filter = ControlTokenFilter()
 
             has_data = False
             received_done = False
@@ -877,40 +865,36 @@ class SummarizeUsecase:
                     if chunk.done:
                         received_done = True
                     token = chunk.response
-                    if token and token not in ignored_tokens:
-                        has_data = True
-                        tokens_yielded += 1
-                        bytes_yielded += len(token.encode("utf-8"))
+                    if token:
+                        filtered = token_filter.push(token)
+                        if filtered:
+                            has_data = True
+                            tokens_yielded += 1
+                            bytes_yielded += len(filtered.encode("utf-8"))
 
-                        # Log first few tokens and periodically
-                        if tokens_yielded <= 3 or tokens_yielded % 50 == 0:
-                            logger.info(
-                                "Yielding token from stream",
-                                extra={
-                                    "article_id": article_id,
-                                    "token_number": tokens_yielded,
-                                    "token_preview": token[:50]
-                                    if len(token) > 50
-                                    else token,
-                                    "bytes_yielded": bytes_yielded,
-                                    "chunks_received": chunks_received,
-                                },
-                            )
+                            # Log first few tokens and periodically
+                            if tokens_yielded <= 3 or tokens_yielded % 50 == 0:
+                                logger.info(
+                                    "Yielding token from stream",
+                                    extra={
+                                        "article_id": article_id,
+                                        "token_number": tokens_yielded,
+                                        "token_preview": filtered[:50]
+                                        if len(filtered) > 50
+                                        else filtered,
+                                        "bytes_yielded": bytes_yielded,
+                                        "chunks_received": chunks_received,
+                                    },
+                                )
+                            yield filtered
 
-                        # Very basic filtering of partial control tokens could be added here if needed
-                        # For now, yield as is
-                        yield token
-                    elif token:
-                        # Log ignored tokens for debugging
-                        if chunks_received <= 5:
-                            logger.debug(
-                                "Ignored control token",
-                                extra={
-                                    "article_id": article_id,
-                                    "token": token,
-                                    "chunks_received": chunks_received,
-                                },
-                            )
+                # Flush any buffered prefix that never completed a control token
+                remaining = token_filter.flush()
+                if remaining:
+                    has_data = True
+                    tokens_yielded += 1
+                    bytes_yielded += len(remaining.encode("utf-8"))
+                    yield remaining
 
                 if not has_data:
                     logger.warning(
@@ -1056,8 +1040,6 @@ class SummarizeUsecase:
             )
 
         # Strip Gemma 4 thinking blocks (<|channel>thought\n...<channel|>)
-        import re
-
         cleaned = re.sub(
             r"<\|channel>thought.*?<channel\|>", "", cleaned, flags=re.DOTALL
         )
@@ -1078,7 +1060,7 @@ class SummarizeUsecase:
 
         # Process line by line
         lines = cleaned.splitlines()
-        final_lines: List[str] = []
+        final_lines: list[str] = []
 
         for line in lines:
             stripped = line.strip()
@@ -1126,7 +1108,7 @@ class SummarizeUsecase:
         return result
 
     @staticmethod
-    def _nanoseconds_to_milliseconds(value: Optional[int]) -> Optional[float]:
+    def _nanoseconds_to_milliseconds(value: int | None) -> float | None:
         """Convert nanoseconds to milliseconds."""
         if value is None:
             return None

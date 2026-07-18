@@ -20,7 +20,6 @@ import heapq
 import logging
 import time
 from dataclasses import dataclass, field
-from typing import Dict, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -142,14 +141,14 @@ class HybridPrioritySemaphore:
         # Preemption configuration
         self._preemption_enabled = preemption_enabled
         self._preemption_threshold = preemption_wait_threshold
-        self._active_requests: Dict[str, CancellableRequest] = {}
+        self._active_requests: dict[str, CancellableRequest] = {}
 
         self._lock = asyncio.Lock()
         self._last_wait_time: float = 0.0
 
         # Leak detection: track acquired slots
         self._slot_counter: int = 0
-        self._acquired_slots: Dict[int, AcquiredSlot] = {}
+        self._acquired_slots: dict[int, AcquiredSlot] = {}
         self._leak_threshold_seconds: float = 300.0  # 5 minutes default
 
         logger.info(
@@ -415,7 +414,7 @@ class HybridPrioritySemaphore:
                     return 0.0, sid
 
             # No slot available, queue the request
-            future = asyncio.get_event_loop().create_future()
+            future = asyncio.get_running_loop().create_future()
             priority_score = self._compute_priority_score(high_priority, start_time)
             # LIFO mode for RT: negate enqueue_time so newest (largest timestamp)
             # becomes smallest value and pops first from the min-heap
@@ -500,7 +499,7 @@ class HybridPrioritySemaphore:
             raise
 
     def release(
-        self, was_high_priority: bool = False, slot_id: Optional[int] = None
+        self, was_high_priority: bool = False, slot_id: int | None = None
     ) -> None:
         """
         Release a slot and wake up next waiter.

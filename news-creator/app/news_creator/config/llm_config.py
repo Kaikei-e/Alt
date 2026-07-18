@@ -10,7 +10,6 @@ from __future__ import annotations
 import os
 import logging
 from dataclasses import dataclass
-from typing import Union
 
 logger = logging.getLogger(__name__)
 
@@ -67,7 +66,7 @@ class LLMConfig:
 
     def get_keep_alive_for_model(
         self, model_name: str, model_8k_name: str, model_60k_name: str
-    ) -> Union[int, str]:
+    ) -> int | str:
         """Get keep_alive value for a specific model."""
         if model_name == model_8k_name:
             return self.keep_alive_8k

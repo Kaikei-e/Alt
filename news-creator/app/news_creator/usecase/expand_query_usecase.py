@@ -4,7 +4,6 @@ import logging
 import re as _re
 import time
 from datetime import datetime, timezone, timedelta
-from typing import List, Tuple, Optional
 
 from news_creator.config.config import NewsCreatorConfig
 from news_creator.domain.models import ConversationMessage, LLMGenerateResponse
@@ -75,22 +74,25 @@ English({english_count}):
 class ExpandQueryUsecase:
     """Usecase for generating expanded search queries for RAG retrieval."""
 
-    # Use the same warmed RAG model as the main answer path to avoid backend model swaps.
-    EXPANSION_MODEL = "gemma4-e4b-12k"
-
     def __init__(self, config: NewsCreatorConfig, llm_provider: LLMProviderPort):
         """Initialize expand query usecase."""
         self.config = config
         self.llm_provider = llm_provider
+
+    @property
+    def EXPANSION_MODEL(self) -> str:
+        """Model for query expansion (from config)."""
+        configured = getattr(self.config, "rag_query_model", "gemma4-e4b-12k")
+        return configured if isinstance(configured, str) else "gemma4-e4b-12k"
 
     async def expand_query(
         self,
         query: str,
         japanese_count: int = 1,
         english_count: int = 3,
-        conversation_history: Optional[List[ConversationMessage]] = None,
+        conversation_history: list[ConversationMessage] | None = None,
         priority: str = "low",
-    ) -> Tuple[List[str], str, Optional[float]]:
+    ) -> tuple[list[str], str, float | None]:
         """
         Generate expanded search queries from a user query.
 
@@ -166,9 +168,8 @@ class ExpandQueryUsecase:
             )
 
             # Narrow union type: non-streaming returns LLMGenerateResponse
-            assert isinstance(result, LLMGenerateResponse), (
-                "Expected non-streaming LLMGenerateResponse"
-            )
+            if not (isinstance(result, LLMGenerateResponse)):
+                raise AssertionError("Expected non-streaming LLMGenerateResponse")
             llm_response: LLMGenerateResponse = result
 
             # Parse response: split by newlines and filter empty lines
@@ -270,7 +271,6 @@ _META_WORDS = frozenset(
     }
 )
 
-
 _URL_PATTERN = _re.compile(r"https?://\S+")
 _SPECIAL_CHARS_PATTERN = _re.compile(
     r"[^\w\s\u3000-\u9FFF\u30A0-\u30FF\u3040-\u309F。、！？.,!?\-()（）]"
@@ -309,7 +309,7 @@ def _is_repeating_pattern(line: str) -> bool:
 _LEADING_NUMBER_RE = _re.compile(r"^\d{1,3}[.):][ \t]")
 
 
-def _parse_expansion_lines(raw_text: str) -> List[str]:
+def _parse_expansion_lines(raw_text: str) -> list[str]:
     """Parse raw LLM output into candidate query lines."""
     lines = []
     for line in raw_text.split("\n"):
@@ -330,7 +330,7 @@ def _parse_expansion_lines(raw_text: str) -> List[str]:
     return lines
 
 
-def _deduplicate_preserving_order(queries: List[str]) -> List[str]:
+def _deduplicate_preserving_order(queries: list[str]) -> list[str]:
     """Remove duplicate queries while preserving first-occurrence order."""
     seen: dict[str, None] = {}
     result = []
@@ -379,7 +379,7 @@ def _is_xml_tag_leak(line: str) -> bool:
     return False
 
 
-def _filter_instruction_leaks(queries: List[str]) -> List[str]:
+def _filter_instruction_leaks(queries: list[str]) -> list[str]:
     """Remove instruction echoes and preamble from query list."""
     result = []
     for q in queries:
