@@ -78,6 +78,62 @@ const TRAIL_WITH_BRANCH = {
 	],
 };
 
+// Wave 7 noise removal: the lens chip bar (a raw tag union — the dead tag
+// cloud) is gone entirely, and repeated contacts with one article collapse
+// server-side into a single spine row carrying a visit count instead of one
+// row per day (D24/D25).
+const TRAIL_COLLAPSED = {
+	footprints: [
+		{
+			footprintKey: "open:article:a1",
+			verb: "read",
+			itemKey: "article:a1",
+			title: "US military courts in the UK",
+			excerpt: "",
+			tags: ["military", "british-courts"],
+			note: "",
+			occurredAt: "2026-07-07T22:20:00Z",
+			firstOccurredAt: "2026-06-27T18:37:00Z",
+			contactCount: 2,
+			wear: "worn",
+		},
+	],
+	nextCursor: "",
+	hasMore: false,
+	generatedAt: "2026-07-18T00:00:00Z",
+	branches: [],
+};
+
+test.describe("Trail noise removal", () => {
+	test("does not render a lens chip bar even when footprints carry tags", async ({
+		page,
+	}) => {
+		await page.route(
+			"**/api/v2/alt.knowledge_trail.v1.KnowledgeTrailService/GetTrail",
+			(route) => fulfillJson(route, TRAIL_COLLAPSED),
+		);
+		await page.goto("./knowledge/trail");
+		await expect(page.getByTestId("trail-footprint").first()).toBeVisible({
+			timeout: 15000,
+		});
+		await expect(page.getByTestId("trail-lenses")).toHaveCount(0);
+	});
+
+	test("renders a collapsed footprint once, with its visit count", async ({
+		page,
+	}) => {
+		await page.route(
+			"**/api/v2/alt.knowledge_trail.v1.KnowledgeTrailService/GetTrail",
+			(route) => fulfillJson(route, TRAIL_COLLAPSED),
+		);
+		await page.goto("./knowledge/trail");
+		await expect(page.getByTestId("trail-footprint")).toHaveCount(1, {
+			timeout: 15000,
+		});
+		await expect(page.getByTestId("footprint-count")).toContainText("2");
+	});
+});
+
 // Wave 5 trail closure: taking a branch means walking it. The resolve emits,
 // the user lands on the article, and leaving the article emits the raw dwell
 // outcome (trail.act_outcome.v1 upstream). Dwell is measured only when the

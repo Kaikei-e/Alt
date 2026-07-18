@@ -133,7 +133,12 @@ export default defineConfig({
 		},
 	],
 
-	webServer: {
+	// The integration project targets an already-running stack (ALT_RUNTIME_URL /
+	// :4173) and does not need the local preview server; PW_NO_WEBSERVER=1 skips
+	// it when :4174 is unavailable (e.g. taken by an unrelated container).
+	webServer: process.env.PW_NO_WEBSERVER
+		? undefined
+		: {
 		command: "bun run build && node build",
 		url: "http://127.0.0.1:4174/health",
 		reuseExistingServer: !process.env.CI,
