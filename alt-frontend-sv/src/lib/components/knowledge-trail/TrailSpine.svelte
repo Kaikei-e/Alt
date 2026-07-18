@@ -1,5 +1,9 @@
 <script lang="ts">
-import type { EpisodeData } from "$lib/connect/knowledge_trail";
+import type {
+	BranchData,
+	EpisodeData,
+	ResolveBranchHandler,
+} from "$lib/connect/knowledge_trail";
 import EpisodeCard from "./EpisodeCard.svelte";
 
 interface Props {
@@ -12,6 +16,13 @@ interface Props {
 	matchedItemKeys?: string[];
 	/** Whether the spine is currently showing search results rather than the full trail. */
 	searchActive?: boolean;
+	/**
+	 * Episode key -> the single branch (D26/D28) matched to it. There is no
+	 * top-of-trail branch inbox anymore; an episode with no entry here shows
+	 * no branch at all.
+	 */
+	branchByEpisodeKey?: Map<string, BranchData>;
+	onResolveBranch?: ResolveBranchHandler;
 }
 
 const {
@@ -22,6 +33,8 @@ const {
 	onLoadMore,
 	matchedItemKeys = [],
 	searchActive = false,
+	branchByEpisodeKey,
+	onResolveBranch,
 }: Props = $props();
 
 const isEmpty = $derived(
@@ -47,7 +60,12 @@ const isEmpty = $derived(
 	{/if}
 
 	{#each episodes as episode (episode.episodeKey)}
-		<EpisodeCard {episode} {matchedItemKeys} />
+		<EpisodeCard
+			{episode}
+			{matchedItemKeys}
+			branch={branchByEpisodeKey?.get(episode.episodeKey)}
+			{onResolveBranch}
+		/>
 	{/each}
 
 	{#if hasMore}

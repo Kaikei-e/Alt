@@ -15,6 +15,12 @@ import (
 	"knowledge-sovereign/usecase/trail_episodes"
 )
 
+// defaultAnchorBranchLimit is the server-side fallback when a client omits
+// limit on GetTrailBranchesForAnchor. alt-backend's usecase applies the D26
+// patch-exit discipline (default 2, max 5) before calling; this is just a
+// defensive floor so an unset limit never degrades to an empty LIMIT 0 query.
+const defaultAnchorBranchLimit = 5
+
 // episodeWindowRows bounds how many collapsed footprint rows are fetched
 // from the read model to derive episodes from (Wave 8). Episodes are paged
 // in the handler, over this window, independently of the underlying
@@ -85,13 +91,57 @@ func (h *SovereignHandler) GetTrailFootprints(
 		}
 	}
 
-	pbBranches := make([]*sovereignv1.TrailBranch, len(branches))
+	return connect.NewResponse(&sovereignv1.GetTrailFootprintsResponse{
+		// Footprints is superseded by episodes (Wave 8) — left empty.
+		NextCursor: nextCursor,
+		HasMore:    hasMore,
+		Branches:   mapTrailBranches(branches),
+		Episodes:   pbEpisodes,
+	}), nil
+}
+
+// GetTrailBranchesForAnchor returns the user's open branches anchored on one
+// item — the patch-exit surface (Wave 10, D26): a handful of branches shown
+// at the article read-end, not the retired top-of-trail branch inbox.
+func (h *SovereignHandler) GetTrailBranchesForAnchor(
+	ctx context.Context,
+	req *connect.Request[sovereignv1.GetTrailBranchesForAnchorRequest],
+) (*connect.Response[sovereignv1.GetTrailBranchesForAnchorResponse], error) {
+	msg := req.Msg
+	userID, err := parseUUIDField("user_id", msg.UserId)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInvalidArgument, err)
+	}
+	anchorItemKey := strings.TrimSpace(msg.AnchorItemKey)
+	if anchorItemKey == "" {
+		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("anchor_item_key required"))
+	}
+	limit := int(msg.Limit)
+	if limit <= 0 {
+		limit = defaultAnchorBranchLimit
+	}
+
+	branches, err := h.readDB.GetOpenTrailBranchesForAnchor(ctx, userID, anchorItemKey, limit)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("GetOpenTrailBranchesForAnchor: %w", err))
+	}
+
+	return connect.NewResponse(&sovereignv1.GetTrailBranchesForAnchorResponse{
+		Branches: mapTrailBranches(branches),
+	}), nil
+}
+
+// mapTrailBranches maps read-model branches to their wire form. Shared by
+// GetTrailFootprints and GetTrailBranchesForAnchor so the two branch surfaces
+// (Trail episode header vs. patch-exit) can never diverge on mapping.
+func mapTrailBranches(branches []sovereign_db.TrailBranch) []*sovereignv1.TrailBranch {
+	pb := make([]*sovereignv1.TrailBranch, len(branches))
 	for i, b := range branches {
 		refs := make([]*sovereignv1.TrailEvidenceRef, len(b.EvidenceRefs))
 		for j, r := range b.EvidenceRefs {
 			refs[j] = &sovereignv1.TrailEvidenceRef{RefId: r.RefID, Label: r.Label, Kind: r.Kind}
 		}
-		pbBranches[i] = &sovereignv1.TrailBranch{
+		pb[i] = &sovereignv1.TrailBranch{
 			BranchKey:     b.BranchKey,
 			AnchorItemKey: b.AnchorItemKey,
 			RelationKind:  b.RelationKind,
@@ -102,14 +152,7 @@ func (h *SovereignHandler) GetTrailFootprints(
 			TargetTitle:   b.TargetTitle,
 		}
 	}
-
-	return connect.NewResponse(&sovereignv1.GetTrailFootprintsResponse{
-		// Footprints is superseded by episodes (Wave 8) — left empty.
-		NextCursor: nextCursor,
-		HasMore:    hasMore,
-		Branches:   pbBranches,
-		Episodes:   pbEpisodes,
-	}), nil
+	return pb
 }
 
 // mapTrailFootprints maps read-model footprints to their wire form, cleaning

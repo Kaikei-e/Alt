@@ -1,9 +1,9 @@
 <script lang="ts">
 import { onMount } from "svelte";
 import { browser } from "$app/environment";
-import TrailBranches from "$lib/components/knowledge-trail/TrailBranches.svelte";
 import TrailSearch from "$lib/components/knowledge-trail/TrailSearch.svelte";
 import TrailSpine from "$lib/components/knowledge-trail/TrailSpine.svelte";
+import type { BranchData } from "$lib/connect/knowledge_trail";
 import { useKnowledgeTrail } from "$lib/hooks/useKnowledgeTrail.svelte";
 
 const trail = useKnowledgeTrail();
@@ -19,6 +19,25 @@ onMount(() => {
 	if (browser) {
 		void trail.fetchData(true);
 	}
+});
+
+const activeEpisodes = $derived(
+	trail.searchActive ? trail.searchEpisodes : trail.episodes,
+);
+
+// Wave 10 (D26/D28): the top-of-trail branch inbox is removed. At most one
+// branch surfaces per episode, subordinate to its header, matched by anchor
+// membership — first match only, one per episode. A branch whose anchor
+// isn't a member of any currently-shown episode is not rendered anywhere;
+// its real stage is the article read-end (ArticleEndBranches), not the trail.
+const branchByEpisodeKey = $derived.by(() => {
+	const map = new Map<string, BranchData>();
+	for (const episode of activeEpisodes) {
+		const memberKeys = new Set(episode.footprints.map((fp) => fp.itemKey));
+		const match = trail.branches.find((b) => memberKeys.has(b.anchorItemKey));
+		if (match) map.set(episode.episodeKey, match);
+	}
+	return map;
 });
 </script>
 
@@ -63,22 +82,20 @@ onMount(() => {
 		onClear={() => trail.clearSearch()}
 	/>
 
-	<!-- The spine (the path the user has worn) is the hero. System-proposed
-	     branches are secondary and rendered, capped, below it. While a search
-	     is active, the spine shows only the matching episodes. -->
+	<!-- The spine (the path the user has worn) is the hero. There is no
+	     top-of-trail branch inbox (D26/D28): at most one branch surfaces per
+	     episode, subordinate to its header. While a search is active, the
+	     spine shows only the matching episodes. -->
 	<TrailSpine
-		episodes={trail.searchActive ? trail.searchEpisodes : trail.episodes}
+		episodes={activeEpisodes}
 		loading={trail.searchActive ? trail.searching : trail.loading}
 		hasMore={trail.searchActive ? false : trail.hasMore}
 		hasEverLoaded={trail.searchActive ? true : trail.hasEverLoaded}
 		matchedItemKeys={trail.searchActive ? trail.matchedItemKeys : []}
 		searchActive={trail.searchActive}
 		onLoadMore={() => trail.loadMore()}
-	/>
-
-	<TrailBranches
-		branches={trail.branches}
-		onResolve={trail.resolveBranch}
+		{branchByEpisodeKey}
+		onResolveBranch={trail.resolveBranch}
 	/>
 </div>
 

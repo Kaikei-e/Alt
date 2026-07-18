@@ -7,19 +7,22 @@ import {
 	RefreshCw,
 	Sparkles,
 } from "@lucide/svelte";
-import { onDestroy } from "svelte";
+import { onDestroy, onMount } from "svelte";
 import { MediaQuery } from "svelte/reactivity";
+import { browser } from "$app/environment";
 import { goto } from "$app/navigation";
 import { page } from "$app/state";
 import {
 	getArticleSourceURLClient,
 	getFeedContentOnTheFlyClient,
 } from "$lib/api/client/articles";
+import ArticleEndBranches from "$lib/components/knowledge-trail/ArticleEndBranches.svelte";
 import RenderFeedDetails from "$lib/components/mobile/RenderFeedDetails.svelte";
 import ArticleOverflowMenu from "$lib/components/mobile/tts/ArticleOverflowMenu.svelte";
 import TtsSetupSheet from "$lib/components/mobile/tts/TtsSetupSheet.svelte";
 import PageKicker from "$lib/components/recap/job-status/PageKicker.svelte";
 import { Button } from "$lib/components/ui/button";
+import { useArticleEndBranches } from "$lib/hooks/useArticleEndBranches.svelte";
 import { useSummarize } from "$lib/hooks/useSummarize.svelte";
 import { useTrailOutcome } from "$lib/hooks/useTrailOutcome.svelte";
 import {
@@ -53,6 +56,18 @@ useTrailOutcome(
 	page.url.searchParams.get("trail_proposal"),
 	page.params.id ? `article:${page.params.id}` : null,
 );
+
+// Patch-exit branches (D26/D28): the article read-end's main branch stage —
+// at most two proposals anchored on this article. Pull-only via onMount
+// (never an $effect re-fetch, the PM-2026-039/PM-2026-045 lesson), following
+// the trail page's own onMount + browser-guard pattern.
+const endBranches = useArticleEndBranches();
+
+onMount(() => {
+	if (browser && articleId) {
+		void endBranches.load(`article:${articleId}`);
+	}
+});
 
 $effect(() => {
 	if (paramUrl || resolvedUrl || !articleId) return;
@@ -403,6 +418,10 @@ $effect(() => {
 						error={contentError}
 					/>
 				</div>
+				<ArticleEndBranches
+					branches={endBranches.branches}
+					onResolve={endBranches.resolve}
+				/>
 			{:else}
 				<div class="placeholder">
 					<p>No content available.</p>

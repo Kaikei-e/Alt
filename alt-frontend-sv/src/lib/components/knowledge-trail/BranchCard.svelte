@@ -1,26 +1,21 @@
 <script lang="ts">
 import type {
 	BranchData,
-	BranchResolution,
+	ResolveBranchHandler,
 } from "$lib/connect/knowledge_trail";
 
 interface Props {
-	branches: BranchData[];
-	onResolve: (
-		branchKey: string,
-		resolution: BranchResolution,
-		targetItemKey?: string,
-	) => void;
+	branch: BranchData;
+	/** testid applied to the card root; callers pick the surface-specific value. */
+	testId: string;
+	onResolve: ResolveBranchHandler;
 }
 
-const { branches, onResolve }: Props = $props();
+const { branch, testId, onResolve }: Props = $props();
 
-// Branches are proposals layered on the spine, not the main column. Cap them so
-// they never bury the trail; the rest are one click away.
-const VISIBLE = 3;
-let showAll = $state(false);
-const visible = $derived(showAll ? branches : branches.slice(0, VISIBLE));
-const hiddenCount = $derived(Math.max(0, branches.length - VISIBLE));
+// Dismiss is a one-tap reason, not a modal: the actions row swaps in place
+// for the reason row (D28) rather than navigating away from the card.
+let dismissing = $state(false);
 
 const KIND_LABEL: Record<string, string> = {
 	continuation: "Continues your thread",
@@ -36,86 +31,81 @@ function kindLabel(kind: string): string {
 function evidenceSummary(b: BranchData): string {
 	return b.evidenceRefs.map((r) => r.label).join(" · ");
 }
+
+// Canonical one-tap dismiss reasons (D28) — recorded on the resolution event
+// for planner learning, never required.
+const DISMISS_REASONS: { id: string; label: string }[] = [
+	{ id: "not_following_topic", label: "Not following this topic" },
+	{ id: "already_known", label: "Already knew this" },
+	{ id: "wrong_relation", label: "Wrong connection" },
+];
+
+function take() {
+	onResolve(branch.branchKey, "taken", branch.targetItemKey);
+}
+
+function dismissWithReason(reason?: string) {
+	onResolve(branch.branchKey, "dismissed", undefined, reason);
+	dismissing = false;
+}
 </script>
 
-{#if branches.length > 0}
-	<section class="branches" data-testid="trail-branches">
-		<h2 class="branches-heading">Suggested branches <span class="branches-count">({branches.length})</span></h2>
-		{#each visible as branch (branch.branchKey)}
-			<article
-				class="branch kind-{branch.relationKind}"
-				data-testid="trail-branch"
-				data-relation-kind={branch.relationKind}
-			>
-				<span class="branch-kind">{kindLabel(branch.relationKind)}</span>
-				<div class="branch-title">{branch.targetTitle || branch.targetItemKey}</div>
-				<p class="branch-why">{branch.why}</p>
-				<div class="branch-evidence">
-					evidence: {evidenceSummary(branch)} &nbsp;·&nbsp; confidence: {branch.confidence}
-				</div>
-				<div class="branch-actions">
-					<button
-						class="take-path"
-						data-testid="branch-take"
-						onclick={() =>
-							onResolve(branch.branchKey, "taken", branch.targetItemKey)}
-					>
-						Take this path
-					</button>
-					<button
-						class="dismiss-path"
-						data-testid="branch-dismiss"
-						onclick={() => onResolve(branch.branchKey, "dismissed")}
-					>
-						Dismiss
-					</button>
-				</div>
-			</article>
-		{/each}
-		{#if hiddenCount > 0 && !showAll}
+<article
+	class="branch-card kind-{branch.relationKind}"
+	data-testid={testId}
+	data-relation-kind={branch.relationKind}
+>
+	<span class="branch-kind">{kindLabel(branch.relationKind)}</span>
+	<div class="branch-title">{branch.targetTitle || branch.targetItemKey}</div>
+	<p class="branch-why">{branch.why}</p>
+	<div class="branch-evidence">
+		evidence: {evidenceSummary(branch)} &nbsp;·&nbsp; confidence: {branch.confidence}
+	</div>
+	{#if dismissing}
+		<div class="branch-dismiss-reasons" data-testid="branch-dismiss-reasons">
+			{#each DISMISS_REASONS as reason (reason.id)}
+				<button
+					type="button"
+					class="dismiss-reason"
+					data-testid="branch-dismiss-reason-{reason.id}"
+					onclick={() => dismissWithReason(reason.id)}
+				>
+					{reason.label}
+				</button>
+			{/each}
 			<button
-				class="branches-more"
-				data-testid="branches-show-more"
-				onclick={() => (showAll = true)}
+				type="button"
+				class="dismiss-reason dismiss-reason--plain"
+				data-testid="branch-dismiss-plain"
+				onclick={() => dismissWithReason(undefined)}
 			>
-				Show {hiddenCount} more
+				Just dismiss
 			</button>
-		{/if}
-	</section>
-{/if}
+		</div>
+	{:else}
+		<div class="branch-actions">
+			<button
+				type="button"
+				class="take-path"
+				data-testid="branch-take"
+				onclick={take}
+			>
+				Take this path
+			</button>
+			<button
+				type="button"
+				class="dismiss-path"
+				data-testid="branch-dismiss"
+				onclick={() => (dismissing = true)}
+			>
+				Dismiss
+			</button>
+		</div>
+	{/if}
+</article>
 
 <style>
-	.branches {
-		margin-top: 1.5rem;
-		max-width: 880px;
-	}
-	.branches-heading {
-		font-family: var(--font-display);
-		font-size: 1rem;
-		font-weight: 700;
-		color: var(--alt-charcoal, #1a1a1a);
-		margin: 0 0 0.6rem;
-	}
-	.branches-count {
-		font-family: var(--font-mono);
-		font-size: 0.75rem;
-		font-weight: 500;
-		color: var(--alt-ash, #999);
-	}
-	.branches-more {
-		border: 1px solid var(--chip-border, #d0c8bb);
-		background: var(--action-surface, #ebe8e1);
-		color: var(--interactive-text, #2f4f4f);
-		font-family: var(--font-body);
-		font-size: 0.82rem;
-		padding: 0.45rem 0.85rem;
-		cursor: pointer;
-		margin-top: 0.2rem;
-	}
-	.branches-more:hover {
-		background: var(--surface-hover, #f3f1ed);
-	}
-	.branch {
+	.branch-card {
 		border: 1px solid var(--surface-border, #c8c8c8);
 		border-left-width: 3px;
 		background: var(--surface-2, #f5f4f1);
@@ -178,10 +168,12 @@ function evidenceSummary(b: BranchData): string {
 		margin-top: 0.45rem;
 		letter-spacing: 0.02em;
 	}
-	.branch-actions {
+	.branch-actions,
+	.branch-dismiss-reasons {
 		display: flex;
 		gap: 0.5rem;
 		margin-top: 0.65rem;
+		flex-wrap: wrap;
 	}
 	.take-path {
 		border: 1px solid var(--alt-primary, #2f4f4f);
@@ -196,7 +188,8 @@ function evidenceSummary(b: BranchData): string {
 	.take-path:hover {
 		background: var(--interactive-text-hover, #223b3b);
 	}
-	.dismiss-path {
+	.dismiss-path,
+	.dismiss-reason {
 		border: 1px solid var(--chip-border, #d0c8bb);
 		background: transparent;
 		color: var(--alt-slate, #666);
@@ -205,8 +198,12 @@ function evidenceSummary(b: BranchData): string {
 		font-size: 0.8rem;
 		cursor: pointer;
 	}
-	.dismiss-path:hover {
+	.dismiss-path:hover,
+	.dismiss-reason:hover {
 		background: var(--surface-hover, #f3f1ed);
 		color: var(--alt-charcoal, #1a1a1a);
+	}
+	.dismiss-reason--plain {
+		font-style: italic;
 	}
 </style>

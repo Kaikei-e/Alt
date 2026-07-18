@@ -199,7 +199,17 @@ func (p *Projector) foldBranchResolved(ctx context.Context, evt sovereign_db.Kno
 			slog.String("resolution", payload.Resolution))
 		return nil
 	}
-	return p.repo.SetTrailBranchState(ctx, *evt.UserID, payload.BranchKey, payload.Resolution)
+	if err := p.repo.SetTrailBranchState(ctx, *evt.UserID, payload.BranchKey, payload.Resolution); err != nil {
+		return err
+	}
+	// Wave 10 branch KPI: resolution + whether a dismiss reason (D28(d)) was
+	// supplied. The measured outcome is taken→engaged dwell, not CTR — see
+	// foldActOutcome — but resolution/reason presence is the raw signal the
+	// ClickHouse pipeline (rask) aggregates for it.
+	p.logger.InfoContext(ctx, "trail.branch_resolved",
+		slog.String("resolution", payload.Resolution),
+		slog.Bool("has_reason", payload.DismissReason != ""))
+	return nil
 }
 
 // foldActOutcome folds a dwell outcome into the act-outcomes side table. An
@@ -247,6 +257,13 @@ func (p *Projector) foldActOutcome(ctx context.Context, evt sovereign_db.Knowled
 		o.BranchKey = payload.BranchKey
 		o.ItemKey = payload.ItemKey
 		o.DwellMs = payload.DwellMs
+		// Wave 10 branch KPI: raw dwell + whether it crosses the engaged
+		// threshold (taken→engaged dwell, not CTR — D28(c)). Reuses the same
+		// read-time constant the wear derivation uses, never a duplicated
+		// literal.
+		p.logger.InfoContext(ctx, "trail.act_outcome.observed",
+			slog.Int64("dwell_ms", *payload.DwellMs),
+			slog.Bool("engaged", *payload.DwellMs >= sovereign_db.EngagedDwellMs))
 	default: // eventLegacyActOutcome
 		itemKey := payload.EntryKey
 		if itemKey == "" {

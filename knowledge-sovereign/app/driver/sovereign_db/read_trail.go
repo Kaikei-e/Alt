@@ -13,12 +13,14 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
-// engagedDwellMs is the raw-dwell threshold at or above which a walked branch
+// EngagedDwellMs is the raw-dwell threshold at or above which a walked branch
 // counts as an engaged walk in the path-wear derivation. It inherits the
 // ADR-000908 30s rule, but as a read-time derivation constant (D18): the
 // emitted event carries only the raw dwell, so changing this needs no
-// reproject — every read re-derives wear from the raw measurements.
-const engagedDwellMs = int64(30_000)
+// reproject — every read re-derives wear from the raw measurements. Exported
+// so the projector's branch-KPI logging (Wave 10) references the same
+// constant rather than duplicating the literal.
+const EngagedDwellMs = int64(30_000)
 
 // TrailFootprint is the domain representation of one footprint on the trail
 // spine. verb / item_key / occurred_at are projected from the event log;
@@ -77,7 +79,7 @@ ON CONFLICT (user_id, footprint_key) DO UPDATE SET
 // pages. filterTags applies the theme lens (item must carry one of the tags).
 func (r *Repository) GetTrailFootprints(ctx context.Context, userID uuid.UUID, cursor string, limit int, filterTags []string) ([]TrailFootprint, string, bool, error) {
 	fetchLimit := limit + 1
-	args := []any{userID, engagedDwellMs}
+	args := []any{userID, EngagedDwellMs}
 	var where strings.Builder
 	where.WriteString(`WHERE TRUE`)
 	argPos := 3
@@ -311,6 +313,64 @@ ORDER BY b.created_at DESC, b.branch_key DESC`
 		branches = append(branches, b)
 	}
 	return branches, rows.Err()
+}
+
+// GetOpenTrailBranchesForAnchor returns the user's open branches anchored on
+// one item, newest first, capped at limit (Wave 10, D26 — the patch-exit
+// surface is a handful, not an inbox). Mirrors GetOpenTrailBranches with an
+// anchor filter and a server-side cap.
+func (r *Repository) GetOpenTrailBranchesForAnchor(ctx context.Context, userID uuid.UUID, anchorItemKey string, limit int) ([]TrailBranch, error) {
+	q := `
+SELECT b.branch_key, b.anchor_item_key, b.relation_kind, b.why, b.evidence_refs_json,
+       b.confidence, b.target_item_key,
+       COALESCE(NULLIF(b.target_title, ''),
+                NULLIF(khi.title, ''),
+                NULLIF(left(khi.summary_excerpt, 80), ''),
+                NULLIF(split_part(split_part(khi.url, '://', 2), '/', 1), ''),
+                b.target_item_key)
+FROM knowledge_trail_branches b
+LEFT JOIN knowledge_home_items khi
+  ON khi.user_id = b.user_id
+  AND khi.item_key = b.target_item_key
+  AND khi.projection_version = ` + activeProjectionVersionSQL + `
+WHERE b.user_id = $1 AND b.anchor_item_key = $2 AND b.state = 'open'
+ORDER BY b.created_at DESC, b.branch_key DESC
+LIMIT $3`
+	rows, err := r.pool.Query(ctx, q, userID, anchorItemKey, limit)
+	if err != nil {
+		return nil, fmt.Errorf("GetOpenTrailBranchesForAnchor: %w", err)
+	}
+	defer rows.Close()
+
+	var branches []TrailBranch
+	for rows.Next() {
+		var b TrailBranch
+		var refsJSON []byte
+		if err := rows.Scan(&b.BranchKey, &b.AnchorItemKey, &b.RelationKind, &b.Why,
+			&refsJSON, &b.Confidence, &b.TargetItemKey, &b.TargetTitle); err != nil {
+			return nil, fmt.Errorf("GetOpenTrailBranchesForAnchor scan: %w", err)
+		}
+		unmarshalJSONWarn(refsJSON, &b.EvidenceRefs, "evidence_refs_json")
+		branches = append(branches, b)
+	}
+	return branches, rows.Err()
+}
+
+// GetItemTitle resolves one item's live display title (D28 — anchored why):
+// the trail planner uses it to name the anchor a branch's why must reference.
+// ok=false means the title is absent or blank — the caller must not fabricate
+// a why around an item it cannot name.
+func (r *Repository) GetItemTitle(ctx context.Context, userID uuid.UUID, itemKey string) (title string, ok bool, err error) {
+	const q = `SELECT title FROM knowledge_home_items
+		WHERE user_id = $1 AND item_key = $2 AND projection_version = ` + activeProjectionVersionSQL
+	row := r.pool.QueryRow(ctx, q, userID, itemKey)
+	if scanErr := row.Scan(&title); scanErr != nil {
+		if errors.Is(scanErr, pgx.ErrNoRows) {
+			return "", false, nil
+		}
+		return "", false, fmt.Errorf("GetItemTitle: %w", scanErr)
+	}
+	return title, strings.TrimSpace(title) != "", nil
 }
 
 // GetLatestFootprintAnchor returns the user's most recent footprint item_key and

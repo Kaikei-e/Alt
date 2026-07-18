@@ -74,23 +74,7 @@ func (c *Client) GetTrailFootprints(ctx context.Context, userID uuid.UUID, curso
 		footprints[i] = protoToTrailFootprint(pb)
 	}
 
-	branches := make([]domain.TrailBranch, len(resp.Msg.Branches))
-	for i, pb := range resp.Msg.Branches {
-		refs := make([]domain.TrailEvidenceRef, len(pb.EvidenceRefs))
-		for j, r := range pb.EvidenceRefs {
-			refs[j] = domain.TrailEvidenceRef{RefID: r.RefId, Label: r.Label, Kind: r.Kind}
-		}
-		branches[i] = domain.TrailBranch{
-			BranchKey:     pb.BranchKey,
-			AnchorItemKey: pb.AnchorItemKey,
-			RelationKind:  pb.RelationKind,
-			Why:           pb.Why,
-			EvidenceRefs:  refs,
-			Confidence:    pb.Confidence,
-			TargetItemKey: pb.TargetItemKey,
-			TargetTitle:   pb.TargetTitle,
-		}
-	}
+	branches := protoToTrailBranches(resp.Msg.Branches)
 
 	episodes := make([]domain.TrailEpisode, len(resp.Msg.Episodes))
 	for i, pb := range resp.Msg.Episodes {
@@ -140,6 +124,48 @@ func (c *Client) SearchTrailFootprints(ctx context.Context, userID uuid.UUID, it
 		episodes[i] = domain.TrailEpisode{EpisodeKey: pb.EpisodeKey, Wear: pb.Wear, Footprints: epFootprints}
 	}
 	return episodes, nil
+}
+
+// GetTrailBranchesForAnchor fetches the user's open branches anchored on one
+// item — the Wave 10 (D26) patch-exit surface shown at the article read-end.
+func (c *Client) GetTrailBranchesForAnchor(ctx context.Context, userID uuid.UUID, anchorItemKey string, limit int) ([]domain.TrailBranch, error) {
+	if !c.enabled {
+		return nil, nil
+	}
+
+	resp, err := c.client.GetTrailBranchesForAnchor(ctx, connect.NewRequest(&sovereignv1.GetTrailBranchesForAnchorRequest{
+		UserId:        userID.String(),
+		AnchorItemKey: anchorItemKey,
+		Limit:         safeconv.Int32(limit),
+	}))
+	if err != nil {
+		return nil, fmt.Errorf("sovereign GetTrailBranchesForAnchor: %w", err)
+	}
+	return protoToTrailBranches(resp.Msg.Branches), nil
+}
+
+// protoToTrailBranches maps wire branches to their domain form. Shared by
+// GetTrailFootprints and GetTrailBranchesForAnchor so the two branch surfaces
+// (Trail episode header vs. patch-exit) can never diverge on mapping.
+func protoToTrailBranches(pbs []*sovereignv1.TrailBranch) []domain.TrailBranch {
+	branches := make([]domain.TrailBranch, len(pbs))
+	for i, pb := range pbs {
+		refs := make([]domain.TrailEvidenceRef, len(pb.EvidenceRefs))
+		for j, r := range pb.EvidenceRefs {
+			refs[j] = domain.TrailEvidenceRef{RefID: r.RefId, Label: r.Label, Kind: r.Kind}
+		}
+		branches[i] = domain.TrailBranch{
+			BranchKey:     pb.BranchKey,
+			AnchorItemKey: pb.AnchorItemKey,
+			RelationKind:  pb.RelationKind,
+			Why:           pb.Why,
+			EvidenceRefs:  refs,
+			Confidence:    pb.Confidence,
+			TargetItemKey: pb.TargetItemKey,
+			TargetTitle:   pb.TargetTitle,
+		}
+	}
+	return branches
 }
 
 func protoToTrailFootprint(pb *sovereignv1.TrailFootprint) domain.TrailFootprint {

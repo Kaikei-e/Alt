@@ -1,14 +1,33 @@
 <script lang="ts">
-import type { EpisodeData, FootprintData } from "$lib/connect/knowledge_trail";
+import type {
+	BranchData,
+	EpisodeData,
+	FootprintData,
+	ResolveBranchHandler,
+} from "$lib/connect/knowledge_trail";
+import BranchCard from "./BranchCard.svelte";
 import Footprint from "./Footprint.svelte";
 
 interface Props {
 	episode: EpisodeData;
 	/** Item keys matched by an active trail search (D25); drives auto-expand + highlight. */
 	matchedItemKeys?: string[];
+	/**
+	 * The single branch (D26/D28) anchored on a member of this episode, if
+	 * any — matched by the caller (first match only, one per episode). Absent
+	 * means this episode carries no open branch; the branch inbox that used
+	 * to sit under the spine is gone.
+	 */
+	branch?: BranchData;
+	onResolveBranch?: ResolveBranchHandler;
 }
 
-const { episode, matchedItemKeys = [] }: Props = $props();
+const {
+	episode,
+	matchedItemKeys = [],
+	branch,
+	onResolveBranch,
+}: Props = $props();
 
 // Auto-expand while a search hit lives in this episode, without permanently
 // overriding a manual toggle: `manualExpanded` is null until the user clicks,
@@ -183,6 +202,16 @@ function toggle() {
 					{/each}
 				</div>
 			{/if}
+			{#if branch && onResolveBranch}
+				<div class="episode-branch" data-testid="episode-branch">
+					<span class="episode-branch-kicker">Next step on this trail</span>
+					<BranchCard
+						branch={branch}
+						testId="episode-branch-card"
+						onResolve={onResolveBranch}
+					/>
+				</div>
+			{/if}
 		</div>
 	</article>
 </div>
@@ -342,6 +371,19 @@ function toggle() {
 		display: flex;
 		flex-direction: column;
 		gap: 0.5rem;
+	}
+	.episode-branch {
+		margin-top: 0.85rem;
+	}
+	.episode-branch-kicker {
+		display: block;
+		font-family: var(--font-mono);
+		font-size: 0.66rem;
+		font-weight: 600;
+		letter-spacing: 0.1em;
+		text-transform: uppercase;
+		color: var(--alt-ash, #999);
+		margin-bottom: 0.4rem;
 	}
 
 	@media (max-width: 620px) {

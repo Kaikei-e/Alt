@@ -16,6 +16,7 @@ type ReadOperations interface {
 	GetKnowledgeHomeItems(ctx context.Context, userID uuid.UUID, cursor string, limit int, filter *sovereign_db.LensFilter) ([]sovereign_db.KnowledgeHomeItem, string, bool, error)
 	GetTrailFootprints(ctx context.Context, userID uuid.UUID, cursor string, limit int, filterTags []string) ([]sovereign_db.TrailFootprint, string, bool, error)
 	GetOpenTrailBranches(ctx context.Context, userID uuid.UUID) ([]sovereign_db.TrailBranch, error)
+	GetOpenTrailBranchesForAnchor(ctx context.Context, userID uuid.UUID, anchorItemKey string, limit int) ([]sovereign_db.TrailBranch, error)
 	GetTodayDigest(ctx context.Context, userID uuid.UUID, date time.Time) (*sovereign_db.TodayDigest, error)
 	GetRecallCandidates(ctx context.Context, userID uuid.UUID, limit int) ([]sovereign_db.RecallCandidate, error)
 	ListDistinctUserIDs(ctx context.Context) ([]uuid.UUID, error)

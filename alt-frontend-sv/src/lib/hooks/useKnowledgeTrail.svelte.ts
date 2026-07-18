@@ -115,10 +115,17 @@ export function useKnowledgeTrail() {
 		branchKey: string,
 		resolution: BranchResolution,
 		targetItemKey?: string,
+		dismissReason?: string,
 	): Promise<void> {
 		try {
 			const transport = createClientTransport();
-			await resolveBranch(transport, branchKey, resolution, uuidv7());
+			await resolveBranch(
+				transport,
+				branchKey,
+				resolution,
+				uuidv7(),
+				dismissReason,
+			);
 		} catch (err) {
 			error = err instanceof Error ? err : new Error(String(err));
 			return;

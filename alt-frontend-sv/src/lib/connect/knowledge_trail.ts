@@ -8,6 +8,7 @@
 import type { Client, Transport } from "@connectrpc/connect";
 import { createClient } from "@connectrpc/connect";
 import {
+	type GetItemBranchesResponse,
 	type GetTrailResponse,
 	KnowledgeTrailService,
 	type Branch as ProtoBranch,
@@ -193,17 +194,56 @@ export async function searchTrail(
 export type BranchResolution = "taken" | "dismissed";
 
 /**
+ * A branch resolution callback shared by every branch-rendering surface
+ * (article read-end, episode-subordinate, and their internal BranchCard).
+ * `dismissReason` is only meaningful when resolution is "dismissed"; a "Just
+ * dismiss" pick omits it (D28).
+ */
+export type ResolveBranchHandler = (
+	branchKey: string,
+	resolution: BranchResolution,
+	targetItemKey?: string,
+	dismissReason?: string,
+) => void;
+
+/**
  * Records the user's resolution of a branch. `clientResolutionId` must be a
- * UUIDv7 so retries are idempotent server-side.
+ * UUIDv7 so retries are idempotent server-side. `dismissReason` is the
+ * optional one-tap scrutability signal (D28) — omitted (empty string on the
+ * wire) for a plain dismiss.
  */
 export async function resolveBranch(
 	transport: Transport,
 	branchKey: string,
 	resolution: BranchResolution,
 	clientResolutionId: string,
+	dismissReason?: string,
 ): Promise<void> {
 	const client = createKnowledgeTrailClient(transport);
-	await client.resolveBranch({ branchKey, resolution, clientResolutionId });
+	await client.resolveBranch({
+		branchKey,
+		resolution,
+		clientResolutionId,
+		dismissReason: dismissReason ?? "",
+	});
+}
+
+/**
+ * Fetches the open branches anchored on one item — the patch-exit surface
+ * (D26): the article page shows at most 1-2 proposals anchored on the
+ * article the user just finished reading.
+ */
+export async function getItemBranches(
+	transport: Transport,
+	itemKey: string,
+	limit = 2,
+): Promise<BranchData[]> {
+	const client = createKnowledgeTrailClient(transport);
+	const response = (await client.getItemBranches({
+		itemKey,
+		limit,
+	})) as GetItemBranchesResponse;
+	return response.branches.map(convertBranch);
 }
 
 /**

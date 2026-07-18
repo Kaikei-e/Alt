@@ -12,6 +12,7 @@ import (
 	"alt/domain"
 	knowledgetrailv1 "alt/gen/proto/alt/knowledge_trail/v1"
 	"alt/orchestrator/usecase/emit_trail_outcome_usecase"
+	"alt/orchestrator/usecase/get_item_branches_usecase"
 	"alt/orchestrator/usecase/get_knowledge_trail_usecase"
 	"alt/orchestrator/usecase/image_proxy_usecase"
 	"alt/orchestrator/usecase/resolve_trail_branch_usecase"
@@ -20,12 +21,13 @@ import (
 
 // Handler implements knowledgetrailv1connect.KnowledgeTrailServiceHandler.
 type Handler struct {
-	getTrailUsecase *get_knowledge_trail_usecase.GetKnowledgeTrailUsecase
-	resolveUsecase  *resolve_trail_branch_usecase.ResolveTrailBranchUsecase
-	emitUsecase     *emit_trail_outcome_usecase.EmitTrailOutcomeUsecase
-	searchUsecase   *search_trail_usecase.SearchTrailUsecase
-	imageProxy      *image_proxy_usecase.ImageProxyUsecase
-	logger          *slog.Logger
+	getTrailUsecase     *get_knowledge_trail_usecase.GetKnowledgeTrailUsecase
+	resolveUsecase      *resolve_trail_branch_usecase.ResolveTrailBranchUsecase
+	emitUsecase         *emit_trail_outcome_usecase.EmitTrailOutcomeUsecase
+	searchUsecase       *search_trail_usecase.SearchTrailUsecase
+	itemBranchesUsecase *get_item_branches_usecase.GetItemBranchesUsecase
+	imageProxy          *image_proxy_usecase.ImageProxyUsecase
+	logger              *slog.Logger
 }
 
 // NewHandler creates a new KnowledgeTrailService handler. imageProxy signs
@@ -37,10 +39,19 @@ func NewHandler(
 	resolve *resolve_trail_branch_usecase.ResolveTrailBranchUsecase,
 	emit *emit_trail_outcome_usecase.EmitTrailOutcomeUsecase,
 	search *search_trail_usecase.SearchTrailUsecase,
+	itemBranches *get_item_branches_usecase.GetItemBranchesUsecase,
 	imageProxy *image_proxy_usecase.ImageProxyUsecase,
 	logger *slog.Logger,
 ) *Handler {
-	return &Handler{getTrailUsecase: getTrail, resolveUsecase: resolve, emitUsecase: emit, searchUsecase: search, imageProxy: imageProxy, logger: logger}
+	return &Handler{
+		getTrailUsecase:     getTrail,
+		resolveUsecase:      resolve,
+		emitUsecase:         emit,
+		searchUsecase:       search,
+		itemBranchesUsecase: itemBranches,
+		imageProxy:          imageProxy,
+		logger:              logger,
+	}
 }
 
 // ResolveBranch records a user's take/dismiss of a proposed branch.
@@ -53,7 +64,7 @@ func (h *Handler) ResolveBranch(
 		return nil, connect.NewError(connect.CodeUnauthenticated, nil)
 	}
 	msg := req.Msg
-	if err := h.resolveUsecase.Execute(ctx, user.UserID, user.TenantID, msg.BranchKey, msg.Resolution, msg.ClientResolutionId); err != nil {
+	if err := h.resolveUsecase.Execute(ctx, user.UserID, user.TenantID, msg.BranchKey, msg.Resolution, msg.ClientResolutionId, msg.DismissReason); err != nil {
 		if errors.Is(err, resolve_trail_branch_usecase.ErrInvalidRequest) {
 			return nil, connect.NewError(connect.CodeInvalidArgument, err)
 		}
@@ -110,29 +121,11 @@ func (h *Handler) GetTrail(
 		footprints[i] = mapFootprint(fp)
 	}
 
-	branches := make([]*knowledgetrailv1.Branch, len(result.Branches))
-	for i, b := range result.Branches {
-		refs := make([]*knowledgetrailv1.TrailEvidenceRef, len(b.EvidenceRefs))
-		for j, r := range b.EvidenceRefs {
-			refs[j] = &knowledgetrailv1.TrailEvidenceRef{RefId: r.RefID, Label: r.Label, Kind: r.Kind}
-		}
-		branches[i] = &knowledgetrailv1.Branch{
-			BranchKey:     b.BranchKey,
-			AnchorItemKey: b.AnchorItemKey,
-			RelationKind:  b.RelationKind,
-			Why:           b.Why,
-			EvidenceRefs:  refs,
-			Confidence:    b.Confidence,
-			TargetItemKey: b.TargetItemKey,
-			TargetTitle:   b.TargetTitle,
-		}
-	}
-
 	return connect.NewResponse(&knowledgetrailv1.GetTrailResponse{
 		Footprints: footprints,
 		NextCursor: result.NextCursor,
 		HasMore:    result.HasMore,
-		Branches:   branches,
+		Branches:   mapBranches(result.Branches),
 		Episodes:   h.mapEpisodes(result.Episodes),
 	}), nil
 }
@@ -165,6 +158,60 @@ func (h *Handler) SearchTrail(
 		Episodes:        h.mapEpisodes(result.Episodes),
 		MatchedItemKeys: result.MatchedItemKeys,
 	}), nil
+}
+
+// GetItemBranches returns the open branches anchored on one item — the
+// Wave 10 (D26) patch-exit surface shown at the article read-end, replacing
+// the retired top-of-trail branch inbox. Rule 8: an unwired usecase panics
+// rather than silently returning an empty result, mirroring SearchTrail's
+// guard.
+func (h *Handler) GetItemBranches(
+	ctx context.Context,
+	req *connect.Request[knowledgetrailv1.GetItemBranchesRequest],
+) (*connect.Response[knowledgetrailv1.GetItemBranchesResponse], error) {
+	user, err := domain.GetUserFromContext(ctx)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeUnauthenticated, nil)
+	}
+	if h.itemBranchesUsecase == nil {
+		panic("knowledge_trail.Handler: GetItemBranches reached with unwired item-branches usecase (DI gap)")
+	}
+	msg := req.Msg
+	branches, err := h.itemBranchesUsecase.Execute(ctx, user.UserID, msg.ItemKey, int(msg.Limit))
+	if err != nil {
+		if errors.Is(err, get_item_branches_usecase.ErrInvalidRequest) {
+			return nil, connect.NewError(connect.CodeInvalidArgument, err)
+		}
+		return nil, connect.NewError(connect.CodeInternal, err)
+	}
+
+	return connect.NewResponse(&knowledgetrailv1.GetItemBranchesResponse{
+		Branches: mapBranches(branches),
+	}), nil
+}
+
+// mapBranches maps domain branches to their wire form. Shared by GetTrail and
+// GetItemBranches so the two branch surfaces (Trail episode header vs.
+// patch-exit) can never diverge on mapping.
+func mapBranches(branches []domain.TrailBranch) []*knowledgetrailv1.Branch {
+	out := make([]*knowledgetrailv1.Branch, len(branches))
+	for i, b := range branches {
+		refs := make([]*knowledgetrailv1.TrailEvidenceRef, len(b.EvidenceRefs))
+		for j, r := range b.EvidenceRefs {
+			refs[j] = &knowledgetrailv1.TrailEvidenceRef{RefId: r.RefID, Label: r.Label, Kind: r.Kind}
+		}
+		out[i] = &knowledgetrailv1.Branch{
+			BranchKey:     b.BranchKey,
+			AnchorItemKey: b.AnchorItemKey,
+			RelationKind:  b.RelationKind,
+			Why:           b.Why,
+			EvidenceRefs:  refs,
+			Confidence:    b.Confidence,
+			TargetItemKey: b.TargetItemKey,
+			TargetTitle:   b.TargetTitle,
+		}
+	}
+	return out
 }
 
 // mapEpisodes maps domain episodes to their wire form, signing each

@@ -30,9 +30,15 @@ const EventTrailBranchProposed = "trail.branch_proposed.v1"
 const EventTrailBranchResolved = "trail.branch_resolved.v1"
 
 // BranchResolvedPayload is the trail.branch_resolved.v1 event body.
+// DismissReason is the optional one-tap scrutability signal (D28(d)): a
+// non-empty value only ever accompanies resolution=="dismissed". It is not
+// new event vocabulary — the payload shape absorbs it — and the projector
+// folds the event the same way regardless of whether it is present; planner
+// calibration off this field is explicitly out of scope (D21).
 type BranchResolvedPayload struct {
-	BranchKey  string `json:"branch_key"`
-	Resolution string `json:"resolution"` // "taken" | "dismissed"
+	BranchKey     string `json:"branch_key"`
+	Resolution    string `json:"resolution"` // "taken" | "dismissed"
+	DismissReason string `json:"dismiss_reason,omitempty"`
 }
 
 // ValidResolution reports whether r is an accepted branch resolution.
@@ -74,6 +80,10 @@ func (p BranchProposedPayload) Valid() bool {
 type Repository interface {
 	ListDistinctUserIDs(ctx context.Context) ([]uuid.UUID, error)
 	GetLatestFootprintAnchor(ctx context.Context, userID uuid.UUID) (string, uuid.UUID, bool, error)
+	// GetItemTitle resolves the anchor's display title (D28 — anchored why):
+	// a branch's why must reference it, so an unresolvable title suppresses
+	// emission rather than falling back to a generic why.
+	GetItemTitle(ctx context.Context, userID uuid.UUID, itemKey string) (string, bool, error)
 	DeriveTrailClusterCandidates(ctx context.Context, userID uuid.UUID, limit int) ([]sovereign_db.TrailClusterCandidate, error)
 	AppendKnowledgeEvent(ctx context.Context, event sovereign_db.KnowledgeEvent) (int64, error)
 }
@@ -144,6 +154,21 @@ func (p *Planner) planUser(ctx context.Context, userID uuid.UUID) error {
 	if !ok {
 		return nil // no footprints yet → nothing to anchor a branch on
 	}
+
+	// D28(a): a branch whose why does not reference its anchor is forbidden.
+	// The anchor's title is that reference, so an unresolvable title must
+	// suppress emission for this user — never fall back to a generic why.
+	anchorTitle, titleOK, err := p.repo.GetItemTitle(ctx, userID, anchor)
+	if err != nil {
+		return fmt.Errorf("trail_planner anchor title: %w", err)
+	}
+	if !titleOK {
+		p.logger.WarnContext(ctx, "trail.branch_anchor_unresolved",
+			slog.String("user_id", userID.String()),
+			slog.String("anchor_item_key", anchor))
+		return nil
+	}
+
 	candidates, err := p.repo.DeriveTrailClusterCandidates(ctx, userID, p.cfg.MaxBranchesPerUser)
 	if err != nil {
 		return fmt.Errorf("trail_planner candidates: %w", err)
@@ -157,7 +182,7 @@ func (p *Planner) planUser(ctx context.Context, userID uuid.UUID) error {
 		if strings.TrimSpace(c.TargetTitle) == "" {
 			continue
 		}
-		payload := buildClusterBranch(userID, anchor, c)
+		payload := buildClusterBranch(userID, anchor, anchorTitle, c)
 		if !payload.Valid() {
 			p.logger.WarnContext(ctx, "trail_planner: dropping incomplete branch",
 				slog.String("branch_key", payload.BranchKey))
@@ -189,9 +214,11 @@ func (p *Planner) planUser(ctx context.Context, userID uuid.UUID) error {
 }
 
 // buildClusterBranch turns a Cluster candidate into a fully-populated branch:
-// a new item that situates into a topic the user already follows. The four-tuple
-// is always set.
-func buildClusterBranch(userID uuid.UUID, anchorItemKey string, c sovereign_db.TrailClusterCandidate) BranchProposedPayload {
+// a new item that situates into a topic the user already follows. The
+// four-tuple is always set, and the why is anchored (D28(a)): it names the
+// anchor item's title in quotes, never a generic "a topic you follow" claim
+// with no concrete reference back to what the user just read.
+func buildClusterBranch(userID uuid.UUID, anchorItemKey, anchorTitle string, c sovereign_db.TrailClusterCandidate) BranchProposedPayload {
 	refs := make([]EvidenceRef, 0, len(c.SharedTags)+1)
 	for _, tag := range c.SharedTags {
 		refs = append(refs, EvidenceRef{RefID: tag, Label: tag, Kind: "tag"})
@@ -207,7 +234,7 @@ func buildClusterBranch(userID uuid.UUID, anchorItemKey string, c sovereign_db.T
 		BranchKey:      "cluster:" + userID.String() + ":" + c.TargetItemKey,
 		AnchorItemKey:  anchorItemKey,
 		RelationKind:   "cluster",
-		Why:            "Joins a topic you follow — shares " + strings.Join(c.SharedTags, ", ") + " with what you've been reading.",
+		Why:            fmt.Sprintf("Because you read %q — joins %s", anchorTitle, strings.Join(c.SharedTags, ", ")),
 		EvidenceRefs:   refs,
 		Confidence:     confidence,
 		TargetItemKey:  c.TargetItemKey,

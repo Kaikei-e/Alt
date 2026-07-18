@@ -14,6 +14,7 @@ import (
 	"alt/orchestrator/usecase/archive_lens_usecase"
 	"alt/orchestrator/usecase/create_lens_usecase"
 	"alt/orchestrator/usecase/emit_trail_outcome_usecase"
+	"alt/orchestrator/usecase/get_item_branches_usecase"
 	"alt/orchestrator/usecase/get_knowledge_home_usecase"
 	"alt/orchestrator/usecase/get_knowledge_trail_usecase"
 	"alt/orchestrator/usecase/knowledge_audit_usecase"
@@ -49,6 +50,7 @@ type KnowledgeModule struct {
 	ResolveTrailBranchUsecase        *resolve_trail_branch_usecase.ResolveTrailBranchUsecase
 	EmitTrailOutcomeUsecase          *emit_trail_outcome_usecase.EmitTrailOutcomeUsecase
 	SearchTrailUsecase               *search_trail_usecase.SearchTrailUsecase
+	GetItemBranchesUsecase           *get_item_branches_usecase.GetItemBranchesUsecase
 	TrackHomeSeenUsecase             *track_home_seen_usecase.TrackHomeSeenUsecase
 	TrackHomeActionUsecase           *track_home_action_usecase.TrackHomeActionUsecase
 	AppendKnowledgeEventUsecase      *append_knowledge_event_usecase.AppendKnowledgeEventUsecase
@@ -109,6 +111,10 @@ func newKnowledgeModule(infra *InfraModule, article *ArticleModule) *KnowledgeMo
 	// index (no new index) and narrows the trail spine via sovereign's
 	// GetTrailFootprints filter_item_keys — no sovereign→Meilisearch coupling.
 	searchTrailUC := search_trail_usecase.NewSearchTrailUsecase(infra.SearchIndexerDriver, sovereignCli, trailThumbnailGw)
+	// Item-anchored branches (Wave 10, D26): the patch-exit surface shown at
+	// the article read-end, reusing the same sovereign client as every other
+	// trail read.
+	getItemBranchesUC := get_item_branches_usecase.NewGetItemBranchesUsecase(sovereignCli)
 	trackHomeSeenUC := track_home_seen_usecase.NewTrackHomeSeenUsecase(sovereignCli, featureFlagGw)
 	trackHomeActionUC := track_home_action_usecase.NewTrackHomeActionUsecase(sovereignCli, sovereignCli, featureFlagGw, sovereignCli, sovereignCli, sovereignCli, articleURLLookupGw)
 	appendKnowledgeEventUC := append_knowledge_event_usecase.NewAppendKnowledgeEventUsecase(sovereignCli)
@@ -183,6 +189,7 @@ func newKnowledgeModule(infra *InfraModule, article *ArticleModule) *KnowledgeMo
 		ResolveTrailBranchUsecase:        resolveTrailBranchUC,
 		EmitTrailOutcomeUsecase:          emitTrailOutcomeUC,
 		SearchTrailUsecase:               searchTrailUC,
+		GetItemBranchesUsecase:           getItemBranchesUC,
 		TrackHomeSeenUsecase:             trackHomeSeenUC,
 		TrackHomeActionUsecase:           trackHomeActionUC,
 		AppendKnowledgeEventUsecase:      appendKnowledgeEventUC,
