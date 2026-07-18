@@ -8,6 +8,7 @@ import (
 	"alt/orchestrator/gateway/feature_flag_gateway"
 	"alt/orchestrator/gateway/knowledge_backfill_gateway"
 	"alt/orchestrator/gateway/knowledge_metrics_gateway"
+	"alt/orchestrator/gateway/trail_thumbnail_gateway"
 	"alt/orchestrator/gateway/trending_tags_gateway"
 	"alt/orchestrator/usecase/append_knowledge_event_usecase"
 	"alt/orchestrator/usecase/archive_lens_usecase"
@@ -98,7 +99,8 @@ func newKnowledgeModule(infra *InfraModule, article *ArticleModule) *KnowledgeMo
 	// Knowledge Home usecases
 	trendingTagsGw := trending_tags_gateway.NewTrendingTagsGateway(altDB, 30*time.Minute)
 	getKnowledgeHomeUC := get_knowledge_home_usecase.NewGetKnowledgeHomeUsecase(sovereignCli, sovereignCli, sovereignCli, sovereignCli, sovereignCli, trendingTagsGw)
-	getKnowledgeTrailUC := get_knowledge_trail_usecase.NewGetKnowledgeTrailUsecase(sovereignCli)
+	trailThumbnailGw := trail_thumbnail_gateway.NewGateway(altDB)
+	getKnowledgeTrailUC := get_knowledge_trail_usecase.NewGetKnowledgeTrailUsecase(sovereignCli, trailThumbnailGw)
 	resolveTrailBranchUC := resolve_trail_branch_usecase.NewResolveTrailBranchUsecase(sovereignCli)
 	emitTrailOutcomeUC := emit_trail_outcome_usecase.NewEmitTrailOutcomeUsecase(sovereignCli)
 	trackHomeSeenUC := track_home_seen_usecase.NewTrackHomeSeenUsecase(sovereignCli, featureFlagGw)

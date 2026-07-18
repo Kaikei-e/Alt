@@ -56,7 +56,7 @@ onMount(() => {
 	<!-- The spine (the path the user has worn) is the hero. System-proposed
 	     branches are secondary and rendered, capped, below it. -->
 	<TrailSpine
-		footprints={trail.footprints}
+		episodes={trail.episodes}
 		loading={trail.loading}
 		hasMore={trail.hasMore}
 		hasEverLoaded={trail.hasEverLoaded}

@@ -2,6 +2,7 @@ import { goto } from "$app/navigation";
 import {
 	type BranchData,
 	type BranchResolution,
+	type EpisodeData,
 	type FootprintData,
 	getTrail,
 	resolveBranch,
@@ -17,6 +18,7 @@ import { uuidv7 } from "$lib/utils/uuidv7";
  */
 export function useKnowledgeTrail() {
 	let footprints = $state<FootprintData[]>([]);
+	let episodes = $state<EpisodeData[]>([]);
 	let branches = $state<BranchData[]>([]);
 	let loading = $state(false);
 	let error = $state<Error | null>(null);
@@ -33,6 +35,9 @@ export function useKnowledgeTrail() {
 			footprints = reset
 				? result.footprints
 				: [...footprints, ...result.footprints];
+			// Episodes are the spine's default display unit (D24); cursor/limit page
+			// over them the same way as the legacy flat footprints did.
+			episodes = reset ? result.episodes : [...episodes, ...result.episodes];
 			// Branches are a full snapshot of the user's open branches (not paged).
 			branches = result.branches;
 			nextCursor = result.nextCursor;
@@ -42,6 +47,7 @@ export function useKnowledgeTrail() {
 			error = err instanceof Error ? err : new Error(String(err));
 			if (!hasEverLoaded) {
 				footprints = [];
+				episodes = [];
 			}
 		} finally {
 			loading = false;
@@ -92,6 +98,9 @@ export function useKnowledgeTrail() {
 	return {
 		get footprints() {
 			return footprints;
+		},
+		get episodes() {
+			return episodes;
 		},
 		get branches() {
 			return branches;

@@ -42,3 +42,15 @@ type TrailBranch struct {
 	TargetItemKey string
 	TargetTitle   string
 }
+
+// TrailEpisode is the domain view of one derived line of inquiry (D24/D30) —
+// the spine's default display unit. A pure derivation, never a stored
+// entity: every field is computed from its member footprints. ThumbnailURL
+// is the representative article's OG image (raw, unsigned); "" when no
+// image was found (the frontend falls back to a text-only card, D29).
+type TrailEpisode struct {
+	EpisodeKey   string
+	Wear         string
+	ThumbnailURL string
+	Footprints   []TrailFootprint
+}

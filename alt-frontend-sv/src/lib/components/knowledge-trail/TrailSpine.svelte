@@ -1,27 +1,25 @@
 <script lang="ts">
-import type { FootprintData } from "$lib/connect/knowledge_trail";
-import { groupFootprintsByDay } from "./trail-grouping";
-import Footprint from "./Footprint.svelte";
+import type { EpisodeData } from "$lib/connect/knowledge_trail";
+import EpisodeCard from "./EpisodeCard.svelte";
 
 interface Props {
-	footprints: FootprintData[];
+	episodes: EpisodeData[];
 	loading: boolean;
 	hasMore: boolean;
 	hasEverLoaded: boolean;
 	onLoadMore: () => void;
 }
 
-const { footprints, loading, hasMore, hasEverLoaded, onLoadMore }: Props =
+const { episodes, loading, hasMore, hasEverLoaded, onLoadMore }: Props =
 	$props();
 
-// `now` is read once at construction; grouping is pure over it.
-const now = new Date();
-const groups = $derived(groupFootprintsByDay(footprints, now));
-const isEmpty = $derived(hasEverLoaded && !loading && footprints.length === 0);
+const isEmpty = $derived(hasEverLoaded && !loading && episodes.length === 0);
 </script>
 
 <!-- No lens chip bar: the raw tag union was a dead tag cloud (D25). Theme
-     narrowing belongs to episodes; targeted rediscovery to trail search. -->
+     narrowing belongs to episodes; targeted rediscovery to trail search.
+     Episodes are the spine's default display unit (D24) — date is a landmark
+     on each episode header, never a grouping axis; there is no day-separator. -->
 <section class="trail" data-testid="trail-spine">
 	{#if isEmpty}
 		<p class="trail-empty" data-testid="trail-empty">
@@ -29,15 +27,8 @@ const isEmpty = $derived(hasEverLoaded && !loading && footprints.length === 0);
 		</p>
 	{/if}
 
-	{#each groups as group (group.dayKey)}
-		<div class="day-sep">
-			<span class="day">{group.label}</span>
-			<span class="rule"></span>
-			<span class="count">{group.footprints.length} footprints</span>
-		</div>
-		{#each group.footprints as fp (fp.footprintKey)}
-			<Footprint footprint={fp} />
-		{/each}
+	{#each episodes as episode (episode.episodeKey)}
+		<EpisodeCard {episode} />
 	{/each}
 
 	{#if hasMore}
@@ -57,33 +48,6 @@ const isEmpty = $derived(hasEverLoaded && !loading && footprints.length === 0);
 		font-size: 0.9rem;
 		color: var(--alt-ash, #999);
 		font-style: italic;
-	}
-	.day-sep {
-		display: flex;
-		align-items: center;
-		gap: 0.8rem;
-		margin: 1.5rem 0 0.8rem;
-	}
-	.day-sep:first-child {
-		margin-top: 0.4rem;
-	}
-	.day {
-		font-family: var(--font-display);
-		font-size: 1rem;
-		font-weight: 700;
-		color: var(--alt-charcoal, #1a1a1a);
-	}
-	.rule {
-		flex: 1;
-		height: 1px;
-		background: var(--surface-border, #c8c8c8);
-	}
-	.count {
-		font-family: var(--font-mono);
-		font-size: 0.66rem;
-		color: var(--alt-ash, #999);
-		letter-spacing: 0.06em;
-		text-transform: uppercase;
 	}
 	.load-more {
 		margin-top: 0.8rem;

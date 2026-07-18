@@ -13,6 +13,7 @@ import (
 	knowledgetrailv1 "alt/gen/proto/alt/knowledge_trail/v1"
 	"alt/orchestrator/usecase/emit_trail_outcome_usecase"
 	"alt/orchestrator/usecase/get_knowledge_trail_usecase"
+	"alt/orchestrator/usecase/image_proxy_usecase"
 	"alt/orchestrator/usecase/resolve_trail_branch_usecase"
 )
 
@@ -21,17 +22,22 @@ type Handler struct {
 	getTrailUsecase *get_knowledge_trail_usecase.GetKnowledgeTrailUsecase
 	resolveUsecase  *resolve_trail_branch_usecase.ResolveTrailBranchUsecase
 	emitUsecase     *emit_trail_outcome_usecase.EmitTrailOutcomeUsecase
+	imageProxy      *image_proxy_usecase.ImageProxyUsecase
 	logger          *slog.Logger
 }
 
-// NewHandler creates a new KnowledgeTrailService handler.
+// NewHandler creates a new KnowledgeTrailService handler. imageProxy signs
+// episode thumbnails (D29); a nil imageProxy (the feature disabled, mirroring
+// feeds.enrichWithProxyURLs) leaves thumbnails empty rather than leaking a
+// raw, unsigned OG image URL to the wire.
 func NewHandler(
 	getTrail *get_knowledge_trail_usecase.GetKnowledgeTrailUsecase,
 	resolve *resolve_trail_branch_usecase.ResolveTrailBranchUsecase,
 	emit *emit_trail_outcome_usecase.EmitTrailOutcomeUsecase,
+	imageProxy *image_proxy_usecase.ImageProxyUsecase,
 	logger *slog.Logger,
 ) *Handler {
-	return &Handler{getTrailUsecase: getTrail, resolveUsecase: resolve, emitUsecase: emit, logger: logger}
+	return &Handler{getTrailUsecase: getTrail, resolveUsecase: resolve, emitUsecase: emit, imageProxy: imageProxy, logger: logger}
 }
 
 // ResolveBranch records a user's take/dismiss of a proposed branch.
@@ -98,24 +104,7 @@ func (h *Handler) GetTrail(
 
 	footprints := make([]*knowledgetrailv1.Footprint, len(result.Footprints))
 	for i, fp := range result.Footprints {
-		firstOccurredAt := fp.FirstOccurredAt
-		if firstOccurredAt.IsZero() {
-			firstOccurredAt = fp.OccurredAt
-		}
-		contactCount := max(fp.ContactCount, 1)
-		footprints[i] = &knowledgetrailv1.Footprint{
-			FootprintKey:    fp.FootprintKey,
-			Verb:            fp.Verb,
-			ItemKey:         fp.ItemKey,
-			Title:           fp.Title,
-			Excerpt:         fp.Excerpt,
-			Tags:            fp.Tags,
-			Note:            fp.Note,
-			OccurredAt:      fp.OccurredAt.UTC().Format(time.RFC3339),
-			Wear:            fp.Wear,
-			ContactCount:    int32(contactCount), //nolint:gosec // >= 1, bounded upstream
-			FirstOccurredAt: firstOccurredAt.UTC().Format(time.RFC3339),
-		}
+		footprints[i] = mapFootprint(fp)
 	}
 
 	branches := make([]*knowledgetrailv1.Branch, len(result.Branches))
@@ -136,10 +125,58 @@ func (h *Handler) GetTrail(
 		}
 	}
 
+	episodes := make([]*knowledgetrailv1.Episode, len(result.Episodes))
+	for i, ep := range result.Episodes {
+		epFootprints := make([]*knowledgetrailv1.Footprint, len(ep.Footprints))
+		for j, fp := range ep.Footprints {
+			epFootprints[j] = mapFootprint(fp)
+		}
+		episodes[i] = &knowledgetrailv1.Episode{
+			EpisodeKey:   ep.EpisodeKey,
+			Wear:         ep.Wear,
+			ThumbnailUrl: h.signThumbnail(ep.ThumbnailURL),
+			Footprints:   epFootprints,
+		}
+	}
+
 	return connect.NewResponse(&knowledgetrailv1.GetTrailResponse{
 		Footprints: footprints,
 		NextCursor: result.NextCursor,
 		HasMore:    result.HasMore,
 		Branches:   branches,
+		Episodes:   episodes,
 	}), nil
+}
+
+// signThumbnail signs a raw OG image URL through the image-proxy signer
+// (D29), mirroring feeds.enrichWithProxyURLs. A raw URL never reaches the
+// wire unsigned: with no image proxy wired, or no URL resolved, the card
+// degrades to text.
+func (h *Handler) signThumbnail(rawURL string) string {
+	if rawURL == "" || h.imageProxy == nil {
+		return ""
+	}
+	return h.imageProxy.GenerateProxyURL(rawURL)
+}
+
+// mapFootprint maps one domain footprint to its wire form.
+func mapFootprint(fp domain.TrailFootprint) *knowledgetrailv1.Footprint {
+	firstOccurredAt := fp.FirstOccurredAt
+	if firstOccurredAt.IsZero() {
+		firstOccurredAt = fp.OccurredAt
+	}
+	contactCount := max(fp.ContactCount, 1)
+	return &knowledgetrailv1.Footprint{
+		FootprintKey:    fp.FootprintKey,
+		Verb:            fp.Verb,
+		ItemKey:         fp.ItemKey,
+		Title:           fp.Title,
+		Excerpt:         fp.Excerpt,
+		Tags:            fp.Tags,
+		Note:            fp.Note,
+		OccurredAt:      fp.OccurredAt.UTC().Format(time.RFC3339),
+		Wear:            fp.Wear,
+		ContactCount:    int32(contactCount), //nolint:gosec // >= 1, bounded upstream
+		FirstOccurredAt: firstOccurredAt.UTC().Format(time.RFC3339),
+	}
 }

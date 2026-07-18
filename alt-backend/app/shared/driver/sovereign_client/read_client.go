@@ -51,10 +51,12 @@ func (c *Client) GetKnowledgeHomeItems(ctx context.Context, userID uuid.UUID, cu
 	return items, resp.Msg.NextCursor, resp.Msg.HasMore, nil
 }
 
-// GetTrailFootprints fetches the user's footprint spine and open branches.
-func (c *Client) GetTrailFootprints(ctx context.Context, userID uuid.UUID, cursor string, limit int, filterTags []string) ([]domain.TrailFootprint, []domain.TrailBranch, string, bool, error) {
+// GetTrailFootprints fetches the user's derived episode spine (D24/D30) and
+// open branches. The legacy footprints return is superseded and always empty
+// once the provider ships episodes.
+func (c *Client) GetTrailFootprints(ctx context.Context, userID uuid.UUID, cursor string, limit int, filterTags []string) ([]domain.TrailFootprint, []domain.TrailBranch, []domain.TrailEpisode, string, bool, error) {
 	if !c.enabled {
-		return nil, nil, "", false, nil
+		return nil, nil, nil, "", false, nil
 	}
 
 	resp, err := c.client.GetTrailFootprints(ctx, connect.NewRequest(&sovereignv1.GetTrailFootprintsRequest{
@@ -64,30 +66,12 @@ func (c *Client) GetTrailFootprints(ctx context.Context, userID uuid.UUID, curso
 		FilterTags: filterTags,
 	}))
 	if err != nil {
-		return nil, nil, "", false, fmt.Errorf("sovereign GetTrailFootprints: %w", err)
+		return nil, nil, nil, "", false, fmt.Errorf("sovereign GetTrailFootprints: %w", err)
 	}
 
 	footprints := make([]domain.TrailFootprint, len(resp.Msg.Footprints))
 	for i, pb := range resp.Msg.Footprints {
-		fp := domain.TrailFootprint{
-			FootprintKey:    pb.FootprintKey,
-			Verb:            pb.Verb,
-			ItemKey:         pb.ItemKey,
-			Title:           pb.Title,
-			Excerpt:         pb.Excerpt,
-			Tags:            pb.Tags,
-			Note:            pb.Note,
-			SourceEventType: pb.SourceEventType,
-			Wear:            pb.Wear,
-			ContactCount:    int(pb.ContactCount),
-		}
-		if pb.OccurredAt != nil {
-			fp.OccurredAt = pb.OccurredAt.AsTime()
-		}
-		if pb.FirstOccurredAt != nil {
-			fp.FirstOccurredAt = pb.FirstOccurredAt.AsTime()
-		}
-		footprints[i] = fp
+		footprints[i] = protoToTrailFootprint(pb)
 	}
 
 	branches := make([]domain.TrailBranch, len(resp.Msg.Branches))
@@ -107,7 +91,45 @@ func (c *Client) GetTrailFootprints(ctx context.Context, userID uuid.UUID, curso
 			TargetTitle:   pb.TargetTitle,
 		}
 	}
-	return footprints, branches, resp.Msg.NextCursor, resp.Msg.HasMore, nil
+
+	episodes := make([]domain.TrailEpisode, len(resp.Msg.Episodes))
+	for i, pb := range resp.Msg.Episodes {
+		epFootprints := make([]domain.TrailFootprint, len(pb.Footprints))
+		for j, fpb := range pb.Footprints {
+			epFootprints[j] = protoToTrailFootprint(fpb)
+		}
+		episodes[i] = domain.TrailEpisode{
+			EpisodeKey: pb.EpisodeKey,
+			Wear:       pb.Wear,
+			// ThumbnailURL is left "" here: enrichment happens at the usecase
+			// layer, keyed by the representative article id (D29).
+			Footprints: epFootprints,
+		}
+	}
+
+	return footprints, branches, episodes, resp.Msg.NextCursor, resp.Msg.HasMore, nil
+}
+
+func protoToTrailFootprint(pb *sovereignv1.TrailFootprint) domain.TrailFootprint {
+	fp := domain.TrailFootprint{
+		FootprintKey:    pb.FootprintKey,
+		Verb:            pb.Verb,
+		ItemKey:         pb.ItemKey,
+		Title:           pb.Title,
+		Excerpt:         pb.Excerpt,
+		Tags:            pb.Tags,
+		Note:            pb.Note,
+		SourceEventType: pb.SourceEventType,
+		Wear:            pb.Wear,
+		ContactCount:    int(pb.ContactCount),
+	}
+	if pb.OccurredAt != nil {
+		fp.OccurredAt = pb.OccurredAt.AsTime()
+	}
+	if pb.FirstOccurredAt != nil {
+		fp.FirstOccurredAt = pb.FirstOccurredAt.AsTime()
+	}
+	return fp
 }
 
 func (c *Client) GetTodayDigest(ctx context.Context, userID uuid.UUID, date time.Time) (domain.TodayDigest, error) {

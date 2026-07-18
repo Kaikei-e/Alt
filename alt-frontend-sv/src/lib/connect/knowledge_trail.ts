@@ -11,6 +11,7 @@ import {
 	type GetTrailResponse,
 	KnowledgeTrailService,
 	type Branch as ProtoBranch,
+	type Episode as ProtoEpisode,
 	type Footprint as ProtoFootprint,
 } from "$lib/gen/alt/knowledge_trail/v1/knowledge_trail_pb";
 
@@ -73,10 +74,28 @@ export interface BranchData {
 	targetTitle: string;
 }
 
+/**
+ * One derived "line of inquiry" (D24/D30): footprints folded by same-article
+ * contact and cleaned-tag chaining. A pure derivation over the spine, never a
+ * second spine — expanding it returns to plain footprints.
+ */
+export interface EpisodeData {
+	episodeKey: string;
+	/** Deepest path-wear band among member footprints. */
+	wear: FootprintWear;
+	/** Representative article's preview image ("" falls back to text). */
+	thumbnailUrl: string;
+	/** Member rows, newest first (collapsed per D24). */
+	footprints: FootprintData[];
+}
+
 /** One page of the trail spine. */
 export interface TrailResult {
+	/** Legacy flat spine (superseded by episodes; empty once episodes ship). */
 	footprints: FootprintData[];
 	branches: BranchData[];
+	/** The spine's default display unit (Wave 8, D24). */
+	episodes: EpisodeData[];
 	nextCursor: string;
 	hasMore: boolean;
 }
@@ -103,6 +122,15 @@ function convertFootprint(pb: ProtoFootprint): FootprintData {
 	};
 }
 
+function convertEpisode(pb: ProtoEpisode): EpisodeData {
+	return {
+		episodeKey: pb.episodeKey,
+		wear: pb.wear,
+		thumbnailUrl: pb.thumbnailUrl,
+		footprints: pb.footprints.map(convertFootprint),
+	};
+}
+
 /**
  * Fetches one page of the user's footprint spine, reverse-chronological.
  * `filterTags` applies the theme lens (empty = full spine).
@@ -123,6 +151,7 @@ export async function getTrail(
 	return {
 		footprints: response.footprints.map(convertFootprint),
 		branches: response.branches.map(convertBranch),
+		episodes: response.episodes.map(convertEpisode),
 		nextCursor: response.nextCursor,
 		hasMore: response.hasMore,
 	};
