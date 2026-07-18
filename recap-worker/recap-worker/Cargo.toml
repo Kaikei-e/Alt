@@ -134,3 +134,48 @@ codegen-units = 1
 strip = "symbols"
 panic = "abort"
 overflow-checks = true
+
+# Lint policy lives in Cargo.toml (DECREE §13). Promote warnings to errors in
+# CI via `cargo clippy -- -D warnings` rather than `#![deny(warnings)]` in
+# lib.rs, so toolchain upgrades that introduce new lints do not silently break
+# local builds until CI catches them. Pedantic allows below were previously
+# crate-level `#![allow]` in lib.rs; they must live here so bins/tests inherit.
+[lints.rust]
+unexpected_cfgs = "warn"
+
+[lints.clippy]
+# Groups at priority -1 so per-lint allows below can override.
+all = { level = "warn", priority = -1 }
+pedantic = { level = "warn", priority = -1 }
+# Acceptable for trait naming consistency (e.g., RecapDao, RecapDaoImpl)
+module_name_repetitions = "allow"
+# Required for ML/statistics: f64 → f32 conversions for BERT embeddings
+cast_precision_loss = "allow"
+# Necessary for embedding dimension conversions: usize ↔ i32/u32
+cast_possible_truncation = "allow"
+# Required for signed/unsigned conversions in DB queries and pagination
+cast_possible_wrap = "allow"
+# Domain logic often requires helper declarations mid-function
+items_after_statements = "allow"
+# Error context via anyhow::Context already provides sufficient documentation
+missing_errors_doc = "allow"
+# Panic paths are defensive (e.g., mutex poisoning), not part of normal flow
+missing_panics_doc = "allow"
+# Technical identifiers (e.g., XXH3, BERT, TF-IDF) don't need markdown formatting
+doc_markdown = "allow"
+# Explicit closures improve clarity for complex async chains
+redundant_closure = "allow"
+# Named format args reduce readability for long messages with many placeholders
+uninlined_format_args = "allow"
+# if-let-else patterns are clearer than map_or for error handling flows
+option_if_let_else = "allow"
+# or_else() allocation overhead negligible; or() preferred for readability
+or_fun_call = "allow"
+# Pass-by-value necessary for async trait methods (Arc, Config types)
+needless_pass_by_value = "allow"
+# Too noisy: many utility methods return useful values but aren't always used
+must_use_candidate = "allow"
+# Nested conditions improve readability when branches are semantically distinct
+collapsible_if = "allow"
+# for x in iter.iter() is clearer than for x in &iter for consistency
+explicit_iter_loop = "allow"

@@ -7,10 +7,11 @@ pub(crate) struct DailyCadence {
 }
 
 impl DailyCadence {
-    pub(crate) fn new(tz: FixedOffset, hour: u32, minute: u32) -> Self {
-        let target = NaiveTime::from_hms_opt(hour, minute, 0)
-            .unwrap_or_else(|| panic!("invalid time: {hour:02}:{minute:02}"));
-        Self { tz, target }
+    pub(crate) fn new(tz: FixedOffset, hour: u32, minute: u32) -> Result<Self, String> {
+        let target = NaiveTime::from_hms_opt(hour, minute, 0).ok_or_else(|| {
+            format!("invalid time: {hour:02}:{minute:02}")
+        })?;
+        Ok(Self { tz, target })
     }
 
     pub(crate) fn next_run_from(&self, now: DateTime<Utc>) -> DateTime<Utc> {
@@ -52,7 +53,7 @@ mod tests {
 
     #[test]
     fn next_run_same_day_when_before_trigger() {
-        let cadence = DailyCadence::new(jst(), 4, 0);
+        let cadence = DailyCadence::new(jst(), 4, 0).expect("valid cadence");
         let now = parse_utc("2025-11-08T18:30:00Z"); // 03:30 JST (same calendar day)
         let expected = parse_utc("2025-11-08T19:00:00Z"); // 04:00 JST
         let next = cadence.next_run_from(now);
@@ -61,7 +62,7 @@ mod tests {
 
     #[test]
     fn next_run_next_day_when_past_trigger() {
-        let cadence = DailyCadence::new(jst(), 4, 0);
+        let cadence = DailyCadence::new(jst(), 4, 0).expect("valid cadence");
         let now = parse_utc("2025-11-08T10:00:00Z"); // 19:00 JST (already past 04:00)
         let expected = parse_utc("2025-11-08T19:00:00Z"); // Next day's 04:00 JST
         let next = cadence.next_run_from(now);
@@ -70,9 +71,15 @@ mod tests {
 
     #[test]
     fn next_run_immediate_when_exact_trigger() {
-        let cadence = DailyCadence::new(jst(), 4, 0);
+        let cadence = DailyCadence::new(jst(), 4, 0).expect("valid cadence");
         let now = parse_utc("2025-11-08T19:00:00Z"); // Exactly 04:00 JST
         let next = cadence.next_run_from(now);
         assert_eq!(next, now);
+    }
+
+    #[test]
+    fn new_rejects_invalid_time() {
+        let err = DailyCadence::new(jst(), 25, 0).expect_err("hour 25 is invalid");
+        assert!(err.contains("invalid time"), "{err}");
     }
 }

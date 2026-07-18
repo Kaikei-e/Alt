@@ -1,6 +1,5 @@
 use std::collections::HashMap;
 use std::sync::Arc;
-use std::sync::atomic::{AtomicUsize, Ordering};
 
 use ammonia::clean;
 use anyhow::{Context, Result};
@@ -126,10 +125,9 @@ impl PreprocessStage for TextPreprocessStage {
         let mut html_cleaned_count = 0;
         let mut total_characters = 0;
         let mut language_counts: HashMap<String, usize> = HashMap::new();
-        let progress_counter = Arc::new(AtomicUsize::new(0));
 
-        for result in results {
-            let current_progress = progress_counter.fetch_add(1, Ordering::Relaxed) + 1;
+        for (progress_counter, result) in results.into_iter().enumerate() {
+            let current_progress = progress_counter + 1;
 
             // Log progress every 100 articles
             if current_progress.is_multiple_of(100) || current_progress == total_articles {
@@ -204,7 +202,7 @@ impl PreprocessStage for TextPreprocessStage {
 /// 2. フォールバック処理 (Ammonia + html2text)
 /// 3. Unicode正規化など
 pub(crate) async fn preprocess_article(
-    article: FetchedArticle,
+    mut article: FetchedArticle,
     subworker: Arc<SubworkerClient>,
 ) -> Result<Option<PreprocessedArticle>> {
     // 1. Subworkerによる抽出
@@ -213,7 +211,7 @@ pub(crate) async fn preprocess_article(
         Ok(_) => {
             // Extraction succeeded but returned nothing usable — fall back
             // to local cleaning (use spawn_blocking for CPU-bound work).
-            let body = article.body.clone();
+            let body = std::mem::take(&mut article.body);
             let (text, cleaned) = tokio::task::spawn_blocking(move || clean_html(&body)).await??;
             (text, cleaned)
         }
@@ -225,7 +223,7 @@ pub(crate) async fn preprocess_article(
                 error = %e,
                 "subworker content extraction failed, falling back to local cleaning"
             );
-            let body = article.body.clone();
+            let body = std::mem::take(&mut article.body);
             let (text, cleaned) = tokio::task::spawn_blocking(move || clean_html(&body)).await??;
             (text, cleaned)
         }

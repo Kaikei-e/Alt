@@ -38,11 +38,7 @@ impl TokenCounter {
         // 注意: 初回実行時にダウンロードが発生するため、インターネット接続が必要
         // FromPretrainedParameters を使用してトークンを明示的に設定
         // 注意: Gemma 3モデルは利用条件への同意が必要です
-        let token_preview = if token.len() > 10 {
-            format!("{}...{}", &token[..4], &token[token.len() - 4..])
-        } else {
-            "***".to_string()
-        };
+        let token_preview = preview_token_for_log(&token);
         info!("Using token: {}", token_preview);
 
         // `FromPretrainedParameters.token` is threaded straight into hf-hub's
@@ -85,9 +81,40 @@ impl TokenCounter {
     }
 }
 
+/// Build a log-safe token preview without panicking on non-ASCII byte boundaries.
+fn preview_token_for_log(token: &str) -> String {
+    let char_count = token.chars().count();
+    if char_count <= 10 {
+        return "***".to_string();
+    }
+    let prefix: String = token.chars().take(4).collect();
+    let suffix: String = token
+        .chars()
+        .rev()
+        .take(4)
+        .collect::<String>()
+        .chars()
+        .rev()
+        .collect();
+    format!("{prefix}...{suffix}")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn preview_token_for_log_handles_multibyte_chars() {
+        // Non-ASCII token must not panic on byte slicing.
+        let preview = preview_token_for_log("αβγδεζηθικλμνξοπ");
+        assert!(preview.contains("..."), "{preview}");
+        assert!(!preview.contains('\u{fffd}'));
+    }
+
+    #[test]
+    fn preview_token_for_log_masks_short_tokens() {
+        assert_eq!(preview_token_for_log("short"), "***");
+    }
 
     #[test]
     #[ignore = "requires network access to download tokenizer model"]

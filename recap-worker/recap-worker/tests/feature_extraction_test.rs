@@ -19,7 +19,7 @@ fn test_feature_extraction_known_token() {
     );
 
     // Check specific value from lookup: [1.0, 0.0, 0.0, 0.0, 0.0, 0.0]
-    assert_eq!(feature_vector.embedding[0], 1.0);
+    assert!((feature_vector.embedding[0] - 1.0).abs() < f32::EPSILON);
 }
 
 #[test]

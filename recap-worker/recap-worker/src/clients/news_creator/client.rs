@@ -2,7 +2,6 @@ use std::time::Duration;
 
 use anyhow::{Context, Result, anyhow};
 use reqwest::{Client, Url};
-use serde::Serialize;
 use serde_json::Value;
 use tracing::{debug, warn};
 use uuid::Uuid;
@@ -14,8 +13,8 @@ use crate::schema::{news_creator::SUMMARY_RESPONSE_SCHEMA, validate_json};
 use super::builder::SummaryRequestBuilder;
 use super::models::{
     BatchSummaryRequest, BatchSummaryResponse, GenreTieBreakRequest, GenreTieBreakResponse,
-    MorningLetterGenerateRequest, MorningLetterGenerateResponse, NewsCreatorSummary,
-    SummaryRequest, SummaryResponse, truncate_error_message,
+    MorningLetterGenerateRequest, MorningLetterGenerateResponse, SummaryRequest, SummaryResponse,
+    truncate_error_message,
 };
 
 #[derive(Debug, Clone)]
@@ -117,31 +116,6 @@ impl NewsCreatorClient {
             .context("news-creator health endpoint returned error status")?;
 
         Ok(())
-    }
-
-    /// 旧バージョンの要約メソッド。
-    #[allow(dead_code)]
-    pub(crate) async fn summarize(&self, payload: impl Serialize) -> Result<NewsCreatorSummary> {
-        let url = self
-            .base_url
-            .join("v1/recap/summarize")
-            .context("failed to build news-creator summarize URL")?;
-
-        let response = self
-            .client
-            .post(url)
-            .json(&payload)
-            .timeout(Duration::from_mins(1))
-            .send()
-            .await
-            .context("news-creator summarize request failed")?
-            .error_for_status()
-            .context("news-creator summarize endpoint returned error status")?;
-
-        response
-            .json::<NewsCreatorSummary>()
-            .await
-            .context("failed to deserialize news-creator response")
     }
 
     /// クラスタリング結果から日本語要約を生成する。
@@ -375,74 +349,7 @@ impl NewsCreatorClient {
         )
     }
 
-    /// Mapフェーズ：単一クラスタの要約を生成する。
-    #[allow(dead_code)]
-    pub(crate) async fn map_summarize(
-        &self,
-        job_id: Uuid,
-        genre: &str,
-        cluster: crate::clients::news_creator::models::ClusterInput,
-    ) -> Result<SummaryResponse> {
-        let request = SummaryRequest {
-            job_id,
-            genre: genre.to_string(),
-            clusters: vec![cluster],
-            genre_highlights: None,
-            options: Some(crate::clients::news_creator::models::SummaryOptions {
-                max_bullets: Some(5), // 中間要約は短めに
-                temperature: Some(0.7),
-            }),
-            window_days: None,
-        };
-        self.generate_summary(&request).await
-    }
-
-    /// Reduceフェーズ：複数の中間要約から最終要約を生成する。
-    #[allow(dead_code)]
-    pub(crate) async fn reduce_summarize(
-        &self,
-        job_id: Uuid,
-        genre: &str,
-        summaries: Vec<crate::clients::news_creator::models::Summary>,
-    ) -> Result<SummaryResponse> {
-        // 中間要約の各行を代表文として扱う
-        let mut representative_sentences = Vec::new();
-        for summary in summaries {
-            for bullet in summary.bullets {
-                representative_sentences.push(
-                    crate::clients::news_creator::models::RepresentativeSentence {
-                        text: bullet,
-                        published_at: None, // 中間要約には日付がない
-                        source_url: None,
-                        article_id: None,
-                        is_centroid: false,
-                    },
-                );
-            }
-        }
-
-        let cluster = crate::clients::news_creator::models::ClusterInput {
-            cluster_id: 0, // 仮想的な単一クラスタ
-            representative_sentences,
-            top_terms: None,
-        };
-
-        let request = SummaryRequest {
-            job_id,
-            genre: genre.to_string(),
-            clusters: vec![cluster],
-            genre_highlights: None,
-            options: Some(crate::clients::news_creator::models::SummaryOptions {
-                max_bullets: Some(15), // 最終要約
-                temperature: Some(0.7),
-            }),
-            window_days: None,
-        };
-        self.generate_summary(&request).await
-    }
-
-    /// ジャンルタイブレーク用のLLM推論を実行する（後方互換性のため保持）。
-    #[allow(dead_code)]
+    /// ジャンルタイブレーク用のLLM推論を実行する。
     pub(crate) async fn tie_break_genre(
         &self,
         request: &GenreTieBreakRequest,
@@ -522,26 +429,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn summarize_parses_response() {
-        let server = MockServer::start().await;
-        Mock::given(method("POST"))
-            .and(path("/v1/recap/summarize"))
-            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
-                "response_id": "resp-123"
-            })))
-            .mount(&server)
-            .await;
-
-        let client = NewsCreatorClient::new_for_test(server.uri());
-        let summary = client
-            .summarize(&serde_json::json!({"job_id": "00000000-0000-0000-0000-000000000000"}))
-            .await
-            .expect("summarize succeeds");
-
-        assert_eq!(summary.response_id, "resp-123");
-    }
-
-    #[tokio::test]
     async fn generate_summary_truncates_large_error_messages() {
         let server = MockServer::start().await;
         // 巨大なエラーメッセージを返すモック
@@ -593,97 +480,6 @@ mod tests {
             "error message should indicate truncation: {}",
             error_msg
         );
-    }
-}
-
-#[cfg(test)]
-mod tests_map_reduce {
-    use super::*;
-    use uuid::Uuid;
-    use wiremock::matchers::{method, path};
-    use wiremock::{Mock, MockServer, ResponseTemplate};
-
-    #[tokio::test]
-    async fn map_summarize_constructs_correct_request() {
-        let server = MockServer::start().await;
-        Mock::given(method("POST"))
-            .and(path("/v1/summary/generate"))
-            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
-                "job_id": "00000000-0000-0000-0000-000000000000",
-                "genre": "tech",
-                "summary": {
-                    "title": "Map Summary",
-                    "bullets": ["Bullet 1", "Bullet 2"],
-                    "language": "ja"
-                },
-                "metadata": {
-                    "model": "gpt-4",
-                    "temperature": 0.7
-                }
-            })))
-            .mount(&server)
-            .await;
-
-        let client = NewsCreatorClient::new_for_test(server.uri());
-        let cluster = crate::clients::news_creator::models::ClusterInput {
-            cluster_id: 1,
-            representative_sentences: vec![],
-            top_terms: None,
-        };
-
-        let response = client
-            .map_summarize(Uuid::new_v4(), "tech", cluster)
-            .await
-            .expect("map_summarize succeeds");
-
-        assert_eq!(response.summary.title, "Map Summary");
-        assert_eq!(response.summary.bullets.len(), 2);
-    }
-
-    #[tokio::test]
-    async fn reduce_summarize_constructs_correct_request() {
-        let server = MockServer::start().await;
-        Mock::given(method("POST"))
-            .and(path("/v1/summary/generate"))
-            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
-                "job_id": "00000000-0000-0000-0000-000000000000",
-                "genre": "tech",
-                "summary": {
-                    "title": "Reduce Summary",
-                    "bullets": ["Final Bullet 1"],
-                    "language": "ja"
-                },
-                "metadata": {
-                    "model": "gpt-4",
-                    "temperature": 0.7
-                }
-            })))
-            .mount(&server)
-            .await;
-
-        let client = NewsCreatorClient::new_for_test(server.uri());
-        let summaries = vec![
-            crate::clients::news_creator::models::Summary {
-                title: "Summary 1".to_string(),
-                bullets: vec!["Bullet A".to_string()],
-                language: "ja".to_string(),
-                references: None,
-            },
-            crate::clients::news_creator::models::Summary {
-                title: "Summary 2".to_string(),
-                bullets: vec!["Bullet B".to_string()],
-                language: "ja".to_string(),
-                references: None,
-            },
-        ];
-
-        let response = client
-            .reduce_summarize(Uuid::new_v4(), "tech", summaries)
-            .await
-            .expect("reduce_summarize succeeds");
-
-        assert_eq!(response.summary.title, "Reduce Summary");
-        assert_eq!(response.summary.bullets.len(), 1);
     }
 }
 

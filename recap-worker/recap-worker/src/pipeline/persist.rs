@@ -64,6 +64,7 @@ fn reconcile_bullet_citations(
     bullet: &str,
     refs: &[Reference],
     url_to_article: &HashMap<String, String>,
+    host_to_articles: &HashMap<String, Vec<String>>,
     article_to_sentence_ids: &HashMap<String, Vec<i64>>,
 ) -> Vec<i64> {
     let mut seen = BTreeSet::<i64>::new();
@@ -92,14 +93,12 @@ fn reconcile_bullet_citations(
         }
 
         // Path 2: URL match を常に併走。完全一致 → host 単位一致 (multi-match 許容)。
-        let ref_host = url_host(&r.url);
-        for (u, a) in url_to_article {
-            if u == &r.url {
-                article_ids.insert(a.clone());
-                continue;
-            }
-            if let (Some(rh), Some(uh)) = (ref_host.as_deref(), url_host(u).as_deref()) {
-                if rh == uh {
+        if let Some(a) = url_to_article.get(&r.url) {
+            article_ids.insert(a.clone());
+        }
+        if let Some(rh) = url_host(&r.url) {
+            if let Some(aids) = host_to_articles.get(&rh) {
+                for a in aids {
                     article_ids.insert(a.clone());
                 }
             }
@@ -123,6 +122,17 @@ fn reconcile_bullet_citations(
     }
 
     seen.into_iter().collect()
+}
+
+/// Build host → article_id index once for O(1) host lookups during citation reconcile.
+fn build_host_to_articles(url_to_article: &HashMap<String, String>) -> HashMap<String, Vec<String>> {
+    let mut host_to_articles: HashMap<String, Vec<String>> = HashMap::new();
+    for (url, aid) in url_to_article {
+        if let Some(host) = url_host(url) {
+            host_to_articles.entry(host).or_default().push(aid.clone());
+        }
+    }
+    host_to_articles
 }
 
 /// Sanitize title and summary text by removing markdown code blocks
@@ -519,6 +529,7 @@ impl FinalSectionPersistStage {
                 Some((url, aid))
             })
             .collect();
+        let host_to_articles = build_host_to_articles(&url_to_article);
 
         // Fetch (article_id -> Vec<sentence DB id>) for this genre's run.
         // 失敗・resume パス・run_id 0 は空 map で degrade (fail-open)。
@@ -556,6 +567,7 @@ impl FinalSectionPersistStage {
                     bullet,
                     refs,
                     &url_to_article,
+                    &host_to_articles,
                     &article_to_sentence_ids,
                 );
                 json!({
@@ -1045,6 +1057,7 @@ mod tests {
             "プレーン文章で出典マーカーは無い",
             &refs,
             &url_map(&[]),
+            &build_host_to_articles(&url_map(&[])),
             &sid_map(&[("a-1", vec![10, 11])]),
         );
         assert!(result.is_empty(), "no marker → empty");
@@ -1058,6 +1071,7 @@ mod tests {
             "本文 [5] の続き",
             &refs,
             &url_map(&[]),
+            &build_host_to_articles(&url_map(&[])),
             &sid_map(&[("a-1", vec![10])]),
         );
         assert!(result.is_empty(), "out-of-range marker silently skipped");
@@ -1071,6 +1085,7 @@ mod tests {
             "本文 [0]",
             &refs,
             &url_map(&[]),
+            &build_host_to_articles(&url_map(&[])),
             &sid_map(&[("a-1", vec![10])]),
         );
         assert!(result.is_empty(), "[0] must be treated as invalid");
@@ -1083,6 +1098,7 @@ mod tests {
             "事実 [1]",
             &refs,
             &url_map(&[("https://example.com/a", "a-1")]),
+            &build_host_to_articles(&url_map(&[("https://example.com/a", "a-1")])),
             &sid_map(&[("a-1", vec![10, 11])]),
         );
         assert_eq!(result, vec![10, 11]);
@@ -1096,6 +1112,7 @@ mod tests {
             "事実 [1]",
             &refs,
             &url_map(&[("https://example.com/a", "a-1")]),
+            &build_host_to_articles(&url_map(&[("https://example.com/a", "a-1")])),
             &sid_map(&[("a-1", vec![20, 21])]),
         );
         assert_eq!(result, vec![20, 21]);
@@ -1109,6 +1126,7 @@ mod tests {
             "事実 [1]",
             &refs,
             &url_map(&[("https://example.com/a", "a-1")]),
+            &build_host_to_articles(&url_map(&[("https://example.com/a", "a-1")])),
             &sid_map(&[("a-1", vec![10])]),
         );
         assert!(result.is_empty(), "unresolvable url must not panic");
@@ -1122,6 +1140,7 @@ mod tests {
             "事実 [1]",
             &refs,
             &url_map(&[]),
+            &build_host_to_articles(&url_map(&[])),
             &sid_map(&[("b-1", vec![99])]),
         );
         assert!(result.is_empty());
@@ -1141,6 +1160,7 @@ mod tests {
             "foo [1] bar [1] baz [2]",
             &refs,
             &url_map(&[]),
+            &build_host_to_articles(&url_map(&[])),
             &sid_map(&[(aid_a, vec![30, 31]), (aid_b, vec![40])]),
         );
         assert_eq!(result, vec![30, 31, 40]);
@@ -1154,6 +1174,7 @@ mod tests {
             "事実 [1] と [2]",
             &refs,
             &url_map(&[("https://example.com/a", "a-1")]),
+            &build_host_to_articles(&url_map(&[("https://example.com/a", "a-1")])),
             &sid_map(&[("a-1", vec![10, 11])]),
         );
         assert!(result.is_empty(), "empty refs → no grounding");
@@ -1177,6 +1198,7 @@ mod tests {
             "事実 [1]",
             &refs,
             &url_map(&[("https://dev.to/foo/bar", valid_uuid)]),
+            &build_host_to_articles(&url_map(&[("https://dev.to/foo/bar", valid_uuid)])),
             &sid_map(&[(valid_uuid, vec![100, 101])]),
         );
         assert_eq!(
@@ -1200,6 +1222,7 @@ mod tests {
             "事実 [1]",
             &refs,
             &url_map(&[("https://example.com/article-x", live_uuid)]),
+            &build_host_to_articles(&url_map(&[("https://example.com/article-x", live_uuid)])),
             &sid_map(&[(live_uuid, vec![200, 201])]),
         );
         assert_eq!(
@@ -1224,6 +1247,11 @@ mod tests {
                 ("https://dev.to/bar", uuid_b),
                 ("https://other.example.com/x", "x-1"),
             ]),
+            &build_host_to_articles(&url_map(&[
+                ("https://dev.to/foo", uuid_a),
+                ("https://dev.to/bar", uuid_b),
+                ("https://other.example.com/x", "x-1"),
+            ])),
             &sid_map(&[(uuid_a, vec![300]), (uuid_b, vec![301, 302])]),
         );
         assert_eq!(
@@ -1244,6 +1272,7 @@ mod tests {
             "事実 [1]",
             &refs,
             &url_map(&[("https://example.com/dual", uuid_b)]),
+            &build_host_to_articles(&url_map(&[("https://example.com/dual", uuid_b)])),
             &sid_map(&[(uuid_a, vec![10]), (uuid_b, vec![20, 21])]),
         );
         assert_eq!(

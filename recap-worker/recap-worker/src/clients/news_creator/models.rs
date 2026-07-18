@@ -57,13 +57,6 @@ pub(crate) struct GenreTieBreakResponse {
     pub(crate) trace_id: Option<String>,
 }
 
-/// 旧バージョンの要約レスポンス。
-#[allow(dead_code)]
-#[derive(Debug, Deserialize)]
-pub(crate) struct NewsCreatorSummary {
-    pub(crate) response_id: String,
-}
-
 /// 日本語要約リクエスト。
 #[derive(Debug, Clone, Serialize)]
 pub(crate) struct SummaryRequest {

@@ -18,6 +18,8 @@ use recap_worker::{
     scheduler::daemon::spawn_jst_batch_daemon,
 };
 
+mod cli;
+
 /// Wait for SIGINT (Ctrl-C) or SIGTERM, whichever arrives first.
 ///
 /// SIGTERM is the signal `docker stop` / Kubernetes send; without handling
@@ -60,37 +62,6 @@ fn spawn_shutdown_signal_task(token: CancellationToken) {
     });
 }
 
-/// Perform a health check against the local HTTP server.
-/// Returns exit code 0 on success, 1 on failure.
-fn run_healthcheck() -> i32 {
-    let port = env::var("PORT").unwrap_or_else(|_| "9005".to_string());
-    let url = format!("http://127.0.0.1:{}/health/live", port);
-
-    let client = reqwest::blocking::Client::builder()
-        .timeout(Duration::from_secs(5))
-        .build();
-
-    let client = match client {
-        Ok(c) => c,
-        Err(e) => {
-            eprintln!("healthcheck failed: failed to create client: {}", e);
-            return 1;
-        }
-    };
-
-    match client.get(&url).send() {
-        Ok(resp) if resp.status().is_success() => 0,
-        Ok(resp) => {
-            eprintln!("healthcheck failed: status {}", resp.status());
-            1
-        }
-        Err(e) => {
-            eprintln!("healthcheck failed: {}", e);
-            1
-        }
-    }
-}
-
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     // Install rustls default crypto provider (required by rustls 0.23 when
@@ -98,68 +69,24 @@ async fn main() -> anyhow::Result<()> {
     // axum-server). Ignore error if already installed by another path.
     let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
 
-    // Handle healthcheck subcommand
     let args: Vec<String> = env::args().collect();
-    if args.len() > 1 && args[1] == "healthcheck" {
-        std::process::exit(run_healthcheck());
+    if let Some(code) = cli::try_healthcheck(&args) {
+        std::process::exit(code);
     }
-    std::panic::set_hook(Box::new(|panic_info| {
-        let thread = std::thread::current();
-        let thread_name = thread.name().unwrap_or("unnamed");
-        let message = panic_info
-            .payload()
-            .downcast_ref::<&str>()
-            .copied()
-            .or_else(|| {
-                panic_info
-                    .payload()
-                    .downcast_ref::<String>()
-                    .map(|s| s.as_str())
-            })
-            .unwrap_or("unknown panic payload");
-
-        if let Some(location) = panic_info.location() {
-            error!(
-                thread = thread_name,
-                file = location.file(),
-                line = location.line(),
-                column = location.column(),
-                message,
-                "panic occurred"
-            );
-        } else {
-            error!(
-                thread = thread_name,
-                message, "panic occurred without location information"
-            );
-        }
-    }));
-
-    // warmup subcommand: populate the rust-bert AllMiniLmL12V2 model cache
-    // so the runtime container can boot in a network-isolated stack.
-    // Invoked by CI in an internet-connected warmup step; the writable
-    // cache volume is then mounted read-only into the staging/production
-    // recap-worker service.
-    if args.len() > 1 && args[1] == "warmup" {
-        let code = match recap_worker::warmup_embedding_cache().await {
-            Ok(()) => {
-                eprintln!("warmup: rust-bert AllMiniLmL12V2 cache populated");
-                0
-            }
-            Err(e) => {
-                eprintln!("warmup failed: {e:?}");
-                1
-            }
-        };
+    if let Some(code) = cli::try_warmup(&args).await {
         std::process::exit(code);
     }
 
-    // Tracing initialization is handled by Telemetry::new()
+    // Tracing initialization is handled by Telemetry::new() inside
+    // ComponentRegistry::build — install the panic hook only after that so
+    // panics are actually visible in the tracing pipeline.
     let config = Config::from_env().context("failed to load configuration")?;
     let bind_addr = config.http_bind();
     let registry = ComponentRegistry::build(config.clone())
         .await
         .context("failed to build component registry")?;
+    cli::install_panic_hook();
+
     let scheduler = registry.scheduler().clone();
     let telemetry = registry.telemetry().clone();
     let default_genres = registry.config().recap_genres().to_vec();
@@ -191,8 +118,7 @@ async fn main() -> anyhow::Result<()> {
     // Default is "false" to preserve current behaviour; set to "true" to
     // re-enable the editorial projector tick.
     let morning_daemon_enabled = std::env::var("MORNING_DAEMON_ENABLED")
-        .map(|v| v.eq_ignore_ascii_case("true") || v == "1")
-        .unwrap_or(false);
+        .is_ok_and(|v| v.eq_ignore_ascii_case("true") || v == "1");
     if morning_daemon_enabled {
         info!("MORNING_DAEMON_ENABLED=true — starting morning editorial projector daemon");
         let _morning_daemon = recap_worker::scheduler::daemon::spawn_morning_update_daemon(

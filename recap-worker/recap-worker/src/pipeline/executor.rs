@@ -14,6 +14,28 @@ use crate::pipeline::evidence::EvidenceBundle;
 use crate::pipeline::fetch::FetchedArticle;
 use crate::scheduler::JobContext;
 
+/// Explicit skip marker for resume paths that bypass a stage.
+///
+/// Prefer this over sentinel empty corpora (`Uuid::nil()` + empty `Vec`) so
+/// a wiring mistake surfaces as `require()` rather than silently processing
+/// nothing.
+#[derive(Debug, Clone)]
+pub(crate) enum StageInput<T> {
+    Ready(T),
+    Skipped,
+}
+
+impl<T> StageInput<T> {
+    fn require(self, stage: &str) -> Result<T> {
+        match self {
+            Self::Ready(value) => Ok(value),
+            Self::Skipped => Err(anyhow::anyhow!(
+                "stage `{stage}` received StageInput::Skipped; resume wiring bug"
+            )),
+        }
+    }
+}
+
 /// パイプラインステージ実行のヘルパー
 pub(crate) struct StageExecutor<'a> {
     orchestrator: &'a super::PipelineOrchestrator,
@@ -29,25 +51,24 @@ impl<'a> StageExecutor<'a> {
         &self,
         job: &JobContext,
         resume_stage_idx: usize,
-    ) -> Result<FetchedCorpus> {
+    ) -> Result<StageInput<FetchedCorpus>> {
         if resume_stage_idx > 0 {
             if resume_stage_idx == 1 {
                 // 軽量版チェックポイントから再構築
                 let lightweight: FetchedCorpusLight = self.load_state(job.job_id, "fetch").await?;
-                self.reconstruct_fetched_corpus(job.job_id, &lightweight)
-                    .await
+                Ok(StageInput::Ready(
+                    self.reconstruct_fetched_corpus(job.job_id, &lightweight)
+                        .await?,
+                ))
             } else {
-                Ok(FetchedCorpus {
-                    job_id: Uuid::nil(),
-                    articles: vec![],
-                })
+                Ok(StageInput::Skipped)
             }
         } else {
             let res = self.orchestrator.stages().fetch.fetch(job).await?;
             // 軽量版を保存（記事IDのみ）
             let lightweight = res.to_lightweight();
             self.save_state(job.job_id, "fetch", &lightweight).await?;
-            Ok(res)
+            Ok(StageInput::Ready(res))
         }
     }
 
@@ -87,18 +108,18 @@ impl<'a> StageExecutor<'a> {
         &self,
         job: &JobContext,
         resume_stage_idx: usize,
-        fetched: FetchedCorpus,
-    ) -> Result<PreprocessedCorpus> {
+        fetched: StageInput<FetchedCorpus>,
+    ) -> Result<StageInput<PreprocessedCorpus>> {
         if resume_stage_idx > 1 {
             if resume_stage_idx == 2 {
-                self.load_state(job.job_id, "preprocess").await
+                Ok(StageInput::Ready(
+                    self.load_state(job.job_id, "preprocess").await?,
+                ))
             } else {
-                Ok(PreprocessedCorpus {
-                    job_id: Uuid::nil(),
-                    articles: vec![],
-                })
+                Ok(StageInput::Skipped)
             }
         } else {
+            let fetched = fetched.require("preprocess")?;
             let res = self
                 .orchestrator
                 .stages()
@@ -106,7 +127,7 @@ impl<'a> StageExecutor<'a> {
                 .preprocess(job, fetched)
                 .await?;
             self.save_state(job.job_id, "preprocess", &res).await?;
-            Ok(res)
+            Ok(StageInput::Ready(res))
         }
     }
 
@@ -115,19 +136,18 @@ impl<'a> StageExecutor<'a> {
         &self,
         job: &JobContext,
         resume_stage_idx: usize,
-        preprocessed: PreprocessedCorpus,
-    ) -> Result<DeduplicatedCorpus> {
+        preprocessed: StageInput<PreprocessedCorpus>,
+    ) -> Result<StageInput<DeduplicatedCorpus>> {
         if resume_stage_idx > 2 {
             if resume_stage_idx == 3 {
-                self.load_state(job.job_id, "dedup").await
+                Ok(StageInput::Ready(
+                    self.load_state(job.job_id, "dedup").await?,
+                ))
             } else {
-                Ok(DeduplicatedCorpus {
-                    job_id: Uuid::nil(),
-                    articles: vec![],
-                    stats: super::dedup::DedupStats::default(),
-                })
+                Ok(StageInput::Skipped)
             }
         } else {
+            let preprocessed = preprocessed.require("dedup")?;
             let res = self
                 .orchestrator
                 .stages()
@@ -135,7 +155,7 @@ impl<'a> StageExecutor<'a> {
                 .deduplicate(job, preprocessed)
                 .await?;
             self.save_state(job.job_id, "dedup", &res).await?;
-            Ok(res)
+            Ok(StageInput::Ready(res))
         }
     }
 
@@ -144,19 +164,18 @@ impl<'a> StageExecutor<'a> {
         &self,
         job: &JobContext,
         resume_stage_idx: usize,
-        deduplicated: DeduplicatedCorpus,
-    ) -> Result<GenreBundle> {
+        deduplicated: StageInput<DeduplicatedCorpus>,
+    ) -> Result<StageInput<GenreBundle>> {
         if resume_stage_idx > 3 {
             if resume_stage_idx == 4 {
-                self.load_state(job.job_id, "genre").await
+                Ok(StageInput::Ready(
+                    self.load_state(job.job_id, "genre").await?,
+                ))
             } else {
-                Ok(GenreBundle {
-                    job_id: job.job_id,
-                    assignments: vec![],
-                    genre_distribution: std::collections::HashMap::new(),
-                })
+                Ok(StageInput::Skipped)
             }
         } else {
+            let deduplicated = deduplicated.require("genre")?;
             let res = self
                 .orchestrator
                 .stages()
@@ -164,7 +183,7 @@ impl<'a> StageExecutor<'a> {
                 .assign(job, deduplicated)
                 .await?;
             self.save_state(job.job_id, "genre", &res).await?;
-            Ok(res)
+            Ok(StageInput::Ready(res))
         }
     }
 
@@ -173,18 +192,18 @@ impl<'a> StageExecutor<'a> {
         &self,
         job: &JobContext,
         resume_stage_idx: usize,
-        genre_bundle: GenreBundle,
-    ) -> Result<SelectedSummary> {
+        genre_bundle: StageInput<GenreBundle>,
+    ) -> Result<StageInput<SelectedSummary>> {
         if resume_stage_idx > 4 {
             if resume_stage_idx == 5 {
-                self.load_state(job.job_id, "select").await
+                Ok(StageInput::Ready(
+                    self.load_state(job.job_id, "select").await?,
+                ))
             } else {
-                Ok(SelectedSummary {
-                    job_id: Uuid::nil(),
-                    assignments: vec![],
-                })
+                Ok(StageInput::Skipped)
             }
         } else {
+            let genre_bundle = genre_bundle.require("select")?;
             let res = self
                 .orchestrator
                 .stages()
@@ -192,7 +211,7 @@ impl<'a> StageExecutor<'a> {
                 .select(job, genre_bundle)
                 .await?;
             self.save_state(job.job_id, "select", &res).await?;
-            Ok(res)
+            Ok(StageInput::Ready(res))
         }
     }
 }
@@ -399,22 +418,23 @@ impl StageExecutor<'_> {
     pub(crate) fn build_evidence_bundle(
         job: &JobContext,
         resume_stage_idx: usize,
-        selected: SelectedSummary,
-    ) -> EvidenceBundle {
+        selected: StageInput<SelectedSummary>,
+    ) -> Result<EvidenceBundle> {
         if resume_stage_idx <= 5 {
-            EvidenceBundle::from_genre_bundle(
+            let selected = selected.require("evidence")?;
+            Ok(EvidenceBundle::from_genre_bundle(
                 job.job_id,
                 GenreBundle {
                     job_id: selected.job_id,
                     assignments: selected.assignments,
                     genre_distribution: std::collections::HashMap::new(),
                 },
-            )
+            ))
         } else {
-            EvidenceBundle {
+            Ok(EvidenceBundle {
                 job_id: job.job_id,
                 corpora: std::collections::HashMap::new(),
-            }
+            })
         }
     }
 

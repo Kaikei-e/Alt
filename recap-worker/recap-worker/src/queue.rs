@@ -47,7 +47,7 @@ impl ClassificationJobQueue {
             let store_clone = store.clone();
             let client_clone = client.clone();
             let worker_shutdown = shutdown.clone();
-            let worker = QueueWorker::new(store_clone, client_clone, 1, retry_delay_ms);
+            let worker = QueueWorker::new(store_clone, client_clone, retry_delay_ms);
             let handle = tokio::spawn(async move {
                 info!(worker_id = i, "starting queue worker");
                 worker.run(worker_shutdown).await

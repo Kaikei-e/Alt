@@ -450,40 +450,6 @@ impl SubworkerClient {
             )),
         }
     }
-
-    #[allow(dead_code)]
-    pub(crate) async fn cluster_other(
-        &self,
-        sentences: Vec<String>,
-    ) -> anyhow::Result<(Vec<i32>, Option<Vec<i32>>, Option<Vec<Vec<f32>>>)> {
-        use super::types::{SubClusterOtherRequest, SubClusterOtherResponse};
-
-        let url = self
-            .base_url
-            .join("v1/cluster/other")
-            .context("failed to build cluster_other URL")?;
-
-        let body = SubClusterOtherRequest { sentences };
-        let response = self
-            .client
-            .post(url)
-            .json(&body)
-            .send()
-            .await
-            .context("cluster_other request failed")?;
-
-        if !response.status().is_success() {
-            let status = response.status();
-            let body = response.text().await.unwrap_or_default();
-            return Err(anyhow!("cluster_other endpoint error {}: {}", status, body));
-        }
-
-        let body: SubClusterOtherResponse = response
-            .json()
-            .await
-            .context("failed to parse cluster_other response")?;
-        Ok((body.cluster_ids, body.labels, body.centers))
-    }
 }
 
 fn build_runs_url(base: &Url) -> Result<Url> {
