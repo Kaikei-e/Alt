@@ -3,8 +3,6 @@
 sli_metricsテーブルからSLI/SLOデータを収集します。
 """
 
-from __future__ import annotations
-
 from typing import Any
 
 import structlog
@@ -52,7 +50,7 @@ def collect_sli_trends(client: Client, database: str, hours: int) -> list[dict[s
         log.info("データ収集完了", count=len(data))
         return data
     except ClickHouseError as e:
-        log.error("クエリ実行エラー", error=str(e), query=query[:200])
+        log.exception("クエリ実行エラー", query=query[:200])
         raise CollectorError("sli_trends", str(e)) from e
 
 
@@ -108,5 +106,5 @@ def collect_slo_violations(
         log.info("データ収集完了", count=len(data))
         return data
     except ClickHouseError as e:
-        log.error("クエリ実行エラー", error=str(e), query=query[:200])
+        log.exception("クエリ実行エラー", query=query[:200])
         raise CollectorError("slo_violations", str(e)) from e

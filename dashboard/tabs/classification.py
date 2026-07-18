@@ -4,7 +4,7 @@ import pandas as pd
 from utils import fetch_metrics
 
 
-def render_classification(window_seconds: int):
+def render_classification(window_seconds: int) -> None:
     st.header("Classification Metrics")
     df_cls = fetch_metrics("classification", window_seconds)
 

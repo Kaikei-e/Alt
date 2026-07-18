@@ -1,30 +1,9 @@
 
 import streamlit as st
-import pandas as pd
-from utils import fetch_metrics
+from utils import fetch_metrics, safe_float, safe_int
 
 
-def safe_int(value, default=0):
-    """Safely convert a value to integer, handling NaN and None."""
-    if pd.isna(value) or value is None:
-        return default
-    try:
-        return int(float(value))
-    except (ValueError, TypeError):
-        return default
-
-
-def safe_float(value, default=0.0):
-    """Safely convert a value to float, handling NaN and None."""
-    if pd.isna(value) or value is None:
-        return default
-    try:
-        return float(value)
-    except (ValueError, TypeError):
-        return default
-
-
-def render_summarization(window_seconds: int):
+def render_summarization(window_seconds: int) -> None:
     st.header("Summarization Metrics")
     df_sum = fetch_metrics("summarization", window_seconds)
 

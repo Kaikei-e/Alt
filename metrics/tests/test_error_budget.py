@@ -1,7 +1,5 @@
 """エラーバジェット計算のテスト"""
 
-from __future__ import annotations
-
 from pytest import approx
 
 from alt_metrics.analysis import calculate_error_budget
@@ -140,4 +138,16 @@ class TestCalculateErrorBudget:
             slo_target=99.9,
             hours_analyzed=24,
         )
+        assert result.status == "exceeded"
+
+    def test_status_exceeded_when_budget_total_zero_and_consumed(self) -> None:
+        """budget_total==0 かつ消費ありは is_exceeded でも status=exceeded（critical にならない）"""
+        result = calculate_error_budget(
+            error_rate=1.0,
+            slo_target=100.0,  # budget_total = 0
+            hours_analyzed=24,
+        )
+        assert result.budget_total == 0.0
+        assert result.is_exceeded is True
+        assert result.consumption_pct == 100.0
         assert result.status == "exceeded"

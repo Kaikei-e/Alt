@@ -3,8 +3,6 @@
 メトリクス収集・分析・レポート生成時のエラーを適切に分類します。
 """
 
-from __future__ import annotations
-
 
 class MetricsError(Exception):
     """メトリクス関連エラーの基底クラス"""

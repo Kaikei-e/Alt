@@ -1,7 +1,5 @@
 """analysis.py のテスト"""
 
-from __future__ import annotations
-
 import pytest
 
 from alt_metrics.analysis import (
@@ -284,7 +282,7 @@ class TestAnalyzeHealthServiceLatencyAggregation:
             ]
         )
 
-        analyze_health(result)
+        result = analyze_health(result)
 
         assert len(result.service_health) == 1
         assert result.service_health[0].p95_latency_ms == 9000.0
@@ -307,7 +305,7 @@ class TestAnalyzeHealthServiceLatencyAggregation:
             ]
         )
 
-        analyze_health(result)
+        result = analyze_health(result)
 
         assert result.service_health[0].p95_latency_ms == 200.0
 
@@ -315,7 +313,7 @@ class TestAnalyzeHealthServiceLatencyAggregation:
         """api_performanceが空の場合はp95レイテンシ0として扱う"""
         result = self._make_result([])
 
-        analyze_health(result)
+        result = analyze_health(result)
 
         assert result.service_health[0].p95_latency_ms == 0
 
@@ -338,7 +336,7 @@ class TestAnalyzeHealthIssuesWarningsRecommendations:
             ],
         )
 
-        analyze_health(result)
+        result = analyze_health(result)
 
         assert result.service_health[0].health_score < 50
         assert any("auth-hub" in issue for issue in result.critical_issues)
@@ -358,7 +356,7 @@ class TestAnalyzeHealthIssuesWarningsRecommendations:
             ],
         )
 
-        analyze_health(result)
+        result = analyze_health(result)
 
         assert any("alt-backend" in w for w in result.warnings)
 
@@ -372,7 +370,7 @@ class TestAnalyzeHealthIssuesWarningsRecommendations:
             ],
         )
 
-        analyze_health(result)
+        result = analyze_health(result)
 
         assert any("SLO違反" in issue for issue in result.critical_issues)
 
@@ -386,7 +384,7 @@ class TestAnalyzeHealthIssuesWarningsRecommendations:
             ],
         )
 
-        analyze_health(result)
+        result = analyze_health(result)
 
         assert any("auth-hub" in w and "authenticate" in w for w in result.warnings)
 
@@ -411,7 +409,7 @@ class TestAnalyzeHealthIssuesWarningsRecommendations:
             ],
         )
 
-        analyze_health(result, thresholds)
+        result = analyze_health(result, thresholds)
 
         assert any("遅いエンドポイント" in rec for rec in result.recommendations)
 
@@ -431,7 +429,7 @@ class TestAnalyzeHealthIssuesWarningsRecommendations:
             ],
         )
 
-        analyze_health(result, thresholds)
+        result = analyze_health(result, thresholds)
 
         assert any("search-indexer" in rec for rec in result.recommendations)
 
@@ -450,7 +448,7 @@ class TestAnalyzeHealthIssuesWarningsRecommendations:
             ],
         )
 
-        analyze_health(result)
+        result = analyze_health(result)
 
         assert result.critical_issues == []
         assert result.warnings == []

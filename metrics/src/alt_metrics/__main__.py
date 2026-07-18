@@ -7,8 +7,6 @@ Usage:
     uv run python -m alt_metrics validate
 """
 
-from __future__ import annotations
-
 import sys
 
 from alt_metrics.cli import cmd_analyze, cmd_validate, create_parser

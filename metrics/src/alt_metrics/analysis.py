@@ -3,8 +3,6 @@
 設定可能な閾値を使用してサービスの健全性スコアを計算します。
 """
 
-from __future__ import annotations
-
 from typing import Literal
 
 from alt_metrics.config import HealthThresholds
@@ -120,9 +118,9 @@ def calculate_error_budget(
     else:
         consumption_pct = 100.0 if budget_consumed > 0 else 0.0
 
-    # ステータスを決定
+    # ステータスを決定（超過時は消費率に関わらず exceeded）
     status: Literal["healthy", "warning", "critical", "exceeded"]
-    if consumption_pct > 100:
+    if is_exceeded:
         status = "exceeded"
     elif consumption_pct >= 80:
         status = "critical"
@@ -146,17 +144,17 @@ def calculate_error_budget(
 def analyze_health(
     result: AnalysisResult,
     thresholds: HealthThresholds | None = None,
-) -> None:
-    """データを分析してヘルススコアと推奨事項を生成
+) -> AnalysisResult:
+    """データを分析してヘルススコアと推奨事項を生成する純関数
 
-    resultを直接変更し、以下を設定:
-    - service_health: サービスごとの健全性データ
-    - overall_health_score: 全体のスコア
-    - critical_issues, warnings, recommendations: 問題点と推奨事項
+    入力の AnalysisResult は変更せず、分析結果を反映した新しいインスタンスを返す。
 
     Args:
-        result: 分析結果コンテナ (変更される)
+        result: 分析結果コンテナ（変更されない）
         thresholds: 閾値設定
+
+    Returns:
+        ヘルススコア・推奨事項付きの新しい AnalysisResult
     """
     if thresholds is None:
         thresholds = HealthThresholds()
@@ -168,114 +166,150 @@ def analyze_health(
     for s in result.api_performance:
         service_latencies[s.service] = max(service_latencies.get(s.service, 0.0), s.p95_ms)
 
-    # サービスごとの健全性を計算
+    service_health: list[ServiceHealth] = []
     for stats in result.service_stats:
-        service = ServiceHealth(
-            name=stats["service_name"],
-            total_logs=stats["total_logs"],
-            error_count=stats["error_count"],
-            error_rate=stats["error_rate"],
-            last_seen=stats.get("last_seen"),
-            p95_latency_ms=service_latencies.get(stats["service_name"], 0),
-        )
-        service.health_score = calculate_health_score(
-            service.error_rate,
-            service.p95_latency_ms,
+        p95_latency_ms = service_latencies.get(stats["service_name"], 0)
+        health_score = calculate_health_score(
+            stats["error_rate"],
+            p95_latency_ms,
             stats.get("minutes_since_last_log", 0),
             thresholds,
         )
-        result.service_health.append(service)
+        service_health.append(
+            ServiceHealth(
+                name=stats["service_name"],
+                total_logs=stats["total_logs"],
+                error_count=stats["error_count"],
+                error_rate=stats["error_rate"],
+                last_seen=stats.get("last_seen"),
+                p95_latency_ms=p95_latency_ms,
+                health_score=health_score,
+            )
+        )
 
-    # 全体の健全性スコアを計算
-    if result.service_health:
-        result.overall_health_score = sum(s.health_score for s in result.service_health) // len(result.service_health)
+    overall_health_score = result.overall_health_score
+    error_budget = result.error_budget
+    if service_health:
+        overall_health_score = sum(s.health_score for s in service_health) // len(service_health)
 
-        # 全体のエラー率を計算してエラーバジェットを算出
-        total_logs = sum(s.total_logs for s in result.service_health)
-        total_errors = sum(s.error_count for s in result.service_health)
+        total_logs = sum(s.total_logs for s in service_health)
+        total_errors = sum(s.error_count for s in service_health)
         if total_logs > 0:
             overall_error_rate = (total_errors / total_logs) * 100
-            result.error_budget = calculate_error_budget(
+            error_budget = calculate_error_budget(
                 error_rate=overall_error_rate,
                 slo_target=thresholds.slo_availability_target,
                 hours_analyzed=result.hours_analyzed,
             )
 
-    # 重大な問題を生成
-    for svc in result.service_health:
+    critical_issues = list(result.critical_issues)
+    warnings = list(result.warnings)
+    recommendations = list(result.recommendations)
+
+    for svc in service_health:
         if svc.health_score < 50:
-            result.critical_issues.append(
+            critical_issues.append(
                 f"**{svc.name}** が危険な状態です (スコア: {svc.health_score})。"
                 f"エラー率: {svc.error_rate}%、p95レイテンシ: {svc.p95_latency_ms}ms"
             )
 
-    # 警告を生成
-    _generate_warnings(result, thresholds)
+    _collect_warnings(
+        service_health=service_health,
+        bottlenecks=result.bottlenecks,
+        http_status_distribution=result.http_status_distribution,
+        slo_violations=result.slo_violations,
+        error_spans=result.error_spans,
+        service_dependencies=result.service_dependencies,
+        log_volume_trends=result.log_volume_trends,
+        thresholds=thresholds,
+        critical_issues=critical_issues,
+        warnings=warnings,
+    )
+    _collect_recommendations(
+        api_performance=result.api_performance,
+        error_types=result.error_types,
+        service_stats=result.service_stats,
+        thresholds=thresholds,
+        recommendations=recommendations,
+    )
 
-    # 推奨事項を生成
-    _generate_recommendations(result, thresholds)
+    return result.model_copy(
+        update={
+            "service_health": service_health,
+            "overall_health_score": overall_health_score,
+            "error_budget": error_budget,
+            "critical_issues": critical_issues,
+            "warnings": warnings,
+            "recommendations": recommendations,
+        }
+    )
 
 
-def _generate_warnings(result: AnalysisResult, thresholds: HealthThresholds) -> None:
-    """分析結果から警告メッセージを生成"""
-    # エラー率が高いサービス
-    high_error_services = [s for s in result.service_health if s.error_rate > thresholds.error_rate_warning]
+def _collect_warnings(
+    *,
+    service_health: list[ServiceHealth],
+    bottlenecks: list[dict],
+    http_status_distribution: list[dict],
+    slo_violations: list[dict],
+    error_spans: list[dict],
+    service_dependencies: list[dict],
+    log_volume_trends: list[dict],
+    thresholds: HealthThresholds,
+    critical_issues: list[str],
+    warnings: list[str],
+) -> None:
+    """分析結果から警告メッセージを収集（リストへ append）"""
+    high_error_services = [s for s in service_health if s.error_rate > thresholds.error_rate_warning]
     if high_error_services:
         names = ", ".join(s.name for s in high_error_services[:3])
-        result.warnings.append(f"エラー率が高いサービス (>{thresholds.error_rate_warning}%): {names}")
+        warnings.append(f"エラー率が高いサービス (>{thresholds.error_rate_warning}%): {names}")
 
-    # ボトルネック
-    if result.bottlenecks:
-        top_bottleneck = result.bottlenecks[0]
-        result.warnings.append(
+    if bottlenecks:
+        top_bottleneck = bottlenecks[0]
+        warnings.append(
             f"パフォーマンスボトルネック: {top_bottleneck['service']}/{top_bottleneck['operation']} "
             f"(p95: {top_bottleneck['p95_ms']}ms, 合計時間: {top_bottleneck['total_time_sec']}秒)"
         )
 
-    # HTTP 5xxエラー率
-    high_5xx_services = [s for s in result.http_status_distribution if s.get("error_5xx_rate", 0) > 1]
+    high_5xx_services = [s for s in http_status_distribution if s.get("error_5xx_rate", 0) > 1]
     if high_5xx_services:
         for svc in high_5xx_services[:3]:
-            result.warnings.append(
+            warnings.append(
                 f"HTTP 5xxエラー率が高い: {svc['service']} "
                 f"({svc['error_5xx_rate']}% / {svc['total_requests']}リクエスト)"
             )
 
-    # SLO違反
-    if result.slo_violations:
-        violation_count = len(result.slo_violations)
-        affected_services = {v["service"] for v in result.slo_violations}
-        result.critical_issues.append(
+    if slo_violations:
+        violation_count = len(slo_violations)
+        affected_services = {v["service"] for v in slo_violations}
+        critical_issues.append(
             f"SLO違反を検出: {violation_count}期間でエラー率 >{thresholds.slo_error_rate_threshold}% "
             f"({len(affected_services)}サービスに影響)"
         )
 
-    # エラースパン
-    if result.error_spans:
-        top_error_span = result.error_spans[0]
-        result.warnings.append(
+    if error_spans:
+        top_error_span = error_spans[0]
+        warnings.append(
             f"トレースエラー検出: {top_error_span['service']}の{top_error_span['operation']} "
             f"({top_error_span['error_count']}件)"
         )
 
-    # サービス間依存関係のエラー率
     high_error_deps = [
         d
-        for d in result.service_dependencies
+        for d in service_dependencies
         if d.get("call_count", 0) > 10 and d.get("error_count", 0) > 0 and (d["error_count"] / d["call_count"]) > 0.05
     ]
     if high_error_deps:
         for dep in high_error_deps[:2]:
             error_pct = round(dep["error_count"] / dep["call_count"] * 100, 1)
-            result.warnings.append(
+            warnings.append(
                 f"サービス間呼び出しエラー率が高い: {dep['caller']} → {dep['callee']} "
                 f"({error_pct}%エラー、{dep['call_count']}呼び出し)"
             )
 
-    # ログ量の異常
-    if result.log_volume_trends:
+    if log_volume_trends:
         service_volumes: dict[str, list[int]] = {}
-        for trend in result.log_volume_trends:
+        for trend in log_volume_trends:
             svc = trend.get("service", "")
             if svc:
                 service_volumes.setdefault(svc, []).append(trend.get("log_count", 0))
@@ -285,33 +319,35 @@ def _generate_warnings(result: AnalysisResult, thresholds: HealthThresholds) -> 
                 recent = volumes[0]
                 previous = volumes[1]
                 if previous > 0 and recent > previous * 2:
-                    result.warnings.append(
+                    warnings.append(
                         f"ログ量スパイク検出: {svc} "
                         f"({recent}件 vs 前時間{previous}件、{round(recent / previous, 1)}倍増加)"
                     )
 
 
-def _generate_recommendations(result: AnalysisResult, thresholds: HealthThresholds) -> None:
-    """分析結果から推奨事項を生成"""
-    # 遅いAPI
-    slow_apis = [a for a in result.api_performance if a.p95_ms > thresholds.latency_warning_ms]
+def _collect_recommendations(
+    *,
+    api_performance: list,
+    error_types: list[dict],
+    service_stats: list[dict],
+    thresholds: HealthThresholds,
+    recommendations: list[str],
+) -> None:
+    """分析結果から推奨事項を収集（リストへ append）"""
+    slow_apis = [a for a in api_performance if a.p95_ms > thresholds.latency_warning_ms]
     if slow_apis:
-        result.recommendations.append(
+        recommendations.append(
             f"遅いエンドポイントの最適化: {len(slow_apis)}件のAPIがp95 > {thresholds.latency_warning_ms}ms。"
             "キャッシュ、クエリ最適化、非同期処理を検討してください。"
         )
 
-    # トップエラー
-    if result.error_types:
-        top_error = result.error_types[0]
-        result.recommendations.append(
+    if error_types:
+        top_error = error_types[0]
+        recommendations.append(
             f"主要エラーの調査: {top_error['service']}の{top_error['error_type']} ({top_error['error_count']}件発生)"
         )
 
-    # ログ停止サービス
-    stale_services = [
-        s for s in result.service_stats if s.get("minutes_since_last_log", 0) > thresholds.log_gap_warning_min
-    ]
+    stale_services = [s for s in service_stats if s.get("minutes_since_last_log", 0) > thresholds.log_gap_warning_min]
     if stale_services:
         names = ", ".join(s["service_name"] for s in stale_services[:3])
-        result.recommendations.append(f"ログ停止サービスの確認: {names}")
+        recommendations.append(f"ログ停止サービスの確認: {names}")

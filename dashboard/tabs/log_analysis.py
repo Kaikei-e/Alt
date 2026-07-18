@@ -32,7 +32,7 @@ def _fetch_log_errors(window_seconds: int, limit: int = 2000) -> pd.DataFrame:
         return pd.read_sql(query, conn, params={**_interval_params(window_seconds), "limit": limit})
 
 
-def render_log_analysis(window_seconds: int):
+def render_log_analysis(window_seconds: int) -> None:
     st.header("Log Analysis")
 
     # Ensure table exists before querying to avoid hard failures

@@ -3,12 +3,10 @@
 analyzeとvalidateコマンドを提供します。
 """
 
-from __future__ import annotations
-
 import argparse
 import sys
 from contextlib import closing
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 
 import clickhouse_connect
@@ -85,7 +83,7 @@ def run_analysis(
     log = logger.bind(host=config.host, port=config.port, database=config.database)
 
     if verbose:
-        print(f"ClickHouseに接続中: {config.host}:{config.port}...")
+        log.info("ClickHouseに接続中", host=config.host, port=config.port)
 
     try:
         client = clickhouse_connect.get_client(
@@ -95,7 +93,7 @@ def run_analysis(
             password=config.password,
         )
     except ClickHouseError as e:
-        log.error("ClickHouse接続エラー", error=str(e))
+        log.exception("ClickHouse接続エラー")
         raise ClickHouseConnectionError(f"接続失敗: {e}") from e
 
     with closing(client):
@@ -124,29 +122,31 @@ def run_analysis(
 
         for name, attr, fn in collector_defs:
             if verbose:
-                print(f"{name}を収集中...")
+                log.info("コレクター実行中", collector=name)
             try:
-                setattr(result, attr, fn(client, db, hours))
+                result = result.model_copy(update={attr: fn(client, db, hours)})
             except CollectorError as e:
                 log.warning("コレクターエラー（続行）", collector=name, error=str(e))
                 if verbose:
-                    print(f"  警告: {name}の収集に失敗しました - {e}")
+                    log.info("コレクター収集失敗", collector=name, error=str(e))
 
         # SLO違反は追加パラメータが必要
         if verbose:
-            print("SLO違反を収集中...")
+            log.info("コレクター実行中", collector="SLO違反")
         try:
-            result.slo_violations = collect_slo_violations(client, db, hours, thresholds.slo_error_rate_threshold)
+            result = result.model_copy(
+                update={
+                    "slo_violations": collect_slo_violations(client, db, hours, thresholds.slo_error_rate_threshold)
+                }
+            )
         except CollectorError as e:
             log.warning("コレクターエラー（続行）", collector="SLO違反", error=str(e))
             if verbose:
-                print(f"  警告: SLO違反の収集に失敗しました - {e}")
+                log.info("コレクター収集失敗", collector="SLO違反", error=str(e))
 
         if verbose:
-            print("健全性分析と推奨事項を生成中...")
-        analyze_health(result, thresholds)
-
-        return result
+            log.info("健全性分析と推奨事項を生成中")
+        return analyze_health(result, thresholds)
 
 
 def cmd_analyze(args: argparse.Namespace) -> int:
@@ -162,25 +162,20 @@ def cmd_analyze(args: argparse.Namespace) -> int:
             args.verbose,
         )
 
-        # レポート生成
-        if args.lang == "ja":
-            report = generate_japanese_report(result)
-        else:
-            # 英語は将来対応（現在は日本語のみ）
-            report = generate_japanese_report(result)
+        # レポート生成（日本語のみ対応）
+        report = generate_japanese_report(result)
 
         # ファイル出力
         output_dir = args.output_dir or config.report.output_dir
         output_dir.mkdir(parents=True, exist_ok=True)
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        timestamp = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
         output_file = output_dir / f"system_health_{timestamp}.md"
         output_file.write_text(report, encoding="utf-8")
 
-        print(f"レポート生成完了: {output_file}")
+        logger.info("レポート生成完了", output_file=str(output_file))
 
         if args.verbose:
-            print("\n" + "=" * 80)
-            print(report)
+            logger.info("レポート本文", report=report)
 
         return 0
 
@@ -197,10 +192,9 @@ def cmd_validate(args: argparse.Namespace) -> int:
     """validateコマンドを実行（ClickHouse接続テスト）"""
     configure_logging(args.verbose)
     config = ClickHouseConfig.from_env()
+    log = logger.bind(host=config.host, port=config.port, database=config.database)
 
-    print(f"ClickHouse接続テスト: {config.host}:{config.port}")
-    print(f"  データベース: {config.database}")
-    print(f"  ユーザー: {config.user}")
+    log.info("ClickHouse接続テスト開始")
 
     try:
         client = clickhouse_connect.get_client(
@@ -213,12 +207,12 @@ def cmd_validate(args: argparse.Namespace) -> int:
         # 接続テスト
         result = client.query("SELECT 1")
         if result.result_rows:
-            print("✅ 接続成功")
+            log.info("接続成功")
         else:
-            print("❌ 接続失敗: クエリ結果が空")
+            log.error("接続失敗: クエリ結果が空")
             return 1
 
-        # テーブル存在確認
+        # テーブル存在確認（ホスト/ユーザー名はログに出さない）
         tables = ["logs", "otel_logs", "otel_traces", "otel_http_requests", "otel_error_logs", "sli_metrics"]
         for table in tables:
             try:
@@ -227,13 +221,14 @@ def cmd_validate(args: argparse.Namespace) -> int:
                     parameters={"database": config.database, "table": table},
                 )
                 count = result.result_rows[0][0] if result.result_rows else 0
-                print(f"  ✅ {table}: {count:,}行")
+                log.info("テーブル確認", table=table, row_count=count)
             except ClickHouseError as e:
-                print(f"  ⚠️ {table}: アクセス不可 - {e}")
+                log.warning("テーブルアクセス不可", table=table, error=str(e))
 
         return 0
 
     except ClickHouseError as e:
+        log.exception("接続失敗")
         print(f"❌ 接続失敗: {e}", file=sys.stderr)
         return 1
 
@@ -265,9 +260,9 @@ def create_parser() -> argparse.ArgumentParser:
     )
     analyze_parser.add_argument(
         "--lang",
-        choices=["ja", "en"],
+        choices=["ja"],
         default="ja",
-        help="レポート言語（デフォルト: ja）",
+        help="レポート言語（現在は ja のみ対応）",
     )
     analyze_parser.add_argument(
         "--verbose",

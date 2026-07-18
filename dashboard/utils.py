@@ -1,10 +1,15 @@
-
-import streamlit as st
-import pandas as pd
-from sqlalchemy import create_engine, text
+import logging
 import os
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+
+import pandas as pd
+import streamlit as st
+from sqlalchemy import create_engine, inspect, text
+from sqlalchemy.engine import Engine
+from sqlalchemy.exc import SQLAlchemyError
+
+logger = logging.getLogger(__name__)
 
 
 def _read_secret(env_name: str) -> str | None:
@@ -64,12 +69,59 @@ def now_utc() -> datetime:
 
 # --- Database Connection ---
 @st.cache_resource
-def get_engine():
+def get_engine() -> Engine:
     return create_engine(DB_URI)
 
 
 def _interval_params(window_seconds: int) -> dict[str, int]:
     return {"window_seconds": max(window_seconds, 0)}
+
+
+def safe_int(value: object, default: int = 0) -> int:
+    """Safely convert a value to integer, handling NaN and None."""
+    if pd.isna(value) or value is None:
+        return default
+    try:
+        return int(float(value))  # type: ignore[arg-type]
+    except (ValueError, TypeError):
+        return default
+
+
+def safe_float(value: object, default: float = 0.0) -> float:
+    """Safely convert a value to float, handling NaN and None."""
+    if pd.isna(value) or value is None:
+        return default
+    try:
+        return float(value)  # type: ignore[arg-type]
+    except (ValueError, TypeError):
+        return default
+
+
+def fetch_table_or_warn(
+    table_name: str,
+    query: str,
+    params: dict,
+) -> pd.DataFrame | None:
+    """Fetch a SQL table with existence check and error handling.
+
+    Returns None when the table is missing or the query fails (after showing
+    a Streamlit warning). Returns an (possibly empty) DataFrame on success.
+    """
+    engine = get_engine()
+    inspector = inspect(engine)
+    if not inspector.has_table(table_name):
+        st.warning(f"{table_name} テーブルが見つかりません。")
+        return None
+
+    try:
+        with engine.connect() as conn:
+            return pd.read_sql(text(query), conn, params=params)
+    except SQLAlchemyError as e:
+        logger.exception("Failed to fetch %s", table_name)
+        st.warning(f"{table_name} 取得中にエラーが発生しました。")
+        with st.expander("詳細"):
+            st.error(str(e))
+        return None
 
 
 # --- Data Fetching ---
@@ -98,7 +150,8 @@ def fetch_metrics(metric_type: str, window_seconds: int, limit: int = 500) -> pd
             df["job_id"] = df["job_id"].astype(str)
         metrics_df = pd.json_normalize(df["metrics"].tolist())
         df = pd.concat([df.drop("metrics", axis=1), metrics_df], axis=1)
-        df["timestamp"] = pd.to_datetime(df["timestamp"])
+        if "timestamp" in df.columns:
+            df["timestamp"] = pd.to_datetime(df["timestamp"])
     return df
 
 
@@ -120,9 +173,11 @@ def fetch_recent_activity(window_seconds: int, limit: int = 200) -> pd.DataFrame
             conn,
             params={"limit": limit, **_interval_params(window_seconds)},
         )
-    if not df.empty and "job_id" in df.columns:
-        df["job_id"] = df["job_id"].astype(str)
-        df["timestamp"] = pd.to_datetime(df["timestamp"])
+    if not df.empty:
+        if "job_id" in df.columns:
+            df["job_id"] = df["job_id"].astype(str)
+        if "timestamp" in df.columns:
+            df["timestamp"] = pd.to_datetime(df["timestamp"])
     return df
 
 

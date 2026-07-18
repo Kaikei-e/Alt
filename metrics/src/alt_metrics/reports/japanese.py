@@ -1,9 +1,14 @@
 """日本語レポート生成
 
 Jinja2テンプレートを使用して日本語Markdownレポートを生成します。
-"""
 
-from __future__ import annotations
+Sanitize policy:
+- Templates are ``*.md.j2`` (Markdown), so Jinja2 autoescape is limited to
+  ``html``/``xml`` and does **not** cover Markdown injection.
+- Table cell values are escaped via ``_escape_cell`` (pipes / newlines) before
+  being rendered into Markdown tables. Prefer ``format_table`` for any
+  untrusted / log-derived tabular content.
+"""
 
 from pathlib import Path
 from typing import Any
@@ -14,16 +19,22 @@ from pydantic import BaseModel
 from alt_metrics.analysis import get_health_status, get_health_status_emoji
 from alt_metrics.models import AnalysisResult
 
+_TEMPLATE_ENV: Environment | None = None
+
 
 def _get_template_env() -> Environment:
-    """Jinja2環境を取得"""
-    template_dir = Path(__file__).parent / "templates"
-    return Environment(
-        loader=FileSystemLoader(template_dir),
-        autoescape=select_autoescape(["html", "xml"]),
-        trim_blocks=True,
-        lstrip_blocks=True,
-    )
+    """Jinja2環境を取得（モジュールレベルでキャッシュ）"""
+    global _TEMPLATE_ENV
+    if _TEMPLATE_ENV is None:
+        template_dir = Path(__file__).parent / "templates"
+        _TEMPLATE_ENV = Environment(
+            loader=FileSystemLoader(template_dir),
+            # Markdown は autoescape 対象外。セル値は format_table/_escape_cell でサニタイズする。
+            autoescape=select_autoescape(["html", "xml"]),
+            trim_blocks=True,
+            lstrip_blocks=True,
+        )
+    return _TEMPLATE_ENV
 
 
 def _row_keys(row: dict[str, Any] | BaseModel) -> list[str]:

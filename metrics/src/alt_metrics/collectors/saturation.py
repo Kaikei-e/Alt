@@ -4,8 +4,6 @@ Google SREのGolden Signalsの「Saturation」を収集します。
 システムリソース（CPU、メモリ、キュー深度など）の使用率を測定します。
 """
 
-from __future__ import annotations
-
 from typing import Any
 
 import structlog
@@ -74,15 +72,15 @@ def collect_resource_utilization(client: Client, database: str, hours: int) -> l
         log.info("データ収集完了", count=len(data))
         return data
     except Exception as e:
-        log.error("クエリ実行エラー", error=str(e), query=query[:200])
+        log.exception("クエリ実行エラー", query=query[:200])
         raise CollectorError("resource_utilization", str(e)) from e
 
 
 def collect_queue_saturation(client: Client, database: str, hours: int) -> list[dict[str, Any]]:
     """キュー飽和度メトリクスを収集
 
-    メッセージキューやワーカーキューの深度と待ち時間を収集します。
-    実際のキューメトリクスがない場合は、トレースの待ち時間から推定します。
+    メッセージキューやワーカーキューの待ち時間を収集します。
+    実際のキューメトリクスがない場合は、トレースの DurationMs を待ち時間の代理指標として推定します。
 
     Args:
         client: ClickHouseクライアント
@@ -95,14 +93,13 @@ def collect_queue_saturation(client: Client, database: str, hours: int) -> list[
     Raises:
         CollectorError: クエリ実行に失敗した場合
     """
-    # キューメトリクスをトレースデータから推定
+    # DurationMs はキュー深度ではなく待ち時間の代理指標
     query = """
     SELECT
         ServiceName as service,
         SpanName as queue_name,
-        round(avg(DurationMs), 2) as avg_depth,
-        max(toInt64(DurationMs)) as max_depth,
         round(avg(DurationMs), 2) as avg_wait_time_ms,
+        max(toInt64(DurationMs)) as max_wait_time_ms,
         round(quantile(0.95)(DurationMs), 2) as p95_wait_time_ms
     FROM {database:Identifier}.otel_traces
     WHERE Timestamp >= now() - INTERVAL {hours:UInt32} HOUR
@@ -122,5 +119,5 @@ def collect_queue_saturation(client: Client, database: str, hours: int) -> list[
         log.info("データ収集完了", count=len(data))
         return data
     except Exception as e:
-        log.error("クエリ実行エラー", error=str(e), query=query[:200])
+        log.exception("クエリ実行エラー", query=query[:200])
         raise CollectorError("queue_saturation", str(e)) from e

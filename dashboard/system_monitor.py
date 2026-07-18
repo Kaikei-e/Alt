@@ -14,6 +14,18 @@ from typing import Any
 
 logger = logging.getLogger(__name__)
 
+try:
+    import psutil as _psutil
+except ImportError:  # pragma: no cover - optional dependency
+    _psutil = None  # type: ignore[assignment]
+
+# Seed non-blocking cpu_percent baseline so the first SSE sample is meaningful.
+if _psutil is not None:
+    try:
+        _psutil.cpu_percent(interval=None)
+    except (OSError, RuntimeError, ValueError):
+        pass
+
 
 @dataclass(frozen=True, slots=True)
 class MemoryInfo:
@@ -72,16 +84,14 @@ def _read_proc_stat_cpu_fields() -> list[int]:
 
 
 def get_cpu_info() -> dict[str, float]:
-    """Get CPU usage statistics"""
-    # 1. Try psutil (preferred if works)
-    try:
-        import psutil
-        percent = psutil.cpu_percent(interval=1)
-        return {"percent": round(percent, 1)}
-    except ImportError:
-        pass
-    except (OSError, RuntimeError, ValueError) as e:
-        logger.debug("psutil.cpu_percent failed, falling back to /proc/stat", exc_info=e)
+    """Get CPU usage statistics (non-blocking where possible)."""
+    # 1. Try psutil with interval=None (differential since last call; no 1s block)
+    if _psutil is not None:
+        try:
+            percent = _psutil.cpu_percent(interval=None)
+            return {"percent": round(percent, 1)}
+        except (OSError, RuntimeError, ValueError) as e:
+            logger.debug("psutil.cpu_percent failed, falling back to /proc/stat", exc_info=e)
 
     # 2. Try /proc/stat.
     # A single read gives the cumulative average since boot, not current

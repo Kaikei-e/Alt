@@ -1,7 +1,5 @@
 """reports/japanese.py のテスト"""
 
-from __future__ import annotations
-
 from alt_metrics.models import AnalysisResult
 from alt_metrics.reports.japanese import format_table, generate_japanese_report
 

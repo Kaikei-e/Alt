@@ -3,8 +3,6 @@
 otel_tracesテーブルからパフォーマンス・エラーデータを収集します。
 """
 
-from __future__ import annotations
-
 from typing import Any
 
 import structlog
@@ -59,7 +57,7 @@ def collect_api_performance(client: Client, database: str, hours: int) -> list[A
         log.info("データ収集完了", count=len(data))
         return data
     except ClickHouseError as e:
-        log.error("クエリ実行エラー", error=str(e), query=query[:200])
+        log.exception("クエリ実行エラー", query=query[:200])
         raise CollectorError("api_performance", str(e)) from e
 
 
@@ -102,7 +100,7 @@ def collect_bottlenecks(client: Client, database: str, hours: int) -> list[dict[
         log.info("データ収集完了", count=len(data))
         return data
     except ClickHouseError as e:
-        log.error("クエリ実行エラー", error=str(e), query=query[:200])
+        log.exception("クエリ実行エラー", query=query[:200])
         raise CollectorError("bottlenecks", str(e)) from e
 
 
@@ -142,7 +140,7 @@ def collect_span_type_stats(client: Client, database: str, hours: int) -> list[d
         log.info("データ収集完了", count=len(data))
         return data
     except ClickHouseError as e:
-        log.error("クエリ実行エラー", error=str(e), query=query[:200])
+        log.exception("クエリ実行エラー", query=query[:200])
         raise CollectorError("span_type_stats", str(e)) from e
 
 
@@ -184,7 +182,7 @@ def collect_error_spans(client: Client, database: str, hours: int) -> list[dict[
         log.info("データ収集完了", count=len(data))
         return data
     except ClickHouseError as e:
-        log.error("クエリ実行エラー", error=str(e), query=query[:200])
+        log.exception("クエリ実行エラー", query=query[:200])
         raise CollectorError("error_spans", str(e)) from e
 
 
@@ -228,5 +226,5 @@ def collect_service_dependencies(client: Client, database: str, hours: int) -> l
         log.info("データ収集完了", count=len(data))
         return data
     except ClickHouseError as e:
-        log.error("クエリ実行エラー", error=str(e), query=query[:200])
+        log.exception("クエリ実行エラー", query=query[:200])
         raise CollectorError("service_dependencies", str(e)) from e

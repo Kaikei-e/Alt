@@ -1,10 +1,18 @@
-
-import streamlit as st
+import logging
 import os
-import sys
-import time
+
 import requests
-from tabs import overview, classification, clustering, summarization, log_analysis, system_monitor_tab, admin_jobs, recap_jobs
+import streamlit as st
+from tabs import (
+    admin_jobs,
+    classification,
+    clustering,
+    log_analysis,
+    overview,
+    recap_jobs,
+    summarization,
+    system_monitor_tab,
+)
 from utils import TIME_WINDOWS
 
 # --- Configuration ---
@@ -12,39 +20,45 @@ st.set_page_config(layout="wide", page_title="Recap System Dashboard")
 
 # --- Background Services ---
 # Configure logging to ensure logs are visible
-import logging
 logging.basicConfig(
     level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    force=True  # Force reconfiguration even if logging was already configured
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    force=True,  # Force reconfiguration even if logging was already configured
 )
 
+
 @st.cache_resource
-def check_sse_server_health():
+def check_sse_server_health() -> bool:
     """Check if the SSE server (running as separate process) is healthy."""
     logger = logging.getLogger(__name__)
-    sse_port = int(os.getenv('SSE_PORT', 8000))
+    sse_port = int(os.getenv("SSE_PORT", 8000))
     health_url = f"http://localhost:{sse_port}/health"
 
     try:
-        logger.info(f"Checking SSE server health at {health_url} (SSE_PORT={sse_port})")
+        logger.info("Checking SSE server health at %s (SSE_PORT=%s)", health_url, sse_port)
         response = requests.get(health_url, timeout=5)
         if response.status_code == 200:
             health_data = response.json()
-            logger.info(f"SSE server health check passed: {health_data}")
+            logger.info("SSE server health check passed: %s", health_data)
             return True
         else:
-            logger.warning(f"SSE server health check returned status {response.status_code} (expected 200)")
+            logger.warning(
+                "SSE server health check returned status %s (expected 200)",
+                response.status_code,
+            )
             return False
     except requests.exceptions.Timeout:
-        logger.warning(f"SSE server health check timed out. Server may still be starting.")
+        logger.warning("SSE server health check timed out. Server may still be starting.")
         return False
     except requests.exceptions.ConnectionError:
-        logger.warning(f"SSE server health check connection error. Server may still be starting.")
+        logger.warning(
+            "SSE server health check connection error. Server may still be starting."
+        )
         return False
     except requests.exceptions.RequestException as e:
-        logger.warning(f"SSE server health check failed: {e}")
+        logger.warning("SSE server health check failed: %s", e)
         return False
+
 
 # Check SSE server health at startup (non-blocking, just for logging)
 logger = logging.getLogger(__name__)
@@ -68,16 +82,18 @@ window_seconds = TIME_WINDOWS.get(time_range, TIME_WINDOWS["4h"])
 # 2-4. Pipeline - Processing stages (Classification, Clustering, Summarization)
 # 5-6. Monitoring - System monitoring and analysis (System Monitor, Log Analysis)
 # 7-8. Jobs - Job management (Admin Jobs, Recap Jobs)
-tabs_ui = st.tabs([
-    "Overview",  # Overview
-    "Classification",  # Pipeline
-    "Clustering",  # Pipeline
-    "Summarization",  # Pipeline
-    "System Monitor",  # Monitoring
-    "Log Analysis",  # Monitoring
-    "Admin Jobs",  # Jobs
-    "Recap Jobs",  # Jobs
-])
+tabs_ui = st.tabs(
+    [
+        "Overview",  # Overview
+        "Classification",  # Pipeline
+        "Clustering",  # Pipeline
+        "Summarization",  # Pipeline
+        "System Monitor",  # Monitoring
+        "Log Analysis",  # Monitoring
+        "Admin Jobs",  # Jobs
+        "Recap Jobs",  # Jobs
+    ]
+)
 
 with tabs_ui[0]:
     overview.render_overview(window_seconds)
