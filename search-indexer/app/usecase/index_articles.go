@@ -8,6 +8,7 @@ import (
 	"search-indexer/domain"
 	"search-indexer/port"
 	"search-indexer/tokenize"
+	"slices"
 	"sync"
 	"time"
 
@@ -245,6 +246,18 @@ func (u *IndexArticlesUsecase) registerBatchSynonyms(ctx context.Context, docs [
 	u.synonymsMu.Lock()
 	if u.synonyms == nil {
 		u.synonyms = make(map[string][]string, len(batch))
+	}
+	changed := false
+	for k, v := range batch {
+		if existing, ok := u.synonyms[k]; !ok || !slices.Equal(existing, v) {
+			changed = true
+			break
+		}
+	}
+	if !changed {
+		u.synonymsMu.Unlock()
+		slog.DebugContext(ctx, "skipping synonyms PUT: batch introduces no new or changed entries", "batch_size", len(batch))
+		return
 	}
 	maps.Copy(u.synonyms, batch)
 	union := maps.Clone(u.synonyms)

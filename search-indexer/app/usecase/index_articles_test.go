@@ -457,3 +457,63 @@ func TestRegisterBatchSynonyms_AccumulatesAcrossBatches(t *testing.T) {
 		t.Fatalf("batch 2 PUT dropped テスト1 from an earlier batch (full-replace overwrite bug): %v", engine.lastSynonymsArg)
 	}
 }
+
+// TestRegisterBatchSynonyms_SkipsPUTWhenNoNewSynonyms reproduces PM-2026-047:
+// registerBatchSynonyms PUT the accumulated union unconditionally on every
+// flush, even when the batch contributed no synonym not already present in
+// the process-wide union. In production, repeated tags across a continuous
+// stream of articles meant nearly every indexing operation re-sent the full
+// dictionary, generating one Meilisearch settingsUpdate task per flush
+// (976,598 accumulated tasks, ~15.7GB) until the task database's LMDB map
+// filled and Meilisearch rejected all writes, including its own task
+// deletions. The usecase must skip the RegisterSynonyms call when the batch
+// contains no new key and no changed value versus what was already PUT.
+func TestRegisterBatchSynonyms_SkipsPUTWhenNoNewSynonyms(t *testing.T) {
+	now := time.Now()
+	tok, err := tokenize.InitTokenizer()
+	if err != nil {
+		t.Fatalf("InitTokenizer: %v", err)
+	}
+
+	engine := &mockSearchEngineForIndexing{}
+
+	a1, _ := domain.NewArticle("1", "T1", "C1", []string{"テスト1"}, now, "u")
+	repo1 := &mockArticleRepo{articles: []*domain.Article{a1}}
+	u := NewIndexArticlesUsecase(repo1, engine, tok)
+	if _, err := u.ExecuteBackfill(context.Background(), nil, "", 10); err != nil {
+		t.Fatalf("ExecuteBackfill (batch 1): %v", err)
+	}
+	if engine.synonymsCallCount != 1 {
+		t.Fatalf("after batch 1, RegisterSynonyms call count = %d, want 1", engine.synonymsCallCount)
+	}
+
+	// Second batch carries the SAME Japanese tag as batch 1, so
+	// ProcessTagToSynonyms produces the identical {tag: tokens} entry
+	// already present in the accumulated union — nothing new to PUT.
+	a2, _ := domain.NewArticle("2", "T2", "C2", []string{"テスト1"}, now.Add(time.Second), "u")
+	u.articleRepo = &mockArticleRepo{articles: []*domain.Article{a2}}
+	if _, err := u.ExecuteBackfill(context.Background(), nil, "", 10); err != nil {
+		t.Fatalf("ExecuteBackfill (batch 2): %v", err)
+	}
+
+	if engine.synonymsCallCount != 1 {
+		t.Fatalf("after batch 2 with no new synonyms, RegisterSynonyms call count = %d, want 1 (PUT must be skipped)", engine.synonymsCallCount)
+	}
+
+	// A third batch that DOES introduce a new tag must still PUT — the skip
+	// guard must not become permanently stuck once tripped.
+	a3, _ := domain.NewArticle("3", "T3", "C3", []string{"テスト2"}, now.Add(2*time.Second), "u")
+	u.articleRepo = &mockArticleRepo{articles: []*domain.Article{a3}}
+	if _, err := u.ExecuteBackfill(context.Background(), nil, "", 10); err != nil {
+		t.Fatalf("ExecuteBackfill (batch 3): %v", err)
+	}
+	if engine.synonymsCallCount != 2 {
+		t.Fatalf("after batch 3 with a genuinely new synonym, RegisterSynonyms call count = %d, want 2", engine.synonymsCallCount)
+	}
+	if _, ok := engine.lastSynonymsArg["テスト1"]; !ok {
+		t.Fatalf("batch 3 PUT dropped テスト1 from an earlier batch: %v", engine.lastSynonymsArg)
+	}
+	if _, ok := engine.lastSynonymsArg["テスト2"]; !ok {
+		t.Fatalf("batch 3 PUT missing new key テスト2: %v", engine.lastSynonymsArg)
+	}
+}
