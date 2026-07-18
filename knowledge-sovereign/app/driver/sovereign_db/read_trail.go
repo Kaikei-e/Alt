@@ -22,6 +22,15 @@ import (
 // constant rather than duplicating the literal.
 const EngagedDwellMs = int64(30_000)
 
+// continuationStaleAfter is the minimum quiet period before an engaged-but-
+// not-deep thread qualifies for a Continuation candidate (D27/D28, Wave 11):
+// a thread gone quiet, not one the user is still actively reading.
+const continuationStaleAfter = 3 * 24 * time.Hour
+
+// continuationExpireAfter is the outer bound past which a quiet thread reads
+// as gone cold rather than merely quiet, and Continuation stops proposing it.
+const continuationExpireAfter = 21 * 24 * time.Hour
+
 // TrailFootprint is the domain representation of one footprint on the trail
 // spine. verb / item_key / occurred_at are projected from the event log;
 // title / excerpt / tags are enriched at read time from knowledge_home_items.
@@ -227,6 +236,16 @@ type TrailClusterCandidate struct {
 	TargetItemKey string
 	TargetTitle   string
 	SharedTags    []string
+}
+
+// TrailContinuationCandidate is a thread the user already engaged (self-
+// referential — D27, Wave 11) that has gone quiet without going deep: the raw
+// material for a Continuation branch ("pick this thread back up"). Contrast
+// TrailClusterCandidate, which situates a NEW item into a followed topic.
+type TrailContinuationCandidate struct {
+	TargetItemKey string
+	TargetTitle   string
+	LastContactAt time.Time
 }
 
 // UpsertTrailBranch folds a branch_proposed event into the read model. It never
@@ -435,6 +454,85 @@ LIMIT $2`
 		var c TrailClusterCandidate
 		if err := rows.Scan(&c.TargetItemKey, &c.TargetTitle, &c.SharedTags); err != nil {
 			return nil, fmt.Errorf("DeriveTrailClusterCandidates scan: %w", err)
+		}
+		out = append(out, c)
+	}
+	return out, rows.Err()
+}
+
+// DeriveTrailContinuationCandidates finds a thread the user already engaged
+// that has gone quiet without going deep (Wave 11, D27/D28) — self-referential
+// raw material for a Continuation branch: the target IS the anchor, because
+// past engagement with the SAME item is what qualifies it, not tag overlap
+// with a new item (contrast DeriveTrailClusterCandidates).
+//
+// "Not deep" is a simplified, faithful read of the wear CASE in
+// GetTrailFootprints: 1-3 raw contacts, no 'asked' verb, no engaged
+// act-outcome. The last contact must sit strictly between
+// continuationExpireAfter and continuationStaleAfter ago — a thread gone
+// quiet, not one still being read or one gone cold. Items that already carry
+// a continuation branch (open or resolved) are excluded so a taken or
+// dismissed proposal is never re-proposed. Ordered most-recent-contact first;
+// producer-side derivation (the planner reads current state to decide what to
+// emit — the projector folding the resulting event stays payload-only).
+func (r *Repository) DeriveTrailContinuationCandidates(ctx context.Context, userID uuid.UUID, limit int) ([]TrailContinuationCandidate, error) {
+	now := time.Now()
+	staleCutoff := now.Add(-continuationStaleAfter)
+	expireCutoff := now.Add(-continuationExpireAfter)
+
+	q := `
+WITH active_version AS (
+  SELECT ` + activeProjectionVersionSQL + ` AS v
+),
+item_contacts AS (
+  SELECT item_key,
+         count(*) AS contact_count,
+         bool_or(verb = 'asked') AS has_ask,
+         max(occurred_at) AS last_contact_at
+  FROM knowledge_trail_footprints
+  WHERE user_id = $1
+  GROUP BY item_key
+),
+item_engagement AS (
+  SELECT item_key, TRUE AS engaged
+  FROM knowledge_trail_act_outcomes
+  WHERE user_id = $1
+    AND ((dwell_ms IS NOT NULL AND dwell_ms >= $2)
+         OR legacy_outcome IN ('engaged', 'deep_engagement'))
+  GROUP BY item_key
+)
+SELECT ic.item_key, khi.title, ic.last_contact_at
+FROM item_contacts ic
+JOIN knowledge_home_items khi
+  ON khi.user_id = $1
+ AND khi.item_key = ic.item_key
+ AND khi.projection_version = (SELECT v FROM active_version)
+LEFT JOIN item_engagement ie ON ie.item_key = ic.item_key
+WHERE ic.contact_count BETWEEN 1 AND 3
+  AND NOT ic.has_ask
+  AND NOT COALESCE(ie.engaged, FALSE)
+  AND ic.last_contact_at <= $3
+  AND ic.last_contact_at >= $4
+  AND coalesce(khi.title, '') <> ''
+  AND NOT EXISTS (
+    SELECT 1 FROM knowledge_trail_branches btb
+    WHERE btb.user_id = $1
+      AND btb.relation_kind = 'continuation'
+      AND btb.target_item_key = ic.item_key
+  )
+ORDER BY ic.last_contact_at DESC
+LIMIT $5`
+	rows, err := r.pool.Query(ctx, q, userID, EngagedDwellMs, staleCutoff, expireCutoff, limit)
+	if err != nil {
+		return nil, fmt.Errorf("DeriveTrailContinuationCandidates: %w", err)
+	}
+	defer rows.Close()
+
+	var out []TrailContinuationCandidate
+	for rows.Next() {
+		var c TrailContinuationCandidate
+		if err := rows.Scan(&c.TargetItemKey, &c.TargetTitle, &c.LastContactAt); err != nil {
+			return nil, fmt.Errorf("DeriveTrailContinuationCandidates scan: %w", err)
 		}
 		out = append(out, c)
 	}

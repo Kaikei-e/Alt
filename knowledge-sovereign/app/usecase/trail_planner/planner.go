@@ -85,6 +85,10 @@ type Repository interface {
 	// emission rather than falling back to a generic why.
 	GetItemTitle(ctx context.Context, userID uuid.UUID, itemKey string) (string, bool, error)
 	DeriveTrailClusterCandidates(ctx context.Context, userID uuid.UUID, limit int) ([]sovereign_db.TrailClusterCandidate, error)
+	// DeriveTrailContinuationCandidates finds a thread the user already
+	// engaged that has gone quiet without going deep (Wave 11, D27) — the
+	// self-referential raw material for a Continuation branch.
+	DeriveTrailContinuationCandidates(ctx context.Context, userID uuid.UUID, limit int) ([]sovereign_db.TrailContinuationCandidate, error)
 	AppendKnowledgeEvent(ctx context.Context, event sovereign_db.KnowledgeEvent) (int64, error)
 }
 
@@ -183,33 +187,80 @@ func (p *Planner) planUser(ctx context.Context, userID uuid.UUID) error {
 			continue
 		}
 		payload := buildClusterBranch(userID, anchor, anchorTitle, c)
-		if !payload.Valid() {
-			p.logger.WarnContext(ctx, "trail_planner: dropping incomplete branch",
-				slog.String("branch_key", payload.BranchKey))
-			continue
-		}
-		body, err := json.Marshal(payload)
-		if err != nil {
-			return fmt.Errorf("trail_planner marshal: %w", err)
-		}
-		uid := userID
-		evt := sovereign_db.KnowledgeEvent{
-			EventID:       uuid.New(),
-			OccurredAt:    p.cfg.Clock(),
-			TenantID:      tenantID,
-			UserID:        &uid,
-			ActorType:     "system",
-			ActorID:       "trail-planner",
-			EventType:     EventTrailBranchProposed,
-			AggregateType: "trail_branch",
-			AggregateID:   payload.BranchKey,
-			DedupeKey:     EventTrailBranchProposed + ":" + payload.BranchKey,
-			Payload:       body,
-		}
-		if _, err := p.repo.AppendKnowledgeEvent(ctx, evt); err != nil {
-			return fmt.Errorf("trail_planner emit: %w", err)
+		if err := p.emitBranch(ctx, userID, tenantID, payload); err != nil {
+			return err
 		}
 	}
+
+	if err := p.planContinuationBranch(ctx, userID, tenantID); err != nil {
+		return err
+	}
+	return nil
+}
+
+// planContinuationBranch derives at most ONE Continuation candidate per user
+// per run (D28 — 少数精鋭, precision over recall) and emits it. Continuation
+// is self-referential (D27, contexts/knowledge-trail.md): the target IS the
+// anchor, because past engagement with the SAME item — not tag overlap with a
+// new item — is what qualifies it (contrast the Cluster loop above).
+func (p *Planner) planContinuationBranch(ctx context.Context, userID, tenantID uuid.UUID) error {
+	candidates, err := p.repo.DeriveTrailContinuationCandidates(ctx, userID, 1)
+	if err != nil {
+		return fmt.Errorf("trail_planner continuation candidates: %w", err)
+	}
+	if len(candidates) == 0 {
+		return nil
+	}
+	// Defense in depth: cap to one regardless of what the repository returns —
+	// a handful of quiet threads in the log must not fan out into several
+	// proposals in one run.
+	c := candidates[0]
+	if strings.TrimSpace(c.TargetTitle) == "" {
+		p.logger.WarnContext(ctx, "trail.branch_anchor_unresolved",
+			slog.String("user_id", userID.String()),
+			slog.String("anchor_item_key", c.TargetItemKey))
+		return nil
+	}
+	payload := buildContinuationBranch(userID, c)
+	return p.emitBranch(ctx, userID, tenantID, payload)
+}
+
+// emitBranch appends a validated branch_proposed event and logs its relation
+// kind (Wave 11 observability — makes the type distribution across Cluster /
+// Continuation / future kinds measurable). A branch that fails Valid() is
+// dropped rather than emitted incomplete — untyped branches are forbidden by
+// construction, not just by convention.
+func (p *Planner) emitBranch(ctx context.Context, userID, tenantID uuid.UUID, payload BranchProposedPayload) error {
+	if !payload.Valid() {
+		p.logger.WarnContext(ctx, "trail_planner: dropping incomplete branch",
+			slog.String("branch_key", payload.BranchKey))
+		return nil
+	}
+	body, err := json.Marshal(payload)
+	if err != nil {
+		return fmt.Errorf("trail_planner marshal: %w", err)
+	}
+	uid := userID
+	evt := sovereign_db.KnowledgeEvent{
+		EventID:       uuid.New(),
+		OccurredAt:    p.cfg.Clock(),
+		TenantID:      tenantID,
+		UserID:        &uid,
+		ActorType:     "system",
+		ActorID:       "trail-planner",
+		EventType:     EventTrailBranchProposed,
+		AggregateType: "trail_branch",
+		AggregateID:   payload.BranchKey,
+		DedupeKey:     EventTrailBranchProposed + ":" + payload.BranchKey,
+		Payload:       body,
+	}
+	if _, err := p.repo.AppendKnowledgeEvent(ctx, evt); err != nil {
+		return fmt.Errorf("trail_planner emit: %w", err)
+	}
+	p.logger.InfoContext(ctx, "trail.branch_proposed",
+		slog.String("user_id", userID.String()),
+		slog.String("relation_kind", payload.RelationKind),
+		slog.String("branch_key", payload.BranchKey))
 	return nil
 }
 
@@ -237,6 +288,28 @@ func buildClusterBranch(userID uuid.UUID, anchorItemKey, anchorTitle string, c s
 		Why:            fmt.Sprintf("Because you read %q — joins %s", anchorTitle, strings.Join(c.SharedTags, ", ")),
 		EvidenceRefs:   refs,
 		Confidence:     confidence,
+		TargetItemKey:  c.TargetItemKey,
+		TargetTitle:    c.TargetTitle,
+		PlannerVersion: plannerVersion,
+	}
+}
+
+// buildContinuationBranch turns a Continuation candidate into a fully-
+// populated, self-referential branch (D27, Wave 11): the target IS the
+// anchor — past engagement with the SAME item is what makes it continuation
+// material, not a new item situating into a followed topic (contrast
+// buildClusterBranch). The why is anchored on the candidate's own title,
+// quoted, per the same D28(a) contract.
+func buildContinuationBranch(userID uuid.UUID, c sovereign_db.TrailContinuationCandidate) BranchProposedPayload {
+	return BranchProposedPayload{
+		BranchKey:     "continuation:" + userID.String() + ":" + c.TargetItemKey,
+		AnchorItemKey: c.TargetItemKey,
+		RelationKind:  "continuation",
+		Why:           fmt.Sprintf("Because you read %q and the thread went quiet — pick it back up.", c.TargetTitle),
+		EvidenceRefs: []EvidenceRef{
+			{RefID: c.TargetItemKey, Label: c.TargetTitle, Kind: "article"},
+		},
+		Confidence:     "plausible",
 		TargetItemKey:  c.TargetItemKey,
 		TargetTitle:    c.TargetTitle,
 		PlannerVersion: plannerVersion,
