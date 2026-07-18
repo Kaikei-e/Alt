@@ -15,6 +15,7 @@ import (
 	"alt/orchestrator/usecase/get_knowledge_trail_usecase"
 	"alt/orchestrator/usecase/image_proxy_usecase"
 	"alt/orchestrator/usecase/resolve_trail_branch_usecase"
+	"alt/orchestrator/usecase/search_trail_usecase"
 )
 
 // Handler implements knowledgetrailv1connect.KnowledgeTrailServiceHandler.
@@ -22,6 +23,7 @@ type Handler struct {
 	getTrailUsecase *get_knowledge_trail_usecase.GetKnowledgeTrailUsecase
 	resolveUsecase  *resolve_trail_branch_usecase.ResolveTrailBranchUsecase
 	emitUsecase     *emit_trail_outcome_usecase.EmitTrailOutcomeUsecase
+	searchUsecase   *search_trail_usecase.SearchTrailUsecase
 	imageProxy      *image_proxy_usecase.ImageProxyUsecase
 	logger          *slog.Logger
 }
@@ -34,10 +36,11 @@ func NewHandler(
 	getTrail *get_knowledge_trail_usecase.GetKnowledgeTrailUsecase,
 	resolve *resolve_trail_branch_usecase.ResolveTrailBranchUsecase,
 	emit *emit_trail_outcome_usecase.EmitTrailOutcomeUsecase,
+	search *search_trail_usecase.SearchTrailUsecase,
 	imageProxy *image_proxy_usecase.ImageProxyUsecase,
 	logger *slog.Logger,
 ) *Handler {
-	return &Handler{getTrailUsecase: getTrail, resolveUsecase: resolve, emitUsecase: emit, imageProxy: imageProxy, logger: logger}
+	return &Handler{getTrailUsecase: getTrail, resolveUsecase: resolve, emitUsecase: emit, searchUsecase: search, imageProxy: imageProxy, logger: logger}
 }
 
 // ResolveBranch records a user's take/dismiss of a proposed branch.
@@ -125,27 +128,63 @@ func (h *Handler) GetTrail(
 		}
 	}
 
-	episodes := make([]*knowledgetrailv1.Episode, len(result.Episodes))
-	for i, ep := range result.Episodes {
+	return connect.NewResponse(&knowledgetrailv1.GetTrailResponse{
+		Footprints: footprints,
+		NextCursor: result.NextCursor,
+		HasMore:    result.HasMore,
+		Branches:   branches,
+		Episodes:   h.mapEpisodes(result.Episodes),
+	}), nil
+}
+
+// SearchTrail performs full-text search over what the user actually read
+// (Wave 9, D25) and returns the episodes containing a hit, anchored. Rule 8:
+// an unwired usecase panics rather than silently returning an empty result —
+// mirrors EmitTrailOutcome's guard.
+func (h *Handler) SearchTrail(
+	ctx context.Context,
+	req *connect.Request[knowledgetrailv1.SearchTrailRequest],
+) (*connect.Response[knowledgetrailv1.SearchTrailResponse], error) {
+	user, err := domain.GetUserFromContext(ctx)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeUnauthenticated, nil)
+	}
+	if h.searchUsecase == nil {
+		panic("knowledge_trail.Handler: SearchTrail reached with unwired search usecase (DI gap)")
+	}
+	msg := req.Msg
+	result, err := h.searchUsecase.Execute(ctx, user.UserID, msg.Query, int(msg.Limit))
+	if err != nil {
+		if errors.Is(err, search_trail_usecase.ErrInvalidRequest) {
+			return nil, connect.NewError(connect.CodeInvalidArgument, err)
+		}
+		return nil, connect.NewError(connect.CodeInternal, err)
+	}
+
+	return connect.NewResponse(&knowledgetrailv1.SearchTrailResponse{
+		Episodes:        h.mapEpisodes(result.Episodes),
+		MatchedItemKeys: result.MatchedItemKeys,
+	}), nil
+}
+
+// mapEpisodes maps domain episodes to their wire form, signing each
+// episode's thumbnail (D29). Shared by GetTrail and SearchTrail so the two
+// read paths can never diverge on episode/footprint mapping.
+func (h *Handler) mapEpisodes(episodes []domain.TrailEpisode) []*knowledgetrailv1.Episode {
+	out := make([]*knowledgetrailv1.Episode, len(episodes))
+	for i, ep := range episodes {
 		epFootprints := make([]*knowledgetrailv1.Footprint, len(ep.Footprints))
 		for j, fp := range ep.Footprints {
 			epFootprints[j] = mapFootprint(fp)
 		}
-		episodes[i] = &knowledgetrailv1.Episode{
+		out[i] = &knowledgetrailv1.Episode{
 			EpisodeKey:   ep.EpisodeKey,
 			Wear:         ep.Wear,
 			ThumbnailUrl: h.signThumbnail(ep.ThumbnailURL),
 			Footprints:   epFootprints,
 		}
 	}
-
-	return connect.NewResponse(&knowledgetrailv1.GetTrailResponse{
-		Footprints: footprints,
-		NextCursor: result.NextCursor,
-		HasMore:    result.HasMore,
-		Branches:   branches,
-		Episodes:   episodes,
-	}), nil
+	return out
 }
 
 // signThumbnail signs a raw OG image URL through the image-proxy signer

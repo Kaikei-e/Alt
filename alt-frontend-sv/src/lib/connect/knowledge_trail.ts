@@ -13,6 +13,7 @@ import {
 	type Branch as ProtoBranch,
 	type Episode as ProtoEpisode,
 	type Footprint as ProtoFootprint,
+	type SearchTrailResponse,
 } from "$lib/gen/alt/knowledge_trail/v1/knowledge_trail_pb";
 
 type KnowledgeTrailClient = Client<typeof KnowledgeTrailService>;
@@ -154,6 +155,37 @@ export async function getTrail(
 		episodes: response.episodes.map(convertEpisode),
 		nextCursor: response.nextCursor,
 		hasMore: response.hasMore,
+	};
+}
+
+/** Result of a trail search (D25): matching episodes plus which member items hit. */
+export interface SearchTrailResult {
+	/** Episodes containing at least one matching item, newest first. */
+	episodes: EpisodeData[];
+	/** Member item keys that matched, so the UI can highlight the hit. */
+	matchedItemKeys: string[];
+}
+
+/**
+ * Searches the user's trail (D25): full-text over what was actually read,
+ * intersected with the spine. Hits return as their containing episodes so
+ * every result keeps its time context. Pull-only — call only on explicit
+ * submit, never on keystroke.
+ */
+export async function searchTrail(
+	transport: Transport,
+	query: string,
+	limit = 20,
+): Promise<SearchTrailResult> {
+	const client = createKnowledgeTrailClient(transport);
+	const response = (await client.searchTrail({
+		query,
+		limit,
+	})) as SearchTrailResponse;
+
+	return {
+		episodes: response.episodes.map(convertEpisode),
+		matchedItemKeys: response.matchedItemKeys ?? [],
 	};
 }
 

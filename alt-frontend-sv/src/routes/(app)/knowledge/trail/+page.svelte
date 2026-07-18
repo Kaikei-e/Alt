@@ -2,6 +2,7 @@
 import { onMount } from "svelte";
 import { browser } from "$app/environment";
 import TrailBranches from "$lib/components/knowledge-trail/TrailBranches.svelte";
+import TrailSearch from "$lib/components/knowledge-trail/TrailSearch.svelte";
 import TrailSpine from "$lib/components/knowledge-trail/TrailSpine.svelte";
 import { useKnowledgeTrail } from "$lib/hooks/useKnowledgeTrail.svelte";
 
@@ -53,13 +54,25 @@ onMount(() => {
 		</p>
 	{/if}
 
+	<!-- Trail search (D25/Wave 9): the sole rediscovery instrument, pull-only —
+	     fetches only on explicit submit, never a keystroke or an $effect. -->
+	<TrailSearch
+		active={trail.searchActive}
+		searching={trail.searching}
+		onSearch={(q) => trail.search(q)}
+		onClear={() => trail.clearSearch()}
+	/>
+
 	<!-- The spine (the path the user has worn) is the hero. System-proposed
-	     branches are secondary and rendered, capped, below it. -->
+	     branches are secondary and rendered, capped, below it. While a search
+	     is active, the spine shows only the matching episodes. -->
 	<TrailSpine
-		episodes={trail.episodes}
-		loading={trail.loading}
-		hasMore={trail.hasMore}
-		hasEverLoaded={trail.hasEverLoaded}
+		episodes={trail.searchActive ? trail.searchEpisodes : trail.episodes}
+		loading={trail.searchActive ? trail.searching : trail.loading}
+		hasMore={trail.searchActive ? false : trail.hasMore}
+		hasEverLoaded={trail.searchActive ? true : trail.hasEverLoaded}
+		matchedItemKeys={trail.searchActive ? trail.matchedItemKeys : []}
+		searchActive={trail.searchActive}
 		onLoadMore={() => trail.loadMore()}
 	/>
 

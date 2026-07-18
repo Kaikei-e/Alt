@@ -28,6 +28,7 @@ import (
 	"alt/orchestrator/usecase/recall_rail_usecase"
 	"alt/orchestrator/usecase/recall_snooze_usecase"
 	"alt/orchestrator/usecase/resolve_trail_branch_usecase"
+	"alt/orchestrator/usecase/search_trail_usecase"
 	"alt/orchestrator/usecase/select_lens_usecase"
 	"alt/orchestrator/usecase/track_home_action_usecase"
 	"alt/orchestrator/usecase/track_home_seen_usecase"
@@ -47,6 +48,7 @@ type KnowledgeModule struct {
 	GetKnowledgeTrailUsecase         *get_knowledge_trail_usecase.GetKnowledgeTrailUsecase
 	ResolveTrailBranchUsecase        *resolve_trail_branch_usecase.ResolveTrailBranchUsecase
 	EmitTrailOutcomeUsecase          *emit_trail_outcome_usecase.EmitTrailOutcomeUsecase
+	SearchTrailUsecase               *search_trail_usecase.SearchTrailUsecase
 	TrackHomeSeenUsecase             *track_home_seen_usecase.TrackHomeSeenUsecase
 	TrackHomeActionUsecase           *track_home_action_usecase.TrackHomeActionUsecase
 	AppendKnowledgeEventUsecase      *append_knowledge_event_usecase.AppendKnowledgeEventUsecase
@@ -103,6 +105,10 @@ func newKnowledgeModule(infra *InfraModule, article *ArticleModule) *KnowledgeMo
 	getKnowledgeTrailUC := get_knowledge_trail_usecase.NewGetKnowledgeTrailUsecase(sovereignCli, trailThumbnailGw)
 	resolveTrailBranchUC := resolve_trail_branch_usecase.NewResolveTrailBranchUsecase(sovereignCli)
 	emitTrailOutcomeUC := emit_trail_outcome_usecase.NewEmitTrailOutcomeUsecase(sovereignCli)
+	// Trail search (Wave 9, D25): reuses the existing search-indexer article
+	// index (no new index) and narrows the trail spine via sovereign's
+	// GetTrailFootprints filter_item_keys — no sovereign→Meilisearch coupling.
+	searchTrailUC := search_trail_usecase.NewSearchTrailUsecase(infra.SearchIndexerDriver, sovereignCli, trailThumbnailGw)
 	trackHomeSeenUC := track_home_seen_usecase.NewTrackHomeSeenUsecase(sovereignCli, featureFlagGw)
 	trackHomeActionUC := track_home_action_usecase.NewTrackHomeActionUsecase(sovereignCli, sovereignCli, featureFlagGw, sovereignCli, sovereignCli, sovereignCli, articleURLLookupGw)
 	appendKnowledgeEventUC := append_knowledge_event_usecase.NewAppendKnowledgeEventUsecase(sovereignCli)
@@ -176,6 +182,7 @@ func newKnowledgeModule(infra *InfraModule, article *ArticleModule) *KnowledgeMo
 		GetKnowledgeTrailUsecase:         getKnowledgeTrailUC,
 		ResolveTrailBranchUsecase:        resolveTrailBranchUC,
 		EmitTrailOutcomeUsecase:          emitTrailOutcomeUC,
+		SearchTrailUsecase:               searchTrailUC,
 		TrackHomeSeenUsecase:             trackHomeSeenUC,
 		TrackHomeActionUsecase:           trackHomeActionUC,
 		AppendKnowledgeEventUsecase:      appendKnowledgeEventUC,

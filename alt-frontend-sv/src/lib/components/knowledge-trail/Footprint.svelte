@@ -3,9 +3,11 @@ import type { FootprintData } from "$lib/connect/knowledge_trail";
 
 interface Props {
 	footprint: FootprintData;
+	/** Whether this member matched an active trail search (D25). */
+	isHit?: boolean;
 }
 
-const { footprint }: Props = $props();
+const { footprint, isHit = false }: Props = $props();
 
 const VERB_LABEL: Record<string, string> = {
 	read: "Read",
@@ -39,7 +41,12 @@ function formatTime(iso: string): string {
 }
 </script>
 
-<div class="step" data-testid="trail-footprint" data-wear={wear}>
+<div
+	class="step"
+	class:footprint-hit={isHit}
+	data-testid={isHit ? "footprint-hit" : "trail-footprint"}
+	data-wear={wear}
+>
 	<div class="spine-cell">
 		<div class="spine-node {wear}"></div>
 		<div class="spine-seg {wear}"></div>
@@ -134,6 +141,14 @@ function formatTime(iso: string): string {
 		flex: 1;
 		min-width: 0;
 		padding: 0.1rem 0 1.1rem;
+	}
+	/* Wave 9 trail search (D25): the matched member stands out inside its
+	   containing episode without disturbing the surrounding wear styling. */
+	.step.footprint-hit .footprint {
+		background: var(--accent-info-bg, rgba(30, 58, 95, 0.08));
+		border-left: 3px solid var(--accent-info-text, #1e3a5f);
+		padding-left: 0.6rem;
+		margin-left: -0.6rem;
 	}
 	.fp-meta {
 		display: flex;

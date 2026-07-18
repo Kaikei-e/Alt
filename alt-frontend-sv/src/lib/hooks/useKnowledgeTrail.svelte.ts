@@ -6,6 +6,7 @@ import {
 	type FootprintData,
 	getTrail,
 	resolveBranch,
+	searchTrail,
 } from "$lib/connect/knowledge_trail";
 import { createClientTransport } from "$lib/connect/transport-client";
 import { uuidv7 } from "$lib/utils/uuidv7";
@@ -25,6 +26,15 @@ export function useKnowledgeTrail() {
 	let hasMore = $state(false);
 	let nextCursor = $state("");
 	let hasEverLoaded = $state(false);
+
+	// Trail search (D25): the sole rediscovery instrument, pull-only. State is
+	// kept separate from the base spine so clearing never needs a refetch.
+	let searchActive = $state(false);
+	let searchQuery = $state("");
+	let searchEpisodes = $state<EpisodeData[]>([]);
+	let matchedItemKeys = $state<string[]>([]);
+	let searching = $state(false);
+	let searchError = $state<Error | null>(null);
 
 	async function fetchData(reset: boolean): Promise<void> {
 		loading = true;
@@ -61,6 +71,37 @@ export function useKnowledgeTrail() {
 
 	async function refresh(): Promise<void> {
 		await fetchData(true);
+	}
+
+	// Pull-only (D25): fires only on an explicit call from a submit handler —
+	// never from an $effect or a keystroke. An empty/whitespace query is a
+	// no-op so the spine is never cleared by an accidental submit.
+	async function search(query: string): Promise<void> {
+		const trimmed = query.trim();
+		if (!trimmed) return;
+		searching = true;
+		searchError = null;
+		try {
+			const transport = createClientTransport();
+			const result = await searchTrail(transport, trimmed);
+			searchQuery = trimmed;
+			searchEpisodes = result.episodes;
+			matchedItemKeys = result.matchedItemKeys;
+			searchActive = true;
+		} catch (err) {
+			searchError = err instanceof Error ? err : new Error(String(err));
+		} finally {
+			searching = false;
+		}
+	}
+
+	// Restores the normal spine from already-loaded state — no refetch needed.
+	function clearSearch(): void {
+		searchActive = false;
+		searchQuery = "";
+		searchEpisodes = [];
+		matchedItemKeys = [];
+		searchError = null;
 	}
 
 	// resolveBranch is the single owner of the branch-resolution emit (one
@@ -117,9 +158,29 @@ export function useKnowledgeTrail() {
 		get hasEverLoaded() {
 			return hasEverLoaded;
 		},
+		get searchActive() {
+			return searchActive;
+		},
+		get searchQuery() {
+			return searchQuery;
+		},
+		get searchEpisodes() {
+			return searchEpisodes;
+		},
+		get matchedItemKeys() {
+			return matchedItemKeys;
+		},
+		get searching() {
+			return searching;
+		},
+		get searchError() {
+			return searchError;
+		},
 		fetchData,
 		loadMore,
 		refresh,
 		resolveBranch: resolveBranchAction,
+		search,
+		clearSearch,
 	};
 }

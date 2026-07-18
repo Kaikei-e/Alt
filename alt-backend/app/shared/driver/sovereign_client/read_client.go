@@ -110,6 +110,38 @@ func (c *Client) GetTrailFootprints(ctx context.Context, userID uuid.UUID, curso
 	return footprints, branches, episodes, resp.Msg.NextCursor, resp.Msg.HasMore, nil
 }
 
+// SearchTrailFootprints narrows the derived episode spine to episodes
+// containing at least one footprint whose item_key is in itemKeys (Wave 9 —
+// trail search, D25). It reuses the same GetTrailFootprints RPC as
+// GetTrailFootprints above, narrowed server-side via filter_item_keys; a
+// single cursor-less call with a generously-sized limit is sufficient since
+// the caller pages the search hits, not the sovereign call.
+func (c *Client) SearchTrailFootprints(ctx context.Context, userID uuid.UUID, itemKeys []string, limit int) ([]domain.TrailEpisode, error) {
+	if !c.enabled {
+		return nil, nil
+	}
+
+	resp, err := c.client.GetTrailFootprints(ctx, connect.NewRequest(&sovereignv1.GetTrailFootprintsRequest{
+		UserId:         userID.String(),
+		Cursor:         "",
+		Limit:          safeconv.Int32(limit),
+		FilterItemKeys: itemKeys,
+	}))
+	if err != nil {
+		return nil, fmt.Errorf("sovereign GetTrailFootprints (search): %w", err)
+	}
+
+	episodes := make([]domain.TrailEpisode, len(resp.Msg.Episodes))
+	for i, pb := range resp.Msg.Episodes {
+		epFootprints := make([]domain.TrailFootprint, len(pb.Footprints))
+		for j, fpb := range pb.Footprints {
+			epFootprints[j] = protoToTrailFootprint(fpb)
+		}
+		episodes[i] = domain.TrailEpisode{EpisodeKey: pb.EpisodeKey, Wear: pb.Wear, Footprints: epFootprints}
+	}
+	return episodes, nil
+}
+
 func protoToTrailFootprint(pb *sovereignv1.TrailFootprint) domain.TrailFootprint {
 	fp := domain.TrailFootprint{
 		FootprintKey:    pb.FootprintKey,

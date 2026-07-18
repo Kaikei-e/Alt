@@ -51,6 +51,7 @@ func (h *SovereignHandler) GetTrailFootprints(
 		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("GetTrailFootprints: %w", err))
 	}
 	episodes := trail_episodes.Derive(window)
+	episodes = filterEpisodesByItemKeys(episodes, msg.FilterItemKeys)
 
 	limit := int(msg.Limit)
 	if limit < 0 {
@@ -141,6 +142,32 @@ func mapTrailFootprints(footprints []sovereign_db.TrailFootprint) []*sovereignv1
 		}
 	}
 	return pb
+}
+
+// filterEpisodesByItemKeys narrows episodes to those containing at least one
+// footprint whose ItemKey is in itemKeys (Wave 9 — trail search, D25). A
+// matching episode surfaces in full, including member footprints whose
+// ItemKey did not itself match — the filter narrows *which* episodes surface,
+// not what a surfaced episode contains (episodes are the unit of context).
+// An empty itemKeys leaves episodes unchanged.
+func filterEpisodesByItemKeys(episodes []trail_episodes.Episode, itemKeys []string) []trail_episodes.Episode {
+	if len(itemKeys) == 0 {
+		return episodes
+	}
+	want := make(map[string]struct{}, len(itemKeys))
+	for _, k := range itemKeys {
+		want[k] = struct{}{}
+	}
+	filtered := make([]trail_episodes.Episode, 0, len(episodes))
+	for _, ep := range episodes {
+		for _, fp := range ep.Footprints {
+			if _, ok := want[fp.ItemKey]; ok {
+				filtered = append(filtered, ep)
+				break
+			}
+		}
+	}
+	return filtered
 }
 
 // parseEpisodeCursor parses the handler-owned "ep:<offset>" episode-page

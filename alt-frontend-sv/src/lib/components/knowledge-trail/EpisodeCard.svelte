@@ -4,11 +4,21 @@ import Footprint from "./Footprint.svelte";
 
 interface Props {
 	episode: EpisodeData;
+	/** Item keys matched by an active trail search (D25); drives auto-expand + highlight. */
+	matchedItemKeys?: string[];
 }
 
-const { episode }: Props = $props();
+const { episode, matchedItemKeys = [] }: Props = $props();
 
-let expanded = $state(false);
+// Auto-expand while a search hit lives in this episode, without permanently
+// overriding a manual toggle: `manualExpanded` is null until the user clicks,
+// after which it wins over the search-driven default.
+let manualExpanded = $state<boolean | null>(null);
+const isSearchHit = $derived(
+	matchedItemKeys.length > 0 &&
+		episode.footprints.some((fp) => matchedItemKeys.includes(fp.itemKey)),
+);
+const expanded = $derived(manualExpanded ?? isSearchHit);
 
 const VERB_LABEL: Record<string, string> = {
 	read: "Read",
@@ -104,7 +114,7 @@ function summarizeContacts(footprints: FootprintData[]): string {
 const contactSummary = $derived(summarizeContacts(episode.footprints));
 
 function toggle() {
-	expanded = !expanded;
+	manualExpanded = !expanded;
 }
 </script>
 
@@ -166,7 +176,10 @@ function toggle() {
 			{#if expanded}
 				<div class="episode-footprints">
 					{#each episode.footprints as fp (fp.footprintKey)}
-						<Footprint footprint={fp} />
+						<Footprint
+							footprint={fp}
+							isHit={matchedItemKeys.includes(fp.itemKey)}
+						/>
 					{/each}
 				</div>
 			{/if}

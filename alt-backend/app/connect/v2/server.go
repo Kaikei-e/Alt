@@ -167,7 +167,9 @@ func SetupConnectHandlers(mux *http.ServeMux, container *di.ApplicationComponent
 	// dwell outcomes weeks later (PM-2026-045 / ADR-000928).
 	logger.Info("trail.act_outcome_producer.wiring",
 		"enabled", container.EmitTrailOutcomeUsecase != nil)
-	knowledgeTrailHandler := knowledge_trail.NewHandler(container.GetKnowledgeTrailUsecase, container.ResolveTrailBranchUsecase, container.EmitTrailOutcomeUsecase, container.ImageProxyUsecase, logger)
+	logger.Info("trail.search_usecase.wiring",
+		"enabled", container.SearchTrailUsecase != nil)
+	knowledgeTrailHandler := knowledge_trail.NewHandler(container.GetKnowledgeTrailUsecase, container.ResolveTrailBranchUsecase, container.EmitTrailOutcomeUsecase, container.SearchTrailUsecase, container.ImageProxyUsecase, logger)
 	ktPath, ktServiceHandler := knowledgetrailv1connect.NewKnowledgeTrailServiceHandler(knowledgeTrailHandler, opts)
 	mux.Handle(ktPath, ktServiceHandler)
 	logger.Info("Registered Connect-RPC KnowledgeTrailService", "path", ktPath)

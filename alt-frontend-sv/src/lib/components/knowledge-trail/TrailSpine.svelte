@@ -8,12 +8,25 @@ interface Props {
 	hasMore: boolean;
 	hasEverLoaded: boolean;
 	onLoadMore: () => void;
+	/** Item keys matched by an active trail search (D25); drives highlight + auto-expand. */
+	matchedItemKeys?: string[];
+	/** Whether the spine is currently showing search results rather than the full trail. */
+	searchActive?: boolean;
 }
 
-const { episodes, loading, hasMore, hasEverLoaded, onLoadMore }: Props =
-	$props();
+const {
+	episodes,
+	loading,
+	hasMore,
+	hasEverLoaded,
+	onLoadMore,
+	matchedItemKeys = [],
+	searchActive = false,
+}: Props = $props();
 
-const isEmpty = $derived(hasEverLoaded && !loading && episodes.length === 0);
+const isEmpty = $derived(
+	!loading && episodes.length === 0 && (searchActive || hasEverLoaded),
+);
 </script>
 
 <!-- No lens chip bar: the raw tag union was a dead tag cloud (D25). Theme
@@ -22,13 +35,19 @@ const isEmpty = $derived(hasEverLoaded && !loading && episodes.length === 0);
      on each episode header, never a grouping axis; there is no day-separator. -->
 <section class="trail" data-testid="trail-spine">
 	{#if isEmpty}
-		<p class="trail-empty" data-testid="trail-empty">
-			No footprints yet. As you read, ask, and return, your trail appears here.
-		</p>
+		{#if searchActive}
+			<p class="trail-empty" data-testid="trail-search-empty">
+				No matches on your trail.
+			</p>
+		{:else}
+			<p class="trail-empty" data-testid="trail-empty">
+				No footprints yet. As you read, ask, and return, your trail appears here.
+			</p>
+		{/if}
 	{/if}
 
 	{#each episodes as episode (episode.episodeKey)}
-		<EpisodeCard {episode} />
+		<EpisodeCard {episode} {matchedItemKeys} />
 	{/each}
 
 	{#if hasMore}
