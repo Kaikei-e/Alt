@@ -9,6 +9,7 @@ from news_creator.config.config import NewsCreatorConfig
 
 logger = logging.getLogger(__name__)
 
+
 class OllamaStreamDriver:
     """HTTP client for Ollama API (streaming requests only)."""
 
@@ -39,9 +40,7 @@ class OllamaStreamDriver:
             await self.session.close()
             logger.info("Ollama stream driver cleaned up")
 
-    def _merge_options(
-        self, caller_options: dict[str, Any] | None
-    ) -> dict[str, Any]:
+    def _merge_options(self, caller_options: dict[str, Any] | None) -> dict[str, Any]:
         """Merge config base options with caller options.
 
         Config base options (num_batch, num_keep, stop, etc.) are used as
@@ -103,7 +102,6 @@ class OllamaStreamDriver:
         )
 
         if self.session is None:
-
             raise RuntimeError("HTTP session is not initialized")
         async with self.session.post(url, json=chat_payload) as response:
             if response.status != 200:
@@ -176,7 +174,6 @@ class OllamaStreamDriver:
         )
 
         if self.session is None:
-
             raise RuntimeError("HTTP session is not initialized")
         async with self.session.post(url, json=chat_payload) as response:
             if response.status != 200:

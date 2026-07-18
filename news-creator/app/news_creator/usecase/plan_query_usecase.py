@@ -73,6 +73,7 @@ Query: それについてもっと詳しく教えて
 {context_section}Query: {query}
 """
 
+
 class PlanQueryUsecase:
     """Plans retrieval strategy for a user query using LLM structured output."""
 

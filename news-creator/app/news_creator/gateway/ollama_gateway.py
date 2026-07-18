@@ -5,7 +5,7 @@ import logging
 import uuid
 import weakref
 from contextlib import asynccontextmanager
-from typing import Any, Optional, Union, AsyncIterator
+from typing import Any, AsyncIterator
 
 from news_creator.config.config import NewsCreatorConfig
 from news_creator.domain.models import LLMGenerateResponse
@@ -20,6 +20,7 @@ from news_creator.gateway.oom_detector import OOMDetector
 from news_creator.port.llm_provider_port import LLMProviderPort
 
 logger = logging.getLogger(__name__)
+
 
 class OllamaGateway(LLMProviderPort):
     """Gateway for Ollama LLM service - Anti-Corruption Layer."""

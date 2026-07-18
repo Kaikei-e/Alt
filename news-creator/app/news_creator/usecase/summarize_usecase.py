@@ -3,7 +3,7 @@
 import logging
 import re
 import time
-from typing import Tuple, AsyncGenerator, AsyncIterator
+from typing import AsyncGenerator, AsyncIterator
 from datetime import datetime, timedelta, timezone
 import aiohttp
 
@@ -19,6 +19,7 @@ from news_creator.utils.html_cleaner import clean_html_content
 from news_creator.usecase.control_token_filter import ControlTokenFilter
 
 logger = logging.getLogger(__name__)
+
 
 class SummarizeUsecase:
     """Usecase for generating Japanese article summaries."""

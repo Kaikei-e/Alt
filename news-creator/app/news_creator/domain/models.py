@@ -33,6 +33,7 @@ class SummarizeRequest(StrictFrozenModel):
     stream: bool = False
     priority: str = Field(default="low", pattern="^(high|low)$")
 
+
 class SummarizeResponse(StrictFrozenModel):
     """Response model for article summarization."""
 
@@ -43,6 +44,7 @@ class SummarizeResponse(StrictFrozenModel):
     prompt_tokens: int | None = None
     completion_tokens: int | None = None
     total_duration_ms: float | None = None
+
 
 @dataclass(frozen=True, slots=True)
 class SummaryMetadata:
@@ -56,6 +58,7 @@ class SummaryMetadata:
     total_duration_ms: float | None = None
     strategy: str | None = None
 
+
 class GenerateRequest(StrictFrozenModel):
     """Request model for generic LLM generation."""
 
@@ -64,6 +67,7 @@ class GenerateRequest(StrictFrozenModel):
     stream: bool = False
     keep_alive: int | str | None = None
     options: dict[str, Any] = Field(default_factory=dict)
+
 
 @dataclass
 class NewsGenerationRequest:
@@ -74,6 +78,7 @@ class NewsGenerationRequest:
     max_length: int = 500
     language: str = "en"
     metadata: dict[str, Any] | None = None
+
 
 @dataclass
 class GeneratedContent:
@@ -86,6 +91,7 @@ class GeneratedContent:
     word_count: int
     language: str
     metadata: dict[str, Any]
+
 
 @dataclass
 class LLMGenerateResponse:
@@ -102,6 +108,7 @@ class LLMGenerateResponse:
     prompt_eval_duration: int | None = None  # in nanoseconds (prefill time)
     eval_duration: int | None = None  # in nanoseconds (decode time)
 
+
 class RepresentativeSentence(StrictFrozenModel):
     """Representative sentence with metadata."""
 
@@ -114,6 +121,7 @@ class RepresentativeSentence(StrictFrozenModel):
     is_centroid: bool = Field(
         default=False, description="Whether this is the centroid sentence"
     )
+
 
 class RecapClusterInput(StrictFrozenModel):
     """Cluster information passed from recap-worker."""
@@ -150,11 +158,13 @@ class RecapClusterInput(StrictFrozenModel):
             )
         return cleaned
 
+
 class RecapSummaryOptions(StrictFrozenModel):
     """Optional parameters to steer recap summary generation."""
 
     max_bullets: int | None = Field(default=5, ge=1, le=15)
     temperature: float | None = Field(default=None, ge=0.0, le=2.0)
+
 
 class RecapSummaryRequest(StrictFrozenModel):
     """Request payload posted by recap-worker."""
@@ -165,6 +175,7 @@ class RecapSummaryRequest(StrictFrozenModel):
     genre_highlights: list[RepresentativeSentence] | None = None
     options: RecapSummaryOptions | None = None
     window_days: int | None = Field(default=None, ge=1, le=30)
+
 
 class IntermediateSummary(StrictFrozenModel):
     """Lightweight intermediate summary for map phase (hierarchical summarization)."""
@@ -184,6 +195,7 @@ class IntermediateSummary(StrictFrozenModel):
             raise ValueError("bullets must contain at least one non-empty item")
         return cleaned
 
+
 class Reference(StrictFrozenModel):
     """Reference to a source article."""
 
@@ -195,6 +207,7 @@ class Reference(StrictFrozenModel):
     article_id: str | None = Field(
         default=None, description="Source article ID if available"
     )
+
 
 class RecapSummary(StrictFrozenModel):
     """Structured summary expected by recap-worker."""
@@ -220,6 +233,7 @@ class RecapSummary(StrictFrozenModel):
             raise ValueError("bullets must contain at least one non-empty item")
         return cleaned
 
+
 class RecapSummaryMetadata(StrictFrozenModel):
     """Metadata describing the generation."""
 
@@ -235,6 +249,7 @@ class RecapSummaryMetadata(StrictFrozenModel):
     is_degraded: bool = Field(default=False)
     degradation_reason: str | None = Field(default=None, max_length=500)
 
+
 class RecapSummaryResponse(StrictFrozenModel):
     """Response returned to recap-worker."""
 
@@ -243,15 +258,18 @@ class RecapSummaryResponse(StrictFrozenModel):
     summary: RecapSummary
     metadata: RecapSummaryMetadata
 
+
 # ============================================================================
 # Query Expansion Models (for RAG-Orchestrator)
 # ============================================================================
+
 
 class ConversationMessage(StrictFrozenModel):
     """A single message in a conversation history."""
 
     role: str = Field(description="Message role: 'user' or 'assistant'")
     content: str = Field(description="Message content")
+
 
 class ExpandQueryRequest(StrictFrozenModel):
     """Request model for query expansion."""
@@ -272,6 +290,7 @@ class ExpandQueryRequest(StrictFrozenModel):
         description="Request priority. Defaults to high so query expansion bypasses summarization queue.",
     )
 
+
 class ExpandQueryResponse(StrictFrozenModel):
     """Response model for query expansion."""
 
@@ -282,9 +301,11 @@ class ExpandQueryResponse(StrictFrozenModel):
         default=None, description="Processing time in milliseconds"
     )
 
+
 # ============================================================================
 # Re-ranking Models (for RAG-Orchestrator Cross-Encoder Re-ranking)
 # ============================================================================
+
 
 class RerankRequest(StrictFrozenModel):
     """Request model for cross-encoder re-ranking.
@@ -310,11 +331,13 @@ class RerankRequest(StrictFrozenModel):
         description="Return only top-k results (default: return all)",
     )
 
+
 class RerankResultItem(StrictFrozenModel):
     """Single re-ranking result with index and score."""
 
     index: int = Field(ge=0, description="Original index of the candidate")
     score: float = Field(description="Cross-encoder relevance score (0.0 to 1.0)")
+
 
 class RerankResponse(StrictFrozenModel):
     """Response model for cross-encoder re-ranking."""
@@ -327,9 +350,11 @@ class RerankResponse(StrictFrozenModel):
         default=None, description="Processing time in milliseconds"
     )
 
+
 # ============================================================================
 # Batch Processing Models (for chatty microservice anti-pattern fix)
 # ============================================================================
+
 
 class BatchRecapSummaryRequest(StrictFrozenModel):
     """Batch request for multiple recap summaries."""
@@ -340,12 +365,14 @@ class BatchRecapSummaryRequest(StrictFrozenModel):
         description="List of individual recap summary requests",
     )
 
+
 class BatchRecapSummaryError(StrictFrozenModel):
     """Error details for a failed request in a batch."""
 
     job_id: ApiUUID
     genre: str
     error: str = Field(description="Error message describing the failure")
+
 
 class BatchRecapSummaryResponse(StrictFrozenModel):
     """Response for batch recap summary processing."""
@@ -357,9 +384,11 @@ class BatchRecapSummaryResponse(StrictFrozenModel):
         default_factory=list, description="List of errors for failed requests"
     )
 
+
 # ============================================================================
 # Query Planning Models (for Augur Conversational RAG)
 # ============================================================================
+
 
 class PlanQueryRequest(StrictFrozenModel):
     """Request model for structured query planning."""
@@ -383,6 +412,7 @@ class PlanQueryRequest(StrictFrozenModel):
         pattern="^(high|low)$",
         description="Request priority. Defaults to high for real-time Augur queries.",
     )
+
 
 class QueryPlan(StrictFrozenModel):
     """Structured output from query planning. Tells the retrieval layer what to do.
@@ -416,6 +446,7 @@ class QueryPlan(StrictFrozenModel):
         default_factory=list, description="Key named entities extracted from the query"
     )
 
+
 class PlanQueryResponse(StrictFrozenModel):
     """Response model for query planning."""
 
@@ -426,9 +457,11 @@ class PlanQueryResponse(StrictFrozenModel):
         default=None, description="Processing time in milliseconds"
     )
 
+
 # ============================================================================
 # Morning Letter Models
 # ============================================================================
+
 
 class MorningLetterRecapInput(StrictFrozenModel):
     """Recap summary data used as input for Morning Letter generation."""
@@ -438,11 +471,13 @@ class MorningLetterRecapInput(StrictFrozenModel):
     bullets: list[str] = Field(min_length=1)
     window_days: int = Field(default=3, ge=1, le=30)
 
+
 class MorningLetterGroupInput(StrictFrozenModel):
     """Overnight article group for Morning Letter."""
 
     group_id: ApiUUID
     articles: list[RepresentativeSentence] = Field(min_length=1)
+
 
 class MorningLetterRequest(StrictFrozenModel):
     """Request for Morning Letter generation."""
@@ -451,6 +486,7 @@ class MorningLetterRequest(StrictFrozenModel):
     edition_timezone: str = Field(default="Asia/Tokyo")
     recap_summaries: list[MorningLetterRecapInput] | None = None
     overnight_groups: list[MorningLetterGroupInput]
+
 
 class MorningLetterSection(StrictFrozenModel):
     """A section in the Morning Letter."""
@@ -465,6 +501,7 @@ class MorningLetterSection(StrictFrozenModel):
     # produced; the projector's bullets remain renderable without it.
     narrative: str | None = None
 
+
 class MorningLetterContent(StrictFrozenModel):
     """Generated Morning Letter content."""
 
@@ -473,6 +510,7 @@ class MorningLetterContent(StrictFrozenModel):
     sections: list[MorningLetterSection] = Field(min_length=1)
     generated_at: str = Field(min_length=1)
     source_recap_window_days: int | None = None
+
 
 class MorningLetterResponse(StrictFrozenModel):
     """Response for Morning Letter generation."""

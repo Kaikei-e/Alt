@@ -1,7 +1,7 @@
 """Redis Cache Gateway - implements CachePort."""
 
 import logging
-from typing import Any, Optional
+from typing import Any
 
 try:
     import redis.asyncio as redis
@@ -12,6 +12,7 @@ from news_creator.config.config import NewsCreatorConfig
 from news_creator.port.cache_port import CachePort
 
 logger = logging.getLogger(__name__)
+
 
 class RedisCacheGateway(CachePort):
     """Gateway for Redis caching service - Anti-Corruption Layer."""
@@ -92,9 +93,7 @@ class RedisCacheGateway(CachePort):
             )
             return None
 
-    async def set(
-        self, key: str, value: str, ttl_seconds: int | None = None
-    ) -> bool:
+    async def set(self, key: str, value: str, ttl_seconds: int | None = None) -> bool:
         """
         Store a value in the cache.
 
@@ -162,6 +161,7 @@ class RedisCacheGateway(CachePort):
             return f"redis://***@{parts[-1]}"
         return url
 
+
 class NullCacheGateway(CachePort):
     """Null implementation of CachePort for when caching is disabled."""
 
@@ -177,9 +177,7 @@ class NullCacheGateway(CachePort):
         """Always returns None (cache disabled)."""
         return None
 
-    async def set(
-        self, key: str, value: str, ttl_seconds: int | None = None
-    ) -> bool:
+    async def set(self, key: str, value: str, ttl_seconds: int | None = None) -> bool:
         """Always returns False (cache disabled)."""
         return False
 

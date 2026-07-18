@@ -11,18 +11,10 @@ from typing import Any
 from jinja2 import Template
 from pydantic import ValidationError
 
-logger = logging.getLogger(__name__)
-
 try:
     import json_repair
-
-    logger.info("json_repair_enabled", extra={"status": "enabled"})
 except ImportError:
     json_repair = None  # type: ignore
-    logger.warning(
-        "json_repair_disabled",
-        extra={"status": "disabled", "reason": "ImportError"},
-    )
 
 from news_creator.config.config import NewsCreatorConfig
 from news_creator.domain.models import (
@@ -35,8 +27,19 @@ from news_creator.domain.models import (
 )
 from news_creator.port.llm_provider_port import LLMProviderPort
 
+logger = logging.getLogger(__name__)
+
+if json_repair is None:
+    logger.warning(
+        "json_repair_disabled",
+        extra={"status": "disabled", "reason": "ImportError"},
+    )
+else:
+    logger.info("json_repair_enabled", extra={"status": "enabled"})
+
 # Allowed section key pattern
 SECTION_KEY_PATTERN = re.compile(r"^(lead|top3|what_changed|by_genre:[a-z0-9_\-]+)$")
+
 
 class MorningLetterUsecase:
     """Generate a document-first morning briefing from recap + overnight data."""

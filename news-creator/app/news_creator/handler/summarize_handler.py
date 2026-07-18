@@ -19,6 +19,7 @@ from news_creator.utils.context_logger import (
 
 logger = logging.getLogger(__name__)
 
+
 def create_summarize_router(summarize_usecase: SummarizeUsecase) -> APIRouter:
     """
     Create summarize router with dependency injection.
@@ -182,7 +183,9 @@ def create_summarize_router(summarize_usecase: SummarizeUsecase) -> APIRouter:
                                                 },
                                             )
                                         # Update last data time to prevent unnecessary heartbeats
-                                        last_data_time = asyncio.get_running_loop().time()
+                                        last_data_time = (
+                                            asyncio.get_running_loop().time()
+                                        )
                                         await data_queue.put(("data", chunk))
                             except Exception as e:
                                 logger.error(

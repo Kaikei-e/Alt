@@ -13,6 +13,7 @@ from dataclasses import dataclass, field
 
 logger = logging.getLogger(__name__)
 
+
 @dataclass(frozen=True)
 class ModelRoutingConfig:
     """Immutable configuration for model bucket routing."""
@@ -65,6 +66,7 @@ class ModelRoutingConfig:
             warmup_enabled=os.getenv("WARMUP_ENABLED", "true").lower() == "true",
             warmup_keep_alive_minutes=_get_int("WARMUP_KEEP_ALIVE_MINUTES", 30),
         )
+
 
 def _get_int(name: str, default: int) -> int:
     """Get integer value from environment variable with fallback."""

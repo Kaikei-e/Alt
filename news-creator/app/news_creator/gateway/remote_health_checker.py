@@ -17,6 +17,7 @@ from news_creator.gateway import dispatch_metrics
 
 logger = logging.getLogger(__name__)
 
+
 class RemoteHealthChecker:
     """Periodic health checker for remote Ollama instances."""
 
@@ -27,7 +28,7 @@ class RemoteHealthChecker:
         interval_seconds: int = 30,
         cooldown_seconds: int = 60,
         timeout_seconds: int = 10,
-        model_overrides: dict[str, str | None] = None,
+        model_overrides: dict[str, str] | None = None,
     ):
         self._remotes = remotes
         self._required_model = required_model
@@ -93,7 +94,7 @@ class RemoteHealthChecker:
         self.release_remote(url)
         self._states[url]["last_completed"] = time.monotonic()
 
-    def get_healthy_remotes(self, exclude: set[str | None] = None) -> list[str]:
+    def get_healthy_remotes(self, exclude: set[str] | None = None) -> list[str]:
         """Return healthy idle remotes in priority order, excluding any specified URLs."""
         excluded = exclude or set()
         return [

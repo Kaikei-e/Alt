@@ -8,6 +8,7 @@ from news_creator.driver.ollama_driver import OllamaDriver
 
 logger = logging.getLogger(__name__)
 
+
 class ModelWarmupService:
     """Service for warming up Ollama models with keep_alive."""
 

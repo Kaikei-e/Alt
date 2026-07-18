@@ -4,7 +4,6 @@ import logging
 import re as _re
 import time
 from datetime import datetime, timezone, timedelta
-from typing import Tuple
 
 from news_creator.config.config import NewsCreatorConfig
 from news_creator.domain.models import ConversationMessage, LLMGenerateResponse
@@ -70,6 +69,7 @@ Japanese({japanese_count}):
 English({english_count}):
 1.
 """
+
 
 class ExpandQueryUsecase:
     """Usecase for generating expanded search queries for RAG retrieval."""
@@ -218,6 +218,7 @@ class ExpandQueryUsecase:
             )
             raise RuntimeError(f"Query expansion failed: {e}") from e
 
+
 # --- Output parsing and validation helpers ---
 
 # Labels and section headers that small models sometimes emit
@@ -275,6 +276,7 @@ _SPECIAL_CHARS_PATTERN = _re.compile(
     r"[^\w\s\u3000-\u9FFF\u30A0-\u30FF\u3040-\u309F。、！？.,!?\-()（）]"
 )
 
+
 def _sanitize_history_content(content: str) -> str:
     """Sanitize conversation history content to prevent LLM confusion."""
     text = content[:150]
@@ -282,6 +284,7 @@ def _sanitize_history_content(content: str) -> str:
     text = _SPECIAL_CHARS_PATTERN.sub(" ", text)
     text = " ".join(text.split())
     return text
+
 
 def _is_repeating_pattern(line: str) -> bool:
     """Detect repetitive character patterns like ':):):):)...' or 'hahaha'."""
@@ -302,7 +305,9 @@ def _is_repeating_pattern(line: str) -> bool:
             return True
     return False
 
+
 _LEADING_NUMBER_RE = _re.compile(r"^\d{1,3}[.):][ \t]")
+
 
 def _parse_expansion_lines(raw_text: str) -> list[str]:
     """Parse raw LLM output into candidate query lines."""
@@ -324,6 +329,7 @@ def _parse_expansion_lines(raw_text: str) -> list[str]:
             lines.append(trimmed)
     return lines
 
+
 def _deduplicate_preserving_order(queries: list[str]) -> list[str]:
     """Remove duplicate queries while preserving first-occurrence order."""
     seen: dict[str, None] = {}
@@ -334,6 +340,7 @@ def _deduplicate_preserving_order(queries: list[str]) -> list[str]:
             seen[key] = None
             result.append(q)
     return result
+
 
 def _is_instruction_leak(line: str) -> bool:
     """Detect if a line is an echoed instruction rather than a real search query."""
@@ -354,10 +361,12 @@ def _is_instruction_leak(line: str) -> bool:
 
     return False
 
+
 def _is_preamble(line: str) -> bool:
     """Detect preamble/prose lines that are not search queries."""
     lower = line.strip().lower()
     return any(p in lower for p in _PREAMBLE_PATTERNS)
+
 
 def _is_xml_tag_leak(line: str) -> bool:
     """Detect leaked XML tags from the prompt structure."""
@@ -368,6 +377,7 @@ def _is_xml_tag_leak(line: str) -> bool:
     if stripped.startswith("</") or stripped.endswith("/>"):
         return True
     return False
+
 
 def _filter_instruction_leaks(queries: list[str]) -> list[str]:
     """Remove instruction echoes and preamble from query list."""

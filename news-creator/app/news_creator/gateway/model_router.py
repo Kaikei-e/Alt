@@ -1,13 +1,13 @@
 """Model router for selecting appropriate model bucket based on token count."""
 
 import logging
-from typing import Optional, Tuple
 
 from news_creator.config.config import NewsCreatorConfig
 from news_creator.gateway.oom_detector import OOMDetector
 from news_creator.utils.token_counter import count_tokens
 
 logger = logging.getLogger(__name__)
+
 
 class ModelRouter:
     """Routes requests to appropriate model bucket (8K, 60K) based on token count."""

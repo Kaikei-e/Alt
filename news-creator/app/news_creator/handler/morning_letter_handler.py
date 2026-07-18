@@ -10,6 +10,7 @@ from news_creator.usecase.morning_letter_usecase import MorningLetterUsecase
 
 logger = logging.getLogger(__name__)
 
+
 def create_morning_letter_router(usecase: MorningLetterUsecase) -> APIRouter:
     router = APIRouter(prefix="/v1/morning-letter", tags=["morning-letter"])
 

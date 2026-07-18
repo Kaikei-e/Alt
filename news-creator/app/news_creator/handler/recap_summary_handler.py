@@ -20,6 +20,7 @@ from news_creator.utils.context_logger import (
 
 logger = logging.getLogger(__name__)
 
+
 def create_recap_summary_router(usecase: RecapSummaryUsecase) -> APIRouter:
     """
     Create recap summary router with dependency injection.

@@ -6,6 +6,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+
 @dataclass
 class TraceRecord:
     """Single trace entry for a recap summary generation run."""
@@ -24,6 +25,7 @@ class TraceRecord:
     metadata: dict[str, Any]
     is_degraded: bool = False
     degradation_reason: str | None = None
+
 
 class TraceRecorder:
     """Records evaluation traces to JSONL files.

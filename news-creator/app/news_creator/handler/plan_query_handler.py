@@ -13,6 +13,7 @@ from news_creator.utils.context_logger import (
 
 logger = logging.getLogger(__name__)
 
+
 def create_plan_query_router(plan_query_usecase: PlanQueryUsecase) -> APIRouter:
     """Create plan query router with dependency injection."""
     router = APIRouter()

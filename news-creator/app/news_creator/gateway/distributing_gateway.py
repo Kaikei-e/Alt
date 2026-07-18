@@ -11,7 +11,7 @@ using the local OllamaGateway directly.
 import contextvars
 import logging
 from contextlib import asynccontextmanager
-from typing import Any, AsyncIterator, Union
+from typing import Any, AsyncIterator
 
 from news_creator.domain.models import LLMGenerateResponse
 from news_creator.gateway import dispatch_metrics
@@ -26,6 +26,7 @@ _dispatch_state_var: contextvars.ContextVar[dict[str, Any] | None] = (
     contextvars.ContextVar("_dispatch_state_var", default=None)
 )
 
+
 class DistributingGateway(LLMProviderPort):
     """LLMProviderPort decorator that distributes BE requests to remote Ollama instances."""
 
@@ -36,7 +37,7 @@ class DistributingGateway(LLMProviderPort):
         remote_driver: RemoteOllamaDriver,
         enabled: bool = True,
         remote_model: str | None = None,
-        model_overrides: dict[str, str | None] = None,
+        model_overrides: dict[str, str] | None = None,
     ):
         self._local = local_gateway
         self._health_checker = health_checker

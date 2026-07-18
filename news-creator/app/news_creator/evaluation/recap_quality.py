@@ -48,6 +48,7 @@ _STRUCTURE_PATTERNS: list[tuple[str, re.Pattern]] = [
     ),
 ]
 
+
 class RecapQualityEvaluator:
     """Evaluate recap summary quality using deterministic heuristics."""
 

@@ -2,11 +2,12 @@
 
 import logging
 from fastapi import APIRouter
-from typing import Dict, Any, Optional
+from typing import Any
 
 from news_creator.port.llm_provider_port import LLMProviderPort
 
 logger = logging.getLogger(__name__)
+
 
 def create_health_router(ollama_gateway: LLMProviderPort | None = None) -> APIRouter:
     """

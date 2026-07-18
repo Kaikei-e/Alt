@@ -12,9 +12,10 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from typing import Any, Protocol, Union
+from typing import Any, Protocol
 
 logger = logging.getLogger(__name__)
+
 
 @dataclass(frozen=True)
 class GeneratePayload:
@@ -56,6 +57,7 @@ class GeneratePayload:
 
         return result
 
+
 class PayloadBuilderProtocol(Protocol):
     """Protocol for payload building strategies."""
 
@@ -71,6 +73,7 @@ class PayloadBuilderProtocol(Protocol):
     ) -> GeneratePayload:
         """Build a generate payload."""
         ...
+
 
 class PayloadBuilder:
     """Builds Ollama generate API payloads.

@@ -7,24 +7,16 @@ import logging
 import re
 import textwrap
 from pathlib import Path
-from typing import Any, List, Optional
+from typing import Any, List
 from urllib.parse import urlparse
 
 from jinja2 import Template
 from pydantic import ValidationError
 
-logger = logging.getLogger(__name__)
-
 try:
     import json_repair
-
-    logger.info("json_repair_enabled", extra={"status": "enabled"})
 except ImportError:
     json_repair = None  # type: ignore
-    logger.warning(
-        "json_repair_disabled",
-        extra={"status": "disabled", "reason": "ImportError"},
-    )
 
 from news_creator.config.config import NewsCreatorConfig
 from news_creator.domain.models import (
@@ -45,6 +37,16 @@ from news_creator.gateway.hybrid_priority_semaphore import PreemptedException
 from news_creator.port.cache_port import CachePort
 from news_creator.port.llm_provider_port import LLMProviderPort
 from news_creator.utils.repetition_detector import detect_repetition
+
+logger = logging.getLogger(__name__)
+
+if json_repair is None:
+    logger.warning(
+        "json_repair_disabled",
+        extra={"status": "disabled", "reason": "ImportError"},
+    )
+else:
+    logger.info("json_repair_enabled", extra={"status": "enabled"})
 
 # Number of attempts for hold_slot+generate_raw when a BE map/reduce request
 # is preempted by an RT request. The retry loop applies exponential backoff
@@ -103,6 +105,7 @@ GENRE_JA_MAP: dict[str, str] = {
 }
 
 _MIN_FALLBACK_SENTENCE_LEN = 20
+
 
 class RecapSummaryUsecase:
     """Generate recap summaries from evidence clusters via LLM."""
@@ -2075,9 +2078,7 @@ class RecapSummaryUsecase:
 
         return f"recap:summary:{request.genre}:{content_hash}"
 
-    async def _get_cached_response(
-        self, cache_key: str
-    ) -> RecapSummaryResponse | None:
+    async def _get_cached_response(self, cache_key: str) -> RecapSummaryResponse | None:
         """Try to retrieve a cached response.
 
         Args:

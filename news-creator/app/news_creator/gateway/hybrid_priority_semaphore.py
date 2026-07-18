@@ -20,19 +20,21 @@ import heapq
 import logging
 import time
 from dataclasses import dataclass, field
-from typing import Optional
 
 logger = logging.getLogger(__name__)
+
 
 class PreemptedException(Exception):
     """Raised when a BE request is preempted for RT priority."""
 
     pass
 
+
 class QueueFullError(Exception):
     """Raised when the queue depth limit is exceeded."""
 
     pass
+
 
 @dataclass
 class AcquiredSlot:
@@ -44,6 +46,7 @@ class AcquiredSlot:
     home_pool: str = ""  # "rt" or "be" — which pool this slot was taken from
     context: str = ""  # optional description for debugging
 
+
 @dataclass
 class CancellableRequest:
     """Tracks an active request that can be preempted."""
@@ -52,6 +55,7 @@ class CancellableRequest:
     cancel_event: asyncio.Event
     start_time: float
     is_high_priority: bool
+
 
 @dataclass(order=True)
 class QueuedRequest:
@@ -68,6 +72,7 @@ class QueuedRequest:
     enqueue_time: float  # FIFO: start_time, LIFO: -start_time
     future: asyncio.Future = field(compare=False)
     is_high_priority: bool = field(compare=False)
+
 
 class HybridPrioritySemaphore:
     """

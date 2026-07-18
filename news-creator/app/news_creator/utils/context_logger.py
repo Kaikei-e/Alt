@@ -22,6 +22,7 @@ _alt_processing_stage: ContextVar[str | None] = ContextVar(
     "alt.processing.stage", default=None
 )
 
+
 class BusinessContextFilter(logging.Filter):
     """
     Logging filter that adds ADR 98 business context to log records.
@@ -40,6 +41,7 @@ class BusinessContextFilter(logging.Filter):
         setattr(record, "alt.ai.pipeline", _alt_ai_pipeline.get())
         setattr(record, "alt.processing.stage", _alt_processing_stage.get())
         return True
+
 
 class BusinessContextJSONFormatter(logging.Formatter):
     """
@@ -115,6 +117,7 @@ class BusinessContextJSONFormatter(logging.Formatter):
 
         return json.dumps(log_dict, ensure_ascii=False, default=str)
 
+
 def set_article_id(article_id: str | None) -> None:
     """
     Set the current article ID in the logging context.
@@ -123,6 +126,7 @@ def set_article_id(article_id: str | None) -> None:
         article_id: Article identifier to track in logs
     """
     _alt_article_id.set(article_id)
+
 
 def set_job_id(job_id: str | None) -> None:
     """
@@ -133,6 +137,7 @@ def set_job_id(job_id: str | None) -> None:
     """
     _alt_job_id.set(job_id)
 
+
 def set_ai_pipeline(pipeline: str | None) -> None:
     """
     Set the AI pipeline name in the logging context.
@@ -141,6 +146,7 @@ def set_ai_pipeline(pipeline: str | None) -> None:
         pipeline: Pipeline name (e.g., 'summarization', 'recap-summary', 'query-expansion')
     """
     _alt_ai_pipeline.set(pipeline)
+
 
 def set_processing_stage(stage: str | None) -> None:
     """
@@ -151,6 +157,7 @@ def set_processing_stage(stage: str | None) -> None:
     """
     _alt_processing_stage.set(stage)
 
+
 def clear_context() -> None:
     """Clear all business context values."""
     _alt_article_id.set(None)
@@ -158,17 +165,21 @@ def clear_context() -> None:
     _alt_ai_pipeline.set(None)
     _alt_processing_stage.set(None)
 
+
 def get_article_id() -> str | None:
     """Get the current article ID from context."""
     return _alt_article_id.get()
+
 
 def get_job_id() -> str | None:
     """Get the current job ID from context."""
     return _alt_job_id.get()
 
+
 def get_ai_pipeline() -> str | None:
     """Get the current AI pipeline from context."""
     return _alt_ai_pipeline.get()
+
 
 def get_processing_stage() -> str | None:
     """Get the current processing stage from context."""

@@ -12,7 +12,6 @@ import asyncio
 import logging
 import threading
 import time
-from typing import List, Tuple, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -23,6 +22,7 @@ logger = logging.getLogger(__name__)
 _cross_encoder = None
 _loaded_model_name = None
 _load_lock = threading.Lock()
+
 
 def _get_cross_encoder(model_name: str):
     """Lazily load cross-encoder model.
@@ -55,6 +55,7 @@ def _get_cross_encoder(model_name: str):
             )
 
     return _cross_encoder
+
 
 class RerankUsecase:
     """Usecase for cross-encoder re-ranking of RAG retrieval candidates.

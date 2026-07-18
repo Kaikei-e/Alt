@@ -26,6 +26,7 @@ _DISPATCH_DURATION_BUCKETS = [0.5, 1, 2, 5, 10, 20, 30, 60, 120, 180, 300]
 
 logger = logging.getLogger(__name__)
 
+
 class OTelConfig:
     """OpenTelemetry configuration from environment variables."""
 
@@ -37,6 +38,7 @@ class OTelConfig:
             "OTEL_EXPORTER_OTLP_ENDPOINT", "http://localhost:4318"
         )
         self.enabled = os.getenv("OTEL_ENABLED", "true").lower() == "true"
+
 
 def init_otel_provider(config: OTelConfig | None = None) -> Callable[[], None]:
     """
@@ -120,6 +122,7 @@ def init_otel_provider(config: OTelConfig | None = None) -> Callable[[], None]:
 
     return shutdown
 
+
 def get_otel_logging_handler() -> LoggingHandler | None:
     """
     Get an OTel logging handler for integration with standard logging.
@@ -138,6 +141,7 @@ def get_otel_logging_handler() -> LoggingHandler | None:
 
     logger_provider = get_logger_provider()
     return LoggingHandler(logger_provider=logger_provider)
+
 
 def instrument_fastapi(app):
     """

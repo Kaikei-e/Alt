@@ -11,6 +11,7 @@ import time
 
 logger = logging.getLogger(__name__)
 
+
 class FIFOSemaphore:
     """
     A semaphore implementation that guarantees FIFO ordering of waiting tasks.

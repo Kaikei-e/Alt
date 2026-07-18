@@ -10,6 +10,7 @@ import time
 
 logger = logging.getLogger(__name__)
 
+
 class PrioritySemaphore:
     """
     Priority-based semaphore - prioritizes high-priority requests (streaming).

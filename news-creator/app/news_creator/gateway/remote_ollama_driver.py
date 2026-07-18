@@ -16,6 +16,7 @@ from news_creator.domain.models import LLMGenerateResponse
 
 logger = logging.getLogger(__name__)
 
+
 class RemoteOllamaDriver:
     """HTTP client for remote Ollama instances."""
 
@@ -72,7 +73,9 @@ class RemoteOllamaDriver:
 
         try:
             if not (self._session is not None):
-                raise AssertionError("Session not initialized. Call initialize() first.")
+                raise AssertionError(
+                    "Session not initialized. Call initialize() first."
+                )
             async with self._session.post(url, json=payload) as response:
                 text_body = await response.text()
 

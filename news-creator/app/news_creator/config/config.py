@@ -16,6 +16,7 @@ from news_creator.config.model_routing_config import ModelRoutingConfig
 
 logger = logging.getLogger(__name__)
 
+
 class NewsCreatorConfig:
     """Configuration for News Creator service from environment variables.
 

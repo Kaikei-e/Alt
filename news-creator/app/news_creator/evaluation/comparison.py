@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from news_creator.evaluation.recap_quality import LOWER_IS_BETTER_AXES
 from news_creator.evaluation.trace_recorder import TraceRecord
 
+
 @dataclass
 class AxisDelta:
     """Per-axis score delta between two runs."""
@@ -14,6 +15,7 @@ class AxisDelta:
     after_mean: float
     delta: float
     improved: bool
+
 
 @dataclass
 class ComparisonReport:
@@ -26,16 +28,19 @@ class ComparisonReport:
     case_count_before: int
     case_count_after: int
 
+
 def _mean_scores(traces: list[TraceRecord], axis: str) -> float:
     """Compute mean score for an axis across traces."""
     values = [t.scores[axis] for t in traces if axis in t.scores]
     return sum(values) / len(values) if values else 0.0
+
 
 def _fallback_rate(traces: list[TraceRecord]) -> float:
     """Compute fraction of traces that are degraded."""
     if not traces:
         return 0.0
     return sum(1 for t in traces if t.is_degraded) / len(traces)
+
 
 def compare_runs(
     before: list[TraceRecord],

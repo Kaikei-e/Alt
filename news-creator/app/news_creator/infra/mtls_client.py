@@ -14,9 +14,11 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     pass
 
+
 def mtls_enforced() -> bool:
     """Returns True iff MTLS_ENFORCE=true in the environment."""
     return os.getenv("MTLS_ENFORCE", "").lower() == "true"
+
 
 def build_ssl_context() -> ssl.SSLContext | None:
     """Build an SSLContext that presents the caller's leaf cert.

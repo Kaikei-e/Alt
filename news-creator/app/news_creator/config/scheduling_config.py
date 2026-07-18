@@ -13,6 +13,7 @@ from dataclasses import dataclass
 
 logger = logging.getLogger(__name__)
 
+
 @dataclass(frozen=True)
 class SchedulingConfig:
     """Immutable configuration for RT/BE scheduling settings."""
@@ -65,6 +66,7 @@ class SchedulingConfig:
             concurrency_source=concurrency_source,
         )
 
+
 def _get_int(name: str, default: int) -> int:
     """Get integer value from environment variable with fallback."""
     try:
@@ -72,6 +74,7 @@ def _get_int(name: str, default: int) -> int:
     except ValueError:
         logger.warning("Invalid int for %s. Using default %s", name, default)
         return default
+
 
 def _get_float(name: str, default: float) -> float:
     """Get float value from environment variable with fallback."""

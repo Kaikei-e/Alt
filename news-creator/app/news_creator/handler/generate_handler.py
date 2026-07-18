@@ -4,12 +4,13 @@ import asyncio
 import logging
 import aiohttp
 from fastapi import APIRouter, HTTPException
-from typing import Dict, Any
+from typing import Any
 
 from news_creator.domain.models import GenerateRequest, LLMGenerateResponse
 from news_creator.port.llm_provider_port import LLMProviderPort
 
 logger = logging.getLogger(__name__)
+
 
 def create_generate_router(llm_provider: LLMProviderPort) -> APIRouter:
     """

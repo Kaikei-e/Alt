@@ -13,6 +13,7 @@ from dataclasses import dataclass
 
 logger = logging.getLogger(__name__)
 
+
 @dataclass(frozen=True)
 class LLMConfig:
     """Immutable configuration for LLM service settings."""
@@ -117,6 +118,7 @@ class LLMConfig:
             recap_summary_repair_attempts=_get_int("RECAP_SUMMARY_REPAIR_ATTEMPTS", 2),
         )
 
+
 def _get_int(name: str, default: int) -> int:
     """Get integer value from environment variable with fallback."""
     try:
@@ -124,6 +126,7 @@ def _get_int(name: str, default: int) -> int:
     except ValueError:
         logger.warning("Invalid int for %s. Using default %s", name, default)
         return default
+
 
 def _get_float(name: str, default: float) -> float:
     """Get float value from environment variable with fallback."""

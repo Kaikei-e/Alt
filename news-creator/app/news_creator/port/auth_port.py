@@ -6,7 +6,7 @@ try:
     from alt_auth.client import UserContext  # type: ignore
 except ModuleNotFoundError:
     from dataclasses import dataclass
-    from typing import Dict, Any
+    from typing import Any
 
     @dataclass
     class UserContext:
@@ -16,6 +16,7 @@ except ModuleNotFoundError:
         tenant_id: str = "public"
         roles: tuple[str, ...] = ()
         metadata: dict[str, Any] | None = None
+
 
 class AuthPort(ABC):
     """Abstract interface for authentication operations."""

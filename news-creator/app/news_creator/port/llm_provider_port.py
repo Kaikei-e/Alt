@@ -3,9 +3,10 @@
 from abc import ABC, abstractmethod
 from asyncio import Event
 from contextlib import asynccontextmanager
-from typing import AsyncGenerator, AsyncIterator, Any, Optional, Tuple, Union
+from typing import AsyncGenerator, AsyncIterator, Any
 
 from news_creator.domain.models import LLMGenerateResponse
+
 
 class LLMProviderPort(ABC):
     """Abstract interface for LLM providers."""

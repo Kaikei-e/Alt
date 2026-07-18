@@ -18,6 +18,7 @@ from news_creator.config.model_routing_config import ModelRoutingConfig
 
 logger = logging.getLogger(__name__)
 
+
 class OptionsBuilderProtocol(Protocol):
     """Protocol for options building strategies."""
 
@@ -28,6 +29,7 @@ class OptionsBuilderProtocol(Protocol):
     ) -> dict[str, Any]:
         """Build LLM options dictionary."""
         ...
+
 
 class OptionsBuilder:
     """Builds Ollama LLM options from config and overrides.
@@ -79,6 +81,7 @@ class OptionsBuilder:
             options["num_predict"] = num_predict_override
 
         return options
+
 
 class KeepAliveResolver:
     """Resolves keep_alive value based on model and configuration.

@@ -26,9 +26,11 @@ PEER_IDENTITY_HEADER = "x-alt-peer-identity"
 
 logger = logging.getLogger(__name__)
 
+
 def allowed_peers_from_env(env_var: str = "MTLS_ALLOWED_PEERS") -> list[str]:
     raw = os.getenv(env_var, "")
     return [p.strip() for p in raw.split(",") if p.strip()]
+
 
 class PeerIdentityMiddleware(BaseHTTPMiddleware):
     def __init__(

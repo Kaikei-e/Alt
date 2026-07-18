@@ -1,7 +1,7 @@
 """Port interface for caching."""
 
 from abc import ABC, abstractmethod
-from typing import Optional
+
 
 class CachePort(ABC):
     """Abstract interface for caching services.
@@ -23,9 +23,7 @@ class CachePort(ABC):
         pass
 
     @abstractmethod
-    async def set(
-        self, key: str, value: str, ttl_seconds: int | None = None
-    ) -> bool:
+    async def set(self, key: str, value: str, ttl_seconds: int | None = None) -> bool:
         """
         Store a value in the cache.
 

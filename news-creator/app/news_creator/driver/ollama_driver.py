@@ -10,6 +10,7 @@ from news_creator.config.config import NewsCreatorConfig
 
 logger = logging.getLogger(__name__)
 
+
 class OllamaDriver:
     """HTTP client for Ollama API (non-streaming requests only)."""
 
@@ -133,7 +134,9 @@ class OllamaDriver:
                     )
 
                 if not (self.session is not None):
-                    raise AssertionError("Session not initialized. Call initialize() first.")
+                    raise AssertionError(
+                        "Session not initialized. Call initialize() first."
+                    )
                 async with self.session.post(url, json=payload) as response:
                     if response.status != 200:
                         text_body = await response.text()
@@ -278,7 +281,9 @@ class OllamaDriver:
 
         try:
             if not (self.session is not None):
-                raise AssertionError("Session not initialized. Call initialize() first.")
+                raise AssertionError(
+                    "Session not initialized. Call initialize() first."
+                )
             async with self.session.get(url) as response:
                 text_body = await response.text()
 

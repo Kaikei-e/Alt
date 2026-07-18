@@ -2,9 +2,9 @@
 
 import re
 import logging
-from typing import Tuple, List
 
 logger = logging.getLogger(__name__)
+
 
 def detect_repetition(
     text: str, threshold: float = 0.3
@@ -120,6 +120,7 @@ def detect_repetition(
         )
 
     return has_repetition, overall_score, patterns
+
 
 def has_severe_repetition(text: str, threshold: float = 0.3) -> bool:
     """
