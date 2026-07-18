@@ -1,5 +1,6 @@
 import json
 import os
+import argparse
 import sys
 from datetime import datetime
 from pathlib import Path
@@ -60,8 +61,8 @@ def connect_db() -> psycopg2.extensions.connection:
         # Dockerコンテナ内で実行される場合
         port = cfg.get('RECAP_DB_PORT', '5432')
     elif host == 'localhost' or host == '127.0.0.1':
-        # ローカルで実行される場合
-        port = '5435'
+        # ローカルで実行される場合（RECAP_DB_PORT 優先）
+        port = cfg.get('RECAP_DB_PORT', '5435')
     else:
         # 環境変数で指定された場合
         port = cfg.get('RECAP_DB_PORT', port)
@@ -136,32 +137,25 @@ def fetch_centroid_sentences(conn, run_id: int, limit: int = 200) -> List[str]:
     with conn.cursor() as cur:
         cur.execute(
             """
-            SELECT id
-            FROM recap_subworker_clusters
-            WHERE run_id = %(run_id)s
-            ORDER BY size DESC
-            LIMIT %(limit)s
+            SELECT s.sentence_text
+            FROM (
+                SELECT id
+                FROM recap_subworker_clusters
+                WHERE run_id = %(run_id)s
+                ORDER BY size DESC
+                LIMIT %(limit)s
+            ) c
+            JOIN LATERAL (
+                SELECT sentence_text
+                FROM recap_subworker_sentences
+                WHERE cluster_row_id = c.id
+                ORDER BY score DESC
+                LIMIT 1
+            ) s ON TRUE
             """,
             {'run_id': run_id, 'limit': limit},
         )
-        clusters = [row[0] for row in cur.fetchall()]
-
-    sentences: List[str] = []
-    with conn.cursor() as cur:
-        for cluster_id in clusters:
-            cur.execute(
-                """
-                SELECT sentence_text
-                FROM recap_subworker_sentences
-                WHERE cluster_row_id = %(cluster_id)s
-                ORDER BY score DESC
-                LIMIT 1
-                """,
-                {'cluster_id': cluster_id},
-            )
-            sent = cur.fetchone()
-            if sent and sent[0]:
-                sentences.append(sent[0].strip())
+        sentences = [row[0].strip() for row in cur.fetchall() if row and row[0]]
     return list(dict.fromkeys(sentences))
 
 
@@ -322,16 +316,12 @@ def get_preprocess_metrics(conn, job_id: str) -> Optional[Dict[str, Any]]:
 
 
 def main() -> None:
-    # 検証モードかどうかを確認
-    verify_mode = '--verify' in sys.argv or '-v' in sys.argv
-    # 評価するJob数（デフォルト: 最新5件）
-    num_jobs = 5
-    for arg in sys.argv:
-        if arg.startswith('--jobs='):
-            try:
-                num_jobs = int(arg.split('=')[1])
-            except ValueError:
-                pass
+    parser = argparse.ArgumentParser(description='Compute recap coverage metrics')
+    parser.add_argument('--verify', '-v', action='store_true', help='Verification mode')
+    parser.add_argument('--jobs', type=int, default=5, help='Number of recent jobs to evaluate')
+    args = parser.parse_args()
+    verify_mode = args.verify
+    num_jobs = args.jobs
 
     conn = connect_db()
     try:

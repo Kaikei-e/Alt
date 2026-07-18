@@ -8,7 +8,7 @@ import sys
 import json
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 try:
     import psycopg2
@@ -55,7 +55,7 @@ def get_db_connection() -> psycopg2.extensions.connection:
     """データベース接続を取得（環境変数から）"""
     host = os.environ.get("RECAP_DB_HOST", "recap-db")
     port = os.environ.get("RECAP_DB_PORT", "5432")
-    user = os.environ.get("RECAP_DB_USER", os.environ.get("RECAP_DB_USER", "recap_user"))
+    user = os.environ.get("RECAP_DB_USER", "recap_user")
     password = os.environ.get("RECAP_DB_PASSWORD", "")
     dbname = os.environ.get("RECAP_DB_NAME", "recap")
 
@@ -93,8 +93,8 @@ def export_table_to_md(
     cursor: RealDictCursor,
     table_name: str,
     md_file,
-    order_by: Optional[str] = None,
-    limit: Optional[int] = None
+    order_by: str | None = None,
+    limit: int | None = None
 ) -> int:
     """テーブルのデータをMarkdown形式でエクスポート"""
     if table_name not in ALLOWED_EXPORT_TABLES:
@@ -220,7 +220,7 @@ def export_recap_db_to_md(output_file: str = "/tmp/recap_db_export.md"):
         print(f"✓ エクスポート完了: {output_path}")
         print(f"  合計レコード数: {total_records}")
 
-    except Exception as e:
+    except (psycopg2.Error, OSError) as e:
         print(f"エラーが発生しました: {e}", file=sys.stderr)
         import traceback
         traceback.print_exc()

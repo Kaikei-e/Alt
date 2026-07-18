@@ -10,6 +10,7 @@ import argparse
 import csv
 import os
 import re
+import sys
 from collections import Counter
 from typing import Optional
 from urllib.parse import urlparse
@@ -18,7 +19,7 @@ import psycopg2
 import psycopg2.extras
 
 
-def normalize_domain(url_str: str) -> str:
+def normalize_domain(url_str: str, *, verbose: bool = False) -> str:
     """URLからドメインを正規化（www.を除去、小文字化）"""
     try:
         parsed = urlparse(url_str)
@@ -26,7 +27,9 @@ def normalize_domain(url_str: str) -> str:
         if domain.startswith("www."):
             domain = domain[4:]
         return domain
-    except Exception:
+    except ValueError as e:
+        if verbose:
+            print(f"normalize_domain failed for {url_str!r}: {e}", file=sys.stderr)
         return ""
 
 
@@ -57,7 +60,6 @@ def classify_by_domain_and_path(url_str: str) -> Optional[str]:
         parsed = urlparse(url_str)
         domain = normalize_domain(url_str)
         path = parsed.path.lower()
-        host = parsed.hostname.lower() if parsed.hostname else ""
 
         # パスベースの分類（優先）
         if "/artanddesign" in path or "/arts" in path or "/culture" in path:
@@ -175,13 +177,14 @@ def classify_by_domain_and_path(url_str: str) -> Optional[str]:
         # デフォルト: 不明
         return None
 
-    except Exception:
+    except ValueError as e:
+        print(f"classify_by_domain_and_path failed for {url_str!r}: {e}", file=sys.stderr)
         return None
 
 
 def fetch_feed_urls(dsn: str) -> list[tuple[str, str]]:
     """feed_linksテーブルから全URLを取得"""
-    conn = psycopg2.connect(dsn)
+    conn = psycopg2.connect(dsn, connect_timeout=10)
     try:
         with conn.cursor() as cur:
             cur.execute("SELECT id::text, url FROM feed_links ORDER BY url")
@@ -190,7 +193,7 @@ def fetch_feed_urls(dsn: str) -> list[tuple[str, str]]:
         conn.close()
 
 
-def main():
+def main() -> int:
     parser = argparse.ArgumentParser(description="Classify feed URLs by genre")
     parser.add_argument("--dsn", default=os.getenv("ALT_DB_DSN"), help="PostgreSQL DSN")
     parser.add_argument("--output", default="feed_urls_classified.csv", help="Output CSV file")
@@ -250,5 +253,5 @@ def main():
 
 
 if __name__ == "__main__":
-    exit(main())
+    sys.exit(main())
 

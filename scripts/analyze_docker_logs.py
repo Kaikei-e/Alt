@@ -10,10 +10,9 @@ import sys
 from collections import defaultdict
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
 
 
-def parse_log_line(line: str) -> Tuple[Optional[str], Optional[datetime], Optional[str]]:
+def parse_log_line(line: str) -> tuple[str | None, datetime | None, str | None]:
     """ログ行をパースしてサービス名、タイムスタンプ、メッセージを抽出"""
     # Docker Compose log format: service_name | timestamp | message
     # Example: recap-worker | 2025-01-15T10:30:45.123Z | ERROR: something went wrong
@@ -46,29 +45,23 @@ def parse_log_line(line: str) -> Tuple[Optional[str], Optional[datetime], Option
     return service_name, timestamp, message
 
 
-def extract_errors_and_warnings(lines: List[str]) -> Dict[str, List[Dict[str, str]]]:
+def extract_errors_and_warnings(lines: list[str]) -> dict[str, list[dict[str, str]]]:
     """エラーと警告を抽出"""
     errors = defaultdict(list)
     warnings = defaultdict(list)
 
     error_patterns = [
         r'ERROR',
-        r'error',
-        r'Error',
         r'Exception',
         r'panic',
         r'failed',
-        r'Failed',
-        r'FAILED',
         r'timeout',
-        r'Timeout',
         r'deadline exceeded',
     ]
 
     warning_patterns = [
         r'WARN',
         r'warning',
-        r'Warning',
         r'threshold',
         r'below threshold',
         r'fallback',
@@ -106,7 +99,7 @@ def extract_errors_and_warnings(lines: List[str]) -> Dict[str, List[Dict[str, st
     }
 
 
-def extract_genre_classification_issues(lines: List[str]) -> List[Dict[str, str]]:
+def extract_genre_classification_issues(lines: list[str]) -> list[dict[str, str]]:
     """ジャンル分類関連の問題を抽出"""
     issues = []
 
@@ -138,7 +131,7 @@ def extract_genre_classification_issues(lines: List[str]) -> List[Dict[str, str]
     return issues
 
 
-def extract_clustering_issues(lines: List[str]) -> List[Dict[str, str]]:
+def extract_clustering_issues(lines: list[str]) -> list[dict[str, str]]:
     """クラスタリング関連の問題を抽出"""
     issues = []
 
@@ -211,7 +204,7 @@ def analyze_log_file(log_file: Path) -> Dict:
     }
 
 
-def main():
+def main() -> None:
     """メイン処理"""
     import json
 

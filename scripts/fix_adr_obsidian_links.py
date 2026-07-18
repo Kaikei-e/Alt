@@ -18,7 +18,7 @@ ADR_DIR = Path(__file__).resolve().parent.parent / "docs" / "ADR"
 
 # --- Step 1: Build title index ---
 
-def parse_frontmatter(text: str) -> dict:
+def parse_frontmatter(text: str) -> dict[str, object]:
     """Extract frontmatter fields from ADR markdown."""
     if not text.startswith("---"):
         return {}
@@ -73,22 +73,6 @@ def pad6(n: int) -> str:
     return f"{n:06d}"
 
 
-def find_related_section_start(lines: list[str]) -> int | None:
-    """Find the line index of the Related ADRs / 関連 / APPENDIX section heading."""
-    for i, line in enumerate(lines):
-        if re.match(r'^#{2,3}\s+(Related ADRs|関連(する)?\s*ADR|関連ファイル|関連|APPENDIX|付録)\s*$', line, re.IGNORECASE):
-            return i
-    return None
-
-
-def is_in_frontmatter(text: str, match_start: int) -> bool:
-    """Check if position is inside YAML frontmatter."""
-    if not text.startswith("---"):
-        return False
-    end = text.find("---", 3)
-    if end == -1:
-        return False
-    return match_start < end + 3
 
 
 def convert_inline_refs(text: str, title_index: dict[int, str]) -> str:
@@ -434,7 +418,6 @@ def add_backlinks(text: str, _self_num: int, backlinks: set[int], title_index: d
         return '\n'.join(result)
 
     # Find the last non-empty line in the related section
-    insert_at = None
     end = next_section_idx if next_section_idx else len(lines)
     # Find last bullet or content line in related section
     last_content = related_section_idx
@@ -541,7 +524,6 @@ def fix_aliases(text: str, num: int) -> str:
 def remove_nashi_if_siblings_exist(text: str) -> str:
     """Remove '- なし(...)' from Related sections when wikilink entries exist alongside."""
     lines = text.split('\n')
-    result = []
     in_related = False
     related_start = -1
 
@@ -579,7 +561,7 @@ def remove_nashi_if_siblings_exist(text: str) -> str:
 
 # --- Main orchestration ---
 
-def main():
+def main() -> None:
     print("=== ADR Obsidian Link Fixer ===\n")
 
     # Step 1: Build index

@@ -80,8 +80,6 @@ def clean_html_content(content: str) -> Tuple[str, bool]:
     if not content:
         return "", False
 
-    original_length = len(content)
-
     # HTMLかどうかを判定
     html_indicators = [
         content.strip().startswith('<!doctype'),
@@ -109,8 +107,8 @@ def clean_html_content(content: str) -> Tuple[str, bool]:
         cleaned = re.sub(r'[^\w\s\u3040-\u309F\u30A0-\u30FF\u4E00-\u9FAF]{3,}', ' ', cleaned)
         cleaned = re.sub(r'\s+', ' ', cleaned).strip()
         return cleaned, True
-    except Exception:
-        # Fallback
+    except (ValueError, TypeError, AttributeError) as e:
+        print(f"bleach clean failed, falling back to regex: {e}", file=sys.stderr)
         cleaned = re.sub(r'<[^>]+>', ' ', content)
         cleaned = re.sub(r'&[a-zA-Z0-9#]+;', ' ', cleaned)
         cleaned = re.sub(r'\s+', ' ', cleaned).strip()
@@ -228,7 +226,7 @@ def analyze_short_articles(cursor: RealDictCursor, limit: int = 100) -> List[Dic
     return results
 
 
-def main():
+def main() -> None:
     """メイン処理"""
     print("=" * 80)
     print("短すぎる記事（100文字未満）の類型化分析")

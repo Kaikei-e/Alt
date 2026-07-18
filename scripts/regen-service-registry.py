@@ -21,6 +21,7 @@ import difflib
 import re
 import sys
 from pathlib import Path
+from typing import Any
 
 # Stdlib YAML parser via re — we only need a subset. But PyYAML is
 # essentially universally installed on GitHub-hosted runners. Prefer it
@@ -47,7 +48,7 @@ SVC_BEGIN = "# <<<SERVICES-REGISTRY-BEGIN>>>"
 SVC_END = "# <<<SERVICES-REGISTRY-END>>>"
 
 
-def load_registry() -> dict:
+def load_registry() -> dict[str, Any]:
     with REGISTRY.open() as f:
         data = yaml.safe_load(f)
     if not isinstance(data, dict) or "services" not in data:
@@ -55,7 +56,7 @@ def load_registry() -> dict:
     return data
 
 
-def pacticipants(registry: dict) -> list[dict]:
+def pacticipants(registry: dict[str, Any]) -> list[dict[str, Any]]:
     """Services that go through the Pact gate (local + external)."""
     return [
         s for s in registry["services"]
@@ -63,17 +64,17 @@ def pacticipants(registry: dict) -> list[dict]:
     ]
 
 
-def local_pacticipants(registry: dict) -> list[dict]:
+def local_pacticipants(registry: dict[str, Any]) -> list[dict]:
     """Pacticipants built + deployed locally (excludes `external`)."""
     return [s for s in registry["services"] if s.get("kind") == "pacticipant"]
 
 
-def runtime_services(registry: dict) -> list[dict]:
+def runtime_services(registry: dict[str, Any]) -> list[dict]:
     """Non-pacticipant images built via docker-build but not gated by Pact."""
     return [s for s in registry["services"] if s.get("kind") == "runtime"]
 
 
-def local_build_services(registry: dict) -> list[dict]:
+def local_build_services(registry: dict[str, Any]) -> list[dict]:
     """Services that have a Dockerfile in this repo (pacticipant + runtime)."""
     return [
         s for s in registry["services"]
@@ -85,7 +86,7 @@ def local_build_services(registry: dict) -> list[dict]:
 # Renderers
 # ---------------------------------------------------------------------------
 
-def render_docker_build_block(registry: dict) -> str:
+def render_docker_build_block(registry: dict[str, Any]) -> str:
     """Bash array body for docker-build.yaml SERVICES=(...)."""
     lines = ["          SERVICES=("]
     lines.append("            # --- 13 Pact pacticipants (mirrors c2quay.yml) ---")
@@ -98,7 +99,7 @@ def render_docker_build_block(registry: dict) -> str:
     return "\n".join(lines) + "\n"
 
 
-def render_c2quay_block(registry: dict) -> str:
+def render_c2quay_block(registry: dict[str, Any]) -> str:
     """YAML fragment for c2quay.yml environments.production.services."""
     # Align pacticipant colons for readability (matches current style).
     names = [s["name"] for s in pacticipants(registry)]
@@ -111,7 +112,7 @@ def render_c2quay_block(registry: dict) -> str:
     return "\n".join(out) + "\n"
 
 
-def render_alt_deploy_service_paths(registry: dict) -> str:
+def render_alt_deploy_service_paths(registry: dict[str, Any]) -> str:
     """JavaScript object literal for alt-deploy release-deploy.yaml.
 
     alt-deploy lives in a separate repo and is regenerated out-of-band;
@@ -173,20 +174,19 @@ def patch_between_sentinels(
     return pat.sub(replacement, text, count=1)
 
 
-def patch_docker_build(registry: dict) -> tuple[Path, str]:
+def patch_docker_build(registry: dict[str, Any]) -> tuple[Path, str]:
     new_body = render_docker_build_block(registry)
     text = patch_between_sentinels(DOCKER_BUILD, new_body, SVC_BEGIN, SVC_END)
     return DOCKER_BUILD, text
 
 
-def patch_c2quay(registry: dict) -> tuple[Path, str]:
+def patch_c2quay(registry: dict[str, Any]) -> tuple[Path, str]:
     new_body = render_c2quay_block(registry)
     text = patch_between_sentinels(C2QUAY, new_body, SVC_BEGIN, SVC_END)
     return C2QUAY, text
 
 
-def write_alt_deploy_snippet(registry: dict) -> tuple[Path, str]:
-    ALT_DEPLOY_SNIPPET.parent.mkdir(parents=True, exist_ok=True)
+def write_alt_deploy_snippet(registry: dict[str, Any]) -> tuple[Path, str]:
     return ALT_DEPLOY_SNIPPET, render_alt_deploy_service_paths(registry)
 
 
@@ -227,6 +227,7 @@ def main() -> int:
 
     if args.write:
         for path, new_text in outputs:
+            path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text(new_text)
             print(f"wrote {path.relative_to(ROOT)}")
         return 0

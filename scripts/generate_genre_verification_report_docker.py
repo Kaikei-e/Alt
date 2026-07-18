@@ -9,11 +9,56 @@ import argparse
 import json
 import os
 import subprocess
+import sys
 from datetime import datetime, timezone
 from typing import Any
 
+# Default baseline for previous-report comparisons (override via --baseline JSON).
+DEFAULT_BASELINE: dict[str, Any] = {
+    "prev_total": 49815,
+    "prev_jobs": 28,
+    "prev_articles": 2727,
+    "prev_tag_coverage": 95.57,
+    "prev_has_tags": 2135,
+    "prev_avg_conf": 0.915,
+    "prev_gb_pct": 87.96,
+    "prev_gb_conf": 0.964,
+    "prev_strategies": {
+        "graph_boost": {"count": 1965, "percentage": 87.96},
+        "weighted_score": {"count": 170, "percentage": 7.61},
+        "coarse_only": {"count": 99, "percentage": 4.43},
+    },
+    "initial_total": 19119,
+    "initial_tag_coverage": 3.45,
+    "initial_gb_pct": 2.8,
+    "initial_gb_conf": 0.979,
+    "initial_avg_conf": 0.971,
+    "reorg_before_tag": 97.56,
+    "reorg_before_gb": 79.31,
+    "reorg_before_gb_conf": 0.974,
+    "reorg_before_avg_conf": 0.861,
+    "reorg_before_weighted": 18.25,
+    "reorg_after_tag": 95.57,
+    "reorg_after_gb": 87.96,
+    "reorg_after_gb_conf": 0.964,
+    "reorg_after_avg_conf": 0.915,
+    "reorg_after_weighted": 7.61,
+}
 
-def run_sql_query(query: str, container: str = "recap-db", user: str = "recap_user", db: str = "recap") -> list[dict]:
+
+def load_baseline(path: str | None) -> dict[str, Any]:
+    """Load baseline comparison values from JSON, falling back to defaults."""
+    baseline = dict(DEFAULT_BASELINE)
+    if path:
+        with open(path, encoding="utf-8") as f:
+            override = json.load(f)
+        if not isinstance(override, dict):
+            raise SystemExit(f"baseline file must be a JSON object: {path}")
+        baseline.update(override)
+    return baseline
+
+
+def run_sql_query(query: str, container: str = "recap-db", user: str = "recap_user", db: str = "recap") -> list[dict[str, Any]]:
     """Dockerコンテナ内でSQLクエリを実行し、JSON形式で結果を取得"""
     # JSON形式で結果を取得するために、row_to_jsonまたはjson_aggを使用
     # クエリが既にJSON形式を返す場合はそのまま使用
@@ -78,61 +123,17 @@ def run_sql_query(query: str, container: str = "recap-db", user: str = "recap_us
             else:
                 return []
         except json.JSONDecodeError as e:
-            print(f"JSONパースエラー: {e}")
-            print(f"出力: {full_output[:200]}...")
-            return []
+            print(f"JSONパースエラー: {e}", file=sys.stderr)
+            print(f"出力: {full_output[:200]}...", file=sys.stderr)
+            raise SystemExit(1) from e
     except subprocess.TimeoutExpired as e:
-        print(f"SQLクエリがタイムアウトしました: {e}")
-        return []
+        print(f"SQLクエリがタイムアウトしました: {e}", file=sys.stderr)
+        raise SystemExit(1) from e
     except subprocess.CalledProcessError as e:
-        print(f"SQLクエリ実行エラー: {e}")
-        print(f"stderr: {e.stderr}")
-        print(f"stdout: {e.stdout}")
-        return []
-    except json.JSONDecodeError as e:
-        print(f"JSONパースエラー: {e}")
-        print(f"出力: {result.stdout}")
-        return []
-
-
-def run_sql_query_simple(query: str, container: str = "recap-db", user: str = "recap_user", db: str = "recap") -> str:
-    """Dockerコンテナ内でSQLクエリを実行し、テキスト形式で結果を取得（シンプルなクエリ用）"""
-    cmd = [
-        "docker", "compose", "exec", "-T", container,
-        "psql", "-U", user, "-d", db, "-t", "-A", "-F", "|", "-c", query
-    ]
-
-    try:
-        result = subprocess.run(
-            cmd,
-            cwd=os.path.dirname(os.path.dirname(__file__)),
-            capture_output=True,
-            text=True,
-            check=True,
-            timeout=60,
-        )
-        return result.stdout.strip()
-    except subprocess.TimeoutExpired as e:
-        print(f"SQLクエリがタイムアウトしました: {e}")
-        return ""
-    except subprocess.CalledProcessError as e:
-        print(f"SQLクエリ実行エラー: {e}")
-        print(f"stderr: {e.stderr}")
-        return ""
-
-
-def parse_simple_result(output: str) -> list[dict]:
-    """シンプルなクエリ結果をパース"""
-    results = []
-    for line in output.split('\n'):
-        if line.strip():
-            parts = [p.strip() for p in line.split('|')]
-            if len(parts) >= 2:
-                results.append({
-                    'value': parts[0],
-                    'parts': parts
-                })
-    return results
+        print(f"SQLクエリ実行エラー: {e}", file=sys.stderr)
+        print(f"stderr: {e.stderr}", file=sys.stderr)
+        print(f"stdout: {e.stdout}", file=sys.stderr)
+        raise SystemExit(1) from e
 
 
 def fetch_strategy_breakdown(hours: int = 1) -> list[dict[str, Any]]:
@@ -450,7 +451,7 @@ def fetch_total_records() -> dict[str, Any]:
     return {}
 
 
-def format_datetime(dt) -> str:
+def format_datetime(dt: datetime | str | None) -> str:
     """datetimeを文字列にフォーマット"""
     if dt is None:
         return "N/A"
@@ -459,9 +460,10 @@ def format_datetime(dt) -> str:
     return dt.strftime("%Y-%m-%d %H:%M:%S")
 
 
-def generate_report(output_file: str):
+def generate_report(output_file: str, baseline: dict[str, Any] | None = None) -> None:
     """レポートを生成"""
     now = datetime.now(timezone.utc)
+    bl = baseline or DEFAULT_BASELINE
 
     print("データ取得中...")
     # データ取得
@@ -504,9 +506,9 @@ def generate_report(output_file: str):
     report_lines.append("")
     report_lines.append("| 指標 | 前回（15:10:17時点） | 最新 | 変化 |")
     report_lines.append("|------|---------------------|------|------|")
-    prev_total = 49815
-    prev_jobs = 28
-    prev_articles = 2727
+    prev_total = bl["prev_total"]
+    prev_jobs = bl["prev_jobs"]
+    prev_articles = bl["prev_articles"]
     report_lines.append(f"| **学習レコード総数** | {prev_total:,}件 | **{total_stats.get('total_records', 0):,}件** | **+{total_stats.get('total_records', 0) - prev_total:,}件** |")
     report_lines.append(f"| **処理ジョブ数** | {prev_jobs}ジョブ | **{total_stats.get('total_jobs', 0)}ジョブ** | +{total_stats.get('total_jobs', 0) - prev_jobs}ジョブ |")
     report_lines.append(f"| **処理記事数** | {prev_articles:,}記事 | **{total_stats.get('total_articles', 0):,}記事** | +{total_stats.get('total_articles', 0) - prev_articles:,}記事 |")
@@ -517,8 +519,8 @@ def generate_report(output_file: str):
     report_lines.append("")
     report_lines.append("| 指標 | 前回（過去1時間） | 最新（過去1時間） | 変化 |")
     report_lines.append("|------|-----------------|-----------------|------|")
-    prev_tag_coverage = 95.57
-    prev_has_tags = 2135
+    prev_tag_coverage = bl["prev_tag_coverage"]
+    prev_has_tags = bl["prev_has_tags"]
     report_lines.append(f"| **タグ付与レコード数** | {prev_has_tags:,}件 | **{tag_coverage.get('has_tags', 0):,}件** | **+{tag_coverage.get('has_tags', 0) - prev_has_tags:,}件** |")
     report_lines.append(f"| **タグカバレッジ** | {prev_tag_coverage:.2f}% | **{tag_coverage.get('tag_coverage_pct', 0):.2f}%** | **{tag_coverage.get('tag_coverage_pct', 0) - prev_tag_coverage:+.2f}pt** |")
     report_lines.append("")
@@ -536,11 +538,7 @@ def generate_report(output_file: str):
     report_lines.append("| 戦略 | 件数 | 割合 | 平均信頼度 | 前回からの変化 |")
     report_lines.append("|------|------|------|------------|---------------|")
 
-    prev_strategies = {
-        'graph_boost': {'count': 1965, 'percentage': 87.96},
-        'weighted_score': {'count': 170, 'percentage': 7.61},
-        'coarse_only': {'count': 99, 'percentage': 4.43},
-    }
+    prev_strategies = bl["prev_strategies"]
 
     for strategy in strategy_breakdown:
         strategy_name = strategy.get('strategy', '')
@@ -558,8 +556,8 @@ def generate_report(output_file: str):
     report_lines.append("")
 
     # Graph Boostの分析
+    prev_gb_pct = bl["prev_gb_pct"]
     if graph_boost_data:
-        prev_gb_pct = 87.96
         gb_pct_change = graph_boost_data['percentage'] - prev_gb_pct
         report_lines.append("**重要な改善点**:")
         report_lines.append(f"- **Graph Boostの使用率が{graph_boost_data['percentage']:.2f}%**（前回: {prev_gb_pct:.2f}% → 最新: {graph_boost_data['percentage']:.2f}%、**{gb_pct_change:+.2f}pt**）")
@@ -581,7 +579,7 @@ def generate_report(output_file: str):
     report_lines.append("")
     report_lines.append("### 3.1 信頼度分布（過去1時間）")
     report_lines.append("")
-    prev_avg_conf = 0.915
+    prev_avg_conf = bl["prev_avg_conf"]
     avg_conf_change = avg_confidence - prev_avg_conf
     report_lines.append(f"- **平均信頼度**: **{avg_confidence:.3f}**（前回: {prev_avg_conf:.3f}から**{avg_conf_change:+.3f}pt{'向上' if avg_conf_change >= 0 else '変化'}**）")
     report_lines.append(f"- **中央値信頼度**: {overall_confidence.get('median_confidence', 0.0) or 0.0:.3f}")
@@ -610,8 +608,8 @@ def generate_report(output_file: str):
                 hour_str = str(hour)
 
             report_lines.append(
-                f"| {hour_str} | {hour_data.get('records', 0):,}件 | {hour_data.get('records_with_tags', 0):,}件 | "
-                f"{hour_data.get('tag_coverage_pct', 0):.2f}% | {hour_data.get('graph_boost_count', 0):,}件 | "
+                f"| {hour_str} | {hour_data.get('total_records', 0):,}件 | {hour_data.get('records_with_tags', 0):,}件 | "
+                f"**{hour_data.get('tag_coverage_pct', 0):.2f}%** | {hour_data.get('graph_boost_count', 0):,}件 | "
                 f"**{hour_data.get('graph_boost_pct', 0):.2f}%** |"
             )
         report_lines.append("")
@@ -645,17 +643,17 @@ def generate_report(output_file: str):
     report_lines.append("| 指標 | 初回検証時 | 前回（11/15 15:10） | 最新 | 累積改善 |")
     report_lines.append("|------|-----------|-------------------|------|---------|")
 
-    initial_total = 19119
-    initial_tag_coverage = 3.45
-    initial_gb_pct = 2.8
-    initial_gb_conf = 0.979
-    initial_avg_conf = 0.971
+    initial_total = bl["initial_total"]
+    initial_tag_coverage = bl["initial_tag_coverage"]
+    initial_gb_pct = bl["initial_gb_pct"]
+    initial_gb_conf = bl["initial_gb_conf"]
+    initial_avg_conf = bl["initial_avg_conf"]
 
-    prev_total = 49815
-    prev_tag_coverage = 95.57
-    prev_gb_pct = 87.96
-    prev_gb_conf = 0.964
-    prev_avg_conf = 0.915
+    prev_total = bl["prev_total"]
+    prev_tag_coverage = bl["prev_tag_coverage"]
+    prev_gb_pct = bl["prev_gb_pct"]
+    prev_gb_conf = bl["prev_gb_conf"]
+    prev_avg_conf = bl["prev_avg_conf"]
 
     total_change = total_stats.get('total_records', 0) - initial_total
     tag_cov_change = tag_coverage.get('tag_coverage_pct', 0) - initial_tag_coverage
@@ -764,17 +762,17 @@ def generate_report(output_file: str):
     report_lines.append("| 指標 | 再編前（11/15 07:00） | 再編後（11/15 15:00） | 最新 | 変化 |")
     report_lines.append("|------|---------------------|---------------------|------|------|")
 
-    reorg_before_tag = 97.56
-    reorg_before_gb = 79.31
-    reorg_before_gb_conf = 0.974
-    reorg_before_avg_conf = 0.861
-    reorg_before_weighted = 18.25
+    reorg_before_tag = bl["reorg_before_tag"]
+    reorg_before_gb = bl["reorg_before_gb"]
+    reorg_before_gb_conf = bl["reorg_before_gb_conf"]
+    reorg_before_avg_conf = bl["reorg_before_avg_conf"]
+    reorg_before_weighted = bl["reorg_before_weighted"]
 
-    reorg_after_tag = 95.57
-    reorg_after_gb = 87.96
-    reorg_after_gb_conf = 0.964
-    reorg_after_avg_conf = 0.915
-    reorg_after_weighted = 7.61
+    reorg_after_tag = bl["reorg_after_tag"]
+    reorg_after_gb = bl["reorg_after_gb"]
+    reorg_after_gb_conf = bl["reorg_after_gb_conf"]
+    reorg_after_avg_conf = bl["reorg_after_avg_conf"]
+    reorg_after_weighted = bl["reorg_after_weighted"]
 
     latest_tag = tag_coverage.get('tag_coverage_pct', 0)
     latest_gb = graph_boost_data['percentage'] if graph_boost_data else 0
@@ -820,7 +818,7 @@ def generate_report(output_file: str):
     print(f"レポートを生成しました: {output_file}")
 
 
-def main():
+def main() -> None:
     parser = argparse.ArgumentParser(description='recap-workerのジャンル分類精度検証レポートを生成（Docker版）')
     parser.add_argument(
         '--output',
@@ -828,9 +826,16 @@ def main():
         default='docs/recap-genre-two-stage-verification-latest-ja.md',
         help='出力ファイルパス'
     )
+    parser.add_argument(
+        '--baseline',
+        type=str,
+        default=None,
+        help='前回比較値を上書きする JSON ファイル（未指定時は組み込みデフォルト）'
+    )
 
     args = parser.parse_args()
-    generate_report(args.output)
+    baseline = load_baseline(args.baseline)
+    generate_report(args.output, baseline=baseline)
 
 
 if __name__ == '__main__':

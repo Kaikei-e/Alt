@@ -105,6 +105,7 @@ FEATURE_VOCAB = [
     "playstation", "xbox", "nintendo", "esports", "gaming industry",
     "ゲーム", "パズル", "クロスワード", "数独", "ビデオゲーム", "コンソール", "eスポーツ",
 ]
+FEATURE_VOCAB = list(dict.fromkeys(FEATURE_VOCAB))
 EMBEDDING_DIM = 6
 
 # Embedding lookup（簡易版：実際にはより洗練された埋め込みが必要）
@@ -210,7 +211,7 @@ def expand_tokens(tokens: list[str]) -> list[str]:
 
 def fetch_learning_results(recap_dsn: str, days: int = 30) -> list[dict]:
     """recap_genre_learning_resultsテーブルから学習結果を取得"""
-    conn = psycopg2.connect(recap_dsn)
+    conn = psycopg2.connect(recap_dsn, connect_timeout=10)
     try:
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
             cur.execute(
@@ -221,7 +222,7 @@ def fetch_learning_results(recap_dsn: str, days: int = 30) -> list[dict]:
                     refine_decision->>'confidence' as confidence,
                     created_at
                 FROM recap_genre_learning_results
-                WHERE created_at > NOW() - INTERVAL '%s days'
+                WHERE created_at > NOW() - make_interval(days => %s)
                   AND (refine_decision->>'final_genre' IS NOT NULL
                        OR refine_decision->>'genre' IS NOT NULL)
                   AND COALESCE(refine_decision->>'final_genre', refine_decision->>'genre') != ''
@@ -239,7 +240,7 @@ def fetch_article_contents(alt_dsn: str, article_ids: list[str]) -> dict[str, di
     """alt-dbのarticlesテーブルから複数記事のタイトルと本文を一括取得"""
     if not article_ids:
         return {}
-    conn = psycopg2.connect(alt_dsn)
+    conn = psycopg2.connect(alt_dsn, connect_timeout=10)
     try:
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
             cur.execute(

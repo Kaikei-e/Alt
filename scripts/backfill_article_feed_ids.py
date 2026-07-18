@@ -17,7 +17,6 @@ import os
 import sys
 import psycopg2
 from psycopg2.extras import RealDictCursor
-from typing import Optional
 
 # Database connection parameters
 # Use POSTGRES_USER for backfill operations (requires UPDATE on articles and SELECT on feeds)
@@ -34,17 +33,17 @@ DATABASE_URL = os.getenv(
 )
 
 
-def get_db_connection():
+def get_db_connection() -> "psycopg2.extensions.connection":
     """Create and return a database connection."""
     try:
-        conn = psycopg2.connect(DATABASE_URL)
+        conn = psycopg2.connect(DATABASE_URL, connect_timeout=10)
         return conn
     except psycopg2.Error as e:
         print(f"Error connecting to database: {e}", file=sys.stderr)
         sys.exit(1)
 
 
-def backfill_feed_ids(conn, batch_size: int = 1000) -> dict:
+def backfill_feed_ids(conn: "psycopg2.extensions.connection", batch_size: int = 1000) -> dict[str, int]:
     """
     Update feed_id for articles where feed_id is NULL and article.url matches feed.link.
 
@@ -82,7 +81,7 @@ def backfill_feed_ids(conn, batch_size: int = 1000) -> dict:
             # already-scanned range. Tracking the last-seen id and querying
             # `id > last_seen_id` avoids that, since it never depends on the
             # position of rows within the (shrinking) matching set.
-            last_seen_id: Optional[str] = None
+            last_seen_id: str | None = None
             while True:
                 # Fetch batch of articles with NULL feed_id
                 if last_seen_id is None:
@@ -115,36 +114,27 @@ def backfill_feed_ids(conn, batch_size: int = 1000) -> dict:
 
                 print(f"Processing batch of {len(articles)} articles after id={last_seen_id}...")
 
-                updated_count = 0
-                for article in articles:
-                    article_id = article["id"]
-                    article_url = article["url"]
-
-                    # Find matching feed
-                    cursor.execute(
-                        """
-                        SELECT id
+                article_ids = [a["id"] for a in articles]
+                cursor.execute(
+                    """
+                    UPDATE articles AS a
+                    SET feed_id = f.id
+                    FROM (
+                        SELECT DISTINCT ON (link) id, link
                         FROM feeds
-                        WHERE link = %s
-                        ORDER BY created_at DESC, id DESC
-                        LIMIT 1
-                        """,
-                        (article_url,),
-                    )
-
-                    feed_result = cursor.fetchone()
-
-                    if feed_result:
-                        feed_id = feed_result["id"]
-                        # Update article with feed_id
-                        cursor.execute(
-                            "UPDATE articles SET feed_id = %s WHERE id = %s",
-                            (feed_id, article_id),
-                        )
-                        updated_count += 1
-                        stats["articles_updated"] += 1
-                    else:
-                        stats["articles_without_match"] += 1
+                        ORDER BY link, created_at DESC, id DESC
+                    ) AS f
+                    WHERE a.id = ANY(%s)
+                      AND a.feed_id IS NULL
+                      AND a.url = f.link
+                    RETURNING a.id
+                    """,
+                    (article_ids,),
+                )
+                updated_ids = {row["id"] for row in cursor.fetchall()}
+                updated_count = len(updated_ids)
+                stats["articles_updated"] += updated_count
+                stats["articles_without_match"] += len(articles) - updated_count
 
                 # Commit after each batch
                 conn.commit()
@@ -175,7 +165,7 @@ def backfill_feed_ids(conn, batch_size: int = 1000) -> dict:
     return stats
 
 
-def main():
+def main() -> None:
     """Main execution function."""
     print("=" * 60)
     print("Backfilling article feed_ids from matching feed links")

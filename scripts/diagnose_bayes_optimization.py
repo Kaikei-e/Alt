@@ -12,7 +12,6 @@ import json
 import os
 import sys
 from collections import Counter
-from typing import Any
 
 import structlog
 from sqlalchemy import text
@@ -252,7 +251,7 @@ async def diagnose_bayes_optimization(dsn: str, window_label: str = "7d") -> Non
     await engine.dispose()
 
 
-def main():
+def main() -> None:
     """メイン関数"""
     dsn = os.getenv("RECAP_DB_DSN")
     if not dsn:

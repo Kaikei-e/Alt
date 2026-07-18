@@ -10,7 +10,7 @@ import sys
 import json
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Tuple
 
 try:
     import psycopg2
@@ -53,7 +53,7 @@ def _build_order_by(order_by: str) -> sql.Composable:
     return sql.SQL(", ").join(parts)
 
 
-def load_env_vars() -> Dict[str, str]:
+def load_env_vars() -> dict[str, str]:
     """環境変数または.envファイルからデータベース接続情報を読み込む"""
     env_file = Path(__file__).parent.parent / ".env"
     env_vars = {}
@@ -117,8 +117,8 @@ def format_value(value: Any) -> str:
 def export_table_to_md(
     cursor: RealDictCursor,
     table_name: str,
-    md_file,
-    order_by: Optional[str] = None
+    md_file: Any,
+    order_by: str | None = None
 ) -> int:
     """テーブルのデータをMarkdown形式でエクスポート"""
     if table_name not in ALLOWED_EXPORT_TABLES:
@@ -152,13 +152,13 @@ def score_summary_quality(
     *,
     status: str,
     cluster_count: int,
-    diagnostics: Dict[str, Any],
-    summary_text: Optional[str],
-    bullets: List[Dict[str, Any]],
+    diagnostics: dict[str, Any],
+    summary_text: str | None,
+    bullets: list[dict[str, Any]],
 ) -> float:
     """ヒューリスティックにRecap品質スコアを算出する。"""
 
-    components: List[float] = []
+    components: list[float] = []
     noise_ratio = diagnostics.get("noise_ratio")
     if isinstance(noise_ratio, (int, float)):
         components.append(max(0.0, min(1.0, 1.0 - float(noise_ratio))))
@@ -204,10 +204,10 @@ def score_summary_quality(
     return max(0.0, min(1.0, base_score))
 
 
-def build_reference_summary(clusters: List[Dict[str, Any]], max_sentences: int = 6) -> str:
+def build_reference_summary(clusters: list[dict[str, Any]], max_sentences: int = 6) -> str:
     """代表文から参照要約を構築する。"""
 
-    references: List[str] = []
+    references: list[str] = []
     for cluster in clusters:
         reps = cluster.get("representatives") or []
         for rep in reps:
@@ -221,7 +221,7 @@ def build_reference_summary(clusters: List[Dict[str, Any]], max_sentences: int =
     return "\n".join(references)
 
 
-def normalize_bullets(raw: Optional[str | List[Dict[str, Any]]]) -> List[Dict[str, Any]]:
+def normalize_bullets(raw: str | list[dict[str, Any | None]]) -> list[dict[str, Any]]:
     if raw is None:
         return []
     if isinstance(raw, list):
@@ -239,7 +239,7 @@ def normalize_bullets(raw: Optional[str | List[Dict[str, Any]]]) -> List[Dict[st
     return []
 
 
-def collect_golden_runs(cursor: RealDictCursor, limit_per_bucket: int = 20) -> Dict[str, Any]:
+def collect_golden_runs(cursor: RealDictCursor, limit_per_bucket: int = 20) -> dict[str, Any]:
     """ゴールデンセットとなる良例・悪例を抽出する。"""
 
     cursor.execute(
@@ -266,7 +266,7 @@ def collect_golden_runs(cursor: RealDictCursor, limit_per_bucket: int = 20) -> D
     )
     rows = cursor.fetchall()
 
-    candidates: List[Tuple[float, Dict[str, Any]]] = []
+    candidates: list[Tuple[float, dict[str, Any]]] = []
     for row in rows:
         response = row["response_payload"] or {}
         diagnostics = response.get("diagnostics") or {}
@@ -327,7 +327,7 @@ def collect_golden_runs(cursor: RealDictCursor, limit_per_bucket: int = 20) -> D
     }
 
 
-def export_recap_db_to_md(output_file: str = "recap_db_export.md"):
+def export_recap_db_to_md(output_file: str = "recap_db_export.md") -> None:
     """recap-dbの全データをMarkdownファイルにエクスポート"""
     conn = get_db_connection()
     cursor = conn.cursor(cursor_factory=RealDictCursor)
@@ -444,8 +444,10 @@ def export_recap_db_to_md(output_file: str = "recap_db_export.md"):
         print(f"✓ ゴールデンセット出力: {golden_output_path}")
         print(f"  良例: {len(golden_payload.get('good', []))} / 悪例: {len(golden_payload.get('bad', []))}")
 
-    except Exception as e:
-        print(f"エラーが発生しました: {e}")
+    except (psycopg2.Error, OSError, ValueError) as e:
+        print(f"エラーが発生しました: {e}", file=sys.stderr)
+        import traceback
+        traceback.print_exc(file=sys.stderr)
         sys.exit(1)
     finally:
         cursor.close()

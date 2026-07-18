@@ -3,13 +3,42 @@
 eval.mdを検証結果で更新するスクリプト
 """
 
+import argparse
 import json
+import subprocess
+import sys
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 
-def load_verification_results() -> Optional[Dict[str, Any]]:
+
+DEFAULT_EVAL_CONFIG: dict[str, Any] = {
+    "report_job_ids": {
+        "5cc12453-0c22-40f2-b100-0ad1945a73c9": "Latest Job",
+        "4e5be544-9abe-40d6-9bb9-42a5bd3e0774": "Previous Baseline",
+    },
+    "latest_job_id": "5cc12453-0c22-40f2-b100-0ad1945a73c9",
+    "report_values": {
+        "avg": 0.8175,
+        "std": 0.0330,
+        "min": 0.7519,
+        "max": 0.8588,
+        "count": 14,
+    },
+    "report_genres": {
+        "ai_data": 0.8409,
+        "consumer_tech": 0.8555,
+        "other": 0.8588,
+        "other.0": 0.7649,
+        "other.2": 0.8437,
+        "other.6": 0.8372,
+    },
+}
+
+
+
+def load_verification_results() -> dict[str, Any] | None:
     """検証結果JSONを読み込む"""
     script_dir = Path(__file__).parent
     results_file = script_dir / 'reports' / 'recap_verification_results.json'
@@ -18,8 +47,6 @@ def load_verification_results() -> Optional[Dict[str, Any]]:
         print(f"検証結果ファイルが見つかりません: {results_file}")
         print("検証スクリプトを実行します...")
         # 検証スクリプトを直接実行
-        import subprocess
-        import sys
         try:
             result = subprocess.run(
                 [sys.executable, str(script_dir / 'compute_recap_coverage.py'), '--verify'],
@@ -39,8 +66,8 @@ def load_verification_results() -> Optional[Dict[str, Any]]:
             else:
                 print("検証スクリプトの実行後も結果ファイルが生成されませんでした")
                 return None
-        except Exception as e:
-            print(f"検証スクリプトの実行に失敗しました: {e}")
+        except (subprocess.TimeoutExpired, OSError) as e:
+            print(f"検証スクリプトの実行に失敗しました: {e}", file=sys.stderr)
             return None
 
     with open(results_file, 'r', encoding='utf-8') as f:
@@ -61,14 +88,15 @@ def format_datetime(dt: Any) -> str:
     return str(dt)
 
 
-def generate_eval_report(results: Dict[str, Any], template_path: Path, output_path: Path) -> None:
+def generate_eval_report(
+    results: dict[str, Any],
+    template_path: Path,
+    output_path: Path,
+    config: dict[str, Any] | None = None,
+) -> None:
     """eval.mdを生成"""
-
-    # レポートで言及されているJob ID
-    report_job_ids = {
-        '5cc12453-0c22-40f2-b100-0ad1945a73c9': 'Latest Job',
-        '4e5be544-9abe-40d6-9bb9-42a5bd3e0774': 'Previous Baseline'
-    }
+    cfg = {**DEFAULT_EVAL_CONFIG, **(config or {})}
+    report_job_ids = cfg["report_job_ids"]
 
     # テンプレートを読み込む
     with open(template_path, 'r', encoding='utf-8') as f:
@@ -123,17 +151,11 @@ def generate_eval_report(results: Dict[str, Any], template_path: Path, output_pa
         )
 
     # 2.1 Latest Jobの再計算結果
-    latest_job_id = '5cc12453-0c22-40f2-b100-0ad1945a73c9'
+    latest_job_id = cfg["latest_job_id"]
     if latest_job_id in results:
         job_data = results[latest_job_id]
         metrics = job_data.get('metrics', {})
-        report_values = {
-            'avg': 0.8175,
-            'std': 0.0330,
-            'min': 0.7519,
-            'max': 0.8588,
-            'count': 14
-        }
+        report_values = cfg["report_values"]
         actual_values = {
             'avg': metrics.get('avg_coverage', 0.0),
             'std': metrics.get('std_coverage', 0.0),
@@ -176,14 +198,7 @@ def generate_eval_report(results: Dict[str, Any], template_path: Path, output_pa
 
         # ジャンル別カバレッジ詳細
         genre_results = metrics.get('genre_results', [])
-        report_genres = {
-            'ai_data': 0.8409,
-            'consumer_tech': 0.8555,
-            'other': 0.8588,
-            'other.0': 0.7649,
-            'other.2': 0.8437,
-            'other.6': 0.8372
-        }
+        report_genres = cfg["report_genres"]
 
         genre_table = []
         for genre_name, report_coverage in report_genres.items():
@@ -241,7 +256,23 @@ def generate_eval_report(results: Dict[str, Any], template_path: Path, output_pa
     print(f"eval.mdを更新しました: {output_path}")
 
 
-def main():
+def main() -> None:
+    parser = argparse.ArgumentParser(description='Update eval.md from verification results')
+    parser.add_argument(
+        '--config',
+        type=Path,
+        default=None,
+        help='JSON config overriding job UUIDs and expected report stats',
+    )
+    args = parser.parse_args()
+    config = dict(DEFAULT_EVAL_CONFIG)
+    if args.config:
+        with open(args.config, encoding='utf-8') as f:
+            override = json.load(f)
+        if not isinstance(override, dict):
+            raise SystemExit(f'config must be a JSON object: {args.config}')
+        config.update(override)
+
     repo_root = Path(__file__).parent.parent
     template_path = repo_root / 'eval.md'
     output_path = repo_root / 'eval.md'
@@ -250,7 +281,7 @@ def main():
     if results is None:
         return
 
-    generate_eval_report(results, template_path, output_path)
+    generate_eval_report(results, template_path, output_path, config=config)
 
 
 if __name__ == '__main__':
