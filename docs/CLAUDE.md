@@ -27,10 +27,12 @@
 
 | 計画対象 | 必読ドキュメント |
 |---|---|
-| Knowledge Home 全般 | [[knowledge-home-phase0-canonical-contract]], [[alt_knowledge_home_phase_plan]] |
-| イミュータブルデータモデル | IMPL_BASE.md |
-| Projector / Reproject | [[knowledge-home-projection-recovery]], IMPL_PHASE1-6 |
-| 是正・未達事項 | [[knowledge-home-phase0-4-audit-2026-03-18]], [[knowledge-home-phase1-5-remediation-directives-2026-03-18]] |
+| Knowledge Trail | [[knowledge-trail-core-concept]], [[knowledge-trail-implementation-plan]], [[wiki/architecture/knowledge-trail]] |
+| Knowledge Home（今日の入口） | [[knowledge-home-value-position-plan]], [[wiki/architecture/immutable-data-model]] |
+| イミュータブルデータモデル | [[wiki/architecture/immutable-data-model]], Trail §C |
+| Projector / Reproject | [[wiki/services/knowledge-sovereign]], runbooks の reproject 系 |
+| 是正・未達事項（historical audit） | [[knowledge-home-phase0-4-audit-2026-03-18]], [[knowledge-home-phase1-5-remediation-directives-2026-03-18]] |
+| Knowledge Loop（historical） | [[wiki/architecture/knowledge-loop]], [[000940]] — 現行契約として開かない |
 | Acolyte 全般 | [[acolyte/README]], [[acolyte-design-evolution]], ADR 000653-000700 |
 | Acolyte パイプライン | [[acolyte/data-flow]], [[acolyte-checkpoint-resume]] |
 | Acolyte 運用 | runbooks/acolyte-*.md |

@@ -6,7 +6,7 @@ description: |
   次のときに使う:
   - 「計画を立てて」「設計して」「プランを作って」
   - ADR や過去の決定を確認したい
-  - Knowledge Home や reproject-safe / immutable 設計が絡む
+  - Knowledge Trail / Knowledge Home や reproject-safe / immutable 設計が絡む
 user-invocable: true
 allowed-tools: Bash, Read, Glob, Grep, Agent, mcp__obsidian__view, mcp__obsidian__get_workspace_files
 argument-hint: <計画・設計の対象>
@@ -43,15 +43,17 @@ $ARGUMENTS から次を確定する。
 
 | 対象 | 参照先 |
 |---|---|
-| Knowledge Home 全般 | `docs/plan/knowledge-home-phase0-canonical-contract.md` |
-| イミュータブルデータモデル | `docs/plan/IMPL_BASE.md` |
-| 全体フェーズ計画 | `docs/plan/alt_knowledge_home_phase_plan.md` |
-| フェーズ詳細 | `docs/plan/IMPL_PHASE1.md` - `docs/plan/IMPL_PHASE6.md` |
+| Knowledge Trail | `docs/plan/knowledge-trail-core-concept.md` |
+| Trail 実装 wave | `docs/plan/knowledge-trail-implementation-plan.md` |
+| イミュータブルデータモデル | `docs/wiki/architecture/immutable-data-model.md` + Trail §C |
+| Knowledge Home（価値・入口） | `docs/plan/knowledge-home-value-position-plan.md` |
+| Loop / Home phase0 / IMPL_* | **historical** — 現行契約として開かない（[[000940]]） |
 
 ルール:
 
 - 全文を読むのではなく、対象論点の節だけを開く
 - contract と食い違う既存案があるかを先に見る
+- Trail plan は core-concept + implementation-plan の **2 文書上限**（3 つ目を作らない）
 
 ### 3. ADR を少数読む
 
@@ -94,6 +96,7 @@ grep -rl "<keyword>" docs/ADR/ | sort | tail -10
 - read model を source of truth 扱いしている
 - reproject-safe を壊す副作用更新がある
 - feature flag の意図と恒久設計が混線している
+- Loop 時代の語彙（4-bucket / primary surface `/loop`）を現行として扱っている
 
 ### 6. 短いコンテキストブリーフを出す
 

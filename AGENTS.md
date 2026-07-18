@@ -23,7 +23,7 @@
 6. **Communicate** – Summarize changes, list tests, surface risks, and suggest next actions.
 
 ## Repository Map
-- `alt-frontend/` – Next.js 15 + React 19 client (Chakra UI, Vitest, Playwright).
+- `alt-frontend-sv/` – SvelteKit 2 + Svelte 5 Runes client (TailwindCSS v4, Vitest, Playwright).
 - `alt-backend/app/` – Go 1.26 HTTP API in Clean Architecture layers.
 - `alt-backend/sidecar-proxy/` – Go egress proxy enforcing outbound policy.
 - `pre-processor/app/` – Go feed and summarization worker with circuit breakers.
@@ -33,19 +33,21 @@
 - `search-indexer/app/` – Go Meilisearch indexer and search API.
 - `auth-hub/` – Go IAP service bridging Nginx and Ory Kratos.
 - `auth-token-manager/` – Deno OAuth2 token refresher for Inoreader.
+- `knowledge-sovereign/` – Go durable knowledge state owner (Trail / event log / projectors).
 - `rask-log-forwarder/` & `rask-log-aggregator/` – Rust log pipeline (forwarder + ClickHouse aggregator).
-- Support assets: `compose.yaml`, `Makefile`, `scripts/`, `docker/`, `db/`, `.github/`, root `tests/`.
+- Support assets: `compose/compose.yaml` (include stacks), `Makefile`, `scripts/`, `docker/`, `db/`, `.github/`, root `tests/`.
 
 ## Core Tooling & Commands
 - **Stack orchestration**
-  - `make up` – Copies `.env.template` → `.env` if needed, builds images, starts Docker Compose (default profile).
+  - Prefer: `docker compose -f compose/compose.yaml -p alt up -d` (see root `CLAUDE.md`).
+  - `make up` – Copies `.env.template` → `.env` if needed, builds images, starts Docker Compose.
   - `make down` / `make down-volumes` – Stop stack (keep vs. drop volumes).
-  - Compose profiles: add `--profile ollama` for LLM pipeline, `--profile logging` for Rust log services.
-- **Frontend (Next.js)**
-  - Dev server: `pnpm -C alt-frontend dev`
-  - Build: `pnpm -C alt-frontend build`
-  - Tests: `pnpm -C alt-frontend test` (unit), `pnpm -C alt-frontend test:e2e` (requires stack), coverage via `test:coverage`
-  - Quality gates: `pnpm -C alt-frontend fmt`, `pnpm -C alt-frontend lint`
+  - Stacks are Compose **`include:`** files under `compose/` (`ai.yaml`, `logging.yaml`, `sovereign.yaml`, …), not root-level `--profile` flags.
+- **Frontend (SvelteKit / bun)**
+  - Dev server: `cd alt-frontend-sv && bun dev`
+  - Build: `cd alt-frontend-sv && bun run build`
+  - Tests: `cd alt-frontend-sv && bun run test` (unit), `bun run test:e2e` (requires stack), coverage via `test:coverage`
+  - Quality gates: `cd alt-frontend-sv && bun run format`, `bun run lint`, `bun run check`
 - **Backend & Go services**
   - Go tests: `cd <service> && go test ./...` (add `-race -cover` when appropriate)
   - Formatting: `gofmt`, linting via `go vet`
@@ -59,20 +61,21 @@
 - **Deno (auth-token-manager)**
   - Tests: `deno test`
 - **Health checks**
-  - Frontend: `curl http://localhost:3000/api/health`
+  - Frontend (via nginx): `curl http://localhost/health`
   - Backend: `curl http://localhost:9000/v1/health`
+  - BFF: `curl http://localhost:9250/health`
   - Meilisearch: `curl http://localhost:7700/health`
   - Auth Hub: `curl http://localhost:8888/health`
 
 ## Language Playbooks
 - **Go 1.26** – Enforce Clean Architecture boundaries, use `log/slog`, wrap errors with context, propagate `context.Context`, throttle external calls (≥5 s between repeat host hits), prefer table-driven tests and GoMock fakes.
-- **TypeScript/React** – Strict TypeScript (`noImplicitAny`), App Router patterns, Chakra UI theme system, React 19 concurrent features, use Vitest + Testing Library with `userEvent` and `waitFor`.
+- **SvelteKit / TypeScript** – Strict TypeScript, Svelte 5 Runes only (`$state` / `$derived` / `$effect`), TailwindCSS v4, Vitest + Testing Library; use `bun run test` (not bare `bun test`).
 - **Python (FastAPI)** – Dependency injection via containers, async handlers, pytest + `pytest-asyncio`, maintain golden datasets for LLM prompt regressions, sanitize LLM outputs.
 - **Rust 2024** – Favor `async fn` in traits, zero-copy parsing, lock-free data structures, test with `axum-test`, benchmark critical code paths with `criterion`.
 - **Deno TypeScript** – Use `@std/testing` BDD utilities, stub global fetch for token refresh tests, never log secrets.
 
 ## Service Capsules
-- **alt-frontend** – App Router, Chakra themes (Vaporwave, Liquid-Beige, Alt-Paper). Tests via Vitest; Playwright E2E uses page objects. Lint/format before hand-off.
+- **alt-frontend-sv** – SvelteKit App Router at `/`, Alt-Paper theme, Runes-only. Tests via Vitest; Playwright E2E uses page objects. Lint/format (`biome`) before hand-off.
 - **alt-backend** – Echo handlers → Usecase → Port → Gateway → Driver. Respect rate limiting (5 s external API gap). Use `log/slog` and structured error wrapping.
 - **Sidecar Proxy** – Go reverse proxy enforcing outbound allowlists, shared timeouts, header normalization. Test with `net/http/httptest` triad (client → proxy → mock backend).
 - **auth-hub** – Kratos session validator with 5-minute TTL cache. Exposes `/validate` and `/health`; ensure identity headers (`X-Alt-*`) are authoritative.
@@ -81,14 +84,15 @@
 - **news-creator** – FastAPI LLM orchestrator with Clean Architecture layers. Summaries produced via Ollama gateway. Tests mock ports, evaluate prompts via golden datasets and `DeepEval` where applicable.
 - **tag-generator** – FastAPI ML service generating article tags. Emphasizes batch processing, memory hygiene, ML quality checks, and bias detection tests.
 - **search-indexer** – Go service indexing to Meilisearch. Batch size 200, configures searchable/filterable attributes on startup. Integration tests require real Meilisearch.
+- **knowledge-sovereign** – Durable knowledge event log + Trail/Home projectors. Own DB; consumers talk via RPC / events, not shared SQL.
 - **auth-token-manager** – Deno service refreshing Inoreader tokens. Tests stub `fetch`, refactors only after Red/Green.
 - **rask-log-forwarder** – Rust sidecar tailing Docker logs with SIMD parsing, lock-free buffers, disk fallback. Tests cover parsers, collectors, full pipeline with `wiremock`.
 - **rask-log-aggregator** – Rust Axum API ingesting logs into ClickHouse. Uses mock traits for unit tests, `axum-test` for handlers, `criterion` for hot paths.
 
 ## Testing Matrix
-- Frontend unit/component – `pnpm -C alt-frontend test`
-- Frontend lint/format – `pnpm -C alt-frontend lint`, `pnpm -C alt-frontend fmt`
-- Frontend E2E – `pnpm -C alt-frontend test:e2e` (requires `make up`)
+- Frontend unit/component – `cd alt-frontend-sv && bun run test`
+- Frontend lint/format – `cd alt-frontend-sv && bun run lint`, `bun run format`
+- Frontend E2E – `cd alt-frontend-sv && bun run test:e2e` (requires stack)
 - Backend Go suites – `cd alt-backend/app && go test ./...`
 - Go side services – `go test ./...` in respective directories (add `-tags=integration` when noted)
 - Python services – `pytest` (with required env), `uv run pytest`, `uv run mypy`, `uv run ruff check`
@@ -103,13 +107,15 @@
 
 ## Delivery Checklist
 - Plan updated; all steps completed or clearly marked.
-- Changes minimal, relevant, and formatted with project tools (`pnpm fmt`, `gofmt`, `ruff`, etc.).
+- Changes minimal, relevant, and formatted with project tools (`bun run format`, `gofmt`, `ruff`, etc.).
 - Appropriate tests executed and reported.
 - No Compose/Kubernetes drift—legacy assets under `stopped-using-k8s/` untouched.
 - Final message includes short rationale, file references, test evidence, and suggested next steps when applicable.
 
 ## Quick References
 - Root context: `CLAUDE.md`
+- Wiki entry: `docs/wiki/HOME.md` (Trail / sovereign map)
+- Trail contracts: `docs/plan/knowledge-trail-core-concept.md`, `docs/plan/knowledge-trail-implementation-plan.md`
 - Service deep dives: individual `CLAUDE.md` files in each service directory.
-- Observability: enable `logging` profile to run `rask` services and inspect logs via ClickHouse.
-- Health probes: `docker compose ps`, `docker compose logs -f <service>`, `kubectl` commands only when explicitly requested.
+- Observability: include `compose/logging.yaml` (via `compose/compose.yaml`) to run `rask` services and inspect logs via ClickHouse.
+- Health probes: `docker compose -f compose/compose.yaml -p alt ps`, `docker compose -f compose/compose.yaml -p alt logs -f <service>`; `kubectl` only when explicitly requested.
