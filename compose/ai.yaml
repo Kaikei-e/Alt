@@ -112,9 +112,12 @@ services:
         max-file: "3"
 
   # FastAPI application (lightweight, separated from Ollama)
+  # Startup warms BAAI/bge-reranker-v2-m3 (~568M) on CPU; observed peak ~2.0GiB during
+  # cold load (torch + HF fetch). 128m/512m/1g/2g all cgroup-OOM'd (die 137) on first
+  # boot and broke on-the-fly summarize; steady-state settles ~0.9GiB after warmup.
   news-creator:
     container_name: news-creator
-    mem_limit: 128m
+    mem_limit: 3g
     env_file:
       - ../.env
     image: ghcr.io/${GHCR_OWNER:-kaikei-e}/alt-news-creator:${IMAGE_TAG:-main}
@@ -177,7 +180,8 @@ services:
       interval: 30s
       timeout: 5s
       retries: 3
-      start_period: 30s
+      # Cross-encoder warmup (+ optional HF fetch) routinely exceeds 30s.
+      start_period: 180s
     labels:
       - rask.group=news-creator
     logging:
