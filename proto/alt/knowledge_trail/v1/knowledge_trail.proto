@@ -16,6 +16,25 @@ service KnowledgeTrailService {
   // the loop: the resolution drops the branch from the open set and the user's
   // engagement with the target re-surfaces as a footprint (return-diff).
   rpc ResolveBranch(ResolveBranchRequest) returns (ResolveBranchResponse);
+  // EmitTrailOutcome records the observed consequence of a taken branch: the
+  // raw visible dwell on the article the branch opened. Raw measurement only —
+  // engagement classification is a projector-side derivation, never baked into
+  // the emitted fact. One outcome per branch (first write wins server-side),
+  // so retries need no client-minted id.
+  rpc EmitTrailOutcome(EmitTrailOutcomeRequest) returns (EmitTrailOutcomeResponse);
+}
+
+message EmitTrailOutcomeRequest {
+  // branch_key of the taken branch this outcome observes.
+  string branch_key = 1;
+  // item_key of the article the branch opened (e.g. "article:<id>").
+  string item_key = 2;
+  // dwell_ms is the raw visible-time in milliseconds (Page Visibility aware).
+  int64 dwell_ms = 3;
+}
+
+message EmitTrailOutcomeResponse {
+  bool ok = 1;
 }
 
 message ResolveBranchRequest {

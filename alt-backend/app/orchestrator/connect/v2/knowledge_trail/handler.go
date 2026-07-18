@@ -50,6 +50,14 @@ func (h *Handler) ResolveBranch(
 	return connect.NewResponse(&knowledgetrailv1.ResolveBranchResponse{Ok: true}), nil
 }
 
+// EmitTrailOutcome records the raw dwell observed after a taken branch.
+func (h *Handler) EmitTrailOutcome(
+	ctx context.Context,
+	req *connect.Request[knowledgetrailv1.EmitTrailOutcomeRequest],
+) (*connect.Response[knowledgetrailv1.EmitTrailOutcomeResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, nil)
+}
+
 // GetTrail returns the user's footprint spine, reverse-chronological.
 func (h *Handler) GetTrail(
 	ctx context.Context,

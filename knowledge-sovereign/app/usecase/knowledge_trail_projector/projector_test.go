@@ -23,6 +23,7 @@ type fakeRepo struct {
 	upserts    map[string]sovereign_db.TrailFootprint
 	branches   map[string]sovereign_db.TrailBranch
 	states     map[string]string
+	outcomes   map[string]sovereign_db.TrailActOutcome
 }
 
 func newFakeRepo(events []sovereign_db.KnowledgeEvent) *fakeRepo {
@@ -31,7 +32,16 @@ func newFakeRepo(events []sovereign_db.KnowledgeEvent) *fakeRepo {
 		upserts:  map[string]sovereign_db.TrailFootprint{},
 		branches: map[string]sovereign_db.TrailBranch{},
 		states:   map[string]string{},
+		outcomes: map[string]sovereign_db.TrailActOutcome{},
 	}
+}
+
+func (f *fakeRepo) InsertTrailActOutcome(_ context.Context, o sovereign_db.TrailActOutcome, _ int) error {
+	// Insert-only, first write wins — mirrors ON CONFLICT DO NOTHING.
+	if _, exists := f.outcomes[o.OutcomeKey]; !exists {
+		f.outcomes[o.OutcomeKey] = o
+	}
+	return nil
 }
 
 func (f *fakeRepo) UpsertTrailBranch(_ context.Context, _, _ uuid.UUID, b sovereign_db.TrailBranch, _ time.Time, _ int) error {
@@ -256,4 +266,80 @@ func TestProjector_RejectsUntypedBranch(t *testing.T) {
 	assert.Empty(t, repo.branches,
 		"a branch missing any of relation_kind/why/evidence/confidence must never be surfaced (no untyped branch)")
 	assert.Equal(t, int64(4), repo.checkpoint, "checkpoint still advances past rejected branches")
+}
+
+func outcomeEvent(seq int64, eventType, aggregateID, dedupe string, payload map[string]any, user *uuid.UUID) sovereign_db.KnowledgeEvent {
+	body, _ := json.Marshal(payload)
+	return sovereign_db.KnowledgeEvent{
+		EventID:       uuid.New(),
+		EventSeq:      seq,
+		OccurredAt:    time.Date(2026, 7, 18, 10, 0, 0, 0, time.UTC),
+		TenantID:      uuid.New(),
+		UserID:        user,
+		EventType:     eventType,
+		AggregateType: "trail_branch",
+		AggregateID:   aggregateID,
+		DedupeKey:     dedupe,
+		Payload:       body,
+	}
+}
+
+func TestProjector_FoldsTrailActOutcome(t *testing.T) {
+	user := userPtr()
+	repo := newFakeRepo([]sovereign_db.KnowledgeEvent{
+		outcomeEvent(1, "trail.act_outcome.v1", "cluster:u:article:z",
+			"trail.act_outcome.v1:cluster:u:article:z",
+			map[string]any{"branch_key": "cluster:u:article:z", "item_key": "article:z", "dwell_ms": 42000}, user),
+	})
+	require.NoError(t, NewProjector(repo, nil, Config{}).RunBatch(context.Background()))
+
+	require.Len(t, repo.outcomes, 1, "trail.act_outcome.v1 must project into the outcomes side table")
+	o := repo.outcomes["trail.act_outcome.v1:cluster:u:article:z"]
+	assert.Equal(t, "cluster:u:article:z", o.BranchKey)
+	assert.Equal(t, "article:z", o.ItemKey)
+	require.NotNil(t, o.DwellMs, "trail outcomes carry the raw dwell")
+	assert.Equal(t, int64(42000), *o.DwellMs)
+	assert.Empty(t, o.LegacyOutcome)
+	assert.Empty(t, repo.upserts, "an act outcome must never add a row to the spine (D20)")
+	assert.Equal(t, int64(1), repo.checkpoint)
+}
+
+func TestProjector_FoldsLegacyLoopActOutcomeVerbatim(t *testing.T) {
+	user := userPtr()
+	repo := newFakeRepo([]sovereign_db.KnowledgeEvent{
+		outcomeEvent(1, "knowledge_loop.act_outcome.v1", "entry:x",
+			"knowledge_loop.act_outcome.v1:entry:x:default",
+			map[string]any{
+				"acted_event_id": uuid.New().String(),
+				"entry_key":      "article:x",
+				"lens_mode_id":   "default",
+				"outcome":        "engaged",
+				"observed_at":    "2026-05-20T10:00:00Z",
+			}, user),
+	})
+	require.NoError(t, NewProjector(repo, nil, Config{}).RunBatch(context.Background()))
+
+	require.Len(t, repo.outcomes, 1, "historical loop outcomes must keep feeding wear after the retire")
+	o := repo.outcomes["knowledge_loop.act_outcome.v1:entry:x:default"]
+	assert.Equal(t, "article:x", o.ItemKey, "item key comes from the payload entry_key, not the aggregate id")
+	assert.Nil(t, o.DwellMs, "legacy classified outcomes are never faked into milliseconds (D18)")
+	assert.Equal(t, "engaged", o.LegacyOutcome)
+	assert.Empty(t, o.BranchKey)
+	assert.Empty(t, repo.upserts, "legacy outcomes do not add spine rows either")
+}
+
+func TestProjector_ActOutcomeReplayIsDeterministic(t *testing.T) {
+	user := userPtr()
+	events := []sovereign_db.KnowledgeEvent{
+		outcomeEvent(1, "trail.act_outcome.v1", "b1", "trail.act_outcome.v1:b1",
+			map[string]any{"branch_key": "b1", "item_key": "article:a", "dwell_ms": 1000}, user),
+		outcomeEvent(2, "knowledge_loop.act_outcome.v1", "entry:x", "knowledge_loop.act_outcome.v1:entry:x:default",
+			map[string]any{"entry_key": "article:x", "outcome": "no_engagement"}, user),
+	}
+	first := newFakeRepo(events)
+	require.NoError(t, NewProjector(first, nil, Config{}).RunBatch(context.Background()))
+	second := newFakeRepo(events)
+	require.NoError(t, NewProjector(second, nil, Config{}).RunBatch(context.Background()))
+
+	assert.Equal(t, first.outcomes, second.outcomes, "outcome projection must be a deterministic fold of the log")
 }

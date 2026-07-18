@@ -6,6 +6,7 @@ import {
 	FootprintSchema,
 	BranchSchema,
 	ResolveBranchRequestSchema,
+	EmitTrailOutcomeRequestSchema,
 } from "$lib/gen/alt/knowledge_trail/v1/knowledge_trail_pb";
 
 describe("Knowledge Trail API Contract", () => {
@@ -95,6 +96,34 @@ describe("Knowledge Trail API Contract", () => {
 				const b = create(BranchSchema, { branchKey: `${kind}:1`, relationKind: kind });
 				expect(b.relationKind).toBe(kind);
 			}
+		});
+	});
+
+	describe("EmitTrailOutcomeRequest", () => {
+		it("carries the taken branch, the opened item, and raw dwell only", () => {
+			const req = create(EmitTrailOutcomeRequestSchema, {
+				branchKey: "cluster:u:article:z",
+				itemKey: "article:z",
+				dwellMs: 42000n,
+			});
+			expect(req.branchKey).toBe("cluster:u:article:z");
+			expect(req.itemKey).toBe("article:z");
+			expect(req.dwellMs).toBe(42000n);
+			// D18: the request has no outcome classification field — raw dwell only.
+			expect("outcome" in req).toBe(false);
+		});
+
+		it("round-trips dwell through proto serialization", () => {
+			const original = create(EmitTrailOutcomeRequestSchema, {
+				branchKey: "b",
+				itemKey: "article:1",
+				dwellMs: 1n,
+			});
+			const deserialized = fromBinary(
+				EmitTrailOutcomeRequestSchema,
+				toBinary(EmitTrailOutcomeRequestSchema, original),
+			);
+			expect(deserialized.dwellMs).toBe(1n);
 		});
 	});
 
