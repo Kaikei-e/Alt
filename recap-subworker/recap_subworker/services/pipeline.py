@@ -7,6 +7,7 @@ import re
 import time
 import unicodedata
 from collections.abc import Sequence
+from concurrent.futures import ProcessPoolExecutor
 from dataclasses import dataclass
 
 import numpy as np
@@ -118,7 +119,9 @@ class SentenceRecord:
 class EvidencePipeline:
     """Top-level orchestrator for the recap evidence workflow."""
 
-    def __init__(self, *, settings: Settings, embedder: EmbedderPort, process_pool) -> None:
+    def __init__(
+        self, *, settings: Settings, embedder: EmbedderPort, process_pool: ProcessPoolExecutor | None
+    ) -> None:
         self.settings = settings
         self.embedder = embedder
         self.clusterer = Clusterer(settings)
@@ -183,7 +186,6 @@ class EvidencePipeline:
             logger.warning("pipeline.exhausted-after-dedup")
             return response
 
-        classifier_stats = request.metadata.classifier if request.metadata else None
         cluster_params = self._compute_cluster_params(
             len(sentences), request.constraints, classifier_stats
         )

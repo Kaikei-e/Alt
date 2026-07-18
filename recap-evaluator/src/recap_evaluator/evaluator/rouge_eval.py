@@ -124,7 +124,8 @@ class ROUGEEvaluator:
                 "rouge-score is not installed. Install with: pip install rouge-score"
             )
 
-        assert rouge_scorer is not None, "rouge_scorer should be available (checked above)"
+        if rouge_scorer is None:
+            raise RuntimeError("rouge_scorer should be available (checked above)")
         if lang == "ja":
             if self._japanese_scorer is None:
                 self._japanese_scorer = rouge_scorer.RougeScorer(

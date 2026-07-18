@@ -82,14 +82,12 @@ class TestOllamaRemoteEmbedder:
 
             # Each short text is embedded with one API call
             mock_response1 = Mock()
-            mock_response1.json.return_value = {"embeddings": [[0.1, 0.2, 0.3]]}
+            mock_response1.json.return_value = {
+                "embeddings": [[0.1, 0.2, 0.3], [0.4, 0.5, 0.6]]
+            }
             mock_response1.raise_for_status = Mock()
 
-            mock_response2 = Mock()
-            mock_response2.json.return_value = {"embeddings": [[0.4, 0.5, 0.6]]}
-            mock_response2.raise_for_status = Mock()
-
-            mock_client.post.side_effect = [mock_response1, mock_response2]
+            mock_client.post.return_value = mock_response1
 
             config = EmbedderConfig(
                 model_id="test",
@@ -107,38 +105,37 @@ class TestOllamaRemoteEmbedder:
             result = embedder.encode(["sentence 1", "sentence 2"])
 
             assert result.shape == (2, 3)
-            # Each text gets one API call (since they're short)
-            assert mock_client.post.call_count == 2
+            # Short texts are batched into a single /api/embed call
+            assert mock_client.post.call_count == 1
             call_args = mock_client.post.call_args
             assert "http://test-host:11436/api/embed" in call_args[0]
+            assert call_args[1]["json"]["input"] == ["sentence 1", "sentence 2"]
 
     def test_ollama_remote_batching(self):
-        """バッチ処理が正しく動作する（短いテキストは各1回のAPI呼び出し）"""
+        """短いテキストは /api/embed にまとめてバッチ送信される。"""
         with patch("httpx.Client") as mock_client_class:
             mock_client = Mock()
             mock_client_class.return_value = mock_client
 
-            # Each short text gets one API call
+            # Outer encode() uses batch_size=2 → two API calls: [s1,s2] then [s3]
             mock_response1 = Mock()
-            mock_response1.json.return_value = {"embeddings": [[0.1, 0.2]]}
+            mock_response1.json.return_value = {
+                "embeddings": [[0.1, 0.2], [0.3, 0.4]]
+            }
             mock_response1.raise_for_status = Mock()
 
             mock_response2 = Mock()
-            mock_response2.json.return_value = {"embeddings": [[0.3, 0.4]]}
+            mock_response2.json.return_value = {"embeddings": [[0.5, 0.6]]}
             mock_response2.raise_for_status = Mock()
 
-            mock_response3 = Mock()
-            mock_response3.json.return_value = {"embeddings": [[0.5, 0.6]]}
-            mock_response3.raise_for_status = Mock()
-
-            mock_client.post.side_effect = [mock_response1, mock_response2, mock_response3]
+            mock_client.post.side_effect = [mock_response1, mock_response2]
 
             config = EmbedderConfig(
                 model_id="test",
                 distill_model_id="test",
                 backend="ollama-remote",
                 device="cpu",
-                batch_size=2,  # batch_size affects outer loop batching, not API calls
+                batch_size=2,  # batch_size affects outer loop batching
                 cache_size=100,
                 ollama_embed_url="http://test-host:11436",
             )
@@ -147,8 +144,9 @@ class TestOllamaRemoteEmbedder:
             result = embedder.encode(["s1", "s2", "s3"])
 
             assert result.shape == (3, 2)
-            # Each short text gets one API call
-            assert mock_client.post.call_count == 3
+            assert mock_client.post.call_count == 2
+            assert mock_client.post.call_args_list[0][1]["json"]["input"] == ["s1", "s2"]
+            assert mock_client.post.call_args_list[1][1]["json"]["input"] == ["s3"]
 
     def test_ollama_remote_normalization(self):
         """正規化が正しく動作する"""

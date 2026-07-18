@@ -35,6 +35,11 @@ class LearningScheduler:
         # scheduled run.
         self._db_resources: DatabaseResources | None = None
 
+    @property
+    def is_running(self) -> bool:
+        """Whether the scheduler loop is currently active."""
+        return self._running
+
     def _get_db_resources(self) -> DatabaseResources:
         if self._db_resources is None:
             self._db_resources = create_database_resources(self.settings)

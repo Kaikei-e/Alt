@@ -13,7 +13,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, field
 from threading import Lock
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, ClassVar
 
 import structlog
 
@@ -116,7 +116,7 @@ class FaithfulnessEvaluator:
     _NLI_BATCH_SIZE = 16
 
     # Label mapping for different NLI models
-    LABEL_MAPS = {
+    LABEL_MAPS: ClassVar[dict[str, dict[str, str]]] = {
         "default": {
             "entailment": "entailment",
             "contradiction": "contradiction",
@@ -133,7 +133,7 @@ class FaithfulnessEvaluator:
         self,
         model_name: str | None = None,
         device: str | None = None,
-    ):
+    ) -> None:
         """Initialize the faithfulness evaluator.
 
         Args:
@@ -142,7 +142,7 @@ class FaithfulnessEvaluator:
         """
         self._model_name = model_name or self.DEFAULT_MODEL
         self.device = device
-        self._nli = None
+        self._nli: Any | None = None
         self._initialized = False
         self._init_lock = Lock()
 
@@ -157,7 +157,7 @@ class FaithfulnessEvaluator:
         if model_name and "bart" in model_name.lower():
             self._label_map = self.LABEL_MAPS["bart-mnli"]
 
-    def _ensure_initialized(self):
+    def _ensure_initialized(self) -> None:
         """Lazily initialize the NLI pipeline when first needed."""
         if self._initialized:
             return
@@ -358,7 +358,7 @@ class FaithfulnessEvaluator:
             )
 
         results = []
-        for summary, source_sentences in zip(summaries, sources):
+        for summary, source_sentences in zip(summaries, sources, strict=True):
             result = self.detect(
                 summary=summary,
                 source_sentences=source_sentences,

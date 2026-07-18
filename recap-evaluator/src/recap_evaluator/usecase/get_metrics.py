@@ -1,6 +1,8 @@
 """Get metrics usecase — retrieves latest metrics and trends."""
 
-from datetime import datetime
+from collections.abc import Callable
+from datetime import datetime, timedelta
+from typing import Any
 from uuid import UUID
 
 import structlog
@@ -14,7 +16,7 @@ from recap_evaluator.port.database_port import DatabasePort
 logger = structlog.get_logger()
 
 # Key metrics to extract from saved evaluation JSONB
-_TREND_METRICS = {
+_TREND_METRICS: dict[str, Callable[[dict[str, Any]], float | None]] = {
     "genre_macro_f1": lambda m: m.get("genre", {}).get("macro_f1"),
     "cluster_avg_silhouette": lambda m: _avg_cluster_silhouette(m),
     "pipeline_success_rate": lambda m: m.get("pipeline", {}).get("success_rate"),
@@ -22,7 +24,7 @@ _TREND_METRICS = {
 }
 
 
-def _avg_cluster_silhouette(metrics: dict) -> float | None:
+def _avg_cluster_silhouette(metrics: dict[str, Any]) -> float | None:
     cluster = metrics.get("cluster")
     if not cluster:
         return None
@@ -47,7 +49,7 @@ class GetMetricsUsecase:
         self._db = db
         self._thresholds = thresholds
 
-    async def get_latest(self) -> dict:
+    async def get_latest(self) -> dict[str, Any]:
         """Get latest metrics summary across all dimensions."""
         result: dict = {}
 
@@ -93,19 +95,19 @@ class GetMetricsUsecase:
 
         return result
 
-    async def get_evaluation_by_id(self, evaluation_id: UUID) -> dict | None:
+    async def get_evaluation_by_id(self, evaluation_id: UUID) -> dict[str, Any] | None:
         """Get a specific evaluation by ID."""
         return await self._db.fetch_evaluation_by_id(evaluation_id)
 
     async def get_evaluation_history(
         self, evaluation_type: str | None = None, limit: int = 30
-    ) -> list[dict]:
+    ) -> list[dict[str, Any]]:
         """Get evaluation run history."""
         return await self._db.fetch_evaluation_history(
             evaluation_type=evaluation_type, limit=limit
         )
 
-    async def get_trends(self, window_days: int = 30) -> list[dict]:
+    async def get_trends(self, window_days: int = 30) -> list[dict[str, Any]]:
         """Get metric trends from saved evaluation history."""
         history = await self._db.fetch_evaluation_history(limit=window_days)
 
@@ -113,9 +115,9 @@ class GetMetricsUsecase:
             return []
 
         # Build time-series for each key metric
-        trends: list[dict] = []
+        trends: list[dict[str, Any]] = []
         for metric_name, extractor in _TREND_METRICS.items():
-            data_points: list[dict] = []
+            data_points: list[dict[str, Any]] = []
             for record in reversed(history):  # oldest first
                 metrics = record.get("metrics")
                 if not metrics or not isinstance(metrics, dict):
@@ -146,7 +148,7 @@ class GetMetricsUsecase:
 
     @staticmethod
     def _compute_change(
-        data_points: list[dict], days: int, current: float
+        data_points: list[dict[str, Any]], days: int, current: float
     ) -> float | None:
         """Compute relative change over the given window."""
         if len(data_points) < 2:
@@ -155,8 +157,6 @@ class GetMetricsUsecase:
         now = data_points[-1]["timestamp"]
         if isinstance(now, str):
             return None
-
-        from datetime import timedelta
 
         cutoff = now - timedelta(days=days)
         # Find the oldest point within the window

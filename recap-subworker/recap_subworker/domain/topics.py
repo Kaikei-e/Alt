@@ -7,9 +7,12 @@ from collections.abc import Callable
 from functools import lru_cache
 
 import numpy as np
+import structlog
 from sklearn.feature_extraction.text import TfidfVectorizer
 
 from .stopwords import get_stopwords
+
+logger = structlog.get_logger(__name__)
 
 try:
     from nltk.tokenize import RegexpTokenizer
@@ -113,9 +116,13 @@ def _is_informative(term: str, stopwords: set[str]) -> bool:
                     # Reject if spaCy identifies numeric components inside phrases.
                     if any(tok.text.isdigit() or _has_alphanumeric_mixed(tok.text) for tok in doc):
                         return False
-            except Exception:
+            except (RuntimeError, ValueError, TypeError) as exc:
                 # If spaCy fails, fall back to regex validation only.
-                pass
+                logger.debug(
+                    "spacy_validation_failed",
+                    error=str(exc),
+                    error_type=type(exc).__name__,
+                )
 
     # Stage 4: Token-based validation
     tokens = _tokenize_feature(stripped)

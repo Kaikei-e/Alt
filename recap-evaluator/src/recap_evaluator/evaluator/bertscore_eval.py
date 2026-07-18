@@ -12,7 +12,7 @@ References:
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any, Literal
+from typing import TYPE_CHECKING, Any, ClassVar, Literal
 
 import structlog
 
@@ -75,7 +75,7 @@ class BERTScoreEvaluator:
         >>> print(f"F1: {result.f1:.3f}")
     """
 
-    MODEL_MAP: dict[str, str] = {
+    MODEL_MAP: ClassVar[dict[str, str]] = {
         "ja": "cl-tohoku/bert-base-japanese-v3",
         "en": "microsoft/deberta-xlarge-mnli",
     }
@@ -85,7 +85,7 @@ class BERTScoreEvaluator:
         batch_size: int = 32,
         device: str | None = None,
         use_fast_tokenizer: bool = True,
-    ):
+    ) -> None:
         """Initialize the BERTScore evaluator.
 
         Args:
@@ -152,7 +152,8 @@ class BERTScoreEvaluator:
             batch_size=self.batch_size,
         )
 
-        assert bert_score is not None, "bert_score should be available (checked above)"
+        if bert_score is None:
+            raise RuntimeError("bert_score should be available (checked above)")
         P, R, F1 = bert_score(
             candidates,
             references,
@@ -177,7 +178,7 @@ class BERTScoreEvaluator:
             f1_list = F1.tolist()
             result.individual_scores = [
                 {"precision": p, "recall": r, "f1": f}
-                for p, r, f in zip(p_list, r_list, f1_list)
+                for p, r, f in zip(p_list, r_list, f1_list, strict=True)
             ]
 
         logger.info(

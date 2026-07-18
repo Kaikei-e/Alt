@@ -5,10 +5,14 @@ import unicodedata
 from abc import ABC, abstractmethod
 from enum import Enum
 
+import structlog
+
 try:
     from janome.tokenizer import Tokenizer as JanomeTokenizer
 except ImportError:
     JanomeTokenizer = None
+
+logger = structlog.get_logger(__name__)
 
 
 class ClassificationLanguage(Enum):
@@ -67,8 +71,12 @@ class JapaneseTokenizer(Tokenizer):
                 results = [token.surface for token in tokens if token.surface.strip()]
                 if results:
                     return results
-            except Exception:
-                pass
+            except (RuntimeError, ValueError, TypeError, AttributeError) as exc:
+                logger.debug(
+                    "janome_tokenize_failed",
+                    error=str(exc),
+                    error_type=type(exc).__name__,
+                )
         return self._fallback_tokenize(text)
 
     def _fallback_tokenize(self, text: str) -> list[str]:

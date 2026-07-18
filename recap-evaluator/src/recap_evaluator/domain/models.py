@@ -3,6 +3,7 @@
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
+from typing import Any
 from uuid import UUID
 
 
@@ -48,7 +49,7 @@ class GenreMetrics:
     f1_score: float = 0.0
     support: int = 0
 
-    def to_dict(self) -> dict:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "genre": self.genre,
             "tp": self.tp,
@@ -76,7 +77,7 @@ class GenreEvaluationResult:
     total_samples: int = 0
     alert_level: AlertLevel = AlertLevel.OK
 
-    def to_dict(self) -> dict:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "macro_precision": self.macro_precision,
             "macro_recall": self.macro_recall,
@@ -113,7 +114,7 @@ class ClusterMetrics:
     max_cluster_size: int = 0
     alert_level: AlertLevel = AlertLevel.OK
 
-    def to_dict(self) -> dict:
+    def to_dict(self) -> dict[str, Any]:
         d: dict = {
             "silhouette_score": self.silhouette_score,
             "davies_bouldin_index": self.davies_bouldin_index,
@@ -177,7 +178,7 @@ class SummaryMetrics:
     success_count: int = 0
     alert_level: AlertLevel = AlertLevel.OK
 
-    def to_dict(self) -> dict:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "coherence": self.coherence,
             "consistency": self.consistency,
@@ -217,7 +218,7 @@ class PipelineMetrics:
     stage_success_rates: dict[str, float] = field(default_factory=dict)
     alert_level: AlertLevel = AlertLevel.OK
 
-    def to_dict(self) -> dict:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "total_jobs": self.total_jobs,
             "completed_jobs": self.completed_jobs,

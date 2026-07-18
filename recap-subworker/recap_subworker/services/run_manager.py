@@ -366,6 +366,25 @@ class RunManager:
             # For other exceptions, re-raise to be handled by the caller
             raise
 
+
+    @staticmethod
+    def _fallback_classification_run_record(
+        run_id: int,
+        job_id: UUID,
+        request_payload: dict[str, Any],
+    ) -> RunRecord:
+        """Build a RunRecord from insert inputs when post-insert fetch fails."""
+        return RunRecord(
+            run_id=run_id,
+            job_id=job_id,
+            genre="classification",
+            status="running",
+            cluster_count=0,
+            request_payload=request_payload,
+            response_payload=None,
+            error_message=None,
+        )
+
     async def create_classification_run(
         self, submission: ClassificationRunSubmission
     ) -> RunRecord:
@@ -437,22 +456,14 @@ class RunManager:
         try:
             record = await self.get_run(run_id)
             if record is None:
-                # Fallback: construct record from inserted data
                 LOGGER.warning(
                     "classification.run.get_failed_fallback",
                     run_id=run_id,
                     job_id=str(submission.job_id),
                     message="Failed to fetch run after insert, constructing from inserted data",
                 )
-                record = RunRecord(
-                    run_id=run_id,
-                    job_id=submission.job_id,
-                    genre="classification",
-                    status="running",
-                    cluster_count=0,
-                    request_payload=request_envelope,
-                    response_payload=None,
-                    error_message=None,
+                record = self._fallback_classification_run_record(
+                    run_id, submission.job_id, request_envelope
                 )
         except Exception as exc:
             # If get_run fails (e.g., database connection error), construct record from inserted data
@@ -464,15 +475,8 @@ class RunManager:
                 error=str(exc),
                 message="Failed to fetch run after insert, constructing from inserted data",
             )
-            record = RunRecord(
-                run_id=run_id,
-                job_id=submission.job_id,
-                genre="classification",
-                status="running",
-                cluster_count=0,
-                request_payload=request_envelope,
-                response_payload=None,
-                error_message=None,
+            record = self._fallback_classification_run_record(
+                run_id, submission.job_id, request_envelope
             )
 
         task = asyncio.create_task(self._guarded_process_classification_run(run_id))

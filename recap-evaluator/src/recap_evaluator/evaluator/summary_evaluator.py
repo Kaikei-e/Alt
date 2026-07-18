@@ -176,13 +176,22 @@ class SummaryEvaluator:
         ))
 
         results = await asyncio.gather(
-            *[task[1] for task in tasks], return_exceptions=True
+            *[task[1] for task in tasks],
+            return_exceptions=True,
         )
+        # gather(return_exceptions=True) is intentional: each evaluator axis is
+        # independent and we want partial metrics when one axis fails. TaskGroup
+        # would cancel siblings on the first exception (DECREE §6 prefers
+        # TaskGroup for all-or-nothing fan-out; this path needs best-effort).
 
         for i, (name, _) in enumerate(tasks):
             result = results[i]
             if isinstance(result, BaseException):
-                logger.error(f"{name} evaluation failed", error=str(result))
+                logger.error(
+                    "evaluator_axis_failed",
+                    evaluator=name,
+                    error=str(result),
+                )
                 continue
             self._apply_result(metrics, name, result)
 

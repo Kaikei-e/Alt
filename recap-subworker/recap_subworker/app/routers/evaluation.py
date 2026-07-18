@@ -341,7 +341,15 @@ async def evaluate_genres(
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Evaluation failed: {e!s}") from e
+        import structlog
+
+        structlog.get_logger(__name__).error(
+            "evaluation_failed",
+            error=str(e),
+            error_type=type(e).__name__,
+            exc_info=True,
+        )
+        raise HTTPException(status_code=500, detail="Evaluation failed") from e
 
 
 class EvaluateSummaryRequest(BaseModel):

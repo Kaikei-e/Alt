@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections import OrderedDict
-from collections.abc import Hashable, Iterator
+from collections.abc import Hashable
 from threading import Lock
 from typing import TypeVar
 
@@ -43,6 +43,7 @@ class LRUCache[K: Hashable, V]:
                 self._store.popitem(last=False)
             self._store[key] = value
 
-    def items(self) -> Iterator[tuple[K, V]]:
+    def items(self) -> list[tuple[K, V]]:
         with self._lock:
-            return iter(self._store.items())
+            # Snapshot under the lock so callers can iterate safely after release.
+            return list(self._store.items())
