@@ -10,7 +10,7 @@ from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
 from acolyte.domain.eval import EvalDimension, EvalResult
-from acolyte.usecase.eval.checklist_evaluator import ChecklistEvaluator
+from acolyte.usecase.eval.checklist_evaluator import ChecklistEvaluator, ChecklistItem
 
 if TYPE_CHECKING:
     from acolyte.usecase.eval.rubric_evaluator import RubricEvaluator
@@ -51,7 +51,7 @@ class EvalRunner:
         dimensions.append(
             EvalDimension(
                 name="coverage",
-                score=_item_score(cl_result.items, "section_"),
+                score=_item_score(cl_result.items, "section_present:", "section_length:"),
                 protocol="checklist",
             )
         )
@@ -78,9 +78,9 @@ class EvalRunner:
         )
 
 
-def _item_score(items: list, prefix: str) -> float:
-    """Score for checklist items matching a name prefix."""
-    matching = [i for i in items if i.name.startswith(prefix)]
+def _item_score(items: list[ChecklistItem], *prefixes: str) -> float:
+    """Score for checklist items matching any of the given name prefixes."""
+    matching = [i for i in items if any(i.name.startswith(p) for p in prefixes)]
     if not matching:
         return 1.0  # No items to check = pass
     return sum(1 for i in matching if i.passed) / len(matching)

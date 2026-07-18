@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import Enum
-from typing import Protocol
+from typing import Any, Protocol
 
 
 class LLMMode(Enum):
@@ -32,7 +32,7 @@ class LLMProviderPort(Protocol):
         temperature: float | None = None,
         top_p: float | None = None,
         top_k: int | None = None,
-        format: dict | None = None,
+        output_schema: dict[str, Any] | None = None,
         think: bool | None = None,
         mode: LLMMode | None = None,
         system_prompt: str | None = None,

@@ -278,7 +278,7 @@ async def generate_xml_validated[T: "BaseModel"](  # noqa: PLR0913 — public ut
 ) -> T:
     """Generate LLM output, parse as XML DSL, validate with Pydantic.
 
-    Unlike generate_validated(), this does NOT inject format= into llm_kwargs.
+    Unlike generate_validated(), this does NOT inject output_schema into llm_kwargs.
     The LLM generates free text with XML tags, parsed by our 3-layer pipeline.
     """
     adapter = TypeAdapter(model_cls)

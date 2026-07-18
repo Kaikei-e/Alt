@@ -8,6 +8,7 @@ import ssl
 import subprocess
 import tempfile
 from pathlib import Path
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -135,3 +136,25 @@ def test_watch_cert_rotation_cancels_cleanly(tmp_path: Path) -> None:
             await task
 
     asyncio.run(runner())
+
+
+def test_watch_cert_rotation_logs_warning_on_failure(tmp_path: Path) -> None:
+    """Transient watcher failures must be visible at WARNING (not debug-only)."""
+    reloader = MagicMock()
+    reloader.maybe_reload.side_effect = OSError("boom")
+
+    with patch("acolyte.infra.mtls_client._logger") as mock_logger:
+
+        async def runner() -> None:
+            task = asyncio.create_task(watch_cert_rotation(reloader, interval_seconds=0.01))
+            await asyncio.sleep(0.05)
+            task.cancel()
+            with pytest.raises(asyncio.CancelledError):
+                await task
+
+        asyncio.run(runner())
+
+    mock_logger.warning.assert_called()
+    assert any(
+        "cert_rotation_iteration_failed" in str(c) for c in mock_logger.warning.call_args_list
+    )

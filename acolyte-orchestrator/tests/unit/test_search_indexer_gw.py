@@ -9,9 +9,12 @@ No url or published_at in response.
 
 from __future__ import annotations
 
+from unittest.mock import patch
+
 import httpx
 import pytest
 
+import acolyte.gateway.search_indexer_gw as gw_mod
 from acolyte.config.settings import Settings
 from acolyte.gateway.memory_content_store import MemoryContentStore
 from acolyte.gateway.search_indexer_gw import SearchIndexerGateway
@@ -200,3 +203,25 @@ async def test_search_recaps_returns_empty(
         hits = await gw.search_recaps("technology trends")
 
     assert hits == []
+
+
+@pytest.mark.asyncio
+async def test_stub_methods_emit_warning_once(
+    settings: Settings,
+    mock_transport: httpx.MockTransport,
+    content_store: MemoryContentStore,
+) -> None:
+    """Unimplemented REST stubs must warn once so empty != unimplemented is visible."""
+    gw_mod._stub_warned.clear()
+    with patch.object(gw_mod.logger, "warning") as warn:
+        async with httpx.AsyncClient(transport=mock_transport, base_url="http://fake:9300") as client:
+            gw = SearchIndexerGateway(client, settings, content_store)
+            await gw.search_recaps("q")
+            await gw.search_recaps("q2")
+            await gw.fetch_article_metadata(["a1"])
+            await gw.fetch_article_metadata(["a2"])
+
+    # One warning per stub method, not per call
+    assert warn.call_count == 2
+    event_methods = {c.kwargs.get("method") for c in warn.call_args_list}
+    assert event_methods == {"search_recaps", "fetch_article_metadata"}

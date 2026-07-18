@@ -53,7 +53,7 @@ async def generate_validated[T: "BaseModel"](
     """
     adapter = TypeAdapter(model_cls)
     # Inject JSON schema as Ollama format parameter for GBNF grammar enforcement
-    llm_kwargs.setdefault("format", model_cls.model_json_schema())
+    llm_kwargs.setdefault("output_schema", model_cls.model_json_schema())
 
     last_error: Exception | None = None
     budget_increased = False

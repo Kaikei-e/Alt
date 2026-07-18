@@ -9,17 +9,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, field
 
-META_PATTERNS = [
-    "情報が不足",
-    "トピックが明示されて",
-    "一般的な知識",
-    "データを提供してください",
-    "具体的な情報がありません",
-    "I don't have",
-    "As an AI",
-    "I cannot provide",
-    "As a language model",
-]
+from acolyte.domain.meta_patterns import META_PATTERNS
 
 MIN_SECTION_LENGTH = 200
 

@@ -9,7 +9,7 @@ Design notes (from ADR-579, ADR-632):
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import structlog
 
@@ -38,8 +38,8 @@ def _build_base_options(settings: Settings) -> dict:
 class OllamaGateway:
     """LLM text generation via Ollama API.
 
-    Structured output (format != None): uses /api/chat with think=false.
-    Free-text generation (format == None): uses /api/generate with optional thinking.
+    Structured output (output_schema != None): uses /api/chat with think=false.
+    Free-text generation (output_schema == None): uses /api/generate with optional thinking.
     """
 
     def __init__(self, http_client: httpx.AsyncClient, settings: Settings) -> None:
@@ -69,7 +69,7 @@ class OllamaGateway:
         temperature: float | None = None,
         top_p: float | None = None,
         top_k: int | None = None,
-        format: dict | None = None,
+        output_schema: dict[str, Any] | None = None,
         think: bool | None = None,
         mode: LLMMode | None = None,
         system_prompt: str | None = None,
@@ -77,7 +77,7 @@ class OllamaGateway:
         """Generate text via Ollama.
 
         When mode is set, uses mode defaults for temperature/num_predict (explicit kwargs override).
-        Routes: STRUCTURED → /api/chat, LONGFORM → /api/generate, None → format-based routing.
+        Routes: STRUCTURED → /api/chat, LONGFORM → /api/generate, None → schema-based routing.
         When system_prompt is provided, always routes through /api/chat with a
         [system, user] messages array so task framing lives in the system role.
         """
@@ -109,18 +109,18 @@ class OllamaGateway:
                 system_prompt, prompt, resolved_model, options, think=resolved_think
             )
 
-        # Endpoint routing: mode-based when set, format-based otherwise
+        # Endpoint routing: mode-based when set, schema-based otherwise
         if mode == LLMMode.STRUCTURED:
-            if format:
-                return await self._generate_structured(prompt, resolved_model, options, format)
+            if output_schema:
+                return await self._generate_structured(prompt, resolved_model, options, output_schema)
             # XML DSL nodes: /api/chat without format, think=false (#14793)
             return await self._generate_chat_freetext(prompt, resolved_model, options, think=False)
         if mode == LLMMode.LONGFORM:
             # Writer: /api/chat without format, think controlled by setting (#14793)
             return await self._generate_chat_freetext(prompt, resolved_model, options, think=self._longform_think)
-        # Fallback: format-based routing (backward compat)
-        if format is not None:
-            return await self._generate_structured(prompt, resolved_model, options, format)
+        # Fallback: schema-based routing (backward compat)
+        if output_schema is not None:
+            return await self._generate_structured(prompt, resolved_model, options, output_schema)
         return await self._generate_freetext(prompt, resolved_model, options, think=think)
 
     async def _generate_chat_with_system(
@@ -166,13 +166,13 @@ class OllamaGateway:
         prompt: str,
         model: str,
         options: dict,
-        format: dict,
+        output_schema: dict[str, Any],
     ) -> LLMResponse:
         """Structured output via /api/chat. No think parameter when format is set (Gemma4 #15260)."""
         payload: dict = {
             "model": model,
             "messages": [{"role": "user", "content": prompt}],
-            "format": format,
+            "format": output_schema,
             "stream": False,
             "options": options,
         }

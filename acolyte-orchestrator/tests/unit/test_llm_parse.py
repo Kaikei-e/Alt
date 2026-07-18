@@ -90,7 +90,7 @@ async def test_passes_format_and_kwargs() -> None:
     await generate_validated(llm, "prompt", SampleOutput, temperature=0, num_predict=512)
     assert llm.captured_kwargs["temperature"] == 0
     assert llm.captured_kwargs["num_predict"] == 512
-    assert "format" in llm.captured_kwargs
+    assert "output_schema" in llm.captured_kwargs
 
 
 class ErrorThenSuccessLLM:

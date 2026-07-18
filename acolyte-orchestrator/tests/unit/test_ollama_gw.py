@@ -53,7 +53,7 @@ async def test_uses_chat_endpoint_for_structured_output() -> None:
     gw = OllamaGateway(client, _make_settings())
 
     schema = {"type": "object", "properties": {"reasoning": {"type": "string"}}}
-    result = await gw.generate("test prompt", format=schema, temperature=0)
+    result = await gw.generate("test prompt", output_schema=schema, temperature=0)
 
     assert len(captured_requests) == 1
     assert "/api/chat" in str(captured_requests[0].url)
@@ -113,7 +113,7 @@ async def test_chat_response_extracts_eval_count() -> None:
     client = _mock_transport(handler)
     gw = OllamaGateway(client, _make_settings())
 
-    result = await gw.generate("test", format={"type": "object"}, temperature=0)
+    result = await gw.generate("test", output_schema={"type": "object"}, temperature=0)
 
     assert result.completion_tokens == 512
     assert result.prompt_tokens == 100
@@ -138,7 +138,7 @@ async def test_chat_does_not_send_think_parameter() -> None:
     client = _mock_transport(handler)
     gw = OllamaGateway(client, _make_settings())
 
-    await gw.generate("test", format={"type": "object"}, temperature=0)
+    await gw.generate("test", output_schema={"type": "object"}, temperature=0)
 
     body = json.loads(captured_requests[0].content)
     assert "think" not in body
@@ -167,7 +167,7 @@ async def test_structured_mode_uses_chat_endpoint() -> None:
     client = _mock_transport(handler)
     gw = OllamaGateway(client, _make_settings())
 
-    await gw.generate("test", format={"type": "object"}, mode=LLMMode.STRUCTURED)
+    await gw.generate("test", output_schema={"type": "object"}, mode=LLMMode.STRUCTURED)
 
     assert len(captured_requests) == 1
     assert "/api/chat" in str(captured_requests[0].url)
@@ -292,7 +292,7 @@ async def test_mode_defaults_overridden_by_explicit_kwargs() -> None:
     client = _mock_transport(handler)
     gw = OllamaGateway(client, _make_settings())
 
-    await gw.generate("test", format={"type": "object"}, mode=LLMMode.STRUCTURED, temperature=0.5)
+    await gw.generate("test", output_schema={"type": "object"}, mode=LLMMode.STRUCTURED, temperature=0.5)
 
     body = json.loads(captured_requests[0].content)
     assert body["options"]["temperature"] == 0.5
@@ -317,7 +317,7 @@ async def test_mode_none_falls_back_to_format_routing() -> None:
     client = _mock_transport(handler)
     gw = OllamaGateway(client, _make_settings())
 
-    await gw.generate("test", format={"type": "object"}, temperature=0)
+    await gw.generate("test", output_schema={"type": "object"}, temperature=0)
 
     assert "/api/chat" in str(captured_requests[0].url)
 
@@ -341,7 +341,7 @@ async def test_structured_mode_num_predict_from_settings() -> None:
     client = _mock_transport(handler)
     gw = OllamaGateway(client, _make_settings(structured_num_predict=2048))
 
-    await gw.generate("test", format={"type": "object"}, mode=LLMMode.STRUCTURED)
+    await gw.generate("test", output_schema={"type": "object"}, mode=LLMMode.STRUCTURED)
 
     body = json.loads(captured_requests[0].content)
     assert body["options"]["num_predict"] == 2048

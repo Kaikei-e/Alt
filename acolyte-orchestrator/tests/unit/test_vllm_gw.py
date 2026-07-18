@@ -87,7 +87,7 @@ async def test_structured_mode_sends_response_format() -> None:
 
     gw = VllmGateway(_mock_transport(handler), _make_settings())
     schema = {"type": "object", "properties": {"topics": {"type": "array"}}}
-    await gw.generate("list topics", format=schema, mode=LLMMode.STRUCTURED)
+    await gw.generate("list topics", output_schema=schema, mode=LLMMode.STRUCTURED)
 
     body = json.loads(captured[0].content)
     assert body["response_format"]["type"] == "json_schema"
@@ -105,7 +105,7 @@ async def test_structured_mode_temperature_zero() -> None:
         return httpx.Response(200, json=_openai_response())
 
     gw = VllmGateway(_mock_transport(handler), _make_settings())
-    await gw.generate("test", format={"type": "object"}, mode=LLMMode.STRUCTURED)
+    await gw.generate("test", output_schema={"type": "object"}, mode=LLMMode.STRUCTURED)
 
     body = json.loads(captured[0].content)
     assert body["temperature"] == 0
@@ -121,7 +121,7 @@ async def test_structured_mode_disables_thinking() -> None:
         return httpx.Response(200, json=_openai_response())
 
     gw = VllmGateway(_mock_transport(handler), _make_settings())
-    await gw.generate("test", format={"type": "object"}, mode=LLMMode.STRUCTURED)
+    await gw.generate("test", output_schema={"type": "object"}, mode=LLMMode.STRUCTURED)
 
     body = json.loads(captured[0].content)
     assert body["chat_template_kwargs"]["enable_thinking"] is False
@@ -211,7 +211,7 @@ async def test_structured_num_predict_from_settings() -> None:
         return httpx.Response(200, json=_openai_response())
 
     gw = VllmGateway(_mock_transport(handler), _make_settings(structured_num_predict=2048))
-    await gw.generate("test", format={"type": "object"}, mode=LLMMode.STRUCTURED)
+    await gw.generate("test", output_schema={"type": "object"}, mode=LLMMode.STRUCTURED)
 
     body = json.loads(captured[0].content)
     assert body["max_tokens"] == 2048
@@ -246,7 +246,7 @@ async def test_explicit_temperature_overrides_mode_default() -> None:
         return httpx.Response(200, json=_openai_response())
 
     gw = VllmGateway(_mock_transport(handler), _make_settings())
-    await gw.generate("test", format={"type": "object"}, mode=LLMMode.STRUCTURED, temperature=0.5)
+    await gw.generate("test", output_schema={"type": "object"}, mode=LLMMode.STRUCTURED, temperature=0.5)
 
     body = json.loads(captured[0].content)
     assert body["temperature"] == 0.5
@@ -352,7 +352,7 @@ async def test_no_mode_with_format_sends_response_format() -> None:
         return httpx.Response(200, json=_openai_response())
 
     gw = VllmGateway(_mock_transport(handler), _make_settings())
-    await gw.generate("test", format={"type": "object"}, temperature=0)
+    await gw.generate("test", output_schema={"type": "object"}, temperature=0)
 
     body = json.loads(captured[0].content)
     assert "response_format" in body
@@ -374,3 +374,38 @@ async def test_no_mode_without_format_is_freetext() -> None:
     body = json.loads(captured[0].content)
     assert "response_format" not in body
     assert result.text == "freetext output"
+
+
+@pytest.mark.asyncio
+async def test_null_content_falls_back_to_empty_string() -> None:
+    """Tool-call / filtered responses with content=null must not TypeError."""
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            json={
+                "id": "chatcmpl-test",
+                "model": "qwen3.5-27b",
+                "choices": [{"index": 0, "message": {"role": "assistant", "content": None}, "finish_reason": "stop"}],
+                "usage": {"prompt_tokens": 1, "completion_tokens": 0, "total_tokens": 1},
+            },
+        )
+
+    gw = VllmGateway(_mock_transport(handler), _make_settings())
+    result = await gw.generate("test")
+    assert result.text == ""
+
+
+@pytest.mark.asyncio
+async def test_empty_choices_falls_back_to_empty_string() -> None:
+    """Empty choices array must not IndexError."""
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            json={"id": "chatcmpl-test", "model": "qwen3.5-27b", "choices": [], "usage": {}},
+        )
+
+    gw = VllmGateway(_mock_transport(handler), _make_settings())
+    result = await gw.generate("test")
+    assert result.text == ""

@@ -77,3 +77,27 @@ async def test_eval_runner_dimension_map() -> None:
     assert "task_fulfillment" in dim_map
     assert "coverage" in dim_map
     assert "presentation" in dim_map
+
+
+@pytest.mark.asyncio
+async def test_coverage_excludes_section_generated_items() -> None:
+    """Coverage must not double-count task_fulfillment's section_generated:* items."""
+    runner = EvalRunner(checklist=ChecklistEvaluator())
+    # Missing section body → section_generated fails AND section_present fails.
+    # If coverage wrongly includes section_generated, both fail and score stays 0;
+    # with a partial pass we can detect dilution. Use a present-but-short body so
+    # section_present passes and section_length fails → coverage = 0.5 when
+    # section_generated is excluded; would be 0.33 if section_generated were included.
+    short_body = "AI short"  # < MIN_SECTION_LENGTH
+    result = await runner.evaluate(
+        report_id="r-4",
+        run_id="run-4",
+        sections={"summary": short_body},
+        evidence=[],
+        scope={"topic": "AI"},
+        outline=[{"key": "summary", "title": "Summary"}],
+    )
+    assert result.dimension_map["coverage"] == 0.5
+    tf = next(d for d in result.dimensions if d.name == "task_fulfillment")
+    names = [i["name"] for i in tf.details["items"]]
+    assert any(n.startswith("section_generated:") for n in names)

@@ -6,8 +6,8 @@ from datetime import UTC, datetime
 from uuid import UUID, uuid4
 
 from acolyte.domain.brief import ReportBrief
+from acolyte.domain.exceptions import StaleVersionError
 from acolyte.domain.report import ChangeItem, Report, ReportSection, ReportVersion, SectionVersion
-from acolyte.gateway.postgres_report_gw import StaleVersionError
 
 
 class MemoryReportGateway:

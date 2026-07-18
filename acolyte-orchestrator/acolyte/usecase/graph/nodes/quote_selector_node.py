@@ -15,7 +15,7 @@ from typing import TYPE_CHECKING
 
 import structlog
 
-from acolyte.domain.compressed_evidence import select_top_sentences
+from acolyte.domain.compressed_evidence import CompressedSpan, select_top_sentences
 from acolyte.domain.query_facet import render_query_string
 from acolyte.domain.quote_selection import QuoteSelectorOutput, SelectedQuote
 from acolyte.port.llm_provider import LLMMode
@@ -90,7 +90,7 @@ def _resolve_prompt_body(
 
 
 def _spans_to_quotes(
-    spans: list,
+    spans: list[CompressedSpan],
     raw_body: str,
     source_id: str,
     source_title: str,

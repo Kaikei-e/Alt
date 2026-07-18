@@ -9,7 +9,7 @@ from urllib.parse import urlparse, urlunparse
 from pydantic_settings import BaseSettings
 
 
-def _safe_load_quota_json(raw: str) -> dict | None:
+def _safe_load_quota_json(raw: str) -> dict[str, object] | None:
     """Parse the section-quota JSON and return None on any structural issue.
 
     Wrapping the two-type ``except`` avoids ``ruff format`` 0.15.9 removing
@@ -78,6 +78,10 @@ class Settings(BaseSettings):
     # Checkpointer
     checkpoint_enabled: bool = False
 
+    # Peer identity middleware — strict=True rejects missing/unknown peer CN.
+    # False during mTLS rollout; flip via PEER_IDENTITY_STRICT=true at cutover.
+    peer_identity_strict: bool = False
+
     # Content store — bounded LRU cache for article bodies (process-global,
     # shared across every run; see MemoryContentStore docstring).
     content_store_max_size: int = 2000
@@ -144,8 +148,7 @@ class Settings(BaseSettings):
         """Resolve DB DSN, replacing password from file if configured."""
         if self.acolyte_db_password_file:
             try:
-                with Path(self.acolyte_db_password_file).open() as f:
-                    password = f.read().strip()
+                password = Path(self.acolyte_db_password_file).read_text().strip()
             except OSError as exc:
                 raise RuntimeError(  # noqa: TRY003 — fail-fast startup config error, single call site
                     f"Failed to read acolyte_db_password_file={self.acolyte_db_password_file!r}: {exc}"
