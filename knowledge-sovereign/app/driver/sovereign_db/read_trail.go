@@ -113,10 +113,7 @@ JOIN item_wear iw ON iw.item_key = f.item_key
 LEFT JOIN knowledge_home_items khi
   ON khi.user_id = f.user_id
   AND khi.item_key = f.item_key
-  AND khi.projection_version = COALESCE((
-    SELECT version FROM knowledge_projection_versions
-    WHERE status = 'active' ORDER BY version DESC LIMIT 1
-  ), 1)
+  AND khi.projection_version = `+activeProjectionVersionSQL+`
 %s
 ORDER BY f.occurred_at DESC, f.footprint_key DESC
 LIMIT $%d`, where.String(), argPos)
@@ -139,7 +136,7 @@ LIMIT $%d`, where.String(), argPos)
 		); err != nil {
 			return nil, "", false, fmt.Errorf("GetTrailFootprints scan: %w", err)
 		}
-		_ = json.Unmarshal(tagsJSON, &fp.Tags)
+		unmarshalJSONWarn(tagsJSON, &fp.Tags, "tags_json")
 		footprints = append(footprints, fp)
 	}
 	if err := rows.Err(); err != nil {
@@ -237,7 +234,7 @@ func (r *Repository) GetOpenTrailBranches(ctx context.Context, userID uuid.UUID)
 	// target_title carries a read-time display fallback for branches whose stored
 	// title is empty (title-less targets already in the log, before the planner
 	// title gate): live home title → excerpt snippet → source host → item key.
-	const q = `
+	q := `
 SELECT b.branch_key, b.anchor_item_key, b.relation_kind, b.why, b.evidence_refs_json,
        b.confidence, b.target_item_key,
        COALESCE(NULLIF(b.target_title, ''),
@@ -249,10 +246,7 @@ FROM knowledge_trail_branches b
 LEFT JOIN knowledge_home_items khi
   ON khi.user_id = b.user_id
   AND khi.item_key = b.target_item_key
-  AND khi.projection_version = COALESCE((
-    SELECT version FROM knowledge_projection_versions
-    WHERE status = 'active' ORDER BY version DESC LIMIT 1
-  ), 1)
+  AND khi.projection_version = ` + activeProjectionVersionSQL + `
 WHERE b.user_id = $1 AND b.state = 'open'
 ORDER BY b.created_at DESC, b.branch_key DESC`
 	rows, err := r.pool.Query(ctx, q, userID)
@@ -269,7 +263,7 @@ ORDER BY b.created_at DESC, b.branch_key DESC`
 			&refsJSON, &b.Confidence, &b.TargetItemKey, &b.TargetTitle); err != nil {
 			return nil, fmt.Errorf("GetOpenTrailBranches scan: %w", err)
 		}
-		_ = json.Unmarshal(refsJSON, &b.EvidenceRefs)
+		unmarshalJSONWarn(refsJSON, &b.EvidenceRefs, "evidence_refs_json")
 		branches = append(branches, b)
 	}
 	return branches, rows.Err()
@@ -296,10 +290,9 @@ func (r *Repository) GetLatestFootprintAnchor(ctx context.Context, userID uuid.U
 // state to decide what to emit); the projector that folds the resulting event
 // stays payload-only.
 func (r *Repository) DeriveTrailClusterCandidates(ctx context.Context, userID uuid.UUID, limit int) ([]TrailClusterCandidate, error) {
-	const q = `
+	q := `
 WITH active_version AS (
-  SELECT COALESCE((SELECT version FROM knowledge_projection_versions
-                   WHERE status = 'active' ORDER BY version DESC LIMIT 1), 1) AS v
+  SELECT ` + activeProjectionVersionSQL + ` AS v
 ),
 user_tags AS (
   SELECT DISTINCT lower(t.tag) AS tag

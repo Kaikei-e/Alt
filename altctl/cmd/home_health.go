@@ -1,9 +1,7 @@
 package cmd
 
 import (
-	"context"
 	"fmt"
-	"time"
 
 	"github.com/spf13/cobra"
 
@@ -21,11 +19,6 @@ Example:
 }
 
 func runHomeHealth(cmd *cobra.Command, args []string) error {
-	client, err := newAdminClient(cmd)
-	if err != nil {
-		return err
-	}
-
 	reqBody := map[string]interface{}{}
 	var resp struct {
 		ActiveVersion int    `json:"activeVersion"`
@@ -40,26 +33,25 @@ func runHomeHealth(cmd *cobra.Command, args []string) error {
 		} `json:"backfillJobs"`
 	}
 
-	ctx, cancel := context.WithTimeout(cmd.Context(), 30*time.Second)
-	defer cancel()
-
-	if err := client.Call(ctx, "GetProjectionHealth", reqBody, &resp); err != nil {
-		return fmt.Errorf("get projection health: %w", err)
+	rows := func() [][]string {
+		out := [][]string{
+			{"Active Version", fmt.Sprintf("%d", resp.ActiveVersion)},
+			{"Checkpoint Seq", fmt.Sprintf("%d", resp.CheckpointSeq)},
+		}
+		if resp.LastUpdated != "" {
+			out = append(out, []string{"Last Updated", resp.LastUpdated})
+		}
+		return out
 	}
 
-	printer := newPrinter()
-	printer.Header("Projection Health")
-
-	table := output.NewTable([]string{"FIELD", "VALUE"})
-	table.AddRow([]string{"Active Version", fmt.Sprintf("%d", resp.ActiveVersion)})
-	table.AddRow([]string{"Checkpoint Seq", fmt.Sprintf("%d", resp.CheckpointSeq)})
-	if resp.LastUpdated != "" {
-		table.AddRow([]string{"Last Updated", resp.LastUpdated})
+	if err := callAndRenderTable(cmd, "GetProjectionHealth", "Projection Health",
+		[]string{"FIELD", "VALUE"}, reqBody, &resp, rows); err != nil {
+		return err
 	}
-	table.Render()
 
 	if len(resp.BackfillJobs) > 0 {
 		fmt.Println()
+		printer := newPrinter()
 		printer.Header("Backfill Jobs")
 
 		jobTable := output.NewTable([]string{"JOB ID", "STATUS", "VERSION", "PROGRESS"})

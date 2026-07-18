@@ -2,6 +2,8 @@ package proxy
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"fmt"
 	"io"
 	"net/http"
@@ -9,13 +11,20 @@ import (
 	"os"
 	"os/signal"
 	"strings"
+	"sync/atomic"
 	"syscall"
 	"time"
 )
 
+var traceSeq atomic.Uint64
+
 // generateTraceID creates a unique trace ID for request tracking
 func (p *LightweightProxy) generateTraceID() string {
-	return fmt.Sprintf("proxy-%d", time.Now().UnixNano())
+	var b [8]byte
+	if _, err := rand.Read(b[:]); err != nil {
+		return fmt.Sprintf("proxy-%d-%d", time.Now().UnixNano(), traceSeq.Add(1))
+	}
+	return fmt.Sprintf("proxy-%s-%d", hex.EncodeToString(b[:]), traceSeq.Add(1))
 }
 
 // extractDomainFromURL extracts domain from full URL for auto-learning

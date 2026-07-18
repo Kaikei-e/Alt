@@ -3,7 +3,6 @@ package sovereign_db
 import (
 	"context"
 	"encoding/base64"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -105,11 +104,7 @@ func (r *Repository) GetKnowledgeHomeItems(ctx context.Context, userID uuid.UUID
 		khi.supersede_state, khi.superseded_at, khi.previous_ref_json
 		FROM knowledge_home_items khi
 		WHERE khi.user_id = $1
-		  AND khi.projection_version = COALESCE((
-		  	SELECT version FROM knowledge_projection_versions
-		  	WHERE status = 'active'
-		  	ORDER BY version DESC LIMIT 1
-		  ), 1)
+		  AND khi.projection_version = ` + activeProjectionVersionSQL + `
 		  AND khi.dismissed_at IS NULL`)
 
 	argPos := 2
@@ -184,8 +179,8 @@ func (r *Repository) GetKnowledgeHomeItems(ctx context.Context, userID uuid.UUID
 		); err != nil {
 			return nil, "", false, fmt.Errorf("GetKnowledgeHomeItems scan: %w", err)
 		}
-		_ = json.Unmarshal(tagsJSON, &item.Tags)
-		_ = json.Unmarshal(whyJSON, &item.WhyReasons)
+		unmarshalJSONWarn(tagsJSON, &item.Tags, "tags_json")
+		unmarshalJSONWarn(whyJSON, &item.WhyReasons, "why_json")
 		if supersedeState != nil {
 			item.SupersedeState = *supersedeState
 		}
@@ -239,9 +234,7 @@ func (r *Repository) ListDistinctUserIDs(ctx context.Context) ([]uuid.UUID, erro
 func (r *Repository) CountNeedToKnowItems(ctx context.Context, userID uuid.UUID, date time.Time) (int, error) {
 	query := `SELECT COUNT(*) FROM knowledge_home_items khi
 		WHERE khi.user_id = $1
-		  AND khi.projection_version = COALESCE((
-		    SELECT version FROM knowledge_projection_versions WHERE status = 'active' ORDER BY version DESC LIMIT 1
-		  ), 1)
+		  AND khi.projection_version = ` + activeProjectionVersionSQL + `
 		  AND khi.dismissed_at IS NULL
 		  AND khi.published_at >= $2
 		  AND khi.published_at < $3
@@ -278,7 +271,7 @@ func (r *Repository) GetTodayDigest(ctx context.Context, userID uuid.UUID, date 
 		}
 		return nil, fmt.Errorf("GetTodayDigest: %w", err)
 	}
-	_ = json.Unmarshal(topTagsJSON, &d.TopTags)
+	unmarshalJSONWarn(topTagsJSON, &d.TopTags, "top_tags_json")
 	return &d, nil
 }
 
@@ -292,9 +285,7 @@ func (r *Repository) GetRecallCandidates(ctx context.Context, userID uuid.UUID, 
 		khi.item_type, khi.primary_ref_id
 		FROM recall_candidate_view rcv
 		LEFT JOIN knowledge_home_items khi ON rcv.user_id = khi.user_id AND rcv.item_key = khi.item_key
-		  AND khi.projection_version = COALESCE((
-		    SELECT version FROM knowledge_projection_versions WHERE status = 'active' ORDER BY version DESC LIMIT 1
-		  ), 1)
+		  AND khi.projection_version = ` + activeProjectionVersionSQL + `
 		WHERE rcv.user_id = $1
 		  AND rcv.dismissed_at IS NULL
 		  AND (rcv.snoozed_until IS NULL OR rcv.snoozed_until <= now())
@@ -328,7 +319,7 @@ func (r *Repository) GetRecallCandidates(ctx context.Context, userID uuid.UUID, 
 		); err != nil {
 			return nil, fmt.Errorf("GetRecallCandidates scan: %w", err)
 		}
-		_ = json.Unmarshal(reasonJSON, &c.Reasons)
+		unmarshalJSONWarn(reasonJSON, &c.Reasons, "reason_json")
 
 		if itemTitle != nil {
 			item := &KnowledgeHomeItem{
@@ -355,8 +346,8 @@ func (r *Repository) GetRecallCandidates(ctx context.Context, userID uuid.UUID, 
 			if itemType != nil {
 				item.ItemType = *itemType
 			}
-			_ = json.Unmarshal(itemTagsJSON, &item.Tags)
-			_ = json.Unmarshal(itemWhyJSON, &item.WhyReasons)
+			unmarshalJSONWarn(itemTagsJSON, &item.Tags, "tags_json")
+			unmarshalJSONWarn(itemWhyJSON, &item.WhyReasons, "why_json")
 			c.Item = item
 		}
 

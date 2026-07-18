@@ -6,6 +6,7 @@ package metrics
 import (
 	"encoding/json"
 	"fmt"
+	"slices"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -369,15 +370,7 @@ func (c *Collector) calculateResponseTimePercentiles() ResponseTimeStats {
 	// Make a copy and sort for percentile calculation
 	times := make([]time.Duration, len(c.responseTimes))
 	copy(times, c.responseTimes)
-
-	// Simple bubble sort for small datasets
-	for i := 0; i < len(times); i++ {
-		for j := 0; j < len(times)-1-i; j++ {
-			if times[j] > times[j+1] {
-				times[j], times[j+1] = times[j+1], times[j]
-			}
-		}
-	}
+	slices.Sort(times)
 
 	// Calculate average
 	var total time.Duration

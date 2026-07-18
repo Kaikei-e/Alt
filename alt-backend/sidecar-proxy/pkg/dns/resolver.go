@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"net"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/miekg/dns"
@@ -36,6 +37,14 @@ type ExternalDNSResolver struct {
 
 	// client for DNS queries
 	client *dns.Client
+
+	totalQueries  atomic.Int64
+	cacheHits     atomic.Int64
+	cacheMisses   atomic.Int64
+	failures      atomic.Int64
+	lastQueryUnix atomic.Int64 // unix nanos
+	latencySumNs  atomic.Int64
+	latencyCount  atomic.Int64
 }
 
 // CachedRecord represents a cached DNS resolution result
@@ -76,14 +85,23 @@ func NewExternalDNSResolver(servers []string, cacheTTL time.Duration, maxCacheEn
 // ResolveExternal performs external DNS resolution with caching and failover
 // This is the core function that bypasses Kubernetes DNS as specified in ISSUE_RESOLVE_PLAN.md
 func (r *ExternalDNSResolver) ResolveExternal(ctx context.Context, domain string) ([]net.IP, error) {
+	r.totalQueries.Add(1)
+	r.lastQueryUnix.Store(time.Now().UnixNano())
+	start := time.Now()
+
 	// Check cache first
 	if ips := r.getCachedIPs(domain); ips != nil {
+		r.cacheHits.Add(1)
+		r.recordLatency(start)
 		return ips, nil
 	}
+	r.cacheMisses.Add(1)
 
 	// Perform external DNS resolution with failover across multiple servers
 	ips, err := r.performExternalQuery(ctx, domain)
+	r.recordLatency(start)
 	if err != nil {
+		r.failures.Add(1)
 		return nil, fmt.Errorf("external DNS resolution failed for %s: %w", domain, err)
 	}
 
@@ -91,6 +109,11 @@ func (r *ExternalDNSResolver) ResolveExternal(ctx context.Context, domain string
 	r.cacheResult(domain, ips)
 
 	return ips, nil
+}
+
+func (r *ExternalDNSResolver) recordLatency(start time.Time) {
+	r.latencySumNs.Add(time.Since(start).Nanoseconds())
+	r.latencyCount.Add(1)
 }
 
 // performExternalQuery executes DNS queries against external servers with failover
@@ -115,15 +138,31 @@ func (r *ExternalDNSResolver) performExternalQuery(ctx context.Context, domain s
 	return nil, fmt.Errorf("all DNS servers failed, last error: %w", lastErr)
 }
 
-// queryServer performs a DNS query against a specific server
+// queryServer performs a DNS query against a specific server.
+// Tries TypeA first, then TypeAAAA so IPv6-only domains still resolve.
 func (r *ExternalDNSResolver) queryServer(ctx context.Context, domain, server string) ([]net.IP, error) {
-	// Create DNS query message
+	ips, err := r.queryServerType(ctx, domain, server, dns.TypeA)
+	if err == nil && len(ips) > 0 {
+		return ips, nil
+	}
+	aaaa, aaaaErr := r.queryServerType(ctx, domain, server, dns.TypeAAAA)
+	if aaaaErr == nil && len(aaaa) > 0 {
+		return aaaa, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	if aaaaErr != nil {
+		return nil, aaaaErr
+	}
+	return nil, fmt.Errorf("no A/AAAA records found for %s", domain)
+}
+
+func (r *ExternalDNSResolver) queryServerType(ctx context.Context, domain, server string, qtype uint16) ([]net.IP, error) {
 	msg := new(dns.Msg)
-	msg.SetQuestion(dns.Fqdn(domain), dns.TypeA)
+	msg.SetQuestion(dns.Fqdn(domain), qtype)
 	msg.RecursionDesired = true
 
-	// Execute query with timeout, honoring ctx cancellation instead of only
-	// checking it between servers in the outer failover loop.
 	response, _, err := r.client.ExchangeContext(ctx, msg, server)
 	if err != nil {
 		return nil, fmt.Errorf("DNS query to %s failed: %w", server, err)
@@ -133,39 +172,39 @@ func (r *ExternalDNSResolver) queryServer(ctx context.Context, domain, server st
 		return nil, fmt.Errorf("DNS query returned error code: %d", response.Rcode)
 	}
 
-	// Extract IP addresses from response
 	var ips []net.IP
 	for _, answer := range response.Answer {
-		if aRecord, ok := answer.(*dns.A); ok {
-			ips = append(ips, aRecord.A)
+		switch rr := answer.(type) {
+		case *dns.A:
+			ips = append(ips, rr.A)
+		case *dns.AAAA:
+			ips = append(ips, rr.AAAA)
 		}
 	}
-
-	if len(ips) == 0 {
-		return nil, fmt.Errorf("no A records found for %s", domain)
-	}
-
 	return ips, nil
 }
 
-// getCachedIPs retrieves cached IP addresses if they haven't expired
+// getCachedIPs retrieves cached IP addresses if they haven't expired.
+// Expired entries are deleted under a write lock.
 func (r *ExternalDNSResolver) getCachedIPs(domain string) []net.IP {
 	r.cacheMutex.RLock()
-	defer r.cacheMutex.RUnlock()
-
 	record, exists := r.cache[domain]
 	if !exists {
+		r.cacheMutex.RUnlock()
 		return nil
 	}
-
-	// Check if cache entry has expired
 	if time.Now().After(record.ExpiresAt) {
-		// Clean up expired entry (will be done lazily)
+		r.cacheMutex.RUnlock()
+		r.cacheMutex.Lock()
+		if rec, ok := r.cache[domain]; ok && time.Now().After(rec.ExpiresAt) {
+			delete(r.cache, domain)
+		}
+		r.cacheMutex.Unlock()
 		return nil
 	}
-
-	// Return cached IPs
-	return record.IPs
+	ips := record.IPs
+	r.cacheMutex.RUnlock()
+	return ips
 }
 
 // cacheResult stores a DNS resolution result in the cache
@@ -223,11 +262,26 @@ func (r *ExternalDNSResolver) removeOldestEntries(count int) {
 // GetMetrics returns current DNS resolver metrics for monitoring
 func (r *ExternalDNSResolver) GetMetrics() DNSMetrics {
 	r.cacheMutex.RLock()
-	defer r.cacheMutex.RUnlock()
+	cacheSize := len(r.cache)
+	r.cacheMutex.RUnlock()
+
+	var avg time.Duration
+	if n := r.latencyCount.Load(); n > 0 {
+		avg = time.Duration(r.latencySumNs.Load() / n)
+	}
+	var last time.Time
+	if ns := r.lastQueryUnix.Load(); ns > 0 {
+		last = time.Unix(0, ns)
+	}
 
 	return DNSMetrics{
-		CacheSize:     len(r.cache),
-		LastQueryTime: time.Now(), // This would be updated during actual queries
+		TotalQueries:   r.totalQueries.Load(),
+		CacheHits:      r.cacheHits.Load(),
+		CacheMisses:    r.cacheMisses.Load(),
+		Failures:       r.failures.Load(),
+		AverageLatency: avg,
+		LastQueryTime:  last,
+		CacheSize:      cacheSize,
 	}
 }
 

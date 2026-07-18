@@ -32,11 +32,7 @@ func (r *Repository) AreArticlesVisibleInLens(ctx context.Context, tenantID, use
 		  AND khi.user_id = $2
 		  AND khi.item_type = 'article'
 		  AND khi.primary_ref_id = ANY($3)
-		  AND khi.projection_version = COALESCE((
-		  	SELECT version FROM knowledge_projection_versions
-		  	WHERE status = 'active'
-		  	ORDER BY version DESC LIMIT 1
-		  ), 1)
+		  AND khi.projection_version = ` + activeProjectionVersionSQL + `
 		  AND khi.dismissed_at IS NULL`)
 
 	if filter != nil {

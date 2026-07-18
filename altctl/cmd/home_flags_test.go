@@ -29,7 +29,6 @@ func TestHomeFlagsCommand(t *testing.T) {
 	rootCmd.SetArgs([]string{
 		"home", "flags",
 		"--backend-url", server.URL,
-		"--service-token", "test-token",
 	})
 	if err := rootCmd.Execute(); err != nil {
 		t.Fatalf("home flags failed: %v", err)

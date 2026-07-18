@@ -104,3 +104,17 @@ func parseUUIDPtrField(field, s string) (*uuid.UUID, error) {
 	}
 	return &id, nil
 }
+
+// parseDateField parses s as YYYY-MM-DD. Empty means "absent" (zero time);
+// any other unparseable value is InvalidArgument, never silently coerced
+// to "today".
+func parseDateField(field, s string) (time.Time, error) {
+	if s == "" {
+		return time.Time{}, nil
+	}
+	date, err := time.Parse("2006-01-02", s)
+	if err != nil {
+		return time.Time{}, fmt.Errorf("invalid %s %q: %w", field, s, err)
+	}
+	return date, nil
+}

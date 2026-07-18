@@ -1,11 +1,15 @@
 package cmd
 
 import (
+	"context"
+	"fmt"
 	"os"
+	"time"
 
 	"github.com/spf13/cobra"
 
 	"github.com/alt-project/altctl/internal/adminclient"
+	"github.com/alt-project/altctl/internal/output"
 	"github.com/alt-project/altctl/internal/sovereignclient"
 )
 
@@ -30,11 +34,11 @@ func init() {
 }
 
 // newAdminClient creates an AdminClient from command flags. Authentication
-// is established at the TLS transport layer (mTLS); no service token is
-// passed through the CLI.
+// is expected at the network/gateway layer; no service token is passed
+// through the CLI.
 func newAdminClient(cmd *cobra.Command) (*adminclient.AdminClient, error) {
 	backendURL, _ := cmd.Flags().GetString("backend-url")
-	return adminclient.NewClient(backendURL, ""), nil
+	return adminclient.NewClient(backendURL), nil
 }
 
 // newSovereignClient creates a SovereignClient from command flags. The admin
@@ -47,7 +51,7 @@ func newSovereignClient(cmd *cobra.Command) *sovereignclient.SovereignClient {
 }
 
 // addAdminFlags adds the backend-url flag to a command. Authentication is
-// transport-layer (mTLS); no service-token flag is exposed.
+// network/gateway-layer; no service-token flag is exposed.
 func addAdminFlags(cmd *cobra.Command) {
 	cmd.Flags().String("backend-url", "http://localhost:9001", "alt-backend admin API URL")
 }
@@ -55,4 +59,33 @@ func addAdminFlags(cmd *cobra.Command) {
 // addSovereignFlags adds sovereign-url flag to a command.
 func addSovereignFlags(cmd *cobra.Command) {
 	cmd.Flags().String("sovereign-url", "http://localhost:9511", "knowledge-sovereign metrics API URL")
+}
+
+// callAdminRPC invokes an admin Connect-RPC method with a 30s timeout.
+func callAdminRPC(cmd *cobra.Command, method string, reqBody, respBody interface{}) error {
+	client, err := newAdminClient(cmd)
+	if err != nil {
+		return err
+	}
+	ctx, cancel := context.WithTimeout(cmd.Context(), 30*time.Second)
+	defer cancel()
+	if err := client.Call(ctx, method, reqBody, respBody); err != nil {
+		return fmt.Errorf("%s: %w", method, err)
+	}
+	return nil
+}
+
+// callAndRenderTable calls an admin RPC and renders a simple two-column table.
+func callAndRenderTable(cmd *cobra.Command, method, header string, columns []string, reqBody, respBody interface{}, rows func() [][]string) error {
+	if err := callAdminRPC(cmd, method, reqBody, respBody); err != nil {
+		return err
+	}
+	printer := newPrinter()
+	printer.Header(header)
+	table := output.NewTable(columns)
+	for _, row := range rows() {
+		table.AddRow(row)
+	}
+	table.Render()
+	return nil
 }

@@ -77,7 +77,10 @@ func (r *Repository) UpsertKnowledgeHomeItem(ctx context.Context, payload json.R
 	if tags == nil {
 		tags = []string{}
 	}
-	tagsJSON, _ := json.Marshal(tags)
+	tagsJSON, err := json.Marshal(tags)
+	if err != nil {
+		return fmt.Errorf("UpsertKnowledgeHomeItem: marshal tags: %w", err)
+	}
 
 	whyReasons := item.WhyReasons
 	if whyReasons == nil {
@@ -86,7 +89,10 @@ func (r *Repository) UpsertKnowledgeHomeItem(ctx context.Context, payload json.R
 			Reason string `json:"reason"`
 		}{}
 	}
-	whyJSON, _ := json.Marshal(whyReasons)
+	whyJSON, err := json.Marshal(whyReasons)
+	if err != nil {
+		return fmt.Errorf("UpsertKnowledgeHomeItem: marshal why: %w", err)
+	}
 
 	var supersedeState *string
 	if item.SupersedeState != "" {
@@ -160,7 +166,7 @@ func (r *Repository) UpsertKnowledgeHomeItem(ctx context.Context, payload json.R
 		 END,
 		 url = COALESCE(NULLIF(EXCLUDED.url, ''), knowledge_home_items.url)`
 
-	_, err := r.pool.Exec(ctx, query,
+	_, err = r.pool.Exec(ctx, query,
 		item.UserID, item.TenantID, item.ItemKey, item.ItemType, item.PrimaryRefID,
 		item.Title, item.SummaryExcerpt, string(tagsJSON), string(whyJSON), item.Score,
 		item.FreshnessAt, item.PublishedAt, item.LastInteractedAt, item.GeneratedAt, item.UpdatedAt, item.DismissedAt,
@@ -285,13 +291,19 @@ func (r *Repository) UpsertTodayDigest(ctx context.Context, payload json.RawMess
 	if topTags == nil {
 		topTags = []string{}
 	}
-	topTagsJSON, _ := json.Marshal(topTags)
+	topTagsJSON, err := json.Marshal(topTags)
+	if err != nil {
+		return fmt.Errorf("UpsertTodayDigest: marshal top_tags: %w", err)
+	}
 
 	pulseRefs := digest.PulseRefs
 	if pulseRefs == nil {
 		pulseRefs = []string{}
 	}
-	pulseRefsJSON, _ := json.Marshal(pulseRefs)
+	pulseRefsJSON, err := json.Marshal(pulseRefs)
+	if err != nil {
+		return fmt.Errorf("UpsertTodayDigest: marshal pulse_refs: %w", err)
+	}
 
 	query := `INSERT INTO today_digest_view
 		(user_id, digest_date, new_articles, summarized_articles,
@@ -309,7 +321,7 @@ func (r *Repository) UpsertTodayDigest(ctx context.Context, payload json.RawMess
 		 evening_pulse_available = EXCLUDED.evening_pulse_available OR today_digest_view.evening_pulse_available
 		WHERE EXCLUDED.updated_at > today_digest_view.updated_at`
 
-	_, err := r.pool.Exec(ctx, query,
+	_, err = r.pool.Exec(ctx, query,
 		digest.UserID, digest.DigestDate,
 		digest.NewArticles, digest.SummarizedArticles,
 		digest.UnsummarizedArticles, string(topTagsJSON), string(pulseRefsJSON),
@@ -338,7 +350,10 @@ func (r *Repository) UpsertRecallCandidate(ctx context.Context, payload json.Raw
 		return fmt.Errorf("UpsertRecallCandidate: unmarshal: %w", err)
 	}
 
-	reasonJSON, _ := json.Marshal(candidate.Reasons)
+	reasonJSON, err := json.Marshal(candidate.Reasons)
+	if err != nil {
+		return fmt.Errorf("UpsertRecallCandidate: marshal reasons: %w", err)
+	}
 
 	query := `INSERT INTO recall_candidate_view
 		(user_id, item_key, recall_score, reason_json, next_suggest_at, first_eligible_at, updated_at, projection_version)
@@ -350,7 +365,7 @@ func (r *Repository) UpsertRecallCandidate(ctx context.Context, payload json.Raw
 		  updated_at = EXCLUDED.updated_at,
 		  projection_version = EXCLUDED.projection_version`
 
-	_, err := r.pool.Exec(ctx, query,
+	_, err = r.pool.Exec(ctx, query,
 		candidate.UserID, candidate.ItemKey, candidate.RecallScore, string(reasonJSON),
 		candidate.NextSuggestAt, candidate.FirstEligibleAt, candidate.UpdatedAt, candidate.ProjectionVersion,
 	)

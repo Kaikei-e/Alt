@@ -105,7 +105,7 @@ func (r *Repository) ListLenses(ctx context.Context, userID uuid.UUID) ([]Knowle
 				v.QueryText = *vQueryText
 			}
 			if len(vTimeWindowJSON) > 0 {
-				_ = json.Unmarshal(vTimeWindowJSON, &v.TimeWindow)
+				unmarshalJSONWarn(vTimeWindowJSON, &v.TimeWindow, "time_window_json")
 			}
 			if vIncludeRecap != nil {
 				v.IncludeRecap = *vIncludeRecap
@@ -116,8 +116,8 @@ func (r *Repository) ListLenses(ctx context.Context, userID uuid.UUID) ([]Knowle
 			if vSortMode != nil {
 				v.SortMode = *vSortMode
 			}
-			_ = json.Unmarshal(vTagIDsJSON, &v.TagIDs)
-			_ = json.Unmarshal(vSourceIDsJSON, &v.SourceIDs)
+			unmarshalJSONWarn(vTagIDsJSON, &v.TagIDs, "tag_ids_json")
+			unmarshalJSONWarn(vSourceIDsJSON, &v.SourceIDs, "source_ids_json")
 			l.CurrentVersion = v
 		}
 
@@ -167,10 +167,10 @@ func (r *Repository) GetCurrentLensVersion(ctx context.Context, lensID uuid.UUID
 		}
 		return nil, fmt.Errorf("GetCurrentLensVersion: %w", err)
 	}
-	_ = json.Unmarshal(tagIDsJSON, &v.TagIDs)
-	_ = json.Unmarshal(sourceIDsJSON, &v.SourceIDs)
+	unmarshalJSONWarn(tagIDsJSON, &v.TagIDs, "tag_ids_json")
+	unmarshalJSONWarn(sourceIDsJSON, &v.SourceIDs, "source_ids_json")
 	if len(timeWindowJSON) > 0 {
-		_ = json.Unmarshal(timeWindowJSON, &v.TimeWindow)
+		unmarshalJSONWarn(timeWindowJSON, &v.TimeWindow, "time_window_json")
 	}
 	return &v, nil
 }
@@ -292,13 +292,20 @@ func (r *Repository) ResolveLensFilter(ctx context.Context, userID uuid.UUID, le
 	}
 
 	lens, err := r.GetLens(ctx, targetLensID)
-	if err != nil || lens == nil {
-		return nil, err
+	if err != nil {
+		return nil, fmt.Errorf("ResolveLensFilter get lens: %w", err)
+	}
+	if lens == nil {
+		// Not found: nil filter, nil error (same zero-value convention as GetLens).
+		return nil, nil
 	}
 
 	version, err := r.GetCurrentLensVersion(ctx, targetLensID)
-	if err != nil || version == nil {
-		return nil, err
+	if err != nil {
+		return nil, fmt.Errorf("ResolveLensFilter get version: %w", err)
+	}
+	if version == nil {
+		return nil, nil
 	}
 
 	return &LensFilter{

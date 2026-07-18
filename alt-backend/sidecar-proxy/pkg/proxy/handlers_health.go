@@ -63,20 +63,22 @@ func (p *LightweightProxy) HandleDNSDebug(w http.ResponseWriter, r *http.Request
 func (p *LightweightProxy) HandleConfigDebug(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 
-	// Include auto-learning status in config debug
 	learnedCount := len(p.autoLearner.GetLearnedDomains())
 	autoLearnEnabled := p.autoLearner.IsLearningEnabled()
 
-	fmt.Fprintf(w, `{
-		"static_allowed_domains": %v,
-		"dns_servers": %v,
-		"envoy_upstream": "%s",
-		"auto_learning": {
-			"enabled": %t,
-			"learned_domains_count": %d,
-			"csv_path": "/etc/sidecar-proxy/learned_domains.csv"
-		}
-	}`, p.config.AllowedDomainsRaw, p.config.DNSServers, p.config.EnvoyUpstream, autoLearnEnabled, learnedCount)
+	payload := map[string]interface{}{
+		"static_allowed_domains": p.config.AllowedDomainsRaw,
+		"dns_servers":            p.config.DNSServers,
+		"envoy_upstream":         p.config.EnvoyUpstream,
+		"auto_learning": map[string]interface{}{
+			"enabled":               autoLearnEnabled,
+			"learned_domains_count": learnedCount,
+			"csv_path":              "/etc/sidecar-proxy/learned_domains.csv",
+		},
+	}
+	if err := json.NewEncoder(w).Encode(payload); err != nil {
+		p.logger.Printf("HandleConfigDebug encode error: %v", err)
+	}
 }
 
 // HandleAutoLearnAdmin handles auto-learning administration API

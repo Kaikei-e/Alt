@@ -195,26 +195,30 @@ func (h *SnapshotHandler) CreateSnapshot(ctx context.Context) (*sovereign_db.Sna
 }
 
 // exportTable exports a table to a gzipped JSONL file and returns row count + SHA-256 checksum.
-func (h *SnapshotHandler) exportTable(ctx context.Context, tableName, filePath string) (int, string, error) {
+func (h *SnapshotHandler) exportTable(ctx context.Context, tableName, filePath string) (rowCount int, checksum string, err error) {
 	f, err := os.Create(filePath)
 	if err != nil {
 		return 0, "", fmt.Errorf("create file: %w", err)
 	}
-	defer f.Close()
+	defer func() {
+		if cerr := f.Close(); cerr != nil && err == nil {
+			err = fmt.Errorf("close file: %w", cerr)
+		}
+	}()
 
 	hasher := sha256.New()
 	gzWriter := gzip.NewWriter(io.MultiWriter(f, hasher))
-	defer gzWriter.Close()
 
-	rowCount, err := h.repo.ExportTableToWriter(ctx, tableName, gzWriter)
-	if err != nil {
-		return 0, "", fmt.Errorf("export: %w", err)
+	n, exportErr := h.repo.ExportTableToWriter(ctx, tableName, gzWriter)
+	if exportErr != nil {
+		_ = gzWriter.Close()
+		return 0, "", fmt.Errorf("export: %w", exportErr)
 	}
 
 	if err := gzWriter.Close(); err != nil {
 		return 0, "", fmt.Errorf("close gzip: %w", err)
 	}
 
-	checksum := fmt.Sprintf("sha256:%x", hasher.Sum(nil))
-	return int(rowCount), checksum, nil
+	checksum = fmt.Sprintf("sha256:%x", hasher.Sum(nil))
+	return int(n), checksum, nil
 }
