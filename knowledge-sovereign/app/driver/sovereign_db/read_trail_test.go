@@ -3,6 +3,7 @@ package sovereign_db
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -110,4 +111,52 @@ func TestGetItemTitle_NoRowsReturnsNotOK(t *testing.T) {
 	require.NoError(t, err)
 	assert.False(t, ok)
 	assert.Empty(t, title)
+}
+
+// TestDeriveTrailContinuationCandidates_PinsStaleWindowNotDeepAndAlreadyProposed
+// pins the Wave 11 (D27/D28) Continuation derivation shape: only items with
+// 1-3 raw contacts, no 'asked' verb, and no engaged act-outcome ("not deep")
+// qualify; the last contact must sit inside the stale/expire window (quiet,
+// not cold, not still being actively read); items that already carry a
+// continuation branch (open or resolved) are excluded so a taken or dismissed
+// proposal is never re-proposed; and the result is capped server-side,
+// most-recent-contact first.
+func TestDeriveTrailContinuationCandidates_PinsStaleWindowNotDeepAndAlreadyProposed(t *testing.T) {
+	mock := &mockPgx{}
+	repo := &Repository{pool: mock}
+
+	userID := uuid.New()
+	before := time.Now()
+	_, err := repo.DeriveTrailContinuationCandidates(context.Background(), userID, 1)
+	after := time.Now()
+	require.NoError(t, err)
+	require.Len(t, mock.queryCalls, 1, "expected one continuation-candidates query")
+
+	call := mock.queryCalls[0]
+	sql := call.SQL
+	assert.Contains(t, sql, "contact_count BETWEEN 1 AND 3", "not-deep gate: 1-3 raw contacts, not 0 and not 4+")
+	assert.Contains(t, sql, "NOT ic.has_ask", "an asked verb already reads as deep — not continuation material")
+	assert.Contains(t, sql, "NOT COALESCE(ie.engaged, FALSE)", "an engaged act-outcome already reads as deep")
+	assert.Contains(t, sql, "ic.last_contact_at <= $3", "must be older than the stale-after cutoff")
+	assert.Contains(t, sql, "ic.last_contact_at >= $4", "must be newer than the expire-after cutoff (quiet, not cold)")
+	assert.Contains(t, sql, "coalesce(khi.title, '') <> ''", "title must be resolvable — no unnameable proposals")
+	assert.Contains(t, sql, "relation_kind = 'continuation'", "excludes items that already carry a continuation branch")
+	assert.Contains(t, sql, "NOT EXISTS", "already-proposed continuation branches must not be re-proposed")
+	assert.Contains(t, sql, "ORDER BY ic.last_contact_at DESC", "most recent last-contact first")
+	assert.Contains(t, sql, "LIMIT $5")
+
+	require.Len(t, call.Args, 5)
+	assert.Equal(t, userID, call.Args[0])
+	assert.Equal(t, EngagedDwellMs, call.Args[1])
+
+	staleCutoff, ok := call.Args[2].(time.Time)
+	require.True(t, ok, "arg[2] must be the stale-after cutoff timestamp")
+	expireCutoff, ok := call.Args[3].(time.Time)
+	require.True(t, ok, "arg[3] must be the expire-after cutoff timestamp")
+
+	// The cutoffs are wall-clock "now" at call time offset by the named
+	// constants — bracket against the call window rather than an exact instant.
+	assert.WithinDuration(t, before.Add(-continuationStaleAfter), staleCutoff, after.Sub(before)+time.Second)
+	assert.WithinDuration(t, before.Add(-continuationExpireAfter), expireCutoff, after.Sub(before)+time.Second)
+	assert.Equal(t, 1, call.Args[4])
 }

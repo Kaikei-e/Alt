@@ -26,6 +26,12 @@ type fakePlannerRepo struct {
 	anchorTitle   string
 	anchorTitleOK bool
 	titleErr      error
+
+	// continuationCandidates backs DeriveTrailContinuationCandidates (Wave 11,
+	// D27/D28). Deliberately not limit-truncated by the fake — several tests
+	// rely on the planner itself enforcing the "at most one per run" cap
+	// rather than trusting the repository to have already done so.
+	continuationCandidates []sovereign_db.TrailContinuationCandidate
 }
 
 func (f *fakePlannerRepo) ListDistinctUserIDs(context.Context) ([]uuid.UUID, error) {
@@ -47,6 +53,9 @@ func (f *fakePlannerRepo) GetItemTitle(_ context.Context, _ uuid.UUID, _ string)
 }
 func (f *fakePlannerRepo) DeriveTrailClusterCandidates(context.Context, uuid.UUID, int) ([]sovereign_db.TrailClusterCandidate, error) {
 	return f.candidates, nil
+}
+func (f *fakePlannerRepo) DeriveTrailContinuationCandidates(context.Context, uuid.UUID, int) ([]sovereign_db.TrailContinuationCandidate, error) {
+	return f.continuationCandidates, nil
 }
 func (f *fakePlannerRepo) AppendKnowledgeEvent(_ context.Context, e sovereign_db.KnowledgeEvent) (int64, error) {
 	f.emitted = append(f.emitted, e)
@@ -179,4 +188,133 @@ func TestPlanner_ContinuesAfterUserError(t *testing.T) {
 	require.NoError(t, p.RunBatch(context.Background()), "user errors must not abort the whole batch")
 	require.Len(t, repo.emitted, 1, "second user should still get a branch")
 	assert.Equal(t, okUser, *repo.emitted[0].UserID)
+}
+
+// continuationEventsOf filters emitted branch_proposed events down to the
+// ones carrying relation_kind "continuation" — the tests below only care
+// about the Continuation slice, not the (unrelated) Cluster emissions from
+// the same run.
+func continuationEventsOf(t *testing.T, events []sovereign_db.KnowledgeEvent) []sovereign_db.KnowledgeEvent {
+	t.Helper()
+	var out []sovereign_db.KnowledgeEvent
+	for _, e := range events {
+		var payload BranchProposedPayload
+		require.NoError(t, json.Unmarshal(e.Payload, &payload))
+		if payload.RelationKind == "continuation" {
+			out = append(out, e)
+		}
+	}
+	return out
+}
+
+// TestPlanner_EmitsContinuationBranchWithAnchoredWhy pins Wave 11 (D27): a
+// Continuation candidate becomes a self-referential branch (anchor == target)
+// whose why quotes the candidate's OWN title (not the user's latest
+// footprint) and carries the full four-tuple.
+func TestPlanner_EmitsContinuationBranchWithAnchoredWhy(t *testing.T) {
+	userID := uuid.New()
+	repo := &fakePlannerRepo{
+		users:         []uuid.UUID{userID},
+		anchor:        "article:a",
+		anchorOK:      true,
+		anchorTitle:   "US military courts in the UK",
+		anchorTitleOK: true,
+		continuationCandidates: []sovereign_db.TrailContinuationCandidate{
+			{TargetItemKey: "article:q", TargetTitle: "Async Rust", LastContactAt: time.Unix(0, 0)},
+		},
+	}
+	p := NewPlanner(repo, nil, Config{Clock: func() time.Time { return time.Unix(0, 0) }})
+	require.NoError(t, p.RunBatch(context.Background()))
+
+	continuationEvents := continuationEventsOf(t, repo.emitted)
+	require.Len(t, continuationEvents, 1, "exactly one continuation branch must be emitted")
+
+	var payload BranchProposedPayload
+	require.NoError(t, json.Unmarshal(continuationEvents[0].Payload, &payload))
+	assert.True(t, payload.Valid(), "a continuation branch must always carry the four-tuple")
+	assert.Equal(t, "continuation", payload.RelationKind)
+	assert.Equal(t, "article:q", payload.AnchorItemKey, "continuation is self-referential — anchor == target")
+	assert.Equal(t, "article:q", payload.TargetItemKey)
+	assert.Contains(t, payload.Why, `"Async Rust"`, "why must quote the target's own title (self-referential anchor)")
+	assert.NotEmpty(t, payload.Confidence)
+	assert.NotEmpty(t, payload.EvidenceRefs)
+}
+
+// TestPlanner_EmitsAtMostOneContinuationPerUserPerRun pins D28 (少数精鋭 —
+// precision over recall): even when several candidates are available, the
+// planner emits at most one Continuation branch per user per run.
+func TestPlanner_EmitsAtMostOneContinuationPerUserPerRun(t *testing.T) {
+	userID := uuid.New()
+	repo := &fakePlannerRepo{
+		users:         []uuid.UUID{userID},
+		anchor:        "article:a",
+		anchorOK:      true,
+		anchorTitle:   "US military courts in the UK",
+		anchorTitleOK: true,
+		continuationCandidates: []sovereign_db.TrailContinuationCandidate{
+			{TargetItemKey: "article:q", TargetTitle: "Async Rust", LastContactAt: time.Unix(100, 0)},
+			{TargetItemKey: "article:r", TargetTitle: "Distributed Systems", LastContactAt: time.Unix(50, 0)},
+		},
+	}
+	p := NewPlanner(repo, nil, Config{Clock: func() time.Time { return time.Unix(0, 0) }})
+	require.NoError(t, p.RunBatch(context.Background()))
+
+	continuationEvents := continuationEventsOf(t, repo.emitted)
+	assert.Len(t, continuationEvents, 1, "at most one continuation branch per user per run")
+}
+
+// TestPlanner_NoContinuationCandidatesEmitsNoneAndLeavesClusterUntouched pins
+// that an empty continuation candidate set is a normal no-op — it must not
+// suppress or alter the existing Cluster emission from the same run.
+func TestPlanner_NoContinuationCandidatesEmitsNoneAndLeavesClusterUntouched(t *testing.T) {
+	userID := uuid.New()
+	repo := &fakePlannerRepo{
+		users:         []uuid.UUID{userID},
+		anchor:        "article:a",
+		anchorOK:      true,
+		anchorTitle:   "US military courts in the UK",
+		anchorTitleOK: true,
+		candidates: []sovereign_db.TrailClusterCandidate{
+			{TargetItemKey: "article:z", TargetTitle: "Async Rust", SharedTags: []string{"rust"}},
+		},
+		continuationCandidates: nil,
+	}
+	p := NewPlanner(repo, nil, Config{Clock: func() time.Time { return time.Unix(0, 0) }})
+	require.NoError(t, p.RunBatch(context.Background()))
+
+	assert.Empty(t, continuationEventsOf(t, repo.emitted), "no continuation candidates → no continuation emit")
+	require.Len(t, repo.emitted, 1, "the cluster branch from the same run must be untouched")
+	var payload BranchProposedPayload
+	require.NoError(t, json.Unmarshal(repo.emitted[0].Payload, &payload))
+	assert.Equal(t, "cluster", payload.RelationKind)
+}
+
+// TestPlanner_ContinuationDedupeKeyIsDeterministicBranchKey pins that the
+// continuation event's DedupeKey is the deterministic branch key
+// ("continuation:<userID>:<item_key>") so the same candidate is proposed once
+// ever, mirroring the Cluster dedupe contract.
+func TestPlanner_ContinuationDedupeKeyIsDeterministicBranchKey(t *testing.T) {
+	userID := uuid.New()
+	repo := &fakePlannerRepo{
+		users:         []uuid.UUID{userID},
+		anchor:        "article:a",
+		anchorOK:      true,
+		anchorTitle:   "US military courts in the UK",
+		anchorTitleOK: true,
+		continuationCandidates: []sovereign_db.TrailContinuationCandidate{
+			{TargetItemKey: "article:q", TargetTitle: "Async Rust", LastContactAt: time.Unix(0, 0)},
+		},
+	}
+	p := NewPlanner(repo, nil, Config{Clock: func() time.Time { return time.Unix(0, 0) }})
+	require.NoError(t, p.RunBatch(context.Background()))
+
+	continuationEvents := continuationEventsOf(t, repo.emitted)
+	require.Len(t, continuationEvents, 1)
+
+	wantKey := "continuation:" + userID.String() + ":article:q"
+	assert.Equal(t, EventTrailBranchProposed+":"+wantKey, continuationEvents[0].DedupeKey)
+
+	var payload BranchProposedPayload
+	require.NoError(t, json.Unmarshal(continuationEvents[0].Payload, &payload))
+	assert.Equal(t, wantKey, payload.BranchKey)
 }
