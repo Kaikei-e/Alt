@@ -23,7 +23,6 @@ _TEST_DB_DSN = "postgresql://test:test@localhost:5439/test"
 os.environ["ACOLYTE_DB_DSN"] = _TEST_DB_DSN
 
 import acolyte.gen  # noqa: E402, F401
-
 from acolyte.config.settings import Settings  # noqa: E402
 from acolyte.gateway.memory_job_gw import MemoryJobGateway  # noqa: E402
 from acolyte.gateway.memory_report_gw import MemoryReportGateway  # noqa: E402

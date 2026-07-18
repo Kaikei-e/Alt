@@ -9,9 +9,12 @@ No url or published_at in response.
 
 from __future__ import annotations
 
+from unittest.mock import patch
+
 import httpx
 import pytest
 
+import acolyte.gateway.search_indexer_gw as gw_mod
 from acolyte.config.settings import Settings
 from acolyte.gateway.memory_content_store import MemoryContentStore
 from acolyte.gateway.search_indexer_gw import SearchIndexerGateway
@@ -209,10 +212,6 @@ async def test_stub_methods_emit_warning_once(
     content_store: MemoryContentStore,
 ) -> None:
     """Unimplemented REST stubs must warn once so empty != unimplemented is visible."""
-    from unittest.mock import patch
-
-    import acolyte.gateway.search_indexer_gw as gw_mod
-
     gw_mod._stub_warned.clear()
     with patch.object(gw_mod.logger, "warning") as warn:
         async with httpx.AsyncClient(transport=mock_transport, base_url="http://fake:9300") as client:

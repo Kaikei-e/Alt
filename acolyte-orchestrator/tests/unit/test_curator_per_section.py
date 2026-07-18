@@ -3,11 +3,14 @@
 from __future__ import annotations
 
 import json
+from typing import Any, cast
 
 import pytest
 
+from acolyte.config.settings import Settings
 from acolyte.port.llm_provider import LLMResponse
 from acolyte.usecase.graph.nodes.curator_node import CuratorNode
+from acolyte.usecase.graph.state import ReportGenerationState
 
 
 class FakeLLM:
@@ -140,8 +143,6 @@ async def test_curator_backward_compat_curated_key() -> None:
 @pytest.mark.asyncio
 async def test_curator_reads_report_type_from_brief_only() -> None:
     """report_type lives on brief — state.report_type must be ignored if present."""
-    from acolyte.config.settings import Settings
-
     llm = FakeLLM()
     settings = Settings(
         section_language_quota_json='{"weekly_briefing:analysis": {"en": 0.5}, "_default": {"en": 0.1}}',
@@ -170,13 +171,13 @@ async def test_curator_reads_report_type_from_brief_only() -> None:
             "section_keys": ["analysis"],
         },
     ]
+    # Poison key is intentional (not on ReportGenerationState) — cast via Any.
     # If curator wrongly read state["report_type"]="evil", quota would use _default.
-    result = await node(
-        {
-            "evidence": evidence,
-            "outline": [{"key": "analysis", "title": "Analysis", "section_role": "analysis"}],
-            "brief": {"topic": "AI", "report_type": "weekly_briefing"},
-            "report_type": "evil",  # must be ignored
-        }
-    )
+    poison_state: dict[str, Any] = {
+        "evidence": evidence,
+        "outline": [{"key": "analysis", "title": "Analysis", "section_role": "analysis"}],
+        "brief": {"topic": "AI", "report_type": "weekly_briefing"},
+        "report_type": "evil",  # must be ignored
+    }
+    result = await node(cast(ReportGenerationState, poison_state))
     assert "curated_by_section" in result

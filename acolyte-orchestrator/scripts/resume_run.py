@@ -23,11 +23,35 @@ import argparse
 import asyncio
 import os
 import sys
+from typing import TYPE_CHECKING, Any
 from uuid import UUID
 
 import structlog
 
+if TYPE_CHECKING:
+    from acolyte.gateway.postgres_job_gw import PostgresJobGateway
+    from acolyte.gateway.postgres_report_gw import PostgresReportGateway
+
 logger = structlog.get_logger(__name__)
+
+
+async def _resolve_run_brief(
+    job_gw: PostgresJobGateway,
+    repo: PostgresReportGateway,
+    run_id: str,
+) -> tuple[str, dict[str, Any]]:
+    """Resolve run_id -> report_id + brief dict, or exit on missing rows."""
+    run = await job_gw.get_run(UUID(run_id))
+    if run is None:
+        logger.error("Run not found", run_id=run_id)
+        sys.exit(1)
+
+    report_id = str(run.report_id)
+    brief = await repo.get_brief(run.report_id)
+    if brief is None:
+        logger.error("Brief not found for report", report_id=report_id)
+        sys.exit(1)
+    return report_id, brief.to_dict()
 
 
 async def _resume(run_id: str) -> None:
@@ -61,20 +85,7 @@ async def _resume(run_id: str) -> None:
     async with AsyncConnectionPool(dsn, min_size=1, max_size=3) as pool:
         repo = PostgresReportGateway(pool)
         job_gw = PostgresJobGateway(pool)
-
-        # Resolve run -> report -> brief
-        run = await job_gw.get_run(UUID(run_id))
-        if run is None:
-            logger.error("Run not found", run_id=run_id)
-            sys.exit(1)
-
-        report_id = str(run.report_id)
-        brief = await repo.get_brief(run.report_id)
-        if brief is None:
-            logger.error("Brief not found for report", report_id=report_id)
-            sys.exit(1)
-
-        brief_dict = brief.to_dict()
+        report_id, brief_dict = await _resolve_run_brief(job_gw, repo, run_id)
 
         # Mirror main.py: mTLS context + LLM provider selection
         mtls_ctx = build_ssl_context()
@@ -86,10 +97,11 @@ async def _resume(run_id: str) -> None:
             limits=httpx.Limits(max_connections=5, max_keepalive_connections=2),
             verify=mtls_ctx if mtls_ctx is not None else True,
         ) as http_client:
-            if settings.llm_provider == "vllm":
-                llm = VllmGateway(http_client, settings)
-            else:
-                llm = OllamaGateway(http_client, settings)
+            llm = (
+                VllmGateway(http_client, settings)
+                if settings.llm_provider == "vllm"
+                else OllamaGateway(http_client, settings)
+            )
             content_store = MemoryContentStore()
             evidence = SearchIndexerGateway(http_client, settings, content_store)
             fusion = RRFFusion(k=60)

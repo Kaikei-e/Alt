@@ -8,6 +8,7 @@ import ssl
 import subprocess
 import tempfile
 from pathlib import Path
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -139,8 +140,6 @@ def test_watch_cert_rotation_cancels_cleanly(tmp_path: Path) -> None:
 
 def test_watch_cert_rotation_logs_warning_on_failure(tmp_path: Path) -> None:
     """Transient watcher failures must be visible at WARNING (not debug-only)."""
-    from unittest.mock import MagicMock, patch
-
     reloader = MagicMock()
     reloader.maybe_reload.side_effect = OSError("boom")
 

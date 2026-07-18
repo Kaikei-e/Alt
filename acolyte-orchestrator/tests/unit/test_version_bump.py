@@ -7,8 +7,8 @@ from uuid import UUID, uuid4
 
 import pytest
 
-from acolyte.domain.report import ChangeItem, Report, ReportVersion
 from acolyte.domain.exceptions import StaleVersionError
+from acolyte.domain.report import ChangeItem, Report, ReportVersion
 
 
 class FakeVersionableRepo:
