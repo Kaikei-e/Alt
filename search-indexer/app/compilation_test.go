@@ -43,9 +43,6 @@ func TestCompilation(t *testing.T) {
 	searchUsecase := usecase.NewSearchArticlesUsecase(nil)
 	t.Log("Search usecase created:", searchUsecase != nil)
 
-	searchWithFiltersUsecase := usecase.NewSearchArticlesWithFiltersUsecase(nil)
-	t.Log("Search with filters usecase created:", searchWithFiltersUsecase != nil)
-
 	searchByUserUsecase := usecase.NewSearchByUserUsecase(nil)
 	t.Log("Search by user usecase created:", searchByUserUsecase != nil)
 

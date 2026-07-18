@@ -88,7 +88,10 @@ func (d *RedisDriver) Publish(ctx context.Context, stream domain.StreamKey, even
 		return "", errors.New("event is nil")
 	}
 
-	values := d.eventToValues(event)
+	values, err := d.eventToValues(event)
+	if err != nil {
+		return "", err
+	}
 
 	args := &redis.XAddArgs{
 		Stream: stream.String(),
@@ -129,7 +132,10 @@ func (d *RedisDriver) PublishBatch(ctx context.Context, stream domain.StreamKey,
 		if event == nil {
 			return nil, fmt.Errorf("publish batch to %s: event at index %d is nil", stream.String(), i)
 		}
-		values := d.eventToValues(event)
+		values, err := d.eventToValues(event)
+		if err != nil {
+			return nil, fmt.Errorf("publish batch to %s: event at index %d: %w", stream.String(), i, err)
+		}
 		args := &redis.XAddArgs{
 			Stream: stream.String(),
 			Values: values,
@@ -170,8 +176,7 @@ func (d *RedisDriver) PublishBatch(ctx context.Context, stream domain.StreamKey,
 func (d *RedisDriver) CreateConsumerGroup(ctx context.Context, stream domain.StreamKey, group domain.ConsumerGroup, startID string) error {
 	err := d.client.XGroupCreateMkStream(ctx, stream.String(), group.String(), startID).Err()
 	if err != nil {
-		// Handle BUSYGROUP error (group already exists)
-		if strings.Contains(err.Error(), "BUSYGROUP") {
+		if isBusyGroupErr(err) {
 			return nil
 		}
 		return fmt.Errorf("create consumer group %s on %s: %w", group.String(), stream.String(), err)
@@ -188,7 +193,7 @@ func (d *RedisDriver) GetStreamInfo(ctx context.Context, stream domain.StreamKey
 
 	// Get consumer group info
 	groups, err := d.client.XInfoGroups(ctx, stream.String()).Result()
-	if err != nil && !strings.Contains(err.Error(), "no such key") {
+	if err != nil && !isNoSuchKeyErr(err) {
 		return nil, fmt.Errorf("xinfo groups %s: %w", stream.String(), err)
 	}
 
@@ -228,7 +233,7 @@ func (d *RedisDriver) Ping(ctx context.Context) error {
 }
 
 // eventToValues converts an Event to a map for XADD.
-func (d *RedisDriver) eventToValues(event *domain.Event) map[string]interface{} {
+func (d *RedisDriver) eventToValues(event *domain.Event) (map[string]interface{}, error) {
 	values := map[string]interface{}{
 		"event_id":   event.EventID,
 		"event_type": string(event.EventType),
@@ -241,11 +246,36 @@ func (d *RedisDriver) eventToValues(event *domain.Event) map[string]interface{} 
 	}
 
 	if len(event.Metadata) > 0 {
-		metadataJSON, _ := json.Marshal(event.Metadata)
+		metadataJSON, err := json.Marshal(event.Metadata)
+		if err != nil {
+			return nil, fmt.Errorf("marshal event metadata: %w", err)
+		}
 		values["metadata"] = string(metadataJSON)
 	}
 
-	return values
+	return values, nil
+}
+
+// isBusyGroupErr reports whether err is Redis BUSYGROUP (group already exists).
+// go-redis exposes no typed sentinel for this reply, so callers must match the
+// reply prefix. Isolate the comparison here rather than scattering .Error()
+// checks through business code (DECREE §2).
+func isBusyGroupErr(err error) bool {
+	if err == nil {
+		return false
+	}
+	return strings.HasPrefix(err.Error(), "BUSYGROUP")
+}
+
+// isNoSuchKeyErr reports whether err is Redis "no such key".
+// go-redis exposes no typed sentinel for this reply, so callers must match the
+// reply text. Isolate the comparison here (DECREE §2).
+func isNoSuchKeyErr(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := err.Error()
+	return strings.Contains(msg, "no such key") || strings.HasPrefix(msg, "ERR no such key")
 }
 
 // SubscribeWithTimeout waits for a message on a reply stream with timeout.

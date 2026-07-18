@@ -25,7 +25,7 @@ var (
 			Help:      "Duration of publish operations in seconds",
 			Buckets:   prometheus.DefBuckets,
 		},
-		[]string{"stream"},
+		[]string{"stream", "status"},
 	)
 
 	// BatchSize observes batch sizes.
@@ -62,13 +62,13 @@ var (
 // RecordPublish records a publish operation.
 func RecordPublish(stream, status string, duration float64) {
 	PublishTotal.WithLabelValues(stream, status).Inc()
-	PublishDuration.WithLabelValues(stream).Observe(duration)
+	PublishDuration.WithLabelValues(stream, status).Observe(duration)
 }
 
 // RecordBatchPublish records a batch publish operation.
 func RecordBatchPublish(stream, status string, batchSize int, duration float64) {
 	PublishTotal.WithLabelValues(stream, status).Inc()
-	PublishDuration.WithLabelValues(stream).Observe(duration)
+	PublishDuration.WithLabelValues(stream, status).Observe(duration)
 	BatchSize.WithLabelValues(stream).Observe(float64(batchSize))
 }
 

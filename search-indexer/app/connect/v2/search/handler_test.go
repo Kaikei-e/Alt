@@ -161,6 +161,31 @@ func TestHandler_SearchArticles_EmptyUserID(t *testing.T) {
 	}
 }
 
+func TestHandler_SearchArticles_NegativeOffset(t *testing.T) {
+	se := &mockSearchEngine{}
+	uc := usecase.NewSearchByUserUsecase(se)
+	handler := NewHandler(uc, nil)
+
+	req := connect.NewRequest(&searchv2.SearchArticlesRequest{
+		Query:  "test",
+		UserId: "user1",
+		Offset: -1,
+		Limit:  10,
+	})
+
+	_, err := handler.SearchArticles(context.Background(), req)
+	if err == nil {
+		t.Fatal("SearchArticles() should return error for negative offset")
+	}
+	var connectErr *connect.Error
+	if !errors.As(err, &connectErr) {
+		t.Fatalf("error type = %T, want *connect.Error", err)
+	}
+	if connectErr.Code() != connect.CodeInvalidArgument {
+		t.Errorf("Error code = %v, want InvalidArgument", connectErr.Code())
+	}
+}
+
 func TestHandler_SearchArticles_SearchError(t *testing.T) {
 	se := &mockSearchEngine{
 		err: &domain.SearchEngineError{Op: "Search", Err: errors.New("search failed")},

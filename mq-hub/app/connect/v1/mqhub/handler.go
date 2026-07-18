@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"connectrpc.com/connect"
-	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"mq-hub/domain"
 	mqhubv1 "mq-hub/gen/proto/services/mqhub/v1"
@@ -241,20 +240,4 @@ func (h *Handler) GenerateTagsForArticle(ctx context.Context, req *connect.Reque
 		InferenceMs:  result.InferenceMs,
 		ErrorMessage: result.ErrorMessage,
 	}), nil
-}
-
-// domainEventToProto converts a domain Event to a proto Event.
-func domainEventToProto(event *domain.Event) *mqhubv1.Event {
-	if event == nil {
-		return nil
-	}
-
-	return &mqhubv1.Event{
-		EventId:   event.EventID,
-		EventType: string(event.EventType),
-		Source:    event.Source,
-		CreatedAt: timestamppb.New(event.CreatedAt),
-		Payload:   event.Payload,
-		Metadata:  event.Metadata,
-	}
 }

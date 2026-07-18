@@ -4,7 +4,10 @@ package consumer
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"log/slog"
+	"strings"
 	"sync"
 	"time"
 
@@ -110,8 +113,10 @@ func (c *Consumer) Start(ctx context.Context) error {
 		return nil
 	}
 
-	// Ensure consumer group exists
-	if err := c.ensureConsumerGroup(ctx); err != nil {
+	// Consumer groups are provisioned by infrastructure / setup scripts
+	// (DECREE §8), not created ad hoc here. Verify the group exists so a
+	// missing-setup failure is loud at Start rather than silent at first read.
+	if err := c.verifyConsumerGroup(ctx); err != nil {
 		return err
 	}
 
@@ -178,17 +183,50 @@ func (c *Consumer) IsEnabled() bool {
 	return c.config.Enabled
 }
 
-// ensureConsumerGroup creates the consumer group if it doesn't exist.
-func (c *Consumer) ensureConsumerGroup(ctx context.Context) error {
-	err := c.client.XGroupCreateMkStream(ctx, c.config.StreamKey, c.config.GroupName, "0").Err()
+// ProvisionConsumerGroup creates the consumer group (MKSTREAM) if it does not
+// already exist. Call from setup scripts / altctl / the provision-consumer-group
+// subcommand — not from the application Start() path (DECREE §8).
+func ProvisionConsumerGroup(ctx context.Context, client *redis.Client, streamKey, groupName string) error {
+	err := client.XGroupCreateMkStream(ctx, streamKey, groupName, "0").Err()
 	if err != nil {
-		// Ignore BUSYGROUP error, it means the group already exists
-		if err.Error() == "BUSYGROUP Consumer Group name already exists" {
+		if isBusyGroupErr(err) {
 			return nil
 		}
 		return err
 	}
 	return nil
+}
+
+// verifyConsumerGroup checks that the configured consumer group already exists.
+// Groups must be created via ProvisionConsumerGroup / mq-hub CreateConsumerGroup
+// / search-indexer/scripts/provision-consumer-group.sh before Start.
+func (c *Consumer) verifyConsumerGroup(ctx context.Context) error {
+	groups, err := c.client.XInfoGroups(ctx, c.config.StreamKey).Result()
+	if err != nil {
+		return fmt.Errorf(
+			"consumer group %q not found on stream %q (stream missing or unreachable); provision via search-indexer provision-consumer-group or mq-hub CreateConsumerGroup: %w",
+			c.config.GroupName, c.config.StreamKey, err,
+		)
+	}
+	for _, g := range groups {
+		if g.Name == c.config.GroupName {
+			return nil
+		}
+	}
+	return fmt.Errorf(
+		"consumer group %q not found on stream %q; provision via search-indexer provision-consumer-group or mq-hub CreateConsumerGroup",
+		c.config.GroupName, c.config.StreamKey,
+	)
+}
+
+// isBusyGroupErr reports whether err is Redis BUSYGROUP (group already exists).
+// go-redis exposes no typed sentinel for this reply, so callers must match the
+// reply prefix. Isolate the comparison here (DECREE §2).
+func isBusyGroupErr(err error) bool {
+	if err == nil {
+		return false
+	}
+	return strings.HasPrefix(err.Error(), "BUSYGROUP")
 }
 
 // consumeLoop continuously reads and processes events.
@@ -220,7 +258,7 @@ func (c *Consumer) readAndProcess(ctx context.Context) error {
 		Block:    c.config.BlockTimeout,
 	}).Result()
 
-	if err == redis.Nil {
+	if errors.Is(err, redis.Nil) {
 		// No messages available
 		return nil
 	}
@@ -392,13 +430,27 @@ func (c *Consumer) parseEvent(message redis.XMessage) Event {
 		event.Source = v
 	}
 	if v, ok := message.Values["created_at"].(string); ok {
-		event.CreatedAt, _ = time.Parse(time.RFC3339, v)
+		parsed, parseErr := time.Parse(time.RFC3339, v)
+		if parseErr != nil {
+			c.logger.Warn("failed to parse event created_at",
+				"message_id", message.ID,
+				"created_at", v,
+				"error", parseErr,
+			)
+		} else {
+			event.CreatedAt = parsed
+		}
 	}
 	if v, ok := message.Values["payload"].(string); ok {
 		event.Payload = json.RawMessage(v)
 	}
 	if v, ok := message.Values["metadata"].(string); ok {
-		_ = json.Unmarshal([]byte(v), &event.Metadata)
+		if unmarshalErr := json.Unmarshal([]byte(v), &event.Metadata); unmarshalErr != nil {
+			c.logger.Warn("failed to unmarshal event metadata",
+				"message_id", message.ID,
+				"error", unmarshalErr,
+			)
+		}
 	}
 
 	return event

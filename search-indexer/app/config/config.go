@@ -98,22 +98,6 @@ func Load() (*Config, error) {
 	return cfg, nil
 }
 
-func getEnvRequired(key string) (string, error) {
-	// Check for _FILE suffix
-	if fileValue := os.Getenv(key + "_FILE"); fileValue != "" {
-		content, err := os.ReadFile(fileValue)
-		if err == nil {
-			return strings.TrimSpace(string(content)), nil
-		}
-	}
-
-	value := os.Getenv(key)
-	if value == "" {
-		return "", fmt.Errorf("required environment variable %s is not set", key)
-	}
-	return value, nil
-}
-
 func getEnvOrDefault(key, defaultValue string) string {
 	// Check for _FILE suffix
 	if fileValue := os.Getenv(key + "_FILE"); fileValue != "" {

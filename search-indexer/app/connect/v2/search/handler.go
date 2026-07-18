@@ -46,6 +46,9 @@ func (h *Handler) SearchArticles(
 	if userID == "" {
 		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("user_id is required"))
 	}
+	if offset < 0 {
+		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("offset must be >= 0"))
+	}
 
 	result, err := h.searchByUserUsecase.ExecuteWithPagination(ctx, query, userID, offset, limit)
 	if err != nil {

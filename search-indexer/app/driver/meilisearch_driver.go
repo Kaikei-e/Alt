@@ -3,6 +3,7 @@ package driver
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strconv"
 	"strings"
@@ -43,6 +44,7 @@ type MeilisearchDriver struct {
 	client      meilisearch.ServiceManager
 	index       meilisearch.IndexManager
 	searchIndex meilisearch.IndexManager
+	indexName   string
 	hybrid      *HybridConfig
 	cache       *searchCache
 	sf          singleflight.Group
@@ -62,6 +64,7 @@ func NewMeilisearchDriver(client meilisearch.ServiceManager, indexName string) *
 		client:           client,
 		index:            idx,
 		searchIndex:      idx,
+		indexName:        indexName,
 		taskWaitTimeout:  meilisearchTaskWaitTimeout,
 		taskPollInterval: meilisearchTaskPollInterval,
 	}
@@ -74,6 +77,7 @@ func NewMeilisearchDriverWithClients(adminClient meilisearch.ServiceManager, sea
 		client:           adminClient,
 		index:            adminClient.Index(indexName),
 		searchIndex:      adminClient.Index(indexName),
+		indexName:        indexName,
 		taskWaitTimeout:  meilisearchTaskWaitTimeout,
 		taskPollInterval: meilisearchTaskPollInterval,
 	}
@@ -296,7 +300,6 @@ func (d *MeilisearchDriver) SearchWithDateFilter(ctx context.Context, query stri
 		return d.Search(ctx, query, limit)
 	}
 
-	searchRequest := d.newBaseSearchRequest(query, limit)
 	filterClauses := make([]string, 0, 2)
 	if publishedAfter != nil {
 		filterClauses = append(filterClauses, "published_at >= "+strconv.FormatInt(publishedAfter.Unix(), 10))
@@ -304,14 +307,38 @@ func (d *MeilisearchDriver) SearchWithDateFilter(ctx context.Context, query stri
 	if publishedBefore != nil {
 		filterClauses = append(filterClauses, "published_at <= "+strconv.FormatInt(publishedBefore.Unix(), 10))
 	}
-	searchRequest.Filter = strings.Join(filterClauses, " AND ")
+	filter := strings.Join(filterClauses, " AND ")
 
-	result, err := d.searchIndex.SearchWithContext(ctx, query, searchRequest)
+	emb, ratio := d.hybridSnapshot()
+	key := cacheKey{
+		Query:         normalizeCacheKeyQuery(query),
+		Filter:        filter,
+		Limit:         int64(limit),
+		Embedder:      emb,
+		SemanticRatio: ratio,
+	}
+	if e, ok := d.cache.get(key); ok {
+		appotel.RecordMeilisearchProcessing(ctx, "SearchWithDateFilter.cacheHit", e.ProcessingMs)
+		return e.Docs, nil
+	}
+
+	entry, err := d.singleflightSearch(ctx, key.String(), func() (cacheEntry, error) {
+		searchRequest := d.newBaseSearchRequest(query, limit)
+		searchRequest.Filter = filter
+		result, err := d.searchIndex.SearchWithContext(ctx, query, searchRequest)
+		if err != nil {
+			return cacheEntry{}, err
+		}
+		d.recordProcessing(ctx, "SearchWithDateFilter", result)
+		docs := d.hitsToDocs(result.Hits)
+		e := cacheEntry{Docs: docs, ProcessingMs: result.ProcessingTimeMs}
+		d.cache.put(key, e)
+		return e, nil
+	})
 	if err != nil {
 		return nil, &DriverError{Op: "SearchWithDateFilter", Err: err}
 	}
-	d.recordProcessing(ctx, "SearchWithDateFilter", result)
-	return d.hitsToDocs(result.Hits), nil
+	return entry.Docs, nil
 }
 
 // hitsToDocs flattens a Meilisearch result slice into SearchDocumentDriver
@@ -337,50 +364,47 @@ func (d *MeilisearchDriver) hitsToDocs(hits []meilisearch.Hit) []SearchDocumentD
 }
 
 func (d *MeilisearchDriver) EnsureIndex(ctx context.Context) error {
-	// Check if index exists
 	_, err := d.index.FetchInfoWithContext(ctx)
 	if err != nil {
-		// Index might not exist, try to create it by adding a dummy document
-		dummyDoc := []map[string]interface{}{
-			{
-				"id":      "init",
-				"title":   "Initialization document",
-				"content": "This document is used to create the index",
-				"tags":    []string{},
-			},
-		}
-
-		task, err := d.index.AddDocumentsWithContext(ctx, dummyDoc, nil)
-		if err != nil {
+		if !isIndexNotFoundErr(err) {
 			return &DriverError{
 				Op:  "EnsureIndex",
-				Err: fmt.Errorf("failed to create index: %w", err),
+				Err: fmt.Errorf("fetch index info: %w", err),
 			}
 		}
-
-		// Wait for index creation
-		if _, err := d.waitForTask(ctx, task.TaskUID); err != nil {
+		task, createErr := d.client.CreateIndexWithContext(ctx, &meilisearch.IndexConfig{
+			Uid:        d.indexName,
+			PrimaryKey: "id",
+		})
+		if createErr != nil {
 			return &DriverError{
 				Op:  "EnsureIndex",
-				Err: fmt.Errorf("failed to wait for index creation: %w", err),
+				Err: fmt.Errorf("failed to create index: %w", createErr),
 			}
 		}
-
-		// Delete the dummy document
-		deleteTask, err := d.index.DeleteDocumentWithContext(ctx, "init", nil)
-		if err == nil {
-			_, _ = d.waitForTask(ctx, deleteTask.TaskUID)
+		if _, waitErr := d.waitForTask(ctx, task.TaskUID); waitErr != nil {
+			return &DriverError{
+				Op:  "EnsureIndex",
+				Err: fmt.Errorf("failed to wait for index creation: %w", waitErr),
+			}
 		}
 	}
 
-	// Configure index settings (best practice: set before indexing)
+	// Configure index settings (best practice: set before indexing) and wait
+	// for each async task so subsequent indexing sees the applied settings.
 
-	// Set searchable attributes (prioritized order)
 	searchableAttrs := []string{"title", "content", "tags"}
-	if _, err := d.index.UpdateSearchableAttributesWithContext(ctx, &searchableAttrs); err != nil {
+	searchableTask, err := d.index.UpdateSearchableAttributesWithContext(ctx, &searchableAttrs)
+	if err != nil {
 		return &DriverError{
 			Op:  "EnsureIndex",
 			Err: fmt.Errorf("failed to set searchable attributes: %w", err),
+		}
+	}
+	if _, err := d.waitForTask(ctx, searchableTask.TaskUID); err != nil {
+		return &DriverError{
+			Op:  "EnsureIndex",
+			Err: fmt.Errorf("failed to wait for searchable attributes update: %w", err),
 		}
 	}
 
@@ -390,26 +414,39 @@ func (d *MeilisearchDriver) EnsureIndex(ctx context.Context) error {
 	// ``language`` pairs with the acolyte language_quota rebalancing so
 	// cross-lingual recall can be scoped when the caller opts in.
 	filterableAttrs := []interface{}{"tags", "user_id", "published_at", "language"}
-	if _, err := d.index.UpdateFilterableAttributesWithContext(ctx, &filterableAttrs); err != nil {
+	filterableTask, err := d.index.UpdateFilterableAttributesWithContext(ctx, &filterableAttrs)
+	if err != nil {
 		return &DriverError{
 			Op:  "EnsureIndex",
 			Err: fmt.Errorf("failed to set filterable attributes: %w", err),
 		}
 	}
-
-	// Set ranking rules (default + custom)
-	rankingRules := []string{
-		"words",     // Number of matching query terms
-		"typo",      // Number of typos
-		"proximity", // Proximity of query terms in document
-		"attribute", // Attribute ranking order
-		"sort",      // User-defined sort parameter
-		"exactness", // Similarity of matched vs. query words
+	if _, err := d.waitForTask(ctx, filterableTask.TaskUID); err != nil {
+		return &DriverError{
+			Op:  "EnsureIndex",
+			Err: fmt.Errorf("failed to wait for filterable attributes update: %w", err),
+		}
 	}
-	if _, err := d.index.UpdateRankingRulesWithContext(ctx, &rankingRules); err != nil {
+
+	rankingRules := []string{
+		"words",
+		"typo",
+		"proximity",
+		"attribute",
+		"sort",
+		"exactness",
+	}
+	rankingTask, err := d.index.UpdateRankingRulesWithContext(ctx, &rankingRules)
+	if err != nil {
 		return &DriverError{
 			Op:  "EnsureIndex",
 			Err: fmt.Errorf("failed to set ranking rules: %w", err),
+		}
+	}
+	if _, err := d.waitForTask(ctx, rankingTask.TaskUID); err != nil {
+		return &DriverError{
+			Op:  "EnsureIndex",
+			Err: fmt.Errorf("failed to wait for ranking rules update: %w", err),
 		}
 	}
 
@@ -463,6 +500,19 @@ func (d *MeilisearchDriver) EnsureIndex(ctx context.Context) error {
 	}
 
 	return nil
+}
+
+// isIndexNotFoundErr reports whether err means the Meilisearch index is absent.
+// Network / auth / other API failures must NOT be treated as "missing index".
+func isIndexNotFoundErr(err error) bool {
+	var merr *meilisearch.Error
+	if !errors.As(err, &merr) {
+		return false
+	}
+	if merr.StatusCode == 404 {
+		return true
+	}
+	return merr.MeilisearchApiError.Code == "index_not_found"
 }
 
 func (d *MeilisearchDriver) getString(m meilisearch.Hit, key string) string {

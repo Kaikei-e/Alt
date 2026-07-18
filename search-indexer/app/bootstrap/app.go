@@ -3,6 +3,7 @@ package bootstrap
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"os"
 	"time"
@@ -40,7 +41,9 @@ func Run(ctx context.Context) error {
 	otelCfg := appOtel.ConfigFromEnv()
 	otelShutdown, err := appOtel.InitProvider(ctx, otelCfg)
 	if err != nil {
-		fmt.Printf("Failed to initialize OpenTelemetry: %v\n", err)
+		// Logger is not initialized yet; use slog so OTel init failures still
+		// follow the structured-logging convention (DECREE §5).
+		slog.Error("Failed to initialize OpenTelemetry", "error", err)
 		otelCfg.Enabled = false
 		otelShutdown = func(context.Context) error { return nil }
 	}
@@ -78,7 +81,7 @@ func Run(ctx context.Context) error {
 		return err
 	}
 
-	msClient, searchOnlyClient, err := initMeilisearchClients()
+	msClient, searchOnlyClient, err := initMeilisearchClients(ctx)
 	if err != nil {
 		logger.Logger.Error("Failed to initialize Meilisearch", "err", err)
 		return err
@@ -211,7 +214,6 @@ func Run(ctx context.Context) error {
 			mtlsHandler := newMTLSMuxHandler(
 				searchByUserUsecase,
 				searchArticlesUsecase,
-				searchRecapsUsecase,
 				app.connectServer.Handler,
 				otelCfg,
 				appCfg.RateLimit,
@@ -269,7 +271,7 @@ func (a *App) shutdown() {
 	otelCtx, otelCancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer otelCancel()
 	if err := a.otelShutdown(otelCtx); err != nil {
-		fmt.Printf("Failed to shutdown OpenTelemetry: %v\n", err)
+		logger.Logger.Error("Failed to shutdown OpenTelemetry", "error", err)
 	}
 }
 
