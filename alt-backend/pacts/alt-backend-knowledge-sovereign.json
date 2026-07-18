@@ -282,6 +282,149 @@
       }
     },
     {
+      "description": "a GetTrailFootprints request narrowed to matching items",
+      "providerStates": [
+        {
+          "name": "a user with footprints across two articles, one matching the search filter"
+        }
+      ],
+      "request": {
+        "body": {
+          "filterItemKeys": [
+            "article:1"
+          ],
+          "limit": 500,
+          "userId": "22222222-2222-2222-2222-222222222222"
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "matchingRules": {
+          "body": {
+            "$.filterItemKeys": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type",
+                  "min": 1
+                }
+              ]
+            },
+            "$.limit": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.userId": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            }
+          }
+        },
+        "method": "POST",
+        "path": "/services.sovereign.v1.KnowledgeSovereignService/GetTrailFootprints"
+      },
+      "response": {
+        "body": {
+          "episodes": [
+            {
+              "episodeKey": "ep:open:article:1",
+              "footprints": [
+                {
+                  "footprintKey": "open:article:1",
+                  "itemKey": "article:1",
+                  "occurredAt": "2026-06-10T09:12:00Z",
+                  "verb": "read"
+                }
+              ],
+              "wear": "worn"
+            }
+          ]
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "matchingRules": {
+          "body": {
+            "$.episodes": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type",
+                  "min": 1
+                }
+              ]
+            },
+            "$.episodes[*].episodeKey": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.episodes[*].footprints": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type",
+                  "min": 1
+                }
+              ]
+            },
+            "$.episodes[*].footprints[*].footprintKey": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.episodes[*].footprints[*].itemKey": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.episodes[*].footprints[*].occurredAt": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.episodes[*].footprints[*].verb": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.episodes[*].wear": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            }
+          }
+        },
+        "status": 200
+      }
+    },
+    {
       "description": "an AppendKnowledgeEvent request for ArticleUrlBackfilled",
       "providerStates": [
         {

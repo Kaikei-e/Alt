@@ -343,3 +343,202 @@ test.describe("Episode spine", () => {
 		);
 	});
 });
+
+// Wave 9: trail search is the sole rediscovery instrument (D25). Pull-only —
+// fetch happens only on explicit submit (Enter or the search button), never
+// from a keystroke or an $effect. One input, under the trail header.
+const SEARCH_PATH =
+	"**/api/v2/alt.knowledge_trail.v1.KnowledgeTrailService/SearchTrail";
+
+const TWO_EPISODE_TRAIL = {
+	footprints: [],
+	nextCursor: "",
+	hasMore: false,
+	generatedAt: "2026-07-18T00:00:00Z",
+	branches: [],
+	episodes: [
+		{
+			episodeKey: "episode:article:submarines",
+			wear: "deep",
+			thumbnailUrl: "",
+			footprints: [
+				{
+					footprintKey: "open:article:submarines:1",
+					verb: "read",
+					itemKey: "article:submarines",
+					title: "Hunting Submarines Via Gravity",
+					excerpt: "",
+					tags: ["physics"],
+					note: "",
+					occurredAt: "2026-07-05T09:00:00Z",
+					firstOccurredAt: "2026-07-03T09:00:00Z",
+					contactCount: 2,
+					wear: "deep",
+				},
+			],
+		},
+		{
+			episodeKey: "episode:article:async",
+			wear: "thin",
+			thumbnailUrl: "",
+			footprints: [
+				{
+					footprintKey: "open:article:async:1",
+					verb: "read",
+					itemKey: "article:async",
+					title: "io_uring and the future of async I/O on Linux",
+					excerpt: "",
+					tags: ["rust"],
+					note: "",
+					occurredAt: "2026-06-20T09:00:00Z",
+					firstOccurredAt: "2026-06-20T09:00:00Z",
+					contactCount: 1,
+					wear: "thin",
+				},
+			],
+		},
+	],
+};
+
+const SEARCH_HIT = {
+	episodes: [
+		{
+			episodeKey: "episode:article:submarines",
+			wear: "deep",
+			thumbnailUrl: "",
+			footprints: [
+				{
+					footprintKey: "open:article:submarines:1",
+					verb: "read",
+					itemKey: "article:submarines",
+					title: "Hunting Submarines Via Gravity",
+					excerpt: "",
+					tags: ["physics"],
+					note: "",
+					occurredAt: "2026-07-05T09:00:00Z",
+					firstOccurredAt: "2026-07-03T09:00:00Z",
+					contactCount: 2,
+					wear: "deep",
+				},
+			],
+		},
+	],
+	matchedItemKeys: ["article:submarines"],
+};
+
+const SEARCH_EMPTY = { episodes: [], matchedItemKeys: [] };
+
+test.describe("Trail search", () => {
+	test("submitting a query with Enter renders only the matching episode and highlights the matched member", async ({
+		page,
+	}) => {
+		await page.route(TRAIL_PATHS.getTrail, (route) =>
+			fulfillJson(route, TWO_EPISODE_TRAIL),
+		);
+		await page.route(SEARCH_PATH, (route) => fulfillJson(route, SEARCH_HIT));
+
+		await page.goto("./knowledge/trail");
+		await expect(page.getByTestId("trail-episode")).toHaveCount(2, {
+			timeout: 15000,
+		});
+
+		await page.getByTestId("trail-search").fill("submarine");
+		await page.getByTestId("trail-search").press("Enter");
+
+		await expect(page.getByTestId("trail-episode")).toHaveCount(1, {
+			timeout: 15000,
+		});
+		await expect(page.getByTestId("trail-episode")).toContainText(
+			"Hunting Submarines Via Gravity",
+		);
+		await expect(page.getByTestId("footprint-hit")).toBeVisible();
+	});
+
+	test("the clear affordance restores the full spine", async ({ page }) => {
+		await page.route(TRAIL_PATHS.getTrail, (route) =>
+			fulfillJson(route, TWO_EPISODE_TRAIL),
+		);
+		await page.route(SEARCH_PATH, (route) => fulfillJson(route, SEARCH_HIT));
+
+		await page.goto("./knowledge/trail");
+		await expect(page.getByTestId("trail-episode")).toHaveCount(2, {
+			timeout: 15000,
+		});
+
+		await page.getByTestId("trail-search").fill("submarine");
+		await page.getByTestId("trail-search").press("Enter");
+		await expect(page.getByTestId("trail-episode")).toHaveCount(1, {
+			timeout: 15000,
+		});
+
+		await page.getByTestId("trail-search-clear").click();
+		await expect(page.getByTestId("trail-episode")).toHaveCount(2, {
+			timeout: 15000,
+		});
+	});
+
+	test("a zero-hit query shows the explicit empty search state", async ({
+		page,
+	}) => {
+		await page.route(TRAIL_PATHS.getTrail, (route) =>
+			fulfillJson(route, TWO_EPISODE_TRAIL),
+		);
+		await page.route(SEARCH_PATH, (route) => fulfillJson(route, SEARCH_EMPTY));
+
+		await page.goto("./knowledge/trail");
+		await expect(page.getByTestId("trail-episode")).toHaveCount(2, {
+			timeout: 15000,
+		});
+
+		await page.getByTestId("trail-search").fill("nonexistent-xyz");
+		await page.getByTestId("trail-search").press("Enter");
+
+		await expect(page.getByTestId("trail-search-empty")).toBeVisible({
+			timeout: 15000,
+		});
+		await expect(page.getByTestId("trail-episode")).toHaveCount(0);
+	});
+
+	test("typing without submitting never calls SearchTrail (pull-only)", async ({
+		page,
+	}) => {
+		await page.route(TRAIL_PATHS.getTrail, (route) =>
+			fulfillJson(route, TWO_EPISODE_TRAIL),
+		);
+		let searchCalled = false;
+		await page.route(SEARCH_PATH, async (route) => {
+			searchCalled = true;
+			await fulfillJson(route, SEARCH_HIT);
+		});
+
+		await page.goto("./knowledge/trail");
+		await expect(page.getByTestId("trail-episode")).toHaveCount(2, {
+			timeout: 15000,
+		});
+
+		await page.getByTestId("trail-search").fill("submarine");
+		await page.waitForTimeout(500);
+		expect(searchCalled).toBe(false);
+	});
+
+	test("submitting an empty query is a no-op", async ({ page }) => {
+		await page.route(TRAIL_PATHS.getTrail, (route) =>
+			fulfillJson(route, TWO_EPISODE_TRAIL),
+		);
+		let searchCalled = false;
+		await page.route(SEARCH_PATH, async (route) => {
+			searchCalled = true;
+			await fulfillJson(route, SEARCH_HIT);
+		});
+
+		await page.goto("./knowledge/trail");
+		await expect(page.getByTestId("trail-episode")).toHaveCount(2, {
+			timeout: 15000,
+		});
+
+		await page.getByTestId("trail-search").press("Enter");
+		await page.waitForTimeout(300);
+		expect(searchCalled).toBe(false);
+		await expect(page.getByTestId("trail-episode")).toHaveCount(2);
+	});
+});

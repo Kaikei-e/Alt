@@ -122,3 +122,71 @@ func TestGetTrailFootprintsReturnsSpine(t *testing.T) {
 		})
 	require.NoError(t, err)
 }
+
+// TestGetTrailFootprintsNarrowedToMatchingItems pins the trail search
+// narrowing contract (Wave 9, D25): alt-backend's search_trail_usecase calls
+// GetTrailFootprints with filter_item_keys set (no cursor, a large limit) to
+// narrow the spine to episodes containing a search hit. A provider-side drop
+// of filter_item_keys support would silently widen every search result back
+// to the full spine, so this consumer pact pins both the request shape and
+// that the response narrows accordingly.
+func TestGetTrailFootprintsNarrowedToMatchingItems(t *testing.T) {
+	mockProvider := newSovereignPact(t)
+
+	const userID = "22222222-2222-2222-2222-222222222222"
+
+	err := mockProvider.
+		AddInteraction().
+		Given("a user with footprints across two articles, one matching the search filter").
+		UponReceiving("a GetTrailFootprints request narrowed to matching items").
+		WithCompleteRequest(consumer.Request{
+			Method: "POST",
+			Path:   matchers.String("/services.sovereign.v1.KnowledgeSovereignService/GetTrailFootprints"),
+			Headers: matchers.MapMatcher{
+				"Content-Type": matchers.String("application/json"),
+			},
+			Body: matchers.MapMatcher{
+				"userId":         matchers.Like(userID),
+				"limit":          matchers.Like(500),
+				"filterItemKeys": matchers.EachLike("article:1", 1),
+			},
+		}).
+		WithCompleteResponse(consumer.Response{
+			Status: 200,
+			Headers: matchers.MapMatcher{
+				"Content-Type": matchers.String("application/json"),
+			},
+			Body: matchers.MapMatcher{
+				// Only the episode containing the matching item comes back —
+				// the non-matching article:2 episode must not leak through.
+				"episodes": matchers.EachLike(matchers.MapMatcher{
+					"episodeKey": matchers.Like("ep:open:article:1"),
+					"wear":       matchers.Like("worn"),
+					"footprints": matchers.EachLike(matchers.MapMatcher{
+						"footprintKey": matchers.Like("open:article:1"),
+						"verb":         matchers.Like("read"),
+						"itemKey":      matchers.Like("article:1"),
+						"occurredAt":   matchers.Like("2026-06-10T09:12:00Z"),
+					}, 1),
+				}, 1),
+			},
+		}).
+		ExecuteTest(t, func(config consumer.MockServerConfig) error {
+			client := newSovereignClient(config)
+			resp, err := client.GetTrailFootprints(context.Background(), connect.NewRequest(&sovereignv1.GetTrailFootprintsRequest{
+				UserId:         userID,
+				Limit:          500,
+				FilterItemKeys: []string{"article:1"},
+			}))
+			if err != nil {
+				return fmt.Errorf("GetTrailFootprints failed: %w", err)
+			}
+			require.NotEmpty(t, resp.Msg.Episodes, "provider must return episodes narrowed to filter_item_keys")
+			ep := resp.Msg.Episodes[0]
+			assert.NotEmpty(t, ep.EpisodeKey)
+			require.NotEmpty(t, ep.Footprints)
+			assert.Equal(t, "article:1", ep.Footprints[0].ItemKey, "the narrowed response must contain the matching item")
+			return nil
+		})
+	require.NoError(t, err)
+}

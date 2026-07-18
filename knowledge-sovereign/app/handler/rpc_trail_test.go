@@ -140,6 +140,91 @@ func TestGetTrailFootprints_EpisodePaging(t *testing.T) {
 	assert.Empty(t, page3.Msg.NextCursor)
 }
 
+// FilterItemKeys (Wave 9 — trail search, D25) narrows the derived episodes to
+// those containing at least one matching member, but a matching episode
+// surfaces in FULL: a member that did not itself match the filter still comes
+// along, because episodes (not footprints) are the unit of context.
+func TestGetTrailFootprints_FilterItemKeysNarrowsToMatchingEpisodesWithFullMemberContext(t *testing.T) {
+	base := time.Date(2026, 1, 1, 9, 0, 0, 0, time.UTC)
+	repo := &mockRepo{trailFootprints: []sovereign_db.TrailFootprint{
+		// article:a and article:b chain into one episode (stage 2: shared
+		// tags within the window).
+		{FootprintKey: "fp:b", ItemKey: "article:b", Verb: "read", OccurredAt: base.Add(24 * time.Hour), Tags: []string{"golang", "backend"}, Wear: "thin"},
+		{FootprintKey: "fp:a", ItemKey: "article:a", Verb: "read", OccurredAt: base, Tags: []string{"golang", "backend"}, Wear: "thin"},
+		// article:z is unrelated (different tags, far away in time) and forms
+		// its own episode.
+		{FootprintKey: "fp:z", ItemKey: "article:z", Verb: "read", OccurredAt: base.Add(100 * 24 * time.Hour), Tags: []string{"rust"}, Wear: "thin"},
+	}}
+	h := NewSovereignHandler(repo)
+
+	resp, err := h.GetTrailFootprints(context.Background(), connect.NewRequest(&sovereignv1.GetTrailFootprintsRequest{
+		UserId:         "22222222-2222-2222-2222-222222222222",
+		Limit:          20,
+		FilterItemKeys: []string{"article:a"},
+	}))
+	require.NoError(t, err)
+
+	require.Len(t, resp.Msg.Episodes, 1, "only the episode containing article:a should surface")
+	members := resp.Msg.Episodes[0].Footprints
+	require.Len(t, members, 2, "the whole episode comes along, including the article:b member that did not match the filter")
+	gotItemKeys := []string{members[0].ItemKey, members[1].ItemKey}
+	assert.ElementsMatch(t, []string{"article:a", "article:b"}, gotItemKeys)
+}
+
+// An empty FilterItemKeys must leave episode derivation and paging unchanged
+// (the zero value must not be misread as "match nothing").
+func TestGetTrailFootprints_EmptyFilterItemKeysReturnsAllEpisodesUnchanged(t *testing.T) {
+	base := time.Date(2026, 1, 1, 9, 0, 0, 0, time.UTC)
+	repo := &mockRepo{trailFootprints: []sovereign_db.TrailFootprint{
+		{FootprintKey: "fp:b", ItemKey: "article:b", Verb: "read", OccurredAt: base.Add(24 * time.Hour), Tags: []string{"golang", "backend"}, Wear: "thin"},
+		{FootprintKey: "fp:a", ItemKey: "article:a", Verb: "read", OccurredAt: base, Tags: []string{"golang", "backend"}, Wear: "thin"},
+		{FootprintKey: "fp:z", ItemKey: "article:z", Verb: "read", OccurredAt: base.Add(100 * 24 * time.Hour), Tags: []string{"rust"}, Wear: "thin"},
+	}}
+	h := NewSovereignHandler(repo)
+
+	resp, err := h.GetTrailFootprints(context.Background(), connect.NewRequest(&sovereignv1.GetTrailFootprintsRequest{
+		UserId: "22222222-2222-2222-2222-222222222222",
+		Limit:  20,
+	}))
+	require.NoError(t, err)
+	assert.Len(t, resp.Msg.Episodes, 2, "no filter_item_keys means both derived episodes come back unchanged")
+}
+
+// Paging (limit/cursor) applies AFTER filtering: the offset walks the
+// filtered episode list, not the full unfiltered derivation.
+func TestGetTrailFootprints_FilterItemKeysPagingAppliesAfterFiltering(t *testing.T) {
+	base := time.Date(2026, 1, 1, 9, 0, 0, 0, time.UTC)
+	repo := &mockRepo{trailFootprints: []sovereign_db.TrailFootprint{
+		{FootprintKey: "fp:c", ItemKey: "article:c", Verb: "read", OccurredAt: base.Add(60 * 24 * time.Hour), Tags: []string{"golang"}, Wear: "thin"},
+		{FootprintKey: "fp:b", ItemKey: "article:b", Verb: "read", OccurredAt: base.Add(30 * 24 * time.Hour), Tags: []string{"postgres"}, Wear: "thin"},
+		{FootprintKey: "fp:a", ItemKey: "article:a", Verb: "read", OccurredAt: base, Tags: []string{"rust"}, Wear: "thin"},
+	}}
+	h := NewSovereignHandler(repo)
+
+	// article:b is excluded from the filter; article:c and article:a match.
+	page1, err := h.GetTrailFootprints(context.Background(), connect.NewRequest(&sovereignv1.GetTrailFootprintsRequest{
+		UserId:         "22222222-2222-2222-2222-222222222222",
+		Limit:          1,
+		FilterItemKeys: []string{"article:c", "article:a"},
+	}))
+	require.NoError(t, err)
+	require.Len(t, page1.Msg.Episodes, 1, "limit applies after filtering down to the matching episodes")
+	assert.Equal(t, "ep:fp:c", page1.Msg.Episodes[0].EpisodeKey)
+	assert.True(t, page1.Msg.HasMore, "one more matching episode (article:a) remains beyond the limit")
+	assert.Equal(t, "ep:1", page1.Msg.NextCursor)
+
+	page2, err := h.GetTrailFootprints(context.Background(), connect.NewRequest(&sovereignv1.GetTrailFootprintsRequest{
+		UserId:         "22222222-2222-2222-2222-222222222222",
+		Limit:          1,
+		Cursor:         page1.Msg.NextCursor,
+		FilterItemKeys: []string{"article:c", "article:a"},
+	}))
+	require.NoError(t, err)
+	require.Len(t, page2.Msg.Episodes, 1)
+	assert.Equal(t, "ep:fp:a", page2.Msg.Episodes[0].EpisodeKey, "the excluded article:b episode must not consume a page slot")
+	assert.False(t, page2.Msg.HasMore)
+}
+
 func TestGetTrailFootprints_InvalidEpisodeCursorIsInvalidArgument(t *testing.T) {
 	repo := &mockRepo{}
 	h := NewSovereignHandler(repo)

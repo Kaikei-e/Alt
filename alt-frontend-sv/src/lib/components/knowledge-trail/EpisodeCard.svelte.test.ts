@@ -190,4 +190,52 @@ describe("EpisodeCard", () => {
 		});
 		expect(page.getByTestId("episode-tag").elements()).toHaveLength(3);
 	});
+
+	// Wave 9: trail search (D25) highlights matched members inside their
+	// containing episode and auto-expands so the hit is visible without an
+	// extra click.
+	it("auto-expands when a member footprint's itemKey is in matchedItemKeys", async () => {
+		render(EpisodeCard, {
+			props: {
+				episode: makeEpisode(),
+				matchedItemKeys: ["article:submarines"],
+			},
+		});
+		await expect
+			.element(page.getByTestId("episode-toggle"))
+			.toHaveAttribute("aria-expanded", "true");
+		// The sole member is itself the hit, so it renders under the hit
+		// testid rather than the plain footprint one.
+		expect(page.getByTestId("footprint-hit").elements()).toHaveLength(1);
+	});
+
+	it("marks the matched member footprint row with the hit testid", async () => {
+		render(EpisodeCard, {
+			props: {
+				episode: makeEpisode(),
+				matchedItemKeys: ["article:submarines"],
+			},
+		});
+		await expect.element(page.getByTestId("footprint-hit")).toBeInTheDocument();
+	});
+
+	it("does not auto-expand or mark hits when matchedItemKeys is empty (default)", async () => {
+		render(EpisodeCard, { props: { episode: makeEpisode() } });
+		await expect
+			.element(page.getByTestId("episode-toggle"))
+			.toHaveAttribute("aria-expanded", "false");
+		expect(page.getByTestId("footprint-hit").elements()).toHaveLength(0);
+	});
+
+	it("does not auto-expand when matchedItemKeys names an item outside this episode", async () => {
+		render(EpisodeCard, {
+			props: {
+				episode: makeEpisode(),
+				matchedItemKeys: ["article:something-else"],
+			},
+		});
+		await expect
+			.element(page.getByTestId("episode-toggle"))
+			.toHaveAttribute("aria-expanded", "false");
+	});
 });

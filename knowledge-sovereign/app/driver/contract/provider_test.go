@@ -126,13 +126,42 @@ func startStubServer(t *testing.T, reject *bool) int {
 	// spine's default display unit (D24/D30, Wave 8); a provider-side drop of
 	// episode_key/wear/footprints regresses the FE back to the legacy flat
 	// spine, so the consumer pact pins all three.
+	//
+	// Wave 9 (D25 — trail search): a request carrying filter_item_keys must
+	// narrow the response to episodes containing a matching item, mirroring
+	// the real handler's filterEpisodesByItemKeys. The stub parses the
+	// request body to serve the narrowed fixture the consumer pact pins.
 	mux.HandleFunc("/services.sovereign.v1.KnowledgeSovereignService/GetTrailFootprints", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			w.WriteHeader(http.StatusMethodNotAllowed)
 			return
 		}
-		_, _ = io.Copy(io.Discard, r.Body)
+		bodyBytes, _ := io.ReadAll(r.Body)
+		var req struct {
+			FilterItemKeys []string `json:"filterItemKeys"`
+		}
+		_ = json.Unmarshal(bodyBytes, &req)
+
 		w.Header().Set("Content-Type", "application/json")
+		if len(req.FilterItemKeys) > 0 {
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"episodes": []map[string]any{
+					{
+						"episodeKey": "ep:open:article:1",
+						"wear":       "worn",
+						"footprints": []map[string]any{
+							{
+								"footprintKey": "open:article:1",
+								"verb":         "read",
+								"itemKey":      "article:1",
+								"occurredAt":   "2026-06-10T09:12:00Z",
+							},
+						},
+					},
+				},
+			})
+			return
+		}
 		_ = json.NewEncoder(w).Encode(map[string]any{
 			// footprints is the legacy flat spine — superseded by episodes and
 			// empty in production, but the consumer pact still pins its shape
@@ -372,6 +401,9 @@ func TestVerifyAltBackendConsumerContract(t *testing.T) {
 				return nil, nil
 			},
 			"a user with at least one footprint exists": func(setup bool, s models.ProviderState) (models.ProviderStateResponse, error) {
+				return nil, nil
+			},
+			"a user with footprints across two articles, one matching the search filter": func(setup bool, s models.ProviderState) (models.ProviderStateResponse, error) {
 				return nil, nil
 			},
 			"the projection mutation is rejected with an error": func(setup bool, s models.ProviderState) (models.ProviderStateResponse, error) {

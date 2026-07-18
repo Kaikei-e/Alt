@@ -42,6 +42,9 @@ const (
 	// KnowledgeTrailServiceEmitTrailOutcomeProcedure is the fully-qualified name of the
 	// KnowledgeTrailService's EmitTrailOutcome RPC.
 	KnowledgeTrailServiceEmitTrailOutcomeProcedure = "/alt.knowledge_trail.v1.KnowledgeTrailService/EmitTrailOutcome"
+	// KnowledgeTrailServiceSearchTrailProcedure is the fully-qualified name of the
+	// KnowledgeTrailService's SearchTrail RPC.
+	KnowledgeTrailServiceSearchTrailProcedure = "/alt.knowledge_trail.v1.KnowledgeTrailService/SearchTrail"
 )
 
 // KnowledgeTrailServiceClient is a client for the alt.knowledge_trail.v1.KnowledgeTrailService
@@ -60,6 +63,11 @@ type KnowledgeTrailServiceClient interface {
 	// the emitted fact. One outcome per branch (first write wins server-side),
 	// so retries need no client-minted id.
 	EmitTrailOutcome(context.Context, *connect.Request[v1.EmitTrailOutcomeRequest]) (*connect.Response[v1.EmitTrailOutcomeResponse], error)
+	// SearchTrail is the trail's single rediscovery instrument (D25): full-text
+	// search over what the user has actually read (title/content/tags via the
+	// article index, intersected with the user's spine). Hits come back as their
+	// containing episodes so every result keeps its time context.
+	SearchTrail(context.Context, *connect.Request[v1.SearchTrailRequest]) (*connect.Response[v1.SearchTrailResponse], error)
 }
 
 // NewKnowledgeTrailServiceClient constructs a client for the
@@ -92,6 +100,12 @@ func NewKnowledgeTrailServiceClient(httpClient connect.HTTPClient, baseURL strin
 			connect.WithSchema(knowledgeTrailServiceMethods.ByName("EmitTrailOutcome")),
 			connect.WithClientOptions(opts...),
 		),
+		searchTrail: connect.NewClient[v1.SearchTrailRequest, v1.SearchTrailResponse](
+			httpClient,
+			baseURL+KnowledgeTrailServiceSearchTrailProcedure,
+			connect.WithSchema(knowledgeTrailServiceMethods.ByName("SearchTrail")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
@@ -100,6 +114,7 @@ type knowledgeTrailServiceClient struct {
 	getTrail         *connect.Client[v1.GetTrailRequest, v1.GetTrailResponse]
 	resolveBranch    *connect.Client[v1.ResolveBranchRequest, v1.ResolveBranchResponse]
 	emitTrailOutcome *connect.Client[v1.EmitTrailOutcomeRequest, v1.EmitTrailOutcomeResponse]
+	searchTrail      *connect.Client[v1.SearchTrailRequest, v1.SearchTrailResponse]
 }
 
 // GetTrail calls alt.knowledge_trail.v1.KnowledgeTrailService.GetTrail.
@@ -115,6 +130,11 @@ func (c *knowledgeTrailServiceClient) ResolveBranch(ctx context.Context, req *co
 // EmitTrailOutcome calls alt.knowledge_trail.v1.KnowledgeTrailService.EmitTrailOutcome.
 func (c *knowledgeTrailServiceClient) EmitTrailOutcome(ctx context.Context, req *connect.Request[v1.EmitTrailOutcomeRequest]) (*connect.Response[v1.EmitTrailOutcomeResponse], error) {
 	return c.emitTrailOutcome.CallUnary(ctx, req)
+}
+
+// SearchTrail calls alt.knowledge_trail.v1.KnowledgeTrailService.SearchTrail.
+func (c *knowledgeTrailServiceClient) SearchTrail(ctx context.Context, req *connect.Request[v1.SearchTrailRequest]) (*connect.Response[v1.SearchTrailResponse], error) {
+	return c.searchTrail.CallUnary(ctx, req)
 }
 
 // KnowledgeTrailServiceHandler is an implementation of the
@@ -133,6 +153,11 @@ type KnowledgeTrailServiceHandler interface {
 	// the emitted fact. One outcome per branch (first write wins server-side),
 	// so retries need no client-minted id.
 	EmitTrailOutcome(context.Context, *connect.Request[v1.EmitTrailOutcomeRequest]) (*connect.Response[v1.EmitTrailOutcomeResponse], error)
+	// SearchTrail is the trail's single rediscovery instrument (D25): full-text
+	// search over what the user has actually read (title/content/tags via the
+	// article index, intersected with the user's spine). Hits come back as their
+	// containing episodes so every result keeps its time context.
+	SearchTrail(context.Context, *connect.Request[v1.SearchTrailRequest]) (*connect.Response[v1.SearchTrailResponse], error)
 }
 
 // NewKnowledgeTrailServiceHandler builds an HTTP handler from the service implementation. It
@@ -160,6 +185,12 @@ func NewKnowledgeTrailServiceHandler(svc KnowledgeTrailServiceHandler, opts ...c
 		connect.WithSchema(knowledgeTrailServiceMethods.ByName("EmitTrailOutcome")),
 		connect.WithHandlerOptions(opts...),
 	)
+	knowledgeTrailServiceSearchTrailHandler := connect.NewUnaryHandler(
+		KnowledgeTrailServiceSearchTrailProcedure,
+		svc.SearchTrail,
+		connect.WithSchema(knowledgeTrailServiceMethods.ByName("SearchTrail")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/alt.knowledge_trail.v1.KnowledgeTrailService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case KnowledgeTrailServiceGetTrailProcedure:
@@ -168,6 +199,8 @@ func NewKnowledgeTrailServiceHandler(svc KnowledgeTrailServiceHandler, opts ...c
 			knowledgeTrailServiceResolveBranchHandler.ServeHTTP(w, r)
 		case KnowledgeTrailServiceEmitTrailOutcomeProcedure:
 			knowledgeTrailServiceEmitTrailOutcomeHandler.ServeHTTP(w, r)
+		case KnowledgeTrailServiceSearchTrailProcedure:
+			knowledgeTrailServiceSearchTrailHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -187,4 +220,8 @@ func (UnimplementedKnowledgeTrailServiceHandler) ResolveBranch(context.Context, 
 
 func (UnimplementedKnowledgeTrailServiceHandler) EmitTrailOutcome(context.Context, *connect.Request[v1.EmitTrailOutcomeRequest]) (*connect.Response[v1.EmitTrailOutcomeResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("alt.knowledge_trail.v1.KnowledgeTrailService.EmitTrailOutcome is not implemented"))
+}
+
+func (UnimplementedKnowledgeTrailServiceHandler) SearchTrail(context.Context, *connect.Request[v1.SearchTrailRequest]) (*connect.Response[v1.SearchTrailResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("alt.knowledge_trail.v1.KnowledgeTrailService.SearchTrail is not implemented"))
 }

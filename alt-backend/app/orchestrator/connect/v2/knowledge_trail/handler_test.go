@@ -17,6 +17,7 @@ import (
 	"alt/mocks"
 	"alt/orchestrator/usecase/get_knowledge_trail_usecase"
 	"alt/orchestrator/usecase/image_proxy_usecase"
+	"alt/orchestrator/usecase/search_trail_usecase"
 )
 
 type fakeTrailPort struct {
@@ -34,6 +35,34 @@ type fakeThumbnailPort struct {
 
 func (f *fakeThumbnailPort) GetOgImageURLsByArticleIDs(_ context.Context, _ []string) (map[string]string, error) {
 	return f.urls, nil
+}
+
+type fakeSearchPort struct {
+	hits []domain.SearchIndexerArticleHit
+}
+
+func (f *fakeSearchPort) SearchArticles(_ context.Context, _ string, _ string) ([]domain.SearchIndexerArticleHit, error) {
+	return f.hits, nil
+}
+
+func (f *fakeSearchPort) SearchArticlesWithPagination(_ context.Context, _ string, _ string, _ int, _ int) ([]domain.SearchIndexerArticleHit, int64, error) {
+	return nil, 0, nil
+}
+
+func (f *fakeSearchPort) SearchRecapsByTag(_ context.Context, _ string, _ int) ([]*domain.RecapSearchResult, error) {
+	return nil, nil
+}
+
+func (f *fakeSearchPort) SearchRecapsByQuery(_ context.Context, _ string, _ int) ([]*domain.RecapSearchResult, int64, error) {
+	return nil, 0, nil
+}
+
+type fakeSearchTrailPort struct {
+	episodes []domain.TrailEpisode
+}
+
+func (f *fakeSearchTrailPort) SearchTrailFootprints(_ context.Context, _ uuid.UUID, _ []string, _ int) ([]domain.TrailEpisode, error) {
+	return f.episodes, nil
 }
 
 func userCtx() context.Context {
@@ -59,7 +88,7 @@ func TestGetTrail_MapsCollapsedContactFields(t *testing.T) {
 		ContactCount:    2,
 		Wear:            "worn",
 	}}}
-	h := NewHandler(get_knowledge_trail_usecase.NewGetKnowledgeTrailUsecase(port, &fakeThumbnailPort{}), nil, nil, nil, slog.Default())
+	h := NewHandler(get_knowledge_trail_usecase.NewGetKnowledgeTrailUsecase(port, &fakeThumbnailPort{}), nil, nil, nil, nil, slog.Default())
 
 	resp, err := h.GetTrail(userCtx(), connect.NewRequest(&knowledgetrailv1.GetTrailRequest{Limit: 20}))
 	require.NoError(t, err)
@@ -83,7 +112,7 @@ func TestGetTrail_SingleContactKeepsCountOne(t *testing.T) {
 		FirstOccurredAt: at,
 		ContactCount:    1,
 	}}}
-	h := NewHandler(get_knowledge_trail_usecase.NewGetKnowledgeTrailUsecase(port, &fakeThumbnailPort{}), nil, nil, nil, slog.Default())
+	h := NewHandler(get_knowledge_trail_usecase.NewGetKnowledgeTrailUsecase(port, &fakeThumbnailPort{}), nil, nil, nil, nil, slog.Default())
 
 	resp, err := h.GetTrail(userCtx(), connect.NewRequest(&knowledgetrailv1.GetTrailRequest{Limit: 20}))
 	require.NoError(t, err)
@@ -104,7 +133,7 @@ func TestGetTrail_MapsEpisodes(t *testing.T) {
 			Verb:         "read",
 		}},
 	}}}
-	h := NewHandler(get_knowledge_trail_usecase.NewGetKnowledgeTrailUsecase(port, &fakeThumbnailPort{}), nil, nil, nil, slog.Default())
+	h := NewHandler(get_knowledge_trail_usecase.NewGetKnowledgeTrailUsecase(port, &fakeThumbnailPort{}), nil, nil, nil, nil, slog.Default())
 
 	resp, err := h.GetTrail(userCtx(), connect.NewRequest(&knowledgetrailv1.GetTrailRequest{Limit: 20}))
 	require.NoError(t, err)
@@ -135,7 +164,7 @@ func TestGetTrail_SignsEpisodeThumbnailWhenRawURLPresent(t *testing.T) {
 	signer.EXPECT().GenerateProxyURL(rawURL).Return(signedURL)
 	imageProxy := image_proxy_usecase.NewImageProxyUsecase(nil, nil, nil, signer, nil, nil, 0, 0, 0)
 
-	h := NewHandler(get_knowledge_trail_usecase.NewGetKnowledgeTrailUsecase(port, thumbs), nil, nil, imageProxy, slog.Default())
+	h := NewHandler(get_knowledge_trail_usecase.NewGetKnowledgeTrailUsecase(port, thumbs), nil, nil, nil, imageProxy, slog.Default())
 
 	resp, err := h.GetTrail(userCtx(), connect.NewRequest(&knowledgetrailv1.GetTrailRequest{Limit: 20}))
 	require.NoError(t, err)
@@ -153,10 +182,96 @@ func TestGetTrail_NoImageProxyLeavesThumbnailEmpty(t *testing.T) {
 	}}}
 	thumbs := &fakeThumbnailPort{urls: map[string]string{articleID: "https://example.com/a.png"}}
 
-	h := NewHandler(get_knowledge_trail_usecase.NewGetKnowledgeTrailUsecase(port, thumbs), nil, nil, nil, slog.Default())
+	h := NewHandler(get_knowledge_trail_usecase.NewGetKnowledgeTrailUsecase(port, thumbs), nil, nil, nil, nil, slog.Default())
 
 	resp, err := h.GetTrail(userCtx(), connect.NewRequest(&knowledgetrailv1.GetTrailRequest{Limit: 20}))
 	require.NoError(t, err)
 	require.Len(t, resp.Msg.Episodes, 1)
 	assert.Empty(t, resp.Msg.Episodes[0].ThumbnailUrl)
+}
+
+// SearchTrail (Wave 9, D25) maps the usecase's episodes and matched item keys
+// through to the wire, reusing the same episode/footprint mapping GetTrail
+// uses (h.mapEpisodes).
+func TestSearchTrail_MapsEpisodesAndMatchedItemKeys(t *testing.T) {
+	articleID := uuid.New().String()
+	searchPort := &fakeSearchPort{hits: []domain.SearchIndexerArticleHit{{ID: articleID}}}
+	trailPort := &fakeSearchTrailPort{episodes: []domain.TrailEpisode{{
+		EpisodeKey: "ep:open:article:1",
+		Wear:       "worn",
+		Footprints: []domain.TrailFootprint{{FootprintKey: "open:article:1", ItemKey: "article:" + articleID, Verb: "read"}},
+	}}}
+	searchUC := search_trail_usecase.NewSearchTrailUsecase(searchPort, trailPort, &fakeThumbnailPort{})
+	h := NewHandler(nil, nil, nil, searchUC, nil, slog.Default())
+
+	resp, err := h.SearchTrail(userCtx(), connect.NewRequest(&knowledgetrailv1.SearchTrailRequest{Query: "llm", Limit: 20}))
+	require.NoError(t, err)
+	require.Len(t, resp.Msg.Episodes, 1)
+	assert.Equal(t, "ep:open:article:1", resp.Msg.Episodes[0].EpisodeKey)
+	assert.Equal(t, "worn", resp.Msg.Episodes[0].Wear)
+	require.Len(t, resp.Msg.Episodes[0].Footprints, 1)
+	assert.Equal(t, "article:"+articleID, resp.Msg.Episodes[0].Footprints[0].ItemKey)
+	assert.Equal(t, []string{"article:" + articleID}, resp.Msg.MatchedItemKeys)
+}
+
+// D29: an OG image resolved for the episode's representative article must be
+// signed through the image-proxy signer before it reaches the wire — the
+// same signing path GetTrail uses (h.signThumbnail), reused rather than
+// duplicated.
+func TestSearchTrail_SignsEpisodeThumbnailWhenRawURLPresent(t *testing.T) {
+	articleID := uuid.New().String()
+	rawURL := "https://example.com/a.png"
+	signedURL := "https://cdn.example.com/proxy/signed-a"
+
+	searchPort := &fakeSearchPort{hits: []domain.SearchIndexerArticleHit{{ID: articleID}}}
+	trailPort := &fakeSearchTrailPort{episodes: []domain.TrailEpisode{{
+		EpisodeKey: "ep:1",
+		Footprints: []domain.TrailFootprint{{FootprintKey: "fp:1", ItemKey: "article:" + articleID}},
+	}}}
+	thumbs := &fakeThumbnailPort{urls: map[string]string{articleID: rawURL}}
+	searchUC := search_trail_usecase.NewSearchTrailUsecase(searchPort, trailPort, thumbs)
+
+	ctrl := gomock.NewController(t)
+	signer := mocks.NewMockImageProxySignerPort(ctrl)
+	signer.EXPECT().GenerateProxyURL(rawURL).Return(signedURL)
+	imageProxy := image_proxy_usecase.NewImageProxyUsecase(nil, nil, nil, signer, nil, nil, 0, 0, 0)
+
+	h := NewHandler(nil, nil, nil, searchUC, imageProxy, slog.Default())
+
+	resp, err := h.SearchTrail(userCtx(), connect.NewRequest(&knowledgetrailv1.SearchTrailRequest{Query: "llm", Limit: 20}))
+	require.NoError(t, err)
+	require.Len(t, resp.Msg.Episodes, 1)
+	assert.Equal(t, signedURL, resp.Msg.Episodes[0].ThumbnailUrl)
+}
+
+// Unauthenticated requests are rejected before the usecase is ever reached.
+func TestSearchTrail_UnauthenticatedReturnsUnauthenticated(t *testing.T) {
+	searchUC := search_trail_usecase.NewSearchTrailUsecase(&fakeSearchPort{}, &fakeSearchTrailPort{}, &fakeThumbnailPort{})
+	h := NewHandler(nil, nil, nil, searchUC, nil, slog.Default())
+
+	_, err := h.SearchTrail(context.Background(), connect.NewRequest(&knowledgetrailv1.SearchTrailRequest{Query: "llm"}))
+	require.Error(t, err)
+	assert.Equal(t, connect.CodeUnauthenticated, connect.CodeOf(err))
+}
+
+// An empty query is a structurally invalid request — the usecase's
+// ErrInvalidRequest maps to CodeInvalidArgument, not CodeInternal.
+func TestSearchTrail_EmptyQueryReturnsInvalidArgument(t *testing.T) {
+	searchUC := search_trail_usecase.NewSearchTrailUsecase(&fakeSearchPort{}, &fakeSearchTrailPort{}, &fakeThumbnailPort{})
+	h := NewHandler(nil, nil, nil, searchUC, nil, slog.Default())
+
+	_, err := h.SearchTrail(userCtx(), connect.NewRequest(&knowledgetrailv1.SearchTrailRequest{Query: "   "}))
+	require.Error(t, err)
+	assert.Equal(t, connect.CodeInvalidArgument, connect.CodeOf(err))
+}
+
+// Rule 8 (no silent fallback): an unwired search usecase must panic rather
+// than silently return an empty result, mirroring EmitTrailOutcome's guard —
+// a DI gap must be loud, not indistinguishable from "zero results".
+func TestSearchTrail_UnwiredUsecasePanics(t *testing.T) {
+	h := NewHandler(nil, nil, nil, nil, nil, slog.Default())
+
+	assert.Panics(t, func() {
+		_, _ = h.SearchTrail(userCtx(), connect.NewRequest(&knowledgetrailv1.SearchTrailRequest{Query: "llm"}))
+	})
 }

@@ -22,6 +22,24 @@ service KnowledgeTrailService {
   // the emitted fact. One outcome per branch (first write wins server-side),
   // so retries need no client-minted id.
   rpc EmitTrailOutcome(EmitTrailOutcomeRequest) returns (EmitTrailOutcomeResponse);
+  // SearchTrail is the trail's single rediscovery instrument (D25): full-text
+  // search over what the user has actually read (title/content/tags via the
+  // article index, intersected with the user's spine). Hits come back as their
+  // containing episodes so every result keeps its time context.
+  rpc SearchTrail(SearchTrailRequest) returns (SearchTrailResponse);
+}
+
+message SearchTrailRequest {
+  string query = 1;
+  int32 limit = 2;
+}
+
+message SearchTrailResponse {
+  // episodes containing at least one matching item, newest first.
+  repeated Episode episodes = 1;
+  // matched_item_keys marks which member items matched, so the UI can
+  // highlight the hit inside its episode.
+  repeated string matched_item_keys = 2;
 }
 
 message EmitTrailOutcomeRequest {

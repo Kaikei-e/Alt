@@ -695,6 +695,11 @@ message GetTrailFootprintsRequest {
   // item carries at least one of these tags are returned. Lens is a computed
   // filter over the one spine, never a second structure.
   repeated string filter_tags = 4;
+  // filter_item_keys narrows the derived episodes to those containing at least
+  // one of these items (trail search intersection). Empty = no narrowing.
+  // Derivation is unchanged — the filter applies to the derived episodes, so a
+  // hit always returns with its full episode context.
+  repeated string filter_item_keys = 5;
 }
 
 message GetTrailFootprintsResponse {
