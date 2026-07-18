@@ -3,14 +3,14 @@
 Pydanticを使用した型安全なデータモデルを定義します。
 """
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
 
 def _utc_now() -> datetime:
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 class ErrorBudgetResult(BaseModel):

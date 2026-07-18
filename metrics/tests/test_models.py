@@ -1,6 +1,5 @@
 """models.py の型安全性テスト"""
 
-
 import pytest
 from pydantic import ValidationError
 

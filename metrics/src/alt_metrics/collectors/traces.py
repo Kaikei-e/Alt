@@ -3,7 +3,6 @@
 otel_tracesテーブルからパフォーマンス・エラーデータを収集します。
 """
 
-
 from typing import Any
 
 import structlog

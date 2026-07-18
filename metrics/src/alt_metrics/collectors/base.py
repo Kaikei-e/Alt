@@ -3,7 +3,6 @@
 構造化ログを使用したエラーハンドリングを実装しています。
 """
 
-
 from typing import Any
 
 import structlog

@@ -1,6 +1,5 @@
 """analysis.py のテスト"""
 
-
 import pytest
 
 from alt_metrics.analysis import (

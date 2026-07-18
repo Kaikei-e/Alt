@@ -3,7 +3,6 @@
 otel_http_requestsテーブルからHTTPパフォーマンスデータを収集します。
 """
 
-
 from typing import Any
 
 import structlog

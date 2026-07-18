@@ -1,6 +1,5 @@
 """collectors/saturation.py のテスト"""
 
-
 from unittest.mock import MagicMock
 
 import pytest
@@ -99,6 +98,7 @@ class TestCollectQueueSaturation:
         assert result[1]["p95_wait_time_ms"] == 100.0
         assert "avg_depth" not in result[0]
         assert "max_depth" not in result[0]
+
     def test_empty_result_returns_empty_list(self) -> None:
         """空の結果は空リストを返す"""
         mock_client = MagicMock()

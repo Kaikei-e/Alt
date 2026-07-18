@@ -6,7 +6,7 @@ analyzeとvalidateコマンドを提供します。
 import argparse
 import sys
 from contextlib import closing
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 import clickhouse_connect
@@ -136,9 +136,7 @@ def run_analysis(
         try:
             result = result.model_copy(
                 update={
-                    "slo_violations": collect_slo_violations(
-                        client, db, hours, thresholds.slo_error_rate_threshold
-                    )
+                    "slo_violations": collect_slo_violations(client, db, hours, thresholds.slo_error_rate_threshold)
                 }
             )
         except CollectorError as e:
@@ -170,7 +168,7 @@ def cmd_analyze(args: argparse.Namespace) -> int:
         # ファイル出力
         output_dir = args.output_dir or config.report.output_dir
         output_dir.mkdir(parents=True, exist_ok=True)
-        timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+        timestamp = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
         output_file = output_dir / f"system_health_{timestamp}.md"
         output_file.write_text(report, encoding="utf-8")
 

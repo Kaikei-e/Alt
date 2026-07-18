@@ -3,7 +3,6 @@
 sli_metricsテーブルからSLI/SLOデータを収集します。
 """
 
-
 from typing import Any
 
 import structlog

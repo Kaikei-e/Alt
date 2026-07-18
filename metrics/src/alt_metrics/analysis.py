@@ -347,9 +347,7 @@ def _collect_recommendations(
             f"主要エラーの調査: {top_error['service']}の{top_error['error_type']} ({top_error['error_count']}件発生)"
         )
 
-    stale_services = [
-        s for s in service_stats if s.get("minutes_since_last_log", 0) > thresholds.log_gap_warning_min
-    ]
+    stale_services = [s for s in service_stats if s.get("minutes_since_last_log", 0) > thresholds.log_gap_warning_min]
     if stale_services:
         names = ", ".join(s["service_name"] for s in stale_services[:3])
         recommendations.append(f"ログ停止サービスの確認: {names}")

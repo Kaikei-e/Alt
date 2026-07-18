@@ -1,6 +1,5 @@
 """エラーバジェット計算のテスト"""
 
-
 from pytest import approx
 
 from alt_metrics.analysis import calculate_error_budget

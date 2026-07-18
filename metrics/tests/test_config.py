@@ -1,6 +1,5 @@
 """config.py のテスト"""
 
-
 import os
 from pathlib import Path
 from tempfile import NamedTemporaryFile

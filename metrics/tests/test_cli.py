@@ -3,7 +3,6 @@
 analyze/validateコマンドの部分失敗継続とexit codeを検証します。
 """
 
-
 import argparse
 from pathlib import Path
 from typing import Any

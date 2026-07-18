@@ -4,7 +4,6 @@
 """
 
 
-
 class MetricsError(Exception):
     """メトリクス関連エラーの基底クラス"""
 

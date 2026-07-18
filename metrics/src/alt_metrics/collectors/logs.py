@@ -3,7 +3,6 @@
 otel_logsおよびotel_error_logsテーブルからログデータを収集します。
 """
 
-
 from typing import Any
 
 import structlog

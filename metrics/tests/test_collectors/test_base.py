@@ -1,6 +1,5 @@
 """collectors/base.py のテスト"""
 
-
 from unittest.mock import MagicMock
 
 import pytest

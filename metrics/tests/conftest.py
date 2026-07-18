@@ -1,6 +1,6 @@
 """共通テストフィクスチャ"""
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import pytest
 
@@ -42,7 +42,7 @@ def sample_service_health() -> list[ServiceHealth]:
 def sample_analysis_result(sample_service_health: list[ServiceHealth]) -> AnalysisResult:
     """サンプル分析結果"""
     return AnalysisResult(
-        generated_at=datetime(2026, 1, 19, 12, 0, 0, tzinfo=timezone.utc),
+        generated_at=datetime(2026, 1, 19, 12, 0, 0, tzinfo=UTC),
         hours_analyzed=24,
         overall_health_score=65,
         service_health=sample_service_health,
