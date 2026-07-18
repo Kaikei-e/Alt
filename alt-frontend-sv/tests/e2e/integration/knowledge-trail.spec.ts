@@ -19,12 +19,11 @@ test.describe("Knowledge Trail spine", () => {
 	}) => {
 		await page.goto("./knowledge/trail");
 
-		const spine = page.getByTestId("trail-spine");
-		await expect(spine).toBeVisible({ timeout: 15000 });
-
-		const footprints = page.getByTestId("trail-footprint");
+		// The spine renders episodes (Wave 8) — either at least one episode card
+		// or the explicit empty-state, never an eternal spinner.
+		const episodes = page.getByTestId("trail-episode");
 		const empty = page.getByTestId("trail-empty");
-		await expect(footprints.first().or(empty)).toBeVisible({ timeout: 15000 });
+		await expect(episodes.first().or(empty)).toBeVisible({ timeout: 15000 });
 	});
 
 	test("exposes an explicit refresh affordance (pull-only)", async ({
