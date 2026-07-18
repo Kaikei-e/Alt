@@ -104,8 +104,15 @@ message Footprint {
   repeated string tags = 6;
   // note is a derived hint (e.g. "2nd visit"), never a stage label.
   string note = 7;
-  // occurred_at is the event-time of the act (RFC3339).
+  // occurred_at is the event-time of the act (RFC3339). For a collapsed
+  // footprint this is the LATEST contact.
   string occurred_at = 8;
   // wear is the derived path-wear band: "thin" | "worn" | "deep". Never a number.
   string wear = 9;
+  // contact_count is how many acts of this verb on this item are collapsed
+  // into this row (>= 1). Repeated reads never add spine rows (D24).
+  int32 contact_count = 10;
+  // first_occurred_at is the event-time of the EARLIEST collapsed contact
+  // (RFC3339). Equal to occurred_at when contact_count is 1.
+  string first_occurred_at = 11;
 }

@@ -37,8 +37,13 @@ export interface FootprintData {
 	excerpt: string;
 	tags: string[];
 	note: string;
+	/** Event-time of the LATEST collapsed contact (RFC3339). */
 	occurredAt: string;
 	wear: FootprintWear;
+	/** How many contacts collapse into this row (>= 1). Repeated reads never add rows. */
+	contactCount: number;
+	/** Event-time of the EARLIEST collapsed contact (RFC3339). */
+	firstOccurredAt: string;
 }
 
 /** The typed relation a branch expresses. */
@@ -93,6 +98,8 @@ function convertFootprint(pb: ProtoFootprint): FootprintData {
 		note: pb.note,
 		occurredAt: pb.occurredAt,
 		wear: pb.wear,
+		contactCount: pb.contactCount > 0 ? pb.contactCount : 1,
+		firstOccurredAt: pb.firstOccurredAt || pb.occurredAt,
 	};
 }
 

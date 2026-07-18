@@ -745,4 +745,9 @@ message TrailFootprint {
   // wear is the derived path-wear band for the item's trail: "thin" | "worn" |
   // "deep". Pure projection of how often the item was engaged; never a number.
   string wear = 12;
+  // contact_count is how many acts of this verb on this item are collapsed
+  // into this row (>= 1). occurred_at is the latest contact.
+  int32 contact_count = 13;
+  // first_occurred_at is the earliest collapsed contact.
+  google.protobuf.Timestamp first_occurred_at = 14;
 }

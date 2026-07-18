@@ -15,6 +15,8 @@ function makeFootprint(overrides: Partial<FootprintData> = {}): FootprintData {
 		note: "",
 		occurredAt: "2026-06-11T13:00:00Z",
 		wear: "thin",
+		contactCount: 1,
+		firstOccurredAt: "2026-06-11T13:00:00Z",
 		...overrides,
 	};
 }
@@ -38,5 +40,25 @@ describe("Footprint", () => {
 			props: { footprint: makeFootprint({ itemKey: "digest:2026-06-11" }) },
 		});
 		expect(page.getByTestId("footprint-link").elements()).toHaveLength(0);
+	});
+
+	// D24: repeated contacts collapse server-side into one row with a count.
+	it("shows a visit count when contacts are collapsed", async () => {
+		render(Footprint, {
+			props: {
+				footprint: makeFootprint({
+					contactCount: 3,
+					firstOccurredAt: "2026-06-01T08:00:00Z",
+				}),
+			},
+		});
+		const count = page.getByTestId("footprint-count");
+		await expect.element(count).toBeInTheDocument();
+		await expect.element(count).toHaveTextContent("3");
+	});
+
+	it("shows no visit count for a single contact", async () => {
+		render(Footprint, { props: { footprint: makeFootprint() } });
+		expect(page.getByTestId("footprint-count").elements()).toHaveLength(0);
 	});
 });

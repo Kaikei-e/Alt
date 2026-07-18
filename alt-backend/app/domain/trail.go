@@ -16,6 +16,11 @@ type TrailFootprint struct {
 	SourceEventType string
 	OccurredAt      time.Time
 	Wear            string
+	// ContactCount is how many acts of this verb on this item are collapsed
+	// into this footprint (>= 1). OccurredAt is the latest contact,
+	// FirstOccurredAt the earliest.
+	ContactCount    int
+	FirstOccurredAt time.Time
 }
 
 // TrailEvidenceRef is one piece of evidence backing a branch.

@@ -24,6 +24,8 @@ describe("Knowledge Trail API Contract", () => {
 						note: "2nd visit",
 						occurredAt: "2026-06-10T09:12:00Z",
 						wear: "deep",
+						contactCount: 2,
+						firstOccurredAt: "2026-06-01T08:00:00Z",
 					},
 				],
 				nextCursor: "cursor_abc",
@@ -35,6 +37,11 @@ describe("Knowledge Trail API Contract", () => {
 			expect(response.footprints[0]!.verb).toBe("read");
 			expect(response.footprints[0]!.tags).toEqual(["rust", "async"]);
 			expect(response.footprints[0]!.wear).toBe("deep");
+			// D24 collapse fields: repeated contacts arrive as a count, not rows.
+			expect(response.footprints[0]!.contactCount).toBe(2);
+			expect(response.footprints[0]!.firstOccurredAt).toBe(
+				"2026-06-01T08:00:00Z",
+			);
 			expect(response.hasMore).toBe(true);
 		});
 

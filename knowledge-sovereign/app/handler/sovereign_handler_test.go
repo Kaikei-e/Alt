@@ -21,11 +21,12 @@ import (
 
 // mockRepo implements ReadDB (MutationRepository + ReadOperations).
 type mockRepo struct {
-	lastMethod    string
-	lastPayload   json.RawMessage
-	returnErr     error
-	returnLens    *sovereign_db.KnowledgeLens
-	returnVersion *sovereign_db.KnowledgeLensVersion
+	lastMethod       string
+	lastPayload      json.RawMessage
+	returnErr        error
+	returnLens       *sovereign_db.KnowledgeLens
+	returnVersion    *sovereign_db.KnowledgeLensVersion
+	trailFootprints  []sovereign_db.TrailFootprint
 }
 
 // --- MutationRepository ---
@@ -75,7 +76,7 @@ func (m *mockRepo) GetKnowledgeHomeItems(_ context.Context, _ uuid.UUID, _ strin
 	return nil, "", false, m.returnErr
 }
 func (m *mockRepo) GetTrailFootprints(_ context.Context, _ uuid.UUID, _ string, _ int, _ []string) ([]sovereign_db.TrailFootprint, string, bool, error) {
-	return nil, "", false, m.returnErr
+	return m.trailFootprints, "", false, m.returnErr
 }
 func (m *mockRepo) GetOpenTrailBranches(_ context.Context, _ uuid.UUID) ([]sovereign_db.TrailBranch, error) {
 	return nil, m.returnErr

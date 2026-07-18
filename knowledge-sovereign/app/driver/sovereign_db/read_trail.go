@@ -36,6 +36,11 @@ type TrailFootprint struct {
 	SourceEventType string
 	OccurredAt      time.Time
 	Wear            string
+	// ContactCount is how many acts of this verb on this item are collapsed
+	// into this row (>= 1); OccurredAt is the latest contact and
+	// FirstOccurredAt the earliest (D24 — repeated reads never add rows).
+	ContactCount    int
+	FirstOccurredAt time.Time
 }
 
 // UpsertTrailFootprint writes one footprint idempotently. Re-projection of the
