@@ -33,7 +33,11 @@ describe("TrailBranches", () => {
 		const onResolve = vi.fn();
 		render(TrailBranches, { props: { branches: [makeBranch()], onResolve } });
 		await page.getByTestId("branch-take").click();
-		expect(onResolve).toHaveBeenCalledWith("cluster:u:article:z", "taken");
+		expect(onResolve).toHaveBeenCalledWith(
+			"cluster:u:article:z",
+			"taken",
+			"article:z",
+		);
 	});
 
 	it("Dismiss resolves the branch as dismissed", async () => {
