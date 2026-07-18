@@ -59,6 +59,8 @@
           ],
           "footprints": [
             {
+              "contactCount": 2,
+              "firstOccurredAt": "2026-06-01T08:00:00Z",
               "footprintKey": "open:article:1",
               "itemKey": "article:1",
               "occurredAt": "2026-06-10T09:12:00Z",
@@ -143,6 +145,22 @@
                 {
                   "match": "type",
                   "min": 1
+                }
+              ]
+            },
+            "$.footprints[*].contactCount": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.footprints[*].firstOccurredAt": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
                 }
               ]
             },

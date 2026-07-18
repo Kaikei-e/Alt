@@ -36,7 +36,11 @@ export function groupFootprintsByDay(
 		const key = Number.isNaN(d.getTime()) ? "unknown" : localDayKey(d);
 		let group = byKey.get(key);
 		if (!group) {
-			group = { dayKey: key, label: labelFor(key, d, todayKey, yesterdayKey), footprints: [] };
+			group = {
+				dayKey: key,
+				label: labelFor(key, d, todayKey, yesterdayKey),
+				footprints: [],
+			};
 			byKey.set(key, group);
 			groups.push(group);
 		}

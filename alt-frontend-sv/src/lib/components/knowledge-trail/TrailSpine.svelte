@@ -8,52 +8,20 @@ interface Props {
 	loading: boolean;
 	hasMore: boolean;
 	hasEverLoaded: boolean;
-	activeTags: string[];
-	availableTags: string[];
 	onLoadMore: () => void;
-	onSelectLens: (tags: string[]) => void;
 }
 
-const {
-	footprints,
-	loading,
-	hasMore,
-	hasEverLoaded,
-	activeTags,
-	availableTags,
-	onLoadMore,
-	onSelectLens,
-}: Props = $props();
+const { footprints, loading, hasMore, hasEverLoaded, onLoadMore }: Props =
+	$props();
 
 // `now` is read once at construction; grouping is pure over it.
 const now = new Date();
 const groups = $derived(groupFootprintsByDay(footprints, now));
 const isEmpty = $derived(hasEverLoaded && !loading && footprints.length === 0);
-const lensActive = $derived(activeTags.length > 0);
 </script>
 
-{#if availableTags.length > 0}
-	<div class="lenses" data-testid="trail-lenses">
-		<span class="lens-label">Lens</span>
-		<button
-			class="lens"
-			class:active={!lensActive}
-			onclick={() => onSelectLens([])}
-		>
-			All footprints
-		</button>
-		{#each availableTags as tag (tag)}
-			<button
-				class="lens"
-				class:active={activeTags.includes(tag)}
-				onclick={() => onSelectLens([tag])}
-			>
-				{tag}
-			</button>
-		{/each}
-	</div>
-{/if}
-
+<!-- No lens chip bar: the raw tag union was a dead tag cloud (D25). Theme
+     narrowing belongs to episodes; targeted rediscovery to trail search. -->
 <section class="trail" data-testid="trail-spine">
 	{#if isEmpty}
 		<p class="trail-empty" data-testid="trail-empty">
@@ -80,37 +48,6 @@ const lensActive = $derived(activeTags.length > 0);
 </section>
 
 <style>
-	.lenses {
-		display: flex;
-		align-items: center;
-		gap: 0.45rem;
-		margin-top: 1.3rem;
-		flex-wrap: wrap;
-	}
-	.lens-label {
-		font-family: var(--font-mono);
-		font-size: 0.65rem;
-		font-weight: 600;
-		letter-spacing: 0.1em;
-		text-transform: uppercase;
-		color: var(--alt-ash, #999);
-		margin-right: 0.3rem;
-	}
-	.lens {
-		font-family: var(--font-mono);
-		font-size: 0.75rem;
-		color: var(--chip-text, #49443d);
-		border: 1px solid var(--chip-border, #d0c8bb);
-		background: var(--chip-bg, #ebe7df);
-		padding: 0.28rem 0.7rem;
-		cursor: pointer;
-	}
-	.lens.active {
-		border-color: var(--alt-primary, #2f4f4f);
-		color: var(--alt-primary, #2f4f4f);
-		background: color-mix(in srgb, var(--alt-primary, #2f4f4f) 8%, transparent);
-		font-weight: 600;
-	}
 	.trail {
 		margin-top: 1.4rem;
 		max-width: 880px;

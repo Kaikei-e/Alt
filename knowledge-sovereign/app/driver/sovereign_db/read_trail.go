@@ -79,7 +79,7 @@ func (r *Repository) GetTrailFootprints(ctx context.Context, userID uuid.UUID, c
 	fetchLimit := limit + 1
 	args := []any{userID, engagedDwellMs}
 	var where strings.Builder
-	where.WriteString(`WHERE f.user_id = $1`)
+	where.WriteString(`WHERE TRUE`)
 	argPos := 3
 	if cursor != "" {
 		occurredAt, footprintKey, err := decodeTrailCursor(cursor)
@@ -105,6 +105,10 @@ func (r *Repository) GetTrailFootprints(ctx context.Context, userID uuid.UUID, c
 	// the engaged threshold ($2, a Go constant — D20) or a Loop-era engaged
 	// label marks the item as substantively walked. An engaged walk lifts the
 	// band at least to worn; engaged plus a revisit reads as deep.
+	// collapsed folds repeated contacts with one (item, verb) into a single
+	// spine row (D24): the row sorts by its latest contact, remembers its
+	// first, and carries the contact count. Wear still folds over raw rows —
+	// a revisit no longer adds a row, but it still deepens the path.
 	query := fmt.Sprintf(`
 WITH item_wear AS (
   SELECT item_key, count(*) AS cnt, bool_or(verb = 'asked') AS has_ask
@@ -119,9 +123,22 @@ item_engagement AS (
     AND ((dwell_ms IS NOT NULL AND dwell_ms >= $2)
          OR legacy_outcome IN ('engaged', 'deep_engagement'))
   GROUP BY item_key
+),
+collapsed AS (
+  SELECT tenant_id, item_key, verb,
+         count(*) AS contact_count,
+         min(occurred_at) AS first_occurred_at,
+         max(occurred_at) AS occurred_at,
+         (array_agg(footprint_key ORDER BY occurred_at DESC, footprint_key DESC))[1] AS footprint_key,
+         (array_agg(note ORDER BY occurred_at DESC, footprint_key DESC))[1] AS note,
+         (array_agg(source_event_type ORDER BY occurred_at DESC, footprint_key DESC))[1] AS source_event_type
+  FROM knowledge_trail_footprints
+  WHERE user_id = $1
+  GROUP BY tenant_id, item_key, verb
 )
-SELECT f.user_id, f.tenant_id, f.footprint_key, f.verb, f.item_key,
+SELECT f.tenant_id, f.footprint_key, f.verb, f.item_key,
        COALESCE(f.note, ''), f.source_event_type, f.occurred_at,
+       f.first_occurred_at, f.contact_count,
        -- Display title with a readable fallback: a title-less item (upstream
        -- knowledge_home_items.title gap) shows its source host, never the raw
        -- item key. The excerpt is rendered separately, so it is not used here.
@@ -133,11 +150,11 @@ SELECT f.user_id, f.tenant_id, f.footprint_key, f.verb, f.item_key,
                  OR (COALESCE(ie.engaged, FALSE) AND iw.cnt >= 2) THEN 'deep'
             WHEN iw.cnt >= 2 OR COALESCE(ie.engaged, FALSE) THEN 'worn'
             ELSE 'thin' END AS wear
-FROM knowledge_trail_footprints f
+FROM collapsed f
 JOIN item_wear iw ON iw.item_key = f.item_key
 LEFT JOIN item_engagement ie ON ie.item_key = f.item_key
 LEFT JOIN knowledge_home_items khi
-  ON khi.user_id = f.user_id
+  ON khi.user_id = $1
   AND khi.item_key = f.item_key
   AND khi.projection_version = `+activeProjectionVersionSQL+`
 %s
@@ -153,11 +170,12 @@ LIMIT $%d`, where.String(), argPos)
 
 	var footprints []TrailFootprint
 	for rows.Next() {
-		var fp TrailFootprint
+		fp := TrailFootprint{UserID: userID}
 		var tagsJSON []byte
 		if err := rows.Scan(
-			&fp.UserID, &fp.TenantID, &fp.FootprintKey, &fp.Verb, &fp.ItemKey,
+			&fp.TenantID, &fp.FootprintKey, &fp.Verb, &fp.ItemKey,
 			&fp.Note, &fp.SourceEventType, &fp.OccurredAt,
+			&fp.FirstOccurredAt, &fp.ContactCount,
 			&fp.Title, &fp.Excerpt, &tagsJSON, &fp.Wear,
 		); err != nil {
 			return nil, "", false, fmt.Errorf("GetTrailFootprints scan: %w", err)

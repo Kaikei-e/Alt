@@ -13,6 +13,8 @@ function fp(key: string, occurredAt: string): FootprintData {
 		note: "",
 		occurredAt,
 		wear: "thin",
+		contactCount: 1,
+		firstOccurredAt: occurredAt,
 	};
 }
 
@@ -28,10 +30,7 @@ describe("groupFootprintsByDay", () => {
 
 	it("labels today and yesterday relative to the injected now", () => {
 		const groups = groupFootprintsByDay(
-			[
-				fp("a", localISO(2026, 5, 10, 9)),
-				fp("b", localISO(2026, 5, 9, 20)),
-			],
+			[fp("a", localISO(2026, 5, 10, 9)), fp("b", localISO(2026, 5, 9, 20))],
 			now,
 		);
 		expect(groups).toHaveLength(2);
@@ -41,14 +40,14 @@ describe("groupFootprintsByDay", () => {
 
 	it("keeps reverse-chronological footprints in the same day bucket in order", () => {
 		const groups = groupFootprintsByDay(
-			[
-				fp("a", localISO(2026, 5, 10, 13)),
-				fp("b", localISO(2026, 5, 10, 11)),
-			],
+			[fp("a", localISO(2026, 5, 10, 13)), fp("b", localISO(2026, 5, 10, 11))],
 			now,
 		);
 		expect(groups).toHaveLength(1);
-		expect(groups[0]!.footprints.map((f) => f.footprintKey)).toEqual(["a", "b"]);
+		expect(groups[0]!.footprints.map((f) => f.footprintKey)).toEqual([
+			"a",
+			"b",
+		]);
 	});
 
 	it("buckets unparseable timestamps under Earlier", () => {

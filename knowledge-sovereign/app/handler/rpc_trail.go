@@ -8,6 +8,7 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	sovereignv1 "knowledge-sovereign/gen/proto/services/sovereign/v1"
+	"knowledge-sovereign/usecase/tagclean"
 )
 
 // GetTrailFootprints returns the user's footprint spine, reverse-chronological.
@@ -33,6 +34,13 @@ func (h *SovereignHandler) GetTrailFootprints(
 
 	pb := make([]*sovereignv1.TrailFootprint, len(footprints))
 	for i, fp := range footprints {
+		// The earliest contact defaults to the latest for legacy single-contact
+		// rows; the raw ML tag vocabulary never leaves the service (D25).
+		firstOccurredAt := fp.FirstOccurredAt
+		if firstOccurredAt.IsZero() {
+			firstOccurredAt = fp.OccurredAt
+		}
+		contactCount := max(fp.ContactCount, 1)
 		pb[i] = &sovereignv1.TrailFootprint{
 			UserId:          fp.UserID.String(),
 			TenantId:        fp.TenantID.String(),
@@ -41,11 +49,13 @@ func (h *SovereignHandler) GetTrailFootprints(
 			ItemKey:         fp.ItemKey,
 			Title:           fp.Title,
 			Excerpt:         fp.Excerpt,
-			Tags:            fp.Tags,
+			Tags:            tagclean.CleanDisplay(fp.Tags),
 			Note:            fp.Note,
 			SourceEventType: fp.SourceEventType,
 			OccurredAt:      timestamppb.New(fp.OccurredAt),
 			Wear:            fp.Wear,
+			ContactCount:    int32(contactCount), //nolint:gosec // >= 1, bounded by row count
+			FirstOccurredAt: timestamppb.New(firstOccurredAt),
 		}
 	}
 

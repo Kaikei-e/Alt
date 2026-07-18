@@ -28,7 +28,9 @@ const wear = $derived(
 		: "thin",
 );
 const timeLabel = $derived(formatTime(footprint.occurredAt));
-const displayTags = $derived(footprint.tags.filter((t) => t.trim() !== "").slice(0, 3));
+const displayTags = $derived(
+	footprint.tags.filter((t) => t.trim() !== "").slice(0, 3),
+);
 
 function formatTime(iso: string): string {
 	const d = new Date(iso);
@@ -46,6 +48,12 @@ function formatTime(iso: string): string {
 		<div class="fp-meta">
 			<span class="fp-time">{timeLabel}</span>
 			<span class="fp-verb">{verbLabel}</span>
+			{#if footprint.contactCount > 1}
+				<!-- D24: repeated contacts collapse into one row with a count. -->
+				<span class="fp-count" data-testid="footprint-count"
+					>× {footprint.contactCount} visits</span
+				>
+			{/if}
 			{#if footprint.note}
 				<span class="fp-note">{footprint.note}</span>
 			{/if}
@@ -145,6 +153,13 @@ function formatTime(iso: string): string {
 		letter-spacing: 0.12em;
 		text-transform: uppercase;
 		color: var(--alt-slate, #666);
+	}
+	.fp-count {
+		font-family: var(--font-mono);
+		font-size: 0.66rem;
+		font-weight: 600;
+		letter-spacing: 0.06em;
+		color: var(--wear-deep, #3e3a32);
 	}
 	.fp-note {
 		font-family: var(--font-mono);

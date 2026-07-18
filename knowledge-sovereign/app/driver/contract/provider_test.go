@@ -137,6 +137,10 @@ func startStubServer(t *testing.T, reject *bool) int {
 					"verb":         "read",
 					"itemKey":      "article:1",
 					"occurredAt":   "2026-06-10T09:12:00Z",
+					// D24 collapse: repeated contacts arrive as a count, never as
+					// one row per day.
+					"contactCount":    2,
+					"firstOccurredAt": "2026-06-01T08:00:00Z",
 				},
 			},
 			"branches": []map[string]any{

@@ -79,9 +79,13 @@ func (c *Client) GetTrailFootprints(ctx context.Context, userID uuid.UUID, curso
 			Note:            pb.Note,
 			SourceEventType: pb.SourceEventType,
 			Wear:            pb.Wear,
+			ContactCount:    int(pb.ContactCount),
 		}
 		if pb.OccurredAt != nil {
 			fp.OccurredAt = pb.OccurredAt.AsTime()
+		}
+		if pb.FirstOccurredAt != nil {
+			fp.FirstOccurredAt = pb.FirstOccurredAt.AsTime()
 		}
 		footprints[i] = fp
 	}

@@ -98,16 +98,23 @@ func (h *Handler) GetTrail(
 
 	footprints := make([]*knowledgetrailv1.Footprint, len(result.Footprints))
 	for i, fp := range result.Footprints {
+		firstOccurredAt := fp.FirstOccurredAt
+		if firstOccurredAt.IsZero() {
+			firstOccurredAt = fp.OccurredAt
+		}
+		contactCount := max(fp.ContactCount, 1)
 		footprints[i] = &knowledgetrailv1.Footprint{
-			FootprintKey: fp.FootprintKey,
-			Verb:         fp.Verb,
-			ItemKey:      fp.ItemKey,
-			Title:        fp.Title,
-			Excerpt:      fp.Excerpt,
-			Tags:         fp.Tags,
-			Note:         fp.Note,
-			OccurredAt:   fp.OccurredAt.UTC().Format(time.RFC3339),
-			Wear:         fp.Wear,
+			FootprintKey:    fp.FootprintKey,
+			Verb:            fp.Verb,
+			ItemKey:         fp.ItemKey,
+			Title:           fp.Title,
+			Excerpt:         fp.Excerpt,
+			Tags:            fp.Tags,
+			Note:            fp.Note,
+			OccurredAt:      fp.OccurredAt.UTC().Format(time.RFC3339),
+			Wear:            fp.Wear,
+			ContactCount:    int32(contactCount), //nolint:gosec // >= 1, bounded upstream
+			FirstOccurredAt: firstOccurredAt.UTC().Format(time.RFC3339),
 		}
 	}
 

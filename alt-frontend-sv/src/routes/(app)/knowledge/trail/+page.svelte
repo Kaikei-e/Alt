@@ -7,16 +7,6 @@ import { useKnowledgeTrail } from "$lib/hooks/useKnowledgeTrail.svelte";
 
 const trail = useKnowledgeTrail();
 
-// Available lens tags = the tags present on loaded footprints, unioned with the
-// active lens so the selected chip never disappears when the spine is filtered.
-const availableTags = $derived(
-	Array.from(
-		new Set([...trail.footprints.flatMap((f) => f.tags), ...trail.activeTags]),
-	)
-		.filter((t) => t.trim() !== "")
-		.sort(),
-);
-
 const dateStr = new Date().toLocaleDateString([], {
 	weekday: "long",
 	year: "numeric",
@@ -70,10 +60,7 @@ onMount(() => {
 		loading={trail.loading}
 		hasMore={trail.hasMore}
 		hasEverLoaded={trail.hasEverLoaded}
-		activeTags={trail.activeTags}
-		{availableTags}
 		onLoadMore={() => trail.loadMore()}
-		onSelectLens={(tags) => trail.setLens(tags)}
 	/>
 
 	<TrailBranches

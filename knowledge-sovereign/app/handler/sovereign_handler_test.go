@@ -21,12 +21,12 @@ import (
 
 // mockRepo implements ReadDB (MutationRepository + ReadOperations).
 type mockRepo struct {
-	lastMethod       string
-	lastPayload      json.RawMessage
-	returnErr        error
-	returnLens       *sovereign_db.KnowledgeLens
-	returnVersion    *sovereign_db.KnowledgeLensVersion
-	trailFootprints  []sovereign_db.TrailFootprint
+	lastMethod      string
+	lastPayload     json.RawMessage
+	returnErr       error
+	returnLens      *sovereign_db.KnowledgeLens
+	returnVersion   *sovereign_db.KnowledgeLensVersion
+	trailFootprints []sovereign_db.TrailFootprint
 }
 
 // --- MutationRepository ---
