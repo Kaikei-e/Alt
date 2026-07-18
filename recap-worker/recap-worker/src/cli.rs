@@ -37,7 +37,7 @@ pub(crate) async fn try_warmup(args: &[String]) -> Option<i32> {
 /// Returns exit code 0 on success, 1 on failure.
 fn run_healthcheck() -> i32 {
     let port = env::var("PORT").unwrap_or_else(|_| "9005".to_string());
-    let url = format!("http://127.0.0.1:{}/health/live", port);
+    let url = format!("http://127.0.0.1:{port}/health/live");
 
     let client = reqwest::blocking::Client::builder()
         .timeout(Duration::from_secs(5))
@@ -46,7 +46,7 @@ fn run_healthcheck() -> i32 {
     let client = match client {
         Ok(c) => c,
         Err(e) => {
-            eprintln!("healthcheck failed: failed to create client: {}", e);
+            eprintln!("healthcheck failed: failed to create client: {e}");
             return 1;
         }
     };
@@ -58,7 +58,7 @@ fn run_healthcheck() -> i32 {
             1
         }
         Err(e) => {
-            eprintln!("healthcheck failed: {}", e);
+            eprintln!("healthcheck failed: {e}");
             1
         }
     }
@@ -80,7 +80,7 @@ pub(crate) fn install_panic_hook() {
                 panic_info
                     .payload()
                     .downcast_ref::<String>()
-                    .map(|s| s.as_str())
+                    .map(String::as_str)
             })
             .unwrap_or("unknown panic payload");
 

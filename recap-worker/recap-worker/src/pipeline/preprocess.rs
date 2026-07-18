@@ -125,11 +125,9 @@ impl PreprocessStage for TextPreprocessStage {
         let mut html_cleaned_count = 0;
         let mut total_characters = 0;
         let mut language_counts: HashMap<String, usize> = HashMap::new();
-        let mut progress_counter = 0usize;
 
-        for result in results {
-            progress_counter += 1;
-            let current_progress = progress_counter;
+        for (progress_counter, result) in results.into_iter().enumerate() {
+            let current_progress = progress_counter + 1;
 
             // Log progress every 100 articles
             if current_progress.is_multiple_of(100) || current_progress == total_articles {

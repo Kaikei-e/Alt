@@ -20,7 +20,7 @@ async fn two_stage_evaluation_highlights_graph_boost() {
     assert!(report.two_stage.accuracy > report.coarse.accuracy);
     assert!(report.two_stage.macro_f1 > report.coarse.macro_f1);
     assert!(report.two_stage.macro_precision >= report.tag.macro_precision);
-    assert_eq!(report.two_stage.accuracy, 1.0);
+    assert!((report.two_stage.accuracy - 1.0).abs() < f32::EPSILON);
 }
 
 fn tech_with_tag() -> GenreEvaluationSample {

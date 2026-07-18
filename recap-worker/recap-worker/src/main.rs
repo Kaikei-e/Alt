@@ -118,8 +118,7 @@ async fn main() -> anyhow::Result<()> {
     // Default is "false" to preserve current behaviour; set to "true" to
     // re-enable the editorial projector tick.
     let morning_daemon_enabled = std::env::var("MORNING_DAEMON_ENABLED")
-        .map(|v| v.eq_ignore_ascii_case("true") || v == "1")
-        .unwrap_or(false);
+        .is_ok_and(|v| v.eq_ignore_ascii_case("true") || v == "1");
     if morning_daemon_enabled {
         info!("MORNING_DAEMON_ENABLED=true — starting morning editorial projector daemon");
         let _morning_daemon = recap_worker::scheduler::daemon::spawn_morning_update_daemon(
