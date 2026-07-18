@@ -10,7 +10,8 @@ import asyncio
 import logging
 import os
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any
+from types import MappingProxyType
+from typing import TYPE_CHECKING, Any, Final
 
 import numpy as np
 
@@ -22,6 +23,8 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 MODEL_NAME = "qwen3-tts-12hz-0.6b-customvoice"
+
+_TORCH_DTYPE_NAMES: Final[frozenset[str]] = frozenset({"bfloat16", "float16", "float32"})
 
 
 @dataclass(frozen=True, slots=True)
@@ -62,8 +65,28 @@ VOICES_CONFIG: tuple[VoiceConfig, ...] = (
 VOICES: tuple[Voice, ...] = tuple(
     Voice(id=v.id, name=v.name, gender=v.gender) for v in VOICES_CONFIG
 )
-VOICE_IDS: set[str] = {v.id for v in VOICES_CONFIG}
-_VOICE_BY_ID: dict[str, VoiceConfig] = {v.id: v for v in VOICES_CONFIG}
+VOICE_IDS: frozenset[str] = frozenset(v.id for v in VOICES_CONFIG)
+_VOICE_BY_ID: MappingProxyType[str, VoiceConfig] = MappingProxyType(
+    {v.id: v for v in VOICES_CONFIG}
+)
+
+
+def _resolve_torch_dtype(name: str) -> Any:
+    """Map a validated dtype name to a torch.dtype (no getattr on free strings)."""
+    import torch
+
+    mapping = {
+        "bfloat16": torch.bfloat16,
+        "float16": torch.float16,
+        "float32": torch.float32,
+    }
+    try:
+        return mapping[name]
+    except KeyError as err:
+        raise ValueError(
+            f"unsupported qwen_dtype {name!r}; expected one of {sorted(_TORCH_DTYPE_NAMES)}"
+        ) from err
+
 
 
 class QwenEngine:
@@ -88,7 +111,7 @@ class QwenEngine:
         return VOICES
 
     @property
-    def voice_ids(self) -> set[str]:
+    def voice_ids(self) -> frozenset[str]:
         return VOICE_IDS
 
     @property
@@ -127,14 +150,20 @@ class QwenEngine:
             try:
                 t = torch.tensor([1.0, 2.0], device="cuda")
                 result = (t * t).sum().item()
-                assert result == 5.0  # noqa: S101
-                logger.info("GPU compute verification passed")
-            except (RuntimeError, AssertionError) as err:
+            except RuntimeError as err:
                 logger.exception("GPU compute verification failed")
                 if os.environ.get("TTS_ALLOW_CPU_FALLBACK") == "1":
                     logger.warning("Falling back to CPU (TTS_ALLOW_CPU_FALLBACK=1)")
                     return "cpu", None
                 raise RuntimeError("GPU detected but compute verification failed") from err
+            if result != 5.0:
+                msg = f"GPU compute verification failed: expected 5.0, got {result}"
+                logger.error(msg)
+                if os.environ.get("TTS_ALLOW_CPU_FALLBACK") == "1":
+                    logger.warning("Falling back to CPU (TTS_ALLOW_CPU_FALLBACK=1)")
+                    return "cpu", None
+                raise RuntimeError(msg)
+            logger.info("GPU compute verification passed")
             return "cuda", gpu_name
 
         logger.warning("No GPU detected (torch.cuda.is_available() = False)")
@@ -151,7 +180,7 @@ class QwenEngine:
         import torch
         from qwen_tts import Qwen3TTSModel
 
-        dtype = getattr(torch, self._settings.qwen_dtype)
+        dtype = _resolve_torch_dtype(self._settings.qwen_dtype)
 
         # torch.backends.cudnn.benchmark defaults to TRUE on ROCm (opposite of
         # CUDA). With variable conv1d shapes from the codec's chunked_decode,
@@ -193,7 +222,7 @@ class QwenEngine:
                 instruct=first_voice.instruct,
             )
             logger.info("Qwen3-TTS warmup complete")
-        except Exception:
+        except Exception:  # noqa: BLE001 — model libs raise opaque errors on warmup
             logger.exception("Qwen3-TTS warmup failed (continuing)")
 
     def unload(self) -> None:
@@ -227,8 +256,8 @@ class QwenEngine:
 
             t = torch.ones((128, 128), device="cuda")
             _ = (t @ t).sum().item()
-        except Exception:
-            logger.debug("keepalive matmul failed (continuing)", exc_info=True)
+        except (RuntimeError, OSError):
+            logger.warning("keepalive matmul failed (continuing)", exc_info=True)
 
     @staticmethod
     def _resolve_voice(voice: str) -> VoiceConfig:

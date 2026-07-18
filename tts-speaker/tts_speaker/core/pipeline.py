@@ -17,7 +17,7 @@ from typing import TYPE_CHECKING, Any
 import numpy as np
 
 if TYPE_CHECKING:
-    from collections.abc import AsyncGenerator
+    from collections.abc import AsyncGenerator, Set as AbstractSet
 
     from .engine import TTSEngine, Voice
 
@@ -58,7 +58,7 @@ class TTSPipeline:
         return self._engine.voices
 
     @property
-    def voice_ids(self) -> set[str]:
+    def voice_ids(self) -> AbstractSet[str]:
         return self._engine.voice_ids
 
     @property
@@ -146,6 +146,11 @@ class TTSPipeline:
                     asyncio.run_coroutine_threadsafe(queue.put((chunk, sr)), loop).result()
                 asyncio.run_coroutine_threadsafe(queue.put(None), loop).result()
             except Exception as exc:
+                # Intentional catch-all: the producer runs in a worker thread and
+                # must forward *any* failure to the consumer via the queue.
+                # Narrowing the type would leave the async consumer hung on
+                # queue.get() when an unexpected error occurs.
+                logger.exception("synthesize_stream producer failed")
                 asyncio.run_coroutine_threadsafe(queue.put(exc), loop).result()
 
         future = loop.run_in_executor(None, producer)

@@ -78,7 +78,8 @@ def _create_mock_pipeline():
         Voice(id="qwen-ja-3", name="JA Voice 3", gender="female"),
     )
 
-    # synthesize() returns (audio_float32, sample_rate) at 44.1 kHz.
+    # synthesize() returns (audio_float32, sample_rate) at 24 kHz
+    # (Qwen codec rate; matches the mock zeros length below).
     async def mock_synthesize(*, text, voice="qwen-ja-1", speed=1.0):
         return np.zeros(24000, dtype=np.float32), 24000
 
@@ -149,9 +150,10 @@ def provider_url():
     base_url = f"http://127.0.0.1:{port}"
     for _ in range(100):
         try:
-            urllib.request.urlopen(f"{base_url}/health")
-            break
-        except Exception:
+            with urllib.request.urlopen(f"{base_url}/health", timeout=1) as resp:
+                if resp.status == 200:
+                    break
+        except OSError:
             time.sleep(0.05)
     else:
         pytest.fail("Provider server did not start")

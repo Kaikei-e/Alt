@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import AsyncGenerator
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import numpy as np
 import pytest
@@ -50,11 +50,8 @@ def mock_pipeline() -> MagicMock:
 
 @pytest.fixture
 def app(mock_pipeline: MagicMock):
-    """Create a Starlette app with mocked pipeline (no auth by default)."""
-    with patch.dict("os.environ", {"SERVICE_SECRET": ""}, clear=False):
-        application = create_app(pipeline_override=mock_pipeline)
-    return application
-
+    """Create a Starlette app with mocked pipeline."""
+    return create_app(pipeline_override=mock_pipeline)
 
 @pytest.fixture
 async def client(app) -> AsyncGenerator[AsyncClient]:

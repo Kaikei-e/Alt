@@ -4,6 +4,9 @@ from __future__ import annotations
 
 from unittest.mock import patch
 
+import pytest
+from pydantic import ValidationError
+
 from tts_speaker.infra.config import Settings
 
 
@@ -62,6 +65,20 @@ def test_tts_max_stream_text_length_env_override():
     with patch.dict("os.environ", {"TTS_MAX_STREAM_TEXT_LENGTH": "50000"}, clear=True):
         s = Settings()
     assert s.tts_max_stream_text_length == 50_000
+
+
+def test_invalid_log_level_rejected():
+    """LOG_LEVEL must be a known logging level name."""
+    with patch.dict("os.environ", {"LOG_LEVEL": "VERBOSE"}, clear=True):
+        with pytest.raises(ValidationError):
+            Settings()
+
+
+def test_invalid_qwen_dtype_rejected():
+    """TTS_QWEN_DTYPE must be an explicit torch dtype name."""
+    with patch.dict("os.environ", {"TTS_QWEN_DTYPE": "float64"}, clear=True):
+        with pytest.raises(ValidationError):
+            Settings()
 
 
 def test_engine_supertonic_via_env():

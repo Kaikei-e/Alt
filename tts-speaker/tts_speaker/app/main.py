@@ -25,6 +25,17 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
+def configure_logging(log_level: str) -> None:
+    """Configure root logging once at process entry (not inside create_app)."""
+    level = getattr(logging, log_level.upper(), None)
+    if not isinstance(level, int):
+        level = logging.INFO
+    logging.basicConfig(
+        level=level,
+        format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+    )
+
+
 async def _gpu_keepalive_loop(pipeline: TTSPipeline, interval_sec: float) -> None:
     """Periodically run a tiny GPU op to keep AMD DPM out of idle downclock.
 
@@ -40,7 +51,7 @@ async def _gpu_keepalive_loop(pipeline: TTSPipeline, interval_sec: float) -> Non
             await pipeline.keepalive_tick()
         except asyncio.CancelledError:
             return
-        except Exception:
+        except (RuntimeError, OSError):
             logger.exception("gpu keepalive loop iteration failed (continuing)")
 
 
@@ -49,6 +60,7 @@ async def lifespan(app: Starlette) -> "AsyncGenerator[None]":
     """Manage TTSPipeline lifecycle and the GPU keepalive task."""
     pipeline: TTSPipeline = app.state.pipeline
     settings: Settings = app.state.settings
+    configure_logging(settings.log_level)
 
     # Only load if not overridden (test mock)
     if not pipeline.is_ready:
@@ -105,11 +117,6 @@ def create_app(*, pipeline_override: TTSPipeline | None = None) -> Starlette:
         pipeline_override: Optional mock pipeline for testing.
     """
     settings = get_settings() if pipeline_override is None else Settings()
-
-    logging.basicConfig(
-        level=getattr(logging, settings.log_level.upper(), logging.INFO),
-        format="%(asctime)s %(levelname)s %(name)s: %(message)s",
-    )
 
     pipeline = pipeline_override or TTSPipeline(engine=build_engine(settings))
 

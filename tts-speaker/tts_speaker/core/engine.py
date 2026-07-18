@@ -12,6 +12,8 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Protocol
 
 if TYPE_CHECKING:
+    from collections.abc import Set as AbstractSet
+
     import numpy as np
 
 
@@ -39,7 +41,7 @@ class TTSEngine(Protocol):
     def voices(self) -> tuple[Voice, ...]: ...
 
     @property
-    def voice_ids(self) -> set[str]: ...
+    def voice_ids(self) -> AbstractSet[str]: ...
 
     @property
     def device(self) -> str:

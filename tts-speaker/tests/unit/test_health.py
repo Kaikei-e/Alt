@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import pytest
 from httpx import ASGITransport, AsyncClient
@@ -39,8 +39,7 @@ async def test_health_with_gpu(mock_pipeline: MagicMock):
     mock_pipeline.device = "cuda"
     mock_pipeline.gpu_name = "AMD ROCm GPU"
 
-    with patch.dict("os.environ", {"SERVICE_SECRET": ""}, clear=False):
-        app = create_app(pipeline_override=mock_pipeline)
+    app = create_app(pipeline_override=mock_pipeline)
 
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:

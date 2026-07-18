@@ -37,6 +37,43 @@ class TTSConnectService:
         """No-op: authentication is established at the TLS transport layer."""
         _ = ctx
 
+    def _validate_request(
+        self,
+        text: str,
+        voice: str,
+        speed: float,
+        *,
+        max_text_length: int,
+    ) -> tuple[str, str, float]:
+        """Shared validation for Synthesize / SynthesizeStream."""
+        if not self._pipeline.is_ready:
+            raise ConnectError(Code.UNAVAILABLE, "TTS pipeline not ready")
+
+        if not text:
+            raise ConnectError(Code.INVALID_ARGUMENT, "text must not be empty")
+
+        text = preprocess_for_tts(text)
+        logger.debug("Preprocessed text: %r", text)
+
+        if len(text) > max_text_length:
+            raise ConnectError(
+                Code.INVALID_ARGUMENT,
+                f"text must be between 1 and {max_text_length} characters",
+            )
+
+        voice = voice or self._settings.default_voice
+        if voice not in self._pipeline.voice_ids:
+            raise ConnectError(Code.INVALID_ARGUMENT, f"unknown voice: {voice}")
+
+        speed = speed or self._settings.default_speed
+        if speed < 0.5 or speed > 2.0:
+            raise ConnectError(
+                Code.INVALID_ARGUMENT,
+                "speed must be between 0.5 and 2.0",
+            )
+
+        return text, voice, speed
+
     async def synthesize(
         self,
         request: tts_pb2.SynthesizeRequest,
@@ -45,32 +82,12 @@ class TTSConnectService:
         """Synthesize text to WAV audio."""
         self._verify_token(ctx)
 
-        if not self._pipeline.is_ready:
-            raise ConnectError(Code.UNAVAILABLE, "TTS pipeline not ready")
-
-        text = request.text
-        if not text:
-            raise ConnectError(Code.INVALID_ARGUMENT, "text must not be empty")
-
-        text = preprocess_for_tts(text)
-        logger.debug("Preprocessed text: %r", text)
-
-        if len(text) > MAX_TEXT_LENGTH:
-            raise ConnectError(
-                Code.INVALID_ARGUMENT,
-                f"text must be between 1 and {MAX_TEXT_LENGTH} characters",
-            )
-
-        voice = request.voice or self._settings.default_voice
-        if voice not in self._pipeline.voice_ids:
-            raise ConnectError(Code.INVALID_ARGUMENT, f"unknown voice: {voice}")
-
-        speed = request.speed or self._settings.default_speed
-        if speed < 0.5 or speed > 2.0:
-            raise ConnectError(
-                Code.INVALID_ARGUMENT,
-                "speed must be between 0.5 and 2.0",
-            )
+        text, voice, speed = self._validate_request(
+            request.text,
+            request.voice,
+            request.speed,
+            max_text_length=MAX_TEXT_LENGTH,
+        )
 
         try:
             audio, sample_rate = await self._pipeline.synthesize(
@@ -115,34 +132,13 @@ class TTSConnectService:
         """Synthesize text to WAV audio stream."""
         self._verify_token(ctx)
 
-        if not self._pipeline.is_ready:
-            raise ConnectError(Code.UNAVAILABLE, "TTS pipeline not ready")
-
-        text = request.text
-        if not text:
-            raise ConnectError(Code.INVALID_ARGUMENT, "text must not be empty")
-
-        text = preprocess_for_tts(text)
-        logger.debug("Preprocessed text: %r", text)
-
-        stream_max = self._settings.tts_max_stream_text_length
-        if len(text) > stream_max:
-            raise ConnectError(
-                Code.INVALID_ARGUMENT,
-                f"text must be between 1 and {stream_max} characters",
-            )
+        text, voice, speed = self._validate_request(
+            request.text,
+            request.voice,
+            request.speed,
+            max_text_length=self._settings.tts_max_stream_text_length,
+        )
         logger.info("Text length: %d chars (after preprocess)", len(text))
-
-        voice = request.voice or self._settings.default_voice
-        if voice not in self._pipeline.voice_ids:
-            raise ConnectError(Code.INVALID_ARGUMENT, f"unknown voice: {voice}")
-
-        speed = request.speed or self._settings.default_speed
-        if speed < 0.5 or speed > 2.0:
-            raise ConnectError(
-                Code.INVALID_ARGUMENT,
-                "speed must be between 0.5 and 2.0",
-            )
 
         try:
             async for chunk, sample_rate in self._pipeline.synthesize_stream(

@@ -18,15 +18,14 @@ from tts_speaker.infra.config import Settings
 
 
 def _loaded_engine() -> tuple[SupertonicEngine, MagicMock]:
-    """Build a SupertonicEngine with a stub `_tts` and pre-resolved styles."""
+    """Build a SupertonicEngine with a stub TTS runtime via attach_runtime."""
     engine = SupertonicEngine(Settings())
     mock_tts = MagicMock()
     mock_audio = np.zeros((1, 4410), dtype=np.float32)
     mock_tts.synthesize.return_value = (mock_audio, np.array([0.1]))
     mock_tts.get_voice_style.return_value = MagicMock(name="Style")
-    engine._tts = mock_tts
-    engine._styles = {cfg_id: mock_tts.get_voice_style.return_value for cfg_id in VOICE_IDS}
-    engine._ready = True
+    styles = {cfg_id: mock_tts.get_voice_style.return_value for cfg_id in VOICE_IDS}
+    engine.attach_runtime(tts=mock_tts, styles=styles)
     return engine, mock_tts
 
 
