@@ -21,6 +21,7 @@ import (
 	"alt/connect/v2/middleware"
 	"alt/di"
 	"alt/domain"
+	"alt/utils/safeconv"
 	"alt/utils/url_validator"
 )
 
@@ -108,7 +109,7 @@ func (h *Handler) ListRSSFeedLinks(
 			HealthStatus: string(link.GetHealthStatus()),
 		}
 		if link.Availability != nil {
-			protoLink.ConsecutiveFailures = int32(link.Availability.ConsecutiveFailures)
+			protoLink.ConsecutiveFailures = safeconv.Int32(link.Availability.ConsecutiveFailures)
 			protoLink.IsActive = link.Availability.IsActive
 			if link.Availability.LastFailureReason != nil {
 				protoLink.LastFailureReason = *link.Availability.LastFailureReason

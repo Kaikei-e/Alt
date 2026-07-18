@@ -24,6 +24,7 @@ import (
 	"alt/shared/port/event_publisher_port"
 	"alt/shared/port/knowledge_event_port"
 	"alt/shared/usecase/create_summary_version_usecase"
+	"alt/utils/safeconv"
 	"fmt"
 )
 
@@ -1114,9 +1115,9 @@ func (h *Handler) ListRecapArticles(
 
 	resp := &backendv1.ListRecapArticlesResponse{
 		Range:    &backendv1.RecapArticleRange{From: from.UTC().Format(time.RFC3339), To: to.UTC().Format(time.RFC3339)},
-		Total:    int32(page.Total),
-		Page:     int32(page.Page),
-		PageSize: int32(page.PageSize),
+		Total:    safeconv.Int32(page.Total),
+		Page:     safeconv.Int32(page.Page),
+		PageSize: safeconv.Int32(page.PageSize),
 		HasMore:  page.HasMore,
 		Articles: articles,
 	}
@@ -1147,7 +1148,7 @@ func (h *Handler) FetchTagCloud(ctx context.Context, req *connect.Request[backen
 	for _, item := range items {
 		tags = append(tags, &backendv1.TagCloudInternalItem{
 			TagName:      item.TagName,
-			ArticleCount: int32(item.ArticleCount),
+			ArticleCount: safeconv.Int32(item.ArticleCount),
 		})
 	}
 

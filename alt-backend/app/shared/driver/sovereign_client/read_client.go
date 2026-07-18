@@ -3,6 +3,7 @@ package sovereign_client
 import (
 	"alt/domain"
 	sovereignv1 "alt/gen/proto/services/sovereign/v1"
+	"alt/utils/safeconv"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -23,7 +24,7 @@ func (c *Client) GetKnowledgeHomeItems(ctx context.Context, userID uuid.UUID, cu
 	req := &sovereignv1.GetKnowledgeHomeItemsRequest{
 		UserId: userID.String(),
 		Cursor: cursor,
-		Limit:  int32(limit),
+		Limit:  safeconv.Int32(limit),
 	}
 	if filter != nil {
 		sourceIDs := make([]string, len(filter.SourceIDs))
@@ -59,7 +60,7 @@ func (c *Client) GetTrailFootprints(ctx context.Context, userID uuid.UUID, curso
 	resp, err := c.client.GetTrailFootprints(ctx, connect.NewRequest(&sovereignv1.GetTrailFootprintsRequest{
 		UserId:     userID.String(),
 		Cursor:     cursor,
-		Limit:      int32(limit),
+		Limit:      safeconv.Int32(limit),
 		FilterTags: filterTags,
 	}))
 	if err != nil {
@@ -150,7 +151,7 @@ func (c *Client) GetRecallCandidates(ctx context.Context, userID uuid.UUID, limi
 		return nil, nil
 	}
 	resp, err := c.client.GetRecallCandidates(ctx, connect.NewRequest(&sovereignv1.GetRecallCandidatesRequest{
-		UserId: userID.String(), Limit: int32(limit),
+		UserId: userID.String(), Limit: safeconv.Int32(limit),
 	}))
 	if err != nil {
 		return nil, fmt.Errorf("sovereign GetRecallCandidates: %w", err)
@@ -240,7 +241,7 @@ func (c *Client) ListKnowledgeEventsSince(ctx context.Context, afterSeq int64, l
 		return nil, nil
 	}
 	resp, err := c.client.ListKnowledgeEvents(ctx, connect.NewRequest(&sovereignv1.ListKnowledgeEventsRequest{
-		AfterSeq: afterSeq, Limit: int32(limit),
+		AfterSeq: afterSeq, Limit: safeconv.Int32(limit),
 	}))
 	if err != nil {
 		return nil, fmt.Errorf("sovereign ListKnowledgeEventsSince: %w", err)
@@ -254,7 +255,7 @@ func (c *Client) ListKnowledgeEventsSinceForUser(ctx context.Context, tenantID, 
 	}
 	resp, err := c.client.ListKnowledgeEvents(ctx, connect.NewRequest(&sovereignv1.ListKnowledgeEventsRequest{
 		AfterSeq: afterSeq,
-		Limit:    int32(limit),
+		Limit:    safeconv.Int32(limit),
 		UserId:   userID.String(),
 		TenantId: tenantID.String(),
 	}))
@@ -395,7 +396,7 @@ func (c *Client) ActivateProjectionVersion(ctx context.Context, version int) err
 		return nil
 	}
 	_, err := c.client.ActivateProjectionVersion(ctx, connect.NewRequest(&sovereignv1.ActivateProjectionVersionRequest{
-		Version: int32(version),
+		Version: safeconv.Int32(version),
 	}))
 	if err != nil {
 		return fmt.Errorf("sovereign ActivateProjectionVersion: %w", err)
@@ -616,7 +617,7 @@ func protoToProjectionVersion(pb *sovereignv1.ProjectionVersion) *domain.Knowled
 
 func domainToProtoVersion(v domain.KnowledgeProjectionVersion) *sovereignv1.ProjectionVersion {
 	pb := &sovereignv1.ProjectionVersion{
-		Version:     int32(v.Version),
+		Version:     safeconv.Int32(v.Version),
 		Description: v.Description,
 		Status:      v.Status,
 		CreatedAt:   timeToProto(v.CreatedAt),

@@ -45,8 +45,10 @@ func (g *Gateway) GetArticles(ctx context.Context, articleIDs []uuid.UUID) ([]*d
 		if article, state := g.cache.Peek(id); state == cache.CacheStateFresh || state == cache.CacheStateStale {
 			results[id] = article
 			if state == cache.CacheStateStale {
+				// Detach cancellation so refresh outlives the request, but keep
+				// request-derived values (trace/baggage) via WithoutCancel.
+				refreshCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 30*time.Second)
 				go func(id uuid.UUID) {
-					refreshCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 					defer cancel()
 					if _, err := g.cache.Refresh(refreshCtx, id); err != nil {
 						slog.Default().Error("article content cache background refresh failed",

@@ -12,6 +12,7 @@ import (
 	morningletterv2 "alt/gen/proto/alt/morning_letter/v2"
 	"alt/gen/proto/alt/morning_letter/v2/morningletterv2connect"
 	"alt/orchestrator/port/morning_letter_port"
+	"alt/utils/safeconv"
 )
 
 // Handler implements both MorningLetterServiceHandler (StreamChat) and
@@ -249,7 +250,7 @@ func (h *Handler) GetLetterSources(
 			SectionKey: s.SectionKey,
 			ArticleId:  s.ArticleID.String(),
 			SourceType: mapSourceType(s.SourceType),
-			Position:   int32(s.Position),
+			Position:   safeconv.Int32(s.Position),
 		}
 	}
 
@@ -304,7 +305,7 @@ func domainToProto(doc *domain.MorningLetterDocument) *morningletterv2.MorningLe
 
 	var windowDays *int32
 	if doc.Body.SourceRecapWindowDays != nil {
-		d := int32(*doc.Body.SourceRecapWindowDays)
+		d := safeconv.Int32(*doc.Body.SourceRecapWindowDays)
 		windowDays = &d
 	}
 
@@ -328,8 +329,8 @@ func domainToProto(doc *domain.MorningLetterDocument) *morningletterv2.MorningLe
 		TargetDate:         doc.TargetDate,
 		EditionTimezone:    doc.EditionTimezone,
 		IsDegraded:         doc.IsDegraded,
-		SchemaVersion:      int32(doc.SchemaVersion),
-		GenerationRevision: int32(doc.GenerationRevision),
+		SchemaVersion:      safeconv.Int32(doc.SchemaVersion),
+		GenerationRevision: safeconv.Int32(doc.GenerationRevision),
 		Model:              doc.Model,
 		CreatedAt:          timestamppb.New(doc.CreatedAt),
 		Etag:               doc.Etag,

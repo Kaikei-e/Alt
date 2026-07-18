@@ -75,6 +75,28 @@ func (v *SSRFValidator) SetTestingMode(enabled bool) {
 	v.allowTestingLocalhost = enabled
 }
 
+// CanonicalRequestURL validates u under the SSRF policy and returns a reconstructed
+// URL string built only from allowed components (scheme, host, path, query).
+// Callers must use the returned string (not the original raw input) for http.NewRequest.
+func (v *SSRFValidator) CanonicalRequestURL(ctx context.Context, u *url.URL) (string, error) {
+	if u == nil {
+		return "", &ValidationError{Message: "URL is nil", Type: "NIL_URL"}
+	}
+	if err := v.ValidateURL(ctx, u); err != nil {
+		return "", err
+	}
+	safe := &url.URL{
+		Scheme:   strings.ToLower(u.Scheme),
+		Host:     u.Host,
+		Path:     u.EscapedPath(),
+		RawQuery: u.RawQuery,
+	}
+	if safe.Path == "" {
+		safe.Path = "/"
+	}
+	return safe.String(), nil
+}
+
 // ValidateURL performs comprehensive URL validation including DNS rebinding protection
 func (v *SSRFValidator) ValidateURL(ctx context.Context, u *url.URL) error {
 	if err := v.basicValidation(u); err != nil {

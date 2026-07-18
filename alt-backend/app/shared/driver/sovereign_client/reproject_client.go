@@ -3,6 +3,7 @@ package sovereign_client
 import (
 	"alt/domain"
 	sovereignv1 "alt/gen/proto/services/sovereign/v1"
+	"alt/utils/safeconv"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -68,7 +69,7 @@ func (c *Client) ListReprojectRuns(ctx context.Context, statusFilter string, lim
 
 	resp, err := c.client.ListReprojectRuns(ctx, connect.NewRequest(&sovereignv1.ListReprojectRunsRequest{
 		StatusFilter: statusFilter,
-		Limit:        int32(limit),
+		Limit:        safeconv.Int32(limit),
 	}))
 	if err != nil {
 		return nil, fmt.Errorf("sovereign ListReprojectRuns: %w", err)
@@ -119,8 +120,8 @@ func (c *Client) CreateProjectionAudit(ctx context.Context, audit *domain.Projec
 			ProjectionName:    audit.ProjectionName,
 			ProjectionVersion: audit.ProjectionVersion,
 			CheckedAt:         timeToProto(audit.CheckedAt),
-			SampleSize:        int32(audit.SampleSize),
-			MismatchCount:     int32(audit.MismatchCount),
+			SampleSize:        safeconv.Int32(audit.SampleSize),
+			MismatchCount:     safeconv.Int32(audit.MismatchCount),
 			DetailsJson:       audit.DetailsJSON,
 		},
 	}))
@@ -137,7 +138,7 @@ func (c *Client) ListProjectionAudits(ctx context.Context, projectionName string
 
 	resp, err := c.client.ListProjectionAudits(ctx, connect.NewRequest(&sovereignv1.ListProjectionAuditsRequest{
 		ProjectionName: projectionName,
-		Limit:          int32(limit),
+		Limit:          safeconv.Int32(limit),
 	}))
 	if err != nil {
 		return nil, fmt.Errorf("sovereign ListProjectionAudits: %w", err)

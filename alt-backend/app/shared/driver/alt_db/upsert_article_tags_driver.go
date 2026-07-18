@@ -1,6 +1,7 @@
 package alt_db
 
 import (
+	"alt/utils/safeconv"
 	"context"
 	"fmt"
 
@@ -57,7 +58,7 @@ func (r *TagRepository) UpsertArticleTags(ctx context.Context, articleID string,
 		return 0, fmt.Errorf("commit tx: %w", err)
 	}
 
-	return int32(len(tags)), nil
+	return safeconv.Int32(len(tags)), nil
 }
 
 // BatchUpsertArticleTags upserts tags for multiple articles in a single transaction.
@@ -106,7 +107,7 @@ func (r *TagRepository) BatchUpsertArticleTags(ctx context.Context, items []Batc
 		return 0, fmt.Errorf("commit tx: %w", err)
 	}
 
-	return int32(totalTags), nil
+	return safeconv.Int32(totalTags), nil
 }
 
 // TagUpsertItem represents a tag to upsert.

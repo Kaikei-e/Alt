@@ -61,12 +61,13 @@ func (g *RobotsTxtGateway) FetchRobotsTxt(ctx context.Context, domainName, schem
 		return nil, fmt.Errorf("invalid robots.txt URL: %w", err)
 	}
 
-	// SSRF protection
-	if err := g.ssrfValidator.ValidateURL(ctx, parsedURL); err != nil {
+	// SSRF protection: validate + reconstruct so the request URL is policy-gated.
+	safeURL, err := g.ssrfValidator.CanonicalRequestURL(ctx, parsedURL)
+	if err != nil {
 		return nil, fmt.Errorf("ssrf validation failed: %w", err)
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, parsedURL.String(), nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, safeURL, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
@@ -74,9 +75,8 @@ func (g *RobotsTxtGateway) FetchRobotsTxt(ctx context.Context, domainName, schem
 	req.Header.Set("User-Agent", "Alt-RSS-Reader/1.0 (+https://alt.example.com)")
 	req.Header.Set("Accept", "text/plain")
 
-	// SSRF protection: URL validated by SSRFValidator.ValidateURL() above (line 65).
-	// httpClient created via SSRFValidator.CreateSecureHTTPClient() validates IPs at connection time.
-	// codeql[go/request-forgery]
+	// SSRF: CanonicalRequestURL + CreateSecureHTTPClient (connection-time IP checks).
+	// codeql[go/request-forgery] - URL reconstructed by SSRFValidator.CanonicalRequestURL
 	resp, err := g.httpClient.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch robots.txt: %w", err)

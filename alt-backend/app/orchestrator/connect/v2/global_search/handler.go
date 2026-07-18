@@ -13,6 +13,7 @@ import (
 	searchv2 "alt/gen/proto/alt/search/v2"
 	"alt/gen/proto/alt/search/v2/searchv2connect"
 	"alt/orchestrator/usecase/global_search_usecase"
+	"alt/utils/safeconv"
 )
 
 // Handler implements the GlobalSearchService Connect-RPC handler.
@@ -123,7 +124,7 @@ func toRecapSection(s *domain.RecapSearchSection) *searchv2.RecapSection {
 			Summary:    h.Summary,
 			TopTerms:   topTerms,
 			Tags:       tags,
-			WindowDays: int32(h.WindowDays),
+			WindowDays: safeconv.Int32(h.WindowDays),
 			ExecutedAt: h.ExecutedAt,
 		}
 	}
@@ -139,7 +140,7 @@ func toTagSection(s *domain.TagSearchSection) *searchv2.TagSection {
 	for i, h := range s.Hits {
 		hits[i] = &searchv2.GlobalTagHit{
 			TagName:      h.TagName,
-			ArticleCount: int32(h.ArticleCount),
+			ArticleCount: safeconv.Int32(h.ArticleCount),
 		}
 	}
 	return &searchv2.TagSection{

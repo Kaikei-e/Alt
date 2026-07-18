@@ -128,6 +128,7 @@ jobs:
         uses: github/codeql-action/init@v4
         with:
           languages: ${{ matrix.language }}
+          config-file: ./.github/codeql/codeql-config.yml
           # 解析対象をさらに絞りたい場合は、以下を調整してください
           # paths: alt-backend,pre-processor,pre-processor-sidecar,search-indexer,auth-hub
           # paths-ignore: tmp,dist,vendor

@@ -3,6 +3,7 @@ package sovereign_client
 import (
 	"alt/domain"
 	sovereignv1 "alt/gen/proto/services/sovereign/v1"
+	"alt/utils/safeconv"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -47,7 +48,7 @@ func (c *Client) ListRecallSignalsByUser(ctx context.Context, userID uuid.UUID, 
 
 	resp, err := c.client.ListRecallSignals(ctx, connect.NewRequest(&sovereignv1.ListRecallSignalsRequest{
 		UserId:    userID.String(),
-		SinceDays: int32(sinceDays),
+		SinceDays: safeconv.Int32(sinceDays),
 	}))
 	if err != nil {
 		return nil, fmt.Errorf("sovereign ListRecallSignalsByUser: %w", err)
