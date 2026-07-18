@@ -12,23 +12,25 @@ function requireEnv(name: string, fallbackDev: string): string {
 	throw new Error(`${name} must be set in production`);
 }
 
-// KratosパブリックURL（ブラウザからのアクセス用）
-// 絶対URLである必要がある
-const kratosPublicUrl = requireEnv("KRATOS_PUBLIC_URL", "http://localhost/ory");
+// Resolve at request time — not module load. Vite's postbuild analyse imports
+// this module under NODE_ENV=production without Docker/runtime env, and a
+// top-level throw aborts `bun run build` / image builds.
+function kratosPublicUrl(): string {
+	return requireEnv("KRATOS_PUBLIC_URL", "http://localhost/ory");
+}
 
 // /login や /auth/login、bare "/" への差し戻しループを防ぐための共通オプション
 const LOGIN_RETURN_TO_OPTIONS = { loopPaths: ["/login", "/auth/login", "/"] };
 
 // KratosへのリダイレクトURLを生成するヘルパー関数
 function buildKratosRedirectUrl(returnTo: string): string {
+	const base = kratosPublicUrl();
 	// kratosPublicUrlが絶対URLであることを確認
-	if (!isAbsoluteUrl(kratosPublicUrl)) {
-		throw new Error(
-			`KRATOS_PUBLIC_URL must be an absolute URL, got: ${kratosPublicUrl}`,
-		);
+	if (!isAbsoluteUrl(base)) {
+		throw new Error(`KRATOS_PUBLIC_URL must be an absolute URL, got: ${base}`);
 	}
 
-	const initUrl = new URL(`${kratosPublicUrl}/self-service/login/browser`);
+	const initUrl = new URL(`${base}/self-service/login/browser`);
 	initUrl.searchParams.set("return_to", returnTo);
 	return initUrl.toString();
 }

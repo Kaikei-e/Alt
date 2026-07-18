@@ -1,5 +1,4 @@
 <script lang="ts">
-import { onMount } from "svelte";
 import { page } from "$app/stores";
 import AugurChat from "$lib/components/desktop/augur/AugurChat.svelte";
 import ChatWindow from "$lib/components/mobile/search/ChatWindow.svelte";
@@ -96,22 +95,36 @@ function toMobileMessages(conv: AugurStoredConversation): MobileMessage[] {
 	}));
 }
 
-onMount(() => {
-	void load();
+// Track which id we have loaded / are loading so param changes re-fetch,
+// and an empty param cannot leave the page stuck on isLoading=true.
+let loadedId = $state("");
+let inflightId = $state("");
+
+$effect(() => {
+	const id = conversationId;
+	if (!id) {
+		isLoading = false;
+		conversation = null;
+		loadedId = "";
+		inflightId = "";
+		return;
+	}
+	if (id === loadedId || id === inflightId) return;
+	void load(id);
 });
 
-async function load() {
-	if (!conversationId) return;
+async function load(id: string) {
+	inflightId = id;
 	isLoading = true;
 	errorMessage = "";
 	try {
-		conversation = await getAugurConversation(
-			createClientTransport(),
-			conversationId,
-		);
+		conversation = await getAugurConversation(createClientTransport(), id);
+		loadedId = id;
 	} catch (err) {
 		errorMessage = err instanceof Error ? err.message : "Failed to load";
+		loadedId = "";
 	} finally {
+		if (inflightId === id) inflightId = "";
 		isLoading = false;
 	}
 }

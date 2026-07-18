@@ -13,6 +13,10 @@ import { expect, test } from "@playwright/test";
  * resolving to `/augur/<uuid>` — cannot recur.
  */
 test.describe("Augur Citation Link Routing", () => {
+	// Widen past the CitationRail collapse breakpoint (min-width: 1280px) so
+	// `.citation-rail` is in the accessibility tree under desktop-chromium.
+	test.use({ viewport: { width: 1400, height: 720 } });
+
 	const conversationId = "11111111-1111-4111-8111-111111111111";
 	const summaryRefId = "22222222-2222-4222-8222-222222222222";
 	const articleRefId = "33333333-3333-4333-8333-333333333333";
@@ -23,6 +27,7 @@ test.describe("Augur Citation Link Routing", () => {
 	// not a {seconds, nanos} object. Enums accept the full proto name (e.g.
 	// CITATION_KIND_SUMMARY) when sent as JSON.
 	const isoTimestamp = "2023-11-14T22:13:20Z";
+
 	const mockGetConversation = (route: import("@playwright/test").Route) =>
 		route.fulfill({
 			status: 200,
@@ -65,20 +70,29 @@ test.describe("Augur Citation Link Routing", () => {
 								publishedAt: "",
 							},
 						],
+						relatedCitations: [],
 					},
 				],
 			}),
 		});
 
-	test("summary citation links to /articles/<refId>, not /augur/<refId>", async ({
-		page,
-	}) => {
+	async function openConversation(page: import("@playwright/test").Page) {
 		await page.route(
 			"**/api/v2/alt.augur.v2.AugurService/GetConversation",
 			mockGetConversation,
 		);
-
+		const settled = page.waitForResponse((res) =>
+			res.url().includes("/alt.augur.v2.AugurService/GetConversation"),
+		);
 		await page.goto(`/augur/${conversationId}`);
+		await settled;
+		await expect(page.locator(".citation-rail")).toBeVisible();
+	}
+
+	test("summary citation links to /articles/<refId>, not /augur/<refId>", async ({
+		page,
+	}) => {
+		await openConversation(page);
 
 		const summaryLink = page
 			.locator(".citation-rail a.item-title")
@@ -91,12 +105,7 @@ test.describe("Augur Citation Link Routing", () => {
 	});
 
 	test("article citation links to /articles/<refId>", async ({ page }) => {
-		await page.route(
-			"**/api/v2/alt.augur.v2.AugurService/GetConversation",
-			mockGetConversation,
-		);
-
-		await page.goto(`/augur/${conversationId}`);
+		await openConversation(page);
 
 		const articleLink = page
 			.locator(".citation-rail a.item-title")
@@ -109,12 +118,7 @@ test.describe("Augur Citation Link Routing", () => {
 	});
 
 	test("web citation links to the external URL", async ({ page }) => {
-		await page.route(
-			"**/api/v2/alt.augur.v2.AugurService/GetConversation",
-			mockGetConversation,
-		);
-
-		await page.goto(`/augur/${conversationId}`);
+		await openConversation(page);
 
 		const webLink = page
 			.locator(".citation-rail a.item-title")
@@ -126,18 +130,18 @@ test.describe("Augur Citation Link Routing", () => {
 	test("legacy bare-UUID citation renders without an anchor", async ({
 		page,
 	}) => {
-		await page.route(
-			"**/api/v2/alt.augur.v2.AugurService/GetConversation",
-			mockGetConversation,
-		);
+		await openConversation(page);
 
-		await page.goto(`/augur/${conversationId}`);
-
+		// Disabled titles are <button class="item-title"> (a11y select target),
+		// never <a href="<uuid>"> which would resolve under /augur/.
 		const legacyTitle = page
 			.locator(".citation-rail .item-title")
 			.filter({ hasText: /^legacy$/ })
 			.first();
 		await expect(legacyTitle).toBeVisible();
-		await expect(legacyTitle).toHaveJSProperty("tagName", "SPAN");
+		await expect(legacyTitle).toHaveJSProperty("tagName", "BUTTON");
+		await expect(
+			page.locator(".citation-rail a.item-title").filter({ hasText: /^legacy$/ }),
+		).toHaveCount(0);
 	});
 });

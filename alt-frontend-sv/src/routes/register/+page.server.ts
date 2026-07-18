@@ -12,22 +12,29 @@ function requireEnv(name: string, fallbackDev: string): string {
 	throw new Error(`${name} must be set in production`);
 }
 
-// KratosパブリックURL（ブラウザからのアクセス用）
-const kratosPublicUrl = requireEnv("KRATOS_PUBLIC_URL", "http://localhost/ory");
-// アプリケーションのベースURL
-const appOrigin = requireEnv("ORIGIN", "http://localhost:4173");
+// Resolve at request time — not module load. See auth/login/+page.server.ts.
+function kratosPublicUrl(): string {
+	return requireEnv("KRATOS_PUBLIC_URL", "http://localhost/ory");
+}
+
+function appOrigin(): string {
+	return requireEnv("ORIGIN", "http://localhost:4173");
+}
+
 const basePath = "";
 
 // /register への差し戻しループを防ぐための共通オプション
 const REGISTER_RETURN_TO_OPTIONS = { loopPaths: ["/register"] };
 
 export const load: PageServerLoad = async ({ url, locals, request }) => {
+	const origin = appOrigin();
+
 	// If already logged in, redirect to home or return_to
 	if (locals.session) {
 		const returnTo = url.searchParams.get("return_to");
 		const sanitizedReturnTo = sanitizeReturnTo(
 			returnTo,
-			appOrigin,
+			origin,
 			REGISTER_RETURN_TO_OPTIONS,
 		);
 		throw redirect(303, sanitizedReturnTo);
@@ -41,11 +48,11 @@ export const load: PageServerLoad = async ({ url, locals, request }) => {
 		// return_toをサニタイズしてループを防ぐ（/registerは/feedsに変換）
 		const returnUrl = sanitizeReturnTo(
 			returnTo,
-			appOrigin,
+			origin,
 			REGISTER_RETURN_TO_OPTIONS,
 		);
 		const initUrl = new URL(
-			`${kratosPublicUrl}/self-service/registration/browser`,
+			`${kratosPublicUrl()}/self-service/registration/browser`,
 		);
 		initUrl.searchParams.set("return_to", returnUrl);
 		throw redirect(303, initUrl.toString());

@@ -45,7 +45,13 @@ class FakeLLM:
     ) -> LLMResponse:
         self._call_count += 1
         self._calls.append(
-            {"prompt": prompt, "num_predict": num_predict, "temperature": temperature, "output_schema": output_schema, "mode": mode}
+            {
+                "prompt": prompt,
+                "num_predict": num_predict,
+                "temperature": temperature,
+                "output_schema": output_schema,
+                "mode": mode,
+            }
         )
 
         # Check for keyword matches in prompt

@@ -155,6 +155,4 @@ def test_watch_cert_rotation_logs_warning_on_failure(tmp_path: Path) -> None:
         asyncio.run(runner())
 
     mock_logger.warning.assert_called()
-    assert any(
-        "cert_rotation_iteration_failed" in str(c) for c in mock_logger.warning.call_args_list
-    )
+    assert any("cert_rotation_iteration_failed" in str(c) for c in mock_logger.warning.call_args_list)

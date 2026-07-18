@@ -295,6 +295,23 @@ export function createBackendServer(): http.Server {
 			return;
 		}
 
+		// GetConversation (Augur) — default empty shell so unmocked E2E
+		// navigations settle instead of hanging on the SvelteKit proxy.
+		// Specs that assert citation shape override this via page.route.
+		if (path === "/alt.augur.v2.AugurService/GetConversation") {
+			res.setHeader("Content-Type", "application/json");
+			res.writeHead(200);
+			res.end(
+				JSON.stringify({
+					id: "",
+					title: "",
+					createdAt: "2023-11-14T22:13:20Z",
+					messages: [],
+				}),
+			);
+			return;
+		}
+
 		// StreamChat (Augur) - Connect-RPC streaming
 		if (path === "/alt.augur.v2.AugurService/StreamChat") {
 			res.setHeader("Content-Type", "application/connect+json");
