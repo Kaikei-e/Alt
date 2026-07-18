@@ -70,6 +70,7 @@ func SelectContextsDynamic(hitsOriginal []domain.SearchResult, hitsExpanded []Co
 		}
 		if rerankApplied {
 			item.RerankScore = res.Score
+			item.RerankApplied = true
 		}
 		allCandidates = append(allCandidates, item)
 		seen[res.Chunk.ID] = true

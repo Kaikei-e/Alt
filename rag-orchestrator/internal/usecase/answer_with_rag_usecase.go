@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"log/slog"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -236,7 +237,9 @@ func (u *answerWithRAGUsecase) Execute(ctx context.Context, input AnswerWithRAGI
 
 	u.logger.Info("answer_request_started",
 		slog.String("request_id", requestID),
-		slog.String("query", input.Query),
+		slog.String("query_preview", queryLogPreview(input.Query)),
+		slog.Int("query_len", len(input.Query)),
+		slog.String("query_hash", queryLogHash(input.Query)),
 		slog.Int("max_chunks", input.MaxChunks),
 		slog.String("locale", input.Locale))
 
@@ -246,8 +249,9 @@ func (u *answerWithRAGUsecase) Execute(ctx context.Context, input AnswerWithRAGI
 		u.logger.Info("cache_hit",
 			slog.String("request_id", requestID),
 			slog.String("cache_key", cacheKey),
-			slog.String("query", input.Query))
-		return val, nil
+			slog.String("query_preview", queryLogPreview(input.Query)),
+			slog.Int("query_len", len(input.Query)))
+		return cloneAnswerOutput(val), nil
 	}
 
 	// 2. Prepare Context (Retrieval)
@@ -483,7 +487,7 @@ func (u *answerWithRAGUsecase) generateAnswerWithRetries(
 		slog.Int("prompt_size_chars", promptSize),
 		slog.Int("max_tokens", promptData.maxTokens),
 		slog.String("first_context_title", firstTitle),
-		slog.String("query", input.Query))
+		slog.String("query_preview", queryLogPreview(input.Query)))
 
 	retryCount := 0
 	currentPromptData := promptData
@@ -570,7 +574,7 @@ func (u *answerWithRAGUsecase) retryValidatedAnswer(
 				slog.String("retrieval_set_id", currentPromptData.retrievalSetID),
 				slog.String("profile", profile.name),
 				slog.Int("answer_rune_length", utf8.RuneCountInString(currentAnswer.Answer)),
-				slog.String("query", input.Query),
+				slog.String("query_preview", queryLogPreview(input.Query)),
 				slog.Any("quality_flags", currentFlags))
 		}
 
@@ -722,13 +726,6 @@ func (u *answerWithRAGUsecase) buildCorrectiveRetryInput(
 	}
 
 	return retryInput
-}
-
-func max(a, b int) int {
-	if a > b {
-		return a
-	}
-	return b
 }
 
 func shouldKeepOriginalAfterRetry(
@@ -927,8 +924,7 @@ func (u *answerWithRAGUsecase) buildCitations(contexts []ContextItem, raw []LLMC
 		if !ok {
 			// 2. Try index lookup (e.g., "1", "2")
 			// Used when prompt asks for [index] citations to save tokens
-			var idx int
-			if _, err := fmt.Sscanf(cite.ChunkID, "%d", &idx); err == nil {
+			if idx, err := strconv.Atoi(cite.ChunkID); err == nil {
 				// 1-based index -> 0-based slice
 				sliceIdx := idx - 1
 				if sliceIdx >= 0 && sliceIdx < len(contexts) {
@@ -1126,7 +1122,12 @@ func (u *answerWithRAGUsecase) buildPrompt(ctx context.Context, input AnswerWith
 
 			var bestRetrieved *RetrieveContextOutput
 			var bestVerdict QualityVerdict
+			attempts := 0
 			for _, rq := range retryQueries {
+				if ctx.Err() != nil {
+					break
+				}
+				attempts++
 				retryInput := retrieveInput
 				retryInput.Query = rq
 				retryRetrieved, retryErr := u.generalStrategy.Retrieve(ctx, retryInput, intent)
@@ -1147,7 +1148,7 @@ func (u *answerWithRAGUsecase) buildPrompt(ctx context.Context, input AnswerWith
 				result.strategyUsed += "_retried"
 				result.retrievalQuality = bestVerdict
 			}
-			result.retryCount = len(retryQueries)
+			result.retryCount = attempts
 		} else if verdict == QualityInsufficient {
 			// Graceful degradation: generate with low-confidence disclaimer
 			// instead of hard fallback. Google ICLR 2025 shows models can
@@ -1173,7 +1174,7 @@ func (u *answerWithRAGUsecase) buildPrompt(ctx context.Context, input AnswerWith
 	estimatedTokens := EstimateSystemPromptTokens(u.promptVersion, intent.IntentType, u.templateRegistry)
 	var limitedContexts []ContextItem
 	for _, ctx := range contexts {
-		chunkTokens := len(ctx.ChunkText) / 3 // Japanese ~3 chars/token
+		chunkTokens := estimateTokens(ctx.ChunkText)
 		if estimatedTokens+chunkTokens > maxPromptTokens && len(limitedContexts) > 0 {
 			break
 		}
@@ -1221,18 +1222,7 @@ func (u *answerWithRAGUsecase) buildPrompt(ctx context.Context, input AnswerWith
 		return result, errors.New("no context returned from retrieval")
 	}
 
-	promptContexts := make([]PromptContext, len(contexts))
-	for i, ctxItem := range contexts {
-		promptContexts[i] = PromptContext{
-			ChunkID:         ctxItem.ChunkID.String(),
-			ChunkText:       ctxItem.ChunkText,
-			Title:           ctxItem.Title,
-			URL:             ctxItem.URL,
-			PublishedAt:     ctxItem.PublishedAt,
-			Score:           ctxItem.Score,
-			DocumentVersion: ctxItem.DocumentVersion,
-		}
-	}
+	promptContexts := u.toPromptContexts(contexts)
 
 	locale := strings.TrimSpace(input.Locale)
 	if locale == "" {
@@ -1400,7 +1390,7 @@ func (u *answerWithRAGUsecase) applyLegacySubIntentPolicy(
 	default:
 		u.logger.Info("agentic_reretrieval_started",
 			slog.String("article_id", intent.ArticleID),
-			slog.String("query", intent.UserQuestion))
+			slog.String("query_preview", queryLogPreview(intent.UserQuestion)))
 		generalInput := RetrieveContextInput{
 			Query:               intent.UserQuestion,
 			ConversationHistory: input.ConversationHistory,
@@ -1481,7 +1471,7 @@ func (u *answerWithRAGUsecase) buildPromptWithQueryPlanner(
 	if err != nil {
 		u.logger.Warn("query_planner_failed_falling_back",
 			slog.String("error", err.Error()),
-			slog.String("query", input.Query))
+			slog.String("query_preview", queryLogPreview(input.Query)))
 		// Fallback: use original query directly
 		qPlan = &domain.QueryPlan{
 			ResolvedQuery:   qpInput.Query,
@@ -1516,7 +1506,9 @@ func (u *answerWithRAGUsecase) buildPromptWithQueryPlanner(
 		RetrievalPolicy:    domain.RetrievalPolicy(qPlan.RetrievalPolicy),
 		NeedsClarification: qPlan.ShouldClarify,
 		ClarificationMsg:   qPlan.ClarificationMsg,
-		Confidence:         0.8, // LLM planner confidence
+		// QueryPlan has no confidence field; use a fixed prior matching the
+		// rule-based ConversationPlanner baseline (planner.go TopicConfidence).
+		Confidence: llmPlannerDefaultConfidence,
 	}
 	result.plannerOutput = plannerOut
 
@@ -1576,7 +1568,7 @@ func (u *answerWithRAGUsecase) buildPromptWithQueryPlanner(
 	estimatedTokens := EstimateSystemPromptTokens(u.promptVersion, result.intentType, u.templateRegistry)
 	var limitedContexts []ContextItem
 	for _, ctx := range contexts {
-		chunkTokens := len(ctx.ChunkText) / 3
+		chunkTokens := estimateTokens(ctx.ChunkText)
 		if estimatedTokens+chunkTokens > maxPromptTokens && len(limitedContexts) > 0 {
 			break
 		}
@@ -1595,18 +1587,7 @@ func (u *answerWithRAGUsecase) buildPromptWithQueryPlanner(
 	}
 
 	// Build prompt messages
-	promptContexts := make([]PromptContext, len(contexts))
-	for i, ctxItem := range contexts {
-		promptContexts[i] = PromptContext{
-			ChunkID:         ctxItem.ChunkID.String(),
-			ChunkText:       ctxItem.ChunkText,
-			Title:           ctxItem.Title,
-			URL:             ctxItem.URL,
-			PublishedAt:     ctxItem.PublishedAt,
-			Score:           ctxItem.Score,
-			DocumentVersion: ctxItem.DocumentVersion,
-		}
-	}
+	promptContexts := u.toPromptContexts(contexts)
 
 	locale := strings.TrimSpace(input.Locale)
 	if locale == "" {
@@ -1710,6 +1691,56 @@ func truncate(s string, maxLen int) string {
 		return s
 	}
 	return s[:maxLen] + "..."
+}
+
+// llmPlannerDefaultConfidence is used when mapping domain.QueryPlan (no confidence
+// field) onto PlannerOutput. Matches the ConversationPlanner topic-confidence prior.
+const llmPlannerDefaultConfidence = 0.8
+
+const queryLogPreviewRunes = 48
+
+func queryLogPreview(query string) string {
+	runes := []rune(query)
+	if len(runes) <= queryLogPreviewRunes {
+		return query
+	}
+	return string(runes[:queryLogPreviewRunes]) + "..."
+}
+
+func queryLogHash(query string) string {
+	sum := sha256.Sum256([]byte(query))
+	return hex.EncodeToString(sum[:8])
+}
+
+// cloneAnswerOutput returns a shallow copy so cache hits do not share mutable
+// slice headers with callers that may mutate Citations/Contexts/etc.
+func cloneAnswerOutput(src *AnswerWithRAGOutput) *AnswerWithRAGOutput {
+	if src == nil {
+		return nil
+	}
+	dst := *src
+	if src.Citations != nil {
+		dst.Citations = append([]Citation(nil), src.Citations...)
+	}
+	if src.RelatedCitations != nil {
+		dst.RelatedCitations = append([]Citation(nil), src.RelatedCitations...)
+	}
+	if src.Contexts != nil {
+		dst.Contexts = append([]ContextItem(nil), src.Contexts...)
+	}
+	if src.Debug.ExpandedQueries != nil {
+		dst.Debug.ExpandedQueries = append([]string(nil), src.Debug.ExpandedQueries...)
+	}
+	if src.Debug.ToolsUsed != nil {
+		dst.Debug.ToolsUsed = append([]string(nil), src.Debug.ToolsUsed...)
+	}
+	if src.Debug.QualityFlags != nil {
+		dst.Debug.QualityFlags = append([]string(nil), src.Debug.QualityFlags...)
+	}
+	if src.Debug.AgentSteps != nil {
+		dst.Debug.AgentSteps = append([]AgentStep(nil), src.Debug.AgentSteps...)
+	}
+	return &dst
 }
 
 // mergeContexts combines article-scoped chunks with general retrieval results.

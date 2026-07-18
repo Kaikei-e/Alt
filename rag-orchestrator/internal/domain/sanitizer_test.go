@@ -96,7 +96,7 @@ func TestSanitizeHTML(t *testing.T) {
 			`<h3>天気予報・防災情報</h3><p>天気</p>` +
 			`<h3>新着ニュース</h3><p>ニュース</p>` +
 			`<h3>各地のニュース</h3><p>地方</p>` +
-			`<p>受信契約について詳しく確認する</p>`
+			`<p>受信契約について</p>`
 
 		result := domain.SanitizeHTML(input)
 
@@ -108,7 +108,17 @@ func TestSanitizeHTML(t *testing.T) {
 		assert.NotContains(t, result, "天気予報・防災情報")
 		assert.NotContains(t, result, "新着ニュース")
 		assert.NotContains(t, result, "各地のニュース")
-		assert.NotContains(t, result, "受信契約")
+		assert.NotContains(t, result, "受信契約について")
+	})
+
+	t.Run("long body mentioning boilerplate substring is kept", func(t *testing.T) {
+		input := `<p>裁判所はNHKの受信契約を巡る訴訟で原告の請求を棄却し、視聴者の契約義務について詳細な判断理由を示した。</p>`
+		result := domain.SanitizeHTML(input)
+		assert.Contains(t, result, "受信契約を巡る訴訟")
+	})
+
+	t.Run("plain text entities are unescaped", func(t *testing.T) {
+		assert.Equal(t, "A & B", domain.SanitizeHTML("A &amp; B"))
 	})
 
 	t.Run("empty string returns empty", func(t *testing.T) {

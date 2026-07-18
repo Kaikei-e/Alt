@@ -89,76 +89,23 @@ func toolParamsForName(name string) map[string]any {
 	}
 }
 
-// ExecuteNamed executes a single tool by name with the provided params.
-func (d *ToolDispatcher) ExecuteNamed(ctx context.Context, name string, params map[string]string) (*domain.ToolResult, error) {
-	tool, ok := d.tools[name]
-	if !ok {
-		return &domain.ToolResult{ToolName: name, Success: false, Error: "tool not found"}, nil
-	}
-	if len(params) == 0 {
-		params = defaultToolArgs(name, "")
-	}
-	toolCtx, cancel := context.WithTimeout(ctx, toolTimeout)
-	defer cancel()
-	result, err := tool.Execute(toolCtx, params)
-	if err != nil {
-		return &domain.ToolResult{ToolName: name, Success: false, Error: err.Error()}, err
-	}
-	if result == nil {
-		return &domain.ToolResult{ToolName: name, Success: false, Error: "tool returned nil result"}, nil
-	}
-	result.ToolName = name
-	return result, nil
-}
-
 // Dispatch selects and executes tools based on intent and query.
 // Returns tool results. Errors are logged but do not block the flow.
 func (d *ToolDispatcher) Dispatch(ctx context.Context, intent QueryIntent, query string) []*domain.ToolResult {
-	toolNames := d.selectTools(intent)
-	if len(toolNames) == 0 {
-		return nil
-	}
-
-	results := make([]*domain.ToolResult, 0, len(toolNames))
-	for _, name := range toolNames {
-		tool, ok := d.tools[name]
-		if !ok {
-			continue
-		}
-
-		toolCtx, cancel := context.WithTimeout(ctx, toolTimeout)
-		result, err := tool.Execute(toolCtx, defaultToolArgs(name, query))
-		cancel()
-
-		if err != nil {
-			d.logger.Warn("tool_execution_failed",
-				slog.String("tool", name),
-				slog.String("error", err.Error()))
-			continue
-		}
-
-		if result != nil && result.Success {
-			result.ToolName = name
-			d.logger.Info("tool_execution_success",
-				slog.String("tool", name),
-				slog.Int("data_length", len(result.Data)))
-			results = append(results, result)
-		}
-	}
-
-	return results
+	return d.executeTools(ctx, d.selectTools(intent), query)
 }
 
-// DispatchForPlan selects and executes tools based on planner output.
-// Falls back to intent-based selection when the planner policy is not tool_only.
-func (d *ToolDispatcher) DispatchForPlan(ctx context.Context, plan *domain.PlannerOutput, intent QueryIntent, query string) []*domain.ToolResult {
-	toolNames := d.selectToolsForPlan(plan, intent)
+// executeTools runs the named tools sequentially, respecting ctx cancellation.
+func (d *ToolDispatcher) executeTools(ctx context.Context, toolNames []string, query string) []*domain.ToolResult {
 	if len(toolNames) == 0 {
 		return nil
 	}
 
 	results := make([]*domain.ToolResult, 0, len(toolNames))
 	for _, name := range toolNames {
+		if ctx.Err() != nil {
+			break
+		}
 		tool, ok := d.tools[name]
 		if !ok {
 			continue
@@ -198,17 +145,6 @@ func defaultToolArgs(name, query string) map[string]string {
 	default:
 		return map[string]string{"query": query}
 	}
-}
-
-func (d *ToolDispatcher) selectToolsForPlan(plan *domain.PlannerOutput, intent QueryIntent) []string {
-	if plan.RetrievalPolicy == domain.PolicyToolOnly {
-		switch plan.Operation {
-		case domain.OpRelatedArticles:
-			return []string{"related_articles"}
-		}
-	}
-	// Fallback to existing intent-based selection
-	return d.selectTools(intent)
 }
 
 // ExecutePlan runs tools according to a ToolPlan, respecting step dependencies.

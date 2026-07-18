@@ -2,6 +2,7 @@ package usecase
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 )
 
@@ -65,7 +66,11 @@ func (s *SynthesisStrategy) Retrieve(ctx context.Context, input RetrieveContextI
 	baseOutput, err := s.retrieve.Execute(ctx, input)
 	if err != nil {
 		s.log("synthesis_base_retrieval_error", slog.String("error", err.Error()))
-		// Return tool results even if base retrieval fails
+		// Preserve failure reason when tools also produced nothing — otherwise the
+		// legacy allowEmpty=false path only sees "no context returned".
+		if len(supplementary) == 0 {
+			return nil, fmt.Errorf("base retrieval failed and no tool results: %w", err)
+		}
 		return &RetrieveContextOutput{
 			SupplementaryInfo: supplementary,
 			ToolsUsed:         toolsUsed,

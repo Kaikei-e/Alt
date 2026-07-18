@@ -9,11 +9,12 @@ import (
 
 func makeCtx(title string, rerankScore float32) ContextItem {
 	return ContextItem{
-		ChunkText:   "chunk text for " + title,
-		Title:       title,
-		Score:       0.5,
-		RerankScore: rerankScore,
-		ChunkID:     uuid.New(),
+		ChunkText:     "chunk text for " + title,
+		Title:         title,
+		Score:         0.5,
+		RerankScore:   rerankScore,
+		RerankApplied: true,
+		ChunkID:       uuid.New(),
 	}
 }
 
@@ -50,12 +51,20 @@ func TestRelevanceGate_EmptyContexts(t *testing.T) {
 	assert.Equal(t, QualityInsufficient, gate.Evaluate([]ContextItem{}))
 }
 
-func TestRelevanceGate_FallsBackToScore_WhenNoRerankScore(t *testing.T) {
+func TestRelevanceGate_FallsBackToScore_WhenRerankNotApplied(t *testing.T) {
 	gate := NewRelevanceGate(0.5, 0.25)
 	contexts := []ContextItem{
 		{ChunkText: "text", Title: "title", Score: 0.7, RerankScore: 0, ChunkID: uuid.New()},
 	}
 	assert.Equal(t, QualityGood, gate.Evaluate(contexts))
+}
+
+func TestRelevanceGate_HonorsZeroRerankScoreWhenApplied(t *testing.T) {
+	gate := NewRelevanceGate(0.5, 0.25)
+	contexts := []ContextItem{
+		{ChunkText: "text", Title: "title", Score: 0.9, RerankScore: 0, RerankApplied: true, ChunkID: uuid.New()},
+	}
+	assert.Equal(t, QualityInsufficient, gate.Evaluate(contexts))
 }
 
 func TestRelevanceGate_ExactThreshold(t *testing.T) {

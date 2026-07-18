@@ -21,7 +21,7 @@ func (s *topicDeepDiveStrategy) Name() string { return "topic_deep_dive" }
 
 func (s *topicDeepDiveStrategy) Retrieve(ctx context.Context, input RetrieveContextInput, intent QueryIntent) (*RetrieveContextOutput, error) {
 	s.logger.Info("deep_dive_strategy_execute",
-		slog.String("query", input.Query))
+		slog.String("query_preview", queryLogPreview(input.Query)))
 
 	return s.retrieve.Execute(ctx, input)
 }

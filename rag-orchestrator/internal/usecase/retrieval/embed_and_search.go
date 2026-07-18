@@ -72,7 +72,7 @@ func EmbedAndSearch(
 				if err != nil {
 					logger.Warn("hybrid_bm25_search_failed",
 						slog.String("retrieval_id", sc.RetrievalID),
-						slog.String("query", q),
+						slog.String("query_preview", queryLogPreview(q)),
 						slog.String("error", err.Error()))
 					continue // non-fatal per query
 				}

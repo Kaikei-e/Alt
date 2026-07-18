@@ -38,7 +38,7 @@ func NewToolPlanner(llmClient domain.LLMClient, tools []domain.ToolDescriptor, l
 func (p *ToolPlanner) Plan(ctx context.Context, query string) (*domain.ToolPlan, error) {
 	prompt := p.buildPrompt(query)
 
-	resp, err := p.llmClient.Generate(ctx, prompt, 500)
+	resp, err := p.llmClient.Generate(ctx, prompt, LLMTokensToolPlan)
 	if err != nil {
 		p.log("tool_planner_llm_error", slog.String("error", err.Error()))
 		return p.defaultPlan(query), nil
@@ -75,7 +75,7 @@ func (p *ToolPlanner) buildPrompt(query string) string {
 	sb.WriteString("Steps without depends_on run in parallel. Steps with depends_on wait for those steps.\n\n")
 	fmt.Fprintf(&sb, "User question: %s\n\n", query)
 	sb.WriteString("Output ONLY valid JSON:\n")
-	sb.WriteString(`{"steps":[{"tool_name":"...","params":{...},"depends_on":[]},...]}"`)
+	sb.WriteString(`{"steps":[{"tool_name":"...","params":{...},"depends_on":[]}]}`)
 	return sb.String()
 }
 

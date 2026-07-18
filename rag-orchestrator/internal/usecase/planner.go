@@ -217,8 +217,8 @@ func isAmbiguousFollowUp(query string) bool {
 	for _, p := range ambiguousPatterns {
 		if strings.Contains(lower, p) || strings.Contains(query, p) {
 			// Check if the query has substantive content beyond the pattern.
-			// Remove the pattern and see if meaningful content remains.
-			remainder := strings.Replace(query, p, "", 1)
+			// Operate on the lowercased string so English patterns match case-insensitively.
+			remainder := strings.Replace(lower, p, "", 1)
 			remainder = strings.TrimSpace(remainder)
 			// Strip common particles and punctuation
 			for _, strip := range []string{"？", "?", "。", ".", "、", "の", "について", "は", "を", "に"} {

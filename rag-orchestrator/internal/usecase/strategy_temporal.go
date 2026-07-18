@@ -21,7 +21,7 @@ func (s *temporalStrategy) Name() string { return "temporal" }
 
 func (s *temporalStrategy) Retrieve(ctx context.Context, input RetrieveContextInput, intent QueryIntent) (*RetrieveContextOutput, error) {
 	s.logger.Info("temporal_strategy_execute",
-		slog.String("query", input.Query))
+		slog.String("query_preview", queryLogPreview(input.Query)))
 
 	// Use general retrieval — temporal boost is already applied in the pipeline
 	// based on article publish dates. The temporal strategy signals intent

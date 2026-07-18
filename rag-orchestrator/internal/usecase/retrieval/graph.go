@@ -75,6 +75,7 @@ type RetrievalGraph struct {
 }
 
 // NewRetrievalGraph creates a new RetrievalGraph with the given dependencies.
+// Used by RetrieveContextUsecase as the Stage-1..5 pipeline (see plan/ADR retrieval graph).
 func NewRetrievalGraph(deps GraphDeps) *RetrievalGraph {
 	return &RetrievalGraph{
 		queryExpander:  deps.QueryExpander,
@@ -100,7 +101,7 @@ func (g *RetrievalGraph) Execute(ctx context.Context, input GraphInput) (*GraphO
 	retrievalID := uuid.NewString()
 	g.logger.Info("retrieval_graph_started",
 		slog.String("retrieval_id", retrievalID),
-		slog.String("query", input.Query),
+		slog.String("query_preview", queryLogPreview(input.Query)),
 		slog.Int("candidate_articles", len(input.CandidateArticleIDs)))
 
 	// Initialize StageContext

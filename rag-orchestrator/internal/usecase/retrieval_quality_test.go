@@ -69,9 +69,9 @@ func TestAssess_UsesRerankScoreWhenAvailable(t *testing.T) {
 	assessor := NewRetrievalQualityAssessor(0.5, 0.25, 3)
 	// Score (RRF) is high but RerankScore is low — should use RerankScore
 	contexts := []ContextItem{
-		{ChunkID: uuid.New(), Score: 0.9, RerankScore: 0.1},
-		{ChunkID: uuid.New(), Score: 0.8, RerankScore: 0.05},
-		{ChunkID: uuid.New(), Score: 0.7, RerankScore: 0.02},
+		{ChunkID: uuid.New(), Score: 0.9, RerankScore: 0.1, RerankApplied: true},
+		{ChunkID: uuid.New(), Score: 0.8, RerankScore: 0.05, RerankApplied: true},
+		{ChunkID: uuid.New(), Score: 0.7, RerankScore: 0.02, RerankApplied: true},
 	}
 	verdict := assessor.Assess(contexts)
 	if verdict != QualityInsufficient {
@@ -79,9 +79,9 @@ func TestAssess_UsesRerankScoreWhenAvailable(t *testing.T) {
 	}
 }
 
-func TestAssess_FallsBackToScoreWhenRerankScoreZero(t *testing.T) {
+func TestAssess_FallsBackToScoreWhenRerankNotApplied(t *testing.T) {
 	assessor := NewRetrievalQualityAssessor(0.5, 0.25, 3)
-	// RerankScore is 0 (reranking disabled) — fall back to Score
+	// RerankApplied=false even if RerankScore is 0 — fall back to Score
 	contexts := []ContextItem{
 		{ChunkID: uuid.New(), Score: 0.9, RerankScore: 0},
 		{ChunkID: uuid.New(), Score: 0.8, RerankScore: 0},
@@ -90,6 +90,20 @@ func TestAssess_FallsBackToScoreWhenRerankScoreZero(t *testing.T) {
 	verdict := assessor.Assess(contexts)
 	if verdict != QualityGood {
 		t.Errorf("expected QualityGood (fallback to Score), got %s", verdict)
+	}
+}
+
+func TestAssess_HonorsZeroRerankScoreWhenApplied(t *testing.T) {
+	assessor := NewRetrievalQualityAssessor(0.5, 0.25, 3)
+	// Legitimate zero rerank scores must not fall back to high Score values.
+	contexts := []ContextItem{
+		{ChunkID: uuid.New(), Score: 0.9, RerankScore: 0, RerankApplied: true},
+		{ChunkID: uuid.New(), Score: 0.8, RerankScore: 0, RerankApplied: true},
+		{ChunkID: uuid.New(), Score: 0.7, RerankScore: 0, RerankApplied: true},
+	}
+	verdict := assessor.Assess(contexts)
+	if verdict != QualityInsufficient {
+		t.Errorf("expected QualityInsufficient (zero rerank scores), got %s", verdict)
 	}
 }
 
@@ -307,9 +321,9 @@ func TestAssessWithIntent_Causal_LoweredThresholds_BecomesGood(t *testing.T) {
 	// Top-3 average = 0.35 → General: Marginal (0.35 < 0.50), Causal: Good (0.35 >= 0.30)
 	assessor := NewRetrievalQualityAssessor(0.5, 0.25, 1)
 	contexts := []ContextItem{
-		{RerankScore: 0.40, Title: "Oil Crisis Analysis"},
-		{RerankScore: 0.35, Title: "Oil Market Disruption"},
-		{RerankScore: 0.30, Title: "Oil Supply Issues"},
+		{RerankScore: 0.40, RerankApplied: true, Title: "Oil Crisis Analysis"},
+		{RerankScore: 0.35, RerankApplied: true, Title: "Oil Market Disruption"},
+		{RerankScore: 0.30, RerankApplied: true, Title: "Oil Supply Issues"},
 	}
 	generalVerdict := assessor.AssessWithIntent(contexts, IntentGeneral, "")
 	if generalVerdict != QualityMarginal {
@@ -324,9 +338,9 @@ func TestAssessWithIntent_Causal_LoweredThresholds_BecomesGood(t *testing.T) {
 func TestAssessWithIntent_Synthesis_LoweredThresholds(t *testing.T) {
 	assessor := NewRetrievalQualityAssessor(0.5, 0.25, 1)
 	contexts := []ContextItem{
-		{RerankScore: 0.25, Title: "NYC Art Scene"},
-		{RerankScore: 0.20, Title: "NYC Art Galleries"},
-		{RerankScore: 0.15, Title: "NYC Art Events"},
+		{RerankScore: 0.25, RerankApplied: true, Title: "NYC Art Scene"},
+		{RerankScore: 0.20, RerankApplied: true, Title: "NYC Art Galleries"},
+		{RerankScore: 0.15, RerankApplied: true, Title: "NYC Art Events"},
 	}
 	// avg = 0.20 → General: Insufficient (0.20 < 0.25), Synthesis: Marginal (0.20 >= 0.15)
 	generalVerdict := assessor.AssessWithIntent(contexts, IntentGeneral, "")
@@ -342,9 +356,9 @@ func TestAssessWithIntent_Synthesis_LoweredThresholds(t *testing.T) {
 func TestAssessWithIntent_TopicDeepDive_LoweredThresholds(t *testing.T) {
 	assessor := NewRetrievalQualityAssessor(0.5, 0.25, 1)
 	contexts := []ContextItem{
-		{RerankScore: 0.35, Title: "Transformer Architecture"},
-		{RerankScore: 0.30, Title: "Attention Mechanism"},
-		{RerankScore: 0.28, Title: "Transformer Design"},
+		{RerankScore: 0.35, RerankApplied: true, Title: "Transformer Architecture"},
+		{RerankScore: 0.30, RerankApplied: true, Title: "Attention Mechanism"},
+		{RerankScore: 0.28, RerankApplied: true, Title: "Transformer Design"},
 	}
 	// avg = 0.31 → DeepDive: Good (0.31 >= 0.30)
 	verdict := assessor.AssessWithIntent(contexts, IntentTopicDeepDive, "")

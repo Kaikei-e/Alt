@@ -195,6 +195,11 @@ func (u *indexArticleUsecase) Upsert(ctx context.Context, articleID, title, url,
 			// Run Diff
 			diffEvents := domain.DiffChunks(oldChunks, chunks)
 
+			ordinalToIdx := make(map[int]int, len(ragChunks))
+			for i, rc := range ragChunks {
+				ordinalToIdx[rc.Ordinal] = i
+			}
+
 			// Map DiffEvents to RagChunkEvents
 			for _, de := range diffEvents {
 				rce := domain.RagChunkEvent{
@@ -205,14 +210,13 @@ func (u *indexArticleUsecase) Upsert(ctx context.Context, articleID, title, url,
 				}
 
 				switch de.Type {
-				case domain.ChunkEventAdded:
-					rce.ChunkID = chunkIDPtr(ragChunks[de.NewChunk.Ordinal].ID)
-					rce.Ordinal = de.NewChunk.Ordinal
-				case domain.ChunkEventUpdated:
-					rce.ChunkID = chunkIDPtr(ragChunks[de.NewChunk.Ordinal].ID)
-					rce.Ordinal = de.NewChunk.Ordinal
-				case domain.ChunkEventUnchanged:
-					rce.ChunkID = chunkIDPtr(ragChunks[de.NewChunk.Ordinal].ID)
+				case domain.ChunkEventAdded, domain.ChunkEventUpdated, domain.ChunkEventUnchanged:
+					idx, ok := ordinalToIdx[de.NewChunk.Ordinal]
+					if !ok {
+						// Ordinal may be non-contiguous; skip rather than panic on slice index.
+						continue
+					}
+					rce.ChunkID = chunkIDPtr(ragChunks[idx].ID)
 					rce.Ordinal = de.NewChunk.Ordinal
 				case domain.ChunkEventDeleted:
 					if oldID, ok := oldChunkMap[de.OldChunk.Ordinal]; ok {
@@ -251,6 +255,10 @@ func (u *indexArticleUsecase) Delete(ctx context.Context, articleID string) erro
 		latestVer, err := u.docRepo.GetLatestVersion(ctx, doc.ID)
 		if err != nil {
 			return fmt.Errorf("failed to get latest version: %w", err)
+		}
+		// Idempotent: already tombstoned — do not stack empty tombstone versions.
+		if latestVer != nil && latestVer.ChunkerVersion == "tombstone" {
+			return nil
 		}
 
 		oldRagChunks, err := u.chunkRepo.GetChunksByVersionID(ctx, latestVer.ID)

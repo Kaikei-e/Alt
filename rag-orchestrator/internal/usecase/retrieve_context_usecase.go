@@ -34,7 +34,8 @@ type ContextItem struct {
 	Title           string
 	PublishedAt     string // ISO8601 string
 	Score           float32
-	RerankScore     float32 // Cross-encoder reranker score (0 if reranking disabled)
+	RerankScore     float32 // Cross-encoder reranker score (meaningful when RerankApplied)
+	RerankApplied   bool    // true when RerankScore was produced by the cross-encoder
 	DocumentVersion int
 	ChunkID         uuid.UUID
 	// ArticleID is the stable alt-db articles.id for this chunk's owning
@@ -103,10 +104,9 @@ func NewRetrieveContextUsecase(
 	logger *slog.Logger,
 	opts ...RetrieveContextOption,
 ) RetrieveContextUsecase {
-	// Apply defaults if config is zero-valued
-	if config.SearchLimit == 0 {
-		config = DefaultRetrievalConfig()
-	}
+	// Fill missing fields per-key so a zero SearchLimit does not discard
+	// other explicitly configured values.
+	config = applyRetrievalConfigDefaults(config)
 	u := &retrieveContextUsecase{
 		chunkRepo:     chunkRepo,
 		docRepo:       docRepo,
@@ -198,6 +198,7 @@ func convertContextItems(items []retrieval.ContextItem) []ContextItem {
 			PublishedAt:     item.PublishedAt,
 			Score:           item.Score,
 			RerankScore:     item.RerankScore,
+			RerankApplied:   item.RerankApplied,
 			DocumentVersion: item.DocumentVersion,
 			ChunkID:         item.ChunkID,
 			ArticleID:       item.ArticleID,

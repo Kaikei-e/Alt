@@ -3,7 +3,6 @@ package usecase
 import (
 	"strings"
 	"time"
-	"unicode/utf8"
 )
 
 // ParagraphFlusher accumulates streamed answer text and flushes at
@@ -108,6 +107,3 @@ func isSentenceEnd(r rune) bool {
 	}
 	return false
 }
-
-// ensure utf8 is used (prevents unused import)
-var _ = utf8.RuneCountInString

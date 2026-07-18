@@ -46,7 +46,7 @@ func (v OutputValidator) Validate(raw string, contexts []ContextItem) (*LLMAnswe
 					Reason:    "recovered_from_truncated_json",
 				}, nil
 			}
-			return nil, fmt.Errorf("failed to parse llm response (raw: %s): %w", trimmed, err)
+			return nil, fmt.Errorf("failed to parse llm response (raw: %s): %w", truncate(trimmed, 200), err)
 		}
 	}
 
@@ -480,8 +480,32 @@ func checkContextInsufficiencyDisclaimer(answer string) bool {
 // convertLiteralEscapes converts literal backslash-n to actual newline characters.
 // This handles cases where the LLM outputs literal \n instead of proper JSON escapes
 // (a known issue with GPT-OSS models).
-// Note: We intentionally only convert \n, not \t or \r, to avoid false positives
-// with paths like C:\temp or C:\readme.txt
+// Windows-style path segments (e.g. C:\new) are preserved: a `\n` immediately
+// after `X:` is left unchanged. `\t` and `\r` are never converted.
 func convertLiteralEscapes(s string) string {
-	return strings.ReplaceAll(s, "\\n", "\n")
+	if !strings.Contains(s, `\n`) {
+		return s
+	}
+	var b strings.Builder
+	b.Grow(len(s))
+	for i := 0; i < len(s); i++ {
+		if i+1 < len(s) && s[i] == '\\' && s[i+1] == 'n' {
+			// Preserve drive-letter paths: C:\new, D:\notes, etc.
+			if i >= 2 && s[i-1] == ':' && isASCIILetter(s[i-2]) {
+				b.WriteByte('\\')
+				b.WriteByte('n')
+				i++
+				continue
+			}
+			b.WriteByte('\n')
+			i++
+			continue
+		}
+		b.WriteByte(s[i])
+	}
+	return b.String()
+}
+
+func isASCIILetter(c byte) bool {
+	return (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z')
 }

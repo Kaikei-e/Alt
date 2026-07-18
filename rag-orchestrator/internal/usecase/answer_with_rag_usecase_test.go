@@ -621,7 +621,7 @@ func TestPromptBuilder_ArticleContext(t *testing.T) {
 			{ChunkID: "1", Title: "AI Article", ChunkText: "content"},
 		},
 		ArticleContext: &usecase.ArticleContext{
-			ArticleID: "art-123",
+			ArticleID: "11111111-1111-1111-1111-111111111111",
 			Title:     "AI Article",
 			Truncated: false,
 		},
@@ -713,7 +713,7 @@ func TestExecute_ArticleScopedQuery_UsesNormalizedQuery(t *testing.T) {
 
 	// Use article-scoped query format — but no article_scoped strategy registered,
 	// so it falls through to generalStrategy
-	rawQuery := "Regarding the article: OpenAI GPT-5 [articleId: abc-123]\n\nQuestion:\nWhat are the key improvements?"
+	rawQuery := "Regarding the article: OpenAI GPT-5 [articleId: aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee]\n\nQuestion:\nWhat are the key improvements?"
 	output, err := uc.Execute(ctx, usecase.AnswerWithRAGInput{Query: rawQuery})
 	assert.NoError(t, err)
 	assert.False(t, output.Fallback)
@@ -803,7 +803,7 @@ func TestExecute_ArticleScopedFollowUp_InheritsScopeFromHistory(t *testing.T) {
 			return input.Query == "What is the impact?"
 		}), mock.MatchedBy(func(intent usecase.QueryIntent) bool {
 			return intent.IntentType == usecase.IntentArticleScoped &&
-				intent.ArticleID == "art-123" &&
+				intent.ArticleID == "11111111-1111-1111-1111-111111111111" &&
 				intent.ArticleTitle == "OpenAI GPT-5" &&
 				intent.UserQuestion == "What is the impact?"
 		})).
@@ -844,7 +844,7 @@ func TestExecute_ArticleScopedFollowUp_InheritsScopeFromHistory(t *testing.T) {
 	output, err := uc.Execute(ctx, usecase.AnswerWithRAGInput{
 		Query: "What is the impact?",
 		ConversationHistory: []domain.Message{
-			{Role: "user", Content: "Regarding the article: OpenAI GPT-5 [articleId: art-123]\n\nQuestion:\nWhat changed?"},
+			{Role: "user", Content: "Regarding the article: OpenAI GPT-5 [articleId: 11111111-1111-1111-1111-111111111111]\n\nQuestion:\nWhat changed?"},
 			{Role: "assistant", Content: "It improved several areas."},
 		},
 	})
@@ -875,7 +875,7 @@ func TestExecute_ArticleScopedFollowUp_FromHistory_ClassifiesCritiqueAndPreserve
 		}), mock.MatchedBy(func(intent usecase.QueryIntent) bool {
 			return intent.IntentType == usecase.IntentArticleScoped &&
 				intent.SubIntentType == usecase.SubIntentCritique &&
-				intent.ArticleID == "art-critique" &&
+				intent.ArticleID == "22222222-2222-2222-2222-222222222222" &&
 				intent.UserQuestion == "反論はある？"
 		})).
 		Return(&usecase.RetrieveContextOutput{
@@ -910,7 +910,7 @@ func TestExecute_ArticleScopedFollowUp_FromHistory_ClassifiesCritiqueAndPreserve
 	output, err := uc.Execute(ctx, usecase.AnswerWithRAGInput{
 		Query: "反論はある？",
 		ConversationHistory: []domain.Message{
-			{Role: "user", Content: "Regarding the article: Test Article [articleId: art-critique]\n\nQuestion:\n要点は？"},
+			{Role: "user", Content: "Regarding the article: Test Article [articleId: 22222222-2222-2222-2222-222222222222]\n\nQuestion:\n要点は？"},
 			{Role: "assistant", Content: "記事の要点は..."},
 		},
 	})
@@ -961,7 +961,7 @@ func TestExecute_ArticleScopedFollowUp_ReRetrievesFromGlobalIndex(t *testing.T) 
 	output, err := uc.Execute(ctx, usecase.AnswerWithRAGInput{
 		Query: "Why did this crisis happen?",
 		ConversationHistory: []domain.Message{
-			{Role: "user", Content: "Regarding the article: Fuel Crisis [articleId: art-fuel]\n\nQuestion:\nSummary?"},
+			{Role: "user", Content: "Regarding the article: Fuel Crisis [articleId: 33333333-3333-3333-3333-333333333333]\n\nQuestion:\nSummary?"},
 			{Role: "assistant", Content: "The article discusses a fuel crisis in Australia."},
 		},
 	})
@@ -1017,7 +1017,7 @@ func TestExecute_ArticleScopedMaxChunksMarksPromptAsTruncated(t *testing.T) {
 	chunkID2 := uuid.New()
 	articleStrategy.
 		On("Retrieve", mock.Anything, mock.Anything, mock.MatchedBy(func(intent usecase.QueryIntent) bool {
-			return intent.ArticleID == "art-123"
+			return intent.ArticleID == "11111111-1111-1111-1111-111111111111"
 		})).
 		Return(&usecase.RetrieveContextOutput{
 			Contexts: []usecase.ContextItem{
@@ -1034,7 +1034,7 @@ func TestExecute_ArticleScopedMaxChunksMarksPromptAsTruncated(t *testing.T) {
 	}), mock.Anything).Return(&domain.LLMResponse{Text: llmResponse, Done: true}, nil)
 
 	output, err := uc.Execute(ctx, usecase.AnswerWithRAGInput{
-		Query: "Regarding the article: Large Article [articleId: art-123]\n\nQuestion:\nSummarize it.",
+		Query: "Regarding the article: Large Article [articleId: 11111111-1111-1111-1111-111111111111]\n\nQuestion:\nSummarize it.",
 	})
 	assert.NoError(t, err)
 	assert.False(t, output.Fallback)
@@ -1977,7 +1977,7 @@ func TestExecute_ArticleScopedFollowUp_DetailSubIntent_SkipsGeneralReRetrieval(t
 	_, err := uc.Execute(ctx, usecase.AnswerWithRAGInput{
 		Query: "技術的な詳細をもっと教えて",
 		ConversationHistory: []domain.Message{
-			{Role: "user", Content: "Regarding the article: 暗記のコツ [articleId: art-memory]\n\nQuestion:\n概要を教えて"},
+			{Role: "user", Content: "Regarding the article: 暗記のコツ [articleId: 44444444-4444-4444-4444-444444444444]\n\nQuestion:\n概要を教えて"},
 			{Role: "assistant", Content: "記事は暗記のコツについてです。"},
 		},
 	})
@@ -2026,7 +2026,7 @@ func TestExecute_ArticleScopedFollowUp_NoneSubIntent_KeepsGeneralReRetrieval(t *
 		// This query matches SubIntentNone — no keywords for detail/related/evidence/etc.
 		Query: "もっと教えて",
 		ConversationHistory: []domain.Message{
-			{Role: "user", Content: "Regarding the article: Test [articleId: art-test]\n\nQuestion:\n概要を教えて"},
+			{Role: "user", Content: "Regarding the article: Test [articleId: 55555555-5555-5555-5555-555555555555]\n\nQuestion:\n概要を教えて"},
 			{Role: "assistant", Content: "テスト記事です。"},
 		},
 	})

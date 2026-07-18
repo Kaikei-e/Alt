@@ -113,7 +113,7 @@ func (s *AgenticSynthesisStrategy) runAgentLoop(
 	seenCalls := make(map[string]struct{})
 
 	for step := 0; step < s.maxToolCalls; step++ {
-		resp, err := s.toolCaller.ChatWithTools(ctx, messages, toolDefs, 256)
+		resp, err := s.toolCaller.ChatWithTools(ctx, messages, toolDefs, LLMTokensToolChat)
 		if err != nil {
 			s.log("agentic_tool_chat_failed", slog.String("error", err.Error()))
 			break

@@ -57,19 +57,20 @@ func (u *answerWithRAGUsecase) Stream(ctx context.Context, input AnswerWithRAGIn
 		// 1. Check Cache (Simulated Stream)
 		cacheKey := u.generateCacheKey(input)
 		if val, ok := u.cache.Get(cacheKey); ok {
-			slog.InfoContext(ctx, "streaming cached answer", slog.String("key", cacheKey))
+			u.logger.InfoContext(ctx, "streaming cached answer", slog.String("key", cacheKey))
+			cloned := cloneAnswerOutput(val)
 			u.sendStreamEvent(ctx, events, StreamEvent{
 				Kind: StreamEventKindMeta,
 				Payload: StreamMeta{
-					Contexts: val.Contexts,
-					Debug:    val.Debug,
+					Contexts: cloned.Contexts,
+					Debug:    cloned.Debug,
 				},
 			})
 			u.sendStreamEvent(ctx, events, StreamEvent{
 				Kind:    StreamEventKindDelta,
-				Payload: val.Answer,
+				Payload: cloned.Answer,
 			})
-			finalOutput = val
+			finalOutput = cloned
 			return
 		}
 
@@ -317,12 +318,13 @@ func (u *answerWithRAGUsecase) Stream(ctx context.Context, input AnswerWithRAGIn
 			}
 		}
 
+		answerCompletelyStreamed := answerParser.Done()
 		// Debug: Log stream loop exit state
 		u.logger.Info("stream_loop_exited",
 			slog.Bool("done", done),
 			slog.Bool("hasData", hasData),
 			slog.Int("builder_len", builder.Len()),
-			slog.Bool("answerCompletelyStreamed", true))
+			slog.Bool("answerCompletelyStreamed", answerCompletelyStreamed))
 
 		if !hasData {
 			u.logger.Warn("stream_no_data_fallback",
@@ -509,13 +511,6 @@ func selectFallbackReason(intentType IntentType, flags []string) string {
 		return "answer quality insufficient: low keyword coverage"
 	}
 	return "answer quality insufficient: short answer with quality issues"
-}
-
-func shouldHardStopShortAnswer(intentType IntentType, flags []string) bool {
-	return hasQualityFlag(flags, "low_keyword_coverage") ||
-		hasQualityFlag(flags, "incoherent_ending") ||
-		hasQualityFlag(flags, "context_insufficiency_disclaimer") ||
-		(hasQualityFlag(flags, "expansion_failed") && intentType == IntentCausalExplanation)
 }
 
 // hasQualityFlag checks if a specific flag is present in the quality flags list.

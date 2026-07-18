@@ -334,6 +334,25 @@ func TestOutputValidator_ConvertLiteralEscapes_OnlyNewlines(t *testing.T) {
 	assert.Equal(t, expected, result.Answer, "Only literal \\n should be converted, not \\t")
 }
 
+func TestOutputValidator_ConvertLiteralEscapes_PreservesDriveLetterPaths(t *testing.T) {
+	validator := usecase.NewOutputValidator(0)
+	// Drive-letter paths like C:\new must not become C: + newline + "ew".
+	// Nested segments after the first (C:\new\notes) remain a known limitation
+	// of literal-\n rewriting and are not rewritten here.
+	input := `{
+		"answer": "Open C:\\new then continue\\nNext line",
+		"citations": [],
+		"fallback": false,
+		"reason": ""
+	}`
+
+	result, err := validator.Validate(input, nil)
+	require.NoError(t, err)
+	assert.Contains(t, result.Answer, `C:\new`)
+	assert.Contains(t, result.Answer, "\nNext line")
+	assert.NotContains(t, result.Answer, "C:\new") // "C:" + real newline + "ew"
+}
+
 // --- Phase 4: Answer Quality Checks ---
 
 func TestAssessAnswerQuality_CoverageCheck(t *testing.T) {
