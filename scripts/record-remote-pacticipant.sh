@@ -3,7 +3,7 @@
 # cannot be rolled out by c2quay. Currently this is tts-speaker (separate GPU
 # host). Run at the tail of scripts/deploy.sh so the broker matrix reflects
 # the intended release even when c2quay skipped the service.
-set -uo pipefail
+set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 DEPLOY_REPO_ROOT="${DEPLOY_REPO_ROOT:-$REPO_ROOT}"

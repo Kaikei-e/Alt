@@ -53,6 +53,12 @@ secrets:
     file: ../secrets/step_ca_root_password.txt
   pact_broker_basic_auth_password:
     file: ../secrets/pact_broker_basic_auth_password.txt
+  # Separate from broker basic-auth so DB credentials are not shared with
+  # the HTTP auth password (see compose/pact.yaml). Existing pact-db volumes
+  # were initialized with the old shared secret — set pact_db_password to that
+  # value (or recreate the volume) when rotating.
+  pact_db_password:
+    file: ../secrets/pact_db_password.txt
   internal_auth_token:
     file: ../secrets/internal_auth_token.txt
 
@@ -96,15 +102,9 @@ x-rask-env: &rask-env
       buffer_capacity = 100000
       log_level = "info"
 
-x-rask-forwarder-env: &rask-forwarder-env
-  environment:
-    DOCKER_HOST: "unix:///var/run/docker.sock"
-    LOG_LEVEL: "info"
-    RUST_LOG: "info"
-    RASK_ENDPOINT: "http://rask-log-aggregator:9600/v1/aggregate"
-    BATCH_SIZE: "1000"
-    FLUSH_INTERVAL_MS: "500"
-    BUFFER_CAPACITY: "100000"
+# Forwarder shared env lives in compose/logging.yaml (x-rask-forwarder-env)
+# so YAML anchors stay in the same file as <<: merges (include does not
+# export anchors across files).
 
 x-shared-env-file: &shared-env-file
   env_file:
@@ -116,18 +116,3 @@ x-logging-config: &logging-config
     options:
       max-size: "10m"
       max-file: "3"
-
-# Healthcheck templates for service startup ordering
-x-healthcheck-http: &healthcheck-http
-  healthcheck:
-    interval: 10s
-    timeout: 5s
-    retries: 5
-    start_period: 30s
-
-x-healthcheck-db: &healthcheck-db
-  healthcheck:
-    interval: 5s
-    timeout: 5s
-    retries: 10
-    start_period: 10s

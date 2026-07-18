@@ -54,6 +54,8 @@ services:
       context: ../acolyte-migration-atlas
       dockerfile: docker/Dockerfile
     container_name: acolyte-db-migrator
+    # Short-lived Atlas apply job.
+    mem_limit: 256m
     command: ["apply"]
     environment:
       - ACOLYTE_DB_HOST=acolyte-db

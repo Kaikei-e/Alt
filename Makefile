@@ -8,10 +8,12 @@ ENV_FILE := ./.env
 # .env テンプレートファイルの名前
 ENV_TEMPLATE := ./.env.template
 
-# .env ファイルが存在する場合は読み込む
+# .env ファイルが存在する場合は読み込む。
+# Do NOT `export` the whole file — that leaks every secret into every make
+# recipe child process. Recipes that need a value pass it explicitly
+# (e.g. HF_TOKEN=$(HF_TOKEN) on the prepare-tag-onnx line).
 ifneq (,$(wildcard $(ENV_FILE)))
     include $(ENV_FILE)
-    export
 endif
 
 # デフォルトのデータベース設定
@@ -337,4 +339,4 @@ install-c2quay:
 	  rm -rf "$$tmp"
 	@c2quay version
 
-.PHONY: clean clean-env generate-mocks backup-db dev-ssl-setup dev-ssl-test dev-clean-ssl migrate-hash migrate-validate migrate-status recap-migrate-hash recap-migrate recap-migrate-status docker-cleanup docker-cleanup-install docker-cleanup-uninstall docker-cleanup-status docker-disk-usage docker-cleanup-memory docker-cleanup-memory-aggressive docker-remove-old-volumes docker-memory-stats prepare-tag-onnx clean-tag-onnx buf-generate buf-lint buf-breaking up-observability down-observability logs-observability rust-clean install-c2quay
+.PHONY: clean clean-env generate-mocks dev-ssl-setup dev-ssl-test dev-clean-ssl migrate-hash migrate-validate migrate-status recap-migrate-hash recap-migrate recap-migrate-status docker-cleanup docker-cleanup-install docker-cleanup-uninstall docker-cleanup-status docker-disk-usage docker-cleanup-memory docker-cleanup-memory-aggressive docker-remove-old-volumes docker-memory-stats prepare-tag-onnx clean-tag-onnx buf-generate buf-lint buf-breaking up-observability down-observability logs-observability rust-clean install-c2quay

@@ -62,18 +62,25 @@ jobs:
           # compose/*.yaml uses ${MEILISEARCH_HOST}, ${GHCR_OWNER}, etc.
           # A minimal dummy .env satisfies the interpolation without
           # reading prod secrets (the runner has none anyway).
-          touch .env
+          # logging.yaml requires DOCKER_GROUP_ID (fail-fast, no host-magic
+          # default) — any numeric GID is fine for `compose config` audit.
+          {
+            echo 'DOCKER_GROUP_ID=0'
+          } > .env
 
       - name: Assert every service_healthy target has a healthcheck
         run: |
           set -euo pipefail
           python3 - <<'PY'
           import subprocess, sys, yaml
-          raw = subprocess.run(
+          proc = subprocess.run(
               ["docker", "compose", "--env-file", ".env", "-f", "compose/compose.yaml", "config"],
-              check=True, capture_output=True, text=True,
-          ).stdout
-          cfg = yaml.safe_load(raw)
+              capture_output=True, text=True,
+          )
+          if proc.returncode != 0:
+              sys.stderr.write(proc.stderr or proc.stdout or "compose config failed\n")
+              sys.exit(proc.returncode)
+          cfg = yaml.safe_load(proc.stdout)
           services = cfg.get("services", {})
           violations = []
           for name, svc in services.items():

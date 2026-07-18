@@ -4,6 +4,44 @@
 include:
   - base.yaml
 
+# Shared forwarder definition. TARGET_SERVICE (and optional mem_limit) are
+# overridden per service. DOCKER_GROUP_ID has no host-magic fallback — inject
+# via `export DOCKER_GROUP_ID=$(./scripts/get-docker-gid.sh)` (start.sh does this).
+x-rask-forwarder: &rask-forwarder
+  image: ghcr.io/${GHCR_OWNER:-kaikei-e}/alt-rask-log-forwarder:${IMAGE_TAG:-main}
+  build:
+    context: ../rask-log-forwarder
+    dockerfile: Dockerfile.rask-log-forwarder
+  mem_limit: 64m
+  networks:
+    - alt-network
+  depends_on:
+    rask-log-aggregator:
+      condition: service_healthy
+  volumes:
+    - /var/run/docker.sock:/var/run/docker.sock:ro
+    - /var/lib/docker/containers:/var/lib/docker/containers:ro
+  group_add:
+    # Fail-fast when unset: a wrong fallback GID silently breaks sock access.
+    - "${DOCKER_GROUP_ID:?DOCKER_GROUP_ID must be set (run: export DOCKER_GROUP_ID=$(./scripts/get-docker-gid.sh))}"
+  restart: unless-stopped
+  stop_grace_period: 12s
+  healthcheck:
+    test: ["CMD", "/rask-log-forwarder", "healthcheck"]
+    interval: 30s
+    timeout: 5s
+    retries: 3
+    start_period: 15s
+
+x-rask-forwarder-env: &rask-forwarder-env
+  DOCKER_HOST: "unix:///var/run/docker.sock"
+  LOG_LEVEL: "info"
+  RUST_LOG: "info"
+  RASK_ENDPOINT: "http://rask-log-aggregator:9600/v1/aggregate"
+  BATCH_SIZE: "1000"
+  FLUSH_INTERVAL_MS: "500"
+  BUFFER_CAPACITY: "100000"
+
 services:
   rask-log-aggregator:
     image: ghcr.io/${GHCR_OWNER:-kaikei-e}/alt-rask-log-aggregator:${IMAGE_TAG:-main}
@@ -43,403 +81,98 @@ services:
       start_period: 10s
 
   nginx-logs:
-    image: ghcr.io/${GHCR_OWNER:-kaikei-e}/alt-rask-log-forwarder:${IMAGE_TAG:-main}
-    build:
-      context: ../rask-log-forwarder
-      dockerfile: Dockerfile.rask-log-forwarder
+    <<: *rask-forwarder
     mem_limit: 128m
-    networks:
-      - alt-network
-    depends_on:
-      rask-log-aggregator:
-        condition: service_healthy
     environment:
-      DOCKER_HOST: "unix:///var/run/docker.sock"
-      LOG_LEVEL: "info"
-      RUST_LOG: "info"
-      RASK_ENDPOINT: "http://rask-log-aggregator:9600/v1/aggregate"
-      BATCH_SIZE: "1000"
-      FLUSH_INTERVAL_MS: "500"
-      BUFFER_CAPACITY: "100000"
+      <<: *rask-forwarder-env
       TARGET_SERVICE: "${NGINX_TARGET:-plecto-proxy}"
-    volumes:
-      - /var/run/docker.sock:/var/run/docker.sock:ro
-      - /var/lib/docker/containers:/var/lib/docker/containers:ro
-    group_add:
-      - "${DOCKER_GROUP_ID:-984}"
-    restart: unless-stopped
-    stop_grace_period: 12s
 
   alt-backend-logs:
-    image: ghcr.io/${GHCR_OWNER:-kaikei-e}/alt-rask-log-forwarder:${IMAGE_TAG:-main}
-    build:
-      context: ../rask-log-forwarder
-      dockerfile: Dockerfile.rask-log-forwarder
-    mem_limit: 64m
-    networks:
-      - alt-network
-    depends_on:
-      rask-log-aggregator:
-        condition: service_healthy
+    <<: *rask-forwarder
     environment:
-      DOCKER_HOST: "unix:///var/run/docker.sock"
-      LOG_LEVEL: "info"
-      RUST_LOG: "info"
-      RASK_ENDPOINT: "http://rask-log-aggregator:9600/v1/aggregate"
-      BATCH_SIZE: "1000"
-      FLUSH_INTERVAL_MS: "500"
-      BUFFER_CAPACITY: "100000"
+      <<: *rask-forwarder-env
       TARGET_SERVICE: "${ALT_BACKEND_TARGET:-alt-backend}"
-    volumes:
-      - /var/run/docker.sock:/var/run/docker.sock:ro
-      - /var/lib/docker/containers:/var/lib/docker/containers:ro
-    group_add:
-      - "${DOCKER_GROUP_ID:-984}"
-    restart: unless-stopped
-    stop_grace_period: 12s
 
   auth-hub-logs:
-    image: ghcr.io/${GHCR_OWNER:-kaikei-e}/alt-rask-log-forwarder:${IMAGE_TAG:-main}
-    build:
-      context: ../rask-log-forwarder
-      dockerfile: Dockerfile.rask-log-forwarder
-    mem_limit: 64m
-    networks:
-      - alt-network
-    depends_on:
-      rask-log-aggregator:
-        condition: service_healthy
+    <<: *rask-forwarder
     environment:
-      DOCKER_HOST: "unix:///var/run/docker.sock"
-      LOG_LEVEL: "info"
-      RUST_LOG: "info"
-      RASK_ENDPOINT: "http://rask-log-aggregator:9600/v1/aggregate"
-      BATCH_SIZE: "1000"
-      FLUSH_INTERVAL_MS: "500"
-      BUFFER_CAPACITY: "100000"
+      <<: *rask-forwarder-env
       TARGET_SERVICE: "auth-hub"
-    volumes:
-      - /var/run/docker.sock:/var/run/docker.sock:ro
-      - /var/lib/docker/containers:/var/lib/docker/containers:ro
-    group_add:
-      - "${DOCKER_GROUP_ID:-984}"
-    restart: unless-stopped
-    stop_grace_period: 12s
 
   tag-generator-logs:
-    image: ghcr.io/${GHCR_OWNER:-kaikei-e}/alt-rask-log-forwarder:${IMAGE_TAG:-main}
-    build:
-      context: ../rask-log-forwarder
-      dockerfile: Dockerfile.rask-log-forwarder
+    <<: *rask-forwarder
     mem_limit: 128m
-    networks:
-      - alt-network
-    depends_on:
-      rask-log-aggregator:
-        condition: service_healthy
     environment:
-      DOCKER_HOST: "unix:///var/run/docker.sock"
-      LOG_LEVEL: "info"
-      RUST_LOG: "info"
-      RASK_ENDPOINT: "http://rask-log-aggregator:9600/v1/aggregate"
-      BATCH_SIZE: "1000"
-      FLUSH_INTERVAL_MS: "500"
-      BUFFER_CAPACITY: "100000"
+      <<: *rask-forwarder-env
       TARGET_SERVICE: "tag-generator"
-    volumes:
-      - /var/run/docker.sock:/var/run/docker.sock:ro
-      - /var/lib/docker/containers:/var/lib/docker/containers:ro
-    group_add:
-      - "${DOCKER_GROUP_ID:-984}"
-    restart: unless-stopped
-    stop_grace_period: 12s
 
   pre-processor-logs:
-    image: ghcr.io/${GHCR_OWNER:-kaikei-e}/alt-rask-log-forwarder:${IMAGE_TAG:-main}
-    build:
-      context: ../rask-log-forwarder
-      dockerfile: Dockerfile.rask-log-forwarder
-    mem_limit: 64m
-    networks:
-      - alt-network
-    depends_on:
-      rask-log-aggregator:
-        condition: service_healthy
+    <<: *rask-forwarder
     environment:
-      DOCKER_HOST: "unix:///var/run/docker.sock"
-      LOG_LEVEL: "info"
-      RUST_LOG: "info"
-      RASK_ENDPOINT: "http://rask-log-aggregator:9600/v1/aggregate"
-      BATCH_SIZE: "1000"
-      FLUSH_INTERVAL_MS: "500"
-      BUFFER_CAPACITY: "100000"
+      <<: *rask-forwarder-env
       TARGET_SERVICE: "pre-processor"
-    volumes:
-      - /var/run/docker.sock:/var/run/docker.sock:ro
-      - /var/lib/docker/containers:/var/lib/docker/containers:ro
-    group_add:
-      - "${DOCKER_GROUP_ID:-984}"
-    restart: unless-stopped
-    stop_grace_period: 12s
 
   search-indexer-logs:
-    image: ghcr.io/${GHCR_OWNER:-kaikei-e}/alt-rask-log-forwarder:${IMAGE_TAG:-main}
-    build:
-      context: ../rask-log-forwarder
-      dockerfile: Dockerfile.rask-log-forwarder
-    mem_limit: 64m
-    networks:
-      - alt-network
-    depends_on:
-      rask-log-aggregator:
-        condition: service_healthy
+    <<: *rask-forwarder
     environment:
-      DOCKER_HOST: "unix:///var/run/docker.sock"
-      LOG_LEVEL: "info"
-      RUST_LOG: "info"
-      RASK_ENDPOINT: "http://rask-log-aggregator:9600/v1/aggregate"
-      BATCH_SIZE: "1000"
-      FLUSH_INTERVAL_MS: "500"
-      BUFFER_CAPACITY: "100000"
+      <<: *rask-forwarder-env
       TARGET_SERVICE: "search-indexer"
-    volumes:
-      - /var/run/docker.sock:/var/run/docker.sock:ro
-      - /var/lib/docker/containers:/var/lib/docker/containers:ro
-    group_add:
-      - "${DOCKER_GROUP_ID:-984}"
-    restart: unless-stopped
-    stop_grace_period: 12s
 
   news-creator-logs:
-    image: ghcr.io/${GHCR_OWNER:-kaikei-e}/alt-rask-log-forwarder:${IMAGE_TAG:-main}
-    build:
-      context: ../rask-log-forwarder
-      dockerfile: Dockerfile.rask-log-forwarder
-    mem_limit: 64m
-    networks:
-      - alt-network
-    depends_on:
-      rask-log-aggregator:
-        condition: service_healthy
+    <<: *rask-forwarder
     environment:
-      DOCKER_HOST: "unix:///var/run/docker.sock"
-      LOG_LEVEL: "info"
-      RUST_LOG: "info"
-      RASK_ENDPOINT: "http://rask-log-aggregator:9600/v1/aggregate"
-      BATCH_SIZE: "1000"
-      FLUSH_INTERVAL_MS: "500"
-      BUFFER_CAPACITY: "100000"
+      <<: *rask-forwarder-env
       TARGET_SERVICE: "news-creator"
-    volumes:
-      - /var/run/docker.sock:/var/run/docker.sock:ro
-      - /var/lib/docker/containers:/var/lib/docker/containers:ro
-    group_add:
-      - "${DOCKER_GROUP_ID:-984}"
-    restart: unless-stopped
-    stop_grace_period: 12s
 
   # ADR-091: news-creator-backend (Ollama) ログ収集
   news-creator-backend-logs:
-    image: ghcr.io/${GHCR_OWNER:-kaikei-e}/alt-rask-log-forwarder:${IMAGE_TAG:-main}
-    build:
-      context: ../rask-log-forwarder
-      dockerfile: Dockerfile.rask-log-forwarder
+    <<: *rask-forwarder
     mem_limit: 128m
-    networks:
-      - alt-network
-    depends_on:
-      rask-log-aggregator:
-        condition: service_healthy
     environment:
-      DOCKER_HOST: "unix:///var/run/docker.sock"
-      LOG_LEVEL: "info"
-      RUST_LOG: "info"
-      RASK_ENDPOINT: "http://rask-log-aggregator:9600/v1/aggregate"
-      BATCH_SIZE: "1000"
-      FLUSH_INTERVAL_MS: "500"
-      BUFFER_CAPACITY: "100000"
+      <<: *rask-forwarder-env
       TARGET_SERVICE: "news-creator-backend"
-    volumes:
-      - /var/run/docker.sock:/var/run/docker.sock:ro
-      - /var/lib/docker/containers:/var/lib/docker/containers:ro
-    group_add:
-      - "${DOCKER_GROUP_ID:-984}"
-    restart: unless-stopped
-    stop_grace_period: 12s
 
   # NOTE: meilisearch-logs removed - noisy logs with low observability value
 
   # Recap stack forwarders
   # NOTE: db-logs removed - SQL query fragments provide low observability value (74% of all logs)
   recap-worker-logs:
-    image: ghcr.io/${GHCR_OWNER:-kaikei-e}/alt-rask-log-forwarder:${IMAGE_TAG:-main}
-    build:
-      context: ../rask-log-forwarder
-      dockerfile: Dockerfile.rask-log-forwarder
-    mem_limit: 64m
-    networks:
-      - alt-network
-    depends_on:
-      rask-log-aggregator:
-        condition: service_healthy
+    <<: *rask-forwarder
     environment:
-      DOCKER_HOST: "unix:///var/run/docker.sock"
-      LOG_LEVEL: "info"
-      RUST_LOG: "info"
-      RASK_ENDPOINT: "http://rask-log-aggregator:9600/v1/aggregate"
-      BATCH_SIZE: "1000"
-      FLUSH_INTERVAL_MS: "500"
-      BUFFER_CAPACITY: "100000"
+      <<: *rask-forwarder-env
       TARGET_SERVICE: "recap-worker"
-    volumes:
-      - /var/run/docker.sock:/var/run/docker.sock:ro
-      - /var/lib/docker/containers:/var/lib/docker/containers:ro
-    group_add:
-      - "${DOCKER_GROUP_ID:-984}"
-    restart: unless-stopped
-    stop_grace_period: 12s
 
   recap-subworker-logs:
-    image: ghcr.io/${GHCR_OWNER:-kaikei-e}/alt-rask-log-forwarder:${IMAGE_TAG:-main}
-    build:
-      context: ../rask-log-forwarder
-      dockerfile: Dockerfile.rask-log-forwarder
-    mem_limit: 64m
-    networks:
-      - alt-network
-    depends_on:
-      rask-log-aggregator:
-        condition: service_healthy
+    <<: *rask-forwarder
     environment:
-      DOCKER_HOST: "unix:///var/run/docker.sock"
-      LOG_LEVEL: "info"
-      RUST_LOG: "info"
-      RASK_ENDPOINT: "http://rask-log-aggregator:9600/v1/aggregate"
-      BATCH_SIZE: "1000"
-      FLUSH_INTERVAL_MS: "500"
-      BUFFER_CAPACITY: "100000"
+      <<: *rask-forwarder-env
       TARGET_SERVICE: "recap-subworker"
-    volumes:
-      - /var/run/docker.sock:/var/run/docker.sock:ro
-      - /var/lib/docker/containers:/var/lib/docker/containers:ro
-    group_add:
-      - "${DOCKER_GROUP_ID:-984}"
-    restart: unless-stopped
-    stop_grace_period: 12s
 
   dashboard-logs:
-    image: ghcr.io/${GHCR_OWNER:-kaikei-e}/alt-rask-log-forwarder:${IMAGE_TAG:-main}
-    build:
-      context: ../rask-log-forwarder
-      dockerfile: Dockerfile.rask-log-forwarder
-    mem_limit: 64m
-    networks:
-      - alt-network
-    depends_on:
-      rask-log-aggregator:
-        condition: service_healthy
+    <<: *rask-forwarder
     environment:
-      DOCKER_HOST: "unix:///var/run/docker.sock"
-      LOG_LEVEL: "info"
-      RUST_LOG: "info"
-      RASK_ENDPOINT: "http://rask-log-aggregator:9600/v1/aggregate"
-      BATCH_SIZE: "1000"
-      FLUSH_INTERVAL_MS: "500"
-      BUFFER_CAPACITY: "100000"
+      <<: *rask-forwarder-env
       TARGET_SERVICE: "dashboard"
-    volumes:
-      - /var/run/docker.sock:/var/run/docker.sock:ro
-      - /var/lib/docker/containers:/var/lib/docker/containers:ro
-    group_add:
-      - "${DOCKER_GROUP_ID:-984}"
-    restart: unless-stopped
-    stop_grace_period: 12s
 
   recap-evaluator-logs:
-    image: ghcr.io/${GHCR_OWNER:-kaikei-e}/alt-rask-log-forwarder:${IMAGE_TAG:-main}
-    build:
-      context: ../rask-log-forwarder
-      dockerfile: Dockerfile.rask-log-forwarder
-    mem_limit: 64m
-    networks:
-      - alt-network
-    depends_on:
-      rask-log-aggregator:
-        condition: service_healthy
+    <<: *rask-forwarder
     environment:
-      DOCKER_HOST: "unix:///var/run/docker.sock"
-      LOG_LEVEL: "info"
-      RUST_LOG: "info"
-      RASK_ENDPOINT: "http://rask-log-aggregator:9600/v1/aggregate"
-      BATCH_SIZE: "1000"
-      FLUSH_INTERVAL_MS: "500"
-      BUFFER_CAPACITY: "100000"
+      <<: *rask-forwarder-env
       TARGET_SERVICE: "recap-evaluator"
-    volumes:
-      - /var/run/docker.sock:/var/run/docker.sock:ro
-      - /var/lib/docker/containers:/var/lib/docker/containers:ro
-    group_add:
-      - "${DOCKER_GROUP_ID:-984}"
-    restart: unless-stopped
-    stop_grace_period: 12s
 
   # RAG stack forwarders
   # NOTE: recap-db-logs removed - SQL query fragments provide low observability value
   rag-orchestrator-logs:
-    image: ghcr.io/${GHCR_OWNER:-kaikei-e}/alt-rask-log-forwarder:${IMAGE_TAG:-main}
-    build:
-      context: ../rask-log-forwarder
-      dockerfile: Dockerfile.rask-log-forwarder
-    mem_limit: 64m
-    networks:
-      - alt-network
-    depends_on:
-      rask-log-aggregator:
-        condition: service_healthy
+    <<: *rask-forwarder
     environment:
-      DOCKER_HOST: "unix:///var/run/docker.sock"
-      LOG_LEVEL: "info"
-      RUST_LOG: "info"
-      RASK_ENDPOINT: "http://rask-log-aggregator:9600/v1/aggregate"
-      BATCH_SIZE: "1000"
-      FLUSH_INTERVAL_MS: "500"
-      BUFFER_CAPACITY: "100000"
+      <<: *rask-forwarder-env
       TARGET_SERVICE: "rag-orchestrator"
-    volumes:
-      - /var/run/docker.sock:/var/run/docker.sock:ro
-      - /var/lib/docker/containers:/var/lib/docker/containers:ro
-    group_add:
-      - "${DOCKER_GROUP_ID:-984}"
-    restart: unless-stopped
-    stop_grace_period: 12s
 
   mq-hub-logs:
-    image: ghcr.io/${GHCR_OWNER:-kaikei-e}/alt-rask-log-forwarder:${IMAGE_TAG:-main}
-    build:
-      context: ../rask-log-forwarder
-      dockerfile: Dockerfile.rask-log-forwarder
-    mem_limit: 64m
-    networks:
-      - alt-network
-    depends_on:
-      rask-log-aggregator:
-        condition: service_healthy
+    <<: *rask-forwarder
     environment:
-      DOCKER_HOST: "unix:///var/run/docker.sock"
-      LOG_LEVEL: "info"
-      RUST_LOG: "info"
-      RASK_ENDPOINT: "http://rask-log-aggregator:9600/v1/aggregate"
-      BATCH_SIZE: "1000"
-      FLUSH_INTERVAL_MS: "500"
-      BUFFER_CAPACITY: "100000"
+      <<: *rask-forwarder-env
       TARGET_SERVICE: "mq-hub"
-    volumes:
-      - /var/run/docker.sock:/var/run/docker.sock:ro
-      - /var/lib/docker/containers:/var/lib/docker/containers:ro
-    group_add:
-      - "${DOCKER_GROUP_ID:-984}"
-    restart: unless-stopped
-    stop_grace_period: 12s
 
   # NOTE: rag-db-logs removed - SQL query fragments provide low observability value
 

@@ -56,6 +56,8 @@ services:
       context: ../recap-migration-atlas
       dockerfile: docker/Dockerfile
     container_name: recap_db_migrator
+    # Short-lived Atlas apply job; keep under worker footprints.
+    mem_limit: 256m
     command: ["apply"]
     environment:
       # Database credentials - password read from secret file
