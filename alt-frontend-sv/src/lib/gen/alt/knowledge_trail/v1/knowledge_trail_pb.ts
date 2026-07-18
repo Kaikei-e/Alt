@@ -10,7 +10,7 @@ import type { Message } from "@bufbuild/protobuf";
  * Describes the file alt/knowledge_trail/v1/knowledge_trail.proto.
  */
 export const file_alt_knowledge_trail_v1_knowledge_trail: GenFile = /*@__PURE__*/
-  fileDesc("CixhbHQva25vd2xlZGdlX3RyYWlsL3YxL2tub3dsZWRnZV90cmFpbC5wcm90bxIWYWx0Lmtub3dsZWRnZV90cmFpbC52MSJRChdFbWl0VHJhaWxPdXRjb21lUmVxdWVzdBISCgpicmFuY2hfa2V5GAEgASgJEhAKCGl0ZW1fa2V5GAIgASgJEhAKCGR3ZWxsX21zGAMgASgDIiYKGEVtaXRUcmFpbE91dGNvbWVSZXNwb25zZRIKCgJvaxgBIAEoCCJcChRSZXNvbHZlQnJhbmNoUmVxdWVzdBISCgpicmFuY2hfa2V5GAEgASgJEhIKCnJlc29sdXRpb24YAiABKAkSHAoUY2xpZW50X3Jlc29sdXRpb25faWQYAyABKAkiIwoVUmVzb2x2ZUJyYW5jaFJlc3BvbnNlEgoKAm9rGAEgASgIIlUKD0dldFRyYWlsUmVxdWVzdBITCgZjdXJzb3IYASABKAlIAIgBARINCgVsaW1pdBgCIAEoBRITCgtmaWx0ZXJfdGFncxgDIAMoCUIJCgdfY3Vyc29yIrgBChBHZXRUcmFpbFJlc3BvbnNlEjUKCmZvb3RwcmludHMYASADKAsyIS5hbHQua25vd2xlZGdlX3RyYWlsLnYxLkZvb3RwcmludBITCgtuZXh0X2N1cnNvchgCIAEoCRIQCghoYXNfbW9yZRgDIAEoCBIUCgxnZW5lcmF0ZWRfYXQYBCABKAkSMAoIYnJhbmNoZXMYBSADKAsyHi5hbHQua25vd2xlZGdlX3RyYWlsLnYxLkJyYW5jaCLdAQoGQnJhbmNoEhIKCmJyYW5jaF9rZXkYASABKAkSFwoPYW5jaG9yX2l0ZW1fa2V5GAIgASgJEhUKDXJlbGF0aW9uX2tpbmQYAyABKAkSCwoDd2h5GAQgASgJEj8KDWV2aWRlbmNlX3JlZnMYBSADKAsyKC5hbHQua25vd2xlZGdlX3RyYWlsLnYxLlRyYWlsRXZpZGVuY2VSZWYSEgoKY29uZmlkZW5jZRgGIAEoCRIXCg90YXJnZXRfaXRlbV9rZXkYByABKAkSFAoMdGFyZ2V0X3RpdGxlGAggASgJIj8KEFRyYWlsRXZpZGVuY2VSZWYSDgoGcmVmX2lkGAEgASgJEg0KBWxhYmVsGAIgASgJEgwKBGtpbmQYAyABKAki0wEKCUZvb3RwcmludBIVCg1mb290cHJpbnRfa2V5GAEgASgJEgwKBHZlcmIYAiABKAkSEAoIaXRlbV9rZXkYAyABKAkSDQoFdGl0bGUYBCABKAkSDwoHZXhjZXJwdBgFIAEoCRIMCgR0YWdzGAYgAygJEgwKBG5vdGUYByABKAkSEwoLb2NjdXJyZWRfYXQYCCABKAkSDAoEd2VhchgJIAEoCRIVCg1jb250YWN0X2NvdW50GAogASgFEhkKEWZpcnN0X29jY3VycmVkX2F0GAsgASgJMtsCChVLbm93bGVkZ2VUcmFpbFNlcnZpY2USXQoIR2V0VHJhaWwSJy5hbHQua25vd2xlZGdlX3RyYWlsLnYxLkdldFRyYWlsUmVxdWVzdBooLmFsdC5rbm93bGVkZ2VfdHJhaWwudjEuR2V0VHJhaWxSZXNwb25zZRJsCg1SZXNvbHZlQnJhbmNoEiwuYWx0Lmtub3dsZWRnZV90cmFpbC52MS5SZXNvbHZlQnJhbmNoUmVxdWVzdBotLmFsdC5rbm93bGVkZ2VfdHJhaWwudjEuUmVzb2x2ZUJyYW5jaFJlc3BvbnNlEnUKEEVtaXRUcmFpbE91dGNvbWUSLy5hbHQua25vd2xlZGdlX3RyYWlsLnYxLkVtaXRUcmFpbE91dGNvbWVSZXF1ZXN0GjAuYWx0Lmtub3dsZWRnZV90cmFpbC52MS5FbWl0VHJhaWxPdXRjb21lUmVzcG9uc2VCN1o1YWx0L2dlbi9wcm90by9hbHQva25vd2xlZGdlX3RyYWlsL3YxO2tub3dsZWRnZXRyYWlsdjFiBnByb3RvMw");
+  fileDesc("CixhbHQva25vd2xlZGdlX3RyYWlsL3YxL2tub3dsZWRnZV90cmFpbC5wcm90bxIWYWx0Lmtub3dsZWRnZV90cmFpbC52MSJRChdFbWl0VHJhaWxPdXRjb21lUmVxdWVzdBISCgpicmFuY2hfa2V5GAEgASgJEhAKCGl0ZW1fa2V5GAIgASgJEhAKCGR3ZWxsX21zGAMgASgDIiYKGEVtaXRUcmFpbE91dGNvbWVSZXNwb25zZRIKCgJvaxgBIAEoCCJcChRSZXNvbHZlQnJhbmNoUmVxdWVzdBISCgpicmFuY2hfa2V5GAEgASgJEhIKCnJlc29sdXRpb24YAiABKAkSHAoUY2xpZW50X3Jlc29sdXRpb25faWQYAyABKAkiIwoVUmVzb2x2ZUJyYW5jaFJlc3BvbnNlEgoKAm9rGAEgASgIIlUKD0dldFRyYWlsUmVxdWVzdBITCgZjdXJzb3IYASABKAlIAIgBARINCgVsaW1pdBgCIAEoBRITCgtmaWx0ZXJfdGFncxgDIAMoCUIJCgdfY3Vyc29yIusBChBHZXRUcmFpbFJlc3BvbnNlEjUKCmZvb3RwcmludHMYASADKAsyIS5hbHQua25vd2xlZGdlX3RyYWlsLnYxLkZvb3RwcmludBITCgtuZXh0X2N1cnNvchgCIAEoCRIQCghoYXNfbW9yZRgDIAEoCBIUCgxnZW5lcmF0ZWRfYXQYBCABKAkSMAoIYnJhbmNoZXMYBSADKAsyHi5hbHQua25vd2xlZGdlX3RyYWlsLnYxLkJyYW5jaBIxCghlcGlzb2RlcxgGIAMoCzIfLmFsdC5rbm93bGVkZ2VfdHJhaWwudjEuRXBpc29kZSJ6CgdFcGlzb2RlEhMKC2VwaXNvZGVfa2V5GAEgASgJEgwKBHdlYXIYAiABKAkSFQoNdGh1bWJuYWlsX3VybBgDIAEoCRI1Cgpmb290cHJpbnRzGAQgAygLMiEuYWx0Lmtub3dsZWRnZV90cmFpbC52MS5Gb290cHJpbnQi3QEKBkJyYW5jaBISCgpicmFuY2hfa2V5GAEgASgJEhcKD2FuY2hvcl9pdGVtX2tleRgCIAEoCRIVCg1yZWxhdGlvbl9raW5kGAMgASgJEgsKA3doeRgEIAEoCRI/Cg1ldmlkZW5jZV9yZWZzGAUgAygLMiguYWx0Lmtub3dsZWRnZV90cmFpbC52MS5UcmFpbEV2aWRlbmNlUmVmEhIKCmNvbmZpZGVuY2UYBiABKAkSFwoPdGFyZ2V0X2l0ZW1fa2V5GAcgASgJEhQKDHRhcmdldF90aXRsZRgIIAEoCSI/ChBUcmFpbEV2aWRlbmNlUmVmEg4KBnJlZl9pZBgBIAEoCRINCgVsYWJlbBgCIAEoCRIMCgRraW5kGAMgASgJItMBCglGb290cHJpbnQSFQoNZm9vdHByaW50X2tleRgBIAEoCRIMCgR2ZXJiGAIgASgJEhAKCGl0ZW1fa2V5GAMgASgJEg0KBXRpdGxlGAQgASgJEg8KB2V4Y2VycHQYBSABKAkSDAoEdGFncxgGIAMoCRIMCgRub3RlGAcgASgJEhMKC29jY3VycmVkX2F0GAggASgJEgwKBHdlYXIYCSABKAkSFQoNY29udGFjdF9jb3VudBgKIAEoBRIZChFmaXJzdF9vY2N1cnJlZF9hdBgLIAEoCTLbAgoVS25vd2xlZGdlVHJhaWxTZXJ2aWNlEl0KCEdldFRyYWlsEicuYWx0Lmtub3dsZWRnZV90cmFpbC52MS5HZXRUcmFpbFJlcXVlc3QaKC5hbHQua25vd2xlZGdlX3RyYWlsLnYxLkdldFRyYWlsUmVzcG9uc2USbAoNUmVzb2x2ZUJyYW5jaBIsLmFsdC5rbm93bGVkZ2VfdHJhaWwudjEuUmVzb2x2ZUJyYW5jaFJlcXVlc3QaLS5hbHQua25vd2xlZGdlX3RyYWlsLnYxLlJlc29sdmVCcmFuY2hSZXNwb25zZRJ1ChBFbWl0VHJhaWxPdXRjb21lEi8uYWx0Lmtub3dsZWRnZV90cmFpbC52MS5FbWl0VHJhaWxPdXRjb21lUmVxdWVzdBowLmFsdC5rbm93bGVkZ2VfdHJhaWwudjEuRW1pdFRyYWlsT3V0Y29tZVJlc3BvbnNlQjdaNWFsdC9nZW4vcHJvdG8vYWx0L2tub3dsZWRnZV90cmFpbC92MTtrbm93bGVkZ2V0cmFpbHYxYgZwcm90bzM");
 
 /**
  * @generated from message alt.knowledge_trail.v1.EmitTrailOutcomeRequest
@@ -145,6 +145,9 @@ export const GetTrailRequestSchema: GenMessage<GetTrailRequest> = /*@__PURE__*/
  */
 export type GetTrailResponse = Message<"alt.knowledge_trail.v1.GetTrailResponse"> & {
   /**
+   * footprints is the legacy flat spine. Superseded by episodes; empty once
+   * the episode spine ships.
+   *
    * @generated from field: repeated alt.knowledge_trail.v1.Footprint footprints = 1;
    */
   footprints: Footprint[];
@@ -170,6 +173,15 @@ export type GetTrailResponse = Message<"alt.knowledge_trail.v1.GetTrailResponse"
    * @generated from field: repeated alt.knowledge_trail.v1.Branch branches = 5;
    */
   branches: Branch[];
+
+  /**
+   * episodes are the spine's default display unit (D24): footprints folded by
+   * same-article identity and cleaned-tag chaining. Cursor/limit page over
+   * episodes, newest (by latest contact) first.
+   *
+   * @generated from field: repeated alt.knowledge_trail.v1.Episode episodes = 6;
+   */
+  episodes: Episode[];
 };
 
 /**
@@ -178,6 +190,54 @@ export type GetTrailResponse = Message<"alt.knowledge_trail.v1.GetTrailResponse"
  */
 export const GetTrailResponseSchema: GenMessage<GetTrailResponse> = /*@__PURE__*/
   messageDesc(file_alt_knowledge_trail_v1_knowledge_trail, 5);
+
+/**
+ * Episode is one derived "line of inquiry": a group of collapsed footprints
+ * linked by same-article contacts and cleaned-tag overlap (D30). It is a pure
+ * derivation over the spine — never a stored entity, never a second spine.
+ * Header facts (title, date range, contact summary) derive from footprints:
+ * the representative is the newest footprint.
+ *
+ * @generated from message alt.knowledge_trail.v1.Episode
+ */
+export type Episode = Message<"alt.knowledge_trail.v1.Episode"> & {
+  /**
+   * episode_key is deterministic for a given spine state (derivation output,
+   * not identity — it may change as new contacts join the episode).
+   *
+   * @generated from field: string episode_key = 1;
+   */
+  episodeKey: string;
+
+  /**
+   * wear is the deepest path-wear band among member items.
+   *
+   * @generated from field: string wear = 2;
+   */
+  wear: string;
+
+  /**
+   * thumbnail_url is the representative article's preview image ("" when
+   * unavailable; display falls back to text per the visual-preview contract).
+   *
+   * @generated from field: string thumbnail_url = 3;
+   */
+  thumbnailUrl: string;
+
+  /**
+   * footprints are the member rows, newest first (collapsed per D24).
+   *
+   * @generated from field: repeated alt.knowledge_trail.v1.Footprint footprints = 4;
+   */
+  footprints: Footprint[];
+};
+
+/**
+ * Describes the message alt.knowledge_trail.v1.Episode.
+ * Use `create(EpisodeSchema)` to create a new message.
+ */
+export const EpisodeSchema: GenMessage<Episode> = /*@__PURE__*/
+  messageDesc(file_alt_knowledge_trail_v1_knowledge_trail, 6);
 
 /**
  * Branch is a system-proposed next step on the trail. It ALWAYS carries the
@@ -243,7 +303,7 @@ export type Branch = Message<"alt.knowledge_trail.v1.Branch"> & {
  * Use `create(BranchSchema)` to create a new message.
  */
 export const BranchSchema: GenMessage<Branch> = /*@__PURE__*/
-  messageDesc(file_alt_knowledge_trail_v1_knowledge_trail, 6);
+  messageDesc(file_alt_knowledge_trail_v1_knowledge_trail, 7);
 
 /**
  * @generated from message alt.knowledge_trail.v1.TrailEvidenceRef
@@ -272,7 +332,7 @@ export type TrailEvidenceRef = Message<"alt.knowledge_trail.v1.TrailEvidenceRef"
  * Use `create(TrailEvidenceRefSchema)` to create a new message.
  */
 export const TrailEvidenceRefSchema: GenMessage<TrailEvidenceRef> = /*@__PURE__*/
-  messageDesc(file_alt_knowledge_trail_v1_knowledge_trail, 7);
+  messageDesc(file_alt_knowledge_trail_v1_knowledge_trail, 8);
 
 /**
  * Footprint is one user cognitive act on the trail spine. It is a pure
@@ -357,7 +417,7 @@ export type Footprint = Message<"alt.knowledge_trail.v1.Footprint"> & {
  * Use `create(FootprintSchema)` to create a new message.
  */
 export const FootprintSchema: GenMessage<Footprint> = /*@__PURE__*/
-  messageDesc(file_alt_knowledge_trail_v1_knowledge_trail, 8);
+  messageDesc(file_alt_knowledge_trail_v1_knowledge_trail, 9);
 
 /**
  * KnowledgeTrailService is the front-facing API for the Knowledge Trail —

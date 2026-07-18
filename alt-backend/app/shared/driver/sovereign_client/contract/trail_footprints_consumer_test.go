@@ -73,6 +73,21 @@ func TestGetTrailFootprintsReturnsSpine(t *testing.T) {
 						"kind":  matchers.Like("tag"),
 					}, 1),
 				}, 1),
+				// episodes are the spine's default display unit (D24/D30, Wave 8):
+				// footprints folded by same-article identity and cleaned-tag
+				// chaining. A provider-side drop of episode_key/wear/footprints
+				// would silently regress the FE back to the legacy flat spine,
+				// so pin all three.
+				"episodes": matchers.EachLike(matchers.MapMatcher{
+					"episodeKey": matchers.Like("ep:open:article:1"),
+					"wear":       matchers.Like("worn"),
+					"footprints": matchers.EachLike(matchers.MapMatcher{
+						"footprintKey": matchers.Like("open:article:1"),
+						"verb":         matchers.Like("read"),
+						"itemKey":      matchers.Like("article:1"),
+						"occurredAt":   matchers.Like("2026-06-10T09:12:00Z"),
+					}, 1),
+				}, 1),
 			},
 		}).
 		ExecuteTest(t, func(config consumer.MockServerConfig) error {
@@ -97,6 +112,12 @@ func TestGetTrailFootprintsReturnsSpine(t *testing.T) {
 			assert.NotEmpty(t, b.Why, "branch.why must be present")
 			assert.NotEmpty(t, b.Confidence, "branch.confidence must be present")
 			assert.NotEmpty(t, b.EvidenceRefs, "branch.evidence_refs must be present")
+			require.NotEmpty(t, resp.Msg.Episodes, "provider must return the derived episode spine (D24/D30, Wave 8)")
+			ep := resp.Msg.Episodes[0]
+			assert.NotEmpty(t, ep.EpisodeKey, "episode.episode_key must be present")
+			assert.NotEmpty(t, ep.Wear, "episode.wear must be present")
+			require.NotEmpty(t, ep.Footprints, "episode.footprints must be present")
+			assert.NotEmpty(t, ep.Footprints[0].Verb, "episode footprint.verb must be present")
 			return nil
 		})
 	require.NoError(t, err)

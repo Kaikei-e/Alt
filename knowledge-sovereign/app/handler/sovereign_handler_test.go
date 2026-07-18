@@ -27,6 +27,8 @@ type mockRepo struct {
 	returnLens      *sovereign_db.KnowledgeLens
 	returnVersion   *sovereign_db.KnowledgeLensVersion
 	trailFootprints []sovereign_db.TrailFootprint
+	gotTrailCursor  string
+	gotTrailLimit   int
 }
 
 // --- MutationRepository ---
@@ -75,7 +77,9 @@ func (m *mockRepo) PatchKnowledgeHomeItemURL(_ context.Context, p json.RawMessag
 func (m *mockRepo) GetKnowledgeHomeItems(_ context.Context, _ uuid.UUID, _ string, _ int, _ *sovereign_db.LensFilter) ([]sovereign_db.KnowledgeHomeItem, string, bool, error) {
 	return nil, "", false, m.returnErr
 }
-func (m *mockRepo) GetTrailFootprints(_ context.Context, _ uuid.UUID, _ string, _ int, _ []string) ([]sovereign_db.TrailFootprint, string, bool, error) {
+func (m *mockRepo) GetTrailFootprints(_ context.Context, _ uuid.UUID, cursor string, limit int, _ []string) ([]sovereign_db.TrailFootprint, string, bool, error) {
+	m.gotTrailCursor = cursor
+	m.gotTrailLimit = limit
 	return m.trailFootprints, "", false, m.returnErr
 }
 func (m *mockRepo) GetOpenTrailBranches(_ context.Context, _ uuid.UUID) ([]sovereign_db.TrailBranch, error) {

@@ -698,11 +698,30 @@ message GetTrailFootprintsRequest {
 }
 
 message GetTrailFootprintsResponse {
+  // footprints is the legacy flat spine. Superseded by episodes; empty once
+  // the episode spine ships.
   repeated TrailFootprint footprints = 1;
   string next_cursor = 2;
   bool has_more = 3;
   // branches are the user's open system-proposed branches (all anchors).
   repeated TrailBranch branches = 4;
+  // episodes are the derived display units of the spine (D24/D30): collapsed
+  // footprints linked by same-article identity and cleaned-tag chaining.
+  // Cursor/limit page over episodes, newest (by latest contact) first.
+  repeated TrailEpisode episodes = 5;
+}
+
+// TrailEpisode is one derived line of inquiry — a pure derivation over the
+// spine, never a stored entity. Header facts derive from the member
+// footprints (newest first; the newest is the representative).
+message TrailEpisode {
+  string episode_key = 1;
+  // wear is the deepest path-wear band among member items.
+  string wear = 2;
+  // footprints are the member rows, newest first. The newest footprint is the
+  // representative; display enrichment (e.g. preview image) happens in the
+  // BFF, keyed by the representative's item_key.
+  repeated TrailFootprint footprints = 3;
 }
 
 // TrailBranch is a system-proposed next step. The four-tuple

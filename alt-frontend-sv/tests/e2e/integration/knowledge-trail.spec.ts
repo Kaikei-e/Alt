@@ -47,20 +47,10 @@ const TRAIL_PATHS = {
 
 const BRANCH_KEY = "cluster:u1:article:b2";
 
+// `footprints` is now the legacy flat field (empty once the episode spine
+// ships); the spine's default display unit is `episodes` (Wave 8, D24).
 const TRAIL_WITH_BRANCH = {
-	footprints: [
-		{
-			footprintKey: "open:article:a1",
-			verb: "read",
-			itemKey: "article:a1",
-			title: "io_uring basics",
-			excerpt: "",
-			tags: ["rust"],
-			note: "",
-			occurredAt: "2026-07-17T09:00:00Z",
-			wear: "thin",
-		},
-	],
+	footprints: [],
 	nextCursor: "",
 	hasMore: false,
 	generatedAt: "2026-07-18T00:00:00Z",
@@ -76,32 +66,61 @@ const TRAIL_WITH_BRANCH = {
 			targetTitle: "Async Rust",
 		},
 	],
+	episodes: [
+		{
+			episodeKey: "episode:article:a1",
+			wear: "thin",
+			thumbnailUrl: "",
+			footprints: [
+				{
+					footprintKey: "open:article:a1",
+					verb: "read",
+					itemKey: "article:a1",
+					title: "io_uring basics",
+					excerpt: "",
+					tags: ["rust"],
+					note: "",
+					occurredAt: "2026-07-17T09:00:00Z",
+					wear: "thin",
+				},
+			],
+		},
+	],
 };
 
 // Wave 7 noise removal: the lens chip bar (a raw tag union — the dead tag
 // cloud) is gone entirely, and repeated contacts with one article collapse
 // server-side into a single spine row carrying a visit count instead of one
-// row per day (D24/D25).
+// row per day (D24/D25). Wave 8 folds this collapsed footprint into a single
+// episode; the visit count now surfaces on the episode header.
 const TRAIL_COLLAPSED = {
-	footprints: [
-		{
-			footprintKey: "open:article:a1",
-			verb: "read",
-			itemKey: "article:a1",
-			title: "US military courts in the UK",
-			excerpt: "",
-			tags: ["military", "british-courts"],
-			note: "",
-			occurredAt: "2026-07-07T22:20:00Z",
-			firstOccurredAt: "2026-06-27T18:37:00Z",
-			contactCount: 2,
-			wear: "worn",
-		},
-	],
+	footprints: [],
 	nextCursor: "",
 	hasMore: false,
 	generatedAt: "2026-07-18T00:00:00Z",
 	branches: [],
+	episodes: [
+		{
+			episodeKey: "episode:article:a1",
+			wear: "worn",
+			thumbnailUrl: "",
+			footprints: [
+				{
+					footprintKey: "open:article:a1",
+					verb: "read",
+					itemKey: "article:a1",
+					title: "US military courts in the UK",
+					excerpt: "",
+					tags: ["military", "british-courts"],
+					note: "",
+					occurredAt: "2026-07-07T22:20:00Z",
+					firstOccurredAt: "2026-06-27T18:37:00Z",
+					contactCount: 2,
+					wear: "worn",
+				},
+			],
+		},
+	],
 };
 
 test.describe("Trail noise removal", () => {
@@ -113,13 +132,13 @@ test.describe("Trail noise removal", () => {
 			(route) => fulfillJson(route, TRAIL_COLLAPSED),
 		);
 		await page.goto("./knowledge/trail");
-		await expect(page.getByTestId("trail-footprint").first()).toBeVisible({
+		await expect(page.getByTestId("trail-episode").first()).toBeVisible({
 			timeout: 15000,
 		});
 		await expect(page.getByTestId("trail-lenses")).toHaveCount(0);
 	});
 
-	test("renders a collapsed footprint once, with its visit count", async ({
+	test("renders a collapsed footprint once, with its visit count on the episode header", async ({
 		page,
 	}) => {
 		await page.route(
@@ -127,10 +146,11 @@ test.describe("Trail noise removal", () => {
 			(route) => fulfillJson(route, TRAIL_COLLAPSED),
 		);
 		await page.goto("./knowledge/trail");
-		await expect(page.getByTestId("trail-footprint")).toHaveCount(1, {
+		// D24 collapse: one episode, not one row per contact.
+		await expect(page.getByTestId("trail-episode")).toHaveCount(1, {
 			timeout: 15000,
 		});
-		await expect(page.getByTestId("footprint-count")).toContainText("2");
+		await expect(page.getByTestId("episode-contact")).toContainText("2");
 	});
 });
 
@@ -184,5 +204,143 @@ test.describe("Trail closure (dwell outcome)", () => {
 		await page.goBack();
 		await page.waitForTimeout(500);
 		expect(emitted).toBe(false);
+	});
+});
+
+// Wave 8: the spine's default display unit is the derived episode, not the
+// raw footprint (D24/D30). Same-article contacts fold into one card; date is
+// a landmark on the header, never a grouping axis — the old day-separator is
+// gone entirely.
+const EPISODE_TRAIL = {
+	footprints: [],
+	nextCursor: "",
+	hasMore: false,
+	generatedAt: "2026-07-18T00:00:00Z",
+	branches: [],
+	episodes: [
+		{
+			episodeKey: "episode:article:us-military",
+			wear: "worn",
+			thumbnailUrl: "",
+			footprints: [
+				{
+					footprintKey: "open:article:us-military",
+					verb: "read",
+					itemKey: "article:us-military",
+					title:
+						"US military push for right to court-martial troops stationed in the UK",
+					excerpt: "",
+					tags: ["military", "uk-us-relations"],
+					note: "",
+					occurredAt: "2026-07-07T09:00:00Z",
+					firstOccurredAt: "2026-06-27T09:00:00Z",
+					contactCount: 2,
+					wear: "worn",
+				},
+			],
+		},
+		{
+			episodeKey: "episode:article:submarines",
+			wear: "deep",
+			thumbnailUrl: "",
+			footprints: [
+				{
+					footprintKey: "asked:article:submarines:2",
+					verb: "asked",
+					itemKey: "article:submarines",
+					title: "Hunting Submarines Via Gravity",
+					excerpt: "",
+					tags: ["physics", "sensors"],
+					note: "",
+					occurredAt: "2026-07-05T09:00:00Z",
+					firstOccurredAt: "2026-07-05T09:00:00Z",
+					contactCount: 1,
+					wear: "deep",
+				},
+				{
+					footprintKey: "open:article:submarines:1",
+					verb: "read",
+					itemKey: "article:submarines",
+					title: "Hunting Submarines Via Gravity",
+					excerpt: "",
+					tags: ["physics", "sensors"],
+					note: "",
+					occurredAt: "2026-07-03T09:00:00Z",
+					firstOccurredAt: "2026-07-03T09:00:00Z",
+					contactCount: 1,
+					wear: "worn",
+				},
+			],
+		},
+	],
+};
+
+test.describe("Episode spine", () => {
+	test("renders episodes, collapsed by default, with no day-separator grouping", async ({
+		page,
+	}) => {
+		await page.route(TRAIL_PATHS.getTrail, (route) =>
+			fulfillJson(route, EPISODE_TRAIL),
+		);
+		await page.goto("./knowledge/trail");
+
+		await expect(page.getByTestId("trail-episode")).toHaveCount(2, {
+			timeout: 15000,
+		});
+
+		// Collapsed by default: member footprint rows are not rendered yet.
+		await expect(page.getByTestId("trail-footprint")).toHaveCount(0);
+
+		// D24: date is a landmark, never a grouping axis — the old day-separator
+		// block (TrailSpine's `.day-sep`) must not exist at all.
+		await expect(page.locator(".day-sep")).toHaveCount(0);
+	});
+
+	test("shows a date range and a contact summary on the episode header", async ({
+		page,
+	}) => {
+		await page.route(TRAIL_PATHS.getTrail, (route) =>
+			fulfillJson(route, EPISODE_TRAIL),
+		);
+		await page.goto("./knowledge/trail");
+
+		const militaryEpisode = page
+			.getByTestId("trail-episode")
+			.filter({ hasText: "US military push" });
+		await expect(militaryEpisode).toBeVisible({ timeout: 15000 });
+		// Range spans the earliest and latest collapsed contact.
+		await expect(militaryEpisode).toContainText("Jun 27");
+		await expect(militaryEpisode).toContainText("Jul 7");
+		// Contact summary sums contactCount per verb.
+		await expect(militaryEpisode).toContainText("Read 2 times");
+	});
+
+	test("expanding an episode reveals its member footprint rows", async ({
+		page,
+	}) => {
+		await page.route(TRAIL_PATHS.getTrail, (route) =>
+			fulfillJson(route, EPISODE_TRAIL),
+		);
+		await page.goto("./knowledge/trail");
+
+		const submarinesEpisode = page
+			.getByTestId("trail-episode")
+			.filter({ hasText: "Hunting Submarines Via Gravity" });
+		await expect(submarinesEpisode).toBeVisible({ timeout: 15000 });
+		await expect(submarinesEpisode).toContainText("Read 1 time");
+		await expect(submarinesEpisode).toContainText("asked 1 question");
+
+		const toggle = submarinesEpisode.getByTestId("episode-toggle");
+		await expect(toggle).toHaveAttribute("aria-expanded", "false");
+		await expect(submarinesEpisode.getByTestId("trail-footprint")).toHaveCount(
+			0,
+		);
+
+		await toggle.click();
+
+		await expect(toggle).toHaveAttribute("aria-expanded", "true");
+		await expect(submarinesEpisode.getByTestId("trail-footprint")).toHaveCount(
+			2,
+		);
 	});
 });

@@ -57,6 +57,20 @@
               "why": "Joins a topic you follow."
             }
           ],
+          "episodes": [
+            {
+              "episodeKey": "ep:open:article:1",
+              "footprints": [
+                {
+                  "footprintKey": "open:article:1",
+                  "itemKey": "article:1",
+                  "occurredAt": "2026-06-10T09:12:00Z",
+                  "verb": "read"
+                }
+              ],
+              "wear": "worn"
+            }
+          ],
           "footprints": [
             {
               "contactCount": 2,
@@ -132,6 +146,72 @@
               ]
             },
             "$.branches[*].why": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.episodes": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type",
+                  "min": 1
+                }
+              ]
+            },
+            "$.episodes[*].episodeKey": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.episodes[*].footprints": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type",
+                  "min": 1
+                }
+              ]
+            },
+            "$.episodes[*].footprints[*].footprintKey": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.episodes[*].footprints[*].itemKey": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.episodes[*].footprints[*].occurredAt": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.episodes[*].footprints[*].verb": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.episodes[*].wear": {
               "combine": "AND",
               "matchers": [
                 {

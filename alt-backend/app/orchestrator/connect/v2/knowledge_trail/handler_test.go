@@ -10,18 +10,30 @@ import (
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/mock/gomock"
 
 	"alt/domain"
 	knowledgetrailv1 "alt/gen/proto/alt/knowledge_trail/v1"
+	"alt/mocks"
 	"alt/orchestrator/usecase/get_knowledge_trail_usecase"
+	"alt/orchestrator/usecase/image_proxy_usecase"
 )
 
 type fakeTrailPort struct {
 	footprints []domain.TrailFootprint
+	episodes   []domain.TrailEpisode
 }
 
-func (f *fakeTrailPort) GetTrailFootprints(_ context.Context, _ uuid.UUID, _ string, _ int, _ []string) ([]domain.TrailFootprint, []domain.TrailBranch, string, bool, error) {
-	return f.footprints, nil, "", false, nil
+func (f *fakeTrailPort) GetTrailFootprints(_ context.Context, _ uuid.UUID, _ string, _ int, _ []string) ([]domain.TrailFootprint, []domain.TrailBranch, []domain.TrailEpisode, string, bool, error) {
+	return f.footprints, nil, f.episodes, "", false, nil
+}
+
+type fakeThumbnailPort struct {
+	urls map[string]string
+}
+
+func (f *fakeThumbnailPort) GetOgImageURLsByArticleIDs(_ context.Context, _ []string) (map[string]string, error) {
+	return f.urls, nil
 }
 
 func userCtx() context.Context {
@@ -47,7 +59,7 @@ func TestGetTrail_MapsCollapsedContactFields(t *testing.T) {
 		ContactCount:    2,
 		Wear:            "worn",
 	}}}
-	h := NewHandler(get_knowledge_trail_usecase.NewGetKnowledgeTrailUsecase(port), nil, nil, slog.Default())
+	h := NewHandler(get_knowledge_trail_usecase.NewGetKnowledgeTrailUsecase(port, &fakeThumbnailPort{}), nil, nil, nil, slog.Default())
 
 	resp, err := h.GetTrail(userCtx(), connect.NewRequest(&knowledgetrailv1.GetTrailRequest{Limit: 20}))
 	require.NoError(t, err)
@@ -71,11 +83,80 @@ func TestGetTrail_SingleContactKeepsCountOne(t *testing.T) {
 		FirstOccurredAt: at,
 		ContactCount:    1,
 	}}}
-	h := NewHandler(get_knowledge_trail_usecase.NewGetKnowledgeTrailUsecase(port), nil, nil, slog.Default())
+	h := NewHandler(get_knowledge_trail_usecase.NewGetKnowledgeTrailUsecase(port, &fakeThumbnailPort{}), nil, nil, nil, slog.Default())
 
 	resp, err := h.GetTrail(userCtx(), connect.NewRequest(&knowledgetrailv1.GetTrailRequest{Limit: 20}))
 	require.NoError(t, err)
 	require.Len(t, resp.Msg.Footprints, 1)
 	assert.Equal(t, int32(1), resp.Msg.Footprints[0].ContactCount)
 	assert.Equal(t, resp.Msg.Footprints[0].OccurredAt, resp.Msg.Footprints[0].FirstOccurredAt)
+}
+
+// Episodes (D24/D30, Wave 8) map through to the wire, keyed/ordered exactly
+// as the usecase returns them.
+func TestGetTrail_MapsEpisodes(t *testing.T) {
+	port := &fakeTrailPort{episodes: []domain.TrailEpisode{{
+		EpisodeKey: "ep:open:article:1",
+		Wear:       "deep",
+		Footprints: []domain.TrailFootprint{{
+			FootprintKey: "open:article:1",
+			ItemKey:      "article:1",
+			Verb:         "read",
+		}},
+	}}}
+	h := NewHandler(get_knowledge_trail_usecase.NewGetKnowledgeTrailUsecase(port, &fakeThumbnailPort{}), nil, nil, nil, slog.Default())
+
+	resp, err := h.GetTrail(userCtx(), connect.NewRequest(&knowledgetrailv1.GetTrailRequest{Limit: 20}))
+	require.NoError(t, err)
+	require.Len(t, resp.Msg.Episodes, 1)
+	ep := resp.Msg.Episodes[0]
+	assert.Equal(t, "ep:open:article:1", ep.EpisodeKey)
+	assert.Equal(t, "deep", ep.Wear)
+	require.Len(t, ep.Footprints, 1)
+	assert.Equal(t, "article:1", ep.Footprints[0].ItemKey)
+	assert.Empty(t, ep.ThumbnailUrl, "no OG image was resolved, so the card must degrade to text")
+}
+
+// D29: a resolved OG image is signed through the existing image-proxy signer
+// (mirrors feeds.enrichWithProxyURLs) before it reaches the wire.
+func TestGetTrail_SignsEpisodeThumbnailWhenRawURLPresent(t *testing.T) {
+	articleID := uuid.New().String()
+	rawURL := "https://example.com/a.png"
+	signedURL := "https://cdn.example.com/proxy/signed-a"
+
+	port := &fakeTrailPort{episodes: []domain.TrailEpisode{{
+		EpisodeKey: "ep:open:article:1",
+		Footprints: []domain.TrailFootprint{{FootprintKey: "open:article:1", ItemKey: "article:" + articleID}},
+	}}}
+	thumbs := &fakeThumbnailPort{urls: map[string]string{articleID: rawURL}}
+
+	ctrl := gomock.NewController(t)
+	signer := mocks.NewMockImageProxySignerPort(ctrl)
+	signer.EXPECT().GenerateProxyURL(rawURL).Return(signedURL)
+	imageProxy := image_proxy_usecase.NewImageProxyUsecase(nil, nil, nil, signer, nil, nil, 0, 0, 0)
+
+	h := NewHandler(get_knowledge_trail_usecase.NewGetKnowledgeTrailUsecase(port, thumbs), nil, nil, imageProxy, slog.Default())
+
+	resp, err := h.GetTrail(userCtx(), connect.NewRequest(&knowledgetrailv1.GetTrailRequest{Limit: 20}))
+	require.NoError(t, err)
+	require.Len(t, resp.Msg.Episodes, 1)
+	assert.Equal(t, signedURL, resp.Msg.Episodes[0].ThumbnailUrl)
+}
+
+// A raw thumbnail URL must never reach the wire unsigned: with no image
+// proxy wired, the card degrades to text rather than leaking the raw URL.
+func TestGetTrail_NoImageProxyLeavesThumbnailEmpty(t *testing.T) {
+	articleID := uuid.New().String()
+	port := &fakeTrailPort{episodes: []domain.TrailEpisode{{
+		EpisodeKey: "ep:open:article:1",
+		Footprints: []domain.TrailFootprint{{FootprintKey: "open:article:1", ItemKey: "article:" + articleID}},
+	}}}
+	thumbs := &fakeThumbnailPort{urls: map[string]string{articleID: "https://example.com/a.png"}}
+
+	h := NewHandler(get_knowledge_trail_usecase.NewGetKnowledgeTrailUsecase(port, thumbs), nil, nil, nil, slog.Default())
+
+	resp, err := h.GetTrail(userCtx(), connect.NewRequest(&knowledgetrailv1.GetTrailRequest{Limit: 20}))
+	require.NoError(t, err)
+	require.Len(t, resp.Msg.Episodes, 1)
+	assert.Empty(t, resp.Msg.Episodes[0].ThumbnailUrl)
 }

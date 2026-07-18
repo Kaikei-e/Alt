@@ -122,7 +122,10 @@ func startStubServer(t *testing.T, reject *bool) int {
 
 	// GetTrailFootprints read path (Knowledge Trail spine). The footprint's
 	// verb / item_key / occurred_at are the wire contract the alt-backend
-	// consumer pins; a provider-side drop empties the spine.
+	// consumer pins; a provider-side drop empties the spine. episodes are the
+	// spine's default display unit (D24/D30, Wave 8); a provider-side drop of
+	// episode_key/wear/footprints regresses the FE back to the legacy flat
+	// spine, so the consumer pact pins all three.
 	mux.HandleFunc("/services.sovereign.v1.KnowledgeSovereignService/GetTrailFootprints", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			w.WriteHeader(http.StatusMethodNotAllowed)
@@ -131,6 +134,9 @@ func startStubServer(t *testing.T, reject *bool) int {
 		_, _ = io.Copy(io.Discard, r.Body)
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]any{
+			// footprints is the legacy flat spine — superseded by episodes and
+			// empty in production, but the consumer pact still pins its shape
+			// against historical/legacy readers, so the stub keeps serving it.
 			"footprints": []map[string]any{
 				{
 					"footprintKey": "open:article:1",
@@ -153,6 +159,20 @@ func startStubServer(t *testing.T, reject *bool) int {
 					"targetItemKey": "article:z",
 					"evidenceRefs": []map[string]any{
 						{"refId": "rust", "label": "rust", "kind": "tag"},
+					},
+				},
+			},
+			"episodes": []map[string]any{
+				{
+					"episodeKey": "ep:open:article:1",
+					"wear":       "worn",
+					"footprints": []map[string]any{
+						{
+							"footprintKey": "open:article:1",
+							"verb":         "read",
+							"itemKey":      "article:1",
+							"occurredAt":   "2026-06-10T09:12:00Z",
+						},
 					},
 				},
 			},
