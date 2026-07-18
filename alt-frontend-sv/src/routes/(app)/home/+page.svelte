@@ -361,6 +361,13 @@ onMount(async () => {
 			<span class="desk-date">{dateStr}</span>
 			<h1 class="desk-title">Knowledge Home</h1>
 			<p class="desk-subtitle">Today's knowledge starting point</p>
+			<a
+				class="desk-trail-link"
+				href="/knowledge/trail"
+				data-testid="home-trail-link"
+			>
+				Your Trail — pick up where you left off →
+			</a>
 			<div class="desk-rule" aria-hidden="true"></div>
 		</header>
 
@@ -455,6 +462,16 @@ onMount(async () => {
 		{/if}
 
 		<TodayBar digest={home.digest} serviceQuality={home.serviceQuality} />
+
+		<div class="px-3 pt-2">
+			<a
+				class="mobile-trail-link"
+				href="/knowledge/trail"
+				data-testid="home-trail-link"
+			>
+				Your Trail — pick up where you left off →
+			</a>
+		</div>
 
 		<GlobalSearchEntry onAsk={handleAskFromHome} />
 
@@ -601,6 +618,21 @@ onMount(async () => {
 		font-size: 0.8rem;
 		color: var(--alt-ash);
 		margin-top: 0.2rem;
+	}
+
+	.desk-trail-link,
+	.mobile-trail-link {
+		display: inline-block;
+		margin-top: 0.45rem;
+		font-family: var(--font-mono);
+		font-size: 0.72rem;
+		letter-spacing: 0.04em;
+		color: var(--interactive-text, #2f4f4f);
+		text-decoration: none;
+	}
+	.desk-trail-link:hover,
+	.mobile-trail-link:hover {
+		text-decoration: underline;
 	}
 
 	.desk-rule {

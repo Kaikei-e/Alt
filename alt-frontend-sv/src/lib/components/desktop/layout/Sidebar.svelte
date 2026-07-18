@@ -20,6 +20,7 @@ import {
 	GalleryVerticalEnd,
 	Orbit,
 	Lightbulb,
+	Footprints,
 	Tag,
 	ScrollText,
 	MessagesSquare,
@@ -35,6 +36,12 @@ const baseMenuItems = [
 		label: "Knowledge Home",
 		href: `${svBasePath}/home`,
 		icon: Lightbulb,
+		category: "main",
+	},
+	{
+		label: "Your Trail",
+		href: `${svBasePath}/knowledge/trail`,
+		icon: Footprints,
 		category: "main",
 	},
 	{

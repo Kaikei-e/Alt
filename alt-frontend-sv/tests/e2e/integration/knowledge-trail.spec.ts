@@ -38,11 +38,18 @@ test.describe("Knowledge Trail spine", () => {
 
 // The trail is a resume surface (D23): it needs deliberate entry points, not
 // ambient presence. Two paths in — the sidebar slot (replacing the retired
-// /loop entry) and an editorial link on Knowledge Home's header.
+// /loop entry) and an editorial link on Knowledge Home's header. These tests
+// verify the ROUTE, not home's data: every RPC is stubbed to an empty-valid
+// response so an invalid local session cannot 401 the page into its login
+// redirect mid-click.
 test.describe("Trail entry points", () => {
+	test.beforeEach(async ({ page }) => {
+		await page.route("**/api/v2/**", (route) => fulfillJson(route, {}));
+	});
+
 	test("the sidebar navigates to the trail", async ({ page }) => {
 		await page.goto("./home");
-		const nav = page.getByRole("link", { name: "Your Trail" });
+		const nav = page.getByRole("link", { name: "Your Trail", exact: true });
 		await expect(nav).toBeVisible({ timeout: 15000 });
 		await nav.click();
 		await page.waitForURL(/\/knowledge\/trail/, { timeout: 15000 });
