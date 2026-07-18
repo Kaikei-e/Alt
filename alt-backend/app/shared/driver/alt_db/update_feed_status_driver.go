@@ -53,7 +53,7 @@ func (r *FeedRepository) UpdateFeedStatus(ctx context.Context, feedURL url.URL, 
 	}
 
 	defer func() {
-		if err := tx.Rollback(context.Background()); err != nil && !errors.Is(err, pgx.ErrTxClosed) {
+		if err := tx.Rollback(context.WithoutCancel(ctx)); err != nil && !errors.Is(err, pgx.ErrTxClosed) {
 			logger.SafeWarnContext(ctx, "Error rolling back transaction", "error", err)
 		}
 	}()
@@ -74,7 +74,7 @@ func (r *FeedRepository) UpdateFeedStatus(ctx context.Context, feedURL url.URL, 
 		return fmt.Errorf("failed to update feed status: %w", err)
 	}
 
-	if err = tx.Commit(context.Background()); err != nil {
+	if err = tx.Commit(ctx); err != nil {
 		logger.SafeErrorContext(ctx, "Error committing transaction", "error", err)
 		return fmt.Errorf("failed to commit transaction: %w", err)
 	}

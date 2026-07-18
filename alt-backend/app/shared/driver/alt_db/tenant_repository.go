@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -118,8 +119,10 @@ func (r *TenantAwareRepository) GetUserFeeds(ctx context.Context, userID uuid.UU
 	return feeds, nil
 }
 
-// GetUserArticles はユーザーの記事一覧を取得（テナント分離）
-func (r *TenantAwareRepository) GetUserArticles(ctx context.Context, userID uuid.UUID, limit, offset int) ([]domain.Article, error) {
+// GetUserArticles はユーザーの記事一覧を取得（テナント分離、keyset ページネーション）
+// afterPublishedAt / afterID が両方非ゼロのとき、そのカーソルより古い記事を返す
+// （ORDER BY published_at DESC, id DESC）。
+func (r *TenantAwareRepository) GetUserArticles(ctx context.Context, userID uuid.UUID, limit int, afterPublishedAt *time.Time, afterID *uuid.UUID) ([]domain.Article, error) {
 	tenant, err := r.getTenantFromContext(ctx)
 	if err != nil {
 		return nil, err
@@ -132,20 +135,41 @@ func (r *TenantAwareRepository) GetUserArticles(ctx context.Context, userID uuid
 	}
 	defer conn.Release()
 
-	// RLSによりテナント分離されたクエリ
-	query := `
-		SELECT a.id, a.title, a.url, a.content, a.published_at, a.created_at, a.updated_at, a.tenant_id,
-		       COALESCE(rs.is_read, false) as is_read
-		FROM articles a
-		JOIN feeds f ON a.feed_id = f.id
-		JOIN user_feeds uf ON f.id = uf.feed_id
-		LEFT JOIN read_status rs ON a.id = rs.article_id AND rs.user_id = $1
-		WHERE uf.user_id = $1
-		ORDER BY a.published_at DESC
-		LIMIT $2 OFFSET $3
-	`
+	var (
+		query string
+		args  []any
+	)
 
-	rows, err := conn.Query(tenantCtx, query, userID, limit, offset)
+	if afterPublishedAt == nil || afterPublishedAt.IsZero() || afterID == nil || *afterID == uuid.Nil {
+		query = `
+			SELECT a.id, a.title, a.url, a.content, a.published_at, a.created_at, a.updated_at, a.tenant_id,
+			       COALESCE(rs.is_read, false) as is_read
+			FROM articles a
+			JOIN feeds f ON a.feed_id = f.id
+			JOIN user_feeds uf ON f.id = uf.feed_id
+			LEFT JOIN read_status rs ON a.id = rs.article_id AND rs.user_id = $1
+			WHERE uf.user_id = $1
+			ORDER BY a.published_at DESC, a.id DESC
+			LIMIT $2
+		`
+		args = []any{userID, limit}
+	} else {
+		query = `
+			SELECT a.id, a.title, a.url, a.content, a.published_at, a.created_at, a.updated_at, a.tenant_id,
+			       COALESCE(rs.is_read, false) as is_read
+			FROM articles a
+			JOIN feeds f ON a.feed_id = f.id
+			JOIN user_feeds uf ON f.id = uf.feed_id
+			LEFT JOIN read_status rs ON a.id = rs.article_id AND rs.user_id = $1
+			WHERE uf.user_id = $1
+			  AND (a.published_at, a.id) < ($2, $3)
+			ORDER BY a.published_at DESC, a.id DESC
+			LIMIT $4
+		`
+		args = []any{userID, *afterPublishedAt, *afterID, limit}
+	}
+
+	rows, err := conn.Query(tenantCtx, query, args...)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query articles: %w", err)
 	}
@@ -154,12 +178,10 @@ func (r *TenantAwareRepository) GetUserArticles(ctx context.Context, userID uuid
 	var articles []domain.Article
 	for rows.Next() {
 		var article domain.Article
-		var isRead bool
 		if err := rows.Scan(&article.ID, &article.Title, &article.URL, &article.Content,
-			&article.PublishedAt, &article.CreatedAt, &article.UpdatedAt, &article.TenantID, &isRead); err != nil {
+			&article.PublishedAt, &article.CreatedAt, &article.UpdatedAt, &article.TenantID, &article.IsRead); err != nil {
 			return nil, fmt.Errorf("failed to scan article: %w", err)
 		}
-		// Note: isReadはドメインモデルに追加が必要
 		articles = append(articles, article)
 	}
 

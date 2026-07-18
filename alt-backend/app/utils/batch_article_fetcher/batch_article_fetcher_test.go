@@ -225,33 +225,31 @@ func TestBatchArticleFetcher_FetchMultiple_InvalidURLs(t *testing.T) {
 	}
 }
 
-func TestBatchArticleFetcher_GenerateArticleID(t *testing.T) {
-	fetcher := NewBatchArticleFetcher(nil, nil)
-
-	tests := []struct {
-		name     string
-		url      string
-		expected string
-	}{
-		{
-			name:     "simple URL",
-			url:      "https://example.com/article",
-			expected: "article_https:__example.com_article",
-		},
-		{
-			name:     "URL with path",
-			url:      "https://example.com/path/to/article",
-			expected: "article_https:__example.com_path_to_article",
-		},
+func TestBatchArticleFetcher_FetchResultHasNoPseudoID(t *testing.T) {
+	// Pseudo article_* IDs are forbidden — canonical IDs come from DB SaveArticle.
+	html := `<html><head><title>Hello</title></head><body><p>` + strings.Repeat("content ", 20) + `</p></body></html>`
+	client := &http.Client{
+		Transport: roundTripperFunc(func(r *http.Request) (*http.Response, error) {
+			return &http.Response{
+				StatusCode: http.StatusOK,
+				Body:       io.NopCloser(strings.NewReader(html)),
+				Header:     make(http.Header),
+				Request:    r,
+			}, nil
+		}),
 	}
+	factory := func() *fetch_article_gateway.FetchArticleGateway {
+		return fetch_article_gateway.NewFetchArticleGateway(nil, client)
+	}
+	fetcher := NewBatchArticleFetcherWithFactory(nil, client, factory)
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			result := fetcher.generateArticleID(tt.url)
-			if result != tt.expected {
-				t.Errorf("generateArticleID(%q) = %q, want %q", tt.url, result, tt.expected)
-			}
-		})
+	results := fetcher.FetchMultiple(context.Background(), []string{"https://example.com/article"})
+	result := results["https://example.com/article"]
+	if result == nil {
+		t.Fatal("expected result for URL")
+	}
+	if result.ID != "" {
+		t.Fatalf("FetchResult.ID = %q, want empty (DB assigns canonical UUID)", result.ID)
 	}
 }
 

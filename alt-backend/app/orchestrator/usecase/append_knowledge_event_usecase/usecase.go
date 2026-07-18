@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"time"
 
 	"github.com/google/uuid"
@@ -54,7 +55,10 @@ func (u *AppendKnowledgeEventUsecase) Execute(ctx context.Context, event domain.
 	}
 
 	_, err := u.eventPort.AppendKnowledgeEvent(ctx, event)
-	return err
+	if err != nil {
+		return fmt.Errorf("append knowledge event: %w", err)
+	}
+	return nil
 }
 
 // reasonMergedPayload mirrors the projector's expected shape.

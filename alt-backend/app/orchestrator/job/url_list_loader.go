@@ -4,6 +4,7 @@ import (
 	"alt/utils/logger"
 	"context"
 	"encoding/csv"
+	"fmt"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -13,16 +14,16 @@ const (
 	CSVPath = "datastore/list.csv"
 )
 
-func PathCleaner(csvPath string) string {
+func PathCleaner(csvPath string) (string, error) {
 	ctx := context.Background()
 	wd, err := os.Getwd()
 	if err != nil {
 		logger.Logger.ErrorContext(ctx, "Error getting working directory", "error", err)
-		return ""
+		return "", fmt.Errorf("get working directory: %w", err)
 	}
 	cleanedPath := filepath.Join(wd, csvPath)
 	logger.Logger.InfoContext(ctx, "Cleaned path", "path", cleanedPath)
-	return cleanedPath
+	return cleanedPath, nil
 }
 
 func CSVToURLList(csvPath string) ([]url.URL, error) {

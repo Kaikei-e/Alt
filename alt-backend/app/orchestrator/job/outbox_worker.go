@@ -18,20 +18,19 @@ import (
 // processes pending outbox events.
 func OutboxWorkerJob(repo *alt_db.AltDBRepository, ragIntegration rag_integration_port.RagIntegrationPort, knowledgeEventPort knowledge_event_port.AppendKnowledgeEventPort) func(ctx context.Context) error {
 	return func(ctx context.Context) error {
-		processOutboxEvents(ctx, repo, ragIntegration, knowledgeEventPort)
-		return nil
+		return processOutboxEvents(ctx, repo, ragIntegration, knowledgeEventPort)
 	}
 }
 
-func processOutboxEvents(ctx context.Context, repo *alt_db.AltDBRepository, ragIntegration rag_integration_port.RagIntegrationPort, knowledgeEventPort knowledge_event_port.AppendKnowledgeEventPort) {
+func processOutboxEvents(ctx context.Context, repo *alt_db.AltDBRepository, ragIntegration rag_integration_port.RagIntegrationPort, knowledgeEventPort knowledge_event_port.AppendKnowledgeEventPort) error {
 	events, err := repo.FetchAndLockPendingOutboxEvents(ctx, 10)
 	if err != nil {
 		logger.Logger.ErrorContext(ctx, "Failed to fetch pending outbox events", "error", err)
-		return
+		return fmt.Errorf("fetch pending outbox events: %w", err)
 	}
 
 	if len(events) == 0 {
-		return
+		return nil
 	}
 
 	logger.Logger.InfoContext(ctx, "Processing outbox events", "count", len(events))
@@ -63,6 +62,7 @@ func processOutboxEvents(ctx context.Context, repo *alt_db.AltDBRepository, ragI
 			updateStatus(ctx, repo, event.ID, "FAILED", "Unknown event type")
 		}
 	}
+	return nil
 }
 
 // emitArticleCreatedEvent appends a Knowledge Home ArticleCreated event to sovereign-db.
@@ -115,13 +115,18 @@ func emitArticleCreatedEvent(ctx context.Context, port knowledge_event_port.Appe
 	// map[string]any literal here historically wrote the legacy "link" key
 	// which silently broke the projector (PM-2026-041). The shared struct
 	// is the single source of truth for this wire schema.
-	eventPayload, _ := json.Marshal(domain.ArticleCreatedPayload{
+	eventPayload, err := json.Marshal(domain.ArticleCreatedPayload{
 		ArticleID:   p.ArticleID,
 		Title:       p.Title,
 		PublishedAt: publishedAt,
 		TenantID:    p.UserID,
 		URL:         p.URL,
 	})
+	if err != nil {
+		logger.Logger.ErrorContext(ctx, "failed to marshal knowledge ArticleCreated payload, skipping",
+			"article_id", p.ArticleID, "error", err)
+		return
+	}
 
 	kevent := domain.KnowledgeEvent{
 		EventID:       uuid.New(),

@@ -3,7 +3,6 @@ package fetch_article_usecase
 import (
 	"alt/domain"
 	"alt/mocks"
-	"alt/orchestrator/port/rag_integration_port"
 	"alt/utils/logger"
 	"context"
 	"errors"
@@ -249,22 +248,6 @@ func hasSubstring(s, substr string) bool {
 	return false
 }
 
-type upsertMatcher struct {
-	check func(rag_integration_port.UpsertArticleInput) bool
-}
-
-func (m upsertMatcher) Matches(x interface{}) bool {
-	input, ok := x.(rag_integration_port.UpsertArticleInput)
-	if !ok {
-		return false
-	}
-	return m.check(input)
-}
-
-func (m upsertMatcher) String() string {
-	return "matches upsert input"
-}
-
 func TestFetchCompliantArticle_ScrapingPolicyDenied(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
@@ -338,8 +321,7 @@ func TestFetchCompliantArticle_ScrapingPolicyAllowed(t *testing.T) {
 	// Fetch and save
 	mockArticleFetcher.EXPECT().FetchArticleContents(gomock.Any(), articleURLStr).Return(&rawHTML, nil)
 	mockRepo.EXPECT().SaveArticle(gomock.Any(), articleURLStr, gomock.Any(), expectedContentHTML).Return(articleID, nil)
-	// RAG upsert is async (goroutine); use AnyTimes to avoid race with ctrl.Finish
-	mockRag.EXPECT().UpsertArticle(gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
+	// RAG upsert is via outbox (SaveArticle), not a direct fire-and-forget call.
 
 	// Execute
 	content, retID, _, err := usecase.FetchCompliantArticle(context.Background(), articleURL, userContext)
@@ -353,7 +335,6 @@ func TestFetchCompliantArticle_ScrapingPolicyAllowed(t *testing.T) {
 	if retID != articleID {
 		t.Errorf("Expected article ID %s, got %s", articleID, retID)
 	}
-	time.Sleep(50 * time.Millisecond) // allow async goroutine to complete
 	ctrl.Finish()
 }
 
@@ -386,8 +367,6 @@ func TestFetchCompliantArticle_ScrapingPolicyNil_FallbackToRobotsTxt(t *testing.
 	// Fetch and save
 	mockArticleFetcher.EXPECT().FetchArticleContents(gomock.Any(), articleURLStr).Return(&rawHTML, nil)
 	mockRepo.EXPECT().SaveArticle(gomock.Any(), articleURLStr, gomock.Any(), expectedContentHTML).Return(articleID, nil)
-	// RAG upsert is async (goroutine)
-	mockRag.EXPECT().UpsertArticle(gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
 
 	// Execute
 	content, retID, _, err := usecase.FetchCompliantArticle(context.Background(), articleURL, userContext)
@@ -401,11 +380,10 @@ func TestFetchCompliantArticle_ScrapingPolicyNil_FallbackToRobotsTxt(t *testing.
 	if retID != articleID {
 		t.Errorf("Expected article ID %s, got %s", articleID, retID)
 	}
-	time.Sleep(50 * time.Millisecond)
 	ctrl.Finish()
 }
 
-func TestFetchArticleUsecase_FetchCompliantArticle_UpsertsToRAG(t *testing.T) {
+func TestFetchArticleUsecase_FetchCompliantArticle_DefersRAGToOutbox(t *testing.T) {
 	ctrl := gomock.NewController(t)
 
 	mockArticleFetcher := mocks.NewMockFetchArticlePort(ctrl)
@@ -430,18 +408,7 @@ func TestFetchArticleUsecase_FetchCompliantArticle_UpsertsToRAG(t *testing.T) {
 	mockRobotsTxt.EXPECT().IsPathAllowed(gomock.Any(), gomock.Any(), gomock.Any()).Return(true, nil)
 	mockArticleFetcher.EXPECT().FetchArticleContents(gomock.Any(), articleURLStr).Return(&rawHTML, nil)
 	mockRepo.EXPECT().SaveArticle(gomock.Any(), articleURLStr, gomock.Any(), expectedContentHTML).Return(articleID, nil)
-
-	// RAG upsert is async; use WaitGroup to synchronize with goroutine
-	var ragWg sync.WaitGroup
-	ragWg.Add(1)
-	mockRag.EXPECT().UpsertArticle(gomock.Any(), upsertMatcher{
-		check: func(input rag_integration_port.UpsertArticleInput) bool {
-			return input.ArticleID == articleID && input.Body == expectedContentHTML && input.URL == articleURLStr
-		},
-	}).DoAndReturn(func(_ context.Context, _ rag_integration_port.UpsertArticleInput) error {
-		ragWg.Done()
-		return nil
-	})
+	// No UpsertArticle expectation — RAG is enqueued via outbox inside SaveArticle.
 
 	// Execute
 	content, retArticleID, _, err := usecase.FetchCompliantArticle(context.Background(), articleURL, userContext)
@@ -457,12 +424,10 @@ func TestFetchArticleUsecase_FetchCompliantArticle_UpsertsToRAG(t *testing.T) {
 		t.Errorf("Expected non-empty article ID")
 	}
 
-	// Wait for async RAG upsert goroutine to complete
-	ragWg.Wait()
 	ctrl.Finish()
 }
 
-func TestFetchCompliantArticle_RAGUpsertIsAsync(t *testing.T) {
+func TestFetchCompliantArticle_DoesNotCallRAGDirectly(t *testing.T) {
 	ctrl := gomock.NewController(t)
 
 	mockArticleFetcher := mocks.NewMockFetchArticlePort(ctrl)
@@ -484,33 +449,13 @@ func TestFetchCompliantArticle_RAGUpsertIsAsync(t *testing.T) {
 	mockRobotsTxt.EXPECT().IsPathAllowed(gomock.Any(), gomock.Any(), gomock.Any()).Return(true, nil)
 	mockArticleFetcher.EXPECT().FetchArticleContents(gomock.Any(), articleURLStr).Return(&rawHTML, nil)
 	mockRepo.EXPECT().SaveArticle(gomock.Any(), articleURLStr, gomock.Any(), gomock.Any()).Return(articleID, nil)
+	// mockRag has no UpsertArticle expectation — unexpected call would fail the test.
 
-	// RAG mock blocks for 500ms; FetchCompliantArticle should return before that
-	ragStarted := make(chan struct{})
-	ragDone := make(chan struct{})
-	mockRag.EXPECT().UpsertArticle(gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, _ rag_integration_port.UpsertArticleInput) error {
-			close(ragStarted)
-			time.Sleep(500 * time.Millisecond)
-			close(ragDone)
-			return nil
-		},
-	)
-
-	start := time.Now()
 	_, _, _, err := usecase.FetchCompliantArticle(context.Background(), articleURL, userContext)
-	elapsed := time.Since(start)
 
 	if err != nil {
 		t.Fatalf("Unexpected error: %v", err)
 	}
-	// The method should return almost immediately, well before the 500ms RAG sleep
-	if elapsed > 200*time.Millisecond {
-		t.Errorf("FetchCompliantArticle took %v, expected < 200ms (RAG should be async)", elapsed)
-	}
-
-	// Wait for async goroutine to complete before ctrl.Finish()
-	<-ragDone
 	ctrl.Finish()
 }
 
@@ -548,7 +493,6 @@ func TestFetchCompliantArticle_SingleflightDeduplicates(t *testing.T) {
 	).Times(1)
 
 	mockRepo.EXPECT().SaveArticle(gomock.Any(), articleURLStr, gomock.Any(), gomock.Any()).Return(articleID, nil).Times(1)
-	mockRag.EXPECT().UpsertArticle(gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
 
 	// Run two concurrent calls for the same URL
 	var wg sync.WaitGroup
@@ -606,7 +550,6 @@ func TestFetchCompliantArticleWithRefresh_ForceRefreshSkipsDBCache(t *testing.T)
 	mockRobotsTxt.EXPECT().IsPathAllowed(gomock.Any(), gomock.Any(), gomock.Any()).Return(true, nil)
 	mockArticleFetcher.EXPECT().FetchArticleContents(gomock.Any(), articleURLStr).Return(&rawHTML, nil)
 	mockRepo.EXPECT().SaveArticle(gomock.Any(), articleURLStr, gomock.Any(), gomock.Any()).Return(articleID, nil)
-	mockRag.EXPECT().UpsertArticle(gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
 
 	content, retID, _, err := usecase.FetchCompliantArticleWithRefresh(context.Background(), articleURL, userContext, true)
 
@@ -699,7 +642,6 @@ func TestFetchCompliantArticle_ShortCachedContent_FetchesFromWeb(t *testing.T) {
 	mockRobotsTxt.EXPECT().IsPathAllowed(gomock.Any(), gomock.Any(), gomock.Any()).Return(true, nil)
 	mockArticleFetcher.EXPECT().FetchArticleContents(gomock.Any(), articleURLStr).Return(&rawHTML, nil)
 	mockRepo.EXPECT().SaveArticle(gomock.Any(), articleURLStr, gomock.Any(), expectedContentHTML).Return(webArticleID, nil)
-	mockRag.EXPECT().UpsertArticle(gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
 
 	content, retID, _, err := usecase.FetchCompliantArticle(context.Background(), articleURL, userContext)
 
@@ -888,7 +830,6 @@ func TestFetchCompliantArticle_RefetchesWhenCachedContentIsTooShort(t *testing.T
 	rawHTML := "<html><body><p>" + strings.Repeat("Article body ", 30) + "</p></body></html>"
 	mockArticleFetcher.EXPECT().FetchArticleContents(gomock.Any(), articleURLStr).Return(&rawHTML, nil)
 	mockRepo.EXPECT().SaveArticle(gomock.Any(), articleURLStr, gomock.Any(), gomock.Any()).Return("article-fresh", nil)
-	mockRag.EXPECT().UpsertArticle(gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
 
 	_, retID, _, err := usecase.FetchCompliantArticle(context.Background(), articleURL, userContext)
 	if err != nil {

@@ -13,6 +13,7 @@ import (
 	altotel "alt/utils/otel"
 	"context"
 	"fmt"
+	"log/slog"
 	"net/http"
 	_ "net/http/pprof" //#nosec G108 -- listener only starts when PPROF_ENABLED=true (dev/debug)
 	"os"
@@ -35,18 +36,20 @@ func main() {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
+	bootLog := slog.New(slog.NewJSONHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelInfo}))
+
 	// Load configuration first
 	cfg, err := config.NewConfig()
 	if err != nil {
-		fmt.Printf("Failed to load configuration: %v\n", err)
-		panic(err)
+		bootLog.Error("Failed to load configuration", "error", err)
+		os.Exit(1)
 	}
 
 	// Initialize OpenTelemetry
 	otelCfg := altotel.ConfigFromEnv()
 	otelResult, err := altotel.InitProviderWithMetrics(ctx, otelCfg)
 	if err != nil {
-		fmt.Printf("Failed to initialize OpenTelemetry: %v\n", err)
+		bootLog.Error("Failed to initialize OpenTelemetry", "error", err)
 		// Continue without OTel - non-fatal
 		otelCfg.Enabled = false
 		otelResult = &altotel.InitResult{
@@ -57,7 +60,7 @@ func main() {
 		shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer shutdownCancel()
 		if err := otelResult.Shutdown(shutdownCtx); err != nil {
-			fmt.Printf("Failed to shutdown OpenTelemetry: %v\n", err)
+			bootLog.Error("Failed to shutdown OpenTelemetry", "error", err)
 		}
 	}()
 
@@ -173,7 +176,7 @@ func main() {
 	}()
 
 	// Start Connect-RPC server in a goroutine
-	connectPort := 9101
+	connectPort := cfg.Server.ConnectPort
 	connectServer := connectv2.CreateConnectServer(container, cfg, log)
 	connectHTTPServer := &http.Server{
 		Addr:              fmt.Sprintf(":%d", connectPort),
@@ -202,9 +205,16 @@ func main() {
 	// ClientAuth defaults to NoClientCert; enabled by MTLS_LISTEN=true.
 	var mtlsServer *http.Server
 	if os.Getenv("MTLS_LISTEN") == "true" {
-		mtlsPort, _ := strconv.Atoi(os.Getenv("MTLS_PORT"))
-		if mtlsPort == 0 {
-			mtlsPort = 9443
+		mtlsPortStr := os.Getenv("MTLS_PORT")
+		mtlsPort := 9443
+		if mtlsPortStr != "" {
+			parsed, err := strconv.Atoi(mtlsPortStr)
+			if err != nil || parsed < 1 || parsed > 65535 {
+				logger.Logger.ErrorContext(ctx, "invalid MTLS_PORT, aborting startup (fail-closed)",
+					"value", mtlsPortStr, "error", err)
+				os.Exit(1)
+			}
+			mtlsPort = parsed
 		}
 		tlsCfg, err := tlsutil.LoadServerConfig(
 			os.Getenv("MTLS_CERT_FILE"),

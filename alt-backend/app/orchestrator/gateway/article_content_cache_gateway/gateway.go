@@ -6,6 +6,7 @@ import (
 	"alt/utils/cache"
 	"context"
 	"fmt"
+	"log/slog"
 	"time"
 
 	"github.com/google/uuid"
@@ -45,7 +46,14 @@ func (g *Gateway) GetArticles(ctx context.Context, articleIDs []uuid.UUID) ([]*d
 			results[id] = article
 			if state == cache.CacheStateStale {
 				go func(id uuid.UUID) {
-					_, _ = g.cache.Refresh(context.Background(), id)
+					refreshCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+					defer cancel()
+					if _, err := g.cache.Refresh(refreshCtx, id); err != nil {
+						slog.Default().Error("article content cache background refresh failed",
+							"article_id", id,
+							"error", err,
+						)
+					}
 				}(id)
 			}
 			continue
