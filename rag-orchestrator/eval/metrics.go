@@ -1,6 +1,7 @@
 package eval
 
 import (
+	"fmt"
 	"math"
 	"strings"
 	"unicode/utf8"
@@ -86,61 +87,7 @@ func (v *CaseVerdict) fail(reason string) {
 }
 
 func (v *CaseVerdict) failf(format string, args ...interface{}) {
-	v.fail(sprintf(format, args...))
-}
-
-// sprintf is a minimal formatter to avoid importing fmt in hot path.
-func sprintf(format string, args ...interface{}) string {
-	// Use strings.Builder for efficiency; we only need %d and %q
-	var b strings.Builder
-	argIdx := 0
-	for i := 0; i < len(format); i++ {
-		if format[i] == '%' && i+1 < len(format) && argIdx < len(args) {
-			switch format[i+1] {
-			case 'd':
-				b.WriteString(intToStr(args[argIdx].(int)))
-				argIdx++
-				i++
-				continue
-			case 'q':
-				b.WriteByte('"')
-				b.WriteString(args[argIdx].(string))
-				b.WriteByte('"')
-				argIdx++
-				i++
-				continue
-			case 's':
-				b.WriteString(args[argIdx].(string))
-				argIdx++
-				i++
-				continue
-			}
-		}
-		b.WriteByte(format[i])
-	}
-	return b.String()
-}
-
-func intToStr(n int) string {
-	if n == 0 {
-		return "0"
-	}
-	neg := n < 0
-	if neg {
-		n = -n
-	}
-	digits := make([]byte, 0, 10)
-	for n > 0 {
-		digits = append(digits, byte('0'+n%10))
-		n /= 10
-	}
-	if neg {
-		digits = append(digits, '-')
-	}
-	for i, j := 0, len(digits)-1; i < j; i, j = i+1, j-1 {
-		digits[i], digits[j] = digits[j], digits[i]
-	}
-	return string(digits)
+	v.fail(fmt.Sprintf(format, args...))
 }
 
 // countRelevant counts how many retrieved titles contain at least one expected keyword.

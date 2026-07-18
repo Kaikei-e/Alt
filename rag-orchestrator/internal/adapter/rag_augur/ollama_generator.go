@@ -178,10 +178,6 @@ func (g *OllamaGenerator) Generate(ctx context.Context, prompt string, maxTokens
 		slog.Int("max_tokens", maxTokens),
 		slog.Int("prompt_length", len(prompt)))
 
-	var maxTokensPtr *int = nil
-	// Unused now as we use Options["num_predict"]
-	_ = maxTokensPtr
-
 	opts := g.buildOptions(maxTokens)
 
 	reqBody := chatRequest{

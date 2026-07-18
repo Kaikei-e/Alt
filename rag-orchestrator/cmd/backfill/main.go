@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"os"
@@ -218,7 +219,7 @@ func runBackfill(cmd *cobra.Command, args []string) error {
 		var indexers []usecase.IndexArticleUsecase
 		for _, eURL := range embedderURLs {
 			embedder := rag_augur.NewOllamaEmbedder(
-				strings.TrimSpace(eURL), embeddingModel, 120,
+				strings.TrimSpace(eURL), embeddingModel, 120, logger,
 				httpclient.NewPooledClient(120*time.Second),
 			)
 			indexers = append(indexers, usecase.NewIndexArticleUsecase(
@@ -284,7 +285,7 @@ func runBackfill(cmd *cobra.Command, args []string) error {
 	}()
 
 	if err := runner.Run(ctx); err != nil {
-		if err == context.Canceled {
+		if errors.Is(err, context.Canceled) {
 			logger.Info("backfill interrupted, cursor saved for resume")
 			return nil
 		}

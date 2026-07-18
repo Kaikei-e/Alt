@@ -6,6 +6,7 @@ package sovereign_client
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -87,10 +88,21 @@ func (c *AppendEventClient) EmitAugurConversationLinked(
 	dedupeKey := fmt.Sprintf("augur.conversation_linked.v1:%s:%s",
 		in.EntryKey, in.ConversationID.String())
 
-	payload := fmt.Sprintf(
-		`{"conversation_id":%q,"entry_key":%q,"lens_mode_id":%q,"linked_at":%d}`,
-		in.ConversationID.String(), in.EntryKey, in.LensModeID, in.LinkedAt,
-	)
+	payloadStruct := struct {
+		ConversationID string `json:"conversation_id"`
+		EntryKey       string `json:"entry_key"`
+		LensModeID     string `json:"lens_mode_id"`
+		LinkedAt       int64  `json:"linked_at"`
+	}{
+		ConversationID: in.ConversationID.String(),
+		EntryKey:       in.EntryKey,
+		LensModeID:     in.LensModeID,
+		LinkedAt:       in.LinkedAt,
+	}
+	payload, err := json.Marshal(payloadStruct)
+	if err != nil {
+		return fmt.Errorf("marshal conversation_linked payload: %w", err)
+	}
 
 	req := connect.NewRequest(&sovereignv1.AppendKnowledgeEventRequest{
 		Event: &sovereignv1.KnowledgeEvent{
@@ -104,7 +116,7 @@ func (c *AppendEventClient) EmitAugurConversationLinked(
 			AggregateType: "knowledge_loop_session",
 			AggregateId:   in.EntryKey,
 			DedupeKey:     dedupeKey,
-			Payload:       []byte(payload),
+			Payload:       payload,
 		},
 	})
 	if _, err := c.rpc.AppendKnowledgeEvent(ctx, req); err != nil {

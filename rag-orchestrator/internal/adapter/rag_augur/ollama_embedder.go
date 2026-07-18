@@ -19,11 +19,13 @@ type OllamaEmbedder struct {
 	BaseURL string
 	Model   string
 	Client  *http.Client
+	logger  *slog.Logger
 }
 
 // NewOllamaEmbedder constructs an embedder.
 // If client is nil, a default http.Client is created with the given timeout.
-func NewOllamaEmbedder(baseURL, model string, timeoutSeconds int, client ...*http.Client) *OllamaEmbedder {
+// If logger is nil, slog.Default() is used.
+func NewOllamaEmbedder(baseURL, model string, timeoutSeconds int, logger *slog.Logger, client ...*http.Client) *OllamaEmbedder {
 	var c *http.Client
 	if len(client) > 0 && client[0] != nil {
 		c = client[0]
@@ -34,10 +36,14 @@ func NewOllamaEmbedder(baseURL, model string, timeoutSeconds int, client ...*htt
 		}
 		c = &http.Client{Timeout: timeout}
 	}
+	if logger == nil {
+		logger = slog.Default()
+	}
 	return &OllamaEmbedder{
 		BaseURL: baseURL,
 		Model:   model,
 		Client:  c,
+		logger:  logger,
 	}
 }
 
@@ -51,7 +57,7 @@ type embedResponse struct {
 }
 
 func (e *OllamaEmbedder) Encode(ctx context.Context, texts []string) ([][]float32, error) {
-	slog.Info("ollama_embed_started",
+	e.logger.Info("ollama_embed_started",
 		slog.Int("text_count", len(texts)),
 		slog.String("model", e.Model),
 		slog.String("url", e.BaseURL),
@@ -77,7 +83,7 @@ func (e *OllamaEmbedder) Encode(ctx context.Context, texts []string) ([][]float3
 	resp, err := e.Client.Do(req)
 	if err != nil {
 		category := classifyTransportError(err)
-		slog.Error("ollama_embed_failed",
+		e.logger.Error("ollama_embed_failed",
 			slog.String("category", category),
 			slog.String("error", err.Error()),
 			slog.Duration("elapsed", time.Since(start)),
@@ -88,7 +94,7 @@ func (e *OllamaEmbedder) Encode(ctx context.Context, texts []string) ([][]float3
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(io.LimitReader(resp.Body, 256))
-		slog.Error("ollama_embed_bad_status",
+		e.logger.Error("ollama_embed_bad_status",
 			slog.Int("status", resp.StatusCode),
 			slog.String("body", string(body)),
 			slog.Duration("elapsed", time.Since(start)),
@@ -98,7 +104,7 @@ func (e *OllamaEmbedder) Encode(ctx context.Context, texts []string) ([][]float3
 
 	var respBody embedResponse
 	if err := json.NewDecoder(resp.Body).Decode(&respBody); err != nil {
-		slog.Error("ollama_embed_decode_failed",
+		e.logger.Error("ollama_embed_decode_failed",
 			slog.String("error", err.Error()),
 			slog.String("category", "decode_failure"),
 			slog.Duration("elapsed", time.Since(start)),
@@ -106,7 +112,7 @@ func (e *OllamaEmbedder) Encode(ctx context.Context, texts []string) ([][]float3
 		return nil, fmt.Errorf("failed to decode response: %w", err)
 	}
 
-	slog.Info("ollama_embed_completed",
+	e.logger.Info("ollama_embed_completed",
 		slog.Int("embedding_count", len(respBody.Embeddings)),
 		slog.Duration("elapsed", time.Since(start)),
 	)

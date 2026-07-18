@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
-	"strings"
 
 	"rag-orchestrator/internal/domain"
 
@@ -89,7 +88,7 @@ func (a *ChatModelAdapter) ChatStream(ctx context.Context, messages []domain.Mes
 		for {
 			msg, readErr := streamReader.Recv()
 			if readErr != nil {
-				if errors.Is(readErr, io.EOF) || strings.Contains(readErr.Error(), "EOF") {
+				if errors.Is(readErr, io.EOF) {
 					select {
 					case <-ctx.Done():
 					case chunkCh <- domain.LLMStreamChunk{Done: true}:

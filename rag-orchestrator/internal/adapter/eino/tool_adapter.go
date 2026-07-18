@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"strings"
 
 	"rag-orchestrator/internal/domain"
@@ -40,7 +41,12 @@ func (a *ToolAdapter) Info(ctx context.Context) (*schema.ToolInfo, error) {
 func (a *ToolAdapter) InvokableRun(ctx context.Context, argumentsInJSON string, opts ...tool.Option) (string, error) {
 	var args map[string]string
 	if err := json.Unmarshal([]byte(argumentsInJSON), &args); err != nil {
-		// Try to use the raw input as the most likely argument name for this tool.
+		// Fall back to raw string as the tool's default arg, but surface the
+		// parse failure so malformed tool calls are not silently rewritten.
+		slog.Default().Warn("tool_args_json_parse_failed",
+			"tool", a.domainTool.Name(),
+			"error", err.Error(),
+		)
 		args = map[string]string{defaultToolArgName(a.domainTool.Name()): strings.TrimSpace(argumentsInJSON)}
 	}
 

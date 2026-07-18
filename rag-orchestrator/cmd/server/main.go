@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -43,9 +44,8 @@ func main() {
 		}
 	}()
 
-	// 3. Initialize Logger with OTel support
+	// 3. Initialize Logger with OTel support (also installs slog.SetDefault)
 	log := logger.NewWithOTel(otelCfg.Enabled)
-	slog.SetDefault(log)
 
 	// rag-orchestrator only serves plaintext listeners today (REST on
 	// cfg.Server.Port, Connect-RPC h2c on cfg.Server.ConnectPort).
@@ -105,7 +105,8 @@ func main() {
 	})
 	e.GET("/readyz", func(c echo.Context) error {
 		if err := dbPool.Ping(c.Request().Context()); err != nil {
-			return c.JSON(http.StatusServiceUnavailable, map[string]string{"status": "db down", "error": err.Error()})
+			log.Error("readyz db ping failed", "error", err)
+			return c.JSON(http.StatusServiceUnavailable, map[string]string{"status": "db down"})
 		}
 		return c.JSON(http.StatusOK, map[string]string{"status": "ready"})
 	})
@@ -127,10 +128,12 @@ func main() {
 	e.Server.ReadTimeout = 30 * time.Second
 	e.Server.IdleTimeout = 120 * time.Second
 	e.Server.MaxHeaderBytes = 1 << 20 // 1 MiB
+	serverErr := make(chan error, 2)
 	go func() {
 		log.Info("Starting Echo server", "addr", e.Server.Addr)
-		if err := e.StartServer(e.Server); err != nil && err != http.ErrServerClosed {
-			e.Logger.Fatal("shutting down the server")
+		if err := e.StartServer(e.Server); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			log.Error("server failed", "error", err)
+			serverErr <- err
 		}
 	}()
 
@@ -143,15 +146,22 @@ func main() {
 	}
 	go func() {
 		log.Info("Starting Connect-RPC server", "addr", connectServer.Addr)
-		if err := connectServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+		if err := connectServer.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			log.Error("Connect-RPC server error", "error", err)
+			serverErr <- err
 		}
 	}()
 
-	// 12. Graceful Shutdown
+	// 12. Graceful Shutdown — signal path and server-failure path share the same
+	// teardown so defer (worker stop / DB close / OTel shutdown) always runs.
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
-	<-quit
+	select {
+	case sig := <-quit:
+		log.Info("shutdown signal received", "signal", sig.String())
+	case err := <-serverErr:
+		log.Error("server failed, shutting down", "error", err)
+	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
@@ -160,6 +170,6 @@ func main() {
 		log.Error("Connect-RPC server shutdown error", "error", err)
 	}
 	if err := e.Shutdown(ctx); err != nil {
-		e.Logger.Fatal(err)
+		log.Error("echo server shutdown error", "error", err)
 	}
 }

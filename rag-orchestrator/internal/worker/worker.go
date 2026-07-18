@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"sync"
 	"time"
 
 	"rag-orchestrator/internal/domain"
@@ -22,6 +23,7 @@ type JobWorker struct {
 	indexUsecase usecase.IndexArticleUsecase
 	logger       *slog.Logger
 	stopChan     chan struct{}
+	wg           sync.WaitGroup
 	backoff      time.Duration
 }
 
@@ -40,12 +42,17 @@ func NewJobWorker(
 
 func (w *JobWorker) Start() {
 	w.logger.Info("Starting JobWorker")
-	go w.run()
+	w.wg.Add(1)
+	go func() {
+		defer w.wg.Done()
+		w.run()
+	}()
 }
 
 func (w *JobWorker) Stop() {
 	w.logger.Info("Stopping JobWorker")
 	close(w.stopChan)
+	w.wg.Wait()
 }
 
 func (w *JobWorker) run() {

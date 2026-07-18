@@ -5,6 +5,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -389,7 +390,10 @@ func (r *Runner) sendArticle(ctx context.Context, a Article) error {
 		"url":          a.URL,
 		"published_at": a.CreatedAt.Format(time.RFC3339),
 	}
-	data, _ := json.Marshal(payload)
+	data, err := json.Marshal(payload)
+	if err != nil {
+		return fmt.Errorf("marshal payload: %w", err)
+	}
 
 	ctx, cancel := context.WithTimeout(ctx, r.cfg.RequestTimeout)
 	defer cancel()
@@ -407,7 +411,7 @@ func (r *Runner) sendArticle(ctx context.Context, a Article) error {
 
 	resp, err := r.client.Do(req)
 	if err != nil {
-		if os.IsTimeout(err) || err == context.DeadlineExceeded {
+		if os.IsTimeout(err) || errors.Is(err, context.DeadlineExceeded) {
 			return fmt.Errorf("timeout: %w", err)
 		}
 		return fmt.Errorf("send request: %w", err)
@@ -419,15 +423,13 @@ func (r *Runner) sendArticle(ctx context.Context, a Article) error {
 		return nil
 	}
 
-	bodyBytes, _ := io.ReadAll(resp.Body)
-
-	// Handle duplicate key (race condition) as success
-	if resp.StatusCode == http.StatusInternalServerError &&
-		(bytes.Contains(bodyBytes, []byte("duplicate key")) ||
-			bytes.Contains(bodyBytes, []byte("Unique constraint"))) {
+	// Duplicate key race: server returns 409 Conflict; treat as success.
+	if resp.StatusCode == http.StatusConflict {
+		_, _ = io.Copy(io.Discard, resp.Body)
 		return nil
 	}
 
+	bodyBytes, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
 	return fmt.Errorf("status %d: %s", resp.StatusCode, string(bodyBytes))
 }
 

@@ -110,12 +110,13 @@ func (c *RerankerClient) Rerank(ctx context.Context, query string, candidates []
 	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
+		bodyStr := truncateString(string(body), 500)
 		c.logger.Warn("reranking_failed",
 			slog.Int("status_code", resp.StatusCode),
-			slog.String("body", truncateString(string(body), 500)),
+			slog.String("body", bodyStr),
 			slog.Int64("elapsed_ms", time.Since(startTime).Milliseconds()))
-		return nil, fmt.Errorf("rerank endpoint returned %d: %s", resp.StatusCode, string(body))
+		return nil, fmt.Errorf("rerank endpoint returned %d: %s", resp.StatusCode, bodyStr)
 	}
 
 	var rerankResp RerankResponse

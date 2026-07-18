@@ -38,7 +38,7 @@ func main() {
 	}
 
 	client := augurv2connect.NewAugurServiceClient(
-		http.DefaultClient,
+		&http.Client{Timeout: 130 * time.Second},
 		augurAddr,
 	)
 

@@ -158,24 +158,28 @@ func (h *Handler) StreamChat(
 	events := h.answerUsecase.Stream(ctx, input)
 
 	// 5. Process stream events and convert to Connect-RPC events
-	for event := range events {
+loop:
+	for {
 		select {
 		case <-ctx.Done():
 			h.logger.Info("stream chat cancelled by client")
 			return nil
-		default:
-		}
-
-		protoEvent, shouldContinue := h.convertStreamEvent(event)
-		if protoEvent != nil {
-			if err := stream.Send(protoEvent); err != nil {
-				h.logger.Error("failed to send event", slog.String("error", err.Error()))
-				return connect.NewError(connect.CodeInternal, err)
+		case event, ok := <-events:
+			if !ok {
+				break loop
 			}
-		}
 
-		if !shouldContinue {
-			break
+			protoEvent, shouldContinue := h.convertStreamEvent(event)
+			if protoEvent != nil {
+				if err := stream.Send(protoEvent); err != nil {
+					h.logger.Error("failed to send event", slog.String("error", err.Error()))
+					return connect.NewError(connect.CodeInternal, err)
+				}
+			}
+
+			if !shouldContinue {
+				break loop
+			}
 		}
 	}
 
@@ -296,26 +300,33 @@ func (h *Handler) sendErrorEvent(stream *connect.ServerStream[morningletterv2.St
 
 // formatLetterAsContext converts a morning letter document into a structured text context
 // for the LLM prompt. Uses XML-style tagging to keep it separate from system instructions.
+// Content is escaped so embedded closing tags cannot break out of the delimiter.
 func formatLetterAsContext(doc *domain.MorningLetterDoc) string {
 	var sb strings.Builder
 	sb.WriteString("<morning_letter>\n")
 	if doc.Lead != "" {
-		sb.WriteString(fmt.Sprintf("## Lead\n%s\n\n", doc.Lead))
+		sb.WriteString(fmt.Sprintf("## Lead\n%s\n\n", escapeMorningLetterDelim(doc.Lead)))
 	}
 	for _, s := range doc.Sections {
 		title := s.Title
 		if title == "" {
 			title = s.Key
 		}
-		sb.WriteString(fmt.Sprintf("## %s\n", title))
+		sb.WriteString(fmt.Sprintf("## %s\n", escapeMorningLetterDelim(title)))
 		for _, b := range s.Bullets {
-			sb.WriteString(fmt.Sprintf("- %s\n", b))
+			sb.WriteString(fmt.Sprintf("- %s\n", escapeMorningLetterDelim(b)))
 		}
 		sb.WriteString("\n")
 	}
 	sb.WriteString("</morning_letter>\n")
 	sb.WriteString("ユーザーの質問にはこの Morning Letter の内容を最優先で参照してください。記事検索は補助的に使用してください。")
 	return sb.String()
+}
+
+// escapeMorningLetterDelim neutralizes the closing delimiter so letter body
+// text cannot terminate the <morning_letter> wrapper early (prompt injection).
+func escapeMorningLetterDelim(s string) string {
+	return strings.ReplaceAll(s, "</morning_letter>", "<\\/morning_letter>")
 }
 
 // sendFallbackEvent sends a fallback event to the stream

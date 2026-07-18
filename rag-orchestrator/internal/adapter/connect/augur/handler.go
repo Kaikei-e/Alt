@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log/slog"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 	"unicode"
@@ -166,7 +167,7 @@ func (h *Handler) StreamChat(
 
 	if query == "" {
 		h.logger.Warn("no user message found in request")
-		return connect.NewError(connect.CodeInvalidArgument, nil)
+		return connect.NewError(connect.CodeInvalidArgument, errors.New("no user message found"))
 	}
 
 	// Build conversation history (all messages except the last user message)
@@ -220,7 +221,7 @@ func (h *Handler) StreamChat(
 	}
 
 	h.logger.Info("starting augur stream chat",
-		slog.String("query", query),
+		slog.String("query", truncateForLog(query, 100)),
 		slog.Int("history_turns", len(conversationHistory)),
 		slog.String("conversation_id", conv.ID.String()))
 
@@ -685,11 +686,11 @@ func (h *Handler) RetrieveContext(
 
 	query := req.Msg.Query
 	if query == "" {
-		return nil, connect.NewError(connect.CodeInvalidArgument, nil)
+		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("query is required"))
 	}
 
 	h.logger.Info("retrieving context",
-		slog.String("query", query),
+		slog.String("query", truncateForLog(query, 100)),
 		slog.Int("limit", int(req.Msg.Limit)))
 
 	input := usecase.RetrieveContextInput{
@@ -852,12 +853,20 @@ func decodePageToken(token string) (time.Time, uuid.UUID, bool) {
 }
 
 func parseInt64(s string) (int64, error) {
-	var n int64
-	_, err := fmt.Sscanf(s, "%d", &n)
-	if err != nil {
-		return 0, err
+	return strconv.ParseInt(s, 10, 64)
+}
+
+// truncateForLog limits query text in Info logs to avoid logging full user
+// content. Cuts on rune boundaries so multibyte characters stay valid UTF-8.
+func truncateForLog(s string, maxRunes int) string {
+	if maxRunes <= 0 {
+		return ""
 	}
-	return n, nil
+	runes := []rune(s)
+	if len(runes) <= maxRunes {
+		return s
+	}
+	return string(runes[:maxRunes]) + "..."
 }
 
 // detectLocale determines the response language based on query content.

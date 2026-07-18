@@ -89,7 +89,7 @@ func NewApplicationComponents(cfg *config.Config, pool *pgxpool.Pool, log *slog.
 	rerankHTTP := httpclient.NewPooledClient(time.Duration(cfg.Rerank.Timeout) * time.Second)
 
 	// External clients
-	embedder := rag_augur.NewOllamaEmbedder(cfg.Embedder.URL, cfg.Embedder.Model, cfg.Embedder.Timeout, embedderHTTP)
+	embedder := rag_augur.NewOllamaEmbedder(cfg.Embedder.URL, cfg.Embedder.Model, cfg.Embedder.Timeout, log, embedderHTTP)
 	searchClient := rag_http.NewSearchIndexerClient(cfg.Search.IndexerURL, cfg.Search.Timeout, "")
 	queryExpander := rag_augur.NewQueryExpanderClient(cfg.QueryExpansion.URL, cfg.QueryExpansion.Timeout, log, queryExpanderHTTP)
 
@@ -315,7 +315,7 @@ func NewApplicationComponents(cfg *config.Config, pool *pgxpool.Pool, log *slog.
 
 	// Factories for hyper-boost
 	embedderFactory := func(url string, model string, timeout int) domain.VectorEncoder {
-		return rag_augur.NewOllamaEmbedder(url, model, timeout, httpclient.NewPooledClient(time.Duration(timeout)*time.Second))
+		return rag_augur.NewOllamaEmbedder(url, model, timeout, log, httpclient.NewPooledClient(time.Duration(timeout)*time.Second))
 	}
 	indexUsecaseFactory := func(encoder domain.VectorEncoder) usecase.IndexArticleUsecase {
 		return usecase.NewIndexArticleUsecase(docRepo, chunkRepo, txManager, hasher, chunker, encoder)
