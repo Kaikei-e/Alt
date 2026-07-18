@@ -67,15 +67,14 @@ func Derive(footprints []sovereign_db.TrailFootprint) []Episode {
 	for i := range parent {
 		parent[i] = i
 	}
-	var find func(int) int
-	find = func(i int) int {
+	find := func(i int) int {
 		for parent[i] != i {
 			parent[i] = parent[parent[i]]
 			i = parent[i]
 		}
 		return i
 	}
-	for i := 0; i < len(groups); i++ {
+	for i := range groups {
 		for j := i + 1; j < len(groups); j++ {
 			ri, rj := find(i), find(j)
 			if ri == rj {
