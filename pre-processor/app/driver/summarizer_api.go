@@ -86,16 +86,16 @@ const (
 // extracted upstream) and validates its length. logContext names the calling
 // path ("sending to news-creator" / "streaming summary") for log messages.
 // Shared by the blocking and streaming summarizer clients below.
-func prepareSummarizeContent(article *domain.Article, cfg *config.Config, logger *slog.Logger, logContext string) (string, error) {
+func prepareSummarizeContent(ctx context.Context, article *domain.Article, cfg *config.Config, logger *slog.Logger, logContext string) (string, error) {
 	originalLength := len(article.Content)
-	logger.Info("extracting text from content before "+logContext+" (Zero Trust validation)",
+	logger.InfoContext(ctx, "extracting text from content before "+logContext+" (Zero Trust validation)",
 		"article_id", article.ID,
 		"original_length", originalLength)
 
 	extractedContent := html_parser.ExtractArticleText(article.Content)
 
 	if extractedContent == "" {
-		logger.Warn("text extraction returned empty, using original content",
+		logger.WarnContext(ctx, "text extraction returned empty, using original content",
 			"article_id", article.ID,
 			"original_length", originalLength)
 		extractedContent = article.Content
@@ -103,13 +103,13 @@ func prepareSummarizeContent(article *domain.Article, cfg *config.Config, logger
 		extractedLength := len(extractedContent)
 		reductionRatio := (1.0 - float64(extractedLength)/float64(originalLength)) * 100.0
 		if reductionRatio < 0 {
-			logger.Info("text extraction did not reduce content (content may already be plain text)",
+			logger.InfoContext(ctx, "text extraction did not reduce content (content may already be plain text)",
 				"article_id", article.ID,
 				"original_length", originalLength,
 				"extracted_length", extractedLength,
 				"size_increase_ratio", fmt.Sprintf("%.2f%%", -reductionRatio))
 		} else {
-			logger.Info("text extraction completed before "+logContext,
+			logger.InfoContext(ctx, "text extraction completed before "+logContext,
 				"article_id", article.ID,
 				"original_length", originalLength,
 				"extracted_length", extractedLength,
@@ -122,13 +122,13 @@ func prepareSummarizeContent(article *domain.Article, cfg *config.Config, logger
 		// Fallback: if content is too short but title is long enough, use title as content
 		titleRuneCount := utf8.RuneCountInString(article.Title)
 		if titleRuneCount >= minContentRunes {
-			logger.Info("Content too short, falling back to title-based summarization",
+			logger.InfoContext(ctx, "Content too short, falling back to title-based summarization",
 				"article_id", article.ID,
 				"content_rune_count", runeCount,
 				"title_rune_count", titleRuneCount)
 			return article.Title, nil
 		}
-		logger.Info("Skipping summarization: content too short after extraction",
+		logger.InfoContext(ctx, "Skipping summarization: content too short after extraction",
 			"article_id", article.ID,
 			"original_length", originalLength,
 			"extracted_length_chars", runeCount,
@@ -136,7 +136,7 @@ func prepareSummarizeContent(article *domain.Article, cfg *config.Config, logger
 		return "", ErrContentTooShort
 	}
 	if runeCount > maxContentRunes {
-		logger.Info("Skipping summarization: content too long after extraction",
+		logger.InfoContext(ctx, "Skipping summarization: content too long after extraction",
 			"article_id", article.ID,
 			"original_length", originalLength,
 			"extracted_length_chars", runeCount,
@@ -145,6 +145,13 @@ func prepareSummarizeContent(article *domain.Article, cfg *config.Config, logger
 	}
 
 	return extractedContent, nil
+}
+
+// isContentTooShortResponse reports whether a news-creator 400 body indicates
+// content-length validation rather than a generic request bug.
+func isContentTooShortResponse(body string) bool {
+	lower := strings.ToLower(body)
+	return strings.Contains(lower, "too short") || strings.Contains(lower, "content_too_short")
 }
 
 // classifyBusyOrErrorStatus maps a non-200 news-creator response to a
@@ -177,7 +184,7 @@ func classifyBusyOrErrorStatus(resp *http.Response, body string, article *domain
 }
 
 func ArticleSummarizerAPIClient(ctx context.Context, article *domain.Article, cfg *config.Config, logger *slog.Logger, priority string) (*SummarizedContent, error) {
-	extractedContent, err := prepareSummarizeContent(article, cfg, logger, "sending to news-creator")
+	extractedContent, err := prepareSummarizeContent(ctx, article, cfg, logger, "sending to news-creator")
 	if err != nil {
 		return nil, err
 	}
@@ -203,7 +210,7 @@ func ArticleSummarizerAPIClient(ctx context.Context, article *domain.Article, cf
 
 	jsonData, err := json.Marshal(payload)
 	if err != nil {
-		logger.Error("Failed to marshal payload", "error", err)
+		logger.ErrorContext(ctx, "Failed to marshal payload", "error", err)
 		return nil, err
 	}
 
@@ -217,11 +224,11 @@ func ArticleSummarizerAPIClient(ctx context.Context, article *domain.Article, cf
 
 	req, err := http.NewRequestWithContext(ctxWithTimeout, "POST", apiURL, strings.NewReader(string(jsonData)))
 	if err != nil {
-		logger.Error("Failed to create request", "error", err, "api_url", apiURL)
+		logger.ErrorContext(ctx, "Failed to create request", "error", err, "api_url", apiURL)
 		return nil, err
 	}
 
-	logger.Info("Making request to news-creator API",
+	logger.InfoContext(ctx, "Making request to news-creator API",
 		"api_url", apiURL,
 		"article_id", article.ID,
 		"content_length", extractedLength,
@@ -231,7 +238,7 @@ func ArticleSummarizerAPIClient(ctx context.Context, article *domain.Article, cf
 
 	resp, err := client.Do(req)
 	if err != nil {
-		logger.Error("Failed to send request", "error", err, "api_url", apiURL)
+		logger.ErrorContext(ctx, "Failed to send request", "error", err, "api_url", apiURL)
 		if isTransportBusyError(err) {
 			return nil, fmt.Errorf("send request: %w", errors.Join(domain.ErrUpstreamBusy, err))
 		}
@@ -239,7 +246,7 @@ func ArticleSummarizerAPIClient(ctx context.Context, article *domain.Article, cf
 	}
 	defer func() {
 		if err := resp.Body.Close(); err != nil {
-			logger.Error("failed to close response body", "error", err)
+			logger.ErrorContext(ctx, "failed to close response body", "error", err)
 		}
 	}()
 
@@ -247,18 +254,18 @@ func ArticleSummarizerAPIClient(ctx context.Context, article *domain.Article, cf
 	if resp.StatusCode != http.StatusOK {
 		bodyBytes, _ := io.ReadAll(resp.Body)
 		bodyStr := string(bodyBytes)
-		logger.Error("API returned non-200 status", "status", resp.Status, "code", resp.StatusCode, "body", bodyStr)
+		logger.ErrorContext(ctx, "API returned non-200 status", "status", resp.Status, "code", resp.StatusCode, "body", bodyStr)
 
 		if err := classifyBusyOrErrorStatus(resp, bodyStr, article, logger, false); err != nil {
 			return nil, err
 		}
 
-		// Handle 400 Bad Request as ErrContentTooShort if likely
 		if resp.StatusCode == http.StatusBadRequest {
-			// Simply assume 400 means content validation failed (likely too short or invalid)
-			// This allows the service to handle it gracefully (save placeholder summary)
-			logger.Info("Mapping 400 Bad Request to ErrContentTooShort", "article_id", article.ID)
-			return nil, ErrContentTooShort
+			if isContentTooShortResponse(bodyStr) {
+				logger.InfoContext(ctx, "Mapping 400 Bad Request to ErrContentTooShort", "article_id", article.ID)
+				return nil, ErrContentTooShort
+			}
+			return nil, fmt.Errorf("API request failed with status: %s, body: %s: %w", resp.Status, bodyStr, domain.ErrInvalidRequest)
 		}
 
 		return nil, fmt.Errorf("API request failed with status: %s", resp.Status)
@@ -266,25 +273,25 @@ func ArticleSummarizerAPIClient(ctx context.Context, article *domain.Article, cf
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		logger.Error("Failed to read response body", "error", err)
+		logger.ErrorContext(ctx, "Failed to read response body", "error", err)
 		return nil, err
 	}
 
-	logger.Info("Response received", "status", resp.Status)
-	logger.Debug("Response body", "body", string(body))
+	logger.InfoContext(ctx, "Response received", "status", resp.Status)
+	logger.DebugContext(ctx, "Response body", "body", string(body))
 
 	// Parse the news-creator /api/v1/summarize response
 	var apiResponse SummarizeResponse
 
 	err = json.Unmarshal(body, &apiResponse)
 	if err != nil {
-		logger.Error("Failed to unmarshal API response", "error", err)
+		logger.ErrorContext(ctx, "Failed to unmarshal API response", "error", err)
 		return nil, fmt.Errorf("failed to parse API response: %w", err)
 	}
 
 	// Check if summarization was successful
 	if !apiResponse.Success {
-		logger.Error("Summarization failed", "article_id", article.ID)
+		logger.ErrorContext(ctx, "Summarization failed", "article_id", article.ID)
 		return nil, fmt.Errorf("news-creator returned success=false for article %s", article.ID)
 	}
 
@@ -294,7 +301,7 @@ func ArticleSummarizerAPIClient(ctx context.Context, article *domain.Article, cf
 		SummaryJapanese: apiResponse.Summary,
 	}
 
-	logger.Info("Summary generated successfully",
+	logger.InfoContext(ctx, "Summary generated successfully",
 		"article_id", article.ID,
 		"summary_length", len(apiResponse.Summary),
 		"model", apiResponse.Model)
@@ -304,7 +311,7 @@ func ArticleSummarizerAPIClient(ctx context.Context, article *domain.Article, cf
 
 // StreamArticleSummarizerAPIClient streams the summary generation from news-creator
 func StreamArticleSummarizerAPIClient(ctx context.Context, article *domain.Article, cfg *config.Config, logger *slog.Logger, priority string) (io.ReadCloser, error) {
-	extractedContent, err := prepareSummarizeContent(article, cfg, logger, "streaming summary")
+	extractedContent, err := prepareSummarizeContent(ctx, article, cfg, logger, "streaming summary")
 	if err != nil {
 		return nil, err
 	}
@@ -326,7 +333,7 @@ func StreamArticleSummarizerAPIClient(ctx context.Context, article *domain.Artic
 
 	jsonData, err := json.Marshal(payload)
 	if err != nil {
-		logger.Error("Failed to marshal payload for streaming", "error", err, "article_id", article.ID)
+		logger.ErrorContext(ctx, "Failed to marshal payload for streaming", "error", err, "article_id", article.ID)
 		return nil, fmt.Errorf("failed to marshal payload: %w", err)
 	}
 
@@ -338,7 +345,7 @@ func StreamArticleSummarizerAPIClient(ctx context.Context, article *domain.Artic
 		Transport: clientManager.GetSummaryClient().Transport,
 	}
 
-	logger.Info("Making streaming request to news-creator API",
+	logger.InfoContext(ctx, "Making streaming request to news-creator API",
 		"api_url", apiURL,
 		"article_id", article.ID,
 		"content_length", extractedLength,
@@ -346,7 +353,7 @@ func StreamArticleSummarizerAPIClient(ctx context.Context, article *domain.Artic
 
 	req, err := http.NewRequestWithContext(ctx, "POST", apiURL, strings.NewReader(string(jsonData)))
 	if err != nil {
-		logger.Error("Failed to create streaming request", "error", err, "api_url", apiURL, "article_id", article.ID)
+		logger.ErrorContext(ctx, "Failed to create streaming request", "error", err, "api_url", apiURL, "article_id", article.ID)
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
 
@@ -354,7 +361,7 @@ func StreamArticleSummarizerAPIClient(ctx context.Context, article *domain.Artic
 
 	resp, err := streamClient.Do(req)
 	if err != nil {
-		logger.Error("Failed to send streaming request", "error", err, "api_url", apiURL, "article_id", article.ID)
+		logger.ErrorContext(ctx, "Failed to send streaming request", "error", err, "api_url", apiURL, "article_id", article.ID)
 		return nil, fmt.Errorf("failed to send request: %w", err)
 	}
 
@@ -362,7 +369,7 @@ func StreamArticleSummarizerAPIClient(ctx context.Context, article *domain.Artic
 		// Read error response body for better error reporting
 		bodyBytes, readErr := io.ReadAll(resp.Body)
 		if closeErr := resp.Body.Close(); closeErr != nil {
-			logger.Warn("failed to close streaming response body", "error", closeErr, "article_id", article.ID)
+			logger.WarnContext(ctx, "failed to close streaming response body", "error", closeErr, "article_id", article.ID)
 		}
 
 		errorBody := string(bodyBytes)
@@ -374,7 +381,7 @@ func StreamArticleSummarizerAPIClient(ctx context.Context, article *domain.Artic
 			return nil, err
 		}
 
-		logger.Error("API returned non-200 status for streaming request",
+		logger.ErrorContext(ctx, "API returned non-200 status for streaming request",
 			"status", resp.Status,
 			"code", resp.StatusCode,
 			"body", errorBody,
@@ -383,7 +390,7 @@ func StreamArticleSummarizerAPIClient(ctx context.Context, article *domain.Artic
 		return nil, fmt.Errorf("API request failed with status: %s, body: %s", resp.Status, errorBody)
 	}
 
-	logger.Info("Streaming response received successfully",
+	logger.InfoContext(ctx, "Streaming response received successfully",
 		"article_id", article.ID,
 		"status", resp.Status,
 		"content_type", resp.Header.Get("Content-Type"))

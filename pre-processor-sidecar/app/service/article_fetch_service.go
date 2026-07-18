@@ -148,9 +148,9 @@ func NewArticleFetchService(
 
 // FetchArticles fetches articles from a specific stream with continuation token support
 func (s *ArticleFetchService) FetchArticles(ctx context.Context, streamID string, maxArticles int) (*ArticleFetchResult, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
+	// Do not hold s.mu across the Inoreader API / DB work — that serializes all
+	// public methods for up to several minutes. Mutable service state is only
+	// touched in rotation helpers under short critical sections.
 	startTime := time.Now()
 	s.logger.Info("Starting article fetch",
 		"stream_id", streamID,
@@ -284,11 +284,16 @@ func (s *ArticleFetchService) ProcessArticleBatch(ctx context.Context, articles 
 	processed = createdCount
 	skipped = len(articles) - createdCount
 
+	successRate := 100.0
+	if len(articles) > 0 {
+		successRate = float64(processed) / float64(len(articles)) * 100
+	}
+
 	s.logger.Info("Resilient article batch processing completed",
 		"total_articles", len(articles),
 		"processed", processed,
 		"skipped", skipped,
-		"success_rate", fmt.Sprintf("%.1f%%", float64(processed)/float64(len(articles))*100))
+		"success_rate", fmt.Sprintf("%.1f%%", successRate))
 
 	return processed, skipped, nil
 }

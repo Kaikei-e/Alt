@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"log/slog"
 	"time"
@@ -27,7 +28,6 @@ const getPendingJobsQuery = `
 		WHERE status = 'pending'
 		ORDER BY created_at ASC
 		LIMIT $1
-		FOR UPDATE SKIP LOCKED
 	`
 
 // NewSummarizeJobRepository creates a new summarize job repository.
@@ -85,7 +85,7 @@ func (r *summarizeJobRepository) CreateJob(ctx context.Context, articleID string
 	var jobID uuid.UUID
 	err = tx.QueryRow(ctx, query, articleID).Scan(&jobID)
 	if err != nil {
-		if err == pgx.ErrNoRows {
+		if errors.Is(err, pgx.ErrNoRows) {
 			r.logger.InfoContext(ctx, "skipping duplicate job, pending/running job already exists", "article_id", articleID)
 			if commitErr := tx.Commit(ctx); commitErr != nil {
 				return "", fmt.Errorf("failed to commit transaction: %w", commitErr)
@@ -215,7 +215,7 @@ func (r *summarizeJobRepository) GetJob(ctx context.Context, jobID string) (*dom
 		&job.CompletedAt,
 	)
 	if err != nil {
-		if err == pgx.ErrNoRows {
+		if errors.Is(err, pgx.ErrNoRows) {
 			r.logger.WarnContext(ctx, "summarization job not found", "job_id", jobID)
 			return nil, fmt.Errorf("summarization job not found: %w", err)
 		}
@@ -310,40 +310,17 @@ func (r *summarizeJobRepository) UpdateJobStatus(ctx context.Context, jobID stri
 		args = []interface{}{string(status), jobID}
 	}
 
-	// Use Read Committed isolation level to ensure we see committed changes immediately
-	// This helps prevent stale reads when checking job status after updates
-	tx, err := r.db.BeginTx(ctx, pgx.TxOptions{
-		IsoLevel: pgx.ReadCommitted,
-	})
+	result, err := r.db.Exec(ctx, query, args...)
 	if err != nil {
-		r.logger.ErrorContext(ctx, "failed to begin transaction", "error", err)
-		return fmt.Errorf("failed to begin transaction: %w", err)
-	}
-
-	result, err := tx.Exec(ctx, query, args...)
-	if err != nil {
-		if rollbackErr := tx.Rollback(ctx); rollbackErr != nil {
-			r.logger.ErrorContext(ctx, "failed to rollback transaction", "error", rollbackErr)
-		}
 		r.logger.ErrorContext(ctx, "failed to update summarization job status", "error", err, "job_id", jobID)
 		return fmt.Errorf("failed to update summarization job status: %w", err)
 	}
 
 	if result.RowsAffected() == 0 {
-		if rollbackErr := tx.Rollback(ctx); rollbackErr != nil {
-			r.logger.ErrorContext(ctx, "failed to rollback transaction", "error", rollbackErr)
-		}
 		r.logger.WarnContext(ctx, "no rows affected when updating job status", "job_id", jobID)
 		return fmt.Errorf("summarization job not found")
 	}
 
-	err = tx.Commit(ctx)
-	if err != nil {
-		r.logger.ErrorContext(ctx, "failed to commit transaction", "error", err)
-		return fmt.Errorf("failed to commit transaction: %w", err)
-	}
-
-	// Log timing information for debugging latency issues
 	r.logger.InfoContext(ctx, "summarization job status updated successfully",
 		"job_id", jobID,
 		"status", status,

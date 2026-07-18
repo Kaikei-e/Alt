@@ -5,6 +5,8 @@ import (
 	"context"
 	"encoding/json"
 	"log/slog"
+	"strings"
+	"sync"
 	"time"
 
 	"github.com/redis/go-redis/v9"
@@ -74,6 +76,7 @@ type Consumer struct {
 	config       Config
 	handler      EventHandler
 	logger       *slog.Logger
+	shutdownOnce sync.Once
 	shutdownChan chan struct{}
 }
 
@@ -128,22 +131,20 @@ func (c *Consumer) Start(ctx context.Context) error {
 
 // Stop gracefully stops the consumer.
 func (c *Consumer) Stop() {
-	if c.shutdownChan != nil {
-		close(c.shutdownChan)
-	}
-	if c.client != nil {
-		_ = c.client.Close()
-	}
+	c.shutdownOnce.Do(func() {
+		if c.shutdownChan != nil {
+			close(c.shutdownChan)
+		}
+		if c.client != nil {
+			_ = c.client.Close()
+		}
+	})
 }
 
 // ensureConsumerGroup creates the consumer group if it doesn't exist.
 func (c *Consumer) ensureConsumerGroup(ctx context.Context) error {
 	err := c.client.XGroupCreateMkStream(ctx, c.config.StreamKey, c.config.GroupName, "0").Err()
-	if err != nil && err.Error() != "BUSYGROUP Consumer Group name already exists" {
-		// Ignore BUSYGROUP error, it means the group already exists
-		if err.Error() == "BUSYGROUP Consumer Group name already exists" {
-			return nil
-		}
+	if err != nil && !strings.Contains(err.Error(), "BUSYGROUP") {
 		return err
 	}
 	return nil

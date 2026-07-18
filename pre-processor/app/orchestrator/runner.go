@@ -89,14 +89,20 @@ func (r *JobRunner) run(ctx context.Context) {
 					continue
 				}
 				r.logger.ErrorContext(ctx, "job failed", "job", r.config.Name, "error", err)
-			} else {
-				// Success: reset backoff if active
+				// Non-backoff failure must not leave the ticker stuck on a
+				// prior backoff interval — re-evaluate to the configured cadence.
 				if backoff > 0 {
-					r.logger.InfoContext(ctx, "backoff cleared, resuming normal interval",
+					r.logger.InfoContext(ctx, "backoff cleared after non-backoff error, resuming normal interval",
 						"job", r.config.Name)
 					backoff = 0
 					ticker.Reset(r.config.Interval)
 				}
+			} else if backoff > 0 {
+				// Success: reset backoff if active
+				r.logger.InfoContext(ctx, "backoff cleared, resuming normal interval",
+					"job", r.config.Name)
+				backoff = 0
+				ticker.Reset(r.config.Interval)
 			}
 		}
 	}

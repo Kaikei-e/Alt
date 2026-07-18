@@ -82,3 +82,50 @@ func TestHostRateLimiter_ContextCancel(t *testing.T) {
 		t.Fatalf("expected context.Canceled, got %v", err)
 	}
 }
+
+func TestHostRateLimiter_SleepFailureRollsBackReservation(t *testing.T) {
+	var mu sync.Mutex
+	now := time.Unix(0, 0)
+	sleepCalls := 0
+
+	lim := NewHostRateLimiter(5 * time.Second)
+	lim.now = func() time.Time {
+		mu.Lock()
+		defer mu.Unlock()
+		return now
+	}
+	lim.sleep = func(_ context.Context, _ time.Duration) error {
+		sleepCalls++
+		return context.Canceled
+	}
+
+	// First call reserves immediately (no sleep).
+	if err := lim.Wait(context.Background(), "host"); err != nil {
+		t.Fatalf("first Wait: %v", err)
+	}
+
+	// Second call should sleep, fail, and roll back the reserved slot.
+	if err := lim.Wait(context.Background(), "host"); !errors.Is(err, context.Canceled) {
+		t.Fatalf("second Wait want Canceled, got %v", err)
+	}
+	if sleepCalls != 1 {
+		t.Fatalf("expected one sleep attempt, got %d", sleepCalls)
+	}
+
+	// Third call with a working sleep must still wait the full interval from
+	// the successful first call — not from the cancelled reservation.
+	slept := time.Duration(0)
+	lim.sleep = func(_ context.Context, d time.Duration) error {
+		slept = d
+		mu.Lock()
+		now = now.Add(d)
+		mu.Unlock()
+		return nil
+	}
+	if err := lim.Wait(context.Background(), "host"); err != nil {
+		t.Fatalf("third Wait: %v", err)
+	}
+	if slept != 5*time.Second {
+		t.Fatalf("after cancelled wait, next Wait should sleep full interval, slept=%s", slept)
+	}
+}

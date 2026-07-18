@@ -7,6 +7,8 @@ import (
 	"os"
 	"testing"
 
+	"pre-processor/domain"
+
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -120,7 +122,7 @@ func TestArticleFetcherService_FetchArticle(t *testing.T) {
 
 			result, err := service.FetchArticle(context.Background(), tc.input)
 
-			require.NoError(t, err, tc.description)
+			require.ErrorIs(t, err, domain.ErrFetchDisabled, tc.description)
 			assert.Nil(t, result, "Article fetching disabled, should return nil")
 		})
 	}

@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
-	"strings"
 	"time"
 
 	"pre-processor/config"
@@ -203,15 +202,7 @@ func (w *OptimizedHTTPClientWrapper) Get(ctx context.Context, url string) (*http
 	duration := time.Since(start)
 
 	if err != nil {
-		// Determine error type for domain-specific tracking
-		var errorType ProxyErrorType
-		if strings.Contains(err.Error(), "timeout") || strings.Contains(err.Error(), "deadline exceeded") {
-			errorType = ProxyErrorTimeout
-		} else if strings.Contains(err.Error(), "connection refused") || strings.Contains(err.Error(), "connection reset") {
-			errorType = ProxyErrorConnection
-		} else {
-			errorType = ProxyErrorConnection // Default to connection error
-		}
+		errorType := classifyProxyError(err)
 
 		w.Logger.Error("OptimizedHTTPClient: request failed",
 			"url", url,

@@ -184,18 +184,8 @@ func (c *EnvoyHTTPClient) Get(ctx context.Context, targetURL string) (*http.Resp
 	duration := time.Since(start)
 
 	if err != nil {
-		// Categorize error type for metrics
-		var errorType ProxyErrorType
-		if strings.Contains(err.Error(), "timeout") || strings.Contains(err.Error(), "deadline exceeded") {
-			errorType = ProxyErrorTimeout
-			metrics.RecordError(ProxyErrorTimeout)
-		} else if strings.Contains(err.Error(), "connection refused") || strings.Contains(err.Error(), "connection reset") {
-			errorType = ProxyErrorConnection
-			metrics.RecordError(ProxyErrorConnection)
-		} else {
-			errorType = ProxyErrorConnection // Default to connection error
-			metrics.RecordError(ProxyErrorConnection)
-		}
+		errorType := classifyProxyError(err)
+		metrics.RecordError(errorType)
 
 		c.logger.Error("EnvoyHTTPClient: request failed",
 			"target_url", targetURL,

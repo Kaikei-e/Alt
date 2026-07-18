@@ -48,13 +48,28 @@ func (h *HostRateLimiter) Wait(ctx context.Context, host string) error {
 	}
 	// Reserve the slot by recording the projected call time so concurrent
 	// waiters don't all fire at the same instant once we release the lock.
-	h.lastCall[host] = now.Add(wait)
+	reserved := now.Add(wait)
+	h.lastCall[host] = reserved
 	h.mu.Unlock()
 
 	if wait <= 0 {
 		return nil
 	}
-	return h.sleep(ctx, wait)
+	if err := h.sleep(ctx, wait); err != nil {
+		// Roll back our reservation so a cancelled wait does not delay the
+		// next real call beyond the interval measured from the last success.
+		h.mu.Lock()
+		if h.lastCall[host].Equal(reserved) {
+			if ok {
+				h.lastCall[host] = last
+			} else {
+				delete(h.lastCall, host)
+			}
+		}
+		h.mu.Unlock()
+		return err
+	}
+	return nil
 }
 
 func ctxSleep(ctx context.Context, d time.Duration) error {
