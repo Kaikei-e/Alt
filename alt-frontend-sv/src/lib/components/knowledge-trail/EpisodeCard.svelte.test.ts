@@ -1,7 +1,11 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { page } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
-import type { EpisodeData, FootprintData } from "$lib/connect/knowledge_trail";
+import type {
+	BranchData,
+	EpisodeData,
+	FootprintData,
+} from "$lib/connect/knowledge_trail";
 import EpisodeCard from "./EpisodeCard.svelte";
 
 function makeFootprint(overrides: Partial<FootprintData> = {}): FootprintData {
@@ -237,5 +241,73 @@ describe("EpisodeCard", () => {
 		await expect
 			.element(page.getByTestId("episode-toggle"))
 			.toHaveAttribute("aria-expanded", "false");
+	});
+});
+
+// Wave 10 (D26/D28): the top-of-trail branch inbox is removed. At most one
+// branch surfaces per episode, subordinate to its header.
+describe("EpisodeCard subordinate branch", () => {
+	function makeBranch(overrides: Partial<BranchData> = {}): BranchData {
+		return {
+			branchKey: "cluster:u:article:z",
+			anchorItemKey: "article:submarines",
+			relationKind: "cluster",
+			why: "Joins a topic you follow.",
+			evidenceRefs: [{ refId: "rust", label: "rust", kind: "tag" }],
+			confidence: "plausible",
+			targetItemKey: "article:z",
+			targetTitle: "Async Rust",
+			...overrides,
+		};
+	}
+
+	it("renders no subordinate branch block when branch is absent", async () => {
+		render(EpisodeCard, { props: { episode: makeEpisode() } });
+		expect(page.getByTestId("episode-branch").elements()).toHaveLength(0);
+	});
+
+	it("renders one subordinate branch labeled 'Next step on this trail'", async () => {
+		render(EpisodeCard, {
+			props: {
+				episode: makeEpisode(),
+				branch: makeBranch(),
+				onResolveBranch: vi.fn(),
+			},
+		});
+		await expect
+			.element(page.getByTestId("episode-branch"))
+			.toBeInTheDocument();
+		await expect
+			.element(page.getByTestId("episode-branch"))
+			.toHaveTextContent("Next step on this trail");
+	});
+
+	it("Take this path on the subordinate branch calls onResolveBranch as taken", async () => {
+		const onResolveBranch = vi.fn();
+		render(EpisodeCard, {
+			props: { episode: makeEpisode(), branch: makeBranch(), onResolveBranch },
+		});
+		await page.getByTestId("branch-take").click();
+		expect(onResolveBranch).toHaveBeenCalledWith(
+			"cluster:u:article:z",
+			"taken",
+			"article:z",
+		);
+	});
+
+	it("Dismiss on the subordinate branch opens the one-tap reason row", async () => {
+		const onResolveBranch = vi.fn();
+		render(EpisodeCard, {
+			props: { episode: makeEpisode(), branch: makeBranch(), onResolveBranch },
+		});
+		await page.getByTestId("branch-dismiss").click();
+		expect(onResolveBranch).not.toHaveBeenCalled();
+		await page.getByTestId("branch-dismiss-reason-wrong_relation").click();
+		expect(onResolveBranch).toHaveBeenCalledWith(
+			"cluster:u:article:z",
+			"dismissed",
+			undefined,
+			"wrong_relation",
+		);
 	});
 });

@@ -4,6 +4,173 @@
   },
   "interactions": [
     {
+      "description": "a GetTrailBranchesForAnchor request",
+      "providerStates": [
+        {
+          "name": "a user has an open branch anchored on the just-read item"
+        }
+      ],
+      "request": {
+        "body": {
+          "anchorItemKey": "article:1",
+          "limit": 2,
+          "userId": "22222222-2222-2222-2222-222222222222"
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "matchingRules": {
+          "body": {
+            "$.anchorItemKey": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.limit": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.userId": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            }
+          }
+        },
+        "method": "POST",
+        "path": "/services.sovereign.v1.KnowledgeSovereignService/GetTrailBranchesForAnchor"
+      },
+      "response": {
+        "body": {
+          "branches": [
+            {
+              "anchorItemKey": "article:1",
+              "branchKey": "cluster:u:article:z",
+              "confidence": "plausible",
+              "evidenceRefs": [
+                {
+                  "kind": "tag",
+                  "refId": "rust"
+                }
+              ],
+              "relationKind": "cluster",
+              "targetItemKey": "article:z",
+              "targetTitle": "Async Rust",
+              "why": "Because you read \"US military courts in the UK\" — joins rust"
+            }
+          ]
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "matchingRules": {
+          "body": {
+            "$.branches": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type",
+                  "min": 1
+                }
+              ]
+            },
+            "$.branches[*].anchorItemKey": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.branches[*].branchKey": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.branches[*].confidence": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.branches[*].evidenceRefs": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type",
+                  "min": 1
+                }
+              ]
+            },
+            "$.branches[*].evidenceRefs[*].kind": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.branches[*].evidenceRefs[*].refId": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.branches[*].relationKind": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.branches[*].targetItemKey": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.branches[*].targetTitle": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.branches[*].why": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            }
+          }
+        },
+        "status": 200
+      }
+    },
+    {
       "description": "a GetTrailFootprints request for the user",
       "providerStates": [
         {
@@ -641,6 +808,69 @@
             "eventType": "trail.act_outcome.v1",
             "occurredAt": "2026-07-18T10:00:00Z",
             "payload": "eyJicmFuY2hfa2V5IjoiY2x1c3Rlcjp1OmFydGljbGU6eiIsImR3ZWxsX21zIjo0MjAwMCwiaXRlbV9rZXkiOiJhcnRpY2xlOnoifQ==",
+            "tenantId": "11111111-1111-1111-1111-111111111111",
+            "userId": "22222222-2222-2222-2222-222222222222"
+          }
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "matchingRules": {
+          "body": {
+            "$.event": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            }
+          }
+        },
+        "method": "POST",
+        "path": "/services.sovereign.v1.KnowledgeSovereignService/AppendKnowledgeEvent"
+      },
+      "response": {
+        "body": {
+          "success": true
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "matchingRules": {
+          "body": {
+            "$.success": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            }
+          }
+        },
+        "status": 200
+      }
+    },
+    {
+      "description": "an AppendKnowledgeEvent request for trail.branch_resolved.v1 with a dismiss_reason payload",
+      "providerStates": [
+        {
+          "name": "sovereign accepts trail.branch_resolved.v1 events carrying an optional dismiss reason"
+        }
+      ],
+      "request": {
+        "body": {
+          "event": {
+            "actorId": "22222222-2222-2222-2222-222222222222",
+            "actorType": "user",
+            "aggregateId": "cluster:u:article:z",
+            "aggregateType": "trail_branch",
+            "dedupeKey": "trail.branch_resolved.v1:01938e82-7c00-7a7b-9b10-0123456789ab",
+            "eventId": "0198a1b2-0001-7000-8000-0123456789ab",
+            "eventType": "trail.branch_resolved.v1",
+            "occurredAt": "2026-07-18T11:00:00Z",
+            "payload": "eyJicmFuY2hfa2V5IjoiY2x1c3Rlcjp1OmFydGljbGU6eiIsImRpc21pc3NfcmVhc29uIjoibm90X2ZvbGxvd2luZ190b3BpYyIsInJlc29sdXRpb24iOiJkaXNtaXNzZWQifQ==",
             "tenantId": "11111111-1111-1111-1111-111111111111",
             "userId": "22222222-2222-2222-2222-222222222222"
           }

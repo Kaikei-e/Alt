@@ -2,6 +2,7 @@ package knowledge_trail
 
 import (
 	"context"
+	"encoding/json"
 	"log/slog"
 	"testing"
 	"time"
@@ -15,8 +16,10 @@ import (
 	"alt/domain"
 	knowledgetrailv1 "alt/gen/proto/alt/knowledge_trail/v1"
 	"alt/mocks"
+	"alt/orchestrator/usecase/get_item_branches_usecase"
 	"alt/orchestrator/usecase/get_knowledge_trail_usecase"
 	"alt/orchestrator/usecase/image_proxy_usecase"
+	"alt/orchestrator/usecase/resolve_trail_branch_usecase"
 	"alt/orchestrator/usecase/search_trail_usecase"
 )
 
@@ -88,7 +91,7 @@ func TestGetTrail_MapsCollapsedContactFields(t *testing.T) {
 		ContactCount:    2,
 		Wear:            "worn",
 	}}}
-	h := NewHandler(get_knowledge_trail_usecase.NewGetKnowledgeTrailUsecase(port, &fakeThumbnailPort{}), nil, nil, nil, nil, slog.Default())
+	h := NewHandler(get_knowledge_trail_usecase.NewGetKnowledgeTrailUsecase(port, &fakeThumbnailPort{}), nil, nil, nil, nil, nil, slog.Default())
 
 	resp, err := h.GetTrail(userCtx(), connect.NewRequest(&knowledgetrailv1.GetTrailRequest{Limit: 20}))
 	require.NoError(t, err)
@@ -112,7 +115,7 @@ func TestGetTrail_SingleContactKeepsCountOne(t *testing.T) {
 		FirstOccurredAt: at,
 		ContactCount:    1,
 	}}}
-	h := NewHandler(get_knowledge_trail_usecase.NewGetKnowledgeTrailUsecase(port, &fakeThumbnailPort{}), nil, nil, nil, nil, slog.Default())
+	h := NewHandler(get_knowledge_trail_usecase.NewGetKnowledgeTrailUsecase(port, &fakeThumbnailPort{}), nil, nil, nil, nil, nil, slog.Default())
 
 	resp, err := h.GetTrail(userCtx(), connect.NewRequest(&knowledgetrailv1.GetTrailRequest{Limit: 20}))
 	require.NoError(t, err)
@@ -133,7 +136,7 @@ func TestGetTrail_MapsEpisodes(t *testing.T) {
 			Verb:         "read",
 		}},
 	}}}
-	h := NewHandler(get_knowledge_trail_usecase.NewGetKnowledgeTrailUsecase(port, &fakeThumbnailPort{}), nil, nil, nil, nil, slog.Default())
+	h := NewHandler(get_knowledge_trail_usecase.NewGetKnowledgeTrailUsecase(port, &fakeThumbnailPort{}), nil, nil, nil, nil, nil, slog.Default())
 
 	resp, err := h.GetTrail(userCtx(), connect.NewRequest(&knowledgetrailv1.GetTrailRequest{Limit: 20}))
 	require.NoError(t, err)
@@ -164,7 +167,7 @@ func TestGetTrail_SignsEpisodeThumbnailWhenRawURLPresent(t *testing.T) {
 	signer.EXPECT().GenerateProxyURL(rawURL).Return(signedURL)
 	imageProxy := image_proxy_usecase.NewImageProxyUsecase(nil, nil, nil, signer, nil, nil, 0, 0, 0)
 
-	h := NewHandler(get_knowledge_trail_usecase.NewGetKnowledgeTrailUsecase(port, thumbs), nil, nil, nil, imageProxy, slog.Default())
+	h := NewHandler(get_knowledge_trail_usecase.NewGetKnowledgeTrailUsecase(port, thumbs), nil, nil, nil, nil, imageProxy, slog.Default())
 
 	resp, err := h.GetTrail(userCtx(), connect.NewRequest(&knowledgetrailv1.GetTrailRequest{Limit: 20}))
 	require.NoError(t, err)
@@ -182,7 +185,7 @@ func TestGetTrail_NoImageProxyLeavesThumbnailEmpty(t *testing.T) {
 	}}}
 	thumbs := &fakeThumbnailPort{urls: map[string]string{articleID: "https://example.com/a.png"}}
 
-	h := NewHandler(get_knowledge_trail_usecase.NewGetKnowledgeTrailUsecase(port, thumbs), nil, nil, nil, nil, slog.Default())
+	h := NewHandler(get_knowledge_trail_usecase.NewGetKnowledgeTrailUsecase(port, thumbs), nil, nil, nil, nil, nil, slog.Default())
 
 	resp, err := h.GetTrail(userCtx(), connect.NewRequest(&knowledgetrailv1.GetTrailRequest{Limit: 20}))
 	require.NoError(t, err)
@@ -202,7 +205,7 @@ func TestSearchTrail_MapsEpisodesAndMatchedItemKeys(t *testing.T) {
 		Footprints: []domain.TrailFootprint{{FootprintKey: "open:article:1", ItemKey: "article:" + articleID, Verb: "read"}},
 	}}}
 	searchUC := search_trail_usecase.NewSearchTrailUsecase(searchPort, trailPort, &fakeThumbnailPort{})
-	h := NewHandler(nil, nil, nil, searchUC, nil, slog.Default())
+	h := NewHandler(nil, nil, nil, searchUC, nil, nil, slog.Default())
 
 	resp, err := h.SearchTrail(userCtx(), connect.NewRequest(&knowledgetrailv1.SearchTrailRequest{Query: "llm", Limit: 20}))
 	require.NoError(t, err)
@@ -236,7 +239,7 @@ func TestSearchTrail_SignsEpisodeThumbnailWhenRawURLPresent(t *testing.T) {
 	signer.EXPECT().GenerateProxyURL(rawURL).Return(signedURL)
 	imageProxy := image_proxy_usecase.NewImageProxyUsecase(nil, nil, nil, signer, nil, nil, 0, 0, 0)
 
-	h := NewHandler(nil, nil, nil, searchUC, imageProxy, slog.Default())
+	h := NewHandler(nil, nil, nil, searchUC, nil, imageProxy, slog.Default())
 
 	resp, err := h.SearchTrail(userCtx(), connect.NewRequest(&knowledgetrailv1.SearchTrailRequest{Query: "llm", Limit: 20}))
 	require.NoError(t, err)
@@ -247,7 +250,7 @@ func TestSearchTrail_SignsEpisodeThumbnailWhenRawURLPresent(t *testing.T) {
 // Unauthenticated requests are rejected before the usecase is ever reached.
 func TestSearchTrail_UnauthenticatedReturnsUnauthenticated(t *testing.T) {
 	searchUC := search_trail_usecase.NewSearchTrailUsecase(&fakeSearchPort{}, &fakeSearchTrailPort{}, &fakeThumbnailPort{})
-	h := NewHandler(nil, nil, nil, searchUC, nil, slog.Default())
+	h := NewHandler(nil, nil, nil, searchUC, nil, nil, slog.Default())
 
 	_, err := h.SearchTrail(context.Background(), connect.NewRequest(&knowledgetrailv1.SearchTrailRequest{Query: "llm"}))
 	require.Error(t, err)
@@ -258,7 +261,7 @@ func TestSearchTrail_UnauthenticatedReturnsUnauthenticated(t *testing.T) {
 // ErrInvalidRequest maps to CodeInvalidArgument, not CodeInternal.
 func TestSearchTrail_EmptyQueryReturnsInvalidArgument(t *testing.T) {
 	searchUC := search_trail_usecase.NewSearchTrailUsecase(&fakeSearchPort{}, &fakeSearchTrailPort{}, &fakeThumbnailPort{})
-	h := NewHandler(nil, nil, nil, searchUC, nil, slog.Default())
+	h := NewHandler(nil, nil, nil, searchUC, nil, nil, slog.Default())
 
 	_, err := h.SearchTrail(userCtx(), connect.NewRequest(&knowledgetrailv1.SearchTrailRequest{Query: "   "}))
 	require.Error(t, err)
@@ -269,9 +272,122 @@ func TestSearchTrail_EmptyQueryReturnsInvalidArgument(t *testing.T) {
 // than silently return an empty result, mirroring EmitTrailOutcome's guard —
 // a DI gap must be loud, not indistinguishable from "zero results".
 func TestSearchTrail_UnwiredUsecasePanics(t *testing.T) {
-	h := NewHandler(nil, nil, nil, nil, nil, slog.Default())
+	h := NewHandler(nil, nil, nil, nil, nil, nil, slog.Default())
 
 	assert.Panics(t, func() {
 		_, _ = h.SearchTrail(userCtx(), connect.NewRequest(&knowledgetrailv1.SearchTrailRequest{Query: "llm"}))
 	})
+}
+
+type fakeItemBranchesPort struct {
+	branches []domain.TrailBranch
+}
+
+func (f *fakeItemBranchesPort) GetTrailBranchesForAnchor(_ context.Context, _ uuid.UUID, _ string, _ int) ([]domain.TrailBranch, error) {
+	return f.branches, nil
+}
+
+// GetItemBranches (Wave 10, D26) returns the patch-exit branches anchored on
+// one item, mapped the same shape GetTrail uses for its embedded branches.
+func TestGetItemBranches_ReturnsMappedBranches(t *testing.T) {
+	port := &fakeItemBranchesPort{branches: []domain.TrailBranch{{
+		BranchKey:     "cluster:u:article:z",
+		AnchorItemKey: "article:1",
+		RelationKind:  "cluster",
+		Why:           `Because you read "US military courts in the UK" — joins rust`,
+		EvidenceRefs:  []domain.TrailEvidenceRef{{RefID: "rust", Label: "rust", Kind: "tag"}},
+		Confidence:    "plausible",
+		TargetItemKey: "article:z",
+		TargetTitle:   "Async Rust",
+	}}}
+	itemBranchesUC := get_item_branches_usecase.NewGetItemBranchesUsecase(port)
+	h := NewHandler(nil, nil, nil, nil, itemBranchesUC, nil, slog.Default())
+
+	resp, err := h.GetItemBranches(userCtx(), connect.NewRequest(&knowledgetrailv1.GetItemBranchesRequest{
+		ItemKey: "article:1", Limit: 2,
+	}))
+	require.NoError(t, err)
+	require.Len(t, resp.Msg.Branches, 1)
+	b := resp.Msg.Branches[0]
+	assert.Equal(t, "cluster:u:article:z", b.BranchKey)
+	assert.Contains(t, b.Why, "US military courts in the UK")
+	assert.Equal(t, "plausible", b.Confidence)
+}
+
+func TestGetItemBranches_UnauthenticatedReturnsUnauthenticated(t *testing.T) {
+	itemBranchesUC := get_item_branches_usecase.NewGetItemBranchesUsecase(&fakeItemBranchesPort{})
+	h := NewHandler(nil, nil, nil, nil, itemBranchesUC, nil, slog.Default())
+
+	_, err := h.GetItemBranches(context.Background(), connect.NewRequest(&knowledgetrailv1.GetItemBranchesRequest{ItemKey: "article:1"}))
+	require.Error(t, err)
+	assert.Equal(t, connect.CodeUnauthenticated, connect.CodeOf(err))
+}
+
+// An empty item_key is a structurally invalid request — the usecase's
+// ErrInvalidRequest maps to CodeInvalidArgument, not CodeInternal.
+func TestGetItemBranches_EmptyItemKeyReturnsInvalidArgument(t *testing.T) {
+	itemBranchesUC := get_item_branches_usecase.NewGetItemBranchesUsecase(&fakeItemBranchesPort{})
+	h := NewHandler(nil, nil, nil, nil, itemBranchesUC, nil, slog.Default())
+
+	_, err := h.GetItemBranches(userCtx(), connect.NewRequest(&knowledgetrailv1.GetItemBranchesRequest{ItemKey: "   "}))
+	require.Error(t, err)
+	assert.Equal(t, connect.CodeInvalidArgument, connect.CodeOf(err))
+}
+
+// Rule 8 (no silent fallback): an unwired item-branches usecase must panic
+// rather than silently return an empty result, mirroring SearchTrail's guard.
+func TestGetItemBranches_UnwiredUsecasePanics(t *testing.T) {
+	h := NewHandler(nil, nil, nil, nil, nil, nil, slog.Default())
+
+	assert.Panics(t, func() {
+		_, _ = h.GetItemBranches(userCtx(), connect.NewRequest(&knowledgetrailv1.GetItemBranchesRequest{ItemKey: "article:1"}))
+	})
+}
+
+type fakeAppendEventPort struct {
+	events []domain.KnowledgeEvent
+}
+
+func (f *fakeAppendEventPort) AppendKnowledgeEvent(_ context.Context, e domain.KnowledgeEvent) (int64, error) {
+	f.events = append(f.events, e)
+	return int64(len(f.events)), nil
+}
+
+const resolveGoodUUIDv7 = "01938e82-7c00-7a7b-9b10-0123456789ab"
+
+// ResolveBranch forwards dismiss_reason (D28(d)) into the usecase, which
+// carries it into the appended event payload.
+func TestResolveBranch_ForwardsDismissReason(t *testing.T) {
+	port := &fakeAppendEventPort{}
+	resolveUC := resolve_trail_branch_usecase.NewResolveTrailBranchUsecase(port)
+	h := NewHandler(nil, resolveUC, nil, nil, nil, nil, slog.Default())
+
+	resp, err := h.ResolveBranch(userCtx(), connect.NewRequest(&knowledgetrailv1.ResolveBranchRequest{
+		BranchKey:          "cluster:u:article:z",
+		Resolution:         "dismissed",
+		ClientResolutionId: resolveGoodUUIDv7,
+		DismissReason:      "not_following_topic",
+	}))
+	require.NoError(t, err)
+	assert.True(t, resp.Msg.Ok)
+
+	require.Len(t, port.events, 1)
+	var payload map[string]string
+	require.NoError(t, json.Unmarshal(port.events[0].Payload, &payload))
+	assert.Equal(t, "not_following_topic", payload["dismiss_reason"])
+}
+
+// An invalid dismiss_reason (outside the allowlist) maps to InvalidArgument.
+func TestResolveBranch_InvalidDismissReasonReturnsInvalidArgument(t *testing.T) {
+	resolveUC := resolve_trail_branch_usecase.NewResolveTrailBranchUsecase(&fakeAppendEventPort{})
+	h := NewHandler(nil, resolveUC, nil, nil, nil, nil, slog.Default())
+
+	_, err := h.ResolveBranch(userCtx(), connect.NewRequest(&knowledgetrailv1.ResolveBranchRequest{
+		BranchKey:          "cluster:u:article:z",
+		Resolution:         "dismissed",
+		ClientResolutionId: resolveGoodUUIDv7,
+		DismissReason:      "not_a_real_reason",
+	}))
+	require.Error(t, err)
+	assert.Equal(t, connect.CodeInvalidArgument, connect.CodeOf(err))
 }

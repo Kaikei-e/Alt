@@ -45,6 +45,9 @@ const (
 	// KnowledgeTrailServiceSearchTrailProcedure is the fully-qualified name of the
 	// KnowledgeTrailService's SearchTrail RPC.
 	KnowledgeTrailServiceSearchTrailProcedure = "/alt.knowledge_trail.v1.KnowledgeTrailService/SearchTrail"
+	// KnowledgeTrailServiceGetItemBranchesProcedure is the fully-qualified name of the
+	// KnowledgeTrailService's GetItemBranches RPC.
+	KnowledgeTrailServiceGetItemBranchesProcedure = "/alt.knowledge_trail.v1.KnowledgeTrailService/GetItemBranches"
 )
 
 // KnowledgeTrailServiceClient is a client for the alt.knowledge_trail.v1.KnowledgeTrailService
@@ -68,6 +71,10 @@ type KnowledgeTrailServiceClient interface {
 	// article index, intersected with the user's spine). Hits come back as their
 	// containing episodes so every result keeps its time context.
 	SearchTrail(context.Context, *connect.Request[v1.SearchTrailRequest]) (*connect.Response[v1.SearchTrailResponse], error)
+	// GetItemBranches returns the open branches anchored on one item — the
+	// patch-exit surface (D26): the article page shows at most 1-2 proposals
+	// anchored on the article the user just finished reading.
+	GetItemBranches(context.Context, *connect.Request[v1.GetItemBranchesRequest]) (*connect.Response[v1.GetItemBranchesResponse], error)
 }
 
 // NewKnowledgeTrailServiceClient constructs a client for the
@@ -106,6 +113,12 @@ func NewKnowledgeTrailServiceClient(httpClient connect.HTTPClient, baseURL strin
 			connect.WithSchema(knowledgeTrailServiceMethods.ByName("SearchTrail")),
 			connect.WithClientOptions(opts...),
 		),
+		getItemBranches: connect.NewClient[v1.GetItemBranchesRequest, v1.GetItemBranchesResponse](
+			httpClient,
+			baseURL+KnowledgeTrailServiceGetItemBranchesProcedure,
+			connect.WithSchema(knowledgeTrailServiceMethods.ByName("GetItemBranches")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
@@ -115,6 +128,7 @@ type knowledgeTrailServiceClient struct {
 	resolveBranch    *connect.Client[v1.ResolveBranchRequest, v1.ResolveBranchResponse]
 	emitTrailOutcome *connect.Client[v1.EmitTrailOutcomeRequest, v1.EmitTrailOutcomeResponse]
 	searchTrail      *connect.Client[v1.SearchTrailRequest, v1.SearchTrailResponse]
+	getItemBranches  *connect.Client[v1.GetItemBranchesRequest, v1.GetItemBranchesResponse]
 }
 
 // GetTrail calls alt.knowledge_trail.v1.KnowledgeTrailService.GetTrail.
@@ -135,6 +149,11 @@ func (c *knowledgeTrailServiceClient) EmitTrailOutcome(ctx context.Context, req 
 // SearchTrail calls alt.knowledge_trail.v1.KnowledgeTrailService.SearchTrail.
 func (c *knowledgeTrailServiceClient) SearchTrail(ctx context.Context, req *connect.Request[v1.SearchTrailRequest]) (*connect.Response[v1.SearchTrailResponse], error) {
 	return c.searchTrail.CallUnary(ctx, req)
+}
+
+// GetItemBranches calls alt.knowledge_trail.v1.KnowledgeTrailService.GetItemBranches.
+func (c *knowledgeTrailServiceClient) GetItemBranches(ctx context.Context, req *connect.Request[v1.GetItemBranchesRequest]) (*connect.Response[v1.GetItemBranchesResponse], error) {
+	return c.getItemBranches.CallUnary(ctx, req)
 }
 
 // KnowledgeTrailServiceHandler is an implementation of the
@@ -158,6 +177,10 @@ type KnowledgeTrailServiceHandler interface {
 	// article index, intersected with the user's spine). Hits come back as their
 	// containing episodes so every result keeps its time context.
 	SearchTrail(context.Context, *connect.Request[v1.SearchTrailRequest]) (*connect.Response[v1.SearchTrailResponse], error)
+	// GetItemBranches returns the open branches anchored on one item — the
+	// patch-exit surface (D26): the article page shows at most 1-2 proposals
+	// anchored on the article the user just finished reading.
+	GetItemBranches(context.Context, *connect.Request[v1.GetItemBranchesRequest]) (*connect.Response[v1.GetItemBranchesResponse], error)
 }
 
 // NewKnowledgeTrailServiceHandler builds an HTTP handler from the service implementation. It
@@ -191,6 +214,12 @@ func NewKnowledgeTrailServiceHandler(svc KnowledgeTrailServiceHandler, opts ...c
 		connect.WithSchema(knowledgeTrailServiceMethods.ByName("SearchTrail")),
 		connect.WithHandlerOptions(opts...),
 	)
+	knowledgeTrailServiceGetItemBranchesHandler := connect.NewUnaryHandler(
+		KnowledgeTrailServiceGetItemBranchesProcedure,
+		svc.GetItemBranches,
+		connect.WithSchema(knowledgeTrailServiceMethods.ByName("GetItemBranches")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/alt.knowledge_trail.v1.KnowledgeTrailService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case KnowledgeTrailServiceGetTrailProcedure:
@@ -201,6 +230,8 @@ func NewKnowledgeTrailServiceHandler(svc KnowledgeTrailServiceHandler, opts ...c
 			knowledgeTrailServiceEmitTrailOutcomeHandler.ServeHTTP(w, r)
 		case KnowledgeTrailServiceSearchTrailProcedure:
 			knowledgeTrailServiceSearchTrailHandler.ServeHTTP(w, r)
+		case KnowledgeTrailServiceGetItemBranchesProcedure:
+			knowledgeTrailServiceGetItemBranchesHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -224,4 +255,8 @@ func (UnimplementedKnowledgeTrailServiceHandler) EmitTrailOutcome(context.Contex
 
 func (UnimplementedKnowledgeTrailServiceHandler) SearchTrail(context.Context, *connect.Request[v1.SearchTrailRequest]) (*connect.Response[v1.SearchTrailResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("alt.knowledge_trail.v1.KnowledgeTrailService.SearchTrail is not implemented"))
+}
+
+func (UnimplementedKnowledgeTrailServiceHandler) GetItemBranches(context.Context, *connect.Request[v1.GetItemBranchesRequest]) (*connect.Response[v1.GetItemBranchesResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("alt.knowledge_trail.v1.KnowledgeTrailService.GetItemBranches is not implemented"))
 }

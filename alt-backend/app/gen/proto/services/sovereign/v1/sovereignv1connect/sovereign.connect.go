@@ -169,6 +169,9 @@ const (
 	// KnowledgeSovereignServiceGetTrailFootprintsProcedure is the fully-qualified name of the
 	// KnowledgeSovereignService's GetTrailFootprints RPC.
 	KnowledgeSovereignServiceGetTrailFootprintsProcedure = "/services.sovereign.v1.KnowledgeSovereignService/GetTrailFootprints"
+	// KnowledgeSovereignServiceGetTrailBranchesForAnchorProcedure is the fully-qualified name of the
+	// KnowledgeSovereignService's GetTrailBranchesForAnchor RPC.
+	KnowledgeSovereignServiceGetTrailBranchesForAnchorProcedure = "/services.sovereign.v1.KnowledgeSovereignService/GetTrailBranchesForAnchor"
 )
 
 // KnowledgeSovereignServiceClient is a client for the
@@ -233,6 +236,9 @@ type KnowledgeSovereignServiceClient interface {
 	// order. Footprints are the pure projection of cognitive-act events; the read
 	// model is disposable and re-derivable from knowledge_events.
 	GetTrailFootprints(context.Context, *connect.Request[v1.GetTrailFootprintsRequest]) (*connect.Response[v1.GetTrailFootprintsResponse], error)
+	// GetTrailBranchesForAnchor returns the user's open branches anchored on one
+	// item, newest first — the patch-exit read (D26).
+	GetTrailBranchesForAnchor(context.Context, *connect.Request[v1.GetTrailBranchesForAnchorRequest]) (*connect.Response[v1.GetTrailBranchesForAnchorResponse], error)
 }
 
 // NewKnowledgeSovereignServiceClient constructs a client for the
@@ -517,6 +523,12 @@ func NewKnowledgeSovereignServiceClient(httpClient connect.HTTPClient, baseURL s
 			connect.WithSchema(knowledgeSovereignServiceMethods.ByName("GetTrailFootprints")),
 			connect.WithClientOptions(opts...),
 		),
+		getTrailBranchesForAnchor: connect.NewClient[v1.GetTrailBranchesForAnchorRequest, v1.GetTrailBranchesForAnchorResponse](
+			httpClient,
+			baseURL+KnowledgeSovereignServiceGetTrailBranchesForAnchorProcedure,
+			connect.WithSchema(knowledgeSovereignServiceMethods.ByName("GetTrailBranchesForAnchor")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
@@ -567,6 +579,7 @@ type knowledgeSovereignServiceClient struct {
 	appendKnowledgeUserEvent   *connect.Client[v1.AppendKnowledgeUserEventRequest, v1.AppendKnowledgeUserEventResponse]
 	watchProjectorEvents       *connect.Client[v1.WatchProjectorEventsRequest, v1.WatchProjectorEventsResponse]
 	getTrailFootprints         *connect.Client[v1.GetTrailFootprintsRequest, v1.GetTrailFootprintsResponse]
+	getTrailBranchesForAnchor  *connect.Client[v1.GetTrailBranchesForAnchorRequest, v1.GetTrailBranchesForAnchorResponse]
 }
 
 // ApplyProjectionMutation calls
@@ -808,6 +821,12 @@ func (c *knowledgeSovereignServiceClient) GetTrailFootprints(ctx context.Context
 	return c.getTrailFootprints.CallUnary(ctx, req)
 }
 
+// GetTrailBranchesForAnchor calls
+// services.sovereign.v1.KnowledgeSovereignService.GetTrailBranchesForAnchor.
+func (c *knowledgeSovereignServiceClient) GetTrailBranchesForAnchor(ctx context.Context, req *connect.Request[v1.GetTrailBranchesForAnchorRequest]) (*connect.Response[v1.GetTrailBranchesForAnchorResponse], error) {
+	return c.getTrailBranchesForAnchor.CallUnary(ctx, req)
+}
+
 // KnowledgeSovereignServiceHandler is an implementation of the
 // services.sovereign.v1.KnowledgeSovereignService service.
 type KnowledgeSovereignServiceHandler interface {
@@ -870,6 +889,9 @@ type KnowledgeSovereignServiceHandler interface {
 	// order. Footprints are the pure projection of cognitive-act events; the read
 	// model is disposable and re-derivable from knowledge_events.
 	GetTrailFootprints(context.Context, *connect.Request[v1.GetTrailFootprintsRequest]) (*connect.Response[v1.GetTrailFootprintsResponse], error)
+	// GetTrailBranchesForAnchor returns the user's open branches anchored on one
+	// item, newest first — the patch-exit read (D26).
+	GetTrailBranchesForAnchor(context.Context, *connect.Request[v1.GetTrailBranchesForAnchorRequest]) (*connect.Response[v1.GetTrailBranchesForAnchorResponse], error)
 }
 
 // NewKnowledgeSovereignServiceHandler builds an HTTP handler from the service implementation. It
@@ -1149,6 +1171,12 @@ func NewKnowledgeSovereignServiceHandler(svc KnowledgeSovereignServiceHandler, o
 		connect.WithSchema(knowledgeSovereignServiceMethods.ByName("GetTrailFootprints")),
 		connect.WithHandlerOptions(opts...),
 	)
+	knowledgeSovereignServiceGetTrailBranchesForAnchorHandler := connect.NewUnaryHandler(
+		KnowledgeSovereignServiceGetTrailBranchesForAnchorProcedure,
+		svc.GetTrailBranchesForAnchor,
+		connect.WithSchema(knowledgeSovereignServiceMethods.ByName("GetTrailBranchesForAnchor")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/services.sovereign.v1.KnowledgeSovereignService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case KnowledgeSovereignServiceApplyProjectionMutationProcedure:
@@ -1241,6 +1269,8 @@ func NewKnowledgeSovereignServiceHandler(svc KnowledgeSovereignServiceHandler, o
 			knowledgeSovereignServiceWatchProjectorEventsHandler.ServeHTTP(w, r)
 		case KnowledgeSovereignServiceGetTrailFootprintsProcedure:
 			knowledgeSovereignServiceGetTrailFootprintsHandler.ServeHTTP(w, r)
+		case KnowledgeSovereignServiceGetTrailBranchesForAnchorProcedure:
+			knowledgeSovereignServiceGetTrailBranchesForAnchorHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -1428,4 +1458,8 @@ func (UnimplementedKnowledgeSovereignServiceHandler) WatchProjectorEvents(contex
 
 func (UnimplementedKnowledgeSovereignServiceHandler) GetTrailFootprints(context.Context, *connect.Request[v1.GetTrailFootprintsRequest]) (*connect.Response[v1.GetTrailFootprintsResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("services.sovereign.v1.KnowledgeSovereignService.GetTrailFootprints is not implemented"))
+}
+
+func (UnimplementedKnowledgeSovereignServiceHandler) GetTrailBranchesForAnchor(context.Context, *connect.Request[v1.GetTrailBranchesForAnchorRequest]) (*connect.Response[v1.GetTrailBranchesForAnchorResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("services.sovereign.v1.KnowledgeSovereignService.GetTrailBranchesForAnchor is not implemented"))
 }

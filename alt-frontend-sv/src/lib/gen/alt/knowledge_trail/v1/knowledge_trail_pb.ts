@@ -10,7 +10,48 @@ import type { Message } from "@bufbuild/protobuf";
  * Describes the file alt/knowledge_trail/v1/knowledge_trail.proto.
  */
 export const file_alt_knowledge_trail_v1_knowledge_trail: GenFile = /*@__PURE__*/
-  fileDesc("CixhbHQva25vd2xlZGdlX3RyYWlsL3YxL2tub3dsZWRnZV90cmFpbC5wcm90bxIWYWx0Lmtub3dsZWRnZV90cmFpbC52MSIyChJTZWFyY2hUcmFpbFJlcXVlc3QSDQoFcXVlcnkYASABKAkSDQoFbGltaXQYAiABKAUiYwoTU2VhcmNoVHJhaWxSZXNwb25zZRIxCghlcGlzb2RlcxgBIAMoCzIfLmFsdC5rbm93bGVkZ2VfdHJhaWwudjEuRXBpc29kZRIZChFtYXRjaGVkX2l0ZW1fa2V5cxgCIAMoCSJRChdFbWl0VHJhaWxPdXRjb21lUmVxdWVzdBISCgpicmFuY2hfa2V5GAEgASgJEhAKCGl0ZW1fa2V5GAIgASgJEhAKCGR3ZWxsX21zGAMgASgDIiYKGEVtaXRUcmFpbE91dGNvbWVSZXNwb25zZRIKCgJvaxgBIAEoCCJcChRSZXNvbHZlQnJhbmNoUmVxdWVzdBISCgpicmFuY2hfa2V5GAEgASgJEhIKCnJlc29sdXRpb24YAiABKAkSHAoUY2xpZW50X3Jlc29sdXRpb25faWQYAyABKAkiIwoVUmVzb2x2ZUJyYW5jaFJlc3BvbnNlEgoKAm9rGAEgASgIIlUKD0dldFRyYWlsUmVxdWVzdBITCgZjdXJzb3IYASABKAlIAIgBARINCgVsaW1pdBgCIAEoBRITCgtmaWx0ZXJfdGFncxgDIAMoCUIJCgdfY3Vyc29yIusBChBHZXRUcmFpbFJlc3BvbnNlEjUKCmZvb3RwcmludHMYASADKAsyIS5hbHQua25vd2xlZGdlX3RyYWlsLnYxLkZvb3RwcmludBITCgtuZXh0X2N1cnNvchgCIAEoCRIQCghoYXNfbW9yZRgDIAEoCBIUCgxnZW5lcmF0ZWRfYXQYBCABKAkSMAoIYnJhbmNoZXMYBSADKAsyHi5hbHQua25vd2xlZGdlX3RyYWlsLnYxLkJyYW5jaBIxCghlcGlzb2RlcxgGIAMoCzIfLmFsdC5rbm93bGVkZ2VfdHJhaWwudjEuRXBpc29kZSJ6CgdFcGlzb2RlEhMKC2VwaXNvZGVfa2V5GAEgASgJEgwKBHdlYXIYAiABKAkSFQoNdGh1bWJuYWlsX3VybBgDIAEoCRI1Cgpmb290cHJpbnRzGAQgAygLMiEuYWx0Lmtub3dsZWRnZV90cmFpbC52MS5Gb290cHJpbnQi3QEKBkJyYW5jaBISCgpicmFuY2hfa2V5GAEgASgJEhcKD2FuY2hvcl9pdGVtX2tleRgCIAEoCRIVCg1yZWxhdGlvbl9raW5kGAMgASgJEgsKA3doeRgEIAEoCRI/Cg1ldmlkZW5jZV9yZWZzGAUgAygLMiguYWx0Lmtub3dsZWRnZV90cmFpbC52MS5UcmFpbEV2aWRlbmNlUmVmEhIKCmNvbmZpZGVuY2UYBiABKAkSFwoPdGFyZ2V0X2l0ZW1fa2V5GAcgASgJEhQKDHRhcmdldF90aXRsZRgIIAEoCSI/ChBUcmFpbEV2aWRlbmNlUmVmEg4KBnJlZl9pZBgBIAEoCRINCgVsYWJlbBgCIAEoCRIMCgRraW5kGAMgASgJItMBCglGb290cHJpbnQSFQoNZm9vdHByaW50X2tleRgBIAEoCRIMCgR2ZXJiGAIgASgJEhAKCGl0ZW1fa2V5GAMgASgJEg0KBXRpdGxlGAQgASgJEg8KB2V4Y2VycHQYBSABKAkSDAoEdGFncxgGIAMoCRIMCgRub3RlGAcgASgJEhMKC29jY3VycmVkX2F0GAggASgJEgwKBHdlYXIYCSABKAkSFQoNY29udGFjdF9jb3VudBgKIAEoBRIZChFmaXJzdF9vY2N1cnJlZF9hdBgLIAEoCTLDAwoVS25vd2xlZGdlVHJhaWxTZXJ2aWNlEl0KCEdldFRyYWlsEicuYWx0Lmtub3dsZWRnZV90cmFpbC52MS5HZXRUcmFpbFJlcXVlc3QaKC5hbHQua25vd2xlZGdlX3RyYWlsLnYxLkdldFRyYWlsUmVzcG9uc2USbAoNUmVzb2x2ZUJyYW5jaBIsLmFsdC5rbm93bGVkZ2VfdHJhaWwudjEuUmVzb2x2ZUJyYW5jaFJlcXVlc3QaLS5hbHQua25vd2xlZGdlX3RyYWlsLnYxLlJlc29sdmVCcmFuY2hSZXNwb25zZRJ1ChBFbWl0VHJhaWxPdXRjb21lEi8uYWx0Lmtub3dsZWRnZV90cmFpbC52MS5FbWl0VHJhaWxPdXRjb21lUmVxdWVzdBowLmFsdC5rbm93bGVkZ2VfdHJhaWwudjEuRW1pdFRyYWlsT3V0Y29tZVJlc3BvbnNlEmYKC1NlYXJjaFRyYWlsEiouYWx0Lmtub3dsZWRnZV90cmFpbC52MS5TZWFyY2hUcmFpbFJlcXVlc3QaKy5hbHQua25vd2xlZGdlX3RyYWlsLnYxLlNlYXJjaFRyYWlsUmVzcG9uc2VCN1o1YWx0L2dlbi9wcm90by9hbHQva25vd2xlZGdlX3RyYWlsL3YxO2tub3dsZWRnZXRyYWlsdjFiBnByb3RvMw");
+  fileDesc("CixhbHQva25vd2xlZGdlX3RyYWlsL3YxL2tub3dsZWRnZV90cmFpbC5wcm90bxIWYWx0Lmtub3dsZWRnZV90cmFpbC52MSI5ChZHZXRJdGVtQnJhbmNoZXNSZXF1ZXN0EhAKCGl0ZW1fa2V5GAEgASgJEg0KBWxpbWl0GAIgASgFIksKF0dldEl0ZW1CcmFuY2hlc1Jlc3BvbnNlEjAKCGJyYW5jaGVzGAEgAygLMh4uYWx0Lmtub3dsZWRnZV90cmFpbC52MS5CcmFuY2giMgoSU2VhcmNoVHJhaWxSZXF1ZXN0Eg0KBXF1ZXJ5GAEgASgJEg0KBWxpbWl0GAIgASgFImMKE1NlYXJjaFRyYWlsUmVzcG9uc2USMQoIZXBpc29kZXMYASADKAsyHy5hbHQua25vd2xlZGdlX3RyYWlsLnYxLkVwaXNvZGUSGQoRbWF0Y2hlZF9pdGVtX2tleXMYAiADKAkiUQoXRW1pdFRyYWlsT3V0Y29tZVJlcXVlc3QSEgoKYnJhbmNoX2tleRgBIAEoCRIQCghpdGVtX2tleRgCIAEoCRIQCghkd2VsbF9tcxgDIAEoAyImChhFbWl0VHJhaWxPdXRjb21lUmVzcG9uc2USCgoCb2sYASABKAgidAoUUmVzb2x2ZUJyYW5jaFJlcXVlc3QSEgoKYnJhbmNoX2tleRgBIAEoCRISCgpyZXNvbHV0aW9uGAIgASgJEhwKFGNsaWVudF9yZXNvbHV0aW9uX2lkGAMgASgJEhYKDmRpc21pc3NfcmVhc29uGAQgASgJIiMKFVJlc29sdmVCcmFuY2hSZXNwb25zZRIKCgJvaxgBIAEoCCJVCg9HZXRUcmFpbFJlcXVlc3QSEwoGY3Vyc29yGAEgASgJSACIAQESDQoFbGltaXQYAiABKAUSEwoLZmlsdGVyX3RhZ3MYAyADKAlCCQoHX2N1cnNvciLrAQoQR2V0VHJhaWxSZXNwb25zZRI1Cgpmb290cHJpbnRzGAEgAygLMiEuYWx0Lmtub3dsZWRnZV90cmFpbC52MS5Gb290cHJpbnQSEwoLbmV4dF9jdXJzb3IYAiABKAkSEAoIaGFzX21vcmUYAyABKAgSFAoMZ2VuZXJhdGVkX2F0GAQgASgJEjAKCGJyYW5jaGVzGAUgAygLMh4uYWx0Lmtub3dsZWRnZV90cmFpbC52MS5CcmFuY2gSMQoIZXBpc29kZXMYBiADKAsyHy5hbHQua25vd2xlZGdlX3RyYWlsLnYxLkVwaXNvZGUiegoHRXBpc29kZRITCgtlcGlzb2RlX2tleRgBIAEoCRIMCgR3ZWFyGAIgASgJEhUKDXRodW1ibmFpbF91cmwYAyABKAkSNQoKZm9vdHByaW50cxgEIAMoCzIhLmFsdC5rbm93bGVkZ2VfdHJhaWwudjEuRm9vdHByaW50It0BCgZCcmFuY2gSEgoKYnJhbmNoX2tleRgBIAEoCRIXCg9hbmNob3JfaXRlbV9rZXkYAiABKAkSFQoNcmVsYXRpb25fa2luZBgDIAEoCRILCgN3aHkYBCABKAkSPwoNZXZpZGVuY2VfcmVmcxgFIAMoCzIoLmFsdC5rbm93bGVkZ2VfdHJhaWwudjEuVHJhaWxFdmlkZW5jZVJlZhISCgpjb25maWRlbmNlGAYgASgJEhcKD3RhcmdldF9pdGVtX2tleRgHIAEoCRIUCgx0YXJnZXRfdGl0bGUYCCABKAkiPwoQVHJhaWxFdmlkZW5jZVJlZhIOCgZyZWZfaWQYASABKAkSDQoFbGFiZWwYAiABKAkSDAoEa2luZBgDIAEoCSLTAQoJRm9vdHByaW50EhUKDWZvb3RwcmludF9rZXkYASABKAkSDAoEdmVyYhgCIAEoCRIQCghpdGVtX2tleRgDIAEoCRINCgV0aXRsZRgEIAEoCRIPCgdleGNlcnB0GAUgASgJEgwKBHRhZ3MYBiADKAkSDAoEbm90ZRgHIAEoCRITCgtvY2N1cnJlZF9hdBgIIAEoCRIMCgR3ZWFyGAkgASgJEhUKDWNvbnRhY3RfY291bnQYCiABKAUSGQoRZmlyc3Rfb2NjdXJyZWRfYXQYCyABKAkytwQKFUtub3dsZWRnZVRyYWlsU2VydmljZRJdCghHZXRUcmFpbBInLmFsdC5rbm93bGVkZ2VfdHJhaWwudjEuR2V0VHJhaWxSZXF1ZXN0GiguYWx0Lmtub3dsZWRnZV90cmFpbC52MS5HZXRUcmFpbFJlc3BvbnNlEmwKDVJlc29sdmVCcmFuY2gSLC5hbHQua25vd2xlZGdlX3RyYWlsLnYxLlJlc29sdmVCcmFuY2hSZXF1ZXN0Gi0uYWx0Lmtub3dsZWRnZV90cmFpbC52MS5SZXNvbHZlQnJhbmNoUmVzcG9uc2USdQoQRW1pdFRyYWlsT3V0Y29tZRIvLmFsdC5rbm93bGVkZ2VfdHJhaWwudjEuRW1pdFRyYWlsT3V0Y29tZVJlcXVlc3QaMC5hbHQua25vd2xlZGdlX3RyYWlsLnYxLkVtaXRUcmFpbE91dGNvbWVSZXNwb25zZRJmCgtTZWFyY2hUcmFpbBIqLmFsdC5rbm93bGVkZ2VfdHJhaWwudjEuU2VhcmNoVHJhaWxSZXF1ZXN0GisuYWx0Lmtub3dsZWRnZV90cmFpbC52MS5TZWFyY2hUcmFpbFJlc3BvbnNlEnIKD0dldEl0ZW1CcmFuY2hlcxIuLmFsdC5rbm93bGVkZ2VfdHJhaWwudjEuR2V0SXRlbUJyYW5jaGVzUmVxdWVzdBovLmFsdC5rbm93bGVkZ2VfdHJhaWwudjEuR2V0SXRlbUJyYW5jaGVzUmVzcG9uc2VCN1o1YWx0L2dlbi9wcm90by9hbHQva25vd2xlZGdlX3RyYWlsL3YxO2tub3dsZWRnZXRyYWlsdjFiBnByb3RvMw");
+
+/**
+ * @generated from message alt.knowledge_trail.v1.GetItemBranchesRequest
+ */
+export type GetItemBranchesRequest = Message<"alt.knowledge_trail.v1.GetItemBranchesRequest"> & {
+  /**
+   * item_key of the anchor (e.g. "article:<id>" — the article just read).
+   *
+   * @generated from field: string item_key = 1;
+   */
+  itemKey: string;
+
+  /**
+   * @generated from field: int32 limit = 2;
+   */
+  limit: number;
+};
+
+/**
+ * Describes the message alt.knowledge_trail.v1.GetItemBranchesRequest.
+ * Use `create(GetItemBranchesRequestSchema)` to create a new message.
+ */
+export const GetItemBranchesRequestSchema: GenMessage<GetItemBranchesRequest> = /*@__PURE__*/
+  messageDesc(file_alt_knowledge_trail_v1_knowledge_trail, 0);
+
+/**
+ * @generated from message alt.knowledge_trail.v1.GetItemBranchesResponse
+ */
+export type GetItemBranchesResponse = Message<"alt.knowledge_trail.v1.GetItemBranchesResponse"> & {
+  /**
+   * @generated from field: repeated alt.knowledge_trail.v1.Branch branches = 1;
+   */
+  branches: Branch[];
+};
+
+/**
+ * Describes the message alt.knowledge_trail.v1.GetItemBranchesResponse.
+ * Use `create(GetItemBranchesResponseSchema)` to create a new message.
+ */
+export const GetItemBranchesResponseSchema: GenMessage<GetItemBranchesResponse> = /*@__PURE__*/
+  messageDesc(file_alt_knowledge_trail_v1_knowledge_trail, 1);
 
 /**
  * @generated from message alt.knowledge_trail.v1.SearchTrailRequest
@@ -32,7 +73,7 @@ export type SearchTrailRequest = Message<"alt.knowledge_trail.v1.SearchTrailRequ
  * Use `create(SearchTrailRequestSchema)` to create a new message.
  */
 export const SearchTrailRequestSchema: GenMessage<SearchTrailRequest> = /*@__PURE__*/
-  messageDesc(file_alt_knowledge_trail_v1_knowledge_trail, 0);
+  messageDesc(file_alt_knowledge_trail_v1_knowledge_trail, 2);
 
 /**
  * @generated from message alt.knowledge_trail.v1.SearchTrailResponse
@@ -59,7 +100,7 @@ export type SearchTrailResponse = Message<"alt.knowledge_trail.v1.SearchTrailRes
  * Use `create(SearchTrailResponseSchema)` to create a new message.
  */
 export const SearchTrailResponseSchema: GenMessage<SearchTrailResponse> = /*@__PURE__*/
-  messageDesc(file_alt_knowledge_trail_v1_knowledge_trail, 1);
+  messageDesc(file_alt_knowledge_trail_v1_knowledge_trail, 3);
 
 /**
  * @generated from message alt.knowledge_trail.v1.EmitTrailOutcomeRequest
@@ -92,7 +133,7 @@ export type EmitTrailOutcomeRequest = Message<"alt.knowledge_trail.v1.EmitTrailO
  * Use `create(EmitTrailOutcomeRequestSchema)` to create a new message.
  */
 export const EmitTrailOutcomeRequestSchema: GenMessage<EmitTrailOutcomeRequest> = /*@__PURE__*/
-  messageDesc(file_alt_knowledge_trail_v1_knowledge_trail, 2);
+  messageDesc(file_alt_knowledge_trail_v1_knowledge_trail, 4);
 
 /**
  * @generated from message alt.knowledge_trail.v1.EmitTrailOutcomeResponse
@@ -109,7 +150,7 @@ export type EmitTrailOutcomeResponse = Message<"alt.knowledge_trail.v1.EmitTrail
  * Use `create(EmitTrailOutcomeResponseSchema)` to create a new message.
  */
 export const EmitTrailOutcomeResponseSchema: GenMessage<EmitTrailOutcomeResponse> = /*@__PURE__*/
-  messageDesc(file_alt_knowledge_trail_v1_knowledge_trail, 3);
+  messageDesc(file_alt_knowledge_trail_v1_knowledge_trail, 5);
 
 /**
  * @generated from message alt.knowledge_trail.v1.ResolveBranchRequest
@@ -133,6 +174,16 @@ export type ResolveBranchRequest = Message<"alt.knowledge_trail.v1.ResolveBranch
    * @generated from field: string client_resolution_id = 3;
    */
   clientResolutionId: string;
+
+  /**
+   * dismiss_reason is the optional one-tap scrutability signal (D28), e.g.
+   * "not_following_topic" | "already_known" | "wrong_relation". Only
+   * meaningful with resolution "dismissed"; recorded on the resolution event
+   * for planner learning, never required.
+   *
+   * @generated from field: string dismiss_reason = 4;
+   */
+  dismissReason: string;
 };
 
 /**
@@ -140,7 +191,7 @@ export type ResolveBranchRequest = Message<"alt.knowledge_trail.v1.ResolveBranch
  * Use `create(ResolveBranchRequestSchema)` to create a new message.
  */
 export const ResolveBranchRequestSchema: GenMessage<ResolveBranchRequest> = /*@__PURE__*/
-  messageDesc(file_alt_knowledge_trail_v1_knowledge_trail, 4);
+  messageDesc(file_alt_knowledge_trail_v1_knowledge_trail, 6);
 
 /**
  * @generated from message alt.knowledge_trail.v1.ResolveBranchResponse
@@ -157,7 +208,7 @@ export type ResolveBranchResponse = Message<"alt.knowledge_trail.v1.ResolveBranc
  * Use `create(ResolveBranchResponseSchema)` to create a new message.
  */
 export const ResolveBranchResponseSchema: GenMessage<ResolveBranchResponse> = /*@__PURE__*/
-  messageDesc(file_alt_knowledge_trail_v1_knowledge_trail, 5);
+  messageDesc(file_alt_knowledge_trail_v1_knowledge_trail, 7);
 
 /**
  * @generated from message alt.knowledge_trail.v1.GetTrailRequest
@@ -187,7 +238,7 @@ export type GetTrailRequest = Message<"alt.knowledge_trail.v1.GetTrailRequest"> 
  * Use `create(GetTrailRequestSchema)` to create a new message.
  */
 export const GetTrailRequestSchema: GenMessage<GetTrailRequest> = /*@__PURE__*/
-  messageDesc(file_alt_knowledge_trail_v1_knowledge_trail, 6);
+  messageDesc(file_alt_knowledge_trail_v1_knowledge_trail, 8);
 
 /**
  * @generated from message alt.knowledge_trail.v1.GetTrailResponse
@@ -238,7 +289,7 @@ export type GetTrailResponse = Message<"alt.knowledge_trail.v1.GetTrailResponse"
  * Use `create(GetTrailResponseSchema)` to create a new message.
  */
 export const GetTrailResponseSchema: GenMessage<GetTrailResponse> = /*@__PURE__*/
-  messageDesc(file_alt_knowledge_trail_v1_knowledge_trail, 7);
+  messageDesc(file_alt_knowledge_trail_v1_knowledge_trail, 9);
 
 /**
  * Episode is one derived "line of inquiry": a group of collapsed footprints
@@ -286,7 +337,7 @@ export type Episode = Message<"alt.knowledge_trail.v1.Episode"> & {
  * Use `create(EpisodeSchema)` to create a new message.
  */
 export const EpisodeSchema: GenMessage<Episode> = /*@__PURE__*/
-  messageDesc(file_alt_knowledge_trail_v1_knowledge_trail, 8);
+  messageDesc(file_alt_knowledge_trail_v1_knowledge_trail, 10);
 
 /**
  * Branch is a system-proposed next step on the trail. It ALWAYS carries the
@@ -352,7 +403,7 @@ export type Branch = Message<"alt.knowledge_trail.v1.Branch"> & {
  * Use `create(BranchSchema)` to create a new message.
  */
 export const BranchSchema: GenMessage<Branch> = /*@__PURE__*/
-  messageDesc(file_alt_knowledge_trail_v1_knowledge_trail, 9);
+  messageDesc(file_alt_knowledge_trail_v1_knowledge_trail, 11);
 
 /**
  * @generated from message alt.knowledge_trail.v1.TrailEvidenceRef
@@ -381,7 +432,7 @@ export type TrailEvidenceRef = Message<"alt.knowledge_trail.v1.TrailEvidenceRef"
  * Use `create(TrailEvidenceRefSchema)` to create a new message.
  */
 export const TrailEvidenceRefSchema: GenMessage<TrailEvidenceRef> = /*@__PURE__*/
-  messageDesc(file_alt_knowledge_trail_v1_knowledge_trail, 10);
+  messageDesc(file_alt_knowledge_trail_v1_knowledge_trail, 12);
 
 /**
  * Footprint is one user cognitive act on the trail spine. It is a pure
@@ -466,7 +517,7 @@ export type Footprint = Message<"alt.knowledge_trail.v1.Footprint"> & {
  * Use `create(FootprintSchema)` to create a new message.
  */
 export const FootprintSchema: GenMessage<Footprint> = /*@__PURE__*/
-  messageDesc(file_alt_knowledge_trail_v1_knowledge_trail, 11);
+  messageDesc(file_alt_knowledge_trail_v1_knowledge_trail, 13);
 
 /**
  * KnowledgeTrailService is the front-facing API for the Knowledge Trail —
@@ -526,6 +577,18 @@ export const KnowledgeTrailService: GenService<{
     methodKind: "unary";
     input: typeof SearchTrailRequestSchema;
     output: typeof SearchTrailResponseSchema;
+  },
+  /**
+   * GetItemBranches returns the open branches anchored on one item — the
+   * patch-exit surface (D26): the article page shows at most 1-2 proposals
+   * anchored on the article the user just finished reading.
+   *
+   * @generated from rpc alt.knowledge_trail.v1.KnowledgeTrailService.GetItemBranches
+   */
+  getItemBranches: {
+    methodKind: "unary";
+    input: typeof GetItemBranchesRequestSchema;
+    output: typeof GetItemBranchesResponseSchema;
   },
 }> = /*@__PURE__*/
   serviceDesc(file_alt_knowledge_trail_v1_knowledge_trail, 0);

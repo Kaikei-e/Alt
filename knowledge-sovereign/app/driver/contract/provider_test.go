@@ -208,6 +208,35 @@ func startStubServer(t *testing.T, reject *bool) int {
 		})
 	})
 
+	// GetTrailBranchesForAnchor (Wave 10, D26 — patch-exit branches). The
+	// branch four-tuple is the same untyped-branch contract GetTrailFootprints
+	// pins; a provider-side drop of relation_kind/why/evidence_refs/confidence
+	// would silently empty the patch-exit surface.
+	mux.HandleFunc("/services.sovereign.v1.KnowledgeSovereignService/GetTrailBranchesForAnchor", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			w.WriteHeader(http.StatusMethodNotAllowed)
+			return
+		}
+		_, _ = io.Copy(io.Discard, r.Body)
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"branches": []map[string]any{
+				{
+					"branchKey":     "cluster:u:article:z",
+					"anchorItemKey": "article:1",
+					"relationKind":  "cluster",
+					"why":           `Because you read "US military courts in the UK" — joins rust`,
+					"confidence":    "plausible",
+					"targetItemKey": "article:z",
+					"targetTitle":   "Async Rust",
+					"evidenceRefs": []map[string]any{
+						{"refId": "rust", "label": "rust", "kind": "tag"},
+					},
+				},
+			},
+		})
+	})
+
 	// Admin REST surface on the same listener: pact-go routes every
 	// consumer interaction through the single ProviderBaseURL, so we
 	// serve Connect-RPC and admin REST on the same port.
@@ -404,6 +433,12 @@ func TestVerifyAltBackendConsumerContract(t *testing.T) {
 				return nil, nil
 			},
 			"a user with footprints across two articles, one matching the search filter": func(setup bool, s models.ProviderState) (models.ProviderStateResponse, error) {
+				return nil, nil
+			},
+			"a user has an open branch anchored on the just-read item": func(setup bool, s models.ProviderState) (models.ProviderStateResponse, error) {
+				return nil, nil
+			},
+			"sovereign accepts trail.branch_resolved.v1 events carrying an optional dismiss reason": func(setup bool, s models.ProviderState) (models.ProviderStateResponse, error) {
 				return nil, nil
 			},
 			"the projection mutation is rejected with an error": func(setup bool, s models.ProviderState) (models.ProviderStateResponse, error) {

@@ -4,6 +4,8 @@ import {
 	BranchSchema,
 	EmitTrailOutcomeRequestSchema,
 	FootprintSchema,
+	GetItemBranchesRequestSchema,
+	GetItemBranchesResponseSchema,
 	GetTrailRequestSchema,
 	GetTrailResponseSchema,
 	ResolveBranchRequestSchema,
@@ -166,6 +168,78 @@ describe("Knowledge Trail API Contract", () => {
 			expect(req.branchKey).toBe("cluster:u:article:z");
 			expect(req.resolution).toBe("taken");
 			expect(req.clientResolutionId).not.toBe("");
+		});
+
+		// D28: the one-tap dismiss reason is optional scrutability, never required.
+		it("carries the optional one-tap dismiss reason", () => {
+			const req = create(ResolveBranchRequestSchema, {
+				branchKey: "cluster:u:article:z",
+				resolution: "dismissed",
+				clientResolutionId: "01938e82-7c00-7a7b-9b10-0123456789ab",
+				dismissReason: "not_following_topic",
+			});
+			expect(req.dismissReason).toBe("not_following_topic");
+		});
+
+		it("defaults dismiss_reason to empty for a plain dismiss", () => {
+			const req = create(ResolveBranchRequestSchema, {
+				branchKey: "cluster:u:article:z",
+				resolution: "dismissed",
+				clientResolutionId: "01938e82-7c00-7a7b-9b10-0123456789ab",
+			});
+			expect(req.dismissReason).toBe("");
+		});
+	});
+
+	// D26: the patch-exit surface — the article page's read-end shows at most
+	// 1-2 branches anchored on the item the user just finished reading.
+	describe("GetItemBranchesRequest/Response", () => {
+		it("requests the branches anchored on one item with a limit", () => {
+			const req = create(GetItemBranchesRequestSchema, {
+				itemKey: "article:a1",
+				limit: 2,
+			});
+			expect(req.itemKey).toBe("article:a1");
+			expect(req.limit).toBe(2);
+		});
+
+		it("returns branches carrying the mandatory four-tuple", () => {
+			const res = create(GetItemBranchesResponseSchema, {
+				branches: [
+					{
+						branchKey: "cluster:u:article:z",
+						anchorItemKey: "article:a1",
+						relationKind: "cluster",
+						why: "Joins a topic you follow.",
+						evidenceRefs: [{ refId: "rust", label: "rust", kind: "tag" }],
+						confidence: "plausible",
+						targetItemKey: "article:z",
+						targetTitle: "Async Rust",
+					},
+				],
+			});
+			expect(res.branches).toHaveLength(1);
+			expect(res.branches[0]!.anchorItemKey).toBe("article:a1");
+			expect(res.branches[0]!.why).not.toBe("");
+		});
+
+		it("round-trips through proto serialization", () => {
+			const original = create(GetItemBranchesResponseSchema, {
+				branches: [
+					{
+						branchKey: "b",
+						anchorItemKey: "article:a1",
+						relationKind: "inquiry",
+						targetItemKey: "article:z",
+					},
+				],
+			});
+			const deserialized = fromBinary(
+				GetItemBranchesResponseSchema,
+				toBinary(GetItemBranchesResponseSchema, original),
+			);
+			expect(deserialized.branches).toHaveLength(1);
+			expect(deserialized.branches[0]!.relationKind).toBe("inquiry");
 		});
 	});
 });

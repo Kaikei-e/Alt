@@ -78,6 +78,9 @@ service KnowledgeSovereignService {
   // order. Footprints are the pure projection of cognitive-act events; the read
   // model is disposable and re-derivable from knowledge_events.
   rpc GetTrailFootprints(GetTrailFootprintsRequest) returns (GetTrailFootprintsResponse);
+  // GetTrailBranchesForAnchor returns the user's open branches anchored on one
+  // item, newest first — the patch-exit read (D26).
+  rpc GetTrailBranchesForAnchor(GetTrailBranchesForAnchorRequest) returns (GetTrailBranchesForAnchorResponse);
 }
 
 // =============================================================================
@@ -686,6 +689,16 @@ message WatchProjectorEventsResponse {
 // =============================================================================
 // Knowledge Trail spine
 // =============================================================================
+
+message GetTrailBranchesForAnchorRequest {
+  string user_id = 1;
+  string anchor_item_key = 2;
+  int32 limit = 3;
+}
+
+message GetTrailBranchesForAnchorResponse {
+  repeated TrailBranch branches = 1;
+}
 
 message GetTrailFootprintsRequest {
   string user_id = 1;

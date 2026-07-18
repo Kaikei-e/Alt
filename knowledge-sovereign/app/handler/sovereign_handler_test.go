@@ -29,6 +29,11 @@ type mockRepo struct {
 	trailFootprints []sovereign_db.TrailFootprint
 	gotTrailCursor  string
 	gotTrailLimit   int
+
+	anchorBranches   []sovereign_db.TrailBranch
+	gotAnchorUserID  uuid.UUID
+	gotAnchorItemKey string
+	gotAnchorLimit   int
 }
 
 // --- MutationRepository ---
@@ -84,6 +89,12 @@ func (m *mockRepo) GetTrailFootprints(_ context.Context, _ uuid.UUID, cursor str
 }
 func (m *mockRepo) GetOpenTrailBranches(_ context.Context, _ uuid.UUID) ([]sovereign_db.TrailBranch, error) {
 	return nil, m.returnErr
+}
+func (m *mockRepo) GetOpenTrailBranchesForAnchor(_ context.Context, userID uuid.UUID, anchorItemKey string, limit int) ([]sovereign_db.TrailBranch, error) {
+	m.gotAnchorUserID = userID
+	m.gotAnchorItemKey = anchorItemKey
+	m.gotAnchorLimit = limit
+	return m.anchorBranches, m.returnErr
 }
 func (m *mockRepo) GetTodayDigest(_ context.Context, _ uuid.UUID, _ time.Time) (*sovereign_db.TodayDigest, error) {
 	return nil, m.returnErr

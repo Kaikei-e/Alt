@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"testing"
 	"time"
 
@@ -14,6 +15,42 @@ import (
 	"knowledge-sovereign/driver/sovereign_db"
 	"knowledge-sovereign/usecase/trail_planner"
 )
+
+// recordingHandler is a minimal slog.Handler that captures every record for
+// assertion — used to pin the Wave 10 branch-KPI log lines without wiring a
+// real log sink.
+type recordingHandler struct {
+	records []recordedLog
+}
+
+type recordedLog struct {
+	Message string
+	Attrs   map[string]any
+}
+
+func (h *recordingHandler) Enabled(context.Context, slog.Level) bool { return true }
+
+func (h *recordingHandler) Handle(_ context.Context, r slog.Record) error {
+	attrs := map[string]any{}
+	r.Attrs(func(a slog.Attr) bool {
+		attrs[a.Key] = a.Value.Any()
+		return true
+	})
+	h.records = append(h.records, recordedLog{Message: r.Message, Attrs: attrs})
+	return nil
+}
+
+func (h *recordingHandler) WithAttrs(_ []slog.Attr) slog.Handler { return h }
+func (h *recordingHandler) WithGroup(_ string) slog.Handler      { return h }
+
+func (h *recordingHandler) find(message string) (recordedLog, bool) {
+	for _, r := range h.records {
+		if r.Message == message {
+			return r, true
+		}
+	}
+	return recordedLog{}, false
+}
 
 // fakeRepo is an in-memory stand-in for the sovereign repository. It records
 // upserts keyed by footprint_key / branch_key so the test can assert reproject
@@ -398,4 +435,106 @@ func TestProjector_HighDensityReplayIsExactAtBatchBoundaries(t *testing.T) {
 	second := run()
 	assert.Equal(t, first.upserts, second.upserts)
 	assert.Equal(t, first.outcomes, second.outcomes)
+}
+
+// TestProjector_DismissReasonPayloadDoesNotBreakFold pins Wave 10 (D28(d)):
+// the sovereign projector must stay payload-only and must not choke on a
+// branch_resolved event carrying the new optional dismiss_reason field — no
+// new column, no new event vocabulary, the resolution still folds.
+func TestProjector_DismissReasonPayloadDoesNotBreakFold(t *testing.T) {
+	user := userPtr()
+	proposed := validBranchPayload()
+	repo := newFakeRepo([]sovereign_db.KnowledgeEvent{
+		branchEvent(1, proposed, user),
+		resolvedEvent(2, trail_planner.BranchResolvedPayload{
+			BranchKey: proposed.BranchKey, Resolution: "dismissed", DismissReason: "not_following_topic",
+		}, user),
+	})
+	require.NoError(t, NewProjector(repo, nil, Config{}).RunBatch(context.Background()))
+
+	assert.Equal(t, "dismissed", repo.states[proposed.BranchKey],
+		"a dismiss_reason on the payload must not prevent the resolution from folding")
+}
+
+// TestProjector_LogsBranchResolvedKPI pins the Wave 10 observability bullet:
+// every branch_resolved fold emits a trail.branch_resolved log carrying
+// resolution and whether a dismiss reason was supplied — the KPI is
+// taken→engaged dwell, not CTR, but resolution+reason presence is the raw
+// signal the ClickHouse pipeline aggregates.
+func TestProjector_LogsBranchResolvedKPI(t *testing.T) {
+	user := userPtr()
+	proposed := validBranchPayload()
+	repo := newFakeRepo([]sovereign_db.KnowledgeEvent{
+		branchEvent(1, proposed, user),
+		resolvedEvent(2, trail_planner.BranchResolvedPayload{
+			BranchKey: proposed.BranchKey, Resolution: "dismissed", DismissReason: "wrong_relation",
+		}, user),
+	})
+	rec := &recordingHandler{}
+	p := NewProjector(repo, slog.New(rec), Config{})
+	require.NoError(t, p.RunBatch(context.Background()))
+
+	log, ok := rec.find("trail.branch_resolved")
+	require.True(t, ok, "a trail.branch_resolved KPI log must be emitted")
+	assert.Equal(t, "dismissed", log.Attrs["resolution"])
+	assert.Equal(t, true, log.Attrs["has_reason"])
+}
+
+// TestProjector_LogsBranchResolvedKPI_NoReason pins has_reason=false when no
+// dismiss reason was supplied (including "taken", which never carries one).
+func TestProjector_LogsBranchResolvedKPI_NoReason(t *testing.T) {
+	user := userPtr()
+	proposed := validBranchPayload()
+	repo := newFakeRepo([]sovereign_db.KnowledgeEvent{
+		branchEvent(1, proposed, user),
+		resolvedEvent(2, trail_planner.BranchResolvedPayload{BranchKey: proposed.BranchKey, Resolution: "taken"}, user),
+	})
+	rec := &recordingHandler{}
+	p := NewProjector(repo, slog.New(rec), Config{})
+	require.NoError(t, p.RunBatch(context.Background()))
+
+	log, ok := rec.find("trail.branch_resolved")
+	require.True(t, ok)
+	assert.Equal(t, "taken", log.Attrs["resolution"])
+	assert.Equal(t, false, log.Attrs["has_reason"])
+}
+
+// TestProjector_LogsActOutcomeObservedKPI pins the dwell-side observability
+// bullet: every trail.act_outcome.v1 fold logs the raw dwell_ms and whether
+// it crosses the engaged threshold, referencing sovereign_db.EngagedDwellMs
+// rather than duplicating the literal.
+func TestProjector_LogsActOutcomeObservedKPI(t *testing.T) {
+	user := userPtr()
+	repo := newFakeRepo([]sovereign_db.KnowledgeEvent{
+		outcomeEvent(1, "trail.act_outcome.v1", "cluster:u:article:z",
+			"trail.act_outcome.v1:cluster:u:article:z",
+			map[string]any{"branch_key": "cluster:u:article:z", "item_key": "article:z", "dwell_ms": sovereign_db.EngagedDwellMs}, user),
+	})
+	rec := &recordingHandler{}
+	p := NewProjector(repo, slog.New(rec), Config{})
+	require.NoError(t, p.RunBatch(context.Background()))
+
+	log, ok := rec.find("trail.act_outcome.observed")
+	require.True(t, ok, "a trail.act_outcome.observed KPI log must be emitted")
+	assert.Equal(t, sovereign_db.EngagedDwellMs, log.Attrs["dwell_ms"])
+	assert.Equal(t, true, log.Attrs["engaged"], "dwell at the threshold must read as engaged")
+}
+
+// TestProjector_LogsActOutcomeObservedKPI_BelowThreshold pins engaged=false
+// for a dwell below sovereign_db.EngagedDwellMs.
+func TestProjector_LogsActOutcomeObservedKPI_BelowThreshold(t *testing.T) {
+	user := userPtr()
+	below := sovereign_db.EngagedDwellMs - 1
+	repo := newFakeRepo([]sovereign_db.KnowledgeEvent{
+		outcomeEvent(1, "trail.act_outcome.v1", "cluster:u:article:z",
+			"trail.act_outcome.v1:cluster:u:article:z",
+			map[string]any{"branch_key": "cluster:u:article:z", "item_key": "article:z", "dwell_ms": below}, user),
+	})
+	rec := &recordingHandler{}
+	p := NewProjector(repo, slog.New(rec), Config{})
+	require.NoError(t, p.RunBatch(context.Background()))
+
+	log, ok := rec.find("trail.act_outcome.observed")
+	require.True(t, ok)
+	assert.Equal(t, false, log.Attrs["engaged"])
 }

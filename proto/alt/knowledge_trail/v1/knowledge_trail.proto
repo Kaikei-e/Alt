@@ -27,6 +27,20 @@ service KnowledgeTrailService {
   // article index, intersected with the user's spine). Hits come back as their
   // containing episodes so every result keeps its time context.
   rpc SearchTrail(SearchTrailRequest) returns (SearchTrailResponse);
+  // GetItemBranches returns the open branches anchored on one item — the
+  // patch-exit surface (D26): the article page shows at most 1-2 proposals
+  // anchored on the article the user just finished reading.
+  rpc GetItemBranches(GetItemBranchesRequest) returns (GetItemBranchesResponse);
+}
+
+message GetItemBranchesRequest {
+  // item_key of the anchor (e.g. "article:<id>" — the article just read).
+  string item_key = 1;
+  int32 limit = 2;
+}
+
+message GetItemBranchesResponse {
+  repeated Branch branches = 1;
 }
 
 message SearchTrailRequest {
@@ -61,6 +75,11 @@ message ResolveBranchRequest {
   string resolution = 2;
   // client_resolution_id is a UUIDv7 the caller mints so retries are idempotent.
   string client_resolution_id = 3;
+  // dismiss_reason is the optional one-tap scrutability signal (D28), e.g.
+  // "not_following_topic" | "already_known" | "wrong_relation". Only
+  // meaningful with resolution "dismissed"; recorded on the resolution event
+  // for planner learning, never required.
+  string dismiss_reason = 4;
 }
 
 message ResolveBranchResponse {

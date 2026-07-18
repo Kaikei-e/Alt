@@ -174,7 +174,15 @@ test.describe("Trail closure (dwell outcome)", () => {
 		});
 
 		await page.goto("./knowledge/trail");
-		await page.getByTestId("branch-take").click();
+
+		// Wave 10 (D26/D28): the branch inbox under the spine is gone; the
+		// branch surfaces subordinate to its episode's header instead.
+		await expect(page.getByTestId("trail-branches")).toHaveCount(0);
+		const episode = page.getByTestId("trail-episode").first();
+		await expect(episode.getByTestId("episode-branch")).toBeVisible({
+			timeout: 15000,
+		});
+		await episode.getByTestId("branch-take").click();
 
 		// Taking the branch walks to the article, carrying the proposal gate.
 		await page.waitForURL(/\/articles\/b2\?/, { timeout: 15000 });
@@ -203,6 +211,224 @@ test.describe("Trail closure (dwell outcome)", () => {
 		await page.goBack();
 		await page.waitForTimeout(500);
 		expect(emitted).toBe(false);
+	});
+});
+
+// Wave 10 (D26/D28): the branch's main stage is the article read-end. The
+// trail page shows at most one branch per episode, subordinate to its
+// header — never a top-of-trail inbox. This describe covers the episode
+// side; "Patch-exit branches" below covers the article-page side.
+test.describe("Episode-subordinate branch (branch inbox removal)", () => {
+	test("shows the matched branch as ONE subordinate block on its episode, never a top-of-trail list", async ({
+		page,
+	}) => {
+		await page.route(TRAIL_PATHS.getTrail, (route) =>
+			fulfillJson(route, TRAIL_WITH_BRANCH),
+		);
+		await page.goto("./knowledge/trail");
+
+		// The old inbox testid must not exist anywhere on the page.
+		await expect(page.getByTestId("trail-branches")).toHaveCount(0);
+		await expect(page.getByTestId("trail-branch")).toHaveCount(0);
+
+		const episode = page
+			.getByTestId("trail-episode")
+			.filter({ hasText: "io_uring basics" });
+		await expect(episode).toBeVisible({ timeout: 15000 });
+		await expect(episode.getByTestId("episode-branch")).toHaveCount(1);
+		await expect(episode.getByTestId("episode-branch")).toContainText(
+			"Next step on this trail",
+		);
+	});
+});
+
+// Wave 10 (D26/D28): the branch's main stage is the ARTICLE page's read-end —
+// at most 1-2 proposals anchored on the article the user just finished
+// reading, subordinate to the content itself. Dismiss offers a one-tap
+// reason; taking a branch behaves exactly as the trail-page branch always
+// has (resolve, then walk with ?trail_proposal=).
+const FETCH_CONTENT_PATH =
+	"**/api/v2/alt.articles.v2.ArticleService/FetchArticleContent";
+const ITEM_BRANCHES_PATH =
+	"**/api/v2/alt.knowledge_trail.v1.KnowledgeTrailService/GetItemBranches";
+
+const ARTICLE_END_BRANCHES = {
+	branches: [
+		{
+			branchKey: "cluster:u1:article:end-1",
+			anchorItemKey: "article:read-end",
+			relationKind: "cluster",
+			why: "Joins a topic you follow.",
+			evidenceRefs: [{ refId: "rust", label: "rust", kind: "tag" }],
+			confidence: "plausible",
+			targetItemKey: "article:next-1",
+			targetTitle: "Async Rust Patterns",
+		},
+		{
+			branchKey: "continuation:u1:article:end-2",
+			anchorItemKey: "article:read-end",
+			relationKind: "continuation",
+			why: "Continues the thread you were reading.",
+			evidenceRefs: [{ refId: "io_uring", label: "io_uring", kind: "tag" }],
+			confidence: "corroborated",
+			targetItemKey: "article:next-2",
+			targetTitle: "io_uring Deep Dive",
+		},
+	],
+};
+
+async function mockArticleReadEnd(page: import("@playwright/test").Page) {
+	await page.route(FETCH_CONTENT_PATH, (route) =>
+		fulfillJson(route, {
+			content: "<p>Read-end article body.</p>",
+			article_id: "read-end",
+		}),
+	);
+	await page.route(ITEM_BRANCHES_PATH, (route) =>
+		fulfillJson(route, ARTICLE_END_BRANCHES),
+	);
+}
+
+test.describe("Patch-exit branches", () => {
+	test("renders at most 2 branch cards after the article content, requesting the item's own branches", async ({
+		page,
+	}) => {
+		let requestBody: Record<string, unknown> | null = null;
+		await page.route(FETCH_CONTENT_PATH, (route) =>
+			fulfillJson(route, {
+				content: "<p>Read-end article body.</p>",
+				article_id: "read-end",
+			}),
+		);
+		await page.route(ITEM_BRANCHES_PATH, async (route) => {
+			requestBody = route.request().postDataJSON();
+			await fulfillJson(route, ARTICLE_END_BRANCHES);
+		});
+
+		await page.goto(
+			"./articles/read-end?url=https%3A%2F%2Fexample.com%2Fread-end&title=Read+End",
+		);
+
+		await expect(page.getByTestId("article-content-surface")).toBeVisible({
+			timeout: 15000,
+		});
+		await expect(page.getByTestId("article-end-branch")).toHaveCount(2, {
+			timeout: 15000,
+		});
+
+		await expect.poll(() => requestBody, { timeout: 15000 }).not.toBeNull();
+		const body = requestBody as unknown as Record<string, unknown>;
+		expect(body.itemKey).toBe("article:read-end");
+
+		// The branch surface sits after the article content in DOM order —
+		// it is subordinate to the read, not competing with it.
+		const isAfter = await page.evaluate(() => {
+			const content = document.querySelector(
+				'[data-testid="article-content-surface"]',
+			);
+			const branch = document.querySelector(
+				'[data-testid="article-end-branch"]',
+			);
+			if (!content || !branch) return false;
+			return Boolean(
+				content.compareDocumentPosition(branch) &
+					Node.DOCUMENT_POSITION_FOLLOWING,
+			);
+		});
+		expect(isAfter).toBe(true);
+	});
+
+	test("Take this path resolves the branch and walks to the target article with trail_proposal", async ({
+		page,
+	}) => {
+		await mockArticleReadEnd(page);
+		let resolveBody: Record<string, unknown> | null = null;
+		await page.route(
+			"**/api/v2/alt.knowledge_trail.v1.KnowledgeTrailService/ResolveBranch",
+			async (route) => {
+				resolveBody = route.request().postDataJSON();
+				await fulfillJson(route, { ok: true });
+			},
+		);
+
+		await page.goto(
+			"./articles/read-end?url=https%3A%2F%2Fexample.com%2Fread-end&title=Read+End",
+		);
+		await expect(page.getByTestId("article-end-branch").first()).toBeVisible({
+			timeout: 15000,
+		});
+
+		await page.getByTestId("branch-take").first().click();
+
+		await page.waitForURL(/\/articles\/next-1\?/, { timeout: 15000 });
+		expect(page.url()).toContain("trail_proposal=");
+
+		await expect.poll(() => resolveBody, { timeout: 15000 }).not.toBeNull();
+		const body = resolveBody as unknown as Record<string, unknown>;
+		expect(body.branchKey).toBe("cluster:u1:article:end-1");
+		expect(body.resolution).toBe("taken");
+	});
+
+	test("Dismiss opens a one-tap reason row and sends the picked reason", async ({
+		page,
+	}) => {
+		await mockArticleReadEnd(page);
+		let resolveBody: Record<string, unknown> | null = null;
+		await page.route(
+			"**/api/v2/alt.knowledge_trail.v1.KnowledgeTrailService/ResolveBranch",
+			async (route) => {
+				resolveBody = route.request().postDataJSON();
+				await fulfillJson(route, { ok: true });
+			},
+		);
+
+		await page.goto(
+			"./articles/read-end?url=https%3A%2F%2Fexample.com%2Fread-end&title=Read+End",
+		);
+		await expect(page.getByTestId("article-end-branch").first()).toBeVisible({
+			timeout: 15000,
+		});
+
+		await page.getByTestId("branch-dismiss").first().click();
+		await expect(
+			page.getByTestId("branch-dismiss-reason-not_following_topic"),
+		).toBeVisible();
+		await page.getByTestId("branch-dismiss-reason-not_following_topic").click();
+
+		await expect.poll(() => resolveBody, { timeout: 15000 }).not.toBeNull();
+		const body = resolveBody as unknown as Record<string, unknown>;
+		expect(body.resolution).toBe("dismissed");
+		expect(body.dismissReason).toBe("not_following_topic");
+	});
+
+	test("plain dismiss (Just dismiss) sends an empty reason", async ({
+		page,
+	}) => {
+		await mockArticleReadEnd(page);
+		let resolveBody: Record<string, unknown> | null = null;
+		await page.route(
+			"**/api/v2/alt.knowledge_trail.v1.KnowledgeTrailService/ResolveBranch",
+			async (route) => {
+				resolveBody = route.request().postDataJSON();
+				await fulfillJson(route, { ok: true });
+			},
+		);
+
+		await page.goto(
+			"./articles/read-end?url=https%3A%2F%2Fexample.com%2Fread-end&title=Read+End",
+		);
+		await expect(page.getByTestId("article-end-branch").first()).toBeVisible({
+			timeout: 15000,
+		});
+
+		await page.getByTestId("branch-dismiss").first().click();
+		await expect(page.getByTestId("branch-dismiss-plain")).toBeVisible();
+		await page.getByTestId("branch-dismiss-plain").click();
+
+		await expect.poll(() => resolveBody, { timeout: 15000 }).not.toBeNull();
+		const body = resolveBody as unknown as Record<string, unknown>;
+		expect(body.resolution).toBe("dismissed");
+		expect(body.dismissReason ?? "").toBe("");
 	});
 });
 
