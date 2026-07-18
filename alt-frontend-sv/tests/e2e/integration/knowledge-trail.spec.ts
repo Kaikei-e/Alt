@@ -36,6 +36,30 @@ test.describe("Knowledge Trail spine", () => {
 	});
 });
 
+// The trail is a resume surface (D23): it needs deliberate entry points, not
+// ambient presence. Two paths in — the sidebar slot (replacing the retired
+// /loop entry) and an editorial link on Knowledge Home's header.
+test.describe("Trail entry points", () => {
+	test("the sidebar navigates to the trail", async ({ page }) => {
+		await page.goto("./home");
+		const nav = page.getByRole("link", { name: "Your Trail" });
+		await expect(nav).toBeVisible({ timeout: 15000 });
+		await nav.click();
+		await page.waitForURL(/\/knowledge\/trail/, { timeout: 15000 });
+		await expect(
+			page.getByRole("heading", { name: "Your Trail" }),
+		).toBeVisible();
+	});
+
+	test("Knowledge Home's header links to the trail", async ({ page }) => {
+		await page.goto("./home");
+		const link = page.getByTestId("home-trail-link");
+		await expect(link).toBeVisible({ timeout: 15000 });
+		await link.click();
+		await page.waitForURL(/\/knowledge\/trail/, { timeout: 15000 });
+	});
+});
+
 const TRAIL_PATHS = {
 	getTrail: "**/api/v2/alt.knowledge_trail.v1.KnowledgeTrailService/GetTrail",
 	resolveBranch:
