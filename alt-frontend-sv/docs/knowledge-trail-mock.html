@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Alt Reader — Knowledge Trail (README mock)</title>
+<title>Alt Reader — Knowledge Trail (episode spine mock)</title>
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:ital,wght@0,400;0,500;0,600;1,400&family=Playfair+Display:ital,wght@0,400;0,600;0,700;0,800;1,400&family=Source+Sans+3:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
@@ -105,16 +105,12 @@
   /* Editorial header */
   .desk { position: relative; }
   .desk-date { font-family: var(--font-mono); font-size: 0.7rem; color: var(--alt-ash); letter-spacing: 0.06em; text-transform: uppercase; }
-  .desk-title { font-family: var(--font-display); font-size: 1.85rem; font-weight: 800; letter-spacing: -0.01em; line-height: 1.15; margin-top: 0.2rem; }
-  .desk-subtitle { font-family: var(--font-body); font-size: 0.85rem; color: var(--alt-ash); margin-top: 0.25rem; font-style: italic; }
+  .desk-row { display: flex; align-items: flex-start; justify-content: space-between; gap: 1.5rem; flex-wrap: wrap; margin-top: 0.2rem; }
+  .desk-title { font-family: var(--font-display); font-size: 1.85rem; font-weight: 800; letter-spacing: -0.01em; line-height: 1.15; margin: 0; }
+  .desk-subtitle { font-family: var(--font-body); font-size: 0.85rem; color: var(--alt-ash); margin: 0.3rem 0 0; font-style: italic; max-width: 46ch; }
+  .desk-actions { flex: none; padding-top: 0.3rem; }
   .desk-rule { height: 1px; background: var(--surface-border); margin: 0.9rem 0 0; }
 
-  /* Trailhead strip */
-  .trailhead { display: flex; align-items: center; gap: 1.5rem; margin-top: 1.1rem; position: relative; }
-  .figure { display: inline-flex; align-items: baseline; gap: 0.4rem; }
-  .figure .val { font-family: var(--font-mono); font-size: 1.1rem; font-weight: 600; color: var(--alt-charcoal); }
-  .figure .lab { font-family: var(--font-mono); font-size: 0.65rem; font-weight: 600; letter-spacing: 0.08em; color: var(--alt-ash); text-transform: uppercase; }
-  .trailhead-actions { margin-left: auto; display: flex; gap: 0.5rem; }
   .action-link {
     display: inline-flex; align-items: center; gap: 0.45rem;
     border: 1px solid var(--chip-border); background: var(--action-surface);
@@ -124,21 +120,16 @@
   .action-link:hover { background: var(--action-surface-hover); }
   .action-link .ic { width: 0.95rem; height: 0.95rem; }
 
-  /* Lens chips */
-  .lenses { display: flex; align-items: center; gap: 0.45rem; margin-top: 1.3rem; flex-wrap: wrap; position: relative; }
-  .lens-label { font-family: var(--font-mono); font-size: 0.65rem; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; color: var(--alt-ash); margin-right: 0.3rem; }
-  .lens {
-    display: inline-flex; align-items: center; gap: 0.45rem;
-    font-family: var(--font-mono); font-size: 0.75rem; color: var(--chip-text);
-    border: 1px solid var(--chip-border); background: var(--chip-bg);
-    padding: 0.28rem 0.7rem; cursor: pointer; user-select: none;
+  /* Trail search — the sole way to hunt something down; replaces the old lens chip bar */
+  .trail-search { position: relative; margin: 1.3rem 0 0; max-width: 880px; }
+  .trail-search .ic { position: absolute; left: 0.85rem; top: 50%; transform: translateY(-50%); color: var(--alt-ash); }
+  .trail-search input {
+    width: 100%; font-family: var(--font-body); font-size: 0.9rem; color: var(--alt-charcoal);
+    background: var(--surface-bg); border: 1px solid var(--surface-border);
+    padding: 0.65rem 0.9rem 0.65rem 2.5rem;
   }
-  .lens:hover { background: var(--action-surface-hover); }
-  .lens.active { border-color: var(--alt-primary); color: var(--alt-primary); background: var(--accent-primary-bg); font-weight: 600; }
-  .lens .wear-dot { width: 0.5rem; height: 0.5rem; border-radius: 50%; }
-  .wear-dot.thin { background: transparent; border: 1px dashed var(--wear-worn); }
-  .wear-dot.worn { background: var(--wear-worn); }
-  .wear-dot.deep { background: var(--wear-deep); }
+  .trail-search input::placeholder { color: var(--alt-ash); }
+  .trail-search input:focus { outline: none; border-color: var(--alt-primary); }
 
   /* Wear legend — surveyor's key */
   .legend {
@@ -154,18 +145,14 @@
   .legend .line.worn { border-top: 3px solid var(--wear-worn); }
   .legend .line.deep { border-top: 5px solid var(--wear-deep); }
 
-  /* ===== Trail layout: spine + branches ===== */
+  /* ===== Trail layout: episode spine ===== */
   .trail { margin-top: 1.6rem; max-width: 880px; position: relative; }
 
-  .day-sep { display: flex; align-items: center; gap: 0.8rem; margin: 1.7rem 0 0.9rem; }
-  .day-sep:first-child { margin-top: 0.4rem; }
-  .day-sep .day { font-family: var(--font-display); font-size: 1.02rem; font-weight: 700; }
-  .day-sep .rule { flex: 1; height: 1px; background: var(--surface-border); }
-  .day-sep .count { font-family: var(--font-mono); font-size: 0.68rem; color: var(--alt-ash); letter-spacing: 0.06em; text-transform: uppercase; }
-
-  /* Footprint rows hang on a left spine; spine segment carries the wear */
-  .step { display: flex; gap: 1.1rem; }
+  /* Episodes hang on a left spine; the spine segment carries the wear.
+     Date is a landmark tick on this rail, never a grouping axis. */
+  .episode-step { display: flex; gap: 1.1rem; }
   .spine-cell { width: 3.4rem; flex: none; display: flex; flex-direction: column; align-items: center; }
+  .spine-landmark { font-family: var(--font-mono); font-size: 0.6rem; letter-spacing: 0.05em; color: var(--alt-ash); margin-bottom: 0.3rem; white-space: nowrap; }
   .spine-seg { flex: 1; width: 0; min-height: 0.7rem; }
   .spine-seg.thin { border-left: 2px dotted var(--wear-thin); }
   .spine-seg.worn { border-left: 3px solid var(--wear-worn); }
@@ -175,35 +162,40 @@
   .spine-node.worn { background: var(--wear-worn); border: 2px solid var(--wear-worn); }
   .spine-node.deep { background: var(--wear-deep); border: 2px solid var(--wear-deep); transform: rotate(45deg); border-radius: 1px; width: 0.78rem; height: 0.78rem; }
 
-  .footprint { flex: 1; min-width: 0; padding: 0.15rem 0 1.15rem; }
-  .fp-meta { display: flex; align-items: center; gap: 0.6rem; }
-  .fp-time { font-family: var(--font-mono); font-size: 0.7rem; color: var(--alt-ash); letter-spacing: 0.04em; }
-  .fp-verb { font-family: var(--font-mono); font-size: 0.66rem; font-weight: 600; letter-spacing: 0.12em; text-transform: uppercase; color: var(--alt-slate); }
-  .fp-note { font-family: var(--font-mono); font-size: 0.68rem; color: var(--alt-ash); font-style: italic; }
-  .fp-title { font-family: var(--font-display); font-size: 1.08rem; font-weight: 600; line-height: 1.3; margin-top: 0.22rem; cursor: pointer; }
-  .fp-title:hover { color: var(--interactive-text-hover); text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: 3px; }
-  .fp-excerpt { font-size: 0.84rem; color: var(--text-secondary); line-height: 1.5; margin-top: 0.25rem; max-width: 60ch; }
-  .fp-tags { display: flex; gap: 0.35rem; margin-top: 0.4rem; flex-wrap: wrap; }
+  /* ===== Episode card: the spine's default unit ===== */
+  .episode { flex: 1; min-width: 0; display: flex; gap: 1rem; padding: 0.85rem 0 1.35rem; }
+  .episode-thumb {
+    width: 92px; height: 66px; flex: none; color: var(--alt-ash);
+    background: var(--surface-2); border: 1px solid var(--surface-border);
+    display: flex; align-items: center; justify-content: center;
+  }
+  .episode-body { flex: 1; min-width: 0; }
+  .episode-head { display: flex; align-items: baseline; justify-content: space-between; gap: 0.8rem; }
+  .episode-title { font-family: var(--font-display); font-size: 1.15rem; font-weight: 700; line-height: 1.3; margin: 0; cursor: pointer; }
+  .episode-title:hover { color: var(--interactive-text-hover); text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: 3px; }
+  .episode-expand {
+    flex: none; font-family: var(--font-mono); font-size: 0.72rem; color: var(--alt-primary);
+    background: none; border: none; cursor: pointer; padding: 0.1rem 0; white-space: nowrap;
+  }
+  .episode-expand:hover { color: var(--interactive-text-hover); text-decoration: underline; }
+  .episode-meta-row { display: flex; align-items: center; gap: 0.7rem; margin-top: 0.35rem; flex-wrap: wrap; }
+  .episode-dates { font-family: var(--font-mono); font-size: 0.72rem; color: var(--alt-ash); letter-spacing: 0.03em; }
+  .episode-contact { font-family: var(--font-body); font-size: 0.82rem; color: var(--text-secondary); }
+  .episode-tags { display: flex; gap: 0.35rem; margin-top: 0.55rem; flex-wrap: wrap; }
   .fp-tag { font-family: var(--font-mono); font-size: 0.68rem; color: var(--chip-text); border: 1px solid var(--chip-border); background: var(--chip-bg); padding: 0.08rem 0.5rem; }
-  .fp-via { display: inline-flex; align-items: center; gap: 0.35rem; font-family: var(--font-mono); font-size: 0.66rem; color: var(--alt-primary); margin-top: 0.4rem; letter-spacing: 0.03em; }
 
-  /* ===== Branch: a fork off the spine ===== */
-  .branch-step { display: flex; gap: 0; }
-  .branch-connector { width: 3.4rem; flex: none; position: relative; }
-  .branch-connector::before {
-    content: ""; position: absolute; left: 50%; top: 0; bottom: 0; width: 0;
-  }
-  .branch-connector.thin::before { border-left: 2px dotted var(--wear-thin); }
-  .branch-connector.worn::before { border-left: 3px solid var(--wear-worn); }
-  .branch-connector.deep::before { border-left: 5px solid var(--wear-deep); }
-  .branch-connector .fork {
-    position: absolute; left: 50%; top: 1.1rem; width: 2.2rem; height: 1.4rem;
-    border-left: 2px dashed var(--alt-ash); border-bottom: 2px dashed var(--alt-ash);
-    border-bottom-left-radius: 1.1rem; transform: translateX(1px);
-  }
+  /* Expanded footprint detail rows — what "▸ N footprints" reveals */
+  .episode-footprints { margin-top: 0.75rem; padding-top: 0.6rem; border-top: 1px dashed var(--surface-border); display: flex; flex-direction: column; gap: 0.5rem; }
+  .ep-fp { display: flex; align-items: baseline; gap: 0.7rem; font-size: 0.85rem; }
+  .ep-fp .fp-time { flex: none; width: 3.4rem; font-family: var(--font-mono); font-size: 0.7rem; color: var(--alt-ash); letter-spacing: 0.03em; }
+  .ep-fp .fp-verb { flex: none; width: 5rem; font-family: var(--font-mono); font-size: 0.66rem; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; color: var(--alt-slate); }
+  .ep-fp-title { font-family: var(--font-body); color: var(--alt-charcoal); line-height: 1.4; }
+
+  /* ===== Subordinate branch: "next step on this trail" ===== */
+  .episode-next-step { margin-top: 0.9rem; padding-top: 0.75rem; border-top: 1px dashed var(--surface-border); }
+  .next-step-label { font-family: var(--font-mono); font-size: 0.64rem; font-weight: 600; letter-spacing: 0.12em; text-transform: uppercase; color: var(--alt-ash); margin-bottom: 0.55rem; }
 
   .branch {
-    flex: 1; max-width: 560px; margin: 0.6rem 0 1.2rem 2.4rem;
     border: 1px solid var(--surface-border); background: var(--surface-2);
     border-left-width: 3px; padding: 0.8rem 1rem 0.85rem; position: relative;
   }
@@ -242,8 +234,6 @@
   }
   .dismiss-path:hover { background: var(--surface-hover); color: var(--alt-charcoal); }
 
-  .branch.resolved { opacity: 0; transform: translateX(8px); transition: opacity 0.35s ease, transform 0.35s ease; }
-
   /* Trail end mark */
   .trail-end { display: flex; gap: 1.1rem; }
   .trail-end .spine-cell .spine-seg { min-height: 1.4rem; }
@@ -256,6 +246,17 @@
   }
 
   [hidden] { display: none !important; }
+
+  /* ===== Responsive: keep the desk legible around ~1100px viewports ===== */
+  @media (max-width: 1150px) {
+    .sidebar { display: none; }
+    .content { padding: 1.5rem 1.5rem 2.5rem; }
+  }
+  @media (max-width: 620px) {
+    .episode { flex-direction: column; }
+    .episode-thumb { width: 100%; height: 84px; }
+    .episode-expand { white-space: normal; text-align: right; }
+  }
 </style>
 </head>
 <body>
@@ -307,37 +308,27 @@
 
     <!-- Editorial header -->
     <header class="desk">
-      <div class="desk-date">Wednesday · June 10, 2026 — Field Notes</div>
-      <h1 class="desk-title">Your Trail</h1>
-      <p class="desk-subtitle">The path you have worn through what you read. Branches are suggested; the trail is yours.</p>
+      <div class="desk-date">Saturday · July 18, 2026 — Field Notes</div>
+      <div class="desk-row">
+        <div>
+          <h1 class="desk-title">Your Trail</h1>
+          <p class="desk-subtitle">Pick up where you left off. The trail remembers what you read, asked, and returned to — so you don't have to.</p>
+        </div>
+        <div class="desk-actions">
+          <button class="action-link" id="refresh">
+            <svg class="ic" viewBox="0 0 24 24"><path d="M21 12a9 9 0 1 1-2.6-6.4M21 3v6h-6"/></svg>
+            Refresh trail
+          </button>
+        </div>
+      </div>
       <div class="desk-rule"></div>
     </header>
 
-    <!-- Trailhead figures (pull-only: refresh is explicit) -->
-    <section class="trailhead">
-      <span class="figure"><span class="val">7</span><span class="lab">footprints today</span></span>
-      <span class="figure"><span class="val">3</span><span class="lab">open branches</span></span>
-      <span class="figure"><span class="val">2</span><span class="lab">worn paths</span></span>
-      <div class="trailhead-actions">
-        <button class="action-link" id="refresh">
-          <svg class="ic" viewBox="0 0 24 24"><path d="M21 12a9 9 0 1 1-2.6-6.4M21 3v6h-6"/></svg>
-          Refresh trail
-        </button>
-        <button class="action-link">
-          <svg class="ic" viewBox="0 0 24 24"><path d="M3 10.5 12 4l9 6.5V20a1 1 0 0 1-1 1h-5v-6h-6v6H4a1 1 0 0 1-1-1z"/></svg>
-          Back to Home
-        </button>
-      </div>
-    </section>
-
-    <!-- Theme lenses: computed filters over the one spine -->
-    <section class="lenses" id="lenses">
-      <span class="lens-label">Lens</span>
-      <button class="lens active" data-lens="all">All footprints</button>
-      <button class="lens" data-lens="async-runtimes"><span class="wear-dot deep"></span>async runtimes</button>
-      <button class="lens" data-lens="eu-ai-act"><span class="wear-dot worn"></span>EU AI Act</button>
-      <button class="lens" data-lens="local-inference"><span class="wear-dot thin"></span>local inference</button>
-    </section>
+    <!-- Trail search: the sole way to hunt something down (replaces the old lens chip bar) -->
+    <div class="trail-search">
+      <svg class="ic" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
+      <input type="text" placeholder="Search what you've read…" aria-label="Search your trail" />
+    </div>
 
     <!-- Surveyor's key -->
     <div class="legend">
@@ -347,183 +338,208 @@
       <span class="swatch"><span class="line deep"></span>deep — you return &amp; ask</span>
     </div>
 
-    <!-- ===== The trail ===== -->
+    <!-- ===== The trail: episodes, newest first. Dates are landmarks on the rail, not a grouping axis. ===== -->
     <section class="trail" id="trail">
 
-      <div class="day-sep">
-        <span class="day">Today — June 10</span>
-        <span class="rule"></span>
-        <span class="count">7 footprints · 3 branches</span>
-      </div>
-
-      <!-- Footprint: deep path (returned + asked before) -->
-      <div class="step" data-lens-tags="async-runtimes">
-        <div class="spine-cell"><div class="spine-node deep"></div><div class="spine-seg deep"></div></div>
-        <div class="footprint">
-          <div class="fp-meta">
-            <span class="fp-time">13:05</span>
-            <span class="fp-verb">Returned</span>
-            <span class="fp-note">2nd visit · 6 min, deep read</span>
-          </div>
-          <div class="fp-title">io_uring and the future of async I/O on Linux</div>
-          <p class="fp-excerpt">Second pass over the completion-queue model; this time the comparison against epoll-based reactors held attention the longest.</p>
-          <div class="fp-tags"><span class="fp-tag">rust</span><span class="fp-tag">async</span><span class="fp-tag">linux</span></div>
+      <!-- Episode 1: deep wear (returned + asked). Shown expanded to demonstrate footprint rows. -->
+      <div class="episode-step">
+        <div class="spine-cell">
+          <span class="spine-landmark">JUL 7</span>
+          <div class="spine-node deep"></div>
+          <div class="spine-seg deep"></div>
         </div>
-      </div>
-
-      <!-- Branch: continuation (off the deep path) -->
-      <div class="branch-step" data-lens-tags="async-runtimes">
-        <div class="branch-connector deep"><div class="fork"></div></div>
-        <div class="branch kind-continuation">
-          <span class="branch-kind">Continues your thread</span>
-          <div class="branch-title">Tokio 2.0 RFC: io_uring as a first-class backend</div>
-          <p class="branch-why">You returned to io_uring twice and asked how tokio schedules wakeups — this RFC is the point where those two threads meet.</p>
-          <div class="branch-evidence">evidence: 3 footprints · jun 6 – today &nbsp;·&nbsp; confidence: corroborated</div>
-          <div class="branch-actions">
-            <button class="take-path">Take this path
-              <svg class="ic" viewBox="0 0 24 24" style="width:0.85rem;height:0.85rem"><path d="M5 12h14m-6-6 6 6-6 6"/></svg>
-            </button>
-            <button class="dismiss-path">Dismiss</button>
+        <article class="episode">
+          <div class="episode-thumb" aria-hidden="true">
+            <svg class="ic" viewBox="0 0 24 24" style="width:1.5rem;height:1.5rem">
+              <rect x="3" y="4" width="18" height="16" rx="1"/>
+              <circle cx="8.5" cy="9.5" r="1.5"/>
+              <path d="m21 15-5-5L5 20"/>
+            </svg>
           </div>
-        </div>
-      </div>
+          <div class="episode-body">
+            <div class="episode-head">
+              <h3 class="episode-title">US military push for right to court-martial troops stationed in the UK</h3>
+              <button class="episode-expand" data-target="ep-military" aria-expanded="true">▾ 3 footprints</button>
+            </div>
+            <div class="episode-meta-row">
+              <span class="episode-dates">Jul 7 – Jun 27</span>
+              <span class="episode-contact">Read 2 times · asked 1 question</span>
+            </div>
+            <div class="episode-tags">
+              <span class="fp-tag">uk-us-relations</span>
+              <span class="fp-tag">military-law</span>
+              <span class="fp-tag">jurisdiction</span>
+            </div>
 
-      <!-- Footprint: asked -->
-      <div class="step" data-lens-tags="async-runtimes">
-        <div class="spine-cell"><div class="spine-node worn"></div><div class="spine-seg worn"></div></div>
-        <div class="footprint">
-          <div class="fp-meta">
-            <span class="fp-time">11:40</span>
-            <span class="fp-verb">Asked</span>
-            <span class="fp-note">answer saved</span>
+            <div class="episode-footprints" id="ep-military">
+              <div class="ep-fp">
+                <span class="fp-time">Jun 27</span>
+                <span class="fp-verb">Read</span>
+                <span class="ep-fp-title">US military push for right to court-martial troops stationed in the UK — first pass, 3 min</span>
+              </div>
+              <div class="ep-fp">
+                <span class="fp-time">Jun 29</span>
+                <span class="fp-verb">Asked</span>
+                <span class="ep-fp-title">“Does the NATO SOFA agreement give the US or the UK jurisdiction here?” — answer saved</span>
+              </div>
+              <div class="ep-fp">
+                <span class="fp-time">Jul 7</span>
+                <span class="fp-verb">Returned</span>
+                <span class="ep-fp-title">US military push for right to court-martial troops stationed in the UK — 2nd visit, 5 min deep read</span>
+              </div>
+            </div>
           </div>
-          <div class="fp-title">“How does tokio decide which task to wake first?”</div>
-          <p class="fp-excerpt">Scoped to your async-runtimes reading. The answer cited the LIFO slot optimisation and linked two of your saved articles.</p>
-          <div class="fp-tags"><span class="fp-tag">rust</span><span class="fp-tag">async</span></div>
-        </div>
+        </article>
       </div>
 
-      <!-- Branch: contradiction -->
-      <div class="branch-step" data-lens-tags="eu-ai-act">
-        <div class="branch-connector worn"><div class="fork"></div></div>
-        <div class="branch kind-contradiction">
-          <span class="branch-kind">Challenges what you read</span>
-          <div class="branch-title">Brussels effect, reconsidered: early evidence that AI Act enforcement is diverging</div>
-          <p class="branch-why">On June 3 you read that member-state enforcement would be <em>uniform by design</em>. This analysis argues the opposite, with the first two national rulings as evidence.</p>
-          <div class="branch-evidence">evidence: contradicts footprint of jun 3 · 2 sources &nbsp;·&nbsp; confidence: plausible</div>
-          <div class="branch-actions">
-            <button class="take-path">Take this path
-              <svg class="ic" viewBox="0 0 24 24" style="width:0.85rem;height:0.85rem"><path d="M5 12h14m-6-6 6 6-6 6"/></svg>
-            </button>
-            <button class="dismiss-path">Dismiss</button>
+      <!-- Episode 2: worn wear (1 read + 1 ask). Carries the one subordinate branch. -->
+      <div class="episode-step">
+        <div class="spine-cell">
+          <span class="spine-landmark">JUL 5</span>
+          <div class="spine-node worn"></div>
+          <div class="spine-seg worn"></div>
+        </div>
+        <article class="episode">
+          <div class="episode-thumb" aria-hidden="true">
+            <svg class="ic" viewBox="0 0 24 24" style="width:1.5rem;height:1.5rem">
+              <rect x="3" y="4" width="18" height="16" rx="1"/>
+              <circle cx="8.5" cy="9.5" r="1.5"/>
+              <path d="m21 15-5-5L5 20"/>
+            </svg>
           </div>
-        </div>
-      </div>
+          <div class="episode-body">
+            <div class="episode-head">
+              <h3 class="episode-title">Hunting Submarines Via Gravity</h3>
+              <button class="episode-expand" data-target="ep-submarines" aria-expanded="false">▸ 2 footprints</button>
+            </div>
+            <div class="episode-meta-row">
+              <span class="episode-dates">Jul 5 – Jul 3</span>
+              <span class="episode-contact">Read 1 time · asked 1 question</span>
+            </div>
+            <div class="episode-tags">
+              <span class="fp-tag">physics</span>
+              <span class="fp-tag">sensors</span>
+              <span class="fp-tag">submarine-detection</span>
+            </div>
 
-      <!-- Footprint: read, arrived via a taken branch (trail closure made visible) -->
-      <div class="step" data-lens-tags="eu-ai-act">
-        <div class="spine-cell"><div class="spine-node worn"></div><div class="spine-seg worn"></div></div>
-        <div class="footprint">
-          <div class="fp-meta">
-            <span class="fp-time">09:58</span>
-            <span class="fp-verb">Read</span>
-            <span class="fp-note">4 min</span>
+            <div class="episode-footprints" id="ep-submarines" hidden>
+              <div class="ep-fp">
+                <span class="fp-time">Jul 3</span>
+                <span class="fp-verb">Read</span>
+                <span class="ep-fp-title">Hunting Submarines Via Gravity — first pass, 4 min</span>
+              </div>
+              <div class="ep-fp">
+                <span class="fp-time">Jul 5</span>
+                <span class="fp-verb">Asked</span>
+                <span class="ep-fp-title">“How sensitive would a gravimeter need to be to catch a submarine's mass shift at depth?” — answer saved</span>
+              </div>
+            </div>
+
+            <!-- Subordinate branch: exactly one, attached to this episode's header — not a branch inbox -->
+            <div class="episode-next-step">
+              <div class="next-step-label">Next step on this trail</div>
+              <div class="branch kind-continuation">
+                <span class="branch-kind">Continues your thread</span>
+                <div class="branch-title">Diamond-defect quantum gravimeters close the sensitivity gap for underwater detection</div>
+                <p class="branch-why">Because you read “Hunting Submarines Via Gravity” and asked how sensitive a gravimeter would need to be to catch a submarine's mass shift at depth — this new paper puts a hard number on exactly that threshold.</p>
+                <div class="branch-evidence">evidence: 2 footprints · jul 3 – jul 5 &nbsp;·&nbsp; confidence: corroborated</div>
+                <div class="branch-actions">
+                  <button class="take-path">Take this path
+                    <svg class="ic" viewBox="0 0 24 24" style="width:0.85rem;height:0.85rem"><path d="M5 12h14m-6-6 6 6-6 6"/></svg>
+                  </button>
+                  <button class="dismiss-path">Dismiss</button>
+                </div>
+              </div>
+            </div>
           </div>
-          <div class="fp-title">What the AI Act’s GPAI codes of practice actually require</div>
-          <p class="fp-excerpt">Obligations enter into force in stages; the codes of practice are the de-facto compliance baseline until harmonised standards land.</p>
-          <div class="fp-tags"><span class="fp-tag">eu-ai-act</span><span class="fp-tag">policy</span></div>
-          <span class="fp-via">
-            <svg class="ic" viewBox="0 0 24 24" style="width:0.8rem;height:0.8rem"><path d="M5 21c0-6 4-7 7-9s4-4 3-8c5 3 6 8 3 12s-8 3-10 5"/></svg>
-            via branch you took yesterday — “Joins a topic you follow”
-          </span>
-        </div>
+        </article>
       </div>
 
-      <!-- Footprint: first pass / thin -->
-      <div class="step" data-lens-tags="local-inference">
-        <div class="spine-cell"><div class="spine-node thin"></div><div class="spine-seg thin"></div></div>
-        <div class="footprint">
-          <div class="fp-meta">
-            <span class="fp-time">09:12</span>
-            <span class="fp-verb">Read</span>
-            <span class="fp-note">first pass · 2 min</span>
+      <!-- Episode 3: worn wear (returned, no ask). -->
+      <div class="episode-step">
+        <div class="spine-cell">
+          <span class="spine-landmark">JUN 20</span>
+          <div class="spine-node worn"></div>
+          <div class="spine-seg worn"></div>
+        </div>
+        <article class="episode">
+          <div class="episode-thumb" aria-hidden="true">
+            <svg class="ic" viewBox="0 0 24 24" style="width:1.5rem;height:1.5rem">
+              <rect x="3" y="4" width="18" height="16" rx="1"/>
+              <circle cx="8.5" cy="9.5" r="1.5"/>
+              <path d="m21 15-5-5L5 20"/>
+            </svg>
           </div>
-          <div class="fp-title">Quantisation tradeoffs for on-device summarisation</div>
-          <p class="fp-excerpt">Skimmed: int4 quality cliffs appear earlier on long-context summarisation than on QA workloads.</p>
-          <div class="fp-tags"><span class="fp-tag">local-inference</span><span class="fp-tag">llm</span></div>
-        </div>
-      </div>
+          <div class="episode-body">
+            <div class="episode-head">
+              <h3 class="episode-title">io_uring and the future of async I/O on Linux</h3>
+              <button class="episode-expand" data-target="ep-async" aria-expanded="false">▸ 2 footprints</button>
+            </div>
+            <div class="episode-meta-row">
+              <span class="episode-dates">Jun 20 – Jun 18</span>
+              <span class="episode-contact">Read 2 times</span>
+            </div>
+            <div class="episode-tags">
+              <span class="fp-tag">rust</span>
+              <span class="fp-tag">async</span>
+              <span class="fp-tag">linux</span>
+            </div>
 
-      <!-- Branch: cluster (situates a NEW item into an existing interest) -->
-      <div class="branch-step" data-lens-tags="local-inference">
-        <div class="branch-connector thin"><div class="fork"></div></div>
-        <div class="branch kind-cluster">
-          <span class="branch-kind">Joins a topic you follow</span>
-          <div class="branch-title">ROCm 7.2 brings paged-attention kernels to consumer iGPUs</div>
-          <p class="branch-why">New this morning. It connects two tags you walk often — <em>local-inference</em> and your hardware notes — and may change the quantisation tradeoff you skimmed at 09:12.</p>
-          <div class="branch-evidence">evidence: tag overlap × 2 · fresh today &nbsp;·&nbsp; confidence: corroborated</div>
-          <div class="branch-actions">
-            <button class="take-path">Take this path
-              <svg class="ic" viewBox="0 0 24 24" style="width:0.85rem;height:0.85rem"><path d="M5 12h14m-6-6 6 6-6 6"/></svg>
-            </button>
-            <button class="dismiss-path">Dismiss</button>
+            <div class="episode-footprints" id="ep-async" hidden>
+              <div class="ep-fp">
+                <span class="fp-time">Jun 18</span>
+                <span class="fp-verb">Read</span>
+                <span class="ep-fp-title">io_uring and the future of async I/O on Linux — first pass, 5 min</span>
+              </div>
+              <div class="ep-fp">
+                <span class="fp-time">Jun 20</span>
+                <span class="fp-verb">Returned</span>
+                <span class="ep-fp-title">io_uring and the future of async I/O on Linux — 2nd visit, 6 min deep read</span>
+              </div>
+            </div>
           </div>
+        </article>
+      </div>
+
+      <!-- Episode 4: thin wear (single first pass). -->
+      <div class="episode-step">
+        <div class="spine-cell">
+          <span class="spine-landmark">JUN 15</span>
+          <div class="spine-node thin"></div>
+          <div class="spine-seg thin"></div>
         </div>
-      </div>
-
-      <div class="day-sep">
-        <span class="day">Yesterday — June 9</span>
-        <span class="rule"></span>
-        <span class="count">5 footprints · 1 branch taken</span>
-      </div>
-
-      <!-- Footprint: listened -->
-      <div class="step" data-lens-tags="eu-ai-act">
-        <div class="spine-cell"><div class="spine-node worn"></div><div class="spine-seg worn"></div></div>
-        <div class="footprint">
-          <div class="fp-meta">
-            <span class="fp-time">21:30</span>
-            <span class="fp-verb">Listened</span>
-            <span class="fp-note">full queue · 12 min</span>
+        <article class="episode">
+          <div class="episode-thumb" aria-hidden="true">
+            <svg class="ic" viewBox="0 0 24 24" style="width:1.5rem;height:1.5rem">
+              <rect x="3" y="4" width="18" height="16" rx="1"/>
+              <circle cx="8.5" cy="9.5" r="1.5"/>
+              <path d="m21 15-5-5L5 20"/>
+            </svg>
           </div>
-          <div class="fp-title">Evening queue: three takes on AI Act enforcement</div>
-          <div class="fp-tags"><span class="fp-tag">eu-ai-act</span><span class="fp-tag">listen-queue</span></div>
-        </div>
-      </div>
+          <div class="episode-body">
+            <div class="episode-head">
+              <h3 class="episode-title">Quantisation tradeoffs for on-device summarisation</h3>
+              <button class="episode-expand" data-target="ep-quant" aria-expanded="false">▸ 1 footprint</button>
+            </div>
+            <div class="episode-meta-row">
+              <span class="episode-dates">Jun 15</span>
+              <span class="episode-contact">Read 1 time</span>
+            </div>
+            <div class="episode-tags">
+              <span class="fp-tag">local-inference</span>
+              <span class="fp-tag">llm</span>
+              <span class="fp-tag">quantization</span>
+            </div>
 
-      <!-- Footprint: read -->
-      <div class="step" data-lens-tags="async-runtimes">
-        <div class="spine-cell"><div class="spine-node worn"></div><div class="spine-seg worn"></div></div>
-        <div class="footprint">
-          <div class="fp-meta">
-            <span class="fp-time">08:47</span>
-            <span class="fp-verb">Read</span>
-            <span class="fp-note">5 min</span>
+            <div class="episode-footprints" id="ep-quant" hidden>
+              <div class="ep-fp">
+                <span class="fp-time">Jun 15</span>
+                <span class="fp-verb">Read</span>
+                <span class="ep-fp-title">Quantisation tradeoffs for on-device summarisation — first pass, 2 min</span>
+              </div>
+            </div>
           </div>
-          <div class="fp-title">Async Rust in 2026: what the runtime wars left behind</div>
-          <p class="fp-excerpt">A retrospective on executor fragmentation — the section on cooperative budgets is what pulled you back to io_uring today.</p>
-          <div class="fp-tags"><span class="fp-tag">rust</span><span class="fp-tag">async</span></div>
-        </div>
-      </div>
-
-      <div class="day-sep">
-        <span class="day">Last week</span>
-        <span class="rule"></span>
-        <span class="count">18 footprints</span>
-      </div>
-
-      <!-- Older footprint, thin -->
-      <div class="step" data-lens-tags="eu-ai-act">
-        <div class="spine-cell"><div class="spine-node thin"></div><div class="spine-seg thin"></div></div>
-        <div class="footprint">
-          <div class="fp-meta">
-            <span class="fp-time">Jun 3</span>
-            <span class="fp-verb">Read</span>
-            <span class="fp-note">3 min</span>
-          </div>
-          <div class="fp-title">Why AI Act enforcement will be uniform by design</div>
-          <div class="fp-tags"><span class="fp-tag">eu-ai-act</span></div>
-        </div>
+        </article>
       </div>
 
       <!-- Trail end -->
@@ -536,32 +552,36 @@
 
     <p class="mock-note">
       README MOCK — knowledge-trail-mock.html · static demonstration of /knowledge/trail ·
-      pull-only (no live updates) · branches always carry kind + why + evidence + confidence ·
-      OODA stages are never shown; only your own footprints and the wear of the path.
+      pull-only (no live updates, refresh is explicit) · spine's default unit is the episode
+      (newest first), not the raw footprint · date is a landmark on the spine, never a grouping
+      axis · no lens chip bar — trail search replaces it · a branch is subordinate to at most one
+      episode header, never a branch inbox · branches always carry kind + anchored why + evidence
+      + confidence · OODA stages are never shown; only your own footprints and the wear of the path.
     </p>
   </main>
 </div>
 
 <script>
-  // Lens filter: lenses are computed filters over the single spine — never a second structure.
-  const lenses = document.querySelectorAll('.lens');
-  lenses.forEach((btn) => {
+  // Expand affordance: episode default unit collapses to its representative card;
+  // "▸ N footprints" reveals the footprint detail rows nested inside it.
+  document.querySelectorAll('.episode-expand').forEach((btn) => {
     btn.addEventListener('click', () => {
-      lenses.forEach((b) => b.classList.remove('active'));
-      btn.classList.add('active');
-      const lens = btn.dataset.lens;
-      document.querySelectorAll('#trail [data-lens-tags]').forEach((el) => {
-        el.hidden = lens !== 'all' && !el.dataset.lensTags.split(' ').includes(lens);
-      });
+      const panel = document.getElementById(btn.dataset.target);
+      const wasExpanded = btn.getAttribute('aria-expanded') === 'true';
+      btn.setAttribute('aria-expanded', String(!wasExpanded));
+      panel.hidden = wasExpanded;
+      btn.textContent = btn.textContent.replace(wasExpanded ? '▾' : '▸', wasExpanded ? '▸' : '▾');
     });
   });
 
-  // Branch resolution demo: dismissed branches leave quietly (a branch_resolved event in the real thing).
+  // Dismiss: the one subordinate branch leaves quietly (a trail.branch_resolved.v1 event in the real thing).
   document.querySelectorAll('.dismiss-path').forEach((btn) => {
     btn.addEventListener('click', () => {
-      const branch = btn.closest('.branch-step');
-      branch.querySelector('.branch').classList.add('resolved');
-      setTimeout(() => { branch.hidden = true; }, 360);
+      const step = btn.closest('.episode-next-step');
+      step.style.transition = 'opacity 0.35s ease, transform 0.35s ease';
+      step.style.opacity = '0';
+      step.style.transform = 'translateX(8px)';
+      setTimeout(() => { step.hidden = true; }, 360);
     });
   });
 
