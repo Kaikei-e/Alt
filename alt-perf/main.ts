@@ -21,6 +21,14 @@ function parseNumberOption(value: unknown, fallback: number): number {
   return Number.isFinite(parsed) ? parsed : fallback;
 }
 
+function asBoolean(value: unknown, fallback = false): boolean {
+  return typeof value === "boolean" ? value : fallback;
+}
+
+function asString(value: unknown, fallback = ""): string {
+  return typeof value === "string" ? value : fallback;
+}
+
 interface CliOptions {
   help: boolean;
   version: boolean;
@@ -43,16 +51,16 @@ interface CliOptions {
 // Parse command line arguments
 function parseCliArgs(): { command: string; options: CliOptions } {
   const args = parseArgs(Deno.args, {
-    string: ["config", "output", "device", "route", "format"],
+    string: ["config", "output", "device", "route", "format", "warmup", "runs", "duration", "concurrency"],
     boolean: ["help", "version", "json", "verbose", "headless"],
     default: {
       config: "./config",
       headless: true,
       verbose: false,
-      warmup: 1,
-      runs: 1,
-      duration: 30,
-      concurrency: 10,
+      warmup: "1",
+      runs: "1",
+      duration: "30",
+      concurrency: "10",
     },
     alias: {
       h: "help",
@@ -70,19 +78,19 @@ function parseCliArgs(): { command: string; options: CliOptions } {
 
   const command = args._[0]?.toString() || "help";
   const options: CliOptions = {
-    help: args.help as boolean,
-    version: args.version as boolean,
-    config: args.config as string,
-    output: args.output as string,
-    device: args.device as string,
-    route: args.route as string,
-    json: args.json as boolean,
+    help: asBoolean(args.help),
+    version: asBoolean(args.version),
+    config: asString(args.config, "./config"),
+    output: asString(args.output),
+    device: asString(args.device),
+    route: asString(args.route),
+    json: asBoolean(args.json),
     // --format takes precedence when explicitly passed; --json is a
     // shorthand for --format json rather than being silently overridden by
     // the "cli" default.
-    format: (args.format as string | undefined) ?? (args.json ? "json" : "cli"),
-    verbose: args.verbose as boolean,
-    headless: args.headless as boolean,
+    format: asString(args.format) || (asBoolean(args.json) ? "json" : "cli"),
+    verbose: asBoolean(args.verbose),
+    headless: asBoolean(args.headless, true),
     warmup: parseNumberOption(args.warmup, 1),
     runs: parseNumberOption(args.runs, 1),
     duration: parseNumberOption(args.duration, 30),

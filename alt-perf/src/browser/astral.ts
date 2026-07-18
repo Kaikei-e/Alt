@@ -7,12 +7,14 @@ import {
   DEVICE_PROFILES,
   type DeviceProfile,
 } from "../config/schema.ts";
-import { debug, info } from "../utils/logger.ts";
+import { debug, info, warn } from "../utils/logger.ts";
 
 export interface BrowserOptions {
   headless: boolean;
   viewport?: { width: number; height: number };
   userAgent?: string;
+  /** Base URL used to derive cookie Secure / sourceScheme / sourcePort. */
+  baseUrl?: string;
 }
 
 export interface SessionCookie {
@@ -86,14 +88,12 @@ export class BrowserManager {
     deviceName: string = "desktop-chrome",
     cookies?: SessionCookie[]
   ): Promise<Page> {
-    if (!this.browser) {
-      await this.launch();
-    }
+    const browser = this.browser ?? await this.launch();
 
-    const device = DEVICE_PROFILES[deviceName] ?? DEFAULT_DEVICE_PROFILE;
+    const device = this.resolveDeviceProfile(deviceName);
     debug("Creating page", { device: device.name });
 
-    const page = await this.browser!.newPage();
+    const page = await browser.newPage();
 
     // Set viewport
     await page.setViewportSize({
@@ -101,8 +101,20 @@ export class BrowserManager {
       height: device.viewport.height,
     });
 
-    // Set cookies if provided
+    // Set cookies if provided — Secure / scheme / port follow base URL.
     if (cookies && cookies.length > 0) {
+      const baseUrl =
+        this.options.baseUrl ||
+        Deno.env.get("PERF_BASE_URL") ||
+        "http://localhost";
+      const parsed = new URL(baseUrl);
+      const isSecure = parsed.protocol === "https:";
+      const sourcePort = parsed.port
+        ? Number(parsed.port)
+        : isSecure
+        ? 443
+        : 80;
+
       await page.setCookies(
         cookies.map((cookie) => ({
           name: cookie.name,
@@ -112,16 +124,18 @@ export class BrowserManager {
           expires: cookie.expires ?? -1,
           size: cookie.name.length + cookie.value.length,
           httpOnly: cookie.httpOnly ?? false,
-          secure: false,
+          secure: isSecure,
           session: cookie.expires === undefined,
           sameSite: cookie.sameSite ?? "Lax",
           priority: "Medium" as const,
           sameParty: false,
-          sourceScheme: "NonSecure" as const,
-          sourcePort: 80,
+          sourceScheme: (isSecure ? "Secure" : "NonSecure") as
+            | "Secure"
+            | "NonSecure",
+          sourcePort,
         }))
       );
-      debug("Cookies set", { count: cookies.length });
+      debug("Cookies set", { count: cookies.length, secure: isSecure });
     }
 
     return page;
@@ -203,7 +217,14 @@ export class BrowserManager {
    * Get device profile by name
    */
   getDeviceProfile(name: string): DeviceProfile {
-    return DEVICE_PROFILES[name] ?? DEFAULT_DEVICE_PROFILE;
+    return this.resolveDeviceProfile(name);
+  }
+
+  private resolveDeviceProfile(name: string): DeviceProfile {
+    const profile = DEVICE_PROFILES[name];
+    if (profile) return profile;
+    warn(`Unknown device profile "${name}", falling back to desktop-chrome`);
+    return DEFAULT_DEVICE_PROFILE;
   }
 
   /**

@@ -2,10 +2,11 @@
  * File-based secret management for OAuth tokens (.env format)
  */
 
-import type {
-  SecretData,
-  SecretManager,
-  TokenResponse,
+import {
+  INOREADER_OAUTH_SCOPE,
+  type SecretData,
+  type SecretManager,
+  type TokenResponse,
 } from "../domain/types.ts";
 import { logger } from "../infra/logger.ts";
 
@@ -32,6 +33,7 @@ export class EnvFileSecretManager implements SecretManager {
         "OAUTH2_ACCESS_TOKEN",
         "OAUTH2_REFRESH_TOKEN",
         "OAUTH2_TOKEN_TYPE",
+        "OAUTH2_SCOPE",
         "OAUTH2_EXPIRES_AT",
         "OAUTH2_EXPIRES_IN",
         "OAUTH2_UPDATED_AT",
@@ -62,6 +64,9 @@ export class EnvFileSecretManager implements SecretManager {
       newLines.push(`OAUTH2_ACCESS_TOKEN=${tokens.access_token}`);
       newLines.push(`OAUTH2_REFRESH_TOKEN=${tokens.refresh_token}`);
       newLines.push(`OAUTH2_TOKEN_TYPE=${tokens.token_type || "Bearer"}`);
+      newLines.push(
+        `OAUTH2_SCOPE=${tokens.scope || INOREADER_OAUTH_SCOPE}`,
+      );
       newLines.push(`OAUTH2_EXPIRES_AT=${tokens.expires_at.toISOString()}`);
       newLines.push(`OAUTH2_EXPIRES_IN=${expiresIn}`);
       newLines.push(`OAUTH2_UPDATED_AT=${updatedAt}`);
@@ -133,7 +138,7 @@ export class EnvFileSecretManager implements SecretManager {
         expires_at: data["OAUTH2_EXPIRES_AT"] || "",
         updated_at: data["OAUTH2_UPDATED_AT"] || "",
         token_type: data["OAUTH2_TOKEN_TYPE"] || "Bearer",
-        scope: "read write",
+        scope: data["OAUTH2_SCOPE"] || INOREADER_OAUTH_SCOPE,
       };
     } catch (error) {
       if (error instanceof Deno.errors.NotFound) {

@@ -33,6 +33,50 @@ const SERVICE_NAME = Deno.env.get("OTEL_SERVICE_NAME") || "alt-perf";
 const SERVICE_VERSION = Deno.env.get("SERVICE_VERSION") || "1.0.0";
 const DEPLOYMENT_ENV = Deno.env.get("DEPLOYMENT_ENV") || "development";
 
+const SENSITIVE_FIELDS = [
+  "password",
+  "secret",
+  "token",
+  "authorization",
+  "cookie",
+  "credential",
+  "apikey",
+  "clientsecret",
+  "access_token",
+  "refresh_token",
+];
+
+function normalizeFieldName(key: string): string {
+  return key.toLowerCase().replace(/[-_\s]/g, "");
+}
+
+function isSensitiveField(key: string): boolean {
+  const normalized = normalizeFieldName(key);
+  return SENSITIVE_FIELDS.some((field) =>
+    normalized.includes(normalizeFieldName(field))
+  );
+}
+
+/** Redact credential-like keys before logging. */
+export function sanitizeLogData(
+  data?: Record<string, unknown>,
+): Record<string, unknown> | undefined {
+  if (!data) return undefined;
+  const sanitized: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(data)) {
+    if (isSensitiveField(key)) {
+      sanitized[key] = "[REDACTED]";
+    } else if (
+      value !== null && typeof value === "object" && !Array.isArray(value)
+    ) {
+      sanitized[key] = sanitizeLogData(value as Record<string, unknown>);
+    } else {
+      sanitized[key] = value;
+    }
+  }
+  return sanitized;
+}
+
 // ADR 98/99 business context
 interface BusinessContext {
   feedId?: string;
@@ -101,9 +145,11 @@ function formatTimestamp(): string {
 function log(
   level: LogLevel,
   message: string,
-  data?: Record<string, unknown>
+  data?: Record<string, unknown>,
 ): void {
   if (!shouldLog(level)) return;
+
+  const safeData = sanitizeLogData(data);
 
   // Emit to OTel if enabled
   if (isOTelEnabled()) {
@@ -114,16 +160,29 @@ function log(
     };
 
     // ADR 98/99 business context
-    if (businessContext.feedId) attributes["alt.feed.id"] = businessContext.feedId;
-    if (businessContext.articleId) attributes["alt.article.id"] = businessContext.articleId;
-    if (businessContext.jobId) attributes["alt.job.id"] = businessContext.jobId;
-    if (businessContext.processingStage) attributes["alt.processing.stage"] = businessContext.processingStage;
-    if (businessContext.aiPipeline) attributes["alt.ai.pipeline"] = businessContext.aiPipeline;
+    if (businessContext.feedId) {
+      attributes["alt.feed.id"] = businessContext.feedId;
+    }
+    if (businessContext.articleId) {
+      attributes["alt.article.id"] = businessContext.articleId;
+    }
+    if (businessContext.jobId) {
+      attributes["alt.job.id"] = businessContext.jobId;
+    }
+    if (businessContext.processingStage) {
+      attributes["alt.processing.stage"] = businessContext.processingStage;
+    }
+    if (businessContext.aiPipeline) {
+      attributes["alt.ai.pipeline"] = businessContext.aiPipeline;
+    }
 
     // Merge data into attributes (only primitive values)
-    if (data) {
-      for (const [key, value] of Object.entries(data)) {
-        if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
+    if (safeData) {
+      for (const [key, value] of Object.entries(safeData)) {
+        if (
+          typeof value === "string" || typeof value === "number" ||
+          typeof value === "boolean"
+        ) {
           attributes[key] = value;
         }
       }
@@ -144,11 +203,17 @@ function log(
       "deployment.environment": DEPLOYMENT_ENV,
       // ADR 98/99 business context keys
       ...(businessContext.feedId && { "alt.feed.id": businessContext.feedId }),
-      ...(businessContext.articleId && { "alt.article.id": businessContext.articleId }),
+      ...(businessContext.articleId && {
+        "alt.article.id": businessContext.articleId,
+      }),
       ...(businessContext.jobId && { "alt.job.id": businessContext.jobId }),
-      ...(businessContext.processingStage && { "alt.processing.stage": businessContext.processingStage }),
-      ...(businessContext.aiPipeline && { "alt.ai.pipeline": businessContext.aiPipeline }),
-      ...data,
+      ...(businessContext.processingStage && {
+        "alt.processing.stage": businessContext.processingStage,
+      }),
+      ...(businessContext.aiPipeline && {
+        "alt.ai.pipeline": businessContext.aiPipeline,
+      }),
+      ...safeData,
     };
     console.log(JSON.stringify(logEntry));
     return;
@@ -167,8 +232,8 @@ function log(
 
   let output = `${timestamp} ${prefix} ${message}`;
 
-  if (data && config.verbose) {
-    output += "\n" + dim(JSON.stringify(data, null, 2));
+  if (safeData && config.verbose) {
+    output += "\n" + dim(JSON.stringify(safeData, null, 2));
   }
 
   console.log(output);
@@ -199,14 +264,22 @@ export function section(title: string): void {
 }
 
 // Log progress
-export function progress(current: number, total: number, message: string): void {
+export function progress(
+  current: number,
+  total: number,
+  message: string,
+): void {
   const percent = Math.round((current / total) * 100);
   const bar = createProgressBar(current, total, 20);
   console.log(`${bar} ${percent}% ${dim(message)}`);
 }
 
 // Create progress bar
-function createProgressBar(current: number, total: number, width: number): string {
+function createProgressBar(
+  current: number,
+  total: number,
+  width: number,
+): string {
   const filled = Math.round((current / total) * width);
   const empty = width - filled;
   return `[${"=".repeat(filled)}${" ".repeat(empty)}]`;

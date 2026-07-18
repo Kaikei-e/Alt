@@ -39,14 +39,19 @@ describe("Web Vitals Module", () => {
       assertEquals(rating, "poor");
     });
 
-    it("should return 'needs-improvement' for null values", () => {
+    it("should return 'not-measured' for null values", () => {
       const rating = getRating(null, { good: 2500, poor: 4000 });
-      assertEquals(rating, "needs-improvement");
+      assertEquals(rating, "not-measured");
     });
 
-    it("should return 'needs-improvement' for zero values", () => {
+    it("should return 'not-measured' for zero values", () => {
       const rating = getRating(0, { good: 2500, poor: 4000 });
-      assertEquals(rating, "needs-improvement");
+      assertEquals(rating, "not-measured");
+    });
+
+    it("should treat zero as good when zeroIsValid (CLS)", () => {
+      const rating = getRating(0, { good: 0.1, poor: 0.25 }, { zeroIsValid: true });
+      assertEquals(rating, "good");
     });
 
     it("should handle CLS thresholds correctly", () => {

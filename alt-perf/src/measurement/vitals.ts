@@ -5,7 +5,7 @@ import type { Page } from "@astral/astral";
 import { DEFAULT_THRESHOLDS } from "../config/schema.ts";
 import { debug } from "../utils/logger.ts";
 
-export type VitalRating = "good" | "needs-improvement" | "poor";
+export type VitalRating = "good" | "needs-improvement" | "poor" | "not-measured";
 
 export interface VitalMetric {
   value: number;
@@ -117,13 +117,16 @@ const WEB_VITALS_COLLECTOR_SCRIPT = `
 `;
 
 /**
- * Get rating based on thresholds
+ * Get rating based on thresholds.
+ * null/0 mean not measured (except CLS where 0 is a valid perfect score).
  */
 export function getRating(
   value: number | null,
-  thresholds: { good: number; poor: number }
+  thresholds: { good: number; poor: number },
+  options: { zeroIsValid?: boolean } = {},
 ): VitalRating {
-  if (value === null || value === 0) return "needs-improvement";
+  if (value === null) return "not-measured";
+  if (value === 0 && !options.zeroIsValid) return "not-measured";
   if (value <= thresholds.good) return "good";
   if (value <= thresholds.poor) return "needs-improvement";
   return "poor";
@@ -151,8 +154,21 @@ export class WebVitalsCollector {
    * Collect Web Vitals after stabilization period
    */
   async collect(page: Page): Promise<WebVitalsResult> {
-    // Wait for metrics to stabilize
-    await new Promise((resolve) => setTimeout(resolve, this.stabilizationDelay));
+    // Poll until the injected collector marks itself ready (with timeout).
+    const readyDeadline = Date.now() + this.stabilizationDelay + 2000;
+    while (Date.now() < readyDeadline) {
+      const ready = await page.evaluate(() => {
+        const wv = (globalThis as unknown as {
+          __WEB_VITALS__?: { ready?: boolean };
+        }).__WEB_VITALS__;
+        return wv?.ready === true;
+      });
+      if (ready) break;
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    }
+
+    // Brief extra settle so buffered observers can fire.
+    await new Promise((resolve) => setTimeout(resolve, Math.min(this.stabilizationDelay, 500)));
 
     debug("Collecting Web Vitals");
 
@@ -178,7 +194,8 @@ export class WebVitalsCollector {
       },
       cls: {
         value: vitals.cls ?? 0,
-        rating: getRating(vitals.cls, VITALS_THRESHOLDS.cls),
+        // CLS of 0 is a valid perfect score.
+        rating: getRating(vitals.cls, VITALS_THRESHOLDS.cls, { zeroIsValid: true }),
       },
       fcp: {
         value: vitals.fcp ?? 0,
@@ -234,21 +251,31 @@ export function calculateScore(
   vitals: WebVitalsResult,
   weights = DEFAULT_THRESHOLDS.scoring.weights
 ): number {
-  const ratingScores: Record<VitalRating, number> = {
+  const ratingScores: Record<VitalRating, number | null> = {
     good: 100,
     "needs-improvement": 50,
     poor: 0,
+    "not-measured": null,
   };
 
-  const totalWeight = Object.values(weights).reduce((a, b) => a + b, 0);
+  const entries: Array<{ score: number; weight: number }> = [];
+  const push = (rating: VitalRating, weight: number) => {
+    const score = ratingScores[rating];
+    if (score === null) return; // exclude not-measured from aggregation
+    entries.push({ score, weight });
+  };
+
+  push(vitals.lcp.rating, weights.lcp);
+  push(vitals.inp.rating, weights.inp);
+  push(vitals.cls.rating, weights.cls);
+  push(vitals.fcp.rating, weights.fcp);
+  push(vitals.ttfb.rating, weights.ttfb);
+
+  const totalWeight = entries.reduce((a, b) => a + b.weight, 0);
+  if (totalWeight === 0) return 0;
 
   const weightedScore =
-    (ratingScores[vitals.lcp.rating] * weights.lcp +
-      ratingScores[vitals.inp.rating] * weights.inp +
-      ratingScores[vitals.cls.rating] * weights.cls +
-      ratingScores[vitals.fcp.rating] * weights.fcp +
-      ratingScores[vitals.ttfb.rating] * weights.ttfb) /
-    totalWeight;
+    entries.reduce((sum, e) => sum + e.score * e.weight, 0) / totalWeight;
 
   return Math.round(weightedScore);
 }

@@ -160,6 +160,8 @@ export interface PerformanceReport {
   summary: ReportSummary;
   routes: RouteMeasurement[];
   flows?: FlowResult[];
+  loadTests?: LoadTestResult[];
+  /** @deprecated Prefer loadTests — kept for backward-compatible report readers */
   loadTest?: LoadTestResult;
   recommendations: string[];
   /** Configuration used for the test */

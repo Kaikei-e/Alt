@@ -207,38 +207,40 @@ function printFlowResults(flows: FlowResult[]): void {
 /**
  * Print load test results
  */
-function printLoadTestResults(loadTest: LoadTestResult): void {
+function printLoadTestResults(loadTests: LoadTestResult[]): void {
   console.log("");
   console.log(bold("Load Test Results:"));
   console.log(horizontalLine());
 
-  console.log(`  URL: ${cyan(loadTest.url)}`);
-  console.log(`  Duration: ${formatDuration(loadTest.duration)}`);
-  console.log("");
-  console.log(`  Total Requests: ${loadTest.totalRequests}`);
-  console.log(`  Successful: ${green(loadTest.successfulRequests.toString())}`);
-  console.log(`  Failed: ${red(loadTest.failedRequests.toString())}`);
-  console.log(`  Error Rate: ${loadTest.errorRate > 0.01 ? red((loadTest.errorRate * 100).toFixed(2) + "%") : green((loadTest.errorRate * 100).toFixed(2) + "%")}`);
-  console.log(`  Throughput: ${loadTest.throughput.toFixed(2)} req/s`);
-  console.log("");
-  console.log(bold("  Response Times:"));
-  console.log(`    Min: ${formatDuration(loadTest.responseTimes.min)}`);
-  console.log(`    Max: ${formatDuration(loadTest.responseTimes.max)}`);
-  console.log(`    Mean: ${formatDuration(loadTest.responseTimes.mean)}`);
-  console.log(`    Median: ${formatDuration(loadTest.responseTimes.median)}`);
-  console.log(`    p95: ${formatDuration(loadTest.responseTimes.p95)}`);
-  console.log(`    p99: ${formatDuration(loadTest.responseTimes.p99)}`);
-
-  if (loadTest.errors.length > 0) {
+  for (const loadTest of loadTests) {
+    console.log(`  URL: ${cyan(loadTest.url)}`);
+    console.log(`  Duration: ${formatDuration(loadTest.duration)}`);
     console.log("");
-    console.log(bold("  Errors by Status:"));
-    for (const err of loadTest.errors) {
-      const statusLabel = err.status === 0 ? "Network Error" : `HTTP ${err.status}`;
-      console.log(`    ${red(statusLabel)}: ${err.count}`);
-    }
-  }
+    console.log(`  Total Requests: ${loadTest.totalRequests}`);
+    console.log(`  Successful: ${green(loadTest.successfulRequests.toString())}`);
+    console.log(`  Failed: ${red(loadTest.failedRequests.toString())}`);
+    console.log(`  Error Rate: ${loadTest.errorRate > 0.01 ? red((loadTest.errorRate * 100).toFixed(2) + "%") : green((loadTest.errorRate * 100).toFixed(2) + "%")}`);
+    console.log(`  Throughput: ${loadTest.throughput.toFixed(2)} req/s`);
+    console.log("");
+    console.log(bold("  Response Times:"));
+    console.log(`    Min: ${formatDuration(loadTest.responseTimes.min)}`);
+    console.log(`    Max: ${formatDuration(loadTest.responseTimes.max)}`);
+    console.log(`    Mean: ${formatDuration(loadTest.responseTimes.mean)}`);
+    console.log(`    Median: ${formatDuration(loadTest.responseTimes.median)}`);
+    console.log(`    p95: ${formatDuration(loadTest.responseTimes.p95)}`);
+    console.log(`    p99: ${formatDuration(loadTest.responseTimes.p99)}`);
 
-  console.log(horizontalLine());
+    if (loadTest.errors.length > 0) {
+      console.log("");
+      console.log(bold("  Errors by Status:"));
+      for (const err of loadTest.errors) {
+        const statusLabel = err.status === 0 ? "Network Error" : `HTTP ${err.status}`;
+        console.log(`    ${red(statusLabel)}: ${err.count}`);
+      }
+    }
+
+    console.log(horizontalLine());
+  }
 }
 
 /**
@@ -266,8 +268,10 @@ export function printCliReport(report: PerformanceReport): void {
     printFlowResults(report.flows);
   }
 
-  if (report.loadTest) {
-    printLoadTestResults(report.loadTest);
+  if (report.loadTests && report.loadTests.length > 0) {
+    printLoadTestResults(report.loadTests);
+  } else if (report.loadTest) {
+    printLoadTestResults([report.loadTest]);
   }
 
   printRecommendations(report.recommendations);

@@ -4,11 +4,20 @@
 
 import type { TokenClient } from "../port/token_client.ts";
 import type { HttpClient } from "../port/http_client.ts";
-import type { InoreaderCredentials, TokenResponse } from "../domain/types.ts";
+import {
+  INOREADER_OAUTH_SCOPE,
+  type InoreaderCredentials,
+  type TokenResponse,
+} from "../domain/types.ts";
 import { logger } from "../infra/logger.ts";
 import { PermanentError } from "../infra/retry.ts";
 
 const INOREADER_TOKEN_URL = "https://www.inoreader.com/oauth2/token";
+
+const TOKEN_REQUEST_HEADERS = {
+  "Content-Type": "application/x-www-form-urlencoded",
+  "User-Agent": "Auth-Token-Manager/2.0.0",
+} as const;
 
 // Trust-boundary narrowing for the token endpoint's JSON body: only proves
 // it's an indexable object, not that the expected fields are present or
@@ -51,10 +60,7 @@ export class InoreaderTokenClient implements TokenClient {
 
     const response = await this.httpClient.fetch(INOREADER_TOKEN_URL, {
       method: "POST",
-      headers: {
-        "Content-Type": "application/x-www-form-urlencoded",
-        "User-Agent": "Auth-Token-Manager/2.0.0",
-      },
+      headers: { ...TOKEN_REQUEST_HEADERS },
       body: new URLSearchParams({
         grant_type: "refresh_token",
         client_id: this.credentials.client_id,
@@ -108,7 +114,7 @@ export class InoreaderTokenClient implements TokenClient {
 
     const response = await this.httpClient.fetch(INOREADER_TOKEN_URL, {
       method: "POST",
-      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      headers: { ...TOKEN_REQUEST_HEADERS },
       body: new URLSearchParams({
         grant_type: "authorization_code",
         client_id: this.credentials.client_id,
@@ -162,7 +168,7 @@ export class InoreaderTokenClient implements TokenClient {
       token_type: typeof data.token_type === "string"
         ? data.token_type
         : "Bearer",
-      scope: typeof data.scope === "string" ? data.scope : "read write",
+      scope: typeof data.scope === "string" ? data.scope : INOREADER_OAUTH_SCOPE,
     };
   }
 }

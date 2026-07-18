@@ -48,9 +48,10 @@ async function executeStep(
         if (!step.selector) throw new Error("Click requires selector");
         await page.waitForSelector(step.selector, { timeout: 10000 });
         const element = await page.$(step.selector);
-        if (element) {
-          await element.click();
+        if (!element) {
+          throw new Error(`Click target not found: ${step.selector}`);
         }
+        await element.click();
         if (step.waitFor === "navigation") {
           await page.waitForNavigation({ waitUntil: "networkidle2" });
         } else if (step.waitFor) {
@@ -65,11 +66,16 @@ async function executeStep(
         if (step.value === undefined) throw new Error(`${step.action} requires value`);
         await page.waitForSelector(step.selector, { timeout: 10000 });
         const element = await page.$(step.selector);
-        if (element) {
-          // Clear and type
-          await element.evaluate((el: HTMLInputElement) => { el.value = ""; });
-          await element.type(step.value);
+        if (!element) {
+          throw new Error(`${step.action} target not found: ${step.selector}`);
         }
+        // Clear via input events so Svelte/React bindings update.
+        await element.evaluate((el: HTMLInputElement) => {
+          el.value = "";
+          el.dispatchEvent(new Event("input", { bubbles: true }));
+          el.dispatchEvent(new Event("change", { bubbles: true }));
+        });
+        await element.type(step.value);
         break;
       }
 
@@ -130,6 +136,7 @@ async function executeFlow(
 ): Promise<FlowResult> {
   const browser = createBrowserManager({
     headless: options.headless ?? true,
+    baseUrl: config.baseUrl,
   });
 
   const device = flow.device || "desktop-chrome";
@@ -145,6 +152,7 @@ async function executeFlow(
   };
 
   const startTime = performance.now();
+  let page: Page | null = null;
 
   try {
     await browser.launch();
@@ -155,7 +163,7 @@ async function executeFlow(
       cookies = await getAuthCookies(config.auth);
     }
 
-    const page = await browser.createPage(device, cookies);
+    page = await browser.createPage(device, cookies);
 
     for (const step of flow.steps) {
       debug("Executing step", { action: step.action });
@@ -175,12 +183,17 @@ async function executeFlow(
         break;
       }
     }
-
-    await page.close();
   } catch (err) {
     result.passed = false;
     result.error = String(err);
   } finally {
+    if (page) {
+      try {
+        await page.close();
+      } catch {
+        // Ignore close errors
+      }
+    }
     await browser.close();
   }
 

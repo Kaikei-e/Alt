@@ -86,21 +86,32 @@ class ConfigManager {
       "INOREADER_CLIENT_ID",
       "INOREADER_CLIENT_SECRET",
     ];
+    const failed: string[] = [];
 
     for (const env of required) {
       const value = this.getEnvOrFile(env);
       if (!value) {
-        return false;
+        failed.push(`${env} (missing)`);
+        continue;
       }
       if (
         value === "demo-client-id" || value === "demo-client-secret" ||
         value === "placeholder"
       ) {
-        return false;
+        failed.push(`${env} (placeholder)`);
+        continue;
       }
       if (value.length < 5) {
-        return false;
+        failed.push(`${env} (too short)`);
       }
+    }
+
+    if (failed.length > 0) {
+      // Log variable names only — never values.
+      logger.error("Configuration validation failed", {
+        failed_variables: failed,
+      });
+      return false;
     }
 
     return true;
@@ -143,8 +154,15 @@ class ConfigManager {
     if (filePath) {
       try {
         return Deno.readTextFileSync(filePath).trim();
-      } catch {
-        // File not found or unreadable
+      } catch (error) {
+        if (error instanceof Deno.errors.NotFound) {
+          return undefined;
+        }
+        // Permission / other IO errors: surface for diagnosis (no secret value).
+        logger.warn(`Failed to read secrets file for ${key}`, {
+          file: filePath,
+          error: error instanceof Error ? error.message : String(error),
+        });
       }
     }
 
