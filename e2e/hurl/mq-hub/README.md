@@ -34,7 +34,9 @@ Ports published for host-local testing: `19500:9500` (mq-hub).
 ## Running
 
 `run.sh` handles the full lifecycle (generate fixture → compose up → Hurl
-→ compose down). Override via env:
+→ compose down). The suite runs with `--jobs 1`: later scenarios (especially
+`12-stream-info`) depend on publishes and consumer-group creation from earlier
+files, and Hurl 7.1 `--test` otherwise defaults to parallel. Override via env:
 
 | Var | Default | Purpose |
 |-----|---------|---------|

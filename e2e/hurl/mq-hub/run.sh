@@ -94,7 +94,12 @@ hurl_run --test \
   e2e/hurl/mq-hub/00-setup.hurl
 
 echo "==> running Hurl suite (serial; state-modifying tests share streams)" >&2
+# --jobs 1 is load-bearing. Hurl 7.1 --test defaults to parallel, which
+# races 12-stream-info ahead of 04/07 publishes + 10 consumer-group create
+# and yields HTTP 500 (XINFO on a stream that does not exist yet). Same
+# pattern as knowledge-sovereign / acolyte / news-creator run.sh.
 hurl_run --test \
+  --jobs 1 \
   --file-root "$ROOT" \
   --variable "base_url=$BASE_URL" \
   --variable "run_id=$RUN_ID" \
