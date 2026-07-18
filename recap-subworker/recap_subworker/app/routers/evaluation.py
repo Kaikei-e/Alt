@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import asyncio
-from pathlib import Path
 from uuid import UUID
 
 import structlog
@@ -12,7 +11,7 @@ from pydantic import BaseModel, Field
 
 from ...db.dao import SubworkerDAO
 from ...infra.config import Settings
-from ...infra.path_validation import ALLOWED_BASE_DIRS, validate_path
+from ...infra.path_validation import ALLOWED_BASE_DIRS, require_existing_path
 from ...services.evaluation import EvaluationService
 from ..container import ServiceContainer
 from ..deps import get_container, get_session, get_settings_dep
@@ -125,36 +124,28 @@ async def evaluate_genres(
     統計的に厳密な評価結果を返します。
     評価結果はrecap-dbに保存されます。
     """
-    # デフォルトパスの設定
-    if request.golden_data_path is None:
-        golden_data_path = Path("/app/data/golden_classification.json")
-    else:
-        # ユーザー入力のパスを検証
-        try:
-            golden_data_path = validate_path(request.golden_data_path, ALLOWED_BASE_DIRS)
-        except ValueError as e:
-            raise HTTPException(status_code=400, detail=str(e)) from e
-
-    # codeql[py/path-injection] -- validate_path + ALLOWED_BASE_DIRS enforces allow-list and symlink resolution
-    if not golden_data_path.exists():
+    # デフォルトパスの設定 — require_existing_path が allow-list + exists を一括処理
+    golden_raw = request.golden_data_path or "/app/data/golden_classification.json"
+    try:
+        golden_data_path = require_existing_path(golden_raw, ALLOWED_BASE_DIRS)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+    except FileNotFoundError:
         raise HTTPException(
             status_code=404,
-            detail=f"Golden dataset file not found: {golden_data_path}",
-        )
+            detail=f"Golden dataset file not found: {golden_raw}",
+        ) from None
 
     if request.weights_path:
-        # ユーザー入力のパスを検証
         try:
-            weights_path = validate_path(request.weights_path, ALLOWED_BASE_DIRS)
+            weights_path = require_existing_path(request.weights_path, ALLOWED_BASE_DIRS)
         except ValueError as e:
             raise HTTPException(status_code=400, detail=str(e)) from e
-
-        # codeql[py/path-injection] -- validate_path + ALLOWED_BASE_DIRS enforces allow-list and symlink resolution
-        if not weights_path.exists():
+        except FileNotFoundError:
             raise HTTPException(
                 status_code=404,
                 detail=f"Weights file not found: {request.weights_path}",
-            )
+            ) from None
     else:
         weights_path = None
 

@@ -23,6 +23,7 @@ as an alt-backend deserialisation error in the container logs.
 from __future__ import annotations
 
 import base64
+import html
 from datetime import datetime, timezone
 from typing import Any
 
@@ -106,9 +107,10 @@ async def stub_rss_feed(feed_slug: str) -> Response:
 
 @app.get("/alt-backend/e2e/{article_slug}.html")
 async def stub_article_html(article_slug: str) -> Response:
+    safe_slug = html.escape(article_slug, quote=True)
     body = (
         "<!doctype html><html><head><title>Stub article</title></head>"
-        f"<body><h1>{article_slug}</h1><p>Synthetic article body for E2E.</p>"
+        f"<body><h1>{safe_slug}</h1><p>Synthetic article body for E2E.</p>"
         "</body></html>"
     )
     return Response(content=body, media_type="text/html")

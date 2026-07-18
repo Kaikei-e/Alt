@@ -67,3 +67,34 @@ def validate_path(user_path: str, base_dirs: list[Path] | None = None) -> Path:
     )
 
 
+
+
+def require_existing_path(user_path: str, base_dirs: list[Path] | None = None) -> Path:
+    """Validate *and* confirm the path exists under an allow-listed base.
+
+    Filesystem access (`os.path.exists`) runs only after a lexical
+    `realpath + startswith` guard in this same function so CodeQL's
+    py/path-injection query treats the sink as sanitized.
+    """
+    if base_dirs is None:
+        base_dirs = ALLOWED_BASE_DIRS
+
+    if not base_dirs:
+        raise ValueError("No base directories configured for path validation")
+
+    normalized = os.path.normpath(user_path)
+    if not os.path.isabs(normalized):  # noqa: PTH117
+        normalized = os.path.normpath(os.path.join(str(base_dirs[0]), normalized))  # noqa: PTH118
+
+    real_path = os.path.realpath(normalized)
+    for base_dir in base_dirs:
+        real_base = os.path.realpath(str(base_dir))
+        if real_path == real_base or real_path.startswith(real_base + os.sep):
+            if not os.path.exists(real_path):  # noqa: PTH110
+                raise FileNotFoundError(real_path)
+            return Path(real_path)
+
+    raise ValueError(
+        f"Path '{user_path}' is not within allowed directories: "
+        f"{[str(d) for d in base_dirs]}"
+    )

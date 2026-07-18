@@ -171,13 +171,18 @@ func (c *EnvoyHTTPClient) Get(ctx context.Context, targetURL string) (*http.Resp
 	req.Header.Set("X-Target-Domain", parsedURL.Hostname())
 	req.Header.Set("X-Resolved-IP", resolvedIP)
 
+	// Log header names only — never values (Cookie/Authorization/etc.).
+	headerNames := make([]string, 0, len(req.Header))
+	for name := range req.Header {
+		headerNames = append(headerNames, name)
+	}
 	c.logger.Debug("EnvoyHTTPClient: sending request",
 		"proxy_url", proxyURL.String(),
 		"target_domain", parsedURL.Hostname(),
 		"resolved_ip", resolvedIP,
 		"user_agent", userAgent,
 		"browser_headers_enabled", c.config.EnableBrowserHeaders,
-		"headers", req.Header)
+		"header_names", headerNames)
 
 	// Execute request
 	resp, err := c.httpClient.Do(req)

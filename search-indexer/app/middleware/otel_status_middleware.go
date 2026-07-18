@@ -31,15 +31,9 @@ func (r *statusRecorder) WriteHeader(code int) {
 	r.ResponseWriter.WriteHeader(code)
 }
 
-func (r *statusRecorder) Write(b []byte) (int, error) {
-	if !r.wroteHeader {
-		r.wroteHeader = true
-	}
-	// OTel tracing middleware passthrough. The bytes originate from the
-	// wrapped handler (Meilisearch-backed handlers that JSON-encode their
-	// responses), not from user input routed through this recorder.
-	return r.ResponseWriter.Write(b) //nolint:gosec // codeql[go/reflected-xss]
-}
+// Write is intentionally not overridden: body bytes pass through the embedded
+// ResponseWriter so this middleware never sits on the XSS sink. Status defaults
+// to 200 when handlers Write without WriteHeader.
 
 // OTelStatusHandler wraps an http.Handler with OpenTelemetry tracing
 // and sets span status based on HTTP response code.
