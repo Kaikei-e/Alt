@@ -11,8 +11,9 @@ Alt は 20+ microservices の monorepo。各 bounded context の正準語 (ubiqu
 - [Knowledge Home](./contexts/knowledge-home.md) — today digest + recall を束ねるダッシュボード型サーフェス。
   `/home` ルート。knowledge_events を disposable read model へ投影する append-first 構造。
   knowledge-sovereign / alt-backend / alt-frontend-sv にまたがる。
-- [Knowledge Trail](./contexts/knowledge-trail.md) — Alt の primary surface。footprint の連なりを背骨に、
-  型付き branch を提案する認知フィードバック循環。knowledge-sovereign / alt-backend / alt-frontend-sv にまたがる。
+- [Knowledge Trail](./contexts/knowledge-trail.md) — 調査の再開点 (resume surface、2026-07-18 改訂)。
+  footprint の連なりを背骨に、型付き branch を提案する認知フィードバック循環。低頻度・高価値の
+  rediscovery を仕事とする。knowledge-sovereign / alt-backend / alt-frontend-sv にまたがる。
 - [Resource Efficiency](./contexts/resource-efficiency.md) — _(定義中, 2026-06-17 grill)_ 構成・アーキテクチャを
   変えずに、ログと実測値からランタイムのリソース消費を right-size する **運用境界**。全サービス横断。
 - [Visual Preview](./contexts/visual-preview.md) — _(定義中, 2026-06-22 grill)_ feed 記事を OG 画像カードグリッドで
