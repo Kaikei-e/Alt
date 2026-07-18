@@ -161,8 +161,8 @@ func TestTitleFallback(t *testing.T) {
 
 func TestArticleSummarizerAPIClient_BadRequestMapping(t *testing.T) {
 	tests := []struct {
-		name       string
-		body       string
+		name         string
+		body         string
 		wantSentinel error
 	}{
 		{
