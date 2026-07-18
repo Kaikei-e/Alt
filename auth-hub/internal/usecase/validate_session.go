@@ -42,9 +42,10 @@ func (uc *ValidateSession) Execute(ctx context.Context, cookieValue string) (*do
 
 	// Store in cache (single-tenant: TenantID == UserID)
 	uc.cache.Set(cookieValue, domain.CachedSession{
-		UserID:   identity.UserID,
-		TenantID: identity.UserID,
-		Email:    identity.Email,
+		UserID:    identity.UserID,
+		TenantID:  identity.UserID,
+		Email:     identity.Email,
+		CreatedAt: identity.CreatedAt,
 	})
 
 	identity.SessionID = cookieValue

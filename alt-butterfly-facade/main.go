@@ -174,7 +174,8 @@ func main() {
 			go func() {
 				slog.InfoContext(ctx, "mTLS HTTPS listener starting", "port", mtlsPort)
 				if err := mtlsServer.ListenAndServeTLS("", ""); err != nil && err != http.ErrServerClosed {
-					slog.ErrorContext(ctx, "mTLS HTTPS listener error", "error", err)
+					slog.ErrorContext(ctx, "mTLS HTTPS listener failed — terminating (fail-closed)", "error", err)
+					os.Exit(1)
 				}
 			}()
 		}

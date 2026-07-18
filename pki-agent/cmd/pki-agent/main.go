@@ -30,7 +30,6 @@ import (
 
 	"pki-agent/config"
 	"pki-agent/internal/adapter/handler"
-	"pki-agent/internal/domain"
 	"pki-agent/internal/infrastructure"
 	"pki-agent/internal/usecase"
 )
@@ -179,6 +178,3 @@ func main() {
 		}
 	}
 }
-
-// silence unused import warnings when domain isn't directly referenced.
-var _ = domain.StateFresh

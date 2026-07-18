@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"strings"
 	"time"
 
 	"go.opentelemetry.io/otel"
@@ -92,11 +93,24 @@ func InitProvider(ctx context.Context, cfg Config) (ShutdownFunc, error) {
 	}, nil
 }
 
+// otlpInsecure reports whether the OTLP exporter should disable TLS.
+//
+// Plaintext (http:// or scheme-less) is intentional for the in-cluster
+// collector on the Docker network — that hop is not mTLS-terminated today.
+// Use https:// endpoints when exporting to a TLS-capable collector.
+func otlpInsecure(endpoint string) bool {
+	return !strings.HasPrefix(strings.ToLower(endpoint), "https://")
+}
+
 func initTracerProvider(ctx context.Context, cfg Config, res *resource.Resource) (*sdktrace.TracerProvider, error) {
-	exporter, err := otlptracehttp.New(ctx,
-		otlptracehttp.WithEndpointURL(cfg.OTLPEndpoint+"/v1/traces"),
-		otlptracehttp.WithInsecure(),
-	)
+	opts := []otlptracehttp.Option{
+		otlptracehttp.WithEndpointURL(cfg.OTLPEndpoint + "/v1/traces"),
+	}
+	if otlpInsecure(cfg.OTLPEndpoint) {
+		opts = append(opts, otlptracehttp.WithInsecure())
+	}
+
+	exporter, err := otlptracehttp.New(ctx, opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -112,10 +126,14 @@ func initTracerProvider(ctx context.Context, cfg Config, res *resource.Resource)
 }
 
 func initLoggerProvider(ctx context.Context, cfg Config, res *resource.Resource) (*sdklog.LoggerProvider, error) {
-	exporter, err := otlploghttp.New(ctx,
-		otlploghttp.WithEndpointURL(cfg.OTLPEndpoint+"/v1/logs"),
-		otlploghttp.WithInsecure(),
-	)
+	opts := []otlploghttp.Option{
+		otlploghttp.WithEndpointURL(cfg.OTLPEndpoint + "/v1/logs"),
+	}
+	if otlpInsecure(cfg.OTLPEndpoint) {
+		opts = append(opts, otlploghttp.WithInsecure())
+	}
+
+	exporter, err := otlploghttp.New(ctx, opts...)
 	if err != nil {
 		return nil, err
 	}

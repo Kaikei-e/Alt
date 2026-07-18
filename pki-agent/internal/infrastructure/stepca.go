@@ -103,5 +103,10 @@ func (s *StepCACLI) Issue(ctx context.Context, subject string, sans []string) (c
 	if err != nil {
 		return nil, nil, fmt.Errorf("read issued key: %w", err)
 	}
+	// Explicitly remove key (and cert) material from disk after reading.
+	// When TempDir is caller-supplied, defer RemoveAll is skipped, so without
+	// this the private key would linger in the shared temp directory.
+	_ = os.Remove(keyTmp)
+	_ = os.Remove(certTmp)
 	return certPEM, keyPEM, nil
 }

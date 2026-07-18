@@ -89,3 +89,36 @@ func TestStepCACLI_Issue_TokenFailure(t *testing.T) {
 		t.Fatalf("want ErrTokenSign, got %v", err)
 	}
 }
+
+func TestStepCACLI_Issue_RemovesKeyWhenTempDirSet(t *testing.T) {
+	dir := t.TempDir()
+	bin := fakeStepBin(t, dir)
+	pw := filepath.Join(dir, "pw.txt")
+	if err := os.WriteFile(pw, []byte("hunter2"), 0o400); err != nil {
+		t.Fatal(err)
+	}
+	rootCA := filepath.Join(dir, "root.pem")
+	if err := os.WriteFile(rootCA, []byte("-----BEGIN CERTIFICATE-----\n-----END CERTIFICATE-----\n"), 0o444); err != nil {
+		t.Fatal(err)
+	}
+	issueDir := filepath.Join(dir, "issue")
+	if err := os.Mkdir(issueDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+
+	s := &StepCACLI{
+		CAURL: "https://step-ca:9000", RootFile: rootCA,
+		Provisioner: "pki-agent", PasswordFile: pw,
+		StepBinary: bin, TempDir: issueDir,
+	}
+	_, _, err := s.Issue(context.Background(), "alt-backend", []string{"alt-backend"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(issueDir, "svc-key.pem")); !os.IsNotExist(err) {
+		t.Fatalf("private key file should be removed after Issue, stat err=%v", err)
+	}
+	if _, err := os.Stat(filepath.Join(issueDir, "svc-cert.pem")); !os.IsNotExist(err) {
+		t.Fatalf("cert tmp file should be removed after Issue, stat err=%v", err)
+	}
+}

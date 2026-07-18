@@ -45,3 +45,20 @@ func TestInitProvider_Disabled(t *testing.T) {
 		t.Errorf("shutdown returned error: %v", err)
 	}
 }
+
+func TestOTLPInsecure(t *testing.T) {
+	tests := []struct {
+		endpoint string
+		want     bool
+	}{
+		{"http://localhost:4318", true},
+		{"https://collector.example:4318", false},
+		{"HTTPS://collector.example:4318", false},
+		{"collector:4318", true},
+	}
+	for _, tt := range tests {
+		if got := otlpInsecure(tt.endpoint); got != tt.want {
+			t.Errorf("otlpInsecure(%q) = %v, want %v", tt.endpoint, got, tt.want)
+		}
+	}
+}

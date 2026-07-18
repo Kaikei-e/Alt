@@ -138,6 +138,26 @@ func TestResponseCache_MaxSize_Eviction(t *testing.T) {
 	assert.True(t, found)
 }
 
+func TestResponseCache_LRU_PromotesOnGet(t *testing.T) {
+	cache := NewResponseCache(2)
+
+	cache.Set("key1", &CacheEntry{Response: []byte("1"), CachedAt: time.Now(), TTL: 30 * time.Second})
+	cache.Set("key2", &CacheEntry{Response: []byte("2"), CachedAt: time.Now(), TTL: 30 * time.Second})
+
+	// Touch key1 so it becomes most-recently used; key2 is then LRU.
+	_, found := cache.Get("key1")
+	assert.True(t, found)
+
+	cache.Set("key3", &CacheEntry{Response: []byte("3"), CachedAt: time.Now(), TTL: 30 * time.Second})
+
+	_, found = cache.Get("key2")
+	assert.False(t, found, "key2 should be evicted as LRU")
+	_, found = cache.Get("key1")
+	assert.True(t, found)
+	_, found = cache.Get("key3")
+	assert.True(t, found)
+}
+
 func TestBuildCacheKey(t *testing.T) {
 	tests := []struct {
 		name     string

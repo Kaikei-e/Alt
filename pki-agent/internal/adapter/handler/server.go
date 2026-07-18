@@ -27,11 +27,10 @@ func NewMux(reader StateReader) http.Handler {
 	mux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
 		s := reader.State()
 		body := map[string]string{"state": s.String()}
+		w.Header().Set("Content-Type", "application/json")
 		if s == domain.StateFresh || s == domain.StateNearExpiry {
-			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusOK)
 		} else {
-			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusServiceUnavailable)
 		}
 		_ = json.NewEncoder(w).Encode(body)

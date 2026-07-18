@@ -67,6 +67,8 @@ func NewAuthInterceptor(logger *slog.Logger, secret []byte, issuer, audience str
 }
 
 // ValidateToken validates the JWT token and returns user context.
+// Token expiry is enforced by jwt.ParseWithClaims (RegisteredClaims.ExpiresAt);
+// callers do not need a separate domain.UserContext expiry re-check.
 func (a *AuthInterceptor) ValidateToken(tokenStr string) (*domain.UserContext, error) {
 	if tokenStr == "" {
 		return nil, errMissingToken
