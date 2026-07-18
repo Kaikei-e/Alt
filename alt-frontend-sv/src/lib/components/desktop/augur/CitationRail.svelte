@@ -121,7 +121,7 @@ function displayTitle(c: Citation): string {
 		<p class="rail-empty">No citations yet</p>
 	{:else}
 		<ol class="rail-list" aria-labelledby="rail-citations-heading">
-			{#each citations as cite, i (cite.RefID ?? cite.URL ?? `cite-${i}`)}
+			{#each citations as cite, i (cite.RefID || cite.URL || `cite-${i}`)}
 				{@const href = hrefFor(cite)}
 				{@const external = isExternal(cite)}
 				<li class="rail-item-wrap">
@@ -188,7 +188,7 @@ function displayTitle(c: Citation): string {
 			class="rail-list rail-list-related"
 			aria-labelledby="rail-related-heading"
 		>
-			{#each relatedCitations as cite, i (cite.RefID ?? cite.URL ?? `related-${i}`)}
+			{#each relatedCitations as cite, i (cite.RefID || cite.URL || `related-${i}`)}
 				{@const href = hrefFor(cite)}
 				{@const external = isExternal(cite)}
 				<li class="rail-item-wrap">
