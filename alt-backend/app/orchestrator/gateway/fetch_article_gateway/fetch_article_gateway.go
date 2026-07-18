@@ -86,33 +86,23 @@ func (g *FetchArticleGateway) FetchArticleContents(ctx context.Context, articleU
 	if err != nil {
 		return nil, fmt.Errorf("parse url failed for %q: %w", articleURL, err)
 	}
-	// SSRF Protection: Comprehensive multi-layer validation performed here
-	// - Validates URL scheme (HTTP/HTTPS only)
-	// - Blocks cloud metadata endpoints (AWS/GCP/Azure/etc)
-	// - Blocks private IP ranges (RFC1918: 10.x, 172.16-31.x, 192.168.x)
-	// - Blocks loopback and link-local addresses
-	// - Validates DNS resolution to prevent DNS rebinding attacks
-	// - Blocks internal domain suffixes (.local, .internal, .cluster.local, etc)
-	// - Validates ports (only 80, 443, 8080, 8443 allowed)
-	// - Prevents path traversal and Unicode/Punycode bypass attacks
-	if err := g.ssrfValidator.ValidateURL(ctx, parsedURL); err != nil {
+	// SSRF: validate + reconstruct request URL (scheme/host/path/query only).
+	safeURL, err := g.ssrfValidator.CanonicalRequestURL(ctx, parsedURL)
+	if err != nil {
 		return nil, fmt.Errorf("ssrf validation failed for %q: %w", parsedURL.String(), err)
 	}
 
 	// Build request with context and safe client
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, parsedURL.String(), nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, safeURL, nil)
 	if err != nil {
-		return nil, fmt.Errorf("create request failed for %q: %w", parsedURL.String(), err)
+		return nil, fmt.Errorf("create request failed for %q: %w", safeURL, err)
 	}
 	req.Header.Set("User-Agent", "Alt-Article-Fetcher/1.0")
 	req.Header.Set("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
 	// Do NOT set Accept-Encoding manually to allow Go transport to auto-decompress
 
-	// SSRF Protection: The httpClient used here is a secure client created by SSRFValidator
-	// that performs connection-time IP validation (second layer defense against DNS rebinding)
-	// and blocks all HTTP redirects to prevent redirect-based SSRF attacks.
-	// See: SSRFValidator.CreateSecureHTTPClient() for implementation details.
-	// codeql[go/request-forgery] - False positive: URL is validated by SSRFValidator before this call
+	// SSRF: CanonicalRequestURL + CreateSecureHTTPClient (connection-time IP + redirect checks).
+	// codeql[go/request-forgery] - URL reconstructed by SSRFValidator.CanonicalRequestURL
 	resp, err := g.httpClient.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("http request failed for %q: %w", parsedURL.String(), err)

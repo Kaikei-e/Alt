@@ -1,0 +1,7 @@
+extensions:
+  - addsTo:
+      pack: codeql/go-all
+      extensible: barrierModel
+    data:
+      # CanonicalRequestURL validates + reconstructs; return value is safe for request-forgery sinks.
+      - ["alt/utils/security", "SSRFValidator", True, "CanonicalRequestURL", "", "", "ReturnValue[0]", "request-forgery", "manual"]

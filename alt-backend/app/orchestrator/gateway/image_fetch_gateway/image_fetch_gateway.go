@@ -244,7 +244,8 @@ func (g *ImageFetchGateway) fetchImageWithTestingOverride(ctx context.Context, i
 			},
 		)
 	}
-	// Validate proxy configuration if using proxy
+	// Validate proxy configuration if using proxy; otherwise re-validate the final request URL.
+	var safeReqURL string
 	if g.proxyStrategy != nil && g.proxyStrategy.Enabled {
 		proxyBase, err := url.Parse(g.proxyStrategy.BaseURL)
 		if err != nil {
@@ -270,16 +271,31 @@ func (g *ImageFetchGateway) fetchImageWithTestingOverride(ctx context.Context, i
 				},
 			)
 		}
+		// Proxy host is allowlisted; still drop userinfo/fragment via reconstruction.
+		safeReqURL = (&url.URL{
+			Scheme:   strings.ToLower(parsedReqURL.Scheme),
+			Host:     parsedReqURL.Host,
+			Path:     parsedReqURL.EscapedPath(),
+			RawQuery: parsedReqURL.RawQuery,
+		}).String()
+	} else {
+		canonical, err := g.ssrfValidator.CanonicalRequestURL(ctx, parsedReqURL)
+		if err != nil {
+			return nil, errors.NewValidationContextError(
+				fmt.Sprintf("request URL validation failed: %v", err),
+				"gateway",
+				"ImageFetchGateway",
+				"validate_request_url",
+				map[string]interface{}{
+					"url": parsedReqURL.String(),
+				},
+			)
+		}
+		safeReqURL = canonical
 	}
-	// SSRF Protection: Second layer - Connection-time validation
-	// The httpClient (created by SSRFValidator.CreateSecureHTTPClient) performs real-time
-	// IP validation at the syscall.Control hook level during actual connection establishment.
-	// This prevents DNS rebinding attacks where DNS resolves to a safe IP during validation
-	// but changes to a dangerous IP before connection. All redirects are also blocked.
-	// See: SSRFValidator.validateConnectionAddress() for implementation details.
 
 	// Create HTTP request with proper headers
-	req, err := http.NewRequestWithContext(ctx, "GET", parsedReqURL.String(), nil)
+	req, err := http.NewRequestWithContext(ctx, "GET", safeReqURL, nil)
 	if err != nil {
 		return nil, errors.NewExternalAPIContextError(
 			"failed to create HTTP request",
@@ -306,12 +322,8 @@ func (g *ImageFetchGateway) fetchImageWithTestingOverride(ctx context.Context, i
 	req.Header.Set("Accept", "image/webp, image/jpeg, image/png, image/gif")
 	req.Header.Set("Cache-Control", "no-cache")
 
-	// SSRF Protection Summary: Multi-layer defense implemented
-	// Layer 1: URL validation at lines 393-413 (SSRFValidator.ValidateURL)
-	// Layer 2: Proxy allowlist validation at lines 441-467 (if proxy enabled)
-	// Layer 3: Connection-time IP validation (via secure httpClient created at line 207)
-	// Layer 4: Redirect blocking (httpClient.CheckRedirect blocks all redirects)
-	// codeql[go/request-forgery] - False positive: URL validated by comprehensive SSRF protection
+	// SSRF: CanonicalRequestURL / proxy allowlist + CreateSecureHTTPClient dial checks.
+	// codeql[go/request-forgery] - URL reconstructed by SSRFValidator.CanonicalRequestURL or proxy allowlist
 	resp, err := g.httpClient.Do(req)
 	if err != nil {
 		// Check if it's a timeout error

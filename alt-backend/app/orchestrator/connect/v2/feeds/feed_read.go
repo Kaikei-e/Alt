@@ -13,6 +13,7 @@ import (
 	"alt/connect/errorhandler"
 	"alt/connect/v2/middleware"
 	"alt/utils/perf"
+	"alt/utils/safeconv"
 
 	"google.golang.org/protobuf/proto"
 )
@@ -350,7 +351,7 @@ func (h *Handler) SearchFeeds(
 	// Compute next cursor
 	var nextCursor *int32
 	if hasMore {
-		next := int32(offset + len(results))
+		next := safeconv.Int32(offset + len(results))
 		nextCursor = &next
 	}
 

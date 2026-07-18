@@ -820,6 +820,24 @@ func TestIsPrivateHost(t *testing.T) {
 	}
 }
 
+func TestSSRFValidator_CanonicalRequestURL(t *testing.T) {
+	validator := NewSSRFValidator()
+	validator.SetTestingMode(true)
+
+	u, err := url.Parse("https://example.com/a/b?x=1#frag")
+	require.NoError(t, err)
+
+	got, err := validator.CanonicalRequestURL(context.Background(), u)
+	require.NoError(t, err)
+	assert.Equal(t, "https://example.com/a/b?x=1", got)
+	assert.NotContains(t, got, "#frag")
+
+	bad, err := url.Parse("http://10.0.0.1/secret")
+	require.NoError(t, err)
+	_, err = validator.CanonicalRequestURL(context.Background(), bad)
+	require.Error(t, err)
+}
+
 // BenchmarkIsPrivateIPAddress benchmarks the exported function
 func BenchmarkIsPrivateIPAddress(b *testing.B) {
 	ip := net.ParseIP("192.168.1.1")

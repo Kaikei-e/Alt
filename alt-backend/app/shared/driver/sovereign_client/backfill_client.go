@@ -3,6 +3,7 @@ package sovereign_client
 import (
 	"alt/domain"
 	sovereignv1 "alt/gen/proto/services/sovereign/v1"
+	"alt/utils/safeconv"
 	"context"
 	"fmt"
 	"time"
@@ -85,9 +86,9 @@ func domainBackfillJobToProto(j domain.KnowledgeBackfillJob) *sovereignv1.Backfi
 		JobId:             j.JobID.String(),
 		Status:            j.Status,
 		Kind:              j.Kind,
-		ProjectionVersion: int32(j.ProjectionVersion),
-		TotalEvents:       int32(j.TotalEvents),
-		ProcessedEvents:   int32(j.ProcessedEvents),
+		ProjectionVersion: safeconv.Int32(j.ProjectionVersion),
+		TotalEvents:       safeconv.Int32(j.TotalEvents),
+		ProcessedEvents:   safeconv.Int32(j.ProcessedEvents),
 		ErrorMessage:      j.ErrorMessage,
 		CreatedAt:         timeToProto(j.CreatedAt),
 		UpdatedAt:         timeToProto(j.UpdatedAt),

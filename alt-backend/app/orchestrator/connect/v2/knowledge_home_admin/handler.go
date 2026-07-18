@@ -18,6 +18,7 @@ import (
 	"alt/orchestrator/usecase/knowledge_backfill_usecase"
 	"alt/orchestrator/usecase/knowledge_projection_health_usecase"
 	"alt/orchestrator/usecase/knowledge_url_backfill_usecase"
+	"alt/utils/safeconv"
 )
 
 // ReprojectUsecase defines the reproject operations interface.
@@ -134,10 +135,10 @@ func (h *Handler) EmitArticleUrlBackfill(
 	)
 
 	return connect.NewResponse(&knowledgehomev1.EmitArticleUrlBackfillResponse{
-		ArticlesScanned:      int32(res.ArticlesScanned),
-		EventsAppended:       int32(res.EventsAppended),
-		SkippedBlockedScheme: int32(res.SkippedBlockedScheme),
-		SkippedDuplicate:     int32(res.SkippedDuplicate),
+		ArticlesScanned:      safeconv.Int32(res.ArticlesScanned),
+		EventsAppended:       safeconv.Int32(res.EventsAppended),
+		SkippedBlockedScheme: safeconv.Int32(res.SkippedBlockedScheme),
+		SkippedDuplicate:     safeconv.Int32(res.SkippedDuplicate),
 		MoreRemaining:        res.MoreRemaining,
 	}), nil
 }
@@ -241,7 +242,7 @@ func (h *Handler) GetProjectionHealth(
 	}
 
 	return connect.NewResponse(&knowledgehomev1.GetProjectionHealthResponse{
-		ActiveVersion: int32(health.ActiveVersion),
+		ActiveVersion: safeconv.Int32(health.ActiveVersion),
 		CheckpointSeq: health.CheckpointSeq,
 		LastUpdated:   health.LastUpdated.Format(time.RFC3339),
 		BackfillJobs:  protoJobs,
@@ -257,7 +258,7 @@ func (h *Handler) GetFeatureFlags(
 		EnableHomePage:     h.cfg.EnableHomePage,
 		EnableTracking:     h.cfg.EnableTracking,
 		EnableProjectionV2: h.cfg.EnableProjectionV2,
-		RolloutPercentage:  int32(h.cfg.RolloutPercentage),
+		RolloutPercentage:  safeconv.Int32(h.cfg.RolloutPercentage),
 		// EnableRecallRail intentionally absent — ADR-000913 §D-9
 		// retired the flag once the recall rail merged into the
 		// canonical Home payload. The proto field stays in the wire
@@ -468,7 +469,7 @@ func (h *Handler) GetSLOStatus(
 	return connect.NewResponse(&knowledgehomev1.GetSLOStatusResponse{
 		OverallHealth:         status.OverallHealth,
 		Slis:                  protoSLIs,
-		ErrorBudgetWindowDays: int32(status.ErrorBudgetWindowDays),
+		ErrorBudgetWindowDays: safeconv.Int32(status.ErrorBudgetWindowDays),
 		ActiveAlerts:          protoAlerts,
 		ComputedAt:            status.ComputedAt.Format(time.RFC3339),
 	}), nil
@@ -504,8 +505,8 @@ func (h *Handler) RunProjectionAudit(
 			ProjectionName:    audit.ProjectionName,
 			ProjectionVersion: audit.ProjectionVersion,
 			CheckedAt:         audit.CheckedAt.Format(time.RFC3339),
-			SampleSize:        int32(audit.SampleSize),
-			MismatchCount:     int32(audit.MismatchCount),
+			SampleSize:        safeconv.Int32(audit.SampleSize),
+			MismatchCount:     safeconv.Int32(audit.MismatchCount),
 			DetailsJson:       string(audit.DetailsJSON),
 		},
 	}), nil
@@ -602,9 +603,9 @@ func convertBackfillJob(job *domain.KnowledgeBackfillJob) *knowledgehomev1.Backf
 	proto := &knowledgehomev1.BackfillJob{
 		JobId:             job.JobID.String(),
 		Status:            job.Status,
-		ProjectionVersion: int32(job.ProjectionVersion),
-		TotalEvents:       int32(job.TotalEvents),
-		ProcessedEvents:   int32(job.ProcessedEvents),
+		ProjectionVersion: safeconv.Int32(job.ProjectionVersion),
+		TotalEvents:       safeconv.Int32(job.TotalEvents),
+		ProcessedEvents:   safeconv.Int32(job.ProcessedEvents),
 		ErrorMessage:      job.ErrorMessage,
 		CreatedAt:         job.CreatedAt.Format(time.RFC3339),
 	}

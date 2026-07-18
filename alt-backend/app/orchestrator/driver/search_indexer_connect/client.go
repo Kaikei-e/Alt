@@ -11,6 +11,7 @@ import (
 	searchv2 "alt/gen/proto/services/search/v2"
 	"alt/gen/proto/services/search/v2/searchv2connect"
 	"alt/orchestrator/port/search_indexer_port"
+	"alt/utils/safeconv"
 )
 
 // ConnectSearchIndexerDriver implements SearchIndexerPort using Connect-RPC.
@@ -64,8 +65,8 @@ func (d *ConnectSearchIndexerDriver) SearchArticlesWithPagination(ctx context.Co
 	resp, err := d.client.SearchArticles(ctx, connect.NewRequest(&searchv2.SearchArticlesRequest{
 		Query:  query,
 		UserId: userID,
-		Offset: int32(offset),
-		Limit:  int32(limit),
+		Offset: safeconv.Int32(offset),
+		Limit:  safeconv.Int32(limit),
 	}))
 	if err != nil {
 		return nil, 0, err
@@ -89,7 +90,7 @@ func (d *ConnectSearchIndexerDriver) SearchArticlesWithPagination(ctx context.Co
 func (d *ConnectSearchIndexerDriver) SearchRecapsByTag(ctx context.Context, tagName string, limit int) ([]*domain.RecapSearchResult, error) {
 	resp, err := d.client.SearchRecaps(ctx, connect.NewRequest(&searchv2.SearchRecapsRequest{
 		TagName: tagName,
-		Limit:   int32(limit),
+		Limit:   safeconv.Int32(limit),
 	}))
 	if err != nil {
 		return nil, err
@@ -117,7 +118,7 @@ func (d *ConnectSearchIndexerDriver) SearchRecapsByQuery(ctx context.Context, qu
 	q := &query
 	resp, err := d.client.SearchRecaps(ctx, connect.NewRequest(&searchv2.SearchRecapsRequest{
 		Query: q,
-		Limit: int32(limit),
+		Limit: safeconv.Int32(limit),
 	}))
 	if err != nil {
 		return nil, 0, err

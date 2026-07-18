@@ -34,6 +34,7 @@ import (
 	"alt/shared/usecase/fetch_articles_by_tag_usecase"
 	"alt/shared/usecase/fetch_tag_cloud_usecase"
 	"alt/utils/perf"
+	"alt/utils/safeconv"
 	"alt/utils/url_validator"
 
 	"google.golang.org/protobuf/proto"
@@ -579,7 +580,7 @@ func (h *Handler) FetchTagCloud(
 	for _, item := range items {
 		protoItems = append(protoItems, &articlesv2.TagCloudItem{
 			TagName:      item.TagName,
-			ArticleCount: int32(item.ArticleCount),
+			ArticleCount: safeconv.Int32(item.ArticleCount),
 			PositionX:    float32(item.PositionX),
 			PositionY:    float32(item.PositionY),
 			PositionZ:    float32(item.PositionZ),
@@ -588,7 +589,7 @@ func (h *Handler) FetchTagCloud(
 
 	return connect.NewResponse(&articlesv2.FetchTagCloudResponse{
 		Tags:      protoItems,
-		TotalTags: int32(len(protoItems)),
+		TotalTags: safeconv.Int32(len(protoItems)),
 	}), nil
 }
 
@@ -638,11 +639,12 @@ func (h *Handler) BatchPrefetchImages(
 		})
 	}
 
-	// Warm cache for images in background
+	// Warm cache for images in background. WithoutCancel keeps request values
+	// (trace/auth metadata) while allowing work to finish after the RPC returns.
 	for _, ogURL := range ogURLs {
 		ogURLCopy := ogURL
 		go func() {
-			warmCtx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+			warmCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 60*time.Second)
 			defer cancel()
 			h.deps.ImageProxy.WarmCache(warmCtx, ogURLCopy)
 		}()
@@ -718,8 +720,8 @@ func (h *Handler) FetchArticleSummary(
 		if len(items) > 0 {
 			return connect.NewResponse(&articlesv2.FetchArticleSummaryResponse{
 				MatchedArticles: items,
-				TotalMatched:    int32(len(items)),
-				RequestedCount:  int32(len(feedUrls)),
+				TotalMatched:    safeconv.Int32(len(items)),
+				RequestedCount:  safeconv.Int32(len(feedUrls)),
 			}), nil
 		}
 	}
@@ -749,8 +751,8 @@ func (h *Handler) FetchArticleSummary(
 
 	return connect.NewResponse(&articlesv2.FetchArticleSummaryResponse{
 		MatchedArticles: items,
-		TotalMatched:    int32(len(items)),
-		RequestedCount:  int32(len(feedUrls)),
+		TotalMatched:    safeconv.Int32(len(items)),
+		RequestedCount:  safeconv.Int32(len(feedUrls)),
 	}), nil
 }
 

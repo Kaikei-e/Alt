@@ -17,6 +17,7 @@ import (
 	"alt/domain"
 	recapinternal "alt/internal/recap"
 	recap_usecase "alt/orchestrator/usecase/recap_usecase"
+	"alt/utils/safeconv"
 )
 
 // Handler implements the RecapService Connect-RPC service.
@@ -158,8 +159,8 @@ func domainToProtoThreeDays(recap *domain.RecapSummary) *recapv2.GetThreeDayReca
 			Genre:         g.Genre,
 			Summary:       g.Summary,
 			TopTerms:      g.TopTerms,
-			ArticleCount:  int32(g.ArticleCount),
-			ClusterCount:  int32(g.ClusterCount),
+			ArticleCount:  safeconv.Int32(g.ArticleCount),
+			ClusterCount:  safeconv.Int32(g.ClusterCount),
 			EvidenceLinks: evidenceLinksToProto(g.EvidenceLinks),
 			Bullets:       g.Bullets,
 			References:    referencesToProto(g.References),
@@ -171,7 +172,7 @@ func domainToProtoThreeDays(recap *domain.RecapSummary) *recapv2.GetThreeDayReca
 		ExecutedAt:    recap.ExecutedAt.Format(time.RFC3339),
 		WindowStart:   recap.WindowStart.Format(time.RFC3339),
 		WindowEnd:     recap.WindowEnd.Format(time.RFC3339),
-		TotalArticles: int32(recap.TotalArticles),
+		TotalArticles: safeconv.Int32(recap.TotalArticles),
 		Genres:        genres,
 	}
 }
@@ -184,8 +185,8 @@ func domainToProto(recap *domain.RecapSummary) *recapv2.GetSevenDayRecapResponse
 			Genre:         g.Genre,
 			Summary:       g.Summary,
 			TopTerms:      g.TopTerms,
-			ArticleCount:  int32(g.ArticleCount),
-			ClusterCount:  int32(g.ClusterCount),
+			ArticleCount:  safeconv.Int32(g.ArticleCount),
+			ClusterCount:  safeconv.Int32(g.ClusterCount),
 			EvidenceLinks: evidenceLinksToProto(g.EvidenceLinks),
 			Bullets:       g.Bullets,
 			References:    referencesToProto(g.References),
@@ -197,7 +198,7 @@ func domainToProto(recap *domain.RecapSummary) *recapv2.GetSevenDayRecapResponse
 		ExecutedAt:    recap.ExecutedAt.Format(time.RFC3339),
 		WindowStart:   recap.WindowStart.Format(time.RFC3339),
 		WindowEnd:     recap.WindowEnd.Format(time.RFC3339),
-		TotalArticles: int32(recap.TotalArticles),
+		TotalArticles: safeconv.Int32(recap.TotalArticles),
 		Genres:        genres,
 	}
 }
@@ -222,7 +223,7 @@ func referencesToProto(refs []domain.Reference) []*recapv2.Reference {
 	result := make([]*recapv2.Reference, len(refs))
 	for i, r := range refs {
 		result[i] = &recapv2.Reference{
-			Id:     int32(r.ID),
+			Id:     safeconv.Int32(r.ID),
 			Url:    r.URL,
 			Domain: r.Domain,
 		}
@@ -239,8 +240,8 @@ func clusterDraftToProto(draft *domain.ClusterDraft) *recapv2.ClusterDraft {
 	for i, g := range draft.Genres {
 		genres[i] = &recapv2.ClusterGenre{
 			Genre:        g.Genre,
-			SampleSize:   int32(g.SampleSize),
-			ClusterCount: int32(g.ClusterCount),
+			SampleSize:   safeconv.Int32(g.SampleSize),
+			ClusterCount: safeconv.Int32(g.ClusterCount),
 			Clusters:     clusterSegmentsToProto(g.Clusters),
 		}
 	}
@@ -250,7 +251,7 @@ func clusterDraftToProto(draft *domain.ClusterDraft) *recapv2.ClusterDraft {
 		Description:  draft.Description,
 		Source:       draft.Source,
 		GeneratedAt:  draft.GeneratedAt.Format(time.RFC3339),
-		TotalEntries: int32(draft.TotalEntries),
+		TotalEntries: safeconv.Int32(draft.TotalEntries),
 		Genres:       genres,
 	}
 }
@@ -262,7 +263,7 @@ func clusterSegmentsToProto(segments []domain.ClusterSegment) []*recapv2.Cluster
 		result[i] = &recapv2.ClusterSegment{
 			ClusterId:                s.ClusterID,
 			Label:                    s.Label,
-			Count:                    int32(s.Count),
+			Count:                    safeconv.Int32(s.Count),
 			MarginMean:               s.MarginMean,
 			MarginStd:                s.MarginStd,
 			TopBoostMean:             s.TopBoostMean,
@@ -285,8 +286,8 @@ func clusterArticlesToProto(articles []domain.ClusterArticle) []*recapv2.Cluster
 			Margin:         a.Margin,
 			TopBoost:       a.TopBoost,
 			Strategy:       a.Strategy,
-			TagCount:       int32(a.TagCount),
-			CandidateCount: int32(a.CandidateCount),
+			TagCount:       safeconv.Int32(a.TagCount),
+			CandidateCount: safeconv.Int32(a.CandidateCount),
 			TopTags:        a.TopTags,
 		}
 	}
@@ -334,8 +335,8 @@ func eveningPulseDomainToProto(pulse *domain.EveningPulse) *recapv2.GetEveningPu
 			Role:                   topicRoleToProto(t.Role),
 			Title:                  t.Title,
 			Rationale:              rationaleToProto(t.Rationale),
-			ArticleCount:           int32(t.ArticleCount),
-			SourceCount:            int32(t.SourceCount),
+			ArticleCount:           safeconv.Int32(t.ArticleCount),
+			SourceCount:            safeconv.Int32(t.SourceCount),
 			TimeAgo:                t.TimeAgo,
 			ArticleIds:             t.ArticleIDs,
 			RepresentativeArticles: representativeArticlesToProto(t.RepresentativeArticles),
@@ -343,7 +344,7 @@ func eveningPulseDomainToProto(pulse *domain.EveningPulse) *recapv2.GetEveningPu
 			SourceNames:            t.SourceNames,
 		}
 		if t.Tier1Count != nil {
-			tier1 := int32(*t.Tier1Count)
+			tier1 := safeconv.Int32(*t.Tier1Count)
 			topics[i].Tier1Count = &tier1
 		}
 		if t.TrendMultiplier != nil {
@@ -480,7 +481,7 @@ func (h *Handler) SearchRecapsByTag(
 		protoResults[i] = &recapv2.RecapSearchResultItem{
 			JobId:      r.JobID,
 			ExecutedAt: r.ExecutedAt,
-			WindowDays: int32(r.WindowDays),
+			WindowDays: safeconv.Int32(r.WindowDays),
 			Genre:      r.Genre,
 			Summary:    r.Summary,
 			TopTerms:   r.TopTerms,

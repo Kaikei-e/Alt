@@ -12,6 +12,7 @@ import (
 
 	"alt/connect/errorhandler"
 	"alt/connect/v2/middleware"
+	"alt/utils/safeconv"
 
 	"github.com/google/uuid"
 )
@@ -79,13 +80,13 @@ func (h *Handler) GetKnowledgeHome(
 	// Map digest from usecase (needToKnowCount is backend-authoritative, not page-scanned)
 	digest := &knowledgehomev1.TodayDigest{
 		Date:                  result.Digest.DigestDate.Format("2006-01-02"),
-		NewArticles:           int32(result.Digest.NewArticles),
-		SummarizedArticles:    int32(result.Digest.SummarizedArticles),
-		UnsummarizedArticles:  int32(result.Digest.UnsummarizedArticles),
+		NewArticles:           safeconv.Int32(result.Digest.NewArticles),
+		SummarizedArticles:    safeconv.Int32(result.Digest.SummarizedArticles),
+		UnsummarizedArticles:  safeconv.Int32(result.Digest.UnsummarizedArticles),
 		TopTags:               result.Digest.TopTags,
 		WeeklyRecapAvailable:  result.Digest.WeeklyRecapAvailable,
 		EveningPulseAvailable: result.Digest.EveningPulseAvailable,
-		NeedToKnowCount:       int32(result.Digest.NeedToKnowCount),
+		NeedToKnowCount:       safeconv.Int32(result.Digest.NeedToKnowCount),
 		DigestFreshness:       result.Digest.DigestFreshness,
 	}
 	if result.Digest.LastProjectedAt != nil {
