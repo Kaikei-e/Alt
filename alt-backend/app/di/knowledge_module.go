@@ -12,6 +12,7 @@ import (
 	"alt/orchestrator/usecase/append_knowledge_event_usecase"
 	"alt/orchestrator/usecase/archive_lens_usecase"
 	"alt/orchestrator/usecase/create_lens_usecase"
+	"alt/orchestrator/usecase/emit_trail_outcome_usecase"
 	"alt/orchestrator/usecase/get_knowledge_home_usecase"
 	"alt/orchestrator/usecase/get_knowledge_trail_usecase"
 	"alt/orchestrator/usecase/knowledge_audit_usecase"
@@ -44,6 +45,7 @@ type KnowledgeModule struct {
 	GetKnowledgeHomeUsecase          *get_knowledge_home_usecase.GetKnowledgeHomeUsecase
 	GetKnowledgeTrailUsecase         *get_knowledge_trail_usecase.GetKnowledgeTrailUsecase
 	ResolveTrailBranchUsecase        *resolve_trail_branch_usecase.ResolveTrailBranchUsecase
+	EmitTrailOutcomeUsecase          *emit_trail_outcome_usecase.EmitTrailOutcomeUsecase
 	TrackHomeSeenUsecase             *track_home_seen_usecase.TrackHomeSeenUsecase
 	TrackHomeActionUsecase           *track_home_action_usecase.TrackHomeActionUsecase
 	AppendKnowledgeEventUsecase      *append_knowledge_event_usecase.AppendKnowledgeEventUsecase
@@ -98,6 +100,7 @@ func newKnowledgeModule(infra *InfraModule, article *ArticleModule) *KnowledgeMo
 	getKnowledgeHomeUC := get_knowledge_home_usecase.NewGetKnowledgeHomeUsecase(sovereignCli, sovereignCli, sovereignCli, sovereignCli, sovereignCli, trendingTagsGw)
 	getKnowledgeTrailUC := get_knowledge_trail_usecase.NewGetKnowledgeTrailUsecase(sovereignCli)
 	resolveTrailBranchUC := resolve_trail_branch_usecase.NewResolveTrailBranchUsecase(sovereignCli)
+	emitTrailOutcomeUC := emit_trail_outcome_usecase.NewEmitTrailOutcomeUsecase(sovereignCli)
 	trackHomeSeenUC := track_home_seen_usecase.NewTrackHomeSeenUsecase(sovereignCli, featureFlagGw)
 	trackHomeActionUC := track_home_action_usecase.NewTrackHomeActionUsecase(sovereignCli, sovereignCli, featureFlagGw, sovereignCli, sovereignCli, sovereignCli, articleURLLookupGw)
 	appendKnowledgeEventUC := append_knowledge_event_usecase.NewAppendKnowledgeEventUsecase(sovereignCli)
@@ -170,6 +173,7 @@ func newKnowledgeModule(infra *InfraModule, article *ArticleModule) *KnowledgeMo
 		GetKnowledgeHomeUsecase:          getKnowledgeHomeUC,
 		GetKnowledgeTrailUsecase:         getKnowledgeTrailUC,
 		ResolveTrailBranchUsecase:        resolveTrailBranchUC,
+		EmitTrailOutcomeUsecase:          emitTrailOutcomeUC,
 		TrackHomeSeenUsecase:             trackHomeSeenUC,
 		TrackHomeActionUsecase:           trackHomeActionUC,
 		AppendKnowledgeEventUsecase:      appendKnowledgeEventUC,

@@ -1,4 +1,4 @@
-h1:oZu6gDjSqxT1WHkVne/ZUnz5vbGpOUlxD7kaxmoy4/I=
+h1:Bh5998B508Bt1WpV0WpaTGVdySQTgin7TFV2ahul7mM=
 00001_initial_schema.sql h1:CSFJx5Q5Jv44C4sqoKpzvdh6t8Unwog8bZw9/VBd3NQ=
 00002_add_link_column.sql h1:A2QxniA5wEK9bo0UnqTNKX5TgvkR/zugtdCKs8O07DE=
 00003_fix_user_events_dedupe_constraint.sql h1:5EpJwNHbInepPLqTMNG3YL/FPTqvpkpqazjt6rK0PkQ=
@@ -27,3 +27,4 @@ h1:oZu6gDjSqxT1WHkVne/ZUnz5vbGpOUlxD7kaxmoy4/I=
 00026_create_knowledge_trail_footprints.sql h1:1xCAVLxhBy/6v/bG/HPRReSS8sz6nW9R35HEAv5pi4c=
 00027_create_knowledge_trail_branches.sql h1:+lh0MyvOe1KTctJlf2JoeuO79QaWql3n3RgFjmwvJSQ=
 00028_drop_knowledge_loop_projections.sql h1:YaOmNXyr8T+x3xXDQaqJ0GqEynpwGYrGVLnhQ47ozbs=
+00029_create_knowledge_trail_act_outcomes.sql h1:fNaAr7v65hM5KgD2oXNgcsWN54UZaiN3N3GuuePTJTI=

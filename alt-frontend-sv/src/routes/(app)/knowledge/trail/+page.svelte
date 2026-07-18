@@ -1,9 +1,9 @@
 <script lang="ts">
 import { onMount } from "svelte";
 import { browser } from "$app/environment";
-import { useKnowledgeTrail } from "$lib/hooks/useKnowledgeTrail.svelte";
-import TrailSpine from "$lib/components/knowledge-trail/TrailSpine.svelte";
 import TrailBranches from "$lib/components/knowledge-trail/TrailBranches.svelte";
+import TrailSpine from "$lib/components/knowledge-trail/TrailSpine.svelte";
+import { useKnowledgeTrail } from "$lib/hooks/useKnowledgeTrail.svelte";
 
 const trail = useKnowledgeTrail();
 
@@ -11,10 +11,7 @@ const trail = useKnowledgeTrail();
 // active lens so the selected chip never disappears when the spine is filtered.
 const availableTags = $derived(
 	Array.from(
-		new Set([
-			...trail.footprints.flatMap((f) => f.tags),
-			...trail.activeTags,
-		]),
+		new Set([...trail.footprints.flatMap((f) => f.tags), ...trail.activeTags]),
 	)
 		.filter((t) => t.trim() !== "")
 		.sort(),
@@ -81,7 +78,7 @@ onMount(() => {
 
 	<TrailBranches
 		branches={trail.branches}
-		onResolve={(key, resolution) => trail.resolveBranch(key, resolution)}
+		onResolve={trail.resolveBranch}
 	/>
 </div>
 

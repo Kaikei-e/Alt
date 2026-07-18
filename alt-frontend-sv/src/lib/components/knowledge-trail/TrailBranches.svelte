@@ -6,7 +6,11 @@ import type {
 
 interface Props {
 	branches: BranchData[];
-	onResolve: (branchKey: string, resolution: BranchResolution) => void;
+	onResolve: (
+		branchKey: string,
+		resolution: BranchResolution,
+		targetItemKey?: string,
+	) => void;
 }
 
 const { branches, onResolve }: Props = $props();
@@ -53,7 +57,8 @@ function evidenceSummary(b: BranchData): string {
 					<button
 						class="take-path"
 						data-testid="branch-take"
-						onclick={() => onResolve(branch.branchKey, "taken")}
+						onclick={() =>
+							onResolve(branch.branchKey, "taken", branch.targetItemKey)}
 					>
 						Take this path
 					</button>

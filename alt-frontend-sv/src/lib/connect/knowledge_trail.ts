@@ -5,13 +5,13 @@
  * Authentication is handled by the transport layer.
  */
 
-import { createClient } from "@connectrpc/connect";
 import type { Client, Transport } from "@connectrpc/connect";
+import { createClient } from "@connectrpc/connect";
 import {
-	KnowledgeTrailService,
 	type GetTrailResponse,
-	type Footprint as ProtoFootprint,
+	KnowledgeTrailService,
 	type Branch as ProtoBranch,
+	type Footprint as ProtoFootprint,
 } from "$lib/gen/alt/knowledge_trail/v1/knowledge_trail_pb";
 
 type KnowledgeTrailClient = Client<typeof KnowledgeTrailService>;
@@ -136,6 +136,21 @@ export async function resolveBranch(
 ): Promise<void> {
 	const client = createKnowledgeTrailClient(transport);
 	await client.resolveBranch({ branchKey, resolution, clientResolutionId });
+}
+
+/**
+ * Records the raw dwell observed after a taken branch. Idempotent per branch —
+ * the server dedupes on the branch key (one outcome per proposal, first write
+ * wins), so retries need no client-minted id.
+ */
+export async function emitTrailOutcome(
+	transport: Transport,
+	branchKey: string,
+	itemKey: string,
+	dwellMs: bigint,
+): Promise<void> {
+	const client = createKnowledgeTrailClient(transport);
+	await client.emitTrailOutcome({ branchKey, itemKey, dwellMs });
 }
 
 function convertBranch(pb: ProtoBranch): BranchData {

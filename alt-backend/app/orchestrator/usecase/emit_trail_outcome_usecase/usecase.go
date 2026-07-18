@@ -6,8 +6,13 @@ package emit_trail_outcome_usecase
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"fmt"
+	"strings"
+	"time"
 
+	"alt/domain"
 	"alt/shared/port/knowledge_event_port"
 
 	"github.com/google/uuid"
@@ -34,7 +39,47 @@ func NewEmitTrailOutcomeUsecase(appendPort knowledge_event_port.AppendKnowledgeE
 	return &EmitTrailOutcomeUsecase{appendPort: appendPort}
 }
 
-// Execute validates and appends a dwell outcome for a taken branch.
+// Execute validates and appends a dwell outcome for a taken branch. Idempotent
+// per branch: the dedupe key is the proposal ref, so the first outcome wins and
+// retries append nothing new (D19 — no client-minted id needed).
 func (u *EmitTrailOutcomeUsecase) Execute(ctx context.Context, userID, tenantID uuid.UUID, branchKey, itemKey string, dwellMs int64) error {
-	return errors.New("not implemented")
+	branchKey = strings.TrimSpace(branchKey)
+	if branchKey == "" {
+		return fmt.Errorf("%w: branch_key required", ErrInvalidRequest)
+	}
+	itemKey = strings.TrimSpace(itemKey)
+	if itemKey == "" {
+		return fmt.Errorf("%w: item_key required", ErrInvalidRequest)
+	}
+	if dwellMs < 0 {
+		return fmt.Errorf("%w: dwell_ms must be non-negative", ErrInvalidRequest)
+	}
+	// A forgotten overnight tab must not mint absurd business facts.
+	if dwellMs > MaxDwellMs {
+		dwellMs = MaxDwellMs
+	}
+
+	payload, _ := json.Marshal(map[string]any{
+		"branch_key": branchKey,
+		"item_key":   itemKey,
+		"dwell_ms":   dwellMs,
+	})
+	uid := userID
+	evt := domain.KnowledgeEvent{
+		EventID:       uuid.New(),
+		OccurredAt:    time.Now(),
+		TenantID:      tenantID,
+		UserID:        &uid,
+		ActorType:     domain.ActorUser,
+		ActorID:       userID.String(),
+		EventType:     EventTrailActOutcome,
+		AggregateType: "trail_branch",
+		AggregateID:   branchKey,
+		DedupeKey:     EventTrailActOutcome + ":" + branchKey,
+		Payload:       payload,
+	}
+	if _, err := u.appendPort.AppendKnowledgeEvent(ctx, evt); err != nil {
+		return fmt.Errorf("emit trail outcome: %w", err)
+	}
+	return nil
 }

@@ -162,7 +162,12 @@ func SetupConnectHandlers(mux *http.ServeMux, container *di.ApplicationComponent
 	logger.Info("Registered Connect-RPC KnowledgeHomeService", "path", khPath)
 
 	// Register KnowledgeTrailService — the footprint spine read API.
-	knowledgeTrailHandler := knowledge_trail.NewHandler(container.GetKnowledgeTrailUsecase, container.ResolveTrailBranchUsecase, logger)
+	// Rule 8: surface the act_outcome producer wiring state loudly at startup
+	// so a missing DI edge is visible immediately, not as silently absent
+	// dwell outcomes weeks later (PM-2026-045 / ADR-000928).
+	logger.Info("trail.act_outcome_producer.wiring",
+		"enabled", container.EmitTrailOutcomeUsecase != nil)
+	knowledgeTrailHandler := knowledge_trail.NewHandler(container.GetKnowledgeTrailUsecase, container.ResolveTrailBranchUsecase, container.EmitTrailOutcomeUsecase, logger)
 	ktPath, ktServiceHandler := knowledgetrailv1connect.NewKnowledgeTrailServiceHandler(knowledgeTrailHandler, opts)
 	mux.Handle(ktPath, ktServiceHandler)
 	logger.Info("Registered Connect-RPC KnowledgeTrailService", "path", ktPath)

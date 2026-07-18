@@ -21,6 +21,18 @@ const (
 	projectorName    = "knowledge-trail-projector"
 	defaultBatchSize = 500
 	defaultMaxTick   = 4
+
+	// trailProjectionVersion stamps every projected row. Bumped to 2 when the
+	// act-outcome side table joined the projection (D22): a full reproject with
+	// checkpoint reset backfills historical outcomes — see
+	// docs/runbooks/knowledge-trail-reproject.md.
+	trailProjectionVersion = 2
+
+	// eventTrailActOutcome is the current dwell-outcome vocabulary (D16).
+	eventTrailActOutcome = "trail.act_outcome.v1"
+	// eventLegacyActOutcome is the Loop-era vocabulary: history-only, never
+	// emitted anew, but its rows keep feeding path wear verbatim (D18/D20).
+	eventLegacyActOutcome = "knowledge_loop.act_outcome.v1"
 )
 
 // verbByEventType maps the canonical user-action event types to the user-facing
@@ -42,6 +54,7 @@ type Repository interface {
 	UpsertTrailFootprint(ctx context.Context, fp sovereign_db.TrailFootprint, projectionVersion int) error
 	UpsertTrailBranch(ctx context.Context, userID, tenantID uuid.UUID, b sovereign_db.TrailBranch, createdAt time.Time, projectionVersion int) error
 	SetTrailBranchState(ctx context.Context, userID uuid.UUID, branchKey, state string) error
+	InsertTrailActOutcome(ctx context.Context, o sovereign_db.TrailActOutcome, projectionVersion int) error
 }
 
 // Config tunes batch sizing.
@@ -103,11 +116,17 @@ func (p *Projector) RunBatch(ctx context.Context) error {
 				}
 				continue
 			}
+			if evt.EventType == eventTrailActOutcome || evt.EventType == eventLegacyActOutcome {
+				if err := p.foldActOutcome(ctx, evt); err != nil {
+					return err
+				}
+				continue
+			}
 			fp, ok := footprintFromEvent(evt)
 			if !ok {
 				continue
 			}
-			if err := p.repo.UpsertTrailFootprint(ctx, fp, 1); err != nil {
+			if err := p.repo.UpsertTrailFootprint(ctx, fp, trailProjectionVersion); err != nil {
 				return err
 			}
 		}
@@ -157,7 +176,7 @@ func (p *Projector) foldBranch(ctx context.Context, evt sovereign_db.KnowledgeEv
 		TargetItemKey: payload.TargetItemKey,
 		TargetTitle:   payload.TargetTitle,
 	}
-	return p.repo.UpsertTrailBranch(ctx, *evt.UserID, evt.TenantID, b, evt.OccurredAt, 1)
+	return p.repo.UpsertTrailBranch(ctx, *evt.UserID, evt.TenantID, b, evt.OccurredAt, trailProjectionVersion)
 }
 
 // foldBranchResolved transitions a branch's state from a branch_resolved event.
@@ -181,6 +200,70 @@ func (p *Projector) foldBranchResolved(ctx context.Context, evt sovereign_db.Kno
 		return nil
 	}
 	return p.repo.SetTrailBranchState(ctx, *evt.UserID, payload.BranchKey, payload.Resolution)
+}
+
+// foldActOutcome folds a dwell outcome into the act-outcomes side table. An
+// outcome never adds a row to the spine (D20) — it only feeds path wear.
+// trail.act_outcome.v1 carries the raw dwell; historical
+// knowledge_loop.act_outcome.v1 keeps its era's classified label verbatim.
+// Malformed payloads are skipped without failing the batch (the event stays in
+// the log).
+func (p *Projector) foldActOutcome(ctx context.Context, evt sovereign_db.KnowledgeEvent) error {
+	if evt.UserID == nil {
+		p.logger.WarnContext(ctx, "trail projector: rejecting act_outcome with no user_id",
+			slog.String("event_id", evt.EventID.String()))
+		return nil
+	}
+	var payload struct {
+		BranchKey string `json:"branch_key"`
+		ItemKey   string `json:"item_key"`
+		EntryKey  string `json:"entry_key"`
+		DwellMs   *int64 `json:"dwell_ms"`
+		Outcome   string `json:"outcome"`
+	}
+	if err := json.Unmarshal(evt.Payload, &payload); err != nil {
+		p.logger.WarnContext(ctx, "trail projector: unparseable act_outcome payload",
+			slog.String("event_id", evt.EventID.String()))
+		return nil
+	}
+	key := evt.DedupeKey
+	if key == "" {
+		key = evt.EventID.String()
+	}
+	o := sovereign_db.TrailActOutcome{
+		UserID:          *evt.UserID,
+		TenantID:        evt.TenantID,
+		OutcomeKey:      key,
+		SourceEventType: evt.EventType,
+		OccurredAt:      evt.OccurredAt,
+	}
+	switch evt.EventType {
+	case eventTrailActOutcome:
+		if payload.BranchKey == "" || payload.ItemKey == "" || payload.DwellMs == nil || *payload.DwellMs < 0 {
+			p.logger.WarnContext(ctx, "trail projector: rejecting incomplete trail act_outcome",
+				slog.String("event_id", evt.EventID.String()))
+			return nil
+		}
+		o.BranchKey = payload.BranchKey
+		o.ItemKey = payload.ItemKey
+		o.DwellMs = payload.DwellMs
+	default: // eventLegacyActOutcome
+		itemKey := payload.EntryKey
+		if itemKey == "" {
+			itemKey = payload.ItemKey
+		}
+		if itemKey == "" {
+			itemKey = evt.AggregateID
+		}
+		if itemKey == "" || payload.Outcome == "" {
+			p.logger.WarnContext(ctx, "trail projector: rejecting incomplete legacy act_outcome",
+				slog.String("event_id", evt.EventID.String()))
+			return nil
+		}
+		o.ItemKey = itemKey
+		o.LegacyOutcome = payload.Outcome
+	}
+	return p.repo.InsertTrailActOutcome(ctx, o, trailProjectionVersion)
 }
 
 // footprintFromEvent derives a footprint from an act event. Returns ok=false for

@@ -1,7 +1,8 @@
 ---
 title: Knowledge Loop Reproject Runbook
 date: 2026-04-23
-status: accepted
+status: superseded
+superseded_by: knowledge-trail-reproject
 tags:
   - runbook
   - knowledge-loop

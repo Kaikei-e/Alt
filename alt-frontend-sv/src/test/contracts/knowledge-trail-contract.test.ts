@@ -1,12 +1,12 @@
-import { describe, it, expect } from "vitest";
-import { create, toBinary, fromBinary } from "@bufbuild/protobuf";
+import { create, fromBinary, toBinary } from "@bufbuild/protobuf";
+import { describe, expect, it } from "vitest";
 import {
+	BranchSchema,
+	EmitTrailOutcomeRequestSchema,
+	FootprintSchema,
 	GetTrailRequestSchema,
 	GetTrailResponseSchema,
-	FootprintSchema,
-	BranchSchema,
 	ResolveBranchRequestSchema,
-	EmitTrailOutcomeRequestSchema,
 } from "$lib/gen/alt/knowledge_trail/v1/knowledge_trail_pb";
 
 describe("Knowledge Trail API Contract", () => {
@@ -39,14 +39,22 @@ describe("Knowledge Trail API Contract", () => {
 		});
 
 		it("carries the theme-lens filter on the request", () => {
-			const req = create(GetTrailRequestSchema, { filterTags: ["rust"], limit: 20 });
+			const req = create(GetTrailRequestSchema, {
+				filterTags: ["rust"],
+				limit: 20,
+			});
 			expect(req.filterTags).toEqual(["rust"]);
 		});
 
 		it("round-trips through proto serialization", () => {
 			const original = create(GetTrailResponseSchema, {
 				footprints: [
-					{ footprintKey: "ask:1", verb: "asked", itemKey: "article:2", title: "Q" },
+					{
+						footprintKey: "ask:1",
+						verb: "asked",
+						itemKey: "article:2",
+						title: "Q",
+					},
 				],
 				nextCursor: "",
 				hasMore: false,
@@ -62,7 +70,13 @@ describe("Knowledge Trail API Contract", () => {
 
 	describe("Footprint", () => {
 		it("validates each canonical verb", () => {
-			for (const verb of ["read", "asked", "returned", "listened", "dismissed"]) {
+			for (const verb of [
+				"read",
+				"asked",
+				"returned",
+				"listened",
+				"dismissed",
+			]) {
 				const fp = create(FootprintSchema, {
 					footprintKey: `${verb}:1`,
 					verb,
@@ -92,8 +106,16 @@ describe("Knowledge Trail API Contract", () => {
 		});
 
 		it("accepts each canonical relation kind", () => {
-			for (const kind of ["continuation", "cluster", "contradiction", "inquiry"]) {
-				const b = create(BranchSchema, { branchKey: `${kind}:1`, relationKind: kind });
+			for (const kind of [
+				"continuation",
+				"cluster",
+				"contradiction",
+				"inquiry",
+			]) {
+				const b = create(BranchSchema, {
+					branchKey: `${kind}:1`,
+					relationKind: kind,
+				});
 				expect(b.relationKind).toBe(kind);
 			}
 		});

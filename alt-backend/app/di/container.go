@@ -23,6 +23,7 @@ import (
 	"alt/orchestrator/usecase/create_lens_usecase"
 	"alt/orchestrator/usecase/csrf_token_usecase"
 	dashboard_usecase "alt/orchestrator/usecase/dashboard"
+	"alt/orchestrator/usecase/emit_trail_outcome_usecase"
 	"alt/orchestrator/usecase/feed_link_usecase"
 	"alt/orchestrator/usecase/fetch_article_summaries_usecase"
 	"alt/orchestrator/usecase/fetch_article_summary_usecase"
@@ -199,6 +200,7 @@ type ApplicationComponents struct {
 	GetKnowledgeHomeUsecase          *get_knowledge_home_usecase.GetKnowledgeHomeUsecase
 	GetKnowledgeTrailUsecase         *get_knowledge_trail_usecase.GetKnowledgeTrailUsecase
 	ResolveTrailBranchUsecase        *resolve_trail_branch_usecase.ResolveTrailBranchUsecase
+	EmitTrailOutcomeUsecase          *emit_trail_outcome_usecase.EmitTrailOutcomeUsecase
 	TrackHomeSeenUsecase             *track_home_seen_usecase.TrackHomeSeenUsecase
 	TrackHomeActionUsecase           *track_home_action_usecase.TrackHomeActionUsecase
 	AppendKnowledgeEventUsecase      *append_knowledge_event_usecase.AppendKnowledgeEventUsecase
@@ -381,6 +383,7 @@ func NewApplicationComponents(pool *pgxpool.Pool, cfg *config.Config) *Applicati
 		GetKnowledgeHomeUsecase:          knowledge.GetKnowledgeHomeUsecase,
 		GetKnowledgeTrailUsecase:         knowledge.GetKnowledgeTrailUsecase,
 		ResolveTrailBranchUsecase:        knowledge.ResolveTrailBranchUsecase,
+		EmitTrailOutcomeUsecase:          knowledge.EmitTrailOutcomeUsecase,
 		TrackHomeSeenUsecase:             knowledge.TrackHomeSeenUsecase,
 		TrackHomeActionUsecase:           knowledge.TrackHomeActionUsecase,
 		AppendKnowledgeEventUsecase:      knowledge.AppendKnowledgeEventUsecase,

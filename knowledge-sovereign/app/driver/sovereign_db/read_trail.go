@@ -13,6 +13,13 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
+// engagedDwellMs is the raw-dwell threshold at or above which a walked branch
+// counts as an engaged walk in the path-wear derivation. It inherits the
+// ADR-000908 30s rule, but as a read-time derivation constant (D18): the
+// emitted event carries only the raw dwell, so changing this needs no
+// reproject — every read re-derives wear from the raw measurements.
+const engagedDwellMs = int64(30_000)
+
 // TrailFootprint is the domain representation of one footprint on the trail
 // spine. verb / item_key / occurred_at are projected from the event log;
 // title / excerpt / tags are enriched at read time from knowledge_home_items.
@@ -65,10 +72,10 @@ ON CONFLICT (user_id, footprint_key) DO UPDATE SET
 // pages. filterTags applies the theme lens (item must carry one of the tags).
 func (r *Repository) GetTrailFootprints(ctx context.Context, userID uuid.UUID, cursor string, limit int, filterTags []string) ([]TrailFootprint, string, bool, error) {
 	fetchLimit := limit + 1
-	args := []interface{}{userID}
+	args := []any{userID, engagedDwellMs}
 	var where strings.Builder
 	where.WriteString(`WHERE f.user_id = $1`)
-	argPos := 2
+	argPos := 3
 	if cursor != "" {
 		occurredAt, footprintKey, err := decodeTrailCursor(cursor)
 		if err != nil {
@@ -89,11 +96,23 @@ func (r *Repository) GetTrailFootprints(ctx context.Context, userID uuid.UUID, c
 
 	// item_wear aggregates over the whole spine so the wear band does not change
 	// as the user pages. has_ask or a deep revisit count reads as "deep".
+	// item_engagement folds the act-outcome side table: a raw dwell at or above
+	// the engaged threshold ($2, a Go constant — D20) or a Loop-era engaged
+	// label marks the item as substantively walked. An engaged walk lifts the
+	// band at least to worn; engaged plus a revisit reads as deep.
 	query := fmt.Sprintf(`
 WITH item_wear AS (
   SELECT item_key, count(*) AS cnt, bool_or(verb = 'asked') AS has_ask
   FROM knowledge_trail_footprints
   WHERE user_id = $1
+  GROUP BY item_key
+),
+item_engagement AS (
+  SELECT item_key, TRUE AS engaged
+  FROM knowledge_trail_act_outcomes
+  WHERE user_id = $1
+    AND ((dwell_ms IS NOT NULL AND dwell_ms >= $2)
+         OR legacy_outcome IN ('engaged', 'deep_engagement'))
   GROUP BY item_key
 )
 SELECT f.user_id, f.tenant_id, f.footprint_key, f.verb, f.item_key,
@@ -105,11 +124,13 @@ SELECT f.user_id, f.tenant_id, f.footprint_key, f.verb, f.item_key,
                 NULLIF(split_part(split_part(khi.url, '://', 2), '/', 1), ''),
                 f.item_key),
        COALESCE(khi.summary_excerpt, ''), COALESCE(khi.tags_json, '[]'),
-       CASE WHEN iw.has_ask OR iw.cnt >= 4 THEN 'deep'
-            WHEN iw.cnt >= 2 THEN 'worn'
+       CASE WHEN iw.has_ask OR iw.cnt >= 4
+                 OR (COALESCE(ie.engaged, FALSE) AND iw.cnt >= 2) THEN 'deep'
+            WHEN iw.cnt >= 2 OR COALESCE(ie.engaged, FALSE) THEN 'worn'
             ELSE 'thin' END AS wear
 FROM knowledge_trail_footprints f
 JOIN item_wear iw ON iw.item_key = f.item_key
+LEFT JOIN item_engagement ie ON ie.item_key = f.item_key
 LEFT JOIN knowledge_home_items khi
   ON khi.user_id = f.user_id
   AND khi.item_key = f.item_key

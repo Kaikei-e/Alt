@@ -21,6 +21,7 @@ import TtsSetupSheet from "$lib/components/mobile/tts/TtsSetupSheet.svelte";
 import PageKicker from "$lib/components/recap/job-status/PageKicker.svelte";
 import { Button } from "$lib/components/ui/button";
 import { useSummarize } from "$lib/hooks/useSummarize.svelte";
+import { useTrailOutcome } from "$lib/hooks/useTrailOutcome.svelte";
 import {
 	getTtsPlaybackStore,
 	type TtsSource,
@@ -43,6 +44,15 @@ const paramUrl = $derived(safeArticleHref(page.url.searchParams.get("url")));
 let resolvedUrl = $state<string | null>(null);
 const articleUrl = $derived(paramUrl ?? resolvedUrl);
 const articleTitle = $derived(page.url.searchParams.get("title"));
+
+// Dwell measurement for a walked trail branch. The ?trail_proposal= handoff is
+// the sole gate (D19): captured once at init, deliberately non-reactive — one
+// visit, one measurement, emitted by the hook exactly once on leave. Organic
+// visits (no param) run no measurement code at all.
+useTrailOutcome(
+	page.url.searchParams.get("trail_proposal"),
+	page.params.id ? `article:${page.params.id}` : null,
+);
 
 $effect(() => {
 	if (paramUrl || resolvedUrl || !articleId) return;

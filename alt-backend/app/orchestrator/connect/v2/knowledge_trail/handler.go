@@ -11,6 +11,7 @@ import (
 
 	"alt/domain"
 	knowledgetrailv1 "alt/gen/proto/alt/knowledge_trail/v1"
+	"alt/orchestrator/usecase/emit_trail_outcome_usecase"
 	"alt/orchestrator/usecase/get_knowledge_trail_usecase"
 	"alt/orchestrator/usecase/resolve_trail_branch_usecase"
 )
@@ -19,6 +20,7 @@ import (
 type Handler struct {
 	getTrailUsecase *get_knowledge_trail_usecase.GetKnowledgeTrailUsecase
 	resolveUsecase  *resolve_trail_branch_usecase.ResolveTrailBranchUsecase
+	emitUsecase     *emit_trail_outcome_usecase.EmitTrailOutcomeUsecase
 	logger          *slog.Logger
 }
 
@@ -26,9 +28,10 @@ type Handler struct {
 func NewHandler(
 	getTrail *get_knowledge_trail_usecase.GetKnowledgeTrailUsecase,
 	resolve *resolve_trail_branch_usecase.ResolveTrailBranchUsecase,
+	emit *emit_trail_outcome_usecase.EmitTrailOutcomeUsecase,
 	logger *slog.Logger,
 ) *Handler {
-	return &Handler{getTrailUsecase: getTrail, resolveUsecase: resolve, logger: logger}
+	return &Handler{getTrailUsecase: getTrail, resolveUsecase: resolve, emitUsecase: emit, logger: logger}
 }
 
 // ResolveBranch records a user's take/dismiss of a proposed branch.
@@ -50,12 +53,27 @@ func (h *Handler) ResolveBranch(
 	return connect.NewResponse(&knowledgetrailv1.ResolveBranchResponse{Ok: true}), nil
 }
 
-// EmitTrailOutcome records the raw dwell observed after a taken branch.
+// EmitTrailOutcome records the raw dwell observed after a taken branch. Rule 8:
+// an unwired usecase panics rather than silently swallowing outcomes.
 func (h *Handler) EmitTrailOutcome(
 	ctx context.Context,
 	req *connect.Request[knowledgetrailv1.EmitTrailOutcomeRequest],
 ) (*connect.Response[knowledgetrailv1.EmitTrailOutcomeResponse], error) {
-	return nil, connect.NewError(connect.CodeUnimplemented, nil)
+	user, err := domain.GetUserFromContext(ctx)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeUnauthenticated, nil)
+	}
+	if h.emitUsecase == nil {
+		panic("knowledge_trail.Handler: EmitTrailOutcome reached with unwired emit usecase (DI gap)")
+	}
+	msg := req.Msg
+	if err := h.emitUsecase.Execute(ctx, user.UserID, user.TenantID, msg.BranchKey, msg.ItemKey, msg.DwellMs); err != nil {
+		if errors.Is(err, emit_trail_outcome_usecase.ErrInvalidRequest) {
+			return nil, connect.NewError(connect.CodeInvalidArgument, err)
+		}
+		return nil, connect.NewError(connect.CodeInternal, err)
+	}
+	return connect.NewResponse(&knowledgetrailv1.EmitTrailOutcomeResponse{Ok: true}), nil
 }
 
 // GetTrail returns the user's footprint spine, reverse-chronological.

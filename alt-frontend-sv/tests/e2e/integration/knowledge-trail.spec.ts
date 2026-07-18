@@ -1,4 +1,4 @@
-import { test, expect } from "@playwright/test";
+import { expect, test } from "@playwright/test";
 import { fulfillJson } from "../utils/mockHelpers";
 
 // E2E for the Knowledge Trail spine (Wave 2, read-only). Pull-only: the page
@@ -7,9 +7,11 @@ import { fulfillJson } from "../utils/mockHelpers";
 test.describe("Knowledge Trail spine", () => {
 	test("loads the trail page with an editorial header", async ({ page }) => {
 		await page.goto("./knowledge/trail");
-		await expect(page.getByRole("heading", { name: "Your Trail" })).toBeVisible({
-			timeout: 15000,
-		});
+		await expect(page.getByRole("heading", { name: "Your Trail" })).toBeVisible(
+			{
+				timeout: 15000,
+			},
+		);
 	});
 
 	test("renders either footprints or the empty-state, never a spinner forever", async ({
@@ -25,7 +27,9 @@ test.describe("Knowledge Trail spine", () => {
 		await expect(footprints.first().or(empty)).toBeVisible({ timeout: 15000 });
 	});
 
-	test("exposes an explicit refresh affordance (pull-only)", async ({ page }) => {
+	test("exposes an explicit refresh affordance (pull-only)", async ({
+		page,
+	}) => {
 		await page.goto("./knowledge/trail");
 		await expect(page.getByTestId("trail-refresh")).toBeVisible({
 			timeout: 15000,
@@ -103,9 +107,7 @@ test.describe("Trail closure (dwell outcome)", () => {
 
 		// Leaving the article flushes the dwell outcome exactly once.
 		await page.goBack();
-		await expect
-			.poll(() => outcomeBody, { timeout: 15000 })
-			.not.toBeNull();
+		await expect.poll(() => outcomeBody, { timeout: 15000 }).not.toBeNull();
 		const body = outcomeBody as unknown as Record<string, unknown>;
 		expect(body.branchKey).toBe(BRANCH_KEY);
 		expect(body.itemKey).toBe("article:b2");

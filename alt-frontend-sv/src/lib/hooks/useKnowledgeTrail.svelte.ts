@@ -1,11 +1,12 @@
-import { createClientTransport } from "$lib/connect/transport-client";
+import { goto } from "$app/navigation";
 import {
-	getTrail,
-	resolveBranch,
-	type FootprintData,
 	type BranchData,
 	type BranchResolution,
+	type FootprintData,
+	getTrail,
+	resolveBranch,
 } from "$lib/connect/knowledge_trail";
+import { createClientTransport } from "$lib/connect/transport-client";
 import { uuidv7 } from "$lib/utils/uuidv7";
 
 /**
@@ -35,7 +36,9 @@ export function useKnowledgeTrail() {
 				20,
 				activeTags,
 			);
-			footprints = reset ? result.footprints : [...footprints, ...result.footprints];
+			footprints = reset
+				? result.footprints
+				: [...footprints, ...result.footprints];
 			// Branches are a full snapshot of the user's open branches (not paged).
 			branches = result.branches;
 			nextCursor = result.nextCursor;
@@ -62,17 +65,31 @@ export function useKnowledgeTrail() {
 
 	// resolveBranch is the single owner of the branch-resolution emit (one
 	// component must not also emit — the PM-2026-045 tile-double-fire lesson).
-	// It mints the idempotent UUIDv7, records the resolution, then re-fetches so
-	// the closure shows as a return-diff (dismissed branches leave the open set).
+	// It mints the idempotent UUIDv7 and records the resolution. Taking a branch
+	// means walking it (D19): on `taken` the user is carried to the article,
+	// with ?trail_proposal= as the sole gate for dwell measurement. Dismissals
+	// re-fetch so the closure shows as a return-diff (the branch leaves the
+	// open set).
 	async function resolveBranchAction(
 		branchKey: string,
 		resolution: BranchResolution,
+		targetItemKey?: string,
 	): Promise<void> {
 		try {
 			const transport = createClientTransport();
 			await resolveBranch(transport, branchKey, resolution, uuidv7());
 		} catch (err) {
 			error = err instanceof Error ? err : new Error(String(err));
+			return;
+		}
+		const articleId =
+			resolution === "taken" && targetItemKey?.startsWith("article:")
+				? targetItemKey.slice(8)
+				: null;
+		if (articleId) {
+			await goto(
+				`/articles/${articleId}?trail_proposal=${encodeURIComponent(branchKey)}`,
+			);
 			return;
 		}
 		await fetchData(true);

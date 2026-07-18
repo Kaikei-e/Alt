@@ -3,6 +3,7 @@ package knowledge_trail_projector
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"testing"
 	"time"
 
@@ -342,4 +343,59 @@ func TestProjector_ActOutcomeReplayIsDeterministic(t *testing.T) {
 	require.NoError(t, NewProjector(second, nil, Config{}).RunBatch(context.Background()))
 
 	assert.Equal(t, first.outcomes, second.outcomes, "outcome projection must be a deterministic fold of the log")
+}
+
+// TestProjector_HighDensityReplayHasNoSilentTruncation replays a
+// production-density log (thousands of events, small batches) twice and
+// checks exact coverage. A 2-row seed cannot catch batch-boundary truncation —
+// the silent-truncation failure class only shows at density.
+func TestProjector_HighDensityReplayIsExactAtBatchBoundaries(t *testing.T) {
+	user := userPtr()
+	base := time.Date(2026, 7, 1, 0, 0, 0, 0, time.UTC)
+	var events []sovereign_db.KnowledgeEvent
+	seq := int64(0)
+	next := func() int64 { seq++; return seq }
+	const items = 1200
+	for i := range items {
+		item := fmt.Sprintf("article:%04d", i)
+		at := base.Add(time.Duration(i) * time.Minute)
+		events = append(events,
+			actEvent(next(), "HomeItemOpened", item, "open:"+item, at, user))
+		if i%3 == 0 {
+			events = append(events,
+				outcomeEvent(next(), "trail.act_outcome.v1", "b:"+item, "trail.act_outcome.v1:b:"+item,
+					map[string]any{"branch_key": "b:" + item, "item_key": item, "dwell_ms": 31000}, user))
+		}
+		if i%5 == 0 {
+			events = append(events,
+				outcomeEvent(next(), "knowledge_loop.act_outcome.v1", "entry:"+item,
+					"knowledge_loop.act_outcome.v1:entry:"+item+":default",
+					map[string]any{"entry_key": item, "outcome": "no_engagement"}, user))
+		}
+	}
+	wantOutcomes := items/3 + items/5
+	cfg := Config{BatchSize: 256, MaxBatchesPerTick: 1}
+
+	run := func() *fakeRepo {
+		repo := newFakeRepo(events)
+		p := NewProjector(repo, nil, cfg)
+		// Drive ticks until the checkpoint stops moving, like the runtime ticker.
+		for {
+			before := repo.checkpoint
+			require.NoError(t, p.RunBatch(context.Background()))
+			if repo.checkpoint == before {
+				break
+			}
+		}
+		return repo
+	}
+
+	first := run()
+	assert.Equal(t, seq, first.checkpoint, "checkpoint must reach the end of the log")
+	assert.Len(t, first.upserts, items, "every act event must become a footprint — no silent truncation")
+	assert.Len(t, first.outcomes, wantOutcomes, "every outcome event must land in the side table — no silent truncation")
+
+	second := run()
+	assert.Equal(t, first.upserts, second.upserts)
+	assert.Equal(t, first.outcomes, second.outcomes)
 }
