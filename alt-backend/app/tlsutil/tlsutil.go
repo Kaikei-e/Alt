@@ -213,6 +213,23 @@ func LoadClientConfig(certPath, keyPath, caPath string) (*tls.Config, error) {
 	}, nil
 }
 
+// NewMTLSClient returns an *http.Client that presents the service leaf cert
+// (hot-reloaded via LoadClientConfig) and trusts the alt-CA bundle.
+// ForceAttemptHTTP2 makes Go negotiate h2 over ALPN despite the custom
+// TLSClientConfig — required for Connect-RPC's gRPC protocol.
+func NewMTLSClient(certPath, keyPath, caPath string) (*http.Client, error) {
+	tlsCfg, err := LoadClientConfig(certPath, keyPath, caPath)
+	if err != nil {
+		return nil, err
+	}
+	return &http.Client{
+		Transport: &http.Transport{
+			TLSClientConfig:   tlsCfg,
+			ForceAttemptHTTP2: true,
+		},
+	}, nil
+}
+
 // NewMTLSHTTPServer wraps a handler in an http.Server with timeouts tuned for
 // a mTLS rollout. IdleTimeout is bounded to 60s so that HTTP/2 connection
 // reuse cannot outlive a 24h leaf certificate by more than a negligible

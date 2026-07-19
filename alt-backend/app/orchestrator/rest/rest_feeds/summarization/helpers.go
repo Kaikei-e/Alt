@@ -1,14 +1,9 @@
 package summarization
 
 import (
-	"context"
-	"fmt"
-	"io"
 	"net/http"
 
-	"alt/di"
 	"alt/utils/errors"
-	"alt/utils/html_parser"
 	"alt/utils/logger"
 
 	"github.com/labstack/echo/v4"
@@ -88,43 +83,4 @@ func handleValidationError(c echo.Context, message, field string, value interfac
 		"value": value,
 		"code":  "VALIDATION_ERROR",
 	})
-}
-
-// fetchArticleContent fetches urlStr via the SSRF-safe article fetch gateway
-// (the same driver-adjacent gateway used by ArticleUsecase and
-// BatchArticleFetcher) and extracts its title and readable text. Falls back
-// to raw HTML when text extraction yields nothing.
-func fetchArticleContent(ctx context.Context, urlStr string, container *di.ApplicationComponents) (content string, title string, err error) {
-	contentPtr, err := container.FetchArticleGateway.FetchArticleContents(ctx, urlStr)
-	if err != nil {
-		return "", "", fmt.Errorf("fetch article content: %w", err)
-	}
-
-	htmlContent := ""
-	if contentPtr != nil {
-		htmlContent = *contentPtr
-	}
-
-	extractedTitle := html_parser.ExtractTitle(htmlContent)
-	extractedText := html_parser.ExtractArticleText(htmlContent)
-	if extractedText == "" {
-		logger.Logger.WarnContext(ctx, "failed to extract article text from HTML, falling back to raw HTML",
-			"url", urlStr, "html_size_bytes", len(htmlContent))
-		return htmlContent, extractedTitle, nil
-	}
-
-	return extractedText, extractedTitle, nil
-}
-
-// streamPreProcessorSummarize streams a summary from the pre-processor via
-// the shared driver-backed gateway.
-func streamPreProcessorSummarize(ctx context.Context, container *di.ApplicationComponents, content, articleID, title string) (io.ReadCloser, error) {
-	stream, err := container.PreProcessorSummarizeGateway.StreamSummarize(ctx, content, articleID, title)
-	if err != nil {
-		logger.Logger.ErrorContext(ctx, "Pre-processor stream failed",
-			"error", err,
-			"article_id", articleID)
-		return nil, err
-	}
-	return stream, nil
 }

@@ -23,9 +23,11 @@ type Client struct {
 // Ensure Client implements rag_stream_port.RagStreamPort
 var _ rag_stream_port.RagStreamPort = (*Client)(nil)
 
-// NewClient creates a new Augur Connect-RPC client.
-func NewClient(baseURL string, logger *slog.Logger) *Client {
-	httpClient := &http.Client{}
+// NewClient creates a new Augur Connect-RPC client. httpClient is injected by
+// the DI container so the mTLS transport (when rag-orchestrator's listener
+// runs PEER_IDENTITY_MODE=mtls) and the plaintext one share a single
+// construction path.
+func NewClient(httpClient *http.Client, baseURL string, logger *slog.Logger) *Client {
 	client := augurv2connect.NewAugurServiceClient(
 		httpClient,
 		baseURL,

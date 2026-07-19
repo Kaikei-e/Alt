@@ -1,6 +1,6 @@
 // Package summarize_article_usecase orchestrates the "resolve an article,
 // then get its AI summary" flow shared by the legacy single-URL summarize
-// endpoints (POST /v1/feeds/summarize, /summarize/queue,
+// endpoints (POST /v1/feeds/summarize, /summarize/queue, /summarize/stream,
 // GET /summarize/status/:job_id). It replaces handler code that called
 // container.AltDBRepository (a driver) and the pre-processor HTTP API
 // directly.
@@ -14,6 +14,7 @@ import (
 	"alt/utils/logger"
 	"context"
 	"fmt"
+	"io"
 	"time"
 )
 
@@ -21,6 +22,7 @@ import (
 // usecase needs. It is satisfied structurally by *alt_db.AltDBRepository.
 type ArticleRepository interface {
 	FetchArticleByURL(ctx context.Context, articleURL string) (*domain.ArticleContent, error)
+	FetchArticleByID(ctx context.Context, articleID string) (*domain.ArticleContent, error)
 	SaveArticle(ctx context.Context, url, title, content string) (string, error)
 	FetchArticleSummaryByArticleID(ctx context.Context, articleID string) (*domain.FeedSummary, error)
 	SaveArticleSummary(ctx context.Context, articleID, userID, articleTitle, summary string) error
@@ -101,6 +103,94 @@ func (u *Usecase) EnsureSummary(ctx context.Context, articleID, userID, title st
 	}
 
 	return summary, false, nil
+}
+
+// ResolveStreamArticle resolves the article targeted by a streaming
+// summarize request, preferring caller-provided title/content over stored
+// values. With an articleID it backfills missing content from the database
+// (a missing article is not an error — the caller validates content
+// afterwards). With only a feedURL it reuses the stored article, or persists
+// the caller-provided content, or fetches the page from the web and persists
+// that.
+func (u *Usecase) ResolveStreamArticle(ctx context.Context, articleID, feedURL, title, content string) (resolvedID, resolvedTitle, resolvedContent string, err error) {
+	if u.repo == nil {
+		return "", "", "", fmt.Errorf("article repository not available")
+	}
+
+	if articleID != "" {
+		if content == "" {
+			article, err := u.repo.FetchArticleByID(ctx, articleID)
+			if err != nil {
+				return "", "", "", fmt.Errorf("fetch article by id: %w", err)
+			}
+			if article != nil {
+				logger.Logger.InfoContext(ctx, "Fetched article content from DB", "article_id", articleID, "content_length", len(article.Content))
+				content = article.Content
+				if title == "" {
+					title = article.Title
+				}
+			} else {
+				logger.Logger.WarnContext(ctx, "Article ID provided but not found in DB", "article_id", articleID)
+			}
+		}
+		return articleID, title, content, nil
+	}
+
+	existing, err := u.repo.FetchArticleByURL(ctx, feedURL)
+	if err != nil {
+		return "", "", "", fmt.Errorf("fetch article by url: %w", err)
+	}
+	if existing != nil {
+		if title == "" {
+			title = existing.Title
+		}
+		if content == "" {
+			content = existing.Content
+		}
+		return existing.ID, title, content, nil
+	}
+
+	if content != "" {
+		if title == "" {
+			title = "No Title"
+		}
+		id, err := u.repo.SaveArticle(ctx, feedURL, title, content)
+		if err != nil {
+			return "", "", "", fmt.Errorf("save article: %w", err)
+		}
+		return id, title, content, nil
+	}
+
+	fetchedContent, fetchedTitle, err := u.fetchAndExtract(ctx, feedURL)
+	if err != nil {
+		return "", "", "", fmt.Errorf("fetch article content: %w", err)
+	}
+	id, err := u.repo.SaveArticle(ctx, feedURL, fetchedTitle, fetchedContent)
+	if err != nil {
+		return "", "", "", fmt.Errorf("save article: %w", err)
+	}
+	return id, fetchedTitle, fetchedContent, nil
+}
+
+// StreamSummary opens a streaming summarization for articleID via the
+// pre-processor. The caller must close the returned stream.
+func (u *Usecase) StreamSummary(ctx context.Context, content, articleID, title string) (io.ReadCloser, error) {
+	stream, err := u.preprocessor.StreamSummarize(ctx, content, articleID, title)
+	if err != nil {
+		return nil, fmt.Errorf("stream summarize: %w", err)
+	}
+	return stream, nil
+}
+
+// SaveStreamedSummary persists a summary captured from a completed stream.
+func (u *Usecase) SaveStreamedSummary(ctx context.Context, articleID, userID, title, summary string) error {
+	if u.repo == nil {
+		return fmt.Errorf("article repository not available")
+	}
+	if err := u.repo.SaveArticleSummary(ctx, articleID, userID, title, summary); err != nil {
+		return fmt.Errorf("save article summary: %w", err)
+	}
+	return nil
 }
 
 // GetCachedSummary returns a previously generated, non-empty summary for

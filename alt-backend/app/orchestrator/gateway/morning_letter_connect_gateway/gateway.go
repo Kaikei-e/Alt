@@ -21,9 +21,10 @@ type Gateway struct {
 	logger *slog.Logger
 }
 
-// NewGateway creates a new MorningLetter Connect-RPC gateway
-func NewGateway(baseURL string, logger *slog.Logger) *Gateway {
-	httpClient := &http.Client{}
+// NewGateway creates a new MorningLetter Connect-RPC gateway. httpClient is
+// injected by the DI container (mTLS or plaintext, chosen from the URL
+// scheme in rag_module).
+func NewGateway(httpClient *http.Client, baseURL string, logger *slog.Logger) *Gateway {
 	client := morningletterv2connect.NewMorningLetterServiceClient(
 		httpClient,
 		baseURL,

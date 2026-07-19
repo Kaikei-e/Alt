@@ -308,6 +308,64 @@ func TestOptionsFromEnv(t *testing.T) {
 	})
 }
 
+func TestNewMTLSClient_ReturnsH2CapableClient(t *testing.T) {
+	dir := t.TempDir()
+	certPath, keyPath, caPath := writeTestPKI(t, dir, "alt-backend")
+
+	client, err := NewMTLSClient(certPath, keyPath, caPath)
+	require.NoError(t, err)
+	require.NotNil(t, client)
+
+	transport, ok := client.Transport.(*http.Transport)
+	require.True(t, ok, "transport must be *http.Transport")
+	assert.True(t, transport.ForceAttemptHTTP2, "Connect-RPC gRPC needs HTTP/2 via ALPN")
+	require.NotNil(t, transport.TLSClientConfig)
+	assert.Equal(t, uint16(tls.VersionTLS13), transport.TLSClientConfig.MinVersion)
+	require.NotNil(t, transport.TLSClientConfig.GetClientCertificate, "must present leaf cert for mTLS")
+	require.NotNil(t, transport.TLSClientConfig.RootCAs)
+}
+
+func TestNewMTLSClient_MissingFiles(t *testing.T) {
+	_, err := NewMTLSClient("/nope/cert.pem", "/nope/key.pem", "/nope/ca.pem")
+	require.Error(t, err)
+}
+
+func TestEndToEnd_MTLSClient_PassesRequireAndVerify(t *testing.T) {
+	dir := t.TempDir()
+	certPath, keyPath, caPath := writeTestPKI(t, dir, "127.0.0.1")
+
+	srvCfg, err := LoadServerConfig(certPath, keyPath, caPath,
+		WithClientAuth(tls.RequireAndVerifyClientCert))
+	require.NoError(t, err)
+
+	srv := NewMTLSHTTPServer("127.0.0.1:0", srvCfg, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+	go func() { _ = srv.Serve(tls.NewListener(ln, srvCfg)) }()
+	t.Cleanup(func() { _ = srv.Close() })
+
+	client, err := NewMTLSClient(certPath, keyPath, caPath)
+	require.NoError(t, err)
+	resp, err := client.Get("https://" + ln.Addr().String() + "/health")
+	require.NoError(t, err, "client with leaf cert must pass RequireAndVerifyClientCert")
+	defer resp.Body.Close()
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
+
+	// A cert-less client must be rejected at handshake time.
+	caPEM, err := os.ReadFile(caPath)
+	require.NoError(t, err)
+	pool := x509.NewCertPool()
+	require.True(t, pool.AppendCertsFromPEM(caPEM))
+	bare := &http.Client{
+		Transport: &http.Transport{TLSClientConfig: &tls.Config{RootCAs: pool, MinVersion: tls.VersionTLS13}},
+	}
+	//nolint:bodyclose // request must fail before a body exists
+	_, err = bare.Get("https://" + ln.Addr().String() + "/health")
+	require.Error(t, err, "handshake without client cert must fail")
+}
+
 func TestEndToEnd_ServerAccepts_WithNoClientCertRequired(t *testing.T) {
 	dir := t.TempDir()
 	certPath, keyPath, caPath := writeTestPKI(t, dir, "127.0.0.1")

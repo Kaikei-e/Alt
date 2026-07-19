@@ -36,63 +36,15 @@ func RestHandleSummarizeFeedStream(container *di.ApplicationComponents, cfg *con
 
 		logger.Logger.InfoContext(ctx, "Stream summarization request received", "article_id", req.ArticleID, "feed_url", req.FeedURL, "has_content", req.Content != "", "content_length", len(req.Content))
 
-		if req.ArticleID != "" && req.Content == "" {
-			article, err := container.AltDBRepository.FetchArticleByID(ctx, req.ArticleID)
-			if err != nil {
-				return handleError(c, err, "fetch_article_by_id")
-			}
-			if article != nil {
-				logger.Logger.InfoContext(ctx, "Fetched article content from DB", "article_id", req.ArticleID, "content_length", len(article.Content))
-				req.Content = article.Content
-				if req.Title == "" {
-					req.Title = article.Title
-				}
-			} else {
-				logger.Logger.WarnContext(ctx, "Article ID provided but not found in DB", "article_id", req.ArticleID)
-			}
+		if req.ArticleID == "" && req.FeedURL == "" {
+			return handleValidationError(c, "feed_url or article_id is required", "feed_url", "empty")
 		}
 
-		if req.ArticleID == "" {
-			if req.FeedURL == "" {
-				return handleValidationError(c, "feed_url or article_id is required", "feed_url", "empty")
-			}
-
-			existingArticle, err := container.AltDBRepository.FetchArticleByURL(ctx, req.FeedURL)
-			if err != nil {
-				return handleError(c, err, "fetch_article_by_url")
-			}
-
-			if existingArticle != nil {
-				req.ArticleID = existingArticle.ID
-				if req.Title == "" {
-					req.Title = existingArticle.Title
-				}
-				if req.Content == "" {
-					req.Content = existingArticle.Content
-				}
-			} else if req.Content != "" {
-				if req.Title == "" {
-					req.Title = "No Title"
-				}
-				id, err := container.AltDBRepository.SaveArticle(ctx, req.FeedURL, req.Title, req.Content)
-				if err != nil {
-					return handleError(c, err, "save_article")
-				}
-				req.ArticleID = id
-			} else {
-				content, title, err := fetchArticleContent(ctx, req.FeedURL, container)
-				if err != nil {
-					return handleError(c, err, "fetch_article_content")
-				}
-				id, err := container.AltDBRepository.SaveArticle(ctx, req.FeedURL, title, content)
-				if err != nil {
-					return handleError(c, err, "save_article")
-				}
-				req.ArticleID = id
-				req.Title = title
-				req.Content = content
-			}
+		articleID, title, content, err := container.SummarizeArticleUsecase.ResolveStreamArticle(ctx, req.ArticleID, req.FeedURL, req.Title, req.Content)
+		if err != nil {
+			return handleError(c, err, "resolve_stream_article")
 		}
+		req.ArticleID, req.Title, req.Content = articleID, title, content
 
 		if req.Content == "" {
 			logger.Logger.WarnContext(ctx, "Empty content provided for streaming", "article_id", req.ArticleID, "feed_url", req.FeedURL)
@@ -100,10 +52,9 @@ func RestHandleSummarizeFeedStream(container *di.ApplicationComponents, cfg *con
 		}
 
 		if !req.ForceRefresh {
-			existingSummary, err := container.AltDBRepository.FetchArticleSummaryByArticleID(ctx, req.ArticleID)
-			if err == nil && existingSummary != nil && existingSummary.Summary != "" {
+			if cached, ok := container.SummarizeArticleUsecase.GetCachedSummary(ctx, req.ArticleID); ok {
 				logger.Logger.InfoContext(ctx, "Found existing summary in database for streaming", "article_id", req.ArticleID)
-				return streamCachedSummary(ctx, c, existingSummary.Summary, req.ArticleID)
+				return streamCachedSummary(ctx, c, cached, req.ArticleID)
 			}
 		} else {
 			logger.Logger.InfoContext(ctx, "Force refresh: skipping summary cache", "article_id", req.ArticleID)
@@ -111,7 +62,7 @@ func RestHandleSummarizeFeedStream(container *di.ApplicationComponents, cfg *con
 
 		logger.Logger.InfoContext(ctx, "Starting stream summarization", "article_id", req.ArticleID, "content_length", len(req.Content))
 
-		stream, err := streamPreProcessorSummarize(ctx, container, req.Content, req.ArticleID, req.Title)
+		stream, err := container.SummarizeArticleUsecase.StreamSummary(ctx, req.Content, req.ArticleID, req.Title)
 		if err != nil {
 			logger.Logger.ErrorContext(ctx, "Failed to start stream summarization", "error", err, "article_id", req.ArticleID)
 			return handleError(c, err, "summarize_feed_stream")
@@ -134,7 +85,7 @@ func RestHandleSummarizeFeedStream(container *di.ApplicationComponents, cfg *con
 		if summary != "" && req.ArticleID != "" {
 			saveCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 10*time.Second)
 			defer cancel()
-			if err := container.AltDBRepository.SaveArticleSummary(saveCtx, req.ArticleID, userCtx.UserID.String(), req.Title, summary); err != nil {
+			if err := container.SummarizeArticleUsecase.SaveStreamedSummary(saveCtx, req.ArticleID, userCtx.UserID.String(), req.Title, summary); err != nil {
 				logger.Logger.ErrorContext(ctx, "Failed to save streamed summary to database", "error", err, "article_id", req.ArticleID)
 			} else {
 				logger.Logger.InfoContext(ctx, "Streamed summary saved to database", "article_id", req.ArticleID, "summary_length", len(summary))
