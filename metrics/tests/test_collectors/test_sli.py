@@ -1,5 +1,6 @@
 """collectors/sli.py のテスト"""
 
+from datetime import datetime
 from unittest.mock import MagicMock
 
 import pytest
@@ -10,6 +11,7 @@ from alt_metrics.collectors.sli import (
     collect_slo_violations,
 )
 from alt_metrics.exceptions import CollectorError
+from alt_metrics.models import SliTrend, SloViolation
 
 
 class TestCollectSliTrends:
@@ -25,17 +27,18 @@ class TestCollectSliTrends:
             "value",
         ]
         mock_client.query.return_value.result_rows = [
-            ("2026-01-19 12:00:00", "alt-backend", "error_rate", 0.005),
-            ("2026-01-19 12:00:00", "alt-backend", "log_throughput", 1000.0),
-            ("2026-01-19 11:55:00", "auth-hub", "error_rate", 0.01),
+            (datetime(2026, 1, 19, 12, 0, 0), "alt-backend", "error_rate", 0.005),
+            (datetime(2026, 1, 19, 12, 0, 0), "alt-backend", "log_throughput", 1000.0),
+            (datetime(2026, 1, 19, 11, 55, 0), "auth-hub", "error_rate", 0.01),
         ]
 
         result = collect_sli_trends(mock_client, "rask_logs", 24)
 
         assert len(result) == 3
-        assert result[0]["metric"] == "error_rate"
-        assert result[0]["value"] == 0.005
-        assert result[1]["metric"] == "log_throughput"
+        assert all(isinstance(row, SliTrend) for row in result)
+        assert result[0].metric == "error_rate"
+        assert result[0].value == 0.005
+        assert result[1].metric == "log_throughput"
 
     def test_empty_result_returns_empty_list(self) -> None:
         """空の結果は空リストを返す"""
@@ -82,16 +85,17 @@ class TestCollectSloViolations:
             "sample_count",
         ]
         mock_client.query.return_value.result_rows = [
-            ("auth-hub", "2026-01-19 12:00:00", 2.5, 100),
-            ("alt-backend", "2026-01-19 11:55:00", 1.5, 200),
+            ("auth-hub", datetime(2026, 1, 19, 12, 0, 0), 2.5, 100),
+            ("alt-backend", datetime(2026, 1, 19, 11, 55, 0), 1.5, 200),
         ]
 
         result = collect_slo_violations(mock_client, "rask_logs", 24, 1.0)
 
         assert len(result) == 2
-        assert result[0]["service"] == "auth-hub"
-        assert result[0]["error_rate_pct"] == 2.5
-        assert result[1]["sample_count"] == 200
+        assert all(isinstance(row, SloViolation) for row in result)
+        assert result[0].service == "auth-hub"
+        assert result[0].error_rate_pct == 2.5
+        assert result[1].sample_count == 200
 
     def test_empty_result_when_no_violations(self) -> None:
         """違反がない場合は空リストを返す"""

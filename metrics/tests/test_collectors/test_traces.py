@@ -13,7 +13,13 @@ from alt_metrics.collectors.traces import (
     collect_span_type_stats,
 )
 from alt_metrics.exceptions import CollectorError
-from alt_metrics.models import ApiPerformanceStats
+from alt_metrics.models import (
+    ApiPerformanceStats,
+    Bottleneck,
+    ErrorSpan,
+    ServiceDependency,
+    SpanTypeStat,
+)
 
 
 class TestCollectApiPerformance:
@@ -88,9 +94,10 @@ class TestCollectBottlenecks:
         result = collect_bottlenecks(mock_client, "rask_logs", 24)
 
         assert len(result) == 1
-        assert result[0]["service"] == "auth-hub"
-        assert result[0]["operation"] == "authenticate"
-        assert result[0]["p95_ms"] == 3500.0
+        assert isinstance(result[0], Bottleneck)
+        assert result[0].service == "auth-hub"
+        assert result[0].operation == "authenticate"
+        assert result[0].p95_ms == 3500.0
 
     def test_raises_collector_error_on_exception(self) -> None:
         """例外発生時はCollectorErrorを投げる"""
@@ -125,8 +132,9 @@ class TestCollectSpanTypeStats:
         result = collect_span_type_stats(mock_client, "rask_logs", 24)
 
         assert len(result) == 2
-        assert result[0]["span_kind"] == "SERVER"
-        assert result[0]["span_count"] == 1000
+        assert all(isinstance(row, SpanTypeStat) for row in result)
+        assert result[0].span_kind == "SERVER"
+        assert result[0].span_count == 1000
 
     def test_raises_collector_error_on_exception(self) -> None:
         """例外発生時はCollectorErrorを投げる"""
@@ -160,8 +168,9 @@ class TestCollectErrorSpans:
         result = collect_error_spans(mock_client, "rask_logs", 24)
 
         assert len(result) == 1
-        assert result[0]["operation"] == "login"
-        assert result[0]["error_count"] == 50
+        assert isinstance(result[0], ErrorSpan)
+        assert result[0].operation == "login"
+        assert result[0].error_count == 50
 
     def test_raises_collector_error_on_exception(self) -> None:
         """例外発生時はCollectorErrorを投げる"""
@@ -196,9 +205,10 @@ class TestCollectServiceDependencies:
         result = collect_service_dependencies(mock_client, "rask_logs", 24)
 
         assert len(result) == 2
-        assert result[0]["caller"] == "alt-backend"
-        assert result[0]["callee"] == "auth-hub"
-        assert result[1]["call_count"] == 1000
+        assert all(isinstance(row, ServiceDependency) for row in result)
+        assert result[0].caller == "alt-backend"
+        assert result[0].callee == "auth-hub"
+        assert result[1].call_count == 1000
 
     def test_raises_collector_error_on_exception(self) -> None:
         """例外発生時はCollectorErrorを投げる"""

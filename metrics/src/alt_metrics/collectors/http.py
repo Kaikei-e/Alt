@@ -3,18 +3,17 @@
 otel_http_requestsテーブルからHTTPパフォーマンスデータを収集します。
 """
 
-from typing import Any
-
 import structlog
 from clickhouse_connect.driver.client import Client
 from clickhouse_connect.driver.exceptions import ClickHouseError
 
 from alt_metrics.exceptions import CollectorError
+from alt_metrics.models import HttpEndpointStat, HttpStatusDistribution
 
 logger = structlog.get_logger()
 
 
-def collect_http_endpoint_stats(client: Client, database: str, hours: int) -> list[dict[str, Any]]:
+def collect_http_endpoint_stats(client: Client, database: str, hours: int) -> list[HttpEndpointStat]:
     """HTTPエンドポイント詳細統計を収集
 
     Args:
@@ -52,7 +51,7 @@ def collect_http_endpoint_stats(client: Client, database: str, hours: int) -> li
 
     try:
         result = client.query(query, parameters={"database": database, "hours": hours})
-        data = [dict(zip(result.column_names, row)) for row in result.result_rows]
+        data = [HttpEndpointStat(**dict(zip(result.column_names, row))) for row in result.result_rows]
         log.info("データ収集完了", count=len(data))
         return data
     except ClickHouseError as e:
@@ -60,7 +59,7 @@ def collect_http_endpoint_stats(client: Client, database: str, hours: int) -> li
         raise CollectorError("http_endpoint_stats", str(e)) from e
 
 
-def collect_http_status_distribution(client: Client, database: str, hours: int) -> list[dict[str, Any]]:
+def collect_http_status_distribution(client: Client, database: str, hours: int) -> list[HttpStatusDistribution]:
     """サービス別HTTPステータスコード分布を収集
 
     Args:
@@ -93,7 +92,7 @@ def collect_http_status_distribution(client: Client, database: str, hours: int) 
 
     try:
         result = client.query(query, parameters={"database": database, "hours": hours})
-        data = [dict(zip(result.column_names, row)) for row in result.result_rows]
+        data = [HttpStatusDistribution(**dict(zip(result.column_names, row))) for row in result.result_rows]
         log.info("データ収集完了", count=len(data))
         return data
     except ClickHouseError as e:

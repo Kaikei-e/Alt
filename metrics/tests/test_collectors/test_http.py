@@ -10,6 +10,7 @@ from alt_metrics.collectors.http import (
     collect_http_status_distribution,
 )
 from alt_metrics.exceptions import CollectorError
+from alt_metrics.models import HttpEndpointStat, HttpStatusDistribution
 
 
 class TestCollectHttpEndpointStats:
@@ -38,10 +39,11 @@ class TestCollectHttpEndpointStats:
         result = collect_http_endpoint_stats(mock_client, "rask_logs", 24)
 
         assert len(result) == 2
-        assert result[0]["route"] == "/api/feeds"
-        assert result[0]["request_count"] == 1000
-        assert result[0]["p95_duration_ms"] == 100.0
-        assert result[1]["error_rate"] == 0.0
+        assert all(isinstance(row, HttpEndpointStat) for row in result)
+        assert result[0].route == "/api/feeds"
+        assert result[0].request_count == 1000
+        assert result[0].p95_duration_ms == 100.0
+        assert result[1].error_rate == 0.0
 
     def test_empty_result_returns_empty_list(self) -> None:
         """空の結果は空リストを返す"""
@@ -98,10 +100,11 @@ class TestCollectHttpStatusDistribution:
         result = collect_http_status_distribution(mock_client, "rask_logs", 24)
 
         assert len(result) == 2
-        assert result[0]["service"] == "alt-backend"
-        assert result[0]["total_requests"] == 10000
-        assert result[0]["status_5xx"] == 100
-        assert result[0]["error_5xx_rate"] == 1.0
+        assert all(isinstance(row, HttpStatusDistribution) for row in result)
+        assert result[0].service == "alt-backend"
+        assert result[0].total_requests == 10000
+        assert result[0].status_5xx == 100
+        assert result[0].error_5xx_rate == 1.0
 
     def test_empty_result_returns_empty_list(self) -> None:
         """空の結果は空リストを返す"""

@@ -1,5 +1,7 @@
 """analysis.py のテスト"""
 
+from datetime import datetime
+
 import pytest
 
 from alt_metrics.analysis import (
@@ -366,7 +368,12 @@ class TestAnalyzeHealthIssuesWarningsRecommendations:
             hours_analyzed=24,
             service_stats=[],
             slo_violations=[
-                {"service": "alt-backend", "time_bucket": "2026-01-19 12:00:00", "error_rate_pct": 5.0},
+                {
+                    "service": "alt-backend",
+                    "time_bucket": datetime(2026, 1, 19, 12, 0, 0),
+                    "error_rate_pct": 5.0,
+                    "sample_count": 100,
+                },
             ],
         )
 
@@ -380,7 +387,14 @@ class TestAnalyzeHealthIssuesWarningsRecommendations:
             hours_analyzed=24,
             service_stats=[],
             bottlenecks=[
-                {"service": "auth-hub", "operation": "authenticate", "p95_ms": 3500.0, "total_time_sec": 100.0},
+                {
+                    "service": "auth-hub",
+                    "operation": "authenticate",
+                    "occurrences": 50,
+                    "avg_ms": 2000.0,
+                    "p95_ms": 3500.0,
+                    "total_time_sec": 100.0,
+                },
             ],
         )
 

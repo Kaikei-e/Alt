@@ -6,7 +6,20 @@
 from typing import Literal
 
 from alt_metrics.config import HealthThresholds
-from alt_metrics.models import AnalysisResult, ErrorBudgetResult, ServiceHealth
+from alt_metrics.models import (
+    AnalysisResult,
+    ApiPerformanceStats,
+    Bottleneck,
+    ErrorBudgetResult,
+    ErrorSpan,
+    ErrorTypeStat,
+    HttpStatusDistribution,
+    LogVolumeTrend,
+    ServiceDependency,
+    ServiceHealth,
+    ServiceStat,
+    SloViolation,
+)
 
 
 def calculate_health_score(
@@ -168,20 +181,20 @@ def analyze_health(
 
     service_health: list[ServiceHealth] = []
     for stats in result.service_stats:
-        p95_latency_ms = service_latencies.get(stats["service_name"], 0)
+        p95_latency_ms = service_latencies.get(stats.service_name, 0.0)
         health_score = calculate_health_score(
-            stats["error_rate"],
+            stats.error_rate,
             p95_latency_ms,
-            stats.get("minutes_since_last_log", 0),
+            stats.minutes_since_last_log,
             thresholds,
         )
         service_health.append(
             ServiceHealth(
-                name=stats["service_name"],
-                total_logs=stats["total_logs"],
-                error_count=stats["error_count"],
-                error_rate=stats["error_rate"],
-                last_seen=stats.get("last_seen"),
+                name=stats.service_name,
+                total_logs=stats.total_logs,
+                error_count=stats.error_count,
+                error_rate=stats.error_rate,
+                last_seen=stats.last_seen,
                 p95_latency_ms=p95_latency_ms,
                 health_score=health_score,
             )
@@ -248,12 +261,12 @@ def analyze_health(
 def _collect_warnings(
     *,
     service_health: list[ServiceHealth],
-    bottlenecks: list[dict],
-    http_status_distribution: list[dict],
-    slo_violations: list[dict],
-    error_spans: list[dict],
-    service_dependencies: list[dict],
-    log_volume_trends: list[dict],
+    bottlenecks: list[Bottleneck],
+    http_status_distribution: list[HttpStatusDistribution],
+    slo_violations: list[SloViolation],
+    error_spans: list[ErrorSpan],
+    service_dependencies: list[ServiceDependency],
+    log_volume_trends: list[LogVolumeTrend],
     thresholds: HealthThresholds,
     critical_issues: list[str],
     warnings: list[str],
@@ -267,21 +280,20 @@ def _collect_warnings(
     if bottlenecks:
         top_bottleneck = bottlenecks[0]
         warnings.append(
-            f"パフォーマンスボトルネック: {top_bottleneck['service']}/{top_bottleneck['operation']} "
-            f"(p95: {top_bottleneck['p95_ms']}ms, 合計時間: {top_bottleneck['total_time_sec']}秒)"
+            f"パフォーマンスボトルネック: {top_bottleneck.service}/{top_bottleneck.operation} "
+            f"(p95: {top_bottleneck.p95_ms}ms, 合計時間: {top_bottleneck.total_time_sec}秒)"
         )
 
-    high_5xx_services = [s for s in http_status_distribution if s.get("error_5xx_rate", 0) > 1]
+    high_5xx_services = [s for s in http_status_distribution if s.error_5xx_rate > 1]
     if high_5xx_services:
         for svc in high_5xx_services[:3]:
             warnings.append(
-                f"HTTP 5xxエラー率が高い: {svc['service']} "
-                f"({svc['error_5xx_rate']}% / {svc['total_requests']}リクエスト)"
+                f"HTTP 5xxエラー率が高い: {svc.service} ({svc.error_5xx_rate}% / {svc.total_requests}リクエスト)"
             )
 
     if slo_violations:
         violation_count = len(slo_violations)
-        affected_services = {v["service"] for v in slo_violations}
+        affected_services = {v.service for v in slo_violations}
         critical_issues.append(
             f"SLO違反を検出: {violation_count}期間でエラー率 >{thresholds.slo_error_rate_threshold}% "
             f"({len(affected_services)}サービスに影響)"
@@ -290,29 +302,23 @@ def _collect_warnings(
     if error_spans:
         top_error_span = error_spans[0]
         warnings.append(
-            f"トレースエラー検出: {top_error_span['service']}の{top_error_span['operation']} "
-            f"({top_error_span['error_count']}件)"
+            f"トレースエラー検出: {top_error_span.service}の{top_error_span.operation} ({top_error_span.error_count}件)"
         )
 
-    high_error_deps = [
-        d
-        for d in service_dependencies
-        if d.get("call_count", 0) > 10 and d.get("error_count", 0) > 0 and (d["error_count"] / d["call_count"]) > 0.05
-    ]
+    high_error_deps = [d for d in service_dependencies if d.call_count > 10 and (d.error_count / d.call_count) > 0.05]
     if high_error_deps:
         for dep in high_error_deps[:2]:
-            error_pct = round(dep["error_count"] / dep["call_count"] * 100, 1)
+            error_pct = round(dep.error_count / dep.call_count * 100, 1)
             warnings.append(
-                f"サービス間呼び出しエラー率が高い: {dep['caller']} → {dep['callee']} "
-                f"({error_pct}%エラー、{dep['call_count']}呼び出し)"
+                f"サービス間呼び出しエラー率が高い: {dep.caller} → {dep.callee} "
+                f"({error_pct}%エラー、{dep.call_count}呼び出し)"
             )
 
     if log_volume_trends:
         service_volumes: dict[str, list[int]] = {}
         for trend in log_volume_trends:
-            svc = trend.get("service", "")
-            if svc:
-                service_volumes.setdefault(svc, []).append(trend.get("log_count", 0))
+            if trend.service:
+                service_volumes.setdefault(trend.service, []).append(trend.log_count)
 
         for svc, volumes in service_volumes.items():
             if len(volumes) >= 2:
@@ -327,9 +333,9 @@ def _collect_warnings(
 
 def _collect_recommendations(
     *,
-    api_performance: list,
-    error_types: list[dict],
-    service_stats: list[dict],
+    api_performance: list[ApiPerformanceStats],
+    error_types: list[ErrorTypeStat],
+    service_stats: list[ServiceStat],
     thresholds: HealthThresholds,
     recommendations: list[str],
 ) -> None:
@@ -344,10 +350,10 @@ def _collect_recommendations(
     if error_types:
         top_error = error_types[0]
         recommendations.append(
-            f"主要エラーの調査: {top_error['service']}の{top_error['error_type']} ({top_error['error_count']}件発生)"
+            f"主要エラーの調査: {top_error.service}の{top_error.error_type} ({top_error.error_count}件発生)"
         )
 
-    stale_services = [s for s in service_stats if s.get("minutes_since_last_log", 0) > thresholds.log_gap_warning_min]
+    stale_services = [s for s in service_stats if s.minutes_since_last_log > thresholds.log_gap_warning_min]
     if stale_services:
-        names = ", ".join(s["service_name"] for s in stale_services[:3])
+        names = ", ".join(s.service_name for s in stale_services[:3])
         recommendations.append(f"ログ停止サービスの確認: {names}")

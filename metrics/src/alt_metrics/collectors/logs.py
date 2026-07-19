@@ -3,18 +3,22 @@
 otel_logsおよびotel_error_logsテーブルからログデータを収集します。
 """
 
-from typing import Any
-
 import structlog
 from clickhouse_connect.driver.client import Client
 from clickhouse_connect.driver.exceptions import ClickHouseError
 
 from alt_metrics.exceptions import CollectorError
+from alt_metrics.models import (
+    ErrorTypeStat,
+    LogSeverityDistribution,
+    LogVolumeTrend,
+    RecentError,
+)
 
 logger = structlog.get_logger()
 
 
-def collect_error_types(client: Client, database: str, hours: int) -> list[dict[str, Any]]:
+def collect_error_types(client: Client, database: str, hours: int) -> list[ErrorTypeStat]:
     """エラーログからエラー種類と頻度を収集
 
     Args:
@@ -45,7 +49,7 @@ def collect_error_types(client: Client, database: str, hours: int) -> list[dict[
 
     try:
         result = client.query(query, parameters={"database": database, "hours": hours})
-        data = [dict(zip(result.column_names, row)) for row in result.result_rows]
+        data = [ErrorTypeStat(**dict(zip(result.column_names, row))) for row in result.result_rows]
         log.info("データ収集完了", count=len(data))
         return data
     except ClickHouseError as e:
@@ -53,7 +57,7 @@ def collect_error_types(client: Client, database: str, hours: int) -> list[dict[
         raise CollectorError("error_types", str(e)) from e
 
 
-def collect_recent_errors(client: Client, database: str, hours: int) -> list[dict[str, Any]]:
+def collect_recent_errors(client: Client, database: str, hours: int) -> list[RecentError]:
     """最新のエラーログを収集
 
     Args:
@@ -84,7 +88,7 @@ def collect_recent_errors(client: Client, database: str, hours: int) -> list[dic
 
     try:
         result = client.query(query, parameters={"database": database, "hours": hours})
-        data = [dict(zip(result.column_names, row)) for row in result.result_rows]
+        data = [RecentError(**dict(zip(result.column_names, row))) for row in result.result_rows]
         log.info("データ収集完了", count=len(data))
         return data
     except ClickHouseError as e:
@@ -92,7 +96,7 @@ def collect_recent_errors(client: Client, database: str, hours: int) -> list[dic
         raise CollectorError("recent_errors", str(e)) from e
 
 
-def collect_log_severity_distribution(client: Client, database: str, hours: int) -> list[dict[str, Any]]:
+def collect_log_severity_distribution(client: Client, database: str, hours: int) -> list[LogSeverityDistribution]:
     """サービス別ログ重要度分布を収集
 
     Args:
@@ -126,7 +130,7 @@ def collect_log_severity_distribution(client: Client, database: str, hours: int)
 
     try:
         result = client.query(query, parameters={"database": database, "hours": hours})
-        data = [dict(zip(result.column_names, row)) for row in result.result_rows]
+        data = [LogSeverityDistribution(**dict(zip(result.column_names, row))) for row in result.result_rows]
         log.info("データ収集完了", count=len(data))
         return data
     except ClickHouseError as e:
@@ -134,7 +138,7 @@ def collect_log_severity_distribution(client: Client, database: str, hours: int)
         raise CollectorError("log_severity_distribution", str(e)) from e
 
 
-def collect_log_volume_trends(client: Client, database: str, hours: int) -> list[dict[str, Any]]:
+def collect_log_volume_trends(client: Client, database: str, hours: int) -> list[LogVolumeTrend]:
     """時間別ログ量トレンドを収集
 
     Args:
@@ -165,7 +169,7 @@ def collect_log_volume_trends(client: Client, database: str, hours: int) -> list
 
     try:
         result = client.query(query, parameters={"database": database, "hours": hours})
-        data = [dict(zip(result.column_names, row)) for row in result.result_rows]
+        data = [LogVolumeTrend(**dict(zip(result.column_names, row))) for row in result.result_rows]
         log.info("データ収集完了", count=len(data))
         return data
     except ClickHouseError as e:

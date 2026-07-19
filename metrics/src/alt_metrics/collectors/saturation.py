@@ -4,17 +4,16 @@ Google SREのGolden Signalsの「Saturation」を収集します。
 システムリソース（CPU、メモリ、キュー深度など）の使用率を測定します。
 """
 
-from typing import Any
-
 import structlog
 from clickhouse_connect.driver.client import Client
 
 from alt_metrics.exceptions import CollectorError
+from alt_metrics.models import QueueSaturation, ResourceUtilization
 
 logger = structlog.get_logger()
 
 
-def collect_resource_utilization(client: Client, database: str, hours: int) -> list[dict[str, Any]]:
+def collect_resource_utilization(client: Client, database: str, hours: int) -> list[ResourceUtilization]:
     """サービス別リソース使用率を収集
 
     OpenTelemetryのシステムメトリクス（otel_metricsテーブル）から
@@ -68,7 +67,7 @@ def collect_resource_utilization(client: Client, database: str, hours: int) -> l
 
     try:
         result = client.query(query, parameters={"database": database, "hours": hours})
-        data = [dict(zip(result.column_names, row)) for row in result.result_rows]
+        data = [ResourceUtilization(**dict(zip(result.column_names, row))) for row in result.result_rows]
         log.info("データ収集完了", count=len(data))
         return data
     except Exception as e:
@@ -76,7 +75,7 @@ def collect_resource_utilization(client: Client, database: str, hours: int) -> l
         raise CollectorError("resource_utilization", str(e)) from e
 
 
-def collect_queue_saturation(client: Client, database: str, hours: int) -> list[dict[str, Any]]:
+def collect_queue_saturation(client: Client, database: str, hours: int) -> list[QueueSaturation]:
     """キュー飽和度メトリクスを収集
 
     メッセージキューやワーカーキューの待ち時間を収集します。
@@ -115,7 +114,7 @@ def collect_queue_saturation(client: Client, database: str, hours: int) -> list[
 
     try:
         result = client.query(query, parameters={"database": database, "hours": hours})
-        data = [dict(zip(result.column_names, row)) for row in result.result_rows]
+        data = [QueueSaturation(**dict(zip(result.column_names, row))) for row in result.result_rows]
         log.info("データ収集完了", count=len(data))
         return data
     except Exception as e:

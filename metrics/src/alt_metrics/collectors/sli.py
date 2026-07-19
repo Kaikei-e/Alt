@@ -3,18 +3,17 @@
 sli_metricsテーブルからSLI/SLOデータを収集します。
 """
 
-from typing import Any
-
 import structlog
 from clickhouse_connect.driver.client import Client
 from clickhouse_connect.driver.exceptions import ClickHouseError
 
 from alt_metrics.exceptions import CollectorError
+from alt_metrics.models import SliTrend, SloViolation
 
 logger = structlog.get_logger()
 
 
-def collect_sli_trends(client: Client, database: str, hours: int) -> list[dict[str, Any]]:
+def collect_sli_trends(client: Client, database: str, hours: int) -> list[SliTrend]:
     """SLIメトリクストレンド（error_rate, log_throughput）を収集
 
     Args:
@@ -46,7 +45,7 @@ def collect_sli_trends(client: Client, database: str, hours: int) -> list[dict[s
 
     try:
         result = client.query(query, parameters={"database": database, "hours": hours})
-        data = [dict(zip(result.column_names, row)) for row in result.result_rows]
+        data = [SliTrend(**dict(zip(result.column_names, row))) for row in result.result_rows]
         log.info("データ収集完了", count=len(data))
         return data
     except ClickHouseError as e:
@@ -56,7 +55,7 @@ def collect_sli_trends(client: Client, database: str, hours: int) -> list[dict[s
 
 def collect_slo_violations(
     client: Client, database: str, hours: int, error_rate_threshold: float = 1.0
-) -> list[dict[str, Any]]:
+) -> list[SloViolation]:
     """SLO違反（エラー率が閾値を超過）を検出
 
     Args:
@@ -102,7 +101,7 @@ def collect_slo_violations(
                 "error_rate_threshold": error_rate_threshold / 100,
             },
         )
-        data = [dict(zip(result.column_names, row)) for row in result.result_rows]
+        data = [SloViolation(**dict(zip(result.column_names, row))) for row in result.result_rows]
         log.info("データ収集完了", count=len(data))
         return data
     except ClickHouseError as e:

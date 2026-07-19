@@ -3,14 +3,18 @@
 otel_tracesテーブルからパフォーマンス・エラーデータを収集します。
 """
 
-from typing import Any
-
 import structlog
 from clickhouse_connect.driver.client import Client
 from clickhouse_connect.driver.exceptions import ClickHouseError
 
 from alt_metrics.exceptions import CollectorError
-from alt_metrics.models import ApiPerformanceStats
+from alt_metrics.models import (
+    ApiPerformanceStats,
+    Bottleneck,
+    ErrorSpan,
+    ServiceDependency,
+    SpanTypeStat,
+)
 
 logger = structlog.get_logger()
 
@@ -61,7 +65,7 @@ def collect_api_performance(client: Client, database: str, hours: int) -> list[A
         raise CollectorError("api_performance", str(e)) from e
 
 
-def collect_bottlenecks(client: Client, database: str, hours: int) -> list[dict[str, Any]]:
+def collect_bottlenecks(client: Client, database: str, hours: int) -> list[Bottleneck]:
     """パフォーマンスボトルネック（1秒超の操作）を特定
 
     Args:
@@ -96,7 +100,7 @@ def collect_bottlenecks(client: Client, database: str, hours: int) -> list[dict[
 
     try:
         result = client.query(query, parameters={"database": database, "hours": hours})
-        data = [dict(zip(result.column_names, row)) for row in result.result_rows]
+        data = [Bottleneck(**dict(zip(result.column_names, row))) for row in result.result_rows]
         log.info("データ収集完了", count=len(data))
         return data
     except ClickHouseError as e:
@@ -104,7 +108,7 @@ def collect_bottlenecks(client: Client, database: str, hours: int) -> list[dict[
         raise CollectorError("bottlenecks", str(e)) from e
 
 
-def collect_span_type_stats(client: Client, database: str, hours: int) -> list[dict[str, Any]]:
+def collect_span_type_stats(client: Client, database: str, hours: int) -> list[SpanTypeStat]:
     """トレーススパン種類別統計を収集
 
     Args:
@@ -136,7 +140,7 @@ def collect_span_type_stats(client: Client, database: str, hours: int) -> list[d
 
     try:
         result = client.query(query, parameters={"database": database, "hours": hours})
-        data = [dict(zip(result.column_names, row)) for row in result.result_rows]
+        data = [SpanTypeStat(**dict(zip(result.column_names, row))) for row in result.result_rows]
         log.info("データ収集完了", count=len(data))
         return data
     except ClickHouseError as e:
@@ -144,7 +148,7 @@ def collect_span_type_stats(client: Client, database: str, hours: int) -> list[d
         raise CollectorError("span_type_stats", str(e)) from e
 
 
-def collect_error_spans(client: Client, database: str, hours: int) -> list[dict[str, Any]]:
+def collect_error_spans(client: Client, database: str, hours: int) -> list[ErrorSpan]:
     """エラースパンの詳細情報を収集
 
     Args:
@@ -178,7 +182,7 @@ def collect_error_spans(client: Client, database: str, hours: int) -> list[dict[
 
     try:
         result = client.query(query, parameters={"database": database, "hours": hours})
-        data = [dict(zip(result.column_names, row)) for row in result.result_rows]
+        data = [ErrorSpan(**dict(zip(result.column_names, row))) for row in result.result_rows]
         log.info("データ収集完了", count=len(data))
         return data
     except ClickHouseError as e:
@@ -186,7 +190,7 @@ def collect_error_spans(client: Client, database: str, hours: int) -> list[dict[
         raise CollectorError("error_spans", str(e)) from e
 
 
-def collect_service_dependencies(client: Client, database: str, hours: int) -> list[dict[str, Any]]:
+def collect_service_dependencies(client: Client, database: str, hours: int) -> list[ServiceDependency]:
     """サービス間の呼び出し依存関係を収集
 
     Args:
@@ -222,7 +226,7 @@ def collect_service_dependencies(client: Client, database: str, hours: int) -> l
 
     try:
         result = client.query(query, parameters={"database": database, "hours": hours})
-        data = [dict(zip(result.column_names, row)) for row in result.result_rows]
+        data = [ServiceDependency(**dict(zip(result.column_names, row))) for row in result.result_rows]
         log.info("データ収集完了", count=len(data))
         return data
     except ClickHouseError as e:

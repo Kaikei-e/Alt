@@ -1,6 +1,8 @@
 """reports/japanese.py のテスト"""
 
-from alt_metrics.models import AnalysisResult
+from datetime import datetime
+
+from alt_metrics.models import AnalysisResult, SliTrend
 from alt_metrics.reports.japanese import format_table, generate_japanese_report
 
 
@@ -130,6 +132,33 @@ class TestGenerateJapaneseReport:
         report = generate_japanese_report(sample_analysis_result)
         # スコア65は「劣化」
         assert "劣化" in report
+
+    def test_report_renders_sli_trend_summary_from_typed_rows(self) -> None:
+        """型付きSliTrendからSLIトレンドサマリーを描画できる"""
+        result = AnalysisResult(
+            hours_analyzed=24,
+            sli_trends=[
+                SliTrend(
+                    time_bucket=datetime(2026, 1, 19, 12, 0, 0),
+                    service="alt-backend",
+                    metric="error_rate",
+                    value=0.005,
+                ),
+                SliTrend(
+                    time_bucket=datetime(2026, 1, 19, 11, 55, 0),
+                    service="alt-backend",
+                    metric="error_rate",
+                    value=0.01,
+                ),
+            ],
+        )
+
+        report = generate_japanese_report(result)
+
+        # サービス×メトリクスごとに最新の1件のみ表示される
+        assert "SLIトレンドサマリー" in report
+        assert report.count("error_rate") == 1
+        assert "0.005" in report
 
     def test_empty_result_generates_valid_report(self) -> None:
         """空の結果でも有効なレポートを生成"""

@@ -1,5 +1,6 @@
 """collectors/logs.py のテスト"""
 
+from datetime import datetime
 from unittest.mock import MagicMock
 
 import pytest
@@ -12,6 +13,12 @@ from alt_metrics.collectors.logs import (
     collect_recent_errors,
 )
 from alt_metrics.exceptions import CollectorError
+from alt_metrics.models import (
+    ErrorTypeStat,
+    LogSeverityDistribution,
+    LogVolumeTrend,
+    RecentError,
+)
 
 
 class TestCollectErrorTypes:
@@ -34,9 +41,10 @@ class TestCollectErrorTypes:
         result = collect_error_types(mock_client, "rask_logs", 24)
 
         assert len(result) == 2
-        assert result[0]["error_type"] == "AuthenticationError"
-        assert result[0]["error_count"] == 100
-        assert result[1]["service"] == "alt-backend"
+        assert all(isinstance(row, ErrorTypeStat) for row in result)
+        assert result[0].error_type == "AuthenticationError"
+        assert result[0].error_count == 100
+        assert result[1].service == "alt-backend"
 
     def test_empty_result_returns_empty_list(self) -> None:
         """空の結果は空リストを返す"""
@@ -80,9 +88,10 @@ class TestCollectRecentErrors:
         result = collect_recent_errors(mock_client, "rask_logs", 24)
 
         assert len(result) == 2
-        assert result[0]["service"] == "auth-hub"
-        assert result[0]["level"] == "ERROR"
-        assert "2026-01-19" in result[0]["timestamp"]
+        assert all(isinstance(row, RecentError) for row in result)
+        assert result[0].service == "auth-hub"
+        assert result[0].level == "ERROR"
+        assert "2026-01-19" in result[0].timestamp
 
     def test_raises_collector_error_on_exception(self) -> None:
         """例外発生時はCollectorErrorを投げる"""
@@ -119,9 +128,10 @@ class TestCollectLogSeverityDistribution:
         result = collect_log_severity_distribution(mock_client, "rask_logs", 24)
 
         assert len(result) == 2
-        assert result[0]["total_logs"] == 10000
-        assert result[0]["error_count"] == 400
-        assert result[0]["error_rate"] == 5.0
+        assert all(isinstance(row, LogSeverityDistribution) for row in result)
+        assert result[0].total_logs == 10000
+        assert result[0].error_count == 400
+        assert result[0].error_rate == 5.0
 
     def test_raises_collector_error_on_exception(self) -> None:
         """例外発生時はCollectorErrorを投げる"""
@@ -148,15 +158,16 @@ class TestCollectLogVolumeTrends:
             "error_rate",
         ]
         mock_client.query.return_value.result_rows = [
-            ("2026-01-19 12:00:00", "alt-backend", 5000, 50, 1.0),
-            ("2026-01-19 11:00:00", "alt-backend", 4500, 45, 1.0),
+            (datetime(2026, 1, 19, 12, 0, 0), "alt-backend", 5000, 50, 1.0),
+            (datetime(2026, 1, 19, 11, 0, 0), "alt-backend", 4500, 45, 1.0),
         ]
 
         result = collect_log_volume_trends(mock_client, "rask_logs", 24)
 
         assert len(result) == 2
-        assert result[0]["log_count"] == 5000
-        assert result[0]["error_rate"] == 1.0
+        assert all(isinstance(row, LogVolumeTrend) for row in result)
+        assert result[0].log_count == 5000
+        assert result[0].error_rate == 1.0
 
     def test_raises_collector_error_on_exception(self) -> None:
         """例外発生時はCollectorErrorを投げる"""

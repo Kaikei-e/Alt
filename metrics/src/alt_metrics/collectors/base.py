@@ -3,18 +3,17 @@
 構造化ログを使用したエラーハンドリングを実装しています。
 """
 
-from typing import Any
-
 import structlog
 from clickhouse_connect.driver.client import Client
 from clickhouse_connect.driver.exceptions import ClickHouseError
 
 from alt_metrics.exceptions import CollectorError
+from alt_metrics.models import ErrorTrend, ServiceStat
 
 logger = structlog.get_logger()
 
 
-def collect_service_stats(client: Client, database: str, hours: int) -> list[dict[str, Any]]:
+def collect_service_stats(client: Client, database: str, hours: int) -> list[ServiceStat]:
     """レガシーlogsテーブルからサービス統計を収集
 
     Args:
@@ -47,7 +46,7 @@ def collect_service_stats(client: Client, database: str, hours: int) -> list[dic
 
     try:
         result = client.query(query, parameters={"database": database, "hours": hours})
-        data = [dict(zip(result.column_names, row)) for row in result.result_rows]
+        data = [ServiceStat(**dict(zip(result.column_names, row))) for row in result.result_rows]
         log.info("データ収集完了", count=len(data))
         return data
     except ClickHouseError as e:
@@ -55,7 +54,7 @@ def collect_service_stats(client: Client, database: str, hours: int) -> list[dic
         raise CollectorError("service_stats", str(e)) from e
 
 
-def collect_error_trends(client: Client, database: str, hours: int) -> list[dict[str, Any]]:
+def collect_error_trends(client: Client, database: str, hours: int) -> list[ErrorTrend]:
     """レガシーlogsテーブルから時間別エラートレンドを収集
 
     Args:
@@ -87,7 +86,7 @@ def collect_error_trends(client: Client, database: str, hours: int) -> list[dict
 
     try:
         result = client.query(query, parameters={"database": database, "hours": hours})
-        data = [dict(zip(result.column_names, row)) for row in result.result_rows]
+        data = [ErrorTrend(**dict(zip(result.column_names, row))) for row in result.result_rows]
         log.info("データ収集完了", count=len(data))
         return data
     except ClickHouseError as e:

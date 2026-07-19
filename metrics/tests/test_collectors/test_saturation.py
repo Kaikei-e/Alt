@@ -9,6 +9,7 @@ from alt_metrics.collectors.saturation import (
     collect_resource_utilization,
 )
 from alt_metrics.exceptions import CollectorError
+from alt_metrics.models import QueueSaturation, ResourceUtilization
 
 
 class TestCollectResourceUtilization:
@@ -34,10 +35,11 @@ class TestCollectResourceUtilization:
         result = collect_resource_utilization(mock_client, "rask_logs", 24)
 
         assert len(result) == 3
-        assert result[0]["service"] == "alt-backend"
-        assert result[0]["resource_type"] == "cpu"
-        assert result[0]["avg_utilization"] == 45.5
-        assert result[1]["resource_type"] == "memory"
+        assert all(isinstance(row, ResourceUtilization) for row in result)
+        assert result[0].service == "alt-backend"
+        assert result[0].resource_type == "cpu"
+        assert result[0].avg_utilization == 45.5
+        assert result[1].resource_type == "memory"
 
     def test_empty_result_returns_empty_list(self) -> None:
         """空の結果は空リストを返す"""
@@ -92,12 +94,11 @@ class TestCollectQueueSaturation:
         result = collect_queue_saturation(mock_client, "rask_logs", 24)
 
         assert len(result) == 2
-        assert result[0]["queue_name"] == "feed_queue"
-        assert result[0]["avg_wait_time_ms"] == 50.0
-        assert result[0]["max_wait_time_ms"] == 500
-        assert result[1]["p95_wait_time_ms"] == 100.0
-        assert "avg_depth" not in result[0]
-        assert "max_depth" not in result[0]
+        assert all(isinstance(row, QueueSaturation) for row in result)
+        assert result[0].queue_name == "feed_queue"
+        assert result[0].avg_wait_time_ms == 50.0
+        assert result[0].max_wait_time_ms == 500
+        assert result[1].p95_wait_time_ms == 100.0
 
     def test_empty_result_returns_empty_list(self) -> None:
         """空の結果は空リストを返す"""

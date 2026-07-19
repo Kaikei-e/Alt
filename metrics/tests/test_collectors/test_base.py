@@ -1,5 +1,6 @@
 """collectors/base.py のテスト"""
 
+from datetime import datetime
 from unittest.mock import MagicMock
 
 import pytest
@@ -7,13 +8,14 @@ from clickhouse_connect.driver.exceptions import OperationalError
 
 from alt_metrics.collectors.base import collect_error_trends, collect_service_stats
 from alt_metrics.exceptions import CollectorError
+from alt_metrics.models import ErrorTrend, ServiceStat
 
 
 class TestCollectServiceStats:
     """collect_service_stats関数のテスト"""
 
-    def test_returns_list_of_dicts(self) -> None:
-        """結果を辞書のリストとして返す"""
+    def test_returns_list_of_service_stats(self) -> None:
+        """結果を型付きServiceStatのリストとして返す"""
         mock_client = MagicMock()
         mock_client.query.return_value.column_names = [
             "service_name",
@@ -25,17 +27,18 @@ class TestCollectServiceStats:
             "minutes_since_last_log",
         ]
         mock_client.query.return_value.result_rows = [
-            ("alt-backend", 10000, 50, 100, 0.5, "2026-01-19 12:00:00", 1),
-            ("auth-hub", 5000, 500, 200, 10.0, "2026-01-19 11:58:00", 2),
+            ("alt-backend", 10000, 50, 100, 0.5, datetime(2026, 1, 19, 12, 0, 0), 1),
+            ("auth-hub", 5000, 500, 200, 10.0, datetime(2026, 1, 19, 11, 58, 0), 2),
         ]
 
         result = collect_service_stats(mock_client, "rask_logs", 24)
 
         assert len(result) == 2
-        assert result[0]["service_name"] == "alt-backend"
-        assert result[0]["total_logs"] == 10000
-        assert result[1]["service_name"] == "auth-hub"
-        assert result[1]["error_rate"] == 10.0
+        assert all(isinstance(row, ServiceStat) for row in result)
+        assert result[0].service_name == "alt-backend"
+        assert result[0].total_logs == 10000
+        assert result[1].service_name == "auth-hub"
+        assert result[1].error_rate == 10.0
 
     def test_empty_result_returns_empty_list(self) -> None:
         """空の結果は空リストを返す"""
@@ -73,8 +76,8 @@ class TestCollectServiceStats:
 class TestCollectErrorTrends:
     """collect_error_trends関数のテスト"""
 
-    def test_returns_list_of_dicts(self) -> None:
-        """結果を辞書のリストとして返す"""
+    def test_returns_list_of_error_trends(self) -> None:
+        """結果を型付きErrorTrendのリストとして返す"""
         mock_client = MagicMock()
         mock_client.query.return_value.column_names = [
             "hour",
@@ -84,15 +87,16 @@ class TestCollectErrorTrends:
             "error_rate",
         ]
         mock_client.query.return_value.result_rows = [
-            ("2026-01-19 12:00:00", "alt-backend", 10, 1000, 1.0),
-            ("2026-01-19 11:00:00", "alt-backend", 5, 800, 0.625),
+            (datetime(2026, 1, 19, 12, 0, 0), "alt-backend", 10, 1000, 1.0),
+            (datetime(2026, 1, 19, 11, 0, 0), "alt-backend", 5, 800, 0.625),
         ]
 
         result = collect_error_trends(mock_client, "rask_logs", 6)
 
         assert len(result) == 2
-        assert result[0]["error_count"] == 10
-        assert result[1]["error_rate"] == 0.625
+        assert all(isinstance(row, ErrorTrend) for row in result)
+        assert result[0].error_count == 10
+        assert result[1].error_rate == 0.625
 
     def test_raises_collector_error_on_exception(self) -> None:
         """例外発生時はCollectorErrorを投げる"""

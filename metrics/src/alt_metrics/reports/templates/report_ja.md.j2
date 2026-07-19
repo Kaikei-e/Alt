@@ -184,7 +184,7 @@ _SLO違反は検出されませんでした_
 {% if result.sli_trends %}
 {% set latest_sli = {} %}
 {% for trend in result.sli_trends %}
-{% set key = trend.get('service', '') ~ '-' ~ trend.get('metric', '') %}
+{% set key = trend.service ~ '-' ~ trend.metric %}
 {% if key not in latest_sli %}
 {% set _ = latest_sli.update({key: trend}) %}
 {% endif %}
