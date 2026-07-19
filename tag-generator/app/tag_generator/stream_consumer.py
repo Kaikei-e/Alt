@@ -308,7 +308,7 @@ class StreamConsumer:
         if "created_at" in data:
             try:
                 created_at = datetime.fromisoformat(data["created_at"].replace("Z", "+00:00"))
-            except ValueError, AttributeError:
+            except (ValueError, AttributeError):
                 pass
 
         payload = {}
