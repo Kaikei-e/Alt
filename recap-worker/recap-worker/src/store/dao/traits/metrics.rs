@@ -2,7 +2,7 @@
 
 use std::future::Future;
 
-use anyhow::Result;
+use crate::error::Result;
 use chrono::{DateTime, Utc};
 use serde_json::Value;
 use uuid::Uuid;

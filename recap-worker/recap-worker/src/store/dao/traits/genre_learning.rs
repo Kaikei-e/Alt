@@ -2,7 +2,7 @@
 
 use std::future::Future;
 
-use anyhow::Result;
+use crate::error::Result;
 
 use crate::store::models::{GenreLearningRecord, GraphEdgeRecord};
 

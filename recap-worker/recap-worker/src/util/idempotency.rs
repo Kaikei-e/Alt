@@ -1,6 +1,6 @@
 #![allow(dead_code)]
 
-use anyhow::{Context, Result};
+use crate::error::{RecapError, Result};
 use sqlx::{PgConnection, Row};
 use uuid::Uuid;
 
@@ -39,11 +39,11 @@ pub async fn try_acquire_job_lock(conn: &mut PgConnection, job_id: Uuid) -> Resu
         .bind(lock_key)
         .fetch_one(conn)
         .await
-        .context("failed to execute pg_try_advisory_xact_lock")?;
+        .map_err(|e| RecapError::Db(format!("failed to execute pg_try_advisory_xact_lock: {e}")))?;
 
     let acquired: bool = row
         .try_get("acquired")
-        .context("failed to get lock acquisition result")?;
+        .map_err(|e| RecapError::Db(format!("failed to get lock acquisition result: {e}")))?;
 
     Ok(acquired)
 }

@@ -365,7 +365,7 @@ impl Scheduler {
         &self,
     ) -> Result<Option<(Uuid, JobStatus, Option<String>, u32)>> {
         let max_age = self.config.resumable_max_age_hours();
-        self.recap_dao.find_resumable_job(max_age).await
+        Ok(self.recap_dao.find_resumable_job(max_age).await?)
     }
 
     /// Boot 時に呼ぶ保守メソッド。前プロセスが落ちて pending / running の

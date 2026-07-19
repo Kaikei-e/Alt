@@ -1,4 +1,4 @@
-use anyhow::{Context, Result};
+use crate::error::{RecapError, Result};
 use serde_json::Value;
 use sqlx::types::Json;
 use sqlx::{PgPool, Row};
@@ -23,7 +23,7 @@ impl RecapDao {
         .bind(config_type)
         .fetch_optional(pool)
         .await
-        .context("failed to query latest worker config")?;
+        .map_err(|e| RecapError::Db(format!("failed to query latest worker config: {e}")))?;
 
         if let Some(row) = row {
             let payload: Value = row.try_get("config_payload")?;
@@ -53,7 +53,7 @@ impl RecapDao {
         .bind(metadata.map(Json))
         .execute(pool)
         .await
-        .context("failed to insert worker config")?;
+        .map_err(|e| RecapError::Db(format!("failed to insert worker config: {e}")))?;
 
         Ok(())
     }

@@ -1,4 +1,4 @@
-use anyhow::{Context, Result};
+use crate::error::{RecapError, Result};
 use chrono::Utc;
 use serde_json::{Value, json};
 use sqlx::{PgPool, Row};
@@ -42,9 +42,11 @@ impl QueueStore {
         .bind(job.max_retries)
         .fetch_one(&self.pool)
         .await
-        .context("failed to insert queued job")?;
+        .map_err(|e| RecapError::Db(format!("failed to insert queued job: {e}")))?;
 
-        let id: i32 = row.try_get("id").context("failed to get job id")?;
+        let id: i32 = row
+            .try_get("id")
+            .map_err(|e| RecapError::Db(format!("failed to get job id: {e}")))?;
         Ok(id)
     }
 
@@ -81,7 +83,7 @@ impl QueueStore {
         )
         .fetch_optional(&self.pool)
         .await
-        .context("failed to pick next job")?;
+        .map_err(|e| RecapError::Db(format!("failed to pick next job: {e}")))?;
 
         let Some(row) = row else {
             return Ok(None);
@@ -121,7 +123,7 @@ impl QueueStore {
         .bind(results_json)
         .execute(&self.pool)
         .await
-        .context("failed to mark job as completed")?;
+        .map_err(|e| RecapError::Db(format!("failed to mark job as completed: {e}")))?;
 
         Ok(())
     }
@@ -141,7 +143,7 @@ impl QueueStore {
         .bind(error)
         .execute(&self.pool)
         .await
-        .context("failed to mark job as failed")?;
+        .map_err(|e| RecapError::Db(format!("failed to mark job as failed: {e}")))?;
 
         Ok(())
     }
@@ -174,7 +176,7 @@ impl QueueStore {
         .bind(retry_delay_ms)
         .execute(&self.pool)
         .await
-        .context("failed to mark job as retrying")?;
+        .map_err(|e| RecapError::Db(format!("failed to mark job as retrying: {e}")))?;
 
         Ok(())
     }
@@ -194,7 +196,7 @@ impl QueueStore {
         .bind(job_id)
         .fetch_optional(&self.pool)
         .await
-        .context("failed to get job")?;
+        .map_err(|e| RecapError::Db(format!("failed to get job: {e}")))?;
 
         let Some(row) = row else {
             return Ok(None);
@@ -219,7 +221,7 @@ impl QueueStore {
         .bind(recap_job_id)
         .fetch_all(&self.pool)
         .await
-        .context("failed to get jobs by recap job id")?;
+        .map_err(|e| RecapError::Db(format!("failed to get jobs by recap job id: {e}")))?;
 
         let mut jobs = Vec::new();
         for row in rows {
@@ -240,11 +242,11 @@ impl QueueStore {
         .bind(recap_job_id)
         .fetch_one(&self.pool)
         .await
-        .context("failed to check job completion")?;
+        .map_err(|e| RecapError::Db(format!("failed to check job completion: {e}")))?;
 
         let pending_count: i64 = row
             .try_get("pending_count")
-            .context("failed to decode pending_count")?;
+            .map_err(|e| RecapError::Db(format!("failed to decode pending_count: {e}")))?;
         Ok(pending_count == 0)
     }
 
@@ -266,13 +268,15 @@ impl QueueStore {
         .bind(recap_job_id)
         .fetch_all(&self.pool)
         .await
-        .context("failed to get completed results")?;
+        .map_err(|e| RecapError::Db(format!("failed to get completed results: {e}")))?;
 
         let mut all_results = Vec::new();
         for row in rows {
-            let result_json: Value = row.try_get("result").context("failed to get result")?;
-            let results: Vec<ClassificationResult> =
-                serde_json::from_value(result_json).context("failed to deserialize results")?;
+            let result_json: Value = row
+                .try_get("result")
+                .map_err(|e| RecapError::Db(format!("failed to get result: {e}")))?;
+            let results: Vec<ClassificationResult> = serde_json::from_value(result_json)
+                .map_err(|e| RecapError::Db(format!("failed to deserialize results: {e}")))?;
             all_results.extend(results);
         }
         Ok(all_results)
@@ -280,33 +284,42 @@ impl QueueStore {
 
     /// Convert a database row to QueuedJob
     fn row_to_job(row: sqlx::postgres::PgRow) -> Result<QueuedJob> {
-        let id: i32 = row.try_get("id").context("failed to get id")?;
+        let id: i32 = row
+            .try_get("id")
+            .map_err(|e| RecapError::Db(format!("failed to get id: {e}")))?;
         let recap_job_id: Uuid = row
             .try_get("recap_job_id")
-            .context("failed to get recap_job_id")?;
+            .map_err(|e| RecapError::Db(format!("failed to get recap_job_id: {e}")))?;
         let chunk_idx: i32 = row
             .try_get("chunk_idx")
-            .context("failed to get chunk_idx")?;
-        let status_str: String = row.try_get("status").context("failed to get status")?;
-        let texts_json: Value = row.try_get("texts").context("failed to get texts")?;
+            .map_err(|e| RecapError::Db(format!("failed to get chunk_idx: {e}")))?;
+        let status_str: String = row
+            .try_get("status")
+            .map_err(|e| RecapError::Db(format!("failed to get status: {e}")))?;
+        let texts_json: Value = row
+            .try_get("texts")
+            .map_err(|e| RecapError::Db(format!("failed to get texts: {e}")))?;
         let result_json: Option<Value> = row.try_get("result").ok();
         let error_message: Option<String> = row.try_get("error_message").ok();
         let retry_count: i32 = row.try_get("retry_count").unwrap_or(0);
         let max_retries: i32 = row.try_get("max_retries").unwrap_or(3);
         let created_at: chrono::DateTime<Utc> = row
             .try_get("created_at")
-            .context("failed to get created_at")?;
+            .map_err(|e| RecapError::Db(format!("failed to get created_at: {e}")))?;
         let started_at: Option<chrono::DateTime<Utc>> = row.try_get("started_at").ok();
         let completed_at: Option<chrono::DateTime<Utc>> = row.try_get("completed_at").ok();
 
         let status = QueuedJobStatus::from_str(&status_str)
-            .context(format!("invalid status: {}", status_str))?;
+            .ok_or_else(|| RecapError::Db(format!("invalid status: {status_str}")))?;
 
-        let texts: Vec<String> =
-            serde_json::from_value(texts_json).context("failed to deserialize texts")?;
+        let texts: Vec<String> = serde_json::from_value(texts_json)
+            .map_err(|e| RecapError::Db(format!("failed to deserialize texts: {e}")))?;
 
         let result = if let Some(result_json) = result_json {
-            Some(serde_json::from_value(result_json).context("failed to deserialize result")?)
+            Some(
+                serde_json::from_value(result_json)
+                    .map_err(|e| RecapError::Db(format!("failed to deserialize result: {e}")))?,
+            )
         } else {
             None
         };
@@ -340,7 +353,7 @@ mod tests {
     use std::collections::HashSet;
     use std::sync::Arc;
 
-    async fn setup_classification_queue_table(pool: &PgPool) -> Result<()> {
+    async fn setup_classification_queue_table(pool: &PgPool) -> anyhow::Result<()> {
         pool.execute(
             r"
             CREATE TABLE IF NOT EXISTS classification_job_queue (
@@ -385,7 +398,7 @@ mod tests {
     /// itself changed `status`) would hand the same row to every concurrent
     /// caller, since nothing ever left the 'pending' set.
     #[tokio::test]
-    async fn pick_next_job_never_double_picks_under_concurrency() -> Result<()> {
+    async fn pick_next_job_never_double_picks_under_concurrency() -> anyhow::Result<()> {
         let Ok(database_url) = std::env::var("DATABASE_URL") else {
             return Ok(());
         };
@@ -443,7 +456,7 @@ mod tests {
     /// it to 'running' in the same statement, so a second pick sees nothing
     /// left to take.
     #[tokio::test]
-    async fn pick_next_job_marks_row_running_and_is_not_repickable() -> Result<()> {
+    async fn pick_next_job_marks_row_running_and_is_not_repickable() -> anyhow::Result<()> {
         let Ok(database_url) = std::env::var("DATABASE_URL") else {
             return Ok(());
         };

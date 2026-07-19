@@ -1,4 +1,4 @@
-use anyhow::{Context, Result};
+use crate::error::{RecapError, Result};
 use chrono::{DateTime, Utc};
 use serde_json::Value;
 use sqlx::types::Json;
@@ -39,7 +39,7 @@ impl RecapDao {
         .bind(&metrics.languages_detected)
         .execute(pool)
         .await
-        .context("failed to save preprocess metrics")?;
+        .map_err(|e| RecapError::Db(format!("failed to save preprocess metrics: {e}")))?;
 
         Ok(())
     }
@@ -62,7 +62,7 @@ impl RecapDao {
         .bind(Json(metrics))
         .execute(pool)
         .await
-        .context("failed to insert system metrics")?;
+        .map_err(|e| RecapError::Db(format!("failed to insert system metrics: {e}")))?;
 
         Ok(())
     }
@@ -108,7 +108,7 @@ impl RecapDao {
         let rows = query
             .fetch_all(pool)
             .await
-            .context("failed to fetch system metrics")?;
+            .map_err(|e| RecapError::Db(format!("failed to fetch system metrics: {e}")))?;
 
         let mut results = Vec::with_capacity(rows.len());
         for row in rows {
@@ -143,7 +143,7 @@ impl RecapDao {
         .bind(limit)
         .fetch_all(pool)
         .await
-        .context("failed to fetch recent activity")?;
+        .map_err(|e| RecapError::Db(format!("failed to fetch recent activity: {e}")))?;
 
         let mut results = Vec::with_capacity(rows.len());
         for row in rows {
@@ -186,7 +186,7 @@ impl RecapDao {
         .bind(limit)
         .fetch_all(pool)
         .await
-        .context("failed to fetch log errors")?;
+        .map_err(|e| RecapError::Db(format!("failed to fetch log errors: {e}")))?;
 
         let mut results = Vec::with_capacity(rows.len());
         for row in rows {
@@ -234,7 +234,7 @@ impl RecapDao {
         .bind(limit)
         .fetch_all(pool)
         .await
-        .context("failed to fetch admin jobs")?;
+        .map_err(|e| RecapError::Db(format!("failed to fetch admin jobs: {e}")))?;
 
         let mut results = Vec::with_capacity(rows.len());
         for row in rows {

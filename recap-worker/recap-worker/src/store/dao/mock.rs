@@ -2,7 +2,7 @@
 // プロダクションコードから分離して、テスト専用のモックを提供
 
 #[cfg(test)]
-use anyhow::Result;
+use crate::error::Result;
 #[cfg(test)]
 use async_trait::async_trait;
 #[cfg(test)]

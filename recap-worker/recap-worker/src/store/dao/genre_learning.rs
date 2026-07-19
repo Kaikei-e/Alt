@@ -1,4 +1,4 @@
-use anyhow::{Context, Result};
+use crate::error::{RecapError, Result};
 use sqlx::types::Json;
 use sqlx::{PgPool, Row};
 
@@ -39,7 +39,7 @@ impl RecapDao {
         .bind(window_label)
         .fetch_all(pool)
         .await
-        .context("failed to load tag_label_graph entries")?;
+        .map_err(|e| RecapError::Db(format!("failed to load tag_label_graph entries: {e}")))?;
 
         let mut edges = Vec::with_capacity(rows.len());
         for row in rows {
@@ -70,7 +70,11 @@ impl RecapDao {
             .bind(Json(record.timestamps.clone()))
             .execute(pool)
             .await
-            .context("failed to upsert recap_genre_learning_results")?;
+            .map_err(|e| {
+                RecapError::Db(format!(
+                    "failed to upsert recap_genre_learning_results: {e}"
+                ))
+            })?;
 
         Ok(())
     }
@@ -90,10 +94,9 @@ impl RecapDao {
         const BATCH_SIZE: usize = 100;
 
         for chunk in records.chunks(BATCH_SIZE) {
-            let mut tx = pool
-                .begin()
-                .await
-                .context("failed to begin transaction for bulk upsert")?;
+            let mut tx = pool.begin().await.map_err(|e| {
+                RecapError::Db(format!("failed to begin transaction for bulk upsert: {e}"))
+            })?;
 
             for record in chunk {
                 sqlx::query(UPSERT_GENRE_LEARNING_SQL)
@@ -108,12 +111,16 @@ impl RecapDao {
                     .bind(Json(record.timestamps.clone()))
                     .execute(&mut *tx)
                     .await
-                    .context("failed to upsert recap_genre_learning_results record in bulk")?;
+                    .map_err(|e| {
+                        RecapError::Db(format!(
+                            "failed to upsert recap_genre_learning_results record in bulk: {e}"
+                        ))
+                    })?;
             }
 
-            tx.commit()
-                .await
-                .context("failed to commit bulk upsert transaction")?;
+            tx.commit().await.map_err(|e| {
+                RecapError::Db(format!("failed to commit bulk upsert transaction: {e}"))
+            })?;
         }
 
         Ok(())

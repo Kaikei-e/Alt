@@ -9,7 +9,7 @@ mod types;
 
 use std::{collections::HashMap, sync::Arc};
 
-use anyhow::Result;
+use crate::error::Result;
 use async_trait::async_trait;
 use tokio::sync::Semaphore;
 use tracing::info;

@@ -1,4 +1,4 @@
-use anyhow::{Context, Result};
+use crate::error::{RecapError, Result};
 use sqlx::{PgPool, Row};
 use uuid::Uuid;
 
@@ -48,18 +48,21 @@ impl RecapDao {
         window_days: u32,
         trigger_source: &str,
     ) -> Result<Option<Uuid>> {
-        let mut tx = pool.begin().await.context("failed to begin transaction")?;
+        let mut tx = pool
+            .begin()
+            .await
+            .map_err(|e| RecapError::Db(format!("failed to begin transaction: {e}")))?;
 
         // Try to acquire advisory lock
         let lock_acquired = try_acquire_job_lock(&mut tx, job_id)
             .await
-            .context("failed to acquire advisory lock")?;
+            .map_err(|e| RecapError::Db(format!("failed to acquire advisory lock: {e}")))?;
 
         if !lock_acquired {
             // Another worker is already processing this job
             tx.rollback()
                 .await
-                .context("failed to rollback transaction")?;
+                .map_err(|e| RecapError::Db(format!("failed to rollback transaction: {e}")))?;
             return Ok(None);
         }
 
@@ -78,9 +81,11 @@ impl RecapDao {
         .bind(trigger_source)
         .execute(&mut *tx)
         .await
-        .context("failed to insert recap_jobs record")?;
+        .map_err(|e| RecapError::Db(format!("failed to insert recap_jobs record: {e}")))?;
 
-        tx.commit().await.context("failed to commit transaction")?;
+        tx.commit()
+            .await
+            .map_err(|e| RecapError::Db(format!("failed to commit transaction: {e}")))?;
 
         Ok(Some(job_id))
     }
@@ -93,11 +98,11 @@ impl RecapDao {
                 .bind(job_id)
                 .fetch_one(pool)
                 .await
-                .context("failed to check job existence")?;
+                .map_err(|e| RecapError::Db(format!("failed to check job existence: {e}")))?;
 
         let exists: bool = row
             .try_get("exists")
-            .context("failed to get exists result")?;
+            .map_err(|e| RecapError::Db(format!("failed to get exists result: {e}")))?;
         Ok(exists)
     }
 
@@ -136,7 +141,7 @@ impl RecapDao {
         .bind(max_age_hours_i32)
         .fetch_optional(pool)
         .await
-        .context("failed to find resumable job")?;
+        .map_err(|e| RecapError::Db(format!("failed to find resumable job: {e}")))?;
 
         if let Some(row) = row {
             let job_id: Uuid = row.try_get("job_id")?;
@@ -183,7 +188,7 @@ impl RecapDao {
         .bind(last_stage)
         .execute(pool)
         .await
-        .context("failed to update job status")?;
+        .map_err(|e| RecapError::Db(format!("failed to update job status: {e}")))?;
 
         if result.rows_affected() == 0 {
             tracing::warn!(
@@ -224,7 +229,7 @@ impl RecapDao {
         .bind(limit)
         .fetch_all(pool)
         .await
-        .context("failed to fetch recap jobs")?;
+        .map_err(|e| RecapError::Db(format!("failed to fetch recap jobs: {e}")))?;
 
         let mut results = Vec::new();
         for row in rows {
@@ -292,7 +297,7 @@ impl RecapDao {
                 .await
             }
         }
-        .context("failed to mark abandoned recap jobs")?;
+        .map_err(|e| RecapError::Db(format!("failed to mark abandoned recap jobs: {e}")))?;
 
         Ok(result.rows_affected())
     }
@@ -312,7 +317,7 @@ impl RecapDao {
         .bind(retention_days_i32)
         .execute(pool)
         .await
-        .context("failed to delete old jobs")?;
+        .map_err(|e| RecapError::Db(format!("failed to delete old jobs: {e}")))?;
 
         Ok(result.rows_affected())
     }
@@ -344,9 +349,11 @@ impl RecapDao {
         .bind(actor.as_ref())
         .fetch_one(pool)
         .await
-        .context("failed to record status transition")?;
+        .map_err(|e| RecapError::Db(format!("failed to record status transition: {e}")))?;
 
-        let id: i64 = row.try_get("id").context("failed to get transition id")?;
+        let id: i64 = row
+            .try_get("id")
+            .map_err(|e| RecapError::Db(format!("failed to get transition id: {e}")))?;
         Ok(id)
     }
 
@@ -359,7 +366,10 @@ impl RecapDao {
         last_stage: Option<&str>,
         reason: Option<&str>,
     ) -> Result<()> {
-        let mut tx = pool.begin().await.context("failed to begin transaction")?;
+        let mut tx = pool
+            .begin()
+            .await
+            .map_err(|e| RecapError::Db(format!("failed to begin transaction: {e}")))?;
 
         // 1. Insert to immutable history table
         sqlx::query(
@@ -374,7 +384,11 @@ impl RecapDao {
         .bind(reason)
         .execute(&mut *tx)
         .await
-        .context("failed to record status transition in history")?;
+        .map_err(|e| {
+            RecapError::Db(format!(
+                "failed to record status transition in history: {e}"
+            ))
+        })?;
 
         // 2. Update denormalized status on recap_jobs (for backward compatibility)
         let result = sqlx::query(
@@ -391,7 +405,7 @@ impl RecapDao {
         .bind(last_stage)
         .execute(&mut *tx)
         .await
-        .context("failed to update job status")?;
+        .map_err(|e| RecapError::Db(format!("failed to update job status: {e}")))?;
 
         if result.rows_affected() == 0 {
             tracing::warn!(
@@ -402,7 +416,9 @@ impl RecapDao {
             );
         }
 
-        tx.commit().await.context("failed to commit transaction")?;
+        tx.commit()
+            .await
+            .map_err(|e| RecapError::Db(format!("failed to commit transaction: {e}")))?;
         Ok(())
     }
 
@@ -423,7 +439,7 @@ impl RecapDao {
         .bind(job_id)
         .fetch_all(pool)
         .await
-        .context("failed to fetch status history")?;
+        .map_err(|e| RecapError::Db(format!("failed to fetch status history: {e}")))?;
 
         let mut history = Vec::with_capacity(rows.len());
         for row in rows {

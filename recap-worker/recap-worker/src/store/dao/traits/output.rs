@@ -3,7 +3,7 @@
 use std::collections::HashMap;
 use std::future::Future;
 
-use anyhow::Result;
+use crate::error::Result;
 use serde_json::Value;
 use uuid::Uuid;
 

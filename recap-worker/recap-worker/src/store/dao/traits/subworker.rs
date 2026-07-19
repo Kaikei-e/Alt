@@ -2,7 +2,7 @@
 
 use std::future::Future;
 
-use anyhow::Result;
+use crate::error::Result;
 
 use crate::store::models::{
     DiagnosticEntry, NewSubworkerRun, PersistedCluster, PersistedGenre, SubworkerRunStatus,

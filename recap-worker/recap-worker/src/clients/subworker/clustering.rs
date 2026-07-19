@@ -1,4 +1,3 @@
-use anyhow::{Context, Result, anyhow};
 use reqwest::Url;
 use std::time::{Duration, Instant};
 use tokio::time::sleep;
@@ -15,6 +14,7 @@ use super::types::{
 };
 use super::utils::{summarize_validation_errors, truncate_error_message};
 use crate::clients::subworker::SubworkerClient;
+use crate::error::{RecapError, Result};
 use crate::pipeline::evidence::EvidenceCorpus;
 use crate::schema::{subworker::CLUSTERING_RESPONSE_SCHEMA, validate_json};
 use crate::util::retry::{RetryConfig, is_retryable_error};
@@ -127,11 +127,10 @@ impl SubworkerClient {
                 min_fallback = MIN_FALLBACK_DOCUMENTS,
                 "skipping clustering because document count is below minimum fallback threshold"
             );
-            return Err(crate::error::RecapError::InsufficientDocuments {
+            return Err(RecapError::InsufficientDocuments {
                 min: MIN_FALLBACK_DOCUMENTS,
                 found: document_count,
-            }
-            .into());
+            });
         }
 
         let response = self
@@ -143,23 +142,22 @@ impl SubworkerClient {
             .header("Idempotency-Key", idempotency_key)
             .send()
             .await
-            .context("clustering request failed")?;
+            .map_err(|e| RecapError::Clustering(format!("clustering request failed: {e}")))?;
 
         if !response.status().is_success() {
             let status = response.status();
             let body = response.text().await.unwrap_or_default();
             let truncated_body = truncate_error_message(&body);
-            return Err(anyhow!(
-                "clustering endpoint returned error status {}: {}",
-                status,
-                truncated_body
-            ));
+            return Err(RecapError::Clustering(format!(
+                "clustering endpoint returned error status {status}: {truncated_body}"
+            )));
         }
 
-        let response_json: Value = response
-            .json()
-            .await
-            .context("failed to deserialize clustering response as JSON")?;
+        let response_json: Value = response.json().await.map_err(|e| {
+            RecapError::Clustering(format!(
+                "failed to deserialize clustering response as JSON: {e}"
+            ))
+        })?;
 
         let validation = validate_json(&CLUSTERING_RESPONSE_SCHEMA, &response_json);
         if !validation.valid {
@@ -171,11 +169,11 @@ impl SubworkerClient {
                 first_error = %summarized_errors.first().map_or("unknown", String::as_str),
                 "clustering response failed JSON Schema validation"
             );
-            return Err(anyhow!(
+            return Err(RecapError::Clustering(format!(
                 "clustering response validation failed: {} errors (first: {})",
                 validation.errors.len(),
                 summarized_errors.first().map_or("unknown", String::as_str)
-            ));
+            )));
         }
 
         debug!(
@@ -184,8 +182,11 @@ impl SubworkerClient {
             "clustering response passed JSON Schema validation"
         );
 
-        let mut run: ClusteringResponse = serde_json::from_value(response_json)
-            .context("failed to deserialize validated clustering response")?;
+        let mut run: ClusteringResponse = serde_json::from_value(response_json).map_err(|e| {
+            RecapError::Clustering(format!(
+                "failed to deserialize validated clustering response: {e}"
+            ))
+        })?;
 
         if run.status.is_running() {
             run = self
@@ -194,11 +195,10 @@ impl SubworkerClient {
         }
 
         if !run.is_success() {
-            return Err(anyhow!(
+            return Err(RecapError::Clustering(format!(
                 "clustering run {} finished with status {}",
-                run.run_id,
-                run.status
-            ));
+                run.run_id, run.status
+            )));
         }
 
         Ok(run)
@@ -270,11 +270,9 @@ impl SubworkerClient {
 
             attempt += 1;
             if attempt >= MAX_POLL_ATTEMPTS {
-                return Err(anyhow!(
-                    "clustering run {} did not complete within {} attempts",
-                    run_id,
-                    MAX_POLL_ATTEMPTS
-                ));
+                return Err(RecapError::Clustering(format!(
+                    "clustering run {run_id} did not complete within {MAX_POLL_ATTEMPTS} attempts"
+                )));
             }
         }
     }
@@ -292,12 +290,12 @@ impl SubworkerClient {
         // 経過時間ベースのdeadlineチェック
         let elapsed = start_time.elapsed();
         if elapsed >= deadline {
-            return Err(anyhow!(
+            return Err(RecapError::Clustering(format!(
                 "clustering run {} did not complete within timeout ({}s elapsed, deadline: {}s)",
                 run_id,
                 elapsed.as_secs(),
                 deadline.as_secs()
-            ));
+            )));
         }
 
         // Stuck検知: 進捗が無い場合（statusやcluster_countが変化しない）
@@ -314,12 +312,12 @@ impl SubworkerClient {
                 time_since_progress.as_secs(),
                 stuck_limit.as_secs()
             );
-            return Err(anyhow!(
+            return Err(RecapError::Clustering(format!(
                 "clustering run {} appears stuck (no progress for {}s, threshold: {}s)",
                 run_id,
                 time_since_progress.as_secs(),
                 stuck_limit.as_secs()
-            ));
+            )));
         }
 
         Ok(())
@@ -343,9 +341,9 @@ impl SubworkerClient {
             Err(e) => {
                 // リトライ可能なエラーでも、deadlineを超えそうなら即失敗
                 if start_time.elapsed() + Duration::from_secs(10) >= deadline {
-                    return Err(e).with_context(|| {
-                        format!("clustering run {} polling failed near deadline", run_id)
-                    });
+                    return Err(e.context(format!(
+                        "clustering run {run_id} polling failed near deadline"
+                    )));
                 }
                 return Err(e);
             }
@@ -356,18 +354,17 @@ impl SubworkerClient {
             let status = response.status();
             let body = response.text().await.unwrap_or_default();
             let truncated_body = truncate_error_message(&body);
-            return Err(anyhow!(
-                "run polling endpoint returned error status {}: {}",
-                status,
-                truncated_body
-            ));
+            return Err(RecapError::Clustering(format!(
+                "run polling endpoint returned error status {status}: {truncated_body}"
+            )));
         }
 
         // JSONデシリアライズ
-        let response_json: Value = response
-            .json()
-            .await
-            .context("failed to deserialize polling response as JSON")?;
+        let response_json: Value = response.json().await.map_err(|e| {
+            RecapError::Clustering(format!(
+                "failed to deserialize polling response as JSON: {e}"
+            ))
+        })?;
 
         // JSON Schema検証
         let validation = validate_json(&CLUSTERING_RESPONSE_SCHEMA, &response_json);
@@ -379,16 +376,19 @@ impl SubworkerClient {
                 first_error = %summarized_errors.first().map_or("unknown", String::as_str),
                 "polling response failed JSON Schema validation"
             );
-            return Err(anyhow!(
+            return Err(RecapError::Clustering(format!(
                 "run polling response validation failed: {} errors (first: {})",
                 validation.errors.len(),
                 summarized_errors.first().map_or("unknown", String::as_str)
-            ));
+            )));
         }
 
         // 検証済みJSONからClusteringResponseへデシリアライズ
-        serde_json::from_value(response_json)
-            .context("failed to deserialize validated polling response")
+        serde_json::from_value(response_json).map_err(|e| {
+            RecapError::Clustering(format!(
+                "failed to deserialize validated polling response: {e}"
+            ))
+        })
     }
 
     /// pollリクエストをリトライ付きで送信する（classification側と同様）。
@@ -423,31 +423,30 @@ impl SubworkerClient {
                         last_error = Some(e);
                         continue;
                     }
-                    return Err(anyhow::Error::from(e)).with_context(|| {
-                        format!(
-                            "clustering run polling request failed for run_id {} (attempt {})",
-                            run_id,
-                            poll_attempt + 1
-                        )
-                    });
+                    return Err(RecapError::Clustering(format!(
+                        "clustering run polling request failed for run_id {} (attempt {}): {}",
+                        run_id,
+                        poll_attempt + 1,
+                        e
+                    )));
                 }
             }
         }
 
         match last_error {
-            Some(e) => Err(anyhow!(
+            Some(e) => Err(RecapError::Clustering(format!(
                 "clustering run polling request failed after {} retries for run_id {} (attempt {}): {}",
                 POLL_REQUEST_RETRIES,
                 run_id,
                 poll_attempt + 1,
                 e
-            )),
-            None => Err(anyhow!(
+            ))),
+            None => Err(RecapError::Clustering(format!(
                 "clustering run polling request failed after {} retries for run_id {} (attempt {})",
                 POLL_REQUEST_RETRIES,
                 run_id,
                 poll_attempt + 1
-            )),
+            ))),
         }
     }
 }
@@ -455,7 +454,7 @@ impl SubworkerClient {
 fn build_runs_url(base: &Url) -> Result<Url> {
     let mut url = base.clone();
     url.path_segments_mut()
-        .map_err(|()| anyhow!("subworker base URL must be absolute"))?
+        .map_err(|()| RecapError::Clustering("subworker base URL must be absolute".to_string()))?
         .extend(["v1", "runs"]);
     Ok(url)
 }
@@ -463,7 +462,7 @@ fn build_runs_url(base: &Url) -> Result<Url> {
 fn build_run_url(base: &Url, run_id: i64) -> Result<Url> {
     let mut url = base.clone();
     url.path_segments_mut()
-        .map_err(|()| anyhow!("subworker base URL must be absolute"))?
+        .map_err(|()| RecapError::Clustering("subworker base URL must be absolute".to_string()))?
         .extend(["v1", "runs", &run_id.to_string()]);
     Ok(url)
 }

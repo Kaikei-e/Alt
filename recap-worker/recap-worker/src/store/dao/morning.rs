@@ -1,4 +1,4 @@
-use anyhow::{Context, Result};
+use crate::error::{RecapError, Result};
 use chrono::{DateTime, NaiveDate, Utc};
 use serde_json::Value;
 use sqlx::types::Json;
@@ -19,10 +19,11 @@ impl RecapDao {
             return Ok(());
         }
 
-        let mut tx = pool
-            .begin()
-            .await
-            .context("failed to begin transaction for morning groups")?;
+        let mut tx = pool.begin().await.map_err(|e| {
+            RecapError::Db(format!(
+                "failed to begin transaction for morning groups: {e}"
+            ))
+        })?;
 
         for (group_id, article_id, is_primary) in groups {
             sqlx::query(
@@ -37,12 +38,12 @@ impl RecapDao {
             .bind(is_primary)
             .execute(&mut *tx)
             .await
-            .context("failed to insert morning article group")?;
+            .map_err(|e| RecapError::Db(format!("failed to insert morning article group: {e}")))?;
         }
 
         tx.commit()
             .await
-            .context("failed to commit morning groups")?;
+            .map_err(|e| RecapError::Db(format!("failed to commit morning groups: {e}")))?;
 
         Ok(())
     }
@@ -63,7 +64,7 @@ impl RecapDao {
         .bind(since)
         .fetch_all(pool)
         .await
-        .context("failed to fetch morning article groups")?;
+        .map_err(|e| RecapError::Db(format!("failed to fetch morning article groups: {e}")))?;
 
         let mut results = Vec::with_capacity(rows.len());
         for row in rows {
@@ -111,7 +112,7 @@ impl RecapDao {
         .bind(Json(&letter.generation_metadata_jsonb))
         .fetch_one(pool)
         .await
-        .context("failed to upsert morning letter")?;
+        .map_err(|e| RecapError::Db(format!("failed to upsert morning letter: {e}")))?;
 
         Ok(row.try_get::<Uuid, _>("id")?)
     }
@@ -128,16 +129,21 @@ impl RecapDao {
 
         let letter_id = sources[0].letter_id;
 
-        let mut tx = pool
-            .begin()
-            .await
-            .context("failed to begin transaction for morning letter sources")?;
+        let mut tx = pool.begin().await.map_err(|e| {
+            RecapError::Db(format!(
+                "failed to begin transaction for morning letter sources: {e}"
+            ))
+        })?;
 
         sqlx::query("DELETE FROM morning_letter_sources WHERE letter_id = $1")
             .bind(letter_id)
             .execute(&mut *tx)
             .await
-            .context("failed to delete existing morning letter sources")?;
+            .map_err(|e| {
+                RecapError::Db(format!(
+                    "failed to delete existing morning letter sources: {e}"
+                ))
+            })?;
 
         for source in sources {
             sqlx::query(
@@ -154,12 +160,12 @@ impl RecapDao {
             .bind(source.position)
             .execute(&mut *tx)
             .await
-            .context("failed to insert morning letter source")?;
+            .map_err(|e| RecapError::Db(format!("failed to insert morning letter source: {e}")))?;
         }
 
         tx.commit()
             .await
-            .context("failed to commit morning letter sources")?;
+            .map_err(|e| RecapError::Db(format!("failed to commit morning letter sources: {e}")))?;
 
         Ok(())
     }
@@ -183,7 +189,7 @@ impl RecapDao {
         .bind(date)
         .fetch_optional(pool)
         .await
-        .context("failed to fetch morning letter by date")?;
+        .map_err(|e| RecapError::Db(format!("failed to fetch morning letter by date: {e}")))?;
 
         match row {
             Some(row) => Ok(Some(map_row_to_morning_letter(row)?)),
@@ -207,7 +213,7 @@ impl RecapDao {
         .bind(letter_id)
         .fetch_all(pool)
         .await
-        .context("failed to fetch morning letter sources")?;
+        .map_err(|e| RecapError::Db(format!("failed to fetch morning letter sources: {e}")))?;
 
         let mut sources = Vec::with_capacity(rows.len());
         for row in rows {
@@ -245,7 +251,7 @@ impl RecapDao {
         .bind(before)
         .fetch_optional(pool)
         .await
-        .context("failed to fetch previous morning letter")?;
+        .map_err(|e| RecapError::Db(format!("failed to fetch previous morning letter: {e}")))?;
 
         match row {
             Some(row) => Ok(Some(map_row_to_morning_letter(row)?)),
@@ -268,7 +274,7 @@ impl RecapDao {
         )
         .fetch_optional(pool)
         .await
-        .context("failed to fetch latest morning letter")?;
+        .map_err(|e| RecapError::Db(format!("failed to fetch latest morning letter: {e}")))?;
 
         match row {
             Some(row) => Ok(Some(map_row_to_morning_letter(row)?)),

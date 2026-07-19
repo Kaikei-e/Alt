@@ -4,7 +4,7 @@
 
 use std::future::Future;
 
-use anyhow::Result;
+use crate::error::Result;
 use chrono::NaiveDate;
 
 use crate::pipeline::pulse::PulseResult;

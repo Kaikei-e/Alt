@@ -1,4 +1,4 @@
-use anyhow::{Context, Result};
+use crate::error::{RecapError, Result};
 use chrono::{DateTime, Duration, Utc};
 use serde_json::Value;
 use sqlx::types::Json;
@@ -19,8 +19,8 @@ impl RecapDao {
         pool: &PgPool,
         section: &crate::store::models::RecapFinalSection,
     ) -> Result<i64> {
-        let bullets_json =
-            serde_json::to_value(&section.bullets_ja).context("failed to serialize bullets")?;
+        let bullets_json = serde_json::to_value(&section.bullets_ja)
+            .map_err(|e| RecapError::Db(format!("failed to serialize bullets: {e}")))?;
 
         let row = sqlx::query(
             r"
@@ -42,7 +42,7 @@ impl RecapDao {
         .bind(&section.model_name)
         .fetch_one(pool)
         .await
-        .context("failed to insert final section")?;
+        .map_err(|e| RecapError::Db(format!("failed to insert final section: {e}")))?;
 
         Ok(row.get("id"))
     }
@@ -86,7 +86,7 @@ impl RecapDao {
         .bind(Json(tags_json))
         .execute(executor)
         .await
-        .context("failed to upsert recap_outputs record")?;
+        .map_err(|e| RecapError::Db(format!("failed to upsert recap_outputs record: {e}")))?;
 
         Ok(())
     }
@@ -107,7 +107,7 @@ impl RecapDao {
         .bind(genre)
         .fetch_optional(pool)
         .await
-        .context("failed to fetch recap output body_json")?;
+        .map_err(|e| RecapError::Db(format!("failed to fetch recap output body_json: {e}")))?;
 
         if let Some(row) = row {
             let body_json: Json<Value> = row.try_get("body_json")?;
@@ -138,7 +138,7 @@ impl RecapDao {
         .bind(window_days)
         .fetch_optional(pool)
         .await
-        .context("failed to fetch latest completed job")?;
+        .map_err(|e| RecapError::Db(format!("failed to fetch latest completed job: {e}")))?;
 
         // Fall back to legacy query if no matching window_days found
         // (for backward compatibility with jobs created before this column was added)
@@ -157,7 +157,11 @@ impl RecapDao {
                 )
                 .fetch_optional(pool)
                 .await
-                .context("failed to fetch latest completed job (legacy fallback)")?
+                .map_err(|e| {
+                    RecapError::Db(format!(
+                        "failed to fetch latest completed job (legacy fallback): {e}"
+                    ))
+                })?
             }
             None => None,
         };
@@ -235,7 +239,7 @@ impl RecapDao {
         .bind(job_id)
         .fetch_all(pool)
         .await
-        .context("failed to fetch genres by job")?;
+        .map_err(|e| RecapError::Db(format!("failed to fetch genres by job: {e}")))?;
 
         let mut genres = Vec::new();
         for row in rows {
@@ -294,7 +298,7 @@ impl RecapDao {
         .bind(job_id)
         .fetch_all(pool)
         .await
-        .context("failed to fetch cluster bundle")?;
+        .map_err(|e| RecapError::Db(format!("failed to fetch cluster bundle: {e}")))?;
 
         let mut clusters_by_row = process_cluster_rows(rows)?;
 
@@ -358,7 +362,7 @@ impl RecapDao {
         .bind(term)
         .fetch_all(pool)
         .await
-        .context("failed to search recaps by term")?;
+        .map_err(|e| RecapError::Db(format!("failed to search recaps by term: {e}")))?;
 
         let mut hits = Vec::new();
         for row in rows {
@@ -427,7 +431,11 @@ impl RecapDao {
             .bind(limit)
             .fetch_all(pool)
             .await
-            .context("failed to fetch indexable genres (incremental)")?
+            .map_err(|e| {
+                RecapError::Db(format!(
+                    "failed to fetch indexable genres (incremental): {e}"
+                ))
+            })?
         } else {
             sqlx::query(
                 r"
@@ -457,7 +465,9 @@ impl RecapDao {
             .bind(limit)
             .fetch_all(pool)
             .await
-            .context("failed to fetch indexable genres (backfill)")?
+            .map_err(|e| {
+                RecapError::Db(format!("failed to fetch indexable genres (backfill): {e}"))
+            })?
         };
 
         let mut hits = Vec::new();
@@ -504,7 +514,11 @@ impl RecapDao {
         .bind(run_id)
         .fetch_all(pool)
         .await
-        .context("failed to fetch recap_subworker_sentences for run")?;
+        .map_err(|e| {
+            RecapError::Db(format!(
+                "failed to fetch recap_subworker_sentences for run: {e}"
+            ))
+        })?;
 
         let mut grouped: HashMap<String, Vec<i64>> = HashMap::new();
         for row in rows {
@@ -624,7 +638,7 @@ async fn fetch_evidence_from_sentences(
     .bind(cluster_row_ids)
     .fetch_all(pool)
     .await
-    .context("failed to fetch fallback evidence")?;
+    .map_err(|e| RecapError::Db(format!("failed to fetch fallback evidence: {e}")))?;
 
     let mut grouped: HashMap<i64, Vec<ClusterEvidence>> = HashMap::new();
     for row in rows {

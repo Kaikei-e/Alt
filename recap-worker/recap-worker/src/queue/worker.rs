@@ -139,7 +139,7 @@ impl QueueWorker {
                         error = %e,
                         "failed to mark job as completed"
                     );
-                    return Err(e);
+                    return Err(e.into());
                 }
 
                 info!(
@@ -178,7 +178,7 @@ impl QueueWorker {
                             error = %store_err,
                             "failed to mark job as retrying"
                         );
-                        return Err(store_err);
+                        return Err(store_err.into());
                     }
                 } else {
                     // Mark as failed (max retries exceeded)
@@ -198,7 +198,7 @@ impl QueueWorker {
                             error = %store_err,
                             "failed to mark job as failed"
                         );
-                        return Err(store_err);
+                        return Err(store_err.into());
                     }
                 }
 

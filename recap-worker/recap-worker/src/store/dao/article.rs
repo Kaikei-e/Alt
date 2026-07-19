@@ -1,4 +1,4 @@
-use anyhow::{Context, Result};
+use crate::error::{RecapError, Result};
 use chrono::DateTime;
 use sqlx::{PgPool, Row};
 use std::collections::HashMap;
@@ -19,7 +19,10 @@ impl RecapDao {
             return Ok(());
         }
 
-        let mut tx = pool.begin().await.context("failed to begin transaction")?;
+        let mut tx = pool
+            .begin()
+            .await
+            .map_err(|e| RecapError::Db(format!("failed to begin transaction: {e}")))?;
 
         for article in articles {
             sqlx::query(
@@ -40,10 +43,12 @@ impl RecapDao {
             .bind(&article.normalized_hash)
             .execute(&mut *tx)
             .await
-            .context("failed to insert raw article")?;
+            .map_err(|e| RecapError::Db(format!("failed to insert raw article: {e}")))?;
         }
 
-        tx.commit().await.context("failed to commit raw articles")?;
+        tx.commit()
+            .await
+            .map_err(|e| RecapError::Db(format!("failed to commit raw articles: {e}")))?;
 
         Ok(())
     }
@@ -69,7 +74,7 @@ impl RecapDao {
         .bind(article_ids)
         .fetch_all(pool)
         .await
-        .context("failed to fetch article metadata")?;
+        .map_err(|e| RecapError::Db(format!("failed to fetch article metadata: {e}")))?;
 
         let mut metadata = HashMap::new();
         for row in rows {
@@ -107,7 +112,7 @@ impl RecapDao {
         .bind(article_ids)
         .fetch_all(pool)
         .await
-        .context("failed to fetch articles by ids")?;
+        .map_err(|e| RecapError::Db(format!("failed to fetch articles by ids: {e}")))?;
 
         let mut articles = Vec::new();
         for row in rows {

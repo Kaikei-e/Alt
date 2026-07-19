@@ -3,13 +3,13 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use anyhow::{Context, Result};
 use tokio::{sync::Semaphore, time::timeout};
 use tracing::{debug, error, info, warn};
 use uuid::Uuid;
 
 use crate::clients::subworker::{ClusteringResponse, SubworkerClient};
 use crate::config::Config;
+use crate::error::{RecapError, Result};
 use crate::pipeline::evidence::{EvidenceBundle, EvidenceCorpus};
 use crate::scheduler::JobContext;
 use crate::store::dao::RecapDao;
@@ -53,13 +53,17 @@ impl ClusteringOps<'_> {
             ),
         )
         .await
-        .with_context(|| {
-            format!(
+        .map_err(|_| {
+            RecapError::Clustering(format!(
                 "clustering timeout: genre={genre} articles={article_count} timeout_s={}",
                 genre_timeout.as_secs()
-            )
+            ))
         })?
-        .with_context(|| format!("clustering failed: genre={genre} articles={article_count}"))?;
+        .map_err(|e| {
+            e.context(format!(
+                "clustering failed: genre={genre} articles={article_count}"
+            ))
+        })?;
 
         // Fallback: If clustering succeeded but returned NO clusters (e.g. all noise),
         // we force a fallback response using the evidence corpus.
@@ -99,7 +103,7 @@ impl ClusteringOps<'_> {
                 .dao
                 .insert_subworker_run(&run)
                 .await
-                .context("failed to insert fallback subworker run")?;
+                .map_err(|e| e.context("failed to insert fallback subworker run"))?;
 
             // Update the response with the real DB ID
             clustering_response.run_id = new_run_id;
@@ -112,7 +116,7 @@ impl ClusteringOps<'_> {
                     &serde_json::json!({"fallback": true}),
                 )
                 .await
-                .context("failed to mark fallback run as success")?;
+                .map_err(|e| e.context("failed to mark fallback run as success"))?;
         }
 
         info!(
@@ -257,7 +261,7 @@ impl ClusteringOps<'_> {
                             format!("clustering task failed: {join_error}")
                         }
                     };
-                    clustering_results.insert(genre, Err(anyhow::anyhow!(message)));
+                    clustering_results.insert(genre, Err(RecapError::Clustering(message)));
                 }
             }
         }

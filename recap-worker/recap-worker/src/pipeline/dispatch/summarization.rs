@@ -3,7 +3,6 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use anyhow::{Context, Result};
 use tracing::{debug, error, info, warn};
 use uuid::Uuid;
 
@@ -13,7 +12,7 @@ use crate::clients::news_creator::models::{
 };
 use crate::clients::subworker::ClusteringResponse;
 use crate::config::Config;
-use crate::error::RecapError;
+use crate::error::{RecapError, Result};
 use crate::scheduler::JobContext;
 use crate::store::dao::RecapDao;
 
@@ -40,29 +39,19 @@ fn apply_recap_request_defaults(
 
 impl SummarizationOps<'_> {
     /// クラスタリングエラー時の結果を構築する。
-    pub(crate) fn clustering_error_result(genre: &str, e: anyhow::Error) -> GenreResult {
+    pub(crate) fn clustering_error_result(genre: &str, e: RecapError) -> GenreResult {
         warn!(
             genre = %genre,
             error = ?e,
             "clustering failed"
         );
-        // `ClusteringOps::cluster_genre` wraps the raw failure in
-        // `.with_context(...)` frames (timeout / "clustering failed: genre=...
-        // articles=..."), so a typed `RecapError` raised deeper in the chain
-        // (e.g. `RecapError::InsufficientDocuments`) is not the top-level
-        // `anyhow::Error` — walk the full cause chain instead of a bare
-        // `downcast_ref`.
-        let error_kind = e
-            .chain()
-            .find_map(|cause| cause.downcast_ref::<RecapError>())
-            .cloned();
         GenreResult {
             genre: genre.to_string(),
             clustering_response: None,
             summary_response_id: None,
             summary_response: None,
             error: Some(format!("Clustering failed: {}", e)),
-            error_kind,
+            error_kind: Some(e),
         }
     }
 
@@ -103,7 +92,7 @@ impl SummarizationOps<'_> {
                     summary_response_id: None,
                     summary_response: None,
                     error: Some(format!("Summary generation failed: {}", e)),
-                    error_kind: None,
+                    error_kind: Some(e),
                 }
             }
         }
@@ -161,7 +150,9 @@ impl SummarizationOps<'_> {
             )
         })
         .await
-        .context("failed to join build_summary_request task")?;
+        .map_err(|e| {
+            RecapError::Summary(format!("failed to join build_summary_request task: {e}"))
+        })?;
 
         // Step 2: Direct Summarization (Single Shot)
         // Skip Map phase (intermediate summarization) and directly generate final summary
@@ -235,7 +226,9 @@ impl SummarizationOps<'_> {
             )
         })
         .await
-        .context("failed to join build_summary_request task")?;
+        .map_err(|e| {
+            RecapError::Summary(format!("failed to join build_summary_request task: {e}"))
+        })?;
 
         // 出力フォーマットオプションを設定
         apply_recap_request_defaults(
@@ -457,11 +450,7 @@ impl SummarizationOps<'_> {
                 "processing batch summary chunk"
             );
 
-            match self
-                .news_creator_client
-                .generate_batch_summary(chunk)
-                .await
-            {
+            match self.news_creator_client.generate_batch_summary(chunk).await {
                 Ok(response) => {
                     all_responses.extend(response.responses);
                     all_errors.extend(response.errors);
@@ -661,5 +650,34 @@ mod tests {
         assert_eq!(request.window_days, Some(7));
         assert_eq!(options.temperature, Some(0.0));
         assert_eq!(options.max_bullets, None);
+    }
+
+    /// A typed `RecapError` from the clustering chain must arrive in
+    /// `GenreResult::error_kind` unchanged, so `pipeline::persist` can
+    /// classify the genre outcome without inspecting message text.
+    #[test]
+    fn clustering_error_result_carries_typed_error_kind() {
+        let err = RecapError::InsufficientDocuments { min: 2, found: 1 };
+
+        let result = SummarizationOps::clustering_error_result("gaming", err.clone());
+
+        assert_eq!(result.error_kind, Some(err));
+        assert_eq!(
+            result.error.as_deref(),
+            Some(
+                "Clustering failed: insufficient documents for clustering: expected >= 2, found 1"
+            )
+        );
+    }
+
+    /// A plain clustering failure keeps its variant too — persist must be
+    /// able to distinguish it from the benign skip states.
+    #[test]
+    fn clustering_error_result_carries_clustering_variant() {
+        let err = RecapError::Clustering("run 42 finished with status failed".to_string());
+
+        let result = SummarizationOps::clustering_error_result("gaming", err.clone());
+
+        assert_eq!(result.error_kind, Some(err));
     }
 }

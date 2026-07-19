@@ -1,6 +1,5 @@
 use std::sync::Arc;
 
-use anyhow::{Context, Result, bail};
 use async_trait::async_trait;
 use chrono::{DateTime, Duration, Utc};
 use tracing::{debug, info, warn};
@@ -8,6 +7,7 @@ use uuid::Uuid;
 
 use crate::{
     clients::alt_backend::{AltBackendArticle, AltBackendClient},
+    error::{RecapError, Result},
     scheduler::JobContext,
     store::{dao::RecapDao, models::RawArticle},
     util::retry::{RetryConfig, is_retryable_error},
@@ -53,7 +53,7 @@ impl FetchedCorpus {
 
 #[async_trait]
 pub(crate) trait FetchStage: Send + Sync {
-    async fn fetch(&self, job: &JobContext) -> anyhow::Result<FetchedCorpus>;
+    async fn fetch(&self, job: &JobContext) -> Result<FetchedCorpus>;
 }
 
 /// alt-backendから記事を取得し、Raw記事をDBにバックアップするステージ。
@@ -82,11 +82,16 @@ impl AltBackendFetchStage {
     }
 
     /// 再試行付きで記事を取得する。
+    ///
+    /// `AltBackendClient` は素の `reqwest::Error` を anyhow chain に保持した
+    /// まま返す（retry 判定が `downcast_ref::<reqwest::Error>` に依存する）
+    /// ため、この helper は anyhow のまま扱い、呼び出し側の stage 境界で
+    /// `RecapError::Fetch` に変換する。
     async fn fetch_with_retry(
         &self,
         from: DateTime<Utc>,
         to: DateTime<Utc>,
-    ) -> Result<Vec<AltBackendArticle>> {
+    ) -> anyhow::Result<Vec<AltBackendArticle>> {
         let mut attempt = 0;
 
         loop {
@@ -151,6 +156,7 @@ impl AltBackendFetchStage {
 
 #[async_trait]
 impl FetchStage for AltBackendFetchStage {
+    #[allow(clippy::too_many_lines)]
     async fn fetch(&self, job: &JobContext) -> Result<FetchedCorpus> {
         // JobContext からウィンドウ日数を取得
         let window_days = job.window_days();
@@ -166,12 +172,14 @@ impl FetchStage for AltBackendFetchStage {
             .await
             .map_err(|err| {
                 tracing::error!(job_id = %job.job_id, error = ?err, "failed to create recap job record");
-                err
-            })
-            .context("failed to create recap job record")?;
+                err.context("failed to create recap job record")
+            })?;
 
         if lock_result.is_none() {
-            bail!("recap job {} is already being processed", job.job_id);
+            return Err(RecapError::Fetch(format!(
+                "recap job {} is already being processed",
+                job.job_id
+            )));
         }
 
         // 取得期間を計算（現在時刻からwindow_days日前まで）
@@ -187,7 +195,10 @@ impl FetchStage for AltBackendFetchStage {
         );
 
         // 再試行付きで記事を取得
-        let articles = self.fetch_with_retry(from, to).await?;
+        let articles = self
+            .fetch_with_retry(from, to)
+            .await
+            .map_err(|e| RecapError::Fetch(format!("{e:#}")))?;
 
         info!(
             job_id = %job.job_id,
@@ -200,7 +211,7 @@ impl FetchStage for AltBackendFetchStage {
         self.dao
             .backup_raw_articles(job.job_id, &raw_articles)
             .await
-            .context("failed to backup raw articles")?;
+            .map_err(|e| e.context("failed to backup raw articles"))?;
 
         debug!(
             job_id = %job.job_id,

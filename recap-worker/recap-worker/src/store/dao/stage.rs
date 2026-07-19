@@ -1,4 +1,4 @@
-use anyhow::{Context, Result};
+use crate::error::{RecapError, Result};
 use serde_json::Value;
 use sqlx::types::Json;
 use sqlx::{PgPool, Row};
@@ -27,7 +27,7 @@ impl RecapDao {
         .bind(message)
         .execute(pool)
         .await
-        .context("failed to insert stage log")?;
+        .map_err(|e| RecapError::Db(format!("failed to insert stage log: {e}")))?;
 
         Ok(())
     }
@@ -53,7 +53,7 @@ impl RecapDao {
         .bind(Json(state_data))
         .execute(pool)
         .await
-        .context("failed to save stage state")?;
+        .map_err(|e| RecapError::Db(format!("failed to save stage state: {e}")))?;
 
         Ok(())
     }
@@ -74,7 +74,7 @@ impl RecapDao {
         .bind(stage)
         .fetch_optional(pool)
         .await
-        .context("failed to load stage state")?;
+        .map_err(|e| RecapError::Db(format!("failed to load stage state: {e}")))?;
 
         if let Some(row) = row {
             let state_json: Json<Value> = row.try_get("state")?;
@@ -104,7 +104,7 @@ impl RecapDao {
         .bind(error)
         .execute(pool)
         .await
-        .context("failed to insert failed task")?;
+        .map_err(|e| RecapError::Db(format!("failed to insert failed task: {e}")))?;
 
         Ok(())
     }

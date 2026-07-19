@@ -30,9 +30,10 @@ pub(crate) struct GenreResult {
     pub(crate) summary_response: Option<crate::clients::news_creator::SummaryResponse>,
     pub(crate) error: Option<String>,
     /// Typed classification of `error`, when the raising call site produced
-    /// one. `None` means either there was no error, or the error came from a
-    /// call site that hasn't been migrated off formatted `anyhow` messages
-    /// (see `pipeline::persist`'s "other/failed" bucket).
+    /// one. `None` means either there was no error, or the error text came
+    /// from outside the typed chains (e.g. a batch-API error string reported
+    /// by news-creator); `pipeline::persist` folds those into the
+    /// "other/failed" bucket.
     pub(crate) error_kind: Option<RecapError>,
 }
 

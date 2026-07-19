@@ -2,7 +2,7 @@
 
 use std::future::Future;
 
-use anyhow::Result;
+use crate::error::Result;
 use uuid::Uuid;
 
 use crate::store::models::{GenreEvaluationMetric, GenreEvaluationRun};

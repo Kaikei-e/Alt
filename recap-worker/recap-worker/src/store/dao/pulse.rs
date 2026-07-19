@@ -3,7 +3,7 @@
 //! This module provides database operations for Evening Pulse data,
 //! including retrieving and saving pulse generation results.
 
-use anyhow::{Context, Result};
+use crate::error::{RecapError, Result};
 use chrono::NaiveDate;
 use serde_json::Value;
 use sqlx::types::Json;
@@ -38,7 +38,7 @@ impl RecapDao {
         .bind(date)
         .fetch_optional(pool)
         .await
-        .context("failed to fetch pulse by date")?;
+        .map_err(|e| RecapError::Db(format!("failed to fetch pulse by date: {e}")))?;
 
         match row {
             Some(row) => Ok(Some(map_row_to_pulse_generation(row)?)),
@@ -65,7 +65,7 @@ impl RecapDao {
         )
         .fetch_optional(pool)
         .await
-        .context("failed to fetch latest pulse")?;
+        .map_err(|e| RecapError::Db(format!("failed to fetch latest pulse: {e}")))?;
 
         match row {
             Some(row) => Ok(Some(map_row_to_pulse_generation(row)?)),
@@ -93,8 +93,8 @@ impl RecapDao {
             "failed"
         };
         let topics_count = result.topic_count() as i32;
-        let result_payload =
-            serde_json::to_value(result).context("failed to serialize pulse result")?;
+        let result_payload = serde_json::to_value(result)
+            .map_err(|e| RecapError::Db(format!("failed to serialize pulse result: {e}")))?;
 
         let row = sqlx::query(
             r"
@@ -131,7 +131,7 @@ impl RecapDao {
         .bind(Json(result_payload))
         .fetch_one(pool)
         .await
-        .context("failed to insert pulse generation")?;
+        .map_err(|e| RecapError::Db(format!("failed to insert pulse generation: {e}")))?;
 
         let id: i64 = row.try_get("id")?;
         Ok(id)

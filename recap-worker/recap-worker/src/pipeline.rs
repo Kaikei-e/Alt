@@ -150,7 +150,7 @@ mod tests {
 
     #[async_trait]
     impl FetchStage for RecordingFetch {
-        async fn fetch(&self, job: &JobContext) -> anyhow::Result<FetchedCorpus> {
+        async fn fetch(&self, job: &JobContext) -> crate::error::Result<FetchedCorpus> {
             self.order.lock().expect("order lock").push("fetch");
             Ok(FetchedCorpus {
                 job_id: job.job_id,
@@ -328,7 +328,7 @@ mod tests {
             &self,
             job: &JobContext,
             evidence: EvidenceBundle,
-        ) -> anyhow::Result<DispatchResult> {
+        ) -> crate::error::Result<DispatchResult> {
             assert_eq!(evidence.genres().len(), 1);
             self.order.lock().expect("order lock").push("dispatch");
             Ok(DispatchResult {
@@ -357,7 +357,7 @@ mod tests {
             &self,
             job: &JobContext,
             result: DispatchResult,
-        ) -> anyhow::Result<PersistResult> {
+        ) -> crate::error::Result<PersistResult> {
             assert_eq!(result.job_id, job.job_id);
             self.order.lock().expect("order lock").push("persist");
             Ok(PersistResult {

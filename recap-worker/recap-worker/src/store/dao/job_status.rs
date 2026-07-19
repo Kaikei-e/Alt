@@ -1,6 +1,6 @@
 //! DAO methods for job status dashboard queries.
 
-use anyhow::{Context, Result};
+use crate::error::{RecapError, Result};
 use chrono::{DateTime, Utc};
 use sqlx::{PgPool, Row};
 use uuid::Uuid;
@@ -32,7 +32,7 @@ impl JobStatusDao {
         .bind(limit)
         .fetch_all(pool)
         .await
-        .context("failed to fetch extended recap jobs")?;
+        .map_err(|e| RecapError::Db(format!("failed to fetch extended recap jobs: {e}")))?;
 
         let mut results = Vec::with_capacity(rows.len());
         for row in rows {
@@ -67,7 +67,7 @@ impl JobStatusDao {
         .bind(limit)
         .fetch_all(pool)
         .await
-        .context("failed to fetch user recap jobs")?;
+        .map_err(|e| RecapError::Db(format!("failed to fetch user recap jobs: {e}")))?;
 
         let mut results = Vec::with_capacity(rows.len());
         for row in rows {
@@ -92,7 +92,7 @@ impl JobStatusDao {
         )
         .fetch_optional(pool)
         .await
-        .context("failed to fetch running job")?;
+        .map_err(|e| RecapError::Db(format!("failed to fetch running job: {e}")))?;
 
         match row {
             Some(row) => Ok(Some(parse_extended_job_row(&row)?)),
@@ -116,7 +116,7 @@ impl JobStatusDao {
         )
         .fetch_one(pool)
         .await
-        .context("failed to fetch job stats")?;
+        .map_err(|e| RecapError::Db(format!("failed to fetch job stats: {e}")))?;
 
         let success_rate: Option<f64> = row.try_get("success_rate")?;
         let avg_duration: Option<i64> = row.try_get("avg_duration")?;
@@ -150,7 +150,7 @@ impl JobStatusDao {
         .bind(user_id)
         .fetch_one(pool)
         .await
-        .context("failed to count user articles for job")?;
+        .map_err(|e| RecapError::Db(format!("failed to count user articles for job: {e}")))?;
 
         let count: i32 = row.try_get("count")?;
         Ok(count)
@@ -168,7 +168,7 @@ impl JobStatusDao {
         .bind(job_id)
         .fetch_one(pool)
         .await
-        .context("failed to count total articles for job")?;
+        .map_err(|e| RecapError::Db(format!("failed to count total articles for job: {e}")))?;
 
         let count: i32 = row.try_get("count")?;
         Ok(count)
@@ -193,7 +193,7 @@ impl JobStatusDao {
         .bind(job_id)
         .fetch_all(pool)
         .await
-        .context("failed to fetch genre progress")?;
+        .map_err(|e| RecapError::Db(format!("failed to fetch genre progress: {e}")))?;
 
         let mut results = Vec::with_capacity(rows.len());
         for row in rows {
@@ -219,7 +219,7 @@ impl JobStatusDao {
         .bind(job_id)
         .fetch_all(pool)
         .await
-        .context("failed to fetch completed stages")?;
+        .map_err(|e| RecapError::Db(format!("failed to fetch completed stages: {e}")))?;
 
         let mut stages = Vec::with_capacity(rows.len());
         for row in rows {
@@ -250,7 +250,7 @@ impl JobStatusDao {
         .bind(user_id)
         .execute(pool)
         .await
-        .context("failed to create user-triggered job")?;
+        .map_err(|e| RecapError::Db(format!("failed to create user-triggered job: {e}")))?;
 
         Ok(())
     }
@@ -274,7 +274,7 @@ impl JobStatusDao {
         .bind(user_id)
         .fetch_one(pool)
         .await
-        .context("failed to count user jobs")?;
+        .map_err(|e| RecapError::Db(format!("failed to count user jobs: {e}")))?;
 
         let count: i32 = row.try_get("count")?;
         Ok(count)

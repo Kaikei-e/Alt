@@ -1,4 +1,4 @@
-use anyhow::{Context, Result};
+use crate::error::{RecapError, Result};
 use sqlx::PgPool;
 use uuid::Uuid;
 
@@ -15,10 +15,11 @@ impl RecapDao {
         run: &GenreEvaluationRun,
         metrics: &[GenreEvaluationMetric],
     ) -> Result<()> {
-        let mut tx = pool
-            .begin()
-            .await
-            .context("failed to begin transaction for genre evaluation")?;
+        let mut tx = pool.begin().await.map_err(|e| {
+            RecapError::Db(format!(
+                "failed to begin transaction for genre evaluation: {e}"
+            ))
+        })?;
 
         // Insert run metadata
         sqlx::query(
@@ -49,7 +50,7 @@ impl RecapDao {
         .bind(run.undefined_genre_count)
         .execute(&mut *tx)
         .await
-        .context("failed to insert genre evaluation run")?;
+        .map_err(|e| RecapError::Db(format!("failed to insert genre evaluation run: {e}")))?;
 
         // Bulk insert per-genre metrics
         for metric in metrics {
@@ -70,17 +71,19 @@ impl RecapDao {
             .bind(metric.f1_score)
             .execute(&mut *tx)
             .await
-            .with_context(|| {
-                format!(
-                    "failed to insert genre evaluation metric for genre: {}",
+            .map_err(|e| {
+                RecapError::Db(format!(
+                    "failed to insert genre evaluation metric for genre {}: {e}",
                     metric.genre
-                )
+                ))
             })?;
         }
 
-        tx.commit()
-            .await
-            .context("failed to commit genre evaluation transaction")?;
+        tx.commit().await.map_err(|e| {
+            RecapError::Db(format!(
+                "failed to commit genre evaluation transaction: {e}"
+            ))
+        })?;
 
         Ok(())
     }
@@ -125,7 +128,7 @@ impl RecapDao {
         .bind(run_id)
         .fetch_optional(pool)
         .await
-        .context("failed to fetch genre evaluation run")?;
+        .map_err(|e| RecapError::Db(format!("failed to fetch genre evaluation run: {e}")))?;
 
         let Some((
             run_id,
@@ -180,7 +183,7 @@ impl RecapDao {
         .bind(run_id)
         .fetch_all(pool)
         .await
-        .context("failed to fetch genre evaluation metrics")?;
+        .map_err(|e| RecapError::Db(format!("failed to fetch genre evaluation metrics: {e}")))?;
 
         let metrics = metric_rows
             .into_iter()
@@ -215,7 +218,11 @@ impl RecapDao {
         )
         .fetch_optional(pool)
         .await
-        .context("failed to fetch latest genre evaluation run_id")?;
+        .map_err(|e| {
+            RecapError::Db(format!(
+                "failed to fetch latest genre evaluation run_id: {e}"
+            ))
+        })?;
 
         let Some((run_id,)) = run_id_row else {
             return Ok(None);

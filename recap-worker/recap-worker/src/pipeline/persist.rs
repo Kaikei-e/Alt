@@ -1,7 +1,6 @@
 use std::collections::{BTreeSet, HashMap};
 use std::sync::{Arc, LazyLock};
 
-use anyhow::{Context, Result};
 use async_trait::async_trait;
 use regex::Regex;
 use tracing::{debug, info, warn};
@@ -10,7 +9,7 @@ use crate::clients::KnowledgeSovereignClient;
 use crate::clients::knowledge_sovereign::publish::{ConfirmedCluster, publish_topic_snapshots};
 use crate::clients::news_creator::Reference;
 use crate::clients::tag_generator::TagGeneratorClient;
-use crate::error::RecapError;
+use crate::error::{RecapError, Result};
 use crate::scheduler::JobContext;
 use crate::store::dao::RecapDao;
 use crate::store::models::RecapOutput;
@@ -125,7 +124,9 @@ fn reconcile_bullet_citations(
 }
 
 /// Build host → article_id index once for O(1) host lookups during citation reconcile.
-fn build_host_to_articles(url_to_article: &HashMap<String, String>) -> HashMap<String, Vec<String>> {
+fn build_host_to_articles(
+    url_to_article: &HashMap<String, String>,
+) -> HashMap<String, Vec<String>> {
     let mut host_to_articles: HashMap<String, Vec<String>> = HashMap::new();
     for (url, aid) in url_to_article {
         if let Some(host) = url_host(url) {
@@ -679,8 +680,9 @@ impl FinalSectionPersistStage {
         let summary_title = summary_response.summary.title.clone();
         let summary_bullets = summary_response.summary.bullets.clone();
         let summary_text = summary_bullets.join("\n");
-        let body_json = serde_json::to_value(&summary_response)
-            .context("failed to convert summary response to JSON")?;
+        let body_json = serde_json::to_value(&summary_response).map_err(|e| {
+            RecapError::Db(format!("failed to convert summary response to JSON: {e}"))
+        })?;
 
         // Sanitize title to remove markdown code blocks
         let sanitized_title = sanitize_title(&summary_title);

@@ -3,7 +3,7 @@
 //! This module provides a single implementation that combines all DAO traits.
 //! It maintains backward compatibility while supporting the new focused trait system.
 
-use anyhow::{Context, Result};
+use crate::error::{RecapError, Result};
 use chrono::{DateTime, NaiveDate, Utc};
 use serde_json::Value;
 use sqlx::PgPool;
@@ -374,18 +374,20 @@ impl OutputDao for UnifiedDao {
         output: &RecapOutput,
         genre: &PersistedGenre,
     ) -> Result<()> {
-        let mut tx = self
-            .pool
-            .begin()
-            .await
-            .context("failed to begin persist_genre_output transaction")?;
+        let mut tx = self.pool.begin().await.map_err(|e| {
+            RecapError::Db(format!(
+                "failed to begin persist_genre_output transaction: {e}"
+            ))
+        })?;
 
         crate::store::dao::output::RecapDao::upsert_recap_output(&mut *tx, output).await?;
         crate::store::dao::subworker::RecapDao::upsert_genre(&mut *tx, genre).await?;
 
-        tx.commit()
-            .await
-            .context("failed to commit persist_genre_output transaction")?;
+        tx.commit().await.map_err(|e| {
+            RecapError::Db(format!(
+                "failed to commit persist_genre_output transaction: {e}"
+            ))
+        })?;
 
         Ok(())
     }

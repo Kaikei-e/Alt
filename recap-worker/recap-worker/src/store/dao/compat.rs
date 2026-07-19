@@ -16,6 +16,7 @@ use super::traits::{
     MorningDao, OutputDao, PulseDao, StageDao, SubworkerDao,
 };
 use super::types::{JobStatus, JobStatusTransition, StatusTransitionActor};
+use crate::error::Result;
 use crate::pipeline::pulse::PulseResult;
 use crate::store::models::{
     ClusterWithEvidence, DiagnosticEntry, ExtendedRecapJob, GenreEvaluationMetric,
@@ -60,11 +61,7 @@ pub trait RecapDao: Send + Sync {
     fn pool(&self) -> Option<&PgPool>;
 
     // === JobDao methods ===
-    async fn create_job_with_lock(
-        &self,
-        job_id: Uuid,
-        note: Option<&str>,
-    ) -> anyhow::Result<Option<Uuid>>;
+    async fn create_job_with_lock(&self, job_id: Uuid, note: Option<&str>) -> Result<Option<Uuid>>;
 
     async fn create_job_with_lock_and_window(
         &self,
@@ -72,31 +69,31 @@ pub trait RecapDao: Send + Sync {
         note: Option<&str>,
         window_days: u32,
         trigger_source: &str,
-    ) -> anyhow::Result<Option<Uuid>>;
+    ) -> Result<Option<Uuid>>;
 
-    async fn job_exists(&self, job_id: Uuid) -> anyhow::Result<bool>;
+    async fn job_exists(&self, job_id: Uuid) -> Result<bool>;
 
     async fn find_resumable_job(
         &self,
         max_age_hours: i64,
-    ) -> anyhow::Result<Option<(Uuid, JobStatus, Option<String>, u32)>>;
+    ) -> Result<Option<(Uuid, JobStatus, Option<String>, u32)>>;
 
-    async fn mark_abandoned_jobs(&self, keep_job_id: Option<Uuid>) -> anyhow::Result<u64>;
+    async fn mark_abandoned_jobs(&self, keep_job_id: Option<Uuid>) -> Result<u64>;
 
     async fn update_job_status(
         &self,
         job_id: Uuid,
         status: JobStatus,
         last_stage: Option<&str>,
-    ) -> anyhow::Result<()>;
+    ) -> Result<()>;
 
     async fn get_recap_jobs(
         &self,
         window_seconds: i64,
         limit: i64,
-    ) -> anyhow::Result<Vec<(Uuid, String, Option<String>, DateTime<Utc>, DateTime<Utc>)>>;
+    ) -> Result<Vec<(Uuid, String, Option<String>, DateTime<Utc>, DateTime<Utc>)>>;
 
-    async fn delete_old_jobs(&self, retention_days: i64) -> anyhow::Result<u64>;
+    async fn delete_old_jobs(&self, retention_days: i64) -> Result<u64>;
 
     /// ステータス遷移をイミュータブルな履歴テーブルに記録する
     async fn record_status_transition(
@@ -106,7 +103,7 @@ pub trait RecapDao: Send + Sync {
         stage: Option<&str>,
         reason: Option<&str>,
         actor: StatusTransitionActor,
-    ) -> anyhow::Result<i64>;
+    ) -> Result<i64>;
 
     /// ジョブのステータスを更新し、同時に履歴テーブルにも記録する（アトミック）
     async fn update_job_status_with_history(
@@ -115,10 +112,10 @@ pub trait RecapDao: Send + Sync {
         status: JobStatus,
         last_stage: Option<&str>,
         reason: Option<&str>,
-    ) -> anyhow::Result<()>;
+    ) -> Result<()>;
 
     /// 指定されたジョブのステータス履歴を取得する
-    async fn get_status_history(&self, job_id: Uuid) -> anyhow::Result<Vec<JobStatusTransition>>;
+    async fn get_status_history(&self, job_id: Uuid) -> Result<Vec<JobStatusTransition>>;
 
     // === StageDao methods ===
     async fn insert_stage_log(
@@ -127,16 +124,11 @@ pub trait RecapDao: Send + Sync {
         stage: &str,
         status: &str,
         message: Option<&str>,
-    ) -> anyhow::Result<()>;
+    ) -> Result<()>;
 
-    async fn save_stage_state(
-        &self,
-        job_id: Uuid,
-        stage: &str,
-        state_data: &Value,
-    ) -> anyhow::Result<()>;
+    async fn save_stage_state(&self, job_id: Uuid, stage: &str, state_data: &Value) -> Result<()>;
 
-    async fn load_stage_state(&self, job_id: Uuid, stage: &str) -> anyhow::Result<Option<Value>>;
+    async fn load_stage_state(&self, job_id: Uuid, stage: &str) -> Result<Option<Value>>;
 
     async fn insert_failed_task(
         &self,
@@ -144,45 +136,35 @@ pub trait RecapDao: Send + Sync {
         stage: &str,
         payload: Option<&Value>,
         error: Option<&str>,
-    ) -> anyhow::Result<()>;
+    ) -> Result<()>;
 
     // === ArticleDao methods ===
-    async fn backup_raw_articles(
-        &self,
-        job_id: Uuid,
-        articles: &[RawArticle],
-    ) -> anyhow::Result<()>;
+    async fn backup_raw_articles(&self, job_id: Uuid, articles: &[RawArticle]) -> Result<()>;
 
     async fn get_article_metadata(
         &self,
         job_id: Uuid,
         article_ids: &[String],
-    ) -> anyhow::Result<HashMap<String, (Option<DateTime<Utc>>, Option<String>)>>;
+    ) -> Result<HashMap<String, (Option<DateTime<Utc>>, Option<String>)>>;
 
     async fn get_articles_by_ids(
         &self,
         job_id: Uuid,
         article_ids: &[String],
-    ) -> anyhow::Result<Vec<FetchedArticleData>>;
+    ) -> Result<Vec<FetchedArticleData>>;
 
     // === GenreLearningDao methods ===
-    async fn load_tag_label_graph(
-        &self,
-        window_label: &str,
-    ) -> anyhow::Result<Vec<GraphEdgeRecord>>;
+    async fn load_tag_label_graph(&self, window_label: &str) -> Result<Vec<GraphEdgeRecord>>;
 
-    async fn upsert_genre_learning_record(
-        &self,
-        record: &GenreLearningRecord,
-    ) -> anyhow::Result<()>;
+    async fn upsert_genre_learning_record(&self, record: &GenreLearningRecord) -> Result<()>;
 
     async fn upsert_genre_learning_records_bulk(
         &self,
         records: &[GenreLearningRecord],
-    ) -> anyhow::Result<()>;
+    ) -> Result<()>;
 
     // === ConfigDao methods ===
-    async fn get_latest_worker_config(&self, config_type: &str) -> anyhow::Result<Option<Value>>;
+    async fn get_latest_worker_config(&self, config_type: &str) -> Result<Option<Value>>;
 
     async fn insert_worker_config(
         &self,
@@ -190,36 +172,36 @@ pub trait RecapDao: Send + Sync {
         config_payload: &Value,
         source: &str,
         metadata: Option<&Value>,
-    ) -> anyhow::Result<()>;
+    ) -> Result<()>;
 
     // === MetricsDao methods ===
-    async fn save_preprocess_metrics(&self, metrics: &PreprocessMetrics) -> anyhow::Result<()>;
+    async fn save_preprocess_metrics(&self, metrics: &PreprocessMetrics) -> Result<()>;
 
     async fn save_system_metrics(
         &self,
         job_id: Uuid,
         metric_type: &str,
         metrics: &Value,
-    ) -> anyhow::Result<()>;
+    ) -> Result<()>;
 
     async fn get_system_metrics(
         &self,
         metric_type: Option<&str>,
         window_seconds: i64,
         limit: i64,
-    ) -> anyhow::Result<Vec<(Option<Uuid>, DateTime<Utc>, Value)>>;
+    ) -> Result<Vec<(Option<Uuid>, DateTime<Utc>, Value)>>;
 
     async fn get_recent_activity(
         &self,
         window_seconds: i64,
         limit: i64,
-    ) -> anyhow::Result<Vec<(Option<Uuid>, String, DateTime<Utc>)>>;
+    ) -> Result<Vec<(Option<Uuid>, String, DateTime<Utc>)>>;
 
     async fn get_log_errors(
         &self,
         window_seconds: i64,
         limit: i64,
-    ) -> anyhow::Result<
+    ) -> Result<
         Vec<(
             DateTime<Utc>,
             String,
@@ -233,7 +215,7 @@ pub trait RecapDao: Send + Sync {
         &self,
         window_seconds: i64,
         limit: i64,
-    ) -> anyhow::Result<
+    ) -> Result<
         Vec<(
             Uuid,
             String,
@@ -247,182 +229,142 @@ pub trait RecapDao: Send + Sync {
     >;
 
     // === OutputDao methods ===
-    async fn save_final_section(&self, section: &RecapFinalSection) -> anyhow::Result<i64>;
+    async fn save_final_section(&self, section: &RecapFinalSection) -> Result<i64>;
 
-    async fn upsert_recap_output(&self, output: &RecapOutput) -> anyhow::Result<()>;
+    async fn upsert_recap_output(&self, output: &RecapOutput) -> Result<()>;
 
-    async fn get_recap_output_body_json(
-        &self,
-        job_id: Uuid,
-        genre: &str,
-    ) -> anyhow::Result<Option<Value>>;
+    async fn get_recap_output_body_json(&self, job_id: Uuid, genre: &str) -> Result<Option<Value>>;
 
-    async fn get_latest_completed_job(&self, window_days: i32) -> anyhow::Result<Option<RecapJob>>;
+    async fn get_latest_completed_job(&self, window_days: i32) -> Result<Option<RecapJob>>;
 
-    async fn get_genres_by_job(&self, job_id: Uuid) -> anyhow::Result<Vec<GenreWithSummary>>;
+    async fn get_genres_by_job(&self, job_id: Uuid) -> Result<Vec<GenreWithSummary>>;
 
     async fn get_clusters_by_job(
         &self,
         job_id: Uuid,
-    ) -> anyhow::Result<HashMap<String, Vec<ClusterWithEvidence>>>;
+    ) -> Result<HashMap<String, Vec<ClusterWithEvidence>>>;
 
-    async fn search_recaps_by_term(
-        &self,
-        term: &str,
-        limit: i32,
-    ) -> anyhow::Result<Vec<RecapSearchHit>>;
+    async fn search_recaps_by_term(&self, term: &str, limit: i32) -> Result<Vec<RecapSearchHit>>;
 
     /// citation reconciliation 用。run の cluster に属する全文の DB id を `(article_id -> Vec<sentence_id>)` で返す。
-    async fn get_sentence_ids_by_run(
-        &self,
-        run_id: i64,
-    ) -> anyhow::Result<HashMap<String, Vec<i64>>>;
+    async fn get_sentence_ids_by_run(&self, run_id: i64) -> Result<HashMap<String, Vec<i64>>>;
 
     /// `recap_outputs` と `recap_sections` を単一トランザクションで書き込む。
     async fn persist_genre_output(
         &self,
         output: &RecapOutput,
         genre: &PersistedGenre,
-    ) -> anyhow::Result<()>;
+    ) -> Result<()>;
 
     // === SubworkerDao methods ===
-    async fn insert_subworker_run(&self, run: &NewSubworkerRun) -> anyhow::Result<i64>;
+    async fn insert_subworker_run(&self, run: &NewSubworkerRun) -> Result<i64>;
 
     async fn mark_subworker_run_success(
         &self,
         run_id: i64,
         cluster_count: i32,
         response_payload: &Value,
-    ) -> anyhow::Result<()>;
+    ) -> Result<()>;
 
     async fn mark_subworker_run_failure(
         &self,
         run_id: i64,
         status: SubworkerRunStatus,
         error_message: &str,
-    ) -> anyhow::Result<()>;
+    ) -> Result<()>;
 
-    async fn insert_clusters(
-        &self,
-        run_id: i64,
-        clusters: &[PersistedCluster],
-    ) -> anyhow::Result<()>;
+    async fn insert_clusters(&self, run_id: i64, clusters: &[PersistedCluster]) -> Result<()>;
 
-    async fn upsert_diagnostics(
-        &self,
-        run_id: i64,
-        diagnostics: &[DiagnosticEntry],
-    ) -> anyhow::Result<()>;
+    async fn upsert_diagnostics(&self, run_id: i64, diagnostics: &[DiagnosticEntry]) -> Result<()>;
 
-    async fn upsert_genre(&self, genre: &PersistedGenre) -> anyhow::Result<()>;
+    async fn upsert_genre(&self, genre: &PersistedGenre) -> Result<()>;
 
     // === EvaluationDao methods ===
     async fn save_genre_evaluation(
         &self,
         run: &GenreEvaluationRun,
         metrics: &[GenreEvaluationMetric],
-    ) -> anyhow::Result<()>;
+    ) -> Result<()>;
 
     async fn get_genre_evaluation(
         &self,
         run_id: Uuid,
-    ) -> anyhow::Result<Option<(GenreEvaluationRun, Vec<GenreEvaluationMetric>)>>;
+    ) -> Result<Option<(GenreEvaluationRun, Vec<GenreEvaluationMetric>)>>;
 
     async fn get_latest_genre_evaluation(
         &self,
-    ) -> anyhow::Result<Option<(GenreEvaluationRun, Vec<GenreEvaluationMetric>)>>;
+    ) -> Result<Option<(GenreEvaluationRun, Vec<GenreEvaluationMetric>)>>;
 
     // === MorningDao methods ===
-    async fn save_morning_article_groups(
-        &self,
-        groups: &[(Uuid, Uuid, bool)],
-    ) -> anyhow::Result<()>;
+    async fn save_morning_article_groups(&self, groups: &[(Uuid, Uuid, bool)]) -> Result<()>;
 
     async fn get_morning_article_groups(
         &self,
         since: DateTime<Utc>,
-    ) -> anyhow::Result<Vec<(Uuid, Uuid, bool, DateTime<Utc>)>>;
+    ) -> Result<Vec<(Uuid, Uuid, bool, DateTime<Utc>)>>;
 
-    async fn save_morning_letter(&self, letter: &MorningLetter) -> anyhow::Result<Uuid>;
+    async fn save_morning_letter(&self, letter: &MorningLetter) -> Result<Uuid>;
 
-    async fn save_morning_letter_sources(
-        &self,
-        sources: &[MorningLetterSource],
-    ) -> anyhow::Result<()>;
+    async fn save_morning_letter_sources(&self, sources: &[MorningLetterSource]) -> Result<()>;
 
-    async fn get_morning_letter_by_date(
-        &self,
-        date: NaiveDate,
-    ) -> anyhow::Result<Option<MorningLetter>>;
+    async fn get_morning_letter_by_date(&self, date: NaiveDate) -> Result<Option<MorningLetter>>;
 
-    async fn get_latest_morning_letter(&self) -> anyhow::Result<Option<MorningLetter>>;
+    async fn get_latest_morning_letter(&self) -> Result<Option<MorningLetter>>;
 
-    async fn get_morning_letter_sources(
-        &self,
-        letter_id: Uuid,
-    ) -> anyhow::Result<Vec<MorningLetterSource>>;
+    async fn get_morning_letter_sources(&self, letter_id: Uuid)
+    -> Result<Vec<MorningLetterSource>>;
 
     async fn get_previous_morning_letter(
         &self,
         edition_timezone: &str,
         before: NaiveDate,
-    ) -> anyhow::Result<Option<MorningLetter>>;
+    ) -> Result<Option<MorningLetter>>;
 
     // === JobStatusDao methods ===
     async fn get_extended_jobs(
         &self,
         window_seconds: i64,
         limit: i64,
-    ) -> anyhow::Result<Vec<ExtendedRecapJob>>;
+    ) -> Result<Vec<ExtendedRecapJob>>;
 
     async fn get_user_jobs(
         &self,
         user_id: Uuid,
         window_seconds: i64,
         limit: i64,
-    ) -> anyhow::Result<Vec<ExtendedRecapJob>>;
+    ) -> Result<Vec<ExtendedRecapJob>>;
 
-    async fn get_running_job(&self) -> anyhow::Result<Option<ExtendedRecapJob>>;
+    async fn get_running_job(&self) -> Result<Option<ExtendedRecapJob>>;
 
-    async fn get_job_stats(&self) -> anyhow::Result<JobStats>;
+    async fn get_job_stats(&self) -> Result<JobStats>;
 
-    async fn get_user_article_count_for_job(
-        &self,
-        job_id: Uuid,
-        user_id: Uuid,
-    ) -> anyhow::Result<i32>;
+    async fn get_user_article_count_for_job(&self, job_id: Uuid, user_id: Uuid) -> Result<i32>;
 
-    async fn get_total_article_count_for_job(&self, job_id: Uuid) -> anyhow::Result<i32>;
+    async fn get_total_article_count_for_job(&self, job_id: Uuid) -> Result<i32>;
 
-    async fn get_genre_progress(
-        &self,
-        job_id: Uuid,
-    ) -> anyhow::Result<Vec<(String, String, Option<i32>)>>;
+    async fn get_genre_progress(&self, job_id: Uuid) -> Result<Vec<(String, String, Option<i32>)>>;
 
-    async fn get_completed_stages(&self, job_id: Uuid) -> anyhow::Result<Vec<String>>;
+    async fn get_completed_stages(&self, job_id: Uuid) -> Result<Vec<String>>;
 
     async fn create_user_triggered_job(
         &self,
         job_id: Uuid,
         user_id: Uuid,
         note: Option<&str>,
-    ) -> anyhow::Result<()>;
+    ) -> Result<()>;
 
-    async fn get_user_jobs_count(&self, user_id: Uuid, window_seconds: i64) -> anyhow::Result<i32>;
+    async fn get_user_jobs_count(&self, user_id: Uuid, window_seconds: i64) -> Result<i32>;
 
     // === PulseDao methods ===
-    async fn get_pulse_by_date(
-        &self,
-        date: NaiveDate,
-    ) -> anyhow::Result<Option<PulseGenerationRow>>;
+    async fn get_pulse_by_date(&self, date: NaiveDate) -> Result<Option<PulseGenerationRow>>;
 
-    async fn get_latest_pulse(&self) -> anyhow::Result<Option<PulseGenerationRow>>;
+    async fn get_latest_pulse(&self) -> Result<Option<PulseGenerationRow>>;
 
     async fn save_pulse_generation(
         &self,
         result: &PulseResult,
         target_date: NaiveDate,
-    ) -> anyhow::Result<i64>;
+    ) -> Result<i64>;
 }
 
 // Blanket implementation: any type implementing all focused traits also implements RecapDao
@@ -451,11 +393,7 @@ where
         None
     }
 
-    async fn create_job_with_lock(
-        &self,
-        job_id: Uuid,
-        note: Option<&str>,
-    ) -> anyhow::Result<Option<Uuid>> {
+    async fn create_job_with_lock(&self, job_id: Uuid, note: Option<&str>) -> Result<Option<Uuid>> {
         JobDao::create_job_with_lock(self, job_id, note).await
     }
 
@@ -465,23 +403,23 @@ where
         note: Option<&str>,
         window_days: u32,
         trigger_source: &str,
-    ) -> anyhow::Result<Option<Uuid>> {
+    ) -> Result<Option<Uuid>> {
         JobDao::create_job_with_lock_and_window(self, job_id, note, window_days, trigger_source)
             .await
     }
 
-    async fn job_exists(&self, job_id: Uuid) -> anyhow::Result<bool> {
+    async fn job_exists(&self, job_id: Uuid) -> Result<bool> {
         JobDao::job_exists(self, job_id).await
     }
 
     async fn find_resumable_job(
         &self,
         max_age_hours: i64,
-    ) -> anyhow::Result<Option<(Uuid, JobStatus, Option<String>, u32)>> {
+    ) -> Result<Option<(Uuid, JobStatus, Option<String>, u32)>> {
         JobDao::find_resumable_job(self, max_age_hours).await
     }
 
-    async fn mark_abandoned_jobs(&self, keep_job_id: Option<Uuid>) -> anyhow::Result<u64> {
+    async fn mark_abandoned_jobs(&self, keep_job_id: Option<Uuid>) -> Result<u64> {
         JobDao::mark_abandoned_jobs(self, keep_job_id).await
     }
 
@@ -490,7 +428,7 @@ where
         job_id: Uuid,
         status: JobStatus,
         last_stage: Option<&str>,
-    ) -> anyhow::Result<()> {
+    ) -> Result<()> {
         JobDao::update_job_status(self, job_id, status, last_stage).await
     }
 
@@ -498,11 +436,11 @@ where
         &self,
         window_seconds: i64,
         limit: i64,
-    ) -> anyhow::Result<Vec<(Uuid, String, Option<String>, DateTime<Utc>, DateTime<Utc>)>> {
+    ) -> Result<Vec<(Uuid, String, Option<String>, DateTime<Utc>, DateTime<Utc>)>> {
         JobDao::get_recap_jobs(self, window_seconds, limit).await
     }
 
-    async fn delete_old_jobs(&self, retention_days: i64) -> anyhow::Result<u64> {
+    async fn delete_old_jobs(&self, retention_days: i64) -> Result<u64> {
         JobDao::delete_old_jobs(self, retention_days).await
     }
 
@@ -513,7 +451,7 @@ where
         stage: Option<&str>,
         reason: Option<&str>,
         actor: StatusTransitionActor,
-    ) -> anyhow::Result<i64> {
+    ) -> Result<i64> {
         JobDao::record_status_transition(self, job_id, status, stage, reason, actor).await
     }
 
@@ -523,11 +461,11 @@ where
         status: JobStatus,
         last_stage: Option<&str>,
         reason: Option<&str>,
-    ) -> anyhow::Result<()> {
+    ) -> Result<()> {
         JobDao::update_job_status_with_history(self, job_id, status, last_stage, reason).await
     }
 
-    async fn get_status_history(&self, job_id: Uuid) -> anyhow::Result<Vec<JobStatusTransition>> {
+    async fn get_status_history(&self, job_id: Uuid) -> Result<Vec<JobStatusTransition>> {
         JobDao::get_status_history(self, job_id).await
     }
 
@@ -537,20 +475,15 @@ where
         stage: &str,
         status: &str,
         message: Option<&str>,
-    ) -> anyhow::Result<()> {
+    ) -> Result<()> {
         StageDao::insert_stage_log(self, job_id, stage, status, message).await
     }
 
-    async fn save_stage_state(
-        &self,
-        job_id: Uuid,
-        stage: &str,
-        state_data: &Value,
-    ) -> anyhow::Result<()> {
+    async fn save_stage_state(&self, job_id: Uuid, stage: &str, state_data: &Value) -> Result<()> {
         StageDao::save_stage_state(self, job_id, stage, state_data).await
     }
 
-    async fn load_stage_state(&self, job_id: Uuid, stage: &str) -> anyhow::Result<Option<Value>> {
+    async fn load_stage_state(&self, job_id: Uuid, stage: &str) -> Result<Option<Value>> {
         StageDao::load_stage_state(self, job_id, stage).await
     }
 
@@ -560,15 +493,11 @@ where
         stage: &str,
         payload: Option<&Value>,
         error: Option<&str>,
-    ) -> anyhow::Result<()> {
+    ) -> Result<()> {
         StageDao::insert_failed_task(self, job_id, stage, payload, error).await
     }
 
-    async fn backup_raw_articles(
-        &self,
-        job_id: Uuid,
-        articles: &[RawArticle],
-    ) -> anyhow::Result<()> {
+    async fn backup_raw_articles(&self, job_id: Uuid, articles: &[RawArticle]) -> Result<()> {
         ArticleDao::backup_raw_articles(self, job_id, articles).await
     }
 
@@ -576,7 +505,7 @@ where
         &self,
         job_id: Uuid,
         article_ids: &[String],
-    ) -> anyhow::Result<HashMap<String, (Option<DateTime<Utc>>, Option<String>)>> {
+    ) -> Result<HashMap<String, (Option<DateTime<Utc>>, Option<String>)>> {
         ArticleDao::get_article_metadata(self, job_id, article_ids).await
     }
 
@@ -584,32 +513,26 @@ where
         &self,
         job_id: Uuid,
         article_ids: &[String],
-    ) -> anyhow::Result<Vec<FetchedArticleData>> {
+    ) -> Result<Vec<FetchedArticleData>> {
         ArticleDao::get_articles_by_ids(self, job_id, article_ids).await
     }
 
-    async fn load_tag_label_graph(
-        &self,
-        window_label: &str,
-    ) -> anyhow::Result<Vec<GraphEdgeRecord>> {
+    async fn load_tag_label_graph(&self, window_label: &str) -> Result<Vec<GraphEdgeRecord>> {
         GenreLearningDao::load_tag_label_graph(self, window_label).await
     }
 
-    async fn upsert_genre_learning_record(
-        &self,
-        record: &GenreLearningRecord,
-    ) -> anyhow::Result<()> {
+    async fn upsert_genre_learning_record(&self, record: &GenreLearningRecord) -> Result<()> {
         GenreLearningDao::upsert_genre_learning_record(self, record).await
     }
 
     async fn upsert_genre_learning_records_bulk(
         &self,
         records: &[GenreLearningRecord],
-    ) -> anyhow::Result<()> {
+    ) -> Result<()> {
         GenreLearningDao::upsert_genre_learning_records_bulk(self, records).await
     }
 
-    async fn get_latest_worker_config(&self, config_type: &str) -> anyhow::Result<Option<Value>> {
+    async fn get_latest_worker_config(&self, config_type: &str) -> Result<Option<Value>> {
         ConfigDao::get_latest_worker_config(self, config_type).await
     }
 
@@ -619,11 +542,11 @@ where
         config_payload: &Value,
         source: &str,
         metadata: Option<&Value>,
-    ) -> anyhow::Result<()> {
+    ) -> Result<()> {
         ConfigDao::insert_worker_config(self, config_type, config_payload, source, metadata).await
     }
 
-    async fn save_preprocess_metrics(&self, metrics: &PreprocessMetrics) -> anyhow::Result<()> {
+    async fn save_preprocess_metrics(&self, metrics: &PreprocessMetrics) -> Result<()> {
         MetricsDao::save_preprocess_metrics(self, metrics).await
     }
 
@@ -632,7 +555,7 @@ where
         job_id: Uuid,
         metric_type: &str,
         metrics: &Value,
-    ) -> anyhow::Result<()> {
+    ) -> Result<()> {
         MetricsDao::save_system_metrics(self, job_id, metric_type, metrics).await
     }
 
@@ -641,7 +564,7 @@ where
         metric_type: Option<&str>,
         window_seconds: i64,
         limit: i64,
-    ) -> anyhow::Result<Vec<(Option<Uuid>, DateTime<Utc>, Value)>> {
+    ) -> Result<Vec<(Option<Uuid>, DateTime<Utc>, Value)>> {
         MetricsDao::get_system_metrics(self, metric_type, window_seconds, limit).await
     }
 
@@ -649,7 +572,7 @@ where
         &self,
         window_seconds: i64,
         limit: i64,
-    ) -> anyhow::Result<Vec<(Option<Uuid>, String, DateTime<Utc>)>> {
+    ) -> Result<Vec<(Option<Uuid>, String, DateTime<Utc>)>> {
         MetricsDao::get_recent_activity(self, window_seconds, limit).await
     }
 
@@ -657,7 +580,7 @@ where
         &self,
         window_seconds: i64,
         limit: i64,
-    ) -> anyhow::Result<
+    ) -> Result<
         Vec<(
             DateTime<Utc>,
             String,
@@ -673,7 +596,7 @@ where
         &self,
         window_seconds: i64,
         limit: i64,
-    ) -> anyhow::Result<
+    ) -> Result<
         Vec<(
             Uuid,
             String,
@@ -688,49 +611,38 @@ where
         MetricsDao::get_admin_jobs(self, window_seconds, limit).await
     }
 
-    async fn save_final_section(&self, section: &RecapFinalSection) -> anyhow::Result<i64> {
+    async fn save_final_section(&self, section: &RecapFinalSection) -> Result<i64> {
         OutputDao::save_final_section(self, section).await
     }
 
-    async fn upsert_recap_output(&self, output: &RecapOutput) -> anyhow::Result<()> {
+    async fn upsert_recap_output(&self, output: &RecapOutput) -> Result<()> {
         OutputDao::upsert_recap_output(self, output).await
     }
 
-    async fn get_recap_output_body_json(
-        &self,
-        job_id: Uuid,
-        genre: &str,
-    ) -> anyhow::Result<Option<Value>> {
+    async fn get_recap_output_body_json(&self, job_id: Uuid, genre: &str) -> Result<Option<Value>> {
         OutputDao::get_recap_output_body_json(self, job_id, genre).await
     }
 
-    async fn get_latest_completed_job(&self, window_days: i32) -> anyhow::Result<Option<RecapJob>> {
+    async fn get_latest_completed_job(&self, window_days: i32) -> Result<Option<RecapJob>> {
         OutputDao::get_latest_completed_job(self, window_days).await
     }
 
-    async fn get_genres_by_job(&self, job_id: Uuid) -> anyhow::Result<Vec<GenreWithSummary>> {
+    async fn get_genres_by_job(&self, job_id: Uuid) -> Result<Vec<GenreWithSummary>> {
         OutputDao::get_genres_by_job(self, job_id).await
     }
 
     async fn get_clusters_by_job(
         &self,
         job_id: Uuid,
-    ) -> anyhow::Result<HashMap<String, Vec<ClusterWithEvidence>>> {
+    ) -> Result<HashMap<String, Vec<ClusterWithEvidence>>> {
         OutputDao::get_clusters_by_job(self, job_id).await
     }
 
-    async fn search_recaps_by_term(
-        &self,
-        term: &str,
-        limit: i32,
-    ) -> anyhow::Result<Vec<RecapSearchHit>> {
+    async fn search_recaps_by_term(&self, term: &str, limit: i32) -> Result<Vec<RecapSearchHit>> {
         OutputDao::search_recaps_by_term(self, term, limit).await
     }
 
-    async fn get_sentence_ids_by_run(
-        &self,
-        run_id: i64,
-    ) -> anyhow::Result<HashMap<String, Vec<i64>>> {
+    async fn get_sentence_ids_by_run(&self, run_id: i64) -> Result<HashMap<String, Vec<i64>>> {
         OutputDao::get_sentence_ids_by_run(self, run_id).await
     }
 
@@ -738,11 +650,11 @@ where
         &self,
         output: &RecapOutput,
         genre: &PersistedGenre,
-    ) -> anyhow::Result<()> {
+    ) -> Result<()> {
         OutputDao::persist_genre_output(self, output, genre).await
     }
 
-    async fn insert_subworker_run(&self, run: &NewSubworkerRun) -> anyhow::Result<i64> {
+    async fn insert_subworker_run(&self, run: &NewSubworkerRun) -> Result<i64> {
         SubworkerDao::insert_subworker_run(self, run).await
     }
 
@@ -751,7 +663,7 @@ where
         run_id: i64,
         cluster_count: i32,
         response_payload: &Value,
-    ) -> anyhow::Result<()> {
+    ) -> Result<()> {
         SubworkerDao::mark_subworker_run_success(self, run_id, cluster_count, response_payload)
             .await
     }
@@ -761,27 +673,19 @@ where
         run_id: i64,
         status: SubworkerRunStatus,
         error_message: &str,
-    ) -> anyhow::Result<()> {
+    ) -> Result<()> {
         SubworkerDao::mark_subworker_run_failure(self, run_id, status, error_message).await
     }
 
-    async fn insert_clusters(
-        &self,
-        run_id: i64,
-        clusters: &[PersistedCluster],
-    ) -> anyhow::Result<()> {
+    async fn insert_clusters(&self, run_id: i64, clusters: &[PersistedCluster]) -> Result<()> {
         SubworkerDao::insert_clusters(self, run_id, clusters).await
     }
 
-    async fn upsert_diagnostics(
-        &self,
-        run_id: i64,
-        diagnostics: &[DiagnosticEntry],
-    ) -> anyhow::Result<()> {
+    async fn upsert_diagnostics(&self, run_id: i64, diagnostics: &[DiagnosticEntry]) -> Result<()> {
         SubworkerDao::upsert_diagnostics(self, run_id, diagnostics).await
     }
 
-    async fn upsert_genre(&self, genre: &PersistedGenre) -> anyhow::Result<()> {
+    async fn upsert_genre(&self, genre: &PersistedGenre) -> Result<()> {
         SubworkerDao::upsert_genre(self, genre).await
     }
 
@@ -789,63 +693,54 @@ where
         &self,
         run: &GenreEvaluationRun,
         metrics: &[GenreEvaluationMetric],
-    ) -> anyhow::Result<()> {
+    ) -> Result<()> {
         EvaluationDao::save_genre_evaluation(self, run, metrics).await
     }
 
     async fn get_genre_evaluation(
         &self,
         run_id: Uuid,
-    ) -> anyhow::Result<Option<(GenreEvaluationRun, Vec<GenreEvaluationMetric>)>> {
+    ) -> Result<Option<(GenreEvaluationRun, Vec<GenreEvaluationMetric>)>> {
         EvaluationDao::get_genre_evaluation(self, run_id).await
     }
 
     async fn get_latest_genre_evaluation(
         &self,
-    ) -> anyhow::Result<Option<(GenreEvaluationRun, Vec<GenreEvaluationMetric>)>> {
+    ) -> Result<Option<(GenreEvaluationRun, Vec<GenreEvaluationMetric>)>> {
         EvaluationDao::get_latest_genre_evaluation(self).await
     }
 
-    async fn save_morning_article_groups(
-        &self,
-        groups: &[(Uuid, Uuid, bool)],
-    ) -> anyhow::Result<()> {
+    async fn save_morning_article_groups(&self, groups: &[(Uuid, Uuid, bool)]) -> Result<()> {
         MorningDao::save_morning_article_groups(self, groups).await
     }
 
     async fn get_morning_article_groups(
         &self,
         since: DateTime<Utc>,
-    ) -> anyhow::Result<Vec<(Uuid, Uuid, bool, DateTime<Utc>)>> {
+    ) -> Result<Vec<(Uuid, Uuid, bool, DateTime<Utc>)>> {
         MorningDao::get_morning_article_groups(self, since).await
     }
 
-    async fn save_morning_letter(&self, letter: &MorningLetter) -> anyhow::Result<Uuid> {
+    async fn save_morning_letter(&self, letter: &MorningLetter) -> Result<Uuid> {
         MorningDao::save_morning_letter(self, letter).await
     }
 
-    async fn save_morning_letter_sources(
-        &self,
-        sources: &[MorningLetterSource],
-    ) -> anyhow::Result<()> {
+    async fn save_morning_letter_sources(&self, sources: &[MorningLetterSource]) -> Result<()> {
         MorningDao::save_morning_letter_sources(self, sources).await
     }
 
-    async fn get_morning_letter_by_date(
-        &self,
-        date: NaiveDate,
-    ) -> anyhow::Result<Option<MorningLetter>> {
+    async fn get_morning_letter_by_date(&self, date: NaiveDate) -> Result<Option<MorningLetter>> {
         MorningDao::get_morning_letter_by_date(self, date).await
     }
 
-    async fn get_latest_morning_letter(&self) -> anyhow::Result<Option<MorningLetter>> {
+    async fn get_latest_morning_letter(&self) -> Result<Option<MorningLetter>> {
         MorningDao::get_latest_morning_letter(self).await
     }
 
     async fn get_morning_letter_sources(
         &self,
         letter_id: Uuid,
-    ) -> anyhow::Result<Vec<MorningLetterSource>> {
+    ) -> Result<Vec<MorningLetterSource>> {
         MorningDao::get_morning_letter_sources(self, letter_id).await
     }
 
@@ -853,7 +748,7 @@ where
         &self,
         edition_timezone: &str,
         before: NaiveDate,
-    ) -> anyhow::Result<Option<MorningLetter>> {
+    ) -> Result<Option<MorningLetter>> {
         MorningDao::get_previous_morning_letter(self, edition_timezone, before).await
     }
 
@@ -861,7 +756,7 @@ where
         &self,
         window_seconds: i64,
         limit: i64,
-    ) -> anyhow::Result<Vec<ExtendedRecapJob>> {
+    ) -> Result<Vec<ExtendedRecapJob>> {
         JobStatusDao::get_extended_jobs(self, window_seconds, limit).await
     }
 
@@ -870,38 +765,31 @@ where
         user_id: Uuid,
         window_seconds: i64,
         limit: i64,
-    ) -> anyhow::Result<Vec<ExtendedRecapJob>> {
+    ) -> Result<Vec<ExtendedRecapJob>> {
         JobStatusDao::get_user_jobs(self, user_id, window_seconds, limit).await
     }
 
-    async fn get_running_job(&self) -> anyhow::Result<Option<ExtendedRecapJob>> {
+    async fn get_running_job(&self) -> Result<Option<ExtendedRecapJob>> {
         JobStatusDao::get_running_job(self).await
     }
 
-    async fn get_job_stats(&self) -> anyhow::Result<JobStats> {
+    async fn get_job_stats(&self) -> Result<JobStats> {
         JobStatusDao::get_job_stats(self).await
     }
 
-    async fn get_user_article_count_for_job(
-        &self,
-        job_id: Uuid,
-        user_id: Uuid,
-    ) -> anyhow::Result<i32> {
+    async fn get_user_article_count_for_job(&self, job_id: Uuid, user_id: Uuid) -> Result<i32> {
         JobStatusDao::get_user_article_count_for_job(self, job_id, user_id).await
     }
 
-    async fn get_total_article_count_for_job(&self, job_id: Uuid) -> anyhow::Result<i32> {
+    async fn get_total_article_count_for_job(&self, job_id: Uuid) -> Result<i32> {
         JobStatusDao::get_total_article_count_for_job(self, job_id).await
     }
 
-    async fn get_genre_progress(
-        &self,
-        job_id: Uuid,
-    ) -> anyhow::Result<Vec<(String, String, Option<i32>)>> {
+    async fn get_genre_progress(&self, job_id: Uuid) -> Result<Vec<(String, String, Option<i32>)>> {
         JobStatusDao::get_genre_progress(self, job_id).await
     }
 
-    async fn get_completed_stages(&self, job_id: Uuid) -> anyhow::Result<Vec<String>> {
+    async fn get_completed_stages(&self, job_id: Uuid) -> Result<Vec<String>> {
         JobStatusDao::get_completed_stages(self, job_id).await
     }
 
@@ -910,22 +798,19 @@ where
         job_id: Uuid,
         user_id: Uuid,
         note: Option<&str>,
-    ) -> anyhow::Result<()> {
+    ) -> Result<()> {
         JobStatusDao::create_user_triggered_job(self, job_id, user_id, note).await
     }
 
-    async fn get_user_jobs_count(&self, user_id: Uuid, window_seconds: i64) -> anyhow::Result<i32> {
+    async fn get_user_jobs_count(&self, user_id: Uuid, window_seconds: i64) -> Result<i32> {
         JobStatusDao::get_user_jobs_count(self, user_id, window_seconds).await
     }
 
-    async fn get_pulse_by_date(
-        &self,
-        date: NaiveDate,
-    ) -> anyhow::Result<Option<PulseGenerationRow>> {
+    async fn get_pulse_by_date(&self, date: NaiveDate) -> Result<Option<PulseGenerationRow>> {
         PulseDao::get_pulse_by_date(self, date).await
     }
 
-    async fn get_latest_pulse(&self) -> anyhow::Result<Option<PulseGenerationRow>> {
+    async fn get_latest_pulse(&self) -> Result<Option<PulseGenerationRow>> {
         PulseDao::get_latest_pulse(self).await
     }
 
@@ -933,7 +818,7 @@ where
         &self,
         result: &PulseResult,
         target_date: NaiveDate,
-    ) -> anyhow::Result<i64> {
+    ) -> Result<i64> {
         PulseDao::save_pulse_generation(self, result, target_date).await
     }
 }

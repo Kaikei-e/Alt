@@ -1,6 +1,6 @@
 use std::time::Duration;
 
-use anyhow::{Context, Result, anyhow};
+use crate::error::{RecapError, Result};
 use reqwest::{Client, Url};
 use serde_json::Value;
 use tracing::{debug, warn};
@@ -33,7 +33,9 @@ impl NewsCreatorClient {
         let client = Client::builder()
             .timeout(Duration::from_secs(5))
             .build()
-            .context("failed to build news-creator client")?;
+            .map_err(|e| {
+                RecapError::Summary(format!("failed to build news-creator client: {e}"))
+            })?;
         Self::new_with_client(base_url, summary_timeout, client).await
     }
 
@@ -44,14 +46,15 @@ impl NewsCreatorClient {
         summary_timeout: Duration,
         client: Client,
     ) -> Result<Self> {
-        let base_url = Url::parse(&base_url.into()).context("invalid news-creator base URL")?;
+        let base_url = Url::parse(&base_url.into())
+            .map_err(|e| RecapError::Summary(format!("invalid news-creator base URL: {e}")))?;
 
         // `TokenCounter::new` does a blocking HF Hub download; run it off the
         // async runtime's worker threads so building the component registry
         // doesn't stall the whole executor during startup.
         let token_counter = match tokio::task::spawn_blocking(TokenCounter::new)
             .await
-            .context("TokenCounter::new panicked")?
+            .map_err(|e| RecapError::Summary(format!("TokenCounter::new panicked: {e}")))?
         {
             Ok(counter) => counter,
             Err(e) => {
@@ -62,11 +65,11 @@ impl NewsCreatorClient {
                 let allow_dummy_fallback = std::env::var("TOKEN_COUNTER_ALLOW_DUMMY_FALLBACK")
                     .is_ok_and(|v| v.eq_ignore_ascii_case("true") || v == "1");
                 if !allow_dummy_fallback {
-                    return Err(e).context(
+                    return Err(RecapError::Summary(format!(
                         "failed to initialize TokenCounter (set \
                          TOKEN_COUNTER_ALLOW_DUMMY_FALLBACK=true to start anyway with a \
-                         degraded character-count tokenizer)",
-                    );
+                         degraded character-count tokenizer): {e:#}"
+                    )));
                 }
                 tracing::warn!(
                     error = %e,
@@ -102,18 +105,21 @@ impl NewsCreatorClient {
     }
 
     pub(crate) async fn health_check(&self) -> Result<()> {
-        let url = self
-            .base_url
-            .join("health")
-            .context("failed to build news-creator health URL")?;
+        let url = self.base_url.join("health").map_err(|e| {
+            RecapError::Summary(format!("failed to build news-creator health URL: {e}"))
+        })?;
 
         self.client
             .get(url)
             .send()
             .await
-            .context("news-creator health request failed")?
+            .map_err(|e| RecapError::Summary(format!("news-creator health request failed: {e}")))?
             .error_for_status()
-            .context("news-creator health endpoint returned error status")?;
+            .map_err(|e| {
+                RecapError::Summary(format!(
+                    "news-creator health endpoint returned error status: {e}"
+                ))
+            })?;
 
         Ok(())
     }
@@ -129,10 +135,9 @@ impl NewsCreatorClient {
         &self,
         request: &SummaryRequest,
     ) -> Result<SummaryResponse> {
-        let url = self
-            .base_url
-            .join("v1/summary/generate")
-            .context("failed to build summary generation URL")?;
+        let url = self.base_url.join("v1/summary/generate").map_err(|e| {
+            RecapError::Summary(format!("failed to build summary generation URL: {e}"))
+        })?;
 
         debug!(
             job_id = %request.job_id,
@@ -149,22 +154,23 @@ impl NewsCreatorClient {
             .timeout(self.summary_timeout)
             .send()
             .await
-            .context("summary generation request failed")?;
+            .map_err(|e| RecapError::Summary(format!("summary generation request failed: {e}")))?;
 
         if !response.status().is_success() {
             let status = response.status();
             let body = response.text().await.unwrap_or_default();
             let truncated_body = truncate_error_message(&body);
-            return Err(anyhow!(
+            return Err(RecapError::Summary(format!(
                 "summary generation endpoint returned error status {status}: {truncated_body}"
-            ));
+            )));
         }
 
         // レスポンスをJSONとして取得
-        let response_json: Value = response
-            .json()
-            .await
-            .context("failed to deserialize summary response as JSON")?;
+        let response_json: Value = response.json().await.map_err(|e| {
+            RecapError::Summary(format!(
+                "failed to deserialize summary response as JSON: {e}"
+            ))
+        })?;
 
         // JSON Schemaで検証
         let validation = validate_json(&SUMMARY_RESPONSE_SCHEMA, &response_json);
@@ -175,10 +181,10 @@ impl NewsCreatorClient {
                 errors = ?validation.errors,
                 "summary response failed JSON Schema validation"
             );
-            return Err(anyhow!(
+            return Err(RecapError::Summary(format!(
                 "summary response validation failed: {:?}",
                 validation.errors
-            ));
+            )));
         }
 
         debug!(
@@ -188,8 +194,11 @@ impl NewsCreatorClient {
         );
 
         // 検証済みのJSONを構造体にデシリアライズ
-        serde_json::from_value(response_json)
-            .context("failed to deserialize validated summary response")
+        serde_json::from_value(response_json).map_err(|e| {
+            RecapError::Summary(format!(
+                "failed to deserialize validated summary response: {e}"
+            ))
+        })
     }
 
     /// 複数ジャンルの要約をバッチで生成する。
@@ -209,7 +218,9 @@ impl NewsCreatorClient {
         let url = self
             .base_url
             .join("v1/summary/generate/batch")
-            .context("failed to build batch summary generation URL")?;
+            .map_err(|e| {
+                RecapError::Summary(format!("failed to build batch summary generation URL: {e}"))
+            })?;
 
         let request_count = requests.len();
         debug!(
@@ -231,21 +242,22 @@ impl NewsCreatorClient {
             .timeout(batch_timeout)
             .send()
             .await
-            .context("batch summary generation request failed")?;
+            .map_err(|e| {
+                RecapError::Summary(format!("batch summary generation request failed: {e}"))
+            })?;
 
         if !response.status().is_success() {
             let status = response.status();
             let body = response.text().await.unwrap_or_default();
             let truncated_body = truncate_error_message(&body);
-            return Err(anyhow!(
+            return Err(RecapError::Summary(format!(
                 "batch summary generation endpoint returned error status {status}: {truncated_body}"
-            ));
+            )));
         }
 
-        let batch_response: BatchSummaryResponse = response
-            .json()
-            .await
-            .context("failed to deserialize batch summary response")?;
+        let batch_response: BatchSummaryResponse = response.json().await.map_err(|e| {
+            RecapError::Summary(format!("failed to deserialize batch summary response: {e}"))
+        })?;
 
         debug!(
             successful = batch_response.responses.len(),
@@ -273,7 +285,11 @@ impl NewsCreatorClient {
         let url = self
             .base_url
             .join("v1/morning-letter/generate")
-            .context("failed to build morning letter generation URL")?;
+            .map_err(|e| {
+                RecapError::Summary(format!(
+                    "failed to build morning letter generation URL: {e}"
+                ))
+            })?;
 
         debug!(
             target_date = %request.target_date,
@@ -294,21 +310,24 @@ impl NewsCreatorClient {
             .timeout(morning_letter_timeout)
             .send()
             .await
-            .context("morning letter generation request failed")?;
+            .map_err(|e| {
+                RecapError::Summary(format!("morning letter generation request failed: {e}"))
+            })?;
 
         if !response.status().is_success() {
             let status = response.status();
             let body = response.text().await.unwrap_or_default();
             let truncated_body = truncate_error_message(&body);
-            return Err(anyhow!(
+            return Err(RecapError::Summary(format!(
                 "morning letter generation endpoint returned error status {status}: {truncated_body}"
-            ));
+            )));
         }
 
-        let ml_response: MorningLetterGenerateResponse = response
-            .json()
-            .await
-            .context("failed to deserialize morning letter response")?;
+        let ml_response: MorningLetterGenerateResponse = response.json().await.map_err(|e| {
+            RecapError::Summary(format!(
+                "failed to deserialize morning letter response: {e}"
+            ))
+        })?;
 
         debug!(
             target_date = %ml_response.target_date,
@@ -354,10 +373,9 @@ impl NewsCreatorClient {
         &self,
         request: &GenreTieBreakRequest,
     ) -> Result<GenreTieBreakResponse> {
-        let url = self
-            .base_url
-            .join("v1/genre/tie-break")
-            .context("failed to build genre tie-break URL")?;
+        let url = self.base_url.join("v1/genre/tie-break").map_err(|e| {
+            RecapError::Summary(format!("failed to build genre tie-break URL: {e}"))
+        })?;
 
         debug!(
             job_id = %request.job_id,
@@ -373,20 +391,21 @@ impl NewsCreatorClient {
             .timeout(Duration::from_secs(30))
             .send()
             .await
-            .context("genre tie-break request failed")?;
+            .map_err(|e| RecapError::Summary(format!("genre tie-break request failed: {e}")))?;
 
         if !response.status().is_success() {
             let status = response.status();
             let body = response.text().await.unwrap_or_default();
-            return Err(anyhow!(
+            return Err(RecapError::Summary(format!(
                 "genre tie-break endpoint returned error status {status}: {body}"
-            ));
+            )));
         }
 
-        response
-            .json::<GenreTieBreakResponse>()
-            .await
-            .context("failed to deserialize genre tie-break response")
+        response.json::<GenreTieBreakResponse>().await.map_err(|e| {
+            RecapError::Summary(format!(
+                "failed to deserialize genre tie-break response: {e}"
+            ))
+        })
     }
 }
 
