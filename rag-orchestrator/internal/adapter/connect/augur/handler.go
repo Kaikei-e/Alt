@@ -28,18 +28,16 @@ import (
 // alt-backend → rag-orchestrator hop. alt-backend validates the JWT and sets
 // this header before forwarding.
 //
-// KNOWN GAP (deferred, not fixed by this comment): rag-orchestrator's
-// Connect-RPC listener is plaintext h2c (cmd/server/main.go,
-// adapter/connect/server.go) with no mTLS peer verification in front of it —
-// middleware.PeerIdentityMiddleware exists but is not wired (see its doc
-// comment). extractUserID only validates that the header is UUID-shaped; it
-// does NOT prove the caller is really alt-backend. Any process that can
-// reach rag-orchestrator's Connect-RPC port on the internal network can
-// forge this header and impersonate any user. Closing this requires a real
-// mTLS listener + PeerIdentityMiddleware wiring, tracked as follow-up work
-// (see .claude/rules/security-boundaries.md "識別ヘッダの信頼"); until then,
-// treat this hop as trusted only because network policy limits who can
-// reach this port, not because the header itself is verified.
+// Trust boundary: extractUserID only validates that the header is
+// UUID-shaped; proving the caller is really alt-backend is the listener's
+// job. With PEER_IDENTITY_MODE=mtls (cmd/server/main.go,
+// connect.CreateMTLSConnectServer) every RPC first passes
+// middleware.PeerIdentityMiddleware.Require over a
+// RequireAndVerifyClientCert TLS listener, so this header is only reachable
+// from an allowlisted, CA-verified peer. With PEER_IDENTITY_MODE=disabled
+// (explicit opt-out) the listener is plaintext h2c and any process with
+// network reach can forge this header — that mode relies on network policy
+// alone (see .claude/rules/security-boundaries.md "識別ヘッダの信頼").
 const userIDHeader = "X-Alt-User-Id"
 
 // tenantIDHeader carries the caller's tenant uuid. alt-backend already sets

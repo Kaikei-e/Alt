@@ -10,6 +10,7 @@ import (
 	"rag-orchestrator/internal/adapter/connect/augur"
 	"rag-orchestrator/internal/adapter/connect/morning_letter"
 	"rag-orchestrator/internal/domain"
+	"rag-orchestrator/internal/middleware"
 	"rag-orchestrator/internal/usecase"
 
 	"golang.org/x/net/http2"
@@ -60,8 +61,7 @@ func SetupConnectHandlers(
 	logger.Info("Registered Connect-RPC AugurService", slog.String("path", augurPath))
 }
 
-// CreateConnectServer creates an HTTP server with Connect-RPC handlers
-func CreateConnectServer(
+func newConnectMux(
 	articleClient domain.ArticleClient,
 	answerUsecase usecase.AnswerWithRAGUsecase,
 	retrieveUsecase usecase.RetrieveContextUsecase,
@@ -69,7 +69,7 @@ func CreateConnectServer(
 	eventEmitter usecase.KnowledgeEventEmitter,
 	letterFetcher domain.MorningLetterFetcher,
 	logger *slog.Logger,
-) http.Handler {
+) *http.ServeMux {
 	mux := http.NewServeMux()
 
 	// Health check for Connect-RPC server
@@ -80,7 +80,47 @@ func CreateConnectServer(
 	})
 
 	SetupConnectHandlers(mux, articleClient, answerUsecase, retrieveUsecase, conversationUsecase, eventEmitter, letterFetcher, logger)
+	return mux
+}
+
+// CreateConnectServer creates the plaintext (h2c) Connect-RPC handler chain.
+// Only valid when PEER_IDENTITY_MODE=disabled: X-Alt-User-Id is unverified on
+// this listener, so exposure must be limited by network policy.
+func CreateConnectServer(
+	articleClient domain.ArticleClient,
+	answerUsecase usecase.AnswerWithRAGUsecase,
+	retrieveUsecase usecase.RetrieveContextUsecase,
+	conversationUsecase usecase.AugurConversationUsecase,
+	eventEmitter usecase.KnowledgeEventEmitter,
+	letterFetcher domain.MorningLetterFetcher,
+	logger *slog.Logger,
+) http.Handler {
+	mux := newConnectMux(articleClient, answerUsecase, retrieveUsecase, conversationUsecase, eventEmitter, letterFetcher, logger)
 
 	// Support HTTP/2 without TLS (h2c) for Connect-RPC streaming
 	return h2c.NewHandler(mux, &http2.Server{})
+}
+
+// CreateMTLSConnectServer creates the Connect-RPC handler chain for an
+// mTLS-terminating listener: every request must carry a verified client cert
+// whose CN passes peerMW's allowlist before any RPC handler (and therefore
+// extractUserID's X-Alt-User-Id trust) is reached. No h2c wrapper — the TLS
+// listener negotiates HTTP/2 via ALPN. peerMW is mandatory: a nil middleware
+// here means the composition root forgot to wire peer identity, which must
+// fail loudly rather than serve unguarded (CLAUDE.md rule 8).
+func CreateMTLSConnectServer(
+	peerMW *middleware.PeerIdentityMiddleware,
+	articleClient domain.ArticleClient,
+	answerUsecase usecase.AnswerWithRAGUsecase,
+	retrieveUsecase usecase.RetrieveContextUsecase,
+	conversationUsecase usecase.AugurConversationUsecase,
+	eventEmitter usecase.KnowledgeEventEmitter,
+	letterFetcher domain.MorningLetterFetcher,
+	logger *slog.Logger,
+) http.Handler {
+	if peerMW == nil {
+		panic("connect: CreateMTLSConnectServer called without peer-identity middleware")
+	}
+	mux := newConnectMux(articleClient, answerUsecase, retrieveUsecase, conversationUsecase, eventEmitter, letterFetcher, logger)
+	return peerMW.Require(mux)
 }

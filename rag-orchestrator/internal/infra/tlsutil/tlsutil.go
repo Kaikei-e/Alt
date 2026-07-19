@@ -1,7 +1,9 @@
-// Package tlsutil provides rag-orchestrator's outbound mTLS helpers. The
-// leaf cert/key are re-read from disk whenever their mtimes advance so the
-// pki-agent sidecar can rotate the underlying files without a process
-// restart. The shape mirrors the reference implementation in
+// Package tlsutil provides rag-orchestrator's mTLS helpers: LoadClientConfig
+// for outbound calls and LoadServerConfig for the inbound Connect-RPC
+// listener (PEER_IDENTITY_MODE=mtls). The leaf cert/key are re-read from
+// disk whenever their mtimes advance so the pki-agent sidecar can rotate the
+// underlying files without a process restart. The shape mirrors the
+// reference implementation in
 // `alt-backend/app/tlsutil/tlsutil.go` (the Alt platform convention); the
 // duplication is intentional — each service module owns its TLS helpers
 // locally until a shared Go module is introduced.
@@ -90,6 +92,30 @@ func loadRootCAs(caPath string) (*x509.CertPool, error) {
 		return nil, fmt.Errorf("ca bundle %q did not contain any valid PEM certificates", caPath)
 	}
 	return pool, nil
+}
+
+// LoadServerConfig returns a *tls.Config for an mTLS-terminating HTTP
+// server. The server presents its leaf cert via GetCertificate (re-read on
+// mtime change) and demands a client cert signed by the supplied CA bundle
+// (RequireAndVerifyClientCert), so r.TLS.PeerCertificates is always a
+// verified peer by the time a handler runs.
+func LoadServerConfig(certPath, keyPath, caPath string) (*tls.Config, error) {
+	reloader, err := newCertReloader(certPath, keyPath)
+	if err != nil {
+		return nil, err
+	}
+	clientCAs, err := loadRootCAs(caPath)
+	if err != nil {
+		return nil, err
+	}
+	return &tls.Config{
+		MinVersion: tls.VersionTLS13,
+		ClientCAs:  clientCAs,
+		ClientAuth: tls.RequireAndVerifyClientCert,
+		GetCertificate: func(*tls.ClientHelloInfo) (*tls.Certificate, error) {
+			return reloader.load()
+		},
+	}, nil
 }
 
 // LoadClientConfig returns a *tls.Config for an mTLS-capable HTTP client.

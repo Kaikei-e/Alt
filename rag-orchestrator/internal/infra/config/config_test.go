@@ -11,7 +11,65 @@ func TestMain(m *testing.M) {
 	if err := os.Setenv("DB_PASSWORD", "test-password"); err != nil {
 		panic(err)
 	}
+	if err := os.Setenv("PEER_IDENTITY_MODE", "disabled"); err != nil {
+		panic(err)
+	}
 	os.Exit(m.Run())
+}
+
+// unsetEnv removes key for the duration of the test, restoring the prior
+// value afterwards (t.Setenv registers the restore; os.Unsetenv then clears).
+func unsetEnv(t *testing.T, key string) {
+	t.Setenv(key, "")
+	_ = os.Unsetenv(key)
+}
+
+func TestLoad_PeerIdentityMode_UnsetPanics(t *testing.T) {
+	unsetEnv(t, "PEER_IDENTITY_MODE")
+
+	assert.Panics(t, func() { Load() },
+		"unset PEER_IDENTITY_MODE must fail startup, never be inferred as disabled")
+}
+
+func TestLoad_PeerIdentityMode_InvalidValuePanics(t *testing.T) {
+	t.Setenv("PEER_IDENTITY_MODE", "yes-please")
+
+	assert.Panics(t, func() { Load() })
+}
+
+func TestLoad_PeerIdentityMode_DisabledIsExplicit(t *testing.T) {
+	t.Setenv("PEER_IDENTITY_MODE", "disabled")
+
+	cfg := Load()
+
+	assert.Equal(t, PeerIdentityDisabled, cfg.PeerIdentity.Mode)
+}
+
+func TestLoad_PeerIdentityMode_MTLSRequiresCertsAndAllowlist(t *testing.T) {
+	t.Setenv("PEER_IDENTITY_MODE", "mtls")
+	unsetEnv(t, "MTLS_CERT_FILE")
+	unsetEnv(t, "MTLS_KEY_FILE")
+	unsetEnv(t, "MTLS_CA_FILE")
+	unsetEnv(t, "PEER_IDENTITY_ALLOWED_PEERS")
+
+	assert.Panics(t, func() { Load() },
+		"mtls mode without cert paths + peer allowlist must fail startup")
+}
+
+func TestLoad_PeerIdentityMode_MTLSFullyConfigured(t *testing.T) {
+	t.Setenv("PEER_IDENTITY_MODE", "mtls")
+	t.Setenv("MTLS_CERT_FILE", "/certs/rag-orchestrator/cert.pem")
+	t.Setenv("MTLS_KEY_FILE", "/certs/rag-orchestrator/key.pem")
+	t.Setenv("MTLS_CA_FILE", "/certs/ca/ca.pem")
+	t.Setenv("PEER_IDENTITY_ALLOWED_PEERS", "alt-backend, alt-butterfly-facade")
+
+	cfg := Load()
+
+	assert.Equal(t, PeerIdentityMTLS, cfg.PeerIdentity.Mode)
+	assert.Equal(t, "/certs/rag-orchestrator/cert.pem", cfg.PeerIdentity.CertFile)
+	assert.Equal(t, "/certs/rag-orchestrator/key.pem", cfg.PeerIdentity.KeyFile)
+	assert.Equal(t, "/certs/ca/ca.pem", cfg.PeerIdentity.CAFile)
+	assert.Equal(t, []string{"alt-backend", "alt-butterfly-facade"}, cfg.PeerIdentity.AllowedPeers)
 }
 
 func TestLoad_RAGRetrievalParameters_Defaults(t *testing.T) {

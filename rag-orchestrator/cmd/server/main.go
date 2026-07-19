@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"crypto/tls"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -23,6 +24,8 @@ import (
 	"rag-orchestrator/internal/infra/config"
 	"rag-orchestrator/internal/infra/logger"
 	"rag-orchestrator/internal/infra/otel"
+	"rag-orchestrator/internal/infra/tlsutil"
+	peermw "rag-orchestrator/internal/middleware"
 )
 
 func main() {
@@ -47,17 +50,36 @@ func main() {
 	// 3. Initialize Logger with OTel support (also installs slog.SetDefault)
 	log := logger.NewWithOTel(otelCfg.Enabled)
 
-	// rag-orchestrator only serves plaintext listeners today (REST on
-	// cfg.Server.Port, Connect-RPC h2c on cfg.Server.ConnectPort).
-	// middleware.PeerIdentityMiddleware exists but is not constructed or
-	// wired into any handler chain, and augur's Connect-RPC handlers trust
-	// X-Alt-User-Id / X-Alt-Tenant-Id without peer verification. Log this
-	// loudly so "no mTLS enforcement on inbound Connect-RPC" is an explicit,
-	// visible fact rather than something an auditor has to infer from the
-	// absence of a wiring call (CLAUDE.md rule 8 / .claude/rules/di-wiring.md).
-	log.Warn("peer_identity_disabled",
-		"reason", "no mTLS listener configured; PeerIdentityMiddleware is not applied to any handler",
+	// PEER_IDENTITY_MODE is required (config.Load fails hard when unset).
+	// "mtls" terminates TLS on the Connect-RPC listener and wires
+	// PeerIdentityMiddleware so X-Alt-User-Id is only trusted from verified
+	// peers; "disabled" is an explicit opt-out that keeps the plaintext h2c
+	// listener. Either way the wiring state is logged loudly at startup
+	// (CLAUDE.md rules 8/9 / .claude/rules/di-wiring.md).
+	var (
+		connectTLS *tls.Config
+		peerMW     *peermw.PeerIdentityMiddleware
 	)
+	switch cfg.PeerIdentity.Mode {
+	case config.PeerIdentityMTLS:
+		connectTLS, err = tlsutil.LoadServerConfig(cfg.PeerIdentity.CertFile, cfg.PeerIdentity.KeyFile, cfg.PeerIdentity.CAFile)
+		if err != nil {
+			log.Error("peer_identity_tls_config_failed", "error", err)
+			os.Exit(1)
+		}
+		peerMW = peermw.NewPeerIdentityMiddleware(cfg.PeerIdentity.AllowedPeers, log)
+		log.Info("peer_identity_enabled",
+			"mode", "mtls",
+			"allowed_peers", cfg.PeerIdentity.AllowedPeers,
+		)
+	case config.PeerIdentityDisabled:
+		log.Warn("peer_identity_disabled",
+			"reason", "PEER_IDENTITY_MODE=disabled (explicit opt-out); Connect-RPC listener stays plaintext h2c and X-Alt-User-Id is unverified — exposure is limited only by network policy",
+		)
+	default:
+		log.Error("peer_identity_mode_unhandled", "mode", string(cfg.PeerIdentity.Mode))
+		os.Exit(1)
+	}
 
 	// 4. Initialize DB
 	dbPool, err := infra.NewPostgresDB(ctx, cfg.DB.DSN(), infra.PoolConfig{
@@ -137,16 +159,32 @@ func main() {
 		}
 	}()
 
-	// 11. Start Connect-RPC Server
-	connectHandler := connectserver.CreateConnectServer(app.ArticleClient, app.AnswerUsecase, app.RetrieveUsecase, app.ConversationUsecase, app.EventEmitter, app.LetterFetcher, log)
+	// 11. Start Connect-RPC Server. In mtls mode the listener terminates TLS
+	// (RequireAndVerifyClientCert) and PeerIdentityMiddleware gates every RPC;
+	// in disabled mode it keeps the historical plaintext h2c behaviour.
+	var connectHandler http.Handler
+	if cfg.PeerIdentity.Mode == config.PeerIdentityMTLS {
+		connectHandler = connectserver.CreateMTLSConnectServer(peerMW, app.ArticleClient, app.AnswerUsecase, app.RetrieveUsecase, app.ConversationUsecase, app.EventEmitter, app.LetterFetcher, log)
+	} else {
+		connectHandler = connectserver.CreateConnectServer(app.ArticleClient, app.AnswerUsecase, app.RetrieveUsecase, app.ConversationUsecase, app.EventEmitter, app.LetterFetcher, log)
+	}
 	connectServer := &http.Server{
 		Addr:              fmt.Sprintf(":%s", cfg.Server.ConnectPort),
 		Handler:           connectHandler,
+		TLSConfig:         connectTLS,
 		ReadHeaderTimeout: 10 * time.Second,
 	}
 	go func() {
-		log.Info("Starting Connect-RPC server", "addr", connectServer.Addr)
-		if err := connectServer.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+		log.Info("Starting Connect-RPC server", "addr", connectServer.Addr, "peer_identity_mode", string(cfg.PeerIdentity.Mode))
+		var err error
+		if connectTLS != nil {
+			// Cert/key come from TLSConfig.GetCertificate (hot-reloaded), so
+			// the file arguments stay empty.
+			err = connectServer.ListenAndServeTLS("", "")
+		} else {
+			err = connectServer.ListenAndServe()
+		}
+		if err != nil && !errors.Is(err, http.ErrServerClosed) {
 			log.Error("Connect-RPC server error", "error", err)
 			serverErr <- err
 		}

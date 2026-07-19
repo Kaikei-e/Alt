@@ -191,6 +191,61 @@ type CacheConfig struct {
 	TTL  int // Minutes
 }
 
+// PeerIdentityMode selects how the Connect-RPC listener authenticates its
+// callers. It is a required setting: "disabled" must be an explicit operator
+// choice, never inferred from an unset variable (CLAUDE.md rules 8/9).
+type PeerIdentityMode string
+
+const (
+	// PeerIdentityMTLS terminates TLS with RequireAndVerifyClientCert and
+	// only admits peers whose cert CN is in the allowlist, so X-Alt-User-Id
+	// is trusted only from verified callers.
+	PeerIdentityMTLS PeerIdentityMode = "mtls"
+	// PeerIdentityDisabled keeps the plaintext h2c listener with no peer
+	// verification — an explicit opt-out that relies on network policy.
+	PeerIdentityDisabled PeerIdentityMode = "disabled"
+)
+
+// PeerIdentityConfig holds inbound peer-authentication settings for the
+// Connect-RPC listener. Cert/key/CA paths reuse the MTLS_* env vars already
+// used for this service's outbound mTLS client (httpclient/mtls.go) — the
+// pki-agent-provisioned leaf serves both directions.
+type PeerIdentityConfig struct {
+	Mode         PeerIdentityMode
+	CertFile     string
+	KeyFile      string
+	CAFile       string
+	AllowedPeers []string // client-cert CNs admitted by PeerIdentityMiddleware
+}
+
+func loadPeerIdentity() PeerIdentityConfig {
+	raw, ok := os.LookupEnv("PEER_IDENTITY_MODE")
+	if !ok {
+		panic(`config: PEER_IDENTITY_MODE must be set ("mtls" or "disabled"); disabled must be an explicit choice, not inferred from an unset variable`)
+	}
+	switch PeerIdentityMode(raw) {
+	case PeerIdentityDisabled:
+		return PeerIdentityConfig{Mode: PeerIdentityDisabled}
+	case PeerIdentityMTLS:
+		cfg := PeerIdentityConfig{
+			Mode:         PeerIdentityMTLS,
+			CertFile:     os.Getenv("MTLS_CERT_FILE"),
+			KeyFile:      os.Getenv("MTLS_KEY_FILE"),
+			CAFile:       os.Getenv("MTLS_CA_FILE"),
+			AllowedPeers: getEnvCSV("PEER_IDENTITY_ALLOWED_PEERS", nil),
+		}
+		if cfg.CertFile == "" || cfg.KeyFile == "" || cfg.CAFile == "" {
+			panic("config: PEER_IDENTITY_MODE=mtls requires MTLS_CERT_FILE, MTLS_KEY_FILE and MTLS_CA_FILE")
+		}
+		if len(cfg.AllowedPeers) == 0 {
+			panic("config: PEER_IDENTITY_MODE=mtls requires a non-empty PEER_IDENTITY_ALLOWED_PEERS allowlist")
+		}
+		return cfg
+	default:
+		panic(fmt.Sprintf("config: invalid PEER_IDENTITY_MODE %q (want %q or %q)", raw, PeerIdentityMTLS, PeerIdentityDisabled))
+	}
+}
+
 // Config is the top-level configuration, organized by concern.
 type Config struct {
 	Env            string
@@ -208,6 +263,7 @@ type Config struct {
 	Temporal       TemporalConfig
 	Backend        BackendConfig
 	Cache          CacheConfig
+	PeerIdentity   PeerIdentityConfig
 }
 
 func Load() *Config {
@@ -295,6 +351,7 @@ func Load() *Config {
 			Size: getEnvInt("RAG_CACHE_SIZE", defaultCacheSize),
 			TTL:  getEnvInt("RAG_CACHE_TTL_MINUTES", defaultCacheTTL),
 		},
+		PeerIdentity: loadPeerIdentity(),
 	}
 }
 

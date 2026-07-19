@@ -142,3 +142,49 @@ func TestLoadClientConfig_MissingFiles(t *testing.T) {
 	_, err := LoadClientConfig("/nope/cert.pem", "/nope/key.pem", "/nope/ca.pem")
 	require.Error(t, err)
 }
+
+func TestLoadServerConfig_RequiresAndVerifiesClientCert(t *testing.T) {
+	dir := t.TempDir()
+	certPath, keyPath, caPath := writeTestPKI(t, dir, "rag-orchestrator")
+
+	cfg, err := LoadServerConfig(certPath, keyPath, caPath)
+	require.NoError(t, err)
+	require.NotNil(t, cfg)
+
+	assert.Equal(t, uint16(tls.VersionTLS13), cfg.MinVersion)
+	assert.Equal(t, tls.RequireAndVerifyClientCert, cfg.ClientAuth,
+		"server must demand and verify a client cert on every handshake")
+	require.NotNil(t, cfg.ClientCAs, "client CAs must be populated from the CA bundle")
+	require.NotNil(t, cfg.GetCertificate, "must use GetCertificate for hot reload")
+
+	cert, err := cfg.GetCertificate(&tls.ClientHelloInfo{})
+	require.NoError(t, err)
+	require.NotNil(t, cert)
+	require.Len(t, cert.Certificate, 1)
+}
+
+func TestLoadServerConfig_ReloadsOnFileChange(t *testing.T) {
+	dir := t.TempDir()
+	certPath, keyPath, caPath := writeTestPKI(t, dir, "rag-orchestrator")
+
+	cfg, err := LoadServerConfig(certPath, keyPath, caPath)
+	require.NoError(t, err)
+
+	cert1, err := cfg.GetCertificate(&tls.ClientHelloInfo{})
+	require.NoError(t, err)
+
+	time.Sleep(10 * time.Millisecond)
+	_, _, _ = writeTestPKI(t, dir, "rag-orchestrator")
+	future := time.Now().Add(2 * time.Second)
+	require.NoError(t, os.Chtimes(certPath, future, future))
+	require.NoError(t, os.Chtimes(keyPath, future, future))
+
+	cert2, err := cfg.GetCertificate(&tls.ClientHelloInfo{})
+	require.NoError(t, err)
+	assert.NotEqual(t, cert1.Certificate[0], cert2.Certificate[0], "cert must be reloaded when file mtime advances")
+}
+
+func TestLoadServerConfig_MissingFiles(t *testing.T) {
+	_, err := LoadServerConfig("/nope/cert.pem", "/nope/key.pem", "/nope/ca.pem")
+	require.Error(t, err)
+}
