@@ -350,7 +350,7 @@ func TestEndToEnd_MTLSClient_PassesRequireAndVerify(t *testing.T) {
 	require.NoError(t, err)
 	resp, err := client.Get("https://" + ln.Addr().String() + "/health")
 	require.NoError(t, err, "client with leaf cert must pass RequireAndVerifyClientCert")
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
 
 	// A cert-less client must be rejected at handshake time.
