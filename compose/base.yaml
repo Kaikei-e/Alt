@@ -92,6 +92,7 @@ volumes:
   recap_worker_certs:
   recap_subworker_certs:
   news_creator_certs:
+  rag_orchestrator_certs:
 
 x-rask-env: &rask-env
   environment:

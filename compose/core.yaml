@@ -159,6 +159,9 @@ services:
       - MQHUB_ENABLED=true
       - MQHUB_CONNECT_URL=http://mq-hub:9500
       - SOVEREIGN_URL=http://knowledge-sovereign:9500
+      # https scheme makes alt-backend present its leaf cert; rag-orchestrator
+      # terminates mTLS on :9011 (PEER_IDENTITY_MODE=mtls in rag.yaml).
+      - RAG_ORCHESTRATOR_CONNECT_URL=${RAG_ORCHESTRATOR_CONNECT_URL:-https://rag-orchestrator:9011}
       - DB_MAX_CONNS=30
       - DB_MIN_CONNS=5
       - IMAGE_PROXY_SECRET_FILE=/run/secrets/image_proxy_secret

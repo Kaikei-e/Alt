@@ -375,6 +375,8 @@ services:
       - RAG_PROMPT_VERSION=alpha-v2
       - LLM_BACKEND=ollama
       - LOG_LEVEL=info
+      # Explicit opt-out: staging has no PKI stack, listener stays h2c.
+      - PEER_IDENTITY_MODE=disabled
     networks:
       - alt-staging
     # rag-orchestrator ships on distroless/static — no wget/curl/shell,

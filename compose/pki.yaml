@@ -159,6 +159,26 @@ services:
       - alt_butterfly_facade_certs:/certs
       - pki_trust_bundle:/trust:ro
 
+  pki-agent-rag-orchestrator:
+    <<: *pki-agent
+    environment:
+      - STEP_CA_URL=https://step-ca:9000
+      - STEP_CA_ROOT_FILE=/trust/ca-bundle.pem
+      - STEP_CA_PROVISIONER=pki-agent
+      - STEP_CA_PROVISIONER_PASSWORD_FILE=/run/secrets/step_ca_root_password
+      - CERT_SUBJECT=rag-orchestrator
+      - CERT_SANS=rag-orchestrator,localhost
+      - CERT_PATH=/certs/svc-cert.pem
+      - KEY_PATH=/certs/svc-key.pem
+      - CERT_OWNER_UID=65532
+      - CERT_OWNER_GID=65532
+      - RENEW_AT_FRACTION=0.66
+      - TICK_INTERVAL=5m
+      - METRICS_ADDR=:9510
+    volumes:
+      - rag_orchestrator_certs:/certs
+      - pki_trust_bundle:/trust:ro
+
   pki-agent-auth-hub:
     <<: *pki-agent
     environment:
