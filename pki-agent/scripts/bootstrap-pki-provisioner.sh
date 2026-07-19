@@ -32,6 +32,7 @@ SUBJECTS=(
   acolyte-orchestrator
   recap-subworker
   news-creator
+  rag-orchestrator
   localhost
 )
 

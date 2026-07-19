@@ -1,7 +1,7 @@
 #!/bin/bash
 # Verifies F-001 / F-002 remediation:
 #   1. pki-agent JWK provisioner exists in step-ca ca.json (separate from bootstrap)
-#   2. Authority-level X.509 policy allowlists the 10 east-west subjects
+#   2. Authority-level X.509 policy allowlists the 11 east-west subjects
 #   3. CA rejects cert requests for a non-allowlisted CN (attacker.local)
 #   4. CA accepts cert requests for an allowlisted CN (alt-backend)
 #
@@ -24,6 +24,7 @@ EXPECTED_CNS=(
   acolyte-orchestrator
   recap-subworker
   news-creator
+  rag-orchestrator
   localhost
 )
 
