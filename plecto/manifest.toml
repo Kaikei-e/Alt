@@ -1,5 +1,5 @@
 # Plecto edge/ingress manifest for Alt (nginx cutover trial).
-# Built against ghcr.io/kaikei-e/plecto:0.4.0 (plecto:filter@0.3.0).
+# Built against ghcr.io/kaikei-e/plecto:0.5.3 (plecto:filter@0.3.0).
 # [state] is omitted (defaults to "memory" — zero-config; rate-limit counters/KV don't
 # survive a restart, acceptable for this trial).
 

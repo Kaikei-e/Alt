@@ -18,7 +18,7 @@ services:
     # cosign-signed multi-arch release image on GHCR — pin to an explicit
     # version (not `:latest`) and bump deliberately alongside plecto/manifest.toml
     # and plecto/wit/world.wit's `plecto:filter@` version.
-    image: ghcr.io/kaikei-e/plecto:0.4.0
+    image: ghcr.io/kaikei-e/plecto:0.5.3
     command: ["/etc/plecto/manifest.toml"]
     restart: always
     mem_limit: 512m
@@ -51,12 +51,15 @@ services:
       options:
         max-size: "10m"
         max-file: "3"
-    # No `healthcheck:` block: the distroless/cc-debian12:nonroot runtime has no
-    # shell/wget/curl and the plecto binary has no healthcheck subcommand, so a
-    # CMD-SHELL probe isn't possible. Nothing else in compose/*.yaml depends on
-    # nginx's healthcheck besides nginx-exporter (removed in this same change),
-    # so dropping it does not affect startup ordering. Verify externally instead:
-    # curl the admin /healthz from the host.
+    # `plecto healthz` (added upstream 0.5.0) self-probes without a shell — the only
+    # form that works in the distroless/cc-debian12:nonroot runtime (no shell/wget/curl,
+    # so a CMD-SHELL probe isn't possible; exec-array form only). Reads [observability]
+    # admin_addr from the manifest and hits /readyz, exiting 0/1 accordingly.
+    healthcheck:
+      test: ["CMD", "/usr/local/bin/plecto", "healthz", "/etc/plecto/manifest.toml"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
 
   alt-frontend-sv:
     env_file:
