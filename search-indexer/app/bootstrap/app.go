@@ -173,6 +173,11 @@ func Run(ctx context.Context) error {
 	// ── Batch indexer (polling fallback) ──
 	go runIndexLoop(ctx, indexUsecase)
 
+	// Periodically PUT the accumulated synonyms union instead of once per
+	// indexed batch, bounding how often Meilisearch's task history grows
+	// from a settingsUpdate task (PM-2026-047 action item #2).
+	go runSynonymsFlushLoop(ctx, indexUsecase, config.SynonymsFlushInterval)
+
 	// ── Recap indexer ──
 	if indexRecapsUsecase != nil {
 		go runRecapIndexLoop(ctx, indexRecapsUsecase)

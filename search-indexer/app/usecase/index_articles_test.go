@@ -287,6 +287,9 @@ func TestExecuteBackfill_CoalescesSynonymsToSingleCall(t *testing.T) {
 	if _, err := u.ExecuteBackfill(context.Background(), nil, "", 10); err != nil {
 		t.Fatalf("ExecuteBackfill: %v", err)
 	}
+	if err := u.FlushSynonyms(context.Background()); err != nil {
+		t.Fatalf("FlushSynonyms: %v", err)
+	}
 
 	if engine.synonymsCallCount != 1 {
 		t.Fatalf("RegisterSynonyms call count = %d, want 1 (coalesced per batch)", engine.synonymsCallCount)
@@ -327,6 +330,9 @@ func TestIndexDocumentsDirectly_CoalescesSynonymsToSingleCall(t *testing.T) {
 	if _, err := u.IndexDocumentsDirectly(context.Background(), docs); err != nil {
 		t.Fatalf("IndexDocumentsDirectly: %v", err)
 	}
+	if err := u.FlushSynonyms(context.Background()); err != nil {
+		t.Fatalf("FlushSynonyms: %v", err)
+	}
 
 	if engine.synonymsCallCount != 1 {
 		t.Fatalf("RegisterSynonyms call count = %d, want 1", engine.synonymsCallCount)
@@ -358,6 +364,9 @@ func TestExecuteBackfill_SkipsSynonymsWhenAllTagsNonJapanese(t *testing.T) {
 
 	if _, err := u.ExecuteBackfill(context.Background(), nil, "", 10); err != nil {
 		t.Fatalf("ExecuteBackfill: %v", err)
+	}
+	if err := u.FlushSynonyms(context.Background()); err != nil {
+		t.Fatalf("FlushSynonyms: %v", err)
 	}
 
 	if engine.synonymsCallCount != 0 {
@@ -441,6 +450,9 @@ func TestRegisterBatchSynonyms_AccumulatesAcrossBatches(t *testing.T) {
 	if _, err := u.ExecuteBackfill(context.Background(), nil, "", 10); err != nil {
 		t.Fatalf("ExecuteBackfill (batch 1): %v", err)
 	}
+	if err := u.FlushSynonyms(context.Background()); err != nil {
+		t.Fatalf("FlushSynonyms (batch 1): %v", err)
+	}
 	if _, ok := engine.lastSynonymsArg["テスト1"]; !ok {
 		t.Fatalf("batch 1 synonyms missing テスト1: %v", engine.lastSynonymsArg)
 	}
@@ -452,6 +464,9 @@ func TestRegisterBatchSynonyms_AccumulatesAcrossBatches(t *testing.T) {
 	u.articleRepo = &mockArticleRepo{articles: []*domain.Article{a2}}
 	if _, err := u.ExecuteBackfill(context.Background(), nil, "", 10); err != nil {
 		t.Fatalf("ExecuteBackfill (batch 2): %v", err)
+	}
+	if err := u.FlushSynonyms(context.Background()); err != nil {
+		t.Fatalf("FlushSynonyms (batch 2): %v", err)
 	}
 
 	if _, ok := engine.lastSynonymsArg["テスト2"]; !ok {
@@ -487,6 +502,9 @@ func TestRegisterBatchSynonyms_SkipsPUTWhenNoNewSynonyms(t *testing.T) {
 	if _, err := u.ExecuteBackfill(context.Background(), nil, "", 10); err != nil {
 		t.Fatalf("ExecuteBackfill (batch 1): %v", err)
 	}
+	if err := u.FlushSynonyms(context.Background()); err != nil {
+		t.Fatalf("FlushSynonyms (batch 1): %v", err)
+	}
 	if engine.synonymsCallCount != 1 {
 		t.Fatalf("after batch 1, RegisterSynonyms call count = %d, want 1", engine.synonymsCallCount)
 	}
@@ -498,6 +516,9 @@ func TestRegisterBatchSynonyms_SkipsPUTWhenNoNewSynonyms(t *testing.T) {
 	u.articleRepo = &mockArticleRepo{articles: []*domain.Article{a2}}
 	if _, err := u.ExecuteBackfill(context.Background(), nil, "", 10); err != nil {
 		t.Fatalf("ExecuteBackfill (batch 2): %v", err)
+	}
+	if err := u.FlushSynonyms(context.Background()); err != nil {
+		t.Fatalf("FlushSynonyms (batch 2): %v", err)
 	}
 
 	if engine.synonymsCallCount != 1 {
@@ -511,6 +532,9 @@ func TestRegisterBatchSynonyms_SkipsPUTWhenNoNewSynonyms(t *testing.T) {
 	if _, err := u.ExecuteBackfill(context.Background(), nil, "", 10); err != nil {
 		t.Fatalf("ExecuteBackfill (batch 3): %v", err)
 	}
+	if err := u.FlushSynonyms(context.Background()); err != nil {
+		t.Fatalf("FlushSynonyms (batch 3): %v", err)
+	}
 	if engine.synonymsCallCount != 2 {
 		t.Fatalf("after batch 3 with a genuinely new synonym, RegisterSynonyms call count = %d, want 2", engine.synonymsCallCount)
 	}
@@ -519,5 +543,66 @@ func TestRegisterBatchSynonyms_SkipsPUTWhenNoNewSynonyms(t *testing.T) {
 	}
 	if _, ok := engine.lastSynonymsArg["テスト2"]; !ok {
 		t.Fatalf("batch 3 PUT missing new key テスト2: %v", engine.lastSynonymsArg)
+	}
+}
+
+// TestFlushSynonyms_NoOpWhenNothingPending reproduces PM-2026-047 action item
+// #2: Meilisearch's synonyms setting has no incremental/patch update, only a
+// full-replace PUT (https://www.meilisearch.com/docs/reference/api/settings/update-synonyms),
+// and the Meilisearch team's own guidance for task-database growth is to
+// control how often settings PUTs are issued (see
+// github.com/meilisearch/meilisearch/discussions/567). registerBatchSynonyms
+// must only mark the union dirty; FlushSynonyms is the sole place that emits
+// a RegisterSynonyms call, so indexing and PUT frequency are decoupled and a
+// periodic loop (not every batch) controls how often Meilisearch receives a
+// settingsUpdate task.
+func TestFlushSynonyms_NoOpWhenNothingPending(t *testing.T) {
+	engine := &mockSearchEngineForIndexing{}
+	u := NewIndexArticlesUsecase(&mockArticleRepo{}, engine, nil)
+
+	if err := u.FlushSynonyms(context.Background()); err != nil {
+		t.Fatalf("FlushSynonyms: %v", err)
+	}
+	if engine.synonymsCallCount != 0 {
+		t.Fatalf("RegisterSynonyms call count = %d, want 0 (nothing pending)", engine.synonymsCallCount)
+	}
+}
+
+// TestFlushSynonyms_IndexingAloneDoesNotPUT pins the decoupling: indexing a
+// batch must only accumulate the union in memory. Without an explicit
+// FlushSynonyms call, no PUT is emitted no matter how many batches run.
+func TestFlushSynonyms_IndexingAloneDoesNotPUT(t *testing.T) {
+	now := time.Now()
+	tok, err := tokenize.InitTokenizer()
+	if err != nil {
+		t.Fatalf("InitTokenizer: %v", err)
+	}
+	a1, _ := domain.NewArticle("1", "T1", "C1", []string{"テスト1"}, now, "u")
+	repo := &mockArticleRepo{articles: []*domain.Article{a1}}
+	engine := &mockSearchEngineForIndexing{}
+	u := NewIndexArticlesUsecase(repo, engine, tok)
+
+	if _, err := u.ExecuteBackfill(context.Background(), nil, "", 10); err != nil {
+		t.Fatalf("ExecuteBackfill: %v", err)
+	}
+	if engine.synonymsCallCount != 0 {
+		t.Fatalf("RegisterSynonyms call count = %d before any FlushSynonyms call, want 0", engine.synonymsCallCount)
+	}
+
+	if err := u.FlushSynonyms(context.Background()); err != nil {
+		t.Fatalf("FlushSynonyms (1st): %v", err)
+	}
+	if engine.synonymsCallCount != 1 {
+		t.Fatalf("RegisterSynonyms call count = %d after 1st flush, want 1", engine.synonymsCallCount)
+	}
+
+	// A second flush with nothing new accumulated since must stay a no-op —
+	// this is what keeps a periodic flush loop from re-PUTting an unchanged
+	// dictionary every tick.
+	if err := u.FlushSynonyms(context.Background()); err != nil {
+		t.Fatalf("FlushSynonyms (2nd): %v", err)
+	}
+	if engine.synonymsCallCount != 1 {
+		t.Fatalf("RegisterSynonyms call count = %d after 2nd flush with nothing new, want 1", engine.synonymsCallCount)
 	}
 }

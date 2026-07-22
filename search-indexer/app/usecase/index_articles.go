@@ -27,13 +27,23 @@ type IndexArticlesUsecase struct {
 	searchEngine port.SearchEngine
 	tokenizer    *tokenizer.Tokenizer
 
-	// synonymsMu guards synonyms, the process-wide union of every synonym
-	// map registered so far. Meilisearch's synonyms PUT is a full replace,
-	// not a merge, so registerBatchSynonyms must always PUT the accumulated
-	// union rather than just the current batch's map — otherwise each
-	// batch's PUT erases every synonym registered by earlier batches.
-	synonymsMu sync.Mutex
-	synonyms   map[string][]string
+	// synonymsMu guards synonyms and synonymsDirty. synonyms is the
+	// process-wide union of every synonym map registered so far. Meilisearch's
+	// synonyms PUT is a full replace, not a merge (there is no incremental/
+	// patch endpoint: https://www.meilisearch.com/docs/reference/api/settings/update-synonyms),
+	// so a flush always sends the accumulated union rather than just the
+	// latest batch's map — otherwise it would erase every synonym registered
+	// by earlier batches. synonymsDirty decouples "a batch changed the union"
+	// from "Meilisearch received a PUT": registerBatchSynonyms only marks
+	// dirty, and FlushSynonyms is the sole place that actually calls
+	// RegisterSynonyms. A periodic caller (bootstrap.runSynonymsFlushLoop)
+	// controls how often that PUT fires — Meilisearch's own task history
+	// retains each settingsUpdate task's full payload indefinitely, so PUTting
+	// on every batch (the pre-2026-07-22 behavior) filled the task database
+	// and locked out all writes (PM-2026-047).
+	synonymsMu    sync.Mutex
+	synonyms      map[string][]string
+	synonymsDirty bool
 }
 
 type IndexResult struct {
@@ -224,13 +234,10 @@ func (u *IndexArticlesUsecase) ExecuteBatchArticles(ctx context.Context, article
 }
 
 // registerBatchSynonyms merges synonyms for every doc in the batch into the
-// process-wide union accumulated across all batches, and emits at most one
-// RegisterSynonyms call carrying that union. Meilisearch's synonyms PUT is a
-// full replace, not a merge: PUTing only the current batch's map erases every
-// synonym registered by earlier batches, so only the last batch processed
-// ever survived. Emitting the accumulated union PUT also keeps the "at most
-// one PUT per batch" property that collapses Meilisearch's synonyms-PUT task
-// queue pressure against concurrent search reads.
+// process-wide union accumulated across all batches and marks it dirty if
+// the batch introduced anything new. It never calls Meilisearch itself —
+// FlushSynonyms does that — so indexing throughput never determines how
+// often Meilisearch receives a settingsUpdate task.
 func (u *IndexArticlesUsecase) registerBatchSynonyms(ctx context.Context, docs []domain.SearchDocument) {
 	if len(docs) == 0 {
 		return
@@ -244,6 +251,7 @@ func (u *IndexArticlesUsecase) registerBatchSynonyms(ctx context.Context, docs [
 	}
 
 	u.synonymsMu.Lock()
+	defer u.synonymsMu.Unlock()
 	if u.synonyms == nil {
 		u.synonyms = make(map[string][]string, len(batch))
 	}
@@ -255,12 +263,35 @@ func (u *IndexArticlesUsecase) registerBatchSynonyms(ctx context.Context, docs [
 		}
 	}
 	if !changed {
-		u.synonymsMu.Unlock()
-		slog.DebugContext(ctx, "skipping synonyms PUT: batch introduces no new or changed entries", "batch_size", len(batch))
+		slog.DebugContext(ctx, "batch introduces no new or changed synonym entries", "batch_size", len(batch))
 		return
 	}
 	maps.Copy(u.synonyms, batch)
+	u.synonymsDirty = true
+}
+
+// FlushSynonyms PUTs the accumulated synonyms union to Meilisearch if
+// registerBatchSynonyms has marked it dirty since the last flush, and is a
+// no-op otherwise. Meilisearch's synonyms setting has no incremental/patch
+// update — only a full-replace PUT
+// (https://www.meilisearch.com/docs/reference/api/settings/update-synonyms) —
+// and retains every settingsUpdate task's full payload in its task history
+// indefinitely. PUTting on every indexed batch (the pre-2026-07-22 behavior)
+// generated one such task per batch and, as the union grew, per-task payload
+// size grew with it, filling the task database and locking out all writes
+// (PM-2026-047). The Meilisearch team's own guidance for task-database growth
+// is to control how often settings PUTs are issued rather than expect an
+// incremental update path (github.com/meilisearch/meilisearch/discussions/567
+// via meilisearch/product#567). Call this from a periodic loop
+// (bootstrap.runSynonymsFlushLoop) instead of per batch.
+func (u *IndexArticlesUsecase) FlushSynonyms(ctx context.Context) error {
+	u.synonymsMu.Lock()
+	if !u.synonymsDirty {
+		u.synonymsMu.Unlock()
+		return nil
+	}
 	union := maps.Clone(u.synonyms)
+	u.synonymsDirty = false
 	u.synonymsMu.Unlock()
 
 	if err := u.searchEngine.RegisterSynonyms(ctx, union); err != nil {
@@ -269,5 +300,7 @@ func (u *IndexArticlesUsecase) registerBatchSynonyms(ctx context.Context, docs [
 		// swallowed entirely, so a persistent Meilisearch problem here was
 		// invisible until someone noticed synonym search wasn't working.
 		slog.WarnContext(ctx, "failed to register synonyms", "error", err, "synonym_count", len(union))
+		return err
 	}
+	return nil
 }

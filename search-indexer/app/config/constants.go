@@ -55,6 +55,15 @@ var (
 	// MeiliSearchCacheTTL's cadence so a query is either a cache hit or
 	// the embedder is already warm.
 	WarmupInterval = durationEnv("MEILI_WARMUP_INTERVAL", 5*time.Minute)
+	// SynonymsFlushInterval controls how often the accumulated synonyms union
+	// is PUT to Meilisearch. See bootstrap.runSynonymsFlushLoop (PM-2026-047
+	// action item #2): Meilisearch's synonyms setting has no incremental/patch
+	// update, only a full-replace PUT, and it retains every settingsUpdate
+	// task's payload in its task history indefinitely. PUTting once per
+	// indexed batch generated one such task per batch with an ever-growing
+	// payload; flushing on a fixed interval instead bounds task creation
+	// regardless of indexing throughput.
+	SynonymsFlushInterval = durationEnv("MEILI_SYNONYMS_FLUSH_INTERVAL", 1*time.Minute)
 )
 
 func floatEnv(key string, defaultVal float64) float64 {
