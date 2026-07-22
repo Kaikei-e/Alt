@@ -17,6 +17,7 @@ type SearchDriver interface {
 	SearchByUserIDWithPagination(ctx context.Context, query string, userID string, offset, limit int64) ([]driver.SearchDocumentDriver, int64, error)
 	EnsureIndex(ctx context.Context) error
 	RegisterSynonyms(ctx context.Context, synonyms map[string][]string) error
+	PruneTaskHistory(ctx context.Context, olderThan time.Duration) error
 }
 
 type SearchEngineGateway struct {
@@ -176,6 +177,17 @@ func (g *SearchEngineGateway) RegisterSynonyms(ctx context.Context, synonyms map
 	if err != nil {
 		return &domain.SearchEngineError{
 			Op:  "RegisterSynonyms",
+			Err: err,
+		}
+	}
+	return nil
+}
+
+func (g *SearchEngineGateway) PruneTaskHistory(ctx context.Context, olderThan time.Duration) error {
+	err := g.driver.PruneTaskHistory(ctx, olderThan)
+	if err != nil {
+		return &domain.SearchEngineError{
+			Op:  "PruneTaskHistory",
 			Err: err,
 		}
 	}

@@ -52,6 +52,9 @@ func (m *mockSearchEngine) SearchByUserIDWithPagination(ctx context.Context, que
 func (m *mockSearchEngine) RegisterSynonyms(ctx context.Context, synonyms map[string][]string) error {
 	return m.err
 }
+func (m *mockSearchEngine) PruneTaskHistory(ctx context.Context, olderThan time.Duration) error {
+	return m.err
+}
 
 var _ port.SearchEngine = (*mockSearchEngine)(nil)
 

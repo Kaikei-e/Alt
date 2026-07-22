@@ -160,6 +160,10 @@ func (m *mockSearchEngineForIndexing) RegisterSynonyms(ctx context.Context, syno
 	return nil
 }
 
+func (m *mockSearchEngineForIndexing) PruneTaskHistory(ctx context.Context, olderThan time.Duration) error {
+	return nil
+}
+
 func TestIndexArticlesUsecase_Execute(t *testing.T) {
 	now := time.Now()
 	article1, _ := domain.NewArticle("1", "Title 1", "Content 1", []string{"tag1"}, now, "user1")

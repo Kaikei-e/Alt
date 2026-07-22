@@ -50,6 +50,7 @@ func (stubSearchEngine) SearchByUserIDWithPagination(context.Context, string, st
 	return nil, 0, nil
 }
 func (stubSearchEngine) RegisterSynonyms(context.Context, map[string][]string) error { return nil }
+func (stubSearchEngine) PruneTaskHistory(context.Context, time.Duration) error       { return nil }
 
 var _ port.SearchEngine = stubSearchEngine{}
 

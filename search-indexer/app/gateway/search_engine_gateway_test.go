@@ -11,12 +11,14 @@ import (
 
 // Mock driver for testing
 type mockSearchDriver struct {
-	indexedDocs   []driver.SearchDocumentDriver
-	searchResults []driver.SearchDocumentDriver
-	indexErr      error
-	searchErr     error
-	ensureErr     error
-	synonymsErr   error
+	indexedDocs       []driver.SearchDocumentDriver
+	searchResults     []driver.SearchDocumentDriver
+	indexErr          error
+	searchErr         error
+	ensureErr         error
+	synonymsErr       error
+	pruneErr          error
+	gotPruneOlderThan time.Duration
 }
 
 func (m *mockSearchDriver) IndexDocuments(ctx context.Context, docs []driver.SearchDocumentDriver) error {
@@ -91,6 +93,14 @@ func (m *mockSearchDriver) SearchByUserIDWithPagination(ctx context.Context, que
 func (m *mockSearchDriver) RegisterSynonyms(ctx context.Context, synonyms map[string][]string) error {
 	if m.synonymsErr != nil {
 		return m.synonymsErr
+	}
+	return nil
+}
+
+func (m *mockSearchDriver) PruneTaskHistory(ctx context.Context, olderThan time.Duration) error {
+	m.gotPruneOlderThan = olderThan
+	if m.pruneErr != nil {
+		return m.pruneErr
 	}
 	return nil
 }
@@ -393,6 +403,47 @@ func TestSearchEngineGateway_EnsureIndex(t *testing.T) {
 
 			if !tt.wantErr && err != nil {
 				t.Errorf("EnsureIndex() error = %v, wantErr %v", err, tt.wantErr)
+			}
+		})
+	}
+}
+
+func TestSearchEngineGateway_PruneTaskHistory(t *testing.T) {
+	tests := []struct {
+		name    string
+		mockErr error
+		wantErr bool
+	}{
+		{
+			name:    "successful prune",
+			mockErr: nil,
+			wantErr: false,
+		},
+		{
+			name:    "driver error",
+			mockErr: &driver.DriverError{Op: "PruneTaskHistory", Err: errors.New("meilisearch unreachable")},
+			wantErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			mockDriver := &mockSearchDriver{
+				pruneErr: tt.mockErr,
+			}
+
+			gateway := NewSearchEngineGateway(mockDriver)
+
+			err := gateway.PruneTaskHistory(context.Background(), 72*time.Hour)
+
+			if tt.wantErr && err == nil {
+				t.Errorf("PruneTaskHistory() error = %v, wantErr %v", err, tt.wantErr)
+			}
+			if !tt.wantErr && err != nil {
+				t.Errorf("PruneTaskHistory() error = %v, wantErr %v", err, tt.wantErr)
+			}
+			if mockDriver.gotPruneOlderThan != 72*time.Hour {
+				t.Errorf("driver received olderThan = %v, want 72h", mockDriver.gotPruneOlderThan)
 			}
 		})
 	}

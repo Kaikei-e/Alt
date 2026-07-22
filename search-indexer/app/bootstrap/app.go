@@ -108,6 +108,12 @@ func Run(ctx context.Context) error {
 	// Goroutine so a stalled embedder cannot delay service start.
 	go warmupSearchEngine(ctx, searchEngine)
 
+	// Periodically prune finished Meilisearch tasks so registerBatchSynonyms's
+	// full-replace settings PUTs never again fill the task database and wedge
+	// all writes (2026-07-22 incident: search-indexer/CLAUDE.md known failure
+	// patterns).
+	go runTaskPruneLoop(ctx, searchEngine, config.TaskPruneInterval, config.TaskRetention)
+
 	// ── Recap drivers & gateways ──
 	var indexRecapsUsecase *usecase.IndexRecapsUsecase
 	var searchRecapsUsecase *usecase.SearchRecapsUsecase

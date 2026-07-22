@@ -683,6 +683,51 @@ func (d *MeilisearchDriver) RegisterSynonyms(ctx context.Context, synonyms map[s
 	return nil
 }
 
+// pruneTaskWaitTimeout bounds how long PruneTaskHistory waits for the
+// taskDeletion task Meilisearch enqueues. Deleting thousands of large
+// settingsUpdate task payloads has been observed (2026-07-22 incident) to
+// take over a minute, well past taskWaitTimeout's 15s default for
+// user-facing indexing calls, so this uses its own generous budget.
+const pruneTaskWaitTimeout = 5 * time.Minute
+
+// PruneTaskHistory deletes finished (succeeded/failed/canceled) tasks
+// enqueued before now-olderThan. Meilisearch retains every completed task's
+// full request payload in its task database indefinitely and only runs its
+// own automatic cleanup once total stored tasks reach 1M -- a threshold this
+// service never reaches because a few thousand large settingsUpdate payloads
+// (each carrying the full synonyms dictionary) exhaust the task database's
+// ~10GiB byte budget long before the count-based cleanup would fire. Without
+// this prune, the task database eventually fills and Meilisearch rejects all
+// writes with no_space_left_on_device, silently halting indexing while the
+// service stays healthy.
+func (d *MeilisearchDriver) PruneTaskHistory(ctx context.Context, olderThan time.Duration) error {
+	task, err := d.client.DeleteTasksWithContext(ctx, &meilisearch.DeleteTasksQuery{
+		Statuses: []meilisearch.TaskStatus{
+			meilisearch.TaskStatusSucceeded,
+			meilisearch.TaskStatusFailed,
+			meilisearch.TaskStatusCanceled,
+		},
+		BeforeEnqueuedAt: time.Now().Add(-olderThan),
+	})
+	if err != nil {
+		return &DriverError{
+			Op:  "PruneTaskHistory",
+			Err: fmt.Errorf("failed to enqueue task deletion: %w", err),
+		}
+	}
+
+	waitCtx, cancel := context.WithTimeout(ctx, pruneTaskWaitTimeout)
+	defer cancel()
+	if _, err := d.client.WaitForTaskWithContext(waitCtx, task.TaskUID, d.taskPollInterval); err != nil {
+		return &DriverError{
+			Op:  "PruneTaskHistory",
+			Err: fmt.Errorf("failed to wait for task deletion: %w", err),
+		}
+	}
+
+	return nil
+}
+
 // buildSecureFilter creates a secure filter from tag filters
 func (d *MeilisearchDriver) buildSecureFilter(filters []string) string {
 	return makeSecureSearchFilter(filters)

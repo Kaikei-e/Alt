@@ -50,6 +50,9 @@ func (m *mockSearchEngine) EnsureIndex(ctx context.Context) error { return nil }
 func (m *mockSearchEngine) RegisterSynonyms(ctx context.Context, synonyms map[string][]string) error {
 	return nil
 }
+func (m *mockSearchEngine) PruneTaskHistory(ctx context.Context, olderThan time.Duration) error {
+	return nil
+}
 
 func TestHandler_SearchArticles(t *testing.T) {
 	tests := []struct {

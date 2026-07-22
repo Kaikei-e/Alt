@@ -39,6 +39,15 @@ var (
 	// in repeat queries within a reasonable window without forcing per-write
 	// cache flushes.
 	MeiliSearchCacheTTL = durationEnv("MEILI_SEARCH_CACHE_TTL", 5*time.Minute)
+	// TaskPruneInterval controls how often finished Meilisearch tasks older
+	// than TaskRetention are deleted. See bootstrap.runTaskPruneLoop: without
+	// this, registerBatchSynonyms's full-replace settings PUTs accumulate in
+	// Meilisearch's task database until it hits its ~10GiB byte limit and
+	// rejects all writes (the 2026-07-22 incident).
+	TaskPruneInterval = durationEnv("MEILI_TASK_PRUNE_INTERVAL", 6*time.Hour)
+	// TaskRetention is how long a finished task's history is kept before
+	// it becomes eligible for pruning.
+	TaskRetention = durationEnv("MEILI_TASK_RETENTION", 72*time.Hour)
 )
 
 func floatEnv(key string, defaultVal float64) float64 {

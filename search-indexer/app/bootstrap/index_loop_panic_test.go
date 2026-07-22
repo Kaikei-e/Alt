@@ -73,6 +73,9 @@ func (noopSearchEngine) SearchByUserIDWithPagination(ctx context.Context, query 
 func (noopSearchEngine) RegisterSynonyms(ctx context.Context, synonyms map[string][]string) error {
 	return nil
 }
+func (noopSearchEngine) PruneTaskHistory(ctx context.Context, olderThan time.Duration) error {
+	return nil
+}
 
 var _ port.ArticleRepository = panicArticleRepo{}
 var _ port.SearchEngine = noopSearchEngine{}

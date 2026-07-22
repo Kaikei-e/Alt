@@ -81,6 +81,10 @@ func (m *mockSearchEngine) RegisterSynonyms(ctx context.Context, synonyms map[st
 	return m.err
 }
 
+func (m *mockSearchEngine) PruneTaskHistory(ctx context.Context, olderThan time.Duration) error {
+	return m.err
+}
+
 func TestSearchArticlesUsecase_Execute(t *testing.T) {
 	now := time.Now()
 	article, _ := domain.NewArticle("1", "Test Title", "Test Content", []string{"tag1"}, now, "user1")

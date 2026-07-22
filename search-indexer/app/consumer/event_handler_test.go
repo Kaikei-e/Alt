@@ -82,6 +82,10 @@ func (m *mockSearchEngine) RegisterSynonyms(ctx context.Context, synonyms map[st
 	return m.err
 }
 
+func (m *mockSearchEngine) PruneTaskHistory(ctx context.Context, olderThan time.Duration) error {
+	return nil
+}
+
 var _ port.SearchEngine = (*mockSearchEngine)(nil)
 var _ port.ArticleRepository = (*mockArticleRepo)(nil)
 
