@@ -49,3 +49,29 @@ func warmupSearchEngine(ctx context.Context, eng warmupSearcher) {
 		"elapsed_ms", time.Since(start).Milliseconds(),
 	)
 }
+
+// runWarmupLoop re-probes the search engine on an interval instead of once
+// at startup. A single startup-only probe (the pre-2026-07-22 design) was
+// not enough: production observation showed gemma4 (chat/RAG) and
+// qwen3-embedding (hybrid search) exclusively swap GPU residency on this
+// host's single GPU, so the embedding model goes cold again within minutes
+// of the last chat request regardless of OLLAMA_KEEP_ALIVE. Re-probing on
+// the same cadence as the LRU cache TTL means a query is either a cheap
+// cache hit or the embedder is already warm.
+func runWarmupLoop(ctx context.Context, eng warmupSearcher, interval time.Duration) {
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		default:
+		}
+
+		warmupSearchEngine(ctx, eng)
+
+		select {
+		case <-ctx.Done():
+			return
+		case <-time.After(interval):
+		}
+	}
+}

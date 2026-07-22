@@ -102,11 +102,13 @@ func Run(ctx context.Context) error {
 		return err
 	}
 
-	// Issue a probe Search so Meilisearch loads the qwen3 embedding model into
-	// Ollama's resident set before real traffic arrives. Without this the first
-	// user-facing search pays the embedder cold-start cost (~1.1s observed).
-	// Goroutine so a stalled embedder cannot delay service start.
-	go warmupSearchEngine(ctx, searchEngine)
+	// Periodically probe Search so Meilisearch keeps the qwen3 embedding model
+	// in Ollama's resident set. A single startup-only probe is not enough:
+	// gemma4 (chat/RAG) and qwen3-embedding were observed to exclusively swap
+	// GPU residency, so the embedder goes cold again within minutes regardless
+	// of OLLAMA_KEEP_ALIVE. Goroutine so a stalled embedder cannot delay
+	// service start or block the loop.
+	go runWarmupLoop(ctx, searchEngine, config.WarmupInterval)
 
 	// Periodically prune finished Meilisearch tasks so registerBatchSynonyms's
 	// full-replace settings PUTs never again fill the task database and wedge

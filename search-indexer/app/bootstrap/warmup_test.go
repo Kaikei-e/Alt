@@ -80,3 +80,71 @@ func TestWarmupSearchEngine_RespectsCancellation(t *testing.T) {
 		t.Fatal("warmupSearchEngine did not honor cancelled context")
 	}
 }
+
+// TestRunWarmupLoop_ProbesImmediatelyThenOnInterval guards the fix for the
+// 2026-07-22 incident: a single startup-only probe is not enough because
+// gemma4 (chat/RAG) and qwen3-embedding (hybrid search) were observed to
+// exclusively swap GPU residency on this host, so the embedder goes cold
+// again within minutes of the last chat request regardless of
+// OLLAMA_KEEP_ALIVE. The loop must re-probe on an interval, starting
+// immediately rather than waiting a full interval after process start.
+func TestRunWarmupLoop_ProbesImmediatelyThenOnInterval(t *testing.T) {
+	logger.Init()
+	eng := &fakeWarmupEngine{}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	go runWarmupLoop(ctx, eng, 20*time.Millisecond)
+
+	deadline := time.After(2 * time.Second)
+	for eng.calls.Load() < 3 {
+		select {
+		case <-deadline:
+			t.Fatalf("warmup call count = %d after timeout, want >= 3", eng.calls.Load())
+		case <-time.After(5 * time.Millisecond):
+		}
+	}
+}
+
+// TestRunWarmupLoop_ErrorDoesNotStopLoop keeps re-probing on subsequent
+// ticks even when the embedder is briefly unreachable -- a transient
+// failure must not silently disable the safety net that keeps the model
+// resident.
+func TestRunWarmupLoop_ErrorDoesNotStopLoop(t *testing.T) {
+	logger.Init()
+	eng := &fakeWarmupEngine{err: errors.New("embedder unreachable")}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	go runWarmupLoop(ctx, eng, 10*time.Millisecond)
+
+	deadline := time.After(2 * time.Second)
+	for eng.calls.Load() < 3 {
+		select {
+		case <-deadline:
+			t.Fatalf("warmup call count = %d after timeout, want >= 3 despite errors", eng.calls.Load())
+		case <-time.After(5 * time.Millisecond):
+		}
+	}
+}
+
+// TestRunWarmupLoop_RespectsCancellation guards shutdown: the loop must
+// exit promptly instead of leaking a goroutine past ctx cancellation.
+func TestRunWarmupLoop_RespectsCancellation(t *testing.T) {
+	logger.Init()
+	eng := &fakeWarmupEngine{}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		runWarmupLoop(ctx, eng, time.Hour)
+	}()
+
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("runWarmupLoop did not honor a pre-cancelled context")
+	}
+}

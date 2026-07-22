@@ -48,6 +48,13 @@ var (
 	// TaskRetention is how long a finished task's history is kept before
 	// it becomes eligible for pruning.
 	TaskRetention = durationEnv("MEILI_TASK_RETENTION", 72*time.Hour)
+	// WarmupInterval controls how often the startup warmup probe re-fires.
+	// See bootstrap.runWarmupLoop: gemma4 (chat/RAG) and qwen3-embedding
+	// (hybrid search) were observed to exclusively swap GPU residency, so
+	// a single startup-only probe goes cold again within minutes. Matches
+	// MeiliSearchCacheTTL's cadence so a query is either a cache hit or
+	// the embedder is already warm.
+	WarmupInterval = durationEnv("MEILI_WARMUP_INTERVAL", 5*time.Minute)
 )
 
 func floatEnv(key string, defaultVal float64) float64 {
