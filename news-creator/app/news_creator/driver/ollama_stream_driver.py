@@ -9,6 +9,11 @@ from news_creator.config.config import NewsCreatorConfig
 
 logger = logging.getLogger(__name__)
 
+# Runner startup params: changing these mid-session forces Ollama to reload
+# the model runner. They are fixed by config/Modelfile, never caller-supplied,
+# mirroring the /api/generate path's defense (ollama_gateway.py).
+_RUNNER_STARTUP_PARAMS = frozenset({"num_ctx", "num_batch", "num_keep"})
+
 
 class OllamaStreamDriver:
     """HTTP client for Ollama API (streaming requests only)."""
@@ -47,10 +52,21 @@ class OllamaStreamDriver:
         defaults. Caller options (num_predict, temperature, etc.) override.
         This prevents Ollama model reload from parameter mismatch between
         batch summarization and chat requests.
+
+        Runner startup params (num_ctx, num_batch, num_keep) are stripped
+        from caller options before merging -- they are fixed by config/
+        Modelfile, so a caller-supplied value that differs from the base
+        would otherwise trigger an Ollama runner reload. Sampling params
+        stay caller-priority.
         """
         base = self.config.get_llm_options()
         if caller_options:
-            base.update(caller_options)
+            sampling_options = {
+                k: v
+                for k, v in caller_options.items()
+                if k not in _RUNNER_STARTUP_PARAMS
+            }
+            base.update(sampling_options)
         return base
 
     async def chat_stream(

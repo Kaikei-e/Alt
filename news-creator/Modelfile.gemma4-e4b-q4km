@@ -22,3 +22,6 @@ TEMPLATE """{{- $system := "" }}
 """
 
 PARAMETER stop <turn|>
+# Match gemma4-e4b-12k's num_ctx so a direct base-tag load never contends
+# with the 12k tag over the shared Ollama runner (server default is 8192).
+PARAMETER num_ctx 12288

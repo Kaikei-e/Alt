@@ -271,6 +271,90 @@ class TestChatStreamUsesApiChat:
         assert captured["json"]["options"]["temperature"] == 0.1
 
 
+class TestMergeOptionsRunnerParamGuard:
+    """`_merge_options()` must strip runner startup params (num_ctx, num_batch,
+    num_keep) from caller options before merging with config base, mirroring
+    the /api/generate path's defense. A caller-supplied runner param that
+    differs from the config base would otherwise trigger an Ollama runner
+    reload. Sampling params (temperature, top_p, top_k, repeat_penalty,
+    num_predict, stop, think) remain caller-priority, unchanged.
+    """
+
+    def test_strips_caller_num_ctx(self, driver):
+        base_num_ctx = driver.config.get_llm_options()["num_ctx"]
+        merged = driver._merge_options({"num_ctx": base_num_ctx + 4096})
+        assert merged["num_ctx"] == base_num_ctx
+
+    def test_strips_caller_num_batch(self, driver):
+        base_num_batch = driver.config.get_llm_options()["num_batch"]
+        merged = driver._merge_options({"num_batch": base_num_batch + 512})
+        assert merged["num_batch"] == base_num_batch
+
+    def test_strips_caller_num_keep(self, driver):
+        base_num_keep = driver.config.get_llm_options()["num_keep"]
+        merged = driver._merge_options({"num_keep": base_num_keep + 10})
+        assert merged["num_keep"] == base_num_keep
+
+    def test_sampling_params_still_caller_priority(self, driver):
+        caller_options = {
+            "temperature": 0.05,
+            "top_p": 0.5,
+            "top_k": 10,
+            "repeat_penalty": 1.0,
+            "num_predict": 999,
+            "stop": ["<eot|>"],
+            "think": False,
+        }
+        merged = driver._merge_options(caller_options)
+        for key, value in caller_options.items():
+            assert merged[key] == value
+
+    def test_acolyte_sends_same_runner_values_unaffected(self, driver):
+        """Acolyte's current behavior -- sending the same runner values as
+        config base -- must keep working identically after the strip guard."""
+        base = driver.config.get_llm_options()
+        caller_options = {
+            "num_ctx": base["num_ctx"],
+            "num_batch": base["num_batch"],
+            "num_keep": base["num_keep"],
+            "temperature": base["temperature"],
+        }
+        merged = driver._merge_options(caller_options)
+        assert merged["num_ctx"] == base["num_ctx"]
+        assert merged["num_batch"] == base["num_batch"]
+        assert merged["num_keep"] == base["num_keep"]
+        assert merged["temperature"] == base["temperature"]
+
+    def test_rag_orchestrator_sends_no_options_unaffected(self, driver):
+        """rag-orchestrator sends no options at all -- merge must fall back to
+        config base options unchanged."""
+        merged = driver._merge_options(None)
+        assert merged == driver.config.get_llm_options()
+
+
+class TestChatStreamStripsRunnerParams:
+    """End-to-end (via chat_stream) confirmation that a caller-supplied
+    num_ctx never reaches the downstream Ollama /api/chat payload."""
+
+    @pytest.mark.asyncio
+    async def test_caller_num_ctx_does_not_reach_downstream(self, driver):
+        lines = [b'{"message":{"role":"assistant","content":"hi"},"done":true}\n']
+        session, captured = _make_mock_session(response_lines=lines)
+        driver.session = session
+
+        base_num_ctx = driver.config.get_llm_options()["num_ctx"]
+        payload = {
+            "model": "gemma4-e4b-12k",
+            "messages": [{"role": "user", "content": "test"}],
+            "options": {"num_ctx": base_num_ctx + 4096, "temperature": 0.2},
+        }
+        async for _ in driver.chat_stream(payload):
+            pass
+
+        assert captured["json"]["options"]["num_ctx"] == base_num_ctx
+        assert captured["json"]["options"]["temperature"] == 0.2
+
+
 class TestChatGenerateUsesApiChat:
     """chat_generate() must call /api/chat and omit raw (non-streaming)."""
 
