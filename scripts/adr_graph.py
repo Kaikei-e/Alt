@@ -3,7 +3,9 @@
 
 Authors write `supersedes:` only on the new ADR (the one doing the replacing).
 The reverse direction (which ADR currently supersedes a given one) is always
-computed, never authored, so there is nothing to keep in sync by hand.
+computed, never authored. Frontmatter `status` is a projection of that reverse
+graph: inbound supersedes ⇒ `status: superseded` (enforced by `check`).
+Empty `supersedes: -` stubs are forbidden.
 """
 from __future__ import annotations
 
@@ -45,6 +47,7 @@ def parse_frontmatter(text: str) -> dict:
             i += 1
         elif value == "":
             items = []
+            saw_empty_item = False
             j = i + 1
             while j < len(lines):
                 item_match = BLOCK_ITEM_RE.match(lines[j])
@@ -53,8 +56,12 @@ def parse_frontmatter(text: str) -> dict:
                 item = item_match.group(1).strip().strip('"').strip("'")
                 if item:
                     items.append(item)
+                else:
+                    saw_empty_item = True
                 j += 1
             fields[key] = items
+            if saw_empty_item:
+                fields.setdefault("_empty_list_keys", []).append(key)
             i = j
         else:
             fields[key] = value.strip('"').strip("'")
@@ -69,19 +76,60 @@ def normalize_adr_id(raw: str) -> str:
 
 
 def load_adrs(adr_dir: Path) -> dict:
-    """Load every ADR under adr_dir into id -> {status, supersedes, title}."""
+    """Load every ADR under adr_dir into id -> {status, supersedes, title, ...}."""
     adrs: dict = {}
     for path in sorted(adr_dir.glob("*.md")):
         if not ADR_FILENAME_RE.match(path.stem):
             continue
         fm = parse_frontmatter(path.read_text(encoding="utf-8"))
-        supersedes = [normalize_adr_id(s) for s in fm.get("supersedes", [])]
+        raw_supersedes = fm.get("supersedes", [])
+        if not isinstance(raw_supersedes, list):
+            raw_supersedes = [raw_supersedes] if raw_supersedes else []
+        supersedes = [normalize_adr_id(s) for s in raw_supersedes]
         adrs[path.stem] = {
             "status": fm.get("status"),
             "supersedes": supersedes,
             "title": fm.get("title"),
+            "empty_supersedes_stub": "supersedes" in fm.get("_empty_list_keys", []),
         }
     return adrs
+
+
+def find_empty_supersedes_stubs(adr_dir: Path) -> list:
+    """ADR ids whose frontmatter has `supersedes:` with an empty `-` stub."""
+    return [
+        adr_id
+        for adr_id, data in sorted(load_adrs(adr_dir).items())
+        if data.get("empty_supersedes_stub")
+    ]
+
+
+def find_status_drift(adrs: dict, reverse_graph: dict) -> list:
+    """Accepted ADRs that have inbound supersedes (status should be superseded)."""
+    return [
+        adr_id
+        for adr_id, data in sorted(adrs.items())
+        if data.get("status") == "accepted" and reverse_graph.get(adr_id)
+    ]
+
+
+def find_superseded_without_inbound(adrs: dict, reverse_graph: dict) -> list:
+    """status=superseded but no inbound edge (WARN; e.g. withdrawn without successor)."""
+    return [
+        adr_id
+        for adr_id, data in sorted(adrs.items())
+        if data.get("status") == "superseded" and not reverse_graph.get(adr_id)
+    ]
+
+
+def is_binding(adr_id: str, adrs: dict, reverse_graph: dict) -> bool:
+    """binding(A) ⇔ status=accepted ∧ no inbound supersedes edge."""
+    data = adrs.get(adr_id)
+    if not data:
+        return False
+    if data.get("status") != "accepted":
+        return False
+    return not bool(reverse_graph.get(adr_id))
 
 
 def build_supersedes_graph(adrs: dict) -> dict:
@@ -182,20 +230,54 @@ def render_mermaid(graph: dict, adrs: dict) -> str:
 def cmd_check(adr_dir: Path) -> int:
     adrs = load_adrs(adr_dir)
     graph = build_supersedes_graph(adrs)
+    reverse = build_reverse_graph(graph)
+    errors = 0
 
     dangling = find_dangling_refs(adrs, graph)
     if dangling:
         for new_id, old_id in dangling:
             print(f"ERROR: {new_id} supersedes unknown ADR {old_id}", file=sys.stderr)
-        return 1
+        errors += 1
 
     cycle = find_cycle(graph)
     if cycle:
         print("ERROR: cycle detected in supersedes graph: " + " --> ".join(cycle), file=sys.stderr)
+        errors += 1
+
+    stubs = [adr_id for adr_id, data in sorted(adrs.items()) if data.get("empty_supersedes_stub")]
+    if stubs:
+        for adr_id in stubs:
+            print(
+                f"ERROR: {adr_id} has empty supersedes stub "
+                f"(omit the key or use a real id list)",
+                file=sys.stderr,
+            )
+        errors += 1
+
+    drift = find_status_drift(adrs, reverse)
+    if drift:
+        for adr_id in drift:
+            successors = ", ".join(reverse[adr_id])
+            print(
+                f"ERROR: {adr_id} status=accepted but superseded by {successors} "
+                f"(set status: superseded)",
+                file=sys.stderr,
+            )
+        errors += 1
+
+    orphan_superseded = find_superseded_without_inbound(adrs, reverse)
+    for adr_id in orphan_superseded:
+        print(
+            f"WARN: {adr_id} status=superseded with no inbound supersedes "
+            f"(withdrawn/deprecated? do not invent an edge)",
+            file=sys.stderr,
+        )
+
+    if errors:
         return 1
 
     edge_count = sum(len(targets) for targets in graph.values())
-    print(f"OK: {len(adrs)} ADRs, {edge_count} supersedes edges, no cycles")
+    print(f"OK: {len(adrs)} ADRs, {edge_count} supersedes edges, no cycles, status aligned")
     return 0
 
 
@@ -225,7 +307,10 @@ def main(argv=None) -> int:
     parser.add_argument("--adr-dir", type=Path, default=ADR_DIR)
     sub = parser.add_subparsers(dest="command", required=True)
 
-    sub.add_parser("check", help="Validate the supersedes graph (cycles, dangling refs).")
+    sub.add_parser(
+        "check",
+        help="Validate supersedes DAG: cycles, dangling refs, empty stubs, status drift.",
+    )
 
     resolve_parser = sub.add_parser(
         "resolve", help="Resolve an ADR id to its currently effective successor(s)."

@@ -81,9 +81,19 @@ d.pop("name", None)
 # host port publishes are no-op under `internal: true` but stripping
 # keeps the slice self-describing and dodges any future daemon that
 # does bind them.
+#
+# `profiles:` must go too: `docker compose config --profile <p>` bakes
+# the *source* profiles list into each resolved service, and any later
+# command against this slice (e.g. `down` in a cleanup trap) that does
+# not repeat `--profile <p>` treats every profiled service as inactive
+# -> zero services selected -> silent no-op teardown. The slice already
+# represents exactly one resolved profile's worth of services, so the
+# field is redundant here; dropping it makes plain `up`/`down`/`logs`
+# against the slice (no --profile needed) operate on all of them.
 for svc in d.get("services", {}).values():
     svc.pop("container_name", None)
     svc.pop("ports", None)
+    svc.pop("profiles", None)
 
 # Each project owns its own network, named after the project so a
 # sibling compose project on the same daemon gets a distinct resource.

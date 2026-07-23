@@ -12,10 +12,19 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 import adr_graph  # noqa: E402
 
 
-def write_adr(dir_path: Path, adr_id: str, status: str = "accepted", supersedes=None, inline=False):
+def write_adr(
+    dir_path: Path,
+    adr_id: str,
+    status: str = "accepted",
+    supersedes=None,
+    inline=False,
+    empty_supersedes_stub=False,
+):
     supersedes = supersedes or []
     supersedes_block = ""
-    if supersedes and inline:
+    if empty_supersedes_stub:
+        supersedes_block = "supersedes:\n  -\n"
+    elif supersedes and inline:
         supersedes_block = "supersedes: [" + ", ".join(f'"{s}"' for s in supersedes) + "]\n"
     elif supersedes:
         supersedes_block = "supersedes:\n" + "".join(f'  - "{s}"\n' for s in supersedes)
@@ -147,9 +156,38 @@ class CliCommandTests(unittest.TestCase):
         self.assertEqual(adr_graph.cmd_check(self.tmpdir), 1)
 
     def test_cmd_check_returns_zero_when_clean(self):
-        write_adr(self.tmpdir, "000010")
+        write_adr(self.tmpdir, "000010", status="superseded")
         write_adr(self.tmpdir, "000020", supersedes=["000010"])
         self.assertEqual(adr_graph.cmd_check(self.tmpdir), 0)
+
+    def test_cmd_check_returns_nonzero_on_status_drift(self):
+        write_adr(self.tmpdir, "000010", status="accepted")
+        write_adr(self.tmpdir, "000020", supersedes=["000010"])
+        self.assertEqual(adr_graph.cmd_check(self.tmpdir), 1)
+
+    def test_cmd_check_returns_nonzero_on_empty_supersedes_stub(self):
+        write_adr(self.tmpdir, "000010", empty_supersedes_stub=True)
+        self.assertEqual(adr_graph.cmd_check(self.tmpdir), 1)
+
+    def test_find_status_drift_lists_accepted_with_inbound(self):
+        write_adr(self.tmpdir, "000010", status="accepted")
+        write_adr(self.tmpdir, "000020", supersedes=["000010"])
+        adrs = adr_graph.load_adrs(self.tmpdir)
+        reverse = adr_graph.build_reverse_graph(adr_graph.build_supersedes_graph(adrs))
+        self.assertEqual(adr_graph.find_status_drift(adrs, reverse), ["000010"])
+
+    def test_find_empty_supersedes_stubs(self):
+        write_adr(self.tmpdir, "000010", empty_supersedes_stub=True)
+        write_adr(self.tmpdir, "000020")
+        self.assertEqual(adr_graph.find_empty_supersedes_stubs(self.tmpdir), ["000010"])
+
+    def test_is_binding_false_when_inbound_supersedes(self):
+        write_adr(self.tmpdir, "000010", status="accepted")
+        write_adr(self.tmpdir, "000020", supersedes=["000010"])
+        adrs = adr_graph.load_adrs(self.tmpdir)
+        reverse = adr_graph.build_reverse_graph(adr_graph.build_supersedes_graph(adrs))
+        self.assertFalse(adr_graph.is_binding("000010", adrs, reverse))
+        self.assertTrue(adr_graph.is_binding("000020", adrs, reverse))
 
     def test_cmd_resolve_prints_effective_adr(self):
         write_adr(self.tmpdir, "000010")
@@ -185,6 +223,13 @@ class RealAdrCorpusTests(unittest.TestCase):
         graph = adr_graph.build_supersedes_graph(adrs)
         self.assertIsNone(adr_graph.find_cycle(graph))
         self.assertEqual(adr_graph.find_dangling_refs(adrs, graph), [])
+
+    def test_real_corpus_has_no_status_drift_or_empty_stubs(self):
+        adrs = adr_graph.load_adrs(adr_graph.ADR_DIR)
+        reverse = adr_graph.build_reverse_graph(adr_graph.build_supersedes_graph(adrs))
+        self.assertEqual(adr_graph.find_status_drift(adrs, reverse), [])
+        self.assertEqual(adr_graph.find_empty_supersedes_stubs(adr_graph.ADR_DIR), [])
+        self.assertEqual(adr_graph.cmd_check(adr_graph.ADR_DIR), 0)
 
     def test_real_corpus_resolves_known_supersede_chains(self):
         adrs = adr_graph.load_adrs(adr_graph.ADR_DIR)

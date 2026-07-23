@@ -51,10 +51,32 @@ jsonpath "$.run.runId" == "{{run_id}}"
 jsonpath "$.run.reportId" == "{{report_id}}"
 jsonpath "$.run.runStatus" matches "^(pending|running|succeeded)$"
 
-# Poll until terminal state. retry: 240 × retry-interval: 5000 ms =
-# 20 minute ceiling. Real-LLM pipeline ETA is 7-8 min per the review
-# doc; against the stub it converges in <1s, so the headroom is
-# generous. Exits as soon as runStatus reaches "succeeded".
+# Poll until ANY terminal state (succeeded|failed|cancelled). retry:
+# 240 × retry-interval: 5000 ms = 20 minute ceiling. Real-LLM pipeline
+# ETA is 7-8 min per the review doc; against the stub it converges in
+# <1s, so the headroom is generous. Deliberately not asserting
+# "succeeded" here: a "failed" terminal state must stop the poll loop
+# immediately rather than being retried as "not yet terminal" for the
+# full 20 minutes, so a genuine pipeline failure surfaces in seconds
+# instead of burning the whole ceiling before the strict check below
+# fails anyway.
+POST {{base_url}}/alt.acolyte.v1.AcolyteService/GetRunStatus
+Content-Type: application/json
+Connect-Protocol-Version: 1
+[Options]
+retry: 240
+retry-interval: 5000
+{
+  "runId": "{{run_id}}"
+}
+HTTP 200
+[Asserts]
+jsonpath "$.run.runStatus" matches "^(succeeded|failed|cancelled)$"
+
+# Strict assertion, no retry: terminal state MUST be "succeeded". A
+# "failed"/"cancelled" terminal state (already reached above) fails
+# here immediately so the stub/pipeline mismatch is visible — see
+# docs/services/acolyte-orchestrator for the LangGraph contract.
 # Postgres job gateway sets the terminal value to "succeeded" (NOT
 # "completed" — that string only appears in the orchestrator's log
 # event message). See postgres_job_gw.py:complete_run for the source
@@ -62,9 +84,6 @@ jsonpath "$.run.runStatus" matches "^(pending|running|succeeded)$"
 POST {{base_url}}/alt.acolyte.v1.AcolyteService/GetRunStatus
 Content-Type: application/json
 Connect-Protocol-Version: 1
-[Options]
-retry: 240
-retry-interval: 5000
 {
   "runId": "{{run_id}}"
 }

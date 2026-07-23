@@ -139,18 +139,43 @@ suite_files=(
 )
 shopt -u nullglob
 
+dump_diagnostics() {
+  # Best-effort: containers may already be half-gone by the time a
+  # failure is diagnosed, and none of this may mask the suite's own
+  # exit code. Written into $REPORT_DIR so CI's upload-artifact step
+  # (which only globs e2e/reports/acolyte-orchestrator-*) picks these
+  # up alongside the junit/html reports — the CI job itself never
+  # retains container logs otherwise.
+  echo "==> dumping failure diagnostics to $REPORT_DIR" >&2
+  docker compose -f "$SLICE" -p "$STAGING_PROJECT_NAME" \
+    logs --tail 300 acolyte-orchestrator \
+    > "$REPORT_DIR/diagnostics-orchestrator.log" 2>&1 || true
+  docker compose -f "$SLICE" -p "$STAGING_PROJECT_NAME" \
+    logs --tail 300 search-indexer \
+    > "$REPORT_DIR/diagnostics-search-indexer.log" 2>&1 || true
+  docker compose -f "$SLICE" -p "$STAGING_PROJECT_NAME" \
+    exec -T acolyte-db psql -U acolyte -d acolyte -c \
+    "SELECT run_id, run_status, failure_code, failure_message, started_at, finished_at FROM report_runs ORDER BY started_at DESC NULLS LAST LIMIT 5;" \
+    > "$REPORT_DIR/diagnostics-report-runs.txt" 2>&1 || true
+}
+
 echo "==> running Hurl suite (serial; report→version→run FK chain requires ordering)" >&2
 # --jobs 1 forces a single worker. acolyte-db has FK chains
 # (report_versions → reports, report_runs → reports, change_items →
 # report_versions) and several scenarios depend on captures from
 # earlier scenarios (e.g. 04-07 use {{report_id_basic}} from 02).
 # Hurl 7.1 --test defaults to parallel, which would shuffle this order.
-hurl_run --test \
+if hurl_run --test \
   --jobs 1 \
   --file-root "$ROOT" \
   "${common_vars[@]}" \
   --report-junit "$REPORT_DIR/junit.xml" \
   --report-html  "$REPORT_DIR/html" \
-  "${suite_files[@]}"
-
-echo "==> suite passed. reports: $REPORT_DIR" >&2
+  "${suite_files[@]}"; then
+  echo "==> suite passed. reports: $REPORT_DIR" >&2
+else
+  suite_status=$?
+  echo "==> Hurl suite failed (exit $suite_status)" >&2
+  dump_diagnostics
+  exit "$suite_status"
+fi

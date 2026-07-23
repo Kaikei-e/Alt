@@ -43,7 +43,7 @@ compose_up_with_retry() {
   local attempt
   for attempt in $(seq 1 "$COMPOSE_UP_MAX_ATTEMPTS"); do
     if docker compose -f "$SLICE" -p "$STAGING_PROJECT_NAME" \
-         up -d --wait "$@"; then
+         up -d --wait --wait-timeout 180 "$@"; then
       return 0
     fi
 
