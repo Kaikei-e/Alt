@@ -1,7 +1,11 @@
-"""Executive Summary renderer — deterministic generation from accepted claims.
+"""Executive Summary renderer — deterministic fallback for ES generation.
 
-Replaces LLM-based ES generation. Guarantees completion and key point coverage
-by rendering accepted claims into a structured Japanese summary.
+WriterNode generates the ES via the LLM first (ES_PARAGRAPH_PROMPT) so it
+follows the report's working language. This renderer is only invoked when
+that LLM path fails, returns empty, or every paragraph is rejected by
+citation-grounding validation (see WriterNode._generate_es_section) — it
+guarantees completion by rendering accepted claims into a structured
+Japanese summary without depending on the LLM being reachable.
 """
 
 from __future__ import annotations

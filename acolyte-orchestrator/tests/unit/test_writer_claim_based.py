@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import cast
 
 import pytest
+from structlog.testing import capture_logs
 
 from acolyte.port.llm_provider import LLMResponse
 from acolyte.usecase.graph.nodes.writer_node import WriterNode
@@ -450,9 +451,10 @@ async def test_writer_conclusion_prompt_excludes_raw_evidence() -> None:
 
 
 @pytest.mark.asyncio
-async def test_writer_es_renders_claims_deterministically() -> None:
-    """Section with section_role='executive_summary' uses deterministic renderer, not LLM."""
-    llm = FakeLLM("This should not appear.")
+async def test_writer_es_uses_llm_output_when_generation_succeeds() -> None:
+    """ES generation is LLM-first: a successful LLM paragraph is used verbatim,
+    not the deterministic-renderer claim concatenation."""
+    llm = FakeLLM("LLM合成による日本語の要旨段落。")
     node = WriterNode(llm)
 
     state: ReportGenerationState = {
@@ -479,31 +481,75 @@ async def test_writer_es_renders_claims_deterministically() -> None:
 
     result = await node(state)
     es_body = result["sections"]["executive_summary"]
-    # Rendered from claim, not LLM output
-    assert "AI market is consolidating rapidly" in es_body
-    assert "20%" in es_body
-    # No LLM calls
-    assert len(llm.prompts) == 0
+    # LLM output used verbatim — not the deterministic renderer's claim concat
+    assert es_body == "LLM合成による日本語の要旨段落。"
+    assert "AI market is consolidating rapidly" not in es_body
+    assert len(llm.prompts) == 1
+    assert "要旨" in llm.prompts[0]
 
 
 @pytest.mark.asyncio
-async def test_writer_es_uses_deterministic_renderer() -> None:
-    """ES uses deterministic renderer — no LLM calls."""
-    llm = FakeLLM("ES text.")
-    node = WriterNode(llm)
+async def test_writer_es_falls_back_to_deterministic_renderer_when_llm_raises() -> None:
+    """LLM transport failure falls back to the deterministic renderer with a warning."""
+
+    class RaisingLLM:
+        async def generate(self, prompt: str, **kwargs: object) -> LLMResponse:
+            raise RuntimeError("upstream timeout")  # noqa: TRY003 — test double, no custom exception needed
+
+    node = WriterNode(RaisingLLM())
 
     state: ReportGenerationState = {
         "outline": [{"key": "executive_summary", "title": "Executive Summary", "section_role": "executive_summary"}],
-        "curated": [{"type": "article", "id": "art-1", "title": "Raw Article"}],
-        "curated_by_section": {"executive_summary": [{"id": "art-1", "title": "Raw Article"}]},
+        "curated": [],
+        "curated_by_section": {"executive_summary": []},
         "claim_plans": {
             "executive_summary": [
                 {
                     "claim_id": "executive_summary-1",
-                    "claim": "Summary point",
+                    "claim": "AI market is consolidating rapidly",
                     "claim_type": "synthesis",
                     "evidence_ids": ["art-1"],
-                    "supporting_quotes": ["quote"],
+                    "supporting_quotes": ["market consolidation"],
+                    "numeric_facts": ["20%"],
+                    "novelty_against": ["analysis"],
+                    "must_cite": True,
+                },
+            ],
+        },
+        "brief": {"topic": "AI trends"},
+        "sections": {},
+    }
+
+    with capture_logs() as logs:
+        result = await node(state)
+
+    es_body = result["sections"]["executive_summary"]
+    # Deterministic renderer fallback — claim text rendered verbatim
+    assert "AI market is consolidating rapidly" in es_body
+    assert "20%" in es_body
+    fallback_warnings = [entry for entry in logs if entry.get("event") == "es_llm_failed_fallback_deterministic"]
+    assert len(fallback_warnings) == 1
+    assert fallback_warnings[0].get("log_level") == "warning"
+
+
+@pytest.mark.asyncio
+async def test_writer_es_falls_back_to_deterministic_renderer_when_llm_response_empty() -> None:
+    """Empty LLM response falls back to the deterministic renderer with a warning."""
+    llm = FakeLLM("")
+    node = WriterNode(llm)
+
+    state: ReportGenerationState = {
+        "outline": [{"key": "executive_summary", "title": "Executive Summary", "section_role": "executive_summary"}],
+        "curated": [],
+        "curated_by_section": {"executive_summary": []},
+        "claim_plans": {
+            "executive_summary": [
+                {
+                    "claim_id": "executive_summary-1",
+                    "claim": "Chip demand outpaces supply",
+                    "claim_type": "synthesis",
+                    "evidence_ids": ["art-1"],
+                    "supporting_quotes": ["demand outpaces supply"],
                     "numeric_facts": [],
                     "novelty_against": ["analysis"],
                     "must_cite": True,
@@ -514,11 +560,54 @@ async def test_writer_es_uses_deterministic_renderer() -> None:
         "sections": {},
     }
 
-    result = await node(state)
-    # ES should NOT call the LLM (deterministic renderer)
-    assert len(llm.prompts) == 0
-    # ES body should be non-empty (rendered from claims)
-    assert result["sections"]["executive_summary"]
+    with capture_logs() as logs:
+        result = await node(state)
+
+    es_body = result["sections"]["executive_summary"]
+    assert "Chip demand outpaces supply" in es_body
+    fallback_warnings = [entry for entry in logs if entry.get("event") == "es_llm_failed_fallback_deterministic"]
+    assert len(fallback_warnings) == 1
+
+
+@pytest.mark.asyncio
+async def test_writer_es_rejects_hallucinated_citation_and_falls_back() -> None:
+    """A citation marker not backed by the claim's evidence_ids is rejected; ES falls back."""
+    # Claim carries no evidence_ids, so any [Sn] marker in the LLM output is hallucinated.
+    llm = FakeLLM("市場は急速に統合が進んでいる[S1]。")
+    node = WriterNode(llm)
+
+    state: ReportGenerationState = {
+        "outline": [{"key": "executive_summary", "title": "Executive Summary", "section_role": "executive_summary"}],
+        "curated": [],
+        "curated_by_section": {"executive_summary": []},
+        "claim_plans": {
+            "executive_summary": [
+                {
+                    "claim_id": "executive_summary-1",
+                    "claim": "Market consolidation accelerates",
+                    "claim_type": "synthesis",
+                    "evidence_ids": [],
+                    "supporting_quotes": [],
+                    "numeric_facts": [],
+                    "novelty_against": ["analysis"],
+                    "must_cite": False,
+                },
+            ],
+        },
+        "brief": {"topic": "AI trends"},
+        "sections": {},
+    }
+
+    with capture_logs() as logs:
+        result = await node(state)
+
+    es_body = result["sections"]["executive_summary"]
+    # Hallucinated [S1] must never reach the final body
+    assert "[S1]" not in es_body
+    # Falls back to deterministic renderer, rendering the claim text
+    assert "Market consolidation accelerates" in es_body
+    fallback_warnings = [entry for entry in logs if entry.get("event") == "es_llm_failed_fallback_deterministic"]
+    assert len(fallback_warnings) == 1
 
 
 # --- Contract field injection tests (Issue 5) ---

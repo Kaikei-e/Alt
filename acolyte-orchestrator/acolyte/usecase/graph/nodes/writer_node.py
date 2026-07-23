@@ -616,6 +616,79 @@ class WriterNode:
 
         return paragraphs
 
+    async def _generate_es_section(  # noqa: PLR0913 — keyword-only params are independent optional overrides, not a cohesive group worth a dataclass
+        self,
+        claims: list[PlannedClaimDict],
+        section_title: str,
+        topic: str,
+        *,
+        existing_paragraphs: list[SectionParagraphDict] | None = None,
+        claim_feedbacks: list[dict] | None = None,
+        prior_sections_context: str = "",
+        source_map: SourceMap | None = None,
+    ) -> tuple[str, list[SectionCitationDict], list[SectionParagraphDict], bool]:
+        """Generate the Executive Summary body, LLM-first with a deterministic fallback.
+
+        Returns ``(body, citations, paragraphs, used_fallback)``. LLM-first keeps
+        the ES in the report's working language — claim text alone carries no
+        language guarantee, since section_planner extracts it verbatim from
+        multilingual evidence. ``ExecutiveSummaryRenderer`` remains the fallback
+        that upholds the original "guaranteed completion" goal the deterministic
+        path was built for (commit 25d26fded), triggered only when the LLM call
+        raises, returns an empty response, or every paragraph is rejected by
+        citation-grounding validation.
+        """
+        try:
+            paragraphs = await self._generate_section_paragraphs(
+                claims,
+                section_title,
+                "executive_summary",
+                topic,
+                existing_paragraphs=existing_paragraphs,
+                claim_feedbacks=claim_feedbacks,
+                num_predict=self._role_num_predict("executive_summary"),
+                prior_sections_context=prior_sections_context,
+                source_map=source_map,
+            )
+        except Exception as exc:  # noqa: BLE001 — LLM call can fail in heterogeneous ways (network/timeout/parse/validation); ES must always degrade to the deterministic fallback
+            logger.warning("es_llm_failed_fallback_deterministic", reason=str(exc))
+            return self._render_es_fallback(claims, topic)
+
+        body = "\n\n".join(p["body"] for p in paragraphs if p["body"])
+        if not body:
+            logger.warning("es_llm_failed_fallback_deterministic", reason="empty_or_rejected_paragraphs")
+            return self._render_es_fallback(claims, topic)
+
+        citations = cast(
+            "list[SectionCitationDict]",
+            self._es_renderer.build_citations(cast("list[dict]", claims)),
+        )
+        return body, citations, paragraphs, False
+
+    def _render_es_fallback(
+        self,
+        claims: list[PlannedClaimDict],
+        topic: str,
+    ) -> tuple[str, list[SectionCitationDict], list[SectionParagraphDict], bool]:
+        """Deterministic, LLM-free ES rendering — the failure-path fallback only."""
+        body = self._es_renderer.render(cast("list[dict]", claims), topic=topic)
+        citations = cast(
+            "list[SectionCitationDict]",
+            self._es_renderer.build_citations(cast("list[dict]", claims)),
+        )
+        paragraphs: list[SectionParagraphDict] = [
+            {
+                "claim_id": c.get("claim_id", f"es-fallback-{i}"),
+                "claim_text": c.get("claim", ""),
+                "body": c.get("claim", ""),
+                "status": "accepted",
+                "citations": [],
+                "revision_feedback": "",
+            }
+            for i, c in enumerate(claims, 1)
+        ]
+        return body, citations, paragraphs, True
+
     async def __call__(self, state: ReportGenerationState) -> dict:  # noqa: PLR0912, PLR0915 — LangGraph node orchestration, splitting would obscure the single control-flow narrative
         outline = state.get("outline", [])
         curated = state.get("curated", [])
@@ -726,29 +799,33 @@ class WriterNode:
                     section_paragraphs[key] = []
                     continue
 
-                # ES: deterministic renderer (no LLM) for guaranteed completion
+                # ES: LLM-first paragraph generation (ES_PARAGRAPH_PROMPT); the
+                # deterministic renderer is the failure-only fallback below.
                 if section_role == "executive_summary":
-                    es_body = self._es_renderer.render(cast("list[dict]", claims), topic=topic)
-                    es_cites = cast(
-                        "list[SectionCitationDict]",
-                        self._es_renderer.build_citations(cast("list[dict]", claims)),
+                    es_prior_ctx = _build_prior_sections_context(section_role, sections, non_es)
+                    es_sect_existing = existing_paragraphs.get(key)
+                    es_sect_feedbacks = all_claim_feedbacks.get(key)
+
+                    es_body, es_cites, es_paragraphs, es_fallback_used = await self._generate_es_section(
+                        claims,
+                        str(title or key),
+                        topic,
+                        existing_paragraphs=es_sect_existing,
+                        claim_feedbacks=es_sect_feedbacks,
+                        prior_sections_context=es_prior_ctx,
+                        source_map=source_map,
                     )
                     sections[key] = es_body
                     section_citations[key] = es_cites
-                    section_paragraphs[key] = [
-                        {
-                            "claim_id": c.get("claim_id", f"{key}-{i}"),
-                            "claim_text": c.get("claim", ""),
-                            "body": c.get("claim", ""),
-                            "status": "accepted",
-                            "citations": [],
-                            "revision_feedback": "",
-                        }
-                        for i, c in enumerate(claims, 1)
-                    ]
+                    section_paragraphs[key] = es_paragraphs
                     current_best[key] = es_body
                     current_metrics[key] = {"blocking_count": 0, "char_len": len(es_body)}
-                    logger.info("Writer ES rendered deterministically", section_key=key, chars=len(es_body))
+                    logger.info(
+                        "Writer ES rendered",
+                        section_key=key,
+                        chars=len(es_body),
+                        via="deterministic_fallback" if es_fallback_used else "llm",
+                    )
                     continue
 
                 # Build anti-duplication context for conclusion/ES

@@ -262,8 +262,8 @@ async def test_writer_conclusion_prefers_accepted_analysis_claims_over_planner_c
 
 
 @pytest.mark.asyncio
-async def test_writer_es_renders_deterministically_no_llm() -> None:
-    """ES uses deterministic renderer — no LLM calls, claim content in body."""
+async def test_writer_es_uses_llm_paragraph_generation() -> None:
+    """ES is generated via the LLM paragraph path (ES_PARAGRAPH_PROMPT), like analysis/conclusion."""
     llm = FakeLLM("ES content.")
     node = WriterNode(llm)
 
@@ -294,17 +294,17 @@ async def test_writer_es_renders_deterministically_no_llm() -> None:
     }
 
     result = await node(state)
-    # No LLM calls for ES (deterministic renderer — only analysis uses LLM)
+    # ES now calls the LLM via ES_PARAGRAPH_PROMPT (analysis also calls it)
     es_prompts = [p for p in llm.prompts if "要旨" in p or "主要な発見" in p]
-    assert len(es_prompts) == 0
-    # Body should be non-empty
+    assert len(es_prompts) == 1
+    # Body comes from the LLM response, not the deterministic claim concat
     es_body = result["sections"]["executive_summary"]
-    assert es_body
+    assert es_body == "ES content."
 
 
 @pytest.mark.asyncio
-async def test_writer_es_uses_accepted_claims_for_rendering() -> None:
-    """Executive summary renders accepted claims from prior sections via deterministic renderer."""
+async def test_writer_es_uses_accepted_claims_via_llm() -> None:
+    """Executive summary synthesizes accepted claims from prior sections and sends them to the LLM."""
     llm = FakeLLM("ES content.")
     node = WriterNode(llm)
 
@@ -336,12 +336,13 @@ async def test_writer_es_uses_accepted_claims_for_rendering() -> None:
 
     result = await node(state)
 
-    # Analysis uses LLM, but ES should not (deterministic renderer)
     es_prompts = [p for p in llm.prompts if "要旨" in p or "主要な発見" in p]
-    assert len(es_prompts) == 0
-    # ES body should be non-empty
+    assert len(es_prompts) == 1
+    # Accepted analysis claim content feeds the ES prompt (synthesis claims, not the stale planner claim)
+    assert "Analysis claim 1 about market trends" in es_prompts[0]
+    assert "Planner ES claim" not in es_prompts[0]
     es_body = result["sections"].get("executive_summary", "")
-    assert es_body
+    assert es_body == "ES content."
 
 
 @pytest.mark.asyncio
