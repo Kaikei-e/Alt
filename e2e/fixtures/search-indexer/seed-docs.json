@@ -26,5 +26,33 @@
     "content": "Typo tolerance, word proximity, attribute priority, sort, and exactness drive the default ranking order.",
     "tags": ["meilisearch", "search", "ranking"],
     "user_id": "alice"
+  },
+  {
+    "id": "doc-ai-infra-gpu-clusters",
+    "title": "AI infrastructure trends in GPU cluster scaling",
+    "content": "Enterprise AI infrastructure spending on GPU clusters grew sharply in 2026 as data center operators expanded capacity to meet inference and training demand. Analysts describe this trend as a shift from general-purpose compute toward accelerator-dense infrastructure. A fictional operator, Northfield Compute, reported that GPU utilization across its clusters averaged 78 percent last quarter, up from 52 percent a year earlier.",
+    "tags": ["ai", "infrastructure", "trends", "gpu"],
+    "user_id": "alice"
+  },
+  {
+    "id": "doc-ai-infra-power-cooling",
+    "title": "Power and cooling trends shaping AI infrastructure",
+    "content": "As AI infrastructure clusters grow denser, power and liquid cooling have become the dominant constraints on new data center builds. Industry trend reports note that facilities designed for AI workloads now budget 45 kilowatts per rack, roughly triple the density of a traditional server hall. A fictional infrastructure vendor, Aurelia Systems, said its liquid-cooled rack designs cut energy overhead by 18 percent.",
+    "tags": ["ai", "infrastructure", "trends", "data-center", "cooling"],
+    "user_id": "alice"
+  },
+  {
+    "id": "doc-ai-infra-supply-chain",
+    "title": "Supply chain trends behind the AI infrastructure buildout",
+    "content": "AI infrastructure trends through 2026 have been shaped as much by supply chain constraints as by demand. Lead times for high-bandwidth memory and advanced packaging remained a bottleneck, according to a fictional analysis firm, Cascade Insights, which estimated that infrastructure buildout schedules slipped by an average of six weeks. The report concluded that diversifying component suppliers is now a board-level priority for infrastructure operators.",
+    "tags": ["ai", "infrastructure", "trends", "supply-chain"],
+    "user_id": "bob"
+  },
+  {
+    "id": "doc-ai-infra-network-fabric",
+    "title": "Network fabric trends inside modern AI infrastructure",
+    "content": "Interconnect design is one of the fastest-moving trends in AI infrastructure, as training clusters scale past tens of thousands of accelerators. A fictional network vendor, Ridgeline Fabric, reported that its latest switch silicon reduced cross-cluster latency by 30 percent compared with the prior generation. Infrastructure architects increasingly treat the network fabric, not the accelerator itself, as the primary scaling bottleneck for next-generation AI infrastructure.",
+    "tags": ["ai", "infrastructure", "trends", "networking"],
+    "user_id": "bob"
   }
 ]
