@@ -48,11 +48,11 @@ ls docs/ADR/ | sort | tail -1     # 最新番号を確認
 |---|---|
 | `title` | 動詞始まりの行動指向の一文。ADR 番号は含めない |
 | `date` | `YYYY-MM-DD`（当日） |
-| `status` | 原則 `accepted`。過去 ADR を無効化する場合のみ `superseded` |
+| `status` | 原則 `accepted`。**新 ADR 自身を `superseded` にしない**（置換される側の status はグラフ投影） |
 | `tags` | §2.4 の許可タグから最大 5 個 |
 | `affected_services` | サービス名と変更概要を 1 行/件で列挙 |
 | `aliases` | `ADR-NNN` と `ADR-000NNN` の 2 形式を必ず両方入れる（Obsidian リンク解決用） |
-| `supersedes` | 本 ADR が既存 ADR を置き換える場合のみ、置き換える旧 ADR 番号（6 桁ゼロ埋め文字列）を列挙。置き換えないなら空のまま。**新 ADR 側にだけ書く** — 旧 ADR 側への `superseded_by` の書き込みは不要（`scripts/adr_graph.py` が逆方向を都度算出する） |
+| `supersedes` | 本 ADR が既存 ADR を**完全置換**する場合のみ、旧 ADR 番号（6 桁）を列挙。**置き換えないならキーごと省略**（空の `supersedes: -` stub 禁止）。**新 ADR 側にだけ書く** — 逆辺は `scripts/adr_graph.py` が算出する |
 
 ### 2.3 本文ルール
 
@@ -90,7 +90,7 @@ Alt は OSS として公開されている。以下を含めない:
 
 Write ツールで `docs/ADR/NNNNNN.md` を作る。heredoc や `cat > ...` は使わない。書き込み後に Read で自分の出力を読み返し、見出し / frontmatter / wikilink 形式を確認する。
 
-`supersedes` を書いた場合は、`python3 scripts/adr_graph.py check` を実行して循環・存在しない ADR 番号参照が無いことを確認する（非ゼロ終了なら frontmatter を直す）。
+`supersedes` を書いた場合は、`python3 scripts/adr_graph.py check` を実行して循環・dangling・空 stub・status ドリフトが無いことを確認する（非ゼロ終了なら frontmatter を直す）。置き換え対象の旧 ADR `status` は同 PR で `superseded` に揃える（status 投影例外）。
 
 ---
 

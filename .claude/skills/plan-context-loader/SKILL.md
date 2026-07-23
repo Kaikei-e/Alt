@@ -58,7 +58,10 @@ $ARGUMENTS から次を確定する。
 ### 3. ADR を少数読む
 
 ADR は 2-6 件の高信号なものに絞る。  
-`accepted` を優先し、`superseded` / `deprecated` は後続 ADR を確認してから使う。
+**現行契約**は `status: accepted` かつ inbound `supersedes` が無いものに限る。  
+`python3 scripts/adr_graph.py resolve <id>` で葉（現行後継）を確認する。  
+`superseded` / inbound 置換済み / Loop・IMPL_*（[[000940]]）は historical — 現行契約として開かない。  
+Related は must-read にしない（参考のみ）。
 
 検索例:
 
@@ -66,6 +69,8 @@ ADR は 2-6 件の高信号なものに絞る。
 grep -rl "affected_services:.*<service>" docs/ADR/ | sort | tail -10
 grep -rl "tags:.*<tag>" docs/ADR/ | sort | tail -10
 grep -rl "<keyword>" docs/ADR/ | sort | tail -10
+python3 scripts/adr_graph.py resolve 000929   # → 000940
+python3 scripts/adr_graph.py check            # status / stub / cycle
 ```
 
 各 ADR から拾うのは次だけ。
