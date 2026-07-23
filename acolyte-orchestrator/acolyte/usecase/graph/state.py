@@ -95,3 +95,4 @@ class ReportGenerationState(TypedDict, total=False):
     accepted_claims_by_section: dict[str, list[dict]]  # section_key → accepted claims used for synthesis/debug
     final_version_no: int | None
     error: str | None
+    failure_code: str | None  # set by finalize_guard when aborting without persisting a version

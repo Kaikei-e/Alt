@@ -117,6 +117,45 @@ class PostgresJobGateway:
                 failure_message=r[10],
             )
 
+    async def get_latest_run_for_report(self, report_id: UUID) -> ReportRun | None:
+        """Return the most recently created run for a report, regardless of status.
+
+        report_runs has no created_at column, and started_at/finished_at stay
+        NULL until a run reaches the corresponding lifecycle stage — neither
+        is a safe "most recent" ordering key on its own. report_jobs does have
+        created_at, and create_run() inserts exactly one report_jobs row per
+        run in the same transaction, so joining on it gives an exact
+        creation-order tiebreaker without a schema change.
+        """
+        async with self._pool.connection() as conn:
+            cur = await conn.execute(
+                "SELECT r.run_id, r.report_id, r.target_version_no, r.run_status, "
+                "r.planner_model, r.writer_model, r.critic_model, "
+                "r.started_at, r.finished_at, r.failure_code, r.failure_message "
+                "FROM report_runs r "
+                "JOIN report_jobs j ON j.run_id = r.run_id "
+                "WHERE r.report_id = %s "
+                "ORDER BY j.created_at DESC "
+                "LIMIT 1",
+                [report_id],
+            )
+            r = await cur.fetchone()
+            if r is None:
+                return None
+            return ReportRun(
+                run_id=r[0],
+                report_id=r[1],
+                target_version_no=r[2],
+                run_status=r[3],
+                planner_model=r[4],
+                writer_model=r[5],
+                critic_model=r[6],
+                started_at=r[7],
+                finished_at=r[8],
+                failure_code=r[9],
+                failure_message=r[10],
+            )
+
     async def claim_job(self, worker_id: str) -> ReportJob | None:
         """Claim a pending job using SELECT ... FOR UPDATE SKIP LOCKED."""
         async with self._pool.connection() as conn, conn.transaction():
@@ -172,11 +211,39 @@ class PostgresJobGateway:
         logger.warning("Job failed", job_id=str(job_id), failure_message=failure_message)
         await self.update_job_status(job_id, "failed")
 
-    async def complete_run(self, run_id: UUID) -> None:
+    async def mark_running(
+        self,
+        run_id: UUID,
+        planner_model: str,
+        writer_model: str,
+        critic_model: str,
+    ) -> None:
+        """Mark a run as started and stamp the model names used for this attempt.
+
+        Not called from any production code path yet — wiring this into the
+        pipeline runner (connect_service.py) is out of this change's scope.
+        """
         async with self._pool.connection() as conn:
             await conn.execute(
-                "UPDATE report_runs SET run_status = 'succeeded', finished_at = NOW() WHERE run_id = %s",
+                "UPDATE report_runs SET run_status = 'running', started_at = NOW(), "
+                "planner_model = %s, writer_model = %s, critic_model = %s "
+                "WHERE run_id = %s",
+                [planner_model, writer_model, critic_model, run_id],
+            )
+
+    async def complete_run(self, run_id: UUID) -> None:
+        async with self._pool.connection() as conn, conn.transaction():
+            cur = await conn.execute(
+                "UPDATE report_runs SET run_status = 'succeeded', finished_at = NOW() "
+                "WHERE run_id = %s RETURNING report_id",
                 [run_id],
+            )
+            row = await cur.fetchone()
+            if row is None:
+                return
+            await conn.execute(
+                "UPDATE reports SET latest_successful_run_id = %s WHERE report_id = %s",
+                [run_id, row[0]],
             )
 
     async def fail_run(self, run_id: UUID, failure_code: str, failure_message: str) -> None:

@@ -110,6 +110,9 @@ class _FakeJobQueue:
     async def get_run(self, run_id: UUID) -> ReportRun | None:
         return None
 
+    async def get_latest_run_for_report(self, report_id: UUID) -> ReportRun | None:
+        return None
+
     async def claim_job(self, worker_id: str) -> ReportJob | None:
         return None
 
@@ -120,6 +123,9 @@ class _FakeJobQueue:
         return None
 
     async def fail_job(self, job_id: UUID, failure_message: str) -> None:
+        return None
+
+    async def mark_running(self, run_id: UUID, planner_model: str, writer_model: str, critic_model: str) -> None:
         return None
 
     async def complete_run(self, run_id: UUID) -> None:

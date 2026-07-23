@@ -49,6 +49,15 @@ class MemoryJobGateway:
         )
         return active[0]
 
+    async def get_latest_run_for_report(self, report_id: UUID) -> ReportRun | None:
+        """Return the most recently created run for a report, regardless of status.
+
+        dict insertion order mirrors creation order (create_run always
+        appends), so the last matching entry is the most recent run.
+        """
+        matching = [r for r in self._runs.values() if r.report_id == report_id]
+        return matching[-1] if matching else None
+
     async def claim_job(self, worker_id: str) -> ReportJob | None:
         for job in self._jobs.values():
             if job.job_status == "pending":
@@ -85,6 +94,23 @@ class MemoryJobGateway:
 
     async def fail_job(self, job_id: UUID, failure_message: str) -> None:
         await self.update_job_status(job_id, "failed")
+
+    async def mark_running(self, run_id: UUID, planner_model: str, writer_model: str, critic_model: str) -> None:
+        run = self._runs.get(run_id)
+        if run:
+            self._runs[run_id] = ReportRun(
+                run_id=run.run_id,
+                report_id=run.report_id,
+                target_version_no=run.target_version_no,
+                run_status="running",
+                planner_model=planner_model,
+                writer_model=writer_model,
+                critic_model=critic_model,
+                started_at=datetime.now(UTC),
+                finished_at=run.finished_at,
+                failure_code=run.failure_code,
+                failure_message=run.failure_message,
+            )
 
     async def complete_run(self, run_id: UUID) -> None:
         run = self._runs.get(run_id)

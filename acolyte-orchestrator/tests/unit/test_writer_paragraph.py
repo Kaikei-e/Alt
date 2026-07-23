@@ -457,6 +457,154 @@ async def test_writer_prompt_forbids_inline_titles() -> None:
     assert "記事タイトル" in prompt or "タイトル" in prompt
 
 
+# --- Hallucinated citation guard ---
+
+
+@pytest.mark.asyncio
+async def test_writer_rejects_citation_marker_not_in_claim_evidence() -> None:
+    """A [Sn] marker outside the claim's own evidence_ids is a hallucinated citation."""
+    sm = SourceMap()
+    sm.register("art-1", "Article One")
+    sm.register("art-2", "Article Two")
+
+    claims = [
+        {
+            "claim_id": "analysis-1",
+            "claim": "Claim A",
+            "claim_type": "factual",
+            "evidence_ids": ["art-1"],
+            "supporting_quotes": ["Quote A"],
+            "numeric_facts": [],
+            "novelty_against": [],
+            "must_cite": True,
+        },
+    ]
+    # art-1 → S1, but the LLM also cites S2 (registered for art-2, never
+    # part of this claim's evidence) — hallucinated.
+    llm = FakeLLM(responses=["Fact backed by [S1] and also by [S2]."])
+    node = WriterNode(llm)
+    state = _make_state(claims=claims)
+    state["source_map"] = sm.to_dict()
+
+    result = await node(state)
+
+    paras = result["section_paragraphs"]["analysis"]
+    assert paras[0]["status"] == "rejected"
+    assert paras[0]["body"] == ""
+    assert "citation_format_violation" in paras[0]["revision_feedback"]
+    assert "S2" in paras[0]["revision_feedback"]
+
+
+@pytest.mark.asyncio
+async def test_writer_accepts_citation_markers_grounded_in_claim_evidence() -> None:
+    """[Sn] markers that are all within the claim's evidence_ids pass through."""
+    sm = SourceMap()
+    sm.register("art-1", "Article One")
+    sm.register("art-2", "Article Two")
+
+    claims = [
+        {
+            "claim_id": "analysis-1",
+            "claim": "Claim A",
+            "claim_type": "factual",
+            "evidence_ids": ["art-1", "art-2"],
+            "supporting_quotes": ["Quote A", "Quote B"],
+            "numeric_facts": [],
+            "novelty_against": [],
+            "must_cite": True,
+        },
+    ]
+    llm = FakeLLM(responses=["Grounded fact [S1] and another [S2]."])
+    node = WriterNode(llm)
+    state = _make_state(claims=claims)
+    state["source_map"] = sm.to_dict()
+
+    result = await node(state)
+
+    paras = result["section_paragraphs"]["analysis"]
+    assert paras[0]["status"] == "accepted"
+    assert paras[0]["body"] == "Grounded fact [S1] and another [S2]."
+
+
+@pytest.mark.asyncio
+async def test_writer_skips_citation_rule_for_evidence_less_claim() -> None:
+    """A claim with no evidence_ids must not receive the [Sn] citation instruction."""
+    claims = [
+        {
+            "claim_id": "conclusion-topic-1",
+            "claim": "AI trends の概要",
+            "claim_type": "synthesis",
+            "evidence_ids": [],
+            "supporting_quotes": [],
+            "numeric_facts": [],
+            "novelty_against": [],
+            "must_cite": False,
+        },
+    ]
+    llm = FakeLLM()
+    node = WriterNode(llm)
+    state = _make_state(claims=claims, section_key="conclusion", section_role="conclusion")
+
+    await node(state)
+
+    prompt = llm.prompts[0]
+    assert "[S1], [S2] の形式のみ" not in prompt
+    assert "出典マーカー" in prompt and "使わない" in prompt
+
+
+@pytest.mark.asyncio
+async def test_writer_still_injects_citation_rule_when_evidence_present() -> None:
+    """Claims that do carry evidence_ids keep receiving the [Sn] citation instruction."""
+    claims = [
+        {
+            "claim_id": "analysis-1",
+            "claim": "Claim A",
+            "claim_type": "factual",
+            "evidence_ids": ["art-1"],
+            "supporting_quotes": ["Quote A"],
+            "numeric_facts": [],
+            "novelty_against": [],
+            "must_cite": True,
+        },
+    ]
+    llm = FakeLLM()
+    node = WriterNode(llm)
+    state = _make_state(claims=claims)
+
+    await node(state)
+
+    prompt = llm.prompts[0]
+    assert "[S1], [S2] の形式のみ" in prompt
+    assert "出典マーカーを本文中に一切使わないこと" not in prompt
+
+
+@pytest.mark.asyncio
+async def test_writer_rejects_hallucinated_marker_for_evidence_less_claim() -> None:
+    """Even if the LLM disobeys the no-citation instruction, a fabricated [Sn] is rejected."""
+    claims = [
+        {
+            "claim_id": "conclusion-topic-1",
+            "claim": "AI trends の概要",
+            "claim_type": "synthesis",
+            "evidence_ids": [],
+            "supporting_quotes": [],
+            "numeric_facts": [],
+            "novelty_against": [],
+            "must_cite": False,
+        },
+    ]
+    llm = FakeLLM(responses=["でっち上げの出典 [S1] を含む結論。"])
+    node = WriterNode(llm)
+    state = _make_state(claims=claims, section_key="conclusion", section_role="conclusion")
+
+    result = await node(state)
+
+    paras = result["section_paragraphs"]["conclusion"]
+    assert paras[0]["status"] == "rejected"
+    assert "citation_format_violation" in paras[0]["revision_feedback"]
+    assert "S1" in paras[0]["revision_feedback"]
+
+
 @pytest.mark.asyncio
 async def test_writer_uses_short_ids_when_source_map_present() -> None:
     """When source_map is in state, Writer prompt must use S1/S2 IDs, not UUIDs."""

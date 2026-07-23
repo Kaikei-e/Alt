@@ -89,10 +89,16 @@ class FinalizerNode:
 
         change_items = [ChangeItem(field_name=f"section:{key}", change_kind="regenerated") for key in sections]
 
+        change_reason = "LangGraph pipeline generation"
+        critique = state.get("critique") or {}
+        if critique.get("forced_accept"):
+            revision_count = state.get("revision_count", 0)
+            change_reason += f" [forced-accept-after-{revision_count}-revisions]"
+
         new_version = await self._report_repo.bump_version(
             report_id,
             report.current_version,
-            "LangGraph pipeline generation",
+            change_reason,
             change_items,
             scope_snapshot=brief,
             outline_snapshot=outline,

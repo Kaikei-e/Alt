@@ -549,6 +549,11 @@ async def test_conclusion_planner_without_analysis_claims_uses_topic_fallback() 
     conclusion_claims = result["claim_plans"]["conclusion"]
     assert len(conclusion_claims) >= 1
     assert conclusion_claims[0]["claim_type"] == "synthesis"
+    # Downstream citation suppression (WriterNode) keys off evidence_ids
+    # being empty and must_cite being False — the topic-overview fallback
+    # must carry both so the writer never asks the LLM to cite [Sn] for it.
+    assert conclusion_claims[0]["evidence_ids"] == []
+    assert conclusion_claims[0]["must_cite"] is False
 
 
 # --- Executive Summary-specific tests ---
@@ -842,3 +847,6 @@ async def test_es_planner_uses_topic_fallback_when_no_other_claims() -> None:
     assert es_claims[0]["claim_type"] == "synthesis"
     # ES should skip LLM call when there are no accepted claims from other sections
     assert llm.call_count == 0
+    # Same downstream-suppression contract as the conclusion topic fallback.
+    assert es_claims[0]["evidence_ids"] == []
+    assert es_claims[0]["must_cite"] is False

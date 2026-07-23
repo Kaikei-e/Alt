@@ -91,6 +91,8 @@ class SearchIndexerGateway:
             content = hit.get("content", "")
             if content:
                 await self._content_store.store(article_id, content)
+            else:
+                logger.warning("search_articles_empty_content", article_id=article_id)
 
             hits.append(
                 ArticleHit(

@@ -18,7 +18,7 @@ from acolyte.usecase.create_report_uc import CreateReportUsecase
 from acolyte.usecase.get_report_uc import GetReportUsecase
 from acolyte.usecase.list_reports_uc import ListReportsUsecase
 from acolyte.usecase.rerun_section_uc import RerunSectionUsecase
-from acolyte.usecase.start_run_uc import StartRunUsecase
+from acolyte.usecase.start_run_uc import StartRunRejectedError, StartRunUsecase
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator
@@ -145,18 +145,26 @@ class AcolyteConnectService:
         limit = request.limit if request.limit > 0 else 20
         reports, next_cursor = await ListReportsUsecase(self._repo).execute(cursor, limit)
 
-        return acolyte_pb2.ListReportsResponse(
-            reports=[
+        summaries = []
+        for r in reports:
+            latest_run_status = ""
+            if self._jobs is not None:
+                latest_run = await self._jobs.get_latest_run_for_report(r.report_id)
+                if latest_run is not None:
+                    latest_run_status = latest_run.run_status
+            summaries.append(
                 acolyte_pb2.ReportSummary(
                     report_id=str(r.report_id),
                     title=r.title,
                     report_type=r.report_type,
                     current_version=r.current_version,
-                    latest_run_status="",
+                    latest_run_status=latest_run_status,
                     created_at=r.created_at.isoformat(),
                 )
-                for r in reports
-            ],
+            )
+
+        return acolyte_pb2.ListReportsResponse(
+            reports=summaries,
             next_cursor=next_cursor or "",
             has_more=next_cursor is not None,
         )
@@ -214,6 +222,10 @@ class AcolyteConnectService:
         report_id = UUID(request.report_id)
         try:
             run = await StartRunUsecase(self._repo, self._jobs).execute(report_id)
+        except StartRunRejectedError as e:
+            # Circuit-breaker cooldown, not a missing report — distinct code
+            # so a client/retry-loop can tell them apart.
+            raise ConnectError(Code.FAILED_PRECONDITION, str(e)) from e
         except ValueError as e:
             raise ConnectError(Code.NOT_FOUND, str(e)) from e
         report = await self._repo.get_report(report_id)
@@ -242,9 +254,16 @@ class AcolyteConnectService:
         async with self._run_semaphore:
             await self._run_pipeline_locked(report_id, run_id, brief_dict)
 
-    async def _run_pipeline_locked(self, report_id: str, run_id: str, brief_dict: dict[str, Any]) -> None:  # noqa: PLR0912 — run-lifecycle state machine (checkpoint resume/DLQ/status transitions), splitting would obscure the single narrative
+    async def _run_pipeline_locked(self, report_id: str, run_id: str, brief_dict: dict[str, Any]) -> None:  # noqa: PLR0912, PLR0915 — run-lifecycle state machine (checkpoint resume/DLQ/status transitions), splitting would obscure the single narrative
         if self._graph is None:
             raise RuntimeError("Pipeline graph not configured")  # noqa: TRY003 — internal wiring invariant, not a domain error to catch
+
+        if self._jobs is not None:
+            # Single default_model for all three roles — the pipeline is
+            # mono-model today; report_runs keeps separate columns for a
+            # future per-role routing split.
+            model = self._settings.default_model
+            await self._jobs.mark_running(UUID(run_id), model, model, model)
 
         config = self._graph_config(run_id)
         initial_state = {
@@ -283,7 +302,8 @@ class AcolyteConnectService:
                     if error:
                         logger.error("Pipeline failed", report_id=report_id, run_id=run_id, error=error)
                         if self._jobs is not None:
-                            await self._jobs.fail_run(UUID(run_id), "pipeline_error", str(error))
+                            failure_code = result.get("failure_code") or "pipeline_error"
+                            await self._jobs.fail_run(UUID(run_id), failure_code, str(error))
                     else:
                         logger.info(
                             "Pipeline completed",
@@ -319,7 +339,8 @@ class AcolyteConnectService:
             if error:
                 logger.error("Pipeline failed", report_id=report_id, run_id=run_id, error=error)
                 if self._jobs is not None:
-                    await self._jobs.fail_run(UUID(run_id), "pipeline_error", str(error))
+                    failure_code = result.get("failure_code") or "pipeline_error"
+                    await self._jobs.fail_run(UUID(run_id), failure_code, str(error))
             else:
                 logger.info("Pipeline completed", report_id=report_id, run_id=run_id, final_version=final_version)
                 if self._jobs is not None:

@@ -605,7 +605,7 @@ class CriticNode:
     def __init__(self, llm: LLMProviderPort) -> None:
         self._llm = llm
 
-    async def __call__(self, state: ReportGenerationState) -> dict:
+    async def __call__(self, state: ReportGenerationState) -> dict:  # noqa: PLR0915 — sequential FM detection + forced-accept stamping, splitting would obscure the single evaluation narrative
         sections = state.get("sections", {})
         brief = state.get("brief") or state.get("scope") or {}
         outline = state.get("outline", [])
@@ -726,6 +726,18 @@ class CriticNode:
         # Build claim-level feedbacks from detections + paragraph status
         claim_fbs: dict[str, list[dict]] = _build_claim_feedbacks(all_detections, section_paragraphs)
         critique["claim_feedbacks"] = claim_fbs  # type: ignore[assignment]
+
+        # should_revise() force-accepts at MAX_REVISIONS regardless of this
+        # verdict. Stamp that here so finalizer can mark the persisted
+        # version instead of recording it identically to a genuine accept.
+        revision_count = state.get("revision_count", 0)
+        if revision_count >= MAX_REVISIONS and critique.get("verdict") == "revise":
+            critique["forced_accept"] = True  # type: ignore[unsupported-operation]
+            logger.warning(
+                "Critic forcing accept after max revisions despite unresolved verdict",
+                revision_count=revision_count,
+                max_revisions=MAX_REVISIONS,
+            )
 
         logger.info("Critic completed", verdict=critique.get("verdict"), detections=len(all_detections))
         return {
