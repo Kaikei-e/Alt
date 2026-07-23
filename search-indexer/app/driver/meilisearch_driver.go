@@ -531,12 +531,23 @@ func (d *MeilisearchDriver) getString(m meilisearch.Hit, key string) string {
 // Reading the cropped version means the driver never has to ship the full
 // content body across the wire, dropping per-hit payload from ~7.5 KB to a
 // few hundred bytes.
+//
+// _formatted is decoded into map[string]json.RawMessage rather than
+// map[string]string: it carries every AttributesToRetrieve field alongside
+// the cropped ones, and those other fields are frequently non-string (tags
+// is an array, numeric fields stay numeric). Decoding straight into
+// map[string]string fails the instant any field doesn't fit, which silently
+// discards the cropped content this function exists to return. Decoding
+// per-key means one field's shape can never break another's.
 func (d *MeilisearchDriver) getCropped(m meilisearch.Hit, key string) string {
 	if raw, ok := m["_formatted"]; ok {
-		var formatted map[string]string
+		var formatted map[string]json.RawMessage
 		if err := json.Unmarshal(raw, &formatted); err == nil {
-			if v, ok := formatted[key]; ok && v != "" {
-				return v
+			if fieldRaw, ok := formatted[key]; ok {
+				var v string
+				if err := json.Unmarshal(fieldRaw, &v); err == nil && v != "" {
+					return v
+				}
 			}
 		}
 	}
