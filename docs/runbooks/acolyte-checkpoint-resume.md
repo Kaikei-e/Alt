@@ -89,7 +89,7 @@ docker compose -f compose/compose.yaml -p alt logs acolyte-orchestrator --tail=5
 
 | パターン | 症状 | 対処 |
 |---------|------|------|
-| LLM タイムアウト | `Pipeline crashed` + `ReadTimeout` | LLM (news-creator / AIX) の稼働確認後に resume |
+| LLM タイムアウト | `Pipeline crashed` + `ReadTimeout` | LLM (news-creator / news-creator-backend) の稼働確認後に resume |
 | OOM | コンテナ再起動 + `Pipeline crashed` なし | `docker compose up -d acolyte-orchestrator` 後に resume |
 | DB 接続断 | `Pipeline crashed` + `ConnectionError` | `acolyte-db` 復旧確認後に resume |
 | 完了済み run | ログに `Pipeline already completed` | resume は no-op。新規 run を作成する |

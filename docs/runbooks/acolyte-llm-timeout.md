@@ -28,18 +28,18 @@ This runbook covers diagnosis and recovery for LLM-related timeouts in the Acoly
 **Root causes:**
 - `num_predict` too low (thinking tokens exhaust budget)
 - LLM service overloaded (queued requests)
-- Network latency to AIX
+- news-creator-backend under load (local Ollama, `:11435`)
 
 ### ConnectTimeout
 
 **Log pattern:**
 ```
 [ERROR] LLM call failed: ConnectTimeout: Unable to connect to host
-[ERROR] Gateway connection refused: aix:11436
+[ERROR] Gateway connection refused: news-creator:11434
 ```
 
 **Root causes:**
-- AIX/Ollama service down
+- news-creator (proxy) or news-creator-backend (Ollama) down
 - Network connectivity issue
 - Container not started
 
@@ -74,14 +74,14 @@ Common timeout nodes:
 ### 2. Check LLM Service Health
 
 ```bash
-# Check Ollama is responding
-curl -s http://aix:11436/api/tags | jq '.models[].name'
+# Check the HybridPrioritySemaphore proxy is responding
+curl -s http://news-creator:11434/api/tags | jq '.models[].name'
 
-# Check model is loaded
-curl -s http://aix:11436/api/ps | jq '.models[].name'
+# Check the model is loaded on the Ollama backend
+curl -s http://127.0.0.1:11435/api/ps | jq '.models[].name'
 
 # Check queue depth (if available)
-curl -s http://aix:11436/api/ps | jq '.models[].details'
+curl -s http://127.0.0.1:11435/api/ps | jq '.models[].details'
 ```
 
 ### 3. Analyze Token Usage
@@ -107,10 +107,10 @@ eval_count=6000 response_len=28  # Almost all tokens used on thinking
 
 ```bash
 # From acolyte-orchestrator container
-docker exec -it acolyte-orchestrator curl -s http://aix:11436/api/tags
+docker exec -it acolyte-orchestrator curl -s http://news-creator:11434/api/tags
 
 # Check DNS resolution
-docker exec -it acolyte-orchestrator nslookup aix
+docker exec -it acolyte-orchestrator nslookup news-creator
 ```
 
 ## Resolution Procedures
@@ -163,20 +163,20 @@ For ReadTimeout with long-running generation:
 
 If Ollama is unresponsive or overloaded:
 
-1. **Restart AIX:**
+1. **Restart news-creator-backend:**
    ```bash
-   docker compose -f compose/compose.yaml -p alt restart aix
+   docker compose -f compose/compose.yaml -p alt restart news-creator-backend
    ```
 
-2. **Wait for model load** (~30s for Gemma4 26B):
+2. **Wait for model load** (~30s for Gemma4 E4B):
    ```bash
    # Watch for model load completion
-   docker compose -f compose/compose.yaml -p alt logs aix -f | grep -i "loaded"
+   docker compose -f compose/compose.yaml -p alt logs news-creator-backend -f | grep -i "loaded"
    ```
 
 3. **Verify model is serving:**
    ```bash
-   curl -s http://aix:11436/api/generate -d '{"model":"gemma4:26b-it-q4_K_M","prompt":"Hello","stream":false}' | jq '.response'
+   curl -s http://127.0.0.1:11435/api/generate -d '{"model":"gemma4-e4b-12k","prompt":"Hello","stream":false}' | jq '.response'
    ```
 
 4. **Resume failed runs:**
@@ -241,8 +241,8 @@ After recovery:
 
 1. **LLM responds quickly:**
    ```bash
-   time curl -s http://aix:11436/api/generate \
-     -d '{"model":"gemma4:26b-it-q4_K_M","prompt":"Hello","stream":false}'
+   time curl -s http://127.0.0.1:11435/api/generate \
+     -d '{"model":"gemma4-e4b-12k","prompt":"Hello","stream":false}'
    # Should complete in <5s for simple prompt
    ```
 

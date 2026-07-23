@@ -19,7 +19,7 @@ This runbook covers Acolyte operations when external dependencies are unavailabl
 | Dependency | Impact When Down | Degraded Behavior |
 |------------|------------------|-------------------|
 | acolyte-db | Full outage | No operations possible |
-| AIX (Gemma4) | Generation blocked | Existing reports readable, new runs fail |
+| news-creator-backend (Gemma4) | Generation blocked | Existing reports readable, new runs fail |
 | search-indexer | Evidence retrieval blocked | Runs fail at Gatherer node |
 | alt-butterfly-facade | API blocked | Direct access possible (port 8090) |
 
@@ -77,8 +77,8 @@ curl -s http://localhost:8090/alt.acolyte.v1.AcolyteService/HealthCheck \
 # Check acolyte-db
 docker exec -it acolyte-db pg_isready -U acolyte_user
 
-# Check AIX/Ollama
-curl -s http://aix:11436/api/tags
+# Check news-creator (proxy) / news-creator-backend (Ollama)
+curl -s http://news-creator:11434/api/tags
 
 # Check search-indexer
 curl -s http://localhost:7700/health
@@ -114,17 +114,17 @@ docker compose -f compose/compose.yaml -p alt logs acolyte-orchestrator --tail=1
 
 ### LLM Recovery
 
-1. **Verify AIX/Ollama is running:**
+1. **Verify news-creator/news-creator-backend is running:**
    ```bash
-   docker compose -f compose/compose.yaml -p alt ps aix
+   docker compose -f compose/compose.yaml -p alt ps news-creator news-creator-backend
    ```
 
-2. **Restart AIX if needed:**
+2. **Restart news-creator-backend if needed:**
    ```bash
-   docker compose -f compose/compose.yaml -p alt restart aix
+   docker compose -f compose/compose.yaml -p alt restart news-creator-backend
    ```
 
-3. **Wait for model load** (Gemma4 26B takes ~30s to load)
+3. **Wait for model load** (Gemma4 E4B takes ~30s to load)
 
 4. **Resume failed runs:**
    ```bash

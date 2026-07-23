@@ -80,7 +80,7 @@ tags:
 | ランブック | 型 | 一言 |
 |---|---|---|
 | [[acolyte-checkpoint-resume]] | operation | LangGraph checkpointer による run resume と制約 |
-| [[acolyte-degraded-mode]] ⚠️ | incident | 依存 (DB / AIX / search-indexer / BFF) ダウン時の縮退 |
+| [[acolyte-degraded-mode]] ⚠️ | incident | 依存 (DB / news-creator-backend / search-indexer / BFF) ダウン時の縮退 |
 | [[acolyte-llm-timeout]] | incident | ReadTimeout / JSON truncation の診断・復旧 |
 | [[acolyte-manual-regeneration]] | operation | レポート手動再生成 (full / scope / batch) + 品質 SQL |
 | [[acolyte-pipeline-recovery]] | incident | orphaned runs / checkpoint 破損 / stuck job の系統復旧 |
