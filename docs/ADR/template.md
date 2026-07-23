@@ -9,8 +9,8 @@ affected_services:
 aliases:
   - ADR-NNNN
   - ADR-000NNN
-supersedes:
-  -
+# supersedes:  # 既存 ADR を完全置換するときだけキーを追加（例: - "000940"）
+#   - "000NNN"  # 空の `-` stub は禁止。置き換えないならキーごと省略
 ---
 # ADR-000NNN: タイトル（動詞始まりの行動指向で記述）
 
@@ -20,8 +20,8 @@ supersedes:
 
 <!-- Proposed | Accepted | Deprecated | Superseded by ADR-NNNN -->
 <!-- 本ADRが既存ADRを置き換える場合は、frontmatterの supersedes に旧ADR番号を追記する。
-     逆方向（旧ADR側への "Superseded by" 追記）はツール側では扱わないので、
-     引き続きここに自然文で明記すること。 -->
+     逆辺は scripts/adr_graph.py が算出する。旧ADRの status はグラフ投影（inbound があれば superseded）。
+     旧ADR本文の Decision は改変しない。 -->
 
 Proposed
 
