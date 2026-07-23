@@ -87,12 +87,16 @@ services:
     environment:
       - ACOLYTE_DB_DSN=postgresql://${ACOLYTE_DB_USER:-acolyte_user}:placeholder@acolyte-db:5432/${ACOLYTE_DB_NAME:-acolyte}
       - ACOLYTE_DB_PASSWORD_FILE=/run/secrets/acolyte_db_password
-      # LLM inference: override ACOLYTE_LLM_URL in .env to route to remote host (e.g. AIX)
+      # LLM inference: defaults to the local news-creator proxy (HybridPrioritySemaphore);
+      # override ACOLYTE_LLM_URL in .env only to route elsewhere
       - NEWS_CREATOR_URL=${ACOLYTE_LLM_URL:-http://news-creator:11434}
       - LLM_PROVIDER=${ACOLYTE_LLM_PROVIDER:-ollama}
       - VLLM_API_KEY=${ACOLYTE_VLLM_API_KEY:-}
       - SEARCH_INDEXER_URL=${ACOLYTE_SEARCH_URL:-http://search-indexer:9300}
       - DEFAULT_MODEL=${ACOLYTE_MODEL:-gemma4-e4b-12k}
+      # Must match the shared Ollama runner's num_ctx (compose/ai.yaml LLM_NUM_CTX)
+      # or the runner reloads on each alternation between acolyte and news-creator.
+      - LLM_NUM_CTX=${LLM_NUM_CTX:-12288}
       - LOG_LEVEL=info
       - CHECKPOINT_ENABLED=true
       # HyDE cross-lingual expansion: Gemma4 Q4 generate typically takes

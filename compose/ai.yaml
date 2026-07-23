@@ -133,13 +133,16 @@ services:
       - SUMMARY_NUM_PREDICT=${SUMMARY_NUM_PREDICT:-1200}
       # Concurrency: sync with OLLAMA_NUM_PARALLEL in news-creator-backend
       - OLLAMA_NUM_PARALLEL=${OLLAMA_NUM_PARALLEL:-1}
-      # LLM context window size (8k tokens)
-      - LLM_NUM_CTX=${LLM_NUM_CTX:-8192}
+      # LLM context window size. Must match the num_ctx baked into the
+      # gemma4-e4b-12k Modelfile: every client of the shared Ollama runner
+      # (news-creator, Ask Augur proxy, acolyte-orchestrator) must send the
+      # same num_ctx or the runner reloads on each alternation (ADR-579).
+      - LLM_NUM_CTX=${LLM_NUM_CTX:-12288}
       # 8K-only mode: disable 60K model, use hierarchical map-reduce for large documents
       - MODEL_60K_ENABLED=${MODEL_60K_ENABLED:-false}
-      # Hierarchical summarization thresholds (optimized for 8k mode)
-      - HIERARCHICAL_MAX_TOKENS=${HIERARCHICAL_MAX_TOKENS:-7000}
-      - HIERARCHICAL_CHUNK_SIZE=${HIERARCHICAL_CHUNK_SIZE:-6000}
+      # Hierarchical summarization thresholds: chunking trigger and max chunk size for map-reduce
+      - HIERARCHICAL_THRESHOLD_CHARS=${HIERARCHICAL_THRESHOLD_CHARS:-8000}
+      - HIERARCHICAL_CHUNK_MAX_CHARS=${HIERARCHICAL_CHUNK_MAX_CHARS:-6000}
       # Cache settings
       - CACHE_ENABLED=${CACHE_ENABLED:-true}
       - CACHE_REDIS_URL=redis://redis-cache:6379/0
