@@ -11,7 +11,7 @@ tags:
 
 Acolyte is Alt's versioned report generation orchestrator. It transforms evidence from multiple sources (RSS articles, search results) into structured, citation-backed reports using a multi-stage LLM pipeline. Every report version is tracked with field-level change items, enabling diff views and audit trails.
 
-The system is built on **LangGraph** for orchestration, **Connect-RPC** for API boundaries, and **PostgreSQL 18** for persistence. Reports are generated using **Gemma4 26B** (via Ollama/AIX), with evidence retrieved from **search-indexer** (Meilisearch).
+The system is built on **LangGraph** for orchestration, **Connect-RPC** for API boundaries, and **PostgreSQL 18** for persistence. Reports are generated using **Gemma4 E4B** (`gemma4-e4b-12k`, via news-creator's local Ollama), with evidence retrieved from **search-indexer** (Meilisearch). Report generation previously ran on Gemma4 26B MoE via the remote AIX host; this moved to a local model on 2026-07-23.
 
 ```mermaid
 graph LR
@@ -27,7 +27,7 @@ graph LR
   end
 
   subgraph "External Services"
-    AIX["AIX<br/>Gemma4 26B"]
+    NC["news-creator<br/>Gemma4 E4B"]
     SI["search-indexer"]
   end
 
@@ -37,7 +37,7 @@ graph LR
 
   FE --> BFF --> API
   API --> UC --> PIPE
-  PIPE --> AIX
+  PIPE --> NC
   PIPE --> SI
   PIPE --> DB
   UC --> DB

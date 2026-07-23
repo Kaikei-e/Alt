@@ -54,7 +54,7 @@ graph LR
   end
 
   subgraph "Pipeline Path"
-    AO --> |LLM calls| AIX["AIX<br/>Gemma4 26B"]
+    AO --> |LLM calls| NC["news-creator<br/>Gemma4 E4B"]
     AO --> |Evidence retrieval| SI["search-indexer"]
     AO --> |Persist versions| DB[("acolyte-db<br/>PostgreSQL 18")]
   end
@@ -73,7 +73,7 @@ graph LR
 | **alt-butterfly-facade** | BFF that routes `/alt.acolyte.v1.AcolyteService/*` to acolyte-orchestrator. Injects `X-Service-Token`. |
 | **alt-frontend-sv** | SvelteKit frontend with routes at `/acolyte/*`. |
 | **search-indexer** | Evidence retrieval via REST API (`GET /v1/search`). Proxies Meilisearch. |
-| **AIX** | LLM inference plane running Gemma4 26B via Ollama. |
+| **news-creator** | LLM inference plane running `gemma4-e4b-12k` (Gemma4 E4B, Q4, `num_ctx=12288`) via Ollama, fronted by the HybridPrioritySemaphore proxy (`:11434`) over the Ollama backend (`:11435`). Previously routed to the remote AIX host (Gemma4 26B MoE) until 2026-07-23. |
 
 ## Clean Architecture Layers
 
