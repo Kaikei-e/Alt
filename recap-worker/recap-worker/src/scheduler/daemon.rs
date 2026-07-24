@@ -100,23 +100,16 @@ impl BatchDaemon {
 
         // Boot-time job hygiene (順序が大事):
         //   1. `find_resumable_job` で「fresh で再開する価値のある 1 件」を選ぶ。
+        //      DB エラーは「再開対象なし」と混同しない — その場合は
+        //      mark_abandoned_jobs sweep 自体をスキップする
+        //      (`Scheduler::resolve_boot_time_resumable_target` 参照)。
         //   2. **その 1 件以外** の pending/running を全部 `failed` に sweep。
         //      プロセスが起動し直したということは前プロセスは死んでいる
         //      ので、選ばれなかった in-flight 行は定義上全て orphan。
         //   3. 保持期間 (`RECAP_JOB_RETENTION_DAYS`) を超えた古い行を削除。
         //      daemon が当日走らない日は cleanup が呼ばれず累積する問題への
         //      対策で、起動時に必ず一度叩く。
-        let resumable_target = state.scheduler.find_resumable_job().await.ok().flatten();
-        let keep_job_id = resumable_target.as_ref().map(|(id, _, _, _)| *id);
-        match state.scheduler.mark_abandoned_jobs(keep_job_id).await {
-            Ok(0) => {}
-            Ok(n) => info!(
-                marked_failed = n,
-                ?keep_job_id,
-                "boot-time hygiene: orphaned jobs sealed"
-            ),
-            Err(err) => error!(error = %err, "boot-time hygiene: mark_abandoned_jobs failed"),
-        }
+        let resumable_target = state.scheduler.resolve_boot_time_resumable_target().await;
         match state.scheduler.cleanup_old_jobs().await {
             Ok(0) => {}
             Ok(n) => info!(deleted = n, "boot-time hygiene: old jobs deleted"),

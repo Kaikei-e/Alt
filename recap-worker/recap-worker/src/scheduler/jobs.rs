@@ -361,26 +361,14 @@ impl Scheduler {
         finalize_morning_job(self.recap_dao.as_ref(), context.job_id, outcome).await
     }
 
-    pub(crate) async fn find_resumable_job(
+    /// Boot-time hygiene (CLAUDE.md rule 8): resolve the one resumable job
+    /// (if any) and seal every other orphaned pending/running row as
+    /// `failed`. See [`boot_time_resumable_target`] for the testable core.
+    pub(crate) async fn resolve_boot_time_resumable_target(
         &self,
-    ) -> Result<Option<(Uuid, JobStatus, Option<String>, u32)>> {
+    ) -> Option<(Uuid, JobStatus, Option<String>, u32)> {
         let max_age = self.config.resumable_max_age_hours();
-        Ok(self.recap_dao.find_resumable_job(max_age).await?)
-    }
-
-    /// Boot 時に呼ぶ保守メソッド。前プロセスが落ちて pending / running の
-    /// まま残っている Job 行を全て `failed` に確定する。`keep_job_id` を
-    /// 渡すとその 1 件だけ sweep 対象から外す (resume 候補保護用)。
-    pub(crate) async fn mark_abandoned_jobs(&self, keep_job_id: Option<Uuid>) -> Result<u64> {
-        let updated = self.recap_dao.mark_abandoned_jobs(keep_job_id).await?;
-        if updated > 0 {
-            tracing::info!(
-                ?keep_job_id,
-                marked_failed = updated,
-                "sealed orphaned recap jobs as failed"
-            );
-        }
-        Ok(updated)
+        boot_time_resumable_target(self.recap_dao.as_ref(), max_age).await
     }
 
     /// 保持期間より古いジョブを削除する。
@@ -496,6 +484,43 @@ async fn finalize_morning_job(
     }
 }
 
+/// Testable core of [`Scheduler::resolve_boot_time_resumable_target`].
+///
+/// A DB error from `find_resumable_job` must never fold into "no resumable
+/// job" (CLAUDE.md rule 8) — doing so would let the unconditional
+/// `mark_abandoned_jobs(None)` sweep below seal an undetected resumable job
+/// as `failed` too, exactly the boot-time hygiene invariant the caller
+/// (`BatchDaemon::run`) documents. On error we log loudly and skip the
+/// sweep entirely this cycle, leaving hygiene to retry on the next boot.
+async fn boot_time_resumable_target(
+    recap_dao: &dyn RecapDao,
+    max_age_hours: i64,
+) -> Option<(Uuid, JobStatus, Option<String>, u32)> {
+    let resumable_target = match recap_dao.find_resumable_job(max_age_hours).await {
+        Ok(target) => target,
+        Err(err) => {
+            tracing::error!(
+                error = %err,
+                "boot-time hygiene: find_resumable_job failed — skipping mark_abandoned_jobs sweep this cycle to avoid sealing an undetected resumable job as failed"
+            );
+            return None;
+        }
+    };
+
+    let keep_job_id = resumable_target.as_ref().map(|(id, _, _, _)| *id);
+    match recap_dao.mark_abandoned_jobs(keep_job_id).await {
+        Ok(updated) if updated > 0 => tracing::info!(
+            ?keep_job_id,
+            marked_failed = updated,
+            "sealed orphaned recap jobs as failed"
+        ),
+        Ok(_) => {}
+        Err(err) => tracing::error!(error = %err, "boot-time hygiene: mark_abandoned_jobs failed"),
+    }
+
+    resumable_target
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -606,6 +631,78 @@ mod tests {
             transitions[0].reason.as_deref(),
             Some("news-creator unreachable")
         );
+    }
+
+    /// RED→GREEN regression (rule 8): a transient DB error from
+    /// `find_resumable_job` must NOT be folded into "no resumable job".
+    /// Before the fix, `daemon.rs` used `.ok().flatten()`, which collapsed
+    /// `Err` and `Ok(None)` into the same `None` and then called
+    /// `mark_abandoned_jobs(None)` unconditionally — sealing every
+    /// pending/running row (including one that may have been genuinely
+    /// resumable) as `failed` on a one-off DB hiccup. The fix must skip the
+    /// sweep entirely when `find_resumable_job` errors.
+    #[tokio::test]
+    async fn boot_time_resumable_target_skips_sweep_on_find_resumable_job_error() {
+        use crate::error::RecapError;
+        use crate::store::dao::mock::MockRecapDao;
+
+        let dao = MockRecapDao::new();
+        dao.set_find_resumable_job_result(Err(RecapError::Db(
+            "connection reset by peer".to_string(),
+        )));
+
+        let target = boot_time_resumable_target(&dao, 12).await;
+
+        assert!(
+            target.is_none(),
+            "no resumable target should be returned on DB error"
+        );
+        assert!(
+            dao.mark_abandoned_jobs_calls().is_empty(),
+            "mark_abandoned_jobs must not be called this cycle when find_resumable_job errored, \
+             or a transient DB hiccup would seal every in-flight job as failed"
+        );
+    }
+
+    /// When there genuinely is no resumable job (`Ok(None)`), the sweep must
+    /// still run — this is the legitimate "everything in-flight is orphaned"
+    /// path.
+    #[tokio::test]
+    async fn boot_time_resumable_target_sweeps_all_when_none_resumable() {
+        use crate::store::dao::mock::MockRecapDao;
+
+        let dao = MockRecapDao::new();
+        dao.set_find_resumable_job_result(Ok(None));
+
+        let target = boot_time_resumable_target(&dao, 12).await;
+
+        assert!(target.is_none());
+        assert_eq!(dao.mark_abandoned_jobs_calls(), vec![None]);
+    }
+
+    /// When a resumable job is found, the sweep must run keeping exactly
+    /// that job's id, and the resumable target must be returned to the
+    /// caller so `BatchDaemon::run` can resume it.
+    #[tokio::test]
+    async fn boot_time_resumable_target_keeps_resumable_job_out_of_sweep() {
+        use crate::store::dao::mock::MockRecapDao;
+
+        let dao = MockRecapDao::new();
+        let job_id = Uuid::new_v4();
+        dao.set_find_resumable_job_result(Ok(Some((
+            job_id,
+            JobStatus::Running,
+            Some("select".to_string()),
+            3,
+        ))));
+
+        let target = boot_time_resumable_target(&dao, 12).await;
+
+        assert_eq!(
+            target,
+            Some((job_id, JobStatus::Running, Some("select".to_string()), 3))
+        );
+        assert_eq!(dao.mark_abandoned_jobs_calls(), vec![Some(job_id)]);
     }
 
     /// Test: Job should be marked as Failed when genres_stored=0 but genres_failed>0
