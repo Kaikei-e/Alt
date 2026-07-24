@@ -2,7 +2,8 @@
 # Secrets & credentials
 # ============================================
 .env
-secrets/
+# no trailing slash: must also match the symlink form (canonical /etc/alt setup)
+secrets
 *.crt
 *.key
 *.pem
