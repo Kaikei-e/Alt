@@ -151,6 +151,30 @@ func TestAdminAPIHandler_HandleTokenStatus(t *testing.T) {
 	}
 }
 
+func TestAdminAPIHandler_HandleTokenStatus_InvalidToken_Returns401(t *testing.T) {
+	handler := newTestAdminAPIHandler(denyingAuthenticator{}, &MockRateLimiter{})
+
+	req := httptest.NewRequest(http.MethodGet, "/admin/oauth2/token-status", nil)
+	req.Header.Set("Authorization", "Bearer bad-token")
+	recorder := httptest.NewRecorder()
+
+	handler.HandleTokenStatus(recorder, req)
+
+	assert.Equal(t, http.StatusUnauthorized, recorder.Code)
+}
+
+func TestAdminAPIHandler_HandleTokenStatus_InsufficientPermissions_Returns403(t *testing.T) {
+	handler := newTestAdminAPIHandler(noAdminPermissionAuthenticator{}, &MockRateLimiter{})
+
+	req := httptest.NewRequest(http.MethodGet, "/admin/oauth2/token-status", nil)
+	req.Header.Set("Authorization", "Bearer some-token")
+	recorder := httptest.NewRecorder()
+
+	handler.HandleTokenStatus(recorder, req)
+
+	assert.Equal(t, http.StatusForbidden, recorder.Code)
+}
+
 func TestAdminAPIHandler_HandleRefreshTokenUpdate(t *testing.T) {
 	// Basic test for refresh token update handler
 	mockTokenManager := &MockTokenManager{}

@@ -164,7 +164,9 @@ func (s *Scheduler) TriggerFetchNow() error {
 	if !s.fetchRunMu.TryLock() {
 		return fmt.Errorf("article fetch already in progress")
 	}
+	s.wg.Add(1)
 	go func() {
+		defer s.wg.Done()
 		defer s.fetchRunMu.Unlock()
 		s.fetchNextStream()
 	}()
@@ -178,7 +180,9 @@ func (s *Scheduler) TriggerRefreshNow() error {
 	if !s.refreshRunMu.TryLock() {
 		return fmt.Errorf("subscription refresh already in progress")
 	}
+	s.wg.Add(1)
 	go func() {
+		defer s.wg.Done()
 		defer s.refreshRunMu.Unlock()
 		s.refreshSubscriptions()
 	}()
