@@ -2,9 +2,12 @@ package job
 
 import (
 	"alt/domain"
+	"alt/orchestrator/port/rag_integration_port"
+	"alt/shared/driver/alt_db"
 	"alt/utils/logger"
 	"context"
 	"encoding/json"
+	"sync"
 	"testing"
 	"time"
 
@@ -32,7 +35,7 @@ func TestEmitArticleCreatedEvent(t *testing.T) {
 		stub := &stubKnowledgeEventPort{}
 		articleID := uuid.New().String()
 		userID := uuid.New().String()
-		payload, _ := json.Marshal(map[string]interface{}{
+		payload, _ := json.Marshal(map[string]any{
 			"article_id": articleID,
 			"url":        "http://example.com/article",
 			"title":      "Test Article",
@@ -59,7 +62,7 @@ func TestEmitArticleCreatedEvent(t *testing.T) {
 
 	t.Run("skips on invalid user_id", func(t *testing.T) {
 		stub := &stubKnowledgeEventPort{}
-		payload, _ := json.Marshal(map[string]interface{}{
+		payload, _ := json.Marshal(map[string]any{
 			"article_id": uuid.New().String(),
 			"url":        "http://example.com",
 			"title":      "Test",
@@ -73,7 +76,7 @@ func TestEmitArticleCreatedEvent(t *testing.T) {
 
 	t.Run("continues on append error", func(t *testing.T) {
 		stub := &stubKnowledgeEventPort{err: assert.AnError}
-		payload, _ := json.Marshal(map[string]interface{}{
+		payload, _ := json.Marshal(map[string]any{
 			"article_id": uuid.New().String(),
 			"url":        "http://example.com",
 			"title":      "Test",
@@ -84,4 +87,154 @@ func TestEmitArticleCreatedEvent(t *testing.T) {
 		emitArticleCreatedEvent(context.Background(), stub, payload)
 		assert.Len(t, stub.events, 1) // event was attempted
 	})
+}
+
+// mockOutboxRepo is an in-memory stand-in for *alt_db.AltDBRepository's
+// outbox methods (mirrors the mockCandidateLister/mockArticleHeadSaver
+// pattern in og_image_backfill_test.go).
+type mockOutboxRepo struct {
+	mu            sync.Mutex
+	events        []alt_db.OutboxEvent
+	statusUpdates []outboxStatusUpdate
+}
+
+type outboxStatusUpdate struct {
+	id     string
+	status string
+}
+
+func (m *mockOutboxRepo) FetchAndLockPendingOutboxEvents(_ context.Context, _ int) ([]alt_db.OutboxEvent, error) {
+	return m.events, nil
+}
+
+func (m *mockOutboxRepo) UpdateOutboxEventStatus(_ context.Context, id string, status string, _ *string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.statusUpdates = append(m.statusUpdates, outboxStatusUpdate{id: id, status: status})
+	return nil
+}
+
+// statusOf returns the most recently written status for id, or "" if never written.
+func (m *mockOutboxRepo) statusOf(id string) string {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	status := ""
+	for _, u := range m.statusUpdates {
+		if u.id == id {
+			status = u.status
+		}
+	}
+	return status
+}
+
+// blockingRagIntegration simulates the local embedder taking longer than the
+// job timeout: UpsertArticle only returns once the caller's context is done,
+// the same way a 500KB+ article with 100+ chunks legitimately can.
+type blockingRagIntegration struct {
+	started chan struct{}
+}
+
+func (b *blockingRagIntegration) RetrieveContext(_ context.Context, _ string, _ []string) ([]rag_integration_port.RagContext, error) {
+	return nil, nil
+}
+
+func (b *blockingRagIntegration) UpsertArticle(ctx context.Context, _ rag_integration_port.UpsertArticleInput) error {
+	close(b.started)
+	<-ctx.Done()
+	return ctx.Err()
+}
+
+func (b *blockingRagIntegration) Answer(_ context.Context, _ rag_integration_port.AnswerInput) (<-chan string, error) {
+	return nil, nil
+}
+
+// outboxUpsertEventFixture mirrors the raw map payload save_article_driver.go
+// actually enqueues (snake_case keys), not the Go-native UpsertArticleInput
+// struct, so it also exercises emitArticleCreatedEvent's payload parsing.
+func outboxUpsertEventFixture(id string) alt_db.OutboxEvent {
+	payload, _ := json.Marshal(map[string]any{
+		"article_id": id,
+		"url":        "https://example.com/" + id,
+		"title":      "Test Article",
+		"body":       "heavy article body",
+		"user_id":    uuid.New().String(),
+		"updated_at": time.Now().Format(time.RFC3339),
+	})
+	return alt_db.OutboxEvent{
+		ID:        id,
+		EventType: "ARTICLE_UPSERT",
+		Payload:   payload,
+		Status:    "PROCESSING",
+	}
+}
+
+func TestProcessOutboxEvents_CancelMidProcessing_MarksInFlightEventFailed(t *testing.T) {
+	logger.InitLogger()
+
+	eventID := uuid.New().String()
+	repo := &mockOutboxRepo{events: []alt_db.OutboxEvent{outboxUpsertEventFixture(eventID)}}
+	rag := &blockingRagIntegration{started: make(chan struct{})}
+	knowledgePort := &stubKnowledgeEventPort{}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() {
+		done <- processOutboxEvents(ctx, repo, rag, knowledgePort)
+	}()
+
+	select {
+	case <-rag.started:
+	case <-time.After(5 * time.Second):
+		t.Fatal("UpsertArticle was never called")
+	}
+	cancel()
+
+	select {
+	case err := <-done:
+		require.NoError(t, err)
+	case <-time.After(5 * time.Second):
+		t.Fatal("processOutboxEvents did not return promptly after context cancellation")
+	}
+
+	assert.Equal(t, "FAILED", repo.statusOf(eventID), "in-flight event must end FAILED, not stuck PROCESSING")
+}
+
+func TestProcessOutboxEvents_CancelMidBatch_ResetsUnattemptedClaimedEventsToPending(t *testing.T) {
+	logger.InitLogger()
+
+	blockedID := uuid.New().String()
+	unattemptedID1 := uuid.New().String()
+	unattemptedID2 := uuid.New().String()
+
+	repo := &mockOutboxRepo{events: []alt_db.OutboxEvent{
+		outboxUpsertEventFixture(blockedID),
+		outboxUpsertEventFixture(unattemptedID1),
+		outboxUpsertEventFixture(unattemptedID2),
+	}}
+	rag := &blockingRagIntegration{started: make(chan struct{})}
+	knowledgePort := &stubKnowledgeEventPort{}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() {
+		done <- processOutboxEvents(ctx, repo, rag, knowledgePort)
+	}()
+
+	select {
+	case <-rag.started:
+	case <-time.After(5 * time.Second):
+		t.Fatal("UpsertArticle was never called")
+	}
+	cancel()
+
+	select {
+	case err := <-done:
+		require.NoError(t, err)
+	case <-time.After(5 * time.Second):
+		t.Fatal("processOutboxEvents did not return promptly after context cancellation")
+	}
+
+	assert.Equal(t, "FAILED", repo.statusOf(blockedID), "in-flight event must end FAILED, not stuck PROCESSING")
+	assert.Equal(t, "PENDING", repo.statusOf(unattemptedID1), "unattempted claimed event must be released back to PENDING")
+	assert.Equal(t, "PENDING", repo.statusOf(unattemptedID2), "unattempted claimed event must be released back to PENDING")
 }
