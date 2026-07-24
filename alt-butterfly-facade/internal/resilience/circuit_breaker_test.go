@@ -327,5 +327,36 @@ func TestCircuitBreaker_HalfOpenLimitsRequests(t *testing.T) {
 	assert.Equal(t, StateHalfOpen, cb.State())
 
 	// Subsequent requests should be limited until the first completes
-	// This tests the half-open rate limiting behavior
+	assert.False(t, cb.Allow())
+	assert.False(t, cb.Allow())
+
+	// Completing the in-flight trial (success) frees up the slot again
+	cb.RecordSuccess()
+	assert.True(t, cb.Allow())
+}
+
+func TestCircuitBreaker_HalfOpenSlotFreedOnFailure(t *testing.T) {
+	cb := NewCircuitBreaker(CircuitBreakerConfig{
+		FailureThreshold: 2,
+		SuccessThreshold: 2,
+		OpenTimeout:      50 * time.Millisecond,
+	})
+
+	// Trip the circuit
+	for i := 0; i < 2; i++ {
+		cb.Allow()
+		cb.RecordFailure()
+	}
+
+	// Wait for half-open
+	time.Sleep(60 * time.Millisecond)
+
+	// First trial allowed, second rejected while trial is in flight
+	assert.True(t, cb.Allow())
+	assert.False(t, cb.Allow())
+
+	// Trial fails -> circuit re-opens and the in-flight slot is released
+	cb.RecordFailure()
+	assert.Equal(t, StateOpen, cb.State())
+	assert.False(t, cb.Allow())
 }

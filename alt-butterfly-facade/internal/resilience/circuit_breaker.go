@@ -76,6 +76,12 @@ type CircuitBreaker struct {
 	consecSuccesses int
 	lastFailure     time.Time
 
+	// halfOpenInFlight tracks the number of trial calls currently permitted
+	// (allowed but not yet resolved via RecordSuccess/RecordFailure) while
+	// the circuit is half-open. Only one trial call is permitted at a time
+	// so concurrent requests don't all flood a not-yet-recovered backend.
+	halfOpenInFlight int
+
 	// Stats
 	totalSuccesses int64
 	totalFailures  int64
@@ -119,12 +125,20 @@ func (cb *CircuitBreaker) Allow() bool {
 		if time.Since(cb.lastFailure) > cb.config.OpenTimeout {
 			cb.state = StateHalfOpen
 			cb.consecSuccesses = 0
+			cb.halfOpenInFlight = 0
+			cb.halfOpenInFlight++
 			return true
 		}
 		return false
 
 	case StateHalfOpen:
-		// Allow requests in half-open state for testing
+		// Only one trial call is permitted at a time while the circuit
+		// verifies the backend has recovered; concurrent callers are
+		// rejected until that trial resolves via RecordSuccess/RecordFailure.
+		if cb.halfOpenInFlight >= 1 {
+			return false
+		}
+		cb.halfOpenInFlight++
 		return true
 
 	default:
@@ -143,6 +157,9 @@ func (cb *CircuitBreaker) RecordSuccess() {
 	cb.consecSuccesses++
 
 	if cb.state == StateHalfOpen {
+		if cb.halfOpenInFlight > 0 {
+			cb.halfOpenInFlight--
+		}
 		if cb.consecSuccesses >= cb.config.SuccessThreshold {
 			cb.state = StateClosed
 			cb.consecSuccesses = 0
@@ -168,6 +185,7 @@ func (cb *CircuitBreaker) RecordFailure() {
 	} else if cb.state == StateHalfOpen {
 		// Any failure in half-open state trips the circuit again
 		cb.state = StateOpen
+		cb.halfOpenInFlight = 0
 	}
 }
 
@@ -193,6 +211,7 @@ func (cb *CircuitBreaker) Reset() {
 	cb.state = StateClosed
 	cb.consecFailures = 0
 	cb.consecSuccesses = 0
+	cb.halfOpenInFlight = 0
 }
 
 // Execute runs the given function if the circuit breaker allows it.

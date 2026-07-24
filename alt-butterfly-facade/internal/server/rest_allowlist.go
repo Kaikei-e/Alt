@@ -14,9 +14,13 @@ import "strings"
 //   - /v1/csrf-token          — security infra, single-shot
 //   - /v1/health              — liveness probe
 //
-// Paths starting with any of these prefixes are forwarded to the plaintext
-// alt-backend REST listener. Every other /v1/* path is rejected at the BFF
-// boundary so accidental plaintext regressions surface immediately.
+// allowRESTPath is the architectural allowlist used for warn-only telemetry
+// in server.go: paths outside it log a migration-candidate warning. It does
+// NOT gate routing today — every /v1/* path is still forwarded to the
+// plaintext alt-backend REST listener regardless of this function's result
+// (ADR-000729 Phase 3, boundary enforcement, has not landed yet). Treat this
+// list as a signal for what to migrate next, not as an access-control
+// mechanism.
 var restAllowlistPrefixes = []string{
 	"/v1/images/proxy/",
 	"/v1/images/fetch",
