@@ -10,7 +10,10 @@ from typing import Any, AsyncIterator
 from news_creator.config.config import NewsCreatorConfig
 from news_creator.domain.models import LLMGenerateResponse
 from news_creator.driver.ollama_driver import OllamaDriver
-from news_creator.driver.ollama_stream_driver import OllamaStreamDriver
+from news_creator.driver.ollama_stream_driver import (
+    _RUNNER_STARTUP_PARAMS,
+    OllamaStreamDriver,
+)
 from news_creator.gateway.hybrid_priority_semaphore import (
     HybridPrioritySemaphore,
     PreemptedException,
@@ -167,17 +170,14 @@ class OllamaGateway(LLMProviderPort):
         # Build options from config and overrides
         llm_options = self.config.get_llm_options()
         if options:
-            # CRITICAL: Remove num_ctx from options to prevent override
-            # num_ctx is fixed in Modelfile, so we never send it in API requests
-            options_filtered = {k: v for k, v in options.items() if k != "num_ctx"}
+            # CRITICAL: Strip runner startup params (num_ctx/num_batch/num_keep)
+            # from caller options. They are fixed by config/Modelfile; a caller
+            # value that differs from the base triggers an Ollama runner reload
+            # (GPU contention), mirroring OllamaStreamDriver._merge_options.
+            options_filtered = {
+                k: v for k, v in options.items() if k not in _RUNNER_STARTUP_PARAMS
+            }
             llm_options.update(options_filtered)
-
-        # CRITICAL: We previously removed num_ctx, but now we allow it to be passed
-        # if explicitly set in config, to override Modelfile defaults when necessary.
-        # This is important for performance tuning (e.g. reducing context to 16k).
-        # if "num_ctx" in llm_options:
-        #     del llm_options["num_ctx"]
-        #     logger.debug("Removed num_ctx from options (fixed in Modelfile)")
 
         # Apply num_predict override if provided
         if num_predict is not None:
@@ -744,7 +744,9 @@ class OllamaGateway(LLMProviderPort):
         # Build options
         llm_options = self.config.get_llm_options()
         if options:
-            options_filtered = {k: v for k, v in options.items() if k != "num_ctx"}
+            options_filtered = {
+                k: v for k, v in options.items() if k not in _RUNNER_STARTUP_PARAMS
+            }
             llm_options.update(options_filtered)
         if num_predict is not None:
             llm_options["num_predict"] = num_predict

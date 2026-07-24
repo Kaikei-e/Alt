@@ -1,10 +1,25 @@
 """Tests for HTML cleaner utility."""
 
+from news_creator.utils import html_cleaner
 from news_creator.utils.html_cleaner import clean_html_content
 
 
 class TestHTMLCleaner:
     """Test HTML cleaner functionality."""
+
+    def test_uses_nh3_not_bleach(self):
+        """Sanitization must use nh3 (maintained), not bleach (EOL 2026-06-05).
+
+        bleach 6.4.0 (2026-06-05) announced no future releases, including for
+        security issues. RSS-sourced article HTML is untrusted external input,
+        so the sanitizer must stay on a maintained library.
+        """
+        assert hasattr(html_cleaner, "nh3"), (
+            "html_cleaner must import nh3 for HTML sanitization"
+        )
+        assert not hasattr(html_cleaner, "bleach"), (
+            "html_cleaner must not depend on unmaintained bleach"
+        )
 
     def test_clean_plain_text(self):
         """Test that plain text is returned as-is."""
@@ -33,7 +48,7 @@ class TestHTMLCleaner:
         content = "<html><head><script>alert('test');</script></head><body><p>Content</p></body></html>"
         cleaned, was_html = clean_html_content(content)
         assert was_html is True
-        # Script content should be removed (bleach strips script tags)
+        # Script content should be removed (nh3 strips script tag content)
         assert "alert('test')" not in cleaned or "alert" not in cleaned.lower()
         assert "Content" in cleaned
 
@@ -68,7 +83,7 @@ class TestHTMLCleaner:
         assert was_html is True
         assert "Content with" in cleaned
         assert "link" in cleaned
-        # Attributes should be removed (bleach strips them when tags=[])
+        # Attributes should be removed (nh3 strips them when tags=set())
         assert 'class="test"' not in cleaned
 
     def test_clean_html_with_japanese(self):

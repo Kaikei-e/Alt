@@ -1,16 +1,16 @@
-"""HTML cleaning utilities for article content using bleach."""
+"""HTML cleaning utilities for article content using nh3."""
 
 import logging
 import re
 
-import bleach
+import nh3
 
 logger = logging.getLogger(__name__)
 
 
 def clean_html_content(content: str, article_id: str = "") -> tuple[str, bool]:
     """
-    Remove HTML tags and extract text content from HTML using bleach.
+    Remove HTML tags and extract text content from HTML using nh3.
 
     Args:
         content: Content that may contain HTML
@@ -48,7 +48,7 @@ def clean_html_content(content: str, article_id: str = "") -> tuple[str, bool]:
 
     # Log HTML detection
     logger.warning(
-        "HTML content detected, cleaning with bleach",
+        "HTML content detected, cleaning with nh3",
         extra={
             "article_id": article_id,
             "original_length": original_length,
@@ -58,12 +58,12 @@ def clean_html_content(content: str, article_id: str = "") -> tuple[str, bool]:
     )
 
     try:
-        # Use bleach to strip all HTML tags and get text content
-        # bleach.clean with tags=[] removes all tags
-        cleaned = bleach.clean(content, tags=[], strip=True)
+        # Use nh3 to strip all HTML tags and get text content
+        # nh3.clean with tags=set() removes all tags (and script/style content)
+        cleaned = nh3.clean(content, tags=set())
 
         # Remove HTML entities that might remain
-        cleaned = bleach.clean(cleaned, tags=[], strip=True)
+        cleaned = nh3.clean(cleaned, tags=set())
 
         # Remove excessive whitespace
         cleaned = re.sub(r"\s+", " ", cleaned)
@@ -92,7 +92,7 @@ def clean_html_content(content: str, article_id: str = "") -> tuple[str, bool]:
         )
 
         logger.info(
-            "HTML content cleaned with bleach",
+            "HTML content cleaned with nh3",
             extra={
                 "article_id": article_id,
                 "original_length": original_length,
@@ -117,7 +117,7 @@ def clean_html_content(content: str, article_id: str = "") -> tuple[str, bool]:
 
     except Exception as e:
         logger.error(
-            "Failed to clean HTML with bleach, falling back to regex",
+            "Failed to clean HTML with nh3, falling back to regex",
             extra={
                 "article_id": article_id,
                 "error": str(e),
