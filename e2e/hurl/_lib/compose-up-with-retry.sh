@@ -41,6 +41,13 @@ compose_up_with_retry() {
   : "${STAGING_PROJECT_NAME:?STAGING_PROJECT_NAME must be set before compose_up_with_retry}"
 
   local attempt
+  # `up` never re-pulls a tag that already exists locally, so a shared CI
+  # daemon can silently run a stale cached image (e.g. an old `main`) long
+  # after the registry moved on. Refresh remote images explicitly; buildable
+  # (local-context) services are skipped. A pull failure aborts loudly —
+  # failing beats running stale binaries against fresh fixtures.
+  docker compose -f "$SLICE" -p "$STAGING_PROJECT_NAME" pull --ignore-buildable
+
   for attempt in $(seq 1 "$COMPOSE_UP_MAX_ATTEMPTS"); do
     if docker compose -f "$SLICE" -p "$STAGING_PROJECT_NAME" \
          up -d --wait --wait-timeout 180 "$@"; then

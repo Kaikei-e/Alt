@@ -18,6 +18,9 @@
 #                     (default: http://acolyte-orchestrator:8090)
 #   HURL_IMAGE      — Hurl container image
 #                     (default: ghcr.io/orange-opensource/hurl:7.1.0)
+#   DIAG_CURL_IMAGE      — small curl image used by dump_diagnostics to
+#                          probe search-indexer/meilisearch in-network
+#                          (default: curlimages/curl:8.7.1)
 #   RUN_ID               — unique run identifier for report directory naming
 #                          (default: $(date +%s))
 #   STAGING_PROJECT_NAME — compose project + network name (default: alt-staging).
@@ -31,6 +34,7 @@ cd "$ROOT"
 
 : "${BASE_URL:=http://acolyte-orchestrator:8090}"
 : "${HURL_IMAGE:=ghcr.io/orange-opensource/hurl:7.1.0}"
+: "${DIAG_CURL_IMAGE:=curlimages/curl:8.7.1}"
 : "${IMAGE_TAG:=main}"
 : "${GHCR_OWNER:=kaikei-e}"
 : "${RUN_ID:=$(date +%s)}"
@@ -157,6 +161,46 @@ dump_diagnostics() {
     exec -T acolyte-db psql -U acolyte -d acolyte -c \
     "SELECT run_id, run_status, failure_code, failure_message, started_at, finished_at FROM report_runs ORDER BY started_at DESC NULLS LAST LIMIT 5;" \
     > "$REPORT_DIR/diagnostics-report-runs.txt" 2>&1 || true
+
+  # Which image (Repository/Tag/Image ID) actually ran — pins down
+  # "which build was live" before chasing behavior, e.g. a stale GHCR
+  # `main` tag still serving pre-fix search-indexer content-cropping.
+  docker compose -f "$SLICE" -p "$STAGING_PROJECT_NAME" \
+    images \
+    > "$REPORT_DIR/diagnostics-images.txt" 2>&1 || true
+  docker compose -f "$SLICE" -p "$STAGING_PROJECT_NAME" \
+    ps --format json \
+    >> "$REPORT_DIR/diagnostics-images.txt" 2>&1 || true
+
+  # Bypass the orchestrator and gatherer node entirely and hit
+  # search-indexer's REST API straight from inside the staging network
+  # (same small-image-in-network shape as hurl_run). Confirms whether
+  # hits/content are already empty at the search-indexer boundary,
+  # independent of anything acolyte does with the response afterward.
+  docker run --rm --network "$STAGING_PROJECT_NAME" "$DIAG_CURL_IMAGE" \
+    -s "http://search-indexer:9300/v1/search?q=GPU&limit=2" \
+    > "$REPORT_DIR/diagnostics-probe-search-indexer.json" 2>&1 || true
+
+  # Same query straight against Meilisearch with attributesToCrop, to
+  # tell apart "Meilisearch has no content for this doc" from
+  # "search-indexer drops content on the way out". MEILI_MASTER_KEY is
+  # only ever placed in the Authorization header here — `curl -s` on
+  # success prints just the response body, and on failure only curl's
+  # own connection-error text, so the key value never lands in a file.
+  docker run --rm --network "$STAGING_PROJECT_NAME" "$DIAG_CURL_IMAGE" \
+    -s -X POST "http://meilisearch:7700/indexes/articles/search" \
+    -H "Authorization: Bearer $MEILI_MASTER_KEY" \
+    -H "Content-Type: application/json" \
+    -d '{"q":"GPU","limit":2,"attributesToRetrieve":["id","title"],"attributesToCrop":["content"],"cropLength":120}' \
+    > "$REPORT_DIR/diagnostics-probe-meilisearch.json" 2>&1 || true
+
+  # /version is gated behind the master key too (same as /indexes/*),
+  # unlike /health — without Authorization this just returns a
+  # missing_authorization_header error instead of a version string.
+  docker run --rm --network "$STAGING_PROJECT_NAME" "$DIAG_CURL_IMAGE" \
+    -s "http://meilisearch:7700/version" \
+    -H "Authorization: Bearer $MEILI_MASTER_KEY" \
+    > "$REPORT_DIR/diagnostics-meili-version.txt" 2>&1 || true
 }
 
 echo "==> running Hurl suite (serial; report→version→run FK chain requires ordering)" >&2
