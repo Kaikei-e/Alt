@@ -1,0 +1,11 @@
+-- Drop the `window_days = 7` schema default on `recap_jobs`. The 7-day
+-- recap product window was removed in 2026-04; only window_days 1
+-- (morning-update) and 3 (batch/manual) are current product values.
+--
+-- Every reachable INSERT into recap_jobs already supplies window_days
+-- explicitly (RecapDao::create_job_with_lock_and_window, the sole
+-- production insert path — see recap-worker/recap-worker/src/store/dao/job.rs
+-- and src/pipeline/fetch.rs), so dropping the default cannot change
+-- behaviour for any live code path. It only removes the silent fallback
+-- to the retired 7-day window for column lists that omit window_days.
+ALTER TABLE "recap_jobs" ALTER COLUMN "window_days" DROP DEFAULT;
