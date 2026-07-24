@@ -1,7 +1,9 @@
 package augur_test
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"io"
 	"log/slog"
@@ -447,6 +449,7 @@ func runStreamChatEmitScenario(
 	tenantHeader string,
 	citations []usecase.Citation,
 	emitter *fakeEventEmitter,
+	loggerOverride ...*slog.Logger,
 ) {
 	t.Helper()
 
@@ -454,6 +457,9 @@ func runStreamChatEmitScenario(
 	mockRetrieve := new(MockRetrieveContextUsecase)
 	mockConv := new(MockAugurConversationUsecase)
 	logger := slog.New(slog.NewJSONHandler(io.Discard, nil))
+	if len(loggerOverride) > 0 {
+		logger = loggerOverride[0]
+	}
 
 	events := make(chan usecase.StreamEvent, 1)
 	mockConv.On("EnsureConversation", mock.Anything, conv.UserID, requestedConvID, mock.AnythingOfType("string")).
@@ -605,4 +611,52 @@ func TestStreamChat_IncrementsEmitterFailureMetric_OnEmitError(t *testing.T) {
 	require.Len(t, emitter.snapshot(), 1, "emit must still be attempted even though it will fail")
 	after := emitterFailureCount(t, "augur.conversation_linked.v1")
 	assert.Equal(t, before+1, after, "IncEmitterFailure must fire on the warn-and-continue path")
+}
+
+// TestStreamChat_LogsFullEventFieldsForReplay_OnEmitError pins the interim
+// safety net for the missing augur.conversation_linked.v1 outbox (review
+// MED finding, handler.go:383): when knowledge-sovereign is unreachable the
+// warn log must carry every field the event payload needs so an operator
+// can manually replay it from rask logs (there is no persisted retry queue
+// yet — a full transactional outbox is a separate schema-migration change).
+func TestStreamChat_LogsFullEventFieldsForReplay_OnEmitError(t *testing.T) {
+	var buf bytes.Buffer
+	logger := slog.New(slog.NewJSONHandler(&buf, nil))
+
+	emitter := &fakeEventEmitter{err: errors.New("sovereign unreachable")}
+	articleID := uuid.New()
+	tenantID := uuid.New()
+	conv := &domain.AugurConversation{
+		ID:        uuid.New(),
+		UserID:    uuid.New(),
+		Title:     "test",
+		CreatedAt: time.Now().UTC(),
+	}
+
+	runStreamChatEmitScenario(t, conv, uuid.Nil, tenantID.String(), []usecase.Citation{
+		{ArticleID: articleID.String(), Title: "an article"},
+	}, emitter, logger)
+
+	require.Len(t, emitter.snapshot(), 1, "emit must still be attempted even though it will fail")
+
+	var replayRecord map[string]any
+	for _, line := range bytes.Split(buf.Bytes(), []byte("\n")) {
+		if len(line) == 0 {
+			continue
+		}
+		var rec map[string]any
+		require.NoError(t, json.Unmarshal(line, &rec))
+		if rec["msg"] == "failed to emit augur.conversation_linked.v1" {
+			replayRecord = rec
+			break
+		}
+	}
+	require.NotNil(t, replayRecord, "expected a 'failed to emit augur.conversation_linked.v1' log line")
+
+	assert.Equal(t, conv.ID.String(), replayRecord["conversation_id"], "conversation_id must be replayable")
+	assert.Equal(t, conv.UserID.String(), replayRecord["user_id"], "user_id must be replayable")
+	assert.Equal(t, tenantID.String(), replayRecord["tenant_id"], "tenant_id must be replayable")
+	assert.Equal(t, "article:"+articleID.String(), replayRecord["entry_key"], "entry_key must be replayable")
+	assert.Equal(t, "default", replayRecord["lens_mode_id"], "lens_mode_id must be replayable")
+	assert.EqualValues(t, conv.CreatedAt.UnixMilli(), replayRecord["linked_at"], "linked_at must be replayable")
 }
