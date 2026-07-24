@@ -240,6 +240,45 @@ func TestMeilisearchDriver_Search_PropagatesCallerContext(t *testing.T) {
 	}
 }
 
+// TestMeilisearchDriver_IndexDocuments_FailsOnTaskStatusFailed reproduces the
+// HIGH data-loss finding: waitForTask discarded the *meilisearch.Task it got
+// back and only looked at err, but meilisearch-go's WaitForTaskWithContext
+// returns a nil error once the task reaches a terminal status -- including
+// TaskStatusFailed (e.g. a primary-key/schema violation on the Meilisearch
+// side). IndexDocuments must surface that as an error so the consumer never
+// XACKs a message whose write did not actually land.
+func TestMeilisearchDriver_IndexDocuments_FailsOnTaskStatusFailed(t *testing.T) {
+	fake := newFakeIndexManager()
+	fake.waitResp = &meilisearch.Task{
+		Status: meilisearch.TaskStatusFailed,
+	}
+	sm := &fakeServiceManager{idx: fake}
+	d := NewMeilisearchDriverWithClients(sm, nil, "articles")
+
+	err := d.IndexDocuments(context.Background(), []SearchDocumentDriver{{ID: "a"}})
+
+	if err == nil {
+		t.Fatal("expected IndexDocuments to return an error when the Meilisearch task status is failed, got nil")
+	}
+}
+
+// TestMeilisearchDriver_DeleteDocuments_FailsOnTaskStatusFailed covers the
+// delete path the same way.
+func TestMeilisearchDriver_DeleteDocuments_FailsOnTaskStatusFailed(t *testing.T) {
+	fake := newFakeIndexManager()
+	fake.waitResp = &meilisearch.Task{
+		Status: meilisearch.TaskStatusFailed,
+	}
+	sm := &fakeServiceManager{idx: fake}
+	d := NewMeilisearchDriverWithClients(sm, nil, "articles")
+
+	err := d.DeleteDocuments(context.Background(), []string{"a"})
+
+	if err == nil {
+		t.Fatal("expected DeleteDocuments to return an error when the Meilisearch task status is failed, got nil")
+	}
+}
+
 // TestMeilisearchDriver_RegisterSynonyms_PropagatesCallerContext covers the
 // synonyms write path (usecase.registerBatchSynonyms's downstream call).
 func TestMeilisearchDriver_RegisterSynonyms_PropagatesCallerContext(t *testing.T) {

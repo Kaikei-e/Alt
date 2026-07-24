@@ -6,6 +6,7 @@ import type {
 	RetentionRunResponse,
 	SovereignAdminSnapshot,
 } from "$lib/types/sovereign-admin";
+import { getClientCSRFToken } from "$lib/api/client/core";
 
 export type SovereignAdminActionRequest =
 	| { action: "create_snapshot" }
@@ -94,10 +95,14 @@ export function useSovereignAdmin(
 		if (!actionRunner) throw new Error("Actions unavailable.");
 		acting = true;
 		try {
+			const csrfToken = await getClientCSRFToken();
 			const response = await fetch("/api/admin/knowledge-home/sovereign", {
 				method: "POST",
 				credentials: "include",
-				headers: { "Content-Type": "application/json" },
+				headers: {
+					"Content-Type": "application/json",
+					...(csrfToken ? { "X-CSRF-Token": csrfToken } : {}),
+				},
 				body: JSON.stringify({ action: "run_retention", dry_run: dryRun }),
 			});
 			if (!response.ok) {

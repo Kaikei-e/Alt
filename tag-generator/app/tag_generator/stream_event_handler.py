@@ -111,10 +111,12 @@ class TagGeneratorEventHandler(EventHandler):
                     article_id=article_id,
                 )
             else:
-                logger.warning(
-                    "article_tag_processing_failed",
-                    article_id=article_id,
-                )
+                # Tag extraction or DB upsert failed. Raise instead of just
+                # logging: the caller's try/except (_handle_article_created)
+                # re-raises so stream_consumer._read_and_process does not
+                # XACK -- the message stays in the PEL for XAUTOCLAIM
+                # redelivery / DLQ instead of being silently dropped.
+                raise RuntimeError(f"tag processing failed for article {article_id}")
         else:
             logger.warning(
                 "article_not_found",

@@ -30,6 +30,22 @@ describe("route-guard", () => {
 		])("should return false for protected route: %s", (pathname) => {
 			expect(isPublicRoute(pathname)).toBe(false);
 		});
+
+		it.each([
+			// These protected API paths share a trailing path segment with a
+			// PUBLIC_ROUTES entry (e.g. /register, /health, /error, /test) and
+			// must NOT be misclassified as public just because the pattern is
+			// unanchored. See CWE-625 / security-boundaries.md allowlist rule.
+			"/api/v1/rss-feed-link/register",
+			"/api/admin/knowledge-home/health",
+			"/api/admin/knowledge-home/error",
+			"/api/v1/dashboard/test",
+		])(
+			"should return false for protected route sharing a path segment with a public route: %s",
+			(pathname) => {
+				expect(isPublicRoute(pathname)).toBe(false);
+			},
+		);
 	});
 
 	describe("isApiRoute", () => {

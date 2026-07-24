@@ -7,7 +7,7 @@ import type {
 	RecentActivity,
 	SystemMetric,
 } from "$lib/schema/dashboard";
-import { callClientAPI } from "./core";
+import { callClientAPI, getClientCSRFToken } from "./core";
 
 export async function getMetrics(
 	metricType?: string,
@@ -184,10 +184,12 @@ export async function triggerRecapJob(
 		windowDays === 3
 			? `${base}/api/v1/generate/recaps/3days`
 			: `${base}/api/v1/generate/recaps/7days`;
+	const csrfToken = await getClientCSRFToken();
 	const res = await fetch(endpoint, {
 		method: "POST",
 		headers: {
 			"Content-Type": "application/json",
+			...(csrfToken ? { "X-CSRF-Token": csrfToken } : {}),
 		},
 		body: JSON.stringify(genres ? { genres } : {}),
 	});

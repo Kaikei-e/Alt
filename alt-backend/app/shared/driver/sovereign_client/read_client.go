@@ -413,10 +413,15 @@ func (c *Client) AreArticlesVisibleInLens(ctx context.Context, tenantID, userID 
 
 func (c *Client) AppendKnowledgeEvent(ctx context.Context, event domain.KnowledgeEvent) (int64, error) {
 	if !c.enabled {
-		// disabled-mode is a no-op; treat as "appended" with zero seq so
-		// callers that count emits (e.g. ADR-869 URL backfill) don't
-		// over-report duplicates against a stub.
-		return 0, nil
+		// Finding [11]: must match ApplyProjectionMutation / ApplyRecallMutation
+		// / ApplyCurationMutation in client.go — a disabled client rejects the
+		// call instead of faking a successful append. Returning (0, nil) here
+		// made "SOVEREIGN_URL unset" indistinguishable from "event appended,
+		// zero-seq dedupe hit" for callers like knowledge_url_backfill_usecase
+		// that treat eventSeq==0 as a duplicate-detection signal (ADR-869) —
+		// those callers check err != nil first, so ErrSovereignDisabled is
+		// caught before ever reaching that eventSeq==0 interpretation.
+		return 0, ErrSovereignDisabled
 	}
 	pbEvent := domainEventToProto(event)
 	resp, err := c.client.AppendKnowledgeEvent(ctx, connect.NewRequest(&sovereignv1.AppendKnowledgeEventRequest{

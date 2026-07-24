@@ -30,6 +30,11 @@ class _FakeCursor:
     async def fetchone(self) -> Sequence[Any] | None:
         return self._row
 
+    async def fetchall(self) -> Sequence[Sequence[Any]]:
+        # `row` doubles as the full result set for fetchall-style queries —
+        # the test constructs it as a list of rows in that case.
+        return self._row if self._row is not None else []
+
 
 class _FakeConnection:
     """Records every conn.execute() call; answers with one canned row per call, in order."""
@@ -168,3 +173,58 @@ async def test_get_latest_run_for_report_returns_none_when_report_has_no_runs() 
     result = await gw.get_latest_run_for_report(uuid4())
 
     assert result is None
+
+
+@pytest.mark.asyncio
+async def test_list_running_runs_returns_every_running_row() -> None:
+    """Startup reconciliation needs every orphaned run, not just one per report."""
+    run_id_1, run_id_2 = uuid4(), uuid4()
+    report_id_1, report_id_2 = uuid4(), uuid4()
+    rows = [
+        (
+            run_id_1,
+            report_id_1,
+            1,
+            "running",
+            None,
+            None,
+            None,
+            datetime(2026, 7, 24, 8, 0, tzinfo=UTC),
+            None,
+            None,
+            None,
+        ),
+        (
+            run_id_2,
+            report_id_2,
+            2,
+            "running",
+            None,
+            None,
+            None,
+            datetime(2026, 7, 24, 9, 0, tzinfo=UTC),
+            None,
+            None,
+            None,
+        ),
+    ]
+    conn = _FakeConnection(rows=[rows])
+    gw = _gw(conn)
+
+    result = await gw.list_running_runs()
+
+    assert {r.run_id for r in result} == {run_id_1, run_id_2}
+    assert all(r.run_status == "running" for r in result)
+    query, params = conn.executed[0]
+    assert "run_status = 'running'" in query
+    assert params is None
+
+
+@pytest.mark.asyncio
+async def test_list_running_runs_returns_empty_list_when_none_running() -> None:
+    conn = _FakeConnection(rows=[[]])
+    gw = _gw(conn)
+
+    result = await gw.list_running_runs()
+
+    assert result == []

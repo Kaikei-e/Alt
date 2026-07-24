@@ -126,6 +126,18 @@ func (v *URLSecurityValidator) IsAllowedDomain(domain string) bool {
 
 // isPrivateNetwork checks if a hostname resolves to a private network
 func (v *URLSecurityValidator) isPrivateNetwork(hostname string) bool {
+	// An operator-allow-listed feed host (FEED_ALLOWED_HOSTS) is an explicit
+	// trust decision and is never treated as a private-network threat — this is
+	// what lets intentionally non-resolvable trusted hosts (e.g. the e2e stub)
+	// through the SSRF gate. Strip any port before matching the allow-list.
+	allowHost := hostname
+	if h, _, err := net.SplitHostPort(hostname); err == nil {
+		allowHost = h
+	}
+	if IsFeedHostAllowed(allowHost) {
+		return false
+	}
+
 	// Check for localhost variants
 	if hostname == "localhost" || hostname == "127.0.0.1" {
 		return true
@@ -138,14 +150,19 @@ func (v *URLSecurityValidator) isPrivateNetwork(hostname string) bool {
 		return ip.IsPrivate() || ip.IsLoopback() || ip.IsLinkLocalUnicast()
 	}
 
-	// For domain names, we cannot easily check without DNS resolution
-	// but we can check for common private domain patterns
+	// Fast-path check for common private domain suffixes before paying for
+	// DNS resolution.
 	if strings.HasSuffix(hostname, ".local") ||
 		strings.HasSuffix(hostname, ".localhost") {
 		return true
 	}
 
-	return false
+	// SSRF finding [2]: a domain name must be resolved and every returned
+	// address checked for private/loopback/link-local ranges — otherwise an
+	// attacker-controlled domain whose A record points at, e.g.,
+	// 169.254.169.254 (cloud metadata) sails through unresolved. Fail closed
+	// (treat as private) when resolution fails, matching IsPrivateHost.
+	return IsPrivateHost(hostname)
 }
 
 // isValidRSSPath checks if the URL path appears to be RSS-related

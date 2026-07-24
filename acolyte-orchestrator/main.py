@@ -20,7 +20,7 @@ from acolyte.config.settings import Settings
 from acolyte.domain.fusion import RRFFusion
 from acolyte.gateway.checkpoint_factory import create_checkpointer
 from acolyte.gateway.memory_content_store import MemoryContentStore
-from acolyte.gateway.news_creator_hyde_gw import NewsCreatorHyDEGenerator
+from acolyte.gateway.news_creator_hyde_gw import build_hyde_generator
 from acolyte.gateway.ollama_gw import OllamaGateway
 from acolyte.gateway.postgres_job_gw import PostgresJobGateway
 from acolyte.gateway.postgres_report_gw import PostgresReportGateway
@@ -31,6 +31,7 @@ from acolyte.handler.connect_service import AcolyteConnectService
 from acolyte.infra.logging import configure_logging
 from acolyte.infra.peer_identity import PeerIdentityMiddleware, allowed_peers_from_env
 from acolyte.usecase.graph.report_graph import build_report_graph
+from acolyte.usecase.reconcile_orphaned_runs_uc import ReconcileOrphanedRunsUsecase
 
 if TYPE_CHECKING:
     from collections.abc import AsyncGenerator
@@ -99,16 +100,10 @@ _fusion = RRFFusion(k=60)
 
 # HyDE generator (cross-lingual recall expansion via Gemma4). Disabled when
 # ``hyde_enabled`` is false so the pipeline falls back to BM25+RRF alone.
-_hyde_generator = (
-    NewsCreatorHyDEGenerator(
-        _llm_gw,
-        timeout_s=settings.hyde_timeout_s,
-        max_chars=settings.hyde_max_chars,
-        num_predict=settings.hyde_num_predict,
-    )
-    if settings.hyde_enabled
-    else None
-)
+# build_hyde_generator is the shared wiring source of truth — scripts/resume_run.py
+# must derive the same generator from the same settings, or a resumed run silently
+# drops HyDE expansion relative to the production start_report_run path.
+_hyde_generator = build_hyde_generator(_llm_gw, settings)
 
 
 def _compile_graph(*, checkpointer: object | None = None) -> CompiledStateGraph:
@@ -146,6 +141,9 @@ def create_app() -> Starlette:
             llm_url=settings.news_creator_url,
             model=settings.default_model,
         )
+        reconciled = await ReconcileOrphanedRunsUsecase(_job_queue).execute()
+        if reconciled:
+            logger.warning("Reconciled orphaned running runs left by a prior process", count=reconciled)
         cert_watch_task: asyncio.Task[None] | None = None
         if _mtls_reloader is not None:
             cert_watch_task = asyncio.create_task(

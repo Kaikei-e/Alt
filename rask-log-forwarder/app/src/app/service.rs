@@ -19,6 +19,12 @@ use tracing::info;
 /// were persisted to disk after transmission + retries failed.
 const DISK_REPLAY_INTERVAL: Duration = Duration::from_secs(60);
 
+/// How often the disk-fallback cleanup task purges batches past their
+/// retention period. Batches that permanently fail to replay (e.g. the
+/// aggregator rejects them with a persistent 4xx) would otherwise stay on
+/// disk forever and eventually trip the `max_disk_usage` cap.
+const DISK_CLEANUP_INTERVAL: Duration = Duration::from_secs(3600);
+
 #[derive(Error, Debug)]
 pub enum ServiceError {
     #[error("Configuration error: {0}")]
@@ -85,6 +91,15 @@ impl ServiceManager {
             "Protocol: {:?}, Endpoint: {}, OTLP Endpoint: {}",
             sender_config.protocol, config.endpoint, sender_config.otlp_endpoint
         );
+
+        // Loudly surface protocols whose batch flush path has no
+        // ReliabilityManager retry/disk-fallback coverage (currently: OTLP -
+        // see pipeline::flush_batch), instead of letting the gap fail
+        // silently in production.
+        #[cfg(feature = "otlp")]
+        if let Some(warning) = super::config::reliability_gap_warning(sender_config.protocol) {
+            tracing::warn!("{warning}");
+        }
 
         Ok(Self {
             config,
@@ -153,6 +168,13 @@ impl ServiceManager {
         reliability_manager
             .clone()
             .start_disk_replay_task(DISK_REPLAY_INTERVAL, cancel_token.clone());
+
+        // Periodically purge disk-fallback batches past retention - without
+        // this, batches that permanently fail to replay never leave disk and
+        // eventually exhaust the configured disk-usage cap.
+        reliability_manager
+            .clone()
+            .start_disk_cleanup_task(DISK_CLEANUP_INTERVAL, cancel_token.clone());
 
         let params = ProcessingLoopParams {
             collector,

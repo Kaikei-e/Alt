@@ -156,6 +156,40 @@ class PostgresJobGateway:
                 failure_message=r[10],
             )
 
+    async def list_running_runs(self) -> list[ReportRun]:
+        """Return every run currently in 'running' status, across all reports.
+
+        Used at process startup to reconcile runs a crashed/previous process
+        left stuck — nothing else in this service polls for them, so without
+        this they stay 'running' forever and wedge has_active_run /
+        GetReport.active_run for their report indefinitely.
+        """
+        async with self._pool.connection() as conn:
+            cur = await conn.execute(
+                "SELECT run_id, report_id, target_version_no, run_status, "
+                "planner_model, writer_model, critic_model, "
+                "started_at, finished_at, failure_code, failure_message "
+                "FROM report_runs "
+                "WHERE run_status = 'running'",
+            )
+            rows = await cur.fetchall()
+            return [
+                ReportRun(
+                    run_id=r[0],
+                    report_id=r[1],
+                    target_version_no=r[2],
+                    run_status=r[3],
+                    planner_model=r[4],
+                    writer_model=r[5],
+                    critic_model=r[6],
+                    started_at=r[7],
+                    finished_at=r[8],
+                    failure_code=r[9],
+                    failure_message=r[10],
+                )
+                for r in rows
+            ]
+
     async def claim_job(self, worker_id: str) -> ReportJob | None:
         """Claim a pending job using SELECT ... FOR UPDATE SKIP LOCKED."""
         async with self._pool.connection() as conn, conn.transaction():

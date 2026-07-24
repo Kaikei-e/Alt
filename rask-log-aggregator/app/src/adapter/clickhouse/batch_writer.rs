@@ -37,6 +37,13 @@ const INSERTER_END_TIMEOUT: Duration = Duration::from_secs(10);
 const INSERTER_MAX_BYTES: u64 = 50_000_000;
 const INSERTER_MAX_ROWS: u64 = 10_000;
 
+/// Delay between failed flush attempts within `flush_with_retry`.
+///
+/// Avoids hammering a ClickHouse instance that is already struggling (e.g.
+/// mid-restart) with back-to-back retries at the same rate the previous
+/// attempt just failed at.
+const RETRY_BACKOFF: Duration = Duration::from_millis(250);
+
 /// Batch writer that buffers rows through channels before writing to ClickHouse.
 ///
 /// Implements both `LogExporter` and `OTelExporter`. Handlers send rows
@@ -282,6 +289,7 @@ async fn flush_with_retry<T>(table: &str, buf: &mut Vec<T>, sink: &impl FlushSin
                     table, count, attempt, error = %e,
                     "Failed to flush batch to ClickHouse, retrying"
                 );
+                tokio::time::sleep(RETRY_BACKOFF).await;
             }
             Err(e) => {
                 error!(
@@ -636,6 +644,38 @@ mod tests {
 
         assert!(buf.is_empty(), "buffer clears once the retry succeeds");
         assert_eq!(attempt.load(std::sync::atomic::Ordering::SeqCst), 2);
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn flush_with_retry_backs_off_between_failed_attempts() {
+        let mut buf = vec![1_i32, 2, 3];
+        let attempt = std::sync::atomic::AtomicU32::new(0);
+        let timestamps = std::sync::Mutex::new(Vec::new());
+
+        let sink = MockSink {
+            write_fn: |rows: &[i32]| {
+                timestamps.lock().unwrap().push(tokio::time::Instant::now());
+                let n = attempt.fetch_add(1, std::sync::atomic::Ordering::SeqCst) + 1;
+                assert_eq!(rows, [1, 2, 3]);
+                if n < MAX_FLUSH_ATTEMPTS {
+                    Err(AggregatorError::ClickHouse(
+                        clickhouse::error::Error::Custom("boom".to_string()),
+                    ))
+                } else {
+                    Ok(())
+                }
+            },
+        };
+        flush_with_retry("t", &mut buf, &sink).await;
+
+        let ts = timestamps.into_inner().unwrap();
+        assert_eq!(ts.len(), MAX_FLUSH_ATTEMPTS as usize);
+        for pair in ts.windows(2) {
+            assert!(
+                pair[1] - pair[0] >= RETRY_BACKOFF,
+                "must wait at least RETRY_BACKOFF before the next attempt"
+            );
+        }
     }
 
     #[tokio::test]

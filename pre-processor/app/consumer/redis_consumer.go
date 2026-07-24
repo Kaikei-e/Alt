@@ -30,6 +30,13 @@ type Config struct {
 	ClaimIdleTime time.Duration
 	// Enabled determines if the consumer is active.
 	Enabled bool
+	// DLQStreamKey is the Redis Stream key where poison messages are routed
+	// after exceeding MaxDeliveries. Must be separate from StreamKey so the
+	// main consumer does not keep reprocessing dead letters.
+	DLQStreamKey string
+	// MaxDeliveries is the maximum number of times a single message may be
+	// delivered before it is moved to the DLQ. Zero disables DLQ routing.
+	MaxDeliveries int64
 }
 
 // DefaultConfig returns a default consumer configuration.
@@ -43,6 +50,8 @@ func DefaultConfig() Config {
 		BlockTimeout:  5 * time.Second,
 		ClaimIdleTime: 30 * time.Second,
 		Enabled:       false,
+		DLQStreamKey:  "alt:events:articles:dlq",
+		MaxDeliveries: 5,
 	}
 }
 
@@ -122,6 +131,8 @@ func (c *Consumer) Start(ctx context.Context) error {
 		"stream", c.config.StreamKey,
 		"group", c.config.GroupName,
 		"consumer", c.config.ConsumerName,
+		"dlq_stream", c.config.DLQStreamKey,
+		"max_deliveries", c.config.MaxDeliveries,
 	)
 
 	go c.consumeLoop(ctx)
@@ -257,7 +268,10 @@ func (c *Consumer) reclaimLoop(ctx context.Context) {
 
 // reclaimPending runs a full XAUTOCLAIM cursor sweep — looping until Redis
 // returns the "0-0" cursor — claiming every pending entry idle for longer
-// than ClaimIdleTime and processing it exactly like a freshly-read message.
+// than ClaimIdleTime. Claiming increments each message's delivery counter
+// (Redis semantics), so poison messages eventually cross MaxDeliveries and
+// get routed to the DLQ instead of cycling through reclaim forever;
+// everything else is processed exactly like a freshly-read message.
 func (c *Consumer) reclaimPending(ctx context.Context) error {
 	cursor := "0-0"
 	for {
@@ -278,7 +292,7 @@ func (c *Consumer) reclaimPending(ctx context.Context) error {
 				"count", len(messages),
 				"min_idle", c.config.ClaimIdleTime,
 			)
-			c.processMessages(ctx, messages)
+			c.routeReclaimedMessages(ctx, messages)
 		}
 
 		if next == "0-0" {

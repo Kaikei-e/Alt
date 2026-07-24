@@ -53,6 +53,16 @@ function getCacheKey(cookieHeader: string): string | null {
 	return createHash("sha256").update(sessionValue).digest("hex");
 }
 
+// Called on logout so a session cookie still held by the client (or an
+// attacker who captured it earlier) cannot keep authenticating against the
+// stale cache for up to SESSION_CACHE_TTL_MS after Kratos has invalidated it.
+export function invalidateSessionCache(cookieHeader: string): void {
+	const cacheKey = getCacheKey(cookieHeader);
+	if (cacheKey) {
+		sessionCache.delete(cacheKey);
+	}
+}
+
 function pruneExpiredEntries(): void {
 	const now = Date.now();
 	for (const [key, entry] of sessionCache) {

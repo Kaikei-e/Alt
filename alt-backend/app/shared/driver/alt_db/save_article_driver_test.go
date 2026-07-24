@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	pgxmock "github.com/pashagolub/pgxmock/v5"
 	"github.com/stretchr/testify/require"
 )
@@ -33,10 +34,10 @@ func TestAltDBRepository_SaveArticle_Success(t *testing.T) {
 	}
 	ctx := domain.SetUserContext(context.Background(), userCtx)
 
-	// Mock GetFeedIDByArticleURL call - feed not found (will use NULL feed_id)
+	// Mock GetFeedIDByArticleURL call - feed genuinely not found (will use NULL feed_id)
 	mock.ExpectQuery(`SELECT id FROM feeds WHERE website_url = \$1`).
 		WithArgs("https://example.com/article").
-		WillReturnError(errors.New("no rows"))
+		WillReturnError(pgx.ErrNoRows)
 
 	mock.ExpectBegin()
 
@@ -73,7 +74,7 @@ func TestAltDBRepository_SaveArticle_UpsertAndOutbox(t *testing.T) {
 
 	mock.ExpectQuery(`SELECT id FROM feeds WHERE website_url = \$1`).
 		WithArgs("https://example.com/article").
-		WillReturnError(errors.New("no rows"))
+		WillReturnError(pgx.ErrNoRows)
 	mock.ExpectBegin()
 	mock.ExpectQuery(regexp.QuoteMeta(upsertArticleQuery)).
 		WithArgs("Example Title", strings.Repeat("x", 120), "https://example.com/article", userID, nil).
@@ -85,6 +86,45 @@ func TestAltDBRepository_SaveArticle_UpsertAndOutbox(t *testing.T) {
 
 	_, err = repo.SaveArticle(ctx, "https://example.com/article", "Example Title", strings.Repeat("x", 120))
 	require.NoError(t, err)
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+// Finding [14]: getFeedIDByArticleURL previously collapsed every error
+// (pgx.ErrNoRows AND real DB failures like connection timeouts) into the
+// same generic "error getting feed ID by article URL" string, and
+// save_article_driver.go treated ANY error from it as "feed not found,
+// continue without feed_id". A transient DB error during feed lookup must
+// not be silently reinterpreted as "no matching feed" — it must fail the
+// save instead of persisting an article with a NULL feed_id that a working
+// lookup would have resolved.
+func TestAltDBRepository_SaveArticle_FeedLookupDBError_FailsFast(t *testing.T) {
+	mock, err := pgxmock.NewPool()
+	require.NoError(t, err)
+	defer mock.Close()
+
+	repo := &ArticleRepository{pool: mock}
+
+	userID := uuid.New()
+	userCtx := &domain.UserContext{
+		UserID:    userID,
+		Email:     "test@example.com",
+		Role:      domain.UserRoleUser,
+		TenantID:  uuid.New(),
+		LoginAt:   time.Now(),
+		ExpiresAt: time.Now().Add(24 * time.Hour),
+	}
+	ctx := domain.SetUserContext(context.Background(), userCtx)
+
+	// A real DB failure (not "no rows") during feed lookup.
+	mock.ExpectQuery(`SELECT id FROM feeds WHERE website_url = \$1`).
+		WithArgs("https://example.com/article").
+		WillReturnError(errors.New("connection reset by peer"))
+
+	// The upsert must NOT be attempted — SaveArticle must fail fast instead
+	// of silently continuing with feed_id=NULL.
+	_, err = repo.SaveArticle(ctx, "https://example.com/article", "Example Title", "<p>content</p>")
+	require.Error(t, err)
+	require.ErrorContains(t, err, "connection reset by peer")
 	require.NoError(t, mock.ExpectationsWereMet())
 }
 

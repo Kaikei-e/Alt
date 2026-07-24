@@ -17,13 +17,14 @@ import (
 type recordingHandler struct {
 	mu     sync.Mutex
 	events []Event
+	err    error
 }
 
 func (h *recordingHandler) HandleEvent(_ context.Context, event Event) error {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	h.events = append(h.events, event)
-	return nil
+	return h.err
 }
 
 func (h *recordingHandler) count() int {
@@ -206,3 +207,80 @@ func TestConsumer_Start_RunsReclaimLoopPeriodically(t *testing.T) {
 type nilWriter struct{}
 
 func (nilWriter) Write(p []byte) (int, error) { return len(p), nil }
+
+func newQuietLogger() *slog.Logger {
+	return slog.New(slog.NewTextHandler(nilWriter{}, nil))
+}
+
+// TestReclaimPending_RoutesPoisonMessageToDLQAfterMaxDeliveries reproduces
+// the rule10 finding: a message whose handler always fails is reclaimed by
+// XAUTOCLAIM forever with no escape hatch. Once reclaimPending checks each
+// reclaimed message's delivery count (incremented by XAUTOCLAIM itself)
+// against MaxDeliveries, a poison message must be routed to the DLQ stream
+// and ACKed out of the main stream's PEL instead of looping forever.
+func TestReclaimPending_RoutesPoisonMessageToDLQAfterMaxDeliveries(t *testing.T) {
+	srv := miniredis.RunT(t)
+
+	ctx := context.Background()
+	seedClient := redis.NewClient(&redis.Options{Addr: srv.Addr()})
+	defer func() { _ = seedClient.Close() }()
+
+	msgID := seedStuckPendingMessage(t, ctx, seedClient)
+
+	claimIdleTime := 10 * time.Millisecond
+
+	cfg := Config{
+		RedisURL:      fmt.Sprintf("redis://%s", srv.Addr()),
+		GroupName:     reclaimTestGroup,
+		ConsumerName:  "consumer-a",
+		StreamKey:     reclaimTestStream,
+		BatchSize:     10,
+		BlockTimeout:  time.Second,
+		ClaimIdleTime: claimIdleTime,
+		DLQStreamKey:  "alt:events:articles:dlq",
+		MaxDeliveries: 2,
+		Enabled:       true,
+	}
+
+	// A handler that always fails: every reclaim redelivers it, incrementing
+	// RetryCount, but it never leaves the PEL through normal success.
+	handler := &recordingHandler{err: fmt.Errorf("poison message: always fails")}
+	logger := newQuietLogger()
+
+	c, err := NewConsumer(cfg, handler, logger)
+	if err != nil {
+		t.Fatalf("NewConsumer: %v", err)
+	}
+	defer c.Stop()
+
+	// Reclaim repeatedly, monotonically advancing the virtual clock well
+	// past ClaimIdleTime relative to the *previous* virtual time each round
+	// (not real wall-clock time) until MaxDeliveries (2) is exceeded.
+	virtualNow := time.Now()
+	for i := 0; i < 4; i++ {
+		virtualNow = virtualNow.Add(claimIdleTime + time.Second)
+		srv.SetTime(virtualNow)
+		if err := c.reclaimPending(ctx); err != nil {
+			t.Fatalf("reclaimPending iteration %d: %v", i, err)
+		}
+	}
+
+	dlqEntries, err := seedClient.XRange(ctx, cfg.DLQStreamKey, "-", "+").Result()
+	if err != nil {
+		t.Fatalf("XRange DLQ: %v", err)
+	}
+	if len(dlqEntries) != 1 {
+		t.Fatalf("DLQ stream has %d entries, want 1", len(dlqEntries))
+	}
+	if dlqEntries[0].Values["dlq_original_id"] != msgID {
+		t.Fatalf("DLQ entry dlq_original_id = %v, want %q", dlqEntries[0].Values["dlq_original_id"], msgID)
+	}
+
+	pending, err := seedClient.XPending(ctx, reclaimTestStream, reclaimTestGroup).Result()
+	if err != nil {
+		t.Fatalf("XPending: %v", err)
+	}
+	if pending.Count != 0 {
+		t.Fatalf("PEL still has %d pending entries after DLQ routing, want 0", pending.Count)
+	}
+}

@@ -104,10 +104,14 @@ class _FakeReportRepo:
 class _FakeJobQueue:
     def __init__(self) -> None:
         self.latest_run: ReportRun | None = None
+        self.active_run: ReportRun | None = None
         self.created: list[tuple[UUID, int]] = []
 
     async def get_latest_run_for_report(self, report_id: UUID) -> ReportRun | None:
         return self.latest_run
+
+    async def get_active_run_for_report(self, report_id: UUID) -> ReportRun | None:
+        return self.active_run
 
     async def create_run(self, report_id: UUID, target_version_no: int) -> ReportRun:
         self.created.append((report_id, target_version_no))
@@ -119,10 +123,10 @@ class _FakeJobQueue:
         )
 
     # Rest of JobQueuePort — not exercised by StartRunUsecase.
-    async def get_run(self, run_id: UUID) -> ReportRun | None:
-        raise NotImplementedError
+    async def list_running_runs(self) -> list[ReportRun]:
+        return []
 
-    async def get_active_run_for_report(self, report_id: UUID) -> ReportRun | None:
+    async def get_run(self, run_id: UUID) -> ReportRun | None:
         raise NotImplementedError
 
     async def claim_job(self, worker_id: str) -> ReportJob | None:
@@ -299,6 +303,50 @@ async def test_execute_allows_run_when_latest_run_succeeded() -> None:
     run = await uc.execute(report_id, now=now)
 
     assert run.report_id == report_id
+
+
+@pytest.mark.asyncio
+async def test_execute_rejects_when_active_run_already_pending() -> None:
+    """A pending/running run for the report must block a new one — the circuit
+    breaker only inspects the *most recent* run's failure status, so without
+    this check two pipelines can run concurrently for the same report.
+    """
+    report_id = uuid4()
+    repo = _FakeReportRepo()
+    repo.reports[report_id] = _report(report_id)
+    jobs = _FakeJobQueue()
+    jobs.active_run = ReportRun(
+        run_id=uuid4(),
+        report_id=report_id,
+        target_version_no=1,
+        run_status="pending",
+    )
+    uc = StartRunUsecase(repo, jobs)
+
+    with pytest.raises(StartRunRejectedError, match="already"):
+        await uc.execute(report_id)
+
+    assert jobs.created == []
+
+
+@pytest.mark.asyncio
+async def test_execute_rejects_when_active_run_already_running() -> None:
+    report_id = uuid4()
+    repo = _FakeReportRepo()
+    repo.reports[report_id] = _report(report_id)
+    jobs = _FakeJobQueue()
+    jobs.active_run = ReportRun(
+        run_id=uuid4(),
+        report_id=report_id,
+        target_version_no=1,
+        run_status="running",
+    )
+    uc = StartRunUsecase(repo, jobs)
+
+    with pytest.raises(StartRunRejectedError, match="already"):
+        await uc.execute(report_id)
+
+    assert jobs.created == []
 
 
 @pytest.mark.asyncio

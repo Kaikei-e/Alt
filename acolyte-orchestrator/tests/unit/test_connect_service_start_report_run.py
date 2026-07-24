@@ -98,9 +98,13 @@ class _FakeRepo:
 class _FakeJobQueue:
     def __init__(self) -> None:
         self.latest_run: ReportRun | None = None
+        self.active_run: ReportRun | None = None
 
     async def get_latest_run_for_report(self, report_id: UUID) -> ReportRun | None:
         return self.latest_run
+
+    async def get_active_run_for_report(self, report_id: UUID) -> ReportRun | None:
+        return self.active_run
 
     async def create_run(self, report_id: UUID, target_version_no: int) -> ReportRun:
         return ReportRun(
@@ -111,10 +115,10 @@ class _FakeJobQueue:
         )
 
     # Unused stubs for the rest of JobQueuePort.
-    async def get_run(self, run_id: UUID) -> ReportRun | None:
-        raise NotImplementedError
+    async def list_running_runs(self) -> list[ReportRun]:
+        return []
 
-    async def get_active_run_for_report(self, report_id: UUID) -> ReportRun | None:
+    async def get_run(self, run_id: UUID) -> ReportRun | None:
         raise NotImplementedError
 
     async def claim_job(self, worker_id: str) -> ReportJob | None:
@@ -179,6 +183,33 @@ async def test_start_report_run_maps_breaker_rejection_to_failed_precondition() 
         finished_at=datetime.now(UTC) - timedelta(minutes=1),
         failure_code="no_content",
         failure_message="content-store pipeline produced zero groundable content",
+    )
+    service = AcolyteConnectService(MagicMock(), repo, job_queue=jobs)
+
+    with pytest.raises(ConnectError) as exc_info:
+        await service.start_report_run(
+            acolyte_pb2.StartReportRunRequest(report_id=str(report_id)),
+            ctx=None,  # type: ignore[bad-argument-type]
+        )
+
+    assert exc_info.value.code == Code.FAILED_PRECONDITION
+
+
+@pytest.mark.asyncio
+async def test_start_report_run_maps_active_run_conflict_to_failed_precondition() -> None:
+    """A pending/running run for the report must reject a concurrent start,
+    not just a recent failure — otherwise two pipelines can run for the same
+    report at once (report_runs has no active-run-per-report constraint).
+    """
+    report_id = uuid4()
+    repo = _FakeRepo()
+    repo.reports[report_id] = _report(report_id)
+    jobs = _FakeJobQueue()
+    jobs.active_run = ReportRun(
+        run_id=uuid4(),
+        report_id=report_id,
+        target_version_no=1,
+        run_status="running",
     )
     service = AcolyteConnectService(MagicMock(), repo, job_queue=jobs)
 

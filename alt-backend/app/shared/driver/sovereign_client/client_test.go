@@ -1,6 +1,7 @@
 package sovereign_client
 
 import (
+	"alt/domain"
 	"alt/orchestrator/port/knowledge_sovereign_port"
 	"context"
 	"encoding/json"
@@ -13,6 +14,7 @@ import (
 	"alt/gen/proto/services/sovereign/v1/sovereignv1connect"
 	"connectrpc.com/connect"
 
+	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -145,6 +147,23 @@ func TestClient_DisabledReturnsErrSovereignDisabled(t *testing.T) {
 		MutationType: "dismiss_curation",
 	})
 	assert.ErrorIs(t, err, ErrSovereignDisabled)
+}
+
+// Finding [11]: AppendKnowledgeEvent (read_client.go) is the only mutator on
+// Client that special-cased disabled-mode as (0, nil) instead of the same
+// ErrSovereignDisabled sentinel every other mutator above uses. That let a
+// disabled client (e.g. SOVEREIGN_URL unset in a non-production environment)
+// look like a successful append with zero calls to knowledge_events —
+// exactly the append-first invariant violation rule 8 exists to prevent.
+func TestClient_AppendKnowledgeEvent_DisabledReturnsErrSovereignDisabled(t *testing.T) {
+	client := NewClient("http://unused", false)
+
+	seq, err := client.AppendKnowledgeEvent(context.Background(), domain.KnowledgeEvent{
+		EventID:   uuid.New(),
+		EventType: domain.EventArticleCreated,
+	})
+	assert.ErrorIs(t, err, ErrSovereignDisabled)
+	assert.Zero(t, seq)
 }
 
 func TestNewClient_SkipsHealthProbeWhenDisabled(t *testing.T) {

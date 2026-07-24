@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
 
 	"connectrpc.com/connect"
@@ -600,6 +601,13 @@ func (h *SovereignHandler) AppendKnowledgeUserEvent(
 	}
 	if pe.OccurredAt == nil {
 		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("occurred_at is required"))
+	}
+	// dedupe_key gates the driver's `WHERE dedupe_key != ''` partial unique
+	// index (read_events.go AppendKnowledgeUserEvent) — an empty value
+	// silently disables at-least-once dedup instead of failing, so it must
+	// be required here rather than left to the caller's discretion.
+	if strings.TrimSpace(pe.DedupeKey) == "" {
+		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("dedupe_key is required"))
 	}
 	e := sovereign_db.KnowledgeUserEvent{
 		UserEventID: userEventID,

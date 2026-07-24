@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"pre-processor-sidecar/models"
-	"pre-processor-sidecar/repository"
 	"pre-processor-sidecar/service"
 
 	"github.com/google/uuid"
@@ -20,19 +19,8 @@ func newScheduleHandlerForTriggerTests(t *testing.T) *ScheduleHandler {
 
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
-	tokenService, err := service.NewSimpleTokenService(service.SimpleTokenConfig{
-		ClientID:            "test-client",
-		ClientSecret:        "test-secret",
-		InitialAccessToken:  "test-access-token",
-		InitialRefreshToken: "test-refresh-token",
-		BaseURL:             "http://example.invalid",
-	}, &fakeOAuth2TokenRepo{}, logger)
-	if err != nil {
-		t.Fatalf("failed to create token service: %v", err)
-	}
-
 	apiUsageRepo := &fakeAPIUsageRepo{}
-	inoreaderService := service.NewInoreaderService(&fakeInoreaderClient{}, apiUsageRepo, tokenService, logger)
+	inoreaderService := service.NewInoreaderService(&fakeInoreaderClient{}, apiUsageRepo, &fakeTokenProvider{}, logger)
 
 	subscriptionRepo := &fakeSubscriptionRepo{}
 	syncRepo := &fakeSyncStateRepo{}
@@ -66,22 +54,16 @@ func (f *fakeAPIUsageRepo) UpdateUsageRecord(ctx context.Context, usage *models.
 	return nil
 }
 
-type fakeOAuth2TokenRepo struct{}
+// fakeTokenProvider is a minimal service.TokenProvider stub for wiring
+// InoreaderService in trigger-handler tests; it never talks to Inoreader.
+type fakeTokenProvider struct{}
 
-func (f *fakeOAuth2TokenRepo) GetCurrentToken(ctx context.Context) (*models.OAuth2Token, error) {
-	return nil, repository.ErrTokenNotFound
+func (f *fakeTokenProvider) GetValidToken(ctx context.Context) (*models.OAuth2Token, error) {
+	return &models.OAuth2Token{AccessToken: "test-access-token", TokenType: "Bearer"}, nil
 }
 
-func (f *fakeOAuth2TokenRepo) SaveToken(ctx context.Context, token *models.OAuth2Token) error {
-	return nil
-}
-
-func (f *fakeOAuth2TokenRepo) UpdateToken(ctx context.Context, token *models.OAuth2Token) error {
-	return nil
-}
-
-func (f *fakeOAuth2TokenRepo) DeleteToken(ctx context.Context) error {
-	return nil
+func (f *fakeTokenProvider) EnsureValidToken(ctx context.Context) (*models.OAuth2Token, error) {
+	return f.GetValidToken(ctx)
 }
 
 type fakeInoreaderClient struct{}

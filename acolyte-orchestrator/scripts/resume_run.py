@@ -29,10 +29,32 @@ from uuid import UUID
 import structlog
 
 if TYPE_CHECKING:
+    from acolyte.config.settings import Settings
     from acolyte.gateway.postgres_job_gw import PostgresJobGateway
     from acolyte.gateway.postgres_report_gw import PostgresReportGateway
+    from acolyte.port.content_store import ContentStorePort
+    from acolyte.port.hyde_generator import HyDEGeneratorPort
+    from acolyte.port.llm_provider import LLMProviderPort
 
 logger = structlog.get_logger(__name__)
+
+
+def _build_pipeline_deps(settings: Settings, llm: LLMProviderPort) -> tuple[HyDEGeneratorPort | None, ContentStorePort]:
+    """Mirror main.py's per-run DI wiring (HyDE generator + content-store cap).
+
+    Kept as a pure function of (settings, llm) — no DB/checkpointer/httpx —
+    so resume_run's HyDE and content-store-size wiring can be unit tested
+    without a live Postgres pool, and so this script can't silently drift
+    from main.py's composition root on either knob again.
+    """
+    # Late import — mirrors this module's existing pattern of deferring heavy
+    # imports out of module scope so `--help` stays fast.
+    from acolyte.gateway.memory_content_store import MemoryContentStore  # noqa: PLC0415
+    from acolyte.gateway.news_creator_hyde_gw import build_hyde_generator  # noqa: PLC0415
+
+    hyde_generator = build_hyde_generator(llm, settings)
+    content_store = MemoryContentStore(max_size=settings.content_store_max_size)
+    return hyde_generator, content_store
 
 
 async def _resolve_run_brief(
@@ -63,7 +85,6 @@ async def _resume(run_id: str) -> None:
     from acolyte.config.settings import Settings  # noqa: PLC0415
     from acolyte.domain.fusion import RRFFusion  # noqa: PLC0415
     from acolyte.gateway.checkpoint_factory import create_checkpointer  # noqa: PLC0415
-    from acolyte.gateway.memory_content_store import MemoryContentStore  # noqa: PLC0415
     from acolyte.gateway.ollama_gw import OllamaGateway  # noqa: PLC0415
     from acolyte.gateway.postgres_job_gw import PostgresJobGateway  # noqa: PLC0415
     from acolyte.gateway.postgres_report_gw import PostgresReportGateway  # noqa: PLC0415
@@ -102,7 +123,7 @@ async def _resume(run_id: str) -> None:
                 if settings.llm_provider == "vllm"
                 else OllamaGateway(http_client, settings)
             )
-            content_store = MemoryContentStore()
+            hyde_generator, content_store = _build_pipeline_deps(settings, llm)
             evidence = SearchIndexerGateway(http_client, settings, content_store)
             fusion = RRFFusion(k=60)
 
@@ -115,6 +136,7 @@ async def _resume(run_id: str) -> None:
                     fusion=fusion,
                     checkpointer=checkpointer,
                     settings=settings,
+                    hyde_generator=hyde_generator,
                 )
 
                 service = AcolyteConnectService(settings, repo, job_gw, graph=graph)

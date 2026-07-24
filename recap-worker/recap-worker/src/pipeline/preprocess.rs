@@ -153,11 +153,11 @@ impl PreprocessStage for TextPreprocessStage {
                     dropped_count += 1;
                 }
                 Ok(Err(e)) => {
-                    debug!(error = ?e, "article preprocessing failed, dropping");
+                    warn!(error = ?e, "article preprocessing failed, dropping");
                     dropped_count += 1;
                 }
                 Err(e) => {
-                    debug!(error = ?e, "spawn task failed, dropping");
+                    warn!(error = ?e, "spawn task failed, dropping");
                     dropped_count += 1;
                 }
             }

@@ -23,12 +23,15 @@ func (a *tagCloudUsecaseAdapter) Refresh(ctx context.Context, limit int) (any, e
 
 // TagCloudCacheWarmerJob returns a function suitable for the JobScheduler that
 // pre-warms the tag cloud cache by always recomputing with limit=300.
+//
+// FetchTagCloudUsecase is constructed unconditionally in di/article_module.go
+// — unlike ImageProxyUsecase, there is no feature flag that legitimately
+// leaves it nil. A nil usecase here can only be a DI wiring bug, so it must
+// panic at construction time (rule 8 / .claude/rules/di-wiring.md) instead of
+// silently no-op'ing on every scheduled tick forever.
 func TagCloudCacheWarmerJob(usecase *fetch_tag_cloud_usecase.FetchTagCloudUsecase) func(ctx context.Context) error {
 	if usecase == nil {
-		return func(ctx context.Context) error {
-			slog.InfoContext(ctx, "tag cloud cache warmer skipped: usecase not configured")
-			return nil
-		}
+		panic("tag-cloud-cache-warmer: FetchTagCloudUsecase is nil — must be wired unconditionally at composition root (see .claude/rules/di-wiring.md)")
 	}
 
 	return tagCloudCacheWarmerJobFn(&tagCloudUsecaseAdapter{usecase: usecase})

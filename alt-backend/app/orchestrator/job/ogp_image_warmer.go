@@ -26,8 +26,14 @@ type imageWarmer interface {
 // Rate limiting is handled by the DI-injected ImageProxyUsecase.
 func OgpImageWarmerJob(r *alt_db.AltDBRepository, imageProxy *image_proxy_usecase.ImageProxyUsecase) func(ctx context.Context) error {
 	if imageProxy == nil {
+		// imageProxy is legitimately nil when IMAGE_PROXY_ENABLED=false or
+		// misconfigured (see logImageProxyWiringState in di/image_module.go,
+		// finding [6]) — that DI-level log already distinguishes "disabled"
+		// from "wiring bug". This per-tick log must stay Warn (not Info) with
+		// an explicit disabled reason so it doesn't read as ordinary
+		// operational noise to anyone scanning logs for problems.
 		return func(ctx context.Context) error {
-			slog.InfoContext(ctx, "OGP image warmer skipped: image proxy not configured")
+			slog.WarnContext(ctx, "OGP image warmer skipped: image_proxy_disabled")
 			return nil
 		}
 	}

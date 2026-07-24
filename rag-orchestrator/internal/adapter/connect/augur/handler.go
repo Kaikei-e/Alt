@@ -380,18 +380,29 @@ func (h *Handler) emitConversationLinked(
 		return
 	}
 
-	err := h.eventEmitter.EmitAugurConversationLinked(ctx, usecase.AugurConversationLinkedInput{
+	input := usecase.AugurConversationLinkedInput{
 		UserID:         userID,
 		TenantID:       tenantID,
 		EntryKey:       "article:" + articleID,
 		LensModeID:     "default",
 		ConversationID: conv.ID,
 		LinkedAt:       conv.CreatedAt.UnixMilli(),
-	})
+	}
+	err := h.eventEmitter.EmitAugurConversationLinked(ctx, input)
 	if err != nil {
+		// No persisted retry queue exists yet for augur.conversation_linked.v1
+		// (review MED finding, handler.go:383 — a transactional outbox is a
+		// separate schema-migration change). Until then, every field the
+		// event payload needs is logged here so an operator can manually
+		// replay it from rask rather than losing it silently.
 		h.logger.Warn("failed to emit augur.conversation_linked.v1",
 			slog.String("error", err.Error()),
-			slog.String("conversation_id", conv.ID.String()))
+			slog.String("conversation_id", conv.ID.String()),
+			slog.String("user_id", input.UserID.String()),
+			slog.String("tenant_id", input.TenantID.String()),
+			slog.String("entry_key", input.EntryKey),
+			slog.String("lens_mode_id", input.LensModeID),
+			slog.Int64("linked_at", input.LinkedAt))
 		sovereign_client.IncEmitterFailure(augurConversationLinkedEventType)
 	}
 }

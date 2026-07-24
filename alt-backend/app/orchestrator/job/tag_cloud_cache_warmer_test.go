@@ -54,12 +54,17 @@ func TestTagCloudCacheWarmerJob_UsecaseError(t *testing.T) {
 	}
 }
 
-func TestTagCloudCacheWarmerJob_NilUsecase(t *testing.T) {
-	fn := TagCloudCacheWarmerJob(nil)
-	err := fn(context.Background())
-
-	// Should not panic, just skip
-	if err != nil {
-		t.Fatalf("expected no error for nil usecase, got %v", err)
-	}
+// Finding [12]: unlike ImageProxyUsecase (feature-flagged, legitimately nil
+// when IMAGE_PROXY_ENABLED=false), FetchTagCloudUsecase is constructed
+// unconditionally in di/article_module.go — there is no config flag that
+// leaves it nil. A nil usecase here can only mean a DI wiring bug, so per
+// .claude/rules/di-wiring.md this must panic loudly at construction time
+// instead of silently no-op'ing on every scheduled tick forever.
+func TestTagCloudCacheWarmerJob_NilUsecase_Panics(t *testing.T) {
+	defer func() {
+		if r := recover(); r == nil {
+			t.Fatal("expected TagCloudCacheWarmerJob(nil) to panic (DI wiring bug), got no panic")
+		}
+	}()
+	TagCloudCacheWarmerJob(nil)
 }

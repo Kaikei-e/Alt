@@ -8,10 +8,13 @@ to a lightweight fake before each test that needs a "loaded" model.
 from __future__ import annotations
 
 import asyncio
+import threading
+import time
 from pathlib import Path
 from unittest.mock import MagicMock
 
 import pytest
+from fastapi import HTTPException
 from fastapi.testclient import TestClient
 
 import rerank_server
@@ -232,3 +235,90 @@ def test_load_model_leaves_state_none_on_failure(monkeypatch: pytest.MonkeyPatch
     asyncio.run(rerank_server._load_model(fake_app))
 
     assert fake_app.state.model is None
+
+
+def test_rerank_timeout_returns_504(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def slow_predict(pairs: list[tuple[str, str]]) -> list[float]:
+        time.sleep(0.3)
+        return [float(i) for i in range(len(pairs))]
+
+    fake_model = MagicMock()
+    fake_model.predict.side_effect = slow_predict
+    app.state.model = fake_model
+    monkeypatch.setattr(rerank_server, "INFERENCE_TIMEOUT_SECONDS", 0.05)
+
+    resp = client.post("/v1/rerank", json={"query": "q", "candidates": ["a"]})
+
+    assert resp.status_code == 504
+
+
+def test_rerank_timeout_releases_semaphore(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def slow_predict(pairs: list[tuple[str, str]]) -> list[float]:
+        time.sleep(0.3)
+        return [float(i) for i in range(len(pairs))]
+
+    fake_model = MagicMock()
+    fake_model.predict.side_effect = slow_predict
+    app.state.model = fake_model
+    monkeypatch.setattr(rerank_server, "INFERENCE_TIMEOUT_SECONDS", 0.05)
+
+    client.post("/v1/rerank", json={"query": "q", "candidates": ["a"]})
+
+    assert rerank_server._inference_semaphore.locked() is False
+
+
+def test_rerank_timeout_does_not_allow_concurrent_model_access(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Regression test for the timeout/thread-leak race (rerank_server.py).
+
+    asyncio.timeout only cancels the *awaiting* coroutine, not the
+    underlying thread pool job -- concurrent.futures.Future.cancel() is a
+    no-op once execution has started. If inference is offloaded via
+    asyncio.to_thread (the shared default executor), a request that times
+    out leaves an orphaned thread still running model.predict() even after
+    the semaphore has been released, so a subsequent request's predict()
+    call can start concurrently on the same (non-thread-safe) CrossEncoder
+    instance. This must never happen.
+    """
+    state = {"active": 0, "observed_concurrent": False}
+    state_lock = threading.Lock()
+
+    def slow_predict(pairs: list[tuple[str, str]]) -> list[float]:
+        with state_lock:
+            state["active"] += 1
+            if state["active"] > 1:
+                state["observed_concurrent"] = True
+        time.sleep(0.3)
+        with state_lock:
+            state["active"] -= 1
+        return [float(i) for i in range(len(pairs))]
+
+    fake_model = MagicMock()
+    fake_model.predict.side_effect = slow_predict
+    fake_request = MagicMock()
+    fake_request.app.state.model = fake_model
+    monkeypatch.setattr(rerank_server, "INFERENCE_TIMEOUT_SECONDS", 0.05)
+    req = rerank_server.RerankRequest(query="q", candidates=["a"])
+
+    async def _call() -> int:
+        try:
+            await rerank_server.rerank(req, fake_request)
+        except HTTPException as exc:
+            return exc.status_code
+        return 200
+
+    async def _run() -> list[int]:
+        task1 = asyncio.create_task(_call())
+        await asyncio.sleep(0.15)
+        task2 = asyncio.create_task(_call())
+        return await asyncio.gather(task1, task2)
+
+    statuses = asyncio.run(_run())
+
+    assert 504 in statuses
+    assert state["observed_concurrent"] is False

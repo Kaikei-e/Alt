@@ -2,11 +2,12 @@ package server
 
 import "testing"
 
-// The BFF keeps REST proxying only for endpoints that are architecturally
-// unfit for Connect-RPC (binary/multipart OPML, browser-issued image proxy,
-// admin-only dashboard, health/csrf). Every other /v1/* path is expected to
-// be served via Connect-RPC, so unknown paths must be rejected at the BFF
-// boundary to catch accidental regressions early.
+// allowRESTPath is a pure classification function only; it does not itself
+// enforce routing. See server.go's "/v1/" handler for how its result is
+// currently used (warn-only logging, not rejection — ADR-000729 Phase 3 is
+// not implemented yet) and server_test.go's
+// TestServer_RESTRoute_NonAllowlistedPathIsStillForwarded for the routing
+// behavior this implies today.
 func TestRESTAllowlist_Matches(t *testing.T) {
 	cases := []struct {
 		path  string

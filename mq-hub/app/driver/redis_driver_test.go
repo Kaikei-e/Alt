@@ -6,11 +6,58 @@ import (
 	"testing"
 	"time"
 
+	"github.com/redis/go-redis/v9"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"mq-hub/domain"
 )
+
+// xaddCaptureHook intercepts XADD commands and records their raw arguments
+// instead of forwarding them to the server. miniredis (github.com/alicebob/miniredis/v2)
+// does not implement the Redis 8.2+ XADD MODE grammar (ACKED/KEEPREF/DELREF) and
+// misparses a MODE-bearing XADD as an invalid stream ID, so tests that need to
+// verify the constructed command use this hook rather than a real round trip.
+type xaddCaptureHook struct {
+	captured [][]interface{}
+}
+
+func (h *xaddCaptureHook) DialHook(next redis.DialHook) redis.DialHook {
+	return next
+}
+
+func (h *xaddCaptureHook) ProcessHook(next redis.ProcessHook) redis.ProcessHook {
+	return func(ctx context.Context, cmd redis.Cmder) error {
+		if cmd.Name() != "xadd" {
+			return next(ctx, cmd)
+		}
+		h.captured = append(h.captured, cmd.Args())
+		if strCmd, ok := cmd.(*redis.StringCmd); ok {
+			strCmd.SetVal("0-0")
+		}
+		return nil
+	}
+}
+
+func (h *xaddCaptureHook) ProcessPipelineHook(next redis.ProcessPipelineHook) redis.ProcessPipelineHook {
+	return func(ctx context.Context, cmds []redis.Cmder) error {
+		passthrough := make([]redis.Cmder, 0, len(cmds))
+		for _, cmd := range cmds {
+			if cmd.Name() != "xadd" {
+				passthrough = append(passthrough, cmd)
+				continue
+			}
+			h.captured = append(h.captured, cmd.Args())
+			if strCmd, ok := cmd.(*redis.StringCmd); ok {
+				strCmd.SetVal("0-0")
+			}
+		}
+		if len(passthrough) > 0 {
+			return next(ctx, passthrough)
+		}
+		return nil
+	}
+}
 
 // TestRedisDriver_Publish tests the Publish method using a mock or miniredis.
 // In production tests, use miniredis for unit tests and real Redis for integration.
@@ -99,7 +146,7 @@ func TestRedisDriver_PublishBatch(t *testing.T) {
 }
 
 func TestRedisDriver_Publish_WithMaxLen(t *testing.T) {
-	t.Run("trims stream to approximate max length", func(t *testing.T) {
+	t.Run("trims approximately via MAXLEN in ACKED mode", func(t *testing.T) {
 		mr := NewMiniredis(t)
 		driver, err := NewRedisDriverWithOptions(mr.Addr(), &RedisDriverOptions{
 			StreamMaxLen: 5,
@@ -110,22 +157,28 @@ func TestRedisDriver_Publish_WithMaxLen(t *testing.T) {
 			mr.Close()
 		}()
 
-		ctx := context.Background()
-		for i := 0; i < 10; i++ {
-			event := &domain.Event{
-				EventID:   fmt.Sprintf("evt-%d", i),
-				EventType: domain.EventTypeArticleCreated,
-				Source:    "test",
-				CreatedAt: time.Now(),
-			}
-			_, err := driver.Publish(ctx, domain.StreamKeyArticles, event)
-			require.NoError(t, err)
-		}
+		hook := &xaddCaptureHook{}
+		driver.client.AddHook(hook)
 
-		info, err := driver.GetStreamInfo(ctx, domain.StreamKeyArticles)
+		ctx := context.Background()
+		event := &domain.Event{
+			EventID:   "evt-0",
+			EventType: domain.EventTypeArticleCreated,
+			Source:    "test",
+			CreatedAt: time.Now(),
+		}
+		_, err = driver.Publish(ctx, domain.StreamKeyArticles, event)
 		require.NoError(t, err)
-		// Approximate trimming allows some extra, but should be less than 10
-		assert.LessOrEqual(t, info.Length, int64(10))
+
+		require.Len(t, hook.captured, 1)
+		args := hook.captured[0]
+		assert.Contains(t, args, "maxlen")
+		assert.Contains(t, args, "~")
+		assert.Contains(t, args, int64(5))
+		// MODE ACKED trims only entries every consumer group has read and
+		// acked, so a stalled/backlogged consumer's unread entries are never
+		// silently evicted by MAXLEN trimming.
+		assert.Contains(t, args, "ACKED")
 	})
 
 	t.Run("no trimming when StreamMaxLen is 0", func(t *testing.T) {
@@ -156,7 +209,7 @@ func TestRedisDriver_Publish_WithMaxLen(t *testing.T) {
 }
 
 func TestRedisDriver_PublishBatch_WithMaxLen(t *testing.T) {
-	t.Run("trims stream to approximate max length", func(t *testing.T) {
+	t.Run("trims approximately via MAXLEN in ACKED mode", func(t *testing.T) {
 		mr := NewMiniredis(t)
 		driver, err := NewRedisDriverWithOptions(mr.Addr(), &RedisDriverOptions{
 			StreamMaxLen: 5,
@@ -166,6 +219,9 @@ func TestRedisDriver_PublishBatch_WithMaxLen(t *testing.T) {
 			driver.Close()
 			mr.Close()
 		}()
+
+		hook := &xaddCaptureHook{}
+		driver.client.AddHook(hook)
 
 		ctx := context.Background()
 		events := make([]*domain.Event, 10)
@@ -181,9 +237,13 @@ func TestRedisDriver_PublishBatch_WithMaxLen(t *testing.T) {
 		_, err = driver.PublishBatch(ctx, domain.StreamKeyArticles, events)
 		require.NoError(t, err)
 
-		info, err := driver.GetStreamInfo(ctx, domain.StreamKeyArticles)
-		require.NoError(t, err)
-		assert.LessOrEqual(t, info.Length, int64(10))
+		require.Len(t, hook.captured, 10)
+		for _, args := range hook.captured {
+			assert.Contains(t, args, "maxlen")
+			assert.Contains(t, args, "~")
+			assert.Contains(t, args, int64(5))
+			assert.Contains(t, args, "ACKED")
+		}
 	})
 }
 

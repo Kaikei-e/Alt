@@ -4,7 +4,7 @@ from utils import _interval_params, fetch_table_or_warn
 
 
 def render_recap_jobs(window_seconds: int) -> None:
-    st.header("Recap Jobs (7-Day Recap)")
+    st.header("Recap Jobs")
     df = fetch_table_or_warn(
         "recap_jobs",
         """

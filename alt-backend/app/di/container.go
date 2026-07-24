@@ -32,6 +32,7 @@ import (
 	"alt/orchestrator/usecase/fetch_articles_usecase"
 	"alt/orchestrator/usecase/fetch_feed_details_usecase"
 	"alt/orchestrator/usecase/fetch_feed_stats_usecase"
+	"alt/orchestrator/usecase/fetch_feed_tags_by_id_usecase"
 	"alt/orchestrator/usecase/fetch_feed_tags_usecase"
 	"alt/orchestrator/usecase/fetch_feed_usecase"
 	"alt/orchestrator/usecase/fetch_inoreader_summary_usecase"
@@ -148,6 +149,7 @@ type ApplicationComponents struct {
 	FeedSearchUsecase                   *search_feed_usecase.SearchFeedMeilisearchUsecase
 	ArticleSearchUsecase                *search_article_usecase.SearchArticleUsecase
 	FetchFeedTagsUsecase                *fetch_feed_tags_usecase.FetchFeedTagsUsecase
+	FetchFeedTagsByIDUsecase            *fetch_feed_tags_by_id_usecase.FetchFeedTagsByIDUsecase
 	FetchInoreaderSummaryUsecase        fetch_inoreader_summary_usecase.FetchInoreaderSummaryUsecase
 	ImageFetchUsecase                   image_fetch_usecase.ImageFetchUsecaseInterface
 	CSRFTokenUsecase                    *csrf_token_usecase.CSRFTokenUsecase
@@ -331,6 +333,7 @@ func NewApplicationComponents(pool *pgxpool.Pool, cfg *config.Config) *Applicati
 		TrendStatsUsecase:                   feed.TrendStatsUsecase,
 		FeedSearchUsecase:                   feed.FeedSearchUsecase,
 		FetchFeedTagsUsecase:                feed.FetchFeedTagsUsecase,
+		FetchFeedTagsByIDUsecase:            feed.FetchFeedTagsByIDUsecase,
 		FetchInoreaderSummaryUsecase:        feed.FetchInoreaderSummaryUsecase,
 		FetchRandomSubscriptionUsecase:      feed.FetchRandomSubscriptionUsecase,
 		ScrapingDomainUsecase:               feed.ScrapingDomainUsecase,

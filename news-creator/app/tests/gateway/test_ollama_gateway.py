@@ -929,6 +929,72 @@ async def test_generate_raw_skips_semaphore(mock_config, mock_driver):
 
 
 @pytest.mark.asyncio
+async def test_generate_filters_runner_startup_params(mock_config, mock_driver):
+    """generate() must strip num_ctx/num_batch/num_keep from caller options.
+
+    These are runner startup params fixed by config/Modelfile. Passing a
+    caller-supplied value that differs from the base triggers an Ollama
+    runner reload (GPU contention / model reload), matching the fix already
+    applied to OllamaStreamDriver._merge_options.
+    """
+    with patch(
+        "news_creator.gateway.ollama_gateway.OllamaDriver", return_value=mock_driver
+    ):
+        gateway = OllamaGateway(mock_config)
+        await gateway.initialize()
+
+        await gateway.generate(
+            "Test prompt",
+            options={
+                "num_ctx": 8192,
+                "num_batch": 999,
+                "num_keep": 5,
+                "temperature": 0.5,
+            },
+        )
+
+        sent_payload = mock_driver.generate.call_args.args[0]
+        sent_options = sent_payload["options"]
+        assert "num_batch" not in sent_options
+        assert "num_keep" not in sent_options
+        # num_ctx stays at the config/Modelfile base value, not the caller override
+        assert sent_options["num_ctx"] == 4096
+        # Sampling params still pass through
+        assert sent_options["temperature"] == 0.5
+
+        await gateway.cleanup()
+
+
+@pytest.mark.asyncio
+async def test_generate_raw_filters_runner_startup_params(mock_config, mock_driver):
+    """generate_raw() must also strip num_ctx/num_batch/num_keep from options."""
+    with patch(
+        "news_creator.gateway.ollama_gateway.OllamaDriver", return_value=mock_driver
+    ):
+        gateway = OllamaGateway(mock_config)
+        await gateway.initialize()
+
+        await gateway.generate_raw(
+            "Test prompt",
+            options={
+                "num_ctx": 8192,
+                "num_batch": 999,
+                "num_keep": 5,
+                "temperature": 0.5,
+            },
+        )
+
+        sent_payload = mock_driver.generate.call_args.args[0]
+        sent_options = sent_payload["options"]
+        assert "num_batch" not in sent_options
+        assert "num_keep" not in sent_options
+        assert sent_options["num_ctx"] == 4096
+        assert sent_options["temperature"] == 0.5
+
+        await gateway.cleanup()
+
+
+@pytest.mark.asyncio
 async def test_preemption_cancels_inflight_generate(mock_config, mock_driver):
     """Test that preemption actually cancels an in-flight driver.generate() call.
 

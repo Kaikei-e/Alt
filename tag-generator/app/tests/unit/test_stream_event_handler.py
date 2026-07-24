@@ -277,3 +277,30 @@ class TestTagGeneratorEventHandler:
 
         # Should not publish anything
         mock_stream_consumer.publish_reply.assert_not_called()
+
+    @pytest.mark.anyio
+    async def test_handle_article_created_raises_when_processing_fails(self, handler, mock_service):
+        """A False result from _process_single_article (extraction/upsert failure)
+        must propagate as an exception so the stream consumer does not XACK the
+        message -- otherwise the failed article is silently dropped from the PEL
+        with no redelivery/DLQ path (see event-stream-consumer.md ACK discipline).
+        """
+        event = Event(
+            message_id="msg-1",
+            event_id="evt-1",
+            event_type="ArticleCreated",
+            source="alt-backend",
+            created_at=datetime.now(),
+            payload={"article_id": "article-123", "title": "Test Article"},
+            metadata={},
+        )
+
+        mock_service.article_fetcher.fetch_article_by_id.return_value = {
+            "article_id": "article-123",
+            "title": "Test Article",
+            "content": "Some content",
+        }
+        mock_service._process_single_article.return_value = False
+
+        with pytest.raises(RuntimeError):
+            await handler._handle_article_created(event)

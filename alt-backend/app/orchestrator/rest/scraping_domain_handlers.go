@@ -4,6 +4,8 @@ import (
 	"alt/config"
 	"alt/di"
 	"alt/domain"
+	middleware_custom "alt/middleware"
+	"alt/utils/logger"
 	"fmt"
 	"net/http"
 	"strconv"
@@ -39,10 +41,14 @@ type UpdateScrapingDomainRequest struct {
 	ForceRespectRobots *bool `json:"force_respect_robots,omitempty"`
 }
 
-// registerScrapingDomainRoutes registers the scraping domain management routes
+// registerScrapingDomainRoutes registers the scraping domain management routes.
+// Access requires a valid JWT (RequireAuth) AND the admin role (RequireAdmin),
+// matching every other admin route group (see registerDashboardRoutes). These
+// endpoints control scraping consent policy (robots.txt compliance, ML
+// training opt-in) and must never be reachable anonymously.
 func registerScrapingDomainRoutes(v1 *echo.Group, container *di.ApplicationComponents, cfg *config.Config) {
-	// Admin endpoints (authentication required)
-	admin := v1.Group("/admin")
+	authMiddleware := middleware_custom.NewAuthMiddleware(logger.Logger, cfg)
+	admin := v1.Group("/admin", authMiddleware.RequireAuth(), authMiddleware.RequireAdmin())
 	scrapingDomains := admin.Group("/scraping-domains")
 
 	scrapingDomains.GET("", handleListScrapingDomains(container))

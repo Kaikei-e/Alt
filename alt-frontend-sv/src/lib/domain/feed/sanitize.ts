@@ -5,14 +5,10 @@ import {
 	mergeTagsLabel,
 	normalizeUrl,
 } from "$lib/utils/feed";
+import { sanitizeHrefUrl } from "$lib/utils/urlSafety";
 
 function sanitizeUrl(url: string): string {
-	if (!url) return "";
-	const urlPattern = /^https?:\/\//i;
-	if (!urlPattern.test(url)) return "";
-	const dangerousProtocols = /^(javascript|vbscript|data|ftp|file):/i;
-	if (dangerousProtocols.test(url)) return "";
-	return url;
+	return sanitizeHrefUrl(url) ?? "";
 }
 
 /** Decode common HTML entities. SSR-safe (no DOMParser). */

@@ -67,6 +67,19 @@ func (s *JobScheduler) executeJob(ctx context.Context, j Job) {
 		return
 	}
 
+	// A panic in j.Fn (e.g. a Rule-8 nil-guard panic, or an unexpected nil
+	// dereference) must not take the whole process down with it — that
+	// would crash every other scheduled job along with it, with no restart.
+	// Recovering here keeps the scheduler alive for the next tick and for
+	// every other registered job; it does not paper over the underlying bug
+	// (still logged at Error level), and it does not by itself fix any
+	// outbox row left in a non-terminal state by the aborted job body.
+	defer func() {
+		if r := recover(); r != nil {
+			slog.ErrorContext(ctx, "job panicked", "job", j.Name, "panic", r)
+		}
+	}()
+
 	jobCtx, cancel := context.WithTimeout(ctx, j.Timeout)
 	defer cancel()
 

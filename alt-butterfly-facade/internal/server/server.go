@@ -197,10 +197,10 @@ func NewServerWithTransports(
 	// target only the Connect-RPC path without breaking plaintext REST
 	// proxies (see ADR-000727 / ADR-000729).
 	//
-	// Only allowlisted paths (OPML, dashboard, image proxy, admin scraping,
-	// csrf, health) reach the upstream Echo listener. Every other /v1/*
-	// request returns 404 so accidental reintroduction of REST endpoints
-	// for user-facing features surfaces immediately.
+	// NOTE: boundary enforcement (rejecting non-allowlisted /v1/* paths) is
+	// not implemented yet — see the warn-only handler below and
+	// ADR-000729 Phase 3. Every /v1/* path currently reaches the upstream
+	// Echo listener; allowRESTPath only drives the migration-candidate log.
 	if cfg.BackendRESTURL != "" {
 		effectiveRESTTransport := restTransport
 		if effectiveRESTTransport == nil {

@@ -255,6 +255,13 @@ func Run(ctx context.Context) error {
 // the HIGH finding here: eventHandler.Stop() was never called at all, so up
 // to ~2s of buffered, already-ACKed events were silently dropped on every
 // restart. See .claude/rules/event-stream-consumer.md shutdown ordering.
+//
+// Between StopIntake and eventHandler.Stop, WaitForLoopsExit blocks until
+// consumeLoop/reclaimLoop have actually returned. StopIntake only closes
+// the shutdown signal channel -- it does not wait -- so without this step
+// an in-flight processMessages() batch could still be calling HandleEvent
+// (buffering an article ID) concurrently with the flush that follows,
+// silently dropping whatever it buffered after the flush already ran.
 func (a *App) shutdown() {
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
@@ -273,6 +280,7 @@ func (a *App) shutdown() {
 
 	if a.redisConsumer != nil {
 		a.redisConsumer.StopIntake()
+		a.redisConsumer.WaitForLoopsExit()
 	}
 	if a.eventHandler != nil {
 		a.eventHandler.Stop()

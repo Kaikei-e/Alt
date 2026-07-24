@@ -4,6 +4,7 @@ import * as Sheet from "$lib/components/ui/sheet";
 import { Button } from "$lib/components/ui/button";
 import { X, ExternalLink, Newspaper, Rss, Tag } from "@lucide/svelte";
 import PulseRoleLabel from "$lib/components/pulse/PulseRoleLabel.svelte";
+import { sanitizeHrefUrl } from "$lib/utils/urlSafety";
 
 interface Props {
 	topic: PulseTopic | null;
@@ -121,7 +122,7 @@ const formattedSourceNames = $derived.by(() => {
 									style="background: var(--surface-bg); border-color: var(--surface-border);"
 								>
 									<a
-										href={article.sourceUrl}
+										href={sanitizeHrefUrl(article.sourceUrl)}
 										target="_blank"
 										rel="noopener noreferrer"
 										class="block hover:opacity-80 transition-opacity"

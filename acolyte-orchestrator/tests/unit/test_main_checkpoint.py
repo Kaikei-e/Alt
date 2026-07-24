@@ -33,6 +33,9 @@ async def test_create_app_compiles_graph_with_checkpointer_on_startup(monkeypatc
     monkeypatch.setattr(main_module._pool, "open", AsyncMock())
     monkeypatch.setattr(main_module._pool, "close", AsyncMock())
     monkeypatch.setattr(main_module._http_client, "aclose", AsyncMock())
+    # Startup reconciliation queries report_runs via the real pool otherwise —
+    # this test doesn't boot a live DB, so stub the one query it makes.
+    monkeypatch.setattr(main_module._job_queue, "list_running_runs", AsyncMock(return_value=[]))
 
     app = main_module.create_app()
 

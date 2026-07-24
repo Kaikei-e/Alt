@@ -3,19 +3,19 @@
  */
 
 const PUBLIC_ROUTES = [
-	/\/auth(\/|$)/,
-	/\/health(\/|$)/,
-	/\/login(\/|$)/,
-	/\/register(\/|$)/,
-	/\/logout(\/|$)/,
-	/\/recovery(\/|$)/,
-	/\/verification(\/|$)/,
-	/\/error(\/|$)/,
-	/\/public\/landing(\/|$)/,
-	/\/landing$/,
-	/\/favicon\.ico$/,
-	/\/icon\.svg$/,
-	/\/test(\/|$)/,
+	/^\/auth(\/|$)/,
+	/^\/health(\/|$)/,
+	/^\/login(\/|$)/,
+	/^\/register(\/|$)/,
+	/^\/logout(\/|$)/,
+	/^\/recovery(\/|$)/,
+	/^\/verification(\/|$)/,
+	/^\/error(\/|$)/,
+	/^\/public\/landing(\/|$)/,
+	/^\/landing$/,
+	/^\/favicon\.ico$/,
+	/^\/icon\.svg$/,
+	/^\/test(\/|$)/,
 ];
 
 export function isPublicRoute(pathname: string): boolean {

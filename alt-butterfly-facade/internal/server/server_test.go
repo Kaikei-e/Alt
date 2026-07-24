@@ -113,6 +113,43 @@ func TestServer_ProxyEndpoint_Success(t *testing.T) {
 	assert.Equal(t, "response", recorder.Body.String())
 }
 
+// TestServer_RESTRoute_NonAllowlistedPathIsStillForwarded documents the
+// current (known-incomplete) state of ADR-000729 Phase 3: allowRESTPath is
+// only used for warn-only telemetry today, not for routing enforcement. A
+// path absent from restAllowlistPrefixes still reaches the upstream REST
+// listener instead of being rejected with 404. If/when boundary enforcement
+// lands, this test should be updated to assert http.StatusNotFound instead.
+func TestServer_RESTRoute_NonAllowlistedPathIsStillForwarded(t *testing.T) {
+	restBackend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, "/v1/feeds/tags", r.URL.Path)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(`{}`))
+	}))
+	defer restBackend.Close()
+
+	cfg := Config{
+		BackendURL:       "http://localhost:9101",
+		BackendRESTURL:   restBackend.URL,
+		Secret:           []byte("test-secret"),
+		Issuer:           "auth-hub",
+		Audience:         "alt-backend",
+		RequestTimeout:   30 * time.Second,
+		StreamingTimeout: 5 * time.Minute,
+	}
+
+	handler := NewServerWithTransport(cfg, nil, http.DefaultTransport)
+
+	// "/v1/feeds/tags" is not in restAllowlistPrefixes.
+	req := httptest.NewRequest(http.MethodGet, "/v1/feeds/tags", nil)
+	req.Header.Set("X-Alt-Backend-Token", createValidToken(t, []byte("test-secret")))
+
+	recorder := httptest.NewRecorder()
+	handler.ServeHTTP(recorder, req)
+
+	assert.Equal(t, http.StatusOK, recorder.Code)
+}
+
 func TestServer_TTSRoute_Unauthorized(t *testing.T) {
 	cfg := Config{
 		BackendURL:       "http://localhost:9101",

@@ -35,9 +35,29 @@ func (r *SummaryRepository) CreateSummaryVersion(ctx context.Context, sv domain.
 
 // MarkSummaryVersionSuperseded marks all non-superseded summary versions for an article as superseded
 // by the new version. Returns the previous latest version before marking, or nil if none existed.
+//
+// The select-then-update pair runs inside a transaction guarded by a
+// per-article pg_advisory_xact_lock. Without it, two summary versions
+// created back-to-back for the same article can each run this method
+// concurrently and mark the OTHER as superseded: each call's WHERE clause
+// excludes only its own new version id, so the two candidate row sets are
+// disjoint and row-level UPDATE locking alone does not serialize them. The
+// advisory lock is keyed on article_id (not on the changing set of
+// non-superseded rows) so the second concurrent call fully waits for the
+// first transaction to commit before it can even read "prev".
 func (r *SummaryRepository) MarkSummaryVersionSuperseded(ctx context.Context, articleID uuid.UUID, newVersionID uuid.UUID) (*domain.SummaryVersion, error) {
 	ctx, span := otel.Tracer("alt-backend").Start(ctx, "db.MarkSummaryVersionSuperseded")
 	defer span.End()
+
+	tx, err := r.pool.BeginTx(ctx, pgx.TxOptions{})
+	if err != nil {
+		return nil, fmt.Errorf("MarkSummaryVersionSuperseded begin: %w", err)
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+
+	if _, err := tx.Exec(ctx, "SELECT pg_advisory_xact_lock(hashtext($1::text))", articleID); err != nil {
+		return nil, fmt.Errorf("MarkSummaryVersionSuperseded advisory lock: %w", err)
+	}
 
 	// First, get the current latest version (before superseding)
 	var prev domain.SummaryVersion
@@ -49,29 +69,34 @@ func (r *SummaryRepository) MarkSummaryVersionSuperseded(ctx context.Context, ar
 		ORDER BY generated_at DESC
 		LIMIT 1`
 
-	err := r.pool.QueryRow(ctx, selectQuery, articleID, newVersionID).Scan(
+	err = tx.QueryRow(ctx, selectQuery, articleID, newVersionID).Scan(
 		&prev.SummaryVersionID, &prev.ArticleID, &prev.UserID, &prev.GeneratedAt,
 		&prev.Model, &prev.PromptVersion, &prev.InputHash, &prev.QualityScore,
 		&prev.SummaryText, &prev.SupersededBy,
 	)
-	if err != nil {
-		if err == pgx.ErrNoRows {
-			return nil, nil // No previous version
+	switch err {
+	case nil:
+		// Mark all non-superseded versions (except the new one) as superseded
+		updateQuery := `UPDATE summary_versions
+			SET superseded_by = $1
+			WHERE article_id = $2 AND superseded_by IS NULL AND summary_version_id != $1`
+
+		if _, err := tx.Exec(ctx, updateQuery, newVersionID, articleID); err != nil {
+			return nil, fmt.Errorf("MarkSummaryVersionSuperseded update: %w", err)
 		}
+
+		if err := tx.Commit(ctx); err != nil {
+			return nil, fmt.Errorf("MarkSummaryVersionSuperseded commit: %w", err)
+		}
+		return &prev, nil
+	case pgx.ErrNoRows:
+		if err := tx.Commit(ctx); err != nil {
+			return nil, fmt.Errorf("MarkSummaryVersionSuperseded commit: %w", err)
+		}
+		return nil, nil // No previous version
+	default:
 		return nil, fmt.Errorf("MarkSummaryVersionSuperseded select: %w", err)
 	}
-
-	// Mark all non-superseded versions (except the new one) as superseded
-	updateQuery := `UPDATE summary_versions
-		SET superseded_by = $1
-		WHERE article_id = $2 AND superseded_by IS NULL AND summary_version_id != $1`
-
-	_, err = r.pool.Exec(ctx, updateQuery, newVersionID, articleID)
-	if err != nil {
-		return nil, fmt.Errorf("MarkSummaryVersionSuperseded update: %w", err)
-	}
-
-	return &prev, nil
 }
 
 // GetSummaryVersionByID returns a specific summary version by its ID.

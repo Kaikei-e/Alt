@@ -8,6 +8,7 @@ import type {
 	ProjectionAuditData,
 	SystemMetricsData,
 } from "$lib/connect/knowledge_home_admin";
+import { getClientCSRFToken } from "$lib/api/client/core";
 
 interface Snapshot {
 	health: ProjectionHealthData | null;
@@ -190,10 +191,14 @@ export function useKnowledgeHomeAdmin(
 
 		acting = true;
 		try {
+			const csrfToken = await getClientCSRFToken();
 			const response = await fetch("/api/admin/knowledge-home", {
 				method: "POST",
 				credentials: "include",
-				headers: { "Content-Type": "application/json" },
+				headers: {
+					"Content-Type": "application/json",
+					...(csrfToken ? { "X-CSRF-Token": csrfToken } : {}),
+				},
 				body: JSON.stringify({ action: "compare_reproject", reprojectRunId }),
 			});
 			if (!response.ok) {
@@ -222,10 +227,14 @@ export function useKnowledgeHomeAdmin(
 		if (!actionRunner) throw new Error("Admin actions are unavailable.");
 		acting = true;
 		try {
+			const csrfToken = await getClientCSRFToken();
 			const response = await fetch("/api/admin/knowledge-home", {
 				method: "POST",
 				credentials: "include",
-				headers: { "Content-Type": "application/json" },
+				headers: {
+					"Content-Type": "application/json",
+					...(csrfToken ? { "X-CSRF-Token": csrfToken } : {}),
+				},
 				body: JSON.stringify({
 					action: "emit_article_url_backfill",
 					maxArticles,
@@ -254,10 +263,14 @@ export function useKnowledgeHomeAdmin(
 		if (!actionRunner) throw new Error("Admin actions are unavailable.");
 		acting = true;
 		try {
+			const csrfToken = await getClientCSRFToken();
 			const response = await fetch("/api/admin/knowledge-home", {
 				method: "POST",
 				credentials: "include",
-				headers: { "Content-Type": "application/json" },
+				headers: {
+					"Content-Type": "application/json",
+					...(csrfToken ? { "X-CSRF-Token": csrfToken } : {}),
+				},
 				body: JSON.stringify({
 					action: "run_audit",
 					projectionName,

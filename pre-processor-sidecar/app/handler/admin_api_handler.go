@@ -278,11 +278,34 @@ func (h *AdminAPIHandler) HandleTokenStatus(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	// 認証確認（簡易版 - 状態確認なので軽い認証）
+	// 認証確認
 	authToken := extractBearerToken(r)
 	if authToken == "" {
 		h.respondWithError(w, "MISSING_AUTHORIZATION", "Authorization header with Bearer token is required", http.StatusUnauthorized)
 		h.metricsCollector.IncrementAdminAPIRequest("GET", "/admin/oauth2/status", "unauthorized")
+		return
+	}
+
+	// ServiceAccountトークン検証
+	serviceAccountInfo, err := h.authenticator.ValidateKubernetesServiceAccountToken(authToken)
+	if err != nil {
+		h.logger.Error("ServiceAccount token validation failed", "error", err)
+
+		h.respondWithError(w, "INVALID_TOKEN", "Invalid authentication token", http.StatusUnauthorized)
+		h.metricsCollector.IncrementAdminAPIAuthenticationError("invalid_token")
+		h.metricsCollector.IncrementAdminAPIRequest("GET", "/admin/oauth2/status", "unauthorized")
+		return
+	}
+
+	// 管理者権限確認
+	if !h.authenticator.HasAdminPermissions(serviceAccountInfo) {
+		h.logger.Warn("Insufficient permissions for admin API",
+			"subject", serviceAccountInfo.Subject,
+			"namespace", serviceAccountInfo.Namespace)
+
+		h.respondWithError(w, "INSUFFICIENT_PERMISSIONS", "Insufficient permissions for this operation", http.StatusForbidden)
+		h.metricsCollector.IncrementAdminAPIAuthenticationError("insufficient_permissions")
+		h.metricsCollector.IncrementAdminAPIRequest("GET", "/admin/oauth2/status", "forbidden")
 		return
 	}
 

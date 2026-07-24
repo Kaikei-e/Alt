@@ -21,8 +21,11 @@ func getFeedIDByArticleURL(ctx context.Context, pool PgxIface, articleURL string
 	var feedID string
 	err := pool.QueryRow(ctx, query, articleURL).Scan(&feedID)
 	if err != nil {
-		logger.SafeErrorContext(ctx, "error getting feed ID by article URL", "error", err, "articleURL", articleURL)
-		return "", errors.New("error getting feed ID by article URL")
+		if errors.Is(err, pgx.ErrNoRows) {
+			return "", pgx.ErrNoRows
+		}
+		logger.SafeErrorContext(ctx, "error querying feed ID by article URL", "error", err, "articleURL", articleURL)
+		return "", fmt.Errorf("query feed id by article url: %w", err)
 	}
 
 	logger.SafeInfoContext(ctx, "retrieved feed ID by article URL", "articleURL", articleURL, "feedID", feedID)

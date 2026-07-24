@@ -1,4 +1,5 @@
 import dataclasses
+import hmac
 import json
 import logging
 import os
@@ -6,6 +7,7 @@ import time
 import traceback
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from socketserver import ThreadingMixIn
+from urllib.parse import parse_qs, urlparse
 
 import system_monitor
 
@@ -21,7 +23,46 @@ PORT = int(os.getenv("SSE_PORT", 8000))
 
 # CORS: restrict to the dashboard's own origin by default. Set SSE_ALLOWED_ORIGIN
 # to override (e.g. a different nginx-fronted host), or "*" to explicitly allow any origin.
+# NOTE: this is a browser-only defense (fetch/XHR honor it); curl/other direct
+# HTTP clients ignore CORS entirely, so it must never be relied on as auth.
 ALLOWED_ORIGIN = os.getenv("SSE_ALLOWED_ORIGIN", f"http://localhost:{PORT}")
+
+# Empty by default (loopback/dev mode, unauthenticated). Set SSE_AUTH_TOKEN to
+# require `?token=` (or `Authorization: Bearer <token>`) on /stream and /health.
+AUTH_TOKEN = os.getenv("SSE_AUTH_TOKEN", "")
+
+
+def extract_token_param(query: str) -> str | None:
+    """Extract the `token` query parameter from a raw URL query string."""
+    params = parse_qs(query)
+    values = params.get("token")
+    return values[0] if values else None
+
+
+def is_authorized(
+    configured_token: str, token_param: str | None, auth_header: str | None
+) -> bool:
+    """Check whether a request may access /stream or /health.
+
+    When ``configured_token`` is empty, auth is disabled (loopback/dev mode)
+    and every request is authorized. Otherwise the request must supply a
+    matching `?token=` query parameter or `Authorization: Bearer <token>`
+    header, compared in constant time.
+    """
+    if not configured_token:
+        return True
+
+    if token_param is not None and hmac.compare_digest(token_param, configured_token):
+        return True
+
+    if auth_header is not None:
+        prefix = "Bearer "
+        if auth_header.startswith(prefix):
+            provided = auth_header[len(prefix) :]
+            if hmac.compare_digest(provided, configured_token):
+                return True
+
+    return False
 
 
 class ThreadingHTTPServer(ThreadingMixIn, HTTPServer):
@@ -43,6 +84,12 @@ class SSEHandler(BaseHTTPRequestHandler):
         self.send_header("Access-Control-Max-Age", "3600")
         self.end_headers()
 
+    def _authorized(self) -> bool:
+        parsed = urlparse(self.path)
+        token_param = extract_token_param(parsed.query)
+        auth_header = self.headers.get("Authorization")
+        return is_authorized(AUTH_TOKEN, token_param, auth_header)
+
     def do_GET(self) -> None:
         logger.info(
             "Received GET request for path: %s from %s",
@@ -50,7 +97,24 @@ class SSEHandler(BaseHTTPRequestHandler):
             self.client_address,
         )
 
-        if self.path == "/stream":
+        path = urlparse(self.path).path
+
+        if path in ("/stream", "/health") and not self._authorized():
+            logger.warning(
+                "401 unauthorized request for path: %s from %s",
+                self.path,
+                self.client_address,
+            )
+            self.send_response(401)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Access-Control-Allow-Origin", ALLOWED_ORIGIN)
+            self.end_headers()
+            self.wfile.write(
+                json.dumps({"status": "error", "error": "unauthorized"}).encode("utf-8")
+            )
+            return
+
+        if path == "/stream":
             try:
                 logger.info("SSE connection attempt from %s", self.client_address)
                 logger.debug("Request headers: %s", dict(self.headers))
@@ -61,8 +125,12 @@ class SSEHandler(BaseHTTPRequestHandler):
                 self.send_header("Connection", "keep-alive")
                 self.send_header("Access-Control-Allow-Origin", ALLOWED_ORIGIN)
                 self.send_header("Access-Control-Allow-Methods", "GET, OPTIONS")
-                self.send_header("Access-Control-Allow-Headers", "Cache-Control, Content-Type")
-                self.send_header("X-Accel-Buffering", "no")  # Disable buffering for nginx if used
+                self.send_header(
+                    "Access-Control-Allow-Headers", "Cache-Control, Content-Type"
+                )
+                self.send_header(
+                    "X-Accel-Buffering", "no"
+                )  # Disable buffering for nginx if used
                 self.end_headers()
 
                 logger.info(
@@ -76,7 +144,9 @@ class SSEHandler(BaseHTTPRequestHandler):
                         # Gather data
                         data_start = time.time()
                         data = {
-                            "memory": dataclasses.asdict(system_monitor.get_memory_info()),
+                            "memory": dataclasses.asdict(
+                                system_monitor.get_memory_info()
+                            ),
                             "cpu": system_monitor.get_cpu_info(),
                             "gpu": system_monitor.get_gpu_info(),
                             "hanging_count": system_monitor.count_hanging_processes(),
@@ -138,7 +208,7 @@ class SSEHandler(BaseHTTPRequestHandler):
                     self.end_headers()
                 except OSError:
                     pass
-        elif self.path == "/health":
+        elif path == "/health":
             # Health check endpoint
             logger.debug("Health check request from %s", self.client_address)
             try:
@@ -186,6 +256,15 @@ def start_server() -> None:
             "SSE Server environment: SSE_PORT=%s",
             os.getenv("SSE_PORT", "not set (using default 8000)"),
         )
+        if AUTH_TOKEN:
+            logger.info(
+                "sse_auth_enabled: /stream and /health require a matching token"
+            )
+        else:
+            logger.warning(
+                "sse_auth_disabled: no SSE_AUTH_TOKEN configured, "
+                "/stream and /health are unauthenticated"
+            )
 
         server = ThreadingHTTPServer(("0.0.0.0", PORT), SSEHandler)
         logger.info("SSE Server HTTP server created successfully")

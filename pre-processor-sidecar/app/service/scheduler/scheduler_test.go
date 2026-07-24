@@ -72,6 +72,42 @@ func TestScheduler_StartStop(t *testing.T) {
 	}
 }
 
+func TestScheduler_Stop_WaitsForTriggeredFetch(t *testing.T) {
+	// TriggerFetchNow's goroutine must be tracked by the same WaitGroup Stop()
+	// waits on, or Stop() returns while the triggered fetch is still running
+	// and races with whatever the caller tears down right after (e.g. closing
+	// the DB pool in cmd/main.go's shutdown sequence).
+	started := make(chan struct{})
+	completed := make(chan struct{})
+	repo := &MockSyncStateRepository{
+		GetOldestOneFunc: func(ctx context.Context) (*models.SyncState, error) {
+			close(started)
+			time.Sleep(100 * time.Millisecond)
+			close(completed)
+			return nil, nil
+		},
+	}
+
+	logger := slog.Default()
+	s := NewScheduler(repo, nil, nil, logger)
+
+	s.Start(Config{FetchInterval: time.Hour, RefreshInterval: time.Hour})
+
+	if err := s.TriggerFetchNow(); err != nil {
+		t.Fatalf("TriggerFetchNow failed: %v", err)
+	}
+	<-started
+
+	s.Stop()
+
+	select {
+	case <-completed:
+		// Stop() waited for the triggered fetch to finish, as expected.
+	default:
+		t.Error("Stop() returned before the triggered fetch completed")
+	}
+}
+
 func TestScheduler_RestartAfterStop(t *testing.T) {
 	// A closed stopChan can never be reopened; Start must hand runLoop a
 	// freshly created channel each time or the loop spawned by the second

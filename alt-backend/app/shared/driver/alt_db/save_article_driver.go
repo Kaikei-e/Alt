@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 )
 
 const upsertArticleQuery = `
@@ -69,8 +70,15 @@ func (r *ArticleRepository) SaveArticle(ctx context.Context, url, title, content
 	var feedID *uuid.UUID
 	feedIDStr, err := getFeedIDByArticleURL(ctx, r.pool, cleanURL)
 	if err != nil {
-		// If feed not found, log warning but continue (feed_id will be NULL)
-		logger.SafeWarnContext(ctx, "feed not found for article URL, article will be saved without feed_id", "url", cleanURL, "error", err)
+		if !errors.Is(err, pgx.ErrNoRows) {
+			// A real DB failure (timeout, connection reset, ...) must not be
+			// reinterpreted as "no matching feed" — that would silently
+			// persist the article with feed_id=NULL even though a working
+			// lookup might have resolved a real feed (finding [14]).
+			return "", fmt.Errorf("resolve feed id for article: %w", err)
+		}
+		// Genuinely no feed row for this URL: continue, feed_id stays NULL.
+		logger.SafeWarnContext(ctx, "feed not found for article URL, article will be saved without feed_id", "url", cleanURL)
 	} else {
 		parsedFeedID, err := uuid.Parse(feedIDStr)
 		if err == nil {

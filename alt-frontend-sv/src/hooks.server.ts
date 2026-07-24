@@ -13,7 +13,10 @@ import {
 } from "$lib/server/response-builder";
 import { resolveResponsiveRedirect } from "$lib/server/redirect-resolver";
 import { classifySafari, extractChunkHash } from "$lib/safari-error-utils";
-import { applyHtmlCacheControl } from "./hooks.server.cache-control";
+import {
+	applyApiCacheControl,
+	applyHtmlCacheControl,
+} from "./hooks.server.cache-control";
 
 const resolveOptions = {
 	filterSerializedResponseHeaders: (name: string) => name === "content-type",
@@ -41,6 +44,7 @@ export const handle: Handle = async ({ event, resolve: resolveEvent }) => {
 		event.locals.backendToken = null;
 		const response = await resolveEvent(event, resolveOptions);
 		applyHtmlCacheControl(response);
+		applyApiCacheControl(response, pathname);
 		return response;
 	}
 
@@ -75,6 +79,7 @@ export const handle: Handle = async ({ event, resolve: resolveEvent }) => {
 		if (isPublic) {
 			const response = await resolveEvent(event, resolveOptions);
 			applyHtmlCacheControl(response);
+			applyApiCacheControl(response, pathname);
 			return response;
 		}
 
@@ -83,6 +88,7 @@ export const handle: Handle = async ({ event, resolve: resolveEvent }) => {
 
 	const response = await resolveEvent(event, resolveOptions);
 	applyHtmlCacheControl(response);
+	applyApiCacheControl(response, pathname);
 	return response;
 };
 

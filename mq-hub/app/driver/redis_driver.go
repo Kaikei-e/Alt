@@ -100,6 +100,11 @@ func (d *RedisDriver) Publish(ctx context.Context, stream domain.StreamKey, even
 	if d.streamMaxLen > 0 {
 		args.MaxLen = d.streamMaxLen
 		args.Approx = true
+		// ACKED restricts approximate MAXLEN trimming to entries every
+		// consumer group has read and acked (Redis 8.2+). Without it, a
+		// stalled/backlogged consumer's undelivered or unacked entries are
+		// silently evicted once the stream exceeds streamMaxLen.
+		args.Mode = "ACKED"
 	}
 
 	result, err := d.client.XAdd(ctx, args).Result()
@@ -143,6 +148,9 @@ func (d *RedisDriver) PublishBatch(ctx context.Context, stream domain.StreamKey,
 		if d.streamMaxLen > 0 {
 			args.MaxLen = d.streamMaxLen
 			args.Approx = true
+			// See Publish: ACKED keeps undelivered/unacked backlog entries
+			// out of reach of approximate MAXLEN trimming.
+			args.Mode = "ACKED"
 		}
 		cmds[i] = pipe.XAdd(ctx, args)
 	}

@@ -24,6 +24,11 @@ use crate::store::models::{
 };
 
 #[cfg(test)]
+/// A resumable job row returned by `find_resumable_job`:
+/// (run_id, status, checkpoint, attempt).
+type ResumableJob = (Uuid, JobStatus, Option<String>, u32);
+
+#[cfg(test)]
 /// `insert_failed_task` 呼び出しを記録するためのスナップショット。
 #[allow(dead_code)]
 #[derive(Debug, Clone)]
@@ -73,6 +78,11 @@ pub(crate) struct MockRecapDao {
     article_metadata: Arc<Mutex<ArticleMetadataMap>>,
     /// `get_sentence_ids_by_run` の応答。
     sentence_ids: Arc<Mutex<SentenceIdsByRun>>,
+    /// `find_resumable_job` の次回応答（1回だけ消費）。未設定なら `Ok(None)`。
+    find_resumable_job_result:
+        Arc<Mutex<Option<Result<Option<ResumableJob>>>>>,
+    /// `mark_abandoned_jobs` 呼び出し引数 (`keep_job_id`) の記録。
+    mark_abandoned_jobs_calls: Arc<Mutex<Vec<Option<Uuid>>>>,
 }
 
 #[cfg(test)]
@@ -123,6 +133,28 @@ impl MockRecapDao {
             .expect("sentence_ids mutex poisoned")
             .insert(run_id, ids);
     }
+
+    /// テスト用に次回の `find_resumable_job` 呼び出しの応答をセットする
+    /// （`Err` を注入して DB 障害を再現するのに使う）。
+    #[allow(dead_code)]
+    pub(crate) fn set_find_resumable_job_result(
+        &self,
+        result: Result<Option<ResumableJob>>,
+    ) {
+        *self
+            .find_resumable_job_result
+            .lock()
+            .expect("find_resumable_job_result mutex poisoned") = Some(result);
+    }
+
+    /// 記録された `mark_abandoned_jobs` 呼び出し（`keep_job_id` 引数）のスナップショットを取得する。
+    #[allow(dead_code)]
+    pub(crate) fn mark_abandoned_jobs_calls(&self) -> Vec<Option<Uuid>> {
+        self.mark_abandoned_jobs_calls
+            .lock()
+            .expect("mark_abandoned_jobs_calls mutex poisoned")
+            .clone()
+    }
 }
 
 #[cfg(test)]
@@ -162,11 +194,19 @@ impl RecapDao for MockRecapDao {
     async fn find_resumable_job(
         &self,
         _max_age_hours: i64,
-    ) -> Result<Option<(Uuid, JobStatus, Option<String>, u32)>> {
-        Ok(None)
+    ) -> Result<Option<ResumableJob>> {
+        self.find_resumable_job_result
+            .lock()
+            .expect("find_resumable_job_result mutex poisoned")
+            .take()
+            .unwrap_or(Ok(None))
     }
 
-    async fn mark_abandoned_jobs(&self, _keep_job_id: Option<Uuid>) -> Result<u64> {
+    async fn mark_abandoned_jobs(&self, keep_job_id: Option<Uuid>) -> Result<u64> {
+        self.mark_abandoned_jobs_calls
+            .lock()
+            .expect("mark_abandoned_jobs_calls mutex poisoned")
+            .push(keep_job_id);
         Ok(0)
     }
 

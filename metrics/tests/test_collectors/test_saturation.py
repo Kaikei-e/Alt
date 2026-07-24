@@ -3,6 +3,7 @@
 from unittest.mock import MagicMock
 
 import pytest
+from clickhouse_connect.driver.exceptions import OperationalError
 
 from alt_metrics.collectors.saturation import (
     collect_queue_saturation,
@@ -52,14 +53,22 @@ class TestCollectResourceUtilization:
         assert result == []
 
     def test_raises_collector_error_on_exception(self) -> None:
-        """例外発生時はCollectorErrorを投げる"""
+        """ClickHouseError発生時はCollectorErrorを投げる"""
         mock_client = MagicMock()
-        mock_client.query.side_effect = Exception("Connection failed")
+        mock_client.query.side_effect = OperationalError("Connection failed")
 
         with pytest.raises(CollectorError) as exc_info:
             collect_resource_utilization(mock_client, "rask_logs", 24)
 
         assert "resource_utilization" in str(exc_info.value)
+
+    def test_unexpected_exception_is_not_swallowed(self) -> None:
+        """ClickHouseError以外の予期しない例外はCollectorErrorに変換せず伝播する"""
+        mock_client = MagicMock()
+        mock_client.query.side_effect = ValueError("unexpected bug")
+
+        with pytest.raises(ValueError):
+            collect_resource_utilization(mock_client, "rask_logs", 24)
 
     def test_query_uses_correct_parameters(self) -> None:
         """クエリが正しいパラメータを使用"""
@@ -111,11 +120,19 @@ class TestCollectQueueSaturation:
         assert result == []
 
     def test_raises_collector_error_on_exception(self) -> None:
-        """例外発生時はCollectorErrorを投げる"""
+        """ClickHouseError発生時はCollectorErrorを投げる"""
         mock_client = MagicMock()
-        mock_client.query.side_effect = Exception("Query timeout")
+        mock_client.query.side_effect = OperationalError("Query timeout")
 
         with pytest.raises(CollectorError) as exc_info:
             collect_queue_saturation(mock_client, "rask_logs", 24)
 
         assert "queue_saturation" in str(exc_info.value)
+
+    def test_unexpected_exception_is_not_swallowed(self) -> None:
+        """ClickHouseError以外の予期しない例外はCollectorErrorに変換せず伝播する"""
+        mock_client = MagicMock()
+        mock_client.query.side_effect = ValueError("unexpected bug")
+
+        with pytest.raises(ValueError):
+            collect_queue_saturation(mock_client, "rask_logs", 24)

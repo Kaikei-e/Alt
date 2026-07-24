@@ -70,6 +70,8 @@ type Repository interface {
 	UpsertTodayDigest(ctx context.Context, payload json.RawMessage) error
 	UpsertRecallCandidate(ctx context.Context, payload json.RawMessage) error
 	PatchKnowledgeHomeItemURL(ctx context.Context, payload json.RawMessage) error
+	SnoozeRecallCandidate(ctx context.Context, payload json.RawMessage) error
+	DismissRecallCandidate(ctx context.Context, payload json.RawMessage) error
 }
 
 var _ Repository = (*sovereign_db.Repository)(nil)
@@ -103,10 +105,11 @@ func NewProjector(repo Repository, logger *slog.Logger, cfg Config) *Projector {
 }
 
 // RunBatch drains up to MaxBatchesPerTick batches from the event log, folding
-// each of the 9 Knowledge Home event types (ArticleCreated,
+// each of the 11 Knowledge Home event types (ArticleCreated,
 // ArticleUrlBackfilled, SummaryVersionCreated, TagSetVersionCreated,
 // HomeItemOpened, HomeItemDismissed, SummarySuperseded, TagSetSuperseded,
-// ReasonMerged) into the read models and advancing the checkpoint.
+// ReasonMerged, RecallSnoozed, RecallDismissed) into the read models and
+// advancing the checkpoint.
 //
 // A malformed/unparseable payload stops the batch without advancing the
 // checkpoint past the failing event (it stays in the log to be retried),
@@ -194,6 +197,10 @@ func (p *Projector) foldEvent(ctx context.Context, evt sovereign_db.KnowledgeEve
 		return p.foldTagSetSuperseded(ctx, evt, version)
 	case "ReasonMerged":
 		return p.foldReasonMerged(ctx, evt, version)
+	case "RecallSnoozed":
+		return p.foldRecallSnoozed(ctx, evt)
+	case "RecallDismissed":
+		return p.foldRecallDismissed(ctx, evt)
 	default:
 		// Unknown event types are silently skipped but still advance the
 		// checkpoint (handled by the caller).
@@ -287,6 +294,26 @@ type recallCandidateWrite struct {
 	ProjectionVersion int                `json:"projection_version"`
 }
 
+// snoozeRecallCandidateWrite/dismissRecallCandidateWrite mirror the exact
+// json.RawMessage unmarshal targets sovereign_db.Repository.
+// SnoozeRecallCandidate/DismissRecallCandidate already expose (see
+// repository.go) — the same write-through methods
+// recall_snooze_usecase/recall_dismiss_usecase call directly from
+// alt-backend, so replaying RecallSnoozed/RecallDismissed on reproject
+// reaches the identical UPDATE.
+type snoozeRecallCandidateWrite struct {
+	UserID     string `json:"user_id"`
+	ItemKey    string `json:"item_key"`
+	Until      string `json:"until"`
+	OccurredAt string `json:"occurred_at"`
+}
+
+type dismissRecallCandidateWrite struct {
+	UserID     string `json:"user_id"`
+	ItemKey    string `json:"item_key"`
+	OccurredAt string `json:"occurred_at"`
+}
+
 // ── incoming event payload shapes ──
 
 type articleCreatedPayload struct {
@@ -333,6 +360,18 @@ type reasonMergedPayload struct {
 	ArticleID        string   `json:"article_id"`
 	ItemKey          string   `json:"item_key"`
 	PreviousWhyCodes []string `json:"previous_why_codes"`
+}
+
+// recallSnoozedPayload/recallDismissedPayload mirror the shapes
+// alt-backend/app/orchestrator/usecase/recall_snooze_usecase and
+// recall_dismiss_usecase marshal onto the event's payload column.
+type recallSnoozedPayload struct {
+	ItemKey      string `json:"item_key"`
+	SnoozedUntil string `json:"snoozed_until"`
+}
+
+type recallDismissedPayload struct {
+	ItemKey string `json:"item_key"`
 }
 
 // ── repository call helpers ──
@@ -788,4 +827,63 @@ func (p *Projector) foldReasonMerged(ctx context.Context, evt sovereign_db.Knowl
 		ProjectionVersion: version,
 	}
 	return p.upsertHomeItem(ctx, item)
+}
+
+// ── recall snooze/dismiss folds ──
+//
+// recall_candidate_view is a disposable projection (immutable-design-guard),
+// so a TRUNCATE + full reproject replay must reach the same snoozed/dismissed
+// state alt-backend's write-through usecases already applied directly. Unlike
+// the today_digest/recall_candidate side effects on other events (which are
+// secondary and non-fatal), the write here IS the event's entire purpose, so
+// a repository failure is a hard-fail: it stops the batch rather than
+// silently advancing the checkpoint past a lost snooze/dismiss.
+
+func (p *Projector) foldRecallSnoozed(ctx context.Context, evt sovereign_db.KnowledgeEvent) error {
+	var payload recallSnoozedPayload
+	if err := json.Unmarshal(evt.Payload, &payload); err != nil {
+		return fmt.Errorf("unmarshal RecallSnoozed payload: %w", err)
+	}
+	if payload.ItemKey == "" {
+		return fmt.Errorf("RecallSnoozed payload missing item_key")
+	}
+
+	write := snoozeRecallCandidateWrite{
+		UserID:     resolveUserID(evt).String(),
+		ItemKey:    payload.ItemKey,
+		Until:      payload.SnoozedUntil,
+		OccurredAt: evt.OccurredAt.Format(time.RFC3339Nano),
+	}
+	raw, err := json.Marshal(write)
+	if err != nil {
+		return fmt.Errorf("marshal RecallSnoozed payload: %w", err)
+	}
+	if err := p.repo.SnoozeRecallCandidate(ctx, raw); err != nil {
+		return fmt.Errorf("snooze recall candidate: %w", err)
+	}
+	return nil
+}
+
+func (p *Projector) foldRecallDismissed(ctx context.Context, evt sovereign_db.KnowledgeEvent) error {
+	var payload recallDismissedPayload
+	if err := json.Unmarshal(evt.Payload, &payload); err != nil {
+		return fmt.Errorf("unmarshal RecallDismissed payload: %w", err)
+	}
+	if payload.ItemKey == "" {
+		return fmt.Errorf("RecallDismissed payload missing item_key")
+	}
+
+	write := dismissRecallCandidateWrite{
+		UserID:     resolveUserID(evt).String(),
+		ItemKey:    payload.ItemKey,
+		OccurredAt: evt.OccurredAt.Format(time.RFC3339Nano),
+	}
+	raw, err := json.Marshal(write)
+	if err != nil {
+		return fmt.Errorf("marshal RecallDismissed payload: %w", err)
+	}
+	if err := p.repo.DismissRecallCandidate(ctx, raw); err != nil {
+		return fmt.Errorf("dismiss recall candidate: %w", err)
+	}
+	return nil
 }

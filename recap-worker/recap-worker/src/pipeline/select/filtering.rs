@@ -162,6 +162,10 @@ pub(crate) async fn filter_outliers(
 
             filtered_assignments.append(&mut valid_assignments);
         } else {
+            tracing::warn!(
+                genre = %genre,
+                "failed to embed articles for outlier filtering, skipping filter"
+            );
             filtered_assignments.append(&mut genre_assignments);
         }
     }

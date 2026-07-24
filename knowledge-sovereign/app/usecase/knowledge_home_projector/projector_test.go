@@ -101,6 +101,19 @@ type capturedURLPatch struct {
 	URL               string `json:"url"`
 }
 
+type capturedSnooze struct {
+	UserID     string `json:"user_id"`
+	ItemKey    string `json:"item_key"`
+	Until      string `json:"until"`
+	OccurredAt string `json:"occurred_at"`
+}
+
+type capturedRecallDismiss struct {
+	UserID     string `json:"user_id"`
+	ItemKey    string `json:"item_key"`
+	OccurredAt string `json:"occurred_at"`
+}
+
 // ── fakeRepo ──
 
 // fakeRepo is an in-memory stand-in for the sovereign repository, mirroring
@@ -120,6 +133,8 @@ type fakeRepo struct {
 	digests          map[string]capturedDigest
 	recallCandidates map[string]capturedRecallCandidate
 	urlPatches       map[string]capturedURLPatch
+	snoozed          map[string]capturedSnooze
+	recallDismissed  map[string]capturedRecallDismiss
 
 	// activeProjectionVersion mirrors knowledge_projection_versions'
 	// status='active' row. Defaults to version 1 so existing tests that
@@ -131,6 +146,8 @@ type fakeRepo struct {
 	todayDigestErr    error
 	recallCandErr     error
 	clearSupersedeErr error
+	snoozeRecallErr   error
+	dismissRecallErr  error
 }
 
 var _ Repository = (*fakeRepo)(nil)
@@ -144,6 +161,8 @@ func newFakeRepo(events []sovereign_db.KnowledgeEvent) *fakeRepo {
 		digests:                 map[string]capturedDigest{},
 		recallCandidates:        map[string]capturedRecallCandidate{},
 		urlPatches:              map[string]capturedURLPatch{},
+		snoozed:                 map[string]capturedSnooze{},
+		recallDismissed:         map[string]capturedRecallDismiss{},
 		activeProjectionVersion: &sovereign_db.ProjectionVersion{Version: 1},
 	}
 }
@@ -237,6 +256,30 @@ func (f *fakeRepo) PatchKnowledgeHomeItemURL(_ context.Context, payload json.Raw
 		return fmt.Errorf("fakeRepo.PatchKnowledgeHomeItemURL: %w", err)
 	}
 	f.urlPatches[w.ItemKey] = w
+	return nil
+}
+
+func (f *fakeRepo) SnoozeRecallCandidate(_ context.Context, payload json.RawMessage) error {
+	if f.snoozeRecallErr != nil {
+		return f.snoozeRecallErr
+	}
+	var w capturedSnooze
+	if err := json.Unmarshal(payload, &w); err != nil {
+		return fmt.Errorf("fakeRepo.SnoozeRecallCandidate: %w", err)
+	}
+	f.snoozed[w.ItemKey] = w
+	return nil
+}
+
+func (f *fakeRepo) DismissRecallCandidate(_ context.Context, payload json.RawMessage) error {
+	if f.dismissRecallErr != nil {
+		return f.dismissRecallErr
+	}
+	var w capturedRecallDismiss
+	if err := json.Unmarshal(payload, &w); err != nil {
+		return fmt.Errorf("fakeRepo.DismissRecallCandidate: %w", err)
+	}
+	f.recallDismissed[w.ItemKey] = w
 	return nil
 }
 
@@ -752,6 +795,94 @@ func TestProjector_ReasonMerged_FallsBackToArticleItemKeyWhenPayloadItemKeyEmpty
 	itemKey := fmt.Sprintf("article:%s", articleID)
 	_, ok := repo.homeItems[itemKey]
 	assert.True(t, ok, "an empty payload.item_key must fall back to article:<article_id>")
+}
+
+// ── RecallSnoozed / RecallDismissed ──
+//
+// alt-backend's recall_snooze_usecase/recall_dismiss_usecase append these
+// events after already writing recall_candidate_view directly (write-through).
+// A full TRUNCATE + reproject replay must reach the same snoozed_until /
+// dismissed_at state, so the projector must fold these two event types too —
+// they must not fall into the "unknown event types are silently skipped"
+// default case.
+
+func TestProjector_FoldsRecallSnoozed(t *testing.T) {
+	tenant := uuid.New()
+	user := userPtr()
+	itemKey := "article:" + uuid.New().String()
+	occurredAt := time.Date(2026, 7, 14, 19, 0, 0, 0, time.UTC)
+	until := occurredAt.Add(24 * time.Hour)
+
+	payload := mustJSON(t, map[string]any{
+		"item_key":      itemKey,
+		"snooze_hours":  24,
+		"snoozed_until": until.Format(time.RFC3339),
+	})
+	events := []sovereign_db.KnowledgeEvent{
+		homeEvent(1, "RecallSnoozed", itemKey, occurredAt, tenant, user, payload),
+	}
+	repo := newFakeRepo(events)
+	p := NewProjector(repo, nil, Config{})
+	require.NoError(t, p.RunBatch(context.Background()))
+
+	snooze, ok := repo.snoozed[itemKey]
+	require.True(t, ok, "RecallSnoozed must reach SnoozeRecallCandidate on reproject, not be silently skipped")
+	assert.Equal(t, user.String(), snooze.UserID)
+	gotUntil, err := time.Parse(time.RFC3339Nano, snooze.Until)
+	require.NoError(t, err)
+	assert.True(t, until.Equal(gotUntil))
+	gotOccurredAt, err := time.Parse(time.RFC3339Nano, snooze.OccurredAt)
+	require.NoError(t, err)
+	assert.True(t, occurredAt.Equal(gotOccurredAt), "occurred_at must derive from event.OccurredAt, not wall clock")
+	assert.Equal(t, int64(1), repo.checkpoint)
+}
+
+func TestProjector_FoldsRecallDismissed(t *testing.T) {
+	tenant := uuid.New()
+	user := userPtr()
+	itemKey := "article:" + uuid.New().String()
+	occurredAt := time.Date(2026, 7, 14, 19, 30, 0, 0, time.UTC)
+
+	payload := mustJSON(t, map[string]any{
+		"item_key": itemKey,
+	})
+	events := []sovereign_db.KnowledgeEvent{
+		homeEvent(1, "RecallDismissed", itemKey, occurredAt, tenant, user, payload),
+	}
+	repo := newFakeRepo(events)
+	p := NewProjector(repo, nil, Config{})
+	require.NoError(t, p.RunBatch(context.Background()))
+
+	dismiss, ok := repo.recallDismissed[itemKey]
+	require.True(t, ok, "RecallDismissed must reach DismissRecallCandidate on reproject, not be silently skipped")
+	assert.Equal(t, user.String(), dismiss.UserID)
+	gotOccurredAt, err := time.Parse(time.RFC3339Nano, dismiss.OccurredAt)
+	require.NoError(t, err)
+	assert.True(t, occurredAt.Equal(gotOccurredAt), "occurred_at must derive from event.OccurredAt, not wall clock")
+	assert.Equal(t, int64(1), repo.checkpoint)
+}
+
+func TestProjector_RecallSnoozed_RepositoryFailureStopsBatch(t *testing.T) {
+	tenant := uuid.New()
+	user := userPtr()
+	itemKey := "article:" + uuid.New().String()
+	occurredAt := time.Date(2026, 7, 14, 19, 0, 0, 0, time.UTC)
+
+	payload := mustJSON(t, map[string]any{
+		"item_key":      itemKey,
+		"snooze_hours":  24,
+		"snoozed_until": occurredAt.Add(24 * time.Hour).Format(time.RFC3339),
+	})
+	events := []sovereign_db.KnowledgeEvent{
+		homeEvent(1, "RecallSnoozed", itemKey, occurredAt, tenant, user, payload),
+	}
+	repo := newFakeRepo(events)
+	repo.snoozeRecallErr = fmt.Errorf("recall_candidate_view unavailable")
+	p := NewProjector(repo, nil, Config{})
+
+	err := p.RunBatch(context.Background())
+	require.Error(t, err, "unlike the digest/recall-candidate side effects on other events, the snooze write IS the event's entire purpose — a failure must not advance past it")
+	assert.Equal(t, int64(0), repo.checkpoint, "checkpoint must not advance past a failed RecallSnoozed fold")
 }
 
 // ── checkpoint / unknown events ──

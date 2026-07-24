@@ -71,4 +71,18 @@ describe("citationHref", () => {
 			),
 		).toBe(externalUrl);
 	});
+
+	it("rejects a javascript: url for WEB citations", () => {
+		expect(
+			citationHref(input({ kind: "WEB", url: "javascript:alert(1)" })),
+		).toBeUndefined();
+	});
+
+	it("rejects a data: url for WEB citations", () => {
+		expect(
+			citationHref(
+				input({ kind: "WEB", url: "data:text/html,<script>alert(1)</script>" }),
+			),
+		).toBeUndefined();
+	});
 });

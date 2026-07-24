@@ -5,8 +5,8 @@
 import type { TokenClient } from "../port/token_client.ts";
 import type { SecretManager } from "../port/secret_manager.ts";
 import {
-  INOREADER_OAUTH_SCOPE,
   type AuthenticationResult,
+  INOREADER_OAUTH_SCOPE,
   type NetworkConfig,
   type RetryConfig,
   type TokenResponse,
@@ -65,11 +65,40 @@ export class RefreshTokenUsecase {
 
       // Only the (idempotent) persistence step is retried, using the
       // already-rotated token held in memory.
-      await retryWithBackoff(
-        () => this.secretManager.updateTokenSecret(tokens),
-        this.retryConfig,
-        "persist refreshed token",
-      );
+      try {
+        await retryWithBackoff(
+          () => this.secretManager.updateTokenSecret(tokens),
+          this.retryConfig,
+          "persist refreshed token",
+        );
+      } catch (persistError) {
+        const persistErrorMessage = persistError instanceof Error
+          ? persistError.message
+          : String(persistError);
+
+        // Inoreader already invalidated the old refresh_token server-side
+        // once tokenClient.refreshToken() returned above. If we cannot
+        // persist the new one, `tokens` is lost when this function returns,
+        // and every future refresh attempt will resend the now-dead old
+        // refresh_token and fail with invalid_grant forever until a human
+        // re-runs OAuth. Log this distinctly from a generic persistence
+        // error so operators can alert on it instead of it collapsing into
+        // the routine "Token refresh failed" path below.
+        logger.error(
+          "refresh_token rotated but persistence failed after all " +
+            "retries - the new refresh_token only exists in memory and " +
+            "will be lost, manual OAuth re-authorization will be required",
+          // Kept short (<30 chars): the sanitizer redacts any value that
+          // merely looks token-shaped (long alnum/underscore run), which
+          // would otherwise hide this alert marker from log-based search.
+          { alert: "rotation_persist_failed" },
+        );
+
+        throw new Error(
+          `refresh_token rotation succeeded but persistence failed ` +
+            `(new token will be lost): ${persistErrorMessage}`,
+        );
+      }
 
       const duration = Date.now() - startTime;
       logger.info("Token refresh completed successfully", {

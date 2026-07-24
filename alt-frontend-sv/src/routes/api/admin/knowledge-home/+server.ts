@@ -12,6 +12,7 @@ import {
 	runKnowledgeHomeAudit,
 } from "$lib/server/knowledge-home-admin";
 import { getUserRole } from "$lib/server/user-role";
+import { getCSRFToken } from "$lib/api";
 
 export const GET: RequestHandler = async ({ locals }) => {
 	if (getUserRole(locals.user) !== "admin") {
@@ -41,6 +42,15 @@ export const POST: RequestHandler = async ({ locals, request }) => {
 
 	if (!locals.backendToken) {
 		return json({ error: "Failed to run admin action." }, { status: 401 });
+	}
+
+	// V-004: CSRF validation for state-changing operations (reproject
+	// start/compare/swap/rollback, backfill pause/resume/trigger, audit).
+	const cookieHeader = request.headers.get("cookie");
+	const expectedCSRF = await getCSRFToken(cookieHeader);
+	const providedCSRF = request.headers.get("X-CSRF-Token");
+	if (!expectedCSRF || expectedCSRF !== providedCSRF) {
+		return json({ error: "CSRF validation failed" }, { status: 403 });
 	}
 
 	let body: unknown;

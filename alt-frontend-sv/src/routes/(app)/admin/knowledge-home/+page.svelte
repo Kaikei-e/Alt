@@ -31,6 +31,7 @@ import {
 	type KnowledgeHomeAdminActionRequest,
 } from "$lib/hooks/useKnowledgeHomeAdmin.svelte";
 import { useSovereignAdmin } from "$lib/hooks/useSovereignAdmin.svelte";
+import { getClientCSRFToken } from "$lib/api/client/core";
 import type {
 	BackfillJobData,
 	ReprojectRunData,
@@ -73,11 +74,13 @@ const fetchSnapshot = async () => {
 };
 
 const runAdminAction = async (action: KnowledgeHomeAdminActionRequest) => {
+	const csrfToken = await getClientCSRFToken();
 	const response = await fetch("/api/admin/knowledge-home", {
 		method: "POST",
 		credentials: "include",
 		headers: {
 			"Content-Type": "application/json",
+			...(csrfToken ? { "X-CSRF-Token": csrfToken } : {}),
 		},
 		body: JSON.stringify(action),
 	});
@@ -104,10 +107,14 @@ const runSovereignAction = async (action: {
 	action: string;
 	dry_run?: boolean;
 }) => {
+	const csrfToken = await getClientCSRFToken();
 	const response = await fetch("/api/admin/knowledge-home/sovereign", {
 		method: "POST",
 		credentials: "include",
-		headers: { "Content-Type": "application/json" },
+		headers: {
+			"Content-Type": "application/json",
+			...(csrfToken ? { "X-CSRF-Token": csrfToken } : {}),
+		},
 		body: JSON.stringify(action),
 	});
 	if (!response.ok) {

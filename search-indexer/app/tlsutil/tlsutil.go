@@ -188,13 +188,20 @@ func LoadClientConfig(certPath, keyPath, caPath string) (*tls.Config, error) {
 
 // NewMTLSHTTPServer wraps a handler in an http.Server with timeouts tuned for
 // east-west mTLS: bounded IdleTimeout prevents HTTP/2 connection reuse from
-// outliving a short-lived leaf certificate.
+// outliving a short-lived leaf certificate. ReadTimeout/WriteTimeout/
+// MaxHeaderBytes mirror the values bootstrap/servers.go already applies to
+// the plaintext REST/Connect-RPC servers exposing the same handlers -- this
+// listener was previously missing all three, leaving it unbounded against
+// slow-request/slow-response connection exhaustion (CWE-400).
 func NewMTLSHTTPServer(addr string, tlsConfig *tls.Config, handler http.Handler) *http.Server {
 	return &http.Server{
 		Addr:              addr,
 		Handler:           handler,
 		TLSConfig:         tlsConfig,
 		ReadHeaderTimeout: 10 * time.Second,
+		ReadTimeout:       30 * time.Second,
+		WriteTimeout:      30 * time.Second,
 		IdleTimeout:       60 * time.Second,
+		MaxHeaderBytes:    1 << 20,
 	}
 }
