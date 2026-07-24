@@ -11,13 +11,20 @@ mod utils;
 
 pub(crate) use types::*;
 
-use types::SUBWORKER_TIMEOUT_SECS;
+use types::{DEFAULT_COARSE_CLASSIFY_TIMEOUT_SECS, SUBWORKER_TIMEOUT_SECS};
 
 #[derive(Debug, Clone)]
 pub(crate) struct SubworkerClient {
     pub(crate) client: Client,
     pub(crate) base_url: Url,
     pub(crate) min_documents_per_genre: usize,
+    /// Per-call timeout override for `classify_coarse`. Without this the
+    /// call inherits the client-wide `SUBWORKER_TIMEOUT_SECS` (1h), letting
+    /// a slow-but-alive subworker stall the genre stage per article. Set via
+    /// `with_coarse_classify_timeout`; defaults to
+    /// `DEFAULT_COARSE_CLASSIFY_TIMEOUT_SECS` for the ~20 call sites that
+    /// don't opt into a config-driven override.
+    coarse_classify_timeout: Duration,
 }
 
 impl SubworkerClient {
@@ -41,6 +48,15 @@ impl SubworkerClient {
             client,
             base_url,
             min_documents_per_genre,
+            coarse_classify_timeout: Duration::from_secs(DEFAULT_COARSE_CLASSIFY_TIMEOUT_SECS),
         })
+    }
+
+    /// Overrides the per-call `classify_coarse` timeout. Used by `app.rs` to
+    /// wire in `RECAP_SUBWORKER_COARSE_CLASSIFY_TIMEOUT_SECS`.
+    #[must_use]
+    pub(crate) fn with_coarse_classify_timeout(mut self, timeout: Duration) -> Self {
+        self.coarse_classify_timeout = timeout;
+        self
     }
 }

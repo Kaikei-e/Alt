@@ -101,6 +101,7 @@ pub struct Config {
     subgenre_max_docs_per_genre: usize,
     subgenre_target_docs_per_subgenre: usize,
     subgenre_max_k: usize,
+    subworker_coarse_classify_timeout: Duration,
     recap_pre_refresh_graph: FeatureToggle,
     recap_pre_refresh_timeout: Duration,
     llm_summary_timeout: Duration,
@@ -217,6 +218,7 @@ struct SubworkerConfig {
     subgenre_max_docs_per_genre: usize,
     subgenre_target_docs_per_subgenre: usize,
     subgenre_max_k: usize,
+    coarse_classify_timeout: Duration,
 }
 
 struct PreRefreshConfig {
@@ -388,6 +390,7 @@ impl Config {
             subgenre_max_docs_per_genre: subworker.subgenre_max_docs_per_genre,
             subgenre_target_docs_per_subgenre: subworker.subgenre_target_docs_per_subgenre,
             subgenre_max_k: subworker.subgenre_max_k,
+            subworker_coarse_classify_timeout: subworker.coarse_classify_timeout,
             recap_pre_refresh_graph: pre_refresh.recap_pre_refresh_graph,
             recap_pre_refresh_timeout: pre_refresh.recap_pre_refresh_timeout,
             llm_summary_timeout: basic.llm_summary_timeout,
@@ -611,6 +614,15 @@ impl Config {
     #[must_use]
     pub fn subgenre_max_k(&self) -> usize {
         self.subgenre_max_k
+    }
+
+    /// Per-call timeout for `SubworkerClient::classify_coarse`. Bounds how
+    /// long a slow-but-alive subworker can stall a single genre-stage call
+    /// before the bounded retry (and, if exhausted, the per-article
+    /// fallback-to-"other" in `pipeline::genre`) takes over.
+    #[must_use]
+    pub fn subworker_coarse_classify_timeout(&self) -> Duration {
+        self.subworker_coarse_classify_timeout
     }
 
     pub fn recap_pre_refresh_graph_enabled(&self) -> bool {
@@ -967,12 +979,15 @@ fn load_subworker_config() -> Result<SubworkerConfig, ConfigError> {
     let subgenre_max_docs = parse_usize("RECAP_SUBGENRE_MAX_DOCS_PER_GENRE", 200)?;
     let subgenre_target_docs = parse_usize("RECAP_SUBGENRE_TARGET_DOCS_PER_SUBGENRE", 50)?;
     let subgenre_max_k = parse_usize("RECAP_SUBGENRE_MAX_K", 10)?;
+    let coarse_classify_timeout =
+        parse_duration_secs("RECAP_SUBWORKER_COARSE_CLASSIFY_TIMEOUT_SECS", 30)?;
     Ok(SubworkerConfig {
         min_documents_per_genre: min_documents,
         coherence_similarity_threshold: similarity_threshold,
         subgenre_max_docs_per_genre: subgenre_max_docs,
         subgenre_target_docs_per_subgenre: subgenre_target_docs,
         subgenre_max_k,
+        coarse_classify_timeout,
     })
 }
 

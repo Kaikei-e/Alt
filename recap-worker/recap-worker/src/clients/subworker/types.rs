@@ -38,6 +38,18 @@ pub(crate) const POLL_REQUEST_RETRY_DELAY_MS: u64 = 1_000;
 /// letting a single hung poll block the whole classification/clustering
 /// loop for up to an hour instead of failing fast and retrying.
 pub(crate) const POLL_REQUEST_TIMEOUT_SECS: u64 = 30;
+/// Default per-call timeout for `classify_coarse` when no config override is
+/// supplied (see `SubworkerClient::with_coarse_classify_timeout`). A single
+/// coarse-classify call is one short inference request, not a long-running
+/// job like clustering — 30s is generous headroom over normal latency while
+/// staying far below the 1h client-wide `SUBWORKER_TIMEOUT_SECS` default.
+pub(crate) const DEFAULT_COARSE_CLASSIFY_TIMEOUT_SECS: u64 = 30;
+/// Bounded retry for `classify_coarse`: small attempt count because this is
+/// called once per article during the genre stage — a large retry budget
+/// per article would multiply into a long stage-wide stall.
+pub(crate) const COARSE_CLASSIFY_MAX_ATTEMPTS: usize = 3;
+pub(crate) const COARSE_CLASSIFY_BACKOFF_BASE_MS: u64 = 200;
+pub(crate) const COARSE_CLASSIFY_BACKOFF_CAP_MS: u64 = 2_000;
 
 // Clustering types
 #[allow(dead_code)]

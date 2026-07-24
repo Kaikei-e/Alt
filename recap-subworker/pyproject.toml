@@ -21,7 +21,12 @@ dependencies = [
   "pyyaml>=6.0.1",
   "sentencepiece>=0.2.0",
   "numpy>=2.0.0",
-  "scikit-learn>=1.5.0",
+  # Pinned to the trained minor of the shipped genre_classifier joblib
+  # artefacts (data/genre_classifier_ja.meta.json: sklearn_version 1.8.0).
+  # recap_subworker.services.classifier._guard_metadata_against_runtime
+  # fail-closes at startup on a minor-version mismatch (ADR-000835 stage 3);
+  # bump this only together with retraining the artefacts.
+  "scikit-learn>=1.8.0,<1.9.0",
   "scikit-optimize>=0.10.2",
   "pandas>=2.2.2",
   "umap-learn>=0.5.6",

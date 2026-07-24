@@ -77,6 +77,12 @@ impl JobDao for UnifiedDao {
         crate::store::dao::job::RecapDao::find_resumable_job(&self.pool, max_age_hours).await
     }
 
+    async fn find_most_recent_failed_job(
+        &self,
+    ) -> Result<Option<(Uuid, JobStatus, Option<String>, u32)>> {
+        crate::store::dao::job::RecapDao::find_most_recent_failed_job(&self.pool).await
+    }
+
     async fn mark_abandoned_jobs(&self, keep_job_id: Option<Uuid>) -> Result<u64> {
         crate::store::dao::job::RecapDao::mark_abandoned_jobs(&self.pool, keep_job_id).await
     }

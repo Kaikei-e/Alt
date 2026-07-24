@@ -62,6 +62,12 @@ Complete reference for all environment variables used by Recap Worker.
 | `TAG_GENERATOR_TOTAL_TIMEOUT_MS` | `30000` | Total timeout for tag-generator HTTP calls |
 | `TAG_GENERATOR_SERVICE_TOKEN` | — | Optional bearer token sent when talking to tag-generator |
 
+### Subworker (recap-subworker) Client
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `RECAP_SUBWORKER_COARSE_CLASSIFY_TIMEOUT_SECS` | `30` | Per-call timeout for the coarse genre classifier (`POST /v1/classify/coarse`), called once per article during the genre stage. Bounds how long a slow-but-alive subworker can stall a single call before the bounded retry (and, on exhaustion, the per-article fallback-to-"other") takes over — without this override the call would inherit the client-wide 1h timeout |
+
 ### External Service Tokens
 
 | Variable | Description |
@@ -172,6 +178,9 @@ ALT_BACKEND_SERVICE_TOKEN=alt-backend-service-token-placeholder
 TAG_GENERATOR_CONNECT_TIMEOUT_MS=3000
 TAG_GENERATOR_TOTAL_TIMEOUT_MS=30000
 TAG_GENERATOR_SERVICE_TOKEN=tag-generator-service-token-placeholder
+
+# Subworker HTTP client
+RECAP_SUBWORKER_COARSE_CLASSIFY_TIMEOUT_SECS=30
 
 # Retry
 HTTP_MAX_RETRIES=3

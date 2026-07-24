@@ -2,7 +2,7 @@
 
 このドキュメントは、recap-workerの実装に基づいた詳細なパイプラインフロー図です。
 
-## 7-Day Recap Pipeline (メインパイプライン)
+## Recap Pipeline (3-Day window is the main production batch; メインパイプライン)
 
 ```mermaid
 flowchart TB

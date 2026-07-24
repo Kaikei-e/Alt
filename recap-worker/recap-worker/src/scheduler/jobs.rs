@@ -21,6 +21,36 @@ enum JobOutcome {
     Failed(String),
 }
 
+/// Outcome of `Scheduler::retry_most_recent_failed_job` (`POST
+/// /admin/jobs/retry`). Every variant is an explicit, distinguishable
+/// answer — there is no variant that means "did nothing but call it success"
+/// (CLAUDE.md rule 8).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum RetryOutcome {
+    /// A fresh pipeline run was spawned, reusing the window of
+    /// `retried_failed_job_id`. Runs fire-and-forget in the background, same
+    /// as the manual `/v1/generate/recaps/*` triggers.
+    Started {
+        job_id: Uuid,
+        retried_failed_job_id: Uuid,
+    },
+    /// No `failed` row exists in `recap_jobs` — nothing to retry.
+    NoFailedJob,
+    /// Another recap pipeline run is already in flight (`run_lock`
+    /// contention); retrying now would run two pipelines concurrently.
+    AlreadyRunning,
+}
+
+/// Looks up the most recent `failed` job and reports what a retry should
+/// target: the failed job's id (for logging) and the window_days to reuse
+/// for the fresh run. Kept separate from `Scheduler` so it is testable with
+/// `MockRecapDao` without constructing the full pipeline (mirrors
+/// `boot_time_resumable_target`'s free-function split below).
+async fn find_retry_target(recap_dao: &dyn RecapDao) -> Result<Option<(Uuid, u32)>> {
+    let target = recap_dao.find_most_recent_failed_job().await?;
+    Ok(target.map(|(job_id, _status, _last_stage, window_days)| (job_id, window_days)))
+}
+
 #[derive(Debug, Clone)]
 pub(crate) struct JobContext {
     pub(crate) job_id: Uuid,
@@ -182,7 +212,6 @@ impl Scheduler {
         self.pipeline.classification_queue().shutdown().await;
     }
 
-    #[allow(clippy::too_many_lines)]
     pub(crate) async fn run_job(&self, context: JobContext) -> Result<()> {
         // Non-blocking: a concurrent trigger must fail loudly and
         // immediately rather than queue up behind an in-flight pipeline run
@@ -196,6 +225,71 @@ impl Scheduler {
                 )
             })?;
 
+        self.run_job_locked(context).await
+    }
+
+    /// Handles `POST /admin/jobs/retry`: finds the most recent `failed`
+    /// recap job and re-triggers a fresh pipeline run for its window,
+    /// fire-and-forget (same async-spawn pattern as the manual
+    /// `/v1/generate/recaps/*` triggers in `api::generate`). The permit is
+    /// acquired synchronously up front so an in-flight run is reported as
+    /// `AlreadyRunning` immediately, instead of racing the spawned pipeline
+    /// run or silently queuing behind it.
+    ///
+    /// Never fakes success (CLAUDE.md rule 8): the old implementation built
+    /// an empty-`genres` `JobContext` unconditionally and reported success
+    /// as soon as `run_job` returned `Ok`, regardless of whether there was
+    /// anything to retry. This either genuinely reruns the pipeline for a
+    /// real failed job, or reports explicitly why it did not
+    /// (`NoFailedJob` / `AlreadyRunning`).
+    pub(crate) async fn retry_most_recent_failed_job(&self) -> Result<RetryOutcome> {
+        let Ok(permit) = Arc::clone(&self.run_lock).try_acquire_owned() else {
+            return Ok(RetryOutcome::AlreadyRunning);
+        };
+
+        let Some((retried_failed_job_id, window_days)) =
+            find_retry_target(self.recap_dao.as_ref()).await?
+        else {
+            return Ok(RetryOutcome::NoFailedJob);
+        };
+
+        let job_id = Uuid::new_v4();
+        let job = JobContext::new_manual(job_id, Vec::new(), window_days);
+        let scheduler = self.clone();
+
+        tokio::spawn(async move {
+            // Held for the lifetime of the spawned task so no other run can
+            // start until this retry finishes.
+            let _permit = permit;
+            if let Err(error) = scheduler.run_job_locked(job).await {
+                tracing::error!(
+                    %job_id,
+                    %retried_failed_job_id,
+                    error = ?error,
+                    "admin retry pipeline run failed"
+                );
+            } else {
+                tracing::info!(
+                    %job_id,
+                    %retried_failed_job_id,
+                    "admin retry pipeline run completed"
+                );
+            }
+        });
+
+        Ok(RetryOutcome::Started {
+            job_id,
+            retried_failed_job_id,
+        })
+    }
+
+    /// Core pipeline-run body. Callers must already hold a `run_lock`
+    /// permit: `run_job` acquires one itself before calling this;
+    /// `retry_most_recent_failed_job` acquires its own up front (before the
+    /// DAO lookup) so it can report `AlreadyRunning` synchronously instead
+    /// of double-acquiring here.
+    #[allow(clippy::too_many_lines)]
+    async fn run_job_locked(&self, context: JobContext) -> Result<()> {
         tracing::info!(
             job_id = %context.job_id,
             prompt_version = %self.config.llm_prompt_version(),
@@ -524,6 +618,65 @@ async fn boot_time_resumable_target(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// RED→GREEN regression (rule 8): when there is no `failed` job to
+    /// retry, `find_retry_target` must report `None` — never fabricate a
+    /// target. This is the core of the fix for the fake `/admin/jobs/retry`
+    /// endpoint, which previously always kicked off a disconnected fresh
+    /// run and reported success regardless of whether anything had failed.
+    #[tokio::test]
+    async fn find_retry_target_returns_none_when_no_failed_job() {
+        use crate::store::dao::mock::MockRecapDao;
+
+        let dao = MockRecapDao::new();
+        dao.set_find_most_recent_failed_job_result(Ok(None));
+
+        let target = find_retry_target(&dao).await.expect("dao call succeeds");
+
+        assert!(target.is_none(), "no failed job means nothing to retry");
+    }
+
+    /// When a failed job exists, its window_days must be reused for the
+    /// retry — not silently dropped like the old empty-genres JobContext.
+    #[tokio::test]
+    async fn find_retry_target_reuses_window_days_of_failed_job() {
+        use crate::store::dao::mock::MockRecapDao;
+
+        let dao = MockRecapDao::new();
+        let failed_job_id = Uuid::new_v4();
+        dao.set_find_most_recent_failed_job_result(Ok(Some((
+            failed_job_id,
+            JobStatus::Failed,
+            Some("dispatch".to_string()),
+            3,
+        ))));
+
+        let target = find_retry_target(&dao).await.expect("dao call succeeds");
+
+        assert_eq!(target, Some((failed_job_id, 3)));
+    }
+
+    /// A transient DB error must propagate, not fold into "no failed job"
+    /// (which would silently report `NoFailedJob` — itself an honest
+    /// answer, but for the wrong reason, masking a DB outage as "nothing to
+    /// retry").
+    #[tokio::test]
+    async fn find_retry_target_propagates_dao_error() {
+        use crate::error::RecapError;
+        use crate::store::dao::mock::MockRecapDao;
+
+        let dao = MockRecapDao::new();
+        dao.set_find_most_recent_failed_job_result(Err(RecapError::Db(
+            "connection reset by peer".to_string(),
+        )));
+
+        let result = find_retry_target(&dao).await;
+
+        assert!(
+            result.is_err(),
+            "DB error must propagate, not degrade to None"
+        );
+    }
 
     /// Regression: `JobContext::new` and `new_with_window` must tag rows with
     /// `trigger_source = "system"` so the JST 02:00 batch daemon remains the

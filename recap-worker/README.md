@@ -17,7 +17,7 @@ Recap Worker is Alt's Rust 2024 batch processor that turns articles into curated
 
 ```mermaid
 flowchart TD
-    Scheduler[Daily JST Daemon<br/>04:00 @ UTC+9] -->|JobContext + genres| API
+    Scheduler[Daily JST Daemon<br/>02:00 @ UTC+9] -->|JobContext + genres| API
     Admin[Manual trigger / retry<br/>POST /v1/generate…] --> API
     subgraph Axum Control Plane
         API((Router)) -->|dispatch job| Pipeline
@@ -125,7 +125,7 @@ flowchart TD
 - **API:** `GET /v1/morning/updates` to fetch latest groups.
 
 ## Scheduling & Job Lifecycle
-- **Automatic daily batch**: `scheduler::daemon::spawn_jst_batch_daemon` fires at 04:00 JST using `RECAP_GENRES` defaults. Missing defaults result in a warning and skip auto runs.
+- **Automatic daily batch**: `scheduler::daemon::spawn_jst_batch_daemon` fires at 02:00 JST using `RECAP_GENRES` defaults. Missing defaults result in a warning and skip auto runs.
 - **Morning update daemon**: `scheduler::daemon::spawn_morning_update_daemon` runs independently for article grouping.
 - **Manual generation**: Invoke `POST /v1/generate/recaps/7days` or `POST /v1/generate/recaps/3days` with optional `{"genres": ["ai", ...]}`; the handler dedupes/normalizes input before queueing the job. The 3-day window is recommended for daily use (faster processing, reduced prompt sizes).
 - **Admin retries**: `POST /admin/jobs/retry` triggers a best-effort rerun using the existing scheduler (useful after fixing upstream outages).

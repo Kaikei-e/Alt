@@ -101,40 +101,191 @@
       }
     },
     {
-      "description": "a clustering execution request",
+      "description": "a clustering run submission",
       "providerStates": [
         {
-          "name": "classified articles are ready for clustering"
+          "name": "the clustering pipeline accepts a new run"
         }
       ],
       "request": {
-        "headers": {
-          "content-type": "application/json"
-        },
-        "method": "POST",
-        "path": "/v1/clustering/42"
-      },
-      "response": {
         "body": {
-          "cluster_count": 3,
-          "clusters": [
+          "documents": [
             {
-              "cluster_id": 0,
-              "representatives": [
-                {
-                  "sentence_text": "AI is transforming industries."
-                }
-              ],
-              "size": 5,
-              "top_terms": [
-                "AI"
+              "article_id": "art-001",
+              "paragraphs": [
+                "AI is transforming industries across every major economic sector."
+              ]
+            },
+            {
+              "article_id": "art-001",
+              "paragraphs": [
+                "AI is transforming industries across every major economic sector."
+              ]
+            },
+            {
+              "article_id": "art-001",
+              "paragraphs": [
+                "AI is transforming industries across every major economic sector."
               ]
             }
           ],
+          "metadata": {
+            "article_count": 3,
+            "character_count": 500,
+            "primary_language": "en",
+            "sentence_count": 10
+          },
+          "params": {
+            "hdbscan_min_cluster_size": 5,
+            "max_sentences_per_cluster": 20,
+            "max_sentences_total": 2000,
+            "mmr_lambda": 0.35,
+            "umap_n_components": 25
+          }
+        },
+        "headers": {
+          "X-Alt-Genre": "technology",
+          "X-Alt-Job-Id": "00000000-0000-0000-0000-000000000001",
+          "content-type": "application/json"
+        },
+        "matchingRules": {
+          "body": {
+            "$.documents": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type",
+                  "min": 3
+                }
+              ]
+            },
+            "$.documents[*].*": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.documents[*].article_id": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.documents[*].paragraphs": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type",
+                  "min": 1
+                }
+              ]
+            },
+            "$.documents[*].paragraphs[*]": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.documents[*].paragraphs[*].*": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.metadata.article_count": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.metadata.character_count": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.metadata.primary_language": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.metadata.sentence_count": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.params.hdbscan_min_cluster_size": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.params.max_sentences_per_cluster": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.params.max_sentences_total": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.params.mmr_lambda": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.params.umap_n_components": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            }
+          }
+        },
+        "method": "POST",
+        "path": "/v1/runs"
+      },
+      "response": {
+        "body": {
+          "cluster_count": 0,
+          "clusters": [],
+          "diagnostics": {},
           "genre": "technology",
           "job_id": "00000000-0000-0000-0000-000000000001",
           "run_id": 42,
-          "status": "succeeded"
+          "status": "running"
         },
         "headers": {
           "content-type": "application/json"
@@ -142,89 +293,6 @@
         "matchingRules": {
           "body": {
             "$.cluster_count": {
-              "combine": "AND",
-              "matchers": [
-                {
-                  "match": "type"
-                }
-              ]
-            },
-            "$.clusters": {
-              "combine": "AND",
-              "matchers": [
-                {
-                  "match": "type",
-                  "min": 1
-                }
-              ]
-            },
-            "$.clusters[*].*": {
-              "combine": "AND",
-              "matchers": [
-                {
-                  "match": "type"
-                }
-              ]
-            },
-            "$.clusters[*].cluster_id": {
-              "combine": "AND",
-              "matchers": [
-                {
-                  "match": "type"
-                }
-              ]
-            },
-            "$.clusters[*].representatives": {
-              "combine": "AND",
-              "matchers": [
-                {
-                  "match": "type",
-                  "min": 1
-                }
-              ]
-            },
-            "$.clusters[*].representatives[*].*": {
-              "combine": "AND",
-              "matchers": [
-                {
-                  "match": "type"
-                }
-              ]
-            },
-            "$.clusters[*].representatives[*].sentence_text": {
-              "combine": "AND",
-              "matchers": [
-                {
-                  "match": "type"
-                }
-              ]
-            },
-            "$.clusters[*].size": {
-              "combine": "AND",
-              "matchers": [
-                {
-                  "match": "type"
-                }
-              ]
-            },
-            "$.clusters[*].top_terms": {
-              "combine": "AND",
-              "matchers": [
-                {
-                  "match": "type",
-                  "min": 1
-                }
-              ]
-            },
-            "$.clusters[*].top_terms[*]": {
-              "combine": "AND",
-              "matchers": [
-                {
-                  "match": "type"
-                }
-              ]
-            },
-            "$.clusters[*].top_terms[*].*": {
               "combine": "AND",
               "matchers": [
                 {
@@ -266,7 +334,7 @@
             }
           }
         },
-        "status": 200
+        "status": 202
       }
     },
     {
@@ -422,6 +490,229 @@
               ]
             },
             "$.results[*].top_genre": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.run_id": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.status": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            }
+          }
+        },
+        "status": 200
+      }
+    },
+    {
+      "description": "polling a completed clustering run",
+      "providerStates": [
+        {
+          "name": "clustering run 42 has succeeded"
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "path": "/v1/runs/42"
+      },
+      "response": {
+        "body": {
+          "cluster_count": 1,
+          "clusters": [
+            {
+              "cluster_id": 0,
+              "label": "technology",
+              "representatives": [
+                {
+                  "article_id": "art-001",
+                  "lang": "en",
+                  "paragraph_idx": 0,
+                  "score": 0.95,
+                  "sentence_text": "AI is transforming industries across every major economic sector."
+                }
+              ],
+              "size": 5,
+              "stats": {},
+              "top_terms": [
+                "AI"
+              ]
+            }
+          ],
+          "diagnostics": {
+            "dedup_pairs": 0
+          },
+          "genre": "technology",
+          "job_id": "00000000-0000-0000-0000-000000000001",
+          "run_id": 42,
+          "status": "succeeded"
+        },
+        "headers": {
+          "content-type": "application/json"
+        },
+        "matchingRules": {
+          "body": {
+            "$.cluster_count": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.clusters": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type",
+                  "min": 1
+                }
+              ]
+            },
+            "$.clusters[*].*": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.clusters[*].cluster_id": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.clusters[*].label": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.clusters[*].representatives": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type",
+                  "min": 1
+                }
+              ]
+            },
+            "$.clusters[*].representatives[*].*": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.clusters[*].representatives[*].article_id": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.clusters[*].representatives[*].lang": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.clusters[*].representatives[*].paragraph_idx": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.clusters[*].representatives[*].score": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.clusters[*].representatives[*].sentence_text": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.clusters[*].size": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.clusters[*].top_terms": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type",
+                  "min": 1
+                }
+              ]
+            },
+            "$.clusters[*].top_terms[*]": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.clusters[*].top_terms[*].*": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.diagnostics.dedup_pairs": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.genre": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.job_id": {
               "combine": "AND",
               "matchers": [
                 {

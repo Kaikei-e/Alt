@@ -38,6 +38,11 @@ pub trait JobDao: Send + Sync {
         max_age_hours: i64,
     ) -> impl Future<Output = Result<Option<(Uuid, JobStatus, Option<String>, u32)>>> + Send;
 
+    /// 直近で `failed` になった Job を 1 件探す（年齢上限なし）。
+    fn find_most_recent_failed_job(
+        &self,
+    ) -> impl Future<Output = Result<Option<(Uuid, JobStatus, Option<String>, u32)>>> + Send;
+
     /// `pending` / `running` のまま残っている全ジョブを `failed` に確定する。
     /// `keep_job_id` を Some にすると、その 1 件だけ sweep 対象から外す
     /// (resume 候補として保護)。戻り値は更新行数。
