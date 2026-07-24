@@ -2,6 +2,7 @@ package usecase_test
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	"rag-orchestrator/internal/domain"
@@ -97,9 +98,16 @@ func (m *MockRagChunkRepository) SearchWithinArticles(ctx context.Context, query
 
 type MockTransactionManager struct {
 	mock.Mock
+	// callOrder, when non-nil, records a "tx_begin" marker the instant
+	// RunInTx starts (before fn runs), so tests can assert ordering against
+	// other recorded calls (e.g. the encoder) without a real DB transaction.
+	callOrder *[]string
 }
 
 func (m *MockTransactionManager) RunInTx(ctx context.Context, fn func(ctx context.Context) error) error {
+	if m.callOrder != nil {
+		*m.callOrder = append(*m.callOrder, "tx_begin")
+	}
 	// Directly execute the function
 	return fn(ctx)
 }
@@ -370,4 +378,157 @@ func TestIndexArticle_Upsert_Update(t *testing.T) {
 	assert.NoError(t, err)
 	mockDocRepo.AssertExpectations(t)
 	mockChunkRepo.AssertExpectations(t)
+}
+
+// TestIndexArticle_Upsert_EncodeHappensBeforeTransactionBegins guards against
+// regressing to holding a DB transaction open across the embedder network
+// call (SQLSTATE 25P03 idle-in-transaction timeouts on the largest
+// articles). Encode must complete before the write transaction begins.
+func TestIndexArticle_Upsert_EncodeHappensBeforeTransactionBegins(t *testing.T) {
+	mockDocRepo := new(MockRagDocumentRepository)
+	mockChunkRepo := new(MockRagChunkRepository)
+	mockEncoder := new(MockVectorEncoder)
+	hasher := domain.NewSourceHashPolicy()
+	chunker := domain.NewChunker()
+
+	var order []string
+	mockTxManager := &MockTransactionManager{callOrder: &order}
+
+	uc := usecase.NewIndexArticleUsecase(
+		mockDocRepo, mockChunkRepo, mockTxManager, hasher, chunker, mockEncoder,
+	)
+
+	ctx := context.Background()
+	articleID := "encode-order-article"
+	title := "Encode Order Title"
+	body := "Paragraph 1.\n\nParagraph 2."
+
+	mockDocRepo.On("GetByArticleID", ctx, articleID).Return(nil, nil)
+	mockDocRepo.On("CreateDocument", ctx, mock.Anything).Return(nil)
+	mockDocRepo.On("CreateVersion", ctx, mock.Anything).Return(nil)
+	mockChunkRepo.On("BulkInsertChunks", ctx, mock.Anything).Return(nil)
+	mockChunkRepo.On("InsertEvents", ctx, mock.Anything).Return(nil)
+	mockDocRepo.On("UpdateCurrentVersion", ctx, mock.Anything, mock.Anything).Return(nil)
+
+	mockEncoder.On("Encode", ctx, mock.Anything).Run(func(args mock.Arguments) {
+		order = append(order, "encode")
+	}).Return([][]float32{{0.1, 0.2}}, nil)
+
+	err := uc.Upsert(ctx, articleID, title, "", body)
+	assert.NoError(t, err)
+
+	assert.Equal(t, []string{"encode", "tx_begin"}, order,
+		"Encode must run before the write transaction begins")
+}
+
+// TestIndexArticle_Upsert_EncodeErrorAttemptsNoWrites is the failure-mode
+// regression: if the embedder call fails, no transaction may be opened and
+// no repository write may be attempted (trivially true once the tx hasn't
+// started yet).
+func TestIndexArticle_Upsert_EncodeErrorAttemptsNoWrites(t *testing.T) {
+	mockDocRepo := new(MockRagDocumentRepository)
+	mockChunkRepo := new(MockRagChunkRepository)
+	mockEncoder := new(MockVectorEncoder)
+	hasher := domain.NewSourceHashPolicy()
+	chunker := domain.NewChunker()
+
+	var order []string
+	mockTxManager := &MockTransactionManager{callOrder: &order}
+
+	uc := usecase.NewIndexArticleUsecase(
+		mockDocRepo, mockChunkRepo, mockTxManager, hasher, chunker, mockEncoder,
+	)
+
+	ctx := context.Background()
+	articleID := "encode-error-article"
+	title := "Encode Error Title"
+	body := "Paragraph 1.\n\nParagraph 2."
+
+	mockDocRepo.On("GetByArticleID", ctx, articleID).Return(nil, nil)
+	mockEncoder.On("Encode", ctx, mock.Anything).Return(nil, errors.New("embedder unreachable"))
+
+	err := uc.Upsert(ctx, articleID, title, "", body)
+
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "failed to encode chunks")
+	assert.Empty(t, order, "the write transaction must never begin when embedding fails")
+
+	mockDocRepo.AssertNotCalled(t, "CreateDocument", mock.Anything, mock.Anything)
+	mockDocRepo.AssertNotCalled(t, "CreateVersion", mock.Anything, mock.Anything)
+	mockDocRepo.AssertNotCalled(t, "UpdateCurrentVersion", mock.Anything, mock.Anything, mock.Anything)
+	mockChunkRepo.AssertNotCalled(t, "BulkInsertChunks", mock.Anything, mock.Anything)
+	mockChunkRepo.AssertNotCalled(t, "InsertEvents", mock.Anything, mock.Anything)
+}
+
+// TestIndexArticle_Upsert_ConcurrentUpsertReCheckedInsideTx simulates two
+// concurrent Upsert calls racing on the same article: the pre-check
+// (outside the tx) observes stale state and decides to proceed with
+// chunking/embedding, but by the time the write transaction begins, a
+// concurrent writer has already committed the exact same version. The
+// re-check inside the tx must catch this and turn the write into a no-op,
+// so idempotency holds under concurrent upserts even though the outer
+// pre-check went stale.
+//
+// The existing MockTransactionManager runs fn synchronously in the calling
+// goroutine (there is no real DB to race against), so a true concurrent
+// integration test isn't reachable from this mock infra. Sequential mock
+// returns (.Once()) are used instead to make the second, in-tx read
+// observe the state a concurrent committer would have left behind.
+func TestIndexArticle_Upsert_ConcurrentUpsertReCheckedInsideTx(t *testing.T) {
+	mockDocRepo := new(MockRagDocumentRepository)
+	mockChunkRepo := new(MockRagChunkRepository)
+	mockTxManager := new(MockTransactionManager)
+	hasher := domain.NewSourceHashPolicy()
+	chunker := domain.NewChunker()
+
+	uc := usecase.NewIndexArticleUsecase(
+		mockDocRepo, mockChunkRepo, mockTxManager, hasher, chunker, nil,
+	)
+
+	ctx := context.Background()
+	articleID := "concurrent-article"
+	title := "Concurrent Title"
+	body := "Concurrent body content for the re-check test."
+	sourceHash := hasher.Compute(title, body)
+
+	docID := uuid.New()
+	verID := uuid.New()
+
+	mockDocRepo.On("GetByArticleID", ctx, articleID).Return(&domain.RagDocument{
+		ID:               docID,
+		ArticleID:        articleID,
+		CurrentVersionID: &verID,
+	}, nil)
+
+	// Pre-check (1st call, outside the tx): stale version -> proceed.
+	mockDocRepo.On("GetLatestVersion", ctx, docID).Return(&domain.RagDocumentVersion{
+		ID:             verID,
+		DocumentID:     docID,
+		VersionNumber:  1,
+		SourceHash:     "stale-hash",
+		Title:          title,
+		ChunkerVersion: string(domain.ChunkerVersionV9),
+	}, nil).Once()
+
+	// Re-check (2nd call, inside the tx): a concurrent writer already
+	// committed this exact content -> must be treated as a no-op.
+	mockDocRepo.On("GetLatestVersion", ctx, docID).Return(&domain.RagDocumentVersion{
+		ID:             verID,
+		DocumentID:     docID,
+		VersionNumber:  2,
+		SourceHash:     sourceHash,
+		Title:          title,
+		URL:            "",
+		ChunkerVersion: string(domain.ChunkerVersionV9),
+	}, nil)
+
+	err := uc.Upsert(ctx, articleID, title, "", body)
+	assert.NoError(t, err)
+
+	mockDocRepo.AssertNotCalled(t, "CreateDocument", mock.Anything, mock.Anything)
+	mockDocRepo.AssertNotCalled(t, "CreateVersion", mock.Anything, mock.Anything)
+	mockDocRepo.AssertNotCalled(t, "UpdateCurrentVersion", mock.Anything, mock.Anything, mock.Anything)
+	mockChunkRepo.AssertNotCalled(t, "GetChunksByVersionID", mock.Anything, mock.Anything)
+	mockChunkRepo.AssertNotCalled(t, "BulkInsertChunks", mock.Anything, mock.Anything)
+	mockChunkRepo.AssertNotCalled(t, "InsertEvents", mock.Anything, mock.Anything)
 }
