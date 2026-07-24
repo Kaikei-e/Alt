@@ -119,7 +119,7 @@ mod tests {
         // Simulates a flush loop stuck retrying against a down ClickHouse:
         // the handle never completes on its own.
         let handle = tokio::spawn(async {
-            tokio::time::sleep(Duration::from_secs(3600)).await;
+            tokio::time::sleep(Duration::from_hours(1)).await;
         });
 
         let timeout = Duration::from_secs(8);
@@ -131,7 +131,7 @@ mod tests {
             "must not return before the configured timeout elapses"
         );
         assert!(
-            start.elapsed() < Duration::from_secs(3600),
+            start.elapsed() < Duration::from_hours(1),
             "must not wait for the stuck flush task to finish"
         );
     }
