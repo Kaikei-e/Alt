@@ -6,6 +6,7 @@ Google SREのGolden Signalsの「Saturation」を収集します。
 
 import structlog
 from clickhouse_connect.driver.client import Client
+from clickhouse_connect.driver.exceptions import ClickHouseError
 
 from alt_metrics.exceptions import CollectorError
 from alt_metrics.models import QueueSaturation, ResourceUtilization
@@ -70,7 +71,7 @@ def collect_resource_utilization(client: Client, database: str, hours: int) -> l
         data = [ResourceUtilization(**dict(zip(result.column_names, row))) for row in result.result_rows]
         log.info("データ収集完了", count=len(data))
         return data
-    except Exception as e:
+    except ClickHouseError as e:
         log.exception("クエリ実行エラー", query=query[:200])
         raise CollectorError("resource_utilization", str(e)) from e
 
@@ -117,6 +118,6 @@ def collect_queue_saturation(client: Client, database: str, hours: int) -> list[
         data = [QueueSaturation(**dict(zip(result.column_names, row))) for row in result.result_rows]
         log.info("データ収集完了", count=len(data))
         return data
-    except Exception as e:
+    except ClickHouseError as e:
         log.exception("クエリ実行エラー", query=query[:200])
         raise CollectorError("queue_saturation", str(e)) from e
