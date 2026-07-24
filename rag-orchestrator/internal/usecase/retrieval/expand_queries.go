@@ -57,6 +57,17 @@ func ExpandQueries(
 		if len(expanded) > 0 {
 			preFilterCount := len(expanded)
 			expanded = filterExpandedQueries(expanded)
+			if len(expanded) == 0 {
+				logger.Warn("expansion_all_filtered",
+					slog.String("retrieval_id", sc.RetrievalID),
+					slog.String("query_preview", queryLogPreview(sc.Query)),
+					slog.Int("pre_filter_count", preFilterCount),
+					slog.String("reason", "all_queries_rejected_by_filter"))
+				// The LLM produced output but every candidate was scaffolding/noise.
+				// Fall back to the original query rather than leaving ExpandedQueries
+				// empty (docs/review/augur-expand-query-filter-investigation-2026-04-11.md).
+				expanded = []string{sc.Query}
+			}
 			sc.ExpandedQueries = expanded
 			logger.Info("query_expanded",
 				slog.String("retrieval_id", sc.RetrievalID),
@@ -64,13 +75,6 @@ func ExpandQueries(
 				slog.Int("pre_filter_count", preFilterCount),
 				slog.Int("post_filter_count", len(expanded)),
 				slog.Any("expanded", expanded))
-			if len(expanded) == 0 {
-				logger.Warn("expansion_all_filtered",
-					slog.String("retrieval_id", sc.RetrievalID),
-					slog.String("query_preview", queryLogPreview(sc.Query)),
-					slog.Int("pre_filter_count", preFilterCount),
-					slog.String("reason", "all_queries_rejected_by_filter"))
-			}
 		}
 		return nil
 	})
@@ -181,16 +185,17 @@ const minQueryRuneLen = 3
 const maxQueryRuneLen = 200
 
 // filterExpandedQueries removes useless queries and caps the result count.
-// Filters applied in order: romanized Japanese, instruction leaks, length, dedup.
+// Filters applied in order: markdown scaffolding, romanized Japanese, instruction
+// leaks, length, dedup.
 func filterExpandedQueries(queries []string) []string {
 	if len(queries) == 0 {
 		return []string{}
 	}
 	seen := make(map[string]struct{}, len(queries))
 	filtered := make([]string, 0, len(queries))
-	for _, q := range queries {
-		q = strings.TrimSpace(q)
-		if q == "" {
+	for _, raw := range queries {
+		q, keep := stripMarkdownScaffolding(raw)
+		if !keep {
 			continue
 		}
 		// Length filter
@@ -274,6 +279,65 @@ var dateOnlyPattern = regexp.MustCompile(`^\d{4}[-/\.]\d{1,2}[-/\.]\d{1,2}$`)
 // isDateOnly returns true if the string is only a date with no other content.
 func isDateOnly(q string) bool {
 	return dateOnlyPattern.MatchString(strings.TrimSpace(q))
+}
+
+// markdownHeaderPattern matches markdown ATX headers the LLM sometimes emits
+// as section scaffolding (e.g. "### Japanese (1)", "## English"). These carry
+// no query content and are always dropped.
+var markdownHeaderPattern = regexp.MustCompile(`^#{1,6}\s`)
+
+// decorationOnlyPattern matches pure markdown decoration lines (horizontal
+// rules) with no content, e.g. "---", "***".
+var decorationOnlyPattern = regexp.MustCompile(`^[-=*_]{3,}$`)
+
+// boldLabelPattern matches a leading bold (or malformed bold) label followed
+// by a colon, e.g. "**Generated Query:** foo", "*Execution:**", "**Strategy:**".
+// Group 1 is the label text, group 2 is whatever follows the colon.
+var boldLabelPattern = regexp.MustCompile(`^\*{1,2}\s*([A-Za-z][A-Za-z \-]{0,40}?)\s*\*{0,2}:\s*\*{0,2}\s*(.*)$`)
+
+// queryExtractionLabels are bold labels whose trailing content is the actual
+// generated query, not meta-commentary about how the query was produced
+// (e.g. "**Query Generation Strategy:** ..." or "**Input Translation:** ...").
+var queryExtractionLabels = map[string]struct{}{
+	"generated query":  {},
+	"query":            {},
+	"final query":      {},
+	"translated query": {},
+	"search query":     {},
+	"output query":     {},
+}
+
+// stripMarkdownScaffolding removes markdown headers/decoration and extracts
+// query content from bold-label lines like "**Generated Query:** X". It
+// returns the cleaned candidate and whether it should proceed to the
+// remaining filters — headers, decoration, and unrecognized bold labels
+// (strategy/translation/execution commentary) are dropped outright, while a
+// recognized query label ("Generated Query:", "Query:", ...) has its content
+// extracted and kept. Plain lines are passed through unchanged.
+func stripMarkdownScaffolding(line string) (string, bool) {
+	trimmed := strings.TrimSpace(line)
+	if trimmed == "" {
+		return "", false
+	}
+	if markdownHeaderPattern.MatchString(trimmed) {
+		return "", false
+	}
+	if decorationOnlyPattern.MatchString(trimmed) {
+		return "", false
+	}
+	if m := boldLabelPattern.FindStringSubmatch(trimmed); m != nil {
+		label := strings.ToLower(strings.TrimSpace(m[1]))
+		if _, ok := queryExtractionLabels[label]; !ok {
+			return "", false
+		}
+		content := strings.Trim(strings.TrimSpace(m[2]), "*\"'“”")
+		content = strings.TrimSpace(content)
+		if content == "" {
+			return "", false
+		}
+		return content, true
+	}
+	return trimmed, true
 }
 
 // isXMLTagLeak detects leaked XML tags from the prompt structure.
