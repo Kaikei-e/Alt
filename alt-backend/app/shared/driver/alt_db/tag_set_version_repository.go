@@ -46,7 +46,7 @@ func (r *TagRepository) MarkTagSetVersionSuperseded(ctx context.Context, article
 	if err != nil {
 		return nil, fmt.Errorf("MarkTagSetVersionSuperseded begin: %w", err)
 	}
-	defer tx.Rollback(ctx)
+	defer func() { _ = tx.Rollback(ctx) }()
 
 	if _, err := tx.Exec(ctx, "SELECT pg_advisory_xact_lock(hashtext($1::text))", articleID); err != nil {
 		return nil, fmt.Errorf("MarkTagSetVersionSuperseded advisory lock: %w", err)
@@ -65,8 +65,8 @@ func (r *TagRepository) MarkTagSetVersionSuperseded(ctx context.Context, article
 		&prev.TagSetVersionID, &prev.ArticleID, &prev.UserID, &prev.GeneratedAt,
 		&prev.Generator, &prev.InputHash, &prev.TagsJSON, &prev.SupersededBy,
 	)
-	switch {
-	case err == nil:
+	switch err {
+	case nil:
 		// Mark all non-superseded versions (except the new one) as superseded
 		updateQuery := `UPDATE tag_set_versions
 			SET superseded_by = $1
@@ -80,7 +80,7 @@ func (r *TagRepository) MarkTagSetVersionSuperseded(ctx context.Context, article
 			return nil, fmt.Errorf("MarkTagSetVersionSuperseded commit: %w", err)
 		}
 		return &prev, nil
-	case err == pgx.ErrNoRows:
+	case pgx.ErrNoRows:
 		if err := tx.Commit(ctx); err != nil {
 			return nil, fmt.Errorf("MarkTagSetVersionSuperseded commit: %w", err)
 		}

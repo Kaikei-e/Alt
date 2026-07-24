@@ -153,6 +153,13 @@ func TestHandleInternalError_DoesNotLeakSensitiveInfo(t *testing.T) {
 		connectErr := HandleInternalError(ctx, logger, sensitiveErr, "TestOperation")
 		msg := connectErr.Message()
 
+		// The appended "(Error ID: <random hex>)" is not derived from the
+		// original error; strip it before the leak check so a random ID that
+		// happens to contain a port substring (e.g. "6379") is not a false leak.
+		if idx := strings.Index(msg, " (Error ID:"); idx != -1 {
+			msg = msg[:idx]
+		}
+
 		// Should not contain any of the sensitive info
 		if strings.Contains(msg, "postgres") ||
 			strings.Contains(msg, "password") ||

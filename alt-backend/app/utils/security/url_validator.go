@@ -126,6 +126,18 @@ func (v *URLSecurityValidator) IsAllowedDomain(domain string) bool {
 
 // isPrivateNetwork checks if a hostname resolves to a private network
 func (v *URLSecurityValidator) isPrivateNetwork(hostname string) bool {
+	// An operator-allow-listed feed host (FEED_ALLOWED_HOSTS) is an explicit
+	// trust decision and is never treated as a private-network threat — this is
+	// what lets intentionally non-resolvable trusted hosts (e.g. the e2e stub)
+	// through the SSRF gate. Strip any port before matching the allow-list.
+	allowHost := hostname
+	if h, _, err := net.SplitHostPort(hostname); err == nil {
+		allowHost = h
+	}
+	if IsFeedHostAllowed(allowHost) {
+		return false
+	}
+
 	// Check for localhost variants
 	if hostname == "localhost" || hostname == "127.0.0.1" {
 		return true

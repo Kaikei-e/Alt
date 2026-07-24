@@ -81,3 +81,22 @@ func TestURLSecurityValidator_MetadataExactHostBlocked(t *testing.T) {
 	err := v.ValidateRSSURL("http://169.254.169.254/latest/meta-data/")
 	require.Error(t, err, "AWS/GCP metadata IP must be blocked (handled via private/link-local)")
 }
+
+// SSRF finding [2] regression: hardening isPrivateNetwork to resolve domain
+// names must still honour FEED_ALLOWED_HOSTS — otherwise an operator-trusted,
+// intentionally non-resolvable host (the e2e stub `stub.invalid`) is wrongly
+// blocked as "private network access denied". Mirrors
+// e2e/hurl/alt-backend/10-rss-feed-link-register.hurl.
+func TestURLSecurityValidator_AllowlistedHostBypassesPrivateCheck(t *testing.T) {
+	t.Setenv("FEED_ALLOWED_HOSTS", "stub.invalid")
+	v := NewURLSecurityValidator()
+
+	require.NoError(t, v.ValidateRSSURL("http://stub.invalid/alt-backend/e2e/feed-register-1.xml"),
+		"allow-listed host must pass the SSRF private-network gate even when DNS-unresolvable")
+	require.NoError(t, v.ValidateForRSSFeed("http://stub.invalid/alt-backend/e2e/feed-register-1.xml"),
+		"allow-listed host must pass RSS-specific validation")
+
+	// A loopback host that is NOT allow-listed stays blocked.
+	require.Error(t, v.ValidateRSSURL("http://127.0.0.1:9000/evil-feed.xml"),
+		"non-allow-listed loopback must remain blocked")
+}

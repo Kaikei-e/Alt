@@ -53,7 +53,7 @@ func (r *SummaryRepository) MarkSummaryVersionSuperseded(ctx context.Context, ar
 	if err != nil {
 		return nil, fmt.Errorf("MarkSummaryVersionSuperseded begin: %w", err)
 	}
-	defer tx.Rollback(ctx)
+	defer func() { _ = tx.Rollback(ctx) }()
 
 	if _, err := tx.Exec(ctx, "SELECT pg_advisory_xact_lock(hashtext($1::text))", articleID); err != nil {
 		return nil, fmt.Errorf("MarkSummaryVersionSuperseded advisory lock: %w", err)
@@ -74,8 +74,8 @@ func (r *SummaryRepository) MarkSummaryVersionSuperseded(ctx context.Context, ar
 		&prev.Model, &prev.PromptVersion, &prev.InputHash, &prev.QualityScore,
 		&prev.SummaryText, &prev.SupersededBy,
 	)
-	switch {
-	case err == nil:
+	switch err {
+	case nil:
 		// Mark all non-superseded versions (except the new one) as superseded
 		updateQuery := `UPDATE summary_versions
 			SET superseded_by = $1
@@ -89,7 +89,7 @@ func (r *SummaryRepository) MarkSummaryVersionSuperseded(ctx context.Context, ar
 			return nil, fmt.Errorf("MarkSummaryVersionSuperseded commit: %w", err)
 		}
 		return &prev, nil
-	case err == pgx.ErrNoRows:
+	case pgx.ErrNoRows:
 		if err := tx.Commit(ctx); err != nil {
 			return nil, fmt.Errorf("MarkSummaryVersionSuperseded commit: %w", err)
 		}
