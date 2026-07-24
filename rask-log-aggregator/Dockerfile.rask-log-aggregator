@@ -27,7 +27,7 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry,sharing=locked \
     cp target/release/rask /app/rask
 
 # Stage 5: Runtime (distroless + nonroot)
-FROM gcr.io/distroless/cc-debian12:nonroot
+FROM gcr.io/distroless/cc-debian13:nonroot@sha256:d97bc0a941b8d4be647dc0ee75b264ddbb772f1ac5ba690a4309c00723b23775
 
 COPY --from=builder /app/rask /rask-log-aggregator
 
