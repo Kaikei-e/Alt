@@ -295,8 +295,8 @@ func RestHandleFetchFeedTagsByID(container *di.ApplicationComponents) echo.Handl
 
 		logger.Logger.InfoContext(ctx, "Fetching feed tags by ID", "feedID", feedID, "cursor", cursor, "limit", limit)
 
-		// Fetch tags directly by feed ID using the gateway
-		tags, err := container.AltDBRepository.FetchFeedTags(ctx, feedID, cursor, limit)
+		// Fetch tags directly by feed ID via the usecase (Handler->Usecase->Port->Gateway->Driver)
+		tags, err := container.FetchFeedTagsByIDUsecase.Execute(ctx, feedID, cursor, limit)
 		if err != nil {
 			logger.Logger.ErrorContext(ctx, "Error fetching feed tags", "error", err, "feedID", feedID)
 			return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to fetch feed tags"})

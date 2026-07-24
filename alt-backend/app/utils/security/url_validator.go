@@ -138,14 +138,19 @@ func (v *URLSecurityValidator) isPrivateNetwork(hostname string) bool {
 		return ip.IsPrivate() || ip.IsLoopback() || ip.IsLinkLocalUnicast()
 	}
 
-	// For domain names, we cannot easily check without DNS resolution
-	// but we can check for common private domain patterns
+	// Fast-path check for common private domain suffixes before paying for
+	// DNS resolution.
 	if strings.HasSuffix(hostname, ".local") ||
 		strings.HasSuffix(hostname, ".localhost") {
 		return true
 	}
 
-	return false
+	// SSRF finding [2]: a domain name must be resolved and every returned
+	// address checked for private/loopback/link-local ranges — otherwise an
+	// attacker-controlled domain whose A record points at, e.g.,
+	// 169.254.169.254 (cloud metadata) sails through unresolved. Fail closed
+	// (treat as private) when resolution fails, matching IsPrivateHost.
+	return IsPrivateHost(hostname)
 }
 
 // isValidRSSPath checks if the URL path appears to be RSS-related

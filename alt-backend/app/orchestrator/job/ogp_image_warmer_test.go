@@ -1,8 +1,11 @@
 package job
 
 import (
+	"bytes"
 	"context"
 	"errors"
+	"log/slog"
+	"strings"
 	"sync"
 	"testing"
 )
@@ -125,5 +128,32 @@ func TestOgpImageWarmerJob_SkipsEmptyURLs(t *testing.T) {
 	}
 	if len(warmer.warmed) != 2 {
 		t.Fatalf("expected 2 warmed URLs (skipping empty), got %d", len(warmer.warmed))
+	}
+}
+
+// Finding [12]: unlike TagCloudCacheWarmerJob, ImageProxyUsecase IS
+// legitimately nil when IMAGE_PROXY_ENABLED=false or the secret is empty
+// (finding [6] already makes that state loud at DI-construction time via
+// logImageProxyWiringState / a production-only panic there). So this job
+// must not panic — but the per-tick skip log must be at least Warn level
+// with an explicit "disabled" reason, not an easily-missed Info log that
+// reads identically whether the feature is off on purpose or by DI mistake.
+func TestOgpImageWarmerJob_NilImageProxy_LogsWarnWithDisabledReason(t *testing.T) {
+	var buf bytes.Buffer
+	prev := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelInfo})))
+	defer slog.SetDefault(prev)
+
+	fn := OgpImageWarmerJob(nil, nil)
+	if err := fn(context.Background()); err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+
+	out := buf.String()
+	if !strings.Contains(out, "level=WARN") {
+		t.Errorf("expected WARN-level log for nil image proxy, got: %s", out)
+	}
+	if !strings.Contains(out, "disabled") {
+		t.Errorf("expected an explicit 'disabled' reason in the log, got: %s", out)
 	}
 }

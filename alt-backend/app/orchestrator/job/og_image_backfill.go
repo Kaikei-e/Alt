@@ -39,8 +39,14 @@ func OgImageBackfillJob(
 	imageProxy *image_proxy_usecase.ImageProxyUsecase,
 ) func(ctx context.Context) error {
 	if r == nil || fetcher == nil || imageProxy == nil {
+		// imageProxy is legitimately nil when IMAGE_PROXY_ENABLED=false or
+		// misconfigured (see logImageProxyWiringState in di/image_module.go,
+		// finding [6]) — that DI-level log already distinguishes "disabled"
+		// from "wiring bug". This per-tick log must stay Warn (not Info) with
+		// an explicit disabled reason so it doesn't read as ordinary
+		// operational noise to anyone scanning logs for problems.
 		return func(ctx context.Context) error {
-			slog.InfoContext(ctx, "og-image-backfill disabled: dependencies not wired")
+			slog.WarnContext(ctx, "og-image-backfill skipped: dependencies_disabled")
 			return nil
 		}
 	}

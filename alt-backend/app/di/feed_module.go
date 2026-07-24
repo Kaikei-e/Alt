@@ -23,6 +23,7 @@ import (
 	"alt/orchestrator/usecase/feed_link_usecase"
 	"alt/orchestrator/usecase/fetch_feed_details_usecase"
 	"alt/orchestrator/usecase/fetch_feed_stats_usecase"
+	"alt/orchestrator/usecase/fetch_feed_tags_by_id_usecase"
 	"alt/orchestrator/usecase/fetch_feed_tags_usecase"
 	"alt/orchestrator/usecase/fetch_feed_usecase"
 	"alt/orchestrator/usecase/fetch_inoreader_summary_usecase"
@@ -65,6 +66,7 @@ type FeedModule struct {
 	TrendStatsUsecase                   *fetch_trend_stats_usecase.FetchTrendStatsUsecase
 	FeedSearchUsecase                   *search_feed_usecase.SearchFeedMeilisearchUsecase
 	FetchFeedTagsUsecase                *fetch_feed_tags_usecase.FetchFeedTagsUsecase
+	FetchFeedTagsByIDUsecase            *fetch_feed_tags_by_id_usecase.FetchFeedTagsByIDUsecase
 	FetchInoreaderSummaryUsecase        fetch_inoreader_summary_usecase.FetchInoreaderSummaryUsecase
 	FetchRandomSubscriptionUsecase      *fetch_random_subscription_usecase.FetchRandomSubscriptionUsecase
 	ScrapingDomainUsecase               *scraping_domain_usecase.ScrapingDomainUsecase
@@ -151,6 +153,7 @@ func newFeedModule(infra *InfraModule, sub *SubscriptionModule) *FeedModule {
 	feedURLToIDGw := feed_url_to_id_gateway.NewFeedURLToIDGateway(altDB)
 	fetchFeedTagsGw := fetch_feed_tags_gateway.NewFetchFeedTagsGateway(altDB)
 	fetchFeedTagsUC := fetch_feed_tags_usecase.NewFetchFeedTagsUsecase(feedURLToIDGw, fetchFeedTagsGw)
+	fetchFeedTagsByIDUC := fetch_feed_tags_by_id_usecase.NewFetchFeedTagsByIDUsecase(fetchFeedTagsGw)
 
 	// Inoreader summary
 	fetchInoreaderSummaryGw := fetch_inoreader_summary_gateway.NewInoreaderSummaryGateway(altDB)
@@ -190,6 +193,7 @@ func newFeedModule(infra *InfraModule, sub *SubscriptionModule) *FeedModule {
 		TrendStatsUsecase:                   trendStatsUC,
 		FeedSearchUsecase:                   feedSearchUC,
 		FetchFeedTagsUsecase:                fetchFeedTagsUC,
+		FetchFeedTagsByIDUsecase:            fetchFeedTagsByIDUC,
 		FetchInoreaderSummaryUsecase:        fetchInoreaderSummaryUC,
 		FetchRandomSubscriptionUsecase:      fetchRandomSubscriptionUC,
 		ScrapingDomainUsecase:               scrapingDomainUC,

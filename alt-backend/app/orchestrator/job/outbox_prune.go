@@ -1,0 +1,50 @@
+package job
+
+import (
+	"context"
+	"fmt"
+	"log/slog"
+	"time"
+)
+
+// outboxPruneRepository abstracts the outbox prune query for testability.
+// *alt_db.AltDBRepository satisfies this via its embedded
+// *alt_db.OutboxRepository.
+type outboxPruneRepository interface {
+	PruneOutboxEvents(ctx context.Context, olderThan time.Duration) (int64, error)
+}
+
+// outboxPruneRetention is how long a PROCESSED/FAILED outbox_events row is
+// kept before deletion. Rows are the append-first audit trail for
+// at-least-once RAG-upsert delivery; 7 days gives ample time to investigate a
+// delivery incident before the row is gone.
+const outboxPruneRetention = 7 * 24 * time.Hour
+
+// OutboxPruneJob returns a JobScheduler function that deletes terminal
+// (PROCESSED) outbox_events rows older than outboxPruneRetention.
+//
+// PruneOutboxEvents was implemented in save_outbox_event_driver.go (finding
+// [13]) but never wired to any scheduled job: the outbox-worker (5s tick)
+// only transitions PENDING -> PROCESSED/FAILED and never deletes, so
+// outbox_events grew unbounded — the same "implemented but never wired"
+// lifecycle-management gap already seen for search-indexer's task DB
+// (PM-047-recurrence).
+//
+// repo is a required composition-root dependency (job/registry.go always
+// wires container.AltDBRepository here, unconditionally — there is no
+// feature flag that legitimately leaves it nil). A nil repo can only be a DI
+// wiring bug, so this panics at construction time instead of silently
+// no-op'ing on every scheduled tick forever (CLAUDE.md rule 8).
+func OutboxPruneJob(repo outboxPruneRepository) func(ctx context.Context) error {
+	if repo == nil {
+		panic("outbox-prune: outbox repository is nil — must be wired unconditionally at composition root (see .claude/rules/di-wiring.md)")
+	}
+	return func(ctx context.Context) error {
+		pruned, err := repo.PruneOutboxEvents(ctx, outboxPruneRetention)
+		if err != nil {
+			return fmt.Errorf("prune outbox events: %w", err)
+		}
+		slog.InfoContext(ctx, "outbox-prune: completed", "pruned", pruned, "retention", outboxPruneRetention.String())
+		return nil
+	}
+}

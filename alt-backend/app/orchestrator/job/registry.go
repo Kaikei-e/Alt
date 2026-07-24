@@ -57,4 +57,10 @@ func RegisterAllJobs(scheduler *JobScheduler, container *di.ApplicationComponent
 		Timeout:  2 * time.Minute,
 		Fn:       TagCloudCacheWarmerJob(container.FetchTagCloudUsecase),
 	})
+	scheduler.Add(Job{
+		Name:     "outbox-prune",
+		Interval: 24 * time.Hour,
+		Timeout:  5 * time.Minute,
+		Fn:       OutboxPruneJob(container.AltDBRepository),
+	})
 }

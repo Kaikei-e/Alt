@@ -126,6 +126,41 @@ func TestJobScheduler_ShutdownWaitsForJobs(t *testing.T) {
 	}
 }
 
+// Finding [7]: a panic inside a job's Fn (e.g. a Rule-8 nil-guard panic in
+// outbox_worker.go, or an unexpected nil dereference) must not crash the
+// whole process. Go's default behavior is for an unrecovered goroutine panic
+// to take down the entire program; runJob/executeJob must recover it so
+// other scheduled jobs and the next tick of this same job keep running.
+func TestJobScheduler_RecoversFromJobPanic(t *testing.T) {
+	var runs atomic.Int32
+
+	scheduler := NewJobScheduler()
+	scheduler.Add(Job{
+		Name:     "panicky-job",
+		Interval: 20 * time.Millisecond,
+		Timeout:  time.Second,
+		Fn: func(ctx context.Context) error {
+			n := runs.Add(1)
+			if n == 1 {
+				panic("simulated rule-8 nil-guard panic")
+			}
+			return nil
+		},
+	})
+
+	ctx, cancel := context.WithCancel(context.Background())
+	scheduler.Start(ctx)
+
+	// Give it time to panic on the first run and tick at least once more.
+	time.Sleep(150 * time.Millisecond)
+	cancel()
+	scheduler.Shutdown()
+
+	if got := runs.Load(); got < 2 {
+		t.Errorf("expected job to keep running after a panic (recovered), got %d runs", got)
+	}
+}
+
 func TestJobScheduler_MultipleJobs(t *testing.T) {
 	var countA, countB atomic.Int32
 

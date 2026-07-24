@@ -2,8 +2,11 @@ package job
 
 import (
 	"alt/shared/driver/alt_db"
+	"bytes"
 	"context"
 	"errors"
+	"log/slog"
+	"strings"
 	"sync"
 	"testing"
 )
@@ -133,5 +136,29 @@ func TestOgImageBackfillJob_FetchListError(t *testing.T) {
 	fn := ogImageBackfillJobFn(lister, &mockArticleContentFetcher{}, &mockArticleHeadSaver{}, &mockImageWarmer{})
 	if err := fn(context.Background()); err == nil {
 		t.Fatal("expected error when listing candidates fails")
+	}
+}
+
+// Finding [12]: same rationale as TestOgpImageWarmerJob_NilImageProxy_LogsWarnWithDisabledReason
+// — imageProxy is legitimately nil when the feature is config-disabled, so
+// this must stay a no-op rather than panic, but must log at Warn with an
+// explicit disabled reason instead of an easily-missed Info log.
+func TestOgImageBackfillJob_NilDeps_LogsWarnWithDisabledReason(t *testing.T) {
+	var buf bytes.Buffer
+	prev := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelInfo})))
+	defer slog.SetDefault(prev)
+
+	fn := OgImageBackfillJob(nil, nil, nil)
+	if err := fn(context.Background()); err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+
+	out := buf.String()
+	if !strings.Contains(out, "level=WARN") {
+		t.Errorf("expected WARN-level log for unwired dependencies, got: %s", out)
+	}
+	if !strings.Contains(out, "disabled") {
+		t.Errorf("expected an explicit 'disabled' reason in the log, got: %s", out)
 	}
 }

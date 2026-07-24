@@ -33,9 +33,24 @@ func (r *TagRepository) CreateTagSetVersion(ctx context.Context, tsv domain.TagS
 
 // MarkTagSetVersionSuperseded marks all non-superseded tag set versions for an article as superseded
 // by the new version. Returns the previous latest version before marking, or nil if none existed.
+//
+// Same per-article advisory-lock transaction pattern as
+// SummaryRepository.MarkSummaryVersionSuperseded — see its doc comment for
+// why row-level UPDATE locking alone cannot serialize two concurrent calls
+// for the same article.
 func (r *TagRepository) MarkTagSetVersionSuperseded(ctx context.Context, articleID uuid.UUID, newVersionID uuid.UUID) (*domain.TagSetVersion, error) {
 	ctx, span := otel.Tracer("alt-backend").Start(ctx, "db.MarkTagSetVersionSuperseded")
 	defer span.End()
+
+	tx, err := r.pool.BeginTx(ctx, pgx.TxOptions{})
+	if err != nil {
+		return nil, fmt.Errorf("MarkTagSetVersionSuperseded begin: %w", err)
+	}
+	defer tx.Rollback(ctx)
+
+	if _, err := tx.Exec(ctx, "SELECT pg_advisory_xact_lock(hashtext($1::text))", articleID); err != nil {
+		return nil, fmt.Errorf("MarkTagSetVersionSuperseded advisory lock: %w", err)
+	}
 
 	// First, get the current latest version (before superseding)
 	var prev domain.TagSetVersion
@@ -46,28 +61,33 @@ func (r *TagRepository) MarkTagSetVersionSuperseded(ctx context.Context, article
 		ORDER BY generated_at DESC
 		LIMIT 1`
 
-	err := r.pool.QueryRow(ctx, selectQuery, articleID, newVersionID).Scan(
+	err = tx.QueryRow(ctx, selectQuery, articleID, newVersionID).Scan(
 		&prev.TagSetVersionID, &prev.ArticleID, &prev.UserID, &prev.GeneratedAt,
 		&prev.Generator, &prev.InputHash, &prev.TagsJSON, &prev.SupersededBy,
 	)
-	if err != nil {
-		if err == pgx.ErrNoRows {
-			return nil, nil // No previous version
+	switch {
+	case err == nil:
+		// Mark all non-superseded versions (except the new one) as superseded
+		updateQuery := `UPDATE tag_set_versions
+			SET superseded_by = $1
+			WHERE article_id = $2 AND superseded_by IS NULL AND tag_set_version_id != $1`
+
+		if _, err := tx.Exec(ctx, updateQuery, newVersionID, articleID); err != nil {
+			return nil, fmt.Errorf("MarkTagSetVersionSuperseded update: %w", err)
 		}
+
+		if err := tx.Commit(ctx); err != nil {
+			return nil, fmt.Errorf("MarkTagSetVersionSuperseded commit: %w", err)
+		}
+		return &prev, nil
+	case err == pgx.ErrNoRows:
+		if err := tx.Commit(ctx); err != nil {
+			return nil, fmt.Errorf("MarkTagSetVersionSuperseded commit: %w", err)
+		}
+		return nil, nil // No previous version
+	default:
 		return nil, fmt.Errorf("MarkTagSetVersionSuperseded select: %w", err)
 	}
-
-	// Mark all non-superseded versions (except the new one) as superseded
-	updateQuery := `UPDATE tag_set_versions
-		SET superseded_by = $1
-		WHERE article_id = $2 AND superseded_by IS NULL AND tag_set_version_id != $1`
-
-	_, err = r.pool.Exec(ctx, updateQuery, newVersionID, articleID)
-	if err != nil {
-		return nil, fmt.Errorf("MarkTagSetVersionSuperseded update: %w", err)
-	}
-
-	return &prev, nil
 }
 
 // GetTagSetVersionByID reads a specific tag set version by its ID.

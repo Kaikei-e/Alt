@@ -17,7 +17,12 @@ import (
 // This endpoint is unauthenticated — HMAC signature serves as the authorization token.
 // It exists because browsers need a URL for <img src> that returns raw image bytes.
 func registerImageProxyRoutes(v1 *echo.Group, container *di.ApplicationComponents, cfg *config.Config) {
-	if !cfg.ImageProxy.Enabled {
+	// Must match the ImageProxyUsecase construction guard in
+	// di/image_module.go exactly: Enabled=true with an empty Secret leaves
+	// container.ImageProxyUsecase nil (finding [6]), and registering the
+	// route anyway means a request reaches handleImageProxy and panics on a
+	// nil-pointer method call instead of a clean 404.
+	if !cfg.ImageProxy.Enabled || cfg.ImageProxy.Secret == "" {
 		return
 	}
 

@@ -25,7 +25,7 @@ func IsAllowedURL(u *url.URL) error {
 	}
 
 	for _, ip := range ips {
-		if ip.IsLoopback() || ip.IsPrivate() {
+		if security.IsPrivateIPAddress(ip) {
 			return fmt.Errorf("private IP not allowed: %s", ip.String())
 		}
 	}
