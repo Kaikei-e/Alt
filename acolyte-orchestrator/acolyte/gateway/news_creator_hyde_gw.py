@@ -15,9 +15,30 @@ import structlog
 from acolyte.domain.hyde import build_hyde_messages, sanitize_hyde_output
 
 if TYPE_CHECKING:
+    from acolyte.config.settings import Settings
+    from acolyte.port.hyde_generator import HyDEGeneratorPort
     from acolyte.port.llm_provider import LLMProviderPort
 
 logger = structlog.get_logger(__name__)
+
+
+def build_hyde_generator(llm: LLMProviderPort, settings: Settings) -> HyDEGeneratorPort | None:
+    """Compose the HyDE generator from settings — the single source of truth
+    for this wiring decision, shared by main.py and scripts/resume_run.py so
+    the two entry points can't silently drift on whether HyDE is enabled.
+
+    Returns None when ``settings.hyde_enabled`` is False, matching
+    report_graph.build_report_graph's "no HyDE" branch (query expansion
+    falls back to BM25+RRF alone).
+    """
+    if not settings.hyde_enabled:
+        return None
+    return NewsCreatorHyDEGenerator(
+        llm,
+        timeout_s=settings.hyde_timeout_s,
+        max_chars=settings.hyde_max_chars,
+        num_predict=settings.hyde_num_predict,
+    )
 
 
 class NewsCreatorHyDEGenerator:

@@ -51,6 +51,21 @@ class StartRunUsecase:
         if report is None:
             raise ValueError(f"Report {report_id} not found")  # noqa: TRY003 — caught generically as ValueError at the connect_service Handler boundary
 
+        # The circuit breaker below only inspects the *most recent* run's
+        # failure status — a pending/running run wouldn't trip it (its
+        # run_status isn't "failed"), so without this explicit check two
+        # pipelines could be kicked off concurrently for the same report.
+        # This is a best-effort app-layer guard, not a substitute for a DB
+        # constraint: two concurrent execute() calls can still both pass
+        # this check before either creates a run (TOCTOU) — see the
+        # unique-partial-index recommendation in the report_runs migration
+        # backlog.
+        active_run = await self._job_queue.get_active_run_for_report(report_id)
+        if active_run is not None:
+            raise StartRunRejectedError(  # noqa: TRY003 — caught explicitly as StartRunRejectedError at the connect_service Handler boundary
+                f"Report {report_id} run rejected: run {active_run.run_id} is already {active_run.run_status}"
+            )
+
         latest_run = await self._job_queue.get_latest_run_for_report(report_id)
         if latest_run is not None and self._tripped_by(latest_run, now or datetime.now(UTC)):
             raise StartRunRejectedError(  # noqa: TRY003 — caught explicitly as StartRunRejectedError at the connect_service Handler boundary

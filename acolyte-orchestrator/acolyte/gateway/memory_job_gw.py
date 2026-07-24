@@ -58,6 +58,9 @@ class MemoryJobGateway:
         matching = [r for r in self._runs.values() if r.report_id == report_id]
         return matching[-1] if matching else None
 
+    async def list_running_runs(self) -> list[ReportRun]:
+        return [r for r in self._runs.values() if r.run_status == "running"]
+
     async def claim_job(self, worker_id: str) -> ReportJob | None:
         for job in self._jobs.values():
             if job.job_status == "pending":
