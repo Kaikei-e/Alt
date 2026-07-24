@@ -7,15 +7,18 @@ import {
 	getReadFeedsWithCursorClient,
 	updateFeedReadStatusClient,
 } from "$lib/api/client";
+import Toast from "$lib/components/knowledge-home/Toast.svelte";
+import { MARK_AS_READ_FAILED_MESSAGE } from "$lib/feeds/mark-as-read-feedback";
 import type { RenderFeed, SanitizedFeed } from "$lib/schema/feed";
 import { toRenderFeed } from "$lib/schema/feed";
-import { canonicalize } from "$lib/utils/feed";
-import EmptyFeedState from "./EmptyFeedState.svelte";
-import FeedCard from "./FeedCard.svelte";
 import {
 	CONNECTION_RECOVERY_KEY,
 	type ConnectionRecoveryStore,
 } from "$lib/stores/connection-recovery.svelte";
+import { useToastStore } from "$lib/stores/toast.svelte";
+import { canonicalize } from "$lib/utils/feed";
+import EmptyFeedState from "./EmptyFeedState.svelte";
+import FeedCard from "./FeedCard.svelte";
 
 interface Props {
 	initialFeeds?: RenderFeed[];
@@ -23,6 +26,7 @@ interface Props {
 }
 
 const { initialFeeds = [], excludeFeedLinkIds = [] }: Props = $props();
+const toast = useToastStore();
 const connectionRecovery = getContext<ConnectionRecoveryStore | undefined>(
 	CONNECTION_RECOVERY_KEY,
 );
@@ -263,7 +267,7 @@ const handleMarkAsRead = async (rawLink: string) => {
 	// Optimistic update
 	readFeeds = new Set(readFeeds).add(link);
 	liveRegionMessage = "Feed marked as read";
-	setTimeout(() => {
+	const clearSuccessLiveRegion = setTimeout(() => {
 		liveRegionMessage = "";
 	}, 1000);
 
@@ -271,9 +275,15 @@ const handleMarkAsRead = async (rawLink: string) => {
 	try {
 		await updateFeedReadStatusClient(link);
 	} catch (e) {
+		clearTimeout(clearSuccessLiveRegion);
 		readFeeds = new Set(readFeeds);
 		readFeeds.delete(link);
 		console.error("Failed to mark feed as read:", e);
+		liveRegionMessage = MARK_AS_READ_FAILED_MESSAGE;
+		toast.push(MARK_AS_READ_FAILED_MESSAGE, "error", 4000);
+		setTimeout(() => {
+			liveRegionMessage = "";
+		}, 4000);
 	}
 };
 
@@ -302,8 +312,9 @@ const isInitialLoadingState = $derived(
 </script>
 
 <div class="h-full flex flex-col" style="background: var(--app-bg);">
+	<Toast items={toast.items} onDismiss={toast.remove} />
 	<div
-		aria-live="polite"
+		aria-live="assertive"
 		aria-atomic="true"
 		class="absolute left-[-10000px] w-px h-px overflow-hidden"
 	>

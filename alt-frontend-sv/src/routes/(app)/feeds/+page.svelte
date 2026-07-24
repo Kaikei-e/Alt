@@ -8,15 +8,18 @@ import FeedDetailModal from "$lib/components/desktop/feeds/FeedDetailModal.svelt
 import FeedFilters from "$lib/components/desktop/feeds/FeedFilters.svelte";
 import FeedGrid from "$lib/components/desktop/feeds/FeedGrid.svelte";
 import type { FeedGridApi } from "$lib/components/desktop/feeds/feed-grid-types";
+import Toast from "$lib/components/knowledge-home/Toast.svelte";
 import FeedsClient from "$lib/components/mobile/FeedsClient.svelte";
 import MobileFeedExcludeFilter from "$lib/components/mobile/feeds/MobileFeedExcludeFilter.svelte";
 import type { ConnectFeedSource } from "$lib/connect/feeds";
+import { MARK_AS_READ_FAILED_MESSAGE } from "$lib/feeds/mark-as-read-feedback";
 import type { RenderFeed } from "$lib/schema/feed";
-import { useViewport } from "$lib/stores/viewport.svelte";
 import {
 	CONNECTION_RECOVERY_KEY,
 	type ConnectionRecoveryStore,
 } from "$lib/stores/connection-recovery.svelte";
+import { useToastStore } from "$lib/stores/toast.svelte";
+import { useViewport } from "$lib/stores/viewport.svelte";
 
 interface PageData {
 	initialFeeds?: RenderFeed[];
@@ -25,6 +28,7 @@ interface PageData {
 
 const { data }: { data: PageData } = $props();
 const { isDesktop } = useViewport();
+const toast = useToastStore();
 const connectionRecovery = getContext<ConnectionRecoveryStore | undefined>(
 	CONNECTION_RECOVERY_KEY,
 );
@@ -131,6 +135,7 @@ async function handleMarkAsReadInModal() {
 		handleMarkAsRead(feed.normalizedUrl);
 	} catch (error) {
 		console.error("Failed to mark feed as read:", error);
+		toast.push(MARK_AS_READ_FAILED_MESSAGE, "error", 4000);
 	} finally {
 		isMarkingAsRead = false;
 	}
@@ -171,6 +176,8 @@ function handleFeedGridReady(api: FeedGridApi) {
 <svelte:head>
 	<title>Feeds - Alt</title>
 </svelte:head>
+
+<Toast items={toast.items} onDismiss={toast.remove} />
 
 {#if isDesktop}
 	<div class="wire-page" class:revealed>
