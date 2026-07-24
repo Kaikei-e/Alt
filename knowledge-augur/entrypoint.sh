@@ -71,6 +71,8 @@ BASE_MODELS=(
   "gemma3:4b-it-qat"
 )
 
+FAILED_MODELS=()
+
 ensure_pulled() {
   local model="$1"
   echo "Ensuring ${model} model is available..."
@@ -83,11 +85,12 @@ ensure_pulled() {
     echo "  Model ${model} pulled successfully"
   else
     echo "  Error: Failed to pull ${model}"
+    return 1
   fi
 }
 
 for model in "${BASE_MODELS[@]}"; do
-  ensure_pulled "$model"
+  ensure_pulled "$model" || FAILED_MODELS+=("$model")
 done
 
 # ---- Custom models from Modelfiles ---------------------------------------
@@ -112,12 +115,20 @@ ensure_created() {
     echo "  Model ${name} created/updated successfully"
   else
     echo "  Error: Failed to create ${name}"
+    return 1
   fi
 }
 
 for entry in "${CUSTOM_MODELS[@]}"; do
-  ensure_created "${entry%%:*}" "${entry#*:}"
+  ensure_created "${entry%%:*}" "${entry#*:}" || FAILED_MODELS+=("${entry%%:*}")
 done
+
+if [ "${#FAILED_MODELS[@]}" -gt 0 ]; then
+  echo "Error: Failed to provision required model(s): ${FAILED_MODELS[*]}"
+  kill -TERM "$SERVER_PID" 2>/dev/null || true
+  wait "$SERVER_PID" 2>/dev/null || true
+  exit 1
+fi
 
 # Preload model based on environment variable (default: gemma3-4b-rag)
 PRELOAD_MODEL="${AUGUR_KNOWLEDGE_MODEL:-gemma3-4b-rag}"
