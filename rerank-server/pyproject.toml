@@ -15,6 +15,13 @@ dev = [
     "pyrefly>=0.42.0",
     "pytest>=8.0.0",
 ]
+# CPU int8 ONNX backend, used only by the Docker container (RERANK_BACKEND=onnx).
+# Not needed on the Mac deploy target, which stays on requirements.txt + torch/MPS.
+onnx = [
+    "onnxruntime==1.27.0",
+    "optimum[onnxruntime]==2.1.0",
+    "optimum-onnx==0.1.0",
+]
 
 [tool.uv]
 constraint-dependencies = ["Pygments>=2.20.0"]

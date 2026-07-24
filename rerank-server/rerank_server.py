@@ -1,13 +1,19 @@
-"""MLX-based rerank server for M-series Mac.
+"""Rerank server for M-series Mac (torch/MPS) and Docker (ONNX CPU int8).
 
-Runs on Apple Silicon using MPS backend for GPU acceleration.
 Provides a REST API compatible with the rag-orchestrator's rerank client.
+The backend is selected via RERANK_BACKEND:
+  - "torch" (default): MPS/CUDA/CPU via sentence-transformers CrossEncoder.
+    Used for the Mac deployment (see deploy.sh).
+  - "onnx": CPU-only, dynamic int8-quantized (avx2) ONNX Runtime. Used by the
+    Docker container; the quantized model is exported once into a mounted
+    volume on first boot if it isn't already there.
 
 Usage:
     uvicorn rerank_server:app --host 0.0.0.0 --port 8080
 
 Requirements:
     pip install sentence-transformers fastapi uvicorn torch
+    # onnx backend additionally needs: onnxruntime optimum[onnxruntime]
 """
 
 from __future__ import annotations
@@ -18,6 +24,7 @@ import os
 import time
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from pathlib import Path
 from typing import Any
 
 # Limit MPS memory cache to reduce memory pressure on shared Apple Silicon GPU memory
@@ -41,6 +48,18 @@ else:
 
 DEFAULT_MODEL = "BAAI/bge-reranker-v2-m3"
 
+# Backend selection: "torch" preserves the existing Mac/MPS deployment;
+# "onnx" is the CPU int8 path used by the Docker container.
+RERANK_BACKEND = os.environ.get("RERANK_BACKEND", "torch")
+RERANK_MODEL_DIR = os.environ.get("RERANK_MODEL_DIR", "/models/bge-reranker-v2-m3-onnx")
+RERANK_BATCH_SIZE = int(os.environ.get("RERANK_BATCH_SIZE", "16"))
+RERANK_MAX_LENGTH = int(os.environ.get("RERANK_MAX_LENGTH", "512"))
+
+# Dynamic int8 quantization tuned for CPUs without AVX-512 (see
+# sentence_transformers.backend.export_dynamic_quantized_onnx_model), saved
+# by sentence-transformers under "<RERANK_MODEL_DIR>/onnx/<this file name>".
+ONNX_QUANTIZED_FILE_NAME = "model_quint8_avx2.onnx"
+
 # Bound batch size and per-candidate length so an unbounded request can't
 # blow up tokenization/inference memory on the shared Apple Silicon GPU.
 MAX_CANDIDATES = int(os.environ.get("RERANK_MAX_CANDIDATES", "200"))
@@ -57,6 +76,8 @@ _inference_semaphore = asyncio.Semaphore(1)
 def _predict_sync(model: CrossEncoder, pairs: list[tuple[str, str]]) -> Any:
     """Run blocking CrossEncoder inference. Called via asyncio.to_thread."""
     with torch.inference_mode():
+        if RERANK_BACKEND == "onnx":
+            return model.predict(pairs, batch_size=RERANK_BATCH_SIZE)
         return model.predict(pairs)
 
 
@@ -139,11 +160,8 @@ class RootResponse(BaseModel):
     model: str
 
 
-@asynccontextmanager
-async def lifespan(app: FastAPI) -> AsyncIterator[None]:
-    """Load model on startup."""
-    app.state.model = None
-    logger.info("Loading model %s on device: %s", DEFAULT_MODEL, DEVICE)
+def _load_torch_model() -> CrossEncoder:
+    """Load the FP16 torch CrossEncoder (MPS/CUDA/CPU)."""
     model = CrossEncoder(
         DEFAULT_MODEL,
         device=DEVICE,
@@ -152,15 +170,70 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     model.model.eval()
     for param in model.model.parameters():
         param.requires_grad = False
+    return model
+
+
+def _export_quantized_onnx_model(model_dir: str) -> None:
+    """One-time export: fp32 CrossEncoder -> ONNX -> dynamic int8 (avx2).
+
+    Saves the full model (config/tokenizer) plus the quantized ONNX file into
+    `model_dir` so subsequent restarts can load directly without re-exporting.
+    """
+    from sentence_transformers.backend import export_dynamic_quantized_onnx_model
+
+    logger.info("Exporting quantized ONNX model to %s (one-time; downloads the base model)", model_dir)
+    export_model = CrossEncoder(DEFAULT_MODEL, backend="onnx")
+    export_model.save_pretrained(model_dir)
+    export_dynamic_quantized_onnx_model(export_model, "avx2", model_dir)
+    logger.info("Quantized ONNX export complete")
+
+
+def _load_onnx_model() -> CrossEncoder:
+    """Load the CPU int8 ONNX CrossEncoder, exporting/quantizing it first if needed."""
+    quantized_path = Path(RERANK_MODEL_DIR, "onnx", ONNX_QUANTIZED_FILE_NAME)
+    if not quantized_path.exists():
+        _export_quantized_onnx_model(RERANK_MODEL_DIR)
+    return CrossEncoder(
+        RERANK_MODEL_DIR,
+        device=DEVICE,
+        backend="onnx",
+        model_kwargs={"file_name": ONNX_QUANTIZED_FILE_NAME, "provider": "CPUExecutionProvider"},
+        max_length=RERANK_MAX_LENGTH,
+    )
+
+
+async def _load_model(app: FastAPI) -> None:
+    """Load the model off the event loop and publish it to app.state.
+
+    Runs as a background task (not awaited by `lifespan` before yielding) so
+    the ASGI server binds its socket and /health starts answering 503
+    immediately, instead of the port staying closed for as long as a slow
+    first-boot ONNX export takes.
+    """
+    logger.info("Loading model %s on device: %s (backend=%s)", DEFAULT_MODEL, DEVICE, RERANK_BACKEND)
+    loader = _load_onnx_model if RERANK_BACKEND == "onnx" else _load_torch_model
+    try:
+        model = await asyncio.to_thread(loader)
+    except Exception:
+        logger.exception("Model load failed (backend=%s); /health will stay 503", RERANK_BACKEND)
+        return
     app.state.model = model
-    logger.info("Model loaded successfully (FP16, inference-only)")
+    logger.info("Model loaded successfully (backend=%s)", RERANK_BACKEND)
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+    """Kick off model loading in the background; readiness is gated by /health."""
+    app.state.model = None
+    load_task = asyncio.create_task(_load_model(app))
     yield
+    load_task.cancel()
     app.state.model = None
 
 
 app = FastAPI(
     title="Rerank Server",
-    description="MPS-accelerated reranking service for Apple Silicon",
+    description="Cross-encoder reranking service (torch/MPS on Mac, ONNX int8 CPU in Docker)",
     version="1.0.0",
     lifespan=lifespan,
 )

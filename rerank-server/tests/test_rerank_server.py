@@ -7,11 +7,14 @@ to a lightweight fake before each test that needs a "loaded" model.
 
 from __future__ import annotations
 
+import asyncio
+from pathlib import Path
 from unittest.mock import MagicMock
 
 import pytest
 from fastapi.testclient import TestClient
 
+import rerank_server
 from rerank_server import DEFAULT_MODEL, MAX_CANDIDATE_LENGTH, MAX_CANDIDATES, app
 
 
@@ -143,3 +146,89 @@ def test_rerank_rejects_unsupported_model(
 
     assert resp.status_code == 422
     fake_model.predict.assert_not_called()
+
+
+def test_predict_sync_passes_batch_size_on_onnx_backend(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(rerank_server, "RERANK_BACKEND", "onnx")
+    monkeypatch.setattr(rerank_server, "RERANK_BATCH_SIZE", 4)
+    fake_model = MagicMock()
+    pairs = [("q", "a"), ("q", "b")]
+
+    rerank_server._predict_sync(fake_model, pairs)
+
+    fake_model.predict.assert_called_once_with(pairs, batch_size=4)
+
+
+def test_predict_sync_omits_batch_size_on_torch_backend(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(rerank_server, "RERANK_BACKEND", "torch")
+    fake_model = MagicMock()
+    pairs = [("q", "a"), ("q", "b")]
+
+    rerank_server._predict_sync(fake_model, pairs)
+
+    fake_model.predict.assert_called_once_with(pairs)
+
+
+def test_load_onnx_model_skips_export_when_quantized_file_present(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    onnx_dir = tmp_path / "onnx"
+    onnx_dir.mkdir()
+    (onnx_dir / rerank_server.ONNX_QUANTIZED_FILE_NAME).touch()
+    monkeypatch.setattr(rerank_server, "RERANK_MODEL_DIR", str(tmp_path))
+
+    export_mock = MagicMock()
+    monkeypatch.setattr(rerank_server, "_export_quantized_onnx_model", export_mock)
+    cross_encoder_mock = MagicMock()
+    monkeypatch.setattr(rerank_server, "CrossEncoder", cross_encoder_mock)
+
+    rerank_server._load_onnx_model()
+
+    export_mock.assert_not_called()
+    cross_encoder_mock.assert_called_once()
+    _, call_kwargs = cross_encoder_mock.call_args
+    assert call_kwargs["backend"] == "onnx"
+    assert call_kwargs["model_kwargs"]["file_name"] == rerank_server.ONNX_QUANTIZED_FILE_NAME
+
+
+def test_load_onnx_model_exports_when_quantized_file_missing(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setattr(rerank_server, "RERANK_MODEL_DIR", str(tmp_path))
+
+    export_mock = MagicMock()
+    monkeypatch.setattr(rerank_server, "_export_quantized_onnx_model", export_mock)
+    cross_encoder_mock = MagicMock()
+    monkeypatch.setattr(rerank_server, "CrossEncoder", cross_encoder_mock)
+
+    rerank_server._load_onnx_model()
+
+    export_mock.assert_called_once_with(str(tmp_path))
+    cross_encoder_mock.assert_called_once()
+
+
+def test_load_model_sets_app_state_on_success(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(rerank_server, "RERANK_BACKEND", "torch")
+    fake_model = MagicMock()
+    monkeypatch.setattr(rerank_server, "_load_torch_model", lambda: fake_model)
+    fake_app = MagicMock()
+    fake_app.state.model = None
+
+    asyncio.run(rerank_server._load_model(fake_app))
+
+    assert fake_app.state.model is fake_model
+
+
+def test_load_model_leaves_state_none_on_failure(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(rerank_server, "RERANK_BACKEND", "torch")
+
+    def _boom() -> MagicMock:
+        raise RuntimeError("model load failed")
+
+    monkeypatch.setattr(rerank_server, "_load_torch_model", _boom)
+    fake_app = MagicMock()
+    fake_app.state.model = None
+
+    asyncio.run(rerank_server._load_model(fake_app))
+
+    assert fake_app.state.model is None

@@ -92,7 +92,9 @@ services:
       - DB_PASSWORD_FILE=/run/secrets/rag_db_password
       - DB_NAME=${RAG_DB_NAME:-rag_db}
       - EMBEDDER_EXTERNAL=${EMBEDDER_EXTERNAL}
-      - EMBEDDER_TIMEOUT=10
+      # CPU embedder needs headroom: ~250-300ms/chunk, long articles reach
+      # 50+ chunks per /api/embed call (measured 9.7s for 53 chunks).
+      - EMBEDDER_TIMEOUT=60
       # RAG answer generation: routed through news-creator semaphore (ADR-565 follow-up)
       # Ask Augur chat uses HIGH PRIORITY to preempt batch summarization
       # Override AUGUR_EXTERNAL in .env to route to remote Mac if needed
@@ -102,7 +104,9 @@ services:
       - QUERY_EXPANSION_URL=http://news-creator:11434
       - QUERY_EXPANSION_TIMEOUT=30
       - RERANK_ENABLED=true
-      - RERANK_URL=http://rerank-external:8080
+      # Local ONNX int8 reranker (rerank-local service); the remote
+      # rerank-external route is retired.
+      - RERANK_URL=http://rerank-local:8080
       - RERANK_TIMEOUT=12
       - RAG_DEFAULT_MAX_TOKENS=${RAG_DEFAULT_MAX_TOKENS:-3072}
       - MORNING_LETTER_MAX_TOKENS=${MORNING_LETTER_MAX_TOKENS:-4096}
@@ -153,3 +157,122 @@ services:
       options:
         max-size: "10m"
         max-file: "3"
+
+  # Local embedding service. Replaces the retired remote embedder route —
+  # reuses the knowledge-embedder image, which is
+  # device-agnostic (GPU wiring lives in compose env/devices, not the
+  # Dockerfile) and self-pulls embeddinggemma on boot. Runs as a SEPARATE
+  # Ollama instance so the shared news-creator-backend scheduler can never
+  # evict the generation model to fit this one (thrashing root cause);
+  # embeddinggemma needs ~1.5GB VRAM and Ollama falls back to CPU on its
+  # own when VRAM is unavailable at load time. This is an optional
+  # dependency of rag-orchestrator (BM25-only degrade contract), so it is
+  # intentionally not wired via depends_on.
+  knowledge-embedder-local:
+    build:
+      context: ../knowledge-embedder
+      dockerfile: Dockerfile
+    runtime: nvidia
+    deploy:
+      resources:
+        limits:
+          memory: 3G
+          cpus: '12.0'
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    environment:
+      - OLLAMA_HOST=0.0.0.0
+      - OLLAMA_MODELS=/home/ollama-user/.ollama
+      - OLLAMA_KEEP_ALIVE=24h
+      # 3 embedding models stay resident: embeddinggemma (rag-orchestrator),
+      # mxbai-embed-large (recap-subworker), qwen3-embedding (Meilisearch
+      # hybrid search). All are small; a lower cap would make them evict
+      # each other on alternating traffic.
+      - OLLAMA_MAX_LOADED_MODELS=3
+      - EMBEDDING_MODELS=embeddinggemma mxbai-embed-large qwen3-embedding:0.6b
+      - NVIDIA_VISIBLE_DEVICES=all
+      - NVIDIA_DRIVER_CAPABILITIES=compute,utility
+      # /usr/lib/ollama must come first: libggml-cuda.so links against
+      # libggml-base.so.0 there; without it the CUDA backend fails to dlopen
+      # and Ollama silently falls back to CPU (same fix as news-creator-backend).
+      - LD_LIBRARY_PATH=/usr/lib/ollama:/usr/lib/ollama/cuda_v12:/usr/lib/ollama/cuda_v13:/usr/local/nvidia/lib:/usr/local/nvidia/lib64
+    volumes:
+      - knowledge_embedder_local_models:/home/ollama-user/.ollama
+    depends_on:
+      knowledge-embedder-local-volume-init:
+        condition: service_completed_successfully
+    ports:
+      - "127.0.0.1:11437:11434"
+    networks:
+      - alt-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:11434/api/tags"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 300s
+    labels:
+      - rask.group=knowledge-embedder-local
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  knowledge-embedder-local-volume-init:
+    image: ollama/ollama:0.22.1
+    entrypoint: ["/bin/sh", "-c"]
+    command: ["mkdir -p /home/ollama-user/.ollama && chown -R 2000:2000 /home/ollama-user/.ollama"]
+    user: "0:0"
+    volumes:
+      - knowledge_embedder_local_models:/home/ollama-user/.ollama
+    networks:
+      - alt-network
+    restart: "no"
+
+  # Local CPU reranker (ONNX int8 dynamic quantization, avx2). Replaces the
+  # remote Mac reranker for local deployments — rag-orchestrator still points
+  # RERANK_URL at rerank-external (see above) until that cutover happens.
+  # Optional dependency of rag-orchestrator (skip-degrade contract), so it is
+  # intentionally not wired via depends_on. First boot downloads
+  # BAAI/bge-reranker-v2-m3 (~2.3GB) and quantizes it into the mounted
+  # volume; subsequent restarts load the cached quantized model.
+  rerank-local:
+    build:
+      context: ../rerank-server
+      dockerfile: Dockerfile
+    deploy:
+      resources:
+        limits:
+          # One-time ONNX export at first boot peaks >4G (torch tracing of the
+          # fp32 checkpoint); steady-state serving needs ~2G.
+          memory: 6G
+          cpus: '16.0'
+    volumes:
+      - rerank_local_models:/models
+    ports:
+      - "127.0.0.1:8082:8080"
+    networks:
+      - alt-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8080/health', timeout=3)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 900s
+    labels:
+      - rask.group=rerank-local
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+volumes:
+  knowledge_embedder_local_models:
+  rerank_local_models:

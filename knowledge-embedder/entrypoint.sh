@@ -64,8 +64,8 @@ if ! curl -fs "http://127.0.0.1:11434/api/tags" >/dev/null 2>&1; then
   exit 1
 fi
 
-# Ensure embedding models exist
-EMBEDDING_MODELS="embeddinggemma mxbai-embed-large"
+# Ensure embedding models exist (overridable per deployment)
+EMBEDDING_MODELS="${EMBEDDING_MODELS:-embeddinggemma mxbai-embed-large}"
 
 for model in $EMBEDDING_MODELS; do
   echo "Ensuring $model model is available..."
