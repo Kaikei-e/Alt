@@ -78,6 +78,11 @@ pub trait RecapDao: Send + Sync {
         max_age_hours: i64,
     ) -> Result<Option<(Uuid, JobStatus, Option<String>, u32)>>;
 
+    /// 直近で `failed` になった Job を 1 件探す（`POST /admin/jobs/retry` 用）。
+    async fn find_most_recent_failed_job(
+        &self,
+    ) -> Result<Option<(Uuid, JobStatus, Option<String>, u32)>>;
+
     async fn mark_abandoned_jobs(&self, keep_job_id: Option<Uuid>) -> Result<u64>;
 
     async fn update_job_status(
@@ -417,6 +422,12 @@ where
         max_age_hours: i64,
     ) -> Result<Option<(Uuid, JobStatus, Option<String>, u32)>> {
         JobDao::find_resumable_job(self, max_age_hours).await
+    }
+
+    async fn find_most_recent_failed_job(
+        &self,
+    ) -> Result<Option<(Uuid, JobStatus, Option<String>, u32)>> {
+        JobDao::find_most_recent_failed_job(self).await
     }
 
     async fn mark_abandoned_jobs(&self, keep_job_id: Option<Uuid>) -> Result<u64> {

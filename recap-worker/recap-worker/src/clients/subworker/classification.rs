@@ -6,7 +6,8 @@ use tracing::{debug, error, info, warn};
 use uuid::Uuid;
 
 use super::types::{
-    CLASSIFY_POST_BACKOFF_MS, CLASSIFY_POST_RETRIES, ClassificationJobResponse,
+    CLASSIFY_POST_BACKOFF_MS, CLASSIFY_POST_RETRIES, COARSE_CLASSIFY_BACKOFF_BASE_MS,
+    COARSE_CLASSIFY_BACKOFF_CAP_MS, COARSE_CLASSIFY_MAX_ATTEMPTS, ClassificationJobResponse,
     ClassificationRequest, ClassificationResult, INITIAL_POLL_INTERVAL_MS, MAX_POLL_ATTEMPTS,
     MAX_POLL_INTERVAL_MS, POLL_REQUEST_RETRIES, POLL_REQUEST_RETRY_DELAY_MS,
     POLL_REQUEST_TIMEOUT_SECS, SUBWORKER_TIMEOUT_SECS,
@@ -14,6 +15,7 @@ use super::types::{
 use super::utils::truncate_error_message;
 use crate::clients::subworker::SubworkerClient;
 use crate::queue::ClassificationJobQueue;
+use crate::util::retry::{RetryConfig, is_retryable_error};
 
 impl SubworkerClient {
     /// Classify texts using the queue system (recommended for large batches)
@@ -102,7 +104,15 @@ impl SubworkerClient {
         Ok(results)
     }
 
-    /// Coarse classification (single text)
+    /// Coarse classification (single text).
+    ///
+    /// Bounded per-call timeout + small retry (`COARSE_CLASSIFY_MAX_ATTEMPTS`):
+    /// without the per-request `.timeout()` override this call would inherit
+    /// the client-wide `SUBWORKER_TIMEOUT_SECS` (1h), letting a
+    /// slow-but-alive subworker stall the genre stage for up to an hour per
+    /// article. The per-article fallback-to-"other" on error stays at the
+    /// `pipeline::genre` call site — this only bounds how long a single
+    /// call can block before that fallback kicks in.
     pub(crate) async fn classify_coarse(
         &self,
         text: &str,
@@ -115,30 +125,74 @@ impl SubworkerClient {
             .context("failed to build classify_coarse URL")?;
 
         let request = CoarseClassifyRequest { text };
+        let retry_config = RetryConfig::new(
+            COARSE_CLASSIFY_MAX_ATTEMPTS,
+            COARSE_CLASSIFY_BACKOFF_BASE_MS,
+            COARSE_CLASSIFY_BACKOFF_CAP_MS,
+        );
 
-        let response = self
-            .client
-            .post(url)
-            .json(&request)
-            .send()
-            .await
-            .context("classify_coarse request failed")?;
+        let mut attempt = 0;
+        loop {
+            let send_result = self
+                .client
+                .post(url.clone())
+                .timeout(self.coarse_classify_timeout)
+                .json(&request)
+                .send()
+                .await;
 
-        if !response.status().is_success() {
-            let status = response.status();
-            let body = response.text().await.unwrap_or_default();
-            return Err(anyhow!(
-                "classify_coarse endpoint error {}: {}",
-                status,
-                body
-            ));
+            let response = match send_result {
+                Ok(response) => response,
+                Err(err) => {
+                    attempt += 1;
+                    let retryable = is_retryable_error(&err);
+                    if !retryable || !retry_config.can_retry(attempt) {
+                        return Err(anyhow::Error::from(err))
+                            .context("classify_coarse request failed");
+                    }
+                    let delay = retry_config.delay_for_attempt(attempt);
+                    warn!(
+                        attempt,
+                        delay_ms = delay.as_millis(),
+                        error = %err,
+                        "classify_coarse request failed, retrying"
+                    );
+                    sleep(delay).await;
+                    continue;
+                }
+            };
+
+            if !response.status().is_success() {
+                let status = response.status();
+                let retryable =
+                    status.is_server_error() || status == reqwest::StatusCode::TOO_MANY_REQUESTS;
+                let body = response.text().await.unwrap_or_default();
+
+                attempt += 1;
+                if !retryable || !retry_config.can_retry(attempt) {
+                    return Err(anyhow!(
+                        "classify_coarse endpoint error {}: {}",
+                        status,
+                        body
+                    ));
+                }
+                let delay = retry_config.delay_for_attempt(attempt);
+                warn!(
+                    attempt,
+                    delay_ms = delay.as_millis(),
+                    %status,
+                    "classify_coarse endpoint returned error status, retrying"
+                );
+                sleep(delay).await;
+                continue;
+            }
+
+            return response
+                .json::<CoarseClassifyResponse>()
+                .await
+                .context("failed to parse classify_coarse response")
+                .map(|body| body.scores);
         }
-
-        let body: CoarseClassifyResponse = response
-            .json()
-            .await
-            .context("failed to parse classify_coarse response")?;
-        Ok(body.scores)
     }
 
     fn build_classify_url(&self) -> Result<Url> {
@@ -474,5 +528,69 @@ impl SubworkerClient {
             interval_ms = std::cmp::min(interval_ms * 2, MAX_POLL_INTERVAL_MS);
         }
         sleep(Duration::from_millis(interval_ms)).await;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::clients::subworker::SubworkerClient;
+    use wiremock::matchers::{method, path};
+    use wiremock::{Mock, MockServer, ResponseTemplate};
+
+    /// RED→GREEN regression: `classify_coarse` previously had no per-call
+    /// timeout override, so it inherited the client-wide
+    /// `SUBWORKER_TIMEOUT_SECS` (1h). A slow-but-alive subworker would stall
+    /// the genre stage for up to an hour per article instead of failing
+    /// fast. This pins that the call now fails well within the configured
+    /// per-call timeout instead of waiting for the slow response.
+    #[tokio::test]
+    async fn classify_coarse_fails_fast_on_slow_subworker_instead_of_hanging() {
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/v1/classify/coarse"))
+            .respond_with(ResponseTemplate::new(200).set_delay(Duration::from_secs(10)))
+            .mount(&server)
+            .await;
+
+        let client = SubworkerClient::new(server.uri(), 10)
+            .expect("client should build")
+            .with_coarse_classify_timeout(Duration::from_millis(100));
+
+        let start = std::time::Instant::now();
+        let result = client.classify_coarse("some article text").await;
+        let elapsed = start.elapsed();
+
+        assert!(result.is_err(), "slow subworker response should time out");
+        assert!(
+            elapsed < Duration::from_secs(5),
+            "classify_coarse must fail within the bounded per-call timeout + retries \
+             instead of inheriting the 1h client-wide timeout, took {:?}",
+            elapsed
+        );
+    }
+
+    /// A transient failure (5xx) must be retried a bounded number of times
+    /// before `classify_coarse` gives up, mirroring the crate's existing
+    /// retry idiom (`util::retry`).
+    #[tokio::test]
+    async fn classify_coarse_retries_transient_failures_before_giving_up() {
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/v1/classify/coarse"))
+            .respond_with(ResponseTemplate::new(503))
+            .expect(u64::try_from(COARSE_CLASSIFY_MAX_ATTEMPTS).unwrap())
+            .mount(&server)
+            .await;
+
+        let client = SubworkerClient::new(server.uri(), 10).expect("client should build");
+
+        let result = client.classify_coarse("some article text").await;
+
+        assert!(
+            result.is_err(),
+            "permanently failing subworker should still error out after retries"
+        );
+        server.verify().await;
     }
 }

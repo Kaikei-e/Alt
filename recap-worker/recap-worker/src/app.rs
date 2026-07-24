@@ -97,23 +97,26 @@ impl ComponentRegistry {
                 .await?
         });
 
-        let subworker_client = Arc::new(if let Some(paths) = mtls_paths.as_ref() {
-            let client = crate::clients::mtls::build_mtls_client(
-                paths,
-                std::time::Duration::from_secs(5),
-                std::time::Duration::from_hours(1),
-            )?;
-            SubworkerClient::new_with_client(
-                config.subworker_base_url(),
-                config.min_documents_per_genre(),
-                client,
-            )?
-        } else {
-            SubworkerClient::new(
-                config.subworker_base_url(),
-                config.min_documents_per_genre(),
-            )?
-        });
+        let subworker_client = Arc::new(
+            if let Some(paths) = mtls_paths.as_ref() {
+                let client = crate::clients::mtls::build_mtls_client(
+                    paths,
+                    std::time::Duration::from_secs(5),
+                    std::time::Duration::from_hours(1),
+                )?;
+                SubworkerClient::new_with_client(
+                    config.subworker_base_url(),
+                    config.min_documents_per_genre(),
+                    client,
+                )?
+            } else {
+                SubworkerClient::new(
+                    config.subworker_base_url(),
+                    config.min_documents_per_genre(),
+                )?
+            }
+            .with_coarse_classify_timeout(config.subworker_coarse_classify_timeout()),
+        );
         let recap_pool = PgPoolOptions::new()
             .max_connections(config.recap_db_max_connections())
             .min_connections(config.recap_db_min_connections())

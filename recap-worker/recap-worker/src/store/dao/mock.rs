@@ -79,8 +79,9 @@ pub(crate) struct MockRecapDao {
     /// `get_sentence_ids_by_run` の応答。
     sentence_ids: Arc<Mutex<SentenceIdsByRun>>,
     /// `find_resumable_job` の次回応答（1回だけ消費）。未設定なら `Ok(None)`。
-    find_resumable_job_result:
-        Arc<Mutex<Option<Result<Option<ResumableJob>>>>>,
+    find_resumable_job_result: Arc<Mutex<Option<Result<Option<ResumableJob>>>>>,
+    /// `find_most_recent_failed_job` の次回応答（1回だけ消費）。未設定なら `Ok(None)`。
+    find_most_recent_failed_job_result: Arc<Mutex<Option<Result<Option<ResumableJob>>>>>,
     /// `mark_abandoned_jobs` 呼び出し引数 (`keep_job_id`) の記録。
     mark_abandoned_jobs_calls: Arc<Mutex<Vec<Option<Uuid>>>>,
 }
@@ -137,14 +138,24 @@ impl MockRecapDao {
     /// テスト用に次回の `find_resumable_job` 呼び出しの応答をセットする
     /// （`Err` を注入して DB 障害を再現するのに使う）。
     #[allow(dead_code)]
-    pub(crate) fn set_find_resumable_job_result(
-        &self,
-        result: Result<Option<ResumableJob>>,
-    ) {
+    pub(crate) fn set_find_resumable_job_result(&self, result: Result<Option<ResumableJob>>) {
         *self
             .find_resumable_job_result
             .lock()
             .expect("find_resumable_job_result mutex poisoned") = Some(result);
+    }
+
+    /// テスト用に次回の `find_most_recent_failed_job` 呼び出しの応答をセットする
+    /// （`Err` を注入して DB 障害を再現するのに使う）。
+    #[allow(dead_code)]
+    pub(crate) fn set_find_most_recent_failed_job_result(
+        &self,
+        result: Result<Option<ResumableJob>>,
+    ) {
+        *self
+            .find_most_recent_failed_job_result
+            .lock()
+            .expect("find_most_recent_failed_job_result mutex poisoned") = Some(result);
     }
 
     /// 記録された `mark_abandoned_jobs` 呼び出し（`keep_job_id` 引数）のスナップショットを取得する。
@@ -191,13 +202,18 @@ impl RecapDao for MockRecapDao {
         Ok(false)
     }
 
-    async fn find_resumable_job(
-        &self,
-        _max_age_hours: i64,
-    ) -> Result<Option<ResumableJob>> {
+    async fn find_resumable_job(&self, _max_age_hours: i64) -> Result<Option<ResumableJob>> {
         self.find_resumable_job_result
             .lock()
             .expect("find_resumable_job_result mutex poisoned")
+            .take()
+            .unwrap_or(Ok(None))
+    }
+
+    async fn find_most_recent_failed_job(&self) -> Result<Option<ResumableJob>> {
+        self.find_most_recent_failed_job_result
+            .lock()
+            .expect("find_most_recent_failed_job_result mutex poisoned")
             .take()
             .unwrap_or(Ok(None))
     }

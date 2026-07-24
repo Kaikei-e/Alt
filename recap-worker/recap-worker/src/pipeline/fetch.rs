@@ -152,6 +152,58 @@ impl AltBackendFetchStage {
             }
         }
     }
+
+    /// タグをリトライ付きで取得する（`fetch_with_retry` と同じ再試行意味論、
+    /// 同じ `retry_config` を共有）。記事本体と異なりタグは enrichment
+    /// 用途のため、リトライを尽くしても最終的に失敗した場合は呼び出し側が
+    /// 空マップにフォールバックしパイプライン全体は継続する（非致命的）。
+    async fn fetch_tags_with_retry(
+        &self,
+        article_ids: &[String],
+    ) -> anyhow::Result<std::collections::HashMap<String, Vec<TagSignal>>> {
+        let mut attempt = 0;
+
+        loop {
+            match self.client.batch_get_tags_by_article_ids(article_ids).await {
+                Ok(tags) => {
+                    if attempt > 0 {
+                        info!(attempt, "tag fetch succeeded after retry");
+                    }
+                    return Ok(tags);
+                }
+                Err(err) => {
+                    attempt += 1;
+
+                    if !self.retry_config.can_retry(attempt) {
+                        warn!(
+                            attempt,
+                            max_attempts = self.retry_config.max_attempts,
+                            "tag fetch failed after all retries"
+                        );
+                        return Err(err);
+                    }
+
+                    let is_retryable = err
+                        .downcast_ref::<reqwest::Error>()
+                        .is_some_and(is_retryable_error);
+
+                    if !is_retryable {
+                        warn!(?err, "tag fetch error is not retryable");
+                        return Err(err);
+                    }
+
+                    let delay = self.retry_config.delay_for_attempt(attempt);
+                    warn!(
+                        attempt,
+                        delay_ms = delay.as_millis(),
+                        "tag fetch failed, retrying after delay"
+                    );
+
+                    tokio::time::sleep(delay).await;
+                }
+            }
+        }
+    }
 }
 
 #[async_trait]
@@ -223,11 +275,7 @@ impl FetchStage for AltBackendFetchStage {
         // Shared DB 経路廃止により tag-generator 経由は撤去)。
         let mut tags_by_article = std::collections::HashMap::new();
         let article_ids: Vec<String> = articles.iter().map(|a| a.article_id.clone()).collect();
-        match self
-            .client
-            .batch_get_tags_by_article_ids(&article_ids)
-            .await
-        {
+        match self.fetch_tags_with_retry(&article_ids).await {
             Ok(tags) => {
                 tags_by_article = tags;
                 info!(
@@ -240,7 +288,7 @@ impl FetchStage for AltBackendFetchStage {
                 warn!(
                     job_id = %job.job_id,
                     error = ?err,
-                    "failed to fetch batch tags from alt-backend, continuing without tags"
+                    "failed to fetch batch tags from alt-backend after retries, continuing without tags"
                 );
             }
         }
@@ -308,6 +356,58 @@ fn convert_to_raw_articles(articles: &[AltBackendArticle]) -> Vec<RawArticle> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::clients::alt_backend::AltBackendConfig;
+    use crate::store::dao::mock::MockRecapDao;
+    use wiremock::matchers::{method, path};
+    use wiremock::{Mock, MockServer, ResponseTemplate};
+
+    fn test_alt_backend_config(base_url: String) -> AltBackendConfig {
+        AltBackendConfig {
+            base_url,
+            connect_timeout: std::time::Duration::from_secs(3),
+            // Short on purpose: the retry test below relies on every
+            // attempt timing out client-side against a deliberately slow
+            // mock response (see `is_retryable_error`, which treats a
+            // client-level timeout as retryable — unlike the plain
+            // `anyhow::bail!` this client raises for a non-2xx HTTP status,
+            // which is not downcastable to `reqwest::Error` and therefore
+            // not retryable under the shared idiom).
+            total_timeout: std::time::Duration::from_millis(100),
+        }
+    }
+
+    const BATCH_TAGS_RPC_PATH: &str =
+        "/services.backend.v1.BackendInternalService/BatchGetTagsByArticleIDs";
+
+    /// RED→GREEN regression: the batch tag fetch in `AltBackendFetchStage`
+    /// was fully swallowed on any error with zero retry, while the article
+    /// fetch in the same stage (`fetch_with_retry`) already retries. This
+    /// pins that the tag fetch now shares the same bounded-retry idiom.
+    #[tokio::test]
+    async fn fetch_tags_with_retry_retries_transient_failures_before_giving_up() {
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path(BATCH_TAGS_RPC_PATH))
+            .respond_with(ResponseTemplate::new(200).set_delay(std::time::Duration::from_secs(2)))
+            .expect(3)
+            .mount(&server)
+            .await;
+
+        let client = Arc::new(
+            AltBackendClient::new(test_alt_backend_config(server.uri()))
+                .expect("client should build"),
+        );
+        let dao: Arc<dyn RecapDao> = Arc::new(MockRecapDao::new());
+        let stage = AltBackendFetchStage::new(client, dao, RetryConfig::new(3, 5, 20));
+
+        let result = stage.fetch_tags_with_retry(&["a1".to_string()]).await;
+
+        assert!(
+            result.is_err(),
+            "permanently timing-out tag fetch should still error out after retries are exhausted"
+        );
+        server.verify().await;
+    }
 
     #[test]
     fn convert_to_raw_articles_creates_valid_entries() {

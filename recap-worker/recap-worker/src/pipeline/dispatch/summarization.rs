@@ -15,6 +15,7 @@ use crate::config::Config;
 use crate::error::{RecapError, Result};
 use crate::scheduler::JobContext;
 use crate::store::dao::RecapDao;
+use crate::util::retry::RetryConfig;
 
 use super::types::GenreResult;
 
@@ -23,6 +24,48 @@ pub(crate) struct SummarizationOps<'a> {
     pub(crate) news_creator_client: &'a Arc<NewsCreatorClient>,
     pub(crate) dao: &'a Arc<dyn RecapDao>,
     pub(crate) config: &'a Arc<Config>,
+}
+
+/// Bounded retry for a batch-summary chunk transport failure: 3 attempts
+/// total (1 initial + 2 retries) with jittered backoff.
+const BATCH_SUMMARY_CHUNK_RETRY: RetryConfig = RetryConfig::new(3, 500, 5_000);
+
+/// Retries a whole-chunk batch-summary transport failure before letting the
+/// caller degrade every genre in the chunk to "Missing from batch response".
+/// A bounded number of attempts gives a transient news-creator hiccup (5xx,
+/// connection reset, timeout) a chance to recover instead of silently
+/// degrading a whole chunk of genres on the very first failure.
+async fn generate_batch_summary_with_retry(
+    news_creator_client: &NewsCreatorClient,
+    job_id: Uuid,
+    chunk_idx: usize,
+    chunk: &[SummaryRequest],
+) -> Result<BatchSummaryResponse> {
+    let mut attempt = 0;
+    loop {
+        match news_creator_client
+            .generate_batch_summary(chunk.to_vec())
+            .await
+        {
+            Ok(response) => return Ok(response),
+            Err(e) => {
+                attempt += 1;
+                if !BATCH_SUMMARY_CHUNK_RETRY.can_retry(attempt) {
+                    return Err(e);
+                }
+                let delay = BATCH_SUMMARY_CHUNK_RETRY.delay_for_attempt(attempt);
+                warn!(
+                    job_id = %job_id,
+                    chunk_idx,
+                    attempt,
+                    delay_ms = delay.as_millis(),
+                    error = ?e,
+                    "batch summary chunk failed, retrying"
+                );
+                tokio::time::sleep(delay).await;
+            }
+        }
+    }
 }
 
 fn apply_recap_request_defaults(
@@ -450,19 +493,30 @@ impl SummarizationOps<'_> {
                 "processing batch summary chunk"
             );
 
-            match self.news_creator_client.generate_batch_summary(chunk).await {
+            match generate_batch_summary_with_retry(
+                self.news_creator_client,
+                job.job_id,
+                chunk_idx,
+                &chunk,
+            )
+            .await
+            {
                 Ok(response) => {
                     all_responses.extend(response.responses);
                     all_errors.extend(response.errors);
                 }
                 Err(e) => {
-                    // チャンク全体失敗時はエラーメッセージをログに記録
-                    // 個別ジャンルは process_batch_response で "Missing from batch response" として処理される
+                    // チャンク全体失敗時（リトライを尽くした後）はエラーメッセージと
+                    // 影響を受けるジャンル名をログに記録する。個別ジャンルは
+                    // process_batch_response で "Missing from batch response" として
+                    // degrade される。
+                    let genres: Vec<&str> = chunk.iter().map(|r| r.genre.as_str()).collect();
                     error!(
                         job_id = %job.job_id,
                         chunk_idx = chunk_idx,
+                        ?genres,
                         error = ?e,
-                        "batch summary chunk failed"
+                        "batch summary chunk failed after retries, degrading genres to missing-from-batch"
                     );
                 }
             }
@@ -610,6 +664,56 @@ impl SummarizationOps<'_> {
 mod tests {
     use super::*;
     use uuid::Uuid;
+    use wiremock::matchers::{method, path};
+    use wiremock::{Mock, MockServer, ResponseTemplate};
+
+    fn sample_chunk() -> Vec<SummaryRequest> {
+        vec![
+            SummaryRequest {
+                job_id: Uuid::new_v4(),
+                genre: "tech".to_string(),
+                clusters: vec![],
+                genre_highlights: None,
+                options: None,
+                window_days: None,
+            },
+            SummaryRequest {
+                job_id: Uuid::new_v4(),
+                genre: "politics".to_string(),
+                clusters: vec![],
+                genre_highlights: None,
+                options: None,
+                window_days: None,
+            },
+        ]
+    }
+
+    /// RED→GREEN regression: a whole-chunk batch-summary transport failure
+    /// was logged and never retried (single attempt), silently degrading
+    /// every genre in the chunk to "Missing from batch response". This pins
+    /// the new behavior: a permanently failing chunk is retried a bounded
+    /// number of times before the caller gives up.
+    #[tokio::test]
+    async fn generate_batch_summary_with_retry_retries_before_giving_up() {
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/v1/summary/generate/batch"))
+            .respond_with(ResponseTemplate::new(503))
+            .expect(3)
+            .mount(&server)
+            .await;
+
+        let client = NewsCreatorClient::new_for_test(server.uri());
+        let chunk = sample_chunk();
+
+        let result = generate_batch_summary_with_retry(&client, Uuid::new_v4(), 0, &chunk).await;
+
+        assert!(
+            result.is_err(),
+            "permanently failing chunk should still degrade after retries are exhausted"
+        );
+        server.verify().await;
+    }
 
     #[test]
     fn apply_request_defaults_threads_3day_window_and_temperature() {

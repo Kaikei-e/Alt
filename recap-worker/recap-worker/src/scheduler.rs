@@ -15,4 +15,4 @@ type JstBatchDaemonSpawnFn = fn(
 
 #[allow(dead_code)]
 const _SPAWN_JST_BATCH_DAEMON_GUARD: JstBatchDaemonSpawnFn = daemon::spawn_jst_batch_daemon;
-pub(crate) use jobs::{JobContext, Scheduler};
+pub(crate) use jobs::{JobContext, RetryOutcome, Scheduler};

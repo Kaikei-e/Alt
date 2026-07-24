@@ -158,6 +158,42 @@ impl RecapDao {
         }
     }
 
+    /// 直近で `failed` になった Job を 1 件探す（`POST /admin/jobs/retry` 用）。
+    ///
+    /// `trigger_source` は問わない（`system` / `morning` / `user` いずれの
+    /// 失敗も再試行対象になり得る）。年齢上限を設けないのは、
+    /// `job_retention_days` の cleanup が古い行を自然に消すため。
+    pub async fn find_most_recent_failed_job(
+        pool: &PgPool,
+    ) -> Result<Option<(Uuid, JobStatus, Option<String>, u32)>> {
+        let row = sqlx::query(
+            r"
+            SELECT job_id, status, last_stage, window_days
+            FROM recap_jobs
+            WHERE status = 'failed'
+            ORDER BY kicked_at DESC
+            LIMIT 1
+            ",
+        )
+        .fetch_optional(pool)
+        .await
+        .map_err(|e| RecapError::Db(format!("failed to find most recent failed job: {e}")))?;
+
+        if let Some(row) = row {
+            let job_id: Uuid = row.try_get("job_id")?;
+            let status_str: String = row.try_get("status")?;
+            let last_stage: Option<String> = row.try_get("last_stage")?;
+            let window_days: Option<i32> = row.try_get("window_days")?;
+            let window_days = window_days.unwrap_or(7).cast_unsigned();
+
+            let status = JobStatus::from_db_str(&status_str);
+
+            Ok(Some((job_id, status, last_stage, window_days)))
+        } else {
+            Ok(None)
+        }
+    }
+
     /// ジョブのステータスと最終ステージを更新する。
     ///
     /// # Warning
