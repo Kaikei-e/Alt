@@ -30,6 +30,18 @@ import (
 	"golang.org/x/time/rate"
 )
 
+// wireInternalAuth is the sole choke point for /internal auth wiring. It
+// panics on an empty secret instead of falling back to an unauthenticated
+// no-op: config.Validate() already requires a non-empty BackendTokenSecret,
+// so reaching this branch with an empty secret means that invariant broke,
+// not that internal auth should be silently disabled (CLAUDE.md Rule 8).
+func wireInternalAuth(secret string) echo.MiddlewareFunc {
+	if secret == "" {
+		panic("main: BACKEND_TOKEN_SECRET must be set before wiring internal auth")
+	}
+	return appmiddleware.InternalAuth(secret)
+}
+
 func main() {
 	// Handle healthcheck subcommand (for Docker healthcheck in distroless image)
 	if len(os.Args) > 1 && os.Args[1] == "healthcheck" {
@@ -171,9 +183,7 @@ func main() {
 	internalGroup := e.Group("/internal",
 		internalRL.Middleware(),
 	)
-	if cfg.BackendTokenSecret != "" {
-		internalGroup.Use(appmiddleware.InternalAuth(cfg.BackendTokenSecret))
-	}
+	internalGroup.Use(wireInternalAuth(cfg.BackendTokenSecret))
 	internalGroup.GET("/system-user", internalHandler.HandleSystemUser)
 
 	// Start server with errgroup for graceful shutdown
