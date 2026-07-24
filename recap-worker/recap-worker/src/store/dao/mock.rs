@@ -24,6 +24,11 @@ use crate::store::models::{
 };
 
 #[cfg(test)]
+/// A resumable job row returned by `find_resumable_job`:
+/// (run_id, status, checkpoint, attempt).
+type ResumableJob = (Uuid, JobStatus, Option<String>, u32);
+
+#[cfg(test)]
 /// `insert_failed_task` 呼び出しを記録するためのスナップショット。
 #[allow(dead_code)]
 #[derive(Debug, Clone)]
@@ -75,7 +80,7 @@ pub(crate) struct MockRecapDao {
     sentence_ids: Arc<Mutex<SentenceIdsByRun>>,
     /// `find_resumable_job` の次回応答（1回だけ消費）。未設定なら `Ok(None)`。
     find_resumable_job_result:
-        Arc<Mutex<Option<Result<Option<(Uuid, JobStatus, Option<String>, u32)>>>>>,
+        Arc<Mutex<Option<Result<Option<ResumableJob>>>>>,
     /// `mark_abandoned_jobs` 呼び出し引数 (`keep_job_id`) の記録。
     mark_abandoned_jobs_calls: Arc<Mutex<Vec<Option<Uuid>>>>,
 }
@@ -134,7 +139,7 @@ impl MockRecapDao {
     #[allow(dead_code)]
     pub(crate) fn set_find_resumable_job_result(
         &self,
-        result: Result<Option<(Uuid, JobStatus, Option<String>, u32)>>,
+        result: Result<Option<ResumableJob>>,
     ) {
         *self
             .find_resumable_job_result
@@ -189,7 +194,7 @@ impl RecapDao for MockRecapDao {
     async fn find_resumable_job(
         &self,
         _max_age_hours: i64,
-    ) -> Result<Option<(Uuid, JobStatus, Option<String>, u32)>> {
+    ) -> Result<Option<ResumableJob>> {
         self.find_resumable_job_result
             .lock()
             .expect("find_resumable_job_result mutex poisoned")
