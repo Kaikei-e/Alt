@@ -3,6 +3,7 @@ package handler
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"strconv"
 	"strings"
 
@@ -58,6 +59,15 @@ func (h *SovereignHandler) GetTrailFootprints(
 	}
 	episodes := trail_episodes.Derive(window)
 	episodes = filterEpisodesByItemKeys(episodes, msg.FilterItemKeys)
+	if len(msg.FilterItemKeys) > 0 && len(episodes) == 0 {
+		// Episodes derive over a fixed episodeWindowRows window (above), so a
+		// filtered-to-empty result is indistinguishable here from "the item
+		// exists but fell outside the window" vs. a genuine no-match. Loud by
+		// design (ADR-000949's window-exceeded redesign trigger needs this
+		// signal in production to ever fire).
+		slog.WarnContext(ctx, "trail_search_window_exhausted",
+			"user_id", userID.String(), "window_rows", episodeWindowRows)
+	}
 
 	limit := int(msg.Limit)
 	if limit < 0 {

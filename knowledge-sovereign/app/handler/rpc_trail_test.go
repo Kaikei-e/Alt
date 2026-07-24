@@ -1,7 +1,9 @@
 package handler
 
 import (
+	"bytes"
 	"context"
+	"log/slog"
 	"testing"
 	"time"
 
@@ -223,6 +225,57 @@ func TestGetTrailFootprints_FilterItemKeysPagingAppliesAfterFiltering(t *testing
 	require.Len(t, page2.Msg.Episodes, 1)
 	assert.Equal(t, "ep:fp:a", page2.Msg.Episodes[0].EpisodeKey, "the excluded article:b episode must not consume a page slot")
 	assert.False(t, page2.Msg.HasMore)
+}
+
+// episodeWindowRows bounds episode derivation to the most recent 500
+// collapsed footprint rows (Wave 8). A trail-search filter for an item that
+// fell outside that window returns zero episodes indistinguishable from a
+// genuine "no such item" — this must be observable so ADR-000949's
+// window-exceeded redesign trigger can actually fire in production.
+func TestGetTrailFootprints_FilterItemKeysNoMatchLogsWindowExhaustedWarning(t *testing.T) {
+	var buf bytes.Buffer
+	prevLogger := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(&buf, nil)))
+	defer slog.SetDefault(prevLogger)
+
+	repo := &mockRepo{trailFootprints: []sovereign_db.TrailFootprint{{
+		FootprintKey: "fp:a", ItemKey: "article:a", Verb: "read",
+		OccurredAt: time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC), Wear: "thin",
+	}}}
+	h := NewSovereignHandler(repo)
+
+	resp, err := h.GetTrailFootprints(context.Background(), connect.NewRequest(&sovereignv1.GetTrailFootprintsRequest{
+		UserId:         "22222222-2222-2222-2222-222222222222",
+		Limit:          20,
+		FilterItemKeys: []string{"article:not-in-window"},
+	}))
+	require.NoError(t, err)
+	assert.Empty(t, resp.Msg.Episodes)
+	assert.Contains(t, buf.String(), "trail_search_window_exhausted")
+}
+
+// A filter that legitimately matches must never log the warning — it fires
+// only when the filtered result comes back empty.
+func TestGetTrailFootprints_FilterItemKeysWithMatchDoesNotLogWarning(t *testing.T) {
+	var buf bytes.Buffer
+	prevLogger := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(&buf, nil)))
+	defer slog.SetDefault(prevLogger)
+
+	repo := &mockRepo{trailFootprints: []sovereign_db.TrailFootprint{{
+		FootprintKey: "fp:a", ItemKey: "article:a", Verb: "read",
+		OccurredAt: time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC), Wear: "thin",
+	}}}
+	h := NewSovereignHandler(repo)
+
+	resp, err := h.GetTrailFootprints(context.Background(), connect.NewRequest(&sovereignv1.GetTrailFootprintsRequest{
+		UserId:         "22222222-2222-2222-2222-222222222222",
+		Limit:          20,
+		FilterItemKeys: []string{"article:a"},
+	}))
+	require.NoError(t, err)
+	require.Len(t, resp.Msg.Episodes, 1)
+	assert.NotContains(t, buf.String(), "trail_search_window_exhausted")
 }
 
 func TestGetTrailFootprints_InvalidEpisodeCursorIsInvalidArgument(t *testing.T) {
