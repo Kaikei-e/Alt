@@ -91,7 +91,7 @@ services:
       - DB_USER=${RAG_DB_USER:-rag_user}
       - DB_PASSWORD_FILE=/run/secrets/rag_db_password
       - DB_NAME=${RAG_DB_NAME:-rag_db}
-      - EMBEDDER_EXTERNAL=${EMBEDDER_EXTERNAL}
+      - EMBEDDER_EXTERNAL=${EMBEDDER_EXTERNAL:-http://knowledge-embedder-local:11434}
       # CPU embedder needs headroom: ~250-300ms/chunk, long articles reach
       # 50+ chunks per /api/embed call (measured 9.7s for 53 chunks).
       - EMBEDDER_TIMEOUT=60
@@ -149,7 +149,7 @@ services:
     labels:
       - rask.group=rag-orchestrator
     extra_hosts:
-      - "embedder-external:${EMBEDDER_EXTERNAL_HOST}"
+      - "embedder-external:${EMBEDDER_EXTERNAL_HOST:-127.0.0.1}"
       - "augur-external:${AUGUR_EXTERNAL_HOST:-127.0.0.1}"
       - "rerank-external:${RERANK_EXTERNAL_HOST:-127.0.0.1}"
     logging:
