@@ -23,6 +23,7 @@ import logging
 import os
 import time
 from collections.abc import AsyncIterator
+from concurrent.futures import ThreadPoolExecutor
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any
@@ -72,9 +73,21 @@ MAX_TOP_K = MAX_CANDIDATES
 # loop so /health and other requests stay responsive during inference.
 _inference_semaphore = asyncio.Semaphore(1)
 
+# Dedicated single-worker executor for inference. asyncio.timeout() only
+# cancels the *awaiting* coroutine; it cannot stop a thread that's already
+# running (concurrent.futures.Future.cancel() is a no-op once execution has
+# started). With asyncio.to_thread's shared default executor, a timed-out
+# request releases _inference_semaphore while its thread keeps calling
+# model.predict() in the background, letting the next request's predict()
+# call run concurrently on the same non-thread-safe CrossEncoder instance.
+# Routing every inference job through this single-worker executor instead
+# guarantees at most one predict() call runs at a time regardless: an
+# orphaned job just keeps the next one queued behind it.
+_inference_executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="rerank-inference")
+
 
 def _predict_sync(model: CrossEncoder, pairs: list[tuple[str, str]]) -> Any:
-    """Run blocking CrossEncoder inference. Called via asyncio.to_thread."""
+    """Run blocking CrossEncoder inference. Called via _inference_executor."""
     with torch.inference_mode():
         if RERANK_BACKEND == "onnx":
             return model.predict(pairs, batch_size=RERANK_BATCH_SIZE)
@@ -264,7 +277,10 @@ async def rerank(req: RerankRequest, request: Request) -> RerankResponse:
     try:
         async with _inference_semaphore:
             async with asyncio.timeout(INFERENCE_TIMEOUT_SECONDS):
-                scores = await asyncio.to_thread(_predict_sync, model, pairs)
+                loop = asyncio.get_running_loop()
+                scores = await loop.run_in_executor(
+                    _inference_executor, _predict_sync, model, pairs
+                )
     except TimeoutError as exc:
         raise HTTPException(status_code=504, detail="Rerank inference timed out") from exc
 
