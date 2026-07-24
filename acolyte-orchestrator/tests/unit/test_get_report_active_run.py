@@ -110,6 +110,9 @@ class _FakeJobQueue:
     async def get_run(self, run_id: UUID) -> ReportRun | None:
         return None
 
+    async def list_running_runs(self) -> list[ReportRun]:
+        return []
+
     async def get_latest_run_for_report(self, report_id: UUID) -> ReportRun | None:
         return None
 

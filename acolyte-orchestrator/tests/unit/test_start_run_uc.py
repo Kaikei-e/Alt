@@ -123,6 +123,9 @@ class _FakeJobQueue:
         )
 
     # Rest of JobQueuePort — not exercised by StartRunUsecase.
+    async def list_running_runs(self) -> list[ReportRun]:
+        return []
+
     async def get_run(self, run_id: UUID) -> ReportRun | None:
         raise NotImplementedError
 

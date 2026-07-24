@@ -32,13 +32,14 @@ if TYPE_CHECKING:
     from acolyte.config.settings import Settings
     from acolyte.gateway.postgres_job_gw import PostgresJobGateway
     from acolyte.gateway.postgres_report_gw import PostgresReportGateway
+    from acolyte.port.content_store import ContentStorePort
     from acolyte.port.hyde_generator import HyDEGeneratorPort
     from acolyte.port.llm_provider import LLMProviderPort
 
 logger = structlog.get_logger(__name__)
 
 
-def _build_pipeline_deps(settings: Settings, llm: LLMProviderPort) -> tuple[HyDEGeneratorPort | None, object]:
+def _build_pipeline_deps(settings: Settings, llm: LLMProviderPort) -> tuple[HyDEGeneratorPort | None, ContentStorePort]:
     """Mirror main.py's per-run DI wiring (HyDE generator + content-store cap).
 
     Kept as a pure function of (settings, llm) — no DB/checkpointer/httpx —

@@ -115,6 +115,9 @@ class _FakeJobQueue:
         )
 
     # Unused stubs for the rest of JobQueuePort.
+    async def list_running_runs(self) -> list[ReportRun]:
+        return []
+
     async def get_run(self, run_id: UUID) -> ReportRun | None:
         raise NotImplementedError
 
