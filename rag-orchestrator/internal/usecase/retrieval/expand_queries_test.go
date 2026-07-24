@@ -364,3 +364,69 @@ func TestFilterSearchQueries_EmptyResolvedQueryNoFallback(t *testing.T) {
 	result := FilterSearchQueries(queries, "")
 	assert.Empty(t, result)
 }
+
+// --- Markdown scaffolding tests (production leak 2026-07-24) ---
+
+func TestFilterExpandedQueries_MarkdownHeaders_Stripped(t *testing.T) {
+	queries := []string{
+		"### Japanese (1)",
+		"### English (3)",
+		"サプライチェーン 混乱 原因",
+		"global supply chain disruption causes",
+	}
+	result := filterExpandedQueries(queries)
+	assert.Equal(t, []string{"サプライチェーン 混乱 原因", "global supply chain disruption causes"}, result)
+}
+
+func TestFilterExpandedQueries_BoldLabelMetaProse_Dropped(t *testing.T) {
+	queries := []string{
+		"*Execution:**",
+		"**Input Translation:** \"Snowflake warehouse cost optimization\"",
+		"**Query Generation Strategy:** Focus on the core topic, covering synonyms and related concepts.",
+		"global supply chain disruption causes",
+	}
+	result := filterExpandedQueries(queries)
+	assert.Equal(t, []string{"global supply chain disruption causes"}, result)
+}
+
+func TestFilterExpandedQueries_BoldGeneratedQueryLabel_Extracted(t *testing.T) {
+	queries := []string{
+		"**Generated Query:** Snowflakeウェアハウス コスト削減 方法",
+		"**Query:** global supply chain disruption causes",
+	}
+	result := filterExpandedQueries(queries)
+	assert.Equal(t, []string{"Snowflakeウェアハウス コスト削減 方法", "global supply chain disruption causes"}, result)
+}
+
+func TestFilterExpandedQueries_RealWorldPollutedOutput_ExtractsOnlyRealQueries(t *testing.T) {
+	// Exact shape observed in production logs 2026-07-24: markdown headers, bold
+	// meta-prose labels (strategy/translation/execution commentary), and one
+	// bold "Generated Query" label whose trailing content is a real query.
+	queries := []string{
+		"*Execution:**",
+		"### Japanese (1)",
+		"**Input Translation:** \"Snowflake warehouse cost optimization\"",
+		"**Query Generation Strategy:** Focus on the core topic, covering synonyms and related concepts.",
+		"**Generated Query:** Snowflakeウェアハウス コスト削減 方法",
+		"### English (3)",
+		"Snowflake compute cost reduction strategies",
+	}
+	result := filterExpandedQueries(queries)
+	assert.Equal(t, []string{
+		"Snowflakeウェアハウス コスト削減 方法",
+		"Snowflake compute cost reduction strategies",
+	}, result)
+}
+
+func TestFilterExpandedQueries_WellFormedPlainList_PassesThroughUnchanged(t *testing.T) {
+	// Anti-regression: a clean, well-formed list of queries must survive intact.
+	// The previous over-aggressive filter regression (docs/review/augur-expand-query-filter-investigation-2026-04-11.md)
+	// reduced 25 raw lines to 0 usable queries.
+	queries := []string{
+		"人工知能 最新研究動向",
+		"artificial intelligence research trends",
+		"AI技術 2026年の動向",
+	}
+	result := filterExpandedQueries(queries)
+	assert.Equal(t, queries, result)
+}

@@ -547,6 +547,50 @@ func TestRetrievalGraph_Execute_EmptyPlannerQueries_CallsExpander(t *testing.T) 
 	expander.AssertCalled(t, "ExpandQuery", mock.Anything, "fallback query", 1, 3)
 }
 
+func TestRetrievalGraph_Execute_ExpandQueryAllFiltered_FallsBackToOriginalQuery(t *testing.T) {
+	// Reproduces docs/review/augur-expand-query-filter-investigation-2026-04-11.md:
+	// the LLM returned output, but every candidate is meta-prose/instruction echo
+	// with no extractable query. ExpandedQueries must not degrade to empty — BM25
+	// and vector search still need at least the original query to work from.
+	expander := new(mockQueryExpander)
+	search := new(mockSearchClient)
+	encoder := new(mockVectorEncoder)
+	chunkRepo := new(mockChunkRepo)
+
+	queryVec := []float32{0.1, 0.2, 0.3}
+
+	expander.On("ExpandQuery", mock.Anything, "supply chain disruption causes", 1, 3).
+		Return([]string{"Japanese queries and English queries must be translated to each other."}, nil)
+	search.On("Search", mock.Anything, "supply chain disruption causes").Return([]domain.SearchHit{}, nil)
+	encoder.On("Encode", mock.Anything, mock.Anything).Return([][]float32{queryVec}, nil)
+	chunkRepo.On("Search", mock.Anything, queryVec, 50).Return([]domain.SearchResult{}, nil)
+
+	g := retrieval.NewRetrievalGraph(retrieval.GraphDeps{
+		QueryExpander: expander,
+		LLMClient:     new(mockLLMClient),
+		SearchClient:  search,
+		Encoder:       encoder,
+		ChunkRepo:     chunkRepo,
+		Config: retrieval.GraphConfig{
+			SearchLimit:                      50,
+			RRFK:                             60.0,
+			QuotaOriginal:                    5,
+			QuotaExpanded:                    5,
+			DynamicLanguageAllocationEnabled: true,
+		},
+		Logger: discardLogger(),
+	})
+
+	result, err := g.Execute(context.Background(), retrieval.GraphInput{
+		Query: "supply chain disruption causes",
+	})
+
+	assert.NoError(t, err)
+	assert.NotNil(t, result)
+	assert.NotEmpty(t, result.ExpandedQueries, "must not degrade to zero expanded queries when the LLM returned output")
+	assert.Equal(t, []string{"supply chain disruption causes"}, result.ExpandedQueries)
+}
+
 func TestRetrievalGraph_Execute_WithCandidateArticleIDs(t *testing.T) {
 	// Morning Letter use case: search within specific articles.
 	expander := new(mockQueryExpander)
