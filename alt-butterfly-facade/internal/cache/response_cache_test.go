@@ -64,6 +64,58 @@ func TestResponseCache_Get_Expired(t *testing.T) {
 	assert.False(t, found, "Expired entries should not be returned")
 }
 
+func TestResponseCache_DeleteByUserAndEndpoints(t *testing.T) {
+	c := NewResponseCache(1000)
+	userA := "user-a"
+	userB := "user-b"
+	unread := "/alt.feeds.v2.FeedService/GetUnreadFeeds"
+	count := "/alt.feeds.v2.FeedService/GetUnreadCount"
+	stats := "/alt.feeds.v2.FeedService/GetFeedStats"
+
+	c.Set(BuildCacheKey(userA, unread, []byte(`{"cursor":"1"}`)), &CacheEntry{Response: []byte("a1"), CachedAt: time.Now(), TTL: 30 * time.Second})
+	c.Set(BuildCacheKey(userA, unread, []byte(`{"cursor":"2"}`)), &CacheEntry{Response: []byte("a2"), CachedAt: time.Now(), TTL: 30 * time.Second})
+	c.Set(BuildCacheKey(userA, count, []byte(`{}`)), &CacheEntry{Response: []byte("ac"), CachedAt: time.Now(), TTL: 30 * time.Second})
+	c.Set(BuildCacheKey(userA, stats, []byte(`{}`)), &CacheEntry{Response: []byte("as"), CachedAt: time.Now(), TTL: 30 * time.Second})
+	c.Set(BuildCacheKey(userB, unread, []byte(`{"cursor":"1"}`)), &CacheEntry{Response: []byte("b1"), CachedAt: time.Now(), TTL: 30 * time.Second})
+
+	deleted := c.DeleteByUserAndEndpoints(userA, []string{unread, count, "/alt.feeds.v2.FeedService/GetAllFeeds"})
+	assert.Equal(t, 3, deleted)
+
+	_, found := c.Get(BuildCacheKey(userA, unread, []byte(`{"cursor":"1"}`)))
+	assert.False(t, found)
+	_, found = c.Get(BuildCacheKey(userA, count, []byte(`{}`)))
+	assert.False(t, found)
+	_, found = c.Get(BuildCacheKey(userA, stats, []byte(`{}`)))
+	assert.True(t, found, "unrelated endpoint for same user must remain")
+	_, found = c.Get(BuildCacheKey(userB, unread, []byte(`{"cursor":"1"}`)))
+	assert.True(t, found, "other user's unread cache must remain")
+}
+
+func TestResponseCache_SetIfEpoch_RejectsStaleInFlightWrite(t *testing.T) {
+	c := NewResponseCache(1000)
+	user := "user-a"
+	unread := "/alt.feeds.v2.FeedService/GetUnreadFeeds"
+	key := BuildCacheKey(user, unread, []byte(`{"cursor":"1"}`))
+
+	epoch := c.UserEpoch(user)
+	assert.Equal(t, uint64(0), epoch)
+
+	// Mutation invalidation bumps epoch and clears keys.
+	c.DeleteByUserAndEndpoints(user, []string{unread})
+	assert.Equal(t, uint64(1), c.UserEpoch(user))
+
+	ok := c.SetIfEpoch(user, key, &CacheEntry{Response: []byte("stale"), CachedAt: time.Now(), TTL: 30 * time.Second}, epoch)
+	assert.False(t, ok, "in-flight read started before bust must not re-Set")
+	_, found := c.Get(key)
+	assert.False(t, found)
+
+	ok = c.SetIfEpoch(user, key, &CacheEntry{Response: []byte("fresh"), CachedAt: time.Now(), TTL: 30 * time.Second}, c.UserEpoch(user))
+	assert.True(t, ok)
+	entry, found := c.Get(key)
+	require.True(t, found)
+	assert.Equal(t, []byte("fresh"), entry.Response)
+}
+
 func TestResponseCache_Delete(t *testing.T) {
 	cache := NewResponseCache(1000)
 

@@ -147,7 +147,35 @@ func NewServerWithTransports(
 					Size:   cacheStats.Size,
 				}
 			}
-			if cbStats := bffHandler.GetCircuitBreakerStats(); cbStats != nil {
+			if classStats := bffHandler.GetCircuitBreakerClassStats(); classStats != nil {
+				stats.CircuitBreaker = &CircuitBreakerStatsResponse{}
+				if rollup := bffHandler.GetCircuitBreakerStats(); rollup != nil {
+					stats.CircuitBreaker.State = rollup.State.String()
+					stats.CircuitBreaker.TotalSuccesses = rollup.TotalSuccesses
+					stats.CircuitBreaker.TotalFailures = rollup.TotalFailures
+				}
+				if classStats.Mutation != nil {
+					stats.CircuitBreaker.Mutation = &CircuitBreakerClassSlice{
+						State:          classStats.Mutation.State.String(),
+						TotalSuccesses: classStats.Mutation.TotalSuccesses,
+						TotalFailures:  classStats.Mutation.TotalFailures,
+					}
+				}
+				if classStats.Projection != nil {
+					stats.CircuitBreaker.Projection = &CircuitBreakerClassSlice{
+						State:          classStats.Projection.State.String(),
+						TotalSuccesses: classStats.Projection.TotalSuccesses,
+						TotalFailures:  classStats.Projection.TotalFailures,
+					}
+				}
+				if classStats.NonCritical != nil {
+					stats.CircuitBreaker.NonCritical = &CircuitBreakerClassSlice{
+						State:          classStats.NonCritical.State.String(),
+						TotalSuccesses: classStats.NonCritical.TotalSuccesses,
+						TotalFailures:  classStats.NonCritical.TotalFailures,
+					}
+				}
+			} else if cbStats := bffHandler.GetCircuitBreakerStats(); cbStats != nil {
 				stats.CircuitBreaker = &CircuitBreakerStatsResponse{
 					State:          cbStats.State.String(),
 					TotalSuccesses: cbStats.TotalSuccesses,
@@ -306,6 +334,16 @@ type CacheStatsResponse struct {
 
 // CircuitBreakerStatsResponse represents circuit breaker statistics in the API response.
 type CircuitBreakerStatsResponse struct {
+	State          string                    `json:"state"`
+	TotalSuccesses int64                     `json:"total_successes"`
+	TotalFailures  int64                     `json:"total_failures"`
+	Mutation       *CircuitBreakerClassSlice `json:"mutation,omitempty"`
+	Projection     *CircuitBreakerClassSlice `json:"projection,omitempty"`
+	NonCritical    *CircuitBreakerClassSlice `json:"non_critical,omitempty"`
+}
+
+// CircuitBreakerClassSlice is per-dependency-class CB stats.
+type CircuitBreakerClassSlice struct {
 	State          string `json:"state"`
 	TotalSuccesses int64  `json:"total_successes"`
 	TotalFailures  int64  `json:"total_failures"`

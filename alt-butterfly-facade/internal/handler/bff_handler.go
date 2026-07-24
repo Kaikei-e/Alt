@@ -48,10 +48,12 @@ type BFFHandler struct {
 	streamingTimeout time.Duration
 
 	// BFF components
-	responseCache  *cache.ResponseCache
-	cacheConfig    *cache.CacheConfig
-	circuitBreaker *resilience.CircuitBreaker
-	deduplicator   *RequestDeduplicator
+	responseCache *cache.ResponseCache
+	cacheConfig   *cache.CacheConfig
+	mutationCB    *resilience.CircuitBreaker
+	projectionCB  *resilience.CircuitBreaker
+	nonCriticalCB *resilience.CircuitBreaker
+	deduplicator  *RequestDeduplicator
 }
 
 // NewBFFHandler creates a new BFF handler with all features.
@@ -77,13 +79,27 @@ func NewBFFHandler(
 		h.cacheConfig = cache.NewCacheConfig()
 	}
 
-	// Initialize circuit breaker if enabled
+	// Initialize per-dependency-class circuit breakers if enabled.
+	// Mutation and unread-projection budgets are separate so GetAllFeeds
+	// storms cannot trip MarkAsRead (adversarial review / per-path CB guidance).
+	// Everything else shares the non-critical breaker (default / opt-in).
 	if config.EnableCircuitBreaker {
-		h.circuitBreaker = resilience.NewCircuitBreaker(resilience.CircuitBreakerConfig{
+		cbCfg := resilience.CircuitBreakerConfig{
 			FailureThreshold: config.CBFailureThreshold,
 			SuccessThreshold: config.CBSuccessThreshold,
 			OpenTimeout:      config.CBOpenTimeout,
-		})
+		}
+		h.mutationCB = resilience.NewCircuitBreaker(cbCfg)
+		h.projectionCB = resilience.NewCircuitBreaker(cbCfg)
+		h.nonCriticalCB = resilience.NewCircuitBreaker(cbCfg)
+		if logger != nil {
+			logger.Info("circuit_breaker_classes",
+				"critical_mutation", resilience.CriticalMutationEndpointCount(),
+				"unread_projection", resilience.UnreadProjectionEndpointCount(),
+				"non_critical", "default",
+				"unclassified_as", "non_critical",
+			)
+		}
 	}
 
 	// Initialize deduplicator if enabled
@@ -139,8 +155,8 @@ func (h *BFFHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	userID := userCtx.UserID.String()
 	endpoint := r.URL.Path
 
-	// Check circuit breaker
-	if h.circuitBreaker != nil && !h.circuitBreaker.Allow() {
+	// Check dependency-class circuit breaker
+	if cb := h.breakerFor(endpoint); cb != nil && !cb.Allow() {
 		h.handleCircuitOpen(w, requestID)
 		return
 	}
@@ -196,23 +212,24 @@ func (h *BFFHandler) serveStreaming(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if h.circuitBreaker != nil && !h.circuitBreaker.Allow() {
+	endpoint := r.URL.Path
+	if cb := h.breakerFor(endpoint); cb != nil && !cb.Allow() {
 		h.handleCircuitOpen(w, requestID)
 		return
 	}
 
 	resp, err := h.backendClient.ForwardStreamingRequest(r, token)
 	if err != nil {
-		h.recordFailure()
+		h.recordFailure(endpoint)
 		h.handleBackendError(w, err, requestID)
 		return
 	}
 	defer resp.Body.Close()
 
 	if IsErrorResponse(resp.StatusCode) {
-		h.recordFailure()
+		h.recordFailure(endpoint)
 	} else {
-		h.recordSuccess()
+		h.recordSuccess(endpoint)
 	}
 
 	// Error-normalization only ever rewrites the initial status; once we
@@ -251,6 +268,14 @@ func (h *BFFHandler) handleWithDedup(w http.ResponseWriter, r *http.Request, use
 
 // executeRequest executes the actual backend request.
 func (h *BFFHandler) executeRequest(r *http.Request, userID, endpoint string, body []byte, token, requestID string) (*DedupResult, error) {
+	// Snapshot cache epoch before upstream I/O so a concurrent MarkAsRead
+	// invalidation can fence this response from re-populating stale unread data.
+	var cacheEpoch uint64
+	fenceCache := h.responseCache != nil && h.cacheConfig != nil && h.cacheConfig.IsCacheable(endpoint)
+	if fenceCache {
+		cacheEpoch = h.responseCache.UserEpoch(userID)
+	}
+
 	// Create new request with body
 	newReq := CreateDedupRequest(r, body)
 
@@ -267,24 +292,25 @@ func (h *BFFHandler) executeRequest(r *http.Request, userID, endpoint string, bo
 	}
 
 	if err != nil {
-		h.recordFailure()
+		h.recordFailure(endpoint)
 		return nil, err
 	}
 	defer resp.Body.Close()
 
-	// Record success/failure for circuit breaker
+	// Record success/failure for the endpoint's dependency-class circuit breaker
 	if IsErrorResponse(resp.StatusCode) {
-		h.recordFailure()
+		h.recordFailure(endpoint)
 	} else {
-		h.recordSuccess()
+		h.recordSuccess(endpoint)
+		h.invalidateUnreadProjectionOnMutation(userID, endpoint, resp.StatusCode)
 	}
 
 	// Read response body
 	respBody, _ := io.ReadAll(resp.Body)
 
-	// Cache successful responses
+	// Cache successful responses (epoch-fenced when applicable)
 	if h.shouldCacheResponse(r.Method, endpoint, resp.StatusCode) {
-		h.cacheResponse(userID, endpoint, body, respBody, resp.StatusCode, resp.Header)
+		h.cacheResponse(userID, endpoint, body, respBody, resp.StatusCode, resp.Header, cacheEpoch, fenceCache)
 	}
 
 	return &DedupResult{
@@ -359,7 +385,9 @@ func (h *BFFHandler) shouldCacheResponse(method, endpoint string, statusCode int
 }
 
 // cacheResponse stores a response in the cache.
-func (h *BFFHandler) cacheResponse(userID, endpoint string, reqBody, respBody []byte, statusCode int, headers http.Header) {
+// When fence is true, SetIfEpoch refuses the write if a mutation bumped the
+// user's epoch after this request started (in-flight unread refill race).
+func (h *BFFHandler) cacheResponse(userID, endpoint string, reqBody, respBody []byte, statusCode int, headers http.Header, epoch uint64, fence bool) {
 	if h.responseCache == nil || h.cacheConfig == nil {
 		return
 	}
@@ -376,6 +404,10 @@ func (h *BFFHandler) cacheResponse(userID, endpoint string, reqBody, respBody []
 		Headers:    headers.Clone(),
 		CachedAt:   time.Now(),
 		TTL:        ttl,
+	}
+	if fence {
+		h.responseCache.SetIfEpoch(userID, key, entry, epoch)
+		return
 	}
 	h.responseCache.Set(key, entry)
 }
@@ -445,18 +477,42 @@ func (h *BFFHandler) handleCircuitOpen(w http.ResponseWriter, requestID string) 
 	http.Error(w, "Service Unavailable", http.StatusServiceUnavailable)
 }
 
-// recordSuccess records a successful request for circuit breaker.
-func (h *BFFHandler) recordSuccess() {
-	if h.circuitBreaker != nil {
-		h.circuitBreaker.RecordSuccess()
+// breakerFor returns the circuit breaker for the endpoint's dependency class.
+func (h *BFFHandler) breakerFor(endpoint string) *resilience.CircuitBreaker {
+	switch resilience.ClassForEndpoint(endpoint) {
+	case resilience.ClassCriticalMutation:
+		return h.mutationCB
+	case resilience.ClassUnreadProjection:
+		return h.projectionCB
+	default:
+		return h.nonCriticalCB
 	}
 }
 
-// recordFailure records a failed request for circuit breaker.
-func (h *BFFHandler) recordFailure() {
-	if h.circuitBreaker != nil {
-		h.circuitBreaker.RecordFailure()
+// recordSuccess records a successful request for the endpoint's circuit breaker.
+func (h *BFFHandler) recordSuccess(endpoint string) {
+	if cb := h.breakerFor(endpoint); cb != nil {
+		cb.RecordSuccess()
 	}
+}
+
+// recordFailure records a failed request for the endpoint's circuit breaker.
+func (h *BFFHandler) recordFailure(endpoint string) {
+	if cb := h.breakerFor(endpoint); cb != nil {
+		cb.RecordFailure()
+	}
+}
+
+// invalidateUnreadProjectionOnMutation drops cached Unread Projection Reads
+// for the user after a successful Critical Feed Mutation (read-your-writes).
+func (h *BFFHandler) invalidateUnreadProjectionOnMutation(userID, endpoint string, statusCode int) {
+	if h.responseCache == nil || !resilience.IsCriticalFeedMutation(endpoint) {
+		return
+	}
+	if statusCode < 200 || statusCode >= 300 {
+		return
+	}
+	h.responseCache.DeleteByUserAndEndpoints(userID, resilience.UnreadProjectionEndpoints())
 }
 
 // logError logs an error with context.
@@ -480,11 +536,54 @@ func (h *BFFHandler) GetCacheStats() *cache.CacheStats {
 	return &stats
 }
 
-// GetCircuitBreakerStats returns circuit breaker statistics.
+// GetCircuitBreakerStats returns a worst-of rollup across classes for legacy
+// consumers of top-level /stats.state. Prefer GetCircuitBreakerClassStats.
 func (h *BFFHandler) GetCircuitBreakerStats() *resilience.CircuitBreakerStats {
-	if h.circuitBreaker == nil {
+	class := h.GetCircuitBreakerClassStats()
+	if class == nil {
 		return nil
 	}
-	stats := h.circuitBreaker.Stats()
-	return &stats
+	rollup := resilience.CircuitBreakerStats{State: resilience.StateClosed}
+	for _, s := range []*resilience.CircuitBreakerStats{class.Mutation, class.Projection, class.NonCritical} {
+		if s == nil {
+			continue
+		}
+		rollup.TotalSuccesses += s.TotalSuccesses
+		rollup.TotalFailures += s.TotalFailures
+		switch {
+		case s.State == resilience.StateOpen:
+			rollup.State = resilience.StateOpen
+		case s.State == resilience.StateHalfOpen && rollup.State != resilience.StateOpen:
+			rollup.State = resilience.StateHalfOpen
+		}
+	}
+	return &rollup
+}
+
+// CircuitBreakerClassStats holds per-class circuit breaker statistics.
+type CircuitBreakerClassStats struct {
+	Mutation    *resilience.CircuitBreakerStats
+	Projection  *resilience.CircuitBreakerStats
+	NonCritical *resilience.CircuitBreakerStats
+}
+
+// GetCircuitBreakerClassStats returns mutation / projection / non-critical CB stats.
+func (h *BFFHandler) GetCircuitBreakerClassStats() *CircuitBreakerClassStats {
+	if h.mutationCB == nil && h.projectionCB == nil && h.nonCriticalCB == nil {
+		return nil
+	}
+	out := &CircuitBreakerClassStats{}
+	if h.mutationCB != nil {
+		s := h.mutationCB.Stats()
+		out.Mutation = &s
+	}
+	if h.projectionCB != nil {
+		s := h.projectionCB.Stats()
+		out.Projection = &s
+	}
+	if h.nonCriticalCB != nil {
+		s := h.nonCriticalCB.Stats()
+		out.NonCritical = &s
+	}
+	return out
 }

@@ -40,20 +40,22 @@ type lruItem struct {
 
 // ResponseCache is a thread-safe in-memory LRU cache for HTTP responses.
 type ResponseCache struct {
-	mu      sync.Mutex
-	entries map[string]*list.Element
-	order   *list.List // front = most recently used
-	maxSize int
-	hits    int64
-	misses  int64
+	mu        sync.Mutex
+	entries   map[string]*list.Element
+	order     *list.List // front = most recently used
+	maxSize   int
+	hits      int64
+	misses    int64
+	userEpoch map[string]uint64 // bumped on mutation invalidation to fence in-flight Sets
 }
 
 // NewResponseCache creates a new response cache with the given maximum size.
 func NewResponseCache(maxSize int) *ResponseCache {
 	return &ResponseCache{
-		entries: make(map[string]*list.Element),
-		order:   list.New(),
-		maxSize: maxSize,
+		entries:   make(map[string]*list.Element),
+		order:     list.New(),
+		maxSize:   maxSize,
+		userEpoch: make(map[string]uint64),
 	}
 }
 
@@ -86,7 +88,31 @@ func (c *ResponseCache) Get(key string) (*CacheEntry, bool) {
 func (c *ResponseCache) Set(key string, entry *CacheEntry) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	c.setLocked(key, entry)
+}
 
+// UserEpoch returns the current invalidation epoch for userID.
+// Callers snapshot this before an upstream read and pass it to SetIfEpoch.
+func (c *ResponseCache) UserEpoch(userID string) uint64 {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.userEpoch[userID]
+}
+
+// SetIfEpoch stores a cache entry only if userID's epoch is still equal to
+// expectedEpoch. Returns false when a mutation invalidation raced ahead
+// (in-flight GetUnreadFeeds must not re-populate stale data after MarkAsRead).
+func (c *ResponseCache) SetIfEpoch(userID, key string, entry *CacheEntry, expectedEpoch uint64) bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.userEpoch[userID] != expectedEpoch {
+		return false
+	}
+	c.setLocked(key, entry)
+	return true
+}
+
+func (c *ResponseCache) setLocked(key string, entry *CacheEntry) {
 	if el, exists := c.entries[key]; exists {
 		el.Value.(*lruItem).entry = entry
 		c.order.MoveToFront(el)
@@ -111,6 +137,38 @@ func (c *ResponseCache) Delete(key string) {
 	}
 }
 
+// DeleteByUserAndEndpoints removes all entries for userID whose key matches
+// any of the given endpoints (any bodyHash). Keys are "userID:endpoint:bodyHash".
+// Also bumps the user's epoch so in-flight reads cannot Set stale results.
+// Returns the number of deleted entries.
+func (c *ResponseCache) DeleteByUserAndEndpoints(userID string, endpoints []string) int {
+	if userID == "" || len(endpoints) == 0 {
+		return 0
+	}
+
+	prefixes := make([]string, 0, len(endpoints))
+	for _, ep := range endpoints {
+		prefixes = append(prefixes, userID+":"+ep+":")
+	}
+
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	c.userEpoch[userID]++
+
+	deleted := 0
+	for key, el := range c.entries {
+		for _, prefix := range prefixes {
+			if strings.HasPrefix(key, prefix) {
+				c.removeElement(el)
+				deleted++
+				break
+			}
+		}
+	}
+	return deleted
+}
+
 func (c *ResponseCache) removeElement(el *list.Element) {
 	item := el.Value.(*lruItem)
 	delete(c.entries, item.key)
@@ -124,6 +182,7 @@ func (c *ResponseCache) Clear() {
 
 	c.entries = make(map[string]*list.Element)
 	c.order = list.New()
+	c.userEpoch = make(map[string]uint64)
 }
 
 // Size returns the current number of entries in the cache.

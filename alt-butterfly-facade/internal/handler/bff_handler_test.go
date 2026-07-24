@@ -12,6 +12,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"alt-butterfly-facade/internal/cache"
 	"alt-butterfly-facade/internal/client"
 	"alt-butterfly-facade/internal/resilience"
 )
@@ -47,7 +48,9 @@ func TestNewBFFHandler(t *testing.T) {
 
 	assert.NotNil(t, handler)
 	assert.NotNil(t, handler.responseCache)
-	assert.NotNil(t, handler.circuitBreaker)
+	assert.NotNil(t, handler.mutationCB)
+	assert.NotNil(t, handler.projectionCB)
+	assert.NotNil(t, handler.nonCriticalCB)
 	assert.NotNil(t, handler.deduplicator)
 }
 
@@ -77,7 +80,9 @@ func TestNewBFFHandler_DisabledFeatures(t *testing.T) {
 
 	assert.NotNil(t, handler)
 	assert.Nil(t, handler.responseCache)
-	assert.Nil(t, handler.circuitBreaker)
+	assert.Nil(t, handler.mutationCB)
+	assert.Nil(t, handler.projectionCB)
+	assert.Nil(t, handler.nonCriticalCB)
 	assert.Nil(t, handler.deduplicator)
 }
 
@@ -143,7 +148,7 @@ func TestBFFHandler_CircuitBreaker_OpensOnFailures(t *testing.T) {
 	handler := createTestBFFHandlerWithBackend(t, mockBackend.URL, secret, config)
 	token := createTestToken(t, secret)
 
-	// Make requests until circuit opens
+	// Make requests until circuit opens (GetFeedStats is non-critical)
 	for i := 0; i < 3; i++ {
 		req := httptest.NewRequest("POST", "/alt.feeds.v2.FeedService/GetFeedStats", bytes.NewReader([]byte(`{}`)))
 		req.Header.Set("X-Alt-Backend-Token", token)
@@ -151,11 +156,129 @@ func TestBFFHandler_CircuitBreaker_OpensOnFailures(t *testing.T) {
 		handler.ServeHTTP(rec, req)
 	}
 
-	// Circuit should be open now
-	assert.Equal(t, resilience.StateOpen, handler.circuitBreaker.State())
+	// Non-critical circuit should be open now
+	assert.Equal(t, resilience.StateOpen, handler.nonCriticalCB.State())
 
-	// Next request should fail immediately without hitting backend
+	// Next non-critical request should fail immediately without hitting backend
 	req := httptest.NewRequest("POST", "/alt.feeds.v2.FeedService/GetFeedStats", bytes.NewReader([]byte(`{}`)))
+	req.Header.Set("X-Alt-Backend-Token", token)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	assert.Equal(t, http.StatusServiceUnavailable, rec.Code)
+}
+
+// TestBFFHandler_CircuitBreaker_NonCriticalOpenDoesNotBlockMarkAsRead verifies
+// that Article/other non-critical failures do not trip Critical Feed Mutations.
+func TestBFFHandler_CircuitBreaker_NonCriticalOpenDoesNotBlockMarkAsRead(t *testing.T) {
+	mockBackend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/alt.article.v2.ArticleService/FetchArticleContent" {
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(`{"ok":true}`))
+	}))
+	defer mockBackend.Close()
+
+	secret := []byte("test-secret-key")
+	config := BFFConfig{
+		EnableCircuitBreaker: true,
+		CBFailureThreshold:   3,
+		CBSuccessThreshold:   1,
+		CBOpenTimeout:        1 * time.Hour,
+	}
+	handler := createTestBFFHandlerWithBackend(t, mockBackend.URL, secret, config)
+	token := createTestToken(t, secret)
+
+	for i := 0; i < 3; i++ {
+		req := httptest.NewRequest("POST", "/alt.article.v2.ArticleService/FetchArticleContent", bytes.NewReader([]byte(`{}`)))
+		req.Header.Set("X-Alt-Backend-Token", token)
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+	}
+
+	assert.Equal(t, resilience.StateOpen, handler.nonCriticalCB.State())
+	assert.Equal(t, resilience.StateClosed, handler.mutationCB.State())
+	assert.Equal(t, resilience.StateClosed, handler.projectionCB.State())
+
+	req := httptest.NewRequest("POST", "/alt.feeds.v2.FeedService/MarkAsRead", bytes.NewReader([]byte(`{"articleUrl":"https://example.com"}`)))
+	req.Header.Set("X-Alt-Backend-Token", token)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	assert.Equal(t, http.StatusOK, rec.Code)
+}
+
+// TestBFFHandler_CircuitBreaker_ProjectionOpenDoesNotBlockMarkAsRead verifies
+// GetAllFeeds failures do not share MarkAsRead's failure budget.
+func TestBFFHandler_CircuitBreaker_ProjectionOpenDoesNotBlockMarkAsRead(t *testing.T) {
+	mockBackend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/alt.feeds.v2.FeedService/GetAllFeeds" {
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(`{"ok":true}`))
+	}))
+	defer mockBackend.Close()
+
+	secret := []byte("test-secret-key")
+	config := BFFConfig{
+		EnableCircuitBreaker: true,
+		CBFailureThreshold:   3,
+		CBSuccessThreshold:   1,
+		CBOpenTimeout:        1 * time.Hour,
+	}
+	handler := createTestBFFHandlerWithBackend(t, mockBackend.URL, secret, config)
+	token := createTestToken(t, secret)
+
+	for i := 0; i < 3; i++ {
+		req := httptest.NewRequest("POST", "/alt.feeds.v2.FeedService/GetAllFeeds", bytes.NewReader([]byte(`{}`)))
+		req.Header.Set("X-Alt-Backend-Token", token)
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+	}
+
+	assert.Equal(t, resilience.StateOpen, handler.projectionCB.State())
+	assert.Equal(t, resilience.StateClosed, handler.mutationCB.State())
+
+	req := httptest.NewRequest("POST", "/alt.feeds.v2.FeedService/MarkAsRead", bytes.NewReader([]byte(`{"articleUrl":"https://example.com"}`)))
+	req.Header.Set("X-Alt-Backend-Token", token)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	assert.Equal(t, http.StatusOK, rec.Code)
+}
+
+// TestBFFHandler_CircuitBreaker_CriticalOpenBlocksMarkAsRead verifies that
+// when the mutation breaker is open, MarkAsRead is rejected with 503.
+func TestBFFHandler_CircuitBreaker_CriticalOpenBlocksMarkAsRead(t *testing.T) {
+	mockBackend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer mockBackend.Close()
+
+	secret := []byte("test-secret-key")
+	config := BFFConfig{
+		EnableCircuitBreaker: true,
+		CBFailureThreshold:   3,
+		CBSuccessThreshold:   1,
+		CBOpenTimeout:        1 * time.Hour,
+	}
+	handler := createTestBFFHandlerWithBackend(t, mockBackend.URL, secret, config)
+	token := createTestToken(t, secret)
+
+	for i := 0; i < 3; i++ {
+		req := httptest.NewRequest("POST", "/alt.feeds.v2.FeedService/MarkAsRead", bytes.NewReader([]byte(`{}`)))
+		req.Header.Set("X-Alt-Backend-Token", token)
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+	}
+
+	assert.Equal(t, resilience.StateOpen, handler.mutationCB.State())
+
+	req := httptest.NewRequest("POST", "/alt.feeds.v2.FeedService/MarkAsRead", bytes.NewReader([]byte(`{}`)))
 	req.Header.Set("X-Alt-Backend-Token", token)
 	rec := httptest.NewRecorder()
 	handler.ServeHTTP(rec, req)
@@ -453,6 +576,53 @@ func TestBFFHandler_StreamingProcedure_CircuitBreaker_RecordsSuccessOnHealthyStr
 	stats := handler.GetCircuitBreakerStats()
 	require.NotNil(t, stats)
 	assert.Equal(t, int64(1), stats.TotalSuccesses, "streaming initial-response success must be recorded by the circuit breaker")
+}
+
+func TestBFFHandler_MarkAsRead_InvalidatesUnreadProjectionCache(t *testing.T) {
+	mockBackend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(`{"ok":true}`))
+	}))
+	defer mockBackend.Close()
+
+	secret := []byte("test-secret-key")
+	config := BFFConfig{
+		EnableCache:          true,
+		CacheMaxSize:         100,
+		EnableCircuitBreaker: false,
+	}
+	handler := createTestBFFHandlerWithBackend(t, mockBackend.URL, secret, config)
+	token := createTestToken(t, secret)
+	userID := "550e8400-e29b-41d4-a716-446655440000"
+	unread := "/alt.feeds.v2.FeedService/GetUnreadFeeds"
+
+	// Seed unread projection cache for this user (two body hashes) + other user.
+	handler.responseCache.Set(
+		cache.BuildCacheKey(userID, unread, []byte(`{"cursor":"1"}`)),
+		&cache.CacheEntry{Response: []byte(`{"stale":1}`), StatusCode: 200, CachedAt: time.Now(), TTL: 30 * time.Second},
+	)
+	handler.responseCache.Set(
+		cache.BuildCacheKey(userID, unread, []byte(`{"cursor":"2"}`)),
+		&cache.CacheEntry{Response: []byte(`{"stale":2}`), StatusCode: 200, CachedAt: time.Now(), TTL: 30 * time.Second},
+	)
+	handler.responseCache.Set(
+		cache.BuildCacheKey("other-user", unread, []byte(`{"cursor":"1"}`)),
+		&cache.CacheEntry{Response: []byte(`{"other":1}`), StatusCode: 200, CachedAt: time.Now(), TTL: 30 * time.Second},
+	)
+
+	req := httptest.NewRequest("POST", "/alt.feeds.v2.FeedService/MarkAsRead", bytes.NewReader([]byte(`{"articleUrl":"https://example.com"}`)))
+	req.Header.Set("X-Alt-Backend-Token", token)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	require.Equal(t, http.StatusOK, rec.Code)
+
+	_, found := handler.responseCache.Get(cache.BuildCacheKey(userID, unread, []byte(`{"cursor":"1"}`)))
+	assert.False(t, found)
+	_, found = handler.responseCache.Get(cache.BuildCacheKey(userID, unread, []byte(`{"cursor":"2"}`)))
+	assert.False(t, found)
+	_, found = handler.responseCache.Get(cache.BuildCacheKey("other-user", unread, []byte(`{"cursor":"1"}`)))
+	assert.True(t, found)
 }
 
 func TestBFFHandler_ApplyConnectTimeout_CappedAt5Minutes(t *testing.T) {
