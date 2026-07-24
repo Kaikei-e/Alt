@@ -2,12 +2,18 @@
 
 Verifies that recap-subworker fulfills the contracts defined by its consumers:
 - recap-worker (via /v1/classify-runs, /v1/classify-runs/{run_id},
-  /v1/classify/coarse, /v1/clustering/{run_id})
+  /v1/classify/coarse, /v1/runs, /v1/runs/{run_id})
 
 These tests start a real FastAPI app with mocked dependencies
 and verify it against pact contracts. Contracts are loaded from either:
 - Pact Broker (when PACT_BROKER_BASE_URL is set) -- used in CI
 - Local filesystem (fallback) -- used in local development
+
+The clustering run endpoints (/v1/runs, /v1/runs/{run_id}) are mounted
+via the *real* application router (`recap_subworker.app.routers.runs`)
+with its usecase dependencies swapped for in-memory fakes, so verification
+exercises the actual request validation, header requirements, and response
+shape instead of a hand-fabricated stub route.
 """
 
 import logging
@@ -18,12 +24,19 @@ import time
 import urllib.request
 from pathlib import Path
 from typing import Any
+from uuid import UUID
 
 import pytest
 import uvicorn
 from fastapi import FastAPI
 from pact import Verifier
 from pydantic import BaseModel
+
+from recap_subworker.app import deps
+from recap_subworker.app.routers.runs import router as runs_router
+from recap_subworker.db.dao import RunRecord
+from recap_subworker.services.run_manager import RunSubmission
+from recap_subworker.usecase.submit_run import GetRunUsecase, SubmitRunUsecase
 
 from ._pact_state import StateRegistry, dispatch
 
@@ -62,16 +75,98 @@ def _get_free_port() -> int:
         return s.getsockname()[1]
 
 
+class _FakeRunSubmitter:
+    """Stands in for `RunManager.create_run`.
+
+    Mirrors what `POST /v1/runs` returns immediately after accepting a
+    submission for real: the run is inserted with status "running" and
+    processed asynchronously — no clusters yet. See
+    `services/run_manager.py::RunManager.create_run`.
+    """
+
+    async def create_run(self, submission: RunSubmission) -> RunRecord:
+        return RunRecord(
+            run_id=42,
+            job_id=submission.job_id,
+            genre=submission.genre,
+            status="running",
+            cluster_count=0,
+            request_payload={},
+            response_payload=None,
+            error_message=None,
+        )
+
+
+class _FakeRunReader:
+    """Stands in for `RunManager.get_run`.
+
+    Always resolves to a completed clustering run so the polling contract
+    (`GET /v1/runs/{run_id}`) can be verified without a real pipeline
+    execution. `response_payload` carries a `run_id` key, which routes
+    through `_record_to_response`'s `ClusterJobResponse(**payload)` branch
+    in `app/routers/runs.py` — the same branch a real completed run takes.
+    """
+
+    async def get_run(self, run_id: int) -> RunRecord | None:
+        response_payload = {
+            "run_id": run_id,
+            "job_id": "00000000-0000-0000-0000-000000000001",
+            "genre": "technology",
+            "status": "succeeded",
+            "cluster_count": 1,
+            "clusters": [
+                {
+                    "cluster_id": 0,
+                    "size": 5,
+                    "label": "technology",
+                    "top_terms": ["AI"],
+                    "stats": {},
+                    "representatives": [
+                        {
+                            "article_id": "art-001",
+                            "paragraph_idx": 0,
+                            "sentence_text": "AI is transforming industries across every major economic sector.",
+                            "lang": "en",
+                            "score": 0.95,
+                        }
+                    ],
+                }
+            ],
+            "diagnostics": {"dedup_pairs": 0},
+        }
+        return RunRecord(
+            run_id=run_id,
+            job_id=UUID("00000000-0000-0000-0000-000000000001"),
+            genre="technology",
+            status="succeeded",
+            cluster_count=1,
+            request_payload={},
+            response_payload=response_payload,
+            error_message=None,
+        )
+
+
 def _create_provider_app() -> FastAPI:
     """Create a FastAPI app with mocked dependencies for provider verification.
 
-    Registers lightweight stub endpoints matching the contract surface:
+    Registers lightweight stub endpoints for:
     - POST /v1/classify-runs          (classification job submission)
     - GET  /v1/classify-runs/{run_id} (polling a completed classification job)
     - POST /v1/classify/coarse        (coarse classification request)
-    - POST /v1/clustering/{run_id}    (clustering execution request)
+
+    and mounts the *real* application router for:
+    - POST /v1/runs                   (clustering run submission)
+    - GET  /v1/runs/{run_id}          (clustering run poll)
+    with its usecase dependencies overridden by in-memory fakes.
     """
     app = FastAPI()
+    app.include_router(runs_router)
+    app.dependency_overrides[deps.get_submit_run_usecase_dep] = lambda: SubmitRunUsecase(
+        submitter=_FakeRunSubmitter(),
+    )
+    app.dependency_overrides[deps.get_get_run_usecase_dep] = lambda: GetRunUsecase(
+        reader=_FakeRunReader(),
+    )
 
     # Track provider state to switch mock behavior
     provider_state: dict[str, Any] = {"current": "default"}
@@ -116,33 +211,15 @@ def _create_provider_app() -> FastAPI:
             "scores": {"technology": 0.8, "science": 0.15},
         }
 
-    # ---- POST /v1/clustering/{run_id} ----
-    @app.post("/v1/clustering/{run_id}")
-    async def execute_clustering(run_id: int) -> dict:
-        return {
-            "run_id": run_id,
-            "job_id": "00000000-0000-0000-0000-000000000001",
-            "genre": "technology",
-            "status": "succeeded",
-            "cluster_count": 3,
-            "clusters": [
-                {
-                    "cluster_id": 0,
-                    "size": 5,
-                    "top_terms": ["AI"],
-                    "representatives": [{"sentence_text": "AI is transforming industries."}],
-                }
-            ],
-        }
-
     # ---- Provider state registry ----
     async def _set_state(params: dict) -> None:
         provider_state["params"] = params
 
     registry: StateRegistry = {
         "the classification model is loaded": _set_state,
-        "classified articles are ready for clustering": _set_state,
         "classification job 42 has succeeded": _set_state,
+        "the clustering pipeline accepts a new run": _set_state,
+        "clustering run 42 has succeeded": _set_state,
     }
 
     @app.post("/_pact/provider-states")
