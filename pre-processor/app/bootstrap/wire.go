@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -195,6 +196,18 @@ func getEnvOrDefault(key, defaultValue string) string {
 	return defaultValue
 }
 
+func getEnvIntOrDefault(key string, defaultValue int64) int64 {
+	value := os.Getenv(key)
+	if value == "" {
+		return defaultValue
+	}
+	parsed, err := strconv.ParseInt(value, 10, 64)
+	if err != nil {
+		return defaultValue
+	}
+	return parsed
+}
+
 // buildRedisConsumer constructs and starts the Redis Streams consumer that
 // drives event-driven summarization. Construction or start failures are
 // returned to the caller (rather than logged-and-swallowed) so a broken
@@ -212,6 +225,8 @@ func buildRedisConsumer(ctx context.Context, jobRepo repository.SummarizeJobRepo
 		BlockTimeout:  5 * time.Second,
 		ClaimIdleTime: 30 * time.Second,
 		Enabled:       getEnvOrDefault("CONSUMER_ENABLED", "false") == "true",
+		DLQStreamKey:  getEnvOrDefault("CONSUMER_DLQ_STREAM", "alt:events:articles:dlq"),
+		MaxDeliveries: getEnvIntOrDefault("CONSUMER_MAX_DELIVERIES", 5),
 	}
 
 	summarizeServiceAdapter := consumer.NewSummarizeServiceAdapter(jobRepo, articleRepo, summaryRepo, log)
@@ -228,7 +243,9 @@ func buildRedisConsumer(ctx context.Context, jobRepo repository.SummarizeJobRepo
 	log.Info("Redis Streams consumer started",
 		"stream", consumerCfg.StreamKey,
 		"group", consumerCfg.GroupName,
-		"enabled", consumerCfg.Enabled)
+		"enabled", consumerCfg.Enabled,
+		"dlq_stream", consumerCfg.DLQStreamKey,
+		"max_deliveries", consumerCfg.MaxDeliveries)
 
 	return redisConsumer, nil
 }

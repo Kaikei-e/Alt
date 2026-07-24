@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"math"
+	"os"
 	"runtime"
 	"sync"
 	"sync/atomic"
@@ -13,6 +14,15 @@ import (
 
 	logger "pre-processor/utils/logger"
 )
+
+// getEnvOrDefault returns the environment variable value for key, or
+// defaultValue when it is unset/empty.
+func getEnvOrDefault(key, defaultValue string) string {
+	if value := os.Getenv(key); value != "" {
+		return value
+	}
+	return defaultValue
+}
 
 // AppMetrics tracks application-level metrics
 type AppMetrics struct {
