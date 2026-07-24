@@ -166,6 +166,9 @@ services:
 
   mq-hub:
     image: ghcr.io/${GHCR_OWNER:-kaikei-e}/alt-mq-hub:${MQ_HUB_IMAGE_TAG:-main}
+    build:
+      context: ../mq-hub
+      dockerfile: Dockerfile
     container_name: alt-staging-mq-hub
     profiles: [mq-hub, tag-generator]
     depends_on:
@@ -396,6 +399,9 @@ services:
   # alt-backend's BatchGetTagsByArticleIDs Connect-RPC.
   tag-generator:
     image: ghcr.io/${GHCR_OWNER:-kaikei-e}/alt-tag-generator:${TAG_GENERATOR_IMAGE_TAG:-main}
+    build:
+      context: ../tag-generator
+      dockerfile: Dockerfile.tag-generator
     container_name: alt-staging-tag-generator
     profiles: [tag-generator]
     depends_on:
@@ -478,6 +484,9 @@ services:
 
   news-creator:
     image: ghcr.io/${GHCR_OWNER:-kaikei-e}/alt-news-creator:${NEWS_CREATOR_IMAGE_TAG:-main}
+    build:
+      context: ../news-creator
+      dockerfile: Dockerfile
     container_name: alt-staging-news-creator
     profiles: [news-creator]
     depends_on:
