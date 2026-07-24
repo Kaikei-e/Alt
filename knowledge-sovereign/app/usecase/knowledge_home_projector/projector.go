@@ -47,12 +47,6 @@ const (
 	supersedeReasonUpdated  = "reason_updated"
 
 	recallReasonOpenedNotRevisited = "opened_before_but_not_revisited"
-
-	// currentProjectionVersion is hardcoded because this narrow Repository
-	// interface has no GetActiveVersion port (unlike alt-backend's
-	// KnowledgeProjectorJob, which resolved an active shadow/live version).
-	// That concern does not yet exist in this package's scope.
-	currentProjectionVersion = 1
 )
 
 // Repository is the narrow surface the projector needs. Every write method
@@ -64,6 +58,12 @@ type Repository interface {
 	GetProjectionCheckpoint(ctx context.Context, projectorName string) (int64, error)
 	UpdateProjectionCheckpoint(ctx context.Context, projectorName string, lastSeq int64) error
 	ListKnowledgeEventsSince(ctx context.Context, afterSeq int64, limit int) ([]sovereign_db.KnowledgeEvent, error)
+	// GetActiveProjectionVersion resolves knowledge_projection_versions'
+	// status='active' row — the same source of truth read paths already use
+	// via activeProjectionVersionSQL (see driver/sovereign_db/sql_fragments.go),
+	// but without that fragment's COALESCE(...,1) fallback: a missing active
+	// version must fail the batch loudly, not silently regress to v1.
+	GetActiveProjectionVersion(ctx context.Context) (*sovereign_db.ProjectionVersion, error)
 	UpsertKnowledgeHomeItem(ctx context.Context, payload json.RawMessage) error
 	DismissKnowledgeHomeItem(ctx context.Context, payload json.RawMessage) error
 	ClearSupersedeState(ctx context.Context, payload json.RawMessage) error
@@ -127,10 +127,24 @@ func (p *Projector) RunBatch(ctx context.Context) error {
 			return nil
 		}
 
+		// Resolved once per batch — not per event (wasteful), not only at
+		// process start (a reproject cutover would go unnoticed until
+		// restart). This is projection metadata, the same class the read
+		// path already resolves via activeProjectionVersionSQL, so reading
+		// it here does not compromise reproject-safety: every business
+		// fact folded below still comes from the event payload alone.
+		activeVersion, err := p.repo.GetActiveProjectionVersion(ctx)
+		if err != nil {
+			return fmt.Errorf("get active projection version: %w", err)
+		}
+		if activeVersion == nil {
+			return fmt.Errorf("knowledge_home_projector: no active projection version configured")
+		}
+
 		lastGoodSeq := checkpoint
 		var foldErr error
 		for _, evt := range events {
-			if err := p.foldEvent(ctx, evt); err != nil {
+			if err := p.foldEvent(ctx, evt, activeVersion.Version); err != nil {
 				foldErr = fmt.Errorf("fold event %s (seq=%d): %w", evt.EventType, evt.EventSeq, err)
 				break
 			}
@@ -155,26 +169,31 @@ func (p *Projector) RunBatch(ctx context.Context) error {
 	return nil
 }
 
-func (p *Projector) foldEvent(ctx context.Context, evt sovereign_db.KnowledgeEvent) error {
+// foldEvent dispatches a single event to its fold function, stamping every
+// write with version. RunBatch passes the batch's resolved active version;
+// a reproject/backfill caller may instead pass an explicit target version
+// (e.g. building a shadow version while the active one stays live) — this
+// function has no opinion on where version comes from.
+func (p *Projector) foldEvent(ctx context.Context, evt sovereign_db.KnowledgeEvent, version int) error {
 	switch evt.EventType {
 	case "ArticleCreated":
-		return p.foldArticleCreated(ctx, evt)
+		return p.foldArticleCreated(ctx, evt, version)
 	case "ArticleUrlBackfilled":
-		return p.foldArticleUrlBackfilled(ctx, evt)
+		return p.foldArticleUrlBackfilled(ctx, evt, version)
 	case "SummaryVersionCreated":
-		return p.foldSummaryVersionCreated(ctx, evt)
+		return p.foldSummaryVersionCreated(ctx, evt, version)
 	case "TagSetVersionCreated":
-		return p.foldTagSetVersionCreated(ctx, evt)
+		return p.foldTagSetVersionCreated(ctx, evt, version)
 	case "HomeItemOpened":
-		return p.foldHomeItemOpened(ctx, evt)
+		return p.foldHomeItemOpened(ctx, evt, version)
 	case "HomeItemDismissed":
-		return p.foldHomeItemDismissed(ctx, evt)
+		return p.foldHomeItemDismissed(ctx, evt, version)
 	case "SummarySuperseded":
-		return p.foldSummarySuperseded(ctx, evt)
+		return p.foldSummarySuperseded(ctx, evt, version)
 	case "TagSetSuperseded":
-		return p.foldTagSetSuperseded(ctx, evt)
+		return p.foldTagSetSuperseded(ctx, evt, version)
 	case "ReasonMerged":
-		return p.foldReasonMerged(ctx, evt)
+		return p.foldReasonMerged(ctx, evt, version)
 	default:
 		// Unknown event types are silently skipped but still advance the
 		// checkpoint (handled by the caller).
@@ -359,7 +378,7 @@ func (p *Projector) clearSupersedeState(ctx context.Context, params clearSuperse
 // event's own OccurredAt/payload — never wall-clock, never a read model —
 // so replaying the same log reproduces identical rows (reproject-safe).
 
-func (p *Projector) foldArticleCreated(ctx context.Context, evt sovereign_db.KnowledgeEvent) error {
+func (p *Projector) foldArticleCreated(ctx context.Context, evt sovereign_db.KnowledgeEvent, version int) error {
 	var payload articleCreatedPayload
 	if err := json.Unmarshal(evt.Payload, &payload); err != nil {
 		return fmt.Errorf("unmarshal ArticleCreated payload: %w", err)
@@ -406,7 +425,7 @@ func (p *Projector) foldArticleCreated(ctx context.Context, evt sovereign_db.Kno
 		GeneratedAt:       occurredAt,
 		UpdatedAt:         occurredAt,
 		SummaryState:      summaryStatePending,
-		ProjectionVersion: currentProjectionVersion,
+		ProjectionVersion: version,
 	}
 	if err := p.upsertHomeItem(ctx, item); err != nil {
 		return err
@@ -449,7 +468,7 @@ func isHTTPURL(raw string) bool {
 // foldArticleUrlBackfilled patches only the `url` column of the matching
 // knowledge_home_items row — a single-column corrective patch, distinct
 // from the full UpsertKnowledgeHomeItem merge-safe upsert.
-func (p *Projector) foldArticleUrlBackfilled(ctx context.Context, evt sovereign_db.KnowledgeEvent) error {
+func (p *Projector) foldArticleUrlBackfilled(ctx context.Context, evt sovereign_db.KnowledgeEvent, version int) error {
 	var payload articleUrlBackfilledPayload
 	if err := json.Unmarshal(evt.Payload, &payload); err != nil {
 		return fmt.Errorf("unmarshal ArticleUrlBackfilled payload: %w", err)
@@ -467,7 +486,7 @@ func (p *Projector) foldArticleUrlBackfilled(ctx context.Context, evt sovereign_
 	patch := sovereign_db.PatchKnowledgeHomeItemURLPayload{
 		UserID:            resolveUserID(evt).String(),
 		ItemKey:           fmt.Sprintf("article:%s", articleID),
-		ProjectionVersion: currentProjectionVersion,
+		ProjectionVersion: version,
 		URL:               payload.URL,
 	}
 	raw, err := json.Marshal(patch)
@@ -483,7 +502,7 @@ func (p *Projector) foldArticleUrlBackfilled(ctx context.Context, evt sovereign_
 // foldSummaryVersionCreated: design change (F-01) — summary_text travels on
 // the event payload itself, so the fold uses it as-is with no alt-db
 // GetSummaryVersionByID round trip and no excerpt truncation.
-func (p *Projector) foldSummaryVersionCreated(ctx context.Context, evt sovereign_db.KnowledgeEvent) error {
+func (p *Projector) foldSummaryVersionCreated(ctx context.Context, evt sovereign_db.KnowledgeEvent, version int) error {
 	var payload summaryVersionCreatedPayload
 	if err := json.Unmarshal(evt.Payload, &payload); err != nil {
 		return fmt.Errorf("unmarshal SummaryVersionCreated payload: %w", err)
@@ -513,7 +532,7 @@ func (p *Projector) foldSummaryVersionCreated(ctx context.Context, evt sovereign
 		Score:             0.8, // boost for having a summary
 		GeneratedAt:       occurredAt,
 		UpdatedAt:         occurredAt,
-		ProjectionVersion: currentProjectionVersion,
+		ProjectionVersion: version,
 	}
 	if err := p.upsertHomeItem(ctx, item); err != nil {
 		return err
@@ -540,7 +559,7 @@ func (p *Projector) foldSummaryVersionCreated(ctx context.Context, evt sovereign
 // foldTagSetVersionCreated: design change (F-01) — tags travel on the event
 // payload itself, so the fold uses them as-is with no alt-db
 // GetTagSetVersionByID round trip and no parseTagNames.
-func (p *Projector) foldTagSetVersionCreated(ctx context.Context, evt sovereign_db.KnowledgeEvent) error {
+func (p *Projector) foldTagSetVersionCreated(ctx context.Context, evt sovereign_db.KnowledgeEvent, version int) error {
 	var payload tagSetVersionCreatedPayload
 	if err := json.Unmarshal(evt.Payload, &payload); err != nil {
 		return fmt.Errorf("unmarshal TagSetVersionCreated payload: %w", err)
@@ -562,7 +581,7 @@ func (p *Projector) foldTagSetVersionCreated(ctx context.Context, evt sovereign_
 		Score:             0.7,
 		GeneratedAt:       occurredAt,
 		UpdatedAt:         occurredAt,
-		ProjectionVersion: currentProjectionVersion,
+		ProjectionVersion: version,
 	}
 	if err := p.upsertHomeItem(ctx, item); err != nil {
 		return err
@@ -586,7 +605,7 @@ func (p *Projector) foldTagSetVersionCreated(ctx context.Context, evt sovereign_
 	return nil
 }
 
-func (p *Projector) foldHomeItemOpened(ctx context.Context, evt sovereign_db.KnowledgeEvent) error {
+func (p *Projector) foldHomeItemOpened(ctx context.Context, evt sovereign_db.KnowledgeEvent, version int) error {
 	var payload homeItemOpenedPayload
 	if err := json.Unmarshal(evt.Payload, &payload); err != nil {
 		return fmt.Errorf("unmarshal HomeItemOpened payload: %w", err)
@@ -604,7 +623,7 @@ func (p *Projector) foldHomeItemOpened(ctx context.Context, evt sovereign_db.Kno
 		LastInteractedAt:  &occurredAt,
 		GeneratedAt:       occurredAt,
 		UpdatedAt:         occurredAt,
-		ProjectionVersion: currentProjectionVersion,
+		ProjectionVersion: version,
 	}
 	if err := p.upsertHomeItem(ctx, item); err != nil {
 		return err
@@ -614,7 +633,7 @@ func (p *Projector) foldHomeItemOpened(ctx context.Context, evt sovereign_db.Kno
 	clear := clearSupersedeWrite{
 		UserID:            userID.String(),
 		ItemKey:           payload.ItemKey,
-		ProjectionVersion: currentProjectionVersion,
+		ProjectionVersion: version,
 	}
 	if err := p.clearSupersedeState(ctx, clear); err != nil {
 		p.logger.WarnContext(ctx, "knowledge_home_projector: clear supersede state failed on open",
@@ -631,7 +650,7 @@ func (p *Projector) foldHomeItemOpened(ctx context.Context, evt sovereign_db.Kno
 		FirstEligibleAt:   &eligibleAt,
 		NextSuggestAt:     &eligibleAt,
 		UpdatedAt:         occurredAt,
-		ProjectionVersion: currentProjectionVersion,
+		ProjectionVersion: version,
 	}
 	if err := p.upsertRecallCandidate(ctx, candidate); err != nil {
 		p.logger.WarnContext(ctx, "knowledge_home_projector: recall candidate upsert failed",
@@ -640,7 +659,7 @@ func (p *Projector) foldHomeItemOpened(ctx context.Context, evt sovereign_db.Kno
 	return nil
 }
 
-func (p *Projector) foldHomeItemDismissed(ctx context.Context, evt sovereign_db.KnowledgeEvent) error {
+func (p *Projector) foldHomeItemDismissed(ctx context.Context, evt sovereign_db.KnowledgeEvent, version int) error {
 	var payload homeItemDismissedPayload
 	if err := json.Unmarshal(evt.Payload, &payload); err != nil {
 		return fmt.Errorf("unmarshal HomeItemDismissed payload: %w", err)
@@ -656,7 +675,7 @@ func (p *Projector) foldHomeItemDismissed(ctx context.Context, evt sovereign_db.
 	dismiss := dismissWrite{
 		UserID:            resolveUserID(evt).String(),
 		ItemKey:           itemKey,
-		ProjectionVersion: currentProjectionVersion,
+		ProjectionVersion: version,
 		// Business fact from the event only — knowledge_events.occurred_at is
 		// NOT NULL, so there is no wall-clock fallback here (reproject-safe).
 		DismissedAt: evt.OccurredAt.Format(time.RFC3339Nano),
@@ -673,7 +692,7 @@ func (p *Projector) foldHomeItemDismissed(ctx context.Context, evt sovereign_db.
 
 // ── supersede folds ──
 
-func (p *Projector) foldSummarySuperseded(ctx context.Context, evt sovereign_db.KnowledgeEvent) error {
+func (p *Projector) foldSummarySuperseded(ctx context.Context, evt sovereign_db.KnowledgeEvent, version int) error {
 	var payload summarySupersededPayload
 	if err := json.Unmarshal(evt.Payload, &payload); err != nil {
 		return fmt.Errorf("unmarshal SummarySuperseded payload: %w", err)
@@ -701,12 +720,12 @@ func (p *Projector) foldSummarySuperseded(ctx context.Context, evt sovereign_db.
 		PreviousRefJSON:   string(prevRef),
 		GeneratedAt:       occurredAt,
 		UpdatedAt:         occurredAt,
-		ProjectionVersion: currentProjectionVersion,
+		ProjectionVersion: version,
 	}
 	return p.upsertHomeItem(ctx, item)
 }
 
-func (p *Projector) foldTagSetSuperseded(ctx context.Context, evt sovereign_db.KnowledgeEvent) error {
+func (p *Projector) foldTagSetSuperseded(ctx context.Context, evt sovereign_db.KnowledgeEvent, version int) error {
 	var payload tagSetSupersededPayload
 	if err := json.Unmarshal(evt.Payload, &payload); err != nil {
 		return fmt.Errorf("unmarshal TagSetSuperseded payload: %w", err)
@@ -732,12 +751,12 @@ func (p *Projector) foldTagSetSuperseded(ctx context.Context, evt sovereign_db.K
 		PreviousRefJSON:   string(prevRef),
 		GeneratedAt:       occurredAt,
 		UpdatedAt:         occurredAt,
-		ProjectionVersion: currentProjectionVersion,
+		ProjectionVersion: version,
 	}
 	return p.upsertHomeItem(ctx, item)
 }
 
-func (p *Projector) foldReasonMerged(ctx context.Context, evt sovereign_db.KnowledgeEvent) error {
+func (p *Projector) foldReasonMerged(ctx context.Context, evt sovereign_db.KnowledgeEvent, version int) error {
 	var payload reasonMergedPayload
 	if err := json.Unmarshal(evt.Payload, &payload); err != nil {
 		return fmt.Errorf("unmarshal ReasonMerged payload: %w", err)
@@ -766,7 +785,7 @@ func (p *Projector) foldReasonMerged(ctx context.Context, evt sovereign_db.Knowl
 		PreviousRefJSON:   string(prevRef),
 		GeneratedAt:       occurredAt,
 		UpdatedAt:         occurredAt,
-		ProjectionVersion: currentProjectionVersion,
+		ProjectionVersion: version,
 	}
 	return p.upsertHomeItem(ctx, item)
 }
