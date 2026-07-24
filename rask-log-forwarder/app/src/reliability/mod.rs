@@ -292,6 +292,40 @@ impl ReliabilityManager {
         })
     }
 
+    /// Deletes disk-fallback batches older than the configured retention
+    /// period. Without a caller running this, batches that permanently fail
+    /// to replay (e.g. the aggregator rejects them with a persistent 4xx)
+    /// stay on disk forever and eventually trip `DiskSpaceExceeded`.
+    pub async fn cleanup_disk_fallback(&self) -> Result<u32, DiskError> {
+        let mut disk_fallback = self.disk_fallback.lock().await;
+        disk_fallback.cleanup_old_batches().await
+    }
+
+    /// Spawns a periodic task that deletes disk-fallback batches past their
+    /// retention period, so the `store_batch` disk-usage cap can't be
+    /// permanently exhausted by batches that keep failing to replay. Stops
+    /// once `cancel_token` is cancelled.
+    pub fn start_disk_cleanup_task(
+        self: Arc<Self>,
+        interval: Duration,
+        cancel_token: CancellationToken,
+    ) -> tokio::task::JoinHandle<()> {
+        tokio::spawn(async move {
+            loop {
+                tokio::select! {
+                    _ = cancel_token.cancelled() => break,
+                    _ = tokio::time::sleep(interval) => {}
+                }
+
+                match self.cleanup_disk_fallback().await {
+                    Ok(0) => {}
+                    Ok(n) => tracing::info!("Disk fallback cleanup: removed {n} expired batch(es)"),
+                    Err(e) => tracing::error!("Disk fallback cleanup pass failed: {e}"),
+                }
+            }
+        })
+    }
+
     pub async fn get_health_report(&self) -> HealthReport {
         HealthReport::generate(&self.health_monitor, self.start_time).await
     }
@@ -338,6 +372,14 @@ mod replay_tests {
         endpoint: String,
         storage_path: std::path::PathBuf,
     ) -> ReliabilityManager {
+        build_manager_with_retention(endpoint, storage_path, Duration::from_secs(24 * 3600)).await
+    }
+
+    async fn build_manager_with_retention(
+        endpoint: String,
+        storage_path: std::path::PathBuf,
+        retention_period: Duration,
+    ) -> ReliabilityManager {
         let log_sender = LogSender::new(ClientConfig {
             endpoint,
             timeout: Duration::from_millis(500),
@@ -351,6 +393,7 @@ mod replay_tests {
             RetryConfig::default(),
             DiskConfig {
                 storage_path,
+                retention_period,
                 ..Default::default()
             },
             MetricsConfig::default(),
@@ -445,5 +488,63 @@ mod replay_tests {
             .await
             .expect("disk replay task must stop once cancelled")
             .expect("disk replay task must not panic");
+    }
+
+    #[tokio::test]
+    async fn cleanup_disk_fallback_deletes_batches_past_retention() {
+        let storage_dir = tempfile::tempdir().unwrap();
+        // Retention period shorter than the sleep below, so the stored batch
+        // is already expired by the time cleanup runs.
+        let manager = build_manager_with_retention(
+            "http://127.0.0.1:1".to_string(),
+            storage_dir.path().to_path_buf(),
+            Duration::from_millis(1),
+        )
+        .await;
+
+        let batch = Batch::new(vec![test_entry()], BatchType::SizeBased);
+        {
+            let mut disk_fallback = manager.disk_fallback.lock().await;
+            disk_fallback.store_batch(batch).await.unwrap();
+        }
+        assert_eq!(storage_dir.path().read_dir().unwrap().count(), 1);
+
+        tokio::time::sleep(Duration::from_millis(1100)).await;
+
+        let deleted = manager.cleanup_disk_fallback().await.unwrap();
+
+        assert_eq!(deleted, 1);
+        assert_eq!(
+            storage_dir.path().read_dir().unwrap().count(),
+            0,
+            "a batch older than the retention period must be deleted by cleanup, \
+             otherwise permanently-failing batches never leave disk"
+        );
+    }
+
+    #[tokio::test]
+    async fn start_disk_cleanup_task_stops_when_cancelled() {
+        let storage_dir = tempfile::tempdir().unwrap();
+        let manager = Arc::new(
+            build_manager_with_retention(
+                "http://127.0.0.1:1".to_string(),
+                storage_dir.path().to_path_buf(),
+                Duration::from_secs(24 * 3600),
+            )
+            .await,
+        );
+
+        let cancel_token = CancellationToken::new();
+        let handle = manager
+            .clone()
+            .start_disk_cleanup_task(Duration::from_millis(20), cancel_token.clone());
+
+        tokio::time::sleep(Duration::from_millis(60)).await;
+        cancel_token.cancel();
+
+        tokio::time::timeout(Duration::from_millis(500), handle)
+            .await
+            .expect("disk cleanup task must stop once cancelled")
+            .expect("disk cleanup task must not panic");
     }
 }
