@@ -14,6 +14,19 @@ import (
 	"github.com/google/uuid"
 )
 
+// outboxRepository abstracts the outbox_events table operations the worker
+// needs (for testability without a live DB pool). *alt_db.AltDBRepository
+// satisfies this via its embedded *alt_db.OutboxRepository.
+type outboxRepository interface {
+	FetchAndLockPendingOutboxEvents(ctx context.Context, limit int) ([]alt_db.OutboxEvent, error)
+	UpdateOutboxEventStatus(ctx context.Context, id string, status string, errorMessage *string) error
+}
+
+// statusUpdateTimeout bounds a detached status-write: it must survive the
+// parent job context being canceled (see processOutboxEvents), but a hung DB
+// still shouldn't block the worker goroutine forever.
+const statusUpdateTimeout = 10 * time.Second
+
 // OutboxWorkerJob returns a function suitable for the JobScheduler that
 // processes pending outbox events.
 func OutboxWorkerJob(repo *alt_db.AltDBRepository, ragIntegration rag_integration_port.RagIntegrationPort, knowledgeEventPort knowledge_event_port.AppendKnowledgeEventPort) func(ctx context.Context) error {
@@ -22,7 +35,7 @@ func OutboxWorkerJob(repo *alt_db.AltDBRepository, ragIntegration rag_integratio
 	}
 }
 
-func processOutboxEvents(ctx context.Context, repo *alt_db.AltDBRepository, ragIntegration rag_integration_port.RagIntegrationPort, knowledgeEventPort knowledge_event_port.AppendKnowledgeEventPort) error {
+func processOutboxEvents(ctx context.Context, repo outboxRepository, ragIntegration rag_integration_port.RagIntegrationPort, knowledgeEventPort knowledge_event_port.AppendKnowledgeEventPort) error {
 	events, err := repo.FetchAndLockPendingOutboxEvents(ctx, 10)
 	if err != nil {
 		logger.Logger.ErrorContext(ctx, "Failed to fetch pending outbox events", "error", err)
@@ -35,7 +48,19 @@ func processOutboxEvents(ctx context.Context, repo *alt_db.AltDBRepository, ragI
 
 	logger.Logger.InfoContext(ctx, "Processing outbox events", "count", len(events))
 
-	for _, event := range events {
+	for i, event := range events {
+		if ctx.Err() != nil {
+			// The job timeout canceled ctx after processing already started.
+			// events[i:] were claimed (status=PROCESSING) but never attempted;
+			// release them back to PENDING so the next tick retries them
+			// instead of leaving PROCESSING zombies that
+			// FetchAndLockPendingOutboxEvents (PENDING-only) never re-fetches.
+			logger.Logger.WarnContext(ctx, "outbox worker: context canceled mid-batch, releasing unattempted events to PENDING",
+				"remaining", len(events)-i)
+			resetClaimedEventsToPending(ctx, repo, events[i:])
+			return nil
+		}
+
 		if event.EventType == "ARTICLE_UPSERT" {
 			var upsertInput rag_integration_port.UpsertArticleInput
 			if err := json.Unmarshal(event.Payload, &upsertInput); err != nil {
@@ -148,12 +173,32 @@ func emitArticleCreatedEvent(ctx context.Context, port knowledge_event_port.Appe
 	}
 }
 
-func updateStatus(ctx context.Context, repo *alt_db.AltDBRepository, id string, status string, errMsg string) {
+// updateStatus writes the outbox event's terminal (or reset) status on a
+// context detached from the caller's job context. A job-timeout cancellation
+// must not block the status write itself, or the row is left stuck at
+// whatever status FetchAndLockPendingOutboxEvents set it to (PROCESSING),
+// which that PENDING-only query never re-fetches — the production zombie-row
+// incident this fixes. ctx is still used for logging so a cancellation shows
+// up in the right trace/log context.
+func updateStatus(ctx context.Context, repo outboxRepository, id string, status string, errMsg string) {
 	var errPtr *string
 	if errMsg != "" {
 		errPtr = &errMsg
 	}
-	if err := repo.UpdateOutboxEventStatus(ctx, id, status, errPtr); err != nil {
+	detachedCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), statusUpdateTimeout)
+	defer cancel()
+	if err := repo.UpdateOutboxEventStatus(detachedCtx, id, status, errPtr); err != nil {
 		logger.Logger.ErrorContext(ctx, "Failed to update outbox event status", "event_id", id, "status", status, "error", err)
+	}
+}
+
+// resetClaimedEventsToPending releases events that were claimed (locked to
+// PROCESSING by FetchAndLockPendingOutboxEvents) but never attempted, back to
+// PENDING, so the next tick retries them instead of leaving them stuck. ctx
+// is the (already-canceled) job context, passed through only for log
+// correlation — updateStatus detaches it before writing.
+func resetClaimedEventsToPending(ctx context.Context, repo outboxRepository, events []alt_db.OutboxEvent) {
+	for _, event := range events {
+		updateStatus(ctx, repo, event.ID, "PENDING", "")
 	}
 }

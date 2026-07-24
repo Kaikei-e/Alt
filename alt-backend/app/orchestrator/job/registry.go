@@ -24,8 +24,14 @@ func RegisterAllJobs(scheduler *JobScheduler, container *di.ApplicationComponent
 	scheduler.Add(Job{
 		Name:     "outbox-worker",
 		Interval: 5 * time.Second,
-		Timeout:  30 * time.Second,
-		Fn:       OutboxWorkerJob(container.AltDBRepository, container.RagIntegration, container.SovereignClient),
+		// A batch of up to 10 ARTICLE_UPSERT events can each take 10-30s on the
+		// local CPU/GPU embedder for heavy articles (500+KB, 100+ chunks), so
+		// 30s was not enough headroom for a full batch. Runs never overlap:
+		// JobScheduler.runJob calls executeJob synchronously in a single
+		// goroutine per job, so the next tick only starts after this run
+		// returns (see scheduler.go), regardless of Interval vs Timeout.
+		Timeout: 5 * time.Minute,
+		Fn:      OutboxWorkerJob(container.AltDBRepository, container.RagIntegration, container.SovereignClient),
 	})
 	scheduler.Add(Job{
 		Name:     "ogp-image-warmer",
