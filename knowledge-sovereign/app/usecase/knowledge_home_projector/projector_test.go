@@ -121,6 +121,13 @@ type fakeRepo struct {
 	recallCandidates map[string]capturedRecallCandidate
 	urlPatches       map[string]capturedURLPatch
 
+	// activeProjectionVersion mirrors knowledge_projection_versions'
+	// status='active' row. Defaults to version 1 so existing tests that
+	// don't care about versioning keep working unchanged; set to nil to
+	// simulate no active version row (must fail the batch loudly).
+	activeProjectionVersion *sovereign_db.ProjectionVersion
+	activeVersionErr        error
+
 	todayDigestErr    error
 	recallCandErr     error
 	clearSupersedeErr error
@@ -130,13 +137,14 @@ var _ Repository = (*fakeRepo)(nil)
 
 func newFakeRepo(events []sovereign_db.KnowledgeEvent) *fakeRepo {
 	return &fakeRepo{
-		events:           events,
-		homeItems:        map[string]capturedHomeItem{},
-		dismissed:        map[string]capturedDismiss{},
-		clearedSupersede: map[string]int{},
-		digests:          map[string]capturedDigest{},
-		recallCandidates: map[string]capturedRecallCandidate{},
-		urlPatches:       map[string]capturedURLPatch{},
+		events:                  events,
+		homeItems:               map[string]capturedHomeItem{},
+		dismissed:               map[string]capturedDismiss{},
+		clearedSupersede:        map[string]int{},
+		digests:                 map[string]capturedDigest{},
+		recallCandidates:        map[string]capturedRecallCandidate{},
+		urlPatches:              map[string]capturedURLPatch{},
+		activeProjectionVersion: &sovereign_db.ProjectionVersion{Version: 1},
 	}
 }
 
@@ -160,6 +168,13 @@ func (f *fakeRepo) ListKnowledgeEventsSince(_ context.Context, afterSeq int64, l
 		}
 	}
 	return out, nil
+}
+
+func (f *fakeRepo) GetActiveProjectionVersion(_ context.Context) (*sovereign_db.ProjectionVersion, error) {
+	if f.activeVersionErr != nil {
+		return nil, f.activeVersionErr
+	}
+	return f.activeProjectionVersion, nil
 }
 
 func (f *fakeRepo) UpsertKnowledgeHomeItem(_ context.Context, payload json.RawMessage) error {
@@ -850,4 +865,135 @@ func TestProjector_ReprojectIsDeterministic(t *testing.T) {
 	assert.Equal(t, first.recallCandidates, second.recallCandidates)
 	assert.Equal(t, first.urlPatches, second.urlPatches)
 	assert.Equal(t, first.checkpoint, second.checkpoint)
+}
+
+// ── active projection version resolution ──
+//
+// Regression coverage for the incident where the projector's hardcoded
+// currentProjectionVersion=1 diverged from the ACTIVE version (7) in
+// knowledge_projection_versions, so every write landed on invisible v1 rows
+// and DismissKnowledgeHomeItem's exact-match UPDATE hit 0 rows on v7 data.
+
+func TestProjector_ArticleCreated_UsesActiveProjectionVersionFromRepo(t *testing.T) {
+	tenant := uuid.New()
+	user := userPtr()
+	articleID := uuid.New()
+	occurredAt := time.Date(2026, 7, 14, 9, 0, 0, 0, time.UTC)
+
+	payload := mustJSON(t, map[string]any{
+		"article_id": articleID.String(),
+		"title":      "Some article",
+		"url":        "https://example.com/a",
+	})
+	events := []sovereign_db.KnowledgeEvent{
+		homeEvent(1, "ArticleCreated", articleID.String(), occurredAt, tenant, user, payload),
+	}
+	repo := newFakeRepo(events)
+	repo.activeProjectionVersion = &sovereign_db.ProjectionVersion{Version: 7}
+	p := NewProjector(repo, nil, Config{})
+	require.NoError(t, p.RunBatch(context.Background()))
+
+	item, ok := repo.homeItems[fmt.Sprintf("article:%s", articleID)]
+	require.True(t, ok)
+	assert.Equal(t, 7, item.ProjectionVersion, "knowledge_home_items writes must use the ACTIVE projection version, not a hardcoded constant")
+}
+
+func TestProjector_HomeItemDismissed_UsesActiveProjectionVersionFromRepo(t *testing.T) {
+	tenant := uuid.New()
+	user := userPtr()
+	itemKey := "article:" + uuid.New().String()
+	occurredAt := time.Date(2026, 7, 18, 23, 30, 0, 0, time.UTC)
+
+	payload := mustJSON(t, map[string]any{"item_key": itemKey})
+	events := []sovereign_db.KnowledgeEvent{
+		homeEvent(1, "HomeItemDismissed", itemKey, occurredAt, tenant, user, payload),
+	}
+	repo := newFakeRepo(events)
+	repo.activeProjectionVersion = &sovereign_db.ProjectionVersion{Version: 7}
+	p := NewProjector(repo, nil, Config{})
+	require.NoError(t, p.RunBatch(context.Background()))
+
+	d, ok := repo.dismissed[itemKey]
+	require.True(t, ok)
+	assert.Equal(t, 7, d.ProjectionVersion, "dismiss writes must use the ACTIVE projection version so the exact-match UPDATE targets live v7 rows, not invisible v1 rows")
+}
+
+func TestProjector_RunBatch_ErrorsWhenNoActiveProjectionVersion(t *testing.T) {
+	tenant := uuid.New()
+	user := userPtr()
+	articleID := uuid.New()
+	occurredAt := time.Date(2026, 7, 14, 9, 0, 0, 0, time.UTC)
+
+	payload := mustJSON(t, map[string]any{
+		"article_id": articleID.String(),
+		"title":      "Some article",
+		"url":        "https://example.com/a",
+	})
+	events := []sovereign_db.KnowledgeEvent{
+		homeEvent(1, "ArticleCreated", articleID.String(), occurredAt, tenant, user, payload),
+	}
+	repo := newFakeRepo(events)
+	repo.activeProjectionVersion = nil // no knowledge_projection_versions row with status='active'
+	p := NewProjector(repo, nil, Config{})
+
+	err := p.RunBatch(context.Background())
+	require.Error(t, err, "a missing active projection version must fail the batch loudly, never default to version 1")
+
+	assert.Empty(t, repo.homeItems, "no writes must happen when the active version cannot be resolved")
+	assert.Equal(t, int64(0), repo.checkpoint, "checkpoint must not advance when the active version lookup fails")
+}
+
+func TestProjector_RunBatch_PropagatesActiveProjectionVersionLookupError(t *testing.T) {
+	tenant := uuid.New()
+	user := userPtr()
+	articleID := uuid.New()
+	occurredAt := time.Date(2026, 7, 14, 9, 0, 0, 0, time.UTC)
+
+	payload := mustJSON(t, map[string]any{
+		"article_id": articleID.String(),
+		"title":      "Some article",
+		"url":        "https://example.com/a",
+	})
+	events := []sovereign_db.KnowledgeEvent{
+		homeEvent(1, "ArticleCreated", articleID.String(), occurredAt, tenant, user, payload),
+	}
+	repo := newFakeRepo(events)
+	repo.activeVersionErr = fmt.Errorf("knowledge_projection_versions unavailable")
+	p := NewProjector(repo, nil, Config{})
+
+	err := p.RunBatch(context.Background())
+	require.Error(t, err, "an active-version lookup failure must fail the batch loudly")
+	assert.Empty(t, repo.homeItems)
+}
+
+func TestProjector_RunBatch_SkipsActiveVersionLookupWhenNoEvents(t *testing.T) {
+	repo := newFakeRepo(nil)
+	repo.activeVersionErr = fmt.Errorf("must not be called when there is nothing to fold")
+	p := NewProjector(repo, nil, Config{})
+
+	require.NoError(t, p.RunBatch(context.Background()), "an empty batch must return before resolving the active version")
+}
+
+func TestProjector_FoldEventUsesExplicitlyPassedVersionRegardlessOfActive(t *testing.T) {
+	tenant := uuid.New()
+	user := userPtr()
+	itemKey := "article:" + uuid.New().String()
+	occurredAt := time.Date(2026, 7, 14, 9, 0, 0, 0, time.UTC)
+
+	payload := mustJSON(t, map[string]any{"item_key": itemKey})
+	evt := homeEvent(1, "HomeItemDismissed", itemKey, occurredAt, tenant, user, payload)
+
+	repo := newFakeRepo(nil)
+	repo.activeProjectionVersion = &sovereign_db.ProjectionVersion{Version: 7} // active=7, must be ignored below
+	p := NewProjector(repo, nil, Config{})
+
+	// A future reproject/backfill caller (e.g. building a shadow v6 while v7
+	// stays active for live reads/writes) drives the fold directly with an
+	// explicit target version — it must never be silently overridden by the
+	// live batch's active-version lookup.
+	require.NoError(t, p.foldEvent(context.Background(), evt, 6))
+
+	d, ok := repo.dismissed[itemKey]
+	require.True(t, ok)
+	assert.Equal(t, 6, d.ProjectionVersion, "an explicitly-passed fold version must win over the repo's active version")
 }
