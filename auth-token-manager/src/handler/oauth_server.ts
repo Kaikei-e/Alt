@@ -106,8 +106,8 @@ export class OAuthServer {
 
         if (reqUrl.searchParams.has("error")) {
           const error = reqUrl.searchParams.get("error") ?? "unknown";
-          const description =
-            reqUrl.searchParams.get("error_description") ?? "";
+          const description = reqUrl.searchParams.get("error_description") ??
+            "";
           logger.error("Authorization failed", { error, description });
           settle({ ok: false, error: `${error}: ${description}` });
           return new Response(
@@ -218,7 +218,14 @@ export class OAuthServer {
 
     return new Response(null, {
       status: 302,
-      headers: { Location: url },
+      headers: {
+        Location: url,
+        // The redirect target is Inoreader's own OAuth authorize endpoint.
+        // Without this, a browser following the redirect would send this
+        // request's URL (including the ?token=... internal secret) as the
+        // Referer header on that cross-origin navigation.
+        "Referrer-Policy": "no-referrer",
+      },
     });
   }
 

@@ -155,6 +155,18 @@ describe("OAuthServer /api/token", {
     assertEquals(body.refresh_token, undefined);
   });
 
+  it("should set Referrer-Policy: no-referrer on the /auth redirect so the internal auth token in the query string is not leaked to Inoreader via the Referer header", async () => {
+    Deno.env.set("INTERNAL_AUTH_TOKEN", "correct-token");
+
+    const res = await fetch(
+      `http://localhost:${TEST_PORT}/auth?token=correct-token`,
+      { redirect: "manual" },
+    );
+
+    assertEquals(res.status, 302);
+    assertEquals(res.headers.get("Referrer-Policy"), "no-referrer");
+  });
+
   it("should accept the token when only INTERNAL_AUTH_TOKEN_FILE is set (compose secrets)", async () => {
     const tmpFile = await Deno.makeTempFile();
     await Deno.writeTextFile(tmpFile, "file-token\n");

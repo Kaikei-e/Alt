@@ -290,4 +290,72 @@ describe("RefreshTokenUsecase", {
       "rotated-refresh-token-1234567890",
     );
   });
+
+  it("should surface a distinctive error when the rotated refresh_token cannot be persisted after all retries are exhausted", async () => {
+    // Inoreader has already invalidated the old refresh_token server-side by
+    // the time refreshToken() returns. If updateTokenSecret then fails on
+    // every retry attempt, the new refresh_token is lost (only held in the
+    // local `tokens` variable, which goes out of scope). The failure must be
+    // distinguishable from a generic error (e.g. "no token found") so
+    // operators can tell this specific, unrecoverable-without-manual-OAuth
+    // failure mode apart from routine transient errors.
+    const nearExpiryTokenData: SecretData = {
+      access_token: "old-access-token-1234567890",
+      refresh_token: "valid-refresh-token-1234567890",
+      expires_at: new Date(Date.now() + 60 * 1000).toISOString(),
+      updated_at: new Date().toISOString(),
+      token_type: "Bearer",
+      scope: "read write",
+    };
+
+    const rotatedTokens: TokenResponse = {
+      access_token: "rotated-access-token-1234567890",
+      refresh_token: "rotated-refresh-token-1234567890",
+      expires_at: new Date(Date.now() + 3600 * 1000),
+      token_type: "Bearer",
+      scope: "read write",
+    };
+
+    let refreshCallCount = 0;
+    const tokenClient: TokenClient = {
+      refreshToken: () => {
+        refreshCallCount++;
+        return Promise.resolve(rotatedTokens);
+      },
+      exchangeCode: () => Promise.reject(new Error("Not used in refresh")),
+    };
+
+    const secretManager: SecretManager = {
+      getTokenSecret: () => Promise.resolve(nearExpiryTokenData),
+      updateTokenSecret: () => Promise.reject(new Error("disk write failed")),
+      checkSecretExists: () => Promise.resolve(true),
+    };
+
+    const httpClient = createMockHttpClient();
+    const retryConfig: RetryConfig = {
+      max_attempts: 2,
+      base_delay: 1,
+      max_delay: 10,
+      backoff_factor: 2,
+    };
+
+    const usecase = new RefreshTokenUsecase(
+      tokenClient,
+      secretManager,
+      httpClient,
+      defaultNetworkConfig,
+      retryConfig,
+    );
+
+    const result = await usecase.execute();
+
+    assertEquals(refreshCallCount, 1);
+    assertEquals(result.success, false);
+    assertEquals(
+      result.error?.includes(
+        "rotation succeeded but persistence failed",
+      ),
+      true,
+    );
+  });
 });
