@@ -1,3 +1,5 @@
+import { sanitizeHrefUrl } from "$lib/utils/urlSafety";
+
 export type CitationKindName = "UNSPECIFIED" | "WEB" | "ARTICLE" | "SUMMARY";
 
 export type CitationLinkInput = {
@@ -18,7 +20,7 @@ export type CitationLinkInput = {
 export function citationHref(c: CitationLinkInput): string | undefined {
 	switch (c.kind) {
 		case "WEB":
-			return c.url || undefined;
+			return sanitizeHrefUrl(c.url);
 		case "ARTICLE":
 		case "SUMMARY":
 			return c.refId ? `/articles/${c.refId}` : undefined;

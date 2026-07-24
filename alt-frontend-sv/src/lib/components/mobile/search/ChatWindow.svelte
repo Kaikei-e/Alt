@@ -9,6 +9,7 @@ import {
 import { formatAugurFallbackMessage } from "$lib/utils/augurFallback";
 import { parseMarkdown } from "$lib/utils/simpleMarkdown";
 import { simulateTypewriterEffect } from "$lib/utils/streamingRenderer";
+import { sanitizeHrefUrl } from "$lib/utils/urlSafety";
 
 type Citation = {
 	url: string;
@@ -320,7 +321,7 @@ $effect(() => {
 								{#each message.citations as cite, i}
 									<li class="source-item">
 										<span class="source-id">[{i + 1}]</span>
-										<a href={cite.url} target="_blank" rel="noopener noreferrer" class="source-title">
+										<a href={sanitizeHrefUrl(cite.url)} target="_blank" rel="noopener noreferrer" class="source-title">
 											{cite.title || "Untitled Source"}
 										</a>
 									</li>

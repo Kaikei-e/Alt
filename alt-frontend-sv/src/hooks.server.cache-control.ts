@@ -22,3 +22,27 @@ export function applyHtmlCacheControl(response: Response): void {
 		// than 500 the request over an observability header.
 	}
 }
+
+/**
+ * Default every `/api/` JSON response to `Cache-Control: private, no-store`
+ * unless the route already set its own Cache-Control header deliberately.
+ *
+ * Most `+server.ts` GET handlers return personal data (feed lists, dashboard
+ * metrics, admin snapshots) with no Cache-Control header at all today, so
+ * the app has no independent defense against a future CDN/proxy_cache
+ * addition caching a response across users. See OWASP ASVS V14 (data
+ * protection) — sensitive responses must be marked non-cacheable at the
+ * application layer, not left to infra defaults.
+ */
+export function applyApiCacheControl(response: Response, pathname: string): void {
+	if (!pathname.startsWith("/api/")) return;
+	const contentType = response.headers.get("content-type") ?? "";
+	if (!contentType.startsWith("application/json")) return;
+	if (response.headers.has("cache-control")) return;
+	try {
+		response.headers.set("cache-control", "private, no-store");
+	} catch {
+		// Frozen headers (rare; some test environments) — soft fail rather
+		// than 500 the request over an observability header.
+	}
+}

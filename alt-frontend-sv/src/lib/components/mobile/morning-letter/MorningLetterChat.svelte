@@ -1,6 +1,7 @@
 <script lang="ts">
 import { onMount, tick } from "svelte";
 import { parseMarkdown } from "$lib/utils/simpleMarkdown";
+import { sanitizeHrefUrl } from "$lib/utils/urlSafety";
 import {
 	createClientTransport,
 	streamMorningLetterChat,
@@ -261,7 +262,7 @@ onMount(() => {
 									{#each msg.citations.slice(0, 3) as cite, i}
 										<li>
 											<a
-												href={cite.URL}
+												href={sanitizeHrefUrl(cite.URL)}
 												target="_blank"
 												rel="noopener noreferrer"
 												class="source-link"

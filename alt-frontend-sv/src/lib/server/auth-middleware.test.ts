@@ -90,4 +90,25 @@ describe("validateSession cache key derivation", () => {
 		expect(result).toEqual({ session: null, user: null, backendToken: null });
 		expect(toSession).not.toHaveBeenCalled();
 	});
+
+	it("re-fetches from Kratos after invalidateSessionCache is called for that cookie (logout must bust the cache)", async () => {
+		const { validateSession, invalidateSessionCache } = await import(
+			"./auth-middleware"
+		);
+
+		const cookie = "other=1; ory_kratos_session=logged-out-user-token";
+		toSession.mockResolvedValue(identityFor("loggedOutUser"));
+
+		const first = await validateSession(cookie);
+		expect(first.user?.id).toBe("loggedOutUser");
+		expect(toSession).toHaveBeenCalledTimes(1);
+
+		invalidateSessionCache(cookie);
+
+		// Same cookie presented again after logout must not hit the stale
+		// 30s cache — Kratos must be consulted again.
+		const second = await validateSession(cookie);
+		expect(toSession).toHaveBeenCalledTimes(2);
+		void second;
+	});
 });

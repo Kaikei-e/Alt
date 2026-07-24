@@ -16,7 +16,10 @@
 
 import { describe, expect, it, vi } from "vitest";
 
-import { applyHtmlCacheControl } from "./hooks.server.cache-control";
+import {
+	applyApiCacheControl,
+	applyHtmlCacheControl,
+} from "./hooks.server.cache-control";
 
 function htmlResponse() {
 	return new Response("<!doctype html><html></html>", {
@@ -111,5 +114,44 @@ describe("applyHtmlCacheControl", () => {
 		applyHtmlCacheControl(res);
 		expect(spy).not.toHaveBeenCalled();
 		expect(res.headers.get("cache-control")).toBe("no-cache, must-revalidate");
+	});
+});
+
+describe("applyApiCacheControl", () => {
+	it("stamps Cache-Control: private, no-store on /api/ JSON responses with no existing header", () => {
+		const res = jsonResponse();
+		applyApiCacheControl(res, "/api/v1/rss-feed-link/list");
+		expect(res.headers.get("cache-control")).toBe("private, no-store");
+	});
+
+	it("does not overwrite a Cache-Control header the route already set deliberately", () => {
+		const res = new Response('{"ok":true}', {
+			headers: {
+				"content-type": "application/json",
+				"cache-control": "no-store",
+			},
+		});
+		applyApiCacheControl(res, "/api/admin/knowledge-home/sovereign");
+		expect(res.headers.get("cache-control")).toBe("no-store");
+	});
+
+	it("leaves non-API paths untouched", () => {
+		const res = jsonResponse();
+		applyApiCacheControl(res, "/some/other/json-serving-path");
+		expect(res.headers.get("cache-control")).toBeNull();
+	});
+
+	it("leaves non-JSON /api/ responses untouched (e.g. SSE streams)", () => {
+		const res = new Response("data: hi\n\n", {
+			headers: { "content-type": "text/event-stream" },
+		});
+		applyApiCacheControl(res, "/api/v1/augur/stream");
+		expect(res.headers.get("cache-control")).toBeNull();
+	});
+
+	it("does not throw when headers are frozen — soft fail tolerated", () => {
+		const res = jsonResponse();
+		const frozen = Object.freeze(res);
+		expect(() => applyApiCacheControl(frozen, "/api/v1/dashboard/metrics")).not.toThrow();
 	});
 });

@@ -11,6 +11,12 @@ let csrfTokenExpiry = 0;
 
 const FETCH_TIMEOUT_MS = 15_000;
 
+// Exposed for callers that issue their own `fetch` (outside callClientAPI)
+// to state-changing endpoints, e.g. the admin/sovereign action hooks.
+export async function getClientCSRFToken(): Promise<string | null> {
+	return fetchCSRFToken();
+}
+
 async function fetchCSRFToken(): Promise<string | null> {
 	if (cachedCSRFToken && Date.now() < csrfTokenExpiry) {
 		return cachedCSRFToken;

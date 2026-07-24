@@ -5,6 +5,7 @@ import {
 	runSovereignRetention,
 } from "$lib/server/sovereign-admin";
 import { getUserRole } from "$lib/server/user-role";
+import { getCSRFToken } from "$lib/api";
 
 export const GET: RequestHandler = async ({ locals }) => {
 	if (getUserRole(locals.user) !== "admin") {
@@ -29,6 +30,16 @@ export const GET: RequestHandler = async ({ locals }) => {
 export const POST: RequestHandler = async ({ locals, request }) => {
 	if (getUserRole(locals.user) !== "admin") {
 		return json({ error: "Admin access required." }, { status: 403 });
+	}
+
+	// V-004: CSRF validation for state-changing operations (reproject/backfill
+	// swap-rollback and retention purge are destructive; must not rely solely
+	// on SvelteKit's default checkOrigin).
+	const cookieHeader = request.headers.get("cookie");
+	const expectedCSRF = await getCSRFToken(cookieHeader);
+	const providedCSRF = request.headers.get("X-CSRF-Token");
+	if (!expectedCSRF || expectedCSRF !== providedCSRF) {
+		return json({ error: "CSRF validation failed" }, { status: 403 });
 	}
 
 	let body: unknown;
