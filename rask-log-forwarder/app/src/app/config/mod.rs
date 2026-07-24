@@ -73,6 +73,10 @@ pub fn reliability_gap_warning(protocol: Protocol) -> Option<&'static str> {
     }
 }
 
+// Re-export all public items for backward compatibility
+pub use cli::Config;
+pub use groups::{DiskFallbackConfig, MetricsConfig, RetryConfig};
+
 #[cfg(test)]
 mod reliability_gap_warning_tests {
     use super::*;
@@ -95,7 +99,3 @@ mod reliability_gap_warning_tests {
         );
     }
 }
-
-// Re-export all public items for backward compatibility
-pub use cli::Config;
-pub use groups::{DiskFallbackConfig, MetricsConfig, RetryConfig};
