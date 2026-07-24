@@ -90,10 +90,26 @@ func NewMeilisearchDriverWithClients(adminClient meilisearch.ServiceManager, sea
 // waitForTask polls until a Meilisearch task completes or a bounded timeout
 // elapses. See the package-level comment on meilisearchTaskWaitTimeout for
 // why this can't just call WaitForTask(taskUID, timeout) directly.
+//
+// meilisearch-go's WaitForTaskWithContext returns a nil error once the task
+// reaches ANY terminal status, including TaskStatusFailed -- a schema
+// violation, missing primary key, etc. on the Meilisearch side is reported
+// only via the returned task's Status field, not via err. Callers that only
+// checked err (the previous bug here) treated a failed write exactly like a
+// successful one, so IndexDocuments/DeleteDocuments returned nil and the
+// consumer XACKed a message whose write never actually landed -- see
+// .claude/rules/event-stream-consumer.md ("ACK after durable write").
 func (d *MeilisearchDriver) waitForTask(ctx context.Context, taskUID int64) (*meilisearch.Task, error) {
 	waitCtx, cancel := context.WithTimeout(ctx, d.taskWaitTimeout)
 	defer cancel()
-	return d.index.WaitForTaskWithContext(waitCtx, taskUID, d.taskPollInterval)
+	task, err := d.index.WaitForTaskWithContext(waitCtx, taskUID, d.taskPollInterval)
+	if err != nil {
+		return task, err
+	}
+	if task != nil && task.Status == meilisearch.TaskStatusFailed {
+		return task, fmt.Errorf("meilisearch task %d failed: %s (code=%s)", task.UID, task.Error.Message, task.Error.Code)
+	}
+	return task, nil
 }
 
 // WithHybrid installs a hybrid-search configuration on the driver. Pass nil

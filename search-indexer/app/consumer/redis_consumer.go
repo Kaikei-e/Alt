@@ -159,12 +159,25 @@ func (c *Consumer) StopIntake() {
 	})
 }
 
+// WaitForLoopsExit blocks until the consume and reclaim loops have actually
+// observed shutdown and returned, without closing the underlying Redis
+// client. Call after StopIntake and before flushing any buffering handler:
+// StopIntake only closes the shutdown signal channel, it does not wait, so
+// a handler flush issued right after it can still race an in-flight
+// processMessages() batch that is mid-loop calling HandleEvent -- an event
+// enqueued into the handler's buffer during that window would otherwise
+// never be flushed. See .claude/rules/event-stream-consumer.md shutdown
+// ordering.
+func (c *Consumer) WaitForLoopsExit() {
+	c.wg.Wait()
+}
+
 // Close waits for the consume and reclaim loops to actually exit before
 // closing the underlying Redis client, so client.Close() cannot race with
 // their in-flight XReadGroup/XAutoClaim calls. Call after StopIntake (and
 // after any handler has finished flushing/acking pending work).
 func (c *Consumer) Close() {
-	c.wg.Wait()
+	c.WaitForLoopsExit()
 	if c.client != nil {
 		c.client.Close()
 	}
@@ -387,28 +400,37 @@ func (c *Consumer) routeReclaimedMessages(ctx context.Context, messages []redis.
 
 // deliveryCounts looks up the current delivery counter for each given
 // message (already updated by the XAUTOCLAIM claim that preceded this
-// call).
+// call). It queries per message ID -- Start/End pinned to that exact ID --
+// rather than a single Start:"-",End:"+" sweep bounded by a Count derived
+// from len(messages): when this consumer's PEL has accumulated more
+// pending entries than that Count (e.g. several poison messages piling up
+// concurrently), the ascending-ID-ordered sweep returns only the earliest
+// entries and silently omits any message in this batch whose ID sorts
+// later, making its delivery count look like zero regardless of its real
+// value. That falsely keeps shouldSendToDLQ from ever firing for it. See
+// .claude/rules/event-stream-consumer.md ("DLQ条件は再配信が起きて初めて発火する").
 func (c *Consumer) deliveryCounts(ctx context.Context, messages []redis.XMessage) map[string]int64 {
 	counts := make(map[string]int64, len(messages))
-	if len(messages) == 0 {
-		return counts
-	}
 
-	pending, err := c.client.XPendingExt(ctx, &redis.XPendingExtArgs{
-		Stream:   c.config.StreamKey,
-		Group:    c.config.GroupName,
-		Consumer: c.config.ConsumerName,
-		Start:    "-",
-		End:      "+",
-		Count:    int64(len(messages)) * 2,
-	}).Result()
-	if err != nil {
-		c.logger.Error("failed to look up delivery counts for reclaimed messages", "error", err)
-		return counts
-	}
-
-	for _, p := range pending {
-		counts[p.ID] = p.RetryCount
+	for _, message := range messages {
+		pending, err := c.client.XPendingExt(ctx, &redis.XPendingExtArgs{
+			Stream:   c.config.StreamKey,
+			Group:    c.config.GroupName,
+			Consumer: c.config.ConsumerName,
+			Start:    message.ID,
+			End:      message.ID,
+			Count:    1,
+		}).Result()
+		if err != nil {
+			c.logger.Error("failed to look up delivery count for reclaimed message",
+				"message_id", message.ID,
+				"error", err,
+			)
+			continue
+		}
+		for _, p := range pending {
+			counts[p.ID] = p.RetryCount
+		}
 	}
 	return counts
 }
