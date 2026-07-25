@@ -135,10 +135,45 @@ func runRestart(cmd *cobra.Command, args []string) error {
 	})
 	if err != nil {
 		printer.Error("Failed to start stacks: %v", err)
+
+		// Diagnose partial startup -- restart previously returned the raw
+		// compose error here with no diagnostics; reuse the same
+		// classifyServices/buildPartialStartupError path `up` uses so a
+		// restart failure is just as actionable.
+		psCtx, psCancel := context.WithTimeout(cmd.Context(), 15*time.Second)
+		defer psCancel()
+		statuses, psErr := client.PS(psCtx, files)
+		if psErr == nil {
+			diag := classifyServices(stacks, statuses)
+			if cliErr := buildPartialStartupError(diag, err); cliErr != nil {
+				fmt.Println()
+				printDiagnostic(printer, diag)
+				return cliErr
+			}
+		}
 		return err
 	}
 
-	printer.Success("Stacks restarted successfully")
+	if dryRun {
+		printer.Success("Stacks restarted successfully (dry-run: skipping Ready-wait)")
+		printer.PrintHints("restart")
+		return nil
+	}
+
+	// Trustworthy success: same Ready-wait `up` uses (internal/health),
+	// so `restart` doesn't report success until every target service is
+	// actually usable either.
+	printer.Header("Waiting for Services to Become Ready")
+	waitTimeout := maxStartupTimeout(stacks)
+	result, waitErr := waitForReady(cmd.Context(), printer, client, files, stacks, waitTimeout)
+	if waitErr != nil {
+		return waitErr
+	}
+	if cliErr := renderReadyFailure(cmd.Context(), printer, files, stacks, result); cliErr != nil {
+		return cliErr
+	}
+
+	printer.Success("Stacks restarted successfully — all %d services Ready", len(result.States))
 	printer.PrintHints("restart")
 	return nil
 }

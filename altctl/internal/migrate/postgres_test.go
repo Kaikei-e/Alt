@@ -140,6 +140,40 @@ func TestPostgresBackuper_ContainerName(t *testing.T) {
 	}
 }
 
+// TestPostgresBackuper_ContainerName_UsesConfiguredProjectName guards
+// against the kratos-db / knowledge-sovereign-db fallback names hardcoding
+// the "alt-" project prefix: a backup run against a differently-named
+// Compose project (COMPOSE_PROJECT_NAME / --project-name) would target the
+// wrong (nonexistent) container for these two services when the live
+// container ID can't be resolved (composeDir == "" here, forcing the
+// static fallback).
+func TestPostgresBackuper_ContainerName_UsesConfiguredProjectName(t *testing.T) {
+	pg := NewPostgresBackuper("myproj", "", slog.Default(), true)
+
+	tests := []struct {
+		spec VolumeSpec
+		want string
+	}{
+		{
+			VolumeSpec{Name: "kratos_db_data", Service: "kratos-db"},
+			"myproj-kratos-db-1",
+		},
+		{
+			VolumeSpec{Name: "knowledge-sovereign-db-data", Service: "knowledge-sovereign-db"},
+			"myproj-knowledge-sovereign-db-1",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.spec.Name, func(t *testing.T) {
+			got := pg.containerName(tt.spec)
+			if got != tt.want {
+				t.Errorf("containerName(%s) with projectName=%q = %q, want %q", tt.spec.Name, "myproj", got, tt.want)
+			}
+		})
+	}
+}
+
 func TestPostgresBackuper_DumpFilename(t *testing.T) {
 	pg := NewPostgresBackuper("alt", "", slog.Default(), true)
 	spec := VolumeSpec{Name: "db_data_17", DBName: "alt"}
@@ -154,8 +188,8 @@ func TestRegistryPostgreSQLVolumes(t *testing.T) {
 	r := NewVolumeRegistry()
 	pgVolumes := r.PostgreSQL()
 
-	if len(pgVolumes) != 6 {
-		t.Errorf("Expected 6 PostgreSQL volumes, got %d", len(pgVolumes))
+	if len(pgVolumes) != 7 {
+		t.Errorf("Expected 7 PostgreSQL volumes, got %d", len(pgVolumes))
 	}
 
 	expectedPG := map[string]bool{
@@ -165,6 +199,7 @@ func TestRegistryPostgreSQLVolumes(t *testing.T) {
 		"rag_db_data":                 true,
 		"knowledge-sovereign-db-data": true,
 		"pre_processor_db_data":       true,
+		"acolyte_db_data":             true,
 	}
 
 	for _, v := range pgVolumes {
@@ -187,7 +222,7 @@ func TestRegistryTarVolumesAfterPGChange(t *testing.T) {
 	r := NewVolumeRegistry()
 	tarVolumes := r.Tar()
 
-	// 14 total - 6 PG = 8 tar
+	// 15 total - 7 PG = 8 tar
 	if len(tarVolumes) != 8 {
 		t.Errorf("Expected 8 tar volumes, got %d", len(tarVolumes))
 	}

@@ -41,14 +41,49 @@ altctl list
 
 | Command | Description |
 |---------|-------------|
-| `altctl up [stacks...]` | Start stacks with dependency resolution |
+| `altctl up [stacks...]` | Start stacks with dependency resolution, and **wait until every service is Ready** before reporting success |
 | `altctl down [stacks...]` | Stop running stacks |
-| `altctl restart [stacks...]` | Restart stacks (down then up) |
+| `altctl restart [stacks...]` | Restart stacks (down then up), waiting for Ready the same way `up` does |
 | `altctl status` | Show service status by stack |
 | `altctl list` | List available stacks |
 | `altctl logs <service\|stack>` | Stream logs from a service or stack |
 | `altctl exec <service> -- <cmd>` | Execute a command in a running container |
 | `altctl config` | Show effective configuration |
+
+### `up` / `restart`: trustworthy success
+
+`altctl up` and `altctl restart` don't report success the moment `docker compose
+up -d` returns -- that only means the containers were *created*, not that
+they're usable. Instead, after compose returns they poll `docker compose ps
+--format json` (~every 2s) until every target service is **Ready**
+(`internal/health`):
+
+- a service **with** a healthcheck is Ready when `State=running` **and**
+  `Health=healthy`;
+- a service **without** a healthcheck is Ready as soon as `State=running`;
+- a **one-shot** container (a migrator/init job expected to exit) is Ready
+  when `State=exited` with `ExitCode=0`, regardless of any healthcheck.
+
+Live per-service progress prints while waiting (e.g. `12/17 Ready — waiting:
+alt-backend (starting), rerank-local (health: starting)`); pass `--quiet` to
+suppress it. The wait's timeout is the **largest `startup_timeout`** among the
+resolved stacks (`.altctl.yaml`; `ai`/`recap` are 1200s) -- not the `--timeout`
+flag, which only bounds the `docker compose up`/`down` invocation itself.
+
+On timeout, or if a service never becomes Ready, `altctl up`/`restart` print
+the same service-status diagnostic table `up` has always printed on a hard
+compose failure, plus a `docker compose logs --tail 20 --no-color` capture for
+every not-Ready service, and exit non-zero: **exit code 5** if the wait timed
+out, **exit code 3** if `docker compose up` itself failed.
+
+Pass `--detach`/`-d` to `up` to restore the old fire-and-forget behavior:
+start the stack and return immediately without waiting for Ready ("started
+(detached) — not verified Ready").
+
+Ctrl-C (SIGINT) or SIGTERM cancels the wait (and any in-flight `docker`
+subprocess) promptly instead of leaving `altctl` to hang until the timeout;
+altctl prints `interrupted — stack may be partially started; run altctl
+doctor` and exits non-zero.
 
 ### Migration (Backup/Restore)
 

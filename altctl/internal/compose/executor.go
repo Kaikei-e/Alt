@@ -25,6 +25,11 @@ type DefaultExecutor struct {
 	env     []string
 	logger  *slog.Logger
 	dryRun  bool
+	// stdin is wired into RunWithPipes' child process. Defaults to os.Stdin
+	// so interactive/piped commands (e.g. `altctl exec db -- psql`) behave
+	// like a normal terminal command instead of seeing instant EOF.
+	// Overridable via SetStdin for tests.
+	stdin io.Reader
 }
 
 // NewExecutor creates a new command executor
@@ -34,6 +39,7 @@ func NewExecutor(workDir string, logger *slog.Logger, dryRun bool) *DefaultExecu
 		env:     os.Environ(),
 		logger:  logger,
 		dryRun:  dryRun,
+		stdin:   os.Stdin,
 	}
 
 	// Set default project name to "alt" if not set
@@ -120,8 +126,16 @@ func (e *DefaultExecutor) RunWithPipes(ctx context.Context, cmd string, args []s
 	c.Env = e.env
 	c.Stdout = stdout
 	c.Stderr = stderr
+	c.Stdin = e.stdin
 
 	return c.Run()
+}
+
+// SetStdin overrides the reader wired into RunWithPipes' child process.
+// Defaults to os.Stdin (set by NewExecutor); tests inject a different
+// io.Reader (or nil) here instead of touching the process's real stdin.
+func (e *DefaultExecutor) SetStdin(r io.Reader) {
+	e.stdin = r
 }
 
 // SetEnv adds or updates an environment variable

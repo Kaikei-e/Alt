@@ -41,9 +41,9 @@ func TestMigrator_Backup_DryRun_ProfileDB(t *testing.T) {
 		t.Fatal("expected non-nil BackupResult")
 	}
 
-	// ProfileDB should only include PG volumes (6)
-	if len(result.Manifest.Volumes) != 6 {
-		t.Errorf("Expected 6 volumes for ProfileDB, got %d", len(result.Manifest.Volumes))
+	// ProfileDB should only include PG volumes (7)
+	if len(result.Manifest.Volumes) != 7 {
+		t.Errorf("Expected 7 volumes for ProfileDB, got %d", len(result.Manifest.Volumes))
 	}
 
 	for _, v := range result.Manifest.Volumes {
@@ -66,9 +66,9 @@ func TestMigrator_Backup_DryRun_ProfileEssential(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	// ProfileEssential: critical(6) + data(3) + search(1) = 10
-	if len(result.Manifest.Volumes) != 10 {
-		t.Errorf("Expected 10 volumes for ProfileEssential, got %d", len(result.Manifest.Volumes))
+	// ProfileEssential: critical(7) + data(3) + search(1) = 11
+	if len(result.Manifest.Volumes) != 11 {
+		t.Errorf("Expected 11 volumes for ProfileEssential, got %d", len(result.Manifest.Volumes))
 	}
 
 	// Should not include metrics or models
@@ -92,8 +92,8 @@ func TestMigrator_Backup_DryRun_ProfileAll(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	if len(result.Manifest.Volumes) != 14 {
-		t.Errorf("Expected 14 volumes for ProfileAll, got %d", len(result.Manifest.Volumes))
+	if len(result.Manifest.Volumes) != 15 {
+		t.Errorf("Expected 15 volumes for ProfileAll, got %d", len(result.Manifest.Volumes))
 	}
 }
 
@@ -111,8 +111,8 @@ func TestMigrator_Backup_DryRun_WithExclude(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	if len(result.Manifest.Volumes) != 11 {
-		t.Errorf("Expected 11 volumes after excluding 3, got %d", len(result.Manifest.Volumes))
+	if len(result.Manifest.Volumes) != 12 {
+		t.Errorf("Expected 12 volumes after excluding 3, got %d", len(result.Manifest.Volumes))
 	}
 }
 
@@ -129,8 +129,8 @@ func TestMigrator_Backup_DryRun_DefaultProfile(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	if len(result.Manifest.Volumes) != 14 {
-		t.Errorf("Empty profile should default to all (14 volumes), got %d", len(result.Manifest.Volumes))
+	if len(result.Manifest.Volumes) != 15 {
+		t.Errorf("Empty profile should default to all (15 volumes), got %d", len(result.Manifest.Volumes))
 	}
 }
 
@@ -147,8 +147,8 @@ func TestBackupResult_HasTimings(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	if len(result.VolumeTimings) != 6 {
-		t.Errorf("Expected 6 volume timings, got %d", len(result.VolumeTimings))
+	if len(result.VolumeTimings) != 7 {
+		t.Errorf("Expected 7 volume timings, got %d", len(result.VolumeTimings))
 	}
 
 	for _, timing := range result.VolumeTimings {

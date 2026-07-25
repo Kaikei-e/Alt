@@ -16,10 +16,11 @@ go test ./...
 make build && make install-local
 
 # Usage
-altctl up              # Start default stacks
-altctl up ai           # Start specific stack (deps auto-resolved)
+altctl up              # Start default stacks, wait until every service is Ready
+altctl up ai           # Start specific stack (deps auto-resolved), wait for Ready
+altctl up ai --detach  # Fire-and-forget: start and return, skip the Ready-wait
 altctl down            # Stop all
-altctl restart recap   # Restart specific stack
+altctl restart recap   # Restart specific stack, wait until every service is Ready
 altctl status          # View status
 altctl exec db -- psql -U postgres  # Execute in container
 altctl logs recap      # Tail all recap stack logs
@@ -53,6 +54,24 @@ altctl migrate list                               # List available backups
 altctl migrate verify --backup ./backups/xxx      # Verify integrity
 altctl migrate status                             # Backup health check
 ```
+
+## `up` / `restart` Reliability (trustworthy success)
+
+`up` and `restart` do not report success just because `docker compose up -d`
+returned -- that only means containers were created. They poll `docker
+compose ps --format json` (`internal/health.Waiter`) until every target
+service is **Ready**:
+
+- healthcheck present -> `State=running` AND `Health=healthy`
+- no healthcheck -> `State=running`
+- one-shot container (migrator/init job) -> `State=exited` with `ExitCode=0`
+
+Timeout = max `startup_timeout` across the resolved stacks (`.altctl.yaml`;
+`ai`/`recap` are 1200s), not the `--timeout` flag. On timeout or a not-Ready
+service: diagnostic table + `docker compose logs --tail 20` per not-Ready
+service, exit code **5** (timeout) or **3** (compose itself failed). Ctrl-C
+cancels the wait and in-flight `docker` subprocesses promptly instead of
+hanging. `up --detach`/`-d` skips the wait (fire-and-forget).
 
 ## Backup Profiles
 
@@ -119,7 +138,7 @@ Run `altctl list --services` for the live, derived service lists per stack.
 
 | Subcommand | Target | Client |
 |------------|--------|--------|
-| health, slo, reproject, audit, backfill | alt-backend :9001 | adminclient (Connect-RPC JSON) |
+| health, slo, reproject, audit, backfill | alt-backend :9101 | adminclient (Connect-RPC JSON) |
 | snapshot, retention, storage | knowledge-sovereign :9511 | sovereignclient (REST) |
 
 ## TDD Workflow

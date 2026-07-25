@@ -49,3 +49,20 @@ func TestRestart_UnknownStack(t *testing.T) {
 		t.Fatal("expected error for unknown stack, got nil")
 	}
 }
+
+// TestRestart_DryRun_SkipsReadyWait guards against restart hanging in
+// --dry-run: since dry-run never actually starts containers, waiting for
+// `docker compose ps` to report them Ready would either report everything
+// as permanently "missing" or (worse) block for the full Ready-wait
+// timeout. restart must short-circuit exactly like `up` does.
+func TestRestart_DryRun_SkipsReadyWait(t *testing.T) {
+	setupRestartTest(t)
+
+	buf := new(bytes.Buffer)
+	rootCmd.SetOut(buf)
+	rootCmd.SetArgs([]string{"restart", "core", "--dry-run"})
+
+	if err := rootCmd.Execute(); err != nil {
+		t.Fatalf("restart core --dry-run failed: %v", err)
+	}
+}

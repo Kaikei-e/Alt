@@ -2,6 +2,7 @@
 package cmd
 
 import (
+	"context"
 	"fmt"
 	"log/slog"
 	"os"
@@ -58,9 +59,25 @@ Exit Codes:
 	},
 }
 
-// Execute adds all child commands to the root command and sets flags appropriately.
+// Execute adds all child commands to the root command and sets flags
+// appropriately, running under a background context. Prefer ExecuteContext
+// in main.go so Ctrl-C (SIGINT/SIGTERM) can cancel in-flight compose
+// invocations and the Ready-wait poll loop; Execute remains for callers
+// (tests) that don't need signal-driven cancellation.
 func Execute() error {
 	return rootCmd.Execute()
+}
+
+// ExecuteContext runs the root command under ctx: cancelling ctx (main.go
+// wires this to signal.NotifyContext for SIGINT/SIGTERM) propagates via
+// cobra's cmd.Context() into every subcommand's compose invocations
+// (internal/compose's executor already uses exec.CommandContext, so
+// in-flight `docker` child processes are killed) and into the
+// internal/health Ready-wait poll loop, which checks ctx before every
+// poll/sleep and returns promptly instead of blocking for a full
+// PollInterval or the whole startup timeout.
+func ExecuteContext(ctx context.Context) error {
+	return rootCmd.ExecuteContext(ctx)
 }
 
 // SetVersion sets the version string for the CLI

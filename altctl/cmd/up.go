@@ -3,6 +3,8 @@ package cmd
 import (
 	"context"
 	"fmt"
+	"os/exec"
+	"path/filepath"
 	"sort"
 	"strings"
 	"time"
@@ -10,6 +12,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/alt-project/altctl/internal/compose"
+	"github.com/alt-project/altctl/internal/health"
 	"github.com/alt-project/altctl/internal/output"
 	"github.com/alt-project/altctl/internal/stack"
 )
@@ -37,7 +40,7 @@ func init() {
 	rootCmd.AddCommand(upCmd)
 
 	upCmd.Flags().BoolP("build", "b", false, "rebuild images before starting")
-	upCmd.Flags().BoolP("detach", "d", true, "run in detached mode")
+	upCmd.Flags().BoolP("detach", "d", false, "start stacks without waiting for services to become Ready (fire-and-forget)")
 	upCmd.Flags().Bool("no-deps", false, "don't start dependent stacks")
 	upCmd.Flags().Bool("all", false, "start all stacks including optional ones")
 	upCmd.Flags().Duration("timeout", 5*time.Minute, "timeout for container startup")
@@ -150,7 +153,7 @@ func runUp(cmd *cobra.Command, args []string) error {
 
 	// Get flags
 	build, _ := cmd.Flags().GetBool("build")
-	detach, _ := cmd.Flags().GetBool("detach")
+	detachFlag, _ := cmd.Flags().GetBool("detach")
 	timeout, _ := cmd.Flags().GetDuration("timeout")
 	removeOrphans, _ := cmd.Flags().GetBool("remove-orphans")
 	progress, _ := cmd.Flags().GetString("progress")
@@ -196,8 +199,12 @@ func runUp(cmd *cobra.Command, args []string) error {
 	defer cancel()
 
 	err = client.Up(ctx, compose.UpOptions{
-		Files:         files,
-		Detach:        detach,
+		Files: files,
+		// Always ask compose for -d: we need control back immediately so
+		// we can poll `docker compose ps` ourselves below. --detach (the
+		// CLI flag) controls whether *we* then wait for Ready, not whether
+		// compose itself backgrounds the containers.
+		Detach:        true,
 		Build:         build,
 		NoDeps:        false, // We've already resolved deps
 		Timeout:       timeout,
@@ -222,7 +229,34 @@ func runUp(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	printer.Success("Stacks started successfully")
+	if detachFlag {
+		printer.Success("Stacks started (detached) — not verified Ready")
+		printer.PrintHints("up")
+		return nil
+	}
+
+	if dryRun {
+		printer.Success("Stacks started successfully (dry-run: skipping Ready-wait)")
+		printer.PrintHints("up")
+		return nil
+	}
+
+	// Trustworthy success: don't report "started" until every target
+	// service is actually Ready (see internal/health). Timeout is the max
+	// startup_timeout declared across the resolved stacks, not the
+	// --timeout flag above (which only bounds the `docker compose up`
+	// invocation itself).
+	printer.Header("Waiting for Services to Become Ready")
+	waitTimeout := maxStartupTimeout(stacks)
+	result, waitErr := waitForReady(cmd.Context(), printer, client, files, stacks, waitTimeout)
+	if waitErr != nil {
+		return waitErr
+	}
+	if cliErr := renderReadyFailure(cmd.Context(), printer, files, stacks, result); cliErr != nil {
+		return cliErr
+	}
+
+	printer.Success("Stacks started successfully — all %d services Ready", len(result.States))
 	printer.PrintHints("up")
 	return nil
 }
@@ -344,4 +378,212 @@ func buildPartialStartupError(diag serviceDiag, cause error) *output.CLIError {
 		Suggestion: suggestion,
 		ExitCode:   output.ExitComposeError,
 	}
+}
+
+// --- Ready-wait: shared by `up` and `restart` so neither reports success
+// until every target service is actually usable (see internal/health and
+// altctl/CLAUDE.md's "trustworthy success" design). ---
+
+// maxStartupTimeout returns the largest per-stack startup timeout across
+// stacks (stack.Stack.GetTimeout, which itself falls back to a 5-minute
+// default per stack). This -- not the `--timeout` flag, which only bounds
+// the `docker compose up` invocation -- is the deadline the Ready-wait poll
+// loop is given, so e.g. resolving the "ai" stack (1200s per .altctl.yaml)
+// doesn't get cut off by a shorter default.
+func maxStartupTimeout(stacks []*stack.Stack) time.Duration {
+	longest := 5 * time.Minute
+	for _, s := range stacks {
+		if t := s.GetTimeout(); t > longest {
+			longest = t
+		}
+	}
+	return longest
+}
+
+// waitForReady polls until every service across stacks is Ready, rendering
+// live progress via printer (a no-op in --quiet mode). It returns the
+// terminal health.Result; a non-nil error means the wait itself could not
+// complete cleanly (ctx cancelled -- e.g. Ctrl-C -- or `docker compose ps`
+// itself failed), as opposed to services simply not being Ready yet, which
+// is reported via Result.TimedOut/Result.States for the caller to render
+// with renderReadyFailure.
+func waitForReady(ctx context.Context, printer *output.Printer, client *compose.Client, files []string, stacks []*stack.Stack, timeout time.Duration) (*health.Result, error) {
+	var targets []health.Target
+	for _, s := range stacks {
+		for _, svc := range s.Services {
+			targets = append(targets, health.Target{Service: svc, Stack: s.Name})
+		}
+	}
+	if len(targets) == 0 {
+		return &health.Result{Ready: true}, nil
+	}
+
+	poller := func(pollCtx context.Context) ([]health.ServiceStatus, error) {
+		statuses, err := client.PS(pollCtx, files)
+		if err != nil {
+			return nil, err
+		}
+		out := make([]health.ServiceStatus, len(statuses))
+		for i, s := range statuses {
+			out[i] = health.ServiceStatus{Name: s.Name, State: s.State, Health: s.Health, ExitCode: s.ExitCode}
+		}
+		return out, nil
+	}
+
+	waiter := health.NewWaiter(poller)
+	total := len(targets)
+
+	result, err := waiter.WaitReady(ctx, targets, health.Options{
+		Timeout:      timeout,
+		PollInterval: 2 * time.Second,
+		OnProgress: func(states []health.State) {
+			printReadyProgress(printer, states, total)
+		},
+	})
+	if err != nil {
+		return &result, err
+	}
+	return &result, nil
+}
+
+// printReadyProgress renders one line of live per-service progress, e.g.
+// "12/17 Ready — waiting: alt-backend (starting), rerank-local (health: starting)".
+// No-op in --quiet mode (printer.Info already suppresses itself there).
+func printReadyProgress(printer *output.Printer, states []health.State, total int) {
+	ready := 0
+	var waiting []string
+	for _, s := range states {
+		if s.Ready {
+			ready++
+		} else {
+			waiting = append(waiting, fmt.Sprintf("%s (%s)", s.Service, s.Reason))
+		}
+	}
+	if len(waiting) == 0 {
+		printer.Info("%d/%d Ready", ready, total)
+		return
+	}
+	printer.Info("%d/%d Ready — waiting: %s", ready, total, strings.Join(waiting, ", "))
+}
+
+// diagnosticFromStates adapts a health.Result's terminal States into the
+// same serviceDiag shape classifyServices produces from `docker compose ps`
+// statuses, so a not-Ready wait outcome renders through the identical
+// printDiagnostic table as a hard compose failure.
+func diagnosticFromStates(stacks []*stack.Stack, states []health.State) serviceDiag {
+	expected := make(map[string]string)
+	for _, s := range stacks {
+		for _, svc := range s.Services {
+			expected[svc] = s.Name
+		}
+	}
+
+	var diag serviceDiag
+	diag.expected = expected
+	for _, st := range states {
+		switch {
+		case st.Ready:
+			diag.running = append(diag.running, st.Service)
+		case st.Reason == "missing":
+			diag.missing = append(diag.missing, st.Service)
+		default:
+			diag.unhealthy = append(diag.unhealthy, st.Service)
+		}
+	}
+	sort.Strings(diag.running)
+	sort.Strings(diag.unhealthy)
+	sort.Strings(diag.missing)
+	return diag
+}
+
+// renderReadyFailure prints the classifyServices-style diagnostic table for
+// a not-Ready health.Result plus a captured log tail for every not-Ready
+// service, and returns the CLIError the caller's RunE should return so
+// main.go exits with the right code: output.ExitTimeout when WaitReady
+// itself timed out (Critical Rule: exit code 5 must actually be returned on
+// wait timeout), output.ExitComposeError otherwise (e.g. a one-shot
+// migrator that exited non-zero, or a service compose never reported at
+// all). Returns nil when result is nil or already Ready -- nothing to
+// report.
+func renderReadyFailure(ctx context.Context, printer *output.Printer, files []string, stacks []*stack.Stack, result *health.Result) *output.CLIError {
+	if result == nil || result.Ready {
+		return nil
+	}
+
+	diag := diagnosticFromStates(stacks, result.States)
+	fmt.Println()
+	printDiagnostic(printer, diag)
+
+	var notReady []string
+	for _, s := range result.States {
+		if !s.Ready {
+			notReady = append(notReady, s.Service)
+		}
+	}
+
+	if len(notReady) > 0 {
+		logs := captureFailureLogs(ctx, files, notReady)
+		printer.Header("Recent Logs (not-Ready services)")
+		for _, svc := range notReady {
+			printer.Info("--- %s ---", svc)
+			text := strings.TrimRight(logs[svc], "\n")
+			if text == "" {
+				text = "(no log output captured)"
+			}
+			printer.Print("%s", text)
+		}
+	}
+
+	exitCode := output.ExitComposeError
+	summary := fmt.Sprintf("%d of %d services not Ready", len(notReady), len(result.States))
+	if result.TimedOut {
+		exitCode = output.ExitTimeout
+		summary = fmt.Sprintf("timed out waiting for %d of %d services to become Ready", len(notReady), len(result.States))
+	}
+
+	return &output.CLIError{
+		Summary:    summary,
+		Suggestion: "Run 'altctl status' to see current state, or 'altctl logs <service>' to follow logs",
+		ExitCode:   exitCode,
+	}
+}
+
+// captureFailureLogs runs `docker compose logs --tail 20 --no-color <svc>`
+// for each not-Ready service, best-effort: a capture failure for one
+// service (e.g. the container was removed) is folded into that service's
+// text rather than aborting diagnostics for the rest. In --dry-run mode
+// (or when dryRun is set by tests) no real docker invocation happens.
+func captureFailureLogs(ctx context.Context, files []string, services []string) map[string]string {
+	logs := make(map[string]string, len(services))
+
+	if dryRun {
+		for _, svc := range services {
+			logs[svc] = fmt.Sprintf("[dry-run] docker compose logs --tail 20 --no-color %s", svc)
+		}
+		return logs
+	}
+
+	composeDir := getComposeDir()
+	root := getProjectRoot()
+
+	for _, svc := range services {
+		args := []string{"compose"}
+		for _, f := range files {
+			args = append(args, "-f", filepath.Join(composeDir, f))
+		}
+		args = append(args, "logs", "--tail", "20", "--no-color", svc)
+
+		logCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+		c := exec.CommandContext(logCtx, "docker", args...)
+		c.Dir = root
+		out, err := c.CombinedOutput()
+		cancel()
+
+		if err != nil && len(out) == 0 {
+			logs[svc] = fmt.Sprintf("(failed to capture logs for %s: %v)", svc, err)
+			continue
+		}
+		logs[svc] = string(out)
+	}
+	return logs
 }

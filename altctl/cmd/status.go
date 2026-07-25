@@ -76,8 +76,12 @@ func showStatus(ctx context.Context, jsonOutput bool) error {
 
 	statuses, err := client.PS(ctx, files)
 	if err != nil {
-		// Non-fatal: compose files might not exist yet
-		logger.Debug("failed to get status", "error", err)
+		// A PS failure (daemon unreachable, permission denied, compose
+		// syntax error, ...) must be a real, non-zero-exit error -- not
+		// silently swallowed into the "No services running" message below,
+		// which would make a down Docker daemon indistinguishable from an
+		// empty stack.
+		return psError(err)
 	}
 
 	// Build a map of service name to status
@@ -91,6 +95,19 @@ func showStatus(ctx context.Context, jsonOutput bool) error {
 	}
 
 	return outputStatusTable(printer, registry, statusMap)
+}
+
+// psError wraps a client.PS failure into a user-facing CLIError with a
+// non-zero exit code. Kept separate from the empty-but-successful PS case
+// (no services running, which is not an error) so a down/unreachable Docker
+// daemon is never indistinguishable from an idle stack.
+func psError(err error) error {
+	return &output.CLIError{
+		Summary:    "failed to get service status from Docker",
+		Detail:     err.Error(),
+		Suggestion: "Ensure the Docker daemon is running and reachable (try `docker info`) and that you have permission to use it",
+		ExitCode:   output.ExitComposeError,
+	}
 }
 
 func outputStatusJSON(registry *stack.Registry, statusMap map[string]compose.ServiceStatus) error {

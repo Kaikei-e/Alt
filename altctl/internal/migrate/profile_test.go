@@ -11,8 +11,8 @@ func TestResolveVolumes_ProfileDB(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	if len(vols) != 6 {
-		t.Errorf("ProfileDB should return 6 volumes, got %d", len(vols))
+	if len(vols) != 7 {
+		t.Errorf("ProfileDB should return 7 volumes, got %d", len(vols))
 	}
 
 	for _, v := range vols {
@@ -32,9 +32,9 @@ func TestResolveVolumes_ProfileEssential(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	// critical(6) + data(3) + search(1) = 10
-	if len(vols) != 10 {
-		t.Errorf("ProfileEssential should return 10 volumes, got %d", len(vols))
+	// critical(7) + data(3) + search(1) = 11
+	if len(vols) != 11 {
+		t.Errorf("ProfileEssential should return 11 volumes, got %d", len(vols))
 	}
 
 	for _, v := range vols {
@@ -51,8 +51,8 @@ func TestResolveVolumes_ProfileAll(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	if len(vols) != 14 {
-		t.Errorf("ProfileAll should return 14 volumes, got %d", len(vols))
+	if len(vols) != 15 {
+		t.Errorf("ProfileAll should return 15 volumes, got %d", len(vols))
 	}
 }
 
@@ -63,8 +63,8 @@ func TestResolveVolumes_ExcludeByName(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	if len(vols) != 13 {
-		t.Errorf("Expected 13 volumes after excluding 1, got %d", len(vols))
+	if len(vols) != 14 {
+		t.Errorf("Expected 14 volumes after excluding 1, got %d", len(vols))
 	}
 
 	for _, v := range vols {
@@ -105,8 +105,8 @@ func TestResolveVolumes_ExcludeOverridesProfile(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	if len(vols) != 5 {
-		t.Errorf("Expected 5 volumes after excluding 1 from ProfileDB, got %d", len(vols))
+	if len(vols) != 6 {
+		t.Errorf("Expected 6 volumes after excluding 1 from ProfileDB, got %d", len(vols))
 	}
 
 	for _, v := range vols {

@@ -61,6 +61,10 @@ type ServiceStatus struct {
 	State  string `json:"State"`
 	Health string `json:"Health"`
 	Ports  string `json:"Ports"`
+	// ExitCode is the container's exit code once it has exited. It is 0
+	// while the container is still running. Used by internal/health to
+	// distinguish a clean one-shot exit (migrator/init job) from a crash.
+	ExitCode int `json:"ExitCode"`
 }
 
 // NewClient creates a new Docker Compose client
@@ -136,8 +140,13 @@ func (c *Client) Build(ctx context.Context, opts BuildOptions) error {
 	return c.executor.Run(ctx, "docker", append([]string{"compose"}, args...))
 }
 
-// Logs streams logs from a service
-func (c *Client) Logs(ctx context.Context, service string, opts LogsOptions) error {
+// Logs streams logs from one or more services in a single `docker compose
+// logs` invocation. Compose accepts multiple service args natively, so all
+// resolved services must be passed together here -- calling this once per
+// service and looping is wrong for --follow: `docker compose logs -f` never
+// exits, so a per-service loop sticks on the first service forever and the
+// rest of the stack's logs are never tailed.
+func (c *Client) Logs(ctx context.Context, services []string, opts LogsOptions) error {
 	args := []string{"compose", "logs"}
 
 	if opts.Follow {
@@ -153,7 +162,7 @@ func (c *Client) Logs(ctx context.Context, service string, opts LogsOptions) err
 		args = append(args, "--since", opts.Since)
 	}
 
-	args = append(args, service)
+	args = append(args, services...)
 	return c.executor.Run(ctx, "docker", args)
 }
 

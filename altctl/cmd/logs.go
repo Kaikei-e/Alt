@@ -78,16 +78,17 @@ func runLogs(cmd *cobra.Command, args []string) error {
 	}
 	defer cancel()
 
-	// Stream logs for each service
-	for _, svc := range services {
-		if err := client.Logs(ctx, svc, compose.LogsOptions{
-			Follow:     follow,
-			Tail:       tail,
-			Timestamps: timestamps,
-			Since:      since,
-		}); err != nil {
-			return err
-		}
+	// Stream logs for all resolved services in a single invocation. Compose
+	// accepts multiple service args natively; calling this once per service
+	// would stick forever on the first service when --follow is set (see
+	// internal/compose.Client.Logs).
+	if err := client.Logs(ctx, services, compose.LogsOptions{
+		Follow:     follow,
+		Tail:       tail,
+		Timestamps: timestamps,
+		Since:      since,
+	}); err != nil {
+		return err
 	}
 
 	printer.PrintHints("logs")
