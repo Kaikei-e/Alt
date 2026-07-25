@@ -37,6 +37,19 @@ if ! command -v "$C2QUAY_BIN" >/dev/null 2>&1; then
     exit 1
 fi
 
+# compose.yaml's logging include requires DOCKER_GROUP_ID to even parse
+# (`${DOCKER_GROUP_ID:?...}` in compose/logging.yaml) -- this hard-fails at
+# config-parse time, before docker is touched at all, for the `docker
+# compose ... build` step below. Fail fast here with the real remediation
+# instead of letting compose's own opaque interpolation error be the first
+# thing the operator sees.
+if [ -z "${DOCKER_GROUP_ID:-}" ]; then
+    log "ERROR: DOCKER_GROUP_ID is not set."
+    log "       compose/logging.yaml requires it to parse the compose config."
+    log "       Run: export DOCKER_GROUP_ID=\$(\"$PROJECT_ROOT/scripts/get-docker-gid.sh\")"
+    exit 1
+fi
+
 # --all is kept only for backward-compatible invocation; docker compose
 # build with no service args already builds every service, so it's a
 # no-op once stripped.

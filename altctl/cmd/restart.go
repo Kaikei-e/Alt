@@ -74,31 +74,29 @@ func runRestart(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	// Collect compose files
-	var files []string
-	for _, s := range stacks {
-		if s.ComposeFile != "" {
-			files = append(files, s.ComposeFile)
-		}
-	}
+	// Compute the -f file list / --profile list / service names, same
+	// aggregate-file-first strategy `up` uses (C3 fix) -- see
+	// cmd/compose_target.go's buildStackInvocation doc comment.
+	inv := buildStackInvocation(stacks)
+	files := inv.Files
 
-	if len(files) == 0 {
+	if len(inv.Services) == 0 {
 		printer.Warning("No compose files to restart")
 		return nil
 	}
 
 	// Create compose client
-	client := compose.NewClient(
-		getProjectRoot(),
-		getComposeDir(),
-		logger,
-		dryRun,
-	)
+	client := newComposeClient()
 
 	timeout, _ := cmd.Flags().GetDuration("timeout")
 	build, _ := cmd.Flags().GetBool("build")
 
-	// Phase 1: Down
+	// Phase 1: Down -- stop + remove scoped to just the resolved stacks'
+	// own services, never a plain `docker compose down`, which (now that
+	// Files may be just the aggregate compose.yaml) would tear down the
+	// *entire* project instead of only what was asked to restart. See
+	// cmd/down.go's runScopedDown doc comment for why stop+rm replaces a
+	// scoped down (down [SERVICES] doesn't cleanly scope volumes).
 	printer.Header("Stopping Stacks")
 	for _, s := range stacks {
 		printer.Info("  • %s", printer.Bold(s.Name))
@@ -108,12 +106,21 @@ func runRestart(cmd *cobra.Command, args []string) error {
 	downCtx, downCancel := context.WithTimeout(cmd.Context(), 60*time.Second)
 	defer downCancel()
 
-	err = client.Down(downCtx, compose.DownOptions{
-		Files:   files,
-		Timeout: 30 * time.Second,
-	})
-	if err != nil {
+	if err := client.Stop(downCtx, compose.StopOptions{
+		Files:    files,
+		Services: inv.Services,
+		Profiles: inv.Profiles,
+		Timeout:  30 * time.Second,
+	}); err != nil {
 		printer.Error("Failed to stop stacks: %v", err)
+		return err
+	}
+	if err := client.Remove(downCtx, compose.RemoveOptions{
+		Files:    files,
+		Services: inv.Services,
+		Profiles: inv.Profiles,
+	}); err != nil {
+		printer.Error("Failed to remove stopped containers: %v", err)
 		return err
 	}
 
@@ -128,10 +135,12 @@ func runRestart(cmd *cobra.Command, args []string) error {
 	defer upCancel()
 
 	err = client.Up(upCtx, compose.UpOptions{
-		Files:   files,
-		Detach:  true,
-		Build:   build,
-		Timeout: timeout,
+		Files:    files,
+		Services: inv.Services,
+		Profiles: inv.Profiles,
+		Detach:   true,
+		Build:    build,
+		Timeout:  timeout,
 	})
 	if err != nil {
 		printer.Error("Failed to start stacks: %v", err)

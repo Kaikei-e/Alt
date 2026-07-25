@@ -3,6 +3,7 @@ package cmd
 import (
 	"bytes"
 	"fmt"
+	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
@@ -382,4 +383,139 @@ func TestRenderReadyFailure_NotReadyWithoutTimeout_ReturnsExitComposeError(t *te
 
 func newTestPrinter() *output.Printer {
 	return output.NewPrinterWithOptions(output.PrinterOptions{ColorMode: output.ColorNever, Quiet: true})
+}
+
+// --- M2: exact argv assertions (the kind that would have caught C3/C4/H2) ---
+
+// TestUp_Core_ComposesAggregateFileAndCoreServices is the C3 regression
+// guard directly on `altctl up core`'s real argv: before the fix, this
+// built `-f base.yaml -f db.yaml -f pgbouncer.yaml -f auth.yaml -f
+// sovereign.yaml -f core.yaml`, which real `docker compose ... config`
+// rejects ("service 'alt-backend' depends on undefined service
+// 'search-indexer'" / pki-agent sidecar variants -- see
+// cmd/compose_target.go). It must now build a single `-f
+// <composeDir>/compose.yaml` and name every resolved stack's own services
+// explicitly (base has none; db/pgbouncer/auth/sovereign/core do).
+func TestUp_Core_ComposesAggregateFileAndCoreServices(t *testing.T) {
+	setupUpTest(t)
+	fake := installFakeComposeClient(t)
+
+	rootCmd.SetArgs([]string{"up", "core", "--dry-run"})
+	if err := rootCmd.Execute(); err != nil {
+		t.Fatalf("up core failed: %v", err)
+	}
+
+	argv, ok := fake.findArgv(" up ", "-d")
+	if !ok {
+		t.Fatalf("expected an 'up' invocation, got calls: %v", fake.argvs())
+	}
+
+	wantAggregateFile := "-f " + filepath.Join(getComposeDir(), "compose.yaml")
+	if !strings.Contains(argv, wantAggregateFile) {
+		t.Errorf("up core argv %q missing aggregate file arg %q", argv, wantAggregateFile)
+	}
+	// No per-stack narrow -f subset must appear -- that's exactly the
+	// broken shape C3 fixed.
+	for _, narrow := range []string{"base.yaml", "db.yaml", "pgbouncer.yaml", "auth.yaml", "sovereign.yaml", "core.yaml"} {
+		if strings.Contains(argv, "-f "+filepath.Join(getComposeDir(), narrow)) {
+			t.Errorf("up core argv %q must not contain a narrow per-stack -f %s (C3 regression)", argv, narrow)
+		}
+	}
+	for _, svc := range []string{"plecto-proxy", "alt-frontend-sv", "alt-backend", "migrate"} {
+		if !strings.Contains(argv, svc) {
+			t.Errorf("up core argv %q missing core service %q", argv, svc)
+		}
+	}
+}
+
+// TestUp_Perf_IncludesProfileFlag guards the --profile requirement for
+// compose-profile-gated stacks (perf declares profile: "perf" in
+// .altctl.yaml).
+func TestUp_Perf_IncludesProfileFlag(t *testing.T) {
+	setupUpTest(t)
+	fake := installFakeComposeClient(t)
+
+	rootCmd.SetArgs([]string{"up", "perf", "--dry-run"})
+	if err := rootCmd.Execute(); err != nil {
+		t.Fatalf("up perf failed: %v", err)
+	}
+
+	argv, ok := fake.findArgv(" up ", "-d")
+	if !ok {
+		t.Fatalf("expected an 'up' invocation, got calls: %v", fake.argvs())
+	}
+	if !strings.Contains(argv, "--profile perf") {
+		t.Errorf("up perf argv %q missing '--profile perf'", argv)
+	}
+}
+
+// TestUp_Dev_UsesIsolatedFileSet guards the isolated-stack branch of
+// buildStackInvocation: dev.yaml sits outside compose/compose.yaml's
+// include: graph (and combining it with the aggregate breaks -- core.yaml
+// and dev.yaml both redeclare alt-frontend-sv with conflicting resource
+// limits), so `up dev` must use dev's own file, never the aggregate.
+func TestUp_Dev_UsesIsolatedFileSet(t *testing.T) {
+	setupUpTest(t)
+	fake := installFakeComposeClient(t)
+
+	rootCmd.SetArgs([]string{"up", "dev", "--dry-run"})
+	if err := rootCmd.Execute(); err != nil {
+		t.Fatalf("up dev failed: %v", err)
+	}
+
+	argv, ok := fake.findArgv(" up ", "-d")
+	if !ok {
+		t.Fatalf("expected an 'up' invocation, got calls: %v", fake.argvs())
+	}
+
+	wantDevFile := "-f " + filepath.Join(getComposeDir(), "dev.yaml")
+	if !strings.Contains(argv, wantDevFile) {
+		t.Errorf("up dev argv %q missing %q", argv, wantDevFile)
+	}
+	wantAggregateFile := "-f " + filepath.Join(getComposeDir(), "compose.yaml")
+	if strings.Contains(argv, wantAggregateFile) {
+		t.Errorf("up dev argv %q must not contain the aggregate file (dev/core.yaml service redeclarations conflict)", argv)
+	}
+}
+
+// TestUp_LoadTest_CombinesAggregateWithOwnFile guards the more subtle
+// isolated-stack case: load-test.yaml is outside the aggregate's include:
+// graph (like dev/frontend-dev), but unlike them it is NOT self-sufficient
+// alone -- perf.yaml's k6 service depends_on alt-backend, which only
+// exists in core.yaml, unreachable from load-test's own dependency closure
+// (base + perf + load-test). Empirically verified against real `docker
+// compose ... config`: the pure isolated closure (base.yaml + perf.yaml +
+// load-test.yaml) is REJECTED ("k6 depends on undefined service
+// alt-backend"), while aggregate + load-test.yaml on top succeeds cleanly
+// -- exactly what compose/load-test.yaml's own header comment documents as
+// the supported direct-usage recipe. buildStackInvocation must pick the
+// aggregate+isolated-file-on-top branch here, not the pure-isolated one.
+func TestUp_LoadTest_CombinesAggregateWithOwnFile(t *testing.T) {
+	setupUpTest(t)
+	fake := installFakeComposeClient(t)
+
+	rootCmd.SetArgs([]string{"up", "load-test", "--dry-run"})
+	if err := rootCmd.Execute(); err != nil {
+		t.Fatalf("up load-test failed: %v", err)
+	}
+
+	argv, ok := fake.findArgv(" up ", "-d")
+	if !ok {
+		t.Fatalf("expected an 'up' invocation, got calls: %v", fake.argvs())
+	}
+
+	wantAggregateFile := "-f " + filepath.Join(getComposeDir(), "compose.yaml")
+	wantLoadTestFile := "-f " + filepath.Join(getComposeDir(), "load-test.yaml")
+	if !strings.Contains(argv, wantAggregateFile) {
+		t.Errorf("up load-test argv %q missing %q (load-test alone is not self-sufficient: perf's k6 depends on alt-backend, defined in core.yaml)", argv, wantAggregateFile)
+	}
+	if !strings.Contains(argv, wantLoadTestFile) {
+		t.Errorf("up load-test argv %q missing %q", argv, wantLoadTestFile)
+	}
+	if !strings.Contains(argv, "--profile perf") || !strings.Contains(argv, "--profile load-test") {
+		t.Errorf("up load-test argv %q missing --profile perf / --profile load-test", argv)
+	}
+	if !strings.Contains(argv, "mock-rss-server") {
+		t.Errorf("up load-test argv %q missing mock-rss-server", argv)
+	}
 }

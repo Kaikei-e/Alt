@@ -57,6 +57,42 @@ altctl migrate verify --backup ./backups/xxx      # Verify integrity
 altctl migrate status                             # Backup health check
 ```
 
+## Compose Invocation Strategy (aggregate-file-first)
+
+`up`/`restart`/`rebuild`/`logs`/`exec` (`cmd/compose_target.go`'s
+`buildStackInvocation`) build their `-f` list around `compose/compose.yaml`
+(the `include:` aggregate) instead of a per-stack subset — a narrow subset
+is rejected by real `docker compose` (several per-stack files transitively
+`include: pki.yaml`, whose pki-agent sidecars `depends_on` services
+scattered across many other stacks; even a single stack's own file can fail
+alone, e.g. `-f core.yaml`: `migrate` depends on undefined service `db`).
+
+- Every stack reachable through `compose.yaml`'s `include:` graph
+  (`Stack.AggregateCovered`) → `docker compose -f compose/compose.yaml -p alt
+  <cmd> <services...>`, scoped by naming services explicitly (compose
+  auto-starts each named service's transitive `depends_on`).
+- `dev`/`frontend-dev` (outside the aggregate, and conflict with it —
+  `core.yaml` and `dev.yaml` both redeclare `alt-frontend-sv` with
+  incompatible resource limits) → their own file alone, never combined with
+  the aggregate.
+- `load-test` (outside the aggregate, but NOT self-sufficient alone —
+  `perf.yaml`'s `k6` depends on `alt-backend`, only defined in `core.yaml`)
+  → aggregate file + `load-test.yaml` layered on top.
+- A stack with a compose `profiles:` gate gets `--profile <p>` added.
+- `down` (no args) stays a real, unscoped `docker compose -f
+  compose/compose.yaml down`. `down <stack>`/`restart`'s stop phase use
+  `stop` + `rm -f` instead of `down [SERVICES]`, since `down [SERVICES]`
+  doesn't scope `-v` to just the named services' own volumes.
+- Ready-wait target set is always the *requested (resolved)* stacks' own
+  services, never whatever compose auto-started implicitly beyond that — a
+  timeout's diagnostic points at `altctl doctor` for root-causing across
+  that boundary.
+
+See `internal/doctor/probe.go`'s `aggregateComposeFile` for where this was
+first discovered (doctor already probed the aggregate for the same reason)
+and `internal/stack/aggregate.go` / `cmd/compose_target.go` for the
+implementation.
+
 ## `up` / `restart` Reliability (trustworthy success)
 
 `up` and `restart` do not report success just because `docker compose up -d`
@@ -71,7 +107,12 @@ service is **Ready**:
 Timeout = max `startup_timeout` across the resolved stacks (`.altctl.yaml`;
 `ai`/`recap` are 1200s), not the `--timeout` flag. On timeout or a not-Ready
 service: diagnostic table + `docker compose logs --tail 20` per not-Ready
-service, exit code **5** (timeout) or **3** (compose itself failed). Ctrl-C
+service, exit code **5** (timeout) or **3** (compose itself failed). A
+timeout's suggestion also points at `altctl doctor`: the Ready-wait target
+set is only the requested stacks' own services (Compose Invocation Strategy
+above), so a timeout can be caused by a service compose started implicitly
+(another stack's dependency) that isn't in this wait's scope at all — doctor
+probes the whole aggregate and root-causes across that boundary. Ctrl-C
 cancels the wait and in-flight `docker` subprocesses promptly instead of
 hanging. `up --detach`/`-d` skips the wait (fire-and-forget).
 
@@ -140,6 +181,19 @@ docker compose up -d --no-deps --force-recreate <svcs>
 - `base.yaml` has no services of its own (shared secrets/networks/volumes only) —
   it stays a valid stack (and dependency root) purely because it's declared in
   `.altctl.yaml`, not because it has services.
+- **`Stack.AggregateCovered`** — computed once at registry construction by
+  reading `compose/compose.yaml`'s own `include:` list (`internal/stack/
+  aggregate.go`): true when the stack's compose file is reachable through
+  the aggregate. Drives the Compose Invocation Strategy above.
+- **`Registry.FindByService`** returns `(*Stack, error)`, deterministically:
+  a service declared in more than one stack (e.g. `alt-backend` in both
+  `core.yaml` and the local-dev override `dev.yaml`) resolves to the
+  `AggregateCovered` stack (`core`, never `dev`) — before this fix it
+  iterated a Go map directly and picked either one roughly 50/50 across
+  runs. A service ambiguous even after that preference (today: impossible
+  for real compose files, since compose itself rejects two stacks declaring
+  the same service name in one project) returns an error naming every
+  candidate instead of guessing.
 
 Current stacks (see `.altctl.yaml` for the authoritative `depends_on`/`optional`/
 `provides` per stack; see `compose/*.yaml` for the authoritative service lists):

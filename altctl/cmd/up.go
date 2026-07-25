@@ -131,15 +131,17 @@ func runUp(cmd *cobra.Command, args []string) error {
 		fmt.Println()
 	}
 
-	// Collect compose files
-	var files []string
-	for _, s := range stacks {
-		if s.ComposeFile != "" {
-			files = append(files, s.ComposeFile)
-		}
-	}
+	// Compute the -f file list / --profile list / service names for this
+	// invocation. See cmd/compose_target.go's buildStackInvocation doc
+	// comment for why this is not simply "each resolved stack's own
+	// ComposeFile" (C3): a narrow per-stack -f subset is rejected by real
+	// docker compose, so this uses the aggregate compose/compose.yaml file
+	// whenever every resolved stack is reachable through it, and scopes the
+	// operation by naming every resolved stack's services explicitly.
+	inv := buildStackInvocation(stacks)
+	files := inv.Files
 
-	if len(files) == 0 {
+	if len(inv.Services) == 0 {
 		printer.Warning("No compose files to start")
 		return nil
 	}
@@ -165,12 +167,7 @@ func runUp(cmd *cobra.Command, args []string) error {
 	}
 
 	// Create compose client
-	client := compose.NewClient(
-		getProjectRoot(),
-		getComposeDir(),
-		logger,
-		dryRun,
-	)
+	client := newComposeClient()
 
 	// If progress is specified or build is requested with progress, run build first
 	// We do this because 'docker compose up --build' doesn't support --progress flag directly in all versions/wrappers
@@ -183,6 +180,8 @@ func runUp(cmd *cobra.Command, args []string) error {
 
 		err = client.Build(buildCtx, compose.BuildOptions{
 			Files:    files,
+			Services: inv.Services,
+			Profiles: inv.Profiles,
 			Progress: progress,
 		})
 		if err != nil {
@@ -200,13 +199,20 @@ func runUp(cmd *cobra.Command, args []string) error {
 
 	err = client.Up(ctx, compose.UpOptions{
 		Files: files,
+		// Services scopes this invocation to exactly the resolved stacks'
+		// own services -- required now that Files may be just the aggregate
+		// compose.yaml (which defines every service in the whole project):
+		// without Services, `docker compose up` with no positional service
+		// args starts *everything*, not just what was requested.
+		Services: inv.Services,
+		Profiles: inv.Profiles,
 		// Always ask compose for -d: we need control back immediately so
 		// we can poll `docker compose ps` ourselves below. --detach (the
 		// CLI flag) controls whether *we* then wait for Ready, not whether
 		// compose itself backgrounds the containers.
 		Detach:        true,
 		Build:         build,
-		NoDeps:        false, // We've already resolved deps
+		NoDeps:        false, // We've already resolved deps; compose auto-starts each named service's transitive depends_on (see M4 in altctl/CLAUDE.md's Ready-wait scope note)
 		Timeout:       timeout,
 		RemoveOrphans: removeOrphans,
 	})
@@ -536,14 +542,22 @@ func renderReadyFailure(ctx context.Context, printer *output.Printer, files []st
 
 	exitCode := output.ExitComposeError
 	summary := fmt.Sprintf("%d of %d services not Ready", len(notReady), len(result.States))
+	suggestion := "Run 'altctl status' to see current state, or 'altctl logs <service>' to follow logs"
 	if result.TimedOut {
 		exitCode = output.ExitTimeout
 		summary = fmt.Sprintf("timed out waiting for %d of %d services to become Ready", len(notReady), len(result.States))
+		// M4: the Ready-wait target set is only the requested stacks' own
+		// services -- compose may have auto-started other stacks' services
+		// too (transitive depends_on reached through the aggregate compose
+		// file), and a timeout here can be caused by one of those, not by
+		// anything in the target set itself. 'altctl doctor' probes the
+		// whole aggregate and root-causes across stack boundaries.
+		suggestion = "Run 'altctl status' to see current state, 'altctl logs <service>' to follow logs, or 'altctl doctor' to root-cause across stack boundaries (this wait only covers the stacks you asked for; their dependencies were started implicitly and aren't in this timeout's scope)"
 	}
 
 	return &output.CLIError{
 		Summary:    summary,
-		Suggestion: "Run 'altctl status' to see current state, or 'altctl logs <service>' to follow logs",
+		Suggestion: suggestion,
 		ExitCode:   exitCode,
 	}
 }

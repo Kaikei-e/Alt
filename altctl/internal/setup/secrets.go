@@ -193,35 +193,32 @@ func findBaseComposeFile() (string, error) {
 	}
 }
 
-// fallbackSecretSpecs is used only when compose/base.yaml can't be located
-// or parsed (e.g. altctl invoked from outside an Alt checkout). It's a
-// conservative minimal set so `altctl init` still produces something
-// usable instead of silently generating zero secret files.
-func fallbackSecretSpecs() []SecretSpec {
-	return specsFromNames([]string{
-		"postgres_password.txt",
-		"db_password.txt",
-		"backend_token_secret.txt",
-	})
-}
-
 // DefaultSecretSpecs returns the complete list of secret file
 // specifications, derived at runtime from compose/base.yaml's secrets:
 // block (single source of truth -- see secretNamesFromComposeFile), with
 // per-secret generation strategy (length/truncation/auto-vs-user-provided)
 // attached as declared metadata from knownSecretMeta, falling back to a
 // safe default for any secret base.yaml declares that isn't in that table
-// yet. Falls back to fallbackSecretSpecs if base.yaml can't be found.
-func DefaultSecretSpecs() []SecretSpec {
+// yet.
+//
+// C2: this used to silently fall back to a 3-secret placeholder list when
+// compose/base.yaml couldn't be located or parsed, and callers (cmd/init.go)
+// both generated AND validated against that same shrunken list -- so `altctl
+// init` reported "All required files present" while only 3 of the 24
+// required secrets existed. Critical Rule 8 forbids exactly this shape of
+// silent degrade for an unwired/broken dependency: a parse failure here must
+// surface loudly, not be indistinguishable from "everything's fine." Callers
+// now get the error and must hard-fail.
+func DefaultSecretSpecs() ([]SecretSpec, error) {
 	path, err := findBaseComposeFile()
 	if err != nil {
-		return fallbackSecretSpecs()
+		return nil, fmt.Errorf("locating compose/base.yaml: %w", err)
 	}
 	specs, err := DeriveSecretSpecs(path)
 	if err != nil {
-		return fallbackSecretSpecs()
+		return nil, fmt.Errorf("deriving secret specs from %s: %w", path, err)
 	}
-	return specs
+	return specs, nil
 }
 
 // GenerateSecrets creates secret files in the given directory.

@@ -11,6 +11,7 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 
+	"github.com/alt-project/altctl/internal/compose"
 	"github.com/alt-project/altctl/internal/config"
 	"github.com/alt-project/altctl/internal/output"
 	"github.com/alt-project/altctl/internal/stack"
@@ -225,4 +226,21 @@ func loadRegistry() (*stack.Registry, error) {
 		}
 	}
 	return registry, nil
+}
+
+// newComposeClient builds the *compose.Client every lifecycle command (up,
+// down, restart, rebuild, logs, exec) uses. It's a package-level factory
+// var rather than a direct compose.NewClient(...) call at each call site so
+// tests can substitute a client wired to a fake compose.Executor (via
+// compose.NewClientWithExecutor) to capture the exact argv a command
+// builds -- file list, --profile, service names, --no-deps/--force-recreate
+// -- instead of only being able to assert against --dry-run log text (see
+// M2 test-honesty fix: those capture-exact-argv assertions are what would
+// have caught C3/C4/H2 in the first place). Tests must restore this to
+// defaultComposeClient (or set their own) via t.Cleanup.
+var newComposeClient = defaultComposeClient
+
+// defaultComposeClient is newComposeClient's production implementation.
+func defaultComposeClient() *compose.Client {
+	return compose.NewClient(getProjectRoot(), getComposeDir(), logger, dryRun)
 }

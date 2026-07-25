@@ -176,3 +176,63 @@ func TestMigrator_Restore_ReturnsNilWhenVolumesSucceed(t *testing.T) {
 		t.Fatalf("unexpected error when all volumes succeed: %v", err)
 	}
 }
+
+// TestMigrator_Restore_AbortsOnBrokenRegistry is the regression test for C1:
+// a broken .altctl.yaml (a stack declared with no matching compose file --
+// stack.NewRegistry's Critical-Rule-9 hard fail-fast error) must ABORT
+// restore, not silently degrade into "nothing running" and skip the
+// stop-containers guard. Before the fix, composeFileList swallowed the
+// registry load error into an empty file list, getRunningContainers reported
+// zero running containers, and restore proceeded straight to overwriting
+// volumes -- even if the real containers for that stack were live.
+//
+// This asserts both that Restore() returns an error AND that neither backup
+// engine was ever invoked, i.e. the abort happens before any volume write is
+// attempted.
+func TestMigrator_Restore_AbortsOnBrokenRegistry(t *testing.T) {
+	backupDir := createTestBackup(t)
+
+	// project root layout: <root>/compose/*.yaml + <root>/.altctl.yaml,
+	// mirroring composeFileList's convention (configPath is a sibling of
+	// composeDir's parent). db.yaml exists and is a valid stack, but
+	// .altctl.yaml declares a "sovereign" stack with no matching
+	// sovereign.yaml -- exactly the fail-fast case stack.NewRegistry
+	// documents (altctl/CLAUDE.md Critical Rule 9 / registry.go
+	// composeFileServicesIfExists).
+	root := t.TempDir()
+	composeDir := filepath.Join(root, "compose")
+	if err := os.MkdirAll(composeDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(composeDir, "db.yaml"), []byte("services:\n  db:\n    image: postgres\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	brokenConfig := "stacks:\n  sovereign:\n    optional: false\n"
+	if err := os.WriteFile(filepath.Join(root, ".altctl.yaml"), []byte(brokenConfig), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	tarEngine := &fakeBackupEngine{}
+	pgEngine := &fakeBackupEngine{}
+	migrator := &Migrator{
+		registry:     NewVolumeRegistry(),
+		volumeBackup: tarEngine,
+		pgBackup:     pgEngine,
+		composeDir:   composeDir,
+		projectName:  "alt",
+		logger:       slog.Default(),
+		dryRun:       false,
+	}
+
+	err := migrator.Restore(context.Background(), RestoreOptions{
+		BackupDir: backupDir,
+		Force:     true,
+		Verify:    false,
+	})
+	if err == nil {
+		t.Fatal("expected Restore() to abort when .altctl.yaml declares a stack with no matching compose file, got nil error")
+	}
+	if tarEngine.calls > 0 || pgEngine.calls > 0 {
+		t.Fatalf("expected restore to abort before touching any volume, got tar calls=%d pg calls=%d", tarEngine.calls, pgEngine.calls)
+	}
+}

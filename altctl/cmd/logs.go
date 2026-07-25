@@ -2,11 +2,14 @@ package cmd
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"github.com/spf13/cobra"
 
 	"github.com/alt-project/altctl/internal/compose"
+	"github.com/alt-project/altctl/internal/output"
+	"github.com/alt-project/altctl/internal/stack"
 )
 
 var logsCmd = &cobra.Command{
@@ -44,14 +47,24 @@ func runLogs(cmd *cobra.Command, args []string) error {
 		return err
 	}
 	var services []string
+	var files []string
 	if s, ok := registry.Get(target); ok {
 		services = s.Services
+		files = buildStackInvocation([]*stack.Stack{s}).Files
 		printer.Info("Showing logs for stack '%s' (%d services)", target, len(services))
-	} else if registry.FindByService(target) != nil {
+	} else if s, ferr := registry.FindByService(target); ferr != nil {
+		return ambiguousLogsTargetError(target, ferr)
+	} else if s != nil {
 		services = []string{target}
+		files = buildStackInvocation([]*stack.Stack{s}).Files
 	} else {
 		printer.Warning("'%s' not found as a service or stack name", target)
 		services = []string{target} // Pass through to docker compose
+		// H2 fix: `docker compose logs` with no -f at all dies with "no
+		// configuration file provided" -- fall back to the aggregate file
+		// (compose/compose.yaml) since the target's owning stack is
+		// unknown here.
+		files = []string{stack.AggregateComposeFile}
 	}
 
 	// Get flags
@@ -61,12 +74,7 @@ func runLogs(cmd *cobra.Command, args []string) error {
 	since, _ := cmd.Flags().GetString("since")
 
 	// Create compose client
-	client := compose.NewClient(
-		getProjectRoot(),
-		getComposeDir(),
-		logger,
-		dryRun,
-	)
+	client := newComposeClient()
 
 	// Create context (no timeout for follow mode)
 	var ctx context.Context
@@ -82,7 +90,7 @@ func runLogs(cmd *cobra.Command, args []string) error {
 	// accepts multiple service args natively; calling this once per service
 	// would stick forever on the first service when --follow is set (see
 	// internal/compose.Client.Logs).
-	if err := client.Logs(ctx, services, compose.LogsOptions{
+	if err := client.Logs(ctx, files, services, compose.LogsOptions{
 		Follow:     follow,
 		Tail:       tail,
 		Timestamps: timestamps,
@@ -93,6 +101,17 @@ func runLogs(cmd *cobra.Command, args []string) error {
 
 	printer.PrintHints("logs")
 	return nil
+}
+
+// ambiguousLogsTargetError wraps a stack.Registry.FindByService
+// disambiguation error into a *output.CLIError for logs' usage-error path.
+func ambiguousLogsTargetError(target string, cause error) *output.CLIError {
+	return &output.CLIError{
+		Summary:    fmt.Sprintf("cannot resolve %q to a single stack", target),
+		Detail:     cause.Error(),
+		Suggestion: "Pass the owning stack name explicitly instead of the bare service name",
+		ExitCode:   output.ExitUsageError,
+	}
 }
 
 // completeServiceNames provides shell completion for service names

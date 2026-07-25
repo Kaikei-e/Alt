@@ -16,6 +16,27 @@ type Stack struct {
 	Optional    bool          `json:"optional"`
 	RequiresGPU bool          `json:"requires_gpu"`
 	Timeout     time.Duration `json:"timeout"`
+	// AggregateCovered reports whether this stack's ComposeFile is reachable
+	// through compose/compose.yaml's top-level `include:` graph (directly or
+	// transitively), i.e. whether `docker compose -f compose/compose.yaml`
+	// alone already contains this stack's services. Computed once at
+	// registry construction (see Registry's aggregateCoveredFiles) by
+	// reading compose.yaml's own `include:` list -- never hand-maintained.
+	//
+	// This drives the C3 fix (see internal/doctor/probe.go's
+	// aggregateComposeFile doc, which discovered the underlying problem
+	// first): assembling a narrow per-stack `-f` subset is structurally
+	// broken because several per-stack files transitively `include:
+	// pki.yaml`, whose pki-agent sidecars depend_on services scattered
+	// across many other stacks -- so lifecycle commands use the aggregate
+	// file whenever every involved stack is AggregateCovered, and fall back
+	// to a stack's own file (or a small isolated file set) only for the
+	// stacks compose.yaml deliberately leaves out (today: dev,
+	// frontend-dev, load-test -- local-dev-only overlays). Base.yaml is
+	// always AggregateCovered (it has no services of its own and is
+	// included everywhere), so its presence alone never forces the
+	// aggregate strategy -- see cmd's buildStackInvocation.
+	AggregateCovered bool `json:"aggregate_covered"`
 
 	// Feature-based dependencies
 	Provides         []Feature `json:"provides,omitempty"`          // Features this stack provides

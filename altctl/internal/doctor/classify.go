@@ -11,6 +11,16 @@ import (
 // scope) but docker compose ps returned nothing for it at all -- "missing".
 // The second return value is false for services that are simply healthy and
 // running, i.e. not a Finding-worthy problem.
+//
+// M1: the default case used to catch every unmatched compose State --
+// including "paused" and "dead", both real values `docker compose ps`
+// reports -- and mark it StateHealthy with isProblem=false. A paused or
+// crashed-and-undead container was therefore invisible to `altctl doctor`.
+// The default now mirrors internal/health/waiter.go's evaluateOne polarity:
+// a state is only treated as healthy when it's explicitly recognized as
+// such (running/up, or a clean exit(0) for one-shot containers); anything
+// else -- including states this table hasn't been taught about yet -- is a
+// problem, not an assumed-fine default.
 func classifyService(entry *psEntry) (label string, severity Severity, isProblem bool) {
 	if entry == nil {
 		return StateMissing, SeverityWarning, true
@@ -24,12 +34,25 @@ func classifyService(entry *psEntry) (label string, severity Severity, isProblem
 		return StateUnhealthy, SeverityError, true
 	case strings.Contains(state, "restart"):
 		return StateRestarting, SeverityError, true
+	case state == "paused":
+		return StatePaused, SeverityWarning, true
+	case state == "dead":
+		return StateDead, SeverityError, true
 	case state == "exited" && entry.ExitCode != 0:
 		return StateExitedNonZero, SeverityError, true
+	case state == "exited":
+		// ExitCode == 0: a one-shot container (migrator/init job) that
+		// exited cleanly, matching internal/health/waiter.go's Ready rule
+		// for one-shot containers -- not a problem.
+		return StateHealthy, "", false
 	case health == "starting" || state == "created":
 		return StateStarting, SeverityInfo, true
-	default:
+	case state == "running":
+		// health == "" (no healthcheck declared) or "healthy" both mean
+		// Ready here, mirroring internal/health/waiter.go's evaluateOne.
 		return StateHealthy, "", false
+	default:
+		return StateUnknown, SeverityWarning, true
 	}
 }
 
@@ -48,6 +71,12 @@ func describeState(label string) string {
 		return "exited non-zero"
 	case StateStarting:
 		return "still starting"
+	case StatePaused:
+		return "paused"
+	case StateDead:
+		return "dead"
+	case StateUnknown:
+		return "in an unrecognized state"
 	default:
 		return label
 	}
@@ -106,6 +135,12 @@ func buildMessage(svc, label, rootCause, rootCauseLabel string) string {
 		return fmt.Sprintf("%s exited non-zero", svc)
 	case StateStarting:
 		return fmt.Sprintf("%s is still starting", svc)
+	case StatePaused:
+		return fmt.Sprintf("%s is paused", svc)
+	case StateDead:
+		return fmt.Sprintf("%s is dead (failed to stop/remove cleanly)", svc)
+	case StateUnknown:
+		return fmt.Sprintf("%s is in an unrecognized state", svc)
 	default:
 		return fmt.Sprintf("%s: %s", svc, label)
 	}
@@ -136,6 +171,21 @@ func prescriptionFor(label, target string) []string {
 		return []string{
 			"altctl status",
 			fmt.Sprintf("altctl logs %s -f", target),
+		}
+	case StatePaused:
+		return []string{
+			fmt.Sprintf("docker compose -f compose/compose.yaml -p alt unpause %s", target),
+			"altctl status",
+		}
+	case StateDead:
+		return []string{
+			fmt.Sprintf("altctl logs %s", target),
+			fmt.Sprintf("docker compose -f compose/compose.yaml -p alt up -d --force-recreate %s", target),
+		}
+	case StateUnknown:
+		return []string{
+			"altctl status",
+			fmt.Sprintf("altctl logs %s", target),
 		}
 	default:
 		return nil

@@ -10,9 +10,15 @@
 #        → can-i-deploy gate × 13 pacticipants (parallel, HAL)
 #        → docker compose up -d --wait --remove-orphans
 #        → scripts/smoke.sh
-#        → record-deployment × 13
+#        → record-deployment × 13 (including gate_only services, e.g.
+#          tts-speaker on the remote GPU host -- ADR 0013)
 #   3. scripts/cascade-pki-sidecars.sh            (netns-sharing sidecar cascade)
-#   4. scripts/record-remote-pacticipant.sh <env>   (tts-speaker, remote GPU host)
+#
+# scripts/record-remote-pacticipant.sh is NOT run here: c2quay now records
+# gate_only pacticipants itself (ADR 0013), so an unconditional step-4 call
+# double-recorded tts-speaker on every deploy (M3). The script stays on disk
+# as a documented manual fallback -- see its own header comment -- for the
+# rare case c2quay's recording needs to be redone by hand.
 #
 # Any step failing aborts the chain. Recovery is manual: git revert → re-commit
 # → re-run this script. See docs/runbooks/deploy.md for details.
@@ -32,19 +38,15 @@ PACT_CHECK_SCRIPT="${PACT_CHECK_SCRIPT:-$REPO_ROOT/scripts/pact-check.sh}"
 C2QUAY_BIN="${C2QUAY_BIN:-c2quay}"
 C2QUAY_CONFIG="${C2QUAY_CONFIG:-$REPO_ROOT/c2quay.yml}"
 CASCADE_SCRIPT="${CASCADE_SCRIPT:-$REPO_ROOT/scripts/cascade-pki-sidecars.sh}"
-RECORD_REMOTE_SCRIPT="${RECORD_REMOTE_SCRIPT:-$REPO_ROOT/scripts/record-remote-pacticipant.sh}"
 
-echo "==> [1/4] pact-check.sh --broker"
+echo "==> [1/3] pact-check.sh --broker"
 "$PACT_CHECK_SCRIPT" --broker
 
-echo "==> [2/4] c2quay deploy --env ${TARGET_ENV}"
+echo "==> [2/3] c2quay deploy --env ${TARGET_ENV}"
 "$C2QUAY_BIN" deploy --env "$TARGET_ENV" --config "$C2QUAY_CONFIG"
 
-echo "==> [3/4] cascade-pki-sidecars"
+echo "==> [3/3] cascade-pki-sidecars"
 "$CASCADE_SCRIPT"
-
-echo "==> [4/4] record-remote-pacticipant (tts-speaker)"
-"$RECORD_REMOTE_SCRIPT" "$TARGET_ENV"
 
 echo ""
 echo "==> deploy complete  env=${TARGET_ENV}"

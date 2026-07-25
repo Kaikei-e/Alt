@@ -6,8 +6,8 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/alt-project/altctl/internal/compose"
 	"github.com/alt-project/altctl/internal/output"
+	"github.com/alt-project/altctl/internal/stack"
 )
 
 var execCmd = &cobra.Command{
@@ -38,7 +38,15 @@ func runExec(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
-	s := registry.FindByService(service)
+	s, ferr := registry.FindByService(service)
+	if ferr != nil {
+		return &output.CLIError{
+			Summary:    fmt.Sprintf("cannot resolve %q to a single stack", service),
+			Detail:     ferr.Error(),
+			Suggestion: "Pass a more specific service name, or check 'altctl list --services'",
+			ExitCode:   output.ExitUsageError,
+		}
+	}
 	if s == nil {
 		return &output.CLIError{
 			Summary:    fmt.Sprintf("unknown service: %s", service),
@@ -62,13 +70,15 @@ func runExec(cmd *cobra.Command, args []string) error {
 	}
 
 	// Create compose client
-	client := compose.NewClient(
-		getProjectRoot(),
-		getComposeDir(),
-		logger,
-		dryRun,
-	)
+	client := newComposeClient()
+
+	// H2 fix: Exec used to pass no -f at all, so every real invocation died
+	// with "no configuration file provided". Resolve the owning stack's
+	// file(s) via buildStackInvocation -- the aggregate compose.yaml when
+	// the stack is reachable through it, its own isolated file set
+	// otherwise (dev/frontend-dev/load-test).
+	files := buildStackInvocation([]*stack.Stack{s}).Files
 
 	ctx := cmd.Context()
-	return client.Exec(ctx, service, execArgs, os.Stdout, os.Stderr)
+	return client.Exec(ctx, files, service, execArgs, os.Stdout, os.Stderr)
 }

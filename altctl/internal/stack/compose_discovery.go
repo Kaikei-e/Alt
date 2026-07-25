@@ -61,6 +61,46 @@ func composeFileServices(path string) ([]string, error) {
 	return names, nil
 }
 
+// composeIncludeDoc decodes only the top-level `include:` key of a compose
+// YAML file, the same yaml.Node trick used above for `services:` -- it
+// sidesteps having to resolve anchors/aliases elsewhere in the file.
+type composeIncludeDoc struct {
+	Include yaml.Node `yaml:"include"`
+}
+
+// composeFileIncludes returns the list of files named in a compose file's
+// top-level `include:` sequence. Every include entry in this repo's
+// compose/*.yaml is a bare filename scalar (e.g. `- base.yaml`); the compose
+// spec also allows `- path: foo.yaml` mappings, which is handled too for
+// robustness even though it isn't exercised today.
+func composeFileIncludes(path string) ([]string, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, fmt.Errorf("reading compose file %s: %w", path, err)
+	}
+	var doc composeIncludeDoc
+	if err := yaml.Unmarshal(data, &doc); err != nil {
+		return nil, fmt.Errorf("parsing compose file %s: %w", path, err)
+	}
+	if doc.Include.Kind != yaml.SequenceNode {
+		return nil, nil
+	}
+	var out []string
+	for _, item := range doc.Include.Content {
+		switch item.Kind {
+		case yaml.ScalarNode:
+			out = append(out, item.Value)
+		case yaml.MappingNode:
+			for i := 0; i+1 < len(item.Content); i += 2 {
+				if item.Content[i].Value == "path" {
+					out = append(out, item.Content[i+1].Value)
+				}
+			}
+		}
+	}
+	return out, nil
+}
+
 // discoverComposeStacks scans dir for *.yaml/*.yml files and returns one
 // composeStackFile per file that is a stack candidate: skipped files are
 // those named in skip (overlays and explicitly excluded files) and those

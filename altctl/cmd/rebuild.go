@@ -73,20 +73,30 @@ type rebuildTarget struct {
 	// Name/ComposeFile/Services/Timeout, all of which are copied from the
 	// real stack here.
 	stacks []*stack.Stack
-	// files is the deduped list of compose files (relative to the compose
-	// dir) that need to be passed to `docker compose -f ...` to reach every
-	// targeted service.
+	// files is the -f argument list needed to reach every targeted service,
+	// computed via buildStackInvocation against the real (unnarrowed)
+	// owning stacks -- see its doc comment for why this can't simply be
+	// "each owning stack's own ComposeFile": even a single stack's own
+	// file can fail compose project validation alone (e.g. `-f core.yaml`
+	// alone: "migrate depends on undefined service db", since migrate's
+	// depends_on reaches outside core.yaml's own include: closure).
 	files []string
+	// profiles is the deduped `--profile` list needed for any targeted
+	// stack that declares one (e.g. rebuilding a perf-stack service needs
+	// --profile perf).
+	profiles []string
 }
 
 // resolveRebuildTargets resolves each arg to either a stack (expands to all
 // its services) or a single service (via registry.FindByService), dedupes
 // services across args, and groups the result by owning stack. Returns an
 // *output.CLIError naming close matches (see closestMatches) for any arg
-// that is neither a known stack nor a known service.
+// that is neither a known stack nor a known service, and for a service name
+// that resolves ambiguously (see stack.Registry.FindByService).
 func resolveRebuildTargets(registry *stack.Registry, args []string) (*rebuildTarget, error) {
 	seen := make(map[string]bool)
-	byStack := make(map[string]*stack.Stack)
+	byStack := make(map[string]*stack.Stack)    // synthetic, narrowed-to-target stacks (unchanged shape for waitForReady/etc.)
+	realOwners := make(map[string]*stack.Stack) // real (unnarrowed) owning stacks, for file/profile resolution
 	var stackOrder []string
 	var services []string
 
@@ -105,6 +115,7 @@ func resolveRebuildTargets(registry *stack.Registry, args []string) (*rebuildTar
 				Timeout:     owner.Timeout,
 			}
 			byStack[owner.Name] = synth
+			realOwners[owner.Name] = owner
 			stackOrder = append(stackOrder, owner.Name)
 		}
 		synth.Services = append(synth.Services, svc)
@@ -117,7 +128,11 @@ func resolveRebuildTargets(registry *stack.Registry, args []string) (*rebuildTar
 			}
 			continue
 		}
-		if s := registry.FindByService(arg); s != nil {
+		s, ferr := registry.FindByService(arg)
+		if ferr != nil {
+			return nil, ambiguousRebuildTargetError(arg, ferr)
+		}
+		if s != nil {
 			addService(arg, s)
 			continue
 		}
@@ -125,14 +140,29 @@ func resolveRebuildTargets(registry *stack.Registry, args []string) (*rebuildTar
 	}
 
 	rt := &rebuildTarget{services: services}
+	var owners []*stack.Stack
 	for _, name := range stackOrder {
-		s := byStack[name]
-		rt.stacks = append(rt.stacks, s)
-		if s.ComposeFile != "" {
-			rt.files = append(rt.files, s.ComposeFile)
-		}
+		rt.stacks = append(rt.stacks, byStack[name])
+		owners = append(owners, realOwners[name])
 	}
+	inv := buildStackInvocation(owners)
+	rt.files = inv.Files
+	rt.profiles = inv.Profiles
 	return rt, nil
+}
+
+// ambiguousRebuildTargetError wraps a stack.Registry.FindByService
+// disambiguation error (a service declared in more than one stack, unable
+// to be resolved deterministically even after preferring an
+// aggregate-covered stack -- see FindByService's doc comment) into a
+// *output.CLIError with the right exit code for rebuild's usage-error path.
+func ambiguousRebuildTargetError(arg string, cause error) *output.CLIError {
+	return &output.CLIError{
+		Summary:    fmt.Sprintf("cannot resolve %q to a single stack", arg),
+		Detail:     cause.Error(),
+		Suggestion: "Pass the owning stack name explicitly instead of the bare service name",
+		ExitCode:   output.ExitUsageError,
+	}
 }
 
 // unknownRebuildTargetError builds a helpful "unknown service or stack"
@@ -274,12 +304,7 @@ func runRebuild(cmd *cobra.Command, args []string) error {
 	detachFlag, _ := cmd.Flags().GetBool("detach")
 	timeout, _ := cmd.Flags().GetDuration("timeout")
 
-	client := compose.NewClient(
-		getProjectRoot(),
-		getComposeDir(),
-		logger,
-		dryRun,
-	)
+	client := newComposeClient()
 
 	// Build phase: only the targeted services' images, not everything else
 	// defined in the same compose file(s).
@@ -290,6 +315,7 @@ func runRebuild(cmd *cobra.Command, args []string) error {
 	if err := client.Build(buildCtx, compose.BuildOptions{
 		Files:    target.files,
 		Services: target.services,
+		Profiles: target.profiles,
 		NoCache:  noCache,
 	}); err != nil {
 		printer.Error("Failed to build: %v", err)
@@ -309,6 +335,7 @@ func runRebuild(cmd *cobra.Command, args []string) error {
 	err = client.Up(upCtx, compose.UpOptions{
 		Files:         target.files,
 		Services:      target.services,
+		Profiles:      target.profiles,
 		Detach:        true,
 		NoDeps:        true,
 		ForceRecreate: true,

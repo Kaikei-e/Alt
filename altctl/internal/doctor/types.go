@@ -32,6 +32,18 @@ const (
 	StateExitedNonZero = "exited_non_zero"
 	StateStarting      = "starting"
 	StateHealthy       = "healthy"
+	// StatePaused and StateDead are explicit `docker compose ps` States
+	// (M1): a paused container has been suspended (docker pause) and a dead
+	// container failed to stop/remove cleanly. Neither is healthy, and both
+	// used to fall through classifyService's default branch into
+	// StateHealthy -- doctor reported nothing wrong.
+	StatePaused = "paused"
+	StateDead   = "dead"
+	// StateUnknown is any `docker compose ps` State classifyService doesn't
+	// recognize at all (e.g. "removing", or a future Docker Compose state
+	// this table hasn't been taught about yet). Treated as a problem, not
+	// silently assumed healthy -- see classifyService's default case.
+	StateUnknown = "unknown"
 )
 
 // Finding is a single diagnosis result: an environment problem, a service in

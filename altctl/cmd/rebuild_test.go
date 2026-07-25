@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"bytes"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -78,9 +79,10 @@ func TestResolveRebuildTargets_ServiceName(t *testing.T) {
 	// auth-hub is only ever declared in auth.yaml (unlike e.g. alt-backend,
 	// which the local-dev "dev" stack also redeclares under its own
 	// service: key for an alternate local-dev definition -- FindByService
-	// would then be genuinely ambiguous between "core" and "dev" for that
-	// name, which is a pre-existing registry property, not something to
-	// paper over here).
+	// now deterministically prefers the aggregate-covered stack ("core")
+	// over the isolated one ("dev") for that name; see
+	// TestRealRepo_FindByService_PrefersAggregateCoveredStack in
+	// internal/stack for that guarantee directly).
 	rt, err := resolveRebuildTargets(registry, []string{"auth-hub"})
 	if err != nil {
 		t.Fatalf("resolveRebuildTargets failed: %v", err)
@@ -88,8 +90,11 @@ func TestResolveRebuildTargets_ServiceName(t *testing.T) {
 	if len(rt.services) != 1 || rt.services[0] != "auth-hub" {
 		t.Errorf("services = %v, want [auth-hub]", rt.services)
 	}
-	if len(rt.files) != 1 || rt.files[0] != "auth.yaml" {
-		t.Errorf("files = %v, want [auth.yaml]", rt.files)
+	// auth is AggregateCovered, so its file resolves to the aggregate
+	// compose.yaml (C3 fix), not the bare "auth.yaml" -- see
+	// cmd/compose_target.go's buildStackInvocation.
+	if len(rt.files) != 1 || rt.files[0] != stack.AggregateComposeFile {
+		t.Errorf("files = %v, want [%s]", rt.files, stack.AggregateComposeFile)
 	}
 	if len(rt.stacks) != 1 || rt.stacks[0].Name != "auth" {
 		t.Fatalf("stacks = %v, want a single synthetic 'auth' stack", rt.stacks)
@@ -117,8 +122,10 @@ func TestResolveRebuildTargets_StackName(t *testing.T) {
 	if len(rt.services) != len(dbStack.Services) {
 		t.Errorf("services = %v, want all %d services of the db stack (%v)", rt.services, len(dbStack.Services), dbStack.Services)
 	}
-	if len(rt.files) != 1 || rt.files[0] != "db.yaml" {
-		t.Errorf("files = %v, want [db.yaml]", rt.files)
+	// db is AggregateCovered, so it resolves to the aggregate compose.yaml,
+	// not the bare "db.yaml" (C3 fix).
+	if len(rt.files) != 1 || rt.files[0] != stack.AggregateComposeFile {
+		t.Errorf("files = %v, want [%s]", rt.files, stack.AggregateComposeFile)
 	}
 }
 
@@ -155,8 +162,11 @@ func TestResolveRebuildTargets_MultipleStacksAcrossFiles(t *testing.T) {
 	if err != nil {
 		t.Fatalf("resolveRebuildTargets failed: %v", err)
 	}
-	if len(rt.files) != 2 {
-		t.Errorf("files = %v, want 2 compose files (db.yaml, auth.yaml)", rt.files)
+	// Both db and auth are AggregateCovered, so their combined invocation
+	// still collapses to a single aggregate file -- not two separate -f
+	// files (which would hit the C3 project-validation failure).
+	if len(rt.files) != 1 || rt.files[0] != stack.AggregateComposeFile {
+		t.Errorf("files = %v, want [%s]", rt.files, stack.AggregateComposeFile)
 	}
 	if len(rt.stacks) != 2 {
 		t.Errorf("stacks = %v, want 2 synthetic stacks", rt.stacks)
@@ -281,6 +291,54 @@ func TestRebuild_DetachSkipsReadyWait(t *testing.T) {
 
 	if err := rootCmd.Execute(); err != nil {
 		t.Fatalf("rebuild --detach failed: %v", err)
+	}
+}
+
+// --- M2: exact argv assertions (the kind that would have caught C3/C4/H2) ---
+
+// TestRebuild_AltBackend_ResolvesToCoreAggregateFile guards C4 (FindByService
+// determinism: alt-backend must always resolve to "core", never "dev") and
+// C3 (the resolved file must be the aggregate compose.yaml, not the bare
+// "core.yaml" -- which fails alone: "migrate depends on undefined service
+// db") in one shot, on the real composed argv.
+func TestRebuild_AltBackend_ResolvesToCoreAggregateFile(t *testing.T) {
+	setupRebuildTest(t)
+	fake := installFakeComposeClient(t)
+
+	rootCmd.SetArgs([]string{"rebuild", "alt-backend", "--dry-run"})
+	if err := rootCmd.Execute(); err != nil {
+		t.Fatalf("rebuild alt-backend failed: %v", err)
+	}
+
+	buildArgv, ok := fake.findArgv(" build ")
+	if !ok {
+		t.Fatalf("expected a 'build' invocation, got calls: %v", fake.argvs())
+	}
+	upArgv, ok := fake.findArgv(" up ", "-d")
+	if !ok {
+		t.Fatalf("expected an 'up' invocation, got calls: %v", fake.argvs())
+	}
+
+	wantAggregateFile := "-f " + filepath.Join(getComposeDir(), "compose.yaml")
+	for _, argv := range []string{buildArgv, upArgv} {
+		if !strings.Contains(argv, wantAggregateFile) {
+			t.Errorf("rebuild alt-backend argv %q missing aggregate file arg %q", argv, wantAggregateFile)
+		}
+		if strings.Contains(argv, "-f "+filepath.Join(getComposeDir(), "dev.yaml")) {
+			t.Errorf("rebuild alt-backend argv %q must never touch dev.yaml (C4: alt-backend must resolve to core, not dev)", argv)
+		}
+		if !strings.Contains(argv, "alt-backend") {
+			t.Errorf("rebuild alt-backend argv %q missing the target service", argv)
+		}
+	}
+	// rebuild must always force recreation and never touch dependents/
+	// dependencies (see altctl/CLAUDE.md's "rebuild" section, ADR-000761 /
+	// PM-2026-005).
+	if !strings.Contains(upArgv, "--no-deps") {
+		t.Errorf("rebuild up argv %q missing --no-deps", upArgv)
+	}
+	if !strings.Contains(upArgv, "--force-recreate") {
+		t.Errorf("rebuild up argv %q missing --force-recreate", upArgv)
 	}
 }
 

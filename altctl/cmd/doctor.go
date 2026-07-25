@@ -92,8 +92,9 @@ func runDoctor(cmd *cobra.Command, args []string) error {
 // service look "missing" -- exactly the misleading failure mode doctor
 // exists to prevent.
 //
-// It also works around an unrelated landmine: compose/logging.yaml requires
-// DOCKER_GROUP_ID to even parse (`${DOCKER_GROUP_ID:?...}`), which would
+// It also works around an unrelated landmine via
+// doctor.EnsureDockerGroupIDEnv (see that function's doc for detail):
+// compose/logging.yaml requires DOCKER_GROUP_ID to even parse, which would
 // otherwise make `docker compose -f compose/compose.yaml config/ps` -- the
 // aggregate probe doctor uses for every stack, see internal/doctor/probe.go
 // -- hard-fail for users who aren't touching the logging stack at all. A
@@ -102,11 +103,9 @@ func runDoctor(cmd *cobra.Command, args []string) error {
 // is still separately flagged as a preflight Finding whenever the logging
 // stack ends up in scope.
 func newDoctorExecutor() compose.Executor {
-	exec := compose.NewExecutor(getProjectRoot(), logger, false)
-	if os.Getenv("DOCKER_GROUP_ID") == "" {
-		exec.SetEnv("DOCKER_GROUP_ID", "0")
-	}
-	return exec
+	restore := doctor.EnsureDockerGroupIDEnv()
+	defer restore()
+	return compose.NewExecutor(getProjectRoot(), logger, false)
 }
 
 // doctorExitError maps a completed Report to the RunE return value that

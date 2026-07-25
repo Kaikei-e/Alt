@@ -7,8 +7,8 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/alt-project/altctl/internal/compose"
 	"github.com/alt-project/altctl/internal/output"
+	"github.com/alt-project/altctl/internal/stack"
 )
 
 var seedCmd = &cobra.Command{
@@ -69,12 +69,7 @@ func runSeed(cmd *cobra.Command, args []string) error {
 	printer.Info("File:    %s", sqlFile)
 	fmt.Println()
 
-	client := compose.NewClient(
-		root,
-		getComposeDir(),
-		logger,
-		dryRun,
-	)
+	client := newComposeClient()
 
 	// Read seed file and pipe it to psql via docker compose exec
 	seedSQL, err := os.ReadFile(fullPath)
@@ -88,8 +83,27 @@ func runSeed(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
+	// H2 fix: client.Exec now requires an explicit -f file list (it used to
+	// omit -f entirely, which dies with "no configuration file provided").
+	// "db" always lives in db.yaml, an AggregateCovered stack, so this
+	// resolves to the aggregate compose.yaml.
+	registry, regErr := loadRegistry()
+	if regErr != nil {
+		return regErr
+	}
+	dbStack, ferr := registry.FindByService("db")
+	if ferr != nil {
+		return ferr
+	}
+	var files []string
+	if dbStack != nil {
+		files = buildStackInvocation([]*stack.Stack{dbStack}).Files
+	} else {
+		files = []string{stack.AggregateComposeFile}
+	}
+
 	ctx := cmd.Context()
-	err = client.Exec(ctx, "db", []string{
+	err = client.Exec(ctx, files, "db", []string{
 		"psql", "-U", os.Getenv("POSTGRES_USER"), "-d", os.Getenv("POSTGRES_DB"),
 		"-c", string(seedSQL),
 	}, os.Stdout, os.Stderr)

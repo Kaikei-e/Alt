@@ -14,7 +14,7 @@ import (
 
 // Client provides Docker Compose operations
 type Client struct {
-	executor   *DefaultExecutor
+	executor   Executor
 	projectDir string
 	composeDir string
 	logger     *slog.Logger
@@ -39,6 +39,15 @@ type UpOptions struct {
 	// of every service defined across Files. Empty means "all services"
 	// (existing up/restart behavior is unchanged).
 	Services []string
+	// Profiles adds `--profile <p>` for every entry, activating
+	// compose-profile-gated services (see compose/*.yaml's `profiles:`
+	// blocks and stack.Stack.Profile) alongside whatever Services names.
+	// Compose already activates a profiled service's own profile when it's
+	// named explicitly (naming a service on the command line overrides the
+	// profile gate for that service and its dependencies), so Profiles is
+	// mainly needed for parity with Down/Stop/Remove/Build, which don't
+	// always name every profiled service the same way Up's Services does.
+	Profiles []string
 }
 
 // DownOptions configures the down command
@@ -47,6 +56,33 @@ type DownOptions struct {
 	Volumes       bool
 	RemoveOrphans bool
 	Timeout       time.Duration
+}
+
+// StopOptions configures the stop command -- used instead of Down for a
+// stack-scoped teardown (`altctl down <stack>`/`restart <stack>`'s stop
+// phase), since `docker compose down [SERVICES]` scopes containers/networks
+// to the named services but not volumes (`-v` still targets every named
+// volume declared anywhere in the project's -f files, not just the ones
+// belonging to the named services) -- `stop` + `rm -f -v` (see
+// RemoveOptions) scope cleanly to just the named services' own containers
+// and anonymous volumes instead.
+type StopOptions struct {
+	Files    []string
+	Services []string
+	Profiles []string
+	Timeout  time.Duration
+}
+
+// RemoveOptions configures the rm command (paired with StopOptions -- see
+// its doc comment for why `stop` + `rm` replaces a scoped `down`).
+type RemoveOptions struct {
+	Files    []string
+	Services []string
+	Profiles []string
+	// Volumes passes -v to `rm`, removing anonymous volumes attached to the
+	// named services' containers only -- not project-wide named volumes
+	// (that's what a full, unscoped `altctl down --volumes` is for).
+	Volumes bool
 }
 
 // BuildOptions configures the build command
@@ -60,6 +96,8 @@ type BuildOptions struct {
 	// every service defined across Files. Empty means "all services"
 	// (existing build behavior is unchanged).
 	Services []string
+	// Profiles adds `--profile <p>` for every entry -- see UpOptions.Profiles.
+	Profiles []string
 }
 
 // LogsOptions configures the logs command
@@ -92,9 +130,27 @@ func NewClient(projectDir, composeDir string, logger *slog.Logger, dryRun bool) 
 	}
 }
 
+// NewClientWithExecutor builds a Client against a caller-supplied Executor
+// instead of a real *DefaultExecutor -- primarily for cmd package tests
+// that need to capture the exact argv a command builds (file list,
+// --profile, service names, --no-deps/--force-recreate, ...) without
+// parsing dry-run log text. Production code should use NewClient.
+func NewClientWithExecutor(executor Executor, projectDir, composeDir string, logger *slog.Logger) *Client {
+	if logger == nil {
+		logger = slog.Default()
+	}
+	return &Client{
+		executor:   executor,
+		projectDir: projectDir,
+		composeDir: composeDir,
+		logger:     logger,
+	}
+}
+
 // Up starts services defined in the compose files
 func (c *Client) Up(ctx context.Context, opts UpOptions) error {
 	args := c.buildFileArgs(opts.Files)
+	args = append(args, c.buildProfileArgs(opts.Profiles)...)
 	args = append(args, "up")
 
 	if opts.Detach {
@@ -143,9 +199,41 @@ func (c *Client) Down(ctx context.Context, opts DownOptions) error {
 	return c.executor.Run(ctx, "docker", append([]string{"compose"}, args...))
 }
 
+// Stop stops (but does not remove) the named services -- see
+// StopOptions/RemoveOptions doc comments for why a scoped teardown uses
+// stop+rm instead of `down [SERVICES]`.
+func (c *Client) Stop(ctx context.Context, opts StopOptions) error {
+	args := c.buildFileArgs(opts.Files)
+	args = append(args, c.buildProfileArgs(opts.Profiles)...)
+	args = append(args, "stop")
+
+	if opts.Timeout > 0 {
+		args = append(args, "--timeout", fmt.Sprintf("%d", int(opts.Timeout.Seconds())))
+	}
+	args = append(args, opts.Services...)
+
+	return c.executor.Run(ctx, "docker", append([]string{"compose"}, args...))
+}
+
+// Remove removes stopped service containers (and, with opts.Volumes, their
+// anonymous volumes) for the named services only.
+func (c *Client) Remove(ctx context.Context, opts RemoveOptions) error {
+	args := c.buildFileArgs(opts.Files)
+	args = append(args, c.buildProfileArgs(opts.Profiles)...)
+	args = append(args, "rm", "-f")
+
+	if opts.Volumes {
+		args = append(args, "-v")
+	}
+	args = append(args, opts.Services...)
+
+	return c.executor.Run(ctx, "docker", append([]string{"compose"}, args...))
+}
+
 // Build builds service images
 func (c *Client) Build(ctx context.Context, opts BuildOptions) error {
 	args := c.buildFileArgs(opts.Files)
+	args = append(args, c.buildProfileArgs(opts.Profiles)...)
 	args = append(args, "build")
 
 	if opts.NoCache {
@@ -172,8 +260,15 @@ func (c *Client) Build(ctx context.Context, opts BuildOptions) error {
 // service and looping is wrong for --follow: `docker compose logs -f` never
 // exits, so a per-service loop sticks on the first service forever and the
 // rest of the stack's logs are never tailed.
-func (c *Client) Logs(ctx context.Context, services []string, opts LogsOptions) error {
-	args := []string{"compose", "logs"}
+//
+// files is the -f argument list (H2 fix: this used to be omitted entirely,
+// so every real `altctl logs` invocation died with "no configuration file
+// provided" the moment dry-run mode was off -- see cmd/logs.go's caller for
+// how files is resolved via buildStackInvocation).
+func (c *Client) Logs(ctx context.Context, files []string, services []string, opts LogsOptions) error {
+	args := []string{"compose"}
+	args = append(args, c.buildFileArgs(files)...)
+	args = append(args, "logs")
 
 	if opts.Follow {
 		args = append(args, "-f")
@@ -233,9 +328,16 @@ func (c *Client) Config(ctx context.Context, files []string) ([]byte, error) {
 	return c.executor.RunWithOutput(ctx, "docker", append([]string{"compose"}, args...))
 }
 
-// Exec runs a command in a running container
-func (c *Client) Exec(ctx context.Context, service string, command []string, stdout, stderr io.Writer) error {
-	args := []string{"compose", "exec", service}
+// Exec runs a command in a running container.
+//
+// files is the -f argument list (H2 fix: this used to be omitted entirely,
+// so every real `altctl exec` invocation died with "no configuration file
+// provided" -- see cmd/exec.go's caller for how files is resolved via
+// buildStackInvocation).
+func (c *Client) Exec(ctx context.Context, files []string, service string, command []string, stdout, stderr io.Writer) error {
+	args := []string{"compose"}
+	args = append(args, c.buildFileArgs(files)...)
+	args = append(args, "exec", service)
 	args = append(args, command...)
 
 	return c.executor.RunWithPipes(ctx, "docker", args, stdout, stderr)
@@ -260,6 +362,18 @@ func (c *Client) buildFileArgs(files []string) []string {
 			file = filepath.Join(c.composeDir, file)
 		}
 		args = append(args, "-f", file)
+	}
+	return args
+}
+
+// buildProfileArgs constructs `--profile <p>` global flags (repeatable, one
+// per profile) for the compose-profile-gated stacks in play. Must be placed
+// before the subcommand (up/down/build/...) alongside -f/--env-file --
+// callers append this right after buildFileArgs's result.
+func (c *Client) buildProfileArgs(profiles []string) []string {
+	var args []string
+	for _, p := range profiles {
+		args = append(args, "--profile", p)
 	}
 	return args
 }

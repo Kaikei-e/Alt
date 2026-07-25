@@ -11,16 +11,21 @@ import (
 )
 
 // fakeBackupEngine is a backupEngine stub that simulates volume backup/restore
-// failures without invoking a real Docker daemon.
+// failures without invoking a real Docker daemon. calls counts every
+// Backup/Restore invocation so tests can assert an abort happened before any
+// volume was touched (see TestMigrator_Restore_AbortsOnBrokenRegistry).
 type fakeBackupEngine struct {
-	err error
+	err   error
+	calls int
 }
 
 func (f *fakeBackupEngine) Backup(ctx context.Context, spec VolumeSpec, outputPath string) error {
+	f.calls++
 	return f.err
 }
 
 func (f *fakeBackupEngine) Restore(ctx context.Context, spec VolumeSpec, inputPath string) error {
+	f.calls++
 	return f.err
 }
 
@@ -341,6 +346,52 @@ func repoComposeDirForTest(t *testing.T) string {
 	}
 }
 
+// TestComposeFileList_MissingComposeDir_TolerantEmpty is the "legitimate
+// nothing to back up" case (C1): composeDir does not exist at all -- e.g. a
+// synthetic test path or altctl invoked outside a repo checkout. This must
+// return an empty list with NO error, matching the pre-existing behavior
+// callers already depend on for paths like "/tmp/compose" in the dry-run
+// tests in this package.
+func TestComposeFileList_MissingComposeDir_TolerantEmpty(t *testing.T) {
+	dir := t.TempDir()
+	missing := filepath.Join(dir, "does-not-exist")
+
+	files, err := composeFileList(missing)
+	if err != nil {
+		t.Fatalf("expected no error for a missing compose dir, got: %v", err)
+	}
+	if len(files) != 0 {
+		t.Errorf("expected an empty file list for a missing compose dir, got: %v", files)
+	}
+}
+
+// TestComposeFileList_BrokenAltctlConfig_Aborts is the C1 regression test at
+// the composeFileList level: a stack declared in .altctl.yaml with no
+// matching compose file is stack.NewRegistry's hard fail-fast error
+// (Critical Rule 9), and it must propagate as an error here -- not degrade
+// to an empty file list the way a merely-missing compose dir does. This is
+// the distinction the fix hinges on: composeDir exists and has content, only
+// the *registry* fails to load.
+func TestComposeFileList_BrokenAltctlConfig_Aborts(t *testing.T) {
+	root := t.TempDir()
+	composeDir := filepath.Join(root, "compose")
+	if err := os.MkdirAll(composeDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(composeDir, "db.yaml"), []byte("services:\n  db:\n    image: postgres\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	brokenConfig := "stacks:\n  sovereign:\n    optional: false\n"
+	if err := os.WriteFile(filepath.Join(root, ".altctl.yaml"), []byte(brokenConfig), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	files, err := composeFileList(composeDir)
+	if err == nil {
+		t.Fatalf("expected an error for a stack declared with no matching compose file, got files=%v", files)
+	}
+}
+
 // TestComposeFileList_IncludesSovereign guards against configuration drift:
 // the compose file list backup/restore use to detect and stop running
 // containers must be derived from the stack registry (the single source of
@@ -348,7 +399,10 @@ func repoComposeDirForTest(t *testing.T) string {
 // forget a stack such as sovereign.yaml.
 func TestComposeFileList_IncludesSovereign(t *testing.T) {
 	composeDir := repoComposeDirForTest(t)
-	files := composeFileList(composeDir)
+	files, err := composeFileList(composeDir)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
 
 	want := filepath.Join(composeDir, "sovereign.yaml")
 	found := false
@@ -382,7 +436,10 @@ func TestMigrator_BuildComposeArgs_IncludesSovereignWhenPresent(t *testing.T) {
 	writeFile("sovereign.yaml", "services:\n  knowledge-sovereign-db:\n    image: postgres\n")
 
 	m := &Migrator{composeDir: dir}
-	args := m.buildComposeArgs("down")
+	args, err := m.buildComposeArgs("down")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
 
 	wantFlag := filepath.Join(dir, "sovereign.yaml")
 	found := false

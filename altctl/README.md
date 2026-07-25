@@ -42,7 +42,7 @@ altctl list
 | Command | Description |
 |---------|-------------|
 | `altctl up [stacks...]` | Start stacks with dependency resolution, and **wait until every service is Ready** before reporting success |
-| `altctl down [stacks...]` | Stop running stacks |
+| `altctl down [stacks...]` | Stop running stacks (no args = full aggregate teardown; named stacks = scoped stop+remove) |
 | `altctl restart [stacks...]` | Restart stacks (down then up), waiting for Ready the same way `up` does |
 | `altctl rebuild <service\|stack> [more...]` | Rebuild images and **force-recreate** just the named services/stacks, then wait for Ready |
 | `altctl status` | Show service status by stack |
@@ -50,6 +50,62 @@ altctl list
 | `altctl logs <service\|stack>` | Stream logs from a service or stack |
 | `altctl exec <service> -- <cmd>` | Execute a command in a running container |
 | `altctl config` | Show effective configuration |
+
+### Compose invocation strategy: aggregate-file-first
+
+`up`/`restart`/`rebuild`/`logs`/`exec` build their `docker compose -f ...`
+file list around `compose/compose.yaml` -- the top-level `include:`
+aggregate that combines every "production" stack -- instead of assembling a
+narrow per-stack subset. This isn't a style choice: a narrow subset is
+**rejected by real `docker compose`**, e.g. what `altctl up core` used to
+build (`-f base.yaml -f db.yaml -f pgbouncer.yaml -f auth.yaml -f
+sovereign.yaml -f core.yaml`) fails compose project validation, because
+several per-stack files transitively `include: pki.yaml`, whose pki-agent
+sidecars `depends_on` services scattered across many other stacks. Even a
+*single* stack's own file can fail alone for the same reason.
+
+The rule:
+
+- Whenever every stack involved is reachable through `compose.yaml`'s
+  `include:` graph, the invocation is `docker compose -f compose/compose.yaml
+  -p alt <cmd> <services...>` -- scoped by naming every resolved stack's own
+  services explicitly (compose auto-starts each named service's transitive
+  `depends_on` beyond what's named, same as running the command by hand).
+- `dev`, `frontend-dev`, and `load-test` sit outside that `include:` graph
+  (local-dev-only overlays) and are handled per-case, verified against real
+  `docker compose ... config`:
+  - `dev`/`frontend-dev` must **never** be combined with the aggregate file
+    -- `compose.yaml` pulls in `core.yaml`, which redeclares
+    `alt-frontend-sv`/`alt-backend` with resource limits that conflict with
+    `dev.yaml`'s/`frontend-dev.yaml`'s own redeclaration of the same
+    service names. Each already `include: base.yaml` itself, so its own
+    file is self-sufficient alone.
+  - `load-test` is the opposite case: it is **not** self-sufficient alone
+    (`perf.yaml`'s `k6` service `depends_on: alt-backend`, which only
+    exists in `core.yaml` -- outside load-test's own dependency closure of
+    `base` + `perf` + `load-test`), so it needs the aggregate file **plus**
+    `load-test.yaml` layered on top -- exactly the recipe
+    `compose/load-test.yaml`'s own header comment documents.
+- A stack with a compose `profiles:` gate (e.g. `perf` -> `--profile perf`)
+  gets `--profile <p>` added for every profile among the resolved stacks.
+
+`altctl down` (no stack args) is the one exception that stays a real,
+unscoped `docker compose -f compose/compose.yaml down` -- there's nothing to
+scope to. `altctl down <stack>` and `restart <stack>`'s stop phase use `stop`
++ `rm -f` instead of `down [SERVICES]`: `down [SERVICES]` scopes
+containers/networks to the named services but **not** volumes (`-v` still
+targets every named volume across the `-f` files, not just the ones the
+named services own), so a stack-scoped `down --volumes` could otherwise
+delete an unrelated stack's shared volume. `stop` + `rm -f -v` correctly
+scope both to just the named services.
+
+**Ready-wait scope**: the Ready-wait target set is always the *requested
+(resolved)* stacks' own services -- e.g. `altctl up core` waits for
+base/db/pgbouncer/auth/sovereign/core's services, even though `core`'s
+`alt-backend` container actually `depends_on` services in `workers`/`mq`
+too, started implicitly by compose but never in this wait's scope. On
+timeout, the diagnostic points at `altctl doctor` for root-causing across
+that boundary.
 
 ### `up` / `restart`: trustworthy success
 

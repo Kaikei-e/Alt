@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 	"time"
 )
 
@@ -111,6 +112,22 @@ func newRegistry(composeDir string, semantics *SemanticsConfig) (*Registry, erro
 		r.stacks[cs.Stem] = st
 	}
 
+	// Mark every stack (declared and auto-registered alike) with whether
+	// its compose file is reachable through compose.yaml's `include:`
+	// graph -- see Stack.AggregateCovered and internal/stack/aggregate.go.
+	// A missing or unreadable aggregate file degrades to "nothing is
+	// covered" rather than failing registry construction outright (see
+	// aggregateCoveredFiles), except for a genuine parse error on an
+	// aggregate file that does exist, which is a real config problem worth
+	// surfacing fail-fast (Critical Rule 9).
+	covered, err := aggregateCoveredFiles(composeDir)
+	if err != nil {
+		return nil, fmt.Errorf("determining aggregate-covered stacks: %w", err)
+	}
+	for _, st := range r.stacks {
+		st.AggregateCovered = covered[st.ComposeFile]
+	}
+
 	return r, nil
 }
 
@@ -178,16 +195,72 @@ func (r *Registry) OptionalStacks() []*Stack {
 	return optional
 }
 
-// FindByService returns the stack containing the given service
-func (r *Registry) FindByService(service string) *Stack {
-	for _, s := range r.stacks {
+// FindByService returns the stack containing the given service,
+// deterministically. Before this existed, FindByService iterated a Go map
+// directly, so a service declared in more than one stack's Services (e.g.
+// "alt-backend" in both core.yaml and the local-dev override dev.yaml)
+// resolved to a different stack on roughly half of all calls -- silently
+// nondeterministic (C4). Iteration now goes through r.All(), which is
+// sorted by name, and ambiguity is broken deterministically:
+//
+//  1. If the service appears in exactly one stack, return it.
+//  2. If it appears in more than one, prefer a stack inside the aggregate
+//     include: graph (Stack.AggregateCovered) over one outside it --
+//     that's the stack `docker compose -f compose/compose.yaml up
+//     <service>` would actually touch under the aggregate-file-first
+//     strategy lifecycle commands use (see cmd/compose_target.go). E.g.
+//     "alt-backend" resolves to "core", never "dev".
+//  3. If step 2 still leaves more than one candidate (today: impossible --
+//     compose itself rejects two stacks declaring the same service name
+//     inside one project, so two AggregateCovered stacks sharing a service
+//     name can't coexist; two non-AggregateCovered stacks sharing one
+//     could, in principle, e.g. two future isolated dev overlays), return
+//     an error naming every candidate stack instead of guessing.
+func (r *Registry) FindByService(service string) (*Stack, error) {
+	var candidates []*Stack
+	for _, s := range r.All() {
 		for _, svc := range s.Services {
 			if svc == service {
-				return s
+				candidates = append(candidates, s)
+				break
 			}
 		}
 	}
-	return nil
+
+	switch len(candidates) {
+	case 0:
+		return nil, nil
+	case 1:
+		return candidates[0], nil
+	}
+
+	var aggregateCandidates []*Stack
+	for _, s := range candidates {
+		if s.AggregateCovered {
+			aggregateCandidates = append(aggregateCandidates, s)
+		}
+	}
+	switch len(aggregateCandidates) {
+	case 1:
+		return aggregateCandidates[0], nil
+	case 0:
+		return nil, ambiguousServiceError(service, candidates)
+	default:
+		return nil, ambiguousServiceError(service, aggregateCandidates)
+	}
+}
+
+// ambiguousServiceError builds the error FindByService returns when a
+// service name can't be resolved to exactly one stack even after preferring
+// aggregate-covered stacks.
+func ambiguousServiceError(service string, candidates []*Stack) error {
+	names := make([]string, len(candidates))
+	for i, s := range candidates {
+		names[i] = s.Name
+	}
+	return fmt.Errorf(
+		"service %q is declared in more than one stack (%s) and could not be resolved deterministically; disambiguate by passing the stack name instead",
+		service, strings.Join(names, ", "))
 }
 
 // Register adds or updates a stack in the registry

@@ -35,6 +35,27 @@ func (d *duration) UnmarshalYAML(value *yaml.Node) error {
 // derived from its compose file's services: keys -- dependency ordering,
 // optionality, GPU requirements, startup timeout, and the feature
 // provide/require relationships used by DependencyResolver / FeatureResolver.
+//
+// DependsOn's meaning under the aggregate-file-first lifecycle strategy
+// (see cmd/compose_target.go's buildStackInvocation in the altctl CLI
+// package): it is NOT a completeness proof of every container-level
+// `depends_on:` a stack's services actually declare in compose/*.yaml --
+// docker compose itself already auto-starts each named service's own
+// transitive depends_on regardless of what's listed here. What DependsOn
+// controls is (a) dependency order for DependencyResolver.Resolve, and (b)
+// the Ready-wait target set: `altctl up core` only waits for
+// base/db/pgbouncer/auth/sovereign/core's own services to become Ready,
+// even though core's alt-backend actually depends_on services in "workers"
+// and "mq" too (started implicitly by compose, not tracked by this wait --
+// run `altctl doctor` for the full picture). core.DependsOn deliberately
+// does NOT list "workers"/"mq" to get those services waited-for, because
+// workers.DependsOn already includes "core" -- adding the reverse edge
+// would make DependencyResolver's topological sort see a cycle that real
+// `docker compose` (which resolves the whole aggregate's service graph
+// directly, no stack-level ordering at all) has no trouble with. Keep
+// DependsOn's edges acyclic and treat it as "what else this stack needs
+// waited-for, chosen to keep the resolver's DAG acyclic" -- not "everything
+// this stack's containers actually depend_on."
 type StackSemantics struct {
 	Description      string    `yaml:"description"`
 	DependsOn        []string  `yaml:"depends_on"`

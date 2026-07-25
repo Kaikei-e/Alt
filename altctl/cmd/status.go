@@ -11,6 +11,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/alt-project/altctl/internal/compose"
+	"github.com/alt-project/altctl/internal/doctor"
 	"github.com/alt-project/altctl/internal/output"
 	"github.com/alt-project/altctl/internal/stack"
 )
@@ -53,6 +54,16 @@ func showStatus(ctx context.Context, jsonOutput bool) error {
 	if err != nil {
 		return err
 	}
+
+	// H1: the aggregate compose file set below (every stack's compose file)
+	// includes logging.yaml, whose `${DOCKER_GROUP_ID:?...}` fails
+	// interpolation before the docker daemon is ever touched if the var is
+	// unset -- otherwise indistinguishable from a dead/unreachable daemon
+	// once it lands in psError below. Inject the same harmless read-only
+	// placeholder cmd/doctor.go uses for its own aggregate probe (see
+	// doctor.EnsureDockerGroupIDEnv's doc comment) around this PS call only.
+	restoreDockerGroupID := doctor.EnsureDockerGroupIDEnv()
+	defer restoreDockerGroupID()
 
 	// Create compose client
 	client := compose.NewClient(
@@ -101,7 +112,23 @@ func showStatus(ctx context.Context, jsonOutput bool) error {
 // non-zero exit code. Kept separate from the empty-but-successful PS case
 // (no services running, which is not an error) so a down/unreachable Docker
 // daemon is never indistinguishable from an idle stack.
+//
+// H1: showStatus already injects a placeholder DOCKER_GROUP_ID for its own
+// PS call (see doctor.EnsureDockerGroupIDEnv), but this hint still checks
+// the failure text for "DOCKER_GROUP_ID" as a defense-in-depth check --
+// e.g. a caller that reaches psError through a path that didn't go through
+// showStatus's placeholder, or a compose error that references the var for
+// an unrelated reason -- so the message points at the actual remediation
+// instead of blaming the docker daemon for a config-interpolation failure.
 func psError(err error) error {
+	if strings.Contains(err.Error(), "DOCKER_GROUP_ID") {
+		return &output.CLIError{
+			Summary:    "failed to get service status from Docker",
+			Detail:     err.Error(),
+			Suggestion: "DOCKER_GROUP_ID is not set. Export it before running altctl: `export DOCKER_GROUP_ID=$(scripts/get-docker-gid.sh)`",
+			ExitCode:   output.ExitComposeError,
+		}
+	}
 	return &output.CLIError{
 		Summary:    "failed to get service status from Docker",
 		Detail:     err.Error(),
