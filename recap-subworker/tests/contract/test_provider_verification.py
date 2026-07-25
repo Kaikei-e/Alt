@@ -14,6 +14,10 @@ via the *real* application router (`recap_subworker.app.routers.runs`)
 with its usecase dependencies swapped for in-memory fakes, so verification
 exercises the actual request validation, header requirements, and response
 shape instead of a hand-fabricated stub route.
+
+POST /v1/clustering/{run_id} is a temporary legacy-compat stub for the
+frozen pact of recap-worker versions still recorded as deployed in the
+Pact Broker; see the comment at its definition in `_create_provider_app`.
 """
 
 import logging
@@ -153,6 +157,7 @@ def _create_provider_app() -> FastAPI:
     - POST /v1/classify-runs          (classification job submission)
     - GET  /v1/classify-runs/{run_id} (polling a completed classification job)
     - POST /v1/classify/coarse        (coarse classification request)
+    - POST /v1/clustering/{run_id}    (legacy-compat stub, see below)
 
     and mounts the *real* application router for:
     - POST /v1/runs                   (clustering run submission)
@@ -211,6 +216,35 @@ def _create_provider_app() -> FastAPI:
             "scores": {"technology": 0.8, "science": 0.15},
         }
 
+    # ---- POST /v1/clustering/{run_id} ----
+    # Legacy-compat stub for the frozen pact of recap-worker versions
+    # currently recorded as deployed in the Pact Broker (64d94ed2c,
+    # 75704ff6...). This endpoint never existed in production traffic --
+    # it was a fabricated route introduced by mistake and retired in
+    # a9fa386d6 in favour of the real /v1/runs surface below. It is kept
+    # here only so provider verification does not 404 against those old
+    # consumer pacts while they are still deployed, which would otherwise
+    # block can-i-deploy for the *new* recap-worker that retires it.
+    # DELETE this stub once recap-worker >= 2ac25ca is recorded as
+    # deployed in the Pact Broker.
+    @app.post("/v1/clustering/{run_id}")
+    async def execute_clustering_legacy_compat(run_id: int) -> dict:
+        return {
+            "run_id": run_id,
+            "job_id": "00000000-0000-0000-0000-000000000001",
+            "genre": "technology",
+            "status": "succeeded",
+            "cluster_count": 3,
+            "clusters": [
+                {
+                    "cluster_id": 0,
+                    "size": 5,
+                    "top_terms": ["AI"],
+                    "representatives": [{"sentence_text": "AI is transforming industries."}],
+                }
+            ],
+        }
+
     # ---- Provider state registry ----
     async def _set_state(params: dict) -> None:
         provider_state["params"] = params
@@ -220,6 +254,8 @@ def _create_provider_app() -> FastAPI:
         "classification job 42 has succeeded": _set_state,
         "the clustering pipeline accepts a new run": _set_state,
         "clustering run 42 has succeeded": _set_state,
+        # Legacy-compat: see execute_clustering_legacy_compat above.
+        "classified articles are ready for clustering": _set_state,
     }
 
     @app.post("/_pact/provider-states")
