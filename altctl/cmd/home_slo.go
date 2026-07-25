@@ -17,7 +17,7 @@ Shows each SLI with its current value, target, compliance status, and error budg
 
 Example:
   altctl home slo
-  altctl home slo --backend-url=http://my-backend:9001`,
+  altctl home slo --backend-url=http://my-backend:9101`,
 	RunE: runHomeSLO,
 }
 

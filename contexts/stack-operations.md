@@ -34,4 +34,4 @@ _Avoid_: heal, repair (自動修復を想起させる)
 
 **c2quay**:
 Pact ゲート付きデプロイヤ。本番ロールアウトの唯一の正規経路。
-_Avoid_: altctl deploy (廃止方向)
+_Avoid_: altctl deploy (削除済み — 2026-07-25)

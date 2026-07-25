@@ -114,9 +114,9 @@ docker compose up -d --no-deps --force-recreate <svcs>
 
 | Profile | Categories | Volumes | Use Case |
 |---------|------------|---------|----------|
-| db | critical | 6 PG | Quick DB snapshot |
-| essential | critical + data + search | 10 | Standard backup (no metrics/models) |
-| all | all | 14 | Complete backup (migration) |
+| db | critical | 7 PG | Quick DB snapshot |
+| essential | critical + data + search | 11 | Standard backup (no metrics/models) |
+| all | all | 15 | Complete backup (migration) |
 
 ## Stack Registry (derived, not hardcoded)
 
