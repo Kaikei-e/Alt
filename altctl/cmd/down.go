@@ -40,7 +40,10 @@ func init() {
 
 func runDown(cmd *cobra.Command, args []string) error {
 	printer := newPrinter()
-	registry := stack.NewRegistry()
+	registry, err := loadRegistry()
+	if err != nil {
+		return err
+	}
 	resolver := stack.NewDependencyResolver(registry)
 
 	// Determine which stacks to stop
@@ -55,7 +58,6 @@ func runDown(cmd *cobra.Command, args []string) error {
 	// Only resolve dependents if --with-deps is set
 	withDeps, _ := cmd.Flags().GetBool("with-deps")
 	var stacks []*stack.Stack
-	var err error
 
 	if withDeps {
 		// Get stacks in reverse order (dependents first)

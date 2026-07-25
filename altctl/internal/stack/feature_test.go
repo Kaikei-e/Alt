@@ -5,7 +5,7 @@ import (
 )
 
 func TestCheckMissingFeatures_CoreWithoutWorkers(t *testing.T) {
-	registry := NewRegistry()
+	registry := realRegistry(t)
 	resolver := NewFeatureResolver(registry)
 
 	// Starting only core stack (with its dependencies), but not workers
@@ -41,7 +41,7 @@ func TestCheckMissingFeatures_CoreWithoutWorkers(t *testing.T) {
 }
 
 func TestCheckMissingFeatures_CoreWithoutBFF(t *testing.T) {
-	registry := NewRegistry()
+	registry := realRegistry(t)
 	resolver := NewFeatureResolver(registry)
 
 	// Starting core + workers but not bff
@@ -73,7 +73,7 @@ func TestCheckMissingFeatures_CoreWithoutBFF(t *testing.T) {
 }
 
 func TestCheckMissingFeatures_CoreWithWorkers(t *testing.T) {
-	registry := NewRegistry()
+	registry := realRegistry(t)
 	resolver := NewFeatureResolver(registry)
 
 	// Starting core and workers together
@@ -87,7 +87,7 @@ func TestCheckMissingFeatures_CoreWithWorkers(t *testing.T) {
 }
 
 func TestSuggestAdditionalStacks(t *testing.T) {
-	registry := NewRegistry()
+	registry := realRegistry(t)
 	resolver := NewFeatureResolver(registry)
 
 	// Only core stack (without its dependencies for simplicity)
@@ -110,7 +110,7 @@ func TestSuggestAdditionalStacks(t *testing.T) {
 }
 
 func TestCheckMissingFeatures_NoWarningsForCompleteStack(t *testing.T) {
-	registry := NewRegistry()
+	registry := realRegistry(t)
 	resolver := NewFeatureResolver(registry)
 
 	// Default complete stack
@@ -125,7 +125,7 @@ func TestCheckMissingFeatures_NoWarningsForCompleteStack(t *testing.T) {
 }
 
 func TestFindFeatureProviders(t *testing.T) {
-	registry := NewRegistry()
+	registry := realRegistry(t)
 	resolver := NewFeatureResolver(registry)
 
 	providers := resolver.findFeatureProviders(FeatureSearch)
@@ -167,7 +167,7 @@ func TestProvidesFeature(t *testing.T) {
 }
 
 func TestFindFeatureProviders_Observability(t *testing.T) {
-	registry := NewRegistry()
+	registry := realRegistry(t)
 	resolver := NewFeatureResolver(registry)
 
 	providers := resolver.findFeatureProviders(FeatureObservability)

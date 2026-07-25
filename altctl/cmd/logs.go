@@ -7,7 +7,6 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/alt-project/altctl/internal/compose"
-	"github.com/alt-project/altctl/internal/stack"
 )
 
 var logsCmd = &cobra.Command{
@@ -40,7 +39,10 @@ func runLogs(cmd *cobra.Command, args []string) error {
 	printer := newPrinter()
 
 	// Check if target is a stack name
-	registry := stack.NewRegistry()
+	registry, err := loadRegistry()
+	if err != nil {
+		return err
+	}
 	var services []string
 	if s, ok := registry.Get(target); ok {
 		services = s.Services
@@ -98,7 +100,10 @@ func completeServiceNames(cmd *cobra.Command, args []string, toComplete string) 
 		return nil, cobra.ShellCompDirectiveNoFileComp
 	}
 
-	registry := stack.NewRegistry()
+	registry, err := loadRegistry()
+	if err != nil {
+		return nil, cobra.ShellCompDirectiveError
+	}
 	var services []string
 	for _, s := range registry.All() {
 		services = append(services, s.Services...)
@@ -113,7 +118,10 @@ func completeServiceAndStackNames(cmd *cobra.Command, args []string, toComplete 
 		return nil, cobra.ShellCompDirectiveNoFileComp
 	}
 
-	registry := stack.NewRegistry()
+	registry, err := loadRegistry()
+	if err != nil {
+		return nil, cobra.ShellCompDirectiveError
+	}
 	var completions []string
 	completions = append(completions, registry.Names()...)
 	for _, s := range registry.All() {

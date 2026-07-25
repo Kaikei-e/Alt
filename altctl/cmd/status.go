@@ -49,7 +49,10 @@ func runStatus(cmd *cobra.Command, args []string) error {
 
 func showStatus(ctx context.Context, jsonOutput bool) error {
 	printer := newPrinter()
-	registry := stack.NewRegistry()
+	registry, err := loadRegistry()
+	if err != nil {
+		return err
+	}
 
 	// Create compose client
 	client := compose.NewClient(

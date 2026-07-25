@@ -8,7 +8,6 @@ import (
 
 	"github.com/alt-project/altctl/internal/compose"
 	"github.com/alt-project/altctl/internal/output"
-	"github.com/alt-project/altctl/internal/stack"
 )
 
 var execCmd = &cobra.Command{
@@ -35,7 +34,10 @@ func runExec(cmd *cobra.Command, args []string) error {
 	service := args[0]
 
 	// Validate service exists
-	registry := stack.NewRegistry()
+	registry, err := loadRegistry()
+	if err != nil {
+		return err
+	}
 	s := registry.FindByService(service)
 	if s == nil {
 		return &output.CLIError{

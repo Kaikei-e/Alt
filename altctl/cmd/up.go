@@ -47,7 +47,10 @@ func init() {
 
 func runUp(cmd *cobra.Command, args []string) error {
 	printer := newPrinter()
-	registry := stack.NewRegistry()
+	registry, err := loadRegistry()
+	if err != nil {
+		return err
+	}
 	resolver := stack.NewDependencyResolver(registry)
 
 	// Determine which stacks to start
@@ -65,7 +68,6 @@ func runUp(cmd *cobra.Command, args []string) error {
 	// Resolve dependencies unless --no-deps is set
 	noDeps, _ := cmd.Flags().GetBool("no-deps")
 	var stacks []*stack.Stack
-	var err error
 
 	if noDeps {
 		for _, name := range stackNames {
@@ -227,7 +229,10 @@ func runUp(cmd *cobra.Command, args []string) error {
 
 // completeStackNames provides shell completion for stack names
 func completeStackNames(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
-	registry := stack.NewRegistry()
+	registry, err := loadRegistry()
+	if err != nil {
+		return nil, cobra.ShellCompDirectiveError
+	}
 	names := registry.Names()
 
 	// Filter out already specified stacks

@@ -12,6 +12,7 @@ import (
 
 	"github.com/alt-project/altctl/internal/config"
 	"github.com/alt-project/altctl/internal/output"
+	"github.com/alt-project/altctl/internal/stack"
 )
 
 var (
@@ -179,4 +180,32 @@ func getComposeDir() string {
 		return filepath.Join(root, cfg.Compose.Dir)
 	}
 	return filepath.Join(root, "compose")
+}
+
+// getConfigFilePath returns the altctl config file the stack registry
+// should read for stack semantics (depends_on, optional, provides/...,
+// overlays/excluded) that can't be derived from compose/*.yaml alone.
+func getConfigFilePath() string {
+	if cfg != nil && cfg.ConfigFilePath != "" {
+		return cfg.ConfigFilePath
+	}
+	return filepath.Join(getProjectRoot(), ".altctl.yaml")
+}
+
+// loadRegistry builds the stack registry from the effective compose
+// directory and altctl config file. Stacks are derived from compose/*.yaml
+// at call time (see internal/stack.NewRegistry), so this can fail if
+// .altctl.yaml declares a stack with no matching compose file, or if the
+// compose directory itself can't be read.
+func loadRegistry() (*stack.Registry, error) {
+	registry, err := stack.NewRegistry(getComposeDir(), getConfigFilePath())
+	if err != nil {
+		return nil, &output.CLIError{
+			Summary:    "failed to load stack registry",
+			Detail:     err.Error(),
+			Suggestion: "Check compose/*.yaml and the 'stacks:'/'overlays:' sections of .altctl.yaml",
+			ExitCode:   output.ExitConfigError,
+		}
+	}
+	return registry, nil
 }

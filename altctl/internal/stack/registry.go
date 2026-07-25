@@ -1,6 +1,9 @@
 package stack
 
 import (
+	"fmt"
+	"os"
+	"path/filepath"
 	"sort"
 	"time"
 )
@@ -10,212 +13,118 @@ type Registry struct {
 	stacks map[string]*Stack
 }
 
-// defaultStacks contains the predefined stack configurations
-var defaultStacks = []Stack{
-	{
-		Name:        "base",
-		Description: "Shared resources (secrets, networks, volumes)",
-		ComposeFile: "base.yaml",
-		Services:    []string{}, // No services, only shared resources
-		DependsOn:   []string{},
-		Optional:    false,
-	},
-	{
-		Name:        "db",
-		Description: "Database services (PostgreSQL 17, Meilisearch, ClickHouse)",
-		ComposeFile: "db.yaml",
-		Services:    []string{"db", "meilisearch", "clickhouse"},
-		DependsOn:   []string{"base"},
-		Optional:    false,
-		Provides:    []Feature{FeatureDatabase},
-	},
-	{
-		Name:        "pgbouncer",
-		Description: "Connection pooling (PgBouncer for main DB and Kratos DB)",
-		ComposeFile: "pgbouncer.yaml",
-		Services:    []string{"pgbouncer", "pgbouncer-kratos"},
-		DependsOn:   []string{"base", "db"},
-		Optional:    false,
-	},
-	{
-		Name:        "auth",
-		Description: "Authentication services (Kratos, auth-hub)",
-		ComposeFile: "auth.yaml",
-		Services:    []string{"kratos-db", "kratos-migrate", "kratos", "auth-hub"},
-		DependsOn:   []string{"base", "pgbouncer"},
-		Optional:    false,
-		Provides:    []Feature{FeatureAuth},
-	},
-	{
-		Name:             "core",
-		Description:      "Core application services (nginx, frontend, backend)",
-		ComposeFile:      "core.yaml",
-		Services:         []string{"nginx", "alt-frontend-sv", "alt-backend", "migrate"},
-		DependsOn:        []string{"base", "db", "auth", "sovereign"},
-		Optional:         false,
-		RequiresFeatures: []Feature{FeatureSearch, FeatureBFF}, // Search UI requires search-indexer; frontend depends on alt-butterfly-facade
-	},
-	{
-		Name:        "ai",
-		Description: "AI/LLM services (Ollama, news-creator, pre-processor)",
-		ComposeFile: "ai.yaml",
-		Services:    []string{"redis-cache", "news-creator-backend", "news-creator", "news-creator-volume-init", "pre-processor"},
-		DependsOn:   []string{"base", "db", "mq", "core"},
-		Profile:     "ollama",
-		RequiresGPU: true,
-		Optional:    true,
-		Timeout:     10 * time.Minute, // GPU services need more time
-		Provides:    []Feature{FeatureAI},
-	},
-	{
-		Name:        "workers",
-		Description: "Background worker services",
-		ComposeFile: "workers.yaml",
-		Services:    []string{"pre-processor-sidecar", "search-indexer", "tag-generator", "oauth-token-init", "auth-token-manager"},
-		DependsOn:   []string{"base", "db", "mq", "core"},
-		Optional:    false,
-		Provides:    []Feature{FeatureSearch}, // search-indexer provides search functionality
-	},
-	{
-		Name:        "recap",
-		Description: "Recap services (article summarization)",
-		ComposeFile: "recap.yaml",
-		Services:    []string{"recap-db", "recap-db-migrator", "recap-worker", "recap-subworker", "dashboard", "recap-evaluator"},
-		DependsOn:   []string{"base", "db", "core"},
-		Profile:     "recap",
-		Optional:    true,
-		Provides:    []Feature{FeatureRecap},
-	},
-	{
-		Name:        "logging",
-		Description: "Logging infrastructure (rask log forwarders)",
-		ComposeFile: "logging.yaml",
-		Services: []string{
-			"rask-log-aggregator",
-			"nginx-logs", "alt-backend-logs", "auth-hub-logs",
-			"tag-generator-logs", "pre-processor-logs", "search-indexer-logs",
-			"news-creator-logs", "news-creator-backend-logs",
-			"recap-worker-logs", "recap-subworker-logs",
-			"dashboard-logs", "recap-evaluator-logs", "rag-orchestrator-logs",
-		},
-		DependsOn: []string{"base", "db"},
-		Profile:   "logging",
-		Optional:  true,
-		Provides:  []Feature{FeatureLogging},
-	},
-	{
-		Name:        "rag",
-		Description: "RAG extension services",
-		ComposeFile: "rag.yaml",
-		Services:    []string{"rag-db", "rag-db-migrator", "rag-orchestrator"},
-		DependsOn:   []string{"base", "db", "core", "workers"},
-		Profile:     "rag-extension",
-		Optional:    true,
-		Provides:    []Feature{FeatureRAG},
-	},
-	{
-		Name:        "perf",
-		Description: "E2E performance measurement tool (Deno/Astral) + K6 load testing",
-		ComposeFile: "perf.yaml",
-		Services:    []string{"alt-perf", "k6"},
-		DependsOn:   []string{"base", "db", "auth", "core"},
-		Profile:     "perf",
-		Optional:    true,
-	},
-	{
-		Name:        "observability",
-		Description: "Observability infrastructure (Grafana dashboards)",
-		ComposeFile: "observability.yaml",
-		Services:    []string{"nginx-exporter", "prometheus", "grafana", "cadvisor"},
-		DependsOn:   []string{"base", "db", "core"},
-		Profile:     "observability",
-		Optional:    true,
-		Provides:    []Feature{FeatureObservability},
-	},
-	{
-		Name:        "mq",
-		Description: "Message queue services (Redis Streams, mq-hub)",
-		ComposeFile: "mq.yaml",
-		Services:    []string{"redis-streams", "mq-hub"},
-		DependsOn:   []string{"base"},
-		Profile:     "mq",
-		Optional:    true,
-		Provides:    []Feature{FeatureMQ},
-	},
-	{
-		Name:        "bff",
-		Description: "Backend for Frontend (alt-butterfly-facade proxy)",
-		ComposeFile: "bff.yaml",
-		Services:    []string{"alt-butterfly-facade"},
-		DependsOn:   []string{"base", "db", "auth", "core"},
-		Profile:     "bff",
-		Optional:    true,
-		Provides:    []Feature{FeatureBFF},
-	},
-	{
-		Name:        "dev",
-		Description: "Development stack (SvelteKit + mock-auth + backend + db)",
-		ComposeFile: "dev.yaml",
-		Services:    []string{"mock-auth", "alt-frontend-sv", "alt-backend", "db", "migrate"},
-		DependsOn:   []string{"base"},
-		Profile:     "dev",
-		Optional:    true,
-	},
-	{
-		Name:        "frontend-dev",
-		Description: "Frontend-only development (mock backend, no database)",
-		ComposeFile: "frontend-dev.yaml",
-		Services:    []string{"mock-auth", "alt-frontend-sv"},
-		DependsOn:   []string{}, // No dependencies - standalone
-		Profile:     "frontend-dev",
-		Optional:    true,
-	},
-	{
-		Name:        "backup",
-		Description: "Backup services (Restic, PostgreSQL dump)",
-		ComposeFile: "backup.yaml",
-		Services:    []string{"restic-backup"},
-		DependsOn:   []string{"base", "db"},
-		Profile:     "backup",
-		Optional:    true,
-	},
-	{
-		Name:        "load-test",
-		Description: "Load testing (mock RSS server for K6)",
-		ComposeFile: "load-test.yaml",
-		Services:    []string{"mock-rss-server"},
-		DependsOn:   []string{"base", "perf"},
-		Profile:     "load-test",
-		Optional:    true,
-	},
-	{
-		Name:        "sovereign",
-		Description: "Knowledge Sovereign (durable knowledge state owner)",
-		ComposeFile: "sovereign.yaml",
-		Services:    []string{"knowledge-sovereign-db", "knowledge-sovereign-db-migrator", "knowledge-sovereign"},
-		DependsOn:   []string{"base"},
-		Optional:    false,
-	},
-	{
-		Name:        "pact",
-		Description: "Pact Broker for Consumer-Driven Contract Testing",
-		ComposeFile: "pact.yaml",
-		Services:    []string{"pact-db", "pact-broker"},
-		DependsOn:   []string{"base"},
-		Profile:     "pact",
-		Optional:    true,
-	},
+// NewRegistry builds a stack registry by deriving stacks from compose/*.yaml
+// files in composeDir and layering in the semantics declared in the altctl
+// config file at configPath (dependency order, optionality, GPU/timeout,
+// feature provide/require -- see StackSemantics).
+//
+// Stack name = compose filename stem (db.yaml -> "db"); a stack's Services
+// are exactly the top-level services: map keys of its own file (includes
+// and anchors are not resolved across files). A file with no services (or
+// an empty services: {}) is not a stack unless explicitly declared in
+// configPath (this is how "base" -- shared resources only -- stays a valid
+// dependency target). Files listed under configPath's overlays/excluded are
+// never auto-registered.
+//
+// A compose file with services and no declared semantics is auto-registered
+// with defaults (optional, depending on "base" if present) and a notice is
+// printed to stderr, so drift between compose/ and .altctl.yaml is visible
+// without being fatal. A declared semantics entry whose compose file does
+// not exist is a hard error (fail-fast, altctl/CLAUDE.md Critical Rule 9).
+func NewRegistry(composeDir, configPath string) (*Registry, error) {
+	semantics, err := LoadSemanticsConfig(configPath)
+	if err != nil {
+		return nil, err
+	}
+	return newRegistry(composeDir, semantics)
 }
 
-// NewRegistry creates a new stack registry with default stacks
-func NewRegistry() *Registry {
-	r := &Registry{
-		stacks: make(map[string]*Stack),
+// NewRegistryFromSemantics builds a registry from an already-loaded
+// SemanticsConfig. It exists mainly for tests that want to exercise
+// derivation against a fixture compose dir without also writing a config
+// file to disk; production code should use NewRegistry.
+func NewRegistryFromSemantics(composeDir string, semantics *SemanticsConfig) (*Registry, error) {
+	if semantics == nil {
+		semantics = &SemanticsConfig{}
 	}
-	for i := range defaultStacks {
-		r.stacks[defaultStacks[i].Name] = &defaultStacks[i]
+	return newRegistry(composeDir, semantics)
+}
+
+func newRegistry(composeDir string, semantics *SemanticsConfig) (*Registry, error) {
+	skip := stringSet(semantics.Overlays)
+	for k, v := range stringSet(semantics.Excluded) {
+		skip[k] = v
 	}
-	return r
+
+	discovered, err := discoverComposeStacks(composeDir, skip)
+	if err != nil {
+		return nil, err
+	}
+
+	r := &Registry{stacks: make(map[string]*Stack, len(discovered)+len(semantics.Stacks))}
+
+	// Declared stacks: their compose file must exist, but may have an empty
+	// services: map (e.g. "base"). Fail fast if it doesn't exist at all.
+	for name, sem := range semantics.Stacks {
+		file := name + ".yaml"
+		path := filepath.Join(composeDir, file)
+		services, statErr := composeFileServicesIfExists(path, composeDir, name)
+		if statErr != nil {
+			return nil, statErr
+		}
+		r.stacks[name] = &Stack{
+			Name:             name,
+			Description:      sem.Description,
+			ComposeFile:      file,
+			Services:         services,
+			DependsOn:        sem.DependsOn,
+			Profile:          sem.Profile,
+			Optional:         sem.Optional,
+			RequiresGPU:      sem.RequiresGPU,
+			Timeout:          time.Duration(sem.StartupTimeout),
+			Provides:         sem.Provides,
+			RequiresFeatures: sem.RequiresFeatures,
+		}
+	}
+
+	_, hasBase := r.stacks["base"]
+
+	// Auto-register any discovered compose file that wasn't already covered
+	// by a declared stack above.
+	for _, cs := range discovered {
+		if _, declared := semantics.Stacks[cs.Stem]; declared {
+			continue
+		}
+		fmt.Fprintf(os.Stderr,
+			"notice: stack %q auto-registered from %s (no semantics declared in altctl config; using defaults)\n",
+			cs.Stem, filepath.Join(composeDir, cs.File))
+
+		st := &Stack{
+			Name:        cs.Stem,
+			ComposeFile: cs.File,
+			Services:    cs.Services,
+			Optional:    true,
+		}
+		if hasBase && cs.Stem != "base" {
+			st.DependsOn = []string{"base"}
+		}
+		r.stacks[cs.Stem] = st
+	}
+
+	return r, nil
+}
+
+// composeFileServicesIfExists resolves a declared stack's compose file
+// path, returning its services (possibly empty) or an error that names the
+// declaring stack when the file is missing entirely.
+func composeFileServicesIfExists(path, composeDir, stackName string) ([]string, error) {
+	if _, err := os.Stat(path); err != nil {
+		if os.IsNotExist(err) {
+			return nil, fmt.Errorf("stack %q is declared in altctl config but has no matching compose file %s in %s", stackName, stackName+".yaml", composeDir)
+		}
+		return nil, fmt.Errorf("checking compose file for stack %q: %w", stackName, err)
+	}
+	return composeFileServices(path)
 }
 
 // Get returns a stack by name

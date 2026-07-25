@@ -317,15 +317,40 @@ func TestMigrator_Backup_ReturnsNilWhenVolumesSucceed(t *testing.T) {
 	}
 }
 
+// repoComposeDirForTest locates the real project's compose/ directory by
+// walking up from the test's working directory, so composeFileList (which
+// now derives the file list from the real compose/*.yaml + .altctl.yaml on
+// disk, rather than a hardcoded list) has real content to discover.
+func repoComposeDirForTest(t *testing.T) string {
+	t.Helper()
+	dir, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("getting working directory: %v", err)
+	}
+	for {
+		if info, statErr := os.Stat(filepath.Join(dir, "compose")); statErr == nil && info.IsDir() {
+			if _, altErr := os.Stat(filepath.Join(dir, "altctl")); altErr == nil {
+				return filepath.Join(dir, "compose")
+			}
+		}
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			t.Skip("Alt project root (compose/ + altctl/) not found; skipping")
+		}
+		dir = parent
+	}
+}
+
 // TestComposeFileList_IncludesSovereign guards against configuration drift:
 // the compose file list backup/restore use to detect and stop running
 // containers must be derived from the stack registry (the single source of
 // truth also used by `altctl up`/`down`), not a hand-maintained list that can
 // forget a stack such as sovereign.yaml.
 func TestComposeFileList_IncludesSovereign(t *testing.T) {
-	files := composeFileList("/compose")
+	composeDir := repoComposeDirForTest(t)
+	files := composeFileList(composeDir)
 
-	want := filepath.Join("/compose", "sovereign.yaml")
+	want := filepath.Join(composeDir, "sovereign.yaml")
 	found := false
 	for _, f := range files {
 		if f == want {
@@ -344,11 +369,17 @@ func TestComposeFileList_IncludesSovereign(t *testing.T) {
 // sovereign can't be stopped by one code path and missed by the other.
 func TestMigrator_BuildComposeArgs_IncludesSovereignWhenPresent(t *testing.T) {
 	dir := t.TempDir()
-	for _, name := range []string{"base.yaml", "db.yaml", "sovereign.yaml"} {
-		if err := os.WriteFile(filepath.Join(dir, name), []byte("services: {}\n"), 0644); err != nil {
+	// base.yaml legitimately has no services (shared resources only, like
+	// the real one); db.yaml and sovereign.yaml need at least one service
+	// each to be discovered as stacks under the derived registry model.
+	writeFile := func(name, body string) {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(body), 0644); err != nil {
 			t.Fatal(err)
 		}
 	}
+	writeFile("base.yaml", "services: {}\n")
+	writeFile("db.yaml", "services:\n  db:\n    image: postgres\n")
+	writeFile("sovereign.yaml", "services:\n  knowledge-sovereign-db:\n    image: postgres\n")
 
 	m := &Migrator{composeDir: dir}
 	args := m.buildComposeArgs("down")

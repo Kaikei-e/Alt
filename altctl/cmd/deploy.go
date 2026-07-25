@@ -55,7 +55,10 @@ func init() {
 
 func runDeploy(cmd *cobra.Command, args []string) error {
 	printer := newPrinter()
-	registry := stack.NewRegistry()
+	registry, err := loadRegistry()
+	if err != nil {
+		return err
+	}
 	resolver := stack.NewDependencyResolver(registry)
 
 	// Determine which stacks to deploy
@@ -69,7 +72,6 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 	// Resolve dependencies unless --no-deps
 	noDeps, _ := cmd.Flags().GetBool("no-deps")
 	var stacks []*stack.Stack
-	var err error
 
 	if noDeps {
 		for _, name := range stackNames {

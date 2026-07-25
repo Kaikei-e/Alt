@@ -342,14 +342,29 @@ func (m *Migrator) backupVolumeWithTiming(ctx context.Context, spec VolumeSpec, 
 	return timing
 }
 
-// composeFileList returns the full paths to every compose file registered in
-// the stack registry, in a stable order. Backup and restore both use this as
-// their single source of truth for "which compose files make up this
-// project" so container detection / stop operations can't silently drift out
-// of sync and miss a stack (e.g. sovereign.yaml, whose DB volume would
-// otherwise be overwritten by a restore while its container is still up).
+// composeFileList returns the full paths to every compose file the stack
+// registry derives from composeDir, in a stable order. Backup and restore
+// both use this as their single source of truth for "which compose files
+// make up this project" so container detection / stop operations can't
+// silently drift out of sync and miss a stack (e.g. sovereign.yaml, whose DB
+// volume would otherwise be overwritten by a restore while its container is
+// still up).
+//
+// The stack registry now derives stacks from compose/*.yaml on disk rather
+// than a hardcoded list (see internal/stack.NewRegistry), so this looks for
+// an altctl config file (stack semantics: depends_on, optional, ...) as a
+// sibling of composeDir's parent directory -- the conventional
+// <project root>/compose + <project root>/.altctl.yaml layout. Neither
+// composeDir nor the config file need to exist: a missing/unreadable
+// compose directory is not an error here, it just means there is nothing to
+// back up or stop (callers already treat an empty file list as "nothing
+// running" rather than a failure).
 func composeFileList(composeDir string) []string {
-	registry := stack.NewRegistry()
+	configPath := filepath.Join(filepath.Dir(composeDir), ".altctl.yaml")
+	registry, err := stack.NewRegistry(composeDir, configPath)
+	if err != nil {
+		return nil
+	}
 	stacks := registry.All()
 	files := make([]string, 0, len(stacks))
 	for _, s := range stacks {

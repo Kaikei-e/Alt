@@ -38,7 +38,10 @@ func init() {
 
 func runRestart(cmd *cobra.Command, args []string) error {
 	printer := newPrinter()
-	registry := stack.NewRegistry()
+	registry, err := loadRegistry()
+	if err != nil {
+		return err
+	}
 	resolver := stack.NewDependencyResolver(registry)
 
 	// Determine which stacks to restart

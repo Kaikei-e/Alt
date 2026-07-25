@@ -62,29 +62,58 @@ altctl migrate status                             # Backup health check
 | essential | critical + data + search | 10 | Standard backup (no metrics/models) |
 | all | all | 14 | Complete backup (migration) |
 
-## Stack Quick Reference
+## Stack Registry (derived, not hardcoded)
 
-| Stack | Key Services | Optional |
+`internal/stack.NewRegistry(composeDir, configPath)` derives the stack list from
+`compose/*.yaml` on disk instead of a hardcoded Go table:
+
+- **Stack name** = compose filename stem (`db.yaml` -> `db`).
+- **Services** = that file's own top-level `services:` map keys, read fresh every
+  call (`gopkg.in/yaml.v3`, via `yaml.Node` so anchors/merge keys like
+  `pki.yaml`'s `<<: *pki-agent` never need resolving) — so this table can never
+  drift from what's actually in compose/.
+- **Semantics that YAML can't express** (`depends_on`, `optional`, `requires_gpu`,
+  `startup_timeout`, `provides`/`requires_features`) live in the root
+  `.altctl.yaml`'s `stacks:` section. A stack declared there with no matching
+  compose file is a hard load error (fail-fast, Critical Rule 9). A compose file
+  with services and no declared entry auto-registers with defaults
+  (`optional: true`, `depends_on: [base]`) and prints a notice — visible, not fatal.
+- Files that overlay another stack's services rather than define a new one
+  (`compose.dev.yaml`, `compose.staging.yaml`) are listed under `.altctl.yaml`'s
+  `overlays:` key so they're never mistaken for stacks.
+- `base.yaml` has no services of its own (shared secrets/networks/volumes only) —
+  it stays a valid stack (and dependency root) purely because it's declared in
+  `.altctl.yaml`, not because it has services.
+
+Current stacks (see `.altctl.yaml` for the authoritative `depends_on`/`optional`/
+`provides` per stack; see `compose/*.yaml` for the authoritative service lists):
+
+| Stack | Compose file | Optional |
 |-------|--------------|----------|
-| base | (shared resources) | no |
-| db | db, meilisearch, clickhouse | no |
-| pgbouncer | pgbouncer, pgbouncer-kratos | no |
-| auth | kratos, auth-hub | no |
-| sovereign | knowledge-sovereign-db, knowledge-sovereign | no |
-| core | nginx, alt-frontend-sv, alt-backend | no |
-| workers | search-indexer, tag-generator, auth-token-manager | no |
-| ai | redis-cache, news-creator-backend, news-creator, pre-processor | yes (GPU) |
-| recap | recap-worker, recap-subworker, dashboard | yes |
-| logging | rask-log-aggregator + 13 forwarders | yes |
-| rag | rag-orchestrator | yes |
-| observability | prometheus, grafana, cadvisor | yes |
-| mq | redis-streams, mq-hub | yes |
-| bff | alt-butterfly-facade | yes |
-| perf | alt-perf | yes |
-| backup | restic-backup | yes |
-| pact | pact-db, pact-broker | yes (CI) |
-| dev | mock-auth, alt-frontend-sv, alt-backend | yes |
-| frontend-dev | mock-auth, alt-frontend-sv | yes |
+| base | base.yaml | no |
+| db | db.yaml | no |
+| pgbouncer | pgbouncer.yaml | no |
+| auth | auth.yaml | no |
+| sovereign | sovereign.yaml | no |
+| core | core.yaml | no |
+| workers | workers.yaml | no |
+| mq | mq.yaml | yes |
+| ai | ai.yaml | yes (GPU) |
+| recap | recap.yaml | yes |
+| logging | logging.yaml | yes |
+| rag | rag.yaml | yes |
+| observability | observability.yaml | yes |
+| bff | bff.yaml | yes |
+| perf | perf.yaml | yes |
+| backup | backup.yaml | yes |
+| load-test | load-test.yaml | yes |
+| pact | pact.yaml | yes (CI) |
+| dev | dev.yaml | yes |
+| frontend-dev | frontend-dev.yaml | yes |
+| acolyte | acolyte.yaml | yes |
+| pki | pki.yaml | yes |
+
+Run `altctl list --services` for the live, derived service lists per stack.
 
 ## Home Subcommand Clients
 

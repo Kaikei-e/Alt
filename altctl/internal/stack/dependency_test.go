@@ -6,7 +6,7 @@ import (
 )
 
 func TestResolve_Chain(t *testing.T) {
-	registry := NewRegistry()
+	registry := realRegistry(t)
 	resolver := NewDependencyResolver(registry)
 
 	stacks, err := resolver.Resolve([]string{"core"})
@@ -31,7 +31,7 @@ func TestResolve_Chain(t *testing.T) {
 }
 
 func TestResolve_UnknownStack(t *testing.T) {
-	registry := NewRegistry()
+	registry := realRegistry(t)
 	resolver := NewDependencyResolver(registry)
 
 	_, err := resolver.Resolve([]string{"nonexistent"})
@@ -44,7 +44,7 @@ func TestResolve_UnknownStack(t *testing.T) {
 }
 
 func TestResolveReverse(t *testing.T) {
-	registry := NewRegistry()
+	registry := realRegistry(t)
 	resolver := NewDependencyResolver(registry)
 
 	stacks, err := resolver.ResolveReverse([]string{"core"})
@@ -62,7 +62,7 @@ func TestResolveReverse(t *testing.T) {
 }
 
 func TestResolveWithDependents(t *testing.T) {
-	registry := NewRegistry()
+	registry := realRegistry(t)
 	resolver := NewDependencyResolver(registry)
 
 	stacks, err := resolver.ResolveWithDependents([]string{"db"})
@@ -81,7 +81,7 @@ func TestResolveWithDependents(t *testing.T) {
 }
 
 func TestDetectCycles(t *testing.T) {
-	registry := NewRegistry()
+	registry := realRegistry(t)
 	resolver := NewDependencyResolver(registry)
 
 	// Default registry should have no cycles
@@ -91,7 +91,7 @@ func TestDetectCycles(t *testing.T) {
 }
 
 func TestGetDependencyGraph(t *testing.T) {
-	registry := NewRegistry()
+	registry := realRegistry(t)
 	resolver := NewDependencyResolver(registry)
 
 	graph := resolver.GetDependencyGraph()
@@ -111,7 +111,7 @@ func TestGetDependencyGraph(t *testing.T) {
 }
 
 func TestResolve_WorkersIncludesMQ(t *testing.T) {
-	registry := NewRegistry()
+	registry := realRegistry(t)
 	resolver := NewDependencyResolver(registry)
 
 	stacks, err := resolver.Resolve([]string{"workers"})
@@ -126,7 +126,7 @@ func TestResolve_WorkersIncludesMQ(t *testing.T) {
 }
 
 func TestResolve_AIIncludesMQ(t *testing.T) {
-	registry := NewRegistry()
+	registry := realRegistry(t)
 	resolver := NewDependencyResolver(registry)
 
 	stacks, err := resolver.Resolve([]string{"ai"})
