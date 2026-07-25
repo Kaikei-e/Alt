@@ -1,0 +1,5 @@
+digraph adr_supersedes {
+    rankdir=LR;
+    "000001" -> "000002" [label="superseded by"];
+    "000002" -> "000003" [label="superseded by"];
+}

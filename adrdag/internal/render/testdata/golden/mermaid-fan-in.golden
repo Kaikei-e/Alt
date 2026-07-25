@@ -1,0 +1,5 @@
+```mermaid
+graph LR
+    000001["000001: Old shared decision"] -->|superseded by| 000002["000002: Split successor A"]
+    000001["000001: Old shared decision"] -->|superseded by| 000003["000003: Split successor B"]
+```
