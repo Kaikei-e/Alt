@@ -142,6 +142,25 @@ def test_expand_query_handler_runtime_error():
     assert resp.json()["detail"] == "LLM service unavailable"
 
 
+def test_expand_query_handler_queue_full_returns_429():
+    """Queue saturation is expected backpressure; must surface as 429, not 502/500."""
+    from news_creator.gateway.hybrid_priority_semaphore import QueueFullError
+
+    usecase = AsyncMock()
+    usecase.expand_query.side_effect = QueueFullError("Queue depth 10 >= max 10")
+
+    app = FastAPI()
+    app.include_router(create_expand_query_router(usecase))
+    client = TestClient(app)
+
+    payload = {"query": "test query"}
+    resp = client.post("/api/v1/expand-query", json=payload)
+
+    assert resp.status_code == 429
+    assert "queue full" in resp.json()["error"]
+    assert resp.headers.get("Retry-After") == "30"
+
+
 def test_expand_query_handler_unexpected_error():
     """Test that unexpected exceptions result in 500 response."""
     usecase = AsyncMock()

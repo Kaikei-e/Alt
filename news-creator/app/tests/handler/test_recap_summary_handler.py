@@ -84,6 +84,28 @@ def test_recap_summary_handler_runtime_error():
     assert resp.json()["detail"] == "llm failure"
 
 
+def test_recap_summary_handler_queue_full_returns_429():
+    """Queue saturation is expected backpressure (2026-02 queue-saturation design);
+    it must surface as HTTP 429 with Retry-After, mirroring /api/v1/summarize and
+    /api/chat, never fall through to the generic 500 branch.
+    """
+    from news_creator.gateway.hybrid_priority_semaphore import QueueFullError
+
+    usecase = AsyncMock()
+    usecase.generate_summary.side_effect = QueueFullError("Queue depth 10 >= max 10")
+
+    app = FastAPI()
+    app.include_router(create_recap_summary_router(usecase))
+    client = TestClient(app)
+
+    payload = _build_request_payload()
+    resp = client.post("/v1/summary/generate", json=payload)
+
+    assert resp.status_code == 429
+    assert "queue full" in resp.json()["error"]
+    assert resp.headers.get("Retry-After") == "30"
+
+
 def test_recap_summary_handler_preempted_returns_502():
     """Pins the contract: PreemptedException must surface as HTTP 502 (retryable
     upstream signal) — never 500.

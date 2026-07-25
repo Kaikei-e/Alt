@@ -116,6 +116,28 @@ async def test_expand_query_llm_failure():
 
 
 @pytest.mark.asyncio
+async def test_expand_query_queue_full_propagates_unwrapped():
+    """QueueFullError must reach the handler as-is so it can be mapped to HTTP 429.
+
+    Wrapping it in RuntimeError (like other LLM failures) would make the
+    handler surface it as 502, masking expected backpressure as an upstream
+    error instead of "retry after backoff".
+    """
+    from news_creator.gateway.hybrid_priority_semaphore import QueueFullError
+
+    config = Mock()
+    llm_provider = AsyncMock()
+    llm_provider.generate.side_effect = QueueFullError("Queue depth 10 >= max 10")
+
+    usecase = ExpandQueryUsecase(config=config, llm_provider=llm_provider)
+
+    with pytest.raises(QueueFullError):
+        await usecase.expand_query(
+            query="test query", japanese_count=1, english_count=3
+        )
+
+
+@pytest.mark.asyncio
 async def test_expand_query_uses_correct_model():
     """Test that query expansion uses gemma4-e4b-12k model specifically."""
     config = Mock()
