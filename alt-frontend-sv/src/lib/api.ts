@@ -4,7 +4,12 @@
  */
 
 // Auth
-export { getBackendToken, getCSRFToken } from "$lib/server/auth";
+export {
+	getBackendToken,
+	getCSRFToken,
+	issueCsrfCookie,
+	verifyCsrfToken,
+} from "$lib/server/auth";
 
 // REST client
 export { callBackendAPIWithBody } from "$lib/server/backend-rest-client";

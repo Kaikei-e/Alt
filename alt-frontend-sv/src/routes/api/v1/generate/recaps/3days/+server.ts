@@ -1,18 +1,17 @@
 import { json, type RequestHandler } from "@sveltejs/kit";
 import { env } from "$env/dynamic/private";
-import { getBackendToken, getCSRFToken } from "$lib/api";
+import { getBackendToken, verifyCsrfToken } from "$lib/api";
 
 const RECAP_WORKER_URL =
 	env.RECAP_WORKER_BASE_URL || "http://recap-worker:9005";
 const FETCH_TIMEOUT_MS = 10_000;
 
-export const POST: RequestHandler = async ({ request }) => {
+export const POST: RequestHandler = async ({ request, cookies }) => {
 	const cookieHeader = request.headers.get("cookie") || "";
 
 	// V-004: CSRF validation for state-changing operations
-	const expectedCSRF = await getCSRFToken(cookieHeader);
 	const providedCSRF = request.headers.get("X-CSRF-Token");
-	if (!expectedCSRF || expectedCSRF !== providedCSRF) {
+	if (!verifyCsrfToken(cookies, providedCSRF)) {
 		return json({ error: "CSRF validation failed" }, { status: 403 });
 	}
 

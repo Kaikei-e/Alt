@@ -1,7 +1,7 @@
 import { json, type RequestHandler } from "@sveltejs/kit";
-import { deleteFeedLink, getCSRFToken } from "$lib/api";
+import { deleteFeedLink, verifyCsrfToken } from "$lib/api";
 
-export const DELETE: RequestHandler = async ({ request, params }) => {
+export const DELETE: RequestHandler = async ({ request, params, cookies }) => {
 	const cookieHeader = request.headers.get("cookie") || "";
 	const id = params.id;
 
@@ -10,10 +10,9 @@ export const DELETE: RequestHandler = async ({ request, params }) => {
 	}
 
 	// V-004: CSRF validation for state-changing operations
-	const expectedCSRF = await getCSRFToken(cookieHeader);
 	const providedCSRF = request.headers.get("X-CSRF-Token");
 
-	if (!expectedCSRF || expectedCSRF !== providedCSRF) {
+	if (!verifyCsrfToken(cookies, providedCSRF)) {
 		return json({ error: "CSRF validation failed" }, { status: 403 });
 	}
 

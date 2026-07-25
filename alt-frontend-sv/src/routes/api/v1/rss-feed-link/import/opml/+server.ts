@@ -1,18 +1,17 @@
 import { json, type RequestHandler } from "@sveltejs/kit";
 import { env } from "$env/dynamic/private";
-import { getBackendToken, getCSRFToken } from "$lib/server/auth";
+import { getBackendToken, verifyCsrfToken } from "$lib/server/auth";
 
 const BACKEND_URL =
 	env.BACKEND_CONNECT_URL || "http://alt-butterfly-facade:9250";
 
-export const POST: RequestHandler = async ({ request }) => {
+export const POST: RequestHandler = async ({ request, cookies }) => {
 	const cookieHeader = request.headers.get("cookie") || "";
 
 	// V-004: CSRF validation for state-changing operations
-	const expectedCSRF = await getCSRFToken(cookieHeader);
 	const providedCSRF = request.headers.get("X-CSRF-Token");
 
-	if (!expectedCSRF || expectedCSRF !== providedCSRF) {
+	if (!verifyCsrfToken(cookies, providedCSRF)) {
 		return json({ error: "CSRF validation failed" }, { status: 403 });
 	}
 
