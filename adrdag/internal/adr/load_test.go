@@ -67,6 +67,29 @@ func TestLoadDirScalarSupersedes(t *testing.T) {
 	}
 }
 
+func TestLoadDirCRLF(t *testing.T) {
+	dir := t.TempDir()
+	writeFixture(t, dir, "000001.md", "---\r\ntitle: CRLF decision\r\nstatus: accepted\r\nsupersedes: [\"000002\"]\r\n---\r\nbody\r\n")
+	adrs, err := LoadDir(dir)
+	if err != nil {
+		t.Fatalf("LoadDir: %v", err)
+	}
+	want := ADR{ID: "000001", Title: "CRLF decision", Status: "accepted", Supersedes: []string{"000002"}}
+	if !reflect.DeepEqual(adrs["000001"], want) {
+		t.Errorf("LoadDir CRLF = %#v, want %#v", adrs["000001"], want)
+	}
+}
+
+func TestLoadDirEmpty(t *testing.T) {
+	adrs, err := LoadDir(t.TempDir())
+	if err != nil {
+		t.Fatalf("LoadDir on empty dir: %v", err)
+	}
+	if len(adrs) != 0 {
+		t.Errorf("LoadDir on empty dir = %v, want empty map", adrs)
+	}
+}
+
 func TestLoadDirMissing(t *testing.T) {
 	if _, err := LoadDir(filepath.Join(t.TempDir(), "does-not-exist")); err == nil {
 		t.Error("LoadDir on missing dir: want error, got nil")

@@ -52,6 +52,11 @@ func ParseFrontmatter(content string) Frontmatter {
 		Lists:         map[string][]string{},
 		EmptyListKeys: map[string]bool{},
 	}
+	// python reads files via Path.read_text(), which performs
+	// universal-newline translation — mirror it so CRLF ADRs parse
+	// identically instead of silently dropping their frontmatter
+	content = strings.ReplaceAll(content, "\r\n", "\n")
+	content = strings.ReplaceAll(content, "\r", "\n")
 	if !strings.HasPrefix(content, "---\n") {
 		return fm
 	}
@@ -67,6 +72,10 @@ func ParseFrontmatter(content string) Frontmatter {
 			continue
 		}
 		key, value := m[1], strings.TrimSpace(m[2])
+		// python keeps every field in one dict, so a repeated key keeps the
+		// textually-last occurrence regardless of scalar/list shape — a later
+		// write must evict the same key from the other map. _empty_list_keys
+		// is append-only in python, so EmptyListKeys stays sticky on purpose.
 		switch {
 		case strings.HasPrefix(value, "[") && strings.HasSuffix(value, "]"):
 			items := []string{}
@@ -76,6 +85,7 @@ func ParseFrontmatter(content string) Frontmatter {
 					items = append(items, stripQuotes(part))
 				}
 			}
+			delete(fm.Fields, key)
 			fm.Lists[key] = items
 			i++
 		case value == "":
@@ -95,12 +105,14 @@ func ParseFrontmatter(content string) Frontmatter {
 				}
 				j++
 			}
+			delete(fm.Fields, key)
 			fm.Lists[key] = items
 			if sawEmptyItem {
 				fm.EmptyListKeys[key] = true
 			}
 			i = j
 		default:
+			delete(fm.Lists, key)
 			fm.Fields[key] = stripQuotes(value)
 			i++
 		}

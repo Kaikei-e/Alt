@@ -31,6 +31,13 @@ func newResolveCmd() *cobra.Command {
 			}
 			reverse := graph.BuildReverse(adr.SupersedesGraph(adrs))
 			effective := graph.Resolve(id, reverse)
+			// graph.Resolve returns empty only when every successor path
+			// loops back on itself: exit 0 here would hand scripts a false
+			// success on a corrupt corpus (python crashes loudly instead)
+			if len(effective) == 0 {
+				fmt.Fprintf(cmd.ErrOrStderr(), "ERROR: supersedes chain from %s never reaches a terminal ADR (cycle)\n", id)
+				return &cliError{code: exitFailure}
+			}
 
 			if format == "json" {
 				out, err := json.MarshalIndent(struct {

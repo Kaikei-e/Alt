@@ -14,38 +14,63 @@ func TestParseFrontmatter(t *testing.T) {
 		wantEmptyList map[string]bool
 	}{
 		{
-			name: "scalar fields with quotes stripped",
-			content: "---\ntitle: \"Quoted title\"\ndate: 2026-01-01\nstatus: accepted\n---\n# body\n",
-			wantFields: map[string]string{"title": "Quoted title", "date": "2026-01-01", "status": "accepted"},
-			wantLists:  map[string][]string{},
+			name:          "scalar fields with quotes stripped",
+			content:       "---\ntitle: \"Quoted title\"\ndate: 2026-01-01\nstatus: accepted\n---\n# body\n",
+			wantFields:    map[string]string{"title": "Quoted title", "date": "2026-01-01", "status": "accepted"},
+			wantLists:     map[string][]string{},
 			wantEmptyList: map[string]bool{},
 		},
 		{
-			name: "inline flow list",
-			content: "---\ntitle: t\nstatus: accepted\nsupersedes: [\"000219\", \"000220\", \"000221\"]\n---\nbody",
-			wantFields: map[string]string{"title": "t", "status": "accepted"},
-			wantLists:  map[string][]string{"supersedes": {"000219", "000220", "000221"}},
+			name:          "inline flow list",
+			content:       "---\ntitle: t\nstatus: accepted\nsupersedes: [\"000219\", \"000220\", \"000221\"]\n---\nbody",
+			wantFields:    map[string]string{"title": "t", "status": "accepted"},
+			wantLists:     map[string][]string{"supersedes": {"000219", "000220", "000221"}},
 			wantEmptyList: map[string]bool{},
 		},
 		{
-			name: "block list",
-			content: "---\ntitle: t\nstatus: accepted\nsupersedes:\n  - \"000486\"\n  - \"000488\"\ntags:\n  - backend\n---\nbody",
-			wantFields: map[string]string{"title": "t", "status": "accepted"},
-			wantLists:  map[string][]string{"supersedes": {"000486", "000488"}, "tags": {"backend"}},
+			name:          "block list",
+			content:       "---\ntitle: t\nstatus: accepted\nsupersedes:\n  - \"000486\"\n  - \"000488\"\ntags:\n  - backend\n---\nbody",
+			wantFields:    map[string]string{"title": "t", "status": "accepted"},
+			wantLists:     map[string][]string{"supersedes": {"000486", "000488"}, "tags": {"backend"}},
 			wantEmptyList: map[string]bool{},
 		},
 		{
-			name: "empty dash stub is flagged",
-			content: "---\ntitle: t\nstatus: accepted\nsupersedes:\n  -\n---\nbody",
-			wantFields: map[string]string{"title": "t", "status": "accepted"},
-			wantLists:  map[string][]string{"supersedes": {}},
+			name:          "empty dash stub is flagged",
+			content:       "---\ntitle: t\nstatus: accepted\nsupersedes:\n  -\n---\nbody",
+			wantFields:    map[string]string{"title": "t", "status": "accepted"},
+			wantLists:     map[string][]string{"supersedes": {}},
 			wantEmptyList: map[string]bool{"supersedes": true},
 		},
 		{
-			name: "unquoted scalar containing colon-space and backticks parses line-based",
-			content: "---\ntitle: t\nstatus: accepted\naffected_services:\n  - \"compose (rag.yaml) — `setup-uv@v6` を `enable-cache: true` に\"\n---\nbody",
-			wantFields: map[string]string{"title": "t", "status": "accepted"},
-			wantLists:  map[string][]string{"affected_services": {"compose (rag.yaml) — `setup-uv@v6` を `enable-cache: true` に"}},
+			name:          "unquoted scalar containing colon-space and backticks parses line-based",
+			content:       "---\ntitle: t\nstatus: accepted\naffected_services:\n  - \"compose (rag.yaml) — `setup-uv@v6` を `enable-cache: true` に\"\n---\nbody",
+			wantFields:    map[string]string{"title": "t", "status": "accepted"},
+			wantLists:     map[string][]string{"affected_services": {"compose (rag.yaml) — `setup-uv@v6` を `enable-cache: true` に"}},
+			wantEmptyList: map[string]bool{},
+		},
+		{
+			// python reads files with universal-newline translation, so a
+			// CRLF ADR parses identically to an LF one — Go must match
+			name:          "CRLF line endings parse identically to LF",
+			content:       "---\r\ntitle: CRLF ADR\r\nstatus: accepted\r\nsupersedes: [\"000002\"]\r\n---\r\nbody\r\n",
+			wantFields:    map[string]string{"title": "CRLF ADR", "status": "accepted"},
+			wantLists:     map[string][]string{"supersedes": {"000002"}},
+			wantEmptyList: map[string]bool{},
+		},
+		{
+			// python stores all fields in one dict: a repeated key keeps the
+			// textually-last occurrence regardless of scalar/list shape
+			name:          "duplicate key list-then-scalar keeps the scalar",
+			content:       "---\ntitle: t\nstatus: accepted\nsupersedes:\n  - \"000002\"\nsupersedes: \"000003\"\n---\nbody",
+			wantFields:    map[string]string{"title": "t", "status": "accepted", "supersedes": "000003"},
+			wantLists:     map[string][]string{},
+			wantEmptyList: map[string]bool{},
+		},
+		{
+			name:          "duplicate key scalar-then-list keeps the list",
+			content:       "---\ntitle: t\nstatus: accepted\nsupersedes: \"000002\"\nsupersedes:\n  - \"000003\"\n---\nbody",
+			wantFields:    map[string]string{"title": "t", "status": "accepted"},
+			wantLists:     map[string][]string{"supersedes": {"000003"}},
 			wantEmptyList: map[string]bool{},
 		},
 		{
@@ -63,10 +88,10 @@ func TestParseFrontmatter(t *testing.T) {
 			wantEmptyList: map[string]bool{},
 		},
 		{
-			name: "unicode title survives",
-			content: "---\ntitle: 推論ワークロードを分離しローカル完結の RAG トポロジを確立する\nstatus: accepted\n---\nbody",
-			wantFields: map[string]string{"title": "推論ワークロードを分離しローカル完結の RAG トポロジを確立する", "status": "accepted"},
-			wantLists:  map[string][]string{},
+			name:          "unicode title survives",
+			content:       "---\ntitle: 推論ワークロードを分離しローカル完結の RAG トポロジを確立する\nstatus: accepted\n---\nbody",
+			wantFields:    map[string]string{"title": "推論ワークロードを分離しローカル完結の RAG トポロジを確立する", "status": "accepted"},
+			wantLists:     map[string][]string{},
 			wantEmptyList: map[string]bool{},
 		},
 	}

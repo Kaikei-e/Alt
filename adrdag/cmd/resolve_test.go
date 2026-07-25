@@ -80,6 +80,19 @@ func TestResolveJSON(t *testing.T) {
 	}
 }
 
+func TestResolveCyclicChainIsDomainFailure(t *testing.T) {
+	// python crashes with RecursionError (exit 1) on a cyclic chain; adrdag
+	// must not silently exit 0 with empty output — that would hand scripts a
+	// false success on a corrupt corpus. It reports the cycle and exits 1.
+	_, stderr, code := run(t, "--adr-dir", fixture("cycle"), "resolve", "000001")
+	if code != exitFailure {
+		t.Fatalf("exit = %d, want %d", code, exitFailure)
+	}
+	if want := "ERROR: supersedes chain from 000001 never reaches a terminal ADR (cycle)\n"; !strings.Contains(stderr, want) {
+		t.Errorf("stderr = %q, want contains %q", stderr, want)
+	}
+}
+
 func TestResolveNoArgsIsUsageError(t *testing.T) {
 	_, _, code := run(t, "--adr-dir", fixture("ok"), "resolve")
 	if code != exitUsage {

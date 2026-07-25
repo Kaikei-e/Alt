@@ -6,6 +6,7 @@ package cmd
 import (
 	"errors"
 	"fmt"
+	"io"
 	"os"
 
 	"github.com/spf13/cobra"
@@ -106,10 +107,19 @@ func newRootCmd() *cobra.Command {
 
 // Execute runs the CLI and returns the process exit code.
 func Execute() int {
+	return executeWith(os.Args[1:], os.Stdout, os.Stderr)
+}
+
+// executeWith is Execute with injectable args and streams so the
+// error-printing and exit-code mapping path is testable.
+func executeWith(args []string, out, errW io.Writer) int {
 	root := newRootCmd()
+	root.SetOut(out)
+	root.SetErr(errW)
+	root.SetArgs(args)
 	err := root.Execute()
 	if err != nil && err.Error() != "" {
-		fmt.Fprintf(root.ErrOrStderr(), "Error: %v\n", err)
+		fmt.Fprintf(errW, "Error: %v\n", err)
 	}
 	return exitCode(err)
 }

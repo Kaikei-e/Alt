@@ -133,3 +133,35 @@ func TestAdrDirEnvFallback(t *testing.T) {
 		t.Errorf("stdout = %q, want %q", stdout, want)
 	}
 }
+
+func TestAdrDirFlagBeatsEnv(t *testing.T) {
+	// standard flag semantics: an explicit --adr-dir always wins over env
+	t.Setenv("ADRDAG_ADR_DIR", fixture("status-drift"))
+	stdout, _, code := run(t, "--adr-dir", fixture("ok"), "check")
+	if code != exitOK {
+		t.Fatalf("exit = %d, want %d (flag should override env)", code, exitOK)
+	}
+	if want := "OK: 3 ADRs, 2 supersedes edges, no cycles, status aligned\n"; stdout != want {
+		t.Errorf("stdout = %q, want %q", stdout, want)
+	}
+}
+
+func TestCheckEmptyDir(t *testing.T) {
+	stdout, stderr, code := run(t, "--adr-dir", t.TempDir(), "check")
+	if code != exitOK {
+		t.Fatalf("exit = %d, want %d (stderr: %s)", code, exitOK, stderr)
+	}
+	if want := "OK: 0 ADRs, 0 supersedes edges, no cycles, status aligned\n"; stdout != want {
+		t.Errorf("stdout = %q, want %q", stdout, want)
+	}
+}
+
+func TestBindingEmptyDir(t *testing.T) {
+	stdout, _, code := run(t, "--adr-dir", t.TempDir(), "binding")
+	if code != exitOK {
+		t.Fatalf("exit = %d, want %d", code, exitOK)
+	}
+	if stdout != "" {
+		t.Errorf("stdout = %q, want empty", stdout)
+	}
+}

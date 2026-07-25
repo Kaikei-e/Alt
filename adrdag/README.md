@@ -40,6 +40,8 @@ adrdag --adr-dir docs/ADR graph --format json # node-link JSON（辺キーは "l
 - **依存は cobra のみ**（+ 標準ライブラリ）。viper・yaml ライブラリ・testify は不採用。
 - **mermaid 出力は adr_graph.py とバイト互換**。golden ファイルは Python 側で生成し、`make parity` が実コーパスで check/resolve/graph の完全一致を継続検証する。
 - JSON グラフの辺キーは node-link 慣習に従い `"links"`（`"edges"` ではない。NetworkX のデフォルトキーに関する networkx/networkx#8611 を参照）。
+- **CRLF 正規化**: Python の `Path.read_text()` は universal-newline 変換を行うため、Go 側もパース前に CRLF→LF 正規化する（敵対的レビューが検出した潜在パリティ欠陥の修正）。
+- **循環コーパス上の `resolve`**: Python 版は RecursionError でクラッシュ（exit 1）するが、adrdag は「terminal ADR に到達しない」ことを明示エラーで報告して exit 1 する。exit 0 + 空出力で偽の成功を返さないための意図的な差分。
 
 ## テスト
 
