@@ -79,11 +79,11 @@ func buildTestRegistry(t *testing.T) (*stack.Registry, string) {
 
 	files := map[string]string{
 		"compose.yaml": "name: alt\ninclude:\n  - base.yaml\n  - db.yaml\n  - web.yaml\n  - logging.yaml\n",
-		"base.yaml": "name: alt\nsecrets:\n  db_password:\n    file: ../secrets/db_password.txt\n",
-		"db.yaml": "name: alt\ninclude:\n  - base.yaml\nservices:\n  db:\n    image: postgres:17\n",
-		"web.yaml": "name: alt\ninclude:\n  - base.yaml\nservices:\n  web:\n    image: web:latest\n",
+		"base.yaml":    "name: alt\nsecrets:\n  db_password:\n    file: ../secrets/db_password.txt\n",
+		"db.yaml":      "name: alt\ninclude:\n  - base.yaml\nservices:\n  db:\n    image: postgres:17\n",
+		"web.yaml":     "name: alt\ninclude:\n  - base.yaml\nservices:\n  web:\n    image: web:latest\n",
 		"logging.yaml": "name: alt\ninclude:\n  - base.yaml\nservices:\n  log-forwarder:\n    image: forwarder:latest\n",
-		"dev.yaml": "name: alt\ninclude:\n  - base.yaml\nservices:\n  dev-tool:\n    image: dev:latest\n",
+		"dev.yaml":     "name: alt\ninclude:\n  - base.yaml\nservices:\n  dev-tool:\n    image: dev:latest\n",
 	}
 	for name, content := range files {
 		if err := os.WriteFile(filepath.Join(composeDir, name), []byte(content), 0o644); err != nil {

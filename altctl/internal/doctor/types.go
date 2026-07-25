@@ -77,8 +77,8 @@ type Report struct {
 	// DockerReachable is false when the docker daemon itself could not be
 	// contacted -- in that case Stacks is empty and Preflight explains why,
 	// loudly, instead of every stack silently looking empty/healthy.
-	DockerReachable bool      `json:"docker_reachable"`
-	Preflight       []Finding `json:"preflight,omitempty"`
+	DockerReachable bool          `json:"docker_reachable"`
+	Preflight       []Finding     `json:"preflight,omitempty"`
 	Stacks          []StackReport `json:"stacks,omitempty"`
 	// Problems is every non-info finding across Preflight and Stacks,
 	// flattened, for exit-code purposes and quick machine consumption.

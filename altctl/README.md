@@ -238,6 +238,44 @@ altctl version --json       # JSON format (useful for CI/CD)
 | 4 | Configuration error |
 | 5 | Timeout |
 
+## `altctl doctor`
+
+`altctl doctor [stack...]` is a **read-only** diagnosis: it never restarts,
+recreates, or otherwise changes anything -- it only runs `docker info`,
+`docker compose ps`, `docker compose config`, and `docker compose logs`, plus
+reads `.env`/`secrets/`/`compose/*.yaml` on disk.
+
+```bash
+altctl doctor                # Diagnose the whole running stack
+altctl doctor core sovereign # Diagnose just these stacks
+altctl doctor --json         # Machine-readable findings
+```
+
+With no arguments the scope is every non-optional stack plus any optional
+stack that currently has containers; naming stacks narrows the scope to
+exactly those.
+
+For each problem service it reports:
+
+- **State**: missing (expected but no container), unhealthy, restarting
+  (crash-looping), exited non-zero, or still starting.
+- **Evidence**: the last `--tail` (default 30) log lines.
+- **Root cause**: if service A is down only because its `depends_on` B is
+  down, doctor points at B ("A is ... -- waiting on B (unhealthy), fix that
+  first") instead of leaving you to trace it by hand.
+- **Config landmines**: `depends_on: {condition: service_healthy}` pointing
+  at a service with no `healthcheck:` block is flagged statically, even when
+  nothing is currently running.
+- **Environment preflight**: docker daemon unreachable (reported loudly, never
+  as "no services running"), missing `.env` at the repo root, missing
+  `secrets/*.txt` files (compared against `compose/base.yaml`'s `secrets:`
+  block), `DOCKER_GROUP_ID` unset when the `logging` stack is in scope.
+- **Prescription**: a concrete next command per finding (`altctl logs <svc>
+  -f`, `docker compose ... up -d --force-recreate <svc>`, `altctl init`, ...).
+
+Exit codes: `0` nothing wrong, `1` problems found, `3` docker itself is
+unreachable.
+
 ## License
 
 Licensed under the Apache License 2.0. See the project root [LICENSE](../LICENSE).

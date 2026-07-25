@@ -56,5 +56,5 @@ environments:
       tag-generator:        { pacticipant: tag-generator }
       acolyte-orchestrator: { pacticipant: acolyte-orchestrator }
       knowledge-sovereign:  { pacticipant: knowledge-sovereign }
-      tts-speaker:          { pacticipant: tts-speaker }
+      tts-speaker:          { pacticipant: tts-speaker, gate_only: true }
       # <<<SERVICES-REGISTRY-END>>>

@@ -151,3 +151,32 @@ Run `altctl list --services` for the live, derived service lists per stack.
 2. **Dependency Resolution**: Stacks auto-start their dependencies
 3. **Feature Warnings**: `core` requires `workers` for search
 4. **Structured Output**: Support table and JSON formats
+
+## `altctl doctor` (read-only diagnosis)
+
+`altctl doctor [stack...]` (`internal/doctor/`, wired in `cmd/doctor.go`)
+never mutates state -- only `docker info` / `compose ps` / `compose config` /
+`compose logs` and filesystem reads. Default scope: non-optional stacks +
+any optional stack with containers; explicit args narrow it.
+
+- **Aggregate probe first**: `ps`/`config` run once against
+  `compose/compose.yaml` (the `include:` aggregate), not per-stack `-f`
+  combinations -- several per-stack files transitively `include: pki.yaml`,
+  whose pki-agent sidecars `depends_on` services scattered across many other
+  stacks, so a narrow `-f` subset fails compose project validation even for
+  an otherwise-unrelated stack. `dev`/`frontend-dev`/`load-test` aren't in
+  the aggregate (local-dev-only); they're probed in isolation via
+  `stack.NewDependencyResolver`, and only when explicitly named.
+- **Root cause**: walks `depends_on` from `docker compose config
+  --format json` to find the deepest broken ancestor of a failing service.
+- **Config landmine check**: `depends_on: {condition: service_healthy}` with
+  no `healthcheck:` on the target is flagged statically (docs/services/
+  altctl.md known failure pattern, [[000809]]), independent of runtime state.
+- **DOCKER_GROUP_ID workaround**: `cmd/doctor.go`'s executor injects a
+  harmless placeholder for its own read-only calls when the real env var is
+  unset (compose/logging.yaml's `${DOCKER_GROUP_ID:?...}` would otherwise
+  hard-fail the aggregate probe for users not touching `logging` at all);
+  the real unset condition is still separately flagged as a Finding whenever
+  `logging` ends up in scope.
+- Fully unit-testable against a fake `compose.Executor` (see
+  `internal/doctor/doctor_test.go`) -- no live Docker daemon required.

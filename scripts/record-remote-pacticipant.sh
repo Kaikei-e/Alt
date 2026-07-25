@@ -3,6 +3,18 @@
 # cannot be rolled out by c2quay. Currently this is tts-speaker (separate GPU
 # host). Run at the tail of scripts/deploy.sh so the broker matrix reflects
 # the intended release even when c2quay skipped the service.
+#
+# NOTE (likely redundant as of the gate_only rollout): services.yaml now
+# flags tts-speaker as `kind: external`, and scripts/regen-service-registry.py
+# emits it into c2quay.yml with `gate_only: true`. c2quay natively includes
+# gate_only services in the Pact can-i-deploy gate and runs record-deployment
+# for them itself (see /workspace/c2quay docs/adr/0013-gate-only-services.md),
+# without attempting to `docker compose up` them. That means c2quay deploy
+# should already record tts-speaker's deployment, making this script's
+# invocation in scripts/deploy.sh a duplicate in the common case. It is kept
+# here as a manual fallback (see c2quay.yml's comment above the services
+# block) in case gate_only is ever reverted for tts-speaker, or the broker
+# record from a gate_only run needs to be repaired by hand. Do not delete.
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"

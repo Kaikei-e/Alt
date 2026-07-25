@@ -28,6 +28,17 @@ type UpOptions struct {
 	NoDeps        bool
 	Timeout       time.Duration
 	RemoveOrphans bool
+	// ForceRecreate passes --force-recreate. Needed because `docker compose
+	// up` alone will not recreate a container whose image tag is
+	// unchanged -- a freshly rebuilt image with the same tag would
+	// otherwise leave the stale container running (documented failure
+	// pattern ADR-000761 / PM-2026-005). Used by `altctl rebuild` for
+	// exactly that reason.
+	ForceRecreate bool
+	// Services restricts the operation to specific service names instead
+	// of every service defined across Files. Empty means "all services"
+	// (existing up/restart behavior is unchanged).
+	Services []string
 }
 
 // DownOptions configures the down command
@@ -45,6 +56,10 @@ type BuildOptions struct {
 	Pull     bool
 	Parallel bool
 	Progress string
+	// Services restricts the build to specific service names instead of
+	// every service defined across Files. Empty means "all services"
+	// (existing build behavior is unchanged).
+	Services []string
 }
 
 // LogsOptions configures the logs command
@@ -91,12 +106,21 @@ func (c *Client) Up(ctx context.Context, opts UpOptions) error {
 	if opts.NoDeps {
 		args = append(args, "--no-deps")
 	}
+	if opts.ForceRecreate {
+		args = append(args, "--force-recreate")
+	}
 	if opts.RemoveOrphans {
 		args = append(args, "--remove-orphans")
 	}
 	if opts.Timeout > 0 {
 		args = append(args, "--timeout", fmt.Sprintf("%d", int(opts.Timeout.Seconds())))
 	}
+	// Restrict to specific services when set (e.g. `altctl rebuild`, which
+	// must only touch the targeted services, not every service in the
+	// compose file). Compose treats trailing positional args after `up`'s
+	// flags as the service names to operate on; omitted, it operates on
+	// every service defined across -f files.
+	args = append(args, opts.Services...)
 
 	return c.executor.Run(ctx, "docker", append([]string{"compose"}, args...))
 }
@@ -136,6 +160,8 @@ func (c *Client) Build(ctx context.Context, opts BuildOptions) error {
 	if opts.Progress != "" {
 		args = append(args, "--progress", opts.Progress)
 	}
+	// Restrict to specific services when set (see Up's opts.Services doc).
+	args = append(args, opts.Services...)
 
 	return c.executor.Run(ctx, "docker", append([]string{"compose"}, args...))
 }
