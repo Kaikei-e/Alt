@@ -249,7 +249,7 @@ func TestDiagnose_RootCauseChaining(t *testing.T) {
 			continue
 		}
 		for i := range sr.Findings {
-			if sr.Findings[i].Service == "web" {
+			if sr.Findings[i].Service == "web" && sr.Findings[i].Category == "service" {
 				webFinding = &sr.Findings[i]
 			}
 		}

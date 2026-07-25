@@ -45,8 +45,8 @@ type composeDependsOn struct {
 }
 
 type composeServiceConfig struct {
-	DependsOn   map[string]composeDependsOn `json:"depends_on"`
-	Healthcheck json.RawMessage             `json:"healthcheck"`
+	DependsOn   map[string]composeDependsOn `json:"depends_on,omitempty"`
+	Healthcheck json.RawMessage             `json:"healthcheck,omitempty"`
 }
 
 // HasHealthcheck reports whether this service has a healthcheck: block at
