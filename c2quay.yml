@@ -30,13 +30,16 @@ environments:
     # overwritten in place by scripts/regen-service-registry.py; do not
     # hand-edit. tts-speaker is flagged `kind: external` in the registry
     # because it runs on a separate GPU host and is intentionally NOT
-    # declared in compose/compose.yaml on this box. We still need the
-    # broker to treat its version as known during the aggregate
-    # can-i-deploy gate (otherwise alt-butterfly-facade's consumer-side
-    # pact against tts-speaker shows up as "no verification result").
-    # If c2quay ever refuses or tries to recreate that entry, flip the
-    # registry's `kind: external` back out and fall back to
-    # scripts/record-remote-pacticipant.sh.
+    # declared in compose/compose.yaml on this box. The regen script emits
+    # such entries with `gate_only: true`, which tells c2quay to include
+    # the service in the Pact can-i-deploy gate and run record-deployment
+    # for it, WITHOUT attempting `docker compose up`/recreate for it (see
+    # /workspace/c2quay docs/adr/0013-gate-only-services.md). This replaces
+    # the old workaround where scripts/record-remote-pacticipant.sh had to
+    # be run as a separate tail step after c2quay deploy — c2quay now
+    # records the deployment itself as part of the gated run. That script
+    # is kept as a manual fallback (see its header comment) in case
+    # gate_only ever needs to be reverted for tts-speaker.
     services:
       # <<<SERVICES-REGISTRY-BEGIN>>>
       alt-backend:          { pacticipant: alt-backend }
