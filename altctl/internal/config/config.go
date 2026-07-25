@@ -18,6 +18,14 @@ type Config struct {
 	Stacks   StacksConfig   `mapstructure:"stacks"`
 	Logging  LoggingConfig  `mapstructure:"logging"`
 	Output   OutputConfig   `mapstructure:"output"`
+
+	// ConfigFilePath is the resolved path to the altctl config file that was
+	// loaded (or, if none exists yet, the path one would be created at). The
+	// stack registry (internal/stack.NewRegistry) reads this same file for
+	// stack semantics (depends_on, optional, provides/requires_features,
+	// overlays/excluded) that can't be derived from compose/*.yaml alone.
+	// Not part of the YAML schema itself -- set by Load, not by the file.
+	ConfigFilePath string `mapstructure:"-"`
 }
 
 // ProjectConfig contains project-level settings
@@ -114,6 +122,19 @@ func Load(cfgFile, projectDir string) (*Config, error) {
 	// Validate configuration
 	if err := validate(&cfg); err != nil {
 		return nil, fmt.Errorf("validating config: %w", err)
+	}
+
+	// Resolve the config file path for consumers (the stack registry) that
+	// need to re-read this same file for schema this Config struct doesn't
+	// cover (overlays/excluded, per-stack depends_on/provides/...). If no
+	// config file was found, guess the conventional location (<project
+	// root>/.altctl.yaml); a missing file there is not an error for the
+	// stack registry, which falls back to pure compose/*.yaml-derived
+	// defaults.
+	if used := v.ConfigFileUsed(); used != "" {
+		cfg.ConfigFilePath = used
+	} else {
+		cfg.ConfigFilePath = filepath.Join(cfg.Project.Root, ".altctl.yaml")
 	}
 
 	return &cfg, nil

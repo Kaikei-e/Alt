@@ -21,6 +21,9 @@ Alt は 20+ microservices の monorepo。各 bounded context の正準語 (ubiqu
 - [Inference Topology](./contexts/inference-topology.md) — _(定義中, 2026-07-13 grill)_ GPU 推論の配置境界。
   Primary Host / Enhancement Tier / 劣化契約 (Degraded・Deferred・Feature-off) の語彙を固定。
   news-creator / rag-orchestrator / recap-subworker / acolyte-orchestrator / TTS 消費側にまたがる。
+- [Stack Operations](./contexts/stack-operations.md) — _(定義中, 2026-07-25 grill)_ 開発者ローカルの
+  スタック起動・停止・再構築・診断の運用境界。Stack (= compose ファイル stem) と Stack Semantics の語彙を固定。
+  altctl / compose/*.yaml にまたがる。デプロイ (c2quay) との役割境界もここで定義。
 
 ## Relationships
 

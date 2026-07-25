@@ -179,8 +179,22 @@ func (p *PostgresBackuper) Restore(ctx context.Context, spec VolumeSpec, inputPa
 // Falls back to the static name map when compose files aren't configured,
 // docker is unreachable, or nothing is running for that service — e.g. in
 // unit tests, or when Backup/Restore is used outside the compose project.
+//
+// Unlike getRunningContainers/buildComposeArgs (C1's stop-before-restore
+// safety gate), a composeFileList error here is not fatal: this is only a
+// best-effort container-name lookup used to target pg_dump/pg_restore at the
+// right container, and the static fallback naming already exists for the
+// "no compose files" case. A registry load failure degrades the same way,
+// with a warning so it's visible rather than silent.
 func (p *PostgresBackuper) resolveContainer(ctx context.Context, spec VolumeSpec) string {
-	files := composeFileList(p.composeDir)
+	files, err := composeFileList(p.composeDir)
+	if err != nil {
+		p.logger.Warn("resolving compose files for container lookup failed, using static fallback name",
+			"service", spec.Service,
+			"error", err,
+		)
+		return p.containerName(spec)
+	}
 	if len(files) == 0 {
 		return p.containerName(spec)
 	}
@@ -209,13 +223,13 @@ func (p *PostgresBackuper) containerName(spec VolumeSpec) string {
 	case "db":
 		return "alt-db"
 	case "kratos-db":
-		return "alt-kratos-db-1"
+		return p.projectName + "-kratos-db-1"
 	case "recap-db":
 		return "recap-db"
 	case "rag-db":
 		return "rag-db"
 	case "knowledge-sovereign-db":
-		return "alt-knowledge-sovereign-db-1"
+		return p.projectName + "-knowledge-sovereign-db-1"
 	case "pre-processor-db":
 		return "pre-processor-db"
 	default:

@@ -37,7 +37,10 @@ func init() {
 
 func runList(cmd *cobra.Command, args []string) error {
 	printer := newPrinter()
-	registry := stack.NewRegistry()
+	registry, err := loadRegistry()
+	if err != nil {
+		return err
+	}
 
 	jsonOutput, _ := cmd.Flags().GetBool("json")
 	showServices, _ := cmd.Flags().GetBool("services")

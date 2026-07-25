@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io/fs"
 	"log/slog"
 	"os"
 	"os/exec"
@@ -342,14 +343,45 @@ func (m *Migrator) backupVolumeWithTiming(ctx context.Context, spec VolumeSpec, 
 	return timing
 }
 
-// composeFileList returns the full paths to every compose file registered in
-// the stack registry, in a stable order. Backup and restore both use this as
-// their single source of truth for "which compose files make up this
-// project" so container detection / stop operations can't silently drift out
-// of sync and miss a stack (e.g. sovereign.yaml, whose DB volume would
-// otherwise be overwritten by a restore while its container is still up).
-func composeFileList(composeDir string) []string {
-	registry := stack.NewRegistry()
+// composeFileList returns the full paths to every compose file the stack
+// registry derives from composeDir, in a stable order. Backup and restore
+// both use this as their single source of truth for "which compose files
+// make up this project" so container detection / stop operations can't
+// silently drift out of sync and miss a stack (e.g. sovereign.yaml, whose DB
+// volume would otherwise be overwritten by a restore while its container is
+// still up).
+//
+// The stack registry now derives stacks from compose/*.yaml on disk rather
+// than a hardcoded list (see internal/stack.NewRegistry), so this looks for
+// an altctl config file (stack semantics: depends_on, optional, ...) as a
+// sibling of composeDir's parent directory -- the conventional
+// <project root>/compose + <project root>/.altctl.yaml layout.
+//
+// Two distinct failure shapes come back from stack.NewRegistry, and they
+// must NOT be treated alike (C1):
+//
+//   - composeDir itself does not exist at all (discoverComposeStacks'
+//     os.ReadDir fails with ENOENT). This is genuinely "nothing to back up
+//     or stop" -- e.g. a synthetic test path like "/tmp/compose" that was
+//     never meant to be a real project, or `altctl` invoked outside a repo
+//     checkout. Tolerated: returns (nil, nil).
+//   - anything else -- a malformed .altctl.yaml, a stack declared in
+//     .altctl.yaml with no matching compose file (registry.go's hard
+//     fail-fast, Critical Rule 9), a permission error reading composeDir,
+//     ... -- is a real load failure and must ABORT loudly. Swallowing this
+//     into an empty file list previously made getRunningContainers report
+//     "nothing running" even when a live stack's containers were up,
+//     letting restore skip the stop-running-containers guard and overwrite
+//     their volumes out from under them.
+func composeFileList(composeDir string) ([]string, error) {
+	configPath := filepath.Join(filepath.Dir(composeDir), ".altctl.yaml")
+	registry, err := stack.NewRegistry(composeDir, configPath)
+	if err != nil {
+		if errors.Is(err, fs.ErrNotExist) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("loading stack registry from %s: %w", composeDir, err)
+	}
 	stacks := registry.All()
 	files := make([]string, 0, len(stacks))
 	for _, s := range stacks {
@@ -358,7 +390,7 @@ func composeFileList(composeDir string) []string {
 		}
 		files = append(files, filepath.Join(composeDir, s.ComposeFile))
 	}
-	return files
+	return files, nil
 }
 
 // getRunningContainers returns a list of running containers for this project
@@ -366,8 +398,17 @@ func (m *Migrator) getRunningContainers(ctx context.Context) ([]string, error) {
 	// Build compose file arguments
 	args := []string{"compose"}
 
+	fileList, err := composeFileList(m.composeDir)
+	if err != nil {
+		// A broken registry (malformed .altctl.yaml, a declared stack with
+		// no matching compose file, ...) must abort here rather than be
+		// treated as "no compose files, nothing running" -- see
+		// composeFileList's doc comment (C1).
+		return nil, fmt.Errorf("resolving compose files: %w", err)
+	}
+
 	var composeFilesFound int
-	for _, f := range composeFileList(m.composeDir) {
+	for _, f := range fileList {
 		if _, err := os.Stat(f); err == nil {
 			args = append(args, "-f", f)
 			composeFilesFound++

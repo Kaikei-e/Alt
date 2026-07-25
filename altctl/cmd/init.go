@@ -105,7 +105,15 @@ func runInit(cmd *cobra.Command, args []string) error {
 	} else {
 		printer.Header("Secrets")
 		secretsDir := filepath.Join(root, "secrets")
-		specs := setup.DefaultSecretSpecs()
+		specs, err := setup.DefaultSecretSpecs()
+		if err != nil {
+			return &output.CLIError{
+				Summary:    "failed to derive required secrets",
+				Detail:     err.Error(),
+				Suggestion: "Ensure compose/base.yaml exists and has a valid top-level secrets: block; run altctl from within the Alt repo checkout",
+				ExitCode:   output.ExitConfigError,
+			}
+		}
 
 		if dryRun {
 			autoCount := 0
@@ -171,7 +179,19 @@ func runInit(cmd *cobra.Command, args []string) error {
 	// Phase 5: Validation
 	printer.Header("Validation")
 	secretsDir := filepath.Join(root, "secrets")
-	specs := setup.DefaultSecretSpecs()
+	var specs []setup.SecretSpec
+	if !skipSecrets {
+		var err error
+		specs, err = setup.DefaultSecretSpecs()
+		if err != nil {
+			return &output.CLIError{
+				Summary:    "failed to derive required secrets",
+				Detail:     err.Error(),
+				Suggestion: "Ensure compose/base.yaml exists and has a valid top-level secrets: block; run altctl from within the Alt repo checkout",
+				ExitCode:   output.ExitConfigError,
+			}
+		}
+	}
 	missing := 0
 	for _, spec := range specs {
 		if spec.AutoGenerate {

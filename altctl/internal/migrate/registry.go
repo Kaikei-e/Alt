@@ -214,6 +214,16 @@ var defaultVolumes = []VolumeSpec{
 		DBUser:      "pp_user",
 		DBPort:      5432,
 	},
+	{
+		Name:        "acolyte_db_data",
+		Service:     "acolyte-db",
+		BackupType:  BackupTypePostgreSQL,
+		Category:    CategoryCritical,
+		Description: "Acolyte report-generation database (PostgreSQL 18)",
+		DBName:      "acolyte",
+		DBUser:      "acolyte_user",
+		DBPort:      5432,
+	},
 	// Operational data — CategoryData
 	{
 		Name:        "oauth_token_data",

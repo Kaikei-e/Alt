@@ -69,6 +69,7 @@ func TestVolumeRegistry_BackupTypes(t *testing.T) {
 		"rag_db_data":                 true,
 		"knowledge-sovereign-db-data": true,
 		"pre_processor_db_data":       true,
+		"acolyte_db_data":             true,
 	}
 
 	for _, v := range r.All() {
@@ -155,13 +156,39 @@ func TestVolumeRegistry_Get_HyphenUnderscoreCompat(t *testing.T) {
 	}
 }
 
+// TestVolumeRegistry_Acolyte guards the specific missing-volume bug:
+// compose/acolyte.yaml's acolyte_db_data (a real PostgreSQL 18 volume) was
+// absent from the registry, so `altctl migrate backup --profile all`
+// silently skipped acolyte-db entirely -- a data-loss risk with no error or
+// warning anywhere.
+func TestVolumeRegistry_Acolyte(t *testing.T) {
+	r := NewVolumeRegistry()
+	v, ok := r.Get("acolyte_db_data")
+	if !ok {
+		t.Fatal("acolyte_db_data is not registered (compose/acolyte.yaml defines it) -- altctl migrate backup --profile all would silently skip acolyte-db")
+	}
+	if v.Service != "acolyte-db" {
+		t.Errorf("acolyte_db_data Service = %q, want %q", v.Service, "acolyte-db")
+	}
+	if v.BackupType != BackupTypePostgreSQL {
+		t.Errorf("acolyte_db_data BackupType = %s, want postgresql", v.BackupType)
+	}
+	if v.Category != CategoryCritical {
+		t.Errorf("acolyte_db_data Category = %s, want critical", v.Category)
+	}
+	if v.DBName == "" || v.DBUser == "" {
+		t.Errorf("acolyte_db_data missing DBName/DBUser: %+v", v)
+	}
+}
+
 func TestVolumeRegistry_All(t *testing.T) {
 	r := NewVolumeRegistry()
 	all := r.All()
 
-	// Should have 14 total volumes (6 PG + 8 tar)
-	if len(all) != 14 {
-		t.Errorf("Expected 14 total volumes, got %d", len(all))
+	// Should have 15 total volumes (7 PG + 8 tar, since acolyte_db_data was
+	// added to close the migrate-backup coverage gap)
+	if len(all) != 15 {
+		t.Errorf("Expected 15 total volumes, got %d", len(all))
 	}
 
 	// Verify each volume has required fields
@@ -191,8 +218,8 @@ func TestVolumeRegistry_ByCategory_Critical(t *testing.T) {
 	r := NewVolumeRegistry()
 	critical := r.ByCategory(CategoryCritical)
 
-	if len(critical) != 6 {
-		t.Errorf("Expected 6 critical volumes, got %d", len(critical))
+	if len(critical) != 7 {
+		t.Errorf("Expected 7 critical volumes, got %d", len(critical))
 	}
 
 	expectedNames := map[string]bool{
@@ -202,6 +229,7 @@ func TestVolumeRegistry_ByCategory_Critical(t *testing.T) {
 		"rag_db_data":                 true,
 		"knowledge-sovereign-db-data": true,
 		"pre_processor_db_data":       true,
+		"acolyte_db_data":             true,
 	}
 
 	for _, v := range critical {
@@ -239,9 +267,9 @@ func TestVolumeRegistry_ByCategory_MultiCategories(t *testing.T) {
 	r := NewVolumeRegistry()
 	result := r.ByCategory(CategoryCritical, CategoryData)
 
-	// 6 critical + 3 data = 9
-	if len(result) != 9 {
-		t.Errorf("Expected 9 volumes for critical+data, got %d", len(result))
+	// 7 critical + 3 data = 10
+	if len(result) != 10 {
+		t.Errorf("Expected 10 volumes for critical+data, got %d", len(result))
 	}
 
 	for _, v := range result {

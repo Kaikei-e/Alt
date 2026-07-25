@@ -55,7 +55,7 @@ func (m *Migrator) Restore(ctx context.Context, opts RestoreOptions) error {
 	if len(running) > 0 && opts.Force {
 		m.logger.Warn("stopping running containers for restore")
 		if err := m.stopContainers(ctx); err != nil {
-			return fmt.Errorf("stopping containers: %w", err)
+			return fmt.Errorf("stopping containers before restore: %w", err)
 		}
 	}
 
@@ -192,7 +192,10 @@ func (m *Migrator) stopContainers(ctx context.Context) error {
 		return nil
 	}
 
-	args := m.buildComposeArgs("down")
+	args, err := m.buildComposeArgs("down")
+	if err != nil {
+		return fmt.Errorf("resolving compose files: %w", err)
+	}
 	cmd := exec.CommandContext(ctx, "docker", args...)
 	return cmd.Run()
 }
@@ -201,16 +204,23 @@ func (m *Migrator) stopContainers(ctx context.Context) error {
 // list comes from composeFileList (backed by the stack registry) so it can't
 // drift out of sync with getRunningContainers — a pre-restore "down" must
 // stop every stack, including sovereign.yaml, or its DB volume/dump can be
-// overwritten while the container is still running.
-func (m *Migrator) buildComposeArgs(args ...string) []string {
+// overwritten while the container is still running. A composeFileList error
+// (broken .altctl.yaml, a declared stack with no matching compose file, ...)
+// propagates instead of silently building a "down" with zero -f flags, which
+// would stop nothing while still reporting success (C1).
+func (m *Migrator) buildComposeArgs(args ...string) ([]string, error) {
+	files, err := composeFileList(m.composeDir)
+	if err != nil {
+		return nil, err
+	}
 	result := []string{"compose"}
-	for _, f := range composeFileList(m.composeDir) {
+	for _, f := range files {
 		if _, err := os.Stat(f); err == nil {
 			result = append(result, "-f", f)
 		}
 	}
 	result = append(result, args...)
-	return result
+	return result, nil
 }
 
 // VerifyBackup verifies the integrity of a backup

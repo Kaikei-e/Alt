@@ -2,6 +2,7 @@
 package cmd
 
 import (
+	"context"
 	"fmt"
 	"log/slog"
 	"os"
@@ -10,8 +11,10 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 
+	"github.com/alt-project/altctl/internal/compose"
 	"github.com/alt-project/altctl/internal/config"
 	"github.com/alt-project/altctl/internal/output"
+	"github.com/alt-project/altctl/internal/stack"
 )
 
 var (
@@ -57,9 +60,25 @@ Exit Codes:
 	},
 }
 
-// Execute adds all child commands to the root command and sets flags appropriately.
+// Execute adds all child commands to the root command and sets flags
+// appropriately, running under a background context. Prefer ExecuteContext
+// in main.go so Ctrl-C (SIGINT/SIGTERM) can cancel in-flight compose
+// invocations and the Ready-wait poll loop; Execute remains for callers
+// (tests) that don't need signal-driven cancellation.
 func Execute() error {
 	return rootCmd.Execute()
+}
+
+// ExecuteContext runs the root command under ctx: cancelling ctx (main.go
+// wires this to signal.NotifyContext for SIGINT/SIGTERM) propagates via
+// cobra's cmd.Context() into every subcommand's compose invocations
+// (internal/compose's executor already uses exec.CommandContext, so
+// in-flight `docker` child processes are killed) and into the
+// internal/health Ready-wait poll loop, which checks ctx before every
+// poll/sleep and returns promptly instead of blocking for a full
+// PollInterval or the whole startup timeout.
+func ExecuteContext(ctx context.Context) error {
+	return rootCmd.ExecuteContext(ctx)
 }
 
 // SetVersion sets the version string for the CLI
@@ -179,4 +198,49 @@ func getComposeDir() string {
 		return filepath.Join(root, cfg.Compose.Dir)
 	}
 	return filepath.Join(root, "compose")
+}
+
+// getConfigFilePath returns the altctl config file the stack registry
+// should read for stack semantics (depends_on, optional, provides/...,
+// overlays/excluded) that can't be derived from compose/*.yaml alone.
+func getConfigFilePath() string {
+	if cfg != nil && cfg.ConfigFilePath != "" {
+		return cfg.ConfigFilePath
+	}
+	return filepath.Join(getProjectRoot(), ".altctl.yaml")
+}
+
+// loadRegistry builds the stack registry from the effective compose
+// directory and altctl config file. Stacks are derived from compose/*.yaml
+// at call time (see internal/stack.NewRegistry), so this can fail if
+// .altctl.yaml declares a stack with no matching compose file, or if the
+// compose directory itself can't be read.
+func loadRegistry() (*stack.Registry, error) {
+	registry, err := stack.NewRegistry(getComposeDir(), getConfigFilePath())
+	if err != nil {
+		return nil, &output.CLIError{
+			Summary:    "failed to load stack registry",
+			Detail:     err.Error(),
+			Suggestion: "Check compose/*.yaml and the 'stacks:'/'overlays:' sections of .altctl.yaml",
+			ExitCode:   output.ExitConfigError,
+		}
+	}
+	return registry, nil
+}
+
+// newComposeClient builds the *compose.Client every lifecycle command (up,
+// down, restart, rebuild, logs, exec) uses. It's a package-level factory
+// var rather than a direct compose.NewClient(...) call at each call site so
+// tests can substitute a client wired to a fake compose.Executor (via
+// compose.NewClientWithExecutor) to capture the exact argv a command
+// builds -- file list, --profile, service names, --no-deps/--force-recreate
+// -- instead of only being able to assert against --dry-run log text (see
+// M2 test-honesty fix: those capture-exact-argv assertions are what would
+// have caught C3/C4/H2 in the first place). Tests must restore this to
+// defaultComposeClient (or set their own) via t.Cleanup.
+var newComposeClient = defaultComposeClient
+
+// defaultComposeClient is newComposeClient's production implementation.
+func defaultComposeClient() *compose.Client {
+	return compose.NewClient(getProjectRoot(), getComposeDir(), logger, dryRun)
 }

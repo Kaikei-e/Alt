@@ -3,21 +3,15 @@ package cmd
 import (
 	"bytes"
 	"encoding/json"
+	"path/filepath"
 	"testing"
 
-	"github.com/alt-project/altctl/internal/config"
 	"github.com/alt-project/altctl/internal/stack"
 )
 
 func setupListTest(t *testing.T) {
 	t.Helper()
-	cfg = &config.Config{
-		Output:   config.OutputConfig{Colors: false},
-		Logging:  config.LoggingConfig{Level: "info", Format: "text"},
-		Defaults: config.DefaultsConfig{Stacks: []string{"db", "auth", "core", "workers"}},
-		Project:  config.ProjectConfig{Root: t.TempDir()},
-		Compose:  config.ComposeConfig{Dir: "compose"},
-	}
+	cfg = testConfig(t, []string{"db", "auth", "core", "workers"})
 	dryRun = false
 	quiet = false
 	listCmd.Flags().Set("services", "false")
@@ -74,7 +68,11 @@ func TestList_JSON(t *testing.T) {
 }
 
 func TestList_RegistryContainsAllStacks(t *testing.T) {
-	registry := stack.NewRegistry()
+	root := repoRootForTest(t)
+	registry, err := stack.NewRegistry(filepath.Join(root, "compose"), filepath.Join(root, ".altctl.yaml"))
+	if err != nil {
+		t.Fatalf("NewRegistry failed: %v", err)
+	}
 	stacks := registry.All()
 
 	data, err := json.Marshal(stacks)
@@ -92,6 +90,8 @@ func TestList_RegistryContainsAllStacks(t *testing.T) {
 		"ai": false, "workers": false, "recap": false, "logging": false,
 		"rag": false, "observability": false, "mq": false, "bff": false,
 		"perf": false, "dev": false, "frontend-dev": false, "backup": false,
+		"sovereign": false, "pact": false, "load-test": false, "pgbouncer": false,
+		"acolyte": false, "pki": false,
 	}
 
 	for _, item := range result {

@@ -100,7 +100,15 @@ def render_docker_build_block(registry: dict[str, Any]) -> str:
 
 
 def render_c2quay_block(registry: dict[str, Any]) -> str:
-    """YAML fragment for c2quay.yml environments.production.services."""
+    """YAML fragment for c2quay.yml environments.production.services.
+
+    Entries with `kind: external` (services gated via Pact but not run by
+    docker compose on this host, e.g. tts-speaker on a remote GPU host) are
+    emitted with `gate_only: true` so c2quay includes them in the Pact
+    can-i-deploy gate and records their deployment, without attempting to
+    start/recreate them via compose. See docs/adr/0013-gate-only-services.md
+    in the c2quay repo.
+    """
     # Align pacticipant colons for readability (matches current style).
     names = [s["name"] for s in pacticipants(registry)]
     width = max(len(n) for n in names)
@@ -108,7 +116,12 @@ def render_c2quay_block(registry: dict[str, Any]) -> str:
     for s in pacticipants(registry):
         name = s["name"]
         pad = " " * (width - len(name))
-        out.append(f"      {name}:{pad} {{ pacticipant: {name} }}")
+        if s.get("kind") == "external":
+            out.append(
+                f"      {name}:{pad} {{ pacticipant: {name}, gate_only: true }}"
+            )
+        else:
+            out.append(f"      {name}:{pad} {{ pacticipant: {name} }}")
     return "\n".join(out) + "\n"
 
 

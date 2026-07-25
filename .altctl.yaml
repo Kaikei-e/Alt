@@ -23,16 +23,147 @@ defaults:
     - core
     - workers
 
-# Stack-specific overrides
+# Compose files that are NOT independent stacks -- they overlay an existing
+# stack's services (pin a pull_policy, add an E2E profile, ...) rather than
+# defining a new one. altctl derives stacks from compose/*.yaml at runtime
+# (stack name = filename stem, services = that file's own services: map
+# keys), so overlay files must be listed here explicitly or they would be
+# auto-registered as bogus stacks the moment they gained a services: key.
+overlays:
+  - compose.dev.yaml
+  - compose.staging.yaml
+
+# Stack semantics: everything the registry cannot derive purely from
+# compose/*.yaml's services: keys -- dependency order, optionality, GPU
+# requirements, startup timeouts, and feature provide/require relationships
+# (see internal/stack.Feature). Stack name = compose filename stem
+# (db.yaml -> db); Services are always derived from that file at load time,
+# never listed here.
+#
+# A stack declared here MUST have a matching compose file -- a mismatch is a
+# hard error at load (fail-fast, altctl/CLAUDE.md Critical Rule 9). A
+# compose file that has services and no entry here is not an error: it is
+# auto-registered with defaults (optional: true, depends_on: [base]) and a
+# notice is printed, so new stacks show up without needing this file edited
+# in lockstep -- but their semantics won't be right until they are.
 stacks:
+  base:
+    description: "Shared resources (secrets, networks, volumes)"
+    depends_on: []
+    optional: false
+  db:
+    description: "Database services (PostgreSQL 17, Meilisearch, ClickHouse)"
+    depends_on: [base]
+    optional: false
+    provides: [database]
+  pgbouncer:
+    description: "Connection pooling (PgBouncer for main DB and Kratos DB)"
+    depends_on: [base, db]
+    optional: false
+  auth:
+    description: "Authentication services (Kratos, auth-hub)"
+    depends_on: [base, pgbouncer]
+    optional: false
+    provides: [auth]
+  sovereign:
+    description: "Knowledge Sovereign (durable knowledge state owner)"
+    depends_on: [base]
+    optional: false
+  core:
+    description: "Core application services (plecto-proxy, frontend, backend)"
+    depends_on: [base, db, auth, sovereign]
+    optional: false
+    requires_features: [search, bff]
+  mq:
+    description: "Message queue services (Redis Streams, mq-hub)"
+    depends_on: [base]
+    optional: true
+    profile: "mq"
+    provides: [mq]
+  workers:
+    description: "Background worker services"
+    depends_on: [base, db, mq, core]
+    optional: false
+    provides: [search]
   ai:
-    # GPU requirements for AI stack
+    description: "AI/LLM services (Ollama, news-creator, pre-processor)"
+    depends_on: [base, db, mq, core]
+    optional: true
+    profile: "ollama"
     requires_gpu: true
     # Longer timeout for model loading
     startup_timeout: 1200s
+    provides: [ai]
   recap:
+    description: "Recap services (article summarization)"
+    depends_on: [base, db, core]
+    optional: true
+    profile: "recap"
     # Extended timeout for ML model initialization
     startup_timeout: 1200s
+    provides: [recap]
+  logging:
+    description: "Logging infrastructure (rask log forwarders)"
+    depends_on: [base, db]
+    optional: true
+    profile: "logging"
+    provides: [logging]
+  rag:
+    description: "RAG extension services"
+    depends_on: [base, db, core, workers]
+    optional: true
+    profile: "rag-extension"
+    provides: [rag]
+  perf:
+    description: "E2E performance measurement tool (Deno/Astral) + K6 load testing"
+    depends_on: [base, db, auth, core]
+    optional: true
+    profile: "perf"
+  observability:
+    description: "Observability infrastructure (Grafana dashboards)"
+    depends_on: [base, db, core]
+    optional: true
+    profile: "observability"
+    provides: [observability]
+  bff:
+    description: "Backend for Frontend (alt-butterfly-facade proxy)"
+    depends_on: [base, db, auth, core]
+    optional: true
+    profile: "bff"
+    provides: [bff]
+  dev:
+    description: "Development stack (SvelteKit + mock-auth + backend + db)"
+    depends_on: [base]
+    optional: true
+    profile: "dev"
+  frontend-dev:
+    description: "Frontend-only development (mock backend, no database)"
+    depends_on: []
+    optional: true
+    profile: "frontend-dev"
+  backup:
+    description: "Backup services (Restic, PostgreSQL dump)"
+    depends_on: [base, db]
+    optional: true
+    profile: "backup"
+  load-test:
+    description: "Load testing (mock RSS server for K6)"
+    depends_on: [base, perf]
+    optional: true
+    profile: "load-test"
+  pact:
+    description: "Pact Broker for Consumer-Driven Contract Testing"
+    depends_on: [base]
+    optional: true
+    profile: "pact"
+  acolyte:
+    description: "Acolyte knowledge orchestrator (owns its own Postgres DB)"
+    depends_on: [base]
+    optional: true
+  pki:
+    description: "Internal mTLS PKI (step-ca + per-service pki-agent sidecars)"
+    depends_on: [base]
+    optional: true
 
 # Logging configuration
 logging:

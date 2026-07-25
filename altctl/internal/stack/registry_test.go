@@ -5,7 +5,7 @@ import (
 )
 
 func TestDevStackExists(t *testing.T) {
-	registry := NewRegistry()
+	registry := realRegistry(t)
 	dev, ok := registry.Get("dev")
 
 	if !ok {
@@ -18,7 +18,7 @@ func TestDevStackExists(t *testing.T) {
 }
 
 func TestDevStackDependencies(t *testing.T) {
-	registry := NewRegistry()
+	registry := realRegistry(t)
 	dev, ok := registry.Get("dev")
 
 	if !ok {
@@ -36,7 +36,7 @@ func TestDevStackDependencies(t *testing.T) {
 }
 
 func TestDevStackIsOptional(t *testing.T) {
-	registry := NewRegistry()
+	registry := realRegistry(t)
 	dev, ok := registry.Get("dev")
 
 	if !ok {
@@ -49,7 +49,7 @@ func TestDevStackIsOptional(t *testing.T) {
 }
 
 func TestDevStackServices(t *testing.T) {
-	registry := NewRegistry()
+	registry := realRegistry(t)
 	dev, ok := registry.Get("dev")
 
 	if !ok {
@@ -73,7 +73,7 @@ func TestDevStackServices(t *testing.T) {
 }
 
 func TestDevStackComposeFile(t *testing.T) {
-	registry := NewRegistry()
+	registry := realRegistry(t)
 	dev, ok := registry.Get("dev")
 
 	if !ok {
@@ -86,7 +86,7 @@ func TestDevStackComposeFile(t *testing.T) {
 }
 
 func TestDevStackProfile(t *testing.T) {
-	registry := NewRegistry()
+	registry := realRegistry(t)
 	dev, ok := registry.Get("dev")
 
 	if !ok {
@@ -99,7 +99,7 @@ func TestDevStackProfile(t *testing.T) {
 }
 
 func TestCoreStackRequiresBFF(t *testing.T) {
-	registry := NewRegistry()
+	registry := realRegistry(t)
 	core, ok := registry.Get("core")
 
 	if !ok {
@@ -120,7 +120,7 @@ func TestCoreStackRequiresBFF(t *testing.T) {
 }
 
 func TestObservabilityStackExists(t *testing.T) {
-	registry := NewRegistry()
+	registry := realRegistry(t)
 	obs, ok := registry.Get("observability")
 
 	if !ok {
@@ -133,7 +133,7 @@ func TestObservabilityStackExists(t *testing.T) {
 }
 
 func TestObservabilityStackDependencies(t *testing.T) {
-	registry := NewRegistry()
+	registry := realRegistry(t)
 	obs, ok := registry.Get("observability")
 
 	if !ok {
@@ -155,7 +155,7 @@ func TestObservabilityStackDependencies(t *testing.T) {
 }
 
 func TestObservabilityStackIsOptional(t *testing.T) {
-	registry := NewRegistry()
+	registry := realRegistry(t)
 	obs, ok := registry.Get("observability")
 
 	if !ok {
@@ -168,14 +168,14 @@ func TestObservabilityStackIsOptional(t *testing.T) {
 }
 
 func TestObservabilityStackServices(t *testing.T) {
-	registry := NewRegistry()
+	registry := realRegistry(t)
 	obs, ok := registry.Get("observability")
 
 	if !ok {
 		t.Fatal("expected observability stack to exist")
 	}
 
-	requiredServices := []string{"nginx-exporter", "prometheus", "grafana"}
+	requiredServices := []string{"prometheus", "grafana", "cadvisor"}
 
 	for _, svc := range requiredServices {
 		found := false
@@ -192,7 +192,7 @@ func TestObservabilityStackServices(t *testing.T) {
 }
 
 func TestObservabilityStackComposeFile(t *testing.T) {
-	registry := NewRegistry()
+	registry := realRegistry(t)
 	obs, ok := registry.Get("observability")
 
 	if !ok {
@@ -205,7 +205,7 @@ func TestObservabilityStackComposeFile(t *testing.T) {
 }
 
 func TestObservabilityStackProfile(t *testing.T) {
-	registry := NewRegistry()
+	registry := realRegistry(t)
 	obs, ok := registry.Get("observability")
 
 	if !ok {
@@ -218,7 +218,7 @@ func TestObservabilityStackProfile(t *testing.T) {
 }
 
 func TestObservabilityStackProvidesFeature(t *testing.T) {
-	registry := NewRegistry()
+	registry := realRegistry(t)
 	obs, ok := registry.Get("observability")
 
 	if !ok {

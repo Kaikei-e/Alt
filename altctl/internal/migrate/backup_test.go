@@ -11,16 +11,21 @@ import (
 )
 
 // fakeBackupEngine is a backupEngine stub that simulates volume backup/restore
-// failures without invoking a real Docker daemon.
+// failures without invoking a real Docker daemon. calls counts every
+// Backup/Restore invocation so tests can assert an abort happened before any
+// volume was touched (see TestMigrator_Restore_AbortsOnBrokenRegistry).
 type fakeBackupEngine struct {
-	err error
+	err   error
+	calls int
 }
 
 func (f *fakeBackupEngine) Backup(ctx context.Context, spec VolumeSpec, outputPath string) error {
+	f.calls++
 	return f.err
 }
 
 func (f *fakeBackupEngine) Restore(ctx context.Context, spec VolumeSpec, inputPath string) error {
+	f.calls++
 	return f.err
 }
 
@@ -41,9 +46,9 @@ func TestMigrator_Backup_DryRun_ProfileDB(t *testing.T) {
 		t.Fatal("expected non-nil BackupResult")
 	}
 
-	// ProfileDB should only include PG volumes (6)
-	if len(result.Manifest.Volumes) != 6 {
-		t.Errorf("Expected 6 volumes for ProfileDB, got %d", len(result.Manifest.Volumes))
+	// ProfileDB should only include PG volumes (7)
+	if len(result.Manifest.Volumes) != 7 {
+		t.Errorf("Expected 7 volumes for ProfileDB, got %d", len(result.Manifest.Volumes))
 	}
 
 	for _, v := range result.Manifest.Volumes {
@@ -66,9 +71,9 @@ func TestMigrator_Backup_DryRun_ProfileEssential(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	// ProfileEssential: critical(6) + data(3) + search(1) = 10
-	if len(result.Manifest.Volumes) != 10 {
-		t.Errorf("Expected 10 volumes for ProfileEssential, got %d", len(result.Manifest.Volumes))
+	// ProfileEssential: critical(7) + data(3) + search(1) = 11
+	if len(result.Manifest.Volumes) != 11 {
+		t.Errorf("Expected 11 volumes for ProfileEssential, got %d", len(result.Manifest.Volumes))
 	}
 
 	// Should not include metrics or models
@@ -92,8 +97,8 @@ func TestMigrator_Backup_DryRun_ProfileAll(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	if len(result.Manifest.Volumes) != 14 {
-		t.Errorf("Expected 14 volumes for ProfileAll, got %d", len(result.Manifest.Volumes))
+	if len(result.Manifest.Volumes) != 15 {
+		t.Errorf("Expected 15 volumes for ProfileAll, got %d", len(result.Manifest.Volumes))
 	}
 }
 
@@ -111,8 +116,8 @@ func TestMigrator_Backup_DryRun_WithExclude(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	if len(result.Manifest.Volumes) != 11 {
-		t.Errorf("Expected 11 volumes after excluding 3, got %d", len(result.Manifest.Volumes))
+	if len(result.Manifest.Volumes) != 12 {
+		t.Errorf("Expected 12 volumes after excluding 3, got %d", len(result.Manifest.Volumes))
 	}
 }
 
@@ -129,8 +134,8 @@ func TestMigrator_Backup_DryRun_DefaultProfile(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	if len(result.Manifest.Volumes) != 14 {
-		t.Errorf("Empty profile should default to all (14 volumes), got %d", len(result.Manifest.Volumes))
+	if len(result.Manifest.Volumes) != 15 {
+		t.Errorf("Empty profile should default to all (15 volumes), got %d", len(result.Manifest.Volumes))
 	}
 }
 
@@ -147,8 +152,8 @@ func TestBackupResult_HasTimings(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	if len(result.VolumeTimings) != 6 {
-		t.Errorf("Expected 6 volume timings, got %d", len(result.VolumeTimings))
+	if len(result.VolumeTimings) != 7 {
+		t.Errorf("Expected 7 volume timings, got %d", len(result.VolumeTimings))
 	}
 
 	for _, timing := range result.VolumeTimings {
@@ -317,15 +322,89 @@ func TestMigrator_Backup_ReturnsNilWhenVolumesSucceed(t *testing.T) {
 	}
 }
 
+// repoComposeDirForTest locates the real project's compose/ directory by
+// walking up from the test's working directory, so composeFileList (which
+// now derives the file list from the real compose/*.yaml + .altctl.yaml on
+// disk, rather than a hardcoded list) has real content to discover.
+func repoComposeDirForTest(t *testing.T) string {
+	t.Helper()
+	dir, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("getting working directory: %v", err)
+	}
+	for {
+		if info, statErr := os.Stat(filepath.Join(dir, "compose")); statErr == nil && info.IsDir() {
+			if _, altErr := os.Stat(filepath.Join(dir, "altctl")); altErr == nil {
+				return filepath.Join(dir, "compose")
+			}
+		}
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			t.Skip("Alt project root (compose/ + altctl/) not found; skipping")
+		}
+		dir = parent
+	}
+}
+
+// TestComposeFileList_MissingComposeDir_TolerantEmpty is the "legitimate
+// nothing to back up" case (C1): composeDir does not exist at all -- e.g. a
+// synthetic test path or altctl invoked outside a repo checkout. This must
+// return an empty list with NO error, matching the pre-existing behavior
+// callers already depend on for paths like "/tmp/compose" in the dry-run
+// tests in this package.
+func TestComposeFileList_MissingComposeDir_TolerantEmpty(t *testing.T) {
+	dir := t.TempDir()
+	missing := filepath.Join(dir, "does-not-exist")
+
+	files, err := composeFileList(missing)
+	if err != nil {
+		t.Fatalf("expected no error for a missing compose dir, got: %v", err)
+	}
+	if len(files) != 0 {
+		t.Errorf("expected an empty file list for a missing compose dir, got: %v", files)
+	}
+}
+
+// TestComposeFileList_BrokenAltctlConfig_Aborts is the C1 regression test at
+// the composeFileList level: a stack declared in .altctl.yaml with no
+// matching compose file is stack.NewRegistry's hard fail-fast error
+// (Critical Rule 9), and it must propagate as an error here -- not degrade
+// to an empty file list the way a merely-missing compose dir does. This is
+// the distinction the fix hinges on: composeDir exists and has content, only
+// the *registry* fails to load.
+func TestComposeFileList_BrokenAltctlConfig_Aborts(t *testing.T) {
+	root := t.TempDir()
+	composeDir := filepath.Join(root, "compose")
+	if err := os.MkdirAll(composeDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(composeDir, "db.yaml"), []byte("services:\n  db:\n    image: postgres\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	brokenConfig := "stacks:\n  sovereign:\n    optional: false\n"
+	if err := os.WriteFile(filepath.Join(root, ".altctl.yaml"), []byte(brokenConfig), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	files, err := composeFileList(composeDir)
+	if err == nil {
+		t.Fatalf("expected an error for a stack declared with no matching compose file, got files=%v", files)
+	}
+}
+
 // TestComposeFileList_IncludesSovereign guards against configuration drift:
 // the compose file list backup/restore use to detect and stop running
 // containers must be derived from the stack registry (the single source of
 // truth also used by `altctl up`/`down`), not a hand-maintained list that can
 // forget a stack such as sovereign.yaml.
 func TestComposeFileList_IncludesSovereign(t *testing.T) {
-	files := composeFileList("/compose")
+	composeDir := repoComposeDirForTest(t)
+	files, err := composeFileList(composeDir)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
 
-	want := filepath.Join("/compose", "sovereign.yaml")
+	want := filepath.Join(composeDir, "sovereign.yaml")
 	found := false
 	for _, f := range files {
 		if f == want {
@@ -344,14 +423,23 @@ func TestComposeFileList_IncludesSovereign(t *testing.T) {
 // sovereign can't be stopped by one code path and missed by the other.
 func TestMigrator_BuildComposeArgs_IncludesSovereignWhenPresent(t *testing.T) {
 	dir := t.TempDir()
-	for _, name := range []string{"base.yaml", "db.yaml", "sovereign.yaml"} {
-		if err := os.WriteFile(filepath.Join(dir, name), []byte("services: {}\n"), 0644); err != nil {
+	// base.yaml legitimately has no services (shared resources only, like
+	// the real one); db.yaml and sovereign.yaml need at least one service
+	// each to be discovered as stacks under the derived registry model.
+	writeFile := func(name, body string) {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(body), 0644); err != nil {
 			t.Fatal(err)
 		}
 	}
+	writeFile("base.yaml", "services: {}\n")
+	writeFile("db.yaml", "services:\n  db:\n    image: postgres\n")
+	writeFile("sovereign.yaml", "services:\n  knowledge-sovereign-db:\n    image: postgres\n")
 
 	m := &Migrator{composeDir: dir}
-	args := m.buildComposeArgs("down")
+	args, err := m.buildComposeArgs("down")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
 
 	wantFlag := filepath.Join(dir, "sovereign.yaml")
 	found := false
