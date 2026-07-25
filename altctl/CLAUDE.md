@@ -21,6 +21,8 @@ altctl up ai           # Start specific stack (deps auto-resolved), wait for Rea
 altctl up ai --detach  # Fire-and-forget: start and return, skip the Ready-wait
 altctl down            # Stop all
 altctl restart recap   # Restart specific stack, wait until every service is Ready
+altctl rebuild alt-backend        # Rebuild image + force-recreate one service, wait for Ready
+altctl rebuild core --no-cache    # Rebuild every service in a stack, no Docker build cache
 altctl status          # View status
 altctl exec db -- psql -U postgres  # Execute in container
 altctl logs recap      # Tail all recap stack logs
@@ -72,6 +74,41 @@ service: diagnostic table + `docker compose logs --tail 20` per not-Ready
 service, exit code **5** (timeout) or **3** (compose itself failed). Ctrl-C
 cancels the wait and in-flight `docker` subprocesses promptly instead of
 hanging. `up --detach`/`-d` skips the wait (fire-and-forget).
+
+## `rebuild` (targeted rebuild + force-recreate)
+
+`altctl rebuild <service|stack> [more...]` (`cmd/rebuild.go`) is the fix for
+the repo's #1 pitfall: "changed Go/Rust/TS code but forgot `--build`; the
+old binary keeps running silently" (root `CLAUDE.md` Critical Rule 3).
+Unlike `up --build`, which rebuilds/(re)starts an entire stack plus its
+dependencies, `rebuild` touches only the services you name:
+
+```
+docker compose build <svcs>
+docker compose up -d --no-deps --force-recreate <svcs>
+```
+
+- Each arg resolves via the derived stack registry as either a stack name
+  (expands to all its services) or a service name (`Registry.FindByService`);
+  mixing stacks and services in one invocation is allowed, duplicates across
+  args are deduped. An unknown arg gets a Levenshtein "did you mean"
+  suggestion drawn from every known stack/service name.
+- `--force-recreate` is mandatory, not a flag: plain `docker compose up`
+  will not recreate a container whose image tag is unchanged, so a freshly
+  rebuilt image with the same tag would otherwise leave the stale container
+  running untouched (documented failure pattern ADR-000761 / PM-2026-005) —
+  exactly the silent-old-binary failure this command exists to prevent.
+- `--no-deps` keeps the blast radius to just the named services.
+- One-shot services (migrators/init jobs) are valid targets — Ready means
+  `exited 0`, same rule as `up`/`restart` (see `internal/health`).
+- Reuses `up`/`restart`'s trustworthy-success Ready-wait and diagnostic
+  rendering (`maxStartupTimeout`, `waitForReady`, `classifyServices`,
+  `renderReadyFailure` in `cmd/up.go`) against a synthetic per-stack
+  `*stack.Stack` whose `Services` is narrowed to only the targeted subset,
+  so Ready-wait/diagnostics never wait on services this invocation didn't
+  touch. `--no-cache` passes through to `docker compose build`; `--detach`
+  skips the Ready-wait; `--dry-run`/`--quiet`/`--verbose`/`--timeout` behave
+  like the equivalent `up` flags.
 
 ## Backup Profiles
 

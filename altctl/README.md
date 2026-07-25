@@ -44,6 +44,7 @@ altctl list
 | `altctl up [stacks...]` | Start stacks with dependency resolution, and **wait until every service is Ready** before reporting success |
 | `altctl down [stacks...]` | Stop running stacks |
 | `altctl restart [stacks...]` | Restart stacks (down then up), waiting for Ready the same way `up` does |
+| `altctl rebuild <service\|stack> [more...]` | Rebuild images and **force-recreate** just the named services/stacks, then wait for Ready |
 | `altctl status` | Show service status by stack |
 | `altctl list` | List available stacks |
 | `altctl logs <service\|stack>` | Stream logs from a service or stack |
@@ -84,6 +85,47 @@ Ctrl-C (SIGINT) or SIGTERM cancels the wait (and any in-flight `docker`
 subprocess) promptly instead of leaving `altctl` to hang until the timeout;
 altctl prints `interrupted — stack may be partially started; run altctl
 doctor` and exits non-zero.
+
+### `rebuild`: kill the "forgot --build" pitfall
+
+`altctl rebuild <service|stack> [more...]` exists for the repo's #1
+footgun -- changing Go/Rust/TS code, forgetting `--build`, and the old
+binary keeps running silently (root `CLAUDE.md` Critical Rule 3). Unlike
+`altctl up --build`, which rebuilds and (re)starts an entire stack plus its
+dependencies, `rebuild` touches only the services you name:
+
+```bash
+altctl rebuild alt-backend             # Rebuild + recreate one service
+altctl rebuild core                    # Rebuild + recreate every service in the core stack
+altctl rebuild alt-backend migrate     # Multiple targets, mixing services and stacks
+altctl rebuild core --no-cache         # Rebuild without the Docker build cache
+altctl rebuild core --detach           # Rebuild + recreate, skip the Ready-wait
+```
+
+Each argument is resolved as either a stack name (expands to every service
+in that stack) or a service name (via the derived stack registry); an
+unknown name gets a "did you mean" suggestion drawn from the live stack and
+service lists. Under the hood, for exactly the resolved services:
+
+```bash
+docker compose build <svcs>
+docker compose up -d --no-deps --force-recreate <svcs>
+```
+
+`--force-recreate` is not optional: plain `docker compose up` will not
+recreate a container whose image tag hasn't changed, so a freshly rebuilt
+image with the same tag would otherwise leave the stale container running
+untouched (documented failure pattern ADR-000761 / PM-2026-005) -- the exact
+silent-old-binary failure this command exists to prevent. `--no-deps` keeps
+the blast radius to just the named services, not their dependents or
+dependencies.
+
+One-shot services (migrators/init jobs) are valid rebuild targets: Ready for
+them means `exited 0`, the same rule `up`/`restart` use. `rebuild` reuses
+the same trustworthy-success Ready-wait as `up`/`restart` (see above) --
+`--detach` skips it for fire-and-forget use, `--dry-run` prints the
+commands without running them, and a not-Ready/timeout failure gets the
+same diagnostic table + tail-20 logs + exit code 5/3.
 
 ### Migration (Backup/Restore)
 
