@@ -7,6 +7,7 @@ from datetime import datetime, timezone, timedelta
 
 from news_creator.config.config import NewsCreatorConfig
 from news_creator.domain.models import ConversationMessage, LLMGenerateResponse
+from news_creator.gateway.hybrid_priority_semaphore import QueueFullError
 from news_creator.port.llm_provider_port import LLMProviderPort
 
 logger = logging.getLogger(__name__)
@@ -203,6 +204,12 @@ class ExpandQueryUsecase:
             )
 
             return expanded_queries, llm_response.model, elapsed_ms
+
+        except QueueFullError:
+            # Expected backpressure (2026-02 queue-saturation design) — must
+            # reach the handler as-is so it maps to HTTP 429, not be flattened
+            # into RuntimeError below (which the handler surfaces as 502).
+            raise
 
         except Exception as e:
             elapsed_ms = (time.time() - start_time) * 1000

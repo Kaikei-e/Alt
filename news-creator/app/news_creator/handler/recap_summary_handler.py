@@ -2,6 +2,7 @@
 
 import logging
 from fastapi import APIRouter, HTTPException
+from fastapi.responses import JSONResponse
 
 from news_creator.domain.models import (
     BatchRecapSummaryRequest,
@@ -9,7 +10,10 @@ from news_creator.domain.models import (
     RecapSummaryRequest,
     RecapSummaryResponse,
 )
-from news_creator.gateway.hybrid_priority_semaphore import PreemptedException
+from news_creator.gateway.hybrid_priority_semaphore import (
+    PreemptedException,
+    QueueFullError,
+)
 from news_creator.usecase.recap_summary_usecase import RecapSummaryUsecase
 from news_creator.utils.context_logger import (
     set_job_id,
@@ -36,7 +40,7 @@ def create_recap_summary_router(usecase: RecapSummaryUsecase) -> APIRouter:
     @router.post("/v1/summary/generate", response_model=RecapSummaryResponse)
     async def recap_summary_endpoint(
         request: RecapSummaryRequest,
-    ) -> RecapSummaryResponse:
+    ) -> RecapSummaryResponse | JSONResponse:
         """
         Generate a Japanese recap summary for clustered evidence.
 
@@ -53,6 +57,17 @@ def create_recap_summary_router(usecase: RecapSummaryUsecase) -> APIRouter:
 
         try:
             return await usecase.generate_summary(request)
+
+        except QueueFullError as exc:
+            logger.warning(
+                "Queue full, returning 429",
+                extra={"error": str(exc), "job_id": str(request.job_id)},
+            )
+            return JSONResponse(
+                status_code=429,
+                content={"error": "queue full"},
+                headers={"Retry-After": "30"},
+            )
 
         except ValueError as exc:
             logger.warning(

@@ -4,9 +4,11 @@ import asyncio
 import logging
 import aiohttp
 from fastapi import APIRouter, HTTPException
+from fastapi.responses import JSONResponse
 from typing import Any
 
 from news_creator.domain.models import GenerateRequest, LLMGenerateResponse
+from news_creator.gateway.hybrid_priority_semaphore import QueueFullError
 from news_creator.port.llm_provider_port import LLMProviderPort
 
 logger = logging.getLogger(__name__)
@@ -24,8 +26,10 @@ def create_generate_router(llm_provider: LLMProviderPort) -> APIRouter:
     """
     router = APIRouter()
 
-    @router.post("/api/generate")
-    async def generate_endpoint(request: GenerateRequest) -> dict[str, Any]:
+    @router.post("/api/generate", response_model=None)
+    async def generate_endpoint(
+        request: GenerateRequest,
+    ) -> dict[str, Any] | JSONResponse:
         """
         Forward Ollama-compatible generate requests.
 
@@ -104,6 +108,17 @@ def create_generate_router(llm_provider: LLMProviderPort) -> APIRouter:
                 response_dict["total_duration"] = llm_response.total_duration
 
             return response_dict
+
+        except QueueFullError as exc:
+            logger.warning(
+                "Queue full, returning 429",
+                extra={"error": str(exc)},
+            )
+            return JSONResponse(
+                status_code=429,
+                content={"error": "queue full"},
+                headers={"Retry-After": "30"},
+            )
 
         except ValueError as exc:
             logger.warning("Invalid /api/generate payload", extra={"error": str(exc)})

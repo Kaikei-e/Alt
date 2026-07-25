@@ -2,8 +2,10 @@
 
 import logging
 from fastapi import APIRouter, HTTPException
+from fastapi.responses import JSONResponse
 
 from news_creator.domain.models import ExpandQueryRequest, ExpandQueryResponse
+from news_creator.gateway.hybrid_priority_semaphore import QueueFullError
 from news_creator.usecase.expand_query_usecase import ExpandQueryUsecase
 from news_creator.utils.context_logger import (
     set_ai_pipeline,
@@ -27,7 +29,9 @@ def create_expand_query_router(expand_query_usecase: ExpandQueryUsecase) -> APIR
     router = APIRouter()
 
     @router.post("/api/v1/expand-query", response_model=ExpandQueryResponse)
-    async def expand_query_endpoint(request: ExpandQueryRequest) -> ExpandQueryResponse:
+    async def expand_query_endpoint(
+        request: ExpandQueryRequest,
+    ) -> ExpandQueryResponse | JSONResponse:
         """
         Generate expanded search queries for RAG retrieval.
 
@@ -73,6 +77,20 @@ def create_expand_query_router(expand_query_usecase: ExpandQueryUsecase) -> APIR
                 original_query=request.query,
                 model=model,
                 processing_time_ms=processing_time_ms,
+            )
+
+        except QueueFullError as exc:
+            logger.warning(
+                "Queue full, returning 429",
+                extra={
+                    "error": str(exc),
+                    "query": request.query[:100] if request.query else "",
+                },
+            )
+            return JSONResponse(
+                status_code=429,
+                content={"error": "queue full"},
+                headers={"Retry-After": "30"},
             )
 
         except ValueError as exc:
