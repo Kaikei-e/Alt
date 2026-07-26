@@ -87,18 +87,32 @@ func TestSharedCache_Get_StaleWhileRevalidate(t *testing.T) {
 	}
 	close(refreshRelease)
 
-	time.Sleep(20 * time.Millisecond)
-	got, state := cache.Peek("a")
+	// The background goroutine still needs to run c.Set() after
+	// refreshRelease unblocks it, so poll for the store to land instead of
+	// guessing a sleep duration long enough to cover it.
+	deadline := time.Now().Add(time.Second)
+	var refreshedVal string
+	var state CacheState
+	for {
+		refreshedVal, state = cache.Peek("a")
+		if state == CacheStateFresh || time.Now().After(deadline) {
+			break
+		}
+		time.Sleep(time.Millisecond)
+	}
 	if state != CacheStateFresh {
 		t.Fatalf("Peek() state = %v, want fresh", state)
 	}
-	if got != "refreshed" {
-		t.Fatalf("Peek() value = %q, want refreshed", got)
+	if refreshedVal != "refreshed" {
+		t.Fatalf("Peek() value = %q, want refreshed", refreshedVal)
 	}
 }
 
 func TestSharedCache_Get_SingleflightDeduplicates(t *testing.T) {
+	const goroutines = 8
+
 	var loads int32
+	var attempted int32
 	release := make(chan struct{})
 	cache := NewSharedCache[string, string](time.Minute, time.Minute, func(ctx context.Context, key string) (string, error) {
 		atomic.AddInt32(&loads, 1)
@@ -107,15 +121,27 @@ func TestSharedCache_Get_SingleflightDeduplicates(t *testing.T) {
 	})
 
 	var wg sync.WaitGroup
-	for range 8 {
+	for range goroutines {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
+			atomic.AddInt32(&attempted, 1)
 			_, _ = cache.Get(context.Background(), "same")
 		}()
 	}
 
-	time.Sleep(20 * time.Millisecond)
+	// Wait deterministically until every goroutine has actually reached the
+	// call to Get() before releasing the loader, instead of guessing a
+	// sleep duration long enough for the scheduler to have run all of
+	// them. Only a real scheduling starvation trips the timeout.
+	deadline := time.Now().Add(2 * time.Second)
+	for atomic.LoadInt32(&attempted) < goroutines {
+		if time.Now().After(deadline) {
+			t.Fatalf("timed out waiting for all %d goroutines to reach Get(), got %d", goroutines, atomic.LoadInt32(&attempted))
+		}
+		time.Sleep(time.Millisecond)
+	}
+
 	close(release)
 	wg.Wait()
 
@@ -124,13 +150,20 @@ func TestSharedCache_Get_SingleflightDeduplicates(t *testing.T) {
 	}
 }
 
+// TestSharedCache_ConcurrentSetInvalidate exercises Set/Invalidate/Peek from
+// many goroutines concurrently: run with -race, its main purpose is to
+// surface any unsynchronized map access. It also asserts each key ends up in
+// the state its own goroutine last wrote, so a regression that drops or
+// corrupts writes (e.g. a lock ordering bug that silently loses a Set) fails
+// the test even without -race.
 func TestSharedCache_ConcurrentSetInvalidate(t *testing.T) {
+	const n = 50
 	cache := NewSharedCache[int, int](time.Minute, time.Minute, func(ctx context.Context, key int) (int, error) {
 		return key * 2, nil
 	})
 
 	var wg sync.WaitGroup
-	for i := 0; i < 50; i++ {
+	for i := 0; i < n; i++ {
 		wg.Add(1)
 		go func(i int) {
 			defer wg.Done()
@@ -141,4 +174,18 @@ func TestSharedCache_ConcurrentSetInvalidate(t *testing.T) {
 		}(i)
 	}
 	wg.Wait()
+
+	// Each key i is only ever touched by goroutine i, and its last write is
+	// Set(i, i+1), so the final state is deterministic despite the
+	// concurrency above.
+	for i := 0; i < n; i++ {
+		got, state := cache.Peek(i)
+		if state != CacheStateFresh {
+			t.Errorf("key %d: Peek() state = %v, want fresh", i, state)
+			continue
+		}
+		if got != i+1 {
+			t.Errorf("key %d: Peek() value = %d, want %d", i, got, i+1)
+		}
+	}
 }

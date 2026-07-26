@@ -36,15 +36,21 @@ func TestSearchCache_MissThenHit(t *testing.T) {
 }
 
 func TestSearchCache_TTL_Expires(t *testing.T) {
-	cache, err := newSearchCache(8, 10*time.Millisecond)
+	ttl := 10 * time.Millisecond
+	cache, err := newSearchCache(8, ttl)
 	if err != nil {
 		t.Fatalf("newSearchCache: %v", err)
 	}
 
 	key := cacheKey{Query: "rust", UserID: "u1", Limit: 5}
-	cache.put(key, cacheEntry{EstimatedTotal: 1})
+	// Insert the entry directly with a storedAt already past the TTL window
+	// instead of sleeping past it. This is deterministic (no timing-dependent
+	// flakiness on a loaded CI runner) and exercises the same expiry check in
+	// get(): time.Since(e.storedAt) > c.ttl. Accessing the unexported
+	// cacheEntry.storedAt field is fine here -- this test file is in package
+	// driver alongside the cache implementation.
+	cache.lru.Add(key, cacheEntry{EstimatedTotal: 1, storedAt: time.Now().Add(-ttl - time.Second)})
 
-	time.Sleep(25 * time.Millisecond)
 	if _, ok := cache.get(key); ok {
 		t.Fatalf("expected expired entry to miss")
 	}

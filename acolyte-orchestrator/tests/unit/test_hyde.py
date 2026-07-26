@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import re
+
 import pytest
 
 from acolyte.domain.hyde import build_hyde_messages, build_hyde_prompt, sanitize_hyde_output
@@ -20,7 +22,7 @@ class TestBuildHydePrompt:
         assert "英語トピック" in prompt
 
     def test_rejects_unknown_target_lang(self) -> None:
-        with pytest.raises(ValueError):
+        with pytest.raises(ValueError, match=re.escape("unsupported target_lang: 'fr'")):
             build_hyde_prompt("x", "fr")
 
     def test_topic_is_stripped(self) -> None:
@@ -50,7 +52,7 @@ class TestBuildHydeMessages:
         assert user.strip() == "AI チップ市場 2026"
 
     def test_rejects_unknown_target_lang(self) -> None:
-        with pytest.raises(ValueError):
+        with pytest.raises(ValueError, match=re.escape("unsupported target_lang: 'fr'")):
             build_hyde_messages("x", "fr")
 
     def test_user_topic_is_stripped(self) -> None:

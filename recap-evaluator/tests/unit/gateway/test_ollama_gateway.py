@@ -135,8 +135,63 @@ class TestOllamaGateway:
 
         assert result.count == 3
         assert result.success_count == 3
-        # Verify concurrency was used (semaphore limits to 2)
         assert mock_client.post.call_count == 3
+
+    async def test_evaluate_batch_concurrency_is_bounded_by_semaphore(
+        self, gateway, mock_client
+    ):
+        """mock_settings pins ollama_concurrency=2. With 4 items in flight,
+        no more than 2 requests may be in-flight at once — a regression that
+        drops or widens the semaphore would let all 4 hit Ollama at once and
+        overwhelm the single-model server (ADR context: concurrency exists
+        specifically to bound Ollama load).
+
+        Uses asyncio.Event handshakes (no wall-clock sleeps) so the
+        assertion is deterministic instead of timing-dependent.
+        """
+        concurrency_limit = 2
+        active = 0
+        max_active = 0
+        entered_count = 0
+        all_slots_full = asyncio.Event()
+        release = asyncio.Event()
+
+        async def fake_post(*args, **kwargs):
+            nonlocal active, max_active, entered_count
+            active += 1
+            entered_count += 1
+            max_active = max(max_active, active)
+            if entered_count == concurrency_limit:
+                all_slots_full.set()
+            await release.wait()
+            active -= 1
+            response = MagicMock()
+            response.json.return_value = {
+                "response": (
+                    '{"coherence": 4, "consistency": 4, '
+                    '"fluency": 4, "relevance": 4}'
+                )
+            }
+            response.raise_for_status = MagicMock()
+            return response
+
+        mock_client.post.side_effect = fake_post
+        items = [(f"src{i}", f"sum{i}") for i in range(4)]
+
+        batch_task = asyncio.create_task(gateway.evaluate_batch(items))
+
+        await all_slots_full.wait()
+        # Exactly `concurrency_limit` requests got in — the other two are
+        # still blocked on the semaphore, not on the mocked HTTP call.
+        assert active == concurrency_limit
+        assert entered_count == concurrency_limit
+
+        release.set()
+        result = await batch_task
+
+        assert max_active == concurrency_limit
+        assert result.count == 4
+        assert result.success_count == 4
 
     async def test_health_check_success(self, gateway, mock_client):
         mock_response = MagicMock()

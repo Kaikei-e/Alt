@@ -47,47 +47,37 @@ def _write_test_identity(dir_path: Path, cn: str) -> tuple[Path, Path]:
     return cert_path, key_path
 
 
-def test_mtls_enforced_false_by_default() -> None:
-    os.environ.pop("MTLS_ENFORCE", None)
+def test_mtls_enforced_false_by_default(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("MTLS_ENFORCE", raising=False)
     assert not mtls_enforced()
 
 
-def test_mtls_enforced_true_when_env_set() -> None:
-    os.environ["MTLS_ENFORCE"] = "true"
-    try:
-        assert mtls_enforced()
-    finally:
-        os.environ.pop("MTLS_ENFORCE", None)
+def test_mtls_enforced_true_when_env_set(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("MTLS_ENFORCE", "true")
+    assert mtls_enforced()
 
 
-def test_build_ssl_context_none_when_not_enforced() -> None:
-    os.environ.pop("MTLS_ENFORCE", None)
+def test_build_ssl_context_none_when_not_enforced(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("MTLS_ENFORCE", raising=False)
     assert build_ssl_context() is None
 
 
-def test_build_ssl_context_fails_closed_when_paths_missing() -> None:
-    os.environ["MTLS_ENFORCE"] = "true"
+def test_build_ssl_context_fails_closed_when_paths_missing(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("MTLS_ENFORCE", "true")
     for v in ("MTLS_CERT_FILE", "MTLS_KEY_FILE", "MTLS_CA_FILE"):
-        os.environ.pop(v, None)
-    try:
-        with pytest.raises(RuntimeError, match="MTLS_CERT_FILE"):
-            build_ssl_context()
-    finally:
-        os.environ.pop("MTLS_ENFORCE", None)
+        monkeypatch.delenv(v, raising=False)
+    with pytest.raises(RuntimeError, match="MTLS_CERT_FILE"):
+        build_ssl_context()
 
 
-def test_build_ssl_context_fails_closed_when_cert_unreadable() -> None:
-    os.environ["MTLS_ENFORCE"] = "true"
-    os.environ["MTLS_CERT_FILE"] = "/nonexistent/cert.pem"
+def test_build_ssl_context_fails_closed_when_cert_unreadable(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("MTLS_ENFORCE", "true")
+    monkeypatch.setenv("MTLS_CERT_FILE", "/nonexistent/cert.pem")
     with tempfile.NamedTemporaryFile() as ca:
-        os.environ["MTLS_KEY_FILE"] = ca.name
-        os.environ["MTLS_CA_FILE"] = ca.name
-        try:
-            with pytest.raises((FileNotFoundError, ssl.SSLError, OSError)):
-                build_ssl_context()
-        finally:
-            for v in ("MTLS_ENFORCE", "MTLS_CERT_FILE", "MTLS_KEY_FILE", "MTLS_CA_FILE"):
-                os.environ.pop(v, None)
+        monkeypatch.setenv("MTLS_KEY_FILE", ca.name)
+        monkeypatch.setenv("MTLS_CA_FILE", ca.name)
+        with pytest.raises((FileNotFoundError, ssl.SSLError, OSError)):
+            build_ssl_context()
 
 
 def test_ssl_context_reloader_reloads_on_mtime_advance(tmp_path: Path) -> None:
@@ -138,21 +128,24 @@ def test_watch_cert_rotation_cancels_cleanly(tmp_path: Path) -> None:
     asyncio.run(runner())
 
 
-def test_watch_cert_rotation_logs_warning_on_failure(tmp_path: Path) -> None:
+@pytest.mark.asyncio
+async def test_watch_cert_rotation_logs_warning_on_failure() -> None:
     """Transient watcher failures must be visible at WARNING (not debug-only)."""
     reloader = MagicMock()
     reloader.maybe_reload.side_effect = OSError("boom")
+    warned = asyncio.Event()
 
     with patch("acolyte.infra.mtls_client._logger") as mock_logger:
-
-        async def runner() -> None:
-            task = asyncio.create_task(watch_cert_rotation(reloader, interval_seconds=0.01))
-            await asyncio.sleep(0.05)
-            task.cancel()
-            with pytest.raises(asyncio.CancelledError):
-                await task
-
-        asyncio.run(runner())
+        # Deterministic sync: wait for the actual warning() call instead of a
+        # fixed sleep guessing how many 0.01s loop iterations fit in 0.05s —
+        # that guess is exactly the kind of wall-clock-timing flakiness this
+        # rubric flags (slow/contended CI runners can miss the window).
+        mock_logger.warning.side_effect = lambda *args, **kwargs: warned.set()
+        task = asyncio.create_task(watch_cert_rotation(reloader, interval_seconds=0.001))
+        await asyncio.wait_for(warned.wait(), timeout=5.0)
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await task
 
     mock_logger.warning.assert_called()
     assert any("cert_rotation_iteration_failed" in str(c) for c in mock_logger.warning.call_args_list)

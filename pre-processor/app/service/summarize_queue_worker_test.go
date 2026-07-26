@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -55,14 +56,22 @@ func (m *stubJobRepo) RecoverStuckJobs(_ context.Context) (int64, error) {
 	return 0, nil
 }
 
-// stubArticleRepoForWorker returns a fixed article for FindByID.
+// stubArticleRepoForWorker returns a fixed article for FindByID. A real
+// repository backed by a DB connection pool serializes concurrent reads
+// safely; this stub is exercised directly by ProcessQueue's worker pool (see
+// TestSummarizeQueueWorker_ProcessQueue_UsesConfiguredConcurrency), so
+// findCalls needs its own mutex to avoid a data race that has nothing to do
+// with the production code under test.
 type stubArticleRepoForWorker struct {
 	repository.ArticleRepository
+	mu        sync.Mutex
 	findCalls int
 }
 
 func (m *stubArticleRepoForWorker) FindByID(_ context.Context, _ string) (*domain.Article, error) {
+	m.mu.Lock()
 	m.findCalls++
+	m.mu.Unlock()
 	return &domain.Article{
 		ID:      "article-1",
 		UserID:  "user-1",
@@ -82,13 +91,21 @@ func (m *stubAPIRepoForWorker) SummarizeArticle(_ context.Context, _ *domain.Art
 	return &domain.SummarizedContent{SummaryJapanese: "テスト要約"}, nil
 }
 
-// stubSummaryRepoForWorker tracks calls to Create.
+// stubSummaryRepoForWorker tracks calls to Create. A real repository backed
+// by a DB connection pool serializes concurrent writes safely; this stub is
+// exercised directly by ProcessQueue's worker pool (see
+// TestSummarizeQueueWorker_ProcessQueue_UsesConfiguredConcurrency), so it
+// needs its own mutex to avoid a data race on createCalls that has nothing
+// to do with the production code under test.
 type stubSummaryRepoForWorker struct {
 	repository.SummaryRepository
+	mu          sync.Mutex
 	createCalls int
 }
 
 func (m *stubSummaryRepoForWorker) Create(_ context.Context, _ *domain.ArticleSummary) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	m.createCalls++
 	return nil
 }
@@ -115,10 +132,16 @@ func (m *stubAPIRepoContentTooShort) SummarizeArticle(_ context.Context, _ *doma
 	return nil, domain.ErrContentTooShort
 }
 
-// stubJobRepoTracking tracks UpdateJobStatus calls with their arguments.
+// stubJobRepoTracking tracks UpdateJobStatus calls with their arguments. A
+// real repository backed by a DB connection pool serializes concurrent
+// writes safely; this stub is exercised directly by ProcessQueue's worker
+// pool (see TestSummarizeQueueWorker_ProcessQueue_UsesConfiguredConcurrency),
+// so appends to updateCalls need their own mutex to avoid a data race that
+// has nothing to do with the production code under test.
 type stubJobRepoTracking struct {
 	repository.SummarizeJobRepository
 	jobs         []*domain.SummarizeJob
+	mu           sync.Mutex
 	updateCalls  []updateJobStatusCall
 	recoverCalls int
 }
@@ -139,6 +162,8 @@ func (m *stubJobRepoTracking) DequeueJobs(_ context.Context, _ int) ([]*domain.S
 }
 
 func (m *stubJobRepoTracking) UpdateJobStatus(_ context.Context, jobID string, status domain.SummarizeJobStatus, summary string, errorMsg string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	m.updateCalls = append(m.updateCalls, updateJobStatusCall{
 		jobID:    jobID,
 		status:   status,

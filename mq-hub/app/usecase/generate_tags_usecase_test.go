@@ -178,6 +178,91 @@ func TestGenerateTagsUsecase_GenerateTagsForArticle(t *testing.T) {
 		mockPort.AssertExpectations(t)
 	})
 
+	t.Run("clamps an excessive caller timeout to the maximum allowed", func(t *testing.T) {
+		mockPort := new(MockStreamPort)
+		uc := NewGenerateTagsUsecase(mockPort)
+
+		ctx := context.Background()
+		req := &GenerateTagsRequest{
+			ArticleID: "article-123",
+			Title:     "Test Article",
+			Content:   "Content",
+			FeedID:    "feed-456",
+			// Far above maxTagGenerationTimeoutMs: a client must not be able
+			// to tie up a connection/goroutine with a near-unbounded
+			// blocking XREAD (see maxTagGenerationTimeoutMs doc).
+			TimeoutMs: 999_999,
+		}
+
+		replyPayload, _ := json.Marshal(map[string]interface{}{
+			"success":    true,
+			"article_id": "article-123",
+			"tags":       []map[string]interface{}{},
+		})
+		replyEvent := &domain.Event{
+			EventID:   "reply-1",
+			EventType: domain.EventTypeTagGenerationCompleted,
+			Payload:   replyPayload,
+		}
+
+		mockPort.On("Publish", ctx, domain.StreamKeyTags, mock.AnythingOfType("*domain.Event")).
+			Return("123-0", nil)
+
+		// Must be clamped to maxTagGenerationTimeoutMs (120s), not the
+		// caller-requested ~1000s.
+		mockPort.On("SubscribeWithTimeout", ctx, mock.AnythingOfType("domain.StreamKey"), 120*time.Second).
+			Return(replyEvent, nil)
+
+		mockPort.On("Expire", mock.Anything, mock.AnythingOfType("domain.StreamKey"), replyStreamTTL).Return(nil)
+		mockPort.On("DeleteStream", mock.Anything, mock.AnythingOfType("domain.StreamKey")).Return(nil)
+
+		resp, err := uc.GenerateTagsForArticle(ctx, req)
+
+		require.NoError(t, err)
+		assert.True(t, resp.Success)
+		mockPort.AssertExpectations(t)
+	})
+
+	t.Run("treats a negative caller timeout as unspecified and uses the default", func(t *testing.T) {
+		mockPort := new(MockStreamPort)
+		uc := NewGenerateTagsUsecase(mockPort)
+
+		ctx := context.Background()
+		req := &GenerateTagsRequest{
+			ArticleID: "article-123",
+			Title:     "Test Article",
+			Content:   "Content",
+			FeedID:    "feed-456",
+			TimeoutMs: -5,
+		}
+
+		replyPayload, _ := json.Marshal(map[string]interface{}{
+			"success":    true,
+			"article_id": "article-123",
+			"tags":       []map[string]interface{}{},
+		})
+		replyEvent := &domain.Event{
+			EventID:   "reply-1",
+			EventType: domain.EventTypeTagGenerationCompleted,
+			Payload:   replyPayload,
+		}
+
+		mockPort.On("Publish", ctx, domain.StreamKeyTags, mock.AnythingOfType("*domain.Event")).
+			Return("123-0", nil)
+
+		mockPort.On("SubscribeWithTimeout", ctx, mock.AnythingOfType("domain.StreamKey"), 60*time.Second).
+			Return(replyEvent, nil)
+
+		mockPort.On("Expire", mock.Anything, mock.AnythingOfType("domain.StreamKey"), replyStreamTTL).Return(nil)
+		mockPort.On("DeleteStream", mock.Anything, mock.AnythingOfType("domain.StreamKey")).Return(nil)
+
+		resp, err := uc.GenerateTagsForArticle(ctx, req)
+
+		require.NoError(t, err)
+		assert.True(t, resp.Success)
+		mockPort.AssertExpectations(t)
+	})
+
 	t.Run("handles error response from tag-generator", func(t *testing.T) {
 		mockPort := new(MockStreamPort)
 		uc := NewGenerateTagsUsecase(mockPort)

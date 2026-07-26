@@ -32,54 +32,60 @@ def driver(config):
 
 
 class TestChatStreamOptionsMerge:
-    """chat_stream() must merge config base options with caller options."""
+    """chat_stream() must merge config base options with caller options.
+
+    These assert against the *actual* outgoing /api/chat payload (via the
+    same ``_make_mock_session`` harness used later in this file), not against
+    a same-file dict-merge stand-in -- the previous version of these tests
+    built `merged = {**base_opts, **caller_opts}` inline and asserted on
+    that literal, which is true by definition regardless of what
+    `driver.chat_stream()` / `driver._merge_options()` actually do.
+    """
 
     @pytest.mark.asyncio
     async def test_base_options_included_when_caller_has_no_options(self, driver):
-        """When caller sends no options, config base options are used."""
+        """When caller sends no options, config base options reach Ollama."""
+        lines = [b'{"message":{"role":"assistant","content":"hi"},"done":true}\n']
+        session, captured = _make_mock_session(response_lines=lines)
+        driver.session = session
 
-        captured_payload = {}
+        payload = {
+            "model": "gemma4-e4b-12k",
+            "messages": [{"role": "user", "content": "test"}],
+        }
+        async for _ in driver.chat_stream(payload):
+            pass
 
-        async def fake_post(url, json=None):
-            captured_payload.update(json)
-            mock_resp = AsyncMock()
-            mock_resp.status = 200
-            mock_resp.content.__aiter__ = AsyncMock(
-                return_value=iter(
-                    [b'{"response": "hi", "done": true, "done_reason": "stop"}\n']
-                )
-            )
-            return mock_resp
-
-        mock_session = AsyncMock()
-        mock_session.closed = False
-        mock_session.post = MagicMock(return_value=AsyncMock())
-        mock_session.post.return_value.__aenter__ = AsyncMock(side_effect=fake_post)
-
-        # Use a simpler approach: mock the session.post context manager
-        driver.session = MagicMock()
-        driver.session.closed = False
-
-        # Patch at a higher level - verify the payload building
         base_opts = driver.config.get_llm_options()
-        assert "num_batch" in base_opts
-        assert "num_keep" in base_opts
-        assert "stop" in base_opts
+        sent_options = captured["json"]["options"]
+        assert sent_options["num_batch"] == base_opts["num_batch"]
+        assert sent_options["num_keep"] == base_opts["num_keep"]
+        assert sent_options["stop"] == base_opts["stop"]
 
     @pytest.mark.asyncio
     async def test_caller_options_override_base(self, driver):
-        """Caller's num_predict overrides config default."""
-        base_opts = driver.config.get_llm_options()
-        assert base_opts["num_predict"] == 1200  # config default
+        """Caller's num_predict/temperature reach Ollama; base fields survive."""
+        lines = [b'{"message":{"role":"assistant","content":"hi"},"done":true}\n']
+        session, captured = _make_mock_session(response_lines=lines)
+        driver.session = session
 
-        # After merge, caller's value should win
-        caller_opts = {"num_predict": 2048, "temperature": 0.3}
-        merged = {**base_opts, **caller_opts}
-        assert merged["num_predict"] == 2048
-        assert merged["temperature"] == 0.3
-        # Base options still present
-        assert merged["num_batch"] == 1024
-        assert merged["num_keep"] == -1
+        base_opts = driver.config.get_llm_options()
+        assert base_opts["num_predict"] == 1200  # config default (sanity check)
+
+        payload = {
+            "model": "gemma4-e4b-12k",
+            "messages": [{"role": "user", "content": "test"}],
+            "options": {"num_predict": 2048, "temperature": 0.3},
+        }
+        async for _ in driver.chat_stream(payload):
+            pass
+
+        sent_options = captured["json"]["options"]
+        assert sent_options["num_predict"] == 2048
+        assert sent_options["temperature"] == 0.3
+        # Base (unrelated to the override) options still present
+        assert sent_options["num_batch"] == base_opts["num_batch"]
+        assert sent_options["num_keep"] == base_opts["num_keep"]
 
     def test_config_base_options_structure(self, config):
         """Config base options contain all required Ollama parameters."""
@@ -99,24 +105,47 @@ class TestChatStreamOptionsMerge:
 
 
 class TestChatGenerateOptionsMerge:
-    """chat_generate() must also merge config base options (non-streaming)."""
+    """chat_generate() must also merge config base options (non-streaming).
+
+    Like ``TestChatStreamOptionsMerge`` above, these assert against the real
+    outgoing /api/chat payload rather than an inline dict-merge stand-in.
+    """
 
     @pytest.mark.asyncio
     async def test_base_options_included(self, driver):
-        """Non-streaming chat_generate includes config base options."""
-        base_opts = driver.config.get_llm_options()
-        assert base_opts["num_batch"] == 1024
-        assert base_opts["num_keep"] == -1
-        assert "<turn|>" in base_opts["stop"]
+        """Non-streaming chat_generate forwards config base options."""
+        body = {"message": {"role": "assistant", "content": "ok"}, "done": True}
+        session, captured = _make_mock_session(json_body=body)
+        driver.session = session
+
+        payload = {
+            "model": "gemma4-e4b-12k",
+            "messages": [{"role": "user", "content": "test"}],
+        }
+        await driver.chat_generate(payload)
+
+        sent_options = captured["json"]["options"]
+        assert sent_options["num_batch"] == 1024
+        assert sent_options["num_keep"] == -1
+        assert "<turn|>" in sent_options["stop"]
 
     @pytest.mark.asyncio
     async def test_caller_options_override(self, driver):
         """Caller options override config defaults in chat_generate."""
-        base_opts = driver.config.get_llm_options()
-        caller_opts = {"num_predict": 4096}
-        merged = {**base_opts, **caller_opts}
-        assert merged["num_predict"] == 4096
-        assert merged["num_batch"] == 1024  # preserved from base
+        body = {"message": {"role": "assistant", "content": "ok"}, "done": True}
+        session, captured = _make_mock_session(json_body=body)
+        driver.session = session
+
+        payload = {
+            "model": "gemma4-e4b-12k",
+            "messages": [{"role": "user", "content": "test"}],
+            "options": {"num_predict": 4096},
+        }
+        await driver.chat_generate(payload)
+
+        sent_options = captured["json"]["options"]
+        assert sent_options["num_predict"] == 4096
+        assert sent_options["num_batch"] == 1024  # preserved from base
 
 
 # ---------------------------------------------------------------------------

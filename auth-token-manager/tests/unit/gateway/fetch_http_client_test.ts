@@ -1,5 +1,5 @@
 import { afterEach, describe, it } from "@std/testing/bdd";
-import { assertEquals } from "@std/testing/asserts";
+import { assertEquals, assertRejects } from "@std/testing/asserts";
 import { stub } from "@std/testing/mock";
 import { FetchHttpClient } from "../../../src/gateway/fetch_http_client.ts";
 import type { NetworkConfig } from "../../../src/domain/types.ts";
@@ -62,6 +62,122 @@ describe("FetchHttpClient", {
       assertEquals(fetchStub.calls.length, 1);
     } finally {
       fetchStub.restore();
+    }
+  });
+
+  it("should forward the exact url, method, headers, body and an abort signal to fetch", async () => {
+    const fetchStub = stub(
+      globalThis,
+      "fetch",
+      () => Promise.resolve(new Response("ok", { status: 200 })),
+    );
+
+    try {
+      const client = new FetchHttpClient(networkConfig);
+      await client.fetch("https://example.com/api/token", {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: "refresh_token=abc",
+      });
+
+      assertEquals(fetchStub.calls.length, 1);
+      const [calledUrl, calledOptions] = fetchStub.calls[0].args as [
+        string,
+        RequestInit,
+      ];
+      assertEquals(calledUrl, "https://example.com/api/token");
+      assertEquals(calledOptions.method, "POST");
+      assertEquals(calledOptions.headers, {
+        "Content-Type": "application/x-www-form-urlencoded",
+      });
+      assertEquals(calledOptions.body, "refresh_token=abc");
+      // A garbled/missing signal would silently disable the http_timeout.
+      assertEquals(calledOptions.signal instanceof AbortSignal, true);
+    } finally {
+      fetchStub.restore();
+    }
+  });
+
+  it("should throw a descriptive timeout error (not the raw AbortError) when the request aborts", async () => {
+    const abortError = new Error("The signal has been aborted");
+    abortError.name = "AbortError";
+
+    const fetchStub = stub(
+      globalThis,
+      "fetch",
+      () => Promise.reject(abortError),
+    );
+
+    try {
+      const client = new FetchHttpClient(networkConfig);
+      await assertRejects(
+        () => client.fetch("https://example.com/api/token"),
+        Error,
+        `HTTP request timed out after ${networkConfig.http_timeout}ms: https://example.com/api/token`,
+      );
+    } finally {
+      fetchStub.restore();
+    }
+  });
+
+  it("should propagate non-timeout fetch errors unchanged", async () => {
+    const fetchStub = stub(
+      globalThis,
+      "fetch",
+      () => Promise.reject(new Error("network unreachable")),
+    );
+
+    try {
+      const client = new FetchHttpClient(networkConfig);
+      await assertRejects(
+        () => client.fetch("https://example.com/api/token"),
+        Error,
+        "network unreachable",
+      );
+    } finally {
+      fetchStub.restore();
+    }
+  });
+
+  it("should route through a direct (non-proxied) Deno.createHttpClient and close it afterwards when NETWORK_FALLBACK_TO_DIRECT=true and a proxy is configured", async () => {
+    Deno.env.set("HTTPS_PROXY", "http://proxy.internal:8080");
+    Deno.env.set("NETWORK_FALLBACK_TO_DIRECT", "true");
+
+    let closed = false;
+    const fakeDirectClient = {
+      close: () => {
+        closed = true;
+      },
+    } as unknown as Deno.HttpClient;
+
+    const createHttpClientStub = stub(
+      Deno,
+      "createHttpClient",
+      () => fakeDirectClient,
+    );
+    const fetchStub = stub(
+      globalThis,
+      "fetch",
+      () => Promise.resolve(new Response("ok", { status: 200 })),
+    );
+
+    try {
+      const client = new FetchHttpClient(networkConfig);
+      await client.fetch("https://www.inoreader.com/oauth2/token", {
+        method: "POST",
+      });
+
+      assertEquals(createHttpClientStub.calls.length, 1);
+      const [, calledOptions] = fetchStub.calls[0].args as [
+        string,
+        RequestInit & { client?: unknown },
+      ];
+      assertEquals(calledOptions.client, fakeDirectClient);
+      // The per-request client must not leak past the request.
+      assertEquals(closed, true);
+    } finally {
+      fetchStub.restore();
+      createHttpClientStub.restore();
     }
   });
 });

@@ -2,11 +2,11 @@ package resilience
 
 import (
 	"errors"
+	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 )
 
 func TestNewCircuitBreaker(t *testing.T) {
@@ -234,11 +234,13 @@ func TestCircuitBreaker_ConcurrentAccess(t *testing.T) {
 	})
 
 	done := make(chan bool)
+	var successesAllowed, failuresAllowed int64
 
 	// Concurrent successes
 	go func() {
 		for i := 0; i < 50; i++ {
 			if cb.Allow() {
+				atomic.AddInt64(&successesAllowed, 1)
 				cb.RecordSuccess()
 			}
 		}
@@ -249,6 +251,7 @@ func TestCircuitBreaker_ConcurrentAccess(t *testing.T) {
 	go func() {
 		for i := 0; i < 50; i++ {
 			if cb.Allow() {
+				atomic.AddInt64(&failuresAllowed, 1)
 				cb.RecordFailure()
 			}
 		}
@@ -268,8 +271,18 @@ func TestCircuitBreaker_ConcurrentAccess(t *testing.T) {
 	<-done
 	<-done
 
-	// If we got here without panic, concurrent access is safe
-	require.True(t, true)
+	// FailureThreshold is 100 and at most 50 failures can ever be recorded,
+	// so the circuit never opens and every Allow() call above returns true.
+	// Stats() must therefore reflect exactly the calls this test allowed
+	// through — a lost update here (e.g. a non-atomic counter, or a missing
+	// lock in Stats()) would indicate a real data race, which this
+	// invariant check surfaces under `go test -race` where the old
+	// "didn't panic" assertion could not.
+	stats := cb.Stats()
+	assert.Equal(t, successesAllowed, stats.TotalSuccesses,
+		"recorded successes must match the calls this test allowed through")
+	assert.Equal(t, failuresAllowed, stats.TotalFailures,
+		"recorded failures must match the calls this test allowed through")
 }
 
 func TestCircuitBreaker_Stats(t *testing.T) {

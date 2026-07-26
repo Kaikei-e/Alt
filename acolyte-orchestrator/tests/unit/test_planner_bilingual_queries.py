@@ -67,6 +67,8 @@ async def test_planner_fallback_includes_english_variant_for_japanese_topic() ->
 
     result = await node({"brief": {"topic": "イラン情勢分析", "report_type": "weekly_briefing"}})
 
+    # An empty outline would make the loop below a silent no-op.
+    assert result["outline"], "fallback must still produce an outline"
     for section in result["outline"]:
         queries = section["search_queries"]
         assert queries, f"section {section['key']} must have at least one fallback query"

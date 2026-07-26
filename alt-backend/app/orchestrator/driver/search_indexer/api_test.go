@@ -1,9 +1,13 @@
 package search_indexer
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
+	"strings"
 	"testing"
 	"time"
 
@@ -122,6 +126,11 @@ func TestBuildSearchURLWithUserID(t *testing.T) {
 	}
 }
 
+// The tests below exercise doSearchRequest directly (this file lives in the
+// same package as api.go) rather than SearchArticles/SearchArticlesWithUserID,
+// because doSearchRequest already accepts an arbitrary target endpoint - no
+// production refactor is needed to point it at an httptest server.
+
 func TestSearchArticles_Success(t *testing.T) {
 	// Create a test server that returns valid search results
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -143,28 +152,66 @@ func TestSearchArticles_Success(t *testing.T) {
 	}))
 	defer server.Close()
 
-	// We need to modify the function to accept a custom host/port or use dependency injection
-	// For now, this test documents the expected behavior
-	// TODO: Refactor to allow testable HTTP client injection
-	t.Skip("Requires refactoring to inject test server URL")
+	target, err := BuildSearchURL(server.URL, "/v1/search", "test")
+	if err != nil {
+		t.Fatalf("BuildSearchURL() unexpected error: %v", err)
+	}
+
+	hits, err := doSearchRequest(context.Background(), target)
+	if err != nil {
+		t.Fatalf("doSearchRequest() unexpected error: %v", err)
+	}
+
+	want := []models.SearchArticlesHit{
+		{ID: "1", Title: "Test Article", Content: "Content 1"},
+		{ID: "2", Title: "Another Article", Content: "Content 2"},
+	}
+	if len(hits) != len(want) {
+		t.Fatalf("doSearchRequest() returned %d hits, want %d", len(hits), len(want))
+	}
+	for i := range want {
+		if !reflect.DeepEqual(hits[i], want[i]) {
+			t.Errorf("doSearchRequest() hit[%d] = %+v, want %+v", i, hits[i], want[i])
+		}
+	}
 }
 
 func TestSearchArticles_ServiceUnavailable(t *testing.T) {
-	// Test when search-indexer service is not available
-	// This should return ErrSearchServiceUnavailable
-	t.Skip("Requires refactoring to inject test server URL and implementing ErrSearchServiceUnavailable")
+	// Start and immediately close a server so the connection is refused,
+	// exercising the isConnectionError -> ErrSearchServiceUnavailable path.
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}))
+	target := server.URL + "/v1/search?q=test"
+	server.Close()
+
+	hits, err := doSearchRequest(context.Background(), target)
+	if !errors.Is(err, ErrSearchServiceUnavailable) {
+		t.Errorf("doSearchRequest() error = %v, want ErrSearchServiceUnavailable", err)
+	}
+	if hits != nil {
+		t.Errorf("doSearchRequest() hits = %v, want nil on error", hits)
+	}
 }
 
 func TestSearchArticles_Timeout(t *testing.T) {
-	// Create a test server that delays response beyond timeout
+	// Server responds slower than the caller's context deadline, exercising
+	// the isTimeoutError -> ErrSearchTimeout path without waiting on the
+	// package's full 10s http.Client timeout.
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		time.Sleep(15 * time.Second) // Longer than 10s timeout
+		time.Sleep(200 * time.Millisecond)
 		w.WriteHeader(http.StatusOK)
 	}))
 	defer server.Close()
 
-	// TODO: Refactor to allow testable HTTP client injection
-	t.Skip("Requires refactoring to inject test server URL and implementing ErrSearchTimeout")
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
+	defer cancel()
+
+	hits, err := doSearchRequest(ctx, server.URL+"/v1/search?q=test")
+	if !errors.Is(err, ErrSearchTimeout) {
+		t.Errorf("doSearchRequest() error = %v, want ErrSearchTimeout", err)
+	}
+	if hits != nil {
+		t.Errorf("doSearchRequest() hits = %v, want nil on error", hits)
+	}
 }
 
 func TestSearchArticles_Non200Status(t *testing.T) {
@@ -175,8 +222,16 @@ func TestSearchArticles_Non200Status(t *testing.T) {
 	}))
 	defer server.Close()
 
-	// TODO: Refactor to allow testable HTTP client injection
-	t.Skip("Requires refactoring to inject test server URL")
+	hits, err := doSearchRequest(context.Background(), server.URL+"/v1/search?q=test")
+	if err == nil {
+		t.Fatal("doSearchRequest() expected error for non-200 status, got nil")
+	}
+	if !strings.Contains(err.Error(), "500") {
+		t.Errorf("doSearchRequest() error = %v, want it to mention status 500", err)
+	}
+	if hits != nil {
+		t.Errorf("doSearchRequest() hits = %v, want nil on error", hits)
+	}
 }
 
 func TestSearchArticles_InvalidJSON(t *testing.T) {
@@ -187,8 +242,16 @@ func TestSearchArticles_InvalidJSON(t *testing.T) {
 	}))
 	defer server.Close()
 
-	// TODO: Refactor to allow testable HTTP client injection
-	t.Skip("Requires refactoring to inject test server URL")
+	hits, err := doSearchRequest(context.Background(), server.URL+"/v1/search?q=test")
+	if err == nil {
+		t.Fatal("doSearchRequest() expected error for invalid JSON, got nil")
+	}
+	if !strings.Contains(err.Error(), "unmarshal") {
+		t.Errorf("doSearchRequest() error = %v, want it to mention unmarshal failure", err)
+	}
+	if hits != nil {
+		t.Errorf("doSearchRequest() hits = %v, want nil on error", hits)
+	}
 }
 
 // TestSearchArticlesWithUserID tests are similar to TestSearchArticles
@@ -196,8 +259,8 @@ func TestSearchArticles_InvalidJSON(t *testing.T) {
 
 func TestSearchArticlesWithUserID_Success(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Query().Get("user_id") == "" {
-			t.Errorf("Expected user_id parameter, got none")
+		if got := r.URL.Query().Get("user_id"); got != "user-123" {
+			t.Errorf("Expected user_id=user-123, got %q", got)
 		}
 
 		response := models.SearchArticlesAPIResponse{
@@ -210,7 +273,19 @@ func TestSearchArticlesWithUserID_Success(t *testing.T) {
 	}))
 	defer server.Close()
 
-	t.Skip("Requires refactoring to inject test server URL")
+	target, err := BuildSearchURLWithUserID(server.URL, "/v1/search", "test", "user-123")
+	if err != nil {
+		t.Fatalf("BuildSearchURLWithUserID() unexpected error: %v", err)
+	}
+
+	hits, err := doSearchRequest(context.Background(), target)
+	if err != nil {
+		t.Fatalf("doSearchRequest() unexpected error: %v", err)
+	}
+	want := []models.SearchArticlesHit{{ID: "1", Title: "Test Article", Content: "Content 1"}}
+	if len(hits) != len(want) || !reflect.DeepEqual(hits[0], want[0]) {
+		t.Errorf("doSearchRequest() hits = %+v, want %+v", hits, want)
+	}
 }
 
 // Test for specific error types that should be added

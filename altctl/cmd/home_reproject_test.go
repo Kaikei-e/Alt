@@ -2,6 +2,8 @@ package cmd
 
 import (
 	"bytes"
+	"io"
+	"os"
 	"strings"
 	"testing"
 
@@ -19,6 +21,66 @@ func setupHomeTest(t *testing.T) {
 	}
 	dryRun = false
 	quiet = false
+}
+
+// captureStdout redirects both os.Stdout and os.Stderr for the duration of
+// fn and returns everything written to either, combined. The home/migrate
+// command tree renders its tables and printer.* messages directly to
+// os.Stdout/os.Stderr (see internal/output.Table and internal/output.
+// Printer — notably Warning/Error go to stderr, Success/Info/Header go to
+// stdout), bypassing whatever writer is installed via rootCmd.SetOut.
+// Without this, tests can only observe "did the command error?" and are
+// blind to the actual rendered content — meaning a broken field mapping,
+// a dropped warning, or a wrong table layout would slip through silently.
+// Not parallel-safe: no test in this package calls t.Parallel(), and this
+// must stay that way for any test using it.
+func captureStdout(t *testing.T, fn func()) string {
+	t.Helper()
+
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatalf("failed to create pipe: %v", err)
+	}
+	originalOut, originalErr := os.Stdout, os.Stderr
+	os.Stdout = w
+	os.Stderr = w
+	t.Cleanup(func() {
+		os.Stdout = originalOut
+		os.Stderr = originalErr
+	})
+
+	fn()
+
+	os.Stdout = originalOut
+	os.Stderr = originalErr
+	if err := w.Close(); err != nil {
+		t.Fatalf("failed to close pipe writer: %v", err)
+	}
+
+	out, err := io.ReadAll(r)
+	if err != nil {
+		t.Fatalf("failed to read captured stdout: %v", err)
+	}
+	return string(out)
+}
+
+// assertRowContains fails the test unless some line of out contains both
+// label and value. Table column widths (and thus inter-column padding)
+// depend on the widest cell in the column, so tests must not hardcode exact
+// spacing — matching "same line contains both substrings" is what actually
+// pins down "this field's row shows this value" without coupling to
+// tablewriter's layout.
+func assertRowContains(t *testing.T, out, label, value string) {
+	t.Helper()
+	for _, line := range strings.Split(out, "\n") {
+		if strings.Contains(line, label) {
+			if !strings.Contains(line, value) {
+				t.Errorf("expected row for %q to contain %q, got line: %q", label, value, line)
+			}
+			return
+		}
+	}
+	t.Errorf("expected output to contain a row for %q, got:\n%s", label, out)
 }
 
 func TestHomeCmd_Exists(t *testing.T) {

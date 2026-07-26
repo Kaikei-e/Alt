@@ -124,29 +124,19 @@ mod tests {
     use tokio::fs::File;
     use tokio::io::AsyncWriteExt;
 
-    #[tokio::test]
-    async fn test_disk_cleaner_shutdown_signal() {
-        let temp_dir = TempDir::new().unwrap();
-        let cancel_token = CancellationToken::new();
-
-        let cleaner = DiskCleaner::new(
-            temp_dir.path(),
-            1024 * 1024, // 1MB limit
-            Duration::from_millis(100),
-        );
-
-        let handle = cleaner.spawn(cancel_token.clone());
-
-        // Give it a moment to start
-        tokio::time::sleep(Duration::from_millis(50)).await;
-
-        // Send shutdown signal
-        cancel_token.cancel();
-
-        // Should complete within reasonable time
-        let result = tokio::time::timeout(Duration::from_secs(1), handle).await;
-        assert!(result.is_ok(), "DiskCleaner should shutdown gracefully");
-    }
+    // =========================================================================
+    // `perform_cleanup`: exercised directly (no spawned loop, no sleeps)
+    // =========================================================================
+    //
+    // The previous versions of these tests drove `perform_cleanup` indirectly
+    // through `spawn()` + a real `tokio::time::sleep` long enough to "probably"
+    // cover one interval tick, then asserted on the filesystem afterwards. That
+    // makes the cleanup *logic* only as reliable as the wall-clock guess: a
+    // slow CI runner can observe the tick fire without the async fs work
+    // finishing, an assertion race that either flakes red or silently passes
+    // for the wrong reason. `perform_cleanup` is a private inherent method,
+    // reachable here via `use super::*;` — calling it directly removes the
+    // timing dependency entirely and tests the actual cleanup behavior.
 
     #[tokio::test]
     async fn test_disk_cleaner_performs_cleanup() {
@@ -156,38 +146,30 @@ mod tests {
         let file1 = temp_dir.path().join("test1.json");
         let file2 = temp_dir.path().join("test2.json");
 
-        // Create files with different timestamps (file1 is older)
+        // Create files with different timestamps (file1 is older). The ext
+        // used by CI filesystems has coarser-than-nanosecond mtime
+        // resolution, so a real (short) gap is still required here to get
+        // a deterministic ordering — this is filesystem setup, not a wait
+        // on the code under test.
         {
             let mut f = File::create(&file1).await.unwrap();
             f.write_all(&vec![b'a'; 600]).await.unwrap();
             f.sync_all().await.unwrap();
         }
-
-        // Small delay to ensure different timestamps
         tokio::time::sleep(Duration::from_millis(10)).await;
-
         {
             let mut f = File::create(&file2).await.unwrap();
             f.write_all(&vec![b'b'; 600]).await.unwrap();
             f.sync_all().await.unwrap();
         }
 
-        let cancel_token = CancellationToken::new();
-
         let cleaner = DiskCleaner::new(
             temp_dir.path(),
             500, // 500 bytes limit - should trigger cleanup
-            Duration::from_millis(50),
+            Duration::from_hours(1),
         );
 
-        let handle = cleaner.spawn(cancel_token.clone());
-
-        // Wait for cleanup to happen
-        tokio::time::sleep(Duration::from_millis(150)).await;
-
-        // Shutdown
-        cancel_token.cancel();
-        let _ = tokio::time::timeout(Duration::from_secs(1), handle).await;
+        cleaner.perform_cleanup().await.unwrap();
 
         // Verify that the oldest file was removed (test1.json)
         // and the newest file was kept (test2.json)
@@ -220,22 +202,13 @@ mod tests {
             f.write_all(b"small").await.unwrap();
         }
 
-        let cancel_token = CancellationToken::new();
-
         let cleaner = DiskCleaner::new(
             temp_dir.path(),
             1024 * 1024, // 1MB limit
-            Duration::from_millis(50),
+            Duration::from_hours(1),
         );
 
-        let handle = cleaner.spawn(cancel_token.clone());
-
-        // Wait for a cleanup cycle
-        tokio::time::sleep(Duration::from_millis(100)).await;
-
-        // Shutdown
-        cancel_token.cancel();
-        let _ = tokio::time::timeout(Duration::from_secs(1), handle).await;
+        cleaner.perform_cleanup().await.unwrap();
 
         // File should still exist
         assert!(
@@ -255,24 +228,43 @@ mod tests {
             f.write_all(&vec![b'x'; 2000]).await.unwrap();
         }
 
-        let cancel_token = CancellationToken::new();
-
         let cleaner = DiskCleaner::new(
             temp_dir.path(),
             100, // Very small limit
-            Duration::from_millis(50),
+            Duration::from_hours(1),
         );
 
-        let handle = cleaner.spawn(cancel_token.clone());
-
-        // Wait for cleanup cycle
-        tokio::time::sleep(Duration::from_millis(100)).await;
-
-        // Shutdown
-        cancel_token.cancel();
-        let _ = tokio::time::timeout(Duration::from_secs(1), handle).await;
+        cleaner.perform_cleanup().await.unwrap();
 
         // File should still exist (keep at least one)
         assert!(file1.exists(), "Should keep at least one file");
+    }
+
+    // =========================================================================
+    // `run`: shutdown behavior of the spawned loop itself
+    // =========================================================================
+
+    #[tokio::test]
+    async fn test_disk_cleaner_shutdown_signal() {
+        let temp_dir = TempDir::new().unwrap();
+        let cancel_token = CancellationToken::new();
+
+        // A long interval: the test only exercises the cancellation branch
+        // of `select!`, never the tick branch, so there is nothing timing
+        // dependent to wait out.
+        let cleaner = DiskCleaner::new(temp_dir.path(), 1024 * 1024, Duration::from_hours(1));
+
+        let handle = cleaner.spawn(cancel_token.clone());
+
+        // Cancel immediately: no arbitrary "give it a moment to start" sleep
+        // is needed. `tokio::select!` in `run()` races `cancel_token.cancelled()`
+        // against the interval sleep; since cancellation is requested before
+        // the loop is ever polled, the cancelled branch is already ready the
+        // first time the task runs and wins deterministically.
+        cancel_token.cancel();
+
+        // Should complete within reasonable time
+        let result = tokio::time::timeout(Duration::from_secs(1), handle).await;
+        assert!(result.is_ok(), "DiskCleaner should shutdown gracefully");
     }
 }

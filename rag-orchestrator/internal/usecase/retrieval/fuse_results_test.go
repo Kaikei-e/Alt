@@ -158,10 +158,14 @@ func TestFuseResults_WithBM25Fusion(t *testing.T) {
 	err := retrieval.FuseResults(context.Background(), sc, mockRepo, logger)
 	require.NoError(t, err)
 
-	// After BM25 fusion, original results should have fused scores
-	assert.Len(t, sc.HitsOriginal, 1)
-	// Score should be RRF-based (not original vector score)
-	assert.True(t, sc.HitsOriginal[0].Score > 0)
+	// After BM25 fusion, original results should have fused scores: the
+	// vector hit (rank 1) and the BM25 hit (rank 1) both contribute
+	// 1/(RRFK+rank) to the same article, so the fused score is the RRF sum,
+	// not the raw 0.90 vector similarity score.
+	wantRRFScore := float32(1.0/(60.0+1.0) + 1.0/(60.0+1.0))
+	require.Len(t, sc.HitsOriginal, 1)
+	assert.InDelta(t, wantRRFScore, sc.HitsOriginal[0].Score, 0.0001, "score must be the RRF fusion of vector+BM25 ranks, not the original vector score")
+	assert.NotEqual(t, float32(0.90), sc.HitsOriginal[0].Score, "fused score must differ from the raw vector score")
 }
 
 func TestFuseResults_SearchError(t *testing.T) {

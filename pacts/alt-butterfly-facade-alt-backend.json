@@ -15,7 +15,8 @@
           "feedId": "nonexistent-feed"
         },
         "headers": {
-          "Content-Type": "application/json"
+          "Content-Type": "application/json",
+          "X-Alt-Backend-Token": "header.payload.signature"
         },
         "matchingRules": {
           "body": {
@@ -24,6 +25,17 @@
               "matchers": [
                 {
                   "match": "type"
+                }
+              ]
+            }
+          },
+          "header": {
+            "X-Alt-Backend-Token": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "^[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]+$"
                 }
               ]
             }
@@ -65,7 +77,21 @@
       "request": {
         "body": {},
         "headers": {
-          "Content-Type": "application/json"
+          "Content-Type": "application/json",
+          "X-Alt-Backend-Token": "header.payload.signature"
+        },
+        "matchingRules": {
+          "header": {
+            "X-Alt-Backend-Token": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "^[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]+$"
+                }
+              ]
+            }
+          }
         },
         "method": "POST",
         "path": "/alt.feeds.v2.FeedService/GetFeedStats"

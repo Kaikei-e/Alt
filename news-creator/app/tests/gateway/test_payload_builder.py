@@ -191,7 +191,7 @@ class TestGeneratePayload:
             raw=True,
         )
 
-        with pytest.raises(AttributeError):
+        with pytest.raises(AttributeError, match="cannot assign to field 'model'"):
             payload.model = "other-model"
 
 

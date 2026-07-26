@@ -25,6 +25,30 @@ function createMockHttpClient(
   };
 }
 
+/** Like createMockHttpClient, but also records the url/init of every call
+ * so tests can assert on exactly what was sent to the token endpoint. */
+function createCapturingHttpClient(
+  responseBody: Record<string, unknown>,
+  status = 200,
+): {
+  httpClient: HttpClient;
+  calls: Array<{ url: string; init: RequestInit }>;
+} {
+  const calls: Array<{ url: string; init: RequestInit }> = [];
+  const httpClient: HttpClient = {
+    fetch: (url: string, init: RequestInit = {}) => {
+      calls.push({ url, init });
+      return Promise.resolve(
+        new Response(JSON.stringify(responseBody), {
+          status,
+          headers: { "Content-Type": "application/json" },
+        }),
+      );
+    },
+  };
+  return { httpClient, calls };
+}
+
 describe("InoreaderTokenClient", {
   sanitizeResources: false,
   sanitizeOps: false,
@@ -111,6 +135,94 @@ describe("InoreaderTokenClient", {
       Error,
       "invalid access_token format",
     );
+  });
+
+  it("should throw when refresh_token is missing in response", async () => {
+    const httpClient = createMockHttpClient({
+      access_token: "new-access-token-from-inoreader",
+      expires_in: 3600,
+    });
+
+    const client = new InoreaderTokenClient(TEST_CREDENTIALS, httpClient);
+
+    await assertRejects(
+      () => client.refreshToken("valid-token"),
+      Error,
+      "missing refresh_token",
+    );
+  });
+
+  it("should throw when refresh_token is too short", async () => {
+    const httpClient = createMockHttpClient({
+      access_token: "new-access-token-from-inoreader",
+      refresh_token: "short",
+      expires_in: 3600,
+    });
+
+    const client = new InoreaderTokenClient(TEST_CREDENTIALS, httpClient);
+
+    await assertRejects(
+      () => client.refreshToken("valid-token"),
+      Error,
+      "invalid refresh_token format",
+    );
+  });
+
+  it("should throw when expires_in is missing in response", async () => {
+    const httpClient = createMockHttpClient({
+      access_token: "new-access-token-from-inoreader",
+      refresh_token: "new-refresh-token-from-inoreader",
+    });
+
+    const client = new InoreaderTokenClient(TEST_CREDENTIALS, httpClient);
+
+    await assertRejects(
+      () => client.refreshToken("valid-token"),
+      Error,
+      "missing or invalid expires_in",
+    );
+  });
+
+  it("should send grant_type=refresh_token with client credentials and the refresh token in the request body", async () => {
+    const { httpClient, calls } = createCapturingHttpClient({
+      access_token: "new-access-token-from-inoreader",
+      refresh_token: "new-refresh-token-from-inoreader",
+      expires_in: 3600,
+    });
+
+    const client = new InoreaderTokenClient(TEST_CREDENTIALS, httpClient);
+    await client.refreshToken("old-refresh-token-1234567890");
+
+    assertEquals(calls.length, 1);
+    assertEquals(calls[0].url, "https://www.inoreader.com/oauth2/token");
+    assertEquals(calls[0].init.method, "POST");
+
+    const body = calls[0].init.body as URLSearchParams;
+    assertEquals(body.get("grant_type"), "refresh_token");
+    assertEquals(body.get("client_id"), TEST_CREDENTIALS.client_id);
+    assertEquals(body.get("client_secret"), TEST_CREDENTIALS.client_secret);
+    assertEquals(body.get("refresh_token"), "old-refresh-token-1234567890");
+  });
+
+  it("should send grant_type=authorization_code with client credentials, redirect_uri and the code in the request body", async () => {
+    const { httpClient, calls } = createCapturingHttpClient({
+      access_token: "code-exchange-access-token",
+      refresh_token: "code-exchange-refresh-token",
+      expires_in: 3600,
+    });
+
+    const client = new InoreaderTokenClient(TEST_CREDENTIALS, httpClient);
+    await client.exchangeCode("auth-code-123");
+
+    assertEquals(calls.length, 1);
+    assertEquals(calls[0].url, "https://www.inoreader.com/oauth2/token");
+
+    const body = calls[0].init.body as URLSearchParams;
+    assertEquals(body.get("grant_type"), "authorization_code");
+    assertEquals(body.get("client_id"), TEST_CREDENTIALS.client_id);
+    assertEquals(body.get("client_secret"), TEST_CREDENTIALS.client_secret);
+    assertEquals(body.get("redirect_uri"), TEST_CREDENTIALS.redirect_uri);
+    assertEquals(body.get("code"), "auth-code-123");
   });
 
   it("should exchange authorization code for tokens", async () => {

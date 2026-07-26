@@ -145,6 +145,10 @@ func TestHandler_Publish(t *testing.T) {
 
 		require.Error(t, err)
 		assert.False(t, resp.Msg.Success)
+		// Redis/driver failures must map to Unavailable, not the generic
+		// CodeUnknown, so callers can distinguish "retry me" from a bad
+		// request (see mapPublishErr).
+		assert.Equal(t, connect.CodeUnavailable, connect.CodeOf(err))
 		mockPort.AssertExpectations(t)
 	})
 }
@@ -214,7 +218,77 @@ func TestHandler_PublishBatch(t *testing.T) {
 		require.Error(t, err)
 		assert.Equal(t, int32(0), resp.Msg.SuccessCount)
 		assert.Equal(t, int32(1), resp.Msg.FailureCount)
+		assert.Equal(t, connect.CodeUnavailable, connect.CodeOf(err))
 		mockPort.AssertExpectations(t)
+	})
+
+	t.Run("returns partial result and a non-OK status when some events fail", func(t *testing.T) {
+		mockPort := new(MockStreamPort)
+		uc := usecase.NewPublishUsecase(mockPort)
+		handler := NewHandler(uc)
+
+		ctx := context.Background()
+
+		partialErr := &domain.PartialPublishError{
+			TotalEvents: 2,
+			Failures: []domain.PublishFailure{
+				{Index: 1, Err: errors.New("connection reset")},
+			},
+		}
+		mockPort.On("PublishBatch", ctx, domain.StreamKey("articles"), mock.AnythingOfType("[]*domain.Event")).
+			Return([]string{"123-0", ""}, partialErr)
+
+		req := connect.NewRequest(&mqhubv1.PublishBatchRequest{
+			Stream: "articles",
+			Events: []*mqhubv1.Event{
+				{EventId: "test-1", EventType: "ArticleCreated", Source: "alt-backend", CreatedAt: timestamppb.New(time.Now())},
+				{EventId: "test-2", EventType: "ArticleCreated", Source: "alt-backend", CreatedAt: timestamppb.New(time.Now())},
+			},
+		})
+
+		resp, err := handler.PublishBatch(ctx, req)
+
+		// A partial failure must still surface as a non-OK RPC status (so
+		// at-least-once clients retry) while the response body reports
+		// exactly which indices succeeded, per handler.PublishBatch's
+		// contract.
+		require.Error(t, err)
+		assert.Equal(t, connect.CodeUnavailable, connect.CodeOf(err))
+		require.NotNil(t, resp)
+		assert.Equal(t, []string{"123-0", ""}, resp.Msg.MessageIds)
+		assert.Equal(t, int32(1), resp.Msg.SuccessCount)
+		assert.Equal(t, int32(1), resp.Msg.FailureCount)
+		require.Len(t, resp.Msg.Errors, 1)
+		assert.Equal(t, int32(1), resp.Msg.Errors[0].Index)
+		assert.Equal(t, "connection reset", resp.Msg.Errors[0].ErrorMessage)
+		mockPort.AssertExpectations(t)
+	})
+
+	t.Run("returns invalid argument when batch size exceeds the configured limit", func(t *testing.T) {
+		mockPort := new(MockStreamPort)
+		uc := usecase.NewPublishUsecaseWithOptions(mockPort, &usecase.PublishUsecaseOptions{MaxBatchSize: 1})
+		handler := NewHandler(uc)
+
+		ctx := context.Background()
+
+		req := connect.NewRequest(&mqhubv1.PublishBatchRequest{
+			Stream: "articles",
+			Events: []*mqhubv1.Event{
+				{EventId: "test-1", EventType: "ArticleCreated", Source: "alt-backend", CreatedAt: timestamppb.New(time.Now())},
+				{EventId: "test-2", EventType: "ArticleCreated", Source: "alt-backend", CreatedAt: timestamppb.New(time.Now())},
+			},
+		})
+
+		resp, err := handler.PublishBatch(ctx, req)
+
+		require.Error(t, err)
+		// Caller error (bad request), not an upstream/Redis problem: must be
+		// InvalidArgument so it is not classified alongside retryable
+		// Unavailable failures.
+		assert.Equal(t, connect.CodeInvalidArgument, connect.CodeOf(err))
+		assert.Equal(t, int32(0), resp.Msg.SuccessCount)
+		assert.Equal(t, int32(2), resp.Msg.FailureCount)
+		mockPort.AssertNotCalled(t, "PublishBatch")
 	})
 }
 

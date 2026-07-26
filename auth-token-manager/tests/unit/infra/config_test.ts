@@ -81,6 +81,46 @@ describe(
       assertEquals(creds.redirect_uri, "http://localhost:9090/callback");
     });
 
+    it("should fall back to the _FILE variant (Docker/Compose secrets) when the plain env var is unset", async () => {
+      const tmpFile = await Deno.makeTempFile();
+      await Deno.writeTextFile(tmpFile, "secret-from-file-12345\n");
+      Deno.env.delete("INOREADER_CLIENT_SECRET");
+      Deno.env.set("INOREADER_CLIENT_SECRET_FILE", tmpFile);
+      Deno.env.set("INOREADER_CLIENT_ID", "test-client-id-12345");
+
+      try {
+        const config = ConfigManager.getInstance();
+        // The file content is trimmed (trailing newline stripped), and the
+        // plain env var still wins validateConfig()'s presence check.
+        assertEquals(
+          config.getEnvOrFile("INOREADER_CLIENT_SECRET"),
+          "secret-from-file-12345",
+        );
+        assertEquals(config.validateConfig(), true);
+      } finally {
+        Deno.env.delete("INOREADER_CLIENT_SECRET_FILE");
+        await Deno.remove(tmpFile);
+      }
+    });
+
+    it("should prefer the plain env var over the _FILE variant when both are set", async () => {
+      const tmpFile = await Deno.makeTempFile();
+      await Deno.writeTextFile(tmpFile, "value-from-file\n");
+      Deno.env.set("INOREADER_CLIENT_SECRET", "value-from-env");
+      Deno.env.set("INOREADER_CLIENT_SECRET_FILE", tmpFile);
+
+      try {
+        const config = ConfigManager.getInstance();
+        assertEquals(
+          config.getEnvOrFile("INOREADER_CLIENT_SECRET"),
+          "value-from-env",
+        );
+      } finally {
+        Deno.env.delete("INOREADER_CLIENT_SECRET_FILE");
+        await Deno.remove(tmpFile);
+      }
+    });
+
     it("should use default redirect URI when not set", () => {
       Deno.env.set("INOREADER_CLIENT_ID", "test-client-id-12345");
       Deno.env.set("INOREADER_CLIENT_SECRET", "test-secret-12345");

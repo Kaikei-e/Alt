@@ -18,47 +18,39 @@ from recap_evaluator.infra.mtls_client import (
 )
 
 
-def test_mtls_enforced_false_by_default():
-    os.environ.pop("MTLS_ENFORCE", None)
+def test_mtls_enforced_false_by_default(monkeypatch):
+    monkeypatch.delenv("MTLS_ENFORCE", raising=False)
     assert not mtls_enforced()
 
 
-def test_mtls_enforced_true_when_env_set():
-    os.environ["MTLS_ENFORCE"] = "true"
-    try:
-        assert mtls_enforced()
-    finally:
-        os.environ.pop("MTLS_ENFORCE", None)
+def test_mtls_enforced_true_when_env_set(monkeypatch):
+    monkeypatch.setenv("MTLS_ENFORCE", "true")
+    assert mtls_enforced()
 
 
-def test_build_ssl_context_none_when_not_enforced():
-    os.environ.pop("MTLS_ENFORCE", None)
+def test_build_ssl_context_none_when_not_enforced(monkeypatch):
+    monkeypatch.delenv("MTLS_ENFORCE", raising=False)
     assert build_ssl_context() is None
 
 
-def test_build_ssl_context_fails_closed_when_paths_missing():
-    os.environ["MTLS_ENFORCE"] = "true"
+def test_build_ssl_context_fails_closed_when_paths_missing(monkeypatch):
+    monkeypatch.setenv("MTLS_ENFORCE", "true")
     for v in ("MTLS_CERT_FILE", "MTLS_KEY_FILE", "MTLS_CA_FILE"):
-        os.environ.pop(v, None)
-    try:
-        with pytest.raises(RuntimeError, match="MTLS_CERT_FILE"):
-            build_ssl_context()
-    finally:
-        os.environ.pop("MTLS_ENFORCE", None)
+        monkeypatch.delenv(v, raising=False)
+
+    with pytest.raises(RuntimeError, match="MTLS_CERT_FILE"):
+        build_ssl_context()
 
 
-def test_build_ssl_context_fails_closed_when_cert_unreadable():
-    os.environ["MTLS_ENFORCE"] = "true"
-    os.environ["MTLS_CERT_FILE"] = "/nonexistent/cert.pem"
+def test_build_ssl_context_fails_closed_when_cert_unreadable(monkeypatch):
+    monkeypatch.setenv("MTLS_ENFORCE", "true")
+    monkeypatch.setenv("MTLS_CERT_FILE", "/nonexistent/cert.pem")
     with tempfile.NamedTemporaryFile() as ca:
-        os.environ["MTLS_KEY_FILE"] = ca.name
-        os.environ["MTLS_CA_FILE"] = ca.name
-        try:
-            with pytest.raises((FileNotFoundError, ssl.SSLError, OSError)):
-                build_ssl_context()
-        finally:
-            for v in ("MTLS_ENFORCE", "MTLS_CERT_FILE", "MTLS_KEY_FILE", "MTLS_CA_FILE"):
-                os.environ.pop(v, None)
+        monkeypatch.setenv("MTLS_KEY_FILE", ca.name)
+        monkeypatch.setenv("MTLS_CA_FILE", ca.name)
+
+        with pytest.raises((FileNotFoundError, ssl.SSLError, OSError)):
+            build_ssl_context()
 
 
 def _write_test_identity(dir_path: Path, cn: str) -> tuple[Path, Path]:

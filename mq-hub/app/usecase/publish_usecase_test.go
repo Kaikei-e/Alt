@@ -144,6 +144,58 @@ func TestPublishUsecase_PublishBatch(t *testing.T) {
 		mockPort.AssertExpectations(t)
 	})
 
+	t.Run("returns partial result when some events in the batch fail", func(t *testing.T) {
+		mockPort := new(MockStreamPort)
+		uc := NewPublishUsecase(mockPort)
+
+		ctx := context.Background()
+		events := []*domain.Event{
+			{
+				EventID:   "test-1",
+				EventType: domain.EventTypeArticleCreated,
+				Source:    "alt-backend",
+				CreatedAt: time.Now(),
+			},
+			{
+				EventID:   "test-2",
+				EventType: domain.EventTypeArticleCreated,
+				Source:    "alt-backend",
+				CreatedAt: time.Now(),
+			},
+			{
+				EventID:   "test-3",
+				EventType: domain.EventTypeArticleCreated,
+				Source:    "alt-backend",
+				CreatedAt: time.Now(),
+			},
+		}
+
+		partialErr := &domain.PartialPublishError{
+			TotalEvents: 3,
+			Failures: []domain.PublishFailure{
+				{Index: 1, Err: errors.New("connection reset")},
+			},
+		}
+		// The driver still returns a messageIDs slice with one entry per
+		// event; failed indices are left as "" so callers can tell which
+		// events actually landed (see RedisDriver.PublishBatch doc).
+		mockPort.On("PublishBatch", ctx, domain.StreamKeyArticles, events).
+			Return([]string{"123-0", "", "123-2"}, partialErr)
+
+		result, err := uc.PublishBatch(ctx, domain.StreamKeyArticles, events)
+
+		require.Error(t, err)
+		var gotPartialErr *domain.PartialPublishError
+		require.ErrorAs(t, err, &gotPartialErr, "PublishBatch must surface the partial error typed so handlers can classify it")
+		assert.Equal(t, []string{"123-0", "", "123-2"}, result.MessageIDs)
+		assert.Equal(t, int32(2), result.SuccessCount, "2 of 3 events landed")
+		assert.Equal(t, int32(1), result.FailureCount)
+		require.Len(t, result.Errors, 1)
+		assert.Equal(t, 1, result.Errors[0].Index)
+		assert.Equal(t, "connection reset", result.Errors[0].ErrorMessage)
+		mockPort.AssertExpectations(t)
+	})
+
 	t.Run("returns error when batch size exceeds limit", func(t *testing.T) {
 		mockPort := new(MockStreamPort)
 		uc := NewPublishUsecaseWithOptions(mockPort, &PublishUsecaseOptions{
@@ -215,6 +267,22 @@ func TestPublishUsecase_CreateConsumerGroup(t *testing.T) {
 		require.NoError(t, err)
 		mockPort.AssertExpectations(t)
 	})
+
+	t.Run("propagates driver error", func(t *testing.T) {
+		mockPort := new(MockStreamPort)
+		uc := NewPublishUsecase(mockPort)
+
+		ctx := context.Background()
+
+		mockPort.On("CreateConsumerGroup", ctx, domain.StreamKeyArticles, domain.ConsumerGroupPreProcessor, "0").
+			Return(errors.New("stream does not exist"))
+
+		err := uc.CreateConsumerGroup(ctx, domain.StreamKeyArticles, domain.ConsumerGroupPreProcessor, "0")
+
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "stream does not exist")
+		mockPort.AssertExpectations(t)
+	})
 }
 
 func TestPublishUsecase_GetStreamInfo(t *testing.T) {
@@ -235,6 +303,22 @@ func TestPublishUsecase_GetStreamInfo(t *testing.T) {
 
 		require.NoError(t, err)
 		assert.Equal(t, int64(100), info.Length)
+		mockPort.AssertExpectations(t)
+	})
+
+	t.Run("propagates driver error", func(t *testing.T) {
+		mockPort := new(MockStreamPort)
+		uc := NewPublishUsecase(mockPort)
+
+		ctx := context.Background()
+
+		mockPort.On("GetStreamInfo", ctx, domain.StreamKeyArticles).
+			Return(nil, errors.New("stream not found"))
+
+		info, err := uc.GetStreamInfo(ctx, domain.StreamKeyArticles)
+
+		require.Error(t, err)
+		assert.Nil(t, info)
 		mockPort.AssertExpectations(t)
 	})
 }

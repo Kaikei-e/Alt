@@ -69,17 +69,20 @@ test.describe("Mobile Swipe Feed - Page Object Model Tests", () => {
 			await swipePage.goto();
 			await swipePage.waitForPageReady();
 
-			const title = await swipePage.getCardTitle();
-			expect(title).toContain("Test Article One");
+			// Web-first assertion (auto-retrying) instead of a one-shot
+			// textContent() read wrapped in expect(...).toContain(...).
+			await expect(swipePage.swipeCard.locator("h2")).toContainText(
+				"Test Article One",
+			);
 		});
 
 		test("displays action footer with buttons", async () => {
 			await swipePage.goto();
 			await swipePage.waitForPageReady();
 
-			const isFooterVisible = await swipePage.isFooterVisible();
-			expect(isFooterVisible).toBe(true);
-
+			// Web-first assertion (auto-retrying) instead of a synchronous
+			// isVisible() read wrapped in expect(...).toBe(...).
+			await expect(swipePage.actionFooter).toBeVisible();
 			await expect(swipePage.articleButton).toBeVisible();
 			await expect(swipePage.summaryButton).toBeVisible();
 		});
@@ -199,9 +202,13 @@ test.describe("Mobile Swipe Feed - Page Object Model Tests", () => {
 
 			await swipePage.goto();
 
-			// Should show some empty state or message
-			// The exact behavior depends on implementation
-			await page.waitForLoadState("networkidle");
+			// SwipeFeedScreen renders its "No more feeds" empty state when
+			// there is no active feed and no error.
+			await expect(page.getByText("No more feeds")).toBeVisible();
+			await expect(
+				page.getByRole("button", { name: "Refresh" }),
+			).toBeVisible();
+			await expect(swipePage.swipeCard).not.toBeVisible();
 		});
 	});
 
@@ -213,8 +220,11 @@ test.describe("Mobile Swipe Feed - Page Object Model Tests", () => {
 
 			await swipePage.goto();
 
-			// Should handle error state gracefully
-			await page.waitForLoadState("networkidle");
+			// SwipeFeedScreen surfaces a distinct error state (not the
+			// generic empty state) with a retry action.
+			await expect(page.getByText("Error loading feeds")).toBeVisible();
+			await expect(page.getByRole("button", { name: "Retry" })).toBeVisible();
+			await expect(swipePage.swipeCard).not.toBeVisible();
 		});
 
 		test("handles article content fetch error", async ({ page }) => {

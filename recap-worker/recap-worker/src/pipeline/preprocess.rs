@@ -537,15 +537,95 @@ mod tests {
         assert!(!contains_html_tags("text with < and > but not tags"));
     }
 
+    /// `TextPreprocessStage::preprocess` を丸ごと通し、空/短すぎる記事が
+    /// 落とされ、有効な記事だけが `PreprocessedCorpus` に残ることを検証する。
+    /// (以前は本文が空のstub — 何もアサートせずGREEN扱いになっていた。)
     #[tokio::test]
     async fn preprocess_filters_empty_articles() {
-        // モックDAOを使用（実装は簡略化、実際にはモックライブラリを使う）
-        // テストでは統計保存をスキップするか、メモリ内DAOを使用
-        // ここでは単体テストなので、preprocess_article関数のテストのみとする
+        use crate::store::dao::mock::MockRecapDao;
+
+        let dao: Arc<dyn RecapDao> = Arc::new(MockRecapDao::new());
+        let subworker = Arc::new(SubworkerClient::new("http://localhost:8002", 10).unwrap());
+        let stage = TextPreprocessStage::new(4, dao, subworker);
+
+        let job_id = Uuid::new_v4();
+        let job = JobContext::new(job_id, vec!["general".to_string()]);
+        let corpus = FetchedCorpus {
+            job_id,
+            articles: vec![
+                article(
+                    "keep-me",
+                    "This is a longer article body that clears the minimum length filter.",
+                    Some("Title"),
+                    Some("en"),
+                ),
+                article("blank", "   ", None, None),
+                article("too-short", "hi", None, Some("en")),
+            ],
+        };
+
+        let result = stage
+            .preprocess(&job, corpus)
+            .await
+            .expect("preprocess should succeed even when some articles are dropped");
+
+        assert_eq!(
+            result.articles.len(),
+            1,
+            "blank and too-short articles must be filtered out, only 1 of 3 should remain"
+        );
+        assert_eq!(result.articles[0].id, "keep-me");
     }
 
+    /// `TextPreprocessStage::preprocess` を通した記事にHTMLタグが含まれる場合、
+    /// サブワーカーが到達不能な環境ではローカルfallback(`clean_html`)を経由して
+    /// `is_html_cleaned = true` になり、タグが本文から除去されることを検証する。
     #[tokio::test]
     async fn preprocess_handles_html_content() {
-        // 同上：統合テストで実装
+        use crate::store::dao::mock::MockRecapDao;
+
+        let dao: Arc<dyn RecapDao> = Arc::new(MockRecapDao::new());
+        // Unreachable subworker forces the local ammonia/html2text fallback
+        // path in `preprocess_article`, exercising the same branch other
+        // preprocess_article_* tests rely on.
+        let subworker = Arc::new(SubworkerClient::new("http://localhost:8002", 10).unwrap());
+        let stage = TextPreprocessStage::new(4, dao, subworker);
+
+        let job_id = Uuid::new_v4();
+        let job = JobContext::new(job_id, vec!["general".to_string()]);
+        let corpus = FetchedCorpus {
+            job_id,
+            articles: vec![article(
+                "html-art",
+                "<p>This is <strong>bold</strong> article content with enough length.</p>",
+                Some("Title"),
+                Some("en"),
+            )],
+        };
+
+        let result = stage
+            .preprocess(&job, corpus)
+            .await
+            .expect("preprocess should succeed for HTML content");
+
+        assert_eq!(
+            result.articles.len(),
+            1,
+            "the HTML article must survive filtering"
+        );
+        let processed = &result.articles[0];
+        assert!(
+            processed.is_html_cleaned,
+            "article containing HTML tags must be flagged as html-cleaned"
+        );
+        assert!(
+            !processed.body.contains("<p>") && !processed.body.contains("<strong>"),
+            "sanitized body must not retain HTML tags, got: {}",
+            processed.body
+        );
+        assert!(
+            processed.body.contains("bold"),
+            "plain text content must survive sanitization"
+        );
     }
 }

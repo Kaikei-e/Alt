@@ -125,16 +125,25 @@ class TestPostgresGateway:
         pool, conn = mock_pool
         gw = PostgresGateway(pool)
         eval_id = uuid4()
+        job_id = uuid4()
+        created_at = datetime(2025, 1, 1, tzinfo=timezone.utc)
+        metrics = {"test": True}
 
         await gw.save_evaluation_run(
             evaluation_id=eval_id,
             evaluation_type="full",
-            job_ids=[uuid4()],
-            metrics={"test": True},
-            created_at=datetime(2025, 1, 1, tzinfo=timezone.utc),
+            job_ids=[job_id],
+            metrics=metrics,
+            created_at=created_at,
         )
 
         conn.execute.assert_called_once()
+        # Positional params must reach the query in the exact order the
+        # $1..$5 placeholders expect — a swapped/dropped argument here would
+        # silently write the wrong column (e.g. job_ids into metrics).
+        query, *params = conn.execute.call_args[0]
+        assert "INSERT INTO recap_evaluation_runs" in query
+        assert params == [eval_id, "full", [job_id], metrics, created_at]
 
 
 class TestRegisterJsonbCodec:

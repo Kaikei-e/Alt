@@ -12,6 +12,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
+	"github.com/stretchr/testify/require"
 )
 
 // collectStreamEvents drains a StreamEvent channel and returns all events.
@@ -392,12 +393,31 @@ func TestStreamParser_ContextCancellation(t *testing.T) {
 	eventCh := uc.Stream(ctx, usecase.AnswerWithRAGInput{Query: "test cancel"})
 
 	// Read the initial thinking event
-	<-eventCh
+	first := <-eventCh
+	assert.Equal(t, usecase.StreamEventKindThinking, first.Kind, "first event should still be the Cloudflare-524 thinking event")
 
 	// Cancel context
 	cancel()
 
-	// Channel should drain and close
+	// The channel must still drain and close (this range terminates only when
+	// Stream's internal goroutine closes it) — a stuck goroutine would hang
+	// this test until the package-level `go test` timeout fails it.
 	events := collectStreamEvents(eventCh)
-	_ = events // Just verify it doesn't hang
+	require.NotEmpty(t, events, "cancellation must still yield the terminal Done event")
+
+	// Invariant (see rag_answer_stream.go): exactly one Done event, and it is
+	// always the last event emitted before the channel closes.
+	lastEvent := events[len(events)-1]
+	assert.Equal(t, usecase.StreamEventKindDone, lastEvent.Kind, "last event on cancellation must be Done")
+	doneEvents := findEvents(events, usecase.StreamEventKindDone)
+	assert.Len(t, doneEvents, 1, "exactly one Done event must be emitted per invariant")
+
+	// Cancellation short-circuits before any answer content is produced, so
+	// the Done payload must reflect "nothing was produced", not a real answer.
+	output, ok := lastEvent.Payload.(*usecase.AnswerWithRAGOutput)
+	require.True(t, ok, "Done payload must be *AnswerWithRAGOutput")
+	assert.Empty(t, output.Answer, "cancelled stream must not report a synthesized answer")
+
+	// No content should have been emitted after the cancellation point.
+	assert.Empty(t, findEvents(events, usecase.StreamEventKindDelta), "cancelled stream must not emit delta content")
 }

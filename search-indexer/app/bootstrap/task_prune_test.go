@@ -32,9 +32,20 @@ func TestRunTaskPruneLoop_PrunesImmediatelyThenOnInterval(t *testing.T) {
 	logger.Init()
 	p := &fakeTaskPruner{}
 	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
 
-	go runTaskPruneLoop(ctx, p, 20*time.Millisecond, 72*time.Hour)
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		runTaskPruneLoop(ctx, p, 20*time.Millisecond, 72*time.Hour)
+	}()
+	// Join the loop goroutine before returning: runTaskPruneLoop reads the
+	// shared logger.Logger global on every tick, and leaving it running past
+	// this test's return raced it against the next test's logger.Init()
+	// write under `go test -race`.
+	t.Cleanup(func() {
+		cancel()
+		<-done
+	})
 
 	deadline := time.After(2 * time.Second)
 	for p.calls.Load() < 3 {
@@ -57,9 +68,19 @@ func TestRunTaskPruneLoop_ErrorDoesNotStopLoop(t *testing.T) {
 	logger.Init()
 	p := &fakeTaskPruner{err: errors.New("meilisearch unreachable")}
 	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
 
-	go runTaskPruneLoop(ctx, p, 10*time.Millisecond, time.Hour)
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		runTaskPruneLoop(ctx, p, 10*time.Millisecond, time.Hour)
+	}()
+	// See TestRunTaskPruneLoop_PrunesImmediatelyThenOnInterval: join the loop
+	// goroutine before returning so it cannot race the next test's
+	// logger.Init() against the shared logger.Logger global.
+	t.Cleanup(func() {
+		cancel()
+		<-done
+	})
 
 	deadline := time.After(2 * time.Second)
 	for p.calls.Load() < 3 {

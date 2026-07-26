@@ -64,6 +64,15 @@ class TestCollectHttpEndpointStats:
             collect_http_endpoint_stats(mock_client, "rask_logs", 24)
 
         assert "http_endpoint_stats" in str(exc_info.value)
+        assert "Connection failed" in str(exc_info.value)
+
+    def test_unexpected_exception_is_not_swallowed(self) -> None:
+        """ClickHouseError以外の予期しない例外はCollectorErrorに変換せず伝播する"""
+        mock_client = MagicMock()
+        mock_client.query.side_effect = ValueError("unexpected bug")
+
+        with pytest.raises(ValueError):
+            collect_http_endpoint_stats(mock_client, "rask_logs", 24)
 
     def test_query_uses_correct_parameters(self) -> None:
         """クエリが正しいパラメータを使用"""
@@ -125,3 +134,4 @@ class TestCollectHttpStatusDistribution:
             collect_http_status_distribution(mock_client, "rask_logs", 24)
 
         assert "http_status_distribution" in str(exc_info.value)
+        assert "Query timeout" in str(exc_info.value)

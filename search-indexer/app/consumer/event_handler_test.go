@@ -256,8 +256,15 @@ func TestIndexEventHandler_BatchFlush(t *testing.T) {
 		})
 	}
 
-	// Wait a short time for the flush goroutine
-	time.Sleep(100 * time.Millisecond)
+	// Deterministically wait for the flush goroutine to signal completion
+	// via the handler's own flushed channel instead of guessing a sleep
+	// duration (a slow CI runner could flush after 100ms and flake this
+	// test into a false failure).
+	select {
+	case <-handler.flushed:
+	case <-time.After(2 * time.Second):
+		t.Fatal("flush did not complete within 2s")
+	}
 
 	if len(se.indexedDocs) != batchFlushSize {
 		t.Errorf("expected %d indexed docs after batch flush, got %d", batchFlushSize, len(se.indexedDocs))

@@ -33,7 +33,15 @@ async def test_asyncio_timeout_is_translated_to_domain_error() -> None:
         timeout=client._client.timeout,
     )
 
-    with pytest.raises(LearningClientTimeoutError):
+    # Pin the endpoint and the actual outer budget (read_timeout is floored
+    # to CONNECT+0.5=2.5s since the requested 1.0s is below that floor, then
+    # doubled for the outer asyncio budget => 5.0s) so this only passes when
+    # LearningClientTimeoutError carries the diagnostic detail operators
+    # need, not just the right exception type.
+    with pytest.raises(
+        LearningClientTimeoutError,
+        match=r"learning client timed out: http://recap-worker/learning exceeded 5\.0s budget",
+    ):
         await client.send_learning_payload({"ping": "pong"})
 
     await client.close()

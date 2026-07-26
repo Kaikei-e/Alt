@@ -4,10 +4,13 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 )
 
 func TestHomeHealthCommand(t *testing.T) {
+	setupHomeTest(t)
+
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/alt.knowledge_home.v1.KnowledgeHomeAdminService/GetProjectionHealth" {
 			t.Errorf("unexpected path: %s", r.URL.Path)
@@ -28,7 +31,21 @@ func TestHomeHealthCommand(t *testing.T) {
 		"home", "health",
 		"--backend-url", server.URL,
 	})
-	if err := rootCmd.Execute(); err != nil {
-		t.Fatalf("home health failed: %v", err)
+
+	out := captureStdout(t, func() {
+		if err := rootCmd.Execute(); err != nil {
+			t.Fatalf("home health failed: %v", err)
+		}
+	})
+
+	// Assert the response is actually rendered, not just fetched without
+	// error: active version, checkpoint sequence, last-updated timestamp,
+	// and the backfill job's progress must all reach the terminal.
+	assertRowContains(t, out, "Active Version", "2")
+	assertRowContains(t, out, "Checkpoint Seq", "1139408")
+	assertRowContains(t, out, "Last Updated", "2026-03-25T10:00:00Z")
+	assertRowContains(t, out, "bf-1", "completed")
+	if !strings.Contains(out, "786000/786000") {
+		t.Errorf("expected health output to show backfill progress 786000/786000, got:\n%s", out)
 	}
 }

@@ -115,6 +115,172 @@ pub fn get_configuration() -> Result<Settings, AggregatorError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::Mutex;
+
+    /// `require_env`/`env_port_or`/`get_env_or_file` all read `std::env`,
+    /// which is process-global and not safe to mutate/read concurrently
+    /// (`env::set_var`/`remove_var` are `unsafe` as of the 2024-edition std
+    /// library precisely because of this). Cargo runs tests in the same
+    /// process on multiple threads, so every test below acquires this lock
+    /// for its whole body — not just the mutation — to fully serialize
+    /// access instead of merely picking unique variable names, which would
+    /// avoid *assertion* collisions but not the underlying data race.
+    static ENV_LOCK: Mutex<()> = Mutex::new(());
+
+    /// RAII helper: sets an env var for the duration of the guard, restores
+    /// the previous state (unset, in every case these tests need) on drop —
+    /// including on panic — so a failing assertion can't leak state into
+    /// whichever test runs next.
+    struct EnvVarGuard {
+        name: &'static str,
+    }
+
+    impl EnvVarGuard {
+        fn set(name: &'static str, value: &str) -> Self {
+            // SAFETY: caller holds `ENV_LOCK` for the guard's entire
+            // lifetime, so no other thread in this test binary can be
+            // reading or writing the environment concurrently.
+            unsafe { env::set_var(name, value) };
+            Self { name }
+        }
+    }
+
+    impl Drop for EnvVarGuard {
+        fn drop(&mut self) {
+            // SAFETY: see `EnvVarGuard::set`.
+            unsafe { env::remove_var(self.name) };
+        }
+    }
+
+    fn locked() -> std::sync::MutexGuard<'static, ()> {
+        ENV_LOCK
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+    }
+
+    #[test]
+    fn require_env_returns_value_when_set() {
+        let _lock = locked();
+        let _guard = EnvVarGuard::set("RASK_TEST_REQUIRE_ENV_PRESENT", "hello");
+
+        let result = require_env("RASK_TEST_REQUIRE_ENV_PRESENT");
+
+        assert_eq!(result.unwrap(), "hello");
+    }
+
+    #[test]
+    fn require_env_errors_and_names_the_variable_when_missing() {
+        let _lock = locked();
+        // Not set by anything in this process; no guard needed.
+        let result = require_env("RASK_TEST_REQUIRE_ENV_DEFINITELY_UNSET");
+
+        let err = result.unwrap_err();
+        assert!(
+            err.to_string()
+                .contains("RASK_TEST_REQUIRE_ENV_DEFINITELY_UNSET"),
+            "fail-fast config error must name the missing variable, got: {err}"
+        );
+    }
+
+    #[test]
+    fn env_port_or_returns_default_when_unset() {
+        let _lock = locked();
+        let result = env_port_or("RASK_TEST_PORT_UNSET", 9600);
+
+        assert_eq!(result.unwrap(), 9600);
+    }
+
+    #[test]
+    fn env_port_or_returns_configured_value_when_set() {
+        let _lock = locked();
+        let _guard = EnvVarGuard::set("RASK_TEST_PORT_SET", "1234");
+
+        let result = env_port_or("RASK_TEST_PORT_SET", 9600);
+
+        assert_eq!(result.unwrap(), 1234);
+    }
+
+    #[test]
+    fn env_port_or_errors_on_non_numeric_value() {
+        let _lock = locked();
+        let _guard = EnvVarGuard::set("RASK_TEST_PORT_INVALID", "not-a-port");
+
+        let result = env_port_or("RASK_TEST_PORT_INVALID", 9600);
+
+        let err = result.unwrap_err();
+        assert!(
+            err.to_string().contains("RASK_TEST_PORT_INVALID"),
+            "port parse error must name the variable, got: {err}"
+        );
+    }
+
+    #[test]
+    fn env_port_or_errors_on_out_of_range_value() {
+        let _lock = locked();
+        // u16::MAX + 1 : valid integer, invalid port.
+        let _guard = EnvVarGuard::set("RASK_TEST_PORT_OUT_OF_RANGE", "65536");
+
+        let result = env_port_or("RASK_TEST_PORT_OUT_OF_RANGE", 9600);
+
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn get_env_or_file_reads_direct_variable() {
+        let _lock = locked();
+        let _guard = EnvVarGuard::set("RASK_TEST_SECRET_DIRECT", "direct-value");
+
+        let result = get_env_or_file("RASK_TEST_SECRET_DIRECT");
+
+        assert_eq!(result.unwrap(), "direct-value");
+    }
+
+    #[test]
+    fn get_env_or_file_errors_when_neither_variable_nor_file_is_set() {
+        let _lock = locked();
+        let result = get_env_or_file("RASK_TEST_SECRET_NEITHER_SET");
+
+        let err = result.unwrap_err();
+        let msg = err.to_string();
+        assert!(
+            msg.contains("RASK_TEST_SECRET_NEITHER_SET")
+                && msg.contains("RASK_TEST_SECRET_NEITHER_SET_FILE"),
+            "error must name both the direct variable and its _FILE fallback, got: {msg}"
+        );
+    }
+
+    #[test]
+    fn get_env_or_file_reads_from_file_for_docker_secrets_support() {
+        let _lock = locked();
+        let temp_dir = tempfile::TempDir::new().unwrap();
+        let secret_path = temp_dir.path().join("clickhouse_password");
+        // Trailing newline mimics how Docker/Kubernetes secret files are
+        // typically written; the value must be trimmed, not compared raw.
+        std::fs::write(&secret_path, "s3cret\n").unwrap();
+        let _guard = EnvVarGuard::set("RASK_TEST_SECRET_FILE_FILE", secret_path.to_str().unwrap());
+
+        let result = get_env_or_file("RASK_TEST_SECRET_FILE");
+
+        assert_eq!(result.unwrap(), "s3cret");
+    }
+
+    #[test]
+    fn get_env_or_file_errors_when_file_path_does_not_exist() {
+        let _lock = locked();
+        let _guard = EnvVarGuard::set(
+            "RASK_TEST_SECRET_MISSING_FILE_FILE",
+            "/nonexistent/path/for/rask/test",
+        );
+
+        let result = get_env_or_file("RASK_TEST_SECRET_MISSING_FILE");
+
+        let err = result.unwrap_err();
+        assert!(
+            err.to_string()
+                .contains("RASK_TEST_SECRET_MISSING_FILE_FILE"),
+            "must name the _FILE variable when the referenced file can't be read, got: {err}"
+        );
+    }
 
     #[test]
     fn test_validate_port_valid() {

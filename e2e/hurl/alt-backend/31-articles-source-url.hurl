@@ -50,12 +50,13 @@ HTTP 404
 [Asserts]
 jsonpath "$.code" == "not_found"
 
-# --- 3. happy path is shape-valid ----------------------------------------
-# We don't pin a specific URL because the staging fixture set rotates; we
-# only require that any 2xx response carries a non-empty https source_url.
-# Many staging stacks won't have a seeded article that survives across runs,
-# so this scenario is permissive (status range) but pins the JSON shape on
-# 200 outcomes.
+# --- 3. happy path or legitimate not-found, never a server error ---------
+# We don't pin a specific URL because the staging fixture set rotates, and
+# many staging stacks won't have a seeded article that survives across runs.
+# GetArticleSourceURL has exactly two outcomes reachable here: not_found
+# (404) or success (200 {source_url}); a genuine backend failure surfaces as
+# 503. Pinning to {200, 404} keeps the rotating fixture set from mattering
+# while still letting a real infra regression fail the run.
 
 POST {{connect_url}}/alt.articles.v2.ArticleService/GetArticleSourceURL
 X-Alt-Backend-Token: {{jwt}}
@@ -65,5 +66,4 @@ Content-Type: application/json
 }
 HTTP *
 [Asserts]
-status >= 200
-status < 600
+status toString matches "^(200|404)$"

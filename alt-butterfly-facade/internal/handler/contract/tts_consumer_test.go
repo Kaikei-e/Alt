@@ -45,7 +45,8 @@ func TestBFFProxyTTSSynthesize(t *testing.T) {
 			Method: "POST",
 			Path:   matchers.String("/alt.tts.v1.TTSService/Synthesize"),
 			Headers: matchers.MapMatcher{
-				"Content-Type": matchers.String("application/json"),
+				"Content-Type":        matchers.String("application/json"),
+				"X-Alt-Backend-Token": matchers.Regex(jwtHeaderExample, jwtHeaderPattern),
 			},
 			Body: matchers.MapMatcher{
 				"text": matchers.Like("Hello world"),
@@ -109,7 +110,8 @@ func TestBFFProxyTTSError(t *testing.T) {
 			Method: "POST",
 			Path:   matchers.String("/alt.tts.v1.TTSService/Synthesize"),
 			Headers: matchers.MapMatcher{
-				"Content-Type": matchers.String("application/json"),
+				"Content-Type":        matchers.String("application/json"),
+				"X-Alt-Backend-Token": matchers.Regex(jwtHeaderExample, jwtHeaderPattern),
 			},
 			Body: matchers.MapMatcher{
 				"text": matchers.Like(""),

@@ -71,5 +71,7 @@ class TestReadabilityEvaluator:
         )
 
         evaluator = ReadabilityEvaluator(mock_ollama)
-        with pytest.raises(AttributeError):
+        with pytest.raises(
+            AttributeError, match="'OllamaGateway' object has no attribute"
+        ):
             await evaluator.evaluate("要約。")

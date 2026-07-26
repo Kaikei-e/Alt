@@ -21,6 +21,7 @@ from unittest.mock import MagicMock
 import joblib
 import numpy as np
 import pytest
+import structlog.testing
 from sklearn.linear_model import LogisticRegression
 
 
@@ -107,19 +108,24 @@ class TestSidecarMetadataMissing:
         self,
         tiny_model: Path,
         mock_embedder: MagicMock,
-        caplog: pytest.LogCaptureFixture,
     ) -> None:
         from recap_subworker.services.classifier import GenreClassifierService
 
         service = GenreClassifierService(str(tiny_model), mock_embedder)
-        service._ensure_model()
+        # GenreClassifierService logs via structlog, whose default
+        # PrintLoggerFactory bypasses stdlib logging entirely — caplog never
+        # sees these records (verified empirically: caplog.records stays
+        # empty here). structlog.testing.capture_logs() is the correct way
+        # to assert on structlog output, and unlike the previous
+        # `... or True` tautology this actually fails if the warning goes
+        # missing.
+        with structlog.testing.capture_logs() as captured:
+            service._ensure_model()
 
         assert service.model_metadata is None
-        # structlog is configured to emit through stdlib logging in tests
-        assert (
-            any(
-                "sidecar" in record.message.lower() or "meta" in record.message.lower()
-                for record in caplog.records
-            )
-            or True
-        )  # tolerant: concrete log assertion is in integration layer
+        assert any(
+            "sidecar" in entry.get("event", "").lower()
+            and "missing" in entry.get("event", "").lower()
+            and entry.get("log_level") == "warning"
+            for entry in captured
+        ), f"expected a 'sidecar metadata missing' warning log, got: {captured}"

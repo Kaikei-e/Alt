@@ -4,7 +4,9 @@ import (
 	"context"
 	"io"
 	"log/slog"
+	"sync"
 	"testing"
+	"time"
 
 	"rag-orchestrator/internal/domain"
 
@@ -15,11 +17,18 @@ type mockTool struct {
 	name   string
 	result *domain.ToolResult
 	err    error
+	// onExecute, when set, runs synchronously before Execute returns — used to
+	// observe execution order/timing (e.g. verifying dependency scheduling)
+	// without affecting tests that leave it nil.
+	onExecute func()
 }
 
 func (t *mockTool) Name() string        { return t.name }
 func (t *mockTool) Description() string { return "mock tool" }
 func (t *mockTool) Execute(_ context.Context, _ map[string]string) (*domain.ToolResult, error) {
+	if t.onExecute != nil {
+		t.onExecute()
+	}
 	return t.result, t.err
 }
 
@@ -127,8 +136,30 @@ func TestExecutePlan_ParallelExecution(t *testing.T) {
 }
 
 func TestExecutePlan_Dependencies_Sequential(t *testing.T) {
-	toolA := &mockTool{name: "tool_a", result: &domain.ToolResult{Data: "tag_result", Success: true}}
-	toolB := &mockTool{name: "tool_b", result: &domain.ToolResult{Data: "result_b", Success: true}}
+	var mu sync.Mutex
+	var order []string
+	// tool_a blocks briefly inside Execute so that, absent real dependency
+	// ordering, the parallel scheduler in ExecutePlan would let tool_b's
+	// Execute observe tool_a as not-yet-recorded and race ahead of it.
+	toolA := &mockTool{
+		name:   "tool_a",
+		result: &domain.ToolResult{Data: "tag_result", Success: true},
+		onExecute: func() {
+			time.Sleep(20 * time.Millisecond)
+			mu.Lock()
+			order = append(order, "tool_a")
+			mu.Unlock()
+		},
+	}
+	toolB := &mockTool{
+		name:   "tool_b",
+		result: &domain.ToolResult{Data: "result_b", Success: true},
+		onExecute: func() {
+			mu.Lock()
+			order = append(order, "tool_b")
+			mu.Unlock()
+		},
+	}
 	logger := slog.New(slog.NewJSONHandler(io.Discard, nil))
 	dispatcher := NewToolDispatcher(map[string]domain.Tool{"tool_a": toolA, "tool_b": toolB}, logger)
 
@@ -146,6 +177,12 @@ func TestExecutePlan_Dependencies_Sequential(t *testing.T) {
 	// Step 1 (tool_b) should have run after step 0 completed
 	if !results[0].Success || !results[1].Success {
 		t.Error("both steps should succeed")
+	}
+
+	mu.Lock()
+	defer mu.Unlock()
+	if len(order) != 2 || order[0] != "tool_a" || order[1] != "tool_b" {
+		t.Fatalf("expected tool_a to execute before tool_b (DependsOn), got order %v", order)
 	}
 }
 

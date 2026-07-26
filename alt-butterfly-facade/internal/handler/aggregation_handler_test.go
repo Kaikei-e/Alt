@@ -343,8 +343,9 @@ func TestAggregationHandler_ReadBody(t *testing.T) {
 
 	handler.ServeHTTP(rec, req)
 
-	// The handler should have read the body
-	assert.NotNil(t, receivedBody)
+	// The handler should have read and forwarded the exact request body, not
+	// just some non-nil placeholder.
+	assert.Equal(t, []byte(`{}`), receivedBody)
 }
 
 func TestAggregationHandler_TokenForwarding(t *testing.T) {

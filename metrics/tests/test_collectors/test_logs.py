@@ -65,6 +65,15 @@ class TestCollectErrorTypes:
             collect_error_types(mock_client, "rask_logs", 24)
 
         assert "error_types" in str(exc_info.value)
+        assert "Connection failed" in str(exc_info.value)
+
+    def test_unexpected_exception_is_not_swallowed(self) -> None:
+        """ClickHouseError以外の予期しない例外はCollectorErrorに変換せず伝播する"""
+        mock_client = MagicMock()
+        mock_client.query.side_effect = ValueError("unexpected bug")
+
+        with pytest.raises(ValueError):
+            collect_error_types(mock_client, "rask_logs", 24)
 
 
 class TestCollectRecentErrors:
@@ -102,6 +111,7 @@ class TestCollectRecentErrors:
             collect_recent_errors(mock_client, "rask_logs", 24)
 
         assert "recent_errors" in str(exc_info.value)
+        assert "Query failed" in str(exc_info.value)
 
 
 class TestCollectLogSeverityDistribution:
@@ -142,6 +152,7 @@ class TestCollectLogSeverityDistribution:
             collect_log_severity_distribution(mock_client, "rask_logs", 24)
 
         assert "log_severity_distribution" in str(exc_info.value)
+        assert "Query timeout" in str(exc_info.value)
 
 
 class TestCollectLogVolumeTrends:
@@ -178,3 +189,4 @@ class TestCollectLogVolumeTrends:
             collect_log_volume_trends(mock_client, "rask_logs", 24)
 
         assert "log_volume_trends" in str(exc_info.value)
+        assert "Connection failed" in str(exc_info.value)

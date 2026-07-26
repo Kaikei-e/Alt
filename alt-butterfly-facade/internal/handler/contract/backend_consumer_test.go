@@ -28,6 +28,15 @@ import (
 
 const pactDir = "../../../../pacts"
 
+// jwtHeaderPattern matches the three dot-separated base64url segments of a
+// signed JWT, as forwarded by the BFF in the X-Alt-Backend-Token header.
+const jwtHeaderPattern = `^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$`
+
+// jwtHeaderExample is the pact example value for jwtHeaderPattern. It is
+// deliberately not base64url-of-JSON: a realistic "eyJ..." literal is
+// indistinguishable from a leaked token to secret scanners.
+const jwtHeaderExample = "header.payload.signature"
+
 func newBackendPact(t *testing.T) *consumer.V3HTTPMockProvider {
 	t.Helper()
 	mockProvider, err := consumer.NewV3Pact(consumer.MockHTTPProviderConfig{
@@ -80,7 +89,8 @@ func TestBFFProxyUnaryRPC(t *testing.T) {
 			Method: "POST",
 			Path:   matchers.String("/alt.feeds.v2.FeedService/GetFeedStats"),
 			Headers: matchers.MapMatcher{
-				"Content-Type": matchers.String("application/json"),
+				"Content-Type":        matchers.String("application/json"),
+				"X-Alt-Backend-Token": matchers.Regex(jwtHeaderExample, jwtHeaderPattern),
 			},
 			Body: matchers.MapMatcher{},
 		}).
@@ -126,6 +136,10 @@ func TestBFFProxyAdminRPC(t *testing.T) {
 		WithCompleteRequest(consumer.Request{
 			Method: "POST",
 			Path:   matchers.String("/alt.knowledge_home.v1.KnowledgeHomeAdminService/GetOverview"),
+			// No X-Alt-Backend-Token here, unlike the user-token routes:
+			// admin RPCs go through BackendClient.ForwardServiceRequest,
+			// which strips the caller's token and relies on the mTLS
+			// transport for service-to-service auth.
 			Headers: matchers.MapMatcher{
 				"Content-Type": matchers.String("application/json"),
 			},
@@ -181,7 +195,8 @@ func TestBFFProxyConnectError(t *testing.T) {
 			Method: "POST",
 			Path:   matchers.String("/alt.feeds.v2.FeedService/GetFeed"),
 			Headers: matchers.MapMatcher{
-				"Content-Type": matchers.String("application/json"),
+				"Content-Type":        matchers.String("application/json"),
+				"X-Alt-Backend-Token": matchers.Regex(jwtHeaderExample, jwtHeaderPattern),
 			},
 			Body: matchers.MapMatcher{
 				"feedId": matchers.Like("nonexistent-feed"),

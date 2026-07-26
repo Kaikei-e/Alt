@@ -101,3 +101,61 @@ class TestModelRouterRoutingDisabled:
 
         assert model_name == config.model_name
         assert bucket_size == config.llm_num_ctx
+
+
+class TestModelRouterBucketHysteresis:
+    """Tests for the cross-call "sticky bucket" (2x rule) behavior.
+
+    ModelRouter keeps `_current_bucket` on the instance across calls to avoid
+    thrashing Ollama model reloads on an 8GB-VRAM box: a downgrade to a
+    smaller bucket is only allowed once the smaller bucket is <= half of the
+    current one, while an upgrade to a larger bucket is always allowed
+    immediately. Every other test in this module builds a fresh ModelRouter
+    per call, so this stateful path was previously never exercised.
+    """
+
+    def test_upgrade_to_larger_bucket_happens_immediately(self):
+        """A router already on the 8K bucket must upgrade to 60K right away."""
+        config = _create_mock_config(model_60k_enabled=True)
+        router = ModelRouter(config)
+
+        # First call: small prompt -> 8K bucket, and this becomes "current".
+        model_name, bucket_size = router.select_model("A" * 1000)
+        assert (model_name, bucket_size) == ("gemma4-e4b-12k", 8192)
+        assert router.current_bucket == 8192
+
+        # Second call: large prompt -> upgrade to 60K, no 2x rule gating.
+        model_name, bucket_size = router.select_model("A" * 60000)
+        assert (model_name, bucket_size) == ("gemma4-e4b-60k", 61440)
+        assert router.current_bucket == 61440
+
+    def test_downgrade_to_smaller_bucket_switches_when_2x_rule_satisfied(self):
+        """A router on 60K must drop back to 8K once demand is small enough.
+
+        60K (61440) is more than 2x the 8K bucket (8192), so a subsequent
+        small prompt satisfies the 2x rule and the router switches down
+        instead of staying pinned to the larger bucket forever.
+        """
+        config = _create_mock_config(model_60k_enabled=True)
+        router = ModelRouter(config)
+
+        # First call: large prompt -> 60K bucket becomes "current".
+        model_name, bucket_size = router.select_model("A" * 60000)
+        assert (model_name, bucket_size) == ("gemma4-e4b-60k", 61440)
+        assert router.current_bucket == 61440
+
+        # Second call: small prompt -> 2x rule satisfied, downgrades to 8K.
+        model_name, bucket_size = router.select_model("A" * 1000)
+        assert (model_name, bucket_size) == ("gemma4-e4b-12k", 8192)
+        assert router.current_bucket == 8192
+
+    def test_repeated_selection_in_same_bucket_keeps_current_bucket(self):
+        """Two consecutive calls needing the same bucket must not thrash."""
+        config = _create_mock_config(model_60k_enabled=True)
+        router = ModelRouter(config)
+
+        first = router.select_model("A" * 60000)
+        second = router.select_model("A" * 60000)
+
+        assert first == second == ("gemma4-e4b-60k", 61440)
+        assert router.current_bucket == 61440

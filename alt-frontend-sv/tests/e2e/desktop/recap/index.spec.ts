@@ -54,8 +54,16 @@ test.describe("Desktop Recap", () => {
 		await recapPage.goto();
 		await recapPage.waitForRecapLoaded();
 
-		// Recap detail should be visible (indicating a genre is selected)
-		await expect(recapPage.recapDetail).toBeVisible();
+		// The first genre in the API response ("Technology") should be
+		// auto-selected: its heading and summary should render, and the
+		// genre list should mark it visually selected.
+		await expect(recapPage.getRecapDetailHeading()).toHaveText("Technology");
+		await expect(
+			page.getByText("Major developments in technology this week."),
+		).toBeVisible();
+		await expect
+			.poll(() => recapPage.isGenreSelected("Technology"))
+			.toBe(true);
 	});
 
 	test("switches genre when clicking another genre", async ({ page }) => {
@@ -66,11 +74,26 @@ test.describe("Desktop Recap", () => {
 		await recapPage.goto();
 		await recapPage.waitForRecapLoaded();
 
+		// Sanity check on the pre-click state so the assertion below proves
+		// a real transition rather than being trivially true either way.
+		await expect(recapPage.getRecapDetailHeading()).toHaveText("Technology");
+
 		// Click on AI/ML genre
 		await recapPage.selectGenre("AI/ML");
 
-		// Detail section should update (we can verify the heading changes or contains expected content)
-		await expect(recapPage.recapDetail).toBeVisible();
+		// Detail section should update to the newly selected genre's
+		// content and drop the previous genre's content.
+		await expect(recapPage.getRecapDetailHeading()).toHaveText("AI/ML");
+		await expect(
+			page.getByText("Latest papers and breakthroughs in ML."),
+		).toBeVisible();
+		await expect(
+			page.getByText("Major developments in technology this week."),
+		).not.toBeVisible();
+		await expect.poll(() => recapPage.isGenreSelected("AI/ML")).toBe(true);
+		await expect
+			.poll(() => recapPage.isGenreSelected("Technology"))
+			.toBe(false);
 	});
 
 	test("shows empty state when no recap data", async ({ page }) => {
@@ -126,18 +149,26 @@ test.describe("Desktop Recap - Genre Selection", () => {
 		await recapPage.goto();
 		await recapPage.waitForRecapLoaded();
 
-		// Select different genres and verify UI updates
+		// Select each genre in turn and verify the selection state settles
+		// on that genre before moving to the next one — expect.poll
+		// auto-retries against the real UI state instead of guessing a
+		// fixed settle time.
 		const genres = ["Technology", "AI/ML"];
 
 		for (const genre of genres) {
 			await recapPage.selectGenre(genre);
-			// Small wait for UI update
-			await page.waitForTimeout(100);
+			await expect.poll(() => recapPage.isGenreSelected(genre)).toBe(true);
+			await expect(recapPage.getRecapDetailHeading()).toHaveText(genre);
 		}
 
-		// Final selection should be AI/ML
-		// The detail panel should reflect the selected genre
-		await expect(recapPage.recapDetail).toBeVisible();
+		// Final selection should be AI/ML, and the previously selected
+		// Technology genre should no longer show as selected.
+		await expect
+			.poll(() => recapPage.isGenreSelected("AI/ML"))
+			.toBe(true);
+		await expect
+			.poll(() => recapPage.isGenreSelected("Technology"))
+			.toBe(false);
 	});
 });
 

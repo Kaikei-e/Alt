@@ -267,6 +267,10 @@ describe("useSummarize", () => {
 		it("does nothing when no active request", () => {
 			const s = useSummarize();
 			expect(() => s.abort()).not.toThrow();
+			// A no-op abort() must not fabricate summarizing state or touch the
+			// transport layer.
+			expect(s.isSummarizing).toBe(false);
+			expect(streamSummarizeWithAbortAdapter).not.toHaveBeenCalled();
 		});
 	});
 

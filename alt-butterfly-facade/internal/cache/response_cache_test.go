@@ -350,8 +350,15 @@ func TestResponseCache_ConcurrentAccess(t *testing.T) {
 	<-done
 	<-done
 
-	// If we got here without panic, concurrent access is safe
-	require.True(t, true)
+	// Every write targets the same key with the same value, so regardless of
+	// how reads/writes interleaved, the cache must end up with exactly one
+	// entry holding that value. A broken LRU under concurrent access (e.g. a
+	// duplicate list.Element per Set, or a torn read of entry) would violate
+	// this invariant, which the old "didn't panic" assertion could not catch.
+	assert.Equal(t, 1, cache.Size())
+	entry, found := cache.Get("key")
+	require.True(t, found, "the concurrently-written key must still be retrievable")
+	assert.Equal(t, []byte("test"), entry.Response)
 }
 
 func TestCacheStats(t *testing.T) {

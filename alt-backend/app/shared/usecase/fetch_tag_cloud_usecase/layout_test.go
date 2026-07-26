@@ -286,29 +286,46 @@ func TestComputeLayout_ConvergenceProfile(t *testing.T) {
 		}
 	}
 
+	if len(profile) == 0 {
+		t.Fatal("ComputeLayoutWithProfile() returned an empty profile")
+	}
+
 	// Test multiple convergence thresholds
 	initialRadius := math.Sqrt(float64(300)) * 8.0
 	thresholds := []float64{0.002, 0.005, 0.01}
+	convergedAt := make(map[float64]int, len(thresholds))
 	for _, ratio := range thresholds {
 		threshold := initialRadius * ratio
-		convergedAt := -1
+		found := -1
 		consecutive := 0
 		for i, maxDisp := range profile {
 			if maxDisp < threshold {
 				consecutive++
-				if consecutive >= 5 && convergedAt == -1 {
-					convergedAt = i - 4
+				if consecutive >= 5 && found == -1 {
+					found = i - 4
 				}
 			} else {
 				consecutive = 0
 			}
 		}
-		if convergedAt >= 0 {
+		convergedAt[ratio] = found
+		if found >= 0 {
 			t.Logf("ratio=%.3f threshold=%.3f → converged at iteration %d (saves %d iterations)",
-				ratio, threshold, convergedAt, layoutIterations-convergedAt)
+				ratio, threshold, found, layoutIterations-found)
 		} else {
 			t.Logf("ratio=%.3f threshold=%.3f → did not converge within %d iterations",
 				ratio, threshold, len(profile))
 		}
+	}
+
+	// The loosest threshold (0.01) is the one layoutIterations/early-stop
+	// logic is tuned against elsewhere in this file
+	// (TestComputeLayout_EarlyConvergenceReducesIterations); a regression
+	// that makes the simulation stop converging at all (e.g. a broken force
+	// calculation that keeps displacing nodes) should fail this test
+	// rather than only be visible in t.Logf output a human has to read.
+	loosest := thresholds[len(thresholds)-1]
+	if convergedAt[loosest] < 0 {
+		t.Errorf("expected layout to converge within %d iterations at the loosest threshold (ratio=%.3f), it did not", layoutIterations, loosest)
 	}
 }

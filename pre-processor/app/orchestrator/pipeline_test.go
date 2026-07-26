@@ -115,14 +115,25 @@ func TestRunStage_ContextCancellation(t *testing.T) {
 
 		ctx, cancel := context.WithCancel(context.Background())
 
+		// RunStage launches all len(inputs) goroutines up front; with
+		// Concurrency: 1 they still race each other to acquire the
+		// capacity-1 semaphore, so which input VALUE (e.g. in==2) ends up
+		// executing Nth is not guaranteed — triggering cancellation from a
+		// specific input value made this test intermittently fail (0
+		// cancellations observed) whenever that goroutine happened to win
+		// the race last instead of early. Concurrency: 1 does guarantee
+		// Process calls are serialized (mutual exclusion via the
+		// semaphore), so triggering cancellation by call *count* instead is
+		// deterministic regardless of scheduling order.
+		var processed atomic.Int32
 		results := RunStage(ctx, Stage[int, int]{
 			Name:        "cancelable",
-			Concurrency: 1, // Single worker: deterministic ordering
+			Concurrency: 1,
 			Process: func(ctx context.Context, in int) (int, error) {
 				if ctx.Err() != nil {
 					return 0, ctx.Err()
 				}
-				if in == 2 {
+				if processed.Add(1) == 5 {
 					cancel()
 				}
 				return in, nil
@@ -131,17 +142,20 @@ func TestRunStage_ContextCancellation(t *testing.T) {
 
 		require.Len(t, results, 10, "RunStage always returns len(inputs) results")
 
-		// With concurrency=1, items 0,1,2 process successfully (cancel at in==2).
-		// Remaining items should see ctx.Err() either at semaphore acquire or
-		// the ctx check before Process. At least one result must have a cancel error.
+		// The 5th serialized call cancels the context; every later call is
+		// guaranteed (by the semaphore's mutual exclusion) to observe
+		// ctx.Err() != nil, either in RunStage's own pre-Process check or in
+		// this Process func's own check — so exactly the remaining 5 of 10
+		// results must carry the cancellation error, deterministically.
 		var cancelledCount int
 		for _, r := range results {
 			if r.Err != nil {
+				assert.ErrorIs(t, r.Err, context.Canceled)
 				cancelledCount++
 			}
 		}
-		assert.Greater(t, cancelledCount, 0,
-			"at least one item should be cancelled after context cancellation")
+		assert.Equal(t, 5, cancelledCount,
+			"exactly the calls after the 5th (serialized) one should observe cancellation")
 	})
 }
 

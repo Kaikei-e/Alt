@@ -2,7 +2,6 @@
 
 import os
 from pathlib import Path
-from tempfile import NamedTemporaryFile
 
 import pytest
 
@@ -96,34 +95,27 @@ class TestClickHouseConfig:
         assert c.password == "secret"
         assert c.database == "custom_db"
 
-    def test_from_env_reads_password_from_file(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_from_env_reads_password_from_file(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
         """_FILE環境変数からパスワードを読み込む"""
-        with NamedTemporaryFile(mode="w", suffix=".txt", delete=False) as f:
-            f.write("file_password\n")
-            f.flush()
+        secret_file = tmp_path / "password.txt"
+        secret_file.write_text("file_password\n")
 
-            monkeypatch.setenv("APP_CLICKHOUSE_PASSWORD_FILE", f.name)
-            monkeypatch.delenv("APP_CLICKHOUSE_PASSWORD", raising=False)
+        monkeypatch.setenv("APP_CLICKHOUSE_PASSWORD_FILE", str(secret_file))
+        monkeypatch.delenv("APP_CLICKHOUSE_PASSWORD", raising=False)
 
-            c = ClickHouseConfig.from_env()
-            assert c.password == "file_password"
+        c = ClickHouseConfig.from_env()
+        assert c.password == "file_password"
 
-            # クリーンアップ
-            Path(f.name).unlink()
-
-    def test_file_password_takes_precedence(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_file_password_takes_precedence(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
         """_FILEはプレーン環境変数より優先される"""
-        with NamedTemporaryFile(mode="w", suffix=".txt", delete=False) as f:
-            f.write("file_password")
-            f.flush()
+        secret_file = tmp_path / "password.txt"
+        secret_file.write_text("file_password")
 
-            monkeypatch.setenv("APP_CLICKHOUSE_PASSWORD", "env_password")
-            monkeypatch.setenv("APP_CLICKHOUSE_PASSWORD_FILE", f.name)
+        monkeypatch.setenv("APP_CLICKHOUSE_PASSWORD", "env_password")
+        monkeypatch.setenv("APP_CLICKHOUSE_PASSWORD_FILE", str(secret_file))
 
-            c = ClickHouseConfig.from_env()
-            assert c.password == "file_password"
-
-            Path(f.name).unlink()
+        c = ClickHouseConfig.from_env()
+        assert c.password == "file_password"
 
 
 class TestReportConfig:

@@ -25,7 +25,9 @@ class TestLLMConfig:
         )
 
         # Should be immutable
-        with pytest.raises(AttributeError):
+        with pytest.raises(
+            AttributeError, match="cannot assign to field 'service_url'"
+        ):
             config.service_url = "http://other:11435"
 
     def test_llm_config_has_required_fields(self):
@@ -115,7 +117,9 @@ class TestSchedulingConfig:
             aging_boost=0.5,
         )
 
-        with pytest.raises(AttributeError):
+        with pytest.raises(
+            AttributeError, match="cannot assign to field 'rt_reserved_slots'"
+        ):
             config.rt_reserved_slots = 2
 
     def test_scheduling_config_has_required_fields(self):
@@ -168,7 +172,9 @@ class TestHierarchicalConfig:
             chunk_max_chars=6000,
         )
 
-        with pytest.raises(AttributeError):
+        with pytest.raises(
+            AttributeError, match="cannot assign to field 'threshold_chars'"
+        ):
             config.threshold_chars = 10000
 
     def test_hierarchical_config_has_required_fields(self):
@@ -219,7 +225,7 @@ class TestModelRoutingConfig:
             model_60k_name="gemma4-e4b-60k",
         )
 
-        with pytest.raises(AttributeError):
+        with pytest.raises(AttributeError, match="cannot assign to field 'enabled'"):
             config.enabled = False
 
     def test_model_routing_config_has_required_fields(self):

@@ -29,6 +29,7 @@ func (uc *ValidateSession) Execute(ctx context.Context, cookieValue string) (*do
 			UserID:    cached.UserID,
 			TenantID:  cached.TenantID,
 			Email:     cached.Email,
+			Role:      cached.Role,
 			SessionID: cookieValue,
 		}, nil
 	}
@@ -40,11 +41,15 @@ func (uc *ValidateSession) Execute(ctx context.Context, cookieValue string) (*do
 		return nil, err
 	}
 
-	// Store in cache (single-tenant: TenantID == UserID)
+	// Store in cache (single-tenant: TenantID == UserID). Role must be cached
+	// too, otherwise the next cache-hit call silently drops it and downgrades
+	// an admin's backend JWT to the default "user" role (see
+	// TestValidateSession_AdminRole_CacheHit).
 	uc.cache.Set(cookieValue, domain.CachedSession{
 		UserID:    identity.UserID,
 		TenantID:  identity.UserID,
 		Email:     identity.Email,
+		Role:      identity.Role,
 		CreatedAt: identity.CreatedAt,
 	})
 

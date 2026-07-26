@@ -368,21 +368,20 @@ test.describe("Keyboard Navigation", () => {
 		await page.waitForLoadState("domcontentloaded");
 		await expect(page.getByTestId("swipe-card")).toBeVisible();
 
-		// Focus on a button using Tab - button text may change: "Article" -> "Loading..." -> "Hide"
+		// Focus on the Article button - once activated and content has
+		// loaded (mocked via fetchArticleContent in beforeEach), the label
+		// switches to "Re-fetch" (see SwipeFeedCard.svelte).
 		const articleButton = page.getByRole("button", {
-			name: /article|loading|hide/i,
+			name: /article|loading|re-fetch/i,
 		});
 		await articleButton.focus();
 
 		// Activate with Enter
 		await page.keyboard.press("Enter");
 
-		// Content section should appear or button state should change
-		await page.waitForTimeout(500);
-
-		// Check that something happened (content expanded or button changed)
-		const buttonText = await articleButton.textContent();
-		// After click, button text might change to "Hide" or loading state
-		expect(buttonText).toBeTruthy();
+		// Web-first assertion: the button label deterministically settles
+		// on "Re-fetch" once the article content finishes loading, instead
+		// of a fixed wait followed by a tautological toBeTruthy() check.
+		await expect(articleButton).toHaveText(/re-fetch/i, { timeout: 10000 });
 	});
 });
