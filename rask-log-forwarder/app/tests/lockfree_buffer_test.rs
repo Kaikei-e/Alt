@@ -1,5 +1,5 @@
 // TDD tests for lock-free buffer operations
-use rask_log_forwarder::buffer::{BufferError, LogBuffer};
+use rask_log_forwarder::buffer::{BufferError, ErrorRecovery, LogBuffer};
 use rask_log_forwarder::parser::{EnrichedLogEntry, LogLevel};
 use std::sync::Arc;
 use std::time::Duration;
@@ -30,23 +30,60 @@ fn create_test_entry(message: &str) -> EnrichedLogEntry {
 
 #[test]
 fn test_buffer_error_handling() {
-    // Test that BufferError creation doesn't panic
-    let errors = vec![
-        BufferError::BufferClosed,
-        BufferError::BufferFull,
-        BufferError::SendTimeout,
-        BufferError::ReceiveTimeout,
-        BufferError::ConcurrencyError("test".to_string()),
+    // Each variant's recoverability and recovery strategy is meaningful
+    // production behavior consumed by callers deciding whether to retry,
+    // fall back, or give up -- so pin down the actual values rather than
+    // just confirming the calls don't panic.
+    let cases = [
+        (
+            BufferError::BufferClosed,
+            "Buffer is closed",
+            false,
+            ErrorRecovery::Fail,
+        ),
+        (
+            BufferError::BufferFull,
+            "Buffer is full",
+            true,
+            ErrorRecovery::RetryWithFallback,
+        ),
+        (
+            BufferError::SendTimeout,
+            "Send timeout",
+            true,
+            ErrorRecovery::Retry,
+        ),
+        (
+            BufferError::ReceiveTimeout,
+            "Receive timeout",
+            true,
+            ErrorRecovery::Retry,
+        ),
+        (
+            BufferError::ConcurrencyError("test".to_string()),
+            "Concurrency error: test",
+            true,
+            ErrorRecovery::Retry,
+        ),
     ];
 
-    for error in errors {
-        // These should not panic
-        let _ = error.to_string();
-        let _ = error.is_recoverable();
-        let _ = error.recovery_strategy();
+    for (error, expected_message, expected_recoverable, expected_strategy) in cases {
+        assert_eq!(
+            error.to_string(),
+            expected_message,
+            "unexpected Display output for {error:?}"
+        );
+        assert_eq!(
+            error.is_recoverable(),
+            expected_recoverable,
+            "unexpected is_recoverable() for {error:?}"
+        );
+        assert_eq!(
+            error.recovery_strategy(),
+            expected_strategy,
+            "unexpected recovery_strategy() for {error:?}"
+        );
     }
-
-    println!("✓ Buffer error handling works correctly");
 }
 
 #[tokio::test]
@@ -320,25 +357,39 @@ async fn test_buffer_edge_cases() {
 
 #[test]
 fn test_buffer_metrics_safety() {
-    // Test that buffer metrics operations don't panic
+    // A freshly created, never-touched buffer has fully deterministic
+    // metrics. Assert those exact values instead of merely calling each
+    // accessor and discarding the result -- a regression that made e.g.
+    // `is_empty()` or `fill_ratio()` wrong on an empty buffer would not have
+    // failed the old "doesn't panic" version of this test.
     let buffer = LogBuffer::new(100).expect("Should create buffer");
 
-    // These operations should not panic
-    let _ = buffer.metrics();
-    let _ = buffer.config();
-    let _ = buffer.capacity();
-    let _ = buffer.len();
-    let _ = buffer.is_empty();
-    let _ = buffer.is_full();
-    let _ = buffer.detailed_metrics();
-    let _ = buffer.fill_ratio();
-    let _ = buffer.needs_backpressure();
-    let _ = buffer.backpressure_level();
+    assert_eq!(buffer.capacity(), 100);
+    assert_eq!(buffer.len(), 0);
+    assert!(buffer.is_empty());
+    assert!(!buffer.is_full());
+    assert_eq!(buffer.fill_ratio(), 0.0);
+    assert!(!buffer.needs_backpressure());
+    assert_eq!(
+        buffer.backpressure_level(),
+        rask_log_forwarder::buffer::BackpressureLevel::None
+    );
 
-    // Reset metrics should not panic
+    let detailed = buffer.detailed_metrics();
+    assert_eq!(detailed.capacity, 100);
+    assert_eq!(detailed.len, 0);
+    assert_eq!(detailed.pushed, 0);
+    assert_eq!(detailed.popped, 0);
+    assert_eq!(detailed.dropped, 0);
+    assert_eq!(detailed.fill_ratio, 0.0);
+
+    assert_eq!(buffer.config().capacity, 100);
+
+    // reset_metrics() on an already-empty buffer must not disturb the
+    // deterministic zero state.
     buffer.reset_metrics();
-
-    println!("✓ Buffer metrics safety test passed");
+    assert_eq!(buffer.len(), 0);
+    assert!(buffer.is_empty());
 }
 
 // Note: Individual test functions above test all lock-free buffer requirements:

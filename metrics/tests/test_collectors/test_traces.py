@@ -71,6 +71,15 @@ class TestCollectApiPerformance:
             collect_api_performance(mock_client, "rask_logs", 24)
 
         assert "api_performance" in str(exc_info.value)
+        assert "Connection failed" in str(exc_info.value)
+
+    def test_unexpected_exception_is_not_swallowed(self) -> None:
+        """ClickHouseError以外の予期しない例外はCollectorErrorに変換せず伝播する"""
+        mock_client = MagicMock()
+        mock_client.query.side_effect = ValueError("unexpected bug")
+
+        with pytest.raises(ValueError):
+            collect_api_performance(mock_client, "rask_logs", 24)
 
 
 class TestCollectBottlenecks:
@@ -108,6 +117,7 @@ class TestCollectBottlenecks:
             collect_bottlenecks(mock_client, "rask_logs", 24)
 
         assert "bottlenecks" in str(exc_info.value)
+        assert "Query timeout" in str(exc_info.value)
 
 
 class TestCollectSpanTypeStats:
@@ -145,6 +155,7 @@ class TestCollectSpanTypeStats:
             collect_span_type_stats(mock_client, "rask_logs", 24)
 
         assert "span_type_stats" in str(exc_info.value)
+        assert "Query failed" in str(exc_info.value)
 
 
 class TestCollectErrorSpans:
@@ -181,6 +192,7 @@ class TestCollectErrorSpans:
             collect_error_spans(mock_client, "rask_logs", 24)
 
         assert "error_spans" in str(exc_info.value)
+        assert "Connection failed" in str(exc_info.value)
 
 
 class TestCollectServiceDependencies:
@@ -219,3 +231,4 @@ class TestCollectServiceDependencies:
             collect_service_dependencies(mock_client, "rask_logs", 24)
 
         assert "service_dependencies" in str(exc_info.value)
+        assert "Query timeout" in str(exc_info.value)

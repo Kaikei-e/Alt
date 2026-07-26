@@ -332,16 +332,41 @@ mod tests {
         assert_eq!(outcome, PublishOutcome::default());
     }
 
-    /// Replay safety: same inputs → same deterministic snapshot id (and so
-    /// same dedupe key on the wire). Two passes both succeed against a
-    /// permissive mock; the assertion checks the helper would have used
-    /// the same id both times via the underlying derivation.
+    /// Replay safety: same inputs → same deterministic snapshot id, and that
+    /// id must actually reach the wire as part of `dedupe_key` (per
+    /// `emit_recap_topic_snapshotted`'s `"recap.topic_snapshotted.v1:{user_id}:{snapshot_id}"`
+    /// format) so the sovereign side's dedupe index can catch a retried emit.
+    ///
+    /// Before this test asserted anything, both `publish_topic_snapshots`
+    /// return values were discarded via `let _ =`, and the only assertion
+    /// compared two *independent* calls to the pure `deterministic_snapshot_id`
+    /// helper — which is trivially equal to itself and would stay green even
+    /// if `publish_topic_snapshots` never called that helper at all, or used
+    /// `Uuid::new_v4()` per emit. The mock below pins the exact dedupe_key on
+    /// the outgoing request for both calls, so a regression to a
+    /// non-deterministic id would surface as an unmatched request /
+    /// unmet `.expect(2)` instead of passing silently.
     #[tokio::test]
     async fn retry_yields_same_snapshot_id() {
+        let (start, end) = fixture_window();
+        let cluster = ConfirmedCluster {
+            cluster_id: 7,
+            top_terms: vec!["a".into()],
+        };
+        let expected_snapshot_id = deterministic_snapshot_id(fixture_user(), 7, start, end);
+        let expected_dedupe_key = format!(
+            "recap.topic_snapshotted.v1:{}:{}",
+            fixture_user(),
+            expected_snapshot_id
+        );
+
         let server = MockServer::start().await;
         Mock::given(method("POST"))
             .and(path(
                 "/services.sovereign.v1.KnowledgeSovereignService/AppendKnowledgeEvent",
+            ))
+            .and(wiremock::matchers::body_string_contains(
+                expected_dedupe_key,
             ))
             .respond_with(
                 ResponseTemplate::new(200)
@@ -353,33 +378,38 @@ mod tests {
             .await;
         let client = KnowledgeSovereignClient::new_for_test(server.uri());
 
-        let (start, end) = fixture_window();
-        let cluster = ConfirmedCluster {
-            cluster_id: 7,
-            top_terms: vec!["a".into()],
-        };
+        let outcome_a = publish_topic_snapshots(
+            &client,
+            fixture_user(),
+            fixture_tenant(),
+            start,
+            end,
+            std::slice::from_ref(&cluster),
+        )
+        .await;
+        let outcome_b = publish_topic_snapshots(
+            &client,
+            fixture_user(),
+            fixture_tenant(),
+            start,
+            end,
+            std::slice::from_ref(&cluster),
+        )
+        .await;
 
-        let _ = publish_topic_snapshots(
-            &client,
-            fixture_user(),
-            fixture_tenant(),
-            start,
-            end,
-            std::slice::from_ref(&cluster),
-        )
-        .await;
-        let _ = publish_topic_snapshots(
-            &client,
-            fixture_user(),
-            fixture_tenant(),
-            start,
-            end,
-            std::slice::from_ref(&cluster),
-        )
-        .await;
+        assert_eq!(
+            outcome_a.succeeded, 1,
+            "first publish must reach the mock using the deterministic dedupe_key"
+        );
+        assert_eq!(
+            outcome_b.succeeded, 1,
+            "retried publish must reach the mock using the SAME deterministic dedupe_key"
+        );
 
         let snap_a = deterministic_snapshot_id(fixture_user(), 7, start, end);
         let snap_b = deterministic_snapshot_id(fixture_user(), 7, start, end);
         assert_eq!(snap_a, snap_b);
+        // `server` drop verifies `.expect(2)`: both calls matched the pinned
+        // dedupe_key, not just any POST.
     }
 }

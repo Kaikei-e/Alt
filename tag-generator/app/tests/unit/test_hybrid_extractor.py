@@ -167,9 +167,13 @@ class TestHybridExtractor:
         mock_fugashi.assert_called_once()
 
     def test_compute_combined_scores_empty(self, extractor):
-        """Test combined score computation with empty candidates."""
-        extractor._compute_combined_scores([])
-        # Should not raise
+        """Empty candidates must short-circuit before the max()-over-empty-sequence
+        call that would otherwise raise ValueError, and return None (in-place mutation
+        contract, nothing to mutate)."""
+        candidates: list[CandidateTag] = []
+        result = extractor._compute_combined_scores(candidates)
+        assert result is None
+        assert candidates == []
 
     def test_compute_combined_scores(self, extractor):
         """Test combined score computation."""

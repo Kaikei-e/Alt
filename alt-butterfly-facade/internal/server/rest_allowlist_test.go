@@ -39,9 +39,11 @@ func TestRESTAllowlist_Matches(t *testing.T) {
 		{"/v1/", false},
 	}
 	for _, c := range cases {
-		got := allowRESTPath(c.path)
-		if got != c.allow {
-			t.Errorf("allowRESTPath(%q) = %v, want %v", c.path, got, c.allow)
-		}
+		t.Run(c.path, func(t *testing.T) {
+			got := allowRESTPath(c.path)
+			if got != c.allow {
+				t.Errorf("allowRESTPath(%q) = %v, want %v", c.path, got, c.allow)
+			}
+		})
 	}
 }

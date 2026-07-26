@@ -119,7 +119,10 @@ class TestTagGeneratorEventHandler:
 
         await handler._handle_tag_generation_requested(tag_generation_request_event)
 
-        # Should not raise, but also not process
+        # Should not raise, and must bail out before attempting extraction --
+        # there is no consumer to publish a reply to, so doing the (costly)
+        # extraction work would be silently wasted.
+        mock_service.tag_extractor.extract_tags_with_metrics.assert_not_called()
 
     @pytest.mark.anyio
     async def test_handle_tag_generation_requested_extraction_error(
@@ -302,5 +305,5 @@ class TestTagGeneratorEventHandler:
         }
         mock_service._process_single_article.return_value = False
 
-        with pytest.raises(RuntimeError):
+        with pytest.raises(RuntimeError, match="tag processing failed for article article-123"):
             await handler._handle_article_created(event)

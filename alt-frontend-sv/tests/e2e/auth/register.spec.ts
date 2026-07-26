@@ -91,10 +91,13 @@ test.describe("Register Page", () => {
 			return;
 		}
 
-		// Check if we got the form
-		if (await registerPage.cardTitle.isVisible()) {
-			await expect(registerPage.cardTitle).toContainText("Register");
-		}
+		// waitForFormReady() already confirmed the form rendered (email
+		// input visible, no external-auth redirect), so the card title
+		// that ships with the same form must be present too — assert it
+		// unconditionally instead of only checking inside a redundant
+		// `if (isVisible())` guard that would silently no-op otherwise.
+		await expect(registerPage.cardTitle).toBeVisible();
+		await expect(registerPage.cardTitle).toContainText("Register");
 	});
 
 	test("has email and password fields", async ({ page, registerPage }) => {

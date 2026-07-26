@@ -7,6 +7,7 @@ HTTP 200
 [Captures]
 csrf: jsonpath "$.csrf_token"
 
+# ReadStatus{FeedURL} binds `feed_url` (schema.go:7-9).
 POST {{base_url}}/v1/feeds/read
 X-Alt-Backend-Token: {{jwt}}
 X-CSRF-Token: {{csrf}}
@@ -14,19 +15,22 @@ Content-Type: application/json
 {
   "feed_url": "http://stub.invalid/alt-backend/e2e/feed-register-1.xml"
 }
-HTTP *
+HTTP 200
 [Asserts]
-status >= 200
-status < 600
+jsonpath "$.message" == "Feed read status updated"
 
+# RssFeedLink{URL} binds `url`, not `feed_url` (schema.go:3-5). The
+# original body used `feed_url`, which always bound to an empty URL and
+# only ever exercised RestHandleRegisterFavoriteFeed's 400
+# validation-error branch (operations.go:51-52) — masked by the previous
+# `status >= 200; status < 600` assertion that accepted any outcome.
 POST {{base_url}}/v1/feeds/register/favorite
 X-Alt-Backend-Token: {{jwt}}
 X-CSRF-Token: {{csrf}}
 Content-Type: application/json
 {
-  "feed_url": "http://stub.invalid/alt-backend/e2e/feed-register-1.xml"
+  "url": "http://stub.invalid/alt-backend/e2e/feed-register-1.xml"
 }
-HTTP *
+HTTP 200
 [Asserts]
-status >= 200
-status < 600
+jsonpath "$.message" == "favorite feed registered"

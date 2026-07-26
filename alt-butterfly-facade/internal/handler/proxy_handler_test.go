@@ -325,8 +325,12 @@ func TestProxyHandler_ServeHTTP_StreamingRequest(t *testing.T) {
 	handler.ServeHTTP(recorder, req)
 
 	assert.Equal(t, http.StatusOK, recorder.Code)
-	body, _ := io.ReadAll(recorder.Body)
-	assert.Contains(t, string(body), "chunk")
+	body, err := io.ReadAll(recorder.Body)
+	assert.NoError(t, err)
+	// All 3 streamed chunks must be forwarded intact, not just a substring of
+	// one of them — catches truncation/buffering regressions that "Contains"
+	// alone would miss.
+	assert.Equal(t, "chunkchunkchunk", string(body))
 }
 
 // TestProxyHandler_ServeHTTP_LogsAccess gives ops a breadcrumb per proxy hop.

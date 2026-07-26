@@ -53,6 +53,7 @@ async def test_planner_fallback_generates_generic_queries() -> None:
     node = PlannerNode(llm)
     result = await node({"brief": {"topic": "AI trends"}})
 
+    assert result["outline"], "fallback must still produce an outline"
     for section in result["outline"]:
         assert len(section["search_queries"]) >= 1
         for q in section["search_queries"]:
@@ -74,6 +75,7 @@ async def test_planner_sections_missing_queries_get_defaults() -> None:
     node = PlannerNode(llm)
     result = await node({"brief": {"topic": "AI ethics"}})
 
+    assert result["outline"], "sections-missing-queries must still produce an outline"
     for section in result["outline"]:
         assert len(section["search_queries"]) >= 1
 

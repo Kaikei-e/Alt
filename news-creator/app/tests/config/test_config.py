@@ -1,29 +1,25 @@
 """Tests for configuration module."""
 
-import os
-
 from news_creator.config.config import NewsCreatorConfig
 
 
-def test_config_loads_defaults():
+def test_config_loads_defaults(monkeypatch):
     """Test that config loads with default values."""
-    os.environ.pop("LLM_SERVICE_URL", None)
-    os.environ.pop("LLM_MODEL", None)
+    monkeypatch.delenv("LLM_SERVICE_URL", raising=False)
+    monkeypatch.delenv("LLM_MODEL", raising=False)
 
     config = NewsCreatorConfig()
 
     assert config.llm_service_url == "http://localhost:11435"
     assert config.model_name == "gemma4-e4b-q4km"
 
-    # Cleanup
 
-
-def test_config_loads_from_environment():
+def test_config_loads_from_environment(monkeypatch):
     """Test that config loads values from environment variables."""
-    os.environ["LLM_SERVICE_URL"] = "http://custom-llm:8080"
-    os.environ["LLM_MODEL"] = "custom-model:7b"
-    os.environ["LLM_TIMEOUT_SECONDS"] = "120"
-    os.environ["LLM_TEMPERATURE"] = "0.7"
+    monkeypatch.setenv("LLM_SERVICE_URL", "http://custom-llm:8080")
+    monkeypatch.setenv("LLM_MODEL", "custom-model:7b")
+    monkeypatch.setenv("LLM_TIMEOUT_SECONDS", "120")
+    monkeypatch.setenv("LLM_TEMPERATURE", "0.7")
 
     config = NewsCreatorConfig()
 
@@ -32,17 +28,11 @@ def test_config_loads_from_environment():
     assert config.llm_timeout_seconds == 120
     assert config.llm_temperature == 0.7
 
-    # Cleanup
-    del os.environ["LLM_SERVICE_URL"]
-    del os.environ["LLM_MODEL"]
-    del os.environ["LLM_TIMEOUT_SECONDS"]
-    del os.environ["LLM_TEMPERATURE"]
 
-
-def test_config_handles_invalid_numeric_values():
+def test_config_handles_invalid_numeric_values(monkeypatch):
     """Test that config handles invalid numeric values gracefully."""
-    os.environ["LLM_TIMEOUT_SECONDS"] = "invalid"
-    os.environ["LLM_TEMPERATURE"] = "not_a_float"
+    monkeypatch.setenv("LLM_TIMEOUT_SECONDS", "invalid")
+    monkeypatch.setenv("LLM_TEMPERATURE", "not_a_float")
 
     config = NewsCreatorConfig()
 
@@ -50,32 +40,25 @@ def test_config_handles_invalid_numeric_values():
     assert config.llm_timeout_seconds == 300
     assert config.llm_temperature == 0.7  # Gemma4 default
 
-    # Cleanup
-    del os.environ["LLM_TIMEOUT_SECONDS"]
-    del os.environ["LLM_TEMPERATURE"]
 
-
-def test_config_auth_settings():
+def test_config_auth_settings(monkeypatch):
     """Authentication is now established at the TLS transport layer; the
     config retains only the auth service URL for forward-compatible refs."""
-    os.environ["AUTH_SERVICE_URL"] = "http://auth:8080"
+    monkeypatch.setenv("AUTH_SERVICE_URL", "http://auth:8080")
 
     config = NewsCreatorConfig()
 
     assert config.auth_service_url == "http://auth:8080"
     assert config.service_name == "news-creator"
 
-    # Cleanup
-    del os.environ["AUTH_SERVICE_URL"]
 
-
-def test_config_llm_options():
+def test_config_llm_options(monkeypatch):
     """Test LLM options configuration."""
-    os.environ["LLM_NUM_PREDICT"] = "1000"
-    os.environ["LLM_TOP_P"] = "0.95"
-    os.environ["LLM_REPEAT_PENALTY"] = "1.1"
-    os.environ["LLM_NUM_CTX"] = "4096"
-    os.environ["LLM_STOP_TOKENS"] = "<end>,<stop>"
+    monkeypatch.setenv("LLM_NUM_PREDICT", "1000")
+    monkeypatch.setenv("LLM_TOP_P", "0.95")
+    monkeypatch.setenv("LLM_REPEAT_PENALTY", "1.1")
+    monkeypatch.setenv("LLM_NUM_CTX", "4096")
+    monkeypatch.setenv("LLM_STOP_TOKENS", "<end>,<stop>")
 
     config = NewsCreatorConfig()
 
@@ -85,27 +68,14 @@ def test_config_llm_options():
     assert config.llm_num_ctx == 4096
     assert config.llm_stop_tokens == ["<end>", "<stop>"]
 
-    # Cleanup
-    for key in [
-        "LLM_NUM_PREDICT",
-        "LLM_TOP_P",
-        "LLM_REPEAT_PENALTY",
-        "LLM_NUM_CTX",
-        "LLM_STOP_TOKENS",
-    ]:
-        os.environ.pop(key, None)
 
-
-def test_config_summary_num_predict():
+def test_config_summary_num_predict(monkeypatch):
     """Test summary-specific num_predict configuration."""
-    os.environ["SUMMARY_NUM_PREDICT"] = "750"
+    monkeypatch.setenv("SUMMARY_NUM_PREDICT", "750")
 
     config = NewsCreatorConfig()
 
     assert config.summary_num_predict == 750
-
-    # Cleanup
-    del os.environ["SUMMARY_NUM_PREDICT"]
 
 
 def test_config_recap_quality_defaults():
@@ -119,9 +89,9 @@ def test_config_recap_quality_defaults():
     assert config.recap_summary_repair_attempts == 2
 
 
-def test_recap_summary_num_predict_default():
+def test_recap_summary_num_predict_default(monkeypatch):
     """recap_summary_num_predict should default to 4000 (separate from summary_num_predict)."""
-    os.environ.pop("RECAP_SUMMARY_NUM_PREDICT", None)
+    monkeypatch.delenv("RECAP_SUMMARY_NUM_PREDICT", raising=False)
 
     config = NewsCreatorConfig()
 
@@ -131,15 +101,13 @@ def test_recap_summary_num_predict_default():
     assert config.summary_num_predict == 1000
 
 
-def test_recap_summary_num_predict_env_override():
+def test_recap_summary_num_predict_env_override(monkeypatch):
     """RECAP_SUMMARY_NUM_PREDICT env should override the default."""
-    os.environ["RECAP_SUMMARY_NUM_PREDICT"] = "3000"
+    monkeypatch.setenv("RECAP_SUMMARY_NUM_PREDICT", "3000")
 
     config = NewsCreatorConfig()
 
     assert config.recap_summary_num_predict == 3000
-
-    del os.environ["RECAP_SUMMARY_NUM_PREDICT"]
 
 
 def test_concurrency_defaults_to_one_when_envs_missing(monkeypatch):

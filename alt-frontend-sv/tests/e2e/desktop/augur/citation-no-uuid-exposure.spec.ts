@@ -49,9 +49,14 @@ test.describe("Augur Citation UUID Exposure", () => {
 
 		await page.goto(`/augur/${conversationId}`);
 
+		// Wait for the rail to actually render before checking its text —
+		// otherwise a premature innerText() read on an empty/absent rail
+		// would trivially "pass" without ever exercising the invariant.
+		const citationRail = page.locator(".citation-rail");
+		await expect(citationRail).toBeVisible();
+
 		// The visible text on every citation row must not contain the UUID.
-		const railText = await page.locator(".citation-rail").innerText();
-		expect(railText).not.toContain(articleRefId);
+		await expect(citationRail).not.toContainText(articleRefId);
 
 		// The fallback for a UUID-only Title is the URL's domain.
 		const titleLink = page
@@ -99,8 +104,9 @@ test.describe("Augur Citation UUID Exposure", () => {
 
 		await page.goto(`/augur/${conversationId}`);
 
-		const railText = await page.locator(".citation-rail").innerText();
-		expect(railText).not.toContain(articleRefId);
+		const citationRail = page.locator(".citation-rail");
+		await expect(citationRail).toBeVisible();
+		await expect(citationRail).not.toContainText(articleRefId);
 		await expect(
 			page.locator(".citation-rail a.item-title").filter({
 				hasText: "Untitled source",

@@ -3,6 +3,7 @@ package usecase
 import (
 	"context"
 	"errors"
+	"fmt"
 	"search-indexer/domain"
 	"search-indexer/tokenize"
 	"testing"
@@ -254,8 +255,123 @@ func TestIndexArticlesUsecase_Execute(t *testing.T) {
 	}
 }
 
+// mockPaginatingArticleRepo simulates the driver-layer cursor pagination
+// contract: GetArticlesWithTags(lastCreatedAt, lastID, limit) returns the
+// page strictly after the given cursor, not the whole dataset regardless of
+// cursor. mockArticleRepo above always returns its full articles slice no
+// matter what cursor is passed, so it cannot exercise the pagination loop --
+// which is exactly why this test used to be skipped ("mock doesn't
+// implement proper pagination logic"). This mock tracks position by article
+// ID instead, mirroring how the real SQL cursor advances.
+type mockPaginatingArticleRepo struct {
+	all []*domain.Article
+}
+
+func (m *mockPaginatingArticleRepo) GetArticlesWithTags(ctx context.Context, lastCreatedAt *time.Time, lastID string, limit int) ([]*domain.Article, *time.Time, string, error) {
+	start := 0
+	if lastID != "" {
+		for i, a := range m.all {
+			if a.ID() == lastID {
+				start = i + 1
+				break
+			}
+		}
+	}
+	if start >= len(m.all) {
+		return []*domain.Article{}, lastCreatedAt, lastID, nil
+	}
+	end := start + limit
+	if end > len(m.all) {
+		end = len(m.all)
+	}
+	page := m.all[start:end]
+	last := page[len(page)-1]
+	createdAt := last.CreatedAt()
+	return page, &createdAt, last.ID(), nil
+}
+
+func (m *mockPaginatingArticleRepo) GetArticlesWithTagsForward(ctx context.Context, incrementalMark *time.Time, lastCreatedAt *time.Time, lastID string, limit int) ([]*domain.Article, *time.Time, string, error) {
+	return nil, nil, "", errors.New("mockPaginatingArticleRepo: GetArticlesWithTagsForward not used by this test")
+}
+
+func (m *mockPaginatingArticleRepo) GetDeletedArticles(ctx context.Context, lastDeletedAt *time.Time, limit int) ([]string, *time.Time, error) {
+	return nil, nil, nil
+}
+
+func (m *mockPaginatingArticleRepo) GetLatestCreatedAt(ctx context.Context) (*time.Time, error) {
+	return nil, nil
+}
+
+func (m *mockPaginatingArticleRepo) GetArticleByID(ctx context.Context, articleID string) (*domain.Article, error) {
+	return nil, domain.ErrArticleNotFound
+}
+
+// TestIndexArticlesUsecase_ExecuteWithPagination drives ExecuteBackfill
+// across multiple pages the way bootstrap's backfill loop does in
+// production: repeatedly call it with the previous call's LastCreatedAt/
+// LastID cursor until BackfillDone is true. It asserts every article is
+// indexed exactly once (no page skipped, no page re-indexed) and that the
+// loop terminates. This was previously an empty, skipped test -- the
+// pagination cursor hand-off had no coverage at all.
 func TestIndexArticlesUsecase_ExecuteWithPagination(t *testing.T) {
-	t.Skip("Skipping pagination test - mock doesn't implement proper pagination logic")
+	now := time.Now()
+	const articleCount = 5
+	articles := make([]*domain.Article, 0, articleCount)
+	for i := range articleCount {
+		a, err := domain.NewArticle(fmt.Sprintf("art-%d", i), fmt.Sprintf("Title %d", i), "Content", nil, now.Add(time.Duration(i)*time.Minute), "user")
+		if err != nil {
+			t.Fatalf("NewArticle(%d): %v", i, err)
+		}
+		articles = append(articles, a)
+	}
+
+	repo := &mockPaginatingArticleRepo{all: articles}
+	engine := &mockSearchEngineForIndexing{}
+	u := NewIndexArticlesUsecase(repo, engine, nil)
+
+	const pageSize = 2
+	var lastCreatedAt *time.Time
+	lastID := ""
+	totalIndexed := 0
+
+	for page := 1; ; page++ {
+		if page > articleCount+2 {
+			t.Fatal("pagination loop did not terminate (BackfillDone never became true)")
+		}
+		result, err := u.ExecuteBackfill(context.Background(), lastCreatedAt, lastID, pageSize)
+		if err != nil {
+			t.Fatalf("ExecuteBackfill (page %d): %v", page, err)
+		}
+		if result.BackfillDone {
+			if result.IndexedCount != 0 {
+				t.Errorf("final page: IndexedCount = %d, want 0", result.IndexedCount)
+			}
+			break
+		}
+		if result.IndexedCount == 0 {
+			t.Fatalf("page %d: IndexedCount = 0 but BackfillDone = false; loop would spin forever", page)
+		}
+		totalIndexed += result.IndexedCount
+		lastCreatedAt = result.LastCreatedAt
+		lastID = result.LastID
+	}
+
+	if totalIndexed != articleCount {
+		t.Fatalf("total indexed across pages = %d, want %d", totalIndexed, articleCount)
+	}
+	if len(engine.indexedDocs) != articleCount {
+		t.Fatalf("search engine has %d docs, want %d (a page was skipped or double-indexed)", len(engine.indexedDocs), articleCount)
+	}
+
+	seen := make(map[string]int, articleCount)
+	for _, doc := range engine.indexedDocs {
+		seen[doc.ID]++
+	}
+	for _, a := range articles {
+		if seen[a.ID()] != 1 {
+			t.Errorf("article %s indexed %d times, want exactly 1", a.ID(), seen[a.ID()])
+		}
+	}
 }
 
 // TestExecuteBackfill_CoalescesSynonymsToSingleCall validates that a batch of

@@ -1,12 +1,15 @@
 package fetch_feed_gateway
 
 import (
+	"alt/shared/driver/alt_db"
 	"alt/utils/errors"
 	"alt/utils/logger"
 	"context"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/pashagolub/pgxmock/v5"
 )
 
 func TestSingleFeedGateway_FetchSingleFeed_LoggerNilCase(t *testing.T) {
@@ -93,8 +96,39 @@ func TestSingleFeedGateway_FetchSingleFeed_DatabaseNil(t *testing.T) {
 }
 
 func TestSingleFeedGateway_FetchSingleFeed_NoFeedUrls(t *testing.T) {
-	// Skip complex mock test for now
-	t.Skip("Skipping test with complex database mock - focus on logger nil fix first")
+	logger.InitLogger()
+
+	mockPool, err := pgxmock.NewPool()
+	if err != nil {
+		t.Fatalf("failed to create pgxmock pool: %v", err)
+	}
+	defer mockPool.Close()
+
+	mockPool.ExpectQuery("SELECT fl.id, fl.url FROM feed_links fl").
+		WillReturnRows(pgxmock.NewRows([]string{"id", "url"}))
+
+	gateway := &SingleFeedGateway{
+		alt_db:      alt_db.NewAltDBRepository(mockPool),
+		rateLimiter: nil,
+	}
+
+	feed, err := gateway.FetchSingleFeed(context.Background())
+	if err != nil {
+		t.Fatalf("FetchSingleFeed() unexpected error: %v", err)
+	}
+	if feed == nil {
+		t.Fatal("FetchSingleFeed() returned nil feed")
+	}
+	if feed.Title != "No feeds available" {
+		t.Errorf("FetchSingleFeed() Title = %q, want %q", feed.Title, "No feeds available")
+	}
+	if len(feed.Items) != 0 {
+		t.Errorf("FetchSingleFeed() Items = %v, want empty", feed.Items)
+	}
+
+	if err := mockPool.ExpectationsWereMet(); err != nil {
+		t.Errorf("unmet pgxmock expectations: %v", err)
+	}
 }
 
 // RED: Test for proxy-aware HTTP client usage (TDD)

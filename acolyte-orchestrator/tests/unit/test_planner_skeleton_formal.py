@@ -150,6 +150,7 @@ async def test_unknown_report_type_uses_default_skeleton() -> None:
 def test_default_skeleton_has_no_prebaked_queries() -> None:
     """_get_skeleton for unknown report_type returns sections without search_queries."""
     skeleton = _get_skeleton({"report_type": "nonexistent", "topic": "test"})
+    assert skeleton, "unknown report_type must still produce a default skeleton"
     for section in skeleton:
         assert "search_queries" not in section, f"Section '{section['key']}' has pre-baked search_queries in skeleton"
 

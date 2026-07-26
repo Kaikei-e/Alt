@@ -171,9 +171,13 @@ def test_compress_article_preserves_score_descending_order() -> None:
     """Packing order: strongest evidence first (Lost-in-the-Middle mitigation)."""
     body = "Weak filler sentence here. Strong AI trend data point. AI spending hit $100B in 2026."
     spans = compress_article(body, ["AI spending trends"], char_budget=200)
-    if len(spans) > 1:
-        scores = [s.relevance_score for s in spans]
-        assert scores == sorted(scores, reverse=True)
+    # Assert the precondition explicitly instead of gating the real check
+    # behind `if len(spans) > 1:` — a budget/scoring change that collapsed
+    # this fixture to a single span would otherwise make the ordering
+    # assertion never run, and the test would still report green.
+    assert len(spans) > 1, "fixture must yield multiple spans to exercise ordering"
+    scores = [s.relevance_score for s in spans]
+    assert scores == sorted(scores, reverse=True)
 
 
 def test_compress_article_passthrough_short_body() -> None:
@@ -263,6 +267,9 @@ def test_select_top_sentences_offset_correct_against_raw_body() -> None:
     """Returned char_offset matches actual position of text in body."""
     body = "First sentence here. Second about AI chips. Third sentence."
     spans = select_top_sentences(body, ["AI chips"], max_sentences=1)
+    # An empty `spans` would make the loop below a silent no-op, so assert
+    # the fixture actually produces something to check offsets against.
+    assert len(spans) >= 1
     for span in spans:
         assert body[span.char_offset : span.char_offset + len(span.text)] == span.text
 

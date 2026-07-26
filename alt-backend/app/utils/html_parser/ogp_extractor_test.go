@@ -171,9 +171,16 @@ func TestExtractHead_Missing(t *testing.T) {
 	raw := `<body><p>Content without head</p></body>`
 
 	result := ExtractHead(raw)
-	// goquery may auto-generate a <head>, so we just check it doesn't error
-	// The result might be empty or contain an empty head
-	_ = result
+	// goquery's HTML parser auto-generates an empty <head> for a
+	// head-less fragment, so headSel.Length() is non-zero but its inner
+	// HTML is empty - the caller-visible contract is "no head content",
+	// i.e. an empty string, same as if head were entirely absent.
+	if result != "" {
+		t.Errorf("ExtractHead() = %q, want empty string when input has no <head>", result)
+	}
+	if containsStr(result, "Content without head") {
+		t.Error("ExtractHead() should not leak body content into the head result")
+	}
 }
 
 func TestExtractHead_EmptyInput(t *testing.T) {

@@ -59,6 +59,15 @@ class TestCollectSliTrends:
             collect_sli_trends(mock_client, "rask_logs", 24)
 
         assert "sli_trends" in str(exc_info.value)
+        assert "Connection failed" in str(exc_info.value)
+
+    def test_unexpected_exception_is_not_swallowed(self) -> None:
+        """ClickHouseError以外の予期しない例外はCollectorErrorに変換せず伝播する"""
+        mock_client = MagicMock()
+        mock_client.query.side_effect = ValueError("unexpected bug")
+
+        with pytest.raises(ValueError):
+            collect_sli_trends(mock_client, "rask_logs", 24)
 
     def test_query_uses_correct_parameters(self) -> None:
         """クエリが正しいパラメータをバインドパラメータとして使用"""
@@ -116,6 +125,7 @@ class TestCollectSloViolations:
             collect_slo_violations(mock_client, "rask_logs", 24, 1.0)
 
         assert "slo_violations" in str(exc_info.value)
+        assert "Query timeout" in str(exc_info.value)
 
     def test_uses_custom_threshold(self) -> None:
         """カスタム閾値を使用"""

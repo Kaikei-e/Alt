@@ -29,9 +29,21 @@ func TestRunSynonymsFlushLoop_FlushesImmediatelyThenOnInterval(t *testing.T) {
 	logger.Init()
 	f := &fakeSynonymsFlusher{}
 	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
 
-	go runSynonymsFlushLoop(ctx, f, 20*time.Millisecond)
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		runSynonymsFlushLoop(ctx, f, 20*time.Millisecond)
+	}()
+	// Join the loop goroutine before returning: runSynonymsFlushLoop reads
+	// the shared logger.Logger global on every tick, and leaving it running
+	// past this test's return raced it against the next test's logger.Init()
+	// write under `go test -race` (loop goroutine outlives cancel() by a
+	// few microseconds while the runtime schedules the next test).
+	t.Cleanup(func() {
+		cancel()
+		<-done
+	})
 
 	deadline := time.After(2 * time.Second)
 	for f.calls.Load() < 3 {
@@ -49,9 +61,19 @@ func TestRunSynonymsFlushLoop_ErrorDoesNotStopLoop(t *testing.T) {
 	logger.Init()
 	f := &fakeSynonymsFlusher{err: errors.New("meilisearch unreachable")}
 	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
 
-	go runSynonymsFlushLoop(ctx, f, 10*time.Millisecond)
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		runSynonymsFlushLoop(ctx, f, 10*time.Millisecond)
+	}()
+	// See TestRunSynonymsFlushLoop_FlushesImmediatelyThenOnInterval: join the
+	// loop goroutine before returning so it cannot race the next test's
+	// logger.Init() against the shared logger.Logger global.
+	t.Cleanup(func() {
+		cancel()
+		<-done
+	})
 
 	deadline := time.After(2 * time.Second)
 	for f.calls.Load() < 3 {

@@ -539,10 +539,13 @@ func TestCSRFTokenGateway_HMACTimingAttackResistance(t *testing.T) {
 	t.Logf("Average validation time for valid tokens: %v", validAvg)
 	t.Logf("Average validation time for invalid tokens: %v", invalidAvg)
 
-	// If the timing difference is more than 2x, it might indicate a timing leak
-	// Note: This is not a perfect test but provides some confidence
+	// If the timing difference is more than 3x, it might indicate a timing
+	// leak. The threshold is deliberately loose (looser than the 2x this
+	// test used to only warn about) to tolerate scheduler/CI jitter while
+	// still catching an actual regression to a non-constant-time compare -
+	// this must fail the test, not just log a warning nobody reads.
 	ratio := float64(validAvg) / float64(invalidAvg)
-	if ratio > 2.0 || ratio < 0.5 {
-		t.Logf("Warning: Timing difference detected (ratio: %.2f). This might indicate non-constant time comparison.", ratio)
+	if ratio > 3.0 || ratio < 1.0/3.0 {
+		t.Errorf("Timing difference detected (ratio: %.2f, valid=%v invalid=%v). This indicates non-constant time comparison.", ratio, validAvg, invalidAvg)
 	}
 }

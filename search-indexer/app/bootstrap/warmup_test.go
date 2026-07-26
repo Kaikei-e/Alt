@@ -92,9 +92,20 @@ func TestRunWarmupLoop_ProbesImmediatelyThenOnInterval(t *testing.T) {
 	logger.Init()
 	eng := &fakeWarmupEngine{}
 	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
 
-	go runWarmupLoop(ctx, eng, 20*time.Millisecond)
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		runWarmupLoop(ctx, eng, 20*time.Millisecond)
+	}()
+	// Join the loop goroutine before returning: runWarmupLoop reads the
+	// shared logger.Logger global on every tick, and leaving it running past
+	// this test's return raced it against the next test's logger.Init()
+	// write under `go test -race`.
+	t.Cleanup(func() {
+		cancel()
+		<-done
+	})
 
 	deadline := time.After(2 * time.Second)
 	for eng.calls.Load() < 3 {
@@ -114,9 +125,19 @@ func TestRunWarmupLoop_ErrorDoesNotStopLoop(t *testing.T) {
 	logger.Init()
 	eng := &fakeWarmupEngine{err: errors.New("embedder unreachable")}
 	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
 
-	go runWarmupLoop(ctx, eng, 10*time.Millisecond)
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		runWarmupLoop(ctx, eng, 10*time.Millisecond)
+	}()
+	// See TestRunWarmupLoop_ProbesImmediatelyThenOnInterval: join the loop
+	// goroutine before returning so it cannot race the next test's
+	// logger.Init() against the shared logger.Logger global.
+	t.Cleanup(func() {
+		cancel()
+		<-done
+	})
 
 	deadline := time.After(2 * time.Second)
 	for eng.calls.Load() < 3 {

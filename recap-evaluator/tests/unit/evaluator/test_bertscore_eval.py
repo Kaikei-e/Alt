@@ -77,7 +77,10 @@ class TestBERTScoreEvaluator:
         assert "en" in evaluator.MODEL_MAP
 
     def test_compute_bert_score_returns_result(self, mock_bert_score):
-        """compute_bert_score should return BERTScoreResult."""
+        """compute_bert_score should return BERTScoreResult with the mean of
+        the mocked per-pair tensors (precision=[0.85, 0.80], f1=[0.82, 0.77])
+        — an isinstance/range-only check would pass even if the evaluator
+        picked the wrong tensor or forgot to average across pairs."""
         evaluator = BERTScoreEvaluator()
 
         result = evaluator.compute_bert_score(
@@ -87,7 +90,9 @@ class TestBERTScoreEvaluator:
         )
 
         assert isinstance(result, BERTScoreResult)
-        assert 0.0 <= result.f1 <= 1.0
+        assert result.precision == pytest.approx(0.825, abs=0.001)
+        assert result.recall == pytest.approx(0.775, abs=0.001)
+        assert result.f1 == pytest.approx(0.795, abs=0.001)
 
     def test_compute_bert_score_mismatched_lengths_raises(self, mock_bert_score):
         """compute_bert_score should raise ValueError for mismatched lengths."""
@@ -126,7 +131,9 @@ class TestBERTScoreEvaluator:
         assert len(result.individual_scores) == 2
 
     def test_evaluate_summary_quality_single_pair(self, mock_bert_score):
-        """evaluate_summary_quality should work for a single summary-source pair."""
+        """evaluate_summary_quality is a thin wrapper delegating to
+        compute_bert_score([summary], [source_text]) — assert it actually
+        forwards the mocked score rather than just returning some result."""
         evaluator = BERTScoreEvaluator()
 
         result = evaluator.evaluate_summary_quality(
@@ -136,6 +143,7 @@ class TestBERTScoreEvaluator:
         )
 
         assert isinstance(result, BERTScoreResult)
+        assert result.f1 == pytest.approx(0.795, abs=0.001)
 
     def test_evaluate_batch_returns_aggregate_metrics(self, mock_bert_score):
         """evaluate_batch should return aggregated metrics."""

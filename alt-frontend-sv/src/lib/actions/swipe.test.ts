@@ -5,7 +5,7 @@
  *
  * @vitest-environment jsdom
  */
-import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { swipe } from "./swipe";
 
 describe("swipe action", () => {
@@ -42,9 +42,8 @@ describe("swipe action", () => {
 
 	it("should initialize without errors", () => {
 		const action = swipe(element);
-		expect(action).toBeDefined();
-		expect(action.update).toBeDefined();
-		expect(action.destroy).toBeDefined();
+		expect(typeof action.update).toBe("function");
+		expect(typeof action.destroy).toBe("function");
 	});
 
 	it("should emit swipe:move event during pointer move", async () => {
@@ -201,11 +200,21 @@ describe("swipe action", () => {
 
 	it("should update options via update method", () => {
 		const action = swipe(element, { threshold: 50 });
+		const swipeHandler = vi.fn();
+		element.addEventListener("swipe", swipeHandler as EventListener);
 
-		// Update should work without errors
+		// Raise the threshold to 100 — a 50px swipe that would have fired
+		// under the original threshold must now be rejected.
 		action.update({ threshold: 100 });
 
-		expect(action).toBeDefined();
+		element.dispatchEvent(
+			createPointerEvent("pointerdown", { clientX: 0, clientY: 0 }),
+		);
+		window.dispatchEvent(
+			createPointerEvent("pointerup", { clientX: 50, clientY: 0 }),
+		);
+
+		expect(swipeHandler).not.toHaveBeenCalled();
 	});
 
 	it("should cleanup listeners on destroy", () => {

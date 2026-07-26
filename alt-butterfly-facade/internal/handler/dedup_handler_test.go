@@ -94,11 +94,17 @@ func TestRequestDeduplicator_Do_DeduplicatesConcurrent(t *testing.T) {
 	var executionCount int32
 	var wg sync.WaitGroup
 
+	// Gate all goroutines so they call Do concurrently rather than racing to
+	// start first (which would just serialize them one at a time and defeat
+	// the point of the test even with the in-fn sleep below).
+	start := make(chan struct{})
+
 	// Simulate 5 concurrent requests with the same key
 	for i := 0; i < 5; i++ {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
+			<-start
 			result, err := dedup.Do("same-key", func() (*DedupResult, error) {
 				atomic.AddInt32(&executionCount, 1)
 				time.Sleep(50 * time.Millisecond) // Simulate work
@@ -113,6 +119,7 @@ func TestRequestDeduplicator_Do_DeduplicatesConcurrent(t *testing.T) {
 		}()
 	}
 
+	close(start)
 	wg.Wait()
 
 	// Only one execution should have happened
@@ -173,6 +180,7 @@ func TestRequestDeduplicator_Do_DifferentKeysExecuteSeparately(t *testing.T) {
 	dedup := NewRequestDeduplicator(100 * time.Millisecond)
 	var executionCount int32
 	var wg sync.WaitGroup
+	start := make(chan struct{})
 
 	// 5 requests with different keys
 	for i := 0; i < 5; i++ {
@@ -180,6 +188,7 @@ func TestRequestDeduplicator_Do_DifferentKeysExecuteSeparately(t *testing.T) {
 		key := "key-" + string(rune('0'+i))
 		go func(k string) {
 			defer wg.Done()
+			<-start
 			dedup.Do(k, func() (*DedupResult, error) {
 				atomic.AddInt32(&executionCount, 1)
 				time.Sleep(10 * time.Millisecond)
@@ -192,6 +201,7 @@ func TestRequestDeduplicator_Do_DifferentKeysExecuteSeparately(t *testing.T) {
 		}(key)
 	}
 
+	close(start)
 	wg.Wait()
 
 	// All 5 should have executed
@@ -202,11 +212,13 @@ func TestRequestDeduplicator_Do_AllReceiveSameResult(t *testing.T) {
 	dedup := NewRequestDeduplicator(100 * time.Millisecond)
 	var wg sync.WaitGroup
 	results := make(chan *DedupResult, 5)
+	start := make(chan struct{})
 
 	for i := 0; i < 5; i++ {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
+			<-start
 			result, _ := dedup.Do("same-key", func() (*DedupResult, error) {
 				time.Sleep(50 * time.Millisecond)
 				return &DedupResult{
@@ -219,40 +231,51 @@ func TestRequestDeduplicator_Do_AllReceiveSameResult(t *testing.T) {
 		}()
 	}
 
+	close(start)
 	wg.Wait()
 	close(results)
 
-	// All results should be identical
+	// All 5 goroutines must have received a result, and all results should
+	// be identical.
+	received := 0
 	for result := range results {
+		received++
 		assert.Equal(t, []byte("shared-result"), result.Body)
 		assert.Equal(t, http.StatusOK, result.StatusCode)
 	}
+	assert.Equal(t, 5, received, "every waiter must receive a result")
 }
 
 func TestRequestDeduplicator_Do_AllReceiveError(t *testing.T) {
 	dedup := NewRequestDeduplicator(100 * time.Millisecond)
 	var wg sync.WaitGroup
-	errors := make(chan error, 5)
+	errs := make(chan error, 5)
+	start := make(chan struct{})
 
 	for i := 0; i < 5; i++ {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
+			<-start
 			_, err := dedup.Do("same-key", func() (*DedupResult, error) {
 				time.Sleep(50 * time.Millisecond)
 				return nil, http.ErrHandlerTimeout
 			})
-			errors <- err
+			errs <- err
 		}()
 	}
 
+	close(start)
 	wg.Wait()
-	close(errors)
+	close(errs)
 
-	// All should receive the same error
-	for err := range errors {
+	// All 5 goroutines must have received the same error.
+	received := 0
+	for err := range errs {
+		received++
 		assert.Equal(t, http.ErrHandlerTimeout, err)
 	}
+	assert.Equal(t, 5, received, "every waiter must receive an error")
 }
 
 func TestRequestDeduplicator_Cleanup_RemovesExpiredEntries(t *testing.T) {
@@ -263,14 +286,27 @@ func TestRequestDeduplicator_Cleanup_RemovesExpiredEntries(t *testing.T) {
 		return &DedupResult{Body: []byte("test")}, nil
 	})
 
-	// Immediately, the entry should still be tracked (for brief period)
-	assert.GreaterOrEqual(t, dedup.Size(), 0)
+	// Do() is synchronous and removes the key from `pending` (what Size()
+	// reports) as soon as it returns, so Size() is already 0 here — it does
+	// not exercise Cleanup() at all. Cleanup() actually operates on
+	// `lastUsed`, which has no public accessor, so this whitebox check reads
+	// the unexported field directly (same package) to assert the real
+	// precondition: the completed key's timestamp must be recorded.
+	dedup.mu.Lock()
+	lastUsedCount := len(dedup.lastUsed)
+	dedup.mu.Unlock()
+	require.Equal(t, 1, lastUsedCount, "lastUsed must record the completed key before Cleanup runs")
 
-	// Wait for cleanup
+	// Wait past window*2 (100ms) so the entry is eligible for cleanup.
 	time.Sleep(150 * time.Millisecond)
 	dedup.Cleanup()
 
-	// Now it should be cleaned up
+	dedup.mu.Lock()
+	lastUsedCount = len(dedup.lastUsed)
+	dedup.mu.Unlock()
+	assert.Equal(t, 0, lastUsedCount, "Cleanup must evict lastUsed entries older than window*2")
+
+	// No requests are in flight, so Size() (pending count) is 0 throughout.
 	assert.Equal(t, 0, dedup.Size())
 }
 
@@ -320,10 +356,12 @@ func TestDedupMiddleware_Integration(t *testing.T) {
 	// Concurrent requests
 	var wg sync.WaitGroup
 	bodies := make([]string, 5)
+	start := make(chan struct{})
 	for i := 0; i < 5; i++ {
 		wg.Add(1)
 		go func(i int) {
 			defer wg.Done()
+			<-start
 			req := httptest.NewRequest("POST", "/api/test", bytes.NewReader([]byte(`{}`)))
 			rec := httptest.NewRecorder()
 			handler.ServeHTTP(rec, req)
@@ -332,6 +370,7 @@ func TestDedupMiddleware_Integration(t *testing.T) {
 		}(i)
 	}
 
+	close(start)
 	wg.Wait()
 
 	// Backend should only be called once

@@ -3,6 +3,7 @@
 from unittest.mock import AsyncMock
 
 import pytest
+import structlog.testing
 
 from recap_evaluator.config import Settings
 from recap_evaluator.scheduler.evaluation_scheduler import EvaluationScheduler
@@ -47,9 +48,13 @@ class TestEvaluationScheduler:
         scheduler.stop()
 
     def test_stop_when_not_running(self, mock_usecase, scheduler_settings):
+        """Idempotent no-op: stopping a scheduler that never started must not
+        raise, and the underlying APScheduler must remain not-running."""
         scheduler = EvaluationScheduler(mock_usecase, scheduler_settings)
-        # Should not raise
+
         scheduler.stop()
+
+        assert not scheduler._scheduler.running
 
     async def test_run_scheduled_evaluation_calls_usecase(
         self, mock_usecase, scheduler_settings
@@ -63,8 +68,19 @@ class TestEvaluationScheduler:
     async def test_run_scheduled_evaluation_handles_error(
         self, mock_usecase, scheduler_settings
     ):
+        """A failed evaluation run must be logged (not silently dropped) and
+        must not propagate out of the scheduled job — an uncaught exception
+        here would kill the APScheduler job permanently (CLAUDE.md rule 8:
+        failures must surface, not vanish)."""
         mock_usecase.execute.side_effect = Exception("DB down")
         scheduler = EvaluationScheduler(mock_usecase, scheduler_settings)
 
-        # Should not raise
-        await scheduler._run_scheduled_evaluation()
+        with structlog.testing.capture_logs() as logs:
+            await scheduler._run_scheduled_evaluation()  # must not raise
+
+        mock_usecase.execute.assert_called_once_with(window_days=7)
+        assert any(
+            entry["event"] == "Scheduled evaluation failed"
+            and entry["log_level"] == "error"
+            for entry in logs
+        )

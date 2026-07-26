@@ -150,6 +150,7 @@ def test_analysis_fallback_keeps_source_grounding() -> None:
     """
     facts = _make_facts(3)
     result = _deterministic_analysis_claims(facts)
+    assert result, "deterministic fallback must produce claims from non-empty facts"
     for claim in result:
         assert claim["evidence_ids"]
         assert all(eid.startswith("art-") for eid in claim["evidence_ids"])

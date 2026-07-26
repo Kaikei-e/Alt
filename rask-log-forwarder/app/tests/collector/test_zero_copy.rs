@@ -95,36 +95,37 @@ async fn test_zero_copy_bytes_from_docker_logs() -> Result<(), Box<dyn std::erro
                         .start_tailing_logs(tx, "com.alt.log-forward=true")
                         .await;
 
-                    match start_result {
-                        Ok(_) => {
-                            // Wait for logs to be captured
-                            let timeout_duration = Duration::from_secs(10);
-                            let start = std::time::Instant::now();
+                    start_result.expect("start_tailing_logs must succeed for a labeled container");
 
-                            let mut found_logs = false;
-                            while start.elapsed() < timeout_duration {
-                                if let Ok(bytes) = rx.try_recv()
-                                    && !bytes.is_empty()
-                                {
-                                    let log_str =
-                                        std::str::from_utf8(&bytes).unwrap_or("Invalid UTF-8");
-                                    println!("Received log data: {log_str}");
-                                    found_logs = true;
-                                    break;
-                                }
-                                tokio::time::sleep(Duration::from_millis(100)).await;
-                            }
+                    // Wait for logs to be captured
+                    let timeout_duration = Duration::from_secs(10);
+                    let start = std::time::Instant::now();
 
-                            if !found_logs {
-                                println!("No logs received within timeout (may be expected)");
-                            }
+                    let mut found_logs = false;
+                    let mut last_log_str = String::new();
+                    while start.elapsed() < timeout_duration {
+                        if let Ok(bytes) = rx.try_recv()
+                            && !bytes.is_empty()
+                        {
+                            let log_str = std::str::from_utf8(&bytes).unwrap_or("Invalid UTF-8");
+                            println!("Received log data: {log_str}");
+                            last_log_str = log_str.to_string();
+                            found_logs = true;
+                            break;
                         }
-                        Err(e) => {
-                            println!("Failed to start log tailing: {e}");
-                        }
+                        tokio::time::sleep(Duration::from_millis(100)).await;
                     }
 
                     cleanup_test_container(test_container).await?;
+
+                    assert!(
+                        found_logs,
+                        "expected to receive at least one zero-copy log chunk within {timeout_duration:?}"
+                    );
+                    assert!(
+                        last_log_str.contains("Test log message"),
+                        "received log content should match what the container emitted, got: {last_log_str:?}"
+                    );
                 }
                 _ => {
                     println!("Could not start test container (Docker may not be available)");

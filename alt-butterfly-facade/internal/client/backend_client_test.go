@@ -185,7 +185,14 @@ func TestBackendClient_ForwardStreamingRequest(t *testing.T) {
 
 	require.NoError(t, err)
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
-	resp.Body.Close()
+	defer resp.Body.Close()
+
+	// Verify the streamed chunks are actually forwarded intact, not just that
+	// the initial response arrived — a regression that buffered/truncated the
+	// stream would still pass a status-code-only check.
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	assert.Equal(t, "chunkchunkchunk", string(body))
 }
 
 func TestCopyHeaders_ExcludesAcceptEncoding(t *testing.T) {

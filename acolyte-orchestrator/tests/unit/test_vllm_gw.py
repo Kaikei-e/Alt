@@ -335,7 +335,7 @@ async def test_http_error_raises() -> None:
 
     gw = VllmGateway(_mock_transport(handler), _make_settings())
 
-    with pytest.raises(httpx.HTTPStatusError):
+    with pytest.raises(httpx.HTTPStatusError, match="500"):
         await gw.generate("test")
 
 

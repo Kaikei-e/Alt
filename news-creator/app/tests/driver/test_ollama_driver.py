@@ -73,14 +73,16 @@ async def test_generate_errors_instead_of_hanging_when_ollama_stalls():
         config = _make_config(f"http://{server.host}:{server.port}", timeout_seconds=1)
         driver = OllamaDriver(config)
 
-        # Bounded by wait_for: with the fix, per-attempt sock_read timeout
-        # (1s) x up to 4 attempts + backoff is well under this bound. Without
-        # the fix, sock_read=None means the call would hang past this bound
-        # and asyncio.wait_for would raise TimeoutError instead -- either
-        # outcome here proves it does NOT hang forever, but only the fixed
-        # code raises the underlying RuntimeError from the driver's own
-        # retry-exhausted path.
-        with pytest.raises((RuntimeError, asyncio.TimeoutError)):
+        # With the fix, per-attempt sock_read timeout (1s) x 4 attempts plus
+        # exponential backoff (~1.1 + 2.2 + 4.4s) totals ~11.7s -- comfortably
+        # under this 15s outer bound -- so generate() itself raises
+        # RuntimeError (retries exhausted) well before wait_for's own
+        # deadline. If sock_read regressed back to None, the per-attempt
+        # reads would never time out and wait_for would instead raise
+        # asyncio.TimeoutError at the 15s mark; asserting RuntimeError
+        # specifically (not just "raises something") is what catches that
+        # regression instead of masking it.
+        with pytest.raises(RuntimeError, match="Ollama API failed after"):
             await asyncio.wait_for(
                 driver.generate({"model": "test", "prompt": "hi", "stream": False}),
                 timeout=15,

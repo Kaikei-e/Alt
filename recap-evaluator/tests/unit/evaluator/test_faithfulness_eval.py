@@ -123,7 +123,10 @@ class TestFaithfulnessEvaluator:
         assert FaithfulnessEvaluator.DEFAULT_MODEL == "tasksource/ModernBERT-base-nli"
 
     def test_detect_returns_faithfulness_result(self, mock_nli_pipeline):
-        """detect() should return FaithfulnessResult."""
+        """detect() should return a FaithfulnessResult whose scores are
+        derived from the mocked NLI scores (entailment=0.85, contradiction=
+        0.05, neutral=0.10) — an isinstance-only check would still pass if
+        the evaluator dropped or mis-mapped every score field."""
         evaluator = FaithfulnessEvaluator()
 
         result = evaluator.detect(
@@ -132,6 +135,12 @@ class TestFaithfulnessEvaluator:
         )
 
         assert isinstance(result, FaithfulnessResult)
+        assert result.entailment_score == pytest.approx(0.85)
+        assert result.contradiction_score == pytest.approx(0.05)
+        assert result.neutral_score == pytest.approx(0.10)
+        assert result.faithfulness_score == pytest.approx(0.85)
+        assert result.hallucination_score == pytest.approx(0.15)
+        assert result.is_hallucinated is False
 
     def test_detect_high_entailment_is_not_hallucinated(self, mock_nli_pipeline):
         """High entailment should result in is_hallucinated=False."""

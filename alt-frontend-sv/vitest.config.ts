@@ -4,6 +4,15 @@ import { defineConfig } from "vitest/config";
 
 const isBrowserTestEnabled = process.env.VITEST_BROWSER === "true";
 
+// The sandbox's cached Playwright Chromium build predates the revision
+// playwright-core's zero-config resolver expects (browsers.json pins a
+// newer revision than what's on disk under /opt/pw-browsers). Point the
+// provider at the cached binary directly instead of leaving the whole
+// browser-mode test project unrunnable; when the env var is unset (e.g. a
+// normal dev machine with a fully synced Playwright cache) this falls back
+// to Playwright's own resolution, so it is a no-op outside this sandbox.
+const cachedChromiumExecutable = process.env.VITEST_CHROMIUM_EXECUTABLE_PATH;
+
 export default defineConfig({
 	plugins: [sveltekit()],
 	cacheDir: "node_modules/.vite",
@@ -29,7 +38,15 @@ export default defineConfig({
 								browser: {
 									enabled: true,
 									headless: true,
-									provider: playwright(),
+									provider: playwright(
+										cachedChromiumExecutable
+											? {
+													launchOptions: {
+														executablePath: cachedChromiumExecutable,
+													},
+												}
+											: undefined,
+									),
 									instances: [{ browser: "chromium" }],
 								},
 								include: ["src/**/*.svelte.{test,spec}.{ts,tsx}"],

@@ -249,16 +249,33 @@ func TestScrapingPolicyGateway_ConcurrentAccess(t *testing.T) {
 
 	ctx := context.Background()
 
-	// Run concurrent requests - should not panic or race
+	// Run concurrent requests: should not panic or race (run with -race),
+	// and every goroutine must observe the same policy decision since they
+	// all query the same mocked domain - a regression that lets concurrent
+	// access corrupt the gateway's internal state (e.g. the crawl-delay
+	// mutex/map) could make some calls return an inconsistent result even
+	// without an outright race-detector hit.
+	const n = 50
+	allowed := make([]bool, n)
+	errs := make([]error, n)
 	var wg sync.WaitGroup
-	for i := 0; i < 50; i++ {
+	for i := 0; i < n; i++ {
 		wg.Add(1)
-		go func() {
+		go func(i int) {
 			defer wg.Done()
-			_, _ = gateway.CanFetchArticle(ctx, "https://example.com/article/test")
-		}()
+			allowed[i], errs[i] = gateway.CanFetchArticle(ctx, "https://example.com/article/test")
+		}(i)
 	}
 	wg.Wait()
+
+	for i := 0; i < n; i++ {
+		if errs[i] != nil {
+			t.Errorf("call %d: unexpected error: %v", i, errs[i])
+		}
+		if !allowed[i] {
+			t.Errorf("call %d: expected fetch to be allowed (AllowFetchBody=true, ForceRespectRobots=false), got false", i)
+		}
+	}
 }
 
 func TestScrapingPolicyGateway_CacheExpired_StillAllows(t *testing.T) {

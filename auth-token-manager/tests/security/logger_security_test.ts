@@ -108,6 +108,19 @@ Deno.test("DataSanitizer - Boundary Conditions", () => {
       assertEquals(result, undefined);
     } else if (testCase === null) {
       assertEquals(result, null);
+    } else if (testCase === "") {
+      // Empty string never matches an OAuth-token pattern; must pass through.
+      assertEquals(result, "");
+    } else if (testCase === "short") {
+      // Below the 30-char catch-all threshold and no OAuth-token pattern
+      // match: non-sensitive short strings must not be redacted.
+      assertEquals(result, "short");
+    } else if (Array.isArray(testCase)) {
+      assertEquals(result, []);
+    } else {
+      // { empty: {} } — "empty" is not a sensitive field name, and its
+      // nested empty object must be preserved (deep, not just top-level).
+      assertEquals(result, { empty: {} });
     }
   }
 });

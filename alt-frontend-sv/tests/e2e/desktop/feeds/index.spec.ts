@@ -432,10 +432,11 @@ test.describe("Desktop Feeds - Modal Navigation", () => {
 		await feedsPage.selectFeed("First Feed");
 		await feedsPage.expectModalTitle("First Feed");
 
-		// Wait for prefetch to complete (500ms delay * 2 + fetch time)
-		await page.waitForTimeout(2000);
-
+		// Poll on the actual signal (requests observed) instead of guessing
+		// a fixed settle time for the prefetch to complete.
 		// Should have fetched: current (1st) + prefetched (2nd, 3rd)
-		expect(fetchRequests.length).toBeGreaterThanOrEqual(3);
+		await expect
+			.poll(() => fetchRequests.length, { timeout: 5000 })
+			.toBeGreaterThanOrEqual(3);
 	});
 });

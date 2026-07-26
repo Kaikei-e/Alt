@@ -68,13 +68,18 @@ export class DesktopRecapPage extends BasePage {
 	}
 
 	/**
-	 * Check if a genre is currently selected (has active state)
+	 * Check if a genre is currently selected (has active state).
+	 *
+	 * Matches the `border-l-4` accent border that RecapGenreList only
+	 * applies to the selected item. Do NOT match on a bare "bg-" substring:
+	 * every genre button also carries a static "hover:bg-[...]" class, so
+	 * that check is always true regardless of selection and silently
+	 * defeats this assertion.
 	 */
 	async isGenreSelected(name: string): Promise<boolean> {
 		const genreButton = this.getGenreByName(name);
-		// Check for active/selected styling class
 		const classList = await genreButton.getAttribute("class");
-		return classList?.includes("bg-") ?? false;
+		return classList?.includes("border-l-4") ?? false;
 	}
 
 	/**

@@ -94,6 +94,7 @@ async def test_query_expansion_failure_generates_deterministic_queries() -> None
     result = await node({"brief": {"topic": "quantum computing"}})
 
     outline = result["outline"]
+    assert outline, "deterministic-fallback must still produce an outline"
     for section in outline:
         assert len(section["search_queries"]) >= 1
         for q in section["search_queries"]:

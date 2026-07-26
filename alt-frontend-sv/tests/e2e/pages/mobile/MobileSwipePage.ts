@@ -147,9 +147,11 @@ export class MobileSwipePage extends BasePage {
 	 * Assert card has correct accessibility attributes
 	 */
 	async assertAccessibility(): Promise<void> {
-		// Check aria-busy attribute
-		const ariaBusy = await this.swipeCard.getAttribute("aria-busy");
-		expect(ariaBusy).toBeDefined();
+		// aria-busy must be the literal boolean string "true"/"false", not
+		// merely present: `getAttribute` returns `null` for a missing
+		// attribute, and `null !== undefined`, so `toBeDefined()` here would
+		// pass even if the card never rendered aria-busy at all.
+		await expect(this.swipeCard).toHaveAttribute("aria-busy", /^(true|false)$/);
 
 		// Check external link has security attributes
 		const link = this.getExternalLink();

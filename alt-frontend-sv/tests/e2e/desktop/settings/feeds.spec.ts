@@ -288,10 +288,11 @@ test.describe("desktop settings feeds - manage feed links", () => {
 		// Click refresh button
 		await page.getByRole("button", { name: "Refresh feed list" }).click();
 
-		// Wait for the request to complete
-		await page.waitForTimeout(500);
-
+		// Poll on the actual signal (requests observed) instead of guessing
+		// a fixed settle time.
 		// Should have made at least one request
-		expect(requestCount).toBeGreaterThanOrEqual(1);
+		await expect
+			.poll(() => requestCount, { timeout: 5000 })
+			.toBeGreaterThanOrEqual(1);
 	});
 });

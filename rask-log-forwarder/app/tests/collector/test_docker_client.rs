@@ -2,26 +2,27 @@ use rask_log_forwarder::collector::DockerCollector;
 
 #[tokio::test]
 async fn test_docker_client_connection() {
-    // Test Docker client creation - should handle both success and failure cases gracefully
+    // `DockerCollector::new()` only opens the local socket; it does not ping
+    // the daemon. So a successful `Ok(collector)` here says nothing about
+    // whether Docker is actually reachable -- that's what `can_connect()` is
+    // for, and it must be checked, not merely printed. Only the "Docker
+    // wasn't even available to open a client for" case is allowed to skip.
     let collector_result = DockerCollector::new().await;
 
     match collector_result {
         Ok(collector) => {
-            // If Docker is available, test the connection
             let can_connect = collector.can_connect().await;
-            println!(
-                "Docker connection test: {}",
-                if can_connect { "connected" } else { "failed" }
+            assert!(
+                can_connect,
+                "DockerCollector::new() succeeded but can_connect() reported unreachable; \
+                 the client and the daemon-reachability check must agree"
             );
-            // We don't assert here because Docker may not be available in CI
         }
         Err(e) => {
             // If Docker is not available, that's also a valid test case
             println!("Docker not available (expected in some environments): {e}");
         }
     }
-
-    // The test passes if we can handle both cases without panicking
 }
 
 #[tokio::test]

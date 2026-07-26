@@ -194,7 +194,7 @@ class TestBatchSizeHardLimit:
         from tag_generator.infra.config import BatchConfig
 
         over_limit: int = 1001
-        with pytest.raises(ValidationError):
+        with pytest.raises(ValidationError, match="less than or equal to 1000"):
             BatchConfig(batch_limit=over_limit)
 
     def test_batch_limit_within_bounds(self):
@@ -215,5 +215,5 @@ class TestBatchSizeHardLimit:
         from tag_generator.infra.config import BatchConfig
 
         zero_limit: int = 0
-        with pytest.raises(ValidationError):
+        with pytest.raises(ValidationError, match="greater than 0"):
             BatchConfig(batch_limit=zero_limit)

@@ -36,6 +36,7 @@ from unittest.mock import MagicMock
 import joblib
 import numpy as np
 import pytest
+import structlog.testing
 from sklearn.linear_model import LogisticRegression
 
 
@@ -110,8 +111,14 @@ class TestEmbeddingFingerprintMatch:
         )
 
         service = GenreClassifierService(str(tiny_model), embedder)
-        # Should not raise.
         service._ensure_model()
+
+        # Not raising is necessary but not sufficient: also confirm the
+        # metadata comparison actually ran (sidecar was parsed) rather than
+        # the guard silently short-circuiting before the identity check.
+        assert service.model is not None
+        assert service.model_metadata is not None
+        assert service.model_metadata.embedding_model_id == "BAAI/bge-m3"
 
     def test_ollama_bge_m3_matches_sidecar_via_alias(self, tiny_model: Path) -> None:
         """Sidecar ``BAAI/bge-m3`` ↔ Ollama tag ``bge-m3`` is canonical-equivalent."""
@@ -126,6 +133,10 @@ class TestEmbeddingFingerprintMatch:
         service = GenreClassifierService(str(tiny_model), embedder)
         service._ensure_model()
 
+        assert service.model is not None
+        assert service.model_metadata is not None
+        assert service.model_metadata.embedding_model_id == "BAAI/bge-m3"
+
     def test_ollama_bge_m3_with_tag_suffix_matches(self, tiny_model: Path) -> None:
         """``bge-m3:latest`` (Ollama tag) is the same artefact as ``BAAI/bge-m3``."""
         from recap_subworker.services.classifier import GenreClassifierService
@@ -138,6 +149,10 @@ class TestEmbeddingFingerprintMatch:
 
         service = GenreClassifierService(str(tiny_model), embedder)
         service._ensure_model()
+
+        assert service.model is not None
+        assert service.model_metadata is not None
+        assert service.model_metadata.embedding_model_id == "BAAI/bge-m3"
 
 
 class TestEmbeddingFingerprintMismatch:
@@ -153,7 +168,13 @@ class TestEmbeddingFingerprintMismatch:
         )
 
         service = GenreClassifierService(str(tiny_model), embedder)
-        with pytest.raises(ConfigValidationError, match="embedding_model_id"):
+        # Match on both operands of the mismatch, not just the generic field
+        # name, so the test pins the *this* sidecar-vs-runtime pairing and
+        # not some other embedding_model_id error path.
+        with pytest.raises(
+            ConfigValidationError,
+            match=r"embedding_model_id mismatch: sidecar='BAAI/bge-m3' runtime='mxbai-embed-large'",
+        ):
             service._ensure_model()
 
     def test_sentence_transformers_e5_against_bge_m3_sidecar_raises(self, tiny_model: Path) -> None:
@@ -168,7 +189,10 @@ class TestEmbeddingFingerprintMismatch:
         )
 
         service = GenreClassifierService(str(tiny_model), embedder)
-        with pytest.raises(ConfigValidationError, match="embedding_model_id"):
+        with pytest.raises(
+            ConfigValidationError,
+            match=r"embedding_model_id mismatch: sidecar='BAAI/bge-m3' runtime='intfloat/multilingual-e5-large'",
+        ):
             service._ensure_model()
 
     def test_drift_flag_downgrades_to_warning(self, tiny_model: Path) -> None:
@@ -183,8 +207,25 @@ class TestEmbeddingFingerprintMismatch:
         )
 
         service = GenreClassifierService(str(tiny_model), embedder)
-        service._ensure_model()
-        # No exception — exact log channel asserted in integration layer.
+        # "No exception" alone can't distinguish "the drift-override branch
+        # ran" from "the comparison was skipped entirely" (e.g. a future
+        # refactor that accidentally short-circuits before reaching the
+        # drift check). Assert the operator-facing warning actually fires.
+        with structlog.testing.capture_logs() as captured:
+            service._ensure_model()
+
+        assert service.model is not None
+        drift_warnings = [
+            entry
+            for entry in captured
+            if entry.get("log_level") == "warning"
+            and "drift allowed by operator override" in entry.get("event", "")
+        ]
+        assert len(drift_warnings) == 1, (
+            f"expected exactly one drift-override warning, got: {captured}"
+        )
+        assert drift_warnings[0]["sidecar_embedding_model_id"] == "BAAI/bge-m3"
+        assert drift_warnings[0]["runtime_embedding_model_id"] == "mxbai-embed-large"
 
 
 class TestEmbeddingFingerprintTolerance:
@@ -199,8 +240,18 @@ class TestEmbeddingFingerprintTolerance:
         )
 
         service = GenreClassifierService(str(tiny_model), embedder)
-        # Empty sidecar field → warn-only (no ConfigValidationError).
-        service._ensure_model()
+        # Empty sidecar field → warn-only (no ConfigValidationError), but the
+        # warning must actually be emitted — otherwise a legacy artefact
+        # silently serves degraded predictions with no operator signal.
+        with structlog.testing.capture_logs() as captured:
+            service._ensure_model()
+
+        assert service.model is not None
+        assert any(
+            entry.get("log_level") == "warning"
+            and "empty embedding_model_id" in entry.get("event", "")
+            for entry in captured
+        ), f"expected an 'empty embedding_model_id' warning, got: {captured}"
 
     def test_hash_backend_bypasses_guard(self, tiny_model: Path) -> None:
         """``hash`` backend is the deterministic dev embedder; never compare."""
@@ -210,4 +261,15 @@ class TestEmbeddingFingerprintTolerance:
         embedder = _make_embedder(backend="hash")
 
         service = GenreClassifierService(str(tiny_model), embedder)
-        service._ensure_model()
+        # The hash backend must bypass the identity comparison entirely, so
+        # no embedding_model_id-related warning should fire even though the
+        # sidecar and runtime disagree in principle.
+        with structlog.testing.capture_logs() as captured:
+            service._ensure_model()
+
+        assert service.model is not None
+        assert service.model_metadata is not None
+        assert service.model_metadata.embedding_model_id == "BAAI/bge-m3"
+        assert not any("embedding_model_id" in entry.get("event", "") for entry in captured), (
+            f"hash backend must bypass the embedding identity guard entirely, got: {captured}"
+        )

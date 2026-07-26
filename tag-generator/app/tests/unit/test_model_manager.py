@@ -4,7 +4,7 @@ Tests model loading, shared instance management, and error handling.
 """
 
 import threading
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, mock_open, patch
 
 import pytest
 
@@ -139,7 +139,10 @@ class TestModelManager:
         assert metadata["embedder_metadata"]["embedding_dimension"] == 384
 
     def test_get_models_handles_none_models(self):
-        """Test that get_models handles None models gracefully."""
+        """Missing ML libraries must surface as a diagnosable ModelLoadError,
+        not a generic 'NoneType' object is not callable' TypeError."""
+        from tag_generator.domain.errors import ModelLoadError
+
         manager = ModelManager()
         config = ModelConfig()
 
@@ -149,12 +152,8 @@ class TestModelManager:
             patch("tag_extractor.model_manager.KeyBERT", None),
             patch("tag_extractor.model_manager.Tagger", None),
         ):
-            # This should raise an exception but NOT a TypeError about NoneType being callable
-            with pytest.raises(Exception) as exc_info:
+            with pytest.raises(ModelLoadError, match="Missing ML dependency"):
                 manager.get_models(config)
-
-            # Should not be a TypeError about NoneType not being callable
-            assert "NoneType" not in str(exc_info.value) or "not callable" not in str(exc_info.value)
 
     @patch("tag_extractor.model_manager.SentenceTransformer")
     @patch("tag_extractor.model_manager.KeyBERT")
@@ -212,35 +211,53 @@ class TestModelManager:
             # _load_models should be called due to config change
             mock_load.assert_called_once_with(config2)
 
-    @patch("builtins.open")
+    @patch("pathlib.Path.open", new_callable=lambda: mock_open(read_data="TestWord\n"))
     @patch("nltk.corpus.stopwords.words")
-    def test_get_stopwords_loads_successfully(self, mock_nltk_stopwords, mock_open):
-        """Test successful stopwords loading."""
-        # Arrange
+    def test_get_stopwords_loads_successfully(self, mock_nltk_stopwords, mock_path_open):
+        """Test successful stopwords loading combines file content with NLTK.
+
+        Regression note: this used to `@patch("builtins.open")`, but
+        `_load_stopwords` reads through `Path.open(...)`, which does not
+        dispatch through the patched `builtins.open` name -- the mock never
+        engaged and the assertions only happened to pass because they never
+        checked the file-derived content, just that *some* NLTK words made it
+        into en_stopwords. Patching `pathlib.Path.open` (the real call site)
+        lets us assert the actual merged result.
+        """
         mock_nltk_stopwords.return_value = ["the", "a", "an"]
 
         manager = ModelManager()
 
-        # Act
         ja_stopwords, en_stopwords = manager.get_stopwords()
 
-        # Assert
-        assert isinstance(ja_stopwords, set)
-        assert isinstance(en_stopwords, set)
-        assert len(en_stopwords) > 0  # Should include NLTK words
+        # ja stopwords come solely from the (mocked) file, case-preserved.
+        assert ja_stopwords == {"TestWord"}
+        # en stopwords merge the (mocked) file content, lower-cased, with NLTK words.
+        assert en_stopwords == {"testword", "the", "a", "an"}
 
-    @patch("builtins.open", side_effect=FileNotFoundError())
+    @patch("pathlib.Path.open", side_effect=FileNotFoundError())
     @patch("nltk.corpus.stopwords.words", side_effect=Exception("NLTK not available"))
-    def test_get_stopwords_handles_file_errors(self, mock_nltk_stopwords, mock_open):
-        """Test stopwords loading with file and NLTK errors."""
+    def test_get_stopwords_handles_file_errors(self, mock_nltk_stopwords, mock_path_open):
+        """Both stopword files missing and NLTK unavailable must fail closed to
+        empty sets rather than raising or crashing.
+
+        Regression note: `_load_stopwords` reads via `Path.open(...)`, not the
+        `builtins.open` builtin -- `pathlib.Path.open` doesn't dispatch through
+        the patched `builtins.open` name, so patching `builtins.open` here
+        never actually engages and the real on-disk stopwords files (which
+        exist in this repo) were read instead. That silently turned this into
+        a happy-path test that didn't exercise the error handling it claims
+        to cover -- patching `pathlib.Path.open` (the real call site) instead.
+        """
         manager = ModelManager()
 
-        # Should not raise exception, should return empty sets
         ja_stopwords, en_stopwords = manager.get_stopwords()
 
-        assert isinstance(ja_stopwords, set)
-        assert isinstance(en_stopwords, set)
-        # Sets might be empty due to errors, but shouldn't crash
+        # Every source failed, so both sets must actually be empty -- not
+        # just "some set object", which would pass even if a stray default
+        # word leaked in from a partially-failed load path.
+        assert ja_stopwords == set()
+        assert en_stopwords == set()
 
     def test_clear_models_resets_state(self):
         """Test that clear_models resets all model state."""

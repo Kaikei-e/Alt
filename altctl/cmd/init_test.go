@@ -4,9 +4,11 @@ import (
 	"bytes"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/alt-project/altctl/internal/config"
+	"github.com/alt-project/altctl/internal/output"
 )
 
 func setupInitTest(t *testing.T) string {
@@ -36,27 +38,67 @@ func setupInitTest(t *testing.T) string {
 	return tmpDir
 }
 
+// assertInitDeterministicOutcome runs the already-configured init command
+// through captureStdout and checks the one thing that holds regardless of
+// whether Docker happens to be present in the test environment: the
+// Prerequisites phase always runs and is always reported first, and if it
+// fails, init must fail with exactly the structured "prerequisites not met"
+// CLIError — not a panic, not some unrelated error, and not a silent
+// success. If prerequisites do pass (e.g. a real Docker daemon is
+// reachable), dry-run must complete successfully without touching the
+// filesystem.
+func assertInitDeterministicOutcome(t *testing.T, tmpDir string) {
+	t.Helper()
+
+	var err error
+	out := captureStdout(t, func() {
+		err = rootCmd.Execute()
+	})
+
+	if !strings.Contains(out, "Prerequisites") {
+		t.Errorf("expected output to contain the Prerequisites header, got:\n%s", out)
+	}
+
+	if err != nil {
+		cliErr, ok := err.(*output.CLIError)
+		if !ok {
+			t.Fatalf("expected *output.CLIError on failure, got %T: %v", err, err)
+		}
+		if cliErr.Summary != "prerequisites not met" {
+			t.Errorf("expected prerequisites-not-met error, got summary %q (detail: %q)", cliErr.Summary, cliErr.Detail)
+		}
+		if cliErr.ExitCode != output.ExitConfigError {
+			t.Errorf("expected ExitConfigError (%d), got %d", output.ExitConfigError, cliErr.ExitCode)
+		}
+		return
+	}
+
+	if !strings.Contains(out, "Initialization complete") {
+		t.Errorf("expected successful dry-run to report completion, got:\n%s", out)
+	}
+	if _, statErr := os.Stat(filepath.Join(tmpDir, ".env")); statErr == nil {
+		t.Error("dry-run must not create .env")
+	}
+}
+
 func TestInit_DryRun(t *testing.T) {
-	setupInitTest(t)
+	tmpDir := setupInitTest(t)
 
 	buf := new(bytes.Buffer)
 	rootCmd.SetOut(buf)
 	rootCmd.SetArgs([]string{"init", "--dry-run"})
 
-	// dry-run should succeed (skips prerequisites failure if docker not present)
-	// Note: In CI/test environments without Docker, prerequisites check will fail.
-	// We test the dry-run path which still validates the command structure.
-	_ = rootCmd.Execute()
+	assertInitDeterministicOutcome(t, tmpDir)
 }
 
 func TestInit_SkipSecrets(t *testing.T) {
-	setupInitTest(t)
+	tmpDir := setupInitTest(t)
 
 	buf := new(bytes.Buffer)
 	rootCmd.SetOut(buf)
 	rootCmd.SetArgs([]string{"init", "--skip-secrets", "--dry-run"})
 
-	_ = rootCmd.Execute()
+	assertInitDeterministicOutcome(t, tmpDir)
 }
 
 func TestInit_NoArgs(t *testing.T) {

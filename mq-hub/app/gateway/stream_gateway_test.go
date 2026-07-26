@@ -77,6 +77,50 @@ func TestStreamGatewayPublish_RejectsNilEvent(t *testing.T) {
 	driver.AssertNotCalled(t, "Publish")
 }
 
+func TestStreamGatewayPublish_RejectsInvalidEvent(t *testing.T) {
+	driver := new(mockStreamDriver)
+	gateway := NewStreamGateway(driver)
+
+	// Missing EventID fails domain.Event.Validate(); the gateway must catch
+	// this before ever reaching the driver, not just reject nil events.
+	invalidEvent := &domain.Event{
+		EventType: domain.EventTypeArticleCreated,
+		Source:    "alt-backend",
+		CreatedAt: time.Now(),
+	}
+
+	_, err := gateway.Publish(context.Background(), domain.StreamKeyArticles, invalidEvent)
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "event_id is required")
+	driver.AssertNotCalled(t, "Publish")
+}
+
+func TestStreamGatewayPublishBatch_RejectsInvalidEventInBatch(t *testing.T) {
+	driver := new(mockStreamDriver)
+	gateway := NewStreamGateway(driver)
+
+	validEvent := &domain.Event{
+		EventID:   "evt-1",
+		EventType: domain.EventTypeArticleCreated,
+		Source:    "alt-backend",
+		CreatedAt: time.Now(),
+	}
+	// Second event is missing Source; validation must run over every event
+	// in the batch, not just check for nils.
+	invalidEvent := &domain.Event{
+		EventID:   "evt-2",
+		EventType: domain.EventTypeArticleCreated,
+		CreatedAt: time.Now(),
+	}
+
+	_, err := gateway.PublishBatch(context.Background(), domain.StreamKeyArticles, []*domain.Event{validEvent, invalidEvent})
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "source is required")
+	driver.AssertNotCalled(t, "PublishBatch")
+}
+
 func TestStreamGatewayPublishBatch_RejectsNilEventInBatch(t *testing.T) {
 	driver := new(mockStreamDriver)
 	gateway := NewStreamGateway(driver)

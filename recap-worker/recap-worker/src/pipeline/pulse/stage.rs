@@ -695,6 +695,19 @@ mod tests {
         assert!(!cluster_with_metrics.top_entities.is_empty());
     }
 
+    /// With `min_score_threshold = 0.99`, `make_cluster`'s fixed scores
+    /// (impact=0.7, burst=0.6, novelty=0.5, recency=0.8) can never clear the
+    /// bar: every role's weighted score is a convex combination of those
+    /// values (role weights each sum to 1.0, see `RoleWeights::is_valid`),
+    /// so the max attainable score is bounded by 0.8 < 0.99. That holds at
+    /// every quality-tier pass (Ok/Caution/Ng) in `select_topics_with_fallback`
+    /// since the score filter is applied independently of tier, so no topic
+    /// is ever selected and the selector falls all the way through to
+    /// level 5 ("no topics available, clusters non-empty").
+    /// Before this test asserted anything, `let _ = result.diagnostics.fallback_level;`
+    /// discarded the value it claimed to check, so a regression that made
+    /// fallback tracking silently stop advancing (e.g. always returning 0)
+    /// would never have been caught.
     #[tokio::test]
     async fn test_fallback_level_tracking() {
         let mut config = enabled_config();
@@ -711,8 +724,16 @@ mod tests {
 
         let result = stage.generate(input).await.unwrap();
 
-        // Check that we got a result (with fallback if needed)
-        // Fallback level is a u8, so it's always >= 0
-        let _ = result.diagnostics.fallback_level;
+        assert_eq!(
+            result.diagnostics.fallback_level, 5,
+            "an unreachable score threshold on a single cluster must degrade all the way to \
+             level 5 (no topics available); got {}",
+            result.diagnostics.fallback_level
+        );
+        assert!(
+            result.topics.is_empty(),
+            "level 5 fallback means no topic could be selected, but got {} topics",
+            result.topics.len()
+        );
     }
 }

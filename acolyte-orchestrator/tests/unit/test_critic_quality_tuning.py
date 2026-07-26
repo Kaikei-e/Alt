@@ -160,10 +160,13 @@ async def test_claim_feedback_includes_specific_reason_for_duplication() -> None
     }
     result = await node(state)
     claim_fbs = result.get("claim_feedbacks", {})
-    # Should have feedback for the duplicated paragraph
-    if "analysis" in claim_fbs:
-        reasons = [fb["reason"] for fb in claim_fbs["analysis"]]
-        assert any("overlap" in r or "duplication" in r or "duplicate" in r for r in reasons)
+    # Must have feedback for the duplicated paragraph — an unconditional
+    # assertion, not gated behind `if "analysis" in claim_fbs`, so a
+    # regression that silently stops populating claim_feedbacks fails this
+    # test instead of vacuously passing it.
+    assert "analysis" in claim_fbs
+    reasons = [fb["reason"] for fb in claim_fbs["analysis"]]
+    assert any("overlap" in r or "duplication" in r or "duplicate" in r for r in reasons)
 
 
 @pytest.mark.asyncio

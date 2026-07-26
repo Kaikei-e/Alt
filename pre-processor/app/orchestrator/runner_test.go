@@ -13,28 +13,52 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// waitTimeout bounds how long a test will block on a synchronization channel
+// before failing. It is a safety net against a hung goroutine, never the
+// mechanism used to decide pass/fail — every wait below blocks on a channel
+// send from the code under test and returns as soon as that happens.
+const waitTimeout = 2 * time.Second
+
 func testLogger() *slog.Logger {
 	return slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{
 		Level: slog.LevelError,
 	}))
 }
 
+// waitForSignal blocks until ch receives a value or waitTimeout elapses, in
+// which case the test fails with msg. This replaces time.Sleep-based
+// "wait long enough" synchronization with a deterministic blocking receive.
+func waitForSignal(t *testing.T, ch <-chan struct{}, msg string) {
+	t.Helper()
+	select {
+	case <-ch:
+	case <-time.After(waitTimeout):
+		t.Fatal(msg)
+	}
+}
+
 func TestJobRunner_StartAndStop(t *testing.T) {
 	t.Run("should start and stop cleanly", func(t *testing.T) {
 		var callCount atomic.Int32
+		called := make(chan struct{}, 1)
 		runner := NewJobRunner(JobConfig{
 			Name:     "test-job",
-			Interval: 10 * time.Millisecond,
+			Interval: 5 * time.Millisecond,
 		}, func(ctx context.Context) error {
 			callCount.Add(1)
+			select {
+			case called <- struct{}{}:
+			default:
+			}
 			return nil
 		}, testLogger())
 
 		ctx := context.Background()
 		runner.Start(ctx)
 
-		// Wait for at least one execution
-		time.Sleep(50 * time.Millisecond)
+		// Deterministically wait for the first execution instead of sleeping
+		// for a guessed duration.
+		waitForSignal(t, called, "job did not execute within timeout")
 		runner.Stop()
 
 		assert.Greater(t, callCount.Load(), int32(0))
@@ -44,21 +68,29 @@ func TestJobRunner_StartAndStop(t *testing.T) {
 func TestJobRunner_RunImmediately(t *testing.T) {
 	t.Run("should run immediately when configured", func(t *testing.T) {
 		var callCount atomic.Int32
+		called := make(chan struct{}, 1)
 		runner := NewJobRunner(JobConfig{
 			Name:           "immediate-job",
 			Interval:       1 * time.Hour, // Long interval to ensure only immediate run
 			RunImmediately: true,
 		}, func(ctx context.Context) error {
 			callCount.Add(1)
+			called <- struct{}{}
 			return nil
 		}, testLogger())
 
 		ctx := context.Background()
 		runner.Start(ctx)
-		time.Sleep(50 * time.Millisecond)
+
+		// The immediate run happens synchronously before the ticker is even
+		// created, so waiting for this signal (rather than sleeping) is both
+		// faster and race-free: by the time we receive it, the call has
+		// already completed and Stop can safely follow.
+		waitForSignal(t, called, "immediate job did not run within timeout")
 		runner.Stop()
 
-		assert.Equal(t, int32(1), callCount.Load())
+		assert.Equal(t, int32(1), callCount.Load(),
+			"with a 1h interval, only the immediate run should have fired")
 	})
 }
 
@@ -66,6 +98,7 @@ func TestJobRunner_Backoff(t *testing.T) {
 	t.Run("should backoff on configured errors", func(t *testing.T) {
 		errOverloaded := errors.New("overloaded")
 		var callCount atomic.Int32
+		calls := make(chan struct{}, 64)
 
 		runner := NewJobRunner(JobConfig{
 			Name:            "backoff-job",
@@ -75,19 +108,36 @@ func TestJobRunner_Backoff(t *testing.T) {
 			BackoffOnErrors: []error{errOverloaded},
 		}, func(ctx context.Context) error {
 			callCount.Add(1)
+			select {
+			case calls <- struct{}{}:
+			default:
+			}
 			return errOverloaded
 		}, testLogger())
 
 		ctx := context.Background()
 		runner.Start(ctx)
 
-		// With 10ms interval, without backoff we'd see many calls in 100ms
-		// With backoff starting at 50ms, we should see fewer calls
-		time.Sleep(100 * time.Millisecond)
+		// Wait for the first tick (interval 10ms) so we know the ticker is
+		// actually running, then observe for a fixed backoff-measurement
+		// window. The window itself must be real wall-clock time since the
+		// property under test (call rate under backoff) is defined in terms
+		// of elapsed time, not a discrete event to block on.
+		waitForSignal(t, calls, "job never executed even once")
+		time.Sleep(90 * time.Millisecond)
 		runner.Stop()
 
-		// Should have at most 3-4 calls due to backoff
-		assert.LessOrEqual(t, callCount.Load(), int32(4))
+		// With 10ms interval, without backoff we'd see ~9-10 calls in 100ms.
+		// With backoff starting at 50ms and doubling to 100ms (capped), we
+		// should see only a handful.
+		assert.LessOrEqual(t, callCount.Load(), int32(4),
+			"backoff should have suppressed most ticks")
+		// Lower bound catches the opposite regression: a backoff that never
+		// resets/reschedules the ticker (e.g. blocks forever after the first
+		// error) would also satisfy the upper bound above while being just
+		// as broken.
+		assert.GreaterOrEqual(t, callCount.Load(), int32(2),
+			"backoff must still allow the job to run again after backing off, not stall forever")
 	})
 }
 
@@ -96,6 +146,7 @@ func TestJobRunner_NonBackoffErrorResetsInterval(t *testing.T) {
 	errOther := errors.New("other")
 	var callCount atomic.Int32
 	var phase atomic.Int32
+	calls := make(chan struct{}, 64)
 
 	runner := NewJobRunner(JobConfig{
 		Name:            "reset-interval-job",
@@ -106,6 +157,10 @@ func TestJobRunner_NonBackoffErrorResetsInterval(t *testing.T) {
 		RunImmediately:  true,
 	}, func(ctx context.Context) error {
 		n := callCount.Add(1)
+		select {
+		case calls <- struct{}{}:
+		default:
+		}
 		switch {
 		case n == 1:
 			phase.Store(1)
@@ -123,13 +178,17 @@ func TestJobRunner_NonBackoffErrorResetsInterval(t *testing.T) {
 	runner.Start(ctx)
 
 	// After immediate overloaded + one backoff tick (~200ms) returning other,
-	// subsequent ticks should use Interval (15ms), not stay at 200ms.
-	deadline := time.Now().Add(500 * time.Millisecond)
-	for time.Now().Before(deadline) {
-		if callCount.Load() >= 5 {
-			break
+	// subsequent ticks should use Interval (15ms), not stay at 200ms. Block
+	// on the actual call signals (bounded by an overall deadline) instead of
+	// sleeping in fixed increments and re-checking a counter.
+	deadline := time.After(500 * time.Millisecond)
+waitLoop:
+	for callCount.Load() < 5 {
+		select {
+		case <-calls:
+		case <-deadline:
+			break waitLoop
 		}
-		time.Sleep(5 * time.Millisecond)
 	}
 	runner.Stop()
 
@@ -139,45 +198,77 @@ func TestJobRunner_NonBackoffErrorResetsInterval(t *testing.T) {
 }
 
 func TestJobRunner_PanicRecovery(t *testing.T) {
-	t.Run("should recover from panics", func(t *testing.T) {
+	t.Run("should recover from panics and keep the ticker running", func(t *testing.T) {
+		var callCount atomic.Int32
+		calls := make(chan struct{}, 64)
+
 		runner := NewJobRunner(JobConfig{
 			Name:     "panic-job",
-			Interval: 10 * time.Millisecond,
+			Interval: 5 * time.Millisecond,
 		}, func(ctx context.Context) error {
+			callCount.Add(1)
+			select {
+			case calls <- struct{}{}:
+			default:
+			}
 			panic("test panic")
 		}, testLogger())
 
 		ctx := context.Background()
 		runner.Start(ctx)
 
-		// Should not crash
-		time.Sleep(30 * time.Millisecond)
+		// A single panicking invocation proves recover() ran; a second one
+		// proves the ticker loop survived that panic and is still scheduling
+		// work — the actual behavior this test exists to guard, which the
+		// original "sleep then check nothing crashed" version never asserted.
+		waitForSignal(t, calls, "job did not run once")
+		waitForSignal(t, calls, "job runner did not survive the panic to run a second time")
 		runner.Stop()
+
+		assert.GreaterOrEqual(t, callCount.Load(), int32(2),
+			"ticker must keep invoking the job after a panic is recovered")
 	})
 }
 
 func TestJobRunner_ContextCancellation(t *testing.T) {
 	t.Run("should stop when context is canceled", func(t *testing.T) {
 		var callCount atomic.Int32
+		calls := make(chan struct{}, 64)
 		runner := NewJobRunner(JobConfig{
 			Name:     "cancel-job",
-			Interval: 10 * time.Millisecond,
+			Interval: 5 * time.Millisecond,
 		}, func(ctx context.Context) error {
 			callCount.Add(1)
+			select {
+			case calls <- struct{}{}:
+			default:
+			}
 			return nil
 		}, testLogger())
 
 		ctx, cancel := context.WithCancel(context.Background())
 		runner.Start(ctx)
-		time.Sleep(50 * time.Millisecond)
 
+		// Deterministically wait for at least one real execution before
+		// canceling, instead of sleeping and hoping the ticker fired.
+		waitForSignal(t, calls, "job did not execute before cancellation")
 		beforeCancel := callCount.Load()
 		cancel()
-		time.Sleep(30 * time.Millisecond)
 
-		// No more executions after cancel
+		// Proving absence of further work genuinely requires observing that
+		// no event arrives for some real duration; a bounded wait here is
+		// the correct tool (there is no event to block on for "nothing
+		// happened"), unlike the removed Sleeps above which stood in for an
+		// event that could otherwise be waited on directly.
+		select {
+		case <-calls:
+			// One in-flight tick racing the cancellation is tolerated below.
+		case <-time.After(30 * time.Millisecond):
+		}
+
 		afterCancel := callCount.Load()
-		assert.LessOrEqual(t, afterCancel-beforeCancel, int32(1))
+		assert.LessOrEqual(t, afterCancel-beforeCancel, int32(1),
+			"no more than one in-flight execution should complete after cancel")
 	})
 }
 
@@ -203,26 +294,37 @@ func TestJobRunner_NextBackoff(t *testing.T) {
 func TestJobGroup(t *testing.T) {
 	t.Run("should start and stop all runners", func(t *testing.T) {
 		var count1, count2 atomic.Int32
+		called1 := make(chan struct{}, 1)
+		called2 := make(chan struct{}, 1)
 
 		ctx := context.Background()
 		group := NewJobGroup(ctx, testLogger())
 		group.Add(NewJobRunner(JobConfig{
 			Name:     "job-1",
-			Interval: 10 * time.Millisecond,
+			Interval: 5 * time.Millisecond,
 		}, func(ctx context.Context) error {
 			count1.Add(1)
+			select {
+			case called1 <- struct{}{}:
+			default:
+			}
 			return nil
 		}, testLogger()))
 
 		group.Add(NewJobRunner(JobConfig{
 			Name:     "job-2",
-			Interval: 10 * time.Millisecond,
+			Interval: 5 * time.Millisecond,
 		}, func(ctx context.Context) error {
 			count2.Add(1)
+			select {
+			case called2 <- struct{}{}:
+			default:
+			}
 			return nil
 		}, testLogger()))
 
-		time.Sleep(50 * time.Millisecond)
+		waitForSignal(t, called1, "job-1 did not execute within timeout")
+		waitForSignal(t, called2, "job-2 did not execute within timeout")
 		group.StopAll()
 
 		require.Greater(t, count1.Load(), int32(0))

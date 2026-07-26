@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import re
 import xml.etree.ElementTree as ET
 
 import pytest
@@ -110,11 +111,11 @@ class TestParseXmlishBlock:
         assert verdict.text == "accept"
 
     def test_no_xml_raises(self) -> None:
-        with pytest.raises(XmlParseError):
+        with pytest.raises(XmlParseError, match=re.escape("No <critic>...</critic> block found in output")):
             parse_xmlish_block("no xml here at all", "critic")
 
     def test_truncated_raises(self) -> None:
-        with pytest.raises(XmlParseError):
+        with pytest.raises(XmlParseError, match=re.escape("No <critic>...</critic> block found in output")):
             parse_xmlish_block("<critic><verdict>acc", "critic")
 
     def test_whitespace_in_content(self) -> None:
@@ -313,13 +314,13 @@ class TestNormalizeFactOutput:
     def test_missing_claim_raises(self) -> None:
         xml = "<facts><fact><confidence>high</confidence><data_type>statistic</data_type></fact></facts>"
         elem = ET.fromstring(xml)
-        with pytest.raises(XmlParseError):
+        with pytest.raises(XmlParseError, match=re.escape("Empty <claim> in <fact>")):
             normalize_fact_output(elem)
 
     def test_empty_claim_raises(self) -> None:
         xml = "<facts><fact><claim></claim><confidence>high</confidence><data_type>statistic</data_type></fact></facts>"
         elem = ET.fromstring(xml)
-        with pytest.raises(XmlParseError):
+        with pytest.raises(XmlParseError, match=re.escape("Empty <claim> in <fact>")):
             normalize_fact_output(elem)
 
     def test_multiple_facts_takes_first(self) -> None:
@@ -335,7 +336,7 @@ class TestNormalizeFactOutput:
     def test_no_fact_element_raises(self) -> None:
         xml = "<facts></facts>"
         elem = ET.fromstring(xml)
-        with pytest.raises(XmlParseError):
+        with pytest.raises(XmlParseError, match=re.escape("No <fact> element in <facts> block")):
             normalize_fact_output(elem)
 
     def test_missing_confidence_defaults_medium(self) -> None:
@@ -415,7 +416,7 @@ class TestGenerateXmlValidated:
     @pytest.mark.asyncio
     async def test_raises_without_fallback(self) -> None:
         llm = FakeLLM(default="broken")
-        with pytest.raises(ValueError):
+        with pytest.raises(XmlParseError, match=re.escape("XML parse/validation failed after 2 attempts")):
             await generate_xml_validated(
                 llm,
                 "test",

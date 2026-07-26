@@ -163,3 +163,11 @@ class TestReloadingBackendClient:
         # inner client by checking a known method's callability.
         with pytest.raises(AttributeError):
             _ = rc.this_attribute_should_not_exist_anywhere
+
+        # Positive path: an attribute that only exists on the wrapped
+        # BackendInternalServiceClientSync (never defined on the proxy
+        # itself) must resolve to a bound method of that same inner
+        # instance -- proving __getattr__ actually forwards rather than
+        # merely failing closed on unknown names.
+        bound_close = rc.close  # noqa: SLF001 — real RPC-client method, forwarded via __getattr__
+        assert bound_close.__self__ is rc._inner  # noqa: SLF001

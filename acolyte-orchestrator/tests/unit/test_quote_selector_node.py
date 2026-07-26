@@ -219,6 +219,7 @@ async def test_heuristic_quote_length_capped() -> None:
         hydrated={"art-1": body},
     )
     result = await node(state)
+    assert result["selected_quotes"], "heuristic must select at least one quote for a long body"
     for q in result["selected_quotes"]:
         assert len(q["text"]) <= 200
 
@@ -236,6 +237,7 @@ async def test_offsets_verified_against_raw_hydrated_body() -> None:
         outline=[{"key": "analysis", "search_queries": ["AI chip"]}],
     )
     result = await node(state)
+    assert result["selected_quotes"], "must select at least one quote to verify offsets against"
     for q in result["selected_quotes"]:
         assert q["start_offset"] >= 0
         # Verify the offset is against raw_body

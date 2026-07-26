@@ -35,18 +35,15 @@ func TestDailyScrapingPolicyJobRunner_InitialRun(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	// Start job in goroutine
+	// Start job in goroutine. DailyScrapingPolicyJobRunner runs its work
+	// once and returns - it does not loop - so waiting on `done` with a
+	// timeout already synchronizes on completion deterministically; no
+	// extra sleep is needed before cancelling.
 	done := make(chan bool)
 	go func() {
 		DailyScrapingPolicyJobRunner(ctx, usecase)
 		done <- true
 	}()
-
-	// Wait a bit to ensure initial run completes
-	time.Sleep(100 * time.Millisecond)
-
-	// Cancel context to stop job
-	cancel()
 
 	// Wait for job to stop
 	select {
@@ -55,6 +52,10 @@ func TestDailyScrapingPolicyJobRunner_InitialRun(t *testing.T) {
 	case <-time.After(1 * time.Second):
 		t.Fatal("Job did not stop within timeout")
 	}
+
+	// Cancel context (job has already completed; this exercises the
+	// cleanup path a caller would normally take).
+	cancel()
 }
 
 func TestDailyScrapingPolicyJobRunner_ContextCancellation(t *testing.T) {
@@ -76,18 +77,15 @@ func TestDailyScrapingPolicyJobRunner_ContextCancellation(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 
-	// Start job in goroutine
+	// Start job in goroutine. As above, DailyScrapingPolicyJobRunner is a
+	// one-shot call, so synchronizing on `done` (instead of guessing a
+	// sleep duration) already deterministically confirms it ran to
+	// completion.
 	done := make(chan bool)
 	go func() {
 		DailyScrapingPolicyJobRunner(ctx, usecase)
 		done <- true
 	}()
-
-	// Wait a bit
-	time.Sleep(50 * time.Millisecond)
-
-	// Cancel context
-	cancel()
 
 	// Wait for job to stop
 	select {
@@ -96,6 +94,10 @@ func TestDailyScrapingPolicyJobRunner_ContextCancellation(t *testing.T) {
 	case <-time.After(1 * time.Second):
 		t.Fatal("Job did not stop within timeout")
 	}
+
+	// Cancel context (job has already completed; exercises the cleanup
+	// path a caller would normally take).
+	cancel()
 }
 
 func TestScrapingPolicyRefreshInterval(t *testing.T) {

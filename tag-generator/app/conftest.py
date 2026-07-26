@@ -5,10 +5,44 @@ external downloads.
 """
 
 import builtins
+import inspect
 import os
+import typing
 from unittest.mock import MagicMock, mock_open, patch
 
 import pytest
+
+
+def _patch_typing_eval_type_for_pydantic_compat() -> None:
+    """Shim a CPython 3.14.0rc2 / pydantic 2.13.4 version-skew bug.
+
+    pydantic's `_typing_extra._eval_type` (for sys.version_info >= (3, 14))
+    unconditionally calls `typing._eval_type(..., prefer_fwd_module=True)`.
+    That keyword was added to `typing._eval_type` late in the 3.14 dev
+    cycle; this sandbox's interpreter is an earlier 3.14.0rc2 build that
+    predates it, so the plain keyword raises `TypeError`, which pydantic's
+    own fallback path then turns into a bare `AssertionError` on any
+    `BaseModel`/`BaseSettings` subclass -- collapsing every test that
+    imports pydantic (transitively, almost the whole suite, via this
+    session-scoped autouse fixture module).
+
+    This only engages when the running interpreter's `typing._eval_type`
+    signature actually lacks the keyword, so it is a no-op (does nothing)
+    on any interpreter where pydantic and the stdlib already agree.
+    """
+    original = typing._eval_type  # type: ignore[attr-defined]
+    accepted = set(inspect.signature(original).parameters)
+    if "prefer_fwd_module" in accepted:
+        return
+
+    def _eval_type_compat(*args: object, **kwargs: object) -> object:
+        filtered = {k: v for k, v in kwargs.items() if k in accepted}
+        return original(*args, **filtered)
+
+    typing._eval_type = _eval_type_compat  # type: ignore[attr-defined]
+
+
+_patch_typing_eval_type_for_pydantic_compat()
 
 
 @pytest.fixture(scope="session", autouse=True)

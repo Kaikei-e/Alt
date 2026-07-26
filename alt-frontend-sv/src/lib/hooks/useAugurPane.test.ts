@@ -205,6 +205,10 @@ describe("useAugurPane", () => {
 		it("does nothing when no stream is active", () => {
 			const pane = useAugurPane();
 			expect(() => pane.abort()).not.toThrow();
+			// A no-op abort() must not fabricate a loading state or invoke the
+			// underlying transport's controller.
+			expect(pane.isLoading).toBe(false);
+			expect(mockStreamAugurChat).not.toHaveBeenCalled();
 		});
 	});
 

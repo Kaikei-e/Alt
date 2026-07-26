@@ -107,6 +107,13 @@ describe(
       const result = await usecase.execute();
 
       assertEquals(result.checks.storage_ready, false);
+      // A storage error must not be swallowed into a falsely reassuring
+      // overall status: only config_valid + environment_ready pass (2/5),
+      // which is below the "degraded" threshold of 3, so callers relying on
+      // `status` (not just the individual check) must see "unhealthy".
+      assertEquals(result.status, "unhealthy");
+      assertEquals(result.passing, 2);
+      assertEquals(result.total, 5);
     });
   },
 );

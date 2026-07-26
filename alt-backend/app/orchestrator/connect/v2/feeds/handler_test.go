@@ -1078,17 +1078,39 @@ func TestFetchArticleContent_BlocksNonHTTPSchemes(t *testing.T) {
 }
 
 func TestFetchArticleContent_UsesParsedURL(t *testing.T) {
+	// The security property under test: "http://127.0.0.1@example.com/" must
+	// be treated as a request to host example.com with userinfo
+	// "127.0.0.1", never as a request whose effective target is 127.0.0.1.
+	// A differential-parsing bypass would look like some code path reading
+	// the string before the '@' as the host instead of Go's url.Parse
+	// semantics. Assert that invariant directly and deterministically
+	// (no network involved), rather than only exercising the handler and
+	// shrugging at whatever it returns.
+	raw := "http://127.0.0.1@example.com/"
+	parsed, err := url.Parse(raw)
+	if err != nil {
+		t.Fatalf("url.Parse(%q) unexpected error: %v", raw, err)
+	}
+	if parsed.Host != "example.com" {
+		t.Fatalf("url.Parse(%q).Host = %q, want %q (userinfo must not be read as host)", raw, parsed.Host, "example.com")
+	}
+	if parsed.User == nil || parsed.User.String() != "127.0.0.1" {
+		t.Fatalf("url.Parse(%q).User = %v, want userinfo %q", raw, parsed.User, "127.0.0.1")
+	}
+
 	handler := createTestHandler()
 	ctx := createAuthContext()
 
-	// URL with user info that could be used for parsing differential attacks
-	// After url.Parse + String(), the URL should be normalized
-	_, _, err := handler.fetchArticleContent(ctx, "http://127.0.0.1@example.com/")
-	// This should either be blocked by SSRF validation or use the parsed URL
-	// The key point is it must not bypass validation via parsing differentials
+	// The handler must reach the same conclusion: this either gets blocked
+	// by SSRF validation (validating the real host, example.com) or
+	// succeeds using the parsed URL - what it must never do is silently
+	// treat "127.0.0.1" as the connection target while reporting success.
+	_, _, err = handler.fetchArticleContent(ctx, raw)
 	if err != nil {
-		// Blocked is acceptable
+		// Blocked (e.g. by SSRF validation, DNS failure in this sandboxed
+		// environment, or network egress restrictions) is an acceptable
+		// outcome - the bypass this test guards against is a *silent*
+		// success against 127.0.0.1, not an error of any kind.
 		return
 	}
-	// If not blocked, it's fine as long as the validated URL was used
 }

@@ -50,7 +50,7 @@ class TestArticle:
             content="Content",
             created_at="2025-01-01T00:00:00+00:00",
         )
-        with pytest.raises(AttributeError):
+        with pytest.raises(AttributeError, match="cannot assign to field 'title'"):
             article.title = "Modified"  # type: ignore[misc]
 
     def test_article_from_dict(self):
@@ -124,7 +124,7 @@ class TestTag:
         from tag_generator.domain.models import Tag
 
         tag = Tag(name="test", confidence=0.5)
-        with pytest.raises(AttributeError):
+        with pytest.raises(AttributeError, match="cannot assign to field 'name'"):
             tag.name = "modified"  # type: ignore[misc]
 
     def test_tag_confidence_bounds(self):
@@ -303,7 +303,7 @@ class TestCursorPosition:
         from tag_generator.domain.models import CursorPosition
 
         cursor = CursorPosition(created_at="2025-01-01T00:00:00+00:00", article_id="test-id")
-        with pytest.raises(AttributeError):
+        with pytest.raises(AttributeError, match="cannot assign to field 'created_at'"):
             cursor.created_at = "modified"  # type: ignore[misc]
 
 

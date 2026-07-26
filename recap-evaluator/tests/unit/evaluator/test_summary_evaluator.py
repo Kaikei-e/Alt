@@ -81,6 +81,16 @@ class TestSummaryEvaluator:
         assert result.sample_count == 0
 
     def test_calculate_composite_score(self, summary_evaluator):
+        """Composite score is a weighted average (default EvaluatorWeights:
+        geval=0.40, bertscore=0.25, faithfulness=0.25, rouge_l=0.10).
+
+        Expected = 0.40*((4.0-1)/4) + 0.25*0.7 + 0.25*0.8 + 0.10*0.4
+                 = 0.40*0.75 + 0.175 + 0.2 + 0.04 = 0.715
+
+        A bounds-only check (0 < score < 1) would pass even if a weight were
+        silently swapped or the geval normalization dropped, so pin the
+        exact value instead.
+        """
         metrics = SummaryMetrics(
             geval_overall=4.0,  # Normalized: (4-1)/4 = 0.75
             bertscore_f1=0.7,
@@ -90,7 +100,7 @@ class TestSummaryEvaluator:
 
         score = summary_evaluator._calculate_composite_score(metrics)
 
-        assert 0.0 < score < 1.0
+        assert score == pytest.approx(0.715, abs=0.001)
 
     def test_determine_alert_level_ok(self, summary_evaluator):
         metrics = SummaryMetrics(

@@ -1,78 +1,26 @@
-"""Unit tests for version bump logic."""
+"""Unit tests for version bump logic.
+
+Exercised against the real ``MemoryReportGateway`` (the production
+``ReportRepositoryPort`` implementation used in dev/tests), not a
+hand-rolled duplicate. A hand-rolled fake copy of the optimistic-locking
+logic would keep passing even if the real gateway's bump_version()
+regressed — these tests must fail when the real implementation breaks.
+"""
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
-from uuid import UUID, uuid4
+from uuid import uuid4
 
 import pytest
 
 from acolyte.domain.exceptions import StaleVersionError
-from acolyte.domain.report import ChangeItem, Report, ReportVersion
-
-
-class FakeVersionableRepo:
-    """Fake that simulates optimistic locking for version bump."""
-
-    def __init__(self) -> None:
-        self.reports: dict[UUID, Report] = {}
-        self.versions: list[ReportVersion] = []
-        self.change_items_store: list[tuple[UUID, int, ChangeItem]] = []
-
-    async def create_report(self, title: str, report_type: str) -> Report:
-        report = Report(
-            report_id=uuid4(),
-            title=title,
-            report_type=report_type,
-            current_version=0,
-            latest_successful_run_id=None,
-            created_at=datetime.now(UTC),
-        )
-        self.reports[report.report_id] = report
-        return report
-
-    async def bump_version(
-        self,
-        report_id: UUID,
-        expected_version: int,
-        change_reason: str,
-        change_items: list[ChangeItem],
-        **kwargs: object,
-    ) -> int:
-        report = self.reports.get(report_id)
-        if report is None:
-            raise ValueError(f"Report {report_id} not found")  # noqa: TRY003 — fake repo, no custom exception needed
-        if report.current_version != expected_version:
-            raise StaleVersionError(report_id, expected_version)
-
-        new_version = expected_version + 1
-        # Update mutable report (simulate SQL UPDATE)
-        self.reports[report_id] = Report(
-            report_id=report.report_id,
-            title=report.title,
-            report_type=report.report_type,
-            current_version=new_version,
-            latest_successful_run_id=report.latest_successful_run_id,
-            created_at=report.created_at,
-        )
-        # Append immutable version record
-        self.versions.append(
-            ReportVersion(
-                report_id=report_id,
-                version_no=new_version,
-                change_seq=len(self.versions) + 1,
-                change_reason=change_reason,
-                created_at=datetime.now(UTC),
-            )
-        )
-        for item in change_items:
-            self.change_items_store.append((report_id, new_version, item))
-        return new_version
+from acolyte.domain.report import ChangeItem
+from acolyte.gateway.memory_report_gw import MemoryReportGateway
 
 
 @pytest.mark.asyncio
 async def test_bump_version_increments_correctly() -> None:
-    repo = FakeVersionableRepo()
+    repo = MemoryReportGateway()
     report = await repo.create_report("Test", "weekly_briefing")
 
     new_v = await repo.bump_version(
@@ -83,14 +31,18 @@ async def test_bump_version_increments_correctly() -> None:
     )
 
     assert new_v == 1
-    assert repo.reports[report.report_id].current_version == 1
-    assert len(repo.versions) == 1
-    assert repo.versions[0].change_reason == "Initial generation"
+    updated = await repo.get_report(report.report_id)
+    assert updated is not None
+    assert updated.current_version == 1
+    versions, _cursor = await repo.list_report_versions(report.report_id, None, 10)
+    assert len(versions) == 1
+    assert versions[0].change_reason == "Initial generation"
+    assert versions[0].version_no == 1
 
 
 @pytest.mark.asyncio
 async def test_bump_version_records_change_items() -> None:
-    repo = FakeVersionableRepo()
+    repo = MemoryReportGateway()
     report = await repo.create_report("Test", "weekly_briefing")
 
     items = [
@@ -99,27 +51,48 @@ async def test_bump_version_records_change_items() -> None:
     ]
     await repo.bump_version(report.report_id, 0, "Initial", items)
 
-    assert len(repo.change_items_store) == 2
-    assert repo.change_items_store[0][2].field_name == "scope"
-    assert repo.change_items_store[1][2].change_kind == "updated"
+    recorded = await repo.get_change_items(report.report_id, 1)
+    assert len(recorded) == 2
+    assert recorded[0].field_name == "scope"
+    assert recorded[1].change_kind == "updated"
+    assert recorded[1].old_fingerprint == "abc"
+    assert recorded[1].new_fingerprint == "def"
 
 
 @pytest.mark.asyncio
 async def test_stale_version_raises_error() -> None:
-    repo = FakeVersionableRepo()
+    repo = MemoryReportGateway()
     report = await repo.create_report("Test", "weekly_briefing")
 
     # First bump succeeds
     await repo.bump_version(report.report_id, 0, "v1", [])
 
-    # Second bump with stale version fails
-    with pytest.raises(StaleVersionError):
+    # Second bump with stale (already-consumed) expected_version fails.
+    with pytest.raises(StaleVersionError, match=str(report.report_id)):
         await repo.bump_version(report.report_id, 0, "v2 stale", [])
+
+    # The rejected bump must not have mutated state (still at v1, not v2).
+    unchanged = await repo.get_report(report.report_id)
+    assert unchanged is not None
+    assert unchanged.current_version == 1
+    versions, _cursor = await repo.list_report_versions(report.report_id, None, 10)
+    assert len(versions) == 1
+
+
+@pytest.mark.asyncio
+async def test_bump_version_unknown_report_raises_stale_version_error() -> None:
+    """A report_id the gateway has never seen must fail closed with
+    StaleVersionError, not KeyError/AttributeError from a missing lookup."""
+    repo = MemoryReportGateway()
+    missing_id = uuid4()
+
+    with pytest.raises(StaleVersionError, match=str(missing_id)):
+        await repo.bump_version(missing_id, 0, "v1", [])
 
 
 @pytest.mark.asyncio
 async def test_sequential_bumps() -> None:
-    repo = FakeVersionableRepo()
+    repo = MemoryReportGateway()
     report = await repo.create_report("Test", "weekly_briefing")
 
     v1 = await repo.bump_version(report.report_id, 0, "v1", [ChangeItem(field_name="scope", change_kind="added")])
@@ -132,5 +105,8 @@ async def test_sequential_bumps() -> None:
     )
 
     assert v3 == 3
-    assert repo.reports[report.report_id].current_version == 3
-    assert len(repo.versions) == 3
+    updated = await repo.get_report(report.report_id)
+    assert updated is not None
+    assert updated.current_version == 3
+    versions, _cursor = await repo.list_report_versions(report.report_id, None, 10)
+    assert len(versions) == 3
