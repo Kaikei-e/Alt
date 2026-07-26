@@ -50,7 +50,16 @@ impl MemoryManager {
     }
 
     pub async fn deallocate(&self, size: usize) {
-        self.current_usage.fetch_sub(size, Ordering::Relaxed);
+        // `fetch_sub` on an `AtomicUsize` wraps silently on underflow (atomic
+        // arithmetic is not subject to Rust's checked-overflow panics), so a
+        // caller deallocating more than is currently tracked would otherwise
+        // leave `current_usage` near `usize::MAX` -- permanently pinning
+        // `current_pressure()` at `Critical`. Saturate at zero instead.
+        let _ = self
+            .current_usage
+            .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |current| {
+                Some(current.saturating_sub(size))
+            });
     }
 
     pub fn current_pressure(&self) -> MemoryPressure {
