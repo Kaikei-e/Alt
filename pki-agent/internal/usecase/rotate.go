@@ -29,10 +29,10 @@ func (r *Rotator) Tick(ctx context.Context, now time.Time) (domain.CertState, er
 	cert, err := r.Loader.Load(ctx)
 	if err != nil {
 		if errors.Is(err, domain.ErrCertNotFound) {
-			return r.issue(ctx, "missing")
+			return r.issue(ctx, now, "missing")
 		}
 		if errors.Is(err, domain.ErrCertParseFailed) {
-			return r.issue(ctx, "corrupt")
+			return r.issue(ctx, now, "corrupt")
 		}
 		return domain.StateCorrupt, fmt.Errorf("load cert: %w", err)
 	}
@@ -46,13 +46,13 @@ func (r *Rotator) Tick(ctx context.Context, now time.Time) (domain.CertState, er
 		if state == domain.StateExpired {
 			reason = "expired"
 		}
-		return r.issue(ctx, reason)
+		return r.issue(ctx, now, reason)
 	default:
 		return state, nil
 	}
 }
 
-func (r *Rotator) issue(ctx context.Context, reason string) (domain.CertState, error) {
+func (r *Rotator) issue(ctx context.Context, now time.Time, reason string) (domain.CertState, error) {
 	r.Observer.OnReissued(reason)
 	certPEM, keyPEM, err := r.Issuer.Issue(ctx, r.Subject, r.SANs)
 	if err != nil {
@@ -78,7 +78,6 @@ func (r *Rotator) issue(ctx context.Context, reason string) (domain.CertState, e
 	// classifies an existing cert — up to TICK_INTERVAL after the first
 	// successful issue on a cold-started sidecar.
 	if cert, lerr := r.Loader.Load(ctx); lerr == nil {
-		now := time.Now()
 		state := domain.ClassifyRemaining(cert.NotBefore, cert.NotAfter, now, r.RenewAtFraction)
 		r.Observer.OnClassified(state, cert.NotAfter.Sub(now))
 	}

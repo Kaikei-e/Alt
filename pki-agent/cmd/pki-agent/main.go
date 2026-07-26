@@ -122,13 +122,16 @@ func main() {
 			CAPath:       cfg.ProxyCAPath,
 			VerifyClient: cfg.ProxyVerifyClient,
 			AllowedPeers: cfg.ProxyAllowedPeers,
+
+			ResponseHeaderTimeout: cfg.ProxyResponseHeaderTimeout,
 		})
 		if err != nil {
 			slog.Error("proxy setup failed", "err", err)
 			os.Exit(3)
 		}
 		go func() {
-			slog.Info("TLS reverse proxy listening", "addr", cfg.ProxyListen, "upstream", cfg.ProxyUpstream)
+			slog.Info("TLS reverse proxy listening", "addr", cfg.ProxyListen, "upstream", cfg.ProxyUpstream,
+				"response_header_timeout", cfg.ProxyResponseHeaderTimeout)
 			if err := proxySrv.ListenAndServeTLS("", ""); err != nil && !errors.Is(err, http.ErrServerClosed) {
 				serverErr <- fmt.Errorf("proxy server: %w", err)
 				return

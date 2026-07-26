@@ -358,6 +358,10 @@ services:
       - METRICS_ADDR=:9510
       - PROXY_LISTEN=:9443
       - PROXY_UPSTREAM=http://127.0.0.1:8002
+      # Clustering holds the request open while it runs; the caller's own
+      # RECAP_CLUSTERING_GENRE_TIMEOUT_SECS (1500s) must stay the binding
+      # deadline, so the sidecar waits slightly longer than the client.
+      - PROXY_RESPONSE_HEADER_TIMEOUT=${RECAP_SUBWORKER_PROXY_RESPONSE_HEADER_TIMEOUT:-1560s}
       - PROXY_VERIFY_CLIENT=${RECAP_SUBWORKER_VERIFY_CLIENT:-on}
       - PROXY_ALLOWED_PEERS=${RECAP_SUBWORKER_MTLS_ALLOWED_PEERS:-recap-worker}
       - PROXY_CA_FILE=/trust/ca-bundle.pem
@@ -392,6 +396,11 @@ services:
       - METRICS_ADDR=:9510
       - PROXY_LISTEN=:9443
       - PROXY_UPSTREAM=http://127.0.0.1:11434
+      # LLM inference writes no response header until generation finishes,
+      # which under queue contention has been measured in the tens of
+      # minutes. The caller's LLM_SUMMARY_TIMEOUT_SECS (900s) must stay the
+      # binding deadline, so the sidecar waits slightly longer than it.
+      - PROXY_RESPONSE_HEADER_TIMEOUT=${NEWS_CREATOR_PROXY_RESPONSE_HEADER_TIMEOUT:-960s}
       - PROXY_VERIFY_CLIENT=${NEWS_CREATOR_VERIFY_CLIENT:-on}
       - PROXY_ALLOWED_PEERS=${NEWS_CREATOR_MTLS_ALLOWED_PEERS:-recap-worker,acolyte-orchestrator,rag-orchestrator,recap-evaluator}
       - PROXY_CA_FILE=/trust/ca-bundle.pem

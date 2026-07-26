@@ -44,6 +44,10 @@ type Config struct {
 	ProxyVerifyClient bool
 	ProxyAllowedPeers []string
 	ProxyCAPath       string
+	// ProxyResponseHeaderTimeout bounds how long the proxy waits for the
+	// upstream's response headers. Raise it for upstreams that run LLM
+	// inference before answering; keep it tight everywhere else.
+	ProxyResponseHeaderTimeout time.Duration
 }
 
 // Load parses environment variables (with _FILE support for secrets) into
@@ -97,6 +101,11 @@ func Load() (*Config, error) {
 	c.ProxyUpstream = getEnv("PROXY_UPSTREAM", "")
 	c.ProxyCAPath = getEnv("PROXY_CA_FILE", c.RootFile)
 	c.ProxyVerifyClient = strings.EqualFold(getEnv("PROXY_VERIFY_CLIENT", "off"), "on")
+	respHeaderTimeout, err := time.ParseDuration(getEnv("PROXY_RESPONSE_HEADER_TIMEOUT", "15s"))
+	if err != nil {
+		return nil, fmt.Errorf("PROXY_RESPONSE_HEADER_TIMEOUT: %w", err)
+	}
+	c.ProxyResponseHeaderTimeout = respHeaderTimeout
 	if peers := getEnv("PROXY_ALLOWED_PEERS", ""); peers != "" {
 		for _, p := range strings.Split(peers, ",") {
 			if s := strings.TrimSpace(p); s != "" {

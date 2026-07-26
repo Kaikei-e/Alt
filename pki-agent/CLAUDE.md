@@ -80,6 +80,7 @@ docker run --rm --network alt_alt-network \
 | RENEW_AT_FRACTION | 0.66 | (0,1) |
 | TICK_INTERVAL | 5m | Go time.Duration |
 | METRICS_ADDR | :9510 | plaintext inside alt-network |
+| PROXY_RESPONSE_HEADER_TIMEOUT | 15s | proxy mode only. Wait for the upstream's response headers. Raise it above the caller's own deadline for upstreams that run LLM inference before answering; exceeding it returns 504 |
 
 ## Critical rules
 
