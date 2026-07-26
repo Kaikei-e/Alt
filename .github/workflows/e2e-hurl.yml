@@ -102,17 +102,121 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # The workflow-level `paths:` above is the union across every suite, so a
+  # one-service change still triggers all nine. This job narrows it per suite.
+  # Gating happens at job level (not trigger level) so a skipped suite still
+  # reports a status instead of leaving a required check pending forever.
+  changes:
+    name: Detect changed suites
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      alt_backend: ${{ steps.filter.outputs.alt_backend }}
+      mq_hub: ${{ steps.filter.outputs.mq_hub }}
+      recap_worker: ${{ steps.filter.outputs.recap_worker }}
+      news_creator: ${{ steps.filter.outputs.news_creator }}
+      acolyte_orchestrator: ${{ steps.filter.outputs.acolyte_orchestrator }}
+      tag_generator: ${{ steps.filter.outputs.tag_generator }}
+      auth_hub: ${{ steps.filter.outputs.auth_hub }}
+      rag_orchestrator: ${{ steps.filter.outputs.rag_orchestrator }}
+      knowledge_sovereign: ${{ steps.filter.outputs.knowledge_sovereign }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+        with:
+          # Full history so the base…head diff resolves across squash- and
+          # rebase-merges, matching docker-build.yaml's change detection.
+          fetch-depth: 0
+
+      - name: Map changed paths to suites
+        id: filter
+        env:
+          PUSH_BEFORE: ${{ github.event.before }}
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+
+          declare -A SUITE_PATHS=(
+            [alt_backend]="alt-backend/ migrations-atlas/ e2e/hurl/alt-backend/ e2e/fixtures/alt-backend/ e2e/stubs/alt-backend-deps-stub/"
+            [mq_hub]="mq-hub/ e2e/hurl/mq-hub/ e2e/fixtures/mq-hub/"
+            [recap_worker]="recap-worker/ recap-migration-atlas/ e2e/hurl/recap-worker/ e2e/fixtures/recap-worker/ e2e/stubs/recap-pipeline-stub/"
+            [news_creator]="news-creator/ compose/news-creator-ollama-stub/ e2e/hurl/news-creator/ e2e/fixtures/news-creator/"
+            [acolyte_orchestrator]="acolyte-orchestrator/ acolyte-migration-atlas/ e2e/hurl/acolyte-orchestrator/ e2e/fixtures/acolyte-orchestrator/"
+            [tag_generator]="tag-generator/ mq-hub/ e2e/hurl/tag-generator/ e2e/fixtures/tag-generator/"
+            [auth_hub]="auth-hub/ kratos/entrypoint.sh e2e/hurl/auth-hub/ e2e/fixtures/auth-hub/"
+            [rag_orchestrator]="rag-orchestrator/ rag-migration-atlas/ rag-db/ e2e/hurl/rag-orchestrator/ e2e/fixtures/rag-orchestrator/"
+            [knowledge_sovereign]="knowledge-sovereign/ e2e/hurl/knowledge-sovereign/"
+          )
+
+          ZERO_SHA="0000000000000000000000000000000000000000"
+          RUN_ALL=false
+          CHANGED_FILES=""
+
+          if [[ "$GITHUB_EVENT_NAME" == "pull_request" ]]; then
+            if [[ -n "$PR_BASE_SHA" && -n "$PR_HEAD_SHA" && "$PR_BASE_SHA" != "$PR_HEAD_SHA" ]]; then
+              CHANGED_FILES=$(git diff --name-only "${PR_BASE_SHA}...${PR_HEAD_SHA}" 2>/dev/null || true)
+            fi
+          elif [[ -n "$PUSH_BEFORE" && "$PUSH_BEFORE" != "$ZERO_SHA" && "$PUSH_BEFORE" != "$GITHUB_SHA" ]]; then
+            CHANGED_FILES=$(git diff --name-only "${PUSH_BEFORE}..${GITHUB_SHA}" 2>/dev/null || true)
+          fi
+
+          # No usable diff (first push, force-push, API hiccup): run everything
+          # rather than silently skipping coverage.
+          if [[ -z "$CHANGED_FILES" ]]; then
+            RUN_ALL=true
+            echo "No usable diff — running every suite."
+          fi
+
+          # Every suite boots the same staging stack, so changes to the stack
+          # wiring, its shared secrets, or this workflow affect all of them.
+          if [[ "$RUN_ALL" != "true" ]]; then
+            while IFS= read -r file; do
+              if [[ -z "$file" ]]; then
+                continue
+              fi
+              case "$file" in
+                compose/compose.staging.yaml|e2e/fixtures/staging-secrets/*|.github/workflows/e2e-hurl.yml)
+                  RUN_ALL=true
+                  echo "Shared-stack change detected ($file) — running every suite."
+                  break ;;
+              esac
+            done <<< "$CHANGED_FILES"
+          fi
+
+          for suite in "${!SUITE_PATHS[@]}"; do
+            hit=false
+            if [[ "$RUN_ALL" == "true" ]]; then
+              hit=true
+            else
+              for prefix in ${SUITE_PATHS[$suite]}; do
+                if grep -q "^${prefix}" <<< "$CHANGED_FILES"; then
+                  hit=true
+                  break
+                fi
+              done
+            fi
+            echo "${suite}=${hit}" >> "$GITHUB_OUTPUT"
+            echo "${suite}: ${hit}"
+          done
+
   alt-backend:
     name: alt-backend Hurl suite
+    needs: changes
+    if: needs.changes.outputs.alt_backend == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
       - name: Checkout
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
 
+      # `:buildcache` is the registry layer cache published by
+      # docker-build.yaml on pushes to main. Importing it here keeps these
+      # suites from rebuilding every image from scratch on each PR.
       - name: Build alt-backend image locally (tag `ci`)
         run: |
-          docker build \
+          docker buildx build \
+            --cache-from type=registry,ref=ghcr.io/kaikei-e/alt-alt-backend:buildcache \
             -t ghcr.io/kaikei-e/alt-alt-backend:ci \
             -f alt-backend/Dockerfile.backend \
             alt-backend
@@ -162,6 +266,8 @@ jobs:
 
   mq-hub:
     name: mq-hub Hurl suite
+    needs: changes
+    if: needs.changes.outputs.mq_hub == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -170,7 +276,8 @@ jobs:
 
       - name: Build mq-hub image locally (tag `ci`)
         run: |
-          docker build \
+          docker buildx build \
+            --cache-from type=registry,ref=ghcr.io/kaikei-e/alt-mq-hub:buildcache \
             -t ghcr.io/kaikei-e/alt-mq-hub:ci \
             -f mq-hub/Dockerfile \
             mq-hub
@@ -210,6 +317,8 @@ jobs:
 
   recap-worker:
     name: recap-worker Hurl suite
+    needs: changes
+    if: needs.changes.outputs.recap_worker == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -217,12 +326,12 @@ jobs:
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
 
       # recap-worker's image bundles libtorch (~600MB download) +
-      # cargo-chef cooks the workspace, so the cold build is the
-      # dominant cost of this job. Pre-warming via cargo cache is left
-      # for a follow-up if wall-clock pain becomes an issue.
+      # cargo-chef cooks the workspace, so a cold build dominates this job.
+      # The registry cache import below is what keeps it off the critical path.
       - name: Build recap-worker image locally (tag `ci`)
         run: |
-          docker build \
+          docker buildx build \
+            --cache-from type=registry,ref=ghcr.io/kaikei-e/alt-recap-worker:buildcache \
             -t ghcr.io/kaikei-e/alt-recap-worker:ci \
             -f recap-worker/Dockerfile.recap-worker \
             recap-worker
@@ -285,6 +394,8 @@ jobs:
 
   news-creator:
     name: news-creator Hurl suite
+    needs: changes
+    if: needs.changes.outputs.news_creator == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -293,7 +404,8 @@ jobs:
 
       - name: Build news-creator image locally (tag `ci`)
         run: |
-          docker build \
+          docker buildx build \
+            --cache-from type=registry,ref=ghcr.io/kaikei-e/alt-news-creator:buildcache \
             -t ghcr.io/kaikei-e/alt-news-creator:ci \
             -f news-creator/Dockerfile \
             news-creator
@@ -331,6 +443,8 @@ jobs:
 
   acolyte-orchestrator:
     name: acolyte-orchestrator Hurl suite
+    needs: changes
+    if: needs.changes.outputs.acolyte_orchestrator == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -379,6 +493,8 @@ jobs:
 
   tag-generator:
     name: tag-generator Hurl suite
+    needs: changes
+    if: needs.changes.outputs.tag_generator == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -387,7 +503,8 @@ jobs:
 
       - name: Build tag-generator image locally (tag `ci`)
         run: |
-          docker build \
+          docker buildx build \
+            --cache-from type=registry,ref=ghcr.io/kaikei-e/alt-tag-generator:buildcache \
             -t ghcr.io/kaikei-e/alt-tag-generator:ci \
             -f tag-generator/Dockerfile.tag-generator \
             tag-generator
@@ -396,7 +513,8 @@ jobs:
       # RPC, so we need its image available to the staging stack too.
       - name: Build mq-hub image locally (tag `ci`)
         run: |
-          docker build \
+          docker buildx build \
+            --cache-from type=registry,ref=ghcr.io/kaikei-e/alt-mq-hub:buildcache \
             -t ghcr.io/kaikei-e/alt-mq-hub:ci \
             -f mq-hub/Dockerfile \
             mq-hub
@@ -442,6 +560,8 @@ jobs:
 
   auth-hub:
     name: auth-hub Hurl suite
+    needs: changes
+    if: needs.changes.outputs.auth_hub == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -450,7 +570,8 @@ jobs:
 
       - name: Build auth-hub image locally (tag `ci`)
         run: |
-          docker build \
+          docker buildx build \
+            --cache-from type=registry,ref=ghcr.io/kaikei-e/alt-auth-hub:buildcache \
             -t ghcr.io/kaikei-e/alt-auth-hub:ci \
             -f auth-hub/Dockerfile \
             auth-hub
@@ -495,6 +616,8 @@ jobs:
 
   rag-orchestrator:
     name: rag-orchestrator Hurl suite
+    needs: changes
+    if: needs.changes.outputs.rag_orchestrator == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -503,7 +626,8 @@ jobs:
 
       - name: Build rag-orchestrator image locally (tag `ci`)
         run: |
-          docker build \
+          docker buildx build \
+            --cache-from type=registry,ref=ghcr.io/kaikei-e/alt-rag-orchestrator:buildcache \
             -t ghcr.io/kaikei-e/alt-rag-orchestrator:ci \
             -f rag-orchestrator/Dockerfile \
             rag-orchestrator
@@ -548,6 +672,8 @@ jobs:
 
   knowledge-sovereign:
     name: knowledge-sovereign Hurl suite
+    needs: changes
+    if: needs.changes.outputs.knowledge_sovereign == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -556,7 +682,8 @@ jobs:
 
       - name: Build knowledge-sovereign image locally (tag `ci`)
         run: |
-          docker build \
+          docker buildx build \
+            --cache-from type=registry,ref=ghcr.io/kaikei-e/alt-knowledge-sovereign:buildcache \
             -t ghcr.io/kaikei-e/alt-knowledge-sovereign:ci \
             -f knowledge-sovereign/Dockerfile.sovereign \
             knowledge-sovereign

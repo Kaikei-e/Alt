@@ -18,6 +18,10 @@ on:
       - "k8s-manifests/deploy-helm.sh"
       - "k8s-manifests/validate-helm.sh"
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 env:
   HELM_VERSION: v3.14.0
 
