@@ -1,98 +1,21 @@
 # E2E Hurl suites (one job per service under e2e/hurl/).
 #
-# Gating is per-suite via path filters: each job only runs when the
-# service code, its compose wiring, its Hurl suite, its fixtures, or
-# this workflow changes. Unrelated PRs don't pay the build + stack
-# bring-up cost.
+# Every suite runs on every PR and every push to main, with no path
+# filtering. Selective skipping by touched path lets a shared-wiring
+# regression (compose.staging.yaml, fixtures, an upstream Go package,
+# proto) land green because it matches no service path. Cost is bounded
+# by importing the registry layer cache rather than by skipping suites.
 #
-# To add another service's suite later (e.g. search-indexer), add a
-# matching `paths:` block and a sibling job; keep existing job names
-# stable.
+# To add another service's suite later, append a sibling job and keep
+# existing job names stable.
 
 name: E2E Hurl
 
 on:
   pull_request:
-    paths:
-      - 'alt-backend/**'
-      - 'mq-hub/**'
-      - 'tag-generator/**'
-      - 'news-creator/**'
-      - 'recap-worker/**'
-      - 'recap-migration-atlas/**'
-      - 'acolyte-orchestrator/**'
-      - 'acolyte-migration-atlas/**'
-      - 'auth-hub/**'
-      - 'kratos/entrypoint.sh'
-      - 'migrations-atlas/**'
-      - 'rag-orchestrator/**'
-      - 'rag-migration-atlas/**'
-      - 'rag-db/**'
-      - 'knowledge-sovereign/**'
-      - 'compose/compose.staging.yaml'
-      - 'compose/news-creator-ollama-stub/**'
-      - 'e2e/hurl/alt-backend/**'
-      - 'e2e/hurl/mq-hub/**'
-      - 'e2e/hurl/tag-generator/**'
-      - 'e2e/hurl/news-creator/**'
-      - 'e2e/hurl/recap-worker/**'
-      - 'e2e/hurl/acolyte-orchestrator/**'
-      - 'e2e/hurl/auth-hub/**'
-      - 'e2e/hurl/rag-orchestrator/**'
-      - 'e2e/hurl/knowledge-sovereign/**'
-      - 'e2e/fixtures/alt-backend/**'
-      - 'e2e/fixtures/mq-hub/**'
-      - 'e2e/fixtures/tag-generator/**'
-      - 'e2e/fixtures/news-creator/**'
-      - 'e2e/fixtures/recap-worker/**'
-      - 'e2e/fixtures/acolyte-orchestrator/**'
-      - 'e2e/fixtures/auth-hub/**'
-      - 'e2e/fixtures/rag-orchestrator/**'
-      - 'e2e/fixtures/staging-secrets/**'
-      - 'e2e/stubs/alt-backend-deps-stub/**'
-      - 'e2e/stubs/recap-pipeline-stub/**'
-      - '.github/workflows/e2e-hurl.yml'
   push:
     branches: [main]
-    paths:
-      - 'alt-backend/**'
-      - 'mq-hub/**'
-      - 'tag-generator/**'
-      - 'news-creator/**'
-      - 'recap-worker/**'
-      - 'recap-migration-atlas/**'
-      - 'acolyte-orchestrator/**'
-      - 'acolyte-migration-atlas/**'
-      - 'auth-hub/**'
-      - 'kratos/entrypoint.sh'
-      - 'migrations-atlas/**'
-      - 'rag-orchestrator/**'
-      - 'rag-migration-atlas/**'
-      - 'rag-db/**'
-      - 'knowledge-sovereign/**'
-      - 'compose/compose.staging.yaml'
-      - 'compose/news-creator-ollama-stub/**'
-      - 'e2e/hurl/alt-backend/**'
-      - 'e2e/hurl/mq-hub/**'
-      - 'e2e/hurl/tag-generator/**'
-      - 'e2e/hurl/news-creator/**'
-      - 'e2e/hurl/recap-worker/**'
-      - 'e2e/hurl/acolyte-orchestrator/**'
-      - 'e2e/hurl/auth-hub/**'
-      - 'e2e/hurl/rag-orchestrator/**'
-      - 'e2e/hurl/knowledge-sovereign/**'
-      - 'e2e/fixtures/alt-backend/**'
-      - 'e2e/fixtures/mq-hub/**'
-      - 'e2e/fixtures/tag-generator/**'
-      - 'e2e/fixtures/news-creator/**'
-      - 'e2e/fixtures/recap-worker/**'
-      - 'e2e/fixtures/acolyte-orchestrator/**'
-      - 'e2e/fixtures/auth-hub/**'
-      - 'e2e/fixtures/rag-orchestrator/**'
-      - 'e2e/fixtures/staging-secrets/**'
-      - 'e2e/stubs/alt-backend-deps-stub/**'
-      - 'e2e/stubs/recap-pipeline-stub/**'
-      - '.github/workflows/e2e-hurl.yml'
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -102,108 +25,8 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  # The workflow-level `paths:` above is the union across every suite, so a
-  # one-service change still triggers all nine. This job narrows it per suite.
-  # Gating happens at job level (not trigger level) so a skipped suite still
-  # reports a status instead of leaving a required check pending forever.
-  changes:
-    name: Detect changed suites
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    outputs:
-      alt_backend: ${{ steps.filter.outputs.alt_backend }}
-      mq_hub: ${{ steps.filter.outputs.mq_hub }}
-      recap_worker: ${{ steps.filter.outputs.recap_worker }}
-      news_creator: ${{ steps.filter.outputs.news_creator }}
-      acolyte_orchestrator: ${{ steps.filter.outputs.acolyte_orchestrator }}
-      tag_generator: ${{ steps.filter.outputs.tag_generator }}
-      auth_hub: ${{ steps.filter.outputs.auth_hub }}
-      rag_orchestrator: ${{ steps.filter.outputs.rag_orchestrator }}
-      knowledge_sovereign: ${{ steps.filter.outputs.knowledge_sovereign }}
-    steps:
-      - name: Checkout
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
-        with:
-          # Full history so the base…head diff resolves across squash- and
-          # rebase-merges, matching docker-build.yaml's change detection.
-          fetch-depth: 0
-
-      - name: Map changed paths to suites
-        id: filter
-        env:
-          PUSH_BEFORE: ${{ github.event.before }}
-          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
-          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-        run: |
-          set -euo pipefail
-
-          declare -A SUITE_PATHS=(
-            [alt_backend]="alt-backend/ migrations-atlas/ e2e/hurl/alt-backend/ e2e/fixtures/alt-backend/ e2e/stubs/alt-backend-deps-stub/"
-            [mq_hub]="mq-hub/ e2e/hurl/mq-hub/ e2e/fixtures/mq-hub/"
-            [recap_worker]="recap-worker/ recap-migration-atlas/ e2e/hurl/recap-worker/ e2e/fixtures/recap-worker/ e2e/stubs/recap-pipeline-stub/"
-            [news_creator]="news-creator/ compose/news-creator-ollama-stub/ e2e/hurl/news-creator/ e2e/fixtures/news-creator/"
-            [acolyte_orchestrator]="acolyte-orchestrator/ acolyte-migration-atlas/ e2e/hurl/acolyte-orchestrator/ e2e/fixtures/acolyte-orchestrator/"
-            [tag_generator]="tag-generator/ mq-hub/ e2e/hurl/tag-generator/ e2e/fixtures/tag-generator/"
-            [auth_hub]="auth-hub/ kratos/entrypoint.sh e2e/hurl/auth-hub/ e2e/fixtures/auth-hub/"
-            [rag_orchestrator]="rag-orchestrator/ rag-migration-atlas/ rag-db/ e2e/hurl/rag-orchestrator/ e2e/fixtures/rag-orchestrator/"
-            [knowledge_sovereign]="knowledge-sovereign/ e2e/hurl/knowledge-sovereign/"
-          )
-
-          ZERO_SHA="0000000000000000000000000000000000000000"
-          RUN_ALL=false
-          CHANGED_FILES=""
-
-          if [[ "$GITHUB_EVENT_NAME" == "pull_request" ]]; then
-            if [[ -n "$PR_BASE_SHA" && -n "$PR_HEAD_SHA" && "$PR_BASE_SHA" != "$PR_HEAD_SHA" ]]; then
-              CHANGED_FILES=$(git diff --name-only "${PR_BASE_SHA}...${PR_HEAD_SHA}" 2>/dev/null || true)
-            fi
-          elif [[ -n "$PUSH_BEFORE" && "$PUSH_BEFORE" != "$ZERO_SHA" && "$PUSH_BEFORE" != "$GITHUB_SHA" ]]; then
-            CHANGED_FILES=$(git diff --name-only "${PUSH_BEFORE}..${GITHUB_SHA}" 2>/dev/null || true)
-          fi
-
-          # No usable diff (first push, force-push, API hiccup): run everything
-          # rather than silently skipping coverage.
-          if [[ -z "$CHANGED_FILES" ]]; then
-            RUN_ALL=true
-            echo "No usable diff — running every suite."
-          fi
-
-          # Every suite boots the same staging stack, so changes to the stack
-          # wiring, its shared secrets, or this workflow affect all of them.
-          if [[ "$RUN_ALL" != "true" ]]; then
-            while IFS= read -r file; do
-              if [[ -z "$file" ]]; then
-                continue
-              fi
-              case "$file" in
-                compose/compose.staging.yaml|e2e/fixtures/staging-secrets/*|.github/workflows/e2e-hurl.yml)
-                  RUN_ALL=true
-                  echo "Shared-stack change detected ($file) — running every suite."
-                  break ;;
-              esac
-            done <<< "$CHANGED_FILES"
-          fi
-
-          for suite in "${!SUITE_PATHS[@]}"; do
-            hit=false
-            if [[ "$RUN_ALL" == "true" ]]; then
-              hit=true
-            else
-              for prefix in ${SUITE_PATHS[$suite]}; do
-                if grep -q "^${prefix}" <<< "$CHANGED_FILES"; then
-                  hit=true
-                  break
-                fi
-              done
-            fi
-            echo "${suite}=${hit}" >> "$GITHUB_OUTPUT"
-            echo "${suite}: ${hit}"
-          done
-
   alt-backend:
     name: alt-backend Hurl suite
-    needs: changes
-    if: needs.changes.outputs.alt_backend == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -266,8 +89,6 @@ jobs:
 
   mq-hub:
     name: mq-hub Hurl suite
-    needs: changes
-    if: needs.changes.outputs.mq_hub == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -317,8 +138,6 @@ jobs:
 
   recap-worker:
     name: recap-worker Hurl suite
-    needs: changes
-    if: needs.changes.outputs.recap_worker == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -394,8 +213,6 @@ jobs:
 
   news-creator:
     name: news-creator Hurl suite
-    needs: changes
-    if: needs.changes.outputs.news_creator == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -443,8 +260,6 @@ jobs:
 
   acolyte-orchestrator:
     name: acolyte-orchestrator Hurl suite
-    needs: changes
-    if: needs.changes.outputs.acolyte_orchestrator == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -493,8 +308,6 @@ jobs:
 
   tag-generator:
     name: tag-generator Hurl suite
-    needs: changes
-    if: needs.changes.outputs.tag_generator == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -560,8 +373,6 @@ jobs:
 
   auth-hub:
     name: auth-hub Hurl suite
-    needs: changes
-    if: needs.changes.outputs.auth_hub == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -616,8 +427,6 @@ jobs:
 
   rag-orchestrator:
     name: rag-orchestrator Hurl suite
-    needs: changes
-    if: needs.changes.outputs.rag_orchestrator == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -672,8 +481,6 @@ jobs:
 
   knowledge-sovereign:
     name: knowledge-sovereign Hurl suite
-    needs: changes
-    if: needs.changes.outputs.knowledge_sovereign == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
