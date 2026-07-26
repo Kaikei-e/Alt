@@ -113,6 +113,131 @@ func TestNewTLSProxy_PeerIdentityHeader(t *testing.T) {
 	}
 }
 
+// startProxyForUpstream boots a proxy in front of upstreamURL and returns an
+// mTLS client plus the proxy's address.
+func startProxyForUpstream(t *testing.T, upstreamURL string, responseHeaderTimeout time.Duration) (*http.Client, string) {
+	t.Helper()
+	dir := t.TempDir()
+	serverCert, serverKey := selfSignedPair(t, "test-server")
+	clientCert, clientKey := selfSignedPair(t, "test-client")
+	writeCert(t, dir, "svc-cert.pem", "svc-key.pem", serverCert, serverKey)
+	caBundlePath := filepath.Join(dir, "ca-bundle.pem")
+	if err := os.WriteFile(caBundlePath, clientCert, 0o444); err != nil {
+		t.Fatal(err)
+	}
+
+	srv, err := NewTLSProxy(ProxyConfig{
+		Listen:                ":0",
+		Upstream:              upstreamURL,
+		CertPath:              filepath.Join(dir, "svc-cert.pem"),
+		KeyPath:               filepath.Join(dir, "svc-key.pem"),
+		CAPath:                caBundlePath,
+		VerifyClient:          true,
+		AllowedPeers:          []string{"test-client"},
+		ResponseHeaderTimeout: responseHeaderTimeout,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ln, err := tls.Listen("tcp", "127.0.0.1:0", srv.TLSConfig)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { ln.Close() })
+	go srv.Serve(ln)
+
+	clientTLS, _ := tls.X509KeyPair(clientCert, clientKey)
+	serverCAPool := x509.NewCertPool()
+	serverCAPool.AppendCertsFromPEM(serverCert)
+	return &http.Client{
+		Transport: &http.Transport{
+			TLSClientConfig: &tls.Config{
+				Certificates: []tls.Certificate{clientTLS},
+				RootCAs:      serverCAPool,
+				MinVersion:   tls.VersionTLS13,
+			},
+		},
+	}, ln.Addr().String()
+}
+
+func TestResponseHeaderTimeout_UnsetFallsBackToDefault(t *testing.T) {
+	if got := responseHeaderTimeout(0); got != defaultResponseHeaderTimeout {
+		t.Fatalf("responseHeaderTimeout(0)=%v want %v", got, defaultResponseHeaderTimeout)
+	}
+	if got := responseHeaderTimeout(-1 * time.Second); got != defaultResponseHeaderTimeout {
+		t.Fatalf("responseHeaderTimeout(-1s)=%v want %v", got, defaultResponseHeaderTimeout)
+	}
+	if got := responseHeaderTimeout(960 * time.Second); got != 960*time.Second {
+		t.Fatalf("responseHeaderTimeout(960s)=%v want 960s", got)
+	}
+}
+
+// An upstream that takes longer than the configured wait must be cut off at
+// the configured value, not at the built-in default: this is the knob that
+// lets LLM-bearing services keep a request open for minutes.
+func TestNewTLSProxy_HonorsConfiguredResponseHeaderTimeout(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		time.Sleep(2 * time.Second)
+		w.WriteHeader(200)
+	}))
+	defer upstream.Close()
+
+	client, addr := startProxyForUpstream(t, upstream.URL, 150*time.Millisecond)
+
+	start := time.Now()
+	resp, err := client.Get("https://" + addr + "/")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if elapsed := time.Since(start); elapsed > time.Second {
+		t.Fatalf("waited %v: configured 150ms timeout was ignored", elapsed)
+	}
+	if resp.StatusCode != http.StatusGatewayTimeout {
+		t.Fatalf("status=%d want 504: a gateway that times out waiting for upstream headers must not report 502", resp.StatusCode)
+	}
+}
+
+// A slow-but-answering upstream must get through when the configured wait
+// covers it — the regression that killed every recap summary.
+func TestNewTLSProxy_SlowUpstreamWithinTimeoutSucceeds(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		time.Sleep(400 * time.Millisecond)
+		w.WriteHeader(200)
+	}))
+	defer upstream.Close()
+
+	client, addr := startProxyForUpstream(t, upstream.URL, 5*time.Second)
+
+	resp, err := client.Get("https://" + addr + "/")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != 200 {
+		t.Fatalf("status=%d want 200", resp.StatusCode)
+	}
+}
+
+// Non-timeout upstream failures keep reporting 502, so "slow" and "broken"
+// stay distinguishable to callers.
+func TestNewTLSProxy_UnreachableUpstreamReturns502(t *testing.T) {
+	dead := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {}))
+	deadURL := dead.URL
+	dead.Close()
+
+	client, addr := startProxyForUpstream(t, deadURL, 5*time.Second)
+
+	resp, err := client.Get("https://" + addr + "/")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusBadGateway {
+		t.Fatalf("status=%d want 502", resp.StatusCode)
+	}
+}
+
 func TestNewTLSProxy_RejectsUnauthenticatedClient(t *testing.T) {
 	dir := t.TempDir()
 	serverCert, serverKey := selfSignedPair(t, "test-server")
