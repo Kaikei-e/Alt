@@ -33,6 +33,7 @@ SERVICE_FILTER=""
 ROLE_FILTER=""
 DRY_RUN=false
 MANUAL_ONLY=false
+SKIP_MANUAL_BRIDGE=false
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --broker)
@@ -68,6 +69,10 @@ while [[ $# -gt 0 ]]; do
       MANUAL_ONLY=true
       shift
       ;;
+    --skip-manual-bridge)
+      SKIP_MANUAL_BRIDGE=true
+      shift
+      ;;
     --help|-h)
       cat <<'EOF'
 Usage: pact-check.sh [flags]
@@ -91,6 +96,12 @@ Usage: pact-check.sh [flags]
                             (recap-worker, mq-hub message pacts, kratos).
                             Used by the per-service deploy matrix to post
                             bridging records from a single dedicated leg.
+  --skip-manual-bridge      Do not run the broker-side manual-verification
+                            bridging block. For callers that know a dedicated
+                            --publish-manual-verifications leg already covers
+                            it, so the ~20 per-service publish legs of a
+                            release stop replaying the same playbook. Ignored
+                            when --publish-manual-verifications is given.
   --dry-run                 Print "WOULD RUN: <label>" for each step that
                             would execute, and "WOULD POST MANUAL
                             VERIFICATION: <provider>/<consumer>" for each
@@ -501,7 +512,14 @@ execute_steps STEPS_PROVIDER
 #
 # For each of these we POST a verification result tagged with the stub/source
 # implementation so the audit trail is honest.
-if [[ ("$MODE" == "broker" && $FAIL -eq 0) || "$MANUAL_ONLY" == "true" ]]; then
+#
+# Opting out is explicit (--skip-manual-bridge) rather than inferred from the
+# presence of --services/--role: verify-pact-on-demand.yaml passes --services
+# without --role and has no other path that posts a verification record for
+# recap-worker / search-indexer / tag-generator, so inferring would make it
+# report green while publishing nothing.
+if [[ "$MANUAL_ONLY" == "true" ]] || \
+   [[ "$MODE" == "broker" && $FAIL -eq 0 && "$SKIP_MANUAL_BRIDGE" != "true" ]]; then
   echo ""
   echo "============================="
   echo " Publishing Manual Verifications to Broker"
