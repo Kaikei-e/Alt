@@ -158,6 +158,31 @@ class TestSchedulingConfig:
         assert config.aging_threshold_seconds == 30.0
         assert config.preemption_enabled is False
 
+    def test_scheduling_config_aging_sweep_interval_releases_default(self):
+        """aging_sweep_interval_releases should default to 8 releases.
+
+        Bounds how often the O(N) _apply_aging() sweep runs on release() --
+        without this, a burst of releases (e.g. hierarchical job fan-out)
+        rebuilds the whole BE queue on every single release.
+        """
+        from news_creator.config.scheduling_config import SchedulingConfig
+
+        config = SchedulingConfig()
+
+        assert config.aging_sweep_interval_releases == 8
+
+    def test_scheduling_config_from_env_aging_sweep_interval_releases(
+        self, monkeypatch
+    ):
+        """SCHEDULING_AGING_SWEEP_INTERVAL_RELEASES must be read from env."""
+        from news_creator.config.scheduling_config import SchedulingConfig
+
+        monkeypatch.setenv("SCHEDULING_AGING_SWEEP_INTERVAL_RELEASES", "16")
+
+        config = SchedulingConfig.from_env()
+
+        assert config.aging_sweep_interval_releases == 16
+
 
 class TestHierarchicalConfig:
     """Tests for HierarchicalConfig dataclass."""
@@ -333,6 +358,19 @@ class TestNewsCreatorConfigComposition:
         assert config.scheduling_rt_reserved_slots == 2
         # New-style access should also work
         assert config.scheduling.rt_reserved_slots == 2
+
+    def test_news_creator_config_backward_compatible_aging_sweep_interval(
+        self, monkeypatch
+    ):
+        """NewsCreatorConfig should expose aging_sweep_interval_releases."""
+        from news_creator.config.config import NewsCreatorConfig
+
+        monkeypatch.setenv("SCHEDULING_AGING_SWEEP_INTERVAL_RELEASES", "12")
+
+        config = NewsCreatorConfig()
+
+        assert config.scheduling_aging_sweep_interval_releases == 12
+        assert config.scheduling.aging_sweep_interval_releases == 12
 
     def test_news_creator_config_backward_compatible_hierarchical_fields(
         self, monkeypatch

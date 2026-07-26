@@ -90,3 +90,42 @@ async def test_generate_errors_instead_of_hanging_when_ollama_stalls():
     finally:
         await driver.cleanup()
         await server.close()
+
+
+@pytest.mark.asyncio
+async def test_generate_does_not_reserialize_full_payload_for_logging():
+    """generate() must not re-serialize the whole payload via json.dumps()
+    just to size a diagnostic log field.
+
+    For a large hierarchical job, generate() is called dozens of times with
+    prompts that can be 100K+ chars. json.dumps(payload) on every call is
+    wasted synchronous CPU work on the event loop for a value that is only
+    ever used in a log line -- the log should reuse already-computed lengths
+    (e.g. prompt_length) instead of re-serializing the payload.
+    """
+
+    async def ok_handler(request: web.Request) -> web.Response:
+        return web.json_response({"response": "ok", "model": "test", "done": True})
+
+    app = web.Application()
+    app.router.add_post("/api/generate", ok_handler)
+    server = TestServer(app)
+    await server.start_server()
+
+    try:
+        config = _make_config(f"http://{server.host}:{server.port}", timeout_seconds=5)
+        driver = OllamaDriver(config)
+
+        with patch("news_creator.driver.ollama_driver.json.dumps") as mock_dumps:
+            result = await driver.generate(
+                {"model": "test-model", "prompt": "hello world", "stream": False}
+            )
+
+        assert result["response"] == "ok"
+        assert mock_dumps.call_count == 0, (
+            "generate() should not call json.dumps(payload) to compute a "
+            "log-only size estimate"
+        )
+    finally:
+        await driver.cleanup()
+        await server.close()

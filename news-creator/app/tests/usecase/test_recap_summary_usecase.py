@@ -880,6 +880,78 @@ async def test_hierarchical_map_phase_uses_hold_slot_generate_raw():
 
 
 @pytest.mark.asyncio
+async def test_hierarchical_summary_emits_single_aggregate_info_log(caplog):
+    """A hierarchical job must emit exactly one aggregate INFO log
+    (genre, chunk_count, reduce_depth, total_wall_time, cache_hit) instead of
+    relying on per-chunk/per-round-trip INFO logs, which multiply with fan-out
+    (up to 50 genres x chunks) and swamp the log volume.
+    """
+    import logging
+    from contextlib import asynccontextmanager
+
+    caplog.set_level(logging.INFO)
+
+    config = _make_recap_config_for_hierarchical()
+    llm_provider = Mock()
+
+    @asynccontextmanager
+    async def mock_hold_slot(is_high_priority=False):
+        yield 0.0, None, None
+
+    async def mock_generate_raw(prompt, **kwargs):
+        return LLMGenerateResponse(
+            response=json.dumps({"bullets": ["要点"]}),
+            model="gemma4-e4b-q4km",
+            prompt_eval_count=100,
+            eval_count=50,
+            total_duration=500_000_000,
+        )
+
+    async def mock_generate(prompt, **kwargs):
+        return LLMGenerateResponse(
+            response=json.dumps(
+                {"title": "最終要約", "bullets": ["最終要点1"], "language": "ja"}
+            ),
+            model="gemma4-e4b-q4km",
+            prompt_eval_count=100,
+            eval_count=50,
+            total_duration=500_000_000,
+        )
+
+    llm_provider.hold_slot = mock_hold_slot
+    llm_provider.generate_raw = AsyncMock(side_effect=mock_generate_raw)
+    llm_provider.generate = AsyncMock(side_effect=mock_generate)
+
+    request = RecapSummaryRequest(
+        job_id=uuid4(),
+        genre="tech",
+        clusters=_make_hierarchical_clusters(4),
+        options=RecapSummaryOptions(max_bullets=3),
+    )
+
+    usecase = RecapSummaryUsecase(config=config, llm_provider=llm_provider)
+    await usecase.generate_summary(request)
+
+    aggregate_logs = [
+        r
+        for r in caplog.records
+        if r.levelno == logging.INFO
+        and "Hierarchical summary job completed" in r.message
+    ]
+    assert len(aggregate_logs) == 1, (
+        f"Expected exactly one aggregate hierarchical summary log, got "
+        f"{len(aggregate_logs)}: {[r.message for r in caplog.records]}"
+    )
+
+    record = aggregate_logs[0]
+    assert record.genre == "tech"
+    assert record.chunk_count >= 1
+    assert record.reduce_depth == 0
+    assert record.total_wall_time_seconds >= 0
+    assert record.cache_hit is False
+
+
+@pytest.mark.asyncio
 async def test_hierarchical_3days_map_phase_uses_3days_prompt_contract():
     """Hierarchical map phase should preserve window_days=3 and use the 3days contract."""
     from contextlib import asynccontextmanager

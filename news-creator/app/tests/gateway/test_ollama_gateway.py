@@ -32,6 +32,7 @@ def mock_config():
     config.scheduling_guaranteed_be_ratio = 5
     config.max_queue_depth = 0
     config.scheduling_rt_mode = "fifo"
+    config.scheduling_aging_sweep_interval_releases = 8
     config.llm_num_ctx = 4096
     config.is_base_model_name = Mock(return_value=False)
     config.is_bucket_model_name = Mock(return_value=False)
@@ -405,10 +406,15 @@ async def test_ttft_metrics_logged_without_cold_start_warning(
 
 @pytest.mark.asyncio
 async def test_ttft_breakdown_logged(mock_config, mock_driver, caplog):
-    """Test that TTFT breakdown is logged in a structured format."""
+    """TTFT breakdown must still be logged in a structured format, but at
+    DEBUG (not INFO) -- it fires unconditionally on every non-streaming round
+    trip, so at INFO it multiplies log volume by every chunk/reduce call in a
+    large hierarchical job. DEBUG keeps it available without the routine
+    per-round-trip cost at the default INFO level.
+    """
     import logging
 
-    caplog.set_level(logging.INFO)
+    caplog.set_level(logging.DEBUG)
 
     with patch(
         "news_creator.gateway.ollama_gateway.OllamaDriver", return_value=mock_driver
@@ -432,14 +438,14 @@ async def test_ttft_breakdown_logged(mock_config, mock_driver, caplog):
 
         await gateway.generate("Test prompt")
 
-        # Verify TTFT breakdown is logged
-        info_records = [r for r in caplog.records if r.levelno == logging.INFO]
+        # Verify TTFT breakdown is logged at DEBUG level
+        debug_records = [r for r in caplog.records if r.levelno == logging.DEBUG]
         ttft_logs = [
             r
-            for r in info_records
+            for r in debug_records
             if "ttft" in r.message.lower() or "TTFT" in r.message
         ]
-        assert len(ttft_logs) >= 1, "TTFT breakdown should be logged"
+        assert len(ttft_logs) >= 1, "TTFT breakdown should be logged at DEBUG"
 
         # Verify the TTFT log contains expected components
         ttft_log = ttft_logs[0]
@@ -448,6 +454,65 @@ async def test_ttft_breakdown_logged(mock_config, mock_driver, caplog):
         )
         assert "prompt_eval" in ttft_log.message.lower() or hasattr(
             ttft_log, "prompt_eval_duration_s"
+        )
+
+        # Must NOT also appear at INFO -- that's the whole point of the change
+        info_ttft_logs = [
+            r
+            for r in caplog.records
+            if r.levelno == logging.INFO
+            and ("ttft" in r.message.lower() or "TTFT" in r.message)
+        ]
+        assert len(info_ttft_logs) == 0, (
+            "TTFT breakdown should no longer be logged at INFO level"
+        )
+
+        await gateway.cleanup()
+
+
+@pytest.mark.asyncio
+async def test_generate_non_streaming_info_log_volume_bounded(
+    mock_config, mock_driver, caplog
+):
+    """A single successful non-streaming round trip (no cold-start, no slow
+    decode, no model mismatch) must emit only a small, bounded number of
+    INFO-level gateway log records. A large hierarchical job fans this out
+    across dozens of round trips, so routine per-call INFO noise (TTFT
+    breakdown, "generation completed", etc.) must live at DEBUG instead.
+    """
+    import logging
+
+    with patch(
+        "news_creator.gateway.ollama_gateway.OllamaDriver", return_value=mock_driver
+    ):
+        gateway = OllamaGateway(mock_config)
+        await gateway.initialize()
+
+        # Hot model, fast decode, matching model -- no conditional
+        # warning/info logs should fire.
+        response = {
+            "response": "Test response",
+            "model": "test-model",
+            "done": True,
+            "prompt_eval_count": 500,
+            "eval_count": 100,
+            "total_duration": 1_500_000_000,
+            "load_duration": 1_000_000,  # hot: well under cold-start threshold
+            "prompt_eval_duration": 400_000_000,
+            "eval_duration": 500_000_000,  # 200 tok/s decode: not slow
+        }
+        mock_driver.generate = AsyncMock(return_value=response)
+
+        # Only capture logging from the round trip itself, not gateway startup.
+        caplog.clear()
+        caplog.set_level(logging.INFO)
+        await gateway.generate("Test prompt")
+
+        info_records = [r for r in caplog.records if r.levelno == logging.INFO]
+        assert len(info_records) <= 2, (
+            f"Expected at most 2 INFO records for a single clean non-streaming "
+            f"round trip, got {len(info_records)}: "
+            f"{[r.message for r in info_records]}"
         )
 
         await gateway.cleanup()

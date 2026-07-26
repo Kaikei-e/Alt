@@ -2216,3 +2216,141 @@ class TestCancelledWaiterSlotRecovery:
         assert be2_task.done()
         _, be2_sid = be2_task.result()
         sem.release(slot_id=be2_sid, was_high_priority=False)
+
+
+class TestAgingSweepThrottling:
+    """Tests for throttled _apply_aging() sweeps.
+
+    release() used to call the full O(N) _apply_aging() rebuild
+    unconditionally on every single call. Under a large hierarchical job's
+    release burst (up to 50 genres x chunks), that made release() cost scale
+    with BE queue depth on every release. The sweep must instead run only
+    every `aging_sweep_interval_releases` releases, or when overdue by
+    wall-clock (so anti-starvation aging/promotion guarantees still hold).
+    """
+
+    @pytest.mark.asyncio
+    async def test_apply_aging_not_called_on_every_release_under_burst(
+        self, hybrid_semaphore_module
+    ):
+        """A fast burst of releases must not trigger a full aging sweep on
+        every single call."""
+        HybridPrioritySemaphore = hybrid_semaphore_module
+        semaphore = HybridPrioritySemaphore(
+            total_slots=2,
+            rt_reserved_slots=1,
+            aging_sweep_interval_releases=8,
+        )
+
+        call_count = 0
+        original_apply_aging = semaphore._apply_aging
+
+        def spy_apply_aging():
+            nonlocal call_count
+            call_count += 1
+            return original_apply_aging()
+
+        semaphore._apply_aging = spy_apply_aging
+
+        # Fast burst: no sleeps, so all releases happen well within the
+        # wall-clock overdue window.
+        num_releases = 24
+        for _ in range(num_releases):
+            semaphore.release(was_high_priority=True)
+
+        assert call_count < num_releases, (
+            f"_apply_aging() should not run on every release in a burst, "
+            f"got {call_count} sweeps for {num_releases} releases"
+        )
+
+    @pytest.mark.asyncio
+    async def test_release_aging_sweeps_bounded_under_large_be_queue_burst(
+        self, hybrid_semaphore_module
+    ):
+        """With ~150 queued BE waiters and a fast burst of releases, the
+        number of full _apply_aging() sweeps must stay bounded by the
+        configured interval -- not one sweep per release (which would make
+        each release() call O(N) in BE queue depth)."""
+        import heapq
+        import math
+        import time as time_module
+
+        from news_creator.gateway.hybrid_priority_semaphore import QueuedRequest
+
+        HybridPrioritySemaphore = hybrid_semaphore_module
+        sweep_interval = 8
+        semaphore = HybridPrioritySemaphore(
+            total_slots=2,
+            rt_reserved_slots=1,
+            aging_sweep_interval_releases=sweep_interval,
+        )
+
+        loop = asyncio.get_running_loop()
+        for _ in range(150):
+            heapq.heappush(
+                semaphore._be_queue,
+                QueuedRequest(
+                    priority_score=1.0,
+                    enqueue_time=time_module.monotonic(),
+                    future=loop.create_future(),
+                    is_high_priority=False,
+                ),
+            )
+
+        call_count = 0
+        original_apply_aging = semaphore._apply_aging
+
+        def spy_apply_aging():
+            nonlocal call_count
+            call_count += 1
+            return original_apply_aging()
+
+        semaphore._apply_aging = spy_apply_aging
+
+        num_releases = 100
+        for _ in range(num_releases):
+            semaphore.release(was_high_priority=True)
+
+        max_expected_sweeps = math.ceil(num_releases / sweep_interval) + 1
+        assert call_count <= max_expected_sweeps, (
+            f"Expected at most {max_expected_sweeps} aging sweeps for "
+            f"{num_releases} releases at interval {sweep_interval}, got "
+            f"{call_count} -- release() work is not bounded"
+        )
+
+    @pytest.mark.asyncio
+    async def test_aging_sweep_runs_when_overdue_by_wallclock_despite_low_release_count(
+        self, hybrid_semaphore_module
+    ):
+        """Even with far fewer releases than the sweep interval, a sweep must
+        still run once the configured thresholds are overdue by wall-clock --
+        this is what keeps the promotion/aging starvation guarantee intact
+        for low-traffic queues."""
+        HybridPrioritySemaphore = hybrid_semaphore_module
+        semaphore = HybridPrioritySemaphore(
+            total_slots=1,
+            rt_reserved_slots=1,
+            priority_promotion_threshold_seconds=0.05,  # 50ms
+            aging_sweep_interval_releases=100,  # so count-based trigger won't fire
+        )
+
+        # Acquire the only slot
+        _, _sid = await semaphore.acquire(high_priority=True)
+
+        async def be_worker():
+            _, sid = await semaphore.acquire(high_priority=False)
+            semaphore.release(slot_id=sid, was_high_priority=False)
+            return sid
+
+        be_task = asyncio.create_task(be_worker())
+        await asyncio.sleep(0.1)  # let BE age well past the promotion threshold
+
+        assert len(semaphore._be_queue) == 1
+        assert len(semaphore._rt_queue) == 0
+
+        # A single release, long after construction -- must still trigger
+        # the sweep via the wall-clock overdue path, even though the release
+        # count (1) is far below aging_sweep_interval_releases (100).
+        semaphore.release(slot_id=_sid, was_high_priority=True)
+
+        await asyncio.wait_for(be_task, timeout=1.0)

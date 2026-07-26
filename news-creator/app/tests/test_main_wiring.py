@@ -1,5 +1,6 @@
 """Tests for main dependency wiring."""
 
+import asyncio
 from types import ModuleType, SimpleNamespace
 
 import pytest
@@ -243,3 +244,48 @@ async def test_dependency_container_initialize_and_cleanup_manage_cache_lifecycl
 
     await container.cleanup()
     assert spy_cache.cleaned_up is True
+
+
+@pytest.mark.asyncio
+async def test_lifespan_starts_and_cancels_event_loop_lag_probe(monkeypatch):
+    """lifespan() must start the event-loop-lag probe as a background task
+    at startup and cancel it cleanly at shutdown -- not leave it dangling,
+    and not simply forget to start it."""
+    import main as main_module
+
+    class _DummyContainer:
+        def __init__(self):
+            self.config = SimpleNamespace(event_loop_lag_warn_ms=500)
+
+        async def initialize(self) -> None:
+            return None
+
+        async def cleanup(self) -> None:
+            return None
+
+    monkeypatch.setattr(main_module, "container", _DummyContainer())
+    monkeypatch.setattr(main_module, "otel_shutdown", lambda: None)
+
+    probe_started = asyncio.Event()
+    probe_cancelled = asyncio.Event()
+    received_threshold = None
+
+    async def fake_probe(*, warn_threshold_ms):
+        nonlocal received_threshold
+        received_threshold = warn_threshold_ms
+        probe_started.set()
+        try:
+            await asyncio.sleep(100)
+        except asyncio.CancelledError:
+            probe_cancelled.set()
+            raise
+
+    monkeypatch.setattr(main_module, "run_event_loop_lag_probe", fake_probe)
+
+    async with main_module.lifespan(main_module.app):
+        await asyncio.wait_for(probe_started.wait(), timeout=1.0)
+
+    assert received_threshold == 500
+    assert probe_cancelled.is_set(), (
+        "lifespan must cancel the lag probe task on shutdown, not leave it dangling"
+    )
