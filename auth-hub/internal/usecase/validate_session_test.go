@@ -105,3 +105,74 @@ func TestValidateSession_KratosError(t *testing.T) {
 	assert.Nil(t, identity)
 	assert.True(t, errors.Is(err, domain.ErrAuthFailed))
 }
+
+// TestValidateSession_CacheMiss_TenantIDFallback locks in the single-tenant
+// fallback (TenantID == UserID) documented on Execute's doc comment, which the
+// original cache-miss test never actually asserted.
+func TestValidateSession_CacheMiss_TenantIDFallback(t *testing.T) {
+	cache := newMockCache()
+	validator := &mockValidator{
+		identity: &domain.Identity{
+			UserID: "user-456",
+			Email:  "new@example.com",
+		},
+	}
+	logger := slog.Default()
+
+	uc := NewValidateSession(validator, cache, logger)
+	identity, err := uc.Execute(context.Background(), "session-xyz")
+
+	assert.NoError(t, err)
+	assert.Equal(t, "user-456", identity.TenantID, "single-tenant fallback: TenantID must equal UserID")
+}
+
+// TestValidateSession_AdminRole_CacheMiss verifies the Role granted by Kratos
+// on a fresh validation survives into the returned Identity. This is the
+// nginx /validate path (unlike GetSession) that issues the backend JWT, so a
+// dropped Role here is a silent privilege downgrade for every downstream call.
+func TestValidateSession_AdminRole_CacheMiss(t *testing.T) {
+	cache := newMockCache()
+	validator := &mockValidator{
+		identity: &domain.Identity{
+			UserID: "admin-001",
+			Email:  "admin@example.com",
+			Role:   "admin",
+		},
+	}
+	logger := slog.Default()
+
+	uc := NewValidateSession(validator, cache, logger)
+	identity, err := uc.Execute(context.Background(), "admin-session")
+
+	assert.NoError(t, err)
+	assert.Equal(t, "admin", identity.Role, "Role from Kratos must be preserved on cache miss")
+
+	// Verify the cache entry itself carries Role, otherwise the very next
+	// request for this session (cache hit) silently downgrades the admin.
+	cached, found := cache.Get("admin-session")
+	assert.True(t, found)
+	assert.Equal(t, "admin", cached.Role, "cached session must retain Role so cache hits don't downgrade privilege")
+}
+
+// TestValidateSession_AdminRole_CacheHit is the regression test for the bug
+// exposed by TestValidateSession_AdminRole_CacheMiss: once a session is
+// cached, subsequent /validate calls within the cache TTL must still report
+// the admin's Role, not silently fall back to an empty/default role.
+func TestValidateSession_AdminRole_CacheHit(t *testing.T) {
+	cache := newMockCache()
+	cache.Set("admin-session", domain.CachedSession{
+		UserID:   "admin-001",
+		TenantID: "admin-001",
+		Email:    "admin@example.com",
+		Role:     "admin",
+	})
+	validator := &mockValidator{}
+	logger := slog.Default()
+
+	uc := NewValidateSession(validator, cache, logger)
+	identity, err := uc.Execute(context.Background(), "admin-session")
+
+	assert.NoError(t, err)
+	assert.Equal(t, "admin", identity.Role, "cache hit must not downgrade a cached admin's Role")
+	assert.False(t, validator.called, "should not call Kratos on cache hit")
+}
