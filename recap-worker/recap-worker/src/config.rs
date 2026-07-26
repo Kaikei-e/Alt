@@ -124,6 +124,7 @@ pub struct Config {
     batch_summary_chunk_size: usize,
     embedding_required: FeatureToggle,
     knowledge_owner: Option<KnowledgeOwnerIds>,
+    max_degraded_genre_ratio: f64,
 }
 
 /// Resolved knowledge-loop owner ids sourced from
@@ -306,6 +307,11 @@ impl Config {
             FeatureToggle::Disabled
         };
         let knowledge_owner = load_knowledge_owner();
+        // Default 0.5: a job where more than half of its dispatched genres
+        // degraded (LLM overload, "Missing from batch response", ...) is a
+        // quality collapse that must surface as `failed`, not silently
+        // succeed with a handful of stored genres (CLAUDE.md rule 8).
+        let max_degraded_genre_ratio = parse_f64("RECAP_MAX_DEGRADED_GENRE_RATIO", 0.5)?;
 
         Ok(Self::from_components(
             basic,
@@ -326,6 +332,7 @@ impl Config {
             clustering_stuck_threshold,
             embedding_required,
             knowledge_owner,
+            max_degraded_genre_ratio,
         ))
     }
 
@@ -349,6 +356,7 @@ impl Config {
         clustering_stuck_threshold: Duration,
         embedding_required: FeatureToggle,
         knowledge_owner: Option<KnowledgeOwnerIds>,
+        max_degraded_genre_ratio: f64,
     ) -> Self {
         Self {
             http_bind: basic.http_bind,
@@ -413,6 +421,7 @@ impl Config {
             batch_summary_chunk_size: basic.batch_summary_chunk_size,
             embedding_required,
             knowledge_owner,
+            max_degraded_genre_ratio,
         }
     }
 
@@ -779,6 +788,18 @@ impl Config {
     #[must_use]
     pub fn knowledge_owner(&self) -> Option<KnowledgeOwnerIds> {
         self.knowledge_owner
+    }
+
+    /// Maximum tolerated ratio of failed/degraded genres among a job's
+    /// dispatched genres (`genres_failed / (genres_stored + genres_failed)`)
+    /// before `Scheduler::evaluate_job_outcome` marks the job `failed`
+    /// instead of `completed`, even when some genres were stored. Defaults
+    /// to `0.5`: a job where more than half the dispatched genres degraded
+    /// is a quality collapse that must be loud, not a silent partial
+    /// success.
+    #[must_use]
+    pub fn max_degraded_genre_ratio(&self) -> f64 {
+        self.max_degraded_genre_ratio
     }
 }
 
@@ -1256,6 +1277,7 @@ mod tests {
             ("TAG_GENERATOR_ENABLED", None),
             ("RECAP_KNOWLEDGE_OWNER_USER_ID", None),
             ("RECAP_KNOWLEDGE_OWNER_TENANT_ID", None),
+            ("RECAP_MAX_DEGRADED_GENRE_RATIO", None),
         ]
     }
 
@@ -1734,6 +1756,29 @@ mod tests {
                 !config.tag_generator_enabled(),
                 "TAG_GENERATOR_ENABLED=false must be an explicit, distinguishable disable"
             );
+        });
+    }
+
+    #[test]
+    fn from_env_defaults_max_degraded_genre_ratio_to_half() {
+        let _lock = ENV_MUTEX.lock().expect("env mutex");
+        temp_env::with_vars(required_base(), || {
+            let config = Config::from_env().expect("config should load");
+            assert!(
+                (config.max_degraded_genre_ratio() - 0.5).abs() < f64::EPSILON,
+                "RECAP_MAX_DEGRADED_GENRE_RATIO unset should default to 0.5"
+            );
+        });
+    }
+
+    #[test]
+    fn from_env_parses_max_degraded_genre_ratio_override() {
+        let _lock = ENV_MUTEX.lock().expect("env mutex");
+        let mut vars = required_base();
+        vars.push(("RECAP_MAX_DEGRADED_GENRE_RATIO", Some("0.3")));
+        temp_env::with_vars(vars, || {
+            let config = Config::from_env().expect("config should load");
+            assert!((config.max_degraded_genre_ratio() - 0.3).abs() < f64::EPSILON);
         });
     }
 }

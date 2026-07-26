@@ -51,6 +51,18 @@ pub(crate) enum RecapError {
     #[error("summary generation failed: {0}")]
     Summary(String),
 
+    /// Summary generation (news-creator) failed with an HTTP status the
+    /// caller can act on for retry scheduling. Distinct from `Summary` so a
+    /// 429's `Retry-After` hint (RFC 6585) survives to the batch-summary
+    /// deferred-retry scheduler, which must prefer it over its own computed
+    /// backoff (MDN 429 guidance: server hint takes precedence).
+    #[error("summary generation failed with status {status}: {message}")]
+    SummaryHttpStatus {
+        status: u16,
+        message: String,
+        retry_after_secs: Option<u64>,
+    },
+
     /// A database read/write failed.
     #[error("database operation failed: {0}")]
     Db(String),
@@ -78,8 +90,31 @@ impl RecapError {
             Self::Fetch(m) => Self::Fetch(format!("{msg}: {m}")),
             Self::Clustering(m) => Self::Clustering(format!("{msg}: {m}")),
             Self::Summary(m) => Self::Summary(format!("{msg}: {m}")),
+            Self::SummaryHttpStatus {
+                status,
+                message,
+                retry_after_secs,
+            } => Self::SummaryHttpStatus {
+                status,
+                message: format!("{msg}: {message}"),
+                retry_after_secs,
+            },
             Self::Db(m) => Self::Db(format!("{msg}: {m}")),
             e @ (Self::InsufficientDocuments { .. } | Self::NoEvidence) => e,
+        }
+    }
+
+    /// The server's `Retry-After` hint (RFC 6585), in seconds, when this
+    /// error came from a 429/503 response that carried one. `None` for
+    /// every other error kind (transport failures, other status codes
+    /// without the header, or non-HTTP errors).
+    pub(crate) fn retry_after(&self) -> Option<std::time::Duration> {
+        match self {
+            Self::SummaryHttpStatus {
+                retry_after_secs: Some(secs),
+                ..
+            } => Some(std::time::Duration::from_secs(*secs)),
+            _ => None,
         }
     }
 }

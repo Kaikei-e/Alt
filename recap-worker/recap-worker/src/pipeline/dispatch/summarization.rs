@@ -2,6 +2,7 @@
 
 use std::collections::HashMap;
 use std::sync::Arc;
+use std::time::Duration;
 
 use tracing::{debug, error, info, warn};
 use uuid::Uuid;
@@ -26,46 +27,176 @@ pub(crate) struct SummarizationOps<'a> {
     pub(crate) config: &'a Arc<Config>,
 }
 
-/// Bounded retry for a batch-summary chunk transport failure: 3 attempts
-/// total (1 initial + 2 retries) with jittered backoff.
+/// Per-chunk total attempts (first pass + deferred retries).
 const BATCH_SUMMARY_CHUNK_RETRY: RetryConfig = RetryConfig::new(3, 500, 5_000);
 
-/// Retries a whole-chunk batch-summary transport failure before letting the
-/// caller degrade every genre in the chunk to "Missing from batch response".
-/// A bounded number of attempts gives a transient news-creator hiccup (5xx,
-/// connection reset, timeout) a chance to recover instead of silently
-/// degrading a whole chunk of genres on the very first failure.
-async fn generate_batch_summary_with_retry(
+/// Upper bound on how long a single deferred round waits, even when the
+/// server's `Retry-After` asks for longer — guards against a misbehaving
+/// upstream stalling the whole job on an oversized hint.
+const MAX_DEFERRED_ROUND_WAIT: Duration = Duration::from_mins(2);
+
+/// A batch-summary chunk that failed its most recent attempt and is queued
+/// for a later deferred round.
+struct DeferredChunk {
+    chunk_idx: usize,
+    chunk: Vec<SummaryRequest>,
+    attempts: usize,
+    retry_after: Option<Duration>,
+}
+
+/// How long to wait before the next deferred round: the larger of the
+/// full-jitter computed backoff and the server's `Retry-After` hint (RFC
+/// 6585 / MDN — the server's hint takes precedence over computed backoff
+/// when present), capped at `MAX_DEFERRED_ROUND_WAIT` so an oversized
+/// `Retry-After` can't stall the job indefinitely.
+fn deferred_round_wait(round: usize, retry_after: Option<Duration>) -> Duration {
+    let backoff = BATCH_SUMMARY_CHUNK_RETRY.delay_for_attempt(round);
+    backoff
+        .max(retry_after.unwrap_or_default())
+        .min(MAX_DEFERRED_ROUND_WAIT)
+}
+
+/// Logs a chunk's genres as permanently degraded. The caller
+/// (`process_batch_response`) still folds these genres into "Missing from
+/// batch response" — this only surfaces *why*, loudly and by genre name.
+fn log_permanent_chunk_failure(job_id: Uuid, task: &DeferredChunk, reason: &str) {
+    let genres: Vec<&str> = task.chunk.iter().map(|r| r.genre.as_str()).collect();
+    error!(
+        job_id = %job_id,
+        chunk_idx = task.chunk_idx,
+        attempts = task.attempts,
+        reason,
+        ?genres,
+        "batch summary chunk failed permanently, degrading genres to missing-from-batch"
+    );
+}
+
+/// Runs every batch-summary chunk through a first pass (one attempt each,
+/// draining the easy wins), then retries first-pass failures in deferred
+/// rounds with full-jitter backoff between rounds. Draining successes
+/// before spending retry budget on a stalled chunk gives a struggling
+/// news-creator a chance to recover instead of being hammered with
+/// immediate retries per chunk while healthy chunks wait behind it in the
+/// queue (Google SRE: bounded per-request retries, don't hammer an
+/// overloaded server).
+///
+/// If more than half of a deferred round's chunks fail again, the server is
+/// treated as overloaded and every remaining deferred chunk is degraded
+/// immediately instead of spending further rounds on it. A lone chunk
+/// failing again does not trip this — "widespread failure" requires more
+/// than one chunk in flight — so an isolated struggling chunk still gets
+/// its full per-chunk attempt budget.
+async fn run_batch_summary_chunks(
     news_creator_client: &NewsCreatorClient,
     job_id: Uuid,
-    chunk_idx: usize,
-    chunk: &[SummaryRequest],
-) -> Result<BatchSummaryResponse> {
-    let mut attempt = 0;
-    loop {
+    chunks: Vec<Vec<SummaryRequest>>,
+) -> (Vec<SummaryResponse>, Vec<BatchSummaryError>) {
+    let mut all_responses: Vec<SummaryResponse> = Vec::new();
+    let mut all_errors: Vec<BatchSummaryError> = Vec::new();
+    let mut deferred: Vec<DeferredChunk> = Vec::new();
+
+    for (chunk_idx, chunk) in chunks.into_iter().enumerate() {
+        info!(
+            job_id = %job_id,
+            chunk_idx,
+            chunk_size = chunk.len(),
+            "processing batch summary chunk (first pass)"
+        );
         match news_creator_client
-            .generate_batch_summary(chunk.to_vec())
+            .generate_batch_summary(chunk.clone())
             .await
         {
-            Ok(response) => return Ok(response),
+            Ok(response) => {
+                all_responses.extend(response.responses);
+                all_errors.extend(response.errors);
+            }
             Err(e) => {
-                attempt += 1;
-                if !BATCH_SUMMARY_CHUNK_RETRY.can_retry(attempt) {
-                    return Err(e);
-                }
-                let delay = BATCH_SUMMARY_CHUNK_RETRY.delay_for_attempt(attempt);
                 warn!(
                     job_id = %job_id,
                     chunk_idx,
-                    attempt,
-                    delay_ms = delay.as_millis(),
                     error = ?e,
-                    "batch summary chunk failed, retrying"
+                    "batch summary chunk failed on first pass; deferring retry until every chunk has had its first attempt"
                 );
-                tokio::time::sleep(delay).await;
+                deferred.push(DeferredChunk {
+                    chunk_idx,
+                    chunk,
+                    attempts: 1,
+                    retry_after: e.retry_after(),
+                });
             }
         }
     }
+
+    let mut round = 1usize;
+    while !deferred.is_empty() {
+        let retry_after_wait = deferred.iter().filter_map(|c| c.retry_after).max();
+        let wait = deferred_round_wait(round, retry_after_wait);
+        info!(
+            job_id = %job_id,
+            round,
+            deferred_count = deferred.len(),
+            wait_ms = wait.as_millis(),
+            "waiting before deferred batch summary retry round"
+        );
+        tokio::time::sleep(wait).await;
+
+        let round_size = deferred.len();
+        let mut still_pending: Vec<DeferredChunk> = Vec::new();
+        let mut failures_this_round = 0usize;
+
+        for mut task in deferred.drain(..) {
+            match news_creator_client
+                .generate_batch_summary(task.chunk.clone())
+                .await
+            {
+                Ok(response) => {
+                    all_responses.extend(response.responses);
+                    all_errors.extend(response.errors);
+                }
+                Err(e) => {
+                    failures_this_round += 1;
+                    task.attempts += 1;
+                    task.retry_after = e.retry_after();
+                    if BATCH_SUMMARY_CHUNK_RETRY.can_retry(task.attempts) {
+                        still_pending.push(task);
+                    } else {
+                        log_permanent_chunk_failure(job_id, &task, "exhausted all attempts");
+                    }
+                }
+            }
+        }
+
+        // Overload circuit (Google SRE: widespread failure -> stop
+        // retrying, don't hammer). Only meaningful with more than one
+        // chunk in flight this round.
+        if round_size > 1 && failures_this_round * 2 > round_size {
+            let genres: Vec<&str> = still_pending
+                .iter()
+                .flat_map(|t| t.chunk.iter().map(|r| r.genre.as_str()))
+                .collect();
+            error!(
+                job_id = %job_id,
+                round,
+                failures_this_round,
+                round_size,
+                ?genres,
+                "batch summary overload detected: more than half of this deferred round failed again; stopping retries and degrading remaining genres immediately"
+            );
+            for task in &still_pending {
+                log_permanent_chunk_failure(
+                    job_id,
+                    task,
+                    "overload circuit: retries stopped early",
+                );
+            }
+            return (all_responses, all_errors);
+        }
+
+        deferred = still_pending;
+        round += 1;
+    }
+
+    (all_responses, all_errors)
 }
 
 fn apply_recap_request_defaults(
@@ -469,59 +600,21 @@ impl SummarizationOps<'_> {
 
         // 4. バッチ API 呼び出し（設定可能なチャンクサイズで分割）
         let batch_summary_chunk_size = self.config.batch_summary_chunk_size();
+        let request_count = valid_requests.len();
+        let chunks: Vec<Vec<SummaryRequest>> = valid_requests
+            .chunks(batch_summary_chunk_size)
+            .map(<[SummaryRequest]>::to_vec)
+            .collect();
 
         info!(
             job_id = %job.job_id,
-            request_count = valid_requests.len(),
-            chunk_count = valid_requests.len().div_ceil(batch_summary_chunk_size),
+            request_count,
+            chunk_count = chunks.len(),
             "calling batch summary API in chunks"
         );
 
-        let mut all_responses: Vec<SummaryResponse> = Vec::new();
-        let mut all_errors: Vec<BatchSummaryError> = Vec::new();
-
-        let mut remaining = valid_requests;
-        let mut chunk_idx = 0usize;
-        while !remaining.is_empty() {
-            let split_at = batch_summary_chunk_size.min(remaining.len());
-            let chunk: Vec<SummaryRequest> = remaining.drain(..split_at).collect();
-
-            info!(
-                job_id = %job.job_id,
-                chunk_idx = chunk_idx,
-                chunk_size = chunk.len(),
-                "processing batch summary chunk"
-            );
-
-            match generate_batch_summary_with_retry(
-                self.news_creator_client,
-                job.job_id,
-                chunk_idx,
-                &chunk,
-            )
-            .await
-            {
-                Ok(response) => {
-                    all_responses.extend(response.responses);
-                    all_errors.extend(response.errors);
-                }
-                Err(e) => {
-                    // チャンク全体失敗時（リトライを尽くした後）はエラーメッセージと
-                    // 影響を受けるジャンル名をログに記録する。個別ジャンルは
-                    // process_batch_response で "Missing from batch response" として
-                    // degrade される。
-                    let genres: Vec<&str> = chunk.iter().map(|r| r.genre.as_str()).collect();
-                    error!(
-                        job_id = %job.job_id,
-                        chunk_idx = chunk_idx,
-                        ?genres,
-                        error = ?e,
-                        "batch summary chunk failed after retries, degrading genres to missing-from-batch"
-                    );
-                }
-            }
-            chunk_idx += 1;
-        }
+        let (all_responses, all_errors) =
+            run_batch_summary_chunks(self.news_creator_client, job.job_id, chunks).await;
 
         let batch_response = BatchSummaryResponse {
             responses: all_responses,
@@ -663,38 +756,202 @@ impl SummarizationOps<'_> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::Arc;
+    use std::sync::atomic::{AtomicUsize, Ordering};
     use uuid::Uuid;
-    use wiremock::matchers::{method, path};
+    use wiremock::matchers::{body_string_contains, method, path};
     use wiremock::{Mock, MockServer, ResponseTemplate};
 
-    fn sample_chunk() -> Vec<SummaryRequest> {
-        vec![
-            SummaryRequest {
-                job_id: Uuid::new_v4(),
-                genre: "tech".to_string(),
-                clusters: vec![],
-                genre_highlights: None,
-                options: None,
-                window_days: None,
-            },
-            SummaryRequest {
-                job_id: Uuid::new_v4(),
-                genre: "politics".to_string(),
-                clusters: vec![],
-                genre_highlights: None,
-                options: None,
-                window_days: None,
-            },
-        ]
+    fn single_request(genre: &str) -> SummaryRequest {
+        SummaryRequest {
+            job_id: Uuid::new_v4(),
+            genre: genre.to_string(),
+            clusters: vec![],
+            genre_highlights: None,
+            options: None,
+            window_days: None,
+        }
     }
 
-    /// RED→GREEN regression: a whole-chunk batch-summary transport failure
-    /// was logged and never retried (single attempt), silently degrading
-    /// every genre in the chunk to "Missing from batch response". This pins
-    /// the new behavior: a permanently failing chunk is retried a bounded
-    /// number of times before the caller gives up.
+    fn success_body(genre: &str) -> serde_json::Value {
+        serde_json::json!({
+            "responses": [{
+                "job_id": Uuid::new_v4(),
+                "genre": genre,
+                "summary": { "title": "t", "bullets": ["b"], "language": "ja" },
+                "metadata": { "model": "gemma4-e4b-q4km" }
+            }],
+            "errors": []
+        })
+    }
+
+    /// RED→GREEN regression: the batch-summary chunk loop must attempt
+    /// every chunk exactly once in the first pass (draining the easy wins)
+    /// before spending any retry budget on a chunk that failed, instead of
+    /// hammering the failing chunk with immediate retries while healthy
+    /// chunks behind it in the queue wait. Pins the observable request
+    /// order: chunk_a's retry must land strictly after chunk_b and
+    /// chunk_c's first-pass attempts.
     #[tokio::test]
-    async fn generate_batch_summary_with_retry_retries_before_giving_up() {
+    async fn run_batch_summary_chunks_retries_failed_chunk_after_other_chunks_first_pass() {
+        let server = MockServer::start().await;
+        let chunk_a_attempts = Arc::new(AtomicUsize::new(0));
+        let attempts = chunk_a_attempts.clone();
+
+        Mock::given(method("POST"))
+            .and(path("/v1/summary/generate/batch"))
+            .and(body_string_contains("\"genre\":\"chunk_a\""))
+            .respond_with(move |_req: &wiremock::Request| {
+                if attempts.fetch_add(1, Ordering::SeqCst) == 0 {
+                    ResponseTemplate::new(503)
+                } else {
+                    ResponseTemplate::new(200).set_body_json(success_body("chunk_a"))
+                }
+            })
+            .mount(&server)
+            .await;
+        Mock::given(method("POST"))
+            .and(path("/v1/summary/generate/batch"))
+            .and(body_string_contains("\"genre\":\"chunk_b\""))
+            .respond_with(ResponseTemplate::new(200).set_body_json(success_body("chunk_b")))
+            .mount(&server)
+            .await;
+        Mock::given(method("POST"))
+            .and(path("/v1/summary/generate/batch"))
+            .and(body_string_contains("\"genre\":\"chunk_c\""))
+            .respond_with(ResponseTemplate::new(200).set_body_json(success_body("chunk_c")))
+            .mount(&server)
+            .await;
+
+        let client = NewsCreatorClient::new_for_test(server.uri());
+        let job_id = Uuid::new_v4();
+        let chunks = vec![
+            vec![single_request("chunk_a")],
+            vec![single_request("chunk_b")],
+            vec![single_request("chunk_c")],
+        ];
+
+        let (responses, errors) = run_batch_summary_chunks(&client, job_id, chunks).await;
+
+        assert!(
+            errors.is_empty(),
+            "no per-genre errors expected: {errors:?}"
+        );
+        let genres: std::collections::BTreeSet<&str> =
+            responses.iter().map(|r| r.genre.as_str()).collect();
+        assert_eq!(
+            genres,
+            std::collections::BTreeSet::from(["chunk_a", "chunk_b", "chunk_c"]),
+            "every genre must eventually succeed once the deferred retry runs"
+        );
+
+        let requests = server
+            .received_requests()
+            .await
+            .expect("request recording enabled by default");
+        let sequence: Vec<&str> = requests
+            .iter()
+            .map(|r| {
+                let body = String::from_utf8_lossy(&r.body).into_owned();
+                if body.contains("chunk_a") {
+                    "a"
+                } else if body.contains("chunk_b") {
+                    "b"
+                } else {
+                    "c"
+                }
+            })
+            .collect();
+        assert_eq!(
+            sequence,
+            vec!["a", "b", "c", "a"],
+            "chunk_a's retry must come after chunk_b/chunk_c's first-pass attempts, not immediately"
+        );
+    }
+
+    /// RFC 6585 / MDN: when a chunk fails with 429 + `Retry-After`, the
+    /// deferred-retry scheduler must wait at least that long before
+    /// retrying — not just its own computed full-jitter backoff.
+    #[tokio::test]
+    async fn run_batch_summary_chunks_honors_retry_after_before_deferred_retry() {
+        let server = MockServer::start().await;
+        let attempts = Arc::new(AtomicUsize::new(0));
+        let attempts_clone = attempts.clone();
+
+        Mock::given(method("POST"))
+            .and(path("/v1/summary/generate/batch"))
+            .respond_with(move |_req: &wiremock::Request| {
+                if attempts_clone.fetch_add(1, Ordering::SeqCst) == 0 {
+                    ResponseTemplate::new(429).insert_header("Retry-After", "1")
+                } else {
+                    ResponseTemplate::new(200).set_body_json(success_body("chunk_a"))
+                }
+            })
+            .mount(&server)
+            .await;
+
+        let client = NewsCreatorClient::new_for_test(server.uri());
+        let job_id = Uuid::new_v4();
+        let chunks = vec![vec![single_request("chunk_a")]];
+
+        let start = std::time::Instant::now();
+        let (responses, errors) = run_batch_summary_chunks(&client, job_id, chunks).await;
+        let elapsed = start.elapsed();
+
+        assert!(errors.is_empty());
+        assert_eq!(responses.len(), 1);
+        assert!(
+            elapsed >= Duration::from_millis(950),
+            "must wait at least the server's Retry-After (1s) before retrying, waited {elapsed:?}"
+        );
+    }
+
+    /// SRE guidance: widespread failure = overload, stop retrying rather
+    /// than hammering every chunk to its full attempt cap. With 4 chunks all
+    /// returning 5xx, the first pass sends 4 requests and the single
+    /// deferred round (100% failure, well over half) must trip the circuit —
+    /// total requests must stay far below the 12 a naive 3-attempts-per-chunk
+    /// hammer would send.
+    #[tokio::test]
+    async fn run_batch_summary_chunks_overload_circuit_stops_hammering_all_failing_chunks() {
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/v1/summary/generate/batch"))
+            .respond_with(ResponseTemplate::new(503))
+            .mount(&server)
+            .await;
+
+        let client = NewsCreatorClient::new_for_test(server.uri());
+        let job_id = Uuid::new_v4();
+        let chunks = vec![
+            vec![single_request("g1")],
+            vec![single_request("g2")],
+            vec![single_request("g3")],
+            vec![single_request("g4")],
+        ];
+
+        let (responses, errors) = run_batch_summary_chunks(&client, job_id, chunks).await;
+        assert!(responses.is_empty());
+        assert!(errors.is_empty());
+
+        let requests = server
+            .received_requests()
+            .await
+            .expect("request recording enabled by default");
+        assert_eq!(
+            requests.len(),
+            8,
+            "first pass (4) + one deferred round (4) = 8; the overload circuit must stop \
+             before a second deferred round, well short of the 12 a 3-attempt-per-chunk hammer would send"
+        );
+    }
+
+    /// Companion: a single struggling chunk is not "widespread failure" — it
+    /// must still get its full per-chunk attempt budget (3) instead of
+    /// being cut short by the overload circuit, which only makes sense with
+    /// more than one chunk in flight.
+    #[tokio::test]
+    async fn run_batch_summary_chunks_single_failing_chunk_gets_full_attempt_budget() {
         let server = MockServer::start().await;
         Mock::given(method("POST"))
             .and(path("/v1/summary/generate/batch"))
@@ -704,15 +961,31 @@ mod tests {
             .await;
 
         let client = NewsCreatorClient::new_for_test(server.uri());
-        let chunk = sample_chunk();
+        let job_id = Uuid::new_v4();
+        let chunks = vec![vec![single_request("g1")]];
 
-        let result = generate_batch_summary_with_retry(&client, Uuid::new_v4(), 0, &chunk).await;
-
-        assert!(
-            result.is_err(),
-            "permanently failing chunk should still degrade after retries are exhausted"
-        );
+        let (responses, errors) = run_batch_summary_chunks(&client, job_id, chunks).await;
+        assert!(responses.is_empty());
+        assert!(errors.is_empty());
         server.verify().await;
+    }
+
+    #[test]
+    fn deferred_round_wait_prefers_retry_after_when_larger_than_backoff() {
+        let wait = deferred_round_wait(1, Some(Duration::from_secs(90)));
+        assert_eq!(wait, Duration::from_secs(90));
+    }
+
+    #[test]
+    fn deferred_round_wait_caps_at_max_deferred_round_wait() {
+        let wait = deferred_round_wait(1, Some(Duration::from_mins(10)));
+        assert_eq!(wait, MAX_DEFERRED_ROUND_WAIT);
+    }
+
+    #[test]
+    fn deferred_round_wait_falls_back_to_computed_backoff_without_retry_after() {
+        let wait = deferred_round_wait(1, None);
+        assert!(wait <= Duration::from_millis(BATCH_SUMMARY_CHUNK_RETRY.base_delay_ms));
     }
 
     #[test]

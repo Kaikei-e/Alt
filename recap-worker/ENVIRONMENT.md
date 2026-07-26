@@ -81,6 +81,7 @@ Complete reference for all environment variables used by Recap Worker.
 | `RECAP_WINDOW_DAYS` | `7` | Default lookback window (in days) for the 7-day recap job |
 | `RECAP_3DAYS_WINDOW_DAYS` | `3` | Lookback window (in days) for the 3-day recap job |
 | `RECAP_GENRES` | `ai,tech,business,politics,health,sports,science,entertainment,world,security,product,design,culture,environment,lifestyle,art_culture,developer_insights,pro_it_media,consumer_tech,global_politics,environment_policy,society_justice,travel_lifestyle,security_policy,business_finance,ai_research,ai_policy,games_puzzles,other` | Comma-separated genres processed during each run |
+| `RECAP_MAX_DEGRADED_GENRE_RATIO` | `0.5` | Maximum tolerated ratio of failed genres among a job's dispatched genres (`genres_failed / (genres_stored + genres_failed)`) before the job is marked `failed` instead of `completed`, even when some genres were stored. Catches a quality collapse (e.g. an overloaded news-creator degrading most genres to "Missing from batch response" while a few happen to succeed) that would otherwise be silently reported as a successful partial completion |
 
 ### Genre Model & Refinement Controls
 
@@ -152,6 +153,7 @@ RECAP_BATCH_SUMMARY_CHUNK_SIZE=3
 RECAP_WINDOW_DAYS=7
 RECAP_3DAYS_WINDOW_DAYS=3
 RECAP_GENRES=ai,tech,business,politics,health,sports,science,entertainment,world,security,product,design,culture,environment,lifestyle,art_culture,developer_insights,pro_it_media,consumer_tech,global_politics,environment_policy,society_justice,travel_lifestyle,security_policy,business_finance,ai_research,ai_policy,games_puzzles,other
+RECAP_MAX_DEGRADED_GENRE_RATIO=0.5
 
 # Genre refinement
 RECAP_GENRE_MODEL_WEIGHTS=resources/genre_classifier_weights.json

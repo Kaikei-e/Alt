@@ -17,6 +17,19 @@ use super::models::{
     truncate_error_message,
 };
 
+/// Parse the `Retry-After` response header as delta-seconds (RFC 7231 §7.1.3
+/// via RFC 6585's 429). The HTTP-date form is not supported — news-creator
+/// is an internal service under our control and only ever emits
+/// delta-seconds; an unparseable/absent header falls back to `None`, and the
+/// caller uses its own computed backoff instead.
+fn parse_retry_after_secs(response: &reqwest::Response) -> Option<u64> {
+    response
+        .headers()
+        .get(reqwest::header::RETRY_AFTER)
+        .and_then(|v| v.to_str().ok())
+        .and_then(|s| s.trim().parse::<u64>().ok())
+}
+
 #[derive(Debug, Clone)]
 pub(crate) struct NewsCreatorClient {
     client: Client,
@@ -248,11 +261,16 @@ impl NewsCreatorClient {
 
         if !response.status().is_success() {
             let status = response.status();
+            let retry_after_secs = parse_retry_after_secs(&response);
             let body = response.text().await.unwrap_or_default();
             let truncated_body = truncate_error_message(&body);
-            return Err(RecapError::Summary(format!(
-                "batch summary generation endpoint returned error status {status}: {truncated_body}"
-            )));
+            return Err(RecapError::SummaryHttpStatus {
+                status: status.as_u16(),
+                message: format!(
+                    "batch summary generation endpoint returned error status {status}: {truncated_body}"
+                ),
+                retry_after_secs,
+            });
         }
 
         let batch_response: BatchSummaryResponse = response.json().await.map_err(|e| {
@@ -669,5 +687,81 @@ mod tests_batch {
         assert_eq!(response.errors.len(), 1);
         assert_eq!(response.responses[0].genre, "tech");
         assert_eq!(response.errors[0].genre, "politics");
+    }
+
+    fn single_request(genre: &str) -> SummaryRequest {
+        SummaryRequest {
+            job_id: Uuid::new_v4(),
+            genre: genre.to_string(),
+            clusters: vec![],
+            genre_highlights: None,
+            options: None,
+            window_days: None,
+        }
+    }
+
+    /// RFC 6585 / MDN: a 429 must surface its `Retry-After` (seconds) so the
+    /// deferred-retry scheduler in `pipeline::dispatch::summarization` can
+    /// wait at least that long before retrying the chunk, instead of only
+    /// applying its own computed backoff.
+    #[tokio::test]
+    async fn generate_batch_summary_surfaces_status_and_retry_after_on_429() {
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/v1/summary/generate/batch"))
+            .respond_with(ResponseTemplate::new(429).insert_header("Retry-After", "2"))
+            .mount(&server)
+            .await;
+
+        let client = NewsCreatorClient::new_for_test(server.uri());
+        let error = client
+            .generate_batch_summary(vec![single_request("tech")])
+            .await
+            .expect_err("429 should fail");
+
+        match error {
+            RecapError::SummaryHttpStatus {
+                status,
+                retry_after_secs,
+                ..
+            } => {
+                assert_eq!(status, 429);
+                assert_eq!(retry_after_secs, Some(2));
+            }
+            other => panic!("expected SummaryHttpStatus, got {other:?}"),
+        }
+        assert_eq!(error.retry_after(), Some(Duration::from_secs(2)));
+    }
+
+    /// A status error without a `Retry-After` header must still surface the
+    /// status code, with `retry_after_secs` absent — the caller falls back
+    /// to its own computed backoff.
+    #[tokio::test]
+    async fn generate_batch_summary_surfaces_status_without_retry_after_when_header_absent() {
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/v1/summary/generate/batch"))
+            .respond_with(ResponseTemplate::new(503))
+            .mount(&server)
+            .await;
+
+        let client = NewsCreatorClient::new_for_test(server.uri());
+        let error = client
+            .generate_batch_summary(vec![single_request("tech")])
+            .await
+            .expect_err("503 should fail");
+
+        match error {
+            RecapError::SummaryHttpStatus {
+                status,
+                retry_after_secs,
+                ..
+            } => {
+                assert_eq!(status, 503);
+                assert_eq!(retry_after_secs, None);
+            }
+            other => panic!("expected SummaryHttpStatus, got {other:?}"),
+        }
+        assert_eq!(error.retry_after(), None);
     }
 }

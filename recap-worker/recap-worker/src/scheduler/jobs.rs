@@ -300,7 +300,10 @@ impl Scheduler {
         match self.pipeline.execute(&context).await {
             Ok(persist_result) => {
                 // Check if the job actually succeeded based on PersistResult contents
-                let job_outcome = Self::evaluate_job_outcome(&persist_result);
+                let job_outcome = Self::evaluate_job_outcome(
+                    &persist_result,
+                    self.config.max_degraded_genre_ratio(),
+                );
 
                 match job_outcome {
                     JobOutcome::Success => {
@@ -405,13 +408,41 @@ impl Scheduler {
     /// Evaluates whether a job should be considered successful or failed based on PersistResult.
     ///
     /// Decision logic:
-    /// - genres_stored > 0: Success (partial success is still success)
+    /// - genres_stored > 0 but the degraded-genre ratio among dispatched
+    ///   genres (`genres_failed / (genres_stored + genres_failed)`) exceeds
+    ///   `max_degraded_genre_ratio`: Failed (quality collapse, not partial
+    ///   success — CLAUDE.md rule 8: an overloaded news-creator degrading
+    ///   most genres must be loud)
+    /// - genres_stored > 0 otherwise: Success (partial success is still success)
     /// - genres_stored == 0 && (genres_failed > 0 || genres_skipped > 0): Failed
     /// - genres_stored == 0 && genres_no_evidence > 0 only: Success (no articles is a valid state)
     /// - genres_stored == 0 && total_genres == 0: Success (empty job is valid)
-    fn evaluate_job_outcome(persist_result: &PersistResult) -> JobOutcome {
-        // If any genres were stored, the job succeeded (partial success is success)
+    fn evaluate_job_outcome(
+        persist_result: &PersistResult,
+        max_degraded_genre_ratio: f64,
+    ) -> JobOutcome {
+        // If any genres were stored, the job succeeded — unless the genres
+        // that were actually dispatched for summarization collapsed into
+        // mostly failures. `genres_skipped`/`genres_no_evidence` are benign
+        // pre-dispatch states (insufficient documents / no articles), not
+        // degraded dispatch outcomes, so they are excluded from both sides
+        // of the ratio.
         if persist_result.genres_stored > 0 {
+            let dispatched = persist_result.genres_stored + persist_result.genres_failed;
+            if dispatched > 0 {
+                let degraded_ratio = persist_result.genres_failed as f64 / dispatched as f64;
+                if degraded_ratio > max_degraded_genre_ratio {
+                    let reason = format!(
+                        "Degraded genre ratio exceeded: {} of {} dispatched genres failed \
+                         (ratio {:.2} > max {:.2})",
+                        persist_result.genres_failed,
+                        dispatched,
+                        degraded_ratio,
+                        max_degraded_genre_ratio
+                    );
+                    return JobOutcome::Failed(reason);
+                }
+            }
             return JobOutcome::Success;
         }
 
@@ -858,6 +889,9 @@ mod tests {
         assert_eq!(dao.mark_abandoned_jobs_calls(), vec![Some(job_id)]);
     }
 
+    /// Matches `Config::max_degraded_genre_ratio`'s default (0.5).
+    const DEFAULT_MAX_DEGRADED_GENRE_RATIO: f64 = 0.5;
+
     /// Test: Job should be marked as Failed when genres_stored=0 but genres_failed>0
     #[test]
     fn test_job_marked_failed_when_no_genres_stored_with_failures() {
@@ -870,7 +904,8 @@ mod tests {
             total_genres: 60,
         };
 
-        let outcome = Scheduler::evaluate_job_outcome(&persist_result);
+        let outcome =
+            Scheduler::evaluate_job_outcome(&persist_result, DEFAULT_MAX_DEGRADED_GENRE_RATIO);
 
         match outcome {
             JobOutcome::Failed(reason) => {
@@ -895,7 +930,8 @@ mod tests {
             total_genres: 15,
         };
 
-        let outcome = Scheduler::evaluate_job_outcome(&persist_result);
+        let outcome =
+            Scheduler::evaluate_job_outcome(&persist_result, DEFAULT_MAX_DEGRADED_GENRE_RATIO);
 
         match outcome {
             JobOutcome::Failed(reason) => {
@@ -908,19 +944,25 @@ mod tests {
         }
     }
 
-    /// Test: Job should be marked as Completed when some genres are stored (partial success)
+    /// Test: Job should be marked as Completed when some genres are stored
+    /// (partial success) and the degraded-genre ratio stays within
+    /// tolerance. `genres_failed` (2) is deliberately kept under half of
+    /// `dispatched` (genres_stored + genres_failed = 7) so this stays
+    /// distinct from the degraded-genre-ratio-exceeded case covered by
+    /// `test_job_marked_failed_when_degraded_genre_ratio_exceeds_threshold`.
     #[test]
     fn test_job_marked_completed_when_some_genres_stored() {
         let persist_result = PersistResult {
             job_id: Uuid::new_v4(),
             genres_stored: 5,
-            genres_failed: 10,
+            genres_failed: 2,
             genres_skipped: 2,
-            genres_no_evidence: 3,
+            genres_no_evidence: 11,
             total_genres: 20,
         };
 
-        let outcome = Scheduler::evaluate_job_outcome(&persist_result);
+        let outcome =
+            Scheduler::evaluate_job_outcome(&persist_result, DEFAULT_MAX_DEGRADED_GENRE_RATIO);
 
         match outcome {
             JobOutcome::Success => {
@@ -948,7 +990,8 @@ mod tests {
             total_genres: 10,
         };
 
-        let outcome = Scheduler::evaluate_job_outcome(&persist_result);
+        let outcome =
+            Scheduler::evaluate_job_outcome(&persist_result, DEFAULT_MAX_DEGRADED_GENRE_RATIO);
 
         match outcome {
             JobOutcome::Success => {
@@ -975,7 +1018,8 @@ mod tests {
             total_genres: 0,
         };
 
-        let outcome = Scheduler::evaluate_job_outcome(&persist_result);
+        let outcome =
+            Scheduler::evaluate_job_outcome(&persist_result, DEFAULT_MAX_DEGRADED_GENRE_RATIO);
 
         match outcome {
             JobOutcome::Success => {
@@ -1002,7 +1046,8 @@ mod tests {
             total_genres: 60,
         };
 
-        let outcome = Scheduler::evaluate_job_outcome(&persist_result);
+        let outcome =
+            Scheduler::evaluate_job_outcome(&persist_result, DEFAULT_MAX_DEGRADED_GENRE_RATIO);
 
         match outcome {
             JobOutcome::Failed(reason) => {
@@ -1029,7 +1074,8 @@ mod tests {
             total_genres: 30,
         };
 
-        let outcome = Scheduler::evaluate_job_outcome(&persist_result);
+        let outcome =
+            Scheduler::evaluate_job_outcome(&persist_result, DEFAULT_MAX_DEGRADED_GENRE_RATIO);
 
         match outcome {
             JobOutcome::Failed(reason) => {
@@ -1040,6 +1086,70 @@ mod tests {
             }
             JobOutcome::Success => {
                 panic!("Expected Failed when all counters are zero but total_genres > 0");
+            }
+        }
+    }
+
+    /// RED→GREEN regression: a job that stores *some* genres but degrades
+    /// the majority of its dispatched genres is a quality collapse, not a
+    /// partial success. Before this fix, `genres_stored > 0` short-circuited
+    /// straight to `Success` regardless of how many genres failed — a
+    /// stalled/overloaded news-creator degrading 27 of 31 genres to "Missing
+    /// from batch response" while 4 happened to succeed was reported as a
+    /// clean `completed` job.
+    #[test]
+    fn test_job_marked_failed_when_degraded_genre_ratio_exceeds_threshold() {
+        let persist_result = PersistResult {
+            job_id: Uuid::new_v4(),
+            genres_stored: 4,
+            genres_failed: 27,
+            genres_skipped: 0,
+            genres_no_evidence: 0,
+            total_genres: 31,
+        };
+
+        let outcome =
+            Scheduler::evaluate_job_outcome(&persist_result, DEFAULT_MAX_DEGRADED_GENRE_RATIO);
+
+        match outcome {
+            JobOutcome::Failed(reason) => {
+                assert!(
+                    reason.contains("egraded") || reason.contains("ratio"),
+                    "reason should explain the degraded-genre-ratio gate, got: {reason}"
+                );
+            }
+            JobOutcome::Success => {
+                panic!(
+                    "expected Failed: 27 of 31 dispatched genres failed (ratio 0.87 > 0.5), \
+                     despite 4 genres stored"
+                );
+            }
+        }
+    }
+
+    /// Companion: a job comfortably under the degraded-genre-ratio threshold
+    /// stays `completed`, even though some genres did fail — partial success
+    /// within tolerance must not become a false failure.
+    #[test]
+    fn test_job_marked_completed_when_degraded_genre_ratio_within_threshold() {
+        let persist_result = PersistResult {
+            job_id: Uuid::new_v4(),
+            genres_stored: 20,
+            genres_failed: 5,
+            genres_skipped: 0,
+            genres_no_evidence: 0,
+            total_genres: 25,
+        };
+
+        let outcome =
+            Scheduler::evaluate_job_outcome(&persist_result, DEFAULT_MAX_DEGRADED_GENRE_RATIO);
+
+        match outcome {
+            JobOutcome::Success => {}
+            JobOutcome::Failed(reason) => {
+                panic!(
+                    "expected Success: 5 of 25 dispatched genres failed (ratio 0.2 <= 0.5), got Failed: {reason}"
+                );
             }
         }
     }
