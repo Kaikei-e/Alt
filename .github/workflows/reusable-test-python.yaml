@@ -137,17 +137,17 @@ jobs:
         uses: actions/cache@v5
         with:
           path: |
-            ~/.cache/uv-${{ inputs.job-type }}
-            ~/.local/share/uv-${{ inputs.job-type }}
-          key: uv-${{ runner.os }}-${{ inputs.job-type }}-${{ hashFiles(format('{0}/uv.lock', inputs.working-directory)) }}
+            ~/.cache/uv
+            ~/.local/share/uv
+          key: uv-${{ runner.os }}-${{ hashFiles(format('{0}/uv.lock', inputs.working-directory)) }}
           restore-keys: |
-            uv-${{ runner.os }}-${{ inputs.job-type }}-
+            uv-${{ runner.os }}-
 
       - name: Configure uv cache (GitHub Cache mode)
         if: ${{ !inputs.use-local-persistent-cache }}
         run: |
-          echo "UV_CACHE_DIR=$HOME/.cache/uv-${{ inputs.job-type }}" >> "$GITHUB_ENV"
-          echo "UV_TOOL_DIR=$HOME/.local/share/uv-${{ inputs.job-type }}" >> "$GITHUB_ENV"
+          echo "UV_CACHE_DIR=$HOME/.cache/uv" >> "$GITHUB_ENV"
+          echo "UV_TOOL_DIR=$HOME/.local/share/uv" >> "$GITHUB_ENV"
 
       - name: Sync project dependencies
         working-directory: ${{ github.workspace }}/${{ inputs.working-directory }}
@@ -176,10 +176,11 @@ jobs:
           uv run ruff check .
           uv run ruff format --check .
 
+      # bandit's built-in default excludes do not include .venv, so it must be excluded explicitly to avoid scanning installed third-party packages.
       - name: Run security scan (bandit)
         if: ${{ inputs.job-type == 'security' }}
         working-directory: ${{ github.workspace }}/${{ inputs.working-directory }}
-        run: uv run bandit -r . -f json -o bandit-report.json --exit-zero
+        run: uv run bandit -r . -f json -o bandit-report.json --exit-zero -x ./.venv,./node_modules,./.mypy_cache,./.pytest_cache,./.ruff_cache,./build,./dist
 
       - name: Run type checking
         if: ${{ inputs.job-type == 'typecheck' }}

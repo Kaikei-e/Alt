@@ -114,6 +114,7 @@ jobs:
           workspaces: ${{ inputs.working-directory }}
           shared-key: ${{ inputs.coverage-flags }}
           cache-on-failure: true
+          save-if: ${{ github.ref == 'refs/heads/main' }}
 
       # Self-hosted runner: 従来の actions/cache を使用
       - name: Cache cargo registry and build (self-hosted)
@@ -137,13 +138,6 @@ jobs:
           # rustc が dep-info (.d) を書き込むディレクトリが存在しない場合に備えて事前作成しておく
           mkdir -p target/release/deps
 
-      - name: Build (release)
-        working-directory: ${{ inputs.working-directory }}
-        run: |
-          cargo build --release --verbose
-        env:
-          RUST_BACKTRACE: 1
-
       - name: Run clippy
         working-directory: ${{ inputs.working-directory }}
         run: |
@@ -158,7 +152,7 @@ jobs:
           RUST_BACKTRACE: full
 
       - name: Install cargo-tarpaulin
-        if: inputs.upload-coverage
+        if: inputs.upload-coverage && github.event_name == 'push' && github.ref == 'refs/heads/main'
         run: |
           # tarpaulinのインストール（キャッシュ済みかチェック）
           if ! command -v cargo-tarpaulin &> /dev/null; then
@@ -166,14 +160,14 @@ jobs:
           fi
 
       - name: Generate coverage report
-        if: inputs.upload-coverage
+        if: inputs.upload-coverage && github.event_name == 'push' && github.ref == 'refs/heads/main'
         working-directory: ${{ inputs.working-directory }}
         run: |
           cargo tarpaulin --out Xml --verbose
         continue-on-error: true # カバレッジが失敗してもビルドは成功とする
 
       - name: Upload coverage to Codecov
-        if: inputs.upload-coverage && success()
+        if: inputs.upload-coverage && github.event_name == 'push' && github.ref == 'refs/heads/main' && success()
         uses: codecov/codecov-action@v4
         with:
           file: ${{ inputs.working-directory }}/tarpaulin-report.xml

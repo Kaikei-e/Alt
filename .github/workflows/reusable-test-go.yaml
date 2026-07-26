@@ -120,18 +120,6 @@ jobs:
           echo "GOCACHE=$HOME/.cache/go-build" >> "$GITHUB_ENV"
           echo "GOMODCACHE=$HOME/go/pkg/mod"   >> "$GITHUB_ENV"
 
-      # 2) ランナーがエフェメラル等でHOME永続化できない場合は、GitHub Cacheを併用
-      - name: Restore Go module cache (GitHub Cache)
-        if: ${{ !inputs.use-local-persistent-cache }}
-        uses: actions/cache@v5
-        with:
-          path: |
-            ~/.cache/go-build
-            ~/go/pkg/mod
-          key: go-${{ runner.os }}-${{ hashFiles(format('{0}/go.sum', inputs.working-directory)) }}
-          restore-keys: |
-            go-${{ runner.os }}-
-
       - name: Go env (diagnostics)
         run: |
           go env

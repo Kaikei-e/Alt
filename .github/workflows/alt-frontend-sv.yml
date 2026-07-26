@@ -34,6 +34,10 @@ on:
         type: string
         default: "playwright"
 
+concurrency:
+  group: ${{ github.workflow }}-${{ (github.event_name == 'workflow_call' || github.event_name == 'workflow_dispatch') && github.run_id || github.ref }}
+  cancel-in-progress: true
+
 jobs:
   test:
     timeout-minutes: 15

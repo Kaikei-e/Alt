@@ -26,6 +26,10 @@ permissions:
   contents: read
   security-events: write
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name == 'schedule' && github.run_id || (github.head_ref || github.ref) }}
+  cancel-in-progress: true
+
 jobs:
   analyze-go:
     name: Analyze (Go)
@@ -89,21 +93,22 @@ jobs:
 
           # 重いツール類があれば削除（存在チェック付き）
           if [ -d "/usr/share/dotnet" ]; then
-            sudo rm -rf /usr/share/dotnet
+            sudo rm -rf /usr/share/dotnet &
           fi
 
           if [ -d "/usr/local/lib/android" ]; then
-            sudo rm -rf /usr/local/lib/android
+            sudo rm -rf /usr/local/lib/android &
           fi
 
           if [ -d "/usr/local/share/boost" ]; then
-            sudo rm -rf /usr/local/share/boost
+            sudo rm -rf /usr/local/share/boost &
           fi
 
-          # Docker を使っている環境の場合、未使用リソースを削除
-          if command -v docker >/dev/null 2>&1; then
-            docker system prune -af || true
-          fi
+          # Deleted in parallel: /usr/local/lib/android alone is ~9GB and
+          # dominates, so serialising these cost ~2min per run. Docker image
+          # pruning was dropped — no image is built in a language-scoped
+          # CodeQL analysis, so it freed nothing.
+          wait
 
           echo "After cleanup:"
           df -h

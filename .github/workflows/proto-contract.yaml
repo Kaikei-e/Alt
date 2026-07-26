@@ -78,6 +78,12 @@ on:
       - 'tts-speaker/tests/contract/**'
       - 'acolyte-orchestrator/tests/contract/**'
 
+# Superseded PR runs are cancelled; main-branch runs are not, because they
+# publish pacts and a half-cancelled publish leaves the broker inconsistent.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 permissions:
   contents: read
 
@@ -241,7 +247,10 @@ jobs:
           android: true
           dotnet: true
           haskell: true
-          large-packages: true
+          # large-packages runs an apt-get purge sweep (~2min, over half this
+          # job); android/dotnet/haskell are plain rm -rf and free most of the
+          # space in seconds. These jobs verify contracts, they don't build images.
+          large-packages: false
           docker-images: true
           swap-storage: true
 
@@ -407,7 +416,10 @@ jobs:
           android: true
           dotnet: true
           haskell: true
-          large-packages: true
+          # large-packages runs an apt-get purge sweep (~2min, over half this
+          # job); android/dotnet/haskell are plain rm -rf and free most of the
+          # space in seconds. These jobs verify contracts, they don't build images.
+          large-packages: false
           docker-images: true
           swap-storage: true
 

@@ -7,6 +7,12 @@ on:
   pull_request:
     branches: [main]
 
+# Superseded PR runs are cancelled. Main-branch runs are not: dispatch-deploy
+# fires on the same push and alt-deploy expects the sha-tagged images to land.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 permissions:
   contents: read
   packages: write

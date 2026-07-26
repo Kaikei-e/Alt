@@ -103,6 +103,8 @@ jobs:
           go-version: ${{ inputs.go-version }}
           go-version-file: ${{ inputs.go-version == '' && format('{0}/go.mod', inputs.working-directory) || '' }}
           check-latest: true
+          cache: true
+          cache-dependency-path: ${{ format('{0}/go.sum', inputs.working-directory) }}
 
       - name: Go env (diag)
         run: |
@@ -151,8 +153,17 @@ jobs:
           args: ${{ (github.event_name == 'pull_request' && inputs.lint-only-new) && format('--new-from-rev=origin/{0}', github.base_ref) || '' }}
 
       # --- Security: gosec → SARIF で Code Scanning に載せる ---
+      # Pinned tool versions cached in ~/go/bin to skip recompilation on repeat runs.
+      - name: Cache Go security tools
+        id: cache-go-tools
+        uses: actions/cache@v5
+        with:
+          path: ~/go/bin
+          key: go-tools-${{ runner.os }}-gosec-v2.28.0-govulncheck-v1.6.0
+
       - name: Install gosec
-        run: go install github.com/securego/gosec/v2/cmd/gosec@latest
+        if: steps.cache-go-tools.outputs.cache-hit != 'true'
+        run: go install github.com/securego/gosec/v2/cmd/gosec@v2.28.0
 
       - name: Run gosec (SARIF)
         working-directory: ${{ inputs.working-directory }}
@@ -187,7 +198,8 @@ jobs:
 
       # --- Security: govulncheck → SARIF（Code Scanning 連携） ---
       - name: Install govulncheck
-        run: go install golang.org/x/vuln/cmd/govulncheck@latest
+        if: steps.cache-go-tools.outputs.cache-hit != 'true'
+        run: go install golang.org/x/vuln/cmd/govulncheck@v1.6.0
 
       - name: Prepare reports directory
         working-directory: ${{ inputs.working-directory }}

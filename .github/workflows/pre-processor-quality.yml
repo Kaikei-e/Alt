@@ -31,7 +31,6 @@ jobs:
 
   quality-gates:
     uses: ./.github/workflows/reusable-go-quality-gates.yaml
-    needs: tests
     with:
       working-directory: "pre-processor/app"
       go-version: "1.26"

@@ -36,7 +36,8 @@ jobs:
           android: true
           dotnet: true
           haskell: true
-          large-packages: true
+          # large-packages does an apt-get remove/purge sweep (~2min); android/dotnet/haskell rm -rf already free most of the space
+          large-packages: false
           docker-images: true
           swap-storage: false
 

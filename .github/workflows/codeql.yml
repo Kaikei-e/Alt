@@ -6,6 +6,7 @@ on:
 jobs:
   info:
     runs-on: ubuntu-latest
+    timeout-minutes: 2
     steps:
       - name: Show CodeQL workflows
         run: |

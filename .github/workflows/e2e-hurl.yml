@@ -1,98 +1,21 @@
 # E2E Hurl suites (one job per service under e2e/hurl/).
 #
-# Gating is per-suite via path filters: each job only runs when the
-# service code, its compose wiring, its Hurl suite, its fixtures, or
-# this workflow changes. Unrelated PRs don't pay the build + stack
-# bring-up cost.
+# Every suite runs on every PR and every push to main, with no path
+# filtering. Selective skipping by touched path lets a shared-wiring
+# regression (compose.staging.yaml, fixtures, an upstream Go package,
+# proto) land green because it matches no service path. Cost is bounded
+# by importing the registry layer cache rather than by skipping suites.
 #
-# To add another service's suite later (e.g. search-indexer), add a
-# matching `paths:` block and a sibling job; keep existing job names
-# stable.
+# To add another service's suite later, append a sibling job and keep
+# existing job names stable.
 
 name: E2E Hurl
 
 on:
   pull_request:
-    paths:
-      - 'alt-backend/**'
-      - 'mq-hub/**'
-      - 'tag-generator/**'
-      - 'news-creator/**'
-      - 'recap-worker/**'
-      - 'recap-migration-atlas/**'
-      - 'acolyte-orchestrator/**'
-      - 'acolyte-migration-atlas/**'
-      - 'auth-hub/**'
-      - 'kratos/entrypoint.sh'
-      - 'migrations-atlas/**'
-      - 'rag-orchestrator/**'
-      - 'rag-migration-atlas/**'
-      - 'rag-db/**'
-      - 'knowledge-sovereign/**'
-      - 'compose/compose.staging.yaml'
-      - 'compose/news-creator-ollama-stub/**'
-      - 'e2e/hurl/alt-backend/**'
-      - 'e2e/hurl/mq-hub/**'
-      - 'e2e/hurl/tag-generator/**'
-      - 'e2e/hurl/news-creator/**'
-      - 'e2e/hurl/recap-worker/**'
-      - 'e2e/hurl/acolyte-orchestrator/**'
-      - 'e2e/hurl/auth-hub/**'
-      - 'e2e/hurl/rag-orchestrator/**'
-      - 'e2e/hurl/knowledge-sovereign/**'
-      - 'e2e/fixtures/alt-backend/**'
-      - 'e2e/fixtures/mq-hub/**'
-      - 'e2e/fixtures/tag-generator/**'
-      - 'e2e/fixtures/news-creator/**'
-      - 'e2e/fixtures/recap-worker/**'
-      - 'e2e/fixtures/acolyte-orchestrator/**'
-      - 'e2e/fixtures/auth-hub/**'
-      - 'e2e/fixtures/rag-orchestrator/**'
-      - 'e2e/fixtures/staging-secrets/**'
-      - 'e2e/stubs/alt-backend-deps-stub/**'
-      - 'e2e/stubs/recap-pipeline-stub/**'
-      - '.github/workflows/e2e-hurl.yml'
   push:
     branches: [main]
-    paths:
-      - 'alt-backend/**'
-      - 'mq-hub/**'
-      - 'tag-generator/**'
-      - 'news-creator/**'
-      - 'recap-worker/**'
-      - 'recap-migration-atlas/**'
-      - 'acolyte-orchestrator/**'
-      - 'acolyte-migration-atlas/**'
-      - 'auth-hub/**'
-      - 'kratos/entrypoint.sh'
-      - 'migrations-atlas/**'
-      - 'rag-orchestrator/**'
-      - 'rag-migration-atlas/**'
-      - 'rag-db/**'
-      - 'knowledge-sovereign/**'
-      - 'compose/compose.staging.yaml'
-      - 'compose/news-creator-ollama-stub/**'
-      - 'e2e/hurl/alt-backend/**'
-      - 'e2e/hurl/mq-hub/**'
-      - 'e2e/hurl/tag-generator/**'
-      - 'e2e/hurl/news-creator/**'
-      - 'e2e/hurl/recap-worker/**'
-      - 'e2e/hurl/acolyte-orchestrator/**'
-      - 'e2e/hurl/auth-hub/**'
-      - 'e2e/hurl/rag-orchestrator/**'
-      - 'e2e/hurl/knowledge-sovereign/**'
-      - 'e2e/fixtures/alt-backend/**'
-      - 'e2e/fixtures/mq-hub/**'
-      - 'e2e/fixtures/tag-generator/**'
-      - 'e2e/fixtures/news-creator/**'
-      - 'e2e/fixtures/recap-worker/**'
-      - 'e2e/fixtures/acolyte-orchestrator/**'
-      - 'e2e/fixtures/auth-hub/**'
-      - 'e2e/fixtures/rag-orchestrator/**'
-      - 'e2e/fixtures/staging-secrets/**'
-      - 'e2e/stubs/alt-backend-deps-stub/**'
-      - 'e2e/stubs/recap-pipeline-stub/**'
-      - '.github/workflows/e2e-hurl.yml'
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -110,9 +33,13 @@ jobs:
       - name: Checkout
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
 
+      # `:buildcache` is the registry layer cache published by
+      # docker-build.yaml on pushes to main. Importing it here keeps these
+      # suites from rebuilding every image from scratch on each PR.
       - name: Build alt-backend image locally (tag `ci`)
         run: |
-          docker build \
+          docker buildx build \
+            --cache-from type=registry,ref=ghcr.io/kaikei-e/alt-alt-backend:buildcache \
             -t ghcr.io/kaikei-e/alt-alt-backend:ci \
             -f alt-backend/Dockerfile.backend \
             alt-backend
@@ -170,7 +97,8 @@ jobs:
 
       - name: Build mq-hub image locally (tag `ci`)
         run: |
-          docker build \
+          docker buildx build \
+            --cache-from type=registry,ref=ghcr.io/kaikei-e/alt-mq-hub:buildcache \
             -t ghcr.io/kaikei-e/alt-mq-hub:ci \
             -f mq-hub/Dockerfile \
             mq-hub
@@ -217,12 +145,12 @@ jobs:
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
 
       # recap-worker's image bundles libtorch (~600MB download) +
-      # cargo-chef cooks the workspace, so the cold build is the
-      # dominant cost of this job. Pre-warming via cargo cache is left
-      # for a follow-up if wall-clock pain becomes an issue.
+      # cargo-chef cooks the workspace, so a cold build dominates this job.
+      # The registry cache import below is what keeps it off the critical path.
       - name: Build recap-worker image locally (tag `ci`)
         run: |
-          docker build \
+          docker buildx build \
+            --cache-from type=registry,ref=ghcr.io/kaikei-e/alt-recap-worker:buildcache \
             -t ghcr.io/kaikei-e/alt-recap-worker:ci \
             -f recap-worker/Dockerfile.recap-worker \
             recap-worker
@@ -293,7 +221,8 @@ jobs:
 
       - name: Build news-creator image locally (tag `ci`)
         run: |
-          docker build \
+          docker buildx build \
+            --cache-from type=registry,ref=ghcr.io/kaikei-e/alt-news-creator:buildcache \
             -t ghcr.io/kaikei-e/alt-news-creator:ci \
             -f news-creator/Dockerfile \
             news-creator
@@ -387,7 +316,8 @@ jobs:
 
       - name: Build tag-generator image locally (tag `ci`)
         run: |
-          docker build \
+          docker buildx build \
+            --cache-from type=registry,ref=ghcr.io/kaikei-e/alt-tag-generator:buildcache \
             -t ghcr.io/kaikei-e/alt-tag-generator:ci \
             -f tag-generator/Dockerfile.tag-generator \
             tag-generator
@@ -396,7 +326,8 @@ jobs:
       # RPC, so we need its image available to the staging stack too.
       - name: Build mq-hub image locally (tag `ci`)
         run: |
-          docker build \
+          docker buildx build \
+            --cache-from type=registry,ref=ghcr.io/kaikei-e/alt-mq-hub:buildcache \
             -t ghcr.io/kaikei-e/alt-mq-hub:ci \
             -f mq-hub/Dockerfile \
             mq-hub
@@ -450,7 +381,8 @@ jobs:
 
       - name: Build auth-hub image locally (tag `ci`)
         run: |
-          docker build \
+          docker buildx build \
+            --cache-from type=registry,ref=ghcr.io/kaikei-e/alt-auth-hub:buildcache \
             -t ghcr.io/kaikei-e/alt-auth-hub:ci \
             -f auth-hub/Dockerfile \
             auth-hub
@@ -503,7 +435,8 @@ jobs:
 
       - name: Build rag-orchestrator image locally (tag `ci`)
         run: |
-          docker build \
+          docker buildx build \
+            --cache-from type=registry,ref=ghcr.io/kaikei-e/alt-rag-orchestrator:buildcache \
             -t ghcr.io/kaikei-e/alt-rag-orchestrator:ci \
             -f rag-orchestrator/Dockerfile \
             rag-orchestrator
@@ -556,7 +489,8 @@ jobs:
 
       - name: Build knowledge-sovereign image locally (tag `ci`)
         run: |
-          docker build \
+          docker buildx build \
+            --cache-from type=registry,ref=ghcr.io/kaikei-e/alt-knowledge-sovereign:buildcache \
             -t ghcr.io/kaikei-e/alt-knowledge-sovereign:ci \
             -f knowledge-sovereign/Dockerfile.sovereign \
             knowledge-sovereign

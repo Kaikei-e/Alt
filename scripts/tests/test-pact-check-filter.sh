@@ -90,6 +90,29 @@ assert_not_contains "$out" "WOULD RUN: Go: alt-backend consumer" \
 assert_not_contains "$out" "WOULD RUN: Python: news-creator provider" \
   "manual-verification subcommand does not run provider verifications"
 
+# --- --skip-manual-bridge: opt out of the broker-side bridging block ---
+# The deploy matrix runs ~20 publish legs per release and every one of them
+# used to replay the whole bridging playbook, which a dedicated pact-manual
+# leg already runs once. Opting out has to be explicit: inferring it from
+# "a filter is set" would silently defang verify-pact-on-demand.yaml, which
+# invokes --services without --role and depends on the bridge running.
+echo "== --skip-manual-bridge (dry-run) =="
+out=$(run_script --dry-run --publish-only --services alt-backend --role consumer --skip-manual-bridge)
+assert_not_contains "$out" "Publishing Manual Verifications to Broker" \
+  "--skip-manual-bridge suppresses the broker-side bridging block"
+assert_contains "$out" "WOULD RUN: Go: alt-backend consumer" \
+  "--skip-manual-bridge leaves the leg's own steps alone"
+
+echo "== filtered leg without --skip-manual-bridge still bridges =="
+out=$(run_script --dry-run --publish-only --services recap-worker)
+assert_contains "$out" "Publishing Manual Verifications to Broker" \
+  "a --services-only leg still bridges when the flag is absent"
+
+echo "== --publish-manual-verifications ignores --skip-manual-bridge =="
+out=$(run_script --dry-run --publish-only --publish-manual-verifications --skip-manual-bridge)
+assert_contains "$out" "Publishing Manual Verifications to Broker" \
+  "the dedicated bridging leg bridges even if the flag is passed"
+
 # --- backward compat: --role omitted keeps the current substring behavior ---
 echo "== --services alt-backend (no --role, backward compat) =="
 out=$(run_script --dry-run --publish-only --services alt-backend)
