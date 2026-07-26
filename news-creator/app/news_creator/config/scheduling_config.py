@@ -27,6 +27,9 @@ class SchedulingConfig:
     guaranteed_be_ratio: int = 5
     max_queue_depth: int = 10
     rt_mode: str = "fifo"
+    # Releases between full _apply_aging() sweeps of the BE queue (throttle to
+    # bound O(N) rebuild cost under release bursts; see hybrid_priority_semaphore.py)
+    aging_sweep_interval_releases: int = 8
     # Concurrency settings
     request_concurrency: int = 1
     concurrency_source: str = "OLLAMA_NUM_PARALLEL"
@@ -62,6 +65,9 @@ class SchedulingConfig:
             guaranteed_be_ratio=_get_int("SCHEDULING_GUARANTEED_BE_RATIO", 5),
             max_queue_depth=_get_int("MAX_QUEUE_DEPTH", 10),
             rt_mode=os.getenv("SCHEDULING_RT_MODE", "fifo").lower(),
+            aging_sweep_interval_releases=_get_int(
+                "SCHEDULING_AGING_SWEEP_INTERVAL_RELEASES", 8
+            ),
             request_concurrency=request_concurrency,
             concurrency_source=concurrency_source,
         )

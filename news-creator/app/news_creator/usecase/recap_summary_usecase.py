@@ -6,6 +6,7 @@ import json
 import logging
 import re
 import textwrap
+import time
 from pathlib import Path
 from typing import Any, List
 from urllib.parse import urlparse
@@ -499,6 +500,7 @@ class RecapSummaryUsecase:
         temperature_override: float | None,
     ) -> RecapSummaryResponse:
         """Generate summary using hierarchical (map-reduce) approach with recursive reduce."""
+        start_time = time.monotonic()
         # Map phase: Split clusters into chunks and summarize each in parallel
         chunks = self._split_clusters_into_chunks(request.clusters)
 
@@ -550,16 +552,34 @@ class RecapSummaryUsecase:
 
         if not intermediate_summaries:
             # Fallback if all map phases failed
-            return self._create_fallback_from_clusters(request)
+            response = self._create_fallback_from_clusters(request)
+            reduce_depth = 0
+        else:
+            # Reduce phase: Combine intermediate summaries into final summary (recursive if needed)
+            response, reduce_depth = await self._recursive_reduce_phase(
+                intermediate_summaries,
+                request,
+                max_bullets,
+                temperature_override,
+                llm_options,
+            )
 
-        # Reduce phase: Combine intermediate summaries into final summary (recursive if needed)
-        return await self._recursive_reduce_phase(
-            intermediate_summaries,
-            request,
-            max_bullets,
-            temperature_override,
-            llm_options,
+        # Single aggregate INFO log for the whole job, replacing the need to
+        # infer job shape from per-round-trip logs scattered across dozens of
+        # chunk/reduce calls. cache_hit is always False here -- generate_summary()
+        # already returns early on a cache hit before reaching this method.
+        logger.info(
+            "Hierarchical summary job completed",
+            extra={
+                "job_id": str(request.job_id),
+                "genre": request.genre,
+                "chunk_count": len(chunks),
+                "reduce_depth": reduce_depth,
+                "total_wall_time_seconds": round(time.monotonic() - start_time, 3),
+                "cache_hit": False,
+            },
         )
+        return response
 
     async def _recursive_reduce_phase(
         self,
@@ -569,7 +589,7 @@ class RecapSummaryUsecase:
         temperature_override: float | None,
         llm_options: dict[str, Any],
         depth: int = 0,
-    ) -> RecapSummaryResponse:
+    ) -> tuple[RecapSummaryResponse, int]:
         """Recursively reduce summaries until they fit in 12K context.
 
         Args:
@@ -581,7 +601,7 @@ class RecapSummaryUsecase:
             depth: Current recursion depth
 
         Returns:
-            Final RecapSummaryResponse
+            Tuple of (final RecapSummaryResponse, depth reached)
         """
         max_reduce_chars = getattr(self.config, "recursive_reduce_max_chars", 10_000)
         max_recursion_depth = getattr(self.config, "recursive_reduce_max_depth", 3)
@@ -606,9 +626,10 @@ class RecapSummaryUsecase:
 
         # If combined text fits within limit or max depth reached, do final reduce
         if len(combined_text) <= max_reduce_chars or depth >= max_recursion_depth:
-            return await self._final_reduce(
+            response = await self._final_reduce(
                 summaries, request, max_bullets, temperature_override
             )
+            return response, depth
 
         # Recursive reduce: Split summaries into groups and reduce each
         logger.info(
@@ -654,9 +675,10 @@ class RecapSummaryUsecase:
                 "Recursive reduce failed, falling back to final reduce",
                 extra={"job_id": str(request.job_id), "genre": request.genre},
             )
-            return await self._final_reduce(
+            response = await self._final_reduce(
                 summaries, request, max_bullets, temperature_override
             )
+            return response, depth
 
         # Recurse with reduced summaries
         return await self._recursive_reduce_phase(

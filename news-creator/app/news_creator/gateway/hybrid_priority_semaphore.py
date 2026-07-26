@@ -92,6 +92,9 @@ class HybridPrioritySemaphore:
         aging_boost: Priority boost applied after threshold (default: 0.5)
         priority_promotion_threshold_seconds: Time after which BE is promoted to RT (default: 600)
         guaranteed_be_ratio: BE guaranteed after this many consecutive RT releases (default: 5, 0 to disable)
+        aging_sweep_interval_releases: Releases between full aging sweeps on
+            release() (default: 8); a sweep also runs sooner if overdue by
+            wall-clock so starvation guarantees hold under low traffic too
     """
 
     def __init__(
@@ -106,6 +109,7 @@ class HybridPrioritySemaphore:
         guaranteed_be_ratio: int = 5,
         max_queue_depth: int = 0,
         rt_scheduling_mode: str = "fifo",
+        aging_sweep_interval_releases: int = 8,
     ):
         if total_slots < 1:
             raise ValueError("total_slots must be >= 1")
@@ -130,6 +134,18 @@ class HybridPrioritySemaphore:
         # Aging configuration
         self._aging_threshold = aging_threshold_seconds
         self._aging_boost = aging_boost
+
+        # Aging sweep throttle: _apply_aging() does an O(N) rebuild of the BE
+        # queue. Running it on every release() call makes release() cost
+        # scale with BE queue depth on every call, which is expensive under
+        # a release burst (e.g. large hierarchical job fan-out). Instead,
+        # run the full sweep only every `aging_sweep_interval_releases`
+        # releases, or sooner if overdue by wall-clock (bounded by the
+        # tightest of aging/promotion thresholds) so anti-starvation
+        # guarantees still hold for low-traffic queues.
+        self._aging_sweep_interval_releases = max(1, aging_sweep_interval_releases)
+        self._releases_since_aging_sweep = 0
+        self._last_aging_sweep_time = time.monotonic()
 
         # Priority promotion configuration (BE -> RT after threshold)
         self._priority_promotion_threshold = priority_promotion_threshold_seconds
@@ -164,6 +180,7 @@ class HybridPrioritySemaphore:
                 "preemption_wait_threshold": preemption_wait_threshold,
                 "max_queue_depth": max_queue_depth,
                 "rt_scheduling_mode": rt_scheduling_mode,
+                "aging_sweep_interval_releases": self._aging_sweep_interval_releases,
             },
         )
 
@@ -547,8 +564,10 @@ class HybridPrioritySemaphore:
         if not home_pool:
             home_pool = "rt" if was_high_priority else "be"
 
-        # Recompute priorities with aging and handle promotions
-        self._apply_aging()
+        # Recompute priorities with aging and handle promotions (throttled --
+        # see _should_run_aging_sweep()).
+        if self._should_run_aging_sweep():
+            self._apply_aging()
 
         # Check guaranteed bandwidth: force BE after N consecutive RT releases
         force_be = False
@@ -721,6 +740,33 @@ class HybridPrioritySemaphore:
                     "be_queue_size": len(self._be_queue),
                 },
             )
+
+    def _should_run_aging_sweep(self) -> bool:
+        """Decide whether release() should run the full _apply_aging() sweep.
+
+        Returns True (and resets the throttle counters) when either:
+        - `aging_sweep_interval_releases` releases have elapsed since the
+          last sweep (bounds the O(N) rebuild cost under a release burst), or
+        - the sweep is overdue by wall-clock, using the tighter of the aging
+          and priority-promotion thresholds as the staleness budget. This
+          keeps the anti-starvation guarantee intact for low-traffic queues,
+          where a burst of releases may never happen but a BE request must
+          still age/promote in bounded time.
+        """
+        self._releases_since_aging_sweep += 1
+
+        if self._releases_since_aging_sweep >= self._aging_sweep_interval_releases:
+            self._releases_since_aging_sweep = 0
+            self._last_aging_sweep_time = time.monotonic()
+            return True
+
+        overdue_budget = min(self._aging_threshold, self._priority_promotion_threshold)
+        if time.monotonic() - self._last_aging_sweep_time >= overdue_budget:
+            self._releases_since_aging_sweep = 0
+            self._last_aging_sweep_time = time.monotonic()
+            return True
+
+        return False
 
     def _apply_aging(self) -> None:
         """Recompute BE queue priorities with aging and handle promotions.

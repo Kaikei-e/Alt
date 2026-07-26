@@ -11,6 +11,8 @@ This is the main entry point that wires together all layers:
 - Handler: REST API endpoints
 """
 
+import asyncio
+import contextlib
 import logging
 import os
 from contextlib import asynccontextmanager
@@ -28,6 +30,7 @@ from news_creator.otel import (
     instrument_fastapi,
     get_otel_logging_handler,
 )
+from news_creator.services.event_loop_lag_probe import run_event_loop_lag_probe
 from news_creator.services.model_warmup import ModelWarmupService
 from news_creator.usecase.summarize_usecase import SummarizeUsecase
 from news_creator.usecase.recap_summary_usecase import RecapSummaryUsecase
@@ -197,10 +200,20 @@ container = DependencyContainer()
 async def lifespan(app: FastAPI):
     """Application lifespan management."""
     await container.initialize()
-    yield
-    await container.cleanup()
-    # Shutdown OTel providers
-    otel_shutdown()
+    lag_probe_task = asyncio.create_task(
+        run_event_loop_lag_probe(
+            warn_threshold_ms=container.config.event_loop_lag_warn_ms
+        )
+    )
+    try:
+        yield
+    finally:
+        lag_probe_task.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await lag_probe_task
+        await container.cleanup()
+        # Shutdown OTel providers
+        otel_shutdown()
 
 
 # Create FastAPI application

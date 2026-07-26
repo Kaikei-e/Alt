@@ -76,6 +76,10 @@ class NewsCreatorConfig:
         self.cache_redis_url = os.getenv("CACHE_REDIS_URL", "redis://localhost:6379/0")
         self.cache_ttl_seconds = self._get_int("CACHE_TTL_SECONDS", 86400)
 
+        # Event-loop scheduling-lag probe threshold (remains at top level;
+        # the probe itself is always-on, not feature-flagged).
+        self.event_loop_lag_warn_ms = self._get_int("EVENT_LOOP_LAG_WARN_MS", 500)
+
         logger.info(
             "News creator configuration initialized",
             extra={
@@ -91,6 +95,7 @@ class NewsCreatorConfig:
                 "scheduling_priority_promotion_threshold_seconds": self.scheduling.priority_promotion_threshold_seconds,
                 "scheduling_guaranteed_be_ratio": self.scheduling.guaranteed_be_ratio,
                 "scheduling_rt_mode": self.scheduling.rt_mode,
+                "event_loop_lag_warn_ms": self.event_loop_lag_warn_ms,
             },
         )
 
@@ -286,6 +291,11 @@ class NewsCreatorConfig:
     def scheduling_rt_mode(self) -> str:
         """Backward compatible access to RT mode."""
         return self.scheduling.rt_mode
+
+    @property
+    def scheduling_aging_sweep_interval_releases(self) -> int:
+        """Backward compatible access to the aging sweep throttle interval."""
+        return self.scheduling.aging_sweep_interval_releases
 
     # =========================================================================
     # Backward Compatibility Properties - Hierarchical Config

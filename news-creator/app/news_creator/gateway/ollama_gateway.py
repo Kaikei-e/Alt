@@ -50,6 +50,7 @@ class OllamaGateway(LLMProviderPort):
             guaranteed_be_ratio=config.scheduling_guaranteed_be_ratio,
             max_queue_depth=config.max_queue_depth,
             rt_scheduling_mode=config.scheduling_rt_mode,
+            aging_sweep_interval_releases=config.scheduling_aging_sweep_interval_releases,
         )
         # OOM detector and model router
         self.oom_detector = OOMDetector(enabled=config.oom_detection_enabled)
@@ -546,8 +547,12 @@ class OllamaGateway(LLMProviderPort):
             ttft_seconds += prompt_eval_duration_seconds
         ttft_seconds = round(ttft_seconds, 2)
 
-        # Log TTFT breakdown for diagnostics
-        logger.info(
+        # Log TTFT breakdown for diagnostics. DEBUG (not INFO): this fires
+        # unconditionally on every non-streaming round trip, so at INFO it
+        # multiplies log volume by every chunk/reduce call in a large
+        # hierarchical job. See _generate_hierarchical_summary's aggregate
+        # job-level log for the INFO-level summary instead.
+        logger.debug(
             f"TTFT breakdown: ttft={ttft_seconds}s "
             f"(queue_wait={queue_wait_time_seconds}s + "
             f"load_duration={load_duration_seconds}s + "
@@ -585,7 +590,9 @@ class OllamaGateway(LLMProviderPort):
                 },
             )
 
-        logger.info(
+        # DEBUG (not INFO): same routine per-round-trip volume concern as the
+        # TTFT breakdown above.
+        logger.debug(
             f"Ollama generation completed: requested_model={requested_model}, actual_model={actual_model}, "
             f"prompt_length={prompt_length} chars, prompt_eval_count={prompt_eval_count} tokens, "
             f"eval_count={eval_count} tokens, num_predict={llm_options.get('num_predict')}, "

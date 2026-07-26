@@ -10,6 +10,12 @@ from news_creator.config.config import NewsCreatorConfig
 
 logger = logging.getLogger(__name__)
 
+# Rough overhead in bytes for the non-prompt payload fields (model, options,
+# keep_alive, stream, raw) when estimating payload size for logging. Not
+# exact -- the field is diagnostic only, so a cheap approximation beats
+# re-serializing the whole payload just to log its size.
+_PAYLOAD_OVERHEAD_ESTIMATE_BYTES = 256
+
 
 class OllamaDriver:
     """HTTP client for Ollama API (non-streaming requests only)."""
@@ -65,8 +71,11 @@ class OllamaDriver:
         model = payload.get("model", "unknown")
         prompt = payload.get("prompt", "")
         prompt_length = len(prompt)
-        # Estimate payload size (rough approximation)
-        payload_size_estimate = len(json.dumps(payload))
+        # Cheap payload size estimate reusing already-known lengths -- avoids
+        # re-serializing the full payload (100K+ chars for large hierarchical
+        # jobs) via json.dumps() on every single generate() call just for
+        # this diagnostic log field.
+        payload_size_estimate = prompt_length + _PAYLOAD_OVERHEAD_ESTIMATE_BYTES
 
         # Debug logging: Log actual prompt size and content preview
         # This helps identify why prompts are larger than expected
