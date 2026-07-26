@@ -1,0 +1,42 @@
+name: pki-agent Go Tests
+
+# The mTLS sidecar sits in every east-west path and terminates client
+# certificates, but it had no test gate: only docker-build.yaml touched it.
+# A hardcoded proxy timeout regression shipped to production that way, and a
+# test that had been failing for months went unnoticed alongside it.
+
+on:
+  push:
+    branches: [main, master]
+    paths:
+      - "pki-agent/**"
+  pull_request:
+    branches: [main, master]
+    paths:
+      - "pki-agent/**"
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    permissions:
+      contents: read
+    uses: ./.github/workflows/reusable-test-go.yaml
+    with:
+      working-directory: "pki-agent"
+      coverage-flags: "pki-agent"
+      use-local-persistent-cache: false
+      sparse-checkout: "pki-agent"
+
+  quality:
+    permissions:
+      contents: read
+      security-events: write
+    uses: ./.github/workflows/reusable-go-quality-gates.yaml
+    with:
+      working-directory: "pki-agent"
+      lint-only-new: true
+      upload-sarif: true

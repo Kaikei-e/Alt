@@ -75,7 +75,7 @@ func (s *StepCACLI) Issue(ctx context.Context, subject string, sans []string) (c
 		if err != nil {
 			return nil, nil, err
 		}
-		defer os.RemoveAll(tempDir)
+		defer func() { _ = os.RemoveAll(tempDir) }()
 	}
 	certTmp := filepath.Join(tempDir, "svc-cert.pem")
 	keyTmp := filepath.Join(tempDir, "svc-key.pem")

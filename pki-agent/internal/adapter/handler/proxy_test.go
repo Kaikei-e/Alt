@@ -83,8 +83,8 @@ func TestNewTLSProxy_PeerIdentityHeader(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer ln.Close()
-	go srv.Serve(ln)
+	defer func() { _ = ln.Close() }()
+	go func() { _ = srv.Serve(ln) }()
 
 	// Build mTLS client with client cert.
 	clientTLS, _ := tls.X509KeyPair(clientCert, clientKey)
@@ -104,7 +104,7 @@ func TestNewTLSProxy_PeerIdentityHeader(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	resp.Body.Close()
+	_ = resp.Body.Close()
 	if resp.StatusCode != 200 {
 		t.Fatalf("status=%d", resp.StatusCode)
 	}
@@ -143,8 +143,8 @@ func startProxyForUpstream(t *testing.T, upstreamURL string, responseHeaderTimeo
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { ln.Close() })
-	go srv.Serve(ln)
+	t.Cleanup(func() { _ = ln.Close() })
+	go func() { _ = srv.Serve(ln) }()
 
 	clientTLS, _ := tls.X509KeyPair(clientCert, clientKey)
 	serverCAPool := x509.NewCertPool()
@@ -189,7 +189,7 @@ func TestNewTLSProxy_HonorsConfiguredResponseHeaderTimeout(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if elapsed := time.Since(start); elapsed > time.Second {
 		t.Fatalf("waited %v: configured 150ms timeout was ignored", elapsed)
 	}
@@ -213,7 +213,7 @@ func TestNewTLSProxy_SlowUpstreamWithinTimeoutSucceeds(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != 200 {
 		t.Fatalf("status=%d want 200", resp.StatusCode)
 	}
@@ -232,7 +232,7 @@ func TestNewTLSProxy_UnreachableUpstreamReturns502(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusBadGateway {
 		t.Fatalf("status=%d want 502", resp.StatusCode)
 	}
@@ -268,8 +268,8 @@ func TestNewTLSProxy_RejectsUnauthenticatedClient(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer ln.Close()
-	go srv.Serve(ln)
+	defer func() { _ = ln.Close() }()
+	go func() { _ = srv.Serve(ln) }()
 
 	// Client WITHOUT client cert — should be rejected.
 	serverCAPool := x509.NewCertPool()

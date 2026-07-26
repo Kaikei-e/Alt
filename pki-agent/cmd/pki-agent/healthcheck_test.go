@@ -56,7 +56,7 @@ func TestRunHealthcheck_ProxyAlive(t *testing.T) {
 	metricsAddr := strings.TrimPrefix(srv.URL, "http://")
 
 	proxyAddr, ln := listen(t)
-	defer ln.Close()
+	defer func() { _ = ln.Close() }()
 
 	if err := runHealthcheck(metricsAddr, proxyAddr); err != nil {
 		t.Fatalf("want nil with alive proxy, got %v", err)
@@ -77,7 +77,7 @@ func TestRunHealthcheck_ProxyDead(t *testing.T) {
 	// Bind + immediately close to reserve a port that is guaranteed dead.
 	_, ln := listen(t)
 	addr := ln.Addr().String()
-	ln.Close()
+	_ = ln.Close()
 	_, port, _ := net.SplitHostPort(addr)
 	proxyAddr := ":" + port
 
@@ -101,7 +101,7 @@ func TestRunHealthcheck_ProxyColonOnly(t *testing.T) {
 	metricsAddr := strings.TrimPrefix(srv.URL, "http://")
 
 	proxyAddr, ln := listen(t) // ":NNNNN"
-	defer ln.Close()
+	defer func() { _ = ln.Close() }()
 
 	if !strings.HasPrefix(proxyAddr, ":") {
 		t.Fatalf("test expected bare :port, got %q", proxyAddr)
@@ -204,7 +204,7 @@ func TestRunHealthcheck_NetnsOrphanFailsHealthcheck(t *testing.T) {
 	metricsAddr := strings.TrimPrefix(srv.URL, "http://")
 
 	proxyAddr, ln := listen(t)
-	defer ln.Close()
+	defer func() { _ = ln.Close() }()
 
 	stubInterfaces(t, func() ([]ifaceInfo, error) {
 		return []ifaceInfo{
@@ -232,7 +232,7 @@ func TestRunHealthcheck_HealthyWithProxy(t *testing.T) {
 	metricsAddr := strings.TrimPrefix(srv.URL, "http://")
 
 	proxyAddr, ln := listen(t)
-	defer ln.Close()
+	defer func() { _ = ln.Close() }()
 
 	stubInterfaces(t, func() ([]ifaceInfo, error) {
 		return []ifaceInfo{
