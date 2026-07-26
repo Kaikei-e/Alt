@@ -166,7 +166,7 @@ mod tests {
         let cleaner = DiskCleaner::new(
             temp_dir.path(),
             500, // 500 bytes limit - should trigger cleanup
-            Duration::from_secs(3600),
+            Duration::from_hours(1),
         );
 
         cleaner.perform_cleanup().await.unwrap();
@@ -205,7 +205,7 @@ mod tests {
         let cleaner = DiskCleaner::new(
             temp_dir.path(),
             1024 * 1024, // 1MB limit
-            Duration::from_secs(3600),
+            Duration::from_hours(1),
         );
 
         cleaner.perform_cleanup().await.unwrap();
@@ -231,7 +231,7 @@ mod tests {
         let cleaner = DiskCleaner::new(
             temp_dir.path(),
             100, // Very small limit
-            Duration::from_secs(3600),
+            Duration::from_hours(1),
         );
 
         cleaner.perform_cleanup().await.unwrap();
@@ -252,7 +252,7 @@ mod tests {
         // A long interval: the test only exercises the cancellation branch
         // of `select!`, never the tick branch, so there is nothing timing
         // dependent to wait out.
-        let cleaner = DiskCleaner::new(temp_dir.path(), 1024 * 1024, Duration::from_secs(3600));
+        let cleaner = DiskCleaner::new(temp_dir.path(), 1024 * 1024, Duration::from_hours(1));
 
         let handle = cleaner.spawn(cancel_token.clone());
 

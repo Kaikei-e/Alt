@@ -78,7 +78,12 @@ async fn test_zero_copy_bytes_from_docker_logs() -> Result<(), Box<dyn std::erro
                     "busybox",
                     "sh",
                     "-c",
-                    "echo 'Test log message' && sleep 30",
+                    // Emit continuously: LogStreamOptions::default() tails
+                    // with tail="0", so Docker replays no history and only
+                    // lines written after start_tailing_logs reach the
+                    // channel. A single echo before tailing starts would
+                    // never be observed.
+                    "while true; do echo 'Test log message'; sleep 1; done",
                 ])
                 .stdout(Stdio::piped())
                 .output();

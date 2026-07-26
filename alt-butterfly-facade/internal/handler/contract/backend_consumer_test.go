@@ -33,8 +33,8 @@ const pactDir = "../../../../pacts"
 const jwtHeaderPattern = `^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$`
 
 // jwtHeaderExample is the pact example value for jwtHeaderPattern. It is
-// deliberately not base64url-of-JSON: a realistic token-shaped literal is
-// indistinguishable from a leaked credential to secret scanners.
+// deliberately not base64url-of-JSON: a realistic "eyJ..." literal is
+// indistinguishable from a leaked token to secret scanners.
 const jwtHeaderExample = "header.payload.signature"
 
 func newBackendPact(t *testing.T) *consumer.V3HTTPMockProvider {
@@ -136,9 +136,12 @@ func TestBFFProxyAdminRPC(t *testing.T) {
 		WithCompleteRequest(consumer.Request{
 			Method: "POST",
 			Path:   matchers.String("/alt.knowledge_home.v1.KnowledgeHomeAdminService/GetOverview"),
+			// No X-Alt-Backend-Token here, unlike the user-token routes:
+			// admin RPCs go through BackendClient.ForwardServiceRequest,
+			// which strips the caller's token and relies on the mTLS
+			// transport for service-to-service auth.
 			Headers: matchers.MapMatcher{
-				"Content-Type":        matchers.String("application/json"),
-				"X-Alt-Backend-Token": matchers.Regex(jwtHeaderExample, jwtHeaderPattern),
+				"Content-Type": matchers.String("application/json"),
 			},
 			Body: matchers.MapMatcher{},
 		}).

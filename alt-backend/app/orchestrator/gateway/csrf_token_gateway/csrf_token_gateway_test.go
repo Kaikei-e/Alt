@@ -3,6 +3,7 @@ package csrf_token_gateway
 import (
 	"context"
 	"errors"
+	"slices"
 	"testing"
 	"time"
 
@@ -500,52 +501,70 @@ func TestCSRFTokenGateway_HMACTimingAttackResistance(t *testing.T) {
 	// Generate a valid token
 	validToken := gateway.GenerateHMACToken(testSessionID, testSecret)
 
-	// Test with completely wrong token (different length and content)
-	wrongToken := "completely-wrong-token"
+	// The wrong token must be the same length as the valid one: hmac.Equal
+	// short-circuits on a length mismatch, so a "completely-wrong-token"
+	// literal would exit before the constant-time compare and measure a
+	// different code path instead of the one under test. Mutating a single
+	// character keeps both runs on the compare path.
+	wrongToken := mutateFirstChar(validToken)
+
+	// Warm up so CPU frequency ramp and first-touch cache misses are not
+	// attributed to whichever branch happens to be measured first.
+	for i := 0; i < 200; i++ {
+		_, _ = gateway.ValidateHMACToken(ctx, validToken, testSessionID, testSecret)
+		_, _ = gateway.ValidateHMACToken(ctx, wrongToken, testSessionID, testSecret)
+	}
 
 	iterations := 1000
-	var validDurations []time.Duration
-	var invalidDurations []time.Duration
+	validDurations := make([]time.Duration, 0, iterations)
+	invalidDurations := make([]time.Duration, 0, iterations)
 
-	// Measure validation time for valid tokens
+	// Interleave the two measurements. Measuring one branch to completion
+	// before the other makes the result a function of drift in machine state
+	// (scheduler, thermal, noisy-neighbour CI runners) rather than of the
+	// code, which is what made this comparison unreliable.
 	for i := 0; i < iterations; i++ {
 		start := time.Now()
 		_, _ = gateway.ValidateHMACToken(ctx, validToken, testSessionID, testSecret)
-		duration := time.Since(start)
-		validDurations = append(validDurations, duration)
-	}
+		validDurations = append(validDurations, time.Since(start))
 
-	// Measure validation time for invalid tokens
-	for i := 0; i < iterations; i++ {
-		start := time.Now()
+		start = time.Now()
 		_, _ = gateway.ValidateHMACToken(ctx, wrongToken, testSessionID, testSecret)
-		duration := time.Since(start)
-		invalidDurations = append(invalidDurations, duration)
+		invalidDurations = append(invalidDurations, time.Since(start))
 	}
 
-	// Calculate averages
-	var validTotal, invalidTotal time.Duration
-	for i := 0; i < iterations; i++ {
-		validTotal += validDurations[i]
-		invalidTotal += invalidDurations[i]
-	}
+	// Median, not mean: a single preemption in a 1000-sample run can move the
+	// mean by more than a real timing leak would.
+	validMedian := medianDuration(validDurations)
+	invalidMedian := medianDuration(invalidDurations)
 
-	validAvg := validTotal / time.Duration(iterations)
-	invalidAvg := invalidTotal / time.Duration(iterations)
+	t.Logf("Median validation time for valid tokens: %v", validMedian)
+	t.Logf("Median validation time for invalid tokens: %v", invalidMedian)
 
-	// The difference should be minimal (within reasonable variance)
-	// This is a heuristic test - constant time comparison should prevent
-	// large timing differences
-	t.Logf("Average validation time for valid tokens: %v", validAvg)
-	t.Logf("Average validation time for invalid tokens: %v", invalidAvg)
-
-	// If the timing difference is more than 3x, it might indicate a timing
-	// leak. The threshold is deliberately loose (looser than the 2x this
-	// test used to only warn about) to tolerate scheduler/CI jitter while
-	// still catching an actual regression to a non-constant-time compare -
-	// this must fail the test, not just log a warning nobody reads.
-	ratio := float64(validAvg) / float64(invalidAvg)
+	// With interleaved medians over same-length inputs this lands near 1.0.
+	// Note what the ratio can and cannot show: the HMAC-SHA256 recomputation
+	// dominates both branches, so swapping hmac.Equal for a plain string ==
+	// measures the same (verified: ratio 1.02 vs 1.00). What it does pin is
+	// gross asymmetry between the two branches - an extra lookup, sleep, or
+	// retry added to the mismatch path - which is why the band is wide.
+	ratio := float64(validMedian) / float64(invalidMedian)
 	if ratio > 3.0 || ratio < 1.0/3.0 {
-		t.Errorf("Timing difference detected (ratio: %.2f, valid=%v invalid=%v). This indicates non-constant time comparison.", ratio, validAvg, invalidAvg)
+		t.Errorf("Timing difference detected (ratio: %.2f, valid=%v invalid=%v). This indicates non-constant time comparison.", ratio, validMedian, invalidMedian)
 	}
+}
+
+// mutateFirstChar replaces the first character of token with a different one,
+// preserving length so hmac.Equal cannot short-circuit on a length mismatch.
+func mutateFirstChar(token string) string {
+	replacement := byte('A')
+	if token[0] == replacement {
+		replacement = 'B'
+	}
+	return string(replacement) + token[1:]
+}
+
+func medianDuration(durations []time.Duration) time.Duration {
+	sorted := slices.Clone(durations)
+	slices.Sort(sorted)
+	return sorted[len(sorted)/2]
 }

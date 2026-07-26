@@ -276,9 +276,11 @@ async function loadMore() {
 		error = "Failed to load feeds";
 	} finally {
 		isLoading = false;
-		if (!isFirstLoad) {
-			isInitialLoading = false;
-		}
+		// Unconditional: the first-load success path clears this inside the
+		// try block, so gating on !isFirstLoad here left a failed first load
+		// stuck on the loading placeholder forever, hiding the error state
+		// and its Retry action.
+		isInitialLoading = false;
 	}
 }
 

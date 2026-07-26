@@ -52,17 +52,11 @@ jsonpath "$.code" == "not_found"
 
 # --- 3. happy path or legitimate not-found, never a server error ---------
 # We don't pin a specific URL because the staging fixture set rotates, and
-# many staging stacks won't have a seeded article that survives across
-# runs — GetArticleSourceURL.Execute (handler.go:764-791) has exactly
-# three outcomes: invalid_argument (400, exercised above),
-# not_found -> 404, or success -> 200 {source_url}. A genuine backend
-# failure falls to CodeUnavailable (503). The previous
-# `status >= 200; status < 600` accepted that 503 (and any other
-# unexpected code) as a pass despite the file's own comment claiming this
-# "pins the JSON shape on 200 outcomes" — it didn't; there was no
-# conditional check at all. `in` pins the assertion to the two outcomes
-# this fixture can legitimately produce and lets a real infra regression
-# (503, or anything else) fail the test as it should.
+# many staging stacks won't have a seeded article that survives across runs.
+# GetArticleSourceURL has exactly two outcomes reachable here: not_found
+# (404) or success (200 {source_url}); a genuine backend failure surfaces as
+# 503. Pinning to {200, 404} keeps the rotating fixture set from mattering
+# while still letting a real infra regression fail the run.
 
 POST {{connect_url}}/alt.articles.v2.ArticleService/GetArticleSourceURL
 X-Alt-Backend-Token: {{jwt}}
@@ -72,4 +66,4 @@ Content-Type: application/json
 }
 HTTP *
 [Asserts]
-status in [200, 404]
+status toString matches "^(200|404)$"
