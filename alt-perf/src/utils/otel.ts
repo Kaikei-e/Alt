@@ -67,7 +67,7 @@ export function initOTelProvider(config?: OTelConfig): () => Promise<void> {
   // Create logger provider
   loggerProvider = new LoggerProvider({
     resource,
-    processors: [new BatchLogRecordProcessor(logExporter)],
+    processors: [new BatchLogRecordProcessor({ exporter: logExporter })],
   });
 
   // Set as global provider

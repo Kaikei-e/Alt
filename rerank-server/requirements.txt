@@ -1,4 +1,25 @@
+# Mac/MPS deploy path only (RERANK_BACKEND=torch) — see README "Installation".
+#
+# The Docker/ONNX path does NOT use this file: it installs from
+# pyproject.toml + uv.lock (`uv sync --frozen --group onnx`). That path is
+# hard-capped at transformers<4.58.0 by optimum-onnx 0.1.0 (its latest
+# release), so it cannot take the transformers 5.x fixes yet. This manifest
+# never installs optimum-onnx, so it can — and therefore must — take them.
 sentence-transformers>=5.2.3
 fastapi>=0.133.0
 uvicorn>=0.41.0
-torch>=2.0.0
+
+# Security floors. Do not lower without re-checking the advisories below.
+#   torch        >=2.13.0  CVE-2025-32434 (RCE via torch.load even with
+#                          weights_only=True, fixed 2.6.0), CVE-2024-31583
+#                          (use-after-free), GHSA-rrmf-rvhw-rf47 (fixed 2.13.0)
+#                          — the previous `torch>=2.0.0` floor carried 23 known
+#                          advisories including two CVSS 9.8.
+#   transformers >=5.5.0   CVE-2026-1839 (arbitrary code exec in Trainer,
+#                          fixed 5.0.0), CVE-2026-4372 (RCE, fixed 5.3.0),
+#                          CVE-2026-5241 (arbitrary code exec in LightGlue
+#                          model loading, CVSS 9.6, fixed 5.5.0)
+#   setuptools   >=83.0.0  GHSA-h35f-9h28-mq5c
+torch>=2.13.0
+transformers>=5.5.0
+setuptools>=83.0.0
