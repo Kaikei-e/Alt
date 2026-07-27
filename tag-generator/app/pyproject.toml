@@ -20,7 +20,8 @@ dependencies = [
     "fugashi[unidic-lite]>=1.5.1", # includes unidic-lite, no external MecAB needed
 
     # Language Processing (minimal)
-    "nltk>=3.9.1",
+    # >=3.10.0: CVE-2026-54293 path traversal in nltk.data.load()
+    "nltk>=3.10.0",
     "langdetect>=1.0.9",
 
     # Database

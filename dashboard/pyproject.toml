@@ -18,7 +18,13 @@ dev = [
 ]
 
 [tool.uv]
-constraint-dependencies = ["Pillow>=12.3.0"]
+# Security floors for transitive dependencies (not directly imported by dashboard).
+# gitpython: pulled in by streamlit; <3.1.55 has nine command-injection /
+# arbitrary-file-write / env-var-exfiltration advisories (GHSA-2f96-g7mh-g2hx,
+# GHSA-956x-8gvw-wg5v, GHSA-v396-v7q4-x2qj, GHSA-rwj8-pgh3-r573,
+# GHSA-3rp5-jjmw-4wv2, GHSA-6p8h-3wgx-97gf, GHSA-fjr4-x663-mwxc,
+# GHSA-r9mr-m37c-5fr3, GHSA-94p4-4cq8-9g67).
+constraint-dependencies = ["Pillow>=12.3.0", "gitpython>=3.1.55"]
 
 [tool.pyrefly]
 project-includes = ["."]

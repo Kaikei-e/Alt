@@ -1,12 +1,24 @@
 # Requirements for scripts in this directory
 # Install with: pip install -r scripts/requirements.txt
+#
+# NOTE: this file and ./pyproject.toml + ./uv.lock are BOTH live and cover
+# different consumers:
+#   - requirements.txt  -> migrate_articles_to_text.sh (pip install path),
+#                          plus the scikit-learn / scikit-optimize helpers.
+#   - pyproject.toml    -> the uv-managed analytics path
+#     + uv.lock            (analyze_clickhouse_performance.py, graph_boost_utils.py).
+# Keep the floors of the shared packages (psycopg2-binary, pandas, pyarrow)
+# identical in both files.
 
 # Database connectivity
-psycopg2-binary>=2.9.0
+psycopg2-binary>=2.9.12
 
 # Data processing and Parquet output
-pandas>=2.0.0
-pyarrow>=10.0.0
+pandas>=3.0.3
+# CVE-2023-47248 (arbitrary code execution when loading a malicious Arrow/Parquet
+# file, fixed 14.0.1) and CVE-2024-52338 (fixed 17.0.0). Floor kept in sync with
+# pyproject.toml.
+pyarrow>=24.0.0
 
 # Clustering helpers
 numpy>=1.26.0
@@ -17,7 +29,12 @@ PyYAML>=6.0
 
 # HTML processing for article migration
 beautifulsoup4>=4.12.0
-lxml>=4.9.0
-readability-lxml>=0.8.1
-tqdm>=4.66.0
-
+# CVE-2022-2309 (NULL-deref DoS, fixed 4.9.1) and CVE-2026-41066 (XXE reading
+# local files via the default iterparse()/ETCompatXMLParser config, fixed 6.1.0).
+lxml>=6.1.0
+# >=0.8.4 is required by lxml>=5.2: readability 0.8.1 imports lxml.html.clean,
+# which moved out of lxml into the separate lxml_html_clean package. 0.8.4+
+# declares the lxml[html_clean] extra that pulls it back in.
+readability-lxml>=0.8.4.1
+# CVE-2024-34062 (CLI argument injection), fixed 4.66.3.
+tqdm>=4.66.3
