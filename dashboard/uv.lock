@@ -8,7 +8,10 @@ resolution-markers = [
 ]
 
 [manifest]
-constraints = [{ name = "pillow", specifier = ">=12.3.0" }]
+constraints = [
+    { name = "gitpython", specifier = ">=3.1.55" },
+    { name = "pillow", specifier = ">=12.3.0" },
+]
 
 [[package]]
 name = "altair"
