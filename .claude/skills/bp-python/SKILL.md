@@ -1,14 +1,16 @@
 ---
 name: bp-python
-description: Python ベストプラクティス。Python コードの品質を保つための規約とレビュー観点（Python 3.14+）。
-  TRIGGER when: .py ファイルを編集・作成・レビューする時、Python コードを書く時、Python サービス（news-creator, tag-generator, metrics, recap-subworker, recap-evaluator）を実装する時。
-  DO NOT TRIGGER when: テストの実行のみ、pyproject.toml の確認のみ、ファイルの読み取りのみ、他言語の作業時。
+description: Alt の Python 3.14+ 規約を適用する。型ヒント必須と Pyrefly、具体例外と原因チェーン、Pydantic/frozen dataclass の境界保護、asyncio と同期推論の分離、spawn プロセスプール、起動時 fail-closed を扱う。Python のコードを書く・直す・レビューするときに使う。ユーザが「Python」や規約名に触れなくても、Python サービス（news-creator, tag-generator, metrics, recap-subworker, recap-evaluator, acolyte-orchestrator）の実装・修正に入るなら使う。
+paths:
+  - "**/*.py"
 ---
 
 # Python Best Practices
 
-このスキルが発動したら、`docs/best_practices/python.md` を Read ツールで読み込み、
-記載されたベストプラクティス（DECREE）に従ってコードを書き、レビューすること。
+以下はタスク全体を通じて有効な規約であり、一度読んで終わる手順ではない。Python コードを書くたびに適用する。
+
+詳細な根拠とコード例が必要になった時点で `docs/best_practices/python.md` の該当セクションだけを Read する
+（全 13 セクション・444 行あるため全文読み込みはしない）。
 
 ## 重要原則
 

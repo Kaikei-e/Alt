@@ -7,7 +7,6 @@ description: |
   - 「計画を立てて」「設計して」「プランを作って」
   - ADR や過去の決定を確認したい
   - Knowledge Trail / Knowledge Home や reproject-safe / immutable 設計が絡む
-user-invocable: true
 allowed-tools: Bash, Read, Glob, Grep, Agent, mcp__obsidian__view, mcp__obsidian__get_workspace_files
 argument-hint: <計画・設計の対象>
 ---

@@ -4,6 +4,17 @@
 コードレビューで使う観点に翻訳する。原典は kawasima の Scrapbox / Slideshare
 "イミュータブルデータモデル(入門編)"。
 
+## Contents
+
+- [中核となる 3 つの主張](#中核となる-3-つの主張)
+- [レビューでの使い方](#レビューでの使い方)
+- [Cross-entity (R-R / E-E) パターン](#cross-entity-r-r-e-e-パターン)
+- [命名アンチパターン](#命名アンチパターン)
+- [マスタ / トランザクション分類との違い](#マスタ-トランザクション分類との違い)
+- [Resource はスナップショット](#resource-はスナップショット)
+- [Alt のレビューにそのまま使うチェック](#alt-のレビューにそのまま使うチェック)
+- [参考文献](#参考文献)
+
 > 出典: <https://scrapbox.io/kawasima/イミュータブルデータモデル>
 > Slideshare: <https://www.slideshare.net/kawasima/ss-40471672>
 

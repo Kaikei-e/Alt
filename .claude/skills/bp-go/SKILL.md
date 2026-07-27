@@ -1,14 +1,16 @@
 ---
 name: bp-go
-description: Go ベストプラクティス。Go コードの品質を保つための規約とパターン集。
-  TRIGGER when: .go ファイルを編集・作成する時、Go コードを書く時、Go サービス（alt-backend, auth-hub, pre-processor, search-indexer, mq-hub, altctl）を実装する時。
-  DO NOT TRIGGER when: テストの実行のみ、go.mod の確認のみ、ファイルの読み取りのみ、他言語の作業時。
+description: Alt の Go 規約を適用する。エラーラップ、context 第一引数、slog、テーブル駆動テスト、http.Server の 4 タイムアウト、Redis Streams の XACK/XAUTOCLAIM 対、fail-fast 設定を扱う。Go のコードを書く・直す・レビューするときに使う。ユーザが「Go」や規約名に触れなくても、Go サービス（alt-backend, auth-hub, pre-processor, search-indexer, mq-hub, rag-orchestrator, altctl）の実装・修正に入るなら使う。
+paths:
+  - "**/*.go"
 ---
 
 # Go Best Practices
 
-このスキルが発動したら、`docs/best_practices/go.md` を Read ツールで読み込み、
-記載されたベストプラクティス（DECREE）に従ってコードを書くこと。
+以下はタスク全体を通じて有効な規約であり、一度読んで終わる手順ではない。Go コードを書くたびに適用する。
+
+詳細な根拠とコード例が必要になった時点で `docs/best_practices/go.md` の該当セクションだけを Read する
+（全 17 セクション・725 行あるため全文読み込みはしない）。
 
 ## 重要原則
 

@@ -1,14 +1,16 @@
 ---
 name: bp-rust
-description: Rust ベストプラクティス。Rust コードの品質を保つための規約とパターン集（Edition 2024）。
-  TRIGGER when: .rs ファイルを編集・作成する時、Rust コードを書く時、Rust サービス（rask-log-aggregator, rask-log-forwarder, recap-worker）を実装する時。
-  DO NOT TRIGGER when: テストの実行のみ、Cargo.toml の確認のみ、ファイルの読み取りのみ、他言語の作業時。
+description: Alt の Rust Edition 2024 規約を適用する。thiserror でのドメインエラー、借用優先、tokio + tracing、配線失敗を握り潰さない、flush タスクの JoinHandle 保持、char boundary 安全な切り詰め、リトライ境界でのエラー型保持、libtorch 常駐時の jemalloc を扱う。Rust のコードを書く・直す・レビューするときに使う。ユーザが「Rust」や規約名に触れなくても、Rust サービス（rask-log-aggregator, rask-log-forwarder, recap-worker）の実装・修正に入るなら使う。
+paths:
+  - "**/*.rs"
 ---
 
 # Rust Best Practices
 
-このスキルが発動したら、`docs/best_practices/rust.md` を Read ツールで読み込み、
-記載されたベストプラクティス（DECREE）に従ってコードを書くこと。
+以下はタスク全体を通じて有効な規約であり、一度読んで終わる手順ではない。Rust コードを書くたびに適用する。
+
+詳細な根拠とコード例が必要になった時点で `docs/best_practices/rust.md` の該当セクションだけを Read する
+（全 17 セクション・1124 行あるため全文読み込みはしない）。
 
 ## 重要原則
 

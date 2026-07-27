@@ -3,6 +3,19 @@
 違反候補を機械的に当てるためのレシピ集。SKILL.md ワークフロー Step 3 で使う。
 **全部実行しない**。今回触れた言語 / 層だけ走らせる。
 
+## Contents
+
+- [共通: append-first 違反](#共通-append-first-違反)
+- [共通: time.Now() / NOW() による業務時刻汚染](#共通-timenow-now-による業務時刻汚染)
+- [共通: reproject-unsafe な「latest を読む」projector](#共通-reproject-unsafe-なlatest-を読むprojector)
+- [共通: write path が read model を mutate](#共通-write-path-が-read-model-を-mutate)
+- [SQL / migration: merge-safe 違反 / business logic in SQL](#sql-migration-merge-safe-違反-business-logic-in-sql)
+- [proto / event payload schema](#proto-event-payload-schema)
+- [共通: Versioned artifacts 違反](#共通-versioned-artifacts-違反)
+- [共通: Single emission / idempotency](#共通-single-emission-idempotency)
+- [Knowledge Loop / Knowledge Home 固有 (例)](#knowledge-loop-knowledge-home-固有-例)
+- [レポートに含める情報](#レポートに含める情報)
+
 引数の `<root>` は対象サービスのアプリルート (例: `alt-backend/app/`)。
 ripgrep (`rg`) があれば優先、無ければ `grep -rn`。
 

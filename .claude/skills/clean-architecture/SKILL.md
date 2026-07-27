@@ -1,6 +1,14 @@
 ---
 name: clean-architecture
-description: Alt project Clean Architecture layer patterns
+description: Alt の Clean Architecture レイヤ規約（Handler → Usecase → Port → Gateway → Driver）を適用し、層の逆依存・層越境・誤った層への実装を検出する。サービスのコードを新規実装・リファクタ・レビューするとき、どの層に置くべきか判断するとき、handler/usecase/gateway/driver/port ディレクトリ配下を編集するときに使う。ユーザが「Clean Architecture」や「層」に触れなくても、ハンドラに fetch や SQL を書き足すような層をまたぐ変更に入るなら使う。
+allowed-tools: Read, Grep, Glob, Bash
+paths:
+  - "**/handler/**"
+  - "**/rest/**"
+  - "**/usecase/**"
+  - "**/port/**"
+  - "**/gateway/**"
+  - "**/driver/**"
 ---
 
 # Clean Architecture Layers

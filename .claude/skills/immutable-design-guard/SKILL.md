@@ -8,7 +8,8 @@ description: |
   read model derived from events; or when the user mentions
   "イミュータブル", "event sourcing", "projector", "reproject", "append-only",
   "projection", "read model", or kawasima's resource/event modeling.
-user-invocable: true
+  Applies to any append-only subsystem, not one named service. Not for stateless pure
+  functions, TTL caches, or plain CRUD tables with no event log behind them.
 allowed-tools: Bash, Read, Glob, Grep, mcp__obsidian__view
 ---
 
@@ -20,21 +21,6 @@ Append-only event store とそこから派生する projection / read model を�
 このスキルは特定サービスに縛られない。Knowledge Home / Knowledge Loop /
 Acolyte パイプライン / その他の event-sourced 領域すべてに同じ語彙で適用する。
 固有テーブル名やドメイン語彙はリファレンスにケーススタディとして閉じ込める。
-
-## いつ使うか
-
-- migration / projector / event handler / read model コードを変更したとき
-- レビュー対象が CQRS / event sourcing 風のサブシステムに触れているとき
-- ユーザが「イミュータブル」「reproject」「projection」「event sourcing」
-  「append-only」「read model」と言ったとき
-- 新しい event 種別 / projection table / version 管理を追加するとき
-- 別サービスやサブモジュールに同じ観点を移植したいとき
-
-## いつ使わないか
-
-- ステートレスな pure function / 計算ロジックの review
-- キャッシュ層（TTL ベース）の review（reproject の概念と独立）
-- 単純な CRUD アプリで append-only の前提がない領域
 
 ## 監査ワークフロー
 

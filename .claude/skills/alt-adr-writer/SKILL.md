@@ -1,24 +1,26 @@
 ---
 name: alt-adr-writer
-description: Writes an Architecture Decision Record for the Alt project in Japanese after a completed implementation, then runs the Pact-gated manual deploy (./scripts/deploy.sh production). Trigger when the user says "ADR書いて" / "ADRにまとめて" / "ADRに記録して" / "実装が終わったのでドキュメントに" / "コンテナ再ビルドしてADR書いて" / "docs/ADR" 関連のまとめ依頼, or after finishing code changes that clearly warrant a decision record. Skip the deploy step only when the user explicitly says "ADRだけ書いて"; skip the build step only for documentation-only changes.
+description: Alt の Architecture Decision Record を日本語で `docs/ADR/NNNNNN.md` に書き起こす。番号採番、frontmatter（title/date/status/tags/affected_services/aliases/supersedes）、Context・Decision・Consequences の書き分け、wikilink 形式、OSS 公開向けの情報衛生を扱う。実装が一段落して決定を記録するときに使う。ユーザが「ADR書いて」「ADRにまとめて」「ADRに記録して」「実装が終わったのでドキュメントに」と言ったとき、または設計上の判断を伴う変更を終えたときに使う。
 allowed-tools: Bash, Read, Glob, Grep, Edit, Write
+argument-hint: "[決定の対象] [--only-docs]"
 ---
 
 # Alt ADR Writer
 
-このスキルは 3 つのフェーズを順に実行する:
+2 つのフェーズを順に実行する。
 
 1. **実装確認** (§1) — 動作と green を担保してから書く
 2. **ADR 執筆** (§2) — `docs/ADR/NNNNNN.md` を日本語で追加する
-3. **Pact ゲート付きデプロイ** (§3) — `./scripts/deploy.sh production`
 
-各フェーズはユーザ依頼の範囲に応じてスキップ条件がある (§5 参照)。
+**このスキルはデプロイを行わない。** 本番反映はユーザの明示指示に基づく別作業であり、手順は
+`docs/runbooks/deploy.md` に委ねる（§4 参照）。
 
 ---
 
 ## §1. 実装確認
 
-ADR を書くのは「動いた状態」を固定する行為なので、最低限のテストで動作確認を先に済ませる。コンテナの再ビルド・再起動は行わない（本番反映は §3 の `scripts/deploy.sh` 側に集約する）。
+ADR は「動いた状態」を固定する行為なので、最低限のテストで動作確認を先に済ませる。
+コンテナの再ビルド・再起動は行わない。
 
 | 変更の種類 | 最低限回すコマンド |
 |---|---|
@@ -28,7 +30,8 @@ ADR を書くのは「動いた状態」を固定する行為なので、最低�
 | Python (news-creator 等) | `uv run pytest` |
 | ドキュメント・scripts のみ | 該当テストだけ（例: `bash tests/scripts/run.sh`） |
 
-テストが落ちていたら ADR は書かず、ユーザに原因を報告して止まる。ADR は「動いた実装の決定記録」であり、憶測を書く場所ではない。
+テストが落ちていたら ADR は書かず、ユーザに原因を報告して止まる。ADR は動いた実装の決定記録であり、
+憶測を書く場所ではない。
 
 ---
 
@@ -40,7 +43,8 @@ ADR を書くのは「動いた状態」を固定する行為なので、最低�
 ls docs/ADR/ | sort | tail -1     # 最新番号を確認
 ```
 
-最新 +1 の 6 桁ゼロ埋め（例: `000750` → `000751`）をファイル名にする。`docs/ADR/template.md` を Read で開き、そのセクション見出しをそのまま使う（勝手に増減しない）。
+最新 +1 の 6 桁ゼロ埋め（例: `000750` → `000751`）をファイル名にする。`docs/ADR/template.md` を Read で
+開き、そのセクション見出しをそのまま使う（勝手に増減しない）。
 
 ### 2.2 Frontmatter
 
@@ -48,21 +52,25 @@ ls docs/ADR/ | sort | tail -1     # 最新番号を確認
 |---|---|
 | `title` | 動詞始まりの行動指向の一文。ADR 番号は含めない |
 | `date` | `YYYY-MM-DD`（当日） |
-| `status` | 原則 `accepted`。**新 ADR 自身を `superseded` にしない**（置換される側の status はグラフ投影） |
+| `status` | 原則 `accepted`。新 ADR 自身を `superseded` にしない（置換される側の status はグラフ投影） |
 | `tags` | §2.4 の許可タグから最大 5 個 |
 | `affected_services` | サービス名と変更概要を 1 行/件で列挙 |
-| `aliases` | `ADR-NNN` と `ADR-000NNN` の 2 形式を必ず両方入れる（Obsidian リンク解決用） |
-| `supersedes` | 本 ADR が既存 ADR を**完全置換**する場合のみ、旧 ADR 番号（6 桁）を列挙。**置き換えないならキーごと省略**（空の `supersedes: -` stub 禁止）。**新 ADR 側にだけ書く** — 逆辺は `scripts/adr_graph.py` が算出する |
+| `aliases` | `ADR-NNN` と `ADR-000NNN` の 2 形式を必ず両方入れる（Obsidian のリンク解決用） |
+| `supersedes` | 本 ADR が既存 ADR を**完全置換**する場合のみ、旧 ADR 番号（6 桁）を列挙。置き換えないならキーごと省略する（空の `supersedes: -` stub は dangling 判定を汚す）。新 ADR 側にだけ書き、逆辺は `scripts/adr_graph.py` が算出する |
 
 ### 2.3 本文ルール
 
-- **日本語で書く**。サービス名 / コマンド / ライブラリ名 / ファイルパスは英語のまま。
-- **セクション順は `template.md` を尊重**する。Context / Decision / Consequences (Pros, Cons/Tradeoffs) / Related ADRs の順が基本。
-- **Context** は「なぜこの決定が必要だったか」を定量/定性の根拠とともに書く。障害や計測結果があれば数値を残す。
-- **Decision** は採用した選択肢に加え、**検討した代替案と却下理由**を書く。これが後から読む人への最大の贈り物になる。
-- **Consequences** は Pros と Cons/Tradeoffs を分けて列挙する。未解決の負債は Cons に書く。
-- コードブロックは判断の根拠に必要な最小限にする。ロジックの羅列は GitHub の diff で読めるので省く。
-- **Related ADRs は wikilink `[[000NNN]] タイトル` 形式**で列挙する。Obsidian のグラフビュー / バックリンクがこの形式でのみ機能するため、`ADR-000NNN (タイトル)` 形式は使わない。
+- **日本語で書く。** サービス名 / コマンド / ライブラリ名 / ファイルパスは英語のまま
+- **セクション順は `template.md` を尊重する。** Context / Decision / Consequences (Pros, Cons/Tradeoffs) /
+  Related ADRs の順が基本
+- **Context** は「なぜこの決定が必要だったか」を定量/定性の根拠とともに書く。障害や計測結果があれば
+  数値を残す
+- **Decision** は採用した選択肢に加え、**検討した代替案と却下理由**を書く。後から読む人にとって
+  最も価値があるのはここ
+- **Consequences** は Pros と Cons/Tradeoffs を分けて列挙する。未解決の負債は Cons に書く
+- コードブロックは判断の根拠に必要な最小限にする。ロジックの羅列は GitHub の diff で読める
+- **Related ADRs は wikilink `[[000NNN]] タイトル` 形式**で列挙する。Obsidian のグラフビューと
+  バックリンクはこの形式でしか機能しないため、`ADR-000NNN (タイトル)` 形式は使わない
 
 ### 2.4 許可タグ
 
@@ -73,11 +81,11 @@ caching, authentication, docker, networking, ci-cd, testing, refactoring,
 bugfix, monitoring, logging, ai, rag, recap, nats, queue, 3d-graphics
 ```
 
-この外のタグを増やしたくなったら ADR ではなく `docs/CLAUDE.md` を先に更新する。
+この外のタグを増やしたくなったら、ADR ではなく `docs/CLAUDE.md` を先に更新する。
 
 ### 2.5 情報衛生
 
-Alt は OSS として公開されている。以下を含めない:
+Alt は OSS として公開されている。以下を含めない。
 
 - 本番 IP / 本番ドメイン / 秘匿ポート
 - 資格情報・API キー・シークレット類
@@ -88,83 +96,57 @@ Alt は OSS として公開されている。以下を含めない:
 
 ### 2.6 書き込み
 
-Write ツールで `docs/ADR/NNNNNN.md` を作る。heredoc や `cat > ...` は使わない。書き込み後に Read で自分の出力を読み返し、見出し / frontmatter / wikilink 形式を確認する。
+Write ツールで `docs/ADR/NNNNNN.md` を作る。heredoc や `cat > ...` は使わない。
 
-`supersedes` を書いた場合は、`python3 scripts/adr_graph.py check` を実行して循環・dangling・空 stub・status ドリフトが無いことを確認する（非ゼロ終了なら frontmatter を直す）。置き換え対象の旧 ADR `status` は同 PR で `superseded` に揃える（status 投影例外）。
+`supersedes` を書いた場合は次を実行し、循環・dangling・空 stub・status ドリフトが無いことを確認する
+（非ゼロ終了なら frontmatter を直す）。
 
----
+```bash
+python3 scripts/adr_graph.py check
+```
 
-## §3. Pact ゲート付きデプロイ
+置き換え対象の旧 ADR の `status` は同じ commit で `superseded` に揃える（status 投影の例外）。
 
-ADR を書いたら**コードと ADR を同じ commit にまとめて**、`scripts/deploy.sh` を手で叩く。CI 自動発火はしない（方針: [[000740]] / [[deploy]]）。
+### 2.7 commit
+
+ADR とコードは同じ commit にまとめる。
 
 ```bash
 git add -A
-git commit -m "<英語の 1 行メッセージ>"     # Co-Authored-By は付けない
-./scripts/deploy.sh production
+git commit -m "<英語の 1 行メッセージ>"   # Co-Authored-By は付けない
 ```
 
-`deploy.sh` は [c2quay](https://github.com/Kaikei-e/c2quay) の薄いラッパで、以下を順に叩く:
-
-1. `scripts/pact-check.sh --broker` — Pact file を Broker に publish
-2. `c2quay deploy --env production --config c2quay.yml` — can-i-deploy → サービス反映 → smoke → record-deployment を c2quay が内部で実行する
-3. `scripts/record-remote-pacticipant.sh production` — 別ホストの tts-speaker 用
-
-途中で失敗すれば `set -e` で即停止する。自動ロールバックは無い。復旧は `git revert` → 再 commit → `./scripts/deploy.sh production` を再実行。内部手順の詳細や緊急時の手当てはスキルでは扱わず `docs/runbooks/deploy.md` に委譲する。
-
-### 使えるフラグとサブコマンド
-
-| やりたいこと | コマンド |
-|---|---|
-| 現状確認 (副作用なし) | `c2quay verify --env production --config c2quay.yml` |
-| デプロイ計画の確認 | `c2quay deploy --env production --dry-run --config c2quay.yml` |
-| 1 サービスだけ再 recreate | `c2quay deploy --env production --service <svc> --config c2quay.yml` |
-| broker matrix の現状 | `c2quay status --env production --config c2quay.yml` |
-
-`--skip-verify` / `--no-record` は廃止済み。Broker が不稼働なら先に復旧してから deploy を再実行する（復旧手順は `docs/runbooks/pact-broker-ops.md`）。
-
-### 失敗時の判断
-
-| 段 | 兆候 | 対処 |
-|---|---|---|
-| pact-check | 出力に `contract regression` | provider/consumer テストを修正 → 再 commit → 再 deploy |
-| c2quay: can-i-deploy | `blocked by` のログ | 対象 pacticipant の provider 側を修正 → 再 deploy |
-| c2quay: サービス反映 | `container … not healthy` | healthcheck 修正・依存関係見直し → 再 deploy |
-| c2quay: smoke | `smoke FAIL: <url>` | 該当サービスのログを確認 |
-| c2quay: record-deployment | `record-deployment failed` | broker matrix が乖離。`c2quay status` と `pact-broker-cli` で確認し、手で record-deployment を再実行 |
-| record-remote-pacticipant | `tts-speaker record-deployment failed` | 別 GPU ホスト・Broker 到達性を確認後、`scripts/record-remote-pacticipant.sh production` を再実行 |
-
-### DB マイグレーションが絡む場合
-
-必ず `migrate → deploy` の順。逆にするとアプリが新スキーマを期待するまま旧スキーマで起動し、healthcheck が通らず自動ロールバックで戻される:
-
-```bash
-cd migrations-atlas && atlas migrate hash && atlas migrate apply --env production
-cd ~/alt && ./scripts/deploy.sh production
-```
+`git push` はしない。push はユーザの明示指示があったときだけ、ユーザ自身が行う。
 
 ---
 
-## §4. 完了報告
-
-ユーザに以下を伝える:
+## §3. 完了報告
 
 - 書いた ADR のパス（`docs/ADR/NNNNNN.md`）とタイトル
-- 緑だったテスト / 再ビルド / healthcheck
-- `deploy.sh` の終了コード + `.deploy-current` に記録された SHA
+- 緑だったテスト（どのサービスで何を回したか）
+- `adr_graph.py check` の結果（`supersedes` を書いた場合）
 - 次に目を向けておく指標や運用フォロー（あれば 1 行）
+
+---
+
+## §4. デプロイを求められた場合
+
+ユーザが ADR とあわせて明示的にデプロイを指示した場合のみ、`docs/runbooks/deploy.md` の手順に従う。
+このスキルの中で `./scripts/deploy.sh` や `c2quay` を独断で実行しない。「ADR 書いて」はデプロイの
+許可ではない。
+
+DB マイグレーションが絡む場合は必ず `migrate → deploy` の順。逆にするとアプリが新スキーマを期待した
+まま旧スキーマで起動し、healthcheck が通らない。
 
 ---
 
 ## §5. スキップ条件
 
-| ユーザ発話 | §1 | §2 | §3 |
-|---|---|---|---|
-| 「ADR だけ書いて」「docs だけ」 | skip | run | skip |
-| 「実装まとめて ADR 書いて」「ADR 書いてデプロイして」 | run | run | run |
-| ドキュメント / scripts のみの変更 | skip build (test は run) | run | run |
-
-迷ったら `§1 → §2 → §3` の全実行を既定とする。Alt の運用は「ADR を書く = デプロイ準備完了」という前提で組まれている。
+| ユーザ発話 | §1 実装確認 | §2 ADR 執筆 |
+|---|---|---|
+| 「ADR だけ書いて」「docs だけ」 | skip | run |
+| 「実装まとめて ADR 書いて」 | run | run |
+| ドキュメント / scripts のみの変更 | 該当テストのみ run | run |
 
 ---
 

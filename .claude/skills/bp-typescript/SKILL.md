@@ -1,14 +1,17 @@
 ---
 name: bp-typescript
-description: TypeScript ベストプラクティス。型安全性とコード品質を保つための規約。
-  TRIGGER when: .ts または .tsx ファイルを編集・作成する時、TypeScript コードを書く時、alt-frontend-sv / auth-token-manager / alt-perf を実装する時。
-  DO NOT TRIGGER when: テストの実行のみ、tsconfig.json の確認のみ、ファイルの読み取りのみ、他言語の作業時。
+description: Alt の TypeScript 規約を適用する。strict + noUncheckedIndexedAccess、境界では unknown、型ガード優先、satisfies、判別共用体の網羅性、Zod での境界バリデーション、起動時 env 検証の fail-fast、redirect パラメータの URL パース検証、connect-es エラーの numeric enum、wire スキーマの一本化を扱う。TypeScript のコードを書く・直す・レビューするときに使う。ユーザが「TypeScript」に触れなくても alt-frontend-sv / auth-token-manager / alt-perf の実装に入るなら使う。
+paths:
+  - "**/*.ts"
+  - "**/*.tsx"
 ---
 
 # TypeScript Best Practices
 
-このスキルが発動したら、`docs/best_practices/typescript.md` を Read ツールで読み込み、
-記載されたベストプラクティス（DECREE）に従ってコードを書くこと。
+以下はタスク全体を通じて有効な規約であり、一度読んで終わる手順ではない。TypeScript コードを書くたびに適用する。
+
+詳細な根拠とコード例が必要になった時点で `docs/best_practices/typescript.md` の該当セクションだけを Read する
+（857 行あるため全文読み込みはしない）。
 
 ## 重要原則
 

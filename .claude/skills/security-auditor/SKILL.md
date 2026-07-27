@@ -10,7 +10,6 @@ description: |
   change touches authentication, authorization, crypto, input validation,
   deserialization, file upload, SQL/NoSQL/command building, secrets, logging,
   error handling, dependency updates, or LLM/agent/RAG code paths.
-user-invocable: true
 allowed-tools: Read, Grep, Glob, Bash, WebFetch, WebSearch, Agent
 argument-hint: <target path or PR> [--mode=baseline|diff] [--depth=shallow|deep]
 ---

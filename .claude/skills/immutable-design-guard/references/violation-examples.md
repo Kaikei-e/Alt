@@ -3,6 +3,16 @@
 実在のレビュー / ポストモーテムから抽出した違反パターン。
 **症状 → 該当原則 → 是正** のテンプレで書く。
 
+## Contents
+
+- [Case 1: Reproject-unsafe projector — latest を引いて投影してしまう](#case-1-reproject-unsafe-projector-latest-を引いて投影してしまう)
+- [Case 2: Backend-non-authoritative read — projection に availability が無い](#case-2-backend-non-authoritative-read-projection-に-availability-が無い)
+- [Case 3: Reproject swap でチェックポイントギャップ](#case-3-reproject-swap-でチェックポイントギャップ)
+- [Case 4: Merge-unsafe upsert — snapshot 上書きで負数 / loss](#case-4-merge-unsafe-upsert-snapshot-上書きで負数-loss)
+- [レビュー Findings の書き方サンプル](#レビュー-findings-の書き方サンプル)
+- [Immutable Design Findings](#immutable-design-findings)
+- [このリストの育て方](#このリストの育て方)
+
 これは「Knowledge Home / Loop の文脈」で書かれているが、構造は他の
 event-sourced サブシステムにそのまま適用できる。
 

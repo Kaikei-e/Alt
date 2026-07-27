@@ -23,7 +23,10 @@ Ask: "What does this module need to do? Who will use it?"
 
 ### 2. Generate Designs (Parallel Sub-Agents)
 
-Spawn 3+ sub-agents simultaneously using Task tool. Each must produce a **radically different** approach.
+Spawn exactly 3 sub-agents in one message using the Agent tool, so they run concurrently. Each must
+produce a **radically different** approach. Three is enough to get real contrast — more multiplies
+cost and time without widening the design space, and this is the one step where the parallelism is
+genuinely earned.
 
 ```
 Prompt template for each sub-agent:

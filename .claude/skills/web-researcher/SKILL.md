@@ -9,7 +9,6 @@ description: |
   - Evaluating libraries, frameworks, or approaches
   - Investigating errors, migration guides, or breaking changes
   - Needing up-to-date information beyond training data
-user-invocable: true
 allowed-tools: WebSearch, WebFetch, Read, Write, Agent
 argument-hint: <research topic or question> [--depth=shallow|deep] [--lang=en|ja]
 ---

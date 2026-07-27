@@ -3,6 +3,17 @@
 kawasima 理論の補強として、event sourcing / CQRS 一般理論からのアンチパターン
 集。レビュー時に「kawasima 観点」とは独立した別角度の裏取りに使う。
 
+## Contents
+
+- [1. Immutability Changes Everything (Pat Helland)](#1-immutability-changes-everything-pat-helland)
+- [2. Property Sourcing アンチパターン (Oskar Dudycz)](#2-property-sourcing-アンチパターン-oskar-dudycz)
+- [3. Materialized view / Live projection は read 最適化](#3-materialized-view-live-projection-は-read-最適化)
+- [4. Eventual consistency between event store and projection](#4-eventual-consistency-between-event-store-and-projection)
+- [5. Replay の冪等性](#5-replay-の冪等性)
+- [6. CQRS 文脈での "Read model は cheap, Event log は expensive"](#6-cqrs-文脈での-read-model-は-cheap-event-log-は-expensive)
+- [7. Idempotency key と "exactly-once illusion"](#7-idempotency-key-と-exactly-once-illusion)
+- [レビューでの 1 行チェック](#レビューでの-1-行チェック)
+
 > 主たる出典:
 > - Pat Helland, "Immutability Changes Everything", CIDR 2015
 >   <https://www.cidrdb.org/cidr2015/Papers/CIDR15_Paper16.pdf>

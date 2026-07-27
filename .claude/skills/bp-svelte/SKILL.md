@@ -1,14 +1,17 @@
 ---
 name: bp-svelte
-description: Svelte 5 & SvelteKit ベストプラクティス。Svelte 5 Runes ベースのコンポーネント設計規約。
-  TRIGGER when: .svelte ファイルを編集・作成する時、Svelte コンポーネントを書く時、alt-frontend-sv を実装する時。
-  DO NOT TRIGGER when: テストの実行のみ、ファイルの読み取りのみ、他言語の作業時。
+description: Alt の Svelte 5 / SvelteKit 規約を適用する。Runes（$state/$derived/$effect）、$props()、$effect をコールスタック越えで自己再発火させない、snippet でのコンポーネント合成、load 関数でのデータ取得、{@html} の DOMPurify 必須、keyed each の重複キー、非同期コールバックの stale-response guard を扱う。Svelte コンポーネントや SvelteKit のルート・load 関数を書く・直すときに使う。ユーザが「Svelte」に触れなくても alt-frontend-sv の UI 実装に入るなら使う。
+paths:
+  - "**/*.svelte"
+  - "alt-frontend-sv/src/routes/**/*.ts"
 ---
 
 # Svelte 5 & SvelteKit Best Practices
 
-このスキルが発動したら、`docs/best_practices/svelte.md` を Read ツールで読み込み、
-記載されたベストプラクティス（DECREE）に従ってコードを書くこと。
+以下はタスク全体を通じて有効な規約であり、一度読んで終わる手順ではない。Svelte コードを書くたびに適用する。
+
+詳細な根拠とコード例が必要になった時点で `docs/best_practices/svelte.md` の該当セクションだけを Read する
+（1221 行あるため全文読み込みはしない）。
 
 ## 重要原則
 

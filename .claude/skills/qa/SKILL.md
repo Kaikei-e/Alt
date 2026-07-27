@@ -1,11 +1,17 @@
 ---
 name: qa
-description: Interactive QA session where user reports bugs or issues conversationally, and the agent files GitHub issues. Explores the codebase in the background for context and domain language. Use when user wants to report bugs, do QA, file issues conversationally, or mentions "QA session".
+description: Run a conversational QA session — the user describes bugs one at a time, and each becomes a durable, user-focused GitHub issue written in the project's own domain language, broken into parallelizable sub-issues when it spans separable concerns. Use when the user wants to report bugs, walk through problems they hit while using the product, file issues conversationally, or mentions a QA session. Use log-seeker instead when the goal is to diagnose a failure rather than record it.
+allowed-tools: Bash, Read, Grep, Glob, Agent
 ---
 
 # QA Session
 
 Run an interactive QA session. The user describes problems they're encountering. You clarify, explore the codebase for context, and file GitHub issues that are durable, user-focused, and use the project's domain language.
+
+**Confirm the destination once, at the start.** Say which repo the issues will be filed against and get
+a go-ahead before the first `gh issue create`. Filing to a public tracker is externally visible and
+awkward to undo, and the fast loop below only works if that question is settled up front rather than
+re-asked for every issue.
 
 ## For each issue the user raises
 
@@ -23,7 +29,8 @@ Do NOT over-interview. If the description is clear enough to file, move on.
 
 While talking to the user, kick off an Agent (subagent_type=Explore) in the background to understand the relevant area. The goal is NOT to find a fix — it's to:
 
-- Learn the domain language used in that area (check UBIQUITOUS_LANGUAGE.md)
+- Learn the domain language used in that area (the canonical contracts under `docs/plan/` and the
+  wiki under `docs/wiki/` are where Alt's vocabulary is defined)
 - Understand what the feature is supposed to do
 - Identify the user-facing behavior boundary
 
@@ -46,7 +53,7 @@ Keep as a single issue when:
 
 ### 4. File the GitHub issue(s)
 
-Create issues with `gh issue create`. Do NOT ask the user to review first — just file and share URLs.
+Create issues with `gh issue create`. Once the destination is confirmed, don't ask for per-issue review — file and share the URL, so the session keeps its rhythm.
 
 Issues must be **durable** — they should still make sense after major refactors. Write from the user's perspective.
 
@@ -118,7 +125,7 @@ When creating a breakdown:
 #### Rules for all issue bodies
 
 - **No file paths or line numbers** — these go stale
-- **Use the project's domain language** (check UBIQUITOUS_LANGUAGE.md if it exists)
+- **Use the project's domain language** (as defined in `docs/plan/` contracts and `docs/wiki/`)
 - **Describe behaviors, not code** — "the sync service fails to apply the patch" not "applyPatch() throws on line 42"
 - **Reproduction steps are mandatory** — if you can't determine them, ask the user
 - **Keep it concise** — a developer should be able to read the issue in 30 seconds
