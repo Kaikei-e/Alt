@@ -173,14 +173,25 @@ echo "Creating model variants with fixed num_ctx (8K, 12K)..."
 create_model() {
   local model_name=$1
   local modelfile=$2
+  # Existence alone is not enough to skip: an edited Modelfile (num_ctx,
+  # num_gpu) would otherwise never reach the runner, and the stale tag keeps
+  # loading with the old parameters. Re-create whenever the digest moves.
+  local digest_dir="${OLLAMA_MODELS:-${HOME}/.ollama}/.modelfile-digest"
+  local digest_file="${digest_dir}/${model_name}"
+  local want_digest=""
+  [ -f "$modelfile" ] && want_digest="$(sha256sum "$modelfile" | cut -d' ' -f1)"
   echo "Creating model $model_name from $modelfile..."
-  if [ "$FORCE_MODEL_REFRESH" != "1" ] && ollama list 2>/dev/null | grep -q "^$model_name"; then
-    echo "  Model $model_name already exists, skipping creation"
+  if [ "$FORCE_MODEL_REFRESH" != "1" ] &&
+    [ -n "$want_digest" ] &&
+    [ "$want_digest" = "$(cat "$digest_file" 2>/dev/null)" ] &&
+    ollama list 2>/dev/null | grep -q "^$model_name"; then
+    echo "  Model $model_name already exists with an unchanged Modelfile, skipping creation"
     echo "gemma4.refresh.skipped=${model_name}"
   else
     if [ -f "$modelfile" ]; then
       if ollama create "$model_name" -f "$modelfile"; then
         echo "  Model $model_name created successfully"
+        mkdir -p "$digest_dir" && printf '%s\n' "$want_digest" >"$digest_file"
       else
         echo "  Warning: Failed to create model $model_name"
       fi
@@ -196,16 +207,19 @@ create_model "gemma4-e4b-12k" "$MODELFILE_DIR/Modelfile.gemma4-e4b-12k"
 echo "Model variants created (if needed)."
 
 # --- preload default RAG model only ------------------------
+# num_gpu pins the offload split for the runner this preload starts: Ollama
+# forwards --n-gpu-layers only when the option is in the request, and a partial
+# CPU/GPU split aborts gemma4 at load.
 echo "Preloading 12K model only (8K remains available on-demand)..."
 echo "  Loading 12K model (attempt 1/3)..."
 if curl -s -X POST http://localhost:11435/api/generate \
-  -d '{"model":"gemma4-e4b-12k","prompt":"ping","stream":false,"keep_alive":"24h","options":{"num_predict":1}}' \
+  -d '{"model":"gemma4-e4b-12k","prompt":"ping","stream":false,"keep_alive":"24h","options":{"num_predict":1,"num_gpu":99}}' \
   >/dev/null 2>&1; then
   echo "  12K model preloaded successfully (will be kept in GPU memory)"
   sleep 2
   echo "  Verifying 12K model is loaded (attempt 2/3)..."
   if curl -s -X POST http://localhost:11435/api/generate \
-    -d '{"model":"gemma4-e4b-12k","prompt":"ping","stream":false,"keep_alive":"24h","options":{"num_predict":1}}' \
+    -d '{"model":"gemma4-e4b-12k","prompt":"ping","stream":false,"keep_alive":"24h","options":{"num_predict":1,"num_gpu":99}}' \
     >/dev/null 2>&1; then
     echo "  12K model confirmed to be loaded in GPU memory (keep_alive: 24h)"
   else

@@ -26,6 +26,11 @@ class LLMConfig:
     keep_alive_60k: str = "15m"
     num_ctx: int = 8192
     num_batch: int = 1024
+    # Pin the offload split. Ollama forwards --n-gpu-layers to llama-server only
+    # when num_gpu is in the request; without it llama.cpp auto-fits the layer
+    # count to whatever VRAM is free and degrades to a CPU/GPU split, and gemma4
+    # aborts at load in that configuration.
+    num_gpu: int = 99
     num_predict: int = 1200
     temperature: float = 0.7
     top_p: float = 0.85
@@ -56,6 +61,7 @@ class LLMConfig:
             "num_ctx": self.num_ctx,
             "num_predict": self.num_predict,
             "num_batch": self.num_batch,
+            "num_gpu": self.num_gpu,
             "temperature": self.temperature,
             "top_p": self.top_p,
             "top_k": self.top_k,
@@ -94,6 +100,7 @@ class LLMConfig:
             keep_alive_60k=os.getenv("LLM_KEEP_ALIVE_60K", "15m"),
             num_ctx=_get_int("LLM_NUM_CTX", 8192),
             num_batch=_get_int("LLM_NUM_BATCH", 1024),
+            num_gpu=_get_int("LLM_NUM_GPU", 99),
             num_predict=_get_int("LLM_NUM_PREDICT", 1200),
             temperature=_get_float("LLM_TEMPERATURE", 0.7),
             top_p=_get_float("LLM_TOP_P", 0.85),

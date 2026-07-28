@@ -41,6 +41,7 @@ def mock_config():
         "num_ctx": 4096,
         "num_predict": 500,
         "temperature": 0.2,
+        "num_gpu": 99,
     }
     return config
 
@@ -1026,6 +1027,26 @@ async def test_generate_filters_runner_startup_params(mock_config, mock_driver):
         assert sent_options["num_ctx"] == 4096
         # Sampling params still pass through
         assert sent_options["temperature"] == 0.5
+
+
+@pytest.mark.asyncio
+async def test_generate_keeps_pinned_num_gpu(mock_config, mock_driver):
+    """generate() must strip a caller-supplied num_gpu.
+
+    The offload split is decided once at runner startup. A caller lowering it
+    would reload the runner into a CPU/GPU split, which aborts gemma4 at load,
+    so the config base value has to win.
+    """
+    with patch(
+        "news_creator.gateway.ollama_gateway.OllamaDriver", return_value=mock_driver
+    ):
+        gateway = OllamaGateway(mock_config)
+        await gateway.initialize()
+
+        await gateway.generate("Test prompt", options={"num_gpu": 0})
+
+        sent_options = mock_driver.generate.call_args.args[0]["options"]
+        assert sent_options["num_gpu"] == 99
 
         await gateway.cleanup()
 

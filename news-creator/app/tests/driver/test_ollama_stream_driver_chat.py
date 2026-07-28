@@ -324,6 +324,17 @@ class TestMergeOptionsRunnerParamGuard:
         merged = driver._merge_options({"num_keep": base_num_keep + 10})
         assert merged["num_keep"] == base_num_keep
 
+    def test_strips_caller_num_gpu(self, driver):
+        """A caller must not be able to move the model off the GPU.
+
+        num_gpu decides the offload split at runner startup; a caller-supplied
+        value would reload the runner into a CPU/GPU split, which aborts
+        gemma4 at load.
+        """
+        base_num_gpu = driver.config.get_llm_options()["num_gpu"]
+        merged = driver._merge_options({"num_gpu": 0})
+        assert merged["num_gpu"] == base_num_gpu
+
     def test_sampling_params_still_caller_priority(self, driver):
         caller_options = {
             "temperature": 0.05,

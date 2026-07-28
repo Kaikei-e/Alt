@@ -89,6 +89,32 @@ class TestLLMConfig:
         assert options["temperature"] == 0.7
         assert options["stop"] == ["<turn|>"]
 
+    def test_llm_config_get_options_pins_gpu_layers(self):
+        """get_options() must carry num_gpu so Ollama forwards --n-gpu-layers.
+
+        Ollama only passes -ngl to llama-server when the option is present in
+        the request; a Modelfile PARAMETER alone does not reach the runner
+        (measured on Ollama 0.32.1). Without the flag llama.cpp auto-fits the
+        layer count to whatever VRAM happens to be free and degrades to a
+        CPU/GPU split, and gemma4 aborts at load in that configuration.
+        """
+        from news_creator.config.llm_config import LLMConfig
+
+        config = LLMConfig(
+            service_url="http://localhost:11435",
+            model_name="gemma4-e4b-q4km",
+        )
+
+        assert config.get_options()["num_gpu"] == 99
+
+    def test_llm_config_from_env_reads_num_gpu(self, monkeypatch):
+        """LLM_NUM_GPU overrides the pinned layer count."""
+        from news_creator.config.llm_config import LLMConfig
+
+        monkeypatch.setenv("LLM_NUM_GPU", "43")
+
+        assert LLMConfig.from_env().num_gpu == 43
+
     def test_llm_config_from_env(self, monkeypatch):
         """LLMConfig.from_env() should load from environment variables."""
         from news_creator.config.llm_config import LLMConfig

@@ -188,11 +188,18 @@ services:
       - OLLAMA_MODELS=/home/ollama-user/.ollama
       - OLLAMA_KEEP_ALIVE=24h
       # 3 embedding models stay resident: embeddinggemma (rag-orchestrator),
-      # mxbai-embed-large (recap-subworker), qwen3-embedding (Meilisearch
-      # hybrid search). All are small; a lower cap would make them evict
-      # each other on alternating traffic.
+      # bge-m3 (recap-subworker, selected by .env OLLAMA_EMBED_MODEL),
+      # qwen3-embedding (Meilisearch hybrid search). All are small; a lower cap
+      # would make them evict each other on alternating traffic. This list must
+      # match what consumers actually request: a model missing here is still
+      # loaded on demand and then holds VRAM that news-creator's generation
+      # model needs to fit entirely on the GPU.
       - OLLAMA_MAX_LOADED_MODELS=3
-      - EMBEDDING_MODELS=embeddinggemma mxbai-embed-large qwen3-embedding:0.6b
+      - EMBEDDING_MODELS=embeddinggemma bge-m3 qwen3-embedding:0.6b
+      # Ollama allocates each model's context once per parallel slot, so the
+      # image default of 8 multiplies resident VRAM on a GPU shared with the
+      # generation model. Embedding calls are short; 2 slots absorb the bursts.
+      - OLLAMA_NUM_PARALLEL=2
       - NVIDIA_VISIBLE_DEVICES=all
       - NVIDIA_DRIVER_CAPABILITIES=compute,utility
       # /usr/lib/ollama must come first: libggml-cuda.so links against

@@ -12,7 +12,7 @@ logger = logging.getLogger(__name__)
 # Runner startup params: changing these mid-session forces Ollama to reload
 # the model runner. They are fixed by config/Modelfile, never caller-supplied,
 # mirroring the /api/generate path's defense (ollama_gateway.py).
-_RUNNER_STARTUP_PARAMS = frozenset({"num_ctx", "num_batch", "num_keep"})
+_RUNNER_STARTUP_PARAMS = frozenset({"num_ctx", "num_batch", "num_keep", "num_gpu"})
 
 
 class OllamaStreamDriver:
