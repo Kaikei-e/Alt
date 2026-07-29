@@ -138,12 +138,17 @@ func TestAppendKnowledgeEvent_ArticleUrlBackfilled(t *testing.T) {
 				"Content-Type": matchers.String("application/json"),
 			},
 			Body: matchers.MapMatcher{
-				"success": matchers.Like(true),
+				// AppendKnowledgeEventResponse declares only `int64 event_seq`.
+				// This body previously also required `success`, which the proto
+				// has never had and no handler can emit — only the hand-written
+				// provider stub produced it. protojson renders int64 as a JSON
+				// string, so the value is "123", not 123.
+				//
 				// Pin the eventSeq field shape so the consumer's accurate
 				// SkippedDuplicate counter (ADR-869, port returning
 				// (eventSeq int64, err error)) keeps working if the
 				// provider ever re-renames the proto field.
-				"eventSeq": matchers.Like(123),
+				"eventSeq": matchers.Like("123"),
 			},
 		}).
 		ExecuteTest(t, func(config consumer.MockServerConfig) error {

@@ -122,14 +122,20 @@ func TestApplyProjectionMutationReturnsErrorMessageOnRejection(t *testing.T) {
 				"idempotencyKey": matchers.Like("dismiss_home_item:user-1:article-2"),
 			},
 		}).
+		// ApplyProjectionMutationResponse declares success / error_message, but
+		// the handler never populates them on failure: a repository error
+		// becomes connect.NewError(CodeInternal), which is HTTP 500 with the
+		// Connect error envelope. The previous expectation (200 + success=false)
+		// described a soft-failure path the provider does not have, and the
+		// hand-written stub was the only thing that ever produced it.
 		WithCompleteResponse(consumer.Response{
-			Status: 200,
+			Status: 500,
 			Headers: matchers.MapMatcher{
 				"Content-Type": matchers.String("application/json"),
 			},
 			Body: matchers.MapMatcher{
-				"success":      matchers.Like(false),
-				"errorMessage": matchers.Like("projection version mismatch"),
+				"code":    matchers.String("internal"),
+				"message": matchers.Like("projection version mismatch"),
 			},
 		}).
 		ExecuteTest(t, func(config consumer.MockServerConfig) error {
@@ -140,11 +146,10 @@ func TestApplyProjectionMutationReturnsErrorMessageOnRejection(t *testing.T) {
 				Payload:        []byte(`{"user_id":"user-1"}`),
 				IdempotencyKey: "dismiss_home_item:user-1:article-2",
 			}))
-			if err != nil {
-				return fmt.Errorf("ApplyProjectionMutation unexpected transport error: %w", err)
+			if err == nil {
+				return fmt.Errorf("ApplyProjectionMutation succeeded (%v); a rejected mutation must surface as a Connect error", resp)
 			}
-			assert.False(t, resp.Msg.Success)
-			assert.NotEmpty(t, resp.Msg.ErrorMessage)
+			assert.Equal(t, connect.CodeInternal, connect.CodeOf(err))
 			return nil
 		})
 	require.NoError(t, err)
@@ -196,13 +201,18 @@ func TestApplyRecallMutationSnoozeCandidate(t *testing.T) {
 	require.NoError(t, err)
 }
 
-func TestApplyCurationMutationCreateLens(t *testing.T) {
+// dismiss_curation is the only mutation_type ApplyCurationMutation dispatches;
+// every other value returns InvalidArgument. This interaction previously said
+// create_lens, which the provider has never accepted — lens creation has its
+// own CreateLens RPC. Note that no production code calls ApplyCurationMutation
+// today; this pins the client method's wire shape, not a live call site.
+func TestApplyCurationMutationDismissCuration(t *testing.T) {
 	mockProvider := newSovereignPact(t)
 
 	err := mockProvider.
 		AddInteraction().
-		Given("the curation mutation create_lens is accepted").
-		UponReceiving("an ApplyCurationMutation request of kind create_lens").
+		Given("the curation mutation dismiss_curation is accepted").
+		UponReceiving("an ApplyCurationMutation request of kind dismiss_curation").
 		WithCompleteRequest(consumer.Request{
 			Method: "POST",
 			Path:   matchers.String("/services.sovereign.v1.KnowledgeSovereignService/ApplyCurationMutation"),
@@ -210,10 +220,10 @@ func TestApplyCurationMutationCreateLens(t *testing.T) {
 				"Content-Type": matchers.String("application/json"),
 			},
 			Body: matchers.MapMatcher{
-				"mutationType":   matchers.String("create_lens"),
-				"entityId":       matchers.Like("lens-1"),
+				"mutationType":   matchers.String("dismiss_curation"),
+				"entityId":       matchers.Like("user-1:article-2"),
 				"payload":        matchers.Like("eyJsZW5zX2lkIjoibGVucy0xIn0="),
-				"idempotencyKey": matchers.Like("create_lens:lens-1"),
+				"idempotencyKey": matchers.Like("dismiss_curation:user-1:article-2"),
 			},
 		}).
 		WithCompleteResponse(consumer.Response{
@@ -228,10 +238,10 @@ func TestApplyCurationMutationCreateLens(t *testing.T) {
 		ExecuteTest(t, func(config consumer.MockServerConfig) error {
 			client := newSovereignClient(config)
 			resp, err := client.ApplyCurationMutation(context.Background(), connect.NewRequest(&sovereignv1.ApplyCurationMutationRequest{
-				MutationType:   "create_lens",
-				EntityId:       "lens-1",
+				MutationType:   "dismiss_curation",
+				EntityId:       "user-1:article-2",
 				Payload:        []byte(`{"lens_id":"lens-1"}`),
-				IdempotencyKey: "create_lens:lens-1",
+				IdempotencyKey: "dismiss_curation:user-1:article-2",
 			}))
 			if err != nil {
 				return fmt.Errorf("ApplyCurationMutation failed: %w", err)

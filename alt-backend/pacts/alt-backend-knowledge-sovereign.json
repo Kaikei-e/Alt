@@ -229,6 +229,8 @@
               "episodeKey": "ep:open:article:1",
               "footprints": [
                 {
+                  "contactCount": 2,
+                  "firstOccurredAt": "2026-06-01T08:00:00Z",
                   "footprintKey": "open:article:1",
                   "itemKey": "article:1",
                   "occurredAt": "2026-06-10T09:12:00Z",
@@ -236,16 +238,6 @@
                 }
               ],
               "wear": "worn"
-            }
-          ],
-          "footprints": [
-            {
-              "contactCount": 2,
-              "firstOccurredAt": "2026-06-01T08:00:00Z",
-              "footprintKey": "open:article:1",
-              "itemKey": "article:1",
-              "occurredAt": "2026-06-10T09:12:00Z",
-              "verb": "read"
             }
           ]
         },
@@ -346,6 +338,22 @@
                 }
               ]
             },
+            "$.episodes[*].footprints[*].contactCount": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.episodes[*].footprints[*].firstOccurredAt": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
             "$.episodes[*].footprints[*].footprintKey": {
               "combine": "AND",
               "matchers": [
@@ -379,63 +387,6 @@
               ]
             },
             "$.episodes[*].wear": {
-              "combine": "AND",
-              "matchers": [
-                {
-                  "match": "type"
-                }
-              ]
-            },
-            "$.footprints": {
-              "combine": "AND",
-              "matchers": [
-                {
-                  "match": "type",
-                  "min": 1
-                }
-              ]
-            },
-            "$.footprints[*].contactCount": {
-              "combine": "AND",
-              "matchers": [
-                {
-                  "match": "type"
-                }
-              ]
-            },
-            "$.footprints[*].firstOccurredAt": {
-              "combine": "AND",
-              "matchers": [
-                {
-                  "match": "type"
-                }
-              ]
-            },
-            "$.footprints[*].footprintKey": {
-              "combine": "AND",
-              "matchers": [
-                {
-                  "match": "type"
-                }
-              ]
-            },
-            "$.footprints[*].itemKey": {
-              "combine": "AND",
-              "matchers": [
-                {
-                  "match": "type"
-                }
-              ]
-            },
-            "$.footprints[*].occurredAt": {
-              "combine": "AND",
-              "matchers": [
-                {
-                  "match": "type"
-                }
-              ]
-            },
-            "$.footprints[*].verb": {
               "combine": "AND",
               "matchers": [
                 {
@@ -634,8 +585,7 @@
       },
       "response": {
         "body": {
-          "eventSeq": 123,
-          "success": true
+          "eventSeq": "123"
         },
         "headers": {
           "Content-Type": "application/json"
@@ -643,14 +593,6 @@
         "matchingRules": {
           "body": {
             "$.eventSeq": {
-              "combine": "AND",
-              "matchers": [
-                {
-                  "match": "type"
-                }
-              ]
-            },
-            "$.success": {
               "combine": "AND",
               "matchers": [
                 {
@@ -706,14 +648,14 @@
       },
       "response": {
         "body": {
-          "success": true
+          "eventSeq": "123"
         },
         "headers": {
           "Content-Type": "application/json"
         },
         "matchingRules": {
           "body": {
-            "$.success": {
+            "$.eventSeq": {
               "combine": "AND",
               "matchers": [
                 {
@@ -769,14 +711,14 @@
       },
       "response": {
         "body": {
-          "success": true
+          "eventSeq": "123"
         },
         "headers": {
           "Content-Type": "application/json"
         },
         "matchingRules": {
           "body": {
-            "$.success": {
+            "$.eventSeq": {
               "combine": "AND",
               "matchers": [
                 {
@@ -832,14 +774,14 @@
       },
       "response": {
         "body": {
-          "success": true
+          "eventSeq": "123"
         },
         "headers": {
           "Content-Type": "application/json"
         },
         "matchingRules": {
           "body": {
-            "$.success": {
+            "$.eventSeq": {
               "combine": "AND",
               "matchers": [
                 {
@@ -895,14 +837,14 @@
       },
       "response": {
         "body": {
-          "success": true
+          "eventSeq": "123"
         },
         "headers": {
           "Content-Type": "application/json"
         },
         "matchingRules": {
           "body": {
-            "$.success": {
+            "$.eventSeq": {
               "combine": "AND",
               "matchers": [
                 {
@@ -916,17 +858,17 @@
       }
     },
     {
-      "description": "an ApplyCurationMutation request of kind create_lens",
+      "description": "an ApplyCurationMutation request of kind dismiss_curation",
       "providerStates": [
         {
-          "name": "the curation mutation create_lens is accepted"
+          "name": "the curation mutation dismiss_curation is accepted"
         }
       ],
       "request": {
         "body": {
-          "entityId": "lens-1",
-          "idempotencyKey": "create_lens:lens-1",
-          "mutationType": "create_lens",
+          "entityId": "user-1:article-2",
+          "idempotencyKey": "dismiss_curation:user-1:article-2",
+          "mutationType": "dismiss_curation",
           "payload": "eyJsZW5zX2lkIjoibGVucy0xIn0="
         },
         "headers": {
@@ -1105,23 +1047,15 @@
       },
       "response": {
         "body": {
-          "errorMessage": "projection version mismatch",
-          "success": false
+          "code": "internal",
+          "message": "projection version mismatch"
         },
         "headers": {
           "Content-Type": "application/json"
         },
         "matchingRules": {
           "body": {
-            "$.errorMessage": {
-              "combine": "AND",
-              "matchers": [
-                {
-                  "match": "type"
-                }
-              ]
-            },
-            "$.success": {
+            "$.message": {
               "combine": "AND",
               "matchers": [
                 {
@@ -1131,7 +1065,7 @@
             }
           }
         },
-        "status": 200
+        "status": 500
       }
     },
     {

@@ -48,18 +48,12 @@ func TestGetTrailFootprintsReturnsSpine(t *testing.T) {
 				"Content-Type": matchers.String("application/json"),
 			},
 			Body: matchers.MapMatcher{
-				// contactCount / firstOccurredAt carry the D24 collapse: repeated
-				// contacts with one article arrive as one footprint with a count,
-				// never one row per day. A provider-side drop silently regresses
-				// the spine to the duplicate display, so both are pinned.
-				"footprints": matchers.EachLike(matchers.MapMatcher{
-					"footprintKey":    matchers.Like("open:article:1"),
-					"verb":            matchers.Like("read"),
-					"itemKey":         matchers.Like("article:1"),
-					"occurredAt":      matchers.Like("2026-06-10T09:12:00Z"),
-					"contactCount":    matchers.Like(2),
-					"firstOccurredAt": matchers.Like("2026-06-01T08:00:00Z"),
-				}, 1),
+				// The top-level `footprints` field is not pinned: rpc_trail.go
+				// leaves it empty ("superseded by episodes (Wave 8)"), so
+				// requiring it described the stub rather than the handler. The
+				// D24 collapse it used to carry (contactCount /
+				// firstOccurredAt) belongs to the episode footprints below.
+				//
 				// The branch four-tuple is the contract: a provider-side drop of
 				// relation_kind / why / evidence_refs / confidence empties the
 				// branch surface, so pin all four.
@@ -81,11 +75,18 @@ func TestGetTrailFootprintsReturnsSpine(t *testing.T) {
 				"episodes": matchers.EachLike(matchers.MapMatcher{
 					"episodeKey": matchers.Like("ep:open:article:1"),
 					"wear":       matchers.Like("worn"),
+					// contactCount / firstOccurredAt carry the D24 collapse:
+					// repeated contacts with one article arrive as one footprint
+					// with a count, never one row per day. mapTrailFootprints
+					// emits them per episode footprint, so they are pinned here
+					// rather than on the retired top-level list.
 					"footprints": matchers.EachLike(matchers.MapMatcher{
-						"footprintKey": matchers.Like("open:article:1"),
-						"verb":         matchers.Like("read"),
-						"itemKey":      matchers.Like("article:1"),
-						"occurredAt":   matchers.Like("2026-06-10T09:12:00Z"),
+						"footprintKey":    matchers.Like("open:article:1"),
+						"verb":            matchers.Like("read"),
+						"itemKey":         matchers.Like("article:1"),
+						"occurredAt":      matchers.Like("2026-06-10T09:12:00Z"),
+						"contactCount":    matchers.Like(2),
+						"firstOccurredAt": matchers.Like("2026-06-01T08:00:00Z"),
 					}, 1),
 				}, 1),
 			},
@@ -99,13 +100,6 @@ func TestGetTrailFootprintsReturnsSpine(t *testing.T) {
 			if err != nil {
 				return fmt.Errorf("GetTrailFootprints failed: %w", err)
 			}
-			require.NotEmpty(t, resp.Msg.Footprints, "provider must return at least one footprint")
-			assert.NotEmpty(t, resp.Msg.Footprints[0].Verb, "footprint.verb must be present")
-			assert.NotNil(t, resp.Msg.Footprints[0].OccurredAt, "footprint.occurred_at must be present")
-			assert.GreaterOrEqual(t, resp.Msg.Footprints[0].ContactCount, int32(1),
-				"footprint.contact_count must be present (collapsed contacts, D24)")
-			assert.NotNil(t, resp.Msg.Footprints[0].FirstOccurredAt,
-				"footprint.first_occurred_at must be present")
 			require.NotEmpty(t, resp.Msg.Branches, "provider must return the open branches")
 			b := resp.Msg.Branches[0]
 			assert.NotEmpty(t, b.RelationKind, "branch.relation_kind must be present")
@@ -118,6 +112,11 @@ func TestGetTrailFootprintsReturnsSpine(t *testing.T) {
 			assert.NotEmpty(t, ep.Wear, "episode.wear must be present")
 			require.NotEmpty(t, ep.Footprints, "episode.footprints must be present")
 			assert.NotEmpty(t, ep.Footprints[0].Verb, "episode footprint.verb must be present")
+			assert.NotNil(t, ep.Footprints[0].OccurredAt, "episode footprint.occurred_at must be present")
+			assert.GreaterOrEqual(t, ep.Footprints[0].ContactCount, int32(1),
+				"episode footprint.contact_count must be present (collapsed contacts, D24)")
+			assert.NotNil(t, ep.Footprints[0].FirstOccurredAt,
+				"episode footprint.first_occurred_at must be present")
 			return nil
 		})
 	require.NoError(t, err)
