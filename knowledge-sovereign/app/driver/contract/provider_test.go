@@ -9,18 +9,14 @@
 //   - alt-backend → ApplyProjectionMutation / ApplyRecallMutation /
 //     ApplyCurationMutation (Connect-RPC, JSON wire format)
 //
-// The verification uses a minimal stub HTTP server that encodes the
-// provider's Connect-RPC contract; it does not spin up Postgres.
-// This matches the precedent set by alt-backend/app/driver/contract/
-// provider_test.go.
+// Verification runs against the production Connect-RPC and admin REST
+// handlers with a fixture repository behind them (provider_server.go); it
+// does not spin up Postgres. The handlers, not a hand-written stub, decide
+// the wire shape.
 package contract
 
 import (
-	"encoding/json"
 	"fmt"
-	"io"
-	"net"
-	"net/http"
 	"os"
 	"testing"
 	"time"
@@ -41,359 +37,6 @@ const (
 	recapWorkerPactFile   = "../../../../recap-worker/pacts/recap-worker-knowledge-sovereign.json"
 	recapWorkerPactAtRoot = "../../../../pacts/recap-worker-knowledge-sovereign.json"
 )
-
-// applyMutationRequest mirrors the shared wire shape of
-// Apply{Projection,Recall,Curation}MutationRequest. protojson uses
-// camelCase; `payload` is a base64 string on the wire because the
-// proto field is `bytes`.
-type applyMutationRequest struct {
-	MutationType   string `json:"mutationType"`
-	EntityId       string `json:"entityId"`
-	Payload        string `json:"payload"`
-	IdempotencyKey string `json:"idempotencyKey"`
-}
-
-// applyMutationResponse mirrors the shared response shape.
-type applyMutationResponse struct {
-	Success      bool   `json:"success"`
-	ErrorMessage string `json:"errorMessage,omitempty"`
-}
-
-// startStubServer encodes the sovereign Connect-RPC mutation contract
-// as a tiny HTTP stub. Every supported mutation returns success=true
-// unless the consumer explicitly declares a rejection state via the
-// "mutation is rejected" provider-state handler.
-func startStubServer(t *testing.T, reject *bool) int {
-	t.Helper()
-
-	mux := http.NewServeMux()
-
-	mutationHandler := func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodPost {
-			w.WriteHeader(http.StatusMethodNotAllowed)
-			return
-		}
-		var req applyMutationRequest
-		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-			w.WriteHeader(http.StatusBadRequest)
-			return
-		}
-		_, _ = io.Copy(io.Discard, r.Body)
-
-		w.Header().Set("Content-Type", "application/json")
-		if reject != nil && *reject {
-			_ = json.NewEncoder(w).Encode(applyMutationResponse{
-				Success:      false,
-				ErrorMessage: "projection version mismatch",
-			})
-			return
-		}
-		_ = json.NewEncoder(w).Encode(applyMutationResponse{Success: true})
-	}
-
-	mux.HandleFunc("/services.sovereign.v1.KnowledgeSovereignService/ApplyProjectionMutation", mutationHandler)
-	mux.HandleFunc("/services.sovereign.v1.KnowledgeSovereignService/ApplyRecallMutation", mutationHandler)
-	mux.HandleFunc("/services.sovereign.v1.KnowledgeSovereignService/ApplyCurationMutation", mutationHandler)
-
-	// AppendKnowledgeEvent (ADR-000840 versioned event_type convention).
-	// Consumers append events such as the URL-backfill admin path
-	// (ADR-000869) ArticleUrlBackfilled corrective events and
-	// TagSetVersionCreated events. The provider's wire shape
-	// is `{"success": true, "eventSeq": <int64>}` on a well-formed
-	// request — projector-side dedupe / same-stage validation lives in
-	// the sovereign DB driver, out of this contract. `eventSeq` is
-	// required because alt-backend's URL-backfill SkippedDuplicate
-	// counter (ADR-000869) distinguishes `seq > 0` (genuinely appended)
-	// from `seq == 0` (dedupe registry hit), and the alt-backend
-	// consumer pact pins this field so a future drop of the field would
-	// silently regress the operator-visible counter.
-	mux.HandleFunc("/services.sovereign.v1.KnowledgeSovereignService/AppendKnowledgeEvent", func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodPost {
-			w.WriteHeader(http.StatusMethodNotAllowed)
-			return
-		}
-		_, _ = io.Copy(io.Discard, r.Body)
-		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(map[string]any{
-			"success":  true,
-			"eventSeq": 1,
-		})
-	})
-
-	// GetTrailFootprints read path (Knowledge Trail spine). The footprint's
-	// verb / item_key / occurred_at are the wire contract the alt-backend
-	// consumer pins; a provider-side drop empties the spine. episodes are the
-	// spine's default display unit (D24/D30, Wave 8); a provider-side drop of
-	// episode_key/wear/footprints regresses the FE back to the legacy flat
-	// spine, so the consumer pact pins all three.
-	//
-	// Wave 9 (D25 — trail search): a request carrying filter_item_keys must
-	// narrow the response to episodes containing a matching item, mirroring
-	// the real handler's filterEpisodesByItemKeys. The stub parses the
-	// request body to serve the narrowed fixture the consumer pact pins.
-	mux.HandleFunc("/services.sovereign.v1.KnowledgeSovereignService/GetTrailFootprints", func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodPost {
-			w.WriteHeader(http.StatusMethodNotAllowed)
-			return
-		}
-		bodyBytes, _ := io.ReadAll(r.Body)
-		var req struct {
-			FilterItemKeys []string `json:"filterItemKeys"`
-		}
-		_ = json.Unmarshal(bodyBytes, &req)
-
-		w.Header().Set("Content-Type", "application/json")
-		if len(req.FilterItemKeys) > 0 {
-			_ = json.NewEncoder(w).Encode(map[string]any{
-				"episodes": []map[string]any{
-					{
-						"episodeKey": "ep:open:article:1",
-						"wear":       "worn",
-						"footprints": []map[string]any{
-							{
-								"footprintKey": "open:article:1",
-								"verb":         "read",
-								"itemKey":      "article:1",
-								"occurredAt":   "2026-06-10T09:12:00Z",
-							},
-						},
-					},
-				},
-			})
-			return
-		}
-		_ = json.NewEncoder(w).Encode(map[string]any{
-			// footprints is the legacy flat spine — superseded by episodes and
-			// empty in production, but the consumer pact still pins its shape
-			// against historical/legacy readers, so the stub keeps serving it.
-			"footprints": []map[string]any{
-				{
-					"footprintKey": "open:article:1",
-					"verb":         "read",
-					"itemKey":      "article:1",
-					"occurredAt":   "2026-06-10T09:12:00Z",
-					// D24 collapse: repeated contacts arrive as a count, never as
-					// one row per day.
-					"contactCount":    2,
-					"firstOccurredAt": "2026-06-01T08:00:00Z",
-				},
-			},
-			"branches": []map[string]any{
-				{
-					"branchKey":     "cluster:u:article:z",
-					"anchorItemKey": "article:1",
-					"relationKind":  "cluster",
-					"why":           "Joins a topic you follow.",
-					"confidence":    "plausible",
-					"targetItemKey": "article:z",
-					"evidenceRefs": []map[string]any{
-						{"refId": "rust", "label": "rust", "kind": "tag"},
-					},
-				},
-			},
-			"episodes": []map[string]any{
-				{
-					"episodeKey": "ep:open:article:1",
-					"wear":       "worn",
-					"footprints": []map[string]any{
-						{
-							"footprintKey": "open:article:1",
-							"verb":         "read",
-							"itemKey":      "article:1",
-							"occurredAt":   "2026-06-10T09:12:00Z",
-						},
-					},
-				},
-			},
-		})
-	})
-
-	// GetTrailBranchesForAnchor (Wave 10, D26 — patch-exit branches). The
-	// branch four-tuple is the same untyped-branch contract GetTrailFootprints
-	// pins; a provider-side drop of relation_kind/why/evidence_refs/confidence
-	// would silently empty the patch-exit surface.
-	mux.HandleFunc("/services.sovereign.v1.KnowledgeSovereignService/GetTrailBranchesForAnchor", func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodPost {
-			w.WriteHeader(http.StatusMethodNotAllowed)
-			return
-		}
-		_, _ = io.Copy(io.Discard, r.Body)
-		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(map[string]any{
-			"branches": []map[string]any{
-				{
-					"branchKey":     "cluster:u:article:z",
-					"anchorItemKey": "article:1",
-					"relationKind":  "cluster",
-					"why":           `Because you read "US military courts in the UK" — joins rust`,
-					"confidence":    "plausible",
-					"targetItemKey": "article:z",
-					"targetTitle":   "Async Rust",
-					"evidenceRefs": []map[string]any{
-						{"refId": "rust", "label": "rust", "kind": "tag"},
-					},
-				},
-			},
-		})
-	})
-
-	// Admin REST surface on the same listener: pact-go routes every
-	// consumer interaction through the single ProviderBaseURL, so we
-	// serve Connect-RPC and admin REST on the same port.
-	// ADR-000942: admin surface responses use explicit snake_case json
-	// tags and are wrapped in named envelopes, matching altctl's
-	// home_retention.go / home_storage.go / home_snapshot.go decode
-	// structs. This supersedes ADR-000765 §3's PascalCase-no-tags stance.
-	mux.HandleFunc("/admin/snapshots/create", func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodPost {
-			w.WriteHeader(http.StatusMethodNotAllowed)
-			return
-		}
-		_, _ = io.Copy(io.Discard, r.Body)
-		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(map[string]any{
-			"snapshot_id":         "11111111-2222-3333-4444-555555555555",
-			"snapshot_type":       "full",
-			"projection_version":  1,
-			"projector_build_ref": "staging",
-			"schema_version":      "00009",
-			"event_seq_boundary":  1,
-			"items_row_count":     0,
-			"items_checksum":      "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-			"digest_row_count":    0,
-			"digest_checksum":     "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
-			"recall_row_count":    0,
-			"recall_checksum":     "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
-			"snapshot_at":         "2026-04-23T00:00:00Z",
-			"status":              "valid",
-		})
-	})
-	mux.HandleFunc("/admin/snapshots/latest", func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodGet {
-			w.WriteHeader(http.StatusMethodNotAllowed)
-			return
-		}
-		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(map[string]any{
-			"snapshot_id":         "11111111-2222-3333-4444-555555555555",
-			"snapshot_type":       "full",
-			"projection_version":  1,
-			"projector_build_ref": "staging",
-			"schema_version":      "00009",
-			"event_seq_boundary":  1,
-			"items_row_count":     0,
-			"items_checksum":      "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-			"digest_row_count":    0,
-			"digest_checksum":     "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
-			"recall_row_count":    0,
-			"recall_checksum":     "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
-			"snapshot_at":         "2026-04-23T00:00:00Z",
-			"status":              "valid",
-		})
-	})
-	mux.HandleFunc("/admin/snapshots/list", func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodGet {
-			w.WriteHeader(http.StatusMethodNotAllowed)
-			return
-		}
-		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(map[string]any{
-			"snapshots": []map[string]any{
-				{
-					"snapshot_id":        "11111111-2222-3333-4444-555555555555",
-					"projection_version": 1,
-					"event_seq_boundary": 1,
-					"items_row_count":    0,
-					"snapshot_at":        "2026-04-23T00:00:00Z",
-					"status":             "valid",
-				},
-			},
-		})
-	})
-	mux.HandleFunc("/admin/retention/eligible", func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodGet {
-			w.WriteHeader(http.StatusMethodNotAllowed)
-			return
-		}
-		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(map[string]any{
-			"partitions": []map[string]any{
-				{
-					"table_name":     "knowledge_events",
-					"partition_name": "knowledge_events_y2025m01",
-					"range_start":    "2025-01-01T00:00:00Z",
-					"range_end":      "2025-02-01T00:00:00Z",
-					"row_count":      1,
-					"size_bytes":     1,
-				},
-			},
-		})
-	})
-	mux.HandleFunc("/admin/retention/status", func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodGet {
-			w.WriteHeader(http.StatusMethodNotAllowed)
-			return
-		}
-		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(map[string]any{
-			"logs": []map[string]any{
-				{
-					"log_id":           "11111111-2222-3333-4444-555555555555",
-					"action":           "export",
-					"target_table":     "knowledge_events",
-					"target_partition": "knowledge_events_y2025m01",
-					"rows_affected":    1,
-					"dry_run":          false,
-					"status":           "success",
-					"run_at":           "2026-04-23T00:00:00Z",
-				},
-			},
-		})
-	})
-	mux.HandleFunc("/admin/retention/run", func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodPost {
-			w.WriteHeader(http.StatusMethodNotAllowed)
-			return
-		}
-		_, _ = io.Copy(io.Discard, r.Body)
-		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(map[string]any{
-			"dry_run": true,
-			"actions": []map[string]any{
-				{
-					"table":          "knowledge_events",
-					"partition_name": "knowledge_events_y2025m01",
-					"action":         "would_archive",
-				},
-			},
-		})
-	})
-	mux.HandleFunc("/admin/storage/stats", func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodGet {
-			w.WriteHeader(http.StatusMethodNotAllowed)
-			return
-		}
-		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(map[string]any{
-			"tables": []map[string]any{
-				{
-					"name":       "knowledge_events",
-					"total_size": "128 kB",
-					"table_size": "96 kB",
-					"index_size": "32 kB",
-					"row_count":  0,
-				},
-			},
-		})
-	})
-
-	ln, err := net.Listen("tcp", "127.0.0.1:0")
-	require.NoError(t, err)
-	t.Cleanup(func() { _ = ln.Close() })
-
-	go func() { _ = http.Serve(ln, mux) }()
-	return ln.Addr().(*net.TCPAddr).Port
-}
 
 // resolvePactFile returns the first existing path among the
 // candidates, or "" if none exists. Consumer tests write to
@@ -418,15 +61,15 @@ func TestVerifyAltBackendConsumerContract(t *testing.T) {
 			altBackendPactFile, altBackendPactAtRoot)
 	}
 
-	reject := false
-	port := startStubServer(t, &reject)
+	repo := &fakeRepo{}
+	port := startProviderServer(t, repo)
 
 	verifyRequest := provider.VerifyRequest{
 		Provider:        providerName,
 		ProviderBaseURL: fmt.Sprintf("http://127.0.0.1:%d", port),
 		StateHandlers: models.StateHandlers{
 			"the projection mutation upsert_home_item is accepted": func(setup bool, s models.ProviderState) (models.ProviderStateResponse, error) {
-				reject = false
+				repo.rejectMutation = false
 				return nil, nil
 			},
 			"a user with at least one footprint exists": func(setup bool, s models.ProviderState) (models.ProviderStateResponse, error) {
@@ -442,15 +85,15 @@ func TestVerifyAltBackendConsumerContract(t *testing.T) {
 				return nil, nil
 			},
 			"the projection mutation is rejected with an error": func(setup bool, s models.ProviderState) (models.ProviderStateResponse, error) {
-				reject = true
+				repo.rejectMutation = true
 				return nil, nil
 			},
 			"the recall mutation snooze_candidate is accepted": func(setup bool, s models.ProviderState) (models.ProviderStateResponse, error) {
-				reject = false
+				repo.rejectMutation = false
 				return nil, nil
 			},
-			"the curation mutation create_lens is accepted": func(setup bool, s models.ProviderState) (models.ProviderStateResponse, error) {
-				reject = false
+			"the curation mutation dismiss_curation is accepted": func(setup bool, s models.ProviderState) (models.ProviderStateResponse, error) {
+				repo.rejectMutation = false
 				return nil, nil
 			},
 			// Knowledge Loop append states (ADR-000840). The handlers
@@ -523,8 +166,8 @@ func TestVerifyRagOrchestratorConsumerContract(t *testing.T) {
 			ragOrchPactFile, ragOrchPactAtRoot)
 	}
 
-	reject := false
-	port := startStubServer(t, &reject)
+	repo := &fakeRepo{}
+	port := startProviderServer(t, repo)
 
 	verifyRequest := provider.VerifyRequest{
 		Provider:        providerName,
@@ -586,8 +229,8 @@ func TestVerifyRecapWorkerConsumerContract(t *testing.T) {
 			recapWorkerPactFile, recapWorkerPactAtRoot)
 	}
 
-	reject := false
-	port := startStubServer(t, &reject)
+	repo := &fakeRepo{}
+	port := startProviderServer(t, repo)
 
 	verifyRequest := provider.VerifyRequest{
 		Provider:        providerName,
@@ -642,8 +285,8 @@ func TestVerifyAltctlConsumerContract(t *testing.T) {
 			altctlPactFile, altctlPactAtAlt)
 	}
 
-	reject := false
-	port := startStubServer(t, &reject)
+	repo := &fakeRepo{}
+	port := startProviderServer(t, repo)
 
 	verifyRequest := provider.VerifyRequest{
 		Provider:        providerName,
