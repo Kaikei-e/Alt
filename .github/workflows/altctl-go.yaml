@@ -26,5 +26,12 @@ jobs:
       working-directory: 'altctl'
       coverage-flags: 'altctl'
       use-oidc: false
-      sparse-checkout: 'altctl'
+      # altctl derives its stack registry and secret specs from the real
+      # compose/*.yaml rather than a hardcoded table, and the tests assert
+      # against those files by walking up to the repo root. A checkout of
+      # altctl/ alone fails on the missing compose dir. (.altctl.yaml is also
+      # read; cone mode checks out every root-level file already.)
+      sparse-checkout: |
+        altctl
+        compose
     secrets: inherit

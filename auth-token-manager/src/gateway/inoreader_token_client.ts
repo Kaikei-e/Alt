@@ -168,7 +168,9 @@ export class InoreaderTokenClient implements TokenClient {
       token_type: typeof data.token_type === "string"
         ? data.token_type
         : "Bearer",
-      scope: typeof data.scope === "string" ? data.scope : INOREADER_OAUTH_SCOPE,
+      scope: typeof data.scope === "string"
+        ? data.scope
+        : INOREADER_OAUTH_SCOPE,
     };
   }
 }
