@@ -9,6 +9,7 @@ this spreads to a fifth service (done).
 from __future__ import annotations
 
 import logging
+import ipaddress
 import os
 from typing import TYPE_CHECKING
 
@@ -32,6 +33,24 @@ def allowed_peers_from_env(env_var: str = "MTLS_ALLOWED_PEERS") -> list[str]:
     return [p.strip() for p in raw.split(",") if p.strip()]
 
 
+def arrived_via_sidecar(request: Request) -> bool:
+    """Report whether the request could have come from the mTLS sidecar.
+
+    pki-agent runs in this container's network namespace
+    (`network_mode: "service:news-creator"`) and proxies to
+    `http://127.0.0.1:11434`, so a loopback transport peer is the only one that
+    could have terminated mTLS and set the identity header. Every other peer
+    reached the plaintext port directly and wrote whatever header it liked.
+    """
+    client = request.client
+    if client is None:
+        return False
+    try:
+        return ipaddress.ip_address(client.host).is_loopback
+    except ValueError:
+        return False
+
+
 class PeerIdentityMiddleware(BaseHTTPMiddleware):
     def __init__(
         self, app, allowed: Iterable[str] | None = None, *, strict: bool = False
@@ -46,7 +65,16 @@ class PeerIdentityMiddleware(BaseHTTPMiddleware):
         call_next: Callable[[Request], Awaitable[Response]],
     ) -> Response:
         peer = request.headers.get(PEER_IDENTITY_HEADER, "").strip()
-        if os.getenv("PEER_IDENTITY_TRUSTED", "on") != "on":
+
+        # Two conditions, and the header is honoured only under both.
+        # PEER_IDENTITY_TRUSTED is set to "on" by compose only when the
+        # perimeter sidecar enforces client certs; unset means the trust
+        # boundary was never configured, so fail closed. The transport check
+        # is what makes that claim binding: config alone cannot tell the
+        # sidecar's traffic apart from a caller that skipped it, and the
+        # plaintext port is reachable without any credential.
+        mtls_on = os.getenv("PEER_IDENTITY_TRUSTED", "off") == "on"
+        if not mtls_on or not arrived_via_sidecar(request):
             peer = ""
         if self._strict:
             if not peer:
