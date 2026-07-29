@@ -269,6 +269,15 @@ func registerConnectHealth(mux *http.ServeMux) {
 	})
 }
 
+// withH2C enables HTTP/2 without TLS (h2c) for local development and internal
+// communication. The single call site keeps the deprecation in one place: the
+// documented replacement is http.Server.Protocols, which the listeners in
+// main.go must opt into together with the mTLS listener's ALPN config, so the
+// migration is deliberately not spread across these constructors.
+func withH2C(mux *http.ServeMux) http.Handler {
+	return h2c.NewHandler(mux, &http2.Server{}) //nolint:staticcheck // SA1019: migrating to http.Server.Protocols requires changing every listener at once
+}
+
 // CreateConnectServer creates the browser-facing Connect-RPC server with
 // HTTP/2 support. This is the handler behind the published plaintext port, so
 // it carries only JWT-guarded user services.
@@ -277,8 +286,7 @@ func CreateConnectServer(container *di.ApplicationComponents, cfg *config.Config
 	registerConnectHealth(mux)
 	SetupConnectHandlers(mux, container, cfg, logger)
 
-	// Support HTTP/2 without TLS (h2c) for local development and internal communication
-	return h2c.NewHandler(mux, &http2.Server{})
+	return withH2C(mux)
 }
 
 // CreateInternalConnectServer creates the Connect-RPC server for the internal
@@ -288,7 +296,7 @@ func CreateInternalConnectServer(container *di.ApplicationComponents, cfg *confi
 	registerConnectHealth(mux)
 	SetupInternalConnectHandlers(mux, container, cfg, logger)
 
-	return h2c.NewHandler(mux, &http2.Server{})
+	return withH2C(mux)
 }
 
 // CreateMTLSConnectServer creates the Connect-RPC server for the TLS listener
@@ -302,5 +310,5 @@ func CreateMTLSConnectServer(container *di.ApplicationComponents, cfg *config.Co
 	SetupConnectHandlers(mux, container, cfg, logger)
 	SetupInternalConnectHandlers(mux, container, cfg, logger)
 
-	return h2c.NewHandler(mux, &http2.Server{})
+	return withH2C(mux)
 }

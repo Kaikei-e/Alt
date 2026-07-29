@@ -233,9 +233,8 @@ func main() {
 		"surfaces", "BackendInternalService,KnowledgeHomeAdminService,AdminMonitorService,/v1/internal",
 	)
 	go func() {
-		err := internalHTTPServer.ListenAndServe()
-		switch {
-		case err == nil, err == http.ErrServerClosed:
+		switch err := internalHTTPServer.ListenAndServe(); err {
+		case nil, http.ErrServerClosed:
 			logger.Logger.InfoContext(ctx, "Internal server exited", "reason", "server_closed")
 			serverExitCh <- serverExit{name: "internal", err: nil}
 		default:

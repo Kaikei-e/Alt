@@ -1,0 +1,71 @@
+name: Recap-Subworker Quality Gates
+permissions:
+  contents: read
+
+on:
+  push:
+    branches: [main, develop]
+    paths:
+      - "recap-subworker/**"
+  pull_request:
+    branches: [main, develop]
+    paths:
+      - "recap-subworker/**"
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # Scope: tests/unit + tests/services. tests/contract is verified by
+  # proto-contract.yaml, and tests/integration needs a live DB + model
+  # artefacts that this hermetic runner does not provide.
+  tests:
+    uses: ./.github/workflows/reusable-test-python.yaml
+    with:
+      working-directory: "recap-subworker"
+      python-version: "3.14"
+      sparse-checkout: "recap-subworker"
+      coverage-flags: "recap-subworker"
+      upload-coverage: true
+      job-type: "test"
+      test-command: "pytest -v tests/unit tests/services --cov=recap_subworker --cov-report=xml --junit-xml=tests/results.xml"
+    permissions:
+      contents: read
+    secrets: inherit
+
+  typecheck:
+    uses: ./.github/workflows/reusable-test-python.yaml
+    with:
+      working-directory: "recap-subworker"
+      python-version: "3.14"
+      sparse-checkout: "recap-subworker"
+      job-type: "typecheck"
+    permissions:
+      contents: read
+
+  # NOTE: `lint` and `security` job-types are deliberately absent, and this is
+  # the record of what is NOT gated rather than a silent omission:
+  #   - lint: `ruff check recap_subworker` is clean, but the reusable job runs
+  #     `ruff check .` + `ruff format --check .` over the whole tree, where
+  #     scripts/ and tests/ carry 160 findings and 91 files are unformatted.
+  #     Enable this job in the same PR that clears that debt.
+  #   - security: bandit is not in recap-subworker's dev dependency group
+  #     (unlike tag-generator / acolyte-orchestrator). ruff's `S` ruleset is
+  #     selected in pyproject.toml, so the bandit rules do run once lint does.
+
+  quality-gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    needs: [tests, typecheck]
+    if: always()
+    steps:
+      - name: Check all jobs passed
+        run: |
+          if [ "${{ needs.tests.result }}" != "success" ] || \
+             [ "${{ needs.typecheck.result }}" != "success" ]; then
+            echo "One or more quality gates failed"
+            exit 1
+          fi
+          echo "All quality gates passed"
