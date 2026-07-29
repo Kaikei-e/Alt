@@ -429,6 +429,10 @@ app.add_middleware(
     allowed=allowed_peers_from_env(),
     strict=False,  # flip to True once all callers present client certs
 )
+# Flipping strict=True is safe with respect to header forgery: the middleware
+# honours X-Alt-Peer-Identity only for requests that arrive from the sidecar's
+# loopback upstream. It still rejects every caller that has not moved to
+# :9443, which is why it is not flipped here.
 
 
 @app.post("/api/v1/generate-tags")
@@ -495,11 +499,13 @@ async def get_user_preferences(user_context: UserContext) -> dict[str, Any]:
 
 
 def verify_service_token(request: Request) -> None:
-    """No-op: authentication is enforced at the TLS transport layer.
+    """No-op. Retained so existing handler decorators compile unchanged.
 
-    Retained as a function symbol so existing handler decorators compile
-    unchanged; the nginx mTLS sidecar rejects uncredentialled callers
-    before the request ever reaches this code path.
+    This authenticates nothing. The mTLS sidecar rejects uncredentialled
+    callers on :9443 only, and tag-generator also serves the same routes on
+    the plaintext :9400 that the sidecar never sees. Reachability is what
+    keeps :9400 closed today (compose binds it to 127.0.0.1); do not read
+    this function as a second control.
     """
     _ = request  # silence lint
 
