@@ -7,6 +7,7 @@ to a fifth service.
 
 from __future__ import annotations
 
+import ipaddress
 import os
 from typing import TYPE_CHECKING
 
@@ -31,6 +32,23 @@ def allowed_peers_from_env(env_var: str = "MTLS_ALLOWED_PEERS") -> list[str]:
     return [p.strip() for p in raw.split(",") if p.strip()]
 
 
+def arrived_via_sidecar(request: Request) -> bool:
+    """Report whether the request could have come from the mTLS sidecar.
+
+    recap-evaluator has no pki-agent sidecar in compose/pki.yaml today, so
+    nothing terminates mTLS in front of it and this returns False for every
+    real caller. It is written as the same transport check as the sidecar-fronted
+    copies so that adding a sidecar is a compose change, not a code change.
+    """
+    client = request.client
+    if client is None:
+        return False
+    try:
+        return ipaddress.ip_address(client.host).is_loopback
+    except ValueError:
+        return False
+
+
 class PeerIdentityMiddleware(BaseHTTPMiddleware):
     def __init__(self, app, allowed: Iterable[str] | None = None, *, strict: bool = False) -> None:
         super().__init__(app)
@@ -43,7 +61,16 @@ class PeerIdentityMiddleware(BaseHTTPMiddleware):
         call_next: Callable[[Request], Awaitable[Response]],
     ) -> Response:
         peer = request.headers.get(PEER_IDENTITY_HEADER, "").strip()
-        if os.getenv("PEER_IDENTITY_TRUSTED", "on") != "on":
+
+        # Two conditions, and the header is honoured only under both.
+        # PEER_IDENTITY_TRUSTED is set to "on" by compose only when the
+        # perimeter sidecar enforces client certs; unset means the trust
+        # boundary was never configured, so fail closed. The transport check
+        # is what makes that claim binding: config alone cannot tell the
+        # sidecar's traffic apart from a caller that skipped it, and the
+        # plaintext port is reachable without any credential.
+        mtls_on = os.getenv("PEER_IDENTITY_TRUSTED", "off") == "on"
+        if not mtls_on or not arrived_via_sidecar(request):
             peer = ""
         if self._strict:
             if not peer:
