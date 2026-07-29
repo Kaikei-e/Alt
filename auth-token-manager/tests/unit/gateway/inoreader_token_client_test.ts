@@ -1,5 +1,9 @@
 import { describe, it } from "@std/testing/bdd";
-import { assertEquals, assertRejects } from "@std/testing/asserts";
+import {
+  assertEquals,
+  assertExists,
+  assertRejects,
+} from "@std/testing/asserts";
 import { InoreaderTokenClient } from "../../../src/gateway/inoreader_token_client.ts";
 import type { HttpClient } from "../../../src/port/http_client.ts";
 import type { InoreaderCredentials } from "../../../src/domain/types.ts";
@@ -194,10 +198,12 @@ describe("InoreaderTokenClient", {
     await client.refreshToken("old-refresh-token-1234567890");
 
     assertEquals(calls.length, 1);
-    assertEquals(calls[0].url, "https://www.inoreader.com/oauth2/token");
-    assertEquals(calls[0].init.method, "POST");
+    const call = calls[0];
+    assertExists(call);
+    assertEquals(call.url, "https://www.inoreader.com/oauth2/token");
+    assertEquals(call.init.method, "POST");
 
-    const body = calls[0].init.body as URLSearchParams;
+    const body = call.init.body as URLSearchParams;
     assertEquals(body.get("grant_type"), "refresh_token");
     assertEquals(body.get("client_id"), TEST_CREDENTIALS.client_id);
     assertEquals(body.get("client_secret"), TEST_CREDENTIALS.client_secret);
@@ -215,9 +221,11 @@ describe("InoreaderTokenClient", {
     await client.exchangeCode("auth-code-123");
 
     assertEquals(calls.length, 1);
-    assertEquals(calls[0].url, "https://www.inoreader.com/oauth2/token");
+    const call = calls[0];
+    assertExists(call);
+    assertEquals(call.url, "https://www.inoreader.com/oauth2/token");
 
-    const body = calls[0].init.body as URLSearchParams;
+    const body = call.init.body as URLSearchParams;
     assertEquals(body.get("grant_type"), "authorization_code");
     assertEquals(body.get("client_id"), TEST_CREDENTIALS.client_id);
     assertEquals(body.get("client_secret"), TEST_CREDENTIALS.client_secret);

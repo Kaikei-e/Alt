@@ -1,5 +1,9 @@
 import { afterEach, describe, it } from "@std/testing/bdd";
-import { assertEquals, assertRejects } from "@std/testing/asserts";
+import {
+  assertEquals,
+  assertExists,
+  assertRejects,
+} from "@std/testing/asserts";
 import { stub } from "@std/testing/mock";
 import { FetchHttpClient } from "../../../src/gateway/fetch_http_client.ts";
 import type { NetworkConfig } from "../../../src/domain/types.ts";
@@ -81,7 +85,9 @@ describe("FetchHttpClient", {
       });
 
       assertEquals(fetchStub.calls.length, 1);
-      const [calledUrl, calledOptions] = fetchStub.calls[0].args as [
+      const call = fetchStub.calls[0];
+      assertExists(call);
+      const [calledUrl, calledOptions] = call.args as [
         string,
         RequestInit,
       ];
@@ -168,7 +174,9 @@ describe("FetchHttpClient", {
       });
 
       assertEquals(createHttpClientStub.calls.length, 1);
-      const [, calledOptions] = fetchStub.calls[0].args as [
+      const call = fetchStub.calls[0];
+      assertExists(call);
+      const [, calledOptions] = call.args as [
         string,
         RequestInit & { client?: unknown },
       ];
