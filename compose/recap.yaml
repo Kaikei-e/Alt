@@ -166,7 +166,9 @@ services:
         reservations:
           memory: 768M
     ports:
-      - "9005:9005"
+      # Same router as the mTLS listener, minus the transport: /admin/jobs/retry
+      # and /v1/generate/* carry no auth extractor at all. Loopback bind.
+      - "127.0.0.1:9005:9005"
     healthcheck:
       test: ["CMD", "/usr/local/bin/recap-worker", "healthcheck"]
       interval: 10s
@@ -226,11 +228,18 @@ services:
       # Numba threading: TBB is thread-safe, workqueue/omp are not
       - NUMBA_THREADING_LAYER=tbb
       - LD_LIBRARY_PATH=/app/.venv/lib
+      # Declares that pki-agent-recap-subworker verifies client certificates,
+      # so the X-Alt-Peer-Identity it forwards names a real caller. The app
+      # also requires the request to arrive from the sidecar's loopback
+      # upstream; this flag alone does not grant trust.
+      - PEER_IDENTITY_TRUSTED=${RECAP_SUBWORKER_VERIFY_CLIENT:-on}
       # OpenTelemetry
       - OTEL_EXPORTER_OTLP_ENDPOINT=http://rask-log-aggregator:4318
       - OTEL_SERVICE_NAME=recap-subworker
     ports:
-      - "8002:8002"
+      # Plaintext twin of the mTLS :9443 served by pki-agent-recap-subworker
+      # from this netns; only recap-worker should reach it.
+      - "127.0.0.1:8002:8002"
     secrets:
       - recap_db_password
     volumes:
@@ -299,8 +308,9 @@ services:
               count: all
               capabilities: [gpu, utility]
     ports:
-      - "8501:8501"
-      - "8502:8000"
+      # Operator dashboard, no authentication of its own.
+      - "127.0.0.1:8501:8501"
+      - "127.0.0.1:8502:8000"
     environment:
       # Database credentials - password read from secret file (app constructs DSN)
       - RECAP_DB_HOST=recap-db
@@ -350,7 +360,7 @@ services:
     secrets:
       - recap_db_password
     ports:
-      - "8085:8080"
+      - "127.0.0.1:8085:8080"
     depends_on:
       recap-db:
         condition: service_healthy

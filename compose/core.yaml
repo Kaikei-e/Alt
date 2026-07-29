@@ -82,7 +82,9 @@ services:
       - PUBLIC_USE_CONNECT_STREAMING=${PUBLIC_USE_CONNECT_STREAMING:-false}
       - SOVEREIGN_METRICS_URL=${SOVEREIGN_METRICS_URL:-http://knowledge-sovereign:9501}
     ports:
-      - "4173:4173"
+      # plecto-proxy is the only edge; it reaches the frontend as
+      # alt-frontend-sv:4173 over the container network.
+      - "127.0.0.1:4173:4173"
     restart: always
     mem_limit: 512m
     depends_on:
@@ -118,8 +120,11 @@ services:
       dockerfile: Dockerfile.backend
     restart: always
     ports:
-      - "9000:9000"
-      - "9101:9101"
+      # :9000 (REST) and :9101 (Connect) do authenticate the caller, but the
+      # product routes browsers through plecto -> BFF, so publishing them on
+      # every NIC only offers a way around the edge.
+      - "127.0.0.1:9000:9000"
+      - "127.0.0.1:9101:9101"
       # :9102 carries BackendInternalService, the admin services and
       # /v1/internal/* — none of which authenticate their caller. Loopback
       # bind keeps it reachable for altctl on this host while removing it

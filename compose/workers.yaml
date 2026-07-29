@@ -110,8 +110,10 @@ services:
       - search_indexer_certs:/certs:ro
       - pki_trust_bundle:/trust:ro
     ports:
-      - "9300:9300"   # REST API
-      - "9301:9301"   # Connect-RPC
+      # The peer-identity allowlist lives on the mTLS :9443 listener only, so
+      # these two are the unguarded twins. Loopback bind.
+      - "127.0.0.1:9300:9300"   # REST API
+      - "127.0.0.1:9301:9301"   # Connect-RPC
       # mTLS :9443 intentionally not published (internal east-west only)
     healthcheck:
       test: ["CMD", "/search-indexer", "healthcheck"]
@@ -146,7 +148,10 @@ services:
     networks:
       - alt-network
     ports:
-      - "9400:9400"
+      # /extract-tags and /health carry no @require_auth, and verify_service_token
+      # is a no-op that assumes the sidecar already rejected the caller — which
+      # only holds for traffic that actually went through :9443. Loopback bind.
+      - "127.0.0.1:9400:9400"
       # mTLS :9443 served by pki-agent-tag-generator (shares net ns via network_mode)
     environment:
       # Backend API mode (replaces direct DB access for article/tag
@@ -228,7 +233,7 @@ services:
       - inoreader_client_secret
     restart: always
     ports:
-      - "9201:9201"
+      - "127.0.0.1:9201:9201"
     networks:
       - alt-network
     healthcheck:

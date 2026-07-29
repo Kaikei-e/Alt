@@ -121,7 +121,11 @@ services:
     extra_hosts:
       - "llm-external:${ACOLYTE_LLM_HOST:-127.0.0.1}"
     ports:
-      - "8090:8090"
+      # Plaintext twin of the mTLS :9443 that pki-agent-acolyte-orchestrator
+      # serves from this container's netns. AcolyteService authenticates
+      # nobody on it, so publishing it on every NIC is a second entrance the
+      # sidecar cannot see (ADR-000757 rejected exactly this). Loopback bind.
+      - "127.0.0.1:8090:8090"
     networks:
       - alt-network
     depends_on:

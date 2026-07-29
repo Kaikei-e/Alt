@@ -59,7 +59,10 @@ services:
     networks:
       - alt-network
     ports:
-      - "9500:9500"
+      # PublishBatch lets the caller choose the destination stream and mq-hub's
+      # only interceptor logs. Until that surface authenticates, reachability
+      # is the whole control, so it stops at loopback.
+      - "127.0.0.1:9500:9500"
     healthcheck:
       test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:9500/health"]
       interval: 10s

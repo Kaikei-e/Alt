@@ -140,8 +140,11 @@ services:
       - rag_orchestrator_certs:/certs:ro
       - pki_trust_bundle:/trust:ro
     ports:
-      - "9010:9010"
-      - "9011:9011"
+      # East-west only. With PEER_IDENTITY_MODE=disabled the Connect listener
+      # is plaintext h2c and augur/handler.go trusts X-Alt-User-Id from the
+      # caller, so the host must not be able to reach it.
+      - "127.0.0.1:9010:9010"
+      - "127.0.0.1:9011:9011"
     depends_on:
       rag-db:
         condition: service_healthy

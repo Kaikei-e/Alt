@@ -75,7 +75,10 @@ services:
     mem_limit: 128m
     command: ["kratos", "serve", "all", "--config", "/etc/config/kratos/kratos.yml"]
     ports:
-      - "4433:4433"
+      # Browsers reach Kratos through plecto's /ory route (KRATOS_PUBLIC_URL),
+      # never this port directly, so publishing it on every NIC only adds a
+      # path around the edge proxy's TLS and rate limits.
+      - "127.0.0.1:4433:4433"
     environment:
       - KRATOS_DB_USER=${KRATOS_DB_USER:-kratos_user}
       - KRATOS_DB_PASSWORD_FILE=/run/secrets/kratos_db_password

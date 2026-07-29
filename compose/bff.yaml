@@ -44,7 +44,9 @@ services:
     secrets:
       - backend_token_secret
     ports:
-      - "9250:9250"
+      # The frontend calls the BFF over the container network; browsers reach
+      # it through plecto. Loopback bind keeps local curl / e2e working.
+      - "127.0.0.1:9250:9250"
       # mTLS :9443 intentionally not published (internal east-west only)
     volumes:
       - alt_butterfly_facade_certs:/certs:ro

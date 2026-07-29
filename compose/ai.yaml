@@ -163,6 +163,11 @@ services:
       - DISTRIBUTED_BE_COOLDOWN_SECONDS=${DISTRIBUTED_BE_COOLDOWN_SECONDS:-60}
       - DISTRIBUTED_BE_REMOTE_MODEL=${DISTRIBUTED_BE_REMOTE_MODEL:-gemma4-e4b-q4km}
       - DISTRIBUTED_BE_MODEL_OVERRIDES=${DISTRIBUTED_BE_MODEL_OVERRIDES:-}
+      # Declares that pki-agent-news-creator verifies client certificates, so
+      # the X-Alt-Peer-Identity it forwards names a real caller. The app also
+      # requires the request to arrive from the sidecar's loopback upstream;
+      # this flag alone does not grant trust.
+      - PEER_IDENTITY_TRUSTED=${NEWS_CREATOR_VERIFY_CLIENT:-on}
       # OpenTelemetry
       - OTEL_EXPORTER_OTLP_ENDPOINT=http://rask-log-aggregator:4318
       - OTEL_SERVICE_NAME=news-creator
@@ -259,8 +264,11 @@ services:
       - pp_db_password
     restart: always
     ports:
-      - "9200:9200" # REST API
-      - "9202:9202" # Connect-RPC
+      # East-west surfaces. Loopback bind so the only cross-host entrance is
+      # the mTLS :9443, which is what enforces the peer identity; east-west
+      # callers reach these over the container DNS name, not the host.
+      - "127.0.0.1:9200:9200" # REST API
+      - "127.0.0.1:9202:9202" # Connect-RPC
       # mTLS :9443 intentionally not published (internal east-west only)
     networks:
       - alt-network
