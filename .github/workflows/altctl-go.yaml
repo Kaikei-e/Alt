@@ -1,0 +1,30 @@
+name: altctl Tests
+
+on:
+  push:
+    branches: [main]
+    paths: ['altctl/**', '.github/workflows/altctl-go.yaml']
+  pull_request:
+    branches: [main]
+    paths: ['altctl/**', '.github/workflows/altctl-go.yaml']
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  # altctl is one of the two writers to the durable event store (ADR-000834)
+  # and had 55 test files that no workflow referenced at all — grepping the
+  # whole .github/workflows tree for its name returned nothing.
+  test:
+    uses: ./.github/workflows/reusable-test-go.yaml
+    with:
+      working-directory: 'altctl'
+      coverage-flags: 'altctl'
+      use-oidc: false
+      sparse-checkout: 'altctl'
+    secrets: inherit

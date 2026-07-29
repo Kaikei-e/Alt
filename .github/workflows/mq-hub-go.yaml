@@ -1,0 +1,30 @@
+name: MQ Hub Tests
+
+on:
+  push:
+    branches: [main]
+    paths: ['mq-hub/**', '.github/workflows/mq-hub-go.yaml']
+  pull_request:
+    branches: [main]
+    paths: ['mq-hub/**', '.github/workflows/mq-hub-go.yaml']
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  # mq-hub publishes into the Redis Streams every downstream worker reads,
+  # and its 14 test files ran in no workflow: it appeared in CI only via
+  # proto-contract.yaml's Pact matrix, which does not run its unit tests.
+  test:
+    uses: ./.github/workflows/reusable-test-go.yaml
+    with:
+      working-directory: 'mq-hub/app'
+      coverage-flags: 'mq-hub'
+      use-oidc: false
+      sparse-checkout: 'mq-hub'
+    secrets: inherit

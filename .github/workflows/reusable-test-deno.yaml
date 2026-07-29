@@ -1,0 +1,85 @@
+name: Reusable Deno Test Workflow
+
+# The Deno services (auth-token-manager, alt-perf) had no CI at all. This is
+# the minimum honest gate: `deno test` type-checks every module it pulls in,
+# so it catches both broken types and failing assertions. Formatting and
+# linting are opt-in per caller because the two services differ in how much
+# existing debt they carry — see each caller's NOTE.
+
+on:
+  workflow_call:
+    inputs:
+      working-directory:
+        required: true
+        type: string
+      deno-version:
+        required: false
+        type: string
+        default: "v2.x"
+      sparse-checkout:
+        required: true
+        type: string
+      test-command:
+        required: false
+        type: string
+        default: "deno test --allow-all"
+      check-fmt:
+        description: "Run `deno fmt --check`. Off where the service still has unformatted files."
+        required: false
+        type: boolean
+        default: false
+      check-lint:
+        description: "Run `deno lint`. Off where the service still has lint findings."
+        required: false
+        type: boolean
+        default: false
+      runner:
+        required: false
+        type: string
+        default: "ubuntu-latest"
+
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test-deno:
+    runs-on: ${{ inputs.runner }}
+    timeout-minutes: 20
+
+    defaults:
+      run:
+        shell: bash
+        working-directory: ${{ inputs.working-directory }}
+
+    steps:
+      - name: Checkout (sparse)
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+          sparse-checkout: |
+            ${{ inputs.sparse-checkout }}
+          sparse-checkout-cone-mode: true
+
+      - name: Set up Deno
+        uses: denoland/setup-deno@v2
+        with:
+          deno-version: ${{ inputs.deno-version }}
+
+      - name: Deno env (diagnostics)
+        run: |
+          deno --version
+          ls -la
+
+      - name: Test
+        run: ${{ inputs.test-command }}
+
+      - name: Format check
+        if: ${{ inputs.check-fmt }}
+        run: deno fmt --check
+
+      - name: Lint
+        if: ${{ inputs.check-lint }}
+        run: deno lint

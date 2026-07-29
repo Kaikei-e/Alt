@@ -1,0 +1,32 @@
+name: Auth Hub Tests
+
+on:
+  push:
+    branches: [main]
+    paths: ['auth-hub/**', '.github/workflows/auth-hub-go.yaml']
+  pull_request:
+    branches: [main]
+    paths: ['auth-hub/**', '.github/workflows/auth-hub-go.yaml']
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  # auth-hub owns session validation and the Kratos gateway, and until now its
+  # 19 test files ran in no workflow — it appeared in CI only as one Pact
+  # consumer directory under proto-contract.yaml. A fall-open in
+  # auth-hub/middleware/ would have reached main green, because the Hurl suite
+  # only exercises the happy path.
+  test:
+    uses: ./.github/workflows/reusable-test-go.yaml
+    with:
+      working-directory: 'auth-hub'
+      coverage-flags: 'auth-hub'
+      use-oidc: false
+      sparse-checkout: 'auth-hub'
+    secrets: inherit

@@ -128,12 +128,15 @@ jobs:
           echo "github.workspace=${{ github.workspace }}"
           ls -la "${{ github.workspace }}/${{ inputs.working-directory }}" || true
 
+      # -race is what makes the repo's race-detection tests mean anything: the
+      # detector is off by default, so a test written to catch a race passes
+      # unconditionally without it. It needs cgo, which is already enabled.
       - name: Test
         working-directory: ${{ github.workspace }}/${{ inputs.working-directory }}
         env:
           CGO_ENABLED: "1"
         run: |
-          go test ./... -coverprofile=coverage.out
+          go test -race ./... -coverprofile=coverage.out
 
       # === Codecov: OIDC か token を選択 ===
       # - name: Upload coverage to Codecov (OIDC)

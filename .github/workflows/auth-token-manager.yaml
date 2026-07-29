@@ -1,0 +1,38 @@
+name: Auth Token Manager Tests
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "auth-token-manager/**"
+      - ".github/workflows/auth-token-manager.yaml"
+      - ".github/workflows/reusable-test-deno.yaml"
+  pull_request:
+    branches: [main]
+    paths:
+      - "auth-token-manager/**"
+      - ".github/workflows/auth-token-manager.yaml"
+      - ".github/workflows/reusable-test-deno.yaml"
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  # auth-token-manager holds the Inoreader OAuth refresh loop and writes the
+  # rotated token to disk; its 10 test files ran in no workflow.
+  #
+  # NOTE: `check-lint` stays off. `deno lint` reports 5 pre-existing
+  # require-await findings (4 in test doubles that implement an async port, 1
+  # in src/handler/oauth_server.ts). Turn it on in the same PR that resolves
+  # them, so this gate never lands red.
+  test:
+    uses: ./.github/workflows/reusable-test-deno.yaml
+    with:
+      working-directory: "auth-token-manager"
+      sparse-checkout: "auth-token-manager"
+      check-fmt: true

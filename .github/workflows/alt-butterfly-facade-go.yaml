@@ -1,0 +1,30 @@
+name: BFF Tests
+
+on:
+  push:
+    branches: [main]
+    paths: ['alt-butterfly-facade/**', '.github/workflows/alt-butterfly-facade-go.yaml']
+  pull_request:
+    branches: [main]
+    paths: ['alt-butterfly-facade/**', '.github/workflows/alt-butterfly-facade-go.yaml']
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  # The BFF is the only authenticated hop between the browser and the
+  # backend's internal surfaces, so its allowlist tests decide whether a
+  # /services.* path can be proxied. They ran in no workflow.
+  test:
+    uses: ./.github/workflows/reusable-test-go.yaml
+    with:
+      working-directory: 'alt-butterfly-facade'
+      coverage-flags: 'alt-butterfly-facade'
+      use-oidc: false
+      sparse-checkout: 'alt-butterfly-facade'
+    secrets: inherit

@@ -1,0 +1,39 @@
+name: Alt Perf Tests
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "alt-perf/**"
+      - ".github/workflows/alt-perf.yaml"
+      - ".github/workflows/reusable-test-deno.yaml"
+  pull_request:
+    branches: [main]
+    paths:
+      - "alt-perf/**"
+      - ".github/workflows/alt-perf.yaml"
+      - ".github/workflows/reusable-test-deno.yaml"
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  # tests/unit only — the perf tasks themselves drive a real browser against a
+  # running stack and belong to performance-smoke.yaml, not to this gate.
+  #
+  # NOTE: `check-fmt` and `check-lint` stay off. `deno fmt --check` reports 41
+  # of 58 files unformatted, `deno lint` 13 findings, and `deno check main.ts`
+  # fails on src/report/cli-reporter.ts. `deno test` still type-checks every
+  # module the tests import, so this gate is real rather than decorative. Turn
+  # the other two on as that debt is cleared.
+  test:
+    uses: ./.github/workflows/reusable-test-deno.yaml
+    with:
+      working-directory: "alt-perf"
+      sparse-checkout: "alt-perf"
+      test-command: "deno test --allow-all tests/"
