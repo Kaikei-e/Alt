@@ -16,6 +16,7 @@ Use via Starlette middleware stack or manually at the app entry point.
 
 from __future__ import annotations
 
+import ipaddress
 import os
 from typing import TYPE_CHECKING
 
@@ -40,6 +41,24 @@ def allowed_peers_from_env(env_var: str = "MTLS_ALLOWED_PEERS") -> list[str]:
     """Parse MTLS_ALLOWED_PEERS=csv into a list. Empty CSV → empty list."""
     raw = os.getenv(env_var, "")
     return [p.strip() for p in raw.split(",") if p.strip()]
+
+
+def arrived_via_sidecar(request: Request) -> bool:
+    """Report whether the request could have come from the mTLS sidecar.
+
+    pki-agent runs in this container's network namespace
+    (`network_mode: "service:acolyte-orchestrator"`) and proxies to
+    `http://127.0.0.1:8090`, so a loopback transport peer is the only one that
+    could have terminated mTLS and set the identity header. Every other peer
+    reached the plaintext port directly and wrote whatever header it liked.
+    """
+    client = request.client
+    if client is None:
+        return False
+    try:
+        return ipaddress.ip_address(client.host).is_loopback
+    except ValueError:
+        return False
 
 
 class PeerIdentityMiddleware(BaseHTTPMiddleware):
@@ -71,14 +90,15 @@ class PeerIdentityMiddleware(BaseHTTPMiddleware):
     ) -> Response:
         peer = request.headers.get(PEER_IDENTITY_HEADER, "").strip()
 
-        # Defensive: strip any client-supplied value if the nginx sidecar did
-        # not overwrite it (i.e. VERIFY_CLIENT=off). `PEER_IDENTITY_TRUSTED`
-        # must be explicitly set to `on` by compose when the perimeter
-        # sidecar enforces client certs — an unset env var means the trust
-        # boundary was never configured, so fail closed (untrusted) rather
-        # than fail open. The attacker could be bypassing the sidecar.
+        # Two conditions, and the header is honoured only under both.
+        # `PEER_IDENTITY_TRUSTED` must be explicitly set to `on` by compose
+        # when the perimeter sidecar enforces client certs — an unset env var
+        # means the trust boundary was never configured, so fail closed.
+        # The transport check is what makes that claim binding: config alone
+        # cannot tell the sidecar's traffic apart from a caller that skipped
+        # it, and the plaintext port is reachable without any credential.
         mtls_on = os.getenv("PEER_IDENTITY_TRUSTED", "off") == "on"
-        if not mtls_on:
+        if not mtls_on or not arrived_via_sidecar(request):
             peer = ""
 
         if self._strict:
