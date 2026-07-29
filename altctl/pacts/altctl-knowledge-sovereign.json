@@ -134,7 +134,7 @@
           "actions": [
             {
               "action": "would_archive",
-              "partition_name": "knowledge_events_y2025m01",
+              "partition": "knowledge_events_y2025m01",
               "table": "knowledge_events"
             }
           ],
@@ -162,7 +162,7 @@
                 }
               ]
             },
-            "$.actions[*].partition_name": {
+            "$.actions[*].partition": {
               "combine": "AND",
               "matchers": [
                 {

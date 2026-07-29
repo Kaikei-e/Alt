@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"testing"
 )
 
@@ -14,18 +15,21 @@ import (
 // failures without invoking a real Docker daemon. calls counts every
 // Backup/Restore invocation so tests can assert an abort happened before any
 // volume was touched (see TestMigrator_Restore_AbortsOnBrokenRegistry).
+//
+// Migrator.Backup fans volumes out over an errgroup, so the counter is written
+// from several goroutines at once and has to be atomic.
 type fakeBackupEngine struct {
 	err   error
-	calls int
+	calls atomic.Int64
 }
 
 func (f *fakeBackupEngine) Backup(ctx context.Context, spec VolumeSpec, outputPath string) error {
-	f.calls++
+	f.calls.Add(1)
 	return f.err
 }
 
 func (f *fakeBackupEngine) Restore(ctx context.Context, spec VolumeSpec, inputPath string) error {
-	f.calls++
+	f.calls.Add(1)
 	return f.err
 }
 

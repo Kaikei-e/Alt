@@ -232,7 +232,7 @@ func TestMigrator_Restore_AbortsOnBrokenRegistry(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected Restore() to abort when .altctl.yaml declares a stack with no matching compose file, got nil error")
 	}
-	if tarEngine.calls > 0 || pgEngine.calls > 0 {
-		t.Fatalf("expected restore to abort before touching any volume, got tar calls=%d pg calls=%d", tarEngine.calls, pgEngine.calls)
+	if tarEngine.calls.Load() > 0 || pgEngine.calls.Load() > 0 {
+		t.Fatalf("expected restore to abort before touching any volume, got tar calls=%d pg calls=%d", tarEngine.calls.Load(), pgEngine.calls.Load())
 	}
 }

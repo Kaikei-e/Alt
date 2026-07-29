@@ -381,11 +381,17 @@ func TestRetentionRunDry(t *testing.T) {
 			},
 			Body: matchers.MapMatcher{
 				"dry_run": matchers.Like(true),
+				// The run response's action carries `partition`, not
+				// `partition_name` — that spelling belongs to
+				// /admin/retention/eligible, which serves PartitionInfo. This
+				// interaction said partition_name and passed only because the
+				// hand-written provider stub said it too; cmd/home_retention.go
+				// has always decoded `partition` here.
 				"actions": matchers.EachLike(
 					matchers.MapMatcher{
-						"table":          matchers.Like("knowledge_events"),
-						"partition_name": matchers.Like("knowledge_events_y2025m01"),
-						"action":         matchers.Like("would_archive"),
+						"table":     matchers.Like("knowledge_events"),
+						"partition": matchers.Like("knowledge_events_y2025m01"),
+						"action":    matchers.Like("would_archive"),
 					},
 					1,
 				),
