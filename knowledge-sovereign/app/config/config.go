@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -13,12 +14,16 @@ type Config struct {
 	DatabaseURL string
 	ListenAddr  string
 	MetricsAddr string
-	// AdminToken, if set, is required as a Bearer token on the mutating
-	// /admin/* endpoints (snapshots/retention/storage) served on MetricsAddr.
-	// Empty means admin auth is explicitly disabled — main.go logs this
-	// loudly at startup so "forgot to set it" and "intentionally open" are
-	// never indistinguishable (Rule 8).
+	// AdminToken is required as a Bearer token on the /admin/* endpoints
+	// (snapshots/retention/storage) served on MetricsAddr. It is only empty
+	// when AdminAuthEnabled is false, which requires ADMIN_AUTH=disabled to
+	// be set explicitly: an unset token is a startup failure, not an open
+	// door (Rule 9).
 	AdminToken string
+	// AdminAuthEnabled reports whether the Bearer gate is active. main.go
+	// logs it loudly at startup so "forgot to set it" and "intentionally
+	// open" are never indistinguishable (Rule 8).
+	AdminAuthEnabled bool
 
 	// Snapshot / retention filesystem paths and build identity.
 	SnapshotDir   string
@@ -67,11 +72,17 @@ func Load() (*Config, error) {
 		buildRef = "dev"
 	}
 
+	adminToken, adminAuthEnabled, err := loadAdminAuth()
+	if err != nil {
+		return nil, err
+	}
+
 	return &Config{
 		DatabaseURL:                  dbURL,
 		ListenAddr:                   listenAddr,
 		MetricsAddr:                  metricsAddr,
-		AdminToken:                   os.Getenv("ADMIN_TOKEN"),
+		AdminToken:                   adminToken,
+		AdminAuthEnabled:             adminAuthEnabled,
 		SnapshotDir:                  snapshotDir,
 		ArchiveDir:                   archiveDir,
 		BuildRef:                     buildRef,
@@ -85,6 +96,41 @@ func Load() (*Config, error) {
 		HomeProjectorMaxBatches:      parseIntEnv("KNOWLEDGE_SOVEREIGN_HOME_PROJECTOR_MAX_BATCHES_PER_TICK", 4),
 		TrailMaxBranchesPerUser:      parseIntEnv("KNOWLEDGE_SOVEREIGN_TRAIL_MAX_BRANCHES_PER_USER", 5),
 	}, nil
+}
+
+// minAdminTokenLen keeps the Bearer token out of guessable range; the admin
+// surface exports partitions and writes snapshots to a host bind mount.
+const minAdminTokenLen = 24
+
+// loadAdminAuth resolves the admin Bearer token from ADMIN_TOKEN_FILE (docker
+// secret) or ADMIN_TOKEN. Absence is a startup failure: the only way to run
+// without the gate is ADMIN_AUTH=disabled, spelled out by an operator.
+func loadAdminAuth() (string, bool, error) {
+	if path := os.Getenv("ADMIN_TOKEN_FILE"); path != "" {
+		data, err := os.ReadFile(path)
+		if err != nil {
+			return "", false, fmt.Errorf("read ADMIN_TOKEN_FILE: %w", err)
+		}
+		token := strings.TrimSpace(string(data))
+		if len(token) < minAdminTokenLen {
+			return "", false, fmt.Errorf("admin token from ADMIN_TOKEN_FILE must be at least %d characters", minAdminTokenLen)
+		}
+		return token, true, nil
+	}
+
+	if token := strings.TrimSpace(os.Getenv("ADMIN_TOKEN")); token != "" {
+		if len(token) < minAdminTokenLen {
+			return "", false, fmt.Errorf("ADMIN_TOKEN must be at least %d characters", minAdminTokenLen)
+		}
+		return token, true, nil
+	}
+
+	if os.Getenv("ADMIN_AUTH") == "disabled" {
+		return "", false, nil
+	}
+
+	return "", false, fmt.Errorf(
+		"ADMIN_TOKEN or ADMIN_TOKEN_FILE is required; set ADMIN_AUTH=disabled to run the /admin/* endpoints without authentication")
 }
 
 // parseDurationEnv reads a duration from env, falling back to the supplied

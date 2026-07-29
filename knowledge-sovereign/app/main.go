@@ -70,15 +70,15 @@ func main() {
 	retentionHandler.RegisterRoutes(metricsMux)
 	storageHandler.RegisterRoutes(metricsMux)
 
-	if cfg.AdminToken == "" {
-		slog.Warn("admin_auth_disabled: /admin/* endpoints on the metrics port accept unauthenticated requests; set ADMIN_TOKEN to require a Bearer token")
-	} else {
+	if cfg.AdminAuthEnabled {
 		slog.Info("admin_auth_enabled")
+	} else {
+		slog.Warn("admin_auth_disabled: ADMIN_AUTH=disabled was set explicitly; /admin/* endpoints on the metrics port accept unauthenticated requests")
 	}
 
 	metricsServer := &http.Server{
 		Addr:              cfg.MetricsAddr,
-		Handler:           requireAdminToken(cfg.AdminToken, metricsMux),
+		Handler:           requireAdminToken(cfg.AdminToken, cfg.AdminAuthEnabled, metricsMux),
 		ReadHeaderTimeout: 10 * time.Second,
 		ReadTimeout:       30 * time.Second,
 		WriteTimeout:      30 * time.Second,
@@ -256,10 +256,11 @@ func main() {
 
 // requireAdminToken wraps next so that /admin/* requests must carry
 // "Authorization: Bearer <token>" matching the configured admin token.
-// If token is empty, admin auth is disabled and every request passes
-// through unchanged (see the admin_auth_disabled startup log).
-func requireAdminToken(token string, next http.Handler) http.Handler {
-	if token == "" {
+// Pass-through happens only when enabled is false, which config.Load grants
+// solely for an explicit ADMIN_AUTH=disabled. An empty token with the gate on
+// denies every request rather than opening the surface.
+func requireAdminToken(token string, enabled bool, next http.Handler) http.Handler {
+	if !enabled {
 		return next
 	}
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

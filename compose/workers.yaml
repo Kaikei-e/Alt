@@ -83,8 +83,9 @@ services:
       - MTLS_ENFORCE=${SEARCH_INDEXER_MTLS_ENFORCE:-true}
       - BACKEND_API_MTLS_URL=https://alt-backend:9443
       - BACKEND_MTLS_SERVER_NAME=alt-backend
-      # Backend API mode (replaces direct DB access)
-      - BACKEND_API_URL=http://alt-backend:9101
+      # Backend API mode (replaces direct DB access). :9102 is
+      # alt-backend's internal listener (BackendInternalService).
+      - BACKEND_API_URL=http://alt-backend:9102
       - MEILISEARCH_HOST=${MEILISEARCH_HOST}
       - MEILISEARCH_API_KEY_FILE=/run/secrets/meili_master_key
       - MEILISEARCH_SEARCH_API_KEY_FILE=/run/secrets/meili_search_key
@@ -148,8 +149,9 @@ services:
       - "9400:9400"
       # mTLS :9443 served by pki-agent-tag-generator (shares net ns via network_mode)
     environment:
-      # Backend API mode (replaces direct DB access for article/tag operations)
-      - BACKEND_API_URL=http://alt-backend:9101
+      # Backend API mode (replaces direct DB access for article/tag
+      # operations). :9102 is alt-backend's internal listener.
+      - BACKEND_API_URL=http://alt-backend:9102
       - MTLS_ENFORCE=${TAG_GENERATOR_MTLS_ENFORCE:-false}
       - MTLS_CERT_FILE=/certs/svc-cert.pem
       - MTLS_KEY_FILE=/certs/svc-key.pem

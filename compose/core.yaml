@@ -120,6 +120,11 @@ services:
     ports:
       - "9000:9000"
       - "9101:9101"
+      # :9102 carries BackendInternalService, the admin services and
+      # /v1/internal/* — none of which authenticate their caller. Loopback
+      # bind keeps it reachable for altctl on this host while removing it
+      # from every other NIC; east-west callers use the container DNS name.
+      - "127.0.0.1:9102:9102"
       # mTLS :9443 intentionally not published (internal east-west only)
     networks:
       - alt-network
@@ -141,6 +146,7 @@ services:
         condition: service_healthy
     environment:
       - CONNECT_PORT=9101
+      - INTERNAL_PORT=9102
       - MTLS_LISTEN=${MTLS_LISTEN:-true}
       - MTLS_PORT=9443
       - MTLS_CERT_FILE=/certs/svc-cert.pem

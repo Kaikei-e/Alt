@@ -11,12 +11,13 @@ import (
 	"github.com/labstack/echo/v4"
 )
 
-// registerInternalRoutes wires service-to-service endpoints used by internal
-// callers (pre-processor, rag-orchestrator, etc.). Access is gated at the
-// TLS transport layer: the mTLS listener (:9443) requires a client cert
-// signed by alt-ca, and PeerIdentityHTTPMiddleware logs the verified CN.
-// Loss of the mTLS perimeter still leaves the Linkerd sidecar in place.
-func registerInternalRoutes(e *echo.Echo, container *di.ApplicationComponents) {
+// RegisterInternalRoutes wires service-to-service endpoints used by internal
+// callers (pre-processor, rag-orchestrator, etc.). The group carries no auth
+// middleware and both endpoints answer system-level queries with no tenant
+// predicate, so reachability is the whole control: callers must mount this on
+// the unpublished internal listener or the mTLS listener, never on the
+// browser-facing REST server.
+func RegisterInternalRoutes(e *echo.Echo, container *di.ApplicationComponents) {
 	v1 := e.Group("/v1/internal")
 
 	v1.GET("/system-user", func(c echo.Context) error {

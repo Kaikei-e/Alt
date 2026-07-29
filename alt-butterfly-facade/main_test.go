@@ -24,7 +24,7 @@ func TestBuildServerConfig_WiresBFFConfigFromAppConfig(t *testing.T) {
 	cfg := config.NewConfig()
 	secret := []byte("this-is-a-valid-backend-token-secret-32-chars-long")
 
-	serverCfg := buildServerConfig(cfg, "http://alt-backend:9101", "", "", secret)
+	serverCfg := buildServerConfig(cfg, "http://alt-backend:9101", "http://alt-backend:9102", "", "", secret)
 
 	assert.True(t, serverCfg.BFFConfig.EnableCache, "cfg.EnableCache must reach serverCfg.BFFConfig")
 	assert.True(t, serverCfg.BFFConfig.EnableCircuitBreaker, "cfg.EnableCircuitBreaker must reach serverCfg.BFFConfig")
@@ -48,7 +48,7 @@ func TestBuildServerConfig_ResultingServer_UsesBFFHandler(t *testing.T) {
 	cfg := config.NewConfig()
 	secret := []byte("this-is-a-valid-backend-token-secret-32-chars-long")
 
-	serverCfg := buildServerConfig(cfg, "http://127.0.0.1:1", "", "", secret)
+	serverCfg := buildServerConfig(cfg, "http://127.0.0.1:1", "http://127.0.0.1:1", "", "", secret)
 	handler := server.NewServerWithTransport(serverCfg, nil, http.DefaultTransport)
 
 	req := httptest.NewRequest(http.MethodGet, "/v1/bff/stats", nil)

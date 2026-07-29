@@ -20,10 +20,12 @@ import (
 	"os/signal"
 	"runtime"
 	"strconv"
+	"strings"
 	"syscall"
 	"time"
 
 	"github.com/labstack/echo/v4"
+	echomiddleware "github.com/labstack/echo/v4/middleware"
 	"go.opentelemetry.io/contrib/instrumentation/github.com/labstack/echo/otelecho"
 )
 
@@ -201,6 +203,47 @@ func main() {
 		}
 	}()
 
+	// Internal listener: service-to-service Connect-RPC plus /v1/internal/*
+	// REST. Neither surface authenticates its caller, so the control is
+	// reachability — compose binds this port to 127.0.0.1, unlike the REST
+	// and Connect ports above. Rule 8: say so loudly at startup.
+	internalEcho := echo.New()
+	internalEcho.HideBanner = true
+	internalEcho.HidePort = true
+	internalEcho.Use(middleware.RequestIDMiddleware())
+	internalEcho.Use(echomiddleware.Recover())
+	internalEcho.GET("/health", func(c echo.Context) error {
+		return c.JSON(http.StatusOK, map[string]string{"status": "healthy", "service": "alt-backend-internal"})
+	})
+	rest.RegisterInternalRoutes(internalEcho, container)
+
+	internalPort := cfg.Server.InternalPort
+	internalConnectServer := connectv2.CreateInternalConnectServer(container, cfg, log)
+	internalHTTPServer := &http.Server{
+		Addr:              fmt.Sprintf(":%d", internalPort),
+		Handler:           buildInternalHandler(internalConnectServer, internalEcho),
+		ReadHeaderTimeout: 10 * time.Second,
+		ReadTimeout:       cfg.Server.ReadTimeout,
+		WriteTimeout:      0, // Unlimited for streaming responses
+		IdleTimeout:       120 * time.Second,
+	}
+	logger.Logger.InfoContext(ctx, "internal_listener.wiring",
+		"enabled", true,
+		"port", internalPort,
+		"surfaces", "BackendInternalService,KnowledgeHomeAdminService,AdminMonitorService,/v1/internal",
+	)
+	go func() {
+		err := internalHTTPServer.ListenAndServe()
+		switch {
+		case err == nil, err == http.ErrServerClosed:
+			logger.Logger.InfoContext(ctx, "Internal server exited", "reason", "server_closed")
+			serverExitCh <- serverExit{name: "internal", err: nil}
+		default:
+			logger.Logger.ErrorContext(ctx, "Internal server exited with error", "error", err)
+			serverExitCh <- serverExit{name: "internal", err: err}
+		}
+	}()
+
 	// Optional mTLS HTTPS listener mirroring the Connect-RPC handler.
 	// ClientAuth defaults to NoClientCert; enabled by MTLS_LISTEN=true.
 	var mtlsServer *http.Server
@@ -227,7 +270,16 @@ func main() {
 			panic(fmt.Errorf("mtls listener config: %w", err))
 		}
 		{
-			mtlsHandler := buildMTLSHandler(connectServer, e)
+			// Rule 8: the mTLS listener carries the internal surfaces, so
+			// whether it actually verifies client certificates decides what
+			// "mTLS boundary" means here. Say it out loud — MTLS_CLIENT_AUTH
+			// unset means TLS without peer verification, not mutual TLS.
+			logger.Logger.InfoContext(ctx, "mtls_listener.client_auth",
+				"mode", os.Getenv("MTLS_CLIENT_AUTH"),
+				"verifies_client_cert", strings.EqualFold(os.Getenv("MTLS_CLIENT_AUTH"), "require_and_verify"),
+				"allowed_peers", os.Getenv("MTLS_ALLOWED_PEERS"),
+			)
+			mtlsHandler := buildMTLSHandler(connectv2.CreateMTLSConnectServer(container, cfg, log), e, internalEcho)
 			mtlsServer = tlsutil.NewMTLSHTTPServer(fmt.Sprintf(":%d", mtlsPort), tlsCfg, middleware.PeerIdentityHTTPMiddleware(mtlsHandler))
 			go func() {
 				logger.Logger.InfoContext(ctx, "mTLS HTTPS listener starting", "port", mtlsPort)
@@ -329,6 +381,12 @@ func main() {
 		logger.Logger.ErrorContext(shutdownCtx, "Error during Connect-RPC server shutdown", "error", err)
 	} else {
 		logger.Logger.InfoContext(shutdownCtx, "Connect-RPC server shutdown completed")
+	}
+
+	if err := internalHTTPServer.Shutdown(shutdownCtx); err != nil {
+		logger.Logger.ErrorContext(shutdownCtx, "Error during internal server shutdown", "error", err)
+	} else {
+		logger.Logger.InfoContext(shutdownCtx, "Internal server shutdown completed")
 	}
 
 	if mtlsServer != nil {

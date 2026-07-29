@@ -21,6 +21,12 @@ import "strings"
 // (ADR-000729 Phase 3, boundary enforcement, has not landed yet). Treat this
 // list as a signal for what to migrate next, not as an access-control
 // mechanism.
+// serviceToServicePrefix is the proto package prefix of alt-backend's
+// service-to-service Connect-RPC surface. Nothing behind it authenticates the
+// caller, so the BFF — which reaches alt-backend as a trusted mTLS peer —
+// must never forward a browser-supplied path under it.
+const serviceToServicePrefix = "/services."
+
 var restAllowlistPrefixes = []string{
 	"/v1/images/proxy/",
 	"/v1/images/fetch",

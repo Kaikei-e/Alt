@@ -42,9 +42,13 @@ func newAdminClient(cmd *cobra.Command) (*adminclient.AdminClient, error) {
 }
 
 // newSovereignClient creates a SovereignClient from command flags. The admin
-// token is read from the operator's environment (matching the ADMIN_TOKEN
-// the target knowledge-sovereign instance was started with); it is empty,
-// and simply omitted, when that instance has admin auth disabled.
+// token is read from the operator's environment and must match the token the
+// target knowledge-sovereign instance was started with — in compose that is
+// secrets/sovereign_admin_token.txt, so:
+//
+//	ADMIN_TOKEN=$(cat secrets/sovereign_admin_token.txt) altctl home storage
+//
+// Omitting it yields HTTP 401 unless that instance runs ADMIN_AUTH=disabled.
 func newSovereignClient(cmd *cobra.Command) *sovereignclient.SovereignClient {
 	sovereignURL, _ := cmd.Flags().GetString("sovereign-url")
 	return sovereignclient.NewClient(sovereignURL, os.Getenv("ADMIN_TOKEN"))
@@ -53,10 +57,11 @@ func newSovereignClient(cmd *cobra.Command) *sovereignclient.SovereignClient {
 // addAdminFlags adds the backend-url flag to a command. Authentication is
 // network/gateway-layer; no service-token flag is exposed.
 func addAdminFlags(cmd *cobra.Command) {
-	// 9101 is alt-backend's Connect-RPC admin port (compose/core.yaml
-	// publishes "9101:9101" and sets CONNECT_PORT=9101) -- not the public
+	// 9102 is alt-backend's internal Connect-RPC listener, which carries the
+	// admin services (compose/core.yaml sets INTERNAL_PORT=9102 and publishes
+	// it on 127.0.0.1 only) -- not the browser-facing :9101 or the public
 	// HTTP API port. Do not change without also updating compose/core.yaml.
-	cmd.Flags().String("backend-url", "http://localhost:9101", "alt-backend Connect-RPC admin API URL (default port 9101, see compose/core.yaml CONNECT_PORT)")
+	cmd.Flags().String("backend-url", "http://localhost:9102", "alt-backend internal Connect-RPC admin API URL (default port 9102, see compose/core.yaml INTERNAL_PORT)")
 }
 
 // addSovereignFlags adds sovereign-url flag to a command.

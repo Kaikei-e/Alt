@@ -261,6 +261,11 @@ services:
       - ARCHIVE_DIR=/tmp/archives
       - BUILD_REF=staging
       - LOG_LEVEL=info
+      # The Hurl suite calls /admin/* directly on the metrics port, so the
+      # ephemeral staging slice runs with the Bearer gate off. Production
+      # supplies ADMIN_TOKEN_FILE (compose/sovereign.yaml); an unset token
+      # is a startup failure there, never an open surface.
+      - ADMIN_AUTH=disabled
       # Tighten cron cadence so the Hurl suite (22-surface-planner-cron)
       # can observe a SurfacePlanRecomputed emission within its 45 s
       # retry budget (30 retries × 1.5 s). Production defaults stay at

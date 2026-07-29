@@ -79,6 +79,10 @@ func main() {
 	// Service-to-service auth is established at the TLS transport layer.
 
 	backendURL := cfg.BackendConnectURL
+	// alt-backend's admin Connect-RPC services live on its internal listener.
+	// Under MTLS_ENFORCE the mTLS listener carries both surfaces, so the admin
+	// proxies follow the same URL as everything else.
+	internalBackendURL := cfg.BackendInternalConnectURL
 	acolyteURL := cfg.AcolyteConnectURL
 	ttsURL := cfg.TTSConnectURL
 	var backendTransport http.RoundTripper
@@ -90,6 +94,7 @@ func main() {
 		}
 		if v := os.Getenv("BACKEND_CONNECT_MTLS_URL"); v != "" {
 			backendURL = v
+			internalBackendURL = v
 		}
 		// Acolyte and TTS each expose their own nginx mTLS sidecar on :9443.
 		// When MTLS_ENFORCE is on, route BFF → Acolyte/TTS through those TLS
@@ -120,7 +125,7 @@ func main() {
 	logBFFFeatureWiring(ctx, cfg)
 
 	// Create server configuration
-	serverCfg := buildServerConfig(cfg, backendURL, ttsURL, acolyteURL, secret)
+	serverCfg := buildServerConfig(cfg, backendURL, internalBackendURL, ttsURL, acolyteURL, secret)
 
 	// Connect-RPC uses the mTLS transport when enforcement is on; REST
 	// proxies always stay on the default plaintext transport so that

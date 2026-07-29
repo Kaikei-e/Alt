@@ -26,15 +26,19 @@ type HealthResponse struct {
 
 // Config holds server configuration.
 type Config struct {
-	BackendURL        string
-	BackendRESTURL    string
-	Secret            []byte
-	Issuer            string
-	Audience          string
-	RequestTimeout    time.Duration
-	StreamingTimeout  time.Duration
-	TTSConnectURL     string
-	AcolyteConnectURL string
+	BackendURL string
+	// BackendInternalURL is alt-backend's internal listener, which carries the
+	// admin Connect-RPC services. It is a separate field from BackendURL so
+	// the admin proxies cannot silently degrade to the browser-facing port.
+	BackendInternalURL string
+	BackendRESTURL     string
+	Secret             []byte
+	Issuer             string
+	Audience           string
+	RequestTimeout     time.Duration
+	StreamingTimeout   time.Duration
+	TTSConnectURL      string
+	AcolyteConnectURL  string
 
 	// BFF Feature Configuration
 	BFFConfig handler.BFFConfig
@@ -257,11 +261,22 @@ func NewServerWithTransports(
 	}
 
 	// Knowledge Home admin routing (before catch-all).
-	// Requests are authenticated as admin users at the BFF boundary; service
-	// auth is established at the TLS transport layer (mTLS).
+	// The admin-role check on the caller's JWT happens here, at the BFF
+	// boundary — alt-backend's admin services do not repeat it. They live on
+	// its internal listener, so these proxies get their own client pointed at
+	// BackendInternalURL rather than the browser-facing Connect port.
 	{
+		adminBackendClient := backendClient
+		if cfg.BackendInternalURL != "" {
+			adminBackendClient = client.NewBackendClientWithTransport(
+				cfg.BackendInternalURL,
+				cfg.RequestTimeout,
+				cfg.StreamingTimeout,
+				connectTransport,
+			)
+		}
 		adminProxy := handler.NewAdminProxyHandler(
-			backendClient,
+			adminBackendClient,
 			cfg.Secret,
 			cfg.Issuer,
 			cfg.Audience,
@@ -275,7 +290,7 @@ func NewServerWithTransports(
 		// proxy that does not apply a short request timeout: Watch is
 		// a long-lived server stream.
 		adminMonitorProxy := handler.NewAdminMonitorProxyHandler(
-			backendClient,
+			adminBackendClient,
 			cfg.Secret,
 			cfg.Issuer,
 			cfg.Audience,
@@ -312,8 +327,26 @@ func NewServerWithTransports(
 	}
 
 	// Register proxy handler for all other paths
-	// Connect-RPC uses paths like /alt.feeds.v2.FeedService/GetFeedStats
-	mux.Handle("/", mainHandler)
+	// Connect-RPC uses paths like /alt.feeds.v2.FeedService/GetFeedStats.
+	//
+	// The `services.*` proto package is the service-to-service surface, which
+	// has no user-JWT interceptor on the far side. The BFF is a legitimate
+	// mTLS peer of alt-backend, so forwarding a caller-chosen path here would
+	// make it a confused deputy for any account that can obtain a session.
+	// Reject the whole package at the edge rather than trusting the upstream
+	// mux to have stopped serving it.
+	mux.Handle("/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasPrefix(r.URL.Path, serviceToServicePrefix) {
+			if logger != nil {
+				logger.WarnContext(r.Context(), "BFF rejected service-to-service Connect-RPC path",
+					"path", r.URL.Path,
+				)
+			}
+			http.NotFound(w, r)
+			return
+		}
+		mainHandler.ServeHTTP(w, r)
+	}))
 
 	// Support HTTP/2 without TLS (h2c) for Connect-RPC streaming
 	return h2c.NewHandler(mux, &http2.Server{})

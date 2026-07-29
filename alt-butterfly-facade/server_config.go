@@ -23,17 +23,18 @@ import (
 // ProxyHandler regardless of the configured flags. See
 // TestBuildServerConfig_WiresBFFConfigFromAppConfig and
 // TestBuildServerConfig_ResultingServer_UsesBFFHandler in main_test.go.
-func buildServerConfig(cfg *config.Config, backendURL, ttsURL, acolyteURL string, secret []byte) server.Config {
+func buildServerConfig(cfg *config.Config, backendURL, internalBackendURL, ttsURL, acolyteURL string, secret []byte) server.Config {
 	return server.Config{
-		BackendURL:        backendURL,
-		BackendRESTURL:    cfg.BackendRESTURL,
-		Secret:            secret,
-		Issuer:            cfg.BackendTokenIssuer,
-		Audience:          cfg.BackendTokenAudience,
-		RequestTimeout:    cfg.RequestTimeout,
-		StreamingTimeout:  cfg.StreamingTimeout,
-		TTSConnectURL:     ttsURL,
-		AcolyteConnectURL: acolyteURL,
+		BackendURL:         backendURL,
+		BackendInternalURL: internalBackendURL,
+		BackendRESTURL:     cfg.BackendRESTURL,
+		Secret:             secret,
+		Issuer:             cfg.BackendTokenIssuer,
+		Audience:           cfg.BackendTokenAudience,
+		RequestTimeout:     cfg.RequestTimeout,
+		StreamingTimeout:   cfg.StreamingTimeout,
+		TTSConnectURL:      ttsURL,
+		AcolyteConnectURL:  acolyteURL,
 		BFFConfig: handler.BFFConfig{
 			EnableCache:              cfg.EnableCache,
 			EnableCircuitBreaker:     cfg.EnableCircuitBreaker,

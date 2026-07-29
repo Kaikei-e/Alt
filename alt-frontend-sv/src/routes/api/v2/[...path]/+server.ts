@@ -12,12 +12,65 @@ const BACKEND_CONNECT_URL =
 	env.BACKEND_CONNECT_URL || "http://alt-backend:9101";
 
 /**
+ * Connect-RPC services the browser may reach through this proxy.
+ *
+ * The proxy attaches a valid backend token to whatever path the caller chose,
+ * so an unbounded path turns any account into a gateway to every upstream
+ * service. Two families must never appear here: the `services.*` package,
+ * which is alt-backend's service-to-service surface, and the admin services,
+ * which have their own role-checked routes.
+ */
+const PROXYABLE_SERVICES = new Set([
+	"alt.acolyte.v1.AcolyteService",
+	"alt.articles.v2.ArticleService",
+	"alt.augur.v2.AugurService",
+	"alt.feeds.v2.FeedService",
+	"alt.knowledge_home.v1.KnowledgeHomeService",
+	"alt.knowledge_trail.v1.KnowledgeTrailService",
+	"alt.morning_letter.v2.MorningLetterReadService",
+	"alt.morning_letter.v2.MorningLetterService",
+	"alt.recap.v2.JobStatusService",
+	"alt.recap.v2.RecapService",
+	"alt.rss.v2.RSSService",
+	"alt.search.v2.GlobalSearchService",
+	"alt.search.v2.SearchService",
+	"alt.tts.v1.TTSService",
+]);
+
+function isProxyableService(path: string): boolean {
+	const [service, method, ...rest] = path.split("/");
+	return (
+		rest.length === 0 &&
+		!!method &&
+		!!service &&
+		PROXYABLE_SERVICES.has(service)
+	);
+}
+
+/**
  * Fallback handler for all HTTP methods (GET, POST, etc.)
  * Connect-RPC primarily uses POST requests.
  *
  * Note: Backend token is cached in event.locals by hooks.server.ts (TTFT optimization).
  */
 export const fallback: RequestHandler = async ({ request, params, locals }) => {
+	const path = params.path || "";
+
+	if (!isProxyableService(path)) {
+		console.warn(
+			JSON.stringify({
+				level: "warn",
+				source: "connect-proxy",
+				msg: "rejected non-proxyable Connect-RPC service",
+				path,
+			}),
+		);
+		return new Response(
+			JSON.stringify({ code: "not_found", message: "Unknown endpoint" }),
+			{ status: 404, headers: { "Content-Type": "application/json" } },
+		);
+	}
+
 	// Use cached token from hooks.server.ts (request-scoped caching)
 	const token = locals.backendToken;
 
@@ -40,7 +93,6 @@ export const fallback: RequestHandler = async ({ request, params, locals }) => {
 	}
 
 	// Construct the backend URL
-	const path = params.path || "";
 	const backendUrl = `${BACKEND_CONNECT_URL}/${path}`;
 
 	// Clone headers and add authentication

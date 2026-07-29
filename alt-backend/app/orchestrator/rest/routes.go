@@ -134,5 +134,6 @@ func RegisterRoutes(ctx context.Context, e *echo.Echo, container *di.Application
 	registerScrapingDomainRoutes(v1, container, cfg)
 	registerDashboardRoutes(v1, container, cfg)
 	RegisterAugurRoutes(e, v1, container)
-	registerInternalRoutes(e, container)
+	// /v1/internal/* is deliberately absent here: it is registered by
+	// RegisterInternalRoutes on the internal and mTLS listeners only.
 }

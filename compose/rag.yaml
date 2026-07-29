@@ -122,6 +122,10 @@ services:
       # keeps live behavior unchanged.
       - RAG_ORCHESTRATOR_KNOWLEDGE_EVENT_EMIT=${RAG_ORCHESTRATOR_KNOWLEDGE_EVENT_EMIT:-true}
       - RAG_ORCHESTRATOR_KNOWLEDGE_SOVEREIGN_URL=${RAG_ORCHESTRATOR_KNOWLEDGE_SOVEREIGN_URL:-http://knowledge-sovereign:9500}
+      # /v1/internal/articles/recent moved off the published REST port onto
+      # alt-backend's internal listener (:9102).
+      - ALT_BACKEND_URL=http://alt-backend:9102
+      - ALT_BACKEND_CONNECT_URL=http://alt-backend:9102
       # Required inbound peer-auth mode for the Connect-RPC listener (:9011).
       # mtls: terminate TLS with the pki-agent leaf and only admit allowlisted
       # client-cert CNs. Override to "disabled" to fall back to plaintext h2c.

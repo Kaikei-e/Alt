@@ -235,8 +235,11 @@ services:
       - MTLS_ENFORCE=${PRE_PROCESSOR_MTLS_ENFORCE:-true}
       - BACKEND_API_MTLS_URL=https://alt-backend:9443
       - BACKEND_MTLS_SERVER_NAME=alt-backend
-      # Backend API mode: article/feed/summary repos via Connect-RPC
-      - BACKEND_API_URL=http://alt-backend:9101
+      # Backend API mode: article/feed/summary repos via Connect-RPC.
+      # :9102 is alt-backend's internal listener (BackendInternalService);
+      # the published :9101 no longer serves it.
+      - BACKEND_API_URL=http://alt-backend:9102
+      - ALT_BACKEND_HOST=http://alt-backend:9102
       # Pre-processor dedicated DB (ADR-000246)
       - PP_DB_HOST=pre-processor-db
       - PP_DB_PORT=5432

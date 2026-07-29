@@ -15,10 +15,12 @@
 #
 # Auth: KnowledgeHomeAdminService is service-to-service (BFF -> backend
 # at the admin-only edge) and stages mTLS at TLS termination. The
-# alt-staging slice exposes the Connect-RPC port without TLS for the
-# E2E, mirroring the pattern used by 26-knowledge-loop-canonical-contract.
+# alt-staging slice exposes the internal Connect-RPC port (:9102)
+# without TLS for the E2E, mirroring the pattern used by
+# 26-knowledge-loop-canonical-contract. The browser-facing :9101 no
+# longer serves this service.
 
-POST {{connect_url}}/alt.knowledge_home.v1.KnowledgeHomeAdminService/EmitArticleUrlBackfill
+POST {{internal_url}}/alt.knowledge_home.v1.KnowledgeHomeAdminService/EmitArticleUrlBackfill
 X-Alt-Backend-Token: {{jwt}}
 Content-Type: application/json
 {
@@ -45,7 +47,7 @@ jsonpath "$.moreRemaining" == false
 
 # A second call with maxArticles set must round-trip the field without
 # error. Counters stay zero because there are no articles to walk.
-POST {{connect_url}}/alt.knowledge_home.v1.KnowledgeHomeAdminService/EmitArticleUrlBackfill
+POST {{internal_url}}/alt.knowledge_home.v1.KnowledgeHomeAdminService/EmitArticleUrlBackfill
 X-Alt-Backend-Token: {{jwt}}
 Content-Type: application/json
 {

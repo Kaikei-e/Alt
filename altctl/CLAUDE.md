@@ -229,7 +229,7 @@ Run `altctl list --services` for the live, derived service lists per stack.
 
 | Subcommand | Target | Client |
 |------------|--------|--------|
-| health, slo, reproject, audit, backfill | alt-backend :9101 | adminclient (Connect-RPC JSON) |
+| health, slo, reproject, audit, backfill | alt-backend :9102 (internal listener, 127.0.0.1-bound) | adminclient (Connect-RPC JSON) |
 | snapshot, retention, storage | knowledge-sovereign :9511 | sovereignclient (REST) |
 
 ## TDD Workflow

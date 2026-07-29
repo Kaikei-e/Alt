@@ -6,6 +6,73 @@ import (
 	"testing"
 )
 
+func sourceHandler(name string) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("X-Source", name)
+		w.WriteHeader(http.StatusOK)
+	})
+}
+
+// TestBuildMTLSHandler_RoutesInternalRESTToInternalEcho proves /v1/internal/*
+// reaches the internal Echo instance on the mTLS listener, where it moved
+// after being unmounted from the browser-facing REST server.
+func TestBuildMTLSHandler_RoutesInternalRESTToInternalEcho(t *testing.T) {
+	h := buildMTLSHandler(http.NewServeMux(), sourceHandler("echo"), sourceHandler("internal-echo"))
+
+	cases := []struct {
+		path       string
+		wantSource string
+	}{
+		{"/v1/internal/system-user", "internal-echo"},
+		{"/v1/internal/articles/recent?limit=0", "internal-echo"},
+		{"/v1/recap/articles", "echo"},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.path, func(t *testing.T) {
+			rec := httptest.NewRecorder()
+			h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, tc.path, nil))
+			if got := rec.Header().Get("X-Source"); got != tc.wantSource {
+				t.Errorf("expected X-Source=%q, got %q", tc.wantSource, got)
+			}
+		})
+	}
+}
+
+// TestBuildInternalHandler_ServesOnlyInternalSurfaces proves the unpublished
+// internal listener exposes the service-to-service surfaces and nothing else,
+// so a stray public request cannot use it as a second entrance.
+func TestBuildInternalHandler_ServesOnlyInternalSurfaces(t *testing.T) {
+	connectMux := http.NewServeMux()
+	connectMux.Handle("/services.backend.v1.BackendInternalService/", sourceHandler("connect"))
+
+	h := buildInternalHandler(connectMux, sourceHandler("internal-echo"))
+
+	cases := []struct {
+		path       string
+		wantSource string
+		wantCode   int
+	}{
+		{"/services.backend.v1.BackendInternalService/CreateArticle", "connect", http.StatusOK},
+		{"/v1/internal/system-user", "internal-echo", http.StatusOK},
+		{"/v1/feeds", "", http.StatusNotFound},
+		{"/alt.feeds.v2.FeedService/GetFeedStats", "", http.StatusNotFound},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.path, func(t *testing.T) {
+			rec := httptest.NewRecorder()
+			h.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, tc.path, nil))
+			if rec.Code != tc.wantCode {
+				t.Fatalf("expected %d, got %d", tc.wantCode, rec.Code)
+			}
+			if got := rec.Header().Get("X-Source"); got != tc.wantSource {
+				t.Errorf("expected X-Source=%q, got %q", tc.wantSource, got)
+			}
+		})
+	}
+}
+
 // TestBuildMTLSHandler_RoutesConnectPathsToConnectMux proves that Connect-RPC
 // prefixes (/alt.* and /services.*) go to the connect mux.
 func TestBuildMTLSHandler_RoutesConnectPathsToConnectMux(t *testing.T) {
@@ -24,7 +91,7 @@ func TestBuildMTLSHandler_RoutesConnectPathsToConnectMux(t *testing.T) {
 		w.WriteHeader(http.StatusOK)
 	})
 
-	h := buildMTLSHandler(connectMux, echoHandler)
+	h := buildMTLSHandler(connectMux, echoHandler, http.NotFoundHandler())
 
 	cases := []struct {
 		name       string
@@ -70,7 +137,7 @@ func TestBuildMTLSHandler_RoutesRESTToEcho(t *testing.T) {
 		w.WriteHeader(http.StatusOK)
 	})
 
-	h := buildMTLSHandler(connectMux, echoHandler)
+	h := buildMTLSHandler(connectMux, echoHandler, http.NotFoundHandler())
 
 	req := httptest.NewRequest(http.MethodGet, "/v1/recap/articles?from=2026-04-14T00:00:00Z&to=2026-04-15T00:00:00Z", nil)
 	rec := httptest.NewRecorder()
@@ -101,7 +168,7 @@ func TestBuildMTLSHandler_UnmatchedConnectPathDoesNotFallthrough(t *testing.T) {
 		t.Fatal("echo must not be invoked for unknown Connect-RPC paths")
 	})
 
-	h := buildMTLSHandler(connectMux, echoHandler)
+	h := buildMTLSHandler(connectMux, echoHandler, http.NotFoundHandler())
 
 	req := httptest.NewRequest(http.MethodPost, "/alt.feeds.v2.FeedService/DoesNotExist", nil)
 	rec := httptest.NewRecorder()

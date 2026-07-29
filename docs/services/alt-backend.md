@@ -13,10 +13,10 @@ _Last reviewed: July 7, 2026_
 
 ### Clean Architecture Layers
 - `rest/` owns HTTP handlers, `usecase/` contains business orchestrators, `port/` defines stable contracts, `gateway/` adapts to external APIs, `driver/` handles Postgres/search/recap clients, and `job/` runs background loops—wiring happens in `di/container.go:1`.
-- Domain entities live in `domain/`, infrastructure helpers in `utils/`, dependency wiring in `di/`, and `main.go:25` bootstraps all components, starts the Echo server (port 9000), the Connect-RPC server (port 9101), and launches the background jobs.
+- Domain entities live in `domain/`, infrastructure helpers in `utils/`, dependency wiring in `di/`, and `main.go:25` bootstraps all components, starts the Echo server (port 9000), the Connect-RPC server (port 9101), the internal listener (port 9102), and launches the background jobs.
 
 ### Dual Server Architecture
-- The backend exposes two server interfaces: a REST/Echo server on port 9000 for browser clients and legacy integrations, and a Connect-RPC server on port 9101 for efficient service-to-service communication.
+- The backend exposes three HTTP interfaces: a REST/Echo server on port 9000 for browser clients and legacy integrations, a Connect-RPC server on port 9101 carrying the JWT-guarded user-facing services, and an internal listener on port 9102 carrying `BackendInternalService`, the admin services and `/v1/internal/*`. Only 9000 and 9101 are published beyond loopback; 9102 is bound to 127.0.0.1 because nothing behind it authenticates its caller.
 - Connect-RPC handlers live in `connect/v2/` and share the same usecases, gateways, and drivers as the REST layer via `di/container.go`.
 - Both servers start in `main.go:110-127` with graceful shutdown handling.
 

@@ -154,6 +154,7 @@ type AuthConfig struct {
 type ServerConfig struct {
 	Port               int           `json:"port" env:"SERVER_PORT" default:"9000"`
 	ConnectPort        int           `json:"connect_port" env:"CONNECT_PORT" default:"9101"`
+	InternalPort       int           `json:"internal_port" env:"INTERNAL_PORT" default:"9102"`
 	ReadTimeout        time.Duration `json:"read_timeout" env:"SERVER_READ_TIMEOUT" default:"300s"` // Extended for LLM processing (nginx timeout 240s + margin)
 	WriteTimeout       time.Duration `json:"write_timeout" env:"SERVER_WRITE_TIMEOUT" default:"300s"`
 	IdleTimeout        time.Duration `json:"idle_timeout" env:"SERVER_IDLE_TIMEOUT" default:"120s"`

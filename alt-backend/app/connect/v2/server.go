@@ -41,7 +41,10 @@ import (
 	"alt/orchestrator/connect/v2/rss"
 )
 
-// SetupConnectHandlers registers all Connect-RPC handlers with the HTTP mux.
+// SetupConnectHandlers registers the browser-facing Connect-RPC handlers with
+// the HTTP mux. Every service registered here runs behind the JWT auth
+// interceptor. Service-to-service and admin surfaces belong on the internal
+// mux instead — see SetupInternalConnectHandlers.
 func SetupConnectHandlers(mux *http.ServeMux, container *di.ApplicationComponents, cfg *config.Config, logger *slog.Logger) {
 	// Create interceptors
 	cancelInterceptor := middleware.NewContextCancelInterceptor(logger)
@@ -176,9 +179,22 @@ func SetupConnectHandlers(mux *http.ServeMux, container *di.ApplicationComponent
 	mux.Handle(ktPath, ktServiceHandler)
 	logger.Info("Registered Connect-RPC KnowledgeTrailService", "path", ktPath)
 
-	// Register KnowledgeHomeAdminService (service-to-service API). Auth is
-	// established at the TLS transport layer (mTLS peer-identity).
-	//
+	// Register GlobalSearchService
+	if container.Search != nil {
+		globalSearchHandler := global_search.NewHandler(container.Search.GlobalSearchUsecase, logger)
+		gsPath, gsServiceHandler := searchv2connect.NewGlobalSearchServiceHandler(globalSearchHandler, opts)
+		mux.Handle(gsPath, gsServiceHandler)
+		logger.Info("Registered Connect-RPC GlobalSearchService", "path", gsPath)
+	}
+}
+
+// SetupInternalConnectHandlers registers the service-to-service and admin
+// Connect-RPC handlers. None of them carries a user-JWT interceptor, so the
+// mux they are mounted on decides who can reach them: the loopback-bound
+// internal listener and the TLS listener, never the browser-facing one.
+func SetupInternalConnectHandlers(mux *http.ServeMux, container *di.ApplicationComponents, cfg *config.Config, logger *slog.Logger) {
+	cancelInterceptor := middleware.NewContextCancelInterceptor(logger)
+
 	// The custom JSON codec replaces Connect-RPC's default protojson
 	// marshaler so proto3 default-valued scalars (zero counters, false
 	// flags) stay present in the JSON response. The admin Hurl
@@ -210,8 +226,7 @@ func SetupConnectHandlers(mux *http.ServeMux, container *di.ApplicationComponent
 
 	// Register AdminMonitorService (Prometheus-backed observability for Admin UI).
 	// Gated by config.AdminMonitor.Enabled so production rollout is flag-controlled.
-	// Auth: BFF validates the user JWT + admin role; service-to-service auth is
-	// established at the TLS transport layer.
+	// The BFF validates the user JWT + admin role before forwarding here.
 	if container.AdminMonitor != nil && container.AdminMonitor.Enabled && container.AdminMonitor.Facade != nil {
 		amHandler := admin_monitor.NewHandler(container.AdminMonitor.Facade, logger)
 		amPath, amServiceHandler := adminmonitorv1connect.NewAdminMonitorServiceHandler(amHandler, adminOpts)
@@ -221,16 +236,7 @@ func SetupConnectHandlers(mux *http.ServeMux, container *di.ApplicationComponent
 		logger.Info("AdminMonitorService disabled (config.AdminMonitor.Enabled=false)")
 	}
 
-	// Register GlobalSearchService
-	if container.Search != nil {
-		globalSearchHandler := global_search.NewHandler(container.Search.GlobalSearchUsecase, logger)
-		gsPath, gsServiceHandler := searchv2connect.NewGlobalSearchServiceHandler(globalSearchHandler, opts)
-		mux.Handle(gsPath, gsServiceHandler)
-		logger.Info("Registered Connect-RPC GlobalSearchService", "path", gsPath)
-	}
-
-	// Register BackendInternalService (service-to-service API). Auth is
-	// established at the TLS transport layer (mTLS peer-identity).
+	// Register BackendInternalService (service-to-service API).
 	internalOpts := connect.WithInterceptors(
 		cancelInterceptor.Interceptor(),
 	)
@@ -255,19 +261,46 @@ func SetupConnectHandlers(mux *http.ServeMux, container *di.ApplicationComponent
 	logger.Info("Registered Connect-RPC BackendInternalService", "path", internalPath)
 }
 
-// CreateConnectServer creates the Connect-RPC server with HTTP/2 support.
-func CreateConnectServer(container *di.ApplicationComponents, cfg *config.Config, logger *slog.Logger) http.Handler {
-	mux := http.NewServeMux()
-
-	// Add health check endpoint for Connect-RPC server
+func registerConnectHealth(mux *http.ServeMux) {
 	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte(`{"status":"healthy","service":"connect-rpc"}`))
 	})
+}
 
+// CreateConnectServer creates the browser-facing Connect-RPC server with
+// HTTP/2 support. This is the handler behind the published plaintext port, so
+// it carries only JWT-guarded user services.
+func CreateConnectServer(container *di.ApplicationComponents, cfg *config.Config, logger *slog.Logger) http.Handler {
+	mux := http.NewServeMux()
+	registerConnectHealth(mux)
 	SetupConnectHandlers(mux, container, cfg, logger)
 
 	// Support HTTP/2 without TLS (h2c) for local development and internal communication
+	return h2c.NewHandler(mux, &http2.Server{})
+}
+
+// CreateInternalConnectServer creates the Connect-RPC server for the internal
+// listener: service-to-service and admin surfaces only.
+func CreateInternalConnectServer(container *di.ApplicationComponents, cfg *config.Config, logger *slog.Logger) http.Handler {
+	mux := http.NewServeMux()
+	registerConnectHealth(mux)
+	SetupInternalConnectHandlers(mux, container, cfg, logger)
+
+	return h2c.NewHandler(mux, &http2.Server{})
+}
+
+// CreateMTLSConnectServer creates the Connect-RPC server for the TLS listener
+// (:9443), which is not published to the host and carries both surfaces.
+// Whether the client certificate is actually verified depends on
+// MTLS_CLIENT_AUTH — main.go logs the resolved mode at startup rather than
+// letting this comment assert a guarantee the config may not grant.
+func CreateMTLSConnectServer(container *di.ApplicationComponents, cfg *config.Config, logger *slog.Logger) http.Handler {
+	mux := http.NewServeMux()
+	registerConnectHealth(mux)
+	SetupConnectHandlers(mux, container, cfg, logger)
+	SetupInternalConnectHandlers(mux, container, cfg, logger)
+
 	return h2c.NewHandler(mux, &http2.Server{})
 }

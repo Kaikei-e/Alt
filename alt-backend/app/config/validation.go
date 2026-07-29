@@ -53,6 +53,14 @@ func validateServerConfig(config *ServerConfig) error {
 		return fmt.Errorf("connect port must be between 1 and 65535, got %d", config.ConnectPort)
 	}
 
+	if config.InternalPort < 1 || config.InternalPort > 65535 {
+		return fmt.Errorf("internal port must be between 1 and 65535, got %d", config.InternalPort)
+	}
+
+	if config.InternalPort == config.Port || config.InternalPort == config.ConnectPort {
+		return fmt.Errorf("internal port %d must differ from the published server and connect ports", config.InternalPort)
+	}
+
 	// Validate timeout values
 	if config.ReadTimeout <= 0 {
 		return fmt.Errorf("timeout values must be positive, got ReadTimeout: %v", config.ReadTimeout)

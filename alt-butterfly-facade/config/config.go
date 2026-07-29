@@ -14,6 +14,9 @@ type Config struct {
 	Port string
 	// BackendConnectURL is the URL of the alt-backend Connect-RPC service
 	BackendConnectURL string
+	// BackendInternalConnectURL is the URL of alt-backend's internal
+	// Connect-RPC listener, which carries the admin services.
+	BackendInternalConnectURL string
 	// BackendRESTURL is the URL of the alt-backend REST API service
 	BackendRESTURL string
 	// AuthHubURL is the URL of the auth-hub service
@@ -67,18 +70,19 @@ type Config struct {
 // NewConfig creates a new Config from environment variables with defaults.
 func NewConfig() *Config {
 	return &Config{
-		Port:                   getEnv("BFF_PORT", "9200"),
-		BackendConnectURL:      getEnv("BACKEND_CONNECT_URL", "http://alt-backend:9101"),
-		BackendRESTURL:         getEnv("BACKEND_REST_URL", "http://alt-backend:9000"),
-		AuthHubURL:             getEnv("AUTH_HUB_INTERNAL_URL", "http://auth-hub:8888"),
-		BackendTokenSecretFile: getEnv("BACKEND_TOKEN_SECRET_FILE", ""),
-		BackendTokenSecret:     getEnv("BACKEND_TOKEN_SECRET", ""),
-		BackendTokenIssuer:     getEnv("BACKEND_TOKEN_ISSUER", "auth-hub"),
-		BackendTokenAudience:   getEnv("BACKEND_TOKEN_AUDIENCE", "alt-backend"),
-		RequestTimeout:         getDurationEnv("BFF_REQUEST_TIMEOUT", 30*time.Second),
-		StreamingTimeout:       getDurationEnv("BFF_STREAMING_TIMEOUT", 40*time.Minute),
-		TTSConnectURL:          getEnv("TTS_CONNECT_URL", ""),
-		AcolyteConnectURL:      getEnv("ACOLYTE_CONNECT_URL", ""),
+		Port:                      getEnv("BFF_PORT", "9200"),
+		BackendConnectURL:         getEnv("BACKEND_CONNECT_URL", "http://alt-backend:9101"),
+		BackendInternalConnectURL: getEnv("BACKEND_INTERNAL_CONNECT_URL", "http://alt-backend:9102"),
+		BackendRESTURL:            getEnv("BACKEND_REST_URL", "http://alt-backend:9000"),
+		AuthHubURL:                getEnv("AUTH_HUB_INTERNAL_URL", "http://auth-hub:8888"),
+		BackendTokenSecretFile:    getEnv("BACKEND_TOKEN_SECRET_FILE", ""),
+		BackendTokenSecret:        getEnv("BACKEND_TOKEN_SECRET", ""),
+		BackendTokenIssuer:        getEnv("BACKEND_TOKEN_ISSUER", "auth-hub"),
+		BackendTokenAudience:      getEnv("BACKEND_TOKEN_AUDIENCE", "alt-backend"),
+		RequestTimeout:            getDurationEnv("BFF_REQUEST_TIMEOUT", 30*time.Second),
+		StreamingTimeout:          getDurationEnv("BFF_STREAMING_TIMEOUT", 40*time.Minute),
+		TTSConnectURL:             getEnv("TTS_CONNECT_URL", ""),
+		AcolyteConnectURL:         getEnv("ACOLYTE_CONNECT_URL", ""),
 
 		// BFF Feature Flags (all enabled by default)
 		EnableCache:              true,

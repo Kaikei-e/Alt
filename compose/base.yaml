@@ -17,6 +17,8 @@ secrets:
     file: ../secrets/recap_db_password.txt
   sovereign_db_password:
     file: ../secrets/sovereign_db_password.txt
+  sovereign_admin_token:
+    file: ../secrets/sovereign_admin_token.txt
   rag_db_password:
     file: ../secrets/rag_db_password.txt
   kratos_db_password:

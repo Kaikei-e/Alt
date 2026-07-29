@@ -80,6 +80,10 @@ services:
     environment:
       - LISTEN_ADDR=:9500
       - METRICS_ADDR=:9501
+      # Bearer token for /admin/* on the metrics port (snapshot writer,
+      # retention exporter, storage stats). Startup fails if this file is
+      # missing — running the admin surface open requires ADMIN_AUTH=disabled.
+      - ADMIN_TOKEN_FILE=/run/secrets/sovereign_admin_token
       - SNAPSHOT_DIR=/tmp/snapshots
       - KNOWLEDGE_SOVEREIGN_PLANNER_BATCH_SIZE=${KNOWLEDGE_SOVEREIGN_PLANNER_BATCH_SIZE:-8192}
       - KNOWLEDGE_SOVEREIGN_PLANNER_MAX_BATCHES_PER_TICK=${KNOWLEDGE_SOVEREIGN_PLANNER_MAX_BATCHES_PER_TICK:-8}
@@ -91,12 +95,17 @@ services:
       - KNOWLEDGE_SOVEREIGN_LOOP_PROJECTOR_BATCH_SIZE=${KNOWLEDGE_SOVEREIGN_LOOP_PROJECTOR_BATCH_SIZE:-500}
       - KNOWLEDGE_SOVEREIGN_LOOP_PROJECTOR_MAX_BATCHES_PER_TICK=${KNOWLEDGE_SOVEREIGN_LOOP_PROJECTOR_MAX_BATCHES_PER_TICK:-4}
     ports:
-      - "9510:9500"
-      - "9511:9501"
+      # :9500 serves the event-log RPC (ListKnowledgeEvents /
+      # AppendKnowledgeEvent) with no caller authentication, and :9501 the
+      # admin surface. Both are east-west only; loopback bind keeps altctl
+      # working from this host without publishing them on every NIC.
+      - "127.0.0.1:9510:9500"
+      - "127.0.0.1:9511:9501"
     volumes:
       - ../backups/sovereign-snapshots:/tmp/snapshots
     secrets:
       - sovereign_db_password
+      - sovereign_admin_token
     depends_on:
       knowledge-sovereign-db:
         condition: service_healthy
