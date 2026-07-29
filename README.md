@@ -4,6 +4,7 @@
 [![Tag Generator](https://github.com/Kaikei-e/Alt/actions/workflows/tag-generator.yaml/badge.svg)](https://github.com/Kaikei-e/Alt/actions/workflows/tag-generator.yaml)
 [![Pre-processor Quality Gates](https://github.com/Kaikei-e/Alt/actions/workflows/pre-processor-quality.yml/badge.svg)](https://github.com/Kaikei-e/Alt/actions/workflows/pre-processor-quality.yml)
 [![Search Indexer Tests](https://github.com/Kaikei-e/Alt/actions/workflows/search-indexer.yaml/badge.svg)](https://github.com/Kaikei-e/Alt/actions/workflows/search-indexer.yaml)
+[![MQ Hub Tests](https://github.com/Kaikei-e/Alt/actions/workflows/mq-hub-go.yaml/badge.svg)](https://github.com/Kaikei-e/Alt/actions/workflows/mq-hub-go.yaml)
 [![Pre-processor Sidecar Go Tests](https://github.com/Kaikei-e/Alt/actions/workflows/pre-processor-sidecar-go.yaml/badge.svg)](https://github.com/Kaikei-e/Alt/actions/workflows/pre-processor-sidecar-go.yaml)
 [![News-Creator Quality Gates](https://github.com/Kaikei-e/Alt/actions/workflows/news-creator.yml/badge.svg)](https://github.com/Kaikei-e/Alt/actions/workflows/news-creator.yml)
 [![Recap Worker CI](https://github.com/Kaikei-e/Alt/actions/workflows/recap-worker.yml/badge.svg)](https://github.com/Kaikei-e/Alt/actions/workflows/recap-worker.yml)
@@ -15,6 +16,7 @@
 [![Build and Push Docker Images](https://github.com/Kaikei-e/Alt/actions/workflows/docker-build.yaml/badge.svg)](https://github.com/Kaikei-e/Alt/actions/workflows/docker-build.yaml)
 [![Proto Contract Validation](https://github.com/Kaikei-e/Alt/actions/workflows/proto-contract.yaml/badge.svg)](https://github.com/Kaikei-e/Alt/actions/workflows/proto-contract.yaml)
 [![Metrics Health Analyzer CI](https://github.com/Kaikei-e/Alt/actions/workflows/metrics-workflow.yaml/badge.svg)](https://github.com/Kaikei-e/Alt/actions/workflows/metrics-workflow.yaml)
+
 
 # Alt
 
