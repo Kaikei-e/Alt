@@ -1,4 +1,5 @@
 [![ADR supersedes graph](https://github.com/Kaikei-e/Alt/actions/workflows/adr-graph.yml/badge.svg)](https://github.com/Kaikei-e/Alt/actions/workflows/adr-graph.yml)
+[![altctl Tests](https://github.com/Kaikei-e/Alt/actions/workflows/altctl-go.yaml/badge.svg)](https://github.com/Kaikei-e/Alt/actions/workflows/altctl-go.yaml)
 [![Backend Go Tests](https://github.com/Kaikei-e/Alt/actions/workflows/backend-go.yaml/badge.svg)](https://github.com/Kaikei-e/Alt/actions/workflows/backend-go.yaml)
 [![Alt Frontend SV Unit Tests](https://github.com/Kaikei-e/Alt/actions/workflows/alt-frontend-sv-unit-test.yaml/badge.svg)](https://github.com/Kaikei-e/Alt/actions/workflows/alt-frontend-sv-unit-test.yaml)
 [![Alt Frontend SV Tests](https://github.com/Kaikei-e/Alt/actions/workflows/alt-frontend-sv.yml/badge.svg?branch=main)](https://github.com/Kaikei-e/Alt/actions/workflows/alt-frontend-sv.yml)
