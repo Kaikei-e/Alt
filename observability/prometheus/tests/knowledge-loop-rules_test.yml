@@ -1,6 +1,10 @@
 # promtool unit tests for the ADR-000939 honest gate.
 #
-#   docker exec alt-prometheus-1 promtool test rules /tmp/kl-rules_test.yml
+#   docker exec alt-prometheus-1 promtool test rules \
+#     /etc/prometheus/tests/knowledge-loop-rules_test.yml
+#
+# Kept outside /etc/prometheus/rules: prometheus.yml globs *.yml there, and a
+# test file parsed as a rule group is a fatal config error, not a skip.
 #
 # These pin the behaviour the old rate-based alert could not deliver: the
 # coverage alert FIRES at the real ~250 entries/day traffic (the rate guard made
@@ -8,7 +12,7 @@
 # producer-liveness alert fires when the producer is dead while the pipeline is
 # alive.
 rule_files:
-  - knowledge-loop-rules.yml
+  - ../rules/knowledge-loop-rules.yml
 
 evaluation_interval: 1m
 

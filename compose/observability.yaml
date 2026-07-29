@@ -24,6 +24,9 @@ services:
       # this mount the glob matches nothing and recording/alerting rules
       # silently fail to load. Knowledge Loop Completion Phase 1 §5.
       - ../observability/prometheus/rules:/etc/prometheus/rules:ro
+      # promtool unit tests, mounted outside the rules glob so Prometheus never
+      # parses them as rule groups (a test file there is a fatal config error).
+      - ../observability/prometheus/tests:/etc/prometheus/tests:ro
     command:
       - '--config.file=/etc/prometheus/prometheus.yml'
       - '--storage.tsdb.path=/prometheus'
