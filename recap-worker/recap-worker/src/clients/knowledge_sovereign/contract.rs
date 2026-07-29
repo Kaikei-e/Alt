@@ -81,8 +81,13 @@ async fn contract_recap_topic_snapshotted_v1() {
                 }));
                 i.response.status(200);
                 i.response.content_type("application/json");
+                // AppendKnowledgeEventResponse declares only `int64 event_seq`.
+                // This body previously also required `success`, which the proto
+                // has never had and no handler can emit — only the hand-written
+                // provider stub produced it. protojson renders int64 as a JSON
+                // string.
                 i.response.json_body(json_pattern!({
-                    "success": like!(true),
+                    "eventSeq": like!("123"),
                 }));
                 i
             },

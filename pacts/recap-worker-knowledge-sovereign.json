@@ -127,14 +127,14 @@
       },
       "response": {
         "body": {
-          "success": true
+          "eventSeq": "123"
         },
         "headers": {
           "content-type": "application/json"
         },
         "matchingRules": {
           "body": {
-            "$.success": {
+            "$.eventSeq": {
               "combine": "AND",
               "matchers": [
                 {

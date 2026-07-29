@@ -123,7 +123,11 @@ func TestAugurConversationLinkedContract(t *testing.T) {
 				"Content-Type": matchers.String("application/json"),
 			},
 			Body: matchers.MapMatcher{
-				"success": matchers.Like(true),
+				// AppendKnowledgeEventResponse declares only `int64 event_seq`.
+				// This body previously also required `success`, which the proto has
+				// never had and no handler can emit — only the hand-written provider
+				// stub produced it. protojson renders int64 as a JSON string.
+				"eventSeq": matchers.Like("123"),
 			},
 		}).
 		ExecuteTest(t, func(config consumer.MockServerConfig) error {

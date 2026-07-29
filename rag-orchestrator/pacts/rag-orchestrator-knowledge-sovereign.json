@@ -55,14 +55,14 @@
       },
       "response": {
         "body": {
-          "success": true
+          "eventSeq": "123"
         },
         "headers": {
           "Content-Type": "application/json"
         },
         "matchingRules": {
           "body": {
-            "$.success": {
+            "$.eventSeq": {
               "combine": "AND",
               "matchers": [
                 {
