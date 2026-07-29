@@ -127,7 +127,12 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: Stage a dummy .env so compose config resolves
+        # Several services carry `env_file: ../.env`, and compose config
+        # refuses to resolve when the file is absent. On a developer host
+        # .env is a symlink to the canonical config, which a public runner
+        # has no equivalent of — same dummy as the job above.
+        run: echo 'DOCKER_GROUP_ID=0' > .env
+
       - name: Assert every published port is loopback-bound
-        env:
-          DOCKER_GROUP_ID: "0"
         run: python3 scripts/compose-port-audit.py

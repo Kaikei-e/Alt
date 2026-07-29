@@ -151,6 +151,14 @@ ignore = [
   "ASYNC230", "ASYNC110",
 ]
 
+[tool.ruff.lint.isort]
+# learning_machine/data/ is gitignored, so it exists on a training host and
+# not in a CI checkout. Without this, isort infers first-party membership
+# from what happens to be on disk and classifies
+# recap_subworker.learning_machine.data.* as third-party in CI only — the
+# same source then passes locally and fails I001 on the runner.
+known-first-party = ["recap_subworker"]
+
 [tool.ruff.lint.per-file-ignores]
 # 学習スクリプトは条件付き sys.path 操作 + 後置 import が必須パターン
 "recap_subworker/learning_machine/scripts/**/*.py" = ["E402", "E722", "E701", "F841", "PTH", "B904", "SIM"]

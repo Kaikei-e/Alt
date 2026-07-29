@@ -23,6 +23,7 @@ from __future__ import annotations
 import argparse
 import ipaddress
 import json
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -33,16 +34,34 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 EDGE_ALLOWLIST = {
     ("plecto-proxy", 8443): "the edge proxy; every browser entry point terminates here",
     ("grafana", 3000): "operator dashboard behind its own login",
-    ("pact-broker", 9292): "second binding is the prod-host tailnet IP, see compose/pact.yaml",
+    ("pact-broker", 9292): "operator-supplied private-network binding, see compose/pact.yaml",
 }
 
 
 def resolved_config(compose_file: Path) -> dict:
+    # --env-file is not optional: the compose file lives under compose/, so
+    # that is the project directory compose would otherwise search for .env,
+    # and the repo keeps it at the root instead. Without this, interpolation
+    # fails on DOCKER_GROUP_ID, which has no default by design.
+    cmd = ["docker", "compose"]
+    env_file = REPO_ROOT / ".env"
+    if env_file.exists():
+        cmd += ["--env-file", str(env_file)]
+    cmd += ["-f", str(compose_file), "config", "--format", "json"]
+
+    # logging.yaml fail-fasts on an unset DOCKER_GROUP_ID by design, and the
+    # canonical .env does not carry it (start.sh injects the host GID at run
+    # time). The value cannot affect a port audit, so supply a placeholder
+    # rather than making every caller export one first.
+    env = {**os.environ}
+    env.setdefault("DOCKER_GROUP_ID", "0")
+
     proc = subprocess.run(
-        ["docker", "compose", "-f", str(compose_file), "config", "--format", "json"],
+        cmd,
         capture_output=True,
         text=True,
         cwd=REPO_ROOT,
+        env=env,
     )
     if proc.returncode != 0:
         sys.stderr.write(proc.stderr or proc.stdout or "compose config failed\n")
