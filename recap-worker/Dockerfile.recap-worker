@@ -53,6 +53,35 @@ RUN --mount=type=cache,id=recap-worker-registry,target=/usr/local/cargo/registry
     cargo build --release --bin recap-worker && \
     cp target/release/recap-worker /app/recap-worker
 
+# Stage 5: sentence-transformers model directory
+#
+# Read at runtime through SentenceEmbeddingsBuilder::local, so the image has to
+# carry every file the loader opens. `::remote` is deliberately not used: it
+# resolves each file through cached-path, which records no expiry and therefore
+# revalidates against huggingface.co on every start — with a client built with
+# no read timeout. One HEAD that connected and then went silent wedged startup
+# for 16 hours before the listener was ever bound.
+#
+# 1_Pooling/config.json lives in a subdirectory: copy the directory, never a
+# flat glob, or rust-bert panics inside Config::from_file with no named cause.
+FROM debian:bookworm-slim AS model
+ARG ST_REPO=https://huggingface.co/sentence-transformers/all-MiniLM-L12-v2/resolve/main
+ARG MODEL_DIR=/opt/rustbert-models/all-MiniLM-L12-v2
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends ca-certificates curl && \
+    rm -rf /var/lib/apt/lists/*
+RUN mkdir -p ${MODEL_DIR}/1_Pooling && \
+    for f in modules.json config.json tokenizer_config.json \
+             sentence_bert_config.json vocab.txt rust_model.ot; do \
+      curl -fsSL --retry 5 --retry-delay 5 --max-time 900 \
+        -o ${MODEL_DIR}/$f ${ST_REPO}/$f; \
+    done && \
+    curl -fsSL --retry 5 --retry-delay 5 --max-time 300 \
+      -o ${MODEL_DIR}/1_Pooling/config.json ${ST_REPO}/1_Pooling/config.json && \
+    # rust_model.ot is LFS-backed; a clone without LFS yields a ~130-byte
+    # pointer file that fails later as an opaque tch load error.
+    test "$(stat -c%s ${MODEL_DIR}/rust_model.ot)" -gt 100000000
+
 # ランタイムイメージ (debian-slim + 非rootユーザー)
 # PyTorch ライブラリ依存のため distroless 使用不可
 FROM debian:bookworm-slim
@@ -108,6 +137,12 @@ COPY --from=builder /app/recap-worker /usr/local/bin/
 # 評価用ゴールデンデータセット
 RUN mkdir -p /app/data && chown recap:recap /app/data
 COPY --from=builder --chown=recap:recap /app/tests/data/golden_classification.json /app/data/
+
+# sentence-transformers weights, read at startup with
+# SentenceEmbeddingsBuilder::local. Directory-scoped COPY: 1_Pooling/config.json
+# is nested, and a flat glob that drops it fails as a bare panic inside
+# Config::from_file rather than a named error.
+COPY --from=model --chown=recap:recap /opt/rustbert-models/ /opt/rustbert-models/
 
 USER recap
 

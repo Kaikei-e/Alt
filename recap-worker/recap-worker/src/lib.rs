@@ -20,19 +20,18 @@ pub(crate) mod queue;
 pub mod replay;
 pub mod scheduler;
 pub(crate) mod schema;
+pub mod startup;
 pub(crate) mod store;
 pub mod tls;
 pub mod util;
 
-/// Populate the rust-bert `AllMiniLmL12V2` sentence-embedding model cache.
+/// Verify the baked `AllMiniLmL12V2` sentence-embedding model loads.
 ///
-/// `SentenceEmbeddingsBuilder::remote(...)` writes downloaded weights and
-/// tokenizer files under `$RUSTBERT_CACHE` (default `$HOME/.cache/.rustbert`).
-/// Once the cache is primed, subsequent calls skip the HTTP fetch, which lets
-/// the service boot in a network-isolated compose stack (staging `internal:
-/// true`). Invoke this from a container running on an internet-connected
-/// network, writing into a host-mounted cache volume that the runtime stack
-/// consumes read-only.
+/// The model directory ships inside the image and is read with
+/// `SentenceEmbeddingsBuilder::local`, so nothing is downloaded and no network
+/// is touched. This subcommand exists to fail a bad image at build or deploy
+/// time rather than at the first recap job: it names any missing file and
+/// exercises the real `tch` load path.
 pub async fn warmup_embedding_cache() -> anyhow::Result<()> {
     tokio::task::spawn_blocking(pipeline::embedding::EmbeddingService::new)
         .await

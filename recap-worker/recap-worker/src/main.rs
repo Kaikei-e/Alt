@@ -52,6 +52,53 @@ async fn wait_for_shutdown_signal() {
     }
 }
 
+/// How long the process may spend getting to a bound listener. Generous enough
+/// for a cold model load on a busy host, short enough that a stalled dependency
+/// becomes a restart rather than an open-ended outage.
+const DEFAULT_STARTUP_DEADLINE_SECS: u64 = 180;
+
+/// Resolve the startup deadline, rejecting a value that was set but unusable
+/// rather than quietly falling back to the default.
+fn startup_deadline() -> anyhow::Result<Duration> {
+    const NAME: &str = "RECAP_WORKER_STARTUP_DEADLINE_SECS";
+    match env::var(NAME) {
+        Ok(raw) => {
+            let secs: u64 = raw.trim().parse().with_context(|| {
+                format!("{NAME} must be a whole number of seconds, got {raw:?}")
+            })?;
+            Ok(Duration::from_secs(secs))
+        }
+        Err(_) => Ok(Duration::from_secs(DEFAULT_STARTUP_DEADLINE_SECS)),
+    }
+}
+
+/// Bound the stretch of startup that runs before the listener is bound.
+///
+/// Until then the service can answer nothing, and a dependency that blocks
+/// rather than fails cannot be caught by any fail-closed policy — those act on
+/// errors, and a stall is not an error. Returns the guard the caller disarms
+/// once the port is bound, plus the deadline for logging.
+///
+/// Nothing is logged here on purpose: the tracing subscriber is installed
+/// inside `ComponentRegistry::build`, which has not run yet.
+fn arm_startup_deadline() -> anyhow::Result<(recap_worker::startup::StartupGuard, Duration)> {
+    let deadline = startup_deadline()?;
+    let guard = recap_worker::startup::watch_startup(deadline, move || {
+        error!(
+            deadline_secs = deadline.as_secs(),
+            "startup_deadline_exceeded: dependency initialization never finished; \
+             exiting non-zero so the restart policy retries instead of leaving the \
+             port unbound"
+        );
+        // Not a graceful return. Dropping the runtime waits indefinitely for a
+        // blocking task to finish, and a stuck blocking task is precisely the
+        // state this fires in. `exit` runs no destructors, so the line above has
+        // to have been written already — the fmt layer writes synchronously.
+        std::process::exit(1);
+    });
+    Ok((guard, deadline))
+}
+
 /// Spawn the background task that cancels `token` once a shutdown signal
 /// arrives. Every long-running loop (HTTP listeners, batch/morning daemons)
 /// observes the same token, so one signal coordinates every consumer.
@@ -82,10 +129,17 @@ async fn main() -> anyhow::Result<()> {
     // panics are actually visible in the tracing pipeline.
     let config = Config::from_env().context("failed to load configuration")?;
     let bind_addr = config.http_bind();
+
+    let (startup, deadline) = arm_startup_deadline()?;
+
     let registry = ComponentRegistry::build(config.clone())
         .await
         .context("failed to build component registry")?;
     cli::install_panic_hook();
+    info!(
+        deadline_secs = deadline.as_secs(),
+        "startup deadline armed; disarms once the listener is bound"
+    );
 
     let scheduler = registry.scheduler().clone();
     let telemetry = registry.telemetry().clone();
@@ -171,6 +225,9 @@ async fn main() -> anyhow::Result<()> {
         .with_context(|| format!("failed to bind listener on {bind_addr}"))?;
 
     info!(%bind_addr, "listening");
+
+    // The port is bound, so the service can serve: the deadline has done its job.
+    startup.startup_complete();
 
     let plain_shutdown = shutdown_token.clone();
     if let Err(error) = axum::serve(listener, router)

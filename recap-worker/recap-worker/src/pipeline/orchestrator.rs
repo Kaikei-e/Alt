@@ -179,7 +179,15 @@ impl PipelineOrchestrator {
         } else {
             crate::pipeline::embedding::EmbeddingAvailability::Optional
         };
-        let embedding_init = crate::pipeline::embedding::EmbeddingService::new();
+        // Loading ~130 MB of weights blocks for seconds. Keep it off the async
+        // worker so the runtime's other tasks — including the startup deadline
+        // that turns a stuck dependency into a non-zero exit — keep running.
+        let embedding_init =
+            tokio::task::spawn_blocking(crate::pipeline::embedding::EmbeddingService::new)
+                .await
+                .unwrap_or_else(|e| {
+                    Err(anyhow::anyhow!("embedding init task did not complete: {e}"))
+                });
         if let Err(ref e) = embedding_init {
             // Log once up-front so operators see the init failure even when the
             // Optional policy would swallow it into Ok(None). This path was the

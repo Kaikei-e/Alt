@@ -329,6 +329,25 @@ static NON_WORD_BOUNDARY: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"^[\p{Punctuation}\p{Symbol}]+|[\p{Punctuation}\p{Symbol}]+$").unwrap()
 });
 
+/// Drop the zero-width code points that make a string's display width differ
+/// from the sum of its characters' widths.
+///
+/// html2text 0.17.1 budgets a word by `UnicodeWidthStr::width` but spends that
+/// budget with per-character `UnicodeWidthChar::width`, and the two disagree for
+/// emoji presentation and ZWJ sequences: `\u{2600}\u{FE0F}` is two columns as a
+/// string but one as a char sum. A word whose string width lands just past the
+/// wrap width then underflows an unsigned subtraction inside
+/// `flush_word_hard_wrap`. `overflow-checks = true` makes that a panic and
+/// `panic = "abort"` makes the panic process death, so a single article could
+/// take the whole worker down on every boot. Removing the selectors makes both
+/// accountings agree; the base characters survive, which is all the tokenizer
+/// and the summariser need.
+fn align_width_accounting(text: &str) -> String {
+    text.chars()
+        .filter(|c| !matches!(c, '\u{FE00}'..='\u{FE0F}' | '\u{200D}'))
+        .collect()
+}
+
 /// HTMLをサニタイズしてプレーンテキストに変換する。
 ///
 /// # Returns
@@ -339,7 +358,7 @@ fn clean_html(text: &str) -> Result<(String, bool)> {
     }
 
     // ammoniaで安全にHTMLタグを除去
-    let sanitized = clean(text);
+    let sanitized = align_width_accounting(&clean(text));
 
     // html2textでよりクリーンなプレーンテキストに変換
     let plain = html2text::from_read(sanitized.as_bytes(), 80)
@@ -527,6 +546,74 @@ mod tests {
         let (cleaned, was_html) = clean_html(plain).unwrap();
         assert!(!was_html);
         assert_eq!(cleaned, plain);
+    }
+
+    /// html2text 0.17.1 subtracts an unsigned string width from a budget it
+    /// decremented by per-character widths, and the two disagree for an emoji
+    /// presentation sequence: `\u{26A0}\u{FE0F}` is two cells as a string but
+    /// one as a char sum. A word whose string width just exceeds the render
+    /// width therefore leaves the budget one cell short and the subtraction
+    /// wraps. `overflow-checks = true` turns that into a panic and
+    /// `panic = "abort"` turns the panic into process death.
+    #[test]
+    fn clean_html_survives_emoji_presentation_sequence_at_wrap_boundary() {
+        // The leading `x ` puts something on the line so the word takes the
+        // hard-wrap branch. The word itself is 79 filler cells plus a 2-cell /
+        // 1-char-sum sequence: 80 columns by char sum, 81 by string width.
+        let body = format!("<p>x {}\u{2600}\u{FE0F}</p>", "a".repeat(79));
+
+        let (cleaned, was_html) = clean_html(&body).unwrap();
+
+        assert!(was_html);
+        assert!(cleaned.contains("aaa"));
+    }
+
+    #[test]
+    fn align_width_accounting_removes_width_divergent_selectors() {
+        use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
+
+        for raw in [
+            "\u{2600}\u{FE0F}",
+            "\u{26A0}\u{FE0F}",
+            "\u{2B07}\u{FE0F}",
+            "\u{1F647}\u{200D}\u{2640}\u{FE0F}",
+            "\u{2600}\u{FE0E}",
+        ] {
+            let aligned = align_width_accounting(raw);
+            let char_sum: usize = aligned
+                .chars()
+                .map(|c| UnicodeWidthChar::width(c).unwrap_or(0))
+                .sum();
+            assert_eq!(
+                UnicodeWidthStr::width(aligned.as_str()),
+                char_sum,
+                "width accounting still diverges for {raw:?} -> {aligned:?}"
+            );
+        }
+
+        // Base characters must survive — only the zero-width selectors go.
+        assert_eq!(align_width_accounting("a\u{2600}\u{FE0F}b"), "a\u{2600}b");
+    }
+
+    /// The panic only fires when the word's string width lands exactly one
+    /// column past the wrap width, so sweep the offset instead of pinning it.
+    #[test]
+    fn clean_html_survives_width_divergent_sequences_at_any_offset() {
+        for seq in ["\u{2600}\u{FE0F}", "\u{1F647}\u{200D}\u{2640}\u{FE0F}"] {
+            for n in 0usize..=120 {
+                let filler = "a".repeat(n);
+                for body in [
+                    format!("<p>x {filler}{seq}</p>"),
+                    format!("<p>x {filler}<strong>{seq}</strong></p>"),
+                    format!("<pre><code>  {filler}{seq}\n</code></pre>"),
+                    format!("<table><tr><td>x {filler}{seq}</td><td>b</td></tr></table>"),
+                ] {
+                    // A panic here aborts the process in release; failing the
+                    // test is the point.
+                    let _ = clean_html(&body);
+                }
+            }
+        }
     }
 
     #[test]

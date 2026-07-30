@@ -1,3 +1,4 @@
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use anyhow::{Context, Result};
@@ -5,10 +6,44 @@ use async_trait::async_trait;
 use rand::{RngExt, SeedableRng, rngs::StdRng};
 use rust_bert::RustBertError;
 use rust_bert::pipelines::sentence_embeddings::{
-    SentenceEmbeddingsBuilder, SentenceEmbeddingsModel, SentenceEmbeddingsModelType,
+    SentenceEmbeddingsBuilder, SentenceEmbeddingsModel,
 };
 use tokio::sync::Mutex;
 use tracing::warn;
+
+/// Where the image bakes the sentence-transformers model directory.
+const DEFAULT_MODEL_DIR: &str = "/opt/rustbert-models/all-MiniLM-L12-v2";
+
+/// The files `SentenceEmbeddingsBuilder::local` reads for a BERT
+/// sentence-transformers model.
+///
+/// rust-bert opens the JSON configs through `Config::from_file`, which
+/// `expect`s the open to succeed — a missing file is a panic, and with
+/// `panic = "abort"` that is process death with no named cause. Listing the
+/// files lets a mis-built image fail with a message that says which one.
+pub(crate) const REQUIRED_MODEL_FILES: &[&str] = &[
+    "modules.json",
+    "config.json",
+    "rust_model.ot",
+    "tokenizer_config.json",
+    "sentence_bert_config.json",
+    "vocab.txt",
+    "1_Pooling/config.json",
+];
+
+/// Which of [`REQUIRED_MODEL_FILES`] are absent from `dir`.
+pub(crate) fn missing_model_files(dir: &Path) -> Vec<&'static str> {
+    REQUIRED_MODEL_FILES
+        .iter()
+        .copied()
+        .filter(|rel| !dir.join(rel).is_file())
+        .collect()
+}
+
+fn configured_model_dir() -> PathBuf {
+    std::env::var("RECAP_WORKER_EMBEDDING_MODEL_DIR")
+        .map_or_else(|_| PathBuf::from(DEFAULT_MODEL_DIR), PathBuf::from)
+}
 
 #[async_trait]
 pub trait Embedder: Send + Sync + std::fmt::Debug {
@@ -64,16 +99,43 @@ impl std::fmt::Debug for EmbeddingService {
 }
 
 impl EmbeddingService {
-    /// Initialize the embedding model.
-    /// This might take a while to download the model on first run.
+    /// Load the embedding model from the directory baked into the image.
+    ///
+    /// Blocking and CPU-heavy (~130 MB of weights) — call it from
+    /// `spawn_blocking`, never directly on an async worker.
+    ///
+    /// Loads through `SentenceEmbeddingsBuilder::local` rather than `::remote`.
+    /// The remote builder resolves each file through `cached_path`, which
+    /// records no expiry for cached entries and therefore treats every entry as
+    /// stale: it issues an HTTP HEAD to huggingface.co on *every* start, warm
+    /// cache or not, using a client built with no read timeout. One HEAD that
+    /// connected and then went silent left this process wedged for 16 hours
+    /// before it ever bound its listener. `local` reads straight from disk and
+    /// cannot reach the network.
     pub fn new() -> Result<Self> {
-        // Use a separate thread to initialize the model because it's blocking and heavy
-        let model = std::thread::spawn(|| {
-            SentenceEmbeddingsBuilder::remote(SentenceEmbeddingsModelType::AllMiniLmL12V2)
-                .create_model()
-        })
-        .join()
-        .map_err(|_| anyhow::anyhow!("Failed to join model creation thread"))??;
+        Self::from_dir(&configured_model_dir())
+    }
+
+    /// Load the model from an explicit directory. Fails with the names of any
+    /// missing files rather than letting rust-bert panic on the first one.
+    pub(crate) fn from_dir(dir: &Path) -> Result<Self> {
+        let missing = missing_model_files(dir);
+        if !missing.is_empty() {
+            anyhow::bail!(
+                "sentence-embeddings model directory {} is incomplete; missing: {}",
+                dir.display(),
+                missing.join(", ")
+            );
+        }
+
+        let model = SentenceEmbeddingsBuilder::local(dir)
+            .create_model()
+            .with_context(|| {
+                format!(
+                    "failed to load sentence-embeddings model from {}",
+                    dir.display()
+                )
+            })?;
 
         Ok(Self {
             model: Arc::new(Mutex::new(model)),
@@ -195,8 +257,65 @@ pub fn cosine_similarity(a: &[f32], b: &[f32]) -> f32 {
 
 #[cfg(test)]
 mod tests {
-    use super::{EmbeddingAvailability, EmbeddingService, require_or_degrade};
+    use super::{
+        EmbeddingAvailability, EmbeddingService, REQUIRED_MODEL_FILES, missing_model_files,
+        require_or_degrade,
+    };
     use rust_bert::RustBertError;
+
+    fn populate(dir: &std::path::Path, files: &[&str]) {
+        for rel in files {
+            let path = dir.join(rel);
+            std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+            std::fs::write(&path, b"x").unwrap();
+        }
+    }
+
+    #[test]
+    fn missing_model_files_lists_everything_for_an_empty_dir() {
+        let dir = tempfile::tempdir().unwrap();
+
+        assert_eq!(missing_model_files(dir.path()), REQUIRED_MODEL_FILES);
+    }
+
+    #[test]
+    fn missing_model_files_is_empty_for_a_complete_dir() {
+        let dir = tempfile::tempdir().unwrap();
+        populate(dir.path(), REQUIRED_MODEL_FILES);
+
+        assert!(missing_model_files(dir.path()).is_empty());
+    }
+
+    /// `1_Pooling/config.json` sits in a subdirectory, so a flat wildcard copy
+    /// in the image build misses it while every other file lands. rust-bert
+    /// would then panic inside `Config::from_file` instead of returning an
+    /// error, so the pre-flight check has to name it.
+    #[test]
+    fn missing_model_files_names_the_nested_pooling_config() {
+        let dir = tempfile::tempdir().unwrap();
+        let flat: Vec<&str> = REQUIRED_MODEL_FILES
+            .iter()
+            .copied()
+            .filter(|f| !f.contains('/'))
+            .collect();
+        populate(dir.path(), &flat);
+
+        assert_eq!(
+            missing_model_files(dir.path()),
+            vec!["1_Pooling/config.json"]
+        );
+    }
+
+    #[test]
+    fn from_dir_reports_the_missing_files_instead_of_loading() {
+        let dir = tempfile::tempdir().unwrap();
+
+        let err = EmbeddingService::from_dir(dir.path()).expect_err("incomplete dir must fail");
+        let message = format!("{err:#}");
+
+        assert!(message.contains("rust_model.ot"), "got: {message}");
+        assert!(message.contains("1_Pooling/config.json"), "got: {message}");
+    }
 
     /// PM-2026-038 regression: a model failure must surface as `Err`, never
     /// as a batch of fabricated MD5-seeded random vectors dressed up as

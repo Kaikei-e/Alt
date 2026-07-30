@@ -6,8 +6,17 @@ include:
 
 services:
   # Redis 8.4 for event streaming with multi-threaded I/O
+  #
+  # Pinned to a patch level, not the floating 8.4 tag: 8.4.0–8.4.3 carry an
+  # upstream defect where approximate trimming (`MAXLEN ~`) combined with the
+  # ACKED strategy deletes nothing at all, silently. The producer trims that
+  # way on every XADD, so the articles stream grew past its cap unchecked until
+  # the instance hit maxmemory under noeviction — at which point XADD is
+  # rejected, and because trimming only runs as part of a successful XADD the
+  # stream can no longer shrink itself. Fixed in 8.4.4; 8.4.5 is the published
+  # alpine patch.
   redis-streams:
-    image: redis:8.4-alpine
+    image: redis:8.4.5-alpine
     container_name: redis-streams
     command: >
       redis-server

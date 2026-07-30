@@ -119,6 +119,7 @@ temp-env = { version = "0.3", features = ["async_closure"] }
 tempfile = "3.27"
 pact_consumer = "1.4"
 pact_models = "1.3"
+unicode-width = "0.2"
 
 [[bench]]
 name = "performance"

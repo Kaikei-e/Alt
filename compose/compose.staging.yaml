@@ -146,7 +146,10 @@ services:
   # consumer joins the alt:events:tags group) and mq-hub itself is
   # reused by scenario 04 of the tag-generator suite.
   redis-streams:
-    image: redis:8.4-alpine
+    # Same patch pin as compose/mq.yaml: 8.4.0–8.4.3 silently trim nothing when
+    # `MAXLEN ~` is combined with ACKED, so staging would not reproduce the
+    # production trimming behaviour it is supposed to validate.
+    image: redis:8.4.5-alpine
     container_name: alt-staging-redis-streams
     profiles: [mq-hub, tag-generator]
     command: >
