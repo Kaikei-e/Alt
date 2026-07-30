@@ -3,6 +3,8 @@
 import asyncio
 import json
 import os
+import time
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any, cast
@@ -13,6 +15,93 @@ from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 logger = structlog.get_logger(__name__)
+
+# Redis rejects writes for reasons that clear on their own: the instance is at
+# maxmemory (OOM), still loading its dataset (LOADING), has lost its primary
+# (MASTERDOWN), or is a read-only replica (READONLY). Creating the consumer
+# group was the only step on the startup path with no retry around it, so a
+# transient rejection killed the consumer thread and latched /health at 503.
+_TRANSIENT_RESPONSE_ERRORS = ("OOM", "LOADING", "MASTERDOWN", "READONLY")
+
+# Enough to ride out a brief blip. A longer outage is the supervisor's job:
+# giving up here lets it restart us with backoff instead of retrying forever
+# inside a startup step that nothing is watching.
+_GROUP_CREATE_MAX_ATTEMPTS = 5
+_GROUP_CREATE_BACKOFF_BASE_SECONDS = 0.5
+_GROUP_CREATE_BACKOFF_CAP_SECONDS = 5.0
+
+
+def is_group_already_exists(error: redis.ResponseError) -> bool:
+    """Whether `XGROUP CREATE` failed only because the group is already there."""
+    return "BUSYGROUP" in str(error)
+
+
+def is_transient_response_error(error: redis.ResponseError) -> bool:
+    """Whether a Redis error is worth retrying rather than treating as fatal.
+
+    `BUSYGROUP` is deliberately excluded: it means the write succeeded earlier,
+    which callers handle as success rather than as something to retry.
+    """
+    message = str(error).upper()
+    if "BUSYGROUP" in message:
+        return False
+    return any(token in message for token in _TRANSIENT_RESPONSE_ERRORS)
+
+
+def supervise(
+    name: str,
+    run: Callable[[], None],
+    *,
+    on_health: Callable[[str, bool], None],
+    sleep: Callable[[float], None] = time.sleep,
+    max_attempts: int | None = None,
+    backoff_base_seconds: float = 1.0,
+    backoff_cap_seconds: float = 60.0,
+) -> None:
+    """Run `run` until it returns cleanly, restarting it with backoff if it raises.
+
+    A clean return means the consumer was asked to stop, so supervision ends. An
+    exception means it died, so it is restarted — indefinitely by default,
+    because the condition that kills it (Redis unwritable, connection lost) can
+    outlast any fixed budget, and a consumer that gives up is indistinguishable
+    from one that was never wired.
+
+    `on_health` is called with the current state on every transition so the
+    readiness probe can report the outage *while* it is happening, and clear
+    once the consumer is back. `max_attempts` and `sleep` exist so tests do not
+    have to wait out real backoff.
+    """
+    attempt = 0
+    while max_attempts is None or attempt < max_attempts:
+        attempt += 1
+        on_health(name, True)
+        try:
+            run()
+        except Exception as error:  # noqa: BLE001 - a consumer must survive anything its handler raises
+            on_health(name, False)
+            # No backoff before giving up — that would only delay the log that
+            # tells an operator supervision has stopped.
+            if max_attempts is not None and attempt >= max_attempts:
+                break
+            delay = min(backoff_base_seconds * 2 ** (attempt - 1), backoff_cap_seconds)
+            logger.error(
+                "consumer_supervisor_restarting",
+                consumer=name,
+                attempt=attempt,
+                delay_seconds=delay,
+                error=str(error),
+            )
+            sleep(delay)
+        else:
+            logger.info("consumer_supervisor_stopped", consumer=name, attempt=attempt)
+            return
+
+    logger.error(
+        "consumer_supervisor_exhausted",
+        consumer=name,
+        attempts=attempt,
+        message="consumer will not be restarted again; readiness stays failed",
+    )
 
 
 class ConsumerConfig(BaseSettings):
@@ -149,19 +238,42 @@ class StreamConsumer:
         return self._shutdown or not self.config.enabled
 
     async def _ensure_consumer_group(self) -> None:
-        """Create consumer group if it doesn't exist."""
+        """Create the consumer group, waiting out a temporarily unwritable Redis.
+
+        A permanent error still fails on the first attempt — retrying a real bug
+        only turns a loud failure into a slow one.
+        """
         if self.client is None:
             raise RuntimeError("Redis client is not initialized")
-        try:
-            await self.client.xgroup_create(
-                self.config.stream_key,
-                self.config.group_name,
-                id="0",
-                mkstream=True,
-            )
-        except redis.ResponseError as e:
-            if "BUSYGROUP" not in str(e):
-                raise
+
+        for attempt in range(1, _GROUP_CREATE_MAX_ATTEMPTS + 1):
+            try:
+                await self.client.xgroup_create(
+                    self.config.stream_key,
+                    self.config.group_name,
+                    id="0",
+                    mkstream=True,
+                )
+                return
+            except redis.ResponseError as e:
+                if is_group_already_exists(e):
+                    return
+                if not is_transient_response_error(e) or attempt == _GROUP_CREATE_MAX_ATTEMPTS:
+                    raise
+                delay = min(
+                    _GROUP_CREATE_BACKOFF_BASE_SECONDS * 2 ** (attempt - 1),
+                    _GROUP_CREATE_BACKOFF_CAP_SECONDS,
+                )
+                logger.warning(
+                    "consumer_group_create_retry",
+                    stream=self.config.stream_key,
+                    group=self.config.group_name,
+                    attempt=attempt,
+                    max_attempts=_GROUP_CREATE_MAX_ATTEMPTS,
+                    delay_seconds=delay,
+                    error=str(e),
+                )
+                await asyncio.sleep(delay)
 
     async def _consume_loop(self) -> None:
         """Main consume loop."""

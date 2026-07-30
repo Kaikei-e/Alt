@@ -33,6 +33,19 @@ func (s StreamKey) IsValid() bool {
 	return validStreamKeys[s]
 }
 
+// AllStreamKeys returns every known stream key in a stable order.
+//
+// Ranging over validStreamKeys directly would give a different order on every
+// call, which makes maintenance logs and their tests unreadable.
+func AllStreamKeys() []StreamKey {
+	return []StreamKey{
+		StreamKeyArticles,
+		StreamKeySummaries,
+		StreamKeyTags,
+		StreamKeyIndex,
+	}
+}
+
 // String returns the string representation of the stream key.
 func (s StreamKey) String() string {
 	return string(s)

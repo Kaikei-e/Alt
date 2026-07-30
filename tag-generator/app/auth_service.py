@@ -292,7 +292,22 @@ _background_thread = None
 # the container healthcheck can detect it instead of reporting healthy while
 # tag generation is silently dead.
 _background_service_healthy = True
-_consumers_healthy = True
+
+# Per-consumer, so one healthy consumer cannot mask a dead sibling, and
+# recoverable, so a consumer that comes back clears its own entry. The previous
+# single write-once-false flag meant a transient Redis error pinned /health at
+# 503 until the container was recreated.
+_consumer_health: dict[str, bool] = {}
+
+
+def _mark_consumer_health(name: str, healthy: bool) -> None:
+    """Record the current state of one stream consumer."""
+    _consumer_health[name] = healthy
+
+
+def _unhealthy_consumers() -> list[str]:
+    """Consumers that are currently down, in registration order."""
+    return [name for name, healthy in _consumer_health.items() if not healthy]
 
 
 def _run_background_tag_generation():
@@ -303,7 +318,7 @@ def _run_background_tag_generation():
 
         from tag_generator.config import TagGeneratorConfig
         from tag_generator.service import TagGeneratorService
-        from tag_generator.stream_consumer import ConsumerConfig, StreamConsumer
+        from tag_generator.stream_consumer import ConsumerConfig, StreamConsumer, supervise
         from tag_generator.stream_event_handler import TagGeneratorEventHandler
 
         logger.info("Starting background tag generation service")
@@ -325,14 +340,15 @@ def _run_background_tag_generation():
             # Inject stream_consumer into event_handler for reply functionality
             event_handler.stream_consumer = consumer
 
-            # Run consumer in separate thread
+            # Run consumer in separate thread, under supervision: a transient
+            # Redis error must not end stream-driven tagging for the lifetime of
+            # the container.
             def run_consumer() -> None:
-                global _consumers_healthy
-                try:
-                    asyncio.run(consumer.start())
-                except Exception as e:
-                    logger.error("Consumer thread error", error=str(e))
-                    _consumers_healthy = False
+                supervise(
+                    "articles",
+                    lambda: asyncio.run(consumer.start()),
+                    on_health=_mark_consumer_health,
+                )
 
             consumer_thread = threading.Thread(
                 target=run_consumer,
@@ -358,12 +374,11 @@ def _run_background_tag_generation():
             tags_event_handler.stream_consumer = tags_consumer
 
             def run_tags_consumer() -> None:
-                global _consumers_healthy
-                try:
-                    asyncio.run(tags_consumer.start())
-                except Exception as e:
-                    logger.error("Tags consumer thread error", error=str(e))
-                    _consumers_healthy = False
+                supervise(
+                    "tags",
+                    lambda: asyncio.run(tags_consumer.start()),
+                    on_health=_mark_consumer_health,
+                )
 
             tags_consumer_thread = threading.Thread(
                 target=run_tags_consumer,
@@ -474,13 +489,21 @@ async def health_check():
     """Health check endpoint.
 
     Reports unhealthy if the background batch tag-generation service or a
-    stream consumer thread has died, instead of always claiming healthy
-    while those threads are silently dead.
+    stream consumer is down, instead of always claiming healthy while those
+    threads are silently dead. Consumer state is per-consumer and clears itself
+    once a supervised restart succeeds, so a transient Redis outage no longer
+    needs a container recreate to get back to healthy.
     """
-    if not _background_service_healthy or not _consumers_healthy:
+    if not _background_service_healthy:
         raise HTTPException(
             status_code=503,
-            detail="Background tag generation is unhealthy: batch service or a stream consumer thread has died",
+            detail="Background tag generation is unhealthy: the batch service has died",
+        )
+    down = _unhealthy_consumers()
+    if down:
+        raise HTTPException(
+            status_code=503,
+            detail=f"Stream consumers are down: {', '.join(down)}",
         )
     return {"status": "healthy", "service": "tag-generator"}
 

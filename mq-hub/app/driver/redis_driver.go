@@ -353,6 +353,24 @@ func (d *RedisDriver) parseEventFromMessage(msg redis.XMessage) *domain.Event {
 	return event
 }
 
+// TrimMaxLenApprox trims stream to approximately maxLen entries, ignoring
+// consumer references, and returns how many entries were removed.
+//
+// XTRIM is not a denyoom command, so unlike the trim carried on XADD this keeps
+// working while the instance is at maxmemory — which is the only state where a
+// stream needs trimming and cannot get it from the publish path.
+//
+// LIMIT is left unset so Redis applies its default effort cap. The caller runs
+// this on a timer, so converging over a few bounded passes is preferable to one
+// unbounded pass blocking a single-threaded server.
+func (d *RedisDriver) TrimMaxLenApprox(ctx context.Context, stream domain.StreamKey, maxLen int64) (int64, error) {
+	deleted, err := d.client.XTrimMaxLenApprox(ctx, stream.String(), maxLen, 0).Result()
+	if err != nil {
+		return 0, fmt.Errorf("xtrim %s maxlen ~ %d: %w", stream.String(), maxLen, err)
+	}
+	return deleted, nil
+}
+
 // getStringValue safely extracts a string value from a map.
 func getStringValue(values map[string]interface{}, key string) string {
 	if v, ok := values[key]; ok {

@@ -62,6 +62,15 @@ services:
       - OTEL_SERVICE_NAME=mq-hub
       - REDIS_POOL_SIZE=50
       - STREAM_MAX_LEN=10000
+      # Backstop for the case STREAM_MAX_LEN cannot cover: trimming carried on
+      # XADD only runs as part of a successful XADD, and XADD is rejected once
+      # the instance is at maxmemory under noeviction — so the streams could not
+      # shrink back under their cap without an operator. XTRIM is not denyoom,
+      # so a periodic pass keeps working precisely then. The ceiling sits well
+      # above STREAM_MAX_LEN because it ignores consumer references: it firing at
+      # all means the publish-time trim failed to keep up, and it logs loudly.
+      - STREAM_HARD_MAX_LEN=${MQ_HUB_STREAM_HARD_MAX_LEN:-50000}
+      - STREAM_TRIM_INTERVAL_SECONDS=${MQ_HUB_STREAM_TRIM_INTERVAL_SECONDS:-60}
     depends_on:
       redis-streams:
         condition: service_healthy

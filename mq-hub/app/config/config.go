@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"strconv"
+	"time"
 )
 
 // Config holds the configuration for mq-hub.
@@ -22,6 +23,13 @@ type Config struct {
 	// StreamMaxLen is the approximate max length for Redis Streams trimming via XADD MAXLEN ~.
 	// 0 means no trimming.
 	StreamMaxLen int64
+	// StreamHardMaxLen is the ceiling enforced by the periodic trim pass, which
+	// runs independently of publishing. Set it well above StreamMaxLen: it
+	// ignores consumer references, so it firing at all means the publish-time
+	// trim failed to keep up. 0 disables the pass.
+	StreamHardMaxLen int64
+	// StreamTrimInterval is how often the periodic trim pass runs.
+	StreamTrimInterval time.Duration
 }
 
 // NewConfig creates a new Config from environment variables. It fails fast
@@ -44,14 +52,27 @@ func NewConfig() (*Config, error) {
 	if err != nil {
 		return nil, fmt.Errorf("parse STREAM_MAX_LEN: %w", err)
 	}
+	streamHardMaxLen, err := strconv.ParseInt(getEnvOrDefault("STREAM_HARD_MAX_LEN", "50000"), 10, 64)
+	if err != nil {
+		return nil, fmt.Errorf("parse STREAM_HARD_MAX_LEN: %w", err)
+	}
+	trimIntervalSeconds, err := strconv.Atoi(getEnvOrDefault("STREAM_TRIM_INTERVAL_SECONDS", "60"))
+	if err != nil {
+		return nil, fmt.Errorf("parse STREAM_TRIM_INTERVAL_SECONDS: %w", err)
+	}
+	if trimIntervalSeconds <= 0 {
+		return nil, fmt.Errorf("STREAM_TRIM_INTERVAL_SECONDS must be positive, got %d", trimIntervalSeconds)
+	}
 
 	return &Config{
-		RedisURL:      getEnvOrDefault("REDIS_URL", "redis://localhost:6379"),
-		ConnectPort:   port,
-		LogLevel:      getEnvOrDefault("LOG_LEVEL", "info"),
-		RedisPoolSize: poolSize,
-		MaxBatchSize:  maxBatchSize,
-		StreamMaxLen:  streamMaxLen,
+		RedisURL:           getEnvOrDefault("REDIS_URL", "redis://localhost:6379"),
+		ConnectPort:        port,
+		LogLevel:           getEnvOrDefault("LOG_LEVEL", "info"),
+		RedisPoolSize:      poolSize,
+		MaxBatchSize:       maxBatchSize,
+		StreamMaxLen:       streamMaxLen,
+		StreamHardMaxLen:   streamHardMaxLen,
+		StreamTrimInterval: time.Duration(trimIntervalSeconds) * time.Second,
 	}, nil
 }
 

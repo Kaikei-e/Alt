@@ -8,6 +8,16 @@ import (
 	"mq-hub/domain"
 )
 
+// StreamTrimmer bounds a stream's length independently of publishing.
+//
+// Kept separate from StreamPort on purpose: trimming is maintenance, not part of
+// the publish/consume contract every StreamPort implementation has to satisfy.
+type StreamTrimmer interface {
+	// TrimMaxLenApprox trims stream to approximately maxLen entries and
+	// returns how many were removed.
+	TrimMaxLenApprox(ctx context.Context, stream domain.StreamKey, maxLen int64) (int64, error)
+}
+
 // StreamPort defines the interface for Redis Streams operations.
 type StreamPort interface {
 	// Publish publishes an event to a stream and returns the message ID.

@@ -20,6 +20,7 @@ import (
 	"mq-hub/driver"
 	"mq-hub/gateway"
 	mqhubv1connect "mq-hub/gen/proto/services/mqhub/v1/mqhubv1connect"
+	"mq-hub/port"
 	"mq-hub/usecase"
 	"mq-hub/utils/logger"
 )
@@ -67,6 +68,14 @@ func run() error {
 	if err := redisDriver.Ping(ctx); err != nil {
 		return fmt.Errorf("ping Redis: %w", err)
 	}
+
+	// Trimming carried on XADD cannot run once Redis is at maxmemory, because
+	// XADD itself is rejected — so the streams this service owns had no way back
+	// under their cap without an operator. This pass uses XTRIM, which is not
+	// denyoom, and runs on its own timer.
+	trimCtx, stopTrim := context.WithCancel(ctx)
+	defer stopTrim()
+	startStreamTrimLoop(trimCtx, redisDriver, cfg)
 
 	// Initialize gateway
 	streamGateway := gateway.NewStreamGateway(redisDriver)
@@ -170,6 +179,51 @@ func run() error {
 
 	slog.InfoContext(ctx, "server shutdown complete")
 	return nil
+}
+
+// startStreamTrimLoop runs the stream-length backstop until ctx is cancelled.
+//
+// A zero StreamHardMaxLen disables it — an explicit, logged choice rather than
+// something inferred from an unset variable.
+func startStreamTrimLoop(ctx context.Context, trimmer port.StreamTrimmer, cfg *config.Config) {
+	if cfg.StreamHardMaxLen <= 0 {
+		slog.WarnContext(ctx, "stream_trim_disabled",
+			"reason", "STREAM_HARD_MAX_LEN is not positive; stream length is bounded only by XADD-time trimming, which stops working at maxmemory",
+		)
+		return
+	}
+
+	slog.InfoContext(ctx, "stream_trim_enabled",
+		"hard_max_len", cfg.StreamHardMaxLen,
+		"interval", cfg.StreamTrimInterval.String(),
+	)
+
+	uc := usecase.NewTrimStreamsUsecase(trimmer, cfg.StreamHardMaxLen)
+	go func() {
+		ticker := time.NewTicker(cfg.StreamTrimInterval)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				slog.InfoContext(ctx, "stream_trim_loop_stopped")
+				return
+			case <-ticker.C:
+				report, err := uc.Execute(ctx)
+				if err != nil {
+					slog.ErrorContext(ctx, "stream_trim_failed", "error", err, "deleted", report.Deleted)
+				}
+				if report.Deleted > 0 {
+					// Reaching the hard cap means the publish-time trim did not
+					// keep up. Worth alerting on, not just recording.
+					slog.WarnContext(ctx, "stream_trim_backstop_fired",
+						"deleted", report.Deleted,
+						"per_stream", report.PerStream,
+						"hard_max_len", cfg.StreamHardMaxLen,
+					)
+				}
+			}
+		}
+	}()
 }
 
 // loggingInterceptor creates a Connect interceptor for logging.
