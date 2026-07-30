@@ -96,11 +96,13 @@ def supervise(
             logger.info("consumer_supervisor_stopped", consumer=name, attempt=attempt)
             return
 
+    # `message` is a reserved LogRecord attribute: passing it as a bound value
+    # raises once structlog is routed through stdlib logging.
     logger.error(
         "consumer_supervisor_exhausted",
         consumer=name,
         attempts=attempt,
-        message="consumer will not be restarted again; readiness stays failed",
+        detail="consumer will not be restarted again; readiness stays failed",
     )
 
 
