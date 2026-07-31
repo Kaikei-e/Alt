@@ -74,11 +74,44 @@ docker exec alt-knowledge-sovereign-db-1 \
    FROM knowledge_events WHERE event_seq = <N>;"
 ```
 
-Known-benign folds (no action needed — the projector already advances past them):
+Known non-fatal folds (the projector already advances past these, so they are never the cause of a stuck checkpoint — but "non-fatal" is not the same as "ignorable", see the triage section):
 
-- **`HomeItemDismissed` for an item_key with no `knowledge_home_items` row.** A client can dismiss any non-empty `item_key`, and the event is appended independently of the write-through, so orphan dismisses are expected. This folds as a no-op and logs `knowledge_home_projector: dismiss target row not found, folding as no-op` with `event_id` / `item_key` / `projection_version`, per [[000473]] (the same condition alt-backend's write-through already treats as non-fatal). Seeing that WARN at volume points at a client sending stale item keys, not at a stuck projector.
+- **`HomeItemDismissed` for an item_key with no `knowledge_home_items` row.** A client can dismiss any non-empty `item_key`, and the event is appended independently of the write-through, so orphan dismisses are expected. This folds as a no-op and logs `knowledge_home_projector: dismiss target row not found, folding as no-op` with `event_id` / `item_key` / `projection_version`, per [[000473]] (the same condition alt-backend's write-through already treats as non-fatal). The projector is **not** stuck — but that WARN now carries two very different meanings, so triage it (next section) instead of filtering it out.
 
 For anything else, **fix the fold, then replay** — do not hand-advance `last_event_seq` past the event and do not delete it from `knowledge_events`. [[000456]] explicitly rejected "skip the failing event and advance the checkpoint" as a policy: it fixes the checkpoint at the cost of a permanently missing row in the read model, which is exactly the reproducibility an event-sourced projection exists to provide. Deploy the corrected fold first; the retry then clears the wedge by itself, and only if the read model is also corrupted do you need the reset below.
+
+## Triaging the dismiss no-op WARN
+
+Because this fold is deliberately non-fatal, the WARN is the *only* signal for both a harmless and a serious condition. [[000473]] accepted the condition on an "observability 前提" basis — that observability is this section.
+
+1. **Benign — a client sent a stale or foreign `item_key`.** The key genuinely never produced a row. Nothing to do.
+2. **Systemic — real user dismissals are being silently dropped.** The dismiss targets a version nobody reads: a projection-version cutover where live dismisses still name rows that exist only at the previous version, or a `user_id` / active-version resolution bug. The user keeps seeing items they already dismissed, `knowledge_home_items.dismissed_at` stays NULL, and nothing else in the system errors.
+
+Both look identical in the log, so distinguish them by version. Take `projection_version=<V>` and `event_id=<E>` from the WARN:
+
+```bash
+docker exec alt-knowledge-sovereign-db-1 \
+  psql -U sovereign -d knowledge_sovereign -P pager=off -c \
+  "SELECT version, status, activated_at FROM knowledge_projection_versions ORDER BY version;
+   SELECT user_id, payload->>'item_key' AS item_key, aggregate_id
+     FROM knowledge_events WHERE event_id = '<E>';"
+```
+
+Then, with the `user_id` that returns:
+
+```bash
+docker exec alt-knowledge-sovereign-db-1 \
+  psql -U sovereign -d knowledge_sovereign -P pager=off -c \
+  "SELECT projection_version, count(*) AS total_rows, count(dismissed_at) AS dismissed
+     FROM knowledge_home_items WHERE user_id = '<U>'
+     GROUP BY projection_version ORDER BY projection_version;"
+```
+
+Read it as:
+
+- `<V>` equals the `status='active'` version **and** that user already has rows at `<V>` → benign. The projector is writing where the read path reads; only this one key was never projected.
+- `<V>` is not the active version, **or** the user's rows sit at a different `projection_version` than `<V>` → systemic. Every dismiss for that user is landing on a version that has no rows. Fix the version resolution or finish the cutover, then reproject (Recovery Procedure below) so the dismissals actually land.
+- A WARN rate that steps up at a deploy or a version flip, rather than trickling, is the strongest tell for case 2. A steady low trickle spread across many users and keys is case 1.
 
 ## Recovery Procedure
 
@@ -123,4 +156,4 @@ Also confirm:
 
 - Do not patch `knowledge_home_items` manually. Rebuild it from the event log.
 - Do not delete `knowledge_events` during this recovery, and do not hand-advance a checkpoint past a failing event ([[000456]]).
-- PgBouncer remains in transaction pooling mode for this workflow. The recovery assumes pgx simple-protocol compatibility is preserved.
+- There is no connection pooler on this path. `knowledge-sovereign` dials `knowledge-sovereign-db:5432` directly (`compose/sovereign.yaml`); PgBouncer fronts `alt-db` (`compose/core.yaml`) and Kratos (`compose/auth.yaml`) only. Transaction-pooling constraints — prepared-statement limits, `DISCARD ALL` between transactions, simple-protocol compatibility — do not apply to any command in this runbook.
