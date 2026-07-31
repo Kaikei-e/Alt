@@ -169,44 +169,136 @@ webhook をこのケース専用に提供している。Broker が「この pact
 type `verify_pact` を受信し、`scripts/pact-check.sh --publish-only
 --services <provider>` を当該 provider SHA で走らせる)。
 
-Broker 側は provider ごとに 1 度 webhook を登録する:
+必要な PAT は **Kaikei-e/alt-deploy にスコープした fine-grained token**。
+権限は **Contents: Read and write** + **Metadata: Read**。他 repo には
+scope させない。
 
-```bash
-# Fine-grained PAT: Kaikei-e/alt-deploy に Contents:Read + Actions:Write
-# のみ許可したものを $GH_TOKEN に置く。他 repo には scope させない。
-export GH_TOKEN=...
-for provider in alt-backend alt-butterfly-facade auth-hub pre-processor \
-                search-indexer mq-hub rag-orchestrator \
-                recap-worker recap-subworker recap-evaluator \
-                news-creator tag-generator acolyte-orchestrator \
-                knowledge-sovereign tts-speaker; do
-  pact-broker-cli create-webhook \
-    --request POST \
-    --url "https://api.github.com/repos/Kaikei-e/alt-deploy/dispatches" \
-    --header "Authorization: Bearer $GH_TOKEN" \
-    --header "Accept: application/vnd.github+json" \
-    --data "$(jq -nc --arg p "$provider" '{
-      event_type: "verify_pact",
-      client_payload: {
-        provider:        $p,
-        providerVersion: "\u0024{pactbroker.providerVersionNumber}",
-        pactUrl:         "\u0024{pactbroker.pactUrl}",
-        consumer:        "\u0024{pactbroker.consumerName}",
-        consumerVersion: "\u0024{pactbroker.consumerVersionNumber}"
-      }
-    }')" \
-    --provider "$provider" \
-    --contract-requiring-verification-published \
-    --broker-base-url "$PACT_BROKER_BASE_URL" \
-    --broker-username "$PACT_BROKER_USERNAME" \
-    --broker-password "$PACT_BROKER_PASSWORD"
-done
+> **Contents は write が必須。** `POST /repos/{owner}/{repo}/dispatches` は
+> Contents の書き込み権限を要求する。Actions 権限では通らない。
+> Actions:Read だけの token は `/actions/workflows` に 200 を返すのに
+> dispatch は `403 Resource not accessible by personal access token` で
+> 落ちる (2026-07-31 実測)。
+
+#### ⚠️ `pact-broker-cli create-webhook` は使わない
+
+Rust 版 CLI (0.6.3) の `--header` は**値を空白で分割し、各断片をヘッダ名として
+登録する**。`--header "Authorization: Bearer <PAT>"` は次のように壊れる:
+
+```
+"authorization:" : "**********"   ← 値はマスクされる
+"bearer"         : null
+"github_pat_..." : null            ← PAT がヘッダ「名」になる
 ```
 
-`${pactbroker.*}` は Broker 側のテンプレート変数。JSON 文字列は
-リテラル `${...}` のまま Broker に渡し、webhook 発火時に Broker が
-実値を埋める。上の heredoc は `\u0024` で `$` をエスケープして
-shell 展開を避ける。
+Broker はヘッダの**値**しかマスクしないため、**PAT が平文で保存され、webhook
+定義を読める者全員に見える**。2026-07-31 にこれで token 1 本を失効させている。
+
+加えて `--header` は 1 回しか指定できず、GitHub が要求する
+`Content-Type: application/json` を Authorization と併記できない。CLI 既定の
+`application/x-www-form-urlencoded` のまま送られ GitHub に拒否される。
+
+(URL も `--url` ではなく位置引数。CLI を使わないので実害はないが、旧版の
+手順をそのまま流すと最初にここで止まる。)
+
+#### 登録 — Broker の REST API に直接 POST
+
+ヘッダを JSON オブジェクトで渡すので分割は起きず、Content-Type も指定できる。
+
+```python
+#!/usr/bin/env python3
+# 出力にリクエストボディ / レスポンスボディ / ヘッダ値を出さないこと。
+import json, urllib.request
+from base64 import b64encode
+from pathlib import Path
+
+BROKER = "http://100.91.38.4:9292"   # 登録先はどのホストでもよい (§下記参照)
+DISPATCH_URL = "https://api.github.com/repos/Kaikei-e/alt-deploy/dispatches"
+PROVIDERS = [
+    "alt-backend", "alt-butterfly-facade", "auth-hub", "pre-processor",
+    "search-indexer", "mq-hub", "rag-orchestrator", "recap-worker",
+    "recap-subworker", "recap-evaluator", "news-creator", "tag-generator",
+    "acolyte-orchestrator", "knowledge-sovereign", "tts-speaker",
+]
+
+token = Path("/etc/alt/secrets/gh_dispatch_pat.txt").read_text().strip()
+pw = Path("/etc/alt/secrets/pact_broker_basic_auth_password.txt").read_text().strip()
+auth = b64encode(f"pact:{pw}".encode()).decode()
+
+for provider in PROVIDERS:
+    body = {
+        "description": f"verify_pact dispatch for {provider}",
+        "provider": {"name": provider},
+        "enabled": True,
+        "request": {
+            "method": "POST",
+            "url": DISPATCH_URL,
+            "headers": {
+                "Authorization": f"Bearer {token}",
+                "Content-Type": "application/json",
+                "Accept": "application/vnd.github+json",
+            },
+            # ${pactbroker.*} はリテラルのまま broker に渡す。
+            # 発火時に broker が実値へ置換する。
+            "body": {
+                "event_type": "verify_pact",
+                "client_payload": {
+                    "provider": provider,
+                    "providerVersion": "${pactbroker.providerVersionNumber}",
+                    "pactUrl": "${pactbroker.pactUrl}",
+                    "consumer": "${pactbroker.consumerName}",
+                    "consumerVersion": "${pactbroker.consumerVersionNumber}",
+                },
+            },
+        },
+        "events": [{"name": "contract_requiring_verification_published"}],
+    }
+    req = urllib.request.Request(
+        f"{BROKER}/webhooks", data=json.dumps(body).encode(),
+        headers={"Content-Type": "application/json",
+                 "Authorization": f"Basic {auth}"}, method="POST")
+    with urllib.request.urlopen(req, timeout=30) as resp:
+        print(provider, json.loads(resp.read()).get("uuid"))
+```
+
+#### `${pactbroker.pactUrl}` は起動元ホストで展開される
+
+Broker に `PACT_BROKER_BASE_URL` が設定されていないため、broker は自身の URL を
+**リクエスト元のホストから推測する**。
+
+webhook 定義には `${pactbroker.pactUrl}` が**リテラルのまま**保存され、実 URL は
+**発火時**に解決される。つまり登録をどのホスト経由で行ったかは影響しない —
+効くのは **webhook を発火させた側**のホストである。`127.0.0.1:9292` 経由で
+`test-webhook` すると `pactUrl` が `http://127.0.0.1:9292/...` になり、GitHub
+runner から取得できず `Failed to load pact` で落ちる
+(2026-07-31 run 30597755105 がこれ)。CI が `100.91.38.4:9292` へ publish して
+発火する通常経路では正しく解決される。
+
+疎通確認は **runner から到達できるホスト (`100.91.38.4:9292`) 経由で行う**こと。
+恒久対策は broker に `PACT_BROKER_BASE_URL` を明示し、発火元に依存させないこと。
+
+#### 登録後の確認
+
+**1 provider だけ登録して疎通を確認してから残りを流す。**
+
+```bash
+pact-broker-cli test-webhook --uuid <UUID>   # success: true を確認
+```
+
+`success: false` のとき broker はレスポンス詳細を記録しない
+(`PACT_BROKER_WEBHOOK_HOST_WHITELIST` 未設定のため)。切り分けは同じ body /
+header で GitHub に直接 POST して status を見るのが速い。
+
+token が正しく格納されたかは必ず確認する。ヘッダ名が 3 つに分かれ、
+authorization の値がマスクされていれば正常:
+
+```bash
+curl -s -u pact:"$PW" "$BROKER/webhooks/<UUID>" \
+  | python3 -c 'import sys,json; print(list(json.load(sys.stdin)["request"]["headers"]))'
+# => ['authorization', 'content-type', 'accept']
+```
+
+一覧は `_embedded.webhooks` ではなく **`_links."pb:webhooks"`** に入る。
+`_embedded` を見ると登録済みでも常に 0 件に見える。
 
 ### 7.3 期待する動作
 
