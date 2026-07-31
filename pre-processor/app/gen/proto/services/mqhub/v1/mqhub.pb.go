@@ -22,9 +22,16 @@ const (
 )
 
 // Event represents a domain event to be published to Redis Streams.
+//
+// Delivery contract: mq-hub provides at-least-once delivery only. A publish
+// that times out or a worker that crashes before ack can result in the same
+// event being re-published or re-delivered. Consumers MUST treat event_id as
+// the dedupe key (e.g. `ON CONFLICT (event_id) DO NOTHING` / idempotent
+// upsert) rather than assuming exactly-once delivery.
 type Event struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
-	// Unique event identifier (UUID v4)
+	// Unique event identifier (UUID v4). Consumers must dedupe on this field —
+	// see the at-least-once delivery contract above.
 	EventId string `protobuf:"bytes,1,opt,name=event_id,json=eventId,proto3" json:"event_id,omitempty"`
 	// Event type (e.g., "ArticleCreated", "SummarizeRequested")
 	EventType string `protobuf:"bytes,2,opt,name=event_type,json=eventType,proto3" json:"event_type,omitempty"`
