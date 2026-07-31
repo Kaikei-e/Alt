@@ -1,10 +1,25 @@
 //go:build contract
 
-// Package contract contains provider verification tests for alt-backend.
+// Package contract contains provider verification tests for the data plane.
 //
-// These tests verify that alt-backend fulfills contracts from two consumers:
-//   - recap-worker → services.backend.v1.BackendInternalService/ListRecapArticles (Connect-RPC / JSON)
-//   - search-indexer → BackendInternalService (Connect-RPC / JSON wire format)
+// Every consumer of alt.datahub.v1.DataHubService is verified here, plus the
+// browser-facing services alt-butterfly-facade proxies:
+//
+//	consumer            pacticipant it names as provider
+//	recap-worker        alt-backend
+//	search-indexer      alt-backend
+//	pre-processor       alt-backend
+//	tag-generator       alt-backend
+//	rag-orchestrator    alt-data-hub
+//	alt-butterfly-facade alt-backend
+//
+// Two provider names for one binary is a naming debt, not a second surface:
+// alt-data-hub is the deployment that serves DataHubService after the
+// ADR-000954 split, and services.yaml registers it as `kind: runtime` rather
+// than as a pacticipant of its own. Renaming the pacticipant is a separate
+// change — a rename on the Broker orphans the verification history of every
+// pact under the old name — so until then the rag-orchestrator pact is
+// verified under the name it was published with, against the same stub.
 package contract
 
 import (
@@ -24,11 +39,23 @@ import (
 )
 
 const (
-	pactDir                    = "../../../../../pacts"
-	providerName               = "alt-backend"
+	pactDir = "../../../../../pacts"
+	// ragPactDir: rag-orchestrator writes its pacts into its own module rather
+	// than the repo-root directory, and scripts/pact-check.sh publishes from
+	// both.
+	ragPactDir = "../../../../../rag-orchestrator/pacts"
+
+	providerName = "alt-backend"
+	// dataHubProviderName is the pacticipant rag-orchestrator publishes
+	// against — see the package comment.
+	dataHubProviderName = "alt-data-hub"
+
 	recapWorkerPactFile        = "recap-worker-alt-backend.json"
 	searchIndexerPactFile      = "search-indexer-alt-backend.json"
 	altButterflyFacadePactFile = "alt-butterfly-facade-alt-backend.json"
+	preProcessorPactFile       = "pre-processor-alt-backend.json"
+	tagGeneratorPactFile       = "tag-generator-alt-backend.json"
+	ragOrchestratorPactFile    = "rag-orchestrator-alt-data-hub.json"
 )
 
 // recapArticleResponse mirrors the Connect-RPC JSON shape produced by
@@ -84,19 +111,31 @@ type listRecapArticlesRequest struct {
 	To   string `json:"to"`
 }
 
-// internalProcedure mounts one service-to-service procedure under both names
-// alt-data-hub answers to during ADR-000954 Wave 2: the legacy
-// services.backend.v1.BackendInternalService and its replacement
-// alt.datahub.v1.DataHubService.
+// dataHubProcedure mounts one procedure of alt.datahub.v1.DataHubService, the
+// only name the data plane answers to since ADR-000954 Wave 2-C.
 //
-// Registering both here is what lets a Wave 2-B peer PR change only its own
-// consumer test. The provider's real handlers already serve both paths from
-// one implementation (connect/v2/datahub/server.go); this stub mirrors that,
-// so provider verification does not become the reason a peer migration needs
-// a second PR.
-func internalProcedure(mux *http.ServeMux, procedure string, h http.HandlerFunc) {
-	mux.HandleFunc("/services.backend.v1.BackendInternalService/"+procedure, h)
+// It mounted the retired services.backend.v1.BackendInternalService path as
+// well while Wave 2-B moved the consumers one PR at a time, so that a peer's
+// migration did not also need an edit here. Both names are no longer served by
+// the real handler, and a stub that kept answering the old one would let a
+// consumer pact still naming it verify green against a provider that would
+// 404 it in production.
+func dataHubProcedure(mux *http.ServeMux, procedure string, h http.HandlerFunc) {
 	mux.HandleFunc("/alt.datahub.v1.DataHubService/"+procedure, h)
+}
+
+// jsonPost answers POST with body and rejects every other method, which is the
+// shape every Connect-RPC unary procedure has over the JSON wire format.
+func jsonPost(body map[string]interface{}) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			w.WriteHeader(http.StatusMethodNotAllowed)
+			return
+		}
+		_, _ = io.Copy(io.Discard, r.Body)
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(body)
+	}
 }
 
 // startStubServer creates a minimal HTTP server bound to an ephemeral port.
@@ -148,8 +187,7 @@ func startStubServer(t *testing.T) int {
 	}
 
 	// ---- POST .../ListRecapArticles ----
-	// Current canonical paths, legacy and ADR-000954 D7 alike.
-	internalProcedure(mux, "ListRecapArticles", recapArticlesHandler)
+	dataHubProcedure(mux, "ListRecapArticles", recapArticlesHandler)
 
 	// Transitional shims: the broker's DeployedOrReleased selector still
 	// advertises older recap-worker versions whose pact targets either the
@@ -191,16 +229,9 @@ func startStubServer(t *testing.T) int {
 		_ = json.NewEncoder(w).Encode(resp)
 	})
 
-	// ---- Connect-RPC BackendInternalService (JSON wire format) ----
+	// ---- alt.datahub.v1.DataHubService (JSON wire format) ----
 	// search-indexer-alt-backend.json contract.
-	//
-	// Each of these is registered under two paths — see internalProcedure at
-	// the bottom of this function. ADR-000954 D7 renames the namespace to
-	// alt.datahub.v1.DataHubService and Wave 2-B moves the consumers one PR at
-	// a time, so at any point during that wave the broker holds pacts naming
-	// both paths. The stub answers either, which keeps a peer's migration PR
-	// from having to touch this file to stay green.
-	internalProcedure(mux, "GetLatestArticleTimestamp",
+	dataHubProcedure(mux, "GetLatestArticleTimestamp",
 		func(w http.ResponseWriter, r *http.Request) {
 			if r.Method != http.MethodPost {
 				w.WriteHeader(http.StatusMethodNotAllowed)
@@ -212,7 +243,7 @@ func startStubServer(t *testing.T) int {
 			})
 		})
 
-	internalProcedure(mux, "ListArticlesWithTags",
+	dataHubProcedure(mux, "ListArticlesWithTags",
 		func(w http.ResponseWriter, r *http.Request) {
 			if r.Method != http.MethodPost {
 				w.WriteHeader(http.StatusMethodNotAllowed)
@@ -240,7 +271,7 @@ func startStubServer(t *testing.T) int {
 	// published_at is deliberately a different instant from created_at: the
 	// consumer indexes documents from this response alone, so substituting
 	// created_at here would silently regress its date filter.
-	internalProcedure(mux, "GetArticleByID",
+	dataHubProcedure(mux, "GetArticleByID",
 		func(w http.ResponseWriter, r *http.Request) {
 			if r.Method != http.MethodPost {
 				w.WriteHeader(http.StatusMethodNotAllowed)
@@ -266,7 +297,7 @@ func startStubServer(t *testing.T) int {
 	// recap-worker-alt-backend.json: "a batch tags request by article ids"
 	// recap-worker fetches tags for a batch of article ids to enrich the
 	// recap payload. Connect-RPC, JSON wire format, camelCase keys.
-	internalProcedure(mux, "BatchGetTagsByArticleIDs",
+	dataHubProcedure(mux, "BatchGetTagsByArticleIDs",
 		func(w http.ResponseWriter, r *http.Request) {
 			if r.Method != http.MethodPost {
 				w.WriteHeader(http.StatusMethodNotAllowed)
@@ -290,6 +321,132 @@ func startStubServer(t *testing.T) int {
 				},
 			})
 		})
+
+	// ---- pre-processor-alt-backend.json ----
+	// The crawl/summarise loop: resolve a feed, write an article, poll for
+	// unsummarised ones, write the summary back. GetSystemUser is the identity
+	// every one of those writes is attributed to — it was GET
+	// /v1/internal/system-user until ADR-000954 D6 folded it into this service,
+	// which is why a pact naming it as an RPC is what proves the fold landed.
+	dataHubProcedure(mux, "GetSystemUser", jsonPost(map[string]interface{}{
+		"userId": "11111111-2222-3333-4444-555555555555",
+	}))
+
+	dataHubProcedure(mux, "GetFeedID", jsonPost(map[string]interface{}{
+		"feedId": "feed-001",
+	}))
+
+	dataHubProcedure(mux, "CreateArticle", jsonPost(map[string]interface{}{
+		"articleId": "art-001",
+	}))
+
+	dataHubProcedure(mux, "ListFeedURLs", jsonPost(map[string]interface{}{
+		"feeds": []map[string]interface{}{
+			{"feedId": "feed-001", "url": "https://example.com/feed.xml"},
+		},
+		"nextCursor": "feed-002",
+		"hasMore":    true,
+	}))
+
+	dataHubProcedure(mux, "ListUnsummarizedArticles", jsonPost(map[string]interface{}{
+		"articles": []map[string]interface{}{
+			{
+				"id":        "art-001",
+				"title":     "Go 1.26 Released",
+				"content":   "Article body text.",
+				"url":       "https://example.com/articles/go-126",
+				"createdAt": "2026-03-26T00:00:00Z",
+				"userId":    "user-001",
+			},
+		},
+		"nextCreatedAt": "2026-03-26T00:00:00Z",
+		"nextId":        "art-002",
+	}))
+
+	// success is sent explicitly rather than left to protojson's zero-value
+	// omission: the consumer reads it to decide whether the summary was
+	// persisted, and an absent field would read as false.
+	dataHubProcedure(mux, "SaveArticleSummary", jsonPost(map[string]interface{}{
+		"success": true,
+	}))
+
+	// ---- tag-generator-alt-backend.json ----
+	// One ListUntaggedArticles stub covers both interactions in that pact: the
+	// backlog probe (limit 1) reads totalCount, the first page (limit 75) reads
+	// the cursor too, and Pact tolerates response keys an interaction does not
+	// mention. Branching on the request limit would encode the consumer's
+	// current page size into the provider, which is exactly the coupling the
+	// cursor exists to avoid.
+	dataHubProcedure(mux, "ListUntaggedArticles", jsonPost(map[string]interface{}{
+		"articles": []map[string]interface{}{
+			{
+				"id":        "art-001",
+				"title":     "Rust Memory Safety",
+				"content":   "An article about memory safety in Rust.",
+				"userId":    "user-001",
+				"feedId":    "feed-001",
+				"createdAt": "2026-03-26T00:00:00Z",
+			},
+		},
+		"totalCount": 42,
+		"nextId":     "art-002",
+	}))
+
+	dataHubProcedure(mux, "GetArticleContent", jsonPost(map[string]interface{}{
+		"articleId": "art-001",
+		"title":     "Rust Memory Safety",
+		"content":   "An article about memory safety in Rust.",
+		"url":       "https://example.com/rust-memory-safety",
+		"userId":    "user-001",
+	}))
+
+	dataHubProcedure(mux, "UpsertArticleTags", jsonPost(map[string]interface{}{
+		"success":       true,
+		"upsertedCount": 2,
+	}))
+
+	dataHubProcedure(mux, "BatchUpsertArticleTags", jsonPost(map[string]interface{}{
+		"success":       true,
+		"totalUpserted": 2,
+	}))
+
+	// ---- rag-orchestrator-alt-data-hub.json ----
+	// The RAG tool surface (ADR-000617) plus ListRecentArticles, the other
+	// route ADR-000954 D6 absorbed. The ids here are real UUIDs because the
+	// consumer pins them with a UUID regex matcher — it parses them, so a
+	// placeholder like "art-001" would verify green and fail in production.
+	dataHubProcedure(mux, "FetchTagCloud", jsonPost(map[string]interface{}{
+		"tags": []map[string]interface{}{
+			{"tagName": "ai", "articleCount": 42},
+		},
+	}))
+
+	dataHubProcedure(mux, "FetchArticlesByTag", jsonPost(map[string]interface{}{
+		"articles": []map[string]interface{}{
+			{
+				"id":          "article-1",
+				"title":       "Multi-Agent Systems",
+				"url":         "https://example.com/mas",
+				"publishedAt": "2026-04-14T00:30:00Z",
+			},
+		},
+	}))
+
+	dataHubProcedure(mux, "ListRecentArticles", jsonPost(map[string]interface{}{
+		"articles": []map[string]interface{}{
+			{
+				"id":          "6f1a2f7e-1f1e-4c2a-9a3e-5b6c7d8e9f01",
+				"title":       "An LLM primer",
+				"url":         "https://example.com/llm-primer",
+				"publishedAt": "2026-04-14T00:30:00Z",
+				"feedId":      "11111111-2222-3333-4444-555555555555",
+				"tags":        []string{"ai"},
+			},
+		},
+		"since": "2026-04-14T00:00:00Z",
+		"until": "2026-04-15T00:00:00Z",
+		"count": 1,
+	}))
 
 	// ---- alt-butterfly-facade proxy targets (Connect-RPC, JSON wire format) ----
 	// BFF unit-tests its proxy by speaking Connect-RPC directly to alt-backend.
@@ -529,4 +686,127 @@ func TestVerifySearchIndexerContract(t *testing.T) {
 	verifier := provider.NewVerifier()
 	err := verifier.VerifyProvider(t, verifyRequest)
 	require.NoError(t, err)
+}
+
+// noopStates turns a list of provider-state names into handlers that do
+// nothing.
+//
+// Every state here is a no-op for the same reason: this verification runs
+// against a stub, not against a database, so "articles exist" is already true
+// by construction. The names still have to be declared — pact-go fails a
+// verification whose pact names a state the provider does not know, which is
+// what catches a consumer inventing a precondition nobody agreed to.
+func noopStates(names ...string) models.StateHandlers {
+	handlers := models.StateHandlers{}
+	for _, name := range names {
+		handlers[name] = func(bool, models.ProviderState) (models.ProviderStateResponse, error) {
+			return nil, nil
+		}
+	}
+	return handlers
+}
+
+// verifyConsumer runs one consumer's pact against the stub, in file mode
+// locally and against the Broker in CI.
+//
+// The three verifications below differ only in consumer name, pact file and
+// state list, so they share this rather than each carrying its own copy of the
+// broker-vs-file branch. The three that came before it are left as they are:
+// each has an accreted exception (recap-worker's transitional shims,
+// search-indexer's missing WIP handling) and folding those in would mean
+// parameters that exist for one caller.
+func verifyConsumer(t *testing.T, consumer, providerPacticipant, pactPath string, states models.StateHandlers) {
+	t.Helper()
+
+	brokerURL := os.Getenv("PACT_BROKER_BASE_URL")
+	if brokerURL == "" {
+		if _, err := os.Stat(pactPath); os.IsNotExist(err) {
+			t.Skipf("No Broker URL set and pact file not found: %s. "+
+				"Run the %s consumer tests first.", pactPath, consumer)
+		}
+	}
+
+	verifyRequest := provider.VerifyRequest{
+		Provider:        providerPacticipant,
+		ProviderBaseURL: fmt.Sprintf("http://127.0.0.1:%d", startStubServer(t)),
+		StateHandlers:   states,
+	}
+
+	if brokerURL != "" {
+		verifyRequest.BrokerURL = brokerURL
+		verifyRequest.BrokerUsername = os.Getenv("PACT_BROKER_USERNAME")
+		verifyRequest.BrokerPassword = os.Getenv("PACT_BROKER_PASSWORD")
+		verifyRequest.ConsumerVersionSelectors = []provider.Selector{
+			&provider.ConsumerVersionSelector{Consumer: consumer, MainBranch: true},
+			&provider.ConsumerVersionSelector{Consumer: consumer, DeployedOrReleased: true},
+		}
+		if ver := os.Getenv("PACT_PROVIDER_VERSION"); ver != "" {
+			verifyRequest.ProviderVersion = ver
+		}
+		if branch := os.Getenv("PACT_PROVIDER_BRANCH"); branch != "" {
+			verifyRequest.ProviderBranch = branch
+		}
+		verifyRequest.PublishVerificationResults = os.Getenv("PACT_PROVIDER_VERSION") != ""
+		if os.Getenv("PACT_DISABLE_PENDING") != "true" {
+			verifyRequest.EnablePending = true
+		}
+	} else {
+		verifyRequest.PactFiles = []string{pactPath}
+	}
+
+	require.NoError(t, provider.NewVerifier().VerifyProvider(t, verifyRequest))
+}
+
+// TestVerifyPreProcessorContract verifies the crawl/summarise loop's half of
+// alt.datahub.v1.DataHubService.
+//
+// pre-processor is the only consumer that both reads and writes through this
+// service, so it is the one whose pact would catch a write path answering with
+// a shape its caller cannot read — and GetSystemUser is here rather than in a
+// REST suite because ADR-000954 D6 moved it onto this service. Until this
+// existed, alt-backend had a published pact from pre-processor that no
+// provider job verified: the pact was generated, published, and never checked
+// against anything.
+func TestVerifyPreProcessorContract(t *testing.T) {
+	verifyConsumer(t, "pre-processor", providerName,
+		filepath.Join(pactDir, preProcessorPactFile),
+		noopStates(
+			"a feed exists with id feed-001",
+			"a feed is registered for the requested url",
+			"a Kratos identity exists",
+			"registered feeds exist",
+			"unsummarized articles exist",
+			"an article exists with id art-001",
+		))
+}
+
+// TestVerifyTagGeneratorContract verifies the tagging loop: find untagged
+// articles, read one's body, write tags back one article at a time or in a
+// batch.
+func TestVerifyTagGeneratorContract(t *testing.T) {
+	verifyConsumer(t, "tag-generator", providerName,
+		filepath.Join(pactDir, tagGeneratorPactFile),
+		noopStates(
+			"untagged articles exist",
+			"an article with body text exists",
+			"the article exists and has no tags",
+			"both articles exist and have no tags",
+		))
+}
+
+// TestVerifyRAGOrchestratorContract verifies the RAG tool surface (ADR-000617)
+// and ListRecentArticles.
+//
+// It names alt-data-hub as the provider because that is the pacticipant
+// rag-orchestrator published against — see the package comment. The stub is
+// the same one every other verification here runs against, which is the honest
+// arrangement: one binary serves both names.
+func TestVerifyRAGOrchestratorContract(t *testing.T) {
+	verifyConsumer(t, "rag-orchestrator", dataHubProviderName,
+		filepath.Join(ragPactDir, ragOrchestratorPactFile),
+		noopStates(
+			"alt-data-hub has articles tagged ai",
+			"alt-data-hub has tagged articles",
+			"alt-data-hub has articles published in the last 24 hours",
+		))
 }

@@ -13,7 +13,7 @@ import (
 // dataHubServicePaths are the service-to-service surfaces. They carry no
 // user-JWT interceptor and now live on their own binary behind mTLS.
 var dataHubServicePaths = []string{
-	"/services.backend.v1.BackendInternalService/CreateArticle",
+	"/alt.datahub.v1.DataHubService/CreateArticle",
 }
 
 // operatorServicePaths are the admin surfaces. They carry no user-JWT
@@ -62,8 +62,8 @@ func TestSetupConnectHandlers_ExcludesInternalAndAdminServices(t *testing.T) {
 	}
 }
 
-// The pre-split internal mux carried the admin surfaces and
-// BackendInternalService together, which meant one listener answered to two
+// The pre-split internal mux carried the admin surfaces and the data-plane
+// service together, which meant one listener answered to two
 // different access controls. They are separate muxes on separate binaries now,
 // and neither may re-acquire the other's services.
 func TestSetupOperatorConnectHandlers_ServesOnlyTheAdminSurfaces(t *testing.T) {

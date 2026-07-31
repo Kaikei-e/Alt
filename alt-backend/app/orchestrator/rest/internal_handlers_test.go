@@ -29,10 +29,11 @@ func routePaths(e *echo.Echo) map[string]bool {
 // ADR-000743 removed the wrap, and nothing failed — so this asserts against
 // the router RegisterRoutes actually builds rather than a hand-made one.
 //
-// The handlers themselves now live in alt/dataplane/rest (cmd/datahub), which
-// this package does not import; the assertion stays because "the published
-// REST port serves no /v1/internal route" is the property that matters, not
-// where the code happens to live.
+// The handlers themselves are gone — ADR-000954 D6 folded them into
+// alt.datahub.v1.DataHubService and Wave 2-C deleted the REST pair. The
+// assertion stays because "the published REST port serves no /v1/internal
+// route" is the property that matters, and it has to keep holding whether the
+// route is unregistered, moved to another binary, or retired outright.
 func TestRegisterRoutes_DoesNotExposeInternalRoutes(t *testing.T) {
 	e := echo.New()
 	RegisterRoutes(context.Background(), e, &di.ApplicationComponents{}, &config.Config{})

@@ -1,19 +1,14 @@
 # alt.datahub.v1.DataHubService answers on alt-data-hub over mTLS.
 #
-# This is the new namespace from ADR-000954 D7. It sits alongside
-# 01-backend-internal-service.hurl rather than replacing it: during Wave 2 the
-# provider serves both names, and the file that would prove the migration is
-# finished — the one asserting 404 on the legacy path — cannot be written
-# until Wave 2-C, because until then a peer that has not been moved yet is
-# still calling it. When that wave lands, 01 flips from "must answer" to "must
-# 404" and this file is what remains.
+# This is the namespace from ADR-000954 D7, and since Wave 2-C it is the only
+# one. It stood alongside 01 through Wave 2, while the provider served both
+# names and the consumers migrated one PR at a time; 01 and 02 now assert the
+# 404s on the two retired paths, and this file is the positive half.
 #
-# The procedures below are the same handler reached by a different path;
-# what is under test here is the mount, the TLS boundary and the request
-# envelope, exactly as in 01. Response bodies are not field-pinned for the
-# same reason given there — Connect's stock protojson codec omits zero-valued
-# scalars, so asserting on them would encode a codec detail. Field shapes
-# belong to the Pact consumer contracts.
+# What is under test here is the mount, the TLS boundary and the request
+# envelope. Response bodies are not field-pinned: Connect's stock protojson
+# codec omits zero-valued scalars, so asserting on them would encode a codec
+# detail. Field shapes belong to the Pact consumer contracts.
 #
 # Caller identity is run.sh's `pre-processor` leaf; the peer certificate is
 # the credential on this surface.

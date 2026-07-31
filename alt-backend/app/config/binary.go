@@ -279,7 +279,7 @@ func ValidateHarvesterConfig(cfg *Config) error {
 	return requireAll("harvester", required)
 }
 
-// ValidateDataHubConfig checks the upstreams BackendInternalService calls.
+// ValidateDataHubConfig checks the upstreams DataHubService calls.
 func ValidateDataHubConfig(cfg *Config) error {
 	required := []struct {
 		env   string
@@ -299,7 +299,7 @@ func ValidateDataHubConfig(cfg *Config) error {
 	// of ADR-000928. Development may opt out explicitly; nothing else may.
 	if !cfg.MQHub.Enabled && cfg.AppEnv != "development" {
 		return fmt.Errorf("datahub config: MQHUB_ENABLED=false in APP_ENV=%s would make every "+
-			"BackendInternalService article RPC succeed while publishing no events", cfg.AppEnv)
+			"DataHubService article RPC succeed while publishing no events", cfg.AppEnv)
 	}
 	return nil
 }
@@ -333,8 +333,8 @@ var backendRejectedMTLSEnv = []string{
 // RejectBackendMTLSListenerEnv fails startup when any of the old mTLS-listener
 // variables is still present in cmd/backend's environment.
 //
-// The listener they configured served the user API, the admin API and
-// BackendInternalService from one socket, and MTLS_CLIENT_AUTH decided —
+// The listener they configured served the user API, the admin API and the
+// service-to-service API from one socket, and MTLS_CLIENT_AUTH decided —
 // defaulting to "do not verify" — whether the client certificate meant
 // anything at all. All of that moved to cmd/datahub, where verification is
 // unconditional and the peer allowlist is required config.

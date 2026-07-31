@@ -8,10 +8,10 @@ version: v2
 # go_package the proto declares), while pre-processor's module root is
 # `pre-processor`, so protoc-gen-connect-go has to be told to emit
 # `pre-processor/gen/proto/...` in the connect stub's import block. Same reason
-# buf.gen.pre-processor-services.yaml exists alongside
-# buf.gen.backend-internal.yaml for the namespace this one replaces.
+# buf.gen.pre-processor-services.yaml carries its own override for
+# services/mqhub.
 #
-# Keeping it separate is also what lets Wave 2-B move one peer per PR without
+# Keeping it separate is also what let Wave 2-B move one peer per PR without
 # two agents editing the same file.
 managed:
   enabled: true

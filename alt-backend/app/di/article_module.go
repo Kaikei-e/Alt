@@ -119,7 +119,7 @@ func newArticleModule(infra *InfraModule, feed *FeedModule, ragAdapter rag_integ
 		cachedArticleTagsGw, fetchArticleTagsGw,
 	)
 
-	// Internal article API gateway (for BackendInternalService)
+	// Internal article API gateway (for DataHubService)
 	internalArticleGw := internal_article_gateway.NewGateway(altDB)
 
 	// GetArticleSourceURL: tenant-scoped read-side lookup for the Knowledge

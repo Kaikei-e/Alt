@@ -1,9 +1,9 @@
 # alt-data-hub Hurl E2E suite
 
 End-to-end scenarios for the data plane of the alt-backend 3-binary split.
-alt-data-hub serves `BackendInternalService` and the `/v1/internal/*` REST
-routes — the surfaces that authenticate a *service* rather than a user —
-over mTLS on `:9443`, with no host port published at all.
+alt-data-hub serves `alt.datahub.v1.DataHubService` — the surface that
+authenticates a *service* rather than a user — over mTLS on `:9443`, with no
+host port published at all.
 
 The admin Connect services (`KnowledgeHomeAdminService`,
 `AdminMonitorService`) did **not** move here; they stay on alt-backend's
@@ -20,34 +20,35 @@ description of what is there rather than a to-do.
 
 | Claim | Where it is asserted |
 |---|---|
-| `BackendInternalService` answers here, over mTLS | `01-backend-internal-service.hurl` |
 | `DataHubService` answers here, over mTLS | `04-datahub-service.hurl` |
 | …and *only* here | `../alt-backend/03-topology-internal-surface-absent.hurl`, `../alt-harvester/01-operator-surface-only.hurl` |
-| `/v1/internal/*` answers here, over mTLS | `02-internal-rest-routes.hurl` |
+| The retired `BackendInternalService` answers nowhere | `01-retired-connect-namespace-absent.hurl` |
+| The retired `/v1/internal/*` REST pair answers nowhere | `02-retired-internal-rest-absent.hurl` |
 | `:9110` serves health + metrics in plaintext, and nothing else | `03-ops-listener.hurl` |
 | An anonymous TLS client is refused | `run.sh` → `assert_transport_refused` |
 | A valid-chain / wrong-identity peer is refused | `run.sh` → `assert_transport_refused` |
 | No listener reachable on `:9000` / `:9101` / `:9102` | `run.sh` → `assert_transport_refused` |
 
 The positive and negative halves have to be read together. On its own,
-`01-backend-internal-service.hurl` is satisfied by a service that serves
-everything to everyone, and the 404s in the sibling suites are satisfied by
-a service that serves nothing at all. The pair is the claim.
+`04-datahub-service.hurl` is satisfied by a service that serves everything to
+everyone, and the 404s in the sibling suites are satisfied by a service that
+serves nothing at all. The pair is the claim.
 
-### Two namespaces, on purpose
+### One namespace, after two
 
-`01` and `04` assert the same procedures under two different paths, and both
-must pass. ADR-000954 D7 replaces `services.backend.v1.BackendInternalService`
-with `alt.datahub.v1.DataHubService`, but Wave 2-B moves the seven peers one
-PR at a time, so between the first and last of those PRs some callers are on
-each path. Serving one and not the other would break whichever half had not
-been migrated yet.
+`01` and `02` used to be the positive assertions for
+`services.backend.v1.BackendInternalService` and the `/v1/internal/*` REST
+pair. ADR-000954 D7 replaced the first with `alt.datahub.v1.DataHubService`
+and D6 folded the second into it as `GetSystemUser` / `ListRecentArticles`;
+Wave 2-B moved the five consumers one PR at a time, and for the length of
+that wave all three surfaces answered, because a caller that had not been
+migrated yet was still using the old one.
 
-The duplication is scheduled to end, not to persist. Wave 2-C deletes the
-legacy proto, and at that point `01` inverts — from "these procedures answer"
-to "these procedures 404" — in the same commit. Until then, a `04` that passes
-while `01` fails means a peer that has not been migrated has just lost its
-data plane.
+Wave 2-C ended the duplication and inverted both files in the same commit, as
+this section said it would. They were inverted rather than deleted: a second
+name for the data plane is a second path to alt-db's owner, and nothing else
+in the suite fails if one comes back. `04` says the surface answers; `01` and
+`02` say it answers under exactly one name.
 
 `:9102` is in the refused list on purpose. It is the port alt-backend's
 operator listener uses, and the tempting move during the split was to give
@@ -128,10 +129,11 @@ assert on.
   `render-slice.sh` strips every `ports:` key before the staging slice
   boots, so an E2E assertion here would pass vacuously. It is enforced
   instead by `ZERO_PUBLISH_SERVICES` in `scripts/compose-port-audit.py`.
-- **Response field shapes.** The internal handler uses Connect's stock
+- **Response field shapes.** The DataHubService handler uses Connect's stock
   protojson codec, so zero-valued scalars are absent from the wire and
   asserting on them would encode a codec detail. Field contracts belong to
-  the Pact consumer tests under `alt-backend/pacts/`.
+  the Pact consumer pacts (`pacts/`, `rag-orchestrator/pacts/`), verified
+  against alt-backend by `dataplane/driver/contract/provider_test.go`.
 
 ## What the suite depends on (all present)
 

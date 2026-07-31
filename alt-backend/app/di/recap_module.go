@@ -11,7 +11,7 @@ import (
 // RecapModule holds cmd/backend's recap-domain components.
 //
 // RecapArticlesUsecase is not among them: it backs
-// BackendInternalService/ListRecapArticles, which cmd/datahub serves. Building
+// DataHubService/ListRecapArticles, which cmd/datahub serves. Building
 // it here as well would give the backend a second, independently configured
 // reader of the same table that no backend handler ever calls.
 type RecapModule struct {

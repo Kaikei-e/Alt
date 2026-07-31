@@ -1,4 +1,4 @@
-package internal
+package datahubapi
 
 import (
 	"context"
@@ -15,7 +15,7 @@ import (
 	"alt/dataplane/port/internal_tag_port"
 	"alt/dataplane/usecase/recap_articles_usecase"
 	"alt/domain"
-	backendv1 "alt/gen/proto/services/backend/v1"
+	datahubv1 "alt/gen/proto/alt/datahub/v1"
 	"alt/mocks"
 	"alt/shared/port/event_publisher_port"
 
@@ -38,7 +38,7 @@ func setupHandler(t *testing.T) (
 	getTimestamp := mocks.NewMockGetLatestArticleTimestampPort(ctrl)
 	getByID := mocks.NewMockGetArticleByIDPort(ctrl)
 
-	h := NewHandler(listArticles, listForward, listDeleted, getTimestamp, getByID, nil)
+	h := NewHandler(listArticles, listForward, listDeleted, getTimestamp, getByID, &fakeSystemUser{}, &fakeRecentArticles{}, nil)
 	return h, listArticles, listForward, listDeleted, getTimestamp, getByID
 }
 
@@ -56,7 +56,7 @@ func TestListArticlesWithTags_Success(t *testing.T) {
 		ListArticlesWithTags(gomock.Any(), (*time.Time)(nil), "", 200).
 		Return(expected, &now, "a2", nil)
 
-	req := connect.NewRequest(&backendv1.ListArticlesWithTagsRequest{
+	req := connect.NewRequest(&datahubv1.ListArticlesWithTagsRequest{
 		Limit: 200,
 	})
 
@@ -95,7 +95,7 @@ func TestListArticlesWithTags_PropagatesLanguage(t *testing.T) {
 			{ID: "a3", Title: "UNK", Content: "c", Tags: []string{}, CreatedAt: now, UserID: "u"},
 		}, &now, "a3", nil)
 
-	resp, err := h.ListArticlesWithTags(ctx, connect.NewRequest(&backendv1.ListArticlesWithTagsRequest{Limit: 100}))
+	resp, err := h.ListArticlesWithTags(ctx, connect.NewRequest(&datahubv1.ListArticlesWithTagsRequest{Limit: 100}))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -120,7 +120,7 @@ func TestListArticlesWithTags_WithCursor(t *testing.T) {
 		ListArticlesWithTags(gomock.Any(), gomock.Any(), "prev-id", 100).
 		Return([]*internal_article_port.ArticleWithTags{}, (*time.Time)(nil), "", nil)
 
-	req := connect.NewRequest(&backendv1.ListArticlesWithTagsRequest{
+	req := connect.NewRequest(&datahubv1.ListArticlesWithTagsRequest{
 		LastCreatedAt: timestamppb.New(cursorTime),
 		LastId:        "prev-id",
 		Limit:         100,
@@ -143,7 +143,7 @@ func TestListArticlesWithTags_Error(t *testing.T) {
 		ListArticlesWithTags(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
 		Return(nil, nil, "", errors.New("db error"))
 
-	req := connect.NewRequest(&backendv1.ListArticlesWithTagsRequest{Limit: 200})
+	req := connect.NewRequest(&datahubv1.ListArticlesWithTagsRequest{Limit: 200})
 
 	_, err := h.ListArticlesWithTags(ctx, req)
 	if err == nil {
@@ -168,7 +168,7 @@ func TestListArticlesWithTagsForward_Success(t *testing.T) {
 		ListArticlesWithTagsForward(gomock.Any(), gomock.Any(), (*time.Time)(nil), "", 200).
 		Return(expected, &now, "a3", nil)
 
-	req := connect.NewRequest(&backendv1.ListArticlesWithTagsForwardRequest{
+	req := connect.NewRequest(&datahubv1.ListArticlesWithTagsForwardRequest{
 		IncrementalMark: timestamppb.New(mark),
 		Limit:           200,
 	})
@@ -195,7 +195,7 @@ func TestListDeletedArticles_Success(t *testing.T) {
 		ListDeletedArticles(gomock.Any(), (*time.Time)(nil), 200).
 		Return(expected, &now, nil)
 
-	req := connect.NewRequest(&backendv1.ListDeletedArticlesRequest{Limit: 200})
+	req := connect.NewRequest(&datahubv1.ListDeletedArticlesRequest{Limit: 200})
 
 	resp, err := h.ListDeletedArticles(ctx, req)
 	if err != nil {
@@ -218,7 +218,7 @@ func TestGetLatestArticleTimestamp_Success(t *testing.T) {
 		GetLatestArticleTimestamp(gomock.Any()).
 		Return(&now, nil)
 
-	req := connect.NewRequest(&backendv1.GetLatestArticleTimestampRequest{})
+	req := connect.NewRequest(&datahubv1.GetLatestArticleTimestampRequest{})
 
 	resp, err := h.GetLatestArticleTimestamp(ctx, req)
 	if err != nil {
@@ -237,7 +237,7 @@ func TestGetLatestArticleTimestamp_NoArticles(t *testing.T) {
 		GetLatestArticleTimestamp(gomock.Any()).
 		Return((*time.Time)(nil), nil)
 
-	req := connect.NewRequest(&backendv1.GetLatestArticleTimestampRequest{})
+	req := connect.NewRequest(&datahubv1.GetLatestArticleTimestampRequest{})
 
 	resp, err := h.GetLatestArticleTimestamp(ctx, req)
 	if err != nil {
@@ -261,7 +261,7 @@ func TestGetArticleByID_Success(t *testing.T) {
 		GetArticleByID(gomock.Any(), "a1").
 		Return(expected, nil)
 
-	req := connect.NewRequest(&backendv1.GetArticleByIDRequest{ArticleId: "a1"})
+	req := connect.NewRequest(&datahubv1.GetArticleByIDRequest{ArticleId: "a1"})
 
 	resp, err := h.GetArticleByID(ctx, req)
 	if err != nil {
@@ -305,7 +305,7 @@ func TestGetArticleByID_PublishedAt(t *testing.T) {
 					PublishedAt: tt.publishedAt,
 				}, nil)
 
-			resp, err := h.GetArticleByID(ctx, connect.NewRequest(&backendv1.GetArticleByIDRequest{ArticleId: "a1"}))
+			resp, err := h.GetArticleByID(ctx, connect.NewRequest(&datahubv1.GetArticleByIDRequest{ArticleId: "a1"}))
 			if err != nil {
 				t.Fatalf("unexpected error: %v", err)
 			}
@@ -330,7 +330,7 @@ func TestGetArticleByID_EmptyID(t *testing.T) {
 	h, _, _, _, _, _ := setupHandler(t)
 	ctx := context.Background()
 
-	req := connect.NewRequest(&backendv1.GetArticleByIDRequest{ArticleId: ""})
+	req := connect.NewRequest(&datahubv1.GetArticleByIDRequest{ArticleId: ""})
 
 	_, err := h.GetArticleByID(ctx, req)
 	if err == nil {
@@ -349,7 +349,7 @@ func TestGetArticleByID_NotFound(t *testing.T) {
 		GetArticleByID(gomock.Any(), "missing").
 		Return(nil, errors.New("not found"))
 
-	req := connect.NewRequest(&backendv1.GetArticleByIDRequest{ArticleId: "missing"})
+	req := connect.NewRequest(&datahubv1.GetArticleByIDRequest{ArticleId: "missing"})
 
 	_, err := h.GetArticleByID(ctx, req)
 	if err == nil {
@@ -366,14 +366,14 @@ func TestCheckArticleExists_Success(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	mockCheckExists := mocks.NewMockCheckArticleExistsPort(ctrl)
 
-	h := NewHandler(nil, nil, nil, nil, nil, nil,
+	h := NewHandler(nil, nil, nil, nil, nil, &fakeSystemUser{}, &fakeRecentArticles{}, nil,
 		WithPhase2Ports(mockCheckExists, nil, nil, nil, nil, nil))
 
 	mockCheckExists.EXPECT().
 		CheckArticleExists(gomock.Any(), "http://example.com/article", "feed-1").
 		Return(true, "article-123", nil)
 
-	req := connect.NewRequest(&backendv1.CheckArticleExistsRequest{
+	req := connect.NewRequest(&datahubv1.CheckArticleExistsRequest{
 		Url:    "http://example.com/article",
 		FeedId: "feed-1",
 	})
@@ -394,14 +394,14 @@ func TestCheckArticleExists_NotFound(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	mockCheckExists := mocks.NewMockCheckArticleExistsPort(ctrl)
 
-	h := NewHandler(nil, nil, nil, nil, nil, nil,
+	h := NewHandler(nil, nil, nil, nil, nil, &fakeSystemUser{}, &fakeRecentArticles{}, nil,
 		WithPhase2Ports(mockCheckExists, nil, nil, nil, nil, nil))
 
 	mockCheckExists.EXPECT().
 		CheckArticleExists(gomock.Any(), "http://example.com/new", "feed-1").
 		Return(false, "", nil)
 
-	req := connect.NewRequest(&backendv1.CheckArticleExistsRequest{
+	req := connect.NewRequest(&datahubv1.CheckArticleExistsRequest{
 		Url:    "http://example.com/new",
 		FeedId: "feed-1",
 	})
@@ -416,10 +416,10 @@ func TestCheckArticleExists_NotFound(t *testing.T) {
 }
 
 func TestCheckArticleExists_MissingURL(t *testing.T) {
-	h := NewHandler(nil, nil, nil, nil, nil, nil,
+	h := NewHandler(nil, nil, nil, nil, nil, &fakeSystemUser{}, &fakeRecentArticles{}, nil,
 		WithPhase2Ports(mocks.NewMockCheckArticleExistsPort(gomock.NewController(t)), nil, nil, nil, nil, nil))
 
-	req := connect.NewRequest(&backendv1.CheckArticleExistsRequest{FeedId: "feed-1"})
+	req := connect.NewRequest(&datahubv1.CheckArticleExistsRequest{FeedId: "feed-1"})
 	_, err := h.CheckArticleExists(context.Background(), req)
 	if connect.CodeOf(err) != connect.CodeInvalidArgument {
 		t.Errorf("expected CodeInvalidArgument, got %v", connect.CodeOf(err))
@@ -430,7 +430,7 @@ func TestCreateArticle_Success(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	mockCreate := mocks.NewMockCreateArticlePort(ctrl)
 
-	h := NewHandler(nil, nil, nil, nil, nil, nil,
+	h := NewHandler(nil, nil, nil, nil, nil, &fakeSystemUser{}, &fakeRecentArticles{}, nil,
 		WithPhase2Ports(nil, mockCreate, nil, nil, nil, nil))
 
 	mockCreate.EXPECT().
@@ -443,7 +443,7 @@ func TestCreateArticle_Success(t *testing.T) {
 		}).
 		Return("new-article-id", true, nil)
 
-	req := connect.NewRequest(&backendv1.CreateArticleRequest{
+	req := connect.NewRequest(&datahubv1.CreateArticleRequest{
 		Title:   "Test Article",
 		Url:     "http://example.com/test",
 		Content: "Hello world",
@@ -461,10 +461,10 @@ func TestCreateArticle_Success(t *testing.T) {
 }
 
 func TestCreateArticle_MissingURL(t *testing.T) {
-	h := NewHandler(nil, nil, nil, nil, nil, nil,
+	h := NewHandler(nil, nil, nil, nil, nil, &fakeSystemUser{}, &fakeRecentArticles{}, nil,
 		WithPhase2Ports(nil, mocks.NewMockCreateArticlePort(gomock.NewController(t)), nil, nil, nil, nil))
 
-	req := connect.NewRequest(&backendv1.CreateArticleRequest{FeedId: "feed-1"})
+	req := connect.NewRequest(&datahubv1.CreateArticleRequest{FeedId: "feed-1"})
 	_, err := h.CreateArticle(context.Background(), req)
 	if connect.CodeOf(err) != connect.CodeInvalidArgument {
 		t.Errorf("expected CodeInvalidArgument, got %v", connect.CodeOf(err))
@@ -475,14 +475,14 @@ func TestSaveArticleSummary_Success(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	mockSave := mocks.NewMockSaveArticleSummaryPort(ctrl)
 
-	h := NewHandler(nil, nil, nil, nil, nil, nil,
+	h := NewHandler(nil, nil, nil, nil, nil, &fakeSystemUser{}, &fakeRecentArticles{}, nil,
 		WithPhase2Ports(nil, nil, mockSave, nil, nil, nil))
 
 	mockSave.EXPECT().
 		SaveArticleSummary(gomock.Any(), "article-1", "user-uuid-1", "This is a summary", "ja").
 		Return(nil)
 
-	req := connect.NewRequest(&backendv1.SaveArticleSummaryRequest{
+	req := connect.NewRequest(&datahubv1.SaveArticleSummaryRequest{
 		ArticleId: "article-1",
 		Summary:   "This is a summary",
 		Language:  "ja",
@@ -499,10 +499,10 @@ func TestSaveArticleSummary_Success(t *testing.T) {
 }
 
 func TestSaveArticleSummary_MissingArticleID(t *testing.T) {
-	h := NewHandler(nil, nil, nil, nil, nil, nil,
+	h := NewHandler(nil, nil, nil, nil, nil, &fakeSystemUser{}, &fakeRecentArticles{}, nil,
 		WithPhase2Ports(nil, nil, mocks.NewMockSaveArticleSummaryPort(gomock.NewController(t)), nil, nil, nil))
 
-	req := connect.NewRequest(&backendv1.SaveArticleSummaryRequest{Summary: "text", UserId: "user-1"})
+	req := connect.NewRequest(&datahubv1.SaveArticleSummaryRequest{Summary: "text", UserId: "user-1"})
 	_, err := h.SaveArticleSummary(context.Background(), req)
 	if connect.CodeOf(err) != connect.CodeInvalidArgument {
 		t.Errorf("expected CodeInvalidArgument, got %v", connect.CodeOf(err))
@@ -510,10 +510,10 @@ func TestSaveArticleSummary_MissingArticleID(t *testing.T) {
 }
 
 func TestSaveArticleSummary_MissingUserID(t *testing.T) {
-	h := NewHandler(nil, nil, nil, nil, nil, nil,
+	h := NewHandler(nil, nil, nil, nil, nil, &fakeSystemUser{}, &fakeRecentArticles{}, nil,
 		WithPhase2Ports(nil, nil, mocks.NewMockSaveArticleSummaryPort(gomock.NewController(t)), nil, nil, nil))
 
-	req := connect.NewRequest(&backendv1.SaveArticleSummaryRequest{ArticleId: "article-1", Summary: "text"})
+	req := connect.NewRequest(&datahubv1.SaveArticleSummaryRequest{ArticleId: "article-1", Summary: "text"})
 	_, err := h.SaveArticleSummary(context.Background(), req)
 	if connect.CodeOf(err) != connect.CodeInvalidArgument {
 		t.Errorf("expected CodeInvalidArgument, got %v", connect.CodeOf(err))
@@ -524,7 +524,7 @@ func TestGetArticleContent_Success(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	mockContent := mocks.NewMockGetArticleContentPort(ctrl)
 
-	h := NewHandler(nil, nil, nil, nil, nil, nil,
+	h := NewHandler(nil, nil, nil, nil, nil, &fakeSystemUser{}, &fakeRecentArticles{}, nil,
 		WithPhase2Ports(nil, nil, nil, mockContent, nil, nil))
 
 	mockContent.EXPECT().
@@ -533,7 +533,7 @@ func TestGetArticleContent_Success(t *testing.T) {
 			ID: "article-1", Title: "Title", Content: "Body", URL: "http://example.com", UserID: "user-123",
 		}, nil)
 
-	req := connect.NewRequest(&backendv1.GetArticleContentRequest{ArticleId: "article-1"})
+	req := connect.NewRequest(&datahubv1.GetArticleContentRequest{ArticleId: "article-1"})
 	resp, err := h.GetArticleContent(context.Background(), req)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -553,14 +553,14 @@ func TestGetArticleContent_NotFound(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	mockContent := mocks.NewMockGetArticleContentPort(ctrl)
 
-	h := NewHandler(nil, nil, nil, nil, nil, nil,
+	h := NewHandler(nil, nil, nil, nil, nil, &fakeSystemUser{}, &fakeRecentArticles{}, nil,
 		WithPhase2Ports(nil, nil, nil, mockContent, nil, nil))
 
 	mockContent.EXPECT().
 		GetArticleContent(gomock.Any(), "missing").
 		Return(nil, nil)
 
-	req := connect.NewRequest(&backendv1.GetArticleContentRequest{ArticleId: "missing"})
+	req := connect.NewRequest(&datahubv1.GetArticleContentRequest{ArticleId: "missing"})
 	_, err := h.GetArticleContent(context.Background(), req)
 	if connect.CodeOf(err) != connect.CodeNotFound {
 		t.Errorf("expected CodeNotFound, got %v", connect.CodeOf(err))
@@ -571,14 +571,14 @@ func TestGetFeedID_Success(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	mockGetFeed := mocks.NewMockGetFeedIDPort(ctrl)
 
-	h := NewHandler(nil, nil, nil, nil, nil, nil,
+	h := NewHandler(nil, nil, nil, nil, nil, &fakeSystemUser{}, &fakeRecentArticles{}, nil,
 		WithPhase2Ports(nil, nil, nil, nil, mockGetFeed, nil))
 
 	mockGetFeed.EXPECT().
 		GetFeedID(gomock.Any(), "http://example.com/feed.xml").
 		Return("feed-123", nil)
 
-	req := connect.NewRequest(&backendv1.GetFeedIDRequest{FeedUrl: "http://example.com/feed.xml"})
+	req := connect.NewRequest(&datahubv1.GetFeedIDRequest{FeedUrl: "http://example.com/feed.xml"})
 	resp, err := h.GetFeedID(context.Background(), req)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -592,14 +592,14 @@ func TestGetFeedID_NotFound(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	mockGetFeed := mocks.NewMockGetFeedIDPort(ctrl)
 
-	h := NewHandler(nil, nil, nil, nil, nil, nil,
+	h := NewHandler(nil, nil, nil, nil, nil, &fakeSystemUser{}, &fakeRecentArticles{}, nil,
 		WithPhase2Ports(nil, nil, nil, nil, mockGetFeed, nil))
 
 	mockGetFeed.EXPECT().
 		GetFeedID(gomock.Any(), "http://missing.com/feed.xml").
 		Return("", errors.New("not found"))
 
-	req := connect.NewRequest(&backendv1.GetFeedIDRequest{FeedUrl: "http://missing.com/feed.xml"})
+	req := connect.NewRequest(&datahubv1.GetFeedIDRequest{FeedUrl: "http://missing.com/feed.xml"})
 	_, err := h.GetFeedID(context.Background(), req)
 	if connect.CodeOf(err) != connect.CodeNotFound {
 		t.Errorf("expected CodeNotFound, got %v", connect.CodeOf(err))
@@ -610,7 +610,7 @@ func TestListFeedURLs_Success(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	mockListFeeds := mocks.NewMockListFeedURLsPort(ctrl)
 
-	h := NewHandler(nil, nil, nil, nil, nil, nil,
+	h := NewHandler(nil, nil, nil, nil, nil, &fakeSystemUser{}, &fakeRecentArticles{}, nil,
 		WithPhase2Ports(nil, nil, nil, nil, nil, mockListFeeds))
 
 	mockListFeeds.EXPECT().
@@ -620,7 +620,7 @@ func TestListFeedURLs_Success(t *testing.T) {
 			{FeedID: "f2", URL: "http://example.com/feed2.xml"},
 		}, "f2", true, nil)
 
-	req := connect.NewRequest(&backendv1.ListFeedURLsRequest{Limit: 200})
+	req := connect.NewRequest(&datahubv1.ListFeedURLsRequest{Limit: 200})
 	resp, err := h.ListFeedURLs(context.Background(), req)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -645,7 +645,7 @@ func TestListUnsummarizedArticles_Success(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	mockList := mocks.NewMockListUnsummarizedArticlesPort(ctrl)
 
-	h := NewHandler(nil, nil, nil, nil, nil, nil,
+	h := NewHandler(nil, nil, nil, nil, nil, &fakeSystemUser{}, &fakeRecentArticles{}, nil,
 		WithSummarizationPorts(mockList, nil))
 
 	now := time.Now()
@@ -658,7 +658,7 @@ func TestListUnsummarizedArticles_Success(t *testing.T) {
 		ListUnsummarizedArticles(gomock.Any(), (*time.Time)(nil), "", 200).
 		Return(expected, &now, "a2", nil)
 
-	req := connect.NewRequest(&backendv1.ListUnsummarizedArticlesRequest{Limit: 200})
+	req := connect.NewRequest(&datahubv1.ListUnsummarizedArticlesRequest{Limit: 200})
 	resp, err := h.ListUnsummarizedArticles(context.Background(), req)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -684,7 +684,7 @@ func TestListUnsummarizedArticles_WithCursor(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	mockList := mocks.NewMockListUnsummarizedArticlesPort(ctrl)
 
-	h := NewHandler(nil, nil, nil, nil, nil, nil,
+	h := NewHandler(nil, nil, nil, nil, nil, &fakeSystemUser{}, &fakeRecentArticles{}, nil,
 		WithSummarizationPorts(mockList, nil))
 
 	cursorTime := time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC)
@@ -693,7 +693,7 @@ func TestListUnsummarizedArticles_WithCursor(t *testing.T) {
 		ListUnsummarizedArticles(gomock.Any(), gomock.Any(), "prev-id", 100).
 		Return([]*internal_article_port.UnsummarizedArticle{}, (*time.Time)(nil), "", nil)
 
-	req := connect.NewRequest(&backendv1.ListUnsummarizedArticlesRequest{
+	req := connect.NewRequest(&datahubv1.ListUnsummarizedArticlesRequest{
 		LastCreatedAt: timestamppb.New(cursorTime),
 		LastId:        "prev-id",
 		Limit:         100,
@@ -712,14 +712,14 @@ func TestListUnsummarizedArticles_Error(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	mockList := mocks.NewMockListUnsummarizedArticlesPort(ctrl)
 
-	h := NewHandler(nil, nil, nil, nil, nil, nil,
+	h := NewHandler(nil, nil, nil, nil, nil, &fakeSystemUser{}, &fakeRecentArticles{}, nil,
 		WithSummarizationPorts(mockList, nil))
 
 	mockList.EXPECT().
 		ListUnsummarizedArticles(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
 		Return(nil, nil, "", errors.New("db error"))
 
-	req := connect.NewRequest(&backendv1.ListUnsummarizedArticlesRequest{Limit: 200})
+	req := connect.NewRequest(&datahubv1.ListUnsummarizedArticlesRequest{Limit: 200})
 	_, err := h.ListUnsummarizedArticles(context.Background(), req)
 	if err == nil {
 		t.Fatal("expected error, got nil")
@@ -730,9 +730,9 @@ func TestListUnsummarizedArticles_Error(t *testing.T) {
 }
 
 func TestListUnsummarizedArticles_Unimplemented(t *testing.T) {
-	h := NewHandler(nil, nil, nil, nil, nil, nil)
+	h := NewHandler(nil, nil, nil, nil, nil, &fakeSystemUser{}, &fakeRecentArticles{}, nil)
 
-	req := connect.NewRequest(&backendv1.ListUnsummarizedArticlesRequest{Limit: 200})
+	req := connect.NewRequest(&datahubv1.ListUnsummarizedArticlesRequest{Limit: 200})
 	_, err := h.ListUnsummarizedArticles(context.Background(), req)
 	if err == nil {
 		t.Fatal("expected error, got nil")
@@ -746,14 +746,14 @@ func TestHasUnsummarizedArticles_True(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	mockHas := mocks.NewMockHasUnsummarizedArticlesPort(ctrl)
 
-	h := NewHandler(nil, nil, nil, nil, nil, nil,
+	h := NewHandler(nil, nil, nil, nil, nil, &fakeSystemUser{}, &fakeRecentArticles{}, nil,
 		WithSummarizationPorts(nil, mockHas))
 
 	mockHas.EXPECT().
 		HasUnsummarizedArticles(gomock.Any()).
 		Return(true, nil)
 
-	req := connect.NewRequest(&backendv1.HasUnsummarizedArticlesRequest{})
+	req := connect.NewRequest(&datahubv1.HasUnsummarizedArticlesRequest{})
 	resp, err := h.HasUnsummarizedArticles(context.Background(), req)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -767,14 +767,14 @@ func TestHasUnsummarizedArticles_False(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	mockHas := mocks.NewMockHasUnsummarizedArticlesPort(ctrl)
 
-	h := NewHandler(nil, nil, nil, nil, nil, nil,
+	h := NewHandler(nil, nil, nil, nil, nil, &fakeSystemUser{}, &fakeRecentArticles{}, nil,
 		WithSummarizationPorts(nil, mockHas))
 
 	mockHas.EXPECT().
 		HasUnsummarizedArticles(gomock.Any()).
 		Return(false, nil)
 
-	req := connect.NewRequest(&backendv1.HasUnsummarizedArticlesRequest{})
+	req := connect.NewRequest(&datahubv1.HasUnsummarizedArticlesRequest{})
 	resp, err := h.HasUnsummarizedArticles(context.Background(), req)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -788,14 +788,14 @@ func TestHasUnsummarizedArticles_Error(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	mockHas := mocks.NewMockHasUnsummarizedArticlesPort(ctrl)
 
-	h := NewHandler(nil, nil, nil, nil, nil, nil,
+	h := NewHandler(nil, nil, nil, nil, nil, &fakeSystemUser{}, &fakeRecentArticles{}, nil,
 		WithSummarizationPorts(nil, mockHas))
 
 	mockHas.EXPECT().
 		HasUnsummarizedArticles(gomock.Any()).
 		Return(false, errors.New("db error"))
 
-	req := connect.NewRequest(&backendv1.HasUnsummarizedArticlesRequest{})
+	req := connect.NewRequest(&datahubv1.HasUnsummarizedArticlesRequest{})
 	_, err := h.HasUnsummarizedArticles(context.Background(), req)
 	if err == nil {
 		t.Fatal("expected error, got nil")
@@ -806,9 +806,9 @@ func TestHasUnsummarizedArticles_Error(t *testing.T) {
 }
 
 func TestHasUnsummarizedArticles_Unimplemented(t *testing.T) {
-	h := NewHandler(nil, nil, nil, nil, nil, nil)
+	h := NewHandler(nil, nil, nil, nil, nil, &fakeSystemUser{}, &fakeRecentArticles{}, nil)
 
-	req := connect.NewRequest(&backendv1.HasUnsummarizedArticlesRequest{})
+	req := connect.NewRequest(&datahubv1.HasUnsummarizedArticlesRequest{})
 	_, err := h.HasUnsummarizedArticles(context.Background(), req)
 	if err == nil {
 		t.Fatal("expected error, got nil")
@@ -825,7 +825,7 @@ func TestCreateArticle_PublishesArticleCreatedEvent(t *testing.T) {
 	mockCreate := mocks.NewMockCreateArticlePort(ctrl)
 	mockPublisher := mocks.NewMockEventPublisherPort(ctrl)
 
-	h := NewHandler(nil, nil, nil, nil, nil, nil,
+	h := NewHandler(nil, nil, nil, nil, nil, &fakeSystemUser{}, &fakeRecentArticles{}, nil,
 		WithPhase2Ports(nil, mockCreate, nil, nil, nil, nil),
 		WithEventPublisher(mockPublisher),
 	)
@@ -856,7 +856,7 @@ func TestCreateArticle_PublishesArticleCreatedEvent(t *testing.T) {
 		}).
 		Return(nil)
 
-	req := connect.NewRequest(&backendv1.CreateArticleRequest{
+	req := connect.NewRequest(&datahubv1.CreateArticleRequest{
 		Title:       "Test Article",
 		Url:         "http://example.com/test",
 		Content:     "Hello world",
@@ -879,7 +879,7 @@ func TestCreateArticle_NilEventPublisher(t *testing.T) {
 	mockCreate := mocks.NewMockCreateArticlePort(ctrl)
 
 	// No WithEventPublisher — eventPublisher is nil
-	h := NewHandler(nil, nil, nil, nil, nil, nil,
+	h := NewHandler(nil, nil, nil, nil, nil, &fakeSystemUser{}, &fakeRecentArticles{}, nil,
 		WithPhase2Ports(nil, mockCreate, nil, nil, nil, nil),
 	)
 
@@ -887,7 +887,7 @@ func TestCreateArticle_NilEventPublisher(t *testing.T) {
 		CreateArticle(gomock.Any(), gomock.Any()).
 		Return("article-1", true, nil)
 
-	req := connect.NewRequest(&backendv1.CreateArticleRequest{
+	req := connect.NewRequest(&datahubv1.CreateArticleRequest{
 		Title:  "Test",
 		Url:    "http://example.com",
 		FeedId: "feed-1",
@@ -907,7 +907,7 @@ func TestCreateArticle_EventPublishFailureDoesNotFailRPC(t *testing.T) {
 	mockCreate := mocks.NewMockCreateArticlePort(ctrl)
 	mockPublisher := mocks.NewMockEventPublisherPort(ctrl)
 
-	h := NewHandler(nil, nil, nil, nil, nil, nil,
+	h := NewHandler(nil, nil, nil, nil, nil, &fakeSystemUser{}, &fakeRecentArticles{}, nil,
 		WithPhase2Ports(nil, mockCreate, nil, nil, nil, nil),
 		WithEventPublisher(mockPublisher),
 	)
@@ -921,7 +921,7 @@ func TestCreateArticle_EventPublishFailureDoesNotFailRPC(t *testing.T) {
 		PublishArticleCreated(gomock.Any(), gomock.Any()).
 		Return(errors.New("redis connection refused"))
 
-	req := connect.NewRequest(&backendv1.CreateArticleRequest{
+	req := connect.NewRequest(&datahubv1.CreateArticleRequest{
 		Title:  "Test",
 		Url:    "http://example.com/test2",
 		FeedId: "feed-1",
@@ -942,7 +942,7 @@ func TestCreateArticle_PublishesArticleUpdatedEventForUpsert(t *testing.T) {
 	mockCreate := mocks.NewMockCreateArticlePort(ctrl)
 	mockPublisher := mocks.NewMockEventPublisherPort(ctrl)
 
-	h := NewHandler(nil, nil, nil, nil, nil, nil,
+	h := NewHandler(nil, nil, nil, nil, nil, &fakeSystemUser{}, &fakeRecentArticles{}, nil,
 		WithPhase2Ports(nil, mockCreate, nil, nil, nil, nil),
 		WithEventPublisher(mockPublisher),
 	)
@@ -966,7 +966,7 @@ func TestCreateArticle_PublishesArticleUpdatedEventForUpsert(t *testing.T) {
 		}).
 		Return(nil)
 
-	req := connect.NewRequest(&backendv1.CreateArticleRequest{
+	req := connect.NewRequest(&datahubv1.CreateArticleRequest{
 		Title:       "Updated Article",
 		Url:         "http://example.com/existing",
 		Content:     "Updated body",
@@ -989,7 +989,7 @@ func TestCreateArticle_EventPublisherDisabled(t *testing.T) {
 	mockCreate := mocks.NewMockCreateArticlePort(ctrl)
 	mockPublisher := mocks.NewMockEventPublisherPort(ctrl)
 
-	h := NewHandler(nil, nil, nil, nil, nil, nil,
+	h := NewHandler(nil, nil, nil, nil, nil, &fakeSystemUser{}, &fakeRecentArticles{}, nil,
 		WithPhase2Ports(nil, mockCreate, nil, nil, nil, nil),
 		WithEventPublisher(mockPublisher),
 	)
@@ -1001,7 +1001,7 @@ func TestCreateArticle_EventPublisherDisabled(t *testing.T) {
 	mockPublisher.EXPECT().IsEnabled().Return(false)
 	// PublishArticleCreated should NOT be called when disabled
 
-	req := connect.NewRequest(&backendv1.CreateArticleRequest{
+	req := connect.NewRequest(&datahubv1.CreateArticleRequest{
 		Title:  "Test",
 		Url:    "http://example.com/test3",
 		FeedId: "feed-1",
@@ -1022,14 +1022,14 @@ func TestGetEmptyFeedID_Found(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	mockGet := mocks.NewMockGetEmptyFeedIDPort(ctrl)
 
-	h := NewHandler(nil, nil, nil, nil, nil, nil,
+	h := NewHandler(nil, nil, nil, nil, nil, &fakeSystemUser{}, &fakeRecentArticles{}, nil,
 		WithBackfillPorts(mockGet))
 
 	mockGet.EXPECT().
 		GetEmptyFeedID(gomock.Any(), "http://example.com/feed.xml").
 		Return("empty-feed-123", nil)
 
-	req := connect.NewRequest(&backendv1.GetEmptyFeedIDRequest{FeedUrl: "http://example.com/feed.xml"})
+	req := connect.NewRequest(&datahubv1.GetEmptyFeedIDRequest{FeedUrl: "http://example.com/feed.xml"})
 	resp, err := h.GetEmptyFeedID(context.Background(), req)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -1043,14 +1043,14 @@ func TestGetEmptyFeedID_NotFound(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	mockGet := mocks.NewMockGetEmptyFeedIDPort(ctrl)
 
-	h := NewHandler(nil, nil, nil, nil, nil, nil,
+	h := NewHandler(nil, nil, nil, nil, nil, &fakeSystemUser{}, &fakeRecentArticles{}, nil,
 		WithBackfillPorts(mockGet))
 
 	mockGet.EXPECT().
 		GetEmptyFeedID(gomock.Any(), "http://example.com/feed.xml").
 		Return("", nil)
 
-	req := connect.NewRequest(&backendv1.GetEmptyFeedIDRequest{FeedUrl: "http://example.com/feed.xml"})
+	req := connect.NewRequest(&datahubv1.GetEmptyFeedIDRequest{FeedUrl: "http://example.com/feed.xml"})
 	resp, err := h.GetEmptyFeedID(context.Background(), req)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -1064,10 +1064,10 @@ func TestGetEmptyFeedID_EmptyFeedURL(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	mockGet := mocks.NewMockGetEmptyFeedIDPort(ctrl)
 
-	h := NewHandler(nil, nil, nil, nil, nil, nil,
+	h := NewHandler(nil, nil, nil, nil, nil, &fakeSystemUser{}, &fakeRecentArticles{}, nil,
 		WithBackfillPorts(mockGet))
 
-	req := connect.NewRequest(&backendv1.GetEmptyFeedIDRequest{FeedUrl: ""})
+	req := connect.NewRequest(&datahubv1.GetEmptyFeedIDRequest{FeedUrl: ""})
 	_, err := h.GetEmptyFeedID(context.Background(), req)
 	if err == nil {
 		t.Fatal("expected error, got nil")
@@ -1081,14 +1081,14 @@ func TestGetEmptyFeedID_Error(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	mockGet := mocks.NewMockGetEmptyFeedIDPort(ctrl)
 
-	h := NewHandler(nil, nil, nil, nil, nil, nil,
+	h := NewHandler(nil, nil, nil, nil, nil, &fakeSystemUser{}, &fakeRecentArticles{}, nil,
 		WithBackfillPorts(mockGet))
 
 	mockGet.EXPECT().
 		GetEmptyFeedID(gomock.Any(), "http://example.com/feed.xml").
 		Return("", errors.New("db error"))
 
-	req := connect.NewRequest(&backendv1.GetEmptyFeedIDRequest{FeedUrl: "http://example.com/feed.xml"})
+	req := connect.NewRequest(&datahubv1.GetEmptyFeedIDRequest{FeedUrl: "http://example.com/feed.xml"})
 	_, err := h.GetEmptyFeedID(context.Background(), req)
 	if err == nil {
 		t.Fatal("expected error, got nil")
@@ -1099,9 +1099,9 @@ func TestGetEmptyFeedID_Error(t *testing.T) {
 }
 
 func TestGetEmptyFeedID_Unimplemented(t *testing.T) {
-	h := NewHandler(nil, nil, nil, nil, nil, nil)
+	h := NewHandler(nil, nil, nil, nil, nil, &fakeSystemUser{}, &fakeRecentArticles{}, nil)
 
-	req := connect.NewRequest(&backendv1.GetEmptyFeedIDRequest{FeedUrl: "http://example.com/feed.xml"})
+	req := connect.NewRequest(&datahubv1.GetEmptyFeedIDRequest{FeedUrl: "http://example.com/feed.xml"})
 	_, err := h.GetEmptyFeedID(context.Background(), req)
 	if err == nil {
 		t.Fatal("expected error, got nil")
@@ -1117,7 +1117,7 @@ func TestListUntaggedArticles_Success(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	mockList := mocks.NewMockListUntaggedArticlesPort(ctrl)
 
-	h := NewHandler(nil, nil, nil, nil, nil, nil,
+	h := NewHandler(nil, nil, nil, nil, nil, &fakeSystemUser{}, &fakeRecentArticles{}, nil,
 		WithPhase3Ports(nil, nil, mockList))
 
 	now := time.Now()
@@ -1131,7 +1131,7 @@ func TestListUntaggedArticles_Success(t *testing.T) {
 		ListUntaggedArticles(gomock.Any(), (*time.Time)(nil), "", 200).
 		Return(expected, &now, "a2", int32(5), nil)
 
-	req := connect.NewRequest(&backendv1.ListUntaggedArticlesRequest{Limit: 200})
+	req := connect.NewRequest(&datahubv1.ListUntaggedArticlesRequest{Limit: 200})
 	resp, err := h.ListUntaggedArticles(context.Background(), req)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -1160,7 +1160,7 @@ func TestListUntaggedArticles_WithCursor(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	mockList := mocks.NewMockListUntaggedArticlesPort(ctrl)
 
-	h := NewHandler(nil, nil, nil, nil, nil, nil,
+	h := NewHandler(nil, nil, nil, nil, nil, &fakeSystemUser{}, &fakeRecentArticles{}, nil,
 		WithPhase3Ports(nil, nil, mockList))
 
 	cursorTime := time.Date(2026, 3, 17, 12, 0, 0, 0, time.UTC)
@@ -1169,7 +1169,7 @@ func TestListUntaggedArticles_WithCursor(t *testing.T) {
 		ListUntaggedArticles(gomock.Any(), gomock.Any(), "prev-id", 100).
 		Return([]internal_tag_port.UntaggedArticle{}, (*time.Time)(nil), "", int32(0), nil)
 
-	req := connect.NewRequest(&backendv1.ListUntaggedArticlesRequest{
+	req := connect.NewRequest(&datahubv1.ListUntaggedArticlesRequest{
 		LastCreatedAt: timestamppb.New(cursorTime),
 		LastId:        "prev-id",
 		Limit:         100,
@@ -1185,9 +1185,9 @@ func TestListUntaggedArticles_WithCursor(t *testing.T) {
 }
 
 func TestListUntaggedArticles_Unimplemented(t *testing.T) {
-	h := NewHandler(nil, nil, nil, nil, nil, nil)
+	h := NewHandler(nil, nil, nil, nil, nil, &fakeSystemUser{}, &fakeRecentArticles{}, nil)
 
-	req := connect.NewRequest(&backendv1.ListUntaggedArticlesRequest{Limit: 10})
+	req := connect.NewRequest(&datahubv1.ListUntaggedArticlesRequest{Limit: 10})
 	_, err := h.ListUntaggedArticles(context.Background(), req)
 	if connect.CodeOf(err) != connect.CodeUnimplemented {
 		t.Errorf("expected CodeUnimplemented, got %v", connect.CodeOf(err))
@@ -1200,24 +1200,24 @@ func TestBatchUpsertArticleTags_Success(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	mockBatchUpsert := mocks.NewMockBatchUpsertArticleTagsPort(ctrl)
 
-	h := NewHandler(nil, nil, nil, nil, nil, nil,
+	h := NewHandler(nil, nil, nil, nil, nil, &fakeSystemUser{}, &fakeRecentArticles{}, nil,
 		WithPhase3Ports(nil, mockBatchUpsert, nil))
 
 	mockBatchUpsert.EXPECT().
 		BatchUpsertArticleTags(gomock.Any(), gomock.Any()).
 		Return(int32(3), nil)
 
-	req := connect.NewRequest(&backendv1.BatchUpsertArticleTagsRequest{
-		Items: []*backendv1.UpsertArticleTagsRequest{
+	req := connect.NewRequest(&datahubv1.BatchUpsertArticleTagsRequest{
+		Items: []*datahubv1.UpsertArticleTagsRequest{
 			{
 				ArticleId: "art-1",
 				FeedId:    "feed-1",
-				Tags:      []*backendv1.TagItem{{Name: "go", Confidence: 0.9}},
+				Tags:      []*datahubv1.TagItem{{Name: "go", Confidence: 0.9}},
 			},
 			{
 				ArticleId: "art-2",
 				FeedId:    "", // empty feed_id
-				Tags:      []*backendv1.TagItem{{Name: "rust", Confidence: 0.8}},
+				Tags:      []*datahubv1.TagItem{{Name: "rust", Confidence: 0.8}},
 			},
 		},
 	})
@@ -1235,9 +1235,9 @@ func TestBatchUpsertArticleTags_Success(t *testing.T) {
 }
 
 func TestBatchUpsertArticleTags_Unimplemented(t *testing.T) {
-	h := NewHandler(nil, nil, nil, nil, nil, nil)
+	h := NewHandler(nil, nil, nil, nil, nil, &fakeSystemUser{}, &fakeRecentArticles{}, nil)
 
-	req := connect.NewRequest(&backendv1.BatchUpsertArticleTagsRequest{})
+	req := connect.NewRequest(&datahubv1.BatchUpsertArticleTagsRequest{})
 	_, err := h.BatchUpsertArticleTags(context.Background(), req)
 	if connect.CodeOf(err) != connect.CodeUnimplemented {
 		t.Errorf("expected CodeUnimplemented, got %v", connect.CodeOf(err))
@@ -1266,7 +1266,7 @@ func TestCreateArticle_AppendsKnowledgeEvent(t *testing.T) {
 	mockCreate := mocks.NewMockCreateArticlePort(ctrl)
 	stub := &stubKnowledgeEventPort{}
 
-	h := NewHandler(nil, nil, nil, nil, nil, nil,
+	h := NewHandler(nil, nil, nil, nil, nil, &fakeSystemUser{}, &fakeRecentArticles{}, nil,
 		WithPhase2Ports(nil, mockCreate, nil, nil, nil, nil),
 		WithKnowledgeEventPort(stub),
 	)
@@ -1275,7 +1275,7 @@ func TestCreateArticle_AppendsKnowledgeEvent(t *testing.T) {
 		CreateArticle(gomock.Any(), gomock.Any()).
 		Return("new-article-id", true, nil)
 
-	req := connect.NewRequest(&backendv1.CreateArticleRequest{
+	req := connect.NewRequest(&datahubv1.CreateArticleRequest{
 		Title:  "Test Article",
 		Url:    "http://example.com/test",
 		FeedId: "feed-1",
@@ -1307,7 +1307,7 @@ func TestCreateArticle_NoKnowledgeEventOnUpdate(t *testing.T) {
 	mockCreate := mocks.NewMockCreateArticlePort(ctrl)
 	stub := &stubKnowledgeEventPort{}
 
-	h := NewHandler(nil, nil, nil, nil, nil, nil,
+	h := NewHandler(nil, nil, nil, nil, nil, &fakeSystemUser{}, &fakeRecentArticles{}, nil,
 		WithPhase2Ports(nil, mockCreate, nil, nil, nil, nil),
 		WithKnowledgeEventPort(stub),
 	)
@@ -1316,7 +1316,7 @@ func TestCreateArticle_NoKnowledgeEventOnUpdate(t *testing.T) {
 		CreateArticle(gomock.Any(), gomock.Any()).
 		Return("existing-article-id", false, nil) // created=false means upsert
 
-	req := connect.NewRequest(&backendv1.CreateArticleRequest{
+	req := connect.NewRequest(&datahubv1.CreateArticleRequest{
 		Title:  "Updated",
 		Url:    "http://example.com/existing",
 		FeedId: "feed-1",
@@ -1338,7 +1338,7 @@ func TestCreateArticle_KnowledgeEventFailureDoesNotFailRPC(t *testing.T) {
 	mockCreate := mocks.NewMockCreateArticlePort(ctrl)
 	stub := &stubKnowledgeEventPort{err: errors.New("sovereign unavailable")}
 
-	h := NewHandler(nil, nil, nil, nil, nil, nil,
+	h := NewHandler(nil, nil, nil, nil, nil, &fakeSystemUser{}, &fakeRecentArticles{}, nil,
 		WithPhase2Ports(nil, mockCreate, nil, nil, nil, nil),
 		WithKnowledgeEventPort(stub),
 	)
@@ -1347,7 +1347,7 @@ func TestCreateArticle_KnowledgeEventFailureDoesNotFailRPC(t *testing.T) {
 		CreateArticle(gomock.Any(), gomock.Any()).
 		Return("article-x", true, nil)
 
-	req := connect.NewRequest(&backendv1.CreateArticleRequest{
+	req := connect.NewRequest(&datahubv1.CreateArticleRequest{
 		Title:  "Test",
 		Url:    "http://example.com/test-fail",
 		FeedId: "feed-1",
@@ -1435,7 +1435,7 @@ func TestListRecapArticles_SuccessMapsDomainToProto(t *testing.T) {
 
 	pageReq := int32(2)
 	pageSizeReq := int32(100)
-	req := connect.NewRequest(&backendv1.ListRecapArticlesRequest{
+	req := connect.NewRequest(&datahubv1.ListRecapArticlesRequest{
 		From:     "2026-04-14T00:00:00Z",
 		To:       "2026-04-15T00:00:00Z",
 		Page:     &pageReq,
@@ -1478,7 +1478,7 @@ func TestListRecapArticles_InvalidFromMissing(t *testing.T) {
 	h, _, _, _, _, _ := setupHandler(t)
 	WithRecapArticlesUsecase(uc)(h)
 
-	req := connect.NewRequest(&backendv1.ListRecapArticlesRequest{To: "2026-04-15T00:00:00Z"})
+	req := connect.NewRequest(&datahubv1.ListRecapArticlesRequest{To: "2026-04-15T00:00:00Z"})
 	_, err := h.ListRecapArticles(context.Background(), req)
 	if err == nil {
 		t.Fatal("expected error")
@@ -1494,7 +1494,7 @@ func TestListRecapArticles_InvalidFromNotRFC3339(t *testing.T) {
 	h, _, _, _, _, _ := setupHandler(t)
 	WithRecapArticlesUsecase(uc)(h)
 
-	req := connect.NewRequest(&backendv1.ListRecapArticlesRequest{From: "yesterday", To: "2026-04-15T00:00:00Z"})
+	req := connect.NewRequest(&datahubv1.ListRecapArticlesRequest{From: "yesterday", To: "2026-04-15T00:00:00Z"})
 	_, err := h.ListRecapArticles(context.Background(), req)
 	if err == nil {
 		t.Fatal("expected error")
@@ -1510,7 +1510,7 @@ func TestListRecapArticles_UsecaseErrorMapsToInvalidArgument(t *testing.T) {
 	h, _, _, _, _, _ := setupHandler(t)
 	WithRecapArticlesUsecase(uc)(h)
 
-	req := connect.NewRequest(&backendv1.ListRecapArticlesRequest{
+	req := connect.NewRequest(&datahubv1.ListRecapArticlesRequest{
 		From: "2026-04-14T00:00:00Z",
 		To:   "2026-04-15T00:00:00Z",
 	})
@@ -1528,7 +1528,7 @@ func TestListRecapArticles_NotConfiguredReturnsUnimplemented(t *testing.T) {
 	h, _, _, _, _, _ := setupHandler(t)
 	// No WithRecapArticlesUsecase call.
 
-	req := connect.NewRequest(&backendv1.ListRecapArticlesRequest{
+	req := connect.NewRequest(&datahubv1.ListRecapArticlesRequest{
 		From: "2026-04-14T00:00:00Z",
 		To:   "2026-04-15T00:00:00Z",
 	})
@@ -1548,7 +1548,7 @@ func TestBatchGetTagsByArticleIDs_Success(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	mockPort := mocks.NewMockBatchGetTagsByArticleIDsPort(ctrl)
 
-	h := NewHandler(nil, nil, nil, nil, nil, nil,
+	h := NewHandler(nil, nil, nil, nil, nil, &fakeSystemUser{}, &fakeRecentArticles{}, nil,
 		WithBatchGetTagsPort(mockPort))
 
 	updatedAt := time.Date(2026, 3, 26, 0, 0, 0, 0, time.UTC)
@@ -1570,7 +1570,7 @@ func TestBatchGetTagsByArticleIDs_Success(t *testing.T) {
 			},
 		}, nil)
 
-	req := connect.NewRequest(&backendv1.BatchGetTagsByArticleIDsRequest{
+	req := connect.NewRequest(&datahubv1.BatchGetTagsByArticleIDsRequest{
 		ArticleIds: []string{"a1", "a2"},
 	})
 	resp, err := h.BatchGetTagsByArticleIDs(context.Background(), req)
@@ -1598,11 +1598,11 @@ func TestBatchGetTagsByArticleIDs_EmptyRequestReturnsEmpty(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	mockPort := mocks.NewMockBatchGetTagsByArticleIDsPort(ctrl)
 
-	h := NewHandler(nil, nil, nil, nil, nil, nil,
+	h := NewHandler(nil, nil, nil, nil, nil, &fakeSystemUser{}, &fakeRecentArticles{}, nil,
 		WithBatchGetTagsPort(mockPort))
 
 	// Port should not be called for empty input.
-	req := connect.NewRequest(&backendv1.BatchGetTagsByArticleIDsRequest{ArticleIds: nil})
+	req := connect.NewRequest(&datahubv1.BatchGetTagsByArticleIDsRequest{ArticleIds: nil})
 	resp, err := h.BatchGetTagsByArticleIDs(context.Background(), req)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -1615,14 +1615,14 @@ func TestBatchGetTagsByArticleIDs_EmptyRequestReturnsEmpty(t *testing.T) {
 func TestBatchGetTagsByArticleIDs_RejectsOverCap(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	mockPort := mocks.NewMockBatchGetTagsByArticleIDsPort(ctrl)
-	h := NewHandler(nil, nil, nil, nil, nil, nil,
+	h := NewHandler(nil, nil, nil, nil, nil, &fakeSystemUser{}, &fakeRecentArticles{}, nil,
 		WithBatchGetTagsPort(mockPort))
 
 	ids := make([]string, maxBatchGetTagsArticleIDs+1)
 	for i := range ids {
 		ids[i] = "id"
 	}
-	req := connect.NewRequest(&backendv1.BatchGetTagsByArticleIDsRequest{ArticleIds: ids})
+	req := connect.NewRequest(&datahubv1.BatchGetTagsByArticleIDsRequest{ArticleIds: ids})
 	_, err := h.BatchGetTagsByArticleIDs(context.Background(), req)
 	if err == nil {
 		t.Fatal("expected error")
@@ -1635,14 +1635,14 @@ func TestBatchGetTagsByArticleIDs_RejectsOverCap(t *testing.T) {
 func TestBatchGetTagsByArticleIDs_PortErrorMapsToInternal(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	mockPort := mocks.NewMockBatchGetTagsByArticleIDsPort(ctrl)
-	h := NewHandler(nil, nil, nil, nil, nil, nil,
+	h := NewHandler(nil, nil, nil, nil, nil, &fakeSystemUser{}, &fakeRecentArticles{}, nil,
 		WithBatchGetTagsPort(mockPort))
 
 	mockPort.EXPECT().
 		BatchGetTagsByArticleIDs(gomock.Any(), []string{"a1"}).
 		Return(nil, errors.New("boom"))
 
-	req := connect.NewRequest(&backendv1.BatchGetTagsByArticleIDsRequest{ArticleIds: []string{"a1"}})
+	req := connect.NewRequest(&datahubv1.BatchGetTagsByArticleIDsRequest{ArticleIds: []string{"a1"}})
 	_, err := h.BatchGetTagsByArticleIDs(context.Background(), req)
 	if err == nil {
 		t.Fatal("expected error")
@@ -1653,8 +1653,8 @@ func TestBatchGetTagsByArticleIDs_PortErrorMapsToInternal(t *testing.T) {
 }
 
 func TestBatchGetTagsByArticleIDs_Unimplemented(t *testing.T) {
-	h := NewHandler(nil, nil, nil, nil, nil, nil)
-	req := connect.NewRequest(&backendv1.BatchGetTagsByArticleIDsRequest{ArticleIds: []string{"a1"}})
+	h := NewHandler(nil, nil, nil, nil, nil, &fakeSystemUser{}, &fakeRecentArticles{}, nil)
+	req := connect.NewRequest(&datahubv1.BatchGetTagsByArticleIDsRequest{ArticleIds: []string{"a1"}})
 	_, err := h.BatchGetTagsByArticleIDs(context.Background(), req)
 	if err == nil {
 		t.Fatal("expected error")

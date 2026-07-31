@@ -33,17 +33,17 @@ func components() *di.DataHubComponents {
 	}
 }
 
-// data-hub's mux carries the service-to-service surfaces and nothing else. The
+// data-hub's mux carries the service-to-service surface and nothing else. The
 // admin services it used to share a listener with are guarded by a loopback
 // bind rather than a client certificate, and the user services are guarded by
 // a JWT; mixing any of them onto one socket makes "who may call this" a
 // question with three different answers.
 //
-// Two service-to-service namespaces are mounted, not one. ADR-000954 D7 keeps
-// services.backend.v1 alive until Wave 2-B has moved all seven peers onto
-// alt.datahub.v1, and a peer whose PR has not landed yet must keep working.
-// Wave 2-C inverts the legacy expectation here.
-func TestSetupConnectHandlers_ServesBothServiceToServiceNamespaces(t *testing.T) {
+// Exactly one service-to-service namespace is mounted. ADR-000954 D7 kept
+// services.backend.v1 alive through Wave 2-B while the peers moved onto
+// alt.datahub.v1 one PR at a time; Wave 2-C removed it, so a call on the old
+// path must now find nothing rather than a second door onto the same data.
+func TestSetupConnectHandlers_ServesOnlyTheDataHubNamespace(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	mux := http.NewServeMux()
 
@@ -56,7 +56,7 @@ func TestSetupConnectHandlers_ServesBothServiceToServiceNamespaces(t *testing.T)
 	}{
 		{name: "datahub service", path: "/alt.datahub.v1.DataHubService/CreateArticle", wantMounted: true},
 		{name: "datahub service absorbs the internal REST reads", path: "/alt.datahub.v1.DataHubService/ListRecentArticles", wantMounted: true},
-		{name: "legacy backend internal service stays mounted until Wave 2-C", path: "/services.backend.v1.BackendInternalService/CreateArticle", wantMounted: true},
+		{name: "retired backend internal service", path: "/services.backend.v1.BackendInternalService/CreateArticle"},
 		{name: "admin surface belongs to the backend operator listener", path: "/alt.knowledge_home.v1.KnowledgeHomeAdminService/GetProjectionHealth"},
 		{name: "user feed service", path: "/alt.feeds.v2.FeedService/GetFeedStats"},
 		{name: "user knowledge home service", path: "/alt.knowledge_home.v1.KnowledgeHomeService/GetKnowledgeHome"},

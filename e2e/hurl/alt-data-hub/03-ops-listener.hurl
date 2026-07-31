@@ -34,20 +34,28 @@ body contains "# HELP"
 # The data plane must not be reachable without a certificate by walking in
 # through the monitoring door.
 
-POST {{ops_url}}/services.backend.v1.BackendInternalService/GetLatestArticleTimestamp
+POST {{ops_url}}/alt.datahub.v1.DataHubService/GetLatestArticleTimestamp
 Content-Type: application/json
 {}
 HTTP 404
 
-POST {{ops_url}}/services.backend.v1.BackendInternalService/CreateArticle
+POST {{ops_url}}/alt.datahub.v1.DataHubService/CreateArticle
 Content-Type: application/json
 {}
 HTTP 404
 
-GET {{ops_url}}/v1/internal/system-user
+# ListRecentArticles and GetSystemUser were REST routes under /v1/internal
+# until ADR-000954 D6 folded them into DataHubService. Probed by their current
+# names: a 404 for a path this listener never served proves less than a 404 for
+# the path the capability actually lives at today.
+POST {{ops_url}}/alt.datahub.v1.DataHubService/ListRecentArticles
+Content-Type: application/json
+{}
 HTTP 404
 
-GET {{ops_url}}/v1/internal/articles/recent
+POST {{ops_url}}/alt.datahub.v1.DataHubService/GetSystemUser
+Content-Type: application/json
+{}
 HTTP 404
 
 GET {{ops_url}}/v1/health

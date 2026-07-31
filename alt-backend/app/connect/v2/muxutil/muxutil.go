@@ -4,8 +4,8 @@
 // It exists so that the user/operator surfaces (alt/connect/v2) and the
 // service-to-service surface (alt/connect/v2/datahub) can share plumbing
 // without sharing a package. If they shared one, every binary that imported
-// either would link both, and BackendInternalService's handler would be
-// compiled into cmd/backend even though nothing there can mount it.
+// either would link both, and DataHubService's handler would be compiled into
+// cmd/backend even though nothing there can mount it.
 package muxutil
 
 import (

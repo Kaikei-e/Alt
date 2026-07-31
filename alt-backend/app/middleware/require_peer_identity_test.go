@@ -11,7 +11,7 @@ import (
 
 func peerRequest(t *testing.T, commonName string, dnsNames ...string) *http.Request {
 	t.Helper()
-	req := httptest.NewRequest(http.MethodPost, "/services.backend.v1.BackendInternalService/CreateArticle", nil)
+	req := httptest.NewRequest(http.MethodPost, "/alt.datahub.v1.DataHubService/CreateArticle", nil)
 	req.TLS = &tls.ConnectionState{
 		PeerCertificates: []*x509.Certificate{{
 			Subject:  pkix.Name{CommonName: commonName},
@@ -91,7 +91,7 @@ func TestRequirePeerIdentity_PanicsWhenTheRequestHasNoTLSState(t *testing.T) {
 	}{
 		{
 			name: "plaintext request",
-			req:  httptest.NewRequest(http.MethodPost, "/services.backend.v1.BackendInternalService/CreateArticle", nil),
+			req:  httptest.NewRequest(http.MethodPost, "/alt.datahub.v1.DataHubService/CreateArticle", nil),
 		},
 		{
 			name: "TLS without a client certificate",

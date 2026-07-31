@@ -7,8 +7,8 @@ version: v2
 # override that must not leak onto the alt-backend / alt-data-hub targets in
 # buf.gen.datahub.yaml, which keep the proto's declared `alt/gen/proto/...`
 # path. buf applies `managed` per template, not per plugin, so one template
-# cannot hold both package mappings. This mirrors buf.gen.search-indexer.yaml,
-# which already does the same override for services/backend and services/search.
+# cannot hold both package mappings — buf.gen.search-indexer.yaml covers
+# services/search for the same consumer.
 #
 # search-indexer is a pure consumer here: it only needs the generated client,
 # so the same two Go plugins alt-backend uses are enough — no TypeScript, for

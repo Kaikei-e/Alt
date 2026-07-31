@@ -33,9 +33,9 @@ func TestNewOpsHandler(t *testing.T) {
 		{name: "public health route is not here", method: http.MethodGet, path: "/v1/health", wantStatus: http.StatusNotFound},
 		{name: "internal REST is not here", method: http.MethodGet, path: "/v1/internal/system-user", wantStatus: http.StatusNotFound},
 		{
-			name:       "BackendInternalService is not here",
+			name:       "DataHubService is not here",
 			method:     http.MethodPost,
-			path:       "/services.backend.v1.BackendInternalService/CreateArticle",
+			path:       "/alt.datahub.v1.DataHubService/CreateArticle",
 			wantStatus: http.StatusNotFound,
 		},
 		{

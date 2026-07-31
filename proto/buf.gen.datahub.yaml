@@ -2,9 +2,9 @@ version: v2
 # Code generation for alt.datahub.v1 — the contract alt-data-hub serves
 # (ADR-000954 D3/D7).
 #
-# This lives in its own template, and is excluded from buf.gen.yaml, for the
-# same reason services/backend does: the default template also emits
-# TypeScript into alt-frontend-sv. DataHubService is reachable only over
+# This lives in its own template, and is excluded from buf.gen.yaml, because
+# the default template also emits TypeScript into alt-frontend-sv, and
+# DataHubService is reachable only over
 # mutual TLS from a listener with no published port, so a browser bundle can
 # never call it; shipping client stubs for it would advertise a surface that
 # does not exist from the browser's side of the network.

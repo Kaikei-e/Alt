@@ -28,8 +28,8 @@ import (
 )
 
 // DataHubComponents is cmd/datahub's component set: what
-// BackendInternalService and the /v1/internal REST routes need to serve
-// pre-processor, rag-orchestrator and recap-worker over mTLS.
+// alt.datahub.v1.DataHubService needs to serve pre-processor, search-indexer,
+// tag-generator, rag-orchestrator and recap-worker over mTLS.
 //
 // It builds no crawler, no search indexer, no image pipeline and no admin
 // surface. KratosClient and EventPublisher live here and nowhere else — they
@@ -40,17 +40,18 @@ type DataHubComponents struct {
 	// Shared driver
 	AltDBRepository *alt_db.AltDBRepository
 
-	// /v1/internal/system-user
+	// DataHubService.GetSystemUser — the former GET /v1/internal/system-user
+	// (ADR-000954 D6).
 	KratosClient kratos_client.KratosClient
 
-	// BackendInternalService article mutations publish through mq-hub.
+	// DataHubService article mutations publish through mq-hub.
 	MQHubClient    *mqhub_connect.Client
 	EventPublisher event_publisher_port.EventPublisherPort
 
 	// Knowledge event sink for versioned artifacts.
 	SovereignClient *sovereign_client.Client
 
-	// The single gateway instance behind every BackendInternalService port.
+	// The single gateway instance behind every DataHubService port.
 	InternalArticleGateway *internal_article_gateway.Gateway
 
 	// Versioned artifacts (append-first: summaries and tag sets are versioned,
@@ -99,7 +100,7 @@ func NewDataHubComponents(pool *pgxpool.Pool, cfg *config.Config) *DataHubCompon
 	sovereignCli := sovereign_client.NewClient(cfg.Sovereign.URL, sovereignEnabled)
 
 	// One gateway instance satisfies every required and optional port of
-	// internalapi.NewHandler.
+	// datahubapi.NewHandler.
 	internalArticleGw := internal_article_gateway.NewGateway(altDB)
 
 	// Versioned artifacts.

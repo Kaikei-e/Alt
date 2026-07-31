@@ -45,8 +45,8 @@ type InfraModule struct {
 // already validated and logged.
 //
 // KratosClient and EventPublisher used to be built here. They are not any
-// more: their only consumers (/v1/internal/system-user and
-// BackendInternalService) live in cmd/datahub now, so building them for the
+// more: their only consumers (DataHubService.GetSystemUser and the
+// DataHubService article mutations) live in cmd/datahub now, so building them for the
 // backend would hand that process an auth-hub token and an event-publishing
 // client it has no surface to use.
 func newInfraModule(pool *pgxpool.Pool, cfg *config.Config) *InfraModule {

@@ -1,8 +1,11 @@
 // Command datahub serves alt-backend's service-to-service surface:
-// alt.datahub.v1.DataHubService over Connect-RPC, plus — until ADR-000954
-// Wave 2-C has moved the last peer — the same capabilities under their former
-// names, services.backend.v1.BackendInternalService and the /v1/internal REST
-// routes that pre-processor and rag-orchestrator call.
+// alt.datahub.v1.DataHubService over Connect-RPC, and nothing else.
+//
+// Two former names for the same capabilities were served alongside it through
+// ADR-000954 Wave 2 — services.backend.v1.BackendInternalService and the
+// /v1/internal REST routes pre-processor and rag-orchestrator called. Wave 2-C
+// removed both once every consumer had moved; the REST pair lives on as the
+// GetSystemUser and ListRecentArticles procedures (D6).
 //
 // It has exactly one externally reachable listener and that listener speaks
 // mutual TLS. There is no plaintext fallback, no MTLS_LISTEN flag to turn
@@ -14,19 +17,14 @@ import (
 	"context"
 	"crypto/tls"
 	"fmt"
-	"net/http"
 	"os"
 
 	"alt/config"
 	datahubconnect "alt/connect/v2/datahub"
-	dataplanerest "alt/dataplane/rest"
 	"alt/di"
 	"alt/internal/bootstrap"
 	"alt/middleware"
 	"alt/tlsutil"
-
-	"github.com/labstack/echo/v4"
-	echomiddleware "github.com/labstack/echo/v4/middleware"
 )
 
 const serviceName = "alt-data-hub"
@@ -86,11 +84,10 @@ func main() {
 		"client_auth", "require_and_verify",
 		"allowed_peers", dcfg.AllowedPeers,
 		"plaintext_listeners", 0,
-		"surfaces", "DataHubService,BackendInternalService(deprecated),/v1/internal(deprecated),/health",
+		"surfaces", "DataHubService,/health",
 	)
 
-	internalEcho := newInternalEcho(container)
-	handler := dataHubHandler(datahubconnect.CreateServer(container, cfg, log), internalEcho)
+	handler := dataHubHandler(datahubconnect.CreateServer(container, cfg, log))
 	// The allowlist is re-checked per request, not only at handshake time: a
 	// TLS terminator moving in front of this process would otherwise silently
 	// retire the handshake-time check. See middleware.RequirePeerIdentity.
@@ -119,21 +116,6 @@ func main() {
 	sup.GracefulShutdown(ctx, cfg.Server.WriteTimeout)
 
 	log.Info("datahub stopped", "reason", outcome.Reason, "signal", outcome.Signal, "server", outcome.Server)
-}
-
-// newInternalEcho builds the Echo instance carrying /v1/internal/* and
-// /health, unchanged from the internal listener it came from.
-func newInternalEcho(container *di.DataHubComponents) *echo.Echo {
-	e := echo.New()
-	e.HideBanner = true
-	e.HidePort = true
-	e.Use(middleware.RequestIDMiddleware())
-	e.Use(echomiddleware.Recover())
-	e.GET("/health", func(c echo.Context) error {
-		return c.JSON(http.StatusOK, map[string]string{"status": "healthy", "service": serviceName})
-	})
-	dataplanerest.RegisterInternalRoutes(e, container)
-	return e
 }
 
 // runHealthcheck self-probes the ops listener and additionally dials the mTLS

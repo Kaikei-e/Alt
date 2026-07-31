@@ -189,7 +189,7 @@ func SetupConnectHandlers(mux *http.ServeMux, container *di.ApplicationComponent
 // SetupOperatorConnectHandlers registers the admin Connect-RPC handlers that
 // cmd/backend serves on its loopback operator listener.
 //
-// These used to share a mux with BackendInternalService, which meant one
+// These used to share a mux with the data-plane service, which meant one
 // listener answered to two unrelated access controls: reachability (loopback
 // bind) for the admin surfaces and a client certificate for the
 // service-to-service one. They are separate binaries now — the

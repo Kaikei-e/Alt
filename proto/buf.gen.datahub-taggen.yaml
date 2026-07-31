@@ -9,15 +9,12 @@ version: v2
 # protocolbuffers/python:v33.5 for protobuf 6.x runtime compatibility.
 # Mixing local and remote plugins in one template means a contributor with no
 # network — or no Go toolchain — silently regenerates half the tree. Splitting
-# per language keeps each `buf generate` invocation all-or-nothing, which is
-# the same split buf.gen.tag-generator.yaml already applies to
-# services/backend.
+# per language keeps each `buf generate` invocation all-or-nothing.
 #
-# The pin and the output layout are copied verbatim from
-# buf.gen.tag-generator.yaml (the legacy services.backend template this one
-# supersedes for tag-generator) so the two trees stay byte-comparable while
-# both namespaces are served. Wave 2-C deletes buf.gen.tag-generator.yaml and
-# the generated services/backend tree together.
+# The pin and the output layout came verbatim from the services.backend
+# template this one superseded for tag-generator, so the two trees stayed
+# byte-comparable while both namespaces were served. Wave 2-C deleted that
+# template and its generated tree; this is the only Python target left.
 #
 # Regenerate with:
 #   cd proto && buf generate --template buf.gen.datahub-taggen.yaml

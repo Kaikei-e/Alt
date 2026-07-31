@@ -14,8 +14,8 @@ import (
 //
 // Compared with the pre-split container it deliberately does not build:
 //
-//   - KratosClient — only /v1/internal/system-user read it (cmd/datahub)
-//   - EventPublisher — only BackendInternalService read it (cmd/datahub)
+//   - KratosClient — only DataHubService.GetSystemUser reads it (cmd/datahub)
+//   - EventPublisher — only DataHubService reads it (cmd/datahub)
 //   - RecapArticlesUsecase / FetchRecentArticlesUsecase /
 //     CreateTagSetVersionUsecase — data-plane reads served by cmd/datahub
 //   - ConfigPort / RateLimiterPort / ErrorHandlerPort /

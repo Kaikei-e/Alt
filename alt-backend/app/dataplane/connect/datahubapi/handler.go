@@ -1,56 +1,50 @@
-// Package datahubapi implements alt.datahub.v1.DataHubService, the namespace
-// alt-data-hub serves under its own name (ADR-000954 D3/D7).
+// Package datahubapi implements alt.datahub.v1.DataHubService, the only name
+// alt-data-hub answers to for the data plane (ADR-000954 D7).
 //
-// During Wave 2 alt-data-hub answers on two namespaces at once. This package
-// holds no data-access logic of its own for the 24 procedures it inherits: it
-// re-encodes each request onto the equivalent services.backend.v1 message and
-// hands it to the existing BackendInternalService handler. Duplicating the
-// logic instead would mean two implementations of the same transaction
-// boundaries diverging over however many PRs Wave 2-B takes, and the
-// divergence would show up as one peer seeing different behaviour from
-// another purely because of when it was migrated.
+// The procedures here were served under two names for the length of Wave 2:
+// services.backend.v1.BackendInternalService, from when this code lived inside
+// alt-backend, and alt.datahub.v1.DataHubService. Wave 2-B moved the five
+// consumers one PR at a time; Wave 2-C deleted the old proto, so this package
+// now implements the DataHubService messages directly instead of re-encoding
+// each call onto a legacy twin. The adapter that did the re-encoding, and the
+// descriptor walk that proved the two message trees were the same wire schema,
+// went with it — there is no second schema left to diverge from.
 //
-// The re-encoding is a marshal/unmarshal round trip rather than field-by-field
-// assignment. That is deliberate and it is the cheap part of the design:
-//
-//   - It cannot mistranslate a field. Copying ~200 fields by hand across 48
-//     messages is exactly the kind of work where one transposed line survives
-//     review, and that line would silently corrupt a peer's data during the
-//     one wave where nobody is looking at these payloads closely.
-//   - It states the invariant Wave 2-B depends on — the two message trees are
-//     the same wire schema — as executable code rather than as a comment.
-//   - wirecompat_test.go proves the round trip is lossless by walking both
-//     descriptor sets, so the case the round trip cannot detect (a field
-//     present on one side only, which protobuf tolerates by design) fails the
-//     build instead.
-//
-// The cost is one extra marshal and unmarshal per call on a service-to-service
-// path that already pays for HTTP and TLS. Wave 2-C deletes the legacy
-// namespace; at that point the internal handler moves onto these message types
-// and this package, along with the round trip, goes away.
-//
-// Two procedures are not delegated: GetSystemUser and ListRecentArticles are
-// the /v1/internal REST routes that ADR-000954 D6 folds into the Connect
-// surface, and they call the same usecases the REST handlers do.
+// Two of the 26 procedures never had an RPC counterpart. GetSystemUser and
+// ListRecentArticles are the /v1/internal REST routes that ADR-000954 D6 folds
+// into the Connect surface; they call the same usecases the REST handlers did,
+// and the REST routes are gone.
 package datahubapi
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
-	"net/http"
+	"strings"
 	"time"
 
 	"connectrpc.com/connect"
-	"google.golang.org/protobuf/proto"
+	"github.com/google/uuid"
+	"google.golang.org/protobuf/types/known/timestamppb"
 
+	"alt/dataplane/port/internal_article_port"
+	"alt/dataplane/port/internal_feed_port"
+	"alt/dataplane/port/internal_tag_port"
+	"alt/dataplane/usecase/create_tag_set_version_usecase"
+	"alt/dataplane/usecase/recap_articles_usecase"
+	"alt/domain"
 	datahubv1 "alt/gen/proto/alt/datahub/v1"
 	"alt/gen/proto/alt/datahub/v1/datahubv1connect"
-	"alt/gen/proto/services/backend/v1/backendv1connect"
 	"alt/orchestrator/usecase/fetch_recent_articles_usecase"
+	"alt/shared/port/event_publisher_port"
+	"alt/shared/port/knowledge_event_port"
+	"alt/shared/usecase/create_summary_version_usecase"
 	"alt/utils/safeconv"
 )
+
+const maxLimit = 500
 
 // Defaults copied from the REST routes ADR-000954 D6 absorbs. They live here
 // rather than being left to the usecase because the RPC has to distinguish
@@ -68,52 +62,99 @@ type SystemUserPort interface {
 	GetFirstIdentityID(ctx context.Context) (string, error)
 }
 
-// RecentArticlesUsecase is the read behind GET /v1/internal/articles/recent.
+// RecentArticlesUsecase is the read behind the former GET
+// /v1/internal/articles/recent.
 type RecentArticlesUsecase interface {
 	Execute(ctx context.Context, in fetch_recent_articles_usecase.FetchRecentArticlesInput) (*fetch_recent_articles_usecase.FetchRecentArticlesOutput, error)
 }
 
 // Handler implements DataHubServiceHandler.
 type Handler struct {
-	// legacy is the BackendInternalService implementation every migrated
-	// procedure forwards to. Required — see NewHandler.
-	legacy backendv1connect.BackendInternalServiceHandler
+	// Phase 1 (search-indexer)
+	listArticles        internal_article_port.ListArticlesWithTagsPort
+	listArticlesForward internal_article_port.ListArticlesWithTagsForwardPort
+	listDeleted         internal_article_port.ListDeletedArticlesPort
+	getLatestTimestamp  internal_article_port.GetLatestArticleTimestampPort
+	getArticleByID      internal_article_port.GetArticleByIDPort
 
-	// Absorbed REST routes (ADR-000954 D6).
+	// Phase 2 (pre-processor)
+	checkArticleExists internal_article_port.CheckArticleExistsPort
+	createArticle      internal_article_port.CreateArticlePort
+	saveArticleSummary internal_article_port.SaveArticleSummaryPort
+	getArticleContent  internal_article_port.GetArticleContentPort
+	getFeedID          internal_feed_port.GetFeedIDPort
+	listFeedURLs       internal_feed_port.ListFeedURLsPort
+
+	// Phase 3 (tag-generator)
+	upsertArticleTags        internal_tag_port.UpsertArticleTagsPort
+	batchUpsertArticleTags   internal_tag_port.BatchUpsertArticleTagsPort
+	listUntaggedArticles     internal_tag_port.ListUntaggedArticlesPort
+	batchGetTagsByArticleIDs internal_tag_port.BatchGetTagsByArticleIDsPort
+
+	// Phase 4 (quality checker)
+	deleteArticleSummary      internal_article_port.DeleteArticleSummaryPort
+	checkArticleSummaryExists internal_article_port.CheckArticleSummaryExistsPort
+	findArticlesWithSummaries internal_article_port.FindArticlesWithSummariesPort
+
+	// Summarization (pre-processor polling)
+	listUnsummarized internal_article_port.ListUnsummarizedArticlesPort
+	hasUnsummarized  internal_article_port.HasUnsummarizedArticlesPort
+
+	// Backfill (pre-processor split-DB)
+	getEmptyFeedID internal_feed_port.GetEmptyFeedIDPort
+
+	// RAG Tool Operations (ADR-000617)
+	fetchTagCloudPort      fetchTagCloudPort
+	fetchArticlesByTagPort fetchArticlesByTagPort
+
+	// Recap article window (recap-worker paginated fetch).
+	recapArticlesUsecase recapArticlesUsecase
+
+	// Absorbed REST routes (ADR-000954 D6). Required — see NewHandler.
 	systemUser     SystemUserPort
 	recentArticles RecentArticlesUsecase
+
+	// Event publishing
+	eventPublisher     event_publisher_port.EventPublisherPort
+	knowledgeEventPort knowledge_event_port.AppendKnowledgeEventPort
+
+	// Knowledge version usecases
+	createSummaryVersionUsecase *create_summary_version_usecase.CreateSummaryVersionUsecase
+	createTagSetVersionUsecase  *create_tag_set_version_usecase.CreateTagSetVersionUsecase
 
 	logger *slog.Logger
 }
 
 var _ datahubv1connect.DataHubServiceHandler = (*Handler)(nil)
 
-// NewHandler builds the adapter. Every dependency is required and a missing
-// one panics.
+// NewHandler creates a new DataHubService handler.
 //
-// There are no functional options here on purpose. None of the three is a
-// feature that can be switched off: DataHubService advertises 26 procedures
-// and a handler missing a dependency would answer some of them with a nil
-// dereference on the first real request. Returning Unimplemented instead
-// would be worse, because that is also what a genuinely retired procedure
-// would answer, and CLAUDE.md rule 8 exists because those two states became
-// indistinguishable once before (ADR-000928). Refusing at construction makes
-// a DI mistake a process that does not start.
+// systemUser and recentArticles are positional and required rather than
+// functional options, and a missing one panics. They are not features that can
+// be switched off: they are the only implementation of two procedures the
+// service advertises, and a handler built without them would answer the first
+// real call with a nil dereference. Returning Unimplemented instead would be
+// worse — that is also what a genuinely retired procedure answers, and
+// CLAUDE.md rule 8 exists because those two states became indistinguishable
+// once before (ADR-000928). Refusing at construction makes a DI mistake a
+// process that does not start.
 //
 // Note for callers holding concrete types: a nil *T stored in one of these
-// interfaces is not nil as an interface value and will not be caught here.
-// The composition root checks its own fields before calling — see
+// interfaces is not nil as an interface value and will not be caught here. The
+// composition root checks its own fields before calling — see
 // connect/v2/datahub/server.go.
 func NewHandler(
-	legacy backendv1connect.BackendInternalServiceHandler,
+	listArticles internal_article_port.ListArticlesWithTagsPort,
+	listArticlesForward internal_article_port.ListArticlesWithTagsForwardPort,
+	listDeleted internal_article_port.ListDeletedArticlesPort,
+	getLatestTimestamp internal_article_port.GetLatestArticleTimestampPort,
+	getArticleByID internal_article_port.GetArticleByIDPort,
 	systemUser SystemUserPort,
 	recentArticles RecentArticlesUsecase,
 	logger *slog.Logger,
+	opts ...HandlerOption,
 ) *Handler {
 	switch {
-	case legacy == nil:
-		panic("datahubapi: BackendInternalService handler is required — " +
-			"DataHubService delegates every migrated procedure to it")
 	case systemUser == nil:
 		panic("datahubapi: SystemUserPort is required — " +
 			"DataHubService.GetSystemUser replaces GET /v1/internal/system-user")
@@ -124,190 +165,1112 @@ func NewHandler(
 	if logger == nil {
 		logger = slog.Default()
 	}
-	return &Handler{
-		legacy:         legacy,
-		systemUser:     systemUser,
-		recentArticles: recentArticles,
-		logger:         logger,
+	h := &Handler{
+		listArticles:        listArticles,
+		listArticlesForward: listArticlesForward,
+		listDeleted:         listDeleted,
+		getLatestTimestamp:  getLatestTimestamp,
+		getArticleByID:      getArticleByID,
+		systemUser:          systemUser,
+		recentArticles:      recentArticles,
+		logger:              logger,
+	}
+	for _, opt := range opts {
+		opt(h)
+	}
+	return h
+}
+
+// HandlerOption configures optional ports on the Handler.
+type HandlerOption func(*Handler)
+
+// WithPhase2Ports configures ports for Phase 2 (pre-processor) RPCs.
+func WithPhase2Ports(
+	checkExists internal_article_port.CheckArticleExistsPort,
+	createArticle internal_article_port.CreateArticlePort,
+	saveSummary internal_article_port.SaveArticleSummaryPort,
+	getContent internal_article_port.GetArticleContentPort,
+	getFeedID internal_feed_port.GetFeedIDPort,
+	listFeedURLs internal_feed_port.ListFeedURLsPort,
+) HandlerOption {
+	return func(h *Handler) {
+		h.checkArticleExists = checkExists
+		h.createArticle = createArticle
+		h.saveArticleSummary = saveSummary
+		h.getArticleContent = getContent
+		h.getFeedID = getFeedID
+		h.listFeedURLs = listFeedURLs
 	}
 }
 
-// -----------------------------------------------------------------------------
-// Re-encoding
-// -----------------------------------------------------------------------------
-
-// protoPtr constrains PT to *T where *T is a generated protobuf message. It
-// lets the helpers below allocate a destination message from its value type,
-// which is what the connect.Request[T] / connect.Response[T] shapes hand us.
-type protoPtr[T any] interface {
-	*T
-	proto.Message
-}
-
-// recode re-encodes src as Dst by round-tripping it through the protobuf wire
-// format. Lossless exactly when the two descriptors agree on every field
-// number, type and cardinality — the property wirecompat_test.go enforces.
-func recode[Dst any, PDst protoPtr[Dst]](src proto.Message) (PDst, error) {
-	raw, err := proto.Marshal(src)
-	if err != nil {
-		return nil, fmt.Errorf("marshal %s: %w", src.ProtoReflect().Descriptor().FullName(), err)
-	}
-	dst := PDst(new(Dst))
-	if err := proto.Unmarshal(raw, dst); err != nil {
-		return nil, fmt.Errorf("unmarshal %s into %s: %w",
-			src.ProtoReflect().Descriptor().FullName(),
-			dst.ProtoReflect().Descriptor().FullName(), err)
-	}
-	return dst, nil
-}
-
-// delegate forwards one DataHubService procedure to its BackendInternalService
-// namesake, translating the request on the way in and the response on the way
-// out. Errors pass through untouched so a consumer sees the same Connect code
-// on either namespace.
-func delegate[
-	DResp any, PDResp protoPtr[DResp],
-	DReq any, PDReq protoPtr[DReq],
-	LReq any, PLReq protoPtr[LReq],
-	LResp any, PLResp protoPtr[LResp],
-](
-	ctx context.Context,
-	req *connect.Request[DReq],
-	call func(context.Context, *connect.Request[LReq]) (*connect.Response[LResp], error),
-) (*connect.Response[DResp], error) {
-	legacyMsg, err := recode[LReq, PLReq](PDReq(req.Msg))
-	if err != nil {
-		return nil, connect.NewError(connect.CodeInternal, err)
-	}
-
-	legacyReq := connect.NewRequest((*LReq)(legacyMsg))
-	copyHeader(legacyReq.Header(), req.Header())
-
-	legacyResp, err := call(ctx, legacyReq)
-	if err != nil {
-		return nil, err
-	}
-
-	msg, err := recode[DResp, PDResp](PLResp(legacyResp.Msg))
-	if err != nil {
-		return nil, connect.NewError(connect.CodeInternal, err)
-	}
-
-	resp := connect.NewResponse((*DResp)(msg))
-	copyHeader(resp.Header(), legacyResp.Header())
-	copyHeader(resp.Trailer(), legacyResp.Trailer())
-	return resp, nil
-}
-
-func copyHeader(dst, src http.Header) {
-	if dst == nil {
-		return
-	}
-	for k, values := range src {
-		for _, v := range values {
-			dst.Add(k, v)
-		}
+// WithPhase3Ports configures ports for Phase 3 (tag-generator) RPCs.
+func WithPhase3Ports(
+	upsertTags internal_tag_port.UpsertArticleTagsPort,
+	batchUpsertTags internal_tag_port.BatchUpsertArticleTagsPort,
+	listUntagged internal_tag_port.ListUntaggedArticlesPort,
+) HandlerOption {
+	return func(h *Handler) {
+		h.upsertArticleTags = upsertTags
+		h.batchUpsertArticleTags = batchUpsertTags
+		h.listUntaggedArticles = listUntagged
 	}
 }
 
-// -----------------------------------------------------------------------------
-// Migrated procedures — Origin comments live on the proto definitions.
-// -----------------------------------------------------------------------------
+// WithBatchGetTagsPort wires the BatchGetTagsByArticleIDs port used by
+// recap-worker for tag fetches. Replaces the legacy tag-generator
+// /api/v1/tags/batch path (ADR-000241 / ADR-000397).
+func WithBatchGetTagsPort(p internal_tag_port.BatchGetTagsByArticleIDsPort) HandlerOption {
+	return func(h *Handler) {
+		h.batchGetTagsByArticleIDs = p
+	}
+}
+
+// WithSummarizationPorts configures ports for summarization polling RPCs.
+func WithSummarizationPorts(
+	listUnsummarized internal_article_port.ListUnsummarizedArticlesPort,
+	hasUnsummarized internal_article_port.HasUnsummarizedArticlesPort,
+) HandlerOption {
+	return func(h *Handler) {
+		h.listUnsummarized = listUnsummarized
+		h.hasUnsummarized = hasUnsummarized
+	}
+}
+
+// WithEventPublisher configures the event publisher for domain events.
+func WithEventPublisher(ep event_publisher_port.EventPublisherPort) HandlerOption {
+	return func(h *Handler) {
+		h.eventPublisher = ep
+	}
+}
+
+// WithBackfillPorts configures ports for backfill-related RPCs.
+func WithBackfillPorts(
+	getEmptyFeedID internal_feed_port.GetEmptyFeedIDPort,
+) HandlerOption {
+	return func(h *Handler) {
+		h.getEmptyFeedID = getEmptyFeedID
+	}
+}
+
+// WithKnowledgeEventPort configures the Knowledge Home event append port.
+func WithKnowledgeEventPort(port knowledge_event_port.AppendKnowledgeEventPort) HandlerOption {
+	return func(h *Handler) {
+		h.knowledgeEventPort = port
+	}
+}
+
+// WithKnowledgeVersionUsecases configures usecases for Knowledge Home version tracking.
+func WithKnowledgeVersionUsecases(
+	summaryVersion *create_summary_version_usecase.CreateSummaryVersionUsecase,
+	tagSetVersion *create_tag_set_version_usecase.CreateTagSetVersionUsecase,
+) HandlerOption {
+	return func(h *Handler) {
+		h.createSummaryVersionUsecase = summaryVersion
+		h.createTagSetVersionUsecase = tagSetVersion
+	}
+}
+
+// WithPhase4Ports configures ports for Phase 4 (quality checker) RPCs.
+func WithPhase4Ports(
+	deleteSummary internal_article_port.DeleteArticleSummaryPort,
+	checkSummaryExists internal_article_port.CheckArticleSummaryExistsPort,
+	findWithSummaries internal_article_port.FindArticlesWithSummariesPort,
+) HandlerOption {
+	return func(h *Handler) {
+		h.deleteArticleSummary = deleteSummary
+		h.checkArticleSummaryExists = checkSummaryExists
+		h.findArticlesWithSummaries = findWithSummaries
+	}
+}
 
 func (h *Handler) ListArticlesWithTags(ctx context.Context, req *connect.Request[datahubv1.ListArticlesWithTagsRequest]) (*connect.Response[datahubv1.ListArticlesWithTagsResponse], error) {
-	return delegate[datahubv1.ListArticlesWithTagsResponse](ctx, req, h.legacy.ListArticlesWithTags)
+	limit := clampLimit(int(req.Msg.Limit))
+
+	var lastCreatedAt *time.Time
+	if req.Msg.LastCreatedAt != nil {
+		t := req.Msg.LastCreatedAt.AsTime()
+		lastCreatedAt = &t
+	}
+
+	articles, nextCreatedAt, nextID, err := h.listArticles.ListArticlesWithTags(ctx, lastCreatedAt, req.Msg.LastId, limit)
+	if err != nil {
+		h.logger.Error("ListArticlesWithTags failed", "error", err)
+		return nil, connect.NewError(connect.CodeInternal, errors.New("failed to list articles"))
+	}
+
+	resp := &datahubv1.ListArticlesWithTagsResponse{
+		Articles: toProtoArticles(articles),
+		NextId:   nextID,
+	}
+	if nextCreatedAt != nil {
+		resp.NextCreatedAt = timestamppb.New(*nextCreatedAt)
+	}
+
+	return connect.NewResponse(resp), nil
 }
 
 func (h *Handler) ListArticlesWithTagsForward(ctx context.Context, req *connect.Request[datahubv1.ListArticlesWithTagsForwardRequest]) (*connect.Response[datahubv1.ListArticlesWithTagsForwardResponse], error) {
-	return delegate[datahubv1.ListArticlesWithTagsForwardResponse](ctx, req, h.legacy.ListArticlesWithTagsForward)
+	limit := clampLimit(int(req.Msg.Limit))
+
+	incrementalMark := req.Msg.IncrementalMark.AsTime()
+
+	var lastCreatedAt *time.Time
+	if req.Msg.LastCreatedAt != nil {
+		t := req.Msg.LastCreatedAt.AsTime()
+		lastCreatedAt = &t
+	}
+
+	articles, nextCreatedAt, nextID, err := h.listArticlesForward.ListArticlesWithTagsForward(ctx, &incrementalMark, lastCreatedAt, req.Msg.LastId, limit)
+	if err != nil {
+		h.logger.Error("ListArticlesWithTagsForward failed", "error", err)
+		return nil, connect.NewError(connect.CodeInternal, errors.New("failed to list articles forward"))
+	}
+
+	resp := &datahubv1.ListArticlesWithTagsForwardResponse{
+		Articles: toProtoArticles(articles),
+		NextId:   nextID,
+	}
+	if nextCreatedAt != nil {
+		resp.NextCreatedAt = timestamppb.New(*nextCreatedAt)
+	}
+
+	return connect.NewResponse(resp), nil
 }
 
 func (h *Handler) ListDeletedArticles(ctx context.Context, req *connect.Request[datahubv1.ListDeletedArticlesRequest]) (*connect.Response[datahubv1.ListDeletedArticlesResponse], error) {
-	return delegate[datahubv1.ListDeletedArticlesResponse](ctx, req, h.legacy.ListDeletedArticles)
+	limit := clampLimit(int(req.Msg.Limit))
+
+	var lastDeletedAt *time.Time
+	if req.Msg.LastDeletedAt != nil {
+		t := req.Msg.LastDeletedAt.AsTime()
+		lastDeletedAt = &t
+	}
+
+	deletedArticles, nextDeletedAt, err := h.listDeleted.ListDeletedArticles(ctx, lastDeletedAt, limit)
+	if err != nil {
+		h.logger.Error("ListDeletedArticles failed", "error", err)
+		return nil, connect.NewError(connect.CodeInternal, errors.New("failed to list deleted articles"))
+	}
+
+	protoArticles := make([]*datahubv1.DeletedArticle, len(deletedArticles))
+	for i, da := range deletedArticles {
+		protoArticles[i] = &datahubv1.DeletedArticle{
+			Id:        da.ID,
+			DeletedAt: timestamppb.New(da.DeletedAt),
+		}
+	}
+
+	resp := &datahubv1.ListDeletedArticlesResponse{
+		Articles: protoArticles,
+	}
+	if nextDeletedAt != nil {
+		resp.NextDeletedAt = timestamppb.New(*nextDeletedAt)
+	}
+
+	return connect.NewResponse(resp), nil
 }
 
-func (h *Handler) GetLatestArticleTimestamp(ctx context.Context, req *connect.Request[datahubv1.GetLatestArticleTimestampRequest]) (*connect.Response[datahubv1.GetLatestArticleTimestampResponse], error) {
-	return delegate[datahubv1.GetLatestArticleTimestampResponse](ctx, req, h.legacy.GetLatestArticleTimestamp)
+func (h *Handler) GetLatestArticleTimestamp(ctx context.Context, _ *connect.Request[datahubv1.GetLatestArticleTimestampRequest]) (*connect.Response[datahubv1.GetLatestArticleTimestampResponse], error) {
+	ts, err := h.getLatestTimestamp.GetLatestArticleTimestamp(ctx)
+	if err != nil {
+		h.logger.Error("GetLatestArticleTimestamp failed", "error", err)
+		return nil, connect.NewError(connect.CodeInternal, errors.New("failed to get latest timestamp"))
+	}
+
+	resp := &datahubv1.GetLatestArticleTimestampResponse{}
+	if ts != nil {
+		resp.LatestCreatedAt = timestamppb.New(*ts)
+	}
+
+	return connect.NewResponse(resp), nil
 }
 
 func (h *Handler) GetArticleByID(ctx context.Context, req *connect.Request[datahubv1.GetArticleByIDRequest]) (*connect.Response[datahubv1.GetArticleByIDResponse], error) {
-	return delegate[datahubv1.GetArticleByIDResponse](ctx, req, h.legacy.GetArticleByID)
+	if req.Msg.ArticleId == "" {
+		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("article_id is required"))
+	}
+
+	article, err := h.getArticleByID.GetArticleByID(ctx, req.Msg.ArticleId)
+	if err != nil {
+		h.logger.Error("GetArticleByID failed", "article_id", req.Msg.ArticleId, "error", err)
+		return nil, connect.NewError(connect.CodeNotFound, errors.New("article not found"))
+	}
+
+	return connect.NewResponse(&datahubv1.GetArticleByIDResponse{
+		Article: toProtoArticle(article),
+	}), nil
 }
 
+// ── Phase 2: Article write operations (pre-processor) ──
+
 func (h *Handler) CheckArticleExists(ctx context.Context, req *connect.Request[datahubv1.CheckArticleExistsRequest]) (*connect.Response[datahubv1.CheckArticleExistsResponse], error) {
-	return delegate[datahubv1.CheckArticleExistsResponse](ctx, req, h.legacy.CheckArticleExists)
+	if h.checkArticleExists == nil {
+		return nil, connect.NewError(connect.CodeUnimplemented, errors.New("not yet implemented"))
+	}
+	if req.Msg.Url == "" {
+		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("url is required"))
+	}
+	if req.Msg.FeedId == "" {
+		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("feed_id is required"))
+	}
+
+	exists, articleID, err := h.checkArticleExists.CheckArticleExists(ctx, req.Msg.Url, req.Msg.FeedId)
+	if err != nil {
+		h.logger.Error("CheckArticleExists failed", "error", err)
+		return nil, connect.NewError(connect.CodeInternal, errors.New("failed to check article existence"))
+	}
+
+	return connect.NewResponse(&datahubv1.CheckArticleExistsResponse{
+		Exists:    exists,
+		ArticleId: articleID,
+	}), nil
 }
 
 func (h *Handler) CreateArticle(ctx context.Context, req *connect.Request[datahubv1.CreateArticleRequest]) (*connect.Response[datahubv1.CreateArticleResponse], error) {
-	return delegate[datahubv1.CreateArticleResponse](ctx, req, h.legacy.CreateArticle)
+	if h.createArticle == nil {
+		return nil, connect.NewError(connect.CodeUnimplemented, errors.New("not yet implemented"))
+	}
+	if req.Msg.Url == "" {
+		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("url is required"))
+	}
+	if req.Msg.FeedId == "" {
+		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("feed_id is required"))
+	}
+
+	var publishedAt time.Time
+	if req.Msg.PublishedAt != nil {
+		publishedAt = req.Msg.PublishedAt.AsTime()
+	}
+
+	articleID, created, err := h.createArticle.CreateArticle(ctx, internal_article_port.CreateArticleParams{
+		Title:       req.Msg.Title,
+		URL:         req.Msg.Url,
+		Content:     req.Msg.Content,
+		FeedID:      req.Msg.FeedId,
+		UserID:      req.Msg.UserId,
+		Language:    req.Msg.Language,
+		PublishedAt: publishedAt,
+	})
+	if err != nil {
+		h.logger.Error("CreateArticle failed", "error", err)
+		return nil, connect.NewError(connect.CodeInternal, errors.New("failed to create article"))
+	}
+
+	// Fire-and-forget: append Knowledge Home ArticleCreated event to sovereign-db
+	if h.knowledgeEventPort != nil && created {
+		if userID, parseErr := uuid.Parse(req.Msg.UserId); parseErr == nil {
+			// Canonical wire schema — see domain.ArticleCreatedPayload comment
+			// and docs/glossary/ubiquitous-language.md. URL goes under the
+			// "url" key; raw map literals here historically wrote "link"
+			// (PM-2026-041) and silently broke the projector.
+			payload, _ := json.Marshal(domain.ArticleCreatedPayload{
+				ArticleID:   articleID,
+				Title:       req.Msg.Title,
+				PublishedAt: publishedAt.Format(time.RFC3339),
+				TenantID:    req.Msg.UserId,
+				URL:         req.Msg.Url,
+			})
+			kevent := domain.KnowledgeEvent{
+				EventID:       uuid.New(),
+				OccurredAt:    time.Now(),
+				TenantID:      userID,
+				UserID:        &userID,
+				ActorType:     domain.ActorService,
+				ActorID:       "pre-processor",
+				EventType:     domain.EventArticleCreated,
+				AggregateType: domain.AggregateArticle,
+				AggregateID:   articleID,
+				DedupeKey:     fmt.Sprintf(domain.DedupeKeyArticleCreated, articleID),
+				Payload:       payload,
+			}
+			if _, appendErr := h.knowledgeEventPort.AppendKnowledgeEvent(ctx, kevent); appendErr != nil {
+				h.logger.Warn("failed to append knowledge ArticleCreated event (non-fatal)",
+					"article_id", articleID, "error", appendErr)
+			}
+		}
+	}
+
+	// Fire-and-forget: publish ArticleCreated event for downstream consumers
+	if h.eventPublisher != nil && h.eventPublisher.IsEnabled() {
+		if created {
+			if pubErr := h.eventPublisher.PublishArticleCreated(ctx, event_publisher_port.ArticleCreatedEvent{
+				ArticleID:   articleID,
+				UserID:      req.Msg.UserId,
+				FeedID:      req.Msg.FeedId,
+				Title:       req.Msg.Title,
+				URL:         req.Msg.Url,
+				Content:     req.Msg.Content,
+				PublishedAt: publishedAt,
+			}); pubErr != nil {
+				h.logger.Warn("failed to publish ArticleCreated event (non-fatal)",
+					"article_id", articleID, "error", pubErr)
+			}
+		} else if pubErr := h.eventPublisher.PublishArticleUpdated(ctx, event_publisher_port.ArticleUpdatedEvent{
+			ArticleID:   articleID,
+			UserID:      req.Msg.UserId,
+			FeedID:      req.Msg.FeedId,
+			Title:       req.Msg.Title,
+			URL:         req.Msg.Url,
+			Content:     req.Msg.Content,
+			PublishedAt: publishedAt,
+		}); pubErr != nil {
+			h.logger.Warn("failed to publish ArticleUpdated event (non-fatal)",
+				"article_id", articleID, "error", pubErr)
+		}
+	}
+
+	return connect.NewResponse(&datahubv1.CreateArticleResponse{
+		ArticleId: articleID,
+	}), nil
 }
 
 func (h *Handler) SaveArticleSummary(ctx context.Context, req *connect.Request[datahubv1.SaveArticleSummaryRequest]) (*connect.Response[datahubv1.SaveArticleSummaryResponse], error) {
-	return delegate[datahubv1.SaveArticleSummaryResponse](ctx, req, h.legacy.SaveArticleSummary)
+	if h.saveArticleSummary == nil {
+		return nil, connect.NewError(connect.CodeUnimplemented, errors.New("not yet implemented"))
+	}
+	if req.Msg.ArticleId == "" {
+		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("article_id is required"))
+	}
+	if req.Msg.Summary == "" {
+		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("summary is required"))
+	}
+	if req.Msg.UserId == "" {
+		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("user_id is required"))
+	}
+
+	err := h.saveArticleSummary.SaveArticleSummary(ctx, req.Msg.ArticleId, req.Msg.UserId, req.Msg.Summary, req.Msg.Language)
+	if err != nil {
+		h.logger.Error("SaveArticleSummary failed", "error", err)
+		return nil, connect.NewError(connect.CodeInternal, errors.New("failed to save article summary"))
+	}
+
+	// Also create summary version + knowledge event for Knowledge Home
+	if h.createSummaryVersionUsecase != nil {
+		articleUUID, parseErr := uuid.Parse(req.Msg.ArticleId)
+		userUUID, userParseErr := uuid.Parse(req.Msg.UserId)
+		if parseErr == nil && userParseErr == nil {
+			sv := domain.SummaryVersion{
+				ArticleID:   articleUUID,
+				UserID:      userUUID,
+				SummaryText: req.Msg.Summary,
+				Model:       "pre-processor",
+			}
+			// Capture the article title at event-emission time so the
+			// Knowledge Loop projector's reproject-safe enricher can render a
+			// real card narrative (e.g. "{title} — fresh summary ready to
+			// read.") instead of falling back to the generic feed-level
+			// sentence. The lookup happens here at the handler boundary —
+			// projection time stays pure (event payload only).
+			if h.getArticleByID != nil {
+				if article, lookupErr := h.getArticleByID.GetArticleByID(ctx, req.Msg.ArticleId); lookupErr == nil && article != nil {
+					sv.ArticleTitle = article.Title
+				}
+			}
+			if svErr := h.createSummaryVersionUsecase.Execute(ctx, sv); svErr != nil {
+				h.logger.Error("failed to create summary version", "error", svErr, "article_id", req.Msg.ArticleId)
+			}
+		}
+	}
+
+	return connect.NewResponse(&datahubv1.SaveArticleSummaryResponse{
+		Success: true,
+	}), nil
 }
 
 func (h *Handler) GetArticleContent(ctx context.Context, req *connect.Request[datahubv1.GetArticleContentRequest]) (*connect.Response[datahubv1.GetArticleContentResponse], error) {
-	return delegate[datahubv1.GetArticleContentResponse](ctx, req, h.legacy.GetArticleContent)
+	if h.getArticleContent == nil {
+		return nil, connect.NewError(connect.CodeUnimplemented, errors.New("not yet implemented"))
+	}
+	if req.Msg.ArticleId == "" {
+		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("article_id is required"))
+	}
+
+	content, err := h.getArticleContent.GetArticleContent(ctx, req.Msg.ArticleId)
+	if err != nil {
+		h.logger.Error("GetArticleContent failed", "error", err)
+		return nil, connect.NewError(connect.CodeInternal, errors.New("failed to get article content"))
+	}
+	if content == nil {
+		return nil, connect.NewError(connect.CodeNotFound, errors.New("article not found"))
+	}
+
+	return connect.NewResponse(&datahubv1.GetArticleContentResponse{
+		ArticleId: content.ID,
+		Title:     content.Title,
+		Content:   content.Content,
+		Url:       content.URL,
+		UserId:    content.UserID,
+	}), nil
 }
 
 func (h *Handler) GetFeedID(ctx context.Context, req *connect.Request[datahubv1.GetFeedIDRequest]) (*connect.Response[datahubv1.GetFeedIDResponse], error) {
-	return delegate[datahubv1.GetFeedIDResponse](ctx, req, h.legacy.GetFeedID)
+	if h.getFeedID == nil {
+		return nil, connect.NewError(connect.CodeUnimplemented, errors.New("not yet implemented"))
+	}
+	if req.Msg.FeedUrl == "" {
+		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("feed_url is required"))
+	}
+
+	feedID, err := h.getFeedID.GetFeedID(ctx, req.Msg.FeedUrl)
+	if err != nil {
+		h.logger.Error("GetFeedID failed", "error", err)
+		return nil, connect.NewError(connect.CodeNotFound, errors.New("feed not found"))
+	}
+
+	return connect.NewResponse(&datahubv1.GetFeedIDResponse{
+		FeedId: feedID,
+	}), nil
 }
 
 func (h *Handler) ListFeedURLs(ctx context.Context, req *connect.Request[datahubv1.ListFeedURLsRequest]) (*connect.Response[datahubv1.ListFeedURLsResponse], error) {
-	return delegate[datahubv1.ListFeedURLsResponse](ctx, req, h.legacy.ListFeedURLs)
+	if h.listFeedURLs == nil {
+		return nil, connect.NewError(connect.CodeUnimplemented, errors.New("not yet implemented"))
+	}
+
+	limit := clampLimit(int(req.Msg.Limit))
+	feeds, nextCursor, hasMore, err := h.listFeedURLs.ListFeedURLs(ctx, req.Msg.Cursor, limit)
+	if err != nil {
+		h.logger.Error("ListFeedURLs failed", "error", err)
+		return nil, connect.NewError(connect.CodeInternal, errors.New("failed to list feed URLs"))
+	}
+
+	protoFeeds := make([]*datahubv1.FeedURL, len(feeds))
+	for i, f := range feeds {
+		protoFeeds[i] = &datahubv1.FeedURL{
+			FeedId: f.FeedID,
+			Url:    f.URL,
+		}
+	}
+
+	return connect.NewResponse(&datahubv1.ListFeedURLsResponse{
+		Feeds:      protoFeeds,
+		NextCursor: nextCursor,
+		HasMore:    hasMore,
+	}), nil
 }
 
+// ── Phase 3: Tag operations (tag-generator) ──
+
 func (h *Handler) UpsertArticleTags(ctx context.Context, req *connect.Request[datahubv1.UpsertArticleTagsRequest]) (*connect.Response[datahubv1.UpsertArticleTagsResponse], error) {
-	return delegate[datahubv1.UpsertArticleTagsResponse](ctx, req, h.legacy.UpsertArticleTags)
+	if h.upsertArticleTags == nil {
+		return nil, connect.NewError(connect.CodeUnimplemented, errors.New("not yet implemented"))
+	}
+	if req.Msg.ArticleId == "" {
+		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("article_id is required"))
+	}
+
+	tags := make([]internal_tag_port.TagItem, len(req.Msg.Tags))
+	for i, t := range req.Msg.Tags {
+		tags[i] = internal_tag_port.TagItem{Name: t.Name, Confidence: t.Confidence}
+	}
+
+	count, err := h.upsertArticleTags.UpsertArticleTags(ctx, req.Msg.ArticleId, req.Msg.FeedId, tags)
+	if err != nil {
+		h.logger.Error("UpsertArticleTags failed", "error", err)
+		return nil, connect.NewError(connect.CodeInternal, errors.New("failed to upsert article tags"))
+	}
+
+	// Also create tag set version + knowledge event for Knowledge Home
+	if h.createTagSetVersionUsecase != nil && len(tags) > 0 {
+		articleUUID, parseErr := uuid.Parse(req.Msg.ArticleId)
+		if parseErr == nil {
+			tagsJSON, _ := json.Marshal(tags)
+			tsv := domain.TagSetVersion{
+				ArticleID: articleUUID,
+				Generator: "tag-generator",
+				TagsJSON:  tagsJSON,
+			}
+			// Resolve UserID from article
+			if h.getArticleByID != nil {
+				article, artErr := h.getArticleByID.GetArticleByID(ctx, req.Msg.ArticleId)
+				if artErr == nil && article != nil {
+					userUUID, uErr := uuid.Parse(article.UserID)
+					if uErr == nil {
+						tsv.UserID = userUUID
+					}
+				} else {
+					h.logger.Warn("could not resolve user for tag set version", "article_id", req.Msg.ArticleId, "error", artErr)
+				}
+			}
+			if tsvErr := h.createTagSetVersionUsecase.Execute(ctx, tsv); tsvErr != nil {
+				h.logger.Error("failed to create tag set version", "error", tsvErr, "article_id", req.Msg.ArticleId)
+			}
+		}
+	}
+
+	return connect.NewResponse(&datahubv1.UpsertArticleTagsResponse{
+		Success:       true,
+		UpsertedCount: count,
+	}), nil
 }
 
 func (h *Handler) BatchUpsertArticleTags(ctx context.Context, req *connect.Request[datahubv1.BatchUpsertArticleTagsRequest]) (*connect.Response[datahubv1.BatchUpsertArticleTagsResponse], error) {
-	return delegate[datahubv1.BatchUpsertArticleTagsResponse](ctx, req, h.legacy.BatchUpsertArticleTags)
+	if h.batchUpsertArticleTags == nil {
+		return nil, connect.NewError(connect.CodeUnimplemented, errors.New("not yet implemented"))
+	}
+
+	items := make([]internal_tag_port.BatchUpsertItem, len(req.Msg.Items))
+	for i, item := range req.Msg.Items {
+		tags := make([]internal_tag_port.TagItem, len(item.Tags))
+		for j, t := range item.Tags {
+			tags[j] = internal_tag_port.TagItem{Name: t.Name, Confidence: t.Confidence}
+		}
+		items[i] = internal_tag_port.BatchUpsertItem{
+			ArticleID: item.ArticleId,
+			FeedID:    item.FeedId,
+			Tags:      tags,
+		}
+	}
+
+	total, err := h.batchUpsertArticleTags.BatchUpsertArticleTags(ctx, items)
+	if err != nil {
+		h.logger.Error("BatchUpsertArticleTags failed", "error", err)
+		return nil, connect.NewError(connect.CodeInternal, errors.New("failed to batch upsert article tags"))
+	}
+
+	// Create tag set version + knowledge event for each article
+	if h.createTagSetVersionUsecase != nil {
+		for _, item := range req.Msg.Items {
+			if len(item.Tags) == 0 {
+				continue
+			}
+			if item.FeedId == "" {
+				h.logger.Warn("skipping tag set version creation for article without feed_id", "article_id", item.ArticleId)
+				continue
+			}
+			articleUUID, parseErr := uuid.Parse(item.ArticleId)
+			if parseErr != nil {
+				continue
+			}
+			batchTags := make([]internal_tag_port.TagItem, len(item.Tags))
+			for j, t := range item.Tags {
+				batchTags[j] = internal_tag_port.TagItem{Name: t.Name, Confidence: t.Confidence}
+			}
+			tagsJSON, _ := json.Marshal(batchTags)
+			tsv := domain.TagSetVersion{
+				ArticleID: articleUUID,
+				Generator: "tag-generator",
+				TagsJSON:  tagsJSON,
+			}
+			// Resolve UserID from article
+			if h.getArticleByID != nil {
+				article, artErr := h.getArticleByID.GetArticleByID(ctx, item.ArticleId)
+				if artErr == nil && article != nil {
+					userUUID, uErr := uuid.Parse(article.UserID)
+					if uErr == nil {
+						tsv.UserID = userUUID
+					}
+				}
+			}
+			if tsvErr := h.createTagSetVersionUsecase.Execute(ctx, tsv); tsvErr != nil {
+				h.logger.Error("failed to create tag set version in batch", "error", tsvErr, "article_id", item.ArticleId)
+			}
+		}
+	}
+
+	return connect.NewResponse(&datahubv1.BatchUpsertArticleTagsResponse{
+		Success:       true,
+		TotalUpserted: total,
+	}), nil
 }
 
 func (h *Handler) ListUntaggedArticles(ctx context.Context, req *connect.Request[datahubv1.ListUntaggedArticlesRequest]) (*connect.Response[datahubv1.ListUntaggedArticlesResponse], error) {
-	return delegate[datahubv1.ListUntaggedArticlesResponse](ctx, req, h.legacy.ListUntaggedArticles)
+	if h.listUntaggedArticles == nil {
+		return nil, connect.NewError(connect.CodeUnimplemented, errors.New("not yet implemented"))
+	}
+
+	limit := clampLimit(int(req.Msg.Limit))
+
+	var lastCreatedAt *time.Time
+	if req.Msg.LastCreatedAt != nil {
+		t := req.Msg.LastCreatedAt.AsTime()
+		lastCreatedAt = &t
+	}
+
+	articles, nextCreatedAt, nextID, totalCount, err := h.listUntaggedArticles.ListUntaggedArticles(ctx, lastCreatedAt, req.Msg.LastId, limit)
+	if err != nil {
+		h.logger.Error("ListUntaggedArticles failed", "error", err)
+		return nil, connect.NewError(connect.CodeInternal, errors.New("failed to list untagged articles"))
+	}
+
+	protoArticles := make([]*datahubv1.ArticleWithTags, len(articles))
+	for i, a := range articles {
+		var feedID string
+		if a.FeedID != nil {
+			feedID = *a.FeedID
+		}
+		protoArticles[i] = &datahubv1.ArticleWithTags{
+			Id:        a.ID,
+			Title:     a.Title,
+			Content:   a.Content,
+			UserId:    a.UserID,
+			FeedId:    feedID,
+			CreatedAt: timestamppb.New(a.CreatedAt),
+		}
+	}
+
+	resp := &datahubv1.ListUntaggedArticlesResponse{
+		Articles:   protoArticles,
+		TotalCount: totalCount,
+		NextId:     nextID,
+	}
+	if nextCreatedAt != nil {
+		resp.NextCreatedAt = timestamppb.New(*nextCreatedAt)
+	}
+
+	return connect.NewResponse(resp), nil
 }
 
+// BatchGetTagsByArticleIDs returns tags for a batch of article ids.
+// Replaces tag-generator's /api/v1/tags/batch (ADR-000241 / ADR-000397)
+// so recap-worker reads tags directly from the alt-backend data owner.
 func (h *Handler) BatchGetTagsByArticleIDs(ctx context.Context, req *connect.Request[datahubv1.BatchGetTagsByArticleIDsRequest]) (*connect.Response[datahubv1.BatchGetTagsByArticleIDsResponse], error) {
-	return delegate[datahubv1.BatchGetTagsByArticleIDsResponse](ctx, req, h.legacy.BatchGetTagsByArticleIDs)
+	if h.batchGetTagsByArticleIDs == nil {
+		return nil, connect.NewError(connect.CodeUnimplemented, errors.New("not yet implemented"))
+	}
+
+	ids := req.Msg.GetArticleIds()
+	if len(ids) == 0 {
+		return connect.NewResponse(&datahubv1.BatchGetTagsByArticleIDsResponse{}), nil
+	}
+	if len(ids) > maxBatchGetTagsArticleIDs {
+		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("article_ids exceeds max batch size %d", maxBatchGetTagsArticleIDs))
+	}
+
+	grouped, err := h.batchGetTagsByArticleIDs.BatchGetTagsByArticleIDs(ctx, ids)
+	if err != nil {
+		h.logger.Error("BatchGetTagsByArticleIDs failed", "error", err, "article_count", len(ids))
+		return nil, connect.NewError(connect.CodeInternal, errors.New("failed to batch fetch article tags"))
+	}
+
+	items := make([]*datahubv1.ArticleTagsEntry, 0, len(grouped))
+	for _, g := range grouped {
+		tags := make([]*datahubv1.ArticleTagEntry, len(g.Tags))
+		for i, t := range g.Tags {
+			tags[i] = &datahubv1.ArticleTagEntry{
+				TagName:    t.TagName,
+				Confidence: t.Confidence,
+				Source:     t.Source,
+				UpdatedAt:  timestamppb.New(t.UpdatedAt),
+			}
+		}
+		items = append(items, &datahubv1.ArticleTagsEntry{
+			ArticleId: g.ArticleID,
+			Tags:      tags,
+		})
+	}
+
+	return connect.NewResponse(&datahubv1.BatchGetTagsByArticleIDsResponse{Items: items}), nil
 }
+
+// maxBatchGetTagsArticleIDs mirrors the caller-side guard previously
+// enforced by tag-generator/app/auth_service.py. Kept as a server-side
+// invariant so the driver never issues an unbounded ANY($1::uuid[]).
+const maxBatchGetTagsArticleIDs = 1000
+
+// ── Phase 4: Summary quality operations (quality checker) ──
 
 func (h *Handler) DeleteArticleSummary(ctx context.Context, req *connect.Request[datahubv1.DeleteArticleSummaryRequest]) (*connect.Response[datahubv1.DeleteArticleSummaryResponse], error) {
-	return delegate[datahubv1.DeleteArticleSummaryResponse](ctx, req, h.legacy.DeleteArticleSummary)
+	if h.deleteArticleSummary == nil {
+		return nil, connect.NewError(connect.CodeUnimplemented, errors.New("not yet implemented"))
+	}
+	if req.Msg.ArticleId == "" {
+		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("article_id is required"))
+	}
+
+	err := h.deleteArticleSummary.DeleteArticleSummary(ctx, req.Msg.ArticleId)
+	if err != nil {
+		h.logger.Error("DeleteArticleSummary failed", "error", err)
+		return nil, connect.NewError(connect.CodeInternal, errors.New("failed to delete article summary"))
+	}
+
+	return connect.NewResponse(&datahubv1.DeleteArticleSummaryResponse{
+		Success: true,
+	}), nil
 }
 
 func (h *Handler) CheckArticleSummaryExists(ctx context.Context, req *connect.Request[datahubv1.CheckArticleSummaryExistsRequest]) (*connect.Response[datahubv1.CheckArticleSummaryExistsResponse], error) {
-	return delegate[datahubv1.CheckArticleSummaryExistsResponse](ctx, req, h.legacy.CheckArticleSummaryExists)
+	if h.checkArticleSummaryExists == nil {
+		return nil, connect.NewError(connect.CodeUnimplemented, errors.New("not yet implemented"))
+	}
+	if req.Msg.ArticleId == "" {
+		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("article_id is required"))
+	}
+
+	exists, summaryID, err := h.checkArticleSummaryExists.CheckArticleSummaryExists(ctx, req.Msg.ArticleId)
+	if err != nil {
+		h.logger.Error("CheckArticleSummaryExists failed", "error", err)
+		return nil, connect.NewError(connect.CodeInternal, errors.New("failed to check article summary existence"))
+	}
+
+	return connect.NewResponse(&datahubv1.CheckArticleSummaryExistsResponse{
+		Exists:    exists,
+		SummaryId: summaryID,
+	}), nil
 }
 
 func (h *Handler) FindArticlesWithSummaries(ctx context.Context, req *connect.Request[datahubv1.FindArticlesWithSummariesRequest]) (*connect.Response[datahubv1.FindArticlesWithSummariesResponse], error) {
-	return delegate[datahubv1.FindArticlesWithSummariesResponse](ctx, req, h.legacy.FindArticlesWithSummaries)
+	if h.findArticlesWithSummaries == nil {
+		return nil, connect.NewError(connect.CodeUnimplemented, errors.New("not yet implemented"))
+	}
+
+	limit := clampLimit(int(req.Msg.Limit))
+
+	var lastCreatedAt *time.Time
+	if req.Msg.LastCreatedAt != nil {
+		t := req.Msg.LastCreatedAt.AsTime()
+		lastCreatedAt = &t
+	}
+
+	articles, nextCreatedAt, nextID, err := h.findArticlesWithSummaries.FindArticlesWithSummaries(ctx, lastCreatedAt, req.Msg.LastId, limit)
+	if err != nil {
+		h.logger.Error("FindArticlesWithSummaries failed", "error", err)
+		return nil, connect.NewError(connect.CodeInternal, errors.New("failed to find articles with summaries"))
+	}
+
+	protoArticles := make([]*datahubv1.ArticleWithSummaryItem, len(articles))
+	for i, a := range articles {
+		protoArticles[i] = &datahubv1.ArticleWithSummaryItem{
+			ArticleId:       a.ArticleID,
+			ArticleContent:  a.ArticleContent,
+			ArticleUrl:      a.ArticleURL,
+			SummaryId:       a.SummaryID,
+			SummaryJapanese: a.SummaryJapanese,
+			CreatedAt:       timestamppb.New(a.CreatedAt),
+		}
+	}
+
+	resp := &datahubv1.FindArticlesWithSummariesResponse{
+		Articles: protoArticles,
+		NextId:   nextID,
+	}
+	if nextCreatedAt != nil {
+		resp.NextCreatedAt = timestamppb.New(*nextCreatedAt)
+	}
+
+	return connect.NewResponse(resp), nil
 }
+
+// ── Summarization operations (pre-processor polling) ──
 
 func (h *Handler) ListUnsummarizedArticles(ctx context.Context, req *connect.Request[datahubv1.ListUnsummarizedArticlesRequest]) (*connect.Response[datahubv1.ListUnsummarizedArticlesResponse], error) {
-	return delegate[datahubv1.ListUnsummarizedArticlesResponse](ctx, req, h.legacy.ListUnsummarizedArticles)
+	if h.listUnsummarized == nil {
+		return nil, connect.NewError(connect.CodeUnimplemented, errors.New("not yet implemented"))
+	}
+
+	limit := clampLimit(int(req.Msg.Limit))
+
+	var lastCreatedAt *time.Time
+	if req.Msg.LastCreatedAt != nil {
+		t := req.Msg.LastCreatedAt.AsTime()
+		lastCreatedAt = &t
+	}
+
+	articles, nextCreatedAt, nextID, err := h.listUnsummarized.ListUnsummarizedArticles(ctx, lastCreatedAt, req.Msg.LastId, limit)
+	if err != nil {
+		h.logger.Error("ListUnsummarizedArticles failed", "error", err)
+		return nil, connect.NewError(connect.CodeInternal, errors.New("failed to list unsummarized articles"))
+	}
+
+	protoArticles := make([]*datahubv1.UnsummarizedArticle, len(articles))
+	for i, a := range articles {
+		protoArticles[i] = &datahubv1.UnsummarizedArticle{
+			Id:        a.ID,
+			Title:     a.Title,
+			Content:   a.Content,
+			Url:       a.URL,
+			CreatedAt: timestamppb.New(a.CreatedAt),
+			UserId:    a.UserID,
+		}
+	}
+
+	resp := &datahubv1.ListUnsummarizedArticlesResponse{
+		Articles: protoArticles,
+		NextId:   nextID,
+	}
+	if nextCreatedAt != nil {
+		resp.NextCreatedAt = timestamppb.New(*nextCreatedAt)
+	}
+
+	return connect.NewResponse(resp), nil
 }
 
-func (h *Handler) HasUnsummarizedArticles(ctx context.Context, req *connect.Request[datahubv1.HasUnsummarizedArticlesRequest]) (*connect.Response[datahubv1.HasUnsummarizedArticlesResponse], error) {
-	return delegate[datahubv1.HasUnsummarizedArticlesResponse](ctx, req, h.legacy.HasUnsummarizedArticles)
+func (h *Handler) HasUnsummarizedArticles(ctx context.Context, _ *connect.Request[datahubv1.HasUnsummarizedArticlesRequest]) (*connect.Response[datahubv1.HasUnsummarizedArticlesResponse], error) {
+	if h.hasUnsummarized == nil {
+		return nil, connect.NewError(connect.CodeUnimplemented, errors.New("not yet implemented"))
+	}
+
+	has, err := h.hasUnsummarized.HasUnsummarizedArticles(ctx)
+	if err != nil {
+		h.logger.Error("HasUnsummarizedArticles failed", "error", err)
+		return nil, connect.NewError(connect.CodeInternal, errors.New("failed to check unsummarized articles"))
+	}
+
+	return connect.NewResponse(&datahubv1.HasUnsummarizedArticlesResponse{
+		HasUnsummarized: has,
+	}), nil
 }
+
+// ── Backfill operations (pre-processor split-DB) ──
 
 func (h *Handler) GetEmptyFeedID(ctx context.Context, req *connect.Request[datahubv1.GetEmptyFeedIDRequest]) (*connect.Response[datahubv1.GetEmptyFeedIDResponse], error) {
-	return delegate[datahubv1.GetEmptyFeedIDResponse](ctx, req, h.legacy.GetEmptyFeedID)
+	if h.getEmptyFeedID == nil {
+		return nil, connect.NewError(connect.CodeUnimplemented, errors.New("not yet implemented"))
+	}
+	if req.Msg.FeedUrl == "" {
+		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("feed_url is required"))
+	}
+
+	feedID, err := h.getEmptyFeedID.GetEmptyFeedID(ctx, req.Msg.FeedUrl)
+	if err != nil {
+		h.logger.Error("GetEmptyFeedID failed", "error", err)
+		return nil, connect.NewError(connect.CodeInternal, errors.New("failed to get empty feed ID"))
+	}
+
+	return connect.NewResponse(&datahubv1.GetEmptyFeedIDResponse{
+		FeedId: feedID,
+	}), nil
 }
 
+// ── Helpers ──
+
+func toProtoArticles(articles []*internal_article_port.ArticleWithTags) []*datahubv1.ArticleWithTags {
+	result := make([]*datahubv1.ArticleWithTags, len(articles))
+	for i, a := range articles {
+		result[i] = toProtoArticle(a)
+	}
+	return result
+}
+
+func toProtoArticle(a *internal_article_port.ArticleWithTags) *datahubv1.ArticleWithTags {
+	proto := &datahubv1.ArticleWithTags{
+		Id:        a.ID,
+		Title:     a.Title,
+		Content:   a.Content,
+		Tags:      a.Tags,
+		CreatedAt: timestamppb.New(a.CreatedAt),
+		UserId:    a.UserID,
+		Language:  a.Language,
+	}
+	// A NULL articles.published_at stays an unset Timestamp rather than being
+	// substituted with created_at: only the consumer knows whether a fallback
+	// is acceptable for its use.
+	if a.PublishedAt != nil {
+		proto.PublishedAt = timestamppb.New(*a.PublishedAt)
+	}
+	return proto
+}
+
+func clampLimit(limit int) int {
+	if limit <= 0 {
+		limit = 200
+	}
+	if limit > maxLimit {
+		limit = maxLimit
+	}
+	return limit
+}
+
+// --- RAG Tool Operations (ADR-000617) ---
+
+// fetchTagCloudPort is the port interface for fetching tag cloud data.
+type fetchTagCloudPort interface {
+	Execute(ctx context.Context, limit int) ([]*domain.TagCloudItem, error)
+}
+
+// fetchArticlesByTagPort is the port interface for fetching articles by tag name.
+type fetchArticlesByTagPort interface {
+	ExecuteByTagName(ctx context.Context, tagName string, cursor *time.Time, limit int) ([]*domain.TagTrailArticle, error)
+}
+
+// WithRAGToolPorts configures ports for RAG tool RPCs (ADR-000617).
+func WithRAGToolPorts(
+	tagCloud fetchTagCloudPort,
+	articlesByTag fetchArticlesByTagPort,
+) HandlerOption {
+	return func(h *Handler) {
+		h.fetchTagCloudPort = tagCloud
+		h.fetchArticlesByTagPort = articlesByTag
+	}
+}
+
+// recapArticlesUsecase is the minimal interface for paginated article window
+// fetch. The concrete usecase lives at alt/usecase/recap_articles_usecase.
+type recapArticlesUsecase interface {
+	Execute(ctx context.Context, input recap_articles_usecase.Input) (*domain.RecapArticlesPage, error)
+}
+
+// WithRecapArticlesUsecase wires the recap-worker's paginated article window
+// fetch (service-to-service RPC ListRecapArticles).
+func WithRecapArticlesUsecase(uc recapArticlesUsecase) HandlerOption {
+	return func(h *Handler) {
+		h.recapArticlesUsecase = uc
+	}
+}
+
+// ListRecapArticles returns paginated articles in a time window for the
+// recap-worker. Authentication is enforced at the TLS transport layer
+// (mTLS peer identity on :9443); this RPC intentionally does not require
+// an end-user auth token.
+func (h *Handler) ListRecapArticles(
+	ctx context.Context,
+	req *connect.Request[datahubv1.ListRecapArticlesRequest],
+) (*connect.Response[datahubv1.ListRecapArticlesResponse], error) {
+	if h.recapArticlesUsecase == nil {
+		return nil, connect.NewError(connect.CodeUnimplemented, errors.New("ListRecapArticles not configured"))
+	}
+
+	msg := req.Msg
+	if msg == nil || strings.TrimSpace(msg.From) == "" {
+		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("from is required"))
+	}
+	if strings.TrimSpace(msg.To) == "" {
+		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("to is required"))
+	}
+
+	from, err := time.Parse(time.RFC3339, msg.From)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("from must be RFC3339: %w", err))
+	}
+	to, err := time.Parse(time.RFC3339, msg.To)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("to must be RFC3339: %w", err))
+	}
+
+	var langHint *string
+	if msg.LangHint != nil {
+		lower := strings.ToLower(strings.TrimSpace(*msg.LangHint))
+		if lower != "" {
+			langHint = &lower
+		}
+	}
+
+	input := recap_articles_usecase.Input{
+		From:     from.UTC(),
+		To:       to.UTC(),
+		LangHint: langHint,
+		Fields:   msg.Fields,
+	}
+	if msg.Page != nil {
+		input.Page = int(*msg.Page)
+	}
+	if msg.PageSize != nil {
+		input.PageSize = int(*msg.PageSize)
+	}
+
+	page, err := h.recapArticlesUsecase.Execute(ctx, input)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInvalidArgument, err)
+	}
+
+	if page == nil {
+		page = &domain.RecapArticlesPage{Page: input.Page, PageSize: input.PageSize}
+	}
+
+	articles := make([]*datahubv1.RecapArticleItem, 0, len(page.Articles))
+	for _, a := range page.Articles {
+		item := &datahubv1.RecapArticleItem{
+			ArticleId: a.ID.String(),
+			Fulltext:  a.FullText,
+		}
+		if a.Title != nil {
+			item.Title = a.Title
+		}
+		if a.SourceURL != nil {
+			item.SourceUrl = a.SourceURL
+		}
+		if a.LangHint != nil {
+			item.LangHint = a.LangHint
+		}
+		if a.PublishedAt != nil {
+			formatted := a.PublishedAt.UTC().Format(time.RFC3339)
+			item.PublishedAt = &formatted
+		}
+		articles = append(articles, item)
+	}
+
+	resp := &datahubv1.ListRecapArticlesResponse{
+		Range:    &datahubv1.RecapArticleRange{From: from.UTC().Format(time.RFC3339), To: to.UTC().Format(time.RFC3339)},
+		Total:    safeconv.Int32(page.Total),
+		Page:     safeconv.Int32(page.Page),
+		PageSize: safeconv.Int32(page.PageSize),
+		HasMore:  page.HasMore,
+		Articles: articles,
+	}
+	return connect.NewResponse(resp), nil
+}
+
+// FetchTagCloud returns tag cloud data for topic exploration.
 func (h *Handler) FetchTagCloud(ctx context.Context, req *connect.Request[datahubv1.FetchTagCloudRequest]) (*connect.Response[datahubv1.FetchTagCloudResponse], error) {
-	return delegate[datahubv1.FetchTagCloudResponse](ctx, req, h.legacy.FetchTagCloud)
+	if h.fetchTagCloudPort == nil {
+		return nil, connect.NewError(connect.CodeUnimplemented, errors.New("FetchTagCloud not configured"))
+	}
+
+	limit := int(req.Msg.Limit)
+	if limit <= 0 {
+		limit = 300
+	}
+	if limit > maxLimit {
+		limit = maxLimit
+	}
+
+	items, err := h.fetchTagCloudPort.Execute(ctx, limit)
+	if err != nil {
+		h.logger.Error("FetchTagCloud failed", "error", err)
+		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("fetch tag cloud: %w", err))
+	}
+
+	tags := make([]*datahubv1.TagCloudItem, 0, len(items))
+	for _, item := range items {
+		tags = append(tags, &datahubv1.TagCloudItem{
+			TagName:      item.TagName,
+			ArticleCount: safeconv.Int32(item.ArticleCount),
+		})
+	}
+
+	return connect.NewResponse(&datahubv1.FetchTagCloudResponse{
+		Tags: tags,
+	}), nil
 }
 
+// FetchArticlesByTag returns articles matching a tag name.
 func (h *Handler) FetchArticlesByTag(ctx context.Context, req *connect.Request[datahubv1.FetchArticlesByTagRequest]) (*connect.Response[datahubv1.FetchArticlesByTagResponse], error) {
-	return delegate[datahubv1.FetchArticlesByTagResponse](ctx, req, h.legacy.FetchArticlesByTag)
-}
+	if h.fetchArticlesByTagPort == nil {
+		return nil, connect.NewError(connect.CodeUnimplemented, errors.New("FetchArticlesByTag not configured"))
+	}
 
-func (h *Handler) ListRecapArticles(ctx context.Context, req *connect.Request[datahubv1.ListRecapArticlesRequest]) (*connect.Response[datahubv1.ListRecapArticlesResponse], error) {
-	return delegate[datahubv1.ListRecapArticlesResponse](ctx, req, h.legacy.ListRecapArticles)
+	tagName := req.Msg.TagName
+	if tagName == "" {
+		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("tag_name is required"))
+	}
+
+	limit := int(req.Msg.Limit)
+	if limit <= 0 {
+		limit = 20
+	}
+	if limit > 100 {
+		limit = 100
+	}
+
+	articles, err := h.fetchArticlesByTagPort.ExecuteByTagName(ctx, tagName, nil, limit)
+	if err != nil {
+		h.logger.Error("FetchArticlesByTag failed", "error", err, "tag", tagName)
+		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("fetch articles by tag: %w", err))
+	}
+
+	result := make([]*datahubv1.ArticleByTagItem, 0, len(articles))
+	for _, a := range articles {
+		result = append(result, &datahubv1.ArticleByTagItem{
+			Id:          a.ID,
+			Title:       a.Title,
+			Url:         a.Link,
+			PublishedAt: a.PublishedAt.Format(time.RFC3339),
+		})
+	}
+
+	return connect.NewResponse(&datahubv1.FetchArticlesByTagResponse{
+		Articles: result,
+	}), nil
 }
 
 // -----------------------------------------------------------------------------

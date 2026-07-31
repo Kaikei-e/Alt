@@ -41,7 +41,7 @@ func TestComponentStructs_OmitWhatTheirBinaryDoesNotBuild(t *testing.T) {
 			name:  "backend",
 			value: ApplicationComponents{},
 			absent: []string{
-				// Moved to cmd/datahub with BackendInternalService and /v1/internal.
+				// Moved to cmd/datahub with DataHubService (ADR-000954 D6/D7).
 				"KratosClient", "EventPublisher", "RecapArticlesUsecase",
 				"FetchRecentArticlesUsecase", "CreateTagSetVersionUsecase",
 				// Never read by any handler (plan R11): copying them into three
@@ -52,8 +52,8 @@ func TestComponentStructs_OmitWhatTheirBinaryDoesNotBuild(t *testing.T) {
 			present: []string{
 				"AltDBRepository", "SovereignClient", "AdminMonitor",
 				// RecallRail reads articles through the same gateway
-				// BackendInternalService uses, so backend keeps it even though
-				// the internal RPC surface moved away.
+				// DataHubService uses, so backend keeps it even though the
+				// service-to-service RPC surface moved away.
 				"InternalArticleGateway", "RecallRailUsecase",
 				"CreateSummaryVersionUsecase", "ImageProxyUsecase", "CSRFTokenUsecase",
 			},
@@ -78,8 +78,8 @@ func TestComponentStructs_OmitWhatTheirBinaryDoesNotBuild(t *testing.T) {
 			name:  "datahub",
 			value: DataHubComponents{},
 			absent: []string{
-				// data-hub serves BackendInternalService only: no crawling, no
-				// search, no image pipeline, no admin surface.
+				// data-hub serves DataHubService only: no crawling, no search,
+				// no image pipeline, no admin surface.
 				"SearchIndexerDriver", "RobotsTxtGateway", "ImageProxyUsecase",
 				"AdminMonitor", "RagConnectClient", "FetchArticleGateway",
 				"KnowledgeBackfillUsecase", "MetricsUsecase",
