@@ -4,11 +4,14 @@ import (
 	"alt/domain"
 	"alt/utils/rate_limiter"
 	"alt/utils/security"
+	"bytes"
+	"compress/gzip"
 	"context"
 	"errors"
 	"fmt"
 	"io"
 	"net/http"
+	"net/http/httptest"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -203,6 +206,137 @@ func TestFetchArticleGateway_Semaphore_ContextCancellation(t *testing.T) {
 	}
 	if !errors.Is(err, context.DeadlineExceeded) {
 		t.Errorf("expected context.DeadlineExceeded, got: %v", err)
+	}
+}
+
+// gzipBomb returns a gzip stream that is tiny on the wire but expands to
+// decompressedSize bytes of fill. Go's http.Transport auto-adds
+// "Accept-Encoding: gzip" and transparently decompresses, so this is what an
+// attacker-controlled article URL can hand the gateway.
+func gzipBomb(t *testing.T, fill byte, decompressedSize int) []byte {
+	t.Helper()
+
+	var buf bytes.Buffer
+	zw := gzip.NewWriter(&buf)
+	chunk := bytes.Repeat([]byte{fill}, 64*1024)
+	for written := 0; written < decompressedSize; written += len(chunk) {
+		if _, err := zw.Write(chunk); err != nil {
+			t.Fatalf("write gzip chunk failed: %v", err)
+		}
+	}
+	if err := zw.Close(); err != nil {
+		t.Fatalf("close gzip writer failed: %v", err)
+	}
+	return buf.Bytes()
+}
+
+func TestFetchArticleGateway_OversizedBody_Rejected(t *testing.T) {
+	bomb := gzipBomb(t, 'A', maxArticleBodyBytes*4)
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		w.Header().Set("Content-Encoding", "gzip")
+		_, _ = w.Write(bomb)
+	}))
+	defer server.Close()
+
+	rl := rate_limiter.NewHostRateLimiter(1 * time.Millisecond)
+	validator := security.NewSSRFValidator()
+	validator.SetTestingMode(true)
+	gw := NewFetchArticleGatewayWithDeps(rl, &http.Client{Timeout: 30 * time.Second}, validator)
+
+	content, err := gw.FetchArticleContents(context.Background(), server.URL+"/article")
+	if err == nil {
+		t.Fatalf("expected error for oversized body, got content of %d bytes", len(*content))
+	}
+	if content != nil {
+		t.Errorf("expected nil content on oversized body, got %d bytes", len(*content))
+	}
+	if !strings.Contains(err.Error(), "exceeds") {
+		t.Errorf("expected size-limit error, got: %v", err)
+	}
+}
+
+// shiftJISFill is a halfwidth katakana byte (U+FF61 "｡"). Shift-JIS encodes it in
+// one byte; UTF-8 needs three. Bounding only the pre-decode stream therefore lets
+// a body that fits under the ceiling triple past it inside the decoder.
+const shiftJISFill = 0xA1
+
+func TestFetchArticleGateway_OversizedDecodedBody_Rejected(t *testing.T) {
+	// Half the ceiling on the wire, so the pre-decode budget is never exhausted —
+	// only the 3x charset expansion pushes the result over the limit.
+	bomb := gzipBomb(t, shiftJISFill, maxArticleBodyBytes/2)
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/html; charset=shift_jis")
+		w.Header().Set("Content-Encoding", "gzip")
+		_, _ = w.Write(bomb)
+	}))
+	defer server.Close()
+
+	rl := rate_limiter.NewHostRateLimiter(1 * time.Millisecond)
+	validator := security.NewSSRFValidator()
+	validator.SetTestingMode(true)
+	gw := NewFetchArticleGatewayWithDeps(rl, &http.Client{Timeout: 30 * time.Second}, validator)
+
+	content, err := gw.FetchArticleContents(context.Background(), server.URL+"/article")
+	if err == nil {
+		t.Fatalf("expected error for oversized decoded body, got content of %d bytes", len(*content))
+	}
+	if content != nil {
+		t.Errorf("expected nil content on oversized decoded body, got %d bytes", len(*content))
+	}
+	if !strings.Contains(err.Error(), "exceeds") {
+		t.Errorf("expected size-limit error, got: %v", err)
+	}
+}
+
+func TestFetchArticleGateway_ShiftJISBody_DecodedInFull(t *testing.T) {
+	// Control for the ceiling above: a legitimate Shift-JIS article still comes
+	// back fully transcoded to UTF-8.
+	article := strings.Repeat("\xa1", 1000)
+	want := strings.Repeat("｡", 1000)
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/html; charset=shift_jis")
+		_, _ = io.WriteString(w, article)
+	}))
+	defer server.Close()
+
+	rl := rate_limiter.NewHostRateLimiter(1 * time.Millisecond)
+	validator := security.NewSSRFValidator()
+	validator.SetTestingMode(true)
+	gw := NewFetchArticleGatewayWithDeps(rl, &http.Client{Timeout: 30 * time.Second}, validator)
+
+	content, err := gw.FetchArticleContents(context.Background(), server.URL+"/article")
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if content == nil || *content != want {
+		t.Fatalf("expected the Shift-JIS article to be decoded in full")
+	}
+}
+
+func TestFetchArticleGateway_NormalBody_FetchedInFull(t *testing.T) {
+	article := "<html><body><p>" + strings.Repeat("normal article text. ", 1000) + "</p></body></html>"
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		_, _ = io.WriteString(w, article)
+	}))
+	defer server.Close()
+
+	rl := rate_limiter.NewHostRateLimiter(1 * time.Millisecond)
+	validator := security.NewSSRFValidator()
+	validator.SetTestingMode(true)
+	gw := NewFetchArticleGatewayWithDeps(rl, &http.Client{Timeout: 30 * time.Second}, validator)
+
+	content, err := gw.FetchArticleContents(context.Background(), server.URL+"/article")
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if content == nil || *content != article {
+		t.Fatalf("expected the full article body to be returned unchanged")
 	}
 }
 

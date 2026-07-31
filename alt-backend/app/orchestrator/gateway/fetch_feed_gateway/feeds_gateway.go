@@ -19,6 +19,21 @@ import (
 	"go.opentelemetry.io/otel"
 )
 
+// maxFeedBodyBytes bounds how much of a feed body gofeed reads. gofeed treats a
+// zero MaxByteSize as "no limit", and the transport transparently decompresses
+// gzip, so without a ceiling a few KB on the wire can expand into GBs resident.
+const maxFeedBodyBytes = 10 * 1024 * 1024
+
+// newBoundedFeedParser builds a gofeed parser that refuses bodies larger than
+// maxFeedBodyBytes instead of reading them in full.
+func newBoundedFeedParser(client *http.Client) *gofeed.Parser {
+	fp := gofeed.NewParser()
+	fp.Client = client
+	fp.MaxByteSize = maxFeedBodyBytes
+	fp.UserAgent = "Alt-RSS-Reader/1.0 (+https://alt.example.com)"
+	return fp
+}
+
 type FetchFeedsGateway struct {
 	alt_db      *alt_db.AltDBRepository
 	rateLimiter *rate_limiter.HostRateLimiter
@@ -59,9 +74,7 @@ func (g *FetchFeedsGateway) FetchFeeds(ctx context.Context, link string) ([]*dom
 		httpClient = factory.CreateHTTPClient()
 	}
 
-	fp := gofeed.NewParser()
-	fp.Client = httpClient
-	fp.UserAgent = "Alt-RSS-Reader/1.0 (+https://alt.example.com)"
+	fp := newBoundedFeedParser(httpClient)
 	feed, err := fp.ParseURL(link)
 	if err != nil {
 		logger.SafeErrorContext(ctx, "Error parsing feed", "error", err)

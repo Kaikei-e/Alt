@@ -16,6 +16,13 @@ import (
 	"golang.org/x/text/transform"
 )
 
+// maxArticleBodyBytes bounds how much of an article body is read into memory.
+// The transport transparently decompresses gzip (see the Accept-Encoding note in
+// FetchArticleContents), so without a ceiling a few KB on the wire can expand into
+// GBs resident — the same decompression-bomb guard image_fetch_gateway applies
+// via io.LimitReader (ADR-000702).
+const maxArticleBodyBytes = 10 * 1024 * 1024
+
 type FetchArticleGateway struct {
 	rateLimiter   *rate_limiter.HostRateLimiter
 	httpClient    *http.Client
@@ -119,8 +126,18 @@ func (g *FetchArticleGateway) FetchArticleContents(ctx context.Context, articleU
 		return nil, &domain.ExternalHTTPError{StatusCode: resp.StatusCode, URL: parsedURL.String()}
 	}
 
+	// Reject bodies that already advertise more than the ceiling before reading them.
+	if resp.ContentLength > maxArticleBodyBytes {
+		return nil, fmt.Errorf("response body exceeds %d bytes for %q: content length %d", maxArticleBodyBytes, parsedURL.String(), resp.ContentLength)
+	}
+
+	// Bound the body before decoding: the transport hands us a decompressed stream,
+	// so the ceiling has to apply here rather than to the bytes on the wire.
+	// +1 byte of budget so an exhausted limit is distinguishable from an exact fit.
+	limitedBody := &io.LimitedReader{R: resp.Body, N: maxArticleBodyBytes + 1}
+
 	// Decode body to UTF-8 to prevent mojibake
-	reader := bufio.NewReader(resp.Body)
+	reader := bufio.NewReader(limitedBody)
 	// Try to peek up to 1024 bytes; EOF can be acceptable when the body is shorter
 	peek, err := reader.Peek(1024)
 	if err != nil && err != io.EOF && err != bufio.ErrBufferFull {
@@ -131,9 +148,21 @@ func (g *FetchArticleGateway) FetchArticleContents(ctx context.Context, articleU
 	enc, _, _ := charset.DetermineEncoding(peek, resp.Header.Get("Content-Type"))
 	utf8Reader := transform.NewReader(reader, enc.NewDecoder())
 
-	body, err := io.ReadAll(utf8Reader)
+	// Bound the decoded bytes too: an attacker-chosen charset expands past the
+	// pre-decode ceiling (a Shift-JIS/EUC-JP/GB18030 single byte becomes a 3-byte
+	// UTF-8 rune), so a body that fits under limitedBody can still triple here.
+	limitedContent := &io.LimitedReader{R: utf8Reader, N: maxArticleBodyBytes + 1}
+
+	body, err := io.ReadAll(limitedContent)
 	if err != nil {
 		return nil, fmt.Errorf("read response body failed for %q: %w", parsedURL.String(), err)
+	}
+	// A budget is exhausted only when the body was larger than the ceiling.
+	if limitedBody.N <= 0 {
+		return nil, fmt.Errorf("response body exceeds %d bytes for %q", maxArticleBodyBytes, parsedURL.String())
+	}
+	if limitedContent.N <= 0 {
+		return nil, fmt.Errorf("decoded response body exceeds %d bytes for %q", maxArticleBodyBytes, parsedURL.String())
 	}
 	content := string(body)
 	return &content, nil
