@@ -15,21 +15,16 @@ HTTP 200
 [Captures]
 csrf: jsonpath "$.csrf_token"
 
-# KNOWN BUG (recorded, not fixed — production code is out of scope for
-# this suite): FetchFeedSummary's SQL joins article_summaries to
-# `articles a ON a.url = $1`, i.e. it expects an *article* URL, not an
-# RSS *feed* URL — feed URLs are never rows in `articles.url`, so this
-# join is guaranteed zero rows regardless of any other test's ordering.
-# The driver returns pgx.ErrNoRows unwrapped
-# (fetch_feed_details_driver.go:9-32), which HandleError has no
-# not-found branch for (utils/errors/app_context_error.go:42-61 has no
-# NOT_FOUND case) and so falls through to a generic 500
-# UNKNOWN_ERROR — a "just wasn't found" case surfaced as a server error
-# instead of 404. This assertion pins the real, current behavior so a
-# regression (e.g. a panic, or an accidental silent 200) is still
-# caught; see bugs_found in the test-quality report for the suggested
-# fix (map pgx.ErrNoRows to a typed not-found error, same pattern
-# scraping_domain_driver.go already uses for GetScrapingDomainByID).
+# No summary exists for this feed URL (the summary query keys on
+# *article* URLs, and feed URLs are never rows in `articles.url`), so
+# this is the miss branch. History: the pre-split driver surfaced the
+# miss as an unwrapped pgx.ErrNoRows that fell through to a generic 500
+# UNKNOWN_ERROR, and this scenario pinned that wart to catch an
+# accidental silent 200. The Wave 3 data-hub migration (ADR-000954)
+# then made the gateway report a miss as (nil, nil) — exactly the
+# silent 200 this pin existed to catch — so the suggested fix was
+# implemented for real: FeedsSummaryUsecase maps a nil summary to the
+# typed FEED_NOT_FOUND, which HTTPStatusCode maps to 404.
 POST {{base_url}}/v1/feeds/fetch/details
 X-Alt-Backend-Token: {{jwt}}
 X-CSRF-Token: {{csrf}}
@@ -37,9 +32,9 @@ Content-Type: application/json
 {
   "feed_url": "http://stub.invalid/alt-backend/e2e/feed-register-1.xml"
 }
-HTTP 500
+HTTP 404
 [Asserts]
-jsonpath "$.error.code" == "UNKNOWN_ERROR"
+jsonpath "$.error.code" == "FEED_NOT_FOUND"
 
 # feed-register-1.xml is registered by 10-rss-feed-link-register.hurl.
 # FetchFeedTagsGateway.FetchFeedTags is a list query (unlike the

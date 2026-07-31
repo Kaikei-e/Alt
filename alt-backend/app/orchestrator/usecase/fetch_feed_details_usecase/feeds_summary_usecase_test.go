@@ -3,6 +3,7 @@ package fetch_feed_details_usecase
 import (
 	"alt/domain"
 	"alt/mocks"
+	apperrors "alt/utils/errors"
 	"context"
 	"errors"
 	"net/url"
@@ -76,5 +77,27 @@ func TestFeedsSummaryUsecase_Execute(t *testing.T) {
 				t.Errorf("FeedsSummaryUsecase.Execute() = %v, want %v", got, tt.want)
 			}
 		})
+	}
+}
+
+// A (nil, nil) port result is the data-hub gateway's "no summary generated
+// yet" contract (unset field over RPC). At this endpoint's altitude that is
+// a not-found, not a success: returning it as-is made the REST handler emit
+// 200 with a null body, which e2e 24-feeds-details-tags.hurl exists to catch.
+func TestFeedsSummaryUsecase_Execute_NilSummaryIsTypedNotFound(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+	ctx := context.Background()
+
+	mockPort := mocks.NewMockFetchFeedDetailsPort(ctrl)
+	mockPort.EXPECT().FetchFeedDetails(ctx, gomock.Any()).Return(nil, nil).Times(1)
+
+	u := NewFeedsSummaryUsecase(mockPort)
+	got, err := u.Execute(ctx, &url.URL{Scheme: "http", Host: "example.com", Path: "/feed"})
+	if got != nil {
+		t.Fatalf("expected nil summary, got %v", got)
+	}
+	if !errors.Is(err, apperrors.ErrFeedNotFound) {
+		t.Fatalf("expected ErrFeedNotFound, got %v", err)
 	}
 }

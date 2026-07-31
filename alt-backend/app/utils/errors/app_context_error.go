@@ -51,6 +51,8 @@ func (e *AppContextError) HTTPStatusCode() int {
 		return http.StatusGatewayTimeout
 	case "TLS_CERTIFICATE_ERROR":
 		return http.StatusBadRequest
+	case "FEED_NOT_FOUND":
+		return http.StatusNotFound
 	case "DATABASE_ERROR":
 		return http.StatusInternalServerError
 	case "UNKNOWN_ERROR":
