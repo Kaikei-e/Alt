@@ -86,12 +86,27 @@ Run whenever `proto/**` was touched, regardless of which services changed.
 cd proto
 buf lint
 buf breaking --against '.git#branch=main'
-# Regenerate stubs for every consumer of the changed proto file and commit:
-buf generate --template buf.gen.backend-internal.yaml        # alt-backend
-buf generate --template buf.gen.pre-processor-services.yaml  # pre-processor
-buf generate --template buf.gen.search-indexer.yaml          # search-indexer
+# Regenerate stubs for every consumer of the changed proto file and commit.
+# `buf.gen.yaml` is the default template and deliberately excludes alt/datahub
+# (browser bundles must not carry stubs for an mTLS-only surface), so the
+# alt.datahub.v1 contract has one template per module — the provider first,
+# then one per consumer (ADR-000954 D7):
+buf generate --template buf.gen.datahub.yaml                  # alt-data-hub + alt-backend (provider)
+buf generate --template buf.gen.datahub-preprocessor.yaml     # pre-processor
+buf generate --template buf.gen.datahub-searchindexer.yaml    # search-indexer
+buf generate --template buf.gen.datahub-taggen.yaml           # tag-generator
+buf generate --template buf.gen.datahub-rag.yaml              # rag-orchestrator
+# The `services.*` packages that survive (mqhub / preprocessor / search /
+# sovereign) have their own per-module templates:
+buf generate --template buf.gen.alt-backend-services.yaml     # alt-backend
+buf generate --template buf.gen.pre-processor-services.yaml   # pre-processor
+buf generate --template buf.gen.search-indexer.yaml           # search-indexer
 # ... and the other buf.gen.<service>.yaml templates as needed
 ```
+
+`alt.datahub.v1` replaced `services.backend.v1.BackendInternalService`, whose
+template (`buf.gen.backend-internal.yaml`) was deleted with the namespace in
+ADR-000954 Wave 2-C.
 
 ## Database migration
 

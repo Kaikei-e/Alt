@@ -21,7 +21,7 @@ description of what is there rather than a to-do.
 | `:9110/health` answers `{"status":"healthy","service":"alt-harvester"}` | `00-setup.hurl`, `01-operator-surface-only.hurl` |
 | `:9110/metrics` speaks the Prometheus text format | `01-operator-surface-only.hurl` |
 | The user-facing API (`/v1/*`, user Connect services) is absent | `01-operator-surface-only.hurl` |
-| The data plane (`BackendInternalService`, `/v1/internal/*`) is absent | `01-operator-surface-only.hurl` |
+| The data plane (`alt.datahub.v1.DataHubService`, and the retired `services.backend.v1` / `/v1/internal/*` names) is absent | `01-operator-surface-only.hurl` |
 | The admin Connect services are absent | `01-operator-surface-only.hurl` |
 | Nothing is bound on `:9000` / `:9101` / `:9102` / `:9443` | `run.sh` → `assert_transport_refused` |
 

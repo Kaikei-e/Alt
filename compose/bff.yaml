@@ -40,7 +40,8 @@ services:
       # Why it is off after the 3-binary split (ADR-000954): this service
       # proxies alt-backend's *browser* Connect services and its *admin*
       # Connect services, and neither moved to alt-data-hub. cmd/datahub
-      # registers exactly one handler — BackendInternalService — and its
+      # registers exactly one handler — `alt.datahub.v1.DataHubService`
+      # (ADR-000954 D7) — and its
       # dataHubHandler 404s everything else, so repointing this hop at
       # https://alt-data-hub:9443 would connect and then 404 every RPC.
       # cmd/backend, meanwhile, no longer opens an mTLS listener at all

@@ -38,6 +38,11 @@ func createValidAdminToken(t *testing.T, secret []byte) string {
 // deputy: a self-registered user with a valid session could reach the
 // service-to-service RPC surface through the product's own /api/v2 proxy.
 // Those paths must die at the BFF regardless of how good the caller's token is.
+//
+// ADR-000954 renamed the data plane: `services.backend.v1.BackendInternalService`
+// is gone and its capabilities live on `alt.datahub.v1.DataHubService` in
+// alt-data-hub. The retired path is kept in the table below on purpose — it
+// must stay refused, not merely unrouted — and the live one is added beside it.
 func TestServer_RejectsServiceToServiceConnectPaths(t *testing.T) {
 	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		t.Errorf("service-to-service path must not reach alt-backend, got %s", r.URL.Path)
@@ -55,8 +60,10 @@ func TestServer_RejectsServiceToServiceConnectPaths(t *testing.T) {
 	h := NewServerWithTransport(cfg, nil, http.DefaultTransport)
 
 	paths := []string{
+		"/alt.datahub.v1.DataHubService/CreateArticle",
+		"/alt.datahub.v1.DataHubService/ListArticlesWithTags",
+		"/alt.datahub.v1.DataHubService/ListRecapArticles",
 		"/services.backend.v1.BackendInternalService/CreateArticle",
-		"/services.backend.v1.BackendInternalService/ListArticlesWithTags",
 		"/services.sovereign.v1.KnowledgeSovereignService/ListKnowledgeEvents",
 	}
 

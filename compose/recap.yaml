@@ -103,10 +103,12 @@ services:
       - MTLS_CERT_FILE=/certs/svc-cert.pem
       - MTLS_KEY_FILE=/certs/svc-key.pem
       - MTLS_CA_FILE=/trust/ca-bundle.pem
-      # Outbound mTLS to the data plane. The recap article reads
-      # (BackendInternalService + /v1/internal) moved out of alt-backend in
-      # the 3-binary split (ADR-000954); cmd/backend opens no mTLS listener
-      # any more and cmd/datahub serves that surface alone.
+      # Outbound mTLS to the data plane. The recap article reads moved out of
+      # alt-backend in the 3-binary split (ADR-000954); cmd/backend opens no
+      # mTLS listener any more and cmd/datahub serves that surface alone, as
+      # `alt.datahub.v1.DataHubService` (the old
+      # `services.backend.v1.BackendInternalService` and the `/v1/internal`
+      # REST pair were both deleted in Wave 2-C).
       # pipeline/orchestrator.rs and pipeline/morning.rs derive SNI from this
       # URL's host, so `alt-data-hub` must be a SAN of the leaf
       # pki-agent-alt-data-hub mints (CERT_SANS=alt-data-hub,localhost) — it

@@ -32,10 +32,17 @@ builds it in a preceding job step; locally, build it first:
 
 ```bash
 docker build \
+  --build-arg BINARY=backend \
   -t ghcr.io/kaikei-e/alt-alt-backend:ci \
   -f alt-backend/Dockerfile.backend \
   alt-backend
 ```
+
+`--build-arg BINARY=backend` is required, not optional: one Dockerfile and one
+Go module produce all three split binaries, so `BINARY` selects `./cmd/<BINARY>`
+(`backend` | `harvester` | `datahub`) and the Dockerfile fails the build outright
+when it is unset rather than defaulting to one of them (ADR-000954). The sibling
+suites pass `harvester` / `datahub` to the same command.
 
 ## Authentication
 
@@ -100,13 +107,13 @@ upstream to fetch. The hostname is allowlisted on alt-backend via
 
 ## Split topology (alt-backend / alt-harvester / alt-data-hub)
 
-alt-backend is being split into three containers:
+alt-backend is split into three containers (ADR-000954, Waves 1-3 landed):
 
 | Container | Surface |
 |---|---|
-| `alt-backend` | user-facing `:9000` REST + `:9101` Connect, plus the loopback operator listener that keeps the admin Connect services |
+| `alt-backend` | user-facing `:9000` REST + `:9101` Connect, plus the loopback operator listener (`:9102`) that keeps the admin Connect services, and `:9110` for health + metrics |
 | `alt-harvester` | scheduled jobs; `:9110` health + metrics and nothing else |
-| `alt-data-hub` | `BackendInternalService` and `/v1/internal/*` over mTLS on `:9443`; no published port |
+| `alt-data-hub` | `alt.datahub.v1.DataHubService` over mTLS on `:9443`, plus `:9110` health + metrics; no published port |
 
 `03-topology-internal-surface-absent.hurl` holds this suite's half of that
 contract: the user-facing ports keep answering exactly what they answered
@@ -114,12 +121,12 @@ before, and every service-to-service surface returns **404** on them — not
 401, which would mean the routes are still registered here and only a
 middleware stands between the public NIC and them.
 
-The other half — that the internal surfaces *do* answer on alt-data-hub over
+The other half — that the data plane *does* answer on alt-data-hub over
 mTLS, and that alt-harvester serves nothing but its operator listener —
 lives in [`../alt-data-hub/`](../alt-data-hub/) and
-[`../alt-harvester/`](../alt-harvester/). Neither is green yet: they are the
-outside-in RED for the split, and their READMEs list what has to exist for
-them to pass.
+[`../alt-harvester/`](../alt-harvester/). Both now run as their own jobs in
+`.github/workflows/e2e-hurl.yml`, built from this same Dockerfile with
+`--build-arg BINARY=datahub` / `BINARY=harvester`.
 
 `72-admin-emit-article-url-backfill.hurl` keeps working as written. The
 admin Connect services do not move to alt-data-hub — they stay on this

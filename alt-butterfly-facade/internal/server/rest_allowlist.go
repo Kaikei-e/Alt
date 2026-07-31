@@ -21,11 +21,35 @@ import "strings"
 // (ADR-000729 Phase 3, boundary enforcement, has not landed yet). Treat this
 // list as a signal for what to migrate next, not as an access-control
 // mechanism.
-// serviceToServicePrefix is the proto package prefix of alt-backend's
-// service-to-service Connect-RPC surface. Nothing behind it authenticates the
-// caller, so the BFF — which reaches alt-backend as a trusted mTLS peer —
-// must never forward a browser-supplied path under it.
-const serviceToServicePrefix = "/services."
+// serviceToServicePrefixes are the proto package prefixes of the east-west
+// Connect-RPC surface. Nothing behind them authenticates an end user, so the
+// BFF — which reaches its upstreams as a trusted mTLS peer — must never
+// forward a browser-supplied path under one of them.
+//
+//   - `/services.` covers the remaining `services.*` packages (mqhub,
+//     preprocessor, search, sovereign).
+//   - `/alt.datahub.v1.` covers alt-data-hub's DataHubService. ADR-000954
+//     moved the data plane out of `services.backend.v1.BackendInternalService`
+//     into `alt.datahub.v1.DataHubService`, which does not share the
+//     `services.` prefix, so it needs its own entry. alt-data-hub is
+//     reachable over mTLS only and the BFF is not in its peer allowlist, but
+//     the deny stays at the edge: the point is that a caller-chosen path is
+//     never forwarded, not that the upstream happens to refuse it today.
+var serviceToServicePrefixes = []string{
+	"/services.",
+	"/alt.datahub.v1.",
+}
+
+// isServiceToServicePath reports whether path targets the east-west
+// Connect-RPC surface and must therefore be refused at the BFF edge.
+func isServiceToServicePath(path string) bool {
+	for _, prefix := range serviceToServicePrefixes {
+		if strings.HasPrefix(path, prefix) {
+			return true
+		}
+	}
+	return false
+}
 
 var restAllowlistPrefixes = []string{
 	"/v1/images/proxy/",

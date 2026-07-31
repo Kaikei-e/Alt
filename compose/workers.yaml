@@ -80,10 +80,12 @@ services:
       - MTLS_CA_FILE=/trust/ca-bundle.pem
       - MTLS_CLIENT_AUTH=${SEARCH_INDEXER_MTLS_CLIENT_AUTH:-}
       - MTLS_ALLOWED_PEERS=${SEARCH_INDEXER_MTLS_ALLOWED_PEERS:-}
-      # Outbound mTLS to the data plane. BackendInternalService moved out of
+      # Outbound mTLS to the data plane. The data plane moved out of
       # alt-backend in the 3-binary split (ADR-000954) — cmd/backend opens no
-      # mTLS listener at all now, cmd/datahub serves that surface and nothing
-      # else. This container's leaf is CN/SAN `search-indexer`, which is in
+      # mTLS listener at all now, cmd/datahub serves `alt.datahub.v1.
+      # DataHubService` and nothing else, and the old
+      # `services.backend.v1.BackendInternalService` namespace was deleted
+      # outright in Wave 2-C. This container's leaf is CN/SAN `search-indexer`, which is in
       # alt-data-hub's DATAHUB_ALLOWED_PEERS (compose/core.yaml).
       - MTLS_ENFORCE=${SEARCH_INDEXER_MTLS_ENFORCE:-true}
       - BACKEND_API_MTLS_URL=https://alt-data-hub:9443
@@ -92,8 +94,9 @@ services:
       # CERT_SANS=alt-data-hub,localhost).
       - BACKEND_MTLS_SERVER_NAME=alt-data-hub
       # Plaintext fallback used only when MTLS_ENFORCE is off. :9102 is
-      # alt-backend's operator listener and no longer carries
-      # BackendInternalService — see the note in compose/core.yaml.
+      # alt-backend's operator listener and carries no data plane at all —
+      # `alt.datahub.v1.DataHubService` is alt-data-hub's, over mTLS only.
+      # See the note in compose/core.yaml.
       - BACKEND_API_URL=http://alt-backend:9102
       - MEILISEARCH_HOST=${MEILISEARCH_HOST}
       - MEILISEARCH_API_KEY_FILE=/run/secrets/meili_master_key
@@ -164,9 +167,10 @@ services:
       # mTLS :9443 served by pki-agent-tag-generator (shares net ns via network_mode)
     environment:
       # Plaintext fallback used only when MTLS_ENFORCE is off. :9102 is
-      # alt-backend's operator listener and no longer carries
-      # BackendInternalService — see the note in compose/core.yaml. The data
-      # plane has no plaintext listener (ADR-000954), so MTLS_ENFORCE defaults
+      # alt-backend's operator listener and carries no data plane at all —
+      # `alt.datahub.v1.DataHubService` is alt-data-hub's. See the note in
+      # compose/core.yaml. The data plane has no plaintext listener
+      # (ADR-000954), so MTLS_ENFORCE defaults
       # to on; flipping it off breaks tag persistence, it is not a fallback.
       - BACKEND_API_URL=http://alt-backend:9102
       - MTLS_ENFORCE=${TAG_GENERATOR_MTLS_ENFORCE:-true}
@@ -176,8 +180,9 @@ services:
       # trust X-Alt-Peer-Identity header iff the sidecar above
       # enforces client certs. Must track TAG_GENERATOR_VERIFY_CLIENT.
       - PEER_IDENTITY_TRUSTED=${TAG_GENERATOR_VERIFY_CLIENT:-on}
-      # Outbound mTLS to the data plane. BackendInternalService moved out of
-      # alt-backend in the 3-binary split (ADR-000954); cmd/datahub serves it.
+      # Outbound mTLS to the data plane. The data plane moved out of
+      # alt-backend in the 3-binary split (ADR-000954); cmd/datahub serves it
+      # as `alt.datahub.v1.DataHubService`.
       # driver/connect_client_factory.py derives SNI from this URL's host, so
       # `alt-data-hub` must be a SAN of the leaf pki-agent-alt-data-hub mints
       # (CERT_SANS=alt-data-hub,localhost) — it is. This container's own leaf

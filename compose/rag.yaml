@@ -126,9 +126,11 @@ services:
       # and ALT_BACKEND_CONNECT_URL used to sit here, both pointed at
       # http://alt-backend:9102, and both had been dead since the 3-binary
       # split: :9102 is alt-backend's admin-only operator listener now, and
-      # neither /v1/internal/articles/recent nor BackendInternalService is
-      # served there. alt-data-hub is the sole owner of alt_db and answers
-      # alt.datahub.v1.DataHubService behind mutual TLS.
+      # neither /v1/internal/articles/recent nor any data-plane RPC is served
+      # there. alt-data-hub is the sole owner of alt_db and answers
+      # alt.datahub.v1.DataHubService behind mutual TLS. (The
+      # `services.backend.v1.BackendInternalService` namespace that used to
+      # carry these RPCs was deleted in Wave 2-C.)
       #
       # config.loadDataHub fail-fasts on an unset or non-https value, so a
       # forgotten line here is a container that does not start rather than one

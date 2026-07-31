@@ -329,14 +329,14 @@ func NewServerWithTransports(
 	// Register proxy handler for all other paths
 	// Connect-RPC uses paths like /alt.feeds.v2.FeedService/GetFeedStats.
 	//
-	// The `services.*` proto package is the service-to-service surface, which
-	// has no user-JWT interceptor on the far side. The BFF is a legitimate
-	// mTLS peer of alt-backend, so forwarding a caller-chosen path here would
-	// make it a confused deputy for any account that can obtain a session.
-	// Reject the whole package at the edge rather than trusting the upstream
-	// mux to have stopped serving it.
+	// The `services.*` and `alt.datahub.v1.*` proto packages are the
+	// service-to-service surface, which has no user-JWT interceptor on the far
+	// side. The BFF is a legitimate mTLS peer of alt-backend, so forwarding a
+	// caller-chosen path here would make it a confused deputy for any account
+	// that can obtain a session. Reject the whole package at the edge rather
+	// than trusting the upstream mux to have stopped serving it.
 	mux.Handle("/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if strings.HasPrefix(r.URL.Path, serviceToServicePrefix) {
+		if isServiceToServicePath(r.URL.Path) {
 			if logger != nil {
 				logger.WarnContext(r.Context(), "BFF rejected service-to-service Connect-RPC path",
 					"path", r.URL.Path,

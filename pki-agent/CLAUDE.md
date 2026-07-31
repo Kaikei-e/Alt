@@ -3,9 +3,30 @@
 ## Overview
 
 Single-responsibility mTLS cert lifecycle sidecar. One instance per east-west
-service (alt-backend, auth-hub, pre-processor, search-indexer, tag-generator,
-recap-worker, acolyte-orchestrator, alt-butterfly-facade). Replaces the
-brittle compose-embedded `*-cert-init` + `*-cert-renewer` shell pair.
+service — **13 subjects** as of ADR-000954:
+
+```
+alt-backend      alt-harvester    alt-data-hub     alt-butterfly-facade
+auth-hub         pre-processor    search-indexer   tag-generator
+recap-worker     recap-subworker  news-creator     rag-orchestrator
+acolyte-orchestrator
+```
+
+`alt-harvester` and `alt-data-hub` joined in ADR-000954, which split
+alt-backend into three binaries: the harvester is an mTLS *client*
+(outbox-worker → rag-orchestrator, all jobs → alt-data-hub:9443) and
+alt-data-hub is the mTLS *server* for the data plane, whose only listener is
+`:9443` with a fail-closed peer allowlist.
+
+The authoritative list is `SUBJECTS` in
+`pki-agent/scripts/bootstrap-pki-provisioner.sh`, kept in lockstep with
+`EXPECTED_CNS` in `pki-agent/scripts/verify-cn-allowlist.sh` and with the
+`pki-agent-*` services in `compose/pki.yaml`. Adding a service means adding it
+to the step-ca CN allowlist **first** — otherwise the sidecar cannot mint a
+leaf, goes unhealthy, and `depends_on` keeps the whole stack down.
+
+Replaces the brittle compose-embedded `*-cert-init` + `*-cert-renewer` shell
+pair.
 
 Responsibility (strictly one): keep `/certs/svc-cert.pem` + `/certs/svc-key.pem`
 inside the target volume within its validity window. Period.

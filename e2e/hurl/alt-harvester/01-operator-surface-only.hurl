@@ -63,18 +63,26 @@ HTTP 404
 
 # --- the data plane is not here either ------------------------------------
 #
-# alt-harvester reads and writes the same database as alt-data-hub, so the
-# tempting shortcut is to let it re-register BackendInternalService "since
-# the gateway is already linked in". That would restore exactly the
+# alt-harvester is a *client* of alt-data-hub's database, so the tempting
+# shortcut is to let it re-register DataHubService "since the gateway is
+# already linked in". That would restore exactly the
 # many-surfaces-one-binary shape the split exists to remove, and it would do
 # it on a plaintext port with no peer allowlist in front.
 
-POST {{ops_url}}/services.backend.v1.BackendInternalService/CreateArticle
+POST {{ops_url}}/alt.datahub.v1.DataHubService/CreateArticle
 Content-Type: application/json
 {}
 HTTP 404
 
-POST {{ops_url}}/services.backend.v1.BackendInternalService/GetLatestArticleTimestamp
+POST {{ops_url}}/alt.datahub.v1.DataHubService/GetLatestArticleTimestamp
+Content-Type: application/json
+{}
+HTTP 404
+
+# The retired name (ADR-000954 Wave 2-C deleted `services.backend.v1` from
+# the proto tree) must not come back here as a compatibility shim either.
+
+POST {{ops_url}}/services.backend.v1.BackendInternalService/CreateArticle
 Content-Type: application/json
 {}
 HTTP 404

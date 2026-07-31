@@ -8,9 +8,12 @@
 #   :9101   user-facing Connect
 #
 # Nothing that authenticates a *service* rather than a user may be reachable
-# on either. BackendInternalService and the /v1/internal/* REST routes move
-# out of this binary entirely, to alt-data-hub behind mTLS
-# (di/datahub/container.go). The admin Connect services do not move — they
+# on either. The data plane and the /v1/internal/* REST routes move out of
+# this binary entirely, to alt-data-hub behind mTLS
+# (di/datahub/container.go), where they are served as
+# `alt.datahub.v1.DataHubService` (ADR-000954 Wave 2-C retired the
+# `services.backend.v1.BackendInternalService` name outright). The admin
+# Connect services do not move — they
 # stay on this binary's loopback-bound operator listener — so for them the
 # claim is narrower but just as load-bearing: not on a port the public NIC
 # can reach.
@@ -67,27 +70,39 @@ HTTP *
 [Asserts]
 status != 404
 
-# --- BackendInternalService must not exist on the user-facing Connect port -
+# --- DataHubService must not exist on the user-facing Connect port ---------
 #
 # One procedure per shape of caller: pre-processor's write path, the
 # search-indexer read path, and the recap-worker path that the recap
 # pipeline stub still mounts (e2e/stubs/recap-pipeline-stub/main.py).
 # Their post-split home is asserted positively in
-# ../alt-data-hub/01-backend-internal-service.hurl.
+# ../alt-data-hub/04-datahub-service.hurl.
+
+POST {{connect_url}}/alt.datahub.v1.DataHubService/CreateArticle
+X-Alt-Backend-Token: {{jwt}}
+Content-Type: application/json
+{}
+HTTP 404
+
+POST {{connect_url}}/alt.datahub.v1.DataHubService/ListArticlesWithTags
+X-Alt-Backend-Token: {{jwt}}
+Content-Type: application/json
+{}
+HTTP 404
+
+POST {{connect_url}}/alt.datahub.v1.DataHubService/ListRecapArticles
+X-Alt-Backend-Token: {{jwt}}
+Content-Type: application/json
+{}
+HTTP 404
+
+# The retired name must stay dead too. Wave 2-C deleted
+# `services.backend.v1` from the proto tree, so this is a regression fence
+# against anyone re-adding a compatibility shim on the browser-facing mux.
+# ../alt-data-hub/01-retired-connect-namespace-absent.hurl asserts the same
+# for the data plane's own listener.
 
 POST {{connect_url}}/services.backend.v1.BackendInternalService/CreateArticle
-X-Alt-Backend-Token: {{jwt}}
-Content-Type: application/json
-{}
-HTTP 404
-
-POST {{connect_url}}/services.backend.v1.BackendInternalService/ListArticlesWithTags
-X-Alt-Backend-Token: {{jwt}}
-Content-Type: application/json
-{}
-HTTP 404
-
-POST {{connect_url}}/services.backend.v1.BackendInternalService/ListRecapArticles
 X-Alt-Backend-Token: {{jwt}}
 Content-Type: application/json
 {}
@@ -115,13 +130,13 @@ Content-Type: application/json
 {}
 HTTP 404
 
-# --- BackendInternalService must not exist on the REST port either ---------
+# --- DataHubService must not exist on the REST port either -----------------
 #
 # :9000 is an Echo router, not a Connect mux, so a Connect path here can only
 # ever be an unmatched route. Asserting it anyway pins the negative: a future
 # "just proxy the internal RPCs through the REST server" shortcut breaks here.
 
-POST {{base_url}}/services.backend.v1.BackendInternalService/CreateArticle
+POST {{base_url}}/alt.datahub.v1.DataHubService/CreateArticle
 X-Alt-Backend-Token: {{jwt}}
 X-CSRF-Token: {{csrf}}
 Content-Type: application/json

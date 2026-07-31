@@ -236,10 +236,11 @@ services:
       - MTLS_CA_FILE=/trust/ca-bundle.pem
       - MTLS_CLIENT_AUTH=${PRE_PROCESSOR_MTLS_CLIENT_AUTH:-}
       - MTLS_ALLOWED_PEERS=${PRE_PROCESSOR_MTLS_ALLOWED_PEERS:-}
-      # Outbound mTLS to the data plane. BackendInternalService and
-      # /v1/internal moved out of alt-backend in the 3-binary split
+      # Outbound mTLS to the data plane. The data plane and /v1/internal
+      # moved out of alt-backend in the 3-binary split
       # (ADR-000954): cmd/backend opens no mTLS listener at all, and
-      # cmd/datahub is the only process serving that surface. The leaf this
+      # cmd/datahub is the only process serving that surface, as
+      # `alt.datahub.v1.DataHubService`. The leaf this
       # container presents has CN/SAN `pre-processor`, which is in
       # alt-data-hub's DATAHUB_ALLOWED_PEERS (compose/core.yaml).
       - MTLS_ENFORCE=${PRE_PROCESSOR_MTLS_ENFORCE:-true}
@@ -248,8 +249,9 @@ services:
       # the SAN pki-agent-alt-data-hub mints (CERT_SANS=alt-data-hub,localhost).
       - BACKEND_MTLS_SERVER_NAME=alt-data-hub
       # Plaintext fallback used only when MTLS_ENFORCE is off. :9102 is
-      # alt-backend's operator listener and no longer carries
-      # BackendInternalService — see the note in compose/core.yaml.
+      # alt-backend's operator listener and carries no data plane at all —
+      # `alt.datahub.v1.DataHubService` is alt-data-hub's, over mTLS only.
+      # See the note in compose/core.yaml.
       - BACKEND_API_URL=http://alt-backend:9102
       - ALT_BACKEND_HOST=http://alt-backend:9102
       # Pre-processor dedicated DB (ADR-000246)

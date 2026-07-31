@@ -26,8 +26,28 @@ all interfaces and are out of scope here.
 |---------|----------|--------------|--------------|-----------------|-------|
 | plecto-proxy | Rust (PlectoProxy 0.6.0) | 80 → 8443, 8080 | core.yaml | `plecto healthz` / admin `/healthz` `/readyz` (:8080) | Edge/ingress; replaced nginx. Routes in `plecto/manifest.toml` |
 | alt-frontend-sv | TypeScript (SvelteKit 2.x) | 4173 | core.yaml | `/health` | Knowledge Home admin at `/admin/knowledge-home` |
-| alt-backend | Go 1.26+ (Echo) | 9000, 9101, 9102 | core.yaml | `/v1/health` | Knowledge Home (event sourcing, projector, backfill, reproject, SLO) |
+| alt-backend | Go 1.26+ (Echo) | 9000, 9101, 9102 | core.yaml | `/v1/health` (:9000), `/health` (:9110) | User-facing API. Knowledge Home (event sourcing, projector, reproject, SLO) |
+| alt-harvester | Go 1.26+ | なし | core.yaml | `/health` (:9110) | 7 定期ジョブ専用。業務リスナーなし |
+| alt-data-hub | Go 1.26+ | なし | core.yaml | `/health` (:9110) | alt-db の唯一のオーナー。mTLS `:9443` のみ |
 | alt-butterfly-facade | Go 1.26+ | 9250 | bff.yaml | `/alt-butterfly-facade healthcheck` | Knowledge Home Admin API routing |
+
+> **alt-backend / alt-harvester / alt-data-hub は 1 ディレクトリ 3 バイナリ**（[[000954]]）。
+> `alt-backend/app` という単一 Go モジュール (`module alt`) から `cmd/backend` /
+> `cmd/harvester` / `cmd/datahub` の 3 本を切り出し、同じ `alt-backend/Dockerfile.backend`
+> を `--build-arg BINARY=backend|harvester|datahub` で 3 イメージにビルドする
+> （`BINARY` 未指定はビルド失敗）。責務は次のとおり。
+>
+> | バイナリ | 責務 | リスナー |
+> |---|---|---|
+> | `alt-backend` (`cmd/backend`) | ユーザ向け API。BFF が叩く面 | REST `:9000` / Connect `:9101` / オペレータ `:9102`（admin Connect 2 サービス、loopback バインド）/ ops `:9110` |
+> | `alt-harvester` (`cmd/harvester`) | `orchestrator/job/` の 7 定期ジョブ | ops `:9110` のみ（業務リスナーなし） |
+> | `alt-data-hub` (`cmd/datahub`) | alt-db の唯一のオーナー。`alt.datahub.v1.DataHubService` を serve | mTLS `:9443` + ops `:9110`。**publish ゼロ** |
+>
+> `:9110` は 3 バイナリ共通の ops リスナー（`bootstrap.NewOpsHandler`）で、
+> `/health` と `/metrics` を出す。ホストには publish されない。
+> alt-backend / alt-harvester は DB 依存ゼロ（`go list -deps` の CI ガードで強制）であり、
+> DB DSN と DB secret は alt-data-hub の専有。旧 `services.backend.v1.BackendInternalService`
+> と `/v1/internal/*` REST は削除済み。
 
 ### Worker Services
 | Service | Language | Port(s) | Compose File | Health Endpoint |
@@ -103,7 +123,7 @@ all interfaces and are out of scope here.
 | Service | Language | Port(s) | Compose File | Health Endpoint |
 |---------|----------|---------|--------------|-----------------|
 | rask-log-aggregator | Rust 1.94+ (Axum) | 9600, 4317, 4318 | logging.yaml | `/rask-log-aggregator healthcheck` |
-| rask-log-forwarder (13x) | Rust 1.94+ | - | logging.yaml | - |
+| rask-log-forwarder (16x) | Rust 1.94+ | - | logging.yaml | - |
 
 ### CLI & Tools
 | Service | Language | Description |
@@ -118,7 +138,7 @@ all interfaces and are out of scope here.
 | Compose File | Services | Profile |
 |--------------|----------|---------|
 | base.yaml | 共通設定 (networks, volumes, secrets) | - |
-| core.yaml | plecto-proxy, alt-frontend-sv, alt-backend, migrate | default |
+| core.yaml | plecto-proxy, alt-frontend-sv, alt-backend, alt-harvester, alt-data-hub, migrate | default |
 | bff.yaml | alt-butterfly-facade | default |
 | db.yaml | db, meilisearch, clickhouse, pre-processor-db, pre-processor-db-migrator | default |
 | auth.yaml | kratos-db, kratos, kratos-migrate, auth-hub | default |
@@ -130,7 +150,7 @@ all interfaces and are out of scope here.
 | acolyte.yaml | acolyte-db, acolyte-db-migrator, acolyte-orchestrator | acolyte |
 | sovereign.yaml | knowledge-sovereign-db, knowledge-sovereign-db-migrator, knowledge-sovereign | - |
 | pki.yaml | step-ca, step-ca-bootstrap, per-service pki-agent sidecars | - |
-| logging.yaml | rask-log-aggregator, 13x rask-log-forwarder | logging |
+| logging.yaml | rask-log-aggregator, 16x rask-log-forwarder | logging |
 | perf.yaml | alt-perf | perf |
 | compose.tts.yaml | tts-speaker | standalone |
 | compose.augur.yaml | knowledge-augur, knowledge-augur-volume-init, knowledge-embedder, knowledge-embedder-volume-init | standalone |
@@ -153,8 +173,11 @@ flowchart TB
         alt-butterfly-facade
     end
 
-    subgraph Backend["Backend"]
+    subgraph Backend["Backend (1 module, 3 binaries — ADR-000954)"]
+        direction LR
         alt-backend
+        alt-harvester
+        alt-data-hub
     end
 
     subgraph Auth["Auth"]
@@ -220,14 +243,21 @@ flowchart TB
     %% Request flow (plecto upstreams: alt-frontend-sv, alt-backend, kratos, dashboard)
     plecto-proxy --> alt-frontend-sv & alt-backend & kratos
     alt-frontend-sv --> alt-butterfly-facade --> alt-backend
-    alt-backend --> db & mq-hub & auth-hub
-    alt-backend -.->|"Knowledge Home\n(event sourcing)"| db
+    alt-backend --> mq-hub & auth-hub
     auth-hub --> kratos --> kratos-db
 
-    %% Worker connections (ADR-000241: via alt-backend Internal API)
-    search-indexer --> alt-backend & meilisearch
-    tag-generator --> alt-backend & redis-streams
-    pre-processor --> db & alt-backend & redis-streams
+    %% alt-db ownership (ADR-000241 + ADR-000954): alt-data-hub is the only
+    %% process holding a DB DSN. Everyone else, alt-backend and alt-harvester
+    %% included, goes through alt.datahub.v1.DataHubService over mTLS :9443.
+    alt-data-hub --> db
+    alt-backend -->|"alt.datahub.v1 / mTLS"| alt-data-hub
+    alt-harvester -->|"alt.datahub.v1 / mTLS"| alt-data-hub
+    alt-data-hub -.->|"Knowledge Home\n(event sourcing)"| db
+
+    %% Worker connections
+    search-indexer --> alt-data-hub & meilisearch
+    tag-generator --> alt-data-hub & redis-streams
+    pre-processor --> alt-data-hub & redis-streams
     news-creator --> redis-cache
     mq-hub --> redis-streams
 
@@ -244,7 +274,8 @@ flowchart TB
     %% Pipeline connections
     recap-worker --> recap-db & recap-subworker & news-creator
     recap-subworker & dashboard & recap-evaluator --> recap-db
-    rag-orchestrator --> rag-db & search-indexer
+    rag-orchestrator --> rag-db & search-indexer & alt-data-hub
+    recap-worker --> alt-data-hub
 
     %% Acolyte connections
     alt-butterfly-facade -.-> acolyte-orchestrator
@@ -261,6 +292,8 @@ flowchart TB
 
     %% Styling - Backend (indigo)
     style alt-backend fill:#e8eaf6,stroke:#3f51b5,color:#1a237e,stroke-width:2px
+    style alt-harvester fill:#e8eaf6,stroke:#3f51b5,color:#1a237e,stroke-width:2px
+    style alt-data-hub fill:#e8eaf6,stroke:#3f51b5,color:#1a237e,stroke-width:3px
 
     %% Styling - Auth (pink)
     style kratos fill:#fce4ec,stroke:#c2185b,color:#880e4f,stroke-width:2px
@@ -346,7 +379,7 @@ and nowhere else. `(→ N)` is the in-container port when it differs from the ho
 9011    → rag-orchestrator (Connect-RPC)
 9090    → prometheus
 9101    → alt-backend (Connect-RPC)
-9102    → alt-backend (internal/admin, unauthenticated — loopback only)
+9102    → alt-backend (admin Connect only, unauthenticated — loopback only)
 9200    → pre-processor (REST)
 9201    → auth-token-manager
 9202    → pre-processor (Connect-RPC)
@@ -367,10 +400,16 @@ and nowhere else. `(→ N)` is the in-container port when it differs from the ho
 ```
 
 **No host port at all** — reachable only from inside `alt-network` via the container
-DNS name: `auth-hub` (:8888), `kratos` admin (:4434), `pgbouncer` (:6432),
+DNS name: `alt-harvester` (:9110), `alt-data-hub` (:9443 mTLS, :9110),
+`auth-hub` (:8888), `kratos` admin (:4434), `pgbouncer` (:6432),
 `rask-log-aggregator` (:9600, :4317, :4318), `redis-cache`, `pre-processor-sidecar`,
 `step-ca`, and every `pki-agent-*` sidecar. `curl http://localhost:<port>` against any
 of these cannot work; use `docker compose exec <service> …` instead.
+
+`alt-data-hub` の publish ゼロは意図的な境界であり、
+`scripts/compose-port-audit.py` が CI で門にしている（[[000954]] D5）。
+`:9443` は mTLS 専用で peer allowlist (`DATAHUB_ALLOWED_PEERS`) を通らない証明書は
+拒否されるため、`curl` では到達できない。3 バイナリ共通の `:9110` も publish されない。
 
 ---
 
@@ -519,6 +558,8 @@ docker compose -f compose/compose.yaml -p alt exec kratos \
 | Service | Documentation |
 |---------|---------------|
 | alt-backend | [docs/alt-backend.md](./alt-backend.md) |
+| alt-harvester | [docs/alt-backend.md](./alt-backend.md) (同一モジュール。分割の根拠は [[000954]]) |
+| alt-data-hub | [docs/alt-backend.md](./alt-backend.md) (同一モジュール。分割の根拠は [[000954]]) |
 | alt-frontend | [docs/alt-frontend.md](./alt-frontend.md) (deprecated) |
 | alt-frontend-sv | [docs/alt-frontend-sv.md](./alt-frontend-sv.md) |
 | alt-butterfly-facade | [docs/alt-butterfly-facade.md](./alt-butterfly-facade.md) |
@@ -556,10 +597,10 @@ docker compose -f compose/compose.yaml -p alt exec kratos \
 
 - Inter-service communication via HTTP/REST or Connect-RPC (Protocol Buffers)
 - Authentication via auth-hub X-Alt-* headers or JWT tokens
-- Service-to-service auth: `X-Service-Token` + `SERVICE_SECRET`
+- Service-to-service auth: mTLS のみ。`X-Service-Token` / `SERVICE_SECRET` は [[000743]] で全サービスから撤去済み
 - Event-driven via Redis Streams + mq-hub
-- alt-backend is the sole data owner for alt-db. search-indexer, tag-generator, pre-processor access data via Connect-RPC Internal API (:9101) (ADR-000241)
+- **alt-data-hub is the sole data owner for alt-db** ([[000241]] の原則を [[000954]] がプロセス境界として物理化)。alt-backend / alt-harvester を含む全 consumer は `alt.datahub.v1.DataHubService`（Connect-RPC、mTLS `:9443`）経由でのみ alt-db に触れる。consumer は alt-backend / alt-harvester / pre-processor / search-indexer / tag-generator / recap-worker / rag-orchestrator の 7 主体で、`DATAHUB_ALLOWED_PEERS` が peer CN で fail-closed に検証する
 - GPU requirements: news-creator, recap-subworker (NVIDIA GPU); tts-speaker, knowledge-augur (AMD ROCm iGPU, CPU fallback available)
 - Log aggregation: rask-log-forwarder → rask-log-aggregator → ClickHouse
-- Tag Verse (3D tag cloud): alt-backend `FetchTagCloud` RPC → Barnes-Hut O(n log n) server-side layout → alt-frontend-sv (Three.js/Threlte v8 WebGPU); tag co-occurrence data from PostgreSQL `feed_tags` × `article_tags` CTE query, 30 min TTL cache
-- **Knowledge Home**: Event-sourced personalized feed (CQRS pattern). alt-backend hosts projector, backfill, and reproject jobs. 9 tables in alt-db (`knowledge_events`, `knowledge_home_items`, `knowledge_user_events`, `knowledge_projection_checkpoints`, `knowledge_backfill_jobs`, `knowledge_projection_versions`, `knowledge_lenses`, `knowledge_reproject_runs`, `knowledge_projection_audits`). Admin API accessible via alt-butterfly-facade with service-token auth. altctl provides CLI commands (`home reproject`, `home slo`). Frontend admin at `/admin/knowledge-home`. SLO framework with 5 SLIs and multi-window burn-rate alerting
+- Tag Verse (3D tag cloud): alt-backend `alt.articles.v2` `FetchTagCloud` RPC → Barnes-Hut O(n log n) server-side layout → alt-frontend-sv (Three.js/Threlte v8 WebGPU); tag co-occurrence data は alt-data-hub の `alt.datahub.v1` `FetchTagCloud` capability 経由（`feed_tags` × `article_tags` CTE query）、alt-backend 側で 30 min TTL キャッシュ。定期ジョブ `tag-cloud-cache-warmer` は [[000954]] Wave 1 で廃止され、初回リクエスト時の遅延ウォームに置き換わっている（プロセス内キャッシュを別プロセスから温めても効かないため）
+- **Knowledge Home**: Event-sourced personalized feed (CQRS pattern). alt-backend hosts projector, backfill, and reproject jobs. 9 tables in alt-db (`knowledge_events`, `knowledge_home_items`, `knowledge_user_events`, `knowledge_projection_checkpoints`, `knowledge_backfill_jobs`, `knowledge_projection_versions`, `knowledge_lenses`, `knowledge_reproject_runs`, `knowledge_projection_audits`). Admin API accessible via alt-butterfly-facade（`KnowledgeHomeAdminService` は alt-backend の loopback オペレータリスナー `:9102` に残る。認証は到達可能性 + BFF の admin ロールチェックで、service token は使わない）。altctl provides CLI commands (`home reproject`, `home slo`). Frontend admin at `/admin/knowledge-home`. SLO framework with 5 SLIs and multi-window burn-rate alerting
