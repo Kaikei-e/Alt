@@ -6,7 +6,8 @@
 #
 #   --role consumer|provider   tighten matching to labels of that role
 #   --dry-run                  print "WOULD RUN: <label>" per step, no exec
-#   --publish-manual-verifications  run ONLY the manual-verification block
+#   --publish-manual-verifications  run the bridging-evidence producers and
+#                              the manual-verification block, nothing else
 #
 # The matrix-per-service refactor in alt-deploy depends on these
 # semantics: each matrix leg must invoke pact-check.sh with its own
@@ -80,15 +81,32 @@ assert_contains "$out" "WOULD RUN: Go: mq-hub provider" \
 assert_not_contains "$out" "WOULD RUN: Go: search-indexer provider" \
   "mq-hub provider leg does not accidentally run search-indexer provider"
 
-# --- publish-manual-verifications sub-command runs only the manual block ---
+# --- publish-manual-verifications runs the evidence producers + manual block ---
+#
+# The bridging block may only publish a verification record for a row whose
+# verifier left evidence during this same invocation, so the dedicated leg
+# has to run those verifiers. Everything else still stays out.
 echo "== --publish-manual-verifications (dry-run, default filter) =="
 out=$(run_script --dry-run --publish-only --publish-manual-verifications)
-assert_contains "$out" "WOULD POST MANUAL VERIFICATION:" \
-  "manual-verification subcommand announces the three bridging records"
+assert_contains "$out" "WOULD RUN: Rust: recap-worker provider" \
+  "manual-verification subcommand runs the step that produces bridging evidence"
 assert_not_contains "$out" "WOULD RUN: Go: alt-backend consumer" \
   "manual-verification subcommand does not run unit pact steps"
 assert_not_contains "$out" "WOULD RUN: Python: news-creator provider" \
-  "manual-verification subcommand does not run provider verifications"
+  "manual-verification subcommand does not run provider verifications that produce no evidence"
+
+if command -v ansible-playbook >/dev/null 2>&1; then
+  assert_contains "$out" "WOULD POST MANUAL VERIFICATION:" \
+    "manual-verification subcommand announces the bridging records"
+  assert_contains "$out" "[evidence: MISSING]" \
+    "dry run reports the evidence verdict rather than assuming success"
+  assert_contains "$out" "NO EVIDENCE: mq-hub -> tag-generator" \
+    "the inverted tag-generator row is named as unverifiable, not silently skipped"
+  assert_contains "$out" "NO EVIDENCE: auth-hub -> kratos" \
+    "the external kratos row is named as unverifiable, not silently skipped"
+else
+  echo "  SKIP: ansible-playbook missing — bridging-plan assertions not run"
+fi
 
 # --- --skip-manual-bridge: opt out of the broker-side bridging block ---
 # The deploy matrix runs ~20 publish legs per release and every one of them

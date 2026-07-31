@@ -110,120 +110,13 @@ func eventToWireFormat(event *domain.Event) RedisStreamEvent {
 	}
 }
 
-func TestArticleCreatedMessageContract(t *testing.T) {
-	p, err := message.NewAsynchronousPact(message.Config{
-		Consumer: "mq-hub",
-		Provider: "search-indexer",
-		PactDir:  pactDir,
-	})
-	require.NoError(t, err)
-
-	err = p.AddAsynchronousMessage().
-		Given("the articles stream exists").
-		ExpectsToReceive("an ArticleCreated event on alt:events:articles").
-		WithJSONContent(matchers.MapMatcher{
-			"event_id":   matchers.Like("evt-uuid-001"),
-			"event_type": matchers.String("ArticleCreated"),
-			"source":     matchers.Like("alt-backend"),
-			"created_at": matchers.Like("2026-03-26T00:00:00.000Z"),
-			"payload": matchers.Like(matchers.MapMatcher{
-				"article_id":   matchers.Like("art-001"),
-				"user_id":      matchers.Like("user-001"),
-				"feed_id":      matchers.Like("feed-001"),
-				"title":        matchers.Like("Breaking: Go 1.26 Released"),
-				"url":          matchers.Like("https://example.com/go-1-26"),
-				"published_at": matchers.Like("2026-03-26T00:00:00Z"),
-			}),
-			"metadata": matchers.Like(matchers.MapMatcher{
-				"trace_id": matchers.Like("abc-123"),
-			}),
-		}).
-		AsType(&RedisStreamEvent{}).
-		ConsumedBy(func(contents message.AsynchronousMessage) error {
-			event := buildArticleCreatedEvent()
-			wireEvent := eventToWireFormat(event)
-
-			// Verify the event has required fields
-			assert.NotEmpty(t, wireEvent.EventID, "event_id must not be empty")
-			assert.Equal(t, "ArticleCreated", wireEvent.EventType)
-			assert.Equal(t, "alt-backend", wireEvent.Source)
-			assert.NotEmpty(t, wireEvent.CreatedAt, "created_at must not be empty")
-			assert.NotEmpty(t, wireEvent.Payload, "payload must not be empty")
-
-			// Verify payload structure
-			var payload ArticleCreatedPayload
-			err := json.Unmarshal(wireEvent.Payload, &payload)
-			require.NoError(t, err)
-			assert.NotEmpty(t, payload.ArticleID)
-			assert.NotEmpty(t, payload.UserID)
-			assert.NotEmpty(t, payload.Title)
-			assert.NotEmpty(t, payload.PublishedAt)
-
-			// Verify domain event validation passes
-			assert.NoError(t, event.Validate())
-
-			return nil
-		}).
-		Verify(t)
-
-	require.NoError(t, err)
-}
-
-// TestArticleCreatedWithoutContentMessageContract mirrors search-indexer's
-// consumer pact for the same interaction: the event names the article, it does
-// not carry it. The interaction description is retained verbatim so the broker
-// key survives the producer migration.
-//
-// The expectation deliberately omits content/tags rather than forbidding them:
-// alt-backend still emits both, and Pact ignores keys the contract does not
-// mention, so this holds before and after they are dropped from the producer.
-func TestArticleCreatedWithoutContentMessageContract(t *testing.T) {
-	p, err := message.NewAsynchronousPact(message.Config{
-		Consumer: "mq-hub",
-		Provider: "search-indexer",
-		PactDir:  pactDir,
-	})
-	require.NoError(t, err)
-
-	err = p.AddAsynchronousMessage().
-		Given("the articles stream exists").
-		ExpectsToReceive("an ArticleCreated fat event with content on alt:events:articles").
-		WithJSONContent(matchers.MapMatcher{
-			"event_id":   matchers.Like("evt-uuid-fat-001"),
-			"event_type": matchers.String("ArticleCreated"),
-			"source":     matchers.Like("alt-backend"),
-			"created_at": matchers.Like("2026-03-26T00:00:00.000Z"),
-			"payload": matchers.Like(matchers.MapMatcher{
-				"article_id":   matchers.Like("art-001"),
-				"user_id":      matchers.Like("user-001"),
-				"feed_id":      matchers.Like("feed-001"),
-				"title":        matchers.Like("Breaking: Go 1.26 Released"),
-				"url":          matchers.Like("https://example.com/go-1-26"),
-				"published_at": matchers.Like("2026-03-26T00:00:00Z"),
-			}),
-			"metadata": matchers.Like(matchers.MapMatcher{
-				"trace_id": matchers.Like("abc-123"),
-			}),
-		}).
-		AsType(&RedisStreamEvent{}).
-		ConsumedBy(func(contents message.AsynchronousMessage) error {
-			event := buildArticleCreatedEvent()
-			wireEvent := eventToWireFormat(event)
-
-			var payload ArticleCreatedPayload
-			err := json.Unmarshal(wireEvent.Payload, &payload)
-			require.NoError(t, err)
-
-			assert.NotEmpty(t, payload.ArticleID, "article_id is the only handle on the body")
-			assert.NotEmpty(t, payload.UserID, "user_id is needed for the search document")
-			assert.NotEmpty(t, payload.PublishedAt, "published_at cannot be recovered by the fetch path")
-
-			return nil
-		}).
-		Verify(t)
-
-	require.NoError(t, err)
-}
+// The ArticleCreated interactions on alt:events:articles are NOT declared here.
+// mq-hub writes that stream and search-indexer reads it, so the contract belongs
+// to search-indexer as consumer: pacts/search-indexer-mq-hub.json, verified
+// against mq-hub's real event builders by TestVerifySearchIndexerMqHubMessagePact
+// in provider_test.go. A mq-hub-as-consumer pact for the same interactions
+// inverted the direction and could only ever be "verified" by mq-hub asserting
+// on its own output.
 
 func TestTagGenerationRequestedMessageContract(t *testing.T) {
 	p, err := message.NewAsynchronousPact(message.Config{

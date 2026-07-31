@@ -91,11 +91,14 @@ Usage: pact-check.sh [flags]
                             accidentally drag in
                             "Go: mq-hub provider (search-indexer message pact)".
   --publish-manual-verifications
-                            Skip every run_step entry and only execute the
-                            broker-side manual-verification bridging block
-                            (recap-worker, mq-hub message pacts, kratos).
-                            Used by the per-service deploy matrix to post
-                            bridging records from a single dedicated leg.
+                            Run only the verifications that emit bridging
+                            evidence, then the broker-side bridging block.
+                            Every other run_step entry is skipped. Used by
+                            the per-service deploy matrix to post bridging
+                            records from a single dedicated leg — the
+                            evidence has to be produced in the same
+                            invocation, so the leg cannot post a record for
+                            a verification it did not run.
   --skip-manual-bridge      Do not run the broker-side manual-verification
                             bridging block. For callers that know a dedicated
                             --publish-manual-verifications leg already covers
@@ -131,6 +134,20 @@ PASS=0
 FAIL=0
 SKIP=0
 
+# ---------- Verification evidence ----------
+# The manual-verification bridge (playbooks/publish-manual-verifications.yml)
+# refuses to publish a success record for a (provider, consumer) pair unless
+# the verifier that ran in THIS invocation left an alt.pact.evidence.v1
+# document in $PACT_EVIDENCE_DIR. $PACT_EVIDENCE_RUN_ID binds each document to
+# this run, and the purge below stops a document from an earlier run being
+# replayed as if it were fresh. Both are exported so verifiers pick them up
+# without per-step plumbing.
+PACT_EVIDENCE_DIR="${PACT_EVIDENCE_DIR:-$REPO_ROOT/.pact-evidence}"
+PACT_EVIDENCE_RUN_ID="${PACT_EVIDENCE_RUN_ID:-$(date -u +%Y%m%dT%H%M%SZ)-$$-${RANDOM}}"
+export PACT_EVIDENCE_DIR PACT_EVIDENCE_RUN_ID
+mkdir -p "$PACT_EVIDENCE_DIR"
+rm -f "$PACT_EVIDENCE_DIR"/*__*.json
+
 # Return 0 if the step label should execute under the current --services and
 # --role filters. Label convention (parsed here):
 #
@@ -147,14 +164,20 @@ SKIP=0
 #     parse (e.g. free-form headers) are rejected in strict role mode.
 #   - --services set + --role set → exact match on parsed service token.
 #   - --services set + no --role → legacy substring match on the full label.
-#   - --publish-manual-verifications → skip everything at this layer; the
-#     manual block at the bottom still runs.
+#   - --publish-manual-verifications → run only the steps that produce
+#     bridging evidence; skip everything else at this layer. The manual
+#     block at the bottom then reads what those steps wrote.
 should_run_service_filter() {
   local label="$1"
+  local produces_evidence="${2:-}"
 
-  # --publish-manual-verifications short-circuits: treat every run_step as a
-  # skip so only the bridging block at the end emits output.
+  # --publish-manual-verifications short-circuits: the only steps worth
+  # running are the ones whose output the bridging block consumes. Skipping
+  # those too would leave the block with nothing to read, and "publish a
+  # success record for a verification this run never executed" is exactly
+  # the failure this gate removes.
   if [[ "$MANUAL_ONLY" == "true" ]]; then
+    [[ "$produces_evidence" == "evidence" ]] && return 0
     return 1
   fi
 
@@ -184,8 +207,9 @@ should_run_service_filter() {
 
 run_step() {
   local label="$1"
-  shift
-  if ! should_run_service_filter "$label"; then
+  local produces_evidence="$2"
+  shift 2
+  if ! should_run_service_filter "$label" "$produces_evidence"; then
     if [[ "$DRY_RUN" != "true" ]]; then
       echo ""
       echo "=== SKIP (filter: --services ${SERVICE_FILTER} --role ${ROLE_FILTER}): ${label} ==="
@@ -313,12 +337,17 @@ need_tool() {
   [[ "${HAVE[$1]:-0}" == "1" ]]
 }
 
-# Step registry. Each entry is `label|tool|workdir|command` split on `|`.
+# Step registry. Each entry is `label|tool|workdir|command[|evidence]`
+# split on `|` (no command contains a pipe, so the optional trailing field
+# parses unambiguously).
 # - label: exact run_step label; parsed by should_run_service_filter as
 #   "<Lang>: <svc> <role>[ <extras>]".
 # - tool: key in $HAVE (go / cargo / uv). Also the skip_step suffix.
 # - workdir: relative from repo root.
 # - command: shell fragment executed via `bash -c` inside workdir.
+# - evidence: literal "evidence" if the step writes an alt.pact.evidence.v1
+#   document that a bridge_registry row depends on. Those steps also run
+#   under --publish-manual-verifications.
 # Mirroring consumer and provider tables keeps the script linear and
 # removes the six language-gate `if/else` blocks the pre-refactor version
 # had (one per lang × role combination).
@@ -346,21 +375,21 @@ STEPS_PROVIDER=(
   "Go: pre-processor provider|go|pre-processor/app|CGO_ENABLED=1 go test -tags=contract -run TestVerifyAltBackendContract ./driver/contract/ -v"
   "Go: mq-hub provider (search-indexer message pact)|go|mq-hub/app|CGO_ENABLED=1 go test -tags=contract -run TestVerifySearchIndexerMqHubMessagePact ./driver/contract/ -v"
   "Go: knowledge-sovereign provider|go|knowledge-sovereign/app|CGO_ENABLED=1 go test -tags=contract ./driver/contract/ -v"
-  "Rust: recap-worker provider|cargo|recap-worker/recap-worker|cargo test --test provider_verification -- --ignored"
+  "Rust: recap-worker provider|cargo|recap-worker/recap-worker|cargo test --test provider_verification -- --ignored|evidence"
 )
 
 # Iterate a STEPS_* registry. Uses a nameref so the caller passes a bare
 # identifier (`execute_steps STEPS_CONSUMER`) instead of a resolved array.
 execute_steps() {
   local -n steps="$1"
-  local spec label tool wd cmd
+  local spec label tool wd cmd evidence
   for spec in "${steps[@]}"; do
-    IFS='|' read -r label tool wd cmd <<<"$spec"
+    IFS='|' read -r label tool wd cmd evidence <<<"$spec"
     if ! need_tool "$tool"; then
       skip_step "$label (missing $tool toolchain)"
       continue
     fi
-    run_step "$label" bash -c "cd \"$wd\" && $cmd"
+    run_step "$label" "$evidence" bash -c "cd \"$wd\" && $cmd"
   done
 }
 
@@ -497,27 +526,31 @@ echo "============================="
 execute_steps STEPS_PROVIDER
 
 # ---------- Broker-side verification bridging ----------
-# Three pact families cannot use the stock pact_verifier flow and need manual
-# verification records in the Broker so can-i-deploy stays accurate:
+# Some pacts cannot use the stock pact_verifier flow and need verification
+# records posted separately so can-i-deploy stays accurate:
 #
 #   1. recap-worker provider_verification.rs is a hand-rolled HTTP replay, not
 #      a real pact_verifier — it asserts shape but does not publish results.
-#   2. mq-hub consumer message pacts (mq-hub-search-indexer, mq-hub-tag-generator)
-#      declare mq-hub as consumer / search-indexer or tag-generator as provider,
-#      but in reality mq-hub emits the events and the "provider" services
-#      consume them. The consumer-side test self-verifies the shape; the
-#      nominal provider has nothing to run.
+#      It does write an alt.pact.evidence.v1 document per replayed pact.
+#   2. mq-hub → tag-generator on alt:events:tags. The pact declares mq-hub as
+#      consumer and tag-generator as provider, which is backwards: mq-hub
+#      writes the stream. No verifier exists for the pair in either direction,
+#      so no evidence is produced and the row fails the gate below. (The
+#      equally-inverted mq-hub-search-indexer pact was deleted: the correct
+#      direction, search-indexer-mq-hub.json, is verified for real by
+#      TestVerifySearchIndexerMqHubMessagePact.)
 #   3. kratos is an external SaaS and cannot be brought under Alt's provider
-#      verification harness.
+#      verification harness, so it produces no evidence either.
 #
-# For each of these we POST a verification result tagged with the stub/source
-# implementation so the audit trail is honest.
+# The playbook publishes a success record only for rows whose verifier left
+# evidence in $PACT_EVIDENCE_DIR carrying $PACT_EVIDENCE_RUN_ID. Rows without
+# it publish nothing, are named in the output, and exit the playbook non-zero.
 #
 # Opting out is explicit (--skip-manual-bridge) rather than inferred from the
 # presence of --services/--role: verify-pact-on-demand.yaml passes --services
 # without --role and has no other path that posts a verification record for
-# recap-worker / search-indexer / tag-generator, so inferring would make it
-# report green while publishing nothing.
+# recap-worker / tag-generator, so inferring would make it report green while
+# publishing nothing.
 if [[ "$MANUAL_ONLY" == "true" ]] || \
    [[ "$MODE" == "broker" && $FAIL -eq 0 && "$SKIP_MANUAL_BRIDGE" != "true" ]]; then
   echo ""
@@ -525,20 +558,29 @@ if [[ "$MANUAL_ONLY" == "true" ]] || \
   echo " Publishing Manual Verifications to Broker"
   echo "============================="
 
-  # Delegate to the Ansible playbook. Bridge registry, broker iteration,
-  # and credential handling all live in playbooks/publish-manual-verifications.yml
-  # so the logic is data-driven, uri-basic-auth hides creds from argv
-  # (shell curl -u leaked them into ps listings), and every sensitive
-  # task is wrapped in no_log per security audit F-001 / F-002.
+  # Delegate to the Ansible playbook. Bridge registry, evidence gate, broker
+  # iteration, and credential handling all live in
+  # playbooks/publish-manual-verifications.yml so the logic is data-driven,
+  # uri-basic-auth hides creds from argv (shell curl -u leaked them into ps
+  # listings), and every sensitive task is wrapped in no_log per security
+  # audit F-001 / F-002.
+  #
+  # --dry-run passes bridge_dry_run=true so the playbook prints the plan and
+  # its evidence verdict per row without touching the Broker. Broker vars may
+  # legitimately be unset on that path, hence the :- defaults.
   ansible_extra_args=()
-  [[ "$DRY_RUN" == "true" ]] && ansible_extra_args+=(--check)
+  if [[ "$DRY_RUN" == "true" ]]; then
+    ansible_extra_args+=(--check -e bridge_dry_run=true)
+  fi
 
-  if PACT_BROKER_PASSWORD="${PACT_BROKER_PASSWORD}" \
+  if PACT_BROKER_PASSWORD="${PACT_BROKER_PASSWORD:-}" \
      ansible-playbook -i localhost, -c local \
        "${ansible_extra_args[@]}" \
-       -e provider_version="${PACT_PROVIDER_VERSION}" \
-       -e broker_base_url="${PACT_BROKER_BASE_URL}" \
-       -e broker_username="${PACT_BROKER_USERNAME}" \
+       -e provider_version="${PACT_PROVIDER_VERSION:-}" \
+       -e broker_base_url="${PACT_BROKER_BASE_URL:-}" \
+       -e broker_username="${PACT_BROKER_USERNAME:-}" \
+       -e pact_evidence_dir="${PACT_EVIDENCE_DIR}" \
+       -e pact_evidence_run_id="${PACT_EVIDENCE_RUN_ID}" \
        "${REPO_ROOT}/playbooks/publish-manual-verifications.yml"; then
     :
   else

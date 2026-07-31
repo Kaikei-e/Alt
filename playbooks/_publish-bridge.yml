@@ -1,18 +1,41 @@
 ---
-# Included by publish-manual-verifications.yml for each
-# (provider, consumer, implementation, provider_version) bridge.
+# Included by publish-manual-verifications.yml for each bridge row that
+# passed the evidence preflight. This file publishes a verification result;
+# it does NOT decide whether one was earned. That decision belongs to the
+# preflight, which reads the document the verifier itself wrote.
 #
 # Contract (`bridge` is the loop_var provided by the caller):
 #   bridge.provider          pacticipant name
 #   bridge.consumer          pacticipant name
-#   bridge.implementation    free-form verifier label stored on the
-#                            verification record (e.g. "rust-stub-replay")
+#   bridge.implementation    verifier label, already asserted to equal the
+#                            `implementation` the verifier stamped on its
+#                            own evidence document
 #   bridge.provider_version  provider application version to tag
+#   bridge.evidence          the parsed evidence document (schema
+#                            alt.pact.evidence.v1) emitted by that verifier
+#                            during this run. Every value posted to the
+#                            broker is read out of it.
 #
 # Every task that carries the basic-auth password uses no_log: true
 # (audit F-001 / F-002). The `uri` module does NOT auto-redact the
 # `password` parameter, and without no_log the credential leaks into
 # any `-vv` run (CI logs included).
+
+- name: "Re-assert evidence at publish time ({{ bridge.consumer }} → {{ bridge.provider }})"
+  ansible.builtin.assert:
+    that:
+      - bridge.evidence is defined
+      - bridge.evidence.result | default('') == 'passed'
+      - bridge.evidence.run_id | default('') == pact_evidence_run_id
+      - bridge.evidence.provider | default('') == bridge.provider
+      - bridge.evidence.consumer | default('') == bridge.consumer
+      - bridge.evidence.implementation | default('') == bridge.implementation
+      - (bridge.evidence.interactions_verified | default(0) | int) > 0
+    fail_msg: >-
+      Refusing to publish {{ bridge.consumer }} → {{ bridge.provider }}:
+      the evidence document does not attest a passing verification of this
+      pair in this run. This is a bug in the preflight, which should have
+      excluded the row before it reached here.
 
 - name: "List pact versions for {{ bridge.consumer }} → {{ bridge.provider }}"
   ansible.builtin.uri:
@@ -26,12 +49,21 @@
   register: versions_resp
   no_log: true
 
-- name: "Skip when no pacts exist ({{ bridge.consumer }} → {{ bridge.provider }})"
+# A registry row exists to attach a verification to a pact the broker holds.
+# If the broker holds none, there is nothing this run can make green, and
+# reporting success anyway is the fabrication this gate exists to remove.
+# Fail instead of debug-skipping: the row and the broker have drifted and a
+# human has to reconcile them.
+- name: "Fail when the broker holds no pact for {{ bridge.consumer }} → {{ bridge.provider }}"
   when:
     - versions_resp.status == 404 or
       (versions_resp.json._embedded.pacts | default([]) | length) == 0
-  ansible.builtin.debug:
-    msg: "skip: no pacts for {{ bridge.consumer }} -> {{ bridge.provider }}"
+  ansible.builtin.fail:
+    msg: >-
+      No pact on the broker for {{ bridge.consumer }} → {{ bridge.provider }},
+      but bridge_registry declares one. Either the consumer has never
+      published this pact, or the row outlived the contract and should be
+      deleted from bridge_registry.
 
 - name: "Collect pact version self URLs"
   when:
@@ -83,7 +115,11 @@
       {{ bridge.consumer }} → {{ bridge.provider }}. Broker response
       schema may have changed or consumer has never been published.
 
-- name: "POST success verification record for each consumer pact version"
+# `body` is rendered with to_json rather than given as a YAML mapping so the
+# booleans and integers reach the broker as JSON scalars instead of the
+# strings Jinja would otherwise produce. `success` is derived from the
+# evidence document, never asserted here.
+- name: "POST verification record for each consumer pact version"
   when:
     - publish_targets is defined
     - publish_targets | length > 0
@@ -96,12 +132,15 @@
     headers:
       Content-Type: application/json
     body_format: json
-    body:
-      success: true
-      providerApplicationVersion: "{{ bridge.provider_version }}"
-      verifiedBy:
-        implementation: "{{ bridge.implementation }}"
-        version: "1.0.0"
+    body: >-
+      {{ {
+           'success': bridge.evidence.result == 'passed',
+           'providerApplicationVersion': bridge.provider_version,
+           'verifiedBy': {
+             'implementation': bridge.evidence.implementation,
+             'version': bridge.evidence.verifier_version | default('unknown'),
+           },
+         } | to_json }}
     status_code: [200, 201]
   loop: "{{ publish_targets | default([]) }}"
   loop_control:
@@ -115,5 +154,8 @@
   ansible.builtin.debug:
     msg: >-
       publish: {{ bridge.consumer }} -> {{ bridge.provider }}
-      @{{ bridge.provider_version }} ({{ bridge.implementation }})
+      @{{ bridge.provider_version }} ({{ bridge.evidence.implementation }},
+      {{ bridge.evidence.interactions_verified }} interaction(s) verified,
+      {{ bridge.evidence.interactions_skipped | default(0) }} skipped,
+      at {{ bridge.evidence.verified_at | default('unknown') }})
       × {{ publish_targets | length }} consumer version(s)
