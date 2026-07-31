@@ -24,16 +24,17 @@ type RedisStreamEvent struct {
 	Metadata  map[string]string `json:"metadata"`
 }
 
-// ArticleCreatedPayload mirrors consumer.ArticleCreatedPayload for contract testing.
+// ArticleCreatedPayload mirrors consumer.ArticleCreatedPayload for contract
+// testing. It carries no content/tags fields: search-indexer resolves the
+// article body from alt-backend by article_id, so a producer that stops
+// embedding the body must not break this consumer.
 type ArticleCreatedPayload struct {
-	ArticleID   string   `json:"article_id"`
-	UserID      string   `json:"user_id"`
-	FeedID      string   `json:"feed_id"`
-	Title       string   `json:"title"`
-	URL         string   `json:"url"`
-	Content     string   `json:"content,omitempty"`
-	Tags        []string `json:"tags,omitempty"`
-	PublishedAt string   `json:"published_at"`
+	ArticleID   string `json:"article_id"`
+	UserID      string `json:"user_id"`
+	FeedID      string `json:"feed_id"`
+	Title       string `json:"title"`
+	URL         string `json:"url"`
+	PublishedAt string `json:"published_at"`
 }
 
 func TestConsumeArticleCreatedEvent(t *testing.T) {
@@ -99,7 +100,16 @@ func TestConsumeArticleCreatedEvent(t *testing.T) {
 	require.NoError(t, err)
 }
 
-func TestConsumeArticleCreatedFatEvent(t *testing.T) {
+// TestConsumeArticleCreatedWithoutContent pins the id-only shape search-indexer
+// now requires: the body is resolved from alt-backend via article_id, so the
+// event carries no content/tags. published_at stays on the event because the
+// fetch path cannot recover it -- the backend proto has no published_at field
+// and backend_api.toDriverArticle substitutes created_at.
+//
+// The interaction description still says "fat event with content" so the
+// broker key stays stable while the producer is migrated; the payload it
+// describes no longer contains either.
+func TestConsumeArticleCreatedWithoutContent(t *testing.T) {
 	p, err := message.NewAsynchronousPact(message.Config{
 		Consumer: "search-indexer",
 		Provider: "mq-hub",
@@ -121,8 +131,6 @@ func TestConsumeArticleCreatedFatEvent(t *testing.T) {
 				"feed_id":      matchers.Like("feed-001"),
 				"title":        matchers.Like("Test Article"),
 				"url":          matchers.Like("https://example.com/article"),
-				"content":      matchers.Like("Full article content for direct indexing."),
-				"tags":         matchers.EachLike(matchers.Like("technology"), 1),
 				"published_at": matchers.Like("2026-03-26T00:00:00Z"),
 			}),
 			"metadata": matchers.Like(matchers.MapMatcher{
@@ -137,14 +145,12 @@ func TestConsumeArticleCreatedFatEvent(t *testing.T) {
 
 			assert.Equal(t, "ArticleCreated", wireEvent.EventType)
 
-			// Verify fat event payload includes content and tags
 			var payload ArticleCreatedPayload
 			err = json.Unmarshal(wireEvent.Payload, &payload)
 			require.NoError(t, err)
-			assert.NotEmpty(t, payload.ArticleID)
-			assert.NotEmpty(t, payload.Content, "fat event must include content for direct indexing")
-			assert.NotEmpty(t, payload.Tags, "fat event must include tags")
+			assert.NotEmpty(t, payload.ArticleID, "article_id is the only handle on the body")
 			assert.NotEmpty(t, payload.UserID, "user_id is needed for search document")
+			assert.NotEmpty(t, payload.PublishedAt, "published_at cannot be recovered by the fetch path")
 
 			return nil
 		}).
@@ -153,13 +159,16 @@ func TestConsumeArticleCreatedFatEvent(t *testing.T) {
 	require.NoError(t, err)
 }
 
-// TestConsumeArticleUpdatedFatEvent locks in that the ArticleUpdated event
+// TestConsumeArticleUpdatedWithoutContent locks in that the ArticleUpdated event
 // must be carried by the same stream and shaped identically to ArticleCreated.
 // Without this pact, the provider (alt-backend via mq-hub) was free to add
 // the event type while the consumer silently dropped it — exactly the
 // regression observed on 2026-04-18 where the search index went stale on
 // every article edit.
-func TestConsumeArticleUpdatedFatEvent(t *testing.T) {
+//
+// Like ArticleCreated it is now id-only: re-indexing re-reads the body from
+// alt-backend rather than trusting a body embedded in the event.
+func TestConsumeArticleUpdatedWithoutContent(t *testing.T) {
 	p, err := message.NewAsynchronousPact(message.Config{
 		Consumer: "search-indexer",
 		Provider: "mq-hub",
@@ -181,8 +190,6 @@ func TestConsumeArticleUpdatedFatEvent(t *testing.T) {
 				"feed_id":      matchers.Like("feed-001"),
 				"title":        matchers.Like("Updated Article"),
 				"url":          matchers.Like("https://example.com/article"),
-				"content":      matchers.Like("Updated article content."),
-				"tags":         matchers.EachLike(matchers.Like("technology"), 1),
 				"published_at": matchers.Like("2026-03-26T00:00:00Z"),
 			}),
 			"metadata": matchers.Like(matchers.MapMatcher{
@@ -197,14 +204,14 @@ func TestConsumeArticleUpdatedFatEvent(t *testing.T) {
 
 			assert.Equal(t, "ArticleUpdated", wireEvent.EventType)
 
-			// ArticleUpdated shares the fat-event payload with ArticleCreated
+			// ArticleUpdated shares the payload shape with ArticleCreated
 			// so search-indexer can upsert via the same code path.
 			var payload ArticleCreatedPayload
 			err = json.Unmarshal(wireEvent.Payload, &payload)
 			require.NoError(t, err)
-			assert.NotEmpty(t, payload.ArticleID)
-			assert.NotEmpty(t, payload.Content, "fat event must include fresh content for re-indexing")
+			assert.NotEmpty(t, payload.ArticleID, "article_id is the only handle on the fresh body")
 			assert.NotEmpty(t, payload.UserID, "user_id is needed for search document")
+			assert.NotEmpty(t, payload.PublishedAt, "published_at cannot be recovered by the fetch path")
 
 			return nil
 		}).

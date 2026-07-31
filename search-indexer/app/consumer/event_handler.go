@@ -7,7 +7,6 @@ import (
 	"sync"
 	"time"
 
-	"search-indexer/domain"
 	"search-indexer/usecase"
 )
 
@@ -29,23 +28,17 @@ type bufferedArticle struct {
 	messageID string
 }
 
-// bufferedFatEvent mirrors bufferedArticle for the fat-event path.
-type bufferedFatEvent struct {
-	doc       domain.SearchDocument
-	messageID string
-}
-
-// ArticleCreatedPayload represents the payload for ArticleCreated event.
-// Supports fat events with optional content and tags fields.
+// ArticleCreatedPayload represents the payload for ArticleCreated and
+// ArticleUpdated events. The event names the article; the body is read back
+// from alt-backend by article_id, so no content/tags field is decoded even
+// while the producer still embeds them.
 type ArticleCreatedPayload struct {
-	ArticleID   string   `json:"article_id"`
-	UserID      string   `json:"user_id"`
-	FeedID      string   `json:"feed_id"`
-	Title       string   `json:"title"`
-	URL         string   `json:"url"`
-	Content     string   `json:"content,omitempty"`
-	Tags        []string `json:"tags,omitempty"`
-	PublishedAt string   `json:"published_at"`
+	ArticleID   string `json:"article_id"`
+	UserID      string `json:"user_id"`
+	FeedID      string `json:"feed_id"`
+	Title       string `json:"title"`
+	URL         string `json:"url"`
+	PublishedAt string `json:"published_at"`
 }
 
 // IndexArticlePayload represents the payload for IndexArticle event.
@@ -57,8 +50,7 @@ type IndexArticlePayload struct {
 
 // IndexEventHandler processes indexing events from the stream.
 // It buffers article IDs and flushes them in batches to reduce
-// per-event Meilisearch round-trips. For fat events with content,
-// it indexes directly without API/DB lookups.
+// per-event Meilisearch round-trips.
 type IndexEventHandler struct {
 	indexUsecase *usecase.IndexArticlesUsecase
 	logger       *slog.Logger
@@ -70,11 +62,6 @@ type IndexEventHandler struct {
 	ctx     context.Context
 	cancel  context.CancelFunc
 	flushed chan struct{} // closed on each flush for testing
-
-	// Fat event buffer for direct indexing
-	fatMu     sync.Mutex
-	fatBuffer []bufferedFatEvent
-	fatTimer  *time.Timer
 }
 
 // NewIndexEventHandler creates a new IndexEventHandler.
@@ -90,7 +77,6 @@ func NewIndexEventHandler(indexUsecase *usecase.IndexArticlesUsecase, logger *sl
 		ctx:          ctx,
 		cancel:       cancel,
 		flushed:      make(chan struct{}, 1),
-		fatBuffer:    make([]bufferedFatEvent, 0, batchFlushSize),
 	}
 	return h
 }
@@ -115,17 +101,10 @@ func (h *IndexEventHandler) Stop() {
 		h.timer = nil
 	}
 	h.mu.Unlock()
-	h.fatMu.Lock()
-	if h.fatTimer != nil {
-		h.fatTimer.Stop()
-		h.fatTimer = nil
-	}
-	h.fatMu.Unlock()
 
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), shutdownFlushTimeout)
 	defer cancel()
 	h.flush(shutdownCtx)
-	h.flushFat(shutdownCtx)
 
 	h.cancel()
 }
@@ -135,12 +114,12 @@ func (h *IndexEventHandler) Stop() {
 func (h *IndexEventHandler) HandleEvent(ctx context.Context, event Event) error {
 	switch event.EventType {
 	case "ArticleCreated", "ArticleUpdated":
-		// ArticleUpdated shares the fat-event payload with ArticleCreated and
+		// ArticleUpdated shares the payload with ArticleCreated and
 		// Meilisearch AddDocuments is upsert-by-primary-key, so re-using the
-		// same handler is correct: fresh Content/Tags overwrite the existing
-		// document atomically. Before this branch existed, ArticleUpdated
-		// fell through the default case and the search index silently went
-		// stale for every article edit published by alt-backend.
+		// same handler is correct: the freshly fetched body overwrites the
+		// existing document atomically. Before this branch existed,
+		// ArticleUpdated fell through the default case and the search index
+		// silently went stale for every article edit published by alt-backend.
 		return h.handleArticleCreated(ctx, event)
 	case "IndexArticle":
 		return h.handleIndexArticle(ctx, event)
@@ -167,35 +146,8 @@ func (h *IndexEventHandler) handleArticleCreated(ctx context.Context, event Even
 		return err
 	}
 
-	// Fat event path: if content is present, index directly without DB/API lookup
-	if payload.Content != "" {
-		h.logger.Info("indexing ArticleCreated fat event directly",
-			"article_id", payload.ArticleID,
-			"title", payload.Title,
-		)
-		doc := domain.SearchDocument{
-			ID:      payload.ArticleID,
-			Title:   payload.Title,
-			Content: payload.Content,
-			Tags:    payload.Tags,
-			UserID:  payload.UserID,
-		}
-		if payload.PublishedAt != "" {
-			if publishedAt, err := time.Parse(time.RFC3339, payload.PublishedAt); err == nil {
-				doc.PublishedAt = publishedAt
-			} else {
-				h.logger.Warn("failed to parse published_at, indexing without it",
-					"article_id", payload.ArticleID,
-					"published_at", payload.PublishedAt,
-					"error", err,
-				)
-			}
-		}
-		h.enqueueFatEvent(doc, event.MessageID)
-		return nil
-	}
-
-	// Thin event fallback: buffer article ID for batch lookup via API
+	// Buffer the article ID for batch lookup via API. The event carries no
+	// body -- see ADR-000953.
 	h.logger.Info("buffering ArticleCreated event",
 		"article_id", payload.ArticleID,
 		"title", payload.Title,
@@ -299,24 +251,6 @@ func (h *IndexEventHandler) flush(ctx context.Context) {
 	}
 }
 
-// enqueueFatEvent adds a pre-built search document to the fat event buffer.
-func (h *IndexEventHandler) enqueueFatEvent(doc domain.SearchDocument, messageID string) {
-	h.fatMu.Lock()
-	h.fatBuffer = append(h.fatBuffer, bufferedFatEvent{doc: doc, messageID: messageID})
-	size := len(h.fatBuffer)
-
-	if size == 1 {
-		h.fatTimer = time.AfterFunc(batchFlushInterval, func() {
-			h.flushFat(h.ctx)
-		})
-	}
-	h.fatMu.Unlock()
-
-	if size >= batchFlushSize {
-		h.flushFat(h.ctx)
-	}
-}
-
 // ack acknowledges message IDs once their processing side effect is
 // durable. A no-op if no Acknowledger has been wired (e.g. in unit tests
 // that construct the handler directly without going through
@@ -327,55 +261,5 @@ func (h *IndexEventHandler) ack(ctx context.Context, messageIDs []string) {
 	}
 	if err := h.acker.Ack(ctx, messageIDs...); err != nil {
 		h.logger.Error("failed to ack flushed messages", "count", len(messageIDs), "error", err)
-	}
-}
-
-// flushFat sends all buffered fat event documents to the search engine
-// directly, ACKing their source message IDs only after the write durably
-// succeeds (see flush for the same contract on the thin-event path).
-func (h *IndexEventHandler) flushFat(ctx context.Context) {
-	h.fatMu.Lock()
-	if len(h.fatBuffer) == 0 {
-		h.fatMu.Unlock()
-		return
-	}
-	items := h.fatBuffer
-	h.fatBuffer = make([]bufferedFatEvent, 0, batchFlushSize)
-	if h.fatTimer != nil {
-		h.fatTimer.Stop()
-		h.fatTimer = nil
-	}
-	h.fatMu.Unlock()
-
-	// Deduplicate by ID, but keep every message ID so all of them get
-	// ACKed once the batch write is durable.
-	seen := make(map[string]struct{}, len(items))
-	unique := make([]domain.SearchDocument, 0, len(items))
-	messageIDs := make([]string, 0, len(items))
-	for _, item := range items {
-		if item.messageID != "" {
-			messageIDs = append(messageIDs, item.messageID)
-		}
-		if _, ok := seen[item.doc.ID]; !ok {
-			seen[item.doc.ID] = struct{}{}
-			unique = append(unique, item.doc)
-		}
-	}
-
-	h.logger.Info("flushing fat event batch", "count", len(unique))
-
-	result, err := h.indexUsecase.IndexDocumentsDirectly(ctx, unique)
-	if err != nil {
-		h.logger.Error("fat event batch indexing failed", "count", len(unique), "error", err)
-		return
-	}
-
-	h.logger.Info("fat event batch indexed successfully", "indexed", result.IndexedCount)
-
-	h.ack(ctx, messageIDs)
-
-	select {
-	case h.flushed <- struct{}{}:
-	default:
 	}
 }

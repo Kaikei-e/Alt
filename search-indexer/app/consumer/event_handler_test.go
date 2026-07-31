@@ -124,43 +124,67 @@ func TestIndexEventHandler_HandleEvent_ArticleCreated(t *testing.T) {
 	}
 }
 
-// ArticleUpdated shares the fat-event payload shape with ArticleCreated.
-// alt-backend publishes it whenever an article's content/tags change; before
-// this handler existed the events fell through the default branch and the
-// search index silently went stale against provider-side updates.
-func TestIndexEventHandler_HandleEvent_ArticleUpdated_FatEvent(t *testing.T) {
-	repo := &mockArticleRepo{articles: map[string]*domain.Article{}}
-	se := &mockSearchEngine{}
-	uc := usecase.NewIndexArticlesUsecase(repo, se, (*tokenizer.Tokenizer)(nil))
-	handler := NewIndexEventHandler(uc, slog.Default())
-	defer handler.Stop()
-
-	payload, _ := json.Marshal(ArticleCreatedPayload{
-		ArticleID: "art-upd-1",
-		UserID:    "user-1",
-		Title:     "Updated Title",
-		Content:   "Updated content body",
-		Tags:      []string{"go", "updated"},
-	})
-
-	err := handler.HandleEvent(context.Background(), Event{
-		EventType: "ArticleUpdated",
-		EventID:   "evt-upd-1",
-		Payload:   payload,
-	})
-	if err != nil {
-		t.Fatalf("HandleEvent(ArticleUpdated) error = %v", err)
+// ArticleCreated and ArticleUpdated name an article, they do not carry it:
+// both resolve the body from alt-backend by article_id. alt-backend still
+// embeds content/tags in the payload while the producer is migrated, so this
+// asserts the embedded copy is ignored -- indexing it would make the search
+// index a function of the event rather than of the article, and it is the
+// embedded body that drove alt:events:articles to 973 MB.
+//
+// ArticleUpdated in particular fell through the default branch before it had
+// a case here, and the index silently went stale on every article edit.
+func TestIndexEventHandler_HandleEvent_ArticleEvents_IndexFetchedBody(t *testing.T) {
+	tests := []struct {
+		name      string
+		eventType string
+		articleID string
+	}{
+		{name: "ArticleCreated", eventType: "ArticleCreated", articleID: "art-created-1"},
+		{name: "ArticleUpdated", eventType: "ArticleUpdated", articleID: "art-updated-1"},
 	}
 
-	// Flush the fat-event buffer.
-	handler.Stop()
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			createdAt := time.Date(2026, 3, 26, 0, 0, 0, 0, time.UTC)
+			article, _ := domain.NewArticle(tt.articleID, "Canonical Title", "Canonical body from alt-backend", []string{"go"}, createdAt, "user-1")
+			repo := &mockArticleRepo{articles: map[string]*domain.Article{tt.articleID: article}}
+			se := &mockSearchEngine{}
+			uc := usecase.NewIndexArticlesUsecase(repo, se, (*tokenizer.Tokenizer)(nil))
+			handler := NewIndexEventHandler(uc, slog.Default())
+			defer handler.Stop()
 
-	if len(se.indexedDocs) != 1 {
-		t.Fatalf("expected 1 indexed doc for ArticleUpdated, got %d", len(se.indexedDocs))
-	}
-	doc := se.indexedDocs[0]
-	if doc.ID != "art-upd-1" || doc.Title != "Updated Title" || doc.Content != "Updated content body" {
-		t.Errorf("upsert payload wrong: %+v", doc)
+			// Raw JSON rather than ArticleCreatedPayload: the struct has no
+			// content/tags fields, but the wire payload still does.
+			payload := []byte(`{"article_id":"` + tt.articleID + `",` +
+				`"user_id":"user-1","feed_id":"feed-1","title":"Stale Payload Title",` +
+				`"url":"https://example.com/article","content":"Stale payload body",` +
+				`"tags":["stale"],"published_at":"2026-03-26T00:00:00Z"}`)
+
+			err := handler.HandleEvent(context.Background(), Event{
+				EventType: tt.eventType,
+				EventID:   "evt-" + tt.articleID,
+				Payload:   payload,
+			})
+			if err != nil {
+				t.Fatalf("HandleEvent(%s) error = %v", tt.eventType, err)
+			}
+
+			handler.Stop()
+
+			if len(se.indexedDocs) != 1 {
+				t.Fatalf("expected 1 indexed doc for %s, got %d", tt.eventType, len(se.indexedDocs))
+			}
+			doc := se.indexedDocs[0]
+			if doc.ID != tt.articleID {
+				t.Errorf("indexed doc ID = %q, want %q", doc.ID, tt.articleID)
+			}
+			if doc.Content != "Canonical body from alt-backend" {
+				t.Errorf("indexed content = %q, want the body fetched from alt-backend", doc.Content)
+			}
+			if doc.Title != "Canonical Title" {
+				t.Errorf("indexed title = %q, want the title fetched from alt-backend", doc.Title)
+			}
+		})
 	}
 }
 

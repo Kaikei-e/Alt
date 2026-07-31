@@ -91,6 +91,70 @@ func TestBackendListArticlesWithTagsContract(t *testing.T) {
 	require.NoError(t, err)
 }
 
+// TestBackendGetArticleByIDContract pins the response shape of the single
+// article fetch. search-indexer resolves every indexed document through this
+// RPC, so the document's published_at is only as good as what alt-backend
+// returns here — the field must be part of the contract, not an accident of
+// the fat event payload.
+func TestBackendGetArticleByIDContract(t *testing.T) {
+	mockProvider := newBackendPact(t)
+
+	err := mockProvider.
+		AddInteraction().
+		Given("an article with a source publication timestamp exists").
+		UponReceiving("a GetArticleByID request").
+		WithCompleteRequest(consumer.Request{
+			Method: "POST",
+			Path:   matchers.String("/services.backend.v1.BackendInternalService/GetArticleByID"),
+			Headers: matchers.MapMatcher{
+				"Content-Type": matchers.String("application/json"),
+			},
+			Body: matchers.MapMatcher{
+				"articleId": matchers.Like("art-001"),
+			},
+		}).
+		WithCompleteResponse(consumer.Response{
+			Status: 200,
+			Headers: matchers.MapMatcher{
+				"Content-Type": matchers.String("application/json"),
+			},
+			Body: matchers.MapMatcher{
+				"article": matchers.Like(matchers.MapMatcher{
+					"id":          matchers.Like("art-001"),
+					"title":       matchers.Like("Test Article"),
+					"content":     matchers.Like("Article content."),
+					"tags":        matchers.EachLike(matchers.Like("technology"), 1),
+					"createdAt":   matchers.Like("2026-03-26T00:00:00Z"),
+					"userId":      matchers.Like("user-001"),
+					"feedId":      matchers.Like("feed-001"),
+					"language":    matchers.Like("en"),
+					"publishedAt": matchers.Like("2026-03-20T09:30:00Z"),
+				}),
+			},
+		}).
+		ExecuteTest(t, func(config consumer.MockServerConfig) error {
+			client := newBackendClient(config)
+			resp, err := client.GetArticleByID(context.Background(), connect.NewRequest(&backendv1.GetArticleByIDRequest{
+				ArticleId: "art-001",
+			}))
+			if err != nil {
+				return fmt.Errorf("GetArticleByID failed: %w", err)
+			}
+
+			require.NotNil(t, resp.Msg.Article)
+			assert.NotEmpty(t, resp.Msg.Article.Id)
+			assert.NotEmpty(t, resp.Msg.Article.Title)
+			require.NotNil(t, resp.Msg.Article.CreatedAt)
+			// The whole point of the interaction: published_at must survive
+			// the RPC instead of being reconstructed from created_at.
+			require.NotNil(t, resp.Msg.Article.PublishedAt, "published_at must be exposed by GetArticleByID")
+			assert.False(t, resp.Msg.Article.PublishedAt.AsTime().Equal(resp.Msg.Article.CreatedAt.AsTime()),
+				"published_at must be the source timestamp, not a copy of created_at")
+			return nil
+		})
+	require.NoError(t, err)
+}
+
 func TestBackendGetLatestArticleTimestampContract(t *testing.T) {
 	mockProvider := newBackendPact(t)
 

@@ -6,7 +6,61 @@ import (
 	"net/http/httptest"
 	"testing"
 	"time"
+
+	"google.golang.org/protobuf/types/known/timestamppb"
+
+	backendv1 "search-indexer/gen/proto/services/backend/v1"
 )
+
+// TestToDriverArticle_PublishedAt covers the mapping that decides what
+// SearchWithDateFilter and Acolyte's weekly_briefing window see. The article
+// fetch is the only source of a document's timestamps once the fat event
+// payload is gone, so a real published_at must never be overwritten by
+// created_at.
+func TestToDriverArticle_PublishedAt(t *testing.T) {
+	t.Parallel()
+
+	createdAt := time.Date(2026, 3, 26, 0, 0, 0, 0, time.UTC)
+	publishedAt := time.Date(2026, 3, 20, 9, 30, 0, 0, time.UTC)
+
+	tests := []struct {
+		name  string
+		proto *backendv1.ArticleWithTags
+		want  time.Time
+	}{
+		{
+			name: "uses published_at when the backend supplies it",
+			proto: &backendv1.ArticleWithTags{
+				Id:          "art-001",
+				CreatedAt:   timestamppb.New(createdAt),
+				PublishedAt: timestamppb.New(publishedAt),
+			},
+			want: publishedAt,
+		},
+		{
+			name: "falls back to created_at when published_at is unset",
+			proto: &backendv1.ArticleWithTags{
+				Id:        "art-002",
+				CreatedAt: timestamppb.New(createdAt),
+			},
+			want: createdAt,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			got := toDriverArticle(tt.proto)
+			if !got.PublishedAt.Equal(tt.want) {
+				t.Errorf("PublishedAt = %v, want %v", got.PublishedAt, tt.want)
+			}
+			if !got.CreatedAt.Equal(createdAt) {
+				t.Errorf("CreatedAt = %v, want %v", got.CreatedAt, createdAt)
+			}
+		})
+	}
+}
 
 // TestClient_HTTPClient_HasTimeout verifies the Connect-RPC client uses an
 // http.Client with a non-zero Timeout, protecting search-indexer from
