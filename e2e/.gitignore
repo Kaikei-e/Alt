@@ -1,1 +1,5 @@
 reports/
+# Throwaway mTLS material minted per run by e2e/hurl/alt-data-hub/run.sh.
+# The directory has to sit under fixtures/ so compose can mount it, which
+# also puts private keys one `git add e2e/` away from being committed.
+fixtures/alt-data-hub/pki/

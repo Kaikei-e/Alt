@@ -16,6 +16,10 @@
 #                            (default: http://alt-backend:9000)
 #   CONNECT_URL            — alt-backend Connect-RPC URL (default: http://alt-backend:9101)
 #   INTERNAL_URL           — alt-backend internal Connect-RPC URL (default: http://alt-backend:9102)
+#   OPS_URL                — alt-backend operator listener, /health + /metrics
+#                            (default: http://alt-backend:9110). The three
+#                            split binaries share this listener; Prometheus
+#                            scrapes all of them there.
 #   HURL_IMAGE             — Hurl container image (default: ghcr.io/orange-opensource/hurl:7.1.0)
 #   IMAGE_TAG              — Docker tag for the alt-backend image (default: ci)
 #   GHCR_OWNER             — GHCR namespace (default: kaikei-e)
@@ -32,6 +36,7 @@ cd "$ROOT"
 : "${BASE_URL:=http://alt-backend:9000}"
 : "${CONNECT_URL:=http://alt-backend:9101}"
 : "${INTERNAL_URL:=http://alt-backend:9102}"
+: "${OPS_URL:=http://alt-backend:9110}"
 : "${HURL_IMAGE:=ghcr.io/orange-opensource/hurl:7.1.0}"
 : "${IMAGE_TAG:=ci}"
 : "${GHCR_OWNER:=kaikei-e}"
@@ -189,6 +194,7 @@ common_vars=(
   --variable "base_url=$BASE_URL"
   --variable "connect_url=$CONNECT_URL"
   --variable "internal_url=$INTERNAL_URL"
+  --variable "ops_url=$OPS_URL"
   --variable "run_id=$RUN_ID"
   --variable "loop_tx_forbidden=$LOOP_TX_FORBIDDEN"
   --variable "loop_tx_accept=$LOOP_TX_ACCEPT"
