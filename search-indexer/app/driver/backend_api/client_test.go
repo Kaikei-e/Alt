@@ -9,7 +9,7 @@ import (
 
 	"google.golang.org/protobuf/types/known/timestamppb"
 
-	backendv1 "search-indexer/gen/proto/services/backend/v1"
+	datahubv1 "search-indexer/gen/proto/alt/datahub/v1"
 )
 
 // TestToDriverArticle_PublishedAt covers the mapping that decides what
@@ -25,12 +25,12 @@ func TestToDriverArticle_PublishedAt(t *testing.T) {
 
 	tests := []struct {
 		name  string
-		proto *backendv1.ArticleWithTags
+		proto *datahubv1.ArticleWithTags
 		want  time.Time
 	}{
 		{
 			name: "uses published_at when the backend supplies it",
-			proto: &backendv1.ArticleWithTags{
+			proto: &datahubv1.ArticleWithTags{
 				Id:          "art-001",
 				CreatedAt:   timestamppb.New(createdAt),
 				PublishedAt: timestamppb.New(publishedAt),
@@ -39,7 +39,7 @@ func TestToDriverArticle_PublishedAt(t *testing.T) {
 		},
 		{
 			name: "falls back to created_at when published_at is unset",
-			proto: &backendv1.ArticleWithTags{
+			proto: &datahubv1.ArticleWithTags{
 				Id:        "art-002",
 				CreatedAt: timestamppb.New(createdAt),
 			},

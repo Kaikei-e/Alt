@@ -30,7 +30,7 @@
           }
         },
         "method": "POST",
-        "path": "/services.backend.v1.BackendInternalService/GetArticleByID"
+        "path": "/alt.datahub.v1.DataHubService/GetArticleByID"
       },
       "response": {
         "body": {
@@ -160,7 +160,7 @@
           "Content-Type": "application/json"
         },
         "method": "POST",
-        "path": "/services.backend.v1.BackendInternalService/GetLatestArticleTimestamp"
+        "path": "/alt.datahub.v1.DataHubService/GetLatestArticleTimestamp"
       },
       "response": {
         "body": {
@@ -220,7 +220,7 @@
           }
         },
         "method": "POST",
-        "path": "/services.backend.v1.BackendInternalService/ListArticlesWithTags"
+        "path": "/alt.datahub.v1.DataHubService/ListArticlesWithTags"
       },
       "response": {
         "body": {

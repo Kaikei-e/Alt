@@ -14,11 +14,23 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	backendv1 "search-indexer/gen/proto/services/backend/v1"
-	"search-indexer/gen/proto/services/backend/v1/backendv1connect"
+	datahubv1 "search-indexer/gen/proto/alt/datahub/v1"
+	"search-indexer/gen/proto/alt/datahub/v1/datahubv1connect"
 )
 
-func newBackendPact(t *testing.T) *consumer.V3HTTPMockProvider {
+// newDataHubPact opens the pact search-indexer holds against the alt_db owner.
+//
+// The Provider name stays "alt-backend" even though the RPCs moved to
+// alt.datahub.v1.DataHubService (ADR-000954 D7, Wave 2-B). The pact identity
+// is the Broker participant, not the proto package: alt-data-hub is built from
+// the alt-backend module and its verification job publishes under
+// "alt-backend", reading pacts/search-indexer-alt-backend.json. Renaming the
+// participant here would orphan this pact — the provider would verify a file
+// that no consumer writes any more, which is exactly the silent green a CDC
+// suite exists to prevent. The provider stub already mounts every internal
+// procedure under both the legacy and the DataHubService path, so the path
+// flip below is verified against the same participant.
+func newDataHubPact(t *testing.T) *consumer.V3HTTPMockProvider {
 	t.Helper()
 	mockProvider, err := consumer.NewV3Pact(consumer.MockHTTPProviderConfig{
 		Consumer: "search-indexer",
@@ -29,16 +41,16 @@ func newBackendPact(t *testing.T) *consumer.V3HTTPMockProvider {
 	return mockProvider
 }
 
-func newBackendClient(config consumer.MockServerConfig) backendv1connect.BackendInternalServiceClient {
-	return backendv1connect.NewBackendInternalServiceClient(
+func newDataHubClient(config consumer.MockServerConfig) datahubv1connect.DataHubServiceClient {
+	return datahubv1connect.NewDataHubServiceClient(
 		http.DefaultClient,
 		fmt.Sprintf("http://%s:%d", config.Host, config.Port),
 		connect.WithProtoJSON(),
 	)
 }
 
-func TestBackendListArticlesWithTagsContract(t *testing.T) {
-	mockProvider := newBackendPact(t)
+func TestDataHubListArticlesWithTagsContract(t *testing.T) {
+	mockProvider := newDataHubPact(t)
 
 	err := mockProvider.
 		AddInteraction().
@@ -46,7 +58,7 @@ func TestBackendListArticlesWithTagsContract(t *testing.T) {
 		UponReceiving("a ListArticlesWithTags request for backward keyset pagination").
 		WithCompleteRequest(consumer.Request{
 			Method: "POST",
-			Path:   matchers.String("/services.backend.v1.BackendInternalService/ListArticlesWithTags"),
+			Path:   matchers.String("/alt.datahub.v1.DataHubService/ListArticlesWithTags"),
 			Headers: matchers.MapMatcher{
 				"Content-Type": matchers.String("application/json"),
 			},
@@ -74,8 +86,8 @@ func TestBackendListArticlesWithTagsContract(t *testing.T) {
 			},
 		}).
 		ExecuteTest(t, func(config consumer.MockServerConfig) error {
-			client := newBackendClient(config)
-			resp, err := client.ListArticlesWithTags(context.Background(), connect.NewRequest(&backendv1.ListArticlesWithTagsRequest{
+			client := newDataHubClient(config)
+			resp, err := client.ListArticlesWithTags(context.Background(), connect.NewRequest(&datahubv1.ListArticlesWithTagsRequest{
 				LastId: "art-000",
 				Limit:  200,
 			}))
@@ -96,8 +108,8 @@ func TestBackendListArticlesWithTagsContract(t *testing.T) {
 // RPC, so the document's published_at is only as good as what alt-backend
 // returns here — the field must be part of the contract, not an accident of
 // the fat event payload.
-func TestBackendGetArticleByIDContract(t *testing.T) {
-	mockProvider := newBackendPact(t)
+func TestDataHubGetArticleByIDContract(t *testing.T) {
+	mockProvider := newDataHubPact(t)
 
 	err := mockProvider.
 		AddInteraction().
@@ -105,7 +117,7 @@ func TestBackendGetArticleByIDContract(t *testing.T) {
 		UponReceiving("a GetArticleByID request").
 		WithCompleteRequest(consumer.Request{
 			Method: "POST",
-			Path:   matchers.String("/services.backend.v1.BackendInternalService/GetArticleByID"),
+			Path:   matchers.String("/alt.datahub.v1.DataHubService/GetArticleByID"),
 			Headers: matchers.MapMatcher{
 				"Content-Type": matchers.String("application/json"),
 			},
@@ -133,8 +145,8 @@ func TestBackendGetArticleByIDContract(t *testing.T) {
 			},
 		}).
 		ExecuteTest(t, func(config consumer.MockServerConfig) error {
-			client := newBackendClient(config)
-			resp, err := client.GetArticleByID(context.Background(), connect.NewRequest(&backendv1.GetArticleByIDRequest{
+			client := newDataHubClient(config)
+			resp, err := client.GetArticleByID(context.Background(), connect.NewRequest(&datahubv1.GetArticleByIDRequest{
 				ArticleId: "art-001",
 			}))
 			if err != nil {
@@ -155,8 +167,8 @@ func TestBackendGetArticleByIDContract(t *testing.T) {
 	require.NoError(t, err)
 }
 
-func TestBackendGetLatestArticleTimestampContract(t *testing.T) {
-	mockProvider := newBackendPact(t)
+func TestDataHubGetLatestArticleTimestampContract(t *testing.T) {
+	mockProvider := newDataHubPact(t)
 
 	err := mockProvider.
 		AddInteraction().
@@ -164,7 +176,7 @@ func TestBackendGetLatestArticleTimestampContract(t *testing.T) {
 		UponReceiving("a GetLatestArticleTimestamp request").
 		WithCompleteRequest(consumer.Request{
 			Method: "POST",
-			Path:   matchers.String("/services.backend.v1.BackendInternalService/GetLatestArticleTimestamp"),
+			Path:   matchers.String("/alt.datahub.v1.DataHubService/GetLatestArticleTimestamp"),
 			Headers: matchers.MapMatcher{
 				"Content-Type": matchers.String("application/json"),
 			},
@@ -180,8 +192,8 @@ func TestBackendGetLatestArticleTimestampContract(t *testing.T) {
 			},
 		}).
 		ExecuteTest(t, func(config consumer.MockServerConfig) error {
-			client := newBackendClient(config)
-			resp, err := client.GetLatestArticleTimestamp(context.Background(), connect.NewRequest(&backendv1.GetLatestArticleTimestampRequest{}))
+			client := newDataHubClient(config)
+			resp, err := client.GetLatestArticleTimestamp(context.Background(), connect.NewRequest(&datahubv1.GetLatestArticleTimestampRequest{}))
 			if err != nil {
 				return fmt.Errorf("GetLatestArticleTimestamp failed: %w", err)
 			}
