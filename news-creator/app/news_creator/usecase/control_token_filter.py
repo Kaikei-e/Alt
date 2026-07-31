@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from news_creator.domain.prompts import CONTROL_TOKENS
+
 
 class ControlTokenFilter:
     """Filter control tokens that may be split across stream chunks.
@@ -12,17 +14,7 @@ class ControlTokenFilter:
     """
 
     def __init__(self, ignored_tokens: set[str] | None = None) -> None:
-        self._ignored = ignored_tokens or {
-            "<start_of_turn>",
-            "<end_of_turn>",
-            "<|turn>",
-            "<turn|>",
-            "<|channel>thought",
-            "<channel|>",
-            "<|system|>",
-            "<|user|>",
-            "<|assistant|>",
-        }
+        self._ignored = ignored_tokens or set(CONTROL_TOKENS)
         self._buf = ""
         self._max_len = max((len(t) for t in self._ignored), default=0)
 

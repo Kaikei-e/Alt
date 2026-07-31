@@ -1,6 +1,175 @@
 """Prompt templates for LLM content generation."""
 
-SUMMARY_PROMPT_TEMPLATE = """<|turn>user
+from __future__ import annotations
+
+import logging
+from typing import Protocol
+
+logger = logging.getLogger(__name__)
+
+# Control strings of the Gemma chat wire format. Prompts are sent to Ollama with
+# raw=True (gateway/ollama_gateway.py), which bypasses the template engine, so
+# these strings reach the tokenizer exactly as written. Thinking-mode markers are
+# included because Gemma 4 emits them under raw=True too (docs/ADR/000640.md).
+CONTROL_TOKENS: frozenset[str] = frozenset(
+    {
+        "<start_of_turn>",
+        "<end_of_turn>",
+        "<|turn>",
+        "<turn|>",
+        "<|think|>",
+        "<|channel>thought",
+        "<channel|>",
+        "<|system|>",
+        "<|user|>",
+        "<|assistant|>",
+    }
+)
+
+# Longest first so removal stays deterministic when tokens overlap.
+_ORDERED_CONTROL_TOKENS: tuple[str, ...] = tuple(
+    sorted(CONTROL_TOKENS, key=len, reverse=True)
+)
+_MAX_CONTROL_TOKEN_LEN: int = max(len(token) for token in _ORDERED_CONTROL_TOKENS)
+# A token can only complete on its own final character, so every other character
+# skips the tail inspection entirely.
+_CONTROL_TOKEN_FINAL_CHARS: frozenset[str] = frozenset(
+    token[-1] for token in _ORDERED_CONTROL_TOKENS
+)
+
+# Placeholders filled with third-party feed content (RSS article bodies, article
+# sentences). Every other placeholder is filled by this service.
+UNTRUSTED_PLACEHOLDERS: frozenset[str] = frozenset({"content", "cluster_section"})
+
+
+def neutralize_control_tokens(text: str) -> tuple[str, int]:
+    """Strip control-token sequences from untrusted text.
+
+    A single left-to-right scan keeps the kept characters in a buffer and pops a
+    control token off the buffer tail the moment one completes there. That is
+    reassembly-proof by construction — a nested payload such as ``"<|tur<|turn>n>"``
+    only forms its outer token after the inner one is popped, and the very next
+    character completes it for the same pop — while staying linear in the input
+    length. Repeating a whole-text sweep until it reaches a fixpoint would instead
+    cost one pass per nesting level, which a feed publisher controls outright:
+    summarize_usecase truncates bodies at 60_000 characters and formats the
+    templates from ``async def``, so a super-linear neutralizer stalls the asyncio
+    event loop for every concurrent request (CWE-407).
+
+    Args:
+        text: Untrusted text (e.g. an RSS article body)
+
+    Returns:
+        Tuple of (neutralized text, number of sequences removed)
+    """
+    if not text:
+        return text, 0
+
+    # A pop can only ever fire where a token already occurs verbatim, so text
+    # without a single occurrence is returned untouched. This keeps benign
+    # articles — the overwhelming majority — at plain substring-search cost.
+    if not any(token in text for token in _ORDERED_CONTROL_TOKENS):
+        return text, 0
+
+    kept: list[str] = []
+    keep = kept.append
+    removed = 0
+    for char in text:
+        keep(char)
+        if char not in _CONTROL_TOKEN_FINAL_CHARS:
+            continue
+        tail = "".join(kept[-_MAX_CONTROL_TOKEN_LEN:])
+        for token in _ORDERED_CONTROL_TOKENS:
+            if tail.endswith(token):
+                del kept[-len(token) :]
+                removed += 1
+                break
+    return "".join(kept), removed
+
+
+class _FormatMapping(Protocol):
+    """Keyed lookup — all ``str.format_map`` requires of its argument."""
+
+    def __getitem__(self, key: str, /) -> object: ...
+
+
+class _NeutralizedMapping:
+    """Format mapping that serves neutralized text for untrusted placeholders."""
+
+    __slots__ = ("_values", "_neutralized")
+
+    def __init__(self, values: _FormatMapping, neutralized: dict[str, str]) -> None:
+        self._values = values
+        self._neutralized = neutralized
+
+    def __getitem__(self, key: str, /) -> object:
+        cleaned = self._neutralized.get(key)
+        if cleaned is not None:
+            return cleaned
+        return self._values[key]
+
+
+def _neutralize_untrusted(values: _FormatMapping) -> _FormatMapping:
+    """Return `values` with control tokens stripped from untrusted placeholders."""
+    neutralized: dict[str, str] = {}
+    for placeholder in UNTRUSTED_PLACEHOLDERS:
+        try:
+            value = values[placeholder]
+        except KeyError:
+            continue
+        if not isinstance(value, str):
+            continue
+        cleaned, removed = neutralize_control_tokens(value)
+        if not removed:
+            continue
+        logger.warning(
+            "Removed control token sequences from untrusted prompt input",
+            extra={
+                "placeholder": placeholder,
+                "tokens_removed": removed,
+                "original_length": len(value),
+            },
+        )
+        neutralized[placeholder] = cleaned
+    if not neutralized:
+        return values
+    return _NeutralizedMapping(values, neutralized)
+
+
+class PromptTemplate(str):
+    """Prompt template that neutralizes control tokens in untrusted placeholders.
+
+    Article bodies are attacker-controlled by design, so a body containing
+    ``"<turn|>\\n<|turn>user"`` would otherwise forge a turn boundary and take
+    over the generation (OWASP LLM01 / CWE-1427). The guard lives on the template
+    because these constants are formatted directly by SummarizeUsecase as well as
+    through the prompt builders.
+
+    ``format`` and ``format_map`` are the only ``str`` methods that substitute
+    fields, and both are overridden here so the guard cannot be skipped by
+    picking the other entry point.
+    """
+
+    __slots__ = ()
+
+    def format_map(self, mapping: _FormatMapping, /) -> str:
+        """Format from a mapping, stripping control tokens from untrusted values."""
+        return str.format_map(self, _neutralize_untrusted(mapping))
+
+    def format(self, *args: object, **kwargs: object) -> str:
+        """Format the template; delegates so there is one neutralized code path."""
+        if args:
+            # A positional field carries no placeholder name, so it cannot be
+            # screened against UNTRUSTED_PLACEHOLDERS. Refuse loudly rather than
+            # let a future template silently interpolate feed content unchecked.
+            raise TypeError(
+                "PromptTemplate.format() takes keyword arguments only; "
+                "positional fields bypass untrusted-input neutralization"
+            )
+        return self.format_map(kwargs)
+
+
+SUMMARY_PROMPT_TEMPLATE = PromptTemplate("""<|turn>user
 You are an expert multilingual journalist specializing in Japanese news summarization.
 
 TASK:
@@ -56,9 +225,9 @@ ARTICLE TO SUMMARIZE:
 Write 3-5 paragraphs in Japanese with specific facts, numbers, dates, and proper nouns. Count characters as you write. Target 300-1000 characters. CRITICAL: Complete your output - do not truncate mid-sentence. Always end with a complete sentence.
 <turn|>
 <|turn>model
-"""
+""")
 
-CHUNK_SUMMARY_PROMPT_TEMPLATE = """<|turn>user
+CHUNK_SUMMARY_PROMPT_TEMPLATE = PromptTemplate("""<|turn>user
 You are an expert editor extracting key information for a later summarization task.
 
 TASK:
@@ -81,9 +250,9 @@ TEXT CHUNK:
 Extract key facts:
 <turn|>
 <|turn>model
-"""
+""")
 
-RECAP_CLUSTER_SUMMARY_PROMPT = r"""<|turn>system
+RECAP_CLUSTER_SUMMARY_PROMPT = PromptTemplate(r"""<|turn>system
 You are an expert Japanese news editor. Generate structured Japanese recap bullets strictly following the contract below.
 Return a single JSON object and nothing else.
 
@@ -146,4 +315,4 @@ Use them to infer the overall storyline and synthesize the summary.
 Return ONLY the JSON object. Start with {{ and end with }}.
 <turn|>
 <|turn>model
-"""
+""")

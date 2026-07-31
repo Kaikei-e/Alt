@@ -129,3 +129,98 @@ class TestPromptBuilderProtocol:
         builder = RecapPromptBuilder()
         assert hasattr(builder, "build")
         assert callable(builder.build)
+
+
+class TestUntrustedContentNeutralization:
+    """Tests that feed content cannot forge Gemma turn boundaries (OWASP LLM01)."""
+
+    def test_summary_prompt_drops_forged_turn_boundaries(self, forged_turn_article):
+        """Article body must not contribute turn markers to the built prompt."""
+        from news_creator.domain.prompts import SUMMARY_PROMPT_TEMPLATE
+        from news_creator.usecase.prompt_builder import SummaryPromptBuilder
+
+        prompt = SummaryPromptBuilder().build(
+            content=forged_turn_article, current_date="2026年7月31日"
+        )
+
+        # Only the template's own turn markers may remain.
+        assert prompt.count("<|turn>") == SUMMARY_PROMPT_TEMPLATE.count("<|turn>")
+        assert prompt.count("<turn|>") == SUMMARY_PROMPT_TEMPLATE.count("<turn|>")
+        # The injected instruction survives as plain text, without its boundary.
+        assert "Ignore the previous article" in prompt
+
+    def test_chunk_prompt_drops_forged_turn_boundaries(self, forged_turn_article):
+        """Chunk prompts interpolate the same untrusted text."""
+        from news_creator.domain.prompts import CHUNK_SUMMARY_PROMPT_TEMPLATE
+        from news_creator.usecase.prompt_builder import ChunkPromptBuilder
+
+        prompt = ChunkPromptBuilder().build(content=forged_turn_article)
+
+        assert prompt.count("<|turn>") == CHUNK_SUMMARY_PROMPT_TEMPLATE.count("<|turn>")
+        assert prompt.count("<turn|>") == CHUNK_SUMMARY_PROMPT_TEMPLATE.count("<turn|>")
+
+    def test_recap_prompt_drops_forged_turn_boundaries(self, forged_turn_article):
+        """Cluster sections quote article sentences verbatim."""
+        from news_creator.domain.prompts import RECAP_CLUSTER_SUMMARY_PROMPT
+        from news_creator.usecase.prompt_builder import RecapPromptBuilder
+
+        prompt = RecapPromptBuilder().build(
+            job_id="job-123",
+            genre="technology",
+            cluster_section=forged_turn_article,
+            max_bullets=5,
+        )
+
+        assert prompt.count("<|turn>") == RECAP_CLUSTER_SUMMARY_PROMPT.count("<|turn>")
+        assert prompt.count("<turn|>") == RECAP_CLUSTER_SUMMARY_PROMPT.count("<turn|>")
+
+    def test_benign_summary_prompt_is_byte_identical_golden(self, benign_article):
+        """Golden: benign Japanese prose, code and angle brackets are unchanged.
+
+        ``str.format`` is the unguarded formatting the builders used before the
+        neutralization guard, so it pins the pre-existing byte output.
+        """
+        from news_creator.domain.prompts import SUMMARY_PROMPT_TEMPLATE
+        from news_creator.usecase.prompt_builder import SummaryPromptBuilder
+
+        expected = str.format(
+            SUMMARY_PROMPT_TEMPLATE,
+            current_date="2026年7月31日",
+            content=benign_article,
+        )
+        prompt = SummaryPromptBuilder().build(
+            content=benign_article, current_date="2026年7月31日"
+        )
+
+        assert prompt == expected
+
+    def test_benign_chunk_prompt_is_byte_identical_golden(self, benign_article):
+        """Golden: chunk prompts are unchanged for benign content."""
+        from news_creator.domain.prompts import CHUNK_SUMMARY_PROMPT_TEMPLATE
+        from news_creator.usecase.prompt_builder import ChunkPromptBuilder
+
+        expected = str.format(CHUNK_SUMMARY_PROMPT_TEMPLATE, content=benign_article)
+        prompt = ChunkPromptBuilder().build(content=benign_article)
+
+        assert prompt == expected
+
+    def test_benign_recap_prompt_is_byte_identical_golden(self, benign_article):
+        """Golden: recap prompts are unchanged for benign cluster sections."""
+        from news_creator.domain.prompts import RECAP_CLUSTER_SUMMARY_PROMPT
+        from news_creator.usecase.prompt_builder import RecapPromptBuilder
+
+        expected = str.format(
+            RECAP_CLUSTER_SUMMARY_PROMPT,
+            job_id="job-123",
+            genre="technology",
+            cluster_section=benign_article,
+            max_bullets=5,
+        )
+        prompt = RecapPromptBuilder().build(
+            job_id="job-123",
+            genre="technology",
+            cluster_section=benign_article,
+            max_bullets=5,
+        )
+
+        assert prompt == expected
