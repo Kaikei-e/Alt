@@ -1,26 +1,46 @@
-//! Consumer-Driven Contract tests for recap-worker → alt-backend.
+//! Consumer-Driven Contract tests for recap-worker → alt-data-hub.
 //!
-//! Verifies the Connect-RPC `ListRecapArticles` paginated endpoint on
-//! `BackendInternalService`. Service-to-service endpoint — auth is
+//! Verifies the Connect-RPC `ListRecapArticles` / `BatchGetTagsByArticleIDs`
+//! endpoints on `alt.datahub.v1.DataHubService` (ADR-000954 D7 — the
+//! `services.backend.v1.BackendInternalService` namespace is being retired;
+//! RPC names and protojson wire shapes are unchanged, only the package /
+//! service prefix of the path moves). Service-to-service endpoint — auth is
 //! established at the mTLS transport layer, no user token required.
-//! Path: POST `/services.backend.v1.BackendInternalService/ListRecapArticles`, JSON body.
+//! Path: POST `/alt.datahub.v1.DataHubService/ListRecapArticles`, JSON body.
+//!
+//! These tests drive the *production* `AltBackendClient` rather than a
+//! hand-rolled reqwest call. That is deliberate: a contract test that restates
+//! the path on both the expectation and the request side is self-consistent
+//! and stays green no matter which path the shipped client actually uses —
+//! exactly the silent-drift failure mode CLAUDE.md Rule 7 / ADR-000928 warn
+//! about. Driving the real client makes the pact the single place the RPC path
+//! is asserted.
 
+use std::time::Duration;
+
+use chrono::{DateTime, Utc};
 use pact_consumer::prelude::*;
-use reqwest::Client;
-use serde::Deserialize;
 
-#[allow(dead_code)]
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct ListRecapArticlesResponse {
-    total: i32,
-    has_more: bool,
-    articles: Vec<serde_json::Value>,
-}
+use crate::clients::alt_backend::{AltBackendClient, AltBackendConfig};
 
 const PACT_DIR: &str = "../../pacts";
 
-/// Paginated article fetch: POST /services.backend.v1.BackendInternalService/ListRecapArticles → 200 OK
+fn contract_client(base_url: String) -> AltBackendClient {
+    AltBackendClient::new(AltBackendConfig {
+        base_url,
+        connect_timeout: Duration::from_secs(3),
+        total_timeout: Duration::from_secs(30),
+    })
+    .expect("alt-data-hub client should build")
+}
+
+fn ts(raw: &str) -> DateTime<Utc> {
+    DateTime::parse_from_rfc3339(raw)
+        .expect("fixture timestamp should parse")
+        .with_timezone(&Utc)
+}
+
+/// Paginated article fetch: POST /alt.datahub.v1.DataHubService/ListRecapArticles → 200 OK
 #[tokio::test]
 #[ignore = "CDC contract test"]
 async fn contract_alt_backend_recap_articles() {
@@ -29,7 +49,7 @@ async fn contract_alt_backend_recap_articles() {
             i.given("articles exist in the recap window");
             i.request.method("POST");
             i.request
-                .path("/services.backend.v1.BackendInternalService/ListRecapArticles");
+                .path("/alt.datahub.v1.DataHubService/ListRecapArticles");
             i.request.content_type("application/json");
             i.request.json_body(json_pattern!({
                 "from": like!("2026-03-19T00:00:00Z"),
@@ -59,40 +79,20 @@ async fn contract_alt_backend_recap_articles() {
         .with_output_dir(PACT_DIR)
         .start_mock_server(None, None);
 
-    let url = pact.path("/services.backend.v1.BackendInternalService/ListRecapArticles");
-    let body = serde_json::json!({
-        "from": "2026-03-19T00:00:00Z",
-        "to": "2026-03-26T00:00:00Z",
-        "page": 1,
-        "pageSize": 500,
-    });
-
-    let resp = Client::new()
-        .post(url)
-        .header("Content-Type", "application/json")
-        .json(&body)
-        .send()
+    let articles = contract_client(pact.url().to_string())
+        .fetch_articles(ts("2026-03-19T00:00:00Z"), ts("2026-03-26T00:00:00Z"))
         .await
-        .expect("request should succeed");
+        .expect("fetch_articles should succeed against the pact mock");
 
-    assert_eq!(resp.status(), 200);
-    let parsed: ListRecapArticlesResponse = resp.json().await.expect("should parse response");
-    assert!(!parsed.articles.is_empty());
-    assert!(parsed.total > 0);
+    assert!(!articles.is_empty());
+    assert_eq!(articles[0].article_id, "art-001");
 }
 
-#[allow(dead_code)]
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct BatchGetTagsByArticleIDsResponse {
-    items: Vec<serde_json::Value>,
-}
-
-/// Batch tag fetch: POST /services.backend.v1.BackendInternalService/BatchGetTagsByArticleIDs → 200 OK
+/// Batch tag fetch: POST /alt.datahub.v1.DataHubService/BatchGetTagsByArticleIDs → 200 OK
 ///
 /// Replaces the former `recap-worker → tag-generator /api/v1/tags/batch`
 /// contract per ADR-000241 / ADR-000397 (Shared Database anti-pattern
-/// elimination; alt-backend is the sole data owner of articles /
+/// elimination; the data-hub is the sole data owner of articles /
 /// article_tags / feed_tags).
 #[tokio::test]
 #[ignore = "CDC contract test"]
@@ -102,7 +102,7 @@ async fn contract_alt_backend_batch_get_tags_by_article_ids() {
             i.given("tags exist for the requested articles");
             i.request.method("POST");
             i.request
-                .path("/services.backend.v1.BackendInternalService/BatchGetTagsByArticleIDs");
+                .path("/alt.datahub.v1.DataHubService/BatchGetTagsByArticleIDs");
             i.request.content_type("application/json");
             i.request.json_body(json_pattern!({
                 "articleIds": each_like!(like!("art-001")),
@@ -125,19 +125,13 @@ async fn contract_alt_backend_batch_get_tags_by_article_ids() {
         .with_output_dir(PACT_DIR)
         .start_mock_server(None, None);
 
-    let url = pact.path("/services.backend.v1.BackendInternalService/BatchGetTagsByArticleIDs");
-    let body = serde_json::json!({ "articleIds": ["art-001"] });
-
-    let resp = Client::new()
-        .post(url)
-        .header("Content-Type", "application/json")
-        .json(&body)
-        .send()
+    let tags = contract_client(pact.url().to_string())
+        .batch_get_tags_by_article_ids(&["art-001".to_string()])
         .await
-        .expect("request should succeed");
+        .expect("batch_get_tags_by_article_ids should succeed against the pact mock");
 
-    assert_eq!(resp.status(), 200);
-    let parsed: BatchGetTagsByArticleIDsResponse =
-        resp.json().await.expect("should parse response");
-    assert!(!parsed.items.is_empty());
+    let signals = tags
+        .get("art-001")
+        .expect("response should carry tags for the requested article id");
+    assert!(!signals.is_empty());
 }
