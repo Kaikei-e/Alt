@@ -162,21 +162,5 @@ type RecapArticlesResponse struct {
 	Articles []RecapArticleResponse `json:"articles"`
 }
 
-// RecentArticleMetadata represents minimal article info for temporal queries
-// Used by rag-orchestrator for temporal topics feature
-type RecentArticleMetadata struct {
-	ID          string   `json:"id"`
-	Title       string   `json:"title"`
-	URL         string   `json:"url"`
-	PublishedAt string   `json:"published_at"`
-	FeedID      string   `json:"feed_id"`
-	Tags        []string `json:"tags"`
-}
-
-// RecentArticlesResponse represents the response for recent articles query
-type RecentArticlesResponse struct {
-	Articles []RecentArticleMetadata `json:"articles"`
-	Since    string                  `json:"since"`
-	Until    string                  `json:"until"`
-	Count    int                     `json:"count"`
-}
+// RecentArticleMetadata / RecentArticlesResponse moved to alt/dataplane/rest
+// with the /v1/internal handlers when cmd/datahub took over that surface.

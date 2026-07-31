@@ -31,6 +31,18 @@ func (s *JobScheduler) Add(j Job) {
 	s.jobs = append(s.jobs, j)
 }
 
+// JobNames returns the names of the registered jobs in registration order.
+// Which jobs a binary registers is itself a decision worth asserting on — the
+// harvester deliberately omits some (see RegisterHarvesterJobs) — and there is
+// otherwise no way to observe the registration without running the jobs.
+func (s *JobScheduler) JobNames() []string {
+	names := make([]string, 0, len(s.jobs))
+	for _, j := range s.jobs {
+		names = append(names, j.Name)
+	}
+	return names
+}
+
 // Start launches all registered jobs as goroutines. Each job runs immediately
 // on start, then repeats at its configured interval. All jobs stop when ctx
 // is cancelled.

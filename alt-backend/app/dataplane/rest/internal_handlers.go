@@ -11,13 +11,20 @@ import (
 	"github.com/labstack/echo/v4"
 )
 
-// RegisterInternalRoutes wires service-to-service endpoints used by internal
-// callers (pre-processor, rag-orchestrator, etc.). The group carries no auth
-// middleware and both endpoints answer system-level queries with no tenant
-// predicate, so reachability is the whole control: callers must mount this on
-// the unpublished internal listener or the mTLS listener, never on the
-// browser-facing REST server.
-func RegisterInternalRoutes(e *echo.Echo, container *di.ApplicationComponents) {
+// RegisterInternalRoutes wires the service-to-service REST endpoints used by
+// pre-processor and rag-orchestrator. Neither carries auth middleware and
+// neither takes a tenant argument — both answer system-level queries — so the
+// listener they are mounted on is the whole access control.
+//
+// That listener is now cmd/datahub's mutual-TLS one, and this package is
+// imported by nothing else, so "mounted on the browser-facing REST server by
+// mistake" is no longer expressible: alt/orchestrator/rest cannot see these
+// handlers at all.
+//
+// Converting these two routes to Connect RPCs is a separate wave: their
+// callers are other services, so the protocol change needs a Pact CDC RED
+// first (CLAUDE.md rule 7).
+func RegisterInternalRoutes(e *echo.Echo, container *di.DataHubComponents) {
 	v1 := e.Group("/v1/internal")
 
 	v1.GET("/system-user", func(c echo.Context) error {
@@ -47,7 +54,7 @@ func RegisterInternalRoutes(e *echo.Echo, container *di.ApplicationComponents) {
 // Query params:
 //   - within_hours: Time window in hours (default: 24, max: 168)
 //   - limit: Maximum articles to return (default: 100, max: 500, 0 means no limit - time constraint only)
-func handleFetchRecentArticles(container *di.ApplicationComponents) echo.HandlerFunc {
+func handleFetchRecentArticles(container *di.DataHubComponents) echo.HandlerFunc {
 	return func(c echo.Context) error {
 		ctx := c.Request().Context()
 
@@ -112,4 +119,23 @@ func handleFetchRecentArticles(container *di.ApplicationComponents) echo.Handler
 		c.Response().Header().Set("Cache-Control", "private, max-age=60")
 		return c.JSON(http.StatusOK, response)
 	}
+}
+
+// RecentArticleMetadata represents minimal article info for temporal queries.
+// Used by rag-orchestrator for its temporal topics feature.
+type RecentArticleMetadata struct {
+	ID          string   `json:"id"`
+	Title       string   `json:"title"`
+	URL         string   `json:"url"`
+	PublishedAt string   `json:"published_at"`
+	FeedID      string   `json:"feed_id"`
+	Tags        []string `json:"tags"`
+}
+
+// RecentArticlesResponse represents the response for recent articles query.
+type RecentArticlesResponse struct {
+	Articles []RecentArticleMetadata `json:"articles"`
+	Since    string                  `json:"since"`
+	Until    string                  `json:"until"`
+	Count    int                     `json:"count"`
 }

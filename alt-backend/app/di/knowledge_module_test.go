@@ -12,17 +12,17 @@ import (
 // with every Knowledge Home mutation silently no-op'ing.
 func TestLogSovereignWiringState(t *testing.T) {
 	t.Run("enabled when SOVEREIGN_URL is set", func(t *testing.T) {
-		assert.True(t, logSovereignWiringState("http://knowledge-sovereign:9500", "development"))
+		assert.True(t, logSovereignWiringState("alt-backend", "http://knowledge-sovereign:9500", "development"))
 	})
 
 	t.Run("disabled but non-fatal outside production", func(t *testing.T) {
-		assert.False(t, logSovereignWiringState("", "development"))
-		assert.False(t, logSovereignWiringState("", ""))
+		assert.False(t, logSovereignWiringState("alt-backend", "", "development"))
+		assert.False(t, logSovereignWiringState("alt-backend", "", ""))
 	})
 
 	t.Run("panics when unset in production", func(t *testing.T) {
 		assert.Panics(t, func() {
-			logSovereignWiringState("", "production")
+			logSovereignWiringState("alt-backend", "", "production")
 		})
 	})
 }

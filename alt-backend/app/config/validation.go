@@ -43,25 +43,16 @@ func validateConfig(config *Config) error {
 	return nil
 }
 
+// validateServerConfig validates the settings every binary shares. Listener
+// ports are NOT checked here: only cmd/backend opens SERVER_PORT and
+// CONNECT_PORT, so cmd/harvester and cmd/datahub would otherwise fail on
+// values nothing in those processes reads. See config.ValidateBackendListeners
+// for the port range and uniqueness checks, and LoadOperatorListenAddr /
+// LoadDataHubConfig for the two listeners that are addressed rather than
+// ported.
 func validateServerConfig(config *ServerConfig) error {
-	// Validate port range
-	if config.Port < 1 || config.Port > 65535 {
-		return fmt.Errorf("port must be between 1 and 65535, got %d", config.Port)
-	}
-
-	if config.ConnectPort < 1 || config.ConnectPort > 65535 {
-		return fmt.Errorf("connect port must be between 1 and 65535, got %d", config.ConnectPort)
-	}
-
-	if config.InternalPort < 1 || config.InternalPort > 65535 {
-		return fmt.Errorf("internal port must be between 1 and 65535, got %d", config.InternalPort)
-	}
-
-	if config.InternalPort == config.Port || config.InternalPort == config.ConnectPort {
-		return fmt.Errorf("internal port %d must differ from the published server and connect ports", config.InternalPort)
-	}
-
-	// Validate timeout values
+	// Timeouts feed every binary's http.Server, including the data-hub mTLS
+	// listener and the harvester health listener, so they stay shared.
 	if config.ReadTimeout <= 0 {
 		return fmt.Errorf("timeout values must be positive, got ReadTimeout: %v", config.ReadTimeout)
 	}

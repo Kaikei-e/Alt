@@ -180,22 +180,27 @@ func newFeedModule(infra *InfraModule, sub *SubscriptionModule) *FeedModule {
 		RemoveFavoriteFeedUsecase:           removeFavoriteFeedUC,
 		ListFeedLinksUsecase:                listFeedLinksUC,
 		ListFeedLinksWithHealthUsecase:      listFeedLinksWithHealthUC,
-		DeleteFeedLinkUsecase:               nil, // set after subscription module
-		FeedsReadingStatusUsecase:           feedsReadingStatusUC,
-		ArticlesReadingStatusUsecase:        articlesReadingStatusUC,
-		FeedsSummaryUsecase:                 feedsSummaryUC,
-		FeedAmountUsecase:                   feedsCountUC,
-		UnsummarizedArticlesCountUsecase:    unsummarizedUC,
-		SummarizedArticlesCountUsecase:      summarizedUC,
-		TotalArticlesCountUsecase:           totalUC,
-		TodayUnreadArticlesCountUsecase:     todayUnreadUC,
-		TrendStatsUsecase:                   trendStatsUC,
-		FeedSearchUsecase:                   feedSearchUC,
-		FetchFeedTagsUsecase:                fetchFeedTagsUC,
-		FetchFeedTagsByIDUsecase:            fetchFeedTagsByIDUC,
-		FetchInoreaderSummaryUsecase:        fetchInoreaderSummaryUC,
-		FetchRandomSubscriptionUsecase:      fetchRandomSubscriptionUC,
-		ScrapingDomainUsecase:               scrapingDomainUC,
+		// Taken straight from the subscription module rather than patched in
+		// by the composition root afterwards. The old "return nil, the root
+		// fills it in" shape compiled fine if a root forgot the assignment and
+		// only surfaced as a nil dereference inside the RSS DeleteFeedLink
+		// handler — and there are three roots now (CLAUDE.md rule 8).
+		DeleteFeedLinkUsecase:            sub.DeleteFeedLinkUsecase,
+		FeedsReadingStatusUsecase:        feedsReadingStatusUC,
+		ArticlesReadingStatusUsecase:     articlesReadingStatusUC,
+		FeedsSummaryUsecase:              feedsSummaryUC,
+		FeedAmountUsecase:                feedsCountUC,
+		UnsummarizedArticlesCountUsecase: unsummarizedUC,
+		SummarizedArticlesCountUsecase:   summarizedUC,
+		TotalArticlesCountUsecase:        totalUC,
+		TodayUnreadArticlesCountUsecase:  todayUnreadUC,
+		TrendStatsUsecase:                trendStatsUC,
+		FeedSearchUsecase:                feedSearchUC,
+		FetchFeedTagsUsecase:             fetchFeedTagsUC,
+		FetchFeedTagsByIDUsecase:         fetchFeedTagsByIDUC,
+		FetchInoreaderSummaryUsecase:     fetchInoreaderSummaryUC,
+		FetchRandomSubscriptionUsecase:   fetchRandomSubscriptionUC,
+		ScrapingDomainUsecase:            scrapingDomainUC,
 
 		FeedPageCacheGateway:         feedPageCacheGw,
 		FetchFeedsListGateway:        fetchFeedsListGw,

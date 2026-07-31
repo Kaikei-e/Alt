@@ -157,22 +157,10 @@ func TestConfigValidation(t *testing.T) {
 		wantErr bool
 		errMsg  string
 	}{
-		{
-			name: "invalid port - negative",
-			envVars: map[string]string{
-				"SERVER_PORT": "-1",
-			},
-			wantErr: true,
-			errMsg:  "port must be between 1 and 65535",
-		},
-		{
-			name: "invalid port - too high",
-			envVars: map[string]string{
-				"SERVER_PORT": "70000",
-			},
-			wantErr: true,
-			errMsg:  "port must be between 1 and 65535",
-		},
+		// SERVER_PORT / CONNECT_PORT range and uniqueness moved out of the
+		// shared NewConfig path when alt-backend split into three binaries:
+		// only cmd/backend opens those listeners. They are covered by
+		// TestValidateBackendListeners in binary_test.go.
 		{
 			name: "invalid timeout - negative",
 			envVars: map[string]string{

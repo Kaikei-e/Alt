@@ -2,20 +2,12 @@ package di
 
 import (
 	"alt/config"
-	"alt/dataplane/driver/kratos_client"
 	"alt/orchestrator/driver/search_indexer_connect"
 	"alt/orchestrator/gateway/config_gateway"
-	"alt/orchestrator/gateway/error_handler_gateway"
-	"alt/orchestrator/gateway/rate_limiter_gateway"
 	"alt/orchestrator/gateway/robots_txt_gateway"
-	"alt/orchestrator/port/config_port"
-	"alt/orchestrator/port/error_handler_port"
-	"alt/orchestrator/port/rate_limiter_port"
 	"alt/orchestrator/port/search_indexer_port"
 	"alt/shared/driver/alt_db"
 	"alt/shared/driver/mqhub_connect"
-	"alt/shared/gateway/event_publisher_gateway"
-	"alt/shared/port/event_publisher_port"
 	"alt/utils"
 	"alt/utils/rate_limiter"
 	"log/slog"
@@ -24,17 +16,19 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-// InfraModule holds all infrastructure-level components shared across domain modules.
+// InfraModule holds the infrastructure cmd/backend's domain modules share.
+//
+// It is deliberately not the union of everything the three binaries need.
+// cmd/harvester and cmd/datahub build their own narrow set of drivers in
+// container_harvester.go / container_datahub.go, because a shared "build
+// everything" infra module would hand each process credentials and clients for
+// surfaces it does not serve — and would reintroduce the dead wiring this
+// split removes (plan R11).
 type InfraModule struct {
-	Config          *config.Config
-	ConfigPort      config_port.ConfigPort
-	ErrorHandler    error_handler_port.ErrorHandlerPort
-	RateLimiter     *rate_limiter.HostRateLimiter
-	RateLimiterPort rate_limiter_port.RateLimiterPort
-	HTTPClient      *http.Client
-	KratosClient    kratos_client.KratosClient
-	MQHubClient     *mqhub_connect.Client
-	EventPublisher  event_publisher_port.EventPublisherPort
+	Config      *config.Config
+	RateLimiter *rate_limiter.HostRateLimiter
+	HTTPClient  *http.Client
+	MQHubClient *mqhub_connect.Client
 
 	// Shared drivers
 	AltDBRepository     *alt_db.AltDBRepository
@@ -45,21 +39,24 @@ type InfraModule struct {
 }
 
 // newInfraModule wires infrastructure components from the single Config
-// instance the composition root (main.go) already loaded and validated.
+// instance the composition root (cmd/backend) already loaded and validated.
 // It must not call config.NewConfig() itself — doing so created a second,
 // independently-loaded Config that could silently diverge from the one main
 // already validated and logged.
+//
+// KratosClient and EventPublisher used to be built here. They are not any
+// more: their only consumers (/v1/internal/system-user and
+// BackendInternalService) live in cmd/datahub now, so building them for the
+// backend would hand that process an auth-hub token and an event-publishing
+// client it has no surface to use.
 func newInfraModule(pool *pgxpool.Pool, cfg *config.Config) *InfraModule {
 	altDBRepository := alt_db.NewAltDBRepository(pool)
 
-	// Create port implementations
+	// Rate limiter configuration is read through the config gateway; the port
+	// itself has no consumer beyond this function, so it stays a local.
 	configPort := config_gateway.NewConfigGateway(cfg)
-	errorHandlerPort := error_handler_gateway.NewErrorHandlerGateway()
-
-	// Create rate limiter with configuration from port
 	rateLimitConfig := configPort.GetRateLimitConfig()
 	hostRateLimiter := rate_limiter.NewHostRateLimiter(rateLimitConfig.ExternalAPIInterval, rateLimitConfig.ExternalAPIBurst)
-	rateLimiterPort := rate_limiter_gateway.NewRateLimiterGateway(hostRateLimiter)
 
 	// HTTP client
 	httpClient := utils.NewHTTPClientFactory().CreateHTTPClient()
@@ -67,27 +64,19 @@ func newInfraModule(pool *pgxpool.Pool, cfg *config.Config) *InfraModule {
 	// Robots.txt gateway (used by multiple components)
 	robotsTxtGw := robots_txt_gateway.NewRobotsTxtGateway(httpClient)
 
-	// MQ-Hub event publisher (optional, fail-open if disabled)
+	// MQ-Hub client. The backend uses it for on-the-fly tag generation only;
+	// event publishing moved to cmd/datahub.
 	mqhubClient := mqhub_connect.NewClient(cfg.MQHub.ConnectURL, cfg.MQHub.Enabled)
-	logMQHubWiringState(cfg.MQHub.Enabled, cfg.MQHub.ConnectURL)
-	eventPublisherGw := event_publisher_gateway.NewEventPublisherGateway(mqhubClient, slog.Default())
-
-	// Auth-hub client for identity management (abstracts Kratos)
-	kratosClientImpl := kratos_client.NewKratosClient(cfg.AuthHub.URL, cfg.Auth.BackendTokenSecret)
+	logMQHubWiringState("alt-backend", cfg.MQHub.Enabled, cfg.MQHub.ConnectURL)
 
 	// Search indexer driver (shared between article search and feed search)
 	searchIndexerDriver := search_indexer_connect.NewConnectSearchIndexerDriver(cfg.SearchIndexer.ConnectURL, "")
 
 	return &InfraModule{
 		Config:              cfg,
-		ConfigPort:          configPort,
-		ErrorHandler:        errorHandlerPort,
 		RateLimiter:         hostRateLimiter,
-		RateLimiterPort:     rateLimiterPort,
 		HTTPClient:          httpClient,
-		KratosClient:        kratosClientImpl,
 		MQHubClient:         mqhubClient,
-		EventPublisher:      eventPublisherGw,
 		AltDBRepository:     altDBRepository,
 		SearchIndexerDriver: searchIndexerDriver,
 		RobotsTxtGateway:    robotsTxtGw,
@@ -100,10 +89,14 @@ func newInfraModule(pool *pgxpool.Pool, cfg *config.Config) *InfraModule {
 // every event publish when disabled, and without this log there was no way
 // to tell "MQHUB_ENABLED=false" (intentional) apart from a forgotten config
 // flag at startup.
-func logMQHubWiringState(enabled bool, connectURL string) {
+//
+// The binary name is part of the record because two of the three processes
+// build an mq-hub client for different reasons (backend: tag generation,
+// data-hub: event publishing), and their logs otherwise read identically.
+func logMQHubWiringState(binary string, enabled bool, connectURL string) {
 	if enabled {
-		slog.Info("mqhub_enabled", "connect_url", connectURL)
+		slog.Info("mqhub_enabled", "binary", binary, "connect_url", connectURL)
 	} else {
-		slog.Warn("mqhub_disabled", "reason", "MQHUB_ENABLED=false; event publishing will no-op")
+		slog.Warn("mqhub_disabled", "binary", binary, "reason", "MQHUB_ENABLED=false; event publishing will no-op")
 	}
 }

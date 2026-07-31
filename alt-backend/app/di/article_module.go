@@ -1,7 +1,6 @@
 package di
 
 import (
-	"alt/dataplane/gateway/fetch_recent_articles_gateway"
 	"alt/orchestrator/driver/preprocessor_client"
 	"alt/orchestrator/gateway/archive_article_gateway"
 	"alt/orchestrator/gateway/article_content_cache_gateway"
@@ -21,7 +20,6 @@ import (
 	"alt/orchestrator/usecase/fetch_article_usecase"
 	"alt/orchestrator/usecase/fetch_articles_usecase"
 	"alt/orchestrator/usecase/fetch_latest_article_usecase"
-	"alt/orchestrator/usecase/fetch_recent_articles_usecase"
 	"alt/orchestrator/usecase/get_article_source_url_usecase"
 	"alt/orchestrator/usecase/search_article_usecase"
 	"alt/orchestrator/usecase/stream_article_tags_usecase"
@@ -46,7 +44,6 @@ type ArticleModule struct {
 	FetchLatestArticleUsecase  *fetch_latest_article_usecase.FetchLatestArticleUsecase
 	FetchArticleSummaryUsecase *fetch_article_summary_usecase.FetchArticleSummaryUsecase
 	StreamArticleTagsUsecase   *stream_article_tags_usecase.StreamArticleTagsUsecase
-	FetchRecentArticlesUsecase *fetch_recent_articles_usecase.FetchRecentArticlesUsecase
 	ArticleSearchUsecase       *search_article_usecase.SearchArticleUsecase
 	BatchArticleFetcher        *batch_article_fetcher.BatchArticleFetcher
 	FetchTagCloudUsecase       *fetch_tag_cloud_usecase.FetchTagCloudUsecase
@@ -87,9 +84,8 @@ func newArticleModule(infra *InfraModule, feed *FeedModule, ragAdapter rag_integ
 	articleContentCacheGw := article_content_cache_gateway.NewGateway(altDB)
 	fetchArticlesCursorUC := fetch_articles_usecase.NewFetchArticlesCursorUsecaseWithCache(fetchArticlesGw, articleContentCacheGw)
 
-	// Fetch recent articles (for rag-orchestrator temporal topics)
-	fetchRecentArticlesGw := fetch_recent_articles_gateway.NewFetchRecentArticlesGateway(pool)
-	fetchRecentArticlesUC := fetch_recent_articles_usecase.NewFetchRecentArticlesUsecase(fetchRecentArticlesGw)
+	// Recent articles for rag-orchestrator's temporal topics moved to
+	// cmd/datahub with the /v1/internal REST route that serves them.
 
 	// Article search (Meilisearch-based via search-indexer)
 	articleSearchUC := search_article_usecase.NewSearchArticleUsecase(infra.SearchIndexerDriver)
@@ -151,7 +147,6 @@ func newArticleModule(infra *InfraModule, feed *FeedModule, ragAdapter rag_integ
 		FetchLatestArticleUsecase:  fetchLatestArticleUC,
 		FetchArticleSummaryUsecase: fetchArticleSummaryUC,
 		StreamArticleTagsUsecase:   streamArticleTagsUC,
-		FetchRecentArticlesUsecase: fetchRecentArticlesUC,
 		ArticleSearchUsecase:       articleSearchUC,
 		BatchArticleFetcher:        batchFetcher,
 		FetchTagCloudUsecase:       fetchTagCloudUC,

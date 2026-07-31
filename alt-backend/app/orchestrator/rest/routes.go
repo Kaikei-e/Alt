@@ -134,6 +134,8 @@ func RegisterRoutes(ctx context.Context, e *echo.Echo, container *di.Application
 	registerScrapingDomainRoutes(v1, container, cfg)
 	registerDashboardRoutes(v1, container, cfg)
 	RegisterAugurRoutes(e, v1, container)
-	// /v1/internal/* is deliberately absent here: it is registered by
-	// RegisterInternalRoutes on the internal and mTLS listeners only.
+	// /v1/internal/* is deliberately absent here — and is no longer even
+	// compiled into this binary. It moved to alt/dataplane/rest, which only
+	// cmd/datahub imports, so the browser-facing router cannot regain it by
+	// someone adding one call.
 }

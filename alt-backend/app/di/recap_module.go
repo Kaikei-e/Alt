@@ -1,8 +1,6 @@
 package di
 
 import (
-	"alt/dataplane/gateway/recap_articles_gateway"
-	"alt/dataplane/usecase/recap_articles_usecase"
 	"alt/orchestrator/driver/recap_job_driver"
 	"alt/orchestrator/gateway/dashboard_gateway"
 	"alt/orchestrator/gateway/recap_gateway"
@@ -10,9 +8,13 @@ import (
 	"alt/orchestrator/usecase/recap_usecase"
 )
 
-// RecapModule holds all recap-domain components.
+// RecapModule holds cmd/backend's recap-domain components.
+//
+// RecapArticlesUsecase is not among them: it backs
+// BackendInternalService/ListRecapArticles, which cmd/datahub serves. Building
+// it here as well would give the backend a second, independently configured
+// reader of the same table that no backend handler ever calls.
 type RecapModule struct {
-	RecapArticlesUsecase    *recap_articles_usecase.RecapArticlesUsecase
 	RecapUsecase            *recap_usecase.RecapUsecase
 	GetRecapJobsUsecase     dashboard_usecase.GetRecapJobsUsecase
 	DashboardMetricsUsecase *dashboard_usecase.DashboardMetricsUsecase
@@ -20,15 +22,6 @@ type RecapModule struct {
 
 func newRecapModule(infra *InfraModule) *RecapModule {
 	cfg := infra.Config
-
-	// Recap articles
-	recapArticlesGw := recap_articles_gateway.NewGateway(infra.AltDBRepository)
-	recapUsecaseCfg := recap_articles_usecase.Config{
-		DefaultPageSize: cfg.Recap.DefaultPageSize,
-		MaxPageSize:     cfg.Recap.MaxPageSize,
-		MaxRangeDays:    cfg.Recap.MaxRangeDays,
-	}
-	recapArticlesUC := recap_articles_usecase.NewRecapArticlesUsecase(recapArticlesGw, recapUsecaseCfg)
 
 	// Recap 7-day summary
 	recapGw := recap_gateway.NewRecapGateway(infra.SearchIndexerDriver)
@@ -43,7 +36,6 @@ func newRecapModule(infra *InfraModule) *RecapModule {
 	dashboardMetricsUC := dashboard_usecase.NewDashboardMetricsUsecase(dashboardGw)
 
 	return &RecapModule{
-		RecapArticlesUsecase:    recapArticlesUC,
 		RecapUsecase:            recapUC,
 		GetRecapJobsUsecase:     getRecapJobsUC,
 		DashboardMetricsUsecase: dashboardMetricsUC,
