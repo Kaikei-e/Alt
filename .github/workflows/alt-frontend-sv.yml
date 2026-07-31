@@ -62,7 +62,7 @@ jobs:
             rm -rf "$GITHUB_WORKSPACE"/* "$GITHUB_WORKSPACE"/.[!.]* 2>/dev/null || true
           fi
 
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
           clean: false
 
@@ -129,7 +129,7 @@ jobs:
           bunx --version
 
       - name: Cache bun dependencies
-        uses: actions/cache@v5
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
         with:
           path: ~/.bun/install/cache
           key: bun-${{ runner.os }}-${{ hashFiles('alt-frontend-sv/bun.lock') }}
@@ -145,7 +145,7 @@ jobs:
         working-directory: ${{ inputs.working-directory || 'alt-frontend-sv' }}
 
       - name: Upload test report
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
         if: ${{ !cancelled() }}
         with:
           name: playwright-report-${{ strategy.job-index }}
