@@ -38,7 +38,6 @@
 #
 # Required vars (pass via -e or GitHub Actions `env:`):
 #   provider_version      full provider SHA for the recap-worker rows
-#                         (kratos uses its own fixed external version)
 #   pact_evidence_dir     directory the verifiers wrote evidence into
 #   pact_evidence_run_id  token identifying this invocation
 #   broker_base_url       http(s)://host[:port]  (no trailing slash)
@@ -77,24 +76,6 @@
       - provider: recap-worker
         consumer: search-indexer
         implementation: rust-stub-replay
-      # mq-hub → tag-generator on alt:events:tags. The pact declares mq-hub
-      # as consumer and tag-generator as provider, which is backwards: mq-hub
-      # writes the stream. There is no correct-direction tag-generator-mq-hub
-      # pact and no verifier for this pair, so this row has no evidence
-      # producer and fails the preflight. It stays in the registry because
-      # alt:events:tags is genuinely wired and the contract is real — what is
-      # missing is a verification, not the contract.
-      - provider: tag-generator
-        consumer: mq-hub
-        implementation: mq-hub-self-verify-message-producer
-      # kratos ← auth-hub. kratos is an external SaaS with no provider
-      # verification harness, so nothing produces evidence for this row and
-      # it fails the preflight.
-      - provider: kratos
-        consumer: auth-hub
-        implementation: manual-external-assertion
-
-    kratos_external_version: ory-kratos-external
 
   tasks:
     - name: Require evidence vars
@@ -135,9 +116,7 @@
       ansible.builtin.set_fact:
         all_bridges: >-
           {{ all_bridges | default([]) + [ item | combine({
-               'provider_version': kratos_external_version
-                                   if item.provider == 'kratos'
-                                   else (provider_version | default('')) }) ] }}
+               'provider_version': provider_version | default('') }) ] }}
       loop: "{{ bridge_registry }}"
       loop_control:
         label: "{{ item.consumer }} -> {{ item.provider }}"
@@ -255,73 +234,6 @@
       loop_control:
         loop_var: entry
         label: "{{ entry.row.consumer }} -> {{ entry.row.provider }}"
-
-    # ------------------------------------------------------------------
-    # kratos — external SaaS. Register a stable external pacticipant
-    # version and mark it deployed so the matrix query has a target.
-    # Only runs when the kratos row cleared the preflight; otherwise the
-    # play would be writing to the broker for a bridge it is about to
-    # refuse to publish.
-    # ------------------------------------------------------------------
-    - name: "Ensure kratos external pacticipant version exists"
-      when:
-        - not bridge_dry_run | bool
-        - publishable_bridges | selectattr('provider', 'eq', 'kratos') | list | length > 0
-      ansible.builtin.uri:
-        url: "{{ broker_base_url }}/pacticipants/kratos/branches/main/versions/{{ kratos_external_version }}"
-        method: PUT
-        user: "{{ broker_username }}"
-        password: "{{ lookup('ansible.builtin.env', 'PACT_BROKER_PASSWORD') }}"
-        force_basic_auth: true
-        headers:
-          Content-Type: application/json
-        status_code: [200, 201, 204]
-      # F-001: uri module does not auto-redact `password`. no_log stops
-      # it from being echoed by ansible-playbook -vv into CI logs.
-      no_log: true
-
-    - name: "Record kratos external version as deployed to production"
-      when:
-        - not bridge_dry_run | bool
-        - publishable_bridges | selectattr('provider', 'eq', 'kratos') | list | length > 0
-      ansible.builtin.command:
-        argv:
-          - "{{ pact_broker_cli_bin | default('pact-broker-cli') }}"
-          - record-deployment
-          - --pacticipant
-          - kratos
-          - --version
-          - "{{ kratos_external_version }}"
-          - --environment
-          - production
-          - --broker-base-url
-          - "{{ broker_base_url }}"
-          - --broker-username
-          - "{{ broker_username }}"
-      environment:
-        PACT_BROKER_PASSWORD: "{{ lookup('ansible.builtin.env', 'PACT_BROKER_PASSWORD') }}"
-      register: kratos_deploy
-      # F-003: match the exact idempotent-success message pact-broker-cli
-      # emits for a previously recorded deployment so unrelated errors
-      # whose text happens to contain "already" are not swallowed.
-      changed_when: "'Recorded deployment' in (kratos_deploy.stdout | default(''))"
-      failed_when:
-        - kratos_deploy.rc != 0
-        - "'Deployed version already recorded' not in (kratos_deploy.stderr | default(''))"
-        - "'Deployed version already recorded' not in (kratos_deploy.stdout | default(''))"
-      # F-002: environment: dict would print PACT_BROKER_PASSWORD under
-      # -vv. Hide the entire task; re-expose rc/exit via a conditional
-      # debug task below if it actually fails.
-      no_log: true
-
-    - name: "Surface kratos record-deployment failure without leaking env"
-      when: kratos_deploy is defined and kratos_deploy.rc is defined and kratos_deploy.rc != 0
-      ansible.builtin.fail:
-        msg: >-
-          kratos record-deployment exited {{ kratos_deploy.rc }}.
-          See the failed task above (output suppressed by no_log) —
-          re-run with PACT_BROKER_PASSWORD unset and use the
-          pact-broker-cli directly against the broker to triage.
 
     # ------------------------------------------------------------------
     # Publish. Only rows carrying a passing evidence document get here.

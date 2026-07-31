@@ -7,10 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/pact-foundation/pact-go/v2/matchers"
-	message "github.com/pact-foundation/pact-go/v2/message/v4"
 	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 
 	"mq-hub/domain"
 )
@@ -76,6 +73,9 @@ func buildArticleCreatedEvent() *domain.Event {
 }
 
 // buildTagGenerationRequestedEvent creates a TagGenerationRequested event.
+// reply_to mirrors usecase.ReplyStreamPrefix + the correlation id, which is the
+// stream GenerateTagsForArticle actually blocks on; tag-generator publishes its
+// reply straight to whatever string arrives here.
 func buildTagGenerationRequestedEvent() *domain.Event {
 	payload := TagGenerationRequestedPayload{
 		ArticleID: "art-002",
@@ -90,7 +90,7 @@ func buildTagGenerationRequestedEvent() *domain.Event {
 		"mq-hub",
 		payloadJSON,
 		map[string]string{
-			"reply_to":       "alt:reply:tag-gen-001",
+			"reply_to":       "alt:replies:tags:corr-001",
 			"correlation_id": "corr-001",
 		},
 	)
@@ -110,68 +110,16 @@ func eventToWireFormat(event *domain.Event) RedisStreamEvent {
 	}
 }
 
-// The ArticleCreated interactions on alt:events:articles are NOT declared here.
-// mq-hub writes that stream and search-indexer reads it, so the contract belongs
-// to search-indexer as consumer: pacts/search-indexer-mq-hub.json, verified
-// against mq-hub's real event builders by TestVerifySearchIndexerMqHubMessagePact
-// in provider_test.go. A mq-hub-as-consumer pact for the same interactions
-// inverted the direction and could only ever be "verified" by mq-hub asserting
-// on its own output.
-
-func TestTagGenerationRequestedMessageContract(t *testing.T) {
-	p, err := message.NewAsynchronousPact(message.Config{
-		Consumer: "mq-hub",
-		Provider: "tag-generator",
-		PactDir:  pactDir,
-	})
-	require.NoError(t, err)
-
-	err = p.AddAsynchronousMessage().
-		Given("the tags stream exists").
-		ExpectsToReceive("a TagGenerationRequested event on alt:events:tags").
-		WithJSONContent(matchers.MapMatcher{
-			"event_id":   matchers.Like("evt-uuid-tag-001"),
-			"event_type": matchers.String("TagGenerationRequested"),
-			"source":     matchers.Like("mq-hub"),
-			"created_at": matchers.Like("2026-03-26T00:00:00.000Z"),
-			"payload": matchers.Like(matchers.MapMatcher{
-				"article_id": matchers.Like("art-002"),
-				"title":      matchers.Like("Rust Memory Safety"),
-				"content":    matchers.Like("An article about memory safety."),
-				"feed_id":    matchers.Like("feed-002"),
-			}),
-			"metadata": matchers.Like(matchers.MapMatcher{
-				"reply_to":       matchers.Like("alt:reply:tag-gen-001"),
-				"correlation_id": matchers.Like("corr-001"),
-			}),
-		}).
-		AsType(&RedisStreamEvent{}).
-		ConsumedBy(func(contents message.AsynchronousMessage) error {
-			event := buildTagGenerationRequestedEvent()
-			wireEvent := eventToWireFormat(event)
-
-			// Verify envelope
-			assert.Equal(t, "TagGenerationRequested", wireEvent.EventType)
-			assert.Equal(t, "mq-hub", wireEvent.Source)
-
-			// Verify payload
-			var payload TagGenerationRequestedPayload
-			err := json.Unmarshal(wireEvent.Payload, &payload)
-			require.NoError(t, err)
-			assert.NotEmpty(t, payload.ArticleID)
-			assert.NotEmpty(t, payload.Title)
-			assert.NotEmpty(t, payload.Content)
-
-			// Verify metadata contains reply routing
-			assert.NotEmpty(t, wireEvent.Metadata["reply_to"])
-			assert.NotEmpty(t, wireEvent.Metadata["correlation_id"])
-
-			return nil
-		}).
-		Verify(t)
-
-	require.NoError(t, err)
-}
+// No mq-hub-as-consumer pact is declared here, for either stream mq-hub writes.
+//
+// alt:events:articles is read by search-indexer and pre-processor, and
+// alt:events:tags is read by tag-generator; each contract belongs to the reader
+// as consumer (pacts/search-indexer-mq-hub.json, pacts/pre-processor-mq-hub.json,
+// pacts/tag-generator-mq-hub.json), and provider_test.go replays all three
+// against the event builders in this file. Declaring mq-hub as the consumer
+// inverted the direction: such a pact could only ever be "verified" by mq-hub
+// asserting on its own output, and having no provider-side verifier is what
+// pushed the pair onto the manual-verification bridge in the first place.
 
 func TestEventWireFormatMatchesRedisDriver(t *testing.T) {
 	// This test verifies that our wire format matches what RedisDriver.eventToValues() produces.

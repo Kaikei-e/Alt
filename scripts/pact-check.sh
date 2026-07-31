@@ -359,10 +359,10 @@ STEPS_CONSUMER=(
   "Go: search-indexer consumer|go|search-indexer/app|CGO_ENABLED=1 go test -tags=contract ./driver/contract/ -v"
   "Go: mq-hub consumer|go|mq-hub/app|CGO_ENABLED=1 go test -tags=contract ./driver/contract/ -v"
   "Go: alt-butterfly-facade consumer|go|alt-butterfly-facade|CGO_ENABLED=1 go test -tags=contract ./internal/handler/contract/ -v"
-  "Go: auth-hub consumer|go|auth-hub|CGO_ENABLED=1 go test -tags=contract ./internal/adapter/gateway/contract/ -v"
   "Go: altctl sovereign consumer|go|altctl|CGO_ENABLED=1 go test -tags=contract ./internal/sovereignclient/contract/ -v"
   "Rust: recap-worker consumer|cargo|recap-worker/recap-worker|cargo test --lib contract -- --ignored"
   "Python: recap-evaluator consumer|uv|recap-evaluator|uv run pytest tests/contract/ -v --no-cov"
+  "Python: tag-generator consumer|uv|tag-generator/app|uv run pytest tests/contract/test_mqhub_tags_consumer.py -v --no-cov"
 )
 
 STEPS_PROVIDER=(
@@ -374,6 +374,7 @@ STEPS_PROVIDER=(
   "Go: search-indexer provider|go|search-indexer/app|CGO_ENABLED=1 go test -tags=contract -run TestVerifySearchIndexerProviderContracts ./driver/contract/ -v"
   "Go: pre-processor provider|go|pre-processor/app|CGO_ENABLED=1 go test -tags=contract -run TestVerifyAltBackendContract ./driver/contract/ -v"
   "Go: mq-hub provider (search-indexer message pact)|go|mq-hub/app|CGO_ENABLED=1 go test -tags=contract -run TestVerifySearchIndexerMqHubMessagePact ./driver/contract/ -v"
+  "Go: mq-hub provider (tag-generator message pact)|go|mq-hub/app|CGO_ENABLED=1 go test -tags=contract -run TestVerifyTagGeneratorMqHubMessagePact ./driver/contract/ -v"
   "Go: knowledge-sovereign provider|go|knowledge-sovereign/app|CGO_ENABLED=1 go test -tags=contract ./driver/contract/ -v"
   "Rust: recap-worker provider|cargo|recap-worker/recap-worker|cargo test --test provider_verification -- --ignored|evidence"
 )
@@ -526,21 +527,28 @@ echo "============================="
 execute_steps STEPS_PROVIDER
 
 # ---------- Broker-side verification bridging ----------
-# Some pacts cannot use the stock pact_verifier flow and need verification
-# records posted separately so can-i-deploy stays accurate:
+# recap-worker's provider_verification.rs is a hand-rolled HTTP replay, not a
+# real pact_verifier — it asserts shape but does not publish results. It does
+# write an alt.pact.evidence.v1 document per replayed pact, which is what the
+# bridge posts against. It is the only remaining bridged pacticipant.
 #
-#   1. recap-worker provider_verification.rs is a hand-rolled HTTP replay, not
-#      a real pact_verifier — it asserts shape but does not publish results.
-#      It does write an alt.pact.evidence.v1 document per replayed pact.
-#   2. mq-hub → tag-generator on alt:events:tags. The pact declares mq-hub as
-#      consumer and tag-generator as provider, which is backwards: mq-hub
-#      writes the stream. No verifier exists for the pair in either direction,
-#      so no evidence is produced and the row fails the gate below. (The
-#      equally-inverted mq-hub-search-indexer pact was deleted: the correct
-#      direction, search-indexer-mq-hub.json, is verified for real by
-#      TestVerifySearchIndexerMqHubMessagePact.)
-#   3. kratos is an external SaaS and cannot be brought under Alt's provider
-#      verification harness, so it produces no evidence either.
+# Two entries were removed rather than fixed:
+#
+#   - alt:events:tags declared mq-hub as consumer and tag-generator as
+#     provider, which is backwards — mq-hub writes that stream. Both inverted
+#     pacts are gone. The correct directions, search-indexer-mq-hub.json and
+#     tag-generator-mq-hub.json, are verified for real by
+#     TestVerifySearchIndexerMqHubMessagePact and
+#     TestVerifyTagGeneratorMqHubMessagePact.
+#   - kratos ← auth-hub was dropped entirely. Pact detects drift by holding a
+#     provider team to a consumer's expectations; Ory neither sees nor answers
+#     this repo's pacts, so the pair could only ever replay a pinned image
+#     against itself. Two of its three interactions turned out to assert
+#     behaviour Kratos cannot produce (traits.role is forbidden by
+#     kratos/identity.schema.json; Kratos OSS has no rate limiter on
+#     /sessions/whoami). auth-hub's assumptions about that response are
+#     covered by httptest cases in internal/adapter/gateway/kratos_test.go,
+#     which is the right tool for an upstream we consume but do not drive.
 #
 # The playbook publishes a success record only for rows whose verifier left
 # evidence in $PACT_EVIDENCE_DIR carrying $PACT_EVIDENCE_RUN_ID. Rows without

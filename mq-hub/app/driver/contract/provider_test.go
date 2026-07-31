@@ -31,6 +31,7 @@ import (
 const (
 	searchIndexerProviderPact = "search-indexer-mq-hub.json"
 	preProcessorProviderPact  = "pre-processor-mq-hub.json"
+	tagGeneratorProviderPact  = "tag-generator-mq-hub.json"
 )
 
 // SummarizeRequestedPayload is the payload alt-backend publishes for
@@ -250,6 +251,33 @@ func TestVerifyPreProcessorMqHubMessagePact(t *testing.T) {
 		},
 		models.StateHandlers{
 			"the articles stream exists": func(bool, models.ProviderState) (models.ProviderStateResponse, error) {
+				return nil, nil
+			},
+		},
+	)
+}
+
+// TestVerifyTagGeneratorMqHubMessagePact verifies the one stream mq-hub both
+// writes and waits on. GenerateTagsForArticle publishes TagGenerationRequested
+// to alt:events:tags and then blocks on a reply, so mq-hub is the producer here
+// even though the exchange is request-reply; the contract belongs to
+// tag-generator as consumer.
+//
+// The generator below is the same one the deleted mq-hub-as-consumer pact used.
+// What changed is who checks it: an inverted pact could only ever be "verified"
+// by mq-hub asserting on its own output, whereas this replays tag-generator's
+// recorded expectations against it.
+func TestVerifyTagGeneratorMqHubMessagePact(t *testing.T) {
+	verifyMessagePact(t, "tag-generator", tagGeneratorProviderPact,
+		message.Handlers{
+			"a TagGenerationRequested event on alt:events:tags": func(_ []models.ProviderState) (message.Body, message.Metadata, error) {
+				return eventToWireFormat(buildTagGenerationRequestedEvent()), message.Metadata{
+					"contentType": "application/json",
+				}, nil
+			},
+		},
+		models.StateHandlers{
+			"the tags stream exists": func(bool, models.ProviderState) (models.ProviderStateResponse, error) {
 				return nil, nil
 			},
 		},

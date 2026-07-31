@@ -81,6 +81,17 @@ assert_contains "$out" "WOULD RUN: Go: mq-hub provider" \
 assert_not_contains "$out" "WOULD RUN: Go: search-indexer provider" \
   "mq-hub provider leg does not accidentally run search-indexer provider"
 
+# --- kratos is no longer a pacticipant at all ---
+#
+# Ory neither reads nor answers this repo's pacts, so the pair could only ever
+# replay a pinned image against itself. auth-hub's assumptions about the
+# /sessions/whoami response live in httptest cases instead. Nothing in the
+# registry may resurrect a step for it.
+echo "== --services kratos --role provider (dry-run) =="
+out=$(run_script --dry-run --publish-only --services kratos --role provider)
+assert_not_contains "$out" "WOULD RUN:" \
+  "kratos matches no step: it is not a pacticipant"
+
 # --- publish-manual-verifications runs the evidence producers + manual block ---
 #
 # The bridging block may only publish a verification record for a row whose
@@ -100,10 +111,19 @@ if command -v ansible-playbook >/dev/null 2>&1; then
     "manual-verification subcommand announces the bridging records"
   assert_contains "$out" "[evidence: MISSING]" \
     "dry run reports the evidence verdict rather than assuming success"
-  assert_contains "$out" "NO EVIDENCE: mq-hub -> tag-generator" \
-    "the inverted tag-generator row is named as unverifiable, not silently skipped"
-  assert_contains "$out" "NO EVIDENCE: auth-hub -> kratos" \
-    "the external kratos row is named as unverifiable, not silently skipped"
+  # A dry run announces the plan without running any verifier, so every row
+  # legitimately reports MISSING here. What that makes checkable is the
+  # naming behaviour: a row with no evidence must appear by name with its
+  # reason, never be dropped from the plan.
+  assert_contains "$out" "NO EVIDENCE: search-indexer -> recap-worker" \
+    "a row whose verifier did not run is named, not silently skipped"
+  # The two rows that could not produce evidence are gone, not exempted:
+  # the inverted tag-generator pact was replaced by a verified one, and
+  # kratos was dropped as a pacticipant.
+  assert_not_contains "$out" "tag-generator" \
+    "the inverted tag-generator row is gone from the registry"
+  assert_not_contains "$out" "kratos" \
+    "kratos is gone from the registry"
 else
   echo "  SKIP: ansible-playbook missing — bridging-plan assertions not run"
 fi
