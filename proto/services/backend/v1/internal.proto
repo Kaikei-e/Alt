@@ -21,6 +21,9 @@ message ArticleWithTags {
   string feed_id = 7;
   // BCP-47 short code ("ja", "en") or "und" when detection is unavailable.
   string language = 8;
+  // Source publication timestamp from the feed. Unset when the article row
+  // has no published_at; consumers that need a date fall back to created_at.
+  google.protobuf.Timestamp published_at = 9;
 }
 
 // DeletedArticle represents a deleted article.
