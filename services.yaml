@@ -25,12 +25,30 @@
 #                   reference this service; their paths seed alt-deploy
 #                   SERVICE_PATHS so compose-layer edits trigger the
 #                   right rebuild. Omitted for `runtime` and `external`.
+#
+# Optional fourth field:
+#   build         — build inputs, when they are NOT derived from `name`.
+#                     dir        source directory + change-detection prefix
+#                     dockerfile path relative to the repo root
+#                     args       extra --build-arg pairs
+#                   Omit it and everything falls back to the historical
+#                   name-is-the-directory rule: dir = name, Dockerfile
+#                   discovered under that directory, no build args. Only the
+#                   alt-backend trio needs it — three images out of one
+#                   directory, which is exactly the case the old rule cannot
+#                   express. Several services then share a `dir`, so a change
+#                   under alt-backend/ rebuilds all three.
 
 services:
   # --- 13 Pact pacticipants deployed locally via pull-deploy ---
   - name: alt-backend
     kind: pacticipant
     compose_files: [bff.yaml, core.yaml]
+    build:
+      dir: alt-backend
+      dockerfile: alt-backend/Dockerfile.backend
+      args: {BINARY: backend}
+
   - name: alt-butterfly-facade
     kind: pacticipant
     compose_files: [bff.yaml]
@@ -72,6 +90,36 @@ services:
     compose_files: [sovereign.yaml]
 
   # --- Runtime images built via docker-build but not Pact pacticipants ---
+  #
+  # alt-harvester / alt-data-hub are the other two binaries of the alt-backend
+  # Go module — same directory, same Dockerfile, different ./cmd target. Images
+  # follow the existing convention (ghcr.io/<owner>/alt-<name>), so they land
+  # as alt-alt-harvester / alt-alt-data-hub, the same intentional doubling as
+  # alt-alt-backend. No new naming rule.
+  #
+  # `runtime`, not `pacticipant`, for wave 1 on purpose. The pacts these
+  # binaries will own (the ones alt-backend holds today against
+  # pre-processor / search-indexer / knowledge-sovereign, and the internal
+  # listener contracts other services hold against alt-backend) are still
+  # published under the `alt-backend` pacticipant. Registering two new
+  # pacticipants before any verification exists for them makes can-i-deploy
+  # either block the whole all_or_nothing production gate or wave them
+  # through on an empty history — neither answers the question the gate is
+  # asked. Promote both to `pacticipant` in wave 3, after a release cycle of
+  # dual-publishing the verifications under old and new names.
+  - name: alt-harvester
+    kind: runtime
+    build:
+      dir: alt-backend
+      dockerfile: alt-backend/Dockerfile.backend
+      args: {BINARY: harvester}
+  - name: alt-data-hub
+    kind: runtime
+    build:
+      dir: alt-backend
+      dockerfile: alt-backend/Dockerfile.backend
+      args: {BINARY: datahub}
+
   - name: alt-frontend-sv
     kind: runtime
   - name: pre-processor-sidecar

@@ -14,6 +14,12 @@ answer off-host and says why. Loopback binding keeps every localhost
 workflow (hurl e2e, altctl, curl health probes) working unchanged, and
 east-west callers were always using the container DNS name.
 
+A second rule covers the services for which loopback is not good enough:
+ZERO_PUBLISH_SERVICES must have no `ports:` at all. The first rule alone
+cannot express that — adding `- "127.0.0.1:9443:9443"` to an mTLS-only
+service passes the loopback check while handing anything on the host a
+way past the peer allowlist.
+
 Usage: python3 scripts/compose-port-audit.py [-f compose/compose.yaml]
 Exit 0 when clean, 1 with a per-violation report otherwise.
 """
@@ -35,6 +41,15 @@ EDGE_ALLOWLIST = {
     ("plecto-proxy", 8443): "the edge proxy; every browser entry point terminates here",
     ("grafana", 3000): "operator dashboard behind its own login",
     ("pact-broker", 9292): "operator-supplied private-network binding, see compose/pact.yaml",
+}
+
+# service -> why it may publish nothing at all, not even on loopback.
+ZERO_PUBLISH_SERVICES = {
+    "alt-data-hub": (
+        "mTLS-only data plane. Its authorisation is DATAHUB_ALLOWED_PEERS "
+        "keyed off the client certificate; a published port reaches the "
+        "listener from the host and makes that allowlist decorative"
+    ),
 }
 
 
@@ -76,6 +91,33 @@ def is_loopback(host_ip: str) -> bool:
         return False
 
 
+def zero_publish_violations(cfg: dict) -> list[str]:
+    """Report ZERO_PUBLISH_SERVICES that publish anything.
+
+    Also reports entries naming a service the resolved config does not
+    define: a rename would otherwise retire the invariant silently, which
+    is the failure mode this guard exists to prevent.
+    """
+    services = cfg.get("services") or {}
+    found = []
+    for name, reason in sorted(ZERO_PUBLISH_SERVICES.items()):
+        svc = services.get(name)
+        if svc is None:
+            found.append(
+                f"{name} is in ZERO_PUBLISH_SERVICES but no such service is "
+                f"defined; drop the entry or fix the name"
+            )
+            continue
+        published = svc.get("ports") or []
+        if published:
+            spec = ", ".join(
+                f"{p.get('host_ip') or '0.0.0.0'}:{p.get('published')}->{p.get('target')}"
+                for p in published
+            )
+            found.append(f"{name} publishes {spec} but must publish nothing — {reason}")
+    return found
+
+
 def violations(cfg: dict) -> list[str]:
     found = []
     for name, svc in sorted((cfg.get("services") or {}).items()):
@@ -99,8 +141,11 @@ def main() -> int:
     args = parser.parse_args()
 
     cfg = resolved_config(REPO_ROOT / args.file)
+    failed = False
+
     found = violations(cfg)
     if found:
+        failed = True
         print("Published ports that are not loopback-bound:")
         for v in found:
             print(f"  - {v}")
@@ -109,10 +154,28 @@ def main() -> int:
             "or add the service to EDGE_ALLOWLIST in this script with the reason "
             "it must answer off-host."
         )
+
+    zero = zero_publish_violations(cfg)
+    if zero:
+        failed = True
+        print("\nServices that must publish no ports at all:")
+        for v in zero:
+            print(f"  - {v}")
+        print(
+            "\nDelete the ports: block. Callers reach these services by "
+            "container DNS name over mTLS; if a host-side workflow needs one, "
+            "run it inside the network (docker compose exec) rather than "
+            "opening a port."
+        )
+
+    if failed:
         return 1
 
     total = sum(len(s.get("ports") or []) for s in (cfg.get("services") or {}).values())
-    print(f"OK: {total} published ports checked, 0 violations")
+    print(
+        f"OK: {total} published ports checked, "
+        f"{len(ZERO_PUBLISH_SERVICES)} zero-publish services verified, 0 violations"
+    )
     return 0
 
 

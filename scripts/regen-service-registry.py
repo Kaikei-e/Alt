@@ -86,8 +86,40 @@ def local_build_services(registry: dict[str, Any]) -> list[dict]:
 # Renderers
 # ---------------------------------------------------------------------------
 
+def build_spec(service: dict[str, Any]) -> dict[str, Any]:
+    """Resolve a service's build inputs, applying the name-derived defaults.
+
+    Historically `name` was the directory, the image suffix and the
+    change-detection prefix all at once. That breaks as soon as one directory
+    produces more than one image (the alt-backend trio), so `build:` in
+    services.yaml can state the three separately. Everything omitted keeps the
+    old behaviour, which is why the 21 pre-existing entries need no edit:
+
+      dir        defaults to name
+      dockerfile defaults to "" — docker-build.yaml then discovers it under
+                 dir/, exactly as before
+      args       defaults to {} — no extra --build-arg
+    """
+    build = service.get("build") or {}
+    name = service["name"]
+    args = build.get("args") or {}
+    return {
+        "dir": build.get("dir", name),
+        "dockerfile": build.get("dockerfile", ""),
+        # Only BINARY is consumed today; keeping it a dict means adding a
+        # second arg does not need another matrix key.
+        "binary": str(args.get("BINARY", "")),
+    }
+
+
 def render_docker_build_block(registry: dict[str, Any]) -> str:
-    """Bash array body for docker-build.yaml SERVICES=(...)."""
+    """Bash body for docker-build.yaml's generated registry block.
+
+    Emits the SERVICES array plus three parallel lookup maps keyed by service
+    name. A map (rather than packing fields into the array entries) keeps the
+    array itself byte-identical in shape to the hand-written original, so the
+    diff on a normal service addition stays one line.
+    """
     lines = ["          SERVICES=("]
     lines.append("            # --- 13 Pact pacticipants (mirrors c2quay.yml) ---")
     for s in local_pacticipants(registry):
@@ -96,6 +128,25 @@ def render_docker_build_block(registry: dict[str, Any]) -> str:
     for s in runtime_services(registry):
         lines.append(f'            "{s["name"]}"')
     lines.append("          )")
+
+    specs = {s["name"]: build_spec(s) for s in local_build_services(registry)}
+
+    lines.append("")
+    lines.append("          # Build inputs per service. BUILD_DIR doubles as the")
+    lines.append("          # change-detection prefix, so several services can share one")
+    lines.append("          # source directory. An empty BUILD_DOCKERFILE means \"discover")
+    lines.append("          # it under BUILD_DIR\"; an empty BUILD_BINARY means no")
+    lines.append("          # --build-arg BINARY. Defaults reproduce the historical")
+    lines.append("          # name-is-the-directory rule.")
+    for var, key in (
+        ("BUILD_DIR", "dir"),
+        ("BUILD_DOCKERFILE", "dockerfile"),
+        ("BUILD_BINARY", "binary"),
+    ):
+        lines.append(f"          declare -A {var}=(")
+        for name, spec in specs.items():
+            lines.append(f'            ["{name}"]="{spec[key]}"')
+        lines.append("          )")
     return "\n".join(lines) + "\n"
 
 
@@ -140,9 +191,15 @@ def render_alt_deploy_service_paths(registry: dict[str, Any]) -> str:
     for s in local_pacticipants(registry):
         name = s["name"]
         compose_files = s.get("compose_files", [])
+        # Source path comes from build.dir, not the name: a service whose
+        # image is built out of a shared directory must react to changes in
+        # that directory, not in a directory named after itself that may not
+        # exist. e2e paths stay keyed by name — those fixtures are per
+        # pacticipant, not per source tree.
+        source_dir = build_spec(s)["dir"]
         lines = [
             f"  '{name}': [",
-            f"    '{name}/',",
+            f"    '{source_dir}/',",
             f"    'e2e/hurl/{name}/',",
             f"    'e2e/fixtures/{name}/',",
         ]

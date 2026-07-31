@@ -87,12 +87,49 @@ scrape_configs:
     scrape_interval: 15s
     metrics_path: /metrics
 
-  # alt-backend feed read performance metrics (Go/OTel Prometheus exporter)
+  # The alt-backend Go module runs as three containers. Each exposes the same
+  # operator listener on :9110 — /health and /metrics only, and never
+  # published to the host. /metrics used to sit on alt-backend's REST
+  # listener :9000; it moved so that all three have one shape, and so that
+  # alt-data-hub (mTLS-only, zero published ports) can be scraped without
+  # giving Prometheus a client certificate and diluting the data plane's peer
+  # allowlist with a monitoring identity.
+  #
+  # Three jobs rather than one job with three targets: both consumers of the
+  # availability tile key rows by `job`, and the allowlist aggregates with
+  # `min by (job)`, so bundling them would collapse three processes into one
+  # row and hide which of them died.
+  #
+  # Keep in lockstep with the availability job matcher in
+  # alt-backend/app/orchestrator/gateway/admin_metrics_gateway/allowlist.go —
+  # TestAllowlist_AvailabilityJobsMatchPrometheusScrapeConfig fails in both
+  # directions, so a one-sided edit is caught in CI.
+
+  # alt-backend: user-facing API — feed read performance, HTTP RED metrics.
   - job_name: 'alt-backend'
     static_configs:
-      - targets: ['alt-backend:9000']
+      - targets: ['alt-backend:9110']
         labels:
           service: 'alt-backend'
+    scrape_interval: 15s
+    metrics_path: /metrics
+
+  # alt-harvester: scheduled jobs — success/failure/duration per job. This
+  # operator listener is the only socket the process opens.
+  - job_name: 'alt-harvester'
+    static_configs:
+      - targets: ['alt-harvester:9110']
+        labels:
+          service: 'alt-harvester'
+    scrape_interval: 15s
+    metrics_path: /metrics
+
+  # alt-data-hub: mTLS data plane — DB pool, peer-identity rejections.
+  - job_name: 'alt-data-hub'
+    static_configs:
+      - targets: ['alt-data-hub:9110']
+        labels:
+          service: 'alt-data-hub'
     scrape_interval: 15s
     metrics_path: /metrics
 
@@ -103,6 +140,10 @@ scrape_configs:
     static_configs:
       - targets: ['pki-agent-alt-backend:9510']
         labels: { service: 'pki-agent', subject: 'alt-backend' }
+      - targets: ['pki-agent-alt-harvester:9510']
+        labels: { service: 'pki-agent', subject: 'alt-harvester' }
+      - targets: ['pki-agent-alt-data-hub:9510']
+        labels: { service: 'pki-agent', subject: 'alt-data-hub' }
       - targets: ['pki-agent-alt-butterfly-facade:9510']
         labels: { service: 'pki-agent', subject: 'alt-butterfly-facade' }
       - targets: ['pki-agent-auth-hub:9510']

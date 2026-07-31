@@ -34,12 +34,17 @@ var allowlist = []allowEntry{
 		// TestAllowlist_AvailabilityJobsMatchPrometheusScrapeConfig.
 		//
 		// `min by (job)` collapses multi-target jobs to their worst target.
-		// pki-agent is one job fanned out over eight sidecars; every consumer
-		// keys rows by `job`, so without the aggregation eight series overwrite
-		// each other and one dead sidecar reads "up" whenever a healthy sibling
-		// happens to be last. Guarded by
+		// pki-agent is one job fanned out over one sidecar per east-west
+		// service; every consumer keys rows by `job`, so without the
+		// aggregation those series overwrite each other and one dead sidecar
+		// reads "up" whenever a healthy sibling happens to be last. Guarded by
 		// TestAllowlist_AvailabilityAggregatesMultiTargetJobs.
-		promql:     `min by (job) (up{job=~"prometheus|plecto-proxy|cadvisor|mq-hub|recap-worker|recap-subworker|news-creator|alt-backend|pki-agent|knowledge-sovereign|rag-orchestrator"})`,
+		//
+		// alt-harvester and alt-data-hub are the two binaries split out of
+		// alt-backend. They are listed as separate jobs, not folded into
+		// alt-backend's, precisely because `min by (job)` would then hide
+		// which of the three processes is down.
+		promql:     `min by (job) (up{job=~"prometheus|plecto-proxy|cadvisor|mq-hub|recap-worker|recap-subworker|news-creator|alt-backend|alt-harvester|alt-data-hub|pki-agent|knowledge-sovereign|rag-orchestrator"})`,
 		grafanaURL: "/d/otel-overview",
 	},
 	{

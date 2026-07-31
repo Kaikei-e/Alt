@@ -23,6 +23,12 @@ PASSWORD_FILE=/run/secrets/step_ca_root_password
 
 SUBJECTS=(
   alt-backend
+  # Split out of alt-backend: alt-harvester is an mTLS *client* (outbox-worker
+  # -> rag-orchestrator, all jobs -> alt-data-hub:9443), alt-data-hub is the
+  # mTLS-only data plane server. Both have a cert-only pki-agent sidecar in
+  # compose/pki.yaml and cannot start without a signed leaf.
+  alt-harvester
+  alt-data-hub
   alt-butterfly-facade
   auth-hub
   pre-processor

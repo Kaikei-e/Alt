@@ -123,6 +123,11 @@ services:
     build:
       context: ../alt-backend
       dockerfile: Dockerfile.backend
+      args:
+        # The dev stack still runs the single user-facing binary; the
+        # harvester / data-hub split is production-only for now. Required —
+        # the Dockerfile fails the build on an unset BINARY.
+        BINARY: backend
     restart: always
     ports:
       - "9000:9000"
@@ -160,7 +165,9 @@ services:
       db:
         condition: service_healthy
     healthcheck:
-      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:9000/v1/health || exit 1"]
+      # busybox wget is no longer in the image (alt-backend/Dockerfile.backend
+      # dropped it with the shell); the binary self-probes instead.
+      test: ["CMD", "/app-entry", "healthcheck"]
       interval: 10s
       timeout: 5s
       retries: 3

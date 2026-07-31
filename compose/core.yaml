@@ -10,6 +10,44 @@ include:
 # The compose-embedded shell cert-init/cert-renewer pair was removed in the
 # pki-agent cutover (see docs/ADR/000747.md).
 
+# --- alt-backend 3-binary split -------------------------------------------
+# alt-backend / alt-harvester / alt-data-hub are three binaries out of the one
+# Go module under ../alt-backend (built from the same Dockerfile via
+# `ARG BINARY`). Runtime knobs for DB / OTel / token verification are shared;
+# only the listener set differs:
+#
+#   alt-backend    user-facing API   :9000 REST / :9101 Connect / :9102 internal / :9443 mTLS
+#   alt-harvester  scheduled jobs    :9110 ops only (no user-facing listener)
+#   alt-data-hub   data plane        :9443 mTLS only, plus 127.0.0.1:9102 and :9110 ops
+#
+# `include:` does not export anchors across files, so these live here and are
+# merged here only.
+x-alt-go-common: &alt-go-common
+  restart: always
+  networks:
+    - alt-network
+  tty: true
+  ulimits:
+    nofile:
+      soft: 65536
+      hard: 65536
+  logging:
+    driver: "json-file"
+    options:
+      max-size: "10m"
+      max-file: "3"
+
+# APP_ENV is delivered by `env_file: ../.env` and deliberately absent here —
+# see the comment on alt-backend's environment block for why an `environment:`
+# entry would silently pin the operator's setting back to the default.
+x-alt-db-env: &alt-db-env
+  DB_HOST: pgbouncer
+  DB_PORT: "6432"
+  DB_USER: ${DB_USER}
+  DB_PASSWORD_FILE: /run/secrets/postgres_password
+  DB_NAME: ${POSTGRES_DB}
+  DB_SSL_MODE: prefer
+
 services:
   plecto-proxy:
     # PlectoProxy (https://github.com/Kaikei-e/PlectoProxy) replacing nginx as the
@@ -111,6 +149,9 @@ services:
         max-size: "10m"
         max-file: "3"
 
+  # alt-backend — the user-facing API half of the 3-binary split. The
+  # scheduled jobs moved to alt-harvester and the mTLS-only data plane to
+  # alt-data-hub; what stays here is REST / Connect / internal / mTLS.
   alt-backend:
     env_file:
       - ../.env
@@ -118,6 +159,8 @@ services:
     build:
       context: ../alt-backend
       dockerfile: Dockerfile.backend
+      args:
+        BINARY: backend
     restart: always
     ports:
       # :9000 (REST) and :9101 (Connect) do authenticate the caller, but the
@@ -137,8 +180,14 @@ services:
       - alt_backend_certs:/certs:ro
       - pki_trust_bundle:/trust:ro
     depends_on:
+      # alt-data-hub is the layer underneath: it owns the write path once
+      # wave 3 lands, so it must be healthy before anything above it starts.
+      alt-data-hub:
+        condition: service_healthy
       mq-hub:
         condition: service_healthy
+      # migrate / pgbouncer stay until wave 3 removes the direct DB
+      # connection from this binary; alt-data-hub already gates on both.
       migrate:
         condition: service_completed_successfully
       pgbouncer:
@@ -186,6 +235,21 @@ services:
       - DB_MAX_CONNS=30
       - DB_MIN_CONNS=5
       - IMAGE_PROXY_SECRET_FILE=/run/secrets/image_proxy_secret
+      # alt-data-hub is reachable over mTLS only; there is no plaintext
+      # east-west port to fall back to (see alt-data-hub below).
+      #
+      # WAVE 3 PLACEHOLDER — no code reads these yet. In wave 1 all three
+      # binaries still open their own alt-db pool, so the data-hub client
+      # does not exist; these become live when the direct DB connection is
+      # removed from this binary. Changing the value has no effect today.
+      - DATA_HUB_MTLS_URL=https://alt-data-hub:9443
+      - DATA_HUB_SERVER_NAME=alt-data-hub
+      # Operator listener. /health + /metrics only, never published to the
+      # host: Prometheus scrapes it over alt-network. /metrics moved here
+      # from the REST listener so the three split binaries expose the same
+      # surface on the same port (see observability/prometheus/prometheus.yml).
+      - OPS_LISTEN=:9110
+      - OPS_SURFACES=health,metrics
       # OpenTelemetry
       - OTEL_EXPORTER_OTLP_ENDPOINT=http://rask-log-aggregator:4318
       - OTEL_SERVICE_NAME=alt-backend
@@ -214,7 +278,11 @@ services:
         soft: 65536
         hard: 65536
     healthcheck:
-      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:9000/v1/health || exit 1"]
+      # Self-probe subcommand, same shape as search-indexer / rask-* /
+      # plecto-proxy. The busybox wget + /bin/sh that the old CMD-SHELL probe
+      # needed are gone from the image (alt-backend/Dockerfile.backend), so
+      # the distroless runtime has no shell to give an attacker either.
+      test: ["CMD", "/app-entry", "healthcheck"]
       interval: 20s
       timeout: 10s
       retries: 5
@@ -227,6 +295,229 @@ services:
       options:
         max-size: "10m"
         max-file: "3"
+
+  # alt-harvester — the scheduled-job half of the split. No user-facing
+  # listener at all: the only socket it opens is the operator :9110, and that
+  # is not published to the host.
+  alt-harvester:
+    <<: *alt-go-common
+    env_file:
+      - ../.env
+    image: ghcr.io/${GHCR_OWNER:-kaikei-e}/alt-alt-harvester:${IMAGE_TAG:-main}
+    build:
+      context: ../alt-backend
+      dockerfile: Dockerfile.backend
+      args:
+        BINARY: harvester
+    # ports: intentionally absent. A job runner has no user-facing surface,
+    # and :9110 is for Prometheus inside alt-network only.
+    volumes:
+      - alt_harvester_certs:/certs:ro
+      - pki_trust_bundle:/trust:ro
+    depends_on:
+      alt-data-hub:
+        condition: service_healthy
+      pki-agent-alt-harvester:
+        condition: service_healthy
+      mq-hub:
+        condition: service_healthy
+      knowledge-sovereign:
+        condition: service_healthy
+      # Wave 1 only: dropped in wave 3 once alt-data-hub owns the write path.
+      migrate:
+        condition: service_completed_successfully
+      pgbouncer:
+        condition: service_healthy
+    environment:
+      <<: *alt-db-env
+      # --- operator listener (never published) ---------------------------
+      OPS_LISTEN: ":9110"
+      OPS_SURFACES: "health,metrics"
+      # --- schedule ------------------------------------------------------
+      # Enabled/disabled is an explicit value, never inferred from an unset
+      # variable (CLAUDE.md rule 9). SERVER_PORT / CONNECT_PORT / INTERNAL_PORT
+      # / MTLS_LISTEN are deliberately NOT set: the harvester binary exits
+      # non-zero if it is handed one, so a mis-copied listener knob is a
+      # startup failure rather than a silently ignored line.
+      SCHEDULER_ENABLED: "true"
+      SCHEDULER_JOBS: "hourly-feed-collector,daily-scraping-policy,outbox-worker,ogp-image-warmer,og-image-retention,og-image-backfill,outbox-prune"
+      # --- outbound mTLS (client side; leaf cert from pki-agent) ----------
+      # WAVE 3 PLACEHOLDER — nothing reads DATA_HUB_* yet; the jobs still
+      # open their own alt-db pool. See alt-backend above.
+      DATA_HUB_MTLS_URL: https://alt-data-hub:9443
+      DATA_HUB_SERVER_NAME: alt-data-hub
+      # These three are live now: di/rag_module.go builds the outbox worker's
+      # rag-orchestrator client from them.
+      MTLS_ENFORCE: ${ALT_HARVESTER_MTLS_ENFORCE:-true}
+      MTLS_CERT_FILE: /certs/svc-cert.pem
+      MTLS_KEY_FILE: /certs/svc-key.pem
+      MTLS_CA_FILE: /trust/ca-bundle.pem
+      # --- upstreams the jobs call --------------------------------------
+      SOVEREIGN_URL: http://knowledge-sovereign:9500
+      # https makes alt-harvester present its leaf cert; rag-orchestrator
+      # terminates mTLS on :9011 (PEER_IDENTITY_MODE=mtls in rag.yaml). Its
+      # PEER_IDENTITY_ALLOWED_PEERS must name alt-harvester once outbox-worker
+      # runs here — see the wave 2 map in the split plan.
+      RAG_ORCHESTRATOR_CONNECT_URL: ${RAG_ORCHESTRATOR_CONNECT_URL:-https://rag-orchestrator:9011}
+      MQHUB_ENABLED: "true"
+      MQHUB_CONNECT_URL: http://mq-hub:9500
+      # ogp-image-warmer / og-image-backfill mint proxy URLs, so the signing
+      # secret follows the jobs. alt-backend keeps its own copy for the
+      # serving-side signature check.
+      IMAGE_PROXY_SECRET_FILE: /run/secrets/image_proxy_secret
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://rask-log-aggregator:4318
+      OTEL_SERVICE_NAME: alt-harvester
+    secrets:
+      - postgres_password
+      - image_proxy_secret
+    deploy:
+      # Memory belongs under deploy.resources.limits, not mem_limit: compose
+      # rejects a project that sets both unless the values agree, and the
+      # limits block is already here for cpus.
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 1500M
+        reservations:
+          memory: 1G
+          cpus: '0.5'
+    healthcheck:
+      test: ["CMD", "/app-entry", "healthcheck"]
+      interval: 20s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    labels:
+      - rask.group=alt-harvester
+
+  # alt-data-hub — the data plane. Reachable over mTLS and nothing else.
+  #
+  # Three layers keep that true, and only the first is expressible here:
+  #   L1  no `ports:` key at all — nothing is DNAT'd from the host. Pinned by
+  #       ZERO_PUBLISH_SERVICES in scripts/compose-port-audit.py, because the
+  #       audit otherwise only checks that published ports are loopback-bound
+  #       and would happily accept a `127.0.0.1:9443:9443` added by mistake.
+  #   L2  the operator listener binds loopback inside the netns
+  #       (OPERATOR_LISTEN_ADDR). On 0.0.0.0 any container on alt-network
+  #       could reach the unauthenticated admin API by DNS name and skip mTLS
+  #       entirely — the same hole the tag-generator sidecar has.
+  #       config.LoadOperatorListenAddr refuses a non-loopback value.
+  #   L3  DATAHUB_ALLOWED_PEERS. cmd/datahub always requires *and verifies* a
+  #       client certificate — there is no knob to turn that off — so this
+  #       list is the entire authorisation decision.
+  # Compose states L2/L3; config.LoadDataHubConfig and LoadOperatorListenAddr
+  # are what make them fail-fast rather than aspirational.
+  #
+  # The pki-agent sidecar is cert-only (pattern A, no network_mode sharing):
+  # this is Go and terminates mTLS in-process, so there is no plaintext
+  # upstream for a proxy-mode sidecar to sit in front of.
+  alt-data-hub:
+    <<: *alt-go-common
+    env_file:
+      - ../.env
+    image: ghcr.io/${GHCR_OWNER:-kaikei-e}/alt-alt-data-hub:${IMAGE_TAG:-main}
+    build:
+      context: ../alt-backend
+      dockerfile: Dockerfile.backend
+      args:
+        BINARY: datahub
+    volumes:
+      - alt_data_hub_certs:/certs:ro
+      - pki_trust_bundle:/trust:ro
+    depends_on:
+      # Deliberately shallow. alt-backend's search-indexer /
+      # knowledge-sovereign / mq-hub edges are NOT inherited: those services
+      # call alt-data-hub at runtime, so gating alt-data-hub on their health
+      # risks a start-up deadlock the moment one of their probes touches the
+      # data plane. alt-data-hub is the layer underneath — it waits for
+      # nothing above it.
+      migrate:
+        condition: service_completed_successfully
+      pgbouncer:
+        condition: service_healthy
+      pki-agent-alt-data-hub:
+        condition: service_healthy
+    environment:
+      <<: *alt-db-env
+      # --- the only east-west listener (config.LoadDataHubConfig) ---------
+      # Every DATAHUB_* value below is required: LoadDataHubConfig has no
+      # defaults, so a forgotten line is a non-zero exit rather than a
+      # listener that quietly comes up wrong. Deliberately NOT the generic
+      # MTLS_* set that alt-backend uses — tlsutil.OptionsFromEnv fails open
+      # twice (unset MTLS_CLIENT_AUTH gives TLS with no peer verification,
+      # unset MTLS_ALLOWED_PEERS accepts every cert the shared CA issued).
+      DATAHUB_LISTEN_ADDR: ":9443"
+      DATAHUB_TLS_CERT_FILE: /certs/svc-cert.pem
+      DATAHUB_TLS_KEY_FILE: /certs/svc-key.pem
+      DATAHUB_TLS_CA_FILE: /trust/ca-bundle.pem
+      # There is no client-auth knob: cmd/datahub always requires and
+      # verifies a peer certificate. This list is the whole authorisation
+      # decision, so wave 2 widens it *before* repointing each worker — the
+      # receiving side must never be the thing that breaks.
+      DATAHUB_ALLOWED_PEERS: ${ALT_DATA_HUB_ALLOWED_PEERS:-alt-backend,alt-harvester,pre-processor,search-indexer,tag-generator,recap-worker,rag-orchestrator}
+      # --- loopback operator listener (L2) --------------------------------
+      # Unauthenticated admin surfaces; config.LoadOperatorListenAddr refuses
+      # a non-loopback bind. Stated explicitly rather than left to its
+      # default so the value is visible where the port is reasoned about.
+      OPERATOR_LISTEN_ADDR: "127.0.0.1:9102"
+      # --- metrics listener (never published) -----------------------------
+      # Prometheus scrapes this over alt-network — see
+      # observability/prometheus/prometheus.yml. It cannot use
+      # OPERATOR_LISTEN_ADDR: that one is loopback-bound by design, and
+      # giving Prometheus a client cert for :9443 instead would put a
+      # monitoring identity in the data plane's peer allowlist.
+      OPS_LISTEN: ":9110"
+      OPS_SURFACES: "health,metrics"
+      # SERVER_PORT / CONNECT_PORT are deliberately absent: this binary has no
+      # user-facing listener and exits non-zero if handed one.
+      # --- upstreams (all required by config.ValidateDataHubConfig) -------
+      BACKEND_TOKEN_SECRET_FILE: /run/secrets/backend_token_secret
+      BACKEND_TOKEN_ISSUER: auth-hub
+      # Same audience as alt-backend on purpose: changing it would invalidate
+      # every token auth-hub has already minted.
+      BACKEND_TOKEN_AUDIENCE: alt-backend
+      AUTH_HUB_URL: http://auth-hub:8888
+      # SOVEREIGN_URL has no default; unset means the sovereign client no-ops
+      # every append while the caller still records success.
+      SOVEREIGN_URL: http://knowledge-sovereign:9500
+      # MQHUB_ENABLED defaults to false, and a disabled client no-ops every
+      # publish — BackendInternalService article RPCs would answer 200 having
+      # emitted nothing (ADR-000928). ValidateDataHubConfig rejects false
+      # outside development, so this is not optional here.
+      MQHUB_ENABLED: "true"
+      MQHUB_CONNECT_URL: http://mq-hub:9500
+      DB_MAX_CONNS: "40"
+      DB_MIN_CONNS: "10"
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://rask-log-aggregator:4318
+      OTEL_SERVICE_NAME: alt-data-hub
+    secrets:
+      - postgres_password
+      - backend_token_secret
+    deploy:
+      # See alt-harvester: mem_limit and deploy.resources.limits cannot both
+      # be set unless they agree, so memory lives in the limits block.
+      resources:
+        limits:
+          cpus: '3.0'
+          memory: 2G
+        reservations:
+          memory: 1500M
+          cpus: '1.0'
+    healthcheck:
+      # Runs inside the container, so it reaches the loopback-bound listeners
+      # that nothing outside the netns can see. The subcommand must GET
+      # OPERATOR_LISTEN_ADDR/health *and* dial DATAHUB_LISTEN_ADDR — a probe
+      # that only checks the plaintext port cannot tell a dead mTLS listener
+      # goroutine from a healthy process (ADR-000784). Dial only, no
+      # handshake: completing one would mean adding alt-data-hub to its own
+      # DATAHUB_ALLOWED_PEERS, which muddies what that list means.
+      test: ["CMD", "/app-entry", "healthcheck"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 45s
+    labels:
+      - rask.group=alt-data-hub
 
   migrate:
     env_file:

@@ -84,6 +84,11 @@ volumes:
   step_ca_data:
   pki_trust_bundle:
   alt_backend_certs:
+  # alt-backend's 3-binary split (alt-backend / alt-harvester / alt-data-hub).
+  # One cert volume per subject: a shared volume would mean one leaf cert for
+  # three CNs, and MTLS_ALLOWED_PEERS could no longer tell the callers apart.
+  alt_harvester_certs:
+  alt_data_hub_certs:
   auth_hub_certs:
   pre_processor_certs:
   search_indexer_certs:

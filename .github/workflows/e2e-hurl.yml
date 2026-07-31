@@ -38,8 +38,12 @@ jobs:
       # suites from rebuilding every image from scratch on each PR.
       - name: Build alt-backend image locally (tag `ci`)
         run: |
+          # BINARY selects ./cmd/<BINARY>; the Dockerfile fails the build when
+          # it is unset rather than guessing. The Hurl suite exercises the
+          # user-facing API binary.
           docker buildx build \
             --cache-from type=registry,ref=ghcr.io/kaikei-e/alt-alt-backend:buildcache \
+            --build-arg BINARY=backend \
             -t ghcr.io/kaikei-e/alt-alt-backend:ci \
             -f alt-backend/Dockerfile.backend \
             alt-backend

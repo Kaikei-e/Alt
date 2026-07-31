@@ -893,6 +893,10 @@ services:
     build:
       context: ../alt-backend
       dockerfile: Dockerfile.backend
+      args:
+        # The staging slice exercises the user-facing API binary only.
+        # Required — the Dockerfile fails the build on an unset BINARY.
+        BINARY: backend
     container_name: alt-staging-alt-backend
     profiles: [alt-backend]
     depends_on:
@@ -969,7 +973,9 @@ services:
     networks:
       - alt-staging
     healthcheck:
-      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:9000/v1/health"]
+      # busybox wget is no longer in the image (alt-backend/Dockerfile.backend
+      # dropped it with the shell); the binary self-probes instead.
+      test: ["CMD", "/app-entry", "healthcheck"]
       interval: 3s
       timeout: 3s
       retries: 30

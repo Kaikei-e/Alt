@@ -114,10 +114,18 @@ services:
 
   # --- pki-agent sidecars (one per east-west consumer) ----------------------
   # Each sidecar uses the dedicated `pki-agent` JWK provisioner. step-ca
-  # enforces an authority-level X.509 policy (allow.dns + allow.cn = 8 east-west
-  # subjects + localhost) so a compromised pki-agent cannot forge certs for
-  # arbitrary CNs. See docs/review/pki-agent-security-audit-2026-04-16.md
-  # F-001 / F-002 and `step-ca-provisioner-init` service above for bootstrap.
+  # enforces an authority-level X.509 policy (allow.dns + allow.cn = the
+  # east-west subjects + localhost) so a compromised pki-agent cannot forge
+  # certs for arbitrary CNs. See
+  # docs/review/pki-agent-security-audit-2026-04-16.md F-001 / F-002.
+  #
+  # The allowlist is NOT set from compose. It lives in the SUBJECTS array of
+  # pki-agent/scripts/bootstrap-pki-provisioner.sh, which patches
+  # authority.policy.x509 in step-ca's ca.json and SIGHUPs the CA (idempotent;
+  # verify with pki-agent/scripts/verify-cn-allowlist.sh). Adding a sidecar
+  # here without adding its CERT_SUBJECT there gets the request rejected at
+  # sign time. (An earlier revision of this comment referenced a
+  # `step-ca-provisioner-init` compose service that does not exist.)
 
   pki-agent-alt-backend:
     <<: *pki-agent
@@ -137,6 +145,60 @@ services:
       - METRICS_ADDR=:9510
     volumes:
       - alt_backend_certs:/certs
+      - pki_trust_bundle:/trust:ro
+
+  # alt-harvester and alt-data-hub are the two new binaries split out of
+  # alt-backend. Both are Go and terminate/originate mTLS in-process, so both
+  # are cert-only (pattern A) — no `network_mode: service:` sharing, and
+  # therefore none of the netns-orphan class from ADR-000782 nor the
+  # "parent's published port bypasses the sidecar" hole that proxy mode has.
+  #
+  # alt-harvester needs a leaf as a *client*: outbox-worker dials
+  # rag-orchestrator over mTLS and every job reaches the DB through
+  # alt-data-hub:9443. alt-data-hub needs one as a *server*.
+  #
+  # Both CNs must be in the step-ca authority allowlist before these start —
+  # see SUBJECTS in pki-agent/scripts/bootstrap-pki-provisioner.sh. Without
+  # it step-ca refuses to sign, the sidecar never reports healthy, and every
+  # depends_on above it stalls.
+  pki-agent-alt-harvester:
+    <<: *pki-agent
+    environment:
+      - STEP_CA_URL=https://step-ca:9000
+      - STEP_CA_ROOT_FILE=/trust/ca-bundle.pem
+      - STEP_CA_PROVISIONER=pki-agent
+      - STEP_CA_PROVISIONER_PASSWORD_FILE=/run/secrets/step_ca_root_password
+      - CERT_SUBJECT=alt-harvester
+      - CERT_SANS=alt-harvester,localhost
+      - CERT_PATH=/certs/svc-cert.pem
+      - KEY_PATH=/certs/svc-key.pem
+      - CERT_OWNER_UID=65532
+      - CERT_OWNER_GID=65532
+      - RENEW_AT_FRACTION=0.66
+      - TICK_INTERVAL=5m
+      - METRICS_ADDR=:9510
+    volumes:
+      - alt_harvester_certs:/certs
+      - pki_trust_bundle:/trust:ro
+
+  pki-agent-alt-data-hub:
+    <<: *pki-agent
+    environment:
+      - STEP_CA_URL=https://step-ca:9000
+      - STEP_CA_ROOT_FILE=/trust/ca-bundle.pem
+      - STEP_CA_PROVISIONER=pki-agent
+      - STEP_CA_PROVISIONER_PASSWORD_FILE=/run/secrets/step_ca_root_password
+      - CERT_SUBJECT=alt-data-hub
+      - CERT_SANS=alt-data-hub,localhost
+      - CERT_PATH=/certs/svc-cert.pem
+      - KEY_PATH=/certs/svc-key.pem
+      - CERT_OWNER_UID=65532
+      - CERT_OWNER_GID=65532
+      - RENEW_AT_FRACTION=0.66
+      - TICK_INTERVAL=5m
+      - METRICS_ADDR=:9510
+    volumes:
+      - alt_data_hub_certs:/certs
       - pki_trust_bundle:/trust:ro
 
   pki-agent-alt-butterfly-facade:
