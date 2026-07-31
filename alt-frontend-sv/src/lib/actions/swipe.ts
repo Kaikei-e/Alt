@@ -22,6 +22,11 @@ interface SwipeMoveDetail {
 	deltaY: number;
 }
 
+// Controls a press can legitimately start on inside a swipe surface. Pointer
+// capture must not be taken for these — see onPointerDown below.
+const INTERACTIVE_SELECTOR =
+	"button, a[href], input, select, textarea, label, [role='button'], [role='link'], [contenteditable=''], [contenteditable='true']";
+
 export function swipe(node: HTMLElement, options: SwipeOptions = {}) {
 	let threshold = options.threshold ?? 80;
 	let restraint = options.restraint ?? 120;
@@ -69,10 +74,25 @@ export function swipe(node: HTMLElement, options: SwipeOptions = {}) {
 
 		// Androidでも確実にイベントを受け取るため、windowレベルでキャッチ
 		// setPointerCaptureはAndroidで不安定なことがあるため、フォールバックとして使用
-		try {
-			node.setPointerCapture(ev.pointerId);
-		} catch {
-			// ignore
+		//
+		// ただしカード内のコントロール上で始まった押下では capture を取らない:
+		// capture 中の要素には後続の click が retarget されるため、カード自身が
+		// click を飲み込んでしまい、ボタンの onclick が一度も発火しなくなる
+		// （マウス / ペンのみ。タッチの tap は tap 位置で hit-test されるため
+		// 影響を受けず、これがこの不具合がモバイルで見えなかった理由）。
+		// 下の window レベル pointermove/pointerup が本来の追跡経路なので、
+		// ここで capture を省いてもジェスチャの精度は落ちない。
+		const target = ev.target;
+		const startedOnControl =
+			target instanceof Element &&
+			target.closest(INTERACTIVE_SELECTOR) !== null;
+
+		if (!startedOnControl) {
+			try {
+				node.setPointerCapture(ev.pointerId);
+			} catch {
+				// ignore
+			}
 		}
 
 		// windowレベルでpointermove/pointerupをキャッチ（Android対策）
