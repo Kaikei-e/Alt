@@ -11,7 +11,20 @@ vi.mock("$app/state", () => ({
 	},
 }));
 
-vi.mock("$app/navigation", () => ({
+// The route reaches $app/navigation by two independent paths: +page.svelte
+// imports `goto`, and useTrailOutcome — the trail dwell measurement — imports
+// `beforeNavigate` to flush on leave. A factory that enumerates a subset
+// replaces the *whole* module, so any binding it omits becomes an import-time
+// "does not provide an export named ..." SyntaxError and the file collects
+// zero tests. Enumerating one more name just moves the next rot one import
+// away, so spread the real module instead: every current and future export
+// stays bound, and only what must not really run is overridden. `goto` is the
+// one such binding — real navigation would steer the browser-mode page away
+// mid-test. `beforeNavigate` is safe to keep real; it is a thin
+// `onMount(() => callbacks.add(cb))` whose callbacks only fire on an actual
+// client-router navigation, which never happens here.
+vi.mock("$app/navigation", async (importOriginal) => ({
+	...(await importOriginal<typeof import("$app/navigation")>()),
 	goto: vi.fn(),
 }));
 
@@ -44,7 +57,31 @@ vi.mock("$lib/hooks/useSummarize.svelte", () => ({
 	}),
 }));
 
+import {
+	createTtsPlaybackStore,
+	TTS_PLAYBACK_KEY,
+} from "$lib/stores/ttsPlayback.svelte";
+import {
+	createTtsPreferences,
+	TTS_PREFERENCES_KEY,
+} from "$lib/stores/ttsPreferences.svelte";
 import Page from "./+page.svelte";
+
+// +page.svelte reads the TTS playback and preferences stores out of context,
+// and their only provider is (app)/+layout.svelte — a layout this spec does
+// not mount. Rendered bare, getContext() yields undefined and the first
+// `ttsPreferences.speed` read throws before any assertion runs. Reproduce the
+// layout's own wiring with the real factories (both constructors are inert:
+// field initialisers plus one localStorage read) instead of stubbing the
+// stores, so the page is exercised against the objects it gets in production.
+function renderPage() {
+	return render(Page, {
+		context: new Map<symbol, unknown>([
+			[TTS_PLAYBACK_KEY, createTtsPlaybackStore()],
+			[TTS_PREFERENCES_KEY, createTtsPreferences()],
+		]),
+	});
+}
 
 describe("Article page fetch button", () => {
 	beforeEach(() => {
@@ -55,7 +92,7 @@ describe("Article page fetch button", () => {
 	it("shows disabled Fetching... button while loading", async () => {
 		mockGetFeedContent.mockReturnValue(new Promise(() => {}));
 
-		render(Page);
+		renderPage();
 
 		const button = testPage.getByTestId("fetch-button");
 		await expect.element(button).toBeInTheDocument();
@@ -69,7 +106,7 @@ describe("Article page fetch button", () => {
 			article_id: "a1",
 		});
 
-		render(Page);
+		renderPage();
 
 		const button = testPage.getByTestId("fetch-button");
 		await expect.element(button).toHaveTextContent("Re-fetch");
@@ -78,7 +115,7 @@ describe("Article page fetch button", () => {
 	it("shows destructive Try again button on fetch error", async () => {
 		mockGetFeedContent.mockRejectedValueOnce(new Error("Network error"));
 
-		render(Page);
+		renderPage();
 
 		const button = testPage.getByTestId("fetch-button");
 		await expect.element(button).toHaveTextContent("Try again");
@@ -94,7 +131,7 @@ describe("Article page fetch button", () => {
 			article_id: "a1",
 		});
 
-		render(Page);
+		renderPage();
 
 		const button = testPage.getByTestId("fetch-button");
 		await expect.element(button).toHaveTextContent("Re-fetch");
@@ -118,7 +155,7 @@ describe("Article page fetch button", () => {
 			article_id: "a1",
 		});
 
-		render(Page);
+		renderPage();
 
 		const button = testPage.getByTestId("fetch-button");
 		await expect.element(button).toHaveTextContent("Re-fetch");
@@ -141,7 +178,7 @@ describe("Article page Alt-Paper mobile layout", () => {
 			article_id: "a1",
 		});
 
-		render(Page);
+		renderPage();
 
 		const masthead = testPage.getByTestId("article-masthead");
 		await expect.element(masthead).toBeInTheDocument();
@@ -155,7 +192,7 @@ describe("Article page Alt-Paper mobile layout", () => {
 			article_id: "a1",
 		});
 
-		const { container } = render(Page);
+		const { container } = renderPage();
 
 		await expect
 			.element(testPage.getByTestId("article-content-surface"))
@@ -177,7 +214,7 @@ describe("Article page Alt-Paper mobile layout", () => {
 			article_id: "a1",
 		});
 
-		render(Page);
+		renderPage();
 
 		const summary = testPage.getByTestId("ai-summary");
 		await expect.element(summary).toBeInTheDocument();
@@ -191,7 +228,7 @@ describe("Article page Alt-Paper mobile layout", () => {
 			article_id: "a1",
 		});
 
-		render(Page);
+		renderPage();
 
 		await expect
 			.element(testPage.getByRole("button", { name: /back to home/i }))

@@ -103,50 +103,22 @@ jobs:
   # which was 63 spec files silently collected zero times.
   #
   # ---------------------------------------------------------------------
-  # KNOWN RED — tracked quarantine, expires 2026-08-14
+  # Turning this suite on (2026-07-31) surfaced 10 failing files, 17 failing
+  # tests and one spec that killed its browser page. All of it is repaired;
+  # the run is green at 64 files / 462 passed / 2 skipped in ~200s.
+  #
+  # Two of those were product bugs the specs had been catching all along,
+  # not spec drift:
+  #   - FeedDetails.svelte refetched without bound after a failed content
+  #     fetch (a $effect that re-fired on its own callee's writes), pegging
+  #     the renderer past 6 GB. That is a user-facing loop, not a test issue.
+  #   - the swipe action took setPointerCapture on the whole card, so mouse
+  #     and pen clicks on its buttons landed on the card instead. Touch was
+  #     unaffected, which is why a mobile-first screen shipped it.
+  #
+  # Keep that in mind before treating a red run here as spec rot: this suite
+  # has now demonstrated twice that it catches real defects.
   # ---------------------------------------------------------------------
-  # Turning the suite on revealed real drift that accumulated while it was
-  # invisible. Measured 2026-07-31, exit 1 in 474s:
-  #
-  #   Test Files  10 failed | 52 passed (63)
-  #        Tests  17 failed | 403 passed | 2 skipped (425)
-  #       Errors  1 error
-  #
-  # Read that carefully: 10 + 52 = 62. The 63rd file, FeedDetails.svelte.test.ts,
-  # is the "1 error" — it kills its browser page, so its 9 tests land in neither
-  # bucket. The honest description of this job today is 62 files reported plus
-  # 1 crashing, not 63 running. It still exits 1, so nothing is hidden.
-  #
-  # This is recorded here deliberately instead of being muted, and it is a
-  # decision with an end date, not ambient noise.
-  #
-  #   Landing plan — follow-up PR "fix(alt-frontend-sv): repair the component
-  #   specs that drifted while the client vitest project was unrun", to land by
-  #   2026-08-14. Scope, in dependency order:
-  #     1. VisualFeedCard.svelte.spec.ts — committed 0 bytes (origin/main,
-  #        0e43472de); write it or delete it. "No test suite found in file".
-  #     2. routes/(app)/articles/[id]/page.svelte.test.ts — its
-  #        vi.mock("$app/navigation", () => ({ goto: vi.fn() })) factory is
-  #        partial; the route pulls in beforeNavigate transitively through
-  #        src/lib/hooks/useTrailOutcome.svelte.ts, so the module errors and
-  #        9 tests never collect.
-  #     3. mobile/FeedDetails.svelte.test.ts — the "1 error" above. The
-  #        component retries a failed content fetch with no bound, measured at
-  #        ~4,000 console.error/sec, until the renderer hits its memory
-  #        ceiling. A product bug the spec caught, not a flaky test; fixing
-  #        the retry is what turns this file's 9 tests into real results. The
-  #        two bounds in vitest.config.ts (forwardConsole, max-old-space-size)
-  #        only stop it from taking the rest of the suite down with it.
-  #     4. mobile/MobileBottomNav.svelte.test.ts — asserts a "Swipe" tab and
-  #        /feeds/swipe/visual-preview; NAV_TABS is now Home/Trail/Search/
-  #        Augur/Menu and /feeds/swipe is an immersive route that hides the
-  #        nav. Pure spec drift; update the spec.
-  #     5. The remaining assertion failures: SwipeFeedCard (6), KnowledgeCard
-  #        (2), KnowledgeStream (1), RecapPreviewModal (2), MobileAcolyteNew
-  #        (1), MobileAcolyteHistorySheet (1), MobileAcolyteDetail (1).
-  #
-  #   If 2026-08-14 passes with this still red, escalate it — do not extend
-  #   the date silently and do not reach for continue-on-error.
   component-test:
     runs-on: ubuntu-latest
     # 30, not 25: the run step below self-kills at 20m and setup (checkout,
@@ -250,6 +222,6 @@ jobs:
           rc=0
           timeout --kill-after=1m 20m bun run test:client || rc=$?
           if [ "$rc" -eq 124 ] || [ "$rc" -eq 137 ]; then
-            echo "::error::The client vitest project hit its 20-minute wall clock. This is not slowness — it means a spec wedged the browser's event loop, so vitest's own testTimeout could not fire. The per-file results printed above stop at the offending file. See the KNOWN RED quarantine note in this workflow."
+            echo "::error::The client vitest project hit its 20-minute wall clock. This is not slowness — it means a spec wedged the browser's event loop, so vitest's own testTimeout could not fire. The per-file results printed above stop at the offending file. See the note at the top of this workflow: this suite has already caught one spec that wedged its own renderer."
           fi
           exit "$rc"

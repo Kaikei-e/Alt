@@ -59,17 +59,33 @@ describe("RecapPreviewModal", () => {
 		await expect.element(page.getByText("Key Points")).not.toBeInTheDocument();
 	});
 
+	// `exact: true` is load-bearing here, not decoration: the default text
+	// locator is a case-insensitive substring match, so plain getByText("LLM")
+	// also matches the summary paragraph ("AI advances including LLM
+	// breakthroughs") and getByText("tech") also matches the "Technology"
+	// title, which is a strict-mode violation rather than a passing assertion.
+	// Exact matching is the stricter locator: it can only resolve to the badge.
 	it("renders top terms as badges", async () => {
 		renderModal();
-		await expect.element(page.getByText("LLM")).toBeInTheDocument();
-		await expect.element(page.getByText("agents")).toBeInTheDocument();
-		await expect.element(page.getByText("RAG")).toBeInTheDocument();
+		await expect
+			.element(page.getByText("LLM", { exact: true }))
+			.toBeInTheDocument();
+		await expect
+			.element(page.getByText("agents", { exact: true }))
+			.toBeInTheDocument();
+		await expect
+			.element(page.getByText("RAG", { exact: true }))
+			.toBeInTheDocument();
 	});
 
 	it("renders tags when present", async () => {
 		renderModal();
-		await expect.element(page.getByText("ai")).toBeInTheDocument();
-		await expect.element(page.getByText("tech")).toBeInTheDocument();
+		await expect
+			.element(page.getByText("ai", { exact: true }))
+			.toBeInTheDocument();
+		await expect
+			.element(page.getByText("tech", { exact: true }))
+			.toBeInTheDocument();
 	});
 
 	it("does not render Tags section when tags is undefined", async () => {

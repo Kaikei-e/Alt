@@ -22,6 +22,19 @@ function makeItem(
 	};
 }
 
+// The skeleton is scoped-CSS (`.skeleton-line` + a component-local
+// `@keyframes pulse`), not the Tailwind `animate-pulse` utility, so assert on
+// the rendered element plus its computed animation rather than a class name.
+// Svelte prefixes component-scoped keyframes, so the animation name is
+// `svelte-<hash>-pulse`.
+function expectPulsingSkeleton(container: HTMLElement): void {
+	const skeletonLines = container.querySelectorAll(".skeleton-line");
+	expect(skeletonLines.length).toBeGreaterThan(0);
+	for (const line of skeletonLines) {
+		expect(getComputedStyle(line).animationName).toMatch(/pulse$/);
+	}
+}
+
 describe("KnowledgeCard", () => {
 	it("labels overflow tags explicitly", async () => {
 		render(KnowledgeCard, {
@@ -67,8 +80,8 @@ describe("KnowledgeCard", () => {
 		await expect.element(page.getByText("Summarizing")).toBeInTheDocument();
 
 		// Should show pulse skeleton, not text
-		const pulseElements = container.querySelectorAll(".animate-pulse");
-		expect(pulseElements.length).toBeGreaterThan(0);
+		expectPulsingSkeleton(container);
+		expect(container.querySelector(".card-summary")).toBeNull();
 	});
 
 	it("shows skeleton lines when summary_state is missing", async () => {
@@ -82,8 +95,8 @@ describe("KnowledgeCard", () => {
 			},
 		});
 
-		const pulseElements = container.querySelectorAll(".animate-pulse");
-		expect(pulseElements.length).toBeGreaterThan(0);
+		expectPulsingSkeleton(container);
+		expect(container.querySelector(".card-summary")).toBeNull();
 	});
 
 	it("renders supersede badge when supersedeInfo is present", async () => {

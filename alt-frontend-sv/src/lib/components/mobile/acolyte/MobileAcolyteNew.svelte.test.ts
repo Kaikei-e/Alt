@@ -51,8 +51,13 @@ describe("MobileAcolyteNew", () => {
 			props: { onSubmit: vi.fn() },
 		});
 
-		const textarea = page.getByLabelText(/topic/i);
+		// Match the label exactly rather than /topic/i: the "Custom Report"
+		// radio option is wrapped in its own <label> whose accessible name
+		// includes the description "Free-form topic with full pipeline", so a
+		// loose /topic/i also resolves to that radio (strict mode violation).
+		const textarea = page.getByLabelText("Topic / Scope", { exact: true });
 		await expect.element(textarea).toBeInTheDocument();
+		expect(textarea.element().tagName).toBe("TEXTAREA");
 	});
 
 	it("submit button is disabled when title is empty", async () => {
