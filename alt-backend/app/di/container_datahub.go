@@ -5,10 +5,13 @@ import (
 
 	"alt/config"
 	"alt/dataplane/driver/kratos_client"
+	"alt/dataplane/gateway/datahub_capability_gateway"
 	"alt/dataplane/gateway/fetch_recent_articles_gateway"
 	"alt/dataplane/gateway/recap_articles_gateway"
 	"alt/dataplane/gateway/tag_set_version_gateway"
+	"alt/dataplane/port/datahub_capability_port"
 	"alt/dataplane/usecase/create_tag_set_version_usecase"
+	"alt/dataplane/usecase/outbox_usecase"
 	"alt/dataplane/usecase/recap_articles_usecase"
 	"alt/orchestrator/usecase/fetch_recent_articles_usecase"
 	"alt/shared/driver/alt_db"
@@ -66,6 +69,18 @@ type DataHubComponents struct {
 	// Recap / recent article reads
 	RecapArticlesUsecase       *recap_articles_usecase.RecapArticlesUsecase
 	FetchRecentArticlesUsecase *fetch_recent_articles_usecase.FetchRecentArticlesUsecase
+
+	// ADR-000954 Wave 3 batch 1 (catalog §2.A / §2.D / §2.E / §2.L / §2.O).
+	//
+	// The outbox gets a usecase because it has a state machine to enforce;
+	// the other four are reads and single-statement writes whose invariants
+	// are already in the SQL, so they go straight from handler to gateway the
+	// way the phase 1-4 ports do.
+	OutboxUsecase          *outbox_usecase.OutboxUsecase
+	OgImageGateway         datahub_capability_port.OgImagePort
+	ImageProxyCacheGateway datahub_capability_port.ImageProxyCachePort
+	ScrapingPolicyGateway  datahub_capability_port.ScrapingPolicyPort
+	AutoFulltextGateway    datahub_capability_port.AutoFulltextPort
 }
 
 // NewDataHubComponents is cmd/datahub's composition root.
@@ -131,6 +146,20 @@ func NewDataHubComponents(pool *pgxpool.Pool, cfg *config.Config) *DataHubCompon
 	fetchRecentArticlesGw := fetch_recent_articles_gateway.NewFetchRecentArticlesGateway(pool)
 	fetchRecentArticlesUC := fetch_recent_articles_usecase.NewFetchRecentArticlesUsecase(fetchRecentArticlesGw)
 
+	// ADR-000954 Wave 3 batch 1 capabilities. Built unconditionally: with the
+	// callers' own database pools gone, these are the only route alt-backend
+	// and alt-harvester have to these tables, so there is no configuration
+	// under which leaving one unwired is a valid deployment.
+	outboxUC := outbox_usecase.NewOutboxUsecase(datahub_capability_gateway.NewOutboxGateway(altDB))
+	ogImageGw := datahub_capability_gateway.NewOgImageGateway(altDB)
+	imageProxyCacheGw := datahub_capability_gateway.NewImageProxyCacheGateway(altDB)
+	scrapingPolicyGw := datahub_capability_gateway.NewScrapingPolicyGateway(altDB)
+	autoFulltextGw := datahub_capability_gateway.NewAutoFulltextGateway(altDB)
+	slog.Info("datahub.wave3_capabilities_enabled",
+		"groups", "outbox,og_image,image_proxy_cache,scraping_policy,auto_fulltext",
+		"procedures", 22,
+		"adr", "ADR-000954 Wave 3 batch 1")
+
 	return &DataHubComponents{
 		Config:                      cfg,
 		AltDBRepository:             altDB,
@@ -145,5 +174,11 @@ func NewDataHubComponents(pool *pgxpool.Pool, cfg *config.Config) *DataHubCompon
 		FetchArticlesByTagUsecase:   fetchArticlesByTagUC,
 		RecapArticlesUsecase:        recapArticlesUC,
 		FetchRecentArticlesUsecase:  fetchRecentArticlesUC,
+
+		OutboxUsecase:          outboxUC,
+		OgImageGateway:         ogImageGw,
+		ImageProxyCacheGateway: imageProxyCacheGw,
+		ScrapingPolicyGateway:  scrapingPolicyGw,
+		AutoFulltextGateway:    autoFulltextGw,
 	}
 }

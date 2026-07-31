@@ -1,6 +1,15 @@
 package di
 
 import (
+	"crypto/ecdsa"
+	"crypto/elliptic"
+	"crypto/rand"
+	"crypto/x509"
+	"crypto/x509/pkix"
+	"encoding/pem"
+	"math/big"
+	"os"
+	"path/filepath"
 	"reflect"
 	"testing"
 	"time"
@@ -129,6 +138,8 @@ func splitTestConfig() *config.Config {
 // patch in one of them still compiles and only fails as a nil dereference in
 // the RSS DeleteFeedLink handler, so the dependency is passed in instead.
 func TestNewFeedModule_WiresDeleteFeedLinkUsecase(t *testing.T) {
+	setDataHubClientEnv(t)
+
 	infra := newInfraModule(nil, splitTestConfig())
 	sub := newSubscriptionModule(infra)
 
@@ -140,4 +151,61 @@ func TestNewFeedModule_WiresDeleteFeedLinkUsecase(t *testing.T) {
 	if feed.DeleteFeedLinkUsecase != sub.DeleteFeedLinkUsecase {
 		t.Error("DeleteFeedLinkUsecase must be the subscription module's instance")
 	}
+}
+
+// setDataHubClientEnv gives newInfraModule / NewHarvesterComponents a valid
+// alt-data-hub client configuration.
+//
+// It is required rather than optional: cmd/backend and cmd/harvester have no
+// database of their own for the capabilities ADR-000954 Wave 3 moved, so
+// config.LoadDataHubClientConfig fails closed and the composition root panics
+// on it (CLAUDE.md rule 9). The certificate is a throwaway self-signed leaf
+// used as its own trust root — these tests are about wiring, and the chain is
+// tlsutil's concern.
+func setDataHubClientEnv(t *testing.T) {
+	t.Helper()
+
+	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		t.Fatalf("generate test key: %v", err)
+	}
+	tmpl := &x509.Certificate{
+		SerialNumber:          big.NewInt(1),
+		Subject:               pkix.Name{CommonName: "alt-backend"},
+		NotBefore:             time.Now().Add(-time.Hour),
+		NotAfter:              time.Now().Add(time.Hour),
+		KeyUsage:              x509.KeyUsageDigitalSignature | x509.KeyUsageCertSign,
+		BasicConstraintsValid: true,
+		IsCA:                  true,
+		DNSNames:              []string{"alt-backend"},
+	}
+	der, err := x509.CreateCertificate(rand.Reader, tmpl, tmpl, &key.PublicKey, key)
+	if err != nil {
+		t.Fatalf("create test certificate: %v", err)
+	}
+	keyDER, err := x509.MarshalECPrivateKey(key)
+	if err != nil {
+		t.Fatalf("marshal test key: %v", err)
+	}
+
+	dir := t.TempDir()
+	certPath := filepath.Join(dir, "svc-cert.pem")
+	keyPath := filepath.Join(dir, "svc-key.pem")
+	caPath := filepath.Join(dir, "ca-bundle.pem")
+	certPEM := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: der})
+	for path, content := range map[string][]byte{
+		certPath: certPEM,
+		caPath:   certPEM,
+		keyPath:  pem.EncodeToMemory(&pem.Block{Type: "EC PRIVATE KEY", Bytes: keyDER}),
+	} {
+		if err := os.WriteFile(path, content, 0o600); err != nil {
+			t.Fatalf("write %s: %v", path, err)
+		}
+	}
+
+	t.Setenv("DATA_HUB_MTLS_URL", "https://alt-data-hub:9443")
+	t.Setenv("DATA_HUB_SERVER_NAME", "alt-data-hub")
+	t.Setenv("MTLS_CERT_FILE", certPath)
+	t.Setenv("MTLS_KEY_FILE", keyPath)
+	t.Setenv("MTLS_CA_FILE", caPath)
 }

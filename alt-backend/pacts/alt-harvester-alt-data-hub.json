@@ -1,0 +1,708 @@
+{
+  "consumer": {
+    "name": "alt-harvester"
+  },
+  "interactions": [
+    {
+      "description": "a ClaimOutboxBatch request from alt-harvester",
+      "providerStates": [
+        {
+          "name": "alt-data-hub has pending outbox events"
+        }
+      ],
+      "request": {
+        "body": {
+          "limit": 10
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "method": "POST",
+        "path": "/alt.datahub.v1.DataHubService/ClaimOutboxBatch"
+      },
+      "response": {
+        "body": {
+          "events": [
+            {
+              "createdAt": "2026-07-31T00:00:00Z",
+              "eventType": "ARTICLE_UPSERT",
+              "id": "8f14e45f-ceea-467a-9d0c-1a2b3c4d5e6f",
+              "payload": "eyJhcnRpY2xlX2lkIjoiYTEifQ==",
+              "status": "OUTBOX_EVENT_STATUS_PROCESSING"
+            }
+          ]
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "matchingRules": {
+          "body": {
+            "$.events": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type",
+                  "min": 1
+                }
+              ]
+            },
+            "$.events[*].createdAt": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.events[*].eventType": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.events[*].id": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+                }
+              ]
+            },
+            "$.events[*].payload": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            }
+          }
+        },
+        "status": 200
+      }
+    },
+    {
+      "description": "a ListFeedsMissingOgImage request from alt-harvester",
+      "providerStates": [
+        {
+          "name": "alt-data-hub has recent articles with no og image"
+        }
+      ],
+      "request": {
+        "body": {
+          "limit": 50
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "method": "POST",
+        "path": "/alt.datahub.v1.DataHubService/ListFeedsMissingOgImage"
+      },
+      "response": {
+        "body": {
+          "candidates": [
+            {
+              "articleId": "6f1a2f7e-1f1e-4c2a-9a3e-5b6c7d8e9f01",
+              "url": "https://example.com/post"
+            }
+          ]
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "matchingRules": {
+          "body": {
+            "$.candidates": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type",
+                  "min": 1
+                }
+              ]
+            },
+            "$.candidates[*].articleId": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+                }
+              ]
+            },
+            "$.candidates[*].url": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            }
+          }
+        },
+        "status": 200
+      }
+    },
+    {
+      "description": "a ListScrapingDomains request from alt-harvester",
+      "providerStates": [
+        {
+          "name": "alt-data-hub has scraping domains"
+        }
+      ],
+      "request": {
+        "body": {
+          "limit": 100
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "method": "POST",
+        "path": "/alt.datahub.v1.DataHubService/ListScrapingDomains"
+      },
+      "response": {
+        "body": {
+          "scrapingDomains": [
+            {
+              "domain": "example.com",
+              "id": "2b1c3d4e-5f60-4711-8899-aabbccddeeff",
+              "scheme": "https"
+            }
+          ]
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "matchingRules": {
+          "body": {
+            "$.scrapingDomains": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type",
+                  "min": 1
+                }
+              ]
+            },
+            "$.scrapingDomains[*].domain": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.scrapingDomains[*].id": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+                }
+              ]
+            },
+            "$.scrapingDomains[*].scheme": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            }
+          }
+        },
+        "status": 200
+      }
+    },
+    {
+      "description": "a ListUnwarmedOgImageURLs request from alt-harvester",
+      "providerStates": [
+        {
+          "name": "alt-data-hub has feeds with uncached og images"
+        }
+      ],
+      "request": {
+        "body": {
+          "limit": 100
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "method": "POST",
+        "path": "/alt.datahub.v1.DataHubService/ListUnwarmedOgImageURLs"
+      },
+      "response": {
+        "body": {
+          "urls": [
+            "https://cdn.example.com/og.png"
+          ]
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "matchingRules": {
+          "body": {
+            "$.urls": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type",
+                  "min": 1
+                }
+              ]
+            }
+          }
+        },
+        "status": 200
+      }
+    },
+    {
+      "description": "a MarkOutboxProcessed request from alt-harvester recording failure",
+      "providerStates": [
+        {
+          "name": "alt-data-hub has a claimed outbox event"
+        }
+      ],
+      "request": {
+        "body": {
+          "errorMessage": "rag upsert refused: 503",
+          "id": "8f14e45f-ceea-467a-9d0c-1a2b3c4d5e6f",
+          "status": "OUTBOX_EVENT_STATUS_FAILED"
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "method": "POST",
+        "path": "/alt.datahub.v1.DataHubService/MarkOutboxProcessed"
+      },
+      "response": {
+        "body": {},
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "status": 200
+      }
+    },
+    {
+      "description": "a MarkOutboxProcessed request from alt-harvester recording success",
+      "providerStates": [
+        {
+          "name": "alt-data-hub has a claimed outbox event"
+        }
+      ],
+      "request": {
+        "body": {
+          "id": "8f14e45f-ceea-467a-9d0c-1a2b3c4d5e6f",
+          "status": "OUTBOX_EVENT_STATUS_PROCESSED"
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "method": "POST",
+        "path": "/alt.datahub.v1.DataHubService/MarkOutboxProcessed"
+      },
+      "response": {
+        "body": {},
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "status": 200
+      }
+    },
+    {
+      "description": "a PruneOutboxEvents request from alt-harvester",
+      "providerStates": [
+        {
+          "name": "alt-data-hub has processed outbox events past retention"
+        }
+      ],
+      "request": {
+        "body": {
+          "olderThanSeconds": "604800"
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "method": "POST",
+        "path": "/alt.datahub.v1.DataHubService/PruneOutboxEvents"
+      },
+      "response": {
+        "body": {
+          "prunedCount": "12"
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "matchingRules": {
+          "body": {
+            "$.prunedCount": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            }
+          }
+        },
+        "status": 200
+      }
+    },
+    {
+      "description": "a PurgeExpiredArticleHeads request from alt-harvester",
+      "providerStates": [
+        {
+          "name": "alt-data-hub has article heads past retention"
+        }
+      ],
+      "request": {
+        "body": {
+          "ttlSeconds": "604800"
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "method": "POST",
+        "path": "/alt.datahub.v1.DataHubService/PurgeExpiredArticleHeads"
+      },
+      "response": {
+        "body": {
+          "purgedCount": "7"
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "matchingRules": {
+          "body": {
+            "$.purgedCount": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            }
+          }
+        },
+        "status": 200
+      }
+    },
+    {
+      "description": "a PurgeImageProxyCacheOlderThan request from alt-harvester",
+      "providerStates": [
+        {
+          "name": "alt-data-hub has cached images past retention"
+        }
+      ],
+      "request": {
+        "body": {
+          "ttlSeconds": "604800"
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "method": "POST",
+        "path": "/alt.datahub.v1.DataHubService/PurgeImageProxyCacheOlderThan"
+      },
+      "response": {
+        "body": {
+          "purgedCount": "3"
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "matchingRules": {
+          "body": {
+            "$.purgedCount": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            }
+          }
+        },
+        "status": 200
+      }
+    },
+    {
+      "description": "a ReleaseOutboxEvent request from alt-harvester after mid-batch cancellation",
+      "providerStates": [
+        {
+          "name": "alt-data-hub has a claimed outbox event"
+        }
+      ],
+      "request": {
+        "body": {
+          "id": "8f14e45f-ceea-467a-9d0c-1a2b3c4d5e6f"
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "method": "POST",
+        "path": "/alt.datahub.v1.DataHubService/ReleaseOutboxEvent"
+      },
+      "response": {
+        "body": {},
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "status": 200
+      }
+    },
+    {
+      "description": "a SaveScrapingDomain request from alt-harvester",
+      "providerStates": [
+        {
+          "name": "alt-data-hub accepts scraping domain writes"
+        }
+      ],
+      "request": {
+        "body": {
+          "scrapingDomain": {
+            "allowFetchBody": true,
+            "domain": "example.com",
+            "id": "00000000-0000-0000-0000-000000000000",
+            "robotsDisallowPaths": [
+              "/private"
+            ],
+            "scheme": "https"
+          }
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "matchingRules": {
+          "body": {
+            "$.scrapingDomain": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.scrapingDomain.allowFetchBody": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.scrapingDomain.domain": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.scrapingDomain.id": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+                }
+              ]
+            },
+            "$.scrapingDomain.robotsDisallowPaths": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type",
+                  "min": 1
+                }
+              ]
+            },
+            "$.scrapingDomain.scheme": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            }
+          }
+        },
+        "method": "POST",
+        "path": "/alt.datahub.v1.DataHubService/SaveScrapingDomain"
+      },
+      "response": {
+        "body": {
+          "scrapingDomain": {
+            "allowFetchBody": true,
+            "createdAt": "2026-07-31T00:00:00Z",
+            "domain": "example.com",
+            "id": "2b1c3d4e-5f60-4711-8899-aabbccddeeff",
+            "robotsDisallowPaths": [
+              "/private"
+            ],
+            "scheme": "https",
+            "updatedAt": "2026-07-31T00:00:00Z"
+          }
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "matchingRules": {
+          "body": {
+            "$.scrapingDomain": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.scrapingDomain.allowFetchBody": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.scrapingDomain.createdAt": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.scrapingDomain.domain": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.scrapingDomain.id": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+                }
+              ]
+            },
+            "$.scrapingDomain.robotsDisallowPaths": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type",
+                  "min": 1
+                }
+              ]
+            },
+            "$.scrapingDomain.scheme": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.scrapingDomain.updatedAt": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            }
+          }
+        },
+        "status": 200
+      }
+    },
+    {
+      "description": "an EvictExpiredImageProxyCache request from alt-harvester",
+      "providerStates": [
+        {
+          "name": "alt-data-hub has expired cached images"
+        }
+      ],
+      "request": {
+        "body": {},
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "method": "POST",
+        "path": "/alt.datahub.v1.DataHubService/EvictExpiredImageProxyCache"
+      },
+      "response": {
+        "body": {
+          "evictedCount": "5"
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "matchingRules": {
+          "body": {
+            "$.evictedCount": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            }
+          }
+        },
+        "status": 200
+      }
+    },
+    {
+      "description": "an UpdateScrapingDomainPolicy request from alt-harvester setting one field",
+      "providerStates": [
+        {
+          "name": "alt-data-hub has a scraping domain"
+        }
+      ],
+      "request": {
+        "body": {
+          "id": "2b1c3d4e-5f60-4711-8899-aabbccddeeff",
+          "update": {
+            "allowFetchBody": false
+          }
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "method": "POST",
+        "path": "/alt.datahub.v1.DataHubService/UpdateScrapingDomainPolicy"
+      },
+      "response": {
+        "body": {},
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "status": 200
+      }
+    }
+  ],
+  "metadata": {
+    "pact-go": {
+      "version": "2.5.1"
+    },
+    "pactRust": {
+      "ffi": "0.4.28",
+      "mockserver": "1.2.16",
+      "models": "1.3.5"
+    },
+    "pactSpecification": {
+      "version": "3.0.0"
+    }
+  },
+  "provider": {
+    "name": "alt-data-hub"
+  }
+}

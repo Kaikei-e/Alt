@@ -37,7 +37,11 @@ func newImageModule(infra *InfraModule) *ImageModule {
 	imageProxyWired := logImageProxyWiringState(cfg.ImageProxy.Enabled, cfg.ImageProxy.Secret != "")
 	if imageProxyWired {
 		imageProxySigner := image_proxy.NewSigner(cfg.ImageProxy.Secret)
-		imageProxyCacheGw := image_proxy_gateway.NewCacheGateway(infra.AltDBRepository)
+		// The cache tier is alt-data-hub's since ADR-000954 Wave 3
+		// (catalog §2.E). Fetching, resizing and re-encoding the image stay
+		// here — outbound HTTP and a CPU-bound transform, neither of which
+		// D4 moves.
+		imageProxyCacheGw := infra.ImageProxyCacheGateway
 		imageProxyProcessingGw := image_proxy_gateway.NewProcessingGateway()
 		imageProxyDynamicDomainGw := image_proxy_gateway.NewDynamicDomainGateway(infra.AltDBRepository)
 		imageProxyUsecaseInstance = image_proxy_usecase.NewImageProxyUsecase(

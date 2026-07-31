@@ -15,7 +15,7 @@ type mockOutboxPruneRepository struct {
 	callCount    int
 }
 
-func (m *mockOutboxPruneRepository) PruneOutboxEvents(ctx context.Context, olderThan time.Duration) (int64, error) {
+func (m *mockOutboxPruneRepository) Prune(ctx context.Context, olderThan time.Duration) (int64, error) {
 	m.callCount++
 	m.gotOlderThan = olderThan
 	return m.prunedCount, m.err

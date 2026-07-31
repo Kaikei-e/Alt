@@ -44,18 +44,26 @@ const (
 	// than the repo-root directory, and scripts/pact-check.sh publishes from
 	// both.
 	ragPactDir = "../../../../../rag-orchestrator/pacts"
+	// altBackendPactDir holds the pacts this module writes as a *consumer* —
+	// including the two in-family ones alt-backend and alt-harvester publish
+	// against alt-data-hub since ADR-000954 Wave 3. Same convention as the
+	// sovereign, pre-processor and search-indexer consumer pacts alongside
+	// them; scripts/pact-check.sh publishes this directory too.
+	altBackendPactDir = "../../../../pacts"
 
 	providerName = "alt-backend"
 	// dataHubProviderName is the pacticipant rag-orchestrator publishes
 	// against — see the package comment.
 	dataHubProviderName = "alt-data-hub"
 
-	recapWorkerPactFile        = "recap-worker-alt-backend.json"
-	searchIndexerPactFile      = "search-indexer-alt-backend.json"
-	altButterflyFacadePactFile = "alt-butterfly-facade-alt-backend.json"
-	preProcessorPactFile       = "pre-processor-alt-backend.json"
-	tagGeneratorPactFile       = "tag-generator-alt-backend.json"
-	ragOrchestratorPactFile    = "rag-orchestrator-alt-data-hub.json"
+	recapWorkerPactFile         = "recap-worker-alt-backend.json"
+	searchIndexerPactFile       = "search-indexer-alt-backend.json"
+	altButterflyFacadePactFile  = "alt-butterfly-facade-alt-backend.json"
+	preProcessorPactFile        = "pre-processor-alt-backend.json"
+	tagGeneratorPactFile        = "tag-generator-alt-backend.json"
+	ragOrchestratorPactFile     = "rag-orchestrator-alt-data-hub.json"
+	altBackendDataHubPactFile   = "alt-backend-alt-data-hub.json"
+	altHarvesterDataHubPactFile = "alt-harvester-alt-data-hub.json"
 )
 
 // recapArticleResponse mirrors the Connect-RPC JSON shape produced by
@@ -493,6 +501,8 @@ func startStubServer(t *testing.T) int {
 			})
 		})
 
+	mountWave3Procedures(mux)
+
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = ln.Close() })
@@ -809,4 +819,228 @@ func TestVerifyRAGOrchestratorContract(t *testing.T) {
 			"alt-data-hub has tagged articles",
 			"alt-data-hub has articles published in the last 24 hours",
 		))
+}
+
+// TestVerifyAltBackendDataHubContract and TestVerifyAltHarvesterDataHubContract
+// verify the Wave 3 in-family capabilities (ADR-000954 D3, catalog §2.A /
+// §2.D / §2.E / §2.L / §2.O).
+//
+// These two consumers are unusual only in that they are built from this same
+// Go module. That is the reason to pin them, not a reason to skip them: a
+// shared module lets a message and a handler change together and still
+// compile, while the three binaries ship as three containers and roll
+// independently. "It builds" and "the deployed provider answers what the
+// deployed consumer sends" are different claims, and only the second one is
+// what breaks in production.
+//
+// Two pacticipants rather than one because the two binaries call disjoint
+// halves of the surface — the harvester drives the outbox and the retention
+// jobs, the backend drives the article-serving reads. Publishing both under
+// one name would let a harvester-only break verify green.
+func TestVerifyAltBackendDataHubContract(t *testing.T) {
+	verifyConsumer(t, "alt-backend", dataHubProviderName,
+		filepath.Join(altBackendPactDir, altBackendDataHubPactFile),
+		noopStates(
+			"alt-data-hub has a scraped article head",
+			"alt-data-hub has no article head for the article",
+			"alt-data-hub has og images for the articles",
+			"alt-data-hub has a live image proxy cache entry",
+			"alt-data-hub has no live image proxy cache entry",
+			"alt-data-hub accepts image proxy cache writes",
+			"alt-data-hub has a scraping domain",
+			"alt-data-hub has no scraping domain for the host",
+			"alt-data-hub accepts declined domain writes",
+			"alt-data-hub has a declined domain for the user",
+			"alt-data-hub has subscribers for the feed link",
+			"alt-data-hub has the article for the user",
+		))
+}
+
+func TestVerifyAltHarvesterDataHubContract(t *testing.T) {
+	verifyConsumer(t, "alt-harvester", dataHubProviderName,
+		filepath.Join(altBackendPactDir, altHarvesterDataHubPactFile),
+		noopStates(
+			"alt-data-hub has pending outbox events",
+			"alt-data-hub has a claimed outbox event",
+			"alt-data-hub has processed outbox events past retention",
+			"alt-data-hub has recent articles with no og image",
+			"alt-data-hub has feeds with uncached og images",
+			"alt-data-hub has article heads past retention",
+			"alt-data-hub has cached images past retention",
+			"alt-data-hub has expired cached images",
+			"alt-data-hub accepts scraping domain writes",
+			"alt-data-hub has scraping domains",
+			"alt-data-hub has a scraping domain",
+		))
+}
+
+// mountWave3Procedures adds the capabilities ADR-000954 Wave 3 moved off the
+// direct alt_db path (catalog §2.A / §2.D / §2.E / §2.L / §2.O).
+//
+// Two shapes appear repeatedly and both are protoJSON rules rather than
+// choices made here:
+//
+//   - 64-bit integers are JSON strings. prunedCount, purgedCount,
+//     evictedCount and sizeBytes are int64 in the proto, so "12" is correct
+//     and 12 is not.
+//   - An unset optional message is an absent key, not null. The three "miss"
+//     interactions — no article head, no cache entry, no scraping domain —
+//     answer `{}`, because the consumers read that absence as "never
+//     recorded" and behave differently from "recorded as empty".
+func mountWave3Procedures(mux *http.ServeMux) {
+	// ---- §2.A Outbox -------------------------------------------------------
+	dataHubProcedure(mux, "ClaimOutboxBatch", jsonPost(map[string]interface{}{
+		"events": []map[string]interface{}{
+			{
+				"id":        "8f14e45f-ceea-467a-9d0c-1a2b3c4d5e6f",
+				"eventType": "ARTICLE_UPSERT",
+				"payload":   "eyJhcnRpY2xlX2lkIjoiYTEifQ==",
+				// Already claimed. A stub that answered PENDING here would
+				// verify a provider that had lost the point of the capability.
+				"status":    "OUTBOX_EVENT_STATUS_PROCESSING",
+				"createdAt": "2026-07-31T00:00:00Z",
+			},
+		},
+	}))
+	dataHubProcedure(mux, "MarkOutboxProcessed", jsonPost(map[string]interface{}{}))
+	dataHubProcedure(mux, "ReleaseOutboxEvent", jsonPost(map[string]interface{}{}))
+	dataHubProcedure(mux, "PruneOutboxEvents", jsonPost(map[string]interface{}{
+		"prunedCount": "12",
+	}))
+
+	// ---- §2.D OG image / article_heads -------------------------------------
+	//
+	// GetArticleHead is the one procedure here whose two answers are both
+	// meaningful, so the stub branches on the request rather than always
+	// returning a head: fetch_article_usecase re-scrapes on the absent one.
+	dataHubProcedure(mux, "GetArticleHead", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			w.WriteHeader(http.StatusMethodNotAllowed)
+			return
+		}
+		var req struct {
+			ArticleID string `json:"articleId"`
+		}
+		_ = json.NewDecoder(r.Body).Decode(&req)
+
+		w.Header().Set("Content-Type", "application/json")
+		if req.ArticleID == "00000000-0000-4000-8000-000000000000" {
+			_, _ = w.Write([]byte(`{}`))
+			return
+		}
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{
+			"head": map[string]interface{}{
+				"id":         "11111111-2222-3333-4444-555555555555",
+				"articleId":  "6f1a2f7e-1f1e-4c2a-9a3e-5b6c7d8e9f01",
+				"headHtml":   "<head><title>x</title></head>",
+				"ogImageUrl": "https://cdn.example.com/og.png",
+			},
+		})
+	})
+	dataHubProcedure(mux, "BatchGetOgImageURLs", jsonPost(map[string]interface{}{
+		"ogImageUrls": map[string]string{
+			"6f1a2f7e-1f1e-4c2a-9a3e-5b6c7d8e9f01": "https://cdn.example.com/og.png",
+		},
+	}))
+	dataHubProcedure(mux, "ListFeedsMissingOgImage", jsonPost(map[string]interface{}{
+		"candidates": []map[string]interface{}{
+			{"articleId": "6f1a2f7e-1f1e-4c2a-9a3e-5b6c7d8e9f01", "url": "https://example.com/post"},
+		},
+	}))
+	dataHubProcedure(mux, "ListUnwarmedOgImageURLs", jsonPost(map[string]interface{}{
+		"urls": []string{"https://cdn.example.com/og.png"},
+	}))
+	dataHubProcedure(mux, "PurgeExpiredArticleHeads", jsonPost(map[string]interface{}{
+		"purgedCount": "7",
+	}))
+
+	// ---- §2.E Image proxy cache -------------------------------------------
+	dataHubProcedure(mux, "GetImageProxyCache", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			w.WriteHeader(http.StatusMethodNotAllowed)
+			return
+		}
+		var req struct {
+			URLHash string `json:"urlHash"`
+		}
+		_ = json.NewDecoder(r.Body).Decode(&req)
+
+		w.Header().Set("Content-Type", "application/json")
+		if req.URLHash == "missing" {
+			_, _ = w.Write([]byte(`{}`))
+			return
+		}
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{
+			"entry": map[string]interface{}{
+				"urlHash":     "abc123",
+				"originalUrl": "https://cdn.example.com/og.png",
+				"data":        "UklGRg==",
+				"contentType": "image/webp",
+				"width":       600,
+				"height":      315,
+				"sizeBytes":   "4",
+				"expiresAt":   "2026-08-07T00:00:00Z",
+			},
+		})
+	})
+	dataHubProcedure(mux, "PutImageProxyCache", jsonPost(map[string]interface{}{}))
+	dataHubProcedure(mux, "EvictExpiredImageProxyCache", jsonPost(map[string]interface{}{
+		"evictedCount": "5",
+	}))
+	dataHubProcedure(mux, "PurgeImageProxyCacheOlderThan", jsonPost(map[string]interface{}{
+		"purgedCount": "3",
+	}))
+
+	// ---- §2.L Scraping policy ---------------------------------------------
+	scrapingDomain := map[string]interface{}{
+		"id":                  "2b1c3d4e-5f60-4711-8899-aabbccddeeff",
+		"domain":              "example.com",
+		"scheme":              "https",
+		"allowFetchBody":      true,
+		"forceRespectRobots":  true,
+		"robotsCrawlDelaySec": 5,
+		"robotsDisallowPaths": []string{"/private"},
+		"createdAt":           "2026-07-31T00:00:00Z",
+		"updatedAt":           "2026-07-31T00:00:00Z",
+	}
+	dataHubProcedure(mux, "GetScrapingDomainByDomain", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			w.WriteHeader(http.StatusMethodNotAllowed)
+			return
+		}
+		var req struct {
+			Domain string `json:"domain"`
+		}
+		_ = json.NewDecoder(r.Body).Decode(&req)
+
+		w.Header().Set("Content-Type", "application/json")
+		if req.Domain == "unknown.example" {
+			_, _ = w.Write([]byte(`{}`))
+			return
+		}
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{"scrapingDomain": scrapingDomain})
+	})
+	dataHubProcedure(mux, "GetScrapingDomainByID", jsonPost(map[string]interface{}{
+		"scrapingDomain": scrapingDomain,
+	}))
+	dataHubProcedure(mux, "SaveScrapingDomain", jsonPost(map[string]interface{}{
+		"scrapingDomain": scrapingDomain,
+	}))
+	dataHubProcedure(mux, "ListScrapingDomains", jsonPost(map[string]interface{}{
+		"scrapingDomains": []map[string]interface{}{scrapingDomain},
+	}))
+	dataHubProcedure(mux, "UpdateScrapingDomainPolicy", jsonPost(map[string]interface{}{}))
+	dataHubProcedure(mux, "SaveDeclinedDomain", jsonPost(map[string]interface{}{}))
+	dataHubProcedure(mux, "IsDomainDeclined", jsonPost(map[string]interface{}{
+		"declined": true,
+	}))
+
+	// ---- §2.O Automatic full-text fetch groundwork -------------------------
+	dataHubProcedure(mux, "ListSubscribedUserIDsByFeedLinkID", jsonPost(map[string]interface{}{
+		"userIds": []string{"11111111-2222-3333-4444-555555555555"},
+	}))
+	dataHubProcedure(mux, "CheckArticleExistsByURLForUser", jsonPost(map[string]interface{}{
+		"exists":    true,
+		"articleId": "6f1a2f7e-1f1e-4c2a-9a3e-5b6c7d8e9f01",
+	}))
 }

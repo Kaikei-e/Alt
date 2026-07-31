@@ -144,7 +144,12 @@ func TestOgpImageWarmerJob_NilImageProxy_LogsWarnWithDisabledReason(t *testing.T
 	slog.SetDefault(slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelInfo})))
 	defer slog.SetDefault(prev)
 
-	fn := OgpImageWarmerJob(nil, nil)
+	// The fetcher is wired; only the image proxy is config-disabled. Those
+	// are different states and ADR-000954 Wave 3 made them different code
+	// paths: an unwired fetcher is a composition-root bug and panics
+	// (see TestOgpImageWarmerJob_NilFetcherPanics), while a disabled image
+	// proxy is a supported configuration and logs.
+	fn := OgpImageWarmerJob(&mockUnwarmedFetcher{}, nil)
 	if err := fn(context.Background()); err != nil {
 		t.Fatalf("expected no error, got %v", err)
 	}
@@ -156,4 +161,18 @@ func TestOgpImageWarmerJob_NilImageProxy_LogsWarnWithDisabledReason(t *testing.T
 	if !strings.Contains(out, "disabled") {
 		t.Errorf("expected an explicit 'disabled' reason in the log, got: %s", out)
 	}
+}
+
+// TestOgpImageWarmerJob_NilFetcherPanics: the unwarmed-image query has no
+// feature flag. A nil fetcher can only mean the composition root forgot to
+// pass the data-hub gateway, and the job would then log "no unwarmed images
+// found" on every tick — a healthy-looking line for a warmer that warms
+// nothing (CLAUDE.md rule 8).
+func TestOgpImageWarmerJob_NilFetcherPanics(t *testing.T) {
+	defer func() {
+		if recover() == nil {
+			t.Fatal("expected a panic for a nil unwarmed-image fetcher")
+		}
+	}()
+	OgpImageWarmerJob(nil, nil)
 }

@@ -9,6 +9,8 @@ import (
 
 	"alt/config"
 	"alt/dataplane/driver/kratos_client"
+	"alt/dataplane/gateway/datahub_capability_gateway"
+	"alt/dataplane/usecase/outbox_usecase"
 	"alt/di"
 	"alt/orchestrator/usecase/fetch_recent_articles_usecase"
 )
@@ -30,6 +32,16 @@ func components() *di.DataHubComponents {
 	return &di.DataHubComponents{
 		KratosClient:               kratos_client.NewKratosClient("", ""),
 		FetchRecentArticlesUsecase: fetch_recent_articles_usecase.NewFetchRecentArticlesUsecase(nil),
+
+		// The ADR-000954 Wave 3 capabilities are required for the same reason
+		// and by the same rule: WithWave3Capabilities panics on a nil one,
+		// because alt-backend and alt-harvester have no other route to these
+		// tables once their own pools are gone.
+		OutboxUsecase:          outbox_usecase.NewOutboxUsecase(datahub_capability_gateway.NewOutboxGateway(nil)),
+		OgImageGateway:         datahub_capability_gateway.NewOgImageGateway(nil),
+		ImageProxyCacheGateway: datahub_capability_gateway.NewImageProxyCacheGateway(nil),
+		ScrapingPolicyGateway:  datahub_capability_gateway.NewScrapingPolicyGateway(nil),
+		AutoFulltextGateway:    datahub_capability_gateway.NewAutoFulltextGateway(nil),
 	}
 }
 

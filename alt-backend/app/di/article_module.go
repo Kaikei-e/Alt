@@ -5,6 +5,7 @@ import (
 	"alt/orchestrator/gateway/archive_article_gateway"
 	"alt/orchestrator/gateway/article_content_cache_gateway"
 	"alt/orchestrator/gateway/article_gateway"
+	"alt/orchestrator/gateway/article_repository_gateway"
 	"alt/orchestrator/gateway/article_summary_gateway"
 	"alt/orchestrator/gateway/cached_article_tags_gateway"
 	"alt/orchestrator/gateway/fetch_article_gateway"
@@ -72,8 +73,15 @@ func newArticleModule(infra *InfraModule, feed *FeedModule, ragAdapter rag_integ
 
 	// Wire ScrapingPolicyGateway into ArticleUsecase (uses cached robots.txt from scraping_domains)
 	scrapingPolicyGw := scraping_policy_gateway.NewScrapingPolicyGateway(feed.ScrapingDomainGateway)
+
+	// ArticleRepository is served from two sources during ADR-000954 Wave 3:
+	// article_heads and declined_domains come from alt-data-hub (batch 1,
+	// catalog §2.D / §2.L), the article read and write are still direct
+	// (§2.B / §2.C, later batches). See article_repository_gateway — the
+	// usecase's interface is unchanged.
+	articleRepoGw := article_repository_gateway.New(altDB, infra.OgImageGateway, infra.DeclinedDomainGateway)
 	fetchArticleUC := fetch_article_usecase.NewArticleUsecaseWithScrapingPolicy(
-		fetchArticleGw, infra.RobotsTxtGateway, altDB, ragAdapter, scrapingPolicyGw,
+		fetchArticleGw, infra.RobotsTxtGateway, articleRepoGw, ragAdapter, scrapingPolicyGw,
 	)
 
 	// Batch article fetcher for efficient multi-URL fetching with domain-based rate limiting

@@ -550,6 +550,326 @@ message ListRecentArticlesResponse {
 }
 
 // =============================================================================
+// Outbox — the transactional outbox alt-harvester drains (ADR-000954 Wave 3,
+// catalog §2.A)
+// =============================================================================
+//
+// Three capabilities, four procedures. The extra procedure is deliberate: the
+// driver these replace took a bare `status string` and let the caller write
+// any of the four values, which is how "release an unattempted claim" and
+// "record a terminal outcome" ended up as the same call with different
+// arguments. They have different preconditions — a release is only ever legal
+// from PROCESSING, and only the terminal statuses stamp processed_at — so they
+// are separated here and the status is an enum rather than a string.
+
+// OutboxEventStatus is the outbox row's position in its state machine.
+//
+// PENDING → PROCESSING is ClaimOutboxBatch. PROCESSING → PROCESSED/FAILED is
+// MarkOutboxProcessed. PROCESSING → PENDING is ReleaseOutboxEvent. No other
+// transition exists, and none of them can be requested by name — the caller
+// picks a procedure, not a status string.
+enum OutboxEventStatus {
+  OUTBOX_EVENT_STATUS_UNSPECIFIED = 0;
+  OUTBOX_EVENT_STATUS_PENDING = 1;
+  OUTBOX_EVENT_STATUS_PROCESSING = 2;
+  OUTBOX_EVENT_STATUS_PROCESSED = 3;
+  OUTBOX_EVENT_STATUS_FAILED = 4;
+}
+
+// OutboxEvent is one claimed row of outbox_events.
+message OutboxEvent {
+  string id = 1;
+  string event_type = 2;
+  // Opaque to alt-data-hub. The producer wrote it inside the article-upsert
+  // transaction and the consumer parses it; the data hub only moves it.
+  bytes payload = 3;
+  OutboxEventStatus status = 4;
+  google.protobuf.Timestamp created_at = 5;
+}
+
+message ClaimOutboxBatchRequest {
+  // Page size. Bounded server-side; 0 means the server default.
+  int32 limit = 1;
+}
+
+message ClaimOutboxBatchResponse {
+  // Rows this call — and no concurrent call — now owns. Already PROCESSING.
+  repeated OutboxEvent events = 1;
+}
+
+message MarkOutboxProcessedRequest {
+  string id = 1;
+  // PROCESSED or FAILED. Any other value is InvalidArgument: PENDING belongs
+  // to ReleaseOutboxEvent and PROCESSING belongs to ClaimOutboxBatch.
+  OutboxEventStatus status = 2;
+  string error_message = 3;
+}
+
+message MarkOutboxProcessedResponse {}
+
+message ReleaseOutboxEventRequest {
+  string id = 1;
+}
+
+message ReleaseOutboxEventResponse {}
+
+message PruneOutboxEventsRequest {
+  // Retention window. The caller owns this number — it is an operational
+  // policy of the pruning job, not an invariant of the table.
+  int64 older_than_seconds = 1;
+}
+
+message PruneOutboxEventsResponse {
+  int64 pruned_count = 1;
+}
+
+// =============================================================================
+// OG image / article_heads (catalog §2.D)
+// =============================================================================
+
+// ArticleHead is one row of article_heads: the scraped <head> of an article
+// page plus the og:image URL extracted from it.
+message ArticleHead {
+  string id = 1;
+  string article_id = 2;
+  string head_html = 3;
+  // Empty when the row exists but carries no og:image.
+  string og_image_url = 4;
+}
+
+message GetArticleHeadRequest {
+  string article_id = 1;
+}
+
+message GetArticleHeadResponse {
+  // Absent when no row exists. Distinct from a present head with empty
+  // fields, which means "scraped, nothing found" — the backfill job uses the
+  // difference to decide whether to re-scrape.
+  optional ArticleHead head = 1;
+}
+
+message BatchGetOgImageURLsRequest {
+  repeated string article_ids = 1;
+}
+
+message BatchGetOgImageURLsResponse {
+  // article_id → og:image URL. Article ids with no row, or with an empty
+  // og_image_url, are absent from the map rather than present-and-empty.
+  map<string, string> og_image_urls = 1;
+}
+
+// OgImageBackfillCandidate is an article whose feed has no RSS-supplied
+// og:image and which has not been scraped yet.
+message OgImageBackfillCandidate {
+  string article_id = 1;
+  string url = 2;
+}
+
+message ListFeedsMissingOgImageRequest {
+  // Per-run scraping budget. The caller owns it: this bounds outbound HTTP
+  // load on publishers, which is alt-harvester's concern, not the table's.
+  int32 limit = 1;
+}
+
+message ListFeedsMissingOgImageResponse {
+  repeated OgImageBackfillCandidate candidates = 1;
+}
+
+message ListUnwarmedOgImageURLsRequest {
+  int32 limit = 1;
+}
+
+message ListUnwarmedOgImageURLsResponse {
+  repeated string urls = 1;
+}
+
+message PurgeExpiredArticleHeadsRequest {
+  // Copyright retention window, owned by the caller (og-image-retention).
+  int64 ttl_seconds = 1;
+}
+
+message PurgeExpiredArticleHeadsResponse {
+  int64 purged_count = 1;
+}
+
+// =============================================================================
+// Image proxy cache (catalog §2.E)
+// =============================================================================
+
+// ImageProxyCacheEntry is one row of image_proxy_cache, image bytes included.
+//
+// The bytes travel over the RPC. That is the cost of the data hub owning
+// alt_db: the alternative — a capability that returns a handle the caller then
+// resolves against the database itself — is the thing ADR-000954 D3 exists to
+// remove. Entries are single processed images (a few hundred KB after the
+// resize and WebP encode the proxy applies before it saves), not originals.
+message ImageProxyCacheEntry {
+  string url_hash = 1;
+  string original_url = 2;
+  bytes data = 3;
+  string content_type = 4;
+  int32 width = 5;
+  int32 height = 6;
+  int64 size_bytes = 7;
+  string etag = 8;
+  google.protobuf.Timestamp created_at = 9;
+  google.protobuf.Timestamp expires_at = 10;
+}
+
+message GetImageProxyCacheRequest {
+  string url_hash = 1;
+}
+
+message GetImageProxyCacheResponse {
+  // Absent on both "no row" and "row expired". The caller treats them the
+  // same — it re-fetches — and collapsing them here keeps the TTL comparison
+  // on the side that owns the clock the rows were written against.
+  optional ImageProxyCacheEntry entry = 1;
+}
+
+message PutImageProxyCacheRequest {
+  ImageProxyCacheEntry entry = 1;
+}
+
+message PutImageProxyCacheResponse {}
+
+message EvictExpiredImageProxyCacheRequest {}
+
+message EvictExpiredImageProxyCacheResponse {
+  int64 evicted_count = 1;
+}
+
+message PurgeImageProxyCacheOlderThanRequest {
+  // Retention by first acquisition (created_at), independent of each entry's
+  // TTL. Copyright compliance, owned by the caller.
+  int64 ttl_seconds = 1;
+}
+
+message PurgeImageProxyCacheOlderThanResponse {
+  int64 purged_count = 1;
+}
+
+// =============================================================================
+// Scraping policy (catalog §2.L)
+// =============================================================================
+
+// ScrapingDomain is one row of scraping_domains: the cached robots.txt for a
+// publisher plus the local policy overlaid on it.
+//
+// Fetching robots.txt is an external HTTP call and stays in alt-harvester
+// (ADR-000954 D4). What crosses this boundary is only the result.
+message ScrapingDomain {
+  string id = 1;
+  string domain = 2;
+  string scheme = 3;
+  bool allow_fetch_body = 4;
+  bool allow_ml_training = 5;
+  int32 allow_cache_days = 6;
+  bool force_respect_robots = 7;
+  optional string robots_txt_url = 8;
+  optional string robots_txt_content = 9;
+  optional google.protobuf.Timestamp robots_txt_fetched_at = 10;
+  optional int32 robots_txt_last_status = 11;
+  optional int32 robots_crawl_delay_sec = 12;
+  repeated string robots_disallow_paths = 13;
+  google.protobuf.Timestamp created_at = 14;
+  google.protobuf.Timestamp updated_at = 15;
+}
+
+message GetScrapingDomainByDomainRequest {
+  string domain = 1;
+}
+
+message GetScrapingDomainByDomainResponse {
+  // Absent when the domain has never been seen. Callers treat that as "no
+  // policy recorded", which is not the same as a recorded permissive policy.
+  optional ScrapingDomain scraping_domain = 1;
+}
+
+message GetScrapingDomainByIDRequest {
+  string id = 1;
+}
+
+message GetScrapingDomainByIDResponse {
+  optional ScrapingDomain scraping_domain = 1;
+}
+
+message SaveScrapingDomainRequest {
+  ScrapingDomain scraping_domain = 1;
+}
+
+message SaveScrapingDomainResponse {
+  // The row as persisted. id, created_at and updated_at are assigned by the
+  // provider on insert, so the caller cannot know them from the request; the
+  // driver this replaces mutated the caller's struct in place, which stops
+  // working the moment there is a process boundary in between.
+  ScrapingDomain scraping_domain = 1;
+}
+
+message ListScrapingDomainsRequest {
+  int32 offset = 1;
+  int32 limit = 2;
+}
+
+message ListScrapingDomainsResponse {
+  repeated ScrapingDomain scraping_domains = 1;
+}
+
+// ScrapingPolicyUpdate is a partial update: an absent field leaves the stored
+// value alone (COALESCE), it does not clear it.
+message ScrapingPolicyUpdate {
+  optional bool allow_fetch_body = 1;
+  optional bool allow_ml_training = 2;
+  optional int32 allow_cache_days = 3;
+  optional bool force_respect_robots = 4;
+}
+
+message UpdateScrapingDomainPolicyRequest {
+  string id = 1;
+  ScrapingPolicyUpdate update = 2;
+}
+
+message UpdateScrapingDomainPolicyResponse {}
+
+message SaveDeclinedDomainRequest {
+  string user_id = 1;
+  string domain = 2;
+}
+
+message SaveDeclinedDomainResponse {}
+
+message IsDomainDeclinedRequest {
+  string user_id = 1;
+  string domain = 2;
+}
+
+message IsDomainDeclinedResponse {
+  bool declined = 1;
+}
+
+// =============================================================================
+// Automatic full-text fetch groundwork (catalog §2.O)
+// =============================================================================
+
+message ListSubscribedUserIDsByFeedLinkIDRequest {
+  string feed_link_id = 1;
+}
+
+message ListSubscribedUserIDsByFeedLinkIDResponse {
+  repeated string user_ids = 1;
+}
+
+message CheckArticleExistsByURLForUserRequest {
+  string url = 1;
+  string user_id = 2;
+}
+
+message CheckArticleExistsByURLForUserResponse {
+  bool exists = 1;
+  string article_id = 2;
+}
+
+// =============================================================================
 // DataHubService — every capability backed by alt_db
 // =============================================================================
 
@@ -690,4 +1010,98 @@ service DataHubService {
   // Origin: GET /v1/internal/articles/recent (REST). Called by
   // rag-orchestrator for its temporal topics feature.
   rpc ListRecentArticles(ListRecentArticlesRequest) returns (ListRecentArticlesResponse);
+
+  // ── Outbox (alt-harvester: outbox-worker, outbox-prune) ──
+
+  // ClaimOutboxBatch takes ownership of up to `limit` PENDING rows and marks
+  // them PROCESSING, in one transaction, with FOR UPDATE SKIP LOCKED.
+  //
+  // The lock and the commit are both inside this RPC, and that is the whole
+  // point of the capability: exposing "select pending" and "mark processing"
+  // as two procedures would put a network round trip between them and let two
+  // harvesters claim the same event (ADR-000954 D3, case against the
+  // port-mirror shape).
+  rpc ClaimOutboxBatch(ClaimOutboxBatchRequest) returns (ClaimOutboxBatchResponse);
+
+  // MarkOutboxProcessed records a terminal outcome for a claimed row and
+  // stamps processed_at.
+  rpc MarkOutboxProcessed(MarkOutboxProcessedRequest) returns (MarkOutboxProcessedResponse);
+
+  // ReleaseOutboxEvent returns a claimed-but-unattempted row to PENDING.
+  //
+  // Callers invoke it on a context detached from the one that was cancelled,
+  // because the row is only reachable through this call: ClaimOutboxBatch
+  // reads PENDING only, so a PROCESSING row nobody releases is never fetched
+  // again by anyone.
+  rpc ReleaseOutboxEvent(ReleaseOutboxEventRequest) returns (ReleaseOutboxEventResponse);
+
+  // PruneOutboxEvents deletes PROCESSED rows older than the given window.
+  rpc PruneOutboxEvents(PruneOutboxEventsRequest) returns (PruneOutboxEventsResponse);
+
+  // ── OG image / article_heads (alt-backend reads, alt-harvester pipeline) ──
+
+  // GetArticleHead returns the scraped <head> record for an article.
+  rpc GetArticleHead(GetArticleHeadRequest) returns (GetArticleHeadResponse);
+
+  // BatchGetOgImageURLs resolves og:image URLs for many articles at once.
+  rpc BatchGetOgImageURLs(BatchGetOgImageURLsRequest) returns (BatchGetOgImageURLsResponse);
+
+  // ListFeedsMissingOgImage returns the og-image-backfill work list.
+  rpc ListFeedsMissingOgImage(ListFeedsMissingOgImageRequest) returns (ListFeedsMissingOgImageResponse);
+
+  // ListUnwarmedOgImageURLs returns feed og:image URLs with no live cache entry.
+  rpc ListUnwarmedOgImageURLs(ListUnwarmedOgImageURLsRequest) returns (ListUnwarmedOgImageURLsResponse);
+
+  // PurgeExpiredArticleHeads enforces the article_heads retention window.
+  rpc PurgeExpiredArticleHeads(PurgeExpiredArticleHeadsRequest) returns (PurgeExpiredArticleHeadsResponse);
+
+  // ── Image proxy cache (alt-backend serving path, alt-harvester retention) ──
+
+  // GetImageProxyCache returns a live cache entry, or nothing.
+  rpc GetImageProxyCache(GetImageProxyCacheRequest) returns (GetImageProxyCacheResponse);
+
+  // PutImageProxyCache upserts a cache entry by url_hash.
+  rpc PutImageProxyCache(PutImageProxyCacheRequest) returns (PutImageProxyCacheResponse);
+
+  // EvictExpiredImageProxyCache deletes entries past their own TTL.
+  rpc EvictExpiredImageProxyCache(EvictExpiredImageProxyCacheRequest) returns (EvictExpiredImageProxyCacheResponse);
+
+  // PurgeImageProxyCacheOlderThan deletes entries past the copyright
+  // retention window, regardless of TTL.
+  rpc PurgeImageProxyCacheOlderThan(PurgeImageProxyCacheOlderThanRequest) returns (PurgeImageProxyCacheOlderThanResponse);
+
+  // ── Scraping policy (alt-harvester refresh, alt-backend enforcement) ──
+
+  // GetScrapingDomainByDomain returns the recorded policy for a hostname.
+  rpc GetScrapingDomainByDomain(GetScrapingDomainByDomainRequest) returns (GetScrapingDomainByDomainResponse);
+
+  // GetScrapingDomainByID returns the recorded policy by row id.
+  rpc GetScrapingDomainByID(GetScrapingDomainByIDRequest) returns (GetScrapingDomainByIDResponse);
+
+  // SaveScrapingDomain upserts a scraping domain by hostname.
+  rpc SaveScrapingDomain(SaveScrapingDomainRequest) returns (SaveScrapingDomainResponse);
+
+  // ListScrapingDomains pages through the recorded policies.
+  rpc ListScrapingDomains(ListScrapingDomainsRequest) returns (ListScrapingDomainsResponse);
+
+  // UpdateScrapingDomainPolicy applies a partial policy update. Unknown id is
+  // NotFound rather than a silent zero-row update.
+  rpc UpdateScrapingDomainPolicy(UpdateScrapingDomainPolicyRequest) returns (UpdateScrapingDomainPolicyResponse);
+
+  // SaveDeclinedDomain records that a user declined full-text fetch for a
+  // domain. Idempotent.
+  rpc SaveDeclinedDomain(SaveDeclinedDomainRequest) returns (SaveDeclinedDomainResponse);
+
+  // IsDomainDeclined reports whether a user declined full-text fetch for a
+  // domain.
+  rpc IsDomainDeclined(IsDomainDeclinedRequest) returns (IsDomainDeclinedResponse);
+
+  // ── Automatic full-text fetch groundwork ──
+
+  // ListSubscribedUserIDsByFeedLinkID returns the users subscribed to a feed
+  // link, so a fetched article can be fanned out to each of them.
+  rpc ListSubscribedUserIDsByFeedLinkID(ListSubscribedUserIDsByFeedLinkIDRequest) returns (ListSubscribedUserIDsByFeedLinkIDResponse);
+
+  // CheckArticleExistsByURLForUser is the tenant-scoped existence check.
+  rpc CheckArticleExistsByURLForUser(CheckArticleExistsByURLForUserRequest) returns (CheckArticleExistsByURLForUserResponse);
 }

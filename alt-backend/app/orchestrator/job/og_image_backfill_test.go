@@ -1,7 +1,7 @@
 package job
 
 import (
-	"alt/shared/driver/alt_db"
+	"alt/domain"
 	"bytes"
 	"context"
 	"errors"
@@ -12,11 +12,11 @@ import (
 )
 
 type mockCandidateLister struct {
-	candidates []alt_db.OgBackfillCandidate
+	candidates []domain.OgImageBackfillCandidate
 	err        error
 }
 
-func (m *mockCandidateLister) FetchFeedsMissingOgImage(ctx context.Context, limit int) ([]alt_db.OgBackfillCandidate, error) {
+func (m *mockCandidateLister) FetchFeedsMissingOgImage(ctx context.Context, limit int) ([]domain.OgImageBackfillCandidate, error) {
 	return m.candidates, m.err
 }
 
@@ -61,7 +61,7 @@ func pageWithOgImage(img string) string {
 }
 
 func TestOgImageBackfillJob_ScrapesAndStoresOgImage(t *testing.T) {
-	lister := &mockCandidateLister{candidates: []alt_db.OgBackfillCandidate{
+	lister := &mockCandidateLister{candidates: []domain.OgImageBackfillCandidate{
 		{ArticleID: "a1", URL: "https://example.com/1"},
 		{ArticleID: "a2", URL: "https://example.com/2"},
 	}}
@@ -89,7 +89,7 @@ func TestOgImageBackfillJob_ScrapesAndStoresOgImage(t *testing.T) {
 }
 
 func TestOgImageBackfillJob_SkipsWhenNoOgImageFound(t *testing.T) {
-	lister := &mockCandidateLister{candidates: []alt_db.OgBackfillCandidate{
+	lister := &mockCandidateLister{candidates: []domain.OgImageBackfillCandidate{
 		{ArticleID: "a1", URL: "https://example.com/1"},
 	}}
 	fetcher := &mockArticleContentFetcher{byURL: map[string]string{
@@ -108,7 +108,7 @@ func TestOgImageBackfillJob_SkipsWhenNoOgImageFound(t *testing.T) {
 }
 
 func TestOgImageBackfillJob_ContinuesPastFetchError(t *testing.T) {
-	lister := &mockCandidateLister{candidates: []alt_db.OgBackfillCandidate{
+	lister := &mockCandidateLister{candidates: []domain.OgImageBackfillCandidate{
 		{ArticleID: "a1", URL: "https://example.com/1"},
 		{ArticleID: "a2", URL: "https://example.com/2"},
 	}}
@@ -149,7 +149,7 @@ func TestOgImageBackfillJob_NilDeps_LogsWarnWithDisabledReason(t *testing.T) {
 	slog.SetDefault(slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelInfo})))
 	defer slog.SetDefault(prev)
 
-	fn := OgImageBackfillJob(nil, nil, nil)
+	fn := OgImageBackfillJob(nil, nil, nil, nil)
 	if err := fn(context.Background()); err != nil {
 		t.Fatalf("expected no error, got %v", err)
 	}

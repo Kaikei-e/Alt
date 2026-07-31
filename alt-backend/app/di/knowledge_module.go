@@ -103,7 +103,7 @@ func newKnowledgeModule(infra *InfraModule, article *ArticleModule) *KnowledgeMo
 	// Knowledge Home usecases
 	trendingTagsGw := trending_tags_gateway.NewTrendingTagsGateway(altDB, 30*time.Minute)
 	getKnowledgeHomeUC := get_knowledge_home_usecase.NewGetKnowledgeHomeUsecase(sovereignCli, sovereignCli, sovereignCli, sovereignCli, sovereignCli, trendingTagsGw)
-	trailThumbnailGw := trail_thumbnail_gateway.NewGateway(altDB)
+	trailThumbnailGw := trail_thumbnail_gateway.NewGateway(infra.OgImageGateway)
 	getKnowledgeTrailUC := get_knowledge_trail_usecase.NewGetKnowledgeTrailUsecase(sovereignCli, trailThumbnailGw)
 	resolveTrailBranchUC := resolve_trail_branch_usecase.NewResolveTrailBranchUsecase(sovereignCli)
 	emitTrailOutcomeUC := emit_trail_outcome_usecase.NewEmitTrailOutcomeUsecase(sovereignCli)

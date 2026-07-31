@@ -14,7 +14,6 @@ import (
 	"alt/orchestrator/gateway/fetch_random_subscription_gateway"
 	"alt/orchestrator/gateway/register_favorite_feed_gateway"
 	"alt/orchestrator/gateway/register_feed_gateway"
-	"alt/orchestrator/gateway/scraping_domain_gateway"
 	"alt/orchestrator/gateway/trend_stats_gateway"
 	"alt/orchestrator/gateway/update_feed_status_gateway"
 	"alt/orchestrator/gateway/validate_fetch_rss_gateway"
@@ -162,8 +161,10 @@ func newFeedModule(infra *InfraModule, sub *SubscriptionModule) *FeedModule {
 	fetchRandomSubscriptionGw := fetch_random_subscription_gateway.NewFetchRandomSubscriptionGateway(altDB)
 	fetchRandomSubscriptionUC := fetch_random_subscription_usecase.NewFetchRandomSubscriptionUsecase(fetchRandomSubscriptionGw)
 
-	// Scraping domain
-	scrapingDomainGw := scraping_domain_gateway.NewScrapingDomainGateway(altDB)
+	// Scraping domain. The recorded policy lives in alt-data-hub since
+	// ADR-000954 Wave 3 (catalog §2.L); the robots.txt fetch behind
+	// infra.RobotsTxtGateway is external HTTP and stays here (D4).
+	scrapingDomainGw := infra.ScrapingDomainGateway
 	feedLinkDomainGw := feed_link_domain_gateway.NewFeedLinkDomainGateway(altDB)
 	scrapingDomainUC := scraping_domain_usecase.NewScrapingDomainUsecaseWithFeedLinkDomain(scrapingDomainGw, infra.RobotsTxtGateway, feedLinkDomainGw)
 

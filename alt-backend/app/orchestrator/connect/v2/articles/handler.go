@@ -40,9 +40,22 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
+// OgImageURLLookup resolves og:image URLs for a batch of articles.
+//
+// Declared as a port here because BatchPrefetchImages used to call
+// AltDBRepository.FetchOgImageURLsByArticleIDs directly — a handler reaching
+// past the usecase and gateway layers into the database driver. ADR-000954
+// Wave 3 moved the query to alt-data-hub (catalog §2.D / W3-D2), which made
+// the shortcut impossible rather than merely discouraged: there is no pool in
+// this process to reach through any more.
+type OgImageURLLookup interface {
+	FetchOgImageURLsByArticleIDs(ctx context.Context, articleIDs []string) (map[string]string, error)
+}
+
 // ArticleHandlerDeps holds the dependencies for the Article service handler.
 type ArticleHandlerDeps struct {
 	AltDBRepository         *alt_db.AltDBRepository
+	OgImageURLs             OgImageURLLookup
 	ArchiveArticle          *archive_article_usecase.ArchiveArticleUsecase
 	Article                 fetch_article_usecase.ArticleUsecase
 	FetchArticlesByTag      *fetch_articles_by_tag_usecase.FetchArticlesByTagUsecase
@@ -620,8 +633,8 @@ func (h *Handler) BatchPrefetchImages(
 		return connect.NewResponse(&articlesv2.BatchPrefetchImagesResponse{}), nil
 	}
 
-	// Fetch OGP URLs from article_heads
-	ogURLs, err := h.deps.AltDBRepository.FetchOgImageURLsByArticleIDs(ctx, articleIDs)
+	// Fetch OGP URLs from article_heads, through alt-data-hub.
+	ogURLs, err := h.deps.OgImageURLs.FetchOgImageURLsByArticleIDs(ctx, articleIDs)
 	if err != nil {
 		return nil, errorhandler.HandleInternalError(ctx, h.logger, err, "BatchPrefetchImages")
 	}

@@ -41,19 +41,19 @@ func RegisterHarvesterJobs(scheduler *JobScheduler, container *di.HarvesterCompo
 		// goroutine per job, so the next tick only starts after this run
 		// returns (see scheduler.go), regardless of Interval vs Timeout.
 		Timeout: 5 * time.Minute,
-		Fn:      OutboxWorkerJob(container.AltDBRepository, container.RagIntegration, container.SovereignClient),
+		Fn:      OutboxWorkerJob(container.OutboxGateway, container.RagIntegration, container.SovereignClient),
 	})
 	scheduler.Add(Job{
 		Name:     "og-image-retention",
 		Interval: 6 * time.Hour,
 		Timeout:  10 * time.Minute,
-		Fn:       OgImageRetentionJob(container.AltDBRepository),
+		Fn:       OgImageRetentionJob(container.OgImageGateway, container.ImageProxyCacheGateway),
 	})
 	scheduler.Add(Job{
 		Name:     "outbox-prune",
 		Interval: 24 * time.Hour,
 		Timeout:  5 * time.Minute,
-		Fn:       OutboxPruneJob(container.AltDBRepository),
+		Fn:       OutboxPruneJob(container.OutboxGateway),
 	})
 
 	registerImageJobs(scheduler, container)
@@ -82,13 +82,21 @@ func registerImageJobs(scheduler *JobScheduler, container *di.HarvesterComponent
 		Name:     "ogp-image-warmer",
 		Interval: 1 * time.Hour,
 		Timeout:  20 * time.Minute,
-		Fn:       OgpImageWarmerJob(container.AltDBRepository, container.ImageProxyUsecase),
+		Fn:       OgpImageWarmerJob(container.OgImageGateway, container.ImageProxyUsecase),
 	})
 	scheduler.Add(Job{
 		Name:     "og-image-backfill",
 		Interval: 30 * time.Minute,
 		Timeout:  20 * time.Minute,
-		Fn:       OgImageBackfillJob(container.AltDBRepository, container.FetchArticleGateway, container.ImageProxyUsecase),
+		// The candidate list comes from alt-data-hub; SaveArticleHead is still
+		// a direct write, because catalog W3-B2 belongs to the article-write
+		// batch rather than this one.
+		Fn: OgImageBackfillJob(
+			container.OgImageGateway,
+			container.AltDBRepository,
+			container.FetchArticleGateway,
+			container.ImageProxyUsecase,
+		),
 	})
 }
 

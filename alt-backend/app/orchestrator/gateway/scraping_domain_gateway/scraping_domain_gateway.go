@@ -9,7 +9,19 @@ import (
 	"github.com/google/uuid"
 )
 
-// ScrapingDomainGateway implements ScrapingDomainPort
+// ScrapingDomainGateway implements ScrapingDomainPort.
+//
+// UNREFERENCED since ADR-000954 Wave 3 batch 1. scraping_domains moved to
+// alt-data-hub (catalog §2.L), so both composition roots wire
+// datahub_gateway.ScrapingDomainGateway against the same port and this
+// constructor has no caller. Removed with the rest of the direct alt_db
+// surface in batch 6 — see the note on image_proxy_gateway.CacheGateway.
+//
+// Its `if g.altDB == nil { return nil, nil }` guards are also why the
+// replacement panics on a nil client instead: a gateway that answers "no
+// policy recorded" when it has no database is indistinguishable from one
+// looking at an empty table, and on this particular path that answer decides
+// whether a publisher's robots.txt is honoured.
 type ScrapingDomainGateway struct {
 	altDB *alt_db.AltDBRepository
 }

@@ -31,8 +31,16 @@ var publicServicePaths = []string{
 	"/alt.knowledge_home.v1.KnowledgeHomeService/GetKnowledgeHome",
 }
 
+// testDeps returns the smallest container SetupConnectHandlers accepts.
+//
+// Infra must be non-nil: the article handler takes its OG image lookup from
+// there since ADR-000954 Wave 3 moved article_heads to alt-data-hub, and these
+// tests assert routing rather than behaviour, so a zero-valued module is
+// enough.
 func testDeps() (*di.ApplicationComponents, *config.Config, *slog.Logger) {
-	return &di.ApplicationComponents{}, &config.Config{}, slog.New(slog.NewTextHandler(io_Discard{}, nil))
+	return &di.ApplicationComponents{Infra: &di.InfraModule{}},
+		&config.Config{},
+		slog.New(slog.NewTextHandler(io_Discard{}, nil))
 }
 
 type io_Discard struct{}

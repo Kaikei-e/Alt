@@ -89,6 +89,7 @@ func SetupConnectHandlers(mux *http.ServeMux, container *di.ApplicationComponent
 	// Register Article service
 	articleHandler := articles.NewHandler(articles.ArticleHandlerDeps{
 		AltDBRepository:         container.AltDBRepository,
+		OgImageURLs:             container.Infra.OgImageGateway,
 		ArchiveArticle:          container.ArchiveArticleUsecase,
 		Article:                 container.ArticleUsecase,
 		FetchArticlesByTag:      container.FetchArticlesByTagUsecase,

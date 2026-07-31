@@ -29,10 +29,12 @@ import (
 	"github.com/google/uuid"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
+	"alt/dataplane/port/datahub_capability_port"
 	"alt/dataplane/port/internal_article_port"
 	"alt/dataplane/port/internal_feed_port"
 	"alt/dataplane/port/internal_tag_port"
 	"alt/dataplane/usecase/create_tag_set_version_usecase"
+	"alt/dataplane/usecase/outbox_usecase"
 	"alt/dataplane/usecase/recap_articles_usecase"
 	"alt/domain"
 	datahubv1 "alt/gen/proto/alt/datahub/v1"
@@ -121,6 +123,22 @@ type Handler struct {
 	// Knowledge version usecases
 	createSummaryVersionUsecase *create_summary_version_usecase.CreateSummaryVersionUsecase
 	createTagSetVersionUsecase  *create_tag_set_version_usecase.CreateTagSetVersionUsecase
+
+	// Wave 3 batch 1 (ADR-000954 D3, catalog §2.A / §2.D / §2.E / §2.L /
+	// §2.O): the capabilities alt-backend and alt-harvester used to reach by
+	// opening their own alt_db pool.
+	//
+	// Unlike the phase 1-4 ports above, these are required rather than
+	// optional — see WithWave3Capabilities. They are not a feature of the
+	// data plane, they are the data plane: the two callers have no other route
+	// to the outbox, the image cache or the scraping policy once their pools
+	// are gone, and a handler serving Unimplemented for them would look
+	// exactly like a retired procedure.
+	outboxUsecase   *outbox_usecase.OutboxUsecase
+	ogImage         datahub_capability_port.OgImagePort
+	imageProxyCache datahub_capability_port.ImageProxyCachePort
+	scrapingPolicy  datahub_capability_port.ScrapingPolicyPort
+	autoFulltext    datahub_capability_port.AutoFulltextPort
 
 	logger *slog.Logger
 }

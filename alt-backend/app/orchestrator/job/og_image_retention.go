@@ -1,7 +1,6 @@
 package job
 
 import (
-	"alt/shared/driver/alt_db"
 	"context"
 	"fmt"
 	"log/slog"
@@ -14,9 +13,19 @@ import (
 // them on demand.
 const ogImageRetentionWindow = 7 * 24 * time.Hour
 
-// ogImageRetentionPurger abstracts the retention deletes (for testability).
-type ogImageRetentionPurger interface {
+// articleHeadPurger and imageCachePurger are the two halves of the retention
+// sweep.
+//
+// They used to be one interface satisfied by *alt_db.AltDBRepository, because
+// one struct happened to carry all three queries. Since ADR-000954 Wave 3 the
+// deletes are two capability groups on alt-data-hub — article_heads (catalog
+// §2.D) and image_proxy_cache (§2.E) — and splitting the interfaces keeps the
+// job honest about which artifact each call removes.
+type articleHeadPurger interface {
 	CleanupExpiredArticleHeads(ctx context.Context, ttl time.Duration) (int64, error)
+}
+
+type imageCachePurger interface {
 	CleanupImageProxyCacheOlderThan(ctx context.Context, ttl time.Duration) (int64, error)
 	CleanupExpiredImageProxyCache(ctx context.Context) (int64, error)
 }
@@ -24,23 +33,34 @@ type ogImageRetentionPurger interface {
 // OgImageRetentionJob returns a JobScheduler function that enforces the OG image
 // copyright retention window: it purges article_heads and cached image bytes
 // older than ogImageRetentionWindow, and evicts TTL-expired cache entries.
-func OgImageRetentionJob(r *alt_db.AltDBRepository) func(ctx context.Context) error {
-	return ogImageRetentionJobFn(r)
+//
+// Both dependencies are required. This job is the only thing that enforces a
+// copyright retention window, so a nil one would leave scraped third-party
+// artifacts on disk indefinitely while the job logged a successful sweep every
+// six hours (CLAUDE.md rule 8).
+func OgImageRetentionJob(heads articleHeadPurger, cache imageCachePurger) func(ctx context.Context) error {
+	switch {
+	case heads == nil:
+		panic("og-image-retention: article head purger is nil — the article_heads retention window would never be enforced (see .claude/rules/di-wiring.md)")
+	case cache == nil:
+		panic("og-image-retention: image cache purger is nil — the cached-image retention window would never be enforced (see .claude/rules/di-wiring.md)")
+	}
+	return ogImageRetentionJobFn(heads, cache)
 }
 
-func ogImageRetentionJobFn(p ogImageRetentionPurger) func(ctx context.Context) error {
+func ogImageRetentionJobFn(headPurger articleHeadPurger, cachePurger imageCachePurger) func(ctx context.Context) error {
 	return func(ctx context.Context) error {
-		heads, err := p.CleanupExpiredArticleHeads(ctx, ogImageRetentionWindow)
+		heads, err := headPurger.CleanupExpiredArticleHeads(ctx, ogImageRetentionWindow)
 		if err != nil {
 			return fmt.Errorf("purge article heads past retention: %w", err)
 		}
 
-		images, err := p.CleanupImageProxyCacheOlderThan(ctx, ogImageRetentionWindow)
+		images, err := cachePurger.CleanupImageProxyCacheOlderThan(ctx, ogImageRetentionWindow)
 		if err != nil {
 			return fmt.Errorf("purge image cache past retention: %w", err)
 		}
 
-		expired, err := p.CleanupExpiredImageProxyCache(ctx)
+		expired, err := cachePurger.CleanupExpiredImageProxyCache(ctx)
 		if err != nil {
 			return fmt.Errorf("evict expired image cache: %w", err)
 		}

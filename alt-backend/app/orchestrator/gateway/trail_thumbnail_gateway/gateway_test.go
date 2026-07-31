@@ -22,7 +22,7 @@ func (f *fakeArticleHeadsDB) FetchOgImageURLsByArticleIDs(_ context.Context, art
 
 func TestGetOgImageURLsByArticleIDs_DelegatesToArticleHeadsLookup(t *testing.T) {
 	db := &fakeArticleHeadsDB{result: map[string]string{"a1": "https://example.com/a1.png"}}
-	gw := newGateway(db)
+	gw := NewGateway(db)
 
 	got, err := gw.GetOgImageURLsByArticleIDs(context.Background(), []string{"a1", "a2"})
 	require.NoError(t, err)
@@ -32,7 +32,7 @@ func TestGetOgImageURLsByArticleIDs_DelegatesToArticleHeadsLookup(t *testing.T) 
 
 func TestGetOgImageURLsByArticleIDs_PropagatesError(t *testing.T) {
 	db := &fakeArticleHeadsDB{err: errors.New("db down")}
-	gw := newGateway(db)
+	gw := NewGateway(db)
 
 	_, err := gw.GetOgImageURLsByArticleIDs(context.Background(), []string{"a1"})
 	require.Error(t, err)

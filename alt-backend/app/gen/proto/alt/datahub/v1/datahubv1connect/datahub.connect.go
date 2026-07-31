@@ -138,6 +138,72 @@ const (
 	// DataHubServiceListRecentArticlesProcedure is the fully-qualified name of the DataHubService's
 	// ListRecentArticles RPC.
 	DataHubServiceListRecentArticlesProcedure = "/alt.datahub.v1.DataHubService/ListRecentArticles"
+	// DataHubServiceClaimOutboxBatchProcedure is the fully-qualified name of the DataHubService's
+	// ClaimOutboxBatch RPC.
+	DataHubServiceClaimOutboxBatchProcedure = "/alt.datahub.v1.DataHubService/ClaimOutboxBatch"
+	// DataHubServiceMarkOutboxProcessedProcedure is the fully-qualified name of the DataHubService's
+	// MarkOutboxProcessed RPC.
+	DataHubServiceMarkOutboxProcessedProcedure = "/alt.datahub.v1.DataHubService/MarkOutboxProcessed"
+	// DataHubServiceReleaseOutboxEventProcedure is the fully-qualified name of the DataHubService's
+	// ReleaseOutboxEvent RPC.
+	DataHubServiceReleaseOutboxEventProcedure = "/alt.datahub.v1.DataHubService/ReleaseOutboxEvent"
+	// DataHubServicePruneOutboxEventsProcedure is the fully-qualified name of the DataHubService's
+	// PruneOutboxEvents RPC.
+	DataHubServicePruneOutboxEventsProcedure = "/alt.datahub.v1.DataHubService/PruneOutboxEvents"
+	// DataHubServiceGetArticleHeadProcedure is the fully-qualified name of the DataHubService's
+	// GetArticleHead RPC.
+	DataHubServiceGetArticleHeadProcedure = "/alt.datahub.v1.DataHubService/GetArticleHead"
+	// DataHubServiceBatchGetOgImageURLsProcedure is the fully-qualified name of the DataHubService's
+	// BatchGetOgImageURLs RPC.
+	DataHubServiceBatchGetOgImageURLsProcedure = "/alt.datahub.v1.DataHubService/BatchGetOgImageURLs"
+	// DataHubServiceListFeedsMissingOgImageProcedure is the fully-qualified name of the
+	// DataHubService's ListFeedsMissingOgImage RPC.
+	DataHubServiceListFeedsMissingOgImageProcedure = "/alt.datahub.v1.DataHubService/ListFeedsMissingOgImage"
+	// DataHubServiceListUnwarmedOgImageURLsProcedure is the fully-qualified name of the
+	// DataHubService's ListUnwarmedOgImageURLs RPC.
+	DataHubServiceListUnwarmedOgImageURLsProcedure = "/alt.datahub.v1.DataHubService/ListUnwarmedOgImageURLs"
+	// DataHubServicePurgeExpiredArticleHeadsProcedure is the fully-qualified name of the
+	// DataHubService's PurgeExpiredArticleHeads RPC.
+	DataHubServicePurgeExpiredArticleHeadsProcedure = "/alt.datahub.v1.DataHubService/PurgeExpiredArticleHeads"
+	// DataHubServiceGetImageProxyCacheProcedure is the fully-qualified name of the DataHubService's
+	// GetImageProxyCache RPC.
+	DataHubServiceGetImageProxyCacheProcedure = "/alt.datahub.v1.DataHubService/GetImageProxyCache"
+	// DataHubServicePutImageProxyCacheProcedure is the fully-qualified name of the DataHubService's
+	// PutImageProxyCache RPC.
+	DataHubServicePutImageProxyCacheProcedure = "/alt.datahub.v1.DataHubService/PutImageProxyCache"
+	// DataHubServiceEvictExpiredImageProxyCacheProcedure is the fully-qualified name of the
+	// DataHubService's EvictExpiredImageProxyCache RPC.
+	DataHubServiceEvictExpiredImageProxyCacheProcedure = "/alt.datahub.v1.DataHubService/EvictExpiredImageProxyCache"
+	// DataHubServicePurgeImageProxyCacheOlderThanProcedure is the fully-qualified name of the
+	// DataHubService's PurgeImageProxyCacheOlderThan RPC.
+	DataHubServicePurgeImageProxyCacheOlderThanProcedure = "/alt.datahub.v1.DataHubService/PurgeImageProxyCacheOlderThan"
+	// DataHubServiceGetScrapingDomainByDomainProcedure is the fully-qualified name of the
+	// DataHubService's GetScrapingDomainByDomain RPC.
+	DataHubServiceGetScrapingDomainByDomainProcedure = "/alt.datahub.v1.DataHubService/GetScrapingDomainByDomain"
+	// DataHubServiceGetScrapingDomainByIDProcedure is the fully-qualified name of the DataHubService's
+	// GetScrapingDomainByID RPC.
+	DataHubServiceGetScrapingDomainByIDProcedure = "/alt.datahub.v1.DataHubService/GetScrapingDomainByID"
+	// DataHubServiceSaveScrapingDomainProcedure is the fully-qualified name of the DataHubService's
+	// SaveScrapingDomain RPC.
+	DataHubServiceSaveScrapingDomainProcedure = "/alt.datahub.v1.DataHubService/SaveScrapingDomain"
+	// DataHubServiceListScrapingDomainsProcedure is the fully-qualified name of the DataHubService's
+	// ListScrapingDomains RPC.
+	DataHubServiceListScrapingDomainsProcedure = "/alt.datahub.v1.DataHubService/ListScrapingDomains"
+	// DataHubServiceUpdateScrapingDomainPolicyProcedure is the fully-qualified name of the
+	// DataHubService's UpdateScrapingDomainPolicy RPC.
+	DataHubServiceUpdateScrapingDomainPolicyProcedure = "/alt.datahub.v1.DataHubService/UpdateScrapingDomainPolicy"
+	// DataHubServiceSaveDeclinedDomainProcedure is the fully-qualified name of the DataHubService's
+	// SaveDeclinedDomain RPC.
+	DataHubServiceSaveDeclinedDomainProcedure = "/alt.datahub.v1.DataHubService/SaveDeclinedDomain"
+	// DataHubServiceIsDomainDeclinedProcedure is the fully-qualified name of the DataHubService's
+	// IsDomainDeclined RPC.
+	DataHubServiceIsDomainDeclinedProcedure = "/alt.datahub.v1.DataHubService/IsDomainDeclined"
+	// DataHubServiceListSubscribedUserIDsByFeedLinkIDProcedure is the fully-qualified name of the
+	// DataHubService's ListSubscribedUserIDsByFeedLinkID RPC.
+	DataHubServiceListSubscribedUserIDsByFeedLinkIDProcedure = "/alt.datahub.v1.DataHubService/ListSubscribedUserIDsByFeedLinkID"
+	// DataHubServiceCheckArticleExistsByURLForUserProcedure is the fully-qualified name of the
+	// DataHubService's CheckArticleExistsByURLForUser RPC.
+	DataHubServiceCheckArticleExistsByURLForUserProcedure = "/alt.datahub.v1.DataHubService/CheckArticleExistsByURLForUser"
 )
 
 // DataHubServiceClient is a client for the alt.datahub.v1.DataHubService service.
@@ -228,6 +294,68 @@ type DataHubServiceClient interface {
 	// Origin: GET /v1/internal/articles/recent (REST). Called by
 	// rag-orchestrator for its temporal topics feature.
 	ListRecentArticles(context.Context, *connect.Request[v1.ListRecentArticlesRequest]) (*connect.Response[v1.ListRecentArticlesResponse], error)
+	// ClaimOutboxBatch takes ownership of up to `limit` PENDING rows and marks
+	// them PROCESSING, in one transaction, with FOR UPDATE SKIP LOCKED.
+	//
+	// The lock and the commit are both inside this RPC, and that is the whole
+	// point of the capability: exposing "select pending" and "mark processing"
+	// as two procedures would put a network round trip between them and let two
+	// harvesters claim the same event (ADR-000954 D3, case against the
+	// port-mirror shape).
+	ClaimOutboxBatch(context.Context, *connect.Request[v1.ClaimOutboxBatchRequest]) (*connect.Response[v1.ClaimOutboxBatchResponse], error)
+	// MarkOutboxProcessed records a terminal outcome for a claimed row and
+	// stamps processed_at.
+	MarkOutboxProcessed(context.Context, *connect.Request[v1.MarkOutboxProcessedRequest]) (*connect.Response[v1.MarkOutboxProcessedResponse], error)
+	// ReleaseOutboxEvent returns a claimed-but-unattempted row to PENDING.
+	//
+	// Callers invoke it on a context detached from the one that was cancelled,
+	// because the row is only reachable through this call: ClaimOutboxBatch
+	// reads PENDING only, so a PROCESSING row nobody releases is never fetched
+	// again by anyone.
+	ReleaseOutboxEvent(context.Context, *connect.Request[v1.ReleaseOutboxEventRequest]) (*connect.Response[v1.ReleaseOutboxEventResponse], error)
+	// PruneOutboxEvents deletes PROCESSED rows older than the given window.
+	PruneOutboxEvents(context.Context, *connect.Request[v1.PruneOutboxEventsRequest]) (*connect.Response[v1.PruneOutboxEventsResponse], error)
+	// GetArticleHead returns the scraped <head> record for an article.
+	GetArticleHead(context.Context, *connect.Request[v1.GetArticleHeadRequest]) (*connect.Response[v1.GetArticleHeadResponse], error)
+	// BatchGetOgImageURLs resolves og:image URLs for many articles at once.
+	BatchGetOgImageURLs(context.Context, *connect.Request[v1.BatchGetOgImageURLsRequest]) (*connect.Response[v1.BatchGetOgImageURLsResponse], error)
+	// ListFeedsMissingOgImage returns the og-image-backfill work list.
+	ListFeedsMissingOgImage(context.Context, *connect.Request[v1.ListFeedsMissingOgImageRequest]) (*connect.Response[v1.ListFeedsMissingOgImageResponse], error)
+	// ListUnwarmedOgImageURLs returns feed og:image URLs with no live cache entry.
+	ListUnwarmedOgImageURLs(context.Context, *connect.Request[v1.ListUnwarmedOgImageURLsRequest]) (*connect.Response[v1.ListUnwarmedOgImageURLsResponse], error)
+	// PurgeExpiredArticleHeads enforces the article_heads retention window.
+	PurgeExpiredArticleHeads(context.Context, *connect.Request[v1.PurgeExpiredArticleHeadsRequest]) (*connect.Response[v1.PurgeExpiredArticleHeadsResponse], error)
+	// GetImageProxyCache returns a live cache entry, or nothing.
+	GetImageProxyCache(context.Context, *connect.Request[v1.GetImageProxyCacheRequest]) (*connect.Response[v1.GetImageProxyCacheResponse], error)
+	// PutImageProxyCache upserts a cache entry by url_hash.
+	PutImageProxyCache(context.Context, *connect.Request[v1.PutImageProxyCacheRequest]) (*connect.Response[v1.PutImageProxyCacheResponse], error)
+	// EvictExpiredImageProxyCache deletes entries past their own TTL.
+	EvictExpiredImageProxyCache(context.Context, *connect.Request[v1.EvictExpiredImageProxyCacheRequest]) (*connect.Response[v1.EvictExpiredImageProxyCacheResponse], error)
+	// PurgeImageProxyCacheOlderThan deletes entries past the copyright
+	// retention window, regardless of TTL.
+	PurgeImageProxyCacheOlderThan(context.Context, *connect.Request[v1.PurgeImageProxyCacheOlderThanRequest]) (*connect.Response[v1.PurgeImageProxyCacheOlderThanResponse], error)
+	// GetScrapingDomainByDomain returns the recorded policy for a hostname.
+	GetScrapingDomainByDomain(context.Context, *connect.Request[v1.GetScrapingDomainByDomainRequest]) (*connect.Response[v1.GetScrapingDomainByDomainResponse], error)
+	// GetScrapingDomainByID returns the recorded policy by row id.
+	GetScrapingDomainByID(context.Context, *connect.Request[v1.GetScrapingDomainByIDRequest]) (*connect.Response[v1.GetScrapingDomainByIDResponse], error)
+	// SaveScrapingDomain upserts a scraping domain by hostname.
+	SaveScrapingDomain(context.Context, *connect.Request[v1.SaveScrapingDomainRequest]) (*connect.Response[v1.SaveScrapingDomainResponse], error)
+	// ListScrapingDomains pages through the recorded policies.
+	ListScrapingDomains(context.Context, *connect.Request[v1.ListScrapingDomainsRequest]) (*connect.Response[v1.ListScrapingDomainsResponse], error)
+	// UpdateScrapingDomainPolicy applies a partial policy update. Unknown id is
+	// NotFound rather than a silent zero-row update.
+	UpdateScrapingDomainPolicy(context.Context, *connect.Request[v1.UpdateScrapingDomainPolicyRequest]) (*connect.Response[v1.UpdateScrapingDomainPolicyResponse], error)
+	// SaveDeclinedDomain records that a user declined full-text fetch for a
+	// domain. Idempotent.
+	SaveDeclinedDomain(context.Context, *connect.Request[v1.SaveDeclinedDomainRequest]) (*connect.Response[v1.SaveDeclinedDomainResponse], error)
+	// IsDomainDeclined reports whether a user declined full-text fetch for a
+	// domain.
+	IsDomainDeclined(context.Context, *connect.Request[v1.IsDomainDeclinedRequest]) (*connect.Response[v1.IsDomainDeclinedResponse], error)
+	// ListSubscribedUserIDsByFeedLinkID returns the users subscribed to a feed
+	// link, so a fetched article can be fanned out to each of them.
+	ListSubscribedUserIDsByFeedLinkID(context.Context, *connect.Request[v1.ListSubscribedUserIDsByFeedLinkIDRequest]) (*connect.Response[v1.ListSubscribedUserIDsByFeedLinkIDResponse], error)
+	// CheckArticleExistsByURLForUser is the tenant-scoped existence check.
+	CheckArticleExistsByURLForUser(context.Context, *connect.Request[v1.CheckArticleExistsByURLForUserRequest]) (*connect.Response[v1.CheckArticleExistsByURLForUserResponse], error)
 }
 
 // NewDataHubServiceClient constructs a client for the alt.datahub.v1.DataHubService service. By
@@ -397,37 +525,191 @@ func NewDataHubServiceClient(httpClient connect.HTTPClient, baseURL string, opts
 			connect.WithSchema(dataHubServiceMethods.ByName("ListRecentArticles")),
 			connect.WithClientOptions(opts...),
 		),
+		claimOutboxBatch: connect.NewClient[v1.ClaimOutboxBatchRequest, v1.ClaimOutboxBatchResponse](
+			httpClient,
+			baseURL+DataHubServiceClaimOutboxBatchProcedure,
+			connect.WithSchema(dataHubServiceMethods.ByName("ClaimOutboxBatch")),
+			connect.WithClientOptions(opts...),
+		),
+		markOutboxProcessed: connect.NewClient[v1.MarkOutboxProcessedRequest, v1.MarkOutboxProcessedResponse](
+			httpClient,
+			baseURL+DataHubServiceMarkOutboxProcessedProcedure,
+			connect.WithSchema(dataHubServiceMethods.ByName("MarkOutboxProcessed")),
+			connect.WithClientOptions(opts...),
+		),
+		releaseOutboxEvent: connect.NewClient[v1.ReleaseOutboxEventRequest, v1.ReleaseOutboxEventResponse](
+			httpClient,
+			baseURL+DataHubServiceReleaseOutboxEventProcedure,
+			connect.WithSchema(dataHubServiceMethods.ByName("ReleaseOutboxEvent")),
+			connect.WithClientOptions(opts...),
+		),
+		pruneOutboxEvents: connect.NewClient[v1.PruneOutboxEventsRequest, v1.PruneOutboxEventsResponse](
+			httpClient,
+			baseURL+DataHubServicePruneOutboxEventsProcedure,
+			connect.WithSchema(dataHubServiceMethods.ByName("PruneOutboxEvents")),
+			connect.WithClientOptions(opts...),
+		),
+		getArticleHead: connect.NewClient[v1.GetArticleHeadRequest, v1.GetArticleHeadResponse](
+			httpClient,
+			baseURL+DataHubServiceGetArticleHeadProcedure,
+			connect.WithSchema(dataHubServiceMethods.ByName("GetArticleHead")),
+			connect.WithClientOptions(opts...),
+		),
+		batchGetOgImageURLs: connect.NewClient[v1.BatchGetOgImageURLsRequest, v1.BatchGetOgImageURLsResponse](
+			httpClient,
+			baseURL+DataHubServiceBatchGetOgImageURLsProcedure,
+			connect.WithSchema(dataHubServiceMethods.ByName("BatchGetOgImageURLs")),
+			connect.WithClientOptions(opts...),
+		),
+		listFeedsMissingOgImage: connect.NewClient[v1.ListFeedsMissingOgImageRequest, v1.ListFeedsMissingOgImageResponse](
+			httpClient,
+			baseURL+DataHubServiceListFeedsMissingOgImageProcedure,
+			connect.WithSchema(dataHubServiceMethods.ByName("ListFeedsMissingOgImage")),
+			connect.WithClientOptions(opts...),
+		),
+		listUnwarmedOgImageURLs: connect.NewClient[v1.ListUnwarmedOgImageURLsRequest, v1.ListUnwarmedOgImageURLsResponse](
+			httpClient,
+			baseURL+DataHubServiceListUnwarmedOgImageURLsProcedure,
+			connect.WithSchema(dataHubServiceMethods.ByName("ListUnwarmedOgImageURLs")),
+			connect.WithClientOptions(opts...),
+		),
+		purgeExpiredArticleHeads: connect.NewClient[v1.PurgeExpiredArticleHeadsRequest, v1.PurgeExpiredArticleHeadsResponse](
+			httpClient,
+			baseURL+DataHubServicePurgeExpiredArticleHeadsProcedure,
+			connect.WithSchema(dataHubServiceMethods.ByName("PurgeExpiredArticleHeads")),
+			connect.WithClientOptions(opts...),
+		),
+		getImageProxyCache: connect.NewClient[v1.GetImageProxyCacheRequest, v1.GetImageProxyCacheResponse](
+			httpClient,
+			baseURL+DataHubServiceGetImageProxyCacheProcedure,
+			connect.WithSchema(dataHubServiceMethods.ByName("GetImageProxyCache")),
+			connect.WithClientOptions(opts...),
+		),
+		putImageProxyCache: connect.NewClient[v1.PutImageProxyCacheRequest, v1.PutImageProxyCacheResponse](
+			httpClient,
+			baseURL+DataHubServicePutImageProxyCacheProcedure,
+			connect.WithSchema(dataHubServiceMethods.ByName("PutImageProxyCache")),
+			connect.WithClientOptions(opts...),
+		),
+		evictExpiredImageProxyCache: connect.NewClient[v1.EvictExpiredImageProxyCacheRequest, v1.EvictExpiredImageProxyCacheResponse](
+			httpClient,
+			baseURL+DataHubServiceEvictExpiredImageProxyCacheProcedure,
+			connect.WithSchema(dataHubServiceMethods.ByName("EvictExpiredImageProxyCache")),
+			connect.WithClientOptions(opts...),
+		),
+		purgeImageProxyCacheOlderThan: connect.NewClient[v1.PurgeImageProxyCacheOlderThanRequest, v1.PurgeImageProxyCacheOlderThanResponse](
+			httpClient,
+			baseURL+DataHubServicePurgeImageProxyCacheOlderThanProcedure,
+			connect.WithSchema(dataHubServiceMethods.ByName("PurgeImageProxyCacheOlderThan")),
+			connect.WithClientOptions(opts...),
+		),
+		getScrapingDomainByDomain: connect.NewClient[v1.GetScrapingDomainByDomainRequest, v1.GetScrapingDomainByDomainResponse](
+			httpClient,
+			baseURL+DataHubServiceGetScrapingDomainByDomainProcedure,
+			connect.WithSchema(dataHubServiceMethods.ByName("GetScrapingDomainByDomain")),
+			connect.WithClientOptions(opts...),
+		),
+		getScrapingDomainByID: connect.NewClient[v1.GetScrapingDomainByIDRequest, v1.GetScrapingDomainByIDResponse](
+			httpClient,
+			baseURL+DataHubServiceGetScrapingDomainByIDProcedure,
+			connect.WithSchema(dataHubServiceMethods.ByName("GetScrapingDomainByID")),
+			connect.WithClientOptions(opts...),
+		),
+		saveScrapingDomain: connect.NewClient[v1.SaveScrapingDomainRequest, v1.SaveScrapingDomainResponse](
+			httpClient,
+			baseURL+DataHubServiceSaveScrapingDomainProcedure,
+			connect.WithSchema(dataHubServiceMethods.ByName("SaveScrapingDomain")),
+			connect.WithClientOptions(opts...),
+		),
+		listScrapingDomains: connect.NewClient[v1.ListScrapingDomainsRequest, v1.ListScrapingDomainsResponse](
+			httpClient,
+			baseURL+DataHubServiceListScrapingDomainsProcedure,
+			connect.WithSchema(dataHubServiceMethods.ByName("ListScrapingDomains")),
+			connect.WithClientOptions(opts...),
+		),
+		updateScrapingDomainPolicy: connect.NewClient[v1.UpdateScrapingDomainPolicyRequest, v1.UpdateScrapingDomainPolicyResponse](
+			httpClient,
+			baseURL+DataHubServiceUpdateScrapingDomainPolicyProcedure,
+			connect.WithSchema(dataHubServiceMethods.ByName("UpdateScrapingDomainPolicy")),
+			connect.WithClientOptions(opts...),
+		),
+		saveDeclinedDomain: connect.NewClient[v1.SaveDeclinedDomainRequest, v1.SaveDeclinedDomainResponse](
+			httpClient,
+			baseURL+DataHubServiceSaveDeclinedDomainProcedure,
+			connect.WithSchema(dataHubServiceMethods.ByName("SaveDeclinedDomain")),
+			connect.WithClientOptions(opts...),
+		),
+		isDomainDeclined: connect.NewClient[v1.IsDomainDeclinedRequest, v1.IsDomainDeclinedResponse](
+			httpClient,
+			baseURL+DataHubServiceIsDomainDeclinedProcedure,
+			connect.WithSchema(dataHubServiceMethods.ByName("IsDomainDeclined")),
+			connect.WithClientOptions(opts...),
+		),
+		listSubscribedUserIDsByFeedLinkID: connect.NewClient[v1.ListSubscribedUserIDsByFeedLinkIDRequest, v1.ListSubscribedUserIDsByFeedLinkIDResponse](
+			httpClient,
+			baseURL+DataHubServiceListSubscribedUserIDsByFeedLinkIDProcedure,
+			connect.WithSchema(dataHubServiceMethods.ByName("ListSubscribedUserIDsByFeedLinkID")),
+			connect.WithClientOptions(opts...),
+		),
+		checkArticleExistsByURLForUser: connect.NewClient[v1.CheckArticleExistsByURLForUserRequest, v1.CheckArticleExistsByURLForUserResponse](
+			httpClient,
+			baseURL+DataHubServiceCheckArticleExistsByURLForUserProcedure,
+			connect.WithSchema(dataHubServiceMethods.ByName("CheckArticleExistsByURLForUser")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
 // dataHubServiceClient implements DataHubServiceClient.
 type dataHubServiceClient struct {
-	listArticlesWithTags        *connect.Client[v1.ListArticlesWithTagsRequest, v1.ListArticlesWithTagsResponse]
-	listArticlesWithTagsForward *connect.Client[v1.ListArticlesWithTagsForwardRequest, v1.ListArticlesWithTagsForwardResponse]
-	listDeletedArticles         *connect.Client[v1.ListDeletedArticlesRequest, v1.ListDeletedArticlesResponse]
-	getLatestArticleTimestamp   *connect.Client[v1.GetLatestArticleTimestampRequest, v1.GetLatestArticleTimestampResponse]
-	getArticleByID              *connect.Client[v1.GetArticleByIDRequest, v1.GetArticleByIDResponse]
-	checkArticleExists          *connect.Client[v1.CheckArticleExistsRequest, v1.CheckArticleExistsResponse]
-	createArticle               *connect.Client[v1.CreateArticleRequest, v1.CreateArticleResponse]
-	saveArticleSummary          *connect.Client[v1.SaveArticleSummaryRequest, v1.SaveArticleSummaryResponse]
-	getArticleContent           *connect.Client[v1.GetArticleContentRequest, v1.GetArticleContentResponse]
-	getFeedID                   *connect.Client[v1.GetFeedIDRequest, v1.GetFeedIDResponse]
-	listFeedURLs                *connect.Client[v1.ListFeedURLsRequest, v1.ListFeedURLsResponse]
-	upsertArticleTags           *connect.Client[v1.UpsertArticleTagsRequest, v1.UpsertArticleTagsResponse]
-	batchUpsertArticleTags      *connect.Client[v1.BatchUpsertArticleTagsRequest, v1.BatchUpsertArticleTagsResponse]
-	listUntaggedArticles        *connect.Client[v1.ListUntaggedArticlesRequest, v1.ListUntaggedArticlesResponse]
-	batchGetTagsByArticleIDs    *connect.Client[v1.BatchGetTagsByArticleIDsRequest, v1.BatchGetTagsByArticleIDsResponse]
-	deleteArticleSummary        *connect.Client[v1.DeleteArticleSummaryRequest, v1.DeleteArticleSummaryResponse]
-	checkArticleSummaryExists   *connect.Client[v1.CheckArticleSummaryExistsRequest, v1.CheckArticleSummaryExistsResponse]
-	findArticlesWithSummaries   *connect.Client[v1.FindArticlesWithSummariesRequest, v1.FindArticlesWithSummariesResponse]
-	listUnsummarizedArticles    *connect.Client[v1.ListUnsummarizedArticlesRequest, v1.ListUnsummarizedArticlesResponse]
-	hasUnsummarizedArticles     *connect.Client[v1.HasUnsummarizedArticlesRequest, v1.HasUnsummarizedArticlesResponse]
-	getEmptyFeedID              *connect.Client[v1.GetEmptyFeedIDRequest, v1.GetEmptyFeedIDResponse]
-	fetchTagCloud               *connect.Client[v1.FetchTagCloudRequest, v1.FetchTagCloudResponse]
-	fetchArticlesByTag          *connect.Client[v1.FetchArticlesByTagRequest, v1.FetchArticlesByTagResponse]
-	listRecapArticles           *connect.Client[v1.ListRecapArticlesRequest, v1.ListRecapArticlesResponse]
-	getSystemUser               *connect.Client[v1.GetSystemUserRequest, v1.GetSystemUserResponse]
-	listRecentArticles          *connect.Client[v1.ListRecentArticlesRequest, v1.ListRecentArticlesResponse]
+	listArticlesWithTags              *connect.Client[v1.ListArticlesWithTagsRequest, v1.ListArticlesWithTagsResponse]
+	listArticlesWithTagsForward       *connect.Client[v1.ListArticlesWithTagsForwardRequest, v1.ListArticlesWithTagsForwardResponse]
+	listDeletedArticles               *connect.Client[v1.ListDeletedArticlesRequest, v1.ListDeletedArticlesResponse]
+	getLatestArticleTimestamp         *connect.Client[v1.GetLatestArticleTimestampRequest, v1.GetLatestArticleTimestampResponse]
+	getArticleByID                    *connect.Client[v1.GetArticleByIDRequest, v1.GetArticleByIDResponse]
+	checkArticleExists                *connect.Client[v1.CheckArticleExistsRequest, v1.CheckArticleExistsResponse]
+	createArticle                     *connect.Client[v1.CreateArticleRequest, v1.CreateArticleResponse]
+	saveArticleSummary                *connect.Client[v1.SaveArticleSummaryRequest, v1.SaveArticleSummaryResponse]
+	getArticleContent                 *connect.Client[v1.GetArticleContentRequest, v1.GetArticleContentResponse]
+	getFeedID                         *connect.Client[v1.GetFeedIDRequest, v1.GetFeedIDResponse]
+	listFeedURLs                      *connect.Client[v1.ListFeedURLsRequest, v1.ListFeedURLsResponse]
+	upsertArticleTags                 *connect.Client[v1.UpsertArticleTagsRequest, v1.UpsertArticleTagsResponse]
+	batchUpsertArticleTags            *connect.Client[v1.BatchUpsertArticleTagsRequest, v1.BatchUpsertArticleTagsResponse]
+	listUntaggedArticles              *connect.Client[v1.ListUntaggedArticlesRequest, v1.ListUntaggedArticlesResponse]
+	batchGetTagsByArticleIDs          *connect.Client[v1.BatchGetTagsByArticleIDsRequest, v1.BatchGetTagsByArticleIDsResponse]
+	deleteArticleSummary              *connect.Client[v1.DeleteArticleSummaryRequest, v1.DeleteArticleSummaryResponse]
+	checkArticleSummaryExists         *connect.Client[v1.CheckArticleSummaryExistsRequest, v1.CheckArticleSummaryExistsResponse]
+	findArticlesWithSummaries         *connect.Client[v1.FindArticlesWithSummariesRequest, v1.FindArticlesWithSummariesResponse]
+	listUnsummarizedArticles          *connect.Client[v1.ListUnsummarizedArticlesRequest, v1.ListUnsummarizedArticlesResponse]
+	hasUnsummarizedArticles           *connect.Client[v1.HasUnsummarizedArticlesRequest, v1.HasUnsummarizedArticlesResponse]
+	getEmptyFeedID                    *connect.Client[v1.GetEmptyFeedIDRequest, v1.GetEmptyFeedIDResponse]
+	fetchTagCloud                     *connect.Client[v1.FetchTagCloudRequest, v1.FetchTagCloudResponse]
+	fetchArticlesByTag                *connect.Client[v1.FetchArticlesByTagRequest, v1.FetchArticlesByTagResponse]
+	listRecapArticles                 *connect.Client[v1.ListRecapArticlesRequest, v1.ListRecapArticlesResponse]
+	getSystemUser                     *connect.Client[v1.GetSystemUserRequest, v1.GetSystemUserResponse]
+	listRecentArticles                *connect.Client[v1.ListRecentArticlesRequest, v1.ListRecentArticlesResponse]
+	claimOutboxBatch                  *connect.Client[v1.ClaimOutboxBatchRequest, v1.ClaimOutboxBatchResponse]
+	markOutboxProcessed               *connect.Client[v1.MarkOutboxProcessedRequest, v1.MarkOutboxProcessedResponse]
+	releaseOutboxEvent                *connect.Client[v1.ReleaseOutboxEventRequest, v1.ReleaseOutboxEventResponse]
+	pruneOutboxEvents                 *connect.Client[v1.PruneOutboxEventsRequest, v1.PruneOutboxEventsResponse]
+	getArticleHead                    *connect.Client[v1.GetArticleHeadRequest, v1.GetArticleHeadResponse]
+	batchGetOgImageURLs               *connect.Client[v1.BatchGetOgImageURLsRequest, v1.BatchGetOgImageURLsResponse]
+	listFeedsMissingOgImage           *connect.Client[v1.ListFeedsMissingOgImageRequest, v1.ListFeedsMissingOgImageResponse]
+	listUnwarmedOgImageURLs           *connect.Client[v1.ListUnwarmedOgImageURLsRequest, v1.ListUnwarmedOgImageURLsResponse]
+	purgeExpiredArticleHeads          *connect.Client[v1.PurgeExpiredArticleHeadsRequest, v1.PurgeExpiredArticleHeadsResponse]
+	getImageProxyCache                *connect.Client[v1.GetImageProxyCacheRequest, v1.GetImageProxyCacheResponse]
+	putImageProxyCache                *connect.Client[v1.PutImageProxyCacheRequest, v1.PutImageProxyCacheResponse]
+	evictExpiredImageProxyCache       *connect.Client[v1.EvictExpiredImageProxyCacheRequest, v1.EvictExpiredImageProxyCacheResponse]
+	purgeImageProxyCacheOlderThan     *connect.Client[v1.PurgeImageProxyCacheOlderThanRequest, v1.PurgeImageProxyCacheOlderThanResponse]
+	getScrapingDomainByDomain         *connect.Client[v1.GetScrapingDomainByDomainRequest, v1.GetScrapingDomainByDomainResponse]
+	getScrapingDomainByID             *connect.Client[v1.GetScrapingDomainByIDRequest, v1.GetScrapingDomainByIDResponse]
+	saveScrapingDomain                *connect.Client[v1.SaveScrapingDomainRequest, v1.SaveScrapingDomainResponse]
+	listScrapingDomains               *connect.Client[v1.ListScrapingDomainsRequest, v1.ListScrapingDomainsResponse]
+	updateScrapingDomainPolicy        *connect.Client[v1.UpdateScrapingDomainPolicyRequest, v1.UpdateScrapingDomainPolicyResponse]
+	saveDeclinedDomain                *connect.Client[v1.SaveDeclinedDomainRequest, v1.SaveDeclinedDomainResponse]
+	isDomainDeclined                  *connect.Client[v1.IsDomainDeclinedRequest, v1.IsDomainDeclinedResponse]
+	listSubscribedUserIDsByFeedLinkID *connect.Client[v1.ListSubscribedUserIDsByFeedLinkIDRequest, v1.ListSubscribedUserIDsByFeedLinkIDResponse]
+	checkArticleExistsByURLForUser    *connect.Client[v1.CheckArticleExistsByURLForUserRequest, v1.CheckArticleExistsByURLForUserResponse]
 }
 
 // ListArticlesWithTags calls alt.datahub.v1.DataHubService.ListArticlesWithTags.
@@ -560,6 +842,118 @@ func (c *dataHubServiceClient) ListRecentArticles(ctx context.Context, req *conn
 	return c.listRecentArticles.CallUnary(ctx, req)
 }
 
+// ClaimOutboxBatch calls alt.datahub.v1.DataHubService.ClaimOutboxBatch.
+func (c *dataHubServiceClient) ClaimOutboxBatch(ctx context.Context, req *connect.Request[v1.ClaimOutboxBatchRequest]) (*connect.Response[v1.ClaimOutboxBatchResponse], error) {
+	return c.claimOutboxBatch.CallUnary(ctx, req)
+}
+
+// MarkOutboxProcessed calls alt.datahub.v1.DataHubService.MarkOutboxProcessed.
+func (c *dataHubServiceClient) MarkOutboxProcessed(ctx context.Context, req *connect.Request[v1.MarkOutboxProcessedRequest]) (*connect.Response[v1.MarkOutboxProcessedResponse], error) {
+	return c.markOutboxProcessed.CallUnary(ctx, req)
+}
+
+// ReleaseOutboxEvent calls alt.datahub.v1.DataHubService.ReleaseOutboxEvent.
+func (c *dataHubServiceClient) ReleaseOutboxEvent(ctx context.Context, req *connect.Request[v1.ReleaseOutboxEventRequest]) (*connect.Response[v1.ReleaseOutboxEventResponse], error) {
+	return c.releaseOutboxEvent.CallUnary(ctx, req)
+}
+
+// PruneOutboxEvents calls alt.datahub.v1.DataHubService.PruneOutboxEvents.
+func (c *dataHubServiceClient) PruneOutboxEvents(ctx context.Context, req *connect.Request[v1.PruneOutboxEventsRequest]) (*connect.Response[v1.PruneOutboxEventsResponse], error) {
+	return c.pruneOutboxEvents.CallUnary(ctx, req)
+}
+
+// GetArticleHead calls alt.datahub.v1.DataHubService.GetArticleHead.
+func (c *dataHubServiceClient) GetArticleHead(ctx context.Context, req *connect.Request[v1.GetArticleHeadRequest]) (*connect.Response[v1.GetArticleHeadResponse], error) {
+	return c.getArticleHead.CallUnary(ctx, req)
+}
+
+// BatchGetOgImageURLs calls alt.datahub.v1.DataHubService.BatchGetOgImageURLs.
+func (c *dataHubServiceClient) BatchGetOgImageURLs(ctx context.Context, req *connect.Request[v1.BatchGetOgImageURLsRequest]) (*connect.Response[v1.BatchGetOgImageURLsResponse], error) {
+	return c.batchGetOgImageURLs.CallUnary(ctx, req)
+}
+
+// ListFeedsMissingOgImage calls alt.datahub.v1.DataHubService.ListFeedsMissingOgImage.
+func (c *dataHubServiceClient) ListFeedsMissingOgImage(ctx context.Context, req *connect.Request[v1.ListFeedsMissingOgImageRequest]) (*connect.Response[v1.ListFeedsMissingOgImageResponse], error) {
+	return c.listFeedsMissingOgImage.CallUnary(ctx, req)
+}
+
+// ListUnwarmedOgImageURLs calls alt.datahub.v1.DataHubService.ListUnwarmedOgImageURLs.
+func (c *dataHubServiceClient) ListUnwarmedOgImageURLs(ctx context.Context, req *connect.Request[v1.ListUnwarmedOgImageURLsRequest]) (*connect.Response[v1.ListUnwarmedOgImageURLsResponse], error) {
+	return c.listUnwarmedOgImageURLs.CallUnary(ctx, req)
+}
+
+// PurgeExpiredArticleHeads calls alt.datahub.v1.DataHubService.PurgeExpiredArticleHeads.
+func (c *dataHubServiceClient) PurgeExpiredArticleHeads(ctx context.Context, req *connect.Request[v1.PurgeExpiredArticleHeadsRequest]) (*connect.Response[v1.PurgeExpiredArticleHeadsResponse], error) {
+	return c.purgeExpiredArticleHeads.CallUnary(ctx, req)
+}
+
+// GetImageProxyCache calls alt.datahub.v1.DataHubService.GetImageProxyCache.
+func (c *dataHubServiceClient) GetImageProxyCache(ctx context.Context, req *connect.Request[v1.GetImageProxyCacheRequest]) (*connect.Response[v1.GetImageProxyCacheResponse], error) {
+	return c.getImageProxyCache.CallUnary(ctx, req)
+}
+
+// PutImageProxyCache calls alt.datahub.v1.DataHubService.PutImageProxyCache.
+func (c *dataHubServiceClient) PutImageProxyCache(ctx context.Context, req *connect.Request[v1.PutImageProxyCacheRequest]) (*connect.Response[v1.PutImageProxyCacheResponse], error) {
+	return c.putImageProxyCache.CallUnary(ctx, req)
+}
+
+// EvictExpiredImageProxyCache calls alt.datahub.v1.DataHubService.EvictExpiredImageProxyCache.
+func (c *dataHubServiceClient) EvictExpiredImageProxyCache(ctx context.Context, req *connect.Request[v1.EvictExpiredImageProxyCacheRequest]) (*connect.Response[v1.EvictExpiredImageProxyCacheResponse], error) {
+	return c.evictExpiredImageProxyCache.CallUnary(ctx, req)
+}
+
+// PurgeImageProxyCacheOlderThan calls alt.datahub.v1.DataHubService.PurgeImageProxyCacheOlderThan.
+func (c *dataHubServiceClient) PurgeImageProxyCacheOlderThan(ctx context.Context, req *connect.Request[v1.PurgeImageProxyCacheOlderThanRequest]) (*connect.Response[v1.PurgeImageProxyCacheOlderThanResponse], error) {
+	return c.purgeImageProxyCacheOlderThan.CallUnary(ctx, req)
+}
+
+// GetScrapingDomainByDomain calls alt.datahub.v1.DataHubService.GetScrapingDomainByDomain.
+func (c *dataHubServiceClient) GetScrapingDomainByDomain(ctx context.Context, req *connect.Request[v1.GetScrapingDomainByDomainRequest]) (*connect.Response[v1.GetScrapingDomainByDomainResponse], error) {
+	return c.getScrapingDomainByDomain.CallUnary(ctx, req)
+}
+
+// GetScrapingDomainByID calls alt.datahub.v1.DataHubService.GetScrapingDomainByID.
+func (c *dataHubServiceClient) GetScrapingDomainByID(ctx context.Context, req *connect.Request[v1.GetScrapingDomainByIDRequest]) (*connect.Response[v1.GetScrapingDomainByIDResponse], error) {
+	return c.getScrapingDomainByID.CallUnary(ctx, req)
+}
+
+// SaveScrapingDomain calls alt.datahub.v1.DataHubService.SaveScrapingDomain.
+func (c *dataHubServiceClient) SaveScrapingDomain(ctx context.Context, req *connect.Request[v1.SaveScrapingDomainRequest]) (*connect.Response[v1.SaveScrapingDomainResponse], error) {
+	return c.saveScrapingDomain.CallUnary(ctx, req)
+}
+
+// ListScrapingDomains calls alt.datahub.v1.DataHubService.ListScrapingDomains.
+func (c *dataHubServiceClient) ListScrapingDomains(ctx context.Context, req *connect.Request[v1.ListScrapingDomainsRequest]) (*connect.Response[v1.ListScrapingDomainsResponse], error) {
+	return c.listScrapingDomains.CallUnary(ctx, req)
+}
+
+// UpdateScrapingDomainPolicy calls alt.datahub.v1.DataHubService.UpdateScrapingDomainPolicy.
+func (c *dataHubServiceClient) UpdateScrapingDomainPolicy(ctx context.Context, req *connect.Request[v1.UpdateScrapingDomainPolicyRequest]) (*connect.Response[v1.UpdateScrapingDomainPolicyResponse], error) {
+	return c.updateScrapingDomainPolicy.CallUnary(ctx, req)
+}
+
+// SaveDeclinedDomain calls alt.datahub.v1.DataHubService.SaveDeclinedDomain.
+func (c *dataHubServiceClient) SaveDeclinedDomain(ctx context.Context, req *connect.Request[v1.SaveDeclinedDomainRequest]) (*connect.Response[v1.SaveDeclinedDomainResponse], error) {
+	return c.saveDeclinedDomain.CallUnary(ctx, req)
+}
+
+// IsDomainDeclined calls alt.datahub.v1.DataHubService.IsDomainDeclined.
+func (c *dataHubServiceClient) IsDomainDeclined(ctx context.Context, req *connect.Request[v1.IsDomainDeclinedRequest]) (*connect.Response[v1.IsDomainDeclinedResponse], error) {
+	return c.isDomainDeclined.CallUnary(ctx, req)
+}
+
+// ListSubscribedUserIDsByFeedLinkID calls
+// alt.datahub.v1.DataHubService.ListSubscribedUserIDsByFeedLinkID.
+func (c *dataHubServiceClient) ListSubscribedUserIDsByFeedLinkID(ctx context.Context, req *connect.Request[v1.ListSubscribedUserIDsByFeedLinkIDRequest]) (*connect.Response[v1.ListSubscribedUserIDsByFeedLinkIDResponse], error) {
+	return c.listSubscribedUserIDsByFeedLinkID.CallUnary(ctx, req)
+}
+
+// CheckArticleExistsByURLForUser calls
+// alt.datahub.v1.DataHubService.CheckArticleExistsByURLForUser.
+func (c *dataHubServiceClient) CheckArticleExistsByURLForUser(ctx context.Context, req *connect.Request[v1.CheckArticleExistsByURLForUserRequest]) (*connect.Response[v1.CheckArticleExistsByURLForUserResponse], error) {
+	return c.checkArticleExistsByURLForUser.CallUnary(ctx, req)
+}
+
 // DataHubServiceHandler is an implementation of the alt.datahub.v1.DataHubService service.
 type DataHubServiceHandler interface {
 	// ListArticlesWithTags returns articles with tags using backward keyset pagination.
@@ -648,6 +1042,68 @@ type DataHubServiceHandler interface {
 	// Origin: GET /v1/internal/articles/recent (REST). Called by
 	// rag-orchestrator for its temporal topics feature.
 	ListRecentArticles(context.Context, *connect.Request[v1.ListRecentArticlesRequest]) (*connect.Response[v1.ListRecentArticlesResponse], error)
+	// ClaimOutboxBatch takes ownership of up to `limit` PENDING rows and marks
+	// them PROCESSING, in one transaction, with FOR UPDATE SKIP LOCKED.
+	//
+	// The lock and the commit are both inside this RPC, and that is the whole
+	// point of the capability: exposing "select pending" and "mark processing"
+	// as two procedures would put a network round trip between them and let two
+	// harvesters claim the same event (ADR-000954 D3, case against the
+	// port-mirror shape).
+	ClaimOutboxBatch(context.Context, *connect.Request[v1.ClaimOutboxBatchRequest]) (*connect.Response[v1.ClaimOutboxBatchResponse], error)
+	// MarkOutboxProcessed records a terminal outcome for a claimed row and
+	// stamps processed_at.
+	MarkOutboxProcessed(context.Context, *connect.Request[v1.MarkOutboxProcessedRequest]) (*connect.Response[v1.MarkOutboxProcessedResponse], error)
+	// ReleaseOutboxEvent returns a claimed-but-unattempted row to PENDING.
+	//
+	// Callers invoke it on a context detached from the one that was cancelled,
+	// because the row is only reachable through this call: ClaimOutboxBatch
+	// reads PENDING only, so a PROCESSING row nobody releases is never fetched
+	// again by anyone.
+	ReleaseOutboxEvent(context.Context, *connect.Request[v1.ReleaseOutboxEventRequest]) (*connect.Response[v1.ReleaseOutboxEventResponse], error)
+	// PruneOutboxEvents deletes PROCESSED rows older than the given window.
+	PruneOutboxEvents(context.Context, *connect.Request[v1.PruneOutboxEventsRequest]) (*connect.Response[v1.PruneOutboxEventsResponse], error)
+	// GetArticleHead returns the scraped <head> record for an article.
+	GetArticleHead(context.Context, *connect.Request[v1.GetArticleHeadRequest]) (*connect.Response[v1.GetArticleHeadResponse], error)
+	// BatchGetOgImageURLs resolves og:image URLs for many articles at once.
+	BatchGetOgImageURLs(context.Context, *connect.Request[v1.BatchGetOgImageURLsRequest]) (*connect.Response[v1.BatchGetOgImageURLsResponse], error)
+	// ListFeedsMissingOgImage returns the og-image-backfill work list.
+	ListFeedsMissingOgImage(context.Context, *connect.Request[v1.ListFeedsMissingOgImageRequest]) (*connect.Response[v1.ListFeedsMissingOgImageResponse], error)
+	// ListUnwarmedOgImageURLs returns feed og:image URLs with no live cache entry.
+	ListUnwarmedOgImageURLs(context.Context, *connect.Request[v1.ListUnwarmedOgImageURLsRequest]) (*connect.Response[v1.ListUnwarmedOgImageURLsResponse], error)
+	// PurgeExpiredArticleHeads enforces the article_heads retention window.
+	PurgeExpiredArticleHeads(context.Context, *connect.Request[v1.PurgeExpiredArticleHeadsRequest]) (*connect.Response[v1.PurgeExpiredArticleHeadsResponse], error)
+	// GetImageProxyCache returns a live cache entry, or nothing.
+	GetImageProxyCache(context.Context, *connect.Request[v1.GetImageProxyCacheRequest]) (*connect.Response[v1.GetImageProxyCacheResponse], error)
+	// PutImageProxyCache upserts a cache entry by url_hash.
+	PutImageProxyCache(context.Context, *connect.Request[v1.PutImageProxyCacheRequest]) (*connect.Response[v1.PutImageProxyCacheResponse], error)
+	// EvictExpiredImageProxyCache deletes entries past their own TTL.
+	EvictExpiredImageProxyCache(context.Context, *connect.Request[v1.EvictExpiredImageProxyCacheRequest]) (*connect.Response[v1.EvictExpiredImageProxyCacheResponse], error)
+	// PurgeImageProxyCacheOlderThan deletes entries past the copyright
+	// retention window, regardless of TTL.
+	PurgeImageProxyCacheOlderThan(context.Context, *connect.Request[v1.PurgeImageProxyCacheOlderThanRequest]) (*connect.Response[v1.PurgeImageProxyCacheOlderThanResponse], error)
+	// GetScrapingDomainByDomain returns the recorded policy for a hostname.
+	GetScrapingDomainByDomain(context.Context, *connect.Request[v1.GetScrapingDomainByDomainRequest]) (*connect.Response[v1.GetScrapingDomainByDomainResponse], error)
+	// GetScrapingDomainByID returns the recorded policy by row id.
+	GetScrapingDomainByID(context.Context, *connect.Request[v1.GetScrapingDomainByIDRequest]) (*connect.Response[v1.GetScrapingDomainByIDResponse], error)
+	// SaveScrapingDomain upserts a scraping domain by hostname.
+	SaveScrapingDomain(context.Context, *connect.Request[v1.SaveScrapingDomainRequest]) (*connect.Response[v1.SaveScrapingDomainResponse], error)
+	// ListScrapingDomains pages through the recorded policies.
+	ListScrapingDomains(context.Context, *connect.Request[v1.ListScrapingDomainsRequest]) (*connect.Response[v1.ListScrapingDomainsResponse], error)
+	// UpdateScrapingDomainPolicy applies a partial policy update. Unknown id is
+	// NotFound rather than a silent zero-row update.
+	UpdateScrapingDomainPolicy(context.Context, *connect.Request[v1.UpdateScrapingDomainPolicyRequest]) (*connect.Response[v1.UpdateScrapingDomainPolicyResponse], error)
+	// SaveDeclinedDomain records that a user declined full-text fetch for a
+	// domain. Idempotent.
+	SaveDeclinedDomain(context.Context, *connect.Request[v1.SaveDeclinedDomainRequest]) (*connect.Response[v1.SaveDeclinedDomainResponse], error)
+	// IsDomainDeclined reports whether a user declined full-text fetch for a
+	// domain.
+	IsDomainDeclined(context.Context, *connect.Request[v1.IsDomainDeclinedRequest]) (*connect.Response[v1.IsDomainDeclinedResponse], error)
+	// ListSubscribedUserIDsByFeedLinkID returns the users subscribed to a feed
+	// link, so a fetched article can be fanned out to each of them.
+	ListSubscribedUserIDsByFeedLinkID(context.Context, *connect.Request[v1.ListSubscribedUserIDsByFeedLinkIDRequest]) (*connect.Response[v1.ListSubscribedUserIDsByFeedLinkIDResponse], error)
+	// CheckArticleExistsByURLForUser is the tenant-scoped existence check.
+	CheckArticleExistsByURLForUser(context.Context, *connect.Request[v1.CheckArticleExistsByURLForUserRequest]) (*connect.Response[v1.CheckArticleExistsByURLForUserResponse], error)
 }
 
 // NewDataHubServiceHandler builds an HTTP handler from the service implementation. It returns the
@@ -813,6 +1269,138 @@ func NewDataHubServiceHandler(svc DataHubServiceHandler, opts ...connect.Handler
 		connect.WithSchema(dataHubServiceMethods.ByName("ListRecentArticles")),
 		connect.WithHandlerOptions(opts...),
 	)
+	dataHubServiceClaimOutboxBatchHandler := connect.NewUnaryHandler(
+		DataHubServiceClaimOutboxBatchProcedure,
+		svc.ClaimOutboxBatch,
+		connect.WithSchema(dataHubServiceMethods.ByName("ClaimOutboxBatch")),
+		connect.WithHandlerOptions(opts...),
+	)
+	dataHubServiceMarkOutboxProcessedHandler := connect.NewUnaryHandler(
+		DataHubServiceMarkOutboxProcessedProcedure,
+		svc.MarkOutboxProcessed,
+		connect.WithSchema(dataHubServiceMethods.ByName("MarkOutboxProcessed")),
+		connect.WithHandlerOptions(opts...),
+	)
+	dataHubServiceReleaseOutboxEventHandler := connect.NewUnaryHandler(
+		DataHubServiceReleaseOutboxEventProcedure,
+		svc.ReleaseOutboxEvent,
+		connect.WithSchema(dataHubServiceMethods.ByName("ReleaseOutboxEvent")),
+		connect.WithHandlerOptions(opts...),
+	)
+	dataHubServicePruneOutboxEventsHandler := connect.NewUnaryHandler(
+		DataHubServicePruneOutboxEventsProcedure,
+		svc.PruneOutboxEvents,
+		connect.WithSchema(dataHubServiceMethods.ByName("PruneOutboxEvents")),
+		connect.WithHandlerOptions(opts...),
+	)
+	dataHubServiceGetArticleHeadHandler := connect.NewUnaryHandler(
+		DataHubServiceGetArticleHeadProcedure,
+		svc.GetArticleHead,
+		connect.WithSchema(dataHubServiceMethods.ByName("GetArticleHead")),
+		connect.WithHandlerOptions(opts...),
+	)
+	dataHubServiceBatchGetOgImageURLsHandler := connect.NewUnaryHandler(
+		DataHubServiceBatchGetOgImageURLsProcedure,
+		svc.BatchGetOgImageURLs,
+		connect.WithSchema(dataHubServiceMethods.ByName("BatchGetOgImageURLs")),
+		connect.WithHandlerOptions(opts...),
+	)
+	dataHubServiceListFeedsMissingOgImageHandler := connect.NewUnaryHandler(
+		DataHubServiceListFeedsMissingOgImageProcedure,
+		svc.ListFeedsMissingOgImage,
+		connect.WithSchema(dataHubServiceMethods.ByName("ListFeedsMissingOgImage")),
+		connect.WithHandlerOptions(opts...),
+	)
+	dataHubServiceListUnwarmedOgImageURLsHandler := connect.NewUnaryHandler(
+		DataHubServiceListUnwarmedOgImageURLsProcedure,
+		svc.ListUnwarmedOgImageURLs,
+		connect.WithSchema(dataHubServiceMethods.ByName("ListUnwarmedOgImageURLs")),
+		connect.WithHandlerOptions(opts...),
+	)
+	dataHubServicePurgeExpiredArticleHeadsHandler := connect.NewUnaryHandler(
+		DataHubServicePurgeExpiredArticleHeadsProcedure,
+		svc.PurgeExpiredArticleHeads,
+		connect.WithSchema(dataHubServiceMethods.ByName("PurgeExpiredArticleHeads")),
+		connect.WithHandlerOptions(opts...),
+	)
+	dataHubServiceGetImageProxyCacheHandler := connect.NewUnaryHandler(
+		DataHubServiceGetImageProxyCacheProcedure,
+		svc.GetImageProxyCache,
+		connect.WithSchema(dataHubServiceMethods.ByName("GetImageProxyCache")),
+		connect.WithHandlerOptions(opts...),
+	)
+	dataHubServicePutImageProxyCacheHandler := connect.NewUnaryHandler(
+		DataHubServicePutImageProxyCacheProcedure,
+		svc.PutImageProxyCache,
+		connect.WithSchema(dataHubServiceMethods.ByName("PutImageProxyCache")),
+		connect.WithHandlerOptions(opts...),
+	)
+	dataHubServiceEvictExpiredImageProxyCacheHandler := connect.NewUnaryHandler(
+		DataHubServiceEvictExpiredImageProxyCacheProcedure,
+		svc.EvictExpiredImageProxyCache,
+		connect.WithSchema(dataHubServiceMethods.ByName("EvictExpiredImageProxyCache")),
+		connect.WithHandlerOptions(opts...),
+	)
+	dataHubServicePurgeImageProxyCacheOlderThanHandler := connect.NewUnaryHandler(
+		DataHubServicePurgeImageProxyCacheOlderThanProcedure,
+		svc.PurgeImageProxyCacheOlderThan,
+		connect.WithSchema(dataHubServiceMethods.ByName("PurgeImageProxyCacheOlderThan")),
+		connect.WithHandlerOptions(opts...),
+	)
+	dataHubServiceGetScrapingDomainByDomainHandler := connect.NewUnaryHandler(
+		DataHubServiceGetScrapingDomainByDomainProcedure,
+		svc.GetScrapingDomainByDomain,
+		connect.WithSchema(dataHubServiceMethods.ByName("GetScrapingDomainByDomain")),
+		connect.WithHandlerOptions(opts...),
+	)
+	dataHubServiceGetScrapingDomainByIDHandler := connect.NewUnaryHandler(
+		DataHubServiceGetScrapingDomainByIDProcedure,
+		svc.GetScrapingDomainByID,
+		connect.WithSchema(dataHubServiceMethods.ByName("GetScrapingDomainByID")),
+		connect.WithHandlerOptions(opts...),
+	)
+	dataHubServiceSaveScrapingDomainHandler := connect.NewUnaryHandler(
+		DataHubServiceSaveScrapingDomainProcedure,
+		svc.SaveScrapingDomain,
+		connect.WithSchema(dataHubServiceMethods.ByName("SaveScrapingDomain")),
+		connect.WithHandlerOptions(opts...),
+	)
+	dataHubServiceListScrapingDomainsHandler := connect.NewUnaryHandler(
+		DataHubServiceListScrapingDomainsProcedure,
+		svc.ListScrapingDomains,
+		connect.WithSchema(dataHubServiceMethods.ByName("ListScrapingDomains")),
+		connect.WithHandlerOptions(opts...),
+	)
+	dataHubServiceUpdateScrapingDomainPolicyHandler := connect.NewUnaryHandler(
+		DataHubServiceUpdateScrapingDomainPolicyProcedure,
+		svc.UpdateScrapingDomainPolicy,
+		connect.WithSchema(dataHubServiceMethods.ByName("UpdateScrapingDomainPolicy")),
+		connect.WithHandlerOptions(opts...),
+	)
+	dataHubServiceSaveDeclinedDomainHandler := connect.NewUnaryHandler(
+		DataHubServiceSaveDeclinedDomainProcedure,
+		svc.SaveDeclinedDomain,
+		connect.WithSchema(dataHubServiceMethods.ByName("SaveDeclinedDomain")),
+		connect.WithHandlerOptions(opts...),
+	)
+	dataHubServiceIsDomainDeclinedHandler := connect.NewUnaryHandler(
+		DataHubServiceIsDomainDeclinedProcedure,
+		svc.IsDomainDeclined,
+		connect.WithSchema(dataHubServiceMethods.ByName("IsDomainDeclined")),
+		connect.WithHandlerOptions(opts...),
+	)
+	dataHubServiceListSubscribedUserIDsByFeedLinkIDHandler := connect.NewUnaryHandler(
+		DataHubServiceListSubscribedUserIDsByFeedLinkIDProcedure,
+		svc.ListSubscribedUserIDsByFeedLinkID,
+		connect.WithSchema(dataHubServiceMethods.ByName("ListSubscribedUserIDsByFeedLinkID")),
+		connect.WithHandlerOptions(opts...),
+	)
+	dataHubServiceCheckArticleExistsByURLForUserHandler := connect.NewUnaryHandler(
+		DataHubServiceCheckArticleExistsByURLForUserProcedure,
+		svc.CheckArticleExistsByURLForUser,
+		connect.WithSchema(dataHubServiceMethods.ByName("CheckArticleExistsByURLForUser")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/alt.datahub.v1.DataHubService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case DataHubServiceListArticlesWithTagsProcedure:
@@ -867,6 +1455,50 @@ func NewDataHubServiceHandler(svc DataHubServiceHandler, opts ...connect.Handler
 			dataHubServiceGetSystemUserHandler.ServeHTTP(w, r)
 		case DataHubServiceListRecentArticlesProcedure:
 			dataHubServiceListRecentArticlesHandler.ServeHTTP(w, r)
+		case DataHubServiceClaimOutboxBatchProcedure:
+			dataHubServiceClaimOutboxBatchHandler.ServeHTTP(w, r)
+		case DataHubServiceMarkOutboxProcessedProcedure:
+			dataHubServiceMarkOutboxProcessedHandler.ServeHTTP(w, r)
+		case DataHubServiceReleaseOutboxEventProcedure:
+			dataHubServiceReleaseOutboxEventHandler.ServeHTTP(w, r)
+		case DataHubServicePruneOutboxEventsProcedure:
+			dataHubServicePruneOutboxEventsHandler.ServeHTTP(w, r)
+		case DataHubServiceGetArticleHeadProcedure:
+			dataHubServiceGetArticleHeadHandler.ServeHTTP(w, r)
+		case DataHubServiceBatchGetOgImageURLsProcedure:
+			dataHubServiceBatchGetOgImageURLsHandler.ServeHTTP(w, r)
+		case DataHubServiceListFeedsMissingOgImageProcedure:
+			dataHubServiceListFeedsMissingOgImageHandler.ServeHTTP(w, r)
+		case DataHubServiceListUnwarmedOgImageURLsProcedure:
+			dataHubServiceListUnwarmedOgImageURLsHandler.ServeHTTP(w, r)
+		case DataHubServicePurgeExpiredArticleHeadsProcedure:
+			dataHubServicePurgeExpiredArticleHeadsHandler.ServeHTTP(w, r)
+		case DataHubServiceGetImageProxyCacheProcedure:
+			dataHubServiceGetImageProxyCacheHandler.ServeHTTP(w, r)
+		case DataHubServicePutImageProxyCacheProcedure:
+			dataHubServicePutImageProxyCacheHandler.ServeHTTP(w, r)
+		case DataHubServiceEvictExpiredImageProxyCacheProcedure:
+			dataHubServiceEvictExpiredImageProxyCacheHandler.ServeHTTP(w, r)
+		case DataHubServicePurgeImageProxyCacheOlderThanProcedure:
+			dataHubServicePurgeImageProxyCacheOlderThanHandler.ServeHTTP(w, r)
+		case DataHubServiceGetScrapingDomainByDomainProcedure:
+			dataHubServiceGetScrapingDomainByDomainHandler.ServeHTTP(w, r)
+		case DataHubServiceGetScrapingDomainByIDProcedure:
+			dataHubServiceGetScrapingDomainByIDHandler.ServeHTTP(w, r)
+		case DataHubServiceSaveScrapingDomainProcedure:
+			dataHubServiceSaveScrapingDomainHandler.ServeHTTP(w, r)
+		case DataHubServiceListScrapingDomainsProcedure:
+			dataHubServiceListScrapingDomainsHandler.ServeHTTP(w, r)
+		case DataHubServiceUpdateScrapingDomainPolicyProcedure:
+			dataHubServiceUpdateScrapingDomainPolicyHandler.ServeHTTP(w, r)
+		case DataHubServiceSaveDeclinedDomainProcedure:
+			dataHubServiceSaveDeclinedDomainHandler.ServeHTTP(w, r)
+		case DataHubServiceIsDomainDeclinedProcedure:
+			dataHubServiceIsDomainDeclinedHandler.ServeHTTP(w, r)
+		case DataHubServiceListSubscribedUserIDsByFeedLinkIDProcedure:
+			dataHubServiceListSubscribedUserIDsByFeedLinkIDHandler.ServeHTTP(w, r)
+		case DataHubServiceCheckArticleExistsByURLForUserProcedure:
+			dataHubServiceCheckArticleExistsByURLForUserHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -978,4 +1610,92 @@ func (UnimplementedDataHubServiceHandler) GetSystemUser(context.Context, *connec
 
 func (UnimplementedDataHubServiceHandler) ListRecentArticles(context.Context, *connect.Request[v1.ListRecentArticlesRequest]) (*connect.Response[v1.ListRecentArticlesResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("alt.datahub.v1.DataHubService.ListRecentArticles is not implemented"))
+}
+
+func (UnimplementedDataHubServiceHandler) ClaimOutboxBatch(context.Context, *connect.Request[v1.ClaimOutboxBatchRequest]) (*connect.Response[v1.ClaimOutboxBatchResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("alt.datahub.v1.DataHubService.ClaimOutboxBatch is not implemented"))
+}
+
+func (UnimplementedDataHubServiceHandler) MarkOutboxProcessed(context.Context, *connect.Request[v1.MarkOutboxProcessedRequest]) (*connect.Response[v1.MarkOutboxProcessedResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("alt.datahub.v1.DataHubService.MarkOutboxProcessed is not implemented"))
+}
+
+func (UnimplementedDataHubServiceHandler) ReleaseOutboxEvent(context.Context, *connect.Request[v1.ReleaseOutboxEventRequest]) (*connect.Response[v1.ReleaseOutboxEventResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("alt.datahub.v1.DataHubService.ReleaseOutboxEvent is not implemented"))
+}
+
+func (UnimplementedDataHubServiceHandler) PruneOutboxEvents(context.Context, *connect.Request[v1.PruneOutboxEventsRequest]) (*connect.Response[v1.PruneOutboxEventsResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("alt.datahub.v1.DataHubService.PruneOutboxEvents is not implemented"))
+}
+
+func (UnimplementedDataHubServiceHandler) GetArticleHead(context.Context, *connect.Request[v1.GetArticleHeadRequest]) (*connect.Response[v1.GetArticleHeadResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("alt.datahub.v1.DataHubService.GetArticleHead is not implemented"))
+}
+
+func (UnimplementedDataHubServiceHandler) BatchGetOgImageURLs(context.Context, *connect.Request[v1.BatchGetOgImageURLsRequest]) (*connect.Response[v1.BatchGetOgImageURLsResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("alt.datahub.v1.DataHubService.BatchGetOgImageURLs is not implemented"))
+}
+
+func (UnimplementedDataHubServiceHandler) ListFeedsMissingOgImage(context.Context, *connect.Request[v1.ListFeedsMissingOgImageRequest]) (*connect.Response[v1.ListFeedsMissingOgImageResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("alt.datahub.v1.DataHubService.ListFeedsMissingOgImage is not implemented"))
+}
+
+func (UnimplementedDataHubServiceHandler) ListUnwarmedOgImageURLs(context.Context, *connect.Request[v1.ListUnwarmedOgImageURLsRequest]) (*connect.Response[v1.ListUnwarmedOgImageURLsResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("alt.datahub.v1.DataHubService.ListUnwarmedOgImageURLs is not implemented"))
+}
+
+func (UnimplementedDataHubServiceHandler) PurgeExpiredArticleHeads(context.Context, *connect.Request[v1.PurgeExpiredArticleHeadsRequest]) (*connect.Response[v1.PurgeExpiredArticleHeadsResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("alt.datahub.v1.DataHubService.PurgeExpiredArticleHeads is not implemented"))
+}
+
+func (UnimplementedDataHubServiceHandler) GetImageProxyCache(context.Context, *connect.Request[v1.GetImageProxyCacheRequest]) (*connect.Response[v1.GetImageProxyCacheResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("alt.datahub.v1.DataHubService.GetImageProxyCache is not implemented"))
+}
+
+func (UnimplementedDataHubServiceHandler) PutImageProxyCache(context.Context, *connect.Request[v1.PutImageProxyCacheRequest]) (*connect.Response[v1.PutImageProxyCacheResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("alt.datahub.v1.DataHubService.PutImageProxyCache is not implemented"))
+}
+
+func (UnimplementedDataHubServiceHandler) EvictExpiredImageProxyCache(context.Context, *connect.Request[v1.EvictExpiredImageProxyCacheRequest]) (*connect.Response[v1.EvictExpiredImageProxyCacheResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("alt.datahub.v1.DataHubService.EvictExpiredImageProxyCache is not implemented"))
+}
+
+func (UnimplementedDataHubServiceHandler) PurgeImageProxyCacheOlderThan(context.Context, *connect.Request[v1.PurgeImageProxyCacheOlderThanRequest]) (*connect.Response[v1.PurgeImageProxyCacheOlderThanResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("alt.datahub.v1.DataHubService.PurgeImageProxyCacheOlderThan is not implemented"))
+}
+
+func (UnimplementedDataHubServiceHandler) GetScrapingDomainByDomain(context.Context, *connect.Request[v1.GetScrapingDomainByDomainRequest]) (*connect.Response[v1.GetScrapingDomainByDomainResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("alt.datahub.v1.DataHubService.GetScrapingDomainByDomain is not implemented"))
+}
+
+func (UnimplementedDataHubServiceHandler) GetScrapingDomainByID(context.Context, *connect.Request[v1.GetScrapingDomainByIDRequest]) (*connect.Response[v1.GetScrapingDomainByIDResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("alt.datahub.v1.DataHubService.GetScrapingDomainByID is not implemented"))
+}
+
+func (UnimplementedDataHubServiceHandler) SaveScrapingDomain(context.Context, *connect.Request[v1.SaveScrapingDomainRequest]) (*connect.Response[v1.SaveScrapingDomainResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("alt.datahub.v1.DataHubService.SaveScrapingDomain is not implemented"))
+}
+
+func (UnimplementedDataHubServiceHandler) ListScrapingDomains(context.Context, *connect.Request[v1.ListScrapingDomainsRequest]) (*connect.Response[v1.ListScrapingDomainsResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("alt.datahub.v1.DataHubService.ListScrapingDomains is not implemented"))
+}
+
+func (UnimplementedDataHubServiceHandler) UpdateScrapingDomainPolicy(context.Context, *connect.Request[v1.UpdateScrapingDomainPolicyRequest]) (*connect.Response[v1.UpdateScrapingDomainPolicyResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("alt.datahub.v1.DataHubService.UpdateScrapingDomainPolicy is not implemented"))
+}
+
+func (UnimplementedDataHubServiceHandler) SaveDeclinedDomain(context.Context, *connect.Request[v1.SaveDeclinedDomainRequest]) (*connect.Response[v1.SaveDeclinedDomainResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("alt.datahub.v1.DataHubService.SaveDeclinedDomain is not implemented"))
+}
+
+func (UnimplementedDataHubServiceHandler) IsDomainDeclined(context.Context, *connect.Request[v1.IsDomainDeclinedRequest]) (*connect.Response[v1.IsDomainDeclinedResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("alt.datahub.v1.DataHubService.IsDomainDeclined is not implemented"))
+}
+
+func (UnimplementedDataHubServiceHandler) ListSubscribedUserIDsByFeedLinkID(context.Context, *connect.Request[v1.ListSubscribedUserIDsByFeedLinkIDRequest]) (*connect.Response[v1.ListSubscribedUserIDsByFeedLinkIDResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("alt.datahub.v1.DataHubService.ListSubscribedUserIDsByFeedLinkID is not implemented"))
+}
+
+func (UnimplementedDataHubServiceHandler) CheckArticleExistsByURLForUser(context.Context, *connect.Request[v1.CheckArticleExistsByURLForUserRequest]) (*connect.Response[v1.CheckArticleExistsByURLForUserResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("alt.datahub.v1.DataHubService.CheckArticleExistsByURLForUser is not implemented"))
 }

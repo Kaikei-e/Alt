@@ -7,18 +7,19 @@ import (
 
 	"alt/adapter/augur_adapter"
 	"alt/config"
+	"alt/gen/proto/alt/datahub/v1/datahubv1connect"
 	"alt/orchestrator/gateway/feed_link_domain_gateway"
 	"alt/orchestrator/gateway/fetch_article_gateway"
 	"alt/orchestrator/gateway/image_fetch_gateway"
 	"alt/orchestrator/gateway/image_proxy_gateway"
 	"alt/orchestrator/gateway/rag_gateway"
 	"alt/orchestrator/gateway/robots_txt_gateway"
-	"alt/orchestrator/gateway/scraping_domain_gateway"
 	"alt/orchestrator/port/rag_integration_port"
 	"alt/orchestrator/usecase/image_proxy_usecase"
 	"alt/orchestrator/usecase/scraping_domain_usecase"
 	"alt/shared/driver/alt_db"
 	"alt/shared/driver/sovereign_client"
+	"alt/shared/gateway/datahub_gateway"
 	"alt/shared/gateway/fetch_tag_cloud_gateway"
 	"alt/shared/usecase/fetch_tag_cloud_usecase"
 	"alt/utils"
@@ -40,8 +41,18 @@ import (
 type HarvesterComponents struct {
 	Config *config.Config
 
-	// Shared driver
+	// Shared driver. Still present: the feed collector, the feed-link
+	// availability writes and the tag cloud read are not part of ADR-000954
+	// Wave 3 batch 1, so this binary keeps a database pool until the later
+	// batches land.
 	AltDBRepository *alt_db.AltDBRepository
+
+	// alt-data-hub client and the capability gateways built on it
+	// (ADR-000954 Wave 3 batch 1, catalog §2.A / §2.D / §2.E / §2.L).
+	DataHubClient          datahubv1connect.DataHubServiceClient
+	OutboxGateway          *datahub_gateway.OutboxGateway
+	OgImageGateway         *datahub_gateway.OgImageGateway
+	ImageProxyCacheGateway *datahub_gateway.ImageProxyCacheGateway
 
 	// daily-scraping-policy
 	ScrapingDomainUsecase *scraping_domain_usecase.ScrapingDomainUsecase
@@ -83,6 +94,16 @@ type HarvesterComponents struct {
 func NewHarvesterComponents(pool *pgxpool.Pool, cfg *config.Config) *HarvesterComponents {
 	altDB := alt_db.NewAltDBRepository(pool)
 
+	// alt-data-hub client. Built before anything else because five of the
+	// eight jobs cannot run without it, and a failure here must stop the
+	// process rather than surface later as a handshake error on a scheduler
+	// tick (CLAUDE.md rule 9).
+	dataHubClient := newDataHubClient("alt-harvester")
+	outboxGw := datahub_gateway.NewOutboxGateway(dataHubClient)
+	ogImageGw := datahub_gateway.NewOgImageGateway(dataHubClient)
+	imageProxyCacheGw := datahub_gateway.NewImageProxyCacheGateway(dataHubClient)
+	scrapingDomainGw := datahub_gateway.NewScrapingDomainGateway(dataHubClient)
+
 	// Shared external-fetch primitives. CLAUDE.md rule 2: this rate limiter is
 	// process-local, so the harvester's effective rate against a publisher is
 	// independent of the backend's — see the split ADR's R1 note.
@@ -91,8 +112,8 @@ func NewHarvesterComponents(pool *pgxpool.Pool, cfg *config.Config) *HarvesterCo
 	httpClient := utils.NewHTTPClientFactory().CreateHTTPClient()
 	robotsTxtGw := robots_txt_gateway.NewRobotsTxtGateway(httpClient)
 
-	// daily-scraping-policy
-	scrapingDomainGw := scraping_domain_gateway.NewScrapingDomainGateway(altDB)
+	// daily-scraping-policy. The robots.txt fetch stays here (external HTTP,
+	// ADR-000954 D4); only the recorded result crosses to alt-data-hub.
 	feedLinkDomainGw := feed_link_domain_gateway.NewFeedLinkDomainGateway(altDB)
 	scrapingDomainUC := scraping_domain_usecase.NewScrapingDomainUsecaseWithFeedLinkDomain(
 		scrapingDomainGw, robotsTxtGw, feedLinkDomainGw,
@@ -102,7 +123,7 @@ func NewHarvesterComponents(pool *pgxpool.Pool, cfg *config.Config) *HarvesterCo
 	fetchArticleGw := fetch_article_gateway.NewFetchArticleGateway(hostRateLimiter, httpClient)
 
 	// Image pipeline (ogp-image-warmer, og-image-backfill)
-	imageProxyUC := newHarvesterImageProxyUsecase(cfg, altDB)
+	imageProxyUC := newHarvesterImageProxyUsecase(cfg, altDB, imageProxyCacheGw)
 
 	// Tag cloud read model
 	fetchTagCloudGw := fetch_tag_cloud_gateway.NewFetchTagCloudGateway(altDB)
@@ -125,14 +146,18 @@ func NewHarvesterComponents(pool *pgxpool.Pool, cfg *config.Config) *HarvesterCo
 	sovereignCli := sovereign_client.NewClient(cfg.Sovereign.URL, sovereignEnabled)
 
 	return &HarvesterComponents{
-		Config:                cfg,
-		AltDBRepository:       altDB,
-		ScrapingDomainUsecase: scrapingDomainUC,
-		FetchArticleGateway:   fetchArticleGw,
-		ImageProxyUsecase:     imageProxyUC,
-		FetchTagCloudUsecase:  fetchTagCloudUC,
-		RagIntegration:        ragAdapter,
-		SovereignClient:       sovereignCli,
+		Config:                 cfg,
+		AltDBRepository:        altDB,
+		DataHubClient:          dataHubClient,
+		OutboxGateway:          outboxGw,
+		OgImageGateway:         ogImageGw,
+		ImageProxyCacheGateway: imageProxyCacheGw,
+		ScrapingDomainUsecase:  scrapingDomainUC,
+		FetchArticleGateway:    fetchArticleGw,
+		ImageProxyUsecase:      imageProxyUC,
+		FetchTagCloudUsecase:   fetchTagCloudUC,
+		RagIntegration:         ragAdapter,
+		SovereignClient:        sovereignCli,
 	}
 }
 
@@ -147,7 +172,11 @@ const imageProxyRateLimitInterval = 1 * time.Second
 // tagCloudCacheTTL is the in-process cache window for the tag cloud read model.
 const tagCloudCacheTTL = 30 * time.Minute
 
-func newHarvesterImageProxyUsecase(cfg *config.Config, altDB *alt_db.AltDBRepository) *image_proxy_usecase.ImageProxyUsecase {
+func newHarvesterImageProxyUsecase(
+	cfg *config.Config,
+	altDB *alt_db.AltDBRepository,
+	cacheGw *datahub_gateway.ImageProxyCacheGateway,
+) *image_proxy_usecase.ImageProxyUsecase {
 	if !logImageProxyWiringState(cfg.ImageProxy.Enabled, cfg.ImageProxy.Secret != "") {
 		return nil
 	}
@@ -155,7 +184,6 @@ func newHarvesterImageProxyUsecase(cfg *config.Config, altDB *alt_db.AltDBReposi
 	imageHTTPClient := &http.Client{Timeout: imageProxyFetchTimeout}
 	imageFetchGw := image_fetch_gateway.NewImageFetchGateway(imageHTTPClient)
 	signer := image_proxy.NewSigner(cfg.ImageProxy.Secret)
-	cacheGw := image_proxy_gateway.NewCacheGateway(altDB)
 	processingGw := image_proxy_gateway.NewProcessingGateway()
 	dynamicDomainGw := image_proxy_gateway.NewDynamicDomainGateway(altDB)
 

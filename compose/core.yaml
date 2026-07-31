@@ -265,11 +265,18 @@ services:
       # alt-data-hub is reachable over mTLS only; there is no plaintext
       # east-west port to fall back to (see alt-data-hub below).
       #
-      # WAVE 3 PLACEHOLDER — no code reads these yet. In wave 1 all three
-      # binaries still open their own alt-db pool, so the data-hub client
-      # does not exist; these become live when the direct DB connection is
-      # removed from this binary. Changing the value has no effect today.
+      # Live since ADR-000954 Wave 3 batch 1: di.newInfraModule builds the
+      # DataHubService client from these plus the MTLS_* trio below, and
+      # panics if any of them is missing or if the URL is not https —
+      # article_heads, the image proxy cache and the scraping policy have no
+      # local fallback in this binary any more (catalog §2.D / §2.E / §2.L).
+      # The remaining alt-db capabilities move in later batches, which is why
+      # this container still has a database pool.
       - DATA_HUB_MTLS_URL=https://alt-data-hub:9443
+      # Pins tls.Config.ServerName to alt-data-hub's SAN. Unset would fall
+      # back to the URL host, which is the same value here; it is explicit so
+      # that changing the URL to an IP or a staging alias does not silently
+      # start verifying against the wrong name.
       - DATA_HUB_SERVER_NAME=alt-data-hub
       # Ops listener. /health + /metrics only, never published to the host:
       # Prometheus scrapes it over alt-network, and the healthcheck below
@@ -352,7 +359,10 @@ services:
         condition: service_healthy
       knowledge-sovereign:
         condition: service_healthy
-      # Wave 1 only: dropped in wave 3 once alt-data-hub owns the write path.
+      # Still needed after Wave 3 batch 1: hourly-feed-collector, the
+      # feed-link availability writes and og-image-backfill's SaveArticleHead
+      # are later batches, so this binary keeps a database pool. Dropped when
+      # the last one moves.
       migrate:
         condition: service_completed_successfully
       pgbouncer:
@@ -376,15 +386,26 @@ services:
       # MTLS_LISTEN) are absent for the same reason — this binary opens no
       # listener but the ops one, so a value here would be equally inert.
       # --- outbound mTLS (client side; leaf cert from pki-agent) ----------
-      # WAVE 3 PLACEHOLDER — nothing reads DATA_HUB_* yet; the jobs still
-      # open their own alt-db pool. See alt-backend above.
+      # Live since ADR-000954 Wave 3 batch 1. Five of the eight jobs go
+      # through alt-data-hub now — outbox-worker and outbox-prune entirely
+      # (catalog §2.A), og-image-retention entirely (§2.D / §2.E),
+      # ogp-image-warmer entirely (§2.D), daily-scraping-policy for
+      # everything but the robots.txt fetch (§2.L) — so
+      # di.NewHarvesterComponents panics at startup rather than letting a
+      # missing value surface as a handshake error on a scheduler tick
+      # minutes after the container reported healthy.
       DATA_HUB_MTLS_URL: https://alt-data-hub:9443
       DATA_HUB_SERVER_NAME: alt-data-hub
-      # di/rag_module.go builds the outbox worker's rag-orchestrator client
-      # from these three whenever RAG_ORCHESTRATOR_CONNECT_URL is https, and
+      # Shared by two outbound mTLS hops: the data-hub client above and the
+      # outbox worker's rag-orchestrator client, which di/rag_module.go builds
+      # from these whenever RAG_ORCHESTRATOR_CONNECT_URL is https and which
       # panics rather than falling back to plaintext if the leaf cannot be
-      # loaded. There is no MTLS_ENFORCE here: the URL scheme is the switch,
-      # and a separate boolean read by nothing would only look like one.
+      # loaded. One leaf per container is what pki-agent mints, and every peer
+      # verifies it against the same CA, so a second DATA_HUB_-prefixed copy of
+      # these three paths would be three more things to keep in step with the
+      # sidecar's mount for no extra expressiveness. There is no MTLS_ENFORCE
+      # here: the URL scheme is the switch, and a separate boolean read by
+      # nothing would only look like one.
       MTLS_CERT_FILE: /certs/svc-cert.pem
       MTLS_KEY_FILE: /certs/svc-key.pem
       MTLS_CA_FILE: /trust/ca-bundle.pem

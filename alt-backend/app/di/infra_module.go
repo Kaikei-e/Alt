@@ -2,12 +2,14 @@ package di
 
 import (
 	"alt/config"
+	"alt/gen/proto/alt/datahub/v1/datahubv1connect"
 	"alt/orchestrator/driver/search_indexer_connect"
 	"alt/orchestrator/gateway/config_gateway"
 	"alt/orchestrator/gateway/robots_txt_gateway"
 	"alt/orchestrator/port/search_indexer_port"
 	"alt/shared/driver/alt_db"
 	"alt/shared/driver/mqhub_connect"
+	"alt/shared/gateway/datahub_gateway"
 	"alt/utils"
 	"alt/utils/rate_limiter"
 	"log/slog"
@@ -30,10 +32,20 @@ type InfraModule struct {
 	HTTPClient  *http.Client
 	MQHubClient *mqhub_connect.Client
 
-	// Shared drivers
+	// Shared drivers. AltDBRepository is still here: the article reads and
+	// writes, the feed tables and the knowledge backfill are later ADR-000954
+	// Wave 3 batches, so cmd/backend keeps a database pool until they land.
 	AltDBRepository     *alt_db.AltDBRepository
 	SearchIndexerDriver search_indexer_port.SearchIndexerPort
 	RobotsTxtGateway    *robots_txt_gateway.RobotsTxtGateway
+
+	// alt-data-hub client and the capability gateways built on it
+	// (ADR-000954 Wave 3 batch 1, catalog §2.D / §2.E / §2.L).
+	DataHubClient          datahubv1connect.DataHubServiceClient
+	OgImageGateway         *datahub_gateway.OgImageGateway
+	ImageProxyCacheGateway *datahub_gateway.ImageProxyCacheGateway
+	ScrapingDomainGateway  *datahub_gateway.ScrapingDomainGateway
+	DeclinedDomainGateway  *datahub_gateway.DeclinedDomainGateway
 
 	Pool *pgxpool.Pool
 }
@@ -72,6 +84,11 @@ func newInfraModule(pool *pgxpool.Pool, cfg *config.Config) *InfraModule {
 	// Search indexer driver (shared between article search and feed search)
 	searchIndexerDriver := search_indexer_connect.NewConnectSearchIndexerDriver(cfg.SearchIndexer.ConnectURL, "")
 
+	// alt-data-hub client. Not optional and not lazily built: three of the
+	// domain modules below take a gateway from it, and a failure to construct
+	// one must stop the process rather than surface on a user request.
+	dataHubClient := newDataHubClient("alt-backend")
+
 	return &InfraModule{
 		Config:              cfg,
 		RateLimiter:         hostRateLimiter,
@@ -80,7 +97,14 @@ func newInfraModule(pool *pgxpool.Pool, cfg *config.Config) *InfraModule {
 		AltDBRepository:     altDBRepository,
 		SearchIndexerDriver: searchIndexerDriver,
 		RobotsTxtGateway:    robotsTxtGw,
-		Pool:                pool,
+
+		DataHubClient:          dataHubClient,
+		OgImageGateway:         datahub_gateway.NewOgImageGateway(dataHubClient),
+		ImageProxyCacheGateway: datahub_gateway.NewImageProxyCacheGateway(dataHubClient),
+		ScrapingDomainGateway:  datahub_gateway.NewScrapingDomainGateway(dataHubClient),
+		DeclinedDomainGateway:  datahub_gateway.NewDeclinedDomainGateway(dataHubClient),
+
+		Pool: pool,
 	}
 }
 
